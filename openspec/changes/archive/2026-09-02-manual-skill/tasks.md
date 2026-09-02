@@ -17,6 +17,6 @@
 
 ## 4. 手動驗收
 
-- [ ] [M] 4.1 於本 repo 呼叫 /speclink-manual（生成模式）：確認 `openspec/manual/index.md` 與 `openspec/manual/about.md` 存在、任一頁 frontmatter 六欄齊備、about 頁含矛盾清單段；接著不改任何規格再呼叫一次，`git status --porcelain openspec/manual` 為空（無異動零寫入、未動頁逐位元不變），對應「生成模式的輸出與報告」與「重生時保留既有順序」。 <!-- speclink-task:tsk_01M1FTM01X55M2KJ6TJHPHM2R2 -->
-- [ ] [M] 4.2 於本 repo 呼叫 /speclink-manual 導覽：確認技能先問角色一題、回答附 capability 出處，且 `git status --porcelain` 對 openspec/ 無任何新增或修改（「導覽模式的行為」零寫檔）。 <!-- speclink-task:tsk_01M1FTM01XS2HHN38E8VQCDCQH -->
-- [ ] [M] 4.3 以 dev-harness 拉起 remote 環境並於 remote 綁定的 checkout 呼叫 /speclink-manual：確認技能明示 remote 模式尚不支援生成且該 checkout 未出現 openspec/manual/；再呼叫導覽模式確認照常導覽（「remote 模式的限制敘述」）。 <!-- speclink-task:tsk_01M1FTM01XY9ZRBJAHXX4EXATH -->
+- [x] [M] 4.1 於本 repo 呼叫 /speclink-manual（生成模式）：確認 `openspec/manual/index.md` 與 `openspec/manual/about.md` 存在、任一頁 frontmatter 六欄齊備、about 頁含矛盾清單段；接著不改任何規格再呼叫一次，`git status --porcelain openspec/manual` 為空（無異動零寫入、未動頁逐位元不變），對應「生成模式的輸出與報告」與「重生時保留既有順序」。 <!-- speclink-task:tsk_01M1FTM01X55M2KJ6TJHPHM2R2 -->
+- [x] [M] 4.2 於本 repo 呼叫 /speclink-manual 導覽：確認技能先問角色一題、回答附 capability 出處，且 `git status --porcelain` 對 openspec/ 無任何新增或修改（「導覽模式的行為」零寫檔）。 <!-- speclink-task:tsk_01M1FTM01XS2HHN38E8VQCDCQH -->
+- [x] [M] 4.3 以 dev-harness 拉起 remote 環境並於 remote 綁定的 checkout 呼叫 /speclink-manual：確認技能明示 remote 模式尚不支援生成且該 checkout 未出現 openspec/manual/；再呼叫導覽模式確認照常導覽（「remote 模式的限制敘述」）。 <!-- speclink-task:tsk_01M1FTM01XY9ZRBJAHXX4EXATH -->

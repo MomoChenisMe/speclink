@@ -51,6 +51,32 @@
         "docs/workflow.md",
         "docs/workflow.zh-TW.md"
       ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.1 於本 repo 呼叫 /speclink-manual（生成模式）：確認 `openspec/manual/index.md` 與 `openspec/manual/about.md` 存在、任一頁 frontmatter 六欄齊備、about 頁含矛盾清單段；接著不改任何規格再呼叫一次，`git status --porcelain openspec/manual` 為空（無異動零寫入、未動頁逐位元不變），對應「生成模式的輸出與報告」與「重生時保留既有順序」。",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/index.css",
+        "apps/desktop/src/panel/TrayPanel.tsx",
+        "apps/desktop/src/store.ts",
+        "package-lock.json",
+        "packages/ui/package.json",
+        "packages/ui/src/__tests__/manualPage.test.tsx",
+        "packages/ui/src/__tests__/specDrawer.test.tsx",
+        "packages/ui/src/components/ArchivedDrawer.tsx",
+        "packages/ui/src/components/DiscussionDrawer.tsx",
+        "packages/ui/src/components/ManualPage.tsx",
+        "packages/ui/src/components/RichDetailDrawer.tsx",
+        "packages/ui/src/components/SpecDrawer.tsx",
+        "packages/ui/src/components/ui/sheet.tsx",
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/theme.css",
+        "packages/ui/vitest.setup.ts",
+        "packages/ui/src/lib/useLingering.ts"
+      ]
     }
   ],
   "entries": [
@@ -127,6 +153,35 @@
         "docs/workflow.zh-TW.md"
       ],
       "recordedAt": "2026-09-02T02:13:14Z"
+    },
+    {
+      "taskId": "tsk_01M1FTM01X55M2KJ6TJHPHM2R2",
+      "taskDesc": "4.1 於本 repo 呼叫 /speclink-manual（生成模式）：確認 `openspec/manual/index.md` 與 `openspec/manual/about.md` 存在、任一頁 frontmatter 六欄齊備、about 頁含矛盾清單段；接著不改任何規格再呼叫一次，`git status --porcelain openspec/manual` 為空（無異動零寫入、未動頁逐位元不變），對應「生成模式的輸出與報告」與「重生時保留既有順序」。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "headCommit": "0abe289320393a40ac76f7c8ed79727fb84360c7",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/index.css",
+        "apps/desktop/src/panel/TrayPanel.tsx",
+        "apps/desktop/src/store.ts",
+        "package-lock.json",
+        "packages/ui/package.json",
+        "packages/ui/src/__tests__/manualPage.test.tsx",
+        "packages/ui/src/__tests__/specDrawer.test.tsx",
+        "packages/ui/src/components/ArchivedDrawer.tsx",
+        "packages/ui/src/components/DiscussionDrawer.tsx",
+        "packages/ui/src/components/ManualPage.tsx",
+        "packages/ui/src/components/RichDetailDrawer.tsx",
+        "packages/ui/src/components/SpecDrawer.tsx",
+        "packages/ui/src/components/ui/sheet.tsx",
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/theme.css",
+        "packages/ui/vitest.setup.ts",
+        "packages/ui/src/lib/useLingering.ts"
+      ],
+      "recordedAt": "2026-09-02T06:33:36Z"
     }
   ]
 }
