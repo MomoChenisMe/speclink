@@ -95,6 +95,7 @@ const B_DISCUSS: &str = include_str!("../assets/skills/discuss.md");
 const B_DRIFT: &str = include_str!("../assets/skills/drift.md");
 const B_IMPROVE: &str = include_str!("../assets/skills/improve.md");
 const B_INGEST: &str = include_str!("../assets/skills/ingest.md");
+const B_MANUAL: &str = include_str!("../assets/skills/manual.md");
 const B_BASELINE: &str = include_str!("../assets/skills/baseline.md");
 const B_PROPOSE: &str = include_str!("../assets/skills/propose.md");
 const B_QUALITY: &str = include_str!("../assets/skills/quality.md");
@@ -130,6 +131,10 @@ pub fn registry() -> Vec<Skill> {
         // candidate 並逐輪 grill，不是 fork。
         Skill { name: "improve", description: "Use when improvements are asked for without naming a topic — user-initiated only, never on the model's own initiative; scans the codebase and records the candidates as a discussion.", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_IMPROVE },
         Skill { name: "ingest", description: "Use when requirements change mid-work, including after a separate planning session — folds the new context into an existing change's artifacts so apply can resume.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_INGEST },
+        // Tool skill with two modes (spec manual-skill): generation writes the
+        // manual pages under the spec dir, so Edit/Write stay allowed; tour mode
+        // asks the user one role question interactively, so not a fork.
+        Skill { name: "manual", description: "Use when a human-readable operating manual is needed, or when someone wants to be walked through how to operate the system — generates a wiki-style Markdown manual under openspec/manual/ from the canonical specs, or gives an in-conversation tour with every answer sourced.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_MANUAL },
         Skill { name: "propose", description: "Use when a change needs planning, proposing or designing — creates the change with every required artifact; seed it from a concluded discussion with --from-discussion.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_PROPOSE },
         // Pure ordering over the two stations plus the per-round pause（design
         // D1）：不是 fork——它要在主線依序呼叫兩站技能、停下問使用者，且步驟 4
@@ -166,6 +171,7 @@ pub fn skill_body(name: &str) -> Option<&'static str> {
         "drift" => B_DRIFT,
         "improve" => B_IMPROVE,
         "ingest" => B_INGEST,
+        "manual" => B_MANUAL,
         "propose" => B_PROPOSE,
         "quality" => B_QUALITY,
         "review" => B_REVIEW,
@@ -395,5 +401,35 @@ mod tests {
             }
         }
     }
-}
 
+    /// spec manual-skill「技能檔的渲染」＋ skill-routing「入口路由由技能描述承載」：
+    /// manual 是工具技能——三目標皆渲染、可寫檔（生成模式要寫 manual 頁）、不 fork、
+    /// 不受 worktree 政策閘門；description 以觸發情境句開場。
+    #[test]
+    fn manual_is_registered_as_a_writable_tool_skill_for_every_target() {
+        let reg = registry();
+        let manual = reg
+            .iter()
+            .find(|s| s.name == "manual")
+            .expect("registry carries the manual skill");
+        assert!(manual.for_codex, "manual renders for codex (and thus neutral) targets");
+        assert!(!manual.fork, "generation mode writes files — not a fork skill");
+        assert!(!manual.disallow_edit, "generation mode writes files — Edit/Write allowed");
+        assert!(!manual.worktree_gated, "manual is not part of the worktree flow");
+        assert!(
+            manual.description.starts_with("Use when "),
+            "description opens with the trigger situation: {}",
+            manual.description
+        );
+        assert!(
+            manual.description.contains("manual") && manual.description.contains("walk"),
+            "description names both entry situations (manual wanted / wants a walk-through): {}",
+            manual.description
+        );
+        assert_eq!(
+            skill_body("manual"),
+            Some(manual.body),
+            "skill_body resolves manual to the same embedded asset"
+        );
+    }
+}

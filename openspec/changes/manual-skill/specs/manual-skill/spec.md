@@ -34,7 +34,7 @@
 
 ### Requirement: 生成模式的讀取策略
 
-生成模式 SHALL 只以正式規格為內容來源：先以 speclink list --specs --json 取得全部 capability 與 Purpose，將其分流為使用者面向與引擎內部；Purpose 為空或為 TBD 佔位時 SHALL 改以 speclink show 該 capability 的 Requirement 標題判斷。旅程骨幹 SHALL 依序優先取自劇本型規格（驗收劇本）、路由交棒型規格（技能交棒表）、使用者文件型規格；三者皆無時 SHALL 按功能域從使用者面向的能力規格重建旅程，並在 about 頁載明屬重建。技能 SHALL NOT 以 README、docs 目錄或程式碼作為手冊內容來源。已有手冊時 SHALL 只讀過期頁與未入冊能力所涉的規格。
+生成模式 SHALL 只以正式規格為內容來源：先以 speclink list --specs --json 取得全部 capability，再以 speclink show 讀各 capability 的 Purpose，將其分流為使用者面向與引擎內部；Purpose 為空或為 TBD 佔位時 SHALL 改以該 capability 的 Requirement 標題判斷。旅程骨幹 SHALL 依序優先取自劇本型規格（驗收劇本）、路由交棒型規格（技能交棒表）、使用者文件型規格；三者皆無時 SHALL 按功能域從使用者面向的能力規格重建旅程，並在 about 頁載明屬重建。技能 SHALL NOT 以 README、docs 目錄或程式碼作為手冊內容來源。已有手冊時 SHALL 只讀過期頁與未入冊能力所涉的規格。
 
 #### Scenario: 有劇本型規格的專案
 

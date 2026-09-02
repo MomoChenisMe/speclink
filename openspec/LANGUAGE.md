@@ -193,3 +193,21 @@
 
 - **definition**: baseline 技能（`/speclink-baseline`）的產出——依既有 code 與 tests 的目前行為建立的第一批正式 specs，作為後續變更比較與疊加的基準。與「Apply baseline」（品質關卡的凍結點：開工前記錄的 HEAD 與初始 dirty 檔）是兩個概念，各自帶修飾詞並存、互不取代。
 - **why**: baseline 一詞在專案內已有多個帶修飾詞的複合用法（Apply baseline、smell baseline、交付基線）；技能 id 直用 baseline（舊稱 onboard），其產出以「規格基準」稱呼並與 Apply baseline 明文分立，避免同詞兩義。2026-09-01 變更「rename-onboard-to-baseline」定案。
+
+### 手冊
+
+- **definition**: 由正式規格生成、給人閱讀的 wiki 式操作文件，存於 openspec/manual/。生成與導覽對應 skill `/speclink-manual`；頁格式契約為 capability `manual-pages`。
+- **avoid**: 說明書、指南、使用文件
+- **why**: 一個概念一個詞，與技能名 manual 與 desktop 頁名對齊；「說明書／指南／使用文件」三詞在專案內同時指向手寫的 docs 與規格衍生的手冊，讀者分不出來源。2026-09-02 變更「manual-skill」定案。
+
+### 導覽
+
+- **definition**: manual 技能的對話內互動模式——AI 以手冊（無手冊時以規格）為索引帶使用者走旅程，隨問隨答，每個回答附出處。以 `/speclink-manual 導覽`（或 tour）觸發，過程零寫檔。
+- **avoid**: 教學、tour（中文散文中）
+- **why**: 動詞直說結果——「導覽」讀起來就是有人帶著走一遍；「教學」預設有課程與練習，與實際行為不符。2026-09-02 變更「manual-skill」定案。
+
+### 可能過期
+
+- **definition**: 手冊頁的來源規格更新日（規格內最新的 @trace updated）晚於該頁生成日（frontmatter 的 generated）的狀態。生成模式只重生這種頁；desktop 手冊頁以同一基準標示。
+- **avoid**: 過時、stale（中文散文中）
+- **why**: 與規格的「過期」章語意平行——都是「源頭比衍生物新」；加「可能」是因為日期比對只證明來源動過，不證明內容真的變了。2026-09-02 變更「manual-skill」定案。

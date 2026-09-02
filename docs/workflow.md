@@ -13,14 +13,14 @@ baseline? → discuss?/improve? → propose → apply ⇄ ingest → (quality? |
 
 worktree: apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) → worktree-merge → archive
 
-utilities: validate / analyze / audit / commit / config
+utilities: validate / analyze / audit / commit / config / manual
 ```
 
 - `baseline` creates current-behavior canonical specs once for an existing codebase.
 - `discuss` and `improve` are both optional convergence entries; the difference is who brings the topic. **You bring the topic to `discuss`; you ask the model to find topics with `improve`.**
 - `propose → apply ⇄ ingest → archive` is the main change lifecycle.
 - The two quality stations (`review`, `verify`) run in parallel and depend on neither the other nor a fixed order. Skipping both on a low-risk change is a legitimate choice.
-- `drift` conditionally precedes resumed work. `validate`, `analyze`, `audit`, `commit`, and `config` are utilities or gates, not lifecycle states every change visits in sequence.
+- `drift` conditionally precedes resumed work. `validate`, `analyze`, `audit`, `commit`, `config`, and `manual` are utilities or gates, not lifecycle states every change visits in sequence.
 
 The board draws this route as three columns — proposed, in progress, archived — and every card is one change standing at its current station:
 
@@ -50,7 +50,7 @@ If an existing codebase has no canonical specs yet, run `baseline` once before a
 | Main lifecycle / 主生命週期 | `propose`, `apply`, `ingest`, `archive` | A change from planning through implementation and requirement updates to merging into canon. |
 | Conditional / 條件式 | `baseline`, `discuss`, `improve`, `drift`, the worktree flow | Only for first-time spec creation, requirement convergence, resumed work, or pushing several changes in parallel. |
 | Quality stations / 品質關卡 | `review`, `verify`, `quality` | Two optional gates before archiving — craft and compliance — each with its own ticket and stamp. |
-| Utilities / 工具 | `validate`, `analyze`, `audit`, `commit`, `config` | Structure checks, artifact consistency, security sharp edges, change-scoped commits, and workflow configuration. |
+| Utilities / 工具 | `validate`, `analyze`, `audit`, `commit`, `config`, `manual` | Structure checks, artifact consistency, security sharp edges, change-scoped commits, workflow configuration, and the spec-derived manual. |
 
 ## Stage reference / 階段參考
 
@@ -318,6 +318,20 @@ Cards and the tray panel show the verify and review stamps side by side (review 
 - **Done / 完成:** The diff is approved and applied.
 - **Next / 下一步:** Any station. The configuration shapes every artifact produced afterwards.
 - **Recover / 恢復:** A bad configuration is undone by running it again; existing changes are unaffected.
+
+### manual
+
+- **Purpose / 目的:** Generate a wiki-style operating manual under `openspec/manual/` from the canonical specs, or tour the system in conversation.
+- **Use / 使用:** Someone needs a human-readable operating manual, or a newcomer wants to be walked through the system; also after an archive, to check whether the manual went stale.
+- **Skip / 跳過:** The project has no user-facing specs yet, or nobody reads the manual.
+- **Input / 輸入:** The canonical specs (`openspec/specs/`) and the frontmatter of existing manual pages; never README, docs, or code.
+- **Outputs / 產物:** Generation writes `openspec/manual/*.md` (including the index and about pages) and reports stale pages and unlisted capabilities; tour mode writes nothing.
+- **Claude:** `/speclink-manual` (generate), `/speclink-manual 導覽` (tour).
+- **Codex:** `$speclink-manual`.
+- **CLI/Host:** There is no `speclink manual` subcommand; the skill reads specs with `speclink list --specs` and `speclink show`.
+- **Done / 完成:** The summary lists the added, regenerated, and untouched page counts plus the stale-page and unlisted-capability lists; with nothing to do it says the manual is up to date.
+- **Next / 下一步:** Commit the manual changes with a plain commit (a suggestion only). A remote-bound project gets no generation yet; the tour still works.
+- **Recover / 恢復:** Manual pages are plain files — delete or restore them; regeneration touches stale pages only and keeps the existing order.
 
 ## Discussion outcomes / 討論結論分流
 

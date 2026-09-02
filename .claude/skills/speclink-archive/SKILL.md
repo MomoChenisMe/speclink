@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.25.0"
+  version: "v1.26.0"
   generatedBy: "Speclink"
 ---
 
@@ -282,3 +282,10 @@ change directory moved into the archive. Close by reminding the user to commit t
 with a plain git commit — the change-scoped `/speclink-commit` flow does not apply
 after the archive (its file selection reads the change directory that has just moved).
 This is a reminder only — never run the commit yourself.
+
+When the workspace has a `openspec/manual/` directory, add one more line to that
+reminder: the manual may be stale now, and `/speclink-manual` will report which pages
+this archive's spec changes outdated. The condition is the directory's existence only —
+do not work out which specs this archive touched, and do not judge whether the manual
+is actually stale; that is the manual skill's report. This too is a reminder only —
+never run `/speclink-manual` yourself.
