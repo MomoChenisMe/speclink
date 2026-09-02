@@ -8,6 +8,7 @@ import type {
   ArchivedItem,
   DiscussionItem,
   DiscussionLists,
+  ManualIndex,
   SearchHit,
   StatusReport,
   Verb,
@@ -98,6 +99,14 @@ export function createRemoteDataSource(
         ...locator,
         capability,
       });
+    },
+    async listManualPages(): Promise<ManualIndex> {
+      // 手冊在 remote 尚不支援（desktop-manual-page Non-Goals：投影列於討論 Deferred）
+      // ——回報空索引、不發任何請求；手冊頁據 reason 顯示 remote 空狀態。
+      return { present: false, reason: "remote", pages: [], uncoveredNew: [], malformed: [] };
+    },
+    async getManualPage(): Promise<string | null> {
+      return null;
     },
     async searchWorkspace(query: string): Promise<SearchHit[]> {
       const r = await invoke<{ hits: SearchHit[] }>("remote_search_workspace", {

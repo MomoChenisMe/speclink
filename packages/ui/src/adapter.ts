@@ -137,6 +137,40 @@ export interface DiscussionLists {
   archived: DiscussionItem[];
 }
 
+/** 手冊索引的一頁（desktop-manual-page design D2；欄位 camelCase，由 desktop core
+ * 自 `openspec/manual/*.md` 的 frontmatter 推導）。缺欄位寬容降級：缺 title 用檔名、
+ * 缺 section 為 null（前端歸「其他」）、缺或非整數 order 為 null 且已置分區末。 */
+export interface ManualPageItem {
+  /** 檔名去副檔名（kebab-case）。 */
+  slug: string;
+  title: string;
+  section: string | null;
+  order: number | null;
+  keywords: string[];
+  /** 本頁取材的正典 capability 名（出處行的資料源）。 */
+  sources: string[];
+  /** 最近一次生成日（YYYY-MM-DD）；缺席為 null。 */
+  generated: string | null;
+  /** 依 manual-pages 契約判定的「可能過期」：sources 任一規格的最新 @trace updated
+   * 晚於 generated。 */
+  stale: boolean;
+}
+
+/** 手冊索引（`listManualPages` 的回傳）。pages 已依閱讀序排好（分區依分區內最小
+ * order、分區內依 order、同值以檔名決斷）。 */
+export interface ManualIndex {
+  /** `openspec/manual/` 存在且至少一個 .md。false 時 pages 為空、畫面呈空狀態。 */
+  present: boolean;
+  /** present 為 false 的原因：remote 資料源回 "remote"（尚不支援），本地缺目錄為 null／缺席。 */
+  reason?: "remote" | null;
+  pages: ManualPageItem[];
+  /** 手冊生成後新增且未入冊的正典 capability 名（最小 @trace updated 晚於全手冊最大
+   * generated、且不在任何頁的 sources）。 */
+  uncoveredNew: string[];
+  /** frontmatter 無法解析的頁 slug（仍列於 pages、以檔名為標題）。 */
+  malformed: string[];
+}
+
 /** 可對選定 change 執行的動詞。park/unpark 已從 speclink 移除，不在此列。 */
 export type Verb = "validate" | "analyze" | "archive";
 
@@ -268,6 +302,11 @@ export interface SpeclinkDataSource {
   getDocument(change: string, artifact: string): Promise<string | null>;
   /** 讀取一個 capability 的正典 spec.md。 */
   getSpecDocument(capability: string): Promise<string | null>;
+  /** 手冊索引（desktop-manual-page）：讀 `openspec/manual/` 的 frontmatter 推導閱讀序
+   * 與過期標示。無手冊時 present 為 false；remote 資料源回 reason "remote" 且不發請求。 */
+  listManualPages(): Promise<ManualIndex>;
+  /** 讀取一頁手冊去掉 frontmatter 的內文（slug 定址）；不存在回 null。 */
+  getManualPage(slug: string): Promise<string | null>;
   /**
    * workspace 全文查詢（design D6）：以不分大小寫子字串比對 active 變更的
    * artifacts 與 active 討論記錄全文，每卡回傳首個命中。空 query 回空陣列。

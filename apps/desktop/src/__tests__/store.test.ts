@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import type { ChangeItem, SearchHit, SpeclinkDataSource, StatusReport } from "@speclink/ui";
+import type { ChangeItem, ManualIndex, SearchHit, SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
 import { createAppStore, openTicketStation } from "../store";
 import type { ConnectionsAdapter } from "../adapter/connections";
@@ -51,6 +51,10 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
     promoteDiscussion: vi.fn().mockResolvedValue({ change: "promoted-change" }),
     archiveDiscussion: vi.fn().mockResolvedValue(undefined),
     reorderCard: vi.fn().mockResolvedValue(undefined),
+    listManualPages: vi
+      .fn()
+      .mockResolvedValue({ present: false, reason: null, pages: [], uncoveredNew: [], malformed: [] }),
+    getManualPage: vi.fn().mockResolvedValue(null),
     ...over,
   };
 }
@@ -2061,5 +2065,72 @@ describe("認領撞 ownership 衝突的呈現", () => {
     await store.getState().claimChange("desktop-shell-and-browser");
     expect(toastError).not.toHaveBeenCalled();
     expect(ds.listChanges).toHaveBeenCalled();
+  });
+});
+
+// desktop-manual-page design「手冊頁的外部變更重載沿用既有 watcher 事件」：store 收到
+// 帶 root 的檔案變更事件（→ 整批 refresh）且手冊視圖活躍時重取索引；交錯回應以
+// 最新為準；不新增監看目標（沿用 refresh 這條路）。
+describe("手冊索引的重取（refreshManual）", () => {
+  const INDEX: ManualIndex = { present: true, reason: null, pages: [], uncoveredNew: [], malformed: [] };
+
+  it("切到手冊視圖即取索引；之後每次整批 refresh 在手冊視圖活躍時重取，非活躍不取", async () => {
+    const ds = fakeDataSource({ listManualPages: vi.fn().mockResolvedValue(INDEX) });
+    const store = storeWith(ds);
+    await store.getState().refresh();
+    expect(ds.listManualPages).not.toHaveBeenCalled();
+    expect(store.getState().manual).toBeNull();
+
+    store.getState().setBoardView("manual");
+    await vi.waitFor(() => expect(store.getState().manual).toEqual(INDEX));
+    expect(ds.listManualPages).toHaveBeenCalledTimes(1);
+
+    // 兩筆假事件（workspace-changed → refresh）。
+    await store.getState().refresh();
+    await store.getState().refresh();
+    expect(ds.listManualPages).toHaveBeenCalledTimes(3);
+
+    store.getState().setBoardView("board");
+    await store.getState().refresh();
+    expect(ds.listManualPages).toHaveBeenCalledTimes(3);
+  });
+
+  it("交錯回應以最新為準：先發後到的索引不得覆蓋後發先到的", async () => {
+    const first = deferred<ManualIndex>();
+    const second = deferred<ManualIndex>();
+    const listManualPages = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const store = storeWith(fakeDataSource({ listManualPages }));
+    store.getState().setBoardView("manual");
+    await store.getState().refresh();
+    expect(listManualPages).toHaveBeenCalledTimes(2);
+    second.resolve({ ...INDEX, uncoveredNew: ["new"] });
+    await vi.waitFor(() => expect(store.getState().manual?.uncoveredNew).toEqual(["new"]));
+    first.resolve({ ...INDEX, uncoveredNew: ["old"] });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(store.getState().manual?.uncoveredNew).toEqual(["new"]);
+  });
+
+  it("索引讀取失敗：無舊索引時落成尚無手冊的空索引，有舊索引時沿用舊索引", async () => {
+    const listManualPages = vi.fn().mockRejectedValueOnce(new Error("io"));
+    const store = storeWith(fakeDataSource({ listManualPages }));
+    store.getState().setBoardView("manual");
+    await vi.waitFor(() => expect(store.getState().manual?.present).toBe(false));
+    listManualPages.mockResolvedValueOnce(INDEX).mockRejectedValueOnce(new Error("io"));
+    await store.getState().refresh();
+    await vi.waitFor(() => expect(store.getState().manual).toEqual(INDEX));
+    await store.getState().refresh();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(store.getState().manual).toEqual(INDEX);
+  });
+
+  it("跳規格：切至規格頁並開該 capability 的規格抽屜", () => {
+    const store = storeWith(fakeDataSource());
+    store.getState().setBoardView("manual");
+    store.getState().jumpToSpec("desktop-app");
+    expect(store.getState().boardView).toBe("specs");
+    expect(store.getState().detailSpec).toBe("desktop-app");
   });
 });

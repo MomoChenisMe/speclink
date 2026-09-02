@@ -7,6 +7,7 @@ import type {
   SpecItem,
   ArchivedItem,
   DiscussionLists,
+  ManualIndex,
   SearchHit,
   StatusReport,
   Verb,
@@ -43,6 +44,12 @@ export function createTauriDataSource(
     },
     async getSpecDocument(capability: string): Promise<string | null> {
       return await invoke<string | null>("spec_document", { root, capability });
+    },
+    async listManualPages(): Promise<ManualIndex> {
+      return await invoke<ManualIndex>("list_manual_pages", { root });
+    },
+    async getManualPage(slug: string): Promise<string | null> {
+      return await invoke<string | null>("get_manual_page", { root, slug });
     },
     async searchWorkspace(query: string): Promise<SearchHit[]> {
       const r = await invoke<{ hits: SearchHit[] }>("search_workspace", { root, query });

@@ -186,9 +186,43 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
     archiveDiscussion: vi.fn().mockResolvedValue(undefined),
     reorderCard: vi.fn().mockResolvedValue(undefined),
     revertChangeToProposed: vi.fn().mockResolvedValue(undefined),
+    listManualPages: vi
+      .fn()
+      .mockResolvedValue({ present: false, reason: null, pages: [], uncoveredNew: [], malformed: [] }),
+    getManualPage: vi.fn().mockResolvedValue(null),
     ...over,
   };
 }
+
+/** 手冊索引 fixture（desktop-manual-page）：兩個分區、一頁 stale。 */
+const MANUAL_INDEX = {
+  present: true,
+  reason: null,
+  pages: [
+    {
+      slug: "index",
+      title: "手冊",
+      section: "開始使用",
+      order: 10,
+      keywords: [],
+      sources: [],
+      generated: "2026-09-01",
+      stale: false,
+    },
+    {
+      slug: "boards",
+      title: "看板",
+      section: "日常操作",
+      order: 20,
+      keywords: ["kanban"],
+      sources: ["desktop-app"],
+      generated: "2026-09-01",
+      stale: true,
+    },
+  ],
+  uncoveredNew: [],
+  malformed: [],
+};
 
 describe("App (kanban primary + rich detail)", () => {
   it("根層掛載 Toaster，頂欄不含操作結果文字節點", async () => {
@@ -597,7 +631,7 @@ describe("board search wiring（看板搜尋接線）", () => {
 });
 
 describe("sidebar navigation structure（側欄導覽結構）", () => {
-  it("側欄頂部依序為變更/規格/已封存/專案設定，設定沉底，無備忘項且頂欄無已封存鈕", async () => {
+  it("側欄頂部依序為變更/規格/手冊/已封存/專案設定，設定沉底，無備忘項且頂欄無已封存鈕", async () => {
     renderApp();
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     const aside = document.querySelector("aside") as HTMLElement;
@@ -605,23 +639,23 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     const labels = within(aside)
       .getAllByRole("button")
       .map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
-    expect(labels).toEqual(["變更", "規格", "已封存", "專案設定", "設定"]);
+    expect(labels).toEqual(["變更", "規格", "手冊", "已封存", "專案設定", "設定"]);
     expect(screen.queryByText("備忘")).toBeNull();
     const header = document.querySelector("header") as HTMLElement;
     expect(within(header).queryByLabelText("已封存")).toBeNull();
     expect(within(header).queryByText("已封存")).toBeNull();
   });
 
-  it("設定導覽項沉底：為側欄最末子元素、以自動上邊距與頂部四項彈性區隔，切頁與高亮語意不變", async () => {
+  it("設定導覽項沉底：為側欄最末子元素、以自動上邊距與頂部五項彈性區隔，切頁與高亮語意不變", async () => {
     renderApp();
     await screen.findByText("desktop-shell-and-browser");
     const aside = document.querySelector("aside") as HTMLElement;
     const settingsNav = within(aside).getByRole("button", { name: "設定" });
-    // 頂部四項維持依序；設定為側欄最末子元素。
+    // 頂部五項維持依序；設定為側欄最末子元素。
     const labels = within(aside)
       .getAllByRole("button")
       .map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
-    expect(labels.slice(0, 4)).toEqual(["變更", "規格", "已封存", "專案設定"]);
+    expect(labels.slice(0, 5)).toEqual(["變更", "規格", "手冊", "已封存", "專案設定"]);
     expect(aside.lastElementChild).toBe(settingsNav);
     // 彈性區隔：jsdom 無版面計算，以等效自動上邊距 class 斷言（design D5）。
     expect(settingsNav.className).toContain("mt-auto");
@@ -960,5 +994,111 @@ describe("看板首訪失敗終態的接線", () => {
     await waitFor(() => expect(vi.mocked(ds.listChanges).mock.calls.length).toBeGreaterThan(1));
     expect(screen.getByText("kept-change")).toBeTruthy();
     expect(document.querySelector('[data-testid="column-load-failed"]')).toBeNull();
+  });
+});
+
+// desktop-app「側欄導覽結構」Scenario「手冊導覽項切頁與零分頁空狀態」＋
+// desktop-manual-page「內頁渲染與出處跳規格」「手冊頁隨外部變更即時更新」的 App 半邊。
+describe("手冊頁接線（desktop-manual-page）", () => {
+  it("點導覽「手冊」切至手冊頁且高亮：主內容出現側欄樹與內文；點「變更」返回看板", async () => {
+    const ds = fakeDataSource({
+      listManualPages: vi.fn().mockResolvedValue(MANUAL_INDEX),
+      getManualPage: vi.fn().mockResolvedValue("# 手冊\n\n歡迎使用。"),
+    });
+    renderApp(ds);
+    await screen.findByText("desktop-shell-and-browser");
+    // 進手冊頁前不讀索引（只在手冊視圖活躍時讀）。
+    expect(ds.listManualPages).not.toHaveBeenCalled();
+    const aside = document.querySelector("aside") as HTMLElement;
+    const manualNav = within(aside).getByRole("button", { name: "手冊" });
+    const changesNav = within(aside).getByRole("button", { name: "變更" });
+    fireEvent.click(manualNav);
+    await screen.findByText("歡迎使用。");
+    expect(screen.getByPlaceholderText("搜尋手冊…")).toBeTruthy();
+    expect(document.querySelector('[data-manual-page="boards"]')?.textContent).toContain("可能過期");
+    expect(document.querySelector('[data-column="ready"]')).toBeNull();
+    expect(manualNav.className).toContain("bg-primary");
+    expect(changesNav.className).not.toContain("bg-primary");
+    expect(ds.getManualPage).toHaveBeenCalledWith("index");
+    // 再點手冊停留（切頁而非 toggle）；點「變更」才返回看板。
+    fireEvent.click(manualNav);
+    expect(screen.getByText("歡迎使用。")).toBeTruthy();
+    fireEvent.click(changesNav);
+    await waitFor(() => expect(document.querySelector('[data-column="ready"]')).toBeTruthy());
+    expect(manualNav.className).not.toContain("bg-primary");
+  });
+
+  it("無手冊目錄時主內容為尚無手冊空狀態，手冊項高亮、無錯誤彈窗", async () => {
+    renderApp();
+    await screen.findByText("desktop-shell-and-browser");
+    const aside = document.querySelector("aside") as HTMLElement;
+    const manualNav = within(aside).getByRole("button", { name: "手冊" });
+    fireEvent.click(manualNav);
+    expect(await screen.findByText("尚無手冊")).toBeTruthy();
+    expect(manualNav.className).toContain("bg-primary");
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("零分頁點手冊呈現與變更頁相同的空狀態引導頁，手冊項高亮", async () => {
+    const ws = fakeWorkspace();
+    const ds = fakeDataSource();
+    render(<App createSession={makeSession(ds)} workspace={ws as never} />);
+    expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
+    const aside = document.querySelector("aside") as HTMLElement;
+    const manualNav = within(aside).getByRole("button", { name: "手冊" });
+    fireEvent.click(manualNav);
+    expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
+    expect(manualNav.className).toContain("bg-primary");
+    expect(ds.listManualPages).not.toHaveBeenCalled();
+  });
+
+  it("點出處 capability 切至規格頁：規格項高亮、該規格卡展開（抽屜載入正典全文）", async () => {
+    // spec Scenario「點出處跳規格頁展開」：以既有規格卡的展開路徑（SpecDrawer）展開。
+    const ds = fakeDataSource({
+      listManualPages: vi.fn().mockResolvedValue(MANUAL_INDEX),
+      getManualPage: vi
+        .fn()
+        .mockResolvedValue("# 看板\n\n看板說明。\n\n**出處**：`desktop-app`、`ghost-cap`"),
+      getSpecDocument: vi.fn().mockResolvedValue("# desktop-app Specification\n\n正典內文段落。"),
+    });
+    renderApp(ds);
+    await screen.findByText("desktop-shell-and-browser");
+    const aside = document.querySelector("aside") as HTMLElement;
+    const manualNav = within(aside).getByRole("button", { name: "手冊" });
+    const specsNav = within(aside).getByRole("button", { name: "規格" });
+    fireEvent.click(manualNav);
+    await screen.findByText("看板說明。");
+    const sources = document.querySelector("[data-manual-sources]") as HTMLElement;
+    // 正典不存在者為純文字。
+    expect(within(sources).queryByRole("button", { name: "ghost-cap" })).toBeNull();
+    fireEvent.click(within(sources).getByRole("button", { name: "desktop-app" }));
+    await waitFor(() => expect(screen.getByText("正典內文段落。")).toBeTruthy());
+    expect(specsNav.className).toContain("bg-primary");
+    expect(manualNav.className).not.toContain("bg-primary");
+    expect(document.querySelector("[data-spec-drawer]")).toBeTruthy();
+    expect(ds.getSpecDocument).toHaveBeenCalledWith("desktop-app");
+    // 規格頁清單就緒且該卡在列（滾至該卡）。
+    expect(document.querySelector('[data-spec="desktop-app"]')).toBeTruthy();
+  });
+
+  it("手冊頁開著時 workspace-changed 觸發索引重取與目前頁內文重載", async () => {
+    // spec Scenario「外部重生一頁後內容更新」：沿用既有監看事件，不新增監看目標。
+    const ds = fakeDataSource({
+      listManualPages: vi.fn().mockResolvedValue(MANUAL_INDEX),
+      getManualPage: vi.fn().mockResolvedValue("# 手冊\n\n第一版內文。"),
+    });
+    renderApp(ds);
+    await screen.findByText("desktop-shell-and-browser");
+    await waitFor(() => expect(workspaceHandlers.length).toBeGreaterThan(0));
+    const aside = document.querySelector("aside") as HTMLElement;
+    fireEvent.click(within(aside).getByRole("button", { name: "手冊" }));
+    await screen.findByText("第一版內文。");
+    const indexCalls = (ds.listManualPages as Mock).mock.calls.length;
+    const pageCalls = (ds.getManualPage as Mock).mock.calls.length;
+    (ds.getManualPage as Mock).mockResolvedValue("# 手冊\n\n重生後的內文。");
+    workspaceHandlers.forEach((h) => h());
+    await screen.findByText("重生後的內文。");
+    expect((ds.listManualPages as Mock).mock.calls.length).toBeGreaterThan(indexCalls);
+    expect((ds.getManualPage as Mock).mock.calls.length).toBeGreaterThan(pageCalls);
   });
 });

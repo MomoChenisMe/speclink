@@ -11,6 +11,7 @@ use speclink_fs::FsStore;
 pub mod cache;
 pub mod discussions;
 pub mod manage;
+pub mod manual;
 pub mod project;
 pub mod query;
 pub mod rank;

@@ -12,6 +12,11 @@ describe("APP_MESSAGES", () => {
     expect(zh.length).toBeGreaterThan(0);
   });
 
+  it("側欄手冊項的文案鍵存在於兩語系（LANGUAGE.md 用語「手冊」）", () => {
+    expect(APP_MESSAGES["zh-TW"]["app.navManual"]).toBe("手冊");
+    expect(APP_MESSAGES.en["app.navManual"]).toBe("Manual");
+  });
+
   it("zh-TW 文案不得含工程詞 change——LANGUAGE.md 正典詞是「變更」（worktree 為明文例外，change 不是）", () => {
     const offenders = Object.entries(APP_MESSAGES["zh-TW"])
       .filter(([, value]) => /\bchanges?\b/.test(value))

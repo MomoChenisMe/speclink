@@ -163,6 +163,43 @@ describe("createTauriDataSource", () => {
     });
   });
 
+  it("手冊索引與內文各走自己的 command（desktop-manual-page design D1）", async () => {
+    // spec desktop-manual-page：索引 `{ present, reason, pages, uncoveredNew, malformed }`
+    // 原樣透傳；內文以 slug 定址。command 名與參數對應 src-tauri 的
+    // list_manual_pages(root) 與 get_manual_page(root, slug)。
+    invoke.mockResolvedValueOnce({
+      present: true,
+      reason: null,
+      pages: [
+        {
+          slug: "index",
+          title: "手冊",
+          section: "開始使用",
+          order: 10,
+          keywords: [],
+          sources: [],
+          generated: "2026-09-02",
+          stale: false,
+        },
+      ],
+      uncoveredNew: ["github-oauth"],
+      malformed: ["broken"],
+    });
+    const ds = createTauriDataSource("/r");
+    const index = await ds.listManualPages();
+    expect(invoke).toHaveBeenCalledWith("list_manual_pages", { root: "/r" });
+    expect(index.present).toBe(true);
+    expect(index.pages[0].slug).toBe("index");
+    expect(index.uncoveredNew).toEqual(["github-oauth"]);
+    expect(index.malformed).toEqual(["broken"]);
+
+    invoke.mockResolvedValueOnce("# 手冊\n\n內文。");
+    expect(await ds.getManualPage("index")).toBe("# 手冊\n\n內文。");
+    expect(invoke).toHaveBeenCalledWith("get_manual_page", { root: "/r", slug: "index" });
+    invoke.mockResolvedValueOnce(null);
+    expect(await ds.getManualPage("missing")).toBeNull();
+  });
+
   it("本地後端不提供 claim（RemoteOnly 動詞不在本地偽造入口）", () => {
     const ds = createTauriDataSource("/r");
     expect(ds.claim).toBeUndefined();

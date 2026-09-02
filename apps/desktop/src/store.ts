@@ -9,6 +9,7 @@ import type {
   DiscussionItem,
   DiscussionLists,
   ListView,
+  ManualIndex,
   SearchHit,
   SpeclinkDataSource,
   Verb,
@@ -105,8 +106,8 @@ function moveBetweenNeighbors<T>(
   return [...remaining.slice(0, insertAt), moving, ...remaining.slice(insertAt)];
 }
 
-/** 主頁面：變更看板（預設）、規格頁、已封存頁、專案設定或應用程式設定。 */
-export type BoardView = "board" | "specs" | "archived" | "project-settings" | "settings";
+/** 主頁面：變更看板（預設）、規格頁、手冊頁、已封存頁、專案設定或應用程式設定。 */
+export type BoardView = "board" | "specs" | "manual" | "archived" | "project-settings" | "settings";
 
 /** 逐連線登入互動狀態（desktop-connections）：patInput＝device flow 明確
  * 不支援（404/405），就地收 PAT（規格 PAT fallback）；awaitingApproval＝device
@@ -169,6 +170,9 @@ export interface AppState {
   loadFailed: boolean;
   /** 刷新世代——每次整批 refresh 完成後遞增；內容元件據此重載已載入的文件。 */
   refreshGen: number;
+  /** 手冊索引（desktop-manual-page）：只在手冊視圖活躍時讀取與重取；null＝尚未載入
+   * （骨架）。切換分頁即清空——索引屬於當時的 workspace。 */
+  manual: ManualIndex | null;
 
   boardView: BoardView;
   view: ListView;
@@ -209,6 +213,11 @@ export interface AppState {
   /** 監看重掛（事件驅動）：workspace-changed 後重解析監看目標——worktree 增減
    * 會改變監看拓撲；Rust 端目標集合不變時沿用原監看，故可放心每次事件都叫。 */
   rearmWatch: () => Promise<void>;
+  /** 重取手冊索引：切到手冊視圖時、以及手冊視圖活躍下的每次整批 refresh
+   * （workspace-changed 沿用同一條路，不新增監看目標）；交錯回應以最新為準。 */
+  refreshManual: () => Promise<void>;
+  /** 手冊出處跳規格：切至規格頁並以既有規格卡的展開路徑開該 capability 的抽屜。 */
+  jumpToSpec: (capability: string) => void;
   setBoardView: (v: BoardView) => void;
   setView: (v: ListView) => void;
   setQuery: (q: string) => void;
@@ -494,6 +503,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     const workspaceSnapshots = new Map<string, WorkspaceSnapshot>();
     const latestRefreshGeneration = new Map<string, number>();
     let nextRefreshGeneration = 0;
+    // 手冊索引的 latest-wins 世代——閉包層、不進 store state。
+    let manualGeneration = 0;
     // 每個 workspace 的整批載入在途筆數（design D1）：refresh 進場 +1、settle -1，
     // 歸零即刪 key。「載入中」由這裡導出，沒有任何入口／出口需要自己記帳。
     // 非 React 狀態——讀取端一律看導出的 loadingActive。
@@ -535,6 +546,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         revertBlocked: null,
         pendingArchiveDiscussion: null,
         drawerVerb: null,
+        manual: null,
       };
     }
 
@@ -969,6 +981,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     loadingActive: false,
     loadFailed: false,
     refreshGen: 0,
+    manual: null,
     boardView: "board",
     view: "active",
     query: "",
@@ -993,6 +1006,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const session = sourceKey ? get().sessions[sourceKey] : null;
       if (!sourceKey || !session) return;
       const generation = beginRefresh(sourceKey);
+      // 手冊視圖活躍時同批重取索引（外部寫入手冊目錄走的是同一個 workspace-changed）。
+      if (get().boardView === "manual") void get().refreshManual();
       try {
         // 在途 +1 在第一個 await 之前；三條離開路徑（成功、失敗、世代過期）共用
         // 同一個 finally 遞減——沒有任何出口需要判斷「這面旗標歸不歸我收」。
@@ -1069,8 +1084,32 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       }
     },
 
+    async refreshManual() {
+      const key = get().activeKey;
+      const session = key ? get().sessions[key] : null;
+      if (!key || !session) return;
+      const generation = ++manualGeneration;
+      let index: ManualIndex;
+      try {
+        index = await session.dataSource.listManualPages();
+      } catch {
+        // 讀不到不等於「確認是空的」：有舊索引沿用；首訪才落成尚無手冊的空索引。
+        if (get().manual) return;
+        index = { present: false, reason: null, pages: [], uncoveredNew: [], malformed: [] };
+      }
+      // 交錯回應以最新為準；分頁已切走的結果丟棄（索引屬於當時的 workspace）。
+      if (generation !== manualGeneration || get().activeKey !== key) return;
+      set({ manual: index });
+    },
+
+    jumpToSpec(capability) {
+      get().setBoardView("specs");
+      get().openSpec(capability);
+    },
+
     setBoardView(boardView) {
       set({ boardView, reauthConnectionId: null });
+      if (boardView === "manual") void get().refreshManual();
     },
 
     setView(view) {

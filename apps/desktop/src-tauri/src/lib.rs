@@ -107,6 +107,24 @@ async fn spec_document(root: PathBuf, capability: String) -> Result<Option<Strin
 }
 
 #[tauri::command]
+async fn list_manual_pages(root: PathBuf) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::manual::list_manual_pages_at(&root)
+    })
+    .await
+    .map_err(|e| format!("list_manual_pages worker failed: {e}"))
+}
+
+#[tauri::command]
+async fn get_manual_page(root: PathBuf, slug: String) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::manual::manual_page_at(&root, &slug)
+    })
+    .await
+    .map_err(|e| format!("get_manual_page worker failed: {e}"))
+}
+
+#[tauri::command]
 async fn search_workspace(root: PathBuf, query: String) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         speclink_desktop_core::search::search_workspace_at(&root, &query)
@@ -1695,6 +1713,8 @@ pub fn run() {
             status,
             document,
             spec_document,
+            list_manual_pages,
+            get_manual_page,
             search_workspace,
             change_capabilities,
             change_meta,
