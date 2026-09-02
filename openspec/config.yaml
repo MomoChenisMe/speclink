@@ -14,7 +14,7 @@ context: |
 
   技術棧：Rust（serde／chrono／anyhow／clap／ulid，HTTP client 用 ureq、async 用 tokio ＋
   axum）、store driver 為 rusqlite／postgres／檔案系統、Node SDK 用 napi-rs、桌面用 Tauri；
-  前端 React ＋ TypeScript ＋ Vite ＋ Tailwind v4 ＋ Radix UI ＋ zustand，測試用 vitest；
+  前端 React ＋ TypeScript ＋ Vite ＋ Tailwind ＋ Radix UI ＋ zustand，測試用 vitest；
   drift 與 archive 會呼叫 git。
 
   Cargo workspace：`speclink-core`（SDD 引擎）、`speclink-fs`（儲存介面的
@@ -27,33 +27,29 @@ context: |
   （napi-rs 綁定，引擎核心維持同步）。桌面與前端：`apps/desktop/core`（純邏輯、不依賴 Tauri）
   ＋ `apps/desktop/src-tauri`（Tauri 殼）、`apps/desktop`、`apps/server-web`、`packages/ui`。
 
-  現況與限制以 `docs/product-status.zh-TW.md` 為準；唯一目標架構是
-  `docs/platform-architecture.zh-TW.md`。
+  現況與限制以 `docs/product-status.zh-TW.md` 為準；
+  `docs/platform-architecture.zh-TW.md` 僅是架構藍圖，不是現行行為正典。
 
   ## 跨 artifact 的載重約束
 
-  - **雙輸出路徑都是契約**：每個指令有人眼輸出（ANSI 色彩，可 `--no-color`）與 `--json`；
-    `--json` 欄位一律 camelCase，欄位名本身是契約的一部分。
+  - **人眼與機器輸出都是契約**：指令若同時提供人眼輸出（ANSI 色彩，可 `--no-color`）與
+    `--json`，兩條輸出都是契約；`--json` 欄位一律 camelCase，欄位名本身也是契約的一部分。
   - **既有輸出是回歸保護對象**：人眼輸出與 `--json` shape 都是既成契約；改動前後須以
     golden（`cargo test -p speclink-core --test it render_golden::`）與 CLI 測試確認未意外變動，
-    刻意變更則同批更新 golden 並在提案記載。
-  - **正典 vs delta**：正典規格是現況唯一真相；變更以 delta 表述（ADDED／MODIFIED／REMOVED／
-    RENAMED），archive 時併入正典並注入 `@trace`。
+    刻意變更則同批更新 golden，並在對應 artifact 記載相容性影響。
   - **設定分三層**：`openspec/config.yaml`（工作流政策，隨 spec store 走）、`.speclink.yaml`
     （本 checkout 的 `tools` 與 `spec_dir`）、`SPECLINK_*` 環境變數（個人／CI 覆寫）。
   - **遠端路徑不可沿用純本地假設**：Remote／Server／Desktop 已有 Tokio、Axum、HTTP、SQLite、
     PostgreSQL、OS Keychain 等邊界——錯誤、timeout、認證、revision 與交易都要處理。
   - **跨平台**：Windows ／ macOS ／ Linux——路徑分隔、換行、git 行為不得假設單一平台。
-  - **禁止過度設計／過度防禦**：只做被要求的事，只在系統邊界驗證。
 rules:
   proposal:
   - 必須說明目標使用者（透過 AI 代理跑 SDD 的開發者 / PO / PM）與使用情境（對應哪個 workflow 階段或技能）
-  - 必須包含「非目標 (Non-Goals)」段落，明確排除不在範圍內的事項
   - 必須明確指出影響的 crate 或 app（如 speclink-core / speclink-cli / speclink-host / apps/desktop）
   - 若新增或變更 CLI 指令，必須說明子指令、旗標、stdin 與 exit code
   - 若改動既有指令的輸出或行為，必須列「相容性影響」：人眼與 `--json` 哪些會變、是否破壞回歸對照、既有使用者如何遷移
   - 若涉及設定欄位（openspec/config.yaml / .speclink.yaml），必須說明新增或變更的欄位與預設值
-  - 若涉及技能或注入區塊（CLAUDE.md / AGENTS.md），必須說明影響哪些技能與哪些工具（claude / codex）
+  - 若涉及生成的技能或 Agent 指令，必須說明影響哪些技能與哪些工具（claude / codex）
   design:
   - 必須指明變更落在哪個 crate 與其邊界：領域演算法歸 speclink-core（不得含 ANSI 或寫死儲存媒介）、Local Repo I/O 歸 speclink-fs、TeamStore contract 與 driver 歸 store crates、應用層裁決歸 speclink-host；CLI / Server / Node / Desktop 只經穩定 Host 或 Protocol contract 組裝輸入與呈現
   - 同一對外契約同時落 local 與 remote（CLI／server／desktop）路徑時，必須指明唯一實作落點與各端共用方式，不得平行實作兩套（回歸對照：crates/speclink-cli/tests/it/remote_verb_parity.rs）
@@ -68,9 +64,8 @@ rules:
   - 涉及規格儲存或流程抽象的決策，須說明如何朝「storage 解耦的規格驅動引擎」靠攏（或為何暫時不）
   - Risks 段須優先涵蓋回歸對照（golden 與 CLI 測試）與跨平台（Windows／macOS／Linux）
   specs:
-  - 場景只以可觀察的 CLI 行為描述（stdout/stderr 內容、exit code、`--json` 欄位、檔案系統效果），不得出現 Rust 型別或函式名稱
+  - 場景只以使用者或呼叫者可觀察的行為描述（CLI 的 stdout/stderr 與 exit code、`--json` 欄位、檔案系統效果、UI 或 Protocol 回應），不得以 Rust 型別或函式名稱代替行為
   - 必須涵蓋正常流程與異常流程（錯誤輸入、找不到變更、驗證失敗）
-  - 每個需求必須可測試（可直接對應 `cargo test` 案例或 golden fixture）
   - 指令若同時有人眼與 `--json` 輸出，兩條路徑都要涵蓋，並說明 `--no-color` 下的行為
   - CLI 指令規格須包含：子指令、旗標、stdin 輸入（若有）、成功/失敗的 exit code、輸出去向（stdout vs stderr）
   - '`--json` 規格須包含 payload 結構：欄位名（camelCase）與型別'
@@ -79,8 +74,8 @@ rules:
   - 遠端路徑的規格須敘明 revision 衝突、離線與認證失效下的可觀察行為
   - 動到既有輸出的規格須標明是維持既有位元級輸出，或屬刻意變更（並敘明變更前後的差異）
   tasks:
-  - 單元測試用 Rust `#[cfg(test)]` 模組 ＋ `cargo test`；輸出的回歸驗證用 crates/speclink-core/tests/golden 與 crates/speclink-cli/tests/ 的整合測試
-  - 每個 task 必須標註影響的檔案路徑（從 crates/ 或 apps/ 開始），檔名遵循 design 命名慣例並點名對應的 CLI 指令
+  - Rust 單元／整合測試使用 `#[cfg(test)]` 或 Cargo test target，並以 `cargo test` 執行；前端 workspace 以各自的 `npm test -w <workspace>` 執行 Vitest；輸出的回歸驗證使用 crates/speclink-core/tests/golden 與 crates/speclink-cli/tests/ 的整合測試
+  - 每個 task 必須標註受影響的 repo-root 相對路徑（包含 crates/、apps/、packages/、scripts/ 等實際範圍）；檔名遵循 design 命名慣例，涉及 CLI 時才點名對應指令
   - 動到既有輸出的 task，驗證步驟須確認 golden 與 CLI 測試仍通過，或已在同批刻意更新 golden
   - 涉及 `--json` 的 task，須斷言 payload 結構（欄位存在、camelCase 命名與型別）
-  - task 的驗證步驟只跑受影響面的測試：動 crates/<x> 用 `cargo test -p <x>`（整合測試面加 `--test it`），動前端 workspace 用 `npm test -w <該 workspace>`，動 crates/speclink-node 用其 napi build 與 `npm test`，動 scripts/ 用 `node --test`；全量 `npm run test:all` 由 CI（.github/workflows/ci.yml）守門，不寫進 task 驗證步驟——change 橫跨多面時得於收尾 task 自行加跑一次
+  - task 的驗證步驟只跑受影響面的測試：Rust Cargo package（無論位於 crates/ 或 apps/desktop）用 `cargo test -p <package>`，有 integration test target 時才加 `--test <target>`；前端用 manifest 宣告的 `npm test -w <workspace>`；crates/speclink-node 先用 `npm --prefix crates/speclink-node run build` 建置 napi binding，再用 `npm --prefix crates/speclink-node test`；scripts/ 用 `node --test <受影響測試檔>`；全量 `npm run test:all` 只由 CI（.github/workflows/ci.yml）守門，不寫進 task 驗證步驟
