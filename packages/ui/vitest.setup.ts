@@ -8,6 +8,12 @@ if (typeof window !== "undefined") {
   if (!proto.releasePointerCapture) proto.releasePointerCapture = () => {};
   if (!proto.scrollIntoView) proto.scrollIntoView = () => {};
 
+  // Radix Presence 的 animationend 處理以 CSS.escape 比對動畫名；jsdom 沒有 CSS 全域，
+  // 缺了關閉動畫結束事件會在 handler 內拋錯、面板永不卸載。
+  if (!window.CSS) {
+    window.CSS = { escape: (value: string) => value } as unknown as typeof CSS;
+  }
+
   // Radix Select 的 Content 以 ResizeObserver 量測可用高度。
   if (!window.ResizeObserver) {
     window.ResizeObserver = class {

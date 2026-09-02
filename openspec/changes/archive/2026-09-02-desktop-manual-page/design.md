@@ -10,7 +10,7 @@
 
 - 側欄新增「手冊」項，手冊頁以 frontmatter 機械推導側欄樹、搜尋、上一頁／下一頁；內頁沿用共用 Markdown 與閱讀欄。
 - 過期頁與「生成後新增且未入冊」的規格在側欄可見。
-- 出處 capability 可點跳規格頁並展開該卡。
+- 出處 capability 可點，在手冊頁上開該規格的抽屜（不切頁）。
 - GitHub Alert 語法以提示框呈現，語意色分層。
 - 外部寫入手冊目錄後秒級重載。
 
@@ -34,11 +34,11 @@
 
 ### 過期與未入冊的計算依 manual-pages 契約
 
-`stale` ⇔ `sources` 中任一 capability 的正典 spec 內所有 `@trace` 區塊 `updated:` 的最大日期晚於該頁 `generated`；`sources` 為空或規格不存在時不判過期。`uncoveredNew` ⇔ 正典 capability 的最小 `@trace updated` 晚於全手冊最大 `generated`，且不在任何頁的 `sources`——這是「生成後新增」的機械近似，不做使用者面向分流（那是技能的判斷）。`@trace` 的 `updated` 以 regex 自 HTML 註解區塊擷取，沿用規格頁 footer 對 `@trace` 的讀法。
+`stale` ⇔ `sources` 中任一 capability 的正典 spec 內所有 `@trace` 區塊 `updated:` 的最大日期不早於（晚於或同日）該頁 `generated`——契約明寫生成當天的封存不得漏判；`sources` 為空、`generated` 非 `YYYY-MM-DD` 或規格不存在時不判過期。`uncoveredNew` ⇔ 正典 capability 的最小 `@trace updated` 不早於全手冊最大 `generated`，且不在任何頁的 `sources`——這是「生成後新增」的機械近似，不做使用者面向分流（那是技能的判斷）。`@trace` 的 `updated` 以 regex 自 HTML 註解區塊擷取，沿用規格頁 footer 對 `@trace` 的讀法。
 
 ### 側欄樹、搜尋與上下頁在前端由索引推導
 
-`packages/ui/src/components/ManualPage.tsx` 接索引與內文載入函式：側欄依分區分組、每頁一列（stale 者附「可能過期」標記）；搜尋列以大小寫不敏感子字串比對 `title` 與 `keywords`，命中頁的分區保留、其餘隱藏；上一頁／下一頁為排序序列的相鄰頁（首頁無上一頁、末頁無下一頁）。內文以共用 Markdown 渲染；頁尾出處行的 capability 名以既有規格卡的 `onOpen` 路徑跳規格頁展開該卡。索引底部在 `uncoveredNew` 非空時顯示「手冊生成後新增且未入冊的規格 N 份」提示。
+`packages/ui/src/components/ManualPage.tsx` 接索引與內文載入函式：側欄依分區分組、每頁一列（stale 者附「可能過期」標記）；搜尋列以大小寫不敏感子字串比對 `title` 與 `keywords`，命中頁的分區保留、其餘隱藏；上一頁／下一頁為排序序列的相鄰頁（首頁無上一頁、末頁無下一頁）。內容區分固定頁首（內文開頭 H1 抽出，無則索引 `title`）、內文捲動區與固定頁尾（出處列、上下頁）；內文以共用 Markdown 渲染；右側錨點列於渲染後由 DOM 掃 h2／h3 推導（與畫面一致、不另解析 Markdown），點擊 `scrollIntoView`、捲動時以捲動區頂緣下方最後一個標題為目前段，無 h2／h3 時不渲染；換頁回頂、外部改內文的重載不動捲動位置。頁尾出處列以索引 frontmatter 的 `sources` 為單一真相（契約規定與內文出處行一致），內文尾端的出處行只剝掉不重解；capability 名以 store 的 `openSpec` 於手冊頁上開規格抽屜（與規格頁共用 SpecDrawer），不切頁。內文的相對檔名連結（契約 `[認識畫面](layout.md)`）由捲動區的點擊委派攔下、在手冊內切頁——放給 WebView 直接導航會整頁離開 app，連到不存在的頁只擋下導航。元件分三檔：`ManualPage.tsx`（選頁、載入、三段切分、頁首頁尾）、`ManualTree.tsx`（搜尋＋分區樹＋未入冊提示）、`ManualToc.tsx`（錨點列），純函式在 `manualDoc.ts`。抽屜的滑入／淡入動畫由 `tw-animate-css` 提供（`theme.css` 匯入），`ui/sheet.tsx` 設 300ms 進出時長並於 prefers-reduced-motion 停用，`ui/popover.tsx` 與 `ui/tooltip.tsx` 同樣帶出場 class 與 `motion-reduce:animate-none`；四個抽屜以 `lib/useLingering` 在主體歸 null 時沿用最後主體，讓關閉時面板留到滑出動畫結束才卸載（宿主關抽屜時同步清主體，直接 return null 會讓 Radix Presence 沒機會跑動畫）。索引底部在 `uncoveredNew` 非空時顯示「手冊生成後新增且未入冊的規格 N 份」提示。
 
 ### GitHub Alert 以共用 Markdown 元件的內建轉換呈現
 
@@ -50,15 +50,15 @@
 
 ### 側欄第六項與零分頁行為與既有五項同型
 
-「手冊」項插於「規格」之後、「已封存」之前；恆常渲染、單純切頁、零分頁時呈與變更頁相同的空狀態引導頁；無障礙標籤「手冊」。i18n 鍵加入 `packages/ui/src/i18n.tsx` 與 `apps/desktop/src/i18n/messages.ts` 的 zh-TW 與 en 字典，鍵集合維持相等。
+「手冊」項在頂部群組末位（變更、已封存、規格、手冊），專案設定與設定沉底成底部群組；恆常渲染、單純切頁、零分頁時呈與變更頁相同的空狀態引導頁；無障礙標籤「手冊」。i18n 鍵加入 `packages/ui/src/i18n.tsx` 與 `apps/desktop/src/i18n/messages.ts` 的 zh-TW 與 en 字典，鍵集合維持相等。
 
 ## Implementation Contract
 
 **可觀察行為**
 
-- 側欄六項由上而下：變更、規格、手冊、已封存、專案設定；設定沉底。點「手冊」進入手冊頁，該項高亮。
-- 有手冊時：左側分區樹（依 `order`）、頂部搜尋列、右側內文、頁尾上一頁／下一頁與出處行；點出處 capability 切至規格頁並展開該卡；過期頁列上有「可能過期」標記；索引底部在有未入冊新規格時顯示計數提示。
-- 無 `openspec/manual/` 或其中無 `.md`：主內容顯示空狀態文案（說明尚無手冊、可用 manual 技能從規格生成）。remote 資料源：空狀態文案為「remote 模式尚不支援手冊」。
+- 側欄六項分兩群組：頂部由上而下變更、已封存、規格、手冊；底部專案設定、設定沉底。點「手冊」進入手冊頁，該項高亮。
+- 有手冊時：左側分區樹（依 `order`）、頂部搜尋列、右側內文、頁尾上一頁／下一頁與出處行；點出處 capability 在手冊頁上開該規格抽屜；過期頁列上有「可能過期」標記；索引底部在有未入冊新規格時顯示計數提示。
+- 無 `openspec/manual/` 或其中無 `.md`：主內容顯示空狀態文案（說明尚無手冊、可用手冊技能從規格生成）。remote 資料源：空狀態文案為「remote 模式尚不支援手冊」。
 - 外部寫入手冊目錄後數秒內索引與開啟頁重載。
 - 任何 Markdown 檢視中 `> [!NOTE]` 等四型 blockquote 呈現為提示框。
 

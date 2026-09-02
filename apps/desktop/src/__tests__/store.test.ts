@@ -2126,11 +2126,11 @@ describe("手冊索引的重取（refreshManual）", () => {
     expect(store.getState().manual).toEqual(INDEX);
   });
 
-  it("跳規格：切至規格頁並開該 capability 的規格抽屜", () => {
+  it("手冊出處開規格抽屜：detailSpec 設定、boardView 維持手冊頁不切頁", () => {
     const store = storeWith(fakeDataSource());
     store.getState().setBoardView("manual");
-    store.getState().jumpToSpec("desktop-app");
-    expect(store.getState().boardView).toBe("specs");
+    store.getState().openSpec("desktop-app");
+    expect(store.getState().boardView).toBe("manual");
     expect(store.getState().detailSpec).toBe("desktop-app");
   });
 });

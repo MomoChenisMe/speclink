@@ -3,6 +3,7 @@ import { Check, Code2, Copy, FileText, ListChecks, Maximize2, Minimize2, PenTool
 
 import type { ArchivedItem } from "../adapter";
 import { useI18n } from "../i18n";
+import { useLingering } from "../lib/useLingering";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
@@ -65,7 +66,7 @@ type Doc = string | null | undefined;
 export function ArchivedDrawer({
   open,
   onOpenChange,
-  target,
+  target: targetProp,
   refreshGen,
   loadDocument,
   loadCapabilities,
@@ -79,6 +80,7 @@ export function ArchivedDrawer({
   created,
   archivedDate,
 }: ArchivedDrawerProps) {
+  const target = useLingering(targetProp);
   const { t } = useI18n();
   const [copied, markCopied] = useCopied();
   const [proposal, setProposal] = useState<Doc>();

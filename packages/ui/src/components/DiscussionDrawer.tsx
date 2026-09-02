@@ -3,6 +3,7 @@ import { Archive, ArrowUpRight, Check, Copy, FileText, Flag, MessagesSquare, Roc
 
 import type { ArchivedItem, ChangeItem, DiscussionItem } from "../adapter";
 import { useI18n } from "../i18n";
+import { useLingering } from "../lib/useLingering";
 import { Button } from "./ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
@@ -286,7 +287,7 @@ export interface DiscussionDrawerProps {
 export function DiscussionDrawer({
   open,
   onOpenChange,
-  discussion,
+  discussion: discussionProp,
   refreshGen,
   loadDocument,
   changes,
@@ -294,6 +295,7 @@ export function DiscussionDrawer({
   onOpenChangeCard,
   onArchiveDiscussion,
 }: DiscussionDrawerProps) {
+  const discussion = useLingering(discussionProp);
   const { t } = useI18n();
   const [doc, setDoc] = useState<string | null | undefined>();
   const [copied, markCopied] = useCopied();

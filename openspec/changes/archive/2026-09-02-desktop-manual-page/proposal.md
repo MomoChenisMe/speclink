@@ -4,9 +4,9 @@ manual 技能（變更 manual-skill）會把正式規格轉成 `openspec/manual/
 
 ## What Changes
 
-- 側欄新增「手冊」導覽項（位於「規格」之後、「已封存」之前），進入手冊頁；零分頁時同其他頁呈空狀態引導頁。
-- 手冊頁（唯讀）：左側依 frontmatter 的 `section` 分區、`order` 排序的頁面樹，附以標題與 `keywords` 過濾的搜尋列；右側渲染選定頁的 Markdown（沿用共用閱讀欄與行寬上限），頁尾提供上一頁／下一頁；頁尾出處行的 capability 名可點，切至規格頁並展開該規格卡。
-- 過期標示：依 manual-pages 契約（來源規格最新 `@trace updated` 晚於頁 `generated`）在側欄該頁加「可能過期」標記；側欄底部另提示「手冊生成後新增且未入冊」的規格數（規格首次 `@trace updated` 晚於手冊最後生成日且不在任何頁的 `sources`）。
+- 側欄新增「手冊」導覽項（頂部群組依序變更、已封存、規格、手冊；專案設定與設定沉底），進入手冊頁；零分頁時同其他頁呈空狀態引導頁。
+- 手冊頁（唯讀）：左側依 frontmatter 的 `section` 分區、`order` 排序的頁面樹，附以標題與 `keywords` 過濾的搜尋列；右側渲染選定頁的 Markdown（沿用共用閱讀欄與行寬上限），頁尾提供上一頁／下一頁；頁尾出處行的 capability 名可點，在手冊頁上開該規格的抽屜。
+- 過期標示：依 manual-pages 契約（來源規格最新 `@trace updated` 不早於（晚於或同日）頁 `generated`）在側欄該頁加「可能過期」標記；側欄底部另提示「手冊生成後新增且未入冊」的規格數（規格首次 `@trace updated` 不早於手冊最後生成日且不在任何頁的 `sources`）。
 - Markdown 渲染新增 GitHub Alert 語法（`> [!NOTE]`、`[!TIP]`、`[!WARNING]`、`[!CAUTION]`）的提示框呈現，以介面語意色分層；此能力對所有 Markdown 檢視生效，既有內容無此語法者呈現不變。
 - 外部變更即時反映：`openspec/manual/` 已在既有監看樹內；手冊頁的索引與已開啟頁面隨外部寫入（技能重生、手動編輯）於秒級重載。
 - 資料層：desktop core 新增手冊查詢（讀目錄、解析 frontmatter、推導順序、計算過期與未入冊）；Tauri 殼新增兩個單行委派 command；資料源介面新增兩個方法，remote 資料源回報「尚不支援」。
@@ -15,7 +15,7 @@ manual 技能（變更 manual-skill）會把正式規格轉成 `openspec/manual/
 不新增 CLI 子指令、旗標或設定欄位；CLI 的人眼與 `--json` 輸出零變動。
 
 **相容性影響**：
-- 側欄由五項變六項，既有五項的順序、行為與無障礙標籤不變；desktop 的側欄快照測試隨本變更刻意更新。
+- 側欄由五項變六項並重排為兩群組（頂部：變更、已封存、規格、手冊；底部：專案設定、設定）；既有五項的行為與無障礙標籤不變；desktop 的側欄快照測試隨本變更刻意更新。
 - Markdown 元件對含 GitHub Alert 語法的內容改以提示框呈現，屬刻意變更；不含該語法的既有文件渲染逐位元不變。
 - remote 模式（PM 無 checkout）：手冊頁呈現「remote 模式尚不支援手冊」的空狀態；手冊投影列於討論 Deferred，不在本變更。
 
@@ -27,7 +27,7 @@ manual 技能（變更 manual-skill）會把正式規格轉成 `openspec/manual/
 
 ### Modified Capabilities
 
-- `desktop-app`: 「側欄導覽結構」由五個導覽項改為六個，加入「手冊」。
+- `desktop-app`: 「側欄導覽結構」由五個導覽項改為六個，加入「手冊」；新增「抽屜與浮層的開關動畫」（抽屜滑入／滑出、遮罩淡入／淡出、prefers-reduced-motion 停用）。
 
 ## Impact
 
