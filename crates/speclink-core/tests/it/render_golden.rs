@@ -1462,3 +1462,35 @@ fn worktree_merge_skill_states_preflight_conflict_and_cleanup() {
         );
     }
 }
+
+// --- baseline skill: workflow config and specs rules (baseline-apply-spec-rules) ---
+
+/// Spec「盤點前取得 workflow config 並套用 specs 產出規則」: the baseline skill
+/// loads the effective workflow config through `speclink workflow-config show
+/// --json` (never by reading config.yaml by hand), applies every `rules.specs`
+/// entry to every spec it writes, discloses the applied rules in the map
+/// confirmation and in the final report, and states that `validate` checks
+/// structure only.
+#[test]
+fn baseline_skill_loads_workflow_config_and_applies_specs_rules() {
+    for (rel, content) in skill_for_both_tools("baseline-rules", "baseline") {
+        for needle in [
+            "speclink workflow-config show --json",
+            "rules.specs",
+            "MUST honour every entry",
+            "none (no rules.specs configured)",
+            "Specs rules applied this run",
+            "(from rules.specs,",
+            "checks structure only",
+            "never fall back to reading",
+        ] {
+            assert!(content.contains(needle), "{rel}: missing phrase {needle:?}");
+        }
+        // The old Step 1 sentence, matched by a fragment that depends on neither the
+        // spec_dir rendering nor the capitalisation of "read".
+        assert!(
+            !content.contains("(project context, and `spec_locale` — write spec prose"),
+            "{rel}: the old hand-read config.yaml sentence must be gone"
+        );
+    }
+}
