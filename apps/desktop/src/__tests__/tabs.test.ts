@@ -1,6 +1,7 @@
 // 專案分頁列的純函式面（design D8/D10）：localStorage 持久化（路徑＋顯示名＋
 // 順序＋最後活躍）、上限 10、去重、關閉移除；徽章派生為待收尾數
-//（spec-archive-drawer design D6：已就緒變更＋已結論未轉出討論）。
+//（spec-archive-drawer design D6：已就緒變更＋已結論未轉出討論）。分頁列只管
+// 目前開著的專案；曾開啟過的「最近開啟」記憶另見 recents.test.ts。
 import { describe, it, expect } from "vitest";
 
 import {

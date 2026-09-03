@@ -1,7 +1,8 @@
 // 專案分頁列的純函式面（design D8/D10；workspace-session 決策 1/2）：分頁清單
 // 操作與 localStorage 持久化。分頁身分＝WorkspaceLocator（經 locatorKey 比對，
 // 不再以裸 root 字串）；持久化 v2（version＋locator＋activeKey），v1 靜默遷移。
-// 分頁列即最近開啟清單，不寫入專案目錄。
+// 分頁列只管目前開著的專案（關閉即自清單移除），不寫入專案目錄；曾開啟過的
+// 「最近開啟」記憶另見 recents.ts（chooser-recent-workspaces D6）。
 import { changeStage, type ChangeItem, type DiscussionItem } from "@speclink/ui";
 
 import { locatorKey, type WorkspaceLocator } from "./session";
@@ -57,7 +58,7 @@ export function persistTabs(
 
 /** 持久化條目的 locator 形狀驗證（v2 讀取）：local 需 root 字串、remote 需
  * 三段識別字串（checkoutRoot 可選字串）；其餘形狀丟棄該條目。 */
-function isLocator(v: unknown): v is WorkspaceLocator {
+export function isLocator(v: unknown): v is WorkspaceLocator {
   if (typeof v !== "object" || v === null) return false;
   const l = v as Record<string, unknown>;
   if (l.kind === "local") return typeof l.root === "string";

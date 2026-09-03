@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { I18nProvider } from "@speclink/ui";
 
@@ -11,6 +11,7 @@ import type { ConnectionsAdapter, ConnectionView } from "../adapter/connections"
 import type { WorkspaceAdapter } from "../adapter/workspace";
 import type { UseBoundStore, StoreApi } from "zustand";
 import type { WorkspaceSession } from "../session";
+import type { RecentEntry } from "../recents";
 
 const CONNECTION: ConnectionView = {
   id: "conn_1",
@@ -78,7 +79,7 @@ function fakeWorkspace(over: Partial<WorkspaceAdapter> = {}): WorkspaceAdapter {
   };
 }
 
-function renderChooser({
+async function renderChooser({
   adapter = fakeConnections(),
   workspace = fakeWorkspace(),
   connections = [CONNECTION],
@@ -86,6 +87,9 @@ function renderChooser({
   onOpenLocal = vi.fn().mockResolvedValue(undefined),
   onRequestMigration = vi.fn().mockResolvedValue(undefined),
   onAddServer = vi.fn().mockResolvedValue(undefined),
+  recents = [],
+  onRemoveRecent = vi.fn(),
+  onRefreshConnections = vi.fn().mockResolvedValue(true),
   initialConnectionId,
   initialScope,
   initialCheckoutPath,
@@ -97,6 +101,9 @@ function renderChooser({
   onOpenLocal?: ReturnType<typeof vi.fn>;
   onRequestMigration?: ReturnType<typeof vi.fn>;
   onAddServer?: ReturnType<typeof vi.fn>;
+  recents?: RecentEntry[];
+  onRemoveRecent?: ReturnType<typeof vi.fn>;
+  onRefreshConnections?: ReturnType<typeof vi.fn>;
   initialConnectionId?: string;
   initialScope?: { projectKey: string; repoKey: string };
   initialCheckoutPath?: string;
@@ -115,14 +122,19 @@ function renderChooser({
       phases={{}}
       onCancelLogin={vi.fn()}
       onSubmitPat={vi.fn()}
-      onRefreshConnections={vi.fn().mockResolvedValue(undefined)}
+      onRefreshConnections={onRefreshConnections}
       onOpenRemote={onOpenRemote}
+      recents={recents}
+      onRemoveRecent={onRemoveRecent}
       initialConnectionId={initialConnectionId}
       initialScope={initialScope}
       initialCheckoutPath={initialCheckoutPath}
     />,
     { wrapper: zhWrapper },
   );
+  // 掛載時的連線重整是唯一的非同步 setState——先沖乾淨，否則每個案例都噴
+  // "not wrapped in act(...)"，且錯誤態的判定會在斷言之後才落定。
+  await act(async () => {});
   return {
     adapter,
     workspace,
@@ -130,8 +142,18 @@ function renderChooser({
     onOpenLocal,
     onRequestMigration,
     onAddServer,
+    onRemoveRecent,
     onOpenChange,
   };
+}
+
+/** 最近開啟列的開啟鈕（移除鈕帶 aria-label，開啟鈕沒有）。 */
+function recentOpenButton(name: RegExp): HTMLButtonElement {
+  const found = screen
+    .getAllByRole("button", { name })
+    .filter((el) => !el.getAttribute("aria-label"));
+  expect(found).toHaveLength(1);
+  return found[0] as HTMLButtonElement;
 }
 
 async function chooseDesktopRepo() {
@@ -145,7 +167,7 @@ async function chooseDesktopRepo() {
 describe("WorkspaceChooser", () => {
   it("來源→已登入 server→scopes 分組單選→略過 checkout 開啟 spec-only 分頁", async () => {
     const open = vi.fn().mockResolvedValue(undefined);
-    const { adapter, onOpenChange } = renderChooser({ onOpenRemote: open });
+    const { adapter, onOpenChange } = await renderChooser({ onOpenRemote: open });
 
     await chooseDesktopRepo();
     fireEvent.click(screen.getByRole("button", { name: /略過（規格模式）/ }));
@@ -170,7 +192,7 @@ describe("WorkspaceChooser", () => {
     const adapter = fakeConnections({ inspectCheckout: inspect, bindCheckout: bind });
     const workspace = fakeWorkspace({ pickFolder: vi.fn().mockResolvedValue("/work/desktop") });
     const open = vi.fn().mockResolvedValue(undefined);
-    renderChooser({ adapter, workspace, onOpenRemote: open });
+    await renderChooser({ adapter, workspace, onOpenRemote: open });
 
     await chooseDesktopRepo();
     fireEvent.click(screen.getByRole("button", { name: /選擇本機資料夾/ }));
@@ -201,7 +223,7 @@ describe("WorkspaceChooser", () => {
     const adapter = fakeConnections({ inspectCheckout: inspect, bindCheckout: bind });
     const workspace = fakeWorkspace({ pickFolder: vi.fn().mockResolvedValue("/work/desktop") });
     const open = vi.fn().mockResolvedValue(undefined);
-    const { onOpenChange } = renderChooser({ adapter, workspace, onOpenRemote: open });
+    const { onOpenChange } = await renderChooser({ adapter, workspace, onOpenRemote: open });
 
     await chooseDesktopRepo();
     await reachCheckoutFolder();
@@ -242,7 +264,7 @@ describe("WorkspaceChooser", () => {
     const bind = vi.fn();
     const adapter = fakeConnections({ inspectCheckout: inspect, bindCheckout: bind });
     const workspace = fakeWorkspace({ pickFolder: vi.fn().mockResolvedValue("/work/desktop") });
-    renderChooser({ adapter, workspace });
+    await renderChooser({ adapter, workspace });
 
     await chooseDesktopRepo();
     await reachCheckoutFolder();
@@ -268,7 +290,7 @@ describe("WorkspaceChooser", () => {
     const adapter = fakeConnections({ inspectCheckout: inspect, bindCheckout: bind });
     const workspace = fakeWorkspace({ pickFolder: vi.fn().mockResolvedValue("/work/desktop") });
     const open = vi.fn().mockResolvedValue(undefined);
-    const { onOpenChange } = renderChooser({ adapter, workspace, onOpenRemote: open });
+    const { onOpenChange } = await renderChooser({ adapter, workspace, onOpenRemote: open });
 
     await chooseDesktopRepo();
     await reachCheckoutFolder();
@@ -292,7 +314,7 @@ describe("WorkspaceChooser", () => {
     const inspect = vi.fn().mockResolvedValue({ root: "/work/desktop", tools: [] });
     const adapter = fakeConnections({ inspectCheckout: inspect });
     const open = vi.fn().mockResolvedValue(undefined);
-    renderChooser({
+    await renderChooser({
       adapter,
       onOpenRemote: open,
       initialConnectionId: "conn_1",
@@ -330,7 +352,7 @@ describe("WorkspaceChooser", () => {
     );
     const adapter = fakeConnections({ inspectCheckout: inspect, bindCheckout: bind });
     const workspace = fakeWorkspace({ pickFolder: vi.fn().mockResolvedValue("/work/desktop") });
-    renderChooser({ adapter, workspace });
+    await renderChooser({ adapter, workspace });
 
     await chooseDesktopRepo();
     await reachCheckoutFolder();
@@ -346,7 +368,7 @@ describe("WorkspaceChooser", () => {
 
   it("scopes 沒有 membership 時顯示繁中空清單說明", async () => {
     const adapter = fakeConnections({ scopes: vi.fn().mockResolvedValue({ projects: [] }) });
-    renderChooser({ adapter });
+    await renderChooser({ adapter });
 
     fireEvent.click(screen.getByRole("button", { name: /Speclink Server/ }));
     fireEvent.click(screen.getByRole("button", { name: /團隊 Server/ }));
@@ -361,7 +383,7 @@ describe("WorkspaceChooser", () => {
 
   it("server 清單可就地新增並登入，完成後回到清單步驟", async () => {
     const add = vi.fn().mockResolvedValue(undefined);
-    renderChooser({ connections: [], onAddServer: add });
+    await renderChooser({ connections: [], onAddServer: add });
 
     fireEvent.click(screen.getByRole("button", { name: /Speclink Server/ }));
     expect(screen.getByText(/目前沒有已登入的 server/)).toBeTruthy();
@@ -389,7 +411,7 @@ describe("WorkspaceChooser", () => {
         name: "Local",
       }),
     });
-    const { onOpenChange } = renderChooser({ workspace, onOpenLocal: local });
+    const { onOpenChange } = await renderChooser({ workspace, onOpenLocal: local });
 
     fireEvent.click(screen.getByRole("button", { name: /本機資料夾/ }));
     fireEvent.click(await screen.findByRole("button", { name: "開啟本機" }));
@@ -408,7 +430,7 @@ describe("WorkspaceChooser", () => {
         name: "Local",
       }),
     });
-    const { onOpenChange } = renderChooser({
+    const { onOpenChange } = await renderChooser({
       workspace,
       onRequestMigration: migrate,
     });
@@ -522,6 +544,8 @@ describe("WorkspaceChooser 登入回饋", () => {
         onSubmitPat={s.submitPat}
         onRefreshConnections={s.refreshConnections}
         onOpenRemote={async () => {}}
+        recents={[]}
+        onRemoveRecent={vi.fn()}
       />
     );
   }
@@ -584,5 +608,272 @@ describe("WorkspaceChooser 登入回饋", () => {
     fireEvent.click(screen.getByRole("button", { name: "以 PAT 登入" }));
     // 登入完成：連線出現在已登入清單（ChoiceCard 標題）。
     await waitFor(() => expect(screen.getByText(/Momo/)).toBeTruthy());
+  });
+});
+
+describe("最近開啟清單（spec 需求「最近開啟清單」；design D3 顯示期過濾、D4 點擊開啟與失效錯誤態）", () => {
+  const LOCAL_RECENT: RecentEntry = {
+    locator: { kind: "local", root: "/work/speclink" },
+    name: "speclink",
+  };
+  const REMOTE_RECENT: RecentEntry = {
+    locator: {
+      kind: "remote",
+      connectionId: "conn_1",
+      projectId: "prj_1",
+      repoId: "repo_1",
+      checkoutRoot: "/work/desktop",
+    },
+    name: "Speclink/Desktop",
+  };
+
+  it("recents 為空時第一步沒有「最近開啟」區段", () => {
+    renderChooser();
+    expect(screen.queryByText("最近開啟")).toBeNull();
+    expect(screen.getByRole("button", { name: /本機資料夾/ })).toBeTruthy();
+  });
+
+  it("本機列顯示名稱與路徑、remote 列顯示連線名稱與顯示名", async () => {
+    await renderChooser({ recents: [LOCAL_RECENT, REMOTE_RECENT] });
+    expect(screen.getByText("最近開啟")).toBeTruthy();
+    const local = screen.getByRole("button", { name: /\/work\/speclink/ });
+    expect(local.textContent).toContain("speclink");
+    const remote = screen.getByRole("button", { name: /團隊 Server/ });
+    expect(remote.textContent).toContain("Speclink/Desktop");
+    // 既有兩張來源卡仍在，且可及性名稱不變。
+    expect(screen.getByRole("button", { name: /本機資料夾/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Speclink Server/ })).toBeTruthy();
+  });
+
+  it("點本機列先探測再沿既有本機開啟流程並關閉 chooser（spec Scenario 點本機條目直接開啟）", async () => {
+    const workspace = fakeWorkspace({
+      openProject: vi
+        .fn()
+        .mockResolvedValue({ status: "project", root: "/work/speclink", name: "speclink" }),
+    });
+    const { onOpenLocal, onOpenChange } = await renderChooser({
+      workspace,
+      recents: [LOCAL_RECENT],
+    });
+    fireEvent.click(screen.getByRole("button", { name: /\/work\/speclink/ }));
+    await waitFor(() => expect(onOpenLocal).toHaveBeenCalledWith("/work/speclink"));
+    expect(workspace.openProject).toHaveBeenCalledWith("/work/speclink");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    // 不走首次選資料夾的「開啟本機／遷移」子畫面。
+    expect(screen.queryByRole("button", { name: "開啟本機" })).toBeNull();
+  });
+
+  it("探測拋錯時該列轉錯誤態並顯示原因，不開啟（spec Scenario 本機資料夾已消失時轉錯誤態）", async () => {
+    const workspace = fakeWorkspace({
+      openProject: vi.fn().mockRejectedValue(new Error("cannot open '/work/speclink'")),
+    });
+    const { onOpenLocal, onOpenChange } = await renderChooser({
+      workspace,
+      recents: [LOCAL_RECENT],
+    });
+    fireEvent.click(screen.getByRole("button", { name: /\/work\/speclink/ }));
+    await waitFor(() =>
+      expect(screen.getByText(/cannot open '\/work\/speclink'/)).toBeTruthy(),
+    );
+    expect(onOpenLocal).not.toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    expect(
+      (screen.getByRole("button", { name: /\/work\/speclink/ }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    // 錯誤態的列仍可移除。
+    expect(screen.getByRole("button", { name: "自最近開啟移除 speclink" })).toBeTruthy();
+  });
+
+  it("點 remote 列以原 connection、projectId/repoId 與 checkoutRoot 開啟（spec Scenario 點 remote 條目以原綁定開啟）", async () => {
+    const { onOpenRemote } = await renderChooser({ recents: [REMOTE_RECENT] });
+    fireEvent.click(screen.getByRole("button", { name: /團隊 Server/ }));
+    await waitFor(() =>
+      expect(onOpenRemote).toHaveBeenCalledWith("conn_1", "prj_1/repo_1", "/work/desktop"),
+    );
+  });
+
+  it("remote handshake 拋錯時該列顯示原因", async () => {
+    const onOpenRemote = vi.fn().mockRejectedValue(new Error("access denied — no access"));
+    await renderChooser({ recents: [REMOTE_RECENT], onOpenRemote });
+    fireEvent.click(screen.getByRole("button", { name: /團隊 Server/ }));
+    await waitFor(() => expect(screen.getByText(/access denied/)).toBeTruthy());
+  });
+
+  it("連線已移除的 remote 列直接呈現錯誤態、開啟停用、可移除（spec Scenario remote 連線已移除時直接呈現錯誤態）", async () => {
+    const gone: RecentEntry = {
+      ...REMOTE_RECENT,
+      locator: { ...REMOTE_RECENT.locator, connectionId: "conn_gone" } as RecentEntry["locator"],
+    };
+    const { onRemoveRecent, onOpenRemote } = await renderChooser({ recents: [gone] });
+    await waitFor(() => expect(screen.getByText("連線已移除")).toBeTruthy());
+    const row = screen.getByRole("button", { name: /連線已移除/ }) as HTMLButtonElement;
+    expect(row.disabled).toBe(true);
+    fireEvent.click(row);
+    expect(onOpenRemote).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "自最近開啟移除 Speclink/Desktop" }));
+    expect(onRemoveRecent).toHaveBeenCalledWith("remote:conn_gone/prj_1/repo_1");
+  });
+
+  it("移除鈕以 locator key 呼叫 onRemoveRecent（spec Scenario 移除條目後重啟不再出現）", async () => {
+    const { onRemoveRecent, onOpenLocal } = await renderChooser({ recents: [LOCAL_RECENT] });
+    fireEvent.click(screen.getByRole("button", { name: "自最近開啟移除 speclink" }));
+    expect(onRemoveRecent).toHaveBeenCalledWith("local:/work/speclink");
+    expect(onOpenLocal).not.toHaveBeenCalled();
+  });
+});
+
+describe("最近開啟清單的補強（review／verify 第 1 輪 WARNING）", () => {
+  const LOCAL: RecentEntry = {
+    locator: { kind: "local", root: "/work/speclink" },
+    name: "speclink",
+  };
+  const REMOTE: RecentEntry = {
+    locator: {
+      kind: "remote",
+      connectionId: "conn_1",
+      projectId: "prj_1",
+      repoId: "repo_1",
+      checkoutRoot: "/work/desktop",
+    },
+    name: "Speclink/Desktop",
+  };
+
+  it("點未初始化資料夾的條目仍轉交既有開啟流程（spec Scenario 點未初始化資料夾的條目仍走 init 確認）", async () => {
+    const workspace = fakeWorkspace({
+      openProject: vi.fn().mockResolvedValue({ status: "uninitialized", dir: "/work/speclink" }),
+    });
+    const { onOpenLocal, onOpenChange } = await renderChooser({ workspace, recents: [LOCAL] });
+    fireEvent.click(screen.getByRole("button", { name: /\/work\/speclink/ }));
+    // 探測成功即交給既有 openProjectAt——init 確認框由它負責，chooser 不自行寫入。
+    await waitFor(() => expect(onOpenLocal).toHaveBeenCalledWith("/work/speclink"));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(screen.queryByRole("button", { name: "開啟本機" })).toBeNull();
+  });
+
+  it("連線已登出時該列以錯誤態呈現且停用開啟", async () => {
+    const loggedOut: ConnectionView = { ...CONNECTION, loggedIn: false };
+    await renderChooser({ recents: [REMOTE], connections: [loggedOut] });
+    await waitFor(() => expect(screen.getByText("連線已登出")).toBeTruthy());
+    expect(
+      (screen.getByRole("button", { name: /連線已登出/ }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it("點 remote 列先驗證 checkout 綁定，失敗即轉錯誤態不開啟", async () => {
+    const inspect = vi.fn().mockRejectedValue(new Error("找不到 checkout 資料夾 /work/desktop"));
+    const adapter = fakeConnections({ inspectCheckout: inspect });
+    const { onOpenRemote } = await renderChooser({ adapter, recents: [REMOTE] });
+    fireEvent.click(screen.getByRole("button", { name: /團隊 Server/ }));
+    await waitFor(() =>
+      expect(screen.getByText(/找不到 checkout 資料夾/)).toBeTruthy(),
+    );
+    expect(inspect).toHaveBeenCalledWith(
+      "/work/desktop",
+      "https://spec.example.test",
+      "prj_1",
+      "repo_1",
+    );
+    expect(onOpenRemote).not.toHaveBeenCalled();
+  });
+
+  it("無 checkout 綁定的 remote 列不做 inspect，直接開啟", async () => {
+    const specOnly: RecentEntry = {
+      ...REMOTE,
+      locator: { ...REMOTE.locator, checkoutRoot: undefined } as RecentEntry["locator"],
+    };
+    const adapter = fakeConnections();
+    const { onOpenRemote } = await renderChooser({ adapter, recents: [specOnly] });
+    fireEvent.click(screen.getByRole("button", { name: /團隊 Server/ }));
+    await waitFor(() =>
+      expect(onOpenRemote).toHaveBeenCalledWith("conn_1", "prj_1/repo_1", undefined),
+    );
+    expect(adapter.inspectCheckout).not.toHaveBeenCalled();
+  });
+});
+
+describe("連線清單載入結果決定錯誤態（review 第 2 輪 WARNING）", () => {
+  const REMOTE_ROW: RecentEntry = {
+    locator: {
+      kind: "remote",
+      connectionId: "conn_1",
+      projectId: "prj_1",
+      repoId: "repo_1",
+      checkoutRoot: "/work/desktop",
+    },
+    name: "Speclink/Desktop",
+  };
+
+  it("連線清單讀取失敗時不把 remote 列判成已移除", async () => {
+    const onRefreshConnections = vi.fn().mockResolvedValue(false);
+    await renderChooser({ recents: [REMOTE_ROW], connections: [], onRefreshConnections });
+    await waitFor(() => expect(onRefreshConnections).toHaveBeenCalled());
+    expect(screen.queryByText("連線已移除")).toBeNull();
+    expect(recentOpenButton(/Speclink\/Desktop/).disabled).toBe(false);
+  });
+
+  it("讀取成功且清單真的空時才判成已移除", async () => {
+    const onRefreshConnections = vi.fn().mockResolvedValue(true);
+    await renderChooser({ recents: [REMOTE_ROW], connections: [], onRefreshConnections });
+    await waitFor(() => expect(screen.getByText("連線已移除")).toBeTruthy());
+    expect(
+      (screen.getByRole("button", { name: /連線已移除/ }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it("重整仍在進行中時 remote 列不判為已移除（尚未 settle 的視窗）", async () => {
+    let release: (value: boolean) => void = () => {};
+    const pending = new Promise<boolean>((resolve) => {
+      release = resolve;
+    });
+    await renderChooser({
+      recents: [REMOTE_ROW],
+      connections: [],
+      onRefreshConnections: vi.fn().mockReturnValue(pending),
+    });
+    // renderChooser 的 act 沖洗不會讓一個尚未 resolve 的 promise 落定。
+    expect(screen.queryByText("連線已移除")).toBeNull();
+    expect(recentOpenButton(/Speclink\/Desktop/).disabled).toBe(false);
+    await act(async () => {
+      release(true);
+    });
+    // 讀取成功且清單真的空——此時才判定。
+    await waitFor(() => expect(screen.getByText("連線已移除")).toBeTruthy());
+  });
+
+  it("清單未就緒時規格模式的 remote 列照樣開得起來", async () => {
+    const specOnly: RecentEntry = {
+      ...REMOTE_ROW,
+      locator: { ...REMOTE_ROW.locator, checkoutRoot: undefined } as RecentEntry["locator"],
+    };
+    const onOpenRemote = vi.fn().mockResolvedValue(undefined);
+    await renderChooser({
+      recents: [specOnly],
+      connections: [],
+      onRefreshConnections: vi.fn().mockResolvedValue(false),
+      onOpenRemote,
+    });
+    fireEvent.click(recentOpenButton(/Speclink\/Desktop/));
+    await waitFor(() =>
+      expect(onOpenRemote).toHaveBeenCalledWith("conn_1", "prj_1/repo_1", undefined),
+    );
+    expect(screen.queryByText("連線已移除")).toBeNull();
+  });
+
+  it("清單未就緒時點 checkout 綁定的 remote 列不留下帶 Error 前綴的訊息", async () => {
+    const onRefreshConnections = vi.fn().mockResolvedValue(false);
+    const onOpenRemote = vi.fn().mockResolvedValue(undefined);
+    const adapter = fakeConnections();
+    await renderChooser({
+      adapter,
+      recents: [REMOTE_ROW],
+      connections: [],
+      onRefreshConnections,
+      onOpenRemote,
+    });
+    fireEvent.click(recentOpenButton(/Speclink\/Desktop/));
+    await waitFor(() => expect(screen.getByText("連線已移除")).toBeTruthy());
+    expect(screen.queryByText(/^Error: /)).toBeNull();
+    expect(adapter.inspectCheckout).not.toHaveBeenCalled();
+    expect(onOpenRemote).not.toHaveBeenCalled();
   });
 });

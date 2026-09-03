@@ -120,7 +120,7 @@ updated: 2026-08-23
 ---
 ### Requirement: 專案分頁列存於 app 本機
 
-app 頂欄 SHALL 以分頁列呈現開啟過的專案（路徑與顯示名，上限 10 個分頁）：分頁 SHALL 跨啟動持久化於 app 本機狀態（含順序與最後活躍分頁），SHALL NOT 寫入任何專案目錄。點擊分頁 SHALL 以該路徑執行與「開啟專案」相同的切換語意；同一專案再次開啟 SHALL 去重並移至既有分頁；關閉分頁 SHALL 將其自持久化清單移除。分頁 SHALL NOT 顯示待收尾數或其他計數徽章——待收尾狀態由看板欄位計數與系統匣面板分區計數承載。分頁指向已不存在的路徑時 SHALL 以錯誤態呈現，點擊 SHALL 顯示錯誤並提供自分頁移除，SHALL NOT 切換專案；背景 local 分頁 SHALL 於 app 啟動時各探測一次路徑有效性，失效即轉錯誤態。無任何分頁時 app SHALL 顯示「開啟專案」空狀態引導頁而非空看板。app SHALL 支援 Ctrl+Tab 循環切換與 Ctrl+1..9 直達第 N 個分頁。
+app 頂欄 SHALL 以分頁列呈現目前開著的專案（路徑與顯示名，上限 10 個分頁）：分頁 SHALL 跨啟動持久化於 app 本機狀態（含順序與最後活躍分頁），SHALL NOT 寫入任何專案目錄。點擊分頁 SHALL 以該路徑執行與「開啟專案」相同的切換語意；同一專案再次開啟 SHALL 去重並移至既有分頁；關閉分頁 SHALL 將其自分頁持久化清單移除，但 SHALL NOT 改變最近開啟記錄（曾開啟過的 workspace 由 workspace-chooser 的「最近開啟清單」需求另行記憶，分頁列 SHALL NOT 作為唯一的最近開啟記憶）。分頁 SHALL NOT 顯示待收尾數或其他計數徽章——待收尾狀態由看板欄位計數與系統匣面板分區計數承載。分頁指向已不存在的路徑時 SHALL 以錯誤態呈現，點擊 SHALL 顯示錯誤並提供自分頁移除，SHALL NOT 切換專案；背景 local 分頁 SHALL 於 app 啟動時各探測一次路徑有效性，失效即轉錯誤態。無任何分頁時 app SHALL 顯示「開啟專案」空狀態引導頁而非空看板。app SHALL 支援 Ctrl+Tab 循環切換與 Ctrl+1..9 直達第 N 個分頁。
 
 #### Scenario: 成功開啟後記入分頁並去重上移
 
@@ -149,21 +149,8 @@ app 頂欄 SHALL 以分頁列呈現開啟過的專案（路徑與顯示名，上
 
 
 <!-- @trace
-source: tray-badge-and-recovery-buttons
-updated: 2026-07-23
-code:
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/projectTabs.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tabs.test.ts
-  - apps/desktop/src/__tests__/tray.test.ts
-  - apps/desktop/src/__tests__/trayPanel.test.tsx
-  - apps/desktop/src/__tests__/workspace.test.ts
-  - apps/desktop/src/components/ProjectTabs.tsx
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - apps/desktop/src/tabs.ts
-  - apps/desktop/src/tray.ts
+source: chooser-recent-workspaces
+updated: 2026-09-03
 -->
 
 ---

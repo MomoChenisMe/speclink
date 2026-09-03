@@ -46,6 +46,7 @@ import { locatorKey, type WorkspaceSession } from "./session";
 import { initTray, type TrayController } from "./tray";
 import { ProjectTabs } from "./components/ProjectTabs";
 import { WorkspaceChooser } from "./components/WorkspaceChooser";
+import { visibleRecents } from "./recents";
 import { MigrationDialog } from "./components/MigrationDialog";
 import { RemoteConflictDialog } from "./components/RemoteConflictDialog";
 import { RemoteWorkspaceRecovery } from "./components/RemoteWorkspaceRecovery";
@@ -877,6 +878,8 @@ function AppInner({
           onSubmitPat={s.submitPat}
           onRefreshConnections={s.refreshConnections}
           onOpenRemote={s.openRemoteWorkspace}
+          recents={visibleRecents(s.recents, s.tabs)}
+          onRemoveRecent={s.forgetRecent}
           initialConnectionId={s.workspaceChooser?.initialConnectionId}
           initialServerUrl={s.workspaceChooser?.initialServerUrl}
           initialScope={s.workspaceChooser?.initialScope}

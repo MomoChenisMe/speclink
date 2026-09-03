@@ -16,6 +16,7 @@ import {
   type WorkspaceSession,
 } from "../session";
 import { fakeRemoteDs, fakeRemoteSession, REMOTE_KEY as KEY } from "./helpers/remoteFixtures";
+import { readPersistedRecents } from "../recents";
 
 function fakeWorkspace(): WorkspaceAdapter {
   return {
@@ -737,5 +738,134 @@ describe("重啟恢復（規格「重啟後 remote 分頁恢復需重驗」）",
     expect(openRemote).not.toHaveBeenCalled();
     expect(store.getState().activeKey).toBe(KEY);
     expect(ds.listChanges).toHaveBeenCalled();
+  });
+});
+
+describe("最近開啟清單的 remote 記入（spec 需求「最近開啟清單」；design D2 成功開啟即記入）", () => {
+  it("openRemoteWorkspace 成功後把 remote workspace 記入最前並寫入 localStorage", async () => {
+    localStorage.clear();
+    const ds = fakeRemoteDs();
+    const session = fakeRemoteSession(ds);
+    const store = storeWith(vi.fn().mockResolvedValue(session));
+
+    await store.getState().openRemoteWorkspace("c1", "demo/backend");
+
+    const recents = store.getState().recents;
+    expect(recents.map((r) => locatorKey(r.locator))).toEqual([KEY]);
+    expect(recents[0].name).toBe(session.descriptor.name);
+    expect(readPersistedRecents()?.map((r) => locatorKey(r.locator))).toEqual([KEY]);
+  });
+});
+
+describe("最近開啟清單的本機轉 remote（design D2：移除 local 條目、記入 remote）", () => {
+  it("replaceLocalWorkspaceWithRemote 後該 root 的 local 條目消失、remote 條目在最前", async () => {
+    localStorage.clear();
+    const workspace = fakeWorkspace();
+    vi.mocked(workspace.openProject).mockResolvedValue({
+      status: "project",
+      root: "/work/local",
+      name: "Local",
+    });
+    const session = fakeRemoteSession(fakeRemoteDs());
+    session.locator = { ...session.locator, checkoutRoot: "/work/local" };
+    const store = createAppStore({
+      createSession: localSession,
+      workspace,
+      openRemote: vi.fn().mockResolvedValue(session),
+    });
+    await store.getState().openProjectAt("/work/local");
+    expect(store.getState().recents.map((r) => locatorKey(r.locator))).toEqual([
+      "local:/work/local",
+    ]);
+
+    await store
+      .getState()
+      .replaceLocalWorkspaceWithRemote("/work/local", "c1", "demo/backend");
+
+    expect(store.getState().recents.map((r) => locatorKey(r.locator))).toEqual([KEY]);
+    expect(readPersistedRecents()?.map((r) => locatorKey(r.locator))).toEqual([KEY]);
+  });
+});
+
+describe("最近開啟清單的其餘 remote 記入路徑（review／verify 第 1 輪 WARNING）", () => {
+  it("marker 分流把本機資料夾轉成 remote 分頁時同樣移除 local 條目", async () => {
+    localStorage.clear();
+    const workspace = fakeWorkspace();
+    const session = fakeRemoteSession(fakeRemoteDs());
+    session.locator = { ...session.locator, checkoutRoot: "/work/repo" };
+    const store = createAppStore({
+      createSession: localSession,
+      workspace,
+      connections: fakeConnections([
+        { id: "c1", origin: "https://spec.example.test", name: "Team", loggedIn: true },
+      ]),
+      openRemote: vi.fn().mockResolvedValue(session),
+    });
+
+    // 先以本機開啟同一資料夾（記入 local 條目）。
+    vi.mocked(workspace.openProject).mockResolvedValue({
+      status: "project",
+      root: "/work/repo",
+      name: "repo",
+    });
+    await store.getState().openProjectAt("/work/repo");
+    expect(store.getState().recents.map((r) => locatorKey(r.locator))).toEqual([
+      "local:/work/repo",
+    ]);
+
+    // 該資料夾之後長出 remote marker，再次開啟走 marker 分流。
+    vi.mocked(workspace.openProject).mockResolvedValue({
+      status: "remoteBinding",
+      url: "https://spec.example.test/api/speclink/v1/projects/demo",
+      repo: "backend",
+      hasLocalOpenspec: false,
+    });
+    await store.getState().openProjectAt("/work/repo");
+
+    expect(store.getState().recents.map((r) => locatorKey(r.locator))).toEqual([KEY]);
+    expect(readPersistedRecents()?.map((r) => locatorKey(r.locator))).toEqual([KEY]);
+  });
+
+  it("remote 分頁重連成功後把該 workspace 記入清單最前", async () => {
+    localStorage.clear();
+    const session = fakeRemoteSession(fakeRemoteDs());
+    const store = storeWith(vi.fn().mockResolvedValue(session));
+    // 先開一個本機分頁佔住清單最前，再放一個尚無 session 的 remote 分頁。
+    store.setState({
+      tabs: [{ locator: session.locator, name: session.descriptor.name }],
+      recents: [{ locator: { kind: "local", root: "/other" }, name: "other" }],
+    });
+
+    await store.getState().activateTab(KEY);
+
+    expect(store.getState().recents.map((r) => locatorKey(r.locator))).toEqual([
+      KEY,
+      "local:/other",
+    ]);
+    expect(readPersistedRecents()?.map((r) => locatorKey(r.locator))).toEqual([
+      KEY,
+      "local:/other",
+    ]);
+  });
+
+  it("點既有 session 的 remote 分頁把它移到清單最前", async () => {
+    localStorage.clear();
+    const session = fakeRemoteSession(fakeRemoteDs());
+    const store = storeWith(vi.fn().mockResolvedValue(session));
+    store.setState({
+      tabs: [{ locator: session.locator, name: session.descriptor.name }],
+      sessions: { [KEY]: session },
+      recents: [
+        { locator: { kind: "local", root: "/other" }, name: "other" },
+        { locator: session.locator, name: session.descriptor.name },
+      ],
+    });
+
+    await store.getState().activateTab(KEY);
+
+    expect(store.getState().recents.map((r) => locatorKey(r.locator))).toEqual([
+      KEY,
+      "local:/other",
+    ]);
   });
 });

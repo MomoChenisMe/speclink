@@ -1,0 +1,63 @@
+schema: spec-driven
+created: 2026-09-02
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: chooser-recent-workspaces
+started_at: 2026-09-02
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-02
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 10
+reviewed_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: 319fd5a4a3946d48630300cc78ebfaf2342726dd5072347fa51e5c9017214c28
+  - path: apps/desktop/src/__tests__/recents.test.ts
+    hash: 11651a83614055bd61ec9233978dcfe98f5431ab4f4dc9f53f9e8031d1c0c3e5
+  - path: apps/desktop/src/__tests__/remoteOpen.test.ts
+    hash: beba907b3a3bd6f208ff8f60a91a369a67187b5ad4ae4e70e98b60260b0839dc
+  - path: apps/desktop/src/__tests__/tabs.test.ts
+    hash: fdd07192c91df0c167b30b530a18db09d2dcaaa5886ae66794ee51cd3e89d37c
+  - path: apps/desktop/src/__tests__/workspace.test.ts
+    hash: 290371887af2659f9630575f08e72d3c2a194fa089801a8aa361250e8cf3e972
+  - path: apps/desktop/src/__tests__/workspaceChooser.test.tsx
+    hash: 17d40777b915529fd0d38acd82c4ddaedf4ea73c19cd9a60bf93d4a37c02c777
+  - path: apps/desktop/src/components/WorkspaceChooser.tsx
+    hash: 9de96bb71962b1c805992ad17e9fd88de66c89f43e4f82a378773b392b0f2066
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 60aa2966c2c41f6a30f8dd1a67c971dfbced36829bf14590aa930b2df09909f5
+  - path: apps/desktop/src/recents.ts
+    hash: e393c5c3fdbcd11e77f623b970d584881c31cd6ef3c285a2ae7da17c1527cb40
+  - path: apps/desktop/src/store.ts
+    hash: 81172a49e4ebaf2091b14d3458ca249f5b4ad1136302a3f0c1b4891bbc4c42b6
+  - path: apps/desktop/src/tabs.ts
+    hash: 732bd905cd33b5a6afb0b46ea4f83b71908f01f21ec644d2ce88462dc82f24b0
+verified_at: 2026-09-02
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 10
+verified_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: 319fd5a4a3946d48630300cc78ebfaf2342726dd5072347fa51e5c9017214c28
+  - path: apps/desktop/src/__tests__/recents.test.ts
+    hash: 11651a83614055bd61ec9233978dcfe98f5431ab4f4dc9f53f9e8031d1c0c3e5
+  - path: apps/desktop/src/__tests__/remoteOpen.test.ts
+    hash: beba907b3a3bd6f208ff8f60a91a369a67187b5ad4ae4e70e98b60260b0839dc
+  - path: apps/desktop/src/__tests__/tabs.test.ts
+    hash: fdd07192c91df0c167b30b530a18db09d2dcaaa5886ae66794ee51cd3e89d37c
+  - path: apps/desktop/src/__tests__/workspace.test.ts
+    hash: 290371887af2659f9630575f08e72d3c2a194fa089801a8aa361250e8cf3e972
+  - path: apps/desktop/src/__tests__/workspaceChooser.test.tsx
+    hash: 17d40777b915529fd0d38acd82c4ddaedf4ea73c19cd9a60bf93d4a37c02c777
+  - path: apps/desktop/src/components/WorkspaceChooser.tsx
+    hash: 9de96bb71962b1c805992ad17e9fd88de66c89f43e4f82a378773b392b0f2066
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 60aa2966c2c41f6a30f8dd1a67c971dfbced36829bf14590aa930b2df09909f5
+  - path: apps/desktop/src/recents.ts
+    hash: e393c5c3fdbcd11e77f623b970d584881c31cd6ef3c285a2ae7da17c1527cb40
+  - path: apps/desktop/src/store.ts
+    hash: 81172a49e4ebaf2091b14d3458ca249f5b4ad1136302a3f0c1b4891bbc4c42b6
+  - path: apps/desktop/src/tabs.ts
+    hash: 732bd905cd33b5a6afb0b46ea4f83b71908f01f21ec644d2ce88462dc82f24b0
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-03
