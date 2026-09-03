@@ -7,6 +7,7 @@ import type { SpeclinkDataSource } from "@speclink/ui";
 import { createAppStore } from "../store";
 import { locatorKey, LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 import { persistTabs, readPersistedTabs, type ProjectTab } from "../tabs";
+import { persistRecents, readPersistedRecents, RECENTS_STORAGE_KEY } from "../recents";
 import type { WorkspaceAdapter } from "../adapter/workspace";
 
 const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
@@ -439,5 +440,106 @@ describe("分頁列（spec 需求「專案分頁列存於 app 本機」）", () 
     store.getState().closeTab("local:B");
     expect(keys(store.getState().tabs)).toEqual(["local:A"]);
     expect(store.getState().tabErrors["local:B"]).toBeUndefined();
+  });
+});
+
+describe("最近開啟清單（spec 需求「最近開啟清單」；design D2 成功開啟即記入、D5 升級補種）", () => {
+  function openable() {
+    return fakeWorkspace({
+      openProject: vi
+        .fn()
+        .mockImplementation((p: string) =>
+          Promise.resolve({ status: "project", root: p, name: p.toLowerCase() }),
+        ),
+    });
+  }
+
+  it("依序開啟 A、B：記錄最新在前並寫入 localStorage", async () => {
+    const store = makeStore(fakeDataSource(), openable());
+    await store.getState().openProjectAt("A");
+    await store.getState().openProjectAt("B");
+    expect(store.getState().recents.map((r) => locatorKey(r.locator))).toEqual([
+      "local:B",
+      "local:A",
+    ]);
+    expect(store.getState().recents[0].name).toBe("b");
+    expect(readPersistedRecents()?.map((r) => locatorKey(r.locator))).toEqual([
+      "local:B",
+      "local:A",
+    ]);
+  });
+
+  // spec Example「順序、去重與上限」第二列：A, B, C 且 B 分頁其後被關閉 → C, B, A。
+  it("關閉分頁不動記錄（spec Scenario 關閉分頁後仍列於最近開啟）", async () => {
+    const store = makeStore(fakeDataSource(), openable());
+    await store.getState().openProjectAt("A");
+    await store.getState().openProjectAt("B");
+    await store.getState().openProjectAt("C");
+    store.getState().closeTab("local:B");
+    expect(keys(store.getState().tabs)).toEqual(["local:A", "local:C"]);
+    expect(store.getState().recents.map((r) => locatorKey(r.locator))).toEqual([
+      "local:C",
+      "local:B",
+      "local:A",
+    ]);
+    expect(readPersistedRecents()?.map((r) => locatorKey(r.locator))).toEqual([
+      "local:C",
+      "local:B",
+      "local:A",
+    ]);
+  });
+
+  it("forgetRecent 自狀態與 localStorage 移除該筆", async () => {
+    const store = makeStore(fakeDataSource(), openable());
+    await store.getState().openProjectAt("A");
+    await store.getState().openProjectAt("B");
+    store.getState().forgetRecent("local:A");
+    expect(store.getState().recents.map((r) => locatorKey(r.locator))).toEqual(["local:B"]);
+    expect(readPersistedRecents()?.map((r) => locatorKey(r.locator))).toEqual(["local:B"]);
+  });
+
+  it("restoreTabs：鍵缺席時以持久化分頁反序補種並立即寫入（spec Scenario 升級後首次啟動自分頁補種）", async () => {
+    // 依序開啟 A、B 後關閉 app：B 是最後開啟也是活躍分頁。
+    persistTabs([tab("A", "a"), tab("B", "b")], "local:B");
+    const store = makeStore(fakeDataSource(), openable());
+    await store.getState().restoreTabs();
+    expect(store.getState().recents.map((r) => locatorKey(r.locator))).toEqual([
+      "local:B",
+      "local:A",
+    ]);
+    expect(readPersistedRecents()?.map((r) => locatorKey(r.locator))).toEqual([
+      "local:B",
+      "local:A",
+    ]);
+  });
+
+  it("restoreTabs：鍵已存在（空清單）時不補種", async () => {
+    persistTabs([tab("A", "a"), tab("B", "b")], null);
+    persistRecents([]);
+    const store = makeStore(fakeDataSource(), openable());
+    await store.getState().restoreTabs();
+    expect(store.getState().recents).toEqual([]);
+    expect(readPersistedRecents()).toEqual([]);
+  });
+
+  it("restoreTabs：鍵為壞資料時歸零且不補種（spec Scenario 壞資料歸零且不補種）", async () => {
+    persistTabs([tab("A", "a"), tab("B", "b")], null);
+    localStorage.setItem(RECENTS_STORAGE_KEY, "{not json");
+    const store = makeStore(fakeDataSource(), openable());
+    await store.getState().restoreTabs();
+    expect(store.getState().recents).toEqual([]);
+    expect(localStorage.getItem(RECENTS_STORAGE_KEY)).toBe("{not json");
+    // 下一次成功開啟即把鍵寫回 version 1 的合法內容，且只含這一筆。
+    await store.getState().openProjectAt("A");
+    expect(readPersistedRecents()?.map((r) => locatorKey(r.locator))).toEqual(["local:A"]);
+    expect(JSON.parse(localStorage.getItem(RECENTS_STORAGE_KEY) ?? "{}").version).toBe(1);
+  });
+
+  it("restoreTabs 還原活躍分頁不把其他分頁記入記錄", async () => {
+    persistTabs([tab("A", "a"), tab("B", "b")], "local:A");
+    persistRecents([{ locator: { kind: "local", root: "A" }, name: "a" }]);
+    const store = makeStore(fakeDataSource(), openable());
+    await store.getState().restoreTabs();
+    expect(store.getState().recents.map((r) => locatorKey(r.locator))).toEqual(["local:A"]);
   });
 });

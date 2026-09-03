@@ -38,6 +38,13 @@ import {
   type ProjectTab,
 } from "./tabs";
 import {
+  persistRecents,
+  readPersistedRecents,
+  removeRecent,
+  upsertRecent,
+  type RecentEntry,
+} from "./recents";
+import {
   assetPrompt,
   readAssetSkips,
   writeAssetSkip,
@@ -279,6 +286,10 @@ export interface AppState {
   pendingAdopt: string | null;
   /** 失效分頁錯誤（locator key → 單行訊息）。 */
   tabErrors: Record<string, string>;
+  /** 最近開啟清單（design D1）：曾成功開啟過的 workspace，最新在前，與分頁列分離。 */
+  recents: RecentEntry[];
+  /** 自最近開啟清單移除一筆（狀態與 localStorage 同步）。 */
+  forgetRecent: (key: string) => void;
   /** 尚無 session 的 remote 分頁復原狀態；執行期限定、不持久化。 */
   remoteRecovery: Record<string, RemoteWorkspaceRecoveryState>;
   /** null＝chooser 關閉；物件承載伺服器頁或 remote marker 的預選意圖。 */
@@ -298,11 +309,14 @@ export interface AppState {
   /** 開啟專案（dialog 或還原路徑）：三態分流。 */
   openProjectAt: (path: string) => Promise<void>;
   /** 開啟 remote workspace（remote-data-source 決策 6）：handshake 成功才建
-   * session 與分頁並切至看板；失敗上拋、由開啟表單就地呈現。 */
+   * session 與分頁並切至看板；失敗上拋、由開啟表單就地呈現。第四參數
+   * dropLocalRoot 供本機資料夾轉 remote 的路徑移除同一資料夾的 local 最近
+   * 開啟條目（design D2：同一資料夾不留兩筆）。 */
   openRemoteWorkspace: (
     connectionId: string,
     target: string,
     checkoutRoot?: string,
+    dropLocalRoot?: string,
   ) => Promise<void>;
   /** 正式遷移完成後，以同 checkoutRoot 的 remote session 原地取代 local 分頁。 */
   replaceLocalWorkspaceWithRemote: (
@@ -380,7 +394,9 @@ export interface AppState {
   /** needs-reauth 導向伺服器簽時要聚焦的 connection id。 */
   reauthConnectionId: string | null;
   openConnectionReauth: (connectionId: string) => void;
-  refreshConnections: () => Promise<void>;
+  /** 重整連線清單。回傳讀取是否成功——失敗時清單保留現值，呼叫端據此區分
+   * 「清單真的空」與「讀不到」（chooser 的最近開啟列靠它判定連線已移除）。 */
+  refreshConnections: () => Promise<boolean>;
   /** 新增（同 origin 即更新顯示名）並隨即進入登入流程（決策 7）；
    * 無效輸入上拋、由表單就地呈現。回傳正規化 origin（決策三——供發起登入的
    * 介面追蹤該連線的互動狀態）；無 adapter 時回 null。 */
@@ -823,12 +839,22 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       return trimmed.split(/[\\/]/).pop() || path;
     }
 
+    /** 成功開啟的共同記入（design D2）：算出記到最前的新清單。dropKey 用於
+     * 本機資料夾轉 remote 的路徑——同一資料夾不留 local 與 remote 兩筆。
+     * 純計算不落地——持久化由呼叫端在 set 之後與 persistTabs 一起做，
+     * 兩者之間拋錯才不會留下「已寫檔、狀態沒進去」的分歧。 */
+    function recordRecent(entry: RecentEntry, dropKey?: string): RecentEntry[] {
+      const base = dropKey ? removeRecent(get().recents, dropKey) : get().recents;
+      return upsertRecent(base, entry);
+    }
+
     /** 命中專案的共同尾聲：upsert session 與分頁（去重）、設 activeKey、清對話框、
      * persist、顯式重掛監看、整批 refresh。probe 為純探測，其回報值即後端真相。 */
     async function enterProject(root: string, name: string) {
       const locator = { kind: "local", root } as const;
       const key = locatorKey(locator);
       const tabs = upsertTab(get().tabs, { locator, name });
+      const recents = recordRecent({ locator, name });
       const sessions = { ...get().sessions };
       if (!sessions[key]) sessions[key] = createSession(root, name);
       // 淘汰出分頁列的 session 一併回收（上限丟最舊）。
@@ -839,6 +865,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       delete tabErrors[key];
       set({
         tabs,
+        recents,
         sessions,
         tabErrors,
         activeKey: key,
@@ -847,6 +874,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         ...workspaceActivationState(key),
       });
       persistTabs(tabs, key);
+      persistRecents(recents);
       // 整批載入在翻頁的同一同步段內起跑（其計數 +1 在第一個 await 之前）——
       // 監看掛載可達秒級，先等它就會留下「已翻頁、尚未起載入」的空窗假空態。
       const loading = get().refresh();
@@ -868,12 +896,16 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     /** remote session 的入列尾聲（remote-data-source 決策 6）：upsert 分頁與
      * session、設 activeKey、persist、整批 refresh。無檔案監看——事件面由
      * session 的 remote-workspace-changed 訂閱承擔。 */
-    async function adoptRemoteSession(session: WorkspaceSession) {
+    async function adoptRemoteSession(session: WorkspaceSession, dropRecentKey?: string) {
       const key = session.id;
       const tabs = upsertTab(get().tabs, {
         locator: session.locator,
         name: session.descriptor.name,
       });
+      const recents = recordRecent(
+        { locator: session.locator, name: session.descriptor.name },
+        dropRecentKey,
+      );
       const sessions = { ...get().sessions, [key]: session };
       const live = new Set(tabs.map((t) => locatorKey(t.locator)));
       for (const k of Object.keys(sessions)) if (!live.has(k)) delete sessions[k];
@@ -884,6 +916,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       delete remoteRecovery[key];
       set({
         tabs,
+        recents,
         sessions,
         tabErrors,
         remoteRecovery,
@@ -893,6 +926,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         ...workspaceActivationState(key),
       });
       persistTabs(tabs, key);
+      persistRecents(recents);
       await get().refresh();
     }
 
@@ -954,7 +988,14 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           // activeKey 先於 session 成立時，必須顯式觸發事件訂閱重新掛載。
           sessionEpoch: state.sessionEpoch + 1,
         }));
+        // 重連是一次成功開啟（design D2）——remote 分頁的順序不得停在舊值。
+        const recents = recordRecent({
+          locator: session.locator,
+          name: session.descriptor.name,
+        });
+        set({ recents });
         persistTabs(tabs, get().activeKey);
+        persistRecents(recents);
         if (get().activeKey === key) await get().refresh();
       } catch (error) {
         if (!isCurrentRemoteOpen(key, generation)) return;
@@ -1488,6 +1529,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     pendingInit: null,
     pendingAdopt: null,
     tabErrors: {},
+    recents: [],
     remoteRecovery: {},
     workspaceChooser: null,
     pendingRemoteConflict: null,
@@ -1565,7 +1607,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       // 先完成只讀 handshake，再改名本機 openspec/；任一步失敗都不建立 remote 分頁。
       const session = await openRemote(connection.id, target, conflict.path);
       await migration.adoptRemote(conflict.path);
-      await adoptRemoteSession(session);
+      await adoptRemoteSession(session, locatorKey({ kind: "local", root: conflict.path }));
       set({ pendingRemoteConflict: null, boardView: "board" });
     },
 
@@ -1720,12 +1762,14 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       set({ boardView: "settings", reauthConnectionId: connectionId });
     },
     async refreshConnections() {
-      if (!connectionsAdapter) return;
+      if (!connectionsAdapter) return false;
       try {
         set({ connections: await connectionsAdapter.list() });
+        return true;
       } catch {
         // 清單讀取失敗保留現值——registry 壞檔在 Rust 側已歸零，走到這裡
         // 多半是暫時性環境問題，不清空使用者眼前的清單。
+        return false;
       }
     },
     async addConnection(baseUrl, name) {
@@ -1877,10 +1921,10 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
                 probe.repo,
                 inspection.tools,
               );
-              await get().openRemoteWorkspace(connection.id, target, path);
+              await get().openRemoteWorkspace(connection.id, target, path, path);
             }
           } else {
-            await get().openRemoteWorkspace(connection.id, target, path);
+            await get().openRemoteWorkspace(connection.id, target, path, path);
           }
         }
       } catch (e) {
@@ -1895,13 +1939,16 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       if (picked) await get().openProjectAt(picked);
     },
 
-    async openRemoteWorkspace(connectionId, target, checkoutRoot) {
+    async openRemoteWorkspace(connectionId, target, checkoutRoot, dropLocalRoot) {
       if (!openRemote) return;
       // handshake fail-closed（決策 6）：失敗原樣上拋、不建分頁不建 session。
       const session = checkoutRoot
         ? await openRemote(connectionId, target, checkoutRoot)
         : await openRemote(connectionId, target);
-      await adoptRemoteSession(session);
+      await adoptRemoteSession(
+        session,
+        dropLocalRoot ? locatorKey({ kind: "local", root: dropLocalRoot }) : undefined,
+      );
       // 開啟 workspace 的意圖是看板——自伺服器頁切回看板呈現 server 資料。
       set({ boardView: "board", workspaceChooser: null });
     },
@@ -1936,8 +1983,10 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const tabErrors = { ...get().tabErrors };
       delete tabErrors[localKey];
       delete tabErrors[remoteKey];
+      const recents = recordRecent(replacement, localKey);
       set({
         tabs,
+        recents,
         sessions,
         tabErrors,
         activeKey: remoteKey,
@@ -1946,6 +1995,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         ...workspaceActivationState(remoteKey),
       });
       persistTabs(tabs, remoteKey);
+      persistRecents(recents);
       await get().refresh();
     },
 
@@ -1961,13 +2011,16 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           delete tabErrors[key];
           const remoteRecovery = { ...get().remoteRecovery };
           delete remoteRecovery[key];
+          const recents = recordRecent({ locator: tab.locator, name: tab.name });
           set({
             activeKey: key,
             tabErrors,
             remoteRecovery,
+            recents,
             ...workspaceActivationState(key),
           });
           persistTabs(get().tabs, key);
+          persistRecents(recents);
           await get().refresh();
         } else {
           await reconnectRemoteTab(key, true);
@@ -2013,6 +2066,12 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         ...workspaceActivationState(key),
       });
       persistTabs(get().tabs, key);
+    },
+
+    forgetRecent(key) {
+      const recents = removeRecent(get().recents, key);
+      set({ recents });
+      persistRecents(recents);
     },
 
     closeTab(key) {
@@ -2154,7 +2213,13 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       if (!workspace) return;
       const persisted = readPersistedTabs();
       const tabs: ProjectTab[] = persisted.tabs.map((t) => ({ ...t }));
-      set({ tabs });
+      // 最近開啟（design D5）：鍵缺席即升級後首次啟動，以分頁反序（最後開啟在最前）
+      // 補種一次；鍵已存在（含空清單與壞資料歸零）照用、不補種。
+      const storedRecents = readPersistedRecents();
+      const recents =
+        storedRecents ?? [...tabs].reverse().map(({ locator, name }) => ({ locator, name }));
+      if (storedRecents === null) persistRecents(recents);
+      set({ tabs, recents });
       // 首啟活躍專案由持久化 activeKey 決定（決策 4/6）。
       const activeTab = persisted.activeKey
         ? tabs.find((t) => locatorKey(t.locator) === persisted.activeKey)

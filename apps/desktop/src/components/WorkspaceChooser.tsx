@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Cloud, Folder, GitBranch, Plus, Server } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Cloud, Folder, GitBranch, Plus, Server, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -21,6 +21,8 @@ import type {
   ScopesView,
 } from "../adapter/connections";
 import type { WorkspaceAdapter } from "../adapter/workspace";
+import type { RecentEntry } from "../recents";
+import { locatorKey } from "../session";
 import type { ConnectionPhase } from "../store";
 import { AwaitingApproval, PatLoginInput } from "./connectionLogin";
 
@@ -50,12 +52,18 @@ export interface WorkspaceChooserProps {
   onCancelLogin: (origin: string) => void;
   /** PAT 單次過境提交。 */
   onSubmitPat: (origin: string, pat: string) => void;
-  onRefreshConnections: () => Promise<void>;
+  /** 重整連線清單；回傳讀取是否成功——失敗時清單保留現值，最近開啟列據此
+   * 不把 remote 條目誤判成「連線已移除」。 */
+  onRefreshConnections: () => Promise<boolean>;
   onOpenRemote: (
     connectionId: string,
     target: string,
     checkoutRoot?: string,
   ) => Promise<void>;
+  /** 最近開啟清單（design D3）：已在 App 層濾掉分頁列上開著的項目。 */
+  recents: RecentEntry[];
+  /** 自最近開啟清單移除一筆（以 locator key）。 */
+  onRemoveRecent: (key: string) => void;
   /** 伺服器頁入口：預選已登入 connection 並直達 scopes。 */
   initialConnectionId?: string | null;
   /** remote marker 未登入時：server 步驟預填 marker url。 */
@@ -205,6 +213,8 @@ export function WorkspaceChooser({
   onSubmitPat,
   onRefreshConnections,
   onOpenRemote,
+  recents,
+  onRemoveRecent,
   initialConnectionId = null,
   initialServerUrl = null,
   initialScope = null,
@@ -228,6 +238,12 @@ export function WorkspaceChooser({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [localProject, setLocalProject] = useState<{ root: string; name: string } | null>(null);
+  /** 最近開啟列的錯誤態（design D4）：只活在本面，chooser 重開即清空。 */
+  const [recentErrors, setRecentErrors] = useState<Record<string, string>>({});
+  /** 連線清單是否讀取成功——載入中或讀取失敗時，remote 列都不得判成
+   * 「連線已移除」：清單初值是空陣列，讀取失敗又保留現值，先判斷會把有效
+   * 條目誤標成已移除且停用開啟。 */
+  const [connectionsReady, setConnectionsReady] = useState(false);
 
   async function selectConnection(selected: ConnectionView) {
     setConnection(selected);
@@ -286,7 +302,8 @@ export function WorkspaceChooser({
 
   useEffect(() => {
     if (!open) return;
-    void onRefreshConnections();
+    setConnectionsReady(false);
+    void onRefreshConnections().then(setConnectionsReady, () => setConnectionsReady(false));
     setConnection(null);
     setScopes(null);
     setScope(null);
@@ -300,6 +317,7 @@ export function WorkspaceChooser({
     setError(null);
     setNotice(null);
     setLocalProject(null);
+    setRecentErrors({});
     const selected = initialConnectionId
       ? connections.find((entry) => entry.id === initialConnectionId && entry.loggedIn)
       : undefined;
@@ -339,6 +357,49 @@ export function WorkspaceChooser({
     await onOpenLocal(root);
   }
 
+  /** 最近開啟列（design D4）：本機先探測再沿既有開啟流程（分流由 openProjectAt 承擔）；
+   * remote 以原 connection／scope／checkout 走既有 remote 開啟。失敗只標記該列。 */
+  async function openRecent(entry: RecentEntry) {
+    const key = locatorKey(entry.locator);
+    setBusy(true);
+    setError(null);
+    try {
+      if (entry.locator.kind === "local") {
+        await workspace.openProject(entry.locator.root);
+        onOpenChange(false);
+        await onOpenLocal(entry.locator.root);
+      } else {
+        const { connectionId, projectId, repoId, checkoutRoot } = entry.locator;
+        // 綁著 checkout 的條目先驗資料夾仍與該 scope 一致（與其他 checkout 開啟
+        // 路徑同一步）——handshake 只問伺服器，不會發現資料夾已消失。這一步要
+        // connection 的 origin；規格模式（無 checkout 綁定）只需 connectionId，
+        // 不得因清單未就緒而被擋下。
+        if (checkoutRoot) {
+          const connection = connections.find((c) => c.id === connectionId);
+          if (!connection) {
+            // 清單未就緒時列仍是啟用的——此處補判，理由與就緒後的列同一句純文字。
+            setRecentErrors((prev) => ({
+              ...prev,
+              [key]: t("chooser.recentConnectionMissing"),
+            }));
+            return;
+          }
+          await connectionAdapter.inspectCheckout(
+            checkoutRoot,
+            connection.origin,
+            projectId,
+            repoId,
+          );
+        }
+        await onOpenRemote(connectionId, `${projectId}/${repoId}`, checkoutRoot);
+      }
+    } catch (reason) {
+      setRecentErrors((prev) => ({ ...prev, [key]: String(reason) }));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function migrateLocal(root: string) {
     if (!onRequestMigration) return;
     setBusy(true);
@@ -364,7 +425,7 @@ export function WorkspaceChooser({
     setNotice(null);
     try {
       const origin = await onAddServer(url, serverName.trim() || url);
-      await onRefreshConnections();
+      setConnectionsReady(await onRefreshConnections());
       setServerName("");
       setPendingOrigin(origin ?? null);
       setNotice(t("chooser.serverAdded"));
@@ -490,6 +551,88 @@ export function WorkspaceChooser({
               description={t("chooser.serverSourceDesc")}
               onClick={() => setStep("server")}
             />
+          </div>
+        )}
+
+        {step === "source" && !localProject && recents.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <p className="m-0 text-xs font-medium text-muted-foreground">
+              {t("chooser.recentTitle")}
+            </p>
+            <div className="flex max-h-[240px] flex-col gap-1 overflow-y-auto pr-1">
+              {recents.map((entry) => {
+                const key = locatorKey(entry.locator);
+                const connectionId =
+                  entry.locator.kind === "remote" ? entry.locator.connectionId : null;
+                const connection = connectionId
+                  ? connections.find((c) => c.id === connectionId)
+                  : null;
+                // 連線清單載入完成前不下判斷；載入後才分「已移除」與「已登出」。
+                const connectionReason =
+                  connectionId && connectionsReady
+                    ? !connection
+                      ? t("chooser.recentConnectionMissing")
+                      : !connection.loggedIn
+                        ? t("chooser.recentConnectionLoggedOut")
+                        : null
+                    : null;
+                const reason = recentErrors[key] ?? connectionReason;
+                const subtitle =
+                  entry.locator.kind === "local" ? entry.locator.root : (connection?.name ?? null);
+                return (
+                  <div
+                    key={key}
+                    className={cn(
+                      "group flex items-start gap-1 rounded-md border px-2 py-1.5",
+                      reason ? "border-destructive/40" : "border-border hover:bg-muted/60",
+                    )}
+                  >
+                    <button
+                      type="button"
+                      disabled={busy || Boolean(reason)}
+                      onClick={() => void openRecent(entry)}
+                      className="flex min-w-0 flex-1 items-start gap-2 text-left disabled:cursor-not-allowed"
+                    >
+                      <span className="mt-0.5 shrink-0 text-muted-foreground">
+                        {reason ? (
+                          <AlertTriangle className="h-4 w-4 text-destructive" />
+                        ) : entry.locator.kind === "local" ? (
+                          <Folder className="h-4 w-4" />
+                        ) : (
+                          <Cloud className="h-4 w-4" />
+                        )}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium text-foreground">
+                          {entry.name}
+                        </span>
+                        {subtitle && (
+                          <span
+                            className={cn(
+                              "block truncate text-xs text-muted-foreground",
+                              entry.locator.kind === "local" && "font-mono",
+                            )}
+                          >
+                            {subtitle}
+                          </span>
+                        )}
+                        {reason && (
+                          <span className="block text-xs text-destructive">{reason}</span>
+                        )}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`${t("chooser.recentRemove")} ${entry.name}`}
+                      onClick={() => onRemoveRecent(key)}
+                      className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 

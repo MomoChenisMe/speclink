@@ -1,0 +1,126 @@
+{
+  "version": 2,
+  "change": "chooser-recent-workspaces",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 RED：新增 `apps/desktop/src/__tests__/recents.test.ts`，斷言 upsertRecent 最新在前、同 locator key 去重上移、第 21 筆記入時丟最舊（MAX_RECENTS 為 20）；removeRecent 只移除該 key；persistRecents 寫入 localStorage 鍵 `speclink.recentWorkspaces` 的 `{ version: 1, entries }`；readPersistedRecents 於鍵缺席回 null、壞 JSON／version 非 1／entries 非陣列回空陣列、locator 形狀不識別或 name 非字串的條目逐筆丟棄；visibleRecents 濾掉分頁列上的 key 且保持順序。驗證：`npm test -w @speclink/desktop -- recents` 因模組尚不存在而紅。",
+      "files": [
+        "apps/desktop/src/tabs.ts",
+        "apps/desktop/src/__tests__/recents.test.ts",
+        "apps/desktop/src/recents.ts"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 RED：擴充 `apps/desktop/src/__tests__/store.test.ts`，斷言本機開啟成功後 store 的 recents 最前一筆為該 locator 且 localStorage 已寫入；remote session 採納後同；關閉分頁後 recents 不變；replaceLocalWorkspaceWithRemote 後該 root 的 local 條目消失、remote 條目在最前；removeRecent 自狀態與 localStorage 移除該筆；restoreTabs 於鍵缺席時以持久化分頁反序（最後開啟在最前）補種並立即寫入，鍵已存在（含空陣列與壞資料）時不補種。驗證：`npm test -w @speclink/desktop -- store` 紅。",
+      "files": [
+        "apps/desktop/src/__tests__/remoteOpen.test.ts",
+        "apps/desktop/src/__tests__/workspace.test.ts"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 GREEN：`apps/desktop/src/store.ts` 新增 recents 狀態（初始空陣列）與 removeRecent(key) 動作，在 enterProject、adoptRemoteSession、replaceLocalWorkspaceWithRemote 三個成功尾聲於 persistTabs 旁記入並持久化（轉 remote 時先移除 local 條目），restoreTabs 讀取 readPersistedRecents 並依 D5 升級補種。驗證：2.1 的測試全綠，且 `npm test -w @speclink/desktop -- workspace remoteOpen store tabs session` 無回歸。",
+      "files": [
+        "apps/desktop/src/store.ts"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 RED：擴充 `apps/desktop/src/__tests__/workspaceChooser.test.tsx`，斷言最近開啟清單需求的可觀察行為：recents 為空時第一步無「最近開啟」標題；本機列顯示資料夾名稱與完整路徑、remote 列顯示連線名稱與「projectName/repoName」；點本機列先呼叫 workspace.openProject 探測、成功後關閉 chooser 並呼叫 onOpenLocal；探測拋錯時該列顯示錯誤原因、不呼叫 onOpenLocal、chooser 保持開啟；點 remote 列以 connectionId、`projectId/repoId` 與 checkoutRoot 呼叫 onOpenRemote，拋錯時顯示原因；connectionId 不在 connections 時該列直接呈現「連線已移除」且開啟鈕停用、移除鈕可用；移除鈕呼叫 onRemoveRecent；既有「本機資料夾」「Speclink Server」兩張來源卡的既有測試不變。chooser.recentTitle、chooser.recentRemove、chooser.recentConnectionMissing 三鍵尚未存在時，區段測試以文案定位即失敗。驗證：`npm test -w @speclink/desktop -- workspaceChooser` 紅。",
+      "files": [
+        "apps/desktop/src/__tests__/workspaceChooser.test.tsx"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.2 GREEN：`apps/desktop/src/components/WorkspaceChooser.tsx` 新增 recents 與 onRemoveRecent props，在 source 步驟（未進入 localProject 子畫面時）畫「最近開啟」區段——每列為開啟鈕加移除鈕（相鄰、不巢狀）、圖示（Folder／Cloud／AlertTriangle）、顯示名與副標、recentErrors 元件狀態並於 chooser 開啟時清空；`apps/desktop/src/i18n/messages.ts` 新增三鍵的 zh-TW（「最近開啟」「自最近開啟移除」「連線已移除」）與 en（「Recently opened」「Remove from recently opened」「Connection removed」）文案；`apps/desktop/src/App.tsx` 以 visibleRecents(s.recents, s.tabs) 做顯示期過濾後傳入 chooser，並接 s.removeRecent。驗證：`npm test -w @speclink/desktop -- workspaceChooser messages App` 全綠（`apps/desktop/src/__tests__/messages.test.ts` 的 zh-TW／en 鍵集對稱檢查守住兩語系同鍵）。",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "apps/desktop/src/i18n/messages.ts"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "4.1 「專案分頁列存於 app 本機」需求措辭在程式碼側的對應：改寫 `apps/desktop/src/tabs.ts` 與 `apps/desktop/src/__tests__/tabs.test.ts` 的檔頭注解為「分頁列只管目前開著的專案；最近開啟另見 recents.ts」，分頁邏輯與持久化 v2 格式零改動。驗證：`npm test -w @speclink/desktop -- tabs` 綠，且 tabs.ts 的 git diff 只含注解與 isLocator 匯出。",
+      "files": [
+        "apps/desktop/src/__tests__/tabs.test.ts"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M1H6RV5CQSHTACHZCZE01ASV",
+      "taskDesc": "1.1 RED：新增 `apps/desktop/src/__tests__/recents.test.ts`，斷言 upsertRecent 最新在前、同 locator key 去重上移、第 21 筆記入時丟最舊（MAX_RECENTS 為 20）；removeRecent 只移除該 key；persistRecents 寫入 localStorage 鍵 `speclink.recentWorkspaces` 的 `{ version: 1, entries }`；readPersistedRecents 於鍵缺席回 null、壞 JSON／version 非 1／entries 非陣列回空陣列、locator 形狀不識別或 name 非字串的條目逐筆丟棄；visibleRecents 濾掉分頁列上的 key 且保持順序。驗證：`npm test -w @speclink/desktop -- recents` 因模組尚不存在而紅。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "58d1bae532dd477930cd3ed08a12dd876a5b9324",
+      "touchedFiles": [
+        "apps/desktop/src/tabs.ts",
+        "apps/desktop/src/__tests__/recents.test.ts",
+        "apps/desktop/src/recents.ts"
+      ],
+      "recordedAt": "2026-09-02T14:10:03Z"
+    },
+    {
+      "taskId": "tsk_01M1H6RV5C0HX6PQMH83QHC3ER",
+      "taskDesc": "2.1 RED：擴充 `apps/desktop/src/__tests__/store.test.ts`，斷言本機開啟成功後 store 的 recents 最前一筆為該 locator 且 localStorage 已寫入；remote session 採納後同；關閉分頁後 recents 不變；replaceLocalWorkspaceWithRemote 後該 root 的 local 條目消失、remote 條目在最前；removeRecent 自狀態與 localStorage 移除該筆；restoreTabs 於鍵缺席時以持久化分頁反序（最後開啟在最前）補種並立即寫入，鍵已存在（含空陣列與壞資料）時不補種。驗證：`npm test -w @speclink/desktop -- store` 紅。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "58d1bae532dd477930cd3ed08a12dd876a5b9324",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/remoteOpen.test.ts",
+        "apps/desktop/src/__tests__/workspace.test.ts"
+      ],
+      "recordedAt": "2026-09-02T14:11:25Z"
+    },
+    {
+      "taskId": "tsk_01M1H6RV5C9805B0S4D8SVRQC2",
+      "taskDesc": "2.2 GREEN：`apps/desktop/src/store.ts` 新增 recents 狀態（初始空陣列）與 removeRecent(key) 動作，在 enterProject、adoptRemoteSession、replaceLocalWorkspaceWithRemote 三個成功尾聲於 persistTabs 旁記入並持久化（轉 remote 時先移除 local 條目），restoreTabs 讀取 readPersistedRecents 並依 D5 升級補種。驗證：2.1 的測試全綠，且 `npm test -w @speclink/desktop -- workspace remoteOpen store tabs session` 無回歸。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "58d1bae532dd477930cd3ed08a12dd876a5b9324",
+      "touchedFiles": [
+        "apps/desktop/src/store.ts"
+      ],
+      "recordedAt": "2026-09-02T14:13:37Z"
+    },
+    {
+      "taskId": "tsk_01M1H6RV5CJA6WTDZW66C2W92B",
+      "taskDesc": "3.1 RED：擴充 `apps/desktop/src/__tests__/workspaceChooser.test.tsx`，斷言最近開啟清單需求的可觀察行為：recents 為空時第一步無「最近開啟」標題；本機列顯示資料夾名稱與完整路徑、remote 列顯示連線名稱與「projectName/repoName」；點本機列先呼叫 workspace.openProject 探測、成功後關閉 chooser 並呼叫 onOpenLocal；探測拋錯時該列顯示錯誤原因、不呼叫 onOpenLocal、chooser 保持開啟；點 remote 列以 connectionId、`projectId/repoId` 與 checkoutRoot 呼叫 onOpenRemote，拋錯時顯示原因；connectionId 不在 connections 時該列直接呈現「連線已移除」且開啟鈕停用、移除鈕可用；移除鈕呼叫 onRemoveRecent；既有「本機資料夾」「Speclink Server」兩張來源卡的既有測試不變。chooser.recentTitle、chooser.recentRemove、chooser.recentConnectionMissing 三鍵尚未存在時，區段測試以文案定位即失敗。驗證：`npm test -w @speclink/desktop -- workspaceChooser` 紅。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "58d1bae532dd477930cd3ed08a12dd876a5b9324",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/workspaceChooser.test.tsx"
+      ],
+      "recordedAt": "2026-09-02T14:14:50Z"
+    },
+    {
+      "taskId": "tsk_01M1H6RV5CXHKM2B7MBCATNAW5",
+      "taskDesc": "3.2 GREEN：`apps/desktop/src/components/WorkspaceChooser.tsx` 新增 recents 與 onRemoveRecent props，在 source 步驟（未進入 localProject 子畫面時）畫「最近開啟」區段——每列為開啟鈕加移除鈕（相鄰、不巢狀）、圖示（Folder／Cloud／AlertTriangle）、顯示名與副標、recentErrors 元件狀態並於 chooser 開啟時清空；`apps/desktop/src/i18n/messages.ts` 新增三鍵的 zh-TW（「最近開啟」「自最近開啟移除」「連線已移除」）與 en（「Recently opened」「Remove from recently opened」「Connection removed」）文案；`apps/desktop/src/App.tsx` 以 visibleRecents(s.recents, s.tabs) 做顯示期過濾後傳入 chooser，並接 s.removeRecent。驗證：`npm test -w @speclink/desktop -- workspaceChooser messages App` 全綠（`apps/desktop/src/__tests__/messages.test.ts` 的 zh-TW／en 鍵集對稱檢查守住兩語系同鍵）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "58d1bae532dd477930cd3ed08a12dd876a5b9324",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "apps/desktop/src/i18n/messages.ts"
+      ],
+      "recordedAt": "2026-09-02T14:16:29Z"
+    },
+    {
+      "taskId": "tsk_01M1H6RV5CMEKWMH1DGT7TG43S",
+      "taskDesc": "4.1 「專案分頁列存於 app 本機」需求措辭在程式碼側的對應：改寫 `apps/desktop/src/tabs.ts` 與 `apps/desktop/src/__tests__/tabs.test.ts` 的檔頭注解為「分頁列只管目前開著的專案；最近開啟另見 recents.ts」，分頁邏輯與持久化 v2 格式零改動。驗證：`npm test -w @speclink/desktop -- tabs` 綠，且 tabs.ts 的 git diff 只含注解與 isLocator 匯出。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "58d1bae532dd477930cd3ed08a12dd876a5b9324",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/tabs.test.ts"
+      ],
+      "recordedAt": "2026-09-02T14:17:26Z"
+    }
+  ]
+}
