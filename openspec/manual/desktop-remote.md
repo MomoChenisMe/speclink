@@ -60,7 +60,7 @@ app 先嘗試裝置登入。server 支援時：
 
 視窗頂列、空狀態、分頁列的加號、伺服器頁籤，四個入口都通到同一個「新增 Workspace」選擇器。
 
-1. 第一步選來源：「本機資料夾」或「Speclink Server」。從伺服器頁籤進來時，該 server 已預選，直接到 scope 選擇步驟。
+1. 第一步選來源：「本機資料夾」或「Server」。從伺服器頁籤進來時，該 server 已預選，直接到 scope 選擇步驟。
 2. 選一個已登入的 server。也可以就地新增並登入。
 3. 從 scopes 清單選一個 Project 底下的 Repo。清單依 Project 分組，單選。你不必手打任何識別字串。
 4. 選要不要連接 checkout。略過時，app 以 spec-only 開啟 remote 分頁。

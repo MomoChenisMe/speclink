@@ -157,7 +157,7 @@ function recentOpenButton(name: RegExp): HTMLButtonElement {
 }
 
 async function chooseDesktopRepo() {
-  fireEvent.click(screen.getByRole("button", { name: /Speclink Server/ }));
+  fireEvent.click(screen.getByRole("button", { name: /^Server/ }));
   fireEvent.click(screen.getByRole("button", { name: /團隊 Server/ }));
   await waitFor(() => expect(screen.getByRole("radio", { name: /Desktop/ })).toBeTruthy());
   fireEvent.click(screen.getByRole("radio", { name: /Desktop/ }));
@@ -165,6 +165,19 @@ async function chooseDesktopRepo() {
 }
 
 describe("WorkspaceChooser", () => {
+  // 來源卡不綁產品品牌：卡名與其下一步標題都只稱 Server。定位錨在開頭，
+  // 否則會連最近開啟的 remote 列（顯示名含 Server）一起命中。
+  it("第一步來源卡稱「Server」，點入後標題為「選擇 Server」", async () => {
+    await renderChooser({ recents: [] });
+
+    const source = screen.getByRole("button", { name: /^Server/ });
+    expect(source.textContent).toContain("Server");
+    expect(source.textContent).not.toContain("Speclink Server");
+
+    fireEvent.click(source);
+    expect(screen.getByText("選擇 Server")).toBeTruthy();
+  });
+
   it("來源→已登入 server→scopes 分組單選→略過 checkout 開啟 spec-only 分頁", async () => {
     const open = vi.fn().mockResolvedValue(undefined);
     const { adapter, onOpenChange } = await renderChooser({ onOpenRemote: open });
@@ -370,7 +383,7 @@ describe("WorkspaceChooser", () => {
     const adapter = fakeConnections({ scopes: vi.fn().mockResolvedValue({ projects: [] }) });
     await renderChooser({ adapter });
 
-    fireEvent.click(screen.getByRole("button", { name: /Speclink Server/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Server/ }));
     fireEvent.click(screen.getByRole("button", { name: /團隊 Server/ }));
 
     expect((await screen.findByTestId("scopes-empty")).textContent).toContain(
@@ -385,7 +398,7 @@ describe("WorkspaceChooser", () => {
     const add = vi.fn().mockResolvedValue(undefined);
     await renderChooser({ connections: [], onAddServer: add });
 
-    fireEvent.click(screen.getByRole("button", { name: /Speclink Server/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Server/ }));
     expect(screen.getByText(/目前沒有已登入的 server/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "新增 server" }));
     fireEvent.change(screen.getByLabelText("伺服器位址（http://…）"), {
@@ -561,7 +574,7 @@ describe("WorkspaceChooser 登入回饋", () => {
 
   /** 走到 server 步驟並送出新增並登入。 */
   function addAndLogin() {
-    fireEvent.click(screen.getByRole("button", { name: /Speclink Server/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Server/ }));
     fireEvent.click(screen.getByRole("button", { name: "新增 server" }));
     fireEvent.change(screen.getByLabelText("伺服器位址（http://…）"), {
       target: { value: "http://localhost:8080" },
@@ -642,7 +655,7 @@ describe("最近開啟清單（spec 需求「最近開啟清單」；design D3 �
     expect(remote.textContent).toContain("Speclink/Desktop");
     // 既有兩張來源卡仍在，且可及性名稱不變。
     expect(screen.getByRole("button", { name: /本機資料夾/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Speclink Server/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Server/ })).toBeTruthy();
   });
 
   it("點本機列先探測再沿既有本機開啟流程並關閉 chooser（spec Scenario 點本機條目直接開啟）", async () => {

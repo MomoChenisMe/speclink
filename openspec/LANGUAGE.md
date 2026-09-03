@@ -211,3 +211,9 @@
 - **definition**: 手冊頁的來源規格更新日（規格內最新的 @trace updated）不早於（晚於或同日）該頁生成日（frontmatter 的 generated）的狀態。生成模式只重生這種頁；desktop 手冊頁以同一基準標示。
 - **avoid**: 過時、stale（中文散文中）
 - **why**: 與規格的「過期」章語意平行——都是「源頭比衍生物新」；加「可能」是因為日期比對只證明來源動過，不證明內容真的變了。2026-09-02 變更「manual-skill」定案。
+
+### Server
+
+- **definition**: speclink server 服務端——桌面 app 連線的那一端（`speclink-server`）。桌面「新增 Workspace」第一步的來源卡、其下一步標題與伺服器連線說明皆以此稱之。
+- **avoid**: Speclink Server
+- **why**: 使用者要選的是「哪一台 server」，不是「哪一個品牌的 server」；品牌前綴綁死了通用概念，且同一個 chooser 內既有的「遷移到 Server…」「以 Server 為準」早已不帶前綴，前後不一致。直出英文而非中譯，沿用既有的「開發者工具中原生詞即最直觀」裁定線（先例：config.yaml 頁籤、討論 slug、worktree 直出）——本專案的使用者就是會 curl 自己那台 server 的開發者。此 avoid 詞為純 ASCII，依 `ui-copy-vocabulary` 的既有設計不入機械守門集，由撰稿時人工判斷。「Server」與「伺服器」的中英用詞統一是另一個待決問題，本詞條不預判其結果。2026-09-03 變更「server-wording-debrand」定案。

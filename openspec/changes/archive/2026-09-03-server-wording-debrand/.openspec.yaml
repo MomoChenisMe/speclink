@@ -1,0 +1,20 @@
+schema: spec-driven
+created: 2026-09-03
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: server-wording-debrand
+started_at: 2026-09-03
+started_by: MomoChen <momochenisme@gmail.com>
+verified_at: 2026-09-03
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 4
+verified_scope:
+  - path: apps/desktop/src/__tests__/workspaceChooser.test.tsx
+    hash: e5a0d61906ccec6ce0f47b74a8a9e3e2fe0e8d0aa6c3e7dd5d0a1fd482c3c128
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 617a60ee968dd7e8c6fdab170bd947d5d3fc16fdb0f394c9b0634067bdd8b3e0
+  - path: docs/platform-architecture.zh-TW.md
+    hash: 8c2053c113f52f1aed111887f0a15b1c89ea9d571527a350bf2d41fa0d2779d2
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-03
