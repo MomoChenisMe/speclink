@@ -16,7 +16,7 @@ generated: 2026-09-02
 桌面 app 的每個開啟入口（視窗頂列、空狀態頁、分頁列的加號、伺服器頁籤）都會進到同一個「新增 Workspace」選擇器。第一步先選來源：
 
 - 「本機資料夾」：選一個電腦上的資料夾。
-- 「Speclink Server」：從已登入的 server 挑一個 Project／Repo。server 的連線與登入見 [桌面連線 server 與 remote 工作區](desktop-remote.md)。
+- 「Server」：從已登入的 server 挑一個 Project／Repo。server 的連線與登入見 [桌面連線 server 與 remote 工作區](desktop-remote.md)。
 
 選「本機資料夾」後，app 開系統的資料夾選擇器。你選定資料夾後，app 從那個資料夾往上找 speclink 專案根。找到就直接切換過去：看板、已封存頁與設定頁全部換成新專案的內容，不用重啟。你選到子目錄也可以，app 會切到往上找到的專案根。
 
@@ -59,7 +59,7 @@ remote 分頁（連到 server 的工作區）在滑鼠停留時顯示已連接�
 
 ## 從 server 挑 Project／Repo
 
-選「Speclink Server」後：
+選「Server」後：
 
 1. 從已登入的連線中挑一個 server。還沒有連線可以就地新增並登入，登入後回到這一步。從伺服器頁籤進來時 server 已預選，直接到下一步。
 2. app 從 server 取回你有 membership 的清單，以 Project 分組列出 Repo，你單選一個。你不需要手打任何識別字串。清單是空的時，畫面顯示繁中說明，不是錯誤。這通常代表管理員還沒給你這個 Project 的 membership，見 [帳號、邀請、存取金鑰與 membership](accounts.md)。

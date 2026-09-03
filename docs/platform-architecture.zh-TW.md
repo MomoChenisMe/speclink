@@ -1065,7 +1065,7 @@ interface WorkspaceSession {
 flowchart LR
     ADD["新增 Workspace"] --> KIND{"來源"}
     KIND -->|本機 Repo| FOLDER["選擇資料夾"]
-    KIND -->|Speclink Server| SERVER["選擇或新增 Server"]
+    KIND -->|Server| SERVER["選擇或新增 Server"]
     SERVER --> AUTH["Handshake / 登入"]
     AUTH --> PROJECT["選 Project / Repo"]
     PROJECT --> CHECKOUT{"連接本機 checkout？"}
@@ -1243,7 +1243,7 @@ Desktop 不把 device credential 稱為 PAT，也不顯示其明文。Access tok
 docker compose up -d
 -> 開啟 /setup，建立 Admin、Store、Project、Repo
 -> Admin 邀請使用者並配置 Project/Repo role
--> Desktop「新增 Workspace -> Speclink Server」
+-> Desktop「新增 Workspace -> Server」
 -> Browser/device login（或選用 PAT），選 Project/Repo
 -> PM 直接開規格 workspace；RD 可再連接本機 checkout
 ```

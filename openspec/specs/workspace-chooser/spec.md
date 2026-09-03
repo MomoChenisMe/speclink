@@ -8,7 +8,7 @@
 
 ### Requirement: 新增 Workspace 的來源分流
 
-Desktop 的所有開啟入口（視窗頂列、空狀態、分頁列加號、伺服器頁籤）SHALL 匯流至單一「新增 Workspace」chooser：第一步 SHALL 分流「本機資料夾」與「Speclink Server」。本機路徑 SHALL 沿用既有資料夾選擇、專案探測與初始化流程且行為不變；伺服器頁籤入口 SHALL 預選該 server 直達 scope 選擇步驟。
+Desktop 的所有開啟入口（視窗頂列、空狀態、分頁列加號、伺服器頁籤）SHALL 匯流至單一「新增 Workspace」chooser：第一步 SHALL 分流「本機資料夾」與「Server」。本機路徑 SHALL 沿用既有資料夾選擇、專案探測與初始化流程且行為不變；伺服器頁籤入口 SHALL 預選該 server 直達 scope 選擇步驟。
 
 #### Scenario: 本機開啟行為凍結
 
@@ -17,34 +17,8 @@ Desktop 的所有開啟入口（視窗頂列、空狀態、分頁列加號、伺
 
 
 <!-- @trace
-source: workspace-chooser-onboarding
-updated: 2026-07-20
-code:
-  - Cargo.lock
-  - apps/desktop/core/src/project.rs
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/src/connections.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/projectTabs.test.tsx
-  - apps/desktop/src/__tests__/remoteDataSource.test.ts
-  - apps/desktop/src/__tests__/remoteOpen.test.ts
-  - apps/desktop/src/__tests__/serversPanel.test.tsx
-  - apps/desktop/src/__tests__/session.test.ts
-  - apps/desktop/src/__tests__/tabs.test.ts
-  - apps/desktop/src/__tests__/workspaceChooser.test.tsx
-  - apps/desktop/src/adapter/connections.ts
-  - apps/desktop/src/adapter/workspace.ts
-  - apps/desktop/src/components/ProjectTabs.tsx
-  - apps/desktop/src/components/ServersPanel.tsx
-  - apps/desktop/src/components/WorkspaceChooser.tsx
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/main.tsx
-  - apps/desktop/src/session.ts
-  - apps/desktop/src/store.ts
-  - apps/desktop/src/tabs.ts
+source: server-wording-debrand
+updated: 2026-09-03
 -->
 
 ---
@@ -217,7 +191,7 @@ code:
 ---
 ### Requirement: 最近開啟清單
 
-「新增 Workspace」chooser 的第一步 SHALL 在「本機資料夾」與「Speclink Server」兩張來源卡下方列出最近開啟清單。app SHALL 於每次本機或 remote workspace 成功開啟時（經 chooser、分頁點擊、remote marker 探測或本機轉 remote）把該 workspace（locator 與顯示名）記入清單最前；同 locator 的 workspace SHALL 只保留一筆；清單 SHALL 最多保留 20 筆，超過時 SHALL 丟棄最舊的一筆。本機轉 remote 成功時 SHALL 移除該資料夾的本機條目並記入 remote 條目。記錄 SHALL 持久化於 app 本機狀態（localStorage 鍵 `speclink.recentWorkspaces`，JSON `{ version: 1, entries: [{ locator, name }] }`），SHALL NOT 寫入任何專案目錄；關閉分頁與分頁列的上限淘汰 SHALL NOT 改變記錄。
+「新增 Workspace」chooser 的第一步 SHALL 在「本機資料夾」與「Server」兩張來源卡下方列出最近開啟清單。app SHALL 於每次本機或 remote workspace 成功開啟時（經 chooser、分頁點擊、remote marker 探測或本機轉 remote）把該 workspace（locator 與顯示名）記入清單最前；同 locator 的 workspace SHALL 只保留一筆；清單 SHALL 最多保留 20 筆，超過時 SHALL 丟棄最舊的一筆。本機轉 remote 成功時 SHALL 移除該資料夾的本機條目並記入 remote 條目。記錄 SHALL 持久化於 app 本機狀態（localStorage 鍵 `speclink.recentWorkspaces`，JSON `{ version: 1, entries: [{ locator, name }] }`），SHALL NOT 寫入任何專案目錄；關閉分頁與分頁列的上限淘汰 SHALL NOT 改變記錄。
 
 清單顯示時 SHALL 濾掉目前分頁列上已開著的 workspace（以 locator key 比對）；濾後為空時 SHALL NOT 顯示「最近開啟」區段（含標題）。本機條目 SHALL 顯示資料夾名稱與完整路徑；remote 條目 SHALL 顯示連線名稱與 workspace 顯示名（projectName/repoName），連線名稱 SHALL 自連線登錄即時查得。每筆條目 SHALL 提供移除操作，執行後 SHALL 自畫面與持久化記錄移除。
 
@@ -310,7 +284,8 @@ app 升級後首次啟動、localStorage 尚無最近開啟鍵時，app SHALL �
 - **WHEN** localStorage 的最近開啟鍵被手改為無法解析的內容後啟動 app
 - **THEN** app 照常啟動、不崩潰、不彈錯誤；「新增 Workspace」第一步無「最近開啟」區段；下一次成功開啟 workspace 後該鍵寫回 version 1 的合法內容且只含這一筆
 
+
 <!-- @trace
-source: chooser-recent-workspaces
+source: server-wording-debrand
 updated: 2026-09-03
 -->
