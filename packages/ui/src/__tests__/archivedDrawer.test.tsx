@@ -418,3 +418,76 @@ describe("已封存抽屜規格分頁載入失敗的收斂", () => {
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
 });
+
+// spec「已封存項目以抽屜檢視」衍生列（drawer-provenance-links design D3/D4）：封存討論抽屜的
+// 出身列之下顯示「衍生」＋子變更籤（首籤直出、其餘收 +N），三態（已封存／活躍／已刪除）
+// 由 host 派生成籤項，抽屜只呈現；封存變更 target 無此列。
+describe("ArchivedDrawer（封存討論的衍生列）", () => {
+  const discussionProps = (over: Record<string, unknown> = {}) =>
+    makeProps({ target: { kind: "discussion", slug: "alpha-search" }, ...over });
+  const PROMOTED = [
+    { slug: "child-a", topic: "2026-09-02" },
+    { slug: "child-b", topic: "進行中" },
+    { slug: "child-c", topic: "無封存記錄", disabled: true },
+  ];
+  const overflowList = () =>
+    waitFor(() => {
+      const el = document.querySelector("[data-source-overflow-list]") as HTMLElement | null;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+
+  it("promotedChanges 非空：出身列之下顯示「衍生」、首籤與 +N（沿傳入順序）；點籤以變更名呼叫 onOpenPromotedChange", async () => {
+    const props = discussionProps({ promotedChanges: PROMOTED, onOpenPromotedChange: vi.fn() });
+    render(<ArchivedDrawer {...(props as never)} />);
+    await waitFor(() => expect(screen.getByText("討論背景內文。")).toBeTruthy());
+    const row = document.querySelector("[data-promoted-row]") as HTMLElement | null;
+    expect(row).toBeTruthy();
+    expect(row!.textContent).toContain("衍生");
+    fireEvent.click(within(row!).getByRole("button", { name: /child-a/ }));
+    expect(props.onOpenPromotedChange).toHaveBeenCalledWith("child-a");
+    expect(within(row!).queryByRole("button", { name: /child-b/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /其餘 2 份/ }));
+    const popover = await overflowList();
+    const names = within(popover)
+      .getAllByRole("button")
+      .map((b) => b.textContent ?? "");
+    expect(names[0]).toContain("child-b");
+    expect(names[0]).toContain("進行中");
+    expect(names[1]).toContain("child-c");
+    expect(names[1]).toContain("無封存記錄");
+    fireEvent.click(within(popover).getByRole("button", { name: /child-b/ }));
+    expect(props.onOpenPromotedChange).toHaveBeenCalledWith("child-b");
+  });
+
+  it("已刪除的子變更不可點：aria-disabled、點擊不呼叫、浮層不關閉", async () => {
+    const props = discussionProps({ promotedChanges: PROMOTED, onOpenPromotedChange: vi.fn() });
+    render(<ArchivedDrawer {...(props as never)} />);
+    await waitFor(() => expect(screen.getByText("討論背景內文。")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /其餘 2 份/ }));
+    const popover = await overflowList();
+    const gone = within(popover).getByRole("button", { name: /child-c/ });
+    expect(gone.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(gone);
+    expect(props.onOpenPromotedChange).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-source-overflow-list]")).toBeTruthy();
+  });
+
+  it("promotedChanges 缺席或空陣列時「衍生」列缺席", async () => {
+    const { unmount } = render(<ArchivedDrawer {...(discussionProps() as never)} />);
+    await waitFor(() => expect(screen.getByText("討論背景內文。")).toBeTruthy());
+    expect(document.querySelector("[data-promoted-row]")).toBeNull();
+    expect(screen.queryByText("衍生")).toBeNull();
+    unmount();
+    render(<ArchivedDrawer {...(discussionProps({ promotedChanges: [] }) as never)} />);
+    await waitFor(() => expect(screen.getByText("討論背景內文。")).toBeTruthy());
+    expect(document.querySelector("[data-promoted-row]")).toBeNull();
+  });
+
+  it("封存變更 target 即使傳入 promotedChanges 也不顯示「衍生」列", async () => {
+    render(<ArchivedDrawer {...(makeProps({ promotedChanges: PROMOTED }) as never)} />);
+    await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
+    expect(document.querySelector("[data-promoted-row]")).toBeNull();
+    expect(screen.queryByText("衍生")).toBeNull();
+  });
+});

@@ -1,0 +1,30 @@
+schema: spec-driven
+created: 2026-09-03
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: spec-drawer-trace-links
+started_at: 2026-09-03
+started_by: MomoChen <momochenisme@gmail.com>
+verified_at: 2026-09-03
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 11
+verified_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: 6b897458c4c2885b667ab34cda7754d34608651bd8bf40cd2ea496c0f12e9437
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: a94e838ec6d5eeb105c948a20cc969549dd913d2d9d2654ab727c9d99bec1afd
+  - path: packages/ui/src/__tests__/archivedDrawer.test.tsx
+    hash: 46be4c9c3b0cff3d2af6817448a3dec1360c364952fab2ab8b7868025ec0f7a3
+  - path: packages/ui/src/__tests__/specDrawer.test.tsx
+    hash: 304ad68660fa348830022aaebede8f71c1662ea4f7833a9fef6b1e7b42c8a689
+  - path: packages/ui/src/components/ArchivedDrawer.tsx
+    hash: 39a5f4cb06864bde8ed7f52e042a4cf81a6c426b1d4f60d2f65b32762e0fd571
+  - path: packages/ui/src/components/SourceDiscussionChip.tsx
+    hash: b66aa2d9e00901321be39c416c02a639d1129c7550dd6cfb68b8930115905336
+  - path: packages/ui/src/components/SpecDrawer.tsx
+    hash: 063196b8492fd7aaf5d76251c5d0ea076c3cc6600884d5fca46ae6e5a05a11c5
+  - path: packages/ui/src/i18n.tsx
+    hash: 835b0dceff68a6963f07f4528f9ede91caf09d678939494318999189f043b57c
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-03

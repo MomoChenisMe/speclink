@@ -1113,3 +1113,150 @@ describe("手冊頁接線（desktop-manual-page）", () => {
     expect((ds.getManualPage as Mock).mock.calls.length).toBeGreaterThan(pageCalls);
   });
 });
+
+// drawer-provenance-links：規格抽屜出身列的溯源籤→封存變更抽屜（底層不切頁）；封存討論抽屜
+// 衍生列三態（已封存→封存抽屜、活躍→詳情抽屜且落回看板、已刪除→不可點）的 App 接線面。
+describe("抽屜溯源籤接線（drawer-provenance-links）", () => {
+  const DISCUSSION_DOC =
+    "---\ntopic: Old topic\nslug: old-topic\nstatus: promoted\ncreated: 2026-06-30\n---\n\n# Discussion: Old topic\n\n## Context\n\n封存背景內文。\n\n## Rounds\n\n## Conclusion\n\n**Decision**: 收工\n";
+  const overflowList = () =>
+    waitFor(() => {
+      const el = document.querySelector("[data-source-overflow-list]") as HTMLElement | null;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+
+  it("手冊頁開規格抽屜後點溯源籤：開該封存變更抽屜、規格抽屜關閉、底層仍留手冊頁", async () => {
+    // spec Scenario「點擊溯源籤開啟封存變更抽屜且底層不切頁」。
+    const ds = fakeDataSource({
+      listManualPages: vi.fn().mockResolvedValue(MANUAL_INDEX),
+      getManualPage: vi.fn().mockResolvedValue("# 看板\n\n看板說明。\n\n**出處**：`desktop-app`"),
+      getSpecDocument: vi
+        .fn()
+        .mockResolvedValue(
+          "# desktop-app Specification\n\n正典內文段落。\n\n<!-- @trace\nsource: old\nupdated: 2026-07-04\n-->\n",
+        ),
+      listArchived: vi.fn().mockResolvedValue([
+        { datedName: "2026-07-04-old", date: "2026-07-04", name: "old", createdBy: null, fromDiscussions: [] },
+      ]),
+      getArchivedDocument: vi.fn().mockResolvedValue("## Why\n\n封存提案內文。"),
+    });
+    renderApp(ds);
+    await screen.findByText("desktop-shell-and-browser");
+    const aside = document.querySelector("aside") as HTMLElement;
+    const manualNav = within(aside).getByRole("button", { name: "手冊" });
+    fireEvent.click(manualNav);
+    await screen.findByText("看板說明。");
+    fireEvent.click(document.querySelector('[data-manual-page="boards"]') as HTMLElement);
+    const sources = await waitFor(() => {
+      const el = document.querySelector("[data-manual-sources]") as HTMLElement;
+      expect(el).toBeTruthy();
+      return el;
+    });
+    fireEvent.click(within(sources).getByRole("button", { name: "desktop-app" }));
+    await waitFor(() => expect(screen.getByText("正典內文段落。")).toBeTruthy());
+    const row = await waitFor(() => {
+      const el = document.querySelector("[data-spec-drawer] [data-provenance-row]") as HTMLElement | null;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    expect(row.textContent).toContain("來自");
+    fireEvent.click(within(row).getByRole("button", { name: /old/ }));
+    await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
+    expect(ds.getArchivedDocument).toHaveBeenCalledWith("2026-07-04-old", "proposal.md");
+    expect(document.querySelector("[data-archived-drawer]")).toBeTruthy();
+    // detail 抽屜互斥：規格抽屜關閉；封存抽屜不切底層頁：手冊項仍高亮、看板欄不存在。
+    await waitFor(() => expect(document.querySelector("[data-spec-drawer]")).toBeNull());
+    expect(manualNav.className).toContain("bg-primary");
+    expect(document.querySelector('[data-column="ready"]')).toBeNull();
+  });
+
+  it("封存討論抽屜衍生列三態：首籤（已封存）開封存變更抽屜、浮層列出活躍者階段詞與已刪除者「無封存記錄」", async () => {
+    // spec Scenario「封存討論抽屜列出衍生變更並跳轉封存變更」「衍生變更籤的三態」。
+    const ds = fakeDataSource({
+      listChanges: vi.fn().mockResolvedValue([
+        { name: "desktop-shell-and-browser", status: "in-progress", totalTasks: 30, completedTasks: 30 },
+        { name: "live-child", status: "in-progress", totalTasks: 3, completedTasks: 1 },
+      ]),
+      listArchived: vi.fn().mockResolvedValue([
+        { datedName: "2026-09-02-arch-child", date: "2026-09-02", name: "arch-child", createdBy: null, fromDiscussions: ["old-topic"] },
+      ]),
+      listDiscussions: vi.fn().mockResolvedValue({
+        active: [],
+        archived: [
+          {
+            slug: "old-topic",
+            topic: "Old topic",
+            status: "promoted",
+            rounds: 1,
+            created: "2026-06-30",
+            promotedTo: ["arch-child", "live-child", "gone-child"],
+          },
+        ],
+      }),
+      getArchivedDocument: vi.fn().mockResolvedValue("## Why\n\n封存提案內文。"),
+      getDiscussionDocument: vi.fn().mockResolvedValue(DISCUSSION_DOC),
+    });
+    renderApp(ds);
+    await screen.findByText("desktop-shell-and-browser");
+    const aside = document.querySelector("aside") as HTMLElement;
+    const archivedNav = within(aside).getByRole("button", { name: /已封存/ });
+    fireEvent.click(archivedNav);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /已封存的討論/ }));
+    await screen.findByText("Old topic");
+    fireEvent.click(screen.getByText("Old topic"));
+    await waitFor(() => expect(screen.getByText("封存背景內文。")).toBeTruthy());
+    const row = document.querySelector("[data-archived-drawer] [data-promoted-row]") as HTMLElement | null;
+    expect(row).toBeTruthy();
+    expect(row!.textContent).toContain("衍生");
+    expect(within(row!).getByRole("button", { name: /arch-child/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /其餘 2 份/ }));
+    const popover = await overflowList();
+    const live = within(popover).getByRole("button", { name: /live-child/ });
+    expect(live.textContent).toContain("進行中");
+    expect(live.getAttribute("aria-disabled")).toBeNull();
+    const gone = within(popover).getByRole("button", { name: /gone-child/ });
+    expect(gone.getAttribute("aria-disabled")).toBe("true");
+    expect(gone.textContent).toContain("無封存記錄");
+    // 點首籤（已封存子變更）：同一封存抽屜切換為該變更；底層仍留已封存頁。
+    fireEvent.click(within(row!).getByRole("button", { name: /arch-child/ }));
+    await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
+    expect(ds.getArchivedDocument).toHaveBeenCalledWith("2026-09-02-arch-child", "proposal.md");
+    expect(archivedNav.className).toContain("bg-primary");
+    expect(document.querySelector('[data-column="ready"]')).toBeNull();
+  });
+
+  it("封存討論抽屜點活躍子變更籤：開其詳情抽屜且底層落回看板", async () => {
+    const ds = fakeDataSource({
+      listChanges: vi.fn().mockResolvedValue([
+        { name: "desktop-shell-and-browser", status: "in-progress", totalTasks: 30, completedTasks: 30 },
+        { name: "live-child", status: "in-progress", totalTasks: 3, completedTasks: 1 },
+      ]),
+      listDiscussions: vi.fn().mockResolvedValue({
+        active: [],
+        archived: [
+          { slug: "old-topic", topic: "Old topic", status: "promoted", rounds: 1, created: "2026-06-30", promotedTo: ["live-child"] },
+        ],
+      }),
+      getDiscussionDocument: vi.fn().mockResolvedValue(DISCUSSION_DOC),
+    });
+    renderApp(ds);
+    await screen.findByText("desktop-shell-and-browser");
+    const aside = document.querySelector("aside") as HTMLElement;
+    const archivedNav = within(aside).getByRole("button", { name: /已封存/ });
+    const changesNav = within(aside).getByRole("button", { name: "變更" });
+    fireEvent.click(archivedNav);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /已封存的討論/ }));
+    await screen.findByText("Old topic");
+    fireEvent.click(screen.getByText("Old topic"));
+    await waitFor(() => expect(screen.getByText("封存背景內文。")).toBeTruthy());
+    const row = document.querySelector("[data-archived-drawer] [data-promoted-row]") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: /live-child/ }));
+    // 變更詳情抽屜開啟（載入其提案），封存抽屜關閉，底層落回看板。
+    await waitFor(() => expect(ds.getDocument).toHaveBeenCalledWith("live-child", "proposal.md"));
+    await waitFor(() => expect(document.querySelector("[data-archived-drawer]")).toBeNull());
+    await waitFor(() => expect(document.querySelector('[data-column="ready"]')).toBeTruthy());
+    expect(changesNav.className).toContain("bg-primary");
+    expect(archivedNav.className).not.toContain("bg-primary");
+  });
+});
