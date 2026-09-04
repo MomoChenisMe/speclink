@@ -7,7 +7,7 @@ import { useLingering } from "../lib/useLingering";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
-import { SourceChipRow } from "./SourceDiscussionChip";
+import { SourceChipRow, type SourceLinkItem } from "./SourceDiscussionChip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { DeltaSpecView } from "./DeltaBadges";
 import { ConclusionView, RoundsView, splitDiscussionSections } from "./DiscussionDrawer";
@@ -43,6 +43,11 @@ export interface ArchivedDrawerProps {
   sourceDiscussions?: { slug: string; topic: string }[];
   /** 點來源討論 chip：宿主於同一抽屜切換至該討論的唯讀檢視。 */
   onOpenDiscussion?: (slug: string) => void;
+  /** 封存討論的衍生變更籤項（host 自封存討論清單的 promotedTo 派生三態：已封存→副標封存日期、
+   * 活躍→副標看板階段詞、已刪除→disabled；drawer-provenance-links design D4）；缺席／空＝列缺席。 */
+  promotedChanges?: SourceLinkItem[];
+  /** 點可點的衍生變更籤：宿主依子變更所在開啟封存抽屜或詳情抽屜。 */
+  onOpenPromotedChange?: (name: string) => void;
   /** 封存時的審查結局（清單項帶出；spec「已封存側的審查標示」）。 */
   reviewStatus?: ArchivedItem["reviewStatus"];
   /** 封存時的驗證結局（spec「已封存側的驗證標示」）；與審查結局並存。 */
@@ -73,6 +78,8 @@ export function ArchivedDrawer({
   loadDiscussionDocument,
   sourceDiscussions,
   onOpenDiscussion,
+  promotedChanges,
+  onOpenPromotedChange,
   reviewStatus,
   verifyStatus,
   discussionKind,
@@ -270,6 +277,17 @@ export function ArchivedDrawer({
                 label={t("rdrawer.fromDiscussion")}
                 items={sourceDiscussions ?? []}
                 onOpen={(slug) => onOpenDiscussion?.(slug)}
+              />
+            </div>
+          )}
+          {/* 衍生列（drawer-provenance-links design D4）：封存討論的子變更籤——與變更型別的
+              「來自」列同位置同元件；三態由 host 派生成籤項，抽屜只呈現。 */}
+          {target.kind === "discussion" && (promotedChanges ?? []).length > 0 && (
+            <div data-promoted-row className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <SourceChipRow
+                label={t("adrawer.promotedTo")}
+                items={promotedChanges ?? []}
+                onOpen={(name) => onOpenPromotedChange?.(name)}
               />
             </div>
           )}

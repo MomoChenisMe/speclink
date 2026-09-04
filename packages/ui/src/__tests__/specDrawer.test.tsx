@@ -1,8 +1,9 @@
-// 唯讀規格抽屜（spec-archive-drawer design D1/D3；spec「選定 spec 以抽屜顯示其
-// 正典內容」）：開啟載入正典全文＋溯源 footer、缺件空狀態、世代重載不清空、
-// latest-wins 防交錯、寬度樣式與全螢幕切換與變更詳情抽屜一致。
+// 唯讀規格抽屜（spec「桌面 app 呈現 change 與 spec 的清單與內容」；drawer-provenance-links
+// design D1/D2/D3）：標頭為標題列（capability＋複製名稱鈕）與出身列（「來自」＋溯源變更籤，
+// 首籤為最早封存的變更、其餘收 +N 浮層、無封存記錄者不可點），內文底部無溯源文字；
+// 缺件空狀態、世代重載不清空、latest-wins 防交錯、寬度樣式與全螢幕切換與變更詳情抽屜一致。
 import { describe, it, expect, vi } from "vitest";
-import { render as rtlRender, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
@@ -53,36 +54,163 @@ code:
 -->
 `;
 
+const NO_TRACE_MD = `# plain Specification
+
+## Purpose
+
+無溯源內文。
+`;
+
+/** 封存清單 fixture：change-two 較晚封存、change-one 較早——與文件出現序相反，驗證排序取日期。 */
+const ARCHIVED = [
+  { datedName: "2026-07-02-change-two", date: "2026-07-02", name: "change-two" },
+  { datedName: "2026-07-01-change-one", date: "2026-07-01", name: "change-one" },
+];
+
 function makeProps(over: Record<string, unknown> = {}) {
   return {
     open: true,
     onOpenChange: vi.fn(),
     capability: "desktop-app",
     loadDocument: vi.fn(async () => SPEC_MD),
+    archivedChanges: ARCHIVED,
+    onOpenArchivedChange: vi.fn(),
     ...over,
   };
 }
 
 const drawerEl = () => document.querySelector("[data-spec-drawer]") as HTMLElement | null;
+const provenanceRow = () => document.querySelector("[data-provenance-row]") as HTMLElement | null;
+const overflowList = () =>
+  waitFor(() => {
+    const el = document.querySelector("[data-source-overflow-list]") as HTMLElement | null;
+    expect(el).toBeTruthy();
+    return el!;
+  });
+const clipboard = () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  return writeText;
+};
 
-describe("SpecDrawer", () => {
-  it("開啟載入正典全文與溯源 footer（source 去重保序）", async () => {
+describe("SpecDrawer（標頭：標題列與出身列）", () => {
+  it("開啟載入正典全文；出身列「來自」＋首籤為最早封存的變更、其餘收 +N；內文底部無溯源文字", async () => {
     const props = makeProps();
     render(<SpecDrawer {...(props as never)} />);
     await waitFor(() => expect(screen.getByText("清單內文。")).toBeTruthy());
     expect(props.loadDocument).toHaveBeenCalledWith("desktop-app");
-    // 標題＝capability id；全文照 markdown 呈現。
     expect(screen.getByText("desktop-app")).toBeTruthy();
     expect(screen.getByText("其他內文。")).toBeTruthy();
-    // 溯源 footer：@trace source 去重、依出現順序。
-    expect(screen.getByText(/來源變更：change-one、change-two/)).toBeTruthy();
+    // 出身列：「來自」＋首籤（封存最早的 change-one，雖然文件裡 change-two 之前就出現過它）。
+    const row = provenanceRow();
+    expect(row).toBeTruthy();
+    expect(row!.textContent).toContain("來自");
+    expect(within(row!).getByRole("button", { name: /change-one/ })).toBeTruthy();
+    expect(within(row!).queryByRole("button", { name: /change-two/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /其餘 1 份/ }));
+    const popover = await overflowList();
+    expect(within(popover).getByRole("button", { name: /change-two/ })).toBeTruthy();
+    // 浮層項副標為封存日期。
+    expect(popover.textContent).toContain("2026-07-02");
+    // 內文底部不再有溯源文字行。
+    expect(screen.queryByText(/來源變更：/)).toBeNull();
   });
 
-  it("文件缺席顯示空狀態而非錯誤，且不渲染溯源 footer", async () => {
+  it("溯源籤依封存日期升冪、首籤為出身（spec Example「三個來源變更的排序」）", async () => {
+    const doc = [
+      "# x\n\n## Requirements\n\n### Requirement: a\n\n內文 a。\n",
+      "<!-- @trace\nsource: drawer-polish\nupdated: 2026-08-04\n-->\n",
+      "### Requirement: b\n\n內文 b。\n",
+      "<!-- @trace\nsource: spec-archive-drawer\nupdated: 2026-07-11\n-->\n",
+      "### Requirement: c\n\n內文 c。\n",
+      "<!-- @trace\nsource: desktop-archived-parity\nupdated: 2026-08-11\n-->\n",
+    ].join("\n");
+    const props = makeProps({
+      loadDocument: vi.fn(async () => doc),
+      archivedChanges: [
+        { datedName: "2026-08-04-drawer-polish", date: "2026-08-04", name: "drawer-polish" },
+        { datedName: "2026-07-11-spec-archive-drawer", date: "2026-07-11", name: "spec-archive-drawer" },
+        { datedName: "2026-08-11-desktop-archived-parity", date: "2026-08-11", name: "desktop-archived-parity" },
+      ],
+    });
+    render(<SpecDrawer {...(props as never)} />);
+    await waitFor(() => expect(screen.getByText("內文 a。")).toBeTruthy());
+    const row = provenanceRow()!;
+    expect(within(row).getByRole("button", { name: /spec-archive-drawer/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /其餘 2 份/ }));
+    const popover = await overflowList();
+    const names = within(popover)
+      .getAllByRole("button")
+      .map((b) => b.textContent ?? "");
+    expect(names[0]).toContain("drawer-polish");
+    expect(names[0]).toContain("2026-08-04");
+    expect(names[1]).toContain("desktop-archived-parity");
+    expect(names[1]).toContain("2026-08-11");
+  });
+
+  it("點擊可點籤以該變更的 datedName 呼叫 onOpenArchivedChange（含浮層項）", async () => {
+    const props = makeProps();
+    render(<SpecDrawer {...(props as never)} />);
+    await waitFor(() => expect(screen.getByText("清單內文。")).toBeTruthy());
+    fireEvent.click(within(provenanceRow()!).getByRole("button", { name: /change-one/ }));
+    expect(props.onOpenArchivedChange).toHaveBeenCalledWith("2026-07-01-change-one");
+    fireEvent.click(screen.getByRole("button", { name: /其餘 1 份/ }));
+    const popover = await overflowList();
+    fireEvent.click(within(popover).getByRole("button", { name: /change-two/ }));
+    expect(props.onOpenArchivedChange).toHaveBeenCalledWith("2026-07-02-change-two");
+  });
+
+  it("無封存記錄的來源變更不可點：灰籤排最後、aria-disabled、副標「無封存記錄」、點擊不呼叫", async () => {
+    // spec Scenario「無封存記錄的來源變更不可點」（design D3）。
+    const props = makeProps({ archivedChanges: [ARCHIVED[1]] }); // 只有 change-one 有封存記錄
+    render(<SpecDrawer {...(props as never)} />);
+    await waitFor(() => expect(screen.getByText("清單內文。")).toBeTruthy());
+    const row = provenanceRow()!;
+    // 可點者在前：首籤仍是 change-one。
+    expect(within(row).getByRole("button", { name: /change-one/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /其餘 1 份/ }));
+    const popover = await overflowList();
+    const ghost = within(popover).getByRole("button", { name: /change-two/ });
+    expect(ghost.getAttribute("aria-disabled")).toBe("true");
+    expect(ghost.textContent).toContain("無封存記錄");
+    fireEvent.click(ghost);
+    expect(props.onOpenArchivedChange).not.toHaveBeenCalled();
+    // 不可點項不關閉浮層。
+    expect(document.querySelector("[data-source-overflow-list]")).toBeTruthy();
+  });
+
+  it("封存清單為空時首籤亦不可點且不呼叫回呼", async () => {
+    const props = makeProps({ archivedChanges: [] });
+    render(<SpecDrawer {...(props as never)} />);
+    await waitFor(() => expect(screen.getByText("清單內文。")).toBeTruthy());
+    const chip = within(provenanceRow()!).getByRole("button", { name: /change-one/ });
+    expect(chip.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(chip);
+    expect(props.onOpenArchivedChange).not.toHaveBeenCalled();
+  });
+
+  it("正典全文無 @trace 時出身列缺席", async () => {
+    render(<SpecDrawer {...(makeProps({ loadDocument: vi.fn(async () => NO_TRACE_MD) }) as never)} />);
+    await waitFor(() => expect(screen.getByText("無溯源內文。")).toBeTruthy());
+    expect(provenanceRow()).toBeNull();
+    expect(screen.queryByText("來自")).toBeNull();
+    expect(screen.queryByText(/來源變更：/)).toBeNull();
+  });
+
+  it("複製名稱鈕寫入 capability 名並顯示已複製回饋", async () => {
+    const writeText = clipboard();
+    render(<SpecDrawer {...(makeProps() as never)} />);
+    await waitFor(() => expect(screen.getByText("清單內文。")).toBeTruthy());
+    fireEvent.click(screen.getByLabelText("複製名稱"));
+    expect(writeText).toHaveBeenCalledWith("desktop-app");
+    await waitFor(() => expect(screen.queryByLabelText("已複製")).toBeTruthy());
+  });
+
+  it("文件缺席顯示空狀態而非錯誤，且出身列缺席", async () => {
     const props = makeProps({ loadDocument: vi.fn(async () => null) });
     render(<SpecDrawer {...(props as never)} />);
     await waitFor(() => expect(screen.getByText("（無內容）")).toBeTruthy());
-    expect(screen.queryByText(/來源變更：/)).toBeNull();
+    expect(provenanceRow()).toBeNull();
   });
 
   it("寬度樣式與變更詳情抽屜一致，含全螢幕切換與還原（design D1）", async () => {
@@ -151,11 +279,11 @@ describe("SpecDrawer", () => {
 });
 
 // spec 需求「markdown 文件內容行寬有上限」（design D4）：規格抽屜捲動容器內存在
-// 共用置中容器，正典內文與溯源 footer 同欄對齊置中。
+// 共用置中容器，正典內文在欄內；溯源已搬進標頭，欄內不再有溯源文字。
 describe("SpecDrawer（閱讀欄置中）", () => {
-  it("捲動容器內有置中容器（w-full＋max-w-[96ch]＋mx-auto）且內文與溯源 footer 在欄內", async () => {
+  it("捲動容器內有置中容器（w-full＋max-w-[96ch]＋mx-auto）且內文在欄內、無溯源文字", async () => {
     render(<SpecDrawer {...(makeProps() as never)} />);
-    await waitFor(() => expect(screen.getByText(/來源變更：/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("清單內文。")).toBeTruthy());
     const col = document.querySelector("[data-reading-column]") as HTMLElement;
     expect(col).toBeTruthy();
     expect(col.className).toContain("w-full");
@@ -163,7 +291,8 @@ describe("SpecDrawer（閱讀欄置中）", () => {
     expect(col.className).toContain("mx-auto");
     expect(col.parentElement?.className).toContain("overflow-y-auto");
     expect(col.textContent).toContain("清單內文。");
-    expect(col.textContent).toContain("來源變更：");
+    expect(col.textContent).not.toContain("來源變更：");
+    expect(col.querySelector("[data-provenance-row]")).toBeNull();
   });
 });
 

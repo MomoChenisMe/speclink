@@ -5,23 +5,35 @@ import { Button } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
-/** 來源連結項：slug 為識別錨點（openspec/LANGUAGE.md 受控例外），topic 為描述副標（同源變更等無副標項缺席）。 */
+/** 來源連結項：slug 為識別錨點（openspec/LANGUAGE.md 受控例外），topic 為描述副標（同源變更等無副標項缺席）；
+ * disabled 為不可點（drawer-provenance-links design D3：無封存記錄的來源變更、已刪除的子變更）。 */
 export interface SourceLinkItem {
   slug: string;
   topic?: string;
+  disabled?: boolean;
 }
 
+const CHIP_ACTIVE_CLS =
+  "bg-primary/10 font-medium text-primary hover:bg-primary/20 hover:text-primary";
+// 不可點籤：灰底灰字、無 hover 變化、游標維持預設——與可點籤同形，只失去互動語意。
+const CHIP_DISABLED_CLS =
+  "bg-muted font-medium text-muted-foreground hover:bg-muted hover:text-muted-foreground cursor-default";
+
 /**
- * 來源連結籤：變更詳情抽屜與已封存抽屜共用的單一實作。
+ * 來源連結籤：變更詳情抽屜、已封存抽屜與規格抽屜共用的單一實作。
  *
  * 籤面以 slug 直出（等寬字型）——slug 短而穩定，籤形一致；topic 是自由文字整句話，
  * 降為主題化提示（slug＋topic 兩行），不再上籤面（spec「抽屜標頭標記受寬度約束且
  * 抽屜不產生水平捲軸」）。寬度上限 max-w-[140px] 截斷兜底超長 slug；截斷必須落在
  * 內層區塊子項（text-overflow 不作用於 flex 容器本身）。
+ *
+ * disabled 時不掛 onClick、標 aria-disabled；不用原生 disabled 屬性——它會吞掉指標事件，
+ * 提示（slug＋副標）就出不來。
  */
 export function SourceDiscussionChip({
   slug,
   topic,
+  disabled,
   onClick,
 }: SourceLinkItem & {
   onClick?: () => void;
@@ -33,8 +45,9 @@ export function SourceDiscussionChip({
           type="button"
           variant="ghost"
           size="sm"
-          className="h-auto min-w-0 max-w-[140px] rounded-full bg-primary/10 px-2 py-0.5 font-mono font-medium text-primary hover:bg-primary/20 hover:text-primary"
-          onClick={onClick}
+          aria-disabled={disabled ? "true" : undefined}
+          className={`h-auto min-w-0 max-w-[140px] rounded-full px-2 py-0.5 font-mono ${disabled ? CHIP_DISABLED_CLS : CHIP_ACTIVE_CLS}`}
+          onClick={disabled ? undefined : onClick}
         >
           <span data-source-discussion-label className="truncate">
             {slug}
@@ -54,7 +67,8 @@ export function SourceDiscussionChip({
  *
  * 出身列恆定單行的固定顆數切點（design D3）：固定顯示 1 顆，其餘收進 +N 數字籤，
  * 點擊以 Popover 浮層列出（slug 主行＋topic 副行），點浮層項跳轉並關閉浮層——
- * 與看板卡片「單一討論徽章以出身討論為代表」對稱。「來自」與「同源」兩組共用此列。
+ * 與看板卡片「單一討論徽章以出身討論為代表」對稱。「來自」「同源」「衍生」共用此列。
+ * disabled 項在浮層內同樣不可點、不關閉浮層；onOpen 只對可點項觸發。
  */
 export function SourceChipRow({
   label,
@@ -76,6 +90,7 @@ export function SourceChipRow({
         <SourceDiscussionChip
           slug={first.slug}
           topic={first.topic}
+          disabled={first.disabled}
           onClick={() => onOpen?.(first.slug)}
         />
         {rest.length > 0 && (
@@ -100,11 +115,16 @@ export function SourceChipRow({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-auto justify-start px-2 py-1.5 text-left"
-                    onClick={() => {
-                      setOpen(false);
-                      onOpen?.(it.slug);
-                    }}
+                    aria-disabled={it.disabled ? "true" : undefined}
+                    className={`h-auto justify-start px-2 py-1.5 text-left ${it.disabled ? "cursor-default text-muted-foreground hover:bg-transparent hover:text-muted-foreground" : ""}`}
+                    onClick={
+                      it.disabled
+                        ? undefined
+                        : () => {
+                            setOpen(false);
+                            onOpen?.(it.slug);
+                          }
+                    }
                   >
                     <span className="flex min-w-0 flex-col items-start">
                       <span className="max-w-full truncate font-mono text-xs font-medium">

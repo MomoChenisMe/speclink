@@ -38,6 +38,7 @@ import {
   cn,
   useI18n,
   siblingChangesOf,
+  discussionChipStage,
   type Verb,
 } from "@speclink/ui";
 
@@ -469,6 +470,29 @@ function AppInner({
     slug,
     topic: allDiscussions.find((d) => d.slug === slug)?.topic ?? slug,
   }));
+  // 封存討論抽屜的衍生列（drawer-provenance-links design D4）：自封存討論清單項的 promotedTo
+  // 派生三態——封存清單命中→副標封存日期；活躍清單命中→副標看板階段詞；皆無→不可點「無封存記錄」。
+  // 順序沿 promotedTo 原序（轉出順序、出身在前）。
+  const detailArchived = s.detailArchived;
+  const archivedDiscussionTarget = detailArchived?.kind === "discussion" ? detailArchived : null;
+  const archivedPromotedChanges = archivedDiscussionTarget
+    ? (s.discussions.archived.find((d) => d.slug === archivedDiscussionTarget.slug)?.promotedTo ?? []).map(
+        (name) => {
+          const archivedHit = s.archived.find((a) => a.name === name);
+          if (archivedHit) return { slug: name, topic: archivedHit.date };
+          if (s.changes.some((c) => c.name === name)) {
+            return { slug: name, topic: t(discussionChipStage(name, s.changes, s.archived)) };
+          }
+          return { slug: name, topic: t("rdrawer.noArchiveRecord"), disabled: true };
+        },
+      )
+    : [];
+  // 點衍生籤：已封存→封存抽屜（底層不切頁）；活躍→詳情抽屜（openDetail 依正典落回看板）。
+  const openPromotedChange = (name: string) => {
+    const archivedHit = s.archived.find((a) => a.name === name);
+    if (archivedHit) s.openArchived({ kind: "change", datedName: archivedHit.datedName });
+    else if (s.changes.some((c) => c.name === name)) s.openDetail(name);
+  };
   // 封存抽屜出身列的三欄（desktop-archived-parity D4）：一律自封存清單項帶入，
   // 抽屜零新查詢。封存討論無封存日期欄位——該欄自然缺席。
   const archivedProvenance = (() => {
@@ -809,6 +833,8 @@ function AppInner({
         onOpenChange={(o) => !o && s.closeSpec()}
         capability={s.detailSpec}
         refreshGen={s.refreshGen}
+        archivedChanges={s.archived}
+        onOpenArchivedChange={(datedName) => s.openArchived({ kind: "change", datedName })}
         loadDocument={(capability) =>
           dataSource?.getSpecDocument(capability) ?? Promise.resolve(null)
         }
@@ -825,6 +851,8 @@ function AppInner({
         loadDiscussionDocument={(slug) => dataSource?.getDiscussionDocument(slug) ?? Promise.resolve(null)}
         sourceDiscussions={archivedSourceDiscussions}
         onOpenDiscussion={(slug) => s.openArchived({ kind: "discussion", slug })}
+        promotedChanges={archivedPromotedChanges}
+        onOpenPromotedChange={openPromotedChange}
         reviewStatus={
           s.detailArchived?.kind === "change"
             ? s.archived.find((a) => a.datedName === s.detailArchived?.datedName)?.reviewStatus

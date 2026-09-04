@@ -1,0 +1,56 @@
+{
+  "version": 2,
+  "change": "drawer-provenance-links",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 RED：在 packages/ui/src/__tests__/specDrawer.test.tsx 新增「無封存記錄的來源變更不可點」案例——傳入 archivedChanges 中無對應的來源變更名時，該籤帶 aria-disabled=\"true\"、點擊不觸發 onOpenArchivedChange、Tooltip 副標為「無封存記錄」，且排在可點籤之後；跑 `npm test -w packages/ui` 確認新案例因 SourceLinkItem 尚無 disabled 而失敗",
+      "files": [
+        "packages/ui/src/__tests__/archivedDrawer.test.tsx",
+        "packages/ui/src/__tests__/specDrawer.test.tsx",
+        "packages/ui/src/components/ArchivedDrawer.tsx",
+        "packages/ui/src/components/SourceDiscussionChip.tsx",
+        "packages/ui/src/components/SpecDrawer.tsx",
+        "packages/ui/src/i18n.tsx"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "4.1 RED：在 apps/desktop/src/__tests__/App.test.tsx 新增案例：(a) 於手冊頁開啟規格抽屜後點擊一顆溯源籤，store 的 detailArchived 為 `{ kind: \"change\", datedName }`、detailSpec 為 null、boardView 維持 \"manual\"；(b) 開啟一筆 promotedTo 含已封存、活躍、已刪除三個子變更的封存討論抽屜，三顆籤副標分別為封存日期、看板階段詞、「無封存記錄」，點擊已封存者開啟該封存變更抽屜且 boardView 不變，點擊活躍者開啟其詳情抽屜且 boardView 切為 \"board\"，已刪除者不可點；跑 `npm test -w apps/desktop` 確認新案例失敗",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M1K2Z6BTEPFGQ16P6MTG2KR6",
+      "taskDesc": "1.1 RED：在 packages/ui/src/__tests__/specDrawer.test.tsx 新增「無封存記錄的來源變更不可點」案例——傳入 archivedChanges 中無對應的來源變更名時，該籤帶 aria-disabled=\"true\"、點擊不觸發 onOpenArchivedChange、Tooltip 副標為「無封存記錄」，且排在可點籤之後；跑 `npm test -w packages/ui` 確認新案例因 SourceLinkItem 尚無 disabled 而失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "f9fbd26166e1bd4d46a055580b91506581fa9d84",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/archivedDrawer.test.tsx",
+        "packages/ui/src/__tests__/specDrawer.test.tsx",
+        "packages/ui/src/components/ArchivedDrawer.tsx",
+        "packages/ui/src/components/SourceDiscussionChip.tsx",
+        "packages/ui/src/components/SpecDrawer.tsx",
+        "packages/ui/src/i18n.tsx"
+      ],
+      "recordedAt": "2026-09-03T07:48:02Z"
+    },
+    {
+      "taskId": "tsk_01M1K2Z6BT45VGPHDA4RN80Z32",
+      "taskDesc": "4.1 RED：在 apps/desktop/src/__tests__/App.test.tsx 新增案例：(a) 於手冊頁開啟規格抽屜後點擊一顆溯源籤，store 的 detailArchived 為 `{ kind: \"change\", datedName }`、detailSpec 為 null、boardView 維持 \"manual\"；(b) 開啟一筆 promotedTo 含已封存、活躍、已刪除三個子變更的封存討論抽屜，三顆籤副標分別為封存日期、看板階段詞、「無封存記錄」，點擊已封存者開啟該封存變更抽屜且 boardView 不變，點擊活躍者開啟其詳情抽屜且 boardView 切為 \"board\"，已刪除者不可點；跑 `npm test -w apps/desktop` 確認新案例失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "f9fbd26166e1bd4d46a055580b91506581fa9d84",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx"
+      ],
+      "recordedAt": "2026-09-03T07:49:37Z"
+    }
+  ]
+}
