@@ -4,7 +4,7 @@ section: 桌面 app
 order: 300
 keywords: [桌面, 側欄, 詳情面板, 即時更新, 浮層提示, 語意色, 手冊, 動畫]
 sources: [desktop-app]
-generated: 2026-09-02
+generated: 2026-09-05
 ---
 
 # 認識桌面 app

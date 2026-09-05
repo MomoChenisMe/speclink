@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 170
 keywords: [封存, archive, 正典規格, 守門, Purpose, 證據, 手冊]
 sources: [archive-skill, archive-merge, change-lifecycle, verify-evidence, spec-validation]
-generated: 2026-09-02
+generated: 2026-09-03
 ---
 
 # 封存

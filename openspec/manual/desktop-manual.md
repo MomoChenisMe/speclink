@@ -4,7 +4,7 @@ section: 桌面 app
 order: 325
 keywords: [手冊, 側欄, 搜尋, 可能過期, 未入冊, 出處, 規格詳情面板, 提示框, 錨點列]
 sources: [desktop-manual-page]
-generated: 2026-09-02
+generated: 2026-09-03
 ---
 
 # 桌面 app 的手冊頁

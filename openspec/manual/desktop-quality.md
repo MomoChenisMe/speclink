@@ -4,7 +4,7 @@ section: 桌面 app
 order: 330
 keywords: [審查, 驗證, 蓋章, 工單, 封存, 三選項]
 sources: [desktop-app]
-generated: 2026-09-02
+generated: 2026-09-05
 ---
 
 # 桌面上的品質關卡

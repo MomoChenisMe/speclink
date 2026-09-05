@@ -4,7 +4,7 @@ section: 開始使用
 order: 50
 keywords: [工作流, 技能, 交棒, 下一步, SDD, 站別, baseline, 手冊]
 sources: [skill-routing, user-documentation]
-generated: 2026-09-02
+generated: 2026-09-03
 ---
 
 # 工作流總覽：站別與交棒

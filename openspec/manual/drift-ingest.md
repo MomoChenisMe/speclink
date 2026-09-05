@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 130
 keywords: [drift, ingest, 漂移, 閒置, 需求變更, 過期]
 sources: [drift-computation, archive-merge, skill-routing, user-documentation]
-generated: 2026-09-02
+generated: 2026-09-03
 ---
 
 # 續作與需求變更：drift 與 ingest
