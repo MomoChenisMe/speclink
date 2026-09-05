@@ -39,11 +39,13 @@ use speclink_protocol::query::{
     AnalyzeDimension, AnalyzeFinding, AnalyzeMsg, AnalyzeReportResponse, ApplyInstructions,
     ArtifactContent, ArtifactInstructions, ArtifactStatus, BoardOrderResponse,
     ChangeEvidenceResponse, ChangeStatus,
-    ChangeSummary, ConfigResponse, DependencyEntry, DiscussionInfo, ImportBundle, ImportDocumentId,
+    ChangeSummary, ConfigResponse, DependencyEntry, DiscussionHit, DiscussionInfo, DiscussionMatch,
+    ImportBundle, ImportDocumentId,
     ImportDocumentOutcome, ImportReportResponse, ImportedDocument, LanguageResponse,
     ListChangesResponse, ListDiscussionsResponse, ListSpecsResponse, Progress,
     PutBoardOrderRequest, PutBoardOrderResponse, PutConfigRequest, PutConfigResponse,
-    ShowDiscussionResponse, SpecSummary, TaskEntry, ValidateChangeResponse, WhoamiRepo,
+    SearchDiscussionsResponse, ShowDiscussionResponse, SpecSummary, TaskEntry,
+    ValidateChangeResponse, WhoamiRepo,
     WhoamiResponse, WhoamiUser,
 };
 use speclink_store::{
@@ -1520,31 +1522,86 @@ pub async fn list_discussions(
         CommandOutcome::DiscussList(list) => list,
         _ => return Err(wrong_outcome("discuss-list")),
     };
-    // promotedTo 與 concluded 於 route 邊緣以引擎查詢函式組裝（remote-read-parity
-    // design D1）：引擎 DiscussionInfo 不帶這兩欄以保 CLI JSON 逐位元不變。查詢
-    // 失敗以欄位缺席容錯（promotedTo 空清單、concluded 無鍵）、列表不失敗。
+    let dto = ListDiscussionsResponse {
+        discussions: discussion_dtos_with_extras(&state, &binding, discussions).await?,
+    };
+    Ok(ok(dto, &result.etag))
+}
+
+/// Engine discussion infos → wire DTOs with `promotedTo` and `concluded`
+/// filled. Both are assembled at the route edge from each info's own record
+/// (its slug plus its live/archived side, so a reused slug never answers for
+/// its namesake — remote-read-parity design D1): the engine's
+/// `DiscussionInfo` omits them so the CLI's JSON stays byte-identical. A
+/// failed lookup degrades to the fields' absent forms (empty `promotedTo`, no
+/// `concluded` key) rather than failing the listing.
+async fn discussion_dtos_with_extras(
+    state: &AppState,
+    binding: &Binding,
+    infos: Vec<EngineDiscussionInfo>,
+) -> Result<Vec<DiscussionInfo>, ApiError> {
     let store = state.store.clone();
-    let scope = verb::scope_of(&binding);
-    let slugs: Vec<String> = discussions.iter().map(|d| d.slug.clone()).collect();
+    let scope = verb::scope_of(binding);
+    let keys: Vec<(String, bool)> = infos.iter().map(|d| (d.slug.clone(), d.archived)).collect();
     let extras = tokio::task::spawn_blocking(move || {
-        speclink_host::bridge::discussions_list_extras(store.as_ref(), &scope, &slugs).ok()
+        speclink_host::bridge::discussions_extras(store.as_ref(), &scope, &keys).ok()
     })
     .await
     .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?;
-    let dto = ListDiscussionsResponse {
-        discussions: match extras {
-            Some(extras) => discussions
-                .into_iter()
-                .zip(extras)
-                .map(|(info, (promoted_to, concluded))| {
-                    let mut dto = discussion_info(info);
-                    dto.promoted_to = promoted_to;
-                    dto.concluded = Some(concluded);
-                    dto
-                })
-                .collect(),
-            None => discussions.into_iter().map(discussion_info).collect(),
-        },
+    Ok(match extras {
+        Some(extras) => infos
+            .into_iter()
+            .zip(extras)
+            .map(|(info, (promoted_to, concluded))| {
+                let mut dto = discussion_info(info);
+                dto.promoted_to = promoted_to;
+                dto.concluded = Some(concluded);
+                dto
+            })
+            .collect(),
+        None => infos.into_iter().map(discussion_info).collect(),
+    })
+}
+
+/// Query string of `GET /discussions/search`.
+#[derive(Deserialize)]
+pub struct SearchDiscussionsQuery {
+    #[serde(default)]
+    q: String,
+}
+
+/// `GET /discussions/search?q=<space-separated keywords>` — the same engine
+/// search `speclink discuss search` runs locally (live and archived records,
+/// topic/slug/decision lines only, topic/slug hits first). A missing or blank
+/// `q` reaches the engine as an empty keyword list, whose refusal maps to
+/// 400 invalid_argument like every other argv defect. The desktop's
+/// `GET /search` keeps its own semantics (design D7).
+pub async fn search_discussions(
+    State(state): State<AppState>,
+    binding: Binding,
+    Query(query): Query<SearchDiscussionsQuery>,
+) -> Result<Response, ApiError> {
+    let terms: Vec<String> = query.q.split_whitespace().map(str::to_string).collect();
+    let result = verb::run(&state, &binding, Command::DiscussSearch { terms }).await?;
+    let hits = match result.execution.outcome {
+        CommandOutcome::DiscussSearch(hits) => hits,
+        _ => return Err(wrong_outcome("discuss-search")),
+    };
+    let (infos, matches): (Vec<_>, Vec<_>) =
+        hits.into_iter().map(|h| (h.info, h.matches)).unzip();
+    let infos = discussion_dtos_with_extras(&state, &binding, infos).await?;
+    let dto = SearchDiscussionsResponse {
+        hits: infos
+            .into_iter()
+            .zip(matches)
+            .map(|(info, matches)| DiscussionHit {
+                info,
+                matches: matches
+                    .into_iter()
+                    .map(|m| DiscussionMatch { kind: m.kind, where_: m.where_, text: m.text })
+                    .collect(),
+            })
+            .collect(),
     };
     Ok(ok(dto, &result.etag))
 }

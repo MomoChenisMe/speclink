@@ -12,7 +12,7 @@ use super::{
 use crate::analyzer::AnalyzeReport;
 use crate::archive::ArchiveOutcome;
 use crate::discard::DiscardOutcome;
-use crate::discuss::DiscussionInfo;
+use crate::discuss::{DiscussionHit, DiscussionInfo};
 use crate::status::StatusReport;
 use crate::trace::TraceReport;
 
@@ -51,6 +51,7 @@ fn variant_name(o: &CommandOutcome) -> &'static str {
         CommandOutcome::Language(_) => "Language",
         CommandOutcome::DiscussList(_) => "DiscussList",
         CommandOutcome::DiscussShow(_) => "DiscussShow",
+        CommandOutcome::DiscussSearch(_) => "DiscussSearch",
         CommandOutcome::NewChange(_) => "NewChange",
         CommandOutcome::NewArtifact(_) => "NewArtifact",
         CommandOutcome::TaskDone(_) => "TaskDone",
@@ -111,6 +112,7 @@ typed_outcomes! {
     String => [ArtifactCat, Language],
     Vec<DiscussionInfo> => [DiscussList],
     DiscussShowOutcome => [DiscussShow],
+    Vec<DiscussionHit> => [DiscussSearch],
     NewChangeOutcome => [NewChange],
     NewArtifactOutcome => [NewArtifact],
     TaskFlipOutcome => [TaskDone, TaskUndone],

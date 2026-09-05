@@ -96,19 +96,34 @@ pub fn execute(
 /// out of `DiscussionInfo`, so the route edge composes them). Read-only: the
 /// bridged view is materialized, queried per slug, and dropped; nothing is
 /// staged or committed. Results ride in `slugs` order.
-pub fn discussions_list_extras(
+pub fn discussions_extras(
     store: &dyn TeamStore,
     scope: &Scope,
-    slugs: &[String],
+    keys: &[(String, bool)],
 ) -> Result<Vec<(Vec<String>, bool)>, BridgeError> {
     let view = BridgeStore::materialize(store, scope).map_err(BridgeError::Store)?;
-    Ok(slugs
+    // A slug is reusable once archived, so an archived key must read its own
+    // record — never its live namesake through the live-first lookup.
+    let archived = if keys.iter().any(|(_, archived)| *archived) {
+        view.list_archived_discussions()
+    } else {
+        Vec::new()
+    };
+    Ok(keys
         .iter()
-        .map(|slug| {
-            (
-                speclink_core::discuss::promoted_to(&view, slug),
-                speclink_core::discuss::discussion_concluded(&view, slug),
-            )
+        .map(|(slug, is_archived)| {
+            let text = if *is_archived {
+                archived.iter().find(|d| &d.slug == slug).map(|d| d.text.clone())
+            } else {
+                view.read_live_discussion(slug)
+            };
+            match text {
+                Some(text) => (
+                    speclink_core::discuss::promoted_to_in(&text),
+                    speclink_core::discuss::concluded_in(&text),
+                ),
+                None => (Vec::new(), false),
+            }
         })
         .collect())
 }

@@ -87,6 +87,7 @@ pub fn router(state: AppState) -> Router {
             "/discussions",
             get(routes::list_discussions).post(routes::create_discussion),
         )
+        .route("/discussions/search", get(routes::search_discussions))
         .route(
             "/discussions/{slug}",
             get(routes::show_discussion).delete(routes::delete_discussion),

@@ -516,3 +516,165 @@ fn discussion_writes_on_missing_subjects_are_404_with_engine_messages() {
         );
     }
 }
+
+// --- 規格「討論定案搜尋端點」（discuss-search-recall）---
+
+/// Seed one discussion record straight into the store, live or archived.
+fn seed_discussion(f: &Fixture, slug: &str, archived: bool, text: &str) {
+    let mut uow = f
+        .store
+        .begin_unit_of_work(
+            &scope(),
+            CommandContext { command: "seed".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(DocumentId::Discussion { slug: slug.into(), archived }, text);
+    f.store.commit(uow, Vec::new()).expect("seed commit");
+}
+
+const SEARCH_LIVE_RECORD: &str =
+    "---\ntopic: Drawer scope\nslug: drawer-scope\nstatus: open\ncreated: 2026-07-01\n---\n\n\
+     ## Context\n\nseed\n\n## Rounds\n\n## Conclusion\n";
+const SEARCH_ARCHIVED_RECORD: &str =
+    "---\ntopic: Trace links\nslug: trace-links-two-hops\nstatus: concluded\ncreated: 2026-08-20\n---\n\n\
+     ## Context\n\nseed\n\n## Rounds\n\n\
+     ### Round 1 — assumptions (2026-08-20)\n\n**Focus**: drawer\n**Ruled out**: nothing\n\n\
+     ### Round 2 — interview (2026-08-21)\n\n**Ruled out**: RichDetailDrawer 加 readOnly 旗標（分支地獄）\n\n\
+     ## Conclusion\n\n**Decision**: two hops\n";
+
+fn seed_search_records(f: &Fixture) {
+    seed_discussion(f, "drawer-scope", false, SEARCH_LIVE_RECORD);
+    seed_discussion(f, "trace-links-two-hops", true, SEARCH_ARCHIVED_RECORD);
+}
+
+#[test]
+fn discussion_search_returns_live_and_archived_hits_in_spec_order() {
+    let f = fixture();
+    seed_search_records(&f);
+    let body: Value = request("GET", &f, &f.editor_pat, "discussions/search?q=drawer")
+        .call()
+        .expect("GET /discussions/search")
+        .into_json()
+        .expect("JSON body");
+    let hits = body["hits"].as_array().expect("hits array");
+    assert_eq!(hits.len(), 2, "one live topic hit, one archived ruled-out hit: {body}");
+    assert_eq!(hits[0]["slug"], "drawer-scope");
+    assert_eq!(hits[0]["archived"], false);
+    assert_eq!(hits[0]["matches"][0]["kind"], "topic");
+    assert_eq!(hits[0]["matches"][0]["where"], "frontmatter");
+    assert_eq!(hits[1]["slug"], "trace-links-two-hops");
+    assert_eq!(hits[1]["archived"], true);
+    assert_eq!(hits[1]["matches"][0]["kind"], "ruled-out");
+    assert_eq!(hits[1]["matches"][0]["where"], "round-2");
+    assert_eq!(
+        hits[1]["matches"][0]["text"],
+        "**Ruled out**: RichDetailDrawer 加 readOnly 旗標（分支地獄）"
+    );
+}
+
+#[test]
+fn discussion_search_without_keywords_is_invalid_argument() {
+    let f = fixture();
+    seed_search_records(&f);
+    let before = revision(&f);
+    let (status, error) =
+        protocol_error(request("GET", &f, &f.editor_pat, "discussions/search").call());
+    assert_eq!(status, 400);
+    assert_eq!(error.reason, ErrorReason::InvalidArgument);
+    let (status, error) =
+        protocol_error(request("GET", &f, &f.editor_pat, "discussions/search?q=%20").call());
+    assert_eq!(status, 400, "an all-blank q is the same refusal");
+    assert_eq!(error.reason, ErrorReason::InvalidArgument);
+    assert_eq!(revision(&f), before, "a refused search writes nothing");
+}
+
+#[test]
+fn discussion_search_is_open_to_readers_with_the_editor_shape() {
+    let f = fixture();
+    seed_search_records(&f);
+    let reader: Value = request("GET", &f, &f.reader_pat, "discussions/search?q=drawer")
+        .call()
+        .expect("reader GET /discussions/search")
+        .into_json()
+        .expect("JSON body");
+    let editor: Value = request("GET", &f, &f.editor_pat, "discussions/search?q=drawer")
+        .call()
+        .expect("editor GET /discussions/search")
+        .into_json()
+        .expect("JSON body");
+    assert_eq!(reader["hits"].as_array().unwrap().len(), 2);
+    assert_eq!(reader, editor, "the read shape does not depend on the role");
+}
+
+#[test]
+fn discussion_search_reads_extras_from_each_hit_own_record_when_a_slug_is_reused() {
+    // review 第一輪 must-fix：slug 封存後可重用；在途與封存同名同時命中時，
+    // 封存那筆的 promotedTo／concluded 必須來自封存記錄本身，不得抄在途值。
+    let f = fixture();
+    seed_discussion(
+        &f,
+        "reuse",
+        false,
+        "---\ntopic: Drawer reuse (live)\nslug: reuse\nstatus: open\ncreated: 2026-09-01\n---\n\n\
+         ## Context\n\nseed\n\n## Rounds\n\n## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n",
+    );
+    seed_discussion(
+        &f,
+        "reuse",
+        true,
+        "---\ntopic: Drawer reuse (archived)\nslug: reuse\nstatus: promoted\npromoted_to: drawer-cut\ncreated: 2026-07-01\n---\n\n\
+         ## Context\n\nseed\n\n## Rounds\n\n## Conclusion\n\n**Decision**: settled\n",
+    );
+    let body: Value = request("GET", &f, &f.editor_pat, "discussions/search?q=drawer")
+        .call()
+        .expect("GET /discussions/search")
+        .into_json()
+        .expect("JSON body");
+    let hits = body["hits"].as_array().expect("hits array");
+    assert_eq!(hits.len(), 2, "{body}");
+    let live = hits.iter().find(|h| h["archived"] == false).expect("live hit");
+    let archived = hits.iter().find(|h| h["archived"] == true).expect("archived hit");
+    assert_eq!(live["concluded"], false);
+    assert!(live.get("promotedTo").is_none(), "live record was never promoted: {live}");
+    assert_eq!(archived["concluded"], true, "the archived record's own conclusion: {archived}");
+    assert_eq!(archived["promotedTo"], json!(["drawer-cut"]));
+}
+
+#[test]
+fn discussion_search_route_matches_the_engine_search_over_the_same_records() {
+    // command-runtime scenario「discuss search 本機與 server 同語意」：同一組記錄放進
+    // 本機 fs store 與 server，引擎函式與端點回同一序列的 hits（slug、欄位、matches）。
+    let f = fixture();
+    seed_search_records(&f);
+    let body: Value = request("GET", &f, &f.editor_pat, "discussions/search?q=drawer")
+        .call()
+        .expect("GET /discussions/search")
+        .into_json()
+        .expect("JSON body");
+
+    let root = tempfile::tempdir().expect("tempdir");
+    let discussions = root.path().join("openspec").join("discussions");
+    std::fs::create_dir_all(discussions.join("archive")).unwrap();
+    std::fs::write(discussions.join("drawer-scope.md"), SEARCH_LIVE_RECORD).unwrap();
+    std::fs::write(
+        discussions.join("archive").join("2026-08-20-trace-links-two-hops.md"),
+        SEARCH_ARCHIVED_RECORD,
+    )
+    .unwrap();
+    let engine = speclink_fs::FsStore::new(root.path(), "openspec");
+    let hits = speclink_core::discuss::search(&engine, &["drawer".to_string()]).expect("engine search");
+
+    // promotedTo／concluded 是 route 邊緣增欄、path 是各 store 的位置——都不是語意的一部分。
+    let strip = |h: &Value| {
+        let mut h = h.clone();
+        let o = h.as_object_mut().unwrap();
+        o.remove("promotedTo");
+        o.remove("concluded");
+        o.remove("path");
+        h
+    };
+    let route: Vec<Value> = body["hits"].as_array().unwrap().iter().map(strip).collect();
+    let engine: Vec<Value> =
+        serde_json::to_value(&hits).unwrap().as_array().unwrap().iter().map(strip).collect();
+    assert_eq!(route, engine, "the endpoint and the engine agree on order, fields and matches");
+}

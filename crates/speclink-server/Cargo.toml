@@ -38,6 +38,7 @@ mime_guess = "2"
 
 [dev-dependencies]
 tempfile = "3"
+speclink-fs = { path = "../speclink-fs" }
 postgres = "0.19.14"
 speclink-remote = { path = "../speclink-remote" }
 ureq = { version = "2", features = ["json"] }

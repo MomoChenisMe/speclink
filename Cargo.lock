@@ -4645,6 +4645,7 @@ dependencies = [
  "serde_yaml",
  "sha2 0.10.9",
  "speclink-core",
+ "speclink-fs",
  "speclink-host",
  "speclink-protocol",
  "speclink-remote",

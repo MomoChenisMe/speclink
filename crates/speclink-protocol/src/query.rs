@@ -590,6 +590,38 @@ pub struct ShowDiscussionResponse {
     pub content: String,
 }
 
+/// One keyword match inside a discussion record (`GET /discussions/search`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionMatch {
+    /// What matched: `topic`, `slug`, `ruled-out`, `decision`, `rejected` or `deferred`.
+    pub kind: String,
+    /// Where it sits: `frontmatter`, `round-N` or `conclusion`.
+    #[serde(rename = "where")]
+    pub where_: String,
+    /// The matched line, outer whitespace trimmed.
+    pub text: String,
+}
+
+/// One search hit: the discussion's info fields (flattened — the same shape as
+/// a list item, `promotedTo`/`concluded` included) plus its matches in
+/// document order.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionHit {
+    #[serde(flatten)]
+    pub info: DiscussionInfo,
+    pub matches: Vec<DiscussionMatch>,
+}
+
+/// `GET /discussions/search?q=<space-separated keywords>` response, hits in
+/// the engine's order (topic/slug hits first, then created newest first).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchDiscussionsResponse {
+    pub hits: Vec<DiscussionHit>,
+}
+
 #[cfg(test)]
 mod tests {
     use crate::query::*;
@@ -918,6 +950,49 @@ mod tests {
             Some("Ming <m@example.com>")
         );
         assert_eq!(show.content, "# Discussion\n");
+    }
+
+    #[test]
+    fn discussion_search_hits_carry_info_fields_and_matches() {
+        // discuss-search-recall「討論搜尋回應 payload」：hits 每筆 = 討論資訊欄位 + matches。
+        let resp: SearchDiscussionsResponse = serde_json::from_str(
+            r#"{"hits":[{"slug":"spec-drawer-trace-links","topic":"Drawer trace links","status":"concluded","rounds":2,"created":"2026-08-20","createdBy":"Ming <m@example.com>","kind":"improve","promotedTo":["drawer-provenance-links"],"concluded":true,"path":"discussions/archive/2026-08-20-spec-drawer-trace-links.md","archived":true,"matches":[{"kind":"ruled-out","where":"round-2","text":"**Ruled out**: RichDetailDrawer 加 readOnly 旗標"},{"kind":"deferred","where":"conclusion","text":"**Deferred**: drawer AND mode"}]}]}"#,
+        )
+        .unwrap();
+        let hit = &resp.hits[0];
+        assert_eq!(hit.info.slug, "spec-drawer-trace-links");
+        assert!(hit.info.archived);
+        assert_eq!(hit.info.created_by.as_deref(), Some("Ming <m@example.com>"));
+        assert_eq!(hit.info.kind.as_deref(), Some("improve"));
+        assert_eq!(hit.info.promoted_to, ["drawer-provenance-links"]);
+        assert_eq!(hit.info.concluded, Some(true));
+        assert_eq!(hit.matches.len(), 2);
+        assert_eq!(hit.matches[0].kind, "ruled-out");
+        assert_eq!(hit.matches[0].where_, "round-2");
+        assert_eq!(hit.matches[1].text, "**Deferred**: drawer AND mode");
+        // 序列化回 wire：flatten 的資訊欄位與 matches 的 where 鍵名。
+        let json = serde_json::to_value(hit).unwrap();
+        assert_eq!(json["slug"], "spec-drawer-trace-links");
+        assert_eq!(json["matches"][0]["where"], "round-2");
+        assert_eq!(json["promotedTo"][0], "drawer-provenance-links");
+    }
+
+    #[test]
+    fn discussion_search_hit_optional_fields_may_be_absent() {
+        // 缺 createdBy／kind／concluded、promotedTo 空陣列 → None／None／None／空清單。
+        let resp: SearchDiscussionsResponse = serde_json::from_str(
+            r#"{"hits":[{"slug":"golden-policy","topic":"Golden policy","status":"open","rounds":0,"created":"2026-07-01","promotedTo":[],"path":"discussions/golden-policy.md","archived":false,"matches":[{"kind":"topic","where":"frontmatter","text":"Golden policy"}]}]}"#,
+        )
+        .unwrap();
+        let hit = &resp.hits[0];
+        assert_eq!(hit.info.created_by, None);
+        assert_eq!(hit.info.kind, None);
+        assert_eq!(hit.info.concluded, None);
+        assert!(hit.info.promoted_to.is_empty());
+        assert_eq!(hit.matches[0].kind, "topic");
+        assert_eq!(hit.matches[0].where_, "frontmatter");
+        let empty: SearchDiscussionsResponse = serde_json::from_str(r#"{"hits":[]}"#).unwrap();
+        assert!(empty.hits.is_empty());
     }
 
     #[test]

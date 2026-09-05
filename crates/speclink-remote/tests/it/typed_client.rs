@@ -789,3 +789,36 @@ fn review_ticket_if_any_still_surfaces_non_404_errors() {
         .expect_err("auth failure must stay an error");
     assert_eq!(err.reason.as_deref(), Some("permission_denied"), "typed reason survives: {err}");
 }
+
+#[test]
+fn discussion_search_is_typed_and_sends_space_joined_q() {
+    // discuss-search-recall「typed client 讀取搜尋回應」：關鍵字以空白接起放進 q，
+    // 回應反序列化為 SearchDiscussionsResponse（不走 raw JSON）。
+    let mock = serve(
+        200,
+        r#"{"hits":[{"slug":"transport-choice","topic":"Transport choice","status":"concluded","rounds":1,"created":"2026-08-01","path":"discussions/archive/2026-08-01-transport-choice.md","archived":true,"matches":[{"kind":"deferred","where":"conclusion","text":"**Deferred**: SSE reconnect"}]}]}"#,
+    );
+    let resp = client(&mock)
+        .search_discussions(&["golden".to_string(), "sse".to_string()])
+        .expect("search ok");
+    assert_eq!(resp.hits.len(), 1);
+    let hit = &resp.hits[0];
+    assert_eq!(hit.info.slug, "transport-choice");
+    assert!(hit.info.archived);
+    assert_eq!(hit.info.created_by, None, "absent createdBy is None");
+    assert_eq!(hit.info.kind, None, "absent kind is None");
+    assert_eq!(hit.matches[0].kind, "deferred");
+    assert_eq!(hit.matches[0].where_, "conclusion");
+    assert_eq!(hit.matches[0].text, "**Deferred**: SSE reconnect");
+
+    let cap = mock.last();
+    assert_eq!(cap.method, "GET");
+    let (path, query) = cap.path.split_once('?').expect("a query string");
+    assert!(path.ends_with("/discussions/search"), "path was {path}");
+    let q = query
+        .strip_prefix("q=")
+        .expect("single q parameter")
+        .replace('+', " ")
+        .replace("%20", " ");
+    assert_eq!(q, "golden sse", "keywords travel space-joined in one q");
+}

@@ -269,6 +269,8 @@ pub enum Command {
     DiscussList { archived: bool },
     /// `discuss show <slug>`
     DiscussShow { slug: String },
+    /// `discuss search <keyword>...` — keywords are matched any-of, case-insensitive.
+    DiscussSearch { terms: Vec<String> },
     // --- 變更群 ---
     /// `new change <name> [--description] [--schema] [--agent] [--from-discussion]`
     NewChange {
@@ -605,6 +607,8 @@ pub enum CommandOutcome {
     Language(String),
     DiscussList(Vec<crate::discuss::DiscussionInfo>),
     DiscussShow(DiscussShowOutcome),
+    /// `discuss search` hits, already in the spec's order.
+    DiscussSearch(Vec<crate::discuss::DiscussionHit>),
     NewChange(NewChangeOutcome),
     NewArtifact(NewArtifactOutcome),
     TaskDone(TaskFlipOutcome),
@@ -698,6 +702,11 @@ pub fn execute(
             crate::discuss::list_discussions(store)
         })),
         Command::DiscussShow { slug } => run_discuss_show(store, &slug),
+        Command::DiscussSearch { terms } => crate::discuss::search(store, &terms)
+            .map(CommandOutcome::DiscussSearch)
+            // The engine's only refusal here is an empty/blank keyword list —
+            // an argv defect (the server maps it to 400 invalid_argument).
+            .map_err(|e| CommandError::new(ErrorCode::InvalidArgv, e.to_string())),
         Command::NewChange { name, description, schema, agent, from_discussion } => {
             run_new_change(store, ctx.actor.as_deref(), name, description, schema, agent, from_discussion)
         }
@@ -857,7 +866,8 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         | CommandOutcome::ArtifactCat(_)
         | CommandOutcome::Language(_)
         | CommandOutcome::DiscussList(_)
-        | CommandOutcome::DiscussShow(_) => Vec::new(),
+        | CommandOutcome::DiscussShow(_)
+        | CommandOutcome::DiscussSearch(_) => Vec::new(),
         CommandOutcome::NewChange(o) => vec![DomainEvent::ChangeCreated {
             change: o.name.clone(),
             occurred_at: at,
@@ -2260,6 +2270,32 @@ mod tests {
     }
 
     #[test]
+    fn discuss_search_is_a_query_that_returns_hits_and_no_events() {
+        // Spec「動詞覆蓋與跨入口一致性」：discuss search 為唯讀查詢動詞，不發領域事件。
+        let store = TestStore::with_live_discussion(
+            "drawer-scope",
+            "---\ntopic: Drawer scope\nslug: drawer-scope\nstatus: open\ncreated: 2026-07-01\n---\n\n\
+             ## Rounds\n\n### Round 1 — interview (2026-07-01)\n\n**Ruled out**: drawer flag\n\n## Conclusion\n",
+        );
+        let (outcome, events) =
+            ok(&store, Command::DiscussSearch { terms: vec!["drawer".to_string()] });
+        let hits: Vec<crate::discuss::DiscussionHit> =
+            outcome.try_into().expect("search outcome carries hits");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].info.slug, "drawer-scope");
+        assert_eq!(hits[0].matches.len(), 3, "topic, slug and the ruled-out line");
+        assert!(events.is_empty(), "search is a query and never produces events");
+
+        let err = execute(
+            &store,
+            &ExecutionContext { workspace: Some(ghost_ws()), ..Default::default() },
+            Command::DiscussSearch { terms: vec![" ".to_string()] },
+        )
+        .unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidArgv, "blank keywords are refused: {err}");
+    }
+
+    #[test]
     fn new_change_reports_exactly_one_change_created_event() {
         // Spec scenario 建立變更回報 change-created.
         let store = TestStore::default();
@@ -3396,6 +3432,7 @@ mod tests {
             Command::LanguageShow => {}
             Command::DiscussList { archived: _ } => {}
             Command::DiscussShow { slug: _ } => {}
+            Command::DiscussSearch { terms: _ } => {}
             Command::NewChange {
                 name: _,
                 description: _,

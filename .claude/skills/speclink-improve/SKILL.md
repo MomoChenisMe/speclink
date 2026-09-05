@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -40,12 +40,11 @@ Architecture vocabulary (seam, depth, adapter, shallow module) stays in this doc
 Before scanning, find out what has already been decided. Proposing something the user already rejected is worse than proposing nothing.
 
 ```bash
-speclink discuss list --json
-speclink discuss list --archived --json
+speclink discuss search <scope keyword>... --json
 speclink list --json
 ```
 
-- **Read the archived discussions' `Ruled out` lines and conclusions.** They are this project's decision record: an option that lost, with the reason it lost. Read the ones whose topic touches your scope (`speclink discuss show <slug>` falls back to the archive).
+- **Search the discussions with your scope's keywords** — the module, crate or pain-point nouns. This check always runs before the scan (Step 3); its keywords come from the user's direction when one was given, and from the scope Step 2 settles when it was not — in that case do Step 2 first, then come back here. `discuss search` covers live and archived records alike and matches only the topic, the slug and the decision lines — each round's `Ruled out` and the Conclusion's `Decision` / `Rejected alternatives` / `Deferred`; any one keyword matching counts. Those lines are this project's decision record: an option that lost, with the reason it lost. Read the full Conclusion of the hits that touch your scope (`speclink discuss show <slug>` falls back to the archive), **earlier `improve` records for the same scope first** — a hit whose `kind` is `improve` is the closest precedent to what you are about to propose.
 - **A previously rejected approach SHALL NOT be re-proposed as a candidate** — unless you can name the reason it was rejected AND state concretely why that reason no longer holds (the code it depended on is gone, the constraint was lifted, the trade-off inverted). Say so in the candidate itself; do not quietly re-file it.
 - **Read the in-flight changes** from `speclink list --json` and their proposals. A candidate that overlaps the area an in-flight change is already rewriting SHALL NOT be proposed — the work is happening, and a discussion about it now collides with a change mid-flight.
 

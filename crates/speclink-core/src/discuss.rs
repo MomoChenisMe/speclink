@@ -393,6 +393,181 @@ pub fn info(store: &dyn Store, slug: &str) -> Option<DiscussionInfo> {
     store.read_discussion(slug).map(|d| info_from_doc(&d))
 }
 
+/// One keyword hit inside a discussion record (`discuss search`, design D3):
+/// `kind` names what matched (topic / slug / ruled-out / decision / rejected /
+/// deferred), `where_` names where (frontmatter / round-N / conclusion) and
+/// `text` is the matched line, outer whitespace trimmed. Serialize-only: the
+/// remote CLI rebuilds it from the wire type by hand.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DiscussionMatch {
+    pub kind: String,
+    #[serde(rename = "where")]
+    pub where_: String,
+    pub text: String,
+}
+
+/// One record that `discuss search` matched: the listing fields plus every
+/// match in document order. `info` flattens so `--json` reads as the list
+/// payload's item with a `matches` array appended.
+#[derive(Debug, Clone, Serialize)]
+pub struct DiscussionHit {
+    #[serde(flatten)]
+    pub info: DiscussionInfo,
+    pub matches: Vec<DiscussionMatch>,
+}
+
+/// Decision-line markers (design D2): the round-side one and the three
+/// conclusion-side ones, each with the `kind` it reports.
+const RULED_OUT_MARKER: &str = "**Ruled out**:";
+const CONCLUSION_MARKERS: &[(&str, &str)] = &[
+    ("**Decision**:", "decision"),
+    ("**Rejected alternatives**:", "rejected"),
+    ("**Deferred**:", "deferred"),
+];
+
+/// Search live and archived discussions for any of `terms` (case-insensitive
+/// substring; any term hitting counts). Every term is split on whitespace
+/// first — the server's `q` arrives that way and the CLI's quoted argument
+/// must mean the same thing — so a keyword can never contain a space. Only
+/// the topic, the slug and the decision lines take part: each round's
+/// `**Ruled out**:` line and the Conclusion's `**Decision**:` /
+/// `**Rejected alternatives**:` / `**Deferred**:` line, each together with
+/// the list-item lines that directly continue it (records habitually put
+/// the marker on its own line and the verdicts as bullets under it).
+/// Evidence, Focus, Position, Open and prose never match. A record without
+/// round headings or a Conclusion still matches by topic and slug. Hits sort
+/// with topic/slug hits first, then created newest first, then slug.
+pub fn search(store: &dyn Store, terms: &[String]) -> Result<Vec<DiscussionHit>> {
+    let needles: Vec<String> = terms
+        .iter()
+        .flat_map(|t| t.split_whitespace())
+        .map(str::to_lowercase)
+        .collect();
+    if needles.is_empty() {
+        bail!("discuss search needs at least one keyword");
+    }
+    let hits_any = |text: &str| {
+        let lower = text.to_lowercase();
+        needles.iter().any(|n| lower.contains(n.as_str()))
+    };
+
+    let mut docs = store.list_live_discussions();
+    docs.extend(store.list_archived_discussions());
+    // (topic or slug hit, hit) — the flag is the first sort key.
+    let mut hits: Vec<(bool, DiscussionHit)> = docs
+        .iter()
+        .filter_map(|doc| {
+            let info = info_from_doc(doc);
+            let mut matches = Vec::new();
+            for (kind, value) in [("topic", &info.topic), ("slug", &info.slug)] {
+                if hits_any(value) {
+                    matches.push(DiscussionMatch {
+                        kind: kind.to_string(),
+                        where_: "frontmatter".to_string(),
+                        text: value.clone(),
+                    });
+                }
+            }
+            let frontmatter_hit = !matches.is_empty();
+            matches.extend(decision_lines(&doc.text).filter(|m| hits_any(&m.text)));
+            (!matches.is_empty()).then_some((frontmatter_hit, DiscussionHit { info, matches }))
+        })
+        .collect();
+    hits.sort_by(|(a_fm, a), (b_fm, b)| {
+        b_fm.cmp(a_fm)
+            .then_with(|| b.info.created.cmp(&a.info.created))
+            .then_with(|| a.info.slug.cmp(&b.info.slug))
+    });
+    Ok(hits.into_iter().map(|(_, hit)| hit).collect())
+}
+
+/// Every decision line of a record in document order, each tagged with its
+/// kind and location. A `**Ruled out**:` marker counts only under a round
+/// heading (its number comes from the nearest heading above); the three
+/// conclusion markers count only inside `## Conclusion`. The list-item lines
+/// directly under a counted marker belong to it (same kind and location, one
+/// match per line); any other line — blank, prose, another `**Field**:` —
+/// ends that block. Structure is read exactly as [`count_rounds`] and
+/// [`section_body_range`] read it: headings at column 0 only, a malformed
+/// round heading is no round, fenced code is skipped.
+fn decision_lines(text: &str) -> impl Iterator<Item = DiscussionMatch> + '_ {
+    let mut in_fence = false;
+    let mut round: Option<String> = None;
+    let mut in_conclusion = false;
+    // The counted marker whose list items are still being collected.
+    let mut continuing: Option<(&'static str, String)> = None;
+    text.lines().filter_map(move |raw| {
+        let line = raw.trim_end();
+        if is_fence_line(line) {
+            in_fence = !in_fence;
+            continuing = None;
+            return None;
+        }
+        if in_fence {
+            return None;
+        }
+        if line.starts_with(SCAFFOLD_ROUND_PREFIX) || line.starts_with(PRE_SCAFFOLD_ROUND_PREFIX) {
+            round = round_number(line);
+            in_conclusion = false;
+            continuing = None;
+            return None;
+        }
+        if STRUCTURAL_HEADERS.contains(&line) {
+            in_conclusion = line == "## Conclusion";
+            round = None;
+            continuing = None;
+            return None;
+        }
+        let content = line.trim_start();
+        let marker = if content.starts_with(RULED_OUT_MARKER) {
+            round.as_ref().map(|n| ("ruled-out", format!("round-{n}")))
+        } else if in_conclusion {
+            CONCLUSION_MARKERS
+                .iter()
+                .find(|(marker, _)| content.starts_with(marker))
+                .map(|(_, kind)| (*kind, "conclusion".to_string()))
+        } else {
+            None
+        };
+        if let Some((kind, where_)) = marker {
+            continuing = Some((kind, where_.clone()));
+            return Some(DiscussionMatch { kind: kind.to_string(), where_, text: content.to_string() });
+        }
+        if is_list_item(content) {
+            return continuing.as_ref().map(|(kind, where_)| DiscussionMatch {
+                kind: kind.to_string(),
+                where_: where_.clone(),
+                text: content.to_string(),
+            });
+        }
+        continuing = None;
+        None
+    })
+}
+
+/// A markdown list item (`- `, `* `, `+ ` or `1. `) — the shape a decision
+/// marker's continuation lines take.
+fn is_list_item(content: &str) -> bool {
+    if content.starts_with("- ") || content.starts_with("* ") || content.starts_with("+ ") {
+        return true;
+    }
+    let digits = content.chars().take_while(|c| c.is_ascii_digit()).count();
+    digits > 0 && content[digits..].starts_with(". ")
+}
+
+/// The number of a round heading — scaffold `### Round N — <mode> (<date>)`
+/// or pre-scaffold `## Round N` — and `None` for a malformed one, which
+/// [`count_rounds`] does not count either.
+fn round_number(line: &str) -> Option<String> {
+    let rest = if is_scaffold_round_heading(line) {
+        line.strip_prefix(SCAFFOLD_ROUND_PREFIX)?
+    } else {
+        line.strip_prefix(PRE_SCAFFOLD_ROUND_PREFIX)?
+    };
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    (!digits.is_empty()).then_some(digits)
+}
+
 /// Reject blank content at the write boundary. The CLI turns a forgotten `--stdin` into an
 /// empty string, so guarding here — one place, covering local CLI / remote CLI / desktop —
 /// makes that silent failure a loud error instead of a written-but-empty section.
@@ -826,10 +1001,17 @@ pub fn set_board_rank(store: &dyn Store, slug: &str, rank: &str) -> Result<()> {
 /// comma-separated `promoted_to` accumulator, live or archived. Kept out of
 /// `DiscussionInfo` so `discuss list --json` stays bit-identical (design D2).
 pub fn promoted_to(store: &dyn Store, slug: &str) -> Vec<String> {
-    let Some(doc) = store.read_discussion(slug) else {
-        return Vec::new();
-    };
-    frontmatter_value(&doc.text, "promoted_to")
+    store
+        .read_discussion(slug)
+        .map(|doc| promoted_to_in(&doc.text))
+        .unwrap_or_default()
+}
+
+/// The `promoted_to` accumulator of one record's text, in frontmatter order —
+/// for callers that already hold the exact document (live or archived) and
+/// must not let a reused slug's live record answer for its archived namesake.
+pub fn promoted_to_in(text: &str) -> Vec<String> {
+    frontmatter_value(text, "promoted_to")
         .map(|v| {
             v.split(',')
                 .map(str::trim)
@@ -838,6 +1020,13 @@ pub fn promoted_to(store: &dyn Store, slug: &str) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// Whether one record's text holds a real Conclusion (the scaffold's
+/// placeholder comment does not count) — the text-level twin of
+/// [`discussion_concluded`].
+pub fn concluded_in(text: &str) -> bool {
+    conclusion_body(text).is_some()
 }
 
 /// Archive a live discussion under its creation date. Returns the archived
@@ -2278,5 +2467,299 @@ mod tests {
             "text: {text}"
         );
         assert_eq!(super::count_rounds(&text), 0);
+    }
+
+    // --- discuss search（discuss-search-recall）---
+
+    /// A scaffolded record whose Rounds and Conclusion bodies are the caller's.
+    fn search_doc(slug: &str, topic: &str, created: &str, rounds: &str, conclusion: &str) -> String {
+        format!(
+            "---\ntopic: {topic}\nslug: {slug}\nstatus: open\ncreated: {created}\n---\n\n\
+             # Discussion: {topic}\n\n\
+             ## Context\n\nFixture context.\n\n\
+             ## Rounds\n\n{rounds}\n\
+             ## Conclusion\n\n{conclusion}\n"
+        )
+    }
+
+    fn terms(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn kinds(hit: &super::DiscussionHit) -> Vec<(&str, &str)> {
+        hit.matches.iter().map(|m| (m.kind.as_str(), m.where_.as_str())).collect()
+    }
+
+    #[test]
+    fn search_hits_topic_as_frontmatter() {
+        let store = TestStore::with_live_discussion(
+            "alpha",
+            &search_doc("alpha", "Golden snapshot policy", "2026-07-01", "", ""),
+        );
+        let hits = super::search(&store, &terms(&["golden"])).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].info.slug, "alpha");
+        assert!(!hits[0].info.archived);
+        assert_eq!(kinds(&hits[0]), [("topic", "frontmatter")]);
+        assert_eq!(hits[0].matches[0].text, "Golden snapshot policy");
+    }
+
+    #[test]
+    fn search_hits_slug_as_frontmatter() {
+        let store = TestStore::with_live_discussion(
+            "sse-transport",
+            &search_doc("sse-transport", "Transport choice", "2026-07-01", "", ""),
+        );
+        let hits = super::search(&store, &terms(&["sse"])).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(kinds(&hits[0]), [("slug", "frontmatter")]);
+        assert_eq!(hits[0].matches[0].text, "sse-transport");
+    }
+
+    #[test]
+    fn search_hits_ruled_out_line_with_its_round_number_in_archived_record() {
+        let rounds = "### Round 1 — assumptions (2026-07-01)\n\n**Focus**: scope\n**Ruled out**: nothing yet\n\n\
+                      ### Round 2 — interview (2026-07-02)\n\n**Focus**: drawer\n\
+                      **Ruled out**: RichDetailDrawer 加 readOnly 旗標（分支地獄）\n";
+        let store = TestStore::default();
+        store.archived_discussions.borrow_mut().insert(
+            "spec-drawer-trace-links".into(),
+            search_doc("spec-drawer-trace-links", "Trace links", "2026-07-01", rounds, "**Decision**: two hops\n"),
+        );
+        let hits = super::search(&store, &terms(&["drawer"])).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].info.archived, "archived records are searched by default");
+        // Focus 行不算；slug 命中排前、ruled-out 行在後（文件順序）。
+        assert_eq!(kinds(&hits[0]), [("slug", "frontmatter"), ("ruled-out", "round-2")]);
+        assert_eq!(hits[0].matches[1].text, "**Ruled out**: RichDetailDrawer 加 readOnly 旗標（分支地獄）");
+    }
+
+    #[test]
+    fn search_hits_the_three_conclusion_decision_lines() {
+        let conclusion = "**Decision**: drawer stays read-only\n\
+                          **Rejected alternatives**: drawer readOnly flag\n\
+                          **Deferred**: drawer AND mode\n\
+                          Prose mentioning drawer does not count.\n";
+        let store = TestStore::with_live_discussion(
+            "alpha",
+            &search_doc("alpha", "Alpha", "2026-07-01", "", conclusion),
+        );
+        let hits = super::search(&store, &terms(&["drawer"])).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(
+            kinds(&hits[0]),
+            [("decision", "conclusion"), ("rejected", "conclusion"), ("deferred", "conclusion")]
+        );
+        assert_eq!(hits[0].matches[0].text, "**Decision**: drawer stays read-only");
+    }
+
+    #[test]
+    fn search_is_case_insensitive() {
+        let store = TestStore::with_live_discussion(
+            "alpha",
+            &search_doc("alpha", "SSE transport", "2026-07-01", "", "**Deferred**: Golden regen\n"),
+        );
+        let hits = super::search(&store, &terms(&["sse"])).unwrap();
+        assert_eq!(kinds(&hits[0]), [("topic", "frontmatter")]);
+        let hits = super::search(&store, &terms(&["GOLDEN"])).unwrap();
+        assert_eq!(kinds(&hits[0]), [("deferred", "conclusion")]);
+    }
+
+    #[test]
+    fn search_matches_any_of_several_terms() {
+        let store = TestStore::with_live_discussion(
+            "a",
+            &search_doc("a", "Golden policy", "2026-07-01", "", ""),
+        );
+        store.discussions.borrow_mut().insert(
+            "b".into(),
+            search_doc("b", "Transport", "2026-08-01", "", "**Deferred**: SSE reconnect\n"),
+        );
+        let hits = super::search(&store, &terms(&["golden", "sse"])).unwrap();
+        let slugs: Vec<&str> = hits.iter().map(|h| h.info.slug.as_str()).collect();
+        assert_eq!(slugs, ["a", "b"]);
+    }
+
+    #[test]
+    fn search_ignores_evidence_and_other_non_decision_lines() {
+        let rounds = "### Round 1 — interview (2026-07-01)\n\n**Focus**: sidecar\n**Position**: sidecar first\n\
+                      **Evidence**: see sidecar.rs\n**Open**: sidecar naming\n\nProse about sidecar.\n";
+        let store = TestStore::with_live_discussion(
+            "alpha",
+            &search_doc("alpha", "Alpha", "2026-07-01", rounds, "Free text about sidecar.\n"),
+        );
+        let hits = super::search(&store, &terms(&["sidecar"])).unwrap();
+        assert!(hits.is_empty(), "only decision lines count: {hits:?}");
+    }
+
+    #[test]
+    fn search_tolerates_records_without_rounds_or_conclusion() {
+        // 只有 frontmatter 與 Context：仍以 topic 參與比對。
+        let bare = "---\ntopic: Drawer scope\nslug: bare\nstatus: open\ncreated: 2026-07-01\n---\n\n\
+                    # Discussion: Drawer scope\n\n## Context\n\nseed\n";
+        let store = TestStore::with_live_discussion("bare", bare);
+        // 有 Ruled out 行但沒有任何輪標題：該行不算決定行，topic 仍命中。
+        store.discussions.borrow_mut().insert(
+            "headless".into(),
+            "---\ntopic: Drawer again\nslug: headless\nstatus: open\ncreated: 2026-06-01\n---\n\n\
+             ## Rounds\n\n**Ruled out**: drawer flag\n"
+                .into(),
+        );
+        let hits = super::search(&store, &terms(&["drawer"])).unwrap();
+        assert_eq!(hits.len(), 2);
+        for hit in &hits {
+            assert_eq!(kinds(hit), [("topic", "frontmatter")], "slug {}", hit.info.slug);
+        }
+    }
+
+    #[test]
+    fn search_rejects_an_empty_or_blank_term_list() {
+        let store = TestStore::with_live_discussion(
+            "alpha",
+            &search_doc("alpha", "Alpha", "2026-07-01", "", ""),
+        );
+        assert!(super::search(&store, &[]).is_err());
+        assert!(super::search(&store, &terms(&["  ", ""])).is_err());
+    }
+
+    #[test]
+    fn search_orders_frontmatter_hits_first_then_created_newest_first() {
+        // spec「討論定案以 search 動詞可查」的排序表：A topic → C slug → B conclusion → D round。
+        let store = TestStore::default();
+        let mut docs = store.discussions.borrow_mut();
+        docs.insert("a".into(), search_doc("a", "Golden policy", "2026-07-01", "", ""));
+        docs.insert("golden-regen".into(), search_doc("golden-regen", "Regen", "2026-06-01", "", ""));
+        docs.insert("b".into(), search_doc("b", "B", "2026-08-01", "", "**Deferred**: golden later\n"));
+        docs.insert(
+            "d".into(),
+            search_doc(
+                "d",
+                "D",
+                "2026-05-01",
+                "### Round 1 — interview (2026-05-01)\n\n**Ruled out**: golden inline\n",
+                "",
+            ),
+        );
+        drop(docs);
+        let hits = super::search(&store, &terms(&["golden"])).unwrap();
+        let slugs: Vec<&str> = hits.iter().map(|h| h.info.slug.as_str()).collect();
+        assert_eq!(slugs, ["a", "golden-regen", "b", "d"]);
+        assert_eq!(kinds(&hits[3]), [("ruled-out", "round-1")]);
+    }
+
+    #[test]
+    fn search_breaks_same_day_ties_by_slug() {
+        let store = TestStore::default();
+        let mut docs = store.discussions.borrow_mut();
+        docs.insert("zeta".into(), search_doc("zeta", "Golden Z", "2026-07-01", "", ""));
+        docs.insert("alpha".into(), search_doc("alpha", "Golden A", "2026-07-01", "", ""));
+        docs.insert("mid".into(), search_doc("mid", "M", "2026-07-01", "", "**Decision**: golden\n"));
+        docs.insert("late".into(), search_doc("late", "L", "2026-07-02", "", "**Decision**: golden\n"));
+        drop(docs);
+        let hits = super::search(&store, &terms(&["golden"])).unwrap();
+        let slugs: Vec<&str> = hits.iter().map(|h| h.info.slug.as_str()).collect();
+        assert_eq!(slugs, ["alpha", "zeta", "late", "mid"]);
+    }
+
+    #[test]
+    fn search_hit_serializes_as_info_fields_plus_matches() {
+        let store = TestStore::with_live_discussion(
+            "alpha",
+            &search_doc("alpha", "Golden", "2026-07-01", "", "**Deferred**: golden regen\n"),
+        );
+        let hits = super::search(&store, &terms(&["golden"])).unwrap();
+        let v = serde_json::to_value(&hits[0]).unwrap();
+        let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            ["archived", "created", "matches", "path", "rounds", "slug", "status", "topic"],
+            "the list payload's fields flattened, plus matches"
+        );
+        let m = &v["matches"][1];
+        let mut mkeys: Vec<&str> = m.as_object().unwrap().keys().map(String::as_str).collect();
+        mkeys.sort_unstable();
+        assert_eq!(mkeys, ["kind", "text", "where"]);
+        assert_eq!(m["where"], "conclusion");
+        assert_eq!(m["kind"], "deferred");
+    }
+
+    #[test]
+    fn search_splits_each_term_on_whitespace_like_the_server_does() {
+        // design D4／Non-Goals：關鍵字含空白不支援——CLI 位置參數與 server 的 q 皆以空白切詞。
+        // 引擎統一切詞，讓帶引號的多字參數在本機與 remote 得到同一組命中。
+        let store = TestStore::with_live_discussion(
+            "a",
+            &search_doc("a", "Golden policy", "2026-07-01", "", ""),
+        );
+        store.discussions.borrow_mut().insert(
+            "b".into(),
+            search_doc("b", "Transport", "2026-08-01", "", "**Deferred**: SSE reconnect\n"),
+        );
+        let hits = super::search(&store, &terms(&["golden  sse"])).unwrap();
+        let slugs: Vec<&str> = hits.iter().map(|h| h.info.slug.as_str()).collect();
+        assert_eq!(slugs, ["a", "b"], "one quoted argument behaves as two keywords");
+    }
+
+    #[test]
+    fn search_hits_list_item_lines_that_continue_a_decision_marker() {
+        // review 第一輪 must-fix：封存記錄慣用「標記獨占一行、內容寫在下一行條列」。
+        // 標記行之後緊接的條列行都算該決定行的一部分；散文與下一個標記不算。
+        let rounds = "### Round 1 — interview (2026-07-01)\n\n**Focus**: x\n\
+                      **Ruled out**:\n- 只在 tray.ts 修落頁\n- 把 drawer 拿掉\n\n\
+                      **Open**: drawer naming\n";
+        let conclusion = "**Decision**: 兩件事：\n- keep drawer\n- ship\n\n\
+                          **Deferred**:\n- drawer AND mode\nProse mentioning drawer.\n";
+        let store = TestStore::with_live_discussion(
+            "alpha",
+            &search_doc("alpha", "Alpha", "2026-07-01", rounds, conclusion),
+        );
+        let hits = super::search(&store, &terms(&["drawer"])).unwrap();
+        assert_eq!(hits.len(), 1);
+        let got: Vec<(&str, &str, &str)> = hits[0]
+            .matches
+            .iter()
+            .map(|m| (m.kind.as_str(), m.where_.as_str(), m.text.as_str()))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("ruled-out", "round-1", "- 把 drawer 拿掉"),
+                ("decision", "conclusion", "- keep drawer"),
+                ("deferred", "conclusion", "- drawer AND mode"),
+            ]
+        );
+    }
+
+    #[test]
+    fn search_reads_structure_like_the_rest_of_the_parser() {
+        // review 第一輪：縮排的輪標題／結構標題其他解析器不認，搜尋也不認。
+        let rounds = "### Round 1 — interview (2026-07-01)\n\n**Ruled out**: drawer a\n\n\
+                      \x20 ### Round 2 — interview (2026-07-02)\n\n**Ruled out**: drawer b\n\n\
+                      \x20 ## Conclusion\n\n**Decision**: drawer c\n";
+        let store = TestStore::with_live_discussion(
+            "alpha",
+            &search_doc("alpha", "Alpha", "2026-07-01", rounds, ""),
+        );
+        let hits = super::search(&store, &terms(&["drawer"])).unwrap();
+        assert_eq!(
+            kinds(&hits[0]),
+            [("ruled-out", "round-1"), ("ruled-out", "round-1")],
+            "an indented heading is content: both lines stay in round 1 and no conclusion opens"
+        );
+    }
+
+    #[test]
+    fn search_drops_round_attribution_after_a_malformed_round_heading() {
+        // review 第一輪：壞形狀輪標題 count_rounds 不算輪，搜尋也不把其下的行掛到上一輪。
+        let rounds = "### Round 1 — interview (2026-07-01)\n\n**Ruled out**: golden a\n\n\
+                      ### Round 3\n\n**Ruled out**: golden b\n";
+        let store = TestStore::with_live_discussion(
+            "alpha",
+            &search_doc("alpha", "Alpha", "2026-07-01", rounds, ""),
+        );
+        let hits = super::search(&store, &terms(&["golden"])).unwrap();
+        assert_eq!(kinds(&hits[0]), [("ruled-out", "round-1")]);
+        assert_eq!(hits[0].matches[0].text, "**Ruled out**: golden a");
     }
 }
