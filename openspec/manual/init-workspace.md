@@ -4,7 +4,7 @@ section: 開始使用
 order: 30
 keywords: [init, update, 工作區, 技能檔, 指令檔, 過期, 降級]
 sources: [workspace-tools, skill-routing]
-generated: 2026-09-02
+generated: 2026-09-03
 ---
 
 # 建立工作區與指令檔

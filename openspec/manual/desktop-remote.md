@@ -2,9 +2,9 @@
 title: 桌面連線 server 與 remote 工作區
 section: Remote 模式
 order: 470
-keywords: [伺服器頁籤, 裝置登入, Keychain, 新增 Workspace, scope, checkout, spec-only]
+keywords: [伺服器頁籤, 裝置登入, Keychain, 新增 Workspace, 最近開啟, scope, checkout, spec-only]
 sources: [desktop-connections, workspace-chooser, server-device-auth]
-generated: 2026-09-02
+generated: 2026-09-05
 ---
 
 # 桌面連線 server 與 remote 工作區
@@ -66,6 +66,14 @@ app 先嘗試裝置登入。server 支援時：
 4. 選要不要連接 checkout。略過時，app 以 spec-only 開啟 remote 分頁。
 
 沒有任何成員資格時，清單是空的，並顯示「此帳號目前沒有任何 Project／Repo membership」。這不是錯誤。解法是請管理員授予成員資格，見 [帳號](accounts.md)。
+
+### 從最近開啟直接開回來
+
+第一步兩張來源卡的下方有「最近開啟」區段，列出你開過、但現在不在分頁列上的工作區。remote 工作區在這裡顯示連線名稱與工作區名稱（Project／Repo）。點它，app 先確認原本綁的 checkout 仍對得上那個 Project／Repo，再用同一個連線、同一個 Project／Repo、同一個 checkout 資料夾開啟，不必重走上面四步。沒綁 checkout 的條目跳過確認、直接開。
+
+條目所屬的連線已從伺服器頁籤移除時，條目顯示「連線已移除」；連線還在但已登出時，顯示「連線已登出」。兩種狀態都停用開啟、保留移除。先回伺服器頁籤重新登入或重新新增連線，再開。伺服器清單讀取失敗或還沒讀完時，app 不先判定這兩種狀態，開啟維持可用，點下去才在開啟流程裡補判。
+
+完整的記錄、顯示、移除與錯誤態規則見[專案分頁、新增工作區與設定頁](desktop-projects.md)。
 
 ## 連接 checkout
 

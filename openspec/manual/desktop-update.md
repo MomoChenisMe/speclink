@@ -4,7 +4,7 @@ section: 桌面 app
 order: 350
 keywords: [檢查更新, 安裝 CLI, PATH, 指令檔過期, 技能檔, speclink update]
 sources: [desktop-app, workspace-tools]
-generated: 2026-09-02
+generated: 2026-09-05
 ---
 
 # 自動更新、安裝 CLI 與指令檔過期

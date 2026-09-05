@@ -4,7 +4,7 @@ section: 桌面 app
 order: 310
 keywords: [看板, 卡片, 拖曳, 任務, 退回提案中, worktree]
 sources: [desktop-app, board-card-order, worktree-overlay, manual-task-marker, task-identity]
-generated: 2026-09-02
+generated: 2026-09-05
 ---
 
 # 看板與任務
