@@ -42,6 +42,14 @@ enum DiscussCommands {
     },
     /// Show a discussion document
     Show { slug: String, #[arg(long)] json: bool },
+    /// Search live and archived discussions by keyword (topic, slug and decision lines)
+    Search {
+        /// Keywords (space-split); any one matching counts, case-insensitive
+        #[arg(required = true, value_name = "KEYWORD")]
+        terms: Vec<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Set the discussion's Context section (content from stdin)
     Context { slug: String, #[arg(long)] stdin: bool, #[arg(long)] json: bool },
     /// Append a round to a discussion (content from stdin)
@@ -113,6 +121,14 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             let show: core::command::DiscussShowOutcome =
                 run(&store, Some(&ws), core::command::Command::DiscussShow { slug })?;
             render_discuss_show(&show, json)?;
+        }
+        DiscussCommands::Search { terms, json } => {
+            let hits: Vec<core::discuss::DiscussionHit> = run(
+                &store,
+                Some(&ws),
+                core::command::Command::DiscussSearch { terms: terms.clone() },
+            )?;
+            render_discuss_search(&terms, &hits, json)?;
         }
         DiscussCommands::Context { slug, stdin, json } => {
             let content = read_stdin_content(stdin);
@@ -245,6 +261,33 @@ fn render_discuss_list(
     }
     Ok(())
 }
+/// `discuss search` in both modes: one line per hit in the list's idiom, then
+/// one indented line per match (`<where> <kind>: <text>`). Zero hits is a
+/// success with a one-line notice; `--json` is `{ "hits": [...] }` either way.
+fn render_discuss_search(
+    terms: &[String],
+    hits: &[core::discuss::DiscussionHit],
+    json: bool,
+) -> Result<()> {
+    if json {
+        return print_json(&serde_json::json!({ "hits": hits }));
+    }
+    let query = terms.join(" ");
+    if hits.is_empty() {
+        println!("No discussions match \"{query}\".");
+        return Ok(());
+    }
+    println!("Discussions matching \"{query}\":");
+    for hit in hits {
+        let d = &hit.info;
+        let place = if d.archived { "archived" } else { "live" };
+        println!("  • {} [{}, {place}] ({}) — {}", d.slug, d.status, d.created, d.topic);
+        for m in &hit.matches {
+            println!("      {} {}: {}", color::dim(&m.where_), m.kind, m.text);
+        }
+    }
+    Ok(())
+}
 fn render_discuss_show(show: &core::command::DiscussShowOutcome, json: bool) -> Result<()> {
     if json {
         return print_json(&serde_json::json!({ "info": show.info, "content": show.content }));
@@ -367,6 +410,29 @@ pub(crate) fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
                 .map(to_discussion_info)
                 .collect();
             render_discuss_list(&items, archived, json)
+        }
+        DiscussCommands::Search { terms, json } => {
+            // 同一個 renderer：wire hit 轉回引擎型別（資訊欄位走既有 to_discussion_info，
+            // promotedTo／concluded 沿 list 的既定分歧落下）。
+            let hits: Vec<core::discuss::DiscussionHit> = ctx
+                .client
+                .search_discussions(&terms)?
+                .hits
+                .iter()
+                .map(|h| core::discuss::DiscussionHit {
+                    info: to_discussion_info(&h.info),
+                    matches: h
+                        .matches
+                        .iter()
+                        .map(|m| core::discuss::DiscussionMatch {
+                            kind: m.kind.clone(),
+                            where_: m.where_.clone(),
+                            text: m.text.clone(),
+                        })
+                        .collect(),
+                })
+                .collect();
+            render_discuss_search(&terms, &hits, json)
         }
         DiscussCommands::Show { slug, json } => {
             let payload = ctx.client.show_discussion(&slug)?;

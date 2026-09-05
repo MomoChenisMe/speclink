@@ -9,7 +9,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -97,7 +97,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -437,7 +437,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -966,7 +966,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -1260,7 +1260,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -1496,7 +1496,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -1619,7 +1619,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -1891,7 +1891,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -2037,7 +2037,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -2105,8 +2105,11 @@ Always pass `--slug` with the English kebab-case slug you derived — the slug n
 speclink discuss context <slug> --stdin <<'CTX_EOF'
 What prompted this discussion, whether a grill stage (Step 3) was needed and why,
 and the related changes/specs the scout (Step 2) surfaced.
+Prior discussions: <slug list>
 CTX_EOF
 ```
+
+The `Prior discussions:` line is mandatory: it names the records the prior-discussion check (Step 2) hit, comma-separated; when the check hit nothing, write `Prior discussions: none`.
 
 **Source doc convention** — when the topic named a document (see "Document input" below), the Context SHALL carry one line naming it:
 
@@ -2206,17 +2209,24 @@ This step runs before the scout, the assumptions list, any question to the user,
 
 Pull 2-5 keywords from the user's topic. For "search should support fuzzy matching", that's `search`, `fuzzy`, `match`. For "should we add a plugin system", that's `plugin`, `extension`, `module`. These keywords are in the user's language — Step 2 translates them into the system's language before scanning code.
 
-### Step 2: Scout — canon first, then code
+### Step 2: Scout — canon, then prior discussions, then code
 
-The scout is a funnel: the canon narrows the vocabulary, then the code scan runs on the narrowed terms.
+The scout is a funnel: the canon narrows the vocabulary, the prior-discussion check tells you what is already settled, then the code scan runs on the narrowed terms.
 
 1. **Canon pass** — run `speclink list --specs --json` and match the keywords against capability names. Keep at most 5 candidates, read the Purpose of at most 3 of them (each hit's `path` is the capability's directory — its `spec.md` holds the Purpose), and read a spec in full only when the topic directly targets that capability. Zero hits → skip silently: don't mention specs at all and run the code pass with the original keywords.
 2. **Translate** — rewrite the search terms using the capability names and canonical vocabulary the canon pass surfaced (on top of Step 0's vocabulary), so the code scan speaks the system's language instead of the user's.
-3. **Code pass** — Grep/Glob with the translated terms; read up to 5 of the most relevant files.
+3. **Prior-discussion check** — run one search with the Step 1 keywords plus the English terms the translation produced:
+
+   ```bash
+   speclink discuss search <keyword>... --json
+   ```
+
+   It covers live and archived records alike and matches only the topic, the slug and the decision lines — each round's `Ruled out` and the Conclusion's `Decision` / `Rejected alternatives` / `Deferred`; any one keyword matching counts. **List every matching decision line the hits return** — they are one-line verdicts, and the point is to see them all. Then read the full Conclusion of **at most 3** records with `speclink discuss show <slug>`, **topic hits first**. Do not filter by `kind`: an `improve` record's rejections weigh the same as a plain discussion's. Zero hits → skip silently. What this pass surfaces feeds the fourth triage row ("Settled by a prior discussion", below) and the Context's `Prior discussions:` line.
+4. **Code pass** — Grep/Glob with the translated terms; read up to 5 of the most relevant files.
 
 **Shortcut**: when the topic already names a concrete file or symbol, start the code pass immediately — don't wait for the canon pass. Run the canon pass afterwards anyway: the shortcut reorders the funnel, it doesn't skip a stage (the canon triage and the Context's related-specs line still need it).
 
-The scout exists to ground the discussion and judge requirement clarity (Step 3) — it is not the investigation. Deeper verification happens later, node by node along the decision tree (see "How to Discuss"). The canon hits from this step, together with the change hits from `speclink list --json` (see "Speclink Awareness"), are what the Context's "related changes/specs" line records.
+The scout exists to ground the discussion and judge requirement clarity (Step 3) — it is not the investigation. Deeper verification happens later, node by node along the decision tree (see "How to Discuss"). The canon hits from this step, together with the change hits from `speclink list --json` (see "Speclink Awareness"), are what the Context's "related changes/specs" line records; the prior-discussion hits fill its `Prior discussions:` line.
 
 ### Step 3: Judge requirement clarity
 
@@ -2258,15 +2268,16 @@ Example:
    If wrong: moving to frontend means rewriting the scoring logic in TypeScript
 ```
 
-**Canon triage** — when the scout's canon pass hit relevant specs, triage each of the user's requirements three ways in the assumptions list:
+**Canon triage** — when the scout's canon pass hit relevant specs or the prior-discussion check returned hits, triage each of the user's requirements four ways in the assumptions list:
 
-| Triage                   | Meaning                                         | What you do with it                                                                                                                                      |
-| ------------------------ | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Covered by canon**     | an existing spec already promises it            | record it with the spec as Evidence                                                                                                                       |
-| **Conflicts with canon** | the requirement contradicts an existing promise | present the conflict as an assumption, spec evidence attached — the user decides whether the canon or the requirement changes. Never block or veto the direction over it |
-| **Canon is silent**      | new ground                                      | say so, and check the intended capability name against neighbouring specs while you're there                                                              |
+| Triage                            | Meaning                                         | What you do with it                                                                                                                                      |
+| --------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Covered by canon**              | an existing spec already promises it            | record it with the spec as Evidence                                                                                                                       |
+| **Conflicts with canon**          | the requirement contradicts an existing promise | present the conflict as an assumption, spec evidence attached — the user decides whether the canon or the requirement changes. Never block or veto the direction over it |
+| **Canon is silent**               | new ground                                      | say so, and check the intended capability name against neighbouring specs while you're there                                                              |
+| **Settled by a prior discussion** | a past discussion already ruled on it           | three cases, the record's slug as Evidence — **ruled out**: record it with the reason it lost at the time; reopening that direction requires stating why that reason no longer holds. **Deferred**: it can be picked up now — say so. **Already landed**: the canon shows it, so do not list it again. Never block or veto the direction over a prior verdict |
 
-The discipline: **the user's requirement is the goal; the canon is evidence, not a verdict.** Departing from the canon is a legitimate direction — it just goes into the record as a conscious decision.
+The discipline: **the user's requirement is the goal; the canon and the prior discussions are evidence, not a verdict.** Departing from the canon, or reopening a direction an earlier discussion rejected, is a legitimate direction — it just goes into the record as a conscious decision, with the old reason and why it no longer holds.
 
 After presenting, ask: **"Which of these are wrong?"**
 
@@ -2508,7 +2519,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -2646,7 +2657,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -2680,12 +2691,11 @@ Architecture vocabulary (seam, depth, adapter, shallow module) stays in this doc
 Before scanning, find out what has already been decided. Proposing something the user already rejected is worse than proposing nothing.
 
 ```bash
-speclink discuss list --json
-speclink discuss list --archived --json
+speclink discuss search <scope keyword>... --json
 speclink list --json
 ```
 
-- **Read the archived discussions' `Ruled out` lines and conclusions.** They are this project's decision record: an option that lost, with the reason it lost. Read the ones whose topic touches your scope (`speclink discuss show <slug>` falls back to the archive).
+- **Search the discussions with your scope's keywords** — the module, crate or pain-point nouns. This check always runs before the scan (Step 3); its keywords come from the user's direction when one was given, and from the scope Step 2 settles when it was not — in that case do Step 2 first, then come back here. `discuss search` covers live and archived records alike and matches only the topic, the slug and the decision lines — each round's `Ruled out` and the Conclusion's `Decision` / `Rejected alternatives` / `Deferred`; any one keyword matching counts. Those lines are this project's decision record: an option that lost, with the reason it lost. Read the full Conclusion of the hits that touch your scope (`speclink discuss show <slug>` falls back to the archive), **earlier `improve` records for the same scope first** — a hit whose `kind` is `improve` is the closest precedent to what you are about to propose.
 - **A previously rejected approach SHALL NOT be re-proposed as a candidate** — unless you can name the reason it was rejected AND state concretely why that reason no longer holds (the code it depended on is gone, the constraint was lifted, the trade-off inverted). Say so in the candidate itself; do not quietly re-file it.
 - **Read the in-flight changes** from `speclink list --json` and their proposals. A candidate that overlaps the area an in-flight change is already rewriting SHALL NOT be proposed — the work is happening, and a discussion about it now collides with a change mid-flight.
 
@@ -2827,7 +2837,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -3110,7 +3120,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -3298,7 +3308,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -3756,7 +3766,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -3851,7 +3861,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -4050,7 +4060,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -4134,7 +4144,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 
@@ -4421,7 +4431,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.27.0"
+  version: "v1.29.0"
   generatedBy: "Speclink"
 ---
 

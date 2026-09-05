@@ -30,7 +30,8 @@ use speclink_protocol::query::{
     ConfigResponse, ImportBundle,
     ImportReportResponse, LanguageResponse, ListChangesResponse, ListDiscussionsResponse,
     ListSpecsResponse, PutBoardOrderRequest, PutBoardOrderResponse, PutConfigRequest,
-    PutConfigResponse, ScopesResponse, SearchResponse, ShowDiscussionResponse,
+    PutConfigResponse, ScopesResponse, SearchDiscussionsResponse, SearchResponse,
+    ShowDiscussionResponse,
     SpecDocumentResponse, ValidateChangeResponse, WhoamiResponse,
 };
 
@@ -673,6 +674,16 @@ impl Client {
     /// `GET /discussions/{slug}`
     pub fn show_discussion(&self, slug: &str) -> Result<ShowDiscussionResponse, RemoteError> {
         self.get(&format!("/discussions/{slug}"))
+    }
+
+    /// `GET /discussions/search?q=<keywords>` — the keywords travel
+    /// space-joined in one `q`; the server splits on whitespace again.
+    pub fn search_discussions(
+        &self,
+        terms: &[String],
+    ) -> Result<SearchDiscussionsResponse, RemoteError> {
+        let request = self.request("GET", "/discussions/search").query("q", &terms.join(" "));
+        self.send_request::<SearchDiscussionsResponse, Empty>(request, None)
     }
 
     /// `PUT /discussions/{slug}/context` — the response body carries nothing

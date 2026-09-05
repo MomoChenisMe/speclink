@@ -6,6 +6,7 @@ mod discuss_conclude_auto_archive;
 mod discuss_content_guard;
 mod discuss_kind;
 mod discuss_promote_snapshot;
+mod discuss_search;
 mod discuss_seal;
 mod discuss_slug;
 mod doc_verbs;

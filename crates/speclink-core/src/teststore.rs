@@ -318,15 +318,35 @@ impl Store for TestStore {
         Some(DiscussionDoc {
             slug: slug.to_string(),
             text: text.clone(),
-            path: PathBuf::from(format!("discussions/archive/2026-01-02-{slug}.md")),
+            path: archived_discussion_path(slug),
             archived: true,
         })
     }
     fn list_live_discussions(&self) -> Vec<DiscussionDoc> {
-        Vec::new()
+        // Faithful listing: every live record in the map, mirroring
+        // `read_discussion`'s live shape (order is the map's — callers sort).
+        self.discussions
+            .borrow()
+            .iter()
+            .map(|(slug, text)| DiscussionDoc {
+                slug: slug.clone(),
+                text: text.clone(),
+                path: self.live_discussion_path(slug),
+                archived: false,
+            })
+            .collect()
     }
     fn list_archived_discussions(&self) -> Vec<DiscussionDoc> {
-        Vec::new()
+        self.archived_discussions
+            .borrow()
+            .iter()
+            .map(|(slug, text)| DiscussionDoc {
+                slug: slug.clone(),
+                text: text.clone(),
+                path: archived_discussion_path(slug),
+                archived: true,
+            })
+            .collect()
     }
     fn archive_discussion(&self, slug: &str, created: &str) -> Result<Option<String>> {
         if *self.fail_archive_discussion.borrow() {
@@ -346,6 +366,12 @@ impl Store for TestStore {
     fn read_language(&self) -> Option<String> {
         None
     }
+}
+
+/// The double's archived location: one fixed date prefix, the same shape the
+/// fs store produces (`<created>-<slug>.md`).
+fn archived_discussion_path(slug: &str) -> PathBuf {
+    PathBuf::from(format!("discussions/archive/2026-01-02-{slug}.md"))
 }
 
 #[cfg(test)]
