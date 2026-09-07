@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "change": "workspace-sync-entrypoints",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 RED：在 `crates/speclink-core/src/init.rs` tests 新增四個測試——`probe_reports_missing_for_a_descriptor_without_skills`（tools 為 claude 加合法描述子 cursor／.cursor/skills，.claude/skills 現版、.cursor/skills 不存在 → status 為 missing，tools 含 `{tool: \"cursor\", missing: true, workspaceVersion: None}`，differingFiles 每項以 `.cursor/skills/speclink-` 起頭、以 `/SKILL.md` 結尾、不含 .claude 路徑、不含兩顆 worktree 技能）；`probe_reports_stale_for_a_descriptor_behind_the_engine`（描述子技能檔版號改舊 → stale，差異清單列其路徑）；`probe_lists_descriptor_paths_in_differing_files`（描述子與內建同時過期 → 兩邊路徑都在）；`probe_ignores_an_invalid_descriptor`（描述子缺 skills_dir → current、tools 只含 claude）。對應規格「技能檔過期探測」的三個新 scenario。驗證：`cargo test -p speclink-core --lib init::tests::probe_` 前三個紅燈（今天皆回 current）；`probe_ignores_an_invalid_descriptor` 即刻轉綠屬回歸鎖定（現行行為即如此，改動後不得退化）。",
+      "files": [
+        "crates/speclink-core/src/init.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M1XH91R18F5AJ8EFMXKH7G33",
+      "taskDesc": "1.1 RED：在 `crates/speclink-core/src/init.rs` tests 新增四個測試——`probe_reports_missing_for_a_descriptor_without_skills`（tools 為 claude 加合法描述子 cursor／.cursor/skills，.claude/skills 現版、.cursor/skills 不存在 → status 為 missing，tools 含 `{tool: \"cursor\", missing: true, workspaceVersion: None}`，differingFiles 每項以 `.cursor/skills/speclink-` 起頭、以 `/SKILL.md` 結尾、不含 .claude 路徑、不含兩顆 worktree 技能）；`probe_reports_stale_for_a_descriptor_behind_the_engine`（描述子技能檔版號改舊 → stale，差異清單列其路徑）；`probe_lists_descriptor_paths_in_differing_files`（描述子與內建同時過期 → 兩邊路徑都在）；`probe_ignores_an_invalid_descriptor`（描述子缺 skills_dir → current、tools 只含 claude）。對應規格「技能檔過期探測」的三個新 scenario。驗證：`cargo test -p speclink-core --lib init::tests::probe_` 前三個紅燈（今天皆回 current）；`probe_ignores_an_invalid_descriptor` 即刻轉綠屬回歸鎖定（現行行為即如此，改動後不得退化）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3967d0de6ae6a48d7679bdc79448ba3aad1c65df",
+      "touchedFiles": [
+        "crates/speclink-core/src/init.rs"
+      ],
+      "recordedAt": "2026-09-07T09:13:50Z"
+    }
+  ]
+}
