@@ -738,7 +738,9 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
     // archive — but only the last change to reference it, and only once the discussion has a
     // written conclusion: a discussion can fan out into several changes (siblings still in
     // flight need the record to stay live), and a record still being discussed must not be
-    // swept — its life ends with its conclusion, not with the spin-out. Each source
+    // swept — its life ends with its conclusion, not with the spin-out. A record whose
+    // conclusion planned a further change (`conclude --hold`) also stays: the change it
+    // owes does not exist yet, so this archive is not the last one. Each source
     // discussion is judged independently (`from_discussion` is a comma accumulator). (This
     // change was already moved above, so it no longer shows up in list_changes.)
     let archived_discussions: Vec<(String, String)> = change
@@ -749,7 +751,10 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
             let still_referenced = model::list_changes(store)
                 .iter()
                 .any(|c| c.meta.from_discussions().iter().any(|s| *s == slug));
-            if still_referenced || !crate::discuss::discussion_concluded(store, &slug) {
+            if still_referenced
+                || !crate::discuss::discussion_concluded(store, &slug)
+                || crate::discuss::discussion_held(store, &slug)
+            {
                 return None;
             }
             crate::discuss::archive_discussion(store, &slug)
@@ -1268,6 +1273,30 @@ mod tests {
         );
         assert!(store.live_discussion_exists("pending"), "record stays live");
         assert!(!store.archived_discussion_exists("pending"));
+    }
+
+    #[test]
+    fn archive_leaves_held_discussion_live() {
+        // 已結論但帶 hold（還欠下一刀）的來源討論不隨變更封存，維持在途。
+        let store = TestStore::with_meta(
+            "cut",
+            "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: staged\n",
+        );
+        store.put_artifact("cut", "tasks.md", "- [x] 1.1 done\n");
+        store.discussions.borrow_mut().insert(
+            "staged".into(),
+            "---\ntopic: staged\nslug: staged\nstatus: promoted\npromoted_to: cut\ncreated: 2026-07-01\nhold: true\n---\n\n## Conclusion\n\n**Decision**: cut-b later\n".into(),
+        );
+        let change = crate::model::find_change(&store, "cut").unwrap();
+
+        let outcome = archive(&ghost_ws(), &store, &change, &skip_opts(), None).unwrap();
+
+        assert!(
+            outcome.archived_discussions.is_empty(),
+            "held discussion must not co-archive"
+        );
+        assert!(store.live_discussion_exists("staged"), "record stays live");
+        assert!(!store.archived_discussion_exists("staged"));
     }
 
     #[test]

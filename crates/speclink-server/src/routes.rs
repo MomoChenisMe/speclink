@@ -1843,11 +1843,14 @@ pub async fn conclude_discussion(
         Command::DiscussConclude {
             slug,
             content: req.content,
+            hold: req.hold,
         },
     )
     .await?;
-    let (restale_flagged, auto_archived, closing_error) = match result.execution.outcome {
-        CommandOutcome::DiscussConclude(o) => (o.restale_flagged, o.auto_archived, o.closing_error),
+    let (restale_flagged, auto_archived, held, closing_error) = match result.execution.outcome {
+        CommandOutcome::DiscussConclude(o) => {
+            (o.restale_flagged, o.auto_archived, o.held, o.closing_error)
+        }
         _ => return Err(wrong_outcome("discuss-conclude")),
     };
     // 閉環封存步失敗：結論與 restale 已隨 Unit of Work 落盤，回錯誤讓遠端呼叫端
@@ -1857,7 +1860,7 @@ pub async fn conclude_discussion(
             "conclude closing step failed to archive the record: {reason}"
         )));
     }
-    Ok(ok(ConcludeDiscussionResponse { restale_flagged, auto_archived }, &result.etag))
+    Ok(ok(ConcludeDiscussionResponse { restale_flagged, auto_archived, held }, &result.etag))
 }
 
 /// `POST /discussions/{slug}/archive`

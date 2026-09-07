@@ -602,6 +602,31 @@ fn discuss_conclude_posts_the_conclusion() {
     let cap = mock.find("POST", "/discussions/demo-topic/conclude");
     let body: serde_json::Value = serde_json::from_str(&cap.body).unwrap();
     assert!(body["content"].as_str().unwrap().contains("Decision"));
+    assert!(body.get("hold").is_none(), "不帶 --hold 的 body 與舊 client 相同: {}", cap.body);
+}
+
+#[test]
+fn discuss_conclude_hold_travels_on_the_wire_and_reports_back() {
+    // --hold 進 request body；回應的 held 走同一 render 函式印出保留行。
+    let mock = mock_server(vec![(
+        "POST",
+        "/discussions/demo-topic/conclude",
+        200,
+        r#"{"held":true}"#.into(),
+    )]);
+    let p = TempProject::remote("disc-conclude-hold", &mock.base, "backend");
+    let out = p.run_stdin(
+        &["discuss", "conclude", "demo-topic", "--stdin", "--hold"],
+        "**Decision**: cut-b later\n",
+    );
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+
+    let cap = mock.find("POST", "/discussions/demo-topic/conclude");
+    let body: serde_json::Value = serde_json::from_str(&cap.body).unwrap();
+    assert_eq!(body["hold"], serde_json::json!(true), "body: {}", cap.body);
+
+    let text = stdout_of(&out);
+    assert!(text.contains("Held live (a later spin-out is planned)"), "stdout: {text}");
 }
 
 // --- discuss discard / link / seal（spec「討論動詞於 remote 模式與本機同語意」）---

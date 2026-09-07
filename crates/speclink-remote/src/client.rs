@@ -717,16 +717,19 @@ impl Client {
     }
 
     /// `POST /discussions/{slug}/conclude` — the response names the changes a
-    /// re-conclude flagged for re-ingest.
+    /// re-conclude flagged for re-ingest. `hold` keeps the record live past its
+    /// conclusion; the response's `held` reports what the store recorded.
     pub fn discussion_conclude(
         &self,
         slug: &str,
         content: &str,
+        hold: bool,
     ) -> Result<ConcludeDiscussionResponse, RemoteError> {
         self.post(
             &format!("/discussions/{slug}/conclude"),
             &ConcludeDiscussionRequest {
                 content: content.to_string(),
+                hold,
             },
         )
     }
