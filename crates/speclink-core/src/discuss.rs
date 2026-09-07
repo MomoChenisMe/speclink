@@ -657,29 +657,40 @@ pub fn mark_promoted(store: &dyn Store, slug: &str, change: &str) -> Result<()> 
             break;
         }
     }
-    match frontmatter_value(&text, "promoted_to") {
+    let accumulated = match frontmatter_value(&text, "promoted_to") {
         Some(existing) => {
-            if !existing.split(',').map(str::trim).any(|c| c == change) {
+            let known = existing.split(',').map(str::trim).any(|c| c == change);
+            if !known {
                 text = text.replacen(
                     &format!("promoted_to: {existing}"),
                     &format!("promoted_to: {existing}, {change}"),
                     1,
                 );
             }
+            !known
         }
         None => {
-            text = text.replacen(
+            let stamped = text.replacen(
                 "status: promoted\n",
                 &format!("status: promoted\npromoted_to: {change}\n"),
                 1,
             );
+            let landed = stamped != text;
+            text = stamped;
+            landed
+        }
+    };
+    // A NEW change name is the spin-out the hold flag was waiting for — clear it. All
+    // three spin-out paths (promote, `new change --from-discussion`, seal) come through
+    // here, so one removal covers them; `link` writes no discussion side and keeps the
+    // record byte-identical. The idempotent branch (re-sealing a change already in the
+    // list, e.g. a re-ingest after `conclude --hold` flagged it) is not a spin-out and
+    // must leave the flag alone.
+    if accumulated {
+        if let Some(t) = set_frontmatter_line(&text, "hold", None) {
+            text = t;
         }
     }
-    // The spin-out the hold flag was waiting for has arrived — clear it. All three
-    // spin-out paths (promote, `new change --from-discussion`, seal) come through
-    // here, so one removal covers them; `link` writes no discussion side and keeps
-    // the record byte-identical.
-    text = apply_hold(&text, false);
     store.write_live_discussion(slug, &text)?;
     Ok(())
 }
@@ -961,35 +972,42 @@ pub fn board_rank(store: &dyn Store, slug: &str) -> Option<String> {
     frontmatter_value(&doc.text, "board_rank").filter(|v| !v.is_empty())
 }
 
-/// 寫入（或原位更新）一筆 live 討論的看板排序鍵：既有 `board_rank:` 行原位代換，
-/// 否則插入 frontmatter 尾端（closing `---` 前）；其餘內容逐位元組保留。
-/// 非法 rank、封存或不存在的討論皆回明確錯誤（封存記錄不上看板）。
-pub fn set_board_rank(store: &dyn Store, slug: &str, rank: &str) -> Result<()> {
-    if !crate::util::is_valid_board_rank(rank) {
-        bail!("invalid board rank '{rank}' — lowercase ASCII letters only");
-    }
-    let text = load_live(store, slug)?;
-    let line = format!("board_rank: {rank}\n");
-    let mut out = String::with_capacity(text.len() + line.len());
+/// 寫入、原位代換或移除 frontmatter 的一行純量——discuss 側所有 frontmatter 文字
+/// 手術的共同落點（`board_rank`、`hold`）。`value` 為 `Some` 時第一條 `<key>:` 行
+/// 原位代換、之後的重複行一併移除，沒有就插在 frontmatter 尾端（closing `---` 前）；
+/// 為 `None` 時移除每一條 `<key>:` 行。鍵的認法與 [`frontmatter_value`] 相同，讀寫
+/// 兩邊看法一致；其餘內容逐位元組保留，行尾沿該檔既有的換行（LF 或 CRLF）。
+/// 未閉合的 frontmatter（缺尾 `---`）與讀端同樣寬鬆——整檔視為 frontmatter，原位代換
+/// 與移除照做；只有「要新插一行卻找不到尾 `---`」與「開頭不是 `---`」回 `None`。
+fn set_frontmatter_line(text: &str, key: &str, value: Option<&str>) -> Option<String> {
+    let prefix = format!("{key}:");
+    let mut out = String::with_capacity(text.len() + prefix.len() + 8);
     let mut state = 0u8; // 0＝等開頭 ---、1＝frontmatter 內、2＝frontmatter 後
-    let mut done = false;
+    let mut opened = false;
+    let mut closed = false;
+    let mut placed = false;
     for (i, l) in text.split_inclusive('\n').enumerate() {
         match state {
             0 => {
                 out.push_str(l);
-                state = if i == 0 && l.trim_end() == "---" { 1 } else { 2 };
+                opened = i == 0 && l.trim_end() == "---";
+                state = if opened { 1 } else { 2 };
             }
             1 => {
+                let eol = if l.ends_with("\r\n") { "\r\n" } else { "\n" };
                 if l.trim_end() == "---" {
-                    if !done {
-                        out.push_str(&line);
-                        done = true;
+                    if let (Some(v), false) = (value, placed) {
+                        out.push_str(&format!("{prefix} {v}{eol}"));
                     }
                     out.push_str(l);
+                    closed = true;
                     state = 2;
-                } else if !done && l.starts_with("board_rank:") {
-                    out.push_str(&line);
-                    done = true;
+                } else if l.starts_with(&prefix) {
+                    // 第一條原位代換；重複鍵與移除都是整行丟掉。
+                    if let (Some(v), false) = (value, placed) {
+                        out.push_str(&format!("{prefix} {v}{eol}"));
+                        placed = true;
+                    }
                 } else {
                     out.push_str(l);
                 }
@@ -997,9 +1015,21 @@ pub fn set_board_rank(store: &dyn Store, slug: &str, rank: &str) -> Result<()> {
             _ => out.push_str(l),
         }
     }
-    if !done {
-        bail!("discussion '{slug}' has no frontmatter — cannot set board rank");
+    (closed || placed || (opened && value.is_none())).then_some(out)
+}
+
+/// 寫入（或原位更新）一筆 live 討論的看板排序鍵：既有 `board_rank:` 行原位代換
+/// （多出來的重複鍵一併收掉，與讀端只認第一行的看法對齊），否則插入 frontmatter
+/// 尾端（closing `---` 前）；其餘內容逐位元組保留。走 [`set_frontmatter_line`]，
+/// 非法 rank、封存或不存在的討論、無 frontmatter 可插皆回明確錯誤（封存記錄不上看板）。
+pub fn set_board_rank(store: &dyn Store, slug: &str, rank: &str) -> Result<()> {
+    if !crate::util::is_valid_board_rank(rank) {
+        bail!("invalid board rank '{rank}' — lowercase ASCII letters only");
     }
+    let text = load_live(store, slug)?;
+    let Some(out) = set_frontmatter_line(&text, "board_rank", Some(rank)) else {
+        bail!("discussion '{slug}' has no frontmatter — cannot set board rank");
+    };
     store.write_live_discussion(slug, &out)?;
     Ok(())
 }
@@ -1036,13 +1066,11 @@ pub fn concluded_in(text: &str) -> bool {
     conclusion_body(text).is_some()
 }
 
-/// frontmatter 的保留旗標行——值固定 `true`，不涉 YAML 跳脫。
-const HOLD_LINE: &str = "hold: true";
-
 /// Whether one record's text carries the staged-spin-out hold flag (frontmatter
 /// `hold: true`) — the text-level twin of [`discussion_held`], shaped like
-/// [`concluded_in`]. Only the exact value `true` counts.
-pub fn held_in(text: &str) -> bool {
+/// [`concluded_in`]. Only the exact value `true` counts. Module-private: the
+/// archive guard and the conclude closing step both go through [`discussion_held`].
+fn held_in(text: &str) -> bool {
     frontmatter_value(text, "hold").is_some_and(|v| v == "true")
 }
 
@@ -1052,45 +1080,6 @@ pub fn held_in(text: &str) -> bool {
 /// as not held (the concluded guard already keeps doubtful records live).
 pub fn discussion_held(store: &dyn Store, slug: &str) -> bool {
     store.read_discussion(slug).is_some_and(|doc| held_in(&doc.text))
-}
-
-/// Write (or drop) the frontmatter `hold: true` line, leaving every other byte
-/// intact. Insertion goes at the end of the frontmatter (before the closing `---`)
-/// and never duplicates an existing line; removal matches the whole line, so it does
-/// not depend on where the flag sits. A record without frontmatter is returned
-/// unchanged — there is nowhere to put the flag.
-fn apply_hold(text: &str, hold: bool) -> String {
-    let mut out = String::with_capacity(text.len() + HOLD_LINE.len() + 1);
-    let mut state = 0u8; // 0＝等開頭 ---、1＝frontmatter 內、2＝frontmatter 後
-    let mut written = false;
-    for (i, l) in text.split_inclusive('\n').enumerate() {
-        match state {
-            0 => {
-                out.push_str(l);
-                state = if i == 0 && l.trim_end() == "---" { 1 } else { 2 };
-            }
-            1 => {
-                if l.trim_end() == "---" {
-                    if hold && !written {
-                        out.push_str(HOLD_LINE);
-                        out.push('\n');
-                        written = true;
-                    }
-                    out.push_str(l);
-                    state = 2;
-                } else if l.trim_end() == HOLD_LINE {
-                    if hold && !written {
-                        out.push_str(l);
-                        written = true;
-                    }
-                } else {
-                    out.push_str(l);
-                }
-            }
-            _ => out.push_str(l),
-        }
-    }
-    out
 }
 
 /// Archive a live discussion under its creation date. Returns the archived
@@ -1170,8 +1159,13 @@ pub fn conclude(
     };
     // The hold flag rides the same write as the conclusion, so no half state can
     // survive a failure. Concluding without --hold restates the intent: an existing
-    // flag is dropped.
-    text = apply_hold(&text, hold);
+    // flag is dropped. A record with nowhere to put the flag refuses `--hold` outright
+    // rather than dropping it silently; without `--hold` it concludes as before.
+    text = match set_frontmatter_line(&text, "hold", hold.then_some("true")) {
+        Some(t) => t,
+        None if hold => bail!("discussion '{slug}' has no frontmatter — cannot hold it live"),
+        None => text,
+    };
     let held = held_in(&text);
     store.write_live_discussion(slug, &text)?;
     // Re-concluding an already-reflected discussion (promoted_to non-empty) flags each
@@ -1411,6 +1405,113 @@ mod tests {
         let text = store.discussion("alpha");
         assert!(text.contains("promoted_to: cut-a, cut-b"));
         assert!(!super::held_in(&text), "seal 經 mark_promoted 清旗標");
+    }
+
+    #[test]
+    fn mark_promoted_keeps_the_hold_flag_when_nothing_accumulates() {
+        // 冪等分支（promoted_to 已含該變更名）不是新刀：re-ingest 舊變更的 seal
+        // 不得清旗標，否則分期第二刀的來源記錄會被舊變更的封存掃走。
+        let store = TestStore::with_live_discussion("alpha", &held_promoted_doc("alpha", "cut-a"));
+
+        super::mark_promoted(&store, "alpha", "cut-a").unwrap();
+
+        let text = store.discussion("alpha");
+        assert!(super::held_in(&text), "沒有新刀累加，旗標保留");
+        assert!(text.contains("promoted_to: cut-a\n"), "promoted_to 不變");
+    }
+
+    #[test]
+    fn conclude_with_hold_rejects_a_record_without_frontmatter() {
+        // 無 frontmatter 放不下旗標：帶 hold 明確報錯、不落盤；不帶 hold 沿
+        // pre-scaffold 既有路徑照常結論。
+        let doc = "# Discussion: bare\n\n## Rounds\n";
+        let store = TestStore::with_live_discussion("bare", doc);
+
+        assert!(super::conclude(&store, "bare", "**Decision**: x", true).is_err());
+        assert_eq!(store.discussion("bare"), doc, "拒絕時記錄逐位元不變");
+
+        let outcome = super::conclude(&store, "bare", "**Decision**: x", false).unwrap();
+        assert!(!outcome.held);
+        assert!(store.discussion("bare").contains("## Conclusion"));
+    }
+
+    #[test]
+    fn conclude_rewrites_a_hand_edited_hold_line_in_place() {
+        // 以 key 為單位改寫：手改成 hold: false 的行被原位換成 true（不另插一行），
+        // 不帶 hold 時任何 hold: 行都移除。讀（frontmatter_value）寫兩邊看法一致。
+        let store = TestStore::with_meta(
+            "cut",
+            "schema: spec-driven\ncreated: 2026-01-02\nfrom_discussion: alpha\n",
+        );
+        let doc = held_promoted_doc("alpha", "cut").replacen("hold: true\n", "hold: false\n", 1);
+        store.discussions.borrow_mut().insert("alpha".into(), doc);
+
+        let outcome = super::conclude(&store, "alpha", "**Decision**: later", true).unwrap();
+        assert!(outcome.held);
+        let text = store.discussion("alpha");
+        assert_eq!(text.matches("\nhold:").count(), 1, "只有一行 hold:");
+        assert!(super::held_in(&text));
+
+        store.discussions.borrow_mut().insert(
+            "alpha".into(),
+            held_promoted_doc("alpha", "cut").replacen("hold: true\n", "hold: yes\n", 1),
+        );
+        let outcome = super::conclude(&store, "alpha", "**Decision**: done", false).unwrap();
+        assert!(!outcome.held);
+        assert!(!store.discussion("alpha").contains("\nhold:"), "任何 hold: 行都移除");
+    }
+
+    #[test]
+    fn conclude_with_hold_follows_the_record_line_ending() {
+        // CRLF 記錄：插入的旗標行沿該檔行尾，不混排。
+        let doc = open_doc("alpha", "Alpha").replace('\n', "\r\n");
+        let store = TestStore::with_live_discussion("alpha", &doc);
+
+        let outcome = super::conclude(&store, "alpha", "**Decision**: done", true).unwrap();
+
+        assert!(outcome.held);
+        let text = store.discussion("alpha");
+        assert!(text.contains("hold: true\r\n---"), "旗標行以 CRLF 收尾: {text:?}");
+        assert!(super::held_in(&text));
+    }
+
+    #[test]
+    fn frontmatter_line_surgery_on_unclosed_frontmatter_matches_the_reader() {
+        // 未閉合 frontmatter（缺尾 ---）：讀端 frontmatter_value 把整檔當 frontmatter，
+        // 寫端要同樣寬鬆——既有行原位代換、移除照做；只有「要新插一行卻找不到尾」才拒絕。
+        let unclosed = "---\ntopic: x\nslug: x\nstatus: open\nboard_rank: b\nhold: true\n";
+        let store = TestStore::with_live_discussion("x", unclosed);
+
+        super::set_board_rank(&store, "x", "n").unwrap();
+        assert_eq!(store.discussion("x"), unclosed.replacen("board_rank: b", "board_rank: n", 1));
+
+        let outcome = super::conclude(&store, "x", "**Decision**: done", false).unwrap();
+        assert!(!outcome.held);
+        assert!(!store.discussion("x").contains("hold:"), "未閉合仍能移除旗標");
+        assert!(!super::discussion_held(&store, "x"), "讀寫兩端看法一致");
+
+        let bare = "---\ntopic: y\nslug: y\nstatus: open\n";
+        let store = TestStore::with_live_discussion("y", bare);
+        assert!(super::conclude(&store, "y", "**Decision**: x", true).is_err(), "沒有尾行可插");
+        assert_eq!(store.discussion("y"), bare);
+    }
+
+    #[test]
+    fn mark_promoted_keeps_the_hold_flag_when_promoted_to_did_not_land() {
+        // 旗標清除以 promoted_to 真的寫進去為準。前提用的是既知缺口，不是目標行為：
+        // mark_promoted 以 "status: promoted\n" 做 replacen，CRLF 記錄落空、promoted_to
+        // 根本沒落地——那是 promote 路徑本來就有的 CRLF 破口，本測試只釘住「沒累加就不清
+        // 旗標」這一條，不背書 promoted_to 落空本身。
+        let doc = open_doc("alpha", "Alpha")
+            .replacen("created: 2026-01-02\n", "created: 2026-01-02\nhold: true\n", 1)
+            .replace('\n', "\r\n");
+        let store = TestStore::with_live_discussion("alpha", &doc);
+
+        super::mark_promoted(&store, "alpha", "cut-b").unwrap();
+
+        let text = store.discussion("alpha");
+        assert!(!text.contains("promoted_to:"), "前提：promoted_to 沒寫進去");
+        assert!(super::held_in(&text), "沒有累加就不清旗標");
     }
 
     #[test]

@@ -31,12 +31,12 @@
 與 promoted_to、kind、board_rank 同一層——都是 frontmatter_value 讀取的純量。不進 DiscussionInfo（沿 remote-read-parity design D2：discuss list --json 逐位元不變）。替代方案「寫在 Conclusion 內文的結構化行」被否決：結論內文是給人讀的，且 conclude 的內容跳脫機制會動到它。
 
 **D2. 唯一寫入點是 conclude；唯一清除點是 mark_promoted。**
-- conclude 帶 hold 時，結論內文與 hold 行在同一次 write_live_discussion 落盤（先組好文字再寫），不留半套。hold 行插在 frontmatter 最後一行（結尾 `---` 之前）；記錄已有 hold 行時不重複。不帶 hold 的 conclude 移除既有 hold 行（結論改寫即重述意圖）。
-- mark_promoted 累加 promoted_to 時一併移除 hold 行——promote、new change --from-discussion、seal 三條路徑都經此函式，一處覆蓋。替代方案「在三個呼叫端各清一次」是重複；「link 也清」違反 link 不改記錄的既有規格。
-- 移除以「刪掉 `hold: true` 這一行」實作，不依賴它在 frontmatter 的位置。
+- conclude 帶 hold 時，結論內文與 hold 行在同一次 write_live_discussion 落盤（先組好文字再寫），不留半套。既有 `hold:` 行原位改寫（以 key 認行，與 frontmatter_value 同一套認法，手改的 `hold: false` 也被換掉、不留重複鍵），沒有才插在 frontmatter 最後一行（結尾 `---` 之前）。不帶 hold 的 conclude 移除任何 `hold:` 行（結論改寫即重述意圖）。記錄無 frontmatter 時帶 hold 報錯不落盤（與 set_board_rank 同一紀律），不帶 hold 沿既有 pre-scaffold 路徑。
+- mark_promoted 累加 promoted_to 時一併移除 hold 行——promote、new change --from-discussion、seal 三條路徑都經此函式，一處覆蓋。只在真的累加新變更名時清除：冪等分支（re-seal 已在清單內的變更，例如 conclude --hold 蓋 restale 章後對舊變更 re-ingest）不是新刀，旗標保留。discard 剛轉出的變更不還原旗標（資訊已失），由技能文字提示重跑 conclude --hold。替代方案「在三個呼叫端各清一次」是重複；「link 也清」違反 link 不改記錄的既有規格。
+- 插入、改寫與移除都以 key 認行，不依賴位置；frontmatter 單行讀寫收斂到同一支 set_frontmatter_line，board_rank 亦改走它。
 
 **D3. 兩個自動封存點的判準各加一條「記錄未帶 hold」。**
-引擎提供 held_in(text) 與 discussion_held(store, slug)（與 concluded_in／discussion_concluded 同形）。隨行封存過濾器：still_referenced 或未結論或 held 任一成立即跳過。conclude 閉環：閉環條件多一條「本次寫入後記錄未帶 hold」——用寫入後的文字判斷，帶 --hold 的 conclude 必然不閉環。手動 speclink discuss archive 不看 hold：明示動詞是放棄後續刀的出口。
+引擎提供 discussion_held(store, slug)（與 discussion_concluded 同形；文字層孿生 held_in 為模組私有，無跨 crate 使用者）。隨行封存過濾器：still_referenced 或未結論或 held 任一成立即跳過。conclude 閉環：閉環條件多一條「本次寫入後記錄未帶 hold」——用寫入後的文字判斷，帶 --hold 的 conclude 必然不閉環。手動 speclink discuss archive 不看 hold：明示動詞是放棄後續刀的出口。
 
 **D4. 命令與 outcome。**
 Command::DiscussConclude 增 `hold: bool`；DiscussConcludeOutcome 增 `held: bool`（本次寫入後記錄是否帶 hold）。CLI 人眼輸出在既有行之後多一行 `  Held live (a later spin-out is planned)`；--json 僅 held 為 true 時增 `held: true` 鍵。held 為 false 時兩條輸出逐位元不變。
@@ -62,12 +62,13 @@ ConcludeDiscussionRequest 增 `hold: bool`（serde default，false 時不序列�
 **介面／資料形狀**
 - CLI 旗標：`--hold`（布林，僅 conclude 子指令）。
 - frontmatter：`hold: true`（獨立一行）。
-- 引擎：Command::DiscussConclude { slug, content, hold }；DiscussConcludeOutcome { restale_flagged, auto_archived, closing_error, held }；discuss::held_in(&str) -> bool；discuss::discussion_held(&dyn Store, &str) -> bool。
+- 引擎：Command::DiscussConclude { slug, content, hold }；DiscussConcludeOutcome { restale_flagged, auto_archived, closing_error, held }；discuss::discussion_held(&dyn Store, &str) -> bool（held_in 為模組私有）。
 - --json：`{ "slug", "status": "concluded", "restaleFlagged"?, "autoArchived"?, "held"? }`，held 僅 true 時出現。
 - wire：ConcludeDiscussionRequest { content, hold }；ConcludeDiscussionResponse { restaleFlagged, autoArchived?, held? }。
 
 **失敗模式**
 - conclude 的寫入失敗：與今天相同，結論與 hold 都未落盤。
+- 帶 --hold 而記錄無 frontmatter：拒絕、非零 exit code、記錄逐位元不變；不帶 --hold 沿既有 pre-scaffold 路徑。
 - 閉環封存步失敗：不可能在帶 hold 時發生（閉環不觸發）；不帶 hold 時沿既有 closing_error 語意。
 - 新 client 帶 hold 打舊 server：欄位被忽略，回應無 held 鍵，CLI 不印保留行——使用者從輸出可看出旗標未生效。刻意接受，不加偵測。
 
@@ -87,5 +88,5 @@ ConcludeDiscussionRequest 增 `hold: bool`（serde default，false 時不序列�
 - **回歸對照**：golden 快照五份與 assets.lock 必須在乾淨樹再生，且版號、golden、lock 三者同批；漏跑 speclink update 會讓 repo 安裝的 SKILL.md 停在舊版號（golden 測試抓不到）。tasks 以「speclink update 後 git status 無變動」為驗收。
 - **不帶 --hold 的輸出逐位元不變**是既有 CLI 測試與 remote_write_path 基準的保護對象；held 欄位以「false 不出鍵」實作即可維持。
 - **舊 server 靜默忽略 hold**：與其他選填請求欄位的既有取捨相同；人眼輸出缺保留行即為訊號。
-- **frontmatter 文字手術**：hold 行的插入與移除是純字串操作，值固定為 `true`，不涉及 yaml_scalar 跳脫；移除以整行比對，不受位置影響。
-- **跨平台**：只動 frontmatter 文字與 CLI 輸出，無路徑或 git 互動；換行沿記錄既有的 `\n`。
+- **frontmatter 文字手術**：hold 行的插入與移除是純字串操作，值固定為 `true`，不涉及 yaml_scalar 跳脫；以 key 認行原位改寫／移除，不受位置影響。
+- **跨平台**：只動 frontmatter 文字與 CLI 輸出，無路徑或 git 互動；換行沿記錄既有的行尾（LF 或 CRLF）。

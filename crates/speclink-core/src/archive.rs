@@ -1300,6 +1300,31 @@ mod tests {
     }
 
     #[test]
+    fn archive_judges_hold_per_source_discussion() {
+        // 多來源逐一共行：同一 from_discussion 清單中，無 hold 者隨行封存、帶 hold 者留在途。
+        let store = TestStore::with_meta(
+            "cut",
+            "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: d1, staged\n",
+        );
+        store.put_artifact("cut", "tasks.md", "- [x] 1.1 done\n");
+        store.discussions.borrow_mut().insert("d1".into(), discussion_doc("d1"));
+        store.discussions.borrow_mut().insert(
+            "staged".into(),
+            "---\ntopic: staged\nslug: staged\nstatus: promoted\npromoted_to: cut\ncreated: 2026-07-01\nhold: true\n---\n\n## Conclusion\n\n**Decision**: cut-b later\n".into(),
+        );
+        let change = crate::model::find_change(&store, "cut").unwrap();
+
+        let outcome = archive(&ghost_ws(), &store, &change, &skip_opts(), None).unwrap();
+
+        let slugs: Vec<&str> =
+            outcome.archived_discussions.iter().map(|(s, _)| s.as_str()).collect();
+        assert_eq!(slugs, vec!["d1"], "only the unheld discussion co-archives");
+        assert!(store.archived_discussion_exists("d1"));
+        assert!(store.live_discussion_exists("staged"), "held sibling stays live");
+        assert!(!store.archived_discussion_exists("staged"));
+    }
+
+    #[test]
     fn archive_single_source_discussion_co_travels_as_before() {
         // 單一來源情境：與變更前一致——恰一份討論隨行封存。
         let store = TestStore::with_meta(

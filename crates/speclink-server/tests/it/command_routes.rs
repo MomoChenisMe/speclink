@@ -204,6 +204,7 @@ fn conclude_with_hold_keeps_the_record_live_over_the_wire() {
         "---\ntopic: Staged talk\nslug: staged-talk\nstatus: promoted\npromoted_to: shipped-change\ncreated: 2026-07-01\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n",
     );
     store.commit(uow, Vec::new()).expect("seed commit");
+    let before = store.snapshot(&scope()).expect("snapshot").revision().0;
     let state = common::state_with(store.clone());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
@@ -214,6 +215,8 @@ fn conclude_with_hold_keeps_the_record_live_over_the_wire() {
         .expect("conclude with hold over the wire");
     assert!(resp.held, "held 回填");
     assert!(!resp.auto_archived, "帶 hold 不觸發閉環");
+    let after = store.snapshot(&scope()).expect("snapshot").revision().0;
+    assert!(after > before, "the conclude commit advances the scope revision");
 
     let listed = client.list_discussions(false).expect("list live discussions");
     assert!(
