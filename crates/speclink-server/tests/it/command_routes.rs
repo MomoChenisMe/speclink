@@ -140,7 +140,7 @@ fn conclude_reports_the_restale_flagged_changes_over_the_wire() {
     let client = client(&base, &pat);
 
     let resp = client
-        .discussion_conclude("auth-scope", "**Decision**: revised\n")
+        .discussion_conclude("auth-scope", "**Decision**: revised\n", false)
         .expect("conclude over the wire");
     assert_eq!(
         resp.restale_flagged,
@@ -172,7 +172,7 @@ fn conclude_backfills_auto_archived_over_the_wire() {
     let client = client(&base, &pat);
 
     let resp = client
-        .discussion_conclude("done-talk", "**Decision**: done\n")
+        .discussion_conclude("done-talk", "**Decision**: done\n", false)
         .expect("conclude over the wire");
     assert!(resp.auto_archived, "the closing step is reported over the wire");
 
@@ -185,6 +185,45 @@ fn conclude_backfills_auto_archived_over_the_wire() {
     assert!(
         archived.discussions.iter().any(|d| d.slug == "done-talk"),
         "the record landed in the archived list"
+    );
+}
+
+#[test]
+fn conclude_with_hold_keeps_the_record_live_over_the_wire() {
+    // spec server-verb-api「討論結論端點轉傳保留旗標並回填 held」：閉環條件原本
+    // 成立的討論以 hold: true 結論 → 回應 held: true 無 autoArchived，記錄留 live。
+    let store = Arc::new(MemoryStore::new());
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope(),
+            CommandContext { command: "seed-hold".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(
+        DocumentId::Discussion { slug: "staged-talk".into(), archived: false },
+        "---\ntopic: Staged talk\nslug: staged-talk\nstatus: promoted\npromoted_to: shipped-change\ncreated: 2026-07-01\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n",
+    );
+    store.commit(uow, Vec::new()).expect("seed commit");
+    let state = common::state_with(store.clone());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let client = client(&base, &pat);
+
+    let resp = client
+        .discussion_conclude("staged-talk", "**Decision**: cut-b later\n", true)
+        .expect("conclude with hold over the wire");
+    assert!(resp.held, "held 回填");
+    assert!(!resp.auto_archived, "帶 hold 不觸發閉環");
+
+    let listed = client.list_discussions(false).expect("list live discussions");
+    assert!(
+        listed.discussions.iter().any(|d| d.slug == "staged-talk"),
+        "the record stays in the live list"
+    );
+    let archived = client.list_discussions(true).expect("list archived discussions");
+    assert!(
+        archived.discussions.iter().all(|d| d.slug != "staged-talk"),
+        "the record never reaches the archive"
     );
 }
 

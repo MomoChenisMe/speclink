@@ -482,7 +482,7 @@ fn discussion_writes_post_typed_bodies() {
         .expect("context ok");
     assert_call(&mock3.last(), "PUT", "/discussions/auth-scope/context");
     client(&mock3)
-        .discussion_conclude("auth-scope", "the conclusion")
+        .discussion_conclude("auth-scope", "the conclusion", false)
         .expect("conclude ok");
     assert_call(&mock3.last(), "POST", "/discussions/auth-scope/conclude");
 

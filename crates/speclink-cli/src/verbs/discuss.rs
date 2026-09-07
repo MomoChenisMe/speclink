@@ -56,7 +56,16 @@ enum DiscussCommands {
     #[command(name = "add-round")]
     AddRound { slug: String, #[arg(long, default_value = "interview")] mode: String, #[arg(long)] stdin: bool, #[arg(long)] json: bool },
     /// Conclude a discussion (content from stdin)
-    Conclude { slug: String, #[arg(long)] stdin: bool, #[arg(long)] json: bool },
+    Conclude {
+        slug: String,
+        #[arg(long)]
+        stdin: bool,
+        /// Keep the record live: its conclusion plans a further change to spin out later
+        #[arg(long)]
+        hold: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// Archive a discussion (move to discussions/archive/<created>-<slug>.md)
     Archive { slug: String, #[arg(long)] json: bool },
     /// Discard a live discussion (delete the file; --force required once rounds exist)
@@ -148,14 +157,14 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             )?;
             render_discuss_add_round(&o.slug, o.round, &o.mode, json)?;
         }
-        DiscussCommands::Conclude { slug, stdin, json } => {
+        DiscussCommands::Conclude { slug, stdin, hold, json } => {
             let content = read_stdin_content(stdin);
             let o: core::command::DiscussConcludeOutcome = run(
                 &store,
                 Some(&ws),
-                core::command::Command::DiscussConclude { slug, content },
+                core::command::Command::DiscussConclude { slug, content, hold },
             )?;
-            render_discuss_conclude(&o.slug, &o.restale_flagged, o.auto_archived, json)?;
+            render_discuss_conclude(&o.slug, &o.restale_flagged, o.auto_archived, o.held, json)?;
             // 閉環封存步失敗：結論與 restale 已落盤（上面照常呈現），這裡以非零
             // exit code 收場、stderr 說明原因；重跑 discuss archive 即可收尾。
             if let Some(reason) = &o.closing_error {
@@ -313,6 +322,7 @@ fn render_discuss_conclude(
     slug: &str,
     flagged: &[String],
     auto_archived: bool,
+    held: bool,
     json: bool,
 ) -> Result<()> {
     if json {
@@ -326,6 +336,9 @@ fn render_discuss_conclude(
         if auto_archived {
             payload["autoArchived"] = serde_json::json!(true);
         }
+        if held {
+            payload["held"] = serde_json::json!(true);
+        }
         return print_json(&payload);
     }
     println!("{} Concluded discussion '{slug}'", color::green("✓"));
@@ -334,6 +347,9 @@ fn render_discuss_conclude(
     }
     if auto_archived {
         println!("  Auto-archived the record (all promoted changes are archived)");
+    }
+    if held {
+        println!("  Held live (a later spin-out is planned)");
     }
     Ok(())
 }
@@ -470,10 +486,16 @@ pub(crate) fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
             let round = ctx.client.discussion_add_round(&slug, &mode, &content)?.round;
             render_discuss_add_round(&slug, round as usize, &mode, json)
         }
-        DiscussCommands::Conclude { slug, stdin, json } => {
+        DiscussCommands::Conclude { slug, stdin, hold, json } => {
             let content = read_stdin_content(stdin);
-            let resp = ctx.client.discussion_conclude(&slug, &content)?;
-            render_discuss_conclude(&slug, &resp.restale_flagged, resp.auto_archived, json)
+            let resp = ctx.client.discussion_conclude(&slug, &content, hold)?;
+            render_discuss_conclude(
+                &slug,
+                &resp.restale_flagged,
+                resp.auto_archived,
+                resp.held,
+                json,
+            )
         }
         DiscussCommands::Archive { slug, json } => {
             let archived_to = ctx.client.discussion_archive(&slug)?.archived_to;

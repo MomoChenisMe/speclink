@@ -284,11 +284,15 @@ pub struct AddDiscussionRoundResponse {
     pub round: u64,
 }
 
-/// `POST /discussions/{slug}/conclude` request body.
+/// `POST /discussions/{slug}/conclude` request body. `hold` keeps the record live
+/// past its conclusion — it still owes a change that does not exist yet — and its
+/// absence reads as `false`, so an old client's body behaves exactly as before.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ConcludeDiscussionRequest {
     pub content: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hold: bool,
 }
 
 /// `POST /discussions/{slug}/conclude` response. A re-conclude flags the
@@ -296,7 +300,8 @@ pub struct ConcludeDiscussionRequest {
 /// ordinary case and reads the same as an old server's silence, so no
 /// sentinel is needed. `autoArchived` appears only when the closing step
 /// archived the record (its spun-out changes were all archived); its absence
-/// reads the same as an old server's silence.
+/// reads the same as an old server's silence. `held` reports whether the record
+/// carries the hold flag after this write, on the same terms.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ConcludeDiscussionResponse {
@@ -304,6 +309,8 @@ pub struct ConcludeDiscussionResponse {
     pub restale_flagged: Vec<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub auto_archived: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub held: bool,
 }
 
 /// `POST /discussions/{slug}/archive` response.
@@ -673,6 +680,40 @@ mod tests {
         let restaled: ConcludeDiscussionResponse =
             serde_json::from_str(r#"{"restaleFlagged":["add-auth","add-billing"]}"#).unwrap();
         assert_eq!(restaled.restale_flagged, ["add-auth", "add-billing"]);
+    }
+
+    #[test]
+    fn conclude_discussion_hold_is_optional_and_false_stays_off_the_wire() {
+        // 請求：缺席即 false（舊 client 打新 server 行為不變）、false 不出鍵。
+        let bare: ConcludeDiscussionRequest =
+            serde_json::from_str(r#"{"content":"**Decision**: done"}"#).unwrap();
+        assert!(!bare.hold, "缺席即 false");
+
+        let off = ConcludeDiscussionRequest { content: "x".into(), hold: false };
+        assert_eq!(
+            serde_json::to_string(&off).unwrap(),
+            r#"{"content":"x"}"#,
+            "false 不出鍵，請求 body 與舊 client 逐位元相同"
+        );
+
+        let on = ConcludeDiscussionRequest { content: "x".into(), hold: true };
+        assert_eq!(serde_json::to_string(&on).unwrap(), r#"{"content":"x","hold":true}"#);
+    }
+
+    #[test]
+    fn conclude_discussion_held_tolerates_absence_and_emits_only_when_true() {
+        // 回應：空物件（舊 server 的沉默）讀作 held false；true 才出鍵。
+        let legacy: ConcludeDiscussionResponse = serde_json::from_str("{}").unwrap();
+        assert!(!legacy.held, "舊 server 的沉默讀作未保留");
+        assert!(legacy.restale_flagged.is_empty());
+
+        let held = ConcludeDiscussionResponse {
+            restale_flagged: Vec::new(),
+            auto_archived: false,
+            held: true,
+        };
+        let json = serde_json::to_string(&held).unwrap();
+        assert!(json.contains(r#""held":true"#), "held 為 true 時出鍵: {json}");
     }
 
     #[test]

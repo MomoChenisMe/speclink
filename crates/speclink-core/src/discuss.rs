@@ -647,6 +647,8 @@ pub fn discussion_concluded(store: &dyn Store, slug: &str) -> bool {
 /// Mark a discussion as promoted to a change (the discussion side of the bidirectional link).
 /// A discussion can fan out into several changes, so `promoted_to` is a comma-separated
 /// accumulator: repeated promotes append the new change name rather than being dropped.
+/// Accumulating a change also drops the record's `hold: true` flag: the staged spin-out
+/// it was waiting for now exists, so the record rejoins the ordinary lifecycle.
 pub fn mark_promoted(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
     let mut text = load_live(store, slug)?;
     for from in ["status: open", "status: concluded"] {
@@ -673,6 +675,11 @@ pub fn mark_promoted(store: &dyn Store, slug: &str, change: &str) -> Result<()> 
             );
         }
     }
+    // The spin-out the hold flag was waiting for has arrived — clear it. All three
+    // spin-out paths (promote, `new change --from-discussion`, seal) come through
+    // here, so one removal covers them; `link` writes no discussion side and keeps
+    // the record byte-identical.
+    text = apply_hold(&text, false);
     store.write_live_discussion(slug, &text)?;
     Ok(())
 }
@@ -1029,6 +1036,63 @@ pub fn concluded_in(text: &str) -> bool {
     conclusion_body(text).is_some()
 }
 
+/// frontmatter 的保留旗標行——值固定 `true`，不涉 YAML 跳脫。
+const HOLD_LINE: &str = "hold: true";
+
+/// Whether one record's text carries the staged-spin-out hold flag (frontmatter
+/// `hold: true`) — the text-level twin of [`discussion_held`], shaped like
+/// [`concluded_in`]. Only the exact value `true` counts.
+pub fn held_in(text: &str) -> bool {
+    frontmatter_value(text, "hold").is_some_and(|v| v == "true")
+}
+
+/// Whether a discussion asked to stay live until its next spin-out — the single
+/// contract point shared by the archive co-archival guard and the conclude closing
+/// step, shaped like [`discussion_concluded`]. A missing or unreadable record counts
+/// as not held (the concluded guard already keeps doubtful records live).
+pub fn discussion_held(store: &dyn Store, slug: &str) -> bool {
+    store.read_discussion(slug).is_some_and(|doc| held_in(&doc.text))
+}
+
+/// Write (or drop) the frontmatter `hold: true` line, leaving every other byte
+/// intact. Insertion goes at the end of the frontmatter (before the closing `---`)
+/// and never duplicates an existing line; removal matches the whole line, so it does
+/// not depend on where the flag sits. A record without frontmatter is returned
+/// unchanged — there is nowhere to put the flag.
+fn apply_hold(text: &str, hold: bool) -> String {
+    let mut out = String::with_capacity(text.len() + HOLD_LINE.len() + 1);
+    let mut state = 0u8; // 0＝等開頭 ---、1＝frontmatter 內、2＝frontmatter 後
+    let mut written = false;
+    for (i, l) in text.split_inclusive('\n').enumerate() {
+        match state {
+            0 => {
+                out.push_str(l);
+                state = if i == 0 && l.trim_end() == "---" { 1 } else { 2 };
+            }
+            1 => {
+                if l.trim_end() == "---" {
+                    if hold && !written {
+                        out.push_str(HOLD_LINE);
+                        out.push('\n');
+                        written = true;
+                    }
+                    out.push_str(l);
+                    state = 2;
+                } else if l.trim_end() == HOLD_LINE {
+                    if hold && !written {
+                        out.push_str(l);
+                        written = true;
+                    }
+                } else {
+                    out.push_str(l);
+                }
+            }
+            _ => out.push_str(l),
+        }
+    }
+    out
+}
+
 /// Archive a live discussion under its creation date. Returns the archived
 /// file name, or `None` when no live discussion exists. Same-day name
 /// collisions are resolved by the store so co-archival never fails on a
@@ -1075,12 +1139,19 @@ pub struct ConcludeOutcome {
     pub restale_flagged: Vec<String>,
     pub auto_archived: bool,
     pub closing_error: Option<String>,
+    /// Whether the record carries the hold flag after this write.
+    pub held: bool,
 }
 
 /// Write the conclusion into the `## Conclusion` section (replacing the placeholder — or a
 /// previous conclusion, so a revised conclusion stays a single section) and mark the
 /// discussion concluded.
-pub fn conclude(store: &dyn Store, slug: &str, content: &str) -> Result<ConcludeOutcome> {
+pub fn conclude(
+    store: &dyn Store,
+    slug: &str,
+    content: &str,
+    hold: bool,
+) -> Result<ConcludeOutcome> {
     ensure_content(content)?;
     let content = escape_colliding_lines(content);
     let mut text = load_live(store, slug)?;
@@ -1097,6 +1168,11 @@ pub fn conclude(store: &dyn Store, slug: &str, content: &str) -> Result<Conclude
             format!("{text}\n## Conclusion\n\n{}\n", content.trim_end())
         }
     };
+    // The hold flag rides the same write as the conclusion, so no half state can
+    // survive a failure. Concluding without --hold restates the intent: an existing
+    // flag is dropped.
+    text = apply_hold(&text, hold);
+    let held = held_in(&text);
     store.write_live_discussion(slug, &text)?;
     // Re-concluding an already-reflected discussion (promoted_to non-empty) flags each
     // of its active changes as stale against the new conclusion. Returns the flagged
@@ -1108,12 +1184,14 @@ pub fn conclude(store: &dyn Store, slug: &str, content: &str) -> Result<Conclude
     // change whose references cannot be read counts as still referencing, so a doubtful
     // record stays live rather than being mis-archived. A failed archive step rides in
     // `closing_error` (see [`ConcludeOutcome`]) — the caller recovers with a plain
-    // `discuss archive`.
+    // `discuss archive`. A record concluded with `--hold` still owes a change that does
+    // not exist yet, so the closing step never fires on it: the flag's next spin-out
+    // clears it, and that change's archive co-archives the record.
     let still_referenced = crate::model::list_changes(store).iter().any(|c| {
         c.meta_error.is_some() || c.meta.from_discussions().iter().any(|s| s == slug)
     });
     let mut closing_error = None;
-    let auto_archived = if !still_referenced && !promoted_to(store, slug).is_empty() {
+    let auto_archived = if !still_referenced && !held && !promoted_to(store, slug).is_empty() {
         match archive_discussion(store, slug) {
             Ok(moved) => moved.is_some(),
             Err(e) => {
@@ -1124,7 +1202,7 @@ pub fn conclude(store: &dyn Store, slug: &str, content: &str) -> Result<Conclude
     } else {
         false
     };
-    Ok(ConcludeOutcome { restale_flagged, auto_archived, closing_error })
+    Ok(ConcludeOutcome { restale_flagged, auto_archived, closing_error, held })
 }
 
 #[cfg(test)]
@@ -1173,7 +1251,7 @@ mod tests {
         // promoted_to 非空、無在途變更引用 → conclude 順手封存，結論隨記錄進封存區。
         let store = TestStore::with_live_discussion("alpha", &promoted_unconcluded_doc("alpha", "cut"));
 
-        let outcome = super::conclude(&store, "alpha", "**Decision**: done").unwrap();
+        let outcome = super::conclude(&store, "alpha", "**Decision**: done", false).unwrap();
 
         assert!(outcome.auto_archived, "outcome carries the auto-archive fact");
         assert!(!store.live_discussion_exists("alpha"), "record leaves the live set");
@@ -1195,7 +1273,7 @@ mod tests {
             .borrow_mut()
             .insert("alpha".into(), promoted_unconcluded_doc("alpha", "cut"));
 
-        let outcome = super::conclude(&store, "alpha", "**Decision**: done").unwrap();
+        let outcome = super::conclude(&store, "alpha", "**Decision**: done", false).unwrap();
 
         assert!(!outcome.auto_archived);
         assert!(store.live_discussion_exists("alpha"), "record stays live");
@@ -1208,7 +1286,7 @@ mod tests {
         // promoted_to 缺席 → 行為不變：status 轉 concluded、記錄留在途。
         let store = TestStore::with_live_discussion("alpha", &open_doc("alpha", "Alpha"));
 
-        let outcome = super::conclude(&store, "alpha", "**Decision**: done").unwrap();
+        let outcome = super::conclude(&store, "alpha", "**Decision**: done", false).unwrap();
 
         assert!(!outcome.auto_archived);
         assert!(store.live_discussion_exists("alpha"));
@@ -1225,7 +1303,7 @@ mod tests {
         let store = TestStore::with_live_discussion("alpha", &promoted_unconcluded_doc("alpha", "cut"));
         *store.fail_archive_discussion.borrow_mut() = true;
 
-        let outcome = super::conclude(&store, "alpha", "**Decision**: done").unwrap();
+        let outcome = super::conclude(&store, "alpha", "**Decision**: done", false).unwrap();
 
         assert!(!outcome.auto_archived);
         assert!(
@@ -1251,12 +1329,119 @@ mod tests {
             .borrow_mut()
             .insert("alpha".into(), promoted_unconcluded_doc("alpha", "broken-cut"));
 
-        let outcome = super::conclude(&store, "alpha", "**Decision**: done").unwrap();
+        let outcome = super::conclude(&store, "alpha", "**Decision**: done", false).unwrap();
 
         assert!(!outcome.auto_archived, "corrupt in-flight meta blocks the closing step");
         assert!(outcome.closing_error.is_none());
         assert!(store.live_discussion_exists("alpha"), "record stays live");
         assert!(!store.archived_discussion_exists("alpha"));
+    }
+
+    // --- hold 旗標（discussion-spinout-hold）---
+
+    /// 帶 `hold: true` 的已轉出討論——分期立案（下一刀還沒建立）的在途狀態。
+    fn held_promoted_doc(slug: &str, promoted_to: &str) -> String {
+        format!(
+            "---\ntopic: {slug}\nslug: {slug}\nstatus: promoted\npromoted_to: {promoted_to}\ncreated: 2026-01-02\nhold: true\n---\n\n\
+             # Discussion: {slug}\n\n\
+             ## Context\n\nFixture context.\n\n\
+             ## Rounds\n\n\
+             ## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n"
+        )
+    }
+
+    #[test]
+    fn conclude_with_hold_writes_the_flag_and_keeps_status_rules() {
+        // 帶 hold：旗標入 frontmatter，status 轉換規則（open -> concluded）不變。
+        let store = TestStore::with_live_discussion("alpha", &open_doc("alpha", "Alpha"));
+
+        let outcome = super::conclude(&store, "alpha", "**Decision**: done", true).unwrap();
+
+        assert!(outcome.held, "outcome 記錄本次寫入後帶旗標");
+        let text = store.discussion("alpha");
+        assert!(super::held_in(&text), "frontmatter 帶 hold: true");
+        assert!(super::discussion_held(&store, "alpha"));
+        assert!(text.contains("status: concluded"), "status 轉換規則不變");
+        assert!(text.contains("**Decision**: done"), "結論與旗標同一次落盤");
+    }
+
+    #[test]
+    fn conclude_without_hold_removes_an_existing_flag() {
+        // 不帶 hold 的再次 conclude＝重述意圖：既有旗標行消失。
+        // 在途變更引用本討論，閉環不觸發，記錄留在途可供檢視。
+        let store = TestStore::with_meta(
+            "cut",
+            "schema: spec-driven\ncreated: 2026-01-02\nfrom_discussion: alpha\n",
+        );
+        store.discussions.borrow_mut().insert("alpha".into(), held_promoted_doc("alpha", "cut"));
+
+        let outcome = super::conclude(&store, "alpha", "**Decision**: redone", false).unwrap();
+
+        assert!(!outcome.held);
+        let text = store.discussion("alpha");
+        assert!(!super::held_in(&text), "旗標行被移除");
+        assert!(!text.contains("hold: true"), "整行消失，不留殘句");
+        assert!(text.contains("status: promoted"), "promoted 狀態保持");
+    }
+
+    #[test]
+    fn mark_promoted_clears_the_hold_flag() {
+        // 下一刀轉出＝旗標的償還：promoted_to 累加、hold 行消失。
+        let store = TestStore::with_live_discussion("alpha", &held_promoted_doc("alpha", "cut-a"));
+
+        super::mark_promoted(&store, "alpha", "cut-b").unwrap();
+
+        let text = store.discussion("alpha");
+        assert!(text.contains("promoted_to: cut-a, cut-b"), "累加下一刀");
+        assert!(!super::held_in(&text), "旗標由轉出清除");
+        assert!(!text.contains("hold: true"));
+    }
+
+    #[test]
+    fn link_leaves_the_hold_flag_untouched_and_seal_clears_it() {
+        // link 對討論記錄逐位元不變（不清旗標）；補標的 seal 才清。
+        let doc = held_promoted_doc("alpha", "cut-a");
+        let store = TestStore::with_meta("cut-b", "schema: spec-driven\ncreated: 2026-01-02\n");
+        store.discussions.borrow_mut().insert("alpha".into(), doc.clone());
+
+        super::link(&store, "alpha", "cut-b").unwrap();
+        assert_eq!(store.discussion("alpha"), doc, "link 不改討論記錄");
+
+        super::seal(&store, "alpha", "cut-b").unwrap();
+        let text = store.discussion("alpha");
+        assert!(text.contains("promoted_to: cut-a, cut-b"));
+        assert!(!super::held_in(&text), "seal 經 mark_promoted 清旗標");
+    }
+
+    #[test]
+    fn conclude_with_hold_skips_the_closing_archive() {
+        // 閉環條件（promoted_to 非空、無在途引用）成立，但帶 hold → 不封存、留在途。
+        let store = TestStore::with_live_discussion("alpha", &promoted_unconcluded_doc("alpha", "cut"));
+
+        let outcome = super::conclude(&store, "alpha", "**Decision**: cut-b later", true).unwrap();
+
+        assert!(!outcome.auto_archived, "帶 hold 必然不閉環");
+        assert!(outcome.held);
+        assert!(outcome.closing_error.is_none());
+        assert!(store.live_discussion_exists("alpha"), "記錄留在 live 集合");
+        assert!(!store.archived_discussion_exists("alpha"));
+        assert!(super::held_in(&store.discussion("alpha")));
+    }
+
+    #[test]
+    fn conclude_with_hold_does_not_duplicate_the_flag_line() {
+        // 重複帶 hold：旗標行只有一條。
+        let store = TestStore::with_meta(
+            "cut",
+            "schema: spec-driven\ncreated: 2026-01-02\nfrom_discussion: alpha\n",
+        );
+        store.discussions.borrow_mut().insert("alpha".into(), held_promoted_doc("alpha", "cut"));
+
+        let outcome = super::conclude(&store, "alpha", "**Decision**: still deferred", true).unwrap();
+
+        assert!(outcome.held);
+        let text = store.discussion("alpha");
+        assert_eq!(text.matches("hold: true").count(), 1, "不產生第二行");
     }
 
     // --- 空內容 guard（discuss-content-guard；拒絕靜默寫入空區段） ---
@@ -1274,8 +1459,8 @@ mod tests {
     fn conclude_rejects_empty_content_and_keeps_status() {
         let doc = open_doc("alpha", "Alpha");
         let store = TestStore::with_live_discussion("alpha", &doc);
-        assert!(super::conclude(&store, "alpha", "").is_err());
-        assert!(super::conclude(&store, "alpha", "  \n ").is_err());
+        assert!(super::conclude(&store, "alpha", "", false).is_err());
+        assert!(super::conclude(&store, "alpha", "  \n ", false).is_err());
         assert_eq!(
             store.discussion("alpha"),
             doc,
@@ -2058,7 +2243,7 @@ mod tests {
             "schema: spec-driven\nfrom_discussion: alpha\n".to_string(),
         );
         let flagged =
-            super::conclude(&store, "alpha", "**Decision**: new direction").unwrap().restale_flagged;
+            super::conclude(&store, "alpha", "**Decision**: new direction", false).unwrap().restale_flagged;
         assert_eq!(flagged, vec!["cut-a".to_string()]);
         assert!(store.meta("cut-a").contains("restale_from: alpha"), "meta: {}", store.meta("cut-a"));
         // 討論維持 promoted、promoted_to 不變，僅 Conclusion 改寫。
@@ -2081,7 +2266,7 @@ mod tests {
             .archived_metas
             .borrow_mut()
             .insert("arch-b".to_string(), "schema: spec-driven\n".to_string());
-        let flagged = super::conclude(&store, "alpha", "**Decision**: new").unwrap().restale_flagged;
+        let flagged = super::conclude(&store, "alpha", "**Decision**: new", false).unwrap().restale_flagged;
         assert_eq!(flagged, vec!["cut-a".to_string()], "only active flagged");
         assert!(store.meta("cut-a").contains("restale_from: alpha"));
         assert!(!store.change_exists("arch-b"), "archived never active");
@@ -2104,7 +2289,7 @@ mod tests {
         );
         store.metas.borrow_mut().insert("cut-a".to_string(), "schema: spec-driven\n".to_string());
         store.metas.borrow_mut().insert("broken-b".to_string(), BAD.to_string());
-        let flagged = super::conclude(&store, "alpha", "**Decision**: new").unwrap().restale_flagged;
+        let flagged = super::conclude(&store, "alpha", "**Decision**: new", false).unwrap().restale_flagged;
         assert_eq!(flagged, vec!["cut-a".to_string()], "corrupt change is not flagged");
         assert!(store.meta("cut-a").contains("restale_from: alpha"));
         assert_eq!(store.meta("broken-b"), BAD, "corrupt meta must not be appended to");
@@ -2116,7 +2301,7 @@ mod tests {
         let store =
             TestStore::with_live_discussion("alpha", &concluded_doc("alpha", "Alpha", "old"));
         store.metas.borrow_mut().insert("cut-a".to_string(), "schema: spec-driven\n".to_string());
-        let flagged = super::conclude(&store, "alpha", "**Decision**: new").unwrap().restale_flagged;
+        let flagged = super::conclude(&store, "alpha", "**Decision**: new", false).unwrap().restale_flagged;
         assert!(flagged.is_empty());
         assert_eq!(*store.meta_writes.borrow(), 0, "no change meta written");
         assert_eq!(store.meta("cut-a"), "schema: spec-driven\n", "change meta untouched");
@@ -2132,7 +2317,7 @@ mod tests {
         );
         let before = store.meta("cut-a");
         let flagged =
-            super::conclude(&store, "alpha", "**Decision**: newer").unwrap().restale_flagged;
+            super::conclude(&store, "alpha", "**Decision**: newer", false).unwrap().restale_flagged;
         assert_eq!(flagged, vec!["cut-a".to_string()], "still reported stale");
         assert_eq!(store.meta("cut-a"), before, "no duplicate accumulation");
         assert_eq!(*store.meta_writes.borrow(), 0, "idempotent — no change meta write");
@@ -2286,7 +2471,7 @@ mod tests {
             "add_round 落盤前須跳脫撞名行: {}",
             store.discussion("alpha")
         );
-        super::conclude(&store, "alpha", "**Decision**: real").unwrap();
+        super::conclude(&store, "alpha", "**Decision**: real", false).unwrap();
         let text = store.discussion("alpha");
         assert!(
             text.contains("偽結論引子\n\\## Conclusion\n偽結論本文"),
@@ -2356,7 +2541,7 @@ mod tests {
             Some("**Decision**: done"),
             "結論讀取不得吞掉其後的輪區段"
         );
-        super::conclude(&store, "legacy", "**Decision**: revised").unwrap();
+        super::conclude(&store, "legacy", "**Decision**: revised", false).unwrap();
         let text = store.discussion("legacy");
         assert!(
             text.contains("## Round 2 — explore (2026-01-03)\n\n次輪本文"),
@@ -2394,7 +2579,7 @@ mod tests {
             "圍欄內不得跳脫: {text}"
         );
         assert_eq!(super::count_rounds(&text), 1, "圍欄內輪標題不計數");
-        super::conclude(&store, "alpha", "**Decision**: real").unwrap();
+        super::conclude(&store, "alpha", "**Decision**: real", false).unwrap();
         let text = store.discussion("alpha");
         assert!(text.contains("```\n## Conclusion\n"), "圍欄內容不被 conclude 改寫: {text}");
         assert_eq!(
@@ -2432,7 +2617,7 @@ mod tests {
         let r2 = text.find("### Round 2").unwrap();
         let conc = text.find("\n## Conclusion\n").unwrap();
         assert!(r2 < conc, "新輪仍須落在結構 Conclusion 之前: {text}");
-        super::conclude(&store, "alpha", "**Decision**: real").unwrap();
+        super::conclude(&store, "alpha", "**Decision**: real", false).unwrap();
         let text = store.discussion("alpha");
         assert_eq!(
             super::conclusion_text(&store, "alpha").as_deref(),

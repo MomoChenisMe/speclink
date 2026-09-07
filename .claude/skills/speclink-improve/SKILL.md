@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.30.0"
+  version: "v1.31.0"
   generatedBy: "Speclink"
 ---
 
@@ -143,7 +143,7 @@ speclink discuss conclude improve-<scope> --stdin <<'CONCLUSION_EOF'
 CONCLUSION_EOF
 ```
 
-Then fan out: `speclink discuss promote <slug>` (or `/speclink-propose --from-discussion <slug>`) for a new change, or `speclink discuss link <slug> <existing-change>` when the improvement belongs to a change already in flight. One scan can fan out into several changes — the record accumulates each name and is archived automatically when the last of them is archived and its conclusion is written.
+Then fan out: `speclink discuss promote <slug>` (or `/speclink-propose --from-discussion <slug>`) for a new change, or `speclink discuss link <slug> <existing-change>` when the improvement belongs to a change already in flight. One scan can fan out into several changes — the record accumulates each name and is archived automatically when the last of them is archived and its conclusion is written. **When the conclusion stages the work — cut A now, cut B once A lands** — run `conclude` with `--hold`: the record stays live past cut A's archive until the next spin-out clears the flag. Without `--hold` the record is archived with the last of its changes, and any later cut needs a new discussion.
 
 **When the user rejects every candidate, the scan still concluded something.** Write the conclusion — that nothing here is worth doing, and why each candidate lost — and archive the record:
 

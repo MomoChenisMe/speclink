@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.30.0"
+  version: "v1.31.0"
   generatedBy: "Speclink"
 ---
 
@@ -352,7 +352,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.30.0"
+  version: "v1.31.0"
   generatedBy: "Speclink"
 ---
 
@@ -652,7 +652,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.30.0"
+  version: "v1.31.0"
   generatedBy: "Speclink"
 ---
 
@@ -894,7 +894,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.30.0"
+  version: "v1.31.0"
   generatedBy: "Speclink"
 ---
 
@@ -1023,7 +1023,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.30.0"
+  version: "v1.31.0"
   generatedBy: "Speclink"
 ---
 
@@ -1300,7 +1300,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.30.0"
+  version: "v1.31.0"
   generatedBy: "Speclink"
 ---
 
@@ -1451,7 +1451,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.30.0"
+  version: "v1.31.0"
   generatedBy: "Speclink"
 ---
 
@@ -1560,7 +1560,7 @@ ROUND_EOF
 
 Use `--mode assumptions` for rounds that presented an assumptions list and `--mode interview` for question-driven rounds (grill stage or node fallback). Omit a line rather than pad it (e.g. no `**Ruled out**` when nothing was eliminated). Keep each round terse — it is a durable summary following the Document rules above, not a transcript. This is the mechanism that keeps a long discussion from drifting off-topic: each round is anchored to the record.
 
-**At convergence**, write the conclusion into the record (see the Convergence and "Capture decisions" sections below):
+**At convergence**, write the conclusion into the record (see the Convergence and "Capture decisions" sections below). Add `--hold` when the conclusion plans a further change to spin out from this same record later — it keeps the record live past its conclusion (see **Mid-discussion spin-out** below):
 
 ```bash
 speclink discuss conclude <slug> --stdin <<'CONCLUSION_EOF'
@@ -1579,7 +1579,7 @@ This flips the record's `status` to `concluded`. The step logic below (vocabular
 
 **Mid-discussion spin-out** — in a multi-requirement discussion, one item can be filed the moment it is settled; don't hold it hostage to the rest:
 
-1. **Promote now**: run `speclink discuss promote <slug> --name <change-name>` (`--name` is optional — the change name defaults to the slug) — the engine scaffolds the change, prefills the proposal's Why (from the conclusion when one exists, otherwise from the topic), and links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record). One discussion can fan out into several changes — spin out again and `promoted_to` accumulates each name; the discussion is archived automatically when the last of its changes is archived and its conclusion is written — an unconcluded record stays live for more rounds (a later `conclude` closes it once every spun-out change is archived). The remaining artifacts are still created via `speclink propose`.
+1. **Promote now**: run `speclink discuss promote <slug> --name <change-name>` (`--name` is optional — the change name defaults to the slug) — the engine scaffolds the change, prefills the proposal's Why (from the conclusion when one exists, otherwise from the topic), and links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record). One discussion can fan out into several changes — spin out again and `promoted_to` accumulates each name; the discussion is archived automatically when the last of its changes is archived and its conclusion is written — an unconcluded record stays live for more rounds (a later `conclude` closes it once every spun-out change is archived). **When the conclusion plans to come back to this same record and spin out another change later** (cut A now, cut B once A lands), run `conclude` with `--hold`: the record stays live past its conclusion and past cut A's archive, until the next spin-out clears the flag and the ordinary lifecycle resumes. Without `--hold` the record is archived with the last of its changes, and any later cut needs a new discussion. The remaining artifacts are still created via `speclink propose`.
 2. **Keep discussing**: `add-round` continues as normal for the remaining items; promotion does not close the record.
 3. **Conclude as usual at the end**: the record keeps its `promoted` status, the conclusion is written in, and the engine flags the already-promoted changes as needing the conclusion re-reflected. When the conclusion is unrelated to a spun-out change, that flag needs a single confirmation — no rework.
 
@@ -1936,7 +1936,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.30.0"
+  version: "v1.31.0"
   generatedBy: "Speclink"
 ---
 
@@ -2071,7 +2071,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.30.0"
+  version: "v1.31.0"
   generatedBy: "Speclink"
 ---
 
@@ -2214,7 +2214,7 @@ speclink discuss conclude improve-<scope> --stdin <<'CONCLUSION_EOF'
 CONCLUSION_EOF
 ```
 
-Then fan out: `speclink discuss promote <slug>` (or `speclink propose --from-discussion <slug>`) for a new change, or `speclink discuss link <slug> <existing-change>` when the improvement belongs to a change already in flight. One scan can fan out into several changes — the record accumulates each name and is archived automatically when the last of them is archived and its conclusion is written.
+Then fan out: `speclink discuss promote <slug>` (or `speclink propose --from-discussion <slug>`) for a new change, or `speclink discuss link <slug> <existing-change>` when the improvement belongs to a change already in flight. One scan can fan out into several changes — the record accumulates each name and is archived automatically when the last of them is archived and its conclusion is written. **When the conclusion stages the work — cut A now, cut B once A lands** — run `conclude` with `--hold`: the record stays live past cut A's archive until the next spin-out clears the flag. Without `--hold` the record is archived with the last of its changes, and any later cut needs a new discussion.
 
 **When the user rejects every candidate, the scan still concluded something.** Write the conclusion — that nothing here is worth doing, and why each candidate lost — and archive the record:
 
@@ -2257,7 +2257,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.30.0"
+  version: "v1.31.0"
   generatedBy: "Speclink"
 ---
 
@@ -2545,7 +2545,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.30.0"
+  version: "v1.31.0"
   generatedBy: "Speclink"
 ---
 
@@ -2752,7 +2752,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.30.0"
+  version: "v1.31.0"
   generatedBy: "Speclink"
 ---
 
@@ -3214,7 +3214,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.30.0"
+  version: "v1.31.0"
   generatedBy: "Speclink"
 ---
 
@@ -3315,7 +3315,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.30.0"
+  version: "v1.31.0"
   generatedBy: "Speclink"
 ---
 
@@ -3517,7 +3517,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.30.0"
+  version: "v1.31.0"
   generatedBy: "Speclink"
 ---
 
@@ -3607,7 +3607,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.30.0"
+  version: "v1.31.0"
   generatedBy: "Speclink"
 ---
 

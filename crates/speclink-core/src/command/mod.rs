@@ -347,8 +347,8 @@ pub enum Command {
         mode: String,
         content: String,
     },
-    /// `discuss conclude <slug>` with stdin content
-    DiscussConclude { slug: String, content: String },
+    /// `discuss conclude <slug> [--hold]` with stdin content
+    DiscussConclude { slug: String, content: String, hold: bool },
     /// `discuss promote <slug> [--name <change>]`
     DiscussPromote { slug: String, name: Option<String> },
     /// `discuss link <slug> --change <change>`
@@ -541,6 +541,8 @@ pub struct DiscussConcludeOutcome {
     pub restale_flagged: Vec<String>,
     pub auto_archived: bool,
     pub closing_error: Option<String>,
+    /// Whether the record carries the hold flag after this write.
+    pub held: bool,
 }
 
 /// `discuss promote` outcome.
@@ -751,13 +753,15 @@ pub fn execute(
             let round = crate::discuss::add_round(store, &slug, &mode, &content).map_err(classify)?;
             Ok(CommandOutcome::DiscussAddRound(DiscussRoundOutcome { slug, mode, round }))
         }
-        Command::DiscussConclude { slug, content } => {
-            let outcome = crate::discuss::conclude(store, &slug, &content).map_err(classify)?;
+        Command::DiscussConclude { slug, content, hold } => {
+            let outcome =
+                crate::discuss::conclude(store, &slug, &content, hold).map_err(classify)?;
             Ok(CommandOutcome::DiscussConclude(DiscussConcludeOutcome {
                 slug,
                 restale_flagged: outcome.restale_flagged,
                 auto_archived: outcome.auto_archived,
                 closing_error: outcome.closing_error,
+                held: outcome.held,
             }))
         }
         Command::DiscussPromote { slug, name } => {
@@ -3171,6 +3175,7 @@ mod tests {
             Command::DiscussConclude {
                 slug: "api-auth".to_string(),
                 content: "結論：做。\n".to_string(),
+                hold: false,
             },
         );
         assert_eq!(kinds(&ev), ["discussion-concluded"]);
@@ -3209,6 +3214,21 @@ mod tests {
     }
 
     #[test]
+    fn discuss_archive_ignores_the_hold_flag() {
+        // 手動封存是「放棄後續刀」的明示出口：帶 hold 的記錄照常封存。
+        let store = TestStore::with_live_discussion(
+            "staged",
+            "---\nslug: staged\nstatus: promoted\npromoted_to: cut-a\ncreated: 2026-07-10\nhold: true\n---\n\n# Discussion: staged\n\n## Conclusion\n\n**Decision**: cut-b later\n",
+        );
+
+        let (_, events) = ok(&store, Command::DiscussArchive { slug: "staged".to_string() });
+
+        assert_eq!(kinds(&events), ["discussion-archived"]);
+        assert!(store.archived_discussion_exists("staged"));
+        assert!(!store.live_discussion_exists("staged"));
+    }
+
+    #[test]
     fn discuss_discard_reports_discussion_discarded() {
         let store = TestStore::with_live_discussion(
             "scrap-idea",
@@ -3239,6 +3259,7 @@ mod tests {
             Command::DiscussConclude {
                 slug: "api-auth".to_string(),
                 content: "結論：轉正。\n".to_string(),
+                hold: false,
             },
         );
         let (_, events) = ok(
@@ -3452,7 +3473,7 @@ mod tests {
             Command::DiscussNew { topic: _, slug: _, kind: _ } => {}
             Command::DiscussContext { slug: _, content: _ } => {}
             Command::DiscussAddRound { slug: _, mode: _, content: _ } => {}
-            Command::DiscussConclude { slug: _, content: _ } => {}
+            Command::DiscussConclude { slug: _, content: _, hold: _ } => {}
             Command::DiscussPromote { slug: _, name: _ } => {}
             Command::DiscussLink { slug: _, change: _ } => {}
             Command::DiscussSeal { slug: _, change: _ } => {}
