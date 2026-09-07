@@ -1,0 +1,75 @@
+schema: spec-driven
+created: 2026-09-07
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: manual-stale-time-granularity
+started_at: 2026-09-07
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-07
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 8
+reviewed_scope:
+  - path: apps/desktop/core/src/manual.rs
+    hash: 8e6639b424ee6759c1360b71172f992d28c4fffc8dcacf49198869a6ff8e3c9a
+  - path: crates/speclink-core/assets/skills/archive.md
+    hash: 9ea3ed2cdb8bb46812d49d898ccde5cf8c8f11e219fb59e763ebd33104fdd0df
+  - path: crates/speclink-core/assets/skills/manual.md
+    hash: 8930a0085db79fd9500c016a131b23f0925940f4ba95dcdada8035d0065250ac
+  - path: crates/speclink-core/src/archive.rs
+    hash: d9eb658fae34056a9974f691f58b41e9ff97231d1d188634ae9d1ae088f21e6b
+  - path: crates/speclink-core/src/init.rs
+    hash: 4491824dc66692b8e139089c87fe19267a79b6dbf464451c932ad59fc5d5afca
+  - path: crates/speclink-core/src/util.rs
+    hash: 9ce074adf594a909ad93b284c92b38c1bc69d1e1cca9ecde23ed177b50f998cb
+  - path: crates/speclink-core/tests/golden/assets.lock
+    hash: 8cae96d1262411e70e67c6b918cc78d337068f9ddd6f8fc88ec4b00f011ac5a6
+  - path: crates/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: cf578af8e9f02abd3b9f0863c083fab12e90d682c31a9488a248d6c77e3702d1
+  - path: crates/speclink-core/tests/golden/claude.snapshot.md
+    hash: 176fd5c8de99cdbe7b9cc6877476813e36ac9cfa81ba1b87c25dc4c6bb85f576
+  - path: crates/speclink-core/tests/golden/codex.snapshot.md
+    hash: 4316706bbfaf499dfe9d194005c8fad69c5b0c1173ca9cb7fe1871a896a18ffa
+  - path: crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: 3d74ba34639b8b84fd985a58346ed6e871f8f56e1bee3235586924407dff560e
+  - path: crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: 4ee67cba30af4540821790e194747c02e94b3711901498b308c7911a086ef495
+  - path: crates/speclink-core/tests/it/render_golden.rs
+    hash: b7c2dc9ce5893471bb78f7d9e790538f64f952b9de716b476ae5fbc2a415a2b8
+  - path: packages/ui/src/adapter.ts
+    hash: 118ecef2a740b5d93b2e16388beec9365c8368d868d4b222e0b55f900717127c
+verified_at: 2026-09-07
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 8
+verified_scope:
+  - path: apps/desktop/core/src/manual.rs
+    hash: 8e6639b424ee6759c1360b71172f992d28c4fffc8dcacf49198869a6ff8e3c9a
+  - path: crates/speclink-core/assets/skills/archive.md
+    hash: 9ea3ed2cdb8bb46812d49d898ccde5cf8c8f11e219fb59e763ebd33104fdd0df
+  - path: crates/speclink-core/assets/skills/manual.md
+    hash: 8930a0085db79fd9500c016a131b23f0925940f4ba95dcdada8035d0065250ac
+  - path: crates/speclink-core/src/archive.rs
+    hash: d9eb658fae34056a9974f691f58b41e9ff97231d1d188634ae9d1ae088f21e6b
+  - path: crates/speclink-core/src/init.rs
+    hash: 4491824dc66692b8e139089c87fe19267a79b6dbf464451c932ad59fc5d5afca
+  - path: crates/speclink-core/src/util.rs
+    hash: 9ce074adf594a909ad93b284c92b38c1bc69d1e1cca9ecde23ed177b50f998cb
+  - path: crates/speclink-core/tests/golden/assets.lock
+    hash: 8cae96d1262411e70e67c6b918cc78d337068f9ddd6f8fc88ec4b00f011ac5a6
+  - path: crates/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: cf578af8e9f02abd3b9f0863c083fab12e90d682c31a9488a248d6c77e3702d1
+  - path: crates/speclink-core/tests/golden/claude.snapshot.md
+    hash: 176fd5c8de99cdbe7b9cc6877476813e36ac9cfa81ba1b87c25dc4c6bb85f576
+  - path: crates/speclink-core/tests/golden/codex.snapshot.md
+    hash: 4316706bbfaf499dfe9d194005c8fad69c5b0c1173ca9cb7fe1871a896a18ffa
+  - path: crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: 3d74ba34639b8b84fd985a58346ed6e871f8f56e1bee3235586924407dff560e
+  - path: crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: 4ee67cba30af4540821790e194747c02e94b3711901498b308c7911a086ef495
+  - path: crates/speclink-core/tests/it/render_golden.rs
+    hash: b7c2dc9ce5893471bb78f7d9e790538f64f952b9de716b476ae5fbc2a415a2b8
+  - path: packages/ui/src/adapter.ts
+    hash: 118ecef2a740b5d93b2e16388beec9365c8368d868d4b222e0b55f900717127c
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-07

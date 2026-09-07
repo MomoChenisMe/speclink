@@ -149,10 +149,11 @@ export interface ManualPageItem {
   keywords: string[];
   /** 本頁取材的正典 capability 名（出處行的資料源）。 */
   sources: string[];
-  /** 最近一次生成日（YYYY-MM-DD）；缺席為 null。 */
+  /** 最近一次生成時戳的 frontmatter 原字串（RFC 3339 帶偏移量，舊頁為 YYYY-MM-DD）；
+   * 缺席或無法解析為 null。 */
   generated: string | null;
-  /** 依 manual-pages 契約判定的「可能過期」：sources 任一規格的最新 @trace updated
-   * 晚於 generated。 */
+  /** 依 manual-pages 契約「過期判定基準」判定的「可能過期」：sources 任一規格內存在任一
+   * @trace updated 在 generated 之後（兩邊帶時間時嚴格晚於；任一邊純日期時同日也算）。 */
   stale: boolean;
 }
 
@@ -164,8 +165,8 @@ export interface ManualIndex {
   /** present 為 false 的原因：remote 資料源回 "remote"（尚不支援），本地缺目錄為 null。 */
   reason: "remote" | null;
   pages: ManualPageItem[];
-  /** 手冊生成後新增且未入冊的正典 capability 名（最小 @trace updated 晚於全手冊最大
-   * generated、且不在任何頁的 sources）。 */
+  /** 手冊生成後新增且未入冊的正典 capability 名（每一個 @trace updated 都在每一頁
+   * generated 之後、且不在任何頁的 sources；判定基準同 stale）。 */
   uncoveredNew: string[];
   /** frontmatter 無法解析的頁 slug（仍列於 pages、以檔名為標題）。 */
   malformed: string[];

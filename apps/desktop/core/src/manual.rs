@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::LazyLock;
 
-use chrono::NaiveDate;
+use chrono::{DateTime, FixedOffset, NaiveDate};
 use regex::Regex;
 use serde_json::{json, Value};
 use speclink_core::store::Store;
@@ -27,9 +27,60 @@ struct Page {
     order: Option<i64>,
     keywords: Vec<String>,
     sources: Vec<String>,
-    /// 生成日（只到日）；缺席或非 `YYYY-MM-DD` 皆為 `None`——視為未生成，不判過期。
-    generated: Option<NaiveDate>,
+    /// 生成時戳；缺席或既非 RFC 3339 也非 `YYYY-MM-DD` 皆為 `None`——視為未生成，
+    /// 不判過期。
+    generated: Option<Generated>,
     malformed: bool,
+}
+
+/// 一頁的 `generated`：索引回傳的原字串（已 trim）與判定用的解析值。
+struct Generated {
+    raw: String,
+    stamp: Stamp,
+}
+
+impl Generated {
+    fn parse(raw: &str) -> Option<Generated> {
+        let raw = raw.trim();
+        Stamp::parse(raw).map(|stamp| Generated { raw: raw.to_string(), stamp })
+    }
+}
+
+/// manual-pages 契約的時戳：純日（放寬前寫入的 `generated` 與舊封存的 `updated`）
+/// 或帶時區偏移量的瞬間（RFC 3339）。
+#[derive(Clone, Copy, Debug)]
+enum Stamp {
+    Day(NaiveDate),
+    Instant(DateTime<FixedOffset>),
+}
+
+impl Stamp {
+    /// 先試 RFC 3339（含 `Z` 與 `±hh:mm`），再試 `YYYY-MM-DD`；都不是即缺席。
+    fn parse(s: &str) -> Option<Stamp> {
+        let s = s.trim();
+        if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+            return Some(Stamp::Instant(dt));
+        }
+        NaiveDate::parse_from_str(s, "%Y-%m-%d").ok().map(Stamp::Day)
+    }
+
+    /// 日曆日；帶時間的一方取其時戳自身偏移量下的日曆日。
+    fn day(self) -> NaiveDate {
+        match self {
+            Stamp::Day(d) => d,
+            Stamp::Instant(dt) => dt.date_naive(),
+        }
+    }
+
+    /// 契約「過期判定基準」的「在之後」——名字說「算作」，因為第二段不是嚴格晚於：
+    /// 兩邊都是瞬間時比到秒、嚴格晚於才算（同秒與小數秒差都不算）；任一邊純日期時
+    /// 退回日曆日不早於（同日也算）——生成當天的封存不得漏判。
+    fn counts_as_after(self, page: Stamp) -> bool {
+        match (self, page) {
+            (Stamp::Instant(spec), Stamp::Instant(page)) => spec.timestamp() > page.timestamp(),
+            _ => self.day() >= page.day(),
+        }
+    }
 }
 
 /// 沒有手冊可列時的索引；`reason` 恆為 null——「remote」那個值由前端 remote 資料源
@@ -44,11 +95,13 @@ fn empty_index() -> Value {
     })
 }
 
-// 正典 spec 的 `@trace` 註解區塊與其中的 `updated:` 行（與前端 trace.ts 同一種讀法）。
+// 正典 spec 的 `@trace` 註解區塊與其中的 `updated:` 欄。區塊的抓法與前端 trace.ts 相同；
+// `updated:` 欄比前端的 `source:` 讀法寬：多行式與單行式 `<!-- @trace source: x updated: … -->`
+// 都認（archive 只寫多行式，這裡是超集）。
 static TRACE_BLOCK_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?s)<!--\s*@trace\b(.*?)-->").expect("static regex"));
 static TRACE_UPDATED_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^\s*updated:\s*(\d{4}-\d{2}-\d{2})\s*$").expect("static regex"));
+    LazyLock::new(|| Regex::new(r"\bupdated:\s*(\S+)").expect("static regex"));
 
 /// 對應 Tauri command `list_manual_pages`：`{ present, reason, pages, uncoveredNew,
 /// malformed }`（欄位 camelCase）。目錄不存在、無 `.md`、不可讀或非專案時
@@ -89,24 +142,26 @@ pub fn list_manual_pages_at(root: &Path) -> Value {
     }
     sort_reading_order(&mut pages);
 
-    // 每個 capability 的 @trace updated 範圍只讀一次（stale 與 uncoveredNew 共用）。
+    // 每個 capability 的 @trace updated 時戳只讀一次（stale 與 uncoveredNew 共用）；
+    // 沒有規格或沒有可解析的時戳即空集合。
     let store: &dyn Store = &ctx.store;
-    let mut ranges: HashMap<String, Option<(NaiveDate, NaiveDate)>> = HashMap::new();
-    let mut range_of = |cap: &str| -> Option<(NaiveDate, NaiveDate)> {
-        *ranges
+    let mut stamps: HashMap<String, Vec<Stamp>> = HashMap::new();
+    let mut stamps_of = |cap: &str| -> Vec<Stamp> {
+        stamps
             .entry(cap.to_string())
-            .or_insert_with(|| store.read_canonical_spec(cap).and_then(|doc| trace_updated_range(&doc)))
+            .or_insert_with(|| store.read_canonical_spec(cap).map(|doc| trace_updated_stamps(&doc)).unwrap_or_default())
+            .clone()
     };
 
     let items: Vec<Value> = pages
         .iter()
         .map(|p| {
-            // manual-pages 契約「過期判定基準」：最新 updated 不早於（晚於或同日）
-            // generated 即過期——兩個日期都只到日，生成當天的封存不得漏判。
-            let stale = p.generated.is_some_and(|gen| {
+            // manual-pages 契約「過期判定基準」：任一 source 規格內存在任一 updated
+            // 在 generated 之後（Stamp::counts_as_after 的三段式）即過期。
+            let stale = p.generated.as_ref().is_some_and(|g| {
                 p.sources
                     .iter()
-                    .any(|cap| range_of(cap).is_some_and(|(_, max)| max >= gen))
+                    .any(|cap| stamps_of(cap).iter().any(|u| u.counts_as_after(g.stamp)))
             });
             json!({
                 "slug": p.slug,
@@ -115,23 +170,28 @@ pub fn list_manual_pages_at(root: &Path) -> Value {
                 "order": p.order,
                 "keywords": p.keywords,
                 "sources": p.sources,
-                "generated": p.generated.map(|d| d.format("%Y-%m-%d").to_string()),
+                "generated": p.generated.as_ref().map(|g| g.raw.clone()),
                 "stale": stale,
             })
         })
         .collect();
 
-    // 未入冊：正典 capability 的最小 updated 不早於全手冊最大 generated（同日同樣
-    // 算生成之後），且不在任何頁的 sources。
-    let max_generated = pages.iter().filter_map(|p| p.generated).max();
-    let mut uncovered: Vec<String> = match max_generated {
-        None => Vec::new(),
-        Some(max_gen) => store
+    // 未入冊：正典 capability 的每一個 updated 都在每一頁 generated 之後（同一套
+    // 三段式；純日期與時戳混用時沒有全序，故以量詞取代最小／最大），且不在任何頁的
+    // sources。沒有任何頁帶 generated 時不判。
+    let generated: Vec<Stamp> = pages.iter().filter_map(|p| p.generated.as_ref().map(|g| g.stamp)).collect();
+    let mut uncovered: Vec<String> = if generated.is_empty() {
+        Vec::new()
+    } else {
+        store
             .list_canonical_capabilities()
             .into_iter()
             .filter(|cap| !pages.iter().any(|p| p.sources.iter().any(|s| s == cap)))
-            .filter(|cap| range_of(cap).is_some_and(|(min, _)| min >= max_gen))
-            .collect(),
+            .filter(|cap| {
+                let updated = stamps_of(cap);
+                !updated.is_empty() && updated.iter().all(|u| generated.iter().all(|g| u.counts_as_after(*g)))
+            })
+            .collect()
     };
     uncovered.sort_unstable();
 
@@ -230,8 +290,7 @@ fn parse_page(slug: String, text: &str) -> Page {
         order: map.get("order").and_then(|v| v.as_i64()),
         keywords: list_field("keywords"),
         sources,
-        generated: string_field("generated")
-            .and_then(|s| NaiveDate::parse_from_str(s.trim(), "%Y-%m-%d").ok()),
+        generated: string_field("generated").and_then(|raw| Generated::parse(&raw)),
         malformed: false,
     }
 }
@@ -265,20 +324,18 @@ fn sort_reading_order(pages: &mut [Page]) {
     pages.sort_by_cached_key(|p| (section_rank[&p.section].clone(), order_key(p)));
 }
 
-/// 正典 spec 全文 `@trace` 註解區塊內 `updated:` 日期的（最小、最大）；沒有可解析
-/// 的日期時 `None`。
-fn trace_updated_range(doc: &str) -> Option<(NaiveDate, NaiveDate)> {
-    let mut range: Option<(NaiveDate, NaiveDate)> = None;
-    for block in TRACE_BLOCK_RE.captures_iter(doc) {
-        for cap in TRACE_UPDATED_RE.captures_iter(&block[1]) {
-            let Ok(date) = NaiveDate::parse_from_str(&cap[1], "%Y-%m-%d") else { continue };
-            range = Some(match range {
-                None => (date, date),
-                Some((min, max)) => (min.min(date), max.max(date)),
-            });
-        }
-    }
-    range
+/// 正典 spec 全文 `@trace` 註解區塊內每一行 `updated:` 的可解析時戳；無法解析的行
+/// 視為缺席、直接略過。
+fn trace_updated_stamps(doc: &str) -> Vec<Stamp> {
+    TRACE_BLOCK_RE
+        .captures_iter(doc)
+        .flat_map(|block| {
+            TRACE_UPDATED_RE
+                .captures_iter(&block[1])
+                .filter_map(|cap| Stamp::parse(&cap[1]))
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -331,7 +388,7 @@ mod tests {
         page(
             &fx,
             "first-login",
-            "title: 第一次登入\nsection: 開始使用\norder: 20\nkeywords: [登入, github, 審核]\nsources: [github-oauth, user-pending-blocked-pages]\ngenerated: 2026-09-02",
+            "title: 第一次登入\nsection: 開始使用\norder: 20\nkeywords: [登入, github, 審核]\nsources: [github-oauth, user-pending-blocked-pages]\ngenerated: 2026-09-05T23:31:00+08:00",
             "f",
         );
         page(&fx, "index", "title: 手冊\nsection: 開始使用\norder: 10\nsources: []\ngenerated: 2026-09-02", "i");
@@ -347,7 +404,7 @@ mod tests {
         assert_eq!(fl["order"], 20);
         assert_eq!(fl["keywords"], serde_json::json!(["登入", "github", "審核"]));
         assert_eq!(fl["sources"], serde_json::json!(["github-oauth", "user-pending-blocked-pages"]));
-        assert_eq!(fl["generated"], "2026-09-02");
+        assert_eq!(fl["generated"], "2026-09-05T23:31:00+08:00");
         assert_eq!(fl["stale"], false);
         // 欄位名是對外契約：每頁恰好這八個 camelCase 鍵。
         let mut keys: Vec<&str> = fl.as_object().unwrap().keys().map(String::as_str).collect();
@@ -451,8 +508,91 @@ mod tests {
     }
 
     #[test]
+    fn stamp_parses_rfc3339_with_offset_or_z_then_plain_date() {
+        // manual-pages「frontmatter 六欄」：generated／updated 先試 RFC 3339（含 Z 與 ±hh:mm），
+        // 再試 YYYY-MM-DD；都不是就視為缺席。
+        assert!(matches!(Stamp::parse("2026-09-05T23:17:28+08:00"), Some(Stamp::Instant(_))));
+        assert!(matches!(Stamp::parse("2026-09-05T15:40:00Z"), Some(Stamp::Instant(_))));
+        assert!(matches!(Stamp::parse("2026-09-05"), Some(Stamp::Day(_))));
+        assert!(Stamp::parse("not-a-date").is_none());
+        assert!(Stamp::parse("2026/09/01").is_none());
+        // 帶時間的一方取其自身偏移量下的日曆日。
+        let z = Stamp::parse("2026-09-05T20:30:00-05:00").unwrap();
+        assert_eq!(z.day(), NaiveDate::from_ymd_opt(2026, 9, 5).unwrap());
+    }
+
+    #[test]
+    fn single_line_trace_blocks_and_padded_generated_are_read() {
+        // 單行式 `<!-- @trace source: x updated: … -->` 也算一個 updated 時戳；
+        // generated 帶尾空白時解析後回傳的原字串已 trim。
+        let fx = FixtureRoot::new("manual-single-line-trace");
+        fx.write(
+            "openspec/specs/x/spec.md",
+            "# x Specification\n\n## Purpose\n\nx\n\n<!-- @trace source: x updated: 2026-09-05T23:40:00+08:00 -->\n",
+        );
+        page(&fx, "p", "order: 10\nsources: [x]\ngenerated: \"2026-09-05T23:31:00+08:00 \"", "");
+        let v = list_manual_pages_at(fx.root());
+        assert_eq!(page_of(&v, "p")["generated"], "2026-09-05T23:31:00+08:00");
+        assert_eq!(page_of(&v, "p")["stale"], true);
+    }
+
+    #[test]
+    fn generated_is_echoed_as_the_frontmatter_string() {
+        // 索引的 generated 欄位為 frontmatter 原字串（RFC 3339 或純日期），無法解析時 null。
+        let fx = FixtureRoot::new("manual-gen-raw");
+        spec_with_trace(&fx, "x", &["2026-08-01"]);
+        page(&fx, "stamp", "order: 10\nsources: [x]\ngenerated: 2026-09-05T23:31:00+08:00", "");
+        page(&fx, "day", "order: 20\nsources: [x]\ngenerated: 2026-09-02", "");
+        let v = list_manual_pages_at(fx.root());
+        assert_eq!(page_of(&v, "stamp")["generated"], "2026-09-05T23:31:00+08:00");
+        assert_eq!(page_of(&v, "day")["generated"], "2026-09-02");
+        let keys: Vec<&str> = page_of(&v, "stamp").as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(keys, ["generated", "keywords", "order", "section", "slug", "sources", "stale", "title"]);
+    }
+
+    #[test]
+    fn stale_compares_at_second_precision_when_both_sides_carry_time() {
+        // design「Implementation Contract」判定表：兩邊帶時間嚴格晚於才算；任一邊純日期退回同日規則。
+        let fx = FixtureRoot::new("manual-stale-time");
+        let rows: &[(&str, &str, &str, bool)] = &[
+            ("earlier", "2026-09-05T23:31:00+08:00", "2026-09-05T23:17:28+08:00", false),
+            ("later", "2026-09-05T23:31:00+08:00", "2026-09-05T23:40:00+08:00", true),
+            ("same-second", "2026-09-05T23:31:00+08:00", "2026-09-05T23:31:00+08:00", false),
+            ("sub-second", "2026-09-05T23:31:00+08:00", "2026-09-05T23:31:00.001+08:00", false),
+            ("zulu", "2026-09-05T23:31:00+08:00", "2026-09-05T15:40:00Z", true),
+            ("spec-day-only", "2026-09-05T23:31:00+08:00", "2026-09-05", true),
+            ("page-day-only", "2026-09-05", "2026-09-05T23:17:28+08:00", true),
+            ("next-day-page", "2026-09-06T00:10:00+08:00", "2026-09-05", false),
+            ("garbage", "2026-09-05T23:31:00+08:00", "not-a-date", false),
+        ];
+        for (i, (slug, generated, updated, _)) in rows.iter().enumerate() {
+            spec_with_trace(&fx, &format!("cap-{slug}"), &[updated]);
+            page(&fx, slug, &format!("order: {}\nsources: [cap-{slug}]\ngenerated: {generated}", (i + 1) * 10), "");
+        }
+        let v = list_manual_pages_at(fx.root());
+        for (slug, generated, updated, expected) in rows {
+            assert_eq!(page_of(&v, slug)["stale"], *expected, "{slug}: generated {generated} vs updated {updated}");
+        }
+    }
+
+    #[test]
+    fn uncovered_new_requires_every_stamp_after_every_page_at_second_precision() {
+        // 未入冊的對稱規則：規格每一個 updated 都在每一頁 generated 之後才計入。
+        let fx = FixtureRoot::new("manual-uncovered-time");
+        page(&fx, "index", "order: 10\nsources: []\ngenerated: 2026-09-05T23:31:00+08:00", "");
+        page(&fx, "older", "order: 20\nsources: []\ngenerated: 2026-09-01", "");
+        spec_with_trace(&fx, "after", &["2026-09-05T23:40:00+08:00", "2026-09-06T01:00:00+08:00"]);
+        spec_with_trace(&fx, "before", &["2026-09-05T23:17:28+08:00", "2026-09-06T01:00:00+08:00"]);
+        spec_with_trace(&fx, "same-second", &["2026-09-05T23:31:00+08:00"]);
+        spec_with_trace(&fx, "day-only", &["2026-09-05"]);
+        spec_with_trace(&fx, "zulu", &["2026-09-05T15:40:00Z"]);
+        let v = list_manual_pages_at(fx.root());
+        assert_eq!(v["uncoveredNew"], serde_json::json!(["after", "day-only", "zulu"]));
+    }
+
+    #[test]
     fn unparseable_generated_is_null_and_never_stale() {
-        // 非 YYYY-MM-DD 的 generated 視同缺席：輸出 null、不判過期。
+        // 既非 RFC 3339 也非 YYYY-MM-DD 的 generated 視同缺席：輸出 null、不判過期。
         let fx = FixtureRoot::new("manual-badgen");
         spec_with_trace(&fx, "x", &["2026-09-05"]);
         page(&fx, "index", "order: 10\nsources: [x]\ngenerated: 2026/09/01", "");
@@ -464,8 +604,8 @@ mod tests {
 
     #[test]
     fn uncovered_new_lists_specs_born_after_the_manual_and_absent_from_every_sources() {
-        // spec「生成後新增的規格計入未入冊」：min updated 晚於全手冊最大 generated
-        // 且不在任何 sources；加進某頁 sources 後消失。
+        // spec「生成後新增的規格計入未入冊」：規格的每一個 updated 都在每一頁 generated
+        // 之後、且不在任何 sources；加進某頁 sources 後消失。
         let fx = FixtureRoot::new("manual-uncovered");
         spec_with_trace(&fx, "z", &["2026-09-03", "2026-09-04"]);
         spec_with_trace(&fx, "w", &["2026-09-03"]);

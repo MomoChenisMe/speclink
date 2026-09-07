@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.29.0"
+  version: "v1.30.0"
   generatedBy: "Speclink"
 ---
 
@@ -54,7 +54,7 @@ No manual yet → every page is new; the report says so.
    Only user-facing capabilities enter the manual.
 3. Purpose empty or a `TBD` placeholder → judge from the `### Requirement:` headings in the same `speclink show` output instead (there is no heading-only view; read its `## Requirements` section).
 
-When a manual already exists, the cheap parts are still read for every capability — the Purpose (to sort it) and the `@trace updated` dates (to judge staleness) — but the Requirement bodies are read only for the specs behind stale pages and unlisted capabilities (Step 3). Do not re-read every spec body on a second run.
+When a manual already exists, the cheap parts are still read for every capability — the Purpose (to sort it) and the `@trace updated` stamps (to judge staleness) — but the Requirement bodies are read only for the specs behind stale pages and unlisted capabilities (Step 3). Do not re-read every spec body on a second run.
 
 ### Step 3: Staleness report
 
@@ -62,16 +62,16 @@ Compute, from the Step 1 index and the specs:
 
 | Term | Definition |
 | --- | --- |
-| **stale page** | any capability in the page's `sources` has a latest `@trace updated` date on or after the page's `generated` — a same-day tie counts: the dates carry no time of day, and an archive on the day of generation must not slip through |
+| **stale page** | any capability in the page's `sources` has an `@trace updated` stamp that is *after* the page's `generated`. "After" is decided by format: when both are RFC 3339 timestamps, the spec stamp must be strictly later than the page stamp (same second is not after); when either side is a plain `YYYY-MM-DD` date, compare calendar days and a same-day tie counts (an archive on the day of generation must not slip through — a timestamp's day is the day in its own offset). A value that is neither format is ignored |
 | **unlisted capability** | a user-facing capability that appears in no page's `sources` |
 | **orphan page** | a page with a non-empty `sources` whose capabilities have all disappeared from `openspec/specs/` — reported, NEVER deleted |
 
-`index.md` and `about.md` (empty `sources`) are derived pages: never stale, never orphan, never "unlisted" — they are rewritten whenever any other page is added or regenerated (Step 5), keeping their `section` and `order`. The `@trace updated` date is read from the `<!-- @trace … updated: YYYY-MM-DD -->` blocks inside the canonical spec file; take the latest one in that file.
+`index.md` and `about.md` (empty `sources`) are derived pages: never stale, never orphan, never "unlisted" — they are rewritten whenever any other page is added or regenerated (Step 5), keeping their `section` and `order`. The `@trace updated` stamps are read from every `<!-- @trace … updated: … -->` block inside the canonical spec file — newer archives write an RFC 3339 timestamp with offset (`2026-09-05T23:17:28+08:00`), older ones a plain date; the **stale page** rule above decides, stamp by stamp, whether any of them is after the page's `generated`.
 
 Then decide what to write:
 
 - **No manual yet** → write everything (Steps 4–5).
-- **Manual exists** → by default regenerate only the stale pages, add a page for each unlisted capability, and rewrite `index.md` and `about.md` so the entry links, the contradiction list and the compilation date reflect the new set. A page whose regenerated content would be byte-identical to the file on disk counts as untouched, not regenerated — do not rewrite it. Untouched pages stay byte-identical. Regenerate everything only when the user explicitly asks for it (e.g. "全部重生"); even then, existing `section` and `order` are preserved.
+- **Manual exists** → by default regenerate only the stale pages, add a page for each unlisted capability, and rewrite `index.md` and `about.md` so the entry links, the contradiction list and the compilation stamp reflect the new set. A page whose regenerated content would be byte-identical to the file on disk counts as untouched, not regenerated — do not rewrite it. Untouched pages stay byte-identical. Regenerate everything only when the user explicitly asks for it (e.g. "全部重生"); even then, existing `section` and `order` are preserved.
 - **Manual exists, nothing stale, nothing unlisted** → write nothing, `index.md` and `about.md` included. Report that the manual is up to date and stop. A scope hint is the user's explicit request for that scope and overrides this: regenerate what the hint names.
 
 ### Step 4: Choose the journey backbone
@@ -100,7 +100,7 @@ This is the `manual-pages` contract. Every reader — the desktop manual page, a
 | `order` | integer | yes | global sort key, unique across the manual; step by 10 by convention |
 | `keywords` | string array | no | search terms |
 | `sources` | capability-name array | yes | the canonical specs this page was written from; `[]` only on the index and about pages |
-| `generated` | `YYYY-MM-DD` | yes | the date this page was last generated |
+| `generated` | RFC 3339 timestamp with offset | yes | when this page was last generated, to the second, with the local offset (`2026-09-05T23:31:00+08:00`); the desktop reader also accepts the older plain `YYYY-MM-DD` form — never write that form anew |
 
 Pages are ordered by `order` alone; sections are ordered by the smallest `order` inside each. Example:
 
@@ -111,9 +111,22 @@ section: 開始使用
 order: 20
 keywords: [登入, github, 審核]
 sources: [github-oauth, user-pending-blocked-pages]
-generated: 2026-09-02
+generated: 2026-09-05T23:31:00+08:00
 ---
 ```
+
+Take the `generated` value from the clock at the moment you write the page, never by hand. Pick the first command that works on the machine:
+
+```bash
+python3 -c 'import datetime; print(datetime.datetime.now().astimezone().isoformat(timespec="seconds"))'   # local offset, e.g. 2026-09-05T23:31:00+08:00
+date -u +%Y-%m-%dT%H:%M:%SZ                                                                                 # macOS / Linux without python3: UTC with Z
+```
+
+```powershell
+(Get-Date).ToString("yyyy-MM-ddTHH:mm:ssK")                                                                 # Windows PowerShell: local offset
+```
+
+Before writing, check the value matches `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$` — an offset without a colon (`+0800`) is NOT accepted by the reader, which would then treat the page as never stale without any error. Every page written in one run may share the same stamp.
 
 **Body conventions**:
 
@@ -123,7 +136,7 @@ generated: 2026-09-02
 - No HTML tags. No `--json` field names, flags, or code details — unless the text is a command or skill name the user actually types.
 - Write the prose in the workspace's locale (`locale` from `speclink workflow-config show --json`). The contract literals — `**出處**：` and the about page's title — stay verbatim.
 - Write for a reader who joined today: what they see, what they press, what happens next, and where it can go wrong — quoting button labels, confirmation texts and error exits exactly as the specs state them.
-- When two specs disagree, follow the one with the later `@trace updated` date in the page body and list the conflict on the about page. Never resolve a contradiction silently.
+- When two specs disagree, follow the one whose latest `@trace updated` stamp is after the other's (the same after-rule as the **stale page** definition; a tie keeps the one archived later by directory name) in the page body and list the conflict on the about page. Never resolve a contradiction silently.
 
 **Two required pages**:
 

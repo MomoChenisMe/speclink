@@ -548,9 +548,12 @@ struct CapPlan {
 
 /// The canonical @trace block: where a requirement came from and when it last
 /// landed. Nothing else — the canon carries no file list, so nothing here ever
-/// depends on the work tree's state at archive time.
-fn trace_block(change: &str, date: &str) -> String {
-    format!("<!-- @trace\nsource: {change}\nupdated: {date}\n-->")
+/// depends on the work tree's state at archive time. `stamp` is the RFC 3339
+/// local-offset timestamp of this archive (manual-pages「過期判定基準」compares it
+/// against a manual page's `generated` at second precision); date-only lines written
+/// by earlier archives stay as they are.
+fn trace_block(change: &str, stamp: &str) -> String {
+    format!("<!-- @trace\nsource: {change}\nupdated: {stamp}\n-->")
 }
 
 /// `actor` is the Host-resolved display identity — None stamps no archived_by.
@@ -594,7 +597,9 @@ pub fn archive(
     // 章失效並存時，任務守門先拒且訊息不變。
     guard_stale_stamps(ws, store, change)?;
 
-    let date = util::today();
+    // One instant for the whole archive: the dated directory prefix and every
+    // `@trace updated` stamp share it, so they never straddle midnight.
+    let util::NowStamps { date, rfc3339: stamp } = util::now_stamps();
     let dated_name = format!("{date}-{}", change.name);
     if store.archived_change_exists(&dated_name) {
         bail!("Archived change '{}' already exists", dated_name);
@@ -654,7 +659,7 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
             }
 
             let (content, counts) =
-                merge_capability(&cap, &change.name, &date, &delta_text, existing.as_deref());
+                merge_capability(&cap, &change.name, &stamp, &delta_text, existing.as_deref());
             plans.push(CapPlan { capability: cap, counts, backup: existing, content });
         }
     }
@@ -849,7 +854,7 @@ fn strip_review_notes(block: &str) -> String {
 fn merge_capability(
     cap: &str,
     change: &str,
-    date: &str,
+    stamp: &str,
     delta_text: &str,
     existing: Option<&str>,
 ) -> (String, CapCounts) {
@@ -857,7 +862,7 @@ fn merge_capability(
     let renames = &model::rename_pairs(delta_text);
     // Every materialized ADDED/MODIFIED requirement gets the block — injection
     // no longer hinges on a file list that no longer exists.
-    let trace = trace_block(change, date);
+    let trace = trace_block(change, stamp);
     let make_block = |r: &DeltaReq, fresh: bool| {
         let body = strip_review_notes(&r.block);
         if fresh {
@@ -1541,6 +1546,19 @@ mod tests {
         ArchiveOptions { skip_specs: false, ..skip_opts() }
     }
 
+    /// spec「archive trace 注入與零證據提示」：`updated` 是 RFC 3339 帶偏移量的秒級時戳，
+    /// 其日曆日等於封存目錄名前綴。回傳擷取到的時戳。
+    fn assert_trace_stamp(canon: &str, dated_name: &str) -> String {
+        let re = regex::Regex::new(
+            r"<!-- @trace\nsource: demo\nupdated: (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2})\n-->",
+        )
+        .unwrap();
+        let caps = re.captures(canon).unwrap_or_else(|| panic!("trace block is exactly source + RFC 3339 updated: {canon}"));
+        let stamp = caps[1].to_string();
+        assert_eq!(&stamp[..10], &dated_name[..10], "stamp day equals the dated directory prefix");
+        stamp
+    }
+
     /// A workspace whose root exists on disk, so evidence can be written under it.
     struct TraceWs {
         ws: Workspace,
@@ -1591,10 +1609,7 @@ mod tests {
 
         assert!(outcome.evidence_recorded, "a change with a v2 entry reports evidence recorded");
         let canon = store.read_canonical_spec("auth").unwrap();
-        assert!(
-            canon.contains(&format!("<!-- @trace\nsource: demo\nupdated: {}\n-->", util::today())),
-            "trace block is exactly source + updated: {canon}"
-        );
+        assert_trace_stamp(&canon, &outcome.dated_name);
         assert!(!canon.contains("code:"), "no file list may survive: {canon}");
         assert!(!canon.contains("  - src/a.rs"), "no file list may survive: {canon}");
     }
@@ -1623,6 +1638,31 @@ mod tests {
     }
 
     #[test]
+    fn modified_leaves_other_requirements_date_only_trace_untouched() {
+        // spec Scenario「既有純日期 trace 不回改」：只有被物化的需求拿到新時戳，
+        // 正典內其他需求的純日期 updated 行逐位元不變。
+        let t = TraceWs::new("keep-dates");
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01\n");
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 done\n");
+        store.put_artifact(
+            "demo",
+            "specs/auth/spec.md",
+            "## MODIFIED Requirements\n\n### Requirement: R1\n\nIt SHALL work harder.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n",
+        );
+        let r2_trace = "<!-- @trace\nsource: older\nupdated: 2026-07-10\n-->";
+        let canon_before = format!("{CANON_R1_R2}\n{r2_trace}\n");
+        store.canonical.borrow_mut().insert("auth".to_string(), canon_before);
+        t.record_evidence(&store);
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let outcome = archive(&t.ws, &store, &change, &apply_opts(), None).unwrap();
+
+        let canon = store.read_canonical_spec("auth").unwrap();
+        assert_trace_stamp(&canon, &outcome.dated_name);
+        assert!(canon.contains(r2_trace), "R2's date-only trace survives byte-for-byte: {canon}");
+        assert_eq!(canon.matches("updated: ").count(), 2, "one stamp per requirement: {canon}");
+    }
+
+    #[test]
     fn a_change_without_evidence_archives_and_reports_it() {
         // spec Scenario「零證據照常封存並提示」的引擎面：無任何 v2 entry 不再是拒絕
         // 理由——封存照常完成，outcome 帶著「沒有證據」這個事實供 CLI 呈現。
@@ -1634,10 +1674,7 @@ mod tests {
         assert!(!outcome.evidence_recorded, "zero entries is reported, not refused");
         assert!(!store.change_exists("demo"), "the change still archives");
         let canon = store.read_canonical_spec("auth").unwrap();
-        assert!(
-            canon.contains(&format!("<!-- @trace\nsource: demo\nupdated: {}\n-->", util::today())),
-            "an evidence-less archive injects the same two-field trace: {canon}"
-        );
+        assert_trace_stamp(&canon, &outcome.dated_name);
     }
 
     #[test]
