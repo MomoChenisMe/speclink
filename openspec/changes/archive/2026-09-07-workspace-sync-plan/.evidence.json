@@ -1,0 +1,68 @@
+{
+  "version": 2,
+  "change": "workspace-sync-plan",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 鎖定測試：在 `crates/speclink-core/src/skills.rs` 的 tests 新增三個 target（Claude 的 fork 技能 drift、Codex 的 apply、Custom 描述子 invocation 為 cli 與 tool-call）經 `render_skill_file_for` 的輸出各以恰一個 `\\n` 結尾、frontmatter 版號行等於 `ASSET_VERSION`、Claude fork 技能含「## Claude fork context」前言而 Codex 與 Custom 不含、Custom 含「## Invocation」前言。驗證：`cargo test -p speclink-core skills::` 全綠（鎖定基準）。",
+      "files": [
+        "crates/speclink-core/src/skills.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 鎖定測試：在 `crates/speclink-core/src/config.rs` tests 新增 remote section 讀改寫的三個案例——檔案不存在時 `write_remote_section` 建檔且只含 remote 鍵；檔案含 `spec_dir`、描述子與未知頂層鍵時寫入／移除 remote section 後其餘鍵逐字保留；檔案內容非 mapping 時以 `invalid .speclink.yaml` 開頭的單行錯誤失敗且檔案不變；`remove_remote_section` 對無 remote 鍵的檔回 `Ok(false)` 且檔案位元級不變。驗證：先對 `init::` 版本跑綠（基準），搬家後對 `config::` 版本跑綠。",
+      "files": [
+        "crates/speclink-core/src/config.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 依 design「`.speclink.yaml` 讀改寫收進 config.rs」把 `write_remote_section`／`remove_remote_section` 搬到 `crates/speclink-core/src/config.rs`，共用 `parse_yaml_mapping`，刪 `crates/speclink-core/src/init.rs` 的 `load_app_yaml_doc`；`init_remote` 內部、`crates/speclink-cli/src/verbs/connection.rs`、`apps/desktop/src-tauri/src/connections.rs`、`apps/desktop/src-tauri/src/remote.rs` 改 use 路徑。契約：CLI `speclink connection` 動詞與 desktop 綁定的檔案結果與錯誤字面不變。驗證：`cargo test -p speclink-core config::` 全綠；`cargo test -p speclink-cli --test it connection` 全綠；`grep -rn \"load_app_yaml_doc\\|init::write_remote_section\\|init::remove_remote_section\" crates apps` 零命中。",
+      "files": [
+        "apps/desktop/src-tauri/src/connections.rs",
+        "apps/desktop/src-tauri/src/remote.rs",
+        "crates/speclink-cli/src/verbs/connection.rs",
+        "crates/speclink-core/src/init.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M1X7AARTDH27P0FPFT580NZX",
+      "taskDesc": "1.1 鎖定測試：在 `crates/speclink-core/src/skills.rs` 的 tests 新增三個 target（Claude 的 fork 技能 drift、Codex 的 apply、Custom 描述子 invocation 為 cli 與 tool-call）經 `render_skill_file_for` 的輸出各以恰一個 `\\n` 結尾、frontmatter 版號行等於 `ASSET_VERSION`、Claude fork 技能含「## Claude fork context」前言而 Codex 與 Custom 不含、Custom 含「## Invocation」前言。驗證：`cargo test -p speclink-core skills::` 全綠（鎖定基準）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7bfb955e21d35467d258ed55a9ab029773ee3a4e",
+      "touchedFiles": [
+        "crates/speclink-core/src/skills.rs"
+      ],
+      "recordedAt": "2026-09-07T06:05:14Z"
+    },
+    {
+      "taskId": "tsk_01M1X7AART0CEXWQRP72M1VSSZ",
+      "taskDesc": "2.1 鎖定測試：在 `crates/speclink-core/src/config.rs` tests 新增 remote section 讀改寫的三個案例——檔案不存在時 `write_remote_section` 建檔且只含 remote 鍵；檔案含 `spec_dir`、描述子與未知頂層鍵時寫入／移除 remote section 後其餘鍵逐字保留；檔案內容非 mapping 時以 `invalid .speclink.yaml` 開頭的單行錯誤失敗且檔案不變；`remove_remote_section` 對無 remote 鍵的檔回 `Ok(false)` 且檔案位元級不變。驗證：先對 `init::` 版本跑綠（基準），搬家後對 `config::` 版本跑綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7bfb955e21d35467d258ed55a9ab029773ee3a4e",
+      "touchedFiles": [
+        "crates/speclink-core/src/config.rs"
+      ],
+      "recordedAt": "2026-09-07T06:10:03Z"
+    },
+    {
+      "taskId": "tsk_01M1X7AARTV63F0AFWKW8NTKRQ",
+      "taskDesc": "2.2 依 design「`.speclink.yaml` 讀改寫收進 config.rs」把 `write_remote_section`／`remove_remote_section` 搬到 `crates/speclink-core/src/config.rs`，共用 `parse_yaml_mapping`，刪 `crates/speclink-core/src/init.rs` 的 `load_app_yaml_doc`；`init_remote` 內部、`crates/speclink-cli/src/verbs/connection.rs`、`apps/desktop/src-tauri/src/connections.rs`、`apps/desktop/src-tauri/src/remote.rs` 改 use 路徑。契約：CLI `speclink connection` 動詞與 desktop 綁定的檔案結果與錯誤字面不變。驗證：`cargo test -p speclink-core config::` 全綠；`cargo test -p speclink-cli --test it connection` 全綠；`grep -rn \"load_app_yaml_doc\\|init::write_remote_section\\|init::remove_remote_section\" crates apps` 零命中。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7bfb955e21d35467d258ed55a9ab029773ee3a4e",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/connections.rs",
+        "apps/desktop/src-tauri/src/remote.rs",
+        "crates/speclink-cli/src/verbs/connection.rs",
+        "crates/speclink-core/src/init.rs"
+      ],
+      "recordedAt": "2026-09-07T06:16:29Z"
+    }
+  ]
+}

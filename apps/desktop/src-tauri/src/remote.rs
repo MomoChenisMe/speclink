@@ -748,7 +748,7 @@ fn finalize_local_migration_with(
         "{}/api/speclink/v1/projects/{project}",
         origin.trim_end_matches('/')
     );
-    speclink_core::init::write_remote_section(root, &project_url, Some(repo)).map_err(|error| {
+    speclink_core::config::write_remote_section(root, &project_url, Some(repo)).map_err(|error| {
         format!(
             "server import and local backup succeeded, but the remote marker could not be written ({error}). The backup is retained at '{}'; repair .speclink.yaml before opening this folder as a checkout.",
             backup.display()

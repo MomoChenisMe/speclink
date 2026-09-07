@@ -178,18 +178,74 @@ pub fn skill_body(name: &str) -> Option<&'static str> {
 /// hand-off section cannot drift apart one wording tweak at a time.
 const NEXT_STEPS_LEAD: &str = "Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.";
 
-/// Substitute placeholders in a skill body for a given tool and spec dir.
-pub fn substitute(body: &str, tool: Tool, spec_dir: &str) -> String {
+/// The placeholder values one render target substitutes into a skill body. The target is
+/// the only thing that varies: built-ins keep their slash prefix and plan directory,
+/// descriptors drop plan mode and read verbs as plain `speclink <verb>` commands.
+struct Substitutions<'a> {
+    spec_dir_slash: String,
+    plan_dir: &'a str,
+    tool_name: &'a str,
+    slash_replacement: &'a str,
+    /// Descriptors have no plan directory, so lines that mention plan mode are dropped.
+    drop_plan_mode_lines: bool,
+    /// Some bodies carry literal claude-style skill references; neutrally they are
+    /// plain skill names (`speclink-ingest`), never slash commands.
+    neutralize_skill_refs: bool,
+}
+
+impl Substitutions<'_> {
+    fn apply(&self, body: &str) -> String {
+        let body = if self.drop_plan_mode_lines {
+            body.lines()
+                .filter(|l| !l.to_ascii_lowercase().contains("plan mode"))
+                .collect::<Vec<&str>>()
+                .join("\n")
+        } else {
+            body.to_string()
+        };
+        let rendered = body
+            .replace("{{SPEC_DIR}}", &self.spec_dir_slash)
+            .replace("{{PLAN_DIR}}", self.plan_dir)
+            .replace("{{TOOL}}", self.tool_name)
+            .replace("{{NEXT_STEPS_LEAD}}", NEXT_STEPS_LEAD)
+            .replace("/speclink:", self.slash_replacement);
+        if self.neutralize_skill_refs {
+            rendered.replace("/speclink-", "speclink-")
+        } else {
+            rendered
+        }
+    }
+}
+
+fn substitutions<'a>(target: RenderTarget<'a>, spec_dir: &str) -> Substitutions<'a> {
     let spec_dir_slash = if spec_dir.ends_with('/') {
         spec_dir.to_string()
     } else {
         format!("{spec_dir}/")
     };
-    body.replace("{{SPEC_DIR}}", &spec_dir_slash)
-        .replace("{{PLAN_DIR}}", tool.plan_dir())
-        .replace("{{TOOL}}", tool.name())
-        .replace("{{NEXT_STEPS_LEAD}}", NEXT_STEPS_LEAD)
-        .replace("/speclink:", tool.slash_replacement())
+    match target {
+        RenderTarget::Builtin(tool) => Substitutions {
+            spec_dir_slash,
+            plan_dir: tool.plan_dir(),
+            tool_name: tool.name(),
+            slash_replacement: tool.slash_replacement(),
+            drop_plan_mode_lines: false,
+            neutralize_skill_refs: false,
+        },
+        RenderTarget::Custom(custom) => Substitutions {
+            spec_dir_slash,
+            plan_dir: "",
+            tool_name: &custom.name,
+            slash_replacement: "speclink ",
+            drop_plan_mode_lines: true,
+            neutralize_skill_refs: true,
+        },
+    }
+}
+
+/// Substitute placeholders in a skill body for a built-in tool and spec dir.
+pub fn substitute(body: &str, tool: Tool, spec_dir: &str) -> String {
+    substitutions(RenderTarget::Builtin(tool), spec_dir).apply(body)
 }
 
 /// Claude-only fork preamble: fork auto-select rules that take
@@ -218,39 +274,6 @@ The rules in this section take precedence over the shared `{skill_name}` body be
     ))
 }
 
-/// Unified skill rendering across the three targets.
-pub fn render_skill_file_for(target: RenderTarget, skill: &Skill, spec_dir: &str) -> String {
-    match target {
-        RenderTarget::Builtin(tool) => render_skill_file(skill, tool, spec_dir),
-        RenderTarget::Custom(custom) => render_skill_file_custom(skill, custom, spec_dir),
-    }
-}
-
-/// Substitute placeholders for the neutral (descriptor) target: `/speclink:apply` reads as
-/// `speclink apply` (no slash prefix), lines referencing plan mode are dropped (descriptors
-/// have no plan directory), and `{{TOOL}}` is the descriptor name.
-pub fn substitute_neutral(body: &str, tool: &CustomTool, spec_dir: &str) -> String {
-    let spec_dir_slash = if spec_dir.ends_with('/') {
-        spec_dir.to_string()
-    } else {
-        format!("{spec_dir}/")
-    };
-    let without_plan_mode: Vec<&str> = body
-        .lines()
-        .filter(|l| !l.to_ascii_lowercase().contains("plan mode"))
-        .collect();
-    without_plan_mode
-        .join("\n")
-        .replace("{{SPEC_DIR}}", &spec_dir_slash)
-        .replace("{{PLAN_DIR}}", "")
-        .replace("{{TOOL}}", &tool.name)
-        .replace("{{NEXT_STEPS_LEAD}}", NEXT_STEPS_LEAD)
-        .replace("/speclink:", "speclink ")
-        // Some bodies carry literal claude-style skill references; neutrally they are
-        // plain skill names (`speclink-ingest`), never slash commands.
-        .replace("/speclink-", "speclink-")
-}
-
 /// The invocation preamble that tells a custom harness how `speclink <verb>` references in
 /// the body are meant to be executed.
 fn invocation_note(invocation: Invocation) -> &'static str {
@@ -268,38 +291,15 @@ as argv.\n\n---\n\n"
     }
 }
 
-/// Render a SKILL.md for a custom descriptor target: neutral frontmatter (no Claude-only
-/// fork/disallowedTools lines), an invocation preamble, and the neutral body.
-pub fn render_skill_file_custom(skill: &Skill, tool: &CustomTool, spec_dir: &str) -> String {
+/// Render a complete SKILL.md (frontmatter + preamble + substituted body) for one target.
+/// The fork/agent and disallowedTools lines are Claude-only; descriptors get the neutral
+/// frontmatter plus an invocation preamble (frozen output shape).
+pub fn render_skill_file_for(target: RenderTarget, skill: &Skill, spec_dir: &str) -> String {
+    let claude = matches!(target, RenderTarget::Builtin(Tool::Claude));
     let mut fm = String::from("---\n");
     fm.push_str(&format!("name: speclink-{}\n", skill.name));
     fm.push_str(&format!("description: \"{}\"\n", skill.description));
-    fm.push_str("license: MIT\n");
-    fm.push_str("compatibility: Requires speclink CLI.\n");
-    fm.push_str("metadata:\n");
-    fm.push_str("  author: speclink\n");
-    fm.push_str(&format!("  version: \"{ASSET_VERSION}\"\n"));
-    fm.push_str("  generatedBy: \"Speclink\"\n");
-    fm.push_str("---\n\n");
-    fm.push_str(invocation_note(tool.invocation));
-    fm.push_str(&substitute_neutral(skill.body, tool, spec_dir));
-    // Exactly one trailing newline, matching the built-in renders.
-    while fm.ends_with("\n\n") {
-        fm.pop();
-    }
-    if !fm.ends_with('\n') {
-        fm.push('\n');
-    }
-    fm
-}
-
-/// Render a complete SKILL.md (frontmatter + substituted body) for a tool. The fork/agent and
-/// disallowedTools lines are Claude-only (frozen output shape).
-pub fn render_skill_file(skill: &Skill, tool: Tool, spec_dir: &str) -> String {
-    let mut fm = String::from("---\n");
-    fm.push_str(&format!("name: speclink-{}\n", skill.name));
-    fm.push_str(&format!("description: \"{}\"\n", skill.description));
-    if tool == Tool::Claude {
+    if claude {
         if skill.fork {
             fm.push_str("context: fork\n");
             fm.push_str("agent: Explore\n");
@@ -315,15 +315,23 @@ pub fn render_skill_file(skill: &Skill, tool: Tool, spec_dir: &str) -> String {
     fm.push_str(&format!("  version: \"{ASSET_VERSION}\"\n"));
     fm.push_str("  generatedBy: \"Speclink\"\n");
     fm.push_str("---\n\n");
-    if tool == Tool::Claude && skill.fork {
-        if let Some(preamble) = fork_context(skill.name) {
-            fm.push_str(&preamble);
+    match target {
+        RenderTarget::Builtin(_) => {
+            if claude && skill.fork {
+                if let Some(preamble) = fork_context(skill.name) {
+                    fm.push_str(&preamble);
+                }
+            }
         }
+        RenderTarget::Custom(custom) => fm.push_str(invocation_note(custom.invocation)),
     }
-    fm.push_str(&substitute(skill.body, tool, spec_dir));
+    fm.push_str(&substitutions(target, spec_dir).apply(skill.body));
     // Exactly one trailing newline (frozen output shape), regardless of asset file endings.
     while fm.ends_with("\n\n") {
         fm.pop();
+    }
+    if !fm.ends_with('\n') {
+        fm.push('\n');
     }
     fm
 }
@@ -437,5 +445,67 @@ mod tests {
             Some(manual.body),
             "skill_body resolves manual to the same embedded asset"
         );
+    }
+
+    /// 鎖定基準（重構前後皆須成立）：三種 render target 的輸出外形——恰一個結尾
+    /// 換行、frontmatter 版號等於 `ASSET_VERSION`、前言只出現在該出現的 target。
+    #[test]
+    fn every_render_target_keeps_its_frontmatter_and_preamble_shape() {
+        let reg = registry();
+        let drift = reg.iter().find(|s| s.name == "drift").expect("registry carries drift");
+        let apply = reg.iter().find(|s| s.name == "apply").expect("registry carries apply");
+        let cli = custom_target();
+        let tool_call = CustomTool { invocation: Invocation::ToolCall, ..custom_target() };
+
+        let claude_fork = render_skill_file_for(RenderTarget::Builtin(Tool::Claude), drift, "openspec");
+        let codex = render_skill_file_for(RenderTarget::Builtin(Tool::Codex), apply, "openspec");
+        let custom_cli = render_skill_file_for(RenderTarget::Custom(&cli), apply, "openspec");
+        let custom_tool_call =
+            render_skill_file_for(RenderTarget::Custom(&tool_call), apply, "openspec");
+
+        for (label, rendered) in [
+            ("claude/drift", &claude_fork),
+            ("codex/apply", &codex),
+            ("custom-cli/apply", &custom_cli),
+            ("custom-tool-call/apply", &custom_tool_call),
+        ] {
+            assert!(rendered.ends_with('\n'), "{label} must end with a newline");
+            assert!(!rendered.ends_with("\n\n"), "{label} must end with exactly one newline");
+            assert_eq!(
+                version_line(rendered),
+                format!("  version: \"{ASSET_VERSION}\""),
+                "{label} frontmatter version must equal ASSET_VERSION"
+            );
+        }
+
+        assert!(
+            claude_fork.contains("## Claude fork context"),
+            "the Claude render of a fork skill carries the fork preamble"
+        );
+        for (label, rendered) in [
+            ("codex/apply", &codex),
+            ("custom-cli/apply", &custom_cli),
+            ("custom-tool-call/apply", &custom_tool_call),
+        ] {
+            assert!(
+                !rendered.contains("## Claude fork context"),
+                "{label} must not carry the Claude-only fork preamble"
+            );
+        }
+
+        for (label, rendered) in [("claude/drift", &claude_fork), ("codex/apply", &codex)] {
+            assert!(
+                !rendered.contains("## Invocation"),
+                "{label} is a built-in render — no invocation preamble"
+            );
+        }
+        for (label, rendered) in
+            [("custom-cli/apply", &custom_cli), ("custom-tool-call/apply", &custom_tool_call)]
+        {
+            assert!(
+                rendered.contains("## Invocation"),
+                "{label} carries the descriptor invocation preamble"
+            );
+        }
     }
 }
