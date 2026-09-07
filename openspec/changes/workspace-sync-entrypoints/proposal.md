@@ -37,7 +37,8 @@ Non-Goals 寫在 design.md 的 Goals / Non-Goals。
 - Affected specs: workspace-tools（兩條 MODIFIED requirement；步驟 3 掃描的其他鄰接規格 skill-routing、workflow-config、desktop-config 不受影響）
 - Affected code:
   - Modified:
-    - `crates/speclink-core/src/init.rs`（init／init_remote 改走 apply、刪 write_skills 與 init 的剝除迴圈、probe_assets 與 SyncPlan::differing_files 涵蓋描述子、doc comment 更新、測試補齊）
+    - `crates/speclink-core/src/init.rs`（init／init_remote 改走 apply、刪 write_skills 與 init 的剝除迴圈、probe_assets 與 SyncPlan::differing_files 涵蓋描述子、連帶移除孤兒化的 SyncTargetKind 與 SyncPlan.worktree_on、doc comment 更新、測試補齊）
+    - `crates/speclink-cli/tests/it/init_tools.rs`（補「先 init claude 再 --force --tools codex」的 stdout 兩行與足跡清理斷言）
     - `openspec/specs/workspace-tools/spec.md`（經 delta 於封存時合併）
   - New: 無
   - Removed: 無

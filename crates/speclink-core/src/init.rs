@@ -73,23 +73,29 @@ pub struct InitOutcome {
 ///
 /// The skills go through [`SyncPlan::apply`], the same writer every other entry uses
 /// (change: workspace-sync-entrypoints). So `tools` is the COMPLETE desired state here
-/// too: a `--force` re-init drops the deselected built-ins' skill footprints, removes
-/// `speclink-` directories outside the current set, and resets the recorded descriptor
-/// footprints — matching the `.speclink.yaml` rewrite, which resets to the template.
+/// too, and `force` only decides whether an initialized workspace is accepted at all —
+/// every init that reaches `apply` (a `--force` re-init, or a first init over residual
+/// skill files with no `.speclink.yaml`) drops the deselected built-ins' skill
+/// footprints, removes `speclink-` directories outside the current set, and resets the
+/// recorded descriptor footprints — matching the `.speclink.yaml` write, which is the
+/// template. Only `speclink-` prefixed directories are ever removed.
 pub fn init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<InitOutcome> {
     let spec_root = root.join(spec_dir);
     if !force && (spec_root.exists() || root.join(".speclink.yaml").is_file()) {
         bail!("Already initialized. Use --force to reinitialize.");
     }
+    let plan = || SyncPlan::resolve(root, ToolSelection::builtins_only(tools), spec_dir);
     // 守門在任何寫入之前：檢查面就是這次要寫的 skills 目錄。
-    SyncPlan::resolve(root, ToolSelection::builtins_only(tools), spec_dir).guard()?;
+    plan().guard()?;
 
     store_init(&spec_root, force)?;
     write_if(&root.join(".speclink.yaml"), &app_config_text(tools, spec_dir), force)?;
     ensure_gitignore(&root.join(".gitignore"))?;
     // 政策以 store_init 之後的 config.yaml 為準——`--force` 會把它寫回範本，所以
     // 寫入用的計畫要在那之後才解析（守門面只取決於選集，兩次的目錄集合相同）。
-    SyncPlan::resolve(root, ToolSelection::builtins_only(tools), spec_dir).apply(root)?;
+    // apply 的回報（pruned／stripped）在 init 不呈現：init 的 stdout 維持既有兩行
+    //（proposal Non-Goal；spec「update 清除孤兒技能目錄」的 init 條款）。
+    plan().apply(root)?;
 
     Ok(InitOutcome {
         spec_dir_abs: spec_root,
@@ -116,6 +122,7 @@ pub fn init_remote(
 
     write_if(&root.join(".speclink.yaml"), &app_config_text(tools, "openspec"), force)?;
     ensure_gitignore(&root.join(".gitignore"))?;
+    // 回報同 `init`：不呈現。
     plan.apply(root)?;
     crate::config::write_remote_section(root, url, repo)
 }
@@ -203,20 +210,22 @@ impl ToolSelection {
                     )),
                 },
                 ToolEntry::Descriptor(d) => {
-                    // Keep the FIRST problem: it is the one today's update reports.
-                    if sel.descriptor_error.is_some() {
-                        continue;
-                    }
-                    match d.validate() {
+                    // Keep the FIRST problem (it is the one update reports), but keep
+                    // collecting the valid descriptors after it: the probe reads
+                    // `customs` and must not lose a tool because an earlier entry is broken.
+                    let problem = match d.validate() {
                         Ok(custom) => {
                             if sel.customs.iter().any(|c| c.name == custom.name) {
-                                sel.descriptor_error =
-                                    Some(format!("tool descriptor: duplicate name '{}'", custom.name));
+                                Some(format!("tool descriptor: duplicate name '{}'", custom.name))
                             } else {
                                 sel.customs.push(custom);
+                                None
                             }
                         }
-                        Err(message) => sel.descriptor_error = Some(message),
+                        Err(message) => Some(message),
+                    };
+                    if sel.descriptor_error.is_none() {
+                        sel.descriptor_error = problem;
                     }
                 }
             }
@@ -321,10 +330,14 @@ impl SyncPlan {
         }
         let mut custom_strip_targets = Vec::new();
         for custom in &selection.customs {
+            // The descriptor's skills_dir is a hand-written string: drop trailing
+            // separators and report it `/`-joined, so the probe's paths never carry
+            // `//` or a mixed separator. The filesystem path uses the same trimmed form.
+            let skills_dir = custom.skills_dir.trim_end_matches(['/', '\\']);
             targets.push(SyncTarget {
                 label: custom.name.clone(),
-                skills_dir: custom.skills_dir.clone(),
-                skills_root: root.join(&custom.skills_dir),
+                skills_dir: skills_dir.replace('\\', "/"),
+                skills_root: root.join(skills_dir),
                 files: managed_skills(
                     skills::RenderTarget::Custom(custom),
                     worktree_on,
@@ -383,8 +396,10 @@ impl SyncPlan {
         differing
     }
 
-    /// `update`'s writer. Order (any step's `Err` stops the run; what is written stays —
-    /// every step is idempotent, so a rerun converges):
+    /// The ONE writer behind every regeneration entry — [`init`], [`init_remote`],
+    /// [`adopt`], [`reconcile_builtin_tools`] and [`update`]; each entry adds only its
+    /// own precondition on top. Order (any step's `Err` stops the run; what is written
+    /// stays — every step is idempotent, so a rerun converges):
     ///
     /// 1. Strip legacy `SPECLINK:START..END` blocks from the two built-in instruction
     ///    files and from every descriptor that still declares `instructions_file`.
@@ -453,7 +468,6 @@ impl SyncPlan {
 
         Ok(out)
     }
-
 }
 
 /// Refresh generated skill files and strip legacy instruction-file markers.
@@ -499,10 +513,9 @@ pub fn update(root: &Path, allow_downgrade: bool) -> Result<UpdateOutcome> {
 ///
 /// Two steps: `.speclink.yaml`'s claude/codex entries are rewritten to match the
 /// selection (custom descriptors, remote, spec_dir and unknown keys carry over
-/// untouched), then the plan's [`SyncPlan::apply`] generates the selected tools'
-/// skills, prunes the deselected ones and strips any legacy instruction-file marker.
-/// `apply` is what all five entries — [`init`], [`init_remote`], [`adopt`], this one
-/// and [`update`] — share; each entry adds only its own precondition on top.
+/// untouched), then [`SyncPlan::apply`] — the writer every entry shares — generates the
+/// selected tools' skills, prunes the deselected ones and strips any legacy
+/// instruction-file marker.
 ///
 /// Empty selections and malformed configs fail before anything is written. Beyond that
 /// there is no rollback: every managed write is idempotent, so the same selection can be
@@ -642,7 +655,7 @@ fn prune_custom(root: &Path, fp: &CustomFootprint, notes: &mut Vec<String>) -> R
 /// update 的孤兒清理（spec: update 清除孤兒技能目錄）：清掉 skills 目錄下
 /// speclink- 前綴、不在本次應生成集合的目錄——改名或下架的技能不留舊目錄。
 /// 前綴即所有權，與 prune_footprint 同一判準；非前綴的使用者目錄不動。
-/// 只掛 update：init 對既有工作區維持保守，不清理。
+/// 掛在 `SyncPlan::apply`，所以每個再生入口（含 init）都清。
 fn prune_orphan_skills(skills_root: &Path, expected: &[String]) -> Result<()> {
     if let Ok(entries) = std::fs::read_dir(skills_root) {
         for entry in entries.flatten() {
@@ -969,8 +982,10 @@ fn refuse_downgrade(dirs: &[PathBuf]) -> Result<()> {
 /// 兩個出口都不提供改寫動作。
 ///
 /// 判定面為 tools 清單宣告的內建工具與通過驗證的自訂描述子——受管檔集合即判定面。
-/// 無效描述子不成為 target：探測是唯讀提示面，「設定裡有個壞描述子」不是技能檔過期
-/// 的訊號，由 update 的錯誤負責告知。
+/// 兩條分界：(1) 無效描述子不成為 target，探測結果不受它影響——探測是唯讀提示面，
+/// 「設定裡有個壞描述子」不是技能檔過期的訊號，由 update 的錯誤負責告知；(2) 有效
+/// target 的技能檔存在但讀不出（目錄不可讀、frontmatter 壞掉）＝無法判定，內建與
+/// 描述子同一規則（規格「技能檔過期探測」的第五態）。
 ///
 /// 零寫入：desktop 開專案時搭載，探測失敗不得阻斷開啟。
 pub fn probe_assets(root: &Path) -> AssetProbe {
@@ -1177,6 +1192,10 @@ mod tests {
     // 「Core and configuration contract」。
 
     const CUSTOM_DESCRIPTOR: &str = "  - name: wad-harness\n    skills_dir: .wad/skills\n    instructions_file: WAD.md\n";
+    /// 第二份描述子夾具：規格「技能檔過期探測」Example 的字面值（name cursor、
+    /// skills_dir .cursor/skills），且不帶已棄用的 instructions_file——探測測試要的是
+    /// 乾淨的描述子，不是剝除路徑。
+    const CURSOR_DESCRIPTOR: &str = "  - name: cursor\n    skills_dir: .cursor/skills\n";
     const REMOTE_URL: &str = "https://team.example.test/api/speclink/v1/projects/acme";
     const CLAUDE_USER_TEXT: &str = "使用者寫在 CLAUDE.md 的段落";
     const CODEX_USER_TEXT: &str = "使用者寫在 AGENTS.md 的段落";
@@ -1649,11 +1668,11 @@ mod tests {
         names
     }
 
-    /// 一個內建工具在給定 worktree 政策下應有的 `speclink-*` 目錄名集合（排序後）——
-    /// 與生成端同源，取自 `managed_skills`，不另抄一份過濾規則。
-    fn expected_dirs(tool: Tool, worktree_on: bool) -> Vec<String> {
+    /// 一個內建工具在 worktree 政策關閉（`init` 樣板的預設）下應有的 `speclink-*`
+    /// 目錄名集合（排序後）——與生成端同源，取自 `managed_skills`，不另抄一份過濾規則。
+    fn expected_dirs(tool: Tool) -> Vec<String> {
         let mut names: Vec<String> =
-            managed_skills(skills::RenderTarget::Builtin(tool), worktree_on, "openspec")
+            managed_skills(skills::RenderTarget::Builtin(tool), false, "openspec")
                 .into_iter()
                 .map(|(dir, _)| dir)
                 .collect();
@@ -1678,7 +1697,7 @@ mod tests {
         assert!(!root.exists(".claude"), "空掉的 .claude 目錄一併移除");
         assert_eq!(
             skill_dirs(&root, ".agents/skills"),
-            expected_dirs(Tool::Codex, false),
+            expected_dirs(Tool::Codex),
             "選中工具補齊為本次生成集合"
         );
         let app = root.read(".speclink.yaml");
@@ -1759,7 +1778,7 @@ mod tests {
         );
         assert_eq!(
             skill_dirs(&root, ".claude/skills"),
-            expected_dirs(Tool::Claude, false),
+            expected_dirs(Tool::Claude),
             "其餘生成集合補齊"
         );
     }
@@ -2170,9 +2189,6 @@ mod tests {
         );
     }
 
-    /// 合法描述子（規格 Example 的字面值：name cursor、skills_dir .cursor/skills）。
-    const CURSOR_DESCRIPTOR: &str = "  - name: cursor\n    skills_dir: .cursor/skills\n";
-
     /// tools 清單＝claude 加一個描述子，並讓兩邊的受管檔都生成到現版。
     fn workspace_with_descriptor(tag: &str) -> TempRoot {
         let root = TempRoot::new(tag);
@@ -2259,6 +2275,63 @@ mod tests {
                 probe.differing_files.iter().any(|p| p == expected),
                 "{expected} 須列入：{:?}",
                 probe.differing_files
+            );
+        }
+    }
+
+    #[test]
+    fn tool_selection_keeps_valid_descriptors_after_a_bad_one() {
+        // 第一個壞描述子只決定 descriptor_error；它後面的合法描述子仍要進 customs，
+        // 否則探測會看不見那個工具（update 反正在寫入前就以錯誤停下）。
+        let root = TempRoot::new("tool-selection-bad-then-good");
+        let sel = ToolSelection::resolve(
+            &root.dir,
+            &app_config(&format!("tools:\n  - codex\n  - name: broken-harness\n{CUSTOM_DESCRIPTOR}")),
+        );
+        assert_eq!(
+            sel.descriptor_error.as_deref(),
+            Some("tool descriptor: missing required field 'skills_dir'"),
+            "第一個問題被保留"
+        );
+        assert_eq!(sel.customs.len(), 1, "壞描述子後面的合法描述子仍被收下：{:?}", sel.customs);
+        assert_eq!(sel.customs[0].name, "wad-harness");
+    }
+
+    #[test]
+    fn probe_still_covers_a_valid_descriptor_after_an_invalid_one() {
+        // 探測面＝計畫的 targets：合法描述子不得因為前面排了一個壞描述子而消失。
+        let root = workspace_with_descriptor("probe-descriptor-after-invalid");
+        root.write(
+            ".speclink.yaml",
+            &format!("tools:\n  - claude\n  - name: broken-harness\n{CURSOR_DESCRIPTOR}"),
+        );
+        std::fs::remove_dir_all(root.at(".cursor/skills")).unwrap();
+
+        let probe = probe_assets(&root.dir);
+        assert_eq!(probe.status, AssetStatus::Missing, "{probe:?}");
+        let cursor = probe.tools.iter().find(|t| t.tool == "cursor").expect("cursor 仍在判定面");
+        assert!(cursor.missing, "{cursor:?}");
+    }
+
+    #[test]
+    fn probe_normalizes_a_descriptor_skills_dir_with_a_trailing_slash() {
+        // 描述子的 skills_dir 是使用者手寫的字串：結尾斜線不得在差異清單裡變成 `//`。
+        let root = TempRoot::new("probe-descriptor-trailing-slash");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        root.write(
+            ".speclink.yaml",
+            "tools:\n  - claude\n  - name: cursor\n    skills_dir: .cursor/skills/\n",
+        );
+        update(&root.dir, false).expect("結尾斜線的 skills_dir 合法，先生成到現版");
+        std::fs::remove_dir_all(root.at(".cursor/skills")).unwrap();
+
+        let probe = probe_assets(&root.dir);
+        assert_eq!(probe.status, AssetStatus::Missing, "{probe:?}");
+        assert!(!probe.differing_files.is_empty());
+        for path in &probe.differing_files {
+            assert!(
+                path.starts_with(".cursor/skills/speclink-") && !path.contains("//"),
+                "路徑須正規化：{path}"
             );
         }
     }

@@ -312,3 +312,25 @@ fn no_color_init_emits_no_ansi_and_the_same_file_effects() {
         colored.exists(".claude/skills/speclink-propose/SKILL.md")
     );
 }
+
+#[test]
+fn force_reinit_with_a_new_selection_prunes_the_old_tool_and_keeps_the_two_line_summary() {
+    // spec Scenario「init --force 切換工具時清除下架足跡」的 CLI 面：exit code 0、
+    // stdout 仍是既有兩行，未選工具的技能目錄整組消失、選中工具補齊。
+    let env = TempEnv::new("fs-force-switch");
+    let first = env.run(&["init", "--tools", "claude"]);
+    assert!(first.status.success(), "stderr: {}", stderr_of(&first));
+    assert!(env.exists(".claude/skills/speclink-propose/SKILL.md"), "前置：Claude 技能已生成");
+
+    let out = env.run(&["init", "--force", "--tools", "codex"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let stdout = stdout_of(&out);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 2, "init 的摘要維持兩行，不新增清理明細：{stdout}");
+    assert!(lines[0].contains("Initialized at"), "{stdout}");
+    assert_eq!(lines[1], "Generated files for: codex", "{stdout}");
+    assert_eq!(env.builtins(), ["codex"], "recorded selection");
+    assert!(!env.exists(".claude/skills/speclink-propose/SKILL.md"), "未選工具的技能檔須移除");
+    assert!(!env.exists(".claude"), "空掉的 .claude 目錄一併移除");
+    assert!(env.exists(".agents/skills/speclink-propose/SKILL.md"), "選中工具補齊");
+}

@@ -70,7 +70,7 @@ desktop 影響面：`assetPrompt.ts` 只用狀態與差異檔數，有描述子�
 - desktop `init_project_at`／`adopt_project_at` 經同一條 core 路徑，行為隨之。
 - `probe_assets`：tools 清單含有效描述子時，`tools[]` 多一項 `{ tool: <描述子 name>, workspaceVersion, stale, newer, missing }`；描述子 skills_dir 無任何 `speclink-*` 技能檔 → 該項 `missing: true`，整體狀態依既有優先序聚合；`differingFiles` 含 `<skills_dir>/speclink-<name>/SKILL.md` 形式的描述子路徑。無描述子的專案輸出逐位元不變。
 
-**介面**：`init`、`init_remote`、`probe_assets` 簽名不變；`SyncPlan::write_skills` 刪除；`SyncPlan::differing_files` 簽名不變、語意改為全部 target；`AssetProbe`／`ToolAssetState` serde 形狀不變。
+**介面**：`init`、`init_remote`、`probe_assets` 簽名不變；`SyncPlan::write_skills` 刪除；`SyncPlan::differing_files` 簽名不變、語意改為全部 target；`AssetProbe`／`ToolAssetState` serde 形狀不變。連帶移除本變更孤兒化的 crate 私有項目：`SyncTargetKind` enum、`SyncTarget.kind`（探測與差異比對不再依 target 種類分流後無讀取者）與 `SyncPlan.worktree_on`（只有 `write_skills` 讀過）——無外部形狀影響。描述子 target 的 `skills_dir` 在 `SyncPlan::resolve` 正規化一次（去結尾分隔符、以 `/` 回報），`ToolSelection::resolve` 在第一個壞描述子之後仍收下後續合法描述子（第一個錯誤保留給 update）。
 
 **失敗模式**：守門拒絕 → 今天字面的單行英文訊息、零寫入（含 `openspec/` 與 `.speclink.yaml`）。apply 中途失敗 → 已寫檔案保留、錯誤上拋，CLI exit code 非零。探測：`.speclink.yaml` 壞檔 → `unknown`；描述子技能檔存在但版號讀不出 → `unknown`（與內建同規則）；無效描述子 → 不影響。
 
