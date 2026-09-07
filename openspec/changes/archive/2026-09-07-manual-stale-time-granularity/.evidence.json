@@ -1,0 +1,110 @@
+{
+  "version": 2,
+  "change": "manual-stale-time-granularity",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 在 crates/speclink-core/src/util.rs 新增一個函式，從同一個 chrono::Local::now() 回傳（純日期字串、帶時區偏移量的 RFC 3339 秒級時戳字串）兩值，時戳格式採 RFC 3339 帶時區偏移量，秒級（例 2026-09-05T23:17:28+08:00）；today() 保留不動。驗證：同檔新增單元測試，斷言時戳符合 `^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}[+-]\\d{2}:\\d{2}$` 且其前十字元等於回傳的純日期；`cargo test -p speclink-core util::`。",
+      "files": [
+        "crates/speclink-core/src/util.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 落實 verify-evidence 需求「archive trace 注入與零證據提示」：在 crates/speclink-core/src/archive.rs 讓 archive 以同一個「現在」產生目錄日期前綴與 updated 時戳：封存目錄名仍用純日期前綴，trace_block 的 updated 改寫入 RFC 3339 時戳；被物化的需求以外、既有純日期的 updated 行逐位元不變。驗證：把既有以 util::today() 組出 `updated: <日期>` 的期望值改為正規表達式斷言，並斷言時戳前十字元等於封存目錄名前綴；新增一個 MODIFIED 既有需求的測試，斷言正典內其他需求的純日期 updated 行不變；`cargo test -p speclink-core archive::`。",
+      "files": [
+        "crates/speclink-core/src/archive.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 落實 manual-pages 需求「frontmatter 六欄」的 generated 雙格式：在 apps/desktop/core/src/manual.rs 新增時戳 enum（純日／帶偏移量的瞬間）與解析函式：先試 RFC 3339（含 Z 與 ±hh:mm），再試 YYYY-MM-DD，都失敗回 None；`updated:` 行的正規表達式改抓整段非空白字元交給同一解析器；frontmatter 的 generated 走同一解析器，索引 JSON 的 generated 欄位改回傳 frontmatter 原字串（無法解析時 null）。驗證：單元測試涵蓋 `2026-09-05T23:17:28+08:00`、`2026-09-05T15:40:00Z`、`2026-09-05`、`not-a-date` 四種輸入的解析結果，並斷言索引 JSON 的每頁鍵集合仍為 generated、keywords、order、section、slug、sources、stale、title（camelCase 不變）；`cargo test -p speclink-desktop-core manual::`。",
+      "files": [
+        "apps/desktop/core/src/manual.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 落實 manual-skill 需求「生成模式的讀取策略」與「生成模式的輸出與報告」，讓 manual 技能寫入帶偏移量的本地時戳：更新 crates/speclink-core/assets/skills/manual.md：stale page 定義改為 manual-pages 契約的三段式（兩邊帶時間時嚴格晚於、任一邊純日期時同日也算）；frontmatter 表的 generated 格式改為 RFC 3339 帶時區偏移量秒級，範例 frontmatter 改用時戳；Step 5 寫頁時給 agent 一條取得時戳的建議指令（python3 的 `datetime.now().astimezone().isoformat(timespec=\"seconds\")` 為主、無 python3 時以 date 指令輸出並把偏移量補上冒號為備）。驗證：內容審閱——技能檔不再出現「dates carry no time of day」的同日說法，frontmatter 表與範例的 generated 皆為 RFC 3339；render_golden 測試此時預期紅燈（3.2 處理）。",
+      "files": [
+        "crates/speclink-core/assets/skills/manual.md"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.2 連動版號與衍生物：crates/speclink-core/src/init.rs 的 ASSET_VERSION 由 v1.29.0 改為 v1.30.0；`cargo build -p speclink-cli` 後執行 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 再生 crates/speclink-core/tests/golden 下四份 snapshot 與 assets.lock（version 行為 v1.30.0）；再以新 binary 執行 `speclink update` 讓 .claude/skills/speclink-manual/SKILL.md 與 .agents 下的渲染產物跟上（再生的 SKILL.md 不進 evidence）。驗證：`cargo test -p speclink-core --test it render_golden::` 綠燈；`grep -n \"^version:\" crates/speclink-core/tests/golden/assets.lock` 顯示 v1.30.0；`git status --short` 盤點 .claude 與 .agents 下的 SKILL.md 異動只來自 manual 技能的內文與版號行。",
+      "files": [
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M1WXTMW0XYSEYA1785230Y21",
+      "taskDesc": "1.1 在 crates/speclink-core/src/util.rs 新增一個函式，從同一個 chrono::Local::now() 回傳（純日期字串、帶時區偏移量的 RFC 3339 秒級時戳字串）兩值，時戳格式採 RFC 3339 帶時區偏移量，秒級（例 2026-09-05T23:17:28+08:00）；today() 保留不動。驗證：同檔新增單元測試，斷言時戳符合 `^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}[+-]\\d{2}:\\d{2}$` 且其前十字元等於回傳的純日期；`cargo test -p speclink-core util::`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7a1647e23875cc11c81c39c752a494a40e39a8f3",
+      "touchedFiles": [
+        "crates/speclink-core/src/util.rs"
+      ],
+      "recordedAt": "2026-09-07T03:20:31Z"
+    },
+    {
+      "taskId": "tsk_01M1WXTMW0MRNN3F033WJW0WEZ",
+      "taskDesc": "1.2 落實 verify-evidence 需求「archive trace 注入與零證據提示」：在 crates/speclink-core/src/archive.rs 讓 archive 以同一個「現在」產生目錄日期前綴與 updated 時戳：封存目錄名仍用純日期前綴，trace_block 的 updated 改寫入 RFC 3339 時戳；被物化的需求以外、既有純日期的 updated 行逐位元不變。驗證：把既有以 util::today() 組出 `updated: <日期>` 的期望值改為正規表達式斷言，並斷言時戳前十字元等於封存目錄名前綴；新增一個 MODIFIED 既有需求的測試，斷言正典內其他需求的純日期 updated 行不變；`cargo test -p speclink-core archive::`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7a1647e23875cc11c81c39c752a494a40e39a8f3",
+      "touchedFiles": [
+        "crates/speclink-core/src/archive.rs"
+      ],
+      "recordedAt": "2026-09-07T03:23:00Z"
+    },
+    {
+      "taskId": "tsk_01M1WXTMW0DJQEDY6R4P6MGSN3",
+      "taskDesc": "2.1 落實 manual-pages 需求「frontmatter 六欄」的 generated 雙格式：在 apps/desktop/core/src/manual.rs 新增時戳 enum（純日／帶偏移量的瞬間）與解析函式：先試 RFC 3339（含 Z 與 ±hh:mm），再試 YYYY-MM-DD，都失敗回 None；`updated:` 行的正規表達式改抓整段非空白字元交給同一解析器；frontmatter 的 generated 走同一解析器，索引 JSON 的 generated 欄位改回傳 frontmatter 原字串（無法解析時 null）。驗證：單元測試涵蓋 `2026-09-05T23:17:28+08:00`、`2026-09-05T15:40:00Z`、`2026-09-05`、`not-a-date` 四種輸入的解析結果，並斷言索引 JSON 的每頁鍵集合仍為 generated、keywords、order、section、slug、sources、stale、title（camelCase 不變）；`cargo test -p speclink-desktop-core manual::`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7a1647e23875cc11c81c39c752a494a40e39a8f3",
+      "touchedFiles": [
+        "apps/desktop/core/src/manual.rs"
+      ],
+      "recordedAt": "2026-09-07T03:27:02Z"
+    },
+    {
+      "taskId": "tsk_01M1WXTMW0QR25X0KJZBX8ZG3K",
+      "taskDesc": "3.1 落實 manual-skill 需求「生成模式的讀取策略」與「生成模式的輸出與報告」，讓 manual 技能寫入帶偏移量的本地時戳：更新 crates/speclink-core/assets/skills/manual.md：stale page 定義改為 manual-pages 契約的三段式（兩邊帶時間時嚴格晚於、任一邊純日期時同日也算）；frontmatter 表的 generated 格式改為 RFC 3339 帶時區偏移量秒級，範例 frontmatter 改用時戳；Step 5 寫頁時給 agent 一條取得時戳的建議指令（python3 的 `datetime.now().astimezone().isoformat(timespec=\"seconds\")` 為主、無 python3 時以 date 指令輸出並把偏移量補上冒號為備）。驗證：內容審閱——技能檔不再出現「dates carry no time of day」的同日說法，frontmatter 表與範例的 generated 皆為 RFC 3339；render_golden 測試此時預期紅燈（3.2 處理）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7a1647e23875cc11c81c39c752a494a40e39a8f3",
+      "touchedFiles": [
+        "crates/speclink-core/assets/skills/manual.md"
+      ],
+      "recordedAt": "2026-09-07T03:27:28Z"
+    },
+    {
+      "taskId": "tsk_01M1WXTMW07JD7ZKGZTTJ7FEFF",
+      "taskDesc": "3.2 連動版號與衍生物：crates/speclink-core/src/init.rs 的 ASSET_VERSION 由 v1.29.0 改為 v1.30.0；`cargo build -p speclink-cli` 後執行 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 再生 crates/speclink-core/tests/golden 下四份 snapshot 與 assets.lock（version 行為 v1.30.0）；再以新 binary 執行 `speclink update` 讓 .claude/skills/speclink-manual/SKILL.md 與 .agents 下的渲染產物跟上（再生的 SKILL.md 不進 evidence）。驗證：`cargo test -p speclink-core --test it render_golden::` 綠燈；`grep -n \"^version:\" crates/speclink-core/tests/golden/assets.lock` 顯示 v1.30.0；`git status --short` 盤點 .claude 與 .agents 下的 SKILL.md 異動只來自 manual 技能的內文與版號行。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7a1647e23875cc11c81c39c752a494a40e39a8f3",
+      "touchedFiles": [
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ],
+      "recordedAt": "2026-09-07T03:35:01Z"
+    }
+  ]
+}

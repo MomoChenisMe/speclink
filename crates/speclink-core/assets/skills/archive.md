@@ -103,7 +103,8 @@ Archive a completed change.
 
    **@trace**: every ADDED and MODIFIED requirement the archive materializes into a
    canonical spec gets a `@trace` block carrying exactly two fields — `source` (the change
-   name) and `updated` (the archive date). Injection is unconditional: it does not depend on
+   name) and `updated` (the archive timestamp: RFC 3339 with the local offset, to the
+   second). Injection is unconditional: it does not depend on
    what the work tree looks like, and the canon carries no file list. Which files a change
    touched lives in its evidence record, not in the specs.
 

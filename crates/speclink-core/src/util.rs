@@ -191,6 +191,23 @@ pub fn today() -> String {
     chrono::Local::now().format("%Y-%m-%d").to_string()
 }
 
+/// One `Local::now()` rendered twice. archive names the dated directory with `date` and
+/// writes `rfc3339` into `@trace updated`, so the two can never straddle midnight.
+pub struct NowStamps {
+    /// `YYYY-MM-DD` in local time.
+    pub date: String,
+    /// RFC 3339 with the local offset at second precision, e.g. `2026-09-05T23:17:28+08:00`.
+    pub rfc3339: String,
+}
+
+pub fn now_stamps() -> NowStamps {
+    let now = chrono::Local::now();
+    NowStamps {
+        date: now.format("%Y-%m-%d").to_string(),
+        rfc3339: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
+    }
+}
+
 /// 剝除 `YYYY-MM-DD-` 日期前綴（封存 change 目錄名、封存後的討論儲存名）；
 /// 不合格式原樣回傳（寬容）。共用於 discuss 的 promote 還原與 trace 的
 /// 鏈組裝。
@@ -281,6 +298,17 @@ pub fn slugify(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn now_stamps_share_one_instant() {
+        // manual-stale-time-granularity design「archive 以同一個「現在」產生目錄日期前綴與
+        // updated 時戳」：時戳為 RFC 3339 帶時區偏移量、秒級，其日曆日就是同時回傳的純日期。
+        let NowStamps { date, rfc3339 } = now_stamps();
+        let re = regex::Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$").unwrap();
+        assert!(re.is_match(&rfc3339), "not an RFC 3339 local stamp: {rfc3339}");
+        assert_eq!(&rfc3339[..10], date.as_str(), "stamp and date come from one Local::now()");
+        assert_eq!(date.len(), 10);
+    }
 
     /// Throwaway directory in the OS temp dir; removed on drop.
     struct TempDir {

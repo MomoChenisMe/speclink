@@ -201,7 +201,7 @@ fn archive_skill_describes_two_field_trace_and_the_zero_evidence_note() {
     for (rel, content) in skill_for_both_tools("archive-trace-note", "archive") {
         for needle in [
             // @trace: 兩欄、一律注入、無檔案清單
-            "`source` (the change\n   name) and `updated` (the archive date)",
+            "`source` (the change\n   name) and `updated` (the archive timestamp: RFC 3339 with the local offset, to the\n   second)",
             "Injection is unconditional",
             "the canon carries no file list",
             // 零證據提示：出現條件、非拒絕、應對
