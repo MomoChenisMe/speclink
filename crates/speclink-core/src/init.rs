@@ -70,6 +70,12 @@ pub struct InitOutcome {
 /// `.gitignore` entry and the selected tools' skills. Instruction files (`CLAUDE.md`,
 /// `AGENTS.md`) are NOT part of the managed set (change: remove-marker-injection);
 /// routing lives in the skills themselves.
+///
+/// The skills go through [`SyncPlan::apply`], the same writer every other entry uses
+/// (change: workspace-sync-entrypoints). So `tools` is the COMPLETE desired state here
+/// too: a `--force` re-init drops the deselected built-ins' skill footprints, removes
+/// `speclink-` directories outside the current set, and resets the recorded descriptor
+/// footprints — matching the `.speclink.yaml` rewrite, which resets to the template.
 pub fn init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<InitOutcome> {
     let spec_root = root.join(spec_dir);
     if !force && (spec_root.exists() || root.join(".speclink.yaml").is_file()) {
@@ -81,12 +87,9 @@ pub fn init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<
     store_init(&spec_root, force)?;
     write_if(&root.join(".speclink.yaml"), &app_config_text(tools, spec_dir), force)?;
     ensure_gitignore(&root.join(".gitignore"))?;
-    // 遺留剝除（design D2）：re-init 蓋過舊工作區時才有東西可剝，新專案是 no-op。
-    for tool in tools {
-        strip_legacy_marker(&root.join(instructions_path(*tool)))?;
-    }
-    // 政策以 store_init 之後的 config.yaml 為準——`--force` 會把它寫回範本。
-    SyncPlan::resolve(root, ToolSelection::builtins_only(tools), spec_dir).write_skills(force)?;
+    // 政策以 store_init 之後的 config.yaml 為準——`--force` 會把它寫回範本，所以
+    // 寫入用的計畫要在那之後才解析（守門面只取決於選集，兩次的目錄集合相同）。
+    SyncPlan::resolve(root, ToolSelection::builtins_only(tools), spec_dir).apply(root)?;
 
     Ok(InitOutcome {
         spec_dir_abs: spec_root,
@@ -107,15 +110,13 @@ pub fn init_remote(
     if !force && root.join(".speclink.yaml").is_file() {
         bail!("Already initialized. Use --force to reinitialize.");
     }
+    // Remote init 不寫 openspec/，政策檔不會被重寫，所以一份計畫同時服務守門與寫入。
     let plan = SyncPlan::resolve(root, ToolSelection::builtins_only(tools), "openspec");
     plan.guard()?;
 
     write_if(&root.join(".speclink.yaml"), &app_config_text(tools, "openspec"), force)?;
     ensure_gitignore(&root.join(".gitignore"))?;
-    for tool in tools {
-        strip_legacy_marker(&root.join(instructions_path(*tool)))?;
-    }
-    plan.write_skills(force)?;
+    plan.apply(root)?;
     crate::config::write_remote_section(root, url, repo)
 }
 
@@ -262,17 +263,9 @@ pub(crate) fn managed_skills(
         .collect()
 }
 
-/// What a sync target is: a built-in tool, or a descriptor named by its `name`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum SyncTargetKind {
-    Builtin(Tool),
-    Custom(String),
-}
-
 /// One tool's slice of a sync: where its skills live, and what should be there.
 #[derive(Debug)]
 pub(crate) struct SyncTarget {
-    pub(crate) kind: SyncTargetKind,
     /// The name that appears in [`UpdateOutcome`]'s lists and the CLI output.
     pub(crate) label: String,
     /// Project-root-relative skills directory, `/`-joined (`.claude/skills`,
@@ -305,8 +298,6 @@ pub(crate) struct SyncPlan {
     /// strip a legacy marker from, and the deprecation notice to report.
     pub(crate) custom_strip_targets: Vec<(String, String)>,
     pub(crate) selection: ToolSelection,
-    /// The worktree policy this plan was built under (read once, in `resolve`).
-    worktree_on: bool,
 }
 
 impl SyncPlan {
@@ -317,7 +308,6 @@ impl SyncPlan {
         for tool in [Tool::Claude, Tool::Codex] {
             if selection.builtins.contains(&tool) {
                 targets.push(SyncTarget {
-                    kind: SyncTargetKind::Builtin(tool),
                     label: tool.name().to_string(),
                     skills_dir: tool.skills_dir().to_string(),
                     skills_root: root.join(tool.skills_dir()),
@@ -332,7 +322,6 @@ impl SyncPlan {
         let mut custom_strip_targets = Vec::new();
         for custom in &selection.customs {
             targets.push(SyncTarget {
-                kind: SyncTargetKind::Custom(custom.name.clone()),
                 label: custom.name.clone(),
                 skills_dir: custom.skills_dir.clone(),
                 skills_root: root.join(&custom.skills_dir),
@@ -365,7 +354,6 @@ impl SyncPlan {
             deselected_builtins,
             custom_strip_targets,
             selection,
-            worktree_on,
         }
     }
 
@@ -376,16 +364,13 @@ impl SyncPlan {
         refuse_downgrade(&dirs)
     }
 
-    /// The built-in targets' managed files that are absent or differ from the current
-    /// render (line endings normalized), as project-root-relative `/`-joined paths.
-    /// Built-ins only because the staleness probe — its one consumer — does not cover
-    /// descriptors yet.
+    /// Every target's managed files that are absent or differ from the current render
+    /// (line endings normalized), as project-root-relative `/`-joined paths. Descriptors
+    /// are included: their skill files are managed exactly like a built-in's, so the
+    /// staleness probe must see them too.
     pub(crate) fn differing_files(&self) -> Vec<String> {
         let mut differing = Vec::new();
         for target in &self.targets {
-            if !matches!(target.kind, SyncTargetKind::Builtin(_)) {
-                continue;
-            }
             for (dir, expected) in &target.files {
                 let actual =
                     std::fs::read_to_string(target.skills_root.join(dir).join("SKILL.md"))
@@ -469,28 +454,6 @@ impl SyncPlan {
         Ok(out)
     }
 
-    /// `init`'s writer: every target's files, no descriptor state touched, and no orphan
-    /// cleanup — `init` stays conservative over an existing workspace. The one removal it
-    /// does make: under an OFF worktree policy, the two gated skill directories a
-    /// previous policy-on generation left behind (`init --force` resets the policy to
-    /// the template, and the tool must not keep loading a skill the policy disabled).
-    pub(crate) fn write_skills(&self, force: bool) -> Result<()> {
-        for target in &self.targets {
-            for (dir, content) in &target.files {
-                write_if(&target.skills_root.join(dir).join("SKILL.md"), content, force)?;
-            }
-            if self.worktree_on {
-                continue;
-            }
-            for skill in skills::registry().iter().filter(|s| s.worktree_gated) {
-                let dir = target.skills_root.join(format!("speclink-{}", skill.name));
-                if dir.is_dir() {
-                    std::fs::remove_dir_all(dir)?;
-                }
-            }
-        }
-        Ok(())
-    }
 }
 
 /// Refresh generated skill files and strip legacy instruction-file markers.
@@ -532,12 +495,14 @@ pub fn update(root: &Path, allow_downgrade: bool) -> Result<UpdateOutcome> {
 }
 
 /// Converge a workspace on `tools` as the COMPLETE desired state of its built-ins —
-/// the single entry point CLI init, remote init and the desktop share.
+/// the desktop settings page, checkout binding and [`adopt`] share this entry.
 ///
-/// Two steps, both existing behavior: `.speclink.yaml`'s claude/codex entries are
-/// rewritten to match the selection (custom descriptors, remote, spec_dir and unknown
-/// keys carry over untouched), then [`update`] generates the selected tools' skills,
-/// prunes the deselected ones and strips any legacy instruction-file marker.
+/// Two steps: `.speclink.yaml`'s claude/codex entries are rewritten to match the
+/// selection (custom descriptors, remote, spec_dir and unknown keys carry over
+/// untouched), then the plan's [`SyncPlan::apply`] generates the selected tools'
+/// skills, prunes the deselected ones and strips any legacy instruction-file marker.
+/// `apply` is what all five entries — [`init`], [`init_remote`], [`adopt`], this one
+/// and [`update`] — share; each entry adds only its own precondition on top.
 ///
 /// Empty selections and malformed configs fail before anything is written. Beyond that
 /// there is no rollback: every managed write is idempotent, so the same selection can be
@@ -1003,8 +968,11 @@ fn refuse_downgrade(dirs: &[PathBuf]) -> Result<()> {
 /// 判定（不等即過期）。方向是唯一判準來源：desktop 與 CLI 共用同一裁決，領先時
 /// 兩個出口都不提供改寫動作。
 ///
-/// 零寫入：desktop 開專案時搭載，探測失敗不得阻斷開啟。自訂描述子第一版不涵蓋
-/// （回報結構已預留 tool 名欄位，納入時不需改形狀）。
+/// 判定面為 tools 清單宣告的內建工具與通過驗證的自訂描述子——受管檔集合即判定面。
+/// 無效描述子不成為 target：探測是唯讀提示面，「設定裡有個壞描述子」不是技能檔過期
+/// 的訊號，由 update 的錯誤負責告知。
+///
+/// 零寫入：desktop 開專案時搭載，探測失敗不得阻斷開啟。
 pub fn probe_assets(root: &Path) -> AssetProbe {
     let without_tools = |status: AssetStatus| AssetProbe {
         status,
@@ -1017,8 +985,8 @@ pub fn probe_assets(root: &Path) -> AssetProbe {
     };
     let spec_dir = app.spec_dir.clone().unwrap_or_else(|| "openspec".to_string());
     let selection = ToolSelection::resolve(root, &app);
-    // 探測只讀 tools 清單宣告的內建工具：沒有清單就沒有受管工具可查（目錄偵測的回退
-    // 是 update 的再生規則，不是探測的判定面）。描述子錯誤同樣不影響結果。
+    // 探測只讀 tools 清單宣告的工具：沒有清單就沒有受管工具可查（目錄偵測的回退
+    // 是 update 的再生規則，不是探測的判定面）。
     if selection.legacy_fallback {
         return without_tools(AssetStatus::Current);
     }
@@ -1026,13 +994,10 @@ pub fn probe_assets(root: &Path) -> AssetProbe {
 
     let mut tools = Vec::new();
     for target in &plan.targets {
-        let SyncTargetKind::Builtin(tool) = &target.kind else {
-            continue;
-        };
         let version = match probe_skills_dir(&target.skills_root) {
             SkillsProbe::Absent => {
                 tools.push(ToolAssetState {
-                    tool: tool.name().to_string(),
+                    tool: target.label.clone(),
                     workspace_version: None,
                     stale: false,
                     newer: false,
@@ -1048,7 +1013,7 @@ pub fn probe_assets(root: &Path) -> AssetProbe {
         // 方向優先於相等判定：領先現版的版號是「較新」，不得再算成過期。
         let newer = workspace_is_newer(&version, ASSET_VERSION);
         tools.push(ToolAssetState {
-            tool: tool.name().to_string(),
+            tool: target.label.clone(),
             stale: !newer && version != ASSET_VERSION,
             newer,
             missing: false,
@@ -1670,6 +1635,135 @@ mod tests {
         assert_eq!(root.read("CLAUDE.md"), CLAUDE_USER_TEXT, "區塊須被剝除、使用者段落保留");
     }
 
+    /// 一個目標 skills 目錄下的 `speclink-*` 目錄名集合（排序後）。
+    fn skill_dirs(root: &TempRoot, rel: &str) -> Vec<String> {
+        let mut names: Vec<String> = match std::fs::read_dir(root.at(rel)) {
+            Ok(entries) => entries
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .filter(|n| n.starts_with("speclink-"))
+                .collect(),
+            Err(_) => Vec::new(),
+        };
+        names.sort();
+        names
+    }
+
+    /// 一個內建工具在給定 worktree 政策下應有的 `speclink-*` 目錄名集合（排序後）——
+    /// 與生成端同源，取自 `managed_skills`，不另抄一份過濾規則。
+    fn expected_dirs(tool: Tool, worktree_on: bool) -> Vec<String> {
+        let mut names: Vec<String> =
+            managed_skills(skills::RenderTarget::Builtin(tool), worktree_on, "openspec")
+                .into_iter()
+                .map(|(dir, _)| dir)
+                .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn init_force_switching_tools_prunes_the_deselected_footprint() {
+        // Scenario「init --force 切換工具時清除下架足跡」：--force 的選集是內建工具的
+        // 完整期望狀態，未選工具不得留下可載入的技能檔。
+        let root = TempRoot::new("init-force-switch");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        assert!(!skill_dirs(&root, ".claude/skills").is_empty(), "前置：Claude 技能已生成");
+
+        init(&root.dir, &[Tool::Codex], true, "openspec").expect("re-init 成功");
+
+        assert!(
+            skill_dirs(&root, ".claude/skills").is_empty(),
+            "未選工具的技能目錄須全數移除"
+        );
+        assert!(!root.exists(".claude"), "空掉的 .claude 目錄一併移除");
+        assert_eq!(
+            skill_dirs(&root, ".agents/skills"),
+            expected_dirs(Tool::Codex, false),
+            "選中工具補齊為本次生成集合"
+        );
+        let app = root.read(".speclink.yaml");
+        assert!(app.contains("tools: [codex]"), "{app}");
+    }
+
+    #[test]
+    fn init_force_prunes_a_renamed_skill_directory() {
+        // Scenario「init --force 清除改名技能的舊目錄與描述子足跡」的前半：孤兒清理
+        // 不再是 update 專屬。
+        let root = TempRoot::new("init-force-orphan");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        root.write(".claude/skills/speclink-onboard/SKILL.md", "舊版生成物\n");
+
+        init(&root.dir, &[Tool::Claude], true, "openspec").expect("re-init 成功");
+
+        assert!(
+            !root.exists(".claude/skills/speclink-onboard"),
+            "改名前的舊目錄須清除"
+        );
+        assert!(root.exists(".claude/skills/speclink-baseline"), "現行技能仍在");
+    }
+
+    #[test]
+    fn init_force_resets_custom_footprint_state() {
+        // Scenario「init --force 清除改名技能的舊目錄與描述子足跡」的後半：--force 把
+        // .speclink.yaml 寫回樣板（描述子一併清掉），足跡與生成物必須同步歸零。
+        let root = TempRoot::new("init-force-custom-reset");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        root.write(".speclink.yaml", &format!("tools:\n  - claude\n{CUSTOM_DESCRIPTOR}"));
+        update(&root.dir, false).expect("先生成描述子受管檔與足跡");
+        assert!(root.exists(".wad/skills/speclink-propose/SKILL.md"), "前置：描述子生成物在");
+        assert!(root.exists(".speclink/generated-tools.yaml"), "前置：足跡已記錄");
+
+        init(&root.dir, &[Tool::Claude], true, "openspec").expect("re-init 成功");
+
+        assert!(
+            skill_dirs(&root, ".wad/skills").is_empty(),
+            "描述子的生成物須隨設定重寫一併清除"
+        );
+        assert!(
+            !root.exists(".speclink/generated-tools.yaml"),
+            "足跡狀態檔須歸零"
+        );
+        let app = root.read(".speclink.yaml");
+        assert!(!app.contains("wad-harness"), "--force 重寫為樣板：{app}");
+    }
+
+    #[test]
+    fn init_strips_the_unselected_tools_legacy_marker() {
+        // Scenario「init --force 剝除未選工具的遺留區塊」：剝除與選取與否無關——
+        // 舊版注入的路由表留在 CLAUDE.md 會與技能路由並存。
+        let root = TempRoot::new("init-force-strip-unselected");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        root.write("CLAUDE.md", &legacy_marker_file(CLAUDE_USER_TEXT));
+
+        init(&root.dir, &[Tool::Codex], true, "openspec").expect("re-init 成功");
+
+        assert_eq!(root.read("CLAUDE.md"), CLAUDE_USER_TEXT, "區塊剝除、使用者段落保留");
+        assert!(!root.exists("AGENTS.md"), "不生成指令檔");
+    }
+
+    #[test]
+    fn init_over_residual_skill_files_rewrites_them() {
+        // Scenario「不帶 force 的 init 改寫殘留技能檔」：沒有 .speclink.yaml 也沒有
+        // openspec/ 時「已初始化」守門不成立，殘留的舊技能檔靜默保留才是漏洞。
+        let root = TempRoot::new("init-residual");
+        root.write(".claude/skills/speclink-apply/SKILL.md", "舊版內容\n");
+        root.write(".claude/skills/speclink-onboard/SKILL.md", "改名前的舊目錄\n");
+
+        init(&root.dir, &[Tool::Claude], false, "openspec").expect("init 成功");
+
+        let applied = root.read(".claude/skills/speclink-apply/SKILL.md");
+        assert!(applied.contains(ASSET_VERSION), "殘留檔須改寫為現版：{applied}");
+        assert!(
+            !root.exists(".claude/skills/speclink-onboard"),
+            "殘留孤兒目錄須清除"
+        );
+        assert_eq!(
+            skill_dirs(&root, ".claude/skills"),
+            expected_dirs(Tool::Claude, false),
+            "其餘生成集合補齊"
+        );
+    }
+
     #[test]
     fn init_on_a_fresh_project_writes_no_instruction_file() {
         // Scenario「指令檔零受管區塊」：全新目錄以兩個工具 init 後，專案根不存在
@@ -2076,6 +2170,114 @@ mod tests {
         );
     }
 
+    /// 合法描述子（規格 Example 的字面值：name cursor、skills_dir .cursor/skills）。
+    const CURSOR_DESCRIPTOR: &str = "  - name: cursor\n    skills_dir: .cursor/skills\n";
+
+    /// tools 清單＝claude 加一個描述子，並讓兩邊的受管檔都生成到現版。
+    fn workspace_with_descriptor(tag: &str) -> TempRoot {
+        let root = TempRoot::new(tag);
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        root.write(".speclink.yaml", &format!("tools:\n  - claude\n{CURSOR_DESCRIPTOR}"));
+        update(&root.dir, false).expect("先把兩邊的受管檔生成到現版");
+        root
+    }
+
+    #[test]
+    fn probe_reports_missing_for_a_descriptor_without_skills() {
+        // Scenario「描述子技能檔缺失判缺失」：描述子的技能檔與內建技能檔同為受管檔，
+        // 整組不在即缺失，差異清單以描述子的 skills_dir 起頭。
+        let root = workspace_with_descriptor("probe-descriptor-missing");
+        std::fs::remove_dir_all(root.at(".cursor/skills")).unwrap();
+
+        let probe = probe_assets(&root.dir);
+        assert_eq!(probe.status, AssetStatus::Missing, "{probe:?}");
+        let cursor = probe
+            .tools
+            .iter()
+            .find(|t| t.tool == "cursor")
+            .expect("逐工具資訊須含描述子的 name");
+        assert!(cursor.missing, "{cursor:?}");
+        assert_eq!(cursor.workspace_version, None, "{cursor:?}");
+        let claude = probe.tools.iter().find(|t| t.tool == "claude").unwrap();
+        assert!(!claude.missing && !claude.stale && !claude.newer, "{claude:?}");
+        assert!(
+            !probe.differing_files.is_empty(),
+            "缺失須列出描述子的受管檔"
+        );
+        for path in &probe.differing_files {
+            assert!(
+                path.starts_with(".cursor/skills/speclink-") && path.ends_with("/SKILL.md"),
+                "差異清單只該含描述子技能檔：{path}"
+            );
+        }
+        // for_codex 子集＋worktree 政策關閉：兩顆 worktree 技能不在預期生成集合內。
+        for gated in ["speclink-apply-with-worktree", "speclink-worktree-merge"] {
+            assert!(
+                !probe.differing_files.iter().any(|p| p.contains(gated)),
+                "被政策排除的技能不得列入：{:?}",
+                probe.differing_files
+            );
+        }
+    }
+
+    #[test]
+    fn probe_reports_stale_for_a_descriptor_behind_the_engine() {
+        // Scenario「描述子技能檔過期判過期」：描述子側落後即整體過期。
+        let root = workspace_with_descriptor("probe-descriptor-stale");
+        let skill = ".cursor/skills/speclink-propose/SKILL.md";
+        root.write(skill, &root.read(skill).replace(ASSET_VERSION, "v0.9.0"));
+
+        let probe = probe_assets(&root.dir);
+        assert_eq!(probe.status, AssetStatus::Stale, "{probe:?}");
+        let cursor = probe.tools.iter().find(|t| t.tool == "cursor").unwrap();
+        assert!(cursor.stale && !cursor.newer && !cursor.missing, "{cursor:?}");
+        assert!(
+            probe.differing_files.iter().any(|p| p == skill),
+            "落後的描述子技能檔須列入：{:?}",
+            probe.differing_files
+        );
+    }
+
+    #[test]
+    fn probe_lists_descriptor_paths_in_differing_files() {
+        // 兩側同時落後時，差異清單同時涵蓋內建與描述子——判定面不再只有 builtin。
+        let root = workspace_with_descriptor("probe-descriptor-both");
+        for skill in [
+            ".claude/skills/speclink-propose/SKILL.md",
+            ".cursor/skills/speclink-propose/SKILL.md",
+        ] {
+            root.write(skill, &root.read(skill).replace(ASSET_VERSION, "v0.9.0"));
+        }
+
+        let probe = probe_assets(&root.dir);
+        assert_eq!(probe.status, AssetStatus::Stale, "{probe:?}");
+        for expected in [
+            ".claude/skills/speclink-propose/SKILL.md",
+            ".cursor/skills/speclink-propose/SKILL.md",
+        ] {
+            assert!(
+                probe.differing_files.iter().any(|p| p == expected),
+                "{expected} 須列入：{:?}",
+                probe.differing_files
+            );
+        }
+    }
+
+    #[test]
+    fn probe_ignores_an_invalid_descriptor() {
+        // Scenario「無效描述子不影響探測」：壞描述子不成為 target，探測是唯讀提示面，
+        // 「設定裡有個壞描述子」由 update 的錯誤告知，不得讓探測轉為無法判定。
+        let root = TempRoot::new("probe-descriptor-invalid");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        root.write(".speclink.yaml", "tools:\n  - claude\n  - name: cursor\n");
+
+        let probe = probe_assets(&root.dir);
+        assert_eq!(probe.status, AssetStatus::Current, "{probe:?}");
+        assert_eq!(probe.tools.len(), 1, "{:?}", probe.tools);
+        assert_eq!(probe.tools[0].tool, "claude");
+        assert!(probe.differing_files.is_empty(), "{:?}", probe.differing_files);
+    }
+
     #[test]
     fn probe_with_an_empty_tools_list_reports_current_and_writes_nothing() {
         // tools 空清單＝沒有受管工具可查：回報現版、零差異；且探測全程零寫入。
@@ -2403,7 +2605,6 @@ mod tests {
         let plan =
             SyncPlan::resolve(&root.dir, ToolSelection::builtins_only(&[Tool::Codex]), "openspec");
         assert_eq!(plan.targets.len(), 1, "只選 codex 就只有一個 target");
-        assert!(matches!(plan.targets[0].kind, SyncTargetKind::Builtin(Tool::Codex)));
         assert_eq!(plan.targets[0].label, "codex");
         assert_eq!(plan.targets[0].skills_root, root.at(".agents/skills"));
         assert_eq!(plan.deselected_builtins, vec![Tool::Claude]);
@@ -2432,7 +2633,6 @@ mod tests {
         let plan = SyncPlan::resolve(&root.dir, selection, "openspec");
         assert_eq!(plan.targets.len(), 2);
         assert_eq!(plan.targets[0].label, "claude");
-        assert!(matches!(&plan.targets[1].kind, SyncTargetKind::Custom(name) if name == "wad-harness"));
         assert_eq!(plan.targets[1].label, "wad-harness");
         assert_eq!(plan.targets[1].skills_root, root.at(".wad/skills"));
         assert_eq!(plan.deselected_builtins, vec![Tool::Codex]);
