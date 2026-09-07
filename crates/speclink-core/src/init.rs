@@ -78,24 +78,25 @@ pub struct InitOutcome {
 /// skill files with no `.speclink.yaml`) drops the deselected built-ins' skill
 /// footprints, removes `speclink-` directories outside the current set, and resets the
 /// recorded descriptor footprints — matching the `.speclink.yaml` write, which is the
-/// template. Only `speclink-` prefixed directories are ever removed.
+/// template. Of a tool's own content only `speclink-` prefixed directories are removed;
+/// a skills directory (and its parent) that this leaves empty goes too, as does an
+/// emptied `.speclink/`.
 pub fn init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<InitOutcome> {
     let spec_root = root.join(spec_dir);
     if !force && (spec_root.exists() || root.join(".speclink.yaml").is_file()) {
         bail!("Already initialized. Use --force to reinitialize.");
     }
-    let plan = || SyncPlan::resolve(root, ToolSelection::builtins_only(tools), spec_dir);
     // 守門在任何寫入之前：檢查面就是這次要寫的 skills 目錄。
-    plan().guard()?;
+    SyncPlan::resolve(root, ToolSelection::builtins_only(tools), spec_dir).guard()?;
 
     store_init(&spec_root, force)?;
     write_if(&root.join(".speclink.yaml"), &app_config_text(tools, spec_dir), force)?;
     ensure_gitignore(&root.join(".gitignore"))?;
-    // 政策以 store_init 之後的 config.yaml 為準——`--force` 會把它寫回範本，所以
-    // 寫入用的計畫要在那之後才解析（守門面只取決於選集，兩次的目錄集合相同）。
-    // apply 的回報（pruned／stripped）在 init 不呈現：init 的 stdout 維持既有兩行
-    //（proposal Non-Goal；spec「update 清除孤兒技能目錄」的 init 條款）。
-    plan().apply(root)?;
+    // 第二次解析是刻意的：政策以 store_init 之後的 config.yaml 為準——`--force` 會把
+    // 它寫回範本，寫入用的計畫要在那之後才解析才會排除被政策關掉的技能。守門面只取
+    // 決於選集，所以兩次的目錄集合相同。apply 的回報（pruned／stripped）在 init 不
+    // 呈現：init 的 stdout 維持既有兩行（proposal Non-Goal）。
+    SyncPlan::resolve(root, ToolSelection::builtins_only(tools), spec_dir).apply(root)?;
 
     Ok(InitOutcome {
         spec_dir_abs: spec_root,
@@ -169,8 +170,8 @@ pub struct UpdateOutcome {
 ///
 /// A descriptor problem is carried on the value instead of raised: `update` and
 /// `reconcile` turn it into an error before any write (bad descriptor ⇒ zero writes),
-/// while `probe_assets` reads built-ins only and must not change its verdict because
-/// a descriptor is broken.
+/// while `probe_assets` never reads it — an invalid descriptor simply never becomes a
+/// target, and the probe's verdict must not change because one entry is broken.
 #[derive(Debug)]
 pub struct ToolSelection {
     /// Built-in tools in list order, deduplicated.
@@ -330,14 +331,12 @@ impl SyncPlan {
         }
         let mut custom_strip_targets = Vec::new();
         for custom in &selection.customs {
-            // The descriptor's skills_dir is a hand-written string: drop trailing
-            // separators and report it `/`-joined, so the probe's paths never carry
-            // `//` or a mixed separator. The filesystem path uses the same trimmed form.
-            let skills_dir = custom.skills_dir.trim_end_matches(['/', '\\']);
+            // `skills_dir` 已在 `ToolDescriptor::validate` 正規化（削結尾分隔符、
+            // 拒絕削完等於專案根或撞上內建目錄者），這裡直接信任欄位。
             targets.push(SyncTarget {
                 label: custom.name.clone(),
-                skills_dir: skills_dir.replace('\\', "/"),
-                skills_root: root.join(skills_dir),
+                skills_dir: custom.skills_dir.clone(),
+                skills_root: root.join(&custom.skills_dir),
                 files: managed_skills(
                     skills::RenderTarget::Custom(custom),
                     worktree_on,
@@ -436,6 +435,9 @@ impl SyncPlan {
 
         // 2. 舊足跡。判定只看 name 與 skills_dir：instructions_file 已棄用，照提示把它
         //    移除不得被誤判「已下架」。
+        // 足跡比對讀的是 `validate` 正規化後的 skills_dir。舊版引擎記下的可能是未削
+        // 的拼法（`.cursor/skills/`），升級後第一次同步會判它已下架、先剪再重寫同一
+        // 個目錄，並在 `pruned` 報一次該工具——一次性的誤報，之後兩邊同形就消失。
         let mut pruned_customs = Vec::new();
         for old in load_custom_state(root) {
             let still_current = self
@@ -1744,6 +1746,7 @@ mod tests {
         );
         let app = root.read(".speclink.yaml");
         assert!(!app.contains("wad-harness"), "--force 重寫為樣板：{app}");
+        assert!(app.contains("tools: [claude]"), "選集重寫為本次的 claude：{app}");
     }
 
     #[test]
@@ -1887,6 +1890,9 @@ mod tests {
 
     #[test]
     fn skill_probe_reports_newer_when_the_workspace_leads_the_engine() {
+        // Example「引擎 v1.11.0 探測 v1.14.0 工作區」的字面版號由
+        // `workspace_version_direction_only_orders_parsable_versions` 釘住方向判定；
+        // 這裡用 ahead_of_current() 讓斷言不隨 ASSET_VERSION 遞增而過期。
         // Scenario「工作區檔案領先引擎判較新」。
         let root = TempRoot::new("skill-probe-newer");
         init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
@@ -2237,26 +2243,9 @@ mod tests {
     }
 
     #[test]
-    fn probe_reports_stale_for_a_descriptor_behind_the_engine() {
-        // Scenario「描述子技能檔過期判過期」：描述子側落後即整體過期。
-        let root = workspace_with_descriptor("probe-descriptor-stale");
-        let skill = ".cursor/skills/speclink-propose/SKILL.md";
-        root.write(skill, &root.read(skill).replace(ASSET_VERSION, "v0.9.0"));
-
-        let probe = probe_assets(&root.dir);
-        assert_eq!(probe.status, AssetStatus::Stale, "{probe:?}");
-        let cursor = probe.tools.iter().find(|t| t.tool == "cursor").unwrap();
-        assert!(cursor.stale && !cursor.newer && !cursor.missing, "{cursor:?}");
-        assert!(
-            probe.differing_files.iter().any(|p| p == skill),
-            "落後的描述子技能檔須列入：{:?}",
-            probe.differing_files
-        );
-    }
-
-    #[test]
     fn probe_lists_descriptor_paths_in_differing_files() {
-        // 兩側同時落後時，差異清單同時涵蓋內建與描述子——判定面不再只有 builtin。
+        // Scenario「描述子技能檔過期判過期」：描述子側落後即整體過期，且兩側同時落後
+        // 時差異清單同時涵蓋內建與描述子——判定面不再只有 builtin。
         let root = workspace_with_descriptor("probe-descriptor-both");
         for skill in [
             ".claude/skills/speclink-propose/SKILL.md",
@@ -2267,6 +2256,8 @@ mod tests {
 
         let probe = probe_assets(&root.dir);
         assert_eq!(probe.status, AssetStatus::Stale, "{probe:?}");
+        let cursor = probe.tools.iter().find(|t| t.tool == "cursor").unwrap();
+        assert!(cursor.stale && !cursor.newer && !cursor.missing, "{cursor:?}");
         for expected in [
             ".claude/skills/speclink-propose/SKILL.md",
             ".cursor/skills/speclink-propose/SKILL.md",

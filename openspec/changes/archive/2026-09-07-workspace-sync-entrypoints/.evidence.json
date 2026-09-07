@@ -8,6 +8,14 @@
       "files": [
         "crates/speclink-core/src/init.rs"
       ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 RED：在 `crates/speclink-core/src/config.rs` tests 新增三個測試——`descriptor_validation_normalizes_a_trailing_slash`（`.wad/skills/` 與 `.wad/skills///` 都得 `.wad/skills`）；`descriptor_validation_rejects_a_skills_dir_that_normalizes_to_nothing`（`/`、`///`、`./`、`.` 皆以單行錯誤拒絕且訊息點名 skills_dir）；`descriptor_validation_rejects_a_builtin_skills_dir`（`.claude/skills`、`.agents/skills` 與其等價拼法 `.claude/skills/.`、`./.claude/skills`、`.claude/./skills`、`.wad/../.claude/skills` 皆拒絕）。對應規格「tools 自訂描述子的接受與驗證」的三個新 scenario。驗證：`cargo test -p speclink-core --lib config::tests::descriptor_validation` 三個紅燈。",
+      "files": [
+        "crates/speclink-cli/tests/it/init_tools.rs",
+        "crates/speclink-core/src/config.rs"
+      ]
     }
   ],
   "entries": [
@@ -21,6 +29,18 @@
         "crates/speclink-core/src/init.rs"
       ],
       "recordedAt": "2026-09-07T09:13:50Z"
+    },
+    {
+      "taskId": "tsk_01M1XZ291R40K8H9HDD507VTX3",
+      "taskDesc": "3.1 RED：在 `crates/speclink-core/src/config.rs` tests 新增三個測試——`descriptor_validation_normalizes_a_trailing_slash`（`.wad/skills/` 與 `.wad/skills///` 都得 `.wad/skills`）；`descriptor_validation_rejects_a_skills_dir_that_normalizes_to_nothing`（`/`、`///`、`./`、`.` 皆以單行錯誤拒絕且訊息點名 skills_dir）；`descriptor_validation_rejects_a_builtin_skills_dir`（`.claude/skills`、`.agents/skills` 與其等價拼法 `.claude/skills/.`、`./.claude/skills`、`.claude/./skills`、`.wad/../.claude/skills` 皆拒絕）。對應規格「tools 自訂描述子的接受與驗證」的三個新 scenario。驗證：`cargo test -p speclink-core --lib config::tests::descriptor_validation` 三個紅燈。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "352631aba0499e17cad40193ee2eb43ad1f4dcb2",
+      "touchedFiles": [
+        "crates/speclink-cli/tests/it/init_tools.rs",
+        "crates/speclink-core/src/config.rs"
+      ],
+      "recordedAt": "2026-09-07T12:56:36Z"
     }
   ]
 }

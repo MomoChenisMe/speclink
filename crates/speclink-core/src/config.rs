@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// A config file that EXISTS but cannot be parsed (YAML syntax error or type
 /// mismatch). Fail-closed: loading never falls back to defaults on this error —
@@ -156,8 +156,32 @@ impl ToolDescriptor {
                 "tool descriptor: name '{name}' conflicts with a built-in tool name (claude, codex)"
             ));
         }
-        let skills_dir = require_field(self.skills_dir.as_deref(), "skills_dir")?;
+        // skills_dir 在這個邊界一次正規化：削去結尾分隔符，讓生成、足跡記錄與過期
+        // 探測的路徑回報只看得到同一種形式，下游不必再各自處理字串。
+        let raw = require_field(self.skills_dir.as_deref(), "skills_dir")?;
+        let skills_dir = raw.trim_end_matches('/');
         check_project_relative(name, "skills_dir", skills_dir)?;
+        // 以下兩條守門比對正規化後的路徑，不是字串相等：`.claude/skills/.` 與
+        // `./.claude/skills` 指的是同一個目錄，只擋字面拼法等於沒擋。
+        let normalized = lexical_normalize(skills_dir);
+        // 正規化後為空＝專案根本身：生成物會散進專案根、清理會掃到根目錄，比原字串
+        // 更危險，故在這裡擋掉而非讓下游承受。
+        if normalized.as_os_str().is_empty() {
+            return Err(format!(
+                "tool descriptor '{name}': skills_dir '{raw}' resolves to the project root itself (give it a directory)"
+            ));
+        }
+        // 內建工具的 skills 目錄同樣被保留：兩個 target 指向同一個目錄時，探測會對同
+        // 一份 SKILL.md 比兩種期望內容而永遠回報過期，生成時後手的 for_codex 子集也
+        // 會把前手剛寫的 claude 專屬技能當成孤兒刪掉。名稱衝突已擋，目錄衝突同理。
+        for builtin in [crate::skills::Tool::Claude, crate::skills::Tool::Codex] {
+            if normalized == Path::new(builtin.skills_dir()) {
+                return Err(format!(
+                    "tool descriptor '{name}': skills_dir '{raw}' is the built-in {} skills directory (choose another directory)",
+                    builtin.name()
+                ));
+            }
+        }
         // instructions_file 已棄用（change: remove-marker-injection）：缺席合法，
         // 存在時仍驗證專案根相對與不逸出——剝除要照它去定位檔案。
         let instructions_file = match self.instructions_file.as_deref().map(str::trim) {
@@ -212,6 +236,24 @@ fn check_project_relative(name: &str, field: &str, raw: &str) -> Result<(), Stri
             "tool descriptor '{name}': {field} '{raw}' escapes the project root (must be a relative path inside the project)"
         ))
     }
+}
+
+/// Lexically resolve a project-relative path: `.` segments dropped, `..` popping the
+/// previous segment. No filesystem access — the same discipline as
+/// [`is_project_relative`], which has already rejected anything escaping the root, so a
+/// leading `..` cannot survive here. An empty result means the project root itself.
+fn lexical_normalize(raw: &str) -> PathBuf {
+    let mut out = PathBuf::new();
+    for comp in Path::new(raw).components() {
+        match comp {
+            std::path::Component::Normal(part) => out.push(part),
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            _ => {}
+        }
+    }
+    out
 }
 
 /// Lexical containment check shared by validation and prune (prune re-checks recorded
@@ -1408,6 +1450,58 @@ mod tests {
         // semantics, so the rejection can only be asserted where it actually applies.
         if cfg!(windows) {
             assert!(descriptor("wad-harness", "C:\\abs\\skills", "WAD.md").validate().is_err());
+        }
+    }
+
+    #[test]
+    fn descriptor_validation_normalizes_a_trailing_slash() {
+        // skills_dir 是使用者手寫的字串：結尾分隔符在邊界一次削掉，下游（生成、
+        // 足跡記錄、過期探測的路徑回報）就只看得到同一種形式。
+        let v = descriptor("wad-harness", ".wad/skills/", "WAD.md").validate().unwrap();
+        assert_eq!(v.skills_dir, ".wad/skills");
+        let v = descriptor("wad-harness", ".wad/skills///", "WAD.md").validate().unwrap();
+        assert_eq!(v.skills_dir, ".wad/skills", "連續分隔符一併削去");
+    }
+
+    #[test]
+    fn descriptor_validation_rejects_a_skills_dir_that_normalizes_to_nothing() {
+        // 只由分隔符構成的 skills_dir 削完就是專案根本身——生成物會散進專案根、
+        // 清理會掃到根目錄；在邊界擋掉，下游不必再驗一次。
+        for bad in ["/", "///", "./", ".", ".wad/.."] {
+            let err = descriptor("wad-harness", bad, "WAD.md").validate().unwrap_err();
+            assert!(err.contains("skills_dir"), "must name the field for {bad:?}: {err}");
+            assert!(!err.contains('\n'), "single line: {err:?}");
+        }
+    }
+
+    #[test]
+    fn descriptor_validation_accepts_a_directory_next_to_a_builtin_one() {
+        // Example 表的接受列：只有正規化後「等同」內建目錄才拒絕，相鄰的名字不受影響。
+        for ok in [".claude/skills-extra", ".claudex/skills", ".agents/skills2"] {
+            let v = descriptor("wad-harness", ok, "WAD.md").validate();
+            assert!(v.is_ok(), "{ok} 應被接受：{v:?}");
+        }
+    }
+
+    #[test]
+    fn descriptor_validation_rejects_a_builtin_skills_dir() {
+        // 描述子指到內建工具的 skills 目錄：兩個 target 會對同一份 SKILL.md 各比一次
+        // 期望內容（探測永遠回報過期），且生成時後手的 for_codex 子集會把前手剛寫的
+        // claude 專屬技能當成孤兒刪掉。名稱衝突已擋，目錄衝突同理。
+        // 等價拼法與字面拼法一樣被擋：比對走路徑正規化，不是字串相等。
+        for bad in [
+            ".claude/skills",
+            ".agents/skills",
+            ".claude/skills/",
+            ".claude//skills",
+            ".claude/skills/.",
+            "./.claude/skills",
+            ".claude/./skills",
+            ".wad/../.claude/skills",
+        ] {
+            let err = descriptor("wad-harness", bad, "WAD.md").validate().unwrap_err();
+            assert!(err.contains("skills_dir"), "must name the field for {bad:?}: {err}");
+            assert!(!err.contains('\n'), "single line: {err:?}");
         }
     }
 

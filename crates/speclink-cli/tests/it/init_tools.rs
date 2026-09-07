@@ -334,3 +334,30 @@ fn force_reinit_with_a_new_selection_prunes_the_old_tool_and_keeps_the_two_line_
     assert!(!env.exists(".claude"), "空掉的 .claude 目錄一併移除");
     assert!(env.exists(".agents/skills/speclink-propose/SKILL.md"), "選中工具補齊");
 }
+
+/// spec Scenario「削去後等同專案根的 skills_dir 被拒」與「與內建工具 skills 目錄相撞被拒」：
+/// 描述子的目錄在驗證邊界擋下，update 零寫入、既有技能檔不動。
+#[test]
+fn update_rejects_a_descriptor_skills_dir_at_the_root_or_a_builtin_directory() {
+    for (tag, bad, needle) in [
+        ("root", "/", "project root"),
+        ("builtin", ".claude/skills", "built-in"),
+    ] {
+        let env = TempEnv::new(&format!("descriptor-bad-dir-{tag}"));
+        assert!(env.run(&["init", "--tools", "claude"]).status.success());
+        std::fs::write(
+            env.dir.join(".speclink.yaml"),
+            format!("tools:\n  - claude\n  - name: wad-harness\n    skills_dir: {bad}\n"),
+        )
+        .unwrap();
+        let before = env.snapshot();
+
+        let out = env.run(&["update"]);
+
+        assert!(!out.status.success(), "{tag}: must exit non-zero");
+        let stderr = stderr_of(&out);
+        assert!(stderr.contains("skills_dir"), "{tag}: must name the field: {stderr}");
+        assert!(stderr.contains(needle), "{tag}: must give the reason: {stderr}");
+        assert_eq!(env.snapshot(), before, "{tag}: 拒絕＝零寫入");
+    }
+}

@@ -1,5 +1,58 @@
 ## MODIFIED Requirements
 
+### Requirement: tools 自訂描述子的接受與驗證
+<!-- BEFORE: skills_dir 只驗「專案根相對且正規化後不逸出」；結尾分隔符不處理，也不擋「削完等於專案根」與「等於內建工具 skills 目錄」 -->
+
+.speclink.yaml 的 tools 清單 SHALL 接受兩種元素形式：內建工具名字串（claude、codex），或自訂描述子物件（欄位：name 必填、skills_dir 必填、instructions_file 選填且不再驅動任何生成、invocation 選填且值域為 cli 或 tool-call、預設 cli）。描述子驗證規則：name SHALL 為 kebab-case（2 至 50 字）且 SHALL NOT 與內建工具名衝突；skills_dir 與（存在時）instructions_file SHALL 為專案根相對路徑，正規化後 SHALL NOT 逸出專案根——instructions_file 保留驗證僅為遺留 marker 剝除的定位所需。skills_dir SHALL 於驗證時削去結尾的 `/`，其後所有消費端（技能生成、足跡記錄與清理、過期探測的路徑回報）SHALL 一律使用削去後的形式。以下兩條拒絕 SHALL 比對詞法正規化後的路徑（丟棄 `.` 段、以 `..` 回退一段，零檔案系統存取），因此等價拼法與字面拼法同樣被拒：正規化後等同專案根本身的 skills_dir SHALL 被拒絕；正規化後等同任一內建工具 skills 目錄（`.claude/skills`、`.agents/skills`）的 skills_dir SHALL 被拒絕。描述子仍帶 instructions_file 欄位時，workspace 檢查 SHALL 輸出一行棄用提示（非錯誤、不影響 exit code）。驗證失敗時指令 SHALL 以非 0 exit code 結束並輸出單行語義化錯誤訊息（指明錯誤欄位與原因）。
+
+#### Scenario: 合法描述子生成對應工具檔
+
+- **WHEN** .speclink.yaml 的 tools 含描述子 name: wad-harness、skills_dir: .wad/skills，執行 speclink update
+- **THEN** 生成 .wad/skills/speclink-*/SKILL.md 技能檔，exit code 為 0，且不生成任何指令檔區塊
+
+#### Scenario: 名稱與內建工具衝突被拒
+
+- **WHEN** tools 含描述子 name: claude，執行 speclink update
+- **THEN** exit code 非 0，stderr 單行錯誤訊息指明 name 與內建工具名衝突
+
+#### Scenario: 路徑逸出專案根被拒
+
+- **WHEN** tools 含描述子 skills_dir: ../outside/skills，執行 speclink update
+- **THEN** exit code 非 0，stderr 單行錯誤訊息指明 skills_dir 逸出專案根
+
+#### Scenario: 殘留 instructions_file 欄位得棄用提示
+
+- **WHEN** tools 含描述子 name: wad-harness、skills_dir: .wad/skills、instructions_file: WAD.md，執行 speclink update
+- **THEN** exit code 為 0、技能檔照常生成，stderr 帶一行棄用提示指明 instructions_file 已不生效
+
+#### Scenario: 結尾分隔符於驗證時削去
+
+- **WHEN** tools 含描述子 skills_dir: .wad/skills/，執行 speclink update 後再執行技能檔過期探測
+- **THEN** 技能檔生成於 .wad/skills/，且探測回報的受管檔路徑以 `.wad/skills/speclink-` 起頭、不含連續斜線
+
+#### Scenario: 削去後等同專案根的 skills_dir 被拒
+
+- **WHEN** tools 含描述子 skills_dir 為 `/`、`./`、`.` 或 `.wad/..`（正規化後皆等同專案根），執行 speclink update
+- **THEN** exit code 非 0，stderr 單行錯誤訊息指明 skills_dir 等同專案根；專案根不得出現任何 speclink- 目錄
+
+#### Scenario: 與內建工具 skills 目錄相撞被拒
+
+- **WHEN** tools 含 claude 與描述子 skills_dir 為 `.claude/skills`，或其等價拼法 `./.claude/skills`、`.claude/skills/.`、`.claude//skills`、`.wad/../.claude/skills`，執行 speclink update
+- **THEN** exit code 非 0，stderr 單行錯誤訊息指明該目錄屬內建工具；.claude/skills 下既有技能檔逐字元不變
+
+##### Example: skills_dir 的驗證結果
+
+| skills_dir | 結果 |
+| --- | --- |
+| `.wad/skills` | 接受，原樣使用 |
+| `.wad/skills/` | 接受，削為 `.wad/skills` |
+| `../outside/skills` | 拒絕——逸出專案根 |
+| `/` | 拒絕——正規化後等同專案根 |
+| `.wad/..` | 拒絕——正規化後等同專案根（等價拼法） |
+| `.claude/skills` | 拒絕——內建 claude 的 skills 目錄 |
+| `./.claude/skills` | 拒絕——正規化後等同內建目錄（等價拼法） |
+| `.claude/skills-extra` | 接受——與內建目錄不同 |
+
 ### Requirement: update 清除孤兒技能目錄
 <!-- BEFORE: 只有 speclink update 清除孤兒目錄；init（含 --force）保留前一次生成的 speclink-* 目錄與下架工具的足跡 -->
 
