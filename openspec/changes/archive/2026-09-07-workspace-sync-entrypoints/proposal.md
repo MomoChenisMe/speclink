@@ -11,6 +11,8 @@
 - **探測涵蓋描述子**：`probe_assets` 對計畫中每個 target（內建與描述子）讀版號、判方向、聚合五態；`differingFiles` 含描述子 skills_dir 下的差異檔（路徑為描述子的 `skills_dir` 加 `speclink-<name>/SKILL.md`）。`tools[].tool` 對描述子回描述子的 `name`。無法通過驗證的描述子不在計畫內，探測結果不受其影響（與今天相同）。
 - **規格更新**：`workspace-tools` 兩條 requirement 改寫——「update 清除孤兒技能目錄」主詞放寬為所有再生入口（含 `speclink init --force` 與 desktop 的 init／adopt）；「技能檔過期探測」的判定面從內建工具放寬為 tools 清單內的內建工具與有效描述子。
 
+描述子驗證收緊是新增的拒絕面：既有 `.speclink.yaml` 若把描述子的 skills_dir 寫成 `/`、`./` 或內建工具的 skills 目錄，升級後 `speclink update` 會以單行錯誤拒絕並零寫入，改成一個專屬目錄即可。結尾斜線的寫法照常接受，只是統一削去。
+
 **相容性影響**：
 
 - `speclink init` 的 stdout／stderr、exit code 與 `.speclink.yaml`／`openspec/` 內容不變；差異只在檔案系統的技能目錄集合：`init --force` 之後只剩本次選集應有的 `speclink-*` 目錄。既有使用者若靠 `init --force` 保留另一個工具的技能檔，改用 `speclink update` 或 `--tools claude,codex` 同時選兩者。
@@ -34,11 +36,12 @@ Non-Goals 寫在 design.md 的 Goals / Non-Goals。
 
 ## Impact
 
-- Affected specs: workspace-tools（兩條 MODIFIED requirement；步驟 3 掃描的其他鄰接規格 skill-routing、workflow-config、desktop-config 不受影響）
+- Affected specs: workspace-tools（三條 MODIFIED requirement：update 清除孤兒技能目錄、技能檔過期探測、tools 自訂描述子的接受與驗證；步驟 3 掃描的其他鄰接規格 skill-routing、workflow-config、desktop-config 不受影響）
 - Affected code:
   - Modified:
     - `crates/speclink-core/src/init.rs`（init／init_remote 改走 apply、刪 write_skills 與 init 的剝除迴圈、probe_assets 與 SyncPlan::differing_files 涵蓋描述子、連帶移除孤兒化的 SyncTargetKind 與 SyncPlan.worktree_on、doc comment 更新、測試補齊）
-    - `crates/speclink-cli/tests/it/init_tools.rs`（補「先 init claude 再 --force --tools codex」的 stdout 兩行與足跡清理斷言）
+    - `crates/speclink-core/src/config.rs`（`ToolDescriptor::validate` 於邊界削去 skills_dir 結尾斜線，並拒絕正規化後等同專案根或等同內建工具 skills 目錄者；比對走路徑正規化，等價拼法一併擋下）
+    - `crates/speclink-cli/tests/it/init_tools.rs`（補「先 init claude 再 --force --tools codex」的 stdout 兩行與足跡清理斷言，以及兩條描述子目錄拒絕的零寫入斷言）
     - `openspec/specs/workspace-tools/spec.md`（經 delta 於封存時合併）
   - New: 無
   - Removed: 無

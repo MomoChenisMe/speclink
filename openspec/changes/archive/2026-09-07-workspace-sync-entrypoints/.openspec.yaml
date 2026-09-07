@@ -1,0 +1,31 @@
+schema: spec-driven
+created: 2026-09-07
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: improve-workspace-sync
+started_at: 2026-09-07
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-07
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 9
+reviewed_scope:
+  - path: crates/speclink-cli/tests/it/init_tools.rs
+    hash: 6164ea48fdd8ea18de6e226a6ee806bb26a88ce63dc802fbe632100c5b4e153d
+  - path: crates/speclink-core/src/config.rs
+    hash: 0beceaf42918ee4452f0b9a055f3737a210b84fbddeb42de7d48631ba117aa68
+  - path: crates/speclink-core/src/init.rs
+    hash: 5a74703e1245d934d4457cc14b378eb5c660263afcd80815493f5ce93808ed32
+verified_at: 2026-09-07
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 9
+verified_scope:
+  - path: crates/speclink-cli/tests/it/init_tools.rs
+    hash: 6164ea48fdd8ea18de6e226a6ee806bb26a88ce63dc802fbe632100c5b4e153d
+  - path: crates/speclink-core/src/config.rs
+    hash: 0beceaf42918ee4452f0b9a055f3737a210b84fbddeb42de7d48631ba117aa68
+  - path: crates/speclink-core/src/init.rs
+    hash: 5a74703e1245d934d4457cc14b378eb5c660263afcd80815493f5ce93808ed32
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-07
