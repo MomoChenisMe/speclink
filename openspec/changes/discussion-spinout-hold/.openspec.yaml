@@ -5,3 +5,101 @@ created_with: claude
 from_discussion: discussion-planned-spinout-hold
 started_at: 2026-09-07
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-07
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 13
+reviewed_scope:
+  - path: crates/speclink-cli/src/verbs/discuss.rs
+    hash: 052337bc8240f0919dadbba6a12a0aa592926073f548a0ae4a6322fa2ab8d6b1
+  - path: crates/speclink-cli/tests/it/discuss_conclude_auto_archive.rs
+    hash: d9a97fac7a5b704f0ab270e7bd90f7f52b9751784c3c46a983be6e65219e4dff
+  - path: crates/speclink-cli/tests/it/remote_verb_parity.rs
+    hash: e972d1f475e9bb63299db456d0a73a931f92709d3a3a788fd2650506f254c304
+  - path: crates/speclink-cli/tests/it/remote_write_path.rs
+    hash: 3f8aaf14e856f3b7f978477786d26f9e6f69fcec7451d8de27fc48e78ec269c5
+  - path: crates/speclink-core/assets/skills/discuss.md
+    hash: e0973d361431820da7736819aabb05f62694f3e935b357f6557b1999290cbf0f
+  - path: crates/speclink-core/assets/skills/improve.md
+    hash: c0f429d446760ba47843cde25850c68047efd5b09d6b23fd7212ba8dde5cb55a
+  - path: crates/speclink-core/src/archive.rs
+    hash: d5e8fd5124f766ce69f5f8e3b861b5a507e41b1943dd77d9615d564b65c1f7e6
+  - path: crates/speclink-core/src/command/mod.rs
+    hash: aeae1db21b60cf7d44f0a7c75321e9b07113cee41d8b44aeffd64911b3c037df
+  - path: crates/speclink-core/src/discuss.rs
+    hash: 71fc2f7625354a180f42c2f0fb9d1510680a08f4193b96c9d182766132c23cda
+  - path: crates/speclink-core/src/init.rs
+    hash: 7f7c0707820a4fd824bbd719f886a67f52766f932d691b866733ac54d55452c1
+  - path: crates/speclink-core/tests/golden/assets.lock
+    hash: 484356bcff002b133f772fd96c308d6eea7c10ab915db64a1c16b9471ae4a3ae
+  - path: crates/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: dcf307ab02cfcc95a483f4bb9f578726d5fff63271da8c50040a802a9dd99ec9
+  - path: crates/speclink-core/tests/golden/claude.snapshot.md
+    hash: 6d56ac86a888e74fd6a81dcc518d6163b62858e06df327582e4932cf6c50cfc8
+  - path: crates/speclink-core/tests/golden/codex.snapshot.md
+    hash: 403ae408b977fabd94fd143bb8bcb7a128b2fe68ff6f913a04aba1a17660f014
+  - path: crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: b9c2311d206ca2a497267422ec9e072fbb747e1a0e598cff2ee4d4722f82e439
+  - path: crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: 2f9295f8188c2a050f10fdb9b7be028c84c74c8083fbaa13a8cbd53e3cd92f22
+  - path: crates/speclink-protocol/src/command.rs
+    hash: 595f6bfb43d12c0edb26c25f236b6bef71c36637158940689a1196f419f2e382
+  - path: crates/speclink-remote/src/client.rs
+    hash: 30fd6b6cef6055b630e12e81c5c142a966103e9941c51482dce831624fbf2f30
+  - path: crates/speclink-remote/tests/it/typed_client.rs
+    hash: 4cb135c8b50369345110fee962315191842a511be214e094f68225fe3308ca7d
+  - path: crates/speclink-server/src/routes.rs
+    hash: 17fe540babe49957e58a4aaded35d8cc759b8ff9cb4b16792ab3c77c68a146a0
+  - path: crates/speclink-server/tests/it/command_routes.rs
+    hash: fe442fd3fb7cdaf48328224684cdecce73156ba23595bbb3e9fa39c5825d7022
+  - path: crates/speclink-server/tests/it/verb_api.rs
+    hash: 41b617533d7cef008ecf9ba78d7a266e31b66baeabfef87257a2bd4f772cb0a3
+verified_at: 2026-09-07
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 13
+verified_scope:
+  - path: crates/speclink-cli/src/verbs/discuss.rs
+    hash: 052337bc8240f0919dadbba6a12a0aa592926073f548a0ae4a6322fa2ab8d6b1
+  - path: crates/speclink-cli/tests/it/discuss_conclude_auto_archive.rs
+    hash: d9a97fac7a5b704f0ab270e7bd90f7f52b9751784c3c46a983be6e65219e4dff
+  - path: crates/speclink-cli/tests/it/remote_verb_parity.rs
+    hash: e972d1f475e9bb63299db456d0a73a931f92709d3a3a788fd2650506f254c304
+  - path: crates/speclink-cli/tests/it/remote_write_path.rs
+    hash: 3f8aaf14e856f3b7f978477786d26f9e6f69fcec7451d8de27fc48e78ec269c5
+  - path: crates/speclink-core/assets/skills/discuss.md
+    hash: e0973d361431820da7736819aabb05f62694f3e935b357f6557b1999290cbf0f
+  - path: crates/speclink-core/assets/skills/improve.md
+    hash: c0f429d446760ba47843cde25850c68047efd5b09d6b23fd7212ba8dde5cb55a
+  - path: crates/speclink-core/src/archive.rs
+    hash: d5e8fd5124f766ce69f5f8e3b861b5a507e41b1943dd77d9615d564b65c1f7e6
+  - path: crates/speclink-core/src/command/mod.rs
+    hash: aeae1db21b60cf7d44f0a7c75321e9b07113cee41d8b44aeffd64911b3c037df
+  - path: crates/speclink-core/src/discuss.rs
+    hash: 71fc2f7625354a180f42c2f0fb9d1510680a08f4193b96c9d182766132c23cda
+  - path: crates/speclink-core/src/init.rs
+    hash: 7f7c0707820a4fd824bbd719f886a67f52766f932d691b866733ac54d55452c1
+  - path: crates/speclink-core/tests/golden/assets.lock
+    hash: 484356bcff002b133f772fd96c308d6eea7c10ab915db64a1c16b9471ae4a3ae
+  - path: crates/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: dcf307ab02cfcc95a483f4bb9f578726d5fff63271da8c50040a802a9dd99ec9
+  - path: crates/speclink-core/tests/golden/claude.snapshot.md
+    hash: 6d56ac86a888e74fd6a81dcc518d6163b62858e06df327582e4932cf6c50cfc8
+  - path: crates/speclink-core/tests/golden/codex.snapshot.md
+    hash: 403ae408b977fabd94fd143bb8bcb7a128b2fe68ff6f913a04aba1a17660f014
+  - path: crates/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: b9c2311d206ca2a497267422ec9e072fbb747e1a0e598cff2ee4d4722f82e439
+  - path: crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: 2f9295f8188c2a050f10fdb9b7be028c84c74c8083fbaa13a8cbd53e3cd92f22
+  - path: crates/speclink-protocol/src/command.rs
+    hash: 595f6bfb43d12c0edb26c25f236b6bef71c36637158940689a1196f419f2e382
+  - path: crates/speclink-remote/src/client.rs
+    hash: 30fd6b6cef6055b630e12e81c5c142a966103e9941c51482dce831624fbf2f30
+  - path: crates/speclink-remote/tests/it/typed_client.rs
+    hash: 4cb135c8b50369345110fee962315191842a511be214e094f68225fe3308ca7d
+  - path: crates/speclink-server/src/routes.rs
+    hash: 17fe540babe49957e58a4aaded35d8cc759b8ff9cb4b16792ab3c77c68a146a0
+  - path: crates/speclink-server/tests/it/command_routes.rs
+    hash: fe442fd3fb7cdaf48328224684cdecce73156ba23595bbb3e9fa39c5825d7022
+  - path: crates/speclink-server/tests/it/verb_api.rs
+    hash: 41b617533d7cef008ecf9ba78d7a266e31b66baeabfef87257a2bd4f772cb0a3

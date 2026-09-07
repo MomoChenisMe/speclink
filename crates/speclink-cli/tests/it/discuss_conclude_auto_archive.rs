@@ -159,6 +159,7 @@ fn ordinary_conclude_output_stays_byte_identical() {
     ok(&out2);
     let v: serde_json::Value = serde_json::from_str(&stdout_of(&out2)).expect("valid json");
     assert!(v.get("autoArchived").is_none(), "no new key on the ordinary path: {v}");
+    assert!(v.get("held").is_none(), "no held key without --hold: {v}");
     assert_eq!(v["status"], "concluded");
 }
 
@@ -249,6 +250,25 @@ fn staged_spin_out_lifecycle_holds_then_releases_the_record() {
     ok(&out);
     assert!(!p.live_exists("alpha"), "旗標已清，記錄隨最後一刀封存");
     assert!(p.archived_exists("alpha"));
+}
+
+#[test]
+fn conclude_with_hold_refuses_a_record_without_frontmatter() {
+    // 規格「無 frontmatter 的記錄拒絕 --hold」：帶 --hold 非零收場、記錄不變；
+    // 不帶 --hold 沿 pre-scaffold 既有路徑照常結論。
+    let bare = "# Discussion: bare\n\n## Rounds\n";
+    let p = TempProject::with_discussion("bare", "bare", bare);
+    let path = p.dir.join("openspec").join("discussions").join("bare.md");
+
+    let out = p.run_stdin(&["discuss", "conclude", "bare", "--stdin", "--hold"], "**Decision**: x\n");
+    assert!(!out.status.success(), "帶 --hold 必須拒絕");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("no frontmatter"), "stderr 說明原因: {err}");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), bare, "記錄逐位元不變");
+
+    let out = p.run_stdin(&["discuss", "conclude", "bare", "--stdin"], "**Decision**: x\n");
+    ok(&out);
+    assert!(std::fs::read_to_string(&path).unwrap().contains("## Conclusion"));
 }
 
 #[test]

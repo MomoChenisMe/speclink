@@ -658,6 +658,52 @@ fn remote_discuss_conclude_matches_fs_output_byte_for_byte() {
 }
 
 #[test]
+fn remote_discuss_conclude_hold_matches_fs_output_byte_for_byte() {
+    // --hold 新增的保留行同時落在 fs 與 remote：remote 端由回應的 held 驅動同一
+    // render 函式，人眼與 --json 都要與 fs 逐位元一致。
+    let fs = conclude_fs_project("conclude-hold-fs");
+    let args = ["discuss", "conclude", "auth-scope", "--stdin", "--hold"];
+    let fs_human = fs.run_stdin(&args, CONCLUSION);
+    assert!(fs_human.status.success(), "fs stderr: {}", stderr_of(&fs_human));
+    assert!(
+        stdout_of(&fs_human).contains("Held live"),
+        "the fs baseline announces the hold: {}",
+        stdout_of(&fs_human)
+    );
+
+    let mock = mock_server(vec![(
+        "POST",
+        "/discussions/auth-scope/conclude",
+        200,
+        r#"{"restaleFlagged":["add-auth"],"held":true}"#.to_string(),
+    )]);
+    let p = TempProject::remote("conclude-hold-remote", &mock.base, "backend");
+    let remote_human = p.run_stdin(&args, CONCLUSION);
+    assert!(remote_human.status.success(), "remote stderr: {}", stderr_of(&remote_human));
+    assert_eq!(
+        stdout_of(&remote_human),
+        stdout_of(&fs_human),
+        "human output is byte-identical to fs mode, hold line included"
+    );
+
+    let json_args = ["discuss", "conclude", "auth-scope", "--stdin", "--hold", "--json"];
+    let fs_json = fs.run_stdin(&json_args, CONCLUSION);
+    let mock2 = mock_server(vec![(
+        "POST",
+        "/discussions/auth-scope/conclude",
+        200,
+        r#"{"restaleFlagged":["add-auth"],"held":true}"#.to_string(),
+    )]);
+    let p2 = TempProject::remote("conclude-hold-remote-json", &mock2.base, "backend");
+    let remote_json = p2.run_stdin(&json_args, CONCLUSION);
+    assert_eq!(
+        stdout_of(&remote_json),
+        stdout_of(&fs_json),
+        "--json output is byte-identical to fs mode, held key included"
+    );
+}
+
+#[test]
 fn remote_discuss_new_json_prints_the_wire_response_verbatim() {
     // remote 的 --json 契約是 wire 回應原樣（slug／topic／path 三欄）——組 core
     // 型別會捏造 server 沒說的欄位（status、rounds、空 created），形狀凍結不允許。
