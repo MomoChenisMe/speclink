@@ -2,7 +2,7 @@
 topic: 工作區產物同步層（init／update／probe）的結構改善——受管技能集合與工具選集在多處重複計算
 slug: improve-workspace-sync
 status: promoted
-promoted_to: workspace-sync-plan
+promoted_to: workspace-sync-plan, workspace-sync-entrypoints
 created: 2026-09-07
 created_by: MomoChen <momochenisme@gmail.com>
 kind: improve
