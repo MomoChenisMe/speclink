@@ -66,13 +66,13 @@ pub(crate) fn cmd_link(a: LinkArgs) -> Result<()> {
                 ensure_repo_registered(&whoami, repo)?;
                 println!("{} Repo '{repo}' is registered in this project", color::green("✓"));
             }
-            core::init::write_remote_section(&root, &a.url, a.repo.as_deref())?;
+            core::config::write_remote_section(&root, &a.url, a.repo.as_deref())?;
             println!("{} Linked to {}", color::green("✓"), a.url);
             git_reference_warning(&root, a.repo.as_deref(), &whoami);
             Ok(())
         }
         None => {
-            core::init::write_remote_section(&root, &a.url, a.repo.as_deref())?;
+            core::config::write_remote_section(&root, &a.url, a.repo.as_deref())?;
             println!("{} Linked to {}", color::green("✓"), a.url);
             println!("  No credentials yet — run `speclink auth login` to connect");
             Ok(())
@@ -83,7 +83,7 @@ pub(crate) fn cmd_unlink() -> Result<()> {
     let root = core::workspace::Workspace::discover_cwd()?
         .map(|ws| ws.root)
         .unwrap_or(std::env::current_dir()?);
-    if !core::init::remove_remote_section(&root)? {
+    if !core::config::remove_remote_section(&root)? {
         bail!("No remote connection to remove (no `remote:` section in .speclink.yaml)");
     }
     println!(

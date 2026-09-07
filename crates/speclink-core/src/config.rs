@@ -885,6 +885,48 @@ pub fn update_app_config_tools_text(
     Ok(serde_yaml::to_string(&doc)?)
 }
 
+/// Write or replace the `remote:` section of `.speclink.yaml` via
+/// read–modify–write: other fields keep their values (comments do not survive
+/// re-serialization — a documented limitation). A missing file is created.
+pub fn write_remote_section(
+    root: &Path,
+    url: &str,
+    repo: Option<&str>,
+) -> anyhow::Result<()> {
+    let path = root.join(".speclink.yaml");
+    let mut doc = read_app_yaml_doc(&path)?;
+    let mut section = serde_yaml::Mapping::new();
+    section.insert("url".into(), url.into());
+    if let Some(r) = repo {
+        section.insert("repo".into(), r.into());
+    }
+    doc.insert("remote".into(), serde_yaml::Value::Mapping(section));
+    crate::util::write_file(&path, &serde_yaml::to_string(&doc)?)?;
+    Ok(())
+}
+
+/// Remove the `remote:` section of `.speclink.yaml`, keeping every other
+/// field. `Ok(true)` when a section was removed; `Ok(false)` when there was
+/// nothing to remove (missing file included).
+pub fn remove_remote_section(root: &Path) -> anyhow::Result<bool> {
+    let path = root.join(".speclink.yaml");
+    if !path.is_file() {
+        return Ok(false);
+    }
+    let mut doc = read_app_yaml_doc(&path)?;
+    if doc.remove("remote").is_none() {
+        return Ok(false);
+    }
+    crate::util::write_file(&path, &serde_yaml::to_string(&doc)?)?;
+    Ok(true)
+}
+
+/// `.speclink.yaml` as a raw mapping for read–modify–write: a missing file is an
+/// empty mapping, a malformed one a loud error (rewriting it would destroy user content).
+fn read_app_yaml_doc(path: &Path) -> anyhow::Result<serde_yaml::Mapping> {
+    parse_yaml_mapping(&crate::util::read_opt(path).unwrap_or_default(), ".speclink.yaml")
+}
+
 /// Parse a config document as a raw top-level mapping for read–modify–write.
 /// Empty or null input (absent file) yields an empty mapping; parse failures and
 /// non-mapping documents are single-line errors naming the file.
@@ -1193,6 +1235,10 @@ mod tests {
             let path = self.dir.join(".speclink.yaml");
             std::fs::write(&path, content).unwrap();
             path
+        }
+
+        fn read_app_yaml(&self) -> String {
+            std::fs::read_to_string(self.dir.join(".speclink.yaml")).unwrap()
         }
     }
 
@@ -2120,5 +2166,107 @@ mod tests {
         let a = app(&out);
         assert_eq!(a.tools.len(), 1);
         assert!(matches!(&a.tools[0], ToolEntry::Descriptor(_)));
+    }
+
+    fn mapping(text: &str) -> serde_yaml::Mapping {
+        match serde_yaml::from_str::<serde_yaml::Value>(text).expect("parses") {
+            serde_yaml::Value::Mapping(m) => m,
+            other => panic!("expected a mapping, got {other:?}"),
+        }
+    }
+
+    /// 鎖定基準：`.speclink.yaml` 不存在時 `write_remote_section` 建檔，且只寫入
+    /// remote 鍵。
+    #[test]
+    fn write_remote_section_creates_the_file_with_only_the_remote_key() {
+        let root = TempCfgDir::new("write-creates");
+        write_remote_section(&root.dir, "https://example.test/store", Some("acme/specs"))
+            .expect("writes");
+        let doc = mapping(&root.read_app_yaml());
+        assert_eq!(doc.len(), 1, "a fresh file carries only the remote section: {doc:?}");
+        let remote = doc.get("remote").expect("remote section").clone();
+        assert_eq!(
+            remote,
+            serde_yaml::from_str::<serde_yaml::Value>(
+                "url: https://example.test/store\nrepo: acme/specs\n"
+            )
+            .unwrap()
+        );
+    }
+
+    /// 鎖定基準：寫入與移除 remote section 都不動其他頂層鍵——`spec_dir`、描述子
+    /// 物件（含其欄位）與未知鍵的值逐一保留。
+    #[test]
+    fn the_remote_section_verbs_keep_every_other_top_level_key() {
+        let root = TempCfgDir::new("keeps-keys");
+        let original = "spec_dir: docs/spec\n\
+tools:\n\
+  - claude\n\
+  - name: my-harness\n\
+    skills_dir: .my-harness/skills\n\
+    invocation: tool-call\n\
+future_key:\n\
+  nested: value\n";
+        root.app_yaml(original);
+        let before = mapping(original);
+
+        write_remote_section(&root.dir, "https://example.test/store", None).expect("writes");
+        let after_write = mapping(&root.read_app_yaml());
+        for key in ["spec_dir", "tools", "future_key"] {
+            assert_eq!(
+                after_write.get(key),
+                before.get(key),
+                "write_remote_section must keep '{key}' untouched"
+            );
+        }
+        assert_eq!(
+            after_write.get("remote"),
+            Some(&serde_yaml::from_str::<serde_yaml::Value>("url: https://example.test/store\n").unwrap()),
+            "a None repo writes url only"
+        );
+
+        assert!(remove_remote_section(&root.dir).expect("removes"), "the section was there");
+        let after_remove = mapping(&root.read_app_yaml());
+        assert!(after_remove.get("remote").is_none(), "the section is gone");
+        for key in ["spec_dir", "tools", "future_key"] {
+            assert_eq!(
+                after_remove.get(key),
+                before.get(key),
+                "remove_remote_section must keep '{key}' untouched"
+            );
+        }
+    }
+
+    /// 鎖定基準：非 mapping 的 `.speclink.yaml` 讓兩支動詞以 `invalid .speclink.yaml`
+    /// 開頭的單行錯誤失敗，且不覆寫使用者的檔案。
+    #[test]
+    fn the_remote_section_verbs_refuse_a_non_mapping_document_without_writing() {
+        let root = TempCfgDir::new("non-mapping");
+        let original = "- claude\n- codex\n";
+        root.app_yaml(original);
+
+        for message in [
+            write_remote_section(&root.dir, "https://example.test/store", None)
+                .expect_err("refuses")
+                .to_string(),
+            remove_remote_section(&root.dir).expect_err("refuses").to_string(),
+        ] {
+            assert!(
+                message.starts_with("invalid .speclink.yaml"),
+                "single-line error naming the file: {message}"
+            );
+            assert!(!message.contains('\n'), "the error stays one line: {message}");
+        }
+        assert_eq!(root.read_app_yaml(), original, "a refused verb writes nothing");
+    }
+
+    /// 鎖定基準：沒有 remote 鍵時 `remove_remote_section` 回 `Ok(false)`，檔案位元級不變。
+    #[test]
+    fn remove_remote_section_is_a_no_op_without_a_remote_key() {
+        let root = TempCfgDir::new("remove-noop");
+        let original = "spec_dir: openspec\ntools:\n  - claude\n";
+        root.app_yaml(original);
+        assert!(!remove_remote_section(&root.dir).expect("no-op"), "nothing to remove");
+        assert_eq!(root.read_app_yaml(), original, "the file is byte-identical");
     }
 }

@@ -199,31 +199,20 @@ fn validate_checkout(
 }
 
 /// 決定 picker 的預選：`.speclink.yaml` 記錄了 built-in 選集就用它（僅 claude／codex，
-/// 去重、順序穩定）；缺清單時只依實際 Claude／Codex footprint 預選，絕不補 Claude fallback。
+/// 去重、順序穩定）；缺清單、或清單裡沒有任何可解析的內建名（只有描述子／未知名）時，
+/// 只依實際 Claude／Codex footprint 預選，絕不補 Claude fallback。
 fn preselected_tools(root: &Path) -> Vec<String> {
-    use speclink_core::config::ToolEntry;
-    use speclink_core::skills::Tool;
     let app = match speclink_core::config::AppConfig::load(&root.join(".speclink.yaml")) {
         Ok(app) => app,
         Err(_) => return Vec::new(),
     };
-    let mut picked: Vec<Tool> = Vec::new();
-    for entry in &app.tools {
-        if let ToolEntry::Builtin(name) = entry {
-            if let Some(t) = Tool::parse(name) {
-                if !picked.contains(&t) {
-                    picked.push(t);
-                }
-            }
-        }
-    }
-    if picked.is_empty() {
-        for tool in speclink_core::init::detect_footprint_tools(root) {
-            if !picked.contains(&tool) {
-                picked.push(tool);
-            }
-        }
-    }
+    // 工具選集的解析只有 core 一份（ToolSelection）：這裡不再自寫 tools 迴圈。
+    let selection = speclink_core::init::ToolSelection::resolve(root, &app);
+    let picked = if selection.legacy_fallback || selection.builtins.is_empty() {
+        speclink_core::init::detect_footprint_tools(root)
+    } else {
+        selection.builtins
+    };
     picked.iter().map(|t| t.name().to_string()).collect()
 }
 
@@ -269,7 +258,7 @@ pub fn bind_checkout(
     {
         let normalized = normalize_origin(selected_origin)?;
         let project_url = format!("{normalized}/api/speclink/v1/projects/{selected_project}");
-        speclink_core::init::write_remote_section(root, &project_url, Some(selected_repo))
+        speclink_core::config::write_remote_section(root, &project_url, Some(selected_repo))
             .map_err(|e| format!("無法寫入 remote marker：{e}"))?;
     }
 
@@ -672,6 +661,19 @@ mod checkout_tests {
         write(codex.path(), "AGENTS.md", "使用者文字\n");
         assert_eq!(
             inspect(codex.path()).expect("codex footprint").tools,
+            vec!["codex".to_string()]
+        );
+    }
+
+    #[test]
+    fn inspect_with_a_descriptor_only_tools_list_falls_back_to_footprints() {
+        // 清單存在但沒有任何可解析的內建名：與缺清單同樣只依實際 footprint 預選。
+        let dir = git_checkout();
+        write_full_marker(dir.path(), &[]);
+        write(dir.path(), "AGENTS.md", "使用者文字\n");
+
+        assert_eq!(
+            inspect(dir.path()).expect("descriptor-only list").tools,
             vec!["codex".to_string()]
         );
     }

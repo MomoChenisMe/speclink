@@ -1,0 +1,43 @@
+schema: spec-driven
+created: 2026-09-07
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: improve-workspace-sync
+started_at: 2026-09-07
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-07
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 14
+reviewed_scope:
+  - path: apps/desktop/src-tauri/src/connections.rs
+    hash: f38bd05bf81ff39ee8f2207f7d9b3f14ba3855eee0409ec90f2ae9ad0fbee66a
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 3894b8566434b1d7b241a5f4f9c0ee801a791cd0f7ad5bafd5b152b48d5ba2b2
+  - path: crates/speclink-cli/src/verbs/connection.rs
+    hash: effe1a5476bc3bc4911fec938c0c5e7107c81a1b8ed614dc120e5e529fb2b8ca
+  - path: crates/speclink-core/src/config.rs
+    hash: a8482659d39c92ff01bfa2ac77124c01d2e581115608d17f5d4f643d06f51191
+  - path: crates/speclink-core/src/init.rs
+    hash: eb8790267bc2949d8680cb43a151cb869fb34df7e2c73d2518086a3bb7b77621
+  - path: crates/speclink-core/src/skills.rs
+    hash: fa92c7a821a26d021f514b16e5f5521b19270dba61a8e0f7df6b2b9bf6fcdf14
+verified_at: 2026-09-07
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 14
+verified_scope:
+  - path: apps/desktop/src-tauri/src/connections.rs
+    hash: f38bd05bf81ff39ee8f2207f7d9b3f14ba3855eee0409ec90f2ae9ad0fbee66a
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 3894b8566434b1d7b241a5f4f9c0ee801a791cd0f7ad5bafd5b152b48d5ba2b2
+  - path: crates/speclink-cli/src/verbs/connection.rs
+    hash: effe1a5476bc3bc4911fec938c0c5e7107c81a1b8ed614dc120e5e529fb2b8ca
+  - path: crates/speclink-core/src/config.rs
+    hash: a8482659d39c92ff01bfa2ac77124c01d2e581115608d17f5d4f643d06f51191
+  - path: crates/speclink-core/src/init.rs
+    hash: eb8790267bc2949d8680cb43a151cb869fb34df7e2c73d2518086a3bb7b77621
+  - path: crates/speclink-core/src/skills.rs
+    hash: fa92c7a821a26d021f514b16e5f5521b19270dba61a8e0f7df6b2b9bf6fcdf14
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-07

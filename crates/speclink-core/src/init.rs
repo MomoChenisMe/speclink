@@ -65,28 +65,37 @@ pub struct InitOutcome {
     pub spec_dir_abs: PathBuf,
 }
 
-/// Initialize speclink in `root` — store init (spec-document tree) followed by
-/// workspace init (host-side files). Externally one command; the split is the seam a
-/// remote storage backend plugs into (workspace init always runs locally, store init
-/// only for filesystem-backed storage).
+/// Initialize speclink in `root`: the spec-document tree (`openspec/` skeleton and
+/// workflow-config template), then the host-side files — `.speclink.yaml`, the
+/// `.gitignore` entry and the selected tools' skills. Instruction files (`CLAUDE.md`,
+/// `AGENTS.md`) are NOT part of the managed set (change: remove-marker-injection);
+/// routing lives in the skills themselves.
 pub fn init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<InitOutcome> {
     let spec_root = root.join(spec_dir);
     if !force && (spec_root.exists() || root.join(".speclink.yaml").is_file()) {
         bail!("Already initialized. Use --force to reinitialize.");
     }
-    refuse_downgrade(&skill_targets(root, tools))?;
+    // 守門在任何寫入之前：檢查面就是這次要寫的 skills 目錄。
+    SyncPlan::resolve(root, ToolSelection::builtins_only(tools), spec_dir).guard()?;
 
     store_init(&spec_root, force)?;
-    workspace_init(root, tools, force, spec_dir)?;
+    write_if(&root.join(".speclink.yaml"), &app_config_text(tools, spec_dir), force)?;
+    ensure_gitignore(&root.join(".gitignore"))?;
+    // 遺留剝除（design D2）：re-init 蓋過舊工作區時才有東西可剝，新專案是 no-op。
+    for tool in tools {
+        strip_legacy_marker(&root.join(instructions_path(*tool)))?;
+    }
+    // 政策以 store_init 之後的 config.yaml 為準——`--force` 會把它寫回範本。
+    SyncPlan::resolve(root, ToolSelection::builtins_only(tools), spec_dir).write_skills(force)?;
 
     Ok(InitOutcome {
         spec_dir_abs: spec_root,
     })
 }
 
-/// Remote-store initialization: workspace init plus the `remote:` section in
-/// `.speclink.yaml` — deliberately NO store init (the spec-document tree lives
-/// on the server, so no `openspec/` skeleton and no local workflow-config
+/// Remote-store initialization: the same host-side files as [`init`] plus the
+/// `remote:` section in `.speclink.yaml` — deliberately NO spec-document tree (it
+/// lives on the server, so no `openspec/` skeleton and no local workflow-config
 /// template).
 pub fn init_remote(
     root: &Path,
@@ -98,57 +107,32 @@ pub fn init_remote(
     if !force && root.join(".speclink.yaml").is_file() {
         bail!("Already initialized. Use --force to reinitialize.");
     }
-    refuse_downgrade(&skill_targets(root, tools))?;
-    workspace_init(root, tools, force, "openspec")?;
-    write_remote_section(root, url, repo)
+    let plan = SyncPlan::resolve(root, ToolSelection::builtins_only(tools), "openspec");
+    plan.guard()?;
+
+    write_if(&root.join(".speclink.yaml"), &app_config_text(tools, "openspec"), force)?;
+    ensure_gitignore(&root.join(".gitignore"))?;
+    for tool in tools {
+        strip_legacy_marker(&root.join(instructions_path(*tool)))?;
+    }
+    plan.write_skills(force)?;
+    crate::config::write_remote_section(root, url, repo)
 }
 
-/// Write or replace the `remote:` section of `.speclink.yaml` via
-/// read–modify–write: other fields keep their values (comments do not survive
-/// re-serialization — a documented limitation). A missing file is created.
-pub fn write_remote_section(root: &Path, url: &str, repo: Option<&str>) -> Result<()> {
-    let path = root.join(".speclink.yaml");
-    let mut doc = load_app_yaml_doc(&path)?;
-    let mut section = serde_yaml::Mapping::new();
-    section.insert("url".into(), url.into());
-    if let Some(r) = repo {
-        section.insert("repo".into(), r.into());
-    }
-    doc.insert("remote".into(), serde_yaml::Value::Mapping(section));
-    util::write_file(&path, &serde_yaml::to_string(&doc)?)?;
-    Ok(())
-}
-
-/// Remove the `remote:` section of `.speclink.yaml`, keeping every other
-/// field. `Ok(true)` when a section was removed; `Ok(false)` when there was
-/// nothing to remove (missing file included).
-pub fn remove_remote_section(root: &Path) -> Result<bool> {
-    let path = root.join(".speclink.yaml");
-    if !path.is_file() {
-        return Ok(false);
-    }
-    let mut doc = load_app_yaml_doc(&path)?;
-    if doc.remove("remote").is_none() {
-        return Ok(false);
-    }
-    util::write_file(&path, &serde_yaml::to_string(&doc)?)?;
-    Ok(true)
-}
-
-/// Load `.speclink.yaml` as a raw mapping for read–modify–write. Unlike
-/// `AppConfig::load` (read-only, defaults on error), a malformed file here is
-/// a loud error — rewriting it would silently destroy the user's content.
-fn load_app_yaml_doc(path: &Path) -> Result<serde_yaml::Mapping> {
-    let Some(text) = util::read_opt(path) else {
-        return Ok(serde_yaml::Mapping::new());
+/// The initial `.speclink.yaml`: the template plus the actual tool selection (so `update`
+/// can sync against the recorded list later). A non-default spec_dir is persisted as an
+/// active `spec_dir` line so later commands find it.
+fn app_config_text(tools: &[Tool], spec_dir: &str) -> String {
+    let mut content = if tools.is_empty() {
+        APP_CONFIG_TEMPLATE.to_string()
+    } else {
+        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
+        format!("{APP_CONFIG_TEMPLATE}tools: [{}]\n", names.join(", "))
     };
-    let value: serde_yaml::Value =
-        serde_yaml::from_str(&text).map_err(|e| anyhow::anyhow!("invalid .speclink.yaml: {e}"))?;
-    match value {
-        serde_yaml::Value::Mapping(m) => Ok(m),
-        serde_yaml::Value::Null => Ok(serde_yaml::Mapping::new()),
-        _ => bail!("invalid .speclink.yaml: expected a mapping at the top level"),
+    if spec_dir != "openspec" {
+        content = content.replace("# spec_dir: docs/specs", &format!("spec_dir: {spec_dir}"));
     }
+    content
 }
 
 /// Store init: the spec-document tree (`openspec/` skeleton) and the workflow-config
@@ -157,40 +141,6 @@ fn store_init(spec_root: &Path, force: bool) -> Result<()> {
     std::fs::create_dir_all(spec_root.join("specs"))?;
     std::fs::create_dir_all(spec_root.join("changes").join("archive"))?;
     write_if(&spec_root.join("config.yaml"), WORKFLOW_CONFIG_TEMPLATE, force)
-}
-
-/// Workspace init: host-side files that stay local no matter where spec documents live —
-/// `.speclink.yaml`, skills and the `.gitignore` entry. Instruction files
-/// (`CLAUDE.md`, `AGENTS.md`) are NOT part of the managed set (change:
-/// remove-marker-injection); routing lives in the skills themselves.
-fn workspace_init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<()> {
-    // .speclink.yaml — the template plus the actual tool selection, so `update` can sync
-    // (regenerate + prune) against the recorded list later. A non-default --dir is
-    // persisted as an active spec_dir line so later commands find it.
-    let mut config_content = if tools.is_empty() {
-        APP_CONFIG_TEMPLATE.to_string()
-    } else {
-        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        format!("{APP_CONFIG_TEMPLATE}tools: [{}]\n", names.join(", "))
-    };
-    if spec_dir != "openspec" {
-        config_content = config_content.replace(
-            "# spec_dir: docs/specs",
-            &format!("spec_dir: {spec_dir}"),
-        );
-    }
-    write_if(&root.join(".speclink.yaml"), &config_content, force)?;
-
-    // .gitignore (append block if missing)
-    ensure_gitignore(&root.join(".gitignore"))?;
-
-    // Per-tool artifacts, plus the legacy strip a re-init over an old workspace needs
-    // (design D2) — a fresh project has no instruction file, so this is a no-op there.
-    for tool in tools {
-        strip_legacy_marker(&root.join(instructions_path(*tool)))?;
-        generate_tool(root, *tool, spec_dir, force)?;
-    }
-    Ok(())
 }
 
 #[derive(Debug)]
@@ -202,6 +152,345 @@ pub struct UpdateOutcome {
     /// 棄用提示（design D3）：非錯誤、不影響 exit code，CLI 走 stderr。
     pub deprecations: Vec<String>,
     pub notes: Vec<String>,
+}
+
+/// The tool selection `.speclink.yaml` records, resolved ONCE: built-in names
+/// deduplicated, descriptors validated, and the legacy "no tools list" fallback
+/// decided. Every consumer of the tools list reads this — `update`, `probe_assets`,
+/// `reconcile_builtin_tools` and the desktop checkout preselection.
+///
+/// A descriptor problem is carried on the value instead of raised: `update` and
+/// `reconcile` turn it into an error before any write (bad descriptor ⇒ zero writes),
+/// while `probe_assets` reads built-ins only and must not change its verdict because
+/// a descriptor is broken.
+#[derive(Debug)]
+pub struct ToolSelection {
+    /// Built-in tools in list order, deduplicated.
+    pub builtins: Vec<Tool>,
+    /// Validated descriptors in list order.
+    pub customs: Vec<CustomTool>,
+    /// Warnings that are not errors: unknown built-in names.
+    pub notes: Vec<String>,
+    /// The first invalid or duplicate descriptor, as a single-line message.
+    pub descriptor_error: Option<String>,
+    /// True when `.speclink.yaml` records no tools list at all — `builtins` then comes
+    /// from directory detection, not from the file.
+    pub legacy_fallback: bool,
+}
+
+impl ToolSelection {
+    /// Resolve the selection from a loaded `.speclink.yaml`. Without a tools list the
+    /// legacy rule applies: regenerate Claude when `.claude` exists, codex excluded.
+    pub fn resolve(root: &Path, app: &crate::config::AppConfig) -> ToolSelection {
+        let mut sel = ToolSelection {
+            builtins: Vec::new(),
+            customs: Vec::new(),
+            notes: Vec::new(),
+            descriptor_error: None,
+            legacy_fallback: app.tools.is_empty(),
+        };
+        for entry in &app.tools {
+            match entry {
+                ToolEntry::Builtin(name) => match Tool::parse(name) {
+                    Some(t) => {
+                        if !sel.builtins.contains(&t) {
+                            sel.builtins.push(t);
+                        }
+                    }
+                    None => sel.notes.push(format!(
+                        "unknown tool '{name}' in .speclink.yaml tools list (supported: claude, codex)"
+                    )),
+                },
+                ToolEntry::Descriptor(d) => {
+                    // Keep the FIRST problem: it is the one today's update reports.
+                    if sel.descriptor_error.is_some() {
+                        continue;
+                    }
+                    match d.validate() {
+                        Ok(custom) => {
+                            if sel.customs.iter().any(|c| c.name == custom.name) {
+                                sel.descriptor_error =
+                                    Some(format!("tool descriptor: duplicate name '{}'", custom.name));
+                            } else {
+                                sel.customs.push(custom);
+                            }
+                        }
+                        Err(message) => sel.descriptor_error = Some(message),
+                    }
+                }
+            }
+        }
+        if sel.legacy_fallback && root.join(".claude").is_dir() {
+            sel.builtins.push(Tool::Claude);
+        }
+        sel
+    }
+
+    /// Build a selection straight from an in-memory built-in list — the entry `init`,
+    /// `init_remote` and `reconcile_builtin_tools` use, where the selection is the
+    /// caller's argument rather than a file.
+    pub fn builtins_only(tools: &[Tool]) -> ToolSelection {
+        ToolSelection {
+            builtins: tools.to_vec(),
+            customs: Vec::new(),
+            notes: Vec::new(),
+            descriptor_error: None,
+            legacy_fallback: false,
+        }
+    }
+}
+
+/// The managed skill set of ONE render target: `speclink-<name>` directory → SKILL.md
+/// content. This is the only producer of that set — generation, orphan cleanup, the
+/// staleness diff and the guard all read it through [`SyncPlan`].
+///
+/// Non-Claude targets get the `for_codex` subset; worktree-gated skills need the policy on.
+pub(crate) fn managed_skills(
+    target: skills::RenderTarget,
+    worktree_on: bool,
+    spec_dir: &str,
+) -> Vec<(String, String)> {
+    let codex_subset = !matches!(target, skills::RenderTarget::Builtin(Tool::Claude));
+    skills::registry()
+        .into_iter()
+        .filter(|s| !codex_subset || s.for_codex)
+        .filter(|s| !s.worktree_gated || worktree_on)
+        .map(|s| {
+            let content = skills::render_skill_file_for(target, &s, spec_dir);
+            (format!("speclink-{}", s.name), content)
+        })
+        .collect()
+}
+
+/// What a sync target is: a built-in tool, or a descriptor named by its `name`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SyncTargetKind {
+    Builtin(Tool),
+    Custom(String),
+}
+
+/// One tool's slice of a sync: where its skills live, and what should be there.
+#[derive(Debug)]
+pub(crate) struct SyncTarget {
+    pub(crate) kind: SyncTargetKind,
+    /// The name that appears in [`UpdateOutcome`]'s lists and the CLI output.
+    pub(crate) label: String,
+    /// Project-root-relative skills directory, `/`-joined (`.claude/skills`,
+    /// a descriptor's `skills_dir`) — the form the probe reports paths in.
+    pub(crate) skills_dir: String,
+    /// The same directory as an absolute path — what the guard and the writers use.
+    pub(crate) skills_root: PathBuf,
+    /// `speclink-<name>` directory → SKILL.md content.
+    pub(crate) files: Vec<(String, String)>,
+}
+
+/// One workspace sync, resolved once and consumed by every station: the downgrade guard,
+/// generation, pruning and the staleness probe all read THIS. The guard's target set and
+/// the write set are the same `targets` field, so they cannot drift apart.
+///
+/// Sharp edges (audit, change workspace-sync-plan):
+/// - A descriptor whose `skills_dir` escapes the project root never becomes a target —
+///   `ToolDescriptor::validate` rejects it before [`ToolSelection`] carries it.
+/// - `apply`'s orphan cleanup removes `speclink-` prefixed directories only, so a user's
+///   own skill directories under the same root survive.
+/// - `guard` has exactly one bypass, `update`'s explicit `--allow-downgrade`; every other
+///   regeneration path calls it.
+pub(crate) struct SyncPlan {
+    /// Ordered claude, codex, then descriptors in list order.
+    pub(crate) targets: Vec<SyncTarget>,
+    /// Built-ins that are NOT selected and lose their footprint. Empty on the legacy
+    /// fallback: without a tools list, nothing was ever "deselected".
+    pub(crate) deselected_builtins: Vec<Tool>,
+    /// Descriptors that still declare the deprecated `instructions_file`: the file to
+    /// strip a legacy marker from, and the deprecation notice to report.
+    pub(crate) custom_strip_targets: Vec<(String, String)>,
+    pub(crate) selection: ToolSelection,
+    /// The worktree policy this plan was built under (read once, in `resolve`).
+    worktree_on: bool,
+}
+
+impl SyncPlan {
+    /// Build the plan. This is the ONE place a sync reads the worktree policy.
+    pub(crate) fn resolve(root: &Path, selection: ToolSelection, spec_dir: &str) -> SyncPlan {
+        let worktree_on = worktree_skills_enabled(root, spec_dir);
+        let mut targets = Vec::new();
+        for tool in [Tool::Claude, Tool::Codex] {
+            if selection.builtins.contains(&tool) {
+                targets.push(SyncTarget {
+                    kind: SyncTargetKind::Builtin(tool),
+                    label: tool.name().to_string(),
+                    skills_dir: tool.skills_dir().to_string(),
+                    skills_root: root.join(tool.skills_dir()),
+                    files: managed_skills(
+                        skills::RenderTarget::Builtin(tool),
+                        worktree_on,
+                        spec_dir,
+                    ),
+                });
+            }
+        }
+        let mut custom_strip_targets = Vec::new();
+        for custom in &selection.customs {
+            targets.push(SyncTarget {
+                kind: SyncTargetKind::Custom(custom.name.clone()),
+                label: custom.name.clone(),
+                skills_dir: custom.skills_dir.clone(),
+                skills_root: root.join(&custom.skills_dir),
+                files: managed_skills(
+                    skills::RenderTarget::Custom(custom),
+                    worktree_on,
+                    spec_dir,
+                ),
+            });
+            if let Some(file) = custom.instructions_file.as_deref() {
+                custom_strip_targets.push((
+                    file.to_string(),
+                    format!(
+                        "tool descriptor '{}': instructions_file is deprecated and no longer generates anything — remove it from .speclink.yaml",
+                        custom.name
+                    ),
+                ));
+            }
+        }
+        let deselected_builtins = if selection.legacy_fallback {
+            Vec::new()
+        } else {
+            [Tool::Claude, Tool::Codex]
+                .into_iter()
+                .filter(|t| !selection.builtins.contains(t))
+                .collect()
+        };
+        SyncPlan {
+            targets,
+            deselected_builtins,
+            custom_strip_targets,
+            selection,
+            worktree_on,
+        }
+    }
+
+    /// Downgrade guard: refuse when any target's skills directory leads this engine.
+    /// The checked set IS the write set.
+    pub(crate) fn guard(&self) -> Result<()> {
+        let dirs: Vec<PathBuf> = self.targets.iter().map(|t| t.skills_root.clone()).collect();
+        refuse_downgrade(&dirs)
+    }
+
+    /// The built-in targets' managed files that are absent or differ from the current
+    /// render (line endings normalized), as project-root-relative `/`-joined paths.
+    /// Built-ins only because the staleness probe — its one consumer — does not cover
+    /// descriptors yet.
+    pub(crate) fn differing_files(&self) -> Vec<String> {
+        let mut differing = Vec::new();
+        for target in &self.targets {
+            if !matches!(target.kind, SyncTargetKind::Builtin(_)) {
+                continue;
+            }
+            for (dir, expected) in &target.files {
+                let actual =
+                    std::fs::read_to_string(target.skills_root.join(dir).join("SKILL.md"))
+                        .unwrap_or_default();
+                if eol_normalized(&actual) != eol_normalized(expected) {
+                    differing.push(format!("{}/{dir}/SKILL.md", target.skills_dir));
+                }
+            }
+        }
+        differing
+    }
+
+    /// `update`'s writer. Order (any step's `Err` stops the run; what is written stays —
+    /// every step is idempotent, so a rerun converges):
+    ///
+    /// 1. Strip legacy `SPECLINK:START..END` blocks from the two built-in instruction
+    ///    files and from every descriptor that still declares `instructions_file`.
+    /// 2. Delete the footprints of descriptors that fell off the list. This happens
+    ///    BEFORE generation on purpose: a descriptor that only changed its NAME keeps
+    ///    the same `skills_dir`, and deleting after writing would take the fresh files
+    ///    with it. Reporting stays late so `pruned` keeps its built-ins-first order.
+    /// 3. Per target (claude, codex, then descriptors): write every managed file and
+    ///    remove the `speclink-` directories that are not in the set.
+    /// 4. Prune the deselected built-ins.
+    /// 5. Record the current descriptors as the footprint for the next sync.
+    pub(crate) fn apply(&self, root: &Path) -> Result<UpdateOutcome> {
+        let mut out = UpdateOutcome {
+            updated: Vec::new(),
+            pruned: Vec::new(),
+            stripped: Vec::new(),
+            deprecations: Vec::new(),
+            notes: self.selection.notes.clone(),
+        };
+
+        // 1. 遺留剝除——內建工具唯一的剝除點（prune_tool 只清技能足跡）。
+        for tool in [Tool::Claude, Tool::Codex] {
+            let rel = instructions_path(tool);
+            if strip_legacy_marker(&root.join(rel))? {
+                out.stripped.push(rel.to_string());
+            }
+        }
+        for (file, deprecation) in &self.custom_strip_targets {
+            out.deprecations.push(deprecation.clone());
+            if strip_legacy_marker(&root.join(file))? {
+                out.stripped.push(file.clone());
+            }
+        }
+
+        // 2. 舊足跡。判定只看 name 與 skills_dir：instructions_file 已棄用，照提示把它
+        //    移除不得被誤判「已下架」。
+        let mut pruned_customs = Vec::new();
+        for old in load_custom_state(root) {
+            let still_current = self
+                .selection
+                .customs
+                .iter()
+                .any(|c| c.name == old.name && c.skills_dir == old.skills_dir);
+            if !still_current && prune_custom(root, &old, &mut out.notes)? {
+                pruned_customs.push(old.name.clone());
+            }
+        }
+
+        for target in &self.targets {
+            for (dir, content) in &target.files {
+                util::write_file(&target.skills_root.join(dir).join("SKILL.md"), content)?;
+            }
+            let expected: Vec<String> = target.files.iter().map(|(dir, _)| dir.clone()).collect();
+            prune_orphan_skills(&target.skills_root, &expected)?;
+            out.updated.push(target.label.clone());
+        }
+
+        for tool in &self.deselected_builtins {
+            if prune_tool(root, *tool)? {
+                out.pruned.push(tool.name().to_string());
+            }
+        }
+
+        out.pruned.extend(pruned_customs);
+        save_custom_state(root, &self.selection.customs)?;
+
+        Ok(out)
+    }
+
+    /// `init`'s writer: every target's files, no descriptor state touched, and no orphan
+    /// cleanup — `init` stays conservative over an existing workspace. The one removal it
+    /// does make: under an OFF worktree policy, the two gated skill directories a
+    /// previous policy-on generation left behind (`init --force` resets the policy to
+    /// the template, and the tool must not keep loading a skill the policy disabled).
+    pub(crate) fn write_skills(&self, force: bool) -> Result<()> {
+        for target in &self.targets {
+            for (dir, content) in &target.files {
+                write_if(&target.skills_root.join(dir).join("SKILL.md"), content, force)?;
+            }
+            if self.worktree_on {
+                continue;
+            }
+            for skill in skills::registry().iter().filter(|s| s.worktree_gated) {
+                let dir = target.skills_root.join(format!("speclink-{}", skill.name));
+                if dir.is_dir() {
+                    std::fs::remove_dir_all(dir)?;
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Refresh generated skill files and strip legacy instruction-file markers.
@@ -230,135 +519,16 @@ pub struct UpdateOutcome {
 pub fn update(root: &Path, allow_downgrade: bool) -> Result<UpdateOutcome> {
     let app = crate::config::AppConfig::load(&root.join(".speclink.yaml"))?;
     let spec_dir = app.spec_dir.clone().unwrap_or_else(|| "openspec".to_string());
-    let mut out = UpdateOutcome {
-        updated: Vec::new(),
-        pruned: Vec::new(),
-        stripped: Vec::new(),
-        deprecations: Vec::new(),
-        notes: Vec::new(),
-    };
-
-    // Sort entries: built-in name strings vs custom descriptors. Descriptors validate
-    // up front — nothing is generated or pruned when any descriptor is invalid.
-    let mut selected = Vec::new();
-    let mut customs: Vec<CustomTool> = Vec::new();
-    for entry in &app.tools {
-        match entry {
-            ToolEntry::Builtin(name) => match Tool::parse(name) {
-                Some(t) => {
-                    if !selected.contains(&t) {
-                        selected.push(t);
-                    }
-                }
-                None => out.notes.push(format!(
-                    "unknown tool '{name}' in .speclink.yaml tools list (supported: claude, codex)"
-                )),
-            },
-            ToolEntry::Descriptor(d) => {
-                let custom = d.validate().map_err(|e| anyhow::anyhow!(e))?;
-                if customs.iter().any(|c| c.name == custom.name) {
-                    bail!("tool descriptor: duplicate name '{}'", custom.name);
-                }
-                customs.push(custom);
-            }
-        }
+    let selection = ToolSelection::resolve(root, &app);
+    // 壞描述子＝零寫入：錯誤在任何檔案動作之前轉出來。
+    if let Some(message) = &selection.descriptor_error {
+        bail!("{message}");
     }
-
-    // 降級守門：對即將再生的每個 skills 目錄逐一判方向，任何寫入之前拒絕。
+    let plan = SyncPlan::resolve(root, selection, &spec_dir);
     if !allow_downgrade {
-        let mut targets: Vec<PathBuf> = Vec::new();
-        if app.tools.is_empty() {
-            if root.join(".claude").is_dir() {
-                targets.push(root.join(Tool::Claude.skills_dir()));
-            }
-        } else {
-            for tool in [Tool::Claude, Tool::Codex] {
-                if selected.contains(&tool) {
-                    targets.push(root.join(tool.skills_dir()));
-                }
-            }
-        }
-        for custom in &customs {
-            targets.push(root.join(&custom.skills_dir));
-        }
-        refuse_downgrade(&targets)?;
+        plan.guard()?;
     }
-
-    // 遺留剝除（design D2）：兩個內建指令檔一律在這裡檢查，與選取與否無關——
-    // 這是內建工具唯一的剝除點（prune_tool 只清技能足跡，不再碰指令檔）。
-    for tool in [Tool::Claude, Tool::Codex] {
-        let rel = instructions_path(tool);
-        if strip_legacy_marker(&root.join(rel))? {
-            out.stripped.push(rel.to_string());
-        }
-    }
-    for custom in &customs {
-        let Some(file) = custom.instructions_file.as_deref() else {
-            continue;
-        };
-        // 欄位還在＝舊設定檔：剝除它指到的遺留區塊，並提醒該欄位已不生效。
-        out.deprecations.push(format!(
-            "tool descriptor '{}': instructions_file is deprecated and no longer generates anything — remove it from .speclink.yaml",
-            custom.name
-        ));
-        if strip_legacy_marker(&root.join(file))? {
-            out.stripped.push(file.to_string());
-        }
-    }
-
-    if app.tools.is_empty() {
-        // Legacy fallback: directory detection, codex excluded, no
-        // built-in prune. Custom footprints recorded by an earlier update are still
-        // synced below — an emptied tools list must not strand them.
-        if root.join(".claude").is_dir() {
-            generate_tool(root, Tool::Claude, &spec_dir, true)?;
-            prune_orphan_skills(
-                &root.join(Tool::Claude.skills_dir()),
-                &expected_skill_dirs(root, &spec_dir, false),
-            )?;
-            out.updated.push(Tool::Claude.name().to_string());
-        }
-    } else {
-        for tool in [Tool::Claude, Tool::Codex] {
-            if selected.contains(&tool) {
-                generate_tool(root, tool, &spec_dir, true)?;
-                prune_orphan_skills(
-                    &root.join(tool.skills_dir()),
-                    &expected_skill_dirs(root, &spec_dir, tool != Tool::Claude),
-                )?;
-                out.updated.push(tool.name().to_string());
-            } else if prune_tool(root, tool)? {
-                out.pruned.push(tool.name().to_string());
-            }
-        }
-    }
-
-    // Custom descriptors share the built-in lifecycle: prune the footprints that fell off
-    // the list first (a descriptor may have moved its paths), then (re)generate the
-    // current ones and record them for the next sync.
-    let previous = load_custom_state(root);
-    for old in &previous {
-        // 判定只看 name 與 skills_dir——instructions_file 已棄用，使用者照提示把它
-        // 從描述子移除不得被誤判「已下架」而整組 prune 重建（棄用提示自己教出來
-        // 的操作不能觸發破壞）。欄位變動只更新足跡記錄（save_custom_state）。
-        let still_current = customs
-            .iter()
-            .any(|c| c.name == old.name && c.skills_dir == old.skills_dir);
-        if !still_current && prune_custom(root, old, &mut out.notes)? {
-            out.pruned.push(old.name.clone());
-        }
-    }
-    for custom in &customs {
-        generate_custom(root, custom, &spec_dir)?;
-        prune_orphan_skills(
-            &root.join(&custom.skills_dir),
-            &expected_skill_dirs(root, &spec_dir, true),
-        )?;
-        out.updated.push(custom.name.clone());
-    }
-    save_custom_state(root, &customs)?;
-
-    Ok(out)
+    plan.apply(root)
 }
 
 /// Converge a workspace on `tools` as the COMPLETE desired state of its built-ins —
@@ -379,23 +549,19 @@ pub fn reconcile_builtin_tools(root: &Path, tools: &[Tool]) -> Result<UpdateOutc
     let path = root.join(".speclink.yaml");
     let original = util::read_opt(&path).unwrap_or_default();
     let rewritten = crate::config::update_app_config_tools_text(&original, tools)?;
-    // 降級守門提前到 config 寫入之前：拒絕＝整體零寫入，不留「config 已改、
-    // 受管檔未同步」的半狀態。檢查目標與其後 update 的寫入集同源（新選集的
-    // builtin skills 目錄＋原 config 延續的描述子），故 update 內的守門不會在
-    // config 寫入後才第一次拒絕。
-    let mut guard_targets = skill_targets(root, tools);
-    if let Ok(app) = crate::config::AppConfig::load(&path) {
-        for entry in &app.tools {
-            if let ToolEntry::Descriptor(d) = entry {
-                if let Ok(custom) = d.validate() {
-                    guard_targets.push(root.join(&custom.skills_dir));
-                }
-            }
-        }
+    // 選集與計畫都由改寫後的文字建立：守門目標與其後的寫入集同源，拒絕＝整體
+    // 零寫入，不留「config 已改、受管檔未同步」的半狀態。
+    let app: crate::config::AppConfig = crate::config::parse_lenient_or_reason(&rewritten)
+        .map_err(|reason| anyhow::anyhow!("invalid .speclink.yaml: {reason}"))?;
+    let spec_dir = app.spec_dir.clone().unwrap_or_else(|| "openspec".to_string());
+    let selection = ToolSelection::resolve(root, &app);
+    if let Some(message) = &selection.descriptor_error {
+        bail!("{message}");
     }
-    refuse_downgrade(&guard_targets)?;
+    let plan = SyncPlan::resolve(root, selection, &spec_dir);
+    plan.guard()?;
     util::write_file(&path, &rewritten)?;
-    update(root, false)
+    plan.apply(root)
 }
 
 /// Adopt speclink in a directory that already has an `openspec/` tree but no
@@ -409,7 +575,7 @@ pub fn reconcile_builtin_tools(root: &Path, tools: &[Tool]) -> Result<UpdateOutc
 /// An empty selection is rejected before anything is written.
 ///
 /// `.gitignore` is covered here explicitly: the `reconcile_builtin_tools` → `update`
-/// path does not touch it (only `init`'s `workspace_init` does), so without this the
+/// path does not touch it (only `init` itself does), so without this the
 /// gitignored work directory would surface as untracked files in the user's repo.
 pub fn adopt(root: &Path, tools: &[Tool]) -> Result<UpdateOutcome> {
     if tools.is_empty() {
@@ -487,38 +653,6 @@ fn worktree_skills_enabled(root: &Path, spec_dir: &str) -> bool {
     }
 }
 
-/// Apply the worktree gate to one skill's target directory: `Ok(true)` means "skip it",
-/// and any directory a previous policy-on generation left behind is removed first, so
-/// flipping the policy off converges in a single run.
-fn skip_gated_skill(skill: &skills::Skill, worktree_on: bool, dir: &Path) -> Result<bool> {
-    if !skill.worktree_gated || worktree_on {
-        return Ok(false);
-    }
-    if dir.is_dir() {
-        std::fs::remove_dir_all(dir)?;
-    }
-    Ok(true)
-}
-
-/// Generate a custom tool's artifacts: skills under `<skills_dir>/speclink-*/SKILL.md`
-/// (the non-Claude command subset). The descriptor's `instructions_file` is NOT generated
-/// (change: remove-marker-injection) — it only survives as a strip target for legacy markers.
-fn generate_custom(root: &Path, tool: &CustomTool, spec_dir: &str) -> Result<()> {
-    let worktree_on = worktree_skills_enabled(root, spec_dir);
-    for skill in skills::registry() {
-        if !skill.for_codex {
-            continue;
-        }
-        let dir = root.join(&tool.skills_dir).join(format!("speclink-{}", skill.name));
-        if skip_gated_skill(&skill, worktree_on, &dir)? {
-            continue;
-        }
-        let content = skills::render_skill_file_for(skills::RenderTarget::Custom(tool), &skill, spec_dir);
-        util::write_file(&dir.join("SKILL.md"), &content)?;
-    }
-    Ok(())
-}
-
 /// Prune a recorded custom footprint. Paths are re-checked against the project root before
 /// any removal — a tampered state file must not be able to delete outside the project.
 fn prune_custom(root: &Path, fp: &CustomFootprint, notes: &mut Vec<String>) -> Result<bool> {
@@ -538,19 +672,6 @@ fn prune_custom(root: &Path, fp: &CustomFootprint, notes: &mut Vec<String>) -> R
         &root.join(&fp.skills_dir),
         fp.instructions_file.as_ref().map(|f| root.join(f)).as_deref(),
     )
-}
-
-/// The `speclink-*` directory names `update` leaves under one target's skills root:
-/// the registry filtered exactly the way generation filters it (codex subset for
-/// non-Claude targets, worktree-gated skills only under an on policy).
-fn expected_skill_dirs(root: &Path, spec_dir: &str, codex_subset: bool) -> Vec<String> {
-    let worktree_on = worktree_skills_enabled(root, spec_dir);
-    skills::registry()
-        .into_iter()
-        .filter(|s| !codex_subset || s.for_codex)
-        .filter(|s| !s.worktree_gated || worktree_on)
-        .map(|s| format!("speclink-{}", s.name))
-        .collect()
 }
 
 /// update 的孤兒清理（spec: update 清除孤兒技能目錄）：清掉 skills 目錄下
@@ -671,27 +792,6 @@ pub fn detect_tools(root: &Path) -> Vec<Tool> {
         out.push(Tool::Claude);
     }
     out
-}
-
-fn generate_tool(root: &Path, tool: Tool, spec_dir: &str, force: bool) -> Result<()> {
-    // Skills are the ONLY tool-level artifacts. The root instruction file (CLAUDE.md /
-    // AGENTS.md) left the managed set with change remove-marker-injection, and the tool's
-    // own user settings (e.g. .claude/settings.json) are the user's data, never generated
-    // (spec: 工具檔生成不寫入 AI 工具的使用者設定檔).
-    let worktree_on = worktree_skills_enabled(root, spec_dir);
-    // Skills: Claude gets the full registry; codex gets the command subset.
-    for skill in skills::registry() {
-        if tool != Tool::Claude && !skill.for_codex {
-            continue;
-        }
-        let dir = root.join(tool.skills_dir()).join(format!("speclink-{}", skill.name));
-        if skip_gated_skill(&skill, worktree_on, &dir)? {
-            continue;
-        }
-        let content = skills::render_skill_file_for(skills::RenderTarget::Builtin(tool), &skill, spec_dir);
-        write_if(&dir.join("SKILL.md"), &content, force)?;
-    }
-    Ok(())
 }
 
 fn write_if(path: &Path, content: &str, force: bool) -> Result<()> {
@@ -880,11 +980,6 @@ fn workspace_is_newer(workspace: &str, engine: &str) -> bool {
     false
 }
 
-/// 一組內建工具的 skills 目錄絕對路徑（守門的檢查目標）。
-fn skill_targets(root: &Path, tools: &[Tool]) -> Vec<PathBuf> {
-    tools.iter().map(|t| root.join(t.skills_dir())).collect()
-}
-
 /// 降級守門的拒絕判定：`dirs` 中任一 skills 目錄的技能版號數值領先引擎時，以單行
 /// 英文錯誤拒絕（含兩邊版號）。技能不在、或版號讀不出來的目錄不擋——守門只在
 /// 「可證明較新」時觸發（決策 3 的安全預設）。
@@ -911,32 +1006,30 @@ fn refuse_downgrade(dirs: &[PathBuf]) -> Result<()> {
 /// 零寫入：desktop 開專案時搭載，探測失敗不得阻斷開啟。自訂描述子第一版不涵蓋
 /// （回報結構已預留 tool 名欄位，納入時不需改形狀）。
 pub fn probe_assets(root: &Path) -> AssetProbe {
-    let unknown = || AssetProbe {
-        status: AssetStatus::Unknown,
+    let without_tools = |status: AssetStatus| AssetProbe {
+        status,
         current_version: ASSET_VERSION.to_string(),
         tools: Vec::new(),
         differing_files: Vec::new(),
     };
     let Ok(app) = crate::config::AppConfig::load(&root.join(".speclink.yaml")) else {
-        return unknown();
+        return without_tools(AssetStatus::Unknown);
     };
     let spec_dir = app.spec_dir.clone().unwrap_or_else(|| "openspec".to_string());
-
-    let mut selected: Vec<Tool> = Vec::new();
-    for entry in &app.tools {
-        // 未知內建名與自訂描述子皆跳過：前者 update() 只給警告，後者不在第一版範圍。
-        if let ToolEntry::Builtin(name) = entry {
-            if let Some(tool) = Tool::parse(name) {
-                if !selected.contains(&tool) {
-                    selected.push(tool);
-                }
-            }
-        }
+    let selection = ToolSelection::resolve(root, &app);
+    // 探測只讀 tools 清單宣告的內建工具：沒有清單就沒有受管工具可查（目錄偵測的回退
+    // 是 update 的再生規則，不是探測的判定面）。描述子錯誤同樣不影響結果。
+    if selection.legacy_fallback {
+        return without_tools(AssetStatus::Current);
     }
+    let plan = SyncPlan::resolve(root, selection, &spec_dir);
 
     let mut tools = Vec::new();
-    for tool in &selected {
-        let version = match probe_skills_dir(&root.join(tool.skills_dir())) {
+    for target in &plan.targets {
+        let SyncTargetKind::Builtin(tool) = &target.kind else {
+            continue;
+        };
+        let version = match probe_skills_dir(&target.skills_root) {
             SkillsProbe::Absent => {
                 tools.push(ToolAssetState {
                     tool: tool.name().to_string(),
@@ -949,7 +1042,7 @@ pub fn probe_assets(root: &Path) -> AssetProbe {
             }
             // 技能檔在但讀不出版號（IO、壞 frontmatter）＝無法判定；
             // 與「不存在」是不同的狀態。
-            SkillsProbe::Unreadable => return unknown(),
+            SkillsProbe::Unreadable => return without_tools(AssetStatus::Unknown),
             SkillsProbe::Found(version) => version,
         };
         // 方向優先於相等判定：領先現版的版號是「較新」，不得再算成過期。
@@ -973,9 +1066,7 @@ pub fn probe_assets(root: &Path) -> AssetProbe {
         AssetStatus::Current
     };
     let differing_files = match status {
-        AssetStatus::Missing | AssetStatus::Stale | AssetStatus::Newer => {
-            differing_managed_files(root, &selected, &spec_dir)
-        }
+        AssetStatus::Missing | AssetStatus::Stale | AssetStatus::Newer => plan.differing_files(),
         _ => Vec::new(),
     };
 
@@ -985,40 +1076,6 @@ pub fn probe_assets(root: &Path) -> AssetProbe {
         tools,
         differing_files,
     }
-}
-
-/// 更新將新建或改寫、且內容與現版 render 不同的受管檔（專案根相對路徑）。受管集合
-/// 只剩技能檔——指令檔已退出受管（change: remove-marker-injection）。不存在的檔案
-/// 內容視為空、必列入。
-fn differing_managed_files(root: &Path, tools: &[Tool], spec_dir: &str) -> Vec<String> {
-    let mut differing = Vec::new();
-    let mut compare = |rel: String, expected: &str| {
-        let actual = std::fs::read_to_string(root.join(rel.split('/').collect::<PathBuf>()))
-            .unwrap_or_default();
-        if eol_normalized(&actual) != eol_normalized(expected) {
-            differing.push(rel);
-        }
-    };
-    // 被政策排除的技能不屬於預期生成集合——否則政策關閉的專案會永遠被報成
-    // 「檔案缺失」而過期。
-    let worktree_on = worktree_skills_enabled(root, spec_dir);
-    for tool in tools {
-        for skill in skills::registry() {
-            if *tool != Tool::Claude && !skill.for_codex {
-                continue;
-            }
-            if skill.worktree_gated && !worktree_on {
-                continue;
-            }
-            let expected =
-                skills::render_skill_file_for(skills::RenderTarget::Builtin(*tool), &skill, spec_dir);
-            compare(
-                format!("{}/speclink-{}/SKILL.md", tool.skills_dir(), skill.name),
-                &expected,
-            );
-        }
-    }
-    differing
 }
 
 /// 內建工具的指令檔路徑（專案根相對）。
@@ -2172,5 +2229,261 @@ mod tests {
         update(&root.dir, false).unwrap();
         // speclink- 前綴保留給生成物：非 registry 的前綴目錄一律清除。
         assert!(!root.exists(".claude/skills/speclink-myown"));
+    }
+
+    fn app_config(yaml: &str) -> crate::config::AppConfig {
+        serde_yaml::from_str(yaml).expect("app config parses")
+    }
+
+    /// 工具選集是 `.speclink.yaml` tools 清單的唯一解析點：內建名去重、順序固定
+    /// claude → codex，沒有清單時才是 legacy 回退。
+    #[test]
+    fn tool_selection_resolves_builtins_without_duplicates() {
+        let root = TempRoot::new("tool-selection-builtins");
+        let sel = ToolSelection::resolve(&root.dir, &app_config("tools: [claude, codex, claude]\n"));
+        assert_eq!(sel.builtins, vec![Tool::Claude, Tool::Codex]);
+        assert!(!sel.legacy_fallback, "a non-empty list is not the legacy path");
+        assert!(sel.customs.is_empty());
+        assert!(sel.notes.is_empty());
+        assert_eq!(sel.descriptor_error, None);
+    }
+
+    /// 合法描述子與內建名混在同一份清單：兩邊都解析出來，沒有錯誤。
+    #[test]
+    fn tool_selection_carries_a_valid_descriptor_beside_the_builtins() {
+        let root = TempRoot::new("tool-selection-descriptor");
+        let sel = ToolSelection::resolve(
+            &root.dir,
+            &app_config(&format!("tools:\n  - claude\n{CUSTOM_DESCRIPTOR}")),
+        );
+        assert_eq!(sel.builtins, vec![Tool::Claude]);
+        assert_eq!(sel.customs.len(), 1, "the descriptor resolves: {:?}", sel.customs);
+        assert_eq!(sel.customs[0].name, "wad-harness");
+        assert_eq!(sel.customs[0].skills_dir, ".wad/skills");
+        assert_eq!(sel.descriptor_error, None);
+    }
+
+    /// 壞描述子不在解析時就變成 `Err`：錯誤留在值上由消費端裁決（update 轉錯誤、
+    /// probe 忽略），內建名照樣解析出來。
+    #[test]
+    fn tool_selection_defers_a_bad_descriptor_to_its_consumer() {
+        let root = TempRoot::new("tool-selection-bad-descriptor");
+        let sel = ToolSelection::resolve(
+            &root.dir,
+            &app_config("tools:\n  - codex\n  - name: broken-harness\n"),
+        );
+        assert_eq!(sel.builtins, vec![Tool::Codex], "the builtins still resolve");
+        assert!(sel.customs.is_empty(), "an invalid descriptor never reaches the filesystem");
+        let message = sel.descriptor_error.expect("the descriptor error is carried on the value");
+        assert_eq!(message, "tool descriptor: missing required field 'skills_dir'");
+    }
+
+    /// 空 tools 清單＝legacy 回退：只有 `.claude` 目錄存在時才把 Claude 算進選集。
+    #[test]
+    fn tool_selection_falls_back_to_the_claude_footprint_for_an_empty_list() {
+        let root = TempRoot::new("tool-selection-empty");
+        let app = app_config("tools: []\n");
+        let sel = ToolSelection::resolve(&root.dir, &app);
+        assert!(sel.builtins.is_empty(), "no .claude directory means nothing to regenerate");
+        assert!(sel.legacy_fallback);
+
+        std::fs::create_dir_all(root.at(".claude")).unwrap();
+        let sel = ToolSelection::resolve(&root.dir, &app);
+        assert_eq!(sel.builtins, vec![Tool::Claude]);
+        assert!(sel.legacy_fallback);
+    }
+
+    /// 未知內建名只是警告：訊息字面與今天 `update` 的一模一樣。
+    #[test]
+    fn tool_selection_notes_an_unknown_builtin_name() {
+        let root = TempRoot::new("tool-selection-unknown");
+        let sel = ToolSelection::resolve(&root.dir, &app_config("tools: [claude, cursor]\n"));
+        assert_eq!(sel.builtins, vec![Tool::Claude]);
+        assert_eq!(
+            sel.notes,
+            vec![
+                "unknown tool 'cursor' in .speclink.yaml tools list (supported: claude, codex)"
+                    .to_string()
+            ]
+        );
+        assert!(!sel.legacy_fallback);
+    }
+
+    /// `builtins_only` 是 init／reconcile 的記憶體入口：選集逐字帶過，沒有描述子、
+    /// 沒有回退、沒有警告。
+    #[test]
+    fn tool_selection_builtins_only_takes_the_selection_verbatim() {
+        let sel = ToolSelection::builtins_only(&[Tool::Codex]);
+        assert_eq!(sel.builtins, vec![Tool::Codex]);
+        assert!(sel.customs.is_empty());
+        assert!(sel.notes.is_empty());
+        assert!(!sel.legacy_fallback);
+        assert_eq!(sel.descriptor_error, None);
+    }
+
+    /// 與 `CUSTOM_DESCRIPTOR` 同一個描述子的已驗證形式。
+    fn custom_target() -> CustomTool {
+        CustomTool {
+            name: "wad-harness".to_string(),
+            skills_dir: ".wad/skills".to_string(),
+            instructions_file: Some("WAD.md".to_string()),
+            invocation: crate::config::Invocation::Cli,
+        }
+    }
+
+    fn dir_names(set: &[(String, String)]) -> Vec<String> {
+        set.iter().map(|(dir, _)| dir.clone()).collect()
+    }
+
+    /// registry 依 `codex_subset` 過濾後的 `speclink-<name>` 目錄名（順序同 registry）。
+    fn registry_dirs(codex_subset: bool) -> Vec<String> {
+        skills::registry()
+            .iter()
+            .filter(|s| !codex_subset || s.for_codex)
+            .map(|s| format!("speclink-{}", s.name))
+            .collect()
+    }
+
+    /// 受管技能集合只有一個擁有者：Claude 目標拿 registry 全集，非 Claude 目標拿
+    /// `for_codex` 子集，每一筆內容逐字等於同參數的 render。
+    #[test]
+    fn managed_skills_covers_the_registry_per_target() {
+        let custom = custom_target();
+        let claude = managed_skills(skills::RenderTarget::Builtin(Tool::Claude), true, "openspec");
+        let codex = managed_skills(skills::RenderTarget::Builtin(Tool::Codex), true, "openspec");
+        let neutral = managed_skills(skills::RenderTarget::Custom(&custom), true, "openspec");
+
+        assert_eq!(dir_names(&claude), registry_dirs(false));
+        assert_eq!(dir_names(&codex), registry_dirs(true));
+        assert_eq!(dir_names(&neutral), registry_dirs(true));
+
+        let registry = skills::registry();
+        for (target, set) in [
+            (skills::RenderTarget::Builtin(Tool::Claude), &claude),
+            (skills::RenderTarget::Builtin(Tool::Codex), &codex),
+            (skills::RenderTarget::Custom(&custom), &neutral),
+        ] {
+            // 集合裡的每一筆都比內容——不是「找得到才比」。
+            for (dir, content) in set {
+                let skill = registry
+                    .iter()
+                    .find(|s| format!("speclink-{}", s.name) == *dir)
+                    .unwrap_or_else(|| panic!("{dir} 不在 registry"));
+                assert_eq!(
+                    content,
+                    &skills::render_skill_file_for(target, skill, "openspec"),
+                    "{dir} 的內容必須等於同參數的 render"
+                );
+            }
+        }
+    }
+
+    /// worktree 政策關閉時，三個目標的受管集合都不含兩顆 worktree 技能。
+    #[test]
+    fn managed_skills_drops_the_gated_skills_when_the_policy_is_off() {
+        let custom = custom_target();
+        for set in [
+            managed_skills(skills::RenderTarget::Builtin(Tool::Claude), false, "openspec"),
+            managed_skills(skills::RenderTarget::Builtin(Tool::Codex), false, "openspec"),
+            managed_skills(skills::RenderTarget::Custom(&custom), false, "openspec"),
+        ] {
+            for gated in ["speclink-apply-with-worktree", "speclink-worktree-merge"] {
+                assert!(
+                    !set.iter().any(|(dir, _)| dir == gated),
+                    "政策關閉時受管集合不得含 {gated}"
+                );
+            }
+        }
+    }
+
+    /// 計畫的每個 target 帶自己的 skills_root；未選中的內建進 `deselected_builtins`。
+    #[test]
+    fn sync_plan_builds_one_target_per_selected_tool() {
+        let root = TempRoot::new("sync-plan-targets");
+        let plan =
+            SyncPlan::resolve(&root.dir, ToolSelection::builtins_only(&[Tool::Codex]), "openspec");
+        assert_eq!(plan.targets.len(), 1, "只選 codex 就只有一個 target");
+        assert!(matches!(plan.targets[0].kind, SyncTargetKind::Builtin(Tool::Codex)));
+        assert_eq!(plan.targets[0].label, "codex");
+        assert_eq!(plan.targets[0].skills_root, root.at(".agents/skills"));
+        assert_eq!(plan.deselected_builtins, vec![Tool::Claude]);
+    }
+
+    /// legacy 回退（沒有 tools 清單）不下架任何內建工具。
+    #[test]
+    fn sync_plan_prunes_nothing_on_the_legacy_fallback() {
+        let root = TempRoot::new("sync-plan-legacy");
+        std::fs::create_dir_all(root.at(".claude")).unwrap();
+        let selection = ToolSelection::resolve(&root.dir, &app_config("tools: []\n"));
+        let plan = SyncPlan::resolve(&root.dir, selection, "openspec");
+        assert_eq!(plan.targets.len(), 1);
+        assert_eq!(plan.targets[0].label, "claude");
+        assert!(plan.deselected_builtins.is_empty(), "沒有清單就沒有「下架」這回事");
+    }
+
+    /// 描述子各自成為一個 target，skills_root 就是描述子宣告的目錄。
+    #[test]
+    fn sync_plan_adds_a_target_for_each_descriptor() {
+        let root = TempRoot::new("sync-plan-descriptor");
+        let selection = ToolSelection::resolve(
+            &root.dir,
+            &app_config(&format!("tools:\n  - claude\n{CUSTOM_DESCRIPTOR}")),
+        );
+        let plan = SyncPlan::resolve(&root.dir, selection, "openspec");
+        assert_eq!(plan.targets.len(), 2);
+        assert_eq!(plan.targets[0].label, "claude");
+        assert!(matches!(&plan.targets[1].kind, SyncTargetKind::Custom(name) if name == "wad-harness"));
+        assert_eq!(plan.targets[1].label, "wad-harness");
+        assert_eq!(plan.targets[1].skills_root, root.at(".wad/skills"));
+        assert_eq!(plan.deselected_builtins, vec![Tool::Codex]);
+    }
+
+    /// 守門的檢查面就是 targets 的 skills_root 集合：只有描述子目錄領先版本時
+    /// 一樣被拒，訊息含工作區與引擎兩個版號。
+    #[test]
+    fn sync_plan_guard_checks_every_targets_skills_root() {
+        let root = TempRoot::new("sync-plan-guard");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        root.write(".speclink.yaml", &format!("tools:\n{CUSTOM_DESCRIPTOR}"));
+        update(&root.dir, false).expect("先生成描述子受管檔");
+        let ahead = ahead_of_current();
+        crate::testkit::set_skill_version(&root.at(".wad/skills"), &ahead);
+
+        let app = crate::config::AppConfig::load(&root.at(".speclink.yaml")).expect("config parses");
+        let plan = SyncPlan::resolve(&root.dir, ToolSelection::resolve(&root.dir, &app), "openspec");
+        assert_eq!(
+            plan.targets.iter().map(|t| t.skills_root.clone()).collect::<Vec<PathBuf>>(),
+            vec![root.at(".wad/skills")],
+            "守門的檢查面等於 targets 的 skills_root"
+        );
+
+        let message = plan.guard().expect_err("只有描述子目錄領先也必須被拒").to_string();
+        assert!(message.contains(&ahead), "訊息須含工作區版號：{message}");
+        assert!(message.contains(ASSET_VERSION), "訊息須含引擎版號：{message}");
+    }
+
+    /// `init --force` 會把 `openspec/config.yaml` 寫回範本（worktree 政策關閉）：上一次
+    /// 政策開啟留下的兩顆 worktree 技能目錄必須跟著消失（舊 `skip_gated_skill` 的行為），
+    /// 其餘技能照常在。
+    #[test]
+    fn init_force_removes_gated_skill_directories_the_reset_policy_no_longer_allows() {
+        let root = TempRoot::new("init-force-gated");
+        init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+        set_worktree_policy(&root, true);
+        update(&root.dir, false).unwrap();
+        for dir in worktree_skill_dirs(Tool::Claude) {
+            assert!(root.exists(&format!("{dir}/SKILL.md")), "前置：政策開啟時 {dir} 存在");
+        }
+
+        init(&root.dir, &[Tool::Claude], true, "openspec").unwrap();
+
+        assert!(
+            !root.read("openspec/config.yaml").contains("\nworktree: true"),
+            "--force 把 config.yaml 寫回範本"
+        );
+        for dir in worktree_skill_dirs(Tool::Claude) {
+            assert!(!root.exists(&dir), "政策被重置為關閉後 {dir} 不得留下");
+        }
+        assert!(root.exists(".claude/skills/speclink-apply/SKILL.md"));
     }
 }
