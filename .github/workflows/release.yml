@@ -709,6 +709,15 @@ jobs:
 
           # 收尾：「每份都跳過」與「每份都發出去」在 job 結果上同樣是綠，所以明確
           # 確認主套件真的在 registry 上——否則這個 job 綠得毫無意義。
+          #
+          # 要等，不能只查一次：首次上架的套件，npm publish 回 `+ name@ver` 之後
+          # packument 端點還會 404 好幾分鐘（v0.2.0 補發時，publish 成功 0.3 秒後
+          # 查即 404，子套件的 packument 也是二十多分鐘後才轉 200）。發布本身已成
+          # 功，這裡的紅燈只會是「查太早」，所以以有上限的輪詢等它可見。
           [ -n "$main_name" ] || { echo "::error::npm-tarballs 內沒有主套件 tarball"; exit 1; }
-          npm view "$main_name@$EXPECTED" version >/dev/null \
-            || { echo "::error::$main_name@$EXPECTED 未出現在 registry"; exit 1; }
+          visible=""
+          for _ in $(seq 1 60); do
+            if npm view "$main_name@$EXPECTED" version >/dev/null 2>&1; then visible=1; break; fi
+            sleep 10
+          done
+          [ -n "$visible" ] || { echo "::error::$main_name@$EXPECTED 十分鐘內未出現在 registry"; exit 1; }
