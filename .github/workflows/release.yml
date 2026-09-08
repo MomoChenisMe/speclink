@@ -585,9 +585,24 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           node scripts/npm-server-package.mjs --version "$VERSION" --binaries binaries --out npm-out
+
+          # 冪等，語意同 engine-npm-publish：發到一半失敗、或 tag 重推時，已上架
+          # 的同版會讓 npm publish 拿 403 而永遠轉不綠。每份先查 registry，同版
+          # 已存在就跳過，重跑才補得完剩下的。
+          publish_dir() {
+            local dir="$1" name version
+            name="$(node -p "require('./$dir/package.json').name")"
+            version="$(node -p "require('./$dir/package.json').version")"
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version 已在 registry，跳過"
+            else
+              (cd "$dir" && npm publish --access public)
+            fi
+          }
+
           # 平台子套件先發、主套件最後，optionalDependencies 解析得到同版。
-          for pkg in npm-out/server-*/; do (cd "$pkg" && npm publish --access public); done
-          (cd npm-out/server && npm publish --access public)
+          for pkg in npm-out/server-*/; do publish_dir "${pkg%/}"; done
+          publish_dir npm-out/server
 
   # tag 名去 v 前綴的版號：reusable workflow 的 with: 只吃表達式，而 Actions 表達式
   # 沒有字串裁切函式（無 replace／substring），只能由 shell 算成 job output 再傳入。

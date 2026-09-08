@@ -308,6 +308,8 @@ test('release.yml 的 npm-publish job 於 NPM_TOKEN 存在時物化並發布 ser
   assert.match(job, /NPM_TOKEN/, 'npm-publish 必須以 NPM_TOKEN 為開關');
   assert.match(job, /scripts\/npm-server-package\.mjs/, 'npm-publish 必須以物化腳本產出套件');
   assert.match(job, /npm publish --access public/, 'npm-publish 必須公開發布');
+  // 冪等：tag 重推或部分失敗後重跑，已上架的同版會讓 npm publish 拿 403。
+  assert.match(job, /npm view/, 'npm-publish 須先查 registry 以支援重跑（同版已存在即跳過）');
 });
 
 test('release.yml 的 Release 資產收集逐一圈定 artifact 種類，server-* 不落入 dist', () => {
