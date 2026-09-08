@@ -311,8 +311,21 @@ fn a_reconnect_below_the_cleaned_floor_gets_a_reset_first() {
     }
 
     // Reconnect from an id below the cleaned floor: reset is the first frame.
-    let resumed = Sub::open(&base, &pat, Some("1")).expect("resubscribe");
-    let (_, event, _) = parts(resumed.next_event(Duration::from_secs(3)).expect("a frame"));
+    //
+    // 地板的抬高發生在事件送出「之後」——`spawn_pump` 先把整批 tx.send 出去，
+    // 迴圈結束才 ack 到 cursor - retention。所以「收到第四筆」不代表地板已經
+    // 推進；負載重的 runner 上重連會贏過那個 ack，拿到補送（invalidate）而非
+    // reset。等地板真的推進再斷言首幀，始終等不到就帶最後看到的幀型別失敗。
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut event;
+    let _resumed = loop {
+        let resumed = Sub::open(&base, &pat, Some("1")).expect("resubscribe");
+        event = parts(resumed.next_event(Duration::from_secs(3)).expect("a frame")).1;
+        if event.as_deref() == Some("reset") || Instant::now() >= deadline {
+            break resumed;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
     assert_eq!(event.as_deref(), Some("reset"), "a cleaned cursor gets a reset signal first");
 
     // After reset, a new write is pushed as usual.
