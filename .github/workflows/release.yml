@@ -678,7 +678,12 @@ jobs:
             if npm view "$name@$version" version >/dev/null 2>&1; then
               echo "$name@$version 已在 registry，跳過"
             else
-              npm publish "$tgz" --access public
+              # `./` 不可省：npm publish 的引數是 package spec，不是路徑。
+              # `tarballs/speclink-engine-0.2.0.tgz` 恰好是「一個斜線」的形狀，
+              # 會被當成 GitHub 簡寫 owner/repo 去 git ls-remote（2026-09-08 的
+              # v0.2.0 就死在這裡：五個平台子套件在 npm/<平台>/ 下有兩個斜線而
+              # 通過，根目錄的主套件獨獨被誤讀）。前綴 ./ 讓它只能是路徑。
+              npm publish "./$tgz" --access public
             fi
           }
           for tgz in tarballs/npm/*/*.tgz; do publish_one "$tgz"; done
