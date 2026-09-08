@@ -572,7 +572,15 @@ test('release.yml 的 engine 三 job：版號前置把關、重用建置、發�
   assert.match(publish, /needs:\s*\[engine-npm-build, release\]/, 'engine-npm-publish 必須 needs: [engine-npm-build, release]');
   assert.match(publish, /NPM_TOKEN/, 'engine-npm-publish 必須以 NPM_TOKEN 為開關');
   assert.match(publish, /name:\s*npm-tarballs/, 'engine-npm-publish 須下載 npm-tarballs artifact');
-  assert.match(publish, /npm publish "\$tgz" --access public/, 'engine-npm-publish 必須公開發布 tarball');
+  // `./` 是把關重點，不是排版：npm publish 收的是 package spec，而
+  // `tarballs/speclink-engine-0.2.0.tgz` 這種「恰一個斜線」的相對路徑會被當成
+  // GitHub 簡寫 owner/repo 去 git ls-remote（v0.2.0 的主套件就是這樣沒發出去，
+  // 子套件因為多一層 npm/<平台>/ 而僥倖通過）。斷言連 ./ 一起釘死。
+  assert.match(
+    publish,
+    /npm publish "\.\/\$tgz" --access public/,
+    'engine-npm-publish 必須公開發布 tarball，且路徑要帶 ./ 前綴（否則被誤讀為 GitHub 簡寫）',
+  );
 
   // 冪等：部分失敗後重跑不得因「同版已存在」永遠紅燈。
   assert.match(publish, /npm view/, 'engine-npm-publish 須先查 registry 以支援重跑（同版已存在即跳過）');
