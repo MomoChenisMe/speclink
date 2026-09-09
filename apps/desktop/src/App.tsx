@@ -55,6 +55,9 @@ import { AppSettingsView } from "./views/AppSettingsView";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { AssetUpdatePrompt } from "./components/AssetUpdatePrompt";
 import { appVersion, type UpdaterAdapter } from "./adapter/updater";
+import { ReleaseNotesDialog } from "./components/ReleaseNotesDialog";
+import { readLastSeenVersion, whatsNewDecision, writeLastSeenVersion } from "./core/whatsNew";
+import { RELEASE_NOTES, type ReleaseNotesEntry } from "./release-notes/release-notes";
 import type { CliInstallAdapter } from "./adapter/cliInstall";
 import { ProjectSettingsView } from "./views/ProjectSettingsView";
 import type { ConnectionsAdapter } from "./adapter/connections";
@@ -298,10 +301,28 @@ function AppInner({
   };
   // 設定頁軟體更新卡的常駐現版號（updater 注入時啟動取一次；非 Tauri 環境靜默）。
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
+  // 更新日誌對話框（desktop-app「更新日誌彈窗」）：純 UI 開關，不進 store。whatsNew＝
+  // 版號變更後首次啟動自動彈出（關閉即記下現版號）；browse＝設定頁按鈕（關閉不寫記錄）。
+  const [releaseNotes, setReleaseNotes] = useState<
+    { mode: "whatsNew"; entries: ReleaseNotesEntry[] } | { mode: "browse" } | null
+  >(null);
   useEffect(() => {
     if (updater) {
       appVersion()
-        .then(setCurrentVersion)
+        .then((version) => {
+          setCurrentVersion(version);
+          const decision = whatsNewDecision({
+            appVersion: version,
+            entries: RELEASE_NOTES,
+            lastSeen: readLastSeenVersion(),
+            dev: import.meta.env.DEV,
+          });
+          if (decision.kind === "show") {
+            setReleaseNotes({ mode: "whatsNew", entries: decision.entries });
+          } else if (decision.kind === "record") {
+            writeLastSeenVersion(version);
+          }
+        })
         .catch(() => {});
     }
   }, [updater]);
@@ -678,6 +699,7 @@ function AppInner({
                   state: s.updater,
                   currentVersion,
                   onCheck: () => void s.checkForUpdates(true),
+                  onShowReleaseNotes: () => setReleaseNotes({ mode: "browse" }),
                 }
               }
               cliInstall={
@@ -926,6 +948,21 @@ function AppInner({
           onMigrated={(connectionId, target, checkoutRoot) =>
             s.replaceLocalWorkspaceWithRemote(checkoutRoot, connectionId, target)
           }
+        />
+      )}
+
+      {updater && (
+        <ReleaseNotesDialog
+          open={releaseNotes !== null}
+          mode={releaseNotes?.mode ?? "browse"}
+          entries={releaseNotes?.mode === "whatsNew" ? releaseNotes.entries : RELEASE_NOTES}
+          onOpenChange={(isOpen) => {
+            if (isOpen) return;
+            // 先關再寫：寫入失敗不能把 modal 卡在畫面上。
+            const wasWhatsNew = releaseNotes?.mode === "whatsNew";
+            setReleaseNotes(null);
+            if (wasWhatsNew && currentVersion) writeLastSeenVersion(currentVersion);
+          }}
         />
       )}
 

@@ -1,0 +1,95 @@
+schema: spec-driven
+created: 2026-09-09
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: release-changelog-whats-new
+started_at: 2026-09-09
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-09
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 16
+reviewed_scope:
+  - path: .github/workflows/release.yml
+    hash: 5d20a77540bca5bcbd678f117cc03bbda710905c7dec8aae0d7c37eccaf842fd
+  - path: CHANGELOG.md
+    hash: c43db967791a89aaf74485950ac584cf00cf8926beec4ba1d6431c9e7caffe55
+  - path: apps/desktop/src/App.tsx
+    hash: 145baaab958df08dff6c3fb4e48817faa76de1c57bb62da13060b0c4752ec2f4
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 1b737c1486e3f9b0f1e3613887415464c708d5e1919b0b7eb3d47cb2f614bb6a
+  - path: apps/desktop/src/__tests__/appSettingsView.test.tsx
+    hash: 4cb658d3aa98ea438bd53a4e5c4ac2c7d9b8d4f1b43cf94e7e7a469f3d32d817
+  - path: apps/desktop/src/__tests__/releaseNotesDialog.test.tsx
+    hash: 7c6f92467fb811b60850978738ec35097bd3d546aa7927640d4afc568e0809ab
+  - path: apps/desktop/src/__tests__/whatsNew.test.ts
+    hash: c19efae83c33acabbbf403ce789351c6ee3220f625fb03afa9b8e2635fa654b9
+  - path: apps/desktop/src/components/ReleaseNotesDialog.tsx
+    hash: e455b3bf92d3335e8276c1f5ed7237c55ee8eea89d00fe9c4b68d403afda2008
+  - path: apps/desktop/src/core/whatsNew.ts
+    hash: 432b27be5d7cd81ec3a8e4ba5b7da176bff64c3eff2dd96bf7cac150e846aba5
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: bd96ce1cb7d5b572a1f645a2a8fa0d6d2b615a876e0c5214b7b387ffa09198ce
+  - path: apps/desktop/src/release-notes/release-notes.json
+    hash: 36df152871b2789cdd41913b4292b0fb678bf7b0cb4ef988fd6418583f6ee136
+  - path: apps/desktop/src/release-notes/release-notes.ts
+    hash: ac938dc4b360ed69f19f675e0983b6e52b452159a920502e25516cca4e504d66
+  - path: apps/desktop/src/views/AppSettingsView.tsx
+    hash: f081fec5f56a753897fbd1321485fa3b1df11ca343a18925cc0e2e59a2307df5
+  - path: apps/desktop/src/vite-env.d.ts
+    hash: 65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5
+  - path: scripts/release-notes-render.mjs
+    hash: 608dbf6da8aadf553a14a24a959fbec94a8a56376306c6fe90a67a947f849f2a
+  - path: scripts/release-notes-render.test.mjs
+    hash: b76c538220958ed321e5179cc613a8a9bf45aa72da40357e60d63e2f1f4949c2
+  - path: scripts/release-notes-scratch.mjs
+    hash: 780a6e645a40676c0cd396fa3f664b3efe91ecbec644cc08e88ba848f3bc0b43
+  - path: scripts/release-notes.mjs
+    hash: f1c0bfa1700f44c9a536c7485bfa557ff8ee110f854c384782edf57b2dc30c57
+  - path: scripts/release-notes.test.mjs
+    hash: 639ec2396393b24b7d042f4ac918a48d8155fa82451157b4b94adc8f224c1a07
+verified_at: 2026-09-09
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 16
+verified_scope:
+  - path: .github/workflows/release.yml
+    hash: 5d20a77540bca5bcbd678f117cc03bbda710905c7dec8aae0d7c37eccaf842fd
+  - path: CHANGELOG.md
+    hash: c43db967791a89aaf74485950ac584cf00cf8926beec4ba1d6431c9e7caffe55
+  - path: apps/desktop/src/App.tsx
+    hash: 145baaab958df08dff6c3fb4e48817faa76de1c57bb62da13060b0c4752ec2f4
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 1b737c1486e3f9b0f1e3613887415464c708d5e1919b0b7eb3d47cb2f614bb6a
+  - path: apps/desktop/src/__tests__/appSettingsView.test.tsx
+    hash: 4cb658d3aa98ea438bd53a4e5c4ac2c7d9b8d4f1b43cf94e7e7a469f3d32d817
+  - path: apps/desktop/src/__tests__/releaseNotesDialog.test.tsx
+    hash: 7c6f92467fb811b60850978738ec35097bd3d546aa7927640d4afc568e0809ab
+  - path: apps/desktop/src/__tests__/whatsNew.test.ts
+    hash: c19efae83c33acabbbf403ce789351c6ee3220f625fb03afa9b8e2635fa654b9
+  - path: apps/desktop/src/components/ReleaseNotesDialog.tsx
+    hash: e455b3bf92d3335e8276c1f5ed7237c55ee8eea89d00fe9c4b68d403afda2008
+  - path: apps/desktop/src/core/whatsNew.ts
+    hash: 432b27be5d7cd81ec3a8e4ba5b7da176bff64c3eff2dd96bf7cac150e846aba5
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: bd96ce1cb7d5b572a1f645a2a8fa0d6d2b615a876e0c5214b7b387ffa09198ce
+  - path: apps/desktop/src/release-notes/release-notes.json
+    hash: 36df152871b2789cdd41913b4292b0fb678bf7b0cb4ef988fd6418583f6ee136
+  - path: apps/desktop/src/release-notes/release-notes.ts
+    hash: ac938dc4b360ed69f19f675e0983b6e52b452159a920502e25516cca4e504d66
+  - path: apps/desktop/src/views/AppSettingsView.tsx
+    hash: f081fec5f56a753897fbd1321485fa3b1df11ca343a18925cc0e2e59a2307df5
+  - path: apps/desktop/src/vite-env.d.ts
+    hash: 65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5
+  - path: scripts/release-notes-render.mjs
+    hash: 608dbf6da8aadf553a14a24a959fbec94a8a56376306c6fe90a67a947f849f2a
+  - path: scripts/release-notes-render.test.mjs
+    hash: b76c538220958ed321e5179cc613a8a9bf45aa72da40357e60d63e2f1f4949c2
+  - path: scripts/release-notes-scratch.mjs
+    hash: 780a6e645a40676c0cd396fa3f664b3efe91ecbec644cc08e88ba848f3bc0b43
+  - path: scripts/release-notes.mjs
+    hash: f1c0bfa1700f44c9a536c7485bfa557ff8ee110f854c384782edf57b2dc30c57
+  - path: scripts/release-notes.test.mjs
+    hash: 639ec2396393b24b7d042f4ac918a48d8155fa82451157b4b94adc8f224c1a07
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-09
