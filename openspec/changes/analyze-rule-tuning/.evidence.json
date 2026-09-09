@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "change": "analyze-rule-tuning",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 在 crates/speclink-core/src/analyzer.rs 新增標題拆解函式：輸入 design `###` 標題字串，輸出（編號、本文）；只認 `D<數字>`、`決策<數字或一到十的中文數字>`、`Decision <數字>` 三種前綴（大小寫不敏感，後接零或多個空白、零或一個全形或半形冒號、零或多個空白），無前綴回傳（無、整串）、只有編號回傳（編號、空）。驗證：`#[cfg(test)]` 測試逐列斷言 delta spec「Consistency 的 design 標題引用判定」Example 表的五組輸入輸出，`cargo test -p speclink-core analyzer` 綠。",
+      "files": [
+        "crates/speclink-core/src/analyzer.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M22B3PGGXRTGSCAEFV981G9X",
+      "taskDesc": "1.1 在 crates/speclink-core/src/analyzer.rs 新增標題拆解函式：輸入 design `###` 標題字串，輸出（編號、本文）；只認 `D<數字>`、`決策<數字或一到十的中文數字>`、`Decision <數字>` 三種前綴（大小寫不敏感，後接零或多個空白、零或一個全形或半形冒號、零或多個空白），無前綴回傳（無、整串）、只有編號回傳（編號、空）。驗證：`#[cfg(test)]` 測試逐列斷言 delta spec「Consistency 的 design 標題引用判定」Example 表的五組輸入輸出，`cargo test -p speclink-core analyzer` 綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "5d32e193368fa4e128725d266ffd9276d314a909",
+      "touchedFiles": [
+        "crates/speclink-core/src/analyzer.rs"
+      ],
+      "recordedAt": "2026-09-09T05:56:13Z"
+    }
+  ]
+}
