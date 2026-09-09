@@ -227,64 +227,15 @@ updated: 2026-08-11
 ---
 ### Requirement: 過期判定單源共用
 
-drift 的 Specs 維度、bulk archive 的 readiness 預檢與單筆 archive 的合併守門 SHALL 共用同一過期判定實作；三處對同一 delta 的過期認定 SHALL 一致，drift 與 bulk 預檢的 reason 文案 SHALL 表述拒絕語意（archive 將拒絕，而非跳過）。
+drift 的 Specs 維度、bulk archive 的 readiness 預檢、單筆 archive 的合併守門與 change 驗證（`speclink validate`）SHALL 共用同一過期判定實作；四處對同一 delta 的過期認定 SHALL 一致，drift、bulk 預檢與 validate 的 reason 文案 SHALL 表述拒絕語意（archive 將拒絕，而非跳過）。
 
-#### Scenario: 三處判定一致
+#### Scenario: 四處判定一致
 
-- **WHEN** 同一 change 的 delta 含一條過期 MODIFIED，分別執行 speclink drift、bulk archive 預檢與單筆 speclink archive
-- **THEN** 三處皆認定該操作過期：drift 列為 spec assumption、bulk 預檢列為未就緒、單筆 archive 拒絕，且三者指向同一 capability 與需求名
+- **WHEN** 同一 change 的 delta 含一條過期 MODIFIED，分別執行 speclink validate、speclink drift、bulk archive 預檢與單筆 speclink archive
+- **THEN** 四處皆認定該操作過期：validate 列為 error、drift 列為 spec assumption、bulk 預檢列為未就緒、單筆 archive 拒絕，且四者指向同一 capability 與需求名
+
 
 <!-- @trace
-source: archive-fail-closed-merge
-updated: 2026-08-03
-code:
-  - .agents/skills/speclink-apply/SKILL.md
-  - .agents/skills/speclink-archive/SKILL.md
-  - .agents/skills/speclink-audit/SKILL.md
-  - .agents/skills/speclink-commit/SKILL.md
-  - .agents/skills/speclink-config/SKILL.md
-  - .agents/skills/speclink-discuss/SKILL.md
-  - .agents/skills/speclink-drift/SKILL.md
-  - .agents/skills/speclink-ingest/SKILL.md
-  - .agents/skills/speclink-onboard/SKILL.md
-  - .agents/skills/speclink-propose/SKILL.md
-  - .agents/skills/speclink-review/SKILL.md
-  - .claude/skills/speclink-analyze/SKILL.md
-  - .claude/skills/speclink-apply/SKILL.md
-  - .claude/skills/speclink-archive/SKILL.md
-  - .claude/skills/speclink-audit/SKILL.md
-  - .claude/skills/speclink-commit/SKILL.md
-  - .claude/skills/speclink-config/SKILL.md
-  - .claude/skills/speclink-discuss/SKILL.md
-  - .claude/skills/speclink-drift/SKILL.md
-  - .claude/skills/speclink-ingest/SKILL.md
-  - .claude/skills/speclink-onboard/SKILL.md
-  - .claude/skills/speclink-propose/SKILL.md
-  - .claude/skills/speclink-review/SKILL.md
-  - .claude/skills/speclink-verify/SKILL.md
-  - AGENTS.md
-  - CLAUDE.md
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/tests/it/archive_merge_gate.rs
-  - crates/speclink-cli/tests/it/main.rs
-  - crates/speclink-core/assets/schema/spec-driven/specs.instruction.md
-  - crates/speclink-core/assets/skills/archive.md
-  - crates/speclink-core/assets/skills/commit.md
-  - crates/speclink-core/assets/skills/drift.md
-  - crates/speclink-core/assets/skills/sync.md
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/drift.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/teststore.rs
-  - crates/speclink-core/tests/golden/assets.lock
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-core/tests/golden/remote-claude.marker.md
-  - crates/speclink-host/src/drift.rs
-  - crates/speclink-protocol/src/drift.rs
+source: validate-merge-gate
+updated: 2026-09-09T15:14:16+08:00
 -->
