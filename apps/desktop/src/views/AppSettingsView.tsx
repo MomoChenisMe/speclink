@@ -19,10 +19,12 @@ import type { LocalePreference } from "../i18n/locale";
 import type { UpdaterState } from "../core/updater";
 import type { CliInstallView } from "../store";
 
-/** 軟體更新卡的注入面：狀態機現值＋手動檢查入口＋常駐現版號（null＝尚未取得）。 */
+/** 軟體更新卡的注入面：狀態機現值＋手動檢查入口＋更新日誌瀏覽入口＋常駐現版號（null＝尚未取得）。 */
 export interface AppSettingsUpdaterProps {
   state: UpdaterState;
   onCheck: () => void;
+  /** 開啟更新日誌對話框的瀏覽模式（desktop-app「更新日誌彈窗」）。 */
+  onShowReleaseNotes: () => void;
   currentVersion?: string | null;
 }
 
@@ -195,6 +197,15 @@ export function AppSettingsView({
                     onClick={updater.onCheck}
                   >
                     {t("updater.check")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-sm font-normal"
+                    onClick={updater.onShowReleaseNotes}
+                  >
+                    {t("releaseNotes.open")}
                   </Button>
                   {updater.currentVersion && (
                     <span className="text-xs text-muted-foreground">

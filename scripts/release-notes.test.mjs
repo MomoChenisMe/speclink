@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import path from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const script = path.join(root, 'scripts', 'release-notes.mjs');
+import { scratchRepo } from './release-notes-scratch.mjs';
 
-function run(args) {
-  return spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
-}
+// 指南之後要接該版的更新日誌片段（release-notes.json 為真相）；斷言不隨真 JSON 的內容變動。
+const FIXTURE_NOTES = [
+  { version: '0.2.0', date: '2026-09-08', sections: [{ title: '新功能', items: ['乙'] }] },
+  { version: '0.1.0', date: '2026-08-01', sections: [{ title: '修正', items: ['甲'] }] },
+];
+const repo = scratchRepo({ scripts: ['release-notes.mjs', 'release-notes-render.mjs'], notes: FIXTURE_NOTES });
+const run = (args) => repo.run('release-notes.mjs', args);
 
 // 下載指南的檔名必須與 release 管線的資產命名逐字一致（desktop-release spec
 // 「指南檔名對齊版號與資產命名」）——這份清單就是那個命名契約。
@@ -32,9 +32,9 @@ test('對照表列出三平台全部安裝檔且檔名含版號', () => {
 });
 
 test('版號替換跟著 tag 走', () => {
-  const result = run(['--tag', 'v9.9.9']);
+  const result = run(['--tag', 'v0.2.0']);
   assert.equal(result.status, 0, result.stderr);
-  for (const name of installersFor('9.9.9')) {
+  for (const name of installersFor('0.2.0')) {
     assert.ok(result.stdout.includes(name), `缺安裝檔 ${name}`);
   }
   assert.ok(!result.stdout.includes('0.1.0'), '不得殘留其他版號');
@@ -83,4 +83,22 @@ test('缺 --tag 參數即非零退出', () => {
   const result = run([]);
   assert.notEqual(result.status, 0);
   assert.equal(result.stdout, '');
+});
+
+test('指南（--- 分隔線）之後接該版的更新日誌片段', () => {
+  const result = run(['--tag', 'v0.2.0']);
+  assert.equal(result.status, 0, result.stderr);
+  const divider = result.stdout.indexOf('\n---\n');
+  assert.ok(divider >= 0, '指南以 --- 分隔線結尾');
+  const tail = result.stdout.slice(divider);
+  assert.ok(tail.includes('## 0.2.0（2026-09-08）'), '分隔線之後含該版標題');
+  assert.ok(tail.includes('- 乙'), '分隔線之後含該版條目');
+  assert.ok(!result.stdout.includes('## 0.1.0'), '不含其他版本');
+});
+
+test('JSON 沒有該版（tag 仍符 vX.Y.Z）即非零退出、stderr 說明缺該版、stdout 無輸出', () => {
+  const result = run(['--tag', 'v9.9.9']);
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  assert.ok(result.stderr.includes('9.9.9'), 'stderr 點名缺的版本');
 });

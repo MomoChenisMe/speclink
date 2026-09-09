@@ -47,7 +47,7 @@
 - `version` 不帶 v：與 tauri.conf.json 的 version、Tauri `getVersion()` 回傳值、latest.json 的 version 同字面，桌面端比對免去前綴處理。tag 仍為 `vX.Y.Z`。
 - `sections[].title` 只允許「新功能／修正／改善」三值，`items` 為非空繁中字串陣列；空 section 不寫入。
 - 放在 desktop 原始碼樹下而非 repo 根：desktop 是唯一要打包它的消費者，Vite 原生 import JSON 免設定；腳本與 CI 讀同一路徑。
-- 型別檔 `apps/desktop/src/release-notes/release-notes.ts` 匯出 `ReleaseNotesEntry`／`ReleaseNoteSection` 型別與 `RELEASE_NOTES` 常數（JSON 的 title 由 string 收窄為字面聯集，比照 wadpilot）。
+- 型別檔 `apps/desktop/src/release-notes/release-notes.ts` 匯出 `ReleaseNotesEntry`／`ReleaseNotesSection` 型別與 `RELEASE_NOTES` 常數（JSON 的 title 由 string 收窄為字面聯集，比照 wadpilot）。
 
 替代方案：CHANGELOG.md 為真相解析成 JSON（解析 markdown 脆弱，標題層級一歪即錯）；兩份都手寫（兩個真相必漂移）。
 

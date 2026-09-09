@@ -1,9 +1,11 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { render, screen, waitFor, fireEvent, within, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { getVersion } from "@tauri-apps/api/app";
 
 import { App } from "../App";
 import { APP_MESSAGES } from "../i18n/messages";
+import { RELEASE_NOTES } from "../release-notes/release-notes";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
@@ -1258,5 +1260,96 @@ describe("抽屜溯源籤接線（drawer-provenance-links）", () => {
     await waitFor(() => expect(document.querySelector('[data-column="ready"]')).toBeTruthy());
     expect(changesNav.className).toContain("bg-primary");
     expect(archivedNav.className).not.toContain("bg-primary");
+  });
+});
+
+// 更新日誌彈窗的 App 層接線（desktop-app 規格「更新日誌彈窗」）：把純判定、對話框與
+// 已看過記錄接起來的膠水——模式切換、關閉才寫版號、dev 不彈不寫、瀏覽模式不寫。
+describe("更新日誌彈窗接線（desktop-app「更新日誌彈窗」）", () => {
+  const KEY = "speclink.lastSeenVersion";
+  const TOP = RELEASE_NOTES[0].version;
+
+  beforeEach(() => {
+    localStorage.removeItem(KEY);
+    vi.mocked(getVersion).mockResolvedValue(TOP);
+    vi.stubEnv("DEV", false);
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(getVersion).mockResolvedValue("0.1.0");
+  });
+
+  function renderWithUpdater() {
+    const ws = fakeWorkspace();
+    ws.openProject = vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
+    render(
+      <App
+        createSession={makeSession(fakeDataSource())}
+        workspace={ws as never}
+        updater={{ check: vi.fn().mockResolvedValue(null), relaunch: vi.fn() }}
+      />,
+    );
+  }
+
+  it("版號變更後首次啟動彈出「X.Y.Z 更新內容」，按「知道了」關閉並記下現版號", async () => {
+    localStorage.setItem(KEY, "0.1.0");
+    renderWithUpdater();
+    const dialog = await screen.findByTestId("release-notes-dialog");
+    expect(within(dialog).getByText(`${TOP} 更新內容`)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "知道了" }));
+    await waitFor(() => expect(screen.queryByTestId("release-notes-dialog")).toBeNull());
+    expect(localStorage.getItem(KEY)).toBe(TOP);
+  });
+
+  it("寫入已看過記錄失敗時對話框仍關得掉", async () => {
+    localStorage.setItem(KEY, "0.1.0");
+    // vitest.setup 掛的 localStorage 來自另一個 jsdom window，全域 Storage.prototype 攔不到；
+    // 對實例直接賦值又會被 jsdom 當成存一個叫 setItem 的 key——spy 要落在該實例的 prototype。
+    const proto = Object.getPrototypeOf(localStorage) as Storage;
+    const setItem = proto.setItem;
+    const spy = vi.spyOn(proto, "setItem").mockImplementation(function (this: Storage, key, value) {
+      if (key === KEY) throw new Error("storage disabled");
+      setItem.call(this, key, value);
+    });
+    try {
+      renderWithUpdater();
+      const dialog = await screen.findByTestId("release-notes-dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "知道了" }));
+      await waitFor(() => expect(screen.queryByTestId("release-notes-dialog")).toBeNull());
+      expect(spy).toHaveBeenCalledWith(KEY, TOP);
+      // app 沒有整個炸掉：側欄還在。
+      expect(screen.getByRole("complementary")).toBeTruthy();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("首次安裝（無記錄）不彈出，直接記下現版號", async () => {
+    renderWithUpdater();
+    await waitFor(() => expect(localStorage.getItem(KEY)).toBe(TOP));
+    expect(screen.queryByTestId("release-notes-dialog")).toBeNull();
+  });
+
+  it("dev 建置不彈出也不寫記錄", async () => {
+    vi.stubEnv("DEV", true);
+    renderWithUpdater();
+    await waitFor(() => expect(screen.getByText(/目前版本/)).toBeTruthy(), { timeout: 100 }).catch(() => {});
+    await screen.findByRole("complementary");
+    expect(screen.queryByTestId("release-notes-dialog")).toBeNull();
+    expect(localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it("設定頁「更新日誌」開瀏覽模式，關閉後已看過記錄不變", async () => {
+    localStorage.setItem(KEY, TOP);
+    renderWithUpdater();
+    const aside = await screen.findByRole("complementary");
+    await waitFor(() => expect(within(aside).getByRole("button", { name: "設定" })).toBeTruthy());
+    fireEvent.click(within(aside).getByRole("button", { name: "設定" }));
+    fireEvent.click(await screen.findByRole("button", { name: "更新日誌" }));
+    const dialog = await screen.findByTestId("release-notes-dialog");
+    expect(within(dialog).getByText("更新日誌")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "關閉" }));
+    await waitFor(() => expect(screen.queryByTestId("release-notes-dialog")).toBeNull());
+    expect(localStorage.getItem(KEY)).toBe(TOP);
   });
 });

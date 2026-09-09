@@ -94,7 +94,7 @@ describe("AppSettingsView 軟體更新卡", () => {
       <AppSettingsView
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "idle" }, currentVersion: "0.1.0", onCheck: vi.fn() }}
+        updater={{ state: { phase: "idle" }, currentVersion: "0.1.0", onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
       />,
     );
     expect(screen.getByTestId("updater-card").textContent).toContain("目前版本 0.1.0");
@@ -106,7 +106,7 @@ describe("AppSettingsView 軟體更新卡", () => {
       <AppSettingsView
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "idle" }, onCheck }}
+        updater={{ state: { phase: "idle" }, onCheck, onShowReleaseNotes: vi.fn() }}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "檢查更新" }));
@@ -117,7 +117,7 @@ describe("AppSettingsView 軟體更新卡", () => {
       <AppSettingsView
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "checking", manual: true }, onCheck: vi.fn() }}
+        updater={{ state: { phase: "checking", manual: true }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
       />,
     );
     expect(
@@ -130,7 +130,7 @@ describe("AppSettingsView 軟體更新卡", () => {
       <AppSettingsView
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "upToDate" }, onCheck: vi.fn() }}
+        updater={{ state: { phase: "upToDate" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
       />,
     );
     expect(screen.getByTestId("updater-card").textContent).toContain("已是最新版本");
@@ -140,7 +140,7 @@ describe("AppSettingsView 軟體更新卡", () => {
       <AppSettingsView
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "checkFailed" }, onCheck: vi.fn() }}
+        updater={{ state: { phase: "checkFailed" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
       />,
     );
     expect(screen.getByTestId("updater-card").textContent).toContain("無法檢查更新");
@@ -151,7 +151,7 @@ describe("AppSettingsView 軟體更新卡", () => {
       <AppSettingsView
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "available", version: "0.2.0" }, onCheck: vi.fn() }}
+        updater={{ state: { phase: "available", version: "0.2.0" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
       />,
     );
     expect(screen.getByTestId("updater-card").textContent).toContain("0.2.0");
@@ -163,7 +163,7 @@ describe("AppSettingsView 軟體更新卡", () => {
       <AppSettingsView
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "checkFailed" }, onCheck: vi.fn() }}
+        updater={{ state: { phase: "checkFailed" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
       />,
     );
     expect(screen.getByText("無法檢查更新").className).toContain("destructive");
@@ -173,7 +173,7 @@ describe("AppSettingsView 軟體更新卡", () => {
       <AppSettingsView
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "available", version: "0.2.0" }, onCheck: vi.fn() }}
+        updater={{ state: { phase: "available", version: "0.2.0" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
       />,
     );
     expect(screen.getByText(/有新版本/).className).toContain(SEMANTIC_TONE.inProgress);
@@ -300,5 +300,25 @@ describe("AppSettingsView CLI 指令卡", () => {
       />,
     );
     expect(screen.getByTestId("cli-install-card").textContent).toContain("permission denied");
+  });
+});
+
+describe("AppSettingsView 更新日誌入口（desktop-app「更新日誌彈窗」設定頁瀏覽）", () => {
+  it("更新卡有「更新日誌」按鈕，按下回呼 onShowReleaseNotes", () => {
+    const onShowReleaseNotes = vi.fn();
+    render(
+      <AppSettingsView
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        updater={{ state: { phase: "idle" }, onCheck: vi.fn(), onShowReleaseNotes }}
+      />,
+    );
+    fireEvent.click(within(screen.getByTestId("updater-card")).getByRole("button", { name: "更新日誌" }));
+    expect(onShowReleaseNotes).toHaveBeenCalledTimes(1);
+  });
+
+  it("updater 未注入時「更新日誌」按鈕不存在", () => {
+    render(<AppSettingsView localePref={null} onLocalePrefChange={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "更新日誌" })).toBeNull();
   });
 });

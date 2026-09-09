@@ -217,3 +217,9 @@
 - **definition**: speclink server 服務端——桌面 app 連線的那一端（`speclink-server`）。桌面「新增 Workspace」第一步的來源卡、其下一步標題與伺服器連線說明皆以此稱之。
 - **avoid**: Speclink Server
 - **why**: 使用者要選的是「哪一台 server」，不是「哪一個品牌的 server」；品牌前綴綁死了通用概念，且同一個 chooser 內既有的「遷移到 Server…」「以 Server 為準」早已不帶前綴，前後不一致。直出英文而非中譯，沿用既有的「開發者工具中原生詞即最直觀」裁定線（先例：config.yaml 頁籤、討論 slug、worktree 直出）——本專案的使用者就是會 curl 自己那台 server 的開發者。此 avoid 詞為純 ASCII，依 `ui-copy-vocabulary` 的既有設計不入機械守門集，由撰稿時人工判斷。「Server」與「伺服器」的中英用詞統一是另一個待決問題，本詞條不預判其結果。2026-09-03 變更「server-wording-debrand」定案。
+
+### 更新日誌
+
+- **definition**: 每個 release 版本的白話更新內容——`apps/desktop/src/release-notes/release-notes.json` 為唯一真相，repo 根的 CHANGELOG.md 與 GitHub Release 說明的更新內容片段都由它衍生。桌面設定頁「軟體更新」卡的按鈕與對話框瀏覽模式的標題皆以此稱之；自動彈出模式的標題「X.Y.Z 更新內容」是其中某一版的內容，同族不同層、不另立詞條。
+- **avoid**: 更新資訊、release notes（使用者可見文案中）、changelog（使用者可見文案中）
+- **why**: 與「軟體更新」卡同族，「日誌」點明是逐版紀錄而不是單次通知；「更新資訊」讀不出逐版，release notes／changelog 是工程詞。2026-09-09 變更「release-changelog-whats-new」定案。

@@ -12,8 +12,8 @@
 #     when their secrets exist. No secrets → unsigned installers, workflow stays green.
 #
 # Usage:
-#   1. Bump `version` in crates/speclink-cli/Cargo.toml (and speclink-core), commit.
-#   2. git tag v0.1.0 && git push origin v0.1.0
+#   執行 /release 技能（.claude/skills/release/SKILL.md）：守門、版號、更新日誌、寫檔、
+#   commit、附註 tag 與 push 一次做完；tag 推上來之後由本 workflow 接手。
 #
 # Note: the `ubuntu-24.04-arm` runner is free for PUBLIC repositories only — remove that
 # matrix entry (or switch to `cross`) if the repo is private.
@@ -192,16 +192,28 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # 版本閘門（fail-closed）：tag 與 tauri.conf.json 版本不一致即紅燈——否則
-      # latest.json 宣告 tag 版、安裝檔與 app 自報版本停在舊版，形成每次啟動都
-      # 勸誘安裝同一 build 的無盡更新迴圈（spec「描述檔欄位對齊發布內容」）。
-      - name: Assert tag matches desktop version
+      # 版本閘門（fail-closed）：tag、tauri.conf.json、release-notes.json 頂端三者同版，
+      # 且 CHANGELOG.md 與 JSON 重算一致（release-notes spec「release 管線守門版號四處
+      # 同版與渲染一致」）。版號不齊即紅燈——否則 latest.json 宣告 tag 版、安裝檔與 app
+      # 自報版本停在舊版，形成每次啟動都勸誘安裝同一 build 的無盡更新迴圈（spec「描述檔
+      # 欄位對齊發布內容」）；更新日誌落後則 Release 說明與桌面彈窗都拿不到這版內容。
+      # 排在所有建置之前：十分鐘建置之後才紅燈是浪費。
+      - name: Assert release version and changelog consistency
         shell: bash
         run: |
           CONF_VERSION="$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")"
+          NOTES_VERSION="$(node -p "require('./apps/desktop/src/release-notes/release-notes.json')[0].version")"
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           if [ "$CONF_VERSION" != "$TAG_VERSION" ]; then
-            echo "::error::tauri.conf.json version（$CONF_VERSION）與 tag（$TAG_VERSION）不一致——先 bump 版本再發 tag"
+            echo "::error::tauri.conf.json version（${CONF_VERSION}）與 tag（${TAG_VERSION}）不一致——先 bump 版本再發 tag"
+            exit 1
+          fi
+          if [ "$NOTES_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::release-notes.json 頂端 version（${NOTES_VERSION}）與 tag（${TAG_VERSION}）不一致——先執行 /release 技能補上更新日誌再發 tag"
+            exit 1
+          fi
+          if ! node scripts/release-notes-render.mjs --check; then
+            echo "::error::CHANGELOG.md 與 release-notes.json 重算結果不一致——執行 node scripts/release-notes-render.mjs --write 後重新提交"
             exit 1
           fi
 
@@ -499,8 +511,9 @@ jobs:
           cat SHA256SUMS.txt
 
       # 下載指南前置於 Release 說明（desktop-release spec「Release 說明含下載指南」；
-      # 設計 D7）；generate_release_notes 的自動 changelog 接續其後。notes.md 落在
-      # workspace 根而非 dist/，不會被當成資產上傳。
+      # 設計 D7），其後接該版的更新日誌片段（release-notes.json 為真相）；
+      # generate_release_notes 只剩最後的比較連結。notes.md 落在 workspace 根而非
+      # dist/，不會被當成資產上傳。
       - name: Download guide (release notes header)
         run: node scripts/release-notes.mjs --tag "$GITHUB_REF_NAME" > notes.md
 
