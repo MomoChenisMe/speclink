@@ -1363,6 +1363,7 @@ fn run_new_change(
         None => crate::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())?
             .schema_name(),
     };
+    let mut linked = None;
     if let Some(slug) = from_discussion.as_deref() {
         if crate::discuss::info(store, slug).is_none() {
             return Err(CommandError::new(
@@ -1370,6 +1371,9 @@ fn run_new_change(
                 format!("discussion '{slug}' not found — run `speclink discuss new` first"),
             ));
         }
+        // The discussion-side link is computed before the change lands (same order as
+        // `discuss::promote`): a record that cannot take it fails with nothing written.
+        linked = crate::discuss::promoted_text(store, slug, &name).map_err(classify)?;
     }
     let dir = crate::newcmd::new_change(
         store,
@@ -1383,8 +1387,8 @@ fn run_new_change(
     .map_err(classify)?;
     // A change born of a discussion marks that discussion promoted — both
     // entry points already did this inline; it is part of the verb's meaning.
-    if let Some(slug) = from_discussion.as_deref() {
-        crate::discuss::mark_promoted(store, slug, &name).map_err(classify)?;
+    if let (Some(slug), Some(out)) = (from_discussion.as_deref(), linked) {
+        store.write_live_discussion(slug, &out).map_err(classify)?;
     }
     Ok(CommandOutcome::NewChange(NewChangeOutcome { name, dir, schema }))
 }
@@ -2297,6 +2301,28 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err.code, ErrorCode::InvalidArgv, "blank keywords are refused: {err}");
+    }
+
+    #[test]
+    fn new_change_from_discussion_fails_before_the_change_lands_when_the_record_cannot_take_the_link() {
+        // review Round 2：與 discuss::promote 同形——記錄無處插 promoted_to 時，change 目錄不得先落地。
+        let unclosed = "---\ntopic: x\nslug: x\nstatus: concluded\n";
+        let store = TestStore::with_live_discussion("x", unclosed);
+        let err = execute(
+            &store,
+            &ExecutionContext { workspace: Some(ghost_ws()), ..Default::default() },
+            Command::NewChange {
+                name: "cut-x".to_string(),
+                description: None,
+                schema: None,
+                agent: None,
+                from_discussion: Some("x".to_string()),
+            },
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("not closed"), "err: {err}");
+        assert!(!store.change_exists("cut-x"), "沒有半成品 change");
+        assert_eq!(store.discussion("x"), unclosed);
     }
 
     #[test]

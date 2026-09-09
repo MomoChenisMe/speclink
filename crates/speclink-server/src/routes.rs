@@ -1522,45 +1522,26 @@ pub async fn list_discussions(
         CommandOutcome::DiscussList(list) => list,
         _ => return Err(wrong_outcome("discuss-list")),
     };
-    let dto = ListDiscussionsResponse {
-        discussions: discussion_dtos_with_extras(&state, &binding, discussions).await?,
-    };
+    let dto = ListDiscussionsResponse { discussions: discussion_dtos(discussions) };
     Ok(ok(dto, &result.etag))
 }
 
 /// Engine discussion infos → wire DTOs with `promotedTo` and `concluded`
-/// filled. Both are assembled at the route edge from each info's own record
-/// (its slug plus its live/archived side, so a reused slug never answers for
-/// its namesake — remote-read-parity design D1): the engine's
-/// `DiscussionInfo` omits them so the CLI's JSON stays byte-identical. A
-/// failed lookup degrades to the fields' absent forms (empty `promotedTo`, no
-/// `concluded` key) rather than failing the listing.
-async fn discussion_dtos_with_extras(
-    state: &AppState,
-    binding: &Binding,
-    infos: Vec<EngineDiscussionInfo>,
-) -> Result<Vec<DiscussionInfo>, ApiError> {
-    let store = state.store.clone();
-    let scope = verb::scope_of(binding);
-    let keys: Vec<(String, bool)> = infos.iter().map(|d| (d.slug.clone(), d.archived)).collect();
-    let extras = tokio::task::spawn_blocking(move || {
-        speclink_host::bridge::discussions_extras(store.as_ref(), &scope, &keys).ok()
-    })
-    .await
-    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?;
-    Ok(match extras {
-        Some(extras) => infos
-            .into_iter()
-            .zip(extras)
-            .map(|(info, (promoted_to, concluded))| {
-                let mut dto = discussion_info(info);
-                dto.promoted_to = promoted_to;
-                dto.concluded = Some(concluded);
-                dto
-            })
-            .collect(),
-        None => infos.into_iter().map(discussion_info).collect(),
-    })
+/// filled from the engine's own projection: `DiscussionInfo` carries both as
+/// `serde(skip)` fields (parsed from each info's own record, live or archived,
+/// so a reused slug never answers for its namesake), kept out of the CLI's JSON
+/// so it stays byte-identical. Pure assembly — no store read at the route edge.
+fn discussion_dtos(infos: Vec<EngineDiscussionInfo>) -> Vec<DiscussionInfo> {
+    infos
+        .into_iter()
+        .map(|info| {
+            let (promoted_to, concluded) = (info.head.promoted_to.clone(), info.concluded);
+            let mut dto = discussion_info(info);
+            dto.promoted_to = promoted_to;
+            dto.concluded = Some(concluded);
+            dto
+        })
+        .collect()
 }
 
 /// Query string of `GET /discussions/search`.
@@ -1589,7 +1570,7 @@ pub async fn search_discussions(
     };
     let (infos, matches): (Vec<_>, Vec<_>) =
         hits.into_iter().map(|h| (h.info, h.matches)).unzip();
-    let infos = discussion_dtos_with_extras(&state, &binding, infos).await?;
+    let infos = discussion_dtos(infos);
     let dto = SearchDiscussionsResponse {
         hits: infos
             .into_iter()

@@ -6,6 +6,7 @@
 //! renamed by the store with a `<created>-` date prefix — like archived
 //! changes — so a slug can be reused by a later discussion.
 
+use crate::keylines::KeyLines;
 use crate::store::{DiscussionDoc, Store};
 use crate::util;
 use anyhow::{bail, Result};
@@ -27,29 +28,190 @@ pub struct DiscussionInfo {
     pub kind: Option<String>,
     pub path: String,
     pub archived: bool,
+    /// Conclusion 段是否已寫入內文（佔位註解不算）。不進 JSON（`discuss list --json`
+    /// 逐位元不變）；反序列化取預設。
+    #[serde(skip)]
+    pub concluded: bool,
+    /// 同一趟 frontmatter 解析的型別化結果（`promoted_to`、`hold`、`board_rank` 都在
+    /// 這裡）：desktop 看板與 server 列表直接讀它，不再逐卡讀檔。不進 JSON；反序列化
+    /// 取預設（remote 端由 wire DTO 回填 `promoted_to`）。
+    #[serde(skip)]
+    pub head: DiscussionHead,
 }
 
 /// `discuss new --kind` 的白名單——驗證與拒絕訊息的單一事實來源。
 /// CLI `--kind` 的 help 字面（clap 靜態字串）另行點名合法值，擴充時同步。
 pub const DISCUSSION_KINDS: &[&str] = &["improve"];
 
-fn frontmatter_value(text: &str, key: &str) -> Option<String> {
-    let mut in_fm = false;
-    for (i, line) in text.lines().enumerate() {
-        if i == 0 && line.trim() == "---" {
-            in_fm = true;
-            continue;
-        }
-        if in_fm {
-            if line.trim() == "---" {
-                break;
-            }
-            if let Some(rest) = line.strip_prefix(&format!("{key}:")) {
-                return Some(rest.trim().to_string());
-            }
+/// 討論記錄 frontmatter 的 `status` 三值列舉；手寫壞值以 [`Status::Unknown`] 原字串
+/// 保留（讀端不拒絕、投影逐位元回原字串），三個轉移方法把它視同 `Open`。
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Status {
+    #[default]
+    Open,
+    Concluded,
+    Promoted,
+    Unknown(String),
+}
+
+impl Status {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Status::Open => "open",
+            Status::Concluded => "concluded",
+            Status::Promoted => "promoted",
+            Status::Unknown(s) => s,
         }
     }
-    None
+
+    /// 缺席沿現況預設 `open`。
+    fn from_field(value: Option<&str>) -> Status {
+        match value {
+            None | Some("open") => Status::Open,
+            Some("concluded") => Status::Concluded,
+            Some("promoted") => Status::Promoted,
+            Some(other) => Status::Unknown(other.to_string()),
+        }
+    }
+}
+
+/// 討論記錄的 frontmatter，一次解析為九個欄位；只管 frontmatter，Context／Rounds／
+/// Conclusion 的區段函式另有落點。三條狀態轉移（[`promote`](Self::promote)、
+/// [`unlink`](Self::unlink)、[`conclude`](Self::conclude)）是這裡的方法，
+/// [`write_back`](Self::write_back) 只把**有改動的** status／promoted_to／hold／
+/// board_rank 寫回 frontmatter 圍欄內，其餘位元組（含內文撞字串的 `status: open`、
+/// 手改的 `hold: false`、沒動到的欄位的空白）逐字保留。
+#[derive(Debug, Clone, Default)]
+pub struct DiscussionHead {
+    pub slug: Option<String>,
+    pub topic: Option<String>,
+    pub status: Status,
+    pub created: Option<String>,
+    pub created_by: Option<String>,
+    pub kind: Option<String>,
+    pub promoted_to: Vec<String>,
+    pub hold: bool,
+    pub board_rank: Option<String>,
+    /// frontmatter 區域；記錄沒有 frontmatter 時為 `None`。
+    lines: Option<KeyLines>,
+    /// 解析當下的四個可寫欄位——`write_back` 只寫與它不同的欄位。
+    parsed: Parsed,
+    /// `promote`（新名字）與 `conclude` 對 hold 是明確重述：即使布林值沒變（例如
+    /// 手寫 `hold: yes` 讀成 false、再 conclude(false)），任何 `hold:` 行也整行移除。
+    hold_restated: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+struct Parsed {
+    status: Status,
+    promoted_to: Vec<String>,
+    hold: bool,
+    board_rank: Option<String>,
+}
+
+impl DiscussionHead {
+    /// 永遠成功：沒有 frontmatter 的記錄回全預設（status `Open`）。
+    pub fn parse(text: &str) -> DiscussionHead {
+        let lines = KeyLines::frontmatter(text);
+        let get = |key: &str| lines.as_ref().and_then(|l| l.get(key)).map(str::to_string);
+        // 空值 `kind:`／`board_rank:`（手改記錄）正規化為缺席，維持「缺席即省略」的形狀。
+        let non_empty = |key: &str| get(key).filter(|v| !v.is_empty());
+        let parsed = Parsed {
+            status: Status::from_field(get("status").as_deref()),
+            promoted_to: lines.as_ref().map(|l| l.list("promoted_to")).unwrap_or_default(),
+            // 只有字面 true 算旗標。
+            hold: get("hold").is_some_and(|v| v == "true"),
+            board_rank: non_empty("board_rank"),
+        };
+        DiscussionHead {
+            slug: get("slug"),
+            topic: get("topic"),
+            status: parsed.status.clone(),
+            created: get("created"),
+            created_by: get("created_by"),
+            kind: non_empty("kind"),
+            promoted_to: parsed.promoted_to.clone(),
+            hold: parsed.hold,
+            board_rank: parsed.board_rank.clone(),
+            lines,
+            parsed,
+            hold_restated: false,
+        }
+    }
+
+    /// 把**有改動的**可寫欄位同步回 frontmatter 後回整份文字；沒改的欄位一個位元
+    /// 都不碰（`set_board_rank` 因此不會順手補 `status: open` 或刪 `hold: false`）。
+    /// `Ok(None)`＝沒有 frontmatter 可錨定——呼叫端沿既有 None 契約決定：
+    /// `conclude --hold`／`set_board_rank` 回錯誤，其餘動詞不落檔。
+    /// `Err`＝frontmatter 未閉合（缺尾 `---`）而要新插的行無處可插——與「沒有
+    /// frontmatter」分開回報，呼叫端不得把它當成功。
+    pub fn write_back(&self) -> Result<Option<String>> {
+        let Some(mut lines) = self.lines.clone() else {
+            return Ok(None);
+        };
+        if self.status != self.parsed.status {
+            lines.set("status", self.status.as_str())?;
+        }
+        if self.promoted_to != self.parsed.promoted_to {
+            if self.promoted_to.is_empty() {
+                lines.remove("promoted_to");
+            } else {
+                lines.set("promoted_to", &self.promoted_to.join(", "))?;
+            }
+        }
+        if self.hold_restated || self.hold != self.parsed.hold {
+            if self.hold {
+                lines.set("hold", "true")?;
+            } else {
+                lines.remove("hold");
+            }
+        }
+        if self.board_rank != self.parsed.board_rank {
+            if let Some(rank) = &self.board_rank {
+                lines.set("board_rank", rank)?;
+            }
+        }
+        Ok(Some(lines.text()))
+    }
+
+    /// 轉出：status 由 Open／Concluded／Unknown 轉 Promoted（已是 Promoted 不動）、
+    /// `promoted_to` 去重累加；**只有新名字才清 hold**（回 `true`）。名字已在清單
+    /// （re-ingest 舊變更的 seal）不是轉出：hold 不動、回 `false`。
+    pub fn promote(&mut self, change: &str) -> bool {
+        self.status = Status::Promoted;
+        if self.promoted_to.iter().any(|c| c == change) {
+            return false;
+        }
+        self.promoted_to.push(change.to_string());
+        self.hold = false;
+        self.hold_restated = true;
+        true
+    }
+
+    /// discard 的解鏈：change 不在清單回 `None`（冪等、呼叫端不落檔）；移除後仍有
+    /// 名字 → 保持 Promoted；清單清空 → 移除 `promoted_to` 行、status 回退為
+    /// `has_conclusion ? Concluded : Open`。回移除後的 status。`has_conclusion` 由
+    /// 呼叫端以 `conclusion_body` 提供——head 不讀內文。
+    pub fn unlink(&mut self, change: &str, has_conclusion: bool) -> Option<Status> {
+        let before = self.promoted_to.len();
+        self.promoted_to.retain(|c| c != change);
+        if self.promoted_to.len() == before {
+            return None;
+        }
+        if self.promoted_to.is_empty() {
+            self.status = if has_conclusion { Status::Concluded } else { Status::Open };
+        }
+        Some(self.status.clone())
+    }
+
+    /// 結論：Open／Unknown → Concluded（Promoted 保持、Concluded 不動）；`hold` 依參數設或清。
+    pub fn conclude(&mut self, hold: bool) {
+        if !matches!(self.status, Status::Promoted | Status::Concluded) {
+            self.status = Status::Concluded;
+        }
+        self.hold = hold;
+        self.hold_restated = true;
+    }
 }
 
 /// 輪標題前綴：scaffold 版面（level-3）與 pre-scaffold 容忍（level-2）。
@@ -225,17 +387,19 @@ fn strip_html_comments(s: &str) -> String {
 }
 
 fn info_from_doc(doc: &DiscussionDoc) -> DiscussionInfo {
+    let head = DiscussionHead::parse(&doc.text);
     DiscussionInfo {
-        slug: frontmatter_value(&doc.text, "slug").unwrap_or_else(|| doc.slug.clone()),
-        topic: frontmatter_value(&doc.text, "topic").unwrap_or_else(|| doc.slug.clone()),
-        status: frontmatter_value(&doc.text, "status").unwrap_or_else(|| "open".to_string()),
+        slug: head.slug.clone().unwrap_or_else(|| doc.slug.clone()),
+        topic: head.topic.clone().unwrap_or_else(|| doc.slug.clone()),
+        status: head.status.as_str().to_string(),
         rounds: count_rounds(&doc.text),
-        created: frontmatter_value(&doc.text, "created").unwrap_or_default(),
-        created_by: frontmatter_value(&doc.text, "created_by"),
-        // 空值 `kind:`（手改記錄）正規化為缺席，維持「缺席即省略」的 payload 形狀。
-        kind: frontmatter_value(&doc.text, "kind").filter(|v| !v.is_empty()),
+        created: head.created.clone().unwrap_or_default(),
+        created_by: head.created_by.clone(),
+        kind: head.kind.clone(),
         path: util::to_slash(&doc.path),
         archived: doc.archived,
+        concluded: conclusion_body(&doc.text).is_some(),
+        head,
     }
 }
 
@@ -360,6 +524,8 @@ pub fn new_discussion(
         kind: kind.map(str::to_string),
         path: util::to_slash(&path),
         archived: false,
+        concluded: false,
+        head: DiscussionHead::parse(&content),
     })
 }
 
@@ -634,65 +800,36 @@ fn conclusion_body(text: &str) -> Option<String> {
     (!body.is_empty()).then_some(body)
 }
 
-/// Whether a discussion's Conclusion section holds real content (the scaffold's
-/// placeholder comment does not count) — the single contract point (design D3) shared
-/// by the archive co-archival guard, the conclude closing step, and every listing edge
-/// (server route, host bridge, desktop-core). Reads live-first with archived fallback;
-/// a missing or unreadable record counts as not concluded, so the guard leaves doubtful
-/// records live instead of sweeping them into the archive.
-pub fn discussion_concluded(store: &dyn Store, slug: &str) -> bool {
-    conclusion_text(store, slug).is_some()
-}
-
 /// Mark a discussion as promoted to a change (the discussion side of the bidirectional link).
 /// A discussion can fan out into several changes, so `promoted_to` is a comma-separated
 /// accumulator: repeated promotes append the new change name rather than being dropped.
 /// Accumulating a change also drops the record's `hold: true` flag: the staged spin-out
 /// it was waiting for now exists, so the record rejoins the ordinary lifecycle.
 pub fn mark_promoted(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
-    let mut text = load_live(store, slug)?;
-    for from in ["status: open", "status: concluded"] {
-        if text.contains(from) {
-            text = text.replacen(from, "status: promoted", 1);
-            break;
-        }
+    if let Some(out) = promoted_text(store, slug, change)? {
+        store.write_live_discussion(slug, &out)?;
     }
-    let accumulated = match frontmatter_value(&text, "promoted_to") {
-        Some(existing) => {
-            let known = existing.split(',').map(str::trim).any(|c| c == change);
-            if !known {
-                text = text.replacen(
-                    &format!("promoted_to: {existing}"),
-                    &format!("promoted_to: {existing}, {change}"),
-                    1,
-                );
-            }
-            !known
-        }
-        None => {
-            let stamped = text.replacen(
-                "status: promoted\n",
-                &format!("status: promoted\npromoted_to: {change}\n"),
-                1,
-            );
-            let landed = stamped != text;
-            text = stamped;
-            landed
-        }
-    };
-    // A NEW change name is the spin-out the hold flag was waiting for — clear it. All
-    // three spin-out paths (promote, `new change --from-discussion`, seal) come through
-    // here, so one removal covers them; `link` writes no discussion side and keeps the
-    // record byte-identical. The idempotent branch (re-sealing a change already in the
-    // list, e.g. a re-ingest after `conclude --hold` flagged it) is not a spin-out and
-    // must leave the flag alone.
-    if accumulated {
-        if let Some(t) = set_frontmatter_line(&text, "hold", None) {
-            text = t;
-        }
-    }
-    store.write_live_discussion(slug, &text)?;
     Ok(())
+}
+
+/// The dry run of [`mark_promoted`]: the record text after the `promote` transition,
+/// not yet written. `Ok(None)` = the record has no frontmatter to anchor the link (the
+/// verb leaves it untouched); `Err` = the frontmatter is unclosed and the link line has
+/// nowhere to go. Callers that create a change first (`promote`, `new change
+/// --from-discussion`) run this BEFORE the change lands, so that failure cannot leave a
+/// half-built change behind that a retry then trips over.
+///
+/// A NEW change name is the spin-out the hold flag was waiting for — `promote` clears
+/// it. All three spin-out paths (promote, `new change --from-discussion`, seal) come
+/// through here, so one rule covers them; `link` writes no discussion side and keeps
+/// the record byte-identical. The idempotent branch (re-sealing a change already in
+/// the list, e.g. a re-ingest after `conclude --hold` flagged it) is not a spin-out
+/// and leaves the flag alone.
+pub fn promoted_text(store: &dyn Store, slug: &str, change: &str) -> Result<Option<String>> {
+    let text = load_live(store, slug)?;
+    let mut head = DiscussionHead::parse(&text);
+    head.promote(change);
+    head.write_back()
 }
 
 /// The discard-side inverse of [`mark_promoted`]: unlink a discarded change from a
@@ -708,36 +845,21 @@ pub fn mark_promoted(store: &dyn Store, slug: &str, change: &str) -> Result<()> 
 /// error — the record may be archived or gone), or the change was not in the list
 /// (idempotent — re-running discard leaves an already-unlinked record byte-identical).
 pub fn unlink_discarded(store: &dyn Store, slug: &str, change: &str) -> Result<Option<String>> {
-    let Some(mut text) = store.read_live_discussion(slug) else {
+    let Some(text) = store.read_live_discussion(slug) else {
         return Ok(None);
     };
-    let Some(existing) = frontmatter_value(&text, "promoted_to") else {
-        return Ok(None);
-    };
-    let current: Vec<&str> =
-        existing.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
-    let remaining: Vec<&str> = current.iter().copied().filter(|s| *s != change).collect();
-    if remaining.len() == current.len() {
+    let mut head = DiscussionHead::parse(&text);
+    let Some(status) = head.unlink(change, conclusion_body(&text).is_some()) else {
         // change was never linked here — idempotent no-op, no write
         return Ok(None);
-    }
-    if remaining.is_empty() {
-        // last link died: drop the promoted_to line and revert the status
-        let reverted = if conclusion_text(store, slug).is_some() { "concluded" } else { "open" };
-        text = text.replacen(&format!("promoted_to: {existing}\n"), "", 1);
-        text = text.replacen("status: promoted", &format!("status: {reverted}"), 1);
-        store.write_live_discussion(slug, &text)?;
-        Ok(Some(reverted.to_string()))
-    } else {
-        // still referenced by other changes: shrink the list, keep promoted
-        text = text.replacen(
-            &format!("promoted_to: {existing}"),
-            &format!("promoted_to: {}", remaining.join(", ")),
-            1,
-        );
-        store.write_live_discussion(slug, &text)?;
-        Ok(Some("promoted".to_string()))
-    }
+    };
+    // Nothing written (no frontmatter to anchor) → report nothing done, never a status
+    // the file does not carry.
+    let Some(out) = head.write_back()? else {
+        return Ok(None);
+    };
+    store.write_live_discussion(slug, &out)?;
+    Ok(Some(status.as_str().to_string()))
 }
 
 /// Stamp the re-ingest-pending flag on every **active** change in a re-concluded
@@ -751,11 +873,8 @@ pub fn unlink_discarded(store: &dyn Store, slug: &str, change: &str) -> Result<O
 /// change names carrying the flag, for CLI reporting. `promoted_to` absent/empty, or
 /// resolving entirely to non-active changes, writes no change meta.
 fn stamp_restale(store: &dyn Store, slug: &str, discussion_text: &str) -> Result<Vec<String>> {
-    let Some(promoted) = frontmatter_value(discussion_text, "promoted_to") else {
-        return Ok(Vec::new());
-    };
     let mut flagged = Vec::new();
-    for change in promoted.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+    for change in &DiscussionHead::parse(discussion_text).promoted_to {
         let Some(mut meta) = store.read_change_meta(change) else {
             continue; // archived or gone — not an active change, skip
         };
@@ -796,7 +915,7 @@ fn clear_restale(store: &dyn Store, change: &str, slug: &str) -> Result<()> {
         return Ok(());
     };
     // Change meta is bare YAML (no `---` frontmatter fence), so parse via ChangeMeta
-    // like `link`/`stamp_restale` do — `frontmatter_value` only reads discussion docs.
+    // like `link`/`stamp_restale` do — `DiscussionHead` only reads discussion docs.
     // 深度防禦：唯一呼叫者 seal 已對壞 metadata 守門，此處到達即應可解析；
     // 萬一未來新增未守門的呼叫者，fail closed 而非靜默疊寫。
     let parsed = crate::model::ChangeMeta::from_text(Some(&meta)).map_err(|reason| {
@@ -860,6 +979,10 @@ pub fn promote(
         Some(_) => {}
     }
     let change_name = strip_date_prefix(name.unwrap_or(slug)).to_string();
+    // The discussion-side link is computed first: a record that cannot take it fails
+    // here, before any change directory lands (a retry would otherwise hit "already
+    // exists" on a half-built change).
+    let linked = promoted_text(store, slug, &change_name)?;
     let schema =
         crate::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())?
             .schema_name();
@@ -873,7 +996,9 @@ pub fn promote(
         "## Why\n\n{why}\n\n## What Changes\n\n<!-- TBD: derive from the discussion -->\n\n## Capabilities\n\n### New Capabilities\n\n<!-- TBD -->\n\n## Impact\n\n<!-- TBD -->\n"
     );
     store.write_artifact(&change_name, "proposal.md", &proposal)?;
-    mark_promoted(store, slug, &change_name)?;
+    if let Some(out) = linked {
+        store.write_live_discussion(slug, &out)?;
+    }
     Ok(PromoteOutcome { change: change_name, path: dir })
 }
 
@@ -965,69 +1090,18 @@ pub fn seal(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
     clear_restale(store, change, slug)
 }
 
-/// 討論卡的看板欄內排序鍵（frontmatter 的 `board_rank`）。沿 `promoted_to` 的
-/// 同款模式：獨立讀取函式、不進 `DiscussionInfo`，`discuss list --json` 逐位元不變。
-pub fn board_rank(store: &dyn Store, slug: &str) -> Option<String> {
-    let doc = store.read_discussion(slug)?;
-    frontmatter_value(&doc.text, "board_rank").filter(|v| !v.is_empty())
-}
-
-/// 寫入、原位代換或移除 frontmatter 的一行純量——discuss 側所有 frontmatter 文字
-/// 手術的共同落點（`board_rank`、`hold`）。`value` 為 `Some` 時第一條 `<key>:` 行
-/// 原位代換、之後的重複行一併移除，沒有就插在 frontmatter 尾端（closing `---` 前）；
-/// 為 `None` 時移除每一條 `<key>:` 行。鍵的認法與 [`frontmatter_value`] 相同，讀寫
-/// 兩邊看法一致；其餘內容逐位元組保留，行尾沿該檔既有的換行（LF 或 CRLF）。
-/// 未閉合的 frontmatter（缺尾 `---`）與讀端同樣寬鬆——整檔視為 frontmatter，原位代換
-/// 與移除照做；只有「要新插一行卻找不到尾 `---`」與「開頭不是 `---`」回 `None`。
-fn set_frontmatter_line(text: &str, key: &str, value: Option<&str>) -> Option<String> {
-    let prefix = format!("{key}:");
-    let mut out = String::with_capacity(text.len() + prefix.len() + 8);
-    let mut state = 0u8; // 0＝等開頭 ---、1＝frontmatter 內、2＝frontmatter 後
-    let mut opened = false;
-    let mut closed = false;
-    let mut placed = false;
-    for (i, l) in text.split_inclusive('\n').enumerate() {
-        match state {
-            0 => {
-                out.push_str(l);
-                opened = i == 0 && l.trim_end() == "---";
-                state = if opened { 1 } else { 2 };
-            }
-            1 => {
-                let eol = if l.ends_with("\r\n") { "\r\n" } else { "\n" };
-                if l.trim_end() == "---" {
-                    if let (Some(v), false) = (value, placed) {
-                        out.push_str(&format!("{prefix} {v}{eol}"));
-                    }
-                    out.push_str(l);
-                    closed = true;
-                    state = 2;
-                } else if l.starts_with(&prefix) {
-                    // 第一條原位代換；重複鍵與移除都是整行丟掉。
-                    if let (Some(v), false) = (value, placed) {
-                        out.push_str(&format!("{prefix} {v}{eol}"));
-                        placed = true;
-                    }
-                } else {
-                    out.push_str(l);
-                }
-            }
-            _ => out.push_str(l),
-        }
-    }
-    (closed || placed || (opened && value.is_none())).then_some(out)
-}
-
 /// 寫入（或原位更新）一筆 live 討論的看板排序鍵：既有 `board_rank:` 行原位代換
 /// （多出來的重複鍵一併收掉，與讀端只認第一行的看法對齊），否則插入 frontmatter
-/// 尾端（closing `---` 前）；其餘內容逐位元組保留。走 [`set_frontmatter_line`]，
+/// 尾端（closing `---` 前）；其餘內容逐位元組保留。走 [`DiscussionHead`]，
 /// 非法 rank、封存或不存在的討論、無 frontmatter 可插皆回明確錯誤（封存記錄不上看板）。
 pub fn set_board_rank(store: &dyn Store, slug: &str, rank: &str) -> Result<()> {
     if !crate::util::is_valid_board_rank(rank) {
         bail!("invalid board rank '{rank}' — lowercase ASCII letters only");
     }
     let text = load_live(store, slug)?;
-    let Some(out) = set_frontmatter_line(&text, "board_rank", Some(rank)) else {
+    let mut head = DiscussionHead::parse(&text);
+    head.board_rank = Some(rank.to_string());
+    let Some(out) = head.write_back()? else {
         bail!("discussion '{slug}' has no frontmatter — cannot set board rank");
     };
     store.write_live_discussion(slug, &out)?;
@@ -1040,46 +1114,31 @@ pub fn set_board_rank(store: &dyn Store, slug: &str, rank: &str) -> Result<()> {
 pub fn promoted_to(store: &dyn Store, slug: &str) -> Vec<String> {
     store
         .read_discussion(slug)
-        .map(|doc| promoted_to_in(&doc.text))
+        .map(|doc| DiscussionHead::parse(&doc.text).promoted_to)
         .unwrap_or_default()
 }
 
-/// The `promoted_to` accumulator of one record's text, in frontmatter order —
-/// for callers that already hold the exact document (live or archived) and
-/// must not let a reused slug's live record answer for its archived namesake.
-pub fn promoted_to_in(text: &str) -> Vec<String> {
-    frontmatter_value(text, "promoted_to")
-        .map(|v| {
-            v.split(',')
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-/// Whether one record's text holds a real Conclusion (the scaffold's
-/// placeholder comment does not count) — the text-level twin of
-/// [`discussion_concluded`].
-pub fn concluded_in(text: &str) -> bool {
-    conclusion_body(text).is_some()
-}
-
-/// Whether one record's text carries the staged-spin-out hold flag (frontmatter
-/// `hold: true`) — the text-level twin of [`discussion_held`], shaped like
-/// [`concluded_in`]. Only the exact value `true` counts. Module-private: the
-/// archive guard and the conclude closing step both go through [`discussion_held`].
-fn held_in(text: &str) -> bool {
-    frontmatter_value(text, "hold").is_some_and(|v| v == "true")
-}
-
-/// Whether a discussion asked to stay live until its next spin-out — the single
-/// contract point shared by the archive co-archival guard and the conclude closing
-/// step, shaped like [`discussion_concluded`]. A missing or unreadable record counts
-/// as not held (the concluded guard already keeps doubtful records live).
-pub fn discussion_held(store: &dyn Store, slug: &str) -> bool {
-    store.read_discussion(slug).is_some_and(|doc| held_in(&doc.text))
+/// The single closing judgment for a discussion's life: archive it only when all three
+/// conditions hold — no in-flight change references it (a change whose `.openspec.yaml`
+/// exists but fails to parse counts as still referencing, fail-closed), its Conclusion
+/// section holds real content, and it carries no `hold: true` flag. Shared by the
+/// `conclude` closing step and the change-archive co-archival path so the rule cannot
+/// drift between them again. `Ok(Some(file))` = archived; `Ok(None)` = a condition
+/// failed or no live record (an unreadable record counts as not concluded — it stays
+/// live); `Err` = the archive step itself failed.
+pub fn close_if_finished(store: &dyn Store, slug: &str) -> Result<Option<String>> {
+    let still_referenced = crate::model::list_changes(store).iter().any(|c| {
+        c.meta_error.is_some() || c.meta.from_discussions().iter().any(|s| s == slug)
+    });
+    // A missing or unreadable record counts as not concluded (stays live, per spec);
+    // a missing record also counts as not held — the concluded check already keeps it live.
+    let Some(doc) = store.read_discussion(slug) else {
+        return Ok(None);
+    };
+    if still_referenced || conclusion_body(&doc.text).is_none() || DiscussionHead::parse(&doc.text).hold {
+        return Ok(None);
+    }
+    archive_discussion(store, slug)
 }
 
 /// Archive a live discussion under its creation date. Returns the archived
@@ -1090,7 +1149,8 @@ pub fn archive_discussion(store: &dyn Store, slug: &str) -> Result<Option<String
     let Some(text) = store.read_live_discussion(slug) else {
         return Ok(None);
     };
-    let created = frontmatter_value(&text, "created")
+    let created = DiscussionHead::parse(&text)
+        .created
         .filter(|c| !c.is_empty())
         .unwrap_or_else(util::today);
     store.archive_discussion(slug, &created)
@@ -1143,10 +1203,19 @@ pub fn conclude(
 ) -> Result<ConcludeOutcome> {
     ensure_content(content)?;
     let content = escape_colliding_lines(content);
-    let mut text = load_live(store, slug)?;
-    // Flip status: open -> concluded in frontmatter. A promoted discussion (status:
-    // promoted) has no "status: open" to match, so a re-conclude preserves promoted.
-    text = text.replacen("status: open", "status: concluded", 1);
+    let text = load_live(store, slug)?;
+    // Flip status: open -> concluded in frontmatter (a promoted discussion stays
+    // promoted). The hold flag rides the same head write as the conclusion, so no half
+    // state can survive a failure. Concluding without --hold restates the intent: an
+    // existing flag is dropped. A record with nowhere to put the flag refuses `--hold`
+    // outright rather than dropping it silently; without `--hold` it concludes as before.
+    let mut head = DiscussionHead::parse(&text);
+    head.conclude(hold);
+    let mut text = match head.write_back()? {
+        Some(t) => t,
+        None if hold => bail!("discussion '{slug}' has no frontmatter — cannot hold it live"),
+        None => text,
+    };
     text = match replace_section(&text, "Conclusion", &content) {
         Some(t) => t,
         None => {
@@ -1157,44 +1226,31 @@ pub fn conclude(
             format!("{text}\n## Conclusion\n\n{}\n", content.trim_end())
         }
     };
-    // The hold flag rides the same write as the conclusion, so no half state can
-    // survive a failure. Concluding without --hold restates the intent: an existing
-    // flag is dropped. A record with nowhere to put the flag refuses `--hold` outright
-    // rather than dropping it silently; without `--hold` it concludes as before.
-    text = match set_frontmatter_line(&text, "hold", hold.then_some("true")) {
-        Some(t) => t,
-        None if hold => bail!("discussion '{slug}' has no frontmatter — cannot hold it live"),
-        None => text,
-    };
-    let held = held_in(&text);
+    let held = head.hold;
     store.write_live_discussion(slug, &text)?;
     // Re-concluding an already-reflected discussion (promoted_to non-empty) flags each
     // of its active changes as stale against the new conclusion. Returns the flagged
     // change names for the CLI to report; empty when nothing was reflected yet.
     let restale_flagged = stamp_restale(store, slug, &text)?;
-    // Closing step: a spun-out discussion whose changes have all left the in-flight set
-    // has no future change archive left to co-archive it, so conclude closes the record
-    // itself. Corrupt change metadata fails closed (the same discipline as `link`): a
-    // change whose references cannot be read counts as still referencing, so a doubtful
-    // record stays live rather than being mis-archived. A failed archive step rides in
-    // `closing_error` (see [`ConcludeOutcome`]) — the caller recovers with a plain
-    // `discuss archive`. A record concluded with `--hold` still owes a change that does
-    // not exist yet, so the closing step never fires on it: the flag's next spin-out
-    // clears it, and that change's archive co-archives the record.
-    let still_referenced = crate::model::list_changes(store).iter().any(|c| {
-        c.meta_error.is_some() || c.meta.from_discussions().iter().any(|s| s == slug)
-    });
+    // Closing step: a spun-out discussion (promoted_to non-empty — a link-only record
+    // has none and is closed by its change's archive instead) whose changes have all
+    // left the in-flight set has no future change archive left to co-archive it, so
+    // conclude closes the record itself via [`close_if_finished`] — the same three-way
+    // judgment the archive path uses (corrupt change metadata fails closed; a record
+    // concluded with `--hold` still owes a change that does not exist yet, so it stays).
+    // A failed archive step rides in `closing_error` (see [`ConcludeOutcome`]) — the
+    // caller recovers with a plain `discuss archive`.
     let mut closing_error = None;
-    let auto_archived = if !still_referenced && !held && !promoted_to(store, slug).is_empty() {
-        match archive_discussion(store, slug) {
+    let auto_archived = if head.promoted_to.is_empty() {
+        false
+    } else {
+        match close_if_finished(store, slug) {
             Ok(moved) => moved.is_some(),
             Err(e) => {
                 closing_error = Some(e.to_string());
                 false
             }
         }
-    } else {
-        false
     };
     Ok(ConcludeOutcome { restale_flagged, auto_archived, closing_error, held })
 }
@@ -1353,8 +1409,8 @@ mod tests {
 
         assert!(outcome.held, "outcome 記錄本次寫入後帶旗標");
         let text = store.discussion("alpha");
-        assert!(super::held_in(&text), "frontmatter 帶 hold: true");
-        assert!(super::discussion_held(&store, "alpha"));
+        assert!(DiscussionHead::parse(&text).hold, "frontmatter 帶 hold: true");
+        assert!(DiscussionHead::parse(&store.discussion("alpha")).hold);
         assert!(text.contains("status: concluded"), "status 轉換規則不變");
         assert!(text.contains("**Decision**: done"), "結論與旗標同一次落盤");
     }
@@ -1373,7 +1429,7 @@ mod tests {
 
         assert!(!outcome.held);
         let text = store.discussion("alpha");
-        assert!(!super::held_in(&text), "旗標行被移除");
+        assert!(!DiscussionHead::parse(&text).hold, "旗標行被移除");
         assert!(!text.contains("hold: true"), "整行消失，不留殘句");
         assert!(text.contains("status: promoted"), "promoted 狀態保持");
     }
@@ -1387,7 +1443,7 @@ mod tests {
 
         let text = store.discussion("alpha");
         assert!(text.contains("promoted_to: cut-a, cut-b"), "累加下一刀");
-        assert!(!super::held_in(&text), "旗標由轉出清除");
+        assert!(!DiscussionHead::parse(&text).hold, "旗標由轉出清除");
         assert!(!text.contains("hold: true"));
     }
 
@@ -1404,7 +1460,7 @@ mod tests {
         super::seal(&store, "alpha", "cut-b").unwrap();
         let text = store.discussion("alpha");
         assert!(text.contains("promoted_to: cut-a, cut-b"));
-        assert!(!super::held_in(&text), "seal 經 mark_promoted 清旗標");
+        assert!(!DiscussionHead::parse(&text).hold, "seal 經 mark_promoted 清旗標");
     }
 
     #[test]
@@ -1416,7 +1472,7 @@ mod tests {
         super::mark_promoted(&store, "alpha", "cut-a").unwrap();
 
         let text = store.discussion("alpha");
-        assert!(super::held_in(&text), "沒有新刀累加，旗標保留");
+        assert!(DiscussionHead::parse(&text).hold, "沒有新刀累加，旗標保留");
         assert!(text.contains("promoted_to: cut-a\n"), "promoted_to 不變");
     }
 
@@ -1438,7 +1494,7 @@ mod tests {
     #[test]
     fn conclude_rewrites_a_hand_edited_hold_line_in_place() {
         // 以 key 為單位改寫：手改成 hold: false 的行被原位換成 true（不另插一行），
-        // 不帶 hold 時任何 hold: 行都移除。讀（frontmatter_value）寫兩邊看法一致。
+        // 不帶 hold 時任何 hold: 行都移除。讀寫兩邊看法一致。
         let store = TestStore::with_meta(
             "cut",
             "schema: spec-driven\ncreated: 2026-01-02\nfrom_discussion: alpha\n",
@@ -1450,7 +1506,7 @@ mod tests {
         assert!(outcome.held);
         let text = store.discussion("alpha");
         assert_eq!(text.matches("\nhold:").count(), 1, "只有一行 hold:");
-        assert!(super::held_in(&text));
+        assert!(DiscussionHead::parse(&text).hold);
 
         store.discussions.borrow_mut().insert(
             "alpha".into(),
@@ -1472,12 +1528,12 @@ mod tests {
         assert!(outcome.held);
         let text = store.discussion("alpha");
         assert!(text.contains("hold: true\r\n---"), "旗標行以 CRLF 收尾: {text:?}");
-        assert!(super::held_in(&text));
+        assert!(DiscussionHead::parse(&text).hold);
     }
 
     #[test]
     fn frontmatter_line_surgery_on_unclosed_frontmatter_matches_the_reader() {
-        // 未閉合 frontmatter（缺尾 ---）：讀端 frontmatter_value 把整檔當 frontmatter，
+        // 未閉合 frontmatter（缺尾 ---）：讀端把整檔當 frontmatter，
         // 寫端要同樣寬鬆——既有行原位代換、移除照做；只有「要新插一行卻找不到尾」才拒絕。
         let unclosed = "---\ntopic: x\nslug: x\nstatus: open\nboard_rank: b\nhold: true\n";
         let store = TestStore::with_live_discussion("x", unclosed);
@@ -1488,7 +1544,7 @@ mod tests {
         let outcome = super::conclude(&store, "x", "**Decision**: done", false).unwrap();
         assert!(!outcome.held);
         assert!(!store.discussion("x").contains("hold:"), "未閉合仍能移除旗標");
-        assert!(!super::discussion_held(&store, "x"), "讀寫兩端看法一致");
+        assert!(!DiscussionHead::parse(&store.discussion("x")).hold, "讀寫兩端看法一致");
 
         let bare = "---\ntopic: y\nslug: y\nstatus: open\n";
         let store = TestStore::with_live_discussion("y", bare);
@@ -1497,11 +1553,10 @@ mod tests {
     }
 
     #[test]
-    fn mark_promoted_keeps_the_hold_flag_when_promoted_to_did_not_land() {
-        // 旗標清除以 promoted_to 真的寫進去為準。前提用的是既知缺口，不是目標行為：
-        // mark_promoted 以 "status: promoted\n" 做 replacen，CRLF 記錄落空、promoted_to
-        // 根本沒落地——那是 promote 路徑本來就有的 CRLF 破口，本測試只釘住「沒累加就不清
-        // 旗標」這一條，不背書 promoted_to 落空本身。
+    fn mark_promoted_lands_promoted_to_on_a_crlf_record_and_clears_the_hold() {
+        // 舊版以 "status: promoted\n" 做 replacen，CRLF 記錄的 promoted_to 落空、旗標因
+        // 「沒累加」被保留（前身測試釘的就是那個破口）。改走 head 之後 promoted_to 沿
+        // 該檔行尾落地，旗標的償還規則照常成立。
         let doc = open_doc("alpha", "Alpha")
             .replacen("created: 2026-01-02\n", "created: 2026-01-02\nhold: true\n", 1)
             .replace('\n', "\r\n");
@@ -1510,8 +1565,10 @@ mod tests {
         super::mark_promoted(&store, "alpha", "cut-b").unwrap();
 
         let text = store.discussion("alpha");
-        assert!(!text.contains("promoted_to:"), "前提：promoted_to 沒寫進去");
-        assert!(super::held_in(&text), "沒有累加就不清旗標");
+        assert!(text.contains("status: promoted\r\n"), "status 原位代換沿 CRLF: {text:?}");
+        assert!(text.contains("promoted_to: cut-b\r\n---"), "promoted_to 沿 CRLF 落地: {text:?}");
+        assert!(!DiscussionHead::parse(&text).hold, "新刀累加即清旗標");
+        assert!(!text.contains("hold:"));
     }
 
     #[test]
@@ -1526,7 +1583,7 @@ mod tests {
         assert!(outcome.closing_error.is_none());
         assert!(store.live_discussion_exists("alpha"), "記錄留在 live 集合");
         assert!(!store.archived_discussion_exists("alpha"));
-        assert!(super::held_in(&store.discussion("alpha")));
+        assert!(DiscussionHead::parse(&store.discussion("alpha")).hold);
     }
 
     #[test]
@@ -1583,17 +1640,15 @@ mod tests {
     #[test]
     fn board_rank_reads_frontmatter_only() {
         // 讀取限 frontmatter：本文出現「board_rank:」字樣不得誤讀。
-        let store = TestStore::with_live_discussion("alpha", &open_doc("alpha", "Alpha"));
-        assert!(super::board_rank(&store, "alpha").is_none());
+        let rank_of = |text: &str| super::info_from_doc(&doc_of("alpha", text)).head.board_rank;
+        assert!(rank_of(&open_doc("alpha", "Alpha")).is_none());
 
         let with_rank = open_doc("alpha", "Alpha")
             .replacen("status: open\n", "status: open\nboard_rank: n\n", 1);
-        let store2 = TestStore::with_live_discussion("alpha", &with_rank);
-        assert_eq!(super::board_rank(&store2, "alpha").as_deref(), Some("n"));
+        assert_eq!(rank_of(&with_rank).as_deref(), Some("n"));
 
         let body_decoy = open_doc("alpha", "Alpha") + "\nboard_rank: fake\n";
-        let store3 = TestStore::with_live_discussion("alpha", &body_decoy);
-        assert!(super::board_rank(&store3, "alpha").is_none());
+        assert!(rank_of(&body_decoy).is_none());
     }
 
     #[test]
@@ -1794,6 +1849,17 @@ mod tests {
         let err = super::promote(&store, "alpha-search", None, None).unwrap_err();
         assert!(err.to_string().contains("already exists"), "err: {err}");
         assert_eq!(store.discussion("alpha-search"), before, "discussion must not be marked");
+    }
+
+    #[test]
+    fn promote_fails_before_any_change_lands_when_the_record_cannot_take_the_link() {
+        // review Round 2：未閉合 frontmatter 且缺 promoted_to 的手寫記錄——標記步無處插行
+        // 會 Err；那個檢查必須在建 change 之前做，否則留下「change 已建、動詞報錯」的半成品。
+        let unclosed = "---\ntopic: x\nslug: x\nstatus: concluded\n";
+        let store = TestStore::with_live_discussion("x", unclosed);
+        assert!(super::promote(&store, "x", Some("cut-x"), None).is_err());
+        assert!(!store.change_exists("cut-x"), "沒有半成品 change");
+        assert_eq!(store.discussion("x"), unclosed, "記錄逐位元不變");
     }
 
     // --- promoted_to query (design D2) ---
@@ -2011,6 +2077,25 @@ mod tests {
         assert!(err.to_string().contains("not found"), "err: {err}");
         assert_eq!(store.discussion("alpha-search"), doc, "discussion must be untouched");
         assert_eq!(*store.meta_writes.borrow(), 0);
+    }
+
+    #[test]
+    fn link_example_accumulates_after_an_existing_source_discussion() {
+        // spec Example「累加後的 meta 欄位」字面值：cut-a 已含 from_discussion: alpha-search，
+        // link beta-cache cut-a → from_discussion: alpha-search, beta-cache；alpha-search 不變。
+        let alpha = concluded_doc("alpha-search", "Alpha search", "a");
+        let store = TestStore::with_live_discussion("alpha-search", &alpha);
+        store
+            .discussions
+            .borrow_mut()
+            .insert("beta-cache".into(), concluded_doc("beta-cache", "Beta cache", "b"));
+        store
+            .metas
+            .borrow_mut()
+            .insert("cut-a".into(), "schema: spec-driven\nfrom_discussion: alpha-search\n".into());
+        super::link(&store, "beta-cache", "cut-a").unwrap();
+        assert!(store.meta("cut-a").contains("from_discussion: alpha-search, beta-cache\n"));
+        assert_eq!(store.discussion("alpha-search"), alpha, "alpha-search 的記錄逐位元不變");
     }
 
     #[test]
@@ -2501,7 +2586,7 @@ mod tests {
     #[test]
     fn new_discussion_rejects_multiline_topic_without_writing() {
         // topic 逐字寫入 frontmatter——夾帶換行可注入偽造的 kind:/status: 行
-        // （frontmatter_value 取第一個命中），必須在系統邊界擋下。
+        // （讀端取第一個命中），必須在系統邊界擋下。
         for bad in ["x\nkind: improve\nstatus: promoted", "x\rkind: improve", "x\r\ny"] {
             let store = TestStore::default();
             let err = super::new_discussion(&store, bad, Some("plain-a"), None, None)
@@ -3047,5 +3132,276 @@ mod tests {
         let hits = super::search(&store, &terms(&["golden"])).unwrap();
         assert_eq!(kinds(&hits[0]), [("ruled-out", "round-1")]);
         assert_eq!(hits[0].matches[0].text, "**Ruled out**: golden a");
+    }
+
+    // --- DiscussionHead（lifecycle-discussion-head design D3／D4）---
+
+    use super::{DiscussionHead, Status};
+
+    /// 內文引用 `status: open` 與 `status: concluded` 字串的已結論記錄——本 change
+    /// 立案時對 improve-lifecycle-layer 發作的案例。
+    fn body_quoting_status_doc() -> String {
+        "---\ntopic: Lifecycle\nslug: improve-lifecycle-layer\nstatus: concluded\ncreated: 2026-09-01\n---\n\n\
+         # Discussion: Lifecycle\n\n\
+         ## Context\n\n候選 1：`replacen(\"status: open\")` 不限於 frontmatter；`status: concluded` 也一樣。\n\n\
+         ## Conclusion\n\n**Decision**: three cuts\n"
+            .to_string()
+    }
+
+    #[test]
+    fn head_parse_without_frontmatter_yields_defaults_and_no_write_back() {
+        let head = DiscussionHead::parse("# Discussion: bare\n\n## Rounds\n");
+        assert_eq!(head.slug, None);
+        assert_eq!(head.topic, None);
+        assert_eq!(head.status, Status::Open);
+        assert_eq!(head.created, None);
+        assert_eq!(head.created_by, None);
+        assert_eq!(head.kind, None);
+        assert!(head.promoted_to.is_empty());
+        assert!(!head.hold);
+        assert_eq!(head.board_rank, None);
+        assert_eq!(head.write_back().unwrap(), None);
+        // 寫入方法照常可呼叫，只是無處回寫。
+        let mut head = head;
+        head.conclude(true);
+        assert_eq!(head.write_back().unwrap(), None);
+    }
+
+    #[test]
+    fn head_parse_reads_every_field_and_normalizes_empties() {
+        let text = "---\ntopic: Alpha search\nslug: alpha\nstatus: promoted\npromoted_to: cut-a, cut-b\n\
+                    created: 2026-01-02\ncreated_by: Ann <ann@x.io>\nkind:\nboard_rank:\nhold: true\n---\n\nbody\n";
+        let head = DiscussionHead::parse(text);
+        assert_eq!(head.slug.as_deref(), Some("alpha"));
+        assert_eq!(head.topic.as_deref(), Some("Alpha search"));
+        assert_eq!(head.status, Status::Promoted);
+        assert_eq!(head.promoted_to, vec!["cut-a", "cut-b"]);
+        assert_eq!(head.created.as_deref(), Some("2026-01-02"));
+        assert_eq!(head.created_by.as_deref(), Some("Ann <ann@x.io>"));
+        assert_eq!(head.kind, None, "空值 kind 正規化為缺席");
+        assert_eq!(head.board_rank, None, "空值 board_rank 正規化為缺席");
+        assert!(head.hold);
+        // 只有字面 true 算 hold。
+        assert!(!DiscussionHead::parse("---\nhold: yes\n---\n").hold);
+        // 未改動的 head 回寫逐位元不變。
+        assert_eq!(head.write_back().unwrap().as_deref(), Some(text));
+    }
+
+    #[test]
+    fn head_status_defaults_to_open_and_keeps_an_unknown_literal() {
+        assert_eq!(DiscussionHead::parse("---\nslug: x\n---\n").status, Status::Open);
+        assert_eq!(DiscussionHead::parse("---\nstatus: open\n---\n").status, Status::Open);
+        assert_eq!(DiscussionHead::parse("---\nstatus: concluded\n---\n").status, Status::Concluded);
+        let head = DiscussionHead::parse("---\nstatus: Parked!\n---\n");
+        assert_eq!(head.status, Status::Unknown("Parked!".into()));
+        assert_eq!(head.status.as_str(), "Parked!", "投影逐位元回原字串");
+        assert_eq!(head.write_back().unwrap().as_deref(), Some("---\nstatus: Parked!\n---\n"));
+    }
+
+    #[test]
+    fn head_promote_new_change_clears_hold_and_returns_true() {
+        let mut head = DiscussionHead::parse(&held_promoted_doc("alpha", "cut-a"));
+        assert!(head.promote("cut-b"));
+        assert_eq!(head.status, Status::Promoted);
+        assert_eq!(head.promoted_to, vec!["cut-a", "cut-b"]);
+        assert!(!head.hold);
+        let text = head.write_back().unwrap().unwrap();
+        assert!(text.contains("promoted_to: cut-a, cut-b\n"));
+        assert!(!text.contains("hold:"), "旗標行整行消失: {text}");
+    }
+
+    #[test]
+    fn head_promote_known_change_keeps_hold_and_returns_false() {
+        let doc = held_promoted_doc("alpha", "cut-a");
+        let mut head = DiscussionHead::parse(&doc);
+        assert!(!head.promote("cut-a"));
+        assert!(head.hold, "沒有新刀累加，旗標保留");
+        assert_eq!(head.write_back().unwrap().as_deref(), Some(doc.as_str()), "冪等：逐位元不變");
+    }
+
+    #[test]
+    fn head_promote_from_open_concluded_and_unknown_becomes_promoted() {
+        for status in ["open", "concluded", "parked"] {
+            let mut head = DiscussionHead::parse(&format!("---\nstatus: {status}\n---\n"));
+            assert!(head.promote("cut"));
+            assert_eq!(head.status, Status::Promoted, "from {status}");
+            assert_eq!(head.write_back().unwrap().as_deref(), Some("---\nstatus: promoted\npromoted_to: cut\n---\n"));
+        }
+    }
+
+    #[test]
+    fn head_promote_touches_only_the_frontmatter_when_the_body_quotes_status_strings() {
+        let doc = body_quoting_status_doc();
+        let mut head = DiscussionHead::parse(&doc);
+        assert!(head.promote("lifecycle-discussion-head"));
+        let text = head.write_back().unwrap().unwrap();
+        let (fm, body) = text.split_once("\n---\n").unwrap();
+        let (_, original_body) = doc.split_once("\n---\n").unwrap();
+        assert_eq!(body, original_body, "內文逐位元不變");
+        assert_eq!(
+            fm,
+            "---\ntopic: Lifecycle\nslug: improve-lifecycle-layer\nstatus: promoted\ncreated: 2026-09-01\npromoted_to: lifecycle-discussion-head",
+            "新行補在 frontmatter 尾端（closing --- 前）"
+        );
+    }
+
+    #[test]
+    fn head_unlink_returns_none_when_the_change_is_not_listed() {
+        let doc = promoted_doc("alpha", "Alpha", "cut-a", "x");
+        let mut head = DiscussionHead::parse(&doc);
+        assert_eq!(head.unlink("cut-z", true), None);
+        assert_eq!(head.write_back().unwrap().as_deref(), Some(doc.as_str()));
+        let mut head = DiscussionHead::parse(&open_doc("beta", "Beta"));
+        assert_eq!(head.unlink("cut-a", false), None);
+    }
+
+    #[test]
+    fn head_unlink_shrinks_the_list_and_keeps_promoted() {
+        let mut head = DiscussionHead::parse(&promoted_doc("alpha", "Alpha", "cut-a, cut-b", "x"));
+        assert_eq!(head.unlink("cut-a", true), Some(Status::Promoted));
+        assert_eq!(head.promoted_to, vec!["cut-b"]);
+        assert!(head.write_back().unwrap().unwrap().contains("status: promoted\npromoted_to: cut-b\n"));
+    }
+
+    #[test]
+    fn head_unlink_drops_the_line_and_reverts_by_conclusion_when_the_list_empties() {
+        let mut head = DiscussionHead::parse(&promoted_doc("alpha", "Alpha", "cut-a", "x"));
+        assert_eq!(head.unlink("cut-a", true), Some(Status::Concluded));
+        let text = head.write_back().unwrap().unwrap();
+        assert!(!text.contains("promoted_to:"), "promoted_to 行移除: {text}");
+        assert!(text.contains("status: concluded\n"));
+
+        let mut head = DiscussionHead::parse(&promoted_unconcluded_doc("alpha", "cut-a"));
+        assert_eq!(head.unlink("cut-a", false), Some(Status::Open));
+        let text = head.write_back().unwrap().unwrap();
+        assert!(!text.contains("promoted_to:"));
+        assert!(text.contains("status: open\n"));
+    }
+
+    #[test]
+    fn head_conclude_flips_open_and_unknown_keeps_promoted_and_sets_or_clears_hold() {
+        let mut head = DiscussionHead::parse("---\nstatus: open\n---\n");
+        head.conclude(true);
+        assert_eq!(head.status, Status::Concluded);
+        assert!(head.hold);
+        assert_eq!(head.write_back().unwrap().as_deref(), Some("---\nstatus: concluded\nhold: true\n---\n"));
+
+        let mut head = DiscussionHead::parse("---\nstatus: parked\n---\n");
+        head.conclude(false);
+        assert_eq!(head.status, Status::Concluded);
+
+        let mut head = DiscussionHead::parse(&held_promoted_doc("alpha", "cut-a"));
+        head.conclude(false);
+        assert_eq!(head.status, Status::Promoted, "Promoted 保持");
+        assert!(!head.hold);
+        assert!(!head.write_back().unwrap().unwrap().contains("hold:"));
+
+        let mut head = DiscussionHead::parse("---\nstatus: concluded\n---\n");
+        head.conclude(false);
+        assert_eq!(head.status, Status::Concluded);
+    }
+
+    // --- DiscussionInfo 的 serde(skip) 投影（lifecycle-discussion-head design D5）---
+
+    fn doc_of(slug: &str, text: &str) -> crate::store::DiscussionDoc {
+        crate::store::DiscussionDoc {
+            slug: slug.to_string(),
+            text: text.to_string(),
+            path: std::path::PathBuf::from(format!("openspec/discussions/{slug}.md")),
+            archived: false,
+        }
+    }
+
+    #[test]
+    fn info_from_doc_projects_concluded_and_the_head_from_the_record() {
+        let text = "---\ntopic: Alpha\nslug: alpha\nstatus: promoted\npromoted_to: cut-a, cut-b\n\
+                    created: 2026-01-02\nhold: true\nboard_rank: n\n---\n\n## Conclusion\n\n**Decision**: x\n";
+        let info = super::info_from_doc(&doc_of("alpha", text));
+        assert_eq!(info.head.promoted_to, vec!["cut-a", "cut-b"]);
+        assert!(info.concluded);
+        assert!(info.head.hold);
+        assert_eq!(info.head.board_rank.as_deref(), Some("n"));
+
+        let info = super::info_from_doc(&doc_of("beta", &open_doc("beta", "Beta")));
+        assert!(info.head.promoted_to.is_empty());
+        assert!(!info.concluded, "佔位註解不算結論");
+        assert!(!info.head.hold);
+        assert_eq!(info.head.board_rank, None);
+    }
+
+    #[test]
+    fn info_serialization_omits_concluded_and_the_head() {
+        let text = "---\ntopic: Alpha\nslug: alpha\nstatus: promoted\npromoted_to: cut-a\n\
+                    created: 2026-01-02\nhold: true\nboard_rank: n\n---\n\n## Conclusion\n\n**Decision**: x\n";
+        let json = serde_json::to_string(&super::info_from_doc(&doc_of("alpha", text))).unwrap();
+        for key in ["promotedTo", "promoted_to", "concluded", "held", "hold", "head", "boardRank", "board_rank"] {
+            assert!(!json.contains(&format!("\"{key}\"")), "`{key}` 不得進 JSON: {json}");
+        }
+        assert!(json.contains("\"status\":\"promoted\""));
+    }
+
+    #[test]
+    fn info_deserializes_without_the_skip_keys_to_defaults() {
+        let json = r#"{"slug":"alpha","topic":"Alpha","status":"open","rounds":0,"created":"2026-01-02","path":"openspec/discussions/alpha.md","archived":false}"#;
+        let info: super::DiscussionInfo = serde_json::from_str(json).unwrap();
+        assert!(info.head.promoted_to.is_empty());
+        assert!(!info.concluded);
+        assert!(!info.head.hold);
+        assert_eq!(info.head.board_rank, None);
+        // 帶著四鍵的 JSON 也照樣解碼成預設（skip 端不讀）。
+        let json = r#"{"slug":"alpha","topic":"Alpha","status":"open","rounds":0,"created":"2026-01-02","path":"p","archived":false,"promotedTo":["x"],"concluded":true,"held":true,"boardRank":"n"}"#;
+        let info: super::DiscussionInfo = serde_json::from_str(json).unwrap();
+        assert!(info.head.promoted_to.is_empty());
+        assert!(!info.concluded);
+    }
+
+    // --- write_back 只寫有改動的欄位、插入失敗回 Err（review Round 1）---
+
+    #[test]
+    fn head_write_back_touches_only_the_fields_that_changed() {
+        // 沒有 status 行、手改 hold: false、promoted_to 帶怪空白：只設 board_rank 時
+        // 其餘三欄一個位元都不動——不補 status: open、不刪 hold: false、不重排清單。
+        let text = "---\ntopic: x\nslug: x\npromoted_to: cut-a ,cut-b\nhold: false\n---\nbody\n";
+        let mut head = DiscussionHead::parse(text);
+        head.board_rank = Some("n".into());
+        assert_eq!(
+            head.write_back().unwrap().as_deref(),
+            Some("---\ntopic: x\nslug: x\npromoted_to: cut-a ,cut-b\nhold: false\nboard_rank: n\n---\nbody\n")
+        );
+    }
+
+    #[test]
+    fn head_conclude_and_promote_restate_the_hold_line_even_when_the_flag_value_is_unchanged() {
+        // conclude(false)／promote 的 hold 是明確重述：`hold: yes`（讀成 false）也整行移除。
+        let mut head = DiscussionHead::parse("---\nstatus: open\nhold: yes\n---\n");
+        head.conclude(false);
+        assert_eq!(head.write_back().unwrap().as_deref(), Some("---\nstatus: concluded\n---\n"));
+        let mut head = DiscussionHead::parse("---\nstatus: open\nhold: yes\n---\n");
+        assert!(head.promote("cut"));
+        assert_eq!(
+            head.write_back().unwrap().as_deref(),
+            Some("---\nstatus: promoted\npromoted_to: cut\n---\n")
+        );
+    }
+
+    #[test]
+    fn head_write_back_errors_when_an_unclosed_frontmatter_cannot_take_a_new_line() {
+        // 未閉合 frontmatter 缺 promoted_to：promote 要新插一行、無處可插 → Err，
+        // 而不是與「沒有 frontmatter」同一個 None。原位代換（status）不受影響。
+        let mut head = DiscussionHead::parse("---\nstatus: open\n");
+        assert!(head.promote("cut"));
+        assert!(head.write_back().is_err());
+        let mut head = DiscussionHead::parse("---\nstatus: open\n");
+        head.conclude(false);
+        assert_eq!(head.write_back().unwrap().as_deref(), Some("---\nstatus: concluded\n"));
+        assert_eq!(DiscussionHead::parse("no frontmatter\n").write_back().unwrap(), None);
+    }
+
+    #[test]
+    fn mark_promoted_on_an_unclosed_record_without_promoted_to_errors_and_keeps_the_text() {
+        let unclosed = "---\ntopic: x\nslug: x\nstatus: open\n";
+        let store = TestStore::with_live_discussion("x", unclosed);
+        assert!(super::mark_promoted(&store, "x", "cut").is_err(), "無處可插要大聲失敗");
+        assert_eq!(store.discussion("x"), unclosed);
     }
 }

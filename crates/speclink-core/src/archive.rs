@@ -767,29 +767,21 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
     }
 
     // A change promoted from (or linked to) a discussion carries its record along into the
-    // archive — but only the last change to reference it, and only once the discussion has a
-    // written conclusion: a discussion can fan out into several changes (siblings still in
-    // flight need the record to stay live), and a record still being discussed must not be
-    // swept — its life ends with its conclusion, not with the spin-out. A record whose
-    // conclusion planned a further change (`conclude --hold`) also stays: the change it
-    // owes does not exist yet, so this archive is not the last one. Each source
-    // discussion is judged independently (`from_discussion` is a comma accumulator). (This
-    // change was already moved above, so it no longer shows up in list_changes.)
+    // archive — but only the last change to reference it, only once the discussion has a
+    // written conclusion, and only without a `hold` flag: the one judgment lives in
+    // `discuss::close_if_finished` (shared with the conclude closing step, so an in-flight
+    // change whose meta fails to parse counts as still referencing on both paths). Each
+    // source discussion is judged independently (`from_discussion` is a comma
+    // accumulator). A failed archive step is skipped, not surfaced: the change itself is
+    // already archived, and the record stays live for the next archive or `discuss
+    // archive` to close. (This change was already moved above, so it no longer shows up
+    // in list_changes.)
     let archived_discussions: Vec<(String, String)> = change
         .meta
         .from_discussions()
         .into_iter()
         .filter_map(|slug| {
-            let still_referenced = model::list_changes(store)
-                .iter()
-                .any(|c| c.meta.from_discussions().iter().any(|s| *s == slug));
-            if still_referenced
-                || !crate::discuss::discussion_concluded(store, &slug)
-                || crate::discuss::discussion_held(store, &slug)
-            {
-                return None;
-            }
-            crate::discuss::archive_discussion(store, &slug)
+            crate::discuss::close_if_finished(store, &slug)
                 .ok()
                 .flatten()
                 .map(|file| (slug, file))
@@ -1373,6 +1365,32 @@ mod tests {
             outcome.archived_discussions.iter().map(|(s, _)| s.as_str()).collect();
         assert_eq!(slugs, vec!["only"]);
         assert!(store.archived_discussion_exists("only"));
+    }
+
+    #[test]
+    fn archive_leaves_discussion_live_when_an_in_flight_meta_is_corrupt() {
+        // spec discussion-docs Example「壞 meta 的在途變更擋住隨行封存」：d1 已結論、無 hold；
+        // cut 的 meta 含 from_discussion: d1、tasks 全完成；另一在途變更 broken 的
+        // .openspec.yaml 為 `schema: [unclosed`（解析失敗）→ cut 照常封存、d1 留在途。
+        // 壞 meta 視同仍引用（與 conclude 閉環步同一條規則）。
+        let store = TestStore::with_meta(
+            "cut",
+            "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: d1\n",
+        );
+        store.put_artifact("cut", "tasks.md", "- [x] 1.1 done\n");
+        store.metas.borrow_mut().insert("broken".into(), "schema: [unclosed\n".into());
+        store.discussions.borrow_mut().insert("d1".into(), discussion_doc("d1"));
+        let change = crate::model::find_change(&store, "cut").unwrap();
+
+        let outcome = archive(&ghost_ws(), &store, &change, &skip_opts(), None).unwrap();
+
+        assert!(!store.change_exists("cut"), "cut 移入封存區");
+        assert!(
+            outcome.archived_discussions.is_empty(),
+            "corrupt in-flight meta counts as a live reference — no co-archive"
+        );
+        assert!(store.live_discussion_exists("d1"), "d1 stays live");
+        assert!(!store.archived_discussion_exists("d1"));
     }
 
     // --- 單筆封存任務完成度守門（design D1；spec change-lifecycle「單筆封存的任務完成度守門」）---

@@ -1,0 +1,104 @@
+{
+  "version": 2,
+  "change": "lifecycle-discussion-head",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 建立回歸基準：在改碼前跑 `cargo test -p speclink-core --test it render_golden::` 與 `cargo test -p speclink-cli --test it discuss`，記下全綠與 golden 零 diff 的狀態（若基準本身就紅，先停下回報，不在本 change 修）。驗證：兩條指令 exit code 0。路徑：crates/speclink-core/tests/golden、crates/speclink-cli/tests/it",
+      "files": [
+        "crates/speclink-core/src/keylines.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "2.1 【Red】寫 `KeyLines` 單元測試（crates/speclink-core/src/keylines.rs 的 `#[cfg(test)]` 模組）釘住 D2 KeyLines 介面與語意：`get` 只認區域內第 0 欄 `key:`；`set` 第一條原位代換、重複鍵整行丟、缺則補在 closing `---` 前（Frontmatter）或檔尾（Whole，尾端無換行先補）；未閉合 frontmatter 上新插一行回 `Err` 且 `text()` 逐位元不變；`remove` 連同縮排續行、第 0 欄 `- ` 序列項與區塊內空行一起移除；`list`／`push_list`（已含回 false 不改）／`remove_list`（清空即整行移除）；CRLF 記錄新行沿 CRLF；`frontmatter()` 對首行非 `---` 回 `None`。驗證：`cargo test -p speclink-core keylines` 全部失敗於「模組不存在」或斷言。",
+      "files": [
+        "crates/speclink-core/src/lib.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 【Red】寫 `DiscussionHead` 單元測試（crates/speclink-core/src/discuss.rs 測試模組）釘住 D3 DiscussionHead 只管 frontmatter、讀端永遠成功、回寫沿 None 契約與 D4 三條轉移規則住在 head 方法上：`parse` 對無 frontmatter 記錄回全預設且 `write_back()` 為 `None`；status 缺席→Open、未知字面→`Unknown(原字串)` 且 `as_str` 逐位元回原字串；`promote` 新名字清 hold 回 true、舊名字不清 hold 回 false、Concluded／Unknown→Promoted；`unlink` 不在清單回 `None`、縮清單保持 Promoted、清空時移除 promoted_to 行並依 `has_conclusion` 回退 Concluded／Open；`conclude(hold)` Open／Unknown→Concluded、Promoted 保持、hold 設或清；**內文含 `status: open` 與 `status: concluded` 字串的記錄，promote 後內文逐位元不變、只有 frontmatter 改動**（本 change 立案時對 improve-lifecycle-layer 發作的案例）。驗證：`cargo test -p speclink-core discuss::tests::head_` 全部失敗。",
+      "files": [
+        "crates/speclink-core/src/discuss.rs"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.3 desktop 討論列表改讀 info 欄位：`entry()` 的 `promotedTo`／`concluded` 直接取 `info.promoted_to`／`info.concluded`，`board_sorted_active` 直接取 `info.board_rank`，每張卡不再額外讀檔；desktop payload 的鍵名（camelCase）與值不變。驗證：`cargo test -p speclink-desktop-core discussions` 既有斷言不改全綠。路徑：apps/desktop/core/src/discussions.rs",
+      "files": [
+        "apps/desktop/core/src/discussions.rs",
+        "crates/speclink-cli/src/verbs/discuss.rs",
+        "crates/speclink-host/src/bridge.rs",
+        "crates/speclink-server/src/routes.rs"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "6.1 【Red】在 crates/speclink-core/src/archive.rs 測試模組新增「在途變更 meta 損壞時討論不隨變更封存」（規格 discussion-docs「討論以 link 動詞併入既有變更」的新 scenario）：討論 d1 已結論、無 hold；變更 cut 的 meta 含 `from_discussion: d1`、tasks 全完成；另一在途變更 broken 的 meta 為壞 YAML；`archive(cut)` 成功、`archived_discussions` 為空、d1 仍 live。驗證：`cargo test -p speclink-core archive::tests::archive_leaves_discussion_live_when_an_in_flight_meta_is_corrupt` 失敗（現況把 d1 掃進封存區）。",
+      "files": [
+        "crates/speclink-core/src/archive.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M22QT9VTFEPXBSZJ754XZ45D",
+      "taskDesc": "1.1 建立回歸基準：在改碼前跑 `cargo test -p speclink-core --test it render_golden::` 與 `cargo test -p speclink-cli --test it discuss`，記下全綠與 golden 零 diff 的狀態（若基準本身就紅，先停下回報，不在本 change 修）。驗證：兩條指令 exit code 0。路徑：crates/speclink-core/tests/golden、crates/speclink-cli/tests/it",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "896418313c63122b37151b7ecf15bf37dad3394b",
+      "touchedFiles": [
+        "crates/speclink-core/src/keylines.rs"
+      ],
+      "recordedAt": "2026-09-09T09:35:19Z"
+    },
+    {
+      "taskId": "tsk_01M22QT9VTNJ3E0Q3YE6ARJJ30",
+      "taskDesc": "2.1 【Red】寫 `KeyLines` 單元測試（crates/speclink-core/src/keylines.rs 的 `#[cfg(test)]` 模組）釘住 D2 KeyLines 介面與語意：`get` 只認區域內第 0 欄 `key:`；`set` 第一條原位代換、重複鍵整行丟、缺則補在 closing `---` 前（Frontmatter）或檔尾（Whole，尾端無換行先補）；未閉合 frontmatter 上新插一行回 `Err` 且 `text()` 逐位元不變；`remove` 連同縮排續行、第 0 欄 `- ` 序列項與區塊內空行一起移除；`list`／`push_list`（已含回 false 不改）／`remove_list`（清空即整行移除）；CRLF 記錄新行沿 CRLF；`frontmatter()` 對首行非 `---` 回 `None`。驗證：`cargo test -p speclink-core keylines` 全部失敗於「模組不存在」或斷言。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "896418313c63122b37151b7ecf15bf37dad3394b",
+      "touchedFiles": [
+        "crates/speclink-core/src/lib.rs"
+      ],
+      "recordedAt": "2026-09-09T09:37:21Z"
+    },
+    {
+      "taskId": "tsk_01M22QT9VTF28N2STFXPHGKFSX",
+      "taskDesc": "3.1 【Red】寫 `DiscussionHead` 單元測試（crates/speclink-core/src/discuss.rs 測試模組）釘住 D3 DiscussionHead 只管 frontmatter、讀端永遠成功、回寫沿 None 契約與 D4 三條轉移規則住在 head 方法上：`parse` 對無 frontmatter 記錄回全預設且 `write_back()` 為 `None`；status 缺席→Open、未知字面→`Unknown(原字串)` 且 `as_str` 逐位元回原字串；`promote` 新名字清 hold 回 true、舊名字不清 hold 回 false、Concluded／Unknown→Promoted；`unlink` 不在清單回 `None`、縮清單保持 Promoted、清空時移除 promoted_to 行並依 `has_conclusion` 回退 Concluded／Open；`conclude(hold)` Open／Unknown→Concluded、Promoted 保持、hold 設或清；**內文含 `status: open` 與 `status: concluded` 字串的記錄，promote 後內文逐位元不變、只有 frontmatter 改動**（本 change 立案時對 improve-lifecycle-layer 發作的案例）。驗證：`cargo test -p speclink-core discuss::tests::head_` 全部失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "896418313c63122b37151b7ecf15bf37dad3394b",
+      "touchedFiles": [
+        "crates/speclink-core/src/discuss.rs"
+      ],
+      "recordedAt": "2026-09-09T09:47:54Z"
+    },
+    {
+      "taskId": "tsk_01M22QT9VTJVN4FCK48BDN9P29",
+      "taskDesc": "5.3 desktop 討論列表改讀 info 欄位：`entry()` 的 `promotedTo`／`concluded` 直接取 `info.promoted_to`／`info.concluded`，`board_sorted_active` 直接取 `info.board_rank`，每張卡不再額外讀檔；desktop payload 的鍵名（camelCase）與值不變。驗證：`cargo test -p speclink-desktop-core discussions` 既有斷言不改全綠。路徑：apps/desktop/core/src/discussions.rs",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "896418313c63122b37151b7ecf15bf37dad3394b",
+      "touchedFiles": [
+        "apps/desktop/core/src/discussions.rs",
+        "crates/speclink-cli/src/verbs/discuss.rs",
+        "crates/speclink-host/src/bridge.rs",
+        "crates/speclink-server/src/routes.rs"
+      ],
+      "recordedAt": "2026-09-09T10:56:59Z"
+    },
+    {
+      "taskId": "tsk_01M22QT9VT92KV73EK3SX1DE64",
+      "taskDesc": "6.1 【Red】在 crates/speclink-core/src/archive.rs 測試模組新增「在途變更 meta 損壞時討論不隨變更封存」（規格 discussion-docs「討論以 link 動詞併入既有變更」的新 scenario）：討論 d1 已結論、無 hold；變更 cut 的 meta 含 `from_discussion: d1`、tasks 全完成；另一在途變更 broken 的 meta 為壞 YAML；`archive(cut)` 成功、`archived_discussions` 為空、d1 仍 live。驗證：`cargo test -p speclink-core archive::tests::archive_leaves_discussion_live_when_an_in_flight_meta_is_corrupt` 失敗（現況把 d1 掃進封存區）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "896418313c63122b37151b7ecf15bf37dad3394b",
+      "touchedFiles": [
+        "crates/speclink-core/src/archive.rs"
+      ],
+      "recordedAt": "2026-09-09T11:00:17Z"
+    }
+  ]
+}

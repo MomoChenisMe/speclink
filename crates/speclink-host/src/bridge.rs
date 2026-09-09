@@ -88,46 +88,6 @@ pub fn execute(
     Ok(BridgeExecution { outcome, events, revision: Some(revision) })
 }
 
-/// The list-assembly extras for each discussion, over one scope snapshot: the
-/// change names it fanned out into, and whether its Conclusion section holds
-/// real content (the scaffold placeholder does not count). The Host's
-/// composition point for the Server's discussion-list `promotedTo` /
-/// `concluded` assembly (remote-read-parity design D1: the engine keeps both
-/// out of `DiscussionInfo`, so the route edge composes them). Read-only: the
-/// bridged view is materialized, queried per slug, and dropped; nothing is
-/// staged or committed. Results ride in `slugs` order.
-pub fn discussions_extras(
-    store: &dyn TeamStore,
-    scope: &Scope,
-    keys: &[(String, bool)],
-) -> Result<Vec<(Vec<String>, bool)>, BridgeError> {
-    let view = BridgeStore::materialize(store, scope).map_err(BridgeError::Store)?;
-    // A slug is reusable once archived, so an archived key must read its own
-    // record — never its live namesake through the live-first lookup.
-    let archived = if keys.iter().any(|(_, archived)| *archived) {
-        view.list_archived_discussions()
-    } else {
-        Vec::new()
-    };
-    Ok(keys
-        .iter()
-        .map(|(slug, is_archived)| {
-            let text = if *is_archived {
-                archived.iter().find(|d| &d.slug == slug).map(|d| d.text.clone())
-            } else {
-                view.read_live_discussion(slug)
-            };
-            match text {
-                Some(text) => (
-                    speclink_core::discuss::promoted_to_in(&text),
-                    speclink_core::discuss::concluded_in(&text),
-                ),
-                None => (Vec::new(), false),
-            }
-        })
-        .collect())
-}
-
 /// A short, stable command label for the unit-of-work's audit record. Derived
 /// from the outcome so it names the verb that produced the writes.
 fn command_label(outcome: &CommandOutcome) -> String {
