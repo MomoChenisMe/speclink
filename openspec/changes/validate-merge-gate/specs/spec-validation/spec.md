@@ -2,7 +2,7 @@
 
 ### Requirement: change 驗證納入合併守門
 
-change 的驗證（`speclink validate <change>`、無參數、`--all`、`--changes`，fs 與 remote 兩模式，以及 desktop 的結構驗證）SHALL 對每個 delta capability 執行與 archive 相同的合併守門判斷，每筆違規 SHALL 化為一條 error 並使結果 invalid。error 文字 SHALL 為 `specs/<capability>/spec.md: <operation> '<requirement>': <reason> (see: speclink drift <change>)`，`<reason>` 逐字沿用守門的既有字串，路徑一律正斜線。守門 error SHALL 排在所有既有結構 error 之後，既有 error 的文字與順序 SHALL NOT 改變。已由結構檢查報過的項目 SHALL NOT 重複：新開 capability 的 Purpose 不合格只報既有的 Purpose error；同一 delta 內同名需求已報 Duplicate 或 appears in both 時不再報守門的撞名 error，未被結構檢查涵蓋的撞名（含 RENAMED 端點）仍 SHALL 列出。單筆與 bulk archive 的驗證前置 SHALL 只含結構檢查，archive 的拒絕輸出 SHALL 維持既有位元級輸出。守門違規 SHALL 不論 `--strict` 一律為 error。
+change 的驗證（`speclink validate <change>`、無參數、`--all`、`--changes`，fs 與 remote 兩模式，以及 desktop 的結構驗證）SHALL 對每個 delta capability 執行與 archive 相同的合併守門判斷，每筆違規 SHALL 化為一條 error 並使結果 invalid（文字完全相同的違規只列一次）。error 文字 SHALL 為 `specs/<capability>/spec.md: <operation> '<requirement>': <reason> (see: speclink drift <change>)`，`<reason>` 逐字沿用守門的既有字串，路徑一律正斜線。守門 error SHALL 排在所有既有結構 error 之後，既有 error 的文字與順序 SHALL NOT 改變。已由結構檢查報過的項目 SHALL NOT 重複：新開 capability 的 Purpose 不合格只報既有的 Purpose error；同一 delta 內同名需求已報 Duplicate 或 appears in both 時不再報守門的撞名 error，未被結構檢查涵蓋的撞名（含 RENAMED 端點）仍 SHALL 列出。單筆與 bulk archive 的驗證前置 SHALL 只含結構檢查，archive 的拒絕輸出 SHALL 維持既有位元級輸出。守門違規 SHALL 不論 `--strict` 一律為 error。
 
 #### Scenario: MODIFIED 目標不存在時 validate 報 error
 

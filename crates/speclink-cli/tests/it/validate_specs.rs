@@ -46,8 +46,13 @@ impl TempProject {
 
     /// 寫入 change `demo` 的一份 delta spec（守門案例用）。
     fn put_delta(&self, cap: &str, text: &str) {
-        let dir =
-            self.dir.join("openspec").join("changes").join("demo").join("specs").join(cap);
+        let dir = self
+            .dir
+            .join("openspec")
+            .join("changes")
+            .join("demo")
+            .join("specs")
+            .join(cap);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("spec.md"), text).unwrap();
     }
@@ -194,5 +199,20 @@ fn validate_and_drift_name_the_same_stale_operation() {
     assert!(
         drifted.contains("target requirement no longer exists in the canonical spec"),
         "reason 同一份字串: {drifted}"
+    );
+
+    // 四處判定一致的另外兩條腿，同一個 fixture 上成立：bulk 預檢以拒絕語意
+    // 提前過濾，單筆 archive 逐欄拒絕。
+    let bulk = stdout_of(&p.run(&["archive", "--all", "--no-color"]));
+    assert!(
+        bulk.contains("Skipped: demo — 1 delta operation(s) archive would refuse"),
+        "bulk 預檢讀同一判定: {bulk}"
+    );
+    let single = p.run(&["archive", "demo", "--no-color"]);
+    let stderr = String::from_utf8_lossy(&single.stderr).to_string();
+    assert!(!single.status.success(), "單筆 archive 拒絕: {stderr}");
+    assert!(
+        stderr.contains("auth / MODIFIED / R9: target requirement no longer exists"),
+        "單筆 archive 指向同一 capability 與需求名: {stderr}"
     );
 }

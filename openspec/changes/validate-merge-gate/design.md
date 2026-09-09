@@ -12,12 +12,12 @@ archive 的合併守門是 crates/speclink-core/src/archive.rs 的 `merge_violat
 
 - validate 的逐 change 驗證報出 archive 會拒收的每一類 delta 違規，使用者在 propose 收尾就看到。
 - 守門判斷維持單一實作（`merge_violations`），validate 只是第四個消費者。
-- archive（單筆與 bulk）的可觀察輸出逐位元不變。
+- archive（單筆與 bulk）的可觀察輸出逐位元不變——唯一例外是 delta 自寫 `## PURPOSE Requirements` 標頭這種既有守門的誤分類（D3）：`is_purpose_gate()` 兩欄化後，它從 Purpose 類歸回過期類，archive／drift／bulk 的分流呈現跟著變；真正的 Purpose 守門違規呈現不變。
 - fs 與 remote 兩模式、CLI 與 desktop 同一份判斷。
 
 **Non-Goals:**
 
-- 不改守門的判斷內容與 reason 字串。
+- 不改守門的判斷內容與 reason 字串；`is_purpose_gate()` 的兩欄化只改分類判別，不改任何違規的產生條件。
 - 不把守門搬進 analyze（討論 manual-marker-placement-lint 的分工：格式守門歸 validate）。
 - 不改 validate 的 `--json` 欄位、既有 error 文字與順序、exit code 規則。
 - 不新增 `--strict` 相依：守門違規不論 strict 一律 error。
@@ -26,13 +26,13 @@ archive 的合併守門是 crates/speclink-core/src/archive.rs 的 `merge_violat
 
 ### D1：驗證入口拆成兩層，archive 家族改呼叫結構層
 
-`validate_change` 的既有本體改名為 `validate_change_structural`（公開），行為與輸出逐位元不變；`validate_change` 保留原簽名，實作為「先跑結構層，再把合併守門的違規追加為 error」。Command 執行器與 desktop core 不改碼，自動取得守門；單筆 archive 與 bulk archive 改呼叫 `validate_change_structural`。
+`validate_change` 的既有本體改名為 `validate_change_structural`（公開），行為與輸出逐位元不變；`validate_change` 保留原簽名，實作為「先跑結構層，再把合併守門的違規追加為 error」。守門判斷沿用 `archive::capability_violations`（`merge_violations` 的逐 capability 本體，drift、bulk 預檢與單筆 archive 走的同一支）：結構層讀過的每份 delta 內文直接傳入，不再從 Store 重讀；走訪順序同 `merge_violations`（Store 的 delta capability 列舉順序）。Command 執行器與 desktop core 不改碼，自動取得守門；單筆 archive 與 bulk archive 改呼叫 `validate_change_structural`。
 
 為什麼是 archive 改而不是 verb 路徑改：archive 的驗證前置後面緊接自己的守門與 `merge_refusal` 聚合文案（archive-merge「違規聚合一次回報」）。若 archive 的前置也含守門，違規會以「Validation failed:」的形狀先跳出來，`merge_refusal` 變成只有 `--no-validate` 才到得了，等於改了凍結輸出。讓 archive 明確選結構層，兩條凍結輸出都不動。
 
 ### D2：守門 error 的組字與位置
 
-每筆 `MergeViolation` 化為一條 error：`specs/<capability>/spec.md: <operation> '<requirement>': <reason> (see: speclink drift <change>)`。路徑是邏輯路徑、一律正斜線（與既有 error 同慣例）；`<reason>` 逐字沿用守門的凍結字串（如 `target requirement no longer exists in the canonical spec`、`already exists in the canonical spec — archive would refuse it`、`drops canonical scenario(s) X — carry them over, or declare the removal with ...`）。守門 error 一律排在既有 error 之後（含 `[M]` 標記 error 之後），守門內部依 `merge_violations` 的回傳順序。`valid` 仍為 `errors.is_empty()`。
+每筆 `MergeViolation` 化為一條 error：`specs/<capability>/spec.md: <operation> '<requirement>': <reason> (see: speclink drift <change>)`，組字放在型別旁邊（`MergeViolation::validation_error`，與 `merge_refusal` 的聚合呈現同檔，守門欄位一動兩種呈現同一 diff 可見）。路徑是邏輯路徑、一律正斜線（與既有 error 同慣例）；撞名類的 `<operation>` 是守門的逗號串（如 `ADDED, RENAMED`），照原樣列出；守門對同一區段寫兩次的同名需求會逐筆各產一筆相同違規，validate 同字只列一行。`<reason>` 逐字沿用守門的凍結字串（如 `target requirement no longer exists in the canonical spec`、`already exists in the canonical spec — archive would refuse it`、`drops canonical scenario(s) X — carry them over, or declare the removal with ...`）。守門 error 一律排在既有 error 之後（含 `[M]` 標記 error 之後），守門內部依 `merge_violations` 的回傳順序。`valid` 仍為 `errors.is_empty()`。
 
 為什麼附 `see: speclink drift <change>`：archive 的拒絕文案給的補救動線是 drift → ingest；validate 的 error 是逐行字串，沒有聚合尾註的位置，每行自帶指向即可，`/speclink-ingest` 的步驟由 drift 的輸出接手。
 
@@ -40,8 +40,8 @@ archive 的合併守門是 crates/speclink-core/src/archive.rs 的 `merge_violat
 
 守門的違規有兩類會與結構層重疊，去重規則：
 
-- Purpose 類（`MergeViolation::is_purpose_gate()` 為 true）：一律略過。結構層的 Purpose error 已含範例骨架，比守門的 reason 更完整。
-- 同名撞區段類（reason 為守門的 section-collision 字串）：若該需求名已被結構層的「Duplicate requirement」或「appears in both」error 報過，略過；否則保留（RENAMED 端點與 ADDED／MODIFIED／REMOVED 同名只有守門看得到）。判別以 `MergeViolation` 新增的 `is_section_collision()` 方法為準，與 `is_purpose_gate()` 同一模式，validate 不比對 reason 字串。
+- Purpose 類（`MergeViolation::is_purpose_gate()` 為 true）：一律略過。結構層的 Purpose error 已含範例骨架，比守門的 reason 更完整。`is_purpose_gate()` 同時比對 operation 與 requirement 兩欄——delta 自己寫 `## PURPOSE Requirements` 標頭時，底下需求的違規是 CANON_ABSENT 類，不得被當成 Purpose 守門吞掉。
+- 同名撞區段類（reason 為守門的 section-collision 字串）：若該需求名已被結構層的「Duplicate requirement」或「appears in both」error 報過、且該撞名不含 RENAMED 端點，略過；含 RENAMED 端點的撞名（`involves_rename()`）一律保留——結構層的掃描只走 ADDED／MODIFIED／REMOVED 區段，看不到那一端。判別以 `MergeViolation` 新增的 `is_section_collision()` 與 `involves_rename()` 方法為準，與 `is_purpose_gate()` 同一模式，validate 不比對 reason 字串。
 
 其餘類別（目標不存在、ADDED 撞正典、未宣告的 scenario 移除、malformed 註記、RENAMED 缺 TO 或撞名、新 capability 帶 MODIFIED／REMOVED／RENAMED）沒有結構層對應，全數列出。
 
@@ -64,13 +64,13 @@ archive 的合併守門是 crates/speclink-core/src/archive.rs 的 `merge_violat
 6. 同一份會被守門拒收的 change 跑 `speclink archive <change>` → 輸出與本 change 之前逐位元相同（先 Validation failed 的結構項；結構全綠時為 `merge_refusal` 的聚合清單）。
 7. remote 模式 `speclink validate <change>` 與 desktop 的「結構驗證」列，對同一 Store 內容顯示同一組 error。
 
-**介面與資料形狀**：`validate_change(store, change, schema, strict) -> ValidationResult` 簽名不變；新增 `validate_change_structural`（同簽名）；`MergeViolation` 新增 `is_section_collision(&self) -> bool`。`ValidationResult` 欄位與 serde 名稱不變。
+**介面與資料形狀**：`validate_change(store, change, schema, strict) -> ValidationResult` 簽名不變；新增 `validate_change_structural`（同簽名）；`MergeViolation` 新增 `is_section_collision(&self) -> bool`、`involves_rename(&self) -> bool` 與 `validation_error(&self, change: &str) -> String`；`archive::capability_violations` 開放為 crate 內可見。`ValidationResult` 欄位與 serde 名稱不變。
 
 **失敗模式**：守門只讀 Store；delta 讀不到時視為空字串（與 archive 相同），不新增錯誤路徑。
 
 **驗收**：`cargo test -p speclink-core validate` 與 `cargo test -p speclink-core archive` 綠；`cargo test -p speclink-cli --test it validate_specs` 與 `--test it remote_verb_parity` 綠；對本 repo 現存的 change 跑 `speclink validate --all` 仍通過（現存 change 沒有守門違規）。
 
-**範圍**：in scope＝validate.rs 的入口拆分與守門追加、archive.rs 與 lifecycle.rs 的呼叫點切換、`is_section_collision`、對應測試、兩份 delta spec。out of scope＝守門判斷內容、analyze、drift、desktop／server 的呈現層、技能與文件。
+**範圍**：in scope＝validate.rs 的入口拆分與守門追加、archive.rs 與 lifecycle.rs 的呼叫點切換、`is_section_collision`／`involves_rename`／`validation_error` 與 `is_purpose_gate()` 的兩欄化、對應測試、兩份 delta spec。out of scope＝守門的違規產生條件（`is_purpose_gate()` 的分類判別除外）、analyze、drift、desktop／server 的呈現層、技能與文件。
 
 ## Risks / Trade-offs
 
