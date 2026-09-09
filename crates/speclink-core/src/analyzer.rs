@@ -3,8 +3,10 @@
 use crate::model::{self, Change};
 use crate::schema::Schema;
 use crate::store::Store;
+use regex::Regex;
 use serde::Serialize;
 use std::collections::BTreeMap;
+use std::sync::LazyLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
@@ -77,20 +79,44 @@ struct Requirement {
     name: String,
     operation: String,
     scenarios: Vec<Scenario>,
-    /// Whether the requirement body carries a `**Reason**` line — only REMOVED
-    /// requirements are checked for it.
-    has_reason: bool,
-    /// Whether the requirement body carries a `**Migration**` line.
-    has_migration: bool,
+    /// The removal notes found in the requirement body (the lines before its
+    /// first scenario) — only REMOVED requirements are held to them.
+    notes: RemovalNotes,
 }
 
-/// Concrete = ASCII digits, backticked code, a double-quoted string, a
-/// fullwidth-quoted string, or fullwidth digits. Single quotes and Chinese
-/// numerals (一、二、三…, which also open everyday words) do NOT count.
+#[derive(Default)]
+struct RemovalNotes {
+    reason: bool,
+    migration: bool,
+}
+
+impl RemovalNotes {
+    /// Which notes are missing, as the `missing` param value; `None` when both
+    /// are present.
+    fn missing(&self) -> Option<&'static str> {
+        match (self.reason, self.migration) {
+            (true, true) => None,
+            (false, true) => Some("Reason"),
+            (true, false) => Some("Migration"),
+            (false, false) => Some("Reason and Migration"),
+        }
+    }
+}
+
+/// A removal-note line: `**Reason**`, `**Reason:**` or `**Reason：**` at the start
+/// of the trimmed line (`**Reasoning**` is not one).
+fn is_note_line(t: &str, word: &str) -> bool {
+    t.strip_prefix("**")
+        .and_then(|r| r.strip_prefix(word))
+        .is_some_and(|r| r.starts_with("**") || r.starts_with(":**") || r.starts_with("：**"))
+}
+
+/// Concrete = an ASCII or fullwidth digit, a backtick, a double quote, or any
+/// of the fullwidth quote marks 「」『』 (each mark counts on its own; no pairing
+/// is checked). Single quotes and Chinese numerals (一、二、三…, which also open
+/// everyday words) do NOT count.
 fn is_concrete_char(c: char) -> bool {
-    c.is_ascii_digit()
-        || matches!(c, '`' | '"' | '\u{300c}' | '\u{300d}' | '\u{300e}' | '\u{300f}')
-        || ('\u{ff10}'..='\u{ff19}').contains(&c)
+    c.is_ascii_digit() || ('０'..='９').contains(&c) || matches!(c, '`' | '"' | '「' | '」' | '『' | '』')
 }
 
 fn parse_delta_spec(text: &str) -> Vec<Requirement> {
@@ -107,8 +133,7 @@ fn parse_delta_spec(text: &str) -> Vec<Requirement> {
                 name: name.trim().to_string(),
                 operation: operation.clone(),
                 scenarios: Vec::new(),
-                has_reason: false,
-                has_migration: false,
+                notes: RemovalNotes::default(),
             });
         } else if let Some(name) = t.strip_prefix("#### Scenario:") {
             if let Some(req) = reqs.last_mut() {
@@ -126,8 +151,10 @@ fn parse_delta_spec(text: &str) -> Vec<Requirement> {
             }
         } else if !t.starts_with('#') {
             if let Some(req) = reqs.last_mut() {
-                req.has_reason |= t.starts_with("**Reason**");
-                req.has_migration |= t.starts_with("**Migration**");
+                if req.scenarios.is_empty() {
+                    req.notes.reason |= is_note_line(t, "Reason");
+                    req.notes.migration |= is_note_line(t, "Migration");
+                }
                 if t.chars().any(is_concrete_char) {
                     if let Some(sc) = req.scenarios.last_mut() {
                         sc.has_concrete = true;
@@ -202,97 +229,80 @@ fn design_headings(design: &str) -> Vec<String> {
         .collect()
 }
 
-/// Split a design `### ` heading into its ordinal label and its body.
-///
-/// Only three prefix shapes count (frozen by spec): `D<digits>`, `決策<digits or
-/// 一..十>` and `Decision <digits>`, each optionally followed by spaces, at most
-/// one colon (`:` or `：`) and more spaces. `D`/`Decision` match
-/// case-insensitively. A heading with no such prefix yields `(None, whole
-/// heading)`; a bare ordinal yields `(Some(label), "")` — both fall back to
-/// whole-string matching at the call site.
+/// The Chinese numerals an ordinal may be written in (`決策一` … `決策十一`).
+const CJK_NUMERALS: &str = "一二三四五六七八九十";
+
+/// The ordinal prefix a design heading may carry (frozen by spec): `D<digits>`,
+/// `Decision <digits>` or `決策<digits | run of 一..十>` — `D`/`Decision`
+/// case-insensitive, digits ASCII only (`[0-9]`, not Unicode `\d`, so fullwidth
+/// `D１` is not an ordinal — matching the ASCII-only guard in
+/// [`ordinal_referenced`]) — then optional spaces, at most one colon (`:` or
+/// `：`) and more spaces. Group 1 is the ordinal itself.
+static ORDINAL_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(
+        r"(?i)^(d[0-9]+|decision\s*[0-9]+|決策(?:[0-9]+|[{CJK_NUMERALS}]+))\s*[:：]?\s*"
+    ))
+    .unwrap()
+});
+
+/// Split a design `### ` heading into its ordinal label and its body. The label
+/// has its inner whitespace collapsed (`Decision  2` → `Decision 2`). A heading
+/// with no recognised prefix yields `(None, whole heading)`; a bare ordinal
+/// yields `(Some(label), "")`.
 fn split_heading_label(heading: &str) -> (Option<String>, String) {
     let h = heading.trim();
-    match ordinal_prefix_end(h) {
-        Some(end) => {
-            let label = h[..end].trim_end().to_string();
-            let rest = h[end..].trim_start();
-            let rest = rest.strip_prefix('：').or_else(|| rest.strip_prefix(':')).unwrap_or(rest);
-            (Some(label), rest.trim().to_string())
+    match ORDINAL_PREFIX.captures(h) {
+        Some(caps) => {
+            let label = caps[1].split_whitespace().collect::<Vec<_>>().join(" ");
+            (Some(label), h[caps[0].len()..].trim().to_string())
         }
         None => (None, h.to_string()),
     }
 }
 
-/// Byte index just past the ordinal number, or `None` when the heading carries
-/// no recognised prefix.
-fn ordinal_prefix_end(h: &str) -> Option<usize> {
-    // `D<digits>` — `Decision` never matches here because `e` is not a digit.
-    if let Some(rest) = strip_prefix_ci(h, "D") {
-        let n = ascii_digit_run(rest);
-        if n > 0 {
-            return Some(h.len() - rest.len() + n);
-        }
-    }
-    if let Some(rest) = strip_prefix_ci(h, "Decision") {
-        let after = rest.trim_start();
-        let n = ascii_digit_run(after);
-        if n > 0 {
-            return Some(h.len() - after.len() + n);
-        }
-    }
-    if let Some(rest) = h.strip_prefix("決策") {
-        let n = ascii_digit_run(rest);
-        if n > 0 {
-            return Some(h.len() - rest.len() + n);
-        }
-        let c = rest.chars().next()?;
-        if "一二三四五六七八九十".contains(c) {
-            return Some(h.len() - rest.len() + c.len_utf8());
-        }
-    }
-    None
-}
-
-/// ASCII-case-insensitive `strip_prefix`. Safe to slice: an ASCII prefix that
-/// matches means the first `prefix.len()` bytes are all single-byte chars.
-fn strip_prefix_ci<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
-    let n = prefix.len();
-    if s.len() >= n && s.as_bytes()[..n].eq_ignore_ascii_case(prefix.as_bytes()) {
-        Some(&s[n..])
-    } else {
-        None
-    }
-}
-
-fn ascii_digit_run(s: &str) -> usize {
-    s.bytes().take_while(u8::is_ascii_digit).count()
-}
-
 /// Whether tasks.md references a design heading: its body appears anywhere in
-/// the task text, or its ordinal appears and is not followed by another ASCII
-/// digit (so `D1` is not matched by `D12`). A heading with no ordinal, or one
-/// that is nothing but an ordinal, falls back to whole-string matching.
+/// the task text, or its ordinal appears as a standalone token. A heading with
+/// no ordinal falls back to whole-string matching; a bare ordinal is matched as
+/// an ordinal only (so `D4` is not satisfied by `D42`).
 ///
 /// `tasks_lower` is the FULL lowercased tasks.md text — a prose mention outside
 /// any checkbox still suppresses the finding (frozen rule).
 fn heading_referenced(heading: &str, tasks_lower: &str) -> bool {
-    let (label, body) = split_heading_label(heading);
-    match label {
-        Some(label) if !body.is_empty() => {
-            tasks_lower.contains(&body.to_lowercase())
+    match split_heading_label(heading) {
+        (Some(label), body) => {
+            (!body.is_empty() && tasks_lower.contains(&body.to_lowercase()))
                 || ordinal_referenced(&label.to_lowercase(), tasks_lower)
         }
-        _ => tasks_lower.contains(&heading.trim().to_lowercase()),
+        (None, _) => tasks_lower.contains(&heading.trim().to_lowercase()),
     }
 }
 
-/// An ordinal counts as referenced only where the next character is not an
-/// ASCII digit.
+/// An ordinal counts as referenced only where no ASCII letter or digit sits on
+/// either side (`D1` is neither `D12` nor the `d1` inside a task ULID) and no
+/// Chinese numeral follows (`決策十` is not `決策十二`).
 fn ordinal_referenced(label_lower: &str, tasks_lower: &str) -> bool {
+    occurs_bounded(tasks_lower, label_lower, |before, after| {
+        !before.is_some_and(|c| c.is_ascii_alphanumeric())
+            && !after.is_some_and(|c| c.is_ascii_alphanumeric() || CJK_NUMERALS.contains(c))
+    })
+}
+
+/// Whether `needle` occurs in `haystack` at a position whose neighbours
+/// (`before`, `after`; `None` at either end of the text) pass `bounded`.
+///
+/// Hand-rolled rather than regex `\b` (which drift.rs uses for identifiers):
+/// `\b` counts digits and `_` as word characters and has no meaning next to CJK,
+/// while each caller here needs its own idea of a boundary.
+fn occurs_bounded(
+    haystack: &str,
+    needle: &str,
+    bounded: impl Fn(Option<char>, Option<char>) -> bool,
+) -> bool {
     let mut from = 0;
-    while let Some(pos) = tasks_lower[from..].find(label_lower) {
-        let end = from + pos + label_lower.len();
-        if !tasks_lower[end..].starts_with(|c: char| c.is_ascii_digit()) {
+    while let Some(pos) = haystack[from..].find(needle) {
+        let at = from + pos;
+        let end = at + needle.len();
+        if bounded(haystack[..at].chars().next_back(), haystack[end..].chars().next()) {
             return true;
         }
         from = end;
@@ -318,21 +328,15 @@ fn req_covered(name: &str, tasks: &[String]) -> bool {
     tasks.iter().any(|t| t.to_lowercase().contains(&n))
 }
 
-/// Whether `needle` occurs in `haystack` with no ASCII letter on either side.
-/// Both sides are already lowercased by the caller.
+/// An English weak word counts only with no ASCII letter on either side —
+/// except the `n't` contraction, so `shouldn't` still flags `should`.
 fn contains_word(haystack: &str, needle: &str) -> bool {
-    let mut from = 0;
-    while let Some(pos) = haystack[from..].find(needle) {
-        let at = from + pos;
-        let end = at + needle.len();
-        let before_ok = !haystack[..at].ends_with(|c: char| c.is_ascii_alphabetic());
-        let after_ok = !haystack[end..].starts_with(|c: char| c.is_ascii_alphabetic());
-        if before_ok && after_ok {
-            return true;
-        }
-        from = end;
-    }
-    false
+    occurs_bounded(haystack, needle, |before, after| {
+        !before.is_some_and(|c| c.is_ascii_alphabetic())
+            && !after.is_some_and(|c| c.is_ascii_alphabetic())
+    }) || occurs_bounded(haystack, &format!("{needle}n't"), |before, _| {
+        !before.is_some_and(|c| c.is_ascii_alphabetic())
+    })
 }
 
 /// First weak/vague pattern on a spec line — at most ONE finding per line, taken in
@@ -374,17 +378,6 @@ fn weak_pattern_in(line: &str) -> Option<String> {
         return Some("可能".to_string());
     }
     None
-}
-
-/// Which removal notes a REMOVED requirement lacks: the `missing` param value
-/// and the bold-marked wording used in the summary. `None` when both are there.
-fn missing_removal_notes(req: &Requirement) -> Option<(&'static str, &'static str)> {
-    match (req.has_reason, req.has_migration) {
-        (true, true) => None,
-        (false, true) => Some(("Reason", "**Reason**")),
-        (true, false) => Some(("Migration", "**Migration**")),
-        (false, false) => Some(("Reason and Migration", "**Reason** and **Migration**")),
-    }
 }
 
 pub fn analyze(store: &dyn Store, change: &Change, schema: &Schema) -> AnalyzeReport {
@@ -490,13 +483,14 @@ pub fn analyze(store: &dyn Store, change: &Change, schema: &Schema) -> AnalyzeRe
                 // A REMOVED requirement carries no scenarios by design; it is held to
                 // **Reason** / **Migration** instead.
                 if req.operation == "REMOVED" {
-                    if let Some((missing, listed)) = missing_removal_notes(req) {
+                    if let Some(missing) = req.notes.missing() {
+                        let listed = missing.replace("Reason", "**Reason**").replace("Migration", "**Migration**");
                         n += 1;
                         ambiguity.push(make_finding(
                             "AMB", n, "Ambiguity", Severity::Warning, loc,
                             &format!("REMOVED requirement '{}' has no {listed}", req.name),
                             &format!("Add **Reason**: and **Migration**: lines under '{}'", req.name),
-                            "ambRemovedNoReason",
+                            "ambRemovedNoNotes",
                             [("req", req.name.as_str()), ("missing", missing)],
                         ));
                     }
@@ -744,7 +738,7 @@ mod tests {
 
     #[test]
     fn a_design_heading_splits_into_ordinal_and_body() {
-        let cases: [(&str, Option<&str>, &str); 5] = [
+        let cases: [(&str, Option<&str>, &str); 7] = [
             (
                 "決策一：整個移除 listDepthLimit 擴充",
                 Some("決策一"),
@@ -762,6 +756,25 @@ mod tests {
                 "索引 JSON 的形狀與推導規則",
             ),
             ("D4", Some("D4"), ""),
+            // 標題內部多餘空白收成一個，tasks 才找得到。
+            ("Decision  2 device code", Some("Decision 2"), "device code"),
+            // 連續的中文數字是同一個編號。
+            ("決策十一：整個移除", Some("決策十一"), "整個移除"),
+        ];
+        for (heading, label, body) in cases {
+            let (got_label, got_body) = split_heading_label(heading);
+            assert_eq!(got_label.as_deref(), label, "標題 '{heading}' 的編號");
+            assert_eq!(got_body, body, "標題 '{heading}' 的本文");
+        }
+    }
+
+    #[test]
+    fn a_fullwidth_digit_is_not_an_ordinal() {
+        // `D<數字>` 只認 ASCII 數字：全形 `D１` 不當編號，整串退回子字串比對，
+        // 所以守衛（只擋 ASCII 英數）與辨識面判準一致。
+        let cases: [(&str, Option<&str>, &str); 2] = [
+            ("D１ 全形編號", None, "D１ 全形編號"),
+            ("決策１：全形編號", None, "決策１：全形編號"),
         ];
         for (heading, label, body) in cases {
             let (got_label, got_body) = split_heading_label(heading);
@@ -802,6 +815,45 @@ mod tests {
             vec!["Design topic 'd1 違規清單與聚合錯誤形狀' not referenced in tasks".to_string()],
             "D12 不得算 D1 的引用"
         );
+        // 對照組：同一份 design，tasks 換成真正的 D1 引用就不報——證明上面那筆
+        // 是數字守衛擋下的，不是本文沒對上。
+        let control = consistency_of("### D1 違規清單與聚合錯誤形狀\n", "- [ ] 1.1 見 D12 與 D1\n");
+        assert!(control.is_empty(), "D1 本身仍要算引用: {control:?}");
+    }
+
+    #[test]
+    fn an_ordinal_inside_an_identifier_is_not_a_reference() {
+        // 編號前後都不得是 ASCII 字母或數字：tasks.md 每行都帶的 ULID 註解、
+        // 檔名 card1 之類都不算 D1 的引用。
+        for tasks in [
+            "- [ ] 1.1 彙整違規 <!-- speclink-task:tsk_01M22B3PGGD1XQ8R -->\n",
+            "- [ ] 1.1 重畫 card1 元件\n",
+        ] {
+            let found = consistency_of("### D1 違規清單與聚合錯誤形狀\n", tasks);
+            assert_eq!(found.len(), 1, "識別符內的 d1 不得算引用: {tasks:?} → {found:?}");
+        }
+    }
+
+    #[test]
+    fn a_chinese_numeral_run_is_one_ordinal() {
+        // 決策十一 不得被切成 決策十＋一；決策十 也不得被 決策十二 命中。
+        let design = "### 決策十一：整個移除 listDepthLimit 擴充\n";
+        let hit = consistency_of(design, "- [ ] 1.1 拆除擴充（design 決策十一）\n");
+        assert!(hit.is_empty(), "決策十一 要被整個認成編號: {hit:?}");
+        let miss = consistency_of("### 決策十：拆分模組\n", "- [ ] 1.1 見決策十二\n");
+        assert_eq!(miss.len(), 1, "決策十二 不得算 決策十 的引用: {miss:?}");
+    }
+
+    #[test]
+    fn a_bare_ordinal_heading_keeps_the_digit_guard() {
+        // spec Example 表「編號拆解」第 5 列：本文為空時只比編號，守衛照樣生效。
+        let missed = consistency_of("### D4\n", "- [ ] 1.1 見 D42\n");
+        assert_eq!(missed.len(), 1, "D42 不得算 D4 的引用: {missed:?}");
+        let hit = consistency_of("### D4\n", "- [ ] 1.1 見 (design D4)\n");
+        assert!(hit.is_empty(), "D4 本身要算引用: {hit:?}");
+        // 空本文帶冒號的標題也不逼 tasks 抄冒號。
+        let colon = consistency_of("### 決策一：\n", "- [ ] 1.1 見決策一）\n");
+        assert!(colon.is_empty(), "決策一： 只比編號: {colon:?}");
     }
 
     #[test]
@@ -956,6 +1008,23 @@ mod tests {
     }
 
     #[test]
+    fn requirement_names_match_task_descriptions_as_contiguous_substrings() {
+        // spec Example 表「命中判定」逐列。
+        let cases: [(&str, bool); 3] = [
+            ("Implement csv export", true),
+            ("Implement csv-export", false),
+            ("Export CSV", false),
+        ];
+        for (task, covered) in cases {
+            assert_eq!(
+                req_covered("CSV Export", &[task.to_string()]),
+                covered,
+                "任務描述 '{task}' 對 'CSV Export' 的命中"
+            );
+        }
+    }
+
+    #[test]
     fn a_requirement_name_only_in_a_group_heading_is_not_covered() {
         // spec Scenario「需求名只出現在群組標題不算命中」。
         let store = store_with(&[
@@ -1030,13 +1099,18 @@ mod tests {
     #[test]
     fn english_weak_language_matches_on_word_boundaries() {
         // spec Example 表「字邊界判定」逐列。
-        let cases: [(&str, Option<&str>); 6] = [
+        let cases: [(&str, Option<&str>); 9] = [
             ("it should lock", Some("should")),
             ("Should lock", Some("should")),
             ("the shoulder strap", None),
             ("a considerable delay", None),
             ("the mayor", None),
             ("outbdoor", Some("TBD")),
+            // 字邊界的代價（design D4 刻意接受）：maybe／considered 不再命中。
+            ("maybe lock", None),
+            ("considered done", None),
+            // 撇號不是字母，shouldn't 的 should 照樣命中。
+            ("it shouldn't lock", Some("should")),
         ];
         for (line, pattern) in cases {
             assert_eq!(
@@ -1090,6 +1164,46 @@ mod tests {
     }
 
     #[test]
+    fn removal_note_lines_accept_colon_variants() {
+        // `**Reason:**` 與全形 `**Migration：**` 都是本 repo 實際出現的寫法。
+        let report = ambiguity_report(
+            "## REMOVED Requirements\n\n### Requirement: Legacy export\n\n**Reason:** Replaced by v2\n**Migration：** Use v2\n",
+        );
+        let found = summaries_of(&report, "Ambiguity");
+        assert!(found.is_empty(), "冒號在粗體內也要認: {found:?}");
+        // 但 `**Reasoning**` 不算。
+        let report = ambiguity_report(
+            "## REMOVED Requirements\n\n### Requirement: Legacy export\n\n**Reasoning** Replaced by v2\n**Migration**: Use v2\n",
+        );
+        let f = report
+            .findings
+            .iter()
+            .find(|f| f.summary_msg.key == "ambRemovedNoNotes.summary")
+            .expect("Reasoning 不算 Reason");
+        assert_eq!(f.summary_msg.params.get("missing").map(String::as_str), Some("Reason"));
+    }
+
+    #[test]
+    fn a_removed_requirement_with_scenarios_is_still_held_to_its_notes() {
+        // REMOVED 需求帶 scenario 不違規，也不需要 scenario；但 Reason／Migration
+        // 只認需求本文（scenario 之前）的行。
+        let clean = ambiguity_report(
+            "## REMOVED Requirements\n\n### Requirement: Legacy export\n\n**Reason**: Replaced\n**Migration**: Use v2\n\n#### Scenario: s\n\n- **THEN** 回傳 3 筆\n",
+        );
+        let found = summaries_of(&clean, "Ambiguity");
+        assert!(found.is_empty(), "帶 scenario 的 REMOVED 需求齊備時零 finding: {found:?}");
+        let inside = ambiguity_report(
+            "## REMOVED Requirements\n\n### Requirement: Legacy export\n\n**Migration**: Use v2\n\n#### Scenario: s\n\n**Reason**: 回傳 3 筆\n",
+        );
+        let f = inside
+            .findings
+            .iter()
+            .find(|f| f.summary_msg.key == "ambRemovedNoNotes.summary")
+            .expect("scenario 內的 **Reason** 不算");
+        assert_eq!(f.summary_msg.params.get("missing").map(String::as_str), Some("Reason"));
+    }
+
+    #[test]
     fn a_removed_requirement_missing_migration_is_flagged() {
         // spec Scenario「REMOVED 需求缺 Migration」。
         let report = ambiguity_report(
@@ -1098,8 +1212,8 @@ mod tests {
         let f = report
             .findings
             .iter()
-            .find(|f| f.summary_msg.key == "ambRemovedNoReason.summary")
-            .expect("報一筆 ambRemovedNoReason");
+            .find(|f| f.summary_msg.key == "ambRemovedNoNotes.summary")
+            .expect("報一筆 ambRemovedNoNotes");
         assert_eq!(f.severity, "Warning");
         assert_eq!(f.summary, "REMOVED requirement 'Legacy export' has no **Migration**");
         assert_eq!(
@@ -1108,7 +1222,7 @@ mod tests {
         );
         assert_eq!(f.summary_msg.params.get("req").map(String::as_str), Some("Legacy export"));
         assert_eq!(f.summary_msg.params.get("missing").map(String::as_str), Some("Migration"));
-        assert_eq!(f.recommendation_msg.key, "ambRemovedNoReason.recommendation");
+        assert_eq!(f.recommendation_msg.key, "ambRemovedNoNotes.recommendation");
         assert_eq!(f.recommendation_msg.params, f.summary_msg.params);
     }
 
@@ -1118,8 +1232,8 @@ mod tests {
         let f = report
             .findings
             .iter()
-            .find(|f| f.summary_msg.key == "ambRemovedNoReason.summary")
-            .expect("報一筆 ambRemovedNoReason");
+            .find(|f| f.summary_msg.key == "ambRemovedNoNotes.summary")
+            .expect("報一筆 ambRemovedNoNotes");
         assert_eq!(
             f.summary,
             "REMOVED requirement 'Legacy export' has no **Reason** and **Migration**"
@@ -1151,7 +1265,7 @@ mod tests {
             .as_array()
             .expect("findings 是陣列")
             .iter()
-            .find(|f| f["summary_msg"]["key"] == "ambRemovedNoReason.summary")
+            .find(|f| f["summary_msg"]["key"] == "ambRemovedNoNotes.summary")
             .expect("找得到該 finding")["summary_msg"]["params"]
             .clone();
         assert_eq!(params["req"], "Legacy export");

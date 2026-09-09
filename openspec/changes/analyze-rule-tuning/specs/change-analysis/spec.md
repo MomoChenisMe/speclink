@@ -42,7 +42,7 @@ Coverage SHALL 產生兩種 finding。`covMissingSpec`（Critical）：proposal.
 
 ### Requirement: Consistency 的 design 標題引用判定
 
-Consistency SHALL 對 design.md 每個 `###` 標題判定「tasks.md 是否引用了它」，未引用時報一筆 `conDesignNotInTasks`（Warning），`location` 為 `design.md`，`summary` 為 `Design topic '<小寫整串標題>' not referenced in tasks`，`summary_msg.params.keyword` 為小寫整串標題。判定 SHALL 先把標題拆成「編號」與「本文」：編號只認三種樣式——`D<數字>`、`決策<數字或一到十的中文數字>`、`Decision <數字>`（大小寫不敏感），後接零或多個空白、零或一個全形或半形冒號、零或多個空白；其餘為本文。tasks.md 全文（大小寫不敏感）含本文，或含編號且編號之後的下一個字元不是 ASCII 數字，任一成立 SHALL 視為已引用。標題沒有編號，或本文為空，SHALL 退回整串標題的子字串比對。tasks.md 的任何一行（群組標題、checkbox、散文）SHALL 都算數。
+Consistency SHALL 對 design.md 每個 `###` 標題判定「tasks.md 是否引用了它」，未引用時報一筆 `conDesignNotInTasks`（Warning），`location` 為 `design.md`，`summary` 為 `Design topic '<小寫整串標題>' not referenced in tasks`，`summary_msg.params.keyword` 為小寫整串標題。判定 SHALL 先把標題拆成「編號」與「本文」：編號只認三種樣式——`D<數字>`、`決策<數字或連續的中文數字一到十>`、`Decision <數字>`（數字只認 ASCII `0`-`9`，全形數字不算；大小寫不敏感；`Decision` 與數字之間的多個空白收成一個），後接零或多個空白、零或一個全形或半形冒號、零或多個空白；其餘為本文。tasks.md 全文（大小寫不敏感）含本文，或含編號且編號前後的字元都不是 ASCII 字母或數字、編號之後也不是中文數字（一到十），任一成立 SHALL 視為已引用——夾在 task ULID 註解或識別符裡的 `d1` 不算。本文為空（標題只有編號）SHALL 只比編號、同樣受上述邊界規則；標題沒有編號 SHALL 退回整串標題的子字串比對。tasks.md 的任何一行（群組標題、checkbox、散文）SHALL 都算數。
 
 #### Scenario: 本文命中即算引用
 
@@ -59,6 +59,21 @@ Consistency SHALL 對 design.md 每個 `###` 標題判定「tasks.md 是否引�
 - **WHEN** design.md 有 `### D1 違規清單與聚合錯誤形狀`，tasks.md 只出現 `D12`
 - **THEN** 報一筆 Warning，`summary` 為 `Design topic 'd1 違規清單與聚合錯誤形狀' not referenced in tasks`
 
+#### Scenario: 編號夾在識別符裡不算命中
+
+- **WHEN** design.md 有 `### D1 違規清單與聚合錯誤形狀`，tasks.md 只在 `<!-- speclink-task:tsk_01M22B3PGGD1XQ8R -->` 註解與 `card1` 這類識別符裡出現 `d1`
+- **THEN** 報一筆 Warning——編號前後緊鄰 ASCII 字母或數字都不算引用
+
+#### Scenario: 連續中文數字是同一個編號
+
+- **WHEN** design.md 有 `### 決策十一：整個移除 listDepthLimit 擴充`，tasks.md 有 `拆除擴充（design 決策十一）`
+- **THEN** 不報；design 改為 `### 決策十：拆分模組`、tasks.md 只出現 `決策十二` 時報一筆 Warning
+
+#### Scenario: 純編號標題只比編號
+
+- **WHEN** design.md 有 `### D4`，tasks.md 只出現 `D42`
+- **THEN** 報一筆 Warning；tasks.md 含 `(design D4)` 時不報
+
 #### Scenario: 無編號標題維持整串比對
 
 - **WHEN** design.md 有 `### 索引 JSON 的形狀與推導規則`，tasks.md 只含 `索引 JSON 的形狀`
@@ -72,11 +87,14 @@ Consistency SHALL 對 design.md 每個 `###` 標題判定「tasks.md 是否引�
 | `D3: 搜尋列元件化` | `D3` | `搜尋列元件化` |
 | `Decision 2 device code 分權責` | `Decision 2` | `device code 分權責` |
 | `索引 JSON 的形狀與推導規則` | （無） | 整串 |
-| `D4` | `D4` | （空，退回整串比對 `d4`） |
+| `D4` | `D4` | （空，只比編號 `d4`） |
+| `Decision  2 device code` | `Decision 2` | `device code`（內部空白收成一個） |
+| `決策十一：整個移除` | `決策十一` | `整個移除` |
+| `D１ 全形編號` | （無） | 整串（全形數字不算編號） |
 
 ### Requirement: Ambiguity 的 scenario 缺席與 REMOVED 需求檢查
 
-Ambiguity SHALL 對 ADDED 與 MODIFIED 區塊的每條需求檢查至少有一個 `#### Scenario:`，沒有時報 `ambNoScenario`（Warning），`summary` 為 `Requirement '<name>' has no scenarios`。REMOVED 區塊的需求 SHALL NOT 受 scenario 檢查；改為檢查需求本文是否各有一行 trim 後以 `**Reason**` 與 `**Migration**` 開頭，缺任一者報 `ambRemovedNoReason`（Warning）：`summary` 為 `REMOVED requirement '<name>' has no **Reason**`、`... has no **Migration**` 或 `... has no **Reason** and **Migration**`；`recommendation` 為 `Add **Reason**: and **Migration**: lines under '<name>'`；`summary_msg.key` 為 `ambRemovedNoReason.summary`，`params` 含 `req`（需求名）與 `missing`（`Reason`、`Migration` 或 `Reason and Migration`）；`recommendation_msg.key` 為 `ambRemovedNoReason.recommendation`，`params` 同。這兩種 finding SHALL 共用 AMB 流水號，並落在每個 delta spec 檔的第一段（no-scenario 段），先於該檔的 abstract-scenario 與 weak-language finding。
+Ambiguity SHALL 對 REMOVED 以外區塊的每條需求檢查至少有一個 `#### Scenario:`，沒有時報 `ambNoScenario`（Warning），`summary` 為 `Requirement '<name>' has no scenarios`。REMOVED 區塊的需求 SHALL NOT 受 scenario 檢查（帶 scenario 也不違規）；改為檢查需求本文（`### Requirement:` 之後、第一個 `#### Scenario:` 之前）是否各有一行 trim 後以 `**Reason**`／`**Reason:**`／`**Reason：**` 與 `**Migration**`／`**Migration:**`／`**Migration：**` 之一開頭（`**Reasoning**` 不算），缺任一者報 `ambRemovedNoNotes`（Warning）：`summary` 為 `REMOVED requirement '<name>' has no **Reason**`、`... has no **Migration**` 或 `... has no **Reason** and **Migration**`；`recommendation` 為 `Add **Reason**: and **Migration**: lines under '<name>'`；`summary_msg.key` 為 `ambRemovedNoNotes.summary`，`params` 含 `req`（需求名）與 `missing`（`Reason`、`Migration` 或 `Reason and Migration`）；`recommendation_msg.key` 為 `ambRemovedNoNotes.recommendation`，`params` 同。這兩種 finding SHALL 共用 AMB 流水號，並落在每個 delta spec 檔的第一段（no-scenario 段），先於該檔的 abstract-scenario 與 weak-language finding。
 
 #### Scenario: REMOVED 需求齊備時零 finding
 
@@ -87,6 +105,16 @@ Ambiguity SHALL 對 ADDED 與 MODIFIED 區塊的每條需求檢查至少有一�
 
 - **WHEN** 同上，但只有 `**Reason**` 行
 - **THEN** 報一筆 Warning，`summary` 為 `REMOVED requirement 'Legacy export' has no **Migration**`，`summary_msg.params.missing` 為 `Migration`
+
+#### Scenario: 冒號在粗體內的寫法也算
+
+- **WHEN** REMOVED 需求本文為 `**Reason:** Replaced by v2` 與 `**Migration：** Use v2`
+- **THEN** 零 finding；本文寫成 `**Reasoning** Replaced by v2` 時報一筆，`summary_msg.params.missing` 為 `Reason`
+
+#### Scenario: 帶 scenario 的 REMOVED 需求仍只認本文的註記
+
+- **WHEN** REMOVED 需求本文有 `**Reason**` 與 `**Migration**` 兩行、後面接一個 `#### Scenario:`
+- **THEN** 零 finding；`**Reason**` 行移到 scenario 內文時報一筆，`summary_msg.params.missing` 為 `Reason`
 
 #### Scenario: ADDED 需求無 scenario 仍報
 
@@ -120,7 +148,7 @@ Ambiguity SHALL 對 ADDED 與 MODIFIED 區塊的每條需求檢查至少有一�
 
 ### Requirement: Ambiguity 的弱語氣詞偵測——英文樣式 should、may、might、consider、possibly 以字邊界比對
 
-每一非標題行 SHALL 至多報一筆 `ambWeakLanguage`（Suggestion），`location` 為 `<delta 相對路徑>:<行號>`，`summary` 為 `Vague language '<pattern>' found`。檢查順序 SHALL 為：五個英文樣式（依上述順序）、再 `TBD`／`TODO`／`???`／`TKTK`、再 CJK 樣式。五個英文樣式 SHALL 在整行轉小寫後以字邊界比對：命中子字串的前後字元都不是 ASCII 字母才算。`TBD`／`TODO`／`TKTK` SHALL 維持大小寫不敏感的子字串比對，`???` 維持原樣子字串比對。CJK 樣式 SHALL 維持子字串比對，「不可能」豁免照舊（該三字去除後仍含「可能」才報）。以 `#` 開頭的標題行 SHALL NOT 掃描。
+每一非標題行 SHALL 至多報一筆 `ambWeakLanguage`（Suggestion），`location` 為 `<delta 相對路徑>:<行號>`，`summary` 為 `Vague language '<pattern>' found`。檢查順序 SHALL 為：五個英文樣式（依上述順序）、再 `TBD`／`TODO`／`???`／`TKTK`、再 CJK 樣式。五個英文樣式 SHALL 在整行轉小寫後以字邊界比對：命中子字串的前後字元都不是 ASCII 字母才算，`n't` 縮寫視為字邊界（`shouldn't` 仍報 `should`）；代價是 `maybe`、`considered` 這類含樣式的完整單字不再命中。`TBD`／`TODO`／`TKTK` SHALL 維持大小寫不敏感的子字串比對，`???` 維持原樣子字串比對。CJK 樣式 SHALL 維持子字串比對，「不可能」豁免照舊（該三字去除後仍含「可能」才報）。以 `#` 開頭的標題行 SHALL NOT 掃描。
 
 #### Scenario: 字邊界擋住 shoulder
 
@@ -147,6 +175,9 @@ Ambiguity SHALL 對 ADDED 與 MODIFIED 區塊的每條需求檢查至少有一�
 | `a considerable delay` | 不報 |
 | `the mayor` | 不報 |
 | `outbdoor` | `TBD`（子字串比對維持） |
+| `maybe lock` | 不報（字邊界的代價） |
+| `considered done` | 不報 |
+| `it shouldn't lock` | `should`（`n't` 視為字邊界） |
 
 ### Requirement: Gaps 規則
 

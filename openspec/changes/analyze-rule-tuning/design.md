@@ -33,24 +33,24 @@
 
 標題先經 `split_heading_label`（新函式，名稱可調）拆成 `(label, body)`：
 
-- 前綴文法：`D<數字>`、`決策<數字或中文數字一到十>`、`Decision <數字>`（`Decision` 與數字之間零或多個空白），後接零或多個空白、零或一個冒號（`：` 或 `:`）、零或多個空白。大小寫不敏感。
-- 拆出後 `label` 是前綴去掉尾端冒號與空白的部分（如 `D1`、`決策一`、`Decision 3`），`body` 是其餘文字 trim 後的結果。
-- 命中判定（兩側皆轉小寫）：`tasks` 含 `body`，或 `tasks` 含 `label` 且 `label` 之後的下一個字元不是 ASCII 數字（處理 `D1` 對 `D12`；`決策一` 與 `Decision 3` 也走同一條規則，無副作用）。`label` 比對容許 `D1` 與 `d1` 互通。
-- `body` 為空（標題只有編號）或標題無前綴時，退回現行行為：整串標題小寫 `contains`。
+- 前綴文法：`D<數字>`、`決策<數字或連續的中文數字一到十>`、`Decision <數字>`（數字只認 ASCII `[0-9]`，不用 Unicode `\d`，全形 `D１` 不當編號、與守衛的 ASCII 判準一致；`Decision` 與數字之間零或多個空白），後接零或多個空白、零或一個冒號（`：` 或 `:`）、零或多個空白。大小寫不敏感。以一條 anchored regex 表達，與 drift.rs 既有的 `Regex` 用法同一路線。
+- 拆出後 `label` 是前綴去掉尾端冒號與空白、內部空白收成一個的部分（如 `D1`、`決策一`、`Decision 3`），`body` 是其餘文字 trim 後的結果。
+- 命中判定（兩側皆轉小寫）：`tasks` 含 `body`，或 `tasks` 含 `label` 且 `label` 前後都不是 ASCII 字母或數字、後一字也不是中文數字（處理 `D1` 對 `D12`、task ULID 註解裡的 `d1`、`決策十` 對 `決策十二`）。`label` 比對容許 `D1` 與 `d1` 互通。邊界檢查與 D4 的英文字邊界共用同一個「找到子字串後看左右鄰字」的 helper，各自帶自己的邊界判準——不用 regex `\b`，因為 `\b` 把數字與底線算進單字、對 CJK 也沒有意義。
+- `body` 為空（標題只有編號）時只比 `label`、守衛照常；標題無前綴時退回現行行為：整串標題小寫 `contains`。
 
 為什麼不只去前綴：封存統計顯示 tasks 已有 13 處用「（design D1）」引用設計，只去前綴仍逼人抄本文。為什麼只認三種樣式：468 個帶前綴的封存標題全部落在這三種，`1.` 之類的數字列表樣式零筆，加了只增加誤判面。
 
-Finding 的 `summary` 維持現行文字 `Design topic '<小寫整串標題>' not referenced in tasks`，`summaryMsg.params.keyword` 也維持小寫整串標題——輸出不變，只有觸發條件變。
+Finding 的 `summary` 維持現行文字 `Design topic '<小寫整串標題>' not referenced in tasks`，`summary_msg.params.keyword` 也維持小寫整串標題——輸出不變，只有觸發條件變。
 
 ### D2：REMOVED 需求跳過 scenario 檢查，改查 Reason／Migration
 
-`parse_delta_spec` 為每條需求多記兩個布林：需求本文（`### Requirement:` 之後、下一個 `###` 或 `##` 之前）是否有一行 trim 後以 `**Reason**` 開頭、是否有一行以 `**Migration**` 開頭。
+`parse_delta_spec` 為每條需求多記一組「移除註記」（兩個布林收成一個小型別）：需求本文（`### Requirement:` 之後、第一個 `#### Scenario:` 之前）是否有一行 trim 後以 `**Reason**`／`**Reason:**`／`**Reason：**` 之一開頭、是否有一行以 `**Migration**` 的對應三種寫法開頭。
 
 Ambiguity 的第一段迴圈改為：`operation == "REMOVED"` 的需求不進 `ambNoScenario`；改為缺 Reason 或缺 Migration（或兩者皆缺）時報一筆 Warning：
 
 - `summary`：`REMOVED requirement '<name>' has no **Reason**/**Migration**`（缺哪個就列哪個；兩者皆缺列 `**Reason** and **Migration**`）。
 - `recommendation`：`Add **Reason**: and **Migration**: lines under '<name>'`。
-- `summaryMsg.key`：`ambRemovedNoReason.summary`，`params`：`req`＝需求名、`missing`＝`Reason`／`Migration`／`Reason and Migration`；`recommendationMsg.key`：`ambRemovedNoReason.recommendation`，`params` 同。
+- `summary_msg.key`：`ambRemovedNoNotes.summary`，`params`：`req`＝需求名、`missing`＝`Reason`／`Migration`／`Reason and Migration`；`recommendation_msg.key`：`ambRemovedNoNotes.recommendation`，`params` 同。key 用 NoNotes 而非 NoReason，因為它同時涵蓋只缺 Migration 的情況；summary 裡的粗體字面直接由 `missing` 推導。
 - 編號共用 Ambiguity 的 AMB-N 流水號，落在同一檔案的 no-scenario 段（凍結的「每檔依序：no-scenario → abstract → weak」順序不變，REMOVED 檢查併入第一段）。
 
 為什麼不把 Reason／Migration 檢查放 validate：validate 只管結構與 archive 會不會拒收，archive 不需要這兩行；內容完整度歸 analyze（討論 manual-marker-placement-lint 的分工）。
@@ -61,7 +61,7 @@ Ambiguity 的第一段迴圈改為：`operation == "REMOVED"` 的需求不進 `a
 
 ### D4：英文弱語氣詞改字邊界
 
-英文五個樣式改為「命中的子字串前後都不是 ASCII 字母」；整行仍先轉小寫，因此 `Should`、`SHOULD` 仍命中（規格指引本來就要求用 SHALL 取代）。`TBD`／`TODO`／`???`／`TKTK` 與 CJK 樣式維持子字串比對。每行至多一筆與檢查順序不變。
+英文五個樣式改為「命中的子字串前後都不是 ASCII 字母」，`n't` 縮寫視為字邊界（`shouldn't` 仍報 `should`）；代價是 `maybe`、`considered` 這類完整單字不再命中，測試與規格 Example 表把這個代價釘住；整行仍先轉小寫，因此 `Should`、`SHOULD` 仍命中（規格指引本來就要求用 SHALL 取代）。`TBD`／`TODO`／`???`／`TKTK` 與 CJK 樣式維持子字串比對。每行至多一筆與檢查順序不變。
 
 為什麼 CJK 不改字邊界：中文沒有詞邊界字元，字邊界對它沒有意義；「不可能」豁免照舊。
 
@@ -80,11 +80,11 @@ Ambiguity 的第一段迴圈改為：`operation == "REMOVED"` 的需求不進 `a
 1. design.md 標題 `### 決策一：整個移除 listDepthLimit 擴充`，tasks.md 含「整個移除 listDepthLimit 擴充」或含「決策一」（後一字非數字）→ 不報 `conDesignNotInTasks`。tasks.md 兩者都沒有 → 報，`summary` 為 `Design topic '決策一：整個移除 listdepthlimit 擴充' not referenced in tasks`。
 2. design.md 標題 `### D1 違規清單與聚合錯誤形狀`，tasks.md 只含 `D12` → 報；tasks.md 含 `(design D1)` → 不報。
 3. design.md 標題 `### 索引 JSON 的形狀與推導規則`（無前綴），tasks.md 含整串 → 不報；含一半 → 報。與現行完全相同。
-4. delta spec `## REMOVED Requirements` 下的需求，只有 `**Reason**:` 與 `**Migration**:` 兩行、無 scenario → 不報 `ambNoScenario`、不報 `ambRemovedNoReason`。缺 `**Migration**` → 報 Warning，`summary` 為 `REMOVED requirement 'X' has no **Migration**`，`summaryMsg.key` 為 `ambRemovedNoReason.summary`、`params.missing` 為 `Migration`。ADDED／MODIFIED 需求無 scenario 仍報 `ambNoScenario`。
+4. delta spec `## REMOVED Requirements` 下的需求，只有 `**Reason**:` 與 `**Migration**:` 兩行、無 scenario → 不報 `ambNoScenario`、不報 `ambRemovedNoNotes`。缺 `**Migration**` → 報 Warning，`summary` 為 `REMOVED requirement 'X' has no **Migration**`，`summary_msg.key` 為 `ambRemovedNoNotes.summary`、`params.missing` 為 `Migration`。ADDED／MODIFIED 需求無 scenario 仍報 `ambNoScenario`。
 5. scenario 內文 `- **THEN** 顯示「已封存」` 且無 Example、無 ASCII 數字 → 不報 `ambAbstractScenario`。內文只有「顯示成功訊息」→ 報。
 6. spec 行 `The shoulder strap SHALL lock` → 不報 `ambWeakLanguage`；`It should lock` → 報 `should`；`盡可能鎖定` → 報 `可能`（不變）。
 
-**介面與資料形狀**：`analyze` 函式簽名、`AnalyzeReport`／`Finding`／`Msg` 的欄位與 serde 名稱不變。`--json` 新增的只有 finding 的 key 值 `ambRemovedNoReason.summary`／`ambRemovedNoReason.recommendation` 與 params 鍵 `req`、`missing`。
+**介面與資料形狀**：`analyze` 函式簽名、`AnalyzeReport`／`Finding`／`Msg` 的欄位與 serde 名稱不變。`--json` 新增的只有 finding 的 key 值 `ambRemovedNoNotes.summary`／`ambRemovedNoNotes.recommendation` 與 params 鍵 `req`、`missing`。
 
 **失敗模式**：無新的錯誤路徑；規則函式對空字串、無標題的 design、無 REMOVED 區塊的 delta 皆回傳零 finding。
 
