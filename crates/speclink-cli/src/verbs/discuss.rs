@@ -524,6 +524,9 @@ pub(crate) fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
 /// The wire discussion summary reshaped into the engine's info type, so both
 /// modes render (and serialize) it through one path.
 fn to_discussion_info(d: &protocol_query::DiscussionInfo) -> core::discuss::DiscussionInfo {
+    // wire DTO 只帶 promotedTo／concluded（protocol 不動）；hold 與 board_rank 取預設。
+    let mut head = core::discuss::DiscussionHead::default();
+    head.promoted_to = d.promoted_to.clone();
     core::discuss::DiscussionInfo {
         slug: d.slug.clone(),
         topic: d.topic.clone(),
@@ -534,5 +537,7 @@ fn to_discussion_info(d: &protocol_query::DiscussionInfo) -> core::discuss::Disc
         kind: d.kind.clone(),
         path: d.path.clone(),
         archived: d.archived,
+        concluded: d.concluded.unwrap_or(false),
+        head,
     }
 }

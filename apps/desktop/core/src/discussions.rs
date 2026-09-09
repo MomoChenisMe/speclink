@@ -13,17 +13,17 @@ use crate::init_core_context;
 use crate::query::is_safe_path_param;
 use crate::verbs::open;
 
-fn entry(store: &dyn Store, info: &DiscussionInfo) -> Value {
+fn entry(info: &DiscussionInfo) -> Value {
     let mut v = json!({
         "slug": info.slug,
         "topic": info.topic,
         "status": info.status,
         "rounds": info.rounds,
         "created": info.created,
-        "promotedTo": discuss::promoted_to(store, &info.slug),
-        // 結論已寫入與否（佔位註解不算內文）——與 server route 邊緣同一 core 查詢
-        // （design D3 的唯一契約落點），本地與 remote 同形恆填。
-        "concluded": discuss::discussion_concluded(store, &info.slug),
+        // promotedTo／concluded 由 core 的同一趟 frontmatter 解析產出（不進 CLI JSON 的
+        // serde(skip) 欄位），本地與 remote 同形恆填，每張卡不再額外讀檔。
+        "promotedTo": info.head.promoted_to,
+        "concluded": info.concluded,
     });
     // 建立者（createdBy，camelCase）——缺席時省略該鍵（比照 change 的 fromDiscussions 樣式）。
     if let Some(cb) = &info.created_by {
@@ -43,21 +43,18 @@ pub fn list_discussions_at(root: &Path) -> Value {
         return json!({ "active": [], "archived": [] });
     };
     let store: &dyn Store = &ctx.store;
-    let active: Vec<Value> =
-        board_sorted_active(store).iter().map(|(_, i)| entry(store, i)).collect();
-    let archived: Vec<Value> =
-        discuss::list_archived(store).iter().map(|i| entry(store, i)).collect();
+    let active: Vec<Value> = board_sorted_active(store).iter().map(|(_, i)| entry(i)).collect();
+    let archived: Vec<Value> = discuss::list_archived(store).iter().map(entry).collect();
     json!({ "active": active, "archived": archived })
 }
 
 /// 看板顯示序的 active 討論清單（design D2）：slug 序當回退，穩定排序疊上
 /// board_rank 複合鍵——缺值置頂維持 slug 序、具值依 rank 升冪、同值以 slug 決斷。
-/// rank 經獨立讀取函式取得（不進 DiscussionInfo），CLI `discuss list --json`
-/// 逐位元不變。
+/// rank 來自 info 的 serde(skip) 欄位（不進 CLI `discuss list --json`）。
 pub(crate) fn board_sorted_active(store: &dyn Store) -> Vec<(Option<String>, DiscussionInfo)> {
     let mut ranked: Vec<(Option<String>, DiscussionInfo)> = discuss::list_discussions(store)
         .into_iter()
-        .map(|i| (discuss::board_rank(store, &i.slug), i))
+        .map(|i| (i.head.board_rank.clone(), i))
         .collect();
     ranked.sort_by(|(ra, a), (rb, b)| match (ra, rb) {
         (None, None) => std::cmp::Ordering::Equal, // 穩定排序保留 slug 回退序

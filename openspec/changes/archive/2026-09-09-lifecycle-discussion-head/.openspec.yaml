@@ -1,0 +1,57 @@
+schema: spec-driven
+created: 2026-09-09
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: improve-lifecycle-layer
+started_at: 2026-09-09
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-09
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 16
+reviewed_scope:
+  - path: apps/desktop/core/src/discussions.rs
+    hash: 4f42b91eae95b03d782f44f56790b2fb675b104554062671ce2ffab0b93a85d3
+  - path: crates/speclink-cli/src/verbs/discuss.rs
+    hash: 241318b1ef1046d194fc16c3b2644c7aa985e3b917e53198bb98687f9be5b02a
+  - path: crates/speclink-core/src/archive.rs
+    hash: 4f66acbcf0ce52b990818d78f801574c8f67b7887ccbb4d3abdffec83e1a6481
+  - path: crates/speclink-core/src/command/mod.rs
+    hash: 977b4904cbaea12d46a9a4bd771d1fe13d8dada81c0ddef1456cb3495e8cc701
+  - path: crates/speclink-core/src/discuss.rs
+    hash: 4d0ee071efae88bac0433f16ade1e0737d348eed9a892ae04647ebc228f138ba
+  - path: crates/speclink-core/src/keylines.rs
+    hash: bb262c5e2bd93f22ab6b108e90f0247bf2b325102fd60e1cfe8f30ed71524ed6
+  - path: crates/speclink-core/src/lib.rs
+    hash: 8c61bf49744dcb86dadacdefa397897314bf2c27b4afe2e303520aa2557f40d6
+  - path: crates/speclink-host/src/bridge.rs
+    hash: cfb3b008bb7bfc6260ad31052a5c0cc5ff11d965de42cdd19c347fb4ec808fc9
+  - path: crates/speclink-server/src/routes.rs
+    hash: 99906f1660e95efba0b046ca2ae212ea577543cfe7012aa8963a98d283002379
+verified_at: 2026-09-09
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 16
+verified_scope:
+  - path: apps/desktop/core/src/discussions.rs
+    hash: 4f42b91eae95b03d782f44f56790b2fb675b104554062671ce2ffab0b93a85d3
+  - path: crates/speclink-cli/src/verbs/discuss.rs
+    hash: 241318b1ef1046d194fc16c3b2644c7aa985e3b917e53198bb98687f9be5b02a
+  - path: crates/speclink-core/src/archive.rs
+    hash: 4f66acbcf0ce52b990818d78f801574c8f67b7887ccbb4d3abdffec83e1a6481
+  - path: crates/speclink-core/src/command/mod.rs
+    hash: 977b4904cbaea12d46a9a4bd771d1fe13d8dada81c0ddef1456cb3495e8cc701
+  - path: crates/speclink-core/src/discuss.rs
+    hash: 4d0ee071efae88bac0433f16ade1e0737d348eed9a892ae04647ebc228f138ba
+  - path: crates/speclink-core/src/keylines.rs
+    hash: bb262c5e2bd93f22ab6b108e90f0247bf2b325102fd60e1cfe8f30ed71524ed6
+  - path: crates/speclink-core/src/lib.rs
+    hash: 8c61bf49744dcb86dadacdefa397897314bf2c27b4afe2e303520aa2557f40d6
+  - path: crates/speclink-host/src/bridge.rs
+    hash: cfb3b008bb7bfc6260ad31052a5c0cc5ff11d965de42cdd19c347fb4ec808fc9
+  - path: crates/speclink-server/src/routes.rs
+    hash: 99906f1660e95efba0b046ca2ae212ea577543cfe7012aa8963a98d283002379
+  - path: openspec/changes/lifecycle-discussion-head/design.md
+    hash: 6bc203e802df3abe0a49206f44040c2b6efe715dbe2b46e697f09e2075a3037c
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-09

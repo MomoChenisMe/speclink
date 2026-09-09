@@ -14,6 +14,7 @@ pub mod drift;
 pub mod init;
 pub mod inprogress;
 pub mod instructions;
+pub mod keylines;
 pub mod listing;
 pub mod model;
 pub mod newcmd;
