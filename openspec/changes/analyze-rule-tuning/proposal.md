@@ -5,14 +5,14 @@
 ## What Changes
 
 - 新開 capability `change-analysis`：把 analyze 四個面向的現行規則（含本次修正）寫成正典規格，讓後續的規則調整有 delta 可落。
-- Consistency 的 design 標題比對改為「本文或編號任一出現在 tasks 即算引用」：標題先拆成「編號」與「本文」，編號只認 `D1`、`決策一`、`Decision 1` 三種樣式（後接全形或半形冒號皆可）；`D1` 樣式比對時後一個字元必須不是數字，避免被 `D12` 誤命中；沒有前綴的標題行為與現在完全相同。
-- Ambiguity 的 no-scenario 檢查跳過 REMOVED 區塊的需求；改對 REMOVED 需求檢查 `**Reason**` 與 `**Migration**` 是否齊備，缺任一者報一筆新的 Warning finding（訊息 key `ambRemovedNoReason`）。
+- Consistency 的 design 標題比對改為「本文或編號任一出現在 tasks 即算引用」：標題先拆成「編號」與「本文」，編號只認 `D1`、`決策一`（含 `決策十一` 這類連續中文數字）、`Decision 1` 三種樣式（後接全形或半形冒號皆可）；編號比對時前後都不得緊鄰 ASCII 字母或數字，避免被 `D12` 或 task ULID 註解裡的 `d1` 誤命中；沒有前綴的標題行為與現在完全相同。
+- Ambiguity 的 no-scenario 檢查跳過 REMOVED 區塊的需求；改對 REMOVED 需求檢查 `**Reason**` 與 `**Migration**` 是否齊備，缺任一者報一筆新的 Warning finding（訊息 key `ambRemovedNoNotes`；`**Reason:**`、`**Reason：**` 的寫法也算）。
 - Ambiguity 的「具體值」判斷字元集加入全形引號「」『』與全形數字０-９；既有的 ASCII 數字、反引號、半形雙引號維持。
-- Ambiguity 的英文弱語氣詞（should／may／might／consider／possibly）改用字邊界比對，shoulder、mayor、considerable 不再命中；TBD／TODO／???／TKTK 與 CJK 樣式的比對方式不變。
+- Ambiguity 的英文弱語氣詞（should／may／might／consider／possibly）改用字邊界比對，shoulder、mayor、considerable 不再命中（`n't` 縮寫視為邊界，shouldn't 仍命中）；TBD／TODO／???／TKTK 與 CJK 樣式的比對方式不變。
 - analyzer.rs 補 `#[cfg(test)]` 單元測試模組，涵蓋上述每一條規則的正反例與無前綴回歸。
 - Coverage 與 Gaps 的規則不動。
 
-**相容性影響**：`analyze` 的人眼輸出與 `--json` 形狀（欄位集合、camelCase 命名、finding 的 `id`／`dimension`／`severity`／`location`／`summary`／`recommendation`／`summaryMsg`／`recommendationMsg`）不變；既有 finding 的訊息文字與 key 不變。變的是「哪些情況會產生 finding」：上述四種情況的誤報消失、REMOVED 缺 Reason／Migration 新增一種 Warning。同一份 artifacts 跑 analyze，finding 的編號（AMB-N）可能因為前面的誤報消失而前移。CLI 指令的子指令、旗標、stdin 與 exit code 都不變。不涉及設定欄位、不涉及生成的技能文字。目標使用者是透過 AI 代理跑 SDD 的開發者，情境是 propose 收尾的 Analyze-Fix Loop 與 archive 前的自查。
+**相容性影響**：`analyze` 的人眼輸出與 `--json` 形狀（既有的 snake_case 欄位集合、camelCase 的訊息 key、finding 的 `id`／`dimension`／`severity`／`location`／`summary`／`recommendation`／`summary_msg`／`recommendation_msg`）不變；既有 finding 的訊息文字與 key 不變。變的是「哪些情況會產生 finding」：上述四種情況的誤報消失、REMOVED 缺 Reason／Migration 新增一種 Warning。同一份 artifacts 跑 analyze，finding 的編號（AMB-N）可能因為前面的誤報消失而前移。CLI 指令的子指令、旗標、stdin 與 exit code 都不變。不涉及設定欄位、不涉及生成的技能文字。目標使用者是透過 AI 代理跑 SDD 的開發者，情境是 propose 收尾的 Analyze-Fix Loop 與 archive 前的自查。
 
 ## Capabilities
 
