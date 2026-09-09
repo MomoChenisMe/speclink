@@ -245,6 +245,16 @@ pub fn yaml_scalar(s: &str) -> String {
     }
 }
 
+/// [`yaml_scalar`] 的反向：讀回它寫出的值。雙引號包住的值拆掉引號並還原 `\\"`／`\\\\`，
+/// 其餘（沒加引號的純量）原樣回傳。給只做逐字讀取的 `KeyLines::get` 呼叫端在「比對
+/// 身分」前用——寫入走 `yaml_scalar`，讀回就得走這裡，否則帶引號的本人會被當成他人。
+pub fn yaml_unscalar(s: &str) -> String {
+    match s.strip_prefix('"').and_then(|rest| rest.strip_suffix('"')) {
+        Some(inner) => inner.replace("\\\"", "\"").replace("\\\\", "\\"),
+        None => s.to_string(),
+    }
+}
+
 /// Convert an absolute path to a forward-slash string.
 pub fn to_slash(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
@@ -298,6 +308,25 @@ pub fn slugify(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn yaml_unscalar_inverts_yaml_scalar() {
+        // 讀回 `yaml_scalar` 寫出的值必須拿回原字串——引號、反斜線、內嵌雙引號都要還原；
+        // 沒被引號包住的值原樣回傳。
+        for s in [
+            "Alice <a@example.com>",
+            "Alice: dev <a@example.com>",
+            "@alice",
+            "-lead",
+            "say \"hi\" #1",
+            "back\\slash: x",
+            "",
+        ] {
+            assert_eq!(yaml_unscalar(&yaml_scalar(s)), s, "round trip for {s:?}");
+        }
+        assert_eq!(yaml_unscalar("plain"), "plain");
+        assert_eq!(yaml_unscalar("\"unterminated"), "\"unterminated");
+    }
 
     #[test]
     fn now_stamps_share_one_instant() {

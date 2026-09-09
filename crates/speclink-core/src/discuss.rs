@@ -875,32 +875,15 @@ pub fn unlink_discarded(store: &dyn Store, slug: &str, change: &str) -> Result<O
 fn stamp_restale(store: &dyn Store, slug: &str, discussion_text: &str) -> Result<Vec<String>> {
     let mut flagged = Vec::new();
     for change in &DiscussionHead::parse(discussion_text).promoted_to {
-        let Some(mut meta) = store.read_change_meta(change) else {
-            continue; // archived or gone — not an active change, skip
-        };
-        // 壞 metadata 卡跳過（沿 archived/gone 的 skip 原則）：不得對壞檔
-        // append，也不得使 conclude 因單一壞檔中止——使用者修檔後重新 conclude。
-        let Ok(parsed) = crate::model::ChangeMeta::from_text(Some(&meta)) else {
-            continue;
-        };
-        let existing = parsed.restale_from.as_deref().map(str::trim).unwrap_or("");
-        if parsed.restale_from().iter().any(|s| s == slug) {
-            // already flagged for this slug — idempotent, skip the change-side write
-        } else if existing.is_empty() {
-            if !meta.ends_with('\n') && !meta.is_empty() {
-                meta.push('\n');
-            }
-            meta.push_str(&format!("restale_from: {slug}\n"));
-            store.write_change_meta(change, &meta)?;
-        } else {
-            meta = meta.replacen(
-                &format!("restale_from: {existing}"),
-                &format!("restale_from: {existing}, {slug}"),
-                1,
-            );
-            store.write_change_meta(change, &meta)?;
+        // 已旗標的 change 冪等（`push_list` 不改、`edit_meta` 不寫），仍列入回報。
+        match crate::model::edit_meta(store, change, |m| m.push_list("restale_from", slug)) {
+            Ok(Some(_)) => flagged.push(change.to_string()),
+            Ok(None) => continue, // archived or gone — not an active change, skip
+            // 壞 metadata 卡跳過（沿 archived/gone 的 skip 原則）：不得對壞檔
+            // 疊寫，也不得使 conclude 因單一壞檔中止——使用者修檔後重新 conclude。
+            Err(e) if e.downcast_ref::<crate::model::MetaError>().is_some() => continue,
+            Err(e) => return Err(e),
         }
-        flagged.push(change.to_string());
     }
     Ok(flagged)
 }
@@ -911,36 +894,12 @@ fn stamp_restale(store: &dyn Store, slug: &str, discussion_text: &str) -> Result
 /// `restale_from` field at all) is an idempotent no-op that skips the write. Only the
 /// `restale_from` field is touched; every other meta field stays byte-identical.
 fn clear_restale(store: &dyn Store, change: &str, slug: &str) -> Result<()> {
-    let Some(mut meta) = store.read_change_meta(change) else {
-        return Ok(());
-    };
-    // Change meta is bare YAML (no `---` frontmatter fence), so parse via ChangeMeta
-    // like `link`/`stamp_restale` do — `DiscussionHead` only reads discussion docs.
     // 深度防禦：唯一呼叫者 seal 已對壞 metadata 守門，此處到達即應可解析；
-    // 萬一未來新增未守門的呼叫者，fail closed 而非靜默疊寫。
-    let parsed = crate::model::ChangeMeta::from_text(Some(&meta)).map_err(|reason| {
-        crate::model::MetaError { change: change.to_string(), reason }
+    // 萬一未來新增未守門的呼叫者，`edit_meta` fail closed 而非靜默疊寫。
+    // change 不存在（`None`）與 slug 不在清單都是冪等無寫入。
+    crate::model::edit_meta(store, change, |m| {
+        m.remove_list("restale_from", slug)
     })?;
-    let existing = match parsed.restale_from.as_deref().map(str::trim) {
-        Some(e) if !e.is_empty() => e.to_string(),
-        _ => return Ok(()), // no restale_from — nothing to clear
-    };
-    let current: Vec<&str> =
-        existing.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
-    let remaining: Vec<&str> = current.iter().copied().filter(|s| *s != slug).collect();
-    if remaining.len() == current.len() {
-        return Ok(()); // slug not present — idempotent no-op, no write
-    }
-    if remaining.is_empty() {
-        meta = meta.replacen(&format!("restale_from: {existing}\n"), "", 1);
-    } else {
-        meta = meta.replacen(
-            &format!("restale_from: {existing}"),
-            &format!("restale_from: {}", remaining.join(", ")),
-            1,
-        );
-    }
-    store.write_change_meta(change, &meta)?;
     Ok(())
 }
 
@@ -1024,32 +983,14 @@ pub fn link(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
         }
         Some(_) => {}
     }
-    let Some(mut meta) = store.read_change_meta(change) else {
+    // Fail-closed gate lives in `edit_meta`: corrupt metadata must not read as
+    // "no source discussion" and take the from_discussion write. A chain already
+    // forged for this slug is idempotent — `push_list` leaves the text alone and
+    // nothing is written.
+    let linked =
+        crate::model::edit_meta(store, change, |m| m.push_list("from_discussion", slug))?;
+    if linked.is_none() {
         bail!("Change '{change}' not found.");
-    };
-    // Fail-closed gate: corrupt metadata must not read as "no source
-    // discussion" and take the from_discussion append.
-    let parsed = crate::model::ChangeMeta::from_text(Some(&meta)).map_err(|reason| {
-        crate::model::MetaError { change: change.to_string(), reason }
-    })?;
-    let existing = parsed.from_discussion.as_deref().map(str::trim).unwrap_or("");
-    if parsed.from_discussions().iter().any(|s| s == slug) {
-        // chain already forged for this slug — idempotent, skip the change-side write
-    } else if existing.is_empty() {
-        // no source discussion yet — add the line (tolerating a missing trailing newline)
-        if !meta.ends_with('\n') && !meta.is_empty() {
-            meta.push('\n');
-        }
-        meta.push_str(&format!("from_discussion: {slug}\n"));
-        store.write_change_meta(change, &meta)?;
-    } else {
-        // already born of another discussion — append this slug to the comma list
-        meta = meta.replacen(
-            &format!("from_discussion: {existing}"),
-            &format!("from_discussion: {existing}, {slug}"),
-            1,
-        );
-        store.write_change_meta(change, &meta)?;
     }
     Ok(())
 }

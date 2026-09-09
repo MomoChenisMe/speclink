@@ -1,0 +1,84 @@
+{
+  "version": 2,
+  "change": "lifecycle-change-meta-edit",
+  "touched": [
+    {
+      "task_id": "2",
+      "task_desc": "2.1 【Red】在 crates/speclink-core/src/keylines.rs 測試模組寫 D1 KeyLines 長出 whole 區域與清單／區塊三式的測試：`whole` 對「尾行缺換行」插入前先補行、空文件插入得 `key: value\\n`、CRLF 文件新行沿 CRLF；`push_list` 已含回 false 不改、空清單寫單值、既有清單以「, 」累加；`remove_list` 不在清單回 false、縮清單保留其餘、清空整行移除；`set_block` 取代既有同名鍵與其縮排區塊並落在區域尾端、續行原文逐字寫入、任一行含換行回 `Err` 且 `text()` 逐位元不變；`frontmatter` 既有測試不動。驗證：`cargo test -p speclink-core keylines` 新測試失敗於方法不存在。",
+      "files": [
+        "crates/speclink-core/src/keylines.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "3.1 【Red】在 crates/speclink-core/src/model.rs 測試模組寫 D2 edit_meta 四步與回傳形狀的四條測試，用 `TestStore::meta_writes` 計數：meta 不存在回 `Ok(None)` 且寫入 0 次；壞 YAML 回 `Err` 可 `downcast_ref::<MetaError>()` 且寫入 0 次；閉包不改任何鍵回 `Ok(Some(_))` 且寫入 0 次；閉包 `set` 一鍵回 `Ok(Some(_))`、寫入恰 1 次、其餘位元組逐字保留。驗證：`cargo test -p speclink-core model::tests::edit_meta_` 失敗於函式不存在。",
+      "files": [
+        "crates/speclink-core/src/model.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "4.2 in-progress `add`／`remove` 改走 `edit_meta`：`add` 閉包內判 `started_*` 任一存在回 `Ok(false)`、否則 `set` 三鍵（by／with 過 `yaml_scalar`）；`remove` 閉包內先跑零工作痕跡守門（`RevertBlocked`）、再判無 `started_*` 回 `Ok(false)`、否則 `remove` 三鍵；名稱單段與 not-found 的訊息與靜默語意沿 D3 七個寫入點改走 edit_meta、各自守門與訊息不動的表格。可觀察行為：`add_*`／`remove_*` 既有測試斷言不改全綠，含 `*_preserves_*_verbatim` 三條與 `add_refuses_on_corrupt_meta_without_writing`。驗證：`cargo test -p speclink-core inprogress` 全綠。路徑：crates/speclink-core/src/inprogress.rs",
+      "files": [
+        "crates/speclink-core/src/command/mod.rs",
+        "crates/speclink-core/src/inprogress.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.4 `link`／`stamp_restale`／`clear_restale` 改走 `edit_meta`：`link` 閉包 `push_list(\"from_discussion\", slug)`、`None` 回既有「Change '{change}' not found.」；`stamp_restale` 對 `None` 與 `downcast_ref::<MetaError>()` 命中皆 `continue`、其餘錯誤照傳、`flagged` 沿今天不論新增都推入；`clear_restale` 閉包 `remove_list(\"restale_from\", slug)`、`None` 回 `Ok(())`。可觀察行為：`link_*`（含冪等零寫入、壞 meta 拒絕、缺尾換行）、`conclude_restale_*`、`seal_*` 既有測試斷言不改全綠。驗證：`cargo test -p speclink-core discuss::tests::link`、`cargo test -p speclink-core discuss::tests::conclude_restale`、`cargo test -p speclink-core discuss::tests::seal` 全綠。路徑：crates/speclink-core/src/discuss.rs",
+      "files": [
+        "crates/speclink-core/src/discuss.rs",
+        "crates/speclink-core/src/station.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M239Z228V65S5V35T4M8WMV2",
+      "taskDesc": "2.1 【Red】在 crates/speclink-core/src/keylines.rs 測試模組寫 D1 KeyLines 長出 whole 區域與清單／區塊三式的測試：`whole` 對「尾行缺換行」插入前先補行、空文件插入得 `key: value\\n`、CRLF 文件新行沿 CRLF；`push_list` 已含回 false 不改、空清單寫單值、既有清單以「, 」累加；`remove_list` 不在清單回 false、縮清單保留其餘、清空整行移除；`set_block` 取代既有同名鍵與其縮排區塊並落在區域尾端、續行原文逐字寫入、任一行含換行回 `Err` 且 `text()` 逐位元不變；`frontmatter` 既有測試不動。驗證：`cargo test -p speclink-core keylines` 新測試失敗於方法不存在。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d46507a1fe16fc11f635ad9ac90eeee9958635e2",
+      "touchedFiles": [
+        "crates/speclink-core/src/keylines.rs"
+      ],
+      "recordedAt": "2026-09-09T14:50:57Z"
+    },
+    {
+      "taskId": "tsk_01M239Z22866FAN8F548W27TK1",
+      "taskDesc": "3.1 【Red】在 crates/speclink-core/src/model.rs 測試模組寫 D2 edit_meta 四步與回傳形狀的四條測試，用 `TestStore::meta_writes` 計數：meta 不存在回 `Ok(None)` 且寫入 0 次；壞 YAML 回 `Err` 可 `downcast_ref::<MetaError>()` 且寫入 0 次；閉包不改任何鍵回 `Ok(Some(_))` 且寫入 0 次；閉包 `set` 一鍵回 `Ok(Some(_))`、寫入恰 1 次、其餘位元組逐字保留。驗證：`cargo test -p speclink-core model::tests::edit_meta_` 失敗於函式不存在。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d46507a1fe16fc11f635ad9ac90eeee9958635e2",
+      "touchedFiles": [
+        "crates/speclink-core/src/model.rs"
+      ],
+      "recordedAt": "2026-09-09T14:53:17Z"
+    },
+    {
+      "taskId": "tsk_01M239Z228VR4CKSCKFXE9RJHS",
+      "taskDesc": "4.2 in-progress `add`／`remove` 改走 `edit_meta`：`add` 閉包內判 `started_*` 任一存在回 `Ok(false)`、否則 `set` 三鍵（by／with 過 `yaml_scalar`）；`remove` 閉包內先跑零工作痕跡守門（`RevertBlocked`）、再判無 `started_*` 回 `Ok(false)`、否則 `remove` 三鍵；名稱單段與 not-found 的訊息與靜默語意沿 D3 七個寫入點改走 edit_meta、各自守門與訊息不動的表格。可觀察行為：`add_*`／`remove_*` 既有測試斷言不改全綠，含 `*_preserves_*_verbatim` 三條與 `add_refuses_on_corrupt_meta_without_writing`。驗證：`cargo test -p speclink-core inprogress` 全綠。路徑：crates/speclink-core/src/inprogress.rs",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d46507a1fe16fc11f635ad9ac90eeee9958635e2",
+      "touchedFiles": [
+        "crates/speclink-core/src/command/mod.rs",
+        "crates/speclink-core/src/inprogress.rs"
+      ],
+      "recordedAt": "2026-09-09T14:58:54Z"
+    },
+    {
+      "taskId": "tsk_01M239Z228CKAZ9Q4KTFDV2JNP",
+      "taskDesc": "4.4 `link`／`stamp_restale`／`clear_restale` 改走 `edit_meta`：`link` 閉包 `push_list(\"from_discussion\", slug)`、`None` 回既有「Change '{change}' not found.」；`stamp_restale` 對 `None` 與 `downcast_ref::<MetaError>()` 命中皆 `continue`、其餘錯誤照傳、`flagged` 沿今天不論新增都推入；`clear_restale` 閉包 `remove_list(\"restale_from\", slug)`、`None` 回 `Ok(())`。可觀察行為：`link_*`（含冪等零寫入、壞 meta 拒絕、缺尾換行）、`conclude_restale_*`、`seal_*` 既有測試斷言不改全綠。驗證：`cargo test -p speclink-core discuss::tests::link`、`cargo test -p speclink-core discuss::tests::conclude_restale`、`cargo test -p speclink-core discuss::tests::seal` 全綠。路徑：crates/speclink-core/src/discuss.rs",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d46507a1fe16fc11f635ad9ac90eeee9958635e2",
+      "touchedFiles": [
+        "crates/speclink-core/src/discuss.rs",
+        "crates/speclink-core/src/station.rs"
+      ],
+      "recordedAt": "2026-09-09T15:01:33Z"
+    }
+  ]
+}

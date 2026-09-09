@@ -1583,7 +1583,7 @@ fn run_task_move(
 /// `claim` — ownership adjudication, split on what the backend can do (design
 /// D2). A plain fs store has nobody to coordinate with and refuses with the
 /// frozen text; a team-mode store stamps `claimed_at` / `claimed_by` into the
-/// change metadata the same read-append-write way the started stamp does.
+/// change metadata through [`crate::model::edit_meta`], like the started stamp.
 fn run_claim(
     store: &dyn Store,
     actor: Option<&str>,
@@ -1600,63 +1600,55 @@ fn run_claim(
             "claim requires a remote store — this project uses the local fs store",
         ));
     }
-    let Some(mut meta) = store.read_change_meta(name) else {
+    let claimed = crate::model::edit_meta(store, name, |m| {
+        // An owner is the whole point of the verb: with nobody to record, a
+        // stamp would make the change unclaimable while naming no one to
+        // coordinate with. Judged inside the closure so an unknown change still
+        // reads as not-found before the missing identity is reported.
+        let Some(actor) = actor else {
+            return Err(Refusal(format!(
+                "cannot claim '{name}': no identity to record as its owner"
+            ))
+            .into());
+        };
+        // The stamp is a pair: both fields are written together, so both are
+        // judged together. A meta carrying `claimed_at` alone is inconsistent —
+        // writing the pair again would leave a duplicate key and make the change
+        // permanently unparseable, so the half stamp refuses instead.
+        // `claimed_by` is written through `yaml_scalar`, so read it back through
+        // its inverse before comparing — a quoted holder is still the same person.
+        let holder = m.get("claimed_by").map(crate::util::yaml_unscalar);
+        match (holder, m.get("claimed_at")) {
+            (Some(holder), _) if holder == actor => return Ok(false),
+            (Some(holder), _) => {
+                return Err(Refusal(format!(
+                    "change '{name}' is already claimed by {holder} — coordinate with them, or ask them to release it"
+                ))
+                .into())
+            }
+            (None, Some(_)) => {
+                return Err(Refusal(format!(
+                    "cannot claim '{name}': its metadata carries claimed_at with no claimed_by — restore or remove that line in openspec/changes/{name}/.openspec.yaml"
+                ))
+                .into())
+            }
+            (None, None) => {}
+        }
+        m.set("claimed_at", &crate::util::today())?;
+        m.set("claimed_by", &crate::util::yaml_scalar(actor))?;
+        Ok(true)
+    })
+    .map_err(classify)?;
+    let Some(claimed) = claimed else {
         return Err(CommandError::new(
             ErrorCode::NotFound,
             format!("Change '{name}' not found."),
         ));
     };
-    // An owner is the whole point of the verb: with nobody to record, a stamp
-    // would make the change unclaimable while naming no one to coordinate with.
-    let Some(actor) = actor else {
-        return Err(CommandError::new(
-            ErrorCode::Refused,
-            format!("cannot claim '{name}': no identity to record as its owner"),
-        ));
-    };
-    let parsed = crate::model::ChangeMeta::from_text(Some(&meta)).map_err(|reason| {
-        classify(crate::model::MetaError { change: name.to_string(), reason }.into())
-    })?;
-    // The stamp is a pair: both fields are written together, so both are judged
-    // together. A meta carrying `claimed_at` alone is inconsistent — appending
-    // the pair again would leave a duplicate key and make the change
-    // permanently unparseable, so the half stamp refuses instead.
-    match (parsed.claimed_by, parsed.claimed_at) {
-        (Some(holder), _) if holder == actor => {
-            return Ok(CommandOutcome::Claim(ClaimOutcome {
-                name: name.to_string(),
-                claimed_by: Some(holder),
-                claimed: false,
-            }));
-        }
-        (Some(holder), _) => {
-            return Err(CommandError::new(
-                ErrorCode::Refused,
-                format!(
-                    "change '{name}' is already claimed by {holder} — coordinate with them, or ask them to release it"
-                ),
-            ));
-        }
-        (None, Some(_)) => {
-            return Err(CommandError::new(
-                ErrorCode::Refused,
-                format!(
-                    "cannot claim '{name}': its metadata carries claimed_at with no claimed_by — restore or remove that line in openspec/changes/{name}/.openspec.yaml"
-                ),
-            ));
-        }
-        (None, None) => {}
-    }
-    if !meta.ends_with('\n') && !meta.is_empty() {
-        meta.push('\n');
-    }
-    meta.push_str(&format!("claimed_at: {}\n", crate::util::today()));
-    meta.push_str(&format!("claimed_by: {}\n", crate::util::yaml_scalar(actor)));
-    store.write_change_meta(name, &meta).map_err(classify)?;
     Ok(CommandOutcome::Claim(ClaimOutcome {
         name: name.to_string(),
-        claimed_by: Some(actor.to_string()),
-        claimed: true,
+        claimed_by: actor.map(str::to_string),
+        claimed,
     }))
 }
 
@@ -2831,6 +2823,36 @@ mod tests {
         assert!(events.is_empty(), "an idempotent pass states no mutation");
         assert_eq!(store.meta("demo"), first_stamp, "the first stamp survives verbatim");
         assert_eq!(*store.meta_writes.borrow(), 1, "no second meta write");
+    }
+
+    #[test]
+    fn repeat_claim_by_an_actor_whose_identity_needs_quoting_is_still_idempotent() {
+        // `yaml_scalar` 把含 `:` 的身分包上引號寫入；讀回比對必須解引號，否則本人會被
+        // 當成他人而遭拒。拒絕訊息指名的持有人也是解引號後的原字串。
+        let store = TestStore::team_with_meta("demo", CLAIM_META);
+        let actor = "Alice: dev <a@example.com>";
+        claim(&store, actor).expect("first claim succeeds");
+        assert!(
+            store.meta("demo").contains("claimed_by: \"Alice: dev <a@example.com>\"\n"),
+            "the identity is written quoted: {}",
+            store.meta("demo")
+        );
+        let (outcome, events) = claim(&store, actor).expect("repeat claim by the holder succeeds");
+        match &outcome {
+            CommandOutcome::Claim(o) => {
+                assert_eq!(o.claimed_by.as_deref(), Some(actor));
+                assert!(!o.claimed, "the repeat claim reports no new stamp");
+            }
+            other => panic!("expected a claim outcome, got {other:?}"),
+        }
+        assert!(events.is_empty());
+        assert_eq!(*store.meta_writes.borrow(), 1, "no second meta write");
+        let err = claim(&store, "Bob <b@example.com>").expect_err("a held change refuses another claimant");
+        assert!(
+            err.message.contains("already claimed by Alice: dev <a@example.com> —"),
+            "the refusal names the unquoted holder: {}",
+            err.message
+        );
     }
 
     #[test]

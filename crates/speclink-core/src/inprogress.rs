@@ -9,10 +9,13 @@
 //! succeeds for unknown change names (measured pre-migration baseline —
 //! exit 0, no output, and in that case nothing is written).
 
-use crate::model::ChangeMeta;
+use crate::model::edit_meta;
 use crate::store::Store;
 use crate::util;
 use anyhow::Result;
+
+/// 開工章的三個鍵，寫入與撤銷都以這組為準。
+const STARTED_KEYS: [&str; 3] = ["started_at", "started_by", "started_with"];
 
 /// 守門拒絕:change 帶工作痕跡(已勾任務或 touched 記錄),in-progress 標記
 /// 不可機械移除。結構化證據隨錯誤走——CLI stderr、server 409 載荷與 desktop
@@ -68,49 +71,39 @@ pub fn remove(store: &dyn Store, name: &str) -> Result<bool> {
     if name.contains(['/', '\\', ':']) || name.contains("..") {
         return Err(not_found());
     }
-    let Some(meta) = store.read_change_meta(name) else {
-        return Err(not_found());
-    };
-    // Fail-closed gate: a corrupt document must not read as "not started" and
-    // take the idempotent pass — refuse before any decision.
-    let parsed = ChangeMeta::from_text(Some(&meta)).map_err(|reason| crate::model::MetaError {
-        change: name.to_string(),
-        reason,
-    })?;
-    // Zero-work-trace gate, judged before idempotence: a change whose stage
-    // still derives as in-progress (checked tasks without a stamp) must hear
-    // "blocked, traces exist", not "already proposed".
-    let tasks = crate::tasks::parse(&store.read_artifact(name, "tasks.md").unwrap_or_default());
-    let checked_tasks = tasks.iter().filter(|t| t.done).count();
-    let touched_files = crate::tasks::TouchedRecord::load(store, name).all_files();
-    if checked_tasks > 0 || !touched_files.is_empty() {
-        return Err(RevertBlocked {
-            change: name.to_string(),
-            checked_tasks,
-            touched_files,
+    // Fail-closed gate lives in `edit_meta`: a corrupt document must not read
+    // as "not started" and take the idempotent pass — the closure never runs.
+    let removed = edit_meta(store, name, |m| {
+        // Zero-work-trace gate, judged before idempotence: a change whose stage
+        // still derives as in-progress (checked tasks without a stamp) must hear
+        // "blocked, traces exist", not "already proposed".
+        let tasks =
+            crate::tasks::parse(&store.read_artifact(name, "tasks.md").unwrap_or_default());
+        let checked_tasks = tasks.iter().filter(|t| t.done).count();
+        let touched_files = crate::tasks::TouchedRecord::load(store, name).all_files();
+        if checked_tasks > 0 || !touched_files.is_empty() {
+            return Err(RevertBlocked {
+                change: name.to_string(),
+                checked_tasks,
+                touched_files,
+            }
+            .into());
         }
-        .into());
-    }
-    if parsed.started_at.is_none() && parsed.started_by.is_none() && parsed.started_with.is_none() {
-        return Ok(false);
-    }
-    // Line filter, mirroring add's append: drop exactly the three started_*
-    // lines and keep every other byte as-is — never re-serialize.
-    let kept: String = meta
-        .split_inclusive('\n')
-        .filter(|line| {
-            !["started_at:", "started_by:", "started_with:"]
-                .iter()
-                .any(|field| line.starts_with(field))
-        })
-        .collect();
-    store.write_change_meta(name, &kept)?;
-    Ok(true)
+        if STARTED_KEYS.iter().all(|k| m.get(k).is_none()) {
+            return Ok(false);
+        }
+        // Drop exactly the three started_* lines; every other byte stays as-is.
+        for key in STARTED_KEYS {
+            m.remove(key);
+        }
+        Ok(true)
+    })?;
+    removed.ok_or_else(not_found)
 }
 
 /// Mark a change as in-progress by stamping `started_at` / `started_by` /
-/// `started_with` into its metadata document (read → append → write, never
-/// re-serialized). Identity and agent attribution follow the created_* rule:
+/// `started_with` into its metadata document (via [`edit_meta`] — every other
+/// byte is preserved, never re-serialized). Identity and agent attribution follow the created_* rule:
 /// what the caller cannot attribute is absent, not defaulted. A change already
 /// carrying a started_* field keeps its first stamp verbatim.
 ///
@@ -126,31 +119,24 @@ pub fn add(store: &dyn Store, name: &str, identity: Option<&str>, agent: Option<
     if name.contains(['/', '\\', ':']) || name.contains("..") {
         return Ok(false);
     }
-    let Some(mut meta) = store.read_change_meta(name) else {
-        return Ok(false);
-    };
-    // Fail-closed gate: a corrupt document must not read as "not started" and
-    // take the stamp append — refuse before any text surgery.
-    let parsed = ChangeMeta::from_text(Some(&meta)).map_err(|reason| crate::model::MetaError {
-        change: name.to_string(),
-        reason,
+    // Fail-closed gate lives in `edit_meta`: a corrupt document must not read
+    // as "not started" and take the stamp — the closure never runs. An unknown
+    // name is `None` → the parity-frozen silent `false`.
+    let stamped = edit_meta(store, name, |m| {
+        if STARTED_KEYS.iter().any(|k| m.get(k).is_some()) {
+            return Ok(false);
+        }
+        let clean = util::yaml_scalar;
+        m.set("started_at", &util::today())?;
+        if let Some(id) = identity {
+            m.set("started_by", &clean(id))?;
+        }
+        if let Some(agent) = agent {
+            m.set("started_with", &clean(agent))?;
+        }
+        Ok(true)
     })?;
-    if parsed.started_at.is_some() || parsed.started_by.is_some() || parsed.started_with.is_some() {
-        return Ok(false);
-    }
-    if !meta.ends_with('\n') && !meta.is_empty() {
-        meta.push('\n');
-    }
-    let clean = util::yaml_scalar;
-    meta.push_str(&format!("started_at: {}\n", util::today()));
-    if let Some(id) = identity {
-        meta.push_str(&format!("started_by: {}\n", clean(id)));
-    }
-    if let Some(agent) = agent {
-        meta.push_str(&format!("started_with: {}\n", clean(agent)));
-    }
-    store.write_change_meta(name, &meta)?;
-    Ok(true)
+    Ok(stamped.unwrap_or(false))
 }
 
 #[cfg(test)]

@@ -1,0 +1,47 @@
+schema: spec-driven
+created: 2026-09-09
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: improve-lifecycle-layer
+started_at: 2026-09-09
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-09
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 12
+reviewed_scope:
+  - path: crates/speclink-core/src/command/mod.rs
+    hash: d0399b531abbeaa3f0d478c67a2c535161ac50c8877b3153333d09a39ec25a45
+  - path: crates/speclink-core/src/discuss.rs
+    hash: 282b38be818311407a9d01c326ce4b0c9885d39fe514383357a140a9a69f6bd0
+  - path: crates/speclink-core/src/inprogress.rs
+    hash: 75a00d8ca53d944e493e147a786872c32520144942e1262c4e19a819499b7476
+  - path: crates/speclink-core/src/keylines.rs
+    hash: 488d1a59eb2226c14e6425f2de17479323b2d9e7c6156d80c155892fbeaeeeaa
+  - path: crates/speclink-core/src/model.rs
+    hash: 802e3c3a6340d5dfd6e75b6f31392616e997b5b6b25e15f32490996cf5ee3aea
+  - path: crates/speclink-core/src/station.rs
+    hash: 43062a6877685b4474b2a93c6a233cc2509525f1a3e9e0264496574f687aeda5
+  - path: crates/speclink-core/src/util.rs
+    hash: b65d8b4f637d76a16aa3a02c2e208faadae939eafb7243f7c517423cc340ae31
+verified_at: 2026-09-09
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 12
+verified_scope:
+  - path: crates/speclink-core/src/command/mod.rs
+    hash: d0399b531abbeaa3f0d478c67a2c535161ac50c8877b3153333d09a39ec25a45
+  - path: crates/speclink-core/src/discuss.rs
+    hash: 282b38be818311407a9d01c326ce4b0c9885d39fe514383357a140a9a69f6bd0
+  - path: crates/speclink-core/src/inprogress.rs
+    hash: 75a00d8ca53d944e493e147a786872c32520144942e1262c4e19a819499b7476
+  - path: crates/speclink-core/src/keylines.rs
+    hash: 488d1a59eb2226c14e6425f2de17479323b2d9e7c6156d80c155892fbeaeeeaa
+  - path: crates/speclink-core/src/model.rs
+    hash: 802e3c3a6340d5dfd6e75b6f31392616e997b5b6b25e15f32490996cf5ee3aea
+  - path: crates/speclink-core/src/station.rs
+    hash: 43062a6877685b4474b2a93c6a233cc2509525f1a3e9e0264496574f687aeda5
+  - path: crates/speclink-core/src/util.rs
+    hash: b65d8b4f637d76a16aa3a02c2e208faadae939eafb7243f7c517423cc340ae31
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-09

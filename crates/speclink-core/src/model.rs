@@ -1,5 +1,6 @@
 //! Change discovery, metadata, and artifact status.
 
+use crate::keylines::KeyLines;
 use crate::schema::{Artifact, Schema};
 use crate::store::Store;
 use serde::Deserialize;
@@ -204,9 +205,34 @@ pub fn list_changes(store: &dyn Store) -> Vec<Change> {
     store.list_changes()
 }
 
-/// 寫入（或原位更新）一個 change 的看板排序鍵 `board_rank`。
-/// 沿 started_* 的文字手術機制（read → 行代換或 append → write，永不重新序列化），
-/// 其餘欄位逐位元組保留。非法 rank、非單一路徑段名稱、change 不存在皆回明確錯誤。
+/// 編輯一個 change 的 meta 文件：讀原文 → fail-closed 解析 → 套 `edit` 閉包做
+/// `KeyLines` 手術 → 文字有變才回寫（其餘位元組逐字保留，永不重新序列化）。
+///
+/// - `Ok(None)`：change 沒有 meta 文件——「不存在」的訊息與靜默語意留給呼叫端。
+/// - `Err(MetaError)`：文件存在但解析失敗，零寫入（可 `downcast_ref` 分辨）。
+/// - 閉包 `Err` 原樣傳出，零寫入；閉包沒改任何行時也零寫入（冪等路徑）。
+///
+/// 名稱單一路徑段的守衛也留在呼叫端：各動詞對非法名稱的訊息不同。
+pub fn edit_meta<T>(
+    store: &dyn Store,
+    name: &str,
+    edit: impl FnOnce(&mut KeyLines) -> anyhow::Result<T>,
+) -> anyhow::Result<Option<T>> {
+    let Some(meta) = store.read_change_meta(name) else {
+        return Ok(None);
+    };
+    check_meta_text(name, Some(&meta))?;
+    let mut lines = KeyLines::whole(&meta);
+    let out = edit(&mut lines)?;
+    let edited = lines.text();
+    if edited != meta {
+        store.write_change_meta(name, &edited)?;
+    }
+    Ok(Some(out))
+}
+
+/// 寫入（或原位更新）一個 change 的看板排序鍵 `board_rank`；其餘欄位逐位元組
+/// 保留。非法 rank、非單一路徑段名稱、change 不存在皆回明確錯誤。
 pub fn set_board_rank(store: &dyn Store, name: &str, rank: &str) -> anyhow::Result<()> {
     if !crate::util::is_valid_board_rank(rank) {
         anyhow::bail!("invalid board rank '{rank}' — lowercase ASCII letters only");
@@ -216,31 +242,9 @@ pub fn set_board_rank(store: &dyn Store, name: &str, rank: &str) -> anyhow::Resu
     if name.contains(['/', '\\', ':']) || name.contains("..") {
         anyhow::bail!("invalid change name: {name}");
     }
-    let Some(meta) = store.read_change_meta(name) else {
+    if edit_meta(store, name, |m| m.set("board_rank", rank))?.is_none() {
         anyhow::bail!("change not found: {name}");
-    };
-    // Fail-closed gate（design 決策五）：文字手術前先解析——壞檔不得被當
-    // 「缺 rank」疊寫，拒絕並指名檔案。
-    check_meta_text(name, Some(&meta))?;
-    let line = format!("board_rank: {rank}\n");
-    let mut out = String::with_capacity(meta.len() + line.len());
-    let mut replaced = false;
-    for l in meta.split_inclusive('\n') {
-        // 頂層鍵在第 0 欄；縮排行（巢狀值）不會誤中。
-        if !replaced && l.starts_with("board_rank:") {
-            out.push_str(&line);
-            replaced = true;
-        } else {
-            out.push_str(l);
-        }
     }
-    if !replaced {
-        if !out.ends_with('\n') && !out.is_empty() {
-            out.push('\n');
-        }
-        out.push_str(&line);
-    }
-    store.write_change_meta(name, &out)?;
     Ok(())
 }
 
@@ -641,6 +645,60 @@ mod tests {
         assert!(super::set_board_rank(&store, "../evil", "n").is_err());
         assert!(super::set_board_rank(&store, "a/b", "n").is_err());
         assert_eq!(*store.meta_writes.borrow(), 0);
+    }
+
+    // --- edit_meta（design D2：讀→fail-closed 解析→套閉包→回寫）---
+
+    #[test]
+    fn edit_meta_returns_none_without_writing_when_the_meta_is_missing() {
+        let store = TestStore::with_meta("demo", "schema: spec-driven\n");
+        let out = super::edit_meta(&store, "ghost", |m| {
+            m.set("board_rank", "n")?;
+            Ok(())
+        })
+        .unwrap();
+        assert!(out.is_none());
+        assert_eq!(*store.meta_writes.borrow(), 0);
+    }
+
+    #[test]
+    fn edit_meta_refuses_corrupt_meta_with_meta_error_without_writing() {
+        const BAD: &str = ": : :\n\t bad yaml [unclosed\n";
+        let store = TestStore::with_meta("demo", BAD);
+        let err = super::edit_meta(&store, "demo", |m| {
+            m.set("board_rank", "n")?;
+            Ok(())
+        })
+        .unwrap_err();
+        let meta_err = err
+            .downcast_ref::<super::MetaError>()
+            .expect("corrupt meta must surface as MetaError");
+        assert_eq!(meta_err.change, "demo");
+        assert_eq!(store.meta("demo"), BAD, "meta byte-identical");
+        assert_eq!(*store.meta_writes.borrow(), 0, "refusal must not write");
+    }
+
+    #[test]
+    fn edit_meta_skips_the_write_when_the_closure_changes_nothing() {
+        let store = TestStore::with_meta("demo", STAMPED_META);
+        let out = super::edit_meta(&store, "demo", |m| Ok(m.get("schema").map(str::to_string)))
+            .unwrap();
+        assert_eq!(out, Some(Some("spec-driven".to_string())));
+        assert_eq!(store.meta("demo"), STAMPED_META);
+        assert_eq!(*store.meta_writes.borrow(), 0, "unchanged text must not write");
+    }
+
+    #[test]
+    fn edit_meta_writes_exactly_once_and_preserves_the_rest_verbatim() {
+        let store = TestStore::with_meta("demo", STAMPED_META);
+        let out = super::edit_meta(&store, "demo", |m| {
+            m.set("board_rank", "n")?;
+            Ok(7)
+        })
+        .unwrap();
+        assert_eq!(out, Some(7));
+        assert_eq!(*store.meta_writes.borrow(), 1, "exactly one write");
+        assert_eq!(store.meta("demo"), format!("{STAMPED_META}board_rank: n\n"));
     }
 
     #[test]
