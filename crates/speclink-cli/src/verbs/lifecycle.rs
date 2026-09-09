@@ -169,7 +169,10 @@ fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Resul
             }
         }
         if !a.no_validate {
-            let res = core::validate::validate_change(store, change, &schema, false);
+            // Structural only: the readiness pre-check above already ran the merge
+            // gate, and --skip-specs deliberately bypasses it — validate must not
+            // reintroduce it there.
+            let res = core::validate::validate_change_structural(store, change, &schema, false);
             if !res.valid {
                 skipped.push((change.name.clone(), "validation failed".to_string()));
                 continue;

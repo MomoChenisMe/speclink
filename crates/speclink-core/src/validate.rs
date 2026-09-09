@@ -162,10 +162,71 @@ if it really is new, ignore this warning.",
     msg
 }
 
-/// Validate a change's artifacts structurally.
-pub fn validate_change(store: &dyn Store, change: &Change, _schema: &Schema, strict: bool) -> ValidationResult {
+/// 只含結構檢查的 change 驗證（design D1）：archive 家族的驗證前置專用。
+/// 那裡的前置後面緊接自己的合併守門與 `merge_refusal` 聚合文案；前置若也含守門，
+/// 違規會先以「Validation failed:」的形狀跳出來，等於改了凍結輸出。輸出與本
+/// change 之前的 `validate_change` 逐位元相同。
+pub fn validate_change_structural(
+    store: &dyn Store,
+    change: &Change,
+    schema: &Schema,
+    strict: bool,
+) -> ValidationResult {
+    structural_pass(store, change, schema, strict).0
+}
+
+/// change 驗證的入口（design D1）：結構檢查的結果，加上與 archive 相同的合併
+/// 守門違規。守門判斷沿用 `archive::merge_violations`——validate 是 spec
+/// archive-merge「過期判定單源共用」的第四個共用者，不平行實作。
+///
+/// 每筆違規化為一條 error（design D2）：`specs/<capability>/spec.md: <operation>
+/// '<requirement>': <reason> (see: speclink drift <change>)`，路徑是邏輯路徑、
+/// 一律正斜線，reason 逐字沿用守門的凍結字串。守門 error 一律排在既有結構
+/// error 之後，`valid` 仍為 `errors.is_empty()`，且不依附 `strict`。
+pub fn validate_change(
+    store: &dyn Store,
+    change: &Change,
+    schema: &Schema,
+    strict: bool,
+) -> ValidationResult {
+    let (mut result, collision_reported) = structural_pass(store, change, schema, strict);
+    for v in crate::archive::merge_violations(store, &change.name) {
+        // 去重（design D3）：Purpose 類一律略過——結構層的 Purpose error 已含
+        // 範例骨架，比守門的 reason 更完整。
+        if v.is_purpose_gate() {
+            continue;
+        }
+        // 撞名類只在結構層沒報過該需求名時才列——RENAMED 端點的撞名結構層看
+        // 不到（它的掃描只走 ADDED／MODIFIED／REMOVED 區段），那類仍要列出。
+        if v.is_section_collision()
+            && collision_reported.iter().any(|(cap, name)| *cap == v.capability && *name == v.requirement)
+        {
+            continue;
+        }
+        result.errors.push(format!(
+            "specs/{cap}/spec.md: {op} '{req}': {reason} (see: speclink drift {change})",
+            cap = v.capability,
+            op = v.operation,
+            req = v.requirement,
+            reason = v.reason,
+            change = change.name,
+        ));
+    }
+    result.valid = result.errors.is_empty();
+    result
+}
+
+/// 結構檢查本體，外加已被 Duplicate／appears in both error 點名的
+/// (capability, 需求名)——守門的撞名違規據此去重（design D3）。
+fn structural_pass(
+    store: &dyn Store,
+    change: &Change,
+    _schema: &Schema,
+    strict: bool,
+) -> (ValidationResult, Vec<(String, String)>) {
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
+    let mut collision_reported: Vec<(String, String)> = Vec::new();
 
     // validate is lenient: a missing proposal is NOT an error, and a scenario-less
     // requirement is NOT an error. The one hard error is an EXISTING delta spec file that parses
@@ -265,6 +326,7 @@ pub fn validate_change(store: &dyn Store, change: &Change, _schema: &Schema, str
                             "{rel}: Duplicate requirement '{name}' in {section} section"
                         ));
                         reported_dup.push((name.clone(), section));
+                        collision_reported.push((cap.clone(), name.clone()));
                     }
                 } else {
                     if let Some(first) = entry.1.first() {
@@ -273,6 +335,7 @@ pub fn validate_change(store: &dyn Store, change: &Change, _schema: &Schema, str
                                 "{rel}: Requirement '{name}' appears in both {first} and {section} sections"
                             ));
                             reported_cross.push(name.clone());
+                            collision_reported.push((cap.clone(), name.clone()));
                         }
                     }
                     entry.1.push(section);
@@ -297,12 +360,15 @@ pub fn validate_change(store: &dyn Store, change: &Change, _schema: &Schema, str
     let _ = strict;
 
     let valid = errors.is_empty();
-    ValidationResult {
-        change: change.name.clone(),
-        errors,
-        valid,
-        warnings,
-    }
+    (
+        ValidationResult {
+            change: change.name.clone(),
+            errors,
+            valid,
+            warnings,
+        },
+        collision_reported,
+    )
 }
 
 #[cfg(test)]
@@ -325,7 +391,12 @@ mod tests {
     const MODIFIED: &str = "## MODIFIED Requirements\n\n### Requirement: R1\n\nIt SHALL work harder.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
     const CANON: &str = "# auth Specification\n\n## Purpose\n\nAuth.\n\n## Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n";
 
-    fn result_for(deltas: &[(&str, &str)], canon: &[(&str, &str)]) -> ValidationResult {
+    /// 同一份 change 的兩個入口結果：`.0` 只含結構檢查、`.1` 含結構檢查加合併
+    /// 守門（design D1）。同一個 Store 跑兩次，兩層的差就是守門的貢獻。
+    fn both_for(
+        deltas: &[(&str, &str)],
+        canon: &[(&str, &str)],
+    ) -> (ValidationResult, ValidationResult) {
         let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01\n");
         for (cap, text) in deltas {
             store.put_artifact("demo", &crate::model::delta_spec_artifact(cap), text);
@@ -334,7 +405,15 @@ mod tests {
             store.canonical.borrow_mut().insert((*cap).to_string(), (*text).to_string());
         }
         let change = crate::model::find_change(&store, "demo").expect("change resolves");
-        validate_change(&store, &change, &crate::schema::spec_driven(), false)
+        let schema = crate::schema::spec_driven();
+        (
+            validate_change_structural(&store, &change, &schema, false),
+            validate_change(&store, &change, &schema, false),
+        )
+    }
+
+    fn result_for(deltas: &[(&str, &str)], canon: &[(&str, &str)]) -> ValidationResult {
+        both_for(deltas, canon).1
     }
 
     // --- 新開 capability 的 Purpose 早期檢查（design D2；spec spec-validation
@@ -656,5 +735,158 @@ mod tests {
         assert!(r.errors[0].contains("## Purpose"), "既有 Purpose 錯誤在前: {:?}", r.errors);
         assert!(r.errors[1].contains("tasks.md"), "標記錯誤在後: {:?}", r.errors);
     }
-}
+    // --- change 驗證納入合併守門（design D1–D3；spec spec-validation
+    //     「change 驗證納入合併守門」）---
 
+    /// 正典 `R1` 帶兩個 scenario，用來驗「未宣告的 scenario 移除」。
+    const CANON_TWO_SCENARIOS: &str = "# auth Specification\n\n## Purpose\n\nAuth.\n\n## Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n\n#### Scenario: fine\n\n- **WHEN** idle\n- **THEN** rests\n";
+    /// 正典只有 `R1`，delta 卻 MODIFIED 一個已不存在的 `R9`。
+    const MODIFIED_R9: &str = "## MODIFIED Requirements\n\n### Requirement: R9\n\nIt SHALL work harder.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+
+    #[test]
+    fn the_structural_entry_point_carries_no_merge_gate_errors() {
+        // spec Scenario「archive 的拒絕輸出不變」對應的引擎面：archive 家族的
+        // 前置只看結構層，同一份會被守門拒收的 change 在那裡零報。
+        let (structural, full) = both_for(&[("auth", MODIFIED_R9)], &[("auth", CANON)]);
+        assert!(structural.valid, "結構層對守門違規零報: {:?}", structural.errors);
+        assert!(structural.errors.is_empty(), "結構層 error 全空: {:?}", structural.errors);
+        assert!(!full.valid, "validate 必須因守門違規而 invalid: {full:?}");
+        assert_eq!(full.errors.len(), 1, "恰一條守門 error: {:?}", full.errors);
+    }
+
+    #[test]
+    fn a_modified_target_that_is_gone_reads_as_the_gate_worded_error() {
+        // spec Scenario「MODIFIED 目標不存在時 validate 報 error」與 Example 表第一列。
+        let r = result_for(&[("auth", MODIFIED_R9)], &[("auth", CANON)]);
+        assert_eq!(
+            r.errors,
+            vec![
+                "specs/auth/spec.md: MODIFIED 'R9': target requirement no longer exists in \
+the canonical spec (see: speclink drift demo)"
+                    .to_string()
+            ],
+            "組字逐字對應 Example 表"
+        );
+        assert!(!r.valid, "守門違規使結果 invalid");
+    }
+
+    #[test]
+    fn an_added_name_the_canon_already_carries_reads_as_the_gate_worded_error() {
+        // Example 表第二列。
+        const ADDED_R1: &str = "## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+        let r = result_for(&[("auth", ADDED_R1)], &[("auth", CANON)]);
+        assert_eq!(
+            r.errors,
+            vec![
+                "specs/auth/spec.md: ADDED 'R1': already exists in the canonical spec — \
+archive would refuse it (see: speclink drift demo)"
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn a_renamed_without_a_to_target_reads_as_the_gate_worded_error() {
+        // Example 表第三列。ADDED 一併寫著，delta 才有可套用的操作——本例要測的
+        // 是懸空 RENAMED 的組字，不是零操作的 parse error。
+        const DANGLING_RENAME: &str = "## ADDED Requirements\n\n### Requirement: Fresh\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n\n## RENAMED Requirements\n\n- FROM: `### Requirement: R1`\n";
+        let r = result_for(&[("auth", DANGLING_RENAME)], &[("auth", CANON)]);
+        assert_eq!(
+            r.errors,
+            vec![
+                "specs/auth/spec.md: RENAMED 'R1': RENAMED operation names no TO: target \
+(see: speclink drift demo)"
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn an_undeclared_scenario_removal_is_caught_and_clears_once_declared() {
+        // spec Scenario「未宣告的 scenario 移除被 validate 抓到」。
+        let dropped = result_for(&[("auth", MODIFIED)], &[("auth", CANON_TWO_SCENARIOS)]);
+        assert_eq!(dropped.errors.len(), 1, "恰一條守門 error: {:?}", dropped.errors);
+        assert!(
+            dropped.errors[0].starts_with(
+                "specs/auth/spec.md: MODIFIED 'R1': drops canonical scenario(s) fine"
+            ),
+            "reason 逐字沿用守門字串: {}",
+            dropped.errors[0]
+        );
+        assert!(
+            dropped.errors[0].ends_with("(see: speclink drift demo)"),
+            "每行自帶補救指向: {}",
+            dropped.errors[0]
+        );
+
+        let declared = format!("{MODIFIED}\n<!-- REMOVED-SCENARIO: fine -->\n");
+        let r = result_for(&[("auth", &declared)], &[("auth", CANON_TWO_SCENARIOS)]);
+        assert!(r.valid, "補上宣告後通過: {:?}", r.errors);
+    }
+
+    #[test]
+    fn the_purpose_gate_and_duplicate_names_are_not_listed_twice() {
+        // spec Scenario「Purpose 與重複需求名不重複列」：errors 恰 2 條。
+        const DUP_ADDED: &str = "## ADDED Requirements\n\n### Requirement: Fresh\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n\n### Requirement: Fresh\n\nIt SHALL work twice.\n\n#### Scenario: again\n\n- **WHEN** reused\n- **THEN** works\n";
+        let r = result_for(&[("token", DUP_ADDED)], &[]);
+        assert_eq!(r.errors.len(), 2, "Purpose 與重複名各一條，無第三條: {:?}", r.errors);
+        assert!(r.errors[0].contains("## Purpose"), "既有 Purpose error: {:?}", r.errors);
+        assert!(
+            r.errors[1].contains("Duplicate requirement 'Fresh' in ADDED section"),
+            "既有重複名 error: {:?}",
+            r.errors
+        );
+
+        // 跨區段同名走同一條去重規則：結構層已報 appears in both，守門不再補刀。
+        const CROSS_SECTION: &str = "## MODIFIED Requirements\n\n### Requirement: R1\n\nIt SHALL work harder.\n\n## REMOVED Requirements\n\n### Requirement: R1\n\nIt SHALL go.\n";
+        let cross = result_for(&[("auth", CROSS_SECTION)], &[("auth", CANON)]);
+        assert_eq!(cross.errors.len(), 1, "只留結構層那一條: {:?}", cross.errors);
+        assert!(
+            cross.errors[0].contains("appears in both MODIFIED and REMOVED sections"),
+            "留下的是結構層的文字: {:?}",
+            cross.errors
+        );
+    }
+
+    #[test]
+    fn a_renamed_endpoint_collision_is_only_visible_to_the_gate() {
+        // spec Scenario「RENAMED 端點撞名只有守門看得到」：結構層的重複名掃描
+        // 不看 RENAMED 區段，這條撞名只有守門報得出來。
+        const RENAME_COLLIDES: &str = "## ADDED Requirements\n\n### Requirement: R2\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n\n## RENAMED Requirements\n\n- FROM: `### Requirement: R1`\n- TO: `### Requirement: R2`\n";
+        let r = result_for(&[("auth", RENAME_COLLIDES)], &[("auth", CANON)]);
+        assert_eq!(r.errors.len(), 1, "恰一條守門 error: {:?}", r.errors);
+        assert!(r.errors[0].contains("'R2'"), "點名 R2: {:?}", r.errors);
+        assert!(
+            r.errors[0].contains("appears more than once across this delta's operation sections"),
+            "reason 逐字沿用守門字串: {:?}",
+            r.errors
+        );
+    }
+
+    #[test]
+    fn gate_errors_are_listed_after_every_structural_one() {
+        // design D2：守門 error 一律排在既有 error 之後，含 `[M]` 標記 error。
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-08-12\n");
+        store.put_artifact("demo", "tasks.md", "- [ ] 6.2 [M] 手動驗收\n");
+        store.put_artifact("demo", &crate::model::delta_spec_artifact("auth"), MODIFIED_R9);
+        store.canonical.borrow_mut().insert("auth".to_string(), CANON.to_string());
+        let change = crate::model::find_change(&store, "demo").expect("change resolves");
+        let r = validate_change(&store, &change, &crate::schema::spec_driven(), false);
+        assert_eq!(r.errors.len(), 2, "標記與守門各一條: {:?}", r.errors);
+        assert!(r.errors[0].contains("tasks.md"), "既有標記 error 在前: {:?}", r.errors);
+        assert!(r.errors[1].contains("MODIFIED 'R9'"), "守門 error 在後: {:?}", r.errors);
+    }
+
+    #[test]
+    fn the_gate_reports_regardless_of_strict() {
+        // design Non-Goals：守門違規不依附 `--strict`，兩種模式都是 error。
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-08-12\n");
+        store.put_artifact("demo", &crate::model::delta_spec_artifact("auth"), MODIFIED_R9);
+        store.canonical.borrow_mut().insert("auth".to_string(), CANON.to_string());
+        let change = crate::model::find_change(&store, "demo").expect("change resolves");
+        for strict in [false, true] {
+            let r = validate_change(&store, &change, &crate::schema::spec_driven(), strict);
+            assert_eq!(r.errors.len(), 1, "strict={strict} 一樣報: {:?}", r.errors);
+        }
+    }
+}
