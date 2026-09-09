@@ -1,0 +1,48 @@
+{
+  "version": 2,
+  "change": "validate-merge-gate",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 在 crates/speclink-core/src/validate.rs 把既有 `validate_change` 本體改名為公開的 `validate_change_structural`（簽名相同、輸出逐位元不變），`validate_change` 改為「結構層結果加上合併守門 error」，守門判斷沿用 crates/speclink-core/src/archive.rs 的 `merge_violations`（spec archive-merge「過期判定單源共用」：validate 成為第四個共用者，不平行實作）；crates/speclink-core/src/archive.rs 的單筆 archive 驗證前置與 crates/speclink-cli/src/verbs/lifecycle.rs 的 bulk archive 驗證前置改呼叫 `validate_change_structural`。驗證：`cargo test -p speclink-core archive` 綠（Validation failed 與 merge_refusal 的凍結字串未動），且 validate.rs 測試斷言同一份會被守門拒收的 change 用 `validate_change_structural` 零守門 error、用 `validate_change` 至少一條；spec「change 驗證納入合併守門」Scenario「archive 的拒絕輸出不變」對應此 task。",
+      "files": [
+        "crates/speclink-cli/src/verbs/lifecycle.rs",
+        "crates/speclink-core/src/archive.rs",
+        "crates/speclink-core/src/validate.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "4.1 在 crates/speclink-cli/tests/it/validate_specs.rs 加端到端案例：正典 `specs/auth/spec.md` 有 `R1`、change 的 delta MODIFIED `R9`，`speclink validate <change>` 人眼輸出含 `✗ <change> — invalid` 與該 error 行、以 `Validation failed.` 非零收尾；`--json` 的 `valid` 為 false、`errors` 含該字串、四欄 `change`／`errors`／`valid`／`warnings` 齊備；同一 change 跑 `speclink drift` 的 spec assumption 指向同一 capability 與需求名（「四處判定一致」）。驗證：`cargo test -p speclink-cli --test it validate_specs` 與 `cargo test -p speclink-cli --test it remote_verb_parity` 綠。",
+      "files": [
+        "crates/speclink-cli/tests/it/validate_specs.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M22BD562QAXTHBFCEXCN5G1N",
+      "taskDesc": "1.1 在 crates/speclink-core/src/validate.rs 把既有 `validate_change` 本體改名為公開的 `validate_change_structural`（簽名相同、輸出逐位元不變），`validate_change` 改為「結構層結果加上合併守門 error」，守門判斷沿用 crates/speclink-core/src/archive.rs 的 `merge_violations`（spec archive-merge「過期判定單源共用」：validate 成為第四個共用者，不平行實作）；crates/speclink-core/src/archive.rs 的單筆 archive 驗證前置與 crates/speclink-cli/src/verbs/lifecycle.rs 的 bulk archive 驗證前置改呼叫 `validate_change_structural`。驗證：`cargo test -p speclink-core archive` 綠（Validation failed 與 merge_refusal 的凍結字串未動），且 validate.rs 測試斷言同一份會被守門拒收的 change 用 `validate_change_structural` 零守門 error、用 `validate_change` 至少一條；spec「change 驗證納入合併守門」Scenario「archive 的拒絕輸出不變」對應此 task。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "f79068c27cdeffbc0496cdcc878ba91077d258b9",
+      "touchedFiles": [
+        "crates/speclink-cli/src/verbs/lifecycle.rs",
+        "crates/speclink-core/src/archive.rs",
+        "crates/speclink-core/src/validate.rs"
+      ],
+      "recordedAt": "2026-09-09T05:57:46Z"
+    },
+    {
+      "taskId": "tsk_01M22BD562J7HKZTC16ZECH7RR",
+      "taskDesc": "4.1 在 crates/speclink-cli/tests/it/validate_specs.rs 加端到端案例：正典 `specs/auth/spec.md` 有 `R1`、change 的 delta MODIFIED `R9`，`speclink validate <change>` 人眼輸出含 `✗ <change> — invalid` 與該 error 行、以 `Validation failed.` 非零收尾；`--json` 的 `valid` 為 false、`errors` 含該字串、四欄 `change`／`errors`／`valid`／`warnings` 齊備；同一 change 跑 `speclink drift` 的 spec assumption 指向同一 capability 與需求名（「四處判定一致」）。驗證：`cargo test -p speclink-cli --test it validate_specs` 與 `cargo test -p speclink-cli --test it remote_verb_parity` 綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "f79068c27cdeffbc0496cdcc878ba91077d258b9",
+      "touchedFiles": [
+        "crates/speclink-cli/tests/it/validate_specs.rs"
+      ],
+      "recordedAt": "2026-09-09T05:59:48Z"
+    }
+  ]
+}

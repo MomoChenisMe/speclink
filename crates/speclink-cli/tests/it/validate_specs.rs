@@ -44,6 +44,14 @@ impl TempProject {
         TempProject { dir }
     }
 
+    /// 寫入 change `demo` 的一份 delta spec（守門案例用）。
+    fn put_delta(&self, cap: &str, text: &str) {
+        let dir =
+            self.dir.join("openspec").join("changes").join("demo").join("specs").join(cap);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("spec.md"), text).unwrap();
+    }
+
     fn run(&self, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_speclink"))
             .args(args)
@@ -129,4 +137,62 @@ fn specs_flag_alone_does_not_validate_changes() {
 
     let all = stdout_of(&p.run(&["validate", "--all", "--no-color"]));
     assert!(all.contains("demo") && all.contains("search"), "--all 兩邊都驗: {all}");
+}
+
+// --- change 驗證納入合併守門（spec spec-validation「change 驗證納入合併守門」）---
+
+/// 正典只有 `R1`，delta 卻 MODIFIED 一個已不存在的 `R9`——archive 會拒收的形狀。
+const STALE_MODIFIED: &str = "## MODIFIED Requirements\n\n### Requirement: R9\n\nIt SHALL work harder.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+/// 守門 error 的凍結組字（design D2）。
+const GATE_ERROR: &str = "specs/auth/spec.md: MODIFIED 'R9': target requirement no longer exists in the canonical spec (see: speclink drift demo)";
+
+#[test]
+fn a_stale_modified_delta_fails_change_validation() {
+    // spec Scenario「MODIFIED 目標不存在時 validate 報 error」：人眼與 --json
+    // 兩條輸出都是契約，兩邊都驗。
+    let p = TempProject::new("gate", &[("auth", Some(GOOD_PURPOSE))]);
+    p.put_delta("auth", STALE_MODIFIED);
+
+    let out = p.run(&["validate", "demo", "--no-color"]);
+    let stdout = stdout_of(&out);
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(!out.status.success(), "守門違規非零收尾: {stdout}");
+    assert!(stdout.contains("✗ demo — invalid"), "change 列為 invalid: {stdout}");
+    assert!(stdout.contains(GATE_ERROR), "error 行逐字列出: {stdout}");
+    assert!(stderr.contains("Validation failed."), "以 Validation failed. 收尾: {stderr}");
+
+    let out = p.run(&["validate", "demo", "--json"]);
+    let stdout = stdout_of(&out);
+    assert!(!out.status.success(), "--json 同樣非零收尾: {stdout}");
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
+    let first = &v[0];
+    for field in ["change", "errors", "valid", "warnings"] {
+        assert!(!first[field].is_null(), "四欄齊備，缺 {field}: {v}");
+    }
+    assert_eq!(first["valid"], serde_json::json!(false), "valid 為 false: {v}");
+    assert!(
+        first["errors"].as_array().expect("errors 是陣列").iter().any(|e| e == GATE_ERROR),
+        "errors 含守門字串: {v}"
+    );
+}
+
+#[test]
+fn validate_and_drift_name_the_same_stale_operation() {
+    // spec archive-merge「過期判定單源共用」：validate 與 drift 讀同一支判定，
+    // 對同一 delta 指向同一 capability 與需求名。
+    let p = TempProject::new("gate-drift", &[("auth", Some(GOOD_PURPOSE))]);
+    p.put_delta("auth", STALE_MODIFIED);
+
+    let validated = stdout_of(&p.run(&["validate", "demo", "--no-color"]));
+    assert!(validated.contains(GATE_ERROR), "validate 報守門 error: {validated}");
+
+    let drifted = stdout_of(&p.run(&["drift", "demo", "--no-color"]));
+    assert!(
+        drifted.contains("MODIFIED 'R9' in auth"),
+        "drift 的 spec assumption 指向同一 capability 與需求名: {drifted}"
+    );
+    assert!(
+        drifted.contains("target requirement no longer exists in the canonical spec"),
+        "reason 同一份字串: {drifted}"
+    );
 }

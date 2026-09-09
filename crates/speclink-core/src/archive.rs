@@ -255,6 +255,14 @@ impl MergeViolation {
     pub fn is_purpose_gate(&self) -> bool {
         self.operation == PURPOSE_OP
     }
+
+    /// 這筆違規是否出自「同一需求名跨區段出現多次」的撞名守門（reason 恆為
+    /// [`SECTION_COLLISION`]）。change 驗證問這一個判別來與結構層的 Duplicate／
+    /// appears in both error 去重，不比對 reason 字串——常數改字時方法跟著改，
+    /// 兩者同檔同一 diff 可見。
+    pub fn is_section_collision(&self) -> bool {
+        self.reason == SECTION_COLLISION
+    }
 }
 
 /// Refusal reasons — frozen strings, rendered verbatim by archive, drift and bulk.
@@ -607,10 +615,12 @@ pub fn archive(
 
     // Single-change archive validates first: a structurally invalid change refuses to
     // archive unless --no-validate is passed. The error strings drop validate's
-    // "Parse error: " prefix — that is the frozen rendering here.
+    // "Parse error: " prefix — that is the frozen rendering here. Structural only:
+    // the merge gate below owns the refusal for a stale delta, and its aggregated
+    // `merge_refusal` wording would never be reached if the pre-check refused first.
     if !opts.no_validate {
         let schema = crate::schema::spec_driven();
-        let result = crate::validate::validate_change(store, change, &schema, false);
+        let result = crate::validate::validate_change_structural(store, change, &schema, false);
         if !result.valid {
             let details: Vec<String> = result
                 .errors
