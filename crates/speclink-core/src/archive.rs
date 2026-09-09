@@ -250,10 +250,13 @@ pub struct MergeViolation {
 
 impl MergeViolation {
     /// 這筆違規是否出自新 capability 的 Purpose 守門（operation 恆為
-    /// [`PURPOSE_OP`]）。drift 的建議改道、bulk 預檢的點名與 merge_refusal 的
-    /// 補救分流都問這一個判別，Purpose 類的呈現不會與過期類混同。
+    /// [`PURPOSE_OP`]、requirement 恆為 [`PURPOSE_SECTION`]）。drift 的建議改道、
+    /// bulk 預檢的點名、merge_refusal 的補救分流與 change 驗證的去重都問這一個
+    /// 判別，Purpose 類的呈現不會與過期類混同。兩欄都要對上：delta 若自己寫了
+    /// `## PURPOSE Requirements` 標頭，底下需求的 operation 也會是 PURPOSE，
+    /// 那是 CANON_ABSENT 類的過期違規，不得被當成 Purpose 守門。
     pub fn is_purpose_gate(&self) -> bool {
-        self.operation == PURPOSE_OP
+        self.operation == PURPOSE_OP && self.requirement == PURPOSE_SECTION
     }
 
     /// 這筆違規是否出自「同一需求名跨區段出現多次」的撞名守門（reason 恆為
@@ -262,6 +265,25 @@ impl MergeViolation {
     /// 兩者同檔同一 diff 可見。
     pub fn is_section_collision(&self) -> bool {
         self.reason == SECTION_COLLISION
+    }
+
+    /// 這筆違規的 operation 是否含 RENAMED 端點（撞名守門的 operation 是排序
+    /// 去重後的逗號串）。結構層的重複名掃描只走 ADDED／MODIFIED／REMOVED 區段，
+    /// 含 RENAMED 的撞名它看不到——change 驗證的去重要放行這一類。
+    pub fn involves_rename(&self) -> bool {
+        self.operation.split(", ").any(|op| op == "RENAMED")
+    }
+
+    /// change 驗證用的單行呈現（spec spec-validation「change 驗證納入合併守門」）：
+    /// `specs/<capability>/spec.md: <operation> '<requirement>': <reason> (see:
+    /// speclink drift <change>)`。路徑是邏輯路徑、手工正斜線；reason 逐字沿用
+    /// 守門的凍結字串；每行自帶補救指向——validate 的 error 是逐行字串，沒有
+    /// merge_refusal 那種聚合尾註的位置。兩種呈現都放在型別旁邊，欄位一動同檔可見。
+    pub fn validation_error(&self, change: &str) -> String {
+        format!(
+            "specs/{}/spec.md: {} '{}': {} (see: speclink drift {change})",
+            self.capability, self.operation, self.requirement, self.reason
+        )
     }
 }
 
@@ -359,7 +381,7 @@ pub fn merge_violations(store: &dyn Store, change: &str) -> Vec<MergeViolation> 
 /// designed classes plus the malformed-note and dangling-rename guards that keep them
 /// airtight. RENAMED is judged through the shared pair scan (it covers both documented
 /// syntaxes), so `parse_delta`'s header-form RENAMED entries are skipped throughout.
-fn capability_violations(
+pub(crate) fn capability_violations(
     cap: &str,
     delta_text: &str,
     canonical: Option<&str>,

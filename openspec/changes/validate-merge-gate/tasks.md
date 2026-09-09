@@ -4,7 +4,7 @@
 
 ## 2. D2：守門 error 的組字與位置
 
-- [x] 2.1 在 crates/speclink-core/src/validate.rs 把每筆 `MergeViolation` 組成 `specs/<capability>/spec.md: <operation> '<requirement>': <reason> (see: speclink drift <change>)`，追加在所有既有 error（含 `[M]` 標記 error）之後，`valid` 隨 errors 為空與否。驗證：測試涵蓋 spec「change 驗證納入合併守門」的 Scenario「MODIFIED 目標不存在時 validate 報 error」與「未宣告的 scenario 移除被 validate 抓到」（含補宣告後通過），並逐列斷言 Example 表三種組字；`cargo test -p speclink-core validate` 綠。 <!-- speclink-task:tsk_01M22BD5628MGMDRAVRC8WKCD6 -->
+- [x] 2.1 在 crates/speclink-core/src/validate.rs（組字本體放在 crates/speclink-core/src/archive.rs 的 `MergeViolation::validation_error`）把每筆 `MergeViolation` 組成 `specs/<capability>/spec.md: <operation> '<requirement>': <reason> (see: speclink drift <change>)`，追加在所有既有 error（含 `[M]` 標記 error）之後，`valid` 隨 errors 為空與否。驗證：測試涵蓋 spec「change 驗證納入合併守門」的 Scenario「MODIFIED 目標不存在時 validate 報 error」與「未宣告的 scenario 移除被 validate 抓到」（含補宣告後通過），並逐列斷言 Example 表三種組字；`cargo test -p speclink-core validate` 綠。 <!-- speclink-task:tsk_01M22BD5628MGMDRAVRC8WKCD6 -->
 
 ## 3. D3：與結構層的去重規則
 

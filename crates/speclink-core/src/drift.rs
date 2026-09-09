@@ -1068,9 +1068,10 @@ mod tests {
 
     #[test]
     fn drift_bulk_precheck_and_single_archive_share_one_verdict() {
-        // spec Scenario「三處判定一致」：同一過期 MODIFIED 之下，drift 的 spec
+        // spec Scenario「四處判定一致」：同一過期 MODIFIED 之下，drift 的 spec
         // assumption、bulk 預檢讀的違規清單與單筆 archive 的拒絕逐欄指向同一
-        // capability 與需求名——三處共用 merge_violations 這一支判定。
+        // capability 與需求名——共用 merge_violations 這一支判定。第四條腿
+        // （validate）由 crates/speclink-cli/tests/it/validate_specs.rs 覆蓋。
         let store = TestStore::with_meta("demo", META);
         store.put_artifact("demo", "tasks.md", "- [x] 1.1 done\n");
         store.put_artifact(
