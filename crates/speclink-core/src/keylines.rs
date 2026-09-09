@@ -1,10 +1,21 @@
-//! `KeyLines` — 對 frontmatter 內「頂層 `key: value` 行」做原位手術的逐行編輯原語。
+//! `KeyLines` — 對「頂層 `key: value` 行」做原位手術的逐行編輯原語。
 //!
-//! 討論記錄的 frontmatter（刀二起也包括 change 的 `.openspec.yaml`）是手寫友善的
-//! YAML 純量映射：本模組只認第 0 欄的 `key:` 前綴行，在首行 `---` 到下一個 `---`
-//! 之間原位代換、移除、讀逗號清單，其餘位元組逐字保留、永不重新序列化（手寫
-//! 註解、鍵序、行尾全部留下）。介面只長到本 change 的討論側消費者（`DiscussionHead`）
-//! 實際用到的形狀；刀二要改 change meta 時再依真實需求長出來。
+//! 討論記錄的 frontmatter 與 change 的 `.openspec.yaml` 都是手寫友善的 YAML 純量
+//! 映射：本模組只認第 0 欄的 `key:` 前綴行，在區域內原位代換、移除、讀寫逗號
+//! 清單、取代縮排區塊，其餘位元組逐字保留、永不重新序列化（手寫註解、鍵序、
+//! 行尾全部留下）。兩個建構子決定區域：[`KeyLines::frontmatter`] 的區域是首行
+//! `---` 到下一個 `---` 之間（討論側）；[`KeyLines::whole`] 的區域是整份文件
+//! （change meta 不帶圍欄，整份就是映射），永遠可在尾端插入——尾行缺換行時
+//! 插入前先補一個（沿文件多數行尾）。
+//!
+//! 介面：`get`／`list` 讀；`set`／`remove` 純量鍵；`push_list`／`remove_list`
+//! 逗號清單累加與縮減（去重、統一以「, 」串接、清空即整行移除）；`set_block`
+//! 區塊鍵（移除既有同名鍵與區塊後，在區域尾端寫 `key:` 行＋呼叫端給定的縮排
+//! 續行原文）。
+//!
+//! **值逐字讀出、不解 YAML 引號**：`get` 回冒號後 trim 過的原文。寫入走
+//! `util::yaml_scalar` 的值（身分、工具名）讀回要比對時，呼叫端先過
+//! `util::yaml_unscalar`；change 名與討論 slug 不會被加引號，直接比對即可。
 //!
 //! **值逐字寫入、不做 YAML 跳脫**：`set` 把 `value` 原樣接在 `key: ` 後面。
 //! 跳脫責任在呼叫端——寫自由文字（topic、人名）前先走 `util::yaml_scalar`；
@@ -20,12 +31,14 @@
 //!
 //! # 稽核結論（sharp edges）
 //!
-//! - **換行注入**：`set` 的 `key` 或 `value` 含 `\n`／`\r` 一律回 `Err` 且不改任何行
-//!   ——這不是跳脫，是拒絕「一個值變成兩行、偽造出另一個鍵」的整類注入；呼叫端
-//!   拿到自由文字仍要先 `yaml_scalar`。
+//! - **換行注入**：`set`／`push_list`／`set_block` 的鍵、值或續行含 `\n`／`\r` 一律
+//!   回 `Err` 且不改任何行——這不是跳脫，是拒絕「一個值變成兩行、偽造出另一個鍵」
+//!   的整類注入；呼叫端拿到自由文字仍要先 `yaml_scalar`。
 //! - **未閉合 frontmatter**（缺尾 `---`）：與讀端同樣寬鬆，其餘整檔視為區域，原位
-//!   代換與移除照做；只有新插一行無處可插回 `Err`。
-//! - **空文件**：`frontmatter("")` 回 `None`（沒有首行 `---`）。
+//!   代換與移除照做；只有新插一行無處可插回 `Err`。`whole` 區域沒有這條：尾端
+//!   永遠可插。
+//! - **空文件**：`frontmatter("")` 回 `None`（沒有首行 `---`）；`whole("")` 是空區域，
+//!   插入得到 `key: value\n`。
 //! - **只有 `---` 一行**：「未閉合、區域為空」——`get` 回 `None`、原位代換無鍵可換、
 //!   新插一行回 `Err`；`text()` 逐位元不變。
 //! - **鍵名含冒號**：鍵名逐字比對，`get("a:b")` 只認 `a:b:` 開頭的行；`get("a")`
@@ -42,15 +55,18 @@
 
 use anyhow::{bail, Result};
 
-/// 一份文件的逐行視圖，可編輯區域是 frontmatter 圍欄內。
+/// 一份文件的逐行視圖；可編輯區域由建構子決定（frontmatter 圍欄內，或整份文件）。
 #[derive(Debug, Clone)]
 pub struct KeyLines {
     /// 每行含自己的行尾（最後一行可能沒有）。
     lines: Vec<String>,
-    /// 區域索引 `[1, end)`；`end` 指向 closing `---` 行（未閉合時為 `lines.len()`）。
+    /// 區域起點：frontmatter 為 1（跳過首行 `---`），whole 為 0。
+    start: usize,
+    /// 區域終點（不含）：frontmatter 指向 closing `---` 行（未閉合時為
+    /// `lines.len()`）；whole 恆為 `lines.len()`。
     end: usize,
-    /// 有 closing `---`。
-    closed: bool,
+    /// 尾端可插入：frontmatter 有 closing `---`（新行補在它前面）；whole 恆為 true。
+    can_append: bool,
     /// 新插入行沿用的行尾。
     eol: &'static str,
 }
@@ -89,7 +105,7 @@ fn is_block_key(line: &str, key: &str) -> bool {
     value_after_key(line, key).is_some_and(|rest| rest.trim().is_empty())
 }
 
-/// 區塊的續行（沿 station 章 `strip_stamp_lines`）：縮排行、第 0 欄的 `- ` 序列項、
+/// 區塊的續行（站別章的剝除規則已收攏到這裡）：縮排行、第 0 欄的 `- ` 序列項、
 /// 以及區塊內的空行。
 fn is_continuation(line: &str) -> bool {
     line.trim().is_empty() || line.starts_with([' ', '\t']) || line.starts_with("- ")
@@ -108,23 +124,58 @@ impl KeyLines {
             .skip(1)
             .position(|l| is_fence(l))
             .map(|i| i + 1);
-        let (end, closed) = match close {
+        let (end, can_append) = match close {
             Some(i) => (i, true),
             None => (lines.len(), false),
         };
         Some(KeyLines {
             lines,
+            start: 1,
             end,
-            closed,
+            can_append,
             eol,
         })
     }
 
+    /// 整份文件為區域（change meta：不帶 `---` 圍欄的純 YAML 映射）。尾端永遠
+    /// 可插；空文件是空區域。
+    pub fn whole(text: &str) -> KeyLines {
+        let lines: Vec<String> = text.split_inclusive('\n').map(str::to_string).collect();
+        let eol = majority_eol(&lines);
+        KeyLines {
+            end: lines.len(),
+            lines,
+            start: 0,
+            can_append: true,
+            eol,
+        }
+    }
+
     fn region_lines(&self) -> impl Iterator<Item = (usize, &str)> {
-        self.lines[1..self.end]
+        self.lines[self.start..self.end]
             .iter()
             .enumerate()
-            .map(|(i, l)| (1 + i, l.as_str()))
+            .map(|(i, l)| (self.start + i, l.as_str()))
+    }
+
+    /// 尾端可插的唯一守門：未閉合 frontmatter 無處可插回 `Err`。要在改任何行之前呼叫。
+    fn ensure_can_append(&self, key: &str) -> Result<()> {
+        if !self.can_append {
+            bail!("frontmatter is not closed — cannot insert `{key}:`");
+        }
+        Ok(())
+    }
+
+    /// 區域尾端就是文件尾端且尾行缺行尾時，先補一個（沿多數行尾），新行才不會黏在
+    /// 它後面。
+    fn pad_tail(&mut self) {
+        if self.end == self.lines.len() {
+            if let Some(last) = self.lines.last_mut() {
+                if eol_of(last).is_empty() {
+                    last.push_str(self.eol);
+                }
+            }
+        }
     }
 
     /// 區域內第一條 `key:` 的值（trim 後）。
@@ -194,9 +245,8 @@ impl KeyLines {
                 }
             }
             None => {
-                if !self.closed {
-                    bail!("frontmatter is not closed — cannot insert `{key}:`");
-                }
+                self.ensure_can_append(key)?;
+                self.pad_tail();
                 self.lines
                     .insert(self.end, Self::render(key, value, self.eol));
                 self.end += 1;
@@ -207,7 +257,7 @@ impl KeyLines {
 
     /// 移除每一條 `key:` 行；區塊鍵連同續行區塊一起移除。鍵不存在時不改。
     pub fn remove(&mut self, key: &str) {
-        let mut i = 1;
+        let mut i = self.start;
         while i < self.end {
             if value_after_key(&self.lines[i], key).is_some() {
                 self.drop_key_line(i, key);
@@ -215,6 +265,64 @@ impl KeyLines {
                 i += 1;
             }
         }
+    }
+
+    /// 逗號清單累加：`item` 已在清單不改；否則以「, 」串接既有項與 `item` 原位寫回
+    /// （既有為空清單時就是單值）。既有值的原始間距不保留、統一為「, 」。失敗同
+    /// [`KeyLines::set`]（換行注入、無處可插），另外既有值被引號包住時也拒絕——
+    /// 引號夾在清單中間會讓整份文件解析失敗，沒有寫端會產生這種值。
+    pub fn push_list(&mut self, key: &str, item: &str) -> Result<()> {
+        if self.get(key).is_some_and(|v| v.starts_with(['"', '\''])) {
+            bail!("`{key}` holds a quoted value — cannot append to it as a comma list");
+        }
+        let mut items = self.list(key);
+        if items.iter().any(|s| s == item) {
+            return Ok(());
+        }
+        items.push(item.to_string());
+        self.set(key, &items.join(", "))
+    }
+
+    /// 逗號清單縮減：`item` 不在清單不改；移除後仍有項則以「, 」重組原位寫回；清空
+    /// 則整行移除。失敗同 [`KeyLines::set`]。
+    pub fn remove_list(&mut self, key: &str, item: &str) -> Result<()> {
+        let items = self.list(key);
+        let remaining: Vec<&str> =
+            items.iter().map(String::as_str).filter(|s| *s != item).collect();
+        if remaining.len() == items.len() {
+            return Ok(());
+        }
+        if remaining.is_empty() {
+            self.remove(key);
+            return Ok(());
+        }
+        self.set(key, &remaining.join(", "))
+    }
+
+    /// 區塊鍵：移除既有同名鍵（連區塊）後，在區域尾端寫 `key:` 行與 `body` 每一行
+    /// （呼叫端提供含縮排的續行原文；本方法逐行加行尾，不做縮排判斷）。失敗：鍵或
+    /// 任一行含換行（注入），或 frontmatter 未閉合無處可插——皆不改任何行。
+    pub fn set_block(&mut self, key: &str, body: &[String]) -> Result<()> {
+        if key.contains(['\n', '\r']) {
+            bail!("`{key}` key must be a single line");
+        }
+        if let Some(line) = body.iter().find(|l| l.contains(['\n', '\r'])) {
+            bail!(
+                "`{key}` block line must be a single line: {}",
+                line.escape_debug()
+            );
+        }
+        self.ensure_can_append(key)?;
+        self.remove(key);
+        self.pad_tail();
+        let eol = self.eol;
+        let block = std::iter::once(Self::render(key, "", eol))
+            .chain(body.iter().map(|l| format!("{l}{eol}")));
+        for line in block {
+            self.lines.insert(self.end, line);
+            self.end += 1;
+        }
+        Ok(())
     }
 
     /// 回寫整份文件（含區域外的行）。
@@ -446,6 +554,155 @@ mod tests {
         kl.remove("k");
         assert_eq!(kl.text(), "---\nother: x\n---\n");
         assert_eq!(kl.get("k"), None);
+    }
+
+    // --- whole（change meta：整份文件為區域）---
+
+    #[test]
+    fn whole_edits_the_entire_document_and_pads_a_missing_final_newline_before_insert() {
+        let mut kl = KeyLines::whole("schema: spec-driven\ncreated: 2026-07-01");
+        assert_eq!(kl.get("schema"), Some("spec-driven"));
+        assert_eq!(kl.get("created"), Some("2026-07-01"));
+        kl.set("board_rank", "n").unwrap();
+        assert_eq!(kl.text(), "schema: spec-driven\ncreated: 2026-07-01\nboard_rank: n\n");
+    }
+
+    #[test]
+    fn whole_on_an_empty_document_inserts_a_single_line() {
+        let mut kl = KeyLines::whole("");
+        assert_eq!(kl.get("k"), None);
+        assert_eq!(kl.text(), "");
+        kl.set("k", "v").unwrap();
+        assert_eq!(kl.text(), "k: v\n");
+    }
+
+    #[test]
+    fn whole_crlf_document_inserts_new_lines_with_crlf() {
+        let mut kl = KeyLines::whole("a: 1\r\nb: 2\r\n");
+        kl.set("c", "3").unwrap();
+        assert_eq!(kl.text(), "a: 1\r\nb: 2\r\nc: 3\r\n");
+        // 尾行缺換行：補行也沿多數行尾。
+        let mut kl = KeyLines::whole("a: 1\r\nb: 2");
+        kl.set("c", "3").unwrap();
+        assert_eq!(kl.text(), "a: 1\r\nb: 2\r\nc: 3\r\n");
+        let mut kl = KeyLines::whole("a: 1\r\n");
+        kl.set_block("s", &["  - x".to_string()]).unwrap();
+        assert_eq!(kl.text(), "a: 1\r\ns:\r\n  - x\r\n");
+    }
+
+    #[test]
+    fn whole_set_replaces_in_place_and_remove_drops_blocks_from_line_zero() {
+        // 第 0 行也在區域內；`---` 不是圍欄，只是一行普通內容。
+        let text = "board_rank: a\nreviewed_scope:\n  - path: x\n    hash: y\nstarted_at: 2026-01-01\n---\n";
+        let mut kl = KeyLines::whole(text);
+        kl.set("board_rank", "b").unwrap();
+        kl.remove("reviewed_scope");
+        kl.remove("started_at");
+        assert_eq!(kl.text(), "board_rank: b\n---\n");
+    }
+
+    // --- push_list ---
+
+    #[test]
+    fn push_list_appends_with_comma_space_and_skips_present_items() {
+        let mut kl = KeyLines::whole("schema: spec-driven\nfrom_discussion: alpha\ncreated: 2026-07-01\n");
+        kl.push_list("from_discussion", "alpha").unwrap();
+        assert_eq!(kl.text(), "schema: spec-driven\nfrom_discussion: alpha\ncreated: 2026-07-01\n");
+        kl.push_list("from_discussion", "beta").unwrap();
+        assert_eq!(kl.text(), "schema: spec-driven\nfrom_discussion: alpha, beta\ncreated: 2026-07-01\n");
+        kl.push_list("from_discussion", "beta").unwrap();
+        assert_eq!(kl.text(), "schema: spec-driven\nfrom_discussion: alpha, beta\ncreated: 2026-07-01\n");
+        assert_eq!(kl.list("from_discussion"), vec!["alpha", "beta"]);
+    }
+
+    #[test]
+    fn push_list_on_an_absent_or_empty_key_writes_a_single_value() {
+        let mut kl = KeyLines::whole("schema: spec-driven\n");
+        kl.push_list("restale_from", "alpha").unwrap();
+        assert_eq!(kl.text(), "schema: spec-driven\nrestale_from: alpha\n");
+        // 存在但空值：原位寫單值，不追加第二條同名鍵。
+        let mut kl = KeyLines::whole("from_discussion:\nschema: spec-driven\n");
+        kl.push_list("from_discussion", "alpha").unwrap();
+        assert_eq!(kl.text(), "from_discussion: alpha\nschema: spec-driven\n");
+    }
+
+    #[test]
+    fn push_list_rejects_an_item_with_a_line_break_and_keeps_the_text() {
+        let text = "from_discussion: alpha\n";
+        let mut kl = KeyLines::whole(text);
+        assert!(kl.push_list("from_discussion", "b\nstatus: forged").is_err());
+        assert_eq!(kl.text(), text);
+    }
+
+    #[test]
+    fn push_list_refuses_a_quoted_list_value_and_keeps_the_text() {
+        // 手寫成引號包住的清單：逗號累加會把引號夾在中間、整份文件解析失敗——拒絕不改。
+        for text in ["from_discussion: \"a, b\"\n", "from_discussion: 'a'\n"] {
+            let mut kl = KeyLines::whole(text);
+            assert!(kl.push_list("from_discussion", "c").is_err());
+            assert_eq!(kl.text(), text);
+        }
+    }
+
+    // --- remove_list ---
+
+    #[test]
+    fn remove_list_shrinks_the_list_and_drops_the_line_when_empty() {
+        let text = "schema: spec-driven\nrestale_from: alpha, beta\ncreated: 2026-07-01\n";
+        let mut kl = KeyLines::whole(text);
+        kl.remove_list("restale_from", "gamma").unwrap();
+        kl.remove_list("missing", "alpha").unwrap();
+        assert_eq!(kl.text(), text);
+        kl.remove_list("restale_from", "alpha").unwrap();
+        assert_eq!(kl.text(), "schema: spec-driven\nrestale_from: beta\ncreated: 2026-07-01\n");
+        kl.remove_list("restale_from", "beta").unwrap();
+        assert_eq!(kl.text(), "schema: spec-driven\ncreated: 2026-07-01\n");
+        assert_eq!(kl.get("restale_from"), None);
+    }
+
+    // --- set_block ---
+
+    #[test]
+    fn set_block_replaces_an_existing_block_and_lands_at_the_region_tail() {
+        let text = "schema: spec-driven\nreviewed_scope:\n  - path: old\n    hash: h0\ncreated: 2026-07-01\n";
+        let mut kl = KeyLines::whole(text);
+        kl.set_block("reviewed_scope", &["  - path: a".to_string(), "    hash: h1".to_string()])
+            .unwrap();
+        assert_eq!(
+            kl.text(),
+            "schema: spec-driven\ncreated: 2026-07-01\nreviewed_scope:\n  - path: a\n    hash: h1\n"
+        );
+        // 空 body：只寫 `key:` 行。
+        kl.set_block("reviewed_scope", &[]).unwrap();
+        assert_eq!(kl.text(), "schema: spec-driven\ncreated: 2026-07-01\nreviewed_scope:\n");
+        // 尾行缺換行：插入前先補。
+        let mut kl = KeyLines::whole("a: 1");
+        kl.set_block("s", &["  - x".to_string()]).unwrap();
+        assert_eq!(kl.text(), "a: 1\ns:\n  - x\n");
+    }
+
+    #[test]
+    fn set_block_rejects_a_line_break_in_any_line_and_keeps_the_text() {
+        let text = "schema: spec-driven\nreviewed_scope:\n  - path: old\n";
+        let mut kl = KeyLines::whole(text);
+        assert!(kl
+            .set_block("reviewed_scope", &["  - path: a\n    hash: h".to_string()])
+            .is_err());
+        assert!(kl.set_block("reviewed_scope", &["  - path: a\r".to_string()]).is_err());
+        assert!(kl.set_block("k\nx", &[]).is_err());
+        assert_eq!(kl.text(), text);
+    }
+
+    #[test]
+    fn set_block_inside_frontmatter_lands_before_the_closing_fence() {
+        let mut kl = KeyLines::frontmatter("---\nslug: a\n---\nbody\n").unwrap();
+        kl.set_block("scope", &["  - x".to_string()]).unwrap();
+        assert_eq!(kl.text(), "---\nslug: a\nscope:\n  - x\n---\nbody\n");
+        // 未閉合 frontmatter 無處可插。
+        let text = "---\nslug: a\n";
+        let mut kl = KeyLines::frontmatter(text).unwrap();
+        assert!(kl.set_block("scope", &[]).is_err());
+        assert_eq!(kl.text(), text);
     }
 
     #[test]

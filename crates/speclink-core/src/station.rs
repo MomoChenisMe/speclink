@@ -9,6 +9,7 @@
 //! 工單本身是 sidecar：不註冊進 workflow schema，僅由動詞經 `&dyn Store` 讀寫
 //! （與 discuss 動詞同型）——本地隨 git、remote 走 store 文件管道。
 
+use crate::keylines::KeyLines;
 use crate::model::ReviewedScopeEntry;
 use crate::store::Store;
 use anyhow::{anyhow, bail, Result};
@@ -467,38 +468,44 @@ fn write_stamp(
     tool: Option<&str>,
     entries: &[(String, String)],
 ) -> Result<()> {
-    // 文字手術：先剝除既有站別區塊（重蓋不留重複鍵），再附加新章；其餘欄位
-    // 逐位元組保留。
+    // 文字手術（直接用 `KeyLines`，不走 `edit_meta`：meta 原文已由 `stamp_gate`
+    // 讀過並驗過，且「先刪工單再寫章」要求寫入前插一步刪除）：先移除既有站別
+    // 五鍵（重蓋不留重複鍵、章永遠落在檔尾），再寫新章；其餘欄位逐位元組保留。
     let prefix = st.meta_prefix;
-    let mut out = strip_stamp_lines(st, &gate.raw_meta);
-    if !out.is_empty() && !out.ends_with('\n') {
-        out.push('\n');
+    let stamp_keys =
+        ["at", "by", "with", "tasks_total", "scope"].map(|suffix| format!("{prefix}_{suffix}"));
+    let [at_key, by_key, with_key, tasks_total_key, scope_key] = &stamp_keys;
+    let mut m = KeyLines::whole(&gate.raw_meta);
+    for key in &stamp_keys {
+        m.remove(key);
     }
     // 身分／工具／指紋一律過 YAML 純量守門（沿 started_* 的同一道）：帶 `:`、
     // `#` 或換行的字串會注入欄位或炸掉整份 meta——而工單已在同一步刪除，
     // 無從回復。
-    out.push_str(&format!("{prefix}_at: {}\n", crate::util::today()));
+    m.set(at_key, &crate::util::today())?;
     if let Some(actor) = actor {
-        out.push_str(&format!("{prefix}_by: {}\n", crate::util::yaml_scalar(actor)));
+        m.set(by_key, &crate::util::yaml_scalar(actor))?;
     }
     if let Some(tool) = tool {
-        out.push_str(&format!("{prefix}_with: {}\n", crate::util::yaml_scalar(tool)));
+        m.set(with_key, &crate::util::yaml_scalar(tool))?;
     }
-    out.push_str(&format!("{prefix}_tasks_total: {}\n", gate.tasks_total));
-    out.push_str(&format!("{prefix}_scope:\n"));
-    for (path, hash) in entries {
-        out.push_str(&format!(
-            "  - path: {}\n    hash: {}\n",
-            crate::util::yaml_scalar(path),
-            crate::util::yaml_scalar(hash)
-        ));
-    }
+    m.set(tasks_total_key, &gate.tasks_total.to_string())?;
+    let body: Vec<String> = entries
+        .iter()
+        .flat_map(|(path, hash)| {
+            [
+                format!("  - path: {}", crate::util::yaml_scalar(path)),
+                format!("    hash: {}", crate::util::yaml_scalar(hash)),
+            ]
+        })
+        .collect();
+    m.set_block(scope_key, &body)?;
 
     // 同一原子寫入（design D3）：remote 走 bridge 的 staged commit 天然原子；
     // 本地順序為先刪工單再寫章——中斷時寧可退回「未檢查」，也不得出現
     // 「章已寫而工單仍在」的半套狀態（spec 明文禁止的唯一中間態）。
     store.delete_artifact(change, st.doc)?;
-    store.write_change_meta(change, &out)?;
+    store.write_change_meta(change, &m.text())?;
     Ok(())
 }
 
@@ -599,37 +606,6 @@ pub fn open_ticket_disposal(st: &Station, name: &str) -> String {
         st.meta_prefix,
         w = w
     )
-}
-
-/// 剝除 meta 的全部站別頂層行（含 `<prefix>_scope:` 之下的縮排區塊），
-/// 其餘行逐位元組保留——重蓋章的前半場手術。
-fn strip_stamp_lines(st: &Station, meta: &str) -> String {
-    let prefix = st.meta_prefix;
-    let scope_key = format!("{prefix}_scope:");
-    let scalar_keys =
-        [format!("{prefix}_at:"), format!("{prefix}_by:"), format!("{prefix}_with:"), format!("{prefix}_tasks_total:")];
-    let mut out = String::with_capacity(meta.len());
-    let mut in_scope_block = false;
-    for line in meta.split_inclusive('\n') {
-        if in_scope_block {
-            // 區塊的續行：縮排行、第 0 欄的序列項（`- path:` 也是合法 YAML），
-            // 以及區塊內的空行。只認縮排會把其餘兩者留下，重蓋後 meta 成
-            // mapping 混孤立序列、之後所有動詞對該 change fail-closed。
-            if line.trim().is_empty() || line.starts_with([' ', '\t']) || line.starts_with("- ") {
-                continue;
-            }
-            in_scope_block = false;
-        }
-        if line.starts_with(scope_key.as_str()) {
-            in_scope_block = true;
-            continue;
-        }
-        if scalar_keys.iter().any(|k| line.starts_with(k)) {
-            continue;
-        }
-        out.push_str(line);
-    }
-    out
 }
 
 /// 沿 in-progress add／set_board_rank 的同款防護：change 名稱必須是單一路徑段，
