@@ -19,3 +19,5 @@ verified_tasks_total: 7
 verified_scope:
   - path: crates/speclink-core/src/analyzer.rs
     hash: a0b8dbd1abeb86ac5f524dad564c67f3c27a04d84f51e35a2e29c7463fee49ca
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-09
