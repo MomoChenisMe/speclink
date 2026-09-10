@@ -38,7 +38,7 @@ services:
     # 要用官方映像請先 docker compose pull。
     build:
       context: ..
-      dockerfile: crates/speclink-server/Dockerfile
+      dockerfile: crates/host/speclink-server/Dockerfile
     restart: unless-stopped
     ports:
       - "${SPECLINK_PORT:-8080}:8080"

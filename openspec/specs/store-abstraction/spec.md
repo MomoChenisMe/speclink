@@ -8,7 +8,7 @@
 
 ### Requirement: 儲存重構後既有指令行為保持不變
 
-引擎改經儲存介面存取規格文件後，CLI 的所有既有指令 SHALL 維持與重構前完全一致的可觀察行為：人眼輸出（含色彩與 --no-color）、`--json` payload 的欄位（camelCase）與值、exit code、以及對檔案系統的效果。本需求為輸出凍結敏感：重構前的既有輸出基線 SHALL 維持位元級不變（驗證載體為 crates/speclink-cli/tests/ 的整合測試與 speclink-core 的 render_golden 測試）。
+引擎改經儲存介面存取規格文件後，CLI 的所有既有指令 SHALL 維持與重構前完全一致的可觀察行為：人眼輸出（含色彩與 --no-color）、`--json` payload 的欄位（camelCase）與值、exit code、以及對檔案系統的效果。本需求為輸出凍結敏感：重構前的既有輸出基線 SHALL 維持位元級不變（驗證載體為 crates/adapters/speclink-cli/tests/ 的整合測試與 speclink-core 的 render_golden 測試）。
 
 #### Scenario: 既有專案的清單查詢輸出一致
 

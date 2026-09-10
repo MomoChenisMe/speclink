@@ -194,7 +194,7 @@ the full path from setup to sign-in, see [Remote Getting Started](docs/remote-ge
 Build the CLI from source (a stable Rust toolchain is required):
 
 ```bash
-cargo install --path crates/speclink-cli
+cargo install --path crates/adapters/speclink-cli
 speclink --version
 ```
 

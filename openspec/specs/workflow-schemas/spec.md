@@ -7,7 +7,7 @@
 ## Requirements
 
 ### Requirement: 單一正典載入
-內建 spec-driven schema SHALL 只由內嵌的正典 YAML（crates/speclink-core/assets/schema/spec-driven/fork.schema.yaml）定義，載入時 SHALL 走與自訂 schema 相同的解析與驗證路徑；template 內容由內嵌資產依 template 檔名附掛。引擎 SHALL NOT 另持手寫的內建 schema 定義。schema fork spec-driven 產出的 schema.yaml SHALL 與正典 YAML 逐位元組相同。內建 schema 顯示的 description SHALL 為正典 YAML 的字面值。
+內建 spec-driven schema SHALL 只由內嵌的正典 YAML（crates/engine/speclink-core/assets/schema/spec-driven/fork.schema.yaml）定義，載入時 SHALL 走與自訂 schema 相同的解析與驗證路徑；template 內容由內嵌資產依 template 檔名附掛。引擎 SHALL NOT 另持手寫的內建 schema 定義。schema fork spec-driven 產出的 schema.yaml SHALL 與正典 YAML 逐位元組相同。內建 schema 顯示的 description SHALL 為正典 YAML 的字面值。
 
 #### Scenario: 內建與 fork 同源
 - **WHEN** 使用者執行 speclink schema fork spec-driven

@@ -28,7 +28,7 @@ const { createEngine } = require('@speclink/engine')
 
 ```bash
 git clone https://github.com/MomoChenisMe/speclink.git
-cd speclink/crates/speclink-node
+cd speclink/crates/adapters/speclink-node
 npm ci
 npm run build          # napi 建置出本機平台的 .node
 ```
@@ -36,7 +36,7 @@ npm run build          # napi 建置出本機平台的 .node
 在你的專案中以路徑引用建置產物：
 
 ```js
-const { createEngine } = require('/path/to/speclink/crates/speclink-node')
+const { createEngine } = require('/path/to/speclink/crates/adapters/speclink-node')
 ```
 
 - 這是一個 **native module**。引擎是編譯後的 Rust，以 Node addon 載入。上述 `npm run build` 只產出**當前平台**的二進位，所以要在部署目標平台上執行，或針對該平台交叉建置。
@@ -81,7 +81,7 @@ const engine = createEngine({ store: myStore, actor: 'Alice <alice@example.com>'
 
 這個介面與引擎核心的儲存縫線一對一，也就是 `speclink-core` 的 `Store` trait，命名採 camelCase。引擎只講領域詞彙：change、artifact、delta 與 canonical spec、討論、workflow config。實體佈局由你的實作決定。
 
-完整簽名見 [`index.d.ts`](../crates/speclink-node/index.d.ts)。`path` 與 `dir` 的回傳值是**呈現在 payload 裡的字串**，不是引擎會去開的檔案路徑。
+完整簽名見 [`index.d.ts`](../crates/adapters/speclink-node/index.d.ts)。`path` 與 `dir` 的回傳值是**呈現在 payload 裡的字串**，不是引擎會去開的檔案路徑。
 
 | 分組 | 方法 | 說明 |
 |---|---|---|
@@ -158,7 +158,7 @@ await engine.dispatch(
 ```
 
 - **輸入**：字串陣列，與 CLI 動詞詞彙一對一，等同 shell argv 去掉程式名。它不支援互動式輸入。CLI 中讀 stdin 的動詞，改由第二參數傳內容：`{ stdin }`。
-- **輸出**：Promise，解析為與 CLI `--json` 完全一致的結構化物件（camelCase 欄位名）。沒有 `--json` 形式的動詞解析為 `{ output: string }`。目前 TypeScript shape 以 [`index.d.ts`](../crates/speclink-node/index.d.ts) 為準；遠端 Command/Query payload 由已交付的 Protocol crate（`crates/speclink-protocol`）定義，其 Rust 型別就是 wire 正典。
+- **輸出**：Promise，解析為與 CLI `--json` 完全一致的結構化物件（camelCase 欄位名）。沒有 `--json` 形式的動詞解析為 `{ output: string }`。目前 TypeScript shape 以 [`index.d.ts`](../crates/adapters/speclink-node/index.d.ts) 為準；遠端 Command/Query payload 由已交付的 Protocol crate（`crates/protocol/speclink-protocol`）定義，其 Rust 型別就是 wire 正典。
 - **錯誤**：Promise 以 `Error` 拒絕——`message` 是 CLI 的語義化訊息（可直接回給 agent），`code` 分類失敗：`invalid_argv`（argv 有誤）、`not_found`（change／討論查找）、`invalid_config`（壞的工作流設定一律拒絕，不會靜默改用預設值）、`refused`（前置拒絕——fs store 上的 `claim` 就落在這裡）、`error`（引擎失敗，即 CLI 的 exit-1 類別）、宿主 store 自選的碼原樣傳遞（例如 `ownership_lost`）、`store_error`（無 code 的 store 失敗）、`panic`。
 - **絕不阻塞事件迴圈**：每次 dispatch 都在背景工作執行緒上執行；支援並發 dispatch。
 
@@ -270,4 +270,4 @@ const client = new CopilotClient({
 
 ## 延伸閱讀
 
-- [`index.d.ts`](../crates/speclink-node/index.d.ts)——目前發布的 Node API 與 payload types。
+- [`index.d.ts`](../crates/adapters/speclink-node/index.d.ts)——目前發布的 Node API 與 payload types。

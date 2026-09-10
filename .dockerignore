@@ -1,4 +1,4 @@
-# Docker build context 排除（crates/speclink-server/Dockerfile 以 repo 根為 context）。
+# Docker build context 排除（crates/host/speclink-server/Dockerfile 以 repo 根為 context）。
 # cargo 解析 workspace 需要所有成員的 Cargo.toml，故不可整目錄排除 apps/。
 #
 # 注意：不排除 apps/server-web/dist。它是 server binary 的內嵌來源；Dockerfile 的

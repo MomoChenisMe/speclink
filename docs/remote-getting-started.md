@@ -145,7 +145,7 @@ npm run cli -- auth status
 npm run --silent cli -- list --json
 ```
 
-`npm run cli -- <args>` always runs this checkout's CLI, building it first when the binary is missing, and never falls back to PATH. Add `--silent` when you need machine-readable stdout with nothing else mixed in. The Node SDK is not an npm workspace member, so verifying it takes `npm --prefix crates/speclink-node test`.
+`npm run cli -- <args>` always runs this checkout's CLI, building it first when the binary is missing, and never falls back to PATH. Add `--silent` when you need machine-readable stdout with nothing else mixed in. The Node SDK is not an npm workspace member, so verifying it takes `npm --prefix crates/adapters/speclink-node test`.
 
 ## 8. Recover from a lost connection / 失聯恢復
 

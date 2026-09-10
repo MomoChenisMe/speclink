@@ -46,7 +46,7 @@ services:
     # 同 docker-compose.yml：本機無映像時就地建置。要用官方映像先 docker compose pull。
     build:
       context: ..
-      dockerfile: crates/speclink-server/Dockerfile
+      dockerfile: crates/host/speclink-server/Dockerfile
     restart: unless-stopped
     depends_on:
       postgres:

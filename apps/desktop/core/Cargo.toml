@@ -5,9 +5,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-speclink-core = { path = "../../../crates/speclink-core" }
-speclink-fs = { path = "../../../crates/speclink-fs" }
-speclink-host = { path = "../../../crates/speclink-host" }
+speclink-core = { path = "../../../crates/engine/speclink-core" }
+speclink-fs = { path = "../../../crates/engine/speclink-fs" }
+speclink-host = { path = "../../../crates/host/speclink-host" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
@@ -17,4 +17,4 @@ regex = { workspace = true }
 
 [dev-dependencies]
 # 測試借 core 的 testkit（技能檔版號讀寫 helper）；feature 只在 dev 構建生效。
-speclink-core = { path = "../../../crates/speclink-core", features = ["testkit"] }
+speclink-core = { path = "../../../crates/engine/speclink-core", features = ["testkit"] }

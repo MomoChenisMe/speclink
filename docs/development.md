@@ -73,7 +73,7 @@ npm test -w apps/desktop                    # Desktop frontend
 npm test -w packages/ui                     # Shared UI
 npm test -w apps/server-web                 # Server console frontend
 node --test "scripts/**/*.test.mjs"         # Repo scripts
-npm --prefix crates/speclink-node test      # Node SDK (build first: npm --prefix crates/speclink-node run build)
+npm --prefix crates/adapters/speclink-node test      # Node SDK (build first: npm --prefix crates/adapters/speclink-node run build)
 ```
 
 The Node SDK is not an npm workspace member, so it needs `--prefix` with a path; `--workspace @speclink/engine` finds nothing. Desktop tests need the sidecar and the server console `dist/` in place, and `npm run test:all` already covers both steps.

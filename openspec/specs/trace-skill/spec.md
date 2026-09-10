@@ -8,7 +8,7 @@
 
 ### Requirement: 問題對應與敘事答案
 
-內嵌 speclink-trace 技能（事實來源 crates/speclink-core/assets/skills/trace.md，經 init 與 update 渲染至各工具技能目錄）SHALL 規定以下流程：接受自然語言問題，先以正典規格清單比對出目標 capability（canon pass）；命中時呼叫 speclink trace 的 --json 輸出取得演進鏈，讀取來源討論的結論與輪次、各 change 提案的動機段落，再依 evidence 取得觸及檔案並最終閱讀現行程式碼確認現況；答案 SHALL 為敘事形式，含：決策內容與理由、被否決的替代方案、一起演進的關聯 capability、以及每項陳述的來源路徑。
+內嵌 speclink-trace 技能（事實來源 crates/engine/speclink-core/assets/skills/trace.md，經 init 與 update 渲染至各工具技能目錄）SHALL 規定以下流程：接受自然語言問題，先以正典規格清單比對出目標 capability（canon pass）；命中時呼叫 speclink trace 的 --json 輸出取得演進鏈，讀取來源討論的結論與輪次、各 change 提案的動機段落，再依 evidence 取得觸及檔案並最終閱讀現行程式碼確認現況；答案 SHALL 為敘事形式，含：決策內容與理由、被否決的替代方案、一起演進的關聯 capability、以及每項陳述的來源路徑。
 
 #### Scenario: 渲染產物規定命中規格的完整流程
 

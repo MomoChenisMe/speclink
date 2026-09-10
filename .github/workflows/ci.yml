@@ -66,7 +66,7 @@ jobs:
       # 能力，本 job 釘選 Node 20；Windows runner 的預設 shell 也不展開 glob。
       - name: Test (scripts)
         shell: bash
-        run: node --test scripts/*.test.mjs
+        run: node --test scripts/*.test.mjs scripts/*/*.test.mjs
 
       - name: Test (UI)
         run: npm test -w packages/ui
@@ -92,7 +92,7 @@ jobs:
       # build script（不是測試紅字，是整個 crate 編不動）。CLI 上面已建過 release，
       # 這一步只是重用產物再複製到 target-triple 命名位置。
       - name: Stage CLI sidecar (desktop externalBin)
-        run: node scripts/desktop-sidecar.mjs
+        run: node scripts/desktop/desktop-sidecar.mjs
 
       - name: Test (Rust workspace)
         run: cargo test --workspace --locked
@@ -132,7 +132,7 @@ jobs:
       # externalBin 的編譯期存在性檢查，同 build-and-smoke；此 job 沒有現成的
       # release CLI，故這一步自己建。
       - name: Stage CLI sidecar (desktop externalBin)
-        run: node scripts/desktop-sidecar.mjs
+        run: node scripts/desktop/desktop-sidecar.mjs
 
       - name: Test Phase 3 continuous chain
         shell: bash
@@ -159,7 +159,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Build image
-        run: docker build -f crates/speclink-server/Dockerfile -t speclink-server:smoke .
+        run: docker build -f crates/host/speclink-server/Dockerfile -t speclink-server:smoke .
 
       - name: Compose 檔語法驗證
         env:

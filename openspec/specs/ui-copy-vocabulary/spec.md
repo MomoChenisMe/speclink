@@ -8,7 +8,7 @@
 
 ### Requirement: 使用者可見文案面的範圍與詞彙約束
 
-「使用者可見文案面」SHALL 涵蓋下列檔案集合:兩個前端 app 的 i18n 訊息檔(`apps/desktop/src/i18n/messages.ts`、`apps/server-web/src/i18n/messages.ts`)、共用看板元件的 i18n 訊息檔(`packages/ui/src/i18n.tsx`)、`crates/speclink-core/assets/skills/` 底下全部 `.md` 技能資產、`docs/` 底下全部 `.md`、以及 `README.md` 與 `README.en.md`。
+「使用者可見文案面」SHALL 涵蓋下列檔案集合:兩個前端 app 的 i18n 訊息檔(`apps/desktop/src/i18n/messages.ts`、`apps/server-web/src/i18n/messages.ts`)、共用看板元件的 i18n 訊息檔(`packages/ui/src/i18n.tsx`)、`crates/engine/speclink-core/assets/skills/` 底下全部 `.md` 技能資產、`docs/` 底下全部 `.md`、以及 `README.md` 與 `README.en.md`。
 
 此面內的繁體中文文案 SHALL NOT 出現 `openspec/LANGUAGE.md` 各詞條 `avoid` 欄列出的詞。約束標的 SHALL 限於中日韓文字構成的詞彙字串;ASCII 識別符(型別名、函式名、變數名、CSS 類名、i18n 訊息鍵名)SHALL NOT 因此受限,亦 SHALL NOT 因本約束而更名。
 

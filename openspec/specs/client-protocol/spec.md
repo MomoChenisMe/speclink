@@ -150,7 +150,7 @@ speclink-remote 與 CLI remote 攔截層的 wire payload 處理 SHALL 全數經 
 
 #### Scenario: remote 輸出凍結
 
-- **WHEN** 執行 `crates/speclink-cli/tests/remote_read_path.rs` 對 stub server 與 fs 模式雙跑同一動詞的全部對照情境
+- **WHEN** 執行 `crates/adapters/speclink-cli/tests/remote_read_path.rs` 對 stub server 與 fs 模式雙跑同一動詞的全部對照情境
 - **THEN** remote 與 fs 模式的 `--json` 欄位形狀（key 集合）一致，全部對照情境全綠
 
 
