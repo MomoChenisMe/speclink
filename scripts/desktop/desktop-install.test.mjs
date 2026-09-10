@@ -23,7 +23,7 @@ const SIGNED = {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 test('源碼版號取自 speclink-core 的 ASSET_VERSION 常數', () => {
-  const text = readFileSync(path.join(root, 'crates/engine/speclink-core/src/init.rs'), 'utf8');
+  const text = readFileSync(path.join(root, 'crates/engine/speclink-core/src/workspace/init.rs'), 'utf8');
   const version = sourceAssetVersion(text);
   assert.match(version, /^v\d+\.\d+\.\d+$/);
   assert.ok(text.includes(`"${version}"`), '讀出的版號須確實出現在源碼中');

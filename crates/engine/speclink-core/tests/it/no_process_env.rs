@@ -4,7 +4,8 @@
 //! are all resolved at the Host boundary (speclink-host) and injected.
 //!
 //! This scans every production source file of the crate (the part before the
-//! conventional trailing `#[cfg(test)]` module) for the forbidden tokens.
+//! conventional trailing `#[cfg(test)]` module, and never a `tests.rs` sub-file,
+//! which is a unit-test module in its own right) for the forbidden tokens.
 //! Zero hits, no allowlist: an exception would be the seam through which a
 //! server-mode host silently reads its own environment instead of the
 //! caller's context (the §3.3/§3.4 gap this change closes).
@@ -44,6 +45,11 @@ fn engine_production_code_reads_no_process_env_and_no_git_identity() {
 
     let mut offenders: Vec<String> = Vec::new();
     for path in files {
+        // A `tests.rs` sub-file carries a large module's unit tests; the
+        // `#[cfg(test)]` marker lives on the `mod tests;` line of its parent.
+        if path.file_name().and_then(|n| n.to_str()) == Some("tests.rs") {
+            continue;
+        }
         let text = std::fs::read_to_string(&path).expect("read source file");
         // Unit-test modules scaffold sandboxes and may touch the process env;
         // the boundary rule covers production code only, so the scan stops at

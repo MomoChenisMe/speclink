@@ -1,0 +1,182 @@
+{
+  "version": 2,
+  "change": "core-module-groups",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 （design D5 守門延伸；spec delivery-baseline Requirement「倉庫路徑守門」Scenario「殘留舊形引擎模組路徑被抓出」）在 scripts/release/delivery-gate.test.mjs 的路徑守門增 (c) 條：22 個將搬入 lifecycle／quality／workspace 的模組名清單，字串 `crates/engine/speclink-core/src/<模組>.rs` 視為舊形；根層 lib／store／util／keylines／testkit／teststore／demo 與 command/ 不在清單；排除、@trace 跳過與 `path-guard:allow` 豁免規則沿用。驗證：`node --test scripts/release/delivery-gate.test.mjs` 在搬移前該條 RED 且輸出至少列出 scripts/desktop/desktop-install.mjs、packages/ui/src/__tests__/discussionDrawer.test.tsx 與 docs/product-status.md 的命中行；引用 util.rs 的 openspec/config.yaml 行不在命中清單。",
+      "files": [
+        "scripts/release/delivery-gate.test.mjs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "2.1 （design D1 三組成員與根、D2 lib.rs 的永久 re-export、D4 相對路徑）以 git mv 把 12 個模組搬入 crates/engine/speclink-core/src/lifecycle/、4 個搬入 quality/、6 個搬入 workspace/（成員如 design D1），各資料夾新增 mod.rs 逐行 `pub mod <子模組>;`；lib.rs 改為三個私有資料夾模組（`workspace/` 與其同名子模組撞名，資料夾模組取私有別名 `workspace_group` 並以 `#[path]` 指回，見 design D2）＋根層 pub mod（command、keylines、store、util、demo，testkit／teststore 門控行原樣）＋三組 `pub use` re-export 22 個名字；workspace/skills.rs 與 workspace/schema.rs 的 include_str! 改 `../../assets/…`。驗證：`cargo build -p speclink-core` 綠；`cargo build --workspace --locked` 綠（四個消費 crate 零改動）；`grep -rn 'speclink_core::lifecycle\\|speclink_core::quality\\|speclink_core::workspace_group' crates apps` 零命中；`git status` 顯示 22 個模組為 rename。",
+      "files": [
+        "crates/engine/speclink-core/src/lib.rs",
+        "crates/engine/speclink-core/src/lifecycle/archive.rs",
+        "crates/engine/speclink-core/src/lifecycle/capname.rs",
+        "crates/engine/speclink-core/src/lifecycle/discard.rs",
+        "crates/engine/speclink-core/src/lifecycle/discuss.rs",
+        "crates/engine/speclink-core/src/lifecycle/inprogress.rs",
+        "crates/engine/speclink-core/src/lifecycle/listing.rs",
+        "crates/engine/speclink-core/src/lifecycle/model.rs",
+        "crates/engine/speclink-core/src/lifecycle/newcmd.rs",
+        "crates/engine/speclink-core/src/lifecycle/preflight.rs",
+        "crates/engine/speclink-core/src/lifecycle/status.rs",
+        "crates/engine/speclink-core/src/lifecycle/tasks.rs",
+        "crates/engine/speclink-core/src/lifecycle/trace.rs",
+        "crates/engine/speclink-core/src/quality/analyzer.rs",
+        "crates/engine/speclink-core/src/quality/drift.rs",
+        "crates/engine/speclink-core/src/quality/station.rs",
+        "crates/engine/speclink-core/src/quality/validate.rs",
+        "crates/engine/speclink-core/src/workspace/config.rs",
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/src/workspace/instructions.rs",
+        "crates/engine/speclink-core/src/workspace/schema.rs",
+        "crates/engine/speclink-core/src/workspace/skills.rs",
+        "crates/engine/speclink-core/src/workspace/workspace.rs",
+        "crates/engine/speclink-core/src/lifecycle/mod.rs",
+        "crates/engine/speclink-core/src/quality/mod.rs",
+        "crates/engine/speclink-core/src/workspace/mod.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.2 （design D3 測試搬子檔）把十個模組（lifecycle/discuss、lifecycle/archive、lifecycle/tasks、quality/station、quality/analyzer、quality/validate、quality/drift、workspace/init、workspace/config、command）的 `mod tests { … }` 內容逐字搬到同名子目錄的 tests.rs（command 為 command/tests.rs），原處改為 `#[cfg(test)] mod tests;`，`use` 行逐字保留；連帶修 `tests/it` 兩條架構守門的掃描面（`no_process_env` 與 `no_direct_fs` 跳過 `tests.rs` 子檔，`no_direct_fs` 的 `read_dir` 改遞迴，否則 22 個模組整批掉出掃描面）。驗證：搬移前先記錄 `cargo test -p speclink-core 2>&1 | grep 'test result'` 的各 binary 測試數；搬移後 `cargo test -p speclink-core` 全綠且各 binary 測試數逐一相等；`cargo test -p speclink-core archive` 與 `cargo test -p speclink-core discuss` 過濾仍命中原本的測試；十個模組檔的 `git diff` 只含尾端一行宣告與被移走的區塊。",
+      "files": [
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/tests/it/no_direct_fs.rs",
+        "crates/engine/speclink-core/tests/it/no_process_env.rs",
+        "crates/engine/speclink-core/tests/it/render_golden.rs",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "packages/ui/src/__tests__/discussionDrawer.test.tsx",
+        "packages/ui/src/__tests__/taskList.test.tsx",
+        "packages/ui/src/tasks.ts",
+        "scripts/desktop/desktop-install.mjs",
+        "scripts/desktop/desktop-install.test.mjs",
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/src/lifecycle/archive/tests.rs",
+        "crates/engine/speclink-core/src/lifecycle/discuss/tests.rs",
+        "crates/engine/speclink-core/src/lifecycle/tasks/tests.rs",
+        "crates/engine/speclink-core/src/quality/analyzer/tests.rs",
+        "crates/engine/speclink-core/src/quality/drift/tests.rs",
+        "crates/engine/speclink-core/src/quality/station/tests.rs",
+        "crates/engine/speclink-core/src/quality/validate/tests.rs",
+        "crates/engine/speclink-core/src/workspace/config/tests.rs",
+        "crates/engine/speclink-core/src/workspace/init/tests.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "4.1 （design D5、D6 驗證；spec delivery-baseline Requirement「倉庫路徑守門」）1.1 的守門轉綠並跑完整回歸：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠；`cargo test -p speclink-core` 全綠（含 `--test it` 的 render_golden 逐位元綠）；`cargo test -p speclink-desktop-core` 綠；`cargo test -p speclink-cli --test it discuss_slug`（凍結 `discuss list --json`）綠；`speclink validate core-module-groups` 綠；`git diff --stat` 不含 tests/golden、assets、Cargo.lock。",
+      "files": [
+        "crates/engine/speclink-core/src/archive.rs",
+        "crates/engine/speclink-core/src/config.rs",
+        "crates/engine/speclink-core/src/discuss.rs",
+        "crates/engine/speclink-core/src/init.rs",
+        "crates/engine/speclink-core/src/station.rs",
+        "crates/engine/speclink-core/src/tasks.rs",
+        "crates/engine/speclink-core/src/validate.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M25Y30FBXH1FMCK3SJJ4V47A",
+      "taskDesc": "1.1 （design D5 守門延伸；spec delivery-baseline Requirement「倉庫路徑守門」Scenario「殘留舊形引擎模組路徑被抓出」）在 scripts/release/delivery-gate.test.mjs 的路徑守門增 (c) 條：22 個將搬入 lifecycle／quality／workspace 的模組名清單，字串 `crates/engine/speclink-core/src/<模組>.rs` 視為舊形；根層 lib／store／util／keylines／testkit／teststore／demo 與 command/ 不在清單；排除、@trace 跳過與 `path-guard:allow` 豁免規則沿用。驗證：`node --test scripts/release/delivery-gate.test.mjs` 在搬移前該條 RED 且輸出至少列出 scripts/desktop/desktop-install.mjs、packages/ui/src/__tests__/discussionDrawer.test.tsx 與 docs/product-status.md 的命中行；引用 util.rs 的 openspec/config.yaml 行不在命中清單。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c48a361d7f22b40f6a868d5c46f27d641dbebf18",
+      "touchedFiles": [
+        "scripts/release/delivery-gate.test.mjs"
+      ],
+      "recordedAt": "2026-09-10T15:16:59Z"
+    },
+    {
+      "taskId": "tsk_01M25Y30FBE66PNJH58780Z43B",
+      "taskDesc": "2.1 （design D1 三組成員與根、D2 lib.rs 的永久 re-export、D4 相對路徑）以 git mv 把 12 個模組搬入 crates/engine/speclink-core/src/lifecycle/、4 個搬入 quality/、6 個搬入 workspace/（成員如 design D1），各資料夾新增 mod.rs 逐行 `pub mod <子模組>;`；lib.rs 改為三個私有資料夾模組（`workspace/` 與其同名子模組撞名，資料夾模組取私有別名 `workspace_group` 並以 `#[path]` 指回，見 design D2）＋根層 pub mod（command、keylines、store、util、demo，testkit／teststore 門控行原樣）＋三組 `pub use` re-export 22 個名字；workspace/skills.rs 與 workspace/schema.rs 的 include_str! 改 `../../assets/…`。驗證：`cargo build -p speclink-core` 綠；`cargo build --workspace --locked` 綠（四個消費 crate 零改動）；`grep -rn 'speclink_core::lifecycle\\|speclink_core::quality\\|speclink_core::workspace_group' crates apps` 零命中；`git status` 顯示 22 個模組為 rename。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c48a361d7f22b40f6a868d5c46f27d641dbebf18",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lib.rs",
+        "crates/engine/speclink-core/src/lifecycle/archive.rs",
+        "crates/engine/speclink-core/src/lifecycle/capname.rs",
+        "crates/engine/speclink-core/src/lifecycle/discard.rs",
+        "crates/engine/speclink-core/src/lifecycle/discuss.rs",
+        "crates/engine/speclink-core/src/lifecycle/inprogress.rs",
+        "crates/engine/speclink-core/src/lifecycle/listing.rs",
+        "crates/engine/speclink-core/src/lifecycle/model.rs",
+        "crates/engine/speclink-core/src/lifecycle/newcmd.rs",
+        "crates/engine/speclink-core/src/lifecycle/preflight.rs",
+        "crates/engine/speclink-core/src/lifecycle/status.rs",
+        "crates/engine/speclink-core/src/lifecycle/tasks.rs",
+        "crates/engine/speclink-core/src/lifecycle/trace.rs",
+        "crates/engine/speclink-core/src/quality/analyzer.rs",
+        "crates/engine/speclink-core/src/quality/drift.rs",
+        "crates/engine/speclink-core/src/quality/station.rs",
+        "crates/engine/speclink-core/src/quality/validate.rs",
+        "crates/engine/speclink-core/src/workspace/config.rs",
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/src/workspace/instructions.rs",
+        "crates/engine/speclink-core/src/workspace/schema.rs",
+        "crates/engine/speclink-core/src/workspace/skills.rs",
+        "crates/engine/speclink-core/src/workspace/workspace.rs",
+        "crates/engine/speclink-core/src/lifecycle/mod.rs",
+        "crates/engine/speclink-core/src/quality/mod.rs",
+        "crates/engine/speclink-core/src/workspace/mod.rs"
+      ],
+      "recordedAt": "2026-09-10T15:26:55Z"
+    },
+    {
+      "taskId": "tsk_01M25Y30FBMP997039CDKNXENH",
+      "taskDesc": "2.2 （design D3 測試搬子檔）把十個模組（lifecycle/discuss、lifecycle/archive、lifecycle/tasks、quality/station、quality/analyzer、quality/validate、quality/drift、workspace/init、workspace/config、command）的 `mod tests { … }` 內容逐字搬到同名子目錄的 tests.rs（command 為 command/tests.rs），原處改為 `#[cfg(test)] mod tests;`，`use` 行逐字保留；連帶修 `tests/it` 兩條架構守門的掃描面（`no_process_env` 與 `no_direct_fs` 跳過 `tests.rs` 子檔，`no_direct_fs` 的 `read_dir` 改遞迴，否則 22 個模組整批掉出掃描面）。驗證：搬移前先記錄 `cargo test -p speclink-core 2>&1 | grep 'test result'` 的各 binary 測試數；搬移後 `cargo test -p speclink-core` 全綠且各 binary 測試數逐一相等；`cargo test -p speclink-core archive` 與 `cargo test -p speclink-core discuss` 過濾仍命中原本的測試；十個模組檔的 `git diff` 只含尾端一行宣告與被移走的區塊。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c48a361d7f22b40f6a868d5c46f27d641dbebf18",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/tests/it/no_direct_fs.rs",
+        "crates/engine/speclink-core/tests/it/no_process_env.rs",
+        "crates/engine/speclink-core/tests/it/render_golden.rs",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "packages/ui/src/__tests__/discussionDrawer.test.tsx",
+        "packages/ui/src/__tests__/taskList.test.tsx",
+        "packages/ui/src/tasks.ts",
+        "scripts/desktop/desktop-install.mjs",
+        "scripts/desktop/desktop-install.test.mjs",
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/src/lifecycle/archive/tests.rs",
+        "crates/engine/speclink-core/src/lifecycle/discuss/tests.rs",
+        "crates/engine/speclink-core/src/lifecycle/tasks/tests.rs",
+        "crates/engine/speclink-core/src/quality/analyzer/tests.rs",
+        "crates/engine/speclink-core/src/quality/drift/tests.rs",
+        "crates/engine/speclink-core/src/quality/station/tests.rs",
+        "crates/engine/speclink-core/src/quality/validate/tests.rs",
+        "crates/engine/speclink-core/src/workspace/config/tests.rs",
+        "crates/engine/speclink-core/src/workspace/init/tests.rs"
+      ],
+      "recordedAt": "2026-09-10T15:35:57Z"
+    },
+    {
+      "taskId": "tsk_01M25Y30FBVRFH1PYGPXNA10WH",
+      "taskDesc": "4.1 （design D5、D6 驗證；spec delivery-baseline Requirement「倉庫路徑守門」）1.1 的守門轉綠並跑完整回歸：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠；`cargo test -p speclink-core` 全綠（含 `--test it` 的 render_golden 逐位元綠）；`cargo test -p speclink-desktop-core` 綠；`cargo test -p speclink-cli --test it discuss_slug`（凍結 `discuss list --json`）綠；`speclink validate core-module-groups` 綠；`git diff --stat` 不含 tests/golden、assets、Cargo.lock。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c48a361d7f22b40f6a868d5c46f27d641dbebf18",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/archive.rs",
+        "crates/engine/speclink-core/src/config.rs",
+        "crates/engine/speclink-core/src/discuss.rs",
+        "crates/engine/speclink-core/src/init.rs",
+        "crates/engine/speclink-core/src/station.rs",
+        "crates/engine/speclink-core/src/tasks.rs",
+        "crates/engine/speclink-core/src/validate.rs"
+      ],
+      "recordedAt": "2026-09-10T15:43:35Z"
+    }
+  ]
+}

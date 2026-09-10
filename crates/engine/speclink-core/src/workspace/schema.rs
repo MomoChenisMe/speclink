@@ -55,14 +55,14 @@ impl Schema {
     }
 }
 
-const A_PROPOSAL_TMPL: &str = include_str!("../assets/schema/spec-driven/proposal.template.md");
-const A_SPECS_TMPL: &str = include_str!("../assets/schema/spec-driven/specs.template.md");
-const A_DESIGN_TMPL: &str = include_str!("../assets/schema/spec-driven/design.template.md");
-const A_TASKS_TMPL: &str = include_str!("../assets/schema/spec-driven/tasks.template.md");
+const A_PROPOSAL_TMPL: &str = include_str!("../../assets/schema/spec-driven/proposal.template.md");
+const A_SPECS_TMPL: &str = include_str!("../../assets/schema/spec-driven/specs.template.md");
+const A_DESIGN_TMPL: &str = include_str!("../../assets/schema/spec-driven/design.template.md");
+const A_TASKS_TMPL: &str = include_str!("../../assets/schema/spec-driven/tasks.template.md");
 /// The single canonical definition of the built-in `spec-driven` schema: the engine
 /// parses it at load, and `schema fork spec-driven` ships it byte for byte.
 pub const FORK_SCHEMA_YAML: &str =
-    include_str!("../assets/schema/spec-driven/fork.schema.yaml");
+    include_str!("../../assets/schema/spec-driven/fork.schema.yaml");
 
 /// Template content for the built-in schema, keyed by the `template:` file name the
 /// canonical YAML declares. This is the built-in's counterpart to a custom schema's
