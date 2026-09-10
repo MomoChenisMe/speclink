@@ -524,9 +524,11 @@ pub(crate) fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
 /// The wire discussion summary reshaped into the engine's info type, so both
 /// modes render (and serialize) it through one path.
 fn to_discussion_info(d: &protocol_query::DiscussionInfo) -> core::discuss::DiscussionInfo {
-    // wire DTO 只帶 promotedTo／concluded（protocol 不動）；hold 與 board_rank 取預設。
+    // wire DTO 帶 promotedTo／concluded／hold（缺席＝舊 server，視同未保留）；
+    // board_rank 不上鏈，取預設。CLI 不顯示 hold，映過來只為 head 與 fs 模式同形。
     let mut head = core::discuss::DiscussionHead::default();
     head.promoted_to = d.promoted_to.clone();
+    head.hold = d.hold.unwrap_or(false);
     core::discuss::DiscussionInfo {
         slug: d.slug.clone(),
         topic: d.topic.clone(),

@@ -129,6 +129,11 @@ export interface DiscussionItem {
    * 分區判準退回「promoted 一律收合」的既有行為，不得補成 false。
    */
   concluded?: boolean;
+  /**
+   * frontmatter 是否帶 `hold: true`（結論保留在途、還欠尚未建立的變更）。
+   * 缺席＝未知（舊 server），視同未保留、沿既有分區，不得補成 true。
+   */
+  hold?: boolean;
 }
 
 /** 討論清單兩節：看板討論欄（active）與已封存頁討論節（archived）。 */

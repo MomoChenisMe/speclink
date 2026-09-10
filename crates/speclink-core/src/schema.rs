@@ -729,4 +729,22 @@ artifacts:
             "fork.schema.yaml 不得再點名 `[P]` markers"
         );
     }
+
+    #[test]
+    fn design_cross_reference_guidance_says_the_ordinal_alone_counts() {
+        // analyzer 只要編號（D1／Decision 1／決策一）出現就算引用；指引不講，
+        // 起草的人會照抄整串標題，design 改一個字 tasks 就跟著紅。
+        assert!(
+            FORK_SCHEMA_YAML
+                .contains("either its text or just its ordinal (`D1`, `Decision 1`, `決策一`)"),
+            "fork.schema.yaml 的 design 交叉引用指引須說明只寫編號也算引用"
+        );
+        // 同段第一句（需求名以子字串出現）不動。
+        assert!(
+            FORK_SCHEMA_YAML.contains(
+                "Every `### Requirement:` name from specs MUST appear as a case-insensitive substring in at least one task description"
+            ),
+            "需求名那一句逐字不變"
+        );
+    }
 }

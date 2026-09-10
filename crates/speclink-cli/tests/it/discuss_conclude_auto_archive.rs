@@ -58,7 +58,24 @@ impl TempProject {
             format!("schema: spec-driven\ncreated: 2026-01-02\nfrom_discussion: {slug}\n"),
         )
         .unwrap();
-        std::fs::write(dir.join("tasks.md"), "- [x] 1.1 done\n").unwrap();
+        self.finish_tasks(name);
+    }
+
+    /// 在途記錄的全文。
+    fn discussion(&self, slug: &str) -> String {
+        std::fs::read_to_string(
+            self.dir.join("openspec").join("discussions").join(format!("{slug}.md")),
+        )
+        .unwrap()
+    }
+
+    /// 讓 `name` 通過封存的完整度守門（promote 建出的骨架沒有已完成任務）。
+    fn finish_tasks(&self, name: &str) {
+        std::fs::write(
+            self.dir.join("openspec").join("changes").join(name).join("tasks.md"),
+            "- [x] 1.1 done\n",
+        )
+        .unwrap();
     }
 
     fn live_exists(&self, slug: &str) -> bool {
@@ -209,47 +226,146 @@ fn conclude_with_hold_json_carries_held_true_without_auto_archived() {
 }
 
 #[test]
-fn staged_spin_out_lifecycle_holds_then_releases_the_record() {
-    // 分期兩刀的生命週期（規格範例）：
-    // alpha 的 promoted_to 為 cut-a、以 --hold 結論 → 封存 cut-a 後 alpha 留在途
-    // → promote 出 cut-b 清掉旗標 → 封存 cut-b 後 alpha 隨行進封存區。
-    let p = TempProject::with_discussion("lifecycle", "alpha", &promoted_unconcluded_doc("alpha"));
-    p.put_change("cut-a", "alpha");
+fn staged_spin_out_lifecycle_holds_across_every_cut_until_archived_by_hand() {
+    // 規格 Example「分期三刀的生命週期」：alpha 尚未轉出任何變更，以 --hold 結論
+    // 一次後依序轉出並封存三刀——每刀封存後記錄都留在途、封存輸出不列它；最後
+    // 由使用者跑一次 `discuss archive` 明示收尾。
+    let p = TempProject::with_discussion("lifecycle", "alpha", &open_doc("alpha"));
 
     let out = p.run_stdin(
         &["discuss", "conclude", "alpha", "--stdin", "--hold"],
-        "**Decision**: cut-a now, cut-b after it lands\n",
+        "**Decision**: three cuts in order\n",
     );
     ok(&out);
-    assert!(p.live_exists("alpha"), "在途變更引用中，結論不封存記錄");
+    assert!(p.live_exists("alpha"), "帶 hold 的結論不封存記錄");
 
-    // 刀 A 封存：帶 hold 的來源討論不隨行，封存輸出也不列它。
-    let out = p.run(&["archive", "cut-a", "--yes", "--skip-specs"]);
+    let mut accumulated = String::new();
+    for cut in ["cut-a", "cut-b", "cut-c"] {
+        ok(&p.run(&["discuss", "promote", "alpha", "--name", cut]));
+        if !accumulated.is_empty() {
+            accumulated.push_str(", ");
+        }
+        accumulated.push_str(cut);
+        let doc = p.discussion("alpha");
+        assert!(doc.contains(&format!("promoted_to: {accumulated}\n")), "依序累加: {doc}");
+        assert!(doc.contains("hold: true"), "旗標全程保留（{cut} 轉出後）: {doc}");
+
+        p.finish_tasks(cut);
+        let out = p.run(&["archive", cut, "--yes", "--skip-specs"]);
+        ok(&out);
+        let text = stdout_of(&out);
+        assert!(!text.contains("alpha"), "隨行封存清單不列帶 hold 的討論: {text}");
+        assert!(p.live_exists("alpha"), "{cut} 封存後記錄仍在途");
+        assert!(!p.archived_exists("alpha"));
+    }
+
+    ok(&p.run(&["discuss", "archive", "alpha"]));
+    assert!(!p.live_exists("alpha"), "使用者明示收尾後記錄離開在途");
+    assert!(p.archived_exists("alpha"));
+}
+
+/// 帶 `hold: true` 的已結論已轉出討論——分期系列在途、下一刀還沒建立。
+fn held_doc(slug: &str) -> String {
+    format!(
+        "---\ntopic: {slug}\nslug: {slug}\nstatus: promoted\npromoted_to: cut-a\ncreated: 2026-01-02\nhold: true\n---\n\n\
+         # Discussion: {slug}\n\n## Context\n\nFixture.\n\n## Rounds\n\n\
+         ## Conclusion\n\n**Decision**: cut-a now, cut-b next\n"
+    )
+}
+
+/// stdout，把專案自身的目錄換成佔位符（人眼路徑、JSON 的斜線路徑、JSON 逃脫過的
+/// 反斜線路徑三種寫法都換），只差 hold 行的兩個專案才好逐位元比對。
+fn normalized_stdout(p: &TempProject, out: &Output) -> String {
+    let raw = p.dir.to_string_lossy().to_string();
+    stdout_of(out)
+        .replace(&raw.replace('\\', "\\\\"), "<DIR>")
+        .replace(&raw, "<DIR>")
+        .replace(&raw.replace('\\', "/"), "<DIR>")
+}
+
+/// 對「只差一行 hold」的兩份相同記錄跑同一組指令，斷言輸出逐位元相同（轉出動詞
+/// 從不報告 hold），回傳帶旗標那份的正規化 stdout 與轉出後的記錄全文。
+fn held_vs_plain(
+    tag: &str,
+    slug: &str,
+    run_it: impl Fn(&TempProject) -> Output,
+) -> (String, String) {
+    let held = TempProject::with_discussion(&format!("{tag}-held"), slug, &held_doc(slug));
+    let plain = TempProject::with_discussion(
+        &format!("{tag}-plain"),
+        slug,
+        &held_doc(slug).replace("hold: true\n", ""),
+    );
+    let held_out = run_it(&held);
+    let plain_out = run_it(&plain);
+    ok(&held_out);
+    ok(&plain_out);
+    let shown = normalized_stdout(&held, &held_out);
+    assert_eq!(shown, normalized_stdout(&plain, &plain_out), "旗標不改變輸出");
+    (shown, held.discussion(slug))
+}
+
+/// 轉出後的記錄：promoted_to 累加了 cut-b、status 為 promoted、旗標逐字保留；
+/// 輸出（人眼或 --json）不提 hold。
+fn assert_spun_out_and_still_held(shown: &str, doc: &str) {
+    assert!(doc.contains("promoted_to: cut-a, cut-b\n"), "promoted_to 累加: {doc}");
+    assert!(doc.contains("status: promoted"), "status 為 promoted: {doc}");
+    assert!(doc.contains("hold: true"), "旗標逐字保留: {doc}");
+    assert!(!shown.contains("hold"), "輸出不提旗標: {shown}");
+}
+
+/// 第三條轉出路徑：先 link 到既有變更（記錄逐位元不變），再 seal 補標。
+fn link_then_seal(p: &TempProject, extra: &[&str]) -> Output {
+    p.put_change("cut-b", "gamma");
+    let before = p.discussion("gamma");
+    ok(&p.run(&["discuss", "link", "gamma", "cut-b"]));
+    assert_eq!(p.discussion("gamma"), before, "link 當下記錄逐位元不變");
+    let mut args = vec!["discuss", "seal", "gamma", "cut-b"];
+    args.extend_from_slice(extra);
+    p.run(&args)
+}
+
+#[test]
+fn spin_out_paths_keep_the_hold_flag_and_leave_human_output_unchanged() {
+    // 規格「轉出保留旗標」：三個轉出路徑（discuss promote、new change
+    // --from-discussion、discuss seal）對帶 hold 的記錄都累加 promoted_to 且旗標
+    // 逐字保留；人眼輸出與不帶旗標時逐位元相同。
+    let (shown, doc) = held_vs_plain("promote-human", "alpha", |p| {
+        p.run(&["discuss", "promote", "alpha", "--name", "cut-b"])
+    });
+    assert_spun_out_and_still_held(&shown, &doc);
+
+    let (shown, doc) = held_vs_plain("newchange-human", "beta", |p| {
+        p.run(&["new", "change", "cut-b", "--from-discussion", "beta"])
+    });
+    assert_spun_out_and_still_held(&shown, &doc);
+
+    let (shown, doc) = held_vs_plain("seal-human", "gamma", |p| link_then_seal(p, &[]));
+    assert_spun_out_and_still_held(&shown, &doc);
+}
+
+#[test]
+fn spin_out_paths_keep_the_hold_flag_and_leave_json_output_unchanged() {
+    // 同上，--json 那一面（`new change` 沒有 --json 旗標，只有兩條路徑）。
+    let (shown, doc) = held_vs_plain("promote-json", "alpha", |p| {
+        p.run(&["discuss", "promote", "alpha", "--name", "cut-b", "--json"])
+    });
+    assert_spun_out_and_still_held(&shown, &doc);
+
+    let (shown, doc) = held_vs_plain("seal-json", "gamma", |p| link_then_seal(p, &["--json"]));
+    assert_spun_out_and_still_held(&shown, &doc);
+}
+
+#[test]
+fn discuss_list_json_never_carries_a_hold_key() {
+    // 規格「討論列表回應攜帶 concluded」的 THEN：本地 CLI 的 discuss list --json
+    // 逐位元不變——hold 住在 head 的 serde(skip) 欄位裡，這裡釘一句守門。
+    let p = TempProject::with_discussion("list-json", "alpha", &held_doc("alpha"));
+    let out = p.run(&["discuss", "list", "--json"]);
     ok(&out);
     let text = stdout_of(&out);
-    assert!(!text.contains("alpha"), "隨行封存清單不含帶 hold 的討論: {text}");
-    assert!(p.live_exists("alpha"), "帶 hold 的記錄留在途");
-    assert!(!p.archived_exists("alpha"));
-
-    // 刀 B 轉出：promoted_to 累加、旗標清除。
-    let out = p.run(&["discuss", "promote", "alpha", "--name", "cut-b"]);
-    ok(&out);
-    let doc =
-        std::fs::read_to_string(p.dir.join("openspec").join("discussions").join("alpha.md"))
-            .unwrap();
-    assert!(doc.contains("promoted_to: cut-a, cut-b"), "累加下一刀: {doc}");
-    assert!(!doc.contains("hold: true"), "轉出清掉旗標: {doc}");
-
-    // 刀 B 封存：記錄隨行進封存區（既有生命週期）。
-    std::fs::write(
-        p.dir.join("openspec").join("changes").join("cut-b").join("tasks.md"),
-        "- [x] 1.1 done\n",
-    )
-    .unwrap();
-    let out = p.run(&["archive", "cut-b", "--yes", "--skip-specs"]);
-    ok(&out);
-    assert!(!p.live_exists("alpha"), "旗標已清，記錄隨最後一刀封存");
-    assert!(p.archived_exists("alpha"));
+    assert!(text.contains("\"slug\": \"alpha\""), "帶 hold 的記錄照列: {text}");
+    assert!(!text.contains("\"hold\""), "CLI JSON 無 hold 鍵: {text}");
 }
 
 #[test]

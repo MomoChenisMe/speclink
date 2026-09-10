@@ -176,6 +176,95 @@ fn list_discussions_carries_concluded_for_every_record() {
 }
 
 #[test]
+fn discussion_routes_carry_hold_for_list_and_show() {
+    // discussion-hold-until-release「討論列表回應攜帶 concluded」：route 邊緣自
+    // 引擎的 frontmatter 解析恆填 hold true／false，單筆 show 的 info 同。
+    let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope(),
+            CommandContext { command: "seed".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(
+        DocumentId::Discussion { slug: "held".into(), archived: false },
+        "---\ntopic: Held\nslug: held\nstatus: promoted\npromoted_to: cut-a\ncreated: 2026-07-01\nhold: true\n---\n\n## Conclusion\n\n**Decision**: more cuts\n",
+    );
+    uow.create(
+        DocumentId::Discussion { slug: "free".into(), archived: false },
+        "---\ntopic: Free\nslug: free\nstatus: open\ncreated: 2026-07-02\n---\n\n## Rounds\n\n## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n",
+    );
+    store.commit(uow, Vec::new()).expect("seed commit");
+    let state = common::state_with(store);
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+
+    let listed = client(&base, &pat).list_discussions(false).expect("list discussions");
+    let held = listed.discussions.iter().find(|d| d.slug == "held").expect("held listed");
+    assert_eq!(held.hold, Some(true));
+    let free = listed.discussions.iter().find(|d| d.slug == "free").expect("free listed");
+    assert_eq!(free.hold, Some(false), "無 hold 行的記錄恆填 false");
+
+    let shown = client(&base, &pat).show_discussion("held").expect("show discussion");
+    assert_eq!(shown.info.hold, Some(true), "單筆回應的 info 同樣攜帶");
+    assert_eq!(shown.info.concluded, Some(true), "單筆回應的 info 兩個欄位都攜帶");
+
+    // camelCase 走 raw wire 斷言：兩筆皆恆填。
+    let body: Value = ureq::get(&format!("{base}/api/speclink/v1/projects/demo/discussions"))
+        .set("Authorization", &format!("Bearer {pat}"))
+        .set("X-Speclink-Api-Version", speclink_protocol::API_VERSION)
+        .set("X-Speclink-Repo", "backend")
+        .call()
+        .expect("GET /discussions")
+        .into_json()
+        .expect("JSON body");
+    let items = body["discussions"].as_array().expect("discussions array");
+    let held_item = items.iter().find(|d| d["slug"] == "held").expect("held item");
+    assert_eq!(held_item["hold"], json!(true));
+    let free_item = items.iter().find(|d| d["slug"] == "free").expect("free item");
+    assert_eq!(free_item["hold"], json!(false));
+}
+
+#[test]
+fn promote_route_keeps_the_hold_flag_on_the_record() {
+    // discussion-docs「轉出保留旗標」的 remote 面：經 POST /discussions/{slug}/promote
+    // 轉出後，記錄的 hold 行逐字保留，列表回應仍回 hold: true。
+    let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope(),
+            CommandContext { command: "seed".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(
+        DocumentId::Discussion { slug: "held".into(), archived: false },
+        "---\ntopic: Held\nslug: held\nstatus: promoted\npromoted_to: cut-a\ncreated: 2026-07-01\nhold: true\n---\n\n## Conclusion\n\n**Decision**: more cuts\n",
+    );
+    store.commit(uow, Vec::new()).expect("seed commit");
+    let state = common::state_with(store.clone());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let client = client(&base, &pat);
+
+    let promoted = client.discussion_promote("held", Some("cut-b")).expect("promote");
+    assert_eq!(promoted.change, "cut-b");
+
+    let record = store
+        .snapshot(&scope())
+        .expect("snapshot")
+        .read(&DocumentId::Discussion { slug: "held".into(), archived: false })
+        .expect("read record")
+        .expect("record still live")
+        .content;
+    assert!(record.contains("promoted_to: cut-a, cut-b\n"), "累加下一刀: {record}");
+    assert!(record.contains("hold: true\n"), "轉出不清旗標: {record}");
+
+    let listed = client.list_discussions(false).expect("list discussions");
+    let held = listed.discussions.iter().find(|d| d.slug == "held").expect("held listed");
+    assert_eq!(held.hold, Some(true));
+}
+
+#[test]
 fn promote_returns_the_change_and_lands_both_events() {
     let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
     let state = common::state_with(store.clone());
@@ -664,12 +753,14 @@ fn discussion_search_route_matches_the_engine_search_over_the_same_records() {
     let engine = speclink_fs::FsStore::new(root.path(), "openspec");
     let hits = speclink_core::discuss::search(&engine, &["drawer".to_string()]).expect("engine search");
 
-    // promotedTo／concluded 是 route 邊緣增欄、path 是各 store 的位置——都不是語意的一部分。
+    // promotedTo／concluded／hold 是 route 邊緣增欄、path 是各 store 的位置——
+    // 都不是語意的一部分。
     let strip = |h: &Value| {
         let mut h = h.clone();
         let o = h.as_object_mut().unwrap();
         o.remove("promotedTo");
         o.remove("concluded");
+        o.remove("hold");
         o.remove("path");
         h
     };
