@@ -51,9 +51,8 @@ pub struct ArchiveOptions {
 /// 對應的 `--carry-*` → 拒絕、該站三處置齊列；兩站工單並存時兩組處置並列
 /// （只報一站會讓使用者處理完一張再撞一次同樣的牆）。帶旗標時工單隨目錄搬移，
 /// 成為封存側「曾審查／曾驗證未通過」標示的化石證據。皆無工單時零效果——行為
-/// 與導入前完全一致。runtime 於 `--mark-tasks-complete` 的前置寫入前先喚一次
-/// （比照 guard_meta），`archive` 內再守一次供直接呼叫的入口（desktop）。
-pub(crate) fn guard_open_tickets(
+/// 與導入前完全一致。守門只在此處：每個入口都經 `archive()`。
+fn guard_open_tickets(
     store: &dyn Store,
     name: &str,
     carry_review: bool,
@@ -79,7 +78,7 @@ pub(crate) fn guard_open_tickets(
 /// 皆 stale 時並列。無章與章欄位不全（Unknown）零效果——行為與導入前一致。
 /// 空 root＝無本地工作樹（remote 封存通道，沿 guard_linked_worktree 的慣例）：
 /// 內容錨無從判定，只判任務錨。
-pub(crate) fn guard_stale_stamps(ws: &Workspace, store: &dyn Store, change: &Change) -> Result<()> {
+fn guard_stale_stamps(ws: &Workspace, store: &dyn Store, change: &Change) -> Result<()> {
     let counts = crate::tasks::counts_for(store, &change.name);
     // 內容錨讀的是 repo 程式檔（host 側檔案，非 spec 文件）——沿 guard_linked_worktree
     // 的作法走 util 的通用檔案 helper，引擎流程模組本身不直接呼叫檔案 API。
@@ -146,10 +145,7 @@ const WORKTREE_BRANCH_PREFIX: &str = "speclink/";
 /// 與 worktree overlay 的主副本判準同源），且當前分支具 `speclink/` 前綴。主
 /// checkout 在第一個條件即短路，不 spawn git。git 不可用、指令失敗或輸出為空
 /// （detached HEAD）→ 放行，沿 worktree discovery 的 fail-open 慣例。
-///
-/// runtime 於 `--mark-tasks-complete` 的前置寫入前先喚一次（比照 guard_meta 與
-/// guard_open_review），`archive` 內再守一次供直接呼叫的入口（desktop）。
-pub(crate) fn guard_linked_worktree(ws: &Workspace) -> Result<()> {
+fn guard_linked_worktree(ws: &Workspace) -> Result<()> {
     // 無 host workspace 的派發（Node host store）拿到的是空 root 的合成
     // Workspace——沒有本地環境可判；空 root 接上 ".git" 會變成以行程 cwd
     // 判定，cwd 恰在任何 speclink worktree 內就會誤拒不相干 store 的封存。
@@ -499,7 +495,7 @@ pub(crate) fn capability_violations(
 /// Purpose 守門的違規自成一類（spec archive-merge 守門清單第 (7) 項）：它不是
 /// 「delta 與正典對不上」，drift → ingest 也修不了它——原因與補救各自分流，
 /// 純過期清單的輸出逐位元維持原樣。
-pub(crate) fn merge_refusal(change: &str, violations: &[MergeViolation]) -> anyhow::Error {
+fn merge_refusal(change: &str, violations: &[MergeViolation]) -> anyhow::Error {
     let (purpose, stale): (Vec<&MergeViolation>, Vec<&MergeViolation>) =
         violations.iter().partition(|v| v.is_purpose_gate());
     let list = |out: &mut String, vs: &[&MergeViolation]| {
@@ -558,6 +554,51 @@ struct CapPlan {
     content: String,
 }
 
+/// bulk 預檢會跳過一個 change 的理由（design D4）。字串渲染留在 bulk 端。
+#[derive(Debug)]
+pub enum SkipReason {
+    MergeRefused(Vec<MergeViolation>),
+    StructuralInvalid,
+    TasksIncomplete { complete: usize, total: usize },
+}
+
+/// 未完成的任務計數：具名欄位，讓兩個呼叫端都不必靠 tuple 位置。
+struct TaskShortfall {
+    complete: usize,
+    total: usize,
+}
+
+/// 任務完成度條件（單筆封存的任務守門與 bulk 預檢共用一支，兩處判斷同源）：
+/// 只有 total > 0 且未全勾才算未完成，零任務的 change 放行。
+fn incomplete_tasks(store: &dyn Store, name: &str) -> Option<TaskShortfall> {
+    let tasks_md = store.read_artifact(name, "tasks.md").unwrap_or_default();
+    let (total, complete, _) = crate::tasks::progress(&crate::tasks::parse(&tasks_md));
+    (total > 0 && complete < total).then_some(TaskShortfall { complete, total })
+}
+
+/// bulk 預檢的唯讀投影：依 opts 三旗標的豁免語意，以 merge → validate → tasks 的固定
+/// 順序判定，命中第一條即回、後面的條件不再算；零寫入。順序是 bulk 的凍結輸出契約，
+/// 不是 archive() 的守門序。`--skip-specs` 跳過 spec 套用，守門在那裡根本不跑，預檢
+/// 也不得以它過濾。
+pub fn skip_reason(store: &dyn Store, change: &Change, opts: &ArchiveOptions) -> Option<SkipReason> {
+    if !opts.skip_specs {
+        let violations = merge_violations(store, &change.name);
+        if !violations.is_empty() {
+            return Some(SkipReason::MergeRefused(violations));
+        }
+    }
+    // Structural only: the merge gate above owns a stale delta's refusal, and
+    // --skip-specs deliberately bypasses it — validate must not reintroduce it.
+    if !opts.no_validate && !crate::validate::validate_change_structural(store, change, false).valid {
+        return Some(SkipReason::StructuralInvalid);
+    }
+    if opts.mark_tasks_complete {
+        return None;
+    }
+    incomplete_tasks(store, &change.name)
+        .map(|t| SkipReason::TasksIncomplete { complete: t.complete, total: t.total })
+}
+
 /// The canonical @trace block: where a requirement came from and when it last
 /// landed. Nothing else — the canon carries no file list, so nothing here ever
 /// depends on the work tree's state at archive time. `stamp` is the RFC 3339
@@ -588,13 +629,11 @@ pub fn archive(
 
     // Task-readiness gate (spec「單筆封存的任務完成度守門」): an incomplete change
     // refuses to archive unless the --mark-tasks-complete flag rides along. The
-    // exemption is the flag itself, not the runtime's pre-write — direct callers
-    // (desktop) get the same semantics without it. Condition mirrors the bulk
-    // pre-filter: only total > 0 gates, a zero-task change passes.
+    // exemption is the flag itself; the pre-write it implies lands below, after
+    // every gate. Condition mirrors the bulk pre-filter: only total > 0 gates, a
+    // zero-task change passes.
     if !opts.mark_tasks_complete {
-        let tasks_md = store.read_artifact(&change.name, "tasks.md").unwrap_or_default();
-        let (total, complete, _) = crate::tasks::progress(&crate::tasks::parse(&tasks_md));
-        if total > 0 && complete < total {
+        if let Some(TaskShortfall { complete, total }) = incomplete_tasks(store, &change.name) {
             return Err(crate::command::Refusal(format!(
                 "change '{}' has {complete}/{total} tasks complete — archive refuses an \
                  incomplete change; complete the remaining tasks, or pass \
@@ -623,8 +662,7 @@ pub fn archive(
     // the merge gate below owns the refusal for a stale delta, and its aggregated
     // `merge_refusal` wording would never be reached if the pre-check refused first.
     if !opts.no_validate {
-        let schema = crate::schema::spec_driven();
-        let result = crate::validate::validate_change_structural(store, change, &schema, false);
+        let result = crate::validate::validate_change_structural(store, change, false);
         if !result.valid {
             let details: Vec<String> = result
                 .errors
@@ -681,6 +719,21 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
         return Err(merge_refusal(&change.name, &violations));
     }
 
+    // --- 提交階段的第一個效果：--mark-tasks-complete 的代勾。所有守門與純讀計畫已過，
+    // 從這一行起才有檔案效果（spec change-lifecycle「單筆封存的任務完成度守門」、
+    // 「封存的章失效守門」；archive-merge「兩階段合併計畫與零半套寫入」）。
+    if opts.mark_tasks_complete {
+        if let Some(text) = store.read_artifact(&change.name, "tasks.md") {
+            // Star-bullet checkboxes are tasks too (frozen rule).
+            let done = text
+                .replace("- [ ] ", "- [x] ")
+                .replace("- [ ]\t", "- [x]\t")
+                .replace("* [ ] ", "* [x] ")
+                .replace("* [ ]\t", "* [x]\t");
+            store.write_artifact(&change.name, "tasks.md", &done)?;
+        }
+    }
+
     // --- Commit phase: snapshots first, then canonical specs, then the directory move.
     // A commit-phase I/O failure therefore always leaves a recoverable backup behind.
     let snapshot_dir = ws.snapshots_dir().join(&dated_name);
@@ -722,7 +775,8 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
     }
     let caps: Vec<CapCounts> = plans.into_iter().map(|p| p.counts).collect();
 
-    // Move change into the archive under its dated name.
+    // Move change into the archive under its dated name. The in-progress marker
+    // stays untouched on archive (frozen behavior).
     store.archive_change(&change.name, &dated_name)?;
 
     // Clear the app-side "started" marker for this change, if present.
@@ -996,7 +1050,9 @@ fn merge_capability(
 
 #[cfg(test)]
 mod tests {
-    use super::{archive, merge_capability, merge_violations, ArchiveOptions};
+    use super::{
+        archive, merge_capability, merge_violations, skip_reason, ArchiveOptions, SkipReason,
+    };
     use crate::store::Store;
     use crate::tasks::TouchedRecord;
     use crate::teststore::TestStore;
@@ -1153,6 +1209,20 @@ mod tests {
                 try_archive(&ws, &store, skip_opts()).unwrap_or_else(|e| panic!("{tag}: {e}"));
                 assert!(!store.change_exists("demo"), "{tag}: change must be archived");
             }
+        }
+
+        #[test]
+        fn a_stale_stamp_refuses_before_the_merge_gate() {
+            // 章失效＋delta 過期 → 章失效先拒；merge 拒絕字串不出現。
+            let ws = ws_with_scope_file("stale-before-merge", FILE_A);
+            let store = TestStore::with_meta("demo", &meta_with_stamps(&["reviewed"]));
+            store.put_artifact("demo", "tasks.md", &format!("{TASKS_ALL_DONE}- [x] e\n"));
+            store.put_artifact("demo", "specs/auth/spec.md", ADDED_R1);
+            store.canonical.borrow_mut().insert("auth".to_string(), CANON_R1.to_string());
+            let err = try_archive(&ws, &store, apply_opts()).expect_err("stale stamp must refuse");
+            let msg = err.to_string();
+            assert!(msg.contains("tasks moved after the stamp"), "stale wording: {msg}");
+            assert!(!msg.contains("cannot be archived"), "merge refusal never reached: {msg}");
         }
 
         #[test]
@@ -1424,15 +1494,86 @@ mod tests {
     }
 
     #[test]
-    fn mark_tasks_complete_flag_passes_the_gate_without_pre_write() {
-        // design D1：豁免＝旗標本身——未經 runtime pre-write 的直呼入口（desktop）
-        // 帶旗標時語意一致。
+    fn mark_tasks_complete_flag_checks_every_task_inside_archive() {
+        // design D1：豁免＝旗標本身，代勾也在 archive() 內——直呼入口（desktop）
+        // 帶旗標時與 CLI 同語意：封存成功，且封存後的 tasks.md 全部已勾。
         let store = gate_store("- [x] 1.1 a\n- [ ] 1.2 b\n- [ ] 1.3 c\n");
         let change = crate::model::find_change(&store, "demo").unwrap();
-        let opts =
-            ArchiveOptions { mark_tasks_complete: true, ..skip_opts() };
-        archive(&ghost_ws(), &store, &change, &opts, None).unwrap();
+        let opts = ArchiveOptions { mark_tasks_complete: true, ..skip_opts() };
+        let outcome = archive(&ghost_ws(), &store, &change, &opts, None).unwrap();
         assert!(!store.change_exists("demo"), "flag exempts the gate");
+        assert_eq!(
+            store.read_archived_artifact(&outcome.dated_name, "tasks.md").as_deref(),
+            Some("- [x] 1.1 a\n- [x] 1.2 b\n- [x] 1.3 c\n"),
+            "archive() itself checks every task before the move"
+        );
+    }
+
+    const UNCHECKED_TASKS: &str = "- [x] 1.1 a\n- [ ] 1.2 b\n* [ ] 1.3 c\n- [ ]\t1.4 d\n";
+
+    #[test]
+    fn mark_tasks_complete_leaves_tasks_untouched_when_validation_refuses() {
+        // design D1（spec archive-merge「兩階段合併計畫與零半套寫入」）：結構 validate
+        // 拒絕（delta 檔存在但零操作——結構檢查對缺 proposal 寬鬆放行，這是它的硬錯誤）
+        // 落在代勾之前，tasks.md 逐位元不變、零 artifact 寫入。
+        let store = gate_store(UNCHECKED_TASKS);
+        store.put_artifact("demo", "specs/auth/spec.md", "## ADDED Requirements\n");
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        // CLI `speclink archive <name> --mark-tasks-complete` 的形狀：validate 與 spec 合併都開。
+        let opts = ArchiveOptions { mark_tasks_complete: true, ..apply_opts_validating() };
+        let err = archive(&ghost_ws(), &store, &change, &opts, None)
+            .expect_err("a structurally invalid change must refuse archive");
+        assert!(err.to_string().contains("Validation failed"), "frozen wording: {err}");
+        assert!(store.change_exists("demo"), "change stays in place");
+        assert_eq!(
+            store.read_artifact("demo", "tasks.md").as_deref(),
+            Some(UNCHECKED_TASKS),
+            "tasks.md byte-for-byte untouched"
+        );
+        assert_eq!(*store.artifact_writes.borrow(), 0, "zero artifact writes");
+    }
+
+    #[test]
+    fn mark_tasks_complete_leaves_tasks_untouched_when_the_dated_name_collides() {
+        // design D1：同日撞名拒絕也落在代勾之前——tasks.md 逐位元不變。
+        let store = gate_store(UNCHECKED_TASKS);
+        // archive() 自取一次日期；測試跨午夜時只放今天會撞不到，今天與明天都放。
+        let today = chrono::NaiveDate::parse_from_str(&util::now_stamps().date, "%Y-%m-%d")
+            .expect("now_stamps date is YYYY-MM-DD");
+        for date in [today, today.succ_opt().expect("tomorrow exists")] {
+            store
+                .archived_metas
+                .borrow_mut()
+                .insert(format!("{date}-demo"), "schema: spec-driven\n".to_string());
+        }
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let opts = ArchiveOptions { mark_tasks_complete: true, ..skip_opts() };
+        let err = archive(&ghost_ws(), &store, &change, &opts, None)
+            .expect_err("a same-day name collision must refuse archive");
+        assert!(err.to_string().contains("already exists"), "frozen wording: {err}");
+        assert!(store.change_exists("demo"), "change stays in place");
+        assert_eq!(
+            store.read_artifact("demo", "tasks.md").as_deref(),
+            Some(UNCHECKED_TASKS),
+            "tasks.md byte-for-byte untouched"
+        );
+        assert_eq!(*store.artifact_writes.borrow(), 0, "zero artifact writes");
+    }
+
+    #[test]
+    fn mark_tasks_complete_checks_star_bullets_and_tab_checkboxes() {
+        // design D1：四條 replace 的凍結規則隨代勾搬進 archive()——星號條列與
+        // tab 分隔的 checkbox 同樣被勾，全部守門通過時封存成功。
+        let store = gate_store(UNCHECKED_TASKS);
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let opts = ArchiveOptions { mark_tasks_complete: true, ..skip_opts() };
+        let outcome = archive(&ghost_ws(), &store, &change, &opts, None).unwrap();
+        assert!(!store.change_exists("demo"), "change moved into the archive");
+        assert_eq!(
+            store.read_archived_artifact(&outcome.dated_name, "tasks.md").as_deref(),
+            Some("- [x] 1.1 a\n- [x] 1.2 b\n* [x] 1.3 c\n- [x]\t1.4 d\n"),
+            "every checkbox form is checked in the archived tasks.md"
+        );
     }
 
     // --- 封存的未結工單守門（design D5；spec review-station「封存的未結工單守門」）---
@@ -1630,6 +1771,11 @@ mod tests {
 
     fn apply_opts() -> ArchiveOptions {
         ArchiveOptions { skip_specs: false, ..skip_opts() }
+    }
+
+    /// bulk 與 CLI 單筆的預設旗標形狀：validate 與 spec 合併都開、不代勾。
+    fn apply_opts_validating() -> ArchiveOptions {
+        ArchiveOptions { no_validate: false, ..apply_opts() }
     }
 
     /// spec「archive trace 注入與零證據提示」：`updated` 是 RFC 3339 帶偏移量的秒級時戳，
@@ -1890,6 +2036,104 @@ mod tests {
         assert!(store.archived_metas.borrow().is_empty(), "nothing archived");
         assert_eq!(*store.canonical.borrow(), before, "canonical specs untouched");
         err.to_string()
+    }
+
+    // --- bulk 預檢的唯讀投影（design D4；spec archive-merge「過期判定單源共用」）---
+
+    /// 過期 delta（ADDED 撞正典）＋結構不合法（零操作 delta）＋任務未完成（1/2）
+    /// 三條同時成立的 change。
+    fn triple_skip_store() -> TestStore {
+        let store = merge_store(&[("auth", ADDED_R1), ("bad", "## ADDED Requirements\n")], &[("auth", CANON_R1)]);
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 a\n- [ ] 1.2 b\n");
+        store
+    }
+
+    #[test]
+    fn skip_reason_picks_merge_then_validate_then_tasks_in_bulk_order() {
+        // 判定順序是 bulk 的凍結輸出契約（merge → validate → tasks），不是 archive() 的守門序：
+        // 三條同時成立時回 merge；每豁免一條，下一條浮上來。呼叫過程零寫入。
+        let store = triple_skip_store();
+        let change = crate::model::find_change(&store, "demo").unwrap();
+
+        let reason = skip_reason(&store, &change, &apply_opts_validating());
+        assert!(
+            matches!(&reason, Some(SkipReason::MergeRefused(vs)) if !vs.is_empty()),
+            "merge comes first: {reason:?}"
+        );
+
+        let opts = ArchiveOptions { skip_specs: true, ..apply_opts_validating() };
+        let reason = skip_reason(&store, &change, &opts);
+        assert!(
+            matches!(reason, Some(SkipReason::StructuralInvalid)),
+            "--skip-specs drops merge, validate is next: {reason:?}"
+        );
+
+        let opts = ArchiveOptions { skip_specs: true, no_validate: true, ..apply_opts_validating() };
+        let reason = skip_reason(&store, &change, &opts);
+        assert!(
+            matches!(reason, Some(SkipReason::TasksIncomplete { complete: 1, total: 2 })),
+            "--no-validate drops validate, tasks is last: {reason:?}"
+        );
+
+        assert_eq!(*store.meta_writes.borrow(), 0, "zero meta writes");
+        assert_eq!(*store.artifact_writes.borrow(), 0, "zero artifact writes");
+        assert!(store.change_exists("demo"), "a projection never moves the change");
+    }
+
+    #[test]
+    fn skip_reason_is_none_when_every_condition_is_exempted() {
+        // 三旗標齊帶 → 沒有可跳過的理由；--mark-tasks-complete 在投影裡從不代勾。
+        let store = triple_skip_store();
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let opts = ArchiveOptions {
+            skip_specs: true,
+            no_validate: true,
+            mark_tasks_complete: true,
+            ..apply_opts_validating()
+        };
+        let reason = skip_reason(&store, &change, &opts);
+        assert!(reason.is_none(), "every reason exempted: {reason:?}");
+        assert_eq!(*store.artifact_writes.borrow(), 0, "the flag never pre-writes here");
+    }
+
+    #[test]
+    fn skip_reason_is_none_for_a_ready_change() {
+        // 全就緒（delta 對得上正典、結構合法、任務全勾）→ None，bulk 不跳過。
+        let store = merge_store(&[("auth", DELTA_SPEC)], &[]);
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let reason = skip_reason(&store, &change, &apply_opts_validating());
+        assert!(reason.is_none(), "ready change has no skip reason: {reason:?}");
+        assert_eq!(*store.artifact_writes.borrow(), 0, "zero artifact writes");
+    }
+
+    // --- 守門序只在 archive() 一份：任務、章失效、結構 validate 皆先於 merge 拒絕 ---
+
+    #[test]
+    fn incomplete_tasks_refuse_before_the_merge_gate() {
+        // 任務未完成＋delta 過期 → 任務守門先拒（訊息不變），merge 拒絕字串不出現。
+        let store = merge_store(&[("auth", ADDED_R1)], &[("auth", CANON_R1)]);
+        store.put_artifact("demo", "tasks.md", "- [ ] 1.1 a\n");
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let err = archive(&ghost_ws(), &store, &change, &apply_opts_validating(), None)
+            .expect_err("incomplete tasks must refuse");
+        let msg = err.to_string();
+        assert!(msg.contains("0/1 tasks complete"), "task gate wording: {msg}");
+        assert!(!msg.contains("cannot be archived"), "merge refusal never reached: {msg}");
+    }
+
+    #[test]
+    fn structural_invalidity_refuses_before_the_merge_gate() {
+        // 結構不合法＋delta 過期 → `Validation failed:` 先於 merge 拒絕。
+        let store = merge_store(
+            &[("auth", ADDED_R1), ("bad", "## ADDED Requirements\n")],
+            &[("auth", CANON_R1)],
+        );
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let err = archive(&ghost_ws(), &store, &change, &apply_opts_validating(), None)
+            .expect_err("structural invalidity must refuse");
+        let msg = err.to_string();
+        assert!(msg.contains("Validation failed"), "validate wording: {msg}");
+        assert!(!msg.contains("cannot be archived"), "merge refusal never reached: {msg}");
     }
 
     #[test]

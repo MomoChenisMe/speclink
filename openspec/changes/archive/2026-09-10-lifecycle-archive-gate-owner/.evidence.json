@@ -1,0 +1,64 @@
+{
+  "version": 2,
+  "change": "lifecycle-archive-gate-owner",
+  "touched": [
+    {
+      "task_id": "2",
+      "task_desc": "2.1 【Red】在 crates/speclink-core/src/archive.rs 測試模組寫 D1 代勾寫入落在計畫階段之後、提交階段的第一個效果的測試：帶 `mark_tasks_complete: true` 且 tasks 未全勾的 change，(a) 結構 validate 失敗（例如 proposal.md 缺 `## Why`）時 `archive()` 回 `Err` 含 `Validation failed` 且 tasks.md 逐位元不變、`artifact_writes` 為 0；(b) 同日撞名（先放一份同 dated_name 的封存）時回 `Err` 含 `already exists` 且 tasks.md 逐位元不變；(c) 全部守門通過時封存成功、封存後的 tasks.md 全部已勾（含 `* [ ]` 條列與 tab 分隔）。既有測試 `mark_tasks_complete_flag_passes_the_gate_without_pre_write` 改名為 `mark_tasks_complete_flag_checks_every_task_inside_archive`、斷言改為封存後 tasks.md 已全勾。驗證：`cargo test -p speclink-core archive::tests::mark_tasks_complete` 中 (a)(b)(c) 與改名的測試失敗。",
+      "files": [
+        "crates/speclink-core/src/archive.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.2 【Green】把 `run_archive` 的代勾段（四條 `replace`）逐字搬進 `archive()`，位置在 `merge_refusal` 判定之後、snapshot 迴圈之前；`run_archive` 縮為 `resolve_change` → `host_workspace` → `archive()`（design D2 run_archive 縮為 resolve_change 加 archive()），刪除其中 `guard_linked_worktree`／`guard_meta`／`guard_open_tickets`／`merge_violations`＋`merge_refusal`／`guard_stale_stamps` 與代勾段。可觀察行為：command 層既有封存測試（壞 meta 兩值零寫入、未結工單拒絕零寫入、`change-archived` 事件）斷言不改全綠。驗證：`cargo test -p speclink-core archive::tests::mark_tasks_complete`、`cargo test -p speclink-core command::tests::archive` 全綠；`grep -n '\"- \\[ \\] \"' crates/speclink-core/src/command/mod.rs` 零命中。路徑：crates/speclink-core/src/archive.rs、crates/speclink-core/src/command/mod.rs",
+      "files": [
+        "crates/speclink-core/src/command/mod.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "4.2 【Green】實作 `SkipReason` 與 `skip_reasons`，任務條件抽成私有 `incomplete_tasks(store, name) -> Option<(usize, usize)>` 供 `archive()` 的任務守門與 `skip_reasons` 共用；bulk（crates/speclink-cli/src/verbs/lifecycle.rs 的 `cmd_archive_bulk`）改為從 `ArchiveArgs` 組一次 `ArchiveOptions`、對每個 change 取 `skip_reasons(...).first()` 渲染既有三段字串（含 Purpose 點名段）後 `continue`，刪除自算的 `merge_violations`／`validate_change_structural`／`tasks::progress` 三段。可觀察行為：`speclink archive --all` 的 `Skipped:` 行、`archive would refuse`、`## Purpose` 點名、`validation failed`、`tasks incomplete (c/t)`、中止三段報告與結尾統計逐字不變。驗證：`cargo test -p speclink-core archive::tests::skip_reasons` 全綠；`cargo test -p speclink-cli --test it archive_merge_gate`、`cargo test -p speclink-cli --test it archive_readiness_gate` 全綠；`grep -n 'merge_violations\\|validate_change_structural\\|tasks::progress' crates/speclink-cli/src/verbs/lifecycle.rs` 零命中。路徑：crates/speclink-core/src/archive.rs、crates/speclink-cli/src/verbs/lifecycle.rs",
+      "files": [
+        "crates/speclink-cli/src/verbs/lifecycle.rs",
+        "crates/speclink-cli/tests/it/validate_specs.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M24GR699DE4ZPV4ACDG1CMN0",
+      "taskDesc": "2.1 【Red】在 crates/speclink-core/src/archive.rs 測試模組寫 D1 代勾寫入落在計畫階段之後、提交階段的第一個效果的測試：帶 `mark_tasks_complete: true` 且 tasks 未全勾的 change，(a) 結構 validate 失敗（例如 proposal.md 缺 `## Why`）時 `archive()` 回 `Err` 含 `Validation failed` 且 tasks.md 逐位元不變、`artifact_writes` 為 0；(b) 同日撞名（先放一份同 dated_name 的封存）時回 `Err` 含 `already exists` 且 tasks.md 逐位元不變；(c) 全部守門通過時封存成功、封存後的 tasks.md 全部已勾（含 `* [ ]` 條列與 tab 分隔）。既有測試 `mark_tasks_complete_flag_passes_the_gate_without_pre_write` 改名為 `mark_tasks_complete_flag_checks_every_task_inside_archive`、斷言改為封存後 tasks.md 已全勾。驗證：`cargo test -p speclink-core archive::tests::mark_tasks_complete` 中 (a)(b)(c) 與改名的測試失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7464532aa3e98880d0f054e3b5caeca7c488dfec",
+      "touchedFiles": [
+        "crates/speclink-core/src/archive.rs"
+      ],
+      "recordedAt": "2026-09-10T02:07:04Z"
+    },
+    {
+      "taskId": "tsk_01M24GR699QN1TXF8DMA9NF2VT",
+      "taskDesc": "2.2 【Green】把 `run_archive` 的代勾段（四條 `replace`）逐字搬進 `archive()`，位置在 `merge_refusal` 判定之後、snapshot 迴圈之前；`run_archive` 縮為 `resolve_change` → `host_workspace` → `archive()`（design D2 run_archive 縮為 resolve_change 加 archive()），刪除其中 `guard_linked_worktree`／`guard_meta`／`guard_open_tickets`／`merge_violations`＋`merge_refusal`／`guard_stale_stamps` 與代勾段。可觀察行為：command 層既有封存測試（壞 meta 兩值零寫入、未結工單拒絕零寫入、`change-archived` 事件）斷言不改全綠。驗證：`cargo test -p speclink-core archive::tests::mark_tasks_complete`、`cargo test -p speclink-core command::tests::archive` 全綠；`grep -n '\"- \\[ \\] \"' crates/speclink-core/src/command/mod.rs` 零命中。路徑：crates/speclink-core/src/archive.rs、crates/speclink-core/src/command/mod.rs",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7464532aa3e98880d0f054e3b5caeca7c488dfec",
+      "touchedFiles": [
+        "crates/speclink-core/src/command/mod.rs"
+      ],
+      "recordedAt": "2026-09-10T02:08:58Z"
+    },
+    {
+      "taskId": "tsk_01M24GR699PHDGPJR1YEZ7Y597",
+      "taskDesc": "4.2 【Green】實作 `SkipReason` 與 `skip_reasons`，任務條件抽成私有 `incomplete_tasks(store, name) -> Option<(usize, usize)>` 供 `archive()` 的任務守門與 `skip_reasons` 共用；bulk（crates/speclink-cli/src/verbs/lifecycle.rs 的 `cmd_archive_bulk`）改為從 `ArchiveArgs` 組一次 `ArchiveOptions`、對每個 change 取 `skip_reasons(...).first()` 渲染既有三段字串（含 Purpose 點名段）後 `continue`，刪除自算的 `merge_violations`／`validate_change_structural`／`tasks::progress` 三段。可觀察行為：`speclink archive --all` 的 `Skipped:` 行、`archive would refuse`、`## Purpose` 點名、`validation failed`、`tasks incomplete (c/t)`、中止三段報告與結尾統計逐字不變。驗證：`cargo test -p speclink-core archive::tests::skip_reasons` 全綠；`cargo test -p speclink-cli --test it archive_merge_gate`、`cargo test -p speclink-cli --test it archive_readiness_gate` 全綠；`grep -n 'merge_violations\\|validate_change_structural\\|tasks::progress' crates/speclink-cli/src/verbs/lifecycle.rs` 零命中。路徑：crates/speclink-core/src/archive.rs、crates/speclink-cli/src/verbs/lifecycle.rs",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7464532aa3e98880d0f054e3b5caeca7c488dfec",
+      "touchedFiles": [
+        "crates/speclink-cli/src/verbs/lifecycle.rs",
+        "crates/speclink-cli/tests/it/validate_specs.rs"
+      ],
+      "recordedAt": "2026-09-10T02:44:00Z"
+    }
+  ]
+}

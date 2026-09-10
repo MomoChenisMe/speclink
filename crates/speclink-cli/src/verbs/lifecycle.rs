@@ -42,6 +42,19 @@ pub(crate) struct ArchiveArgs {
     #[arg(long = "carry-verify")]
     carry_verify: bool,
 }
+/// bulk 預檢與 `Command::Archive` 都從同一份旗標出發——只在這裡抄一次。
+impl From<&ArchiveArgs> for core::archive::ArchiveOptions {
+    fn from(a: &ArchiveArgs) -> Self {
+        Self {
+            skip_specs: a.skip_specs,
+            no_validate: a.no_validate,
+            mark_tasks_complete: a.mark_tasks_complete,
+            carry_review: a.carry_review,
+            carry_verify: a.carry_verify,
+        }
+    }
+}
+
 #[derive(Args)]
 pub(crate) struct DiscardArgs {
     /// Change to discard
@@ -134,65 +147,52 @@ fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Resul
             .cmp(&(y.meta.created.as_deref().unwrap_or(""), &y.name))
     });
 
-    let schema = core::schema::spec_driven();
+    // Readiness is the engine's own read-only projection of its archive gates
+    // (spec archive-merge「過期判定單源共用」): nothing the merge gate would refuse,
+    // valid, tasks complete — each exempted by its flag. Only the wording lives here.
+    let opts = core::archive::ArchiveOptions::from(a);
     let mut archived: Vec<String> = Vec::new();
     let mut skipped: Vec<(String, String)> = Vec::new();
     for (idx, change) in changes.iter().enumerate() {
-        // Readiness: nothing the merge gate would refuse (the pre-check reads the
-        // engine's own judgement — spec archive-merge「過期判定單源共用」), valid,
-        // tasks complete. --skip-specs bypasses spec application, so the gate never
-        // runs there and the pre-check must not filter on it either.
-        if !a.skip_specs {
-            let refused = core::archive::merge_violations(store, &change.name);
-            if !refused.is_empty() {
-                let mut reason = format!(
-                    "{} delta operation(s) archive would refuse — run /speclink-drift {}",
-                    refused.len(),
-                    change.name
-                );
-                // Purpose 守門的違規點名到 capability（spec archive-merge「新
-                // capability 缺 Purpose 的違規呈現三處一致」）：只給計數會讓
-                // 使用者以為是過期 delta，走錯 drift → ingest 的修法。
-                let purpose_caps: Vec<&str> = refused
-                    .iter()
-                    .filter(|v| v.is_purpose_gate())
-                    .map(|v| v.capability.as_str())
-                    .collect();
-                if !purpose_caps.is_empty() {
-                    reason.push_str(&format!(
-                        " (new capability {} lacks a qualifying `## Purpose`)",
-                        purpose_caps.join(", ")
-                    ));
+        if let Some(reason) = core::archive::skip_reason(store, change, &opts) {
+            let why = match reason {
+                core::archive::SkipReason::MergeRefused(refused) => {
+                    let mut text = format!(
+                        "{} delta operation(s) archive would refuse — run /speclink-drift {}",
+                        refused.len(),
+                        change.name
+                    );
+                    // Purpose 守門的違規點名到 capability（spec archive-merge「新
+                    // capability 缺 Purpose 的違規呈現三處一致」）：只給計數會讓
+                    // 使用者以為是過期 delta，走錯 drift → ingest 的修法。
+                    let purpose_caps: Vec<&str> = refused
+                        .iter()
+                        .filter(|v| v.is_purpose_gate())
+                        .map(|v| v.capability.as_str())
+                        .collect();
+                    if !purpose_caps.is_empty() {
+                        text.push_str(&format!(
+                            " (new capability {} lacks a qualifying `## Purpose`)",
+                            purpose_caps.join(", ")
+                        ));
+                    }
+                    text
                 }
-                skipped.push((change.name.clone(), reason));
-                continue;
-            }
-        }
-        if !a.no_validate {
-            // Structural only: the readiness pre-check above already ran the merge
-            // gate, and --skip-specs deliberately bypasses it — validate must not
-            // reintroduce it there.
-            let res = core::validate::validate_change_structural(store, change, &schema, false);
-            if !res.valid {
-                skipped.push((change.name.clone(), "validation failed".to_string()));
-                continue;
-            }
-        }
-        let tasks = core::tasks::parse(
-            &store.read_artifact(&change.name, "tasks.md").unwrap_or_default(),
-        );
-        let (total, complete, _) = core::tasks::progress(&tasks);
-        if total > 0 && complete < total && !a.mark_tasks_complete {
-            skipped.push((change.name.clone(), format!("tasks incomplete ({complete}/{total})")));
+                core::archive::SkipReason::StructuralInvalid => "validation failed".to_string(),
+                core::archive::SkipReason::TasksIncomplete { complete, total } => {
+                    format!("tasks incomplete ({complete}/{total})")
+                }
+            };
+            skipped.push((change.name.clone(), why));
             continue;
         }
         let archive_cmd = core::command::Command::Archive {
             change: Some(change.name.clone()),
-            skip_specs: a.skip_specs,
-            no_validate: a.no_validate,
-            mark_tasks_complete: a.mark_tasks_complete,
-            carry_review: a.carry_review,
-            carry_verify: a.carry_verify,
+            skip_specs: opts.skip_specs,
+            no_validate: opts.no_validate,
+            mark_tasks_complete: opts.mark_tasks_complete,
+            carry_review: opts.carry_review,
+            carry_verify: opts.carry_verify,
         };
         match run::<core::archive::ArchiveOutcome>(store, Some(ws), archive_cmd) {
             Ok(outcome) => {

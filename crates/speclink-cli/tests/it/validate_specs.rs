@@ -208,6 +208,13 @@ fn validate_and_drift_name_the_same_stale_operation() {
         bulk.contains("Skipped: demo — 1 delta operation(s) archive would refuse"),
         "bulk 預檢讀同一判定: {bulk}"
     );
+    // 單筆封存的守門序只在 archive() 一份（任務完成度先於 merge 守門）：先把任務
+    // 勾齊，讓 merge 守門成為唯一的拒絕理由。
+    std::fs::write(
+        p.dir.join("openspec").join("changes").join("demo").join("tasks.md"),
+        "- [x] 1.1 a\n",
+    )
+    .unwrap();
     let single = p.run(&["archive", "demo", "--no-color"]);
     let stderr = String::from_utf8_lossy(&single.stderr).to_string();
     assert!(!single.status.success(), "單筆 archive 拒絕: {stderr}");

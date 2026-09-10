@@ -5,7 +5,7 @@ status: promoted
 created: 2026-09-09
 created_by: MomoChen <momochenisme@gmail.com>
 kind: improve
-promoted_to: lifecycle-discussion-head, lifecycle-change-meta-edit, lifecycle-station-anchors
+promoted_to: lifecycle-discussion-head, lifecycle-change-meta-edit, lifecycle-station-anchors, lifecycle-archive-gate-owner
 ---
 
 # Discussion: 討論與變更生命週期層的結構改善——討論 frontmatter 文字手術、討論收尾判準雙源、封存守門鏈三處重複、站別門面
