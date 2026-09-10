@@ -1,0 +1,63 @@
+schema: spec-driven
+created: 2026-09-09
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: improve-lifecycle-layer
+started_at: 2026-09-10
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-10
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 10
+reviewed_scope:
+  - path: apps/desktop/core/src/cache.rs
+    hash: 7ab196b8c48d198664f5975dc8b62f9edb160019dcdf8bea7be42311461b579b
+  - path: apps/desktop/core/src/query.rs
+    hash: a01e5adf9640f5f65daaa0395672cf134258e86f148bc1ba6a3ec487e62e5369
+  - path: apps/desktop/core/src/verbs.rs
+    hash: 8634e6cdb8c6b6fd51b940f195013e6c39b36041b55940e44b3652dd2f24d4f8
+  - path: crates/speclink-cli/src/verbs/station.rs
+    hash: 7131d2bef480a2550a8d7b3a6ada162ae8a3888daf8573def496ccf82b20149a
+  - path: crates/speclink-core/src/archive.rs
+    hash: f6161b5d0379095e347e3c111ae44829297587fd3b0f3b1eaaea1f798ad45e5f
+  - path: crates/speclink-core/src/command/mod.rs
+    hash: 8f234ed5a9be04ebf3976b9ad95f6c53bc437fc11eb28eff9258e6c9e868d1ae
+  - path: crates/speclink-core/src/lib.rs
+    hash: ec746908688e4a641261691d9d22eb13c1d31cb06aa780527d72c0d15d4b5f77
+  - path: crates/speclink-core/src/model.rs
+    hash: 6c8ed6bbdcc05b501349fc2cdb24258cbb1e52b35639480580e788fac62812be
+  - path: crates/speclink-core/src/station.rs
+    hash: 5ae90f0e5b835a6f26483aa2f32eb49f9b0e2d826813f892f8ccc295cf68730c
+  - path: docs/product-status.md
+    hash: 2104852e6e70dd490b11284d5082b28466a5a9afe97416990e01f8ccc8702c24
+  - path: docs/product-status.zh-TW.md
+    hash: 347e3df7171822231f936ef6b2a7c77af9e55fab24a984a826c8b0da79aa4bed
+verified_at: 2026-09-10
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 10
+verified_scope:
+  - path: apps/desktop/core/src/cache.rs
+    hash: 7ab196b8c48d198664f5975dc8b62f9edb160019dcdf8bea7be42311461b579b
+  - path: apps/desktop/core/src/query.rs
+    hash: a01e5adf9640f5f65daaa0395672cf134258e86f148bc1ba6a3ec487e62e5369
+  - path: apps/desktop/core/src/verbs.rs
+    hash: 8634e6cdb8c6b6fd51b940f195013e6c39b36041b55940e44b3652dd2f24d4f8
+  - path: crates/speclink-cli/src/verbs/station.rs
+    hash: 7131d2bef480a2550a8d7b3a6ada162ae8a3888daf8573def496ccf82b20149a
+  - path: crates/speclink-core/src/archive.rs
+    hash: f6161b5d0379095e347e3c111ae44829297587fd3b0f3b1eaaea1f798ad45e5f
+  - path: crates/speclink-core/src/command/mod.rs
+    hash: 8f234ed5a9be04ebf3976b9ad95f6c53bc437fc11eb28eff9258e6c9e868d1ae
+  - path: crates/speclink-core/src/lib.rs
+    hash: ec746908688e4a641261691d9d22eb13c1d31cb06aa780527d72c0d15d4b5f77
+  - path: crates/speclink-core/src/model.rs
+    hash: 6c8ed6bbdcc05b501349fc2cdb24258cbb1e52b35639480580e788fac62812be
+  - path: crates/speclink-core/src/station.rs
+    hash: 5ae90f0e5b835a6f26483aa2f32eb49f9b0e2d826813f892f8ccc295cf68730c
+  - path: docs/product-status.md
+    hash: 2104852e6e70dd490b11284d5082b28466a5a9afe97416990e01f8ccc8702c24
+  - path: docs/product-status.zh-TW.md
+    hash: 347e3df7171822231f936ef6b2a7c77af9e55fab24a984a826c8b0da79aa4bed
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-10

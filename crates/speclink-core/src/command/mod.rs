@@ -15,6 +15,7 @@ pub use typed::WrongOutcome;
 use crate::config::ConfigError;
 use crate::model::Change;
 use crate::schema::Schema;
+use crate::station::{self, Station, REVIEW, VERIFY};
 use crate::store::Store;
 use crate::workspace::Workspace;
 
@@ -113,7 +114,7 @@ fn classify(e: anyhow::Error) -> CommandError {
         (ErrorCode::Refused, b.to_string())
     } else if let Some(m) = e.downcast_ref::<crate::model::MetaError>() {
         (ErrorCode::InvalidConfig, m.to_string())
-    } else if let Some(n) = e.downcast_ref::<crate::review::NotFound>() {
+    } else if let Some(n) = e.downcast_ref::<station::NotFound>() {
         (ErrorCode::NotFound, n.to_string())
     } else {
         (ErrorCode::Error, e.to_string())
@@ -123,6 +124,36 @@ fn classify(e: anyhow::Error) -> CommandError {
         message,
         source: Some(e),
     }
+}
+
+/// 兩個品質站的工單動詞執行體：站別只差常數、outcome 結構兩站共用，Command
+/// 臂只剩選站別與包 `CommandOutcome` 變體。`stamp` 臂不抽——抽出去要 8 個參數。
+fn station_add_round(
+    st: &Station,
+    store: &dyn Store,
+    change: String,
+    content: &str,
+) -> Result<ReviewRoundOutcome, CommandError> {
+    let round = station::add_round(st, store, &change, content).map_err(classify)?;
+    Ok(ReviewRoundOutcome { change, round })
+}
+
+fn station_show(
+    st: &Station,
+    store: &dyn Store,
+    change: String,
+) -> Result<ReviewShowOutcome, CommandError> {
+    let (ticket, content) = station::show_with_content(st, store, &change).map_err(classify)?;
+    Ok(ReviewShowOutcome { change, ticket, content })
+}
+
+fn station_discard(
+    st: &Station,
+    store: &dyn Store,
+    change: String,
+) -> Result<ReviewSubjectOutcome, CommandError> {
+    station::discard(st, store, &change).map_err(classify)?;
+    Ok(ReviewSubjectOutcome { change })
 }
 
 /// Command-layer fail-closed gate: a resolved change whose metadata is corrupt
@@ -583,7 +614,7 @@ pub struct ReviewRoundOutcome {
 #[derive(Debug)]
 pub struct ReviewShowOutcome {
     pub change: String,
-    pub ticket: crate::review::Ticket,
+    pub ticket: station::Ticket,
     pub content: Option<String>,
 }
 
@@ -797,16 +828,14 @@ pub fn execute(
             Ok(CommandOutcome::DiscussDiscard(DiscussSubjectOutcome { slug }))
         }
         Command::ReviewAddRound { change, content } => {
-            let round = crate::review::add_round(store, &change, &content).map_err(classify)?;
-            Ok(CommandOutcome::ReviewAddRound(ReviewRoundOutcome { change, round }))
+            Ok(CommandOutcome::ReviewAddRound(station_add_round(&REVIEW, store, change, &content)?))
         }
         Command::ReviewShow { change } => {
-            let (ticket, content) =
-                crate::review::show_with_content(store, &change).map_err(classify)?;
-            Ok(CommandOutcome::ReviewShow(ReviewShowOutcome { change, ticket, content }))
+            Ok(CommandOutcome::ReviewShow(station_show(&REVIEW, store, change)?))
         }
         Command::ReviewStamp { change, accept, tool, scope, missing } => {
-            crate::review::stamp_with_scope(
+            station::stamp_with_scope(
+                &REVIEW,
                 store,
                 &change,
                 accept,
@@ -819,20 +848,17 @@ pub fn execute(
             Ok(CommandOutcome::ReviewStamp(ReviewSubjectOutcome { change }))
         }
         Command::ReviewDiscard { change } => {
-            crate::review::discard(store, &change).map_err(classify)?;
-            Ok(CommandOutcome::ReviewDiscard(ReviewSubjectOutcome { change }))
+            Ok(CommandOutcome::ReviewDiscard(station_discard(&REVIEW, store, change)?))
         }
         Command::VerifyAddRound { change, content } => {
-            let round = crate::verify::add_round(store, &change, &content).map_err(classify)?;
-            Ok(CommandOutcome::VerifyAddRound(ReviewRoundOutcome { change, round }))
+            Ok(CommandOutcome::VerifyAddRound(station_add_round(&VERIFY, store, change, &content)?))
         }
         Command::VerifyShow { change } => {
-            let (ticket, content) =
-                crate::verify::show_with_content(store, &change).map_err(classify)?;
-            Ok(CommandOutcome::VerifyShow(ReviewShowOutcome { change, ticket, content }))
+            Ok(CommandOutcome::VerifyShow(station_show(&VERIFY, store, change)?))
         }
         Command::VerifyStamp { change, accept, tool, scope, missing } => {
-            crate::verify::stamp_with_scope(
+            station::stamp_with_scope(
+                &VERIFY,
                 store,
                 &change,
                 accept,
@@ -845,8 +871,7 @@ pub fn execute(
             Ok(CommandOutcome::VerifyStamp(ReviewSubjectOutcome { change }))
         }
         Command::VerifyDiscard { change } => {
-            crate::verify::discard(store, &change).map_err(classify)?;
-            Ok(CommandOutcome::VerifyDiscard(ReviewSubjectOutcome { change }))
+            Ok(CommandOutcome::VerifyDiscard(station_discard(&VERIFY, store, change)?))
         }
     }?;
     let events = events_of(&outcome);
@@ -2059,7 +2084,7 @@ mod tests {
         const TICKET: &str = "# Review — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n";
         let store = TestStore::with_meta("demo", "schema: spec-driven\n");
         store.put_artifact("demo", "tasks.md", TASKS);
-        store.put_artifact("demo", crate::review::REVIEW_DOC, TICKET);
+        store.put_artifact("demo", crate::station::REVIEW_DOC, TICKET);
         let err = execute(
             &store,
             &ExecutionContext::default(),
@@ -3138,7 +3163,7 @@ mod tests {
             actor: Some("Rev <r@example.com>".to_string()),
             ..Default::default()
         };
-        let hash = crate::review::content_fingerprint("fn lib() {}\n");
+        let hash = crate::station::content_fingerprint("fn lib() {}\n");
         let (_, ev) = execute(
             &store,
             &ctx,

@@ -149,11 +149,11 @@ struct StationCli {
     pub ns: speclink_host::change_diff::StationNs,
 }
 const REVIEW_CLI: StationCli = StationCli {
-    station: &core::review::STATION,
+    station: &core::station::REVIEW,
     ns: speclink_host::change_diff::StationNs::Review,
 };
 const VERIFY_CLI: StationCli = StationCli {
-    station: &core::verify::STATION,
+    station: &core::station::VERIFY,
     ns: speclink_host::change_diff::StationNs::Verify,
 };
 pub(crate) fn cmd_review(a: ReviewArgs) -> Result<()> {

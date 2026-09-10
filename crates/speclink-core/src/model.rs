@@ -2,6 +2,7 @@
 
 use crate::keylines::KeyLines;
 use crate::schema::{Artifact, Schema};
+use crate::station::{StampAnchors, Station, StationId};
 use crate::store::Store;
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -96,6 +97,24 @@ impl ChangeMeta {
         self.schema
             .clone()
             .unwrap_or_else(|| "spec-driven".to_string())
+    }
+
+    /// 一個品質站的章在這份 meta 裡的三個錨（lifecycle-station-anchors D1）：
+    /// 「這個站的章住在哪些欄位」只有這一份對映。對 `StationId` 窮舉 match——
+    /// 第三站來時漏補臂是編譯錯誤，不會靜默讀到空章。
+    pub fn anchors(&self, st: &Station) -> StampAnchors<'_> {
+        match st.id {
+            StationId::Review => StampAnchors {
+                stamped_at: self.reviewed_at.as_deref(),
+                tasks_total: self.reviewed_tasks_total,
+                scope: &self.reviewed_scope,
+            },
+            StationId::Verify => StampAnchors {
+                stamped_at: self.verified_at.as_deref(),
+                tasks_total: self.verified_tasks_total,
+                scope: &self.verified_scope,
+            },
+        }
     }
 
     /// The discussions this change was promoted from or linked to. `from_discussion`
@@ -720,6 +739,47 @@ mod tests {
         assert_eq!(meta.started_at.as_deref(), Some("2026-07-03"));
         assert_eq!(meta.started_by.as_deref(), Some("Worker <w@example.com>"));
         assert_eq!(meta.started_with.as_deref(), Some("claude"));
+    }
+
+    // --- anchors：站別章欄位的對映單源（lifecycle-station-anchors design D1）---
+
+    const REVIEWED_ONLY: &str = "schema: spec-driven\nreviewed_at: 2026-08-01\nreviewed_tasks_total: 5\nreviewed_scope:\n  - path: crates/a/src/lib.rs\n    hash: dead\n";
+    const BOTH_STAMPED: &str = "schema: spec-driven\nreviewed_at: 2026-08-01\nreviewed_tasks_total: 5\nreviewed_scope:\n  - path: crates/a/src/lib.rs\n    hash: dead\nverified_at: 2026-08-02\nverified_tasks_total: 6\nverified_scope:\n  - path: crates/b/src/util.rs\n    hash: beef\n";
+
+    #[test]
+    fn anchors_reads_the_review_stamp_only_for_the_review_station() {
+        // 只帶 reviewed_* 的 meta：審查站取到三欄，驗證站三欄皆空（缺席讀作未蓋章）。
+        let meta = ChangeMeta::from_text(Some(REVIEWED_ONLY)).expect("meta parses");
+        let review = meta.anchors(&crate::station::REVIEW);
+        assert_eq!(review.stamped_at, Some("2026-08-01"));
+        assert_eq!(review.tasks_total, Some(5));
+        assert_eq!(review.scope.len(), 1);
+        assert_eq!(review.scope[0].path, "crates/a/src/lib.rs");
+        assert_eq!(review.scope[0].hash, "dead");
+        assert!(crate::station::is_stamped(review), "review stamp is complete");
+        let verify = meta.anchors(&crate::station::VERIFY);
+        assert_eq!(verify.stamped_at, None);
+        assert_eq!(verify.tasks_total, None);
+        assert!(verify.scope.is_empty());
+        assert!(!crate::station::is_stamped(verify), "no verify stamp to read");
+    }
+
+    #[test]
+    fn anchors_keeps_the_two_stamps_apart_when_both_are_present() {
+        // 兩站都帶章：各取各的欄位，互不遮蔽。
+        let meta = ChangeMeta::from_text(Some(BOTH_STAMPED)).expect("meta parses");
+        let review = meta.anchors(&crate::station::REVIEW);
+        assert_eq!(review.stamped_at, Some("2026-08-01"));
+        assert_eq!(review.tasks_total, Some(5));
+        assert_eq!(review.scope[0].path, "crates/a/src/lib.rs");
+        assert_eq!(review.scope[0].hash, "dead");
+        let verify = meta.anchors(&crate::station::VERIFY);
+        assert_eq!(verify.stamped_at, Some("2026-08-02"));
+        assert_eq!(verify.tasks_total, Some(6));
+        assert_eq!(verify.scope[0].path, "crates/b/src/util.rs");
+        assert_eq!(verify.scope[0].hash, "beef");
+        assert!(crate::station::is_stamped(review));
+        assert!(crate::station::is_stamped(verify));
     }
 
     // --- from_discussion 累積器讀取（design D1；M↔N 關係）---

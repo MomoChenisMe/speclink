@@ -1,0 +1,130 @@
+{
+  "version": 2,
+  "change": "lifecycle-station-anchors",
+  "touched": [
+    {
+      "task_id": "2",
+      "task_desc": "2.1 【Red】在 crates/speclink-core/src/model.rs 測試模組寫 D1 ChangeMeta::anchors 以 StationId 窮舉對映的測試：只帶 `reviewed_*` 的 meta，`anchors(&REVIEW)` 取到 at／tasks_total／scope 三欄、`anchors(&VERIFY)` 三欄皆空（`is_stamped` 為 false）；兩站都帶章時各取各的、互不遮蔽。驗證：`cargo test -p speclink-core model::tests::anchors_` 失敗於方法不存在。",
+      "files": [
+        "crates/speclink-core/src/model.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.2 【Green】在 crates/speclink-core/src/station.rs 新增 `StationId { Review, Verify }` 與 `Station.id` 欄位，把 `REVIEW_DOC`／`VERIFY_DOC` 與兩個站常數 `REVIEW`／`VERIFY` 定義進 station.rs（欄位值逐字沿 review.rs／verify.rs 的 STATION）；在 model.rs 實作 `ChangeMeta::anchors(&self, st: &Station) -> StampAnchors<'_>`（對 `st.id` 窮舉 match）。此步 review.rs／verify.rs 仍在、暫時同時存在兩份常數，編譯須通過。驗證：`cargo test -p speclink-core model::tests::anchors_` 全綠。路徑：crates/speclink-core/src/station.rs、crates/speclink-core/src/model.rs",
+      "files": [
+        "crates/speclink-core/src/review.rs",
+        "crates/speclink-core/src/station.rs",
+        "crates/speclink-core/src/verify.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.2 【Green】`station::freshness` 改簽名為 `(st, meta, counts, read_file)`，原判定本體改名私有 `freshness_of(anchors, counts, read_file)`；`archive.rs` 的 `guard_stale_stamps` 兩臂手寫對映改為 `[&REVIEW, &VERIFY]` 迭代加 `change.meta.anchors(st)`；review.rs／verify.rs 的門面 `freshness` 暫改為轉發到新簽名（下一組刪除）。可觀察行為：archive 章失效守門既有測試斷言不改全綠。驗證：`cargo test -p speclink-core station::tests::freshness_takes_meta`、`cargo test -p speclink-core archive::tests::` 全綠；`grep -n 'reviewed_at.as_deref()' crates/speclink-core/src/archive.rs` 零命中。路徑：crates/speclink-core/src/station.rs、crates/speclink-core/src/archive.rs",
+      "files": [
+        "crates/speclink-core/src/archive.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "4.2 依 D4 呼叫端改寫清單改寫 speclink-core 內的呼叫端：command/mod.rs 的 8 個 Review／Verify 臂改 `crate::station::xxx(&crate::station::REVIEW|VERIFY, …)`、`classify` 改 downcast `crate::station::NotFound`、測試的 `REVIEW_DOC`／`content_fingerprint` 改路徑；archive.rs 的 `guard_open_tickets` 與測試常數改路徑。然後執行 D3 常數與門面搬進 station.rs、兩檔刪除：刪除 crates/speclink-core/src/review.rs 與 verify.rs，lib.rs 移除兩個 `pub mod`。可觀察行為：review／verify／archive 動詞的訊息與 `--json` 不變。驗證：`cargo test -p speclink-core` 全綠；`test ! -e crates/speclink-core/src/review.rs && test ! -e crates/speclink-core/src/verify.rs`；`grep -rn 'crate::review::\\|crate::verify::' crates/speclink-core/src` 零命中。路徑：crates/speclink-core/src/command/mod.rs、crates/speclink-core/src/archive.rs、crates/speclink-core/src/lib.rs",
+      "files": [
+        "crates/speclink-core/src/command/mod.rs",
+        "crates/speclink-core/src/lib.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.3 依 D4 呼叫端改寫清單改寫 workspace 內的其他消費者：crates/speclink-cli/src/verbs/station.rs 的 `REVIEW_CLI`／`VERIFY_CLI` 改指 `core::station::REVIEW`／`VERIFY`；apps/desktop/core/src/query.rs 的兩個 DOC 常數與兩處 `freshness(&REVIEW|VERIFY, &c.meta, &counts, &read_file)`、測試的 `content_fingerprint`／`content_fingerprint_bytes` 改路徑；cache.rs 兩個 DOC 常數；verbs.rs 兩處 `station::discard(&REVIEW|VERIFY, store, change)`。可觀察行為：CLI review／verify 家族與 desktop 的 `reviewStatus`／`verifyStatus`／`reviewedNotPassed`／`verifiedNotPassed` 值不變。驗證：`cargo test -p speclink-cli --test it`、`cargo test -p speclink-desktop-core` 全綠；`grep -rn 'core::review::\\|core::verify::\\|speclink_core::review::\\|speclink_core::verify::' --include='*.rs' crates apps` 零命中。路徑：crates/speclink-cli/src/verbs/station.rs、apps/desktop/core/src/query.rs、apps/desktop/core/src/cache.rs、apps/desktop/core/src/verbs.rs",
+      "files": [
+        "apps/desktop/core/src/cache.rs",
+        "apps/desktop/core/src/query.rs",
+        "apps/desktop/core/src/verbs.rs",
+        "crates/speclink-cli/src/verbs/station.rs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "5.2 `cargo clippy -p speclink-core -p speclink-cli -p speclink-desktop-core --all-targets -- -D warnings` 零警告（刪檔後不留孤兒 `use`）；跑 `node --test scripts/*.test.mjs` 全綠。驗證：兩條指令 exit code 0。路徑：crates/、apps/desktop/core、scripts/",
+      "files": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M23EBH0MFTZ65XC3K0XH9KG5",
+      "taskDesc": "2.1 【Red】在 crates/speclink-core/src/model.rs 測試模組寫 D1 ChangeMeta::anchors 以 StationId 窮舉對映的測試：只帶 `reviewed_*` 的 meta，`anchors(&REVIEW)` 取到 at／tasks_total／scope 三欄、`anchors(&VERIFY)` 三欄皆空（`is_stamped` 為 false）；兩站都帶章時各取各的、互不遮蔽。驗證：`cargo test -p speclink-core model::tests::anchors_` 失敗於方法不存在。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d852293d93d1b28f9c2c4dfa769068dd49d2b0dd",
+      "touchedFiles": [
+        "crates/speclink-core/src/model.rs"
+      ],
+      "recordedAt": "2026-09-09T16:05:32Z"
+    },
+    {
+      "taskId": "tsk_01M23EBH0MF0Y2VHAD0N8SNE58",
+      "taskDesc": "2.2 【Green】在 crates/speclink-core/src/station.rs 新增 `StationId { Review, Verify }` 與 `Station.id` 欄位，把 `REVIEW_DOC`／`VERIFY_DOC` 與兩個站常數 `REVIEW`／`VERIFY` 定義進 station.rs（欄位值逐字沿 review.rs／verify.rs 的 STATION）；在 model.rs 實作 `ChangeMeta::anchors(&self, st: &Station) -> StampAnchors<'_>`（對 `st.id` 窮舉 match）。此步 review.rs／verify.rs 仍在、暫時同時存在兩份常數，編譯須通過。驗證：`cargo test -p speclink-core model::tests::anchors_` 全綠。路徑：crates/speclink-core/src/station.rs、crates/speclink-core/src/model.rs",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d852293d93d1b28f9c2c4dfa769068dd49d2b0dd",
+      "touchedFiles": [
+        "crates/speclink-core/src/review.rs",
+        "crates/speclink-core/src/station.rs",
+        "crates/speclink-core/src/verify.rs"
+      ],
+      "recordedAt": "2026-09-09T16:07:07Z"
+    },
+    {
+      "taskId": "tsk_01M23EBH0MC774Q1ARVN9W3SJD",
+      "taskDesc": "3.2 【Green】`station::freshness` 改簽名為 `(st, meta, counts, read_file)`，原判定本體改名私有 `freshness_of(anchors, counts, read_file)`；`archive.rs` 的 `guard_stale_stamps` 兩臂手寫對映改為 `[&REVIEW, &VERIFY]` 迭代加 `change.meta.anchors(st)`；review.rs／verify.rs 的門面 `freshness` 暫改為轉發到新簽名（下一組刪除）。可觀察行為：archive 章失效守門既有測試斷言不改全綠。驗證：`cargo test -p speclink-core station::tests::freshness_takes_meta`、`cargo test -p speclink-core archive::tests::` 全綠；`grep -n 'reviewed_at.as_deref()' crates/speclink-core/src/archive.rs` 零命中。路徑：crates/speclink-core/src/station.rs、crates/speclink-core/src/archive.rs",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d852293d93d1b28f9c2c4dfa769068dd49d2b0dd",
+      "touchedFiles": [
+        "crates/speclink-core/src/archive.rs"
+      ],
+      "recordedAt": "2026-09-09T16:09:26Z"
+    },
+    {
+      "taskId": "tsk_01M23EBH0MYFH935JJS1HE6HSH",
+      "taskDesc": "4.2 依 D4 呼叫端改寫清單改寫 speclink-core 內的呼叫端：command/mod.rs 的 8 個 Review／Verify 臂改 `crate::station::xxx(&crate::station::REVIEW|VERIFY, …)`、`classify` 改 downcast `crate::station::NotFound`、測試的 `REVIEW_DOC`／`content_fingerprint` 改路徑；archive.rs 的 `guard_open_tickets` 與測試常數改路徑。然後執行 D3 常數與門面搬進 station.rs、兩檔刪除：刪除 crates/speclink-core/src/review.rs 與 verify.rs，lib.rs 移除兩個 `pub mod`。可觀察行為：review／verify／archive 動詞的訊息與 `--json` 不變。驗證：`cargo test -p speclink-core` 全綠；`test ! -e crates/speclink-core/src/review.rs && test ! -e crates/speclink-core/src/verify.rs`；`grep -rn 'crate::review::\\|crate::verify::' crates/speclink-core/src` 零命中。路徑：crates/speclink-core/src/command/mod.rs、crates/speclink-core/src/archive.rs、crates/speclink-core/src/lib.rs",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d852293d93d1b28f9c2c4dfa769068dd49d2b0dd",
+      "touchedFiles": [
+        "crates/speclink-core/src/command/mod.rs",
+        "crates/speclink-core/src/lib.rs"
+      ],
+      "recordedAt": "2026-09-09T16:16:22Z"
+    },
+    {
+      "taskId": "tsk_01M23EBH0MFTHJQS0VZ2AQ62FC",
+      "taskDesc": "4.3 依 D4 呼叫端改寫清單改寫 workspace 內的其他消費者：crates/speclink-cli/src/verbs/station.rs 的 `REVIEW_CLI`／`VERIFY_CLI` 改指 `core::station::REVIEW`／`VERIFY`；apps/desktop/core/src/query.rs 的兩個 DOC 常數與兩處 `freshness(&REVIEW|VERIFY, &c.meta, &counts, &read_file)`、測試的 `content_fingerprint`／`content_fingerprint_bytes` 改路徑；cache.rs 兩個 DOC 常數；verbs.rs 兩處 `station::discard(&REVIEW|VERIFY, store, change)`。可觀察行為：CLI review／verify 家族與 desktop 的 `reviewStatus`／`verifyStatus`／`reviewedNotPassed`／`verifiedNotPassed` 值不變。驗證：`cargo test -p speclink-cli --test it`、`cargo test -p speclink-desktop-core` 全綠；`grep -rn 'core::review::\\|core::verify::\\|speclink_core::review::\\|speclink_core::verify::' --include='*.rs' crates apps` 零命中。路徑：crates/speclink-cli/src/verbs/station.rs、apps/desktop/core/src/query.rs、apps/desktop/core/src/cache.rs、apps/desktop/core/src/verbs.rs",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d852293d93d1b28f9c2c4dfa769068dd49d2b0dd",
+      "touchedFiles": [
+        "apps/desktop/core/src/cache.rs",
+        "apps/desktop/core/src/query.rs",
+        "apps/desktop/core/src/verbs.rs",
+        "crates/speclink-cli/src/verbs/station.rs"
+      ],
+      "recordedAt": "2026-09-09T16:26:58Z"
+    },
+    {
+      "taskId": "tsk_01M23EBH0M09DPRPJAY0DD2JV0",
+      "taskDesc": "5.2 `cargo clippy -p speclink-core -p speclink-cli -p speclink-desktop-core --all-targets -- -D warnings` 零警告（刪檔後不留孤兒 `use`）；跑 `node --test scripts/*.test.mjs` 全綠。驗證：兩條指令 exit code 0。路徑：crates/、apps/desktop/core、scripts/",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d852293d93d1b28f9c2c4dfa769068dd49d2b0dd",
+      "touchedFiles": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md"
+      ],
+      "recordedAt": "2026-09-09T16:33:12Z"
+    }
+  ]
+}
