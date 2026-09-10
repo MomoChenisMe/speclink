@@ -9,7 +9,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
@@ -97,7 +97,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
@@ -437,7 +437,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
@@ -966,7 +966,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
@@ -1261,7 +1261,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
@@ -1497,7 +1497,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
@@ -1620,7 +1620,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
@@ -1892,7 +1892,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
@@ -2038,7 +2038,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
@@ -2522,7 +2522,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
@@ -2660,7 +2660,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
@@ -2722,21 +2722,24 @@ Announce the scope you settled on and why, in one or two sentences, before scann
 
 ### Step 3: Scan
 
-Explore the scope organically — read the code, follow what looks strange, chase the thing that surprises you. **This is not a checklist to tick off.** The five friction signals below are what to keep an eye out for while reading, not a form to fill in.
+Explore the scope organically — read the code, follow what looks strange, chase the thing that surprises you. **This is not a checklist to tick off.** The six friction signals below are what to keep an eye out for while reading, not a form to fill in.
 
-**The five friction signals:**
+**The six friction signals:**
 
 1. **Understanding one concept requires jumping between several small modules.** The concept is real but its implementation is scattered; the reader reassembles it every time.
 2. **A shallow module: the interface is nearly as complex as the implementation behind it.** The abstraction charges as much to learn as it saves.
 3. **A pure function was extracted to make testing easy, but the bugs live at the call site.** The tests pass over the extracted piece while the actual behaviour — the wiring around it — has no locality and no coverage.
 4. **Tight coupling leaks across a seam.** Two sides that are supposed to be separable know each other's internals; changing one forces changing the other.
 5. **An area that is hard to test through its current interface.** The interface makes the natural test awkward — which usually means the interface is on the wrong boundary.
+6. **Grouping you can only guess from file names.** Files that belong to one concept sit side by side with unrelated ones in a flat directory, and the reader reassembles the grouping every time — from prefixes, from alphabetical order, or from a design document whose layering the directory does not follow.
 
 **The deletion test is the admission criterion for a candidate.** For anything you are tempted to propose, ask: if this module/abstraction were deleted and its callers absorbed the work, what would happen? A candidate only qualifies when deleting it **concentrates** complexity — the same behaviour ends up in one place that can be understood as a whole. If deleting it merely **moves** complexity somewhere else, that is not a signal; drop it and keep reading.
 
+**The sixth signal has its own admission criterion.** Deleting a folder concentrates nothing, so the deletion test does not apply to it. Ask the reader-prediction test instead: could someone opening this directory for the first time predict where a piece of behaviour lives and which files form one group, without searching? A layout candidate qualifies only when all three hold: (a) the grouping has an objective source — dependency direction between modules, a layering an existing design document already states, or which files are linked from outside; (b) it is invisible to callers — existing paths stay valid through a root-level re-export, and a guard test asserts no stale path remains where re-export is not possible (scripts, docs, CI); (c) moving the files is the whole change — a candidate that needs every caller to change its paths is a move, not a grouping. Drop it. When a candidate trips both a code signal and the sixth, the deletion test decides first: if deleting the scattered pieces would concentrate the behaviour, it is a code candidate and the layout is only the symptom. The sixth signal covers only what stays as it is and merely moves.
+
 **Scanning mechanism**: **inline is the default** — read and search the scope yourself. Dispatch an `Explore` subagent only when the user named no direction, or when the scope genuinely spans several crates. **The hard limit is 2 subagents.** Never spawn a third; if two are not enough, the scope was too wide — go back to Step 2 and narrow it.
 
-Aim for 3-6 candidates. Fewer is fine when the scope is clean; a list of twelve is a sign the deletion test was not applied.
+Aim for 3-6 candidates. Fewer is fine when the scope is clean; a list of twelve is a sign the admission criteria were not applied.
 
 ### Step 4: Record the candidates
 
@@ -2770,7 +2773,7 @@ ROUND_EOF
 | Wins           | What gets easier afterwards, concretely. "Cleaner" is not a win                        |
 | Recommendation | One of three strengths: **strongly recommended** / **worth exploring** / **speculative** |
 
-The three recommendation strengths are not decoration — they tell the user where to spend their attention. `strongly recommended`: the friction is evidenced and the deletion test is clearly passed. `worth exploring`: the friction is real but the right shape of the fix is not obvious. `speculative`: you suspect something is off but the evidence is thin.
+The three recommendation strengths are not decoration — they tell the user where to spend their attention. `strongly recommended`: the friction is evidenced and the admission criterion is clearly met — the deletion test, or the reader-prediction test for a sixth-signal candidate. `worth exploring`: the friction is real but the right shape of the fix is not obvious. `speculative`: you suspect something is off but the evidence is thin.
 
 **End the round with your own pick.** Say which candidate you would take first and why, then ask the user which one to dig into. Do not grill anything until they answer — the pick is theirs.
 
@@ -2782,6 +2785,8 @@ Once the user picks, this becomes an ordinary speclink discussion, run with the 
 - **Every question carries your proposed answer, and the proposal cites evidence** — file paths, symbols, probe results. The user agrees or corrects; they never get a bare open question that a Grep could have grounded.
 - **Facts are yours to verify, decisions are theirs to make.** Anything the code can answer, answer yourself. Only genuine judgment calls go to the user.
 - **The interface depth check runs unconditionally on every chosen candidate** — no exemptions, this skill is about seams by definition. Work through all four: (1) **Seam location** — where does the boundary belong? (2) **Adapter count** — one adapter on this path, or several thin wrappers stacked? (3) **Depth** — what behaviour hides behind the interface? "It just forwards calls" means too shallow. (4) **Deletion test** — delete it today: what actually breaks? Surface the four answers in the round or the conclusion, not as private notes.
+- **For a sixth-signal candidate these four questions replace the four above** — the seam is a directory boundary, not a call boundary: (1) **Grouping source** — which objective source (dependency direction, documented layering, external links) draws each boundary? (2) **Path stability** — what keeps existing paths valid: a root re-export, a guard test for stale paths, or both? (3) **Path hazards** — which were inventoried before moving anything: public URLs that embed a path, tag-triggered or path-filtered CI workflows, build-time file includes written as relative paths, cross-package path dependencies? (4) **Reader-prediction test** — could someone opening the directory for the first time predict where behaviour lives and which files form one group, without searching? Flatten it again in your head to check: what does that reader lose? Surface these four answers instead of the four above.
+- **Two practices ride along with a sixth-signal candidate** — tests move with the code (integration tests mirror the source grouping; inline test modules past a size threshold move to a sibling tests file), and cuts follow path dependence — the cut that moves directories lands first, the cuts that group inside them come after, never in parallel worktrees.
 - **Append a round per exchange** with `speclink discuss add-round <slug> --mode interview --stdin` — `**Focus**` / `**Position**` / `**Ruled out**` / `**Open**`. Rejected candidates go under `**Ruled out**` with the reason they lost; that is what Step 1 of the next scan reads.
 
 **Converging:**
@@ -2821,7 +2826,7 @@ speclink discuss archive improve-<scope>
 - **User-initiated only** — never start a scan on your own initiative
 - **Never implement** — the output is a discussion record, not a diff
 - **Scope before you scan** — no blind whole-repo sweeps
-- **Deletion test gates every candidate** — concentrating complexity counts, moving it does not
+- **An admission criterion gates every candidate** — the deletion test for the first five signals, the reader-prediction test for the sixth, and moving complexity around never counts
 - **At most 2 Explore subagents** — inline is the default
 - **Check the archive first** — a settled rejection is not a candidate
 - **Conclude and archive, never discard** — even when the answer is "do nothing"
@@ -2840,7 +2845,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
@@ -3123,7 +3128,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
@@ -3324,7 +3329,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
@@ -3782,7 +3787,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
@@ -3877,7 +3882,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
@@ -4076,7 +4081,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
@@ -4160,7 +4165,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
@@ -4447,7 +4452,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.32.0"
+  version: "v1.33.0"
   generatedBy: "Speclink"
 ---
 
