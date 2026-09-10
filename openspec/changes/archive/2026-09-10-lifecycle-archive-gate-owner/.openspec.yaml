@@ -1,0 +1,39 @@
+schema: spec-driven
+created: 2026-09-10
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: improve-lifecycle-layer
+started_at: 2026-09-10
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-10
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 8
+reviewed_scope:
+  - path: crates/speclink-cli/src/verbs/lifecycle.rs
+    hash: 35c18f502e2f896f056c29f63221e877a3fa5358d690ce6bb6c1f98c0f8b111a
+  - path: crates/speclink-cli/tests/it/validate_specs.rs
+    hash: 77ed6539fb52662b59ef9b72735d71cc04dfb8c2e14078718dce39e5052c67c0
+  - path: crates/speclink-core/src/archive.rs
+    hash: 9f296922763f53ba1c536c2e8ab4545f446be52856d307255b49216394aef945
+  - path: crates/speclink-core/src/command/mod.rs
+    hash: 72d500a8c50611ae6d33aaf54d73b87f8145401c8927973c2202fea50a08df17
+  - path: crates/speclink-core/src/validate.rs
+    hash: e2c228e25d6aefa01a0f62352acd24dda19debb55e7bcbb28d975017a85d9d08
+verified_at: 2026-09-10
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 8
+verified_scope:
+  - path: crates/speclink-cli/src/verbs/lifecycle.rs
+    hash: 35c18f502e2f896f056c29f63221e877a3fa5358d690ce6bb6c1f98c0f8b111a
+  - path: crates/speclink-cli/tests/it/validate_specs.rs
+    hash: 77ed6539fb52662b59ef9b72735d71cc04dfb8c2e14078718dce39e5052c67c0
+  - path: crates/speclink-core/src/archive.rs
+    hash: 9f296922763f53ba1c536c2e8ab4545f446be52856d307255b49216394aef945
+  - path: crates/speclink-core/src/command/mod.rs
+    hash: 72d500a8c50611ae6d33aaf54d73b87f8145401c8927973c2202fea50a08df17
+  - path: crates/speclink-core/src/validate.rs
+    hash: e2c228e25d6aefa01a0f62352acd24dda19debb55e7bcbb28d975017a85d9d08
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-10

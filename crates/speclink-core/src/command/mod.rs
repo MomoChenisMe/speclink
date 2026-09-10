@@ -1716,39 +1716,12 @@ fn run_archive(
     opts: crate::archive::ArchiveOptions,
 ) -> Result<CommandOutcome, CommandError> {
     let change = resolve_change(store, change, SPECIFY_FLAG)?;
-    // Gate before --mark-tasks-complete's pre-write; the core archive flow
-    // gates again for entry points that call it directly (desktop).
+    // Every archive gate — environment, meta, open tickets, task readiness, stale
+    // stamps, name collision, structural validation, merge plan — lives inside
+    // `archive()` in one order, and its --mark-tasks-complete pre-write lands
+    // after all of them. `guard_meta` is covered too: `require_valid_meta` yields
+    // the same MetaError, classified to the same invalid_config.
     let host = host_workspace(ws);
-    crate::archive::guard_linked_worktree(&host).map_err(classify)?;
-    guard_meta(&change)?;
-    crate::archive::guard_open_tickets(store, &change.name, opts.carry_review, opts.carry_verify)
-        .map_err(classify)?;
-    // The merge gate too: a refused archive must leave tasks.md untouched
-    // (spec archive-merge「兩階段合併計畫與零半套寫入」). Pure Store reads.
-    if !opts.skip_specs {
-        let violations = crate::archive::merge_violations(store, &change.name);
-        if !violations.is_empty() {
-            return Err(classify(crate::archive::merge_refusal(&change.name, &violations)));
-        }
-    }
-    if opts.mark_tasks_complete {
-        // 章失效守門先於前置全勾寫入(同上方諸守門的拒絕路徑零寫入):stale
-        // 拒絕不得留下被代勾的 [M] 任務。無旗標路徑不在此判——維持任務完成度
-        // 守門先拒的順序契約;核心 archive 內的同一守門供直接呼叫的入口沿用。
-        crate::archive::guard_stale_stamps(&host, store, &change).map_err(classify)?;
-        if let Some(text) = store.read_artifact(&change.name, "tasks.md") {
-            // Star-bullet checkboxes are tasks too (frozen rule).
-            let done = text
-                .replace("- [ ] ", "- [x] ")
-                .replace("- [ ]\t", "- [x]\t")
-                .replace("* [ ] ", "* [x] ")
-                .replace("* [ ]\t", "* [x]\t");
-            store
-                .write_artifact(&change.name, "tasks.md", &done)
-                .map_err(classify)?;
-        }
-    }
-    // The in-progress marker stays untouched on archive (frozen behavior).
     let outcome = crate::archive::archive(&host, store, &change, &opts, actor).map_err(classify)?;
     Ok(CommandOutcome::Archive(outcome))
 }
@@ -3100,6 +3073,40 @@ mod tests {
         .expect_err("incomplete change must refuse archive");
         assert_eq!(err.code, ErrorCode::Refused);
         assert!(err.message.contains("1/3"), "evidence rides the message: {}", err.message);
+        assert!(store.change_exists("demo"), "nothing moved on refusal");
+    }
+
+    #[test]
+    fn archive_of_incomplete_change_refuses_before_the_merge_gate() {
+        // 守門序只在 archive() 一份（design D2）：CLI 單筆與 server 都經此 Command，
+        // 任務未完成＋delta 過期時任務守門先拒，merge 拒絕字串不出現。
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", "- [ ] 1.1 a\n");
+        store.put_artifact(
+            "demo",
+            "specs/auth/spec.md",
+            "## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n",
+        );
+        store.canonical.borrow_mut().insert(
+            "auth".to_string(),
+            "# auth Specification\n\n## Purpose\n\nAuth.\n\n## Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n".to_string(),
+        );
+        let err = execute(
+            &store,
+            &ExecutionContext { workspace: Some(ghost_ws()), ..Default::default() },
+            Command::Archive {
+                change: Some("demo".to_string()),
+                skip_specs: false,
+                no_validate: false,
+                mark_tasks_complete: false,
+                carry_review: false,
+                carry_verify: false,
+            },
+        )
+        .expect_err("incomplete change must refuse archive");
+        assert_eq!(err.code, ErrorCode::Refused);
+        assert!(err.message.contains("0/1 tasks complete"), "task gate first: {}", err.message);
+        assert!(!err.message.contains("cannot be archived"), "merge refusal never reached: {}", err.message);
         assert!(store.change_exists("demo"), "nothing moved on refusal");
     }
 

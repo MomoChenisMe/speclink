@@ -166,10 +166,9 @@ if it really is new, ignore this warning.",
 /// 那裡的前置後面緊接自己的合併守門與 `merge_refusal` 聚合文案；前置若也含守門，
 /// 違規會先以「Validation failed:」的形狀跳出來，等於改了凍結輸出。輸出與本
 /// change 之前的 `validate_change` 逐位元相同。
-pub fn validate_change_structural(
+pub(crate) fn validate_change_structural(
     store: &dyn Store,
     change: &Change,
-    _schema: &Schema,
     strict: bool,
 ) -> ValidationResult {
     structural_pass(store, change, strict).result
@@ -760,7 +759,7 @@ mod tests {
         let store = store_for(&[("auth", MODIFIED_R9)], &[("auth", CANON)]);
         let change = crate::model::find_change(&store, "demo").expect("change resolves");
         let schema = crate::schema::spec_driven();
-        let structural = validate_change_structural(&store, &change, &schema, false);
+        let structural = validate_change_structural(&store, &change, false);
         let full = validate_change(&store, &change, &schema, false);
         assert!(structural.valid, "結構層對守門違規零報: {:?}", structural.errors);
         assert!(structural.errors.is_empty(), "結構層 error 全空: {:?}", structural.errors);
