@@ -73,7 +73,7 @@ npm test -w apps/desktop                    # 桌面前端
 npm test -w packages/ui                     # 共用 UI
 npm test -w apps/server-web                 # Server 後台前端
 node --test "scripts/**/*.test.mjs"         # repo 腳本
-npm --prefix crates/speclink-node test      # Node SDK（需先 npm --prefix crates/speclink-node run build）
+npm --prefix crates/adapters/speclink-node test      # Node SDK（需先 npm --prefix crates/adapters/speclink-node run build）
 ```
 
 Node SDK 不是 npm workspace 成員，所以要用 `--prefix` 指路徑；`--workspace @speclink/engine` 會找不到。桌面測試需要先備妥 sidecar 與 server 後台的 `dist/`，而 `npm run test:all` 已經含這兩步。

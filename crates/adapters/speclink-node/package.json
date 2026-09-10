@@ -1,0 +1,39 @@
+{
+  "name": "@speclink/engine",
+  "version": "0.1.0",
+  "//": "version 為佔位符，不隨 workspace 版本 bump；發布產物的版號一律由 release tag 於打包前蓋章決定（scripts/npm/npm-engine-package.mjs，經 .github/workflows/node-sdk.yml 的 version 輸入觸發）",
+  "description": "Speclink spec-driven development engine — Node.js bindings (napi-rs)",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "MIT",
+  "engines": {
+    "node": ">= 18"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "binding.js"
+  ],
+  "napi": {
+    "name": "speclink-engine",
+    "triples": {
+      "defaults": false,
+      "additional": [
+        "x86_64-pc-windows-msvc",
+        "x86_64-apple-darwin",
+        "aarch64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "napi build --platform --js binding.js --dts binding.d.ts",
+    "build:release": "napi build --platform --release --js binding.js --dts binding.d.ts",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.4",
+    "vitest": "^3.0.0"
+  }
+}

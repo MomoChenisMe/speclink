@@ -8,7 +8,7 @@
 
 ### Requirement: 內嵌 speclink-config 技能的渲染與保護
 
-內嵌 speclink-config 技能（事實來源 crates/speclink-core/assets/skills/config.md）SHALL 經 init 與 update 渲染至各工具技能目錄（claude 與 codex），與既有內嵌技能同機制；渲染產物內容由 speclink-core 的 render_golden 測試（cargo test）保護，golden 快照更新屬刻意變更。
+內嵌 speclink-config 技能（事實來源 crates/engine/speclink-core/assets/skills/config.md）SHALL 經 init 與 update 渲染至各工具技能目錄（claude 與 codex），與既有內嵌技能同機制；渲染產物內容由 speclink-core 的 render_golden 測試（cargo test）保護，golden 快照更新屬刻意變更。
 
 #### Scenario: init 與 update 渲染技能
 

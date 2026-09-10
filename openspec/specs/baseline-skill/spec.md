@@ -8,7 +8,7 @@
 
 ### Requirement: 內嵌 speclink-baseline 技能的渲染與保護
 
-內嵌 speclink-baseline 技能（事實來源 crates/speclink-core/assets/skills/baseline.md）SHALL 經 init 與 update 渲染至各工具技能目錄（claude 與 codex），與既有內嵌技能同機制；兩側渲染產物 SHALL 源自同一份資產，SHALL NOT 存在工具別的平行版本。渲染產物內容由 speclink-core 的 render_golden 測試（cargo test）保護，golden 快照更新屬刻意變更。本 change 對五份 golden 快照的 baseline 段落與資產版本戳的變更屬刻意變更；其他技能的渲染產物 SHALL 僅版本戳改變，內文 SHALL 維持既有位元級輸出。本 capability 不新增任何 CLI 子指令、旗標、人眼輸出或 --json payload；檔案系統效果限技能目錄下 speclink-baseline/SKILL.md 的生成與更新。
+內嵌 speclink-baseline 技能（事實來源 crates/engine/speclink-core/assets/skills/baseline.md）SHALL 經 init 與 update 渲染至各工具技能目錄（claude 與 codex），與既有內嵌技能同機制；兩側渲染產物 SHALL 源自同一份資產，SHALL NOT 存在工具別的平行版本。渲染產物內容由 speclink-core 的 render_golden 測試（cargo test）保護，golden 快照更新屬刻意變更。本 change 對五份 golden 快照的 baseline 段落與資產版本戳的變更屬刻意變更；其他技能的渲染產物 SHALL 僅版本戳改變，內文 SHALL 維持既有位元級輸出。本 capability 不新增任何 CLI 子指令、旗標、人眼輸出或 --json payload；檔案系統效果限技能目錄下 speclink-baseline/SKILL.md 的生成與更新。
 
 #### Scenario: init 與 update 渲染技能
 

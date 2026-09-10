@@ -145,7 +145,7 @@ npm run cli -- auth status
 npm run --silent cli -- list --json
 ```
 
-`npm run cli -- <args>` 固定執行這個 checkout 的 CLI，binary 不存在時會先自動建置，絕不 fallback 到 PATH。需要純機器可讀的 stdout 時加 `--silent`。Node SDK 不是 npm workspace 成員，要測它得用 `npm --prefix crates/speclink-node test`。
+`npm run cli -- <args>` 固定執行這個 checkout 的 CLI，binary 不存在時會先自動建置，絕不 fallback 到 PATH。需要純機器可讀的 stdout 時加 `--silent`。Node SDK 不是 npm workspace 成員，要測它得用 `npm --prefix crates/adapters/speclink-node test`。
 
 ## 8. Recover from a lost connection / 失聯恢復
 

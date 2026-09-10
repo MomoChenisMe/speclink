@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "node ../../scripts/desktop-sidecar.mjs --profile debug",
+    "predev": "node ../../scripts/desktop/desktop-sidecar.mjs --profile debug",
     "dev": "vite",
     "build": "vite build",
     "test": "vitest run",

@@ -26,17 +26,17 @@ chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 speclink-desktop-core = { path = "../core" }
-speclink-core = { path = "../../../crates/speclink-core" }
-speclink-host = { path = "../../../crates/speclink-host" }
-speclink-remote = { path = "../../../crates/speclink-remote" }
-speclink-protocol = { path = "../../../crates/speclink-protocol" }
-speclink-store = { path = "../../../crates/speclink-store" }
+speclink-core = { path = "../../../crates/engine/speclink-core" }
+speclink-host = { path = "../../../crates/host/speclink-host" }
+speclink-remote = { path = "../../../crates/protocol/speclink-remote" }
+speclink-protocol = { path = "../../../crates/protocol/speclink-protocol" }
+speclink-store = { path = "../../../crates/store/speclink-store" }
 notify-debouncer-mini = "0.7.0"
 ulid = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
-speclink-server = { path = "../../../crates/speclink-server" }
+speclink-server = { path = "../../../crates/host/speclink-server" }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "net"] }
 tiny_http = "0.12"

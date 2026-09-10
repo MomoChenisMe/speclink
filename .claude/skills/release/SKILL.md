@@ -108,11 +108,11 @@ description: "執行即發版——在乾淨的 main 上守門、判定版號、
 2. **workspace Cargo.toml**：`[workspace.package]` 的 `version = "VERSION"`。
 3. **tauri.conf.json**：`apps/desktop/src-tauri/tauri.conf.json` 的 `version`。
 4. **刷 Cargo.lock**：`cargo metadata --format-version 1 > /dev/null`。
-5. **產 CHANGELOG.md**：`node scripts/release-notes-render.mjs --write`。
+5. **產 CHANGELOG.md**：`node scripts/release/release-notes-render.mjs --write`。
 6. **測試與比對**：
    ```bash
-   node --test scripts/release-notes-render.test.mjs scripts/release-notes.test.mjs
-   node scripts/release-notes-render.mjs --check
+   node --test scripts/release/release-notes-render.test.mjs scripts/release/release-notes.test.mjs
+   node scripts/release/release-notes-render.mjs --check
    ```
 
 任一步失敗：印出失敗的步驟與原因，**不 commit**；已改的檔留在工作樹供使用者檢視，並提示
@@ -147,7 +147,7 @@ git push --atomic origin main "vVERSION"
 2. 三項提醒（來自 release-pipeline-npm-pitfalls 備忘）：
    - job 綠不等於套件已在 registry——到 npm／ghcr／tap 各看一眼。
    - 新套件的 packument 可能延遲可見，先等、別重發。
-   - 發完重裝本機 app：`node scripts/desktop-install.mjs --install`（更新日誌彈窗會在下一版才對這台機器彈出，
+   - 發完重裝本機 app：`node scripts/desktop/desktop-install.mjs --install`（更新日誌彈窗會在下一版才對這台機器彈出，
      本版內容可從設定頁「更新日誌」看）。
 
 發版失敗後的重跑（移 tag 重推）不在本技能內，維持 release-pipeline-npm-pitfalls 備忘的手動程序。

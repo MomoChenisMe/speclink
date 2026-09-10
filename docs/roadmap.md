@@ -18,7 +18,7 @@ This document is the **direction for users**. It answers only whether the capabi
 
 **The problem**
 
-Driving the Speclink engine from your own program currently means installing a Rust toolchain, building `crates/speclink-node` yourself, and loading it by path. That is a steep price for "write a script that wires specs into an existing pipeline". What you install should be a package, not a build environment.
+Driving the Speclink engine from your own program currently means installing a Rust toolchain, building `crates/adapters/speclink-node` yourself, and loading it by path. That is a steep price for "write a script that wires specs into an existing pipeline". What you install should be a package, not a build environment.
 
 **Where it stands**
 

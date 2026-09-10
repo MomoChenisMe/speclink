@@ -46,7 +46,7 @@ When no installable version exists yet, or you are changing the engine itself:
 
 ```bash
 git clone https://github.com/MomoChenisMe/speclink.git
-cd speclink/crates/speclink-node
+cd speclink/crates/adapters/speclink-node
 npm ci
 npm run build          # napi builds the .node for your current platform
 ```
@@ -54,7 +54,7 @@ npm run build          # napi builds the .node for your current platform
 Reference the build output from your project by path:
 
 ```js
-const { createEngine } = require('/path/to/speclink/crates/speclink-node')
+const { createEngine } = require('/path/to/speclink/crates/adapters/speclink-node')
 ```
 
 - This is a **native module**: the engine is compiled Rust, loaded as a Node
@@ -124,7 +124,7 @@ The interface is one-to-one with the engine core's storage seam
 (`speclink-core`'s `Store` trait), camelCase. The engine speaks in domain
 terms — changes, artifacts, delta/canonical specs, discussions, workflow
 config — and your implementation owns the physical layout. Full signatures
-live in [`index.d.ts`](../crates/speclink-node/index.d.ts); `path`/`dir`
+live in [`index.d.ts`](../crates/adapters/speclink-node/index.d.ts); `path`/`dir`
 return values are **labels shown in payloads**, not filesystem paths that the
 engine opens.
 
@@ -218,9 +218,9 @@ await engine.dispatch(
 - **Output**: a Promise resolving to the same structured object the CLI
   prints with `--json` (camelCase field names). Verbs without a `--json` form
   resolve to `{ output: string }`. The current TypeScript shapes live in
-  [`index.d.ts`](../crates/speclink-node/index.d.ts); the remote
+  [`index.d.ts`](../crates/adapters/speclink-node/index.d.ts); the remote
   Command/Query payloads are governed by the shipped Protocol crate
-  (`crates/speclink-protocol`), whose Rust types are the wire canon.
+  (`crates/protocol/speclink-protocol`), whose Rust types are the wire canon.
 - **Errors**: the Promise rejects with an `Error` — `message` is the CLI's
   semantic message (safe to hand straight back to an agent), `code`
   classifies it: `invalid_argv` (bad argv), `not_found` (change/discussion
@@ -374,5 +374,5 @@ harness that ignores them has no workflow routing at all.
 
 ## See also
 
-- [`index.d.ts`](../crates/speclink-node/index.d.ts) — the currently shipped
+- [`index.d.ts`](../crates/adapters/speclink-node/index.d.ts) — the currently shipped
   Node API and payload types.

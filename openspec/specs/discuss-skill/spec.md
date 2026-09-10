@@ -8,7 +8,7 @@
 
 ### Requirement: interview 模式以決策樹遍歷提問
 
-內嵌 speclink-discuss 技能（事實來源 crates/speclink-core/assets/skills/discuss.md，經 init 與 update 渲染至 claude 與 codex 工具技能目錄）SHALL 將 interview 重新定位為兩種提問位置：需求磨利（grill）階段與 assumptions 內的逐節點退路，SHALL NOT 保留以檔案數門檻分流的全域雙模式。分流軸 SHALL 為需求清晰度：需求鈍（無可驗證目標、無門檻、improve 類措辭）時先走 grill 階段一次一題磨需求，需求已利時 grill SHALL 塌縮為零題並直接進 assumptions（唯一預設姿態）。提問紀律 SHALL 維持決策樹遍歷：開場先攤開決策空間（根節點為「這題到底在決定什麼」，展開子決策與依賴邊），提問 SHALL 依依賴順序進行、一次一題，上游決策先解。停止條件 SHALL 維持使用者主導：one nudge maximum 與結論的 Deferred 欄位續留，技能檔 SHALL NOT 要求「所有分支解完才可收斂」。本能力屬 Speclink 自身延伸；渲染產物內容由 speclink-core 的 render_golden 測試（cargo test）保護，golden 快照更新屬刻意變更。
+內嵌 speclink-discuss 技能（事實來源 crates/engine/speclink-core/assets/skills/discuss.md，經 init 與 update 渲染至 claude 與 codex 工具技能目錄）SHALL 將 interview 重新定位為兩種提問位置：需求磨利（grill）階段與 assumptions 內的逐節點退路，SHALL NOT 保留以檔案數門檻分流的全域雙模式。分流軸 SHALL 為需求清晰度：需求鈍（無可驗證目標、無門檻、improve 類措辭）時先走 grill 階段一次一題磨需求，需求已利時 grill SHALL 塌縮為零題並直接進 assumptions（唯一預設姿態）。提問紀律 SHALL 維持決策樹遍歷：開場先攤開決策空間（根節點為「這題到底在決定什麼」，展開子決策與依賴邊），提問 SHALL 依依賴順序進行、一次一題，上游決策先解。停止條件 SHALL 維持使用者主導：one nudge maximum 與結論的 Deferred 欄位續留，技能檔 SHALL NOT 要求「所有分支解完才可收斂」。本能力屬 Speclink 自身延伸；渲染產物內容由 speclink-core 的 render_golden 測試（cargo test）保護，golden 快照更新屬刻意變更。
 
 #### Scenario: 渲染產物含決策樹提問紀律
 
@@ -102,7 +102,7 @@ code:
 ---
 ### Requirement: 文件作為預填樹來源逐條分診
 
-內嵌 speclink-discuss 技能（事實來源 crates/speclink-core/assets/skills/discuss.md，經 init 與 update 渲染至 claude 與 codex 工具技能目錄）SHALL 規定：topic 指定文件路徑（自寫 markdown、plan mode 產出、repo 內 docs 或任意可讀路徑）時，代理人 SHALL 讀取該文件並萃取其主張作為決策樹節點，逐條對 codebase 分診為三類——證實（附程式碼證據）、牴觸（指出文件內容與程式碼實況的差異並附證據）、真決策（送使用者裁定）。文件 SHALL NOT 僅作背景素材一次性閱讀。本能力屬 Speclink 自身延伸；渲染產物內容由 speclink-core 的 render_golden 測試（cargo test）保護，golden 快照更新屬刻意變更。
+內嵌 speclink-discuss 技能（事實來源 crates/engine/speclink-core/assets/skills/discuss.md，經 init 與 update 渲染至 claude 與 codex 工具技能目錄）SHALL 規定：topic 指定文件路徑（自寫 markdown、plan mode 產出、repo 內 docs 或任意可讀路徑）時，代理人 SHALL 讀取該文件並萃取其主張作為決策樹節點，逐條對 codebase 分診為三類——證實（附程式碼證據）、牴觸（指出文件內容與程式碼實況的差異並附證據）、真決策（送使用者裁定）。文件 SHALL NOT 僅作背景素材一次性閱讀。本能力屬 Speclink 自身延伸；渲染產物內容由 speclink-core 的 render_golden 測試（cargo test）保護，golden 快照更新屬刻意變更。
 
 #### Scenario: 渲染產物含文件分診紀律
 
@@ -261,7 +261,7 @@ updated: 2026-08-27
 ---
 ### Requirement: 開場舊討論查核與第四類對照
 
-內嵌 speclink-discuss 技能（事實來源 crates/speclink-core/assets/skills/discuss.md，經 init 與 update 渲染至 claude 與 codex 工具技能目錄）SHALL 將偵察漏斗規定為「正典 → 舊討論查核 → 程式碼」三段。舊討論查核 SHALL 規定：以使用者題目的關鍵字加正典掃描轉譯出的英文詞執行 speclink discuss search（--json），命中的決定行 SHALL 全數列出；整份 Conclusion 以 speclink discuss show 讀取 SHALL 最多 3 份、topic 命中者優先；此查核 SHALL NOT 依討論的 kind 過濾。假設清單 SHALL 在既有三分對照之外加入第四類「舊討論已定案」，細分曾否決（附當時理由；重開該方向 SHALL 說明當時理由已失效）、曾延後（可接手）、已落地（正典會照出，不重列）；技能檔 SHALL 明文不得以此擋下討論方向。Context 段 SHALL 規定加一行 `Prior discussions: <slug 清單>`，零命中時寫 none。既有討論記錄格式與 Context／Rounds／Conclusion 骨架 SHALL 不變。本能力屬 Speclink 自身延伸；渲染產物內容由 speclink-core 的 render_golden 測試（cargo test）保護，golden 快照更新屬刻意變更。
+內嵌 speclink-discuss 技能（事實來源 crates/engine/speclink-core/assets/skills/discuss.md，經 init 與 update 渲染至 claude 與 codex 工具技能目錄）SHALL 將偵察漏斗規定為「正典 → 舊討論查核 → 程式碼」三段。舊討論查核 SHALL 規定：以使用者題目的關鍵字加正典掃描轉譯出的英文詞執行 speclink discuss search（--json），命中的決定行 SHALL 全數列出；整份 Conclusion 以 speclink discuss show 讀取 SHALL 最多 3 份、topic 命中者優先；此查核 SHALL NOT 依討論的 kind 過濾。假設清單 SHALL 在既有三分對照之外加入第四類「舊討論已定案」，細分曾否決（附當時理由；重開該方向 SHALL 說明當時理由已失效）、曾延後（可接手）、已落地（正典會照出，不重列）；技能檔 SHALL 明文不得以此擋下討論方向。Context 段 SHALL 規定加一行 `Prior discussions: <slug 清單>`，零命中時寫 none。既有討論記錄格式與 Context／Rounds／Conclusion 骨架 SHALL 不變。本能力屬 Speclink 自身延伸；渲染產物內容由 speclink-core 的 render_golden 測試（cargo test）保護，golden 快照更新屬刻意變更。
 
 #### Scenario: 渲染產物含舊討論查核
 

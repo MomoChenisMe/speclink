@@ -186,7 +186,7 @@ Host command。這些邊界的正典是 `openspec/specs/` 底下的規格，例�
 從原始碼建置 CLI（需要 stable Rust toolchain）：
 
 ```bash
-cargo install --path crates/speclink-cli
+cargo install --path crates/adapters/speclink-cli
 speclink --version
 ```
 

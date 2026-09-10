@@ -30,7 +30,7 @@ updated: 2026-09-09T16:18:56+08:00
 ---
 ### Requirement: 渲染腳本由 JSON 產出 CHANGELOG.md 與單版片段
 
-repo SHALL 提供渲染腳本 `scripts/release-notes-render.mjs`，同一份渲染邏輯支援三種用法：`--write` 把全部條目寫成 repo 根 `CHANGELOG.md`；`--version X.Y.Z` 把該版條目的片段印到 stdout；`--check` 重算並與現有 CHANGELOG.md 比對。片段格式 SHALL 為 `## X.Y.Z（YYYY-MM-DD）` 標題，其下每個分組為 `### <title>` 標題接 `- ` 條目。CHANGELOG.md SHALL 以 `# 更新日誌` 開頭，其後依 JSON 順序接每版片段，換行一律 LF。`--version` 找不到該版 SHALL 以非零結束並於 stderr 印出 JSON 頂端版號；`--check` 不一致 SHALL 以非零結束並於 stderr 印出差異摘要，比對前 SHALL 把讀入檔的 CRLF 正規化為 LF。腳本 SHALL 有自動化測試涵蓋固定輸出、三種用法的 exit code 與 CRLF 正規化。
+repo SHALL 提供渲染腳本 `scripts/release/release-notes-render.mjs`，同一份渲染邏輯支援三種用法：`--write` 把全部條目寫成 repo 根 `CHANGELOG.md`；`--version X.Y.Z` 把該版條目的片段印到 stdout；`--check` 重算並與現有 CHANGELOG.md 比對。片段格式 SHALL 為 `## X.Y.Z（YYYY-MM-DD）` 標題，其下每個分組為 `### <title>` 標題接 `- ` 條目。CHANGELOG.md SHALL 以 `# 更新日誌` 開頭，其後依 JSON 順序接每版片段，換行一律 LF。`--version` 找不到該版 SHALL 以非零結束並於 stderr 印出 JSON 頂端版號；`--check` 不一致 SHALL 以非零結束並於 stderr 印出差異摘要，比對前 SHALL 把讀入檔的 CRLF 正規化為 LF。腳本 SHALL 有自動化測試涵蓋固定輸出、三種用法的 exit code 與 CRLF 正規化。
 
 #### Scenario: 產出 CHANGELOG.md
 

@@ -8,7 +8,7 @@
 
 ### Requirement: 技能檔的渲染
 
-內嵌 speclink-manual 技能（事實來源 crates/speclink-core/assets/skills/manual.md）SHALL 經 init 與 update 渲染至 claude（`.claude/skills/speclink-manual/SKILL.md`）、codex 與 neutral 三種目標。其 description SHALL 以觸發情境句開場（需要一份人類操作手冊、或想被導覽如何操作系統時），再以一句說明產出。渲染產物由 speclink-core 的 render_golden 測試保護，golden 快照更新屬刻意變更。
+內嵌 speclink-manual 技能（事實來源 crates/engine/speclink-core/assets/skills/manual.md）SHALL 經 init 與 update 渲染至 claude（`.claude/skills/speclink-manual/SKILL.md`）、codex 與 neutral 三種目標。其 description SHALL 以觸發情境句開場（需要一份人類操作手冊、或想被導覽如何操作系統時），再以一句說明產出。渲染產物由 speclink-core 的 render_golden 測試保護，golden 快照更新屬刻意變更。
 
 #### Scenario: 三目標皆渲染
 

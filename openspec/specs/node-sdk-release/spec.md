@@ -8,7 +8,7 @@
 
 ### Requirement: engine npm 套件家族與版號蓋章
 
-專案 SHALL 提供 `@speclink/engine` 的 npm 通路：主套件（index.js、index.d.ts、binding.js）與五個平台子套件（Windows x64、macOS x64／arm64、Linux glibc x64／arm64），主套件以 optionalDependencies 指向各平台子套件，安裝時只下載符合平台者。發布產物的版本 SHALL 與 release tag 對齊，由發布管線於打包前蓋章寫入主套件與全部平台子套件——repo 內 `crates/speclink-node/package.json` 的版號 SHALL 視為佔位符，SHALL NOT 作為發布版號來源。蓋章 SHALL 同時把主套件 optionalDependencies 物化為各平台子套件的同版釘定，且平台子套件清單 SHALL 自平台子套件目錄實際內容列舉而非硬編碼。
+專案 SHALL 提供 `@speclink/engine` 的 npm 通路：主套件（index.js、index.d.ts、binding.js）與五個平台子套件（Windows x64、macOS x64／arm64、Linux glibc x64／arm64），主套件以 optionalDependencies 指向各平台子套件，安裝時只下載符合平台者。發布產物的版本 SHALL 與 release tag 對齊，由發布管線於打包前蓋章寫入主套件與全部平台子套件——repo 內 `crates/adapters/speclink-node/package.json` 的版號 SHALL 視為佔位符，SHALL NOT 作為發布版號來源。蓋章 SHALL 同時把主套件 optionalDependencies 物化為各平台子套件的同版釘定，且平台子套件清單 SHALL 自平台子套件目錄實際內容列舉而非硬編碼。
 
 #### Scenario: 蓋章物化主套件與平台子套件
 

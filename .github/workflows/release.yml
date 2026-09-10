@@ -212,8 +212,8 @@ jobs:
             echo "::error::release-notes.json 頂端 version（${NOTES_VERSION}）與 tag（${TAG_VERSION}）不一致——先執行 /release 技能補上更新日誌再發 tag"
             exit 1
           fi
-          if ! node scripts/release-notes-render.mjs --check; then
-            echo "::error::CHANGELOG.md 與 release-notes.json 重算結果不一致——執行 node scripts/release-notes-render.mjs --write 後重新提交"
+          if ! node scripts/release/release-notes-render.mjs --check; then
+            echo "::error::CHANGELOG.md 與 release-notes.json 重算結果不一致——執行 node scripts/release/release-notes-render.mjs --write 後重新提交"
             exit 1
           fi
 
@@ -232,7 +232,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-        run: node scripts/signing-gate.mjs
+        run: node scripts/release/signing-gate.mjs
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -270,7 +270,7 @@ jobs:
       # CLI sidecar（design D5）：把同版 speclink CLI 佈到 externalBin 要求的
       # target-triple 命名位置；缺檔時 tauri build 直接失敗（fail-closed）。
       - name: Stage CLI sidecar
-        run: node scripts/desktop-sidecar.mjs --target ${{ matrix.target }}
+        run: node scripts/desktop/desktop-sidecar.mjs --target ${{ matrix.target }}
 
       # OS 簽章開關（design D1／D4）：條件來自上方閘門的決策，填鑰匙即啟用、
       # 無須改管線。macOS 六項一次注入——憑證三項讓 Tauri 簽章，公證三項讓它在
@@ -308,7 +308,7 @@ jobs:
         run: npm run -w apps/desktop tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
       # 佈署收集：installers/ 進 Release assets；updater/<platform>/ 供 latest.json
-      # 組裝（每平台一子目錄、恰一更新包＋同名 .sig——scripts/release-latest-json.mjs
+      # 組裝（每平台一子目錄、恰一更新包＋同名 .sig——scripts/release/release-latest-json.mjs
       # 的目錄契約）。macOS 更新包原名不含架構，改名以免兩個 mac target 撞名。
       - name: Collect installers and updater packages
         shell: bash
@@ -391,7 +391,7 @@ jobs:
         id: build
         with:
           context: .
-          file: crates/speclink-server/Dockerfile
+          file: crates/host/speclink-server/Dockerfile
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
@@ -467,7 +467,7 @@ jobs:
     needs: [build, desktop, docker-manifest]
     runs-on: ubuntu-latest
     steps:
-      # 組裝腳本（scripts/release-latest-json.mjs）需要 repo 內容。
+      # 組裝腳本（scripts/release/release-latest-json.mjs）需要 repo 內容。
       - uses: actions/checkout@v5
 
       # 攤平合併：CLI 壓縮檔、桌面安裝檔與更新包＋簽章進 dist——逐一以 pattern
@@ -500,7 +500,7 @@ jobs:
           cd updater
           for d in updater-*; do mv "$d" "${d#updater-}"; done
           cd ..
-          node scripts/release-latest-json.mjs --tag "$GITHUB_REF_NAME" \
+          node scripts/release/release-latest-json.mjs --tag "$GITHUB_REF_NAME" \
             --dir updater --repo "$GITHUB_REPOSITORY" --out dist/latest.json
           cat dist/latest.json
 
@@ -515,7 +515,7 @@ jobs:
       # generate_release_notes 只剩最後的比較連結。notes.md 落在 workspace 根而非
       # dist/，不會被當成資產上傳。
       - name: Download guide (release notes header)
-        run: node scripts/release-notes.mjs --tag "$GITHUB_REF_NAME" > notes.md
+        run: node scripts/release/release-notes.mjs --tag "$GITHUB_REF_NAME" > notes.md
 
       - uses: softprops/action-gh-release@v2
         with:
@@ -547,7 +547,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS.txt -O SHA256SUMS.txt
-          node scripts/homebrew-formula.mjs --tag "$GITHUB_REF_NAME" --sums SHA256SUMS.txt > speclink.rb
+          node scripts/release/homebrew-formula.mjs --tag "$GITHUB_REF_NAME" --sums SHA256SUMS.txt > speclink.rb
 
       - name: Push formula to tap
         if: steps.gate.outputs.enabled == 'true'
@@ -597,7 +597,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          node scripts/npm-server-package.mjs --version "$VERSION" --binaries binaries --out npm-out
+          node scripts/npm/npm-server-package.mjs --version "$VERSION" --binaries binaries --out npm-out
 
           # 冪等，語意同 engine-npm-publish：發到一半失敗、或 tag 重推時，已上架
           # 的同版會讓 npm publish 拿 403 而永遠轉不綠。每份先查 registry，同版
@@ -682,7 +682,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          # artifact 保留 crates/speclink-node 底下的相對結構：主套件 tarball 在根、
+          # artifact 保留 crates/adapters/speclink-node 底下的相對結構：主套件 tarball 在根、
           # 平台子套件在 npm/<平台>/。子套件先發、主套件最後，optionalDependencies
           # 於主套件上架時皆已可解析到同版。
           #

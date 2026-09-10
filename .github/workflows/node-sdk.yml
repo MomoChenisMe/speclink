@@ -26,7 +26,7 @@ on:
 
 defaults:
   run:
-    working-directory: crates/speclink-node
+    working-directory: crates/adapters/speclink-node
 
 jobs:
   build:
@@ -92,7 +92,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bindings-${{ matrix.settings.target }}
-          path: crates/speclink-node/*.node
+          path: crates/adapters/speclink-node/*.node
           if-no-files-found: error
 
       # binding.js 是 napi build 產生的 loader，被 .gitignore 忽略，但主套件的
@@ -103,7 +103,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: binding-js
-          path: crates/speclink-node/binding.js
+          path: crates/adapters/speclink-node/binding.js
           if-no-files-found: error
 
   package:
@@ -130,7 +130,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: bindings-*
-          path: crates/speclink-node/artifacts
+          path: crates/adapters/speclink-node/artifacts
 
       - name: Distribute binaries into sub-packages
         run: npx napi artifacts
@@ -141,7 +141,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: binding-js
-          path: crates/speclink-node
+          path: crates/adapters/speclink-node
 
       # 版號蓋章（設計 D2）：只在 workflow_call 帶 version 時執行，把 tag 版寫進主
       # 套件與全部平台子套件並物化 optionalDependencies。push／PR 無此輸入即跳過，
@@ -152,7 +152,7 @@ jobs:
         working-directory: .
         env:
           VERSION: ${{ inputs.version }}
-        run: node scripts/npm-engine-package.mjs --version "$VERSION" --dir crates/speclink-node
+        run: node scripts/npm/npm-engine-package.mjs --version "$VERSION" --dir crates/adapters/speclink-node
 
       - name: Pack the main package and every platform sub-package
         run: |
@@ -177,6 +177,6 @@ jobs:
         with:
           name: npm-tarballs
           path: |
-            crates/speclink-node/*.tgz
-            crates/speclink-node/npm/*/*.tgz
+            crates/adapters/speclink-node/*.tgz
+            crates/adapters/speclink-node/npm/*/*.tgz
           if-no-files-found: error

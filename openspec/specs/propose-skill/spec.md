@@ -8,7 +8,7 @@
 
 ### Requirement: from-discussion 跟隨 Source doc 引用與疊加語意
 
-內嵌 speclink-propose 技能（事實來源 crates/speclink-core/assets/skills/propose.md，經 init 與 update 渲染至 claude 與 codex 工具技能目錄）SHALL 規定：以 --from-discussion 讀取討論記錄時，若記錄的 Context 含 Source doc: <路徑> 行，代理人 SHALL 讀取該原始文件，並以疊加語意合成提案內容——文件為底層、討論為勝出層：討論有決定的 SHALL 以討論為準；討論未觸及的文件內容 SHALL 補位採用；討論記錄 Ruled out 的內容 SHALL NOT 出現在提案中。本能力屬 Speclink 自身延伸；渲染產物內容由 speclink-core 的 render_golden 測試（cargo test）保護，golden 快照更新屬刻意變更。
+內嵌 speclink-propose 技能（事實來源 crates/engine/speclink-core/assets/skills/propose.md，經 init 與 update 渲染至 claude 與 codex 工具技能目錄）SHALL 規定：以 --from-discussion 讀取討論記錄時，若記錄的 Context 含 Source doc: <路徑> 行，代理人 SHALL 讀取該原始文件，並以疊加語意合成提案內容——文件為底層、討論為勝出層：討論有決定的 SHALL 以討論為準；討論未觸及的文件內容 SHALL 補位採用；討論記錄 Ruled out 的內容 SHALL NOT 出現在提案中。本能力屬 Speclink 自身延伸；渲染產物內容由 speclink-core 的 render_golden 測試（cargo test）保護，golden 快照更新屬刻意變更。
 
 #### Scenario: 渲染產物含疊加語意三規則
 

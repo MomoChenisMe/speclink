@@ -28,7 +28,7 @@ context: |
   ＋ `apps/desktop/src-tauri`（Tauri 殼）、`apps/desktop`、`apps/server-web`、`packages/ui`。
 
   現況與限制以 `docs/product-status.zh-TW.md` 為準；
-  `docs/platform-architecture.zh-TW.md` 僅是架構藍圖，不是現行行為正典。
+  `docs/design/platform-architecture.zh-TW.md` 僅是架構藍圖，不是現行行為正典。
 
   ## 跨 artifact 的載重約束
 
@@ -52,8 +52,8 @@ rules:
   - 若涉及生成的技能或 Agent 指令，必須說明影響哪些技能與哪些工具（claude / codex）
   design:
   - 必須指明變更落在哪個 crate 與其邊界：領域演算法歸 speclink-core（不得含 ANSI 或寫死儲存媒介）、Local Repo I/O 歸 speclink-fs、TeamStore contract 與 driver 歸 store crates、應用層裁決歸 speclink-host；CLI / Server / Node / Desktop 只經穩定 Host 或 Protocol contract 組裝輸入與呈現
-  - 同一對外契約同時落 local 與 remote（CLI／server／desktop）路徑時，必須指明唯一實作落點與各端共用方式，不得平行實作兩套（回歸對照：crates/speclink-cli/tests/it/remote_verb_parity.rs）
-  - 以文字手術改寫 YAML（.openspec.yaml、openspec/config.yaml）的設計，純量寫出必須走 crates/speclink-core/src/util.rs 的 yaml_scalar 跳脫，不得手拼未跳脫純量
+  - 同一對外契約同時落 local 與 remote（CLI／server／desktop）路徑時，必須指明唯一實作落點與各端共用方式，不得平行實作兩套（回歸對照：crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs）
+  - 以文字手術改寫 YAML（.openspec.yaml、openspec/config.yaml）的設計，純量寫出必須走 crates/engine/speclink-core/src/util.rs 的 yaml_scalar 跳脫，不得手拼未跳脫純量
   - 動詞觸發多筆寫入或刪除時，必須敘明寫入順序與任一步失敗後的可觀察狀態（不得留下半套狀態，或明確記載接受哪種半套及其理由）
   - 桌面的邏輯與測試歸 speclink-desktop-core（不依賴 Tauri、可獨立 cargo test）；Tauri 殼的每個 command 只做單行委派
   - CLI 子指令用 kebab-case 或空白分隔動詞（new change、task done、discuss add-round）；模組檔 snake_case.rs
@@ -74,9 +74,9 @@ rules:
   - 遠端路徑的規格須敘明 revision 衝突、離線與認證失效下的可觀察行為
   - 動到既有輸出的規格須標明是維持既有位元級輸出，或屬刻意變更（並敘明變更前後的差異）
   tasks:
-  - Rust 單元／整合測試使用 `#[cfg(test)]` 或 Cargo test target，並以 `cargo test` 執行；前端 workspace 以各自的 `npm test -w <workspace>` 執行 Vitest；輸出的回歸驗證使用 crates/speclink-core/tests/golden 與 crates/speclink-cli/tests/ 的整合測試
+  - Rust 單元／整合測試使用 `#[cfg(test)]` 或 Cargo test target，並以 `cargo test` 執行；前端 workspace 以各自的 `npm test -w <workspace>` 執行 Vitest；輸出的回歸驗證使用 crates/engine/speclink-core/tests/golden 與 crates/adapters/speclink-cli/tests/ 的整合測試
   - 每個 task 必須標註受影響的 repo-root 相對路徑（包含 crates/、apps/、packages/、scripts/ 等實際範圍）；檔名遵循 design 命名慣例，涉及 CLI 時才點名對應指令
   - 動到既有輸出的 task，驗證步驟須確認 golden 與 CLI 測試仍通過，或已在同批刻意更新 golden
   - 涉及 `--json` 的 task，須斷言 payload 結構（欄位存在、camelCase 命名與型別）
-  - task 的驗證步驟只跑受影響面的測試：Rust Cargo package（無論位於 crates/ 或 apps/desktop）用 `cargo test -p <package>`，有 integration test target 時才加 `--test <target>`；前端用 manifest 宣告的 `npm test -w <workspace>`；crates/speclink-node 先用 `npm --prefix crates/speclink-node run build` 建置 napi binding，再用 `npm --prefix crates/speclink-node test`；scripts/ 一律跑全組 `node --test scripts/*.test.mjs`（不到一秒，不分受影響檔）；全量 `npm run test:all` 只由 CI（.github/workflows/ci.yml）守門，不寫進 task 驗證步驟
-  - 不論觸碰面，tasks.md 最後一個 task 的驗證步驟必含 `node --test scripts/*.test.mjs`：scripts/ 內的詞彙守門、中英對照與連結檢查掃的是整個 README 與 docs 面，只改 openspec/、docs/ 或 LANGUAGE.md 的變更也會讓它們紅；它們紅時 CI 會把 UI、Desktop、Server Web 與 Rust 四組測試整批跳過
+  - task 的驗證步驟只跑受影響面的測試：Rust Cargo package（無論位於 crates/ 或 apps/desktop）用 `cargo test -p <package>`，有 integration test target 時才加 `--test <target>`；前端用 manifest 宣告的 `npm test -w <workspace>`；crates/adapters/speclink-node 先用 `npm --prefix crates/adapters/speclink-node run build` 建置 napi binding，再用 `npm --prefix crates/adapters/speclink-node test`；scripts/ 一律跑全組 `node --test scripts/*.test.mjs scripts/*/*.test.mjs`（不到一秒，不分受影響檔）；全量 `npm run test:all` 只由 CI（.github/workflows/ci.yml）守門，不寫進 task 驗證步驟
+  - 不論觸碰面，tasks.md 最後一個 task 的驗證步驟必含 `node --test scripts/*.test.mjs scripts/*/*.test.mjs`：scripts/ 內的詞彙守門、中英對照與連結檢查掃的是整個 README 與 docs 面，只改 openspec/、docs/ 或 LANGUAGE.md 的變更也會讓它們紅；它們紅時 CI 會把 UI、Desktop、Server Web 與 Rust 四組測試整批跳過

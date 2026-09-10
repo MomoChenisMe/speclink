@@ -15,5 +15,5 @@
     "node": ">=18"
   },
   "private": true,
-  "//": "private 擋誤發布；發布用的副本由 scripts/npm-server-package.mjs 物化（去掉 private、蓋版本、補 optionalDependencies）"
+  "//": "private 擋誤發布；發布用的副本由 scripts/npm/npm-server-package.mjs 物化（去掉 private、蓋版本、補 optionalDependencies）"
 }
