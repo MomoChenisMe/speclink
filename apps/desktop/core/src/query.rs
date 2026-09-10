@@ -6,6 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
+use speclink_core::station::{self, Freshness, REVIEW, REVIEW_DOC, VERIFY, VERIFY_DOC};
 use speclink_core::store::Store;
 
 use crate::init_core_context;
@@ -74,13 +75,13 @@ pub fn list_changes_at(root: &Path) -> Value {
             v["codeTotal"] = json!(counts.code_total);
             v["codeComplete"] = json!(counts.code_complete);
             v["codeRemaining"] = json!(counts.code_remaining);
-            let review = if store.artifact_exists(&c.name, speclink_core::review::REVIEW_DOC) {
+            let review = if store.artifact_exists(&c.name, REVIEW_DOC) {
                 "inReview"
             } else {
-                match speclink_core::review::freshness(&c.meta, &counts, &read_file) {
-                    speclink_core::station::Freshness::Fresh => "reviewed",
-                    speclink_core::station::Freshness::Stale => "reviewedStale",
-                    speclink_core::station::Freshness::Unknown => "none",
+                match station::freshness(&REVIEW, &c.meta, &counts, &read_file) {
+                    Freshness::Fresh => "reviewed",
+                    Freshness::Stale => "reviewedStale",
+                    Freshness::Unknown => "none",
                 }
             };
             v["reviewStatus"] = json!(review);
@@ -91,13 +92,13 @@ pub fn list_changes_at(root: &Path) -> Value {
             // 驗證狀態（spec client-protocol「變更清單的驗證狀態欄位」；design
             // D5）：與審查狀態同構且互不遮蔽——兩站可各自獨立進行與蓋章，故
             // 各判各的，共用同一份失效純函式與同一個讀取根。
-            let verify = if store.artifact_exists(&c.name, speclink_core::verify::VERIFY_DOC) {
+            let verify = if store.artifact_exists(&c.name, VERIFY_DOC) {
                 "inVerify"
             } else {
-                match speclink_core::verify::freshness(&c.meta, &counts, &read_file) {
-                    speclink_core::station::Freshness::Fresh => "verified",
-                    speclink_core::station::Freshness::Stale => "verifiedStale",
-                    speclink_core::station::Freshness::Unknown => "none",
+                match station::freshness(&VERIFY, &c.meta, &counts, &read_file) {
+                    Freshness::Fresh => "verified",
+                    Freshness::Stale => "verifiedStale",
+                    Freshness::Unknown => "none",
                 }
             };
             v["verifyStatus"] = json!(verify);
@@ -788,11 +789,11 @@ mod tests {
         // reviewed：任務錨（2/2 全完成、蓋章總數 2）與內容錨（現值指紋相符）皆符。
         let content = "fn keep() {}\n";
         fx.write("src/lib.rs", content);
-        let hash = speclink_core::review::content_fingerprint(content);
+        let hash = station::content_fingerprint(content);
         fx.add_change("stamped", &reviewed_meta("src/lib.rs", &hash));
         fx.write("openspec/changes/stamped/tasks.md", TASKS_ALL_DONE);
         // reviewedStale（spec Example「章在但指紋不符」）：scope 檔其後追加了一行。
-        let old_hash = speclink_core::review::content_fingerprint("fn keep() {}\n");
+        let old_hash = station::content_fingerprint("fn keep() {}\n");
         fx.write("src/stale.rs", "fn keep() {}\nfn extra() {}\n");
         fx.add_change("gone-stale", &reviewed_meta("src/stale.rs", &old_hash));
         fx.write("openspec/changes/gone-stale/tasks.md", TASKS_ALL_DONE);
@@ -827,7 +828,7 @@ mod tests {
         let fx = FixtureRoot::new("q-review-binary");
         let bin: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0xFF, 0x00];
         std::fs::write(fx.root().join("logo.png"), bin).unwrap();
-        let hash = speclink_core::review::content_fingerprint_bytes(bin);
+        let hash = station::content_fingerprint_bytes(bin);
         fx.add_change("bin-scope", &reviewed_meta("logo.png", &hash));
         fx.write("openspec/changes/bin-scope/tasks.md", TASKS_ALL_DONE);
 
@@ -858,10 +859,10 @@ mod tests {
         fx.write("openspec/changes/underway/verify.md", TICKET);
         let content = "fn keep() {}\n";
         fx.write("src/lib.rs", content);
-        let hash = speclink_core::verify::content_fingerprint(content);
+        let hash = station::content_fingerprint(content);
         fx.add_change("stamped", &verified_meta("src/lib.rs", &hash));
         fx.write("openspec/changes/stamped/tasks.md", TASKS_ALL_DONE);
-        let old_hash = speclink_core::verify::content_fingerprint("fn keep() {}\n");
+        let old_hash = station::content_fingerprint("fn keep() {}\n");
         fx.write("src/stale.rs", "fn keep() {}\nfn extra() {}\n");
         fx.add_change("gone-stale", &verified_meta("src/stale.rs", &old_hash));
         fx.write("openspec/changes/gone-stale/tasks.md", TASKS_ALL_DONE);
@@ -892,7 +893,7 @@ mod tests {
         let fx = FixtureRoot::new("q-both");
         let content = "fn keep() {}\n";
         fx.write("src/lib.rs", content);
-        let hash = speclink_core::review::content_fingerprint(content);
+        let hash = station::content_fingerprint(content);
         fx.add_change("mixed", &reviewed_meta("src/lib.rs", &hash));
         fx.write("openspec/changes/mixed/tasks.md", TASKS_ALL_DONE);
         fx.write("openspec/changes/mixed/verify.md", TICKET);
@@ -912,7 +913,7 @@ mod tests {
     /// 分別指定，兩份相異才看得出凍結度到底讀了哪一份。
     fn stamped_change_with_worktree(tag: &str, main: &str, worktree: &str) -> FixtureRoot {
         let fx = FixtureRoot::new(tag);
-        let hash = speclink_core::review::content_fingerprint(STAMPED_SCOPE);
+        let hash = station::content_fingerprint(STAMPED_SCOPE);
         fx.write("src/auth.rs", main);
         fx.add_change("fix-auth", &reviewed_meta("src/auth.rs", &hash));
         fx.write("openspec/changes/fix-auth/tasks.md", TASKS_ALL_DONE);

@@ -6,6 +6,7 @@
 use std::path::Path;
 
 use serde_json::Value;
+use speclink_core::station::{self, REVIEW, VERIFY};
 use speclink_core::store::Store;
 
 use crate::init_core_context;
@@ -53,7 +54,7 @@ pub fn archive_carry_at(
 pub fn discard_review_at(root: &Path, change: &str) -> Result<Value, String> {
     let ctx = crate::require_context_for_change(root, change)?;
     let store: &dyn Store = &ctx.store;
-    speclink_core::review::discard(store, change).map_err(|e| e.to_string())?;
+    station::discard(&REVIEW, store, change).map_err(|e| e.to_string())?;
     Ok(serde_json::json!({ "change": change, "discarded": true }))
 }
 
@@ -61,7 +62,7 @@ pub fn discard_review_at(root: &Path, change: &str) -> Result<Value, String> {
 pub fn discard_verify_at(root: &Path, change: &str) -> Result<Value, String> {
     let ctx = crate::require_context_for_change(root, change)?;
     let store: &dyn Store = &ctx.store;
-    speclink_core::verify::discard(store, change).map_err(|e| e.to_string())?;
+    station::discard(&VERIFY, store, change).map_err(|e| e.to_string())?;
     Ok(serde_json::json!({ "change": change, "discarded": true }))
 }
 

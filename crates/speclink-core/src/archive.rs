@@ -60,8 +60,8 @@ pub(crate) fn guard_open_tickets(
     carry_verify: bool,
 ) -> Result<()> {
     let stations = [
-        (&crate::review::STATION, carry_review),
-        (&crate::verify::STATION, carry_verify),
+        (&crate::station::REVIEW, carry_review),
+        (&crate::station::VERIFY, carry_verify),
     ];
     let blocks: Vec<String> = stations
         .iter()
@@ -87,34 +87,16 @@ pub(crate) fn guard_stale_stamps(ws: &Workspace, store: &dyn Store, change: &Cha
     let read_file: crate::station::ScopeReader<'_> =
         if ws.root.as_os_str().is_empty() { None } else { Some(&read_file) };
 
-    let meta = &change.meta;
-    let stations = [
-        (
-            &crate::review::STATION,
-            crate::station::StampAnchors {
-                stamped_at: meta.reviewed_at.as_deref(),
-                tasks_total: meta.reviewed_tasks_total,
-                scope: &meta.reviewed_scope,
-            },
-        ),
-        (
-            &crate::verify::STATION,
-            crate::station::StampAnchors {
-                stamped_at: meta.verified_at.as_deref(),
-                tasks_total: meta.verified_tasks_total,
-                scope: &meta.verified_scope,
-            },
-        ),
-    ];
-    let blocks: Vec<String> = stations
-        .iter()
+    let blocks: Vec<String> = [&crate::station::REVIEW, &crate::station::VERIFY]
+        .into_iter()
+        .map(|st| (st, change.meta.anchors(st)))
         // 工單開立中的站不入失效判定:其舊章已被重開的工單取代,該站的封存
         // 處置(擋下或 --carry-* 帶走)由未結工單守門承載——舊章在此攔路會把
         // carry 處置堵成死路。
         .filter(|(st, _)| !store.artifact_exists(&change.name, st.doc))
         .filter(|(_, anchors)| crate::station::is_stamped(*anchors))
         .filter_map(|(st, anchors)| {
-            crate::station::stale_reason(*anchors, &counts, read_file)
+            crate::station::stale_reason(anchors, &counts, read_file)
                 .map(|reason| stale_stamp_block(st, &change.name, &reason))
         })
         .collect();
@@ -1462,7 +1444,7 @@ mod tests {
         // spec Scenario「有工單預設拒絕」：stderr 同列 stamp／discard／--carry-review
         // 三處置，change 未被搬移、零寫入。
         let store = gate_store("- [x] 1.1 a\n");
-        store.put_artifact("demo", crate::review::REVIEW_DOC, TICKET);
+        store.put_artifact("demo", crate::station::REVIEW_DOC, TICKET);
         let change = crate::model::find_change(&store, "demo").unwrap();
         let err = archive(&ghost_ws(), &store, &change, &skip_opts(), None)
             .expect_err("open ticket must refuse archive");
@@ -1485,13 +1467,13 @@ mod tests {
         // spec Scenario「明示帶走」：--carry-review 放行，封存目錄內含 review.md
         //（化石工單——封存側「曾審查未通過」標示的證據）。
         let store = gate_store("- [x] 1.1 a\n");
-        store.put_artifact("demo", crate::review::REVIEW_DOC, TICKET);
+        store.put_artifact("demo", crate::station::REVIEW_DOC, TICKET);
         let change = crate::model::find_change(&store, "demo").unwrap();
         let opts = ArchiveOptions { carry_review: true, ..skip_opts() };
         let outcome = archive(&ghost_ws(), &store, &change, &opts, None).unwrap();
         assert!(!store.change_exists("demo"), "change moved into the archive");
         assert_eq!(
-            store.read_archived_artifact(&outcome.dated_name, crate::review::REVIEW_DOC).as_deref(),
+            store.read_archived_artifact(&outcome.dated_name, crate::station::REVIEW_DOC).as_deref(),
             Some(TICKET),
             "ticket rides the directory move byte-identically"
         );
@@ -1506,7 +1488,7 @@ mod tests {
         let outcome = archive(&ghost_ws(), &store, &change, &skip_opts(), None).unwrap();
         assert!(!store.change_exists("demo"), "change moved into the archive");
         assert!(
-            store.read_archived_artifact(&outcome.dated_name, crate::review::REVIEW_DOC).is_none(),
+            store.read_archived_artifact(&outcome.dated_name, crate::station::REVIEW_DOC).is_none(),
             "no fossil ticket appears out of nowhere"
         );
     }
@@ -1520,7 +1502,7 @@ mod tests {
         // spec Scenario「僅驗證工單時拒絕」：stderr 同列 stamp／discard／--carry-verify
         // 三處置，change 未被搬移、零寫入。
         let store = gate_store("- [x] 1.1 a\n");
-        store.put_artifact("demo", crate::verify::VERIFY_DOC, VERIFY_TICKET);
+        store.put_artifact("demo", crate::station::VERIFY_DOC, VERIFY_TICKET);
         let change = crate::model::find_change(&store, "demo").unwrap();
         let err = archive(&ghost_ws(), &store, &change, &skip_opts(), None)
             .expect_err("open verify ticket must refuse archive");
@@ -1543,8 +1525,8 @@ mod tests {
         // spec Scenario「雙工單並存」：兩站處置並列——只報一站會讓使用者處理完
         // 一張工單再撞一次同樣的牆。
         let store = gate_store("- [x] 1.1 a\n");
-        store.put_artifact("demo", crate::review::REVIEW_DOC, TICKET);
-        store.put_artifact("demo", crate::verify::VERIFY_DOC, VERIFY_TICKET);
+        store.put_artifact("demo", crate::station::REVIEW_DOC, TICKET);
+        store.put_artifact("demo", crate::station::VERIFY_DOC, VERIFY_TICKET);
         let change = crate::model::find_change(&store, "demo").unwrap();
         let err = archive(&ghost_ws(), &store, &change, &skip_opts(), None)
             .expect_err("two open tickets must refuse archive");
@@ -1567,13 +1549,13 @@ mod tests {
         // spec Scenario「明示帶走驗證工單」：--carry-verify 放行，封存目錄內含
         // verify.md（化石工單——封存側「曾驗證未通過」標示的證據）。
         let store = gate_store("- [x] 1.1 a\n");
-        store.put_artifact("demo", crate::verify::VERIFY_DOC, VERIFY_TICKET);
+        store.put_artifact("demo", crate::station::VERIFY_DOC, VERIFY_TICKET);
         let change = crate::model::find_change(&store, "demo").unwrap();
         let opts = ArchiveOptions { carry_verify: true, ..skip_opts() };
         let outcome = archive(&ghost_ws(), &store, &change, &opts, None).unwrap();
         assert!(!store.change_exists("demo"), "change moved into the archive");
         assert_eq!(
-            store.read_archived_artifact(&outcome.dated_name, crate::verify::VERIFY_DOC).as_deref(),
+            store.read_archived_artifact(&outcome.dated_name, crate::station::VERIFY_DOC).as_deref(),
             Some(VERIFY_TICKET),
             "ticket rides the directory move byte-identically"
         );
@@ -1585,8 +1567,8 @@ mod tests {
         // 另一站擋下（帶走哪種工單是兩個獨立決定），兩支齊帶才放行。
         let one_flag_still_refuses = |carry_review: bool, carry_verify: bool, expect: &str| {
             let store = gate_store("- [x] 1.1 a\n");
-            store.put_artifact("demo", crate::review::REVIEW_DOC, TICKET);
-            store.put_artifact("demo", crate::verify::VERIFY_DOC, VERIFY_TICKET);
+            store.put_artifact("demo", crate::station::REVIEW_DOC, TICKET);
+            store.put_artifact("demo", crate::station::VERIFY_DOC, VERIFY_TICKET);
             let change = crate::model::find_change(&store, "demo").unwrap();
             let opts = ArchiveOptions { carry_review, carry_verify, ..skip_opts() };
             let err = archive(&ghost_ws(), &store, &change, &opts, None)
@@ -1597,17 +1579,17 @@ mod tests {
         one_flag_still_refuses(false, true, "--carry-review");
 
         let store = gate_store("- [x] 1.1 a\n");
-        store.put_artifact("demo", crate::review::REVIEW_DOC, TICKET);
-        store.put_artifact("demo", crate::verify::VERIFY_DOC, VERIFY_TICKET);
+        store.put_artifact("demo", crate::station::REVIEW_DOC, TICKET);
+        store.put_artifact("demo", crate::station::VERIFY_DOC, VERIFY_TICKET);
         let change = crate::model::find_change(&store, "demo").unwrap();
         let opts = ArchiveOptions { carry_review: true, carry_verify: true, ..skip_opts() };
         let outcome = archive(&ghost_ws(), &store, &change, &opts, None).unwrap();
         assert!(!store.change_exists("demo"), "both flags archive the change");
         assert!(store
-            .read_archived_artifact(&outcome.dated_name, crate::review::REVIEW_DOC)
+            .read_archived_artifact(&outcome.dated_name, crate::station::REVIEW_DOC)
             .is_some());
         assert!(store
-            .read_archived_artifact(&outcome.dated_name, crate::verify::VERIFY_DOC)
+            .read_archived_artifact(&outcome.dated_name, crate::station::VERIFY_DOC)
             .is_some());
     }
 
@@ -1620,7 +1602,7 @@ mod tests {
         let outcome = archive(&ghost_ws(), &store, &change, &skip_opts(), None).unwrap();
         assert!(!store.change_exists("demo"), "change moved into the archive");
         assert!(
-            store.read_archived_artifact(&outcome.dated_name, crate::verify::VERIFY_DOC).is_none(),
+            store.read_archived_artifact(&outcome.dated_name, crate::station::VERIFY_DOC).is_none(),
             "no fossil ticket appears out of nowhere"
         );
     }

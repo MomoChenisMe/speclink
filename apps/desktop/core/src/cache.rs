@@ -10,6 +10,7 @@ use std::path::Path;
 
 use rusqlite::Connection;
 use serde_json::{json, Value};
+use speclink_core::station::{REVIEW_DOC, VERIFY_DOC};
 use speclink_core::store::Store;
 
 use crate::init_core_context;
@@ -88,7 +89,7 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
             let review_status = if parsed.reviewed_at.is_some() {
                 "reviewed"
             } else if store
-                .read_archived_artifact(name, speclink_core::review::REVIEW_DOC)
+                .read_archived_artifact(name, REVIEW_DOC)
                 .is_some()
             {
                 "reviewedNotPassed"
@@ -99,7 +100,7 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
             let verify_status = if parsed.verified_at.is_some() {
                 "verified"
             } else if store
-                .read_archived_artifact(name, speclink_core::verify::VERIFY_DOC)
+                .read_archived_artifact(name, VERIFY_DOC)
                 .is_some()
             {
                 "verifiedNotPassed"
