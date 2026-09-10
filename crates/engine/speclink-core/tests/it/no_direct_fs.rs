@@ -1,6 +1,8 @@
 //! Architectural check: the engine must not touch spec-directory content with
 //! direct `std::fs` calls — all spec-document access goes through the `Store`
-//! interface. This scans the crate's source files for the `std::fs` token.
+//! interface. This scans the crate's source files (recursively, so the modules
+//! grouped under `lifecycle/`, `quality/` and `workspace/` stay in scope) for
+//! the `std::fs` token.
 //!
 //! A source scan cannot see a call's *target*, so the assertion is scoped by
 //! an explicit allowlist of files whose `std::fs` usage is host-side (not spec
@@ -25,7 +27,18 @@
 //! an allowlisted file that no longer uses `std::fs` fails the test too, so
 //! the list cannot silently rot.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+fn rust_sources(dir: &Path, out: &mut Vec<PathBuf>) {
+    for entry in std::fs::read_dir(dir).expect("read crate src dir") {
+        let path = entry.expect("dir entry").path();
+        if path.is_dir() {
+            rust_sources(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            out.push(path);
+        }
+    }
+}
 
 const ALLOWLIST: &[&str] = &[
     "util.rs",
@@ -40,16 +53,21 @@ fn engine_sources_do_not_touch_spec_storage_directly() {
     let mut offenders: Vec<String> = Vec::new();
     let mut stale_allowlist: Vec<String> = Vec::new();
 
-    for entry in std::fs::read_dir(&src).expect("read crate src dir") {
-        let path = entry.expect("dir entry").path();
-        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-            continue;
-        }
+    let mut files = Vec::new();
+    rust_sources(&src, &mut files);
+    files.sort();
+    assert!(!files.is_empty(), "source scan found no files");
+
+    for path in files {
         let name = path
             .file_name()
             .and_then(|n| n.to_str())
             .expect("utf-8 file name")
             .to_string();
+        // A `tests.rs` sub-file is a unit-test module of the file next to it.
+        if name == "tests.rs" {
+            continue;
+        }
         let text = std::fs::read_to_string(&path).expect("read source file");
         // Unit-test modules are host-side by nature (they scaffold throwaway
         // temp workspaces) and never ship in the lib; the engine-flow rule

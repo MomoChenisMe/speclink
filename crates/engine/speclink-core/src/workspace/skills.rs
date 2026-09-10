@@ -76,35 +76,35 @@ pub struct Skill {
 }
 
 // Embedded bodies.
-const B_ANALYZE: &str = include_str!("../assets/skills/analyze.md");
-const B_APPLY: &str = include_str!("../assets/skills/apply.md");
+const B_ANALYZE: &str = include_str!("../../assets/skills/analyze.md");
+const B_APPLY: &str = include_str!("../../assets/skills/apply.md");
 /// Composed at COMPILE TIME so the body stays a `&'static str` and the apply
 /// flow keeps a single source: the worktree preamble, the whole apply body
 /// (same asset the plain apply skill embeds), then the worktree wrap-up.
 const B_APPLY_WITH_WORKTREE: &str = concat!(
-    include_str!("../assets/skills/apply-worktree-pre.md"),
-    include_str!("../assets/skills/apply.md"),
-    include_str!("../assets/skills/apply-worktree-post.md"),
+    include_str!("../../assets/skills/apply-worktree-pre.md"),
+    include_str!("../../assets/skills/apply.md"),
+    include_str!("../../assets/skills/apply-worktree-post.md"),
 );
-const B_WORKTREE_MERGE: &str = include_str!("../assets/skills/worktree-merge.md");
-const B_ARCHIVE: &str = include_str!("../assets/skills/archive.md");
-const B_AUDIT: &str = include_str!("../assets/skills/audit.md");
-const B_COMMIT: &str = include_str!("../assets/skills/commit.md");
-const B_CONFIG: &str = include_str!("../assets/skills/config.md");
-const B_DISCUSS: &str = include_str!("../assets/skills/discuss.md");
-const B_DRIFT: &str = include_str!("../assets/skills/drift.md");
-const B_IMPROVE: &str = include_str!("../assets/skills/improve.md");
-const B_INGEST: &str = include_str!("../assets/skills/ingest.md");
-const B_MANUAL: &str = include_str!("../assets/skills/manual.md");
-const B_BASELINE: &str = include_str!("../assets/skills/baseline.md");
-const B_PROPOSE: &str = include_str!("../assets/skills/propose.md");
-const B_QUALITY: &str = include_str!("../assets/skills/quality.md");
-const B_REVIEW: &str = include_str!("../assets/skills/review.md");
-const B_TRACE: &str = include_str!("../assets/skills/trace.md");
-const B_VERIFY: &str = include_str!("../assets/skills/verify.md");
-const B_SYNC: &str = include_str!("../assets/skills/sync.md");
-const B_CLARIFY: &str = include_str!("../assets/skills/clarify.md");
-const B_TDD: &str = include_str!("../assets/skills/tdd.md");
+const B_WORKTREE_MERGE: &str = include_str!("../../assets/skills/worktree-merge.md");
+const B_ARCHIVE: &str = include_str!("../../assets/skills/archive.md");
+const B_AUDIT: &str = include_str!("../../assets/skills/audit.md");
+const B_COMMIT: &str = include_str!("../../assets/skills/commit.md");
+const B_CONFIG: &str = include_str!("../../assets/skills/config.md");
+const B_DISCUSS: &str = include_str!("../../assets/skills/discuss.md");
+const B_DRIFT: &str = include_str!("../../assets/skills/drift.md");
+const B_IMPROVE: &str = include_str!("../../assets/skills/improve.md");
+const B_INGEST: &str = include_str!("../../assets/skills/ingest.md");
+const B_MANUAL: &str = include_str!("../../assets/skills/manual.md");
+const B_BASELINE: &str = include_str!("../../assets/skills/baseline.md");
+const B_PROPOSE: &str = include_str!("../../assets/skills/propose.md");
+const B_QUALITY: &str = include_str!("../../assets/skills/quality.md");
+const B_REVIEW: &str = include_str!("../../assets/skills/review.md");
+const B_TRACE: &str = include_str!("../../assets/skills/trace.md");
+const B_VERIFY: &str = include_str!("../../assets/skills/verify.md");
+const B_SYNC: &str = include_str!("../../assets/skills/sync.md");
+const B_CLARIFY: &str = include_str!("../../assets/skills/clarify.md");
+const B_TDD: &str = include_str!("../../assets/skills/tdd.md");
 
 /// The skills that generate SKILL.md files.
 pub fn registry() -> Vec<Skill> {

@@ -21,7 +21,7 @@ const SIDECAR_IN_APP = 'Contents/MacOS/speclink';
 /// 源碼的產物層版號：speclink-core 的 ASSET_VERSION 常數是唯一真相。
 export function sourceAssetVersion(initRs) {
   const version = initRs.match(/ASSET_VERSION:\s*&str\s*=\s*"([^"]+)"/)?.[1];
-  if (!version) throw new Error('crates/engine/speclink-core/src/init.rs 讀不到 ASSET_VERSION 常數');
+  if (!version) throw new Error('crates/engine/speclink-core/src/workspace/init.rs 讀不到 ASSET_VERSION 常數');
   return version;
 }
 
@@ -101,7 +101,7 @@ function main(argv) {
   const branch = capture('git', ['rev-parse', '--abbrev-ref', 'HEAD']).trim();
   const dirty = capture('git', ['status', '--porcelain']).trim() !== '';
   const expected = sourceAssetVersion(
-    readFileSync(path.join(ROOT, 'crates/engine/speclink-core/src/init.rs'), 'utf8'),
+    readFileSync(path.join(ROOT, 'crates/engine/speclink-core/src/workspace/init.rs'), 'utf8'),
   );
   console.log(`來源：${branch} @ ${head}${dirty ? '（工作樹有未提交變更）' : '（工作樹乾淨）'}`);
   console.log(`源碼引擎版號：${expected}`);

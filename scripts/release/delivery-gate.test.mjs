@@ -655,7 +655,32 @@ function groupedScriptNames() {
   });
 }
 
-test('repo 不殘留搬移前的舊形路徑（crates 未分組、scripts 未分組）', () => {
+/// 已搬進 crates/engine/speclink-core/src/<group>/ 的引擎模組名。清單寫成字面而非
+/// 自檔案系統讀出——守門在搬移前就要紅，那時三個資料夾還不存在。根層的 lib、store、
+/// util、keylines、testkit、teststore、demo 與 command/ 目錄不在清單內。
+const CORE_SRC = 'crates/engine/speclink-core/src/';
+const GROUPED_CORE_MODULES = new Map([
+  [
+    'lifecycle',
+    ['model', 'newcmd', 'inprogress', 'discard', 'archive', 'tasks',
+     'status', 'listing', 'capname', 'preflight', 'discuss', 'trace'],
+  ],
+  ['quality', ['station', 'validate', 'analyzer', 'drift']],
+  ['workspace', ['init', 'skills', 'instructions', 'config', 'schema', 'workspace']],
+]);
+
+/// 命中回傳 { group, name }，否則 null。needle 由前綴常數與模組名在執行期組出，
+/// 源碼裡沒有任何舊形字面，這條斷言才不會命中自己。
+function findLegacyCoreModule(line) {
+  for (const [group, names] of GROUPED_CORE_MODULES) {
+    for (const name of names) {
+      if (line.includes(`${CORE_SRC}${name}.rs`)) return { group, name };
+    }
+  }
+  return null;
+}
+
+test('repo 不殘留搬移前的舊形路徑（crates 未分組、scripts 未分組、引擎模組未分組）', () => {
   // needle 寫成正則，源碼字面帶跳脫斜線，這條斷言才不會命中自己。
   const legacyCrate = /crates\/speclink-/;
   const scriptNames = groupedScriptNames();
@@ -669,6 +694,13 @@ test('repo 不殘留搬移前的舊形路徑（crates 未分組、scripts 未分
     const script = scriptNames.find((name) => line.includes(`scripts/${name}`));
     if (script) {
       hits.push(`${rel}:${lineNumber} 舊形 script 路徑（正典為 scripts/<group>/${script}）\n    ${line.trim()}`);
+      continue;
+    }
+    const coreModule = findLegacyCoreModule(line);
+    if (coreModule) {
+      hits.push(
+        `${rel}:${lineNumber} 舊形引擎模組路徑（正典為 ${CORE_SRC}${coreModule.group}/${coreModule.name}.rs）\n    ${line.trim()}`,
+      );
     }
   }
 

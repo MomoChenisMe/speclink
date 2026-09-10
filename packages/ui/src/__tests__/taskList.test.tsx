@@ -47,7 +47,7 @@ describe("parseTaskDoc", () => {
     ]);
   });
 
-  // 與引擎同構(crates/engine/speclink-core/src/tasks.rs 的 parse/strip_markers 案例表
+  // 與引擎同構(crates/engine/speclink-core/src/lifecycle/tasks.rs 的 parse/strip_markers 案例表
   // 對齊):checkbox 後恰一個空格才進標記槽,多餘空白不被吃掉;剝離後修剪與
   // display.trim() 一致。
   it("checkbox 後多一個空格不進標記槽——與引擎同構", () => {

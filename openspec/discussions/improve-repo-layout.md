@@ -6,7 +6,7 @@ created: 2026-09-09
 created_by: MomoChen <momochenisme@gmail.com>
 kind: improve
 hold: true
-promoted_to: repo-layout-groups
+promoted_to: repo-layout-groups, core-module-groups, server-module-groups
 ---
 
 # Discussion: 專案資料夾結構的功能分組——core 平鋪模組、crates 分層、server 模組、scripts、頂層雜項

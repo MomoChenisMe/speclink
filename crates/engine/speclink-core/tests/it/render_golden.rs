@@ -825,7 +825,7 @@ fn write_lock(version: &str, hash: &str) {
 /// UPDATE_ASSETS_LOCK are independent switches: regenerating goldens never touches the lock.
 fn lock_fix_instructions() -> String {
     format!(
-        "fix: bump ASSET_VERSION in crates/engine/speclink-core/src/init.rs (render content changed), \
+        "fix: bump ASSET_VERSION in crates/engine/speclink-core/src/workspace/init.rs (render content changed), \
 then regenerate the lock on a clean tree with \
 `{LOCK_REGEN_ENV}=1 cargo test -p speclink-core --test it render_golden::`. \
 Regenerating goldens (UPDATE_GOLDEN=1) does NOT update this lock."

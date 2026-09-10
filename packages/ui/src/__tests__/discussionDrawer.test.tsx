@@ -140,7 +140,7 @@ describe("結構標題白名單跨語言對齊（引擎 ↔ UI）", () => {
       return [...m![1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
     };
     const rust = extract(
-      readFileSync(resolve(REPO_ROOT, "crates/engine/speclink-core/src/discuss.rs"), "utf8"),
+      readFileSync(resolve(REPO_ROOT, "crates/engine/speclink-core/src/lifecycle/discuss.rs"), "utf8"),
     );
     const ts = extract(
       readFileSync(resolve(REPO_ROOT, "packages/ui/src/components/DiscussionDrawer.tsx"), "utf8"),
@@ -155,7 +155,7 @@ describe("結構標題白名單跨語言對齊（引擎 ↔ UI）", () => {
     // 任一側改了定界符或前綴，這裡就斷。
     const REPO_ROOT = resolve(dirname(expect.getState().testPath ?? ""), "../../../..");
     const rustSrc = readFileSync(
-      resolve(REPO_ROOT, "crates/engine/speclink-core/src/discuss.rs"),
+      resolve(REPO_ROOT, "crates/engine/speclink-core/src/lifecycle/discuss.rs"),
       "utf8",
     );
     const tsSrc = readFileSync(
