@@ -20,10 +20,11 @@ fn entry(info: &DiscussionInfo) -> Value {
         "status": info.status,
         "rounds": info.rounds,
         "created": info.created,
-        // promotedTo／concluded 由 core 的同一趟 frontmatter 解析產出（不進 CLI JSON 的
-        // serde(skip) 欄位），本地與 remote 同形恆填，每張卡不再額外讀檔。
+        // promotedTo／concluded／hold 由 core 的同一趟 frontmatter 解析產出（不進 CLI
+        // JSON 的 serde(skip) 欄位），本地與 remote 同形恆填，每張卡不再額外讀檔。
         "promotedTo": info.head.promoted_to,
         "concluded": info.concluded,
+        "hold": info.head.hold,
     });
     // 建立者（createdBy，camelCase）——缺席時省略該鍵（比照 change 的 fromDiscussions 樣式）。
     if let Some(cb) = &info.created_by {
@@ -179,6 +180,29 @@ mod tests {
         assert_eq!(archived[0]["slug"], "old-topic");
         assert_eq!(archived[0]["topic"], "Old topic");
         assert_eq!(archived[0]["promotedTo"], serde_json::json!(["first-cut"]));
+    }
+
+    #[test]
+    fn list_discussions_carries_hold_for_every_record() {
+        // discussion-hold-until-release：本地與 remote 同形恆填 hold——本地專案的
+        // 看板與系統匣才分得出「還欠一刀」與「做完等封存」。
+        let fx = FixtureRoot::new("d-hold");
+        fx.write(
+            "openspec/discussions/held.md",
+            &discussion_doc("held", "Held", "promoted", "promoted_to: cut-a\nhold: true\n", 1, "**Decision**: more cuts"),
+        );
+        fx.write(
+            "openspec/discussions/freed.md",
+            &discussion_doc("freed", "Freed", "promoted", "promoted_to: cut-b\n", 1, "**Decision**: done"),
+        );
+
+        let v = super::list_discussions_at(fx.root());
+        let active = v["active"].as_array().expect("active array");
+        let find = |slug: &str| {
+            active.iter().find(|d| d["slug"] == slug).unwrap_or_else(|| panic!("{slug} listed"))
+        };
+        assert_eq!(find("held")["hold"], serde_json::json!(true));
+        assert_eq!(find("freed")["hold"], serde_json::json!(false), "無 hold 行的記錄恆填 false");
     }
 
     #[test]

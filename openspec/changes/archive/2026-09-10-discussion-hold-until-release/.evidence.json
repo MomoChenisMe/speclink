@@ -1,0 +1,204 @@
+{
+  "version": 2,
+  "change": "discussion-hold-until-release",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 落實 D1：`DiscussionHead::promote` 累加新變更名時不再改動 hold（crates/speclink-core/src/discuss.rs）。可觀察行為：對帶 `hold: true` 的記錄 promote 新名字後，promoted_to 累加、status 為 promoted、`hold: true` 行逐字保留、回傳 true；已在清單的名字仍回 false 且記錄不變。改寫 `mark_promoted`／`promoted_text` 的 doc 註解為「轉出不清 hold；hold 只由不帶 --hold 的 conclude 或 discuss archive 解除」。驗證：`head_promote_new_change_clears_hold_and_returns_true` 改名為保留語意並斷言旗標留存；`mark_promoted_clears_the_hold_flag`、`link_leaves_the_hold_flag_untouched_and_seal_clears_it`、`mark_promoted_lands_promoted_to_on_a_crlf_record_and_clears_the_hold`（保留 CRLF 斷言）、`head_conclude_and_promote_restate_the_hold_line_even_when_the_flag_value_is_unchanged` 改期望為旗標保留；`cargo test -p speclink-core discuss::` 全綠。",
+      "files": [
+        "crates/speclink-core/src/discuss.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 規格「conclude 以 --hold 保留討論在途」的 scenario「轉出保留旗標」與 Example「分期三刀的生命週期」落為 CLI 整合測試（crates/speclink-cli/tests/it/discuss_conclude_auto_archive.rs）：`staged_spin_out_lifecycle_holds_then_releases_the_record` 改為三刀劇本——conclude --hold 一次後依序 promote／archive 三刀，每次封存後記錄留在 openspec/discussions/ 且封存輸出不列它，最後 `speclink discuss archive` 移入 archive/；新增測試斷言 `discuss promote`、`new change --from-discussion`、`discuss seal` 三路徑對帶 hold 記錄皆保留 `hold: true` 行且人眼與 --json 輸出與改動前相同。驗證：`cargo test -p speclink-cli --test it discuss_conclude_auto_archive` 全綠；`cargo test -p speclink-cli --test it remote_verb_parity` 全綠（conclude --hold 對照不變）。",
+      "files": [
+        "crates/speclink-cli/tests/it/discuss_conclude_auto_archive.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 落實 D4 於 discuss 技能（crates/speclink-core/assets/skills/discuss.md 的「At convergence」與「Mid-discussion spin-out」段），對應規格「中途轉出教學」：規定多刀系列 conclude --hold 一次、hold 只由不帶 --hold 的 conclude 或 `speclink discuss archive` 解除、最後一刀封存後執行 `speclink discuss archive <slug>` 收尾、未帶旗標時後續刀走新討論；刪掉「the next spin-out clears the flag」與「Discarding the cut that cleared the flag…run conclude --hold again」；補一句救援路徑「討論被誤封存時，把記錄檔自 openspec/discussions/archive/ 搬回 openspec/discussions/ 即可續用」；conclude 範例保留 --hold 標示。驗證：渲染後的技能檔內容審閱——含上述四點與救援句、不含被刪的兩句。",
+      "files": [
+        "crates/speclink-core/assets/skills/discuss.md"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 improve 技能的 fan-out 段同步 D4（crates/speclink-core/assets/skills/improve.md）：「When the conclusion stages the work」一句改為 hold 直到明示解除、最後一刀封存後 discuss archive 收尾，刪掉「until the next spin-out clears the flag」。驗證：渲染後的技能檔內容審閱。",
+      "files": [
+        "crates/speclink-core/assets/skills/improve.md"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.1 落實 D3 的 wire 形狀，對應規格「討論資訊 payload 增選填 hold 欄位」：`DiscussionInfo` 增選填 `hold: Option<bool>`（crates/speclink-protocol/src/query.rs；`serde(default, skip_serializing_if = \"Option::is_none\")`、camelCase 鍵 `hold`）。驗證：protocol 單元測試——true／false 各出鍵、無 hold 鍵的舊 payload 反序列化為 None、再序列化無 hold 鍵；`cargo test -p speclink-protocol` 全綠。",
+      "files": [
+        "crates/speclink-core/assets/schema/spec-driven/fork.schema.yaml",
+        "crates/speclink-core/src/schema.rs",
+        "crates/speclink-protocol/src/query.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.1 落實 D2 於看板，對應規格「討論於看板第 0 欄兩級呈現」：`DiscussionItem` 增 `hold?: boolean`（packages/ui/src/adapter.ts，缺席＝未知）；`isCollapsedPromoted` 改為 promoted 且 concluded 非 false 且 hold 非 true（packages/ui/src/components/DiscussionColumn.tsx）；promoted 且 concluded 為 true 且 hold 為 true 的卡顯示「已轉出・保留中」狀態標（packages/ui/src/i18n.tsx 增 `discussion.statusPromotedHeld` 中文「已轉出・保留中」、英文「Promoted · on hold」，warning 語意色）、無動詞按鈕、不列衍生變更；promoted 且 concluded 為 false 的卡不論 hold 仍標「已轉出・尚無結論」；收合列計數與欄徽章依新判準。驗證：packages/ui/src/__tests__/discussionColumn.test.tsx 新增「帶 hold 的已結論 promoted 討論留上區、標保留中、無動詞、徽章計入、收合列不列」與「hold 缺席時沿既有收合」；`npm test -w packages/ui -- discussionColumn` 全綠。",
+      "files": [
+        "crates/speclink-server/src/routes.rs",
+        "crates/speclink-server/tests/it/discussion_routes.rs",
+        "packages/ui/src/__tests__/discussionColumn.test.tsx",
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/components/DiscussionColumn.tsx",
+        "packages/ui/src/i18n.tsx"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.1 落實 D2 於系統匣，對應規格「討論列表」：desktop wire 型別增 `hold?: boolean` 並原樣帶進 `DiscussionItem`（apps/desktop/src/adapter/remoteDataSource.ts）；tray 快照的 `promoted` 導出改為 promotedTo 非空且 concluded 非 false 且 hold 非 true（apps/desktop/src/tray.ts），TrayPanel 與原生選單沿用同一布林。可觀察行為：帶 hold 的已結論 promoted 討論列於「討論」分區並計入「討論 N」、不在「已轉出」分區、子選單結構不變且無額外標籤；hold 缺席視同未保留。驗證：apps/desktop/src/__tests__/tray.test.ts 既有分區測試擴 `hold: true` 與缺席兩筆案例；apps/desktop/src/__tests__/trayPanel.test.tsx 斷言 panel-section-discussions 含該討論、panel-section-promoted 不含；`npm test -w apps/desktop -- tray` 全綠。",
+      "files": [
+        "apps/desktop/src/__tests__/tray.test.ts",
+        "apps/desktop/src/__tests__/trayPanel.test.tsx",
+        "apps/desktop/src/adapter/remoteDataSource.ts",
+        "apps/desktop/src/tray.ts"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.3 版號與回歸對照三連動（規格「中途轉出教學」要求 claude 與 codex 兩工具的技能實例與 render golden 同步）：bump crates/speclink-core/src/init.rs 的 ASSET_VERSION；`UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 再生 crates/speclink-core/tests/golden/ 下五份 snapshot；`UPDATE_ASSETS_LOCK=1 cargo test -p speclink-core --test it render_golden::` 在乾淨樹上再生 crates/speclink-core/tests/golden/assets.lock；先 `cargo build` 再以本 repo 的 target/debug/speclink 執行 `speclink update` 再生 .claude/skills/ 與 .agents/skills/ 的 SKILL.md。驗證：不帶環境變數的 `cargo test -p speclink-core --test it render_golden::` 全綠；`git diff --stat` 顯示 .claude/skills/speclink-discuss/SKILL.md 與 .agents/skills/speclink-discuss/SKILL.md 含新文字；`speclink --version` 顯示新版號。",
+      "files": [
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "5.2 本地專案的討論列表同樣攜帶 hold（D3 的第二個組裝端）：`apps/desktop/core/src/discussions.rs` 的 `entry()` JSON 增 `\"hold\": info.head.hold`，比照隔壁的 `concluded`（本地專案走 Tauri 的 `list_discussions` 指令、不經 server，少這一鍵則本地看板與系統匣的 hold 分區完全不生效）。驗證：該模組新增測試斷言帶 `hold: true` 的記錄回 true、無 hold 行的回 false；`cargo test -p speclink-desktop-core` 全綠。",
+      "files": [
+        "apps/desktop/core/src/discussions.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M24J8XFH9ANR7JWM0FE5060W",
+      "taskDesc": "1.1 落實 D1：`DiscussionHead::promote` 累加新變更名時不再改動 hold（crates/speclink-core/src/discuss.rs）。可觀察行為：對帶 `hold: true` 的記錄 promote 新名字後，promoted_to 累加、status 為 promoted、`hold: true` 行逐字保留、回傳 true；已在清單的名字仍回 false 且記錄不變。改寫 `mark_promoted`／`promoted_text` 的 doc 註解為「轉出不清 hold；hold 只由不帶 --hold 的 conclude 或 discuss archive 解除」。驗證：`head_promote_new_change_clears_hold_and_returns_true` 改名為保留語意並斷言旗標留存；`mark_promoted_clears_the_hold_flag`、`link_leaves_the_hold_flag_untouched_and_seal_clears_it`、`mark_promoted_lands_promoted_to_on_a_crlf_record_and_clears_the_hold`（保留 CRLF 斷言）、`head_conclude_and_promote_restate_the_hold_line_even_when_the_flag_value_is_unchanged` 改期望為旗標保留；`cargo test -p speclink-core discuss::` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a8cbf68abe4754e9d0337c169087a539d3675e83",
+      "touchedFiles": [
+        "crates/speclink-core/src/discuss.rs"
+      ],
+      "recordedAt": "2026-09-10T04:18:19Z"
+    },
+    {
+      "taskId": "tsk_01M24J8XFH10BR7R9C50DCCH4G",
+      "taskDesc": "1.2 規格「conclude 以 --hold 保留討論在途」的 scenario「轉出保留旗標」與 Example「分期三刀的生命週期」落為 CLI 整合測試（crates/speclink-cli/tests/it/discuss_conclude_auto_archive.rs）：`staged_spin_out_lifecycle_holds_then_releases_the_record` 改為三刀劇本——conclude --hold 一次後依序 promote／archive 三刀，每次封存後記錄留在 openspec/discussions/ 且封存輸出不列它，最後 `speclink discuss archive` 移入 archive/；新增測試斷言 `discuss promote`、`new change --from-discussion`、`discuss seal` 三路徑對帶 hold 記錄皆保留 `hold: true` 行且人眼與 --json 輸出與改動前相同。驗證：`cargo test -p speclink-cli --test it discuss_conclude_auto_archive` 全綠；`cargo test -p speclink-cli --test it remote_verb_parity` 全綠（conclude --hold 對照不變）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a8cbf68abe4754e9d0337c169087a539d3675e83",
+      "touchedFiles": [
+        "crates/speclink-cli/tests/it/discuss_conclude_auto_archive.rs"
+      ],
+      "recordedAt": "2026-09-10T04:26:09Z"
+    },
+    {
+      "taskId": "tsk_01M24J8XFHJYKQQ7JRFVBY1E9H",
+      "taskDesc": "2.1 落實 D4 於 discuss 技能（crates/speclink-core/assets/skills/discuss.md 的「At convergence」與「Mid-discussion spin-out」段），對應規格「中途轉出教學」：規定多刀系列 conclude --hold 一次、hold 只由不帶 --hold 的 conclude 或 `speclink discuss archive` 解除、最後一刀封存後執行 `speclink discuss archive <slug>` 收尾、未帶旗標時後續刀走新討論；刪掉「the next spin-out clears the flag」與「Discarding the cut that cleared the flag…run conclude --hold again」；補一句救援路徑「討論被誤封存時，把記錄檔自 openspec/discussions/archive/ 搬回 openspec/discussions/ 即可續用」；conclude 範例保留 --hold 標示。驗證：渲染後的技能檔內容審閱——含上述四點與救援句、不含被刪的兩句。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a8cbf68abe4754e9d0337c169087a539d3675e83",
+      "touchedFiles": [
+        "crates/speclink-core/assets/skills/discuss.md"
+      ],
+      "recordedAt": "2026-09-10T04:27:06Z"
+    },
+    {
+      "taskId": "tsk_01M24J8XFHGRCVW747QZWN4CSX",
+      "taskDesc": "2.2 improve 技能的 fan-out 段同步 D4（crates/speclink-core/assets/skills/improve.md）：「When the conclusion stages the work」一句改為 hold 直到明示解除、最後一刀封存後 discuss archive 收尾，刪掉「until the next spin-out clears the flag」。驗證：渲染後的技能檔內容審閱。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a8cbf68abe4754e9d0337c169087a539d3675e83",
+      "touchedFiles": [
+        "crates/speclink-core/assets/skills/improve.md"
+      ],
+      "recordedAt": "2026-09-10T04:27:23Z"
+    },
+    {
+      "taskId": "tsk_01M24J8XFHJJBX3RAMVHCXMZPK",
+      "taskDesc": "3.1 落實 D3 的 wire 形狀，對應規格「討論資訊 payload 增選填 hold 欄位」：`DiscussionInfo` 增選填 `hold: Option<bool>`（crates/speclink-protocol/src/query.rs；`serde(default, skip_serializing_if = \"Option::is_none\")`、camelCase 鍵 `hold`）。驗證：protocol 單元測試——true／false 各出鍵、無 hold 鍵的舊 payload 反序列化為 None、再序列化無 hold 鍵；`cargo test -p speclink-protocol` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a8cbf68abe4754e9d0337c169087a539d3675e83",
+      "touchedFiles": [
+        "crates/speclink-core/assets/schema/spec-driven/fork.schema.yaml",
+        "crates/speclink-core/src/schema.rs",
+        "crates/speclink-protocol/src/query.rs"
+      ],
+      "recordedAt": "2026-09-10T04:36:23Z"
+    },
+    {
+      "taskId": "tsk_01M24J8XFH681C7WDPSZYHEEX9",
+      "taskDesc": "4.1 落實 D2 於看板，對應規格「討論於看板第 0 欄兩級呈現」：`DiscussionItem` 增 `hold?: boolean`（packages/ui/src/adapter.ts，缺席＝未知）；`isCollapsedPromoted` 改為 promoted 且 concluded 非 false 且 hold 非 true（packages/ui/src/components/DiscussionColumn.tsx）；promoted 且 concluded 為 true 且 hold 為 true 的卡顯示「已轉出・保留中」狀態標（packages/ui/src/i18n.tsx 增 `discussion.statusPromotedHeld` 中文「已轉出・保留中」、英文「Promoted · on hold」，warning 語意色）、無動詞按鈕、不列衍生變更；promoted 且 concluded 為 false 的卡不論 hold 仍標「已轉出・尚無結論」；收合列計數與欄徽章依新判準。驗證：packages/ui/src/__tests__/discussionColumn.test.tsx 新增「帶 hold 的已結論 promoted 討論留上區、標保留中、無動詞、徽章計入、收合列不列」與「hold 缺席時沿既有收合」；`npm test -w packages/ui -- discussionColumn` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a8cbf68abe4754e9d0337c169087a539d3675e83",
+      "touchedFiles": [
+        "crates/speclink-server/src/routes.rs",
+        "crates/speclink-server/tests/it/discussion_routes.rs",
+        "packages/ui/src/__tests__/discussionColumn.test.tsx",
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/components/DiscussionColumn.tsx",
+        "packages/ui/src/i18n.tsx"
+      ],
+      "recordedAt": "2026-09-10T04:44:30Z"
+    },
+    {
+      "taskId": "tsk_01M24J8XFHQWRYBRHJHPPRVGKS",
+      "taskDesc": "5.1 落實 D2 於系統匣，對應規格「討論列表」：desktop wire 型別增 `hold?: boolean` 並原樣帶進 `DiscussionItem`（apps/desktop/src/adapter/remoteDataSource.ts）；tray 快照的 `promoted` 導出改為 promotedTo 非空且 concluded 非 false 且 hold 非 true（apps/desktop/src/tray.ts），TrayPanel 與原生選單沿用同一布林。可觀察行為：帶 hold 的已結論 promoted 討論列於「討論」分區並計入「討論 N」、不在「已轉出」分區、子選單結構不變且無額外標籤；hold 缺席視同未保留。驗證：apps/desktop/src/__tests__/tray.test.ts 既有分區測試擴 `hold: true` 與缺席兩筆案例；apps/desktop/src/__tests__/trayPanel.test.tsx 斷言 panel-section-discussions 含該討論、panel-section-promoted 不含；`npm test -w apps/desktop -- tray` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a8cbf68abe4754e9d0337c169087a539d3675e83",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/tray.test.ts",
+        "apps/desktop/src/__tests__/trayPanel.test.tsx",
+        "apps/desktop/src/adapter/remoteDataSource.ts",
+        "apps/desktop/src/tray.ts"
+      ],
+      "recordedAt": "2026-09-10T04:48:06Z"
+    },
+    {
+      "taskId": "tsk_01M24J8XFHTES79G06XPSF0T17",
+      "taskDesc": "2.3 版號與回歸對照三連動（規格「中途轉出教學」要求 claude 與 codex 兩工具的技能實例與 render golden 同步）：bump crates/speclink-core/src/init.rs 的 ASSET_VERSION；`UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 再生 crates/speclink-core/tests/golden/ 下五份 snapshot；`UPDATE_ASSETS_LOCK=1 cargo test -p speclink-core --test it render_golden::` 在乾淨樹上再生 crates/speclink-core/tests/golden/assets.lock；先 `cargo build` 再以本 repo 的 target/debug/speclink 執行 `speclink update` 再生 .claude/skills/ 與 .agents/skills/ 的 SKILL.md。驗證：不帶環境變數的 `cargo test -p speclink-core --test it render_golden::` 全綠；`git diff --stat` 顯示 .claude/skills/speclink-discuss/SKILL.md 與 .agents/skills/speclink-discuss/SKILL.md 含新文字；`speclink --version` 顯示新版號。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a8cbf68abe4754e9d0337c169087a539d3675e83",
+      "touchedFiles": [
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ],
+      "recordedAt": "2026-09-10T05:21:45Z"
+    },
+    {
+      "taskId": "tsk_01M24WG39YHV819B948NHH68AJ",
+      "taskDesc": "5.2 本地專案的討論列表同樣攜帶 hold（D3 的第二個組裝端）：`apps/desktop/core/src/discussions.rs` 的 `entry()` JSON 增 `\"hold\": info.head.hold`，比照隔壁的 `concluded`（本地專案走 Tauri 的 `list_discussions` 指令、不經 server，少這一鍵則本地看板與系統匣的 hold 分區完全不生效）。驗證：該模組新增測試斷言帶 `hold: true` 的記錄回 true、無 hold 行的回 false；`cargo test -p speclink-desktop-core` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a8cbf68abe4754e9d0337c169087a539d3675e83",
+      "touchedFiles": [
+        "apps/desktop/core/src/discussions.rs"
+      ],
+      "recordedAt": "2026-09-10T05:26:24Z"
+    }
+  ]
+}

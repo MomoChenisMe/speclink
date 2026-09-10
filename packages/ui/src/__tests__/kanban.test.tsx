@@ -407,6 +407,25 @@ describe("KanbanBoard 拖排（design D6）", () => {
     expect(resolveCardDrop(cols, cardDndId("change", "a"), cardDndId("change", "a"))).toBeNull();
   });
 
+  it("帶 hold 的已結論 promoted 討論進可拖集，未保留者收合在外", () => {
+    // 規格「討論於看板第 0 欄兩級呈現」的拖排判準：上區卡集與可拖集恆等——
+    // 兩者共用 isCollapsedPromoted，沒有第二份判準。
+    const base = { topic: "Fanout", status: "promoted", rounds: 2, created: "2026-07-06" };
+    const discussions: DiscussionLists = {
+      active: [
+        { ...base, slug: "held-one", promotedTo: ["cut-a"], concluded: true, hold: true },
+        { ...base, slug: "released-one", promotedTo: ["cut-b"], concluded: true, hold: false },
+      ],
+      archived: [],
+    };
+    render(<KanbanBoard changes={changes} discussions={discussions} onReorder={vi.fn()} />);
+    const col = column("discussions");
+    const held = col.querySelector('[data-discussion="held-one"]') as HTMLElement;
+    expect(held).toBeTruthy();
+    expect(held.closest('[aria-roledescription="sortable"]')).toBeTruthy();
+    expect(col.querySelector('[data-discussion="released-one"]')).toBeNull();
+  });
+
   it("change cards mount as sortables with a localized drag label", () => {
     render(<KanbanBoard changes={changes} onReorder={vi.fn()} />);
     const card = screen.getByText("working-y").closest('[aria-roledescription="sortable"]') as HTMLElement;

@@ -973,7 +973,7 @@ describe("initTray 接線（選單）", () => {
 // spec「面板分頁切換中回饋」「面板分區首訪 skeleton」（design D5）：面板是薄渲染層，
 // 兩個載入態欄位自主視窗 store 導出，面板不自建狀態。
 describe("TraySnapshot 的討論分區判準（conclusion-gated-discussion-archive）", () => {
-  it("promoted 且 concluded 非 false 才歸「已轉出」；未結論轉出留「討論」分區；缺席退回現行", () => {
+  it("promoted 且 concluded 非 false 且未保留才歸「已轉出」；未結論或保留中留「討論」分區；缺席退回現行", () => {
     const bag = makeStore();
     bag.emit({
       discussions: {
@@ -982,6 +982,8 @@ describe("TraySnapshot 的討論分區判準（conclusion-gated-discussion-archi
           { slug: "done", topic: "已結論轉出", promotedTo: ["cut-b"], concluded: true },
           { slug: "legacy", topic: "舊 server 無欄位", promotedTo: ["cut-c"] },
           { slug: "plain", topic: "未轉出", promotedTo: [], concluded: false },
+          { slug: "held", topic: "保留中", promotedTo: ["cut-d"], concluded: true, hold: true },
+          { slug: "freed", topic: "已釋放", promotedTo: ["cut-e"], concluded: true, hold: false },
         ],
       },
     });
@@ -990,9 +992,11 @@ describe("TraySnapshot 的討論分區判準（conclusion-gated-discussion-archi
     const bySlug = Object.fromEntries(snap.discussions.map((d) => [d.slug, d.promoted]));
     expect(bySlug).toEqual({
       mid: false, // 已轉出但尚無結論 → 「討論」分區
-      done: true, // 已轉出且已有結論 → 「已轉出」分區
+      done: true, // 已轉出、已有結論、hold 缺席（視同未保留）→ 「已轉出」分區
       legacy: true, // concluded 缺席（舊 server）→ 退回現行判準
       plain: false,
+      held: false, // 保留在途 → 「討論」分區
+      freed: true, // hold 為 false → 「已轉出」分區
     });
   });
 });

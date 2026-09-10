@@ -226,7 +226,7 @@ artifacts:
         verified.
     - Cross-referencing (analyzer checks these):
       - Every `### Requirement:` name from specs MUST appear as a case-insensitive substring in at least one task description
-      - If design.md exists, every `###` heading from design.md should be referenced in at least one task description
+      - If design.md exists, every `###` heading from design.md should be referenced in at least one task description — either its text or just its ordinal (`D1`, `Decision 1`, `決策一`) counts
 
     Example:
     ```

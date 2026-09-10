@@ -1526,22 +1526,33 @@ pub async fn list_discussions(
     Ok(ok(dto, &result.etag))
 }
 
-/// Engine discussion infos → wire DTOs with `promotedTo` and `concluded`
-/// filled from the engine's own projection: `DiscussionInfo` carries both as
-/// `serde(skip)` fields (parsed from each info's own record, live or archived,
-/// so a reused slug never answers for its namesake), kept out of the CLI's JSON
-/// so it stays byte-identical. Pure assembly — no store read at the route edge.
+/// One engine discussion info → wire DTO with `promotedTo`, `concluded` and
+/// `hold` filled from the engine's own projection: `DiscussionInfo` carries the
+/// three as `serde(skip)` fields (parsed from that info's own record, live or
+/// archived, so a reused slug never answers for its namesake), kept out of the
+/// CLI's JSON so it stays byte-identical. Pure assembly — no store read at the
+/// route edge. `concluded` and `hold` are always filled: an absent key means
+/// "old server", never false.
+fn discussion_dto(info: EngineDiscussionInfo) -> DiscussionInfo {
+    DiscussionInfo {
+        slug: info.slug,
+        topic: info.topic,
+        status: info.status,
+        rounds: info.rounds,
+        created: info.created,
+        created_by: info.created_by,
+        kind: info.kind,
+        promoted_to: info.head.promoted_to,
+        concluded: Some(info.concluded),
+        hold: Some(info.head.hold),
+        path: info.path,
+        archived: info.archived,
+    }
+}
+
+/// The list form of [`discussion_dto`].
 fn discussion_dtos(infos: Vec<EngineDiscussionInfo>) -> Vec<DiscussionInfo> {
-    infos
-        .into_iter()
-        .map(|info| {
-            let (promoted_to, concluded) = (info.head.promoted_to.clone(), info.concluded);
-            let mut dto = discussion_info(info);
-            dto.promoted_to = promoted_to;
-            dto.concluded = Some(concluded);
-            dto
-        })
-        .collect()
+    infos.into_iter().map(discussion_dto).collect()
 }
 
 /// Query string of `GET /discussions/search`.
@@ -1757,7 +1768,7 @@ pub async fn show_discussion(
         .info
         .ok_or_else(|| ApiError::internal("discuss-show: missing discussion info"))?;
     let dto = ShowDiscussionResponse {
-        info: discussion_info(info),
+        info: discussion_dto(info),
         content: show.content,
     };
     Ok(ok(dto, &result.etag))
@@ -1884,22 +1895,6 @@ pub async fn promote_discussion(
     // 新變更的目錄刻意不上 wire：那是 store 端的檔案系統位置，對本機使用者
     // 無意義——與 `new change` 的 Path 行同一條裁定（design D5）。
     Ok(ok(PromoteDiscussionResponse { change }, &result.etag))
-}
-
-fn discussion_info(info: EngineDiscussionInfo) -> DiscussionInfo {
-    DiscussionInfo {
-        slug: info.slug,
-        topic: info.topic,
-        status: info.status,
-        rounds: info.rounds,
-        created: info.created,
-        created_by: info.created_by,
-        kind: info.kind,
-        promoted_to: Vec::new(),
-        concluded: None,
-        path: info.path,
-        archived: info.archived,
-    }
 }
 
 // --- Engine outcome → protocol DTO (typed field mapping, no raw JSON) ---

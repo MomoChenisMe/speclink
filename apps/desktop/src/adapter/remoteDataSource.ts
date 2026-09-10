@@ -36,6 +36,8 @@ interface RemoteDiscussionInfo {
   promotedTo?: string[];
   /** 結論已寫入與否（wire concluded）——舊 server 不送時缺席＝未知，不補值。 */
   concluded?: boolean;
+  /** 結論是否保留在途（wire hold）——舊 server 不送時缺席＝未知，視同未保留。 */
+  hold?: boolean;
 }
 
 function toDiscussionItem(info: RemoteDiscussionInfo): DiscussionItem {

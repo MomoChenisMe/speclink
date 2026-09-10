@@ -96,8 +96,8 @@ pub struct DiscussionHead {
     lines: Option<KeyLines>,
     /// 解析當下的四個可寫欄位——`write_back` 只寫與它不同的欄位。
     parsed: Parsed,
-    /// `promote`（新名字）與 `conclude` 對 hold 是明確重述：即使布林值沒變（例如
-    /// 手寫 `hold: yes` 讀成 false、再 conclude(false)），任何 `hold:` 行也整行移除。
+    /// `conclude` 對 hold 是明確重述：即使布林值沒變（例如手寫 `hold: yes` 讀成
+    /// false、再 conclude(false)），任何 `hold:` 行也整行移除。`promote` 不重述。
     hold_restated: bool,
 }
 
@@ -175,16 +175,15 @@ impl DiscussionHead {
     }
 
     /// 轉出：status 由 Open／Concluded／Unknown 轉 Promoted（已是 Promoted 不動）、
-    /// `promoted_to` 去重累加；**只有新名字才清 hold**（回 `true`）。名字已在清單
-    /// （re-ingest 舊變更的 seal）不是轉出：hold 不動、回 `false`。
+    /// `promoted_to` 去重累加。回 `true`＝累加了新名字；名字已在清單（re-ingest 舊變更
+    /// 的 seal）回 `false`。兩條路都**不碰 hold**——旗標只由不帶 `--hold` 的
+    /// [`conclude`](Self::conclude) 或 `speclink discuss archive` 解除。
     pub fn promote(&mut self, change: &str) -> bool {
         self.status = Status::Promoted;
         if self.promoted_to.iter().any(|c| c == change) {
             return false;
         }
         self.promoted_to.push(change.to_string());
-        self.hold = false;
-        self.hold_restated = true;
         true
     }
 
@@ -803,8 +802,9 @@ fn conclusion_body(text: &str) -> Option<String> {
 /// Mark a discussion as promoted to a change (the discussion side of the bidirectional link).
 /// A discussion can fan out into several changes, so `promoted_to` is a comma-separated
 /// accumulator: repeated promotes append the new change name rather than being dropped.
-/// Accumulating a change also drops the record's `hold: true` flag: the staged spin-out
-/// it was waiting for now exists, so the record rejoins the ordinary lifecycle.
+/// Accumulating a change leaves the record's `hold: true` flag alone: a staged series
+/// spins out several cuts from one record, so the flag has to outlive every one of them.
+/// Only a `conclude` without `--hold` or a manual `speclink discuss archive` releases it.
 pub fn mark_promoted(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
     if let Some(out) = promoted_text(store, slug, change)? {
         store.write_live_discussion(slug, &out)?;
@@ -819,12 +819,11 @@ pub fn mark_promoted(store: &dyn Store, slug: &str, change: &str) -> Result<()> 
 /// --from-discussion`) run this BEFORE the change lands, so that failure cannot leave a
 /// half-built change behind that a retry then trips over.
 ///
-/// A NEW change name is the spin-out the hold flag was waiting for — `promote` clears
-/// it. All three spin-out paths (promote, `new change --from-discussion`, seal) come
-/// through here, so one rule covers them; `link` writes no discussion side and keeps
-/// the record byte-identical. The idempotent branch (re-sealing a change already in
-/// the list, e.g. a re-ingest after `conclude --hold` flagged it) is not a spin-out
-/// and leaves the flag alone.
+/// Spinning out never clears the `hold: true` flag. All three spin-out paths (promote,
+/// `new change --from-discussion`, seal) come through here, so one rule covers them;
+/// `link` writes no discussion side and keeps the record byte-identical. A held record
+/// therefore stays live across the whole staged series, and the user ends it with one
+/// `speclink discuss archive <slug>` after the last cut is archived.
 pub fn promoted_text(store: &dyn Store, slug: &str, change: &str) -> Result<Option<String>> {
     let text = load_live(store, slug)?;
     let mut head = DiscussionHead::parse(&text);
@@ -1376,21 +1375,22 @@ mod tests {
     }
 
     #[test]
-    fn mark_promoted_clears_the_hold_flag() {
-        // 下一刀轉出＝旗標的償還：promoted_to 累加、hold 行消失。
+    fn mark_promoted_keeps_the_hold_flag() {
+        // 轉出下一刀不是旗標的償還：promoted_to 累加、hold 行逐字留著，
+        // 整個分期系列只做一次 conclude --hold。
         let store = TestStore::with_live_discussion("alpha", &held_promoted_doc("alpha", "cut-a"));
 
         super::mark_promoted(&store, "alpha", "cut-b").unwrap();
 
         let text = store.discussion("alpha");
         assert!(text.contains("promoted_to: cut-a, cut-b"), "累加下一刀");
-        assert!(!DiscussionHead::parse(&text).hold, "旗標由轉出清除");
-        assert!(!text.contains("hold: true"));
+        assert!(DiscussionHead::parse(&text).hold, "轉出不清旗標");
+        assert!(text.contains("hold: true"));
     }
 
     #[test]
-    fn link_leaves_the_hold_flag_untouched_and_seal_clears_it() {
-        // link 對討論記錄逐位元不變（不清旗標）；補標的 seal 才清。
+    fn link_and_seal_both_leave_the_hold_flag_untouched() {
+        // link 對討論記錄逐位元不變；補標的 seal 累加名字，旗標一樣不動。
         let doc = held_promoted_doc("alpha", "cut-a");
         let store = TestStore::with_meta("cut-b", "schema: spec-driven\ncreated: 2026-01-02\n");
         store.discussions.borrow_mut().insert("alpha".into(), doc.clone());
@@ -1401,13 +1401,13 @@ mod tests {
         super::seal(&store, "alpha", "cut-b").unwrap();
         let text = store.discussion("alpha");
         assert!(text.contains("promoted_to: cut-a, cut-b"));
-        assert!(!DiscussionHead::parse(&text).hold, "seal 經 mark_promoted 清旗標");
+        assert!(DiscussionHead::parse(&text).hold, "seal 經 mark_promoted 也不清旗標");
     }
 
     #[test]
     fn mark_promoted_keeps_the_hold_flag_when_nothing_accumulates() {
-        // 冪等分支（promoted_to 已含該變更名）不是新刀：re-ingest 舊變更的 seal
-        // 不得清旗標，否則分期第二刀的來源記錄會被舊變更的封存掃走。
+        // 冪等分支（promoted_to 已含該變更名）連 promoted_to 都不動：re-ingest
+        // 舊變更的 seal 讓記錄逐位元不變，旗標自然跟著留著。
         let store = TestStore::with_live_discussion("alpha", &held_promoted_doc("alpha", "cut-a"));
 
         super::mark_promoted(&store, "alpha", "cut-a").unwrap();
@@ -1494,10 +1494,10 @@ mod tests {
     }
 
     #[test]
-    fn mark_promoted_lands_promoted_to_on_a_crlf_record_and_clears_the_hold() {
-        // 舊版以 "status: promoted\n" 做 replacen，CRLF 記錄的 promoted_to 落空、旗標因
-        // 「沒累加」被保留（前身測試釘的就是那個破口）。改走 head 之後 promoted_to 沿
-        // 該檔行尾落地，旗標的償還規則照常成立。
+    fn mark_promoted_lands_promoted_to_on_a_crlf_record_and_keeps_the_hold() {
+        // 舊版以 "status: promoted\n" 做 replacen，CRLF 記錄的 promoted_to 落空（前身
+        // 測試釘的就是那個破口）。改走 head 之後 promoted_to 沿該檔行尾落地；旗標則
+        // 不論行尾一律留著。
         let doc = open_doc("alpha", "Alpha")
             .replacen("created: 2026-01-02\n", "created: 2026-01-02\nhold: true\n", 1)
             .replace('\n', "\r\n");
@@ -1508,8 +1508,8 @@ mod tests {
         let text = store.discussion("alpha");
         assert!(text.contains("status: promoted\r\n"), "status 原位代換沿 CRLF: {text:?}");
         assert!(text.contains("promoted_to: cut-b\r\n---"), "promoted_to 沿 CRLF 落地: {text:?}");
-        assert!(!DiscussionHead::parse(&text).hold, "新刀累加即清旗標");
-        assert!(!text.contains("hold:"));
+        assert!(DiscussionHead::parse(&text).hold, "轉出不清旗標");
+        assert!(text.contains("hold: true\r\n"), "旗標行沿 CRLF 逐字保留: {text:?}");
     }
 
     #[test]
@@ -3140,15 +3140,15 @@ mod tests {
     }
 
     #[test]
-    fn head_promote_new_change_clears_hold_and_returns_true() {
+    fn head_promote_new_change_keeps_hold_and_returns_true() {
         let mut head = DiscussionHead::parse(&held_promoted_doc("alpha", "cut-a"));
         assert!(head.promote("cut-b"));
         assert_eq!(head.status, Status::Promoted);
         assert_eq!(head.promoted_to, vec!["cut-a", "cut-b"]);
-        assert!(!head.hold);
+        assert!(head.hold);
         let text = head.write_back().unwrap().unwrap();
         assert!(text.contains("promoted_to: cut-a, cut-b\n"));
-        assert!(!text.contains("hold:"), "旗標行整行消失: {text}");
+        assert!(text.contains("hold: true\n"), "旗標行逐字保留: {text}");
     }
 
     #[test]
@@ -3312,8 +3312,9 @@ mod tests {
     }
 
     #[test]
-    fn head_conclude_and_promote_restate_the_hold_line_even_when_the_flag_value_is_unchanged() {
-        // conclude(false)／promote 的 hold 是明確重述：`hold: yes`（讀成 false）也整行移除。
+    fn head_conclude_restates_the_hold_line_but_promote_leaves_it_verbatim() {
+        // conclude(false) 的 hold 是明確重述：`hold: yes`（讀成 false）也整行移除。
+        // promote 不碰 hold：同一行原封不動留在原位。
         let mut head = DiscussionHead::parse("---\nstatus: open\nhold: yes\n---\n");
         head.conclude(false);
         assert_eq!(head.write_back().unwrap().as_deref(), Some("---\nstatus: concluded\n---\n"));
@@ -3321,7 +3322,7 @@ mod tests {
         assert!(head.promote("cut"));
         assert_eq!(
             head.write_back().unwrap().as_deref(),
-            Some("---\nstatus: promoted\npromoted_to: cut\n---\n")
+            Some("---\nstatus: promoted\nhold: yes\npromoted_to: cut\n---\n")
         );
     }
 

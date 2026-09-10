@@ -578,6 +578,11 @@ pub struct DiscussionInfo {
     /// 恆填 true／false。缺席＝未知（舊 server），client 不得當成 false。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub concluded: Option<bool>,
+    /// frontmatter 是否帶 `hold: true` 行（結論保留在途、還欠尚未建立的變更）；
+    /// 由 server 於 route 邊緣組裝，恆填 true／false。缺席＝未知（舊 server），
+    /// client 視同未保留、沿既有分區，不得當成 true。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hold: Option<bool>,
     pub path: String,
     pub archived: bool,
 }
@@ -1057,6 +1062,37 @@ mod tests {
         assert_eq!(legacy.concluded, None, "舊 payload 無鍵不失敗且為未知");
         let json = serde_json::to_value(&legacy).unwrap();
         assert!(json.get("concluded").is_none(), "None 省略鍵: {json}");
+    }
+
+    #[test]
+    fn discussion_hold_is_optional_tristate() {
+        // discussion-hold-until-release：邊緣組裝恆填 true／false；舊 payload 無鍵
+        // → 未知（None），再序列化不出鍵——缺席不得當成 true。
+        let held: DiscussionInfo = serde_json::from_str(
+            r#"{"slug":"a","topic":"A","status":"promoted","rounds":1,"created":"2026-07-01","concluded":true,"hold":true,"path":"discussions/a.md","archived":false}"#,
+        )
+        .unwrap();
+        assert_eq!(held.hold, Some(true));
+        assert_eq!(serde_json::to_value(&held).unwrap()["hold"], serde_json::json!(true));
+
+        let free: DiscussionInfo = serde_json::from_str(
+            r#"{"slug":"b","topic":"B","status":"promoted","rounds":1,"created":"2026-07-01","concluded":true,"hold":false,"path":"discussions/b.md","archived":false}"#,
+        )
+        .unwrap();
+        assert_eq!(free.hold, Some(false));
+        assert_eq!(
+            serde_json::to_value(&free).unwrap()["hold"],
+            serde_json::json!(false),
+            "false 也上鍵，缺席才是未知"
+        );
+
+        let legacy: DiscussionInfo = serde_json::from_str(
+            r#"{"slug":"c","topic":"C","status":"open","rounds":0,"created":"2026-07-01","path":"discussions/c.md","archived":false}"#,
+        )
+        .unwrap();
+        assert_eq!(legacy.hold, None, "舊 payload 無鍵不失敗且為未知");
+        let json = serde_json::to_value(&legacy).unwrap();
+        assert!(json.get("hold").is_none(), "None 省略鍵: {json}");
     }
 
     #[test]

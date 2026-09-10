@@ -86,8 +86,8 @@ export interface DiscussionColumnProps {
 const STATUS_BADGE: Record<string, { labelKey: string; cls: string }> = {
   open: { labelKey: "discussion.statusOpen", cls: "bg-primary/8 text-primary/70" },
   concluded: { labelKey: "discussion.statusConcluded", cls: "bg-primary/12 text-primary" },
-  // 上區只會出現「已轉出但尚無結論」的 promoted 卡（已有結論者收進欄底收合列），
-  // 故 promoted 態的全卡標示即「已轉出・尚無結論」；warning 語意色沿 tone.ts 單一來源。
+  // 上區的 promoted 卡有兩種：尚無結論的，與已有結論但保留在途（hold）的。
+  // 兩者同為 warning 語意色（沿 tone.ts 單一來源），標示由 statusBadge 選。
   promoted: {
     labelKey: "discussion.statusPromotedUnconcluded",
     cls: `${SEMANTIC_SURFACE.warning} ${SEMANTIC_TONE.warning}`,
@@ -95,14 +95,27 @@ const STATUS_BADGE: Record<string, { labelKey: string; cls: string }> = {
 };
 
 /**
- * 收合列判準（conclusion-gated-discussion-archive）：討論的生命由結論決定——
- * promoted 且 concluded 為 true 才收進欄底「已轉出」收合列；concluded 為 false
- * 留上區全卡。concluded 缺席（舊 server）退回既有「promoted 一律收合」，
- * 避免把已有結論的討論誤標成尚無結論。KanbanBoard 的拖排落點清單共用此判準——
- * 上區卡集與可拖集必須恆等，否則落點解析吞手勢。
+ * 全卡的狀態標：尚無結論（concluded 為 false）的 promoted 卡標「已轉出・尚無結論」；
+ * 其餘還留在上區的 promoted 卡只可能是被 hold 留下的（判準與收合列同一份），
+ * 換標為「已轉出・保留中」、色系不變。非 promoted 態沿狀態表。
+ */
+function statusBadge(d: DiscussionItem): { labelKey: string; cls: string } {
+  const base = STATUS_BADGE[d.status] ?? STATUS_BADGE.open;
+  if (d.status === "promoted" && d.concluded !== false && !isCollapsedPromoted(d)) {
+    return { ...base, labelKey: "discussion.statusPromotedHeld" };
+  }
+  return base;
+}
+
+/**
+ * 收合列判準：只收「引擎會自動收走的討論」——promoted、已有結論（concluded 非
+ * false）且未保留（hold 非 true）。這正是最後一刀封存時引擎會隨行封存的集合；
+ * 帶 hold 的討論整個分期系列都留在上區全卡。concluded 或 hold 缺席（舊 server）
+ * 一律退回既有分區：缺席不得補成「尚無結論」或「保留中」。KanbanBoard 的拖排
+ * 落點清單共用此判準——上區卡集與可拖集必須恆等，否則落點解析吞手勢。
  */
 export function isCollapsedPromoted(d: DiscussionItem): boolean {
-  return d.status === "promoted" && d.concluded !== false;
+  return d.status === "promoted" && d.concluded !== false && d.hold !== true;
 }
 
 export function DiscussionCard({
@@ -116,7 +129,7 @@ export function DiscussionCard({
   "onOpenDiscussion" | "onArchiveDiscussion" | "highlight"
 >) {
   const { t } = useI18n();
-  const badge = STATUS_BADGE[d.status] ?? STATUS_BADGE.open;
+  const badge = statusBadge(d);
   return (
     <Card
       data-discussion={d.slug}
