@@ -1,0 +1,56 @@
+{
+  "version": 2,
+  "change": "improve-layout-signal",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 （design D1 第六訊號與准入測試的字面；spec improve-skill Requirement「掃描精髓段逐字保留」）在 crates/speclink-core/assets/skills/improve.md 的 Step 3：引言與清單標題由 five 改 six，第 5 條之後新增第 6 條「Grouping you can only guess from file names」，deletion test 段落之後新增「The sixth signal has its own admission test」段（讀者預測測試＋三條件＋「只搬家不算」），其餘段落逐字不動。驗證：對該檔執行 grep 斷言「The six friction signals」出現 1 次、「five friction」出現 0 次、「reader-prediction test」出現至少 1 次；`git diff` 只含 Step 3 的新增行與 five→six 兩處改字。",
+      "files": [
+        "crates/speclink-core/assets/skills/improve.md"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 （design D4 版號三連動與排程）確認 discussion-hold-until-release 已封存並提交（`git log --oneline -5` 含其封存 commit、工作樹無其 golden 改動）後，將 crates/speclink-core/src/init.rs 的 `ASSET_VERSION` 由 v1.32.0 bump 為 v1.33.0；執行 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden` 與 `UPDATE_ASSETS_LOCK=1 cargo test -p speclink-core --test it render_golden` 再生四份快照與 assets.lock。驗證：不帶環境變數再跑 `cargo test -p speclink-core --test it render_golden` 綠；四份快照的 `git diff` 只含 Step 3／Step 5／Guardrails 的新增行與版號行，assets.lock 只含 improve 與版號相關項。",
+      "files": [
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M259S4Q1RSTQF3087QJ19ZW1",
+      "taskDesc": "1.1 （design D1 第六訊號與准入測試的字面；spec improve-skill Requirement「掃描精髓段逐字保留」）在 crates/speclink-core/assets/skills/improve.md 的 Step 3：引言與清單標題由 five 改 six，第 5 條之後新增第 6 條「Grouping you can only guess from file names」，deletion test 段落之後新增「The sixth signal has its own admission test」段（讀者預測測試＋三條件＋「只搬家不算」），其餘段落逐字不動。驗證：對該檔執行 grep 斷言「The six friction signals」出現 1 次、「five friction」出現 0 次、「reader-prediction test」出現至少 1 次；`git diff` 只含 Step 3 的新增行與 five→six 兩處改字。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "30a047a9f909c25a2651f223ff471b239e126db1",
+      "touchedFiles": [
+        "crates/speclink-core/assets/skills/improve.md"
+      ],
+      "recordedAt": "2026-09-10T09:25:18Z"
+    },
+    {
+      "taskId": "tsk_01M259S4Q1AFXG73H37VNS2NR0",
+      "taskDesc": "2.1 （design D4 版號三連動與排程）確認 discussion-hold-until-release 已封存並提交（`git log --oneline -5` 含其封存 commit、工作樹無其 golden 改動）後，將 crates/speclink-core/src/init.rs 的 `ASSET_VERSION` 由 v1.32.0 bump 為 v1.33.0；執行 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden` 與 `UPDATE_ASSETS_LOCK=1 cargo test -p speclink-core --test it render_golden` 再生四份快照與 assets.lock。驗證：不帶環境變數再跑 `cargo test -p speclink-core --test it render_golden` 綠；四份快照的 `git diff` 只含 Step 3／Step 5／Guardrails 的新增行與版號行，assets.lock 只含 improve 與版號相關項。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "30a047a9f909c25a2651f223ff471b239e126db1",
+      "touchedFiles": [
+        "crates/speclink-core/src/init.rs",
+        "crates/speclink-core/tests/golden/assets.lock",
+        "crates/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ],
+      "recordedAt": "2026-09-10T09:28:27Z"
+    }
+  ]
+}
