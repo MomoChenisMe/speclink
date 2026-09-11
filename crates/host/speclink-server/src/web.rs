@@ -882,3 +882,5 @@ pub(crate) fn page(title: &str, body: &str) -> String {
         "<!doctype html>\n<html lang=\"zh-Hant\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>{title}</title>\n</head>\n<body>\n<main>\n{body}\n</main>\n</body>\n</html>\n"
     )
 }
+
+pub mod assets;

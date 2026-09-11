@@ -19,7 +19,7 @@ use speclink_store::{
 
 use crate::config::{IdentityConfig, ServerConfig};
 use crate::identity::IdentityStore;
-use crate::identity_sqlite::IdentitySqlite;
+use crate::identity::IdentitySqlite;
 
 /// The backup format version this build writes and reads. A backup declaring an
 /// unknown version is refused (fail closed — 決策 4).

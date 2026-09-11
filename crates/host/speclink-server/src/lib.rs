@@ -6,24 +6,19 @@
 //! pool, and the Engine/Host/Store crates stay runtime-free.
 
 pub mod admin;
+mod api;
 pub mod app;
-pub mod assets;
-pub mod audit;
-pub mod auth;
-pub mod backup;
 pub mod config;
-pub mod context;
-pub mod device;
-pub mod error;
-pub mod events;
 pub mod identity;
-pub mod identity_sqlite;
-pub mod read_api;
-pub mod routes;
-pub mod setup;
 pub mod state;
-pub mod verb;
 pub mod web;
+
+// 四個面的子模組在根層掛回原本的名字：crate 內外既有的 `speclink_server::<模組>`
+// 與 `crate::<模組>` 路徑一字不改。`api` 沒有自己的主模組，資料夾私有即可。
+pub use admin::{audit, backup};
+pub use api::{context, error, events, read_api, routes, verb};
+pub use identity::{auth, device, setup};
+pub use web::assets;
 
 use config::{IdentityConfig, StoreConfig};
 use identity::IdentitySqlite;

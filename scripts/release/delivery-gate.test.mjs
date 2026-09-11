@@ -680,7 +680,63 @@ function findLegacyCoreModule(line) {
   return null;
 }
 
-test('repo 不殘留搬移前的舊形路徑（crates 未分組、scripts 未分組、引擎模組未分組）', () => {
+/// 已搬進 crates/host/speclink-server/src/<group>/ 的伺服器模組名，與已搬進
+/// tests/it/<group>/ 的測試檔舊名。同 GROUPED_CORE_MODULES 寫成字面而非自檔案系統
+/// 讀出——守門在搬移前就要紅，那時四個資料夾還不存在。src 根層的 main、lib、app、
+/// config、state 與四個主模組檔 identity、admin、web、api 不在清單；tests/it 根層的
+/// main、e2e_cli、phase2_chain、startup、serverfs_store 與 common/ 目錄亦不在清單。
+const SERVER_SRC = 'crates/host/speclink-server/src/';
+const SERVER_TESTS = 'crates/host/speclink-server/tests/it/';
+const GROUPED_SERVER_MODULES = new Map([
+  ['identity', ['identity_sqlite', 'auth', 'device', 'setup']],
+  ['admin', ['audit', 'backup']],
+  ['api', ['routes', 'read_api', 'verb', 'events', 'context', 'error']],
+  ['web', ['assets']],
+]);
+const GROUPED_SERVER_TESTS = new Map([
+  [
+    'identity',
+    ['auth_device', 'auth_pat', 'auth_whoami', 'binding', 'device_e2e',
+     'device_flow', 'identity', 'invite', 'refresh_rotation'],
+  ],
+  [
+    'admin',
+    ['admin_api', 'admin_audit_filter', 'admin_data', 'admin_e2e',
+     'admin_overview_view', 'admin_system', 'admin_system_view',
+     'admin_three_entry', 'admin_users_view', 'admin_web_api',
+     'audit', 'backup_e2e', 'backup_restore', 'cli_admin'],
+  ],
+  [
+    'api',
+    ['board_order', 'command_routes', 'context_api', 'discussion_routes',
+     'drift_api', 'health', 'import_api', 'policy_write', 'query_routes',
+     'read_api', 'review_api', 'sse_events', 'sync_state', 'verb_api',
+     'verify_api'],
+  ],
+  [
+    'web',
+    ['web_account', 'web_activate', 'web_assets', 'web_invite',
+     'web_session', 'web_setup'],
+  ],
+]);
+
+/// 命中回傳分組後的正典路徑，否則 null。needle 由前綴常數與名字在執行期組出，源碼
+/// 裡沒有任何舊形字面。搬進組裡時只去掉與組同名的前綴（identity_sqlite 成為
+/// identity 組的 sqlite、admin_e2e 成為 admin 組的 e2e），其餘檔名原樣保留。
+function findLegacyServerPath(line) {
+  for (const [prefix, grouped] of [[SERVER_SRC, GROUPED_SERVER_MODULES], [SERVER_TESTS, GROUPED_SERVER_TESTS]]) {
+    for (const [group, names] of grouped) {
+      for (const name of names) {
+        if (!line.includes(`${prefix}${name}.rs`)) continue;
+        const stripped = name.startsWith(`${group}_`) ? name.slice(group.length + 1) : name;
+        return `${prefix}${group}/${stripped}.rs`;
+      }
+    }
+  }
+  return null;
+}
+
+test('repo 不殘留搬移前的舊形路徑（crates 未分組、scripts 未分組、引擎模組未分組、伺服器模組與測試檔未分組）', () => {
   // needle 寫成正則，源碼字面帶跳脫斜線，這條斷言才不會命中自己。
   const legacyCrate = /crates\/speclink-/;
   const scriptNames = groupedScriptNames();
@@ -701,6 +757,11 @@ test('repo 不殘留搬移前的舊形路徑（crates 未分組、scripts 未分
       hits.push(
         `${rel}:${lineNumber} 舊形引擎模組路徑（正典為 ${CORE_SRC}${coreModule.group}/${coreModule.name}.rs）\n    ${line.trim()}`,
       );
+      continue;
+    }
+    const serverPath = findLegacyServerPath(line);
+    if (serverPath) {
+      hits.push(`${rel}:${lineNumber} 舊形伺服器路徑（正典為 ${serverPath}）\n    ${line.trim()}`);
     }
   }
 

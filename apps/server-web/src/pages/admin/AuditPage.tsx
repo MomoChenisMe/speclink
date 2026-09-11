@@ -12,7 +12,7 @@ import type { AdminAuditEntry } from "../../api/client";
 // 動作、來源與時間區間篩選加分頁一律由伺服器計算——稽核事件隨營運單調增長，前端全量
 // 載入再篩選會隨資料量線性劣化。此頁只把參數送出並呈現回傳的當頁事件與總頁數。
 
-// 動作篩選的選項＝伺服器的封閉集合（crates/host/speclink-server/src/audit.rs 的 AuditAction）。
+// 動作篩選的選項＝伺服器的封閉集合（crates/host/speclink-server/src/admin/audit.rs 的 AuditAction）。
 const ACTIONS = [
   "user-invited",
   "invitation-revoked",
