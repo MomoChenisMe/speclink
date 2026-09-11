@@ -78,6 +78,8 @@ fn rs_files_under(dir: &Path) -> Vec<PathBuf> {
 fn remote_crate_has_no_raw_wire_json() {
     let remote_src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
+        .join("..")
+        .join("protocol")
         .join("speclink-remote")
         .join("src");
     let entries = rs_files_under(&remote_src);
