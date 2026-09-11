@@ -221,10 +221,10 @@ mod tests {
     }
 
     #[test]
-    fn writes_inside_openspec_coalesce_into_a_single_notification() {
+    fn writes_inside_openspec_coalesce_to_at_most_one_notification_per_file() {
         let root = TempRoot::new("coalesce");
         // demo/ 先於監看存在：Linux inotify 對新目錄要事件後補掛 watch，目錄
-        // 建立與其內容寫入會被拆進不同 debounce 批次，「恰一次」斷言只能建立在
+        // 建立與其內容寫入會被拆進不同 debounce 批次，計數斷言只能建立在
         // 已被監看的目錄上（macOS FSEvents 無此拆分，先前不可見）。
         let changes = root.0.join("openspec").join("changes");
         std::fs::create_dir_all(changes.join("demo")).unwrap();
@@ -253,10 +253,15 @@ mod tests {
         std::fs::write(changes.join("demo").join("tasks.md"), "- [ ] 1.1 t\n").unwrap();
 
         std::thread::sleep(Duration::from_millis(2000));
-        assert_eq!(
-            hits.load(Ordering::SeqCst),
-            1,
-            "a burst of writes must coalesce into exactly one debounced notification"
+        // debouncer 逐路徑計時：鬧鐘響時只送出「最後事件已滿 debounce」的路徑，
+        // 第二個檔案的事件若比執行緒醒來的延遲晚到，就留到下一輪再送（Windows
+        // 上 Defender 於關檔時掃描，兩檔事件間隔可達數十毫秒）。套件對跨檔合併
+        // 不保證恰一次，只保證每個路徑至多一次：兩檔至少 4 個原始事件，收斂到
+        // 1～2 次通知即證明去抖生效。
+        let n = hits.load(Ordering::SeqCst);
+        assert!(
+            (1..=2).contains(&n),
+            "a burst of writes to two files must coalesce to at most one notification per file, got {n}"
         );
     }
 
