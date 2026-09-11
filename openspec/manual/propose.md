@@ -2,9 +2,9 @@
 title: 提案：建立變更與產物
 section: SDD 工作流
 order: 110
-keywords: [提案, propose, 變更, capability, 命名守門, Purpose, 手動任務]
+keywords: [提案, propose, 變更, capability, 命名守門, Purpose, 手動任務, validate]
 sources: [propose-skill, capability-naming-guard, spec-validation, manual-task-marker]
-generated: 2026-09-02
+generated: 2026-09-11T10:03:08+08:00
 ---
 
 # 提案：建立變更與產物
@@ -79,6 +79,18 @@ speclink new artifact spec <capability> --change <變更名> --new
 > Purpose 不合格的新 capability 在提案階段只是驗證錯誤，到封存時會被直接拒絕。早點補好。見[封存](archive.md)。
 
 `speclink validate --specs` 會逐份驗證正典規格：缺 `## Purpose` 或內容為空報 error；內容不足 50 字元只在 `--strict` 時報 warning；內容仍是封存時的佔位文字報 warning。`--all` 同時驗變更與正典規格。`--specs` 不能與變更名同時給，會被拒絕並指路單獨 `--specs` 或 `--all`。
+
+## validate 會提早抓出封存守門的違規
+
+delta 與正典對不上的問題（例如 MODIFIED 的目標需求已經不在正典、ADDED 的名字正典已有、MODIFIED 漏掉正典既有的 scenario 又沒宣告移除），以前要到封存才被拒絕。現在 `speclink validate <變更名>` 就會對每個 delta capability 做同一套判斷，每條違規化成一條 error，變更驗證結果為不通過，`--strict` 與否都一樣。無參數、`--all`、`--changes`、remote 模式與桌面的結構驗證都適用。
+
+| 違規 | error 長相 |
+| --- | --- |
+| MODIFIED 的目標不存在 | `specs/auth/spec.md: MODIFIED 'R9': target requirement no longer exists in the canonical spec (see: speclink drift demo)` |
+| ADDED 的名字正典已有 | `specs/auth/spec.md: ADDED 'R1': already exists in the canonical spec — archive would refuse it (see: speclink drift demo)` |
+| RENAMED 缺目標名 | `specs/auth/spec.md: RENAMED 'R1': RENAMED operation names no TO: target (see: speclink drift demo)` |
+
+守門 error 排在結構 error 之後，結構檢查已報過的不重複報（新 capability 的 Purpose 只報 Purpose error；同一份 delta 內的重複需求名只報重複）。完整的守門清單與補救路線見[封存](archive.md)。
 
 ## 手動任務標記
 

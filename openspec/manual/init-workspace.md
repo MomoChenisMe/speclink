@@ -2,9 +2,9 @@
 title: 建立工作區與指令檔
 section: 開始使用
 order: 30
-keywords: [init, update, 工作區, 技能檔, 指令檔, 過期, 降級]
+keywords: [init, update, 工作區, 技能檔, 指令檔, 過期, 降級, skills_dir, init --force]
 sources: [workspace-tools, skill-routing]
-generated: 2026-09-03
+generated: 2026-09-11T10:03:08+08:00
 ---
 
 # 建立工作區與指令檔
@@ -61,6 +61,19 @@ update 會：
 
 `.speclink.yaml` 無法解析時，update 以單行解析錯誤失敗，任何檔案都不會改。
 
+孤兒資料夾的清理不只 update 會做。`speclink init`、`speclink init --force`、設定頁改工具或改政策後的技能同步、桌面的更新動作，每個再生入口完成技能生成後都清同一批。任一個資料夾刪不掉時，該入口以錯誤結束，已產生的檔案保留；重跑會收斂到同一個結果。
+
+### init --force 等於重設工具選集
+
+`speclink init --force --tools <清單>` 把你這次選的內建工具當成完整的期望狀態：
+
+- 沒選的工具，它的 speclink- 技能資料夾整組移除。例如原本是 Claude、這次只選 Codex，`.claude/skills/` 下的 speclink- 資料夾全部移除；因此變空的 `.claude/skills/` 與 `.claude/` 一併移除。
+- 自訂描述子的足跡記錄隨設定檔重寫歸零，描述子 skills 目錄下的 speclink- 資料夾一併移除。
+- `CLAUDE.md` 與 `AGENTS.md` 裡遺留的 SPECLINK 區塊，不論有沒有選那個工具都剝除，你自己的內容保留。不存在的指令檔不會被建立。
+- stdout 仍然只有 Initialized 與 Generated files 兩行，不列清理明細。
+
+不帶 `--force` 的 init 在一個沒有 `.speclink.yaml`、沒有 `openspec/`、但殘留舊技能檔的資料夾執行時，也會把舊技能檔改寫成現版、清掉不該有的 speclink- 資料夾、補齊其餘技能檔。
+
 ### worktree 技能只在政策開啟時產生
 
 speclink-apply-with-worktree 與 speclink-worktree-merge 這兩個技能，只在 `openspec/config.yaml` 的 worktree 設為 true 時才會產生。政策關閉或未設時不產生。從開改關後再跑 update，這兩個技能資料夾會被移除。環境變數不影響技能檔的產生。見[平行實作與合回：worktree](worktree.md)。
@@ -102,11 +115,22 @@ speclink update --allow-downgrade
 除了 Claude 與 Codex，你可以在 `.speclink.yaml` 的 tools 清單裡加自訂描述子，讓其他 AI 工具也拿到技能檔。描述子的欄位：
 
 - name（必填）：kebab-case，2 到 50 字，不能與 claude、codex 同名。
-- skills_dir（必填）：專案根相對路徑，不能逸出專案根。
+- skills_dir（必填）：專案根相對路徑，不能逸出專案根。結尾的 `/` 會被削掉，之後所有地方（技能生成、足跡記錄、過期探測回報的路徑）都用削掉後的形式。
 - invocation（選填）：cli 或 tool-call，預設 cli。決定技能檔裡怎麼稱呼 speclink 動詞。
 - instructions_file（選填）：已棄用，不再產生任何東西。仍留著這個欄位時，update 印一行棄用提示，不影響結果。
 
-自訂工具的技能檔用中性寫法：不含 `/speclink-` 前綴，也不提 plan mode。描述子驗證失敗時，指令以單行錯誤結束並指出錯誤欄位。
+skills_dir 還有兩條拒絕規則，比對的是把 `.` 段丟掉、`..` 回退一段之後的路徑，所以等價拼法一樣被拒：不能等同專案根本身，也不能等同內建工具的 skills 目錄（`.claude/skills`、`.agents/skills`）。
+
+| skills_dir | 結果 |
+| --- | --- |
+| `.wad/skills` | 接受，原樣使用 |
+| `.wad/skills/` | 接受，削為 `.wad/skills` |
+| `../outside/skills` | 拒絕：逸出專案根 |
+| `/`、`./`、`.`、`.wad/..` | 拒絕：等同專案根 |
+| `.claude/skills`、`./.claude/skills`、`.claude//skills`、`.wad/../.claude/skills` | 拒絕：等同內建工具的 skills 目錄 |
+| `.claude/skills-extra` | 接受：與內建目錄不同 |
+
+自訂工具的技能檔用中性寫法：不含 `/speclink-` 前綴，也不提 plan mode。描述子驗證失敗時，指令以單行錯誤結束並指出錯誤欄位。通過驗證的描述子也參與技能檔過期探測，逐工具結果用描述子的 name 表示；沒通過驗證的描述子不參與探測、不讓結果變成無法判定，錯誤由 update 報出。
 
 ## 已有 openspec 但沒有 .speclink.yaml 的專案
 

@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 170
 keywords: [封存, archive, 正典規格, 守門, Purpose, 證據, 手冊]
 sources: [archive-skill, archive-merge, change-lifecycle, verify-evidence, spec-validation]
-generated: 2026-09-07T13:20:04+08:00
+generated: 2026-09-11T10:03:08+08:00
 ---
 
 # 封存
@@ -76,6 +76,16 @@ generated: 2026-09-07T13:20:04+08:00
 - 第 7 類是「Purpose」：補寫 `## Purpose` 區段，並用 `speclink validate` 取得完整指引。
 
 這道守門沒有旁路旗標。`--no-validate` 只略過文件驗證，不解鎖合併守門；`--skip-specs` 是整段跳過規格套用，維持既有語意。
+
+### 不用等到封存才知道
+
+`speclink validate <變更名>` 對每個 delta capability 做同一套合併守門判斷。每條違規化成一條 error，變更驗證結果為不通過，不論有沒有帶 `--strict`。error 寫明正典規格檔、操作、需求名與原因，並指路 `speclink drift <變更名>`。例如：
+
+```
+specs/auth/spec.md: MODIFIED 'R9': target requirement no longer exists in the canonical spec (see: speclink drift demo)
+```
+
+守門 error 排在所有結構 error 之後，結構 error 的文字與順序不變。結構檢查已經報過的項目不重複報：新開 capability 的 Purpose 不合格只報 Purpose error；同一份 delta 內同名需求已報重複時，不再多報一條守門 error。只有守門看得到的撞名（例如 RENAMED 改出來的新名字又出現在 ADDED）仍然會列出。封存本身的拒絕輸出不因此改變。
 
 > [!TIP]
 > MODIFIED 整塊取代正典需求。正典需求原有的每個 scenario 名稱都要出現在 delta 裡；真的要刪掉某個 scenario，就在 MODIFIED 區塊內加一行 REMOVED-SCENARIO 註解明示放棄，一行一個。漏掉又沒聲明，封存會逐條點名遺失的 scenario 名稱。聲明註解寫進正典前會被剝除。
