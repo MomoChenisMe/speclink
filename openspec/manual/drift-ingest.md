@@ -2,9 +2,9 @@
 title: 續作與需求變更：drift 與 ingest
 section: SDD 工作流
 order: 130
-keywords: [drift, ingest, 漂移, 閒置, 需求變更, 過期]
+keywords: [drift, ingest, 漂移, 閒置, 需求變更, 過期, validate]
 sources: [drift-computation, archive-merge, skill-routing, user-documentation]
-generated: 2026-09-03
+generated: 2026-09-11T10:03:08+08:00
 ---
 
 # 續作與需求變更：drift 與 ingest
@@ -43,7 +43,7 @@ drift 以一份固定的基準運算。如果運算到合併前，你又改了�
 
 ## 規格面過期，代表封存會被拒
 
-drift 的 Specs 維度、批次封存的預檢、單筆封存的合併守門，三處用同一套過期判定。同一條過期的 delta 操作，三處會指向同一個 capability 與需求名。drift 與批次預檢的文字寫的是「archive 將拒絕」，不是「跳過」。
+變更驗證（`speclink validate <變更名>`）、drift 的 Specs 維度、批次封存的預檢、單筆封存的合併守門，四處用同一套過期判定。同一條過期的 delta 操作，四處會指向同一個 capability 與需求名：validate 列為 error、drift 列為規格面的假設、批次預檢列為未就緒、單筆封存拒絕。validate、drift 與批次預檢的文字寫的是「archive 將拒絕」，不是「跳過」。
 
 兩類過期各有不同的補救路線：
 
