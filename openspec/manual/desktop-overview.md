@@ -3,8 +3,8 @@ title: 認識桌面 app
 section: 桌面 app
 order: 300
 keywords: [桌面, 側欄, 詳情面板, 即時更新, 浮層提示, 語意色, 手冊, 動畫]
-sources: [desktop-app]
-generated: 2026-09-05
+sources: ["desktop-app#桌面 app 直嵌引擎並以本地檔案為真相", "desktop-app#桌面 app 呈現 change 與 spec 的清單與內容", "desktop-app#桌面 app 提供動詞操作面", "desktop-app#外部變更即時反映", "desktop-app#監看根解析與專案探索一致", "desktop-app#GUI 勾任務與 CLI 完成語意一致", "desktop-app#側欄導覽結構", "desktop-app#視窗預設尺寸與置中", "desktop-app#介面文字以打包的 Noto Sans TC 呈現", "desktop-app#markdown 內容保留文件結構呈現", "desktop-app#raw HTML 不以原文呈現", "desktop-app#表單控制項與按鈕以主題化元件呈現", "desktop-app#markdown 文件內容行寬有上限", "desktop-app#已封存項目以抽屜檢視", "desktop-app#detail 抽屜互斥", "desktop-app#看板全域操作成功靜默、失敗以 toast 浮層呈現", "desktop-app#抽屜標頭標記受寬度約束且抽屜不產生水平捲軸", "desktop-app#品質站蓋章配色與主色分離", "desktop-app#介面狀態語意色分層", "desktop-app#主題化提示統一延遲", "desktop-app#截斷省略號的統一字形", "desktop-app#觸及檔案系統的 command 不佔用主執行緒", "desktop-app#變更與討論抽屜開啟時底層落回看板", "desktop-app#分頁切換中即時回饋", "desktop-app#看板首訪以 skeleton 佔位", "desktop-app#抽屜文件載入以 skeleton 呈現", "desktop-app#首訪載入失敗終態呈現", "desktop-app#抽屜與浮層的開關動畫"]
+generated: 2026-09-11T12:10:31+08:00
 ---
 
 # 認識桌面 app
