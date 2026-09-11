@@ -1439,3 +1439,6 @@ pub fn web_router() -> Router<AppState> {
         .route("/admin/system", get(web_admin_system))
         .route("/admin/audit", get(web_admin_audit))
 }
+
+pub mod audit;
+pub mod backup;

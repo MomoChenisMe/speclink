@@ -16,7 +16,7 @@ use chrono::{DateTime, Duration, Utc};
 use sha2::{Digest, Sha256};
 
 use crate::audit::{AuditAction, AuditActor, AuditEntry};
-pub use crate::identity_sqlite::IdentitySqlite;
+pub use sqlite::IdentitySqlite;
 
 /// A user account. The password hash never leaves the store.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -744,3 +744,8 @@ fn to_hex(bytes: &[u8]) -> String {
     }
     out
 }
+
+pub mod auth;
+pub mod device;
+pub mod setup;
+pub mod sqlite;
