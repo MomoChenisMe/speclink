@@ -3,8 +3,8 @@ title: 規格、討論、已封存與搜尋
 section: 桌面 app
 order: 320
 keywords: [規格頁, 討論詳情面板, 已封存, 換頁, 來源討論, 溯源籤, 衍生, 章節標籤]
-sources: [desktop-app]
-generated: 2026-09-05
+sources: ["desktop-app#桌面 app 呈現 change 與 spec 的清單與內容", "desktop-app#歸檔清單經衍生快取加速且可重建", "desktop-app#討論於看板第 0 欄兩級呈現", "desktop-app#討論抽屜檢視與轉出變更", "desktop-app#已封存頁含討論節", "desktop-app#討論輪以卡片呈現", "desktop-app#討論結論以欄位標籤呈現", "desktop-app#規格分頁 delta 區段以色標呈現", "desktop-app#提案與設計章節以中文標籤呈現", "desktop-app#規格頁提供清單、搜尋與展開檢視", "desktop-app#變更的來源討論多值呈現", "desktop-app#已封存項目以抽屜檢視", "desktop-app#規格與封存卡片收合資訊", "desktop-app#清單最新在前與換頁瀏覽", "desktop-app#抽屜標頭標記受寬度約束且抽屜不產生水平捲軸", "desktop-app#看板討論卡片的改進標示", "desktop-app#討論抽屜的改進標示", "desktop-app#變更與討論抽屜開啟時底層落回看板"]
+generated: 2026-09-11T12:10:31+08:00
 ---
 
 # 規格、討論、已封存與搜尋
@@ -105,7 +105,7 @@ generated: 2026-09-05
 
 **結論的欄位標籤**：行首的 Decision、Rationale、Rejected alternatives、Deferred、Capture to、Next 前綴呈現為標籤區塊，中文介面依序為決定、理由、否決替代案、擱置、記錄去向、下一步。來源沒有的欄位不渲染空標籤。結論不含任何這六個前綴時，整篇退回一般 Markdown 檢視。
 
-**封存討論**：已結論且未封存的討論，在討論卡與討論詳情面板都有封存動作，兩處走同一個確認流程。確認後討論移入封存，從討論欄消失、出現在已封存頁的討論節。未結論或已封存的討論，詳情面板不顯示封存動作。
+**封存討論**：已結論且未封存的討論，在討論卡與討論詳情面板都有封存動作，兩處走同一個確認流程。確認後討論移入封存，從討論欄消失、出現在已封存頁的討論節。未結論或已封存的討論，詳情面板不顯示封存動作。已轉出、已結論但保留在途的討論是例外：它的卡片沒有任何按鈕，收尾由你在 CLI 用 `speclink discuss archive` 明示解除（見[看板與任務](desktop-board.md)）；規格對它的詳情面板沒有另外規定，這一點記在[本手冊的來源](about.md)。
 
 > [!NOTE]
 > 討論詳情面板不提供新增討論、加輪、寫結論、丟棄、轉為變更。這些由 CLI 或 agent 執行，見[討論：需求還模糊時](discuss.md)。
