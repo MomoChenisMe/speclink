@@ -208,7 +208,7 @@
 
 ### 可能過期
 
-- **definition**: 手冊頁的來源規格內任一 @trace updated 時戳「在該頁 generated 之後」的狀態。兩邊都是帶時區偏移量的 RFC 3339 時戳時，規格時戳嚴格晚於頁時戳才算（同秒不算）；任一邊只有純日期時，規格的日曆日不早於（晚於或同日）頁的日曆日即算。生成模式只重生這種頁；desktop 手冊頁以同一基準標示（manual-stale-time-granularity，2026-09-07）。
+- **definition**: 手冊頁 sources 任一項所指的規格範圍內，任一 @trace updated 時戳「在該頁 generated 之後」的狀態。一項只寫 capability 名時範圍是整份規格；寫成 `capability#Requirement 名` 錨定時範圍只有該條 Requirement 段落，錨定找不到（Requirement 改名或刪除）也算過期。兩邊都是帶時區偏移量的 RFC 3339 時戳時，規格時戳嚴格晚於頁時戳才算（同秒不算）；任一邊只有純日期時，規格的日曆日不早於（晚於或同日）頁的日曆日即算。生成模式只重生這種頁（內文不變者只推進 generated）；desktop 手冊頁以同一基準標示（manual-stale-time-granularity，2026-09-07；粒度降到 Requirement：manual-stale-requirement-anchor，2026-09-11）。
 - **avoid**: 過時、stale（中文散文中）
 - **why**: 與規格的「過期」章語意平行——都是「源頭比衍生物新」；加「可能」是因為日期比對只證明來源動過，不證明內容真的變了。2026-09-02 變更「manual-skill」定案。
 

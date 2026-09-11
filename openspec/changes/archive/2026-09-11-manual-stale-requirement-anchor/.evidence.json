@@ -1,0 +1,82 @@
+{
+  "version": 2,
+  "change": "manual-stale-requirement-anchor",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 實作設計「錨定語法為 capability 名加井號加 Requirement 名，寫在既有 sources 欄」與 manual-pages 規格「frontmatter 六欄」的讀取面：`apps/desktop/core/src/manual.rs` 解析 `sources` 項時以第一個 `#` 切成 capability 與錨定，只對 capability 部分跑既有路徑守門（單一路徑段、無 `..`、無 `:`）；索引回傳的 `sources` 仍為 frontmatter 原字串陣列（含錨定原樣）；不合守門的項整項略去。驗證：`cargo test -p speclink-desktop-core manual` 新增測試斷言 `[\"desktop-app#看板與任務\", \"../evil#段\", \"a/b#段\"]` 只保留第一項且原字串回傳，`sources` 欄位為字串陣列、`stale` 為布林（camelCase 不變）。",
+      "files": [
+        "apps/desktop/core/src/manual.rs",
+        "apps/desktop/src-tauri/src/watch.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.1 把「過期判定基準」與「frontmatter 六欄」的錨定語意寫進技能，並落實設計「未入冊、出處行、來源消失都只看井號前的 capability 名」在生成端的那一半：`crates/engine/speclink-core/assets/skills/manual.md` Step 3 的 **stale page** 定義改為逐項判定（無錨定看整份規格；`capability#Requirement 名` 只看該 Requirement 段落的 `@trace updated`；錨定找不到即過期），**unlisted capability** 與 **orphan page** 註明只看井號前名稱；frontmatter 表的 `sources` 欄說明改為「`<capability>` 或 `\"<capability>#<Requirement 名>\"`（帶錨定一律雙引號）」並加一則帶錨定的範例；出處行規則註明只列 capability 名、去重。驗證：內容審閱——`speclink update` 後 `.claude/skills/speclink-manual/SKILL.md` 含上述三處新文字，且與 manual-pages delta 的 Example 判定表一致。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/manual.md",
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "3.1 落實 desktop-manual-page 規格「內頁渲染與出處跳規格」的錨定出處與設計「未入冊、出處行、來源消失都只看井號前的 capability 名」的前端那一半：`packages/ui/src/components/ManualPage.tsx` 出處列取每項第一個 `#` 前的名稱後去重再比對正典。驗證：`npm test -w packages/ui -- manualPage` 新增測試「帶 Requirement 錨定的 sources」通過（恰一顆可點 `desktop-app`、文字無 `#`）。",
+      "files": [
+        "crates/engine/speclink-core/src/lifecycle/archive.rs",
+        "packages/ui/src/__tests__/manualPage.test.tsx",
+        "packages/ui/src/components/ManualPage.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M2764FDA8Q7B2P1R7KTRQ9B3",
+      "taskDesc": "1.1 實作設計「錨定語法為 capability 名加井號加 Requirement 名，寫在既有 sources 欄」與 manual-pages 規格「frontmatter 六欄」的讀取面：`apps/desktop/core/src/manual.rs` 解析 `sources` 項時以第一個 `#` 切成 capability 與錨定，只對 capability 部分跑既有路徑守門（單一路徑段、無 `..`、無 `:`）；索引回傳的 `sources` 仍為 frontmatter 原字串陣列（含錨定原樣）；不合守門的項整項略去。驗證：`cargo test -p speclink-desktop-core manual` 新增測試斷言 `[\"desktop-app#看板與任務\", \"../evil#段\", \"a/b#段\"]` 只保留第一項且原字串回傳，`sources` 欄位為字串陣列、`stale` 為布林（camelCase 不變）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "816a29033b28bf98e036f91b9e06489ac2b6bb38",
+      "touchedFiles": [
+        "apps/desktop/core/src/manual.rs",
+        "apps/desktop/src-tauri/src/watch.rs"
+      ],
+      "recordedAt": "2026-09-11T02:53:18Z"
+    },
+    {
+      "taskId": "tsk_01M276HGX546B4JN7MVK2YT15G",
+      "taskDesc": "2.1 把「過期判定基準」與「frontmatter 六欄」的錨定語意寫進技能，並落實設計「未入冊、出處行、來源消失都只看井號前的 capability 名」在生成端的那一半：`crates/engine/speclink-core/assets/skills/manual.md` Step 3 的 **stale page** 定義改為逐項判定（無錨定看整份規格；`capability#Requirement 名` 只看該 Requirement 段落的 `@trace updated`；錨定找不到即過期），**unlisted capability** 與 **orphan page** 註明只看井號前名稱；frontmatter 表的 `sources` 欄說明改為「`<capability>` 或 `\"<capability>#<Requirement 名>\"`（帶錨定一律雙引號）」並加一則帶錨定的範例；出處行規則註明只列 capability 名、去重。驗證：內容審閱——`speclink update` 後 `.claude/skills/speclink-manual/SKILL.md` 含上述三處新文字，且與 manual-pages delta 的 Example 判定表一致。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "816a29033b28bf98e036f91b9e06489ac2b6bb38",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/manual.md",
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ],
+      "recordedAt": "2026-09-11T03:00:25Z"
+    },
+    {
+      "taskId": "tsk_01M278DJSMBEZP94TB50F8B80W",
+      "taskDesc": "3.1 落實 desktop-manual-page 規格「內頁渲染與出處跳規格」的錨定出處與設計「未入冊、出處行、來源消失都只看井號前的 capability 名」的前端那一半：`packages/ui/src/components/ManualPage.tsx` 出處列取每項第一個 `#` 前的名稱後去重再比對正典。驗證：`npm test -w packages/ui -- manualPage` 新增測試「帶 Requirement 錨定的 sources」通過（恰一顆可點 `desktop-app`、文字無 `#`）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "95756abbb2a14e78b4c7a3e7c8ef3e34dbcde920",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lifecycle/archive.rs",
+        "packages/ui/src/__tests__/manualPage.test.tsx",
+        "packages/ui/src/components/ManualPage.tsx"
+      ],
+      "recordedAt": "2026-09-11T03:33:13Z"
+    }
+  ]
+}

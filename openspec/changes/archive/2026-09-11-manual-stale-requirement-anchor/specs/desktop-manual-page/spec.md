@@ -1,68 +1,7 @@
-# desktop-manual-page Specification
+## MODIFIED Requirements
 
-## Purpose
-
-desktop「手冊」頁的行為：讀取 `openspec/manual/` 的手冊頁（格式依 manual-pages 契約），以 frontmatter 推導側欄樹、搜尋與上一頁／下一頁，渲染內頁並讓出處可跳規格，標示可能過期的頁與手冊生成後新增且未入冊的規格，處理無手冊與 remote 模式的空狀態，並隨外部寫入即時重載；另涵蓋共用 Markdown 對 GitHub Alert 語法的提示框呈現。邊界止於讀取與呈現，不含手冊的生成、編輯或 remote 投影。
-
-## Requirements
-
-### Requirement: 手冊頁的側欄樹與閱讀序
-
-手冊頁 SHALL 讀取專案 `openspec/manual/` 下全部 `.md` 頁的 frontmatter，以兩層排序決定閱讀序：分區依分區內最小 `order` 排列，分區內的頁依 `order` 升冪（同值以檔名決斷）；側欄分區即閱讀序中連續同 `section` 的頁，同一分區的頁恆相鄰。側欄每列 SHALL 顯示該頁 `title`；缺 `title` 時顯示檔名（去副檔名）、缺 `section` 歸入「其他」分區、缺或非整數 `order` 置於所屬分區末。frontmatter 無法解析的頁 SHALL 仍列於側欄（以檔名為標題）且可開啟，SHALL NOT 使頁面報錯。上一頁／下一頁 SHALL 為閱讀序中的相鄰頁，首頁無上一頁、末頁無下一頁。手冊頁 SHALL 為唯讀，SHALL NOT 提供任何寫入操作。
-
-#### Scenario: 依 order 排序並依 section 分組
-
-- **WHEN** 手冊有四頁，`order` 與 `section` 分別為 10「開始使用」、20「開始使用」、30「文件協作」、40「附錄」
-- **THEN** 側欄依序呈現「開始使用」（含前兩頁）、「文件協作」、「附錄」三個分區；第二頁的上一頁為第一頁、下一頁為第三頁；第一頁無上一頁、第四頁無下一頁
-
-##### Example: 排序與分組
-
-| 頁（檔名） | order | section | 側欄位置 | 上一頁 | 下一頁 |
-| --- | --- | --- | --- | --- | --- |
-| index | 10 | 開始使用 | 分區 1 第 1 列 | 無 | first-login |
-| first-login | 20 | 開始使用 | 分區 1 第 2 列 | index | editor |
-| editor | 30 | 文件協作 | 分區 2 第 1 列 | first-login | about |
-| about | 40 | 附錄 | 分區 3 第 1 列 | editor | 無 |
-
-#### Scenario: 缺欄位的頁寬容降級
-
-- **WHEN** 某頁 frontmatter 缺 `title` 與 `section`、`order` 為非整數
-- **THEN** 該頁以檔名為標題列於「其他」分區末，點擊可正常開啟內文，畫面無錯誤提示
-
-#### Scenario: frontmatter 壞掉的頁仍可開
-
-- **WHEN** 某頁不以 `---` 開頭或 YAML 無法解析
-- **THEN** 該頁以檔名為標題出現在側欄且可開啟顯示全文，其他頁的順序與內容不受影響
-
-
-<!-- @trace
-source: desktop-manual-page
-updated: 2026-09-02
--->
-
----
-### Requirement: 手冊頁的搜尋列
-
-手冊頁 SHALL 提供搜尋列：輸入時以大小寫不敏感的子字串即時比對各頁 `title` 與 `keywords`，側欄只保留命中的頁及其所屬分區；清空輸入 SHALL 還原完整側欄；無命中時側欄 SHALL 顯示無結果文案。搜尋 SHALL NOT 比對內文。
-
-#### Scenario: 以標題或關鍵字過濾
-
-- **WHEN** 頁 A（title「第一次登入」、keywords 含「github」）、頁 B（title「認識畫面」、無 keywords）並於搜尋列輸入「GitHub」
-- **THEN** 側欄只剩頁 A 及其分區；清空輸入後 A、B 皆恢復顯示
-
-#### Scenario: 無命中顯示無結果
-
-- **WHEN** 搜尋列輸入任何頁的標題與關鍵字都不含的字串
-- **THEN** 側欄顯示無結果文案，內容區維持目前頁
-
-
-<!-- @trace
-source: desktop-manual-page
-updated: 2026-09-02
--->
-
----
 ### Requirement: 內頁渲染與出處跳規格
+<!-- BEFORE: 出處列直接以索引 sources 原字串列出，無錨定語意 -->
 
 選定頁的內文 SHALL 以共用 Markdown 元件渲染（去除 frontmatter），沿用共用閱讀欄與行寬上限、16px 基準字級、淺色與深色主題。內容區 SHALL 分三段：頁首固定顯示頁標題——內文第一個非空行為 `# 標題` 時取該行且內文 SHALL NOT 重複呈現該 H1，否則取索引的 `title`；中段為內文捲動區；頁尾固定顯示出處列與上一頁／下一頁。頁首與頁尾 SHALL NOT 隨內文捲動。內文含 h2／h3 標題時，內容區右側 SHALL 顯示錨點列依序列出各標題（h3 縮排一級）：點擊 SHALL 捲至該標題，捲動時 SHALL 高亮目前段；內文無 h2／h3 時錨點列 SHALL 缺席。換頁 SHALL 回到內文頂端；外部改內文觸發的重載 SHALL 維持捲動位置。頁尾出處列 SHALL 依索引 `sources` 推導：每項取第一個 `#` 前的 capability 名並去重，錨定文字 SHALL NOT 出現在出處列。出處列中的 capability 名 SHALL 可點：點擊 SHALL 於手冊頁上開啟該 capability 的唯讀規格抽屜（與規格頁共用同一抽屜），SHALL NOT 切離手冊頁；該 capability 在正典中不存在時 SHALL 呈現為不可點文字。內文載入中 SHALL 以 skeleton 佔位，載入失敗 SHALL 於內容區顯示失敗文案且側欄照常。
 
@@ -97,13 +36,8 @@ updated: 2026-09-02
 - **THEN** 內容區顯示載入失敗文案，側欄與其他頁的開啟不受影響
 
 
-<!-- @trace
-source: manual-stale-requirement-anchor
-updated: 2026-09-11T11:59:38+08:00
--->
-
----
 ### Requirement: 可能過期與未入冊的標示
+<!-- BEFORE: 以 sources 中 capability 整份規格的任一 @trace updated 判定；無錨定語意 -->
 
 手冊頁 SHALL 依 manual-pages 契約「過期判定基準」計算過期：頁的 `sources` 中任一項判為過期時，側欄該頁列 SHALL 帶「可能過期」標記。一項的判定 SHALL 依錨定分流：不帶井號的項取該 capability 正典規格內全部 `@trace updated` 時戳；`<capability>#<Requirement 名>` 形式的項，SHALL 只取正典規格中標題與錨定相等（去頭尾空白、區分大小寫）的那條 `### Requirement:` 段落內的 `@trace updated` 時戳，找不到相符標題或規格不存在時該項 SHALL 視為過期。「在之後」SHALL 分段判定：兩邊都是帶時區偏移量的 RFC 3339 時戳時，換算同一瞬間後規格時戳嚴格晚於頁時戳才算（同秒不算）；任一邊只有純日期時，規格日曆日不早於頁日曆日（同日也算）即算，帶時間的一方取其自身偏移量下的日曆日。`sources` 為空、`generated` 缺席或既非 RFC 3339 也非 `YYYY-MM-DD` 時 SHALL NOT 標記；不帶錨定的項其規格不存在時 SHALL NOT 標記；規格內無法解析的 `updated` 時戳 SHALL 視為缺席。側欄底部 SHALL 在存在「手冊生成後新增且未入冊」的正典規格——其每一個 `@trace updated` 時戳都在每一頁 `generated` 之後（依同一分段判定）、且其名稱不在任何頁 `sources` 任一項的井號前——時顯示計數提示；不存在時該提示 SHALL 缺席。索引中每頁的 `generated` 欄位 SHALL 為 frontmatter 原字串，無法解析時為 null；`sources` 欄位 SHALL 為 frontmatter 原字串陣列（含錨定原樣），井號前名稱不合路徑守門的項 SHALL 整項略去。兩種標示 SHALL 僅呈現，SHALL NOT 觸發生成。
 
@@ -157,71 +91,3 @@ updated: 2026-09-11T11:59:38+08:00
 | 2026-09-05 | x | 2026-09-05T23:17:28+08:00 | 可能過期（退回同日） |
 | 2026-09-06T00:10:00+08:00 | x | 2026-09-05 | 無 |
 | 2026-09-05T23:31:00+08:00 | x | not-a-date | 無 |
-
-
-<!-- @trace
-source: manual-stale-requirement-anchor
-updated: 2026-09-11T11:59:38+08:00
--->
-
----
-### Requirement: 無手冊與 remote 模式的空狀態
-
-`openspec/manual/` 不存在或其中無任何 `.md` 時，手冊頁 SHALL 顯示空狀態文案：說明尚無手冊、可用手冊技能從規格生成；目錄不可讀時亦呈此空狀態且錯誤只記錄於日誌。分頁為 remote 資料源時，手冊頁 SHALL 顯示「remote 模式尚不支援手冊」的空狀態，SHALL NOT 嘗試讀取遠端。零分頁時點擊側欄「手冊」SHALL 呈現與變更頁相同的空狀態引導頁。
-
-#### Scenario: 無手冊目錄
-
-- **WHEN** 專案沒有 `openspec/manual/` 而使用者進入手冊頁
-- **THEN** 主內容顯示尚無手冊的空狀態文案，側欄「手冊」項高亮，無錯誤彈窗
-
-#### Scenario: remote 分頁
-
-- **WHEN** 活躍分頁綁定 remote scope 而使用者進入手冊頁
-- **THEN** 主內容顯示 remote 模式尚不支援手冊的空狀態，無任何網路請求發出
-
-
-<!-- @trace
-source: desktop-manual-page
-updated: 2026-09-02
--->
-
----
-### Requirement: 手冊頁隨外部變更即時更新
-
-手冊視圖活躍時，app 之外的寫者（手冊技能、手動編輯器）新增、修改或刪除 `openspec/manual/` 下的頁後，側欄索引與已開啟頁的內文 SHALL 於秒級自動重載至磁碟現況，SHALL NOT 要求重啟或重新進入頁面；重載回應交錯時 SHALL 以最新一次為準。監看不可用時手冊頁 SHALL 照常可讀，僅失去自動刷新。
-
-#### Scenario: 外部重生一頁後內容更新
-
-- **WHEN** 使用者正在閱讀某頁，外部以手冊技能重生該頁
-- **THEN** 數秒內內容區顯示新內文，側欄該頁的過期標記依新 `generated` 重算
-
-#### Scenario: 外部新增頁後側欄出現
-
-- **WHEN** 外部於 `openspec/manual/` 新增一頁（`order` 落於既有兩頁之間）
-- **THEN** 數秒內側欄於對應位置出現該頁，其餘頁順序不變
-
-
-<!-- @trace
-source: desktop-manual-page
-updated: 2026-09-02
--->
-
----
-### Requirement: Markdown 的 GitHub Alert 提示框
-
-共用 Markdown 元件 SHALL 將首段以 `[!NOTE]`、`[!TIP]`、`[!WARNING]`、`[!CAUTION]` 之一（大小寫不拘）開頭的 blockquote 呈現為對應類型的提示框：移除標記文字、顯示類型標籤、配色取自介面狀態語意色（資訊、成功、警告、危險）且不佔主色，其餘內容照常渲染；不符此形式的 blockquote SHALL 維持既有渲染逐位元不變。此呈現 SHALL 於淺色與深色主題一致生效，並適用於所有使用共用 Markdown 元件的檢視。
-
-#### Scenario: 四型提示框
-
-- **WHEN** 內文含 `> [!WARNING]` 開頭的 blockquote
-- **THEN** 該段呈現為警告色提示框，標記文字 `[!WARNING]` 不出現，blockquote 內其餘文字完整顯示
-
-#### Scenario: 一般引言不受影響
-
-- **WHEN** 內文含首段不以四種標記開頭的 blockquote
-- **THEN** 該段以既有 blockquote 樣式呈現，與本變更前逐位元一致
-
-<!-- @trace
-source: desktop-manual-page
-updated: 2026-09-02
--->

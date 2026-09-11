@@ -113,8 +113,10 @@ export function ManualPage({ index, loadPage, onOpenSpec, capabilities, refreshG
   const position = pages.indexOf(current);
   const prev = position > 0 ? pages[position - 1] : null;
   const next = position < pages.length - 1 ? pages[position + 1] : null;
-  // 出處名以索引 sources 為單一真相；去重防撞 React key。
-  const sourceNames = Array.from(new Set(current.sources));
+  // 出處名以索引 sources 為單一真相；manual-pages 契約：一項可帶 `#<Requirement 名>` 錨定，
+  // 出處只看井號前的 capability 名——切掉錨定、去頭尾空白（讀取端也這麼做）後再去重
+  //（防撞 React key，也防同 capability 多錨定重複）。
+  const sourceNames = Array.from(new Set(current.sources.map((s) => s.split("#", 1)[0].trim())));
   const canonical = new Set(capabilities);
   const heading = parsed?.heading ?? current.title;
 
