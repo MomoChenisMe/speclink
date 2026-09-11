@@ -838,7 +838,10 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
 /// Parse a canonical spec into (header, requirement blocks). `header` is everything up to the
 /// first `### Requirement:` (including the `## Requirements` line); each block is the full text of
 /// a requirement (through its `@trace`), with `---` separators and surrounding blank lines stripped.
-pub(crate) fn parse_canonical(text: &str) -> (String, Vec<(String, String)>) {
+///
+/// Public because the desktop manual reader (manual-pages「過期判定基準」的 Requirement 錨定)
+/// needs the same one-and-only split rule; keeping it here means a heading-syntax change lands once.
+pub fn parse_canonical(text: &str) -> (String, Vec<(String, String)>) {
     let marker = "### Requirement:";
     let split_at = text.find(marker).unwrap_or(text.len());
     let header = text[..split_at].to_string();

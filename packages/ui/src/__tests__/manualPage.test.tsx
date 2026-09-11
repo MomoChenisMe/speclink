@@ -383,6 +383,40 @@ describe("ManualPage 內頁渲染與出處", () => {
     expect(onOpenSpec).toHaveBeenCalledTimes(1);
   });
 
+  it("帶 Requirement 錨定的 sources：出處列只列井號前的 capability、去重且可點", async () => {
+    // manual-pages「frontmatter 六欄」Scenario「帶 Requirement 錨定的 sources」：
+    // `["desktop-app#看板與任務", "desktop-app#系統匣選單", policy-config]` → 出處只列 desktop-app 與 policy-config 各一次。
+    const index: ManualIndex = {
+      ...INDEX,
+      pages: [
+        ...INDEX.pages,
+        page({
+          slug: "board",
+          title: "看板與任務",
+          section: "桌面 app",
+          order: 35,
+          // 第三項刻意帶空白：Rust 讀取端接受並回原字串，前端切完 `#` 也要 trim 才不會多一顆 chip。
+          sources: ["desktop-app#看板與任務", "desktop-app#系統匣選單", " desktop-app # 專案分頁 ", "policy-config"],
+          generated: "2026-09-05",
+        }),
+      ],
+    };
+    const { onOpenSpec } = renderManual(
+      { index, capabilities: ["github-oauth", "editor", "desktop-app"] },
+      loader({ board: async () => "# 看板與任務\n\n看板。" }),
+    );
+    await screen.findByText("歡迎。");
+    fireEvent.click(row("board"));
+    await screen.findByText("看板。");
+    const sources = document.querySelector("[data-manual-sources]") as HTMLElement;
+    expect(sources.textContent).not.toContain("#");
+    expect(within(sources).getAllByText("desktop-app")).toHaveLength(1);
+    fireEvent.click(within(sources).getByRole("button", { name: "desktop-app" }));
+    expect(onOpenSpec).toHaveBeenCalledWith("desktop-app");
+    expect(within(sources).queryByRole("button", { name: "policy-config" })).toBeNull();
+    expect(sources.textContent).toContain("policy-config");
+  });
+
   it("出處列以索引 sources 為準：內文沒有出處行時照樣列出", async () => {
     const { onOpenSpec } = renderManual({}, loader({ editor: async () => "# 認識畫面\n\n沒有出處行。" }));
     await screen.findByText("歡迎。");

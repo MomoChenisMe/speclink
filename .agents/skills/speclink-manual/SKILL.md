@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.33.0"
+  version: "v1.34.0"
   generatedBy: "Speclink"
 ---
 
@@ -58,20 +58,22 @@ When a manual already exists, the cheap parts are still read for every capabilit
 
 ### Step 3: Staleness report
 
+**Source anchors** (the one rule every `sources` reader below follows): an item of `sources` is either a bare `<capability>` or an anchored `"<capability>#<Requirement 名>"` — the part after the first `#` is the heading text of one `### Requirement:` in that spec, trimmed. Only the staleness judgement looks at the anchor; every other use of `sources` — unlisted capability, orphan page, the source line, tour-mode citations — reads the capability name before `#` and ignores the rest. A bare item means the whole spec; an anchored item means that one requirement section (from its heading to the next `### Requirement:` heading or end of file).
+
 Compute, from the Step 1 index and the specs:
 
 | Term | Definition |
 | --- | --- |
-| **stale page** | any capability in the page's `sources` has an `@trace updated` stamp that is *after* the page's `generated`. "After" is decided by format: when both are RFC 3339 timestamps, the spec stamp must be strictly later than the page stamp (same second is not after); when either side is a plain `YYYY-MM-DD` date, compare calendar days and a same-day tie counts (an archive on the day of generation must not slip through — a timestamp's day is the day in its own offset). A value that is neither format is ignored |
-| **unlisted capability** | a user-facing capability that appears in no page's `sources` |
+| **stale page** | any item of the page's `sources` is stale. An item is judged on its own (see **Source anchors**): a bare item looks at every `@trace updated` stamp in that canonical spec; an anchored item looks only at the stamps inside its requirement section (heading text, trimmed, equal to the anchor). An anchored item whose heading no longer exists, or whose spec is gone, is stale — a renamed or removed requirement must be visible, never silently widened to the whole spec. A stamp is *after* the page's `generated` by format: when both are RFC 3339 timestamps, the spec stamp must be strictly later than the page stamp (same second is not after); when either side is a plain `YYYY-MM-DD` date, compare calendar days and a same-day tie counts (an archive on the day of generation must not slip through — a timestamp's day is the day in its own offset). A value that is neither format is ignored |
+| **unlisted capability** | a user-facing capability that appears in no page's `sources` (capability names per **Source anchors**) |
 | **orphan page** | a page with a non-empty `sources` whose capabilities have all disappeared from `openspec/specs/` — reported, NEVER deleted |
 
-`index.md` and `about.md` (empty `sources`) are derived pages: never stale, never orphan, never "unlisted" — they are rewritten whenever any other page is added or regenerated (Step 5), keeping their `section` and `order`. The `@trace updated` stamps are read from every `<!-- @trace … updated: … -->` block inside the canonical spec file — newer archives write an RFC 3339 timestamp with offset (`2026-09-05T23:17:28+08:00`), older ones a plain date; the **stale page** rule above decides, stamp by stamp, whether any of them is after the page's `generated`.
+`index.md` and `about.md` (empty `sources`) are derived pages: never stale, never orphan, never "unlisted" — they are rewritten whenever any other page is added, regenerated or stamp-only (Step 5), keeping their `section` and `order`. The `@trace updated` stamps are read from every `<!-- @trace … updated: … -->` block inside the canonical spec file — newer archives write an RFC 3339 timestamp with offset (`2026-09-05T23:17:28+08:00`), older ones a plain date; the **stale page** rule above decides, stamp by stamp, whether any of them is after the page's `generated`.
 
 Then decide what to write:
 
 - **No manual yet** → write everything (Steps 4–5).
-- **Manual exists** → by default regenerate only the stale pages, add a page for each unlisted capability, and rewrite `index.md` and `about.md` so the entry links, the contradiction list and the compilation stamp reflect the new set. A page whose regenerated content would be byte-identical to the file on disk counts as untouched, not regenerated — do not rewrite it. Untouched pages stay byte-identical. Regenerate everything only when the user explicitly asks for it (e.g. "全部重生"); even then, existing `section` and `order` are preserved.
+- **Manual exists** → by default regenerate only the stale pages, add a page for each unlisted capability, and rewrite `index.md` and `about.md` whenever any other page is added, regenerated or stamp-only, so the entry links, the contradiction list and the compilation stamp reflect the new set. A stale page whose regenerated content is identical to the file on disk except for the `generated` line is **stamp-only**: write only the new `generated` value and leave every other byte alone — this is what lets the "可能過期" mark clear when an archive touched the spec but not the text this page was written from. The comparison covers the whole file, `sources` included, and a regenerated page always re-derives its `sources` by coverage (Step 5) — so a page that is stale because an anchor no longer resolves (its requirement was renamed or removed) never qualifies: its `sources` come out different, and the page is rewritten in full with the current headings. A stale page whose content differs anywhere is rewritten in full. Pages that are not stale are untouched — byte-identical. Regenerate everything only when the user explicitly asks for it (e.g. "全部重生"); even then, existing `section` and `order` are preserved.
 - **Manual exists, nothing stale, nothing unlisted** → write nothing, `index.md` and `about.md` included. Report that the manual is up to date and stop. A scope hint is the user's explicit request for that scope and overrides this: regenerate what the hint names.
 
 ### Step 4: Choose the journey backbone
@@ -99,7 +101,7 @@ This is the `manual-pages` contract. Every reader — the desktop manual page, a
 | `section` | string | yes | sidebar section name |
 | `order` | integer | yes | global sort key, unique across the manual; step by 10 by convention |
 | `keywords` | string array | no | search terms |
-| `sources` | capability-name array | yes | the canonical specs this page was written from; `[]` only on the index and about pages |
+| `sources` | string array | yes | the canonical specs this page was written from, one item per source — bare `<capability>` for the whole spec, anchored `"<capability>#<Requirement 名>"` for one requirement (always double-quoted; one anchor per item, so several requirements of one spec are several items; see **Source anchors** in Step 3); `[]` only on the index and about pages |
 | `generated` | RFC 3339 timestamp with offset | yes | when this page was last generated, to the second, with the local offset (`2026-09-05T23:31:00+08:00`); the desktop reader also accepts the older plain `YYYY-MM-DD` form — never write that form anew |
 
 Pages are ordered by `order` alone; sections are ordered by the smallest `order` inside each. Example:
@@ -113,6 +115,12 @@ keywords: [登入, github, 審核]
 sources: [github-oauth, user-pending-blocked-pages]
 generated: 2026-09-05T23:31:00+08:00
 ---
+```
+
+A page that covers only part of a large spec anchors each requirement it used:
+
+```yaml
+sources: ["desktop-app#看板與任務", "desktop-app#系統匣選單", policy-config]
 ```
 
 Take the `generated` value from the clock at the moment you write the page, never by hand. Pick the first command that works on the machine:
@@ -132,7 +140,7 @@ Before writing, check the value matches `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|
 
 - GitHub Flavored Markdown. Callouts use GitHub Alert syntax only: `> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`, `> [!CAUTION]`.
 - Links between pages use the relative filename: `[認識畫面](layout.md)`.
-- The last non-empty paragraph of every page is the source line: `**出處**：` followed by the same capability names as `sources`, each in backticks — e.g. **出處**：`github-oauth`、`user-pending-blocked-pages`.
+- The last non-empty paragraph of every page is the source line: `**出處**：` followed by the capability names of `sources` (per **Source anchors**: each name once, anchors never shown), each in backticks — e.g. **出處**：`github-oauth`、`user-pending-blocked-pages`; a page with `sources: ["desktop-app#看板與任務", "desktop-app#系統匣選單"]` writes **出處**：`desktop-app`.
 - No HTML tags. No `--json` field names, flags, or code details — unless the text is a command or skill name the user actually types.
 - Write the prose in the workspace's locale (`locale` from `speclink workflow-config show --json`). The contract literals — `**出處**：` and the about page's title — stay verbatim.
 - Write for a reader who joined today: what they see, what they press, what happens next, and where it can go wrong — quoting button labels, confirmation texts and error exits exactly as the specs state them.
@@ -149,7 +157,8 @@ When no capability is user-facing, still write both pages: `about.md` says `尚�
 
 - A page whose filename already exists keeps its `section` and `order` verbatim (unless the user explicitly asked to reorder).
 - A new page takes an integer between its neighbours (between 20 and 30 → 25); existing pages are never renumbered. When no integer fits — neighbours 20 and 21, or a page that must land after the last page while `about.md` has to stay the maximum — do NOT renumber on your own: leave that page out of this run, list it in the report, and ask the user for a reorder; their explicit request is what allows renumbering.
-- Pages that are not being regenerated are not touched at all — byte-identical.
+- Pages that are not stale are not touched at all — byte-identical. A stale page whose regenerated text (its re-derived `sources` included) equals the file except for `generated` is stamp-only (Step 3): rewrite that one line, nothing else; a page whose anchor no longer resolves is never stamp-only.
+- Every new page and every page rewritten in full writes its `sources` by coverage: when the page draws on only some requirements of a capability, one anchored item per requirement (`"<capability>#<Requirement 名>"`, the heading text verbatim); when it draws on the whole capability, the bare name. Prefer anchors for large specs — they are what keeps an unrelated archive from marking this page stale.
 - Orphan pages (Step 3) stay on disk and appear in the report.
 
 ### Step 6: Report
@@ -161,7 +170,8 @@ End with a summary in the conversation:
 
 - 新增：N 頁（<filenames>）
 - 重生：N 頁（<filenames>）
-- 未動：N 頁
+- 只換時戳：N 頁（<filenames>）
+- 未動：N 頁（未被判為過期的頁）
 - 可能過期：<list, or 無>
 - 未入冊能力：<list, or 無>
 - about 頁記錄的矛盾：N 條
@@ -181,7 +191,7 @@ Tour mode writes NOTHING — no manual pages, no notes, no scratch files. It is 
 1. **Manual exists** (`openspec/manual/` present): read every page's frontmatter as the index.
    - Ask exactly one question first: which role the user has (e.g. developer running SDD through an agent, product owner, someone who joined today), so you can pick the entry from the index page's role links.
    - Then walk the journey in `section` / `order` order, one station at a time, reading the page body as you go; answer questions as they come.
-   - Every answer names its source: the capability (from the page's `sources`) or the page's filename.
+   - Every answer names its source: the capability (from the page's `sources`, per **Source anchors**) or the page's filename.
 2. **No manual**: say so — `尚無手冊，改以規格直接導覽` — then tour from the specs: `speclink list --specs` for the map, `speclink show <capability> --item-type spec` for each station, sources cited by capability name.
 3. **Remote-bound project**: tour mode proceeds as usual, from an existing manual or from the specs.
 
