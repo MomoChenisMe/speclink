@@ -1066,6 +1066,7 @@ pub async fn create_change(
             schema: req.schema,
             agent: req.agent,
             from_discussion: req.from_discussion,
+            last: req.last,
         },
     )
     .await?;
@@ -1738,6 +1739,7 @@ pub async fn seal_discussion(
         Command::DiscussSeal {
             slug,
             change: req.change,
+            last: req.last,
         },
     )
     .await
@@ -1885,6 +1887,7 @@ pub async fn promote_discussion(
         Command::DiscussPromote {
             slug,
             name: req.name,
+            last: req.last,
         },
     )
     .await?;

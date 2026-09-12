@@ -551,7 +551,7 @@ impl Client {
     ) -> Result<BindDiscussionResponse, RemoteError> {
         self.post(
             &format!("/discussions/{slug}/link"),
-            &BindDiscussionRequest { change: change.to_string() },
+            &BindDiscussionRequest { change: change.to_string(), last: false },
         )
     }
 
@@ -560,10 +560,11 @@ impl Client {
         &self,
         slug: &str,
         change: &str,
+        last: bool,
     ) -> Result<BindDiscussionResponse, RemoteError> {
         self.post(
             &format!("/discussions/{slug}/seal"),
-            &BindDiscussionRequest { change: change.to_string() },
+            &BindDiscussionRequest { change: change.to_string(), last },
         )
     }
 
@@ -739,16 +740,20 @@ impl Client {
         self.post(&format!("/discussions/{slug}/archive"), &Empty {})
     }
 
-    /// `POST /discussions/{slug}/promote`
+    /// `POST /discussions/{slug}/promote` — `last` marks the spun-out change as
+    /// the final cut the conclusion planned (the record's hold flag is dropped in
+    /// the same write); `false` keeps the body byte-identical to an old client's.
     pub fn discussion_promote(
         &self,
         slug: &str,
         name: Option<&str>,
+        last: bool,
     ) -> Result<PromoteDiscussionResponse, RemoteError> {
         self.post(
             &format!("/discussions/{slug}/promote"),
             &PromoteDiscussionRequest {
                 name: name.map(str::to_string),
+                last,
             },
         )
     }

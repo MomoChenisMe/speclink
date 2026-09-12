@@ -8,7 +8,10 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// `POST /changes` request body.
+/// `POST /changes` request body. `last` only means something alongside
+/// `from_discussion`: it marks this change as the final cut the discussion's
+/// conclusion planned, so the engine drops the record's hold flag in the same
+/// write. Absent reads as `false`, so an old client's body behaves as before.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateChangeRequest {
@@ -21,6 +24,8 @@ pub struct CreateChangeRequest {
     pub agent: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from_discussion: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub last: bool,
 }
 
 /// `POST /changes` response.
@@ -244,11 +249,16 @@ pub struct DiscardDiscussionResponse {
 }
 
 /// `POST /discussions/{slug}/link` and `/seal` request body: the change side
-/// of the bind.
+/// of the bind. `last` is read by `/seal` only — it marks the sealed change as
+/// the final cut the conclusion planned and drops the record's hold flag;
+/// `/link` never touches the discussion side and ignores it. Absent reads as
+/// `false`, so an old client's body behaves as before.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BindDiscussionRequest {
     pub change: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub last: bool,
 }
 
 /// `POST /discussions/{slug}/link` and `/seal` response.
@@ -321,12 +331,17 @@ pub struct ArchiveDiscussionResponse {
     pub archived_to: String,
 }
 
-/// `POST /discussions/{slug}/promote` request body.
+/// `POST /discussions/{slug}/promote` request body. `last` marks the spun-out
+/// change as the final cut the conclusion planned: the engine drops the record's
+/// hold flag in the same write, so the last archive co-archives the record.
+/// Absent reads as `false`, so an old client's body behaves as before.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PromoteDiscussionRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub last: bool,
 }
 
 /// `POST /discussions/{slug}/promote` response.
@@ -444,6 +459,7 @@ mod tests {
             description: None,
             agent: Some("claude".into()),
             from_discussion: Some("auth-scope".into()),
+            last: false,
         };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["name"], "add-rate-limit");
@@ -455,6 +471,45 @@ mod tests {
         );
         let back: CreateChangeRequest = serde_json::from_value(json).unwrap();
         assert_eq!(back, req);
+    }
+
+    #[test]
+    fn spin_out_requests_carry_last_only_when_true() {
+        // 三條轉出路徑的請求：last 缺席即 false（舊 client 打新 server 行為不變）、
+        // false 不出鍵（body 與本變更前逐位元相同）、true 才出鍵。
+        let bare: PromoteDiscussionRequest = serde_json::from_str("{}").unwrap();
+        assert!(!bare.last, "promote 缺席即 false");
+        let off = PromoteDiscussionRequest { name: Some("cut-b".into()), last: false };
+        assert_eq!(serde_json::to_string(&off).unwrap(), r#"{"name":"cut-b"}"#);
+        let on = PromoteDiscussionRequest { name: None, last: true };
+        assert_eq!(serde_json::to_string(&on).unwrap(), r#"{"last":true}"#);
+
+        let bare: CreateChangeRequest = serde_json::from_str(r#"{"name":"demo"}"#).unwrap();
+        assert!(!bare.last, "create change 缺席即 false");
+        let off = CreateChangeRequest {
+            name: "demo".into(),
+            schema: None,
+            description: None,
+            agent: None,
+            from_discussion: Some("alpha".into()),
+            last: false,
+        };
+        assert_eq!(
+            serde_json::to_string(&off).unwrap(),
+            r#"{"name":"demo","fromDiscussion":"alpha"}"#
+        );
+        let on = CreateChangeRequest { last: true, ..off };
+        assert_eq!(
+            serde_json::to_string(&on).unwrap(),
+            r#"{"name":"demo","fromDiscussion":"alpha","last":true}"#
+        );
+
+        let bare: BindDiscussionRequest = serde_json::from_str(r#"{"change":"demo"}"#).unwrap();
+        assert!(!bare.last, "bind 缺席即 false");
+        let off = BindDiscussionRequest { change: "demo".into(), last: false };
+        assert_eq!(serde_json::to_string(&off).unwrap(), r#"{"change":"demo"}"#);
+        let on = BindDiscussionRequest { change: "demo".into(), last: true };
+        assert_eq!(serde_json::to_string(&on).unwrap(), r#"{"change":"demo","last":true}"#);
     }
 
     #[test]
@@ -655,7 +710,7 @@ mod tests {
             serde_json::from_str(r#"{"archivedTo":"discussions/archive/auth-scope.md"}"#).unwrap();
         assert_eq!(archived.archived_to, "discussions/archive/auth-scope.md");
 
-        let promote_none = PromoteDiscussionRequest { name: None };
+        let promote_none = PromoteDiscussionRequest { name: None, last: false };
         assert_eq!(
             serde_json::to_string(&promote_none).unwrap(),
             "{}",

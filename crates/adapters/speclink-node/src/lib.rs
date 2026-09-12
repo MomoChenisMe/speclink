@@ -440,6 +440,9 @@ fn verb_new_change(backend: &Backend, actor: Option<&str>, args: &[String]) -> D
             schema: a.options.get("schema").map(|s| s.to_string()),
             agent: a.options.get("agent").map(|s| s.to_string()),
             from_discussion: a.options.get("from-discussion").map(|s| s.to_string()),
+            // `--last` mirrors the CLI flag (last cut of a staged discussion); the
+            // engine only reads it alongside from_discussion.
+            last: a.flags.contains("last"),
         },
     )?;
     let core::command::CommandOutcome::NewChange(o) = outcome else {

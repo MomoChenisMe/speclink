@@ -247,6 +247,7 @@ fn seed(project_url: &str, pat: &str) {
             description: None,
             agent: None,
             from_discussion: None,
+            last: false,
         })
         .expect("create change");
     for (artifact, content) in

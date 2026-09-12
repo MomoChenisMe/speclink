@@ -246,7 +246,7 @@ fn promote_route_keeps_the_hold_flag_on_the_record() {
     let base = common::start(state);
     let client = client(&base, &pat);
 
-    let promoted = client.discussion_promote("held", Some("cut-b")).expect("promote");
+    let promoted = client.discussion_promote("held", Some("cut-b"), false).expect("promote");
     assert_eq!(promoted.change, "cut-b");
 
     let record = store
@@ -265,6 +265,102 @@ fn promote_route_keeps_the_hold_flag_on_the_record() {
 }
 
 #[test]
+fn promote_route_with_last_releases_the_hold() {
+    // server-verb-api「promote 端點帶 last 解除 hold」：last: true 的轉出把記錄的 hold
+    // 行移除、列表回 hold: false；不含 last 的轉出仍保留旗標。
+    let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope(),
+            CommandContext { command: "seed".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    for slug in ["last-cut", "more-cuts"] {
+        uow.create(
+            DocumentId::Discussion { slug: slug.into(), archived: false },
+            &format!("---\ntopic: {slug}\nslug: {slug}\nstatus: promoted\npromoted_to: cut-a\ncreated: 2026-07-01\nhold: true\n---\n\n## Conclusion\n\n**Decision**: staged\n"),
+        );
+    }
+    store.commit(uow, Vec::new()).expect("seed commit");
+    let state = common::state_with(store.clone());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let client = client(&base, &pat);
+
+    let promoted = client.discussion_promote("last-cut", Some("cut-b"), true).expect("promote --last");
+    assert_eq!(promoted.change, "cut-b", "回應與不帶 last 時同形");
+    let promoted = client.discussion_promote("more-cuts", Some("cut-c"), false).expect("promote");
+    assert_eq!(promoted.change, "cut-c");
+
+    let snapshot = store.snapshot(&scope()).expect("snapshot");
+    let read = |slug: &str| {
+        snapshot
+            .read(&DocumentId::Discussion { slug: slug.into(), archived: false })
+            .expect("read record")
+            .expect("record still live")
+            .content
+    };
+    let released = read("last-cut");
+    assert!(released.contains("promoted_to: cut-a, cut-b\n"), "累加最後一刀: {released}");
+    assert!(!released.contains("hold"), "最後一刀解除旗標: {released}");
+    let held = read("more-cuts");
+    assert!(held.contains("hold: true\n"), "不帶 last 的轉出保留旗標: {held}");
+
+    let listed = client.list_discussions(false).expect("list discussions");
+    let find = |slug: &str| listed.discussions.iter().find(|d| d.slug == slug).expect("listed").hold;
+    assert_eq!(find("last-cut"), Some(false));
+    assert_eq!(find("more-cuts"), Some(true));
+}
+
+#[test]
+fn archive_after_a_last_spin_out_co_archives_the_discussion() {
+    // server-verb-api「帶 last 轉出後最後一個封存收走討論」：promote --last 建立唯一的
+    // 轉出變更，封存它時隨行封存清單列該討論，live 清單不再有它。
+    let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope(),
+            CommandContext { command: "seed".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(
+        DocumentId::Discussion { slug: "one-cut".into(), archived: false },
+        "---\ntopic: One cut\nslug: one-cut\nstatus: concluded\ncreated: 2026-07-01\nhold: true\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n**Decision**: one cut, then done\n",
+    );
+    store.commit(uow, Vec::new()).expect("seed commit");
+    let state = common::state_with(store.clone());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let client = client(&base, &pat);
+
+    let promoted = client.discussion_promote("one-cut", Some("only-cut"), true).expect("promote --last");
+    assert_eq!(promoted.change, "only-cut");
+    // 讓轉出的變更可封存：任務全勾（proposal 骨架由 promote 建好）。
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope(),
+            CommandContext { command: "seed-tasks".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(
+        DocumentId::ChangeArtifact { change: "only-cut".into(), artifact: "tasks.md".into() },
+        "- [x] 1.1 done\n",
+    );
+    store.commit(uow, Vec::new()).expect("seed tasks");
+
+    let resp = client.archive("only-cut", false, false).expect("archive over the wire");
+    assert!(
+        resp.archived_discussions.iter().any(|d| d.slug == "one-cut"),
+        "最後一個封存隨行封存討論: {:?}",
+        resp.archived_discussions
+    );
+    let live = client.list_discussions(false).expect("list live");
+    assert!(live.discussions.iter().all(|d| d.slug != "one-cut"), "live 清單不再列它");
+    let archived = client.list_discussions(true).expect("list archived");
+    assert!(archived.discussions.iter().any(|d| d.slug == "one-cut"), "封存清單列它");
+}
+
+#[test]
 fn promote_returns_the_change_and_lands_both_events() {
     let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
     let state = common::state_with(store.clone());
@@ -274,7 +370,7 @@ fn promote_returns_the_change_and_lands_both_events() {
 
     let created = client.new_discussion("Auth scope", None, None).expect("create discussion");
     let promoted = client
-        .discussion_promote(&created.slug, None)
+        .discussion_promote(&created.slug, None, false)
         .expect("promote discussion");
     assert!(!promoted.change.is_empty(), "promote returns the new change name");
 
@@ -564,6 +660,34 @@ fn link_forges_the_meta_chain_and_seal_marks_promoted() {
             && kinds.contains(&"discussion-sealed".to_string()),
         "link and seal each publish their event: {kinds:?}"
     );
+}
+
+#[test]
+fn link_ignores_last_and_seal_with_last_releases_the_hold() {
+    // server-verb-api「seal 端點帶 last 解除 hold 而 link 忽略」。
+    let f = fixture();
+    seed_change(&f);
+    let c = client(&f.base, &f.editor_pat);
+    let slug = c.new_discussion("Held scope", None, None).expect("create discussion").slug;
+    c.discussion_conclude(&slug, "**Decision**: staged\n", true).expect("conclude --hold");
+    let before = live_discussion(&f, &slug).expect("record");
+    assert!(before.contains("hold: true\n"), "seed 帶 hold: {before}");
+
+    let response = request("POST", &f, &f.editor_pat, &format!("discussions/{slug}/link"))
+        .send_json(json!({ "change": "demo", "last": true }))
+        .expect("link succeeds");
+    assert_eq!(response.status(), 200);
+    assert_eq!(live_discussion(&f, &slug).as_deref(), Some(before.as_str()), "link 忽略 last、記錄逐位元不變");
+
+    let response = request("POST", &f, &f.editor_pat, &format!("discussions/{slug}/seal"))
+        .send_json(json!({ "change": "demo", "last": true }))
+        .expect("seal succeeds");
+    assert_eq!(response.status(), 200);
+    let after = live_discussion(&f, &slug).expect("record");
+    assert!(after.contains("promoted_to: demo"), "seal 標記已轉出: {after}");
+    assert!(!after.contains("hold"), "seal --last 解除旗標: {after}");
+    let shown = c.show_discussion(&slug).expect("show discussion");
+    assert_eq!(shown.info.hold, Some(false));
 }
 
 #[test]

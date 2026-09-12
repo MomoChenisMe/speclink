@@ -181,7 +181,7 @@ fn mark_promoted_keeps_the_hold_flag() {
     // 整個分期系列只做一次 conclude --hold。
     let store = TestStore::with_live_discussion("alpha", &held_promoted_doc("alpha", "cut-a"));
 
-    super::mark_promoted(&store, "alpha", "cut-b").unwrap();
+    super::mark_promoted(&store, "alpha", "cut-b", false).unwrap();
 
     let text = store.discussion("alpha");
     assert!(text.contains("promoted_to: cut-a, cut-b"), "累加下一刀");
@@ -199,7 +199,7 @@ fn link_and_seal_both_leave_the_hold_flag_untouched() {
     super::link(&store, "alpha", "cut-b").unwrap();
     assert_eq!(store.discussion("alpha"), doc, "link 不改討論記錄");
 
-    super::seal(&store, "alpha", "cut-b").unwrap();
+    super::seal(&store, "alpha", "cut-b", false).unwrap();
     let text = store.discussion("alpha");
     assert!(text.contains("promoted_to: cut-a, cut-b"));
     assert!(DiscussionHead::parse(&text).hold, "seal 經 mark_promoted 也不清旗標");
@@ -211,7 +211,7 @@ fn mark_promoted_keeps_the_hold_flag_when_nothing_accumulates() {
     // 舊變更的 seal 讓記錄逐位元不變，旗標自然跟著留著。
     let store = TestStore::with_live_discussion("alpha", &held_promoted_doc("alpha", "cut-a"));
 
-    super::mark_promoted(&store, "alpha", "cut-a").unwrap();
+    super::mark_promoted(&store, "alpha", "cut-a", false).unwrap();
 
     let text = store.discussion("alpha");
     assert!(DiscussionHead::parse(&text).hold, "沒有新刀累加，旗標保留");
@@ -304,13 +304,107 @@ fn mark_promoted_lands_promoted_to_on_a_crlf_record_and_keeps_the_hold() {
         .replace('\n', "\r\n");
     let store = TestStore::with_live_discussion("alpha", &doc);
 
-    super::mark_promoted(&store, "alpha", "cut-b").unwrap();
+    super::mark_promoted(&store, "alpha", "cut-b", false).unwrap();
 
     let text = store.discussion("alpha");
     assert!(text.contains("status: promoted\r\n"), "status 原位代換沿 CRLF: {text:?}");
     assert!(text.contains("promoted_to: cut-b\r\n---"), "promoted_to 沿 CRLF 落地: {text:?}");
     assert!(DiscussionHead::parse(&text).hold, "轉出不清旗標");
     assert!(text.contains("hold: true\r\n"), "旗標行沿 CRLF 逐字保留: {text:?}");
+}
+
+// --- 最後一刀（discussion-last-cut-release）---
+
+#[test]
+fn head_promote_last_new_change_drops_the_hold_and_returns_true() {
+    // 帶 --last 的轉出：累加新刀的同一次寫入把 hold 行整行移除，其餘位元組不動。
+    let doc = held_promoted_doc("alpha", "cut-a");
+    let mut head = DiscussionHead::parse(&doc);
+    assert!(head.promote("cut-b", true));
+    assert_eq!(head.status, Status::Promoted);
+    assert_eq!(head.promoted_to, vec!["cut-a", "cut-b"]);
+    assert!(!head.hold, "最後一刀解除旗標");
+    let text = head.write_back().unwrap().unwrap();
+    assert!(text.contains("promoted_to: cut-a, cut-b\n"), "累加下一刀: {text}");
+    assert!(!text.contains("hold:"), "hold 行整行消失: {text}");
+    assert_eq!(
+        text,
+        doc.replace("promoted_to: cut-a\n", "promoted_to: cut-a, cut-b\n").replace("hold: true\n", ""),
+        "除 promoted_to 與 hold 行外逐位元不變"
+    );
+}
+
+#[test]
+fn head_promote_last_known_change_drops_the_hold_and_returns_false() {
+    // 名字已在清單（重複轉出、re-ingest 的 seal）：promoted_to 不變，旗標照樣解除——
+    // 忘了在立最後一刀時帶旗標，seal --last 就是不經 conclude 的補救路（design D2）。
+    let doc = held_promoted_doc("alpha", "cut-a");
+    let mut head = DiscussionHead::parse(&doc);
+    assert!(!head.promote("cut-a", true));
+    assert!(!head.hold);
+    assert_eq!(
+        head.write_back().unwrap().as_deref(),
+        Some(doc.replace("hold: true\n", "").as_str()),
+        "promoted_to 不變、只少 hold 行"
+    );
+}
+
+#[test]
+fn head_promote_last_without_a_hold_line_changes_nothing_beyond_promoted_to() {
+    // 無 hold 行的記錄帶 --last 是無害的無操作：與不帶旗標的轉出結果逐位元相同。
+    let doc = open_doc("alpha", "Alpha");
+    let mut with_last = DiscussionHead::parse(&doc);
+    let mut without = DiscussionHead::parse(&doc);
+    assert!(with_last.promote("cut", true));
+    assert!(without.promote("cut", false));
+    assert_eq!(with_last.write_back().unwrap(), without.write_back().unwrap());
+}
+
+#[test]
+fn mark_promoted_last_drops_the_hold_on_a_crlf_record() {
+    // 旗標的移除沿記錄的行尾：CRLF 記錄少掉整行 `hold: true\r\n`，其餘行尾不變。
+    let doc = open_doc("alpha", "Alpha")
+        .replacen("created: 2026-01-02\n", "created: 2026-01-02\nhold: true\n", 1)
+        .replace('\n', "\r\n");
+    let store = TestStore::with_live_discussion("alpha", &doc);
+
+    super::mark_promoted(&store, "alpha", "cut-b", true).unwrap();
+
+    let text = store.discussion("alpha");
+    assert!(text.contains("promoted_to: cut-b\r\n---"), "promoted_to 沿 CRLF 落地: {text:?}");
+    assert!(!text.contains("hold"), "hold 行整行消失: {text:?}");
+    assert!(!DiscussionHead::parse(&text).hold);
+    assert!(!text.replace("\r\n", "").contains('\n'), "行尾仍是 CRLF、沒有混入 LF: {text:?}");
+}
+
+#[test]
+fn seal_last_drops_the_hold_even_when_nothing_accumulates() {
+    // seal --last 對已在清單的變更：promoted_to 逐字不變、hold 行消失。
+    let store = TestStore::with_meta(
+        "cut-a",
+        "schema: spec-driven\ncreated: 2026-01-02\nfrom_discussion: alpha\n",
+    );
+    let doc = held_promoted_doc("alpha", "cut-a");
+    store.discussions.borrow_mut().insert("alpha".into(), doc.clone());
+
+    super::seal(&store, "alpha", "cut-a", true).unwrap();
+
+    let text = store.discussion("alpha");
+    assert_eq!(text, doc.replace("hold: true\n", ""), "只少 hold 行");
+}
+
+#[test]
+fn promote_last_drops_the_hold_while_creating_the_change() {
+    // 三條轉出路徑之一：promote --last 建變更＋累加＋解除旗標同一次落地。
+    let store = TestStore::with_live_discussion("alpha", &held_promoted_doc("alpha", "cut-a"));
+
+    let outcome = super::promote(&store, "alpha", Some("cut-b"), None, true).unwrap();
+
+    assert_eq!(outcome.change, "cut-b");
+    let text = store.discussion("alpha");
+    assert!(text.contains("promoted_to: cut-a, cut-b\n"), "累加下一刀: {text}");
+    assert!(!text.contains("hold:"), "最後一刀解除旗標: {text}");
+    assert!(store.read_change_meta("cut-b").is_some(), "變更同時建立");
 }
 
 #[test]
@@ -467,7 +561,7 @@ fn discussion_info_json_is_unchanged_by_board_rank() {
 #[test]
 fn promote_rejects_missing_discussion() {
     let store = TestStore::default();
-    let err = super::promote(&store, "ghost", None, None).unwrap_err();
+    let err = super::promote(&store, "ghost", None, None, false).unwrap_err();
     assert!(err.to_string().contains("not found"), "err: {err}");
 }
 
@@ -478,7 +572,7 @@ fn promote_rejects_archived_discussion() {
         .archived_discussions
         .borrow_mut()
         .insert("old-topic".to_string(), concluded_doc("old-topic", "Old", "done"));
-    let err = super::promote(&store, "old-topic", None, None).unwrap_err();
+    let err = super::promote(&store, "old-topic", None, None, false).unwrap_err();
     assert!(err.to_string().contains("archived"), "err: {err}");
     assert!(!store.change_exists("old-topic"), "no change may be created");
 }
@@ -489,7 +583,7 @@ fn promote_derives_change_name_from_slug_by_default() {
         "alpha-search",
         &concluded_doc("alpha-search", "Alpha search", "build alpha search"),
     );
-    let outcome = super::promote(&store, "alpha-search", None, None).unwrap();
+    let outcome = super::promote(&store, "alpha-search", None, None, false).unwrap();
     assert_eq!(outcome.change, "alpha-search");
     assert!(store.change_exists("alpha-search"));
 }
@@ -501,7 +595,7 @@ fn promote_uses_explicit_name_when_given() {
         &concluded_doc("beta-cache", "Beta cache", "add cache layer"),
     );
     let outcome =
-        super::promote(&store, "beta-cache", Some("cache-layer"), None).unwrap();
+        super::promote(&store, "beta-cache", Some("cache-layer"), None, false).unwrap();
     assert_eq!(outcome.change, "cache-layer");
     assert!(store.change_exists("cache-layer"));
     assert!(!store.change_exists("beta-cache"));
@@ -515,7 +609,7 @@ fn promote_strips_archive_date_prefix_from_derived_name() {
         "2026-07-06-retro",
         &concluded_doc("2026-07-06-retro", "Retro", "do the retro"),
     );
-    let outcome = super::promote(&store, "2026-07-06-retro", None, None).unwrap();
+    let outcome = super::promote(&store, "2026-07-06-retro", None, None, false).unwrap();
     assert_eq!(outcome.change, "retro");
 
     let store2 = TestStore::with_live_discussion(
@@ -523,7 +617,7 @@ fn promote_strips_archive_date_prefix_from_derived_name() {
         &concluded_doc("gamma-x", "Gamma x", "ship gamma"),
     );
     let outcome2 =
-        super::promote(&store2, "gamma-x", Some("2026-01-02-gamma-cut"), None).unwrap();
+        super::promote(&store2, "gamma-x", Some("2026-01-02-gamma-cut"), None, false).unwrap();
     assert_eq!(outcome2.change, "gamma-cut");
 }
 
@@ -533,7 +627,7 @@ fn promote_creates_change_with_from_discussion_meta() {
         "alpha-search",
         &concluded_doc("alpha-search", "Alpha search", "build alpha search"),
     );
-    super::promote(&store, "alpha-search", None, None).unwrap();
+    super::promote(&store, "alpha-search", None, None, false).unwrap();
     let meta = store.meta("alpha-search");
     assert!(meta.starts_with("schema: spec-driven\ncreated: "), "meta: {meta}");
     assert!(meta.contains("from_discussion: alpha-search\n"), "meta: {meta}");
@@ -545,7 +639,7 @@ fn promote_prefills_proposal_why_from_conclusion() {
         "alpha-search",
         &concluded_doc("alpha-search", "Alpha search", "build alpha search"),
     );
-    super::promote(&store, "alpha-search", None, None).unwrap();
+    super::promote(&store, "alpha-search", None, None, false).unwrap();
     let proposal = store.read_artifact("alpha-search", "proposal.md").unwrap();
     assert_eq!(
         proposal,
@@ -558,7 +652,7 @@ fn promote_prefills_topic_when_no_conclusion() {
     // Placeholder-only conclusion → the topic is the Why fallback.
     let store =
         TestStore::with_live_discussion("open-one", &open_doc("open-one", "Open topic"));
-    super::promote(&store, "open-one", None, None).unwrap();
+    super::promote(&store, "open-one", None, None, false).unwrap();
     let proposal = store.read_artifact("open-one", "proposal.md").unwrap();
     assert!(proposal.starts_with("## Why\n\nOpen topic\n"), "proposal: {proposal}");
 }
@@ -569,13 +663,13 @@ fn promote_marks_promoted_and_accumulates_on_fan_out() {
         "alpha-search",
         &concluded_doc("alpha-search", "Alpha search", "build alpha search"),
     );
-    super::promote(&store, "alpha-search", None, None).unwrap();
+    super::promote(&store, "alpha-search", None, None, false).unwrap();
     let text = store.discussion("alpha-search");
     assert!(text.contains("status: promoted\n"), "text: {text}");
     assert!(text.contains("promoted_to: alpha-search\n"), "text: {text}");
 
     // Second cut: promoted_to becomes a comma-separated accumulator.
-    super::promote(&store, "alpha-search", Some("second-cut"), None).unwrap();
+    super::promote(&store, "alpha-search", Some("second-cut"), None, false).unwrap();
     let text = store.discussion("alpha-search");
     assert!(text.contains("promoted_to: alpha-search, second-cut\n"), "text: {text}");
 }
@@ -588,7 +682,7 @@ fn promote_fails_when_change_already_exists_and_leaves_discussion_untouched() {
     );
     store.metas.borrow_mut().insert("alpha-search".to_string(), "schema: spec-driven\n".to_string());
     let before = store.discussion("alpha-search");
-    let err = super::promote(&store, "alpha-search", None, None).unwrap_err();
+    let err = super::promote(&store, "alpha-search", None, None, false).unwrap_err();
     assert!(err.to_string().contains("already exists"), "err: {err}");
     assert_eq!(store.discussion("alpha-search"), before, "discussion must not be marked");
 }
@@ -599,7 +693,7 @@ fn promote_fails_before_any_change_lands_when_the_record_cannot_take_the_link() 
     // 會 Err；那個檢查必須在建 change 之前做，否則留下「change 已建、動詞報錯」的半成品。
     let unclosed = "---\ntopic: x\nslug: x\nstatus: concluded\n";
     let store = TestStore::with_live_discussion("x", unclosed);
-    assert!(super::promote(&store, "x", Some("cut-x"), None).is_err());
+    assert!(super::promote(&store, "x", Some("cut-x"), None, false).is_err());
     assert!(!store.change_exists("cut-x"), "沒有半成品 change");
     assert_eq!(store.discussion("x"), unclosed, "記錄逐位元不變");
 }
@@ -922,7 +1016,7 @@ fn seal_marks_promoted_when_chain_forged() {
         "existing-cut".into(),
         "schema: spec-driven\nfrom_discussion: alpha-search\n".into(),
     );
-    super::seal(&store, "alpha-search", "existing-cut").unwrap();
+    super::seal(&store, "alpha-search", "existing-cut", false).unwrap();
     let text = store.discussion("alpha-search");
     assert!(text.contains("status: promoted\n"), "text: {text}");
     assert!(text.contains("promoted_to: existing-cut\n"), "text: {text}");
@@ -934,7 +1028,7 @@ fn seal_rejects_when_chain_not_forged_without_writes() {
     let doc = concluded_doc("alpha-search", "Alpha search", "x");
     let store = TestStore::with_live_discussion("alpha-search", &doc);
     store.metas.borrow_mut().insert("cut".into(), "schema: spec-driven\n".into());
-    let err = super::seal(&store, "alpha-search", "cut").unwrap_err();
+    let err = super::seal(&store, "alpha-search", "cut", false).unwrap_err();
     assert!(err.to_string().contains("not linked"), "err: {err}");
     assert_eq!(store.discussion("alpha-search"), doc, "discussion untouched");
     assert_eq!(store.meta("cut"), "schema: spec-driven\n", "change meta untouched");
@@ -948,7 +1042,7 @@ fn seal_rejects_corrupt_change_meta_not_misreporting_the_chain() {
     let doc = concluded_doc("alpha-search", "Alpha search", "x");
     let store = TestStore::with_live_discussion("alpha-search", &doc);
     store.metas.borrow_mut().insert("broken-cut".into(), BAD.into());
-    let err = super::seal(&store, "alpha-search", "broken-cut").unwrap_err();
+    let err = super::seal(&store, "alpha-search", "broken-cut", false).unwrap_err();
     assert!(
         err.to_string().contains("openspec/changes/broken-cut/.openspec.yaml"),
         "error must name the metadata file: {err}"
@@ -970,11 +1064,11 @@ fn seal_rejects_missing_discussion_and_missing_change() {
         "cut".into(),
         "schema: spec-driven\nfrom_discussion: ghost\n".into(),
     );
-    assert!(super::seal(&store, "ghost", "cut").unwrap_err().to_string().contains("not found"));
+    assert!(super::seal(&store, "ghost", "cut", false).unwrap_err().to_string().contains("not found"));
     // 變更不存在（討論存在）。
     let store2 =
         TestStore::with_live_discussion("alpha", &concluded_doc("alpha", "Alpha", "x"));
-    assert!(super::seal(&store2, "alpha", "no-such-change").unwrap_err().to_string().contains("not found"));
+    assert!(super::seal(&store2, "alpha", "no-such-change", false).unwrap_err().to_string().contains("not found"));
 }
 
 #[test]
@@ -988,7 +1082,7 @@ fn seal_rejects_archived_discussion() {
         "cut".into(),
         "schema: spec-driven\nfrom_discussion: old\n".into(),
     );
-    assert!(super::seal(&store, "old", "cut").unwrap_err().to_string().contains("archived"));
+    assert!(super::seal(&store, "old", "cut", false).unwrap_err().to_string().contains("archived"));
 }
 
 #[test]
@@ -1002,7 +1096,7 @@ fn seal_is_idempotent_when_already_promoted() {
         "schema: spec-driven\nfrom_discussion: alpha-search\n".into(),
     );
     let before = store.discussion("alpha-search");
-    super::seal(&store, "alpha-search", "existing-cut").unwrap();
+    super::seal(&store, "alpha-search", "existing-cut", false).unwrap();
     assert_eq!(store.discussion("alpha-search"), before, "重跑不改檔");
 }
 
@@ -1038,7 +1132,7 @@ fn seal_accumulates_promoted_to_on_fan_out() {
         "second-cut".into(),
         "schema: spec-driven\nfrom_discussion: alpha-search\n".into(),
     );
-    super::seal(&store, "alpha-search", "second-cut").unwrap();
+    super::seal(&store, "alpha-search", "second-cut", false).unwrap();
     let text = store.discussion("alpha-search");
     assert!(text.contains("promoted_to: first-cut, second-cut\n"), "text: {text}");
 }
@@ -1259,7 +1353,7 @@ fn seal_clears_restale_slug_keeping_others() {
         "cut-a".to_string(),
         "schema: spec-driven\nfrom_discussion: alpha\nrestale_from: alpha, beta\n".to_string(),
     );
-    super::seal(&store, "alpha", "cut-a").unwrap();
+    super::seal(&store, "alpha", "cut-a", false).unwrap();
     let meta = store.meta("cut-a");
     assert!(meta.contains("restale_from: beta\n"), "alpha cleared, beta kept: {meta}");
     assert!(!meta.contains("restale_from: alpha"), "alpha gone: {meta}");
@@ -1274,7 +1368,7 @@ fn seal_clears_restale_line_when_last_slug() {
         "cut-a".to_string(),
         "schema: spec-driven\nfrom_discussion: alpha\nrestale_from: alpha\n".to_string(),
     );
-    super::seal(&store, "alpha", "cut-a").unwrap();
+    super::seal(&store, "alpha", "cut-a", false).unwrap();
     let meta = store.meta("cut-a");
     assert!(!meta.contains("restale_from"), "restale_from line dropped: {meta}");
     assert!(meta.contains("from_discussion: alpha\n"), "other fields intact: {meta}");
@@ -1288,7 +1382,7 @@ fn seal_restale_clear_is_noop_when_absent() {
         "cut-a".to_string(),
         "schema: spec-driven\nfrom_discussion: alpha\n".to_string(),
     );
-    super::seal(&store, "alpha", "cut-a").unwrap();
+    super::seal(&store, "alpha", "cut-a", false).unwrap();
     assert!(!store.meta("cut-a").contains("restale_from"), "no restale_from introduced");
 }
 
@@ -1943,7 +2037,7 @@ fn head_status_defaults_to_open_and_keeps_an_unknown_literal() {
 #[test]
 fn head_promote_new_change_keeps_hold_and_returns_true() {
     let mut head = DiscussionHead::parse(&held_promoted_doc("alpha", "cut-a"));
-    assert!(head.promote("cut-b"));
+    assert!(head.promote("cut-b", false));
     assert_eq!(head.status, Status::Promoted);
     assert_eq!(head.promoted_to, vec!["cut-a", "cut-b"]);
     assert!(head.hold);
@@ -1956,7 +2050,7 @@ fn head_promote_new_change_keeps_hold_and_returns_true() {
 fn head_promote_known_change_keeps_hold_and_returns_false() {
     let doc = held_promoted_doc("alpha", "cut-a");
     let mut head = DiscussionHead::parse(&doc);
-    assert!(!head.promote("cut-a"));
+    assert!(!head.promote("cut-a", false));
     assert!(head.hold, "沒有新刀累加，旗標保留");
     assert_eq!(head.write_back().unwrap().as_deref(), Some(doc.as_str()), "冪等：逐位元不變");
 }
@@ -1965,7 +2059,7 @@ fn head_promote_known_change_keeps_hold_and_returns_false() {
 fn head_promote_from_open_concluded_and_unknown_becomes_promoted() {
     for status in ["open", "concluded", "parked"] {
         let mut head = DiscussionHead::parse(&format!("---\nstatus: {status}\n---\n"));
-        assert!(head.promote("cut"));
+        assert!(head.promote("cut", false));
         assert_eq!(head.status, Status::Promoted, "from {status}");
         assert_eq!(head.write_back().unwrap().as_deref(), Some("---\nstatus: promoted\npromoted_to: cut\n---\n"));
     }
@@ -1975,7 +2069,7 @@ fn head_promote_from_open_concluded_and_unknown_becomes_promoted() {
 fn head_promote_touches_only_the_frontmatter_when_the_body_quotes_status_strings() {
     let doc = body_quoting_status_doc();
     let mut head = DiscussionHead::parse(&doc);
-    assert!(head.promote("lifecycle-discussion-head"));
+    assert!(head.promote("lifecycle-discussion-head", false));
     let text = head.write_back().unwrap().unwrap();
     let (fm, body) = text.split_once("\n---\n").unwrap();
     let (_, original_body) = doc.split_once("\n---\n").unwrap();
@@ -2120,7 +2214,7 @@ fn head_conclude_restates_the_hold_line_but_promote_leaves_it_verbatim() {
     head.conclude(false);
     assert_eq!(head.write_back().unwrap().as_deref(), Some("---\nstatus: concluded\n---\n"));
     let mut head = DiscussionHead::parse("---\nstatus: open\nhold: yes\n---\n");
-    assert!(head.promote("cut"));
+    assert!(head.promote("cut", false));
     assert_eq!(
         head.write_back().unwrap().as_deref(),
         Some("---\nstatus: promoted\nhold: yes\npromoted_to: cut\n---\n")
@@ -2132,7 +2226,7 @@ fn head_write_back_errors_when_an_unclosed_frontmatter_cannot_take_a_new_line() 
     // 未閉合 frontmatter 缺 promoted_to：promote 要新插一行、無處可插 → Err，
     // 而不是與「沒有 frontmatter」同一個 None。原位代換（status）不受影響。
     let mut head = DiscussionHead::parse("---\nstatus: open\n");
-    assert!(head.promote("cut"));
+    assert!(head.promote("cut", false));
     assert!(head.write_back().is_err());
     let mut head = DiscussionHead::parse("---\nstatus: open\n");
     head.conclude(false);
@@ -2144,6 +2238,6 @@ fn head_write_back_errors_when_an_unclosed_frontmatter_cannot_take_a_new_line() 
 fn mark_promoted_on_an_unclosed_record_without_promoted_to_errors_and_keeps_the_text() {
     let unclosed = "---\ntopic: x\nslug: x\nstatus: open\n";
     let store = TestStore::with_live_discussion("x", unclosed);
-    assert!(super::mark_promoted(&store, "x", "cut").is_err(), "無處可插要大聲失敗");
+    assert!(super::mark_promoted(&store, "x", "cut", false).is_err(), "無處可插要大聲失敗");
     assert_eq!(store.discussion("x"), unclosed);
 }

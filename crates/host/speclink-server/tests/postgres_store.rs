@@ -96,6 +96,7 @@ fn drive(store: SharedStore) -> Outcome {
             description: None,
             agent: Some("claude".into()),
             from_discussion: None,
+            last: false,
         })
         .expect("create change");
 
