@@ -174,8 +174,8 @@ fn a_new_capability_without_near_names_stays_silent() {
     assert!(!broken.valid, "Purpose 早檢查照常: {:?}", broken.errors);
 }
 
-// --- validate --specs 的正典規格驗證（design D4；spec spec-validation
-//     「validate --specs 驗證正典規格」）---
+// --- validate --specs 的正式規格驗證（design D4；spec spec-validation
+//     「validate --specs 驗證正式規格」）---
 
 fn canonical(purpose: Option<&str>) -> String {
     let head = "# auth Specification\n\n";

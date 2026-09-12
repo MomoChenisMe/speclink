@@ -278,7 +278,7 @@ mod tests {
 
     #[test]
     fn gate_passes_a_canonical_capability_unchanged() {
-        // spec Scenario「命中正典名稱照常放行」：行為與輸出維持現狀。
+        // spec Scenario「命中正式規格名稱照常放行」：行為與輸出維持現狀。
         let store = store_with_change("demo");
         store.canonical.borrow_mut().insert("auth".into(), CANON_AUTH.into());
         let (artifact_id, path) =

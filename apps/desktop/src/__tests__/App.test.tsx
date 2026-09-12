@@ -759,7 +759,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
 
   it("點導覽「規格」進入規格頁：主內容出現規格清單、導覽項 active", async () => {
     // spec Scenario「進入規格頁顯示卡片清單」：切頁語意（與已封存頁同型），
-    // 主內容渲染 SpecList（正典 spec 卡片＋搜尋列），返回看板點「變更」。
+    // 主內容渲染 SpecList（正式規格卡片＋搜尋列），返回看板點「變更」。
     renderApp();
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     const aside = document.querySelector("aside") as HTMLElement;
@@ -776,8 +776,8 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     expect(specsNav.className).not.toContain("bg-primary");
   });
 
-  it("規格頁點卡開唯讀規格抽屜，經 dataSource.getSpecDocument 載入正典全文", async () => {
-    // spec Scenario「選定 spec 以抽屜顯示其正典內容」：App 掛載 SpecDrawer 並接線
+  it("規格頁點卡開唯讀規格抽屜，經 dataSource.getSpecDocument 載入正式規格全文", async () => {
+    // spec Scenario「選定 spec 以抽屜顯示其正式規格內容」：App 掛載 SpecDrawer 並接線
     // store.detailSpec 與 dataSource.getSpecDocument（spec-archive-drawer design D2）。
     const ds = fakeDataSource({
       getSpecDocument: vi.fn().mockResolvedValue("# desktop-app Specification\n\n正典內文段落。"),

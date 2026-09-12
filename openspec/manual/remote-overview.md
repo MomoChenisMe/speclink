@@ -8,13 +8,13 @@ generated: 2026-09-02
 ---
 # remote 模式總覽
 
-Speclink 有兩種工作方式。本地模式把正典放在你的 repo 裡，remote 模式把正典放在團隊共用的 server 上。這一頁說明兩者的差別、remote 模式怎麼被啟用，以及整條 remote 旅程的順序。
+Speclink 有兩種工作方式。本地模式把正式規格放在你的 repo 裡，remote 模式把正式規格放在團隊共用的 server 上。這一頁說明兩者的差別、remote 模式怎麼被啟用，以及整條 remote 旅程的順序。
 
 ## 本地與 remote 的差別
 
 **本地模式**的產物沿用 OpenSpec 的目錄結構：`specs/<capability>/spec.md`、`changes/<名稱>/`、`changes/archive/` 與 `config.yaml`。內容是純 Markdown 與 YAML，不經 Speclink 也讀得到、改得動，每次變動都呈現在 git diff 裡。Speclink 在這個結構上多加兩樣東西：`discussions/` 目錄，以及各變更目錄裡的 `.openspec.yaml`。細節見 [認識資料：變更、討論與規格](data-layout.md)。
 
-**remote 模式**的正典在 server 的儲存後端。本機沒有 `openspec/` 目錄，只有一份唯讀的投影，見 [remote 模式的規格投影](remote-context.md)。上述目錄相容性不適用 remote 模式。
+**remote 模式**的正式規格在 server 的儲存後端。本機沒有 `openspec/` 目錄，只有一份唯讀的投影，見 [remote 模式的規格投影](remote-context.md)。上述目錄相容性不適用 remote 模式。
 
 ## 官方 server 是參考實作
 

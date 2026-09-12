@@ -376,7 +376,7 @@ code:
 ---
 ### Requirement: restale_from 記錄變更待重新反映的討論並經 CLI 觀測
 
-變更 meta 檔（openspec/changes/<name>/.openspec.yaml）MAY 帶 restale_from 欄位——逗號分隔的討論 slug 清單，語意為「本變更曾反映（seal）這些討論，其後這些討論被重新結論，內容相對新結論過期、待 re-ingest」。ChangeMeta SHALL 提供 restale_from() accessor 回傳 Vec<String>：欄位缺席時回空、逗號值 SHALL 各段 trim 後分割，行為平行既有 from_discussion／from_discussions()。此欄位由 discuss conclude 寫入、discuss seal 清除（見 discussion-docs 正典），本需求規範其讀取與觀測。speclink show <change> --json SHALL 於變更 payload 恆曝 restaleFrom（camelCase 字串陣列，無旗標為空陣列），平行既有 fromDiscussions。speclink list --json SHALL 於 restale_from 非空的變更 payload 曝 restaleFrom 陣列、為空時省略該欄位——以維持 list --json 對無旗標變更的既有輸出逐位元不變。speclink analyze <change> 於某變更 restale_from 非空時 SHALL 出一條資訊性 finding，指明該變更反映的討論已重新結論、需重新 ingest 以同步新結論。此欄位讀取 SHALL 為零 per-load 掃描——僅讀既存 meta 欄位，不掃描討論記錄。
+變更 meta 檔（openspec/changes/<name>/.openspec.yaml）MAY 帶 restale_from 欄位——逗號分隔的討論 slug 清單，語意為「本變更曾反映（seal）這些討論，其後這些討論被重新結論，內容相對新結論過期、待 re-ingest」。ChangeMeta SHALL 提供 restale_from() accessor 回傳 Vec<String>：欄位缺席時回空、逗號值 SHALL 各段 trim 後分割，行為平行既有 from_discussion／from_discussions()。此欄位由 discuss conclude 寫入、discuss seal 清除（見 discussion-docs 正式規格），本需求規範其讀取與觀測。speclink show <change> --json SHALL 於變更 payload 恆曝 restaleFrom（camelCase 字串陣列，無旗標為空陣列），平行既有 fromDiscussions。speclink list --json SHALL 於 restale_from 非空的變更 payload 曝 restaleFrom 陣列、為空時省略該欄位——以維持 list --json 對無旗標變更的既有輸出逐位元不變。speclink analyze <change> 於某變更 restale_from 非空時 SHALL 出一條資訊性 finding，指明該變更反映的討論已重新結論、需重新 ingest 以同步新結論。此欄位讀取 SHALL 為零 per-load 掃描——僅讀既存 meta 欄位，不掃描討論記錄。
 
 #### Scenario: restale_from() accessor 讀取
 
@@ -477,7 +477,7 @@ change 的 `.openspec.yaml` 存在但 YAML 解析失敗時，讀寫該 change �
 #### Scenario: archive 對壞 metadata 拒絕
 
 - **WHEN** 對壞 metadata 的 change 執行 speclink archive 該 change
-- **THEN** 以非零 exit code 結束；正典規格未被併入、change 目錄未被移動
+- **THEN** 以非零 exit code 結束；正式規格未被併入、change 目錄未被移動
 
 ---
 ### Requirement: in-progress 標記經 remote 通道寫入 server meta
@@ -637,7 +637,7 @@ code:
 ---
 ### Requirement: 單筆封存的任務完成度守門
 
-speclink archive <change>(單筆路徑)SHALL 於封存前檢查 tasks.md 的任務完成度:任務總數大於零且完成數小於總數、且未帶 --mark-tasks-complete 時 SHALL 拒絕——非零 exit code,stderr 列證據(完成數/總數)與兩條出路(完成任務後再封存、或帶 --mark-tasks-complete),且 SHALL NOT 改動任何檔案(change 目錄、正典 specs、快照與 touched 紀錄逐位元不變)。帶 --mark-tasks-complete 時 SHALL 維持既有語意:先將 tasks.md 全部勾選再封存。任務全數完成、或任務總數為零的 change,單筆封存的人眼與 --json 輸出 SHALL 與守門引入前逐位元一致。此守門 SHALL 於引擎封存流程本體生效,一體適用 CLI 單筆、桌面 app 封存動詞與 server 封存通道——桌面對任務未完成 change 觸發封存時 SHALL 收到引擎拒絕訊息(依既有失敗 toast 語意呈現),SHALL NOT 將該 change 標為已封存。批次封存(--all 或多變更名)的預過濾與跳過回報行為 SHALL 維持不變。本守門屬刻意行為變更:單筆封存對任務未完成 change 由成功改為拒絕。
+speclink archive <change>(單筆路徑)SHALL 於封存前檢查 tasks.md 的任務完成度:任務總數大於零且完成數小於總數、且未帶 --mark-tasks-complete 時 SHALL 拒絕——非零 exit code,stderr 列證據(完成數/總數)與兩條出路(完成任務後再封存、或帶 --mark-tasks-complete),且 SHALL NOT 改動任何檔案(change 目錄、正式規格、快照與 touched 紀錄逐位元不變)。帶 --mark-tasks-complete 時 SHALL 維持既有語意:先將 tasks.md 全部勾選再封存。任務全數完成、或任務總數為零的 change,單筆封存的人眼與 --json 輸出 SHALL 與守門引入前逐位元一致。此守門 SHALL 於引擎封存流程本體生效,一體適用 CLI 單筆、桌面 app 封存動詞與 server 封存通道——桌面對任務未完成 change 觸發封存時 SHALL 收到引擎拒絕訊息(依既有失敗 toast 語意呈現),SHALL NOT 將該 change 標為已封存。批次封存(--all 或多變更名)的預過濾與跳過回報行為 SHALL 維持不變。本守門屬刻意行為變更:單筆封存對任務未完成 change 由成功改為拒絕。
 
 #### Scenario: 任務未完成的單筆封存被拒
 
@@ -693,12 +693,12 @@ code:
 ---
 ### Requirement: 封存的 linked worktree 環境守門
 
-封存動詞（單筆與 bulk）SHALL 於任何檔案效果之前判定執行環境：workspace root 的 .git 為檔案（linked worktree 特徵）且 git 回報的當前分支具 speclink/ 前綴時 SHALL 拒絕封存——非零 exit code，stderr 說明封存不得於 linked worktree 內執行、並指路先以 worktree-merge 合回主分支再封存；change 目錄、正典規格與解封存備份目錄 SHALL 維持零變動，且 --mark-tasks-complete 的前置全勾寫入 SHALL NOT 發生（tasks.md 逐位元不變）。.git 為目錄（主 checkout）時本守門 SHALL NOT spawn git 且封存行為不變——即使當前分支名恰具 speclink/ 前綴亦然（fs 短路先於分支判定）。git 不可用、指令失敗或分支輸出為空（detached HEAD）時 SHALL 放行（fail-open，沿 worktree discovery 的既有慣例：無 git 的環境不得因此無法封存）；分支無 speclink/ 前綴時 SHALL 放行。
+封存動詞（單筆與 bulk）SHALL 於任何檔案效果之前判定執行環境：workspace root 的 .git 為檔案（linked worktree 特徵）且 git 回報的當前分支具 speclink/ 前綴時 SHALL 拒絕封存——非零 exit code，stderr 說明封存不得於 linked worktree 內執行、並指路先以 worktree-merge 合回主分支再封存；change 目錄、正式規格與解封存備份目錄 SHALL 維持零變動，且 --mark-tasks-complete 的前置全勾寫入 SHALL NOT 發生（tasks.md 逐位元不變）。.git 為目錄（主 checkout）時本守門 SHALL NOT spawn git 且封存行為不變——即使當前分支名恰具 speclink/ 前綴亦然（fs 短路先於分支判定）。git 不可用、指令失敗或分支輸出為空（detached HEAD）時 SHALL 放行（fail-open，沿 worktree discovery 的既有慣例：無 git 的環境不得因此無法封存）；分支無 speclink/ 前綴時 SHALL 放行。
 
 #### Scenario: worktree 內封存被拒且零檔案效果
 
 - **WHEN** 於分支 speclink/some-change 的 linked worktree 內對任一 change 執行封存
-- **THEN** exit code 非零；stderr 含 worktree 事實與 worktree-merge 指路；該 change 目錄仍在原位，無正典規格寫入亦無備份目錄產生
+- **THEN** exit code 非零；stderr 含 worktree 事實與 worktree-merge 指路；該 change 目錄仍在原位，無正式規格寫入亦無備份目錄產生
 
 #### Scenario: 拒絕時 --mark-tasks-complete 前置寫入零效果
 

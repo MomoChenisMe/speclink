@@ -103,7 +103,7 @@ describe("規格分頁 delta 區段色標", () => {
   });
 
   it("無 delta 標記的規格整篇照常渲染（無色標標頭）", async () => {
-    const { baseElement } = await openSpecsTab("# 正典規格\n\n### Requirement: plain\n本文。\n");
+    const { baseElement } = await openSpecsTab("# 正式規格\n\n### Requirement: plain\n本文。\n");
     await waitFor(() => expect(screen.getByText(/Requirement: plain/)).toBeTruthy());
     expect(baseElement.querySelector("[data-delta-section]")).toBeNull();
   });

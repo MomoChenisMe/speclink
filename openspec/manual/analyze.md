@@ -18,7 +18,7 @@ speclink analyze <變更名>
 它只讀不寫，什麼檔案都不會動。技能入口是 `/speclink-analyze`。桌面 app 詳情面板的「分析」按鈕跑的也是這個檢查，畫面呈現見[看板與任務](desktop-board.md)。
 
 > [!NOTE]
-> analyze 只管「哪些情況該提醒你」。產物的格式對不對，歸 `speclink validate`；delta 能不能併進正典，歸封存守門（見[封存](archive.md)）；程式碼與規格離當初假設多遠，歸 drift（見[續作與需求變更](drift-ingest.md)）。
+> analyze 只管「哪些情況該提醒你」。產物的格式對不對，歸 `speclink validate`；delta 能不能併進正式規格，歸封存守門（見[封存](archive.md)）；程式碼與規格離當初假設多遠，歸 drift（見[續作與需求變更](drift-ingest.md)）。
 
 ## 四個面向
 
@@ -124,13 +124,13 @@ REMOVED 區塊的需求不查 scenario（有也不違規），改查需求本文
 
 - **討論被重新結論**（Suggestion）：這個變更反映的討論後來又重新下了結論，每份討論一筆，位置是變更的狀態檔。處理方式見[實作：完成任務](apply.md)的需求中途變更一節。
 - **有 delta 規格卻沒有提案**（Critical）：proposal.md 不存在。
-- **MODIFIED 指向的 capability 沒有正典規格**（Warning）：每個 capability 只報一筆，例如 `MODIFIED requirements reference capability 'auth' but no main spec found`。
-- **正典有這個 capability，但找不到同名需求**（Warning）：例如 `MODIFIED requirement 'R9' not found in main spec`。名字要與正典的 `### Requirement:` 逐字相同。
+- **MODIFIED 指向的 capability 沒有正式規格**（Warning）：每個 capability 只報一筆，例如 `MODIFIED requirements reference capability 'auth' but no main spec found`。
+- **正式規格有這個 capability，但找不到同名需求**（Warning）：例如 `MODIFIED requirement 'R9' not found in main spec`。名字要與正式規格的 `### Requirement:` 逐字相同。
 
 REMOVED 與 RENAMED 的目標存不存在，不由 analyze 判定，那是封存守門的範圍，`speclink validate` 也會提早報出來。見[封存](archive.md)。
 
 ## 之後怎麼走
 
-analyze 是隨叫隨用的工具，沒有固定的下一步。發現若指向產物本身，回頭改提案、設計、規格或任務；若指向 delta 與正典對不上，先跑 drift 再 ingest（見[續作與需求變更](drift-ingest.md)）。沒有發現就進[實作：完成任務](apply.md)。
+analyze 是隨叫隨用的工具，沒有固定的下一步。發現若指向產物本身，回頭改提案、設計、規格或任務；若指向 delta 與正式規格對不上，先跑 drift 再 ingest（見[續作與需求變更](drift-ingest.md)）。沒有發現就進[實作：完成任務](apply.md)。
 
 **出處**：`change-analysis`

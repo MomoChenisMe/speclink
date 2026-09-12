@@ -1189,7 +1189,7 @@ async fn remote_list_archived(
     .await
 }
 
-/// 正典 spec 內文：404 與本地語意一致回 null。
+/// 正式規格內文：404 與本地語意一致回 null。
 #[tauri::command]
 async fn remote_spec_document(
     app: tauri::AppHandle,

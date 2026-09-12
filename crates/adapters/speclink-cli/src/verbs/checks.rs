@@ -264,7 +264,7 @@ pub(crate) fn remote_validate(ctx: &RemoteCtx, a: &ValidateArgs) -> Result<()> {
         }
     }
     if targets.specs {
-        // 正典規格沒有 server 端驗證端點，也不新開一個：以既有的規格讀取動詞
+        // 正式規格沒有 server 端驗證端點，也不新開一個：以既有的規格讀取動詞
         // 取回內容，本地跑 fs 模式同一支驗證器——輸出因此同形。
         let mut caps: Vec<String> =
             ctx.client.list_specs()?.specs.into_iter().map(|s| s.id).collect();

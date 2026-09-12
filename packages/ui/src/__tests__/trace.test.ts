@@ -1,4 +1,4 @@
-// D1／D2：前端解析正典 spec.md 內 @trace 區塊的 source，聚合至 spec 層級去重保序。
+// D1／D2：前端解析正式規格 spec.md 內 @trace 區塊的 source，聚合至 spec 層級去重保序。
 // @trace 格式比照 archive.rs 的 trace_block（source/updated/code）。
 import { describe, it, expect } from "vitest";
 

@@ -81,9 +81,9 @@ fn validate_returns_typed_outcome_without_events() {
 }
 
 // --- validate 的 --specs／--all 旗標語意（design D4；spec spec-validation
-//     「validate --specs 驗證正典規格」）---
+//     「validate --specs 驗證正式規格」）---
 
-/// 一個 change（demo）＋一份 Purpose 缺席的正典規格（auth）的專案。
+/// 一個 change（demo）＋一份 Purpose 缺席的正式規格（auth）的專案。
 fn validate_flags_store() -> TestStore {
     let store = TestStore::with_meta("demo", META);
     store.put_artifact("demo", "tasks.md", "- [ ] 1.1 a\n");

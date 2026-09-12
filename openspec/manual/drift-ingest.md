@@ -23,13 +23,13 @@ generated: 2026-09-11T10:03:08+08:00
 speclink drift <變更名>
 ```
 
-drift 只是診斷。它不會寫回正典規格，也不會動任何規格文件。同一個工作區狀態跑兩次，結果一樣。
+drift 只是診斷。它不會寫回正式規格，也不會動任何規格文件。同一個工作區狀態跑兩次，結果一樣。
 
 報告分五個維度：
 
 | 維度 | 看什麼 |
 | --- | --- |
-| Specs | 規格面：這個變更的 delta 相對正典規格有沒有過期 |
+| Specs | 規格面：這個變更的 delta 相對正式規格有沒有過期 |
 | Time | 工作區面 |
 | Structure | 工作區面 |
 | Tasks | 工作區面 |
@@ -47,7 +47,7 @@ drift 以一份固定的基準運算。如果運算到合併前，你又改了�
 
 兩類過期各有不同的補救路線：
 
-- **一般過期**（delta 裡的需求名對不上正典，例如 ADDED 的名字已存在、MODIFIED 的來源不存在）：先 drift，再以 ingest 更新 delta。
+- **一般過期**（delta 裡的需求名對不上正式規格，例如 ADDED 的名字已存在、MODIFIED 的來源不存在）：先 drift，再以 ingest 更新 delta。
 - **新 capability 缺 Purpose**（delta 新開的 capability 沒有合格的 `## Purpose` 區段）：drift 的主建議指向 validate 的 Purpose 指引，不是 ingest。補寫 `## Purpose`，再跑 `speclink validate` 拿完整指引。
 
 完整的拒絕清單見 [封存](archive.md)。

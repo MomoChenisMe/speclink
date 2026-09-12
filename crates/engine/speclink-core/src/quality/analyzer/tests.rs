@@ -351,7 +351,7 @@ fn a_requirement_name_only_in_a_group_heading_is_not_covered() {
 
 #[test]
 fn a_modified_requirement_absent_from_the_canonical_spec_is_a_gap() {
-    // spec Scenario「MODIFIED 需求不在正典」。
+    // spec Scenario「MODIFIED 需求不在正式規格」。
     let store = store_with(&[
         ("proposal.md", "## Why\n\nBecause.\n"),
         (
@@ -375,7 +375,7 @@ fn a_modified_requirement_absent_from_the_canonical_spec_is_a_gap() {
 
 #[test]
 fn a_missing_canonical_spec_is_reported_once_per_capability() {
-    // spec Scenario「無正典時每 capability 一筆」。
+    // spec Scenario「無正式規格時每 capability 一筆」。
     let store = store_with(&[
         ("proposal.md", "## Why\n\nBecause.\n"),
         (

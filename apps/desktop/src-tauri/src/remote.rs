@@ -987,7 +987,7 @@ pub struct RemoteCapabilities {
     pub archive_discussion: bool,
     // (b) 組合
     pub set_all_tasks: bool,
-    // 新增的 server 純讀取面（封存、搜尋、正典 spec 內文）
+    // 新增的 server 純讀取面（封存、搜尋、正式規格內文）
     pub list_archived: bool,
     pub get_archived_document: bool,
     pub archived_capabilities: bool,

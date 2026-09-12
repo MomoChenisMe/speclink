@@ -45,10 +45,10 @@ run `speclink validate --specs` alone, or `speclink validate --all` for both sid
     })
 }
 
-/// 一份正典規格的驗證（design D4）：缺 `## Purpose` 區段或內容為空＝error；
+/// 一份正式規格的驗證（design D4）：缺 `## Purpose` 區段或內容為空＝error；
 /// 內容不足門檻＝warning（僅 strict 報）；內容仍為 archive 佔位＝warning（不依附
 /// strict——佔位句恆長於門檻，長度判準抓不到它）。fs 與 remote 兩模式共用這一支：
-/// 前者從 Store 讀正典，後者由 client 取回內容後本地執行，輸出因此同形。
+/// 前者從 Store 讀正式規格，後者由 client 取回內容後本地執行，輸出因此同形。
 pub fn validate_canonical_spec(cap: &str, text: &str, strict: bool) -> ValidationResult {
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
@@ -76,7 +76,7 @@ replace it with what this capability actually covers"
     }
 }
 
-/// 全部正典規格的驗證結果，依 capability id 排序（沿 listing 的既有慣例——
+/// 全部正式規格的驗證結果，依 capability id 排序（沿 listing 的既有慣例——
 /// Store 的列舉順序是檔案系統順序，不可依賴）。
 pub fn validate_specs(store: &dyn Store, strict: bool) -> Vec<ValidationResult> {
     let mut caps = store.list_canonical_capabilities();
@@ -248,7 +248,7 @@ fn structural_pass(store: &dyn Store, change: &Change, strict: bool) -> Structur
     // 檔案系統，大小寫不敏感的 fs 會把 `Auth` 當 `auth` 而讓兩張網同時靜默。
     let canon = store.list_canonical_capabilities();
     // 近似名建議池與 cap 無關，整個 change 建一次；只有存在新開 capability
-    // 時才需要（池會讀全部正典規格取 Purpose 首行，白讀太貴）。
+    // 時才需要（池會讀全部正式規格取 Purpose 首行，白讀太貴）。
     let pool = if caps.iter().any(|cap| !canon.contains(cap)) {
         crate::capname::suggestion_pool(store)
     } else {

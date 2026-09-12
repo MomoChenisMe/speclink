@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`speclink analyze` 對單一 change 的四面向交叉檢查（Coverage／Consistency／Ambiguity／Gaps）：每個面向的前置 artifact 與跳過語意、每條規則的觸發條件、嚴重度、訊息與訊息 key，以及報告的凍結形狀。本 capability 只定義「哪些情況產生 finding」；artifacts 的結構驗證歸 spec-validation，delta 與正典的合併守門歸 archive-merge，漂移歸 drift-computation。
+`speclink analyze` 對單一 change 的四面向交叉檢查（Coverage／Consistency／Ambiguity／Gaps）：每個面向的前置 artifact 與跳過語意、每條規則的觸發條件、嚴重度、訊息與訊息 key，以及報告的凍結形狀。本 capability 只定義「哪些情況產生 finding」；artifacts 的結構驗證歸 spec-validation，delta 與正式規格的合併守門歸 archive-merge，漂移歸 drift-computation。
 
 ## Requirements
 
@@ -225,16 +225,16 @@ updated: 2026-09-09T15:02:28+08:00
 ---
 ### Requirement: Gaps 規則
 
-Gaps SHALL 產生四種 finding。`gapRestale`（Suggestion）：change 反映的討論被重新結論時，每個討論 slug 報一筆，`location` 為 `change meta`。`gapNoProposal`（Critical）：有 delta spec 但 proposal.md 檔不存在，`location` 為 `change directory`。`gapNoMainSpec`（Warning）：MODIFIED 區塊的需求所屬 capability 沒有正典規格，每個 capability 只報一筆。`gapModifiedNotFound`（Warning）：正典規格存在，但找不到 `### Requirement: <name>` 逐字相符的需求。REMOVED 與 RENAMED 的目標存在與否 SHALL NOT 由 Gaps 判定——那是 archive-merge 的合併守門範圍。
+Gaps SHALL 產生四種 finding。`gapRestale`（Suggestion）：change 反映的討論被重新結論時，每個討論 slug 報一筆，`location` 為 `change meta`。`gapNoProposal`（Critical）：有 delta spec 但 proposal.md 檔不存在，`location` 為 `change directory`。`gapNoMainSpec`（Warning）：MODIFIED 區塊的需求所屬 capability 沒有正式規格，每個 capability 只報一筆。`gapModifiedNotFound`（Warning）：正式規格存在，但找不到 `### Requirement: <name>` 逐字相符的需求。REMOVED 與 RENAMED 的目標存在與否 SHALL NOT 由 Gaps 判定——那是 archive-merge 的合併守門範圍。
 
-#### Scenario: MODIFIED 需求不在正典
+#### Scenario: MODIFIED 需求不在正式規格
 
-- **WHEN** delta 的 `## MODIFIED Requirements` 下有需求 `R9`，正典 `specs/auth/spec.md` 存在但沒有 `### Requirement: R9`
+- **WHEN** delta 的 `## MODIFIED Requirements` 下有需求 `R9`，正式規格 `specs/auth/spec.md` 存在但沒有 `### Requirement: R9`
 - **THEN** 報一筆 Warning，`summary` 為 `MODIFIED requirement 'R9' not found in main spec`，`recommendation_msg.params.spec` 為 `auth`
 
-#### Scenario: 無正典時每 capability 一筆
+#### Scenario: 無正式規格時每 capability 一筆
 
-- **WHEN** delta `specs/auth/spec.md` 的 MODIFIED 區塊有 2 條需求，正典 `specs/auth/spec.md` 不存在
+- **WHEN** delta `specs/auth/spec.md` 的 MODIFIED 區塊有 2 條需求，正式規格 `specs/auth/spec.md` 不存在
 - **THEN** 只報 1 筆 `gapNoMainSpec`，`summary` 為 `MODIFIED requirements reference capability 'auth' but no main spec found`
 
 <!-- @trace

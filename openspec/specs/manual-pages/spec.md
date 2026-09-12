@@ -29,7 +29,7 @@ updated: 2026-09-02
 ---
 ### Requirement: frontmatter 六欄
 
-每頁 SHALL 以 YAML frontmatter 開頭並含下列欄位：`title`（字串，必填，頁的人類標題）、`section`（字串，必填，側欄分區名）、`order`（整數，必填，全手冊唯一的全域序號，慣例以 10 為間隔）、`keywords`（字串陣列，選填，供搜尋）、`sources`（字串陣列，必填，本頁取材的正典規格；首頁與來源頁得為空陣列）、`generated`（必填，本頁最近一次生成的時戳，格式為帶時區偏移量的 RFC 3339，秒級，例 `2026-09-05T23:31:00+08:00`）。`sources` 的每一項 SHALL 為 `<capability>` 或 `<capability>#<Requirement 名>` 兩種形式之一：井號前為 `openspec/specs/` 下既有的 capability 目錄名，井號後為該正典規格中某條 `### Requirement:` 標題的原文（去頭尾空白）；一項至多一個井號錨定，同一 capability 的多條 Requirement SHALL 寫成多項。生成端寫出帶錨定的項時 SHALL 以雙引號包住。除過期判定外，其他以 `sources` 為依據的規則（未入冊、出處行、來源消失）SHALL 只看井號前的 capability 名。讀取端 SHALL 同時接受純日期 `YYYY-MM-DD` 的 `generated`（本契約放寬前生成的頁），既有頁 SHALL NOT 因此需要回改；不帶錨定的既有 `sources` 項 SHALL 維持整份規格的語意，既有頁 SHALL NOT 因此需要回改。frontmatter SHALL NOT 含其他欄位。頁的排序 SHALL 僅由 `order` 決定；分區順序 SHALL 由分區內最小 `order` 決定。
+每頁 SHALL 以 YAML frontmatter 開頭並含下列欄位：`title`（字串，必填，頁的人類標題）、`section`（字串，必填，側欄分區名）、`order`（整數，必填，全手冊唯一的全域序號，慣例以 10 為間隔）、`keywords`（字串陣列，選填，供搜尋）、`sources`（字串陣列，必填，本頁取材的正式規格；首頁與來源頁得為空陣列）、`generated`（必填，本頁最近一次生成的時戳，格式為帶時區偏移量的 RFC 3339，秒級，例 `2026-09-05T23:31:00+08:00`）。`sources` 的每一項 SHALL 為 `<capability>` 或 `<capability>#<Requirement 名>` 兩種形式之一：井號前為 `openspec/specs/` 下既有的 capability 目錄名，井號後為該正式規格中某條 `### Requirement:` 標題的原文（去頭尾空白）；一項至多一個井號錨定，同一 capability 的多條 Requirement SHALL 寫成多項。生成端寫出帶錨定的項時 SHALL 以雙引號包住。除過期判定外，其他以 `sources` 為依據的規則（未入冊、出處行、來源消失）SHALL 只看井號前的 capability 名。讀取端 SHALL 同時接受純日期 `YYYY-MM-DD` 的 `generated`（本契約放寬前生成的頁），既有頁 SHALL NOT 因此需要回改；不帶錨定的既有 `sources` 項 SHALL 維持整份規格的語意，既有頁 SHALL NOT 因此需要回改。frontmatter SHALL NOT 含其他欄位。頁的排序 SHALL 僅由 `order` 決定；分區順序 SHALL 由分區內最小 `order` 決定。
 
 #### Scenario: 合規的 frontmatter
 
@@ -108,7 +108,7 @@ updated: 2026-09-02
 ---
 ### Requirement: 過期判定基準
 
-一頁 SHALL 視為過期，若其 `sources` 中任一項判為過期。一項的判定 SHALL 依錨定有無分流：不帶錨定的項，取該 capability 正典規格內全部 `@trace updated` 時戳；帶錨定的項，SHALL 把正典規格全文依行首 `### Requirement:` 標題切段（一段自標題起、至下一個 `### Requirement:` 標題或檔尾止），取標題文字去頭尾空白後與錨定相等（區分大小寫）的那一段內的 `@trace updated` 時戳；任一取得的時戳「在該頁 `generated` 之後」即該項過期。帶錨定的項在正典規格中找不到相符標題、或該 capability 的正典規格不存在時，該項 SHALL 視為過期。「在之後」SHALL 依兩邊的格式分段判定：兩邊都是帶時區偏移量的 RFC 3339 時戳時，換算為同一瞬間後規格時戳嚴格晚於頁時戳才算，同一秒 SHALL NOT 算；任一邊只有純日期時，規格的日曆日不早於（晚於或同日）頁的日曆日即算，帶時間的一方取其時戳自身偏移量下的日曆日——生成當天的封存不得漏判。既非 RFC 3339 也非純日期的時戳 SHALL 視為缺席，不參與判定。一個 capability SHALL 視為未入冊，若它被生成端分流為使用者面向、且其名稱不出現在任何頁 `sources` 任一項的井號前。生成端與讀取端 SHALL 採同一基準；`sources` 為空的頁 SHALL NOT 判為過期。
+一頁 SHALL 視為過期，若其 `sources` 中任一項判為過期。一項的判定 SHALL 依錨定有無分流：不帶錨定的項，取該 capability 正式規格內全部 `@trace updated` 時戳；帶錨定的項，SHALL 把正式規格全文依行首 `### Requirement:` 標題切段（一段自標題起、至下一個 `### Requirement:` 標題或檔尾止），取標題文字去頭尾空白後與錨定相等（區分大小寫）的那一段內的 `@trace updated` 時戳；任一取得的時戳「在該頁 `generated` 之後」即該項過期。帶錨定的項在正式規格中找不到相符標題、或該 capability 的正式規格不存在時，該項 SHALL 視為過期。「在之後」SHALL 依兩邊的格式分段判定：兩邊都是帶時區偏移量的 RFC 3339 時戳時，換算為同一瞬間後規格時戳嚴格晚於頁時戳才算，同一秒 SHALL NOT 算；任一邊只有純日期時，規格的日曆日不早於（晚於或同日）頁的日曆日即算，帶時間的一方取其時戳自身偏移量下的日曆日——生成當天的封存不得漏判。既非 RFC 3339 也非純日期的時戳 SHALL 視為缺席，不參與判定。一個 capability SHALL 視為未入冊，若它被生成端分流為使用者面向、且其名稱不出現在任何頁 `sources` 任一項的井號前。生成端與讀取端 SHALL 採同一基準；`sources` 為空的頁 SHALL NOT 判為過期。
 
 #### Scenario: 過期與未入冊的判定
 
@@ -184,7 +184,7 @@ updated: 2026-09-11T11:59:38+08:00
 
 #### Scenario: 錨定失效的頁整頁重寫
 
-- **WHEN** 一頁 `sources` 為 `["desktop-app#舊段名"]`，正典 `desktop-app` 已把該 Requirement 改名為「新段名」，頁的其餘內文與重生結果相同
+- **WHEN** 一頁 `sources` 為 `["desktop-app#舊段名"]`，正式規格 `desktop-app` 已把該 Requirement 改名為「新段名」，頁的其餘內文與重生結果相同
 - **THEN** 該頁整頁重寫，`sources` 變為 `["desktop-app#新段名"]`、`generated` 為本次時戳；下次判定不再過期
 
 #### Scenario: 插入新頁不重排

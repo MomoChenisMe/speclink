@@ -61,7 +61,7 @@ Generated files for: claude, codex
 ```text
 openspec/
 ├── config.yaml              工作流政策（locale、tdd、audit、worktree）
-├── specs/<capability>/spec.md   正典規格，一個 capability 一份
+├── specs/<capability>/spec.md   正式規格，一個 capability 一份
 ├── changes/<名稱>/           進行中的變更（proposal、design、tasks、specs delta）
 ├── changes/archive/          已封存的變更
 └── discussions/              討論記錄（Speclink 新增）
@@ -69,7 +69,7 @@ openspec/
 
 全部是純 Markdown 與 YAML，沒有資料庫，也沒有專屬格式。不裝 Speclink 也讀得懂、改得動，每次規格變動 Git diff 都看得出來。Speclink 只多放兩樣東西：`discussions/`，以及每個變更目錄裡的 `.openspec.yaml`——後者記生命週期 metadata，例如開工時間與來源討論。
 
-這份結構相容性只適用 Local 模式。接上遠端之後規格的正典在 Store 裡，本機只留一份唯讀投影（`.speclink/context/`），不是可寫的檔案樹。
+這份結構相容性只適用 Local 模式。接上遠端之後正式規格在 Store 裡，本機只留一份唯讀投影（`.speclink/context/`），不是可寫的檔案樹。
 
 確認起點乾淨：
 
@@ -78,9 +78,9 @@ speclink list
 speclink validate --specs --all --strict
 ```
 
-**預期輸出**：`list` 印出 `No active changes.`；`validate` 在還沒有任何正典規格時**不印任何東西**且以 0 結束——沒有輸出就是通過。
+**預期輸出**：`list` 印出 `No active changes.`；`validate` 在還沒有任何正式規格時**不印任何東西**且以 0 結束——沒有輸出就是通過。
 
-如果 repo 已經有大量程式但沒有正典規格，先用 `/speclink-baseline`（Codex 為 `$speclink-baseline`）依目前行為建規格，再開新變更。
+如果 repo 已經有大量程式但沒有正式規格，先用 `/speclink-baseline`（Codex 為 `$speclink-baseline`）依目前行為建規格，再開新變更。
 
 ## 3. Propose / 提案
 
@@ -251,7 +251,7 @@ Specs applied: csv-export (added: 1, modified: 0, removed: 0, renamed: 0)
 Snapshot created for unarchive support.
 ```
 
-封存把 delta specs 合併進正典規格，並把變更移到 `openspec/changes/archive/`。之後 `speclink list` 回到 `No active changes.`，同時 `openspec/specs/csv-export/` 出現。那就是這一輪的成果落點。
+封存把 delta specs 合併進正式規格，並把變更移到 `openspec/changes/archive/`。之後 `speclink list` 回到 `No active changes.`，同時 `openspec/specs/csv-export/` 出現。那就是這一輪的成果落點。
 
 不要用 `--mark-tasks-complete` 或 `--no-validate` 跳過沒做完的工作。
 
@@ -259,7 +259,7 @@ Snapshot created for unarchive support.
 
 | Path / 路徑 | Meaning / 意義 |
 | --- | --- |
-| `openspec/specs/<capability>/spec.md` | 正典規格，目前行為的真相 |
+| `openspec/specs/<capability>/spec.md` | 正式規格，目前行為的真相 |
 | `openspec/changes/<name>/` | 進行中的變更與 schema 所需 artifacts |
 | `openspec/changes/archive/` | 已封存變更的稽核記錄 |
 | `openspec/discussions/` | 需要決策時才建立的討論記錄 |

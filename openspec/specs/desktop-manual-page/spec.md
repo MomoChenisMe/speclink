@@ -64,7 +64,7 @@ updated: 2026-09-02
 ---
 ### Requirement: 內頁渲染與出處跳規格
 
-選定頁的內文 SHALL 以共用 Markdown 元件渲染（去除 frontmatter），沿用共用閱讀欄與行寬上限、16px 基準字級、淺色與深色主題。內容區 SHALL 分三段：頁首固定顯示頁標題——內文第一個非空行為 `# 標題` 時取該行且內文 SHALL NOT 重複呈現該 H1，否則取索引的 `title`；中段為內文捲動區；頁尾固定顯示出處列與上一頁／下一頁。頁首與頁尾 SHALL NOT 隨內文捲動。內文含 h2／h3 標題時，內容區右側 SHALL 顯示錨點列依序列出各標題（h3 縮排一級）：點擊 SHALL 捲至該標題，捲動時 SHALL 高亮目前段；內文無 h2／h3 時錨點列 SHALL 缺席。換頁 SHALL 回到內文頂端；外部改內文觸發的重載 SHALL 維持捲動位置。頁尾出處列 SHALL 依索引 `sources` 推導：每項取第一個 `#` 前的 capability 名並去重，錨定文字 SHALL NOT 出現在出處列。出處列中的 capability 名 SHALL 可點：點擊 SHALL 於手冊頁上開啟該 capability 的唯讀規格抽屜（與規格頁共用同一抽屜），SHALL NOT 切離手冊頁；該 capability 在正典中不存在時 SHALL 呈現為不可點文字。內文載入中 SHALL 以 skeleton 佔位，載入失敗 SHALL 於內容區顯示失敗文案且側欄照常。
+選定頁的內文 SHALL 以共用 Markdown 元件渲染（去除 frontmatter），沿用共用閱讀欄與行寬上限、16px 基準字級、淺色與深色主題。內容區 SHALL 分三段：頁首固定顯示頁標題——內文第一個非空行為 `# 標題` 時取該行且內文 SHALL NOT 重複呈現該 H1，否則取索引的 `title`；中段為內文捲動區；頁尾固定顯示出處列與上一頁／下一頁。頁首與頁尾 SHALL NOT 隨內文捲動。內文含 h2／h3 標題時，內容區右側 SHALL 顯示錨點列依序列出各標題（h3 縮排一級）：點擊 SHALL 捲至該標題，捲動時 SHALL 高亮目前段；內文無 h2／h3 時錨點列 SHALL 缺席。換頁 SHALL 回到內文頂端；外部改內文觸發的重載 SHALL 維持捲動位置。頁尾出處列 SHALL 依索引 `sources` 推導：每項取第一個 `#` 前的 capability 名並去重，錨定文字 SHALL NOT 出現在出處列。出處列中的 capability 名 SHALL 可點：點擊 SHALL 於手冊頁上開啟該 capability 的唯讀規格抽屜（與規格頁共用同一抽屜），SHALL NOT 切離手冊頁；該 capability 在正式規格中不存在時 SHALL 呈現為不可點文字。內文載入中 SHALL 以 skeleton 佔位，載入失敗 SHALL 於內容區顯示失敗文案且側欄照常。
 
 #### Scenario: 頁首與頁尾固定
 
@@ -83,12 +83,12 @@ updated: 2026-09-02
 
 #### Scenario: 帶錨定的出處只列 capability 一次
 
-- **WHEN** 索引中某頁 `sources` 為 `["desktop-app#看板與任務", "desktop-app#系統匣選單", "policy-config"]`，正典存在 `desktop-app` 而不存在 `policy-config`
+- **WHEN** 索引中某頁 `sources` 為 `["desktop-app#看板與任務", "desktop-app#系統匣選單", "policy-config"]`，正式規格存在 `desktop-app` 而不存在 `policy-config`
 - **THEN** 出處列恰有一顆可點的 `desktop-app` 與一個不可點的 `policy-config`，文字中不出現 `#`；點 `desktop-app` 開啟其規格抽屜
 
 #### Scenario: 不存在的出處不可點
 
-- **WHEN** 出處行列有正典中不存在的 capability 名
+- **WHEN** 出處行列有正式規格中不存在的 capability 名
 - **THEN** 該名稱以純文字呈現，點擊無任何效果
 
 #### Scenario: 內文載入失敗
@@ -105,7 +105,7 @@ updated: 2026-09-11T11:59:38+08:00
 ---
 ### Requirement: 可能過期與未入冊的標示
 
-手冊頁 SHALL 依 manual-pages 契約「過期判定基準」計算過期：頁的 `sources` 中任一項判為過期時，側欄該頁列 SHALL 帶「可能過期」標記。一項的判定 SHALL 依錨定分流：不帶井號的項取該 capability 正典規格內全部 `@trace updated` 時戳；`<capability>#<Requirement 名>` 形式的項，SHALL 只取正典規格中標題與錨定相等（去頭尾空白、區分大小寫）的那條 `### Requirement:` 段落內的 `@trace updated` 時戳，找不到相符標題或規格不存在時該項 SHALL 視為過期。「在之後」SHALL 分段判定：兩邊都是帶時區偏移量的 RFC 3339 時戳時，換算同一瞬間後規格時戳嚴格晚於頁時戳才算（同秒不算）；任一邊只有純日期時，規格日曆日不早於頁日曆日（同日也算）即算，帶時間的一方取其自身偏移量下的日曆日。`sources` 為空、`generated` 缺席或既非 RFC 3339 也非 `YYYY-MM-DD` 時 SHALL NOT 標記；不帶錨定的項其規格不存在時 SHALL NOT 標記；規格內無法解析的 `updated` 時戳 SHALL 視為缺席。側欄底部 SHALL 在存在「手冊生成後新增且未入冊」的正典規格——其每一個 `@trace updated` 時戳都在每一頁 `generated` 之後（依同一分段判定）、且其名稱不在任何頁 `sources` 任一項的井號前——時顯示計數提示；不存在時該提示 SHALL 缺席。索引中每頁的 `generated` 欄位 SHALL 為 frontmatter 原字串，無法解析時為 null；`sources` 欄位 SHALL 為 frontmatter 原字串陣列（含錨定原樣），井號前名稱不合路徑守門的項 SHALL 整項略去。兩種標示 SHALL 僅呈現，SHALL NOT 觸發生成。
+手冊頁 SHALL 依 manual-pages 契約「過期判定基準」計算過期：頁的 `sources` 中任一項判為過期時，側欄該頁列 SHALL 帶「可能過期」標記。一項的判定 SHALL 依錨定分流：不帶井號的項取該 capability 正式規格內全部 `@trace updated` 時戳；`<capability>#<Requirement 名>` 形式的項，SHALL 只取正式規格中標題與錨定相等（去頭尾空白、區分大小寫）的那條 `### Requirement:` 段落內的 `@trace updated` 時戳，找不到相符標題或規格不存在時該項 SHALL 視為過期。「在之後」SHALL 分段判定：兩邊都是帶時區偏移量的 RFC 3339 時戳時，換算同一瞬間後規格時戳嚴格晚於頁時戳才算（同秒不算）；任一邊只有純日期時，規格日曆日不早於頁日曆日（同日也算）即算，帶時間的一方取其自身偏移量下的日曆日。`sources` 為空、`generated` 缺席或既非 RFC 3339 也非 `YYYY-MM-DD` 時 SHALL NOT 標記；不帶錨定的項其規格不存在時 SHALL NOT 標記；規格內無法解析的 `updated` 時戳 SHALL 視為缺席。側欄底部 SHALL 在存在「手冊生成後新增且未入冊」的正式規格——其每一個 `@trace updated` 時戳都在每一頁 `generated` 之後（依同一分段判定）、且其名稱不在任何頁 `sources` 任一項的井號前——時顯示計數提示；不存在時該提示 SHALL 缺席。索引中每頁的 `generated` 欄位 SHALL 為 frontmatter 原字串，無法解析時為 null；`sources` 欄位 SHALL 為 frontmatter 原字串陣列（含錨定原樣），井號前名稱不合路徑守門的項 SHALL 整項略去。兩種標示 SHALL 僅呈現，SHALL NOT 觸發生成。
 
 #### Scenario: 來源更新後標示可能過期
 

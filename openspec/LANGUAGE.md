@@ -223,3 +223,9 @@
 - **definition**: 每個 release 版本的白話更新內容——`apps/desktop/src/release-notes/release-notes.json` 為唯一真相，repo 根的 CHANGELOG.md 與 GitHub Release 說明的更新內容片段都由它衍生。桌面設定頁「軟體更新」卡的按鈕與對話框瀏覽模式的標題皆以此稱之；自動彈出模式的標題「X.Y.Z 更新內容」是其中某一版的內容，同族不同層、不另立詞條。
 - **avoid**: 更新資訊、release notes（使用者可見文案中）、changelog（使用者可見文案中）
 - **why**: 與「軟體更新」卡同族，「日誌」點明是逐版紀錄而不是單次通知；「更新資訊」讀不出逐版，release notes／changelog 是工程詞。2026-09-09 變更「release-changelog-whats-new」定案。
+
+### 正式規格
+
+- **definition**: `openspec/specs/<capability>/spec.md`——封存後的現況唯一真相，對照 OpenSpec 的 specs。與變更裡的「delta 規格」（`openspec/changes/<name>/specs/`，封存時合併進正式規格）成對；英文維持 specs／canonical specs。
+- **avoid**: 正典規格、正典 spec、正典 specs、規格正典、正典（指這個規格集合時）
+- **why**: 「正典」讀不出「合併後的定案」，與 delta 對著看才分得清哪個是草稿、哪個是定案。「正典」在專案內另有正典詞彙、正典值、正典化、正典 YAML 等別義，那些不改。2026-09-12 討論「canonical-spec-zh-wording」定案。

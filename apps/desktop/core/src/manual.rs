@@ -140,7 +140,7 @@ fn empty_index() -> Value {
     })
 }
 
-// 正典 spec 的 `@trace` 註解區塊與其中的 `updated:` 欄。區塊的抓法與前端 trace.ts 相同；
+// 正式規格的 `@trace` 註解區塊與其中的 `updated:` 欄。區塊的抓法與前端 trace.ts 相同；
 // `updated:` 欄比前端的 `source:` 讀法寬：多行式與單行式 `<!-- @trace source: x updated: … -->`
 // 都認（archive 只寫多行式，這裡是超集）。
 static TRACE_BLOCK_RE: LazyLock<Regex> =
@@ -370,7 +370,7 @@ fn sort_reading_order(pages: &mut [Page]) {
     pages.sort_by_cached_key(|p| (section_rank[&p.section].clone(), order_key(p)));
 }
 
-/// 一份正典規格的 @trace updated 時戳：整份的，與按 Requirement 段落分的。
+/// 一份正式規格的 @trace updated 時戳：整份的，與按 Requirement 段落分的。
 struct SpecStamps {
     all: Vec<Stamp>,
     /// 鍵為 `### Requirement:` 之後的標題（去頭尾空白）；同名段落的時戳合併。
@@ -390,7 +390,7 @@ impl SpecStamps {
     }
 }
 
-/// 正典 spec 全文 `@trace` 註解區塊內每一行 `updated:` 的可解析時戳；無法解析的行
+/// 正式規格全文 `@trace` 註解區塊內每一行 `updated:` 的可解析時戳；無法解析的行
 /// 視為缺席、直接略過。
 fn trace_updated_stamps(doc: &str) -> Vec<Stamp> {
     TRACE_BLOCK_RE
@@ -793,7 +793,7 @@ mod tests {
         assert_eq!(p["stale"], false, "被丟棄的來源不參與過期判定");
     }
 
-    /// 正典規格夾具：每條 `### Requirement:` 段各帶自己的 @trace updated 時戳；`newline`
+    /// 正式規格夾具：每條 `### Requirement:` 段各帶自己的 @trace updated 時戳；`newline`
     /// 可換成 `\r\n` 驗跨平台切段。
     fn spec_with_requirements(fx: &FixtureRoot, cap: &str, sections: &[(&str, &[&str])], newline: &str) {
         let mut doc = format!("# {cap} Specification\n\n## Purpose\n\nx\n\n## Requirements\n\n");

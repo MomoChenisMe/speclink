@@ -233,12 +233,12 @@ pub fn list_specs_at(root: &Path) -> Value {
     json!({ "specs": specs })
 }
 
-/// 正典 spec 的 `### Requirement:` 標題數。
+/// 正式規格的 `### Requirement:` 標題數。
 fn requirement_count(doc: &str) -> usize {
     doc.lines().filter(|l| l.trim().starts_with("### Requirement:")).count()
 }
 
-/// 正典 spec `## Purpose` 區段首個非空行原文；區段缺席或無內容時 `None`。
+/// 正式規格 `## Purpose` 區段首個非空行原文；區段缺席或無內容時 `None`。
 fn purpose_excerpt(doc: &str) -> Option<String> {
     let mut in_purpose = false;
     for line in doc.lines() {
@@ -326,7 +326,7 @@ pub fn document_at(root: &Path, change: &str, artifact: &str) -> Option<String> 
     ctx.store.read_artifact(change, artifact)
 }
 
-/// 讀取一個 capability 的正典 spec.md。無則 `None`。含路徑穿越的 `capability` 回傳 `None`。
+/// 讀取一個 capability 的正式規格 spec.md。無則 `None`。含路徑穿越的 `capability` 回傳 `None`。
 pub fn spec_document_at(root: &Path, capability: &str) -> Option<String> {
     if !is_safe_path_param(capability) {
         return None;
@@ -1109,7 +1109,7 @@ mod tests {
     #[test]
     fn list_specs_purpose_tbd_flags_archive_placeholder() {
         // 佔位偵測釘的是 speclink-core 的公開常數（design D5）：產生器與偵測共用
-        // 同一份字串，所以殘留佔位的正典規格必被標為 purposeTbd。核心常數若變動，
+        // 同一份字串，所以殘留佔位的正式規格必被標為 purposeTbd。核心常數若變動，
         // 這份 fixture 隨之變動，偵測不需要跟著改。
         let fx = FixtureRoot::new("q-spec-tbd");
         fx.write(

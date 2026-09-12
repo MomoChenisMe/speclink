@@ -17,7 +17,7 @@ Speclink 的資料都是純文字檔，放在專案的 `openspec/` 資料夾。�
 
 | 路徑 | 放什麼 |
 | --- | --- |
-| `specs/<capability>/spec.md` | 正典規格。每個 capability 一份，是「現況唯一真相」 |
+| `specs/<capability>/spec.md` | 正式規格。每個 capability 一份，是「現況唯一真相」 |
 | `changes/<名稱>/` | 進行中的變更。裡面有提案、設計、任務清單與 delta 規格 |
 | `changes/archive/` | 已封存的變更 |
 | `config.yaml` | 工作流政策與專案設定，見[工作流政策與設定](policy-config.md) |
@@ -28,7 +28,7 @@ Speclink 在這個結構上多加了兩樣東西：
 - 每個變更資料夾裡的 `.openspec.yaml`：這個變更的狀態檔。
 
 > [!NOTE]
-> 這個相容性只適用本地模式。Remote 模式的正典存在 server 的 Store，本機只有唯讀投影。見 [remote 模式總覽](remote-overview.md)。
+> 這個相容性只適用本地模式。Remote 模式的正式規格存在 server 的 Store，本機只有唯讀投影。見 [remote 模式總覽](remote-overview.md)。
 
 ## 變更的生命週期
 
@@ -88,7 +88,7 @@ discard 會刪掉整個變更資料夾與它的觸及記錄檔，並解開它與
 
 ### 封存
 
-變更完成後用封存把 delta 規格併入正典，並把變更移到 `changes/archive/`。封存前有三道守門：任務完成度、不能在 linked worktree 內執行、品質關卡的章沒有失效。細節見[封存](archive.md)。
+變更完成後用封存把 delta 規格併入正式規格，並把變更移到 `changes/archive/`。封存前有三道守門：任務完成度、不能在 linked worktree 內執行、品質關卡的章沒有失效。細節見[封存](archive.md)。
 
 ### 待重新反映
 

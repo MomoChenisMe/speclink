@@ -2,7 +2,7 @@
 //!
 //! 只讀既存事實——封存目錄列舉（D1）、`.openspec.yaml` 的 from_discussion、
 //! 討論 frontmatter 的 promoted_to、`.evidence.json` 的逐 task 檔案清單、
-//! 正典規格的 @trace 歸屬。進行中 change 不入鏈（D2）；evidence 是逐 change
+//! 正式規格的 @trace 歸屬。進行中 change 不入鏈（D2）；evidence 是逐 change
 //! 的存在性偵測，缺檔為 None、絕不回讀舊 @trace 的 code 清單（D3）；單環
 //! 髒資料不使整鏈失敗。不含 ANSI、不假設儲存媒介（D4）。
 
@@ -20,7 +20,7 @@ pub struct TraceReport {
     pub discussions: Vec<DiscussionTrace>,
 }
 
-/// 正典規格單條 Requirement 的現行 @trace 歸屬。
+/// 正式規格單條 Requirement 的現行 @trace 歸屬。
 #[derive(Debug, Clone, Serialize)]
 pub struct RequirementTrace {
     pub name: String,
@@ -61,7 +61,7 @@ pub struct PromotedChange {
     pub capabilities: Vec<String>,
 }
 
-/// 組裝 capability 的封存演進鏈。capability 無正典規格時回錯誤（近似建議
+/// 組裝 capability 的封存演進鏈。capability 無正式規格時回錯誤（近似建議
 /// 見 `not_found_message`）；鏈內單環缺漏一律寬容輸出。
 pub fn run(store: &dyn Store, capability: &str) -> Result<TraceReport> {
     let Some(spec_text) = store.read_canonical_spec(capability) else {
@@ -126,7 +126,7 @@ pub fn run(store: &dyn Store, capability: &str) -> Result<TraceReport> {
 }
 
 /// D6：不存在的 capability 依 naming guard 慣例給至多三筆近似名。trace 只
-/// 接受有正典規格者，故建議池濾掉 in-flight delta——列出它們等於指路再撞
+/// 接受有正式規格者，故建議池濾掉 in-flight delta——列出它們等於指路再撞
 /// 同一個錯誤。
 fn not_found_message(store: &dyn Store, cap: &str) -> String {
     let pool: Vec<_> = crate::capname::suggestion_pool(store)
@@ -154,7 +154,7 @@ fn sibling_capabilities(store: &dyn Store, archived: &[String], change: &str) ->
     store.delta_capabilities(change)
 }
 
-/// 正典規格每條 Requirement 的 @trace source；無 @trace 的 Requirement 無
+/// 正式規格每條 Requirement 的 @trace source；無 @trace 的 Requirement 無
 /// 歸屬可列，略過。@trace 內 source 以外的鍵（含歷史 code 清單）一律不讀。
 fn requirement_sources(text: &str) -> Vec<RequirementTrace> {
     let (_, blocks) = crate::archive::parse_canonical(text);
@@ -446,7 +446,7 @@ mod tests {
                 .insert(cap.to_string(), format!("# {cap}\n\n## Purpose\n\n{cap} purpose.\n"));
         }
 
-        let err = run(&store, "auth").expect_err("無正典規格必須失敗");
+        let err = run(&store, "auth").expect_err("無正式規格必須失敗");
         let msg = err.to_string();
         assert!(msg.contains("'auth' is not in the canonical specs"), "{msg}");
         let count = msg.matches("  - ").count();
@@ -465,7 +465,7 @@ mod tests {
 
     #[test]
     fn an_in_flight_delta_capability_never_enters_the_suggestions() {
-        // trace 只接受有正典規格者：建議若列出 in-flight 名，照做會再撞同一錯。
+        // trace 只接受有正式規格者：建議若列出 in-flight 名，照做會再撞同一錯。
         let store = TestStore::default();
         store
             .canonical

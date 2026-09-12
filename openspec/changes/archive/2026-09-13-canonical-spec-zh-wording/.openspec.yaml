@@ -1,0 +1,191 @@
+schema: spec-driven
+created: 2026-09-12
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: canonical-spec-zh-wording
+started_at: 2026-09-12
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-13
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 12
+reviewed_scope:
+  - path: README.md
+    hash: b84dbea6c7fd311e8437cea0a2c93e9a545abca57ab92b16be9e91140d2d6b2c
+  - path: apps/desktop/core/src/manual.rs
+    hash: 3484df4706d18e50de981e04ee7bea168e5a022d6f30500a3169ea8d613ee926
+  - path: apps/desktop/core/src/query.rs
+    hash: af32c3fbd766f5fe20125080b2120847c81a8afa329e6cca4083464f75c80431
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 0d9504a167816ca5fd2d5929fb6a7c788c3787921579f5d6e1e6beba2c4da2e1
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 1f62d4c488b9ab71cbeb9032a0b1b0b0d35f5e1e94f68ad8ee8dbd72a714a2b6
+  - path: apps/desktop/src-tauri/tests/it/remote_data.rs
+    hash: 04a675d2dd685f0acb009d801edac0a96c770e38a882ca2bf5217608c64e14af
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 0651bac61ea02ee5e1e318932b3d09de5a1f810437466325b934ba1960bc0b0a
+  - path: crates/adapters/speclink-cli/src/verbs/checks.rs
+    hash: d629449f0dd3ab45e8802516fd1d233c6d6d3cc3a8ebf38a9a0282ef2062896d
+  - path: crates/adapters/speclink-cli/tests/it/manual_pages_dir_ignored.rs
+    hash: abba335f58cec6b026c378620155169ac19c00b713c47c1398ad1b5f980996ec
+  - path: crates/adapters/speclink-cli/tests/it/new_artifact.rs
+    hash: 1aa5812160958d484c0c3f4511be6d36d803d9d41d360716057c906b6464a821
+  - path: crates/adapters/speclink-cli/tests/it/remote_read_path.rs
+    hash: 4ad91ca97a3e929d138e2ee22660b8de8c177baa644e565206467020f8448b93
+  - path: crates/adapters/speclink-cli/tests/it/trace.rs
+    hash: 5c4ec06b4335b234c0c125e47023b8c84d761a40bd7fd23171c3036d8044bf1a
+  - path: crates/adapters/speclink-cli/tests/it/validate_specs.rs
+    hash: 8e0423311bfbf0ef94f1b99cf380d8777dbc1d32988f6e59db70876ac99c287f
+  - path: crates/engine/speclink-core/src/command/tests.rs
+    hash: 8cf72f86f0917f8893537859a7840ea9aa8350be44df89cb891d864d4011c5c0
+  - path: crates/engine/speclink-core/src/lifecycle/archive/tests.rs
+    hash: 0acceee7e51bc15cb164892e5c2f7cd91598921d4f4477899742f9f8420a4e1d
+  - path: crates/engine/speclink-core/src/lifecycle/capname.rs
+    hash: ff42938098e35e8479fbceb0d0107eef3d617cad8173bad7eb8cf4bd6af9bc04
+  - path: crates/engine/speclink-core/src/lifecycle/model.rs
+    hash: 87bb9f26286cfc648fabbe3aff328169d9bf672be20779408ef12540b3bd1930
+  - path: crates/engine/speclink-core/src/lifecycle/newcmd.rs
+    hash: 9b48ad8802cf5f894582bc3dd578281f516793027f9df088ad300eaf1db6250d
+  - path: crates/engine/speclink-core/src/lifecycle/trace.rs
+    hash: ae02c562916be889031d1d5c64010c4cc4021de0ceb408c7a6c7a08df51b8eb5
+  - path: crates/engine/speclink-core/src/quality/analyzer/tests.rs
+    hash: 502cdcede4173f9c6fa561924abdd6104a59a0cf8f68deca7a0d06fb456141e1
+  - path: crates/engine/speclink-core/src/quality/validate.rs
+    hash: 8d75ea8abcbe6dfaac0d161bb467a66029430305fbac440d03b79104141e1a10
+  - path: crates/engine/speclink-core/src/quality/validate/tests.rs
+    hash: 8a7484f41edf58aa8521485abd46278f81807937364a98c49976d1a11db08e71
+  - path: crates/host/speclink-server/tests/it/phase2_chain.rs
+    hash: 54ec948998894b2efc330a69ba1f874d98185d1201056940ad112d71e4655903
+  - path: docs/configuration.zh-TW.md
+    hash: cba8ce0621e50d28f26514c6d4d569ee7752b3e7822ef9699c7499f820eeda16
+  - path: docs/design/implementation-refactor-roadmap.zh-TW.md
+    hash: 1ead696f54a765c44fb3438704adcad887dcb7c14d00ae0588c3752182b5974e
+  - path: docs/design/platform-architecture.zh-TW.md
+    hash: 3b4c5ff71393e9f398110b467c23c9ef9b7fefe834b14dc18f94c248c5b2573f
+  - path: docs/getting-started.zh-TW.md
+    hash: 1578100b3e4c905939f5f229b6903912e801eaeb915efdcbb00d9830716c27e7
+  - path: docs/product-status.zh-TW.md
+    hash: 79c55e5a778b1d0e807cfe59f855daaece521b895fd4cb6cb02e59c4c43e974b
+  - path: docs/roadmap.zh-TW.md
+    hash: 5da2ab45dca4d4e8d56808f73416e3660f81b48dec0854107b96c512b101f7ef
+  - path: docs/sdk-node.zh-TW.md
+    hash: 8b00d5ef322f4f50f385bcd75f94e7d58704b448422803d190a46b3def0faab7
+  - path: docs/server-deployment.zh-TW.md
+    hash: c04048194a40e53127054d62694d679125a70e57d73ddd0485feabce1d9f524b
+  - path: docs/verb-contract.zh-TW.md
+    hash: ee1b9793dfa47b577e70d5b7ecf48225c285bddde962bda47addb0c1d39927fc
+  - path: docs/workflow.zh-TW.md
+    hash: af961fb9f28a1d911dd0f00a45f42a05692fb01b3d619e0caeadb90a85915a28
+  - path: packages/ui/src/__tests__/delta.test.ts
+    hash: c621d081990ceffcc6b85b78d4215b475d71b1b302dfc74504c3220b1e63ed7e
+  - path: packages/ui/src/__tests__/richDrawer.test.tsx
+    hash: aa5190edb462c916faff59003a2fee37e655018d8b8a8edf31c17aba21466d78
+  - path: packages/ui/src/__tests__/specList.test.tsx
+    hash: 032f5c082955b94d2a51d2948edfa56e4d6a5eb20363ca30d41a73e60eb8384d
+  - path: packages/ui/src/__tests__/trace.test.ts
+    hash: cbe2def0e2866bbdd33444d9f98e4313d3b215d30b1f390962d3eef5e720a413
+  - path: packages/ui/src/adapter.ts
+    hash: 7eb0edd80168b462915763bac092072ff287d81aa821fe0e94dc2fab1e639c78
+  - path: packages/ui/src/components/SpecDrawer.tsx
+    hash: 7701a9ab85d9487cf83758078815379a8ea7d85676f66fd5c7bf1bf7e27febbe
+  - path: packages/ui/src/components/SpecList.tsx
+    hash: cc65dbb3d90d9a951f59c2720a869c7d491ff83155dd540802ed5d612b6c0010
+  - path: packages/ui/src/i18n.tsx
+    hash: 52796e57c834cffe8fd4f6c18cbea95cb1c3d91b0c87b7abd267ecc98638168f
+  - path: packages/ui/src/trace.ts
+    hash: 58e5f0ed419426e9353293516e444994b0820c30d20681d9a316e4331eb7d768
+  - path: scripts/release/delivery-gate.test.mjs
+    hash: fa03a0caa9c5e612fcded5cf6a696aa309762705a89f313106246a17084ecdd7
+verified_at: 2026-09-13
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 12
+verified_scope:
+  - path: README.md
+    hash: b84dbea6c7fd311e8437cea0a2c93e9a545abca57ab92b16be9e91140d2d6b2c
+  - path: apps/desktop/core/src/manual.rs
+    hash: 3484df4706d18e50de981e04ee7bea168e5a022d6f30500a3169ea8d613ee926
+  - path: apps/desktop/core/src/query.rs
+    hash: af32c3fbd766f5fe20125080b2120847c81a8afa329e6cca4083464f75c80431
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 0d9504a167816ca5fd2d5929fb6a7c788c3787921579f5d6e1e6beba2c4da2e1
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 1f62d4c488b9ab71cbeb9032a0b1b0b0d35f5e1e94f68ad8ee8dbd72a714a2b6
+  - path: apps/desktop/src-tauri/tests/it/remote_data.rs
+    hash: 04a675d2dd685f0acb009d801edac0a96c770e38a882ca2bf5217608c64e14af
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 0651bac61ea02ee5e1e318932b3d09de5a1f810437466325b934ba1960bc0b0a
+  - path: crates/adapters/speclink-cli/src/verbs/checks.rs
+    hash: d629449f0dd3ab45e8802516fd1d233c6d6d3cc3a8ebf38a9a0282ef2062896d
+  - path: crates/adapters/speclink-cli/tests/it/manual_pages_dir_ignored.rs
+    hash: abba335f58cec6b026c378620155169ac19c00b713c47c1398ad1b5f980996ec
+  - path: crates/adapters/speclink-cli/tests/it/new_artifact.rs
+    hash: 1aa5812160958d484c0c3f4511be6d36d803d9d41d360716057c906b6464a821
+  - path: crates/adapters/speclink-cli/tests/it/remote_read_path.rs
+    hash: 4ad91ca97a3e929d138e2ee22660b8de8c177baa644e565206467020f8448b93
+  - path: crates/adapters/speclink-cli/tests/it/trace.rs
+    hash: 5c4ec06b4335b234c0c125e47023b8c84d761a40bd7fd23171c3036d8044bf1a
+  - path: crates/adapters/speclink-cli/tests/it/validate_specs.rs
+    hash: 8e0423311bfbf0ef94f1b99cf380d8777dbc1d32988f6e59db70876ac99c287f
+  - path: crates/engine/speclink-core/src/command/tests.rs
+    hash: 8cf72f86f0917f8893537859a7840ea9aa8350be44df89cb891d864d4011c5c0
+  - path: crates/engine/speclink-core/src/lifecycle/archive/tests.rs
+    hash: 0acceee7e51bc15cb164892e5c2f7cd91598921d4f4477899742f9f8420a4e1d
+  - path: crates/engine/speclink-core/src/lifecycle/capname.rs
+    hash: ff42938098e35e8479fbceb0d0107eef3d617cad8173bad7eb8cf4bd6af9bc04
+  - path: crates/engine/speclink-core/src/lifecycle/model.rs
+    hash: 87bb9f26286cfc648fabbe3aff328169d9bf672be20779408ef12540b3bd1930
+  - path: crates/engine/speclink-core/src/lifecycle/newcmd.rs
+    hash: 9b48ad8802cf5f894582bc3dd578281f516793027f9df088ad300eaf1db6250d
+  - path: crates/engine/speclink-core/src/lifecycle/trace.rs
+    hash: ae02c562916be889031d1d5c64010c4cc4021de0ceb408c7a6c7a08df51b8eb5
+  - path: crates/engine/speclink-core/src/quality/analyzer/tests.rs
+    hash: 502cdcede4173f9c6fa561924abdd6104a59a0cf8f68deca7a0d06fb456141e1
+  - path: crates/engine/speclink-core/src/quality/validate.rs
+    hash: 8d75ea8abcbe6dfaac0d161bb467a66029430305fbac440d03b79104141e1a10
+  - path: crates/engine/speclink-core/src/quality/validate/tests.rs
+    hash: 8a7484f41edf58aa8521485abd46278f81807937364a98c49976d1a11db08e71
+  - path: crates/host/speclink-server/tests/it/phase2_chain.rs
+    hash: 54ec948998894b2efc330a69ba1f874d98185d1201056940ad112d71e4655903
+  - path: docs/configuration.zh-TW.md
+    hash: cba8ce0621e50d28f26514c6d4d569ee7752b3e7822ef9699c7499f820eeda16
+  - path: docs/design/implementation-refactor-roadmap.zh-TW.md
+    hash: 1ead696f54a765c44fb3438704adcad887dcb7c14d00ae0588c3752182b5974e
+  - path: docs/design/platform-architecture.zh-TW.md
+    hash: 3b4c5ff71393e9f398110b467c23c9ef9b7fefe834b14dc18f94c248c5b2573f
+  - path: docs/getting-started.zh-TW.md
+    hash: 1578100b3e4c905939f5f229b6903912e801eaeb915efdcbb00d9830716c27e7
+  - path: docs/product-status.zh-TW.md
+    hash: 79c55e5a778b1d0e807cfe59f855daaece521b895fd4cb6cb02e59c4c43e974b
+  - path: docs/roadmap.zh-TW.md
+    hash: 5da2ab45dca4d4e8d56808f73416e3660f81b48dec0854107b96c512b101f7ef
+  - path: docs/sdk-node.zh-TW.md
+    hash: 8b00d5ef322f4f50f385bcd75f94e7d58704b448422803d190a46b3def0faab7
+  - path: docs/server-deployment.zh-TW.md
+    hash: c04048194a40e53127054d62694d679125a70e57d73ddd0485feabce1d9f524b
+  - path: docs/verb-contract.zh-TW.md
+    hash: ee1b9793dfa47b577e70d5b7ecf48225c285bddde962bda47addb0c1d39927fc
+  - path: docs/workflow.zh-TW.md
+    hash: af961fb9f28a1d911dd0f00a45f42a05692fb01b3d619e0caeadb90a85915a28
+  - path: packages/ui/src/__tests__/delta.test.ts
+    hash: c621d081990ceffcc6b85b78d4215b475d71b1b302dfc74504c3220b1e63ed7e
+  - path: packages/ui/src/__tests__/richDrawer.test.tsx
+    hash: aa5190edb462c916faff59003a2fee37e655018d8b8a8edf31c17aba21466d78
+  - path: packages/ui/src/__tests__/specList.test.tsx
+    hash: 032f5c082955b94d2a51d2948edfa56e4d6a5eb20363ca30d41a73e60eb8384d
+  - path: packages/ui/src/__tests__/trace.test.ts
+    hash: cbe2def0e2866bbdd33444d9f98e4313d3b215d30b1f390962d3eef5e720a413
+  - path: packages/ui/src/adapter.ts
+    hash: 7eb0edd80168b462915763bac092072ff287d81aa821fe0e94dc2fab1e639c78
+  - path: packages/ui/src/components/SpecDrawer.tsx
+    hash: 7701a9ab85d9487cf83758078815379a8ea7d85676f66fd5c7bf1bf7e27febbe
+  - path: packages/ui/src/components/SpecList.tsx
+    hash: cc65dbb3d90d9a951f59c2720a869c7d491ff83155dd540802ed5d612b6c0010
+  - path: packages/ui/src/i18n.tsx
+    hash: 52796e57c834cffe8fd4f6c18cbea95cb1c3d91b0c87b7abd267ecc98638168f
+  - path: packages/ui/src/trace.ts
+    hash: 58e5f0ed419426e9353293516e444994b0820c30d20681d9a316e4331eb7d768
+  - path: scripts/release/delivery-gate.test.mjs
+    hash: fa03a0caa9c5e612fcded5cf6a696aa309762705a89f313106246a17084ecdd7
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-13

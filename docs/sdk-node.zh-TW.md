@@ -1,6 +1,6 @@
 # Node SDK（@speclink/engine）
 
-> **文件狀態**：本文描述目前已實作的 Node SDK surface。Typed Command Runtime、TeamStore 契約與 Host 邊界的正典是 `openspec/specs/` 底下的 `command-runtime`、`teamstore-contract`、`host-runtime` 與 `node-sdk`；Copilot Tool 封裝尚未實作，方向見[專案路線圖](roadmap.zh-TW.md)。
+> **文件狀態**：本文描述目前已實作的 Node SDK surface。Typed Command Runtime、TeamStore 契約與 Host 邊界的正式規格是 `openspec/specs/` 底下的 `command-runtime`、`teamstore-contract`、`host-runtime` 與 `node-sdk`；Copilot Tool 封裝尚未實作，方向見[專案路線圖](roadmap.zh-TW.md)。
 
 `@speclink/engine` 讓你把 Speclink 引擎內嵌進 Node.js 行程：伺服器（或 AI agent 宿主）在行程內 dispatch speclink 動詞、以自家資料庫透過 `Store` 物件儲存規格文件，並為任何 harness 渲染流程知識（技能檔）。
 
@@ -90,7 +90,7 @@ const engine = createEngine({ store: myStore, actor: 'Alice <alice@example.com>'
 | Change metadata（選配） | `readChangeMeta`、`writeChangeMeta` | change 的 metadata 原文（`.openspec.yaml` 內容）。蓋章是這份文件的 read-modify-write，所以 stamp 動詞把這對方法與 `deleteArtifact` 一起當前置：缺任何一個，蓋章在動手前就整個拒絕（工單不動）；其餘動詞從不呼叫它們。 |
 | Completion evidence（選配） | `readEvidence`、`writeEvidence` | change 的完成證據記錄原文（`.evidence.json` 內容，store 不解讀）。缺 `readEvidence` 讀成「沒有記錄」（本來就是正常狀態）；缺 `writeEvidence` 則在某次完成真的有檔案要記時大聲失敗，不會靜默丟證據。 |
 | Delta specs | `deltaCapabilities`、`hasCapabilityDirs` | change 內含 delta spec 的 capability 名稱，排序後回傳。 |
-| Canonical specs | `listCanonicalCapabilities`、`canonicalSpecExists`、`readCanonicalSpec`、`writeCanonicalSpec`、`canonicalSpecPath` | 專案層級的正典規格，archive 時 delta 併入之處。 |
+| Canonical specs | `listCanonicalCapabilities`、`canonicalSpecExists`、`readCanonicalSpec`、`writeCanonicalSpec`、`canonicalSpecPath` | 專案層級的正式規格，archive 時 delta 併入之處。 |
 | Archive | `archivedChangeExists`、`archiveChange`、`readArchivedMeta`、`writeArchivedMeta` | `archiveChange(name, datedName)` 把使用中的 change 移到含日期的封存名下（`YYYY-MM-DD-<name>`）。 |
 | Discussions | `liveDiscussionExists`、`archivedDiscussionExists`、`liveDiscussionPath`、`readLiveDiscussion`、`writeLiveDiscussion`、`deleteLiveDiscussion`、`readDiscussion`、`listLiveDiscussions`、`listArchivedDiscussions`、`archiveDiscussion` | 文件以原始文字儲存；解析（輪、結論）是引擎邏輯。`readDiscussion` 先找 live，再找最新的封存候選。 |
 | Config／詞彙 | `readWorkflowConfig`、`readLanguage` | `config.yaml` 原文（或 null）與 LANGUAGE 文件（或 null——沒有共用詞彙是正常狀態）。 |

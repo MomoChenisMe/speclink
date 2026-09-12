@@ -17,7 +17,7 @@ struct TempProject {
 }
 
 impl TempProject {
-    /// 一個 change `demo` ＋正典規格 `auth`。
+    /// 一個 change `demo` ＋正式規格 `auth`。
     fn new(tag: &str) -> TempProject {
         let dir = std::env::temp_dir()
             .join(format!("speclink-cli-new-artifact-{tag}-{}", std::process::id()));
@@ -97,7 +97,7 @@ fn the_new_flag_creates_the_declared_capability() {
 
 #[test]
 fn a_canonical_capability_keeps_the_exact_success_output() {
-    // spec Scenario「命中正典名稱照常放行」：輸出與導入前位元級一致。
+    // spec Scenario「命中正式規格名稱照常放行」：輸出與導入前位元級一致。
     let p = TempProject::new("canonical");
     let out = p.new_spec("auth", &[]);
     assert!(out.status.success(), "canonical name passes");

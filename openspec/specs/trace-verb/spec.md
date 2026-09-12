@@ -8,11 +8,11 @@ speclink trace 動詞的行為契約：以封存目錄與既有 metadata 組裝�
 
 ### Requirement: 溯源鏈組裝
 
-`speclink trace <capability>` SHALL 組裝並輸出該 capability 的封存演進鏈：動過它的封存 change 集合以「封存目錄含該 capability 的 delta 子目錄」列舉，依封存日期由舊至新排序；每個 change SHALL 帶封存目錄名與來源討論（.openspec.yaml 的 from_discussion，缺欄時為無）；來源討論 SHALL 帶其轉出的全部變更清單（frontmatter promoted_to）與每個兄弟變更觸及的 capability 名集合；另 SHALL 列出正典規格內每條 Requirement 現行 @trace 註記的歸屬 change。進行中（未封存）的 change SHALL NOT 出現在鏈中。人讀輸出 SHALL 為縮排樹寫至 stdout，`--no-color` 下 SHALL 僅省略色碼、內容不變，成功 exit code SHALL 為 0。
+`speclink trace <capability>` SHALL 組裝並輸出該 capability 的封存演進鏈：動過它的封存 change 集合以「封存目錄含該 capability 的 delta 子目錄」列舉，依封存日期由舊至新排序；每個 change SHALL 帶封存目錄名與來源討論（.openspec.yaml 的 from_discussion，缺欄時為無）；來源討論 SHALL 帶其轉出的全部變更清單（frontmatter promoted_to）與每個兄弟變更觸及的 capability 名集合；另 SHALL 列出正式規格內每條 Requirement 現行 @trace 註記的歸屬 change。進行中（未封存）的 change SHALL NOT 出現在鏈中。人讀輸出 SHALL 為縮排樹寫至 stdout，`--no-color` 下 SHALL 僅省略色碼、內容不變，成功 exit code SHALL 為 0。
 
 #### Scenario: 完整鏈的人讀輸出
 
-- **WHEN** 對存在正典規格且有封存演進的 capability 執行 speclink trace
+- **WHEN** 對存在正式規格且有封存演進的 capability 執行 speclink trace
 - **THEN** stdout SHALL 依封存日期由舊至新列出各封存 change，每項含封存目錄名與來源討論 slug（無則標示無），來源討論項下 SHALL 列出其轉出的兄弟變更及各自觸及的 capability，末段 SHALL 列出每條 Requirement 的現行歸屬 change，exit code 為 0
 
 #### Scenario: 進行中 change 不入鏈
@@ -54,7 +54,7 @@ updated: 2026-08-22
 ---
 ### Requirement: evidence 的存在性偵測
 
-每個入鏈 change 的 evidence SHALL 以該封存目錄是否存在 .evidence.json 逐一判定：存在則輸出其逐 task 的檔案清單；不存在則該 change 的 evidence SHALL 為 null（--json）或標示無記錄（人讀），SHALL NOT 因此失敗或警告。正典規格 @trace 註記中的任何 code 檔案清單 SHALL NOT 被讀取或輸出。
+每個入鏈 change 的 evidence SHALL 以該封存目錄是否存在 .evidence.json 逐一判定：存在則輸出其逐 task 的檔案清單；不存在則該 change 的 evidence SHALL 為 null（--json）或標示無記錄（人讀），SHALL NOT 因此失敗或警告。正式規格 @trace 註記中的任何 code 檔案清單 SHALL NOT 被讀取或輸出。
 
 #### Scenario: 有 evidence 的 change
 
@@ -68,7 +68,7 @@ updated: 2026-08-22
 
 #### Scenario: 舊 @trace 的 code 清單不被採用
 
-- **WHEN** 正典規格的 @trace 註記帶有 code 檔案清單且該 change 無 .evidence.json
+- **WHEN** 正式規格的 @trace 註記帶有 code 檔案清單且該 change 無 .evidence.json
 - **THEN** 輸出的 evidence SHALL 為 null，@trace 內的 code 清單 SHALL NOT 出現在任何輸出欄位
 
 
@@ -80,11 +80,11 @@ updated: 2026-08-22
 ---
 ### Requirement: 找不到 capability 的近似建議
 
-`speclink trace <capability>` 於 capability 無正典規格時 SHALL 以非零 exit code 失敗，stderr SHALL 含至多三筆近似的既有 capability 名建議（無近似時僅報不存在），stdout SHALL NOT 輸出成功 payload。
+`speclink trace <capability>` 於 capability 無正式規格時 SHALL 以非零 exit code 失敗，stderr SHALL 含至多三筆近似的既有 capability 名建議（無近似時僅報不存在），stdout SHALL NOT 輸出成功 payload。
 
 #### Scenario: 不存在的 capability
 
-- **WHEN** 對正典規格中不存在的 capability 執行 speclink trace
+- **WHEN** 對正式規格中不存在的 capability 執行 speclink trace
 - **THEN** exit code SHALL 非零，stderr SHALL 報該 capability 不存在並列出至多三筆近似名建議，--json 模式下 stdout 無成功 payload
 
 

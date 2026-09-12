@@ -1,5 +1,5 @@
-//! `speclink validate --specs` 的正典規格驗證 — fs 模式契約
-//! (spec spec-validation「validate --specs 驗證正典規格」)。
+//! `speclink validate --specs` 的正式規格驗證 — fs 模式契約
+//! (spec spec-validation「validate --specs 驗證正式規格」)。
 //!
 //! 缺 `## Purpose` 區段或內容為空以 error 呈現並非零收尾；殘留的 archive 佔位
 //! 以 warning 顯形（不依附 --strict）；內容過短只在 --strict 下報 warning。
@@ -20,7 +20,7 @@ struct TempProject {
 }
 
 impl TempProject {
-    /// 一個 change `demo`（供「只驗規格」對照）＋呼叫端指定的正典規格。
+    /// 一個 change `demo`（供「只驗規格」對照）＋呼叫端指定的正式規格。
     fn new(tag: &str, specs: &[(&str, Option<&str>)]) -> TempProject {
         let dir = std::env::temp_dir()
             .join(format!("speclink-cli-validate-specs-{tag}-{}", std::process::id()));

@@ -211,7 +211,7 @@ fn no_color_keeps_the_same_content_without_escape_codes() {
 fn an_unknown_capability_fails_with_suggestions_and_no_payload() {
     let p = TempProject::new("unknown");
     let out = p.trace(&["checkou", "--json", "--no-color"]);
-    assert!(!out.status.success(), "無正典規格必須非零 exit");
+    assert!(!out.status.success(), "無正式規格必須非零 exit");
     let stderr = String::from_utf8_lossy(&out.stderr).to_string();
     assert!(stderr.contains("'checkou' is not in the canonical specs"), "{stderr}");
     assert!(stderr.contains("checkout"), "近似建議指向既有名: {stderr}");

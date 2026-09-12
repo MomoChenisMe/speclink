@@ -60,7 +60,7 @@ export interface SpecItem {
   id: string;
   /** spec.md 最後修改日期（檔案系統 mtime 衍生，YYYY-MM-DD）；mtime 不可得時缺席。 */
   modifiedAt?: string | null;
-  /** 正典 spec 的 `### Requirement:` 標題數。 */
+  /** 正式規格的 `### Requirement:` 標題數。 */
   requirementCount?: number;
   /** Purpose 區段首個非空行原文；null＝區段缺席或無內容。 */
   purposeExcerpt?: string | null;
@@ -311,7 +311,7 @@ export interface SpeclinkDataSource {
   status(change: string): Promise<StatusReport>;
   /** 讀取一個 change 的 artifact（artifact 為 output path，如 `proposal.md`）。 */
   getDocument(change: string, artifact: string): Promise<string | null>;
-  /** 讀取一個 capability 的正典 spec.md。 */
+  /** 讀取一個 capability 的正式規格 spec.md。 */
   getSpecDocument(capability: string): Promise<string | null>;
   /** 手冊索引（desktop-manual-page）：讀 `openspec/manual/` 的 frontmatter 推導閱讀序
    * 與過期標示。無手冊時 present 為 false；remote 資料源回 reason "remote" 且不發請求。 */

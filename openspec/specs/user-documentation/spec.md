@@ -197,7 +197,7 @@ code:
 #### Scenario: 狀態查核可重做
 
 - **WHEN** 維護者在之後的 checkout 重新更新 product-status
-- **THEN** 文件提供查核日期與證據位置，使維護者可用當下 CLI help、skills、workspace members、tests／操作文件與正典 specs 重做判斷，而非沿用舊日期結論
+- **THEN** 文件提供查核日期與證據位置，使維護者可用當下 CLI help、skills、workspace members、tests／操作文件與正式規格重做判斷，而非沿用舊日期結論
 
 
 <!-- @trace
@@ -587,7 +587,7 @@ updated: 2026-08-14
 ---
 ### Requirement: 使用者文件載明本地產物的 OpenSpec 結構相容性
 
-使用者文件 SHALL 說明 **Local 模式**的產物沿用 OpenSpec 的目錄結構（並明示此相容性不適用遠端模式——遠端的正典在 Store，本機只有唯讀投影）——`specs/<capability>/spec.md`、`changes/<名稱>/`、`changes/archive/` 與 `config.yaml`——且內容為純 Markdown 與 YAML、可不經 Speclink 讀寫、每次變動皆呈現於 Git diff。說明 SHALL 一併載明 Speclink 在該結構上的兩項擴充：`discussions/` 與各變更目錄的 `.openspec.yaml`。此說明 SHALL 出現於 README 中英兩版與入門教學中英兩版。
+使用者文件 SHALL 說明 **Local 模式**的產物沿用 OpenSpec 的目錄結構（並明示此相容性不適用遠端模式——遠端的正式規格在 Store，本機只有唯讀投影）——`specs/<capability>/spec.md`、`changes/<名稱>/`、`changes/archive/` 與 `config.yaml`——且內容為純 Markdown 與 YAML、可不經 Speclink 讀寫、每次變動皆呈現於 Git diff。說明 SHALL 一併載明 Speclink 在該結構上的兩項擴充：`discussions/` 與各變更目錄的 `.openspec.yaml`。此說明 SHALL 出現於 README 中英兩版與入門教學中英兩版。
 
 #### Scenario: 讀者判斷得出資料可攜
 
@@ -642,12 +642,12 @@ updated: 2026-08-14
 #### Scenario: 讀者可自 workflow 查得蓋章後工單去向
 
 - **WHEN** 讀者於 workflow 文件的品質站段落查詢蓋章效果
-- **THEN** 文件說明蓋章刪除工單、封存不含工單檔、remote 模式工單文字不可回讀，讀者不需翻正典即可得知 show 於蓋章後回報無工單為預期行為
+- **THEN** 文件說明蓋章刪除工單、封存不含工單檔、remote 模式工單文字不可回讀，讀者不需翻正式規格即可得知 show 於蓋章後回報無工單為預期行為
 
-#### Scenario: 非成員錯誤碼敘述與正典一致
+#### Scenario: 非成員錯誤碼敘述與正式規格一致
 
 - **WHEN** 讀者依 remote-getting-started 的 membership 段落驗證非成員讀取行為
-- **THEN** 文件敘述的狀態碼為 403，與 server-identity 正典及實際 server 行為一致
+- **THEN** 文件敘述的狀態碼為 403，與 server-identity 正式規格及實際 server 行為一致
 
 #### Scenario: 本質本機動詞列表完整
 
