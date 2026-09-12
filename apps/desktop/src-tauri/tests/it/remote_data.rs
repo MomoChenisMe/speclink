@@ -349,7 +349,7 @@ fn changes_specs_and_artifacts_read_server_truth() {
     let specs = ws.list_specs(&credentials).expect("list specs");
     assert!(
         specs.specs.iter().any(|s| s.id == "auth"),
-        "正典 spec 清單：{:?}",
+        "正式規格清單：{:?}",
         specs.specs
     );
 

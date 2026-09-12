@@ -15,7 +15,7 @@ use crate::store::Store;
 /// 建議的來源標注。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Source {
-    /// 正典規格（openspec/specs/）。
+    /// 正式規格（openspec/specs/）。
     Canonical,
     /// 未封存 change 的 delta，值＝該 change 名。
     InFlight(String),

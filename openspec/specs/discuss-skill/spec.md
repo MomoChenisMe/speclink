@@ -34,7 +34,7 @@ updated: 2026-08-21
 ---
 ### Requirement: interview 每題附建議答案與 Evidence
 
-技能檔 SHALL 對兩類提問分別規定證據義務，SHALL NOT 允許任一類空白提問：grill 意圖題（問目標、範圍、門檻、成功判準）SHALL 附框題脈絡——現況或正典證據——或最佳猜測建議；節點退路題（assumptions 中證據撐不起立場的節點）SHALL 附代理人的建議答案並附 Evidence（檔案路徑或查證結果）。兩類皆 SHALL 讓使用者僅需同意或修正。
+技能檔 SHALL 對兩類提問分別規定證據義務，SHALL NOT 允許任一類空白提問：grill 意圖題（問目標、範圍、門檻、成功判準）SHALL 附框題脈絡——現況或正式規格證據——或最佳猜測建議；節點退路題（assumptions 中證據撐不起立場的節點）SHALL 附代理人的建議答案並附 Evidence（檔案路徑或查證結果）。兩類皆 SHALL 讓使用者僅需同意或修正。
 
 #### Scenario: 渲染產物將 Evidence 列為 interview 硬規則
 
@@ -50,7 +50,7 @@ updated: 2026-08-21
 ---
 ### Requirement: 事實與決策分診及逐節點查證
 
-技能檔 SHALL 規定每個決策節點解決前先分診：環境（程式碼、檔案系統、工具）查得到的事實 SHALL 由代理人沿樹逐節點自行查證，SHALL NOT 拿去問使用者、SHALL NOT 憑印象作答；僅真正的決策（使用者裁定事項）交由使用者。開場偵察 SHALL 為漏斗式：先跑 speclink list --specs --json（候選 ≤5、讀 Purpose ≤3、主題直接動到的 capability 才讀全文、零命中靜默略過），以命中的 capability 名與正典詞彙轉譯搜尋詞後再掃原始碼（至多讀 5 檔）；主題已含具體檔名或符號時，程式碼軌 SHALL 直接開跑不等正典。偵察用途 SHALL 為接地與需求清晰度判定；深入查證 SHALL 沿樹逐節點進行（確定會走到的分支才深讀）。
+技能檔 SHALL 規定每個決策節點解決前先分診：環境（程式碼、檔案系統、工具）查得到的事實 SHALL 由代理人沿樹逐節點自行查證，SHALL NOT 拿去問使用者、SHALL NOT 憑印象作答；僅真正的決策（使用者裁定事項）交由使用者。開場偵察 SHALL 為漏斗式：先跑 speclink list --specs --json（候選 ≤5、讀 Purpose ≤3、主題直接動到的 capability 才讀全文、零命中靜默略過），以命中的 capability 名與正典詞彙轉譯搜尋詞後再掃原始碼（至多讀 5 檔）；主題已含具體檔名或符號時，程式碼軌 SHALL 直接開跑不等正式規格。偵察用途 SHALL 為接地與需求清晰度判定；深入查證 SHALL 沿樹逐節點進行（確定會走到的分支才深讀）。
 
 #### Scenario: 渲染產物含事實決策分診規則
 
@@ -60,12 +60,12 @@ updated: 2026-08-21
 #### Scenario: 開場 scout 維持淺掃
 
 - **WHEN** 檢視渲染產出的 speclink-discuss 技能檔的偵察段落
-- **THEN** 偵察 SHALL 維持時間盒（正典讀取至多 3 份 Purpose、原始碼至多 5 檔），用途 SHALL 為接地與需求清晰度判定；深入查證 SHALL 規定於決策樹逐節點進行
+- **THEN** 偵察 SHALL 維持時間盒（正式規格讀取至多 3 份 Purpose、原始碼至多 5 檔），用途 SHALL 為接地與需求清晰度判定；深入查證 SHALL 規定於決策樹逐節點進行
 
-#### Scenario: 正典先行的漏斗偵察
+#### Scenario: 正式規格先行的漏斗偵察
 
 - **WHEN** 檢視渲染產出的 speclink-discuss 技能檔的偵察順序規定
-- **THEN** 技能檔 SHALL 規定先查正典（speclink list --specs --json）、以命中詞彙轉譯搜尋詞後再掃原始碼；主題含具體檔名或符號時程式碼軌直接開跑；正典零命中時靜默退回關鍵字掃描
+- **THEN** 技能檔 SHALL 規定先查正式規格（speclink list --specs --json）、以命中詞彙轉譯搜尋詞後再掃原始碼；主題含具體檔名或符號時程式碼軌直接開跑；正式規格零命中時靜默退回關鍵字掃描
 
 
 <!-- @trace
@@ -158,18 +158,18 @@ code:
 -->
 
 ---
-### Requirement: 正典接地與三分對照
+### Requirement: 正式規格接地與三分對照
 
-技能檔 SHALL 規定：偵察命中相關正典時，假設清單 SHALL 對使用者需求逐項做三分對照——正典已涵蓋（附 spec 證據）、與正典衝突（指出衝突內容並附證據）、正典沒講（新地盤，順帶檢查 capability 命名鄰近既有規格）。紀律 SHALL 明文為「使用者需求是目標，正典是證據、不是裁決」：偏離正典 SHALL 為允許的結論方向，但 SHALL 記入討論記錄成為有意識的決定。
+技能檔 SHALL 規定：偵察命中相關正式規格時，假設清單 SHALL 對使用者需求逐項做三分對照——正式規格已涵蓋（附 spec 證據）、與正式規格衝突（指出衝突內容並附證據）、正式規格沒講（新地盤，順帶檢查 capability 命名鄰近既有規格）。紀律 SHALL 明文為「使用者需求是目標，正式規格是證據、不是裁決」：偏離正式規格 SHALL 為允許的結論方向，但 SHALL 記入討論記錄成為有意識的決定。
 
-#### Scenario: 需求與正典衝突時列為假設
+#### Scenario: 需求與正式規格衝突時列為假設
 
-- **WHEN** 偵察發現使用者需求與正典既有承諾衝突
-- **THEN** 技能檔 SHALL 規定該衝突以假設形式呈現（附 spec 證據），由使用者裁定改正典或改需求，SHALL NOT 逕行擋下或否決討論方向
+- **WHEN** 偵察發現使用者需求與正式規格既有承諾衝突
+- **THEN** 技能檔 SHALL 規定該衝突以假設形式呈現（附 spec 證據），由使用者裁定改正式規格或改需求，SHALL NOT 逕行擋下或否決討論方向
 
-#### Scenario: 正典零命中時流程照舊
+#### Scenario: 正式規格零命中時流程照舊
 
-- **WHEN** 主題與任何正典 capability 無關（工具鏈、依賴選型類主題）
+- **WHEN** 主題與任何正式規格 capability 無關（工具鏈、依賴選型類主題）
 - **THEN** 技能檔 SHALL 規定不提及規格掃描，後續流程與純程式碼偵察相同
 
 <!-- @trace
@@ -261,12 +261,12 @@ updated: 2026-08-27
 ---
 ### Requirement: 開場舊討論查核與第四類對照
 
-內嵌 speclink-discuss 技能（事實來源 crates/engine/speclink-core/assets/skills/discuss.md，經 init 與 update 渲染至 claude 與 codex 工具技能目錄）SHALL 將偵察漏斗規定為「正典 → 舊討論查核 → 程式碼」三段。舊討論查核 SHALL 規定：以使用者題目的關鍵字加正典掃描轉譯出的英文詞執行 speclink discuss search（--json），命中的決定行 SHALL 全數列出；整份 Conclusion 以 speclink discuss show 讀取 SHALL 最多 3 份、topic 命中者優先；此查核 SHALL NOT 依討論的 kind 過濾。假設清單 SHALL 在既有三分對照之外加入第四類「舊討論已定案」，細分曾否決（附當時理由；重開該方向 SHALL 說明當時理由已失效）、曾延後（可接手）、已落地（正典會照出，不重列）；技能檔 SHALL 明文不得以此擋下討論方向。Context 段 SHALL 規定加一行 `Prior discussions: <slug 清單>`，零命中時寫 none。既有討論記錄格式與 Context／Rounds／Conclusion 骨架 SHALL 不變。本能力屬 Speclink 自身延伸；渲染產物內容由 speclink-core 的 render_golden 測試（cargo test）保護，golden 快照更新屬刻意變更。
+內嵌 speclink-discuss 技能（事實來源 crates/engine/speclink-core/assets/skills/discuss.md，經 init 與 update 渲染至 claude 與 codex 工具技能目錄）SHALL 將偵察漏斗規定為「正式規格 → 舊討論查核 → 程式碼」三段。舊討論查核 SHALL 規定：以使用者題目的關鍵字加正式規格掃描轉譯出的英文詞執行 speclink discuss search（--json），命中的決定行 SHALL 全數列出；整份 Conclusion 以 speclink discuss show 讀取 SHALL 最多 3 份、topic 命中者優先；此查核 SHALL NOT 依討論的 kind 過濾。假設清單 SHALL 在既有三分對照之外加入第四類「舊討論已定案」，細分曾否決（附當時理由；重開該方向 SHALL 說明當時理由已失效）、曾延後（可接手）、已落地（正式規格會照出，不重列）；技能檔 SHALL 明文不得以此擋下討論方向。Context 段 SHALL 規定加一行 `Prior discussions: <slug 清單>`，零命中時寫 none。既有討論記錄格式與 Context／Rounds／Conclusion 骨架 SHALL 不變。本能力屬 Speclink 自身延伸；渲染產物內容由 speclink-core 的 render_golden 測試（cargo test）保護，golden 快照更新屬刻意變更。
 
 #### Scenario: 渲染產物含舊討論查核
 
 - **WHEN** 執行 speclink init 或 speclink update 渲染 claude 與 codex 工具的技能檔
-- **THEN** 產出的 speclink-discuss 技能檔 SHALL 將偵察描述為「正典 → 舊討論查核 → 程式碼」，舊討論查核 SHALL 指示執行 speclink discuss search、命中決定行全列、整份 Conclusion 最多讀 3 份且 topic 命中優先，並 SHALL NOT 含依 kind 過濾的指示
+- **THEN** 產出的 speclink-discuss 技能檔 SHALL 將偵察描述為「正式規格 → 舊討論查核 → 程式碼」，舊討論查核 SHALL 指示執行 speclink discuss search、命中決定行全列、整份 Conclusion 最多讀 3 份且 topic 命中優先，並 SHALL NOT 含依 kind 過濾的指示
 
 #### Scenario: 曾否決方向重開須說明理由失效
 

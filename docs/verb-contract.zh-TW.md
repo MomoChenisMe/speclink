@@ -3,11 +3,11 @@
 > **誰需要讀這份**：要自己串接 Speclink 遠端 API、寫客戶端，或要確認某個動詞在遠端模式會怎麼表現的人。
 > 只用桌面 app 或 CLI 的話，這份可以完全跳過——日常操作看[完整 SDD 工作流](workflow.zh-TW.md)就夠。
 
-本文件回答動詞層的契約。它涵蓋兩塊：CLI 動詞在本機與 remote 兩模式的歸屬與輸出規則，以及正典 `verb-contract` spec 指定的端點、payload 與錯誤形狀。
+本文件回答動詞層的契約。它涵蓋兩塊：CLI 動詞在本機與 remote 兩模式的歸屬與輸出規則，以及正式規格 `verb-contract` 指定的端點、payload 與錯誤形狀。
 
 端點那一塊目前涵蓋動詞補全（verb-parity）端點：validate、analyze、刪除變更、任務搬移、討論建立帶 slug、討論 discard、討論 link、討論 seal、變更開工標記，以及變更認領。其餘動詞的契約仍以 canonical specs 為準：
 
-- [正典動詞契約](../openspec/specs/verb-contract/spec.md)
+- [動詞契約的正式規格](../openspec/specs/verb-contract/spec.md)
 - [Client Protocol spec](../openspec/specs/client-protocol/spec.md)
 
 以下端點都位於 project base `/api/speclink/v1/projects/{key}` 之下。每個請求都要帶標準契約 headers：`Authorization: Bearer …`、`X-Speclink-Api-Version`，以及已選定時的 `X-Speclink-Repo`。所有成功回應都附 scope ETag header，值是 project revision。

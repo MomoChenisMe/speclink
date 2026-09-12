@@ -635,7 +635,7 @@ fn run_chain(recovery: Recovery) {
         ] {
             assert!(projection.join(rel).is_file(), "{rel} is in the projection");
         }
-        // 此刻尚未 archive，正典為空——正典 specs 進投影的斷言在步驟 (10) 收口。
+        // 此刻尚未 archive，正式規格為空——其進投影的斷言在步驟 (10) 收口。
         assert!(
             !projection.join(format!("openspec/specs/{CAP}/spec.md")).exists(),
             "no canonical spec exists before archive",
@@ -681,8 +681,8 @@ fn run_chain(recovery: Recovery) {
     // --- 斷線窗口：訂閱者於步驟 (5) 後強制斷線，錯過後續事件（決策 4）。 ---
     sub.disconnect();
 
-    // (8) 斷線期間收尾任務並 archive：正典 specs 更新、change 入 archive、清單如實。
-    step(&scene, 8, "archive：正典更新、清單如實（斷線窗口內）", || {
+    // (8) 斷線期間收尾任務並 archive：正式規格更新、change 入 archive、清單如實。
+    step(&scene, 8, "archive：正式規格更新、清單如實（斷線窗口內）", || {
         cli(&project, &["task", "done", "2", "--change", CHANGE], &pat);
         // 等斷線訂閱者兩側的 socket 拆除完成（客端 reader 於下一幀退出、server 端
         // 於下一次 heartbeat 寫入失敗時退出）再走 archive——半關 socket 的拆除與

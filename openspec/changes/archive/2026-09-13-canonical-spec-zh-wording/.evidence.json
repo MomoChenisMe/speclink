@@ -1,0 +1,158 @@
+{
+  "version": 2,
+  "change": "canonical-spec-zh-wording",
+  "touched": [
+    {
+      "task_id": "2",
+      "task_desc": "1.2 桌面 zh-TW 規格頁標題顯示「正式規格」、空狀態顯示「此專案尚無正式規格」；英文版 \"Canonical specs\" 不變。先改 packages/ui/src/__tests__/specList.test.tsx 的斷言為「此專案尚無正式規格」使 `npm test -w packages/ui` 轉紅，再改 packages/ui/src/i18n.tsx 的 specs.heading 與 specs.empty 兩條轉綠。驗證：`npm test -w packages/ui` 綠；grep packages/ui/src/i18n.tsx「正典」零命中",
+      "files": [
+        "packages/ui/src/__tests__/specList.test.tsx",
+        "packages/ui/src/i18n.tsx"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 README.md 與 docs 十份（docs/getting-started.zh-TW.md、docs/workflow.zh-TW.md、docs/product-status.zh-TW.md、docs/roadmap.zh-TW.md、docs/sdk-node.zh-TW.md、docs/verb-contract.zh-TW.md、docs/configuration.zh-TW.md、docs/server-deployment.zh-TW.md、docs/design/implementation-refactor-roadmap.zh-TW.md、docs/design/platform-architecture.zh-TW.md）的複合寫法全改，指 specs 這一側的光桿「正典」依 design D1 的 docs 處置逐句改（README「共用同一份規格正典」→「共用同一份正式規格」；platform-architecture 光桿不動）；句子保持通順、不重寫段落。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠（詞彙守門歸零、中英 H2 序列與截圖集合不變）；grep README.md 與 docs/「正典規格」「正典 spec」「規格正典」零命中",
+      "files": [
+        "README.md",
+        "docs/configuration.zh-TW.md",
+        "docs/design/implementation-refactor-roadmap.zh-TW.md",
+        "docs/design/platform-architecture.zh-TW.md",
+        "docs/getting-started.zh-TW.md",
+        "docs/product-status.zh-TW.md",
+        "docs/roadmap.zh-TW.md",
+        "docs/sdk-node.zh-TW.md",
+        "docs/server-deployment.zh-TW.md",
+        "docs/verb-contract.zh-TW.md",
+        "docs/workflow.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.1 crates 十六檔只改兩類文字——複合寫法（正典規格／正典 spec(s)／正典 spec.md）與引用 design D3 改名標題的註解：crates/engine/speclink-core/src/lifecycle/capname.rs、crates/engine/speclink-core/src/lifecycle/model.rs、crates/engine/speclink-core/src/lifecycle/trace.rs、crates/engine/speclink-core/src/lifecycle/newcmd.rs（「命中正式規格名稱照常放行」）、crates/engine/speclink-core/src/lifecycle/archive/tests.rs（兩個標題引用）、crates/engine/speclink-core/src/command/tests.rs、crates/engine/speclink-core/src/quality/validate.rs、crates/engine/speclink-core/src/quality/validate/tests.rs、crates/engine/speclink-core/src/quality/analyzer/tests.rs（兩個標題引用）、crates/adapters/speclink-cli/src/verbs/checks.rs、crates/adapters/speclink-cli/tests/it/manual_pages_dir_ignored.rs、crates/adapters/speclink-cli/tests/it/new_artifact.rs、crates/adapters/speclink-cli/tests/it/remote_read_path.rs、crates/adapters/speclink-cli/tests/it/trace.rs、crates/adapters/speclink-cli/tests/it/validate_specs.rs、crates/host/speclink-server/tests/it/phase2_chain.rs；光桿「正典」註解不動、無任何識別符或邏輯變動。驗證：`cargo test -p speclink-core --test it render_golden::` 綠（golden 未變）；`cargo test -p speclink-core --lib` 綠；`cargo test -p speclink-cli --test it -- validate_specs new_artifact trace manual_pages_dir_ignored remote_read_path` 綠；grep 這十六檔「正典規格」「正典 spec」零命中",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/checks.rs",
+        "crates/adapters/speclink-cli/tests/it/manual_pages_dir_ignored.rs",
+        "crates/adapters/speclink-cli/tests/it/new_artifact.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_read_path.rs",
+        "crates/adapters/speclink-cli/tests/it/trace.rs",
+        "crates/adapters/speclink-cli/tests/it/validate_specs.rs",
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/src/lifecycle/archive/tests.rs",
+        "crates/engine/speclink-core/src/lifecycle/capname.rs",
+        "crates/engine/speclink-core/src/lifecycle/model.rs",
+        "crates/engine/speclink-core/src/lifecycle/newcmd.rs",
+        "crates/engine/speclink-core/src/lifecycle/trace.rs",
+        "crates/engine/speclink-core/src/quality/analyzer/tests.rs",
+        "crates/engine/speclink-core/src/quality/validate.rs",
+        "crates/engine/speclink-core/src/quality/validate/tests.rs",
+        "crates/host/speclink-server/tests/it/phase2_chain.rs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.2 apps 與 packages 十三檔同 D6 兩類：apps/desktop/core/src/manual.rs、apps/desktop/core/src/query.rs、apps/desktop/src-tauri/src/lib.rs、apps/desktop/src-tauri/src/remote.rs、apps/desktop/src-tauri/tests/it/remote_data.rs、apps/desktop/src/__tests__/App.test.tsx（「選定 spec 以抽屜顯示其正式規格內容」）、packages/ui/src/adapter.ts、packages/ui/src/components/SpecDrawer.tsx、packages/ui/src/components/SpecList.tsx、packages/ui/src/trace.ts、packages/ui/src/__tests__/delta.test.ts、packages/ui/src/__tests__/richDrawer.test.tsx、packages/ui/src/__tests__/trace.test.ts，以及 scripts/release/delivery-gate.test.mjs 的一行註解。驗證：`cargo test -p speclink-desktop-core` 綠；`cargo check -p speclink-desktop --tests` 通過（src-tauri 只動註解，不跑需 sidecar 的整合測試）；`npm test -w packages/ui` 綠；`npm test -w apps/desktop` 綠；grep 這十四檔「正典規格」「正典 spec」零命中",
+      "files": [
+        "apps/desktop/core/src/manual.rs",
+        "apps/desktop/core/src/query.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "packages/ui/src/__tests__/delta.test.ts",
+        "packages/ui/src/__tests__/richDrawer.test.tsx",
+        "packages/ui/src/__tests__/trace.test.ts",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/components/SpecDrawer.tsx",
+        "packages/ui/src/components/SpecList.tsx",
+        "packages/ui/src/trace.ts",
+        "scripts/release/delivery-gate.test.mjs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M2B1ZH5YYV6RTR04QXRMYTM1",
+      "taskDesc": "1.2 桌面 zh-TW 規格頁標題顯示「正式規格」、空狀態顯示「此專案尚無正式規格」；英文版 \"Canonical specs\" 不變。先改 packages/ui/src/__tests__/specList.test.tsx 的斷言為「此專案尚無正式規格」使 `npm test -w packages/ui` 轉紅，再改 packages/ui/src/i18n.tsx 的 specs.heading 與 specs.empty 兩條轉綠。驗證：`npm test -w packages/ui` 綠；grep packages/ui/src/i18n.tsx「正典」零命中",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "12c31686845baed371c3290d7da842ec5ad4a66b",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/specList.test.tsx",
+        "packages/ui/src/i18n.tsx"
+      ],
+      "recordedAt": "2026-09-12T15:03:36Z"
+    },
+    {
+      "taskId": "tsk_01M2B1ZH5YCJV1SNW9S4XC76Z8",
+      "taskDesc": "1.3 README.md 與 docs 十份（docs/getting-started.zh-TW.md、docs/workflow.zh-TW.md、docs/product-status.zh-TW.md、docs/roadmap.zh-TW.md、docs/sdk-node.zh-TW.md、docs/verb-contract.zh-TW.md、docs/configuration.zh-TW.md、docs/server-deployment.zh-TW.md、docs/design/implementation-refactor-roadmap.zh-TW.md、docs/design/platform-architecture.zh-TW.md）的複合寫法全改，指 specs 這一側的光桿「正典」依 design D1 的 docs 處置逐句改（README「共用同一份規格正典」→「共用同一份正式規格」；platform-architecture 光桿不動）；句子保持通順、不重寫段落。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠（詞彙守門歸零、中英 H2 序列與截圖集合不變）；grep README.md 與 docs/「正典規格」「正典 spec」「規格正典」零命中",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "12c31686845baed371c3290d7da842ec5ad4a66b",
+      "touchedFiles": [
+        "README.md",
+        "docs/configuration.zh-TW.md",
+        "docs/design/implementation-refactor-roadmap.zh-TW.md",
+        "docs/design/platform-architecture.zh-TW.md",
+        "docs/getting-started.zh-TW.md",
+        "docs/product-status.zh-TW.md",
+        "docs/roadmap.zh-TW.md",
+        "docs/sdk-node.zh-TW.md",
+        "docs/server-deployment.zh-TW.md",
+        "docs/verb-contract.zh-TW.md",
+        "docs/workflow.zh-TW.md"
+      ],
+      "recordedAt": "2026-09-12T15:04:53Z"
+    },
+    {
+      "taskId": "tsk_01M2B1ZH5Y1KM1AF0HP088DPYC",
+      "taskDesc": "4.1 crates 十六檔只改兩類文字——複合寫法（正典規格／正典 spec(s)／正典 spec.md）與引用 design D3 改名標題的註解：crates/engine/speclink-core/src/lifecycle/capname.rs、crates/engine/speclink-core/src/lifecycle/model.rs、crates/engine/speclink-core/src/lifecycle/trace.rs、crates/engine/speclink-core/src/lifecycle/newcmd.rs（「命中正式規格名稱照常放行」）、crates/engine/speclink-core/src/lifecycle/archive/tests.rs（兩個標題引用）、crates/engine/speclink-core/src/command/tests.rs、crates/engine/speclink-core/src/quality/validate.rs、crates/engine/speclink-core/src/quality/validate/tests.rs、crates/engine/speclink-core/src/quality/analyzer/tests.rs（兩個標題引用）、crates/adapters/speclink-cli/src/verbs/checks.rs、crates/adapters/speclink-cli/tests/it/manual_pages_dir_ignored.rs、crates/adapters/speclink-cli/tests/it/new_artifact.rs、crates/adapters/speclink-cli/tests/it/remote_read_path.rs、crates/adapters/speclink-cli/tests/it/trace.rs、crates/adapters/speclink-cli/tests/it/validate_specs.rs、crates/host/speclink-server/tests/it/phase2_chain.rs；光桿「正典」註解不動、無任何識別符或邏輯變動。驗證：`cargo test -p speclink-core --test it render_golden::` 綠（golden 未變）；`cargo test -p speclink-core --lib` 綠；`cargo test -p speclink-cli --test it -- validate_specs new_artifact trace manual_pages_dir_ignored remote_read_path` 綠；grep 這十六檔「正典規格」「正典 spec」零命中",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "12c31686845baed371c3290d7da842ec5ad4a66b",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/checks.rs",
+        "crates/adapters/speclink-cli/tests/it/manual_pages_dir_ignored.rs",
+        "crates/adapters/speclink-cli/tests/it/new_artifact.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_read_path.rs",
+        "crates/adapters/speclink-cli/tests/it/trace.rs",
+        "crates/adapters/speclink-cli/tests/it/validate_specs.rs",
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/src/lifecycle/archive/tests.rs",
+        "crates/engine/speclink-core/src/lifecycle/capname.rs",
+        "crates/engine/speclink-core/src/lifecycle/model.rs",
+        "crates/engine/speclink-core/src/lifecycle/newcmd.rs",
+        "crates/engine/speclink-core/src/lifecycle/trace.rs",
+        "crates/engine/speclink-core/src/quality/analyzer/tests.rs",
+        "crates/engine/speclink-core/src/quality/validate.rs",
+        "crates/engine/speclink-core/src/quality/validate/tests.rs",
+        "crates/host/speclink-server/tests/it/phase2_chain.rs"
+      ],
+      "recordedAt": "2026-09-12T15:12:33Z"
+    },
+    {
+      "taskId": "tsk_01M2B1ZH5Y9Z9DYG3SXG7HYHKG",
+      "taskDesc": "4.2 apps 與 packages 十三檔同 D6 兩類：apps/desktop/core/src/manual.rs、apps/desktop/core/src/query.rs、apps/desktop/src-tauri/src/lib.rs、apps/desktop/src-tauri/src/remote.rs、apps/desktop/src-tauri/tests/it/remote_data.rs、apps/desktop/src/__tests__/App.test.tsx（「選定 spec 以抽屜顯示其正式規格內容」）、packages/ui/src/adapter.ts、packages/ui/src/components/SpecDrawer.tsx、packages/ui/src/components/SpecList.tsx、packages/ui/src/trace.ts、packages/ui/src/__tests__/delta.test.ts、packages/ui/src/__tests__/richDrawer.test.tsx、packages/ui/src/__tests__/trace.test.ts，以及 scripts/release/delivery-gate.test.mjs 的一行註解。驗證：`cargo test -p speclink-desktop-core` 綠；`cargo check -p speclink-desktop --tests` 通過（src-tauri 只動註解，不跑需 sidecar 的整合測試）；`npm test -w packages/ui` 綠；`npm test -w apps/desktop` 綠；grep 這十四檔「正典規格」「正典 spec」零命中",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "12c31686845baed371c3290d7da842ec5ad4a66b",
+      "touchedFiles": [
+        "apps/desktop/core/src/manual.rs",
+        "apps/desktop/core/src/query.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "packages/ui/src/__tests__/delta.test.ts",
+        "packages/ui/src/__tests__/richDrawer.test.tsx",
+        "packages/ui/src/__tests__/trace.test.ts",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/components/SpecDrawer.tsx",
+        "packages/ui/src/components/SpecList.tsx",
+        "packages/ui/src/trace.ts",
+        "scripts/release/delivery-gate.test.mjs"
+      ],
+      "recordedAt": "2026-09-12T15:23:53Z"
+    }
+  ]
+}

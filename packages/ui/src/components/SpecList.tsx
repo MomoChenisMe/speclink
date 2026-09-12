@@ -104,7 +104,7 @@ export interface SpecListProps {
   focus?: string | null;
 }
 
-/** 規格頁（design D1）：正典 spec 卡片清單＋名稱搜尋（design D3：大小寫不敏感
+/** 規格頁（design D1）：正式規格卡片清單＋名稱搜尋（design D3：大小寫不敏感
  * 子字串、純前端即打即濾）；點卡片開抽屜檢視全文，無行內展開、無任何規格寫入動詞。
  * 清單最新在前（modifiedAt 降冪、缺席殿後、名稱升冪決勝）並依 PAGE_SIZE 換頁
  *（spec「清單最新在前與換頁瀏覽」）——排序與換頁純屬呈現層。

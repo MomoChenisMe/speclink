@@ -2,7 +2,7 @@
 
 ## Purpose
 
-remote 模式下遠端正典在本機唯讀投影的語意：投影佈局與 manifest、staging 產生後的原子切換、完整性驗證、stale 標記與 refresh，以及依流程階段縮小投影內容。本 capability 保證投影必被 gitignore 涵蓋、技能只讀不寫回，投影來源為 Context API，任何被改動或不完整的投影一律 fail closed。
+remote 模式下遠端正式規格在本機唯讀投影的語意：投影佈局與 manifest、staging 產生後的原子切換、完整性驗證、stale 標記與 refresh，以及依流程階段縮小投影內容。本 capability 保證投影必被 gitignore 涵蓋、技能只讀不寫回，投影來源為 Context API，任何被改動或不完整的投影一律 fail closed。
 
 ## Requirements
 
@@ -75,7 +75,7 @@ Host SHALL 提供投影驗證：任一文件內容與 manifest digest 不符、�
 #### Scenario: 被修改的投影拒絕
 
 - **WHEN** 修改投影內某 spec 文件一個字元後執行投影驗證
-- **THEN** 驗證回拒絕並指出 digest 不符的文件；遠端正典未被任何寫入觸及
+- **THEN** 驗證回拒絕並指出 digest 不符的文件；遠端正式規格未被任何寫入觸及
 
 
 <!-- @trace
@@ -229,12 +229,12 @@ code:
 ---
 ### Requirement: 遠端投影以 Context API 為來源
 
-remote 動詞流程的投影供應者 SHALL 以 Context API 的一致快照為來源，SHALL NOT 以逐 artifact 分次請求拼裝快照；投影內容 SHALL 因此涵蓋正典 specs、該 change 的 delta specs、artifacts、config 與 LANGUAGE（既有佈局需求的完整實現）。manifest 現值的 snapshot id 與 server 現值相同時，refresh SHALL 免重寫投影；Context API 失敗時 SHALL 維持既有韌性語意——響亮警告、動詞照常完成、既有投影標記 stale。
+remote 動詞流程的投影供應者 SHALL 以 Context API 的一致快照為來源，SHALL NOT 以逐 artifact 分次請求拼裝快照；投影內容 SHALL 因此涵蓋正式規格、該 change 的 delta specs、artifacts、config 與 LANGUAGE（既有佈局需求的完整實現）。manifest 現值的 snapshot id 與 server 現值相同時，refresh SHALL 免重寫投影；Context API 失敗時 SHALL 維持既有韌性語意——響亮警告、動詞照常完成、既有投影標記 stale。
 
-#### Scenario: 投影含正典與 delta specs
+#### Scenario: 投影含正式規格與 delta specs
 
-- **WHEN** 對含正典 specs 與 delta specs 的 remote scope 執行 apply 階段動詞後檢視投影
-- **THEN** 投影鏡像含正典 specs、該 change 的 delta specs 與 artifacts；manifest 的 snapshot id 為 server 回應的識別；verify 通過
+- **WHEN** 對含正式規格與 delta specs 的 remote scope 執行 apply 階段動詞後檢視投影
+- **THEN** 投影鏡像含正式規格、該 change 的 delta specs 與 artifacts；manifest 的 snapshot id 為 server 回應的識別；verify 通過
 
 #### Scenario: 未變免重寫
 

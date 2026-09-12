@@ -351,7 +351,7 @@ scripts 測試面 SHALL 含一條靜態斷言，遞迴走訪 repo 內的文字�
 
 #### Scenario: 歷史記錄與 @trace 區塊不受檢
 
-- **WHEN** openspec/changes 底下的提案、openspec/discussions 的記錄、`.speclink` 與 `.dev` 的本機產生狀態、或正典規格 `<!-- @trace` 區塊內的檔案清單含 crates/speclink-cli/src/commands.rs，且非排除範圍內零命中 <!-- path-guard:allow -->
+- **WHEN** openspec/changes 底下的提案、openspec/discussions 的記錄、`.speclink` 與 `.dev` 的本機產生狀態、或正式規格 `<!-- @trace` 區塊內的檔案清單含 crates/speclink-cli/src/commands.rs，且非排除範圍內零命中 <!-- path-guard:allow -->
 - **THEN** 該測試通過，exit code 0
 
 #### Scenario: 反例文件以豁免標記排除自身命中

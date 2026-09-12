@@ -1,4 +1,4 @@
-// 前端解析正典 spec.md 內封存時注入的 @trace 註解（archive.rs trace_block 產生），
+// 前端解析正式規格 spec.md 內封存時注入的 @trace 註解（archive.rs trace_block 產生），
 // 抽出各區塊的 source 變更名，聚合至 spec 層級去重保序（design D1／D2）。
 
 // 一個 @trace HTML 註解區塊：`<!-- @trace ... -->`（跨行、非貪婪至最近的 -->）。

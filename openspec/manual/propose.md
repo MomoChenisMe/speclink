@@ -42,7 +42,7 @@ agent 依這個優先序決定需求來源：
 - 把掃描既有規格的結果留在提案裡。
 - 對 Capabilities 區段的每個新 capability，附一句「為何既有規格不涵蓋」。
 
-引擎在建立 delta 規格的那一刻守門。名稱不在正典規格裡、這個變更也沒有同名 delta、又沒帶 `--new` 時：
+引擎在建立 delta 規格的那一刻守門。名稱不在正式規格裡、這個變更也沒有同名 delta、又沒帶 `--new` 時：
 
 ```
 speclink new artifact spec <capability> --change <變更名>
@@ -50,12 +50,12 @@ speclink new artifact spec <capability> --change <變更名>
 
 會被拒絕：以錯誤結束、不建立任何檔案。錯誤訊息包含：
 
-- 至多三筆近似的既有名稱。每筆標注來源（正典，或某個進行中的變更名），並附該規格 Purpose 的第一行。
+- 至多三筆近似的既有名稱。每筆標注來源（正式規格，或某個進行中的變更名），並附該規格 Purpose 的第一行。
 - 兩條指引：修改既有 capability 就沿用它的確切名稱；確定是新 capability 就帶 `--new` 重跑。
 
 名稱比對逐字、區分大小寫。沒有任何近似名時仍然拒絕，只是訊息裡沒有建議清單。
 
-近似名的排序依序看：名稱 token 的完全包含關係、kebab 字段交集數、編輯距離。例如正典有 `auth` 與 `author-tools`，你用 `authentication`，建議清單第一筆會是 `auth`。另一個進行中的變更已經開了同名的 delta 時，訊息會另外點名那個變更並指路 `--new`。
+近似名的排序依序看：名稱 token 的完全包含關係、kebab 字段交集數、編輯距離。例如正式規格有 `auth` 與 `author-tools`，你用 `authentication`，建議清單第一筆會是 `auth`。另一個進行中的變更已經開了同名的 delta 時，訊息會另外點名那個變更並指路 `--new`。
 
 確定是新 capability：
 
@@ -63,7 +63,7 @@ speclink new artifact spec <capability> --change <變更名>
 speclink new artifact spec <capability> --change <變更名> --new
 ```
 
-`--new` 不豁免 delta 的格式驗證：內容仍然要有 ADDED、MODIFIED、REMOVED 或 RENAMED 其中一種操作區塊。名稱已在正典裡時，帶不帶 `--new` 行為相同。
+`--new` 不豁免 delta 的格式驗證：內容仍然要有 ADDED、MODIFIED、REMOVED 或 RENAMED 其中一種操作區塊。名稱已在正式規格裡時，帶不帶 `--new` 行為相同。
 
 ## 新 capability 的 Purpose
 
@@ -78,16 +78,16 @@ speclink new artifact spec <capability> --change <變更名> --new
 > [!WARNING]
 > Purpose 不合格的新 capability 在提案階段只是驗證錯誤，到封存時會被直接拒絕。早點補好。見[封存](archive.md)。
 
-`speclink validate --specs` 會逐份驗證正典規格：缺 `## Purpose` 或內容為空報 error；內容不足 50 字元只在 `--strict` 時報 warning；內容仍是封存時的佔位文字報 warning。`--all` 同時驗變更與正典規格。`--specs` 不能與變更名同時給，會被拒絕並指路單獨 `--specs` 或 `--all`。
+`speclink validate --specs` 會逐份驗證正式規格：缺 `## Purpose` 或內容為空報 error；內容不足 50 字元只在 `--strict` 時報 warning；內容仍是封存時的佔位文字報 warning。`--all` 同時驗變更與正式規格。`--specs` 不能與變更名同時給，會被拒絕並指路單獨 `--specs` 或 `--all`。
 
 ## validate 會提早抓出封存守門的違規
 
-delta 與正典對不上的問題（例如 MODIFIED 的目標需求已經不在正典、ADDED 的名字正典已有、MODIFIED 漏掉正典既有的 scenario 又沒宣告移除），以前要到封存才被拒絕。現在 `speclink validate <變更名>` 就會對每個 delta capability 做同一套判斷，每條違規化成一條 error，變更驗證結果為不通過，`--strict` 與否都一樣。無參數、`--all`、`--changes`、remote 模式與桌面的結構驗證都適用。
+delta 與正式規格對不上的問題（例如 MODIFIED 的目標需求已經不在正式規格、ADDED 的名字正式規格已有、MODIFIED 漏掉正式規格既有的 scenario 又沒宣告移除），以前要到封存才被拒絕。現在 `speclink validate <變更名>` 就會對每個 delta capability 做同一套判斷，每條違規化成一條 error，變更驗證結果為不通過，`--strict` 與否都一樣。無參數、`--all`、`--changes`、remote 模式與桌面的結構驗證都適用。
 
 | 違規 | error 長相 |
 | --- | --- |
 | MODIFIED 的目標不存在 | `specs/auth/spec.md: MODIFIED 'R9': target requirement no longer exists in the canonical spec (see: speclink drift demo)` |
-| ADDED 的名字正典已有 | `specs/auth/spec.md: ADDED 'R1': already exists in the canonical spec — archive would refuse it (see: speclink drift demo)` |
+| ADDED 的名字正式規格已有 | `specs/auth/spec.md: ADDED 'R1': already exists in the canonical spec — archive would refuse it (see: speclink drift demo)` |
 | RENAMED 缺目標名 | `specs/auth/spec.md: RENAMED 'R1': RENAMED operation names no TO: target (see: speclink drift demo)` |
 
 守門 error 排在結構 error 之後，結構檢查已報過的不重複報（新 capability 的 Purpose 只報 Purpose error；同一份 delta 內的重複需求名只報重複）。完整的守門清單與補救路線見[封存](archive.md)。
@@ -117,7 +117,7 @@ propose 完成、給下一步建議之前，agent 會列出所有還沒開工的
 
 還沒開工的變更有 2 個以上時，agent 會判定執行順序：
 
-- 硬信號：兩個變更的 delta 目錄含同一個 capability，就必須依序。兩份 delta 重寫同一份正典規格，亂序封存可能被合併守門拒絕。
+- 硬信號：兩個變更的 delta 目錄含同一個 capability，就必須依序。兩份 delta 重寫同一份正式規格，亂序封存可能被合併守門拒絕。
 - 軟信號：讀提案與任務推測程式碼重疊或依賴。
 
 | 變更 A 的 delta | 變更 B 的 delta | 判定 |

@@ -9,7 +9,7 @@
 > store driver 鍵是 `sqlite`／`serverfs`／`postgres`，Server FS 靠 flock、沒有啟動時能力探測（§4.3 與現況不符）；
 > §15.2 列為缺口的 capability 揭露與 §15.4 的認領（claim）都已交付——認領已持久化並有桌面遠端呈現。
 >
-> 現行的行為正典是 `openspec/specs/` 底下的規格（`host-runtime`、`command-runtime`、`teamstore-contract`、
+> 現行行為以 `openspec/specs/` 底下的正式規格為準（`host-runtime`、`command-runtime`、`teamstore-contract`、
 > `client-protocol`、`verb-contract`、`server-*` 等）；能力現況查
 > [`product-status.zh-TW.md`](../product-status.zh-TW.md)；流程入口見
 > [`workflow.zh-TW.md`](../workflow.zh-TW.md)；之後的方向見 [`roadmap.zh-TW.md`](../roadmap.zh-TW.md)。
@@ -23,7 +23,7 @@
 Speclink 應定義成「**同一套 Engine、兩條執行路徑、多種可替換入口與呈現**」。
 
 - **本地 repo 路徑**：保留現在的 `openspec/`、Git、直接讀檔與離線體驗，不要求服務。
-- **遠端 Store 路徑**：規格正典位於自訂 Store，經使用者自建服務或官方 `speclink-server` 組合 Engine 與 Store。
+- **遠端 Store 路徑**：正式規格位於自訂 Store，經使用者自建服務或官方 `speclink-server` 組合 Engine 與 Store。
 - **外部 Agent Host 入口**：Claude Code、Codex、GitHub Copilot、Cursor 等載入 Speclink Skill，再以 CLI/MCP 經 Protocol 呼叫遠端 Host。
 - **同系統 Agent Host 入口**：Copilot SDK 等自訂 Agent 載入 rendered Skill，以 In-process Tool 直接呼叫同程序 Speclink Host，不繞 CLI、MCP 或 HTTP。
 - **UI 可替換**：Speclink Desktop 是官方開箱 UI 與參考實作，不是唯一 UI；本地 repo 建議使用 Desktop/native UI，遠端 Store 可建立 Web、Desktop 或 Agent 內嵌 UI。
@@ -59,7 +59,7 @@ Speclink
 
 PM/PO 與 RD 在三種產品情境中都可以取得程式碼 checkout。差異不在「有沒有程式碼」，而在：
 
-- 規格正典位於 repo 的 `openspec/`，或位於遠端 Store。
+- 正式規格位於 repo 的 `openspec/`，或位於遠端 Store。
 - Agent 在外部工具、同系統應用，或本地 CLI 中執行。
 - UI 使用官方 Desktop 或自訂呈現。
 
@@ -1117,7 +1117,7 @@ Reader 看得到 policy 但不能編輯。Server Store driver、migration、back
 
 | 項目 | 本地 Repo | 遠端外部 Client | 遠端 In-process Tool |
 |---|---|---|---|
-| 規格正典 | `openspec/` | Remote Store | Remote Store |
+| 正式規格 | `openspec/` | Remote Store | Remote Store |
 | Agent 閱讀 | 直接讀檔 | 唯讀 Context Projection | Tool Context 或 Session FS |
 | Agent 寫入 | 檔案／CLI 動詞 | Command Protocol | Host library call |
 | 網路繞行 | 無 | 有 | 無 |

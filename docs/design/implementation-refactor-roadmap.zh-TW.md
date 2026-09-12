@@ -9,11 +9,11 @@
 > 與 desktop workspace session，都已交付——桌面遠端已能真實寫入，含認領（claim）操作與認領人呈現。
 > **不要以本文判斷任何能力是否已交付，也不要以本文的順序推論之後會做什麼。**
 >
-> 現在的判準只有兩個：能力現況查 [`product-status.zh-TW.md`](../product-status.zh-TW.md)，行為與邊界的正典是
-> `openspec/specs/` 底下的規格（含 `host-runtime`、`command-runtime`、`teamstore-contract`、`client-protocol`
+> 現在的判準只有兩個：能力現況查 [`product-status.zh-TW.md`](../product-status.zh-TW.md)，行為與邊界的正式規格在
+> `openspec/specs/` 底下（含 `host-runtime`、`command-runtime`、`teamstore-contract`、`client-protocol`
 > 與各 `phase*-acceptance`）。方向見面向使用者的 [`roadmap.zh-TW.md`](../roadmap.zh-TW.md)（[English](../roadmap.md)）。
 >
-> 保留本文的理由是它記錄了當時為什麼這樣切、哪些舊路徑被判定為不延伸——這段判斷背景在正典規格裡讀不到。
+> 保留本文的理由是它記錄了當時為什麼這樣切、哪些舊路徑被判定為不延伸——這段判斷背景在正式規格裡讀不到。
 > 讀它請當成歷史紀錄，不是計畫書。架構構想的同期文件是
 > [`platform-architecture.zh-TW.md`](platform-architecture.zh-TW.md)。
 
@@ -294,7 +294,7 @@ flowchart LR
 - Engine 規格面不直接讀 git、process env 或憑證。
 - stable task ID 在 reorder/edit 後不變。
 - VerifyEvidence 帶 spec/policy/task basis；basis 改變即拒絕或標 stale。
-- Context Projection 可刪除重建，且修改 projection 不會改遠端正典。
+- Context Projection 可刪除重建，且修改 projection 不會改遠端的正式規格。
 
 ### Phase 2：Server
 

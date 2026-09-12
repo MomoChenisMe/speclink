@@ -159,7 +159,7 @@ describe("SpecList（規格頁清單）", () => {
 
   it("無 spec 專案顯示空狀態文案", () => {
     renderList([]);
-    expect(screen.getByText("此專案尚無正典規格")).toBeTruthy();
+    expect(screen.getByText("此專案尚無正式規格")).toBeTruthy();
   });
 });
 

@@ -8,7 +8,7 @@
 
 ### Requirement: drift 運算拆分為規格面與工作區面純函式
 
-drift 的五維度運算 SHALL 拆分為兩段無副作用的純函式：規格面運算只消費 Store 的規格事實（delta、正典規格、created metadata）產出 Specs 維度與規格假設；工作區面運算只消費明確傳入的 WorkspaceFacts 結構產出 Time、Structure、Tasks、Environment 四維度。兩段運算 SHALL NOT 呼叫 git、讀取 process 環境或執行任何 I/O 副作用；本機 git 與 worktree 事實的蒐集 SHALL 由 Host 側蒐集器承擔。
+drift 的五維度運算 SHALL 拆分為兩段無副作用的純函式：規格面運算只消費 Store 的規格事實（delta、正式規格、created metadata）產出 Specs 維度與規格假設；工作區面運算只消費明確傳入的 WorkspaceFacts 結構產出 Time、Structure、Tasks、Environment 四維度。兩段運算 SHALL NOT 呼叫 git、讀取 process 環境或執行任何 I/O 副作用；本機 git 與 worktree 事實的蒐集 SHALL 由 Host 側蒐集器承擔。
 
 #### Scenario: 規格面運算不觸本機事實
 
@@ -43,7 +43,7 @@ drift 的五維度運算 SHALL 拆分為兩段無副作用的純函式：規格�
 ---
 ### Requirement: DriftBundle 固定漂移檢查的基準
 
-Host SHALL 提供 DriftBundle 產生：內容含 project 與 repo binding、change 名、spec 與 tasks 與 policy 的 basis digests、created metadata、design 與 tasks 內容、task evidence 摘要與產生時間（序列化欄位 camelCase）。同一 workspace 狀態下重複產生 SHALL 得到相同的 basis digests。drift 為診斷結果，SHALL NOT 寫回正典或任何規格文件。
+Host SHALL 提供 DriftBundle 產生：內容含 project 與 repo binding、change 名、spec 與 tasks 與 policy 的 basis digests、created metadata、design 與 tasks 內容、task evidence 摘要與產生時間（序列化欄位 camelCase）。同一 workspace 狀態下重複產生 SHALL 得到相同的 basis digests。drift 為診斷結果，SHALL NOT 寫回正式規格或任何規格文件。
 
 #### Scenario: bundle 基準可重現且不寫檔
 

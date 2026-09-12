@@ -1,6 +1,6 @@
 # 設定說明
 
-> **文件狀態**：本文描述目前已實作的本地 workspace 設定介面。遠端模式的 workflow policy 以具版本的 Store 為正典，本機 override 不得靜默覆寫團隊政策。規則的正典有兩份：`openspec/specs/workflow-config` 管欄位與解析順序，`openspec/specs/server-policy-write` 管遠端讀寫與授權。
+> **文件狀態**：本文描述目前已實作的本地 workspace 設定介面。遠端模式的 workflow policy 以具版本的 Store 為正典，本機 override 不得靜默覆寫團隊政策。規則的正式規格有兩份：`openspec/specs/workflow-config` 管欄位與解析順序，`openspec/specs/server-policy-write` 管遠端讀寫與授權。
 
 Speclink 的設定分散在兩個檔案與一個目錄，各自有明確的歸屬規則：
 

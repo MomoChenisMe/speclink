@@ -19,7 +19,7 @@ export interface SpecDrawerProps {
   capability: string | null;
   /** 刷新世代——遞增即就地重載（不清空、latest-wins；未傳＝0）。 */
   refreshGen?: number;
-  /** 讀取正典 spec.md 全文（capability 定址）；缺件回 null。 */
+  /** 讀取正式規格 spec.md 全文（capability 定址）；缺件回 null。 */
   loadDocument: (capability: string) => Promise<string | null>;
   /** 封存變更清單（host 自 store 帶入，開工作區即全量載入）：把 @trace 來源變更名對應到
    * 封存目錄名與封存日期（drawer-provenance-links design D2）；缺席／空＝全部籤不可點。 */
@@ -64,7 +64,7 @@ function resolveTraceItems(
 }
 
 /** 唯讀規格抽屜（spec「桌面 app 呈現 change 與 spec 的清單與內容」）：標頭為標題列
- * （capability 名＋複製名稱鈕）與出身列（「來自」＋溯源變更籤），內文為正典 spec.md 全文。
+ * （capability 名＋複製名稱鈕）與出身列（「來自」＋溯源變更籤），內文為正式規格 spec.md 全文。
  * 寬度與全螢幕切換與變更詳情抽屜同款；開啟／換目標清空全量載入、世代重載不清空
  * 且 latest-wins 防交錯（design D3，與 RichDetailDrawer 的 loadAll 模式同款）。 */
 export function SpecDrawer({

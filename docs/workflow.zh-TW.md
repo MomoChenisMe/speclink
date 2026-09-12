@@ -18,7 +18,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 工具：validate / analyze / audit / commit / config / manual
 ```
 
-- `baseline` 只用於既有程式首次建立「目前行為」正典 specs。
+- `baseline` 只用於既有程式首次建立「目前行為」正式規格。
 - `discuss` 與 `improve` 都是選用的收斂入口，差別在題目誰帶：**你帶題目走 `discuss`，要模型幫你找題目走 `improve`**。
 - `propose → apply ⇄ ingest → archive` 是變更的主生命週期。
 - 兩道品質關卡（`review`、`verify`）互不依賴，依風險自由組合。低風險變更兩道都跳過也是正當選擇。
@@ -42,13 +42,13 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 | 想改善程式碼但講不出要改哪裡嗎？ | 是 | `improve`，讓模型掃描並提出候選。 |
 | 新需求已明確嗎？ | 是／否 | 明確就 `propose`；仍需取捨就 `discuss`。 |
 
-既有 codebase 尚無正典 specs 時，在上述流程前先做一次 `baseline`；它不會建立變更，也不描述未來理想。
+既有 codebase 尚無正式規格時，在上述流程前先做一次 `baseline`；它不會建立變更，也不描述未來理想。
 
 ## Lifecycle and utilities / 生命週期與工具
 
 | Kind / 類型 | Stages / 階段 | Meaning / 意義 |
 | --- | --- | --- |
-| Main lifecycle / 主生命週期 | `propose`、`apply`、`ingest`、`archive` | 變更從規劃、實作、需求更新到合併正典。 |
+| Main lifecycle / 主生命週期 | `propose`、`apply`、`ingest`、`archive` | 變更從規劃、實作、需求更新到合併進正式規格。 |
 | Conditional / 條件式 | `baseline`、`discuss`、`improve`、`drift`、worktree 流程 | 只有既有程式初始建規格、需求需收斂、閒置續作，或要平行推多個變更時使用。 |
 | Quality stations / 品質關卡 | `review`、`verify`、`quality` | 封存前的兩道選用關卡：工藝與合規，各自落工單並蓋章。 |
 | Utilities / 工具 | `validate`、`analyze`、`audit`、`commit`、`config`、`manual` | 檢查結構、artifact 一致性、安全 sharp edges、變更範圍提交、工作流設定與從規格生成的手冊。 |
@@ -59,14 +59,14 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 ### baseline
 
-- **Purpose / 目的**：從現有 code 與 tests 建立當前行為的正典 specs，作為後續變更的規格基準（舊稱 onboard）。
+- **Purpose / 目的**：從現有 code 與 tests 建立當前行為的正式規格，作為後續變更的規格基準（舊稱 onboard）。
 - **Use / 使用**：採用 Speclink 的既有 codebase 尚無 specs，或只需補未覆蓋能力。
-- **Skip / 跳過**：已有足夠正典 specs，或要描述的是新需求而非現況。
+- **Skip / 跳過**：已有足夠正式規格，或要描述的是新需求而非現況。
 - **Input / 輸入**：README、entry points、source、tests、以 `speclink workflow-config show --json` 取得的 workflow config（專案說明 `context`、`specLocale` 與 specs 產出規則 `rules.specs`）與使用者確認的 capability map。
 - **Outputs / 產物**：直接寫入 `openspec/specs/<capability>/spec.md`；不建立變更。
 - **Claude**：`/speclink-baseline [scope]`。
 - **Codex**：`$speclink-baseline [scope]`。
-- **CLI/Host**：沒有 `speclink baseline` 子指令。Agent 盤點後寫正典 specs，再以 `speclink validate --specs --all --strict` 檢查。
+- **CLI/Host**：沒有 `speclink baseline` 子指令。Agent 盤點後寫正式規格，再以 `speclink validate --specs --all --strict` 檢查。
 - **Done / 完成**：能力邊界已由使用者確認，specs 有可溯源的行為證據且 strict validation 通過。
 - **Next / 下一步**：新需求走 `propose`；模糊的新需求先 `discuss`。
 - **Recover / 恢復**：發現既有 spec 需修改時，不在 baseline 重寫，另開變更。
@@ -244,15 +244,15 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 ### archive
 
-- **Purpose / 目的**：將 delta specs 合併到正典 specs，封存完成的變更與關聯討論。
+- **Purpose / 目的**：將 delta specs 合併到正式規格，封存完成的變更與關聯討論。
 - **Use / 使用**：任務全部完成、artifacts valid、假設未過期，且你選擇要跑的品質關卡已結案。
 - **Skip / 跳過**：有未完成任務、stale delta、`validate` 未過，或需求還在變。
 - **Input / 輸入**：ready 的變更、完整 final-state deltas 與完成證據。
-- **Outputs / 產物**：更新後的正典 specs、`openspec/changes/archive/` 記錄；最後一個存活變更封存時，關聯討論一併封存。已蓋章的變更封存時不含工單檔；只有未結工單會經 `--carry-review`／`--carry-verify` 隨封存移動。
+- **Outputs / 產物**：更新後的正式規格、`openspec/changes/archive/` 記錄；最後一個存活變更封存時，關聯討論一併封存。已蓋章的變更封存時不含工單檔；只有未結工單會經 `--carry-review`／`--carry-verify` 隨封存移動。
 - **Claude**：`/speclink-archive <change>`。
 - **Codex**：`$speclink-archive <change>`。
 - **CLI/Host**：`speclink archive <change>`；不要用 `--no-validate` 或 `--mark-tasks-complete` 規避未完成工作。
-- **Done / 完成**：CLI 成功、正典 spec delta 統計正確、變更已移入 archive。
+- **Done / 完成**：CLI 成功、正式規格的 delta 統計正確、變更已移入 archive。
 - **Next / 下一步**：需要時以變更範圍的提交把封存結果留下來。
 - **Recover / 恢復**：delta 不完整時先正規化。假設過期就回 `drift` 或 `ingest`，不要強制封存。還有一個常見地雷：MODIFIED 區塊是整塊取代，所以改了 scenario 名稱等於未宣告的刪除。validate 與 analyze 都抓不到，要到封存才炸——補一則 `REMOVED-SCENARIO` 註解明示。
 
@@ -327,10 +327,10 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 ### manual
 
-- **Purpose / 目的**：從正典規格生成 `openspec/manual/` 的 wiki 式操作手冊，或在對話中導覽系統怎麼操作。
+- **Purpose / 目的**：從正式規格生成 `openspec/manual/` 的 wiki 式操作手冊，或在對話中導覽系統怎麼操作。
 - **Use / 使用**：需要一份給人讀的操作手冊，或新人想被帶著走一遍系統時；封存後想確認手冊是否可能過期時也用它。
 - **Skip / 跳過**：專案尚無使用者面向的規格，或沒有人要讀手冊。
-- **Input / 輸入**：正典規格（`openspec/specs/`）與既有手冊頁的 frontmatter；不讀 README、docs 或程式碼。
+- **Input / 輸入**：正式規格（`openspec/specs/`）與既有手冊頁的 frontmatter；不讀 README、docs 或程式碼。
 - **Outputs / 產物**：生成模式寫出 `openspec/manual/*.md`（含首頁與來源頁），並回報可能過期的頁與未入冊能力；導覽模式零寫檔。
 - **Claude**：`/speclink-manual`（生成）、`/speclink-manual 導覽`（導覽）。
 - **Codex**：`$speclink-manual`。

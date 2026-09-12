@@ -1238,7 +1238,7 @@ fn one_violating_capability_leaves_every_capability_untouched() {
 
 #[test]
 fn all_snapshots_land_before_any_canonical_write() {
-    // spec Scenario「snapshot 先於正典寫入」：對第一個 capability 的正典寫入注入
+    // spec Scenario「snapshot 先於正式規格寫入」：對第一個 capability 的正式規格寫入注入
     // 失敗；順序正確時第二個 capability 的 snapshot 已在磁碟上（交錯寫入則不會）。
     let root = temp_root("write-order");
     let ws = Workspace { root: root.clone(), spec_dir_name: "openspec".to_string() };
@@ -1456,7 +1456,7 @@ fn the_placeholder_skeleton_survives_as_an_unreachable_branch() {
 
 #[test]
 fn delta_purpose_never_rewrites_an_existing_canonical_purpose() {
-    // spec Scenario「既有正典 Purpose 不受 delta 影響」。
+    // spec Scenario「既有正式規格 Purpose 不受 delta 影響」。
     let delta = "## Purpose\n\n這段不該進正典。\n\n## ADDED Requirements\n\n### Requirement: Brand new\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
     let store = merge_store(&[("auth", delta)], &[("auth", CANON_R1)]);
     let change = crate::model::find_change(&store, "demo").unwrap();

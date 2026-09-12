@@ -609,7 +609,7 @@ test('release.yml 的 engine 三 job：版號前置把關、重用建置、發�
 // 搬移前的路徑；`openspec/discussions` 與 CHANGELOG.md 同理是歷史記錄。
 const SCAN_SKIP_DIRS = new Set(['.git', 'node_modules', 'target', 'dist', '.speclink', '.dev']);
 const SCAN_SKIP_PATHS = new Set(['openspec/changes', 'openspec/discussions', 'CHANGELOG.md']);
-// 反例文件（正典規格得逐字寫出舊形路徑）以行標記豁免，否則規格自己就是命中。
+// 反例文件（正式規格得逐字寫出舊形路徑）以行標記豁免，否則規格自己就是命中。
 const PATH_GUARD_ALLOW = 'path-guard:allow';
 const NUL = String.fromCharCode(0);
 

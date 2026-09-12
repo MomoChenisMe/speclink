@@ -14,8 +14,8 @@ Speclink 是一套 SDD（規格驅動開發，Spec-Driven Development）引擎�
 ## 三個核心觀念
 
 1. **變更（change）與產物**：每一件要做的事都是一個變更。變更底下有提案、設計、任務清單與規格差異（delta）這些產物。任務勾完、品質關卡蓋章後，變更就能封存。
-2. **正典規格與封存**：`openspec/specs/` 是系統現況的唯一真相。封存把變更的規格差異併進正典，之後所有人讀到的都是併入後的版本。
-3. **本地與 remote 兩條路**：本地模式把一切存在你的 repo 裡，純 Markdown 與 YAML。remote 模式把正典放在 server 上的 Store，本機只有唯讀投影，團隊成員用帳號與 membership 共用同一份資料。
+2. **正式規格與封存**：`openspec/specs/` 是系統現況的唯一真相。封存把變更的規格差異併進正式規格，之後所有人讀到的都是併入後的版本。
+3. **本地與 remote 兩條路**：本地模式把一切存在你的 repo 裡，純 Markdown 與 YAML。remote 模式把正式規格放在 server 上的 Store，本機只有唯讀投影，團隊成員用帳號與 membership 共用同一份資料。
 
 ## 依角色選入口
 
@@ -60,6 +60,6 @@ Speclink 是一套 SDD（規格驅動開發，Spec-Driven Development）引擎�
 4. 日常管理：[瀏覽器後台](web-console.md)、[管理面與稽核](server-admin.md)、[備份與還原](server-backup.md)
 
 > [!NOTE]
-> 本手冊只取材自 `openspec/specs/` 的正典規格，沒有截圖。畫面若與手冊不同，以實際產品為準。來源與已知矛盾請看[本手冊的來源](about.md)。手冊也能在桌面 app 的「手冊」頁閱讀，見[桌面 app 的手冊頁](desktop-manual.md)。
+> 本手冊只取材自 `openspec/specs/` 的正式規格，沒有截圖。畫面若與手冊不同，以實際產品為準。來源與已知矛盾請看[本手冊的來源](about.md)。手冊也能在桌面 app 的「手冊」頁閱讀，見[桌面 app 的手冊頁](desktop-manual.md)。
 
 **出處**：本頁為導覽頁，不直接取材自單一能力；各頁末行列出自己的出處。

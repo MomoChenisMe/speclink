@@ -336,8 +336,8 @@ pub fn has_delta_operation(text: &str) -> bool {
 /// 非 bytes）——中文 Purpose 不因 UTF-8 多位元組被高估。
 pub const MIN_PURPOSE_LENGTH: usize = 50;
 
-/// archive 建立新正典規格時、delta 未提供 Purpose 所寫入的佔位文案前綴
-/// （design D5）。佔位產生器、正典規格驗證與桌面清單的佔位偵測共用這一份。
+/// archive 建立新正式規格時、delta 未提供 Purpose 所寫入的佔位文案前綴
+/// （design D5）。佔位產生器、正式規格驗證與桌面清單的佔位偵測共用這一份。
 pub const PURPOSE_TBD_PREFIX: &str = "TBD - created by archiving";
 
 /// Purpose 不合格的兩種樣態（design D1）。合格＝`purpose_defect` 回 `None`。
@@ -389,7 +389,7 @@ pub fn purpose_content(text: &str) -> Option<String> {
 
 /// 合格判準的單一定義（design D1）：存在 `## Purpose` 區段、內容非空、且
 /// trim 後達 [`MIN_PURPOSE_LENGTH`] 字元。change 驗證的早期檢查、封存守門與
-/// 正典規格驗證都問這一個函式，不合格的定義只有一份。
+/// 正式規格驗證都問這一個函式，不合格的定義只有一份。
 pub fn purpose_defect(text: &str) -> Option<PurposeDefect> {
     match purpose_content(text) {
         None => Some(PurposeDefect::Missing),

@@ -2,9 +2,9 @@
 
 **繁體中文** · [English](product-status.md)
 
-最後查核日期：**2026-08-27**。本文是「目前能不能用」的正典。行為與邊界的正典則是 `openspec/specs/` 底下的規格，[專案路線圖](roadmap.zh-TW.md)則描述對使用者有意義的方向。
+最後查核日期：**2026-08-27**。本文是「目前能不能用」的正典。行為與邊界的正式規格則在 `openspec/specs/` 底下，[專案路線圖](roadmap.zh-TW.md)則描述對使用者有意義的方向。
 
-檔案、crate 或正典 spec 單獨存在，不代表交付路徑已完整。
+檔案、crate 或正式規格單獨存在，不代表交付路徑已完整。
 
 要從全新本地資料實際操作 Remote Server、Desktop 與 CLI，請依
 [Remote 入門](remote-getting-started.zh-TW.md)完成 setup、membership、登入、workspace 與恢復測試。
@@ -18,7 +18,7 @@
 
 ## Local and Remote / 本地與遠端能力對照
 
-兩條路徑的差異集中在這一張表，不必跨文件拼湊。表中的 Remote Store 一欄以官方參考 server `speclink-server` 為量測對象；遠端模式本身由 Host 與 Protocol 契約定義，自建 server 端同樣適用這些欄位。CLI 動詞的模式歸屬由[動詞契約正典](../openspec/specs/verb-contract/spec.md)單點宣告。絕大多數動詞是 **Dual**：本地與遠端各有一臂，缺任一臂就構成建置失敗。只有 `demo` 限本地，`claim` 限遠端。
+兩條路徑的差異集中在這一張表，不必跨文件拼湊。表中的 Remote Store 一欄以官方參考 server `speclink-server` 為量測對象；遠端模式本身由 Host 與 Protocol 契約定義，自建 server 端同樣適用這些欄位。CLI 動詞的模式歸屬由[動詞契約的正式規格](../openspec/specs/verb-contract/spec.md)單點宣告。絕大多數動詞是 **Dual**：本地與遠端各有一臂，缺任一臂就構成建置失敗。只有 `demo` 限本地，`claim` 限遠端。
 
 | Capability / 能力 | Local Repo | Remote Store | Note / 說明 |
 | --- | --- | --- | --- |
@@ -58,8 +58,8 @@
 | Server operations | Available（可用） | native／Docker／Compose、health/readiness、backup／verify-backup／restore | [部署文件](server-deployment.zh-TW.md)<br>[Backup E2E tests](../crates/host/speclink-server/tests/it/admin/backup_e2e.rs) | 備份目前要求維護窗口；沒有滾動升級或 cluster 操作。 | 2026-08-13 |
 | MCP and Copilot in-process tools | Planned（規劃中） | 尚無可安裝的 Copilot tools 套件或 MCP adapter | [目前 workspace package inventory](../package.json)<br>[方向與可觀察下一步](roadmap.zh-TW.md) | 不得把架構示意當成目前套件；後續需完成 tool adapter、身分收口與端到端測試。 | 2026-08-13 |
 | SSO, runtime plugins and cluster mode | Planned（規劃中） | 尚無可用入口 | [方向與可觀察下一步](roadmap.zh-TW.md) | 屬後續平台／生態能力，尚未排定先後；目前 Server 與 drivers 的正式定位仍是單一 instance。 | 2026-08-13 |
-| Legacy remote REST v1 | Deprecated（已棄用） | 歷史 remote client prototype | [歷史 prototype crate](../crates/protocol/speclink-remote/src/lib.rs)<br>[現行 Client Protocol 正典](../openspec/specs/client-protocol/spec.md) | 不作為新 Client Protocol 的相容負擔或正式 Server contract；新文件只說明遷移方向，不引導讀者走此路徑。 | 2026-08-13 |
-| Advanced verb-contract user guide | Available（可用） | [動詞與旗標契約](verb-contract.zh-TW.md)（中英兩版） | [Canonical verb contract](../openspec/specs/verb-contract/spec.md)<br>[Client Protocol spec](../openspec/specs/client-protocol/spec.md) | 文件已建立，涵蓋動詞的模式歸屬、兩模式輸出同形與端點契約；正典仍以 specs 為準，文件隨其更新。 | 2026-08-13 |
+| Legacy remote REST v1 | Deprecated（已棄用） | 歷史 remote client prototype | [歷史 prototype crate](../crates/protocol/speclink-remote/src/lib.rs)<br>[現行 Client Protocol 正式規格](../openspec/specs/client-protocol/spec.md) | 不作為新 Client Protocol 的相容負擔或正式 Server contract；新文件只說明遷移方向，不引導讀者走此路徑。 | 2026-08-13 |
+| Advanced verb-contract user guide | Available（可用） | [動詞與旗標契約](verb-contract.zh-TW.md)（中英兩版） | [Canonical verb contract](../openspec/specs/verb-contract/spec.md)<br>[Client Protocol spec](../openspec/specs/client-protocol/spec.md) | 文件已建立，涵蓋動詞的模式歸屬、兩模式輸出同形與端點契約；仍以正式規格為準，文件隨其更新。 | 2026-08-13 |
 
 ## Verification baseline / 查核基線
 
@@ -68,8 +68,8 @@
 1. 執行 `speclink --help` 與相關子指令 `--help`，確認 Local／Remote CLI surface。
 2. 執行 `speclink-server --help`，確認 server、identity 與 backup 操作入口。
 3. 比較 `.claude/skills/` 與 `.agents/skills/` 兩個生成面的目錄清單，區分「引擎有 asset」和「目前 Host 已生成技能」。兩邊的差額只有 `speclink-analyze`（僅 Claude 側）；總數則隨 `worktree` 政策而變。
-4. 以[動詞契約正典](../openspec/specs/verb-contract/spec.md)的模式分岔宣告核對本地與遠端對照表——該宣告是單點來源，逐動詞歸屬 ModeFree／Dual／FsOnly／RemoteOnly。
-5. 由 workspace `Cargo.toml`、各 package scripts、integration／E2E／conformance tests 與正典 specs 交叉核對。沒有使用者入口的能力，不得因為 crate 存在就標為 Available。
+4. 以[動詞契約的正式規格](../openspec/specs/verb-contract/spec.md)的模式分岔宣告核對本地與遠端對照表——該宣告是單點來源，逐動詞歸屬 ModeFree／Dual／FsOnly／RemoteOnly。
+5. 由 workspace `Cargo.toml`、各 package scripts、integration／E2E／conformance tests 與正式規格交叉核對。沒有使用者入口的能力，不得因為 crate 存在就標為 Available。
 
 ## Known documentation gap / 已知文件缺口
 

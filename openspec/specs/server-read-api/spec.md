@@ -2,7 +2,7 @@
 
 ## Purpose
 
-server 的唯讀查詢面：scopes 清單依 membership 過濾、正典 spec 內文的讀取、已封存內容的瀏覽端點，以及 workspace 全文搜尋。本 capability 保證任何具身分者都能取得自己可見的 scope 清單、搜尋語意與桌面端對齊，且已封存內容的列舉是 Store 契約的一部分而非各端自行拼裝。
+server 的唯讀查詢面：scopes 清單依 membership 過濾、正式規格內文的讀取、已封存內容的瀏覽端點，以及 workspace 全文搜尋。本 capability 保證任何具身分者都能取得自己可見的 scope 清單、搜尋語意與桌面端對齊，且已封存內容的列舉是 Store 契約的一部分而非各端自行拼裝。
 
 ## Requirements
 
@@ -51,14 +51,14 @@ code:
 -->
 
 ---
-### Requirement: 正典 spec 內文可讀
+### Requirement: 正式規格內文可讀
 
-server SHALL 提供綁定 scope 下正典 spec 內文的讀取端點（capability 定址）：存在回內文、缺席回 404（沿用既有 wire 錯誤詞彙）；SHALL 為唯讀且不觸發任何寫入。
+server SHALL 提供綁定 scope 下正式規格內文的讀取端點（capability 定址）：存在回內文、缺席回 404（沿用既有 wire 錯誤詞彙）；SHALL 為唯讀且不觸發任何寫入。
 
-#### Scenario: 讀取存在的正典 spec
+#### Scenario: 讀取存在的正式規格
 
 - **WHEN** 對已封存合併過的 capability 呼叫 spec 內文端點
-- **THEN** 回應內文與 store 中正典 spec.md 一致
+- **THEN** 回應內文與 store 中正式規格 spec.md 一致
 
 
 <!-- @trace

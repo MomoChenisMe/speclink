@@ -65,7 +65,7 @@ describe("splitDeltaSections", () => {
   });
 
   it("不含任何 delta 區段標題時回整篇單段", () => {
-    const sections = splitDeltaSections("# 正典規格\n\n### Requirement: plain\n");
+    const sections = splitDeltaSections("# 正式規格\n\n### Requirement: plain\n");
     expect(sections.length).toBe(1);
     expect(sections[0].op).toBeNull();
     expect(sections[0].content).toContain("### Requirement: plain");

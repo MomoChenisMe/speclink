@@ -8,12 +8,12 @@ Phase 2 的驗收劇本語意：setup、invite、propose、policy、task done、
 
 ### Requirement: 八環節單一劇本連續可走
 
-SHALL 存在單一連續劇本測試：以真實 CLI binary 對真 server（SQLite driver、tempdir 隔離、無外部服務依賴）依序走完——setup 開箱（stdout token → /setup 建 Admin 與 Project/Repo）、invite 與 PAT 取得、propose（new change 與全部 artifacts）、policy（寫入 workflow config 後 instructions 輸出 SHALL 反映政策變化、改回 SHALL 恢復）、task done 攜 touched files（evidence 記錄與 task-completed 事件 SHALL 同時可查）、context（投影完整且 manifest 驗證通過）、drift（有 checkout 的完整報告）、archive（正典 specs 更新、change 入 archive）。環節 SHALL 共用同一資料庫與帳號，SHALL NOT 各自重新播種。
+SHALL 存在單一連續劇本測試：以真實 CLI binary 對真 server（SQLite driver、tempdir 隔離、無外部服務依賴）依序走完——setup 開箱（stdout token → /setup 建 Admin 與 Project/Repo）、invite 與 PAT 取得、propose（new change 與全部 artifacts）、policy（寫入 workflow config 後 instructions 輸出 SHALL 反映政策變化、改回 SHALL 恢復）、task done 攜 touched files（evidence 記錄與 task-completed 事件 SHALL 同時可查）、context（投影完整且 manifest 驗證通過）、drift（有 checkout 的完整報告）、archive（正式規格更新、change 入 archive）。環節 SHALL 共用同一資料庫與帳號，SHALL NOT 各自重新播種。
 
 #### Scenario: 全鏈劇本綠
 
 - **WHEN** 於乾淨環境執行全鏈劇本測試
-- **THEN** 八環節依序通過；archive 後查詢的正典 specs 含本劇本 change 的 delta 內容；全程共用步驟 (1)-(2) 建立的帳號與 scope
+- **THEN** 八環節依序通過；archive 後查詢的正式規格含本劇本 change 的 delta 內容；全程共用步驟 (1)-(2) 建立的帳號與 scope
 
 #### Scenario: policy 變化可觀察
 

@@ -3,10 +3,10 @@
 //! 檔名」；design「手冊落點 openspec/manual/ 且 list 與 validate 無感」）。
 //!
 //! 手冊是規格的衍生物，與源頭同住 `openspec/`；引擎動詞不得因多出這個目錄而改變
-//! 輸出。以 `speclink init` 建工作區、放一個 change 與一份正典規格後，先記錄各指令
+//! 輸出。以 `speclink init` 建工作區、放一個 change 與一份正式規格後，先記錄各指令
 //! 的 stdout 與 exit code，再放入一頁合規 frontmatter 六欄的 `index.md` 重跑，
 //! stdout 逐位元比對、exit code 皆為 0。`list --json` 只列 changes、`list --specs
-//! --json` 只列正典能力，兩條路徑各守各的。
+//! --json` 只列正式規格的能力，兩條路徑各守各的。
 //!
 //! Credential isolation: 每次執行都把 USERPROFILE/HOME/XDG_CONFIG_HOME 指到
 //! 拋棄式 "home"，測試絕不碰到真實使用者的憑證檔。
@@ -39,7 +39,7 @@ struct TempEnv {
 }
 
 impl TempEnv {
-    /// `speclink init --tools claude` 後補一個 change `demo` 與一份正典規格 `search`，
+    /// `speclink init --tools claude` 後補一個 change `demo` 與一份正式規格 `search`，
     /// 讓 list 與 validate 的輸出都非空。
     fn new(tag: &str) -> TempEnv {
         let base = std::env::temp_dir().join(format!(
@@ -144,7 +144,7 @@ fn list_specs_json_is_unchanged_by_the_manual_dir() {
     let before = env.run(&["list", "--specs", "--json"]);
     assert!(
         String::from_utf8_lossy(&before.stdout).contains("search"),
-        "對照組必須列出正典規格，否則比對無意義"
+        "對照組必須列出正式規格，否則比對無意義"
     );
 
     env.write_manual_index();
@@ -159,7 +159,7 @@ fn validate_specs_is_unchanged_by_the_manual_dir() {
     let before = env.run(&["validate", "--specs", "--no-color"]);
     assert!(
         String::from_utf8_lossy(&before.stdout).contains("search"),
-        "對照組必須點名正典規格，否則比對無意義"
+        "對照組必須點名正式規格，否則比對無意義"
     );
 
     env.write_manual_index();

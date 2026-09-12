@@ -94,7 +94,7 @@ code:
 ---
 ### Requirement: 桌面 app 呈現 change 與 spec 的清單與內容
 
-桌面 app SHALL 呈現當前專案的 change 清單（含每個 change 的 proposal 與 tasks 完成度狀態）與 spec 清單，並 SHALL 於使用者選定任一 change 或 spec 時顯示其對應 markdown 文件內容（change 的 proposal/design/tasks、spec 的 spec.md）。spec 的選定 SHALL 開啟唯讀規格抽屜——呈現正典 spec.md 全文與溯源資訊，寬度與全螢幕切換與變更詳情抽屜一致，開啟期間內容隨外部檔案變更反映；規格清單 SHALL NOT 提供行內展開。規格抽屜的標頭 SHALL 為兩層：標題列（capability 名，其後緊跟複製名稱鈕，複製後 SHALL 有已複製回饋）與出身列（前綴「來自」＋溯源變更籤）。溯源變更籤 SHALL 自正典全文的 `@trace` 來源變更名聚合去重；封存清單中有對應的變更名 SHALL 為可點籤、副標為封存日期，第一顆籤 SHALL 為封存日期最早的變更，其餘依封存日期升冪收進「+N」數字籤（N 為未直接顯示的數量），點擊「+N」SHALL 開啟浮層列出其餘全部；封存清單中無對應的變更名 SHALL 呈現為不可點籤、副標「無封存記錄」，並排在所有可點籤之後。點擊任一可點籤（含浮層項）SHALL 開啟該封存變更的唯讀抽屜——規格抽屜依 detail 抽屜互斥關閉、底層頁面 SHALL 維持不變。正典全文無 `@trace` 來源時出身列 SHALL 缺席；內文底部 SHALL NOT 再有溯源文字行。出身列 SHALL 恆定單行、SHALL NOT 撐寬抽屜。清單與狀態資料的欄位與值 SHALL 與對應 CLI `--json` 輸出一致；自檔案系統衍生的呈現層輔助欄位（如 spec 的最後修改時間、需求數、Purpose 摘要、溯源變更數）不屬此對齊範圍，SHALL NOT 出現在 CLI 輸出對照要求中。
+桌面 app SHALL 呈現當前專案的 change 清單（含每個 change 的 proposal 與 tasks 完成度狀態）與 spec 清單，並 SHALL 於使用者選定任一 change 或 spec 時顯示其對應 markdown 文件內容（change 的 proposal/design/tasks、spec 的 spec.md）。spec 的選定 SHALL 開啟唯讀規格抽屜——呈現正式規格 spec.md 全文與溯源資訊，寬度與全螢幕切換與變更詳情抽屜一致，開啟期間內容隨外部檔案變更反映；規格清單 SHALL NOT 提供行內展開。規格抽屜的標頭 SHALL 為兩層：標題列（capability 名，其後緊跟複製名稱鈕，複製後 SHALL 有已複製回饋）與出身列（前綴「來自」＋溯源變更籤）。溯源變更籤 SHALL 自正式規格全文的 `@trace` 來源變更名聚合去重；封存清單中有對應的變更名 SHALL 為可點籤、副標為封存日期，第一顆籤 SHALL 為封存日期最早的變更，其餘依封存日期升冪收進「+N」數字籤（N 為未直接顯示的數量），點擊「+N」SHALL 開啟浮層列出其餘全部；封存清單中無對應的變更名 SHALL 呈現為不可點籤、副標「無封存記錄」，並排在所有可點籤之後。點擊任一可點籤（含浮層項）SHALL 開啟該封存變更的唯讀抽屜——規格抽屜依 detail 抽屜互斥關閉、底層頁面 SHALL 維持不變。正式規格全文無 `@trace` 來源時出身列 SHALL 缺席；內文底部 SHALL NOT 再有溯源文字行。出身列 SHALL 恆定單行、SHALL NOT 撐寬抽屜。清單與狀態資料的欄位與值 SHALL 與對應 CLI `--json` 輸出一致；自檔案系統衍生的呈現層輔助欄位（如 spec 的最後修改時間、需求數、Purpose 摘要、溯源變更數）不屬此對齊範圍，SHALL NOT 出現在 CLI 輸出對照要求中。
 
 #### Scenario: 顯示 change 清單與狀態
 
@@ -106,19 +106,19 @@ code:
 - **WHEN** 使用者在清單中選定一個 change
 - **THEN** app 顯示該 change 的 proposal 內容，並可切換檢視其 design 與 tasks（若存在）
 
-#### Scenario: 選定 spec 以抽屜顯示其正典內容
+#### Scenario: 選定 spec 以抽屜顯示其正式規格內容
 
 - **WHEN** 使用者於規格頁點擊一張規格卡
-- **THEN** 開啟唯讀規格抽屜顯示該 spec 的正典 spec.md 全文，標頭為標題列與出身列，溯源變更以籤呈現於出身列，內文底部無溯源文字行，清單卡片無行內展開，抽屜寬度與變更詳情抽屜一致
+- **THEN** 開啟唯讀規格抽屜顯示該 spec 的正式規格 spec.md 全文，標頭為標題列與出身列，溯源變更以籤呈現於出身列，內文底部無溯源文字行，清單卡片無行內展開，抽屜寬度與變更詳情抽屜一致
 
 #### Scenario: 溯源籤依封存日期排序且首籤為出身
 
-- **WHEN** 使用者開啟一份正典全文含三個 `@trace` 來源變更、且三者皆在封存清單中的規格抽屜
+- **WHEN** 使用者開啟一份正式規格全文含三個 `@trace` 來源變更、且三者皆在封存清單中的規格抽屜
 - **THEN** 出身列顯示「來自」、封存日期最早的變更籤與「+2」籤；點擊「+2」開啟浮層依封存日期升冪列出其餘兩個，每項主行為變更名、副標為封存日期
 
 ##### Example: 三個來源變更的排序
 
-| 正典全文出現序 | 變更名 | 封存日期 | 呈現位置 |
+| 正式規格全文出現序 | 變更名 | 封存日期 | 呈現位置 |
 | --- | --- | --- | --- |
 | 1 | drawer-polish | 2026-08-04 | 浮層第 1 項 |
 | 2 | spec-archive-drawer | 2026-07-11 | 第一顆籤（出身） |
@@ -131,12 +131,12 @@ code:
 
 #### Scenario: 無封存記錄的來源變更不可點
 
-- **WHEN** 使用者開啟一份正典全文含兩個 `@trace` 來源變更、其中一個不在封存清單中的規格抽屜
+- **WHEN** 使用者開啟一份正式規格全文含兩個 `@trace` 來源變更、其中一個不在封存清單中的規格抽屜
 - **THEN** 有對應者為第一顆可點籤，無對應者以不可點的灰籤呈現於「+1」浮層中、副標「無封存記錄」，點擊灰籤不開啟任何抽屜
 
 #### Scenario: 無溯源來源時出身列缺席
 
-- **WHEN** 使用者開啟一份正典全文不含任何 `@trace` 註解的規格抽屜
+- **WHEN** 使用者開啟一份正式規格全文不含任何 `@trace` 註解的規格抽屜
 - **THEN** 標頭只有標題列，無「來自」列，內文底部亦無溯源文字
 
 #### Scenario: 複製名稱鈕
@@ -1601,11 +1601,11 @@ code:
 ---
 ### Requirement: 規格頁提供清單、搜尋與展開檢視
 
-左側導覽的「規格」項 SHALL 進入規格頁，以卡片清單呈現全部正典 spec：每張卡 SHALL 含 spec 名稱、最後修改相對時間（自檔案系統 mtime 衍生，天級：今天／昨天／N 天前；mtime 不可得時該資訊缺席）、複製名稱鈕與展開／縮合控制。規格頁 SHALL 提供搜尋列，以大小寫不敏感的名稱子字串即時過濾清單。點卡片標題 SHALL 展開顯示該 spec 的正典 spec.md 全文（markdown 渲染），再點 SHALL 縮合；全文內容 SHALL 於首次展開時才載入。展開檢視的 spec.md 全文下方 SHALL 顯示一行來源變更 footer，列出該 spec 內所有 @trace 區塊的 source 變更名（去重、依文件首次出現順序）；spec.md 不含任何帶 source 的 @trace 時該 footer SHALL 缺席。此 footer SHALL 僅呈現、SHALL NOT 可點擊，且 SHALL NOT 顯示 @trace 的 updated 或 code。無 spec 的專案與搜尋無結果 SHALL 各顯示空狀態文案。規格頁 SHALL 為唯讀，SHALL NOT 提供任何規格寫入操作。
+左側導覽的「規格」項 SHALL 進入規格頁，以卡片清單呈現全部正式規格：每張卡 SHALL 含 spec 名稱、最後修改相對時間（自檔案系統 mtime 衍生，天級：今天／昨天／N 天前；mtime 不可得時該資訊缺席）、複製名稱鈕與展開／縮合控制。規格頁 SHALL 提供搜尋列，以大小寫不敏感的名稱子字串即時過濾清單。點卡片標題 SHALL 展開顯示該 spec 的正式規格 spec.md 全文（markdown 渲染），再點 SHALL 縮合；全文內容 SHALL 於首次展開時才載入。展開檢視的 spec.md 全文下方 SHALL 顯示一行來源變更 footer，列出該 spec 內所有 @trace 區塊的 source 變更名（去重、依文件首次出現順序）；spec.md 不含任何帶 source 的 @trace 時該 footer SHALL 缺席。此 footer SHALL 僅呈現、SHALL NOT 可點擊，且 SHALL NOT 顯示 @trace 的 updated 或 code。無 spec 的專案與搜尋無結果 SHALL 各顯示空狀態文案。規格頁 SHALL 為唯讀，SHALL NOT 提供任何規格寫入操作。
 
 #### Scenario: 進入規格頁顯示卡片清單
 
-- **WHEN** 於含多個正典 spec 的專案點左側導覽「規格」
+- **WHEN** 於含多個正式規格的專案點左側導覽「規格」
 - **THEN** 導覽項呈 active 樣式，主內容顯示全部 spec 卡片，各含名稱與最後修改相對時間
 
 #### Scenario: 搜尋列名稱過濾
@@ -1621,7 +1621,7 @@ code:
 | desktop-app、desktop-config、node-sdk | SDK | node-sdk |
 | desktop-app、desktop-config、node-sdk | zzz | 無結果空狀態 |
 
-#### Scenario: 展開卡片顯示正典全文
+#### Scenario: 展開卡片顯示正式規格全文
 
 - **WHEN** 點一張縮合卡片的標題
 - **THEN** 卡片展開顯示該 spec 的 spec.md 全文 markdown 渲染（首次展開先呈載入態），再點標題即縮合，其他已展開卡片不受影響
@@ -1646,7 +1646,7 @@ code:
 
 #### Scenario: 無 spec 專案顯示空狀態
 
-- **WHEN** 於無任何正典 spec 的專案進入規格頁
+- **WHEN** 於無任何正式規格的專案進入規格頁
 - **THEN** 顯示空狀態文案而非空白頁
 
 #### Scenario: 外部變更後反映
@@ -1934,7 +1934,7 @@ updated: 2026-09-03
 ---
 ### Requirement: 規格與封存卡片收合資訊
 
-規格卡 SHALL 於標題文字後緊跟複製名稱鈕，並顯示需求數、溯源變更數與相對修改時間；Purpose 摘要 SHALL 取正典 Purpose 區段首個非空行一行截斷顯示，當 Purpose 為封存流程產生的佔位文字時 SHALL 改顯「Purpose 待補」警示樣式而非佔位原文。封存變更卡 SHALL 顯示日期、標題（change 名）後緊跟複製鈕、任務數徽章（未全完成 SHALL 以警示樣式呈現，與全完成可辨；無 tasks.md 者不顯示徽章）、觸及規格數、建立者標記（hover 顯示全名）與來源討論標記（無來源討論時缺席）；標題下方 SHALL 有描述列，一行截斷顯示封存 proposal 的 Why 首句（清單資料的 Why 首句欄位缺席時描述列 SHALL 缺席、卡片退回單行）——與看板變更卡的描述列同構。封存討論卡 SHALL 以 slug 為標題（等寬強調、緊跟複製 slug 鈕），topic SHALL 降為標題下方的描述列一行截斷顯示，並顯示日期、輪數與衍生變更數——與看板討論卡的 slug 標題＋topic 描述同構（slug 作為討論識別錨點屬 LANGUAGE.md 受控例外的既有適用範圍）。三種卡片的計數 meta（需求數、溯源變更數、觸及規格數、衍生變更數）SHALL 以一致的「icon＋數字」樣式呈現——SHALL NOT 混用 pill 底色或無 icon 的圓圈數字；任務數徽章 SHALL 維持 pill 樣式與配色分級（狀態語意例外）。上述資訊 SHALL 於收合狀態（未開啟任何抽屜）即可見，資料 SHALL 由清單載入一次帶出，SHALL NOT 逐卡讀取文件全文。
+規格卡 SHALL 於標題文字後緊跟複製名稱鈕，並顯示需求數、溯源變更數與相對修改時間；Purpose 摘要 SHALL 取正式規格 Purpose 區段首個非空行一行截斷顯示，當 Purpose 為封存流程產生的佔位文字時 SHALL 改顯「Purpose 待補」警示樣式而非佔位原文。封存變更卡 SHALL 顯示日期、標題（change 名）後緊跟複製鈕、任務數徽章（未全完成 SHALL 以警示樣式呈現，與全完成可辨；無 tasks.md 者不顯示徽章）、觸及規格數、建立者標記（hover 顯示全名）與來源討論標記（無來源討論時缺席）；標題下方 SHALL 有描述列，一行截斷顯示封存 proposal 的 Why 首句（清單資料的 Why 首句欄位缺席時描述列 SHALL 缺席、卡片退回單行）——與看板變更卡的描述列同構。封存討論卡 SHALL 以 slug 為標題（等寬強調、緊跟複製 slug 鈕），topic SHALL 降為標題下方的描述列一行截斷顯示，並顯示日期、輪數與衍生變更數——與看板討論卡的 slug 標題＋topic 描述同構（slug 作為討論識別錨點屬 LANGUAGE.md 受控例外的既有適用範圍）。三種卡片的計數 meta（需求數、溯源變更數、觸及規格數、衍生變更數）SHALL 以一致的「icon＋數字」樣式呈現——SHALL NOT 混用 pill 底色或無 icon 的圓圈數字；任務數徽章 SHALL 維持 pill 樣式與配色分級（狀態語意例外）。上述資訊 SHALL 於收合狀態（未開啟任何抽屜）即可見，資料 SHALL 由清單載入一次帶出，SHALL NOT 逐卡讀取文件全文。
 
 #### Scenario: 規格卡收合資訊
 

@@ -100,7 +100,7 @@ updated: 2026-09-07T12:40:29+08:00
 
 #### Scenario: 錨定失效的頁不走只換時戳
 
-- **WHEN** 手冊已存在，一頁 sources 為 `["desktop-app#舊段名"]` 而正典已把該 Requirement 改名
+- **WHEN** 手冊已存在，一頁 sources 為 `["desktop-app#舊段名"]` 而正式規格已把該 Requirement 改名
 - **THEN** 該頁整頁重寫、sources 改為現行標題並計入「重生」，不計入「只換時戳」
 
 #### Scenario: 錨定頁不受他段封存影響

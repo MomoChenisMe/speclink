@@ -53,12 +53,12 @@ code:
 ---
 ### Requirement: change 縮小與 flow 透傳
 
-請求指定 change 時，documents SHALL 涵蓋：該 change 的全部 artifacts、該 change 的 delta specs、全部正典 specs、config 與 LANGUAGE；指定的 change 不存在 SHALL 回 404 not_found。未指定 change SHALL 回全量投影內容（正典 specs、全部 changes 的文件、config、LANGUAGE）。flow 欄位 SHALL 原樣透傳而 SHALL NOT 影響 server 的文件集——依流程縮小維持 materializer 職責。
+請求指定 change 時，documents SHALL 涵蓋：該 change 的全部 artifacts、該 change 的 delta specs、全部正式規格、config 與 LANGUAGE；指定的 change 不存在 SHALL 回 404 not_found。未指定 change SHALL 回全量投影內容（正式規格、全部 changes 的文件、config、LANGUAGE）。flow 欄位 SHALL 原樣透傳而 SHALL NOT 影響 server 的文件集——依流程縮小維持 materializer 職責。
 
 #### Scenario: change 縮小的文件集完備
 
-- **WHEN** 對含兩個 changes 與三個正典 specs 的 scope 以 change A 請求快照
-- **THEN** documents 含 A 的 artifacts 與 delta specs、全部三個正典 specs、config 與 LANGUAGE；不含 change B 的文件
+- **WHEN** 對含兩個 changes 與三個正式規格的 scope 以 change A 請求快照
+- **THEN** documents 含 A 的 artifacts 與 delta specs、全部三個正式規格、config 與 LANGUAGE；不含 change B 的文件
 
 #### Scenario: 未知 change 拒絕
 

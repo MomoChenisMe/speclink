@@ -229,4 +229,4 @@ docker compose exec server speclink-server invite \
 
 - [Server 備份、還原與驗證](server-backup.zh-TW.md)——backup/verify-backup/restore 的完整語意與排程範例
 - [Server Store Driver 選型](server-store-drivers.zh-TW.md)——sqlite/serverfs/postgres 的組態欄位、前提與 fail closed 條件
-- 發布形態、secret 紀律與開箱流程的正典是 `openspec/specs/` 的 `server-release`、`server-setup` 與 `reference-server`
+- 發布形態、secret 紀律與開箱流程的正式規格是 `openspec/specs/` 的 `server-release`、`server-setup` 與 `reference-server`

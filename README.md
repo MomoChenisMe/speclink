@@ -67,7 +67,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 桌面 app 與 CLI 是**同一套引擎的兩種用法，擇一即可**。想看看板、規格與討論，就裝桌面 app。不需要圖形介面，或要把 Speclink 放進腳本與 CI，就只裝 CLI——功能不打折。
 
-Server 是第三個東西，**只有團隊要共用同一份規格正典時才需要**。一個人在自己 repo 裡用，完全不必碰它。
+Server 是第三個東西，**只有團隊要共用同一份正式規格時才需要**。一個人在自己 repo 裡用，完全不必碰它。
 
 **桌面 app**——到 [Releases](https://github.com/MomoChenisMe/speclink/releases/latest) 下載對應平台的安裝檔：
 
@@ -120,7 +120,7 @@ Windows 的安裝檔目前未經程式碼簽章，首次執行時 SmartScreen �
 
 預設使用 SQLite、資料落在 `./speclink-data`（容器內為 `/data`）。環境變數、PostgreSQL profile 與升級回退見[Server 部署](docs/server-deployment.zh-TW.md)。
 
-**遠端模式不綁這一份 server。** 規格正典放在哪、由誰守，是 Host 與 Protocol 兩份公開契約定義的；官方 server 只是照這兩份契約做出來的一個實作。要接自家的認證、資料庫或權限模型，就拿 Speclink 引擎自己寫一個 server 端，CLI 與桌面 app 照樣接得上。契約見 `openspec/specs/` 的 `client-protocol` 與 `host-runtime`，載入引擎的方式見 [Node SDK](docs/sdk-node.zh-TW.md)。
+**遠端模式不綁這一份 server。** 正式規格放在哪、由誰守，是 Host 與 Protocol 兩份公開契約定義的；官方 server 只是照這兩份契約做出來的一個實作。要接自家的認證、資料庫或權限模型，就拿 Speclink 引擎自己寫一個 server 端，CLI 與桌面 app 照樣接得上。契約見 `openspec/specs/` 的 `client-protocol` 與 `host-runtime`，載入引擎的方式見 [Node SDK](docs/sdk-node.zh-TW.md)。
 
 ## Local Repo quick start / Local Repo 快速開始
 
@@ -137,10 +137,10 @@ speclink list
 ## Deployment paths / 部署路徑
 
 - **Local Repo**：Embedded Rust Runtime → FsStore → `openspec/` → Git；適合單一 repo、本機與離線協作。
-- **Remote Store**：CLI／Desktop／其他 Client → Speclink Host → 同一 Rust Runtime → TeamStore；適合共享規格正典、集中認證、revision、交易與事件。中間那個 Host 可以是官方的 `speclink-server`，也可以是你自己照 Protocol 做的實作。
+- **Remote Store**：CLI／Desktop／其他 Client → Speclink Host → 同一 Rust Runtime → TeamStore；適合共享正式規格、集中認證、revision、交易與事件。中間那個 Host 可以是官方的 `speclink-server`，也可以是你自己照 Protocol 做的實作。
 
 Remote Store 不會同步成第二份可寫的本地真相。有 checkout 的 Agent 只讀 `.speclink/context/`，遠端寫入仍走
-Host command。這些邊界的正典是 `openspec/specs/` 底下的規格，例如 `host-runtime`、`client-protocol`、
+Host command。這些邊界的正式規格在 `openspec/specs/` 底下，例如 `host-runtime`、`client-protocol`、
 `teamstore-contract` 與 `context-projection`。從 setup 到登入的完整操作見
 [Remote 入門](docs/remote-getting-started.zh-TW.md)。
 
@@ -154,7 +154,7 @@ Host command。這些邊界的正典是 `openspec/specs/` 底下的規格，例�
 | [完整 SDD 工作流](docs/workflow.zh-TW.md) | 每一站的用途、對應技能、完成判準與下一站 |
 | [專案能力狀態](docs/product-status.zh-TW.md) | 可用／部分可用／規劃中／已棄用，附證據與限制 |
 
-**要團隊共用一份規格正典才需要**
+**要團隊共用一份正式規格才需要**
 
 | 文件 | 用途 |
 | --- | --- |

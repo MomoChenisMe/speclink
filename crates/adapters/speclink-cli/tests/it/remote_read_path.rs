@@ -436,7 +436,7 @@ fn instructions_apply_materializes_the_projection_from_the_context_api() {
         );
     }
 
-    // 投影以 Context API 為來源：含正典 specs 與 delta specs（不再只有三個 artifact）。
+    // 投影以 Context API 為來源：含正式規格與 delta specs（不再只有三個 artifact）。
     for rel in [
         "openspec/changes/demo/proposal.md",
         "openspec/changes/demo/design.md",
