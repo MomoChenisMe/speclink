@@ -303,13 +303,15 @@ pub enum Command {
     /// `discuss search <keyword>...` — keywords are matched any-of, case-insensitive.
     DiscussSearch { terms: Vec<String> },
     // --- 變更群 ---
-    /// `new change <name> [--description] [--schema] [--agent] [--from-discussion]`
+    /// `new change <name> [--description] [--schema] [--agent] [--from-discussion] [--last]`;
+    /// `last` only means something with `from_discussion` (the CLI binds the two).
     NewChange {
         name: String,
         description: Option<String>,
         schema: Option<String>,
         agent: Option<String>,
         from_discussion: Option<String>,
+        last: bool,
     },
     /// `new artifact <type> [capability] [--change <name>] [--force] [--new]`;
     /// `content` is the CLI's `--stdin` payload, `new_capability` the `--new`
@@ -380,12 +382,12 @@ pub enum Command {
     },
     /// `discuss conclude <slug> [--hold]` with stdin content
     DiscussConclude { slug: String, content: String, hold: bool },
-    /// `discuss promote <slug> [--name <change>]`
-    DiscussPromote { slug: String, name: Option<String> },
+    /// `discuss promote <slug> [--name <change>] [--last]`
+    DiscussPromote { slug: String, name: Option<String>, last: bool },
     /// `discuss link <slug> --change <change>`
     DiscussLink { slug: String, change: String },
-    /// `discuss seal <slug> --change <change>`
-    DiscussSeal { slug: String, change: String },
+    /// `discuss seal <slug> <change> [--last]`
+    DiscussSeal { slug: String, change: String, last: bool },
     /// `discuss archive <slug>`
     DiscussArchive { slug: String },
     /// `discuss discard <slug> [--force]`
@@ -740,8 +742,8 @@ pub fn execute(
             // The engine's only refusal here is an empty/blank keyword list —
             // an argv defect (the server maps it to 400 invalid_argument).
             .map_err(|e| CommandError::new(ErrorCode::InvalidArgv, e.to_string())),
-        Command::NewChange { name, description, schema, agent, from_discussion } => {
-            run_new_change(store, ctx.actor.as_deref(), name, description, schema, agent, from_discussion)
+        Command::NewChange { name, description, schema, agent, from_discussion, last } => {
+            run_new_change(store, ctx.actor.as_deref(), name, description, schema, agent, from_discussion, last)
         }
         Command::NewArtifact { kind, capability, change, content, force, new_capability } => {
             run_new_artifact(store, ws, ctx.user_config_dir.as_deref(), &kind, capability.as_deref(), change.as_deref(), content.as_deref(), force, new_capability)
@@ -795,8 +797,8 @@ pub fn execute(
                 held: outcome.held,
             }))
         }
-        Command::DiscussPromote { slug, name } => {
-            let o = crate::discuss::promote(store, &slug, name.as_deref(), ctx.actor.as_deref())
+        Command::DiscussPromote { slug, name, last } => {
+            let o = crate::discuss::promote(store, &slug, name.as_deref(), ctx.actor.as_deref(), last)
                 .map_err(classify)?;
             Ok(CommandOutcome::DiscussPromote(DiscussPromoteOutcome {
                 slug,
@@ -808,8 +810,8 @@ pub fn execute(
             crate::discuss::link(store, &slug, &change).map_err(classify)?;
             Ok(CommandOutcome::DiscussLink(DiscussBindOutcome { slug, change }))
         }
-        Command::DiscussSeal { slug, change } => {
-            crate::discuss::seal(store, &slug, &change).map_err(classify)?;
+        Command::DiscussSeal { slug, change, last } => {
+            crate::discuss::seal(store, &slug, &change, last).map_err(classify)?;
             Ok(CommandOutcome::DiscussSeal(DiscussBindOutcome { slug, change }))
         }
         Command::DiscussArchive { slug } => {
@@ -1380,6 +1382,7 @@ fn run_new_change(
     schema: Option<String>,
     agent: Option<String>,
     from_discussion: Option<String>,
+    last: bool,
 ) -> Result<CommandOutcome, CommandError> {
     // Default schema comes from openspec/config.yaml; the name is NOT validated
     // here (downstream commands fail on resolution).
@@ -1398,7 +1401,7 @@ fn run_new_change(
         }
         // The discussion-side link is computed before the change lands (same order as
         // `discuss::promote`): a record that cannot take it fails with nothing written.
-        linked = crate::discuss::promoted_text(store, slug, &name).map_err(classify)?;
+        linked = crate::discuss::promoted_text(store, slug, &name, last).map_err(classify)?;
     }
     let dir = crate::newcmd::new_change(
         store,

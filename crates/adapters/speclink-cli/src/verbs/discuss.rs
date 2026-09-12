@@ -83,6 +83,10 @@ enum DiscussCommands {
         /// Change name (defaults to the discussion slug)
         #[arg(long)]
         name: Option<String>,
+        /// This is the last cut the conclusion planned: release the record's hold so the
+        /// final archive co-archives the discussion
+        #[arg(long)]
+        last: bool,
         #[arg(long)]
         json: bool,
     },
@@ -99,6 +103,10 @@ enum DiscussCommands {
         slug: String,
         /// Change whose from_discussion already includes this discussion
         change: String,
+        /// This is the last cut the conclusion planned: release the record's hold so the
+        /// final archive co-archives the discussion
+        #[arg(long)]
+        last: bool,
         #[arg(long)]
         json: bool,
     },
@@ -188,11 +196,11 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             )?;
             render_discuss_discard(&o.slug, json)?;
         }
-        DiscussCommands::Promote { slug, name, json } => {
+        DiscussCommands::Promote { slug, name, last, json } => {
             let o: core::command::DiscussPromoteOutcome = run(
                 &store,
                 Some(&ws),
-                core::command::Command::DiscussPromote { slug, name },
+                core::command::Command::DiscussPromote { slug, name, last },
             )?;
             let shown = o.path.to_string_lossy();
             let wire = core::util::to_slash(&o.path);
@@ -211,11 +219,11 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             )?;
             render_discuss_bind(&o.slug, &o.change, DiscussBind::Link, json)?;
         }
-        DiscussCommands::Seal { slug, change, json } => {
+        DiscussCommands::Seal { slug, change, last, json } => {
             let o: core::command::DiscussBindOutcome = run(
                 &store,
                 Some(&ws),
-                core::command::Command::DiscussSeal { slug, change },
+                core::command::Command::DiscussSeal { slug, change, last },
             )?;
             render_discuss_bind(&o.slug, &o.change, DiscussBind::Seal, json)?;
         }
@@ -501,8 +509,8 @@ pub(crate) fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
             let archived_to = ctx.client.discussion_archive(&slug)?.archived_to;
             render_discuss_archive(&slug, &archived_to, json)
         }
-        DiscussCommands::Promote { slug, name, json } => {
-            let change = ctx.client.discussion_promote(&slug, name.as_deref())?.change;
+        DiscussCommands::Promote { slug, name, last, json } => {
+            let change = ctx.client.discussion_promote(&slug, name.as_deref(), last)?.change;
             // 明文分歧（design D5）：新變更目錄是 store 端位置，remote 不印，
             // 與 `new change` 的 Path 行同一條裁定。
             render_discuss_promote(&slug, &change, None, json)
@@ -515,8 +523,8 @@ pub(crate) fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
             let bound = ctx.client.link_discussion(&slug, &change)?;
             render_discuss_bind(&bound.slug, &bound.change, DiscussBind::Link, json)
         }
-        DiscussCommands::Seal { slug, change, json } => {
-            let bound = ctx.client.seal_discussion(&slug, &change)?;
+        DiscussCommands::Seal { slug, change, last, json } => {
+            let bound = ctx.client.seal_discussion(&slug, &change, last)?;
             render_discuss_bind(&bound.slug, &bound.change, DiscussBind::Seal, json)
         }
     }

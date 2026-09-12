@@ -226,10 +226,10 @@ fn conclude_with_hold_json_carries_held_true_without_auto_archived() {
 }
 
 #[test]
-fn staged_spin_out_lifecycle_holds_across_every_cut_until_archived_by_hand() {
+fn staged_spin_out_lifecycle_releases_on_the_last_cut_and_archives_itself() {
     // 規格 Example「分期三刀的生命週期」：alpha 尚未轉出任何變更，以 --hold 結論
-    // 一次後依序轉出並封存三刀——每刀封存後記錄都留在途、封存輸出不列它；最後
-    // 由使用者跑一次 `discuss archive` 明示收尾。
+    // 一次後依序轉出並封存三刀——前兩刀不帶旗標，封存後記錄留在途、封存輸出不列它；
+    // 第三刀 promote 帶 --last 解除旗標，封存它時記錄隨行封存，全程不跑 discuss archive。
     let p = TempProject::with_discussion("lifecycle", "alpha", &open_doc("alpha"));
 
     let out = p.run_stdin(
@@ -241,27 +241,38 @@ fn staged_spin_out_lifecycle_holds_across_every_cut_until_archived_by_hand() {
 
     let mut accumulated = String::new();
     for cut in ["cut-a", "cut-b", "cut-c"] {
-        ok(&p.run(&["discuss", "promote", "alpha", "--name", cut]));
+        let is_last = cut == "cut-c";
+        let mut args = vec!["discuss", "promote", "alpha", "--name", cut];
+        if is_last {
+            args.push("--last");
+        }
+        ok(&p.run(&args));
         if !accumulated.is_empty() {
             accumulated.push_str(", ");
         }
         accumulated.push_str(cut);
         let doc = p.discussion("alpha");
         assert!(doc.contains(&format!("promoted_to: {accumulated}\n")), "依序累加: {doc}");
-        assert!(doc.contains("hold: true"), "旗標全程保留（{cut} 轉出後）: {doc}");
+        assert_eq!(
+            doc.contains("hold: true"),
+            !is_last,
+            "旗標在最後一刀轉出前保留、轉出時解除（{cut}）: {doc}"
+        );
 
         p.finish_tasks(cut);
         let out = p.run(&["archive", cut, "--yes", "--skip-specs"]);
         ok(&out);
         let text = stdout_of(&out);
-        assert!(!text.contains("alpha"), "隨行封存清單不列帶 hold 的討論: {text}");
-        assert!(p.live_exists("alpha"), "{cut} 封存後記錄仍在途");
-        assert!(!p.archived_exists("alpha"));
+        if is_last {
+            assert!(text.contains("Discussion archived: alpha"), "最後一個封存列它: {text}");
+            assert!(!p.live_exists("alpha"), "最後一刀封存後記錄離開在途");
+            assert!(p.archived_exists("alpha"));
+        } else {
+            assert!(!text.contains("alpha"), "隨行封存清單不列帶 hold 的討論: {text}");
+            assert!(p.live_exists("alpha"), "{cut} 封存後記錄仍在途");
+            assert!(!p.archived_exists("alpha"));
+        }
     }
-
-    ok(&p.run(&["discuss", "archive", "alpha"]));
-    assert!(!p.live_exists("alpha"), "使用者明示收尾後記錄離開在途");
-    assert!(p.archived_exists("alpha"));
 }
 
 /// 帶 `hold: true` 的已結論已轉出討論——分期系列在途、下一刀還沒建立。
@@ -354,6 +365,141 @@ fn spin_out_paths_keep_the_hold_flag_and_leave_json_output_unchanged() {
 
     let (shown, doc) = held_vs_plain("seal-json", "gamma", |p| link_then_seal(p, &["--json"]));
     assert_spun_out_and_still_held(&shown, &doc);
+}
+
+/// 對「同一份帶 hold 的記錄」跑同一組指令、一次帶 --last 一次不帶，斷言輸出逐位元
+/// 相同（旗標從不進輸出），回傳帶 --last 那份轉出後的記錄全文。
+fn last_vs_plain(tag: &str, slug: &str, run_it: impl Fn(&TempProject, &[&str]) -> Output) -> String {
+    let with_last = TempProject::with_discussion(&format!("{tag}-last"), slug, &held_doc(slug));
+    let without = TempProject::with_discussion(&format!("{tag}-nolast"), slug, &held_doc(slug));
+    let last_out = run_it(&with_last, &["--last"]);
+    let plain_out = run_it(&without, &[]);
+    ok(&last_out);
+    ok(&plain_out);
+    assert_eq!(
+        normalized_stdout(&with_last, &last_out),
+        normalized_stdout(&without, &plain_out),
+        "--last 不改變輸出"
+    );
+    assert!(without.discussion(slug).contains("hold: true"), "不帶 --last 的對照組仍保留旗標");
+    with_last.discussion(slug)
+}
+
+/// 帶 --last 轉出後的記錄：promoted_to 累加了 cut-b、status 為 promoted、hold 行消失。
+fn assert_spun_out_and_released(doc: &str) {
+    assert!(doc.contains("promoted_to: cut-a, cut-b\n"), "promoted_to 累加: {doc}");
+    assert!(doc.contains("status: promoted"), "status 為 promoted: {doc}");
+    assert!(!doc.contains("hold"), "hold 行整行消失: {doc}");
+}
+
+#[test]
+fn spin_out_paths_with_last_drop_the_hold_and_leave_human_output_unchanged() {
+    // 規格「帶 --last 的轉出解除旗標」：三個轉出路徑帶 --last 都在累加 promoted_to 的
+    // 同一次寫入移除 hold 行；人眼輸出與不帶旗標時逐位元相同。
+    let doc = last_vs_plain("promote-last-human", "alpha", |p, extra| {
+        let mut args = vec!["discuss", "promote", "alpha", "--name", "cut-b"];
+        args.extend_from_slice(extra);
+        p.run(&args)
+    });
+    assert_spun_out_and_released(&doc);
+
+    let doc = last_vs_plain("newchange-last-human", "beta", |p, extra| {
+        let mut args = vec!["new", "change", "cut-b", "--from-discussion", "beta"];
+        args.extend_from_slice(extra);
+        p.run(&args)
+    });
+    assert_spun_out_and_released(&doc);
+
+    let doc = last_vs_plain("seal-last-human", "gamma", |p, extra| link_then_seal(p, extra));
+    assert_spun_out_and_released(&doc);
+}
+
+#[test]
+fn spin_out_paths_with_last_drop_the_hold_and_leave_json_output_unchanged() {
+    // 同上，--json 那一面（`new change` 沒有 --json 旗標，只有兩條路徑）。
+    let doc = last_vs_plain("promote-last-json", "alpha", |p, extra| {
+        let mut args = vec!["discuss", "promote", "alpha", "--name", "cut-b", "--json"];
+        args.extend_from_slice(extra);
+        p.run(&args)
+    });
+    assert_spun_out_and_released(&doc);
+
+    let doc = last_vs_plain("seal-last-json", "gamma", |p, extra| {
+        let mut args = vec!["--json"];
+        args.extend_from_slice(extra);
+        link_then_seal(p, &args)
+    });
+    assert_spun_out_and_released(&doc);
+}
+
+#[test]
+fn promote_with_last_on_a_record_without_hold_matches_the_plain_promote() {
+    // 規格「帶 --last 的轉出解除旗標」第四段：無 hold 行的記錄帶 --last 是無害的
+    // 無操作——記錄與輸出都與不帶旗標的轉出逐位元相同。
+    let with_last = TempProject::with_discussion("nohold-last", "alpha", &open_doc("alpha"));
+    let plain = TempProject::with_discussion("nohold-plain", "alpha", &open_doc("alpha"));
+
+    let last_out = with_last.run(&["discuss", "promote", "alpha", "--name", "cut-a", "--last"]);
+    let plain_out = plain.run(&["discuss", "promote", "alpha", "--name", "cut-a"]);
+    ok(&last_out);
+    ok(&plain_out);
+
+    assert_eq!(with_last.discussion("alpha"), plain.discussion("alpha"), "記錄逐位元相同");
+    assert!(with_last.discussion("alpha").contains("promoted_to: cut-a\n"), "promoted_to 照常累加");
+    assert_eq!(
+        normalized_stdout(&with_last, &last_out),
+        normalized_stdout(&plain, &plain_out),
+        "輸出逐位元相同"
+    );
+}
+
+#[test]
+fn seal_with_last_on_a_listed_change_drops_the_hold_without_touching_promoted_to() {
+    // 規格「已在清單的名字帶 --last 仍解除旗標」：忘了在立最後一刀時帶旗標，對已在
+    // promoted_to 的變更重跑 seal --last 就是不經 conclude 的補救路。
+    let p = TempProject::with_discussion("seal-listed-last", "alpha", &held_doc("alpha"));
+    p.put_change("cut-a", "alpha");
+    let before = p.discussion("alpha");
+    let plain = TempProject::with_discussion("seal-listed-plain", "alpha", &held_doc("alpha"));
+    plain.put_change("cut-a", "alpha");
+
+    let out = p.run(&["discuss", "seal", "alpha", "cut-a", "--last"]);
+    ok(&out);
+    let plain_out = plain.run(&["discuss", "seal", "alpha", "cut-a"]);
+    ok(&plain_out);
+
+    let doc = p.discussion("alpha");
+    assert_eq!(doc, before.replace("hold: true\n", ""), "promoted_to 不變、只少 hold 行");
+    assert_eq!(
+        normalized_stdout(&p, &out),
+        normalized_stdout(&plain, &plain_out),
+        "--last 的 seal 輸出與不帶旗標時逐位元一致"
+    );
+    assert!(plain.discussion("alpha").contains("hold: true"), "不帶 --last 的對照組仍保留旗標");
+
+    let out = p.run(&["archive", "cut-a", "--yes", "--skip-specs"]);
+    ok(&out);
+    assert!(stdout_of(&out).contains("Discussion archived: alpha"), "其後封存 cut-a 隨行封存記錄");
+    assert!(!p.live_exists("alpha"));
+    assert!(p.archived_exists("alpha"));
+}
+
+#[test]
+fn new_change_last_without_from_discussion_is_a_usage_error_that_writes_nothing() {
+    // 規格「new change 的 --last 缺 --from-discussion 被拒」：clap 層拒絕（exit code 2），
+    // stderr 說明相依，變更目錄不存在、討論記錄逐位元不變。
+    let p = TempProject::with_discussion("newchange-last-alone", "alpha", &held_doc("alpha"));
+    let before = p.discussion("alpha");
+
+    let out = p.run(&["new", "change", "beta", "--last"]);
+    assert_eq!(out.status.code(), Some(2), "usage error: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("--from-discussion"),
+        "stderr 說明 --last 需要 --from-discussion: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(!p.dir.join("openspec").join("changes").join("beta").exists(), "不建目錄");
+    assert_eq!(p.discussion("alpha"), before, "記錄逐位元不變");
 }
 
 #[test]

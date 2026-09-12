@@ -40,6 +40,10 @@ struct NewChangeArgs {
     /// Link this change to a discussion document (writes from_discussion metadata)
     #[arg(long = "from-discussion")]
     from_discussion: Option<String>,
+    /// This change is the last cut the discussion's conclusion planned: release the
+    /// record's hold so the final archive co-archives the discussion
+    #[arg(long, requires = "from_discussion")]
+    last: bool,
 }
 #[derive(Args)]
 struct NewArtifactArgs {
@@ -81,6 +85,7 @@ fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
             schema: a.schema.clone(),
             agent: a.agent.clone(),
             from_discussion: a.from_discussion.clone(),
+            last: a.last,
         },
     )?;
     render_new_change(
@@ -166,6 +171,7 @@ fn remote_new_change(ctx: &RemoteCtx, a: &NewChangeArgs) -> Result<()> {
         description: a.description.clone(),
         agent: a.agent.clone(),
         from_discussion: a.from_discussion.clone(),
+        last: a.last,
     })?;
     // Path 行是明文分歧（design D5）：server 端目錄對本機使用者無意義。
     render_new_change(

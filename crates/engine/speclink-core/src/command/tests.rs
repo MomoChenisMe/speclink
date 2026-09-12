@@ -549,6 +549,7 @@ fn new_change_from_discussion_fails_before_the_change_lands_when_the_record_cann
             schema: None,
             agent: None,
             from_discussion: Some("x".to_string()),
+            last: false,
         },
     )
     .unwrap_err();
@@ -569,6 +570,7 @@ fn new_change_reports_exactly_one_change_created_event() {
             schema: None,
             agent: None,
             from_discussion: None,
+            last: false,
         },
     );
     assert_eq!(events.len(), 1, "exactly one event");
@@ -597,6 +599,7 @@ fn failed_new_change_produces_no_events_and_frozen_message() {
             schema: None,
             agent: None,
             from_discussion: None,
+            last: false,
         },
     )
     .expect_err("duplicate name must fail");
@@ -1511,6 +1514,7 @@ fn discuss_verbs_report_their_events() {
             schema: None,
             agent: None,
             from_discussion: None,
+            last: false,
         },
     );
     let (_, ev) = ok(
@@ -1527,6 +1531,7 @@ fn discuss_verbs_report_their_events() {
         Command::DiscussSeal {
             slug: "api-auth".to_string(),
             change: "auth-change".to_string(),
+            last: false,
         },
     );
     assert_eq!(kinds(&ev), ["discussion-sealed"]);
@@ -1586,7 +1591,7 @@ fn promote_reports_promoted_and_change_created() {
     );
     let (_, events) = ok(
         &store,
-        Command::DiscussPromote { slug: "api-auth".to_string(), name: None },
+        Command::DiscussPromote { slug: "api-auth".to_string(), name: None, last: false },
     );
     assert_eq!(kinds(&events), ["discussion-promoted", "change-created"]);
     match (&events[0], &events[1]) {
@@ -1782,6 +1787,7 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
             schema: _,
             agent: _,
             from_discussion: _,
+            last: _,
         } => {}
         Command::NewArtifact { kind: _, capability: _, change: _, content: _, force: _, new_capability: _ } => {}
         Command::TaskDone { task_id: _, change: _, touched_files: _, head_commit: _ } => {}
@@ -1796,9 +1802,9 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
         Command::DiscussContext { slug: _, content: _ } => {}
         Command::DiscussAddRound { slug: _, mode: _, content: _ } => {}
         Command::DiscussConclude { slug: _, content: _, hold: _ } => {}
-        Command::DiscussPromote { slug: _, name: _ } => {}
+        Command::DiscussPromote { slug: _, name: _, last: _ } => {}
         Command::DiscussLink { slug: _, change: _ } => {}
-        Command::DiscussSeal { slug: _, change: _ } => {}
+        Command::DiscussSeal { slug: _, change: _, last: _ } => {}
         Command::DiscussArchive { slug: _ } => {}
         Command::DiscussDiscard { slug: _, force: _ } => {}
         Command::ReviewAddRound { change: _, content: _ } => {}
@@ -1835,6 +1841,7 @@ fn new_change_cmd(name: &str) -> Command {
         schema: None,
         agent: None,
         from_discussion: None,
+        last: false,
     }
 }
 

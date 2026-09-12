@@ -84,7 +84,8 @@ pub fn promote_discussion_at(root: &Path, slug: &str, name: Option<&str>) -> Res
     }
     let ctx = open(root)?;
     let actor = crate::manage::cached_git_identity(&ctx.workspace.root);
-    let outcome = discuss::promote(&ctx.store, slug, name, actor.as_deref())
+    // 桌面「轉為變更」不提供最後一刀標記（design 非目標）：hold 一律不動。
+    let outcome = discuss::promote(&ctx.store, slug, name, actor.as_deref(), false)
         .map_err(|e| e.to_string())?;
     Ok(json!({
         "change": outcome.change,

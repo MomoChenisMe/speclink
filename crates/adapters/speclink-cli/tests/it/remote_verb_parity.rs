@@ -13,6 +13,7 @@ struct Captured {
     method: String,
     path: String,
     query: String,
+    body: String,
 }
 
 struct MockServer {
@@ -44,6 +45,7 @@ fn mock_server(mut routes: Vec<(&'static str, &'static str, u16, String)>) -> Mo
                 method: req.method().to_string(),
                 path: path.clone(),
                 query,
+                body: body.clone(),
             });
             let hit = routes.iter().find(|(m, suffix, _, _)| {
                 req.method().to_string() == *m
@@ -837,6 +839,52 @@ fn remote_discuss_promote_prints_one_line_and_drops_the_path_pair() {
         format!("{fs_first}\n"),
         "remote prints the same first line and nothing else — the Path pair stays fs-only"
     );
+}
+
+#[test]
+fn remote_discuss_promote_last_sends_the_flag_and_prints_like_fs_mode() {
+    // 規格「conclude 以 --hold 保留討論在途」的 remote 面：--last 上 wire 是請求 body 的
+    // `last: true`，人眼輸出與 fs 模式的首行同文本（旗標從不進輸出）。
+    let fs = TempProject::fs("discuss-promote-last-fs");
+    fs.write(
+        "openspec/discussions/auth-scope.md",
+        "---\ntopic: Auth scope\nslug: auth-scope\nstatus: concluded\nhold: true\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n**Decision**: go\n",
+    );
+    let fs_out = fs.run(&["discuss", "promote", "auth-scope", "--last"]);
+    assert!(fs_out.status.success(), "fs stderr: {}", stderr_of(&fs_out));
+    let fs_stdout = stdout_of(&fs_out);
+    let fs_first = fs_stdout.lines().next().expect("fs prints the promoted line");
+    assert!(
+        !std::fs::read_to_string(fs.dir.join("openspec/discussions/auth-scope.md"))
+            .unwrap()
+            .contains("hold"),
+        "fs 模式 --last 解除旗標"
+    );
+
+    let mock = mock_server(vec![(
+        "POST",
+        "/discussions/auth-scope/promote",
+        200,
+        r#"{"change":"auth-scope"}"#.to_string(),
+    )]);
+    let p = TempProject::remote("discuss-promote-last-remote", &mock.base, "backend");
+    let remote_out = p.run(&["discuss", "promote", "auth-scope", "--last"]);
+    assert!(remote_out.status.success(), "remote stderr: {}", stderr_of(&remote_out));
+    assert_eq!(stdout_of(&remote_out), format!("{fs_first}\n"), "remote 首行與 fs 同文本");
+    let sent = mock.find("POST", "/discussions/auth-scope/promote");
+    let body: serde_json::Value = serde_json::from_str(&sent.body).expect("JSON body");
+    assert_eq!(body["last"], serde_json::json!(true), "--last 上 wire: {}", sent.body);
+
+    let mock = mock_server(vec![(
+        "POST",
+        "/discussions/auth-scope/promote",
+        200,
+        r#"{"change":"auth-scope"}"#.to_string(),
+    )]);
+    let p = TempProject::remote("discuss-promote-nolast-remote", &mock.base, "backend");
+    assert!(p.run(&["discuss", "promote", "auth-scope"]).status.success());
+    let sent = mock.find("POST", "/discussions/auth-scope/promote");
+    assert!(!sent.body.contains("last"), "不帶 --last 的 body 逐位元不變: {}", sent.body);
 }
 
 #[test]

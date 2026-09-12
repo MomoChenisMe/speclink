@@ -96,8 +96,9 @@ pub struct DiscussionHead {
     lines: Option<KeyLines>,
     /// 解析當下的四個可寫欄位——`write_back` 只寫與它不同的欄位。
     parsed: Parsed,
-    /// `conclude` 對 hold 是明確重述：即使布林值沒變（例如手寫 `hold: yes` 讀成
-    /// false、再 conclude(false)），任何 `hold:` 行也整行移除。`promote` 不重述。
+    /// `conclude` 與帶 `last` 的 `promote` 對 hold 是明確重述：即使布林值沒變（例如
+    /// 手寫 `hold: yes` 讀成 false、再 conclude(false) 或 promote(_, true)），任何
+    /// `hold:` 行也整行移除。不帶 `last` 的 `promote` 不重述。
     hold_restated: bool,
 }
 
@@ -176,10 +177,17 @@ impl DiscussionHead {
 
     /// 轉出：status 由 Open／Concluded／Unknown 轉 Promoted（已是 Promoted 不動）、
     /// `promoted_to` 去重累加。回 `true`＝累加了新名字；名字已在清單（re-ingest 舊變更
-    /// 的 seal）回 `false`。兩條路都**不碰 hold**——旗標只由不帶 `--hold` 的
-    /// [`conclude`](Self::conclude) 或 `speclink discuss archive` 解除。
-    pub fn promote(&mut self, change: &str) -> bool {
+    /// 的 seal）回 `false`。`last`＝這是結論規劃的最後一刀：不論名字新舊，都把 hold
+    /// 明確重述為 false（`write_back` 因此整行移除 `hold:`）——名字已在清單也解除，
+    /// 忘了在立最後一刀時帶旗標，`seal --last` 才有一條不經 conclude 的補救路。
+    /// 不帶 `last` 的轉出**不碰 hold**：旗標只由不帶 `--hold` 的
+    /// [`conclude`](Self::conclude)、`speclink discuss archive` 或帶 `last` 的轉出解除。
+    pub fn promote(&mut self, change: &str, last: bool) -> bool {
         self.status = Status::Promoted;
+        if last {
+            self.hold = false;
+            self.hold_restated = true;
+        }
         if self.promoted_to.iter().any(|c| c == change) {
             return false;
         }
@@ -802,11 +810,13 @@ fn conclusion_body(text: &str) -> Option<String> {
 /// Mark a discussion as promoted to a change (the discussion side of the bidirectional link).
 /// A discussion can fan out into several changes, so `promoted_to` is a comma-separated
 /// accumulator: repeated promotes append the new change name rather than being dropped.
-/// Accumulating a change leaves the record's `hold: true` flag alone: a staged series
-/// spins out several cuts from one record, so the flag has to outlive every one of them.
-/// Only a `conclude` without `--hold` or a manual `speclink discuss archive` releases it.
-pub fn mark_promoted(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
-    if let Some(out) = promoted_text(store, slug, change)? {
+/// Accumulating a change leaves the record's `hold: true` flag alone unless `last` says
+/// this is the final cut the conclusion planned: a staged series spins out several cuts
+/// from one record, the flag outlives every cut but the last, and the last cut's spin-out
+/// drops it so the final archive co-archives the record. Without `last`, only a
+/// `conclude` without `--hold` or a manual `speclink discuss archive` releases it.
+pub fn mark_promoted(store: &dyn Store, slug: &str, change: &str, last: bool) -> Result<()> {
+    if let Some(out) = promoted_text(store, slug, change, last)? {
         store.write_live_discussion(slug, &out)?;
     }
     Ok(())
@@ -819,15 +829,17 @@ pub fn mark_promoted(store: &dyn Store, slug: &str, change: &str) -> Result<()> 
 /// --from-discussion`) run this BEFORE the change lands, so that failure cannot leave a
 /// half-built change behind that a retry then trips over.
 ///
-/// Spinning out never clears the `hold: true` flag. All three spin-out paths (promote,
-/// `new change --from-discussion`, seal) come through here, so one rule covers them;
+/// All three spin-out paths (promote, `new change --from-discussion`, seal) come through
+/// here, so one rule covers them: spinning out keeps the `hold: true` flag unless `last`
+/// is set, in which case the same write drops it (see [`DiscussionHead::promote`]).
 /// `link` writes no discussion side and keeps the record byte-identical. A held record
-/// therefore stays live across the whole staged series, and the user ends it with one
-/// `speclink discuss archive <slug>` after the last cut is archived.
-pub fn promoted_text(store: &dyn Store, slug: &str, change: &str) -> Result<Option<String>> {
+/// therefore stays live across the whole staged series until the last cut is spun out
+/// with `--last`; a series that forgot the flag is still ended by one
+/// `speclink discuss archive <slug>`.
+pub fn promoted_text(store: &dyn Store, slug: &str, change: &str, last: bool) -> Result<Option<String>> {
     let text = load_live(store, slug)?;
     let mut head = DiscussionHead::parse(&text);
-    head.promote(change);
+    head.promote(change, last);
     head.write_back()
 }
 
@@ -928,6 +940,7 @@ pub fn promote(
     slug: &str,
     name: Option<&str>,
     actor: Option<&str>,
+    last: bool,
 ) -> Result<PromoteOutcome> {
     match info(store, slug) {
         None => bail!("discussion '{slug}' not found — run `speclink discuss new` first"),
@@ -940,7 +953,7 @@ pub fn promote(
     // The discussion-side link is computed first: a record that cannot take it fails
     // here, before any change directory lands (a retry would otherwise hit "already
     // exists" on a half-built change).
-    let linked = promoted_text(store, slug, &change_name)?;
+    let linked = promoted_text(store, slug, &change_name, last)?;
     let schema =
         crate::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())?
             .schema_name();
@@ -1000,7 +1013,7 @@ pub fn link(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
 /// 變更 meta 的 from_discussion 清單已含該 slug（鏈須先由 link／promote／new change
 /// 鑄妥）。守衛失敗回可記錄的 Err，兩側檔案逐位元不變。冪等：promoted_to 已含該變更名
 /// 時 `mark_promoted` 改寫等值內容。
-pub fn seal(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
+pub fn seal(store: &dyn Store, slug: &str, change: &str, last: bool) -> Result<()> {
     match info(store, slug) {
         None => bail!("discussion '{slug}' not found — run `speclink discuss new` first"),
         Some(i) if i.archived => {
@@ -1023,7 +1036,7 @@ pub fn seal(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
     {
         bail!("Change '{change}' is not linked to discussion '{slug}' — run `speclink discuss link` first.");
     }
-    mark_promoted(store, slug, change)?;
+    mark_promoted(store, slug, change, last)?;
     // Sealing is the honest "content landed" act: clear this discussion's re-ingest flag
     // from the change (the seal-side inverse of the conclude-time stamp). Per-slug — a
     // change stale against another discussion keeps that slug pending its own re-seal.

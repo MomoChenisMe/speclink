@@ -269,7 +269,7 @@ fn delete_unlinks_the_promoted_source_discussion() {
     let c = client(&f, &f.editor_pat);
     let slug = c.new_discussion("Auth flow", None, None).expect("new discussion").slug;
     c.discussion_conclude(&slug, "結論：做。", false).expect("conclude");
-    let change = c.discussion_promote(&slug, Some("add-auth-change")).expect("promote").change;
+    let change = c.discussion_promote(&slug, Some("add-auth-change"), false).expect("promote").change;
     assert_eq!(change, "add-auth-change");
     let shown = c.show_discussion(&slug).expect("show discussion");
     assert!(shown.content.contains("add-auth-change"), "promote links the change");

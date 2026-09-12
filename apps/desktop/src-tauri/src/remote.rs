@@ -1606,7 +1606,8 @@ impl RemoteWorkspace {
         slug: &str,
         name: Option<&str>,
     ) -> Result<PromoteDiscussionResponse, RemoteError> {
-        self.run_write(credentials, |client| client.discussion_promote(slug, name))
+        // 桌面「轉為變更」不提供最後一刀標記：wire 的 last 一律 false。
+        self.run_write(credentials, |client| client.discussion_promote(slug, name, false))
     }
 
     pub fn archive_discussion(

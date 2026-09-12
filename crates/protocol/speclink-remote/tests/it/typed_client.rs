@@ -281,6 +281,7 @@ fn create_change_posts_the_typed_request_body() {
         description: None,
         agent: Some("claude".into()),
         from_discussion: None,
+        last: false,
     };
     let resp = client(&mock).create_change(req.clone()).expect("create ok");
     assert_eq!(resp.name, "demo");
@@ -492,17 +493,60 @@ fn discussion_writes_post_typed_bodies() {
 
     let mock5 = serve(200, r#"{"change":"add-auth"}"#);
     let promoted = client(&mock5)
-        .discussion_promote("auth-scope", Some("add-auth"))
+        .discussion_promote("auth-scope", Some("add-auth"), false)
         .expect("promote ok");
     assert_eq!(promoted.change, "add-auth");
     assert_eq!(
         mock5.last().body,
-        serde_json::to_string(&PromoteDiscussionRequest { name: Some("add-auth".into()) })
+        serde_json::to_string(&PromoteDiscussionRequest { name: Some("add-auth".into()), last: false })
             .unwrap()
     );
-    let bare = client(&mock5).discussion_promote("auth-scope", None).expect("promote ok");
+    let bare = client(&mock5).discussion_promote("auth-scope", None, false).expect("promote ok");
     assert_eq!(bare.change, "add-auth");
     assert_eq!(mock5.last().body, "{}", "no explicit name posts the bare object");
+}
+
+#[test]
+fn spin_out_verbs_post_last_true_and_link_stays_flagless() {
+    // client-protocol「typed client 填入 last」：三個轉出方法以 last 為 true 呼叫時
+    // body 含 last: true；link 的 body 與本變更前逐位元一致（永不帶 last）。
+    let mock = serve(200, r#"{"change":"add-auth"}"#);
+    client(&mock)
+        .discussion_promote("auth-scope", Some("add-auth"), true)
+        .expect("promote ok");
+    let cap = mock.last();
+    assert_call(&cap, "POST", "/discussions/auth-scope/promote");
+    assert_eq!(cap.body, r#"{"name":"add-auth","last":true}"#, "promote body 含 last: true");
+
+    let mock = serve(201, r#"{"name":"cut-c","schema":"spec-driven"}"#);
+    client(&mock)
+        .create_change(CreateChangeRequest {
+            name: "cut-c".into(),
+            schema: None,
+            description: None,
+            agent: None,
+            from_discussion: Some("auth-scope".into()),
+            last: true,
+        })
+        .expect("create ok");
+    let cap = mock.last();
+    assert_call(&cap, "POST", "/changes");
+    assert_eq!(
+        cap.body,
+        r#"{"name":"cut-c","fromDiscussion":"auth-scope","last":true}"#,
+        "create change body 含 last: true"
+    );
+
+    let mock = serve(200, r#"{"slug":"auth-scope","change":"add-auth"}"#);
+    client(&mock).seal_discussion("auth-scope", "add-auth", true).expect("seal ok");
+    let cap = mock.last();
+    assert_call(&cap, "POST", "/discussions/auth-scope/seal");
+    assert_eq!(cap.body, r#"{"change":"add-auth","last":true}"#, "seal body 含 last: true");
+
+    client(&mock).link_discussion("auth-scope", "add-auth").expect("link ok");
+    let cap = mock.last();
+    assert_call(&cap, "POST", "/discussions/auth-scope/link");
+    assert_eq!(cap.body, r#"{"change":"add-auth"}"#, "link 永遠不帶 last，body 與本變更前相同");
 }
 
 #[test]
@@ -550,9 +594,9 @@ fn discussion_parity_verbs_post_typed_bodies() {
     assert_call(&cap3, "POST", "/discussions/auth-scope/link");
     assert_eq!(
         cap3.body,
-        serde_json::to_string(&BindDiscussionRequest { change: "add-auth".into() }).unwrap()
+        serde_json::to_string(&BindDiscussionRequest { change: "add-auth".into(), last: false }).unwrap()
     );
-    let sealed = client(&mock3).seal_discussion("auth-scope", "add-auth").expect("seal ok");
+    let sealed = client(&mock3).seal_discussion("auth-scope", "add-auth", false).expect("seal ok");
     assert_eq!(sealed.change, "add-auth");
     assert_call(&mock3.last(), "POST", "/discussions/auth-scope/seal");
 
@@ -607,7 +651,7 @@ fn discussion_parity_verbs_map_a_404_to_the_typed_error() {
     );
     let err = client(&mock).link_discussion("no-such", "demo").unwrap_err();
     assert_eq!(err.reason.as_deref(), Some("not_found"));
-    let err = client(&mock).seal_discussion("no-such", "demo").unwrap_err();
+    let err = client(&mock).seal_discussion("no-such", "demo", false).unwrap_err();
     assert_eq!(err.reason.as_deref(), Some("not_found"));
     let err = client(&mock).in_progress_add("demo").unwrap_err();
     assert_eq!(err.reason.as_deref(), Some("not_found"));
