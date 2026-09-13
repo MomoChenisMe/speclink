@@ -149,7 +149,9 @@ describe("中文正典詞出現在對應畫面（zh-TW）", () => {
 
   it("系統頁使用資料結構版本與待送佇列", async () => {
     renderAt("/admin/system", makeAdminClient());
-    await screen.findByRole("heading", { level: 1, name: "系統" });
+    // 系統頁的 h1 在載入中就已渲染，兩個詞都在資料回來後的區段裡——等區段而非標題，
+    // 否則慢機器（Windows runner）會讀到「載入中…」就斷言。
+    await screen.findByRole("region", { name: "執行環境" });
     const text = visibleText();
     expect(text).toContain("資料結構版本");
     expect(text).toContain("待送佇列");
