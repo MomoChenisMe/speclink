@@ -1,5 +1,15 @@
 # 更新日誌
 
+## 0.4.0（2026-09-13）
+
+### 新功能
+
+- 一份討論分多刀轉出變更時，最後一刀帶 `--last`（`discuss promote`、`new change --from-discussion`、`discuss seal` 都收），最後一個變更封存後討論記錄自動隨行封存，不用再手動跑 `speclink discuss archive`。
+
+### 改善
+
+- 封存後合併的規格在繁中統一叫「正式規格」，與變更裡的「delta 規格」成對；桌面 app 的規格頁、手冊、README 與文件同步改字，英文維持 specs。
+
 ## 0.3.0（2026-09-11）
 
 ### 新功能
