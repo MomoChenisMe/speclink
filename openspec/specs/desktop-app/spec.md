@@ -2170,7 +2170,7 @@ updated: 2026-08-04
 ---
 ### Requirement: 桌面自動更新
 
-desktop SHALL 於啟動後在背景檢查 GitHub Releases 更新端點，並提供手動「檢查更新」入口。發現新版時 SHALL 顯示目標版本並徵得使用者同意後才下載套用；SHALL NOT 靜默安裝。更新包簽章驗證失敗時 SHALL 拒絕安裝並顯示錯誤。檢查失敗（離線、端點不可達）SHALL 靜默，不阻擋啟動、不彈出錯誤。
+desktop SHALL 於啟動後在背景檢查 GitHub Releases 更新端點，並提供手動「檢查更新」入口。主視窗自失焦變為取得焦點時，若距上次檢查（啟動檢查、手動檢查與前景重檢皆計入）已滿 1 小時，desktop SHALL 再於背景檢查一次；未滿 1 小時 SHALL NOT 檢查。前景重檢的呈現規則 SHALL 與啟動時的背景檢查相同；檢查中、下載中或待重啟時 SHALL NOT 重檢。狀態為待同意的更新提示（已發現新版、尚未同意）或安裝失敗的錯誤時 SHALL NOT 重檢，提示與錯誤訊息 SHALL 留到使用者處置，SHALL NOT 被自動重檢清掉。發現新版時 SHALL 顯示目標版本並徵得使用者同意後才下載套用；SHALL NOT 靜默安裝。更新包簽章驗證失敗時 SHALL 拒絕安裝並顯示錯誤。檢查失敗（離線、端點不可達）SHALL 靜默，不阻擋啟動、不彈出錯誤。節流時間戳 SHALL 只存於執行期記憶體，SHALL NOT 持久化。此行為於 macOS／Windows／Linux 一致，不依平台分支。
 
 #### Scenario: 發現新版徵求同意後套用
 
@@ -2192,38 +2192,45 @@ desktop SHALL 於啟動後在背景檢查 GitHub Releases 更新端點，並提�
 - **WHEN** 使用者觸發「檢查更新」且目前已是最新版本
 - **THEN** 介面顯示已是最新，不出現下載動作
 
+#### Scenario: 回到前景逾一小時即重檢
+
+- **WHEN** app 持續執行且距上次檢查已滿 1 小時，期間發布了新版，使用者把主視窗切回前景
+- **THEN** desktop 在背景檢查一次並顯示目標版本等待同意；若已是最新或檢查失敗則不顯示任何提示
+
+##### Example: 開著三小時後切回
+
+- **GIVEN** app 於 09:00 啟動並檢查（當時 0.5.0 為最新），10:30 發布 0.5.1
+- **WHEN** 使用者於 12:00 把主視窗切回前景
+- **THEN** desktop 背景檢查一次，提示顯示目標版本 0.5.1，等待使用者同意
+
+#### Scenario: 回到前景未滿一小時不重檢
+
+- **WHEN** 使用者把主視窗切回前景，而距上次檢查（含使用者剛按過的手動檢查）不滿 1 小時
+- **THEN** desktop 不對端點發出任何請求，介面無變化
+
+##### Example: 節流邊界
+
+| 上次檢查 | 切回前景時刻 | 是否重檢 | 備註 |
+|---|---|---|---|
+| 09:00 | 09:20 | 否 | 未滿 1 小時 |
+| 09:00 | 09:59:59.999 | 否 | 差 1 毫秒 |
+| 09:00 | 10:00:00 | 是 | 剛好滿 1 小時 |
+| 09:00 啟動、09:40 手動檢查 | 10:20 | 否 | 手動檢查重置時間戳 |
+| 從未檢查（啟動檢查尚未進入檢查中） | 任意 | 是 | 無時間戳視為逾時 |
+| 09:00，且 09:30 起處於下載中 | 10:30 | 否 | 下載中不重檢 |
+| 09:00 檢查到新版、提示待同意 | 10:30 | 否 | 待同意的提示留到使用者處置，不被重檢清掉 |
+| 09:00 安裝失敗顯示錯誤 | 10:30 | 否 | 錯誤訊息留到使用者關閉 |
+| 09:00 下載完成待重啟 | 10:30 | 否 | 待重啟不重檢 |
+
+#### Scenario: 開關系統匣面板不觸發重檢
+
+- **WHEN** macOS 使用者開啟或關閉系統匣面板，主視窗焦點狀態不變
+- **THEN** desktop 不進行前景重檢；面板的「詳情／設定／登入」動作聚焦主視窗時才依節流規則判定
+
+
 <!-- @trace
-source: desktop-installer-and-updater
-updated: 2026-07-30
-code:
-  - .github/workflows/release.yml
-  - Cargo.lock
-  - apps/desktop/package.json
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/capabilities/default.json
-  - apps/desktop/src-tauri/src/cli_install.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/tauri.conf.json
-  - apps/desktop/src-tauri/windows/hooks.nsh
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/appSettingsView.test.tsx
-  - apps/desktop/src/__tests__/cliInstall.test.ts
-  - apps/desktop/src/__tests__/updateBanner.test.tsx
-  - apps/desktop/src/__tests__/updater.test.ts
-  - apps/desktop/src/adapter/cliInstall.ts
-  - apps/desktop/src/adapter/updater.ts
-  - apps/desktop/src/components/UpdateBanner.tsx
-  - apps/desktop/src/core/cliInstall.ts
-  - apps/desktop/src/core/updater.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/main.tsx
-  - apps/desktop/src/store.ts
-  - apps/desktop/src/views/AppSettingsView.tsx
-  - package-lock.json
-  - scripts/desktop-sidecar.mjs
-  - scripts/release-latest-json.mjs
-  - scripts/release-latest-json.test.mjs
+source: update-recheck-on-focus
+updated: 2026-09-14T15:46:02+08:00
 -->
 
 ---

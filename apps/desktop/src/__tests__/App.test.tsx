@@ -957,6 +957,85 @@ describe("側欄無常駐版號（desktop-app 規格「側欄導覽結構」）"
   });
 });
 
+// 前景重檢（desktop-app「回到前景逾一小時即重檢」「回到前景未滿一小時不重檢」；
+// design D3）：App 於啟動 effect 訂閱主視窗焦點，只對 focused=true 反應、經 1 小時
+// 節流；卸載取消訂閱。焦點事件經 updater adapter 的可選方法注入，這裡以假 adapter
+// 捕獲 handler 手動觸發。
+describe("主視窗回到前景時重檢更新", () => {
+  const T0 = Date.UTC(2026, 0, 1, 9, 0, 0);
+  const HOUR = 60 * 60 * 1000;
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function focusAdapter() {
+    let handler: ((focused: boolean) => void) | null = null;
+    const unlisten = vi.fn();
+    const adapter = {
+      check: vi.fn().mockResolvedValue(null),
+      relaunch: vi.fn(),
+      onFocusChanged: vi.fn((h: (focused: boolean) => void) => {
+        handler = h;
+        return Promise.resolve(unlisten);
+      }),
+    };
+    return { adapter, unlisten, focus: (focused: boolean) => act(() => handler?.(focused)) };
+  }
+
+  function renderWith(adapter: object) {
+    const ws = fakeWorkspace();
+    ws.openProject = vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
+    return render(
+      <App
+        createSession={makeSession(fakeDataSource())}
+        workspace={ws as never}
+        updater={adapter as never}
+      />,
+    );
+  }
+
+  it("啟動檢查後：focused=false 不查、未滿 1 小時的 focused=true 不查、滿 1 小時才再查一次；卸載取消訂閱", async () => {
+    // 只假 Date：setSystemTime 控制節流判定，setTimeout 等維持真實以免卡住 waitFor。
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(T0);
+    const { adapter, unlisten, focus } = focusAdapter();
+    const { unmount } = renderWith(adapter);
+
+    await waitFor(() => expect(adapter.check).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(adapter.onFocusChanged).toHaveBeenCalledTimes(1));
+
+    vi.setSystemTime(T0 + 30 * 60 * 1000);
+    await focus(true);
+    expect(adapter.check).toHaveBeenCalledTimes(1);
+
+    // 滿 1 小時後先送失焦：節流已放行，仍不可查——證明只對取得焦點反應。
+    vi.setSystemTime(T0 + HOUR);
+    await focus(false);
+    expect(adapter.check).toHaveBeenCalledTimes(1);
+
+    await focus(true);
+    await waitFor(() => expect(adapter.check).toHaveBeenCalledTimes(2));
+
+    unmount();
+    await waitFor(() => expect(unlisten).toHaveBeenCalledTimes(1));
+  });
+
+  it("假 adapter 未提供 onFocusChanged：啟動檢查照常一次、不訂閱、無錯誤", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const adapter = { check: vi.fn().mockResolvedValue(null), relaunch: vi.fn() };
+      renderWith(adapter);
+      await waitFor(() => expect(adapter.check).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(screen.getByRole("complementary")).toBeTruthy());
+      expect(adapter.check).toHaveBeenCalledTimes(1);
+      expect(consoleError).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+});
+
 // 看板骨架只在「活躍 workspace 正在載入」時出現。持久化分頁探測失敗時
 // activeKey 恆 null、loaded 恆 false，整批載入根本不會發生——若只看 loaded，
 // 看板會永久停在骨架卡，比改動前可辨識的空看板更糟。

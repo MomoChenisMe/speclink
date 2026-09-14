@@ -1,0 +1,43 @@
+schema: spec-driven
+created: 2026-09-14
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: update-check-on-focus-and-cli
+started_at: 2026-09-14
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-14
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 9
+reviewed_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: 6b5953e85927179b3e9ad84a0699cfdd1062ab28ec77e95067290506d3a1e1f1
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 768b9ecbc49d7533626b63c1dc661b4c67b659abffafa89e731e485d13793ea8
+  - path: apps/desktop/src/__tests__/updater.test.ts
+    hash: c11886b1032c1f43c669b13be886195507425cce7c58d5da221cebaa6776c869
+  - path: apps/desktop/src/adapter/updater.ts
+    hash: dccc841ffa27a0cdc4324bacfd48616b2f9772871ef4efd93b813a1f65eaf285
+  - path: apps/desktop/src/core/updater.ts
+    hash: 85c359f8d3f927c65e464943cf2e53d1f817580b8feba7eecae24cd87e33896e
+  - path: apps/desktop/src/store.ts
+    hash: ba47da1a1e2543221ed686e520b56275c4ced70e60abd28c0076109dc69f56de
+verified_at: 2026-09-14
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 9
+verified_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: 6b5953e85927179b3e9ad84a0699cfdd1062ab28ec77e95067290506d3a1e1f1
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 768b9ecbc49d7533626b63c1dc661b4c67b659abffafa89e731e485d13793ea8
+  - path: apps/desktop/src/__tests__/updater.test.ts
+    hash: c11886b1032c1f43c669b13be886195507425cce7c58d5da221cebaa6776c869
+  - path: apps/desktop/src/adapter/updater.ts
+    hash: dccc841ffa27a0cdc4324bacfd48616b2f9772871ef4efd93b813a1f65eaf285
+  - path: apps/desktop/src/core/updater.ts
+    hash: 85c359f8d3f927c65e464943cf2e53d1f817580b8feba7eecae24cd87e33896e
+  - path: apps/desktop/src/store.ts
+    hash: ba47da1a1e2543221ed686e520b56275c4ced70e60abd28c0076109dc69f56de
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-14

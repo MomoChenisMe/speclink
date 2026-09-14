@@ -1,0 +1,100 @@
+{
+  "version": 2,
+  "change": "update-recheck-on-focus",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 紅燈：在 apps/desktop/src/__tests__/updater.test.ts 新增 `focusRecheckDue` 測試——lastCheckedAt 為 null 回 true、差 1 毫秒回 false、剛好 `FOCUS_RECHECK_INTERVAL_MS` 回 true、超過回 true；執行 `npm test -w apps/desktop` 確認因函式不存在而紅。",
+      "files": [
+        "apps/desktop/src/__tests__/updater.test.ts"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 綠燈：apps/desktop/src/core/updater.ts 新增常數 `FOCUS_RECHECK_INTERVAL_MS`（3,600,000）與純函式 `focusRecheckDue(lastCheckedAt, now)`，不依賴 Tauri；`npm test -w apps/desktop` 中 1.1 的測試轉綠。",
+      "files": [
+        "apps/desktop/src/core/updater.ts"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 綠燈：apps/desktop/src/adapter/updater.ts 的 `UpdaterAdapter` 新增可選方法 `onFocusChanged`，`tauriUpdaterAdapter()` 以 `getCurrentWindow().onFocusChanged` 實作並把事件 payload 布林值交給 handler；apps/desktop/src/store.ts 新增 closure 變數 `lastCheckedAt`（`checkForUpdates` 於 reducer 真正進入 checking 時寫入 `Date.now()`）與動作 `recheckOnFocus(now?)`（`focusRecheckDue` 為 true 才呼叫 `checkForUpdates(false)`）；2.1 測試全綠，既有「更新 store 接線」測試不改仍綠。",
+      "files": [
+        "apps/desktop/src/adapter/updater.ts",
+        "apps/desktop/src/store.ts"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 紅燈：apps/desktop/src/__tests__/App.test.tsx 新增測試——注入含 `onFocusChanged` 的假 updater adapter（handler 由測試捕獲、回傳可斷言的 unlisten），以 vi.useFakeTimers 與 vi.setSystemTime 讓時間前進 1 小時後觸發 handler(true)，斷言 `check` 被呼叫第二次；觸發 handler(false) 不增加呼叫；卸載元件後 unlisten 被呼叫一次；未提供 `onFocusChanged` 的假 adapter 啟動流程不變。`npm test -w apps/desktop` 確認紅。",
+      "files": [
+        "apps/desktop/src/__tests__/App.test.tsx"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.2 綠燈：apps/desktop/src/App.tsx 的啟動 effect 在 `updater?.onFocusChanged` 存在時訂閱，handler 收到 true 呼叫 `useStore.getState().recheckOnFocus()`，保存 unlisten 的 Promise 並於 cleanup 以 `.then((unlisten) => unlisten())` 取消，訂閱失敗 `.catch(() => {})` 靜默；3.1 測試全綠，既有 App.test.tsx、updateBanner.test.tsx 不改仍綠。",
+      "files": [
+        "apps/desktop/src/App.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M2EXX2DTF8DJ382M5S76RH47",
+      "taskDesc": "1.1 紅燈：在 apps/desktop/src/__tests__/updater.test.ts 新增 `focusRecheckDue` 測試——lastCheckedAt 為 null 回 true、差 1 毫秒回 false、剛好 `FOCUS_RECHECK_INTERVAL_MS` 回 true、超過回 true；執行 `npm test -w apps/desktop` 確認因函式不存在而紅。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "13b9990ddf73ac11d52a668ba552639be559aa18",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/updater.test.ts"
+      ],
+      "recordedAt": "2026-09-14T06:45:40Z"
+    },
+    {
+      "taskId": "tsk_01M2EXX2DTX7D8EGXWK2P9GTQM",
+      "taskDesc": "1.2 綠燈：apps/desktop/src/core/updater.ts 新增常數 `FOCUS_RECHECK_INTERVAL_MS`（3,600,000）與純函式 `focusRecheckDue(lastCheckedAt, now)`，不依賴 Tauri；`npm test -w apps/desktop` 中 1.1 的測試轉綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "13b9990ddf73ac11d52a668ba552639be559aa18",
+      "touchedFiles": [
+        "apps/desktop/src/core/updater.ts"
+      ],
+      "recordedAt": "2026-09-14T06:46:05Z"
+    },
+    {
+      "taskId": "tsk_01M2EXX2DTMX7CQMQJ95QPJR60",
+      "taskDesc": "2.2 綠燈：apps/desktop/src/adapter/updater.ts 的 `UpdaterAdapter` 新增可選方法 `onFocusChanged`，`tauriUpdaterAdapter()` 以 `getCurrentWindow().onFocusChanged` 實作並把事件 payload 布林值交給 handler；apps/desktop/src/store.ts 新增 closure 變數 `lastCheckedAt`（`checkForUpdates` 於 reducer 真正進入 checking 時寫入 `Date.now()`）與動作 `recheckOnFocus(now?)`（`focusRecheckDue` 為 true 才呼叫 `checkForUpdates(false)`）；2.1 測試全綠，既有「更新 store 接線」測試不改仍綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "13b9990ddf73ac11d52a668ba552639be559aa18",
+      "touchedFiles": [
+        "apps/desktop/src/adapter/updater.ts",
+        "apps/desktop/src/store.ts"
+      ],
+      "recordedAt": "2026-09-14T06:46:59Z"
+    },
+    {
+      "taskId": "tsk_01M2EXX2DT65G1KJZ9QV7EA8WA",
+      "taskDesc": "3.1 紅燈：apps/desktop/src/__tests__/App.test.tsx 新增測試——注入含 `onFocusChanged` 的假 updater adapter（handler 由測試捕獲、回傳可斷言的 unlisten），以 vi.useFakeTimers 與 vi.setSystemTime 讓時間前進 1 小時後觸發 handler(true)，斷言 `check` 被呼叫第二次；觸發 handler(false) 不增加呼叫；卸載元件後 unlisten 被呼叫一次；未提供 `onFocusChanged` 的假 adapter 啟動流程不變。`npm test -w apps/desktop` 確認紅。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "13b9990ddf73ac11d52a668ba552639be559aa18",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/App.test.tsx"
+      ],
+      "recordedAt": "2026-09-14T06:48:55Z"
+    },
+    {
+      "taskId": "tsk_01M2EXX2DTPP6EDDN140JZ7A97",
+      "taskDesc": "3.2 綠燈：apps/desktop/src/App.tsx 的啟動 effect 在 `updater?.onFocusChanged` 存在時訂閱，handler 收到 true 呼叫 `useStore.getState().recheckOnFocus()`，保存 unlisten 的 Promise 並於 cleanup 以 `.then((unlisten) => unlisten())` 取消，訂閱失敗 `.catch(() => {})` 靜默；3.1 測試全綠，既有 App.test.tsx、updateBanner.test.tsx 不改仍綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "13b9990ddf73ac11d52a668ba552639be559aa18",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx"
+      ],
+      "recordedAt": "2026-09-14T06:50:12Z"
+    }
+  ]
+}
