@@ -141,7 +141,9 @@ test('win32 不置換：npm 的 .cmd 殼以 node 執行 bin，換成原生檔會
 test('找不到平台 binary 時保留 shim 且不視為錯誤（--ignore-scripts 或子套件缺席的退路）', (t) => {
   const box = sandbox(t, { withPlatformPackage: false });
   const before = readFileSync(box.shim, 'utf8');
-  const outcome = replaceShim({ platform: process.platform, arch: process.arch, shimPath: box.shim });
+  // 平台固定給 linux/x64：win32 在找 binary 之前就先以 reason win32 保留 shim（上一條測試），
+  // 用 host 平台會讓這條在 Windows runner 上驗到的是另一個分支。
+  const outcome = replaceShim({ platform: 'linux', arch: 'x64', shimPath: box.shim });
   assert.deepEqual(outcome, { replaced: false, reason: 'binary-missing' });
   assert.equal(readFileSync(box.shim, 'utf8'), before);
 
