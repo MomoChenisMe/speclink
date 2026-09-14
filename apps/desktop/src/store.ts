@@ -52,6 +52,8 @@ import {
 } from "./assetPrompt";
 import { detectMacOS, type TrayStyle } from "./tray";
 import {
+  focusRecheckAllowed,
+  focusRecheckDue,
   initialUpdaterState,
   reduceUpdater,
   type UpdaterState,
@@ -363,6 +365,11 @@ export interface AppState {
   updater: UpdaterState;
   /** 檢查更新（manual＝手動入口）：自動失敗靜默、手動失敗浮出無法檢查。 */
   checkForUpdates: (manual: boolean) => Promise<void>;
+  /**
+   * 主視窗回到前景時的重檢（desktop-app「回到前景逾一小時即重檢」）：距上次
+   * 檢查（自動或手動皆計）滿 1 小時才走自動檢查；now 未給時取現在時刻。
+   */
+  recheckOnFocus: (now?: number) => Promise<void>;
   /** 使用者同意：下載並套用；簽章驗證失敗轉錯誤態、既有安裝不受影響。 */
   acceptUpdate: () => Promise<void>;
   /** 使用者稍後：回閒置、不下載。 */
@@ -509,6 +516,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     let searchTimer: ReturnType<typeof setTimeout> | null = null;
     // check 找到的待套用更新（承載 plugin 的下載句柄）——閉包層、不進 store state。
     let pendingUpdate: PendingUpdate | null = null;
+    // 上次真正進入檢查中的時刻（前景重檢的節流依據；design D2）——閉包層、不持久化。
+    let lastCheckedAt: number | null = null;
     // 最後一次 CLI 佈署探測（installCli 取 home 與 sidecar 路徑）——閉包層。
     let lastCliProbe: Awaited<ReturnType<CliInstallAdapter["probe"]>> | null = null;
     // remote handshake 世代只屬目前 app 執行期；同 locator 僅最新結果可落地。
@@ -1629,6 +1638,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const before = get().updater;
       const checking = reduceUpdater(before, { type: "checkStarted", manual });
       if (checking === before) return; // 下載中／待重啟不可重檢
+      lastCheckedAt = Date.now();
       set({ updater: checking });
       try {
         const update = await updaterAdapter.check();
@@ -1643,6 +1653,13 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         // 離線／端點不可達：reducer 決定靜默（自動）或浮出（手動）。
         set({ updater: reduceUpdater(get().updater, { type: "checkFailed" }) });
       }
+    },
+    async recheckOnFocus(now) {
+      // now 供測試注入，未給取現在時刻（design D2）；狀態守門讓待同意的提示與
+      // 安裝失敗的錯誤留到使用者處置，不被自動重檢清掉。
+      if (!focusRecheckAllowed(get().updater)) return;
+      if (!focusRecheckDue(lastCheckedAt, now ?? Date.now())) return;
+      await get().checkForUpdates(false);
     },
     async acceptUpdate() {
       const pending = pendingUpdate;

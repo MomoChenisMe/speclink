@@ -366,9 +366,20 @@ function AppInner({
     if (connections) void useStore.getState().refreshConnections();
     // 啟動背景檢查更新（非阻塞；失敗靜默——desktop-app「檢查失敗靜默」）。
     if (updater) void useStore.getState().checkForUpdates(false);
+    // 主視窗回到前景時重檢（desktop-app「回到前景逾一小時即重檢」；design D3）：
+    // 只對取得焦點反應，節流由 store 判定；訂閱失敗（非 Tauri）靜默。unlisten 走
+    // Promise 鏈取消，卸載早於訂閱完成也不漏。
+    const focusUnlisten = updater?.onFocusChanged
+      ? updater
+          .onFocusChanged((focused) => {
+            if (focused) void useStore.getState().recheckOnFocus();
+          })
+          .catch(() => null)
+      : null;
     // CLI 佈署狀態探測（含 AppImage 版本不符的啟動自我修復）。
     if (cliInstall) void useStore.getState().refreshCliInstall();
     return () => {
+      void focusUnlisten?.then((unlisten) => unlisten?.());
       // 卸載時取消漏出的搜尋去抖，杜絕在途 timer 於 store 卸載後才開火。
       useStore.getState().disposeSearch();
     };
