@@ -12,7 +12,7 @@ Release 頁從 21 個檔收成 6 個：universal dmg、universal .app.tar.gz、x
 - **macOS 改為 universal 建置**：`tauri build --target universal-apple-darwin` 產出一個同時跑 Apple Silicon 與 Intel 的 dmg 與 .app.tar.gz；latest.json 的 darwin-aarch64 與 darwin-x86_64 兩鍵指向同一個更新包與同一份簽章；CLI sidecar 以 lipo 合成 universal binary（bundler 要求檔名 speclink-universal-apple-darwin）。
 - **BREAKING：.deb 停止發布**：deb 只服務 Debian 家族的桌面機，不服務無圖形介面的 Linux（它裝的是桌面 app），且 deb 版 app 的自動更新在現況下會失敗（updater 依包型態查 linux-x86_64-deb 鍵，退回 linux-x86_64 後下載到 AppImage 而報 InvalidUpdaterFormat）。桌面 app 的 linux-deb 分支一併清除。
 - **CLI 上 npm 成為唯一 binary 來源**：新增 @speclink/cli 主套件與五個平台子套件（optionalDependencies，比照 @speclink/server 的物化與發布流程）；主套件的 bin 是 JS shim，postinstall 在 macOS／Linux 以原生 binary 原地置換 shim（esbuild 做法），Windows 與 --ignore-scripts 安裝時 shim 以 spawn 執行平台 binary。五個 target 的 CLI 壓縮檔與 SHA256SUMS.txt 離開 Release 頁。
-- **Homebrew 留、改抓 npm**：formula 的 url 改指 registry.npmjs.org 的平台子套件 tgz（homebrew-core 對 Node CLI 的慣例），sha256 由 CI 以 npm pack 產出的 tgz 計算；tap 推送改依賴 CLI 的 npm 發布結果——NPM_TOKEN 缺席時 tap 一併跳過。
+- **Homebrew 留、改抓 npm**：formula 的 url 改指 registry.npmjs.org 的平台子套件 tgz（homebrew-core 對 Node CLI 的慣例），sha256 由 CI 在發布後自 registry 取回的 tgz 計算（重跑時已上架的同版被跳過也不會與 registry 脫節）；tap 推送改依賴 CLI 的 npm 發布結果——NPM_TOKEN 缺席時 tap 一併跳過。
 - **install.sh 留、改抓 npm**：版本問 registry 的 @speclink/cli/latest，下載平台子套件 tgz，以 npm 的 sha512 integrity 驗證，解出 package/speclink 安裝到 ~/.local/bin；服務無圖形介面的 Linux 與 CI。**BREAKING：install.ps1 退役**——Windows 幾乎都有圖形介面，setup.exe 內含 CLI 並管 PATH，其餘走 npm。
 - **下載指南與文件改寫**：對照表改為「macOS 一個檔、Windows 一個檔、Linux 桌面機 AppImage、Linux 伺服器 CLI 一行」；CLI 節列 npm、curl|sh、brew 三條；.sig／壓縮檔／SHA256SUMS 的註記移除，.app.tar.gz 與 latest.json 的「自動更新用」註記保留。
 

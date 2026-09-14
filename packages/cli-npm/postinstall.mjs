@@ -3,17 +3,20 @@
 // 原生 binary——npm 建好的全域 symlink 直接指到原生執行檔，之後每次呼叫零 Node 啟動成本。
 //
 // 不置換的情況一律保留 shim、以 0 結束：Windows（npm 的 .cmd 殼以 node 執行 bin，換成
-// 原生檔會壞）、找不到平台 binary（optionalDependencies 被略過或平台不支援——錯誤留到
-// 執行時由 shim 報，安裝本身不該失敗）。
+// 原生檔會壞）、Yarn（Yarn Berry 一律以 node 執行套件的 bin，非 JS 的 bin 跑不起來；
+// esbuild 同款守門，依 npm_config_user_agent 判斷）、找不到平台 binary（optionalDependencies
+// 被略過或平台不支援——錯誤留到執行時由 shim 報，安裝本身不該失敗）。
 import { chmodSync, copyFileSync, realpathSync, renameSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolveBinary } from './platform.mjs';
 
-/** 置換決策與執行：回傳 {replaced, binary} 或 {replaced: false, reason}。 */
-export function replaceShim({ platform, arch, shimPath }) {
+/** 置換決策與執行：回傳 {replaced, binary} 或 {replaced: false, reason}。userAgent 是
+ * 套件管理器設的 npm_config_user_agent（直接執行時未設定）。 */
+export function replaceShim({ platform, arch, shimPath, userAgent = '' }) {
   if (platform === 'win32') return { replaced: false, reason: 'win32' };
+  if (userAgent.startsWith('yarn/')) return { replaced: false, reason: 'yarn' };
   const binary = resolveBinary(pathToFileURL(shimPath).href, platform, arch);
   if (!binary) return { replaced: false, reason: 'binary-missing' };
 
@@ -44,7 +47,12 @@ const invokedAs = (() => {
 if (invokedAs === import.meta.url) {
   const shimPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'bin', 'speclink');
   try {
-    const outcome = replaceShim({ platform: process.platform, arch: process.arch, shimPath });
+    const outcome = replaceShim({
+      platform: process.platform,
+      arch: process.arch,
+      shimPath,
+      userAgent: process.env.npm_config_user_agent,
+    });
     if (!outcome.replaced) {
       console.log(`speclink: 保留 JS shim（${outcome.reason}）`);
     }

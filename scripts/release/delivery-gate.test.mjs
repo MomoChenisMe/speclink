@@ -354,12 +354,13 @@ test('npm-publish.yml（workflow_call）：NPM_TOKEN 閘門、物化＋pack 或�
   const download = requireStep(job, [/uses: actions\/download-artifact@v4/], 'npm-publish.yml 下載 artifact');
   assert.match(download, /pattern:\s*\$\{\{ inputs\.artifacts \}\}/, '下載面由 artifacts 輸入圈定');
 
-  const pack = requireStep(job, [/npm pack/], 'npm-publish.yml 物化與打包步驟');
-  // 先 pack 再 publish tgz：formula 引用的 sha256 必須算在 registry 上那份 bytes。
+  const pack = requireStep(job, [/name: Materialize and pack/], 'npm-publish.yml 物化與打包步驟');
   assert.match(pack, /if \[ -n "\$MATERIALIZE" \]/, '物化腳本有值才物化＋pack');
   assert.match(pack, /--version "\$VERSION" --binaries input --out npm-out/, '物化腳本以 --version／--binaries／--out 呼叫');
   assert.match(pack, /find input -type f -name '\*\.tgz'/, '無物化腳本時沿用下載到的 tarball，不重新打包');
-  assert.match(pack, /sha256sum \*\.tgz/, '須計算 tgz 的 sha256 清單');
+  // 校驗清單不能算在本次 pack 的 tgz 上：重跑時已上架的同版被跳過，本次重建的 bytes
+  // 不一定等於 registry 那份，formula 指的是 registry 那份。
+  assert.ok(!/sha256sum/.test(pack), '打包步驟不得計算校驗清單（要算在 registry 取回的 tarball 上）');
 
   const publish = requireStep(job, [/name: Publish the platform sub-packages, then the main package/], 'npm-publish.yml 發布步驟');
   assert.match(publish, /EXPECTED="\$\{GITHUB_REF_NAME#v\}"/, '須自 tag 名算出預期版號');
@@ -372,7 +373,14 @@ test('npm-publish.yml（workflow_call）：NPM_TOKEN 閘門、物化＋pack 或�
   const main = requireIndex(publish, 'publish_one "$main_tgz"', 'npm-publish.yml 主套件發布');
   assert.ok(loop < main, '平台子套件必須先於主套件發布');
   assert.match(publish, /npm view "\$MAIN@\$EXPECTED"/, '收尾須以輪詢確認主套件在 registry 可見');
-  assert.match(publish, /published=true/, '成功後必須輸出 published=true');
+  // 校驗清單算在 registry 取回的 tarball 上（npm pack <name>@<version> 抓回的是 registry 原 bytes），
+  // 且在主套件可見之後、published=true 之前——formula 的 sha256 永遠等於 registry 那份。
+  const iVisible = requireIndex(publish, 'npm view "$MAIN@$EXPECTED"', 'npm-publish.yml 可見性輪詢');
+  const iFetch = requireIndex(publish, 'npm pack "$name@$EXPECTED"', 'npm-publish.yml 自 registry 取回 tarball');
+  const iSums = requireIndex(publish, 'sha256sum *.tgz', 'npm-publish.yml 校驗清單');
+  const iPublished = requireIndex(publish, 'published=true', 'npm-publish.yml published 輸出');
+  assert.ok(iVisible < iFetch && iFetch < iSums && iSums < iPublished, '順序須為：等可見 → 自 registry 取回 → 算 sha256 → published=true');
+  assert.match(publish, /registry-tarballs/, '取回的 tarball 須落在獨立目錄，不與本次 pack 的混用');
 
   const upload = requireStep(job, [/uses: actions\/upload-artifact@v4/], 'npm-publish.yml 上傳校驗清單');
   assert.match(upload, /inputs\.sums-artifact != ''/, '校驗清單只在 sums-artifact 有值時上傳');

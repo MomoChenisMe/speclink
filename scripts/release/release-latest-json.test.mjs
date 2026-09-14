@@ -117,6 +117,16 @@ test('額外目錄（linux-aarch64）存在時一併收錄', (t) => {
   assert.equal(manifest.platforms['linux-aarch64']?.signature, 'sig-linux-aarch64');
 });
 
+test('可選目錄（linux-aarch64）存在但缺 .sig 時同樣非零結束（只有「目錄不存在」才放過）', (t) => {
+  const { dir, out } = layout(t, { ...REQUIRED_DIRS, 'linux-aarch64': 'Speclink_0.5.0_aarch64.AppImage' });
+  rmSync(path.join(dir, 'linux-aarch64', 'Speclink_0.5.0_aarch64.AppImage.sig'));
+
+  const result = runScript(['--tag', TAG, '--dir', dir, '--repo', REPO, '--out', out]);
+  assert.notEqual(result.status, 0, '可選目錄有更新包卻缺簽章時必須以非零結束');
+  assert.match(result.stderr, /linux-aarch64/, 'stderr 必須點名缺簽章的目錄');
+  assert.throws(() => readFileSync(out), '缺簽章時不得寫出 latest.json');
+});
+
 test('缺任一必要目錄時以非零結束並點名（fail-closed），不寫出描述檔', (t) => {
   for (const missing of Object.keys(REQUIRED_DIRS)) {
     const partial = { ...REQUIRED_DIRS };

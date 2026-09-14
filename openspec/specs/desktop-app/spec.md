@@ -2236,7 +2236,7 @@ updated: 2026-09-14T15:46:02+08:00
 ---
 ### Requirement: 安裝 CLI 指令到 PATH
 
-desktop SHALL 佈署 CLI 指令並呈現目前狀態（未安裝／已安裝含版本／版本不符）。佈署方式依平台：macOS 於 ~/.local/bin 建立指向 app bundle 內 CLI 的 symlink，且 app 啟動偵測到未安裝或版本不符時 SHALL 自動佈署（symlink 冪等，毋須使用者操作）；Windows 由 NSIS 安裝器將安裝目錄寫入使用者 PATH（app 內僅呈現狀態）；Linux deb 佈署 /usr/bin/speclink；Linux AppImage 將 CLI 複製至 ~/.local/bin，且 app 啟動偵測到版本不符時 SHALL 自動重新佈署。PATH 設定依平台：macOS 於 ~/.local/bin 不在 PATH 時 SHALL 自動追加一行 PATH 匯出至 ~/.zprofile（帶識別註解、冪等、僅缺席時寫一次）；Linux 佈署目錄不在 PATH 時 SHALL 提示加入方式。
+desktop SHALL 佈署 CLI 指令並呈現目前狀態（未安裝／已安裝含版本／版本不符）。佈署方式依平台：macOS 於 ~/.local/bin 建立指向 app bundle 內 CLI 的 symlink，且 app 啟動偵測到未安裝或版本不符時 SHALL 自動佈署（symlink 冪等，毋須使用者操作）；Windows 由 NSIS 安裝器將安裝目錄寫入使用者 PATH（app 內僅呈現狀態）；Linux AppImage 將 CLI 複製至 ~/.local/bin，且 app 啟動偵測到版本不符時 SHALL 自動重新佈署；Linux 非 AppImage 的執行（開發建置或手動解開的 app）SHALL 只以 ~/.local/bin 的 CLI 呈現狀態、不提供佈署動作、啟動不自動佈署。PATH 設定依平台：macOS 於 ~/.local/bin 不在 PATH 時 SHALL 自動追加一行 PATH 匯出至 ~/.zprofile（帶識別註解、冪等、僅缺席時寫一次）；Linux 佈署目錄不在 PATH 時 SHALL 提示加入方式。
 
 #### Scenario: 安裝後 CLI 與 desktop 同版
 
@@ -2268,10 +2268,15 @@ desktop SHALL 佈署 CLI 指令並呈現目前狀態（未安裝／已安裝含�
 - **WHEN** Linux 佈署完成但 ~/.local/bin 不在使用者 PATH
 - **THEN** 介面提示需將該目錄加入 PATH 及加入方式
 
+#### Scenario: Linux 非 AppImage 執行只呈現狀態
+
+- **WHEN** 在 Linux 上以非 AppImage 方式啟動 app（環境無 APPIMAGE 變數）
+- **THEN** 安裝 CLI 介面以 ~/.local/bin/speclink 的偵測結果呈現狀態，不出現佈署動作，啟動不寫入任何檔案
+
 
 <!-- @trace
-source: release-signing-and-channels
-updated: 2026-08-14
+source: release-assets-trim
+updated: 2026-09-14T21:53:29+08:00
 -->
 
 ---

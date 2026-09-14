@@ -158,6 +158,13 @@
         ".github/workflows/npm-publish.yml",
         "scripts/npm/npm-platform-package.mjs"
       ]
+    },
+    {
+      "task_id": "30",
+      "task_desc": "10.2 全面收尾：node --test scripts/*.test.mjs scripts/*/*.test.mjs、npm test -w apps/desktop、cargo test -p speclink-desktop 三組全綠；grep -rn -E \"SHA256SUMS|install\\.ps1|linux-deb|package-managed\" 排除 openspec/changes/archive、openspec/discussions 與 openspec/manual 後只剩 README 的 deb 遷移句與本變更的 artifacts；git status 盤點所有改動檔皆在 proposal 的 Impact 清單內。驗證：三組測試指令輸出 0 failures，grep 結果如上。",
+      "files": [
+        "apps/desktop/src/__tests__/appSettingsView.test.tsx"
+      ]
     }
   ],
   "entries": [
@@ -397,6 +404,17 @@
         "scripts/npm/npm-platform-package.mjs"
       ],
       "recordedAt": "2026-09-14T05:05:21Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX33XN3G2R86W017Z33",
+      "taskDesc": "10.2 全面收尾：node --test scripts/*.test.mjs scripts/*/*.test.mjs、npm test -w apps/desktop、cargo test -p speclink-desktop 三組全綠；grep -rn -E \"SHA256SUMS|install\\.ps1|linux-deb|package-managed\" 排除 openspec/changes/archive、openspec/discussions 與 openspec/manual 後只剩 README 的 deb 遷移句與本變更的 artifacts；git status 盤點所有改動檔皆在 proposal 的 Impact 清單內。驗證：三組測試指令輸出 0 failures，grep 結果如上。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "4fef3cda6cfb0b3d2b538176a1c0c4b0f1638482",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/appSettingsView.test.tsx"
+      ],
+      "recordedAt": "2026-09-14T13:03:19Z"
     }
   ]
 }

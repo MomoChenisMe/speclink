@@ -37,13 +37,17 @@ function parseArgs(argv) {
   return args;
 }
 
-/// 讀出更新包目錄裡的更新包與簽章；任何缺漏都丟出點名該目錄的錯誤。
+/// 讀出更新包目錄裡的更新包與簽章；任何缺漏都丟出點名該目錄的錯誤。目錄不存在的錯誤帶
+/// code MISSING_DIR，可選目錄只放過這一種——目錄在卻缺更新包或缺簽章，一樣是 fail-closed。
 function readPackageEntry(dir, dirName, tag, repo) {
   let files;
   try {
     files = readdirSync(path.join(dir, dirName));
   } catch {
-    throw new Error(`缺少更新包目錄 ${dirName}：找不到子目錄 ${path.join(dir, dirName)}`);
+    throw Object.assign(
+      new Error(`缺少更新包目錄 ${dirName}：找不到子目錄 ${path.join(dir, dirName)}`),
+      { code: 'MISSING_DIR' },
+    );
   }
   const sigs = files.filter((name) => name.endsWith('.sig'));
   if (sigs.length !== 1) {
@@ -71,8 +75,9 @@ function main() {
     try {
       const entry = readPackageEntry(dir, dirName, tag, repo);
       for (const platformKey of platformKeys) platforms[platformKey] = entry;
-    } catch {
-      // 可選目錄缺席不擋發布。
+    } catch (error) {
+      // 可選目錄缺席不擋發布；目錄在但缺更新包或缺簽章仍要擋。
+      if (error.code !== 'MISSING_DIR') throw error;
     }
   }
 

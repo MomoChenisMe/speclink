@@ -10,7 +10,9 @@
 #                  （node-sdk-release spec：發布單位是上游打包好的 tarball）。
 #   main-package   主套件名：平台子套件先發、它最後發，並等它在 registry 可見才算成功。
 #   sums-artifact  有值時把 tarball 的 sha256 清單（<值>.txt）上傳為此名的 artifact——CLI 用它
-#                  把校驗清單交給 tap-publish，formula 的 sha256 算在 registry 上那份 bytes。
+#                  把校驗清單交給 tap-publish。清單算在發布後自 registry 取回的 tarball 上，
+#                  不是本次 pack 的：重跑時已上架的同版會被跳過，本次重建的 bytes 不一定
+#                  等於 registry 那份，而 formula 指的是 registry 那份。
 #
 # 語意（三條通路一致）：排在 Release 之後、不是發布的前置條件；NPM_TOKEN 缺席時各步跳過而
 # job 綠、輸出 published=false；存在而發布失敗時紅燈、可單獨重跑。冪等：發到一半失敗或 tag
@@ -89,22 +91,19 @@ jobs:
         shell: bash
         env:
           MATERIALIZE: ${{ inputs.materialize }}
-          SUMS_ARTIFACT: ${{ inputs.sums-artifact }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p tarballs
           if [ -n "$MATERIALIZE" ]; then
             node "$MATERIALIZE" --version "$VERSION" --binaries input --out npm-out
-            # 先 pack 再 publish tgz：formula 引用的 sha256 必須算在 registry 上那份 bytes，
-            # 而 npm publish <tgz> 上傳的就是它。
+            # 先 pack 再 publish tgz：npm publish <tgz> 上傳的就是這一份 bytes。
             for pkg in npm-out/*/; do
               (cd "$pkg" && npm pack --pack-destination "$GITHUB_WORKSPACE/tarballs" >/dev/null)
             done
           else
             find input -type f -name '*.tgz' -exec mv -t tarballs/ {} +
           fi
-          (cd tarballs && sha256sum *.tgz) > "${SUMS_ARTIFACT:-npm-sums}.txt"
-          cat "${SUMS_ARTIFACT:-npm-sums}.txt"
+          ls -l tarballs
 
       - name: Publish the platform sub-packages, then the main package
         id: publish
@@ -113,6 +112,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           MAIN: ${{ inputs.main-package }}
+          SUMS_ARTIFACT: ${{ inputs.sums-artifact }}
         run: |
           EXPECTED="${GITHUB_REF_NAME#v}"
 
@@ -159,6 +159,26 @@ jobs:
             sleep 10
           done
           [ -n "$visible" ] || { echo "::error::$MAIN@$EXPECTED 十分鐘內未出現在 registry"; exit 1; }
+
+          # 校驗清單（只有指定 sums-artifact 的通路需要）算在 registry 上那份 bytes：每個套件都以
+          # npm pack <name>@<version> 自 registry 取回（拿到的是原 tarball，不重新打包）。重跑時
+          # 已上架的同版被跳過、本次重建的 bytes 不一定相同，formula 指的是 registry 那份，所以
+          # 不能拿本次 pack 的算。子套件比主套件早發，packument 可見仍可能落後，逐份輪詢等；
+          # --prefer-online 讓每次重試都真的打 registry，不吃 packument 的五分鐘快取。
+          if [ -n "$SUMS_ARTIFACT" ]; then
+            mkdir -p registry-tarballs
+            for tgz in tarballs/*.tgz; do
+              name="$(pkg_field "$tgz" name)"
+              fetched=""
+              for _ in $(seq 1 30); do
+                if (cd registry-tarballs && npm pack "$name@$EXPECTED" --prefer-online >/dev/null 2>&1); then fetched=1; break; fi
+                sleep 10
+              done
+              [ -n "$fetched" ] || { echo "::error::$name@$EXPECTED 五分鐘內無法自 registry 取回 tarball"; exit 1; }
+            done
+            (cd registry-tarballs && sha256sum *.tgz) > "$SUMS_ARTIFACT.txt"
+            cat "$SUMS_ARTIFACT.txt"
+          fi
           echo "published=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4

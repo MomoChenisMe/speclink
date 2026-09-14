@@ -4,7 +4,7 @@
 
 release 管線 SHALL 於 GitHub Release 建立成功後，在 NPM_TOKEN 存在時發布 CLI 的 npm 套件：主套件 @speclink/cli（bin 為 speclink）與五個平台子套件 @speclink/cli-darwin-arm64、@speclink/cli-darwin-x64、@speclink/cli-linux-x64、@speclink/cli-linux-arm64、@speclink/cli-win32-x64（各只含對應平台的 speclink binary，以 os 與 cpu 欄位圈定），版本等於 tag 去 v 前綴，主套件以 optionalDependencies 引用五個同版子套件。套件 SHALL 從 build artifacts 物化，缺任一平台 binary 時 SHALL 以非零結束且不產出任何套件；每個套件發布前 SHALL 查 registry，同版已存在即跳過；平台子套件 SHALL 先於主套件發布；發布後 SHALL 等待主套件在 registry 可見才以 0 結束。NPM_TOKEN 缺席時 SHALL 跳過發布且 job 綠。
 
-主套件的 speclink 入口 SHALL 為 JS shim：解析本機 os 與 cpu 對應的子套件並以繼承 stdio 的方式執行其 binary，exit code 與訊號原樣帶回；找不到對應子套件時 SHALL 於 stderr 說明該 os 與 cpu 組合不受支援並以非零結束。macOS 與 Linux 上安裝時 postinstall SHALL 以該平台的原生 binary 原地置換 shim 檔，使全域 speclink 直接是原生執行檔；Windows 上與以 --ignore-scripts 安裝時 SHALL 保留 shim 路徑；postinstall 找不到平台 binary 時 SHALL 保留 shim 並以 0 結束。
+主套件的 speclink 入口 SHALL 為 JS shim：解析本機 os 與 cpu 對應的子套件並以繼承 stdio 的方式執行其 binary，exit code 與訊號原樣帶回；找不到對應子套件時 SHALL 於 stderr 說明該 os 與 cpu 組合不受支援並以非零結束。macOS 與 Linux 上安裝時 postinstall SHALL 以該平台的原生 binary 原地置換 shim 檔，使全域 speclink 直接是原生執行檔；Windows 上、以 --ignore-scripts 安裝時、以及以 Yarn 安裝時（Yarn Berry 一律以 node 執行套件的 bin，依 npm_config_user_agent 判斷）SHALL 保留 shim 路徑；postinstall 找不到平台 binary 時 SHALL 保留 shim 並以 0 結束。
 
 #### Scenario: 全域安裝後 speclink 為同版原生執行檔
 

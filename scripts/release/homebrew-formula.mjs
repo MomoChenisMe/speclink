@@ -5,9 +5,10 @@
 //
 // 用法：node scripts/release/homebrew-formula.mjs --tag v0.5.0 --sums cli-npm-sums.txt
 //
-// --sums 是 cli-npm-publish job 對 npm pack 產出的 tgz 跑 sha256sum 的輸出（digest、
-// 兩空白、檔名）；npm publish <tgz> 上傳的就是同一份 bytes，所以 sha256 對 registry 上
-// 的檔成立。輸出到 stdout，貼進 tap repo 的 Formula/speclink.rb 即可。四組平台資產
+// --sums 是 cli-npm-publish job 在發布並等 registry 可見後，對自 registry 取回的 tgz
+// （npm pack <name>@<version>，拿到的是 registry 原 bytes）跑 sha256sum 的輸出（digest、
+// 兩空白、檔名），所以 sha256 對 registry 上的檔成立——重跑時已上架的同版被跳過也一樣。
+// 輸出到 stdout，貼進 tap repo 的 Formula/speclink.rb 即可。四組平台資產
 // 缺任一即以非零結束——checksum 每版都變，手抄或漏抄要到使用者 brew install 失敗
 // 才會發現，因此寧可不產出也不產出半套。
 import { readFileSync } from 'node:fs';

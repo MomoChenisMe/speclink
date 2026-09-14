@@ -526,7 +526,7 @@ jobs:
 
   # Formula 隨發版自動推送 tap（cli-distribution spec；設計 D5／D8）。排在 Release 與
   # CLI 的 npm 發布之後：formula 的 url 指向 registry 上的平台 tgz，sha256 算在
-  # cli-npm-publish pack 出的同一份 bytes 上；通路推送不是發布的前置條件，失敗可單獨
+  # cli-npm-publish 發布後自 registry 取回的那份 tgz 上；通路推送不是發布的前置條件，失敗可單獨
   # 重跑、不回溯撤銷 Release。secrets 不能出現在 job 層級的 if，故以首步輸出當雙閘門
   # ——TAP_PUSH_TOKEN 缺席、或 CLI 因 NPM_TOKEN 缺席而未發布，後續步驟全部跳過、job 綠。
   tap-publish:

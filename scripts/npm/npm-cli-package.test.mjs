@@ -80,6 +80,11 @@ test('物化主套件與五平台子套件，欄位齊備且版本對齊', (t) =
     assert.equal(pkg.version, '0.5.0');
     assert.deepEqual(pkg.os, [osName]);
     assert.deepEqual(pkg.cpu, [cpu]);
+    // Linux binary 是 glibc 動態連結：宣告 libc 讓 npm／pnpm 在 musl（Alpine）跳過子套件，
+    // 由 shim 報「找不到 binary」而不是裝進去後每次執行都 loader 缺席。
+    assert.deepEqual(pkg.libc, osName === 'linux' ? ['glibc'] : undefined, `${pkgDir} 的 libc 宣告`);
+    // Yarn PnP 會把套件留在 zip 裡，binary 必須解到磁碟才 spawn 得到。
+    assert.equal(pkg.preferUnplugged, true, `${pkgDir} 應宣告 preferUnplugged`);
     const binary = path.join(out, pkgDir, binaryName);
     assert.ok(existsSync(binary), `${pkgDir} 缺 binary`);
     if (process.platform !== 'win32') {
