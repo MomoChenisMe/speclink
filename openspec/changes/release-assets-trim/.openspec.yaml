@@ -1,0 +1,161 @@
+schema: spec-driven
+created: 2026-09-14
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: release-assets-trim
+started_at: 2026-09-14
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-14
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 30
+reviewed_scope:
+  - path: .github/workflows/npm-publish.yml
+    hash: a1898c0636d0a87f16856a185f903caf3a2a07ccef00f1479f2c70fc19c4a9d4
+  - path: .github/workflows/release.yml
+    hash: f6fbc41488150e66495a6ca4bb13d318090cd818ca696ea083e75625ecb3b8bf
+  - path: README.en.md
+    hash: 20103136efbb1ba36a8d6009c1b4f1d1244d690d8068b6e9eef327b8e4111744
+  - path: README.md
+    hash: a3c8cd30bffb29c50a143f2e5c0c0ce8db19e24da081b5c72a2fe6f5c12208a8
+  - path: apps/desktop/src-tauri/src/cli_install.rs
+    hash: cf5b977f2fc364693b6fad4722000cb311075a92407532ba6b6bded14229bf11
+  - path: apps/desktop/src/__tests__/cliInstall.test.ts
+    hash: c12a830a1446cbe6859bcd20fb4588b9493ac8aa8756cda0e964091d38e4d4c2
+  - path: apps/desktop/src/core/cliInstall.ts
+    hash: 5b38e839d8313d2a7e35ad1ee8e9e4c3e2473f66ae3c170c25c5a9e3439cad08
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 62bbc5c47c89120a93bb7baec60bc7613a02841812e0e8b0346eaaaa93a27683
+  - path: apps/desktop/src/views/AppSettingsView.tsx
+    hash: e9c796727c809a297f332a645ed1d69edd2abe945db6a42291acf21e015c498a
+  - path: docs/development.md
+    hash: 1b9fda5d2c8ecca30e0da609e205fa6fdafe9bcf7b58107f02222d4262ad7930
+  - path: docs/development.zh-TW.md
+    hash: a57f29b7765db17bf7a6b0a9e18be031f8087c60cba65c462a4c8b746288becc
+  - path: docs/getting-started.md
+    hash: 93ad51b4d3e362502bc5aa335be535a99403a93d1be3bb1a466398eefcf24450
+  - path: docs/getting-started.zh-TW.md
+    hash: 188c0cf81a05ec550919e44d406b8bcdf40c6ad2aadd89dcaa499f1d82e0efea
+  - path: docs/product-status.md
+    hash: 725a3965b0ca9cbdbf56d15f52abfdf5e3db430284b3890af4e294a42dcaa952
+  - path: docs/product-status.zh-TW.md
+    hash: f9aab5a6502172f8332f3116a9ad15e50fe52c655f9d1d644a5e370a29ddd732
+  - path: packages/cli-npm/bin/speclink
+    hash: bb36d35956e5ebf37d436cc1cf996c96d960fa64b5dd3460e3836c906c8a3c6b
+  - path: packages/cli-npm/package.json
+    hash: 1ea256fa272bb5ba2dd89e00023e202e1979fd88520d0fe0f827265766184252
+  - path: packages/cli-npm/platform.mjs
+    hash: f02ff5a0799417dcc3ab241d47026200cd506720dfa17ea8b7839aa0470b1cca
+  - path: packages/cli-npm/postinstall.mjs
+    hash: b2c537367b2240435151d9bbe5089912a5f0a02372441e3faf746b60e5d60073
+  - path: packages/server-npm/package.json
+    hash: 6902e3211a2b637149878209910a536fed423766e8f253bf90e62f9ec514866c
+  - path: scripts/desktop/desktop-sidecar.mjs
+    hash: 24198f2538bf8b7338fb038a0b9914fc17abc20628371584d9fb578e604c40c5
+  - path: scripts/desktop/desktop-sidecar.test.mjs
+    hash: f4fba711aa884717c9fb7349c260616f604e41bba96bf7344069787f8a0ae031
+  - path: scripts/install.sh
+    hash: 4acee2d85ab1a45c5f24d78241d79723d032ae6470fead09d169f4a8a67eaa38
+  - path: scripts/install.test.mjs
+    hash: 407a4fa0f5dbf08a235c9b72d6b3cbb6711469439a2da789a16a387e5fa34d88
+  - path: scripts/npm/npm-cli-launcher.test.mjs
+    hash: 253536fa6ce7720568d449ee6e4cf830a01a219567c6747bb73df238771a34a7
+  - path: scripts/npm/npm-cli-package.mjs
+    hash: 42e7e46e896737fbd80554db683eb1661633e440c075385dcb9259d61722949f
+  - path: scripts/npm/npm-cli-package.test.mjs
+    hash: bbe33dc49bc23c649a83b39c72983283a339640a52e533e3dfea58783c98b16a
+  - path: scripts/npm/npm-platform-package.mjs
+    hash: b0b86841c0705b3bf55a1cc46b1e4f7005ed8ed364d523858550151b0f9b8aee
+  - path: scripts/npm/npm-server-package.mjs
+    hash: ade3f0629e08f99e031040c392857462c0f2a2ec492d7eaf008e3175f1ae6c33
+  - path: scripts/release/delivery-gate.test.mjs
+    hash: cee5047b06b46bee40ad2f4cf425fc47efb5206cd60d0be9143cea0b958b25dc
+  - path: scripts/release/homebrew-formula.mjs
+    hash: d3801acd3d1e2113aac0ad5b52a173f1880695caf5af3f1e03a80e79f4eb5e37
+  - path: scripts/release/homebrew-formula.test.mjs
+    hash: 9c5c70e502d6959286fd8e23db3ff106ff620a54b67b4b6e5c53b2824a8c6d6c
+  - path: scripts/release/release-latest-json.mjs
+    hash: 2e6e6ae553e6b17f032d2cfe144baed82e7355c585b05ce831c16baec2834fba
+  - path: scripts/release/release-latest-json.test.mjs
+    hash: 0ed0f89ce4633870be3dc09d107a6c17ad85cbdc18f0642ef9ded4750f30c79e
+  - path: scripts/release/release-notes.mjs
+    hash: f4aac123a7e44ccbe5c17ee319737cf74c8efd7b1140a98b4d239d717ff59720
+  - path: scripts/release/release-notes.test.mjs
+    hash: aa3514f37b3dc032296e598d88c614df847ff41b0f07af7d34c7a3b4887d9463
+verified_at: 2026-09-14
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 30
+verified_scope:
+  - path: .github/workflows/npm-publish.yml
+    hash: a1898c0636d0a87f16856a185f903caf3a2a07ccef00f1479f2c70fc19c4a9d4
+  - path: .github/workflows/release.yml
+    hash: f6fbc41488150e66495a6ca4bb13d318090cd818ca696ea083e75625ecb3b8bf
+  - path: README.en.md
+    hash: 20103136efbb1ba36a8d6009c1b4f1d1244d690d8068b6e9eef327b8e4111744
+  - path: README.md
+    hash: a3c8cd30bffb29c50a143f2e5c0c0ce8db19e24da081b5c72a2fe6f5c12208a8
+  - path: apps/desktop/src-tauri/src/cli_install.rs
+    hash: cf5b977f2fc364693b6fad4722000cb311075a92407532ba6b6bded14229bf11
+  - path: apps/desktop/src/__tests__/cliInstall.test.ts
+    hash: c12a830a1446cbe6859bcd20fb4588b9493ac8aa8756cda0e964091d38e4d4c2
+  - path: apps/desktop/src/core/cliInstall.ts
+    hash: 5b38e839d8313d2a7e35ad1ee8e9e4c3e2473f66ae3c170c25c5a9e3439cad08
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 62bbc5c47c89120a93bb7baec60bc7613a02841812e0e8b0346eaaaa93a27683
+  - path: apps/desktop/src/views/AppSettingsView.tsx
+    hash: e9c796727c809a297f332a645ed1d69edd2abe945db6a42291acf21e015c498a
+  - path: docs/development.md
+    hash: 1b9fda5d2c8ecca30e0da609e205fa6fdafe9bcf7b58107f02222d4262ad7930
+  - path: docs/development.zh-TW.md
+    hash: a57f29b7765db17bf7a6b0a9e18be031f8087c60cba65c462a4c8b746288becc
+  - path: docs/getting-started.md
+    hash: 93ad51b4d3e362502bc5aa335be535a99403a93d1be3bb1a466398eefcf24450
+  - path: docs/getting-started.zh-TW.md
+    hash: 188c0cf81a05ec550919e44d406b8bcdf40c6ad2aadd89dcaa499f1d82e0efea
+  - path: docs/product-status.md
+    hash: 725a3965b0ca9cbdbf56d15f52abfdf5e3db430284b3890af4e294a42dcaa952
+  - path: docs/product-status.zh-TW.md
+    hash: f9aab5a6502172f8332f3116a9ad15e50fe52c655f9d1d644a5e370a29ddd732
+  - path: packages/cli-npm/bin/speclink
+    hash: bb36d35956e5ebf37d436cc1cf996c96d960fa64b5dd3460e3836c906c8a3c6b
+  - path: packages/cli-npm/package.json
+    hash: 1ea256fa272bb5ba2dd89e00023e202e1979fd88520d0fe0f827265766184252
+  - path: packages/cli-npm/platform.mjs
+    hash: f02ff5a0799417dcc3ab241d47026200cd506720dfa17ea8b7839aa0470b1cca
+  - path: packages/cli-npm/postinstall.mjs
+    hash: b2c537367b2240435151d9bbe5089912a5f0a02372441e3faf746b60e5d60073
+  - path: packages/server-npm/package.json
+    hash: 6902e3211a2b637149878209910a536fed423766e8f253bf90e62f9ec514866c
+  - path: scripts/desktop/desktop-sidecar.mjs
+    hash: 24198f2538bf8b7338fb038a0b9914fc17abc20628371584d9fb578e604c40c5
+  - path: scripts/desktop/desktop-sidecar.test.mjs
+    hash: f4fba711aa884717c9fb7349c260616f604e41bba96bf7344069787f8a0ae031
+  - path: scripts/install.sh
+    hash: 4acee2d85ab1a45c5f24d78241d79723d032ae6470fead09d169f4a8a67eaa38
+  - path: scripts/install.test.mjs
+    hash: 407a4fa0f5dbf08a235c9b72d6b3cbb6711469439a2da789a16a387e5fa34d88
+  - path: scripts/npm/npm-cli-launcher.test.mjs
+    hash: 253536fa6ce7720568d449ee6e4cf830a01a219567c6747bb73df238771a34a7
+  - path: scripts/npm/npm-cli-package.mjs
+    hash: 42e7e46e896737fbd80554db683eb1661633e440c075385dcb9259d61722949f
+  - path: scripts/npm/npm-cli-package.test.mjs
+    hash: bbe33dc49bc23c649a83b39c72983283a339640a52e533e3dfea58783c98b16a
+  - path: scripts/npm/npm-platform-package.mjs
+    hash: b0b86841c0705b3bf55a1cc46b1e4f7005ed8ed364d523858550151b0f9b8aee
+  - path: scripts/npm/npm-server-package.mjs
+    hash: ade3f0629e08f99e031040c392857462c0f2a2ec492d7eaf008e3175f1ae6c33
+  - path: scripts/release/delivery-gate.test.mjs
+    hash: cee5047b06b46bee40ad2f4cf425fc47efb5206cd60d0be9143cea0b958b25dc
+  - path: scripts/release/homebrew-formula.mjs
+    hash: d3801acd3d1e2113aac0ad5b52a173f1880695caf5af3f1e03a80e79f4eb5e37
+  - path: scripts/release/homebrew-formula.test.mjs
+    hash: 9c5c70e502d6959286fd8e23db3ff106ff620a54b67b4b6e5c53b2824a8c6d6c
+  - path: scripts/release/release-latest-json.mjs
+    hash: 2e6e6ae553e6b17f032d2cfe144baed82e7355c585b05ce831c16baec2834fba
+  - path: scripts/release/release-latest-json.test.mjs
+    hash: 0ed0f89ce4633870be3dc09d107a6c17ad85cbdc18f0642ef9ded4750f30c79e
+  - path: scripts/release/release-notes.mjs
+    hash: f4aac123a7e44ccbe5c17ee319737cf74c8efd7b1140a98b4d239d717ff59720
+  - path: scripts/release/release-notes.test.mjs
+    hash: aa3514f37b3dc032296e598d88c614df847ff41b0f07af7d34c7a3b4887d9463

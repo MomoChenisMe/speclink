@@ -1,0 +1,29 @@
+#!/usr/bin/env node
+// @speclink/cli 的 shim（cli-distribution spec「CLI 以 npm 套件發布」；release-assets-trim
+// 設計 D4）：找到本機平台子套件內的 speclink binary，以繼承 stdio 的方式執行，exit code
+// 與訊號原樣帶回。macOS／Linux 上 postinstall 會把這個檔原地換成原生 binary，之後不再
+// 經過 Node；這裡是 Windows 的正式路徑，以及 --ignore-scripts 安裝的退路。
+import { spawnSync } from 'node:child_process';
+import process from 'node:process';
+import { resolveBinary, supportedPlatforms } from '../platform.mjs';
+
+const binary = resolveBinary(import.meta.url, process.platform, process.arch);
+if (!binary) {
+  process.stderr.write(
+    `speclink: 找不到 ${process.platform}-${process.arch} 的 CLI binary。` +
+      `支援的平台：${supportedPlatforms().join('、')}；` +
+      '若平台在列，請確認安裝時未略過 optionalDependencies（重新執行 npm i -g @speclink/cli）。\n',
+  );
+  process.exit(1);
+}
+
+const result = spawnSync(binary, process.argv.slice(2), { stdio: 'inherit' });
+if (result.error) {
+  process.stderr.write(`speclink: 無法執行 ${binary}：${result.error.message}\n`);
+  process.exit(1);
+}
+if (result.signal) {
+  // 子行程被訊號收束：對自己送同一個訊號，呼叫端看到的終止方式一致。
+  process.kill(process.pid, result.signal);
+}
+process.exit(result.status ?? 1);

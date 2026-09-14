@@ -12,23 +12,39 @@ const repo = scratchRepo({ scripts: ['release-notes.mjs', 'release-notes-render.
 const run = (args) => repo.run('release-notes.mjs', args);
 
 // 下載指南的檔名必須與 release 管線的資產命名逐字一致（desktop-release spec
-// 「指南檔名對齊版號與資產命名」）——這份清單就是那個命名契約。
+// 「指南檔名對齊版號與資產命名」；release-assets-trim 後的四個安裝檔）——這份清單
+// 就是那個命名契約。
 const installersFor = (version) => [
-  `Speclink_${version}_aarch64.dmg`,
-  `Speclink_${version}_x64.dmg`,
+  `Speclink_${version}_universal.dmg`,
   `Speclink_${version}_x64-setup.exe`,
   `Speclink_${version}_amd64.AppImage`,
   `Speclink_${version}_aarch64.AppImage`,
-  `Speclink_${version}_amd64.deb`,
-  `Speclink_${version}_arm64.deb`,
 ];
 
-test('對照表列出三平台全部安裝檔且檔名含版號', () => {
+test('對照表列出四個安裝檔且檔名含版號；macOS 一列註明兩種晶片同一檔', () => {
   const result = run(['--tag', 'v0.1.0']);
   assert.equal(result.status, 0, result.stderr);
   for (const name of installersFor('0.1.0')) {
     assert.ok(result.stdout.includes(name), `缺安裝檔 ${name}`);
   }
+  assert.match(result.stdout, /Apple Silicon[^\n]*Intel[^\n]*Speclink_0\.1\.0_universal\.dmg/, 'macOS 一列應註明兩種晶片同一檔');
+});
+
+test('對照表為 Linux 伺服器／無圖形介面另列一列，指向 CLI 一行安裝而非任何檔案', () => {
+  const { stdout } = run(['--tag', 'v0.1.0']);
+  const row = stdout.split('\n').find((line) => /^\|[^|]*(伺服器|無圖形)/.test(line));
+  assert.ok(row, '缺 Linux 伺服器／無圖形介面那一列');
+  assert.ok(!/Speclink_0\.1\.0/.test(row), '該列不得指向任何安裝檔');
+  assert.match(row, /CLI/, '該列應導向 CLI 一行安裝');
+});
+
+test('退場的檔案不再出現：.sig、.deb、校驗碼檔、CLI 壓縮檔、PowerShell 腳本', () => {
+  const { stdout } = run(['--tag', 'v0.1.0']);
+  for (const gone of ['.sig', '.deb', 'SHA256SUMS', 'install.ps1', '.zip', 'speclink-v0.1.0-']) {
+    assert.ok(!stdout.includes(gone), `指南不得再提及 ${gone}`);
+  }
+  // .app.tar.gz 仍在（自動更新用）；其他 .tar.gz 都不該出現。
+  assert.ok(!stdout.replace(/\.app\.tar\.gz/g, '').includes('.tar.gz'), '除 .app.tar.gz 外不得提及 .tar.gz');
 });
 
 test('版號替換跟著 tag 走', () => {
@@ -40,19 +56,14 @@ test('版號替換跟著 tag 走', () => {
   assert.ok(!result.stdout.includes('0.1.0'), '不得殘留其他版號');
 });
 
-test('CLI 安裝指令與 README 教的同一套', () => {
+test('CLI 安裝指令三條（npm、安裝腳本、Homebrew）與 README 教的同一套', () => {
   const { stdout } = run(['--tag', 'v0.1.0']);
+  assert.ok(stdout.includes('npm i -g @speclink/cli'), '缺 npm 全域安裝一行');
   assert.ok(
     stdout.includes(
       'curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh',
     ),
     '缺 sh 安裝一行',
-  );
-  assert.ok(
-    stdout.includes(
-      'irm https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.ps1 | iex',
-    ),
-    '缺 PowerShell 安裝一行',
   );
   assert.ok(stdout.includes('brew install MomoChenisMe/tap/speclink'), '缺 brew 指令');
 });
@@ -63,9 +74,8 @@ test('server 一行啟動節：npx 與 Docker image 指令（寫法比照 CLI �
   assert.ok(stdout.includes('ghcr.io/momochenisme/speclink-server'), '缺 Docker image 一行');
 });
 
-test('更新機制檔案標註毋須手動下載', () => {
+test('更新機制檔案（.app.tar.gz 與 latest.json）標註毋須手動下載', () => {
   const { stdout } = run(['--tag', 'v0.1.0']);
-  assert.ok(stdout.includes('.sig'), '缺 .sig 註記');
   assert.ok(stdout.includes('.app.tar.gz'), '缺 .app.tar.gz 註記');
   assert.ok(stdout.includes('latest.json'), '缺 latest.json 註記');
   assert.match(stdout, /自動更新/, '缺自動更新說明');

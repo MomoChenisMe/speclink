@@ -82,7 +82,7 @@ Golden and CLI integration tests protect the CLI's human-readable output and `--
 
 ## Unsigned installer bypass / 下載安裝檔的未簽章放行
 
-The desktop installers are on [Releases](https://github.com/MomoChenisMe/speclink/releases/latest). They are: macOS dmg for aarch64 and x86_64, a Windows NSIS installer for x86_64, and Linux AppImage and deb for x86_64 and aarch64. `SHA256SUMS.txt` lists them all. Signing status differs per platform, and only Windows needs a manual bypass:
+The desktop installers are on [Releases](https://github.com/MomoChenisMe/speclink/releases/latest). They are: one universal macOS dmg (Apple Silicon and Intel), a Windows NSIS installer for x86_64, and Linux AppImage for x86_64 and aarch64. Signing status differs per platform, and only Windows needs a manual bypass:
 
 ### macOS
 
@@ -95,4 +95,4 @@ Code-signed and notarized, so opening the dmg and dragging Speclink into Applica
 
 ### Linux
 
-AppImage and deb have no corresponding signature gate: make the AppImage executable (`chmod +x`) and install the deb the usual way for your distribution.
+AppImage has no corresponding signature gate: make it executable (`chmod +x`) and run it.

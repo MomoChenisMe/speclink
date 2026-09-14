@@ -1,0 +1,28 @@
+{
+  "name": "@speclink/cli",
+  "version": "0.0.0-dev",
+  "description": "Speclink CLI — spec-driven development engine; platform binaries ship as optionalDependencies",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MomoChenisMe/speclink.git",
+    "directory": "packages/cli-npm"
+  },
+  "bin": {
+    "speclink": "bin/speclink"
+  },
+  "scripts": {
+    "postinstall": "node postinstall.mjs"
+  },
+  "files": [
+    "bin/speclink",
+    "postinstall.mjs",
+    "platform.mjs"
+  ],
+  "engines": {
+    "node": "^18.19.0 || ^20.10.0 || >=21"
+  },
+  "private": true,
+  "//": "private 擋誤發布；發布用的副本由 scripts/npm/npm-cli-package.mjs 物化（去掉 private、蓋版本、補 optionalDependencies）",
+  "type": "module"
+}

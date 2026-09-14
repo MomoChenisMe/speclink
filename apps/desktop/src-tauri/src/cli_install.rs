@@ -29,7 +29,9 @@ fn platform_key() -> String {
     } else if std::env::var_os("APPIMAGE").is_some() {
         "linux-appimage".into()
     } else {
-        "linux-deb".into()
+        // 非 AppImage 的 Linux 執行（開發建置或手動解開的 app）：deb 已退場
+        // （release-assets-trim D7），沒有套件管理器佈署的 /usr/bin 可探。
+        "linux-unpackaged".into()
     }
 }
 
@@ -44,8 +46,9 @@ fn bundled_cli_path() -> Option<PathBuf> {
 /// 已佈署 CLI 的 `--version` 原始輸出（解析歸前端 core）；不存在／不可執行＝None。
 fn deployed_version_output(platform: &str, home: Option<&str>) -> Option<String> {
     let program: PathBuf = match platform {
-        "macos" | "linux-appimage" => PathBuf::from(home?).join(".local/bin/speclink"),
-        "linux-deb" => PathBuf::from("/usr/bin/speclink"),
+        "macos" | "linux-appimage" | "linux-unpackaged" => {
+            PathBuf::from(home?).join(".local/bin/speclink")
+        }
         // Windows 由安裝器把 CLI 佈於 app 同目錄並寫 PATH；剛裝完時 PATH
         // broadcast 未及已執行程序，走程序 PATH 會誤報未安裝——直接以
         // sidecar 同目錄（即 $INSTDIR）執行。

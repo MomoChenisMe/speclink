@@ -82,7 +82,7 @@ golden 與 CLI 整合測試守住 CLI 的人眼輸出與 `--json` shape。Server
 
 ## Unsigned installer bypass / 下載安裝檔的未簽章放行
 
-桌面安裝檔都在 [Releases](https://github.com/MomoChenisMe/speclink/releases/latest) 上：macOS dmg（aarch64 與 x86_64 各一）、Windows NSIS 安裝器（x86_64），以及 Linux 的 AppImage 與 deb（x86_64 與 aarch64）。`SHA256SUMS.txt` 收錄全部檔案。三平台的簽章狀態不同，只有 Windows 需要手動放行：
+桌面安裝檔都在 [Releases](https://github.com/MomoChenisMe/speclink/releases/latest) 上：macOS universal dmg（Apple Silicon 與 Intel 同一檔）、Windows NSIS 安裝器（x86_64），以及 Linux 的 AppImage（x86_64 與 aarch64）。三平台的簽章狀態不同，只有 Windows 需要手動放行：
 
 ### macOS
 
@@ -95,4 +95,4 @@ golden 與 CLI 整合測試守住 CLI 的人眼輸出與 `--json` shape。Server
 
 ### Linux
 
-AppImage 與 deb 沒有對應的簽章阻擋機制。AppImage 加上執行權限（`chmod +x`）就能執行，deb 依發行版慣例安裝。
+AppImage 沒有對應的簽章阻擋機制。加上執行權限（`chmod +x`）就能執行。

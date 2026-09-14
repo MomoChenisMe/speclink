@@ -21,11 +21,11 @@ Both literals are listed below; pick one. Blocks marked as shell run the CLI dir
 Install the CLI, one of:
 
 ```bash
-# Install script (macOS/Linux)
-curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh
+# With Node.js (any platform)
+npm i -g @speclink/cli
 
-# Install script (Windows PowerShell)
-irm https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.ps1 | iex
+# Without Node.js on macOS/Linux (servers, WSL, CI)
+curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh
 
 # Homebrew (macOS/Linux)
 brew install MomoChenisMe/tap/speclink

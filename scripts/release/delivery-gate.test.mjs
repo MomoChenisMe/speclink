@@ -241,20 +241,65 @@ test('release.yml 每個 server artifact 先建 apps/server-web 再 cargo build�
   assert.match(release, /404/, 'release.yml 缺少 JSON-404 斷言');
 });
 
-test('release.yml 的 Package 步驟只打包 CLI，server binary 不進 Release assets', () => {
-  const release = read('.github/workflows/release.yml');
-  const packageStart = requireIndex(release, '- name: Package', 'release.yml');
-  const tail = release.slice(packageStart);
-  const nextStep = tail.slice(1).search(/\n\s*- (?:name:|uses:)/);
-  const packageStep = nextStep >= 0 ? tail.slice(0, nextStep + 1) : tail;
+// --- Release assets（desktop-release「Release 產出三平台桌面安裝檔」；設計 D1／D2／D7／D8） ---
 
-  // server 通路收斂為 Docker＋npm（server-release spec 修改後；設計 D6）：
-  // Package 步驟打包上 Release 的只有 CLI。
-  assert.ok(
-    !packageStep.includes('speclink-server'),
-    'release.yml：Package 步驟不得打包 speclink-server（server 不隨 Release 發布）',
+test('release.yml 的 build job 不打包 CLI 壓縮檔，cli-<target> artifact 為 raw binary（CLI 通路收斂為 npm）', () => {
+  const release = read('.github/workflows/release.yml');
+  const build = jobBlock(release, 'build', 'release.yml');
+
+  // 五 target 的 tar.gz／zip 不再上 Release 頁——binary 只給 cli-npm-publish 物化套件。
+  assert.ok(!build.includes('- name: Package'), 'release.yml build job：不得再有 Package 步驟');
+  assert.ok(!/\b7z\b|tar czf/.test(build), 'release.yml build job：不得再打 zip／tar.gz');
+
+  const upload = requireStep(
+    build,
+    [/uses: actions\/upload-artifact@v4/, /name:\s*cli-\$\{\{ matrix\.target \}\}/],
+    'release.yml build job cli-<target> 上傳',
   );
-  assert.match(packageStep, /speclink/, 'release.yml：Package 步驟缺 CLI 打包');
+  assert.match(
+    upload,
+    /path:\s*target\/\$\{\{ matrix\.target \}\}\/release\/speclink\$\{\{ contains\(matrix\.target, 'windows'\) && '\.exe' \|\| '' \}\}\s*$/m,
+    'release.yml build job：cli-<target> artifact 必須是 target/<triple>/release 下的 raw binary（Windows 帶 .exe），與 server-<target> 同形',
+  );
+});
+
+test('release.yml 的 desktop job：macOS 只出 universal、Linux 只出 AppImage、.sig 只進 updater/', () => {
+  const release = read('.github/workflows/release.yml');
+  const desktop = jobBlock(release, 'desktop', 'release.yml');
+
+  // macOS universal（設計 D2）：一列 target universal-apple-darwin，兩個 rustup target 都裝。
+  assert.match(desktop, /^\s*target:\s*universal-apple-darwin\s*$/m, 'desktop job：缺 universal-apple-darwin 的 matrix 列');
+  assert.doesNotMatch(
+    desktop,
+    /^\s*target:\s*(?:aarch64|x86_64)-apple-darwin\s*$/m,
+    'desktop job：不得再有 aarch64／x86_64 兩列 macOS target',
+  );
+  assert.match(
+    desktop,
+    /rust_targets:\s*aarch64-apple-darwin,x86_64-apple-darwin/,
+    'desktop job：universal 列必須宣告兩個 rustup target',
+  );
+  assert.match(desktop, /targets:\s*\$\{\{ matrix\.rust_targets \}\}/, 'desktop job：toolchain 步驟必須安裝 matrix.rust_targets');
+  assert.match(desktop, /platform:\s*darwin-universal/, 'desktop job：macOS 的更新包目錄必須是 darwin-universal');
+
+  // Linux 只出 AppImage（設計 D7）：deb 退場——不服務無圖形 Linux，且其自動更新現況是壞的。
+  const bundles = [...desktop.matchAll(/^\s*bundles:\s*(\S+)\s*$/gm)].map((m) => m[1]);
+  assert.ok(bundles.length >= 3, `desktop job：bundles 宣告過少（${bundles.length}）`);
+  for (const entry of bundles) {
+    assert.ok(!entry.split(',').includes('deb'), `desktop job：bundles「${entry}」不得含 deb`);
+  }
+  assert.ok(!/\bdeb\b/.test(desktop), 'desktop job：不得再出現 deb（bundles、收集步驟或註解）');
+
+  // .sig 只進 updater/（設計 D1）：installers/ 是 Release 頁的安裝檔集合，簽章內容已內嵌 latest.json。
+  const collect = requireStep(desktop, [/name: Collect installers and updater packages/], 'desktop job 收集步驟');
+  for (const line of collect.split('\n').filter((l) => /\.sig/.test(l))) {
+    assert.ok(!/installers\//.test(line), `desktop job：.sig 不得複製進 installers/：${line.trim()}`);
+  }
+  assert.match(
+    collect,
+    /Speclink_\$\{VERSION\}_universal\.app\.tar\.gz/,
+    'desktop job：macOS 更新包必須改名為 Speclink_<版本>_universal.app.tar.gz',
+  );
 });
 
 test('release.yml 的 release job 以 body_path 前置下載指南，changelog 接續其後', () => {
@@ -274,22 +319,108 @@ test('release.yml 的 release job 以 body_path 前置下載指南，changelog �
   assert.match(release, /generate_release_notes:\s*true/, 'release.yml：generate_release_notes 不得移除');
 });
 
-test('release.yml 的 tap-publish job 於 Release 後以 TAP_PUSH_TOKEN 為開關更新 tap formula', () => {
-  const release = read('.github/workflows/release.yml');
-  const jobStart = requireIndex(release, 'tap-publish:', 'release.yml');
-  const tail = release.slice(jobStart);
-  const nextJob = tail.slice(1).search(/\n  [a-z][\w-]*:\s*\n/);
-  const job = nextJob >= 0 ? tail.slice(0, nextJob + 1) : tail;
+/// 呼叫共用 npm 發布 workflow 的 job 應有的形狀：uses 指向 npm-publish.yml、傳入 artifact
+/// pattern 與主套件名、把 NPM_TOKEN 以 secrets 傳下去。materialize 有值＝下載的是 raw binary
+/// 要先物化再 pack；留空＝下載的已是 tarball（engine），發布端不得重新打包。
+function assertNpmPublishCaller(job, label, { artifacts, main, materialize }) {
+  assert.match(job, /uses:\s*\.\/\.github\/workflows\/npm-publish\.yml/, `${label} 須重用 npm-publish.yml，不得複製發布迴圈`);
+  assert.match(job, new RegExp(`artifacts:\\s*${artifacts.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm'), `${label} 須下載 ${artifacts}`);
+  assert.match(job, new RegExp(`main-package:\\s*'?${main}'?\\s*$`, 'm'), `${label} 的主套件須為 ${main}`);
+  if (materialize) {
+    assert.match(job, new RegExp(`materialize:\\s*${materialize.replace(/[.\/]/g, '\\$&')}\\s*$`, 'm'), `${label} 須以 ${materialize} 物化`);
+  } else {
+    assert.ok(!/materialize:/.test(job), `${label} 的發布單位是上游打包好的 tarball，不得再物化重 pack`);
+  }
+  assert.match(job, /secrets:\s*\n\s+NPM_TOKEN:\s*\$\{\{ secrets\.NPM_TOKEN \}\}/, `${label} 須把 NPM_TOKEN 傳給共用 workflow`);
+}
 
-  // 通路推送排在 Release 之後，不是發布的前置條件（cli-distribution spec
-  // 「Formula 隨發版自動推送 tap」；設計 D8）。
-  assert.match(job, /needs:\s*\[?release\]?/, 'tap-publish 必須 needs: release');
+test('npm-publish.yml（workflow_call）：NPM_TOKEN 閘門、物化＋pack 或沿用 tarball、版號 fail-closed、冪等、子套件先發、等主套件可見、輸出 published', () => {
+  const wf = read('.github/workflows/npm-publish.yml');
+
+  // 只能被呼叫，不自行觸發；輸入面就是三個呼叫端的差異。
+  assert.match(wf, /^on:\s*\n\s+workflow_call:/m, 'npm-publish.yml 只能以 workflow_call 觸發');
+  for (const input of ['artifacts', 'main-package', 'materialize', 'sums-artifact']) {
+    assert.match(wf, new RegExp(`\\n\\s+${input}:\\n`), `npm-publish.yml 缺 ${input} 輸入`);
+  }
+  assert.match(wf, /secrets:\s*\n\s+NPM_TOKEN:/, 'npm-publish.yml 須宣告 NPM_TOKEN secret');
+  assert.match(wf, /outputs:\s*\n\s+published:\s*\n[\s\S]{0,200}value:\s*\$\{\{ jobs\.publish\.outputs\.published \}\}/, 'npm-publish.yml 須把 job 的 published 轉成 workflow 輸出');
+
+  const job = jobBlock(wf, 'publish', 'npm-publish.yml');
+  assert.match(job, /NPM_TOKEN/, '發布 job 必須以 NPM_TOKEN 為開關');
+  assert.match(job, /outputs:\n\s+published:/, '發布 job 必須輸出 published');
+  // 輸入不得內插進 run:（tag 名與輸入值都可能含 shell 特殊字元），一律經 env 傳入。
+  assert.ok(!/run:[^\n]*\$\{\{\s*inputs\./.test(job), 'npm-publish.yml：inputs 不得內插進 run:，須以 env: 傳入');
+
+  const download = requireStep(job, [/uses: actions\/download-artifact@v4/], 'npm-publish.yml 下載 artifact');
+  assert.match(download, /pattern:\s*\$\{\{ inputs\.artifacts \}\}/, '下載面由 artifacts 輸入圈定');
+
+  const pack = requireStep(job, [/npm pack/], 'npm-publish.yml 物化與打包步驟');
+  // 先 pack 再 publish tgz：formula 引用的 sha256 必須算在 registry 上那份 bytes。
+  assert.match(pack, /if \[ -n "\$MATERIALIZE" \]/, '物化腳本有值才物化＋pack');
+  assert.match(pack, /--version "\$VERSION" --binaries input --out npm-out/, '物化腳本以 --version／--binaries／--out 呼叫');
+  assert.match(pack, /find input -type f -name '\*\.tgz'/, '無物化腳本時沿用下載到的 tarball，不重新打包');
+  assert.match(pack, /sha256sum \*\.tgz/, '須計算 tgz 的 sha256 清單');
+
+  const publish = requireStep(job, [/name: Publish the platform sub-packages, then the main package/], 'npm-publish.yml 發布步驟');
+  assert.match(publish, /EXPECTED="\$\{GITHUB_REF_NAME#v\}"/, '須自 tag 名算出預期版號');
+  assert.match(publish, /"\$version" != "\$EXPECTED"/, '發布前須逐份斷言 tarball 版號等於 tag 版（npm 發布不可撤回）');
+  assert.match(publish, /npm view/, '須先查 registry 以支援重跑（同版已存在即跳過）');
+  // `./` 是把關重點：`tarballs/x.tgz` 恰一個斜線會被 npm 當成 GitHub 簡寫 owner/repo。
+  assert.match(publish, /npm publish "\.\/\$tgz" --access public/, '須公開發布 tarball，且路徑要帶 ./ 前綴');
+  // 子套件先發、主套件最後：迴圈跳過主套件，主套件在迴圈之後單獨發。
+  const loop = requireIndex(publish, 'for tgz in tarballs/*.tgz; do', 'npm-publish.yml 發布迴圈');
+  const main = requireIndex(publish, 'publish_one "$main_tgz"', 'npm-publish.yml 主套件發布');
+  assert.ok(loop < main, '平台子套件必須先於主套件發布');
+  assert.match(publish, /npm view "\$MAIN@\$EXPECTED"/, '收尾須以輪詢確認主套件在 registry 可見');
+  assert.match(publish, /published=true/, '成功後必須輸出 published=true');
+
+  const upload = requireStep(job, [/uses: actions\/upload-artifact@v4/], 'npm-publish.yml 上傳校驗清單');
+  assert.match(upload, /inputs\.sums-artifact != ''/, '校驗清單只在 sums-artifact 有值時上傳');
+  assert.match(upload, /name:\s*\$\{\{ inputs\.sums-artifact \}\}/, 'artifact 名取自 sums-artifact 輸入');
+});
+
+test('release.yml 的 cli-npm-publish job 重用 npm-publish.yml：下載 cli-*、以 npm-cli-package.mjs 物化、上傳 cli-npm-sums 校驗清單', () => {
+  const release = read('.github/workflows/release.yml');
+  const job = jobBlock(release, 'cli-npm-publish', 'release.yml');
+
+  // CLI 通路的 binary 唯一來源（cli-distribution spec「CLI 以 npm 套件發布」；設計 D4／D8）：
+  // 排在 Release 之後、NPM_TOKEN 缺席跳過而 job 綠、以 published 告知 tap-publish。
+  assert.match(job, /needs:\s*\[?release\]?/, 'cli-npm-publish 必須 needs: release');
+  assertNpmPublishCaller(job, 'cli-npm-publish', {
+    artifacts: 'cli-*',
+    main: '@speclink/cli',
+    materialize: 'scripts/npm/npm-cli-package.mjs',
+  });
+  // 校驗清單以 artifact 交給 tap-publish：formula 的 sha256 算在 registry 上那份 bytes。
+  assert.match(job, /sums-artifact:\s*cli-npm-sums\s*$/m, 'cli-npm-publish 必須上傳 cli-npm-sums artifact');
+});
+
+test('release.yml 的 tap-publish job 於 Release 與 CLI npm 發布之後、以 TAP_PUSH_TOKEN 與 published 雙閘門更新 tap formula', () => {
+  const release = read('.github/workflows/release.yml');
+  const job = jobBlock(release, 'tap-publish', 'release.yml');
+
+  // 通路推送排在 Release 之後，不是發布的前置條件；formula 指向 npm tgz，所以還要等
+  // CLI 的 npm 發布（cli-distribution spec「Formula 隨發版自動推送 tap」；設計 D5／D8）。
+  assert.match(job, /needs:\s*\[release,\s*cli-npm-publish\]/, 'tap-publish 必須 needs: [release, cli-npm-publish]');
   assert.match(job, /TAP_PUSH_TOKEN/, 'tap-publish 必須以 TAP_PUSH_TOKEN 為開關');
-  assert.match(job, /scripts\/release\/homebrew-formula\.mjs/, 'tap-publish 必須用 formula 產生器產出內容');
+  assert.match(
+    job,
+    /needs\.cli-npm-publish\.outputs\.published/,
+    'tap-publish 的閘門必須讀 cli-npm-publish 的 published 輸出（NPM_TOKEN 缺席時 tap 一併跳過）',
+  );
+
+  const download = requireStep(job, [/uses: actions\/download-artifact@v4/], 'tap-publish 下載校驗清單');
+  assert.match(download, /name:\s*cli-npm-sums\s*$/m, 'tap-publish 必須下載 cli-npm-sums artifact');
+  assert.ok(!job.includes('gh release download'), 'tap-publish 不得再從 Release 抓校驗檔');
+  assert.match(
+    job,
+    /scripts\/release\/homebrew-formula\.mjs[^\n]*--sums cli-npm-sums\.txt/,
+    'tap-publish 必須以 tgz 校驗清單產出 formula',
+  );
   assert.match(job, /Formula\/speclink\.rb/, 'tap-publish 必須更新 tap repo 的 Formula/speclink.rb');
 });
 
-test('release.yml 的 npm-publish job 於 NPM_TOKEN 存在時物化並發布 server 套件', () => {
+test('release.yml 的 npm-publish job 重用 npm-publish.yml：下載 server-*、以 npm-server-package.mjs 物化', () => {
   const release = read('.github/workflows/release.yml');
 
   // build job 把 server binary 以獨立 artifact 上傳供發布 job 使用（任務 10.3 的
@@ -300,35 +431,53 @@ test('release.yml 的 npm-publish job 於 NPM_TOKEN 存在時物化並發布 ser
     'release.yml：build job 缺 server-<target> artifact 上傳',
   );
 
-  const jobStart = requireIndex(release, 'npm-publish:', 'release.yml');
-  const tail = release.slice(jobStart);
-  const nextJob = tail.slice(1).search(/\n  [a-z][\w-]*:\s*\n/);
-  const job = nextJob >= 0 ? tail.slice(0, nextJob + 1) : tail;
+  // 以完整 job 鍵錨定：cli-npm-publish 也含「npm-publish:」子字串，indexOf 會切到它。
+  const job = jobBlock(release, 'npm-publish', 'release.yml');
   assert.match(job, /needs:\s*\[?release\]?/, 'npm-publish 必須 needs: release');
-  assert.match(job, /NPM_TOKEN/, 'npm-publish 必須以 NPM_TOKEN 為開關');
-  assert.match(job, /scripts\/npm\/npm-server-package\.mjs/, 'npm-publish 必須以物化腳本產出套件');
-  assert.match(job, /npm publish --access public/, 'npm-publish 必須公開發布');
-  // 冪等：tag 重推或部分失敗後重跑，已上架的同版會讓 npm publish 拿 403。
-  assert.match(job, /npm view/, 'npm-publish 須先查 registry 以支援重跑（同版已存在即跳過）');
+  assertNpmPublishCaller(job, 'npm-publish', {
+    artifacts: 'server-*',
+    main: '@speclink/server',
+    materialize: 'scripts/npm/npm-server-package.mjs',
+  });
 });
 
-test('release.yml 的 Release 資產收集逐一圈定 artifact 種類，server-* 不落入 dist', () => {
+test('release.yml 的 Release 資產只收安裝檔與更新包本體：dist 只合併 desktop-*，updater-* 保留目錄，.sig 不進 dist，無 SHA256SUMS', () => {
   const release = read('.github/workflows/release.yml');
-  // 每個把 artifact 下載進 dist 的步驟都必須帶 pattern（明示圈定），且不得圈到
-  // server-*——server binary 只給 npm-publish job，不進 Release assets。
-  const blocks = release.split(/- uses: actions\/download-artifact@v4/).slice(1);
-  const distBlocks = blocks
-    .map((block) => block.split(/\n\s*- (?:name:|uses:)/)[0])
-    .filter((block) => /path:\s*dist\b/.test(block));
-  assert.ok(distBlocks.length > 0, 'release.yml：找不到下載進 dist 的步驟');
-  for (const block of distBlocks) {
-    const pattern = /pattern:\s*(\S+)/.exec(block);
-    assert.ok(pattern, 'release.yml：下載進 dist 的步驟必須帶 pattern 圈定 artifact');
-    assert.ok(
-      !pattern[1].startsWith('server-'),
-      'release.yml：dist 收集不得圈到 server-* artifact',
-    );
-  }
+  const job = jobBlock(release, 'release', 'release.yml');
+
+  const blocks = job
+    .split(/- uses: actions\/download-artifact@v4/)
+    .slice(1)
+    .map((block) => block.split(/\n\s*- (?:name:|uses:)/)[0]);
+
+  // 安裝檔：只有 desktop-* 攤平進 dist（設計 D1）。
+  const distBlocks = blocks.filter((block) => /path:\s*dist\b/.test(block));
+  assert.equal(distBlocks.length, 1, `release job：下載進 dist 的步驟應恰一個（desktop-*），實際 ${distBlocks.length}`);
+  assert.match(distBlocks[0], /pattern:\s*desktop-\*/, 'release job：dist 只能合併 desktop-* artifact');
+
+  // 更新包：保留每平台子目錄下載一次，供組裝 latest.json。
+  const updaterBlocks = blocks.filter((block) => /pattern:\s*updater-\*/.test(block));
+  assert.equal(updaterBlocks.length, 1, 'release job：updater-* 應只以目錄結構下載一次');
+  assert.match(updaterBlocks[0], /path:\s*updater\b/, 'release job：updater-* 必須下載到 updater/');
+  assert.doesNotMatch(updaterBlocks[0], /merge-multiple/, 'release job：updater-* 不得攤平合併');
+
+  // CLI 與 server 都不進 Release assets。
+  assert.ok(!blocks.some((b) => /pattern:\s*cli-\*/.test(b)), 'release job：不得再下載 cli-*（CLI 通路收斂為 npm）');
+  assert.ok(!blocks.some((b) => /pattern:\s*server-/.test(b)), 'release job：不得下載 server-*');
+
+  // 更新包本體補進 dist、簽章留在 updater/：簽章內容已內嵌 latest.json，發布後零讀者。
+  // -exec 的結尾必須是跳脫過的 `\;`（YAML 區塊字面原樣交給 bash）：光溜溜的 `;` 會被
+  // bash 當指令結尾，find 拿不到終止符即非零結束，整個 release job 紅掉。JS 正則裡要寫
+  // `\\;` 才是字面反斜線——寫 `\;` 只等於 `;`，剛好把錯形釘成正典。
+  assert.match(
+    job,
+    /find updater -type f ! -name '\*\.sig' -exec cp \{\} dist\/ \\;/,
+    'release job：缺「把 updater/ 下非 .sig 的更新包複製進 dist」步驟，或 -exec 的結尾 `;` 沒跳脫',
+  );
+
+  // 校驗碼檔退場：唯一的機器讀者（install.sh、formula 產生器）都改讀 npm。
+  assert.ok(!release.includes('SHA256SUMS'), 'release.yml：不得再產出或下載 SHA256SUMS.txt');
+  assert.ok(!job.includes('sha256sum'), 'release job：不得再有 Checksums 步驟');
 });
 
 test('release.yml 的 docker 建置逐架構原生分開建、合併 job 打 tag（禁 QEMU 編譯路徑）', () => {
@@ -572,33 +721,10 @@ test('release.yml 的 engine 三 job：版號前置把關、重用建置、發�
 
   const publish = jobBlock(release, 'engine-npm-publish', 'release.yml');
   assert.match(publish, /needs:\s*\[engine-npm-build, release\]/, 'engine-npm-publish 必須 needs: [engine-npm-build, release]');
-  assert.match(publish, /NPM_TOKEN/, 'engine-npm-publish 必須以 NPM_TOKEN 為開關');
-  assert.match(publish, /name:\s*npm-tarballs/, 'engine-npm-publish 須下載 npm-tarballs artifact');
-  // `./` 是把關重點，不是排版：npm publish 收的是 package spec，而
-  // `tarballs/speclink-engine-0.2.0.tgz` 這種「恰一個斜線」的相對路徑會被當成
-  // GitHub 簡寫 owner/repo 去 git ls-remote（v0.2.0 的主套件就是這樣沒發出去，
-  // 子套件因為多一層 npm/<平台>/ 而僥倖通過）。斷言連 ./ 一起釘死。
-  assert.match(
-    publish,
-    /npm publish "\.\/\$tgz" --access public/,
-    'engine-npm-publish 必須公開發布 tarball，且路徑要帶 ./ 前綴（否則被誤讀為 GitHub 簡寫）',
-  );
-
-  // 冪等：部分失敗後重跑不得因「同版已存在」永遠紅燈。
-  assert.match(publish, /npm view/, 'engine-npm-publish 須先查 registry 以支援重跑（同版已存在即跳過）');
-
-  // npm 發布不可回頭（逾 24h 不能 unpublish），所以兩端都要 fail closed：
-  // 發之前擋住版號不符（蓋章沒跑就會把佔位版永久發上去，job 還是綠的），
-  // 發之後確認主套件真的上架（「全部略過」與「全部發完」在 job 結果上同樣是綠）。
-  assert.match(publish, /EXPECTED="\$\{GITHUB_REF_NAME#v\}"/, 'engine-npm-publish 須自 tag 名算出預期版號');
-  assert.match(publish, /"\$version" != "\$EXPECTED"/, 'engine-npm-publish 發布前須斷言 tarball 版號等於 tag 版');
-  assert.match(publish, /npm view "\$main_name@\$EXPECTED"/, 'engine-npm-publish 須以收尾查詢確認主套件確實上架');
-
-  // 子套件先發、主套件最後，optionalDependencies 於主套件上架時皆可解析。
-  const iSub = requireIndex(publish, 'tarballs/npm/', 'release.yml engine-npm-publish');
-  const iMain = publish.lastIndexOf('tarballs/*.tgz');
-  assert.notEqual(iMain, -1, 'release.yml：engine-npm-publish 缺主套件 tarball 發布');
-  assert.ok(iSub < iMain, 'engine-npm-publish：平台子套件須排在主套件之前發布');
+  // 發布單位是上游打包好的 tarball（node-sdk-release spec「npm 發布閘門與發布順序」：
+  // 發布 job SHALL NOT 重新打包），所以不傳 materialize；閘門、冪等、版號 fail-closed、
+  // 子套件先發與收尾可見性都在共用 workflow 內，由它自己的測試釘住。
+  assertNpmPublishCaller(publish, 'engine-npm-publish', { artifacts: 'npm-tarballs', main: '@speclink/engine' });
 });
 
 
@@ -646,8 +772,8 @@ function* repoTextLines(dir = root) {
 }
 
 /// 已搬進 scripts/<group>/ 的腳本檔名。清單自檔案系統讀出而非寫死 32 個字面——
-/// 新增腳本自動納管，這支測試自己也不含任何舊形字串。install.sh、install.ps1 與
-/// install.test.mjs 留在 scripts/ 根（README 的 raw GitHub 網址釘死），不在清單內。
+/// 新增腳本自動納管，這支測試自己也不含任何舊形字串。install.sh 與 install.test.mjs
+/// 留在 scripts/ 根（README 的 raw GitHub 網址釘死），不在清單內。
 function groupedScriptNames() {
   return ['release', 'npm', 'desktop', 'docs', 'dev'].flatMap((group) => {
     const dir = path.join(root, 'scripts', group);

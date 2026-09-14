@@ -1,0 +1,169 @@
+# npm 發布的共用 workflow（workflow_call）：release.yml 的三條 npm 通路——CLI（@speclink/cli，
+# cli-distribution spec「CLI 以 npm 套件發布」；release-assets-trim 設計 D4／D8）、server
+# （@speclink/server，server-release spec「npm 套件一行啟動 server」）、engine（@speclink/engine，
+# node-sdk-release spec「npm 發布閘門與發布順序」）——共用同一套閘門與發布迴圈，只以輸入區分：
+#
+#   artifacts      download-artifact 的 pattern。物化路徑給 <name>-<target> 目錄（cli-*、server-*：
+#                  內容是 raw binary）；已打包路徑給 tarball artifact 名（npm-tarballs）。
+#   materialize    物化腳本路徑（scripts/npm/npm-*-package.mjs），以 --version／--binaries／--out
+#                  呼叫後對每個套件目錄 npm pack；留空＝artifact 內已是 tarball，發布端不重新打包
+#                  （node-sdk-release spec：發布單位是上游打包好的 tarball）。
+#   main-package   主套件名：平台子套件先發、它最後發，並等它在 registry 可見才算成功。
+#   sums-artifact  有值時把 tarball 的 sha256 清單（<值>.txt）上傳為此名的 artifact——CLI 用它
+#                  把校驗清單交給 tap-publish，formula 的 sha256 算在 registry 上那份 bytes。
+#
+# 語意（三條通路一致）：排在 Release 之後、不是發布的前置條件；NPM_TOKEN 缺席時各步跳過而
+# job 綠、輸出 published=false；存在而發布失敗時紅燈、可單獨重跑。冪等：發到一半失敗或 tag
+# 重推時，已上架的同版會讓 npm publish 拿 403 而永遠轉不綠，所以每份先查 registry、同版已存在
+# 就跳過。fail closed：發布前逐份斷言 tarball 版號等於 tag 版（npm 發布不可撤回，蓋章沒跑會把
+# 佔位版永久上架，而重跑又會因「已存在」全部略過）；發布後輪詢等主套件可見（首次上架的
+# packument 會延遲好幾分鐘，只查一次會假紅；「全部跳過」與「全部發完」在 job 結果上同樣是綠，
+# 沒有這一步 job 綠得毫無意義）。
+
+name: npm publish
+
+on:
+  workflow_call:
+    inputs:
+      artifacts:
+        description: 'download-artifact 的 pattern（cli-*、server-*、npm-tarballs）'
+        required: true
+        type: string
+      main-package:
+        description: '主套件名，例如 @speclink/cli；最後發並等它在 registry 可見'
+        required: true
+        type: string
+      materialize:
+        description: '物化腳本路徑；留空表示 artifact 內已是 tarball，不重新打包'
+        required: false
+        type: string
+        default: ''
+      sums-artifact:
+        description: '有值時把 tarball 的 sha256 清單上傳為此名的 artifact'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      NPM_TOKEN:
+        required: false
+    outputs:
+      published:
+        description: 'true＝主套件已上架且在 registry 可見；false＝NPM_TOKEN 缺席而跳過'
+        value: ${{ jobs.publish.outputs.published }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    outputs:
+      published: ${{ steps.publish.outputs.published || 'false' }}
+    steps:
+      # secrets 不能出現在 job 層級的 if，故以首步輸出當開關。
+      - name: npm credential gate
+        id: gate
+        shell: bash
+        run: echo "enabled=$([ -n "$NPM_TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      # 物化腳本與 packages/*-npm 的主套件在 repo 內（engine 路徑用不到 checkout，多一步無害）。
+      - uses: actions/checkout@v5
+        if: steps.gate.outputs.enabled == 'true'
+
+      - uses: actions/setup-node@v5
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      # 保留 artifact 目錄結構：物化腳本要的是 input/<name>-<target>/<binary> 佈局；
+      # tarball 路徑下面以 find 攤平，不依賴層數。
+      - uses: actions/download-artifact@v4
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          pattern: ${{ inputs.artifacts }}
+          path: input
+
+      # 輸入一律經 env 進 shell（不內插進 run:），tag 名與輸入值可含 shell 特殊字元。
+      - name: Materialize and pack (or collect the prebuilt tarballs)
+        if: steps.gate.outputs.enabled == 'true'
+        shell: bash
+        env:
+          MATERIALIZE: ${{ inputs.materialize }}
+          SUMS_ARTIFACT: ${{ inputs.sums-artifact }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p tarballs
+          if [ -n "$MATERIALIZE" ]; then
+            node "$MATERIALIZE" --version "$VERSION" --binaries input --out npm-out
+            # 先 pack 再 publish tgz：formula 引用的 sha256 必須算在 registry 上那份 bytes，
+            # 而 npm publish <tgz> 上傳的就是它。
+            for pkg in npm-out/*/; do
+              (cd "$pkg" && npm pack --pack-destination "$GITHUB_WORKSPACE/tarballs" >/dev/null)
+            done
+          else
+            find input -type f -name '*.tgz' -exec mv -t tarballs/ {} +
+          fi
+          (cd tarballs && sha256sum *.tgz) > "${SUMS_ARTIFACT:-npm-sums}.txt"
+          cat "${SUMS_ARTIFACT:-npm-sums}.txt"
+
+      - name: Publish the platform sub-packages, then the main package
+        id: publish
+        if: steps.gate.outputs.enabled == 'true'
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          MAIN: ${{ inputs.main-package }}
+        run: |
+          EXPECTED="${GITHUB_REF_NAME#v}"
+
+          # tarball 內 package/package.json 的欄位（name／version）。
+          pkg_field() {
+            tar -xzOf "$1" package/package.json | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).$2"
+          }
+
+          publish_one() {
+            local tgz="$1" name version
+            name="$(pkg_field "$tgz" name)"
+            version="$(pkg_field "$tgz" version)"
+            if [ "$version" != "$EXPECTED" ]; then
+              echo "::error::$name 的 tarball 版號為 $version，與 tag 版 $EXPECTED 不符（版號蓋章沒跑？）"
+              exit 1
+            fi
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version 已在 registry，跳過"
+            else
+              # `./` 不可省：npm publish 的引數是 package spec，不是路徑。`tarballs/x.tgz` 恰好是
+              # 「一個斜線」的形狀，會被當成 GitHub 簡寫 owner/repo 去 git ls-remote（2026-09-08 的
+              # engine v0.2.0 主套件就死在這裡）。前綴 ./ 讓它只能是路徑。
+              npm publish "./$tgz" --access public
+            fi
+          }
+
+          # 平台子套件先發、主套件最後：optionalDependencies 於主套件上架時皆可解析到同版。
+          main_tgz=""
+          for tgz in tarballs/*.tgz; do
+            if [ "$(pkg_field "$tgz" name)" = "$MAIN" ]; then
+              main_tgz="$tgz"
+            else
+              publish_one "$tgz"
+            fi
+          done
+          [ -n "$main_tgz" ] || { echo "::error::tarballs 內沒有主套件 $MAIN"; exit 1; }
+          publish_one "$main_tgz"
+
+          # 等主套件在 registry 可見，沒等到就紅——否則下游（tap-publish）會拿到一份指向
+          # 還抓不到的 tgz 的 formula。
+          visible=""
+          for _ in $(seq 1 60); do
+            if npm view "$MAIN@$EXPECTED" version >/dev/null 2>&1; then visible=1; break; fi
+            sleep 10
+          done
+          [ -n "$visible" ] || { echo "::error::$MAIN@$EXPECTED 十分鐘內未出現在 registry"; exit 1; }
+          echo "published=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.enabled == 'true' && inputs.sums-artifact != ''
+        with:
+          name: ${{ inputs.sums-artifact }}
+          path: ${{ inputs.sums-artifact }}.txt
+          if-no-files-found: error

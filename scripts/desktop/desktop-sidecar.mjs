@@ -5,10 +5,17 @@
 // 用法：node scripts/desktop/desktop-sidecar.mjs [--profile <debug|release>] [--target <triple>]
 //   --profile：debug｜release，無旗標預設 release（本機安裝與 CI 的既有呼叫形狀）
 //   有 --target：cargo build -p speclink-cli --target <triple>（交叉編譯）
+//   --target universal-apple-darwin：對 aarch64 與 x86_64 兩個 Apple target 各建一次，
+//     佈三份檔（release-assets-trim 設計 D2）：兩份 per-triple 複本給 tauri-build——
+//     `tauri build --target universal-apple-darwin` 對兩個 triple 各跑一次 cargo build，
+//     build script 各以 cargo 的 TARGET 找 speclink-<triple>，缺即失敗；再以 lipo 合成
+//     一份 speclink-universal-apple-darwin 給 bundler（它要求 universal 建置的 external
+//     binary 也是 universal，且命名帶 -universal-apple-darwin）
 //   無 --target：host 編譯，triple 取自 rustc -vV 的 host
 // 產出：apps/desktop/src-tauri/binaries/speclink-<triple>[.exe]
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -81,6 +88,31 @@ export function builtBinaryPath(rootDir, { profile, target, triple }) {
   );
 }
 
+/// Tauri 的 universal 目標名與其展開的兩個 rustup target。
+const UNIVERSAL_TRIPLE = 'universal-apple-darwin';
+const UNIVERSAL_TARGETS = ['aarch64-apple-darwin', 'x86_64-apple-darwin'];
+
+/// 建置計畫（純函式，可測）：跑哪幾次 cargo（null＝host 編譯）、產出哪幾個檔——每個輸出
+/// 列出來源與目的檔，來源兩個以上即以 lipo 合成。universal 以外的 target 維持既有的
+/// 單次建置、單一輸出形狀。
+export function sidecarPlan(rootDir, { profile, target, triple }) {
+  const destFor = (name) => path.join(rootDir, 'apps/desktop/src-tauri/binaries', `speclink-${name}${exeSuffix(name)}`);
+  if (target === UNIVERSAL_TRIPLE) {
+    const built = UNIVERSAL_TARGETS.map((t) => builtBinaryPath(rootDir, { profile, target: t, triple: t }));
+    return {
+      cargoTargets: UNIVERSAL_TARGETS,
+      outputs: [
+        ...UNIVERSAL_TARGETS.map((t, i) => ({ sources: [built[i]], dest: destFor(t) })),
+        { sources: built, dest: destFor(UNIVERSAL_TRIPLE) },
+      ],
+    };
+  }
+  return {
+    cargoTargets: [target],
+    outputs: [{ sources: [builtBinaryPath(rootDir, { profile, target, triple })], dest: destFor(triple) }],
+  };
+}
+
 /// 內容相同即跳過（決策三的防抖）：binaries/speclink-<triple> 在 cargo 的
 /// rerun-if-changed 清單內，無條件覆蓋會更新 mtime，使每次 dev 啟動都多付一輪
 /// speclink-desktop 重編。來源檔缺失時報錯而非回 false——那不是「內容相同」。
@@ -90,29 +122,46 @@ export function shouldCopy(source, dest) {
   return !readFileSync(source).equals(readFileSync(dest));
 }
 
+/// 佈一個輸出：多來源先 lipo 到暫存檔，再走同一套「內容相同即跳過」——合成結果才是
+/// 要比對的東西。暫存目錄在 lipo 之前建立、finally 收掉，lipo 失敗也不留殘檔。
+function deploy(output, profile) {
+  const [built] = output.sources;
+  const shown = path.relative(root, output.dest);
+  const scratch = output.sources.length > 1 ? mkdtempSync(path.join(os.tmpdir(), 'speclink-lipo-')) : null;
+  try {
+    let source = built;
+    if (scratch) {
+      source = path.join(scratch, 'speclink');
+      run('lipo', ['-create', ...output.sources, '-output', source]);
+    }
+    mkdirSync(path.dirname(output.dest), { recursive: true });
+    if (!shouldCopy(source, output.dest)) {
+      console.log(`sidecar 內容未變，跳過複製：${shown}`);
+      return;
+    }
+    copyFileSync(source, output.dest);
+    console.log(`sidecar 佈署完成（${profile}${scratch ? '，universal' : ''}）：${shown}`);
+  } finally {
+    if (scratch) rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
 function main(argv) {
   const { profile, target } = parseSidecarArgs(argv);
   const triple = target ?? hostTriple();
-  run('cargo', [
-    'build',
-    ...(profile === 'release' ? ['--release'] : []),
-    '-p',
-    'speclink-cli',
-    ...(target ? ['--target', target] : []),
-  ]);
+  const plan = sidecarPlan(root, { profile, target, triple });
 
-  const built = builtBinaryPath(root, { profile, target, triple });
-  const destDir = path.join(root, 'apps/desktop/src-tauri/binaries');
-  mkdirSync(destDir, { recursive: true });
-  const dest = path.join(destDir, `speclink-${triple}${exeSuffix(triple)}`);
-  const shown = path.relative(root, dest);
-
-  if (!shouldCopy(built, dest)) {
-    console.log(`sidecar 內容未變，跳過複製：${shown}`);
-    return;
+  for (const cargoTarget of plan.cargoTargets) {
+    run('cargo', [
+      'build',
+      ...(profile === 'release' ? ['--release'] : []),
+      '-p',
+      'speclink-cli',
+      ...(cargoTarget ? ['--target', cargoTarget] : []),
+    ]);
   }
-  copyFileSync(built, dest);
-  console.log(`sidecar 佈署完成（${profile}）：${shown}`);
+
+  for (const output of plan.outputs) deploy(output, profile);
 }
 
 // node --test 匯入本模組時只取函式，不執行佈署。

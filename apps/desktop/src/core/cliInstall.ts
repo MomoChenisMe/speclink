@@ -1,7 +1,7 @@
 // CLI 佈署純邏輯（desktop-app spec「安裝 CLI 指令到 PATH」，design D5）：狀態
 // 判定與平台分流的佈署計畫。檔案系統與子程序歸 Tauri 殼（收集事實、執行計畫），
 // 這裡只做決策——vitest 可測、不依賴 Tauri。
-export type CliPlatform = "macos" | "windows" | "linux-appimage" | "linux-deb";
+export type CliPlatform = "macos" | "windows" | "linux-appimage" | "linux-unpackaged";
 
 export type CliInstallStatus =
   | { kind: "not-installed" }
@@ -11,7 +11,7 @@ export type CliInstallStatus =
 export type CliDeployPlan =
   | { action: "symlink"; linkPath: string; targetPath: string }
   | { action: "copy"; destPath: string; sourcePath: string }
-  | { action: "none"; reason: "installer-managed" | "package-managed" };
+  | { action: "none"; reason: "installer-managed" | "unpackaged" };
 
 /** 以偵測到的已佈署版本（null＝未偵測到）對 app 版本判定三態。 */
 export function cliInstallStatus(
@@ -31,7 +31,8 @@ export function parseCliVersion(output: string): string | null {
 
 /** 平台分流的佈署計畫（design D5）：macOS symlink（app 路徑固定、更新後自動指向
  * 新版）；AppImage 複製（掛載點隨執行變動、symlink 不可行）；Windows 由 NSIS
- * 安裝器寫 PATH、deb 由包管理器佈署 /usr/bin——後兩者 app 內僅回報狀態。 */
+ * 安裝器寫 PATH；Linux 非 AppImage（開發建置或手動解開的 app，deb 已退場——
+ * release-assets-trim D7）沒有可佈署的來源——後兩者 app 內僅回報狀態。 */
 export function cliDeployPlan(
   platform: CliPlatform,
   ctx: { home: string; bundledCliPath: string },
@@ -51,15 +52,15 @@ export function cliDeployPlan(
       };
     case "windows":
       return { action: "none", reason: "installer-managed" };
-    case "linux-deb":
-      return { action: "none", reason: "package-managed" };
+    case "linux-unpackaged":
+      return { action: "none", reason: "unpackaged" };
   }
 }
 
 /** 啟動自動佈署判定（spec 修訂「macOS 啟動自動佈署與自我修復」＋「AppImage
  * 版本不符自我修復」，design D12）：macOS 未安裝或版本不符皆自動佈署（symlink
  * 冪等無副作用）；AppImage 僅版本不符時修復——未安裝仍是使用者的顯式動作
- * （複製佈署較重）；Windows／deb 歸安裝器與包管理器。 */
+ * （複製佈署較重）；Windows 歸安裝器、Linux 非 AppImage 無來源可佈。 */
 export function needsRedeploy(platform: CliPlatform, status: CliInstallStatus): boolean {
   if (platform === "macos") return status.kind !== "installed";
   return platform === "linux-appimage" && status.kind === "version-mismatch";
