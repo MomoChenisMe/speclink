@@ -4,7 +4,7 @@ section: 開始使用
 order: 40
 keywords: [openspec, 變更, 討論, 規格, 生命週期, 封存, 廢棄]
 sources: [change-lifecycle, discussion-docs, user-documentation]
-generated: 2026-09-11T10:03:08+08:00
+generated: 2026-09-14T16:01:31+08:00
 ---
 
 # 認識資料：變更、討論與規格
@@ -119,7 +119,7 @@ discard 會刪掉整個變更資料夾與它的觸及記錄檔，並解開它與
 | concluded | 已寫入結論 |
 | promoted | 已轉出變更：至少連結了一個變更 |
 
-狀態之外，記錄的 frontmatter 還可能有一行 `hold: true`，意思是「保留在途」：這份討論之後還要再轉出變更，引擎不要在最後一個變更封存時自動把它收走。這行只由 `speclink discuss conclude --hold` 寫入，由不帶 `--hold` 的 conclude 或 `speclink discuss archive` 解除。轉出變更不會清掉它。用法見[討論：需求還模糊時](discuss.md)。
+狀態之外，記錄的 frontmatter 還可能有一行 `hold: true`，意思是「保留在途」：這份討論之後還要再轉出變更，引擎不要在最後一個變更封存時自動把它收走。這行只由 `speclink discuss conclude --hold` 寫入。解除它的方式有三種：不帶 `--hold` 的 conclude、轉出時帶 `--last`（宣告這是最後一刀）、或 `speclink discuss archive`。不帶 `--last` 的轉出不會清掉它。用法見[討論：需求還模糊時](discuss.md)。
 
 建立討論時會蓋建立者章，取自 git 身分。git 身分取不到時省略。
 
@@ -137,6 +137,8 @@ discard 會刪掉整個變更資料夾與它的觸及記錄檔，並解開它與
 | `speclink discuss promote <slug>` | 中途轉出：建立新變更骨架並連結 |
 | `speclink discuss link <slug> <變更名>` | 把討論連到既有變更。只寫變更側，討論記錄不動 |
 | `speclink discuss seal <slug> <變更名>` | 標記討論的內容已反映到該變更：討論狀態變成 promoted |
+
+promote、seal 與 `speclink new change --from-discussion` 都可以帶 `--last`，表示這次轉出的是結論規劃的最後一刀：記錄的「保留在途」旗標一併解除。`speclink new change` 的 `--last` 要與 `--from-discussion` 一起用，單獨帶會以錯誤結束、不建立任何檔案。
 
 變更封存時，它來源的每份討論各自檢查三個條件，全部成立才一起封存：
 

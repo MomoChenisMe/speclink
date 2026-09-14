@@ -2,9 +2,9 @@
 title: 討論：需求還模糊時
 section: SDD 工作流
 order: 100
-keywords: [討論, discuss, 決策樹, slug, 結論, 轉為變更, 分期轉出, hold, 改進討論, 搜尋舊討論, search]
+keywords: [討論, discuss, 決策樹, slug, 結論, 轉為變更, 分期轉出, hold, 最後一刀, 改進討論, 搜尋舊討論, search]
 sources: [discuss-skill, discussion-docs, improve-skill, user-documentation]
-generated: 2026-09-11T10:03:08+08:00
+generated: 2026-09-14T16:01:31+08:00
 ---
 
 # 討論：需求還模糊時
@@ -205,22 +205,27 @@ speclink discuss conclude <slug> --hold
 ```
 
 - 結論照常寫入，記錄的 frontmatter 多一行 `hold: true`；狀態轉換與不帶旗標時相同。stdout 多一行告知記錄保留在途，這次 conclude 不會順手封存。
-- 之後每次轉出（promote、`speclink new change --from-discussion`、seal）都不會清掉這個旗標。所以每一刀的變更封存時，這份討論都留在原地，封存輸出也不列它。
-- 旗標只由兩件事解除：不帶 `--hold` 的 conclude（會移除任何 `hold:` 行，手改的 `hold: false` 也一樣），或 `speclink discuss archive <slug>`。archive 無視旗標，照常封存。
-- 最後一刀封存後，執行 `speclink discuss archive <slug>` 收尾。
+- 之後不帶 `--last` 的轉出（promote、`speclink new change --from-discussion`、seal）都不會清掉這個旗標。所以中間每一刀的變更封存時，這份討論都留在原地，封存輸出也不列它。
+- 最後一刀在轉出時帶 `--last`。正常情況下這一步由 `/speclink-propose --from-discussion` 代勞：agent 讀結論 Decision 段的刀清單與記錄的轉出清單，判定這次立的是最後一刀就帶上，判定規則見[提案：建立變更與產物](propose.md)。帶 `--last` 的轉出在同一次寫入移除 `hold:` 行；變更名已經在轉出清單裡（重複轉出、重新反映後的 seal）也一樣移除；記錄本來就沒有 hold 行時什麼都不改。轉出指令的輸出不會提到 hold。
+- 旗標只由三件事解除：不帶 `--hold` 的 conclude（會移除任何 `hold:` 行，手改的 `hold: false` 也一樣）、帶 `--last` 的轉出，或 `speclink discuss archive <slug>`。archive 無視旗標，照常封存。
+- 帶過 `--last` 之後，最後一個轉出變更封存時（不論封存順序），記錄自動隨行封存，並列在封存輸出裡。不用再手動執行 `speclink discuss archive`。
+- 忘了帶 `--last` 時，記錄留在途，看板的討論卡標「已轉出・保留中」。執行一次 `speclink discuss archive <slug>` 就收尾。
 - 沒帶 `--hold` 的記錄，會在最後一個轉出變更封存時隨行封存；之後還要再切的刀，走新討論。
+
+`speclink new change` 的 `--last` 必須與 `--from-discussion` 一起用。單獨帶 `--last` 時指令以錯誤結束，stderr 說明 `--last` 需要 `--from-discussion`，不建立任何檔案。
 
 | 步驟 | 記錄的變化 |
 | --- | --- |
 | `conclude --hold` | 結論寫入，`hold: true` 出現 |
-| `promote --name cut-a`，封存 cut-a | 轉出清單多 cut-a；旗標保留；記錄留在原地 |
+| `promote --name cut-a`，封存 cut-a | 轉出清單多 cut-a；旗標保留；記錄留在原地，封存輸出不列它 |
 | `promote --name cut-b`，封存 cut-b | 轉出清單多 cut-b；旗標保留；記錄留在原地 |
-| `discuss archive` | 記錄移入 `discussions/archive/` |
+| `promote --name cut-c --last` | 轉出清單多 cut-c；`hold:` 行消失 |
+| 封存 cut-c | 記錄移入 `discussions/archive/`，封存輸出列它。全程不用執行 `speclink discuss archive` |
 
-沒有 frontmatter 的舊記錄不能帶 `--hold`：指令以錯誤結束、記錄不動；不帶 `--hold` 照常結論。remote 模式的行為與本機相同。
+沒有 frontmatter 的舊記錄不能帶 `--hold`：指令以錯誤結束、記錄不動；不帶 `--hold` 照常結論。remote 模式的 `--hold`、`--last` 與旗標的行為都與本機相同。
 
 > [!TIP]
-> 討論被誤封存時，把記錄檔從 `openspec/discussions/archive/` 搬回 `openspec/discussions/` 就能繼續用。引擎對已封存討論的轉出錯誤訊息也會指向這條路。
+> 討論被誤封存時，把記錄檔從 `openspec/discussions/archive/` 搬回 `openspec/discussions/` 就能繼續用。在不是最後一刀的變更上帶了 `--last`，記錄會在最後一個在途變更封存時被收走，也走這條路救回。引擎對已封存討論的轉出錯誤訊息也會指向這條路。
 
 ### link 與 seal 的細節
 
@@ -236,6 +241,7 @@ speclink discuss conclude <slug> --hold
 - 前提是鏈已經存在（經 link、promote 或建立變更時鑄成）。鏈不存在時拒絕，stderr 說明鏈未存在。
 - 通過時討論狀態標記為 promoted，並記下這個變更名。
 - 同時清掉該變更上對應這份討論的「待重新反映」標記。
+- 帶 `--last` 時，同一次寫入移除記錄的 `hold:` 行（見上方「分期轉出」）。輸出與不帶時相同。
 
 | 情境 | seal 的結果 |
 | --- | --- |
@@ -244,6 +250,7 @@ speclink discuss conclude <slug> --hold
 | 變更不存在 | 拒絕：變更不存在 |
 | 變更沒有連到這份討論 | 拒絕：鏈未鑄妥 |
 | 已經 seal 過 | 直接成功，不改檔 |
+| 已經 seal 過，這次帶 `--last` | 成功；轉出清單不變，`hold:` 行移除 |
 
 ### 重新下結論
 
@@ -266,7 +273,7 @@ conclude 時，如果這份討論轉出的變更全部已經封存、沒有任�
 5. 建記錄：用 `--kind improve` 與 `--slug improve-<範圍>` 建討論，候選寫在 Round 1。每個候選有 Files、Problem、Solution、Wins、建議強度五欄；建議強度分三級：強烈建議、值得探索、尚屬臆測。結尾給首選建議，並問你想深入哪一個。
 6. 收斂：沿用一次一題、提案帶證據的紀律，對每個被挑中的候選做介面深度檢查。第六種訊號的候選，四問改成：分組邊界的客觀來源是什麼、既有路徑靠什麼維持不變、搬移前盤點過哪些路徑風險（內嵌路徑的公開網址、依 tag 觸發或依路徑篩選的 CI workflow、以相對路徑寫的建置期檔案引入、跨套件的路徑相依）、回到平鋪目錄讀者會失去什麼。並附兩條做法：測試跟著原始碼的分組一起搬（內嵌測試超過行數門檻時搬到同名子檔）；切刀依路徑相依排序，先動目錄本身的刀、再動目錄內分組的刀，不用 worktree 平行做。
 
-收斂走 conclude，再經 promote 或 link 轉成變更。結論規劃分期立案（先立一刀、封存後再回同一份記錄轉出下一刀）時，conclude 帶一次 `--hold`，最後一刀封存後執行 `speclink discuss archive <slug>` 收尾；沒帶旗標的記錄在最後一個轉出變更封存時隨行封存，之後的刀走新討論（見上方「分期轉出」）。你全數否決時，仍然要 conclude（記明不做與理由）並封存，不能 discard。
+收斂走 conclude，再經 promote 或 link 轉成變更。結論規劃分期立案（先立一刀、封存後再回同一份記錄轉出下一刀）時，conclude 帶一次 `--hold`；最後一刀由 propose 轉出時帶 `--last`，之後最後一個轉出變更封存時記錄自動隨行封存；忘了帶 `--last` 就執行一次 `speclink discuss archive <slug>` 收尾；沒帶旗標的記錄在最後一個轉出變更封存時隨行封存，之後的刀走新討論（見上方「分期轉出」）。你全數否決時，仍然要 conclude（記明不做與理由）並封存，不能 discard。
 
 ## Remote 模式
 
