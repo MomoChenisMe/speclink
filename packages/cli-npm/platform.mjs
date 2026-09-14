@@ -6,17 +6,13 @@ import path from 'node:path';
 
 const SCOPE = '@speclink';
 
-// 五個平台子套件（os-cpu），與 scripts/npm/npm-platform-package.mjs 的 TARGETS 同序。
-const SUPPORTED = ['darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64', 'win32-x64'];
-
-export function supportedPlatforms() {
-  return [...SUPPORTED];
-}
+/** 五個平台子套件（os-cpu），與 scripts/npm/npm-platform-package.mjs 的 TARGETS 同序。 */
+export const SUPPORTED_PLATFORMS = ['darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64', 'win32-x64'];
 
 /** os/cpu → 平台子套件名；無對應（未支援平台）回 null。 */
 export function platformPackage(platform, arch) {
   const key = `${platform}-${arch}`;
-  return SUPPORTED.includes(key) ? `${SCOPE}/cli-${key}` : null;
+  return SUPPORTED_PLATFORMS.includes(key) ? `${SCOPE}/cli-${key}` : null;
 }
 
 export function binaryName(platform) {

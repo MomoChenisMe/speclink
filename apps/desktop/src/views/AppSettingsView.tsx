@@ -247,6 +247,9 @@ export function AppSettingsView({
                 {cliInstall.view.platform === "windows" && (
                   <FieldHelp>{t("cliInstall.installerManaged")}</FieldHelp>
                 )}
+                {cliInstall.view.platform === "linux-unpackaged" && (
+                  <FieldHelp>{t("cliInstall.unpackaged")}</FieldHelp>
+                )}
                 {cliInstall.view.pathHint && cliInstall.view.deployDir && (
                   <p
                     data-testid="cli-path-hint"

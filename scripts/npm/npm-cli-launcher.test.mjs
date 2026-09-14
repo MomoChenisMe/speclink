@@ -1,7 +1,8 @@
 // @speclink/cli 主套件的 shim 與 postinstall（cli-distribution spec「CLI 以 npm 套件發布」；
 // release-assets-trim 設計 D4）。純函式（平台對映、binary 定位、置換決策）直接匯入測；
-// shim 的 spawn 與 exit code 轉發以子行程對假 binary 驗——只在非 Windows 跑（假 binary
-// 是 sh 腳本，Windows 的 shim 路徑本來就走 spawn，不置換）。
+// shim 的 spawn、參數透傳與 exit code 轉發以子行程對假 binary 驗，三平台都跑：POSIX 的假
+// binary 是 sh 腳本，Windows 的假 binary 是 node.exe 的複本（shim 原樣透傳參數，所以測試
+// 以 -e 讓它印參數並以指定碼結束）。訊號轉發只在 POSIX 驗——Windows 沒有訊號。
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -12,13 +13,15 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const pkgSource = path.join(root, 'packages/cli-npm');
-const { platformPackage, binaryName, resolveBinary, supportedPlatforms } = await import(
+const { platformPackage, binaryName, resolveBinary, SUPPORTED_PLATFORMS } = await import(
   pathToFileURL(path.join(pkgSource, 'platform.mjs')).href
 );
 const { replaceShim } = await import(pathToFileURL(path.join(pkgSource, 'postinstall.mjs')).href);
 
 const isWindows = process.platform === 'win32';
 const posixTest = isWindows ? test.skip : test;
+// 子行程 postinstall 的環境：固定 npm 的 user agent，測試由 yarn 啟動時結果才不會跟著變。
+const NPM_ENV = { ...process.env, npm_config_user_agent: 'npm/10.9.0 node/v22.0.0 linux x64' };
 
 // --- 平台對映 ---
 
@@ -35,7 +38,7 @@ test('os/cpu 對映到五個平台子套件，之外的平台回 null', () => {
   for (const [platform, arch, expected] of matrix) {
     assert.equal(platformPackage(platform, arch), expected, `${platform}/${arch}`);
   }
-  assert.deepEqual(supportedPlatforms(), ['darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64', 'win32-x64']);
+  assert.deepEqual(SUPPORTED_PLATFORMS, ['darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64', 'win32-x64']);
   assert.equal(binaryName('win32'), 'speclink.exe');
   assert.equal(binaryName('linux'), 'speclink');
 });
@@ -63,12 +66,24 @@ function sandbox(t, { withPlatformPackage = true, platform = process.platform, a
     mkdirSync(subDir, { recursive: true });
     writeFileSync(path.join(subDir, 'package.json'), JSON.stringify({ name: platformPackage(platform, arch), version: '0.5.0' }));
     binary = path.join(subDir, binaryName(platform));
-    // 假 binary：印出收到的每個參數（一行一個），以指定碼結束；指定 signal 時改對自己送該訊號。
-    const ending = signal ? `kill -${signal} $$` : `exit ${exitCode}`;
-    writeFileSync(binary, `#!/bin/sh\nfor a in "$@"; do echo "arg:$a"; done\n${ending}\n`);
-    chmodSync(binary, 0o755);
+    if (isWindows) {
+      // Windows 的假 binary 得是真的 .exe：拿 node.exe 複本，行為由測試傳入的 -e 決定。
+      cpSync(process.execPath, binary);
+    } else {
+      // 假 binary：印出收到的每個參數（一行一個），以指定碼結束；指定 signal 時改對自己送該訊號。
+      const ending = signal ? `kill -${signal} $$` : `exit ${exitCode}`;
+      writeFileSync(binary, `#!/bin/sh\nfor a in "$@"; do echo "arg:$a"; done\n${ending}\n`);
+      chmodSync(binary, 0o755);
+    }
   }
   return { dir, mainDir, shim: path.join(mainDir, 'bin/speclink'), binary };
+}
+
+/// 假 binary 的「印參數、以指定碼結束」行為：POSIX 寫在 sh 腳本裡，Windows 由 node.exe 複本
+/// 吃 -e 腳本——shim 原樣透傳參數，所以測試把 -e 放在最前面即可。
+function fakeArgs(exitCode, ...args) {
+  if (!isWindows) return args;
+  return ['-e', `for (const a of process.argv.slice(1)) console.log('arg:' + a); process.exit(${exitCode});`, ...args];
 }
 
 // --- binary 定位 ---
@@ -85,16 +100,23 @@ test('resolveBinary 自主套件位置解析出對應子套件內的 binary；�
 
 // --- shim：spawn、參數透傳、exit code 轉發 ---
 
-posixTest('shim 以 spawn 執行平台 binary、全部參數原樣透傳、exit 0 轉發', (t) => {
+test('shim 以 spawn 執行平台 binary、參數原樣透傳、exit 0 轉發（三平台）', (t) => {
+  const box = sandbox(t);
+  const result = spawnSync(process.execPath, [box.shim, ...fakeArgs(0, 'status', '--json')], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.replace(/\r\n/g, '\n'), 'arg:status\narg:--json\n');
+});
+
+posixTest('shim 連 -- 與空字串參數都原樣透傳', (t) => {
   const box = sandbox(t);
   const result = spawnSync(process.execPath, [box.shim, 'status', '--json', '--', '--weird', ''], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout, 'arg:status\narg:--json\narg:--\narg:--weird\narg:\n');
 });
 
-posixTest('shim 把 binary 的非零 exit code 原樣帶回', (t) => {
+test('shim 把 binary 的非零 exit code 原樣帶回（三平台）', (t) => {
   const box = sandbox(t, { exitCode: 3 });
-  const result = spawnSync(process.execPath, [box.shim, 'validate'], { encoding: 'utf8' });
+  const result = spawnSync(process.execPath, [box.shim, ...fakeArgs(3, 'validate')], { encoding: 'utf8' });
   assert.equal(result.status, 3);
 });
 
@@ -106,12 +128,12 @@ posixTest('binary 被訊號收束時 shim 對自己送同一個訊號：呼叫�
   assert.equal(result.stdout, 'arg:serve\n', '訊號之前的輸出仍透傳');
 });
 
-posixTest('找不到對應子套件時 shim 於 stderr 列出支援組合並以 exit 1 結束', (t) => {
+test('找不到對應子套件時 shim 於 stderr 列出支援組合並以 exit 1 結束（三平台）', (t) => {
   const box = sandbox(t, { withPlatformPackage: false });
   const result = spawnSync(process.execPath, [box.shim, '--version'], { encoding: 'utf8' });
   assert.equal(result.status, 1);
   assert.match(result.stderr, new RegExp(`${process.platform}[-/]${process.arch}`), 'stderr 點名目前的 os/cpu');
-  for (const key of supportedPlatforms()) {
+  for (const key of SUPPORTED_PLATFORMS) {
     assert.ok(result.stderr.includes(key), `stderr 應列出支援組合 ${key}`);
   }
   assert.equal(result.stdout, '');
@@ -138,6 +160,31 @@ test('win32 不置換：npm 的 .cmd 殼以 node 執行 bin，換成原生檔會
   assert.equal(readFileSync(box.shim, 'utf8'), before);
 });
 
+test('Yarn 安裝時不置換：Yarn Berry 一律以 node 執行套件 bin，換成原生檔會壞（esbuild 同款守門）', (t) => {
+  const box = sandbox(t, { platform: 'linux', arch: 'x64' });
+  const before = readFileSync(box.shim, 'utf8');
+  const yarn = 'yarn/4.5.0 npm/? node/v22.0.0 linux x64';
+  assert.deepEqual(
+    replaceShim({ platform: 'linux', arch: 'x64', shimPath: box.shim, userAgent: yarn }),
+    { replaced: false, reason: 'yarn' },
+  );
+  assert.equal(readFileSync(box.shim, 'utf8'), before, 'Yarn 下 shim 不得被動');
+  // npm／pnpm 的 user agent 不受影響；未設定（直接執行 node postinstall.mjs）亦同。
+  assert.equal(replaceShim({ platform: 'linux', arch: 'x64', shimPath: box.shim, userAgent: 'npm/10.9.0 node/v22.0.0 linux x64' }).replaced, true);
+});
+
+test('postinstall 本體讀 npm_config_user_agent：Yarn 下以 0 結束且 shim 未動', (t) => {
+  const box = sandbox(t);
+  const before = readFileSync(box.shim, 'utf8');
+  const result = spawnSync(process.execPath, ['postinstall.mjs'], {
+    encoding: 'utf8',
+    cwd: box.mainDir,
+    env: { ...process.env, npm_config_user_agent: 'yarn/4.5.0 npm/? node/v22.0.0 darwin arm64' },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(readFileSync(box.shim, 'utf8'), before);
+});
+
 test('找不到平台 binary 時保留 shim 且不視為錯誤（--ignore-scripts 或子套件缺席的退路）', (t) => {
   const box = sandbox(t, { withPlatformPackage: false });
   const before = readFileSync(box.shim, 'utf8');
@@ -148,7 +195,7 @@ test('找不到平台 binary 時保留 shim 且不視為錯誤（--ignore-script
   assert.equal(readFileSync(box.shim, 'utf8'), before);
 
   // 以子行程跑 postinstall 本體：exit 0、shim 未動。
-  const result = spawnSync(process.execPath, [path.join(box.mainDir, 'postinstall.mjs')], { encoding: 'utf8', cwd: box.mainDir });
+  const result = spawnSync(process.execPath, [path.join(box.mainDir, 'postinstall.mjs')], { encoding: 'utf8', cwd: box.mainDir, env: NPM_ENV });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(readFileSync(box.shim, 'utf8'), before);
   assert.equal(existsSync(path.join(box.mainDir, 'bin/speclink')), true);
@@ -160,7 +207,7 @@ posixTest('postinstall 本體經 symlink 路徑被呼叫時仍執行置換（npm
   // 實體路徑——入口判定沒 realpath 就會靜默不跑 main，shim 留著、每次呼叫多付 Node 啟動。
   const link = path.join(box.dir, 'linked-cli');
   symlinkSync(box.mainDir, link);
-  const result = spawnSync(process.execPath, [path.join(link, 'postinstall.mjs')], { encoding: 'utf8', cwd: link });
+  const result = spawnSync(process.execPath, [path.join(link, 'postinstall.mjs')], { encoding: 'utf8', cwd: link, env: NPM_ENV });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(readFileSync(box.shim, 'utf8'), readFileSync(box.binary, 'utf8'), '經 symlink 呼叫也要完成置換');
   assert.equal(statSync(box.shim).mode & 0o777, 0o755);

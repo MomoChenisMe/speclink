@@ -88,6 +88,16 @@ detect_platform() {
 PLATFORM="$(detect_platform)"
 PKG="${SCOPE}/cli-${PLATFORM}"
 
+# Linux 的 binary 是 glibc 動態連結：musl（Alpine 等）裝進去也跑不起來（loader 缺席只印一句
+# not found），在這裡就講清楚。ldd --version 在 musl 印 "musl libc (…)"；沒有 ldd 就不擋。
+case "$PLATFORM" in
+  linux-*)
+    if command -v ldd >/dev/null 2>&1 && ldd --version 2>&1 | grep -qi musl; then
+      die "偵測到 musl libc；目前的 Linux binary 只支援 glibc（Debian／Ubuntu／Fedora 等），Alpine 請改用容器內的 glibc 環境或自行建置"
+    fi
+    ;;
+esac
+
 # registry 的 tgz 路徑：<registry>/@scope/name/-/name-<版本>.tgz（檔名不帶 scope）。
 tgz_url() {
   echo "${REGISTRY}/${PKG}/-/cli-${PLATFORM}-$1.tgz"
@@ -125,7 +135,8 @@ fi
 command -v curl >/dev/null 2>&1 || die "找不到 curl，請先安裝後重試"
 command -v openssl >/dev/null 2>&1 || die "找不到 openssl，無法驗證 integrity；請先安裝後重試"
 
-# 取 JSON 裡第一個 "<key>":"<value>"——registry 的回應是單行 JSON，用第一個出現的頂層鍵。
+# 取 JSON 裡第一個出現的 "<key>":"<value>"——registry 的回應是單行 JSON；version 在頂層、
+# integrity 在 dist 之內，兩者在各自的回應裡都只出現一次。
 json_field() {
   grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | head -n 1 | sed 's/.*:[[:space:]]*"\(.*\)"$/\1/'
 }

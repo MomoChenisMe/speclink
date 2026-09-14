@@ -6,15 +6,17 @@
 //
 // 缺任一平台 binary 或版號不合形即丟錯，且在寫任何檔之前——不留下半套輸出。
 
-import { chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 // release build artifact（<name>-<target>，內容為 raw binary）→ npm 平台子套件（os／cpu）的對映契約。
+// Linux 的 binary 是 glibc 動態連結（*-unknown-linux-gnu），宣告 libc 讓 npm／pnpm 在 musl
+// （Alpine）跳過子套件，由 shim／launcher 報「找不到 binary」，而不是裝進去後 loader 缺席。
 const TARGETS = [
   { target: 'aarch64-apple-darwin', os: 'darwin', cpu: 'arm64' },
   { target: 'x86_64-apple-darwin', os: 'darwin', cpu: 'x64' },
-  { target: 'x86_64-unknown-linux-gnu', os: 'linux', cpu: 'x64' },
-  { target: 'aarch64-unknown-linux-gnu', os: 'linux', cpu: 'arm64' },
+  { target: 'x86_64-unknown-linux-gnu', os: 'linux', cpu: 'x64', libc: 'glibc' },
+  { target: 'aarch64-unknown-linux-gnu', os: 'linux', cpu: 'arm64', libc: 'glibc' },
   { target: 'x86_64-pc-windows-msvc', os: 'win32', cpu: 'x64' },
 ];
 
@@ -29,19 +31,12 @@ export function materializePackages({ name, binary, description, sourceDir, vers
   const artifactBinary = ({ target, os }) => path.join(binariesDir, `${name}-${target}`, binaryFor(os));
 
   // fail closed：先驗五個 binary 全數到位，再開始物化。
-  const missing = TARGETS.filter((entry) => {
-    try {
-      readFileSync(artifactBinary(entry));
-      return false;
-    } catch {
-      return true;
-    }
-  });
+  const missing = TARGETS.filter((entry) => !existsSync(artifactBinary(entry)));
   if (missing.length > 0) throw new Error(`缺少平台 binary：${missing.map((m) => m.target).join('、')}`);
 
   // 平台子套件：os/cpu 圈定，內容物只有 binary。
   for (const entry of TARGETS) {
-    const { os, cpu } = entry;
+    const { os, cpu, libc } = entry;
     const pkgDir = path.join(outDir, `${name}-${os}-${cpu}`);
     mkdirSync(pkgDir, { recursive: true });
     writeJson(path.join(pkgDir, 'package.json'), {
@@ -51,6 +46,9 @@ export function materializePackages({ name, binary, description, sourceDir, vers
       license: 'MIT',
       os: [os],
       cpu: [cpu],
+      ...(libc ? { libc: [libc] } : {}),
+      // Yarn PnP 會把套件留在 zip 裡；binary 要真的落在磁碟上，主套件才 spawn 得到。
+      preferUnplugged: true,
     });
     const dest = path.join(pkgDir, binaryFor(os));
     copyFileSync(artifactBinary(entry), dest);

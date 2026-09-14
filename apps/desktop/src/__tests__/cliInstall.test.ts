@@ -338,6 +338,28 @@ describe("CLI 佈署 store 接線", () => {
     expect(onPath.appendZprofile).not.toHaveBeenCalled();
   });
 
+  it("Linux 非 AppImage 執行：僅回報 ~/.local/bin 的狀態、不可佈署、啟動不自動佈署", async () => {
+    const { store, deploy } = storeWith([
+      macProbe({
+        platform: "linux-unpackaged",
+        home: "/home/u",
+        pathEnv: "/usr/bin",
+        bundledCliPath: null,
+        deployedVersionOutput: "speclink 0.2.0 (x86_64)\n",
+      }),
+    ]);
+    await store.getState().refreshCliInstall();
+    await store.getState().installCli();
+
+    expect(deploy).not.toHaveBeenCalled();
+    expect(store.getState().cliInstall).toMatchObject({
+      platform: "linux-unpackaged",
+      status: { kind: "installed", version: "0.2.0" },
+      canDeploy: false,
+      pathHint: false,
+    });
+  });
+
   it("Windows：僅回報狀態、不可佈署", async () => {
     const { store, deploy } = storeWith([
       macProbe({

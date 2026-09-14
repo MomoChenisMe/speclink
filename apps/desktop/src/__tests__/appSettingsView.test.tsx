@@ -288,6 +288,27 @@ describe("AppSettingsView CLI 指令卡", () => {
     expect(screen.queryByRole("button", { name: "安裝 CLI 指令" })).toBeNull();
   });
 
+  it("Linux 非 AppImage 執行僅回報狀態：無安裝按鈕、說明沒有可佈署的 CLI", () => {
+    render(
+      <AppSettingsView
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        cliInstall={{
+          view: cliView({
+            platform: "linux-unpackaged",
+            canDeploy: false,
+            deployDir: null,
+            status: { kind: "not-installed" },
+          }),
+          onInstall: vi.fn(),
+        }}
+      />,
+    );
+    const card = screen.getByTestId("cli-install-card");
+    expect(card.textContent).toContain("沒有可佈署的 CLI");
+    expect(screen.queryByRole("button", { name: "安裝 CLI 指令" })).toBeNull();
+  });
+
   it("佈署失敗錯誤浮出於卡內", () => {
     render(
       <AppSettingsView

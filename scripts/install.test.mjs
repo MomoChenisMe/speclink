@@ -412,6 +412,29 @@ shTest('安裝目錄已有指向別處的 symlink 時，換掉連結本身而不
   assert.deepEqual(readdirSync(box.installDir), ['speclink'], '不得留下暫存檔');
 });
 
+// --- musl（Alpine 等）不在支援範圍 ---
+
+shTest('Linux 上偵測到 musl 時以非零結束並說明只支援 glibc，不下載', (t) => {
+  const box = sandbox(t);
+  stageRegistry(box, { platform: 'linux-x64' });
+  // musl 的 ldd --version 印 "musl libc (x86_64)"；glibc 印 "ldd (GNU libc) 2.39"。
+  const fakeLdd = path.join(box.binDir, 'ldd');
+  writeFileSync(fakeLdd, '#!/bin/sh\necho "musl libc (x86_64)"\necho "Version 1.2.4"\n');
+  chmodSync(fakeLdd, 0o755);
+
+  const result = runInstall(box, {
+    unameS: 'Linux',
+    unameM: 'x86_64',
+    env: { SPECLINK_INSTALL_VERSION: VERSION, SPECLINK_INSTALL_DIR: box.installDir },
+  });
+
+  assert.notEqual(result.status, 0, 'musl 應以非零結束');
+  assert.match(result.stderr, /musl/, '錯誤訊息應點名 musl');
+  assert.match(result.stderr, /glibc/, '錯誤訊息應說明只支援 glibc');
+  assert.deepEqual(result.curlCalls, [], 'musl 上不該下載');
+  assert.deepEqual(readdirSync(box.installDir), [], 'musl 上安裝目錄不得留下任何檔案');
+});
+
 // --- 失敗路徑不留殘檔 ---
 
 /// 只含指定工具的 PATH 目錄：把當前 PATH 找得到的工具以 symlink 收進來，漏掉的那個

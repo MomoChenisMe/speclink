@@ -5,13 +5,13 @@
 // 經過 Node；這裡是 Windows 的正式路徑，以及 --ignore-scripts 安裝的退路。
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
-import { resolveBinary, supportedPlatforms } from '../platform.mjs';
+import { resolveBinary, SUPPORTED_PLATFORMS } from '../platform.mjs';
 
 const binary = resolveBinary(import.meta.url, process.platform, process.arch);
 if (!binary) {
   process.stderr.write(
     `speclink: 找不到 ${process.platform}-${process.arch} 的 CLI binary。` +
-      `支援的平台：${supportedPlatforms().join('、')}；` +
+      `支援的平台：${SUPPORTED_PLATFORMS.join('、')}；` +
       '若平台在列，請確認安裝時未略過 optionalDependencies（重新執行 npm i -g @speclink/cli）。\n',
   );
   process.exit(1);

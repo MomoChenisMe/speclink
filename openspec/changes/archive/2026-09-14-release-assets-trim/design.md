@@ -43,23 +43,23 @@ sidecar：`scripts/desktop/desktop-sidecar.mjs` 收到 `--target universal-apple
 
 ### D3 latest.json：darwin 兩鍵共用 universal 更新包
 
-`scripts/release/release-latest-json.mjs` 的 --dir 契約由「每個平台鍵一個子目錄」改為「每個**更新包目錄**對應一或多個平台鍵」：必要目錄 `darwin-universal`（對應 darwin-aarch64 與 darwin-x86_64 兩鍵）、`windows-x86_64`、`linux-x86_64`；可選目錄 `linux-aarch64`。每個目錄仍須恰有一個更新包與同名 .sig，缺任一必要目錄、缺更新包或缺 .sig 一律非零結束。輸出的 platforms 物件仍至少含 darwin-aarch64、darwin-x86_64、windows-x86_64、linux-x86_64 四鍵，darwin 兩鍵的 url 與 signature 相同。
+`scripts/release/release-latest-json.mjs` 的 --dir 契約由「每個平台鍵一個子目錄」改為「每個**更新包目錄**對應一或多個平台鍵」：必要目錄 `darwin-universal`（對應 darwin-aarch64 與 darwin-x86_64 兩鍵）、`windows-x86_64`、`linux-x86_64`；可選目錄 `linux-aarch64`。每個目錄仍須恰有一個更新包與同名 .sig，缺任一必要目錄、缺更新包或缺 .sig 一律非零結束；可選目錄只有「目錄不存在」才放過，目錄在但缺更新包或缺 .sig 同樣非零。輸出的 platforms 物件仍至少含 darwin-aarch64、darwin-x86_64、windows-x86_64、linux-x86_64 四鍵，darwin 兩鍵的 url 與 signature 相同。
 
 為什麼不把鍵名改成 darwin-universal：Tauri updater 依執行機器查 darwin-aarch64 或 darwin-x86_64，鍵名是 updater 的契約，不是我們的。
 
 ### D4 @speclink/cli 的套件形狀與 shim 置換
 
-套件形狀比照 server：主套件 `@speclink/cli`（bin `speclink` → `bin/speclink`，一個帶 shebang、無副檔名的 JS shim）加五個平台子套件 `@speclink/cli-darwin-arm64`、`cli-darwin-x64`、`cli-linux-x64`、`cli-linux-arm64`、`cli-win32-x64`（各只含 `speclink`／`speclink.exe`，以 os／cpu 欄位圈定）。repo 內只維護 `packages/cli-npm/`（`private: true` 擋誤發布）；`scripts/npm/npm-cli-package.mjs` 在發版時從 `cli-<target>` build artifacts 物化去 private、蓋版本、補五組同版 optionalDependencies 的主套件與五個子套件，缺任一平台 binary 即非零結束。物化規則與 server 的同一份（`scripts/npm/npm-platform-package.mjs`：套件家族名、binary 基底名、主套件來源目錄為參數；主套件要帶的檔就是來源 `package.json` 的 `files` 清單，不另抄一份），兩支入口腳本只解析參數；CLI 的入口不提供 `--scope`（shim 的子套件解析寫死 `@speclink`，可換 scope 是假的彈性）。`engines.node` 為 `^18.19.0 || ^20.10.0 || >=21`：無副檔名的 ESM 入口要這些版本起才能當程式入口執行；npm 對不合的 Node 版本在安裝時印 EBADENGINE 警告（設了 engine-strict 才會擋下安裝），使用者在裝的當下就看得到原因，而不是執行期才炸。
+套件形狀比照 server：主套件 `@speclink/cli`（bin `speclink` → `bin/speclink`，一個帶 shebang、無副檔名的 JS shim）加五個平台子套件 `@speclink/cli-darwin-arm64`、`cli-darwin-x64`、`cli-linux-x64`、`cli-linux-arm64`、`cli-win32-x64`（各只含 `speclink`／`speclink.exe`，以 os／cpu 欄位圈定；Linux 兩個另宣告 `libc: ["glibc"]`——binary 是 glibc 動態連結，musl 上讓 npm 跳過子套件、由 shim 報找不到 binary；五個都宣告 `preferUnplugged: true`，Yarn PnP 才會把 binary 解到磁碟）。repo 內只維護 `packages/cli-npm/`（`private: true` 擋誤發布）；`scripts/npm/npm-cli-package.mjs` 在發版時從 `cli-<target>` build artifacts 物化去 private、蓋版本、補五組同版 optionalDependencies 的主套件與五個子套件，缺任一平台 binary 即非零結束。物化規則與 server 的同一份（`scripts/npm/npm-platform-package.mjs`：套件家族名、binary 基底名、主套件來源目錄為參數；主套件要帶的檔就是來源 `package.json` 的 `files` 清單，不另抄一份），兩支入口腳本只解析參數；CLI 的入口不提供 `--scope`（shim 的子套件解析寫死 `@speclink`，可換 scope 是假的彈性）。`engines.node` 為 `^18.19.0 || ^20.10.0 || >=21`：無副檔名的 ESM 入口要這些版本起才能當程式入口執行；npm 對不合的 Node 版本在安裝時印 EBADENGINE 警告（設了 engine-strict 才會擋下安裝），使用者在裝的當下就看得到原因，而不是執行期才炸。
 
 shim 行為（`packages/cli-npm/bin/speclink`）：以 createRequire 解析本機對應的平台子套件路徑，找不到（不支援的平台或 optionalDependencies 被略過）時 stderr 說明並以 exit 1 結束；找到即 spawn 該 binary、stdio 繼承、把子程序的 exit code 與訊號原樣帶回。這條路是 Windows 的正式路徑（npm 在 Windows 產生的 .cmd 殼會以 node 執行 bin，置換成原生檔會壞掉）與 --ignore-scripts 安裝的退路。
 
-postinstall（`packages/cli-npm/postinstall.mjs`）：只在 macOS／Linux 執行——找到平台 binary 後，把 `bin/speclink` 這個檔**原地**換成原生 binary（先寫到同目錄暫存名再 rename，保 0755），npm 建立的全域 symlink 因此直接指到原生執行檔，之後每次呼叫零 Node 啟動成本。找不到平台 binary 時 postinstall 以 exit 0 結束並保留 shim（不讓安裝失敗，錯誤留到執行時由 shim 報）。這是 esbuild 的做法。
+postinstall（`packages/cli-npm/postinstall.mjs`）：只在 macOS／Linux 且套件管理器不是 Yarn 時執行（Yarn Berry 一律以 node 執行套件的 bin，換成原生檔會壞；依 `npm_config_user_agent` 是否以 `yarn/` 開頭判斷，esbuild 同款守門）——找到平台 binary 後，把 `bin/speclink` 這個檔**原地**換成原生 binary（先寫到同目錄暫存名再 rename，保 0755），npm 建立的全域 symlink 因此直接指到原生執行檔，之後每次呼叫零 Node 啟動成本。找不到平台 binary 時 postinstall 以 exit 0 結束並保留 shim（不讓安裝失敗，錯誤留到執行時由 shim 報）。這是 esbuild 的做法。
 
 為什麼 bin 名維持 `speclink`：所有技能檔與文件都呼叫 `speclink ...`；PATH 上多一個 speclink 位置的問題 brew 早已存在（`/opt/homebrew/bin` 與 `~/.local/bin`），不是新問題。替代方案「比照 Spectra 另取 bin 名」被排除：兩套指令名的成本遠超本變更。
 
 ### D5 Homebrew formula 改指 npm registry
 
-`scripts/release/homebrew-formula.mjs` 的輸入由 SHA256SUMS.txt 改為 `cli-npm-sums.txt`（每行「sha256<兩空白>tgz 檔名」，由 npm 發布 job 對 npm pack 產出的 tgz 計算，`npm publish ./<tgz>` 上傳的就是同一份 bytes）；輸出的四組 url 改為 `https://registry.npmjs.org/@speclink/cli-<os>-<cpu>/-/cli-<os>-<cpu>-<版本>.tgz`（darwin-arm64、darwin-x64、linux-arm64、linux-x64），sha256 取自 sums 對應行；缺任一組即非零結束並點名平台；`bin.install "speclink"` 與 `test do` 區塊不變。npm tgz 的內容在單一頂層目錄 `package/` 下，Homebrew 解壓時會自動進入唯一的頂層目錄，所以 `bin.install "speclink"` 照常成立（第一次發版後以真實 brew install 驗證，見 Migration Plan）。
+`scripts/release/homebrew-formula.mjs` 的輸入由 SHA256SUMS.txt 改為 `cli-npm-sums.txt`（每行「sha256<兩空白>tgz 檔名」，由 npm 發布 job 在發布並等 registry 可見之後，以 `npm pack <name>@<version>` 自 registry 取回每個 tgz 計算——拿到的是 registry 原 bytes；不能算在本次 pack 的 tgz 上：重跑時已上架的同版會被跳過，本次重建的 bytes 不一定相同，而 formula 指的是 registry 那份）；輸出的四組 url 改為 `https://registry.npmjs.org/@speclink/cli-<os>-<cpu>/-/cli-<os>-<cpu>-<版本>.tgz`（darwin-arm64、darwin-x64、linux-arm64、linux-x64），sha256 取自 sums 對應行；缺任一組即非零結束並點名平台；`bin.install "speclink"` 與 `test do` 區塊不變。npm tgz 的內容在單一頂層目錄 `package/` 下，Homebrew 解壓時會自動進入唯一的頂層目錄，所以 `bin.install "speclink"` 照常成立（第一次發版後以真實 brew install 驗證，見 Migration Plan）。
 
 這是 homebrew-core 對 Node CLI 的既有寫法（url 指 registry.npmjs.org 的 tgz），不是取巧。替代方案「為 brew 保留四個 tar.gz 在 Release 頁」被排除：那正是要清掉的檔。
 
@@ -67,7 +67,7 @@ postinstall（`packages/cli-npm/postinstall.mjs`）：只在 macOS／Linux 執�
 
 `scripts/install.sh` 維持同一個 raw 網址、同樣的 --dry-run／--help、同樣的 SPECLINK_INSTALL_DIR 與 SPECLINK_INSTALL_VERSION，改動如下：
 
-- 平台對映改為 npm 的 os／cpu 名（Darwin arm64→darwin-arm64、Darwin x86_64→darwin-x64、Linux x86_64→linux-x64、Linux aarch64→linux-arm64）；Windows 的 uname 值以非零結束並導向 npm 與 setup.exe。
+- 平台對映改為 npm 的 os／cpu 名（Darwin arm64→darwin-arm64、Darwin x86_64→darwin-x64、Linux x86_64→linux-x64、Linux aarch64→linux-arm64）；Windows 的 uname 值以非零結束並導向 npm 與 setup.exe；Linux 上 `ldd --version` 顯示 musl（Alpine 等）時以非零結束並說明只支援 glibc（沒有 ldd 就不擋）。
 - 版本解析：未釘選時 GET `<registry>/@speclink/cli/latest` 取 version；釘選值接受 `0.5.0` 或 `v0.5.0`（去 v 前綴）。
 - 下載：`<registry>/@speclink/cli-<os>-<cpu>/-/cli-<os>-<cpu>-<版本>.tgz`。
 - 驗證：GET `<registry>/@speclink/cli-<os>-<cpu>/<版本>` 取 dist.integrity（`sha512-<base64>`），以 openssl dgst -sha512 -binary 加 openssl base64 -A 算出實際值比對；不符即非零結束且安裝目錄不落任何檔；找不到 openssl 即非零結束。
@@ -87,7 +87,7 @@ desktop job 的 Linux 兩列 `bundles` 由 `appimage,deb` 改為 `appimage`，�
 - build job：移除 Package 步驟（不再打 tar.gz／zip），`cli-<target>` artifact 改為 raw binary（`target/<triple>/release/speclink[.exe]`），與 `server-<target>` 同形。
 - desktop job：macOS 一列 universal（D2）、Linux 只建 appimage（D7）、收集步驟把 .sig 只放進 updater/（D1）。
 - release job：`needs: [build, desktop, docker-manifest]` 不變；下載 `desktop-*` 進 dist、`updater-*` 進 updater/；組裝 latest.json；複製非 .sig 更新包進 dist；不產 SHA256SUMS；下載指南前置。
-- 三條 npm 通路共用一份 `workflow_call` 的 `.github/workflows/npm-publish.yml`（NPM_TOKEN 閘門、下載 artifact、物化＋npm pack 或沿用已打包的 tarball、tgz 的 sha256 清單、逐份斷言 tarball 版號等於 tag 版、npm view 冪等、`npm publish "./<tgz>" --access public` 子套件先發主套件最後、輪詢等主套件在 registry 可見、輸出 `published`）；呼叫端只給差異：`artifacts`（下載 pattern）、`materialize`（物化腳本路徑，留空＝不重新打包）、`main-package`、`sums-artifact`（有值才上傳校驗清單）。
+- 三條 npm 通路共用一份 `workflow_call` 的 `.github/workflows/npm-publish.yml`（NPM_TOKEN 閘門、下載 artifact、物化＋npm pack 或沿用已打包的 tarball、逐份斷言 tarball 版號等於 tag 版、npm view 冪等、`npm publish "./<tgz>" --access public` 子套件先發主套件最後、輪詢等主套件在 registry 可見、再以 `npm pack <name>@<version>` 自 registry 取回每個 tgz 算 sha256 清單、輸出 `published`）；呼叫端只給差異：`artifacts`（下載 pattern）、`materialize`（物化腳本路徑，留空＝不重新打包）、`main-package`、`sums-artifact`（有值才上傳校驗清單）。
 - 新 job `cli-npm-publish`：`needs: [release]`，`uses` 上述 workflow，`artifacts: cli-*`、`materialize: scripts/npm/npm-cli-package.mjs`、`main-package: @speclink/cli`、`sums-artifact: cli-npm-sums`（清單檔名 `cli-npm-sums.txt`）。NPM_TOKEN 缺席時 job 綠、`published=false`。
 - tap-publish：`needs: [release, cli-npm-publish]`；閘門為 TAP_PUSH_TOKEN 存在**且** `cli-npm-publish` 輸出 `published=true`；下載 `cli-npm-sums` artifact、以產生器輸出 formula、推送 tap（推送步驟不變）。兩個條件任一不成立即跳過且 job 綠。
 - server 的 `npm-publish`（`artifacts: server-*`、`materialize: scripts/npm/npm-server-package.mjs`）與 engine 的 `engine-npm-publish`（`artifacts: npm-tarballs`、不傳 `materialize`——發布單位是上游打包好的 tarball，不重新打包）改為呼叫同一份 workflow，語意（閘門、冪等、順序、fail-closed）不變；engine 的另兩個 job、docker 兩個 job 不動。
@@ -108,9 +108,9 @@ desktop job 的 Linux 兩列 `bundles` 由 `appimage,deb` 改為 `appimage`，�
 
 **universal sidecar（D2）**：desktop-sidecar.mjs 帶 `--target universal-apple-darwin` 時在 `apps/desktop/src-tauri/binaries/` 產出三份：`speclink-aarch64-apple-darwin`、`speclink-x86_64-apple-darwin`（各為該 triple 的建置產物）與 `speclink-universal-apple-darwin`（lipo -info 顯示 arm64 與 x86_64 兩個架構）；其他 target 的產出路徑與檔名不變。驗證：`scripts/desktop/desktop-sidecar.test.mjs` 對參數解析與 universal 的建置計畫（兩個 cargo target、三個輸出的來源與目的檔）的單元測試；CI 的 desktop job 建置成功即為整合驗證。
 
-**@speclink/cli（D4）**：npm i -g @speclink/cli 後，macOS／Linux 的全域 `speclink` 是原生 binary（`file` 顯示 Mach-O／ELF）、`speclink --version` 輸出與 tag 同版；Windows 的 `speclink` 經 shim spawn `speclink.exe`，exit code 原樣帶回；`npm i -g --ignore-scripts @speclink/cli` 後 speclink 仍可執行（走 shim）；不支援平台執行 shim 時 stderr 說明並 exit 1。物化腳本輸入 `--version X.Y.Z --binaries <dir> --out <dir>`（缺任一 `cli-<target>/speclink[.exe]` 即非零結束並點名 target；版本不符 X.Y.Z 即非零結束）。驗證：`scripts/npm/npm-cli-package.test.mjs`（物化欄位、fail-closed）、`scripts/npm/npm-cli-launcher.test.mjs`（shim 的平台解析與 exit code 轉發、postinstall 的置換與找不到 binary 時保留 shim）。
+**@speclink/cli（D4）**：npm i -g @speclink/cli 後，macOS／Linux 的全域 `speclink` 是原生 binary（`file` 顯示 Mach-O／ELF）、`speclink --version` 輸出與 tag 同版；Windows 的 `speclink` 經 shim spawn `speclink.exe`，exit code 原樣帶回；`npm i -g --ignore-scripts @speclink/cli` 後 speclink 仍可執行（走 shim）；以 Yarn 安裝時 postinstall 保留 shim；不支援平台執行 shim 時 stderr 說明並 exit 1。物化腳本輸入 `--version X.Y.Z --binaries <dir> --out <dir>`（缺任一 `cli-<target>/speclink[.exe]` 即非零結束並點名 target；版本不符 X.Y.Z 即非零結束）。驗證：`scripts/npm/npm-cli-package.test.mjs`（物化欄位、fail-closed）、`scripts/npm/npm-cli-launcher.test.mjs`（shim 的平台解析與 exit code 轉發、postinstall 的置換與找不到 binary 時保留 shim）。
 
-**formula（D5）**：`node scripts/release/homebrew-formula.mjs --tag vX.Y.Z --sums cli-npm-sums.txt` 輸出的 formula 四組 url 為上述 registry.npmjs.org 樣式、sha256 等於 sums 對應行；sums 缺任一組（darwin-arm64、darwin-x64、linux-arm64、linux-x64）即非零結束並點名；不引用 win32。驗證：`scripts/release/homebrew-formula.test.mjs`（含 ruby -c 合法性）。
+**formula（D5）**：`node scripts/release/homebrew-formula.mjs --tag vX.Y.Z --sums cli-npm-sums.txt` 輸出的 formula 四組 url 為上述 registry.npmjs.org 樣式、sha256 等於 sums 對應行（sums 算在 registry 取回的 tgz 上，重跑也不會與 registry 脫節）；sums 缺任一組（darwin-arm64、darwin-x64、linux-arm64、linux-x64）即非零結束並點名；不引用 win32。驗證：`scripts/release/homebrew-formula.test.mjs`（含 ruby -c 合法性）。
 
 **install.sh（D6）**：見 D6 的逐項行為；dry-run 不連網不寫檔且印出 tgz 網址；integrity 不符 → 非零結束、安裝目錄無任何新增檔；成功 → `<安裝目錄>/speclink` 存在、可執行、`speclink --version` 為該版。驗證：`scripts/install.test.mjs` 以假 uname／curl 與 fixture tgz（含 package/speclink）、fixture 版本 JSON（含 sha512 integrity）驅動；PowerShell 測試組刪除。
 
@@ -123,7 +123,7 @@ desktop job 的 Linux 兩列 `bundles` 由 `appimage,deb` 改為 `appimage`，�
 ## Risks / Trade-offs
 
 - [回歸對照] CLI 人眼輸出與 `--json` 零改動，golden 與 `crates/adapters/speclink-cli/tests/` 不受影響 → tasks 仍以 `cargo test -p speclink-desktop` 與 scripts 全組測試守門；`scripts/release/delivery-gate.test.mjs` 是本變更的主要回歸面，先改測試（紅）再改 workflow（綠）。
-- [跨平台] install.ps1 退役後 `scripts/install.test.mjs` 在 Windows runner 上整組跳過（sh 測試本來就跳過）→ Windows 的 CLI 通路由 npm 的 shim 路徑承擔，`npm-cli-launcher.test.mjs` 在三平台都跑（以假 binary 驗 spawn 與 exit code）。
+- [跨平台] install.ps1 退役後 `scripts/install.test.mjs` 在 Windows runner 上整組跳過（sh 測試本來就跳過）→ Windows 的 CLI 通路由 npm 的 shim 路徑承擔，`npm-cli-launcher.test.mjs` 的 spawn、參數透傳與 exit code 轉發在三平台都跑（POSIX 以 sh 腳本、Windows 以 node.exe 複本當假 binary）；訊號轉發只在 POSIX 驗，Windows 沒有訊號。
 - [universal sidecar 命名] tauri-bundler 文件明寫 universal 建置的 external binary 須為 universal 且命名 `<name>-universal-apple-darwin`，而 tauri-build 在兩次 per-triple 的 cargo build 期間又各要一份 `<name>-<triple>` → 三份都佈；desktop job 建置失敗即為紅燈，不會發出缺 sidecar 的 Release。
 - [mac job 時間] 兩個平行 mac job 變一個，等待時間可能多一個 mac 建置的長度 → 接受；CI 分鐘數不變（本來就編兩次）。
 - [Homebrew 解壓假設] 假設 Homebrew 對單一頂層目錄的 tgz 會自動進入該目錄 → 第一次發版後由使用者實機 brew install 驗證（[M]）；若不成立，formula 改為 `bin.install "package/speclink"` 一行即可修。
