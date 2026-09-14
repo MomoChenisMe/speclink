@@ -3,8 +3,8 @@ title: 看板與任務
 section: 桌面 app
 order: 310
 keywords: [看板, 卡片, 拖曳, 任務, 退回提案中, worktree, 保留中]
-sources: [desktop-app, board-card-order, worktree-overlay, manual-task-marker, task-identity]
-generated: 2026-09-11T10:03:08+08:00
+sources: ["desktop-app#看板欄位由生命週期標記驅動", "desktop-app#討論於看板第 0 欄兩級呈現", "desktop-app#看板討論卡片的改進標示", "desktop-app#看板卡片統一解剖學", "desktop-app#看板變更卡呈現建立者與關係提示", "desktop-app#看板卡片浮現待重新反映徽章", "desktop-app#看板卡片的待手動標示", "desktop-app#看板搜尋過濾卡片", "desktop-app#拖曳封存落點以浮層呈現", "desktop-app#看板全域操作成功靜默、失敗以 toast 浮層呈現", "desktop-app#進行中變更可自看板退回提案中", "desktop-app#詳情抽屜的封存與刪除依階段守門", "desktop-app#桌面刪除變更走 discard 全語意", "desktop-app#變更詳情抽屜標頭的四層結構", "desktop-app#變更的來源討論多值呈現", "desktop-app#桌面 app 呈現 change 與 spec 的清單與內容", "desktop-app#桌面 app 提供動詞操作面", "desktop-app#GUI 勾任務與 CLI 完成語意一致", "desktop-app#勾選任務即時回饋", "desktop-app#任務寫回非阻塞且序列化", "desktop-app#觸及檔案系統的 command 不佔用主執行緒", "desktop-app#任務分頁提供批次操作工具列", "desktop-app#任務清單拖放排序與自動重編號", "desktop-app#任務列的手動任務徽章", "desktop-app#任務群組標題與章節標籤同款式", board-card-order, worktree-overlay, manual-task-marker, task-identity]
+generated: 2026-09-14T16:01:31+08:00
 ---
 
 # 看板與任務

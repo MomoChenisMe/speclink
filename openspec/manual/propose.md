@@ -2,9 +2,9 @@
 title: 提案：建立變更與產物
 section: SDD 工作流
 order: 110
-keywords: [提案, propose, 變更, capability, 命名守門, Purpose, 手動任務, validate]
+keywords: [提案, propose, 變更, capability, 命名守門, Purpose, 手動任務, validate, 最後一刀, 分期]
 sources: [propose-skill, capability-naming-guard, spec-validation, manual-task-marker]
-generated: 2026-09-11T10:03:08+08:00
+generated: 2026-09-14T16:01:31+08:00
 ---
 
 # 提案：建立變更與產物
@@ -30,6 +30,31 @@ agent 依這個優先序決定需求來源：
 - 討論 Ruled out 的內容，不會出現在提案裡。即使原始文件主張作法 X，討論否決了 X 並決定作法 Y，提案就採 Y，X 不會以任何形式復活。
 
 記錄沒有 Source doc 行時，流程與一般相同。
+
+#### 最後一刀帶 --last
+
+討論的結論可能把一件事切成幾刀依序立案，並用 `speclink discuss conclude --hold` 把記錄保留在途（見[討論：需求還模糊時](discuss.md)）。用 `--from-discussion` 建立變更時，agent 會判定這次立的是不是最後一刀：讀結論 Decision 段列出的刀清單（刀一／刀二／…或 cut A／cut B 等任一寫法），對照記錄 frontmatter 已轉出的變更清單。
+
+- 是最後一刀：建立變更時併帶 `--last`。
+- 立案時把結論的一刀拆成多個變更：只在拆出的最後一段帶 `--last`。
+- 結論沒有規劃分期（單刀）：不帶。記錄沒有 hold 行時帶了也不會有任何效果，但技能以「不帶」為規定。
+
+```
+speclink new change <變更名> --from-discussion <slug> --last
+```
+
+| Decision 的刀清單 | 已轉出的變更 | 本次立的變更 | 帶 --last？ |
+| --- | --- | --- | --- |
+| 刀一、刀二、刀三 | （空） | 刀一 | 否 |
+| 刀一、刀二、刀三 | cut-a、cut-b | 刀三 | 是 |
+| 刀一、刀二、刀三 | cut-a、cut-b | 刀三拆出的前半 | 否 |
+| 刀一、刀二、刀三 | cut-a、cut-b、cut-c1 | 刀三拆出的後半 | 是 |
+| 單刀（未規劃分期） | （空） | 唯一的變更 | 否 |
+
+帶 `--last` 的效果：記錄的保留在途旗標解除，之後最後一個轉出變更封存時，記錄自動隨行封存，不用再手動執行 `speclink discuss archive`。
+
+> [!WARNING]
+> 不是最後一刀卻帶了 `--last`，記錄會在最後一個在途變更封存時被收走。再立下一刀之前，把記錄檔從 `openspec/discussions/archive/` 搬回 `openspec/discussions/`。
 
 ### 從文件建立
 
