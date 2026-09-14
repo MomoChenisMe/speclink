@@ -73,10 +73,10 @@ describe("佈署計畫平台分流", () => {
     });
   });
 
-  it("Linux deb：包管理器佈署 /usr/bin，app 內僅回報狀態", () => {
-    expect(cliDeployPlan("linux-deb", ctx)).toEqual({
+  it("Linux 非 AppImage（開發建置或手動解開的 app）：不佈署，app 內僅回報狀態", () => {
+    expect(cliDeployPlan("linux-unpackaged", ctx)).toEqual({
       action: "none",
-      reason: "package-managed",
+      reason: "unpackaged",
     });
   });
 });
@@ -108,9 +108,14 @@ describe("啟動自動佈署判定（macOS 全自動、AppImage 版本不符自�
     expect(needsRedeploy("macos", { kind: "installed", version: "0.2.0" })).toBe(false);
   });
 
-  it("Windows 與 deb 不自我修復（安裝器／包管理器職責）", () => {
+  it("Windows 不自我修復（安裝器職責）", () => {
     expect(needsRedeploy("windows", { kind: "not-installed" })).toBe(false);
-    expect(needsRedeploy("linux-deb", { kind: "version-mismatch", version: "0.1.0" })).toBe(false);
+  });
+
+  it("Linux 非 AppImage 三種狀態都不自動佈署（沒有可佈署的來源）", () => {
+    expect(needsRedeploy("linux-unpackaged", { kind: "not-installed" })).toBe(false);
+    expect(needsRedeploy("linux-unpackaged", { kind: "installed", version: "0.5.0" })).toBe(false);
+    expect(needsRedeploy("linux-unpackaged", { kind: "version-mismatch", version: "0.1.0" })).toBe(false);
   });
 });
 

@@ -73,11 +73,13 @@ Server 是第三個東西，**只有團隊要共用同一份正式規格時才�
 
 | 平台 | 安裝檔 |
 | --- | --- |
-| macOS | `Speclink_<版本>_aarch64.dmg`（Apple Silicon）、`Speclink_<版本>_x64.dmg`（Intel） |
+| macOS | `Speclink_<版本>_universal.dmg`（Apple Silicon 與 Intel 同一檔） |
 | Windows | `Speclink_<版本>_x64-setup.exe` |
-| Linux | `.AppImage`（免安裝）或 `.deb`，各有 x86_64 與 aarch64 |
+| Linux 桌面機 | `Speclink_<版本>_amd64.AppImage`（x86_64）、`Speclink_<版本>_aarch64.AppImage`（arm64）；免安裝 |
 
-桌面安裝檔內含同版 CLI，可於 app 設定中一鍵安裝到 PATH。
+桌面安裝檔內含同版 CLI，可於 app 設定中一鍵安裝到 PATH。沒有圖形介面的 Linux（伺服器、WSL、CI）不裝桌面 app，直接用下面的 CLI 一行安裝。
+
+以前用 `.deb` 裝的人：`.deb` 自 0.5.0 起不再發布，先 `sudo apt remove speclink`，再改用 AppImage。
 
 **已經裝過 CLI 的人請注意：先裝 CLI、後裝桌面 app，你的 `speclink` 會被換成桌面 app 那一版。**
 
@@ -88,25 +90,26 @@ Server 是第三個東西，**只有團隊要共用同一份正式規格時才�
 | macOS | 每次啟動都刪掉原檔，換成指向內建 CLI 的 symlink |
 | Linux AppImage | 只在版本不符時覆蓋 |
 | Windows | 不動這個位置；PATH 由安裝器管理 |
-| Linux `.deb` | 不動這個位置；套件管理器佈署到 `/usr/bin` |
 
 `SPECLINK_INSTALL_VERSION` 釘選的版本也會一起失效。要保留自己那份 CLI，安裝時用 `SPECLINK_INSTALL_DIR`
 指到別的目錄，再把該目錄排在 PATH 中 `~/.local/bin` 的前面。
 
-**CLI**——擇一：
+**CLI**——擇一（三條路裝到的都是同一份 binary，來源是 npm 上的 `@speclink/cli`）：
 
 ```bash
-# 安裝腳本（macOS／Linux）
-curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh
+# 有 Node.js（任何平台）
+npm i -g @speclink/cli
 
-# 安裝腳本（Windows PowerShell）
-irm https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.ps1 | iex
+# 沒有 Node.js 的 macOS／Linux（伺服器、WSL、CI）
+curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh
 
 # Homebrew（macOS／Linux）
 brew install MomoChenisMe/tap/speclink
 ```
 
-安裝腳本會偵測平台、核對 SHA-256，再把 `speclink` 放進 `~/.local/bin`（Windows 為使用者層級目錄）。`SPECLINK_INSTALL_DIR` 可改安裝位置，`SPECLINK_INSTALL_VERSION` 可釘選版本。
+Windows 沒有安裝腳本：有 Node.js 用 npm，沒有就裝桌面版（安裝器內含 CLI 並幫你設好 PATH）。
+
+安裝腳本會偵測平台、核對 npm 的 sha512 integrity，再把 `speclink` 放進 `~/.local/bin`。`SPECLINK_INSTALL_DIR` 可改安裝位置，`SPECLINK_INSTALL_VERSION` 可釘選版本（`0.5.0` 或 `v0.5.0` 都行，0.5.0 之前的版本不在 npm 上、釘不到），`SPECLINK_INSTALL_REGISTRY` 可換 registry。
 
 Windows 的安裝檔目前未經程式碼簽章，首次執行時 SmartScreen 會出現警告——點「其他資訊」→「仍要執行」即可。
 

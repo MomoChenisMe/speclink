@@ -1,9 +1,10 @@
 # Release: push a tag like `v0.1.0` and this builds speclink (CLI) and speclink-server
 # for Windows / Linux / macOS (x86_64 + arm64 where applicable), desktop installers
-# (macOS dmg / Windows NSIS / Linux AppImage+deb, each bundling the same-version CLI
-# as a Tauri sidecar) plus the updater manifest latest.json, packages archives with
-# SHA-256 checksums, publishes a GitHub Release with the artifacts attached, and pushes
-# the server Docker image to ghcr.
+# (macOS universal dmg / Windows NSIS / Linux AppImage, each bundling the same-version
+# CLI as a Tauri sidecar) plus the updater manifest latest.json, publishes a GitHub
+# Release with exactly those six assets attached, publishes the CLI to npm (the single
+# binary source for npm / Homebrew / install.sh), and pushes the server Docker image
+# to ghcr.
 #
 # Desktop signing (design D3/D4):
 #   - Updater packages are minisign-signed with TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)
@@ -124,29 +125,16 @@ jobs:
           echo "$miss_ctype" | grep -qi 'application/json' \
             || { echo "::error::/api 404 非 JSON（$miss_ctype）"; exit 1; }
 
-      # server 不隨 Release 發布（通路為 Docker＋npm；設計 D6）——上面仍建置並冒煙
-      # 作品質閘門，但只有 CLI 進 Release assets。
-      - name: Package
-        shell: bash
-        run: |
-          mkdir -p dist
-          NAME="speclink-${GITHUB_REF_NAME}-${{ matrix.target }}"
-          if [[ "${{ matrix.target }}" == *windows* ]]; then
-            cp "target/${{ matrix.target }}/release/speclink.exe" dist/
-            (cd dist && 7z a "${NAME}.zip" "speclink.exe" > /dev/null && rm "speclink.exe")
-          else
-            cp "target/${{ matrix.target }}/release/speclink" dist/
-            (cd dist && tar czf "${NAME}.tar.gz" "speclink" && rm "speclink")
-          fi
-
+      # 兩支 binary 都不進 Release assets：CLI 的通路收斂為 npm（cli-distribution spec
+      # 「CLI 以 npm 套件發布」；設計 D4／D8），server 為 Docker＋npm（設計 D6）。上面
+      # 仍建置並冒煙作品質閘門；raw binary 以獨立 artifact 交給各自的 npm 發布 job 物化。
       - uses: actions/upload-artifact@v4
         with:
           name: cli-${{ matrix.target }}
-          path: dist/*
+          path: target/${{ matrix.target }}/release/speclink${{ contains(matrix.target, 'windows') && '.exe' || '' }}
           if-no-files-found: error
 
-      # server binary 以獨立 artifact 供 npm-publish job 物化套件，不進 Release
-      # assets（release job 的 dist 收集以 pattern 圈定，撈不到 server-*）。
+      # server binary 同形：release job 的 dist 收集以 pattern 圈定，cli-*／server-* 都撈不到。
       - uses: actions/upload-artifact@v4
         with:
           name: server-${{ matrix.target }}
@@ -154,39 +142,43 @@ jobs:
           if-no-files-found: error
 
   # 桌面安裝檔（desktop-release spec；design D1：沿用自組 matrix，不用 tauri-action）：
-  # macOS dmg（aarch64／x86_64）、Windows NSIS（x86_64）、Linux AppImage＋deb
-  # （x86_64／aarch64）。每個 target 上傳兩個 artifact：
+  # macOS universal dmg（Apple Silicon 與 Intel 同一檔）、Windows NSIS（x86_64）、
+  # Linux AppImage（x86_64／aarch64）。每個 target 上傳兩個 artifact：
   #   - desktop-<target>：要附上 Release 的安裝檔
-  #   - updater-<platform>：更新包＋minisign 簽章（release job 據此組 latest.json；
+  #   - updater-<platform>：更新包＋minisign 簽章（release job 據此組 latest.json，再把
+  #     更新包本體補進 Release assets、.sig 留在 job 內——簽章內容已內嵌 latest.json；
   #     Windows／AppImage 的更新包即安裝檔本身，重複上傳換取組裝契約單純）
   desktop:
     strategy:
       fail-fast: false
       matrix:
         include:
-          # macOS 兩個 target 都要帶 app：Tauri 只為 app／appimage／msi／nsis 產出
-          # 更新包，dmg 不在其列。只建 dmg 時 bundler 印一行警告就跳過更新包，且把
-          # 中間產物 Speclink.app 清掉——下方收集步驟的 cp 隨即找不到 app.tar.gz。
-          # 附帶效果：app 成為正式目標後不再被清除，dmg 內容不變。
-          - os: macos-latest            # Apple Silicon
-            target: aarch64-apple-darwin
+          # macOS 出 universal（設計 D2）：一個 dmg 與一個更新包同時跑 Apple Silicon 與
+          # Intel，訪客不必分辨晶片。Tauri 的 universal target 要求兩個 rustup target 都
+          # 裝好（rust_targets），sidecar 由 desktop-sidecar.mjs 對兩架構各建一次再以
+          # lipo 合成。bundles 仍要帶 app：Tauri 只為 app／appimage／msi／nsis 產出
+          # 更新包，dmg 不在其列——只建 dmg 時 bundler 印一行警告就跳過更新包，且把
+          # 中間產物 Speclink.app 清掉，下方收集步驟的 cp 隨即找不到 app.tar.gz。
+          - os: macos-latest
+            target: universal-apple-darwin
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
             bundles: app,dmg
-            platform: darwin-aarch64
-          - os: macos-latest            # Intel（交叉編譯，同 build job 前例）
-            target: x86_64-apple-darwin
-            bundles: app,dmg
-            platform: darwin-x86_64
+            platform: darwin-universal
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            rust_targets: x86_64-pc-windows-msvc
             bundles: nsis
             platform: windows-x86_64
+          # Linux 只出 AppImage（設計 D7）：它同時是安裝檔與更新包，任何發行版可用。
           - os: ubuntu-22.04            # older glibc baseline for wide compatibility
             target: x86_64-unknown-linux-gnu
-            bundles: appimage,deb
+            rust_targets: x86_64-unknown-linux-gnu
+            bundles: appimage
             platform: linux-x86_64
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            bundles: appimage,deb
+            rust_targets: aarch64-unknown-linux-gnu
+            bundles: appimage
             platform: linux-aarch64
     runs-on: ${{ matrix.os }}
     steps:
@@ -236,7 +228,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.rust_targets }}
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -308,8 +300,10 @@ jobs:
         run: npm run -w apps/desktop tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
       # 佈署收集：installers/ 進 Release assets；updater/<platform>/ 供 latest.json
-      # 組裝（每平台一子目錄、恰一更新包＋同名 .sig——scripts/release/release-latest-json.mjs
-      # 的目錄契約）。macOS 更新包原名不含架構，改名以免兩個 mac target 撞名。
+      # 組裝（每個更新包目錄恰一更新包＋同名 .sig——scripts/release/release-latest-json.mjs
+      # 的目錄契約；darwin-universal 一個目錄餵 darwin-aarch64 與 darwin-x86_64 兩鍵）。
+      # macOS 更新包原名不含架構，改名帶 universal 與 dmg 對稱。.sig 只進 updater/，
+      # 不進 installers/——它在發布後零讀者。
       - name: Collect installers and updater packages
         shell: bash
         run: |
@@ -318,11 +312,10 @@ jobs:
           UPDATER="updater/${{ matrix.platform }}"
           mkdir -p installers "$UPDATER"
           case "${{ matrix.platform }}" in
-            darwin-*)
+            darwin-universal)
               cp "$BUNDLE"/dmg/*.dmg installers/
-              ARCH="${{ matrix.platform }}"; ARCH="${ARCH#darwin-}"
-              cp "$BUNDLE/macos/Speclink.app.tar.gz" "$UPDATER/Speclink_${VERSION}_${ARCH}.app.tar.gz"
-              cp "$BUNDLE/macos/Speclink.app.tar.gz.sig" "$UPDATER/Speclink_${VERSION}_${ARCH}.app.tar.gz.sig"
+              cp "$BUNDLE/macos/Speclink.app.tar.gz" "$UPDATER/Speclink_${VERSION}_universal.app.tar.gz"
+              cp "$BUNDLE/macos/Speclink.app.tar.gz.sig" "$UPDATER/Speclink_${VERSION}_universal.app.tar.gz.sig"
               ;;
             windows-*)
               cp "$BUNDLE"/nsis/*-setup.exe installers/
@@ -331,7 +324,6 @@ jobs:
               ;;
             linux-*)
               cp "$BUNDLE"/appimage/*.AppImage installers/
-              cp "$BUNDLE"/deb/*.deb installers/
               cp "$BUNDLE"/appimage/*.AppImage "$UPDATER"/
               cp "$BUNDLE"/appimage/*.AppImage.sig "$UPDATER"/
               ;;
@@ -460,9 +452,9 @@ jobs:
           fi
 
   # 部署文件對使用者承諾「每個 release tag 同時產出全部形態」，所以任一形態
-  # 失敗時不該還發出一個缺形態的 Release——needs 納入 desktop 與 docker，讓
-  # 產物（CLI 壓縮檔、Docker、桌面安裝檔與更新描述檔）的產出是全有全無。
-  # server 壓縮檔不在其列——server 不隨 Release 發布（設計 D6）。
+  # 失敗時不該還發出一個缺形態的 Release——needs 納入 build、desktop 與 docker，讓
+  # 產物（CLI binary、Docker、桌面安裝檔與更新描述檔）的產出是全有全無。
+  # CLI 與 server 的 binary 都不進 Release assets——各走自己的 npm 發布 job。
   release:
     needs: [build, desktop, docker-manifest]
     runs-on: ubuntu-latest
@@ -470,26 +462,16 @@ jobs:
       # 組裝腳本（scripts/release/release-latest-json.mjs）需要 repo 內容。
       - uses: actions/checkout@v5
 
-      # 攤平合併：CLI 壓縮檔、桌面安裝檔與更新包＋簽章進 dist——逐一以 pattern
-      # 圈定種類（server-* 只給 npm-publish、dockerbuild 紀錄檔等雜項也不落入）；
-      # updater-* 與 desktop-* 的重複檔案同名同內容，覆蓋無害。
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: cli-*
-          path: dist
-          merge-multiple: true
+      # Release assets 是封閉集合（desktop-release spec「Release 產出三平台桌面安裝檔」；
+      # 設計 D1）：安裝檔＋更新包本體＋latest.json，共六個檔。dist 只攤平合併
+      # desktop-*；cli-*／server-* 各給自己的 npm 發布 job，不落入。
       - uses: actions/download-artifact@v4
         with:
           pattern: desktop-*
           path: dist
           merge-multiple: true
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: updater-*
-          path: dist
-          merge-multiple: true
 
-      # 保持目錄結構再下載一次 updater-*，還原組裝腳本的「每平台一子目錄」契約。
+      # updater-* 保持目錄結構下載，還原組裝腳本的「每個更新包目錄一更新包＋一 .sig」契約。
       - uses: actions/download-artifact@v4
         with:
           pattern: updater-*
@@ -504,11 +486,14 @@ jobs:
             --dir updater --repo "$GITHUB_REPOSITORY" --out dist/latest.json
           cat dist/latest.json
 
-      - name: Checksums
+      # 更新包本體要能從 Release 下載（latest.json 的 url 指向它）；.sig 不上——
+      # Tauri updater 只讀 latest.json 內嵌的 signature 內容，發布後沒有任何讀者。
+      # Windows／AppImage 的更新包與安裝檔同名同內容，覆蓋無害；macOS 多出 .app.tar.gz。
+      # 不再產校驗碼檔：它唯一的機器讀者（install.sh、formula 產生器）都改讀 npm。
+      - name: Add updater packages to Release assets (signatures stay out)
         run: |
-          cd dist
-          sha256sum * > SHA256SUMS.txt
-          cat SHA256SUMS.txt
+          find updater -type f ! -name '*.sig' -exec cp {} dist/ \;
+          ls -l dist
 
       # 下載指南前置於 Release 說明（desktop-release spec「Release 說明含下載指南」；
       # 設計 D7），其後接該版的更新日誌片段（release-notes.json 為真相）；
@@ -523,31 +508,50 @@ jobs:
           files: dist/*
           generate_release_notes: true
 
-  # Formula 隨發版自動推送 tap（cli-distribution spec；設計 D8）。排在 Release
-  # 之後：通路推送不是發布的前置條件，失敗可單獨重跑、不回溯撤銷 Release。
-  # secrets 不能出現在 job 層級的 if，故以首步輸出當閘門——secret 缺席時後續
-  # 步驟全部跳過、job 綠。
-  tap-publish:
+  # CLI 的 npm 通路（cli-distribution spec「CLI 以 npm 套件發布」；設計 D4／D8）：binary 的
+  # 唯一來源——install.sh 抓這裡的 tgz、Homebrew formula 也指向這裡。閘門、物化＋pack、冪等
+  # 發布、等 registry 可見都在共用的 npm-publish.yml（三條 npm 通路同一份）；這裡只給差異：
+  # 下載 cli-*、以 npm-cli-package.mjs 物化、把 tgz 校驗清單以 cli-npm-sums artifact 交給
+  # tap-publish，並以 published 輸出告知它「formula 指向的 tgz 到底在不在」。
+  cli-npm-publish:
     needs: [release]
+    uses: ./.github/workflows/npm-publish.yml
+    with:
+      artifacts: cli-*
+      materialize: scripts/npm/npm-cli-package.mjs
+      main-package: '@speclink/cli'
+      sums-artifact: cli-npm-sums
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # Formula 隨發版自動推送 tap（cli-distribution spec；設計 D5／D8）。排在 Release 與
+  # CLI 的 npm 發布之後：formula 的 url 指向 registry 上的平台 tgz，sha256 算在
+  # cli-npm-publish pack 出的同一份 bytes 上；通路推送不是發布的前置條件，失敗可單獨
+  # 重跑、不回溯撤銷 Release。secrets 不能出現在 job 層級的 if，故以首步輸出當雙閘門
+  # ——TAP_PUSH_TOKEN 缺席、或 CLI 因 NPM_TOKEN 缺席而未發布，後續步驟全部跳過、job 綠。
+  tap-publish:
+    needs: [release, cli-npm-publish]
     runs-on: ubuntu-latest
     env:
       TAP_PUSH_TOKEN: ${{ secrets.TAP_PUSH_TOKEN }}
+      CLI_PUBLISHED: ${{ needs.cli-npm-publish.outputs.published }}
     steps:
-      - name: Tap credential gate
+      - name: Tap credential and npm publish gate
         id: gate
         shell: bash
-        run: echo "enabled=$([ -n "$TAP_PUSH_TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+        run: echo "enabled=$([ -n "$TAP_PUSH_TOKEN" ] && [ "$CLI_PUBLISHED" = "true" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v5
         if: steps.gate.outputs.enabled == 'true'
 
-      - name: Generate formula from released checksums
+      - uses: actions/download-artifact@v4
         if: steps.gate.outputs.enabled == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS.txt -O SHA256SUMS.txt
-          node scripts/release/homebrew-formula.mjs --tag "$GITHUB_REF_NAME" --sums SHA256SUMS.txt > speclink.rb
+        with:
+          name: cli-npm-sums
+
+      - name: Generate formula from npm tarball checksums
+        if: steps.gate.outputs.enabled == 'true'
+        run: node scripts/release/homebrew-formula.mjs --tag "$GITHUB_REF_NAME" --sums cli-npm-sums.txt > speclink.rb
 
       - name: Push formula to tap
         if: steps.gate.outputs.enabled == 'true'
@@ -562,60 +566,17 @@ jobs:
             -f "content=$(base64 -w0 speclink.rb)" \
             ${SHA:+-f "sha=$SHA"}
 
-  # server 的 npm 通路（server-release spec「npm 套件一行啟動 server」；設計 D9）。
-  # 與 tap-publish 同語意：排在 Release 之後、NPM_TOKEN 缺席時各步跳過 job 綠，
-  # 存在而發布失敗時紅燈可單獨重跑。
+  # server 的 npm 通路（server-release spec「npm 套件一行啟動 server」；設計 D9）：
+  # 與 CLI 同一份共用 workflow，差異只有下載 server-* 與物化腳本。
   npm-publish:
     needs: [release]
-    runs-on: ubuntu-latest
-    env:
+    uses: ./.github/workflows/npm-publish.yml
+    with:
+      artifacts: server-*
+      materialize: scripts/npm/npm-server-package.mjs
+      main-package: '@speclink/server'
+    secrets:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-    steps:
-      - name: npm credential gate
-        id: gate
-        shell: bash
-        run: echo "enabled=$([ -n "$NPM_TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/checkout@v5
-        if: steps.gate.outputs.enabled == 'true'
-
-      - uses: actions/setup-node@v5
-        if: steps.gate.outputs.enabled == 'true'
-        with:
-          node-version: 20
-          registry-url: https://registry.npmjs.org
-
-      - uses: actions/download-artifact@v4
-        if: steps.gate.outputs.enabled == 'true'
-        with:
-          pattern: server-*
-          path: binaries
-
-      - name: Materialize and publish packages
-        if: steps.gate.outputs.enabled == 'true'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          node scripts/npm/npm-server-package.mjs --version "$VERSION" --binaries binaries --out npm-out
-
-          # 冪等，語意同 engine-npm-publish：發到一半失敗、或 tag 重推時，已上架
-          # 的同版會讓 npm publish 拿 403 而永遠轉不綠。每份先查 registry，同版
-          # 已存在就跳過，重跑才補得完剩下的。
-          publish_dir() {
-            local dir="$1" name version
-            name="$(node -p "require('./$dir/package.json').name")"
-            version="$(node -p "require('./$dir/package.json').version")"
-            if npm view "$name@$version" version >/dev/null 2>&1; then
-              echo "$name@$version 已在 registry，跳過"
-            else
-              (cd "$dir" && npm publish --access public)
-            fi
-          }
-
-          # 平台子套件先發、主套件最後，optionalDependencies 解析得到同版。
-          for pkg in npm-out/server-*/; do publish_dir "${pkg%/}"; done
-          publish_dir npm-out/server
 
   # tag 名去 v 前綴的版號：reusable workflow 的 with: 只吃表達式，而 Actions 表達式
   # 沒有字串裁切函式（無 replace／substring），只能由 shell 算成 job output 再傳入。
@@ -650,87 +611,14 @@ jobs:
     with:
       version: ${{ needs.engine-version.outputs.version }}
 
-  # engine 的 npm 通路（node-sdk-release spec「npm 發布閘門與發布順序」；設計 D3）。
-  # 與 server 的 npm-publish 同語意：排在 Release 之後、NPM_TOKEN 缺席時各步跳過
-  # job 綠，存在而發布失敗時紅燈可單獨重跑。發布單位是上游打包好的 tarball，不重 pack。
+  # engine 的 npm 通路（node-sdk-release spec「npm 發布閘門與發布順序」；設計 D3）：
+  # 同一份共用 workflow；發布單位是 node-sdk.yml 打包好的 npm-tarballs（主套件 tarball 在根、
+  # 平台子套件在 npm/<平台>/），不傳 materialize，發布端不重新打包。
   engine-npm-publish:
     needs: [engine-npm-build, release]
-    runs-on: ubuntu-latest
-    env:
+    uses: ./.github/workflows/npm-publish.yml
+    with:
+      artifacts: npm-tarballs
+      main-package: '@speclink/engine'
+    secrets:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-    steps:
-      - name: npm credential gate
-        id: gate
-        shell: bash
-        run: echo "enabled=$([ -n "$NPM_TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/setup-node@v5
-        if: steps.gate.outputs.enabled == 'true'
-        with:
-          node-version: 20
-          registry-url: https://registry.npmjs.org
-
-      - uses: actions/download-artifact@v4
-        if: steps.gate.outputs.enabled == 'true'
-        with:
-          name: npm-tarballs
-          path: tarballs
-
-      - name: Publish the platform sub-packages, then the main package
-        if: steps.gate.outputs.enabled == 'true'
-        shell: bash
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          # artifact 保留 crates/adapters/speclink-node 底下的相對結構：主套件 tarball 在根、
-          # 平台子套件在 npm/<平台>/。子套件先發、主套件最後，optionalDependencies
-          # 於主套件上架時皆已可解析到同版。
-          #
-          # npm 發布不可回頭（逾 24 小時不能 unpublish），所以兩端都 fail closed。
-          EXPECTED="${GITHUB_REF_NAME#v}"
-          main_name=""
-
-          # 冪等：發到一半失敗時前幾個已上架，重跑對既有版號會拿 403 而永遠轉不綠。
-          # 因此每份先查 registry，同版已存在就跳過——重跑能把剩下的補完。
-          publish_one() {
-            local tgz="$1" meta name version
-            meta="$(tar -xzOf "$tgz" package/package.json)"
-            name="$(node -p 'JSON.parse(process.argv[1]).name' "$meta")"
-            version="$(node -p 'JSON.parse(process.argv[1]).version' "$meta")"
-            # 蓋章是條件步驟，沒跑也不報錯——不擋的話佔位版會被永久發上 npm，
-            # 而且之後真正的同版 tag 會被上面的冪等判成「已存在」而全部略過。
-            if [ "$version" != "$EXPECTED" ]; then
-              echo "::error::$name 的 tarball 版號為 $version，與 tag 版 $EXPECTED 不符（版號蓋章沒跑？）"
-              exit 1
-            fi
-            if npm view "$name@$version" version >/dev/null 2>&1; then
-              echo "$name@$version 已在 registry，跳過"
-            else
-              # `./` 不可省：npm publish 的引數是 package spec，不是路徑。
-              # `tarballs/speclink-engine-0.2.0.tgz` 恰好是「一個斜線」的形狀，
-              # 會被當成 GitHub 簡寫 owner/repo 去 git ls-remote（2026-09-08 的
-              # v0.2.0 就死在這裡：五個平台子套件在 npm/<平台>/ 下有兩個斜線而
-              # 通過，根目錄的主套件獨獨被誤讀）。前綴 ./ 讓它只能是路徑。
-              npm publish "./$tgz" --access public
-            fi
-          }
-          for tgz in tarballs/npm/*/*.tgz; do publish_one "$tgz"; done
-          for tgz in tarballs/*.tgz; do
-            publish_one "$tgz"
-            main_name="$(node -p 'JSON.parse(process.argv[1]).name' "$(tar -xzOf "$tgz" package/package.json)")"
-          done
-
-          # 收尾：「每份都跳過」與「每份都發出去」在 job 結果上同樣是綠，所以明確
-          # 確認主套件真的在 registry 上——否則這個 job 綠得毫無意義。
-          #
-          # 要等，不能只查一次：首次上架的套件，npm publish 回 `+ name@ver` 之後
-          # packument 端點還會 404 好幾分鐘（v0.2.0 補發時，publish 成功 0.3 秒後
-          # 查即 404，子套件的 packument 也是二十多分鐘後才轉 200）。發布本身已成
-          # 功，這裡的紅燈只會是「查太早」，所以以有上限的輪詢等它可見。
-          [ -n "$main_name" ] || { echo "::error::npm-tarballs 內沒有主套件 tarball"; exit 1; }
-          visible=""
-          for _ in $(seq 1 60); do
-            if npm view "$main_name@$EXPECTED" version >/dev/null 2>&1; then visible=1; break; fi
-            sleep 10
-          done
-          [ -n "$visible" ] || { echo "::error::$main_name@$EXPECTED 十分鐘內未出現在 registry"; exit 1; }

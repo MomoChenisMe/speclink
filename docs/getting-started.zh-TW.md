@@ -19,11 +19,11 @@ Agent 指令有兩種呼叫字面：Claude 用 `/speclink-*`，Codex 用 `$specl
 安裝 CLI，擇一：
 
 ```bash
-# 安裝腳本（macOS／Linux）
-curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh
+# 有 Node.js（任何平台）
+npm i -g @speclink/cli
 
-# 安裝腳本（Windows PowerShell）
-irm https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.ps1 | iex
+# 沒有 Node.js 的 macOS／Linux（伺服器、WSL、CI）
+curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh
 
 # Homebrew（macOS／Linux）
 brew install MomoChenisMe/tap/speclink

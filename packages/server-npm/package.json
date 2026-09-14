@@ -11,6 +11,9 @@
   "bin": {
     "speclink-server": "bin/speclink-server.mjs"
   },
+  "files": [
+    "bin/speclink-server.mjs"
+  ],
   "engines": {
     "node": ">=18"
   },

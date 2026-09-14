@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { builtBinaryPath, checkSpawn, parseSidecarArgs, shouldCopy } from './desktop-sidecar.mjs';
+import { builtBinaryPath, checkSpawn, parseSidecarArgs, shouldCopy, sidecarPlan } from './desktop-sidecar.mjs';
 
 const ROOT = '/repo';
 
@@ -127,6 +127,55 @@ test('Windows triple 帶 .exe 後綴（交叉編譯與 host 編譯皆然）', ()
     builtBinaryPath(ROOT, { profile: 'debug', target: null, triple: 'x86_64-pc-windows-msvc' }),
     path.join(ROOT, 'target/debug/speclink.exe'),
   );
+});
+
+// --- 建置計畫（release-assets-trim 設計 D2：macOS universal sidecar） ---
+//
+// 計畫層決定「跑哪幾次 cargo、產出哪幾個檔（各自的來源與目的檔）」，實際 cargo／lipo
+// 由 main 執行；來源兩個以上的輸出以 lipo 合成。universal 建置要三份檔：tauri-build 在
+// `tauri build --target universal-apple-darwin` 對兩個 triple 各跑一次的 cargo build 期間，
+// 各以 cargo 的 TARGET 找 speclink-<triple>（缺即 ResourcePathNotFound 失敗）；bundler
+// 最後階段才拿命名 speclink-universal-apple-darwin 的 universal 檔進 app bundle。
+
+const BINARIES = path.join(ROOT, 'apps/desktop/src-tauri/binaries');
+
+test('universal-apple-darwin：對兩個 Apple target 各建一次；輸出兩份 per-triple 複本＋一份 lipo 合成的 universal', () => {
+  const plan = sidecarPlan(ROOT, { profile: 'release', target: 'universal-apple-darwin', triple: 'universal-apple-darwin' });
+  assert.deepEqual(plan.cargoTargets, ['aarch64-apple-darwin', 'x86_64-apple-darwin']);
+  const arm = path.join(ROOT, 'target/aarch64-apple-darwin/release/speclink');
+  const intel = path.join(ROOT, 'target/x86_64-apple-darwin/release/speclink');
+  assert.deepEqual(plan.outputs, [
+    { sources: [arm], dest: path.join(BINARIES, 'speclink-aarch64-apple-darwin') },
+    { sources: [intel], dest: path.join(BINARIES, 'speclink-x86_64-apple-darwin') },
+    { sources: [arm, intel], dest: path.join(BINARIES, 'speclink-universal-apple-darwin') },
+  ]);
+});
+
+test('universal 也吃 --profile debug：來源改指 debug 目錄', () => {
+  const plan = sidecarPlan(ROOT, { profile: 'debug', target: 'universal-apple-darwin', triple: 'universal-apple-darwin' });
+  assert.deepEqual(plan.outputs.at(-1).sources, [
+    path.join(ROOT, 'target/aarch64-apple-darwin/debug/speclink'),
+    path.join(ROOT, 'target/x86_64-apple-darwin/debug/speclink'),
+  ]);
+});
+
+test('一般交叉編譯 target：單次 cargo build、單一輸出不 lipo、目的檔為 speclink-<triple>（Windows 帶 .exe）', () => {
+  const plan = sidecarPlan(ROOT, { profile: 'release', target: 'x86_64-pc-windows-msvc', triple: 'x86_64-pc-windows-msvc' });
+  assert.deepEqual(plan.cargoTargets, ['x86_64-pc-windows-msvc']);
+  assert.deepEqual(plan.outputs, [
+    {
+      sources: [path.join(ROOT, 'target/x86_64-pc-windows-msvc/release/speclink.exe')],
+      dest: path.join(BINARIES, 'speclink-x86_64-pc-windows-msvc.exe'),
+    },
+  ]);
+});
+
+test('無 --target（host 編譯）：cargoTargets 為 [null]、來源為 target/<profile>/speclink、目的檔以 host triple 命名', () => {
+  const plan = sidecarPlan(ROOT, { profile: 'debug', target: null, triple: 'aarch64-apple-darwin' });
+  assert.deepEqual(plan.cargoTargets, [null]);
+  assert.deepEqual(plan.outputs, [
+    { sources: [path.join(ROOT, 'target/debug/speclink')], dest: path.join(BINARIES, 'speclink-aarch64-apple-darwin') },
+  ]);
 });
 
 // --- 跳過複製判定（決策三：binaries/ 在 cargo 重編觸發清單內，無謂改寫要避免） ---

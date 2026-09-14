@@ -34,20 +34,20 @@ process.stdout.write(`## 📦 我該下載哪個檔案？
 
 | 你的環境 | 下載這個（在下方 Assets 區） |
 | --- | --- |
-| macOS（Apple Silicon，M 系列晶片） | \`Speclink_${version}_aarch64.dmg\` |
-| macOS（Intel） | \`Speclink_${version}_x64.dmg\` |
+| macOS（Apple Silicon 與 Intel 同一檔） | \`Speclink_${version}_universal.dmg\` |
 | Windows（x64） | \`Speclink_${version}_x64-setup.exe\` |
-| Linux（x64） | \`Speclink_${version}_amd64.AppImage\` 或 \`Speclink_${version}_amd64.deb\` |
-| Linux（arm64） | \`Speclink_${version}_aarch64.AppImage\` 或 \`Speclink_${version}_arm64.deb\` |
+| Linux 桌面機（x64） | \`Speclink_${version}_amd64.AppImage\` |
+| Linux 桌面機（arm64） | \`Speclink_${version}_aarch64.AppImage\` |
+| Linux 伺服器或無圖形介面 | 不用下載——用下方的 CLI 一行安裝 |
 
-**CLI 一行安裝**（毋須手動下載壓縮檔）：
+**CLI 一行安裝**（只要 CLI、不裝桌面 app 的人；三種擇一）：
 
 \`\`\`sh
-# macOS／Linux
-curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh
+# 有 Node.js（任何平台）
+npm i -g @speclink/cli
 
-# Windows PowerShell
-irm https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.ps1 | iex
+# 沒有 Node.js 的 macOS／Linux（伺服器、WSL、CI）
+curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh
 
 # Homebrew（macOS／Linux）
 brew install MomoChenisMe/tap/speclink
@@ -63,7 +63,7 @@ npx @speclink/server
 docker run -d -p 8080:8080 -v speclink-data:/data ghcr.io/momochenisme/speclink-server:${version}
 \`\`\`
 
-> 其餘檔案毋須手動下載：\`.app.tar.gz\` 與所有 \`.sig\`、\`latest.json\` 是桌面 App 自動更新機制用的；\`speclink-v${version}-*.tar.gz\`／\`.zip\` 是上面安裝腳本抓的 CLI 壓縮檔；\`SHA256SUMS.txt\` 是全部檔案的校驗碼。
+> \`.app.tar.gz\` 與 \`latest.json\` 是桌面 App 自動更新機制用的，毋須手動下載。
 
 ---
 

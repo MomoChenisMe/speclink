@@ -79,11 +79,13 @@ The Server is a third piece. You **need it only when a team shares one spec cano
 
 | Platform | Installer |
 | --- | --- |
-| macOS | `Speclink_<version>_aarch64.dmg` (Apple Silicon), `Speclink_<version>_x64.dmg` (Intel) |
+| macOS | `Speclink_<version>_universal.dmg` (one file for Apple Silicon and Intel) |
 | Windows | `Speclink_<version>_x64-setup.exe` |
-| Linux | `.AppImage` (portable) or `.deb`, each for x86_64 and aarch64 |
+| Linux desktop | `Speclink_<version>_amd64.AppImage` (x86_64), `Speclink_<version>_aarch64.AppImage` (arm64); portable |
 
-The desktop installer bundles a matching CLI, installable to your PATH from the app's settings.
+The desktop installer bundles a matching CLI, installable to your PATH from the app's settings. A Linux machine without a graphical desktop (a server, WSL, CI) does not need the desktop app — use the one-line CLI install below.
+
+If you installed an earlier version from `.deb`: the `.deb` is no longer published as of 0.5.0. Run `sudo apt remove speclink`, then switch to the AppImage.
 
 **Read this if you already installed the CLI. Install the CLI first and the desktop app second, and your
 `speclink` becomes the desktop app's version.**
@@ -95,25 +97,26 @@ Both use the path `~/.local/bin/speclink`. The behavior differs per platform:
 | macOS | Deletes the existing file at every start and writes a symlink to its bundled CLI |
 | Linux AppImage | Replaces it only on a version mismatch |
 | Windows | Leaves this path alone; the installer manages the PATH |
-| Linux `.deb` | Leaves this path alone; the package deploys to `/usr/bin` |
 
 A version pinned with `SPECLINK_INSTALL_VERSION` goes away too. To keep your own CLI, install it to a different
 directory with `SPECLINK_INSTALL_DIR`. Then put that directory before `~/.local/bin` in your PATH.
 
-**CLI** — pick one:
+**CLI** — pick one (all three install the same binary; the source is `@speclink/cli` on npm):
 
 ```bash
-# Install script (macOS/Linux)
-curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh
+# With Node.js (any platform)
+npm i -g @speclink/cli
 
-# Install script (Windows PowerShell)
-irm https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.ps1 | iex
+# Without Node.js on macOS/Linux (servers, WSL, CI)
+curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh
 
 # Homebrew (macOS/Linux)
 brew install MomoChenisMe/tap/speclink
 ```
 
-The install script detects your platform, checks the SHA-256, and places `speclink` in `~/.local/bin` (a user-level directory on Windows). `SPECLINK_INSTALL_DIR` changes the location. `SPECLINK_INSTALL_VERSION` pins a version.
+There is no install script for Windows: use npm if you have Node.js, otherwise install the desktop app (its installer bundles the CLI and sets your PATH).
+
+The install script detects your platform, checks npm's sha512 integrity, and places `speclink` in `~/.local/bin`. `SPECLINK_INSTALL_DIR` changes the location. `SPECLINK_INSTALL_VERSION` pins a version (`0.5.0` or `v0.5.0`; versions before 0.5.0 are not on npm and cannot be pinned). `SPECLINK_INSTALL_REGISTRY` switches the registry.
 
 Windows installers are not code-signed yet, so SmartScreen warns on first run — choose "More info" then "Run anyway".
 

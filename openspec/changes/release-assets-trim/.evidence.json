@@ -1,0 +1,402 @@
+{
+  "version": 2,
+  "change": "release-assets-trim",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 在 scripts/release/delivery-gate.test.mjs 改寫與新增對 .github/workflows/release.yml 的靜態斷言，鎖住「Release 產出三平台桌面安裝檔」的新 asset 集合：build job 沒有 Package 步驟且 cli-<target> artifact 的 path 為 raw binary；release job 不下載 cli-*；dist 只合併 desktop-*，updater-* 只以目錄結構下載，複製更新包進 dist 的步驟排除 *.sig；沒有產生 SHA256SUMS 的步驟；Linux 兩列 bundles 為 appimage；macOS 只有 target universal-apple-darwin 一列且 bundles 含 app。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs，這些新斷言在現況紅、其餘綠。",
+      "files": [
+        "scripts/release/delivery-gate.test.mjs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 .github/workflows/release.yml 的 build job：移除 Package 步驟，cli-<target> artifact 改上傳 target/<triple>/release/speclink（Windows 帶 .exe）的 raw binary，與 server-<target> 同形；server 相關步驟不動。驗證：1.1 對 build job 的斷言轉綠。",
+      "files": [
+        ".github/workflows/release.yml"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.1 改寫 scripts/release/release-latest-json.test.mjs 鎖住「更新描述檔隨 release 發布」的新契約：輸入目錄 darwin-universal、windows-x86_64、linux-x86_64（linux-aarch64 可選）時，輸出的 darwin-aarch64 與 darwin-x86_64 兩鍵 url 與 signature 相同且指向 Speclink_<版本>_universal.app.tar.gz；缺 darwin-universal 目錄或該目錄缺 .sig 時非零結束、不寫檔並點名；linux-aarch64 存在時一併收錄。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs，新斷言紅。",
+      "files": [
+        "scripts/release/release-latest-json.test.mjs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "3.2 scripts/release/release-latest-json.mjs 的目錄契約改為「更新包目錄 → 一或多個平台鍵」的對映表（darwin-universal → darwin-aarch64 與 darwin-x86_64），必要與可選目錄的 fail-closed 行為不變，檔頭註解同步。驗證：3.1 轉綠。",
+      "files": [
+        "scripts/release/release-latest-json.mjs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.1 在 scripts/desktop/desktop-sidecar.test.mjs 新增斷言：--target universal-apple-darwin 解析出的建置計畫是對 aarch64-apple-darwin 與 x86_64-apple-darwin 各一次 cargo build，輸出路徑為 apps/desktop/src-tauri/binaries/speclink-universal-apple-darwin（以 lipo -create 合成）；其他 target 的計畫與路徑不變（既有測試不改）。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs，新斷言紅。",
+      "files": [
+        "scripts/desktop/desktop-sidecar.test.mjs"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "5.1 新增 scripts/npm/npm-cli-package.test.mjs 鎖住「CLI 以 npm 套件發布」的物化契約：輸入 --version X.Y.Z --binaries <dir> --out <dir>，輸出主套件（name @speclink/cli、version、bin.speclink 為 bin/speclink、scripts.postinstall、五組同版 optionalDependencies、無 private）與五個子套件（name、version、os、cpu、內含 speclink 或 speclink.exe 且 0755）；缺任一 cli-<target> binary 時非零結束並點名且不產生任何套件；版本不符 X.Y.Z 時非零結束。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs，新測試紅。",
+      "files": [
+        "scripts/desktop/desktop-sidecar.mjs",
+        "scripts/npm/npm-cli-package.test.mjs"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "5.2 新增 packages/cli-npm/package.json（private 擋誤發布、bin、scripts.postinstall、files）與 scripts/npm/npm-cli-package.mjs（比照 scripts/npm/npm-server-package.mjs：TARGETS 對映 cli-<target> artifact → cli-<os>-<cpu> 子套件，主套件副本去 private、蓋版本、補 optionalDependencies、複製 bin/speclink 與 postinstall.mjs）。驗證：5.1 轉綠。",
+      "files": [
+        "packages/cli-npm/bin/speclink",
+        "packages/cli-npm/package.json",
+        "packages/cli-npm/platform.mjs",
+        "packages/cli-npm/postinstall.mjs",
+        "scripts/npm/npm-cli-package.mjs"
+      ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "5.3 新增 scripts/npm/npm-cli-launcher.test.mjs 鎖住 shim 與 postinstall 的行為：五組 os/cpu 對映到子套件名、其他回 null；以假 binary 驗 shim 的 spawn 帶回 exit code（0 與非 0）並透傳全部參數；找不到子套件時 stderr 列出支援組合且 exit 1；postinstall 在 darwin/linux 找到 binary 時把 bin/speclink 原地換成該 binary（內容相同、模式 0755），在 win32 不置換，找不到 binary 時保留 shim 且 exit 0。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs，新測試紅。",
+      "files": [
+        "scripts/npm/npm-cli-launcher.test.mjs"
+      ]
+    },
+    {
+      "task_id": "17",
+      "task_desc": "6.1 改寫 scripts/release/homebrew-formula.test.mjs 鎖住「Homebrew formula 產生器」的新契約：fixture 校驗清單含五個 cli-<os>-<cpu>-<版本>.tgz 條目時，輸出四組 url 為 https://registry.npmjs.org/@speclink/cli-<os>-<cpu>/-/cli-<os>-<cpu>-<版本>.tgz 且 sha256 對應、不含 win32；缺 darwin-arm64 條目時非零結束並點名；缺參數與清單不存在的既有失敗路徑保留；ruby -c 合法性測試保留；刪除「不把 speclink-server 誤當 CLI 資產」測試。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs，新斷言紅。",
+      "files": [
+        "scripts/release/homebrew-formula.test.mjs"
+      ]
+    },
+    {
+      "task_id": "18",
+      "task_desc": "6.2 scripts/release/homebrew-formula.mjs 的輸入改讀 tgz 校驗清單、TARGETS 改為 os/cpu 對映、url 改為 registry 樣式，formula 其餘區塊（desc、homepage、version、bin.install、test）不變。驗證：6.1 轉綠。",
+      "files": [
+        "scripts/release/homebrew-formula.mjs"
+      ]
+    },
+    {
+      "task_id": "19",
+      "task_desc": "7.1 改寫 scripts/install.test.mjs 鎖住「安裝腳本一行安裝對應平台 CLI」的新契約：fixture 改為含 package/speclink 的 tgz、latest 回應含 version 的 JSON、版本回應含 dist.integrity（sha512-base64）的 JSON；dry-run 四組平台輸出 registry 的 tgz URL 且不呼叫 curl；SPECLINK_INSTALL_VERSION 帶 v 與不帶 v 輸出相同 URL；未釘選時經 @speclink/cli/latest 解析版本；integrity 不符時非零結束且安裝目錄無檔；安裝成功後 binary 可執行；Windows 的 uname 值非零結束並提到 npm 與 setup.exe；PATH 提示保留；刪除整組 install.ps1 測試與 pwsh 偵測。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs，新斷言紅。",
+      "files": [
+        "scripts/install.test.mjs"
+      ]
+    },
+    {
+      "task_id": "20",
+      "task_desc": "7.2 改寫 scripts/install.sh：平台對映改 npm os/cpu 名；版本解析改 registry（SPECLINK_INSTALL_REGISTRY 可覆寫、預設 https://registry.npmjs.org，移除 SPECLINK_INSTALL_REPO）；下載平台子套件 tgz；以 openssl dgst -sha512 -binary 與 openssl base64 -A 算 integrity 比對（缺 openssl 即非零結束）；驗證通過後以 tar --strip-components=1 解出 package/speclink 再複製到安裝目錄；dry-run 與 --help 文案同步；檔頭註解與用法更新。驗證：7.1 轉綠。",
+      "files": [
+        "scripts/install.sh"
+      ]
+    },
+    {
+      "task_id": "21",
+      "task_desc": "7.3 刪除 scripts/install.ps1，並確認 repo 內對 install.ps1 的引用只剩 openspec/changes/archive 與 openspec/discussions（README 與 docs 的引用在第 9 組移除）。驗證：grep -rn install.ps1 排除封存與討論後為空；node --test scripts/*.test.mjs scripts/*/*.test.mjs 全綠。",
+      "files": [
+        "scripts/install.ps1"
+      ]
+    },
+    {
+      "task_id": "22",
+      "task_desc": "8.1 改寫 apps/desktop/src/__tests__/cliInstall.test.ts 鎖住「安裝 CLI 指令到 PATH」的新分流：平台 linux-unpackaged 的佈署計畫為 action none、reason unpackaged；needsRedeploy 對 linux-unpackaged 在三種狀態皆為 false；移除 linux-deb 與 package-managed 的案例。驗證：npm test -w apps/desktop，新斷言紅。",
+      "files": [
+        "apps/desktop/src/__tests__/cliInstall.test.ts"
+      ]
+    },
+    {
+      "task_id": "23",
+      "task_desc": "8.2 apps/desktop/src/core/cliInstall.ts 的 CliPlatform 以 linux-unpackaged 取代 linux-deb、CliDeployPlan 的 reason 以 unpackaged 取代 package-managed；apps/desktop/src/views/AppSettingsView.tsx 移除 linux-deb 的 FieldHelp 分支，並移除 apps/desktop/src 內 i18n 資源的 cliInstall.packageManaged 鍵（中英）；apps/desktop/src/store.ts 的 deploysToLocalBin 判定不變。驗證：8.1 轉綠；npm test -w apps/desktop 全綠（含 appSettingsView 測試）。",
+      "files": [
+        "apps/desktop/src/core/cliInstall.ts",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/views/AppSettingsView.tsx"
+      ]
+    },
+    {
+      "task_id": "25",
+      "task_desc": "9.1 改寫 scripts/release/release-notes.test.mjs 鎖住「Release 說明含下載指南」的新輸出：對照表含 Speclink_<版本>_universal.dmg（註明兩種晶片同一檔）、Speclink_<版本>_x64-setup.exe、Speclink_<版本>_amd64.AppImage 與 Speclink_<版本>_aarch64.AppImage、以及 Linux 伺服器或無圖形介面指向 CLI 一行安裝的一列；CLI 節含 npm i -g @speclink/cli、curl 一行 install.sh、brew install MomoChenisMe/tap/speclink；server 節不變；尾註含 .app.tar.gz 與 latest.json；輸出不含 .sig、.deb、SHA256SUMS、install.ps1、.tar.gz（.app.tar.gz 除外）與 .zip 字樣。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs，新斷言紅。",
+      "files": [
+        "apps/desktop/src-tauri/src/cli_install.rs",
+        "scripts/release/release-notes.test.mjs"
+      ]
+    },
+    {
+      "task_id": "26",
+      "task_desc": "9.2 scripts/release/release-notes.mjs 依 9.1 改寫對照表、CLI 節與尾註。驗證：9.1 轉綠。",
+      "files": [
+        "scripts/release/release-notes.mjs"
+      ]
+    },
+    {
+      "task_id": "27",
+      "task_desc": "9.3 README.md 與 README.en.md 的安裝區塊依「安裝通路文件與發布狀態誠實化」與「安裝章節載明桌面 app 與 CLI 的佈署衝突」改寫：桌面表 macOS 一列 universal dmg（兩種晶片同一檔）、Windows 一列、Linux 一列 AppImage 依架構；CLI 三條指令（npm、curl install.sh、brew）並註明 Windows 走 npm 或安裝器、無圖形 Linux 走 CLI 一行；覆蓋行為表移除 deb 行；新增 deb 安裝者遷移一句（移除 deb 套件後改裝 AppImage）；SPECLINK_INSTALL_DIR／SPECLINK_INSTALL_VERSION（帶或不帶 v）／SPECLINK_INSTALL_REGISTRY 說明；中英結構與事實對等。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs（中英對照、連結與詞彙守門測試）全綠；人工對讀兩版一次。",
+      "files": [
+        "README.en.md",
+        "README.md"
+      ]
+    },
+    {
+      "task_id": "28",
+      "task_desc": "9.4 docs/getting-started.md 與 docs/getting-started.zh-TW.md 的安裝節改為三條 CLI 指令（移除 irm install.ps1）；docs/development.md 與 docs/development.zh-TW.md 的安裝檔清單改為 universal dmg、NSIS、AppImage 兩架構、移除 SHA256SUMS.txt 句、Linux 放行段移除 deb；docs/product-status.md 與 docs/product-status.zh-TW.md 的安裝通路列改為「桌面安裝檔（macOS universal dmg、Windows NSIS、Linux AppImage）、CLI 的 npm／安裝腳本／Homebrew tap、server 的 npx／Docker」。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs 全綠；grep -rn -E \"\\.deb|install\\.ps1|SHA256SUMS\" README.md README.en.md docs/ 只剩 deb 遷移句。",
+      "files": [
+        "docs/development.md",
+        "docs/development.zh-TW.md",
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "30",
+      "task_desc": "10.2 全面收尾：node --test scripts/*.test.mjs scripts/*/*.test.mjs、npm test -w apps/desktop、cargo test -p speclink-desktop 三組全綠；grep -rn -E \"SHA256SUMS|install\\.ps1|linux-deb|package-managed\" 排除 openspec/changes/archive、openspec/discussions 與 openspec/manual 後只剩 README 的 deb 遷移句與本變更的 artifacts；git status 盤點所有改動檔皆在 proposal 的 Impact 清單內。驗證：三組測試指令輸出 0 failures，grep 結果如上。",
+      "files": [
+        "packages/server-npm/package.json",
+        "scripts/npm/npm-server-package.mjs",
+        ".github/workflows/npm-publish.yml",
+        "scripts/npm/npm-platform-package.mjs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M2EVCZX2BZ7W6VZFTQBAW7HT",
+      "taskDesc": "1.1 在 scripts/release/delivery-gate.test.mjs 改寫與新增對 .github/workflows/release.yml 的靜態斷言，鎖住「Release 產出三平台桌面安裝檔」的新 asset 集合：build job 沒有 Package 步驟且 cli-<target> artifact 的 path 為 raw binary；release job 不下載 cli-*；dist 只合併 desktop-*，updater-* 只以目錄結構下載，複製更新包進 dist 的步驟排除 *.sig；沒有產生 SHA256SUMS 的步驟；Linux 兩列 bundles 為 appimage；macOS 只有 target universal-apple-darwin 一列且 bundles 含 app。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs，這些新斷言在現況紅、其餘綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "scripts/release/delivery-gate.test.mjs"
+      ],
+      "recordedAt": "2026-09-14T02:42:02Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX2AWC5ECHV1D4SCHV1",
+      "taskDesc": "2.1 .github/workflows/release.yml 的 build job：移除 Package 步驟，cli-<target> artifact 改上傳 target/<triple>/release/speclink（Windows 帶 .exe）的 raw binary，與 server-<target> 同形；server 相關步驟不動。驗證：1.1 對 build job 的斷言轉綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        ".github/workflows/release.yml"
+      ],
+      "recordedAt": "2026-09-14T02:42:37Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX2X5C9PXEQXCP15NJK",
+      "taskDesc": "3.1 改寫 scripts/release/release-latest-json.test.mjs 鎖住「更新描述檔隨 release 發布」的新契約：輸入目錄 darwin-universal、windows-x86_64、linux-x86_64（linux-aarch64 可選）時，輸出的 darwin-aarch64 與 darwin-x86_64 兩鍵 url 與 signature 相同且指向 Speclink_<版本>_universal.app.tar.gz；缺 darwin-universal 目錄或該目錄缺 .sig 時非零結束、不寫檔並點名；linux-aarch64 存在時一併收錄。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs，新斷言紅。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "scripts/release/release-latest-json.test.mjs"
+      ],
+      "recordedAt": "2026-09-14T02:47:53Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX2KDFQ4H33835ETAMK",
+      "taskDesc": "3.2 scripts/release/release-latest-json.mjs 的目錄契約改為「更新包目錄 → 一或多個平台鍵」的對映表（darwin-universal → darwin-aarch64 與 darwin-x86_64），必要與可選目錄的 fail-closed 行為不變，檔頭註解同步。驗證：3.1 轉綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "scripts/release/release-latest-json.mjs"
+      ],
+      "recordedAt": "2026-09-14T02:48:30Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX2FJR919NJVAP6790Q",
+      "taskDesc": "4.1 在 scripts/desktop/desktop-sidecar.test.mjs 新增斷言：--target universal-apple-darwin 解析出的建置計畫是對 aarch64-apple-darwin 與 x86_64-apple-darwin 各一次 cargo build，輸出路徑為 apps/desktop/src-tauri/binaries/speclink-universal-apple-darwin（以 lipo -create 合成）；其他 target 的計畫與路徑不變（既有測試不改）。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs，新斷言紅。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "scripts/desktop/desktop-sidecar.test.mjs"
+      ],
+      "recordedAt": "2026-09-14T02:49:23Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX24S8M5E6SK84NZVCB",
+      "taskDesc": "5.1 新增 scripts/npm/npm-cli-package.test.mjs 鎖住「CLI 以 npm 套件發布」的物化契約：輸入 --version X.Y.Z --binaries <dir> --out <dir>，輸出主套件（name @speclink/cli、version、bin.speclink 為 bin/speclink、scripts.postinstall、五組同版 optionalDependencies、無 private）與五個子套件（name、version、os、cpu、內含 speclink 或 speclink.exe 且 0755）；缺任一 cli-<target> binary 時非零結束並點名且不產生任何套件；版本不符 X.Y.Z 時非零結束。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs，新測試紅。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "scripts/desktop/desktop-sidecar.mjs",
+        "scripts/npm/npm-cli-package.test.mjs"
+      ],
+      "recordedAt": "2026-09-14T02:50:58Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX2MX0B2AP1BQ3NT4BD",
+      "taskDesc": "5.2 新增 packages/cli-npm/package.json（private 擋誤發布、bin、scripts.postinstall、files）與 scripts/npm/npm-cli-package.mjs（比照 scripts/npm/npm-server-package.mjs：TARGETS 對映 cli-<target> artifact → cli-<os>-<cpu> 子套件，主套件副本去 private、蓋版本、補 optionalDependencies、複製 bin/speclink 與 postinstall.mjs）。驗證：5.1 轉綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "packages/cli-npm/bin/speclink",
+        "packages/cli-npm/package.json",
+        "packages/cli-npm/platform.mjs",
+        "packages/cli-npm/postinstall.mjs",
+        "scripts/npm/npm-cli-package.mjs"
+      ],
+      "recordedAt": "2026-09-14T02:51:48Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX2HSKCSYEH192A244D",
+      "taskDesc": "5.3 新增 scripts/npm/npm-cli-launcher.test.mjs 鎖住 shim 與 postinstall 的行為：五組 os/cpu 對映到子套件名、其他回 null；以假 binary 驗 shim 的 spawn 帶回 exit code（0 與非 0）並透傳全部參數；找不到子套件時 stderr 列出支援組合且 exit 1；postinstall 在 darwin/linux 找到 binary 時把 bin/speclink 原地換成該 binary（內容相同、模式 0755），在 win32 不置換，找不到 binary 時保留 shim 且 exit 0。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs，新測試紅。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "scripts/npm/npm-cli-launcher.test.mjs"
+      ],
+      "recordedAt": "2026-09-14T02:53:08Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX2RX8DWNWR9YXF54CB",
+      "taskDesc": "6.1 改寫 scripts/release/homebrew-formula.test.mjs 鎖住「Homebrew formula 產生器」的新契約：fixture 校驗清單含五個 cli-<os>-<cpu>-<版本>.tgz 條目時，輸出四組 url 為 https://registry.npmjs.org/@speclink/cli-<os>-<cpu>/-/cli-<os>-<cpu>-<版本>.tgz 且 sha256 對應、不含 win32；缺 darwin-arm64 條目時非零結束並點名；缺參數與清單不存在的既有失敗路徑保留；ruby -c 合法性測試保留；刪除「不把 speclink-server 誤當 CLI 資產」測試。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs，新斷言紅。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "scripts/release/homebrew-formula.test.mjs"
+      ],
+      "recordedAt": "2026-09-14T02:55:37Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX2V8362Q9VGQHFSK2S",
+      "taskDesc": "6.2 scripts/release/homebrew-formula.mjs 的輸入改讀 tgz 校驗清單、TARGETS 改為 os/cpu 對映、url 改為 registry 樣式，formula 其餘區塊（desc、homepage、version、bin.install、test）不變。驗證：6.1 轉綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "scripts/release/homebrew-formula.mjs"
+      ],
+      "recordedAt": "2026-09-14T02:56:26Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX2B5QXT2D052AXTJ6T",
+      "taskDesc": "7.1 改寫 scripts/install.test.mjs 鎖住「安裝腳本一行安裝對應平台 CLI」的新契約：fixture 改為含 package/speclink 的 tgz、latest 回應含 version 的 JSON、版本回應含 dist.integrity（sha512-base64）的 JSON；dry-run 四組平台輸出 registry 的 tgz URL 且不呼叫 curl；SPECLINK_INSTALL_VERSION 帶 v 與不帶 v 輸出相同 URL；未釘選時經 @speclink/cli/latest 解析版本；integrity 不符時非零結束且安裝目錄無檔；安裝成功後 binary 可執行；Windows 的 uname 值非零結束並提到 npm 與 setup.exe；PATH 提示保留；刪除整組 install.ps1 測試與 pwsh 偵測。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs，新斷言紅。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "scripts/install.test.mjs"
+      ],
+      "recordedAt": "2026-09-14T02:58:23Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX2T0Y8D68CDDV2Q64C",
+      "taskDesc": "7.2 改寫 scripts/install.sh：平台對映改 npm os/cpu 名；版本解析改 registry（SPECLINK_INSTALL_REGISTRY 可覆寫、預設 https://registry.npmjs.org，移除 SPECLINK_INSTALL_REPO）；下載平台子套件 tgz；以 openssl dgst -sha512 -binary 與 openssl base64 -A 算 integrity 比對（缺 openssl 即非零結束）；驗證通過後以 tar --strip-components=1 解出 package/speclink 再複製到安裝目錄；dry-run 與 --help 文案同步；檔頭註解與用法更新。驗證：7.1 轉綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "scripts/install.sh"
+      ],
+      "recordedAt": "2026-09-14T02:59:20Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX2RKAAE3CH1Z4A0G0V",
+      "taskDesc": "7.3 刪除 scripts/install.ps1，並確認 repo 內對 install.ps1 的引用只剩 openspec/changes/archive 與 openspec/discussions（README 與 docs 的引用在第 9 組移除）。驗證：grep -rn install.ps1 排除封存與討論後為空；node --test scripts/*.test.mjs scripts/*/*.test.mjs 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "scripts/install.ps1"
+      ],
+      "recordedAt": "2026-09-14T02:59:56Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX26TV1KS56JQC456HW",
+      "taskDesc": "8.1 改寫 apps/desktop/src/__tests__/cliInstall.test.ts 鎖住「安裝 CLI 指令到 PATH」的新分流：平台 linux-unpackaged 的佈署計畫為 action none、reason unpackaged；needsRedeploy 對 linux-unpackaged 在三種狀態皆為 false；移除 linux-deb 與 package-managed 的案例。驗證：npm test -w apps/desktop，新斷言紅。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/cliInstall.test.ts"
+      ],
+      "recordedAt": "2026-09-14T03:00:41Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX2KCD0NXQMWFHRAADX",
+      "taskDesc": "8.2 apps/desktop/src/core/cliInstall.ts 的 CliPlatform 以 linux-unpackaged 取代 linux-deb、CliDeployPlan 的 reason 以 unpackaged 取代 package-managed；apps/desktop/src/views/AppSettingsView.tsx 移除 linux-deb 的 FieldHelp 分支，並移除 apps/desktop/src 內 i18n 資源的 cliInstall.packageManaged 鍵（中英）；apps/desktop/src/store.ts 的 deploysToLocalBin 判定不變。驗證：8.1 轉綠；npm test -w apps/desktop 全綠（含 appSettingsView 測試）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "apps/desktop/src/core/cliInstall.ts",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/views/AppSettingsView.tsx"
+      ],
+      "recordedAt": "2026-09-14T03:02:13Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX2TG0HFRNHZNKG9MZW",
+      "taskDesc": "9.1 改寫 scripts/release/release-notes.test.mjs 鎖住「Release 說明含下載指南」的新輸出：對照表含 Speclink_<版本>_universal.dmg（註明兩種晶片同一檔）、Speclink_<版本>_x64-setup.exe、Speclink_<版本>_amd64.AppImage 與 Speclink_<版本>_aarch64.AppImage、以及 Linux 伺服器或無圖形介面指向 CLI 一行安裝的一列；CLI 節含 npm i -g @speclink/cli、curl 一行 install.sh、brew install MomoChenisMe/tap/speclink；server 節不變；尾註含 .app.tar.gz 與 latest.json；輸出不含 .sig、.deb、SHA256SUMS、install.ps1、.tar.gz（.app.tar.gz 除外）與 .zip 字樣。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs，新斷言紅。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/cli_install.rs",
+        "scripts/release/release-notes.test.mjs"
+      ],
+      "recordedAt": "2026-09-14T03:03:33Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX3CDSHHE1FKNX5HQMT",
+      "taskDesc": "9.2 scripts/release/release-notes.mjs 依 9.1 改寫對照表、CLI 節與尾註。驗證：9.1 轉綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "scripts/release/release-notes.mjs"
+      ],
+      "recordedAt": "2026-09-14T03:04:21Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX33EAZ5YPF88BTM3PK",
+      "taskDesc": "9.3 README.md 與 README.en.md 的安裝區塊依「安裝通路文件與發布狀態誠實化」與「安裝章節載明桌面 app 與 CLI 的佈署衝突」改寫：桌面表 macOS 一列 universal dmg（兩種晶片同一檔）、Windows 一列、Linux 一列 AppImage 依架構；CLI 三條指令（npm、curl install.sh、brew）並註明 Windows 走 npm 或安裝器、無圖形 Linux 走 CLI 一行；覆蓋行為表移除 deb 行；新增 deb 安裝者遷移一句（移除 deb 套件後改裝 AppImage）；SPECLINK_INSTALL_DIR／SPECLINK_INSTALL_VERSION（帶或不帶 v）／SPECLINK_INSTALL_REGISTRY 說明；中英結構與事實對等。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs（中英對照、連結與詞彙守門測試）全綠；人工對讀兩版一次。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "README.en.md",
+        "README.md"
+      ],
+      "recordedAt": "2026-09-14T03:05:19Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX3EC7Q81P7FS8E7RCC",
+      "taskDesc": "9.4 docs/getting-started.md 與 docs/getting-started.zh-TW.md 的安裝節改為三條 CLI 指令（移除 irm install.ps1）；docs/development.md 與 docs/development.zh-TW.md 的安裝檔清單改為 universal dmg、NSIS、AppImage 兩架構、移除 SHA256SUMS.txt 句、Linux 放行段移除 deb；docs/product-status.md 與 docs/product-status.zh-TW.md 的安裝通路列改為「桌面安裝檔（macOS universal dmg、Windows NSIS、Linux AppImage）、CLI 的 npm／安裝腳本／Homebrew tap、server 的 npx／Docker」。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs 全綠；grep -rn -E \"\\.deb|install\\.ps1|SHA256SUMS\" README.md README.en.md docs/ 只剩 deb 遷移句。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "docs/development.md",
+        "docs/development.zh-TW.md",
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md"
+      ],
+      "recordedAt": "2026-09-14T03:06:07Z"
+    },
+    {
+      "taskId": "tsk_01M2EVCZX33XN3G2R86W017Z33",
+      "taskDesc": "10.2 全面收尾：node --test scripts/*.test.mjs scripts/*/*.test.mjs、npm test -w apps/desktop、cargo test -p speclink-desktop 三組全綠；grep -rn -E \"SHA256SUMS|install\\.ps1|linux-deb|package-managed\" 排除 openspec/changes/archive、openspec/discussions 與 openspec/manual 後只剩 README 的 deb 遷移句與本變更的 artifacts；git status 盤點所有改動檔皆在 proposal 的 Impact 清單內。驗證：三組測試指令輸出 0 failures，grep 結果如上。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8c1a399967ec5e3d40f3de0e144a93b281e20025",
+      "touchedFiles": [
+        "packages/server-npm/package.json",
+        "scripts/npm/npm-server-package.mjs",
+        ".github/workflows/npm-publish.yml",
+        "scripts/npm/npm-platform-package.mjs"
+      ],
+      "recordedAt": "2026-09-14T05:05:21Z"
+    }
+  ]
+}

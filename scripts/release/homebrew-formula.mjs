@@ -1,23 +1,34 @@
-// 由 Release 的 SHA256SUMS.txt 產生 Homebrew formula（cli-distribution spec
-// 「Homebrew formula 產生器」，design D4：產生器產出、tap repo 手動維護）。
+// 由 CLI npm 發布產出的 tgz 校驗清單產生 Homebrew formula（cli-distribution spec
+// 「Homebrew formula 產生器」，design D4／release-assets-trim D5：binary 的唯一來源是
+// npm，formula 的 url 指向 registry.npmjs.org 的平台子套件 tgz——homebrew-core 對
+// Node CLI 的既有寫法）。
 //
-// 用法：node scripts/release/homebrew-formula.mjs --tag v0.1.0 --sums SHA256SUMS.txt
+// 用法：node scripts/release/homebrew-formula.mjs --tag v0.5.0 --sums cli-npm-sums.txt
 //
-// 輸出到 stdout，貼進 tap repo 的 Formula/speclink.rb 即可。四組平台資產缺任一
-// 即以非零結束——checksum 每版都變，手抄或漏抄要到使用者 brew install 失敗才會
-// 發現，因此寧可不產出也不產出半套。
+// --sums 是 cli-npm-publish job 對 npm pack 產出的 tgz 跑 sha256sum 的輸出（digest、
+// 兩空白、檔名）；npm publish <tgz> 上傳的就是同一份 bytes，所以 sha256 對 registry 上
+// 的檔成立。輸出到 stdout，貼進 tap repo 的 Formula/speclink.rb 即可。四組平台資產
+// 缺任一即以非零結束——checksum 每版都變，手抄或漏抄要到使用者 brew install 失敗
+// 才會發現，因此寧可不產出也不產出半套。
 import { readFileSync } from 'node:fs';
 
 const REPO = 'MomoChenisMe/speclink';
+const SCOPE = '@speclink';
 const BIN = 'speclink';
 
-// brew 只用得到這四個；Windows 的 msvc 資產不在 formula 範圍。
+// brew 只用得到這四個；win32 子套件不在 formula 範圍。
 const TARGETS = [
-  { key: 'macosArm', triple: 'aarch64-apple-darwin' },
-  { key: 'macosIntel', triple: 'x86_64-apple-darwin' },
-  { key: 'linuxArm', triple: 'aarch64-unknown-linux-gnu' },
-  { key: 'linuxIntel', triple: 'x86_64-unknown-linux-gnu' },
+  { key: 'macosArm', platform: 'darwin-arm64' },
+  { key: 'macosIntel', platform: 'darwin-x64' },
+  { key: 'linuxArm', platform: 'linux-arm64' },
+  { key: 'linuxIntel', platform: 'linux-x64' },
 ];
+
+/// npm pack 的產物名：@speclink/cli-darwin-arm64@0.5.0 → speclink-cli-darwin-arm64-0.5.0.tgz。
+const packName = (platform, version) => `${SCOPE.slice(1)}-cli-${platform}-${version}.tgz`;
+/// registry 上該 tgz 的下載網址（registry 的檔名不帶 scope）。
+const registryUrl = (platform, version) =>
+  `https://registry.npmjs.org/${SCOPE}/cli-${platform}/-/cli-${platform}-${version}.tgz`;
 
 function fail(message) {
   console.error(`homebrew-formula: ${message}`);
@@ -30,7 +41,7 @@ function parseArgs(argv) {
     const flag = argv[i];
     const value = argv[i + 1];
     if (!/^--(tag|sums)$/.test(flag) || value === undefined) {
-      fail(`無法解析的參數：${flag}——用法：--tag <v0.1.0> --sums <SHA256SUMS.txt>`);
+      fail(`無法解析的參數：${flag}——用法：--tag <v0.5.0> --sums <cli-npm-sums.txt>`);
     }
     args[flag.slice(2)] = value;
   }
@@ -46,11 +57,13 @@ let sumsText;
 try {
   sumsText = readFileSync(sums, 'utf8');
 } catch {
-  fail(`讀不到 SHA256SUMS.txt：${sums}`);
+  fail(`讀不到校驗清單：${sums}`);
 }
 
-/// SHA256SUMS.txt 的每一行是「digest<空白>檔名」。以完整檔名比對，避免
-/// speclink-server-<tag>-<triple>.tar.gz 被當成 CLI 的資產取走。
+const version = tag.replace(/^v/, '');
+
+/// 校驗清單的每一行是「digest<空白>檔名」。以完整檔名（含版本）比對：版本不符的
+/// 清單等同缺條目，不會把上一版的 sha256 套到這一版。
 const digests = new Map();
 for (const line of sumsText.split('\n')) {
   const match = line.trim().match(/^([0-9a-fA-F]{64})\s+(\S+)$/);
@@ -59,25 +72,23 @@ for (const line of sumsText.split('\n')) {
 
 const assets = [];
 const missing = [];
-for (const { key, triple } of TARGETS) {
-  const name = `${BIN}-${tag}-${triple}.tar.gz`;
-  const digest = digests.get(name);
+for (const { key, platform } of TARGETS) {
+  const digest = digests.get(packName(platform, version));
   if (!digest) {
-    missing.push(triple);
+    missing.push(platform);
     continue;
   }
-  assets.push({ key, triple, digest, url: `https://github.com/${REPO}/releases/download/${tag}/${name}` });
+  assets.push({ key, platform, digest, url: registryUrl(platform, version) });
 }
 
 if (missing.length > 0) {
   fail(
-    `SHA256SUMS.txt 缺少下列平台的 ${BIN} 條目：${missing.join('、')}` +
-      `——確認 tag（${tag}）與該次 Release 的資產一致後重試`,
+    `校驗清單缺少下列平台的 ${BIN} tgz 條目：${missing.join('、')}` +
+      `——確認 tag（${tag}）與 cli-npm-publish 產出的清單同版後重試`,
   );
 }
 
 const byKey = Object.fromEntries(assets.map((a) => [a.key, a]));
-const version = tag.replace(/^v/, '');
 
 process.stdout.write(`# 由 scripts/release/homebrew-formula.mjs 產生，請勿手改；改版時重新產生。
 class Speclink < Formula
