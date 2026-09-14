@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.5.0",
+    "date": "2026-09-14",
+    "sections": [
+      {
+        "title": "新功能",
+        "items": [
+          "Release 頁從 21 個檔收成 6 個：macOS 一個 universal dmg 同時跑 Apple Silicon 與 Intel、Windows 安裝器、Linux 兩種架構的 AppImage，加上自動更新用的 .app.tar.gz 與 latest.json；CLI 改由 npm 單一來源供給——`npm i -g @speclink/cli` 裝到的是原生執行檔，Homebrew 與 `install.sh` 抓的是同一份套件，無圖形介面的 Linux 也能 curl 一行裝好；Linux 桌面版不再出 .deb，既有 .deb 使用者請移除後改裝 AppImage。",
+          "桌面 app 的視窗回到前景時會重新檢查更新，長時間開著 app 也能發現新版本，不必再到設定頁手動按「檢查更新」。"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.4.0",
     "date": "2026-09-13",
     "sections": [
