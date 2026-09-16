@@ -942,6 +942,45 @@ describe("main content scroll containment（主內容區捲動約束）", () => 
     await waitFor(() => expect(main().className).toContain("overflow-y-auto"));
     expect(main().className).not.toContain("overflow-hidden");
   });
+
+  // spec「指令檔過期提示」的「提示 SHALL 只佔用自身高度」：提示存在時 main 為 flex
+  // 直欄、提示包裹層 shrink-0，看板等視圖的根節點（h-full min-h-0）縮到扣除提示後的
+  // 剩餘高度，而非被 overflow-hidden 裁切；設定頁仍整頁捲動。jsdom 無版面計算，這裡
+  // 釘的是 class 契約（欄高算法由手動任務實機確認）。
+  it("技能檔提示存在時 main 為 flex 直欄、提示包裹層 shrink-0；設定頁維持 overflow-y-auto", async () => {
+    const ws = {
+      ...fakeWorkspace(),
+      openProject: vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" }),
+      // 過期探測回報 3 個受管檔有異 → store 帶 assetPrompt（kind stale、fileCount 3）。
+      probeAssets: vi.fn().mockResolvedValue({
+        status: "stale",
+        currentVersion: "v1.3.0",
+        tools: [{ tool: "claude", workspaceVersion: "v0.9.0", stale: true, newer: false, missing: false }],
+        differingFiles: [
+          "CLAUDE.md",
+          ".claude/skills/speclink-apply/SKILL.md",
+          ".claude/skills/speclink-propose/SKILL.md",
+        ],
+      }),
+      updateAssets: vi.fn().mockResolvedValue(undefined),
+    };
+    renderApp(fakeDataSource(), { ws });
+    await screen.findByText("desktop-shell-and-browser");
+    const prompt = await screen.findByTestId("asset-prompt");
+    expect(prompt.textContent).toContain("3 個檔案");
+    const main = () => document.querySelector("main") as HTMLElement;
+    // 看板：flex 直欄與 overflow-hidden 並存（classList 逐 token 比對，避免 flex-1 誤中）。
+    expect(main().classList.contains("flex")).toBe(true);
+    expect(main().classList.contains("flex-col")).toBe(true);
+    expect(main().classList.contains("overflow-hidden")).toBe(true);
+    // 提示包裹層不可被壓縮：剩餘高度全給視圖。
+    expect(prompt.parentElement?.classList.contains("shrink-0")).toBe(true);
+    // 設定頁：整頁捲動不受影響。
+    const aside = document.querySelector("aside") as HTMLElement;
+    fireEvent.click(within(aside).getByRole("button", { name: "設定" }));
+    await waitFor(() => expect(main().className).toContain("overflow-y-auto"));
+    expect(main().className).not.toContain("overflow-hidden");
+  });
 });
 
 describe("側欄無常駐版號（desktop-app 規格「側欄導覽結構」）", () => {

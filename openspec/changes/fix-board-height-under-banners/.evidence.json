@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "change": "fix-board-height-under-banners",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 落實規格「指令檔過期提示」的「提示 SHALL 只佔用自身高度」約束：主內容區 main 改為 flex 直欄，技能檔提示的包裹層加 shrink-0；提示存在時，看板、規格頁、手冊頁、已封存頁的根節點（各自已帶 h-full min-h-0）縮到 main 扣除提示後的剩餘高度，底緣貼齊 main 底緣、不再被 overflow-hidden 裁切；設定頁與專案設定頁的 main 仍為 overflow-y-auto 整頁捲動，提示與內容一起捲。手冊視圖的提示包裹層維持既有的 px-5 pt-5 自補內距。影響路徑：apps/desktop/src/App.tsx。驗證：任務 1.2 的新測試與既有 describe「main content scroll containment（主內容區捲動約束）」全部通過（`npm test -w @speclink/desktop`）。",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M2M39Y9XQV61QFQ31SDSP3FY",
+      "taskDesc": "1.1 落實規格「指令檔過期提示」的「提示 SHALL 只佔用自身高度」約束：主內容區 main 改為 flex 直欄，技能檔提示的包裹層加 shrink-0；提示存在時，看板、規格頁、手冊頁、已封存頁的根節點（各自已帶 h-full min-h-0）縮到 main 扣除提示後的剩餘高度，底緣貼齊 main 底緣、不再被 overflow-hidden 裁切；設定頁與專案設定頁的 main 仍為 overflow-y-auto 整頁捲動，提示與內容一起捲。手冊視圖的提示包裹層維持既有的 px-5 pt-5 自補內距。影響路徑：apps/desktop/src/App.tsx。驗證：任務 1.2 的新測試與既有 describe「main content scroll containment（主內容區捲動約束）」全部通過（`npm test -w @speclink/desktop`）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "4af43f1e83286b7a51e3584ec90be2a6e4db3ad0",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx"
+      ],
+      "recordedAt": "2026-09-16T07:18:18Z"
+    }
+  ]
+}
