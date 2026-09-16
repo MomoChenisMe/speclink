@@ -155,6 +155,37 @@ pub fn set_task_done_at(root: &Path, change: &str, task: &str, done: bool) -> Re
     }
 }
 
+/// 宣告（或 `remove` 時撤銷）`on` 為 `change` 的前置（design D6）：守門與寫入全在引擎
+/// `plan::set_depends`——自依賴、不存在、已封存、成環一律拒絕且零寫入，錯誤文字就是
+/// 引擎訊息。定根到該 change 的所在（有 worktree 映射寫其副本），寫入持全域寫回鎖。
+/// 引擎的成環守門只看寫入的那份 store：有 worktree 映射時，分支後主 checkout 才宣告
+/// 的反向邊副本看不到，而排程分頁的候選來自看板同源視圖（overlay）——新增後以 overlay
+/// 複檢一次，成環就撤銷剛加的邊、回引擎的成環訊息（看板不會出現 planError）。
+pub fn set_depends_at(root: &Path, change: &str, on: &[String], remove: bool) -> Result<(), String> {
+    if !crate::query::is_safe_path_param(change) {
+        return Err(format!("invalid change name: {change}"));
+    }
+    // facts 現取（含 git spawn）在取寫回鎖之前完成；定根與 overlay 用同一份 facts。
+    let ctx = init_core_context(root)
+        .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
+    let facts = crate::facts_for(&ctx);
+    let home_root = crate::worktree_root_for(&ctx, &facts, change)
+        .unwrap_or(ctx.workspace.root.as_path());
+    let home = speclink_fs::FsStore::new(home_root, &ctx.workspace.spec_dir_name);
+    let _guard = write_guard();
+    let before = home.find_change(change).map(|c| c.meta.depends_on()).unwrap_or_default();
+    let write = speclink_core::plan::set_depends(&home, change, on, remove).map_err(|e| e.to_string())?;
+    if !remove && write.changed {
+        let overlaid = crate::query::overlay_store(&ctx, &facts);
+        if let Err(cycle) = speclink_core::plan::compute(&overlaid) {
+            let added: Vec<String> = on.iter().filter(|n| !before.contains(n)).cloned().collect();
+            speclink_core::plan::set_depends(&home, change, &added, true).map_err(|e| e.to_string())?;
+            return Err(cycle.to_string());
+        }
+    }
+    Ok(())
+}
+
 /// 批次設定全部任務的完成狀態（desktop-task-interactions design D1：批次動詞單指令雙用）。
 /// done=true＝全部標完成，done=false＝全部取消勾選；一次讀檔、一次寫回。
 /// 側效沿單發勾選語意：done=true 且有翻轉時 touched 記錄一次（歸於本次首個翻轉的任務）、
@@ -313,16 +344,14 @@ pub fn reorder_card_at(
     }
 }
 
-/// 變更卡的所屬欄（與前端 changeStage 同構）：任務全完成→ready(2)；
-/// 已開工或有完成數→in-progress(1)；其餘→proposed(0)。
+/// 變更卡的所屬欄（design D8）：規則只有引擎 `model::stage` 一份，這裡映射到既有的
+/// u8 欄序——ready(2)、in-progress(1)、proposed(0)。
 fn change_stage(store: &dyn Store, c: &speclink_core::model::Change) -> u8 {
-    let (complete, total) = speclink_core::listing::task_counts(store, c);
-    if total > 0 && complete >= total {
-        2
-    } else if c.meta.started_at.is_some() || complete > 0 {
-        1
-    } else {
-        0
+    use speclink_core::model::Stage;
+    match speclink_core::model::stage(store, c) {
+        Stage::Ready => 2,
+        Stage::InProgress => 1,
+        Stage::Proposed => 0,
     }
 }
 
@@ -333,7 +362,9 @@ fn reorder_change(
     prev_id: Option<&str>,
     next_id: Option<&str>,
 ) -> Result<(), String> {
-    let all = crate::query::board_sorted_changes(store);
+    // 補章依當前顯示序派發（design D2）：與清單 payload 同一個入口，顯示序已滿足
+    // 宣告依賴，補章只是把它固化。
+    let (all, _) = crate::query::board_order(store);
     let dragged = all
         .iter()
         .find(|c| c.name == id)
@@ -346,9 +377,13 @@ fn reorder_change(
         .iter()
         .filter(|c| c.meta_error.is_none() && change_stage(store, c) == stage)
         .collect();
-    // 整欄補章（design D3）：欄內有缺 rank 卡 → 依顯示序等距派發，只涵蓋本欄。
+    // 整欄重派（design D2／D3）：欄內有缺 rank 卡，或 rank 序與顯示序不一致（宣告
+    // 依賴修正過基底序：兩鄰居的 rank 反序時中點鍵表達不了「兩者之間」）→ 依顯示序
+    // 等距派發，只涵蓋本欄。全員具 rank 且序一致時只改被拖卡一檔。
+    let ranked_in_display_order = column.iter().all(|c| c.meta.board_rank.is_some())
+        && column.windows(2).all(|w| w[0].meta.board_rank < w[1].meta.board_rank);
     let ranks: std::collections::HashMap<&str, String> =
-        if column.iter().any(|c| c.meta.board_rank.is_none()) {
+        if !ranked_in_display_order {
             let keys = crate::rank::spread(column.len());
             for (c, key) in column.iter().zip(&keys) {
                 speclink_core::model::set_board_rank(&home(&c.name), &c.name, key)
@@ -362,6 +397,9 @@ fn reorder_change(
                 .collect()
         };
     let key = neighbor_midpoint(&ranks, prev_id, next_id);
+    // 引擎層守門（design D3）：新鍵會把卡排到宣告前置之前、或依賴它的卡之後即拒絕，
+    // 錯誤文字就是引擎的 Display。補章已落盤不回滾——補章只固化當前顯示序。
+    speclink_core::plan::check_rank_move(store, id, &key).map_err(|e| e.to_string())?;
     speclink_core::model::set_board_rank(&home(id), id, &key).map_err(|e| e.to_string())
 }
 
@@ -1497,18 +1535,33 @@ mod tests {
         format!("schema: spec-driven\ncreated: 2026-07-01\ncreated_by: momo\nboard_rank: {rank}\n")
     }
 
-    /// 看板欄內排序後的 change 名（走 list_changes_at 的顯示序）。
-    fn board_names(root: &Path) -> Vec<String> {
-        crate::query::list_changes_at(root)["changes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|c| c["name"].as_str().unwrap().to_string())
-            .collect()
-    }
+    use crate::testfixture::board_names;
 
     fn rank_of(meta: &str) -> Option<String> {
         speclink_core::model::ChangeMeta::from_text(Some(meta)).expect("meta parses").board_rank
+    }
+
+    #[test]
+    fn change_stage_is_the_engine_stage_mapped_to_the_column_index() {
+        // design D8：欄判定只剩引擎 `model::stage` 一份規則；三欄各一張卡對照。
+        let fx = crate::testfixture::FixtureRoot::new("r-stage");
+        fx.add_change("proposed", META_UNSTARTED);
+        fx.write("openspec/changes/proposed/tasks.md", "- [ ] 1.1 t\n");
+        fx.add_change("started", &format!("{META_UNSTARTED}started_at: 2026-07-06\n"));
+        fx.write("openspec/changes/started/tasks.md", "- [ ] 1.1 t\n");
+        fx.add_change("ready", META_UNSTARTED);
+        fx.write("openspec/changes/ready/tasks.md", "- [x] 1.1 t\n");
+        let ctx = init_core_context(fx.root()).expect("project");
+        let store: &dyn Store = &ctx.store;
+        for (name, stage, column) in [
+            ("proposed", speclink_core::model::Stage::Proposed, 0),
+            ("started", speclink_core::model::Stage::InProgress, 1),
+            ("ready", speclink_core::model::Stage::Ready, 2),
+        ] {
+            let c = store.find_change(name).expect("change");
+            assert_eq!(speclink_core::model::stage(store, &c), stage, "{name}");
+            assert_eq!(change_stage(store, &c), column, "{name}");
+        }
     }
 
     #[test]
@@ -1568,7 +1621,9 @@ mod tests {
         );
         assert!(rc < ra && ra < rb, "order must be c < a < b, got c={rc} a={ra} b={rb}");
         assert_eq!(meta_of(&fx, "other-col"), other_before, "other column must be untouched");
-        assert_eq!(board_names(fx.root()), ["other-col", "c", "a", "b"], "unranked column first, then ranked");
+        // 頂層順序＝plan 配置序（階段在前：進行中欄的三卡先於提案中的 other-col），
+        // 欄內為 c、a、b。
+        assert_eq!(board_names(fx.root()), ["c", "a", "b", "other-col"]);
         // 補章後 meta 仍以既有欄位開頭（byte 保留）。
         assert!(meta_of(&fx, "a").starts_with(META_UNSTARTED));
     }
@@ -1648,6 +1703,156 @@ mod tests {
             doc("gamma", "t"),
             "only the frontmatter rank line may differ"
         );
+    }
+
+    // --- 拖排前的依賴檢查（design D3；spec「欄內拖排以中點 rank 單檔寫回」）---
+
+    #[test]
+    fn reorder_across_a_declared_prerequisite_is_refused_and_keeps_the_rank() {
+        // Scenario「跨越宣告前置被拒」：c depends_on a、同欄，把 c 拖到 a 之前 →
+        // Err 帶引擎的 Display 文字、c 的 meta 逐位元不變、刷新後仍 a 在 c 前。
+        let fx = crate::testfixture::FixtureRoot::new("r-dep-refused");
+        fx.add_change("a", &ranked_meta("b"));
+        fx.add_change("c", &format!("{}depends_on: a\n", ranked_meta("f")));
+        let c_before = meta_of(&fx, "c");
+
+        let err = reorder_card_at(fx.root(), "change", "c", None, Some("a"))
+            .expect_err("crossing a declared prerequisite must be refused");
+
+        assert!(err.contains("cannot move 'c' there") && err.contains("it depends on a"), "{err}");
+        assert_eq!(meta_of(&fx, "c"), c_before, "dragged card's rank must not change");
+        assert_eq!(board_names(fx.root()), ["a", "c"]);
+    }
+
+    #[test]
+    fn reorder_refusal_keeps_the_backfill_stamp_but_not_the_move() {
+        // 補章寫入允許存在（design D3）：欄內有缺 rank 卡時先依顯示序補章，之後
+        // 被拒——c 的 rank 是補章值、仍排在 a 之後，不是移動後的中點鍵。
+        let fx = crate::testfixture::FixtureRoot::new("r-dep-refused-stamp");
+        fx.add_change("a", META_UNSTARTED);
+        fx.add_change("c", &format!("{META_UNSTARTED}depends_on: a\n"));
+
+        reorder_card_at(fx.root(), "change", "c", None, Some("a"))
+            .expect_err("crossing a declared prerequisite must be refused");
+
+        let ra = rank_of(&meta_of(&fx, "a")).expect("a stamped by the backfill");
+        let rc = rank_of(&meta_of(&fx, "c")).expect("c stamped by the backfill");
+        assert!(ra < rc, "backfill order a < c survives the refusal: a={ra} c={rc}");
+        assert_eq!(board_names(fx.root()), ["a", "c"]);
+    }
+
+    #[test]
+    fn overlap_partners_may_swap_places() {
+        // 只因 delta 重疊而依序的夥伴可互換先後（spec：僅因 delta 重疊而依序的
+        // 夥伴 SHALL NOT 構成拒絕）。
+        let fx = crate::testfixture::FixtureRoot::new("r-overlap-swap");
+        fx.add_change("a", &ranked_meta("b"));
+        fx.add_change("b", &ranked_meta("f"));
+        for name in ["a", "b"] {
+            fx.write(
+                &format!("openspec/changes/{name}/specs/shared-cap/spec.md"),
+                "## ADDED Requirements\n\n### Requirement: R\n\nText.\n",
+            );
+        }
+        assert_eq!(board_names(fx.root()), ["a", "b"]);
+
+        reorder_card_at(fx.root(), "change", "b", None, Some("a")).expect("overlap partners may swap");
+
+        let ra = rank_of(&meta_of(&fx, "a")).unwrap();
+        let rb = rank_of(&meta_of(&fx, "b")).unwrap();
+        assert!(rb < ra, "b moved before a: a={ra} b={rb}");
+        assert_eq!(board_names(fx.root()), ["b", "a"]);
+    }
+
+    #[test]
+    fn reorder_restamps_the_column_when_rank_order_disagrees_with_the_display_order() {
+        // Scenario「依賴修正後的欄拖排」：c（rank g）宣告前置 a（rank n）→ 顯示 a、c 但
+        // rank 序 c<a；把 x 拖到 a、c 之間時中點鍵表達不了這個位置（審查 Round 1：
+        // 舊行為鍵落到 c 之後、畫面靜默不動）。整欄先依顯示序重派再套移動。
+        let fx = crate::testfixture::FixtureRoot::new("r-restamp-inverted");
+        fx.add_change("a", &ranked_meta("n"));
+        fx.add_change("c", &format!("{}depends_on: a\n", ranked_meta("g")));
+        fx.add_change("x", &ranked_meta("t"));
+        assert_eq!(board_names(fx.root()), ["a", "c", "x"]);
+
+        reorder_card_at(fx.root(), "change", "x", Some("a"), Some("c")).expect("drop between a and c");
+
+        assert_eq!(board_names(fx.root()), ["a", "x", "c"]);
+        let rank = |name: &str| rank_of(&meta_of(&fx, name)).unwrap();
+        assert!(rank("a") < rank("x") && rank("x") < rank("c"), "a={} x={} c={}", rank("a"), rank("x"), rank("c"));
+    }
+
+    #[test]
+    fn set_depends_rechecks_the_cycle_on_the_board_view_when_the_change_has_a_worktree() {
+        // 審查 Round 1：a 有 worktree 映射時引擎的成環守門只看副本；分支後主 checkout
+        // 才加的 b→a 邊副本看不到。寫入後以看板同源視圖（overlay）複檢，成環即撤銷
+        // 這條邊、回引擎的成環訊息，副本逐位元不變、看板不出 planError。
+        let fx = crate::testfixture::FixtureRoot::new("m-depends-wt-cycle");
+        fx.add_change("a", META_UNSTARTED);
+        fx.add_change("b", META_UNSTARTED);
+        let wt = fx.attach_worktree("a");
+        fx.write("openspec/changes/b/.openspec.yaml", &format!("{META_UNSTARTED}depends_on: a\n"));
+        let a_wt = wt.change_dir("a").join(".openspec.yaml");
+        let a_before = fs::read_to_string(&a_wt).unwrap();
+
+        let err = set_depends_at(fx.root(), "a", &on(&["b"]), false).expect_err("cycle on the board view");
+
+        assert!(err.contains("dependency cycle"), "{err}");
+        assert_eq!(fs::read_to_string(&a_wt).unwrap(), a_before, "the edge is rolled back");
+        assert!(crate::query::list_changes_at(fx.root())["planError"].is_null());
+    }
+
+    // --- 前置的新增與移除（design D6；spec「詳情抽屜的排程分頁」）---
+
+    fn on(names: &[&str]) -> Vec<String> {
+        names.iter().map(|n| n.to_string()).collect()
+    }
+
+    #[test]
+    fn set_depends_writes_and_removes_the_prerequisite_in_the_meta() {
+        // Scenario「新增前置寫回」：寫入後 meta 含 depends_on: a，其餘位元組保留、
+        // 前置卡不動；移除後該行消失。
+        let fx = crate::testfixture::FixtureRoot::new("m-depends");
+        fx.add_change("a", META_UNSTARTED);
+        fx.add_change("b", META_UNSTARTED);
+        let a_before = meta_of(&fx, "a");
+
+        set_depends_at(fx.root(), "b", &on(&["a"]), false).expect("add prerequisite");
+        let b = meta_of(&fx, "b");
+        assert!(b.starts_with(META_UNSTARTED), "existing bytes preserved: {b}");
+        assert!(b.contains("depends_on: a\n"), "{b}");
+        assert_eq!(meta_of(&fx, "a"), a_before, "prerequisite card untouched");
+        assert_eq!(
+            crate::query::list_changes_at(fx.root())["changes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|c| c["name"] == "b")
+                .unwrap()["dependsOn"],
+            json!(["a"])
+        );
+
+        set_depends_at(fx.root(), "b", &on(&["a"]), true).expect("remove prerequisite");
+        assert!(!meta_of(&fx, "b").contains("depends_on"), "{}", meta_of(&fx, "b"));
+    }
+
+    #[test]
+    fn set_depends_refusals_come_from_the_engine_and_write_nothing() {
+        // Scenario「引擎拒絕新增」：自依賴、不存在、成環 → Err 帶引擎文字、meta 不變。
+        let fx = crate::testfixture::FixtureRoot::new("m-depends-refused");
+        fx.add_change("a", &format!("{META_UNSTARTED}depends_on: b\n"));
+        fx.add_change("b", META_UNSTARTED);
+        let b_before = meta_of(&fx, "b");
+
+        let err = set_depends_at(fx.root(), "b", &on(&["b"]), false).expect_err("self");
+        assert!(err.contains("cannot depend on itself"), "{err}");
+        let err = set_depends_at(fx.root(), "b", &on(&["ghost"]), false).expect_err("unknown");
+        assert!(err.contains("no active change with that name"), "{err}");
+        let err = set_depends_at(fx.root(), "b", &on(&["a"]), false).expect_err("cycle");
+        assert!(err.contains("dependency cycle: b -> a -> b"), "{err}");
+        assert!(set_depends_at(fx.root(), "../evil", &on(&["a"]), false).is_err(), "unsafe name");
+
+        assert_eq!(meta_of(&fx, "b"), b_before, "refusals write nothing");
     }
 
     #[test]

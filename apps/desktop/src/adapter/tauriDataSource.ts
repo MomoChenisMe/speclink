@@ -4,6 +4,7 @@ import type {
   SpeclinkDataSource,
   CardKind,
   ChangeItem,
+  ChangeListPayload,
   SpecItem,
   ArchivedItem,
   DiscussionLists,
@@ -27,6 +28,10 @@ export function createTauriDataSource(
     async listChanges(): Promise<ChangeItem[]> {
       const r = await invoke<{ changes: ChangeItem[] }>("list_changes", { root });
       return r.changes;
+    },
+    async listChangesWithPlan(): Promise<ChangeListPayload> {
+      // 同一個 list_changes payload：清單項＋頂層 planError，不另開請求。
+      return await invoke<ChangeListPayload>("list_changes", { root });
     },
     async listSpecs(): Promise<SpecItem[]> {
       const r = await invoke<{ specs: SpecItem[] }>("list_specs", { root });
@@ -131,6 +136,9 @@ export function createTauriDataSource(
       nextId: string | null,
     ): Promise<void> {
       await invoke("reorder_card", { root, kind, id, prevId, nextId });
+    },
+    async setDepends(change: string, on: string[], remove: boolean): Promise<void> {
+      await invoke("set_change_depends", { root, change, on, remove });
     },
   };
 }

@@ -232,6 +232,22 @@ async fn reorder_card(
 }
 
 #[tauri::command]
+// 前置的新增與移除（add-change-plan-desktop design D6）：單行委派到桌面 core，
+// 守門與錯誤文字都是引擎的。
+async fn set_change_depends(
+    root: PathBuf,
+    change: String,
+    on: Vec<String>,
+    remove: bool,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::manage::set_depends_at(&root, &change, &on, remove)
+    })
+    .await
+    .map_err(|e| format!("task write worker failed: {e}"))?
+}
+
+#[tauri::command]
 async fn validate(root: PathBuf, change: String) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         speclink_desktop_core::verbs::validate_at(&root, &change)
@@ -1724,6 +1740,7 @@ pub fn run() {
             set_all_tasks,
             move_task,
             reorder_card,
+            set_change_depends,
             validate,
             analyze,
             archive,

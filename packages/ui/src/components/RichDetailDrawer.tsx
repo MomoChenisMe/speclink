@@ -8,23 +8,26 @@ import {
   GitBranch,
   Hand,
   ListChecks,
+  ListOrdered,
   Maximize2,
   Minimize2,
   PenTool,
   Sparkles,
   Trash2,
   Undo2,
+  X,
 } from "lucide-react";
 
 import type { ChangeItem, ChangeMetaInfo, Verb, VerbDrawerResult } from "../adapter";
 import { specDeltaCounts, sumDeltaCounts } from "../delta";
-import { changeStage } from "../stage";
+import { changeStage, planBlockedBy, planWave, planWaveLabel } from "../stage";
 import { useI18n } from "../i18n";
 import { useLingering } from "../lib/useLingering";
 import { relativeDays } from "../time";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { SourceChipRow } from "./SourceDiscussionChip";
@@ -73,6 +76,11 @@ export interface RichDetailDrawerProps {
   onOpenDiscussion?: (slug: string) => void;
   /** 點同源 change 互跳。 */
   onOpenSibling?: (name: string) => void;
+  /** 作用中變更清單（排程分頁：同波夥伴與前置候選自此派生）；缺席＝空清單。 */
+  changes?: ChangeItem[];
+  /** 排程分頁的前置新增／移除（add-change-plan-desktop design D6）。未提供
+   * （capability `setDepends` 為假）時分頁唯讀：不渲染移除鈕與新增下拉。 */
+  onSetDepends?: (change: string, on: string[], remove: boolean) => void;
   /** capability 缺口的停用說明（remote session）：欄位存在＝該 affordance
    * disabled 並以其文字顯示 tooltip。缺席＝全功能（本地不受影響）。 */
   unavailable?: {
@@ -154,7 +162,138 @@ function StationStamp({
   );
 }
 
-/** 富詳情抽屜：metadata、進度、動作列、icon 分頁（提案/設計/互動任務/彩色規格）。 */
+/** 排程分頁內的名稱籤（同波夥伴、前置、重疊、阻擋共用）。 */
+function PlanName({ name }: { name: string }) {
+  return <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{name}</span>;
+}
+
+/**
+ * 排程分頁（spec desktop-app「詳情抽屜的排程分頁」；design D6）：波次（同波夥伴）、
+ * 前置（可增減）、重疊（唯讀）、阻擋四段。清單項缺 wave 時：remote 摘要（亦缺
+ * dependsOn）只剩一句說明；plan 成環（payload 仍帶 dependsOn 原文）另渲染前置段、
+ * 只能移除——解環的出口。判定沿 stage.ts 的 planWave／planBlockedBy 單一入口。
+ */
+function PlanTab({
+  change,
+  changes,
+  onSetDepends,
+}: {
+  change: ChangeItem;
+  changes: ChangeItem[];
+  onSetDepends?: (change: string, on: string[], remove: boolean) => void;
+}) {
+  const { t } = useI18n();
+  const wave = planWave(change);
+  const dependsOn = change.dependsOn ?? [];
+  const heading = "text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1";
+  const dependsList = (
+    <ul className="flex flex-col gap-1">
+      {dependsOn.map((n) => (
+        <li key={n} className="flex items-center gap-2">
+          <PlanName name={n} />
+          {onSetDepends && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              aria-label={t("plan.remove").replace("{name}", n)}
+              onClick={() => onSetDepends(change.name, [n], true)}
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+  if (wave === null) {
+    return (
+      <div className="flex flex-col gap-5 text-sm">
+        <div className="text-muted-foreground py-6">{t(change.dependsOn ? "plan.cycle" : "plan.unavailable")}</div>
+        {change.dependsOn && (
+          <section data-plan-section="depends">
+            <div className={heading}>{t("plan.depends")}</div>
+            {dependsList}
+          </section>
+        )}
+      </div>
+    );
+  }
+  const overlaps = change.overlaps ?? [];
+  const blockedBy = planBlockedBy(change);
+  const others = changes.filter((c) => c.name !== change.name);
+  const mates = others.filter((c) => planWave(c) === wave).map((c) => c.name);
+  // 新增候選：其他作用中變更，扣掉已宣告的前置（自依賴與成環留給引擎拒絕）。
+  const candidates = others.map((c) => c.name).filter((n) => !dependsOn.includes(n));
+  return (
+    <div className="flex flex-col gap-5 text-sm">
+      <section data-plan-section="wave">
+        <div className={heading}>{t("plan.waveLabel")}</div>
+        <div className="font-medium">{planWaveLabel(wave, t)}</div>
+        {mates.length === 0 ? (
+          <div className="text-muted-foreground">{t("plan.onlyOne")}</div>
+        ) : (
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <span className="text-muted-foreground">{t("plan.waveMates")}</span>
+            {mates.map((n) => (
+              <PlanName key={n} name={n} />
+            ))}
+          </div>
+        )}
+      </section>
+      <section data-plan-section="depends">
+        <div className={heading}>{t("plan.depends")}</div>
+        {dependsOn.length === 0 && <div className="text-muted-foreground">{t("plan.noDepends")}</div>}
+        {dependsList}
+        {onSetDepends && candidates.length > 0 && (
+          // 只當挑選器用：value 固定為空，選擇即寫入、trigger 回到提示文字。
+          <Select value="" onValueChange={(name) => onSetDepends(change.name, [name], false)}>
+            <SelectTrigger aria-label={t("plan.add")} className="mt-2 w-full">
+              <SelectValue placeholder={t("plan.add")} />
+            </SelectTrigger>
+            <SelectContent>
+              {candidates.map((n) => (
+                <SelectItem key={n} value={n}>
+                  {n}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </section>
+      <section data-plan-section="overlaps">
+        <div className={heading}>{t("plan.overlaps")}</div>
+        {overlaps.length === 0 && <div className="text-muted-foreground">{t("plan.noOverlaps")}</div>}
+        <ul className="flex flex-col gap-1">
+          {overlaps.map((o) => (
+            <li key={o.change} className="flex flex-wrap items-center gap-1.5">
+              <PlanName name={o.change} />
+              {o.capabilities.map((cap) => (
+                <span key={cap} className="text-xs text-muted-foreground">
+                  {cap}
+                </span>
+              ))}
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section data-plan-section="blocked">
+        <div className={heading}>{t("plan.blocked")}</div>
+        {blockedBy.length === 0 ? (
+          <div className="text-muted-foreground">{t("plan.canStart")}</div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {blockedBy.map((n) => (
+              <PlanName key={n} name={n} />
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+/** 富詳情抽屜：metadata、進度、動作列、icon 分頁（提案/設計/互動任務/彩色規格/排程）。 */
 export function RichDetailDrawer({
   open,
   onOpenChange,
@@ -176,6 +315,8 @@ export function RichDetailDrawer({
   siblingChanges,
   onOpenDiscussion,
   onOpenSibling,
+  changes,
+  onSetDepends,
   unavailable,
 }: RichDetailDrawerProps) {
   const change = useLingering(changeProp);
@@ -607,6 +748,9 @@ export function RichDetailDrawer({
               <Code2 className="h-3.5 w-3.5" /> {t("common.tabSpecs")}
               <span className="ml-1"><DeltaBadges counts={delta} /></span>
             </TabsTrigger>
+            <TabsTrigger value="plan">
+              <ListOrdered className="h-3.5 w-3.5" /> {t("drawer.tab.plan")}
+            </TabsTrigger>
           </TabsList>
           <div className="flex-1 overflow-y-auto pt-3">
             {/* 共用置中容器包住分頁全部內容——區段標籤、任務清單與內文同欄（design D4）。 */}
@@ -670,6 +814,9 @@ export function RichDetailDrawer({
                   </div>
                 ))
               )}
+            </TabsContent>
+            <TabsContent value="plan">
+              <PlanTab change={change} changes={changes ?? []} onSetDepends={onSetDepends} />
             </TabsContent>
             </div>
           </div>

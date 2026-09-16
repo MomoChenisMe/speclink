@@ -187,6 +187,7 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
     promoteDiscussion: vi.fn().mockResolvedValue({ change: "promoted-change" }),
     archiveDiscussion: vi.fn().mockResolvedValue(undefined),
     reorderCard: vi.fn().mockResolvedValue(undefined),
+    setDepends: vi.fn().mockResolvedValue(undefined),
     revertChangeToProposed: vi.fn().mockResolvedValue(undefined),
     listManualPages: vi
       .fn()
@@ -251,6 +252,19 @@ describe("App (kanban primary + rich detail)", () => {
     fireEvent.click(screen.getByText("desktop-shell-and-browser"));
     await waitFor(() => expect(screen.getByText("MomoChen")).toBeTruthy());
     expect(ds.changeMeta).toHaveBeenCalledWith("desktop-shell-and-browser");
+  });
+
+  it("清單 payload 帶 planError 時看板出現成環提示列（宿主自 payload 傳入）", async () => {
+    // spec desktop-app「依賴成環時看板提示」Scenario「成環提示」。
+    const ds = fakeDataSource({
+      listChangesWithPlan: vi.fn().mockResolvedValue({
+        changes: [{ name: "add-a", status: "in-progress", totalTasks: 3, completedTasks: 0 }],
+        planError: "dependency cycle: add-a -> add-b -> add-a",
+      }),
+    });
+    renderApp(ds);
+    await waitFor(() => screen.getByText("依賴成環：dependency cycle: add-a -> add-b -> add-a"));
+    expect(screen.getByText("add-a")).toBeTruthy();
   });
 
   it("delete flow: drawer delete → confirm dialog → deleteChange called", async () => {

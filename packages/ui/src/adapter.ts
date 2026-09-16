@@ -51,6 +51,21 @@ export interface ChangeItem {
   /** 這個 change 正在其中實作的 linked worktree（僅本機主 checkout、政策開啟時
    * 才有）；缺席＝在主資料夾裡做。 */
   worktree?: { branch: string; path: string } | null;
+  /** 排程四欄（spec client-protocol「變更清單的排程欄位」）：值取自引擎 plan 的
+   * 同一入口。wave 為波次（同波同號＝可並行）；blockedBy 為前置與排在前面的重疊
+   * 夥伴；dependsOn 為 meta 宣告的前置原文；overlaps 為共用 delta 能力的其他變更。
+   * remote 摘要、plan 成環或壞 meta 時四欄缺席——章與排程分頁據缺席隱藏。 */
+  wave?: number;
+  blockedBy?: string[];
+  dependsOn?: string[];
+  overlaps?: ChangeOverlap[];
+}
+
+/** 與另一個變更的 delta 能力重疊。 */
+export interface ChangeOverlap {
+  change: string;
+  /** 共用的 capability 名，升冪。 */
+  capabilities: string[];
 }
 
 /** 一個 canonical spec 的清單項（CLI 同形欄位＋桌面疊加的呈現層輔助欄位）。
@@ -302,9 +317,19 @@ export function toRevertError(raw: unknown): Error {
   return raw instanceof Error ? raw : new Error(text);
 }
 
+/** local 變更清單的完整回應（spec client-protocol「變更清單的排程欄位」）：清單項
+ * 之外還有頂層 planError——依賴成環時為引擎訊息（此時各項無排程四欄），否則 null。 */
+export interface ChangeListPayload {
+  changes: ChangeItem[];
+  planError: string | null;
+}
+
 /** 元件透過此介面取得資料與觸發動詞——不知道背後是 Tauri 還是 HTTP。 */
 export interface SpeclinkDataSource {
   listChanges(): Promise<ChangeItem[]>;
+  /** 同一次清單 IO 連頂層 planError 一起回（add-change-plan-desktop design D1）。
+   * 未提供此面的後端（remote 第三刀前）走 listChanges，看板無成環提示。 */
+  listChangesWithPlan?(): Promise<ChangeListPayload>;
   listSpecs(): Promise<SpecItem[]>;
   listArchived(): Promise<ArchivedItem[]>;
   /** 取得一個 change 的 artifact DAG 狀態。 */
@@ -373,4 +398,11 @@ export interface SpeclinkDataSource {
    * （null＝欄頂／欄底）。id 為變更名或討論 slug；失敗 reject 附訊息。
    */
   reorderCard(kind: CardKind, id: string, prevId: string | null, nextId: string | null): Promise<void>;
+  /**
+   * 宣告（remove 為 true 時撤銷）`on` 為 `change` 的前置，寫回其 meta 的
+   * depends_on（add-change-plan-desktop design D6）。引擎拒絕（自依賴、不存在、
+   * 已封存、成環）時 reject 單行訊息；未提供此面的後端（remote 第三刀前）reject
+   * 且 capability `setDepends` 為假。
+   */
+  setDepends(change: string, on: string[], remove: boolean): Promise<void>;
 }

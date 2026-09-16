@@ -51,6 +51,7 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
     promoteDiscussion: vi.fn().mockResolvedValue({ change: "promoted-change" }),
     archiveDiscussion: vi.fn().mockResolvedValue(undefined),
     reorderCard: vi.fn().mockResolvedValue(undefined),
+    setDepends: vi.fn().mockResolvedValue(undefined),
     listManualPages: vi
       .fn()
       .mockResolvedValue({ present: false, reason: null, pages: [], uncoveredNew: [], malformed: [] }),
@@ -537,6 +538,50 @@ describe("app store (Zustand)", () => {
     }
     expect(new Set(toastError.mock.calls.map((call) => call[1]?.id)).size).toBe(1);
     expect(ds.listChanges).toHaveBeenCalled();
+  });
+
+  it("refresh：資料源提供 listChangesWithPlan 時清單與 planError 同一次取得；未提供時 planError 為 null", async () => {
+    // add-change-plan-desktop design D1／D5：planError 隨清單 payload 進 store，
+    // 宿主據此讓看板出成環提示。
+    const withPlan = fakeDataSource({
+      listChangesWithPlan: vi.fn().mockResolvedValue({
+        changes: [{ name: "a", status: "in-progress", totalTasks: 1, completedTasks: 0 }],
+        planError: "dependency cycle: a -> b -> a",
+      }),
+    });
+    const store = storeWith(withPlan);
+    await store.getState().refresh();
+    expect(store.getState().changes.map((c) => c.name)).toEqual(["a"]);
+    expect(store.getState().planError).toBe("dependency cycle: a -> b -> a");
+    expect(withPlan.listChanges).not.toHaveBeenCalled();
+
+    const plain = storeWith(fakeDataSource());
+    await plain.getState().refresh();
+    expect(plain.getState().planError).toBeNull();
+  });
+
+  it("setDepends：成功後刷新清單，失敗以同一單槽 toast 呈現引擎訊息", async () => {
+    // add-change-plan-desktop design D6：寫入經資料源 setDepends，成功刷新、
+    // 失敗單行錯誤（引擎拒絕文字）且畫面不變。
+    const ds = fakeDataSource({
+      setDepends: vi
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error("dependency cycle: b -> a -> b")),
+    });
+    const store = storeWith(ds);
+    const listed = (ds.listChanges as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await store.getState().setDepends("b", ["a"], false);
+    expect(ds.setDepends).toHaveBeenCalledWith("b", ["a"], false);
+    expect(toastError).not.toHaveBeenCalled();
+    expect((ds.listChanges as ReturnType<typeof vi.fn>).mock.calls.length).toBe(listed + 1);
+
+    await store.getState().setDepends("b", ["a"], false);
+    expect(toastError).toHaveBeenCalledTimes(1);
+    const [message] = toastError.mock.calls[0] as [string];
+    expect(message).toContain("b");
+    expect(message).toContain("dependency cycle: b -> a -> b");
   });
 
   it("core 錯誤為空、超長或 HTML-like 字串時皆安全交給 sonner", async () => {

@@ -1,7 +1,7 @@
 // spec 需求「看板欄位由生命週期標記驅動」：全完成＝已就緒 ＞ started_at 或任務
 // 完成數>0＝進行中 ＞ 其餘＝提案中。矩陣值取自 spec 的 Example「欄位判定矩陣」表。
 import { describe, it, expect } from "vitest";
-import { awaitingManualCount, changeStage, STAGE_BAR, STAGE_ICON } from "../stage";
+import { awaitingManualCount, changeStage, planBlockedBy, planBlockedLabel, planWave, planWaveLabel, STAGE_BAR, STAGE_ICON } from "../stage";
 import type { ChangeItem } from "../adapter";
 
 function ci(total: number, done: number, startedAt?: string): ChangeItem {
@@ -73,5 +73,46 @@ describe("awaitingManualCount(待手動判定)", () => {
 
   it("remote 缺寫碼進度欄位一律 0(章缺席)", () => {
     expect(awaitingManualCount(c(undefined, undefined, 1))).toBe(0);
+  });
+});
+
+// spec desktop-app「看板卡片的波次與阻擋標示」：判定收斂於單一入口，欄位缺席
+// （remote 摘要、plan 成環、壞 meta）一律回 null／空陣列，卡片只讀結果。
+describe("planWave / planBlockedBy（排程欄位讀取入口）", () => {
+  const base: ChangeItem = { name: "c", status: "proposed", totalTasks: 3, completedTasks: 0 };
+
+  it("wave 存在時回傳波次，缺席回 null", () => {
+    expect(planWave({ ...base, wave: 2, blockedBy: [], dependsOn: [], overlaps: [] })).toBe(2);
+    expect(planWave({ ...base, wave: 1 })).toBe(1);
+    expect(planWave(base)).toBeNull();
+    expect(planWave({ ...base, wave: undefined })).toBeNull();
+  });
+
+  it("blockedBy 只在 wave 存在時回傳，其餘回空陣列", () => {
+    expect(planBlockedBy({ ...base, wave: 2, blockedBy: ["a", "b"] })).toEqual(["a", "b"]);
+    expect(planBlockedBy({ ...base, wave: 1, blockedBy: [] })).toEqual([]);
+    expect(planBlockedBy({ ...base, wave: 1 })).toEqual([]);
+    expect(planBlockedBy(base)).toEqual([]);
+    // 缺 wave 的不合法組合：blockedBy 不單獨成立。
+    expect(planBlockedBy({ ...base, blockedBy: ["a"] })).toEqual([]);
+  });
+});
+
+describe("planWaveLabel / planBlockedLabel（排程文字的單一組裝點）", () => {
+  // 審查 Round 1：卡片 tooltip、面板列首與排程分頁各自 replace 佔位符——收成一處。
+  const dict: Record<string, string> = {
+    "card.wave": "第 {n} 波",
+    "card.blockedTitle": "等待：{names}",
+    "common.listSeparator": "、",
+  };
+  const t = (key: string) => dict[key] ?? key;
+
+  it("波次文字套 card.wave 的 {n}", () => {
+    expect(planWaveLabel(2, t)).toBe("第 2 波");
+  });
+
+  it("前置文字以語系分隔符相連", () => {
+    expect(planBlockedLabel(["add-a", "add-b"], t)).toBe("等待：add-a、add-b");
+    expect(planBlockedLabel(["add-a"], t)).toBe("等待：add-a");
   });
 });

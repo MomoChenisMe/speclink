@@ -1072,3 +1072,50 @@ describe("面板載入回饋", () => {
     expect(screen.getByTestId("panel-recovery-card")).toBeTruthy();
   });
 });
+
+// --- 變更列的波次標示與順序同源（spec tray-status-menu「變更列的波次標示與順序
+// 同源」；add-change-plan-desktop design D7）：列首波次數字（tooltip 與看板卡片
+// 共用 card.wave）、被擋列整列降透明度且 tooltip 列前置、缺 wave 時列不變。
+describe("面板變更列的波次標示", () => {
+  const rowOf = (name: string) => screen.getByTestId(`panel-change-${name}`);
+  const planned = [
+    change({ name: "add-a", totalTasks: 4, completedTasks: 1, wave: 1, blockedBy: [], dependsOn: [], overlaps: [] }),
+    change({ name: "add-b", totalTasks: 4, completedTasks: 1, wave: 2, blockedBy: ["add-a"], dependsOn: ["add-a"], overlaps: [] }),
+  ];
+
+  it("列依 payload 順序、列首為波次數字（名稱之前），被擋列降透明度且 tooltip 列出前置", () => {
+    // spec Scenario「面板列首波次與被擋變淡」。
+    renderPanel({ snapshot: snapshot({ changes: planned, discussions: [] }) });
+    const section = screen.getByTestId("panel-section-in-progress");
+    const rows = within(section).getAllByTestId(/^panel-change-/).map((el) => el.dataset.testid);
+    expect(rows).toEqual(["panel-change-add-a", "panel-change-add-b"]);
+
+    const a = rowOf("add-a");
+    const waveA = within(a).getByLabelText("第 1 波");
+    expect(waveA.textContent).toBe("1");
+    expect(waveA.compareDocumentPosition(within(a).getByText("add-a")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(a.className).not.toMatch(/opacity-/);
+    expect(a.getAttribute("title")).toBeNull();
+
+    const b = rowOf("add-b");
+    expect(within(b).getByLabelText("第 2 波").textContent).toBe("2");
+    expect(b.className).toMatch(/opacity-/);
+    expect(b.getAttribute("title")).toBe("等待：add-a");
+  });
+
+  it("hover 反白時波次數字隨列改前景色", () => {
+    renderPanel({ snapshot: snapshot({ changes: planned, discussions: [] }) });
+    expect(within(rowOf("add-a")).getByLabelText("第 1 波").className).toContain(
+      "group-hover:text-primary-foreground",
+    );
+  });
+
+  it("缺 wave（remote 或 plan 成環）時列無波次數字、不變淡、無 tooltip", () => {
+    // spec Scenario「缺欄位不變」。
+    renderPanel();
+    const row = rowOf("inprog");
+    expect(within(row).queryByLabelText(/^第 \d+ 波$/)).toBeNull();
+    expect(row.className).not.toMatch(/opacity-/);
+    expect(row.getAttribute("title")).toBeNull();
+  });
+});

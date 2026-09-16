@@ -28,7 +28,7 @@ vi.mock("@dnd-kit/core", async (importOriginal) => {
 import { act } from "@testing-library/react";
 
 import { KanbanBoard, DRAG_ACTIVATION_DISTANCE } from "../components/KanbanBoard";
-import { archiveZoneVisible, cardDndId, resolveCardDrop, type ColumnCards } from "../boardDnd";
+import { archiveZoneVisible, cardDndId, invalidDropTargets, resolveCardDrop, type ColumnCards } from "../boardDnd";
 import { parseTasks } from "../tasks";
 import { SEMANTIC_TONE } from "../tone";
 import type { ChangeItem, DiscussionLists } from "../adapter";
@@ -60,6 +60,21 @@ describe("KanbanBoard", () => {
     expect(within(column("ready")).getByText("ready-z")).toBeTruthy();
     // 封存欄不在看板（拖曳時才浮現落點）
     expect(column("archived")).toBeNull();
+  });
+
+  it("欄內卡片順序＝payload 順序（spec「看板卡片順序以 board_rank 欄位為真相」：看板只按階段過濾，不排序）", () => {
+    // 順序真相在引擎 plan（桌面 core 的清單 payload）；前端不得再依名稱、建立日期
+    // 或修改時間重排——這裡刻意用反字典序、反日期序的 payload。
+    const ordered: ChangeItem[] = [
+      { name: "zeta", status: "in-progress", totalTasks: 4, completedTasks: 1, created: "2026-07-09", wave: 1 },
+      { name: "alpha", status: "in-progress", totalTasks: 4, completedTasks: 1, created: "2026-07-01", wave: 2 },
+      { name: "mid", status: "in-progress", totalTasks: 4, completedTasks: 1, created: "2026-07-05", wave: 2 },
+    ];
+    render(<KanbanBoard changes={ordered} />);
+    const names = Array.from(column("in-progress").querySelectorAll("[data-change]")).map((el) =>
+      el.getAttribute("data-change"),
+    );
+    expect(names).toEqual(["zeta", "alpha", "mid"]);
   });
 
   it("shows the archive button only on ready cards", () => {
@@ -587,6 +602,145 @@ describe("封存落點浮層（design D8 + archive-readiness-gating D3）", () =
     startDrag(cardDndId("change", "ready-z"));
     endDrag(cardDndId("change", "ready-z"), "archived");
     expect(onArchive).toHaveBeenCalledWith("ready-z");
+  });
+});
+
+// spec desktop-app「拖排時不合法落點灰化」（add-change-plan-desktop design D3 前端層）：
+// 純函式只看宣告依賴（dependsOn）、不看重疊；接線在拖動中標記不合法目標，放開於
+// 其上不觸發寫回。
+describe("拖排時不合法落點灰化", () => {
+  const col: ColumnCards = { kind: "change", ids: ["a", "b", "c"] };
+  const deps = (m: Record<string, string[]>) => new Map(Object.entries(m));
+
+  it("invalidDropTargets：拖依賴者 c 時，前置 a 及其上方為不合法落點，b 正常", () => {
+    expect(invalidDropTargets(col, deps({ c: ["a"] }), "c")).toEqual(new Set(["a"]));
+    // 前置上方的卡也不合法：落在 p 之上仍排到前置之前。
+    const wide: ColumnCards = { kind: "change", ids: ["p", "q", "b", "x"] };
+    expect(invalidDropTargets(wide, deps({ x: ["q"] }), "x")).toEqual(new Set(["p", "q"]));
+  });
+
+  it("invalidDropTargets：拖前置 a 時，依賴者 c 及其下方為不合法落點，b 正常", () => {
+    expect(invalidDropTargets(col, deps({ c: ["a"] }), "a")).toEqual(new Set(["c"]));
+    const wide: ColumnCards = { kind: "change", ids: ["x", "b", "d", "e"] };
+    expect(invalidDropTargets(wide, deps({ d: ["x"] }), "x")).toEqual(new Set(["d", "e"]));
+  });
+
+  it("invalidDropTargets：重疊夥伴（無宣告依賴）與缺欄位時沒有不合法落點", () => {
+    expect(invalidDropTargets(col, deps({}), "b")).toEqual(new Set());
+    expect(invalidDropTargets(col, new Map(), "a")).toEqual(new Set());
+    // 不在欄內的卡（跨欄拖曳）沒有落點可標。
+    expect(invalidDropTargets(col, deps({ c: ["a"] }), "zzz")).toEqual(new Set());
+  });
+
+  // 同欄三卡（皆進行中）：c 宣告前置 a；a 與 b 只因重疊而依序。
+  const planned: ChangeItem[] = [
+    { name: "a", status: "in-progress", totalTasks: 4, completedTasks: 1, wave: 1, blockedBy: [], dependsOn: [], overlaps: [{ change: "b", capabilities: ["cap"] }] },
+    { name: "b", status: "in-progress", totalTasks: 4, completedTasks: 1, wave: 2, blockedBy: ["a"], dependsOn: [], overlaps: [{ change: "a", capabilities: ["cap"] }] },
+    { name: "c", status: "in-progress", totalTasks: 4, completedTasks: 1, wave: 2, blockedBy: ["a"], dependsOn: ["a"], overlaps: [] },
+  ];
+  const startDrag = (id: string) => act(() => captured.dnd.onDragStart({ active: { id } }));
+  const endDrag = (id: string, overId: string | null) =>
+    act(() => captured.dnd.onDragEnd({ active: { id }, over: overId ? { id: overId } : null }));
+  const sortable = (name: string) =>
+    screen.getByText(name).closest('[aria-roledescription="sortable"]') as HTMLElement;
+
+  it("拖動依賴者時前置帶 data-drop-invalid 且降透明度，放開於其上不寫回", () => {
+    const onReorder = vi.fn();
+    render(<KanbanBoard changes={planned} onReorder={onReorder} />);
+    expect(sortable("a").getAttribute("data-drop-invalid")).toBeNull();
+    startDrag(cardDndId("change", "c"));
+    expect(sortable("a").getAttribute("data-drop-invalid")).toBe("true");
+    expect(sortable("a").style.opacity).not.toBe("");
+    expect(sortable("b").getAttribute("data-drop-invalid")).toBeNull();
+    endDrag(cardDndId("change", "c"), cardDndId("change", "a"));
+    expect(onReorder).not.toHaveBeenCalled();
+    // 放開後標記清除。
+    expect(sortable("a").getAttribute("data-drop-invalid")).toBeNull();
+  });
+
+  it("拖動前置時依賴者灰化；放開於中間卡照常寫回（a 落在 b 之後、c 之前）", () => {
+    const onReorder = vi.fn();
+    render(<KanbanBoard changes={planned} onReorder={onReorder} />);
+    startDrag(cardDndId("change", "a"));
+    expect(sortable("c").getAttribute("data-drop-invalid")).toBe("true");
+    expect(sortable("b").getAttribute("data-drop-invalid")).toBeNull();
+    endDrag(cardDndId("change", "a"), cardDndId("change", "b"));
+    expect(onReorder).toHaveBeenCalledWith("change", "a", "b", "c");
+  });
+
+  it("重疊夥伴不灰化，放開於其上觸發寫回", () => {
+    const onReorder = vi.fn();
+    render(<KanbanBoard changes={planned} onReorder={onReorder} />);
+    startDrag(cardDndId("change", "b"));
+    expect(sortable("a").getAttribute("data-drop-invalid")).toBeNull();
+    endDrag(cardDndId("change", "b"), cardDndId("change", "a"));
+    expect(onReorder).toHaveBeenCalledWith("change", "b", null, "a");
+  });
+
+  it("搜尋過濾隱藏前置時仍以同欄全序判定：前置上方的可見卡灰化、放開不寫回（審查 Round 1）", () => {
+    // 同欄全序 beta-two、alpha-one、gamma-two（gamma 宣告前置 alpha）；query「two」藏起
+    // alpha。拖 gamma 時 alpha 及其上方的 beta 都是不合法落點——若只看可見欄，beta 會
+    // 漏標、放開後才被引擎退回。
+    const row = { status: "in-progress", totalTasks: 4, completedTasks: 1, overlaps: [] };
+    const filtered: ChangeItem[] = [
+      { name: "beta-two", ...row, wave: 1, blockedBy: [], dependsOn: [] },
+      { name: "alpha-one", ...row, wave: 1, blockedBy: [], dependsOn: [] },
+      { name: "gamma-two", ...row, wave: 2, blockedBy: ["alpha-one"], dependsOn: ["alpha-one"] },
+    ];
+    const onReorder = vi.fn();
+    render(<KanbanBoard changes={filtered} onReorder={onReorder} query="two" onQuery={vi.fn()} />);
+    const sortableOf = (name: string) =>
+      (document.querySelector(`[data-change="${name}"]`) as HTMLElement).closest(
+        '[aria-roledescription="sortable"]',
+      ) as HTMLElement;
+    expect(document.querySelector('[data-change="alpha-one"]')).toBeNull();
+    startDrag(cardDndId("change", "gamma-two"));
+    expect(sortableOf("beta-two").getAttribute("data-drop-invalid")).toBe("true");
+    endDrag(cardDndId("change", "gamma-two"), cardDndId("change", "beta-two"));
+    expect(onReorder).not.toHaveBeenCalled();
+  });
+});
+
+// spec desktop-app「依賴成環時看板提示」（add-change-plan-desktop design D5）：planError
+// 非 null 時欄位上方一行提示（tw 前綴「依賴成環：」＋原文），null 時不渲染。
+describe("依賴成環時看板提示", () => {
+  it("planError 非 null → 欄位上方出現「依賴成環：」＋訊息原文，拖排照常掛載", () => {
+    render(
+      <KanbanBoard changes={changes} onReorder={vi.fn()} planError="dependency cycle: a -> b -> a" />,
+    );
+    const note = screen.getByText("依賴成環：dependency cycle: a -> b -> a");
+    expect(note.getAttribute("role")).toBe("note");
+    expect(document.querySelector('[aria-roledescription="sortable"]')).toBeTruthy();
+  });
+
+  it("planError 非 null 時沒有不合法落點（即使項目仍帶 dependsOn）", () => {
+    const onReorder = vi.fn();
+    const withDeps: ChangeItem[] = [
+      { name: "a", status: "in-progress", totalTasks: 4, completedTasks: 1 },
+      { name: "c", status: "in-progress", totalTasks: 4, completedTasks: 1, dependsOn: ["a"] },
+    ];
+    render(<KanbanBoard changes={withDeps} onReorder={onReorder} planError="dependency cycle: a -> c -> a" />);
+    act(() => captured.dnd.onDragStart({ active: { id: cardDndId("change", "c") } }));
+    const a = screen.getByText("a").closest('[aria-roledescription="sortable"]') as HTMLElement;
+    expect(a.getAttribute("data-drop-invalid")).toBeNull();
+    act(() =>
+      captured.dnd.onDragEnd({ active: { id: cardDndId("change", "c") }, over: { id: cardDndId("change", "a") } }),
+    );
+    expect(onReorder).toHaveBeenCalledWith("change", "c", null, "a");
+  });
+
+  it("planError 為 null／缺席 → 不出現提示列", () => {
+    render(<KanbanBoard changes={changes} planError={null} />);
+    expect(screen.queryByText(/依賴成環/)).toBeNull();
+  });
+
+  it("en 前綴為 Dependency cycle:", () => {
+    rtlRender(
+      <I18nProvider locale="en">
+        <KanbanBoard changes={changes} planError="dependency cycle: a -> b -> a" />
+      </I18nProvider>,
+    );
+    expect(screen.getByText("Dependency cycle: dependency cycle: a -> b -> a")).toBeTruthy();
   });
 });
 

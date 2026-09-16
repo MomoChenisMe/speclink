@@ -2,7 +2,7 @@ import { AlertTriangle, Archive, FileText, GitBranch, Hand, MessageSquareText, R
 
 import type { ChangeItem, SearchHit } from "../adapter";
 import { useI18n } from "../i18n";
-import { awaitingManualCount, changeStage } from "../stage";
+import { awaitingManualCount, changeStage, planBlockedBy, planBlockedLabel, planWave, planWaveLabel } from "../stage";
 import { SEMANTIC_TONE } from "../tone";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
@@ -41,11 +41,20 @@ export function ChangeCard({
   const pct =
     change.totalTasks > 0 ? Math.round((change.completedTasks / change.totalTasks) * 100) : 0;
   const stage = changeStage(change);
+  // 波次與被擋（spec「看板卡片的波次與阻擋標示」；add-change-plan-desktop design D4）：
+  // 判定歸 stage.ts 的 planWave／planBlockedBy 單一入口，缺 wave（remote、成環）
+  // 無章也不變淡。被擋＝整卡變淡，與系統匣面板被擋列同一種語言：淡＝現在不能做。
+  const wave = planWave(change);
+  const blockedBy = planBlockedBy(change);
+  const blocked = blockedBy.length > 0;
+  const waveLabel = wave === null ? "" : planWaveLabel(wave, t);
+  const waveTitle = blocked ? `${waveLabel} · ${planBlockedLabel(blockedBy, t)}` : waveLabel;
   return (
     <TooltipProvider>
     <Card
       data-change={change.name}
-      className="group cursor-pointer transition-[border-color,box-shadow] hover:border-primary/60 hover:shadow-md"
+      data-blocked={blocked ? "true" : undefined}
+      className={`group cursor-pointer transition-[border-color,box-shadow] hover:border-primary/60 hover:shadow-md${blocked ? " opacity-60" : ""}`}
       onClick={() => onOpen?.(change.name)}
     >
       <CardHeader className="p-3 flex-row items-start gap-1.5">
@@ -194,6 +203,21 @@ export function ChangeCard({
           </div>
         )}
         <div className="flex items-center gap-2">
+          {/* 波次章在進度列最左：圓圈數字（同波同號可並行），tooltip 帶前置清單；
+              放這裡而不放標題列，名稱的空間才不被排程資訊佔用。 */}
+          {wave !== null && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  aria-label={waveLabel}
+                  className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full border border-primary/60 px-1 text-[10px] font-semibold leading-none text-primary"
+                >
+                  {wave}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{waveTitle}</TooltipContent>
+            </Tooltip>
+          )}
           <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
             <div className={`h-full rounded-full transition-all ${barClass}`} style={{ width: `${pct}%` }} />
           </div>

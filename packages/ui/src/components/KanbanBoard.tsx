@@ -18,10 +18,12 @@ import {
   archiveZoneVisible,
   cardDndId,
   parseCardDndId,
+  invalidDropTargets,
   resolveCardDrop,
   type ColumnCards,
 } from "../boardDnd";
 import { useI18n } from "../i18n";
+import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
 import {
   EMPTY_FILTERS,
   matchesFilters,
@@ -97,6 +99,9 @@ export interface KanbanBoardProps {
   onReorder?: (kind: CardKind, id: string, prevId: string | null, nextId: string | null) => void;
   /** 拖排不可用時的使用者可見說明；文字由宿主依 capability 與語系提供。 */
   reorderUnavailableReason?: string;
+  /** 清單 payload 的頂層 planError（spec「依賴成環時看板提示」）：非 null 時欄位
+   * 上方一行「依賴成環：」＋原文；卡片因欄位缺席自然無波次章，拖排照常。 */
+  planError?: string | null;
   /** 拖曳手勢期間（按住～放開）回報 true——宿主據此讓外部刷新讓路（任務列同款）。 */
   onDragActiveChange?: (active: boolean) => void;
   /** 首訪 workspace 的整批載入未完成：各欄以佔位卡呈現，欄名照常、不出空態文案。
@@ -178,11 +183,16 @@ function SortableCard({
   barClass,
   highlight,
   hit,
+  invalidTarget,
   ...rest
-}: { change: ChangeItem; barClass: string; highlight?: string; hit?: SearchHit } & Pick<
-  KanbanBoardProps,
-  "onOpenChange" | "onArchive" | "onRevert"
->) {
+}: {
+  change: ChangeItem;
+  barClass: string;
+  highlight?: string;
+  hit?: SearchHit;
+  /** 拖動中此卡為不合法落點（會跨越宣告依賴）：降透明度並標 data-drop-invalid。 */
+  invalidTarget?: boolean;
+} & Pick<KanbanBoardProps, "onOpenChange" | "onArchive" | "onRevert">) {
   const { t } = useI18n();
   // 拖曳時原卡片留在原位變淡；移動的視覺由 DragOverlay 呈現（不受欄位 overflow 裁切）。
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -194,11 +204,12 @@ function SortableCard({
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
-        ...(isDragging ? { opacity: 0.35 } : undefined),
+        ...(isDragging ? { opacity: 0.35 } : invalidTarget ? { opacity: 0.4 } : undefined),
       }}
       {...attributes}
       {...listeners}
       aria-label={t("kanban.dragCard").replace("{name}", change.name)}
+      data-drop-invalid={invalidTarget ? "true" : undefined}
     >
       <ChangeCard
         change={change}
@@ -232,6 +243,7 @@ export function KanbanBoard({
   searchUnavailableReason,
   onReorder,
   reorderUnavailableReason,
+  planError,
   onDragActiveChange,
   loading,
   loadFailed,
@@ -312,6 +324,22 @@ export function KanbanBoard({
     ...STAGES.map((stage) => ({ kind: "change" as const, ids: byStage[stage].map((c) => c.name) })),
   ];
 
+  // 不合法落點（spec「拖排時不合法落點灰化」；design D3 前端層）：只用宣告依賴
+  // ——payload 缺 dependsOn（remote、plan 成環）時集合為空，判定歸 boardDnd 純函式。
+  // 同欄全序自全清單派生（不經搜尋過濾，與 readyIds 同款）：被過濾隱藏的前置仍決定
+  // 其上方位置不合法，集合只多含隱藏卡、不影響可見卡的標記。
+  const invalidTargets: ReadonlySet<string> = (() => {
+    // 成環時沒有可信的順序可守（spec：planError 非 null 時無不合法落點）。
+    if (!activeChange || planError) return new Set<string>();
+    const stage = changeStage(activeChange);
+    const column: ColumnCards = {
+      kind: "change",
+      ids: changes.filter((c) => changeStage(c) === stage).map((c) => c.name),
+    };
+    const deps = new Map(changes.map((c) => [c.name, c.dependsOn ?? []]));
+    return invalidDropTargets(column, deps, activeChange.name);
+  })();
+
   const handleDragStart = (e: DragStartEvent) => {
     setActiveId(String(e.active.id));
     onDragActiveChange?.(true);
@@ -332,7 +360,10 @@ export function KanbanBoard({
     }
     // 同欄放開才寫回；跨欄、欄容器、原位一律 null → 彈回、零寫入。
     const drop = resolveCardDrop(columns, active, over);
-    if (drop) onReorder?.(drop.kind, drop.id, drop.prevId, drop.nextId);
+    if (!drop) return;
+    // 放開於不合法落點：卡片回到原位、零寫回（引擎另守一次）。
+    if (drop.kind === "change" && invalidTargets.has(parseCardDndId(over)?.id ?? "")) return;
+    onReorder?.(drop.kind, drop.id, drop.prevId, drop.nextId);
   };
 
   return (
@@ -352,6 +383,15 @@ export function KanbanBoard({
           className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
         >
           {reorderUnavailableReason}
+        </div>
+      )}
+      {planError && (
+        <div
+          role="note"
+          className={`rounded-md border px-3 py-2 text-xs ${SEMANTIC_SURFACE.warning} ${SEMANTIC_TONE.warning}`}
+        >
+          {t("board.planCycle")}
+          {planError}
         </div>
       )}
       {showSearch && (
@@ -487,6 +527,7 @@ export function KanbanBoard({
                     barClass={STAGE_STYLE[stage].bar}
                     highlight={q}
                     hit={hitByCard.get(`change:${c.name}`)}
+                    invalidTarget={invalidTargets.has(c.name)}
                     onOpenChange={onOpenChange}
                     onArchive={onArchive}
                     onRevert={onRevert}

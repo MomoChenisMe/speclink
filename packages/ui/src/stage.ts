@@ -59,3 +59,27 @@ export function awaitingManualCount(c: ChangeItem): number {
   const show = (c.codeTotal ?? 0) > 0 && c.codeRemaining === 0 && remaining > 0;
   return show ? remaining : 0;
 }
+
+/**
+ * 波次讀取入口（spec desktop-app「看板卡片的波次與阻擋標示」）：清單項帶 wave
+ * 才有波次；remote 摘要、plan 成環或壞 meta 時欄位缺席，回 null——卡片與排程
+ * 分頁只讀結果、不自行判斷缺席原因。
+ */
+export function planWave(c: ChangeItem): number | null {
+  return typeof c.wave === "number" ? c.wave : null;
+}
+
+/** 阻擋清單讀取入口：只在波次存在時成立（四欄同進同出），其餘回空陣列。 */
+export function planBlockedBy(c: ChangeItem): string[] {
+  return planWave(c) === null ? [] : (c.blockedBy ?? []);
+}
+
+/** 波次文字（card.wave）：卡片章、面板列首、排程分頁共用同一處組裝。 */
+export function planWaveLabel(wave: number, t: (key: string) => string): string {
+  return t("card.wave").replace("{n}", String(wave));
+}
+
+/** 前置清單文字（card.blockedTitle）：名稱以語系分隔符相連，卡片 tooltip 與面板列 title 共用。 */
+export function planBlockedLabel(blockedBy: readonly string[], t: (key: string) => string): string {
+  return t("card.blockedTitle").replace("{names}", blockedBy.join(t("common.listSeparator")));
+}
