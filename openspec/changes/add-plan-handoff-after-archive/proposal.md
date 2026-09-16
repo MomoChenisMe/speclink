@@ -7,7 +7,7 @@ add-change-plan-engine 把執行順序的判定放進引擎，archive 技能在�
 - commit 技能的先封存子流程（7a）在執行 `speclink archive` 之前新增與 archive 技能同一段「Plan order hint」：跑 `speclink plan --json`，目標 change 的 `blockedBy` 非空就建議先封存那些前置；僅建議，不阻擋。子流程成功後補上手冊過期提醒（條件為 openspec/manual/ 目錄存在，僅提醒、不代跑）。
 - archive 技能的「After the archive」尾段與 commit 子流程成功後都新增「下一個可開工」提示：跑 `speclink plan --json`，`next` 非 null 時提一句「plan 的下一個可開工：X，執行 /speclink-apply X」；有效 worktree 政策開啟且第 1 波有兩個以上可開工的 change 時，列出可並行名單（各開 session 走 apply-with-worktree）；`next` 為 null 或 plan 失敗（依賴成環）時不提。一律僅提醒、不代跑。
 - archive 技能第 1 步（未指名時的選擇）改以 `speclink plan --json` 列候選：依配置順序、每個候選標出 `blockedBy`；仍由使用者選、不自動選。commit、review、verify、drift、analyze 的候選清單維持 `speclink list --json`。
-- ASSET_VERSION 自 v1.36.0 升為 v1.37.0，claude／claude-worktree／codex 三份 golden 與 assets.lock 同批更新，`speclink update` 再生 SKILL.md。影響 claude 與 codex 兩個工具的 speclink-archive 與 speclink-commit 技能。
+- ASSET_VERSION 自 v1.36.0 升為 v1.37.0，claude／claude-worktree／codex／neutral-cli／neutral-tool-call 五份 golden 與 assets.lock 同批更新，`speclink update` 再生 SKILL.md。影響 claude 與 codex 兩個工具的 speclink-archive 與 speclink-commit 技能。
 - 相容性影響：不動任何 CLI 指令與引擎行為；只有兩份技能資產的文字與 golden 快照變更。
 
 ## Non-Goals
@@ -35,6 +35,6 @@ add-change-plan-engine 把執行順序的判定放進引擎，archive 技能在�
 - Affected specs: `archive-skill`、`commit-skill`、`skill-routing`（修改）
 - Affected code:
   - New: 無
-  - Modified: crates/engine/speclink-core/assets/skills/archive.md、crates/engine/speclink-core/assets/skills/commit.md、crates/engine/speclink-core/src/workspace/init.rs（ASSET_VERSION）、crates/engine/speclink-core/tests/golden/assets.lock、crates/engine/speclink-core/tests/golden/claude.snapshot.md、crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md、crates/engine/speclink-core/tests/golden/codex.snapshot.md、由 speclink update 再生的 .claude/skills 與 .agents/skills 下的 SKILL.md
+  - Modified: crates/engine/speclink-core/assets/skills/archive.md、crates/engine/speclink-core/assets/skills/commit.md、crates/engine/speclink-core/src/workspace/init.rs（ASSET_VERSION）、crates/engine/speclink-core/tests/golden/assets.lock、crates/engine/speclink-core/tests/golden/claude.snapshot.md、crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md、crates/engine/speclink-core/tests/golden/codex.snapshot.md、crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md、crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md、crates/engine/speclink-core/tests/it/render_golden.rs（依規格場景新增兩個渲染內容測試）、由 speclink update 再生的 .claude/skills 與 .agents/skills 下的 SKILL.md
   - Removed: 無
 - 與在途變更的關係：add-change-plan-desktop 與 add-change-plan-remote 不碰技能資產，delta 不重疊，可並行。
