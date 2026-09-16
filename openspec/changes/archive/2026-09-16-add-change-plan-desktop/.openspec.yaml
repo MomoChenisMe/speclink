@@ -1,0 +1,151 @@
+schema: spec-driven
+created: 2026-09-15
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: change-execution-order
+started_at: 2026-09-16
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-16
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 17
+reviewed_scope:
+  - path: apps/desktop/core/src/manage.rs
+    hash: 0c6bef2a455746fee8652d35022bba794cc4fd797c70fc635262d0d060ebcc9b
+  - path: apps/desktop/core/src/query.rs
+    hash: 62669879c0e242cf63aaf5d40dad9bc801a82adf35e1ba481c52960935a7fd95
+  - path: apps/desktop/core/src/testfixture.rs
+    hash: c3a31695a6920469605891dd4e8d373889761f6b4bbe8bd784c0dc1a225ef9b8
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: d3f78103890f0093c43b79d017d072df03095e455ebf283651d8be07b0b8ee7f
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 009bf7d44a3b4833bd08c1cad2716377245b4468e5b4d882e5ba0ae78479adac
+  - path: apps/desktop/src/App.tsx
+    hash: be7ce252282ebecee4e4cf004acf1fd8756bf38d947cd0443e5450c7429afe27
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 7d1fa3088210e2afd1e36bc400327c4e0a6eb8b7bcff3ed91af6fc3b4b2f51f2
+  - path: apps/desktop/src/__tests__/helpers/remoteFixtures.ts
+    hash: 4792e5e439a5431e945519e54c8ac523c389690a9bbad62d7bb74ac5dbf01e9e
+  - path: apps/desktop/src/__tests__/planDataSource.test.ts
+    hash: 05c42c572c2bd7e20bc82dcb0e7ed1c277411114193252d73825847c2734eaea
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: d9f40ea44992c92b03517c70f6e5ef26b1cc2fbd7659820bbe9af87f56fdcb6d
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 6a0a9f5ad4a7880d7b5ff6675ff178996325ee2112da825ed2b5af0fb72f1ca7
+  - path: apps/desktop/src/__tests__/tauriDataSource.test.ts
+    hash: 57bccf3e9bae1dcbc6791dc437ea4a8abc3af48418da3011cb7d1db9359ae4eb
+  - path: apps/desktop/src/__tests__/tray.test.ts
+    hash: 5cb14c9c49d9876d7b0b5149f8eb60de6e24416b9586bcfd2ee1473475fb3153
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: 77d5c2550ffc2b40d338d80f3b7c19867a5376f5854e15adf3e8d031a9f2f901
+  - path: apps/desktop/src/adapter/remoteDataSource.ts
+    hash: 9145d1d1d03183d0cb937e84f3374fb5e7586bcb68adc7a764a58b2cd1a95c43
+  - path: apps/desktop/src/adapter/tauriDataSource.ts
+    hash: 20939a10a87d0603f716c59f8352d95efa4c2f18b6f1edc1b925f08ae54c385d
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: ae2ea434cc0e725cfa878d109c95ba7e6300c38cde2a35393c82887d4f32c5d3
+  - path: apps/desktop/src/panel/TrayPanel.tsx
+    hash: 547ac747a77e7578c724e1284d71102d302ea90b0097054b7028ca0399c9079d
+  - path: apps/desktop/src/session.ts
+    hash: 974b9a65ceb18aaf9a76febfeb6ff1db404cbedbcee06fe427caadbe27bc929e
+  - path: apps/desktop/src/store.ts
+    hash: f19921f31717f50e3a6576d10707cec18aa7940e8dd60901dd70437dc99c839a
+  - path: apps/desktop/src/tray.ts
+    hash: 6c9ee84e0613747f6a5845d763e552b0ce74d9d04ad0eb6dd59a641d0a3788ce
+  - path: packages/ui/src/__tests__/kanban.test.tsx
+    hash: ce2fa5b7b444336731281c187ac5c7797bdfdb008a01135583ae9b84a4e9b754
+  - path: packages/ui/src/__tests__/planBadge.test.tsx
+    hash: 04a5888f954d38832fe0c539ea2ceccce7aff1d06d40104bada39b138525b339
+  - path: packages/ui/src/__tests__/planTab.test.tsx
+    hash: cde58202305d11b4fc8c3b892afdf52fc4b85872212b0a63e4d94afa3bbf1750
+  - path: packages/ui/src/__tests__/stage.test.ts
+    hash: b4f5a54142538b5411fe229f0a84cabeab2e9d01d6794f628a5abf990de1f294
+  - path: packages/ui/src/adapter.ts
+    hash: 2ec7d686c51d03e49dc05302cfe79bcdb2790840974d974e94949ac7c009018d
+  - path: packages/ui/src/boardDnd.ts
+    hash: 21c9e139c1129c173ad7db84103f994f661a8e9782763c717ae98717d69b31f3
+  - path: packages/ui/src/components/ChangeCard.tsx
+    hash: 9dbbb92a883f7110398bde97f619796c2aa95f6b2feee27ea5008e1534648083
+  - path: packages/ui/src/components/KanbanBoard.tsx
+    hash: e0fe94149221cc56b597ce0e28453f86c1f851b6e459fb371fec052882878564
+  - path: packages/ui/src/components/RichDetailDrawer.tsx
+    hash: 09046f6760d4145f45bbfe601363c93a1a41edc8b0640c5e31854f3d34e03c19
+  - path: packages/ui/src/i18n.tsx
+    hash: 6f6d0ec1d227a24916201e0eab66862da18135d9f5f564b9e06833526794b024
+  - path: packages/ui/src/index.ts
+    hash: ea9736ceaebbc467d18ca815e9bcd7c4ab2f8ab02480fd330c272249b2e6c303
+  - path: packages/ui/src/stage.ts
+    hash: 85893352cf56f283be09bbc3733f007afeeeb26cd7d338e13d505fd542229952
+verified_at: 2026-09-16
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 17
+verified_scope:
+  - path: apps/desktop/core/src/manage.rs
+    hash: 0c6bef2a455746fee8652d35022bba794cc4fd797c70fc635262d0d060ebcc9b
+  - path: apps/desktop/core/src/query.rs
+    hash: 62669879c0e242cf63aaf5d40dad9bc801a82adf35e1ba481c52960935a7fd95
+  - path: apps/desktop/core/src/testfixture.rs
+    hash: c3a31695a6920469605891dd4e8d373889761f6b4bbe8bd784c0dc1a225ef9b8
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: d3f78103890f0093c43b79d017d072df03095e455ebf283651d8be07b0b8ee7f
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 009bf7d44a3b4833bd08c1cad2716377245b4468e5b4d882e5ba0ae78479adac
+  - path: apps/desktop/src/App.tsx
+    hash: be7ce252282ebecee4e4cf004acf1fd8756bf38d947cd0443e5450c7429afe27
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 7d1fa3088210e2afd1e36bc400327c4e0a6eb8b7bcff3ed91af6fc3b4b2f51f2
+  - path: apps/desktop/src/__tests__/helpers/remoteFixtures.ts
+    hash: 4792e5e439a5431e945519e54c8ac523c389690a9bbad62d7bb74ac5dbf01e9e
+  - path: apps/desktop/src/__tests__/planDataSource.test.ts
+    hash: 05c42c572c2bd7e20bc82dcb0e7ed1c277411114193252d73825847c2734eaea
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: d9f40ea44992c92b03517c70f6e5ef26b1cc2fbd7659820bbe9af87f56fdcb6d
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 6a0a9f5ad4a7880d7b5ff6675ff178996325ee2112da825ed2b5af0fb72f1ca7
+  - path: apps/desktop/src/__tests__/tauriDataSource.test.ts
+    hash: 57bccf3e9bae1dcbc6791dc437ea4a8abc3af48418da3011cb7d1db9359ae4eb
+  - path: apps/desktop/src/__tests__/tray.test.ts
+    hash: 5cb14c9c49d9876d7b0b5149f8eb60de6e24416b9586bcfd2ee1473475fb3153
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: 77d5c2550ffc2b40d338d80f3b7c19867a5376f5854e15adf3e8d031a9f2f901
+  - path: apps/desktop/src/adapter/remoteDataSource.ts
+    hash: 9145d1d1d03183d0cb937e84f3374fb5e7586bcb68adc7a764a58b2cd1a95c43
+  - path: apps/desktop/src/adapter/tauriDataSource.ts
+    hash: 20939a10a87d0603f716c59f8352d95efa4c2f18b6f1edc1b925f08ae54c385d
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: ae2ea434cc0e725cfa878d109c95ba7e6300c38cde2a35393c82887d4f32c5d3
+  - path: apps/desktop/src/panel/TrayPanel.tsx
+    hash: 547ac747a77e7578c724e1284d71102d302ea90b0097054b7028ca0399c9079d
+  - path: apps/desktop/src/session.ts
+    hash: 974b9a65ceb18aaf9a76febfeb6ff1db404cbedbcee06fe427caadbe27bc929e
+  - path: apps/desktop/src/store.ts
+    hash: f19921f31717f50e3a6576d10707cec18aa7940e8dd60901dd70437dc99c839a
+  - path: apps/desktop/src/tray.ts
+    hash: 6c9ee84e0613747f6a5845d763e552b0ce74d9d04ad0eb6dd59a641d0a3788ce
+  - path: packages/ui/src/__tests__/kanban.test.tsx
+    hash: ce2fa5b7b444336731281c187ac5c7797bdfdb008a01135583ae9b84a4e9b754
+  - path: packages/ui/src/__tests__/planBadge.test.tsx
+    hash: 04a5888f954d38832fe0c539ea2ceccce7aff1d06d40104bada39b138525b339
+  - path: packages/ui/src/__tests__/planTab.test.tsx
+    hash: cde58202305d11b4fc8c3b892afdf52fc4b85872212b0a63e4d94afa3bbf1750
+  - path: packages/ui/src/__tests__/stage.test.ts
+    hash: b4f5a54142538b5411fe229f0a84cabeab2e9d01d6794f628a5abf990de1f294
+  - path: packages/ui/src/adapter.ts
+    hash: 2ec7d686c51d03e49dc05302cfe79bcdb2790840974d974e94949ac7c009018d
+  - path: packages/ui/src/boardDnd.ts
+    hash: 21c9e139c1129c173ad7db84103f994f661a8e9782763c717ae98717d69b31f3
+  - path: packages/ui/src/components/ChangeCard.tsx
+    hash: 9dbbb92a883f7110398bde97f619796c2aa95f6b2feee27ea5008e1534648083
+  - path: packages/ui/src/components/KanbanBoard.tsx
+    hash: e0fe94149221cc56b597ce0e28453f86c1f851b6e459fb371fec052882878564
+  - path: packages/ui/src/components/RichDetailDrawer.tsx
+    hash: 09046f6760d4145f45bbfe601363c93a1a41edc8b0640c5e31854f3d34e03c19
+  - path: packages/ui/src/i18n.tsx
+    hash: 6f6d0ec1d227a24916201e0eab66862da18135d9f5f564b9e06833526794b024
+  - path: packages/ui/src/index.ts
+    hash: ea9736ceaebbc467d18ca815e9bcd7c4ab2f8ab02480fd330c272249b2e6c303
+  - path: packages/ui/src/stage.ts
+    hash: 85893352cf56f283be09bbc3733f007afeeeb26cd7d338e13d505fd542229952
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-16

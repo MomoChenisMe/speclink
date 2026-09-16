@@ -209,5 +209,10 @@ export function createRemoteDataSource(
     ): Promise<void> {
       await invoke("remote_reorder_card", { ...locator, kind, id, prevId, nextId });
     },
+    async setDepends(): Promise<void> {
+      // 前置編輯在 remote 尚不支援（第三刀）：capability setDepends 為假，UI 不長
+      // 編輯控制項；仍被呼叫時拒絕、不發請求。
+      throw new Error("setDepends is not available on remote workspaces");
+    },
   };
 }

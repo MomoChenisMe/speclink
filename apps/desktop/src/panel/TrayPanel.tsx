@@ -6,6 +6,10 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
   changeStage,
+  planBlockedBy,
+  planBlockedLabel,
+  planWave,
+  planWaveLabel,
   REVIEW_ICON,
   REVIEW_LABEL_KEY,
   REVIEW_TONE,
@@ -879,10 +883,30 @@ function ChangeRow({
 }) {
   const { t } = useI18n();
   const pct = c.totalTasks > 0 ? Math.round((c.completedTasks / c.totalTasks) * 100) : 0;
+  // 波次與阻擋（spec tray-status-menu「變更列的波次標示與順序同源」；design D7）：
+  // 列首波次數字與看板卡片共用 card.wave 詞條；被擋列整列變淡、title 列前置。
+  // 判定歸 planWave／planBlockedBy 單一入口，缺 wave（remote、成環）列與從前一致。
+  const wave = planWave(c);
+  const blockedBy = planBlockedBy(c);
+  const blockedTitle = blockedBy.length > 0 ? planBlockedLabel(blockedBy, t) : undefined;
   return (
-    <div data-testid={`panel-change-${c.name}`} onClick={() => onOpen(c.name)} className={rowClass}>
+    <div
+      data-testid={`panel-change-${c.name}`}
+      onClick={() => onOpen(c.name)}
+      className={cn(rowClass, blockedBy.length > 0 && "opacity-60")}
+      title={blockedTitle}
+    >
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
+          {wave !== null && (
+            <span
+              aria-label={planWaveLabel(wave, t)}
+              title={planWaveLabel(wave, t)}
+              className={cn("shrink-0 text-[11px] font-semibold tabular-nums text-primary", STAMP_HOVER)}
+            >
+              {wave}
+            </span>
+          )}
           <span className="truncate">{c.name}</span>
           <StationBadges c={c} />
           {/* worktree 標記：掛著＝工作正於副本進行中，與站章同屬影響收尾動作

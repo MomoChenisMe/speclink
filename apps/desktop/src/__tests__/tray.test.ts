@@ -181,6 +181,26 @@ describe("buildTrayModel", () => {
     expect(c.name).toBe("phase2-e2e-chain");
   });
 
+  it("原生選單列標籤於 wave 存在時前綴「N· 」，無 wave 時不加（spec「原生選單前綴數字」）", () => {
+    // add-change-plan-desktop design D7：原生選單無法變淡，只前綴波次數字。
+    const items = buildTrayModel(
+      snapshot({
+        changes: [
+          change({ name: "third", totalTasks: 10, completedTasks: 2, wave: 3, blockedBy: ["x"] }),
+          change({ name: "plain", totalTasks: 10, completedTasks: 2 }),
+          change({ name: "bare", totalTasks: 0, completedTasks: 0, wave: 1 }),
+        ],
+      }),
+      fakeT,
+    ).items;
+    const byName = (name: string) => byKind(items, "change").find((c) => c.name === name)!;
+    expect(byName("third").label).toBe("3· third  ▓▓░░░░░░ 2/10");
+    expect(byName("plain").label).toBe("plain  ▓▓░░░░░░ 2/10");
+    expect(byName("bare").label).toBe("1· bare");
+    // name（複製來源）不帶前綴。
+    expect(byName("third").name).toBe("third");
+  });
+
   it("無任務的變更僅顯示名稱（不畫進度條）", () => {
     const items = buildTrayModel(
       snapshot({ changes: [change({ name: "empty-tasks", totalTasks: 0, completedTasks: 0 })] }),

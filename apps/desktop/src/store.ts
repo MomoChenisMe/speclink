@@ -4,6 +4,7 @@ import type {
   ArchivedTarget,
   CardKind,
   ChangeItem,
+  ChangeListPayload,
   SpecItem,
   ArchivedItem,
   DiscussionItem,
@@ -85,6 +86,7 @@ type FailureMessageKey =
   | "store.revertFailed"
   | "store.discussionArchiveFailed"
   | "store.reorderFailed"
+  | "store.setDependsFailed"
   | "store.openProjectFailed"
   | "store.initFailed"
   | "store.adoptFailed";
@@ -163,6 +165,8 @@ export interface RemoteMarkerConflict {
 
 export interface AppState {
   changes: ChangeItem[];
+  /** 清單 payload 的頂層 planError（依賴成環訊息；null＝無成環或資料源不供）。 */
+  planError: string | null;
   specs: SpecItem[];
   archived: ArchivedItem[];
   /** 討論兩節（active 進看板第 0 欄、archived 進已封存頁討論節）。 */
@@ -267,6 +271,8 @@ export interface AppState {
   clearDrawerVerb: () => void;
   /** 看板拖排寫回：把卡片排到兩鄰居之間（null＝欄頂／欄底）；失敗以 toast 呈現。 */
   reorderCard: (kind: CardKind, id: string, prevId: string | null, nextId: string | null) => Promise<void>;
+  /** 排程分頁的前置新增／移除：寫回後刷新看板；引擎拒絕以 toast 呈現其訊息。 */
+  setDepends: (change: string, on: string[], remove: boolean) => Promise<void>;
 
   // --- workspace／專案分頁列（注入 workspace adapter 時生效；design D3/D10/D11） ---
   /** 分頁清單（開啟順序；持久化於 app 本機）。分頁身分＝locator（workspace-session 決策 1）。 */
@@ -422,7 +428,7 @@ export interface AppState {
 
 type WorkspaceSnapshot = Pick<
   AppState,
-  "changes" | "specs" | "archived" | "discussions" | "loaded" | "loadFailed"
+  "changes" | "planError" | "specs" | "archived" | "discussions" | "loaded" | "loadFailed"
 >;
 
 type CliProbe = Awaited<ReturnType<CliInstallAdapter["probe"]>>;
@@ -536,6 +542,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     function emptyWorkspaceSnapshot(): WorkspaceSnapshot {
       return {
         changes: [],
+        planError: null,
         specs: [],
         archived: [],
         discussions: { active: [], archived: [] },
@@ -1022,6 +1029,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     return {
     changes: [],
+    planError: null,
     specs: [],
     archived: [],
     discussions: { active: [], archived: [] },
@@ -1064,10 +1072,14 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         const dataSource = session.dataSource;
         // capability 驅動（remote-data-source 決策 2）：server 未提供的讀取跳過、
         // 以空集呈現（archived 頁另有提示卡），不讓整批 refresh 失敗。
-        let loaded: [ChangeItem[], SpecItem[], ArchivedItem[], DiscussionLists];
+        let loaded: [ChangeListPayload, SpecItem[], ArchivedItem[], DiscussionLists];
         try {
           loaded = await Promise.all([
-            dataSource.listChanges(),
+            // 清單與頂層 planError 同一次 IO（add-change-plan-desktop design D1）；
+            // 資料源不供此面時（remote 第三刀前）清單照舊、planError 為 null。
+            dataSource.listChangesWithPlan
+              ? dataSource.listChangesWithPlan()
+              : dataSource.listChanges().then((changes) => ({ changes, planError: null })),
             dataSource.listSpecs(),
             session.capabilities.listArchived ? dataSource.listArchived() : Promise.resolve([]),
             dataSource.listDiscussions(),
@@ -1087,9 +1099,10 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           }
           return;
         }
-        const [changes, specs, archived, discussions] = loaded;
+        const [{ changes, planError }, specs, archived, discussions] = loaded;
         const snapshot: WorkspaceSnapshot = {
           changes,
+          planError,
           specs,
           archived,
           discussions,
@@ -1471,6 +1484,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         const current = get();
         previousSnapshot = workspaceSnapshots.get(sourceKey) ?? {
           changes: current.changes,
+          planError: current.planError,
           specs: current.specs,
           archived: current.archived,
           discussions: current.discussions,
@@ -1514,6 +1528,19 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           set((state) => (state.activeKey === sourceKey ? previousSnapshot! : {}));
         }
         showFailureToast(id, "store.reorderFailed", e);
+      }
+      await get().refresh();
+    },
+
+    async setDepends(change, on, remove) {
+      const dataSource = activeDataSource();
+      if (!dataSource) return;
+      try {
+        await dataSource.setDepends(change, on, remove);
+      } catch (e) {
+        // 引擎拒絕（自依賴、不存在、已封存、成環）：單行呈現引擎訊息，畫面不變。
+        showFailureToast(change, "store.setDependsFailed", e);
+        return;
       }
       await get().refresh();
     },

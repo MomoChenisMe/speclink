@@ -61,6 +61,8 @@ export type {
   CardKind,
   ListView,
   ChangeItem,
+  ChangeListPayload,
+  ChangeOverlap,
   SpecItem,
   ArchivedItem,
   DiscussionItem,
@@ -91,7 +93,18 @@ export type { DocumentViewerProps } from "./components/DocumentViewer";
 export { SEMANTIC_TONE, SEMANTIC_SURFACE, type SemanticTone } from "./tone";
 
 // 看板
-export { changeStage, STAGE_BADGE, STAGE_BAR, STAGE_ICON, STAGES, type Stage } from "./stage";
+export {
+  changeStage,
+  planBlockedBy,
+  planBlockedLabel,
+  planWave,
+  planWaveLabel,
+  STAGE_BADGE,
+  STAGE_BAR,
+  STAGE_ICON,
+  STAGES,
+  type Stage,
+} from "./stage";
 export { siblingChangesOf } from "./siblings";
 export { parseTasks, type TaskLine } from "./tasks";
 export type { ArtifactStatus, StatusReport } from "./adapter";

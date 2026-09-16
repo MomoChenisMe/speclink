@@ -22,7 +22,14 @@ pub fn list_changes_at(root: &Path) -> Value {
     let facts = crate::facts_for(&ctx);
     let overlaid = overlay_store(&ctx, &facts);
     let store: &dyn Store = if facts.is_empty() { &ctx.store } else { &overlaid };
-    let changes = board_sorted_changes(store);
+    // 顯示序＝引擎 plan 的配置順序（design D1）：同一份 overlay 後的 store，與 CLI
+    // plan 同一聚合面；成環時退回基底序，四欄位缺席、planError 帶成環訊息。
+    let (changes, plan) = board_order(store);
+    let plan_row = |name: &str| {
+        plan.as_ref()
+            .ok()
+            .and_then(|plan| plan.changes.iter().find(|p| p.name == name))
+    };
     // 桌面 payload 在 CLI 同形項上疊加生命週期標記欄位（parity 紅線：CLI 的
     // changes_json 本身不動）。meta 類欄位取自 list_changes 已解析的 meta；
     // whyExcerpt 例外——另讀各 change 的 proposal.md 首段（描述列資料源）。
@@ -106,10 +113,23 @@ pub fn list_changes_at(root: &Path) -> Value {
                 v["verifiedAt"] = json!(c.meta.verified_at);
                 v["verifiedBy"] = json!(c.meta.verified_by);
             }
+            // 排程四欄（spec client-protocol「變更清單的排程欄位」）：值取自引擎
+            // plan 的同一入口，不在呈現層另算；壞 meta（plan 的 skipped）的項沒有
+            // 這四鍵，卡片因欄位缺席自動不顯示章。成環時 wave／blockedBy／overlaps
+            // 缺席，dependsOn 仍給 meta 的宣告原文（與 plan 列同一來源）——排程分頁
+            // 靠它讓使用者移除成環的前置。
+            if let Some(row) = plan_row(&c.name) {
+                v["wave"] = json!(row.wave);
+                v["blockedBy"] = json!(row.blocked_by);
+                v["dependsOn"] = json!(row.depends_on);
+                v["overlaps"] = json!(row.overlaps);
+            } else if plan.is_err() && c.meta_error.is_none() {
+                v["dependsOn"] = json!(c.meta.depends_on());
+            }
             v
         })
         .collect();
-    json!({ "changes": items })
+    json!({ "changes": items, "planError": plan.err().map(|e| e.to_string()) })
 }
 
 /// 批次入口的讀取 store（design D2）：每個有映射的 change，其 artifact 讀取轉向
@@ -187,19 +207,50 @@ pub fn watch_targets_at(root: &Path) -> Vec<PathBuf> {
     targets
 }
 
-/// 看板顯示序的變更清單（design D2）：先取 CLI 預設 modified 序當回退，再以穩定
-/// 排序疊上 board_rank 複合鍵——缺值置頂維持回退序、具值依 rank 升冪、同值以
-/// 名稱決斷。CLI 的 `speclink list --json` 排序不經此路徑，逐位元不變。
+/// 看板的基底序（design D2；spec「看板卡片順序以 board_rank 欄位為真相」）：具 rank
+/// 的卡在前依字典序升冪，缺 rank 的卡在後依 created 升冪、缺 created 者殿後，同值
+/// 以名稱決斷——`key` 是引擎 lifecycle/plan.rs `Entry::key` 去掉 stage 的複本（欄由
+/// 前端按階段投影；引擎不對外提供基底序，第三刀若開放就改由引擎供）。plan 成環時的
+/// 退回序就是它。CLI 的 `speclink list --json` 排序不經此路徑，逐位元不變。
 pub(crate) fn board_sorted_changes(store: &dyn Store) -> Vec<speclink_core::model::Change> {
+    fn key(c: &speclink_core::model::Change) -> (u8, &str, u8, &str) {
+        match (&c.meta.board_rank, &c.meta.created) {
+            (Some(rank), _) => (0, rank, 0, ""),
+            (None, Some(created)) => (1, "", 0, created),
+            (None, None) => (1, "", 1, ""),
+        }
+    }
     let mut changes = speclink_core::model::list_changes(store);
-    speclink_core::listing::sort_changes(store, &mut changes, "modified");
-    changes.sort_by(|x, y| match (&x.meta.board_rank, &y.meta.board_rank) {
-        (None, None) => std::cmp::Ordering::Equal, // 穩定排序保留回退序
-        (None, Some(_)) => std::cmp::Ordering::Less,
-        (Some(_), None) => std::cmp::Ordering::Greater,
-        (Some(a), Some(b)) => a.cmp(b).then_with(|| x.name.cmp(&y.name)),
-    });
+    changes.sort_by(|x, y| key(x).cmp(&key(y)).then_with(|| x.name.cmp(&y.name)));
     changes
+}
+
+/// 看板顯示序（design D1）：引擎 plan 的配置順序，壞 meta（plan 的 skipped）的卡
+/// 接在後面維持基底序；plan 成環時整份退回基底序。清單 payload 與拖排補章都走這
+/// 一個入口，畫面順序與補章派發序不會分家。
+pub(crate) fn board_order(
+    store: &dyn Store,
+) -> (
+    Vec<speclink_core::model::Change>,
+    Result<speclink_core::plan::Plan, speclink_core::plan::PlanError>,
+) {
+    let basis = board_sorted_changes(store);
+    let plan = speclink_core::plan::compute(store);
+    let changes = match &plan {
+        Ok(plan) => {
+            let placed = plan
+                .changes
+                .iter()
+                .filter_map(|p| basis.iter().find(|c| c.name == p.name).cloned());
+            let rest = basis
+                .iter()
+                .filter(|c| !plan.changes.iter().any(|p| p.name == c.name))
+                .cloned();
+            placed.chain(rest).collect()
+        }
+        Err(_) => basis,
+    };
+    (changes, plan)
 }
 
 /// 對應 `speclink list --specs --json`：`{ "specs": … }`。非專案回傳 `{ "specs": [] }`。
@@ -1026,26 +1077,27 @@ mod tests {
     }
 
     #[test]
-    fn list_changes_sorts_by_board_rank_with_unranked_on_top() {
-        // spec「看板卡片順序以 board_rank 欄位為真相」＋ design D2：缺值卡置頂
-        // 維持回退序（mtime 平手時名稱升冪），具值卡依 rank 字典序升冪殿後。
+    fn list_changes_sorts_by_board_rank_with_unranked_after_by_created() {
+        // spec「看板卡片順序以 board_rank 欄位為真相」Example「四卡混排」：具值卡
+        // 依 rank 字典序升冪在前，缺值卡殿後（刻意變更：原置頂）。
         let fx = FixtureRoot::new("q-rank-sort");
-        fx.add_change("ranked-n", &format!("{OLD_META}board_rank: n\n"));
-        fx.add_change("ranked-b", &format!("{OLD_META}board_rank: b\n"));
-        fx.add_change("unranked-y", OLD_META);
-        fx.add_change("unranked-x", OLD_META);
-        let v = list_changes_at(fx.root());
-        let names: Vec<String> = v["changes"]
-            .as_array()
-            .expect("changes array")
-            .iter()
-            .map(|c| c["name"].as_str().unwrap().to_string())
-            .collect();
-        assert_eq!(
-            names,
-            ["unranked-x", "unranked-y", "ranked-b", "ranked-n"],
-            "unranked on top (fallback order), ranked ascending by key"
-        );
+        fx.add_change("y", &format!("{OLD_META}board_rank: n\n"));
+        fx.add_change("z", OLD_META);
+        fx.add_change("x", &format!("{OLD_META}board_rank: f\n"));
+        fx.add_change("w", &format!("{OLD_META}board_rank: b\n"));
+        assert_eq!(board_names(fx.root()), ["w", "x", "y", "z"]);
+    }
+
+    #[test]
+    fn unranked_cards_follow_created_ascending_so_new_work_queues_last() {
+        // Scenario「新建的卡落欄底」：全員缺 rank 時依 created 升冪（刻意變更：原為
+        // 修改時間序）——最新建立的卡在欄底，不插到使用者排好的卡前面。
+        let fx = FixtureRoot::new("q-created-order");
+        fx.add_change("newest", "schema: spec-driven\ncreated: 2026-07-09\n");
+        fx.add_change("oldest", "schema: spec-driven\ncreated: 2026-07-01\n");
+        fx.add_change("middle", "schema: spec-driven\ncreated: 2026-07-05\n");
+        fx.add_change("dateless", "schema: spec-driven\n");
+        assert_eq!(board_names(fx.root()), ["oldest", "middle", "newest", "dateless"]);
     }
 
     #[test]
@@ -1062,6 +1114,115 @@ mod tests {
             .map(|c| c["name"].as_str().unwrap().to_string())
             .collect();
         assert_eq!(names, ["alpha", "beta"]);
+    }
+
+    // --- spec client-protocol「變更清單的排程欄位」（design D1）---
+
+    use crate::testfixture::board_names;
+
+    const PLAN_KEYS: [&str; 4] = ["wave", "blockedBy", "dependsOn", "overlaps"];
+
+    #[test]
+    fn list_changes_follows_plan_order_and_carries_the_plan_fields() {
+        // Scenario「清單項帶排程欄位」：順序為 plan 配置序（add-a 先於依賴它的
+        // add-b，蓋過 rank 基底序）、四鍵 camelCase、頂層 planError 為 null。
+        // 三個同欄 change：add-b 宣告前置 add-a、add-c 與 add-a 共用一個 delta 能力；
+        // rank 刻意讓基底序為 add-b、add-a、add-c，依賴修正後才是 add-a 在前。
+        let fx = FixtureRoot::new("q-plan-fields");
+        fx.add_change("add-a", &format!("{OLD_META}board_rank: f\n"));
+        fx.add_change("add-b", &format!("{OLD_META}board_rank: b\ndepends_on: add-a\n"));
+        fx.add_change("add-c", OLD_META);
+        for name in ["add-a", "add-c"] {
+            fx.write(
+                &format!("openspec/changes/{name}/specs/shared-cap/spec.md"),
+                "## ADDED Requirements\n\n### Requirement: R\n\nText.\n",
+            );
+        }
+        let v = list_changes_at(fx.root());
+        assert_eq!(board_names(fx.root()), ["add-a", "add-b", "add-c"]);
+        assert!(v["planError"].is_null(), "no cycle → planError null: {v}");
+        let arr = v["changes"].as_array().unwrap();
+        let by_name = |name: &str| arr.iter().find(|c| c["name"] == name).unwrap().clone();
+        let b = by_name("add-b");
+        assert_eq!(b["wave"], 2, "{b}");
+        assert_eq!(b["blockedBy"], json!(["add-a"]), "{b}");
+        assert_eq!(b["dependsOn"], json!(["add-a"]), "{b}");
+        assert_eq!(b["overlaps"], json!([]), "{b}");
+        let a = by_name("add-a");
+        assert_eq!(a["wave"], 1);
+        assert_eq!(a["blockedBy"], json!([]));
+        assert_eq!(a["overlaps"], json!([{ "change": "add-c", "capabilities": ["shared-cap"] }]));
+        let c = by_name("add-c");
+        assert_eq!(c["wave"], 2, "overlap partner placed after add-a: {c}");
+        assert_eq!(c["blockedBy"], json!(["add-a"]));
+        assert_eq!(c["dependsOn"], json!([]));
+        for item in arr {
+            for key in ["blocked_by", "depends_on"] {
+                assert!(item.get(key).is_none(), "camelCase only: {item}");
+            }
+            // 既有欄位不變。
+            for key in ["name", "status", "totalTasks", "completedTasks", "codeTotal", "reviewStatus"] {
+                assert!(item.get(key).is_some(), "existing key {key} kept: {item}");
+            }
+        }
+        // Scenario「CLI 清單不含排程欄位」：`speclink list --json` 的項走引擎的
+        // changes_json，同一份 store 下四鍵一律缺席（parity 紅線的可執行斷言）。
+        let ctx = init_core_context(fx.root()).expect("project");
+        let cli = serde_json::to_value(speclink_core::listing::changes_json(
+            &ctx.store,
+            &speclink_core::model::list_changes(&ctx.store),
+        ))
+        .unwrap();
+        for item in cli.as_array().unwrap() {
+            for key in PLAN_KEYS {
+                assert!(item.get(key).is_none(), "CLI list carries no {key}: {item}");
+            }
+        }
+    }
+
+    #[test]
+    fn list_changes_falls_back_to_the_basis_order_on_a_dependency_cycle() {
+        // Scenario「成環退回」：add-a 與 add-b 互依 → 順序退回基底序（具 rank 的
+        // add-c 在前、缺 rank 的依名稱）、四鍵缺席、planError 為引擎成環訊息。
+        let fx = FixtureRoot::new("q-plan-cycle");
+        fx.add_change("add-a", &format!("{OLD_META}depends_on: add-b\n"));
+        fx.add_change("add-b", &format!("{OLD_META}depends_on: add-a\n"));
+        fx.add_change("add-c", &format!("{OLD_META}board_rank: n\n"));
+        let v = list_changes_at(fx.root());
+        assert_eq!(v["planError"], "dependency cycle: add-a -> add-b -> add-a", "{v}");
+        assert_eq!(board_names(fx.root()), ["add-c", "add-a", "add-b"]);
+        // 成環時 wave／blockedBy／overlaps 缺席；dependsOn 仍為各自 meta 的宣告原文
+        // ——排程分頁靠它讓使用者移除成環的前置（審查 Round 1）。
+        for item in v["changes"].as_array().unwrap() {
+            for key in ["wave", "blockedBy", "overlaps"] {
+                assert!(item.get(key).is_none(), "cycle → no {key}: {item}");
+            }
+        }
+        let by_name = |name: &str| {
+            v["changes"].as_array().unwrap().iter().find(|c| c["name"] == name).unwrap().clone()
+        };
+        assert_eq!(by_name("add-a")["dependsOn"], json!(["add-b"]));
+        assert_eq!(by_name("add-b")["dependsOn"], json!(["add-a"]));
+        assert_eq!(by_name("add-c")["dependsOn"], json!([]));
+    }
+
+    #[test]
+    fn list_changes_keeps_listing_a_corrupt_card_without_plan_fields() {
+        // 壞 meta 項照舊列出（metaError 已在）且四鍵缺席；有效卡照常帶四鍵。
+        let fx = FixtureRoot::new("q-plan-corrupt");
+        fx.add_change("good", OLD_META);
+        fx.add_change("broken", ": : :\n\t bad yaml [unclosed\n");
+        let v = list_changes_at(fx.root());
+        assert!(v["planError"].is_null());
+        let arr = v["changes"].as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        let by_name = |name: &str| arr.iter().find(|c| c["name"] == name).unwrap().clone();
+        let broken = by_name("broken");
+        assert!(broken["metaError"].is_string());
+        for key in PLAN_KEYS {
+            assert!(broken.get(key).is_none(), "corrupt card carries no {key}: {broken}");
+            assert!(by_name("good").get(key).is_some(), "valid card carries {key}");
+        }
     }
 
     #[test]

@@ -62,3 +62,32 @@ export function resolveCardDrop(
     nextId: moved[to + 1] ?? null,
   };
 }
+
+/**
+ * 不合法落點集合（spec desktop-app「拖排時不合法落點灰化」）：拖動 `activeId` 期間，
+ * 同欄中它的宣告前置及其上方所有卡（落在那裡會排到前置之前）、宣告依賴它的卡及
+ * 其下方所有卡（落在那裡會排到依賴者之後）。只用 `deps`（每張卡的 dependsOn），
+ * 不看 delta 重疊——重疊夥伴可互換先後。被拖卡不在欄內時沒有落點可標。
+ */
+export function invalidDropTargets(
+  column: ColumnCards,
+  deps: ReadonlyMap<string, readonly string[]>,
+  activeId: string,
+): Set<string> {
+  const ids = column.ids;
+  const out = new Set<string>();
+  if (!ids.includes(activeId)) return out;
+  const prereqs = deps.get(activeId) ?? [];
+  // 最靠下的前置：它與其上方全部不合法。
+  let lowestPrereq = -1;
+  // 最靠上的依賴者：它與其下方全部不合法。
+  let highestDependent = ids.length;
+  ids.forEach((id, i) => {
+    if (prereqs.includes(id)) lowestPrereq = Math.max(lowestPrereq, i);
+    if ((deps.get(id) ?? []).includes(activeId)) highestDependent = Math.min(highestDependent, i);
+  });
+  ids.forEach((id, i) => {
+    if (id !== activeId && (i <= lowestPrereq || i >= highestDependent)) out.add(id);
+  });
+  return out;
+}

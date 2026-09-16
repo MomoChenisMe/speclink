@@ -21,6 +21,20 @@ describe("createTauriDataSource", () => {
     expect(changes[0].restaleFrom).toEqual(["alpha"]);
   });
 
+  it("listChangesWithPlan keeps the envelope: changes plus the top-level planError", async () => {
+    // spec client-protocol「變更清單的排程欄位」：頂層 planError（成環訊息或 null）
+    // 隨清單一起回到前端，同一次 IO。
+    invoke.mockResolvedValueOnce({
+      changes: [{ name: "a", status: "s", totalTasks: 1, completedTasks: 0 }],
+      planError: "dependency cycle: a -> b -> a",
+    });
+    const ds = createTauriDataSource("/r");
+    const payload = await ds.listChangesWithPlan!();
+    expect(invoke).toHaveBeenCalledWith("list_changes", { root: "/r" });
+    expect(payload.changes.map((c) => c.name)).toEqual(["a"]);
+    expect(payload.planError).toBe("dependency cycle: a -> b -> a");
+  });
+
   it("listSpecs unwraps the { specs } envelope and carries the presentation helper fields", async () => {
     // spec「桌面 app 呈現 change 與 spec 的清單與內容」呈現層輔助欄位（design D2、
     // spec-archive-drawer design D4）：modifiedAt 之外，規格卡收合資訊欄位原樣透傳。

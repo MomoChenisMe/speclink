@@ -161,6 +161,7 @@ function openInfo(): RemoteOpenInfo {
     promoteDiscussion: true,
     archiveDiscussion: true,
     reorderCard: true,
+    setDepends: false,
     policyWrite: true,
     claim: true,
     liveUpdates: true,

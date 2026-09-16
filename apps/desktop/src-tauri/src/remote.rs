@@ -1002,6 +1002,9 @@ pub struct RemoteCapabilities {
     // 看板拖排直達 board resource（remote-board-order 決策 7）：依 role 翻真
     //（editor 真、reader 假——server 的 PUT /board-order 以同一 role bit 強制）。
     pub reorder_card: bool,
+    /// 前置編輯（add-change-plan-desktop design D6）：remote 在第三刀前不提供，
+    /// 固定為假——排程分頁因此唯讀、不長編輯控制項。
+    pub set_depends: bool,
     // change 詮釋資料與 capability 清單（remote-read-parity）：ChangeStatus
     // 已攜歸屬四欄與 deltaCapabilities，TS 端以既有 remote_status payload
     // 映射實作——資料在 wire 上，capability 為真；舊 server 不送的欄位以
@@ -1050,6 +1053,7 @@ impl RemoteCapabilities {
             delete_change: binding.capabilities.delete_change,
             move_task: binding.capabilities.move_task,
             reorder_card: binding.capabilities.policy_write,
+            set_depends: false,
             change_meta: true,
             change_capabilities: true,
             claim: binding.capabilities.delete_change,
@@ -1709,6 +1713,7 @@ mod capability_tests {
         assert!(caps.delete_change, "deleteChange follows the handshake");
         assert!(caps.move_task, "moveTask follows the handshake");
         assert!(caps.reorder_card, "board reorder follows the editor role");
+        assert!(!caps.set_depends, "prerequisite editing is not on the wire yet, even for editors");
     }
 
     #[test]
@@ -1725,6 +1730,7 @@ mod capability_tests {
         assert!(!caps.delete_change, "reader write verbs stay disabled");
         assert!(!caps.move_task);
         assert!(!caps.reorder_card, "reader board reorder stays disabled");
+        assert!(!caps.set_depends);
     }
 }
 

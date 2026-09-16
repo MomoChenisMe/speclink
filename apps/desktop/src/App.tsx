@@ -770,6 +770,7 @@ function AppInner({
               reorderUnavailableReason={
                 caps && !caps.reorderCard ? t("remote.reorderUnavailable") : undefined
               }
+              planError={s.planError}
               onDragActiveChange={handleBoardDragActive}
               // 骨架的前提是「首訪的載入正在進行」：探測中（pendingTabKey）或整批
               // 載入中（loadingActive），且尚無真值。只看 loaded 會讓探測失敗或讀取
@@ -819,6 +820,14 @@ function AppInner({
         // 連停用的入口都不長出來。
         onClaim={dataSource?.claim ? s.claimChange : undefined}
         onRevert={s.requestRevert}
+        // 排程分頁：同波夥伴與前置候選自清單派生；前置編輯只在 capability 為真時接線
+        //（remote 第三刀前為假，分頁唯讀）。
+        changes={s.changes}
+        onSetDepends={
+          caps && !caps.setDepends
+            ? undefined
+            : (change, on, remove) => void s.setDepends(change, on, remove)
+        }
         unavailable={
           caps && {
             analyze:

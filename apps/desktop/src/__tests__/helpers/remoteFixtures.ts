@@ -33,6 +33,7 @@ export const REMOTE_CAPS: WorkspaceCapabilities = {
   promoteDiscussion: true,
   archiveDiscussion: true,
   reorderCard: false,
+  setDepends: false,
   claim: true,
   policyWrite: true,
   liveUpdates: true,

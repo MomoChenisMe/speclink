@@ -1,7 +1,7 @@
 // 系統匣狀態選單（design D1/D3/D5）：前端擁有的呈現面。分兩層——
 // (1) buildTrayModel：store 快照 → 選單模型的純函式（本檔上半，無 Tauri 依賴、直測）；
 // (2) 接線層：訂閱 store、去抖重建、掛點擊 handler（本檔下半，以 Tauri JS tray/menu API）。
-import { changeStage, STAGES, type ChangeItem } from "@speclink/ui";
+import { changeStage, planWave, STAGES, type ChangeItem } from "@speclink/ui";
 import { TrayIcon } from "@tauri-apps/api/tray";
 import {
   Menu,
@@ -141,11 +141,15 @@ export function progressBar(completed: number, total: number, width = 8): string
   return "▓".repeat(filled) + "░".repeat(width - filled);
 }
 
-/** 變更列標籤：有任務時「名稱  ▓▓░ n/m」，無任務時僅名稱。 */
+/** 變更列標籤：有任務時「名稱  ▓▓░ n/m」，無任務時僅名稱；清單項帶 wave 時前綴
+ * 「N· 」（spec tray-status-menu「變更列的波次標示與順序同源」——原生選單無法變淡，
+ * 只加波次數字）。name（複製來源）不帶前綴。 */
 function changeLabel(c: ChangeItem): string {
-  if (c.totalTasks <= 0) return c.name;
+  const wave = planWave(c);
+  const prefix = wave === null ? "" : `${wave}· `;
+  if (c.totalTasks <= 0) return `${prefix}${c.name}`;
   const bar = progressBar(c.completedTasks, c.totalTasks);
-  return `${c.name}  ${bar} ${c.completedTasks}/${c.totalTasks}`;
+  return `${prefix}${c.name}  ${bar} ${c.completedTasks}/${c.totalTasks}`;
 }
 
 /**

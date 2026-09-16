@@ -100,6 +100,17 @@ impl FixtureRoot {
     }
 }
 
+/// 看板顯示序的 change 名（走 `list_changes_at` 的清單 payload）——query 與 manage
+/// 兩邊的順序斷言共用。
+pub(crate) fn board_names(root: &Path) -> Vec<String> {
+    crate::query::list_changes_at(root)["changes"]
+        .as_array()
+        .expect("changes array")
+        .iter()
+        .map(|c| c["name"].as_str().unwrap().to_string())
+        .collect()
+}
+
 /// 非 speclink 專案的空暫存目錄（向上探索找不到 openspec/ 的情境）。
 pub(crate) fn fresh_non_project_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("speclink-dtcore-nonproject-{tag}-{}", std::process::id()));
