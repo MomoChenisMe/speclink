@@ -1,0 +1,48 @@
+{
+  "version": 2,
+  "change": "fix-desktop-hover-after-tray-panel",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 新增 Tauri command `hide_tray_panel`（設計 D2）：apps/desktop/src-tauri/src/lib.rs 單行委派到 apps/desktop/src-tauri/src/panel.rs 的 hide 函式；面板不存在或已隱藏時回 Ok、非 macOS 回 Ok 無事。驗證：`cargo check -p speclink-desktop` 通過，且 lib.rs 的 generate_handler 列表含 hide_tray_panel。",
+      "files": [
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src-tauri/src/panel.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 apps/desktop/src/tray.ts 的 openMainWindow 在 unminimize 之前先 invoke `hide_tray_panel`（失敗靜默、不阻斷後續 show 與 setFocus）；所有會喚起主視窗的 open-* 動作與 add-project、open-project-settings、open-settings 都走同一條 openMainWindow（設計 D2）。驗證（設計 D5 自動層）：apps/desktop/src/__tests__/tray.test.ts 新增斷言——觸發 open-change 動作時 invoke 的第一個呼叫為 hide_tray_panel、之後才是視窗 show／setFocus；`npm test -w apps/desktop` 通過。",
+      "files": [
+        "apps/desktop/src/__tests__/tray.test.ts",
+        "apps/desktop/src/tray.ts"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M2MKHFMKA3TD9V7WANJBKNWN",
+      "taskDesc": "1.1 新增 Tauri command `hide_tray_panel`（設計 D2）：apps/desktop/src-tauri/src/lib.rs 單行委派到 apps/desktop/src-tauri/src/panel.rs 的 hide 函式；面板不存在或已隱藏時回 Ok、非 macOS 回 Ok 無事。驗證：`cargo check -p speclink-desktop` 通過，且 lib.rs 的 generate_handler 列表含 hide_tray_panel。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cabcc0581488c9e952ee296806f58dd75cbe7186",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src-tauri/src/panel.rs"
+      ],
+      "recordedAt": "2026-09-16T08:48:30Z"
+    },
+    {
+      "taskId": "tsk_01M2MKHFMK8N6QAKCB7SD0180W",
+      "taskDesc": "1.2 apps/desktop/src/tray.ts 的 openMainWindow 在 unminimize 之前先 invoke `hide_tray_panel`（失敗靜默、不阻斷後續 show 與 setFocus）；所有會喚起主視窗的 open-* 動作與 add-project、open-project-settings、open-settings 都走同一條 openMainWindow（設計 D2）。驗證（設計 D5 自動層）：apps/desktop/src/__tests__/tray.test.ts 新增斷言——觸發 open-change 動作時 invoke 的第一個呼叫為 hide_tray_panel、之後才是視窗 show／setFocus；`npm test -w apps/desktop` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cabcc0581488c9e952ee296806f58dd75cbe7186",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/tray.test.ts",
+        "apps/desktop/src/tray.ts"
+      ],
+      "recordedAt": "2026-09-16T08:50:45Z"
+    }
+  ]
+}
