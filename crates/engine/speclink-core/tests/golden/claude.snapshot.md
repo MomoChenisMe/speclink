@@ -9,7 +9,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.36.0"
+  version: "v1.37.0"
   generatedBy: "Speclink"
 ---
 
@@ -97,7 +97,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.36.0"
+  version: "v1.37.0"
   generatedBy: "Speclink"
 ---
 
@@ -446,7 +446,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.36.0"
+  version: "v1.37.0"
   generatedBy: "Speclink"
 ---
 
@@ -462,12 +462,14 @@ Archive a completed change.
 
 1. **If no change name provided, prompt for selection**
 
-   Run `speclink list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select.
+   Run `speclink plan --json` and list the candidates from its `changes` array in the given order — the archive order that honors declared dependencies and delta overlap. Label each candidate with its `blockedBy`: an empty array reads as「無阻擋」, a non-empty one as「等 <blockedBy 的名稱>」. Use the **AskUserQuestion tool** to let the user select.
+
+   If `plan` fails (a dependency cycle), fall back to `speclink list --json` and list the active changes in its order, with no blocking labels.
 
    Show only active changes (not already archived).
    Include the schema used for each change if available.
 
-   **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose.
+   **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose — a candidate with no blockers is not picked for them either.
 
 2. **Check artifact completion status**
 
@@ -740,6 +742,22 @@ do not work out which specs this archive touched, and do not judge whether the m
 is actually stale; that is the manual skill's report. This too is a reminder only —
 never run `/speclink-manual` yourself.
 
+Then run `speclink plan --json` and hand the user the next change to start. When `next`
+is non-null, add one more line:
+
+> plan 的下一個可開工：<next>，執行 `/speclink-apply <next>`。
+
+When the effective worktree policy is on (`speclink workflow-config show --json` →
+`worktree`; a `SPECLINK_WORKTREE` env override wins) and wave 1 (`waves[0].changes`)
+holds two or more changes whose `blockedBy` is empty and whose `stage` is `proposed`,
+also list them as parallel-safe:
+
+> 第 1 波可並行：<name-a>、<name-b>，各開一個 session 走 `/speclink-apply-with-worktree <name>`。
+
+Policy off, or only one such change → name `next` alone. A null `next`, or a `plan`
+failure (a dependency cycle) → say nothing about ordering. This too is a reminder only —
+never run apply yourself.
+
 === .claude/skills/speclink-audit/SKILL.md ===
 ---
 name: speclink-audit
@@ -749,7 +767,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.36.0"
+  version: "v1.37.0"
   generatedBy: "Speclink"
 ---
 
@@ -985,7 +1003,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.36.0"
+  version: "v1.37.0"
   generatedBy: "Speclink"
 ---
 
@@ -1108,7 +1126,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.36.0"
+  version: "v1.37.0"
   generatedBy: "Speclink"
 ---
 
@@ -1260,14 +1278,22 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     Check whether delta specs exist at `openspec/changes/<name>/specs/`.
 
-    - If **no delta specs exist** (directory is empty or absent): skip to 7a-iii.
+    - If **no delta specs exist** (directory is empty or absent): skip to 7a-ii-b.
     - If **delta specs exist**: compare each delta against `openspec/specs/<capability>/spec.md`. The archive merge engine is fail-closed: a MODIFIED requirement wholesale-replaces the canonical block, and the engine refuses the whole archive with zero file effect when an ADDED requirement already exists in the canon, a MODIFIED/REMOVED/RENAMED target is missing, or a MODIFIED block drops a canonical scenario without a `<!-- REMOVED-SCENARIO: <name> -->` declaration.
-      - If every delta is complete final-state and no ADDED requirement pre-exists: skip to 7a-iii.
+      - If every delta is complete final-state and no ADDED requirement pre-exists: skip to 7a-ii-b.
       - Otherwise use the **AskUserQuestion tool** to ask: "Delta specs would be refused by the archive merge gate. Fix them before archiving?"
         - **Yes**: rewrite the delta files in place — merge the omitted canonical content into MODIFIED requirements (or declare deliberate drops with `<!-- REMOVED-SCENARIO: … -->`), drop or retarget pre-existing ADDED requirements — then proceed. Do NOT edit main specs.
         - **No**: skip the archive (commit without it) and route the delta repair through `speclink drift <name>` → `/speclink-ingest <name>` — archiving as-is would exit non-zero
 
       If **AskUserQuestion tool** is not available, ask the same question as plain text and wait for the user's response.
+
+    **7a-ii-b. Plan order hint**
+
+    Run `speclink plan --json` and find the target change in its `changes` array. If its `blockedBy` is non-empty, tell the user:
+
+    > plan 建議先封存 <blockedBy 的名稱>，再封存 <name>：這些 change 排在它前面（宣告依賴或動到同一份規格）。
+
+    This is a suggestion only. It does NOT block the archive and relies on no engine gate: if the user confirms, archive as usual. An empty `blockedBy`, a target missing from the plan, or a `plan` failure (a dependency cycle) → say nothing about ordering and continue.
 
     **7a-iii. Archive execution, re-display, and re-confirmation**
 
@@ -1314,6 +1340,19 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
     ```
 
     5. Use the **AskUserQuestion tool** again to confirm the updated plan and message (the archive option is no longer offered). Only continue to step 8 after this re-confirmation.
+
+    6. Close the sub-flow with two reminders. Print them once, at the end of the flow (after the step 10 result) — they concern the archive, not the commit:
+
+       - When the workspace has a `openspec/manual/` directory, add one line: the manual may be stale now, and `/speclink-manual` will report which pages this archive's spec changes outdated. The condition is the directory's existence only — do not work out which specs this archive touched, and do not judge whether the manual is actually stale; that is the manual skill's report. This is a reminder only — never run `/speclink-manual` yourself.
+       - Run `speclink plan --json` and hand the user the next change to start. When `next` is non-null, add one more line:
+
+         > plan 的下一個可開工：<next>，執行 `/speclink-apply <next>`。
+
+         When the effective worktree policy is on (`speclink workflow-config show --json` → `worktree`; a `SPECLINK_WORKTREE` env override wins) and wave 1 (`waves[0].changes`) holds two or more changes whose `blockedBy` is empty and whose `stage` is `proposed`, also list them as parallel-safe:
+
+         > 第 1 波可並行：<name-a>、<name-b>，各開一個 session 走 `/speclink-apply-with-worktree <name>`。
+
+         Policy off, or only one such change → name `next` alone. A null `next`, or a `plan` failure (a dependency cycle) → say nothing about ordering. This too is a reminder only — never run apply yourself.
 
 8. **Selective staging**
 
@@ -1380,7 +1419,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.36.0"
+  version: "v1.37.0"
   generatedBy: "Speclink"
 ---
 
@@ -1526,7 +1565,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.36.0"
+  version: "v1.37.0"
   generatedBy: "Speclink"
 ---
 
@@ -2010,7 +2049,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.36.0"
+  version: "v1.37.0"
   generatedBy: "Speclink"
 ---
 
@@ -2148,7 +2187,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.36.0"
+  version: "v1.37.0"
   generatedBy: "Speclink"
 ---
 
@@ -2333,7 +2372,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.36.0"
+  version: "v1.37.0"
   generatedBy: "Speclink"
 ---
 
@@ -2616,7 +2655,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.36.0"
+  version: "v1.37.0"
   generatedBy: "Speclink"
 ---
 
@@ -2827,7 +2866,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.36.0"
+  version: "v1.37.0"
   generatedBy: "Speclink"
 ---
 
@@ -3301,7 +3340,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.36.0"
+  version: "v1.37.0"
   generatedBy: "Speclink"
 ---
 
@@ -3396,7 +3435,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.36.0"
+  version: "v1.37.0"
   generatedBy: "Speclink"
 ---
 
@@ -3595,7 +3634,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.36.0"
+  version: "v1.37.0"
   generatedBy: "Speclink"
 ---
 
@@ -3679,7 +3718,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.36.0"
+  version: "v1.37.0"
   generatedBy: "Speclink"
 ---
 

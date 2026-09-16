@@ -284,6 +284,78 @@ fn commit_skill_attributes_files_from_the_change_directory_record() {
     }
 }
 
+// --- archive / commit skills: 封存這一端接 plan ---
+
+/// Spec archive-skill「未指名時的候選清單依 plan 順序」＋「封存完成後的收尾提交
+/// 提醒」Scenario「封存後提示下一個可開工」: the rendered archive skill lists
+/// candidates from `speclink plan --json` (labelled by `blockedBy`, falling back to
+/// `list --json` when plan fails) and closes with the next-ready hint — a reminder
+/// only, never an apply run.
+#[test]
+fn archive_skill_lists_plan_candidates_and_hands_off_the_next_ready_change() {
+    for (rel, content) in skill_for_both_tools("archive-plan-handoff", "archive") {
+        for needle in [
+            // 第 1 步：候選依 plan 順序、標 blockedBy、plan 失敗退回 list
+            "list the candidates from its `changes` array",
+            "無阻擋",
+            "fall back to `speclink list --json`",
+            // 尾段：下一個可開工、worktree 政策開時列可並行名單、僅提醒
+            "plan 的下一個可開工：<next>",
+            "apply <next>",
+            "apply-with-worktree <name>",
+            "never run apply yourself",
+        ] {
+            assert!(
+                content.contains(needle),
+                "{rel}: missing plan hand-off phrase {needle:?}"
+            );
+        }
+        // 三處 plan 呼叫：第 1 步候選、3b 順序提示、封存後的下一個可開工。
+        assert_eq!(
+            content.matches("speclink plan --json").count(),
+            3,
+            "{rel}: plan is consulted in step 1, step 3b and after the archive"
+        );
+    }
+}
+
+/// Spec commit-skill「先封存子流程的順序提示與收尾提醒」: the archive sub-flow
+/// carries the archive skill's pre-archive order hint before `speclink archive`
+/// runs, and after a successful archive reminds about the manual and hands off
+/// the next-ready change — reminders only.
+#[test]
+fn commit_skill_archive_sub_flow_carries_the_order_hint_and_the_hand_off() {
+    for (rel, content) in skill_for_both_tools("commit-plan-handoff", "commit") {
+        let hint = content
+            .find("plan 建議先封存")
+            .unwrap_or_else(|| panic!("{rel}: missing the pre-archive order hint"));
+        let archive = content
+            .find("speclink archive <name>          # without --mark-tasks-complete")
+            .unwrap_or_else(|| panic!("{rel}: missing the archive execution step"));
+        assert!(
+            hint < archive,
+            "{rel}: the order hint must come before `speclink archive` runs"
+        );
+        for needle in [
+            "manual/` directory",
+            "plan 的下一個可開工：<next>",
+            "apply <next>",
+            "never run apply yourself",
+        ] {
+            assert!(
+                content.contains(needle),
+                "{rel}: missing sub-flow reminder {needle:?}"
+            );
+        }
+        // 兩處 plan 呼叫：封存前的順序提示、封存後的下一個可開工。
+        assert_eq!(
+            content.matches("speclink plan --json").count(),
+            2,
+            "{rel}: plan is consulted before the archive and after it"
+        );
+    }
+}
+
 // --- review skill: locale binds the whole output chain ---
 
 /// Spec requirement: 審查產出的語言綁定 — the review skill binds the resolved

@@ -10,12 +10,14 @@ Archive a completed change.
 
 1. **If no change name provided, prompt for selection**
 
-   Run `speclink list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select.
+   Run `speclink plan --json` and list the candidates from its `changes` array in the given order — the archive order that honors declared dependencies and delta overlap. Label each candidate with its `blockedBy`: an empty array reads as「無阻擋」, a non-empty one as「等 <blockedBy 的名稱>」. Use the **AskUserQuestion tool** to let the user select.
+
+   If `plan` fails (a dependency cycle), fall back to `speclink list --json` and list the active changes in its order, with no blocking labels.
 
    Show only active changes (not already archived).
    Include the schema used for each change if available.
 
-   **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose.
+   **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose — a candidate with no blockers is not picked for them either.
 
 2. **Check artifact completion status**
 
@@ -287,3 +289,19 @@ this archive's spec changes outdated. The condition is the directory's existence
 do not work out which specs this archive touched, and do not judge whether the manual
 is actually stale; that is the manual skill's report. This too is a reminder only —
 never run `/speclink:manual` yourself.
+
+Then run `speclink plan --json` and hand the user the next change to start. When `next`
+is non-null, add one more line:
+
+> plan 的下一個可開工：<next>，執行 `/speclink:apply <next>`。
+
+When the effective worktree policy is on (`speclink workflow-config show --json` →
+`worktree`; a `SPECLINK_WORKTREE` env override wins) and wave 1 (`waves[0].changes`)
+holds two or more changes whose `blockedBy` is empty and whose `stage` is `proposed`,
+also list them as parallel-safe:
+
+> 第 1 波可並行：<name-a>、<name-b>，各開一個 session 走 `/speclink:apply-with-worktree <name>`。
+
+Policy off, or only one such change → name `next` alone. A null `next`, or a `plan`
+failure (a dependency cycle) → say nothing about ordering. This too is a reminder only —
+never run apply yourself.
