@@ -303,6 +303,9 @@ fn archive_skill_lists_plan_candidates_and_hands_off_the_next_ready_change() {
             "plan 的下一個可開工：<next>",
             "apply <next>",
             "apply-with-worktree <name>",
+            // 分岔表第 3–5 列：政策關只提 next、next 為 null 或成環不提
+            "name `next` alone",
+            "say nothing about ordering",
             "never run apply yourself",
         ] {
             assert!(
@@ -330,13 +333,15 @@ fn commit_skill_archive_sub_flow_carries_the_order_hint_and_the_hand_off() {
             .find("plan 建議先封存")
             .unwrap_or_else(|| panic!("{rel}: missing the pre-archive order hint"));
         let archive = content
-            .find("speclink archive <name>          # without --mark-tasks-complete")
+            .find("**7a-iii. Archive execution")
             .unwrap_or_else(|| panic!("{rel}: missing the archive execution step"));
         assert!(
             hint < archive,
             "{rel}: the order hint must come before `speclink archive` runs"
         );
         for needle in [
+            // 無阻擋不提：blockedBy 空、目標不在 plan、plan 失敗都靜默進封存
+            "say nothing about ordering and continue",
             "manual/` directory",
             "plan 的下一個可開工：<next>",
             "apply <next>",
@@ -353,6 +358,52 @@ fn commit_skill_archive_sub_flow_carries_the_order_hint_and_the_hand_off() {
             2,
             "{rel}: plan is consulted before the archive and after it"
         );
+    }
+}
+
+/// The three blocks the two archive exits share, whitespace-collapsed so the
+/// list indentation and line wrapping of each file drop out of the comparison.
+fn shared_block(content: &str, start: &str, end: &str) -> String {
+    let from = content
+        .find(start)
+        .unwrap_or_else(|| panic!("missing shared block start {start:?}"));
+    let rest = &content[from..];
+    let to = rest
+        .find(end)
+        .unwrap_or_else(|| panic!("missing shared block end {end:?}"))
+        + end.len();
+    rest[..to].split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Spec commit-skill「先封存子流程的順序提示與收尾提醒」: the commit sub-flow
+/// carries the SAME order hint, manual reminder and next-ready hand-off as the
+/// archive skill. Both assets spell them out by hand (no render-time injection),
+/// so this lock is what keeps them from drifting one wording tweak at a time.
+#[test]
+fn archive_and_commit_skills_share_the_plan_hand_off_wording() {
+    let archives = skill_for_both_tools("share-archive", "archive");
+    let commits = skill_for_both_tools("share-commit", "commit");
+    for ((archive_rel, archive), (commit_rel, commit)) in archives.iter().zip(commits.iter()) {
+        for (start, end) in [
+            (
+                "`speclink plan --json` and find the target change in its `changes` array",
+                "say nothing about ordering and continue.",
+            ),
+            (
+                "the manual may be stale now",
+                "that is the manual skill's report.",
+            ),
+            (
+                "`speclink plan --json` and hand the user the next change to start",
+                "never run apply yourself.",
+            ),
+        ] {
+            assert_eq!(
+                shared_block(archive, start, end),
+                shared_block(commit, start, end),
+                "{archive_rel} and {commit_rel}: the block starting {start:?} must read the same"
+            );
+        }
     }
 }
 
