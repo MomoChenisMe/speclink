@@ -21,7 +21,7 @@ Archive a completed change.
 
 1. **If no change name provided, prompt for selection**
 
-   Run `speclink plan --json` and list the candidates from its `changes` array in the given order — the archive order that honors declared dependencies and delta overlap. Label each candidate with its `blockedBy`: an empty array reads as「無阻擋」, a non-empty one as「等 <blockedBy 的名稱>」. Use the **AskUserQuestion tool** to let the user select.
+   Run `speclink plan --json` and list the candidates from its `changes` array in the given order — the archive order that honors declared dependencies and delta overlap. Label each candidate with its `blockedBy`: an empty array reads as 「無阻擋」, a non-empty one as 「等 <blockedBy 的名稱>」. Append the names in `skipped` (changes whose metadata the plan could not parse) at the end, marked 「metadata 壞掉」 — they stay selectable, as `list --json` would have shown them. Use the **AskUserQuestion tool** to let the user select.
 
    If `plan` fails (a dependency cycle), fall back to `speclink list --json` and list the active changes in its order, with no blocking labels.
 
@@ -62,7 +62,7 @@ Archive a completed change.
 
    > plan 建議先封存 <blockedBy 的名稱>，再封存 <name>：這些 change 排在它前面（宣告依賴或動到同一份規格）。
 
-   This is a suggestion only. It does NOT block the archive and relies on no engine gate: if the user confirms, archive as usual. An empty `blockedBy`, a target missing from the plan, or a `plan` failure (a dependency cycle) → say nothing about ordering and continue.
+   then use the **AskUserQuestion tool** to ask which way to go — archive `<name>` now anyway, or stop here and archive those prerequisites first (plain text + wait if the tool is unavailable). This is a suggestion only. It does NOT block the archive and relies on no engine gate: if the user confirms, archive as usual. An empty `blockedBy`, a target missing from the plan, or a `plan` failure (a dependency cycle) → say nothing about ordering and continue. When the user stops instead, end the run without archiving.
 
 4. **Assess delta spec completeness**
 
@@ -307,9 +307,9 @@ is non-null, add one more line:
 > plan 的下一個可開工：<next>，執行 `/speclink-apply <next>`。
 
 When the effective worktree policy is on (`speclink workflow-config show --json` →
-`worktree`; a `SPECLINK_WORKTREE` env override wins) and wave 1 (`waves[0].changes`)
-holds two or more changes whose `blockedBy` is empty and whose `stage` is `proposed`,
-also list them as parallel-safe:
+`worktree`; a `SPECLINK_WORKTREE` env override wins) and `changes` holds two or more
+entries with `wave` 1 and `stage` `proposed` (wave 1 waits on nothing, so their
+`blockedBy` is empty), also list them as parallel-safe:
 
 > 第 1 波可並行：<name-a>、<name-b>，各開一個 session 走 `/speclink-apply-with-worktree <name>`。
 

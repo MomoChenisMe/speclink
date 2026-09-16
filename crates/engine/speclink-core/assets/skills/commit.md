@@ -127,7 +127,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
 7a. **Archive sub-flow** (only when the user selected "Archive first, then commit together")
 
-    This sub-flow executes three checks in sequence before returning to the main commit flow.
+    This sub-flow runs its steps in sequence before returning to the main commit flow.
 
     **7a-i. Incomplete task handling**
 
@@ -161,7 +161,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     > plan 建議先封存 <blockedBy 的名稱>，再封存 <name>：這些 change 排在它前面（宣告依賴或動到同一份規格）。
 
-    This is a suggestion only. It does NOT block the archive and relies on no engine gate: if the user confirms, archive as usual. An empty `blockedBy`, a target missing from the plan, or a `plan` failure (a dependency cycle) → say nothing about ordering and continue.
+    then use the **AskUserQuestion tool** to ask which way to go — archive `<name>` now anyway, or stop here and archive those prerequisites first (plain text + wait if the tool is unavailable). This is a suggestion only. It does NOT block the archive and relies on no engine gate: if the user confirms, archive as usual. An empty `blockedBy`, a target missing from the plan, or a `plan` failure (a dependency cycle) → say nothing about ordering and continue. When the user stops instead, skip the archive (commit without it): the prerequisites get archived first.
 
     **7a-iii. Archive execution, re-display, and re-confirmation**
 
@@ -209,14 +209,14 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     5. Use the **AskUserQuestion tool** again to confirm the updated plan and message (the archive option is no longer offered). Only continue to step 8 after this re-confirmation.
 
-    6. Close the sub-flow with two reminders. Print them once, at the end of the flow (after the step 10 result) — they concern the archive, not the commit:
+    6. Close the sub-flow with two reminders. Print them once, wherever the flow ends: after the step 10 result, or right where the user stops at the re-confirmation above — the archive has already run either way, and after a stop its file moves are still uncommitted, so also remind the user to commit them with a plain git commit:
 
        - When the workspace has a `{{SPEC_DIR}}manual/` directory, add one line: the manual may be stale now, and `/speclink:manual` will report which pages this archive's spec changes outdated. The condition is the directory's existence only — do not work out which specs this archive touched, and do not judge whether the manual is actually stale; that is the manual skill's report. This is a reminder only — never run `/speclink:manual` yourself.
        - Run `speclink plan --json` and hand the user the next change to start. When `next` is non-null, add one more line:
 
          > plan 的下一個可開工：<next>，執行 `/speclink:apply <next>`。
 
-         When the effective worktree policy is on (`speclink workflow-config show --json` → `worktree`; a `SPECLINK_WORKTREE` env override wins) and wave 1 (`waves[0].changes`) holds two or more changes whose `blockedBy` is empty and whose `stage` is `proposed`, also list them as parallel-safe:
+         When the effective worktree policy is on (`speclink workflow-config show --json` → `worktree`; a `SPECLINK_WORKTREE` env override wins) and `changes` holds two or more entries with `wave` 1 and `stage` `proposed` (wave 1 waits on nothing, so their `blockedBy` is empty), also list them as parallel-safe:
 
          > 第 1 波可並行：<name-a>、<name-b>，各開一個 session 走 `/speclink:apply-with-worktree <name>`。
 
