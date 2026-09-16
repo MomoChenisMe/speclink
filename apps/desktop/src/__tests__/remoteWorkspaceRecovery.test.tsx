@@ -124,6 +124,26 @@ describe("RemoteWorkspaceRecovery", () => {
     expect(screen.queryByText("previous-workspace-change")).toBeNull();
   });
 
+  it("兩種狀態的根節點都撐滿到 max-w：main 是 flex 直欄，橫向 mx-auto 會關掉自動拉伸", () => {
+    // main 改 flex 直欄後，帶 mx-auto 的 flex item 寬度改隨內容縮包；比照
+    // SpecList／ArchivedList／設定頁根節點補 w-full，寬度才不隨文案長短跳動。
+    const props = {
+      tab,
+      connection,
+      onRetry: vi.fn(),
+      onOpenSettings: vi.fn(),
+      onReauthenticate: vi.fn(),
+      onRemove: vi.fn(),
+    };
+    const { unmount } = render(
+      <RemoteWorkspaceRecovery {...props} recovery={{ status: "restoring", failure: null }} />,
+    );
+    expect(screen.getByTestId("remote-workspace-recovery").className).toContain("w-full");
+    unmount();
+    render(<RemoteWorkspaceRecovery {...props} recovery={errorRecovery("unreachable")} />);
+    expect(screen.getByTestId("remote-workspace-recovery").className).toContain("w-full");
+  });
+
   it("狀態語意色：還原中為藍、存取遭拒為紅、需重新登入維持琥珀", () => {
     // spec「進行中以藍呈現」「錯誤態以紅呈現」：舊版一律塗琥珀，「等一下就好」
     // 與「這個工作區你進不去」看起來同一級。

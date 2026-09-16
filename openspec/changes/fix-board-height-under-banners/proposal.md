@@ -8,7 +8,9 @@
 
 ## Proposed Solution
 
-只修容器：把 main 改成 flex 直欄，技能檔提示的包裹層 shrink-0，四個視圖的根節點（已各自帶 min-h-0）在直欄內自動縮到「main 扣掉提示」的剩餘高度。各視圖元件、各欄內部捲軸、提示的位置與捲動釘選、版本橫幅全部不動。desktop-app 規格「指令檔過期提示」補一個 scenario，釘住「提示存在時內容區不被裁切」。
+只修容器：把 main 改成 flex 直欄，技能檔提示的包裹層 shrink-0，四個視圖的根節點（已各自帶 min-h-0）在直欄內自動縮到「main 扣掉提示」的剩餘高度。各視圖元件、各欄內部捲軸、提示的位置、版本橫幅全部不動。desktop-app 規格「指令檔過期提示」新增「提示只佔用自身高度」一段約束並補 scenario，釘住「提示存在時內容區不被裁切」。
+
+品質關卡順帶修兩處容器相關的小問題：捲動釘選從提示本體搬到包裹層——sticky 只能在包住它的區塊內移動，提示自帶 sticky 自 2026-09-02 加包裹層後就被等高的包裹層鎖死；包裹層是 main 的直接子節點，釘選才對專案設定頁整段捲動生效。`RemoteWorkspaceRecovery` 根節點補 `w-full`——main 改 flex 直欄後，帶 `mx-auto` 的 flex item 會改隨內容縮包。
 
 ## Non-Goals
 
@@ -16,24 +18,29 @@
 - 不合併或縮小同時出現的兩條橫幅：使用者明示不要，畫面變矮是合理佈局不是裁切。
 - 不只修 KanbanBoard 根節點：規格頁、手冊頁、已封存頁同樣受影響，修容器一次到位。
 - 不動 packages/ui 的元件：server-web 共用同一批元件，其版面不在本次範圍。
-- 不處理「專案設定頁的提示包裹層可能讓捲動釘選失效」：那是 2026-09-02 手冊頁變更加入包裹層後的另一個問題，本次只記錄不修。
 
 ## Success Criteria
 
 - 技能檔提示與版本橫幅同時出現、提案中欄有 3 張卡時，欄內捲到底可完整看到第 3 張卡的進度列，不被視窗底緣裁掉。
 - 規格頁與已封存頁在提示存在時，清單底部的換頁控制列完整可見。
 - 手冊頁在提示存在時，三欄底緣貼齊 main 底緣，不被裁掉。
-- 設定頁與專案設定頁行為不變：整頁縱向捲動。
-- App.test.tsx 新增斷言：store 帶 assetPrompt 時 main 的 class 含 flex 與 flex-col，提示包裹層含 shrink-0；既有「主內容區捲動約束」測試維持綠。
+- 設定頁與專案設定頁行為不變：整頁縱向捲動；專案設定頁向下捲動時，提示釘在主內容區可視頂部（2026-09-02 起失效的釘選恢復）。
+- remote 分頁的復原頁根節點寬度撐滿到 max-w，不隨文案長短變動。
+- App.test.tsx 新增斷言：store 帶 assetPrompt 時 main 的 class 含 flex 與 flex-col，提示包裹層含 shrink-0 與 sticky；提示存在時切規格頁、已封存頁、專案設定頁提示仍在；應用程式設定頁不掛提示。既有「主內容區捲動約束」測試維持綠。
 - 相容性影響：無 CLI、無 --json、無設定欄位、無技能檔變動；影響的 app 只有 apps/desktop。
 
 ## Impact
 
-- Affected specs: desktop-app（「指令檔過期提示」補 scenario，Requirement 正文不變）
+- Affected specs: desktop-app（「指令檔過期提示」Requirement 新增「提示只佔用自身高度」一段約束，並補三個 scenario 與一個 Example）
 - Affected code:
-  - Modified: apps/desktop/src/App.tsx（main 的 class 與提示包裹層 class）
+  - Modified: apps/desktop/src/App.tsx（main 的 class 與提示包裹層 class；釘選改由包裹層承擔）
+  - Modified: apps/desktop/src/components/AssetUpdatePrompt.tsx（拿掉自帶的 sticky，只留不透明底）
+  - Modified: apps/desktop/src/components/RemoteWorkspaceRecovery.tsx（兩個根節點補 w-full）
   - Modified: apps/desktop/src/__tests__/App.test.tsx（新增版面斷言）
-  - New: （無）
+  - Modified: apps/desktop/src/__tests__/assetUpdatePrompt.test.tsx（釘選斷言改為「元件不自帶 sticky、底不透明」）
+  - Modified: apps/desktop/src/__tests__/remoteWorkspaceRecovery.test.tsx（根節點 w-full 斷言）
+  - Modified: apps/desktop/src/__tests__/store.test.ts（改用共用 fixture）
+  - New: apps/desktop/src/__tests__/helpers/assetFixtures.ts（STALE_PROBE 共用 fixture）
   - Removed: （無）
-- 掃描既有規格：desktop-app「指令檔過期提示」「指令檔過期提示捲動釘選」「桌面自動更新」「清單最新在前與換頁瀏覽」相關；皆未承諾提示存在時內容區的高度，故補 scenario 而非改 Requirement。
+- 掃描既有規格：desktop-app「指令檔過期提示」「指令檔過期提示捲動釘選」「桌面自動更新」「清單最新在前與換頁瀏覽」相關；皆未承諾提示存在時內容區的高度，故在「指令檔過期提示」新增一段約束與 scenario。「指令檔過期提示捲動釘選」正文不變，本次讓它在專案設定頁重新成立。
 - 來源討論：board-height-under-banners

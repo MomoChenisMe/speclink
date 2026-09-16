@@ -30,12 +30,12 @@ export function AssetUpdatePrompt({
   const title = t(`assets.${prompt.kind}Title`);
   const desc = t(`assets.${prompt.kind}Desc`).replace("{count}", String(prompt.fileCount));
   return (
-    // 捲動釘選（spec 過期提示捲動釘選）：黏在主內容區可視頂部，底改
-    // 不透明——半透明底在釘選時會讓捲過的內容透出來疊字。
+    // 捲動釘選（spec 過期提示捲動釘選）的 sticky 住在 App.tsx 的包裹層，原因見
+    // 該處；元件只負責不透明底——半透明底在釘選時會讓捲過的內容透出來疊字。
     <div
       data-testid="asset-prompt"
       role="status"
-      className="sticky top-0 z-10 mb-4 flex items-start gap-2.5 rounded-md border border-border bg-muted px-3 py-2 text-sm"
+      className="mb-4 flex items-start gap-2.5 rounded-md border border-border bg-muted px-3 py-2 text-sm"
     >
       {/* 底色中性、狀態交給圖示：過期＝琥珀警示、套用失敗＝紅。 */}
       {error ? (

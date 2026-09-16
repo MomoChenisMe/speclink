@@ -6,3 +6,45 @@ from_discussion: board-height-under-banners
 depends_on: add-change-plan-desktop
 started_at: 2026-09-16
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-16
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 4
+reviewed_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: bc16e2b481c48fa0710443c30ff801805420fc4219f89240f771642c7bd295d2
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 4a15d2db7809165b9d5b8c6ddfbbf5bb6acb415ee472a29aeb0688a7399a4d6e
+  - path: apps/desktop/src/__tests__/assetUpdatePrompt.test.tsx
+    hash: 5088c80505a843a78e101bdf3f1ed32aad6ac5b1c6284bb7198ed1923ece5cab
+  - path: apps/desktop/src/__tests__/helpers/assetFixtures.ts
+    hash: fcf8e20e50ff4a0ff2cfdfb508e92861a62055d4d8e6ebcaf7fc1fa39e145153
+  - path: apps/desktop/src/__tests__/remoteWorkspaceRecovery.test.tsx
+    hash: 52297c2f097663d40ccb08c46567488908f213d4f8440097046fac13435f03d3
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: b4ea5d44e54e8fca74b2324f85a6bf9e40fc2088a92bb02d15d57f84194c1ca8
+  - path: apps/desktop/src/components/AssetUpdatePrompt.tsx
+    hash: 138036588f7993018348f3f7654d26057c6f329149dd764c1005fc70579076ba
+  - path: apps/desktop/src/components/RemoteWorkspaceRecovery.tsx
+    hash: 6c67e4380d4423339c7a33d2e1a14244a227432772b00bf6b608b6b7b915ba6e
+verified_at: 2026-09-16
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 4
+verified_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: bc16e2b481c48fa0710443c30ff801805420fc4219f89240f771642c7bd295d2
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 4a15d2db7809165b9d5b8c6ddfbbf5bb6acb415ee472a29aeb0688a7399a4d6e
+  - path: apps/desktop/src/__tests__/assetUpdatePrompt.test.tsx
+    hash: 5088c80505a843a78e101bdf3f1ed32aad6ac5b1c6284bb7198ed1923ece5cab
+  - path: apps/desktop/src/__tests__/helpers/assetFixtures.ts
+    hash: fcf8e20e50ff4a0ff2cfdfb508e92861a62055d4d8e6ebcaf7fc1fa39e145153
+  - path: apps/desktop/src/__tests__/remoteWorkspaceRecovery.test.tsx
+    hash: 52297c2f097663d40ccb08c46567488908f213d4f8440097046fac13435f03d3
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: b4ea5d44e54e8fca74b2324f85a6bf9e40fc2088a92bb02d15d57f84194c1ca8
+  - path: apps/desktop/src/components/AssetUpdatePrompt.tsx
+    hash: 138036588f7993018348f3f7654d26057c6f329149dd764c1005fc70579076ba
+  - path: apps/desktop/src/components/RemoteWorkspaceRecovery.tsx
+    hash: 6c67e4380d4423339c7a33d2e1a14244a227432772b00bf6b608b6b7b915ba6e

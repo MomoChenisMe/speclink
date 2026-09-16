@@ -105,16 +105,14 @@ describe("AssetUpdatePrompt", () => {
     expect(screen.getByTestId("asset-prompt").getAttribute("role")).toBe("status");
   });
 
-  it("捲動釘選：黏在可視區頂部、底不透明、層級高於捲過的內容", () => {
-    // spec 過期提示捲動釘選：一捲動就消失等於沒提示；釘住的同時底必須
-    // 不透明，否則下層內容會透出來疊字。
+  it("捲動釘選的底不透明：釘住時捲過的內容不得透出；釘選本身不由元件承擔", () => {
+    // spec 過期提示捲動釘選：釘住的同時底必須不透明，否則下層內容會透出來疊字。
+    // sticky 的唯一住所是 App.tsx 的包裹層（原因見該處），元件不得再帶。
     const h = handlers();
     render(<AssetUpdatePrompt prompt={STALE} error={null} busy={false} {...h} />);
 
     const banner = screen.getByTestId("asset-prompt");
-    expect(banner.className).toContain("sticky");
-    expect(banner.className).toContain("top-0");
-    expect(banner.className).toMatch(/\bz-\d+\b/);
+    expect(banner.className).not.toContain("sticky");
     // 不透明底：半透明（bg-muted/40 之類的 /透明度 後綴）會透字。
     expect(banner.className).toContain("bg-muted");
     expect(banner.className).not.toMatch(/bg-muted\//);

@@ -48,7 +48,7 @@ export function RemoteWorkspaceRecovery({
         role="status"
         aria-live="polite"
         data-testid="remote-workspace-recovery"
-        className="mx-auto flex h-full max-w-xl flex-col items-center justify-center gap-5 px-8 text-center"
+        className="mx-auto flex h-full w-full max-w-xl flex-col items-center justify-center gap-5 px-8 text-center"
       >
         <div
           className={cn(
@@ -86,7 +86,7 @@ export function RemoteWorkspaceRecovery({
       aria-live="polite"
       data-testid="remote-workspace-recovery"
       data-recovery-kind={failure.kind}
-      className="mx-auto flex h-full max-w-2xl flex-col justify-center px-8 py-10"
+      className="mx-auto flex h-full w-full max-w-2xl flex-col justify-center px-8 py-10"
     >
       {/* 卡底維持 bg-card（內容要讀得清楚），只借語意色的邊框。 */}
       <div className={cn("rounded-2xl border shadow-sm", SEMANTIC_SURFACE[tone], "bg-card")}>
