@@ -631,3 +631,40 @@ updated: 2026-08-12
 source: add-change-plan-desktop
 updated: 2026-09-16T14:57:15+08:00
 -->
+
+---
+### Requirement: 面板交接主視窗後滑鼠互動完整
+
+於 macOS，使用者自面板觸發任一會顯示主視窗的動作（點擊變更列、討論列、「開啟 Speclink」、專案設定、設定、復原卡的詳情／伺服器設定／重新登入、加入專案）後，主視窗 SHALL 於顯示到前景的同時具備完整的滑鼠互動：滑鼠移到任一互動元素上 SHALL 觸發其 hover 樣式與游標樣式，具 tooltip 的元素 SHALL 顯示 tooltip；SHALL NOT 出現「點擊可操作但 hover、游標樣式、tooltip 皆無反應」的狀態。此保證 SHALL 不依賴使用者再切換 app、調整視窗尺寸或等待。
+
+交接 SHALL 先收合面板再顯示主視窗；面板已因失焦先行收合時，交接 SHALL 仍成功、SHALL NOT 重新打開面板。既有「面板不搶焦點且失焦自動收合」與 Cmd-Tab 回前景的行為 SHALL 維持不變。
+
+#### Scenario: 自面板點變更列回前景後抽屜內 hover 正常
+
+- **WHEN** 主視窗在背景至少 5 秒，使用者點擊系統匣圖示開啟面板、點擊其中一個變更列，主視窗顯示到前景並開啟該變更的詳情抽屜
+- **THEN** 滑鼠移到抽屜內的按鈕上，該按鈕顯示 hover 樣式、游標樣式隨元素改變
+
+#### Scenario: 關閉抽屜後看板卡片 hover 與 tooltip 正常
+
+- **WHEN** 承上一情境，使用者點擊抽屜灰底關閉抽屜，滑鼠移到看板任一卡片上
+- **THEN** 卡片顯示 hover 樣式，卡片上具 tooltip 的元素顯示 tooltip
+
+#### Scenario: 自面板「開啟 Speclink」與討論列回前景同樣正常
+
+- **WHEN** 主視窗在背景至少 5 秒，使用者開啟面板後點擊「開啟 Speclink」或任一討論列
+- **THEN** 主視窗顯示到前景後，滑鼠移到任一互動元素上即有 hover 樣式與游標樣式
+
+#### Scenario: 面板已先收合時交接仍成功
+
+- **WHEN** 使用者點擊面板中的變更列，而面板在主視窗顯示前已因失焦自行收合
+- **THEN** 主視窗仍顯示到前景並開啟該變更詳情，面板 SHALL NOT 重新出現，主視窗滑鼠互動完整
+
+#### Scenario: Cmd-Tab 回前景行為不變
+
+- **WHEN** 使用者未經面板、以 Cmd-Tab 將主視窗切回前景
+- **THEN** 主視窗取得焦點且滑鼠互動完整，與本需求加入前相同
+
+<!-- @trace
+source: fix-desktop-hover-after-tray-panel
+updated: 2026-09-16T21:49:06+08:00
+-->

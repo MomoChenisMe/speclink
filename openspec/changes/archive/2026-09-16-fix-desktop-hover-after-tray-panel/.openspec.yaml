@@ -31,3 +31,5 @@ verified_scope:
     hash: 6c1366fa2449a5c9b8ab15dfee714daa69b7b9cb3f4bb01edc9d04e451d621bf
   - path: apps/desktop/src/tray.ts
     hash: 4290033acf3f6cefd29ad19ca2892ea5914e4d0eea7cb4bda5b69b97e546a6a4
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-16
