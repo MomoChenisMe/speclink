@@ -1,0 +1,56 @@
+{
+  "version": 2,
+  "change": "discuss-scout-in-flight-deltas",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 依 design「D1 delta 命中以檔案路徑比對，不加引擎輸出」與「D2 時間盒：只讀標題與標記，至多 3 份」改寫 crates/engine/speclink-core/assets/skills/discuss.md 的 Step 2 Canon pass 段落，滿足 spec 需求「事實與決策分診及逐節點查證」的「規格段納入進行中 delta 規格」場景：命中 capability 名後比對 openspec/changes/*/specs/<capability>/spec.md，存在者列為「進行中 delta 命中」並記路徑中的變更名；只讀該 delta 的 Requirement 標題與 ADDED／MODIFIED／REMOVED／RENAMED 標記、至多 3 份、不讀全文；正式規格零命中時跳過 delta 比對；本機無 openspec/changes/ 目錄時靜默跳過；Step 2 標題與三段順序句仍為「canon, then prior discussions, then code」，規格段措辭涵蓋正式規格與進行中 delta，不出現獨立的「in-flight changes」段。驗證：內容審閱逐條對照 spec「規格段納入進行中 delta 規格」與「開場 scout 維持淺掃」兩個 scenario 的 THEN；`grep -c \"openspec/changes/\\*/specs/\" crates/engine/speclink-core/assets/skills/discuss.md` 至少 1；2.1 的 golden 測試綠。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/discuss.md"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 依 design「D5 asset 三連動與版號對撞處理」把 crates/engine/speclink-core/src/workspace/init.rs 的 ASSET_VERSION 自當時 main 的值升一個 minor 版（本提案時 main 為 v1.36.0、add-plan-handoff-after-archive 排定升 v1.37.0，預期本變更升 v1.38.0），再生 crates/engine/speclink-core/tests/golden/ 下 claude.snapshot.md、claude-worktree.snapshot.md、codex.snapshot.md、neutral-cli.snapshot.md、neutral-tool-call.snapshot.md 五份快照與 assets.lock，使渲染產物含 1.1 至 1.3 的新內容。驗證：`cargo test -p speclink-core --test it render_golden` 綠；assets.lock 鎖定測試綠（同一 `cargo test -p speclink-core --test it` 內）；`grep -c \"openspec/changes/\\*/specs/\" crates/engine/speclink-core/tests/golden/claude.snapshot.md` 與 codex.snapshot.md 各至少 1。",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M2M1VWC4XYS1SRNCM0KKN8VC",
+      "taskDesc": "1.1 依 design「D1 delta 命中以檔案路徑比對，不加引擎輸出」與「D2 時間盒：只讀標題與標記，至多 3 份」改寫 crates/engine/speclink-core/assets/skills/discuss.md 的 Step 2 Canon pass 段落，滿足 spec 需求「事實與決策分診及逐節點查證」的「規格段納入進行中 delta 規格」場景：命中 capability 名後比對 openspec/changes/*/specs/<capability>/spec.md，存在者列為「進行中 delta 命中」並記路徑中的變更名；只讀該 delta 的 Requirement 標題與 ADDED／MODIFIED／REMOVED／RENAMED 標記、至多 3 份、不讀全文；正式規格零命中時跳過 delta 比對；本機無 openspec/changes/ 目錄時靜默跳過；Step 2 標題與三段順序句仍為「canon, then prior discussions, then code」，規格段措辭涵蓋正式規格與進行中 delta，不出現獨立的「in-flight changes」段。驗證：內容審閱逐條對照 spec「規格段納入進行中 delta 規格」與「開場 scout 維持淺掃」兩個 scenario 的 THEN；`grep -c \"openspec/changes/\\*/specs/\" crates/engine/speclink-core/assets/skills/discuss.md` 至少 1；2.1 的 golden 測試綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a4844d77bebc9eacd5f0d95f48747f907e36cabd",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/discuss.md"
+      ],
+      "recordedAt": "2026-09-16T09:08:54Z"
+    },
+    {
+      "taskId": "tsk_01M2M1VWC427EPVSWEG4PMQZ6Q",
+      "taskDesc": "2.1 依 design「D5 asset 三連動與版號對撞處理」把 crates/engine/speclink-core/src/workspace/init.rs 的 ASSET_VERSION 自當時 main 的值升一個 minor 版（本提案時 main 為 v1.36.0、add-plan-handoff-after-archive 排定升 v1.37.0，預期本變更升 v1.38.0），再生 crates/engine/speclink-core/tests/golden/ 下 claude.snapshot.md、claude-worktree.snapshot.md、codex.snapshot.md、neutral-cli.snapshot.md、neutral-tool-call.snapshot.md 五份快照與 assets.lock，使渲染產物含 1.1 至 1.3 的新內容。驗證：`cargo test -p speclink-core --test it render_golden` 綠；assets.lock 鎖定測試綠（同一 `cargo test -p speclink-core --test it` 內）；`grep -c \"openspec/changes/\\*/specs/\" crates/engine/speclink-core/tests/golden/claude.snapshot.md` 與 codex.snapshot.md 各至少 1。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a4844d77bebc9eacd5f0d95f48747f907e36cabd",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ],
+      "recordedAt": "2026-09-16T09:12:51Z"
+    }
+  ]
+}

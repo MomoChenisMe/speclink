@@ -9,7 +9,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
@@ -97,7 +97,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
@@ -446,7 +446,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
@@ -984,7 +984,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
@@ -1305,7 +1305,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
@@ -1541,7 +1541,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
@@ -1664,7 +1664,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
@@ -1957,7 +1957,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
@@ -2103,7 +2103,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
@@ -2170,12 +2170,15 @@ Always pass `--slug` with the English kebab-case slug you derived — the slug n
 ```bash
 speclink discuss context <slug> --stdin <<'CTX_EOF'
 What prompted this discussion, whether a grill stage (Step 3) was needed and why,
-and the related changes/specs the scout (Step 2) surfaced.
+and the related changes/specs the scout (Step 2) surfaced, its in-flight delta hits
+written as <name>: <capability>, comma-separated.
 Prior discussions: <slug list>
 CTX_EOF
 ```
 
 The `Prior discussions:` line is mandatory: it names the records the prior-discussion check (Step 2) hit, comma-separated; when the check hit nothing, write `Prior discussions: none`.
+
+The related changes/specs sentence is where the in-flight delta hits go: name each one as `<name>: <capability>` (e.g. `add-change-plan-remote: client-protocol`), comma-separated, inside that same sentence. With zero delta hits the sentence reads exactly as it always has — the canon hits and the change names, no empty marker. Never add a separate line for deltas (no `In-flight deltas:` line): the sentence carries them, and the `Prior discussions:` line stays exactly as specified above.
 
 **Source doc convention** — when the topic named a document (see "Document input" below), the Context SHALL carry one line naming it:
 
@@ -2279,9 +2282,11 @@ Pull 2-5 keywords from the user's topic. For "search should support fuzzy matchi
 
 ### Step 2: Scout — canon, then prior discussions, then code
 
-The scout is a funnel: the canon narrows the vocabulary, the prior-discussion check tells you what is already settled, then the code scan runs on the narrowed terms.
+The scout is a funnel: the canon (the archived specs, plus the in-flight deltas about to change them) narrows the vocabulary, the prior-discussion check tells you what is already settled, then the code scan runs on the narrowed terms.
 
 1. **Canon pass** — run `speclink list --specs --json` and match the keywords against capability names. Keep at most 5 candidates, read the Purpose of at most 3 of them (each hit's `path` is the capability's directory — its `spec.md` holds the Purpose), and read a spec in full only when the topic directly targets that capability. Zero hits → skip silently: don't mention specs at all and run the code pass with the original keywords.
+
+   **In-flight deltas belong to this pass.** An in-progress change carries delta specs for the capabilities it is rewriting, and `speclink show <name> --json` lists them in its `deltaSpecs` field (`<capability>/spec.md` entries). For each change `speclink list --json` returned (see "Speclink Awareness"), run `speclink show <name> --json` and use only that field — the payload also carries the change's artifacts in full; leave them alone. Every entry whose capability the canon pass hit is an **in-flight delta hit** — note it as `<name>: <capability>`. Time-box: for at most 3 hits (their capabilities taken in canon-hit order), run `speclink artifact cat specs/<capability> --change <name>` and keep only its `## ADDED` / `MODIFIED` / `REMOVED` / `RENAMED` section markers and `### Requirement:` headings — never the delta's full text. Zero canon hits → there is no capability name to match, so the delta check is skipped with it; no active changes → nothing to check. Both verbs work in remote mode, so the check runs the same way there. The delta hits feed the marker on the first two triage rows ("Covered by canon" / "Conflicts with canon", below) and the Context's "related changes/specs" line; they never open a stage of their own.
 2. **Translate** — rewrite the search terms using the capability names and canonical vocabulary the canon pass surfaced (on top of Step 0's vocabulary), so the code scan speaks the system's language instead of the user's.
 3. **Prior-discussion check** — run one search with the Step 1 keywords plus the English terms the translation produced:
 
@@ -2294,7 +2299,7 @@ The scout is a funnel: the canon narrows the vocabulary, the prior-discussion ch
 
 **Shortcut**: when the topic already names a concrete file or symbol, start the code pass immediately — don't wait for the canon pass. Run the canon pass afterwards anyway: the shortcut reorders the funnel, it doesn't skip a stage (the canon triage and the Context's related-specs line still need it).
 
-The scout exists to ground the discussion and judge requirement clarity (Step 3) — it is not the investigation. Deeper verification happens later, node by node along the decision tree (see "How to Discuss"). The canon hits from this step, together with the change hits from `speclink list --json` (see "Speclink Awareness"), are what the Context's "related changes/specs" line records; the prior-discussion hits fill its `Prior discussions:` line.
+The scout exists to ground the discussion and judge requirement clarity (Step 3) — it is not the investigation. Deeper verification happens later, node by node along the decision tree (see "How to Discuss"). The canon hits from this step — the in-flight delta hits among them written as `<name>: <capability>` — together with the change hits from `speclink list --json` (see "Speclink Awareness"), are what the Context's "related changes/specs" line records; the prior-discussion hits fill its `Prior discussions:` line.
 
 ### Step 3: Judge requirement clarity
 
@@ -2340,10 +2345,12 @@ Example:
 
 | Triage                            | Meaning                                         | What you do with it                                                                                                                                      |
 | --------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Covered by canon**              | an existing spec already promises it            | record it with the spec as Evidence                                                                                                                       |
-| **Conflicts with canon**          | the requirement contradicts an existing promise | present the conflict as an assumption, spec evidence attached — the user decides whether the canon or the requirement changes. Never block or veto the direction over it |
+| **Covered by canon**              | an existing spec already promises it            | record it with the spec as Evidence. In-flight delta hit on that capability → append `(in-flight change <name> will change: <Requirement names>)` (the in-flight marker, below) — a signal, never a reason to block or veto the direction |
+| **Conflicts with canon**          | the requirement contradicts an existing promise | present the conflict as an assumption, spec evidence attached — the user decides whether the canon or the requirement changes. Never block or veto the direction over it. In-flight delta hit on that capability → append `(in-flight change <name> will change: <Requirement names>)` too — the delta may already resolve or deepen the conflict; that is evidence for the user, not a veto |
 | **Canon is silent**               | new ground                                      | say so, and check the intended capability name against neighbouring specs while you're there                                                              |
 | **Settled by a prior discussion** | a past discussion already ruled on it           | three cases, the record's slug as Evidence — **ruled out**: record it with the reason it lost at the time; reopening that direction requires stating why that reason no longer holds. **Deferred**: it can be picked up now — say so. **Already landed**: the canon shows it, so do not list it again. Never block or veto the direction over a prior verdict |
+
+**In-flight marker** — on the first two rows, when the canon pass found an in-flight delta for that capability, write `(in-flight change <name> will change: <Requirement names>)` right after the triage label, naming the Requirements the delta's `ADDED` / `MODIFIED` / `REMOVED` / `RENAMED` sections touch, and let the Evidence name the delta next to the spec — e.g. `Covered by canon (in-flight change add-change-plan-remote will change: <Requirement names>)` with Evidence: the `client-protocol` spec plus the delta `add-change-plan-remote: client-protocol`. The marker tells the user that this assumption stands on ground someone is rewriting. It never blocks or vetoes the direction, and it is not a fifth triage row: the assumption stays covered or conflicting.
 
 The discipline: **the user's requirement is the goal; the canon and the prior discussions are evidence, not a verdict.** Departing from the canon, or reopening a direction an earlier discussion rejected, is a legitimate direction — it just goes into the record as a conscious decision, with the old reason and why it no longer holds.
 
@@ -2587,7 +2594,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
@@ -2725,7 +2732,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
@@ -2910,7 +2917,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
@@ -3193,7 +3200,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
@@ -3404,7 +3411,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
@@ -3878,7 +3885,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
@@ -3973,7 +3980,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
@@ -4172,7 +4179,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
@@ -4256,7 +4263,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
@@ -4543,7 +4550,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.37.0"
+  version: "v1.38.0"
   generatedBy: "Speclink"
 ---
 
