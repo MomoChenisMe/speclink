@@ -138,60 +138,22 @@ code:
 ---
 ### Requirement: meta 新欄位向後相容
 
-change meta 的解析 SHALL 對缺少 started_* 欄位的既有檔案維持既有行為：所有讀取 meta 的指令與查詢 SHALL 正常運作、該 change 視為未開工，SHALL NOT 產生任何警告或錯誤。
+change meta 的解析 SHALL 對缺少 started_* 欄位的既有檔案維持既有行為：所有讀取 meta 的指令與查詢 SHALL 正常運作、該 change 視為未開工，SHALL NOT 產生任何警告或錯誤。change meta 的 `depends_on` 欄位（頂層逗號清單，列出前置 change 名）缺席時 SHALL 讀作無依賴；含此欄位時 list 與 status 的人眼輸出與 --json 輸出 SHALL 與不含時逐位元一致。
 
 #### Scenario: 舊 meta 檔正常解析且視為未開工
 
 - **WHEN** 對 meta 僅含 schema 與 created_* 欄位（無 started_*）的 change 執行 speclink list --json 與 speclink status --change 該 change
 - **THEN** 兩指令輸出與遷移前版本位元級一致，exit code 為 0，無警告
 
+#### Scenario: depends_on 不影響既有輸出
+
+- **WHEN** 對 meta 含 `depends_on: other` 的 change 執行 speclink list --json 與 speclink status --change 該 change --json
+- **THEN** 兩指令輸出與該行不存在時逐位元一致，exit code 為 0
+
+
 <!-- @trace
-source: desktop-board-parity
-updated: 2026-07-06
-code:
-  - .spectra.yaml
-  - AGENTS.md
-  - CLAUDE.md
-  - Cargo.lock
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/lib.rs
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/testfixture.rs
-  - apps/desktop/core/src/verbs.rs
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/watch.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-core/Cargo.toml
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/inprogress.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/store.rs
-  - crates/speclink-core/src/teststore.rs
-  - crates/speclink-core/tests/no_direct_fs.rs
-  - crates/speclink-fs/src/lib.rs
-  - crates/speclink-fs/tests/store_fs.rs
-  - crates/speclink-node/src/store_bridge.rs
-  - package-lock.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/stage.test.ts
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/stage.ts
-  - packages/ui/src/tasks.ts
+source: add-change-plan-engine
+updated: 2026-09-16T09:24:26+08:00
 -->
 
 ---

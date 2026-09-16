@@ -4,10 +4,11 @@
 //! 轉換失敗回 [`WrongOutcome`] 錯誤值，不 panic（design D2）。
 
 use super::{
-    CommandOutcome, DiscussArchiveOutcome, DiscussBindOutcome, DiscussConcludeOutcome,
-    DiscussPromoteOutcome, DiscussRoundOutcome, DiscussShowOutcome, DiscussSubjectOutcome,
-    InProgressOutcome, InProgressRemoveOutcome, InstructionsOutcome, ListOutcome,
-    NewArtifactOutcome, NewChangeOutcome, ShowOutcome, TaskFlipOutcome, ValidateOutcome,
+    CommandOutcome, DependsOutcome, DiscussArchiveOutcome, DiscussBindOutcome,
+    DiscussConcludeOutcome, DiscussPromoteOutcome, DiscussRoundOutcome, DiscussShowOutcome,
+    DiscussSubjectOutcome, InProgressOutcome, InProgressRemoveOutcome, InstructionsOutcome,
+    ListOutcome, NewArtifactOutcome, NewChangeOutcome, PlanReport, ShowOutcome,
+    TaskFlipOutcome, ValidateOutcome,
 };
 use crate::analyzer::AnalyzeReport;
 use crate::archive::ArchiveOutcome;
@@ -47,6 +48,7 @@ fn variant_name(o: &CommandOutcome) -> &'static str {
         CommandOutcome::Validate(_) => "Validate",
         CommandOutcome::Analyze(_) => "Analyze",
         CommandOutcome::Trace(_) => "Trace",
+        CommandOutcome::Plan(_) => "Plan",
         CommandOutcome::ArtifactCat(_) => "ArtifactCat",
         CommandOutcome::Language(_) => "Language",
         CommandOutcome::DiscussList(_) => "DiscussList",
@@ -60,6 +62,7 @@ fn variant_name(o: &CommandOutcome) -> &'static str {
         CommandOutcome::Claim(_) => "Claim",
         CommandOutcome::InProgressAdd(_) => "InProgressAdd",
         CommandOutcome::InProgressRemove(_) => "InProgressRemove",
+        CommandOutcome::ChangeDepends(_) => "ChangeDepends",
         CommandOutcome::Archive(_) => "Archive",
         CommandOutcome::Discard(_) => "Discard",
         CommandOutcome::DiscussNew(_) => "DiscussNew",
@@ -109,6 +112,7 @@ typed_outcomes! {
     ValidateOutcome => [Validate],
     AnalyzeReport => [Analyze],
     TraceReport => [Trace],
+    PlanReport => [Plan],
     String => [ArtifactCat, Language],
     Vec<DiscussionInfo> => [DiscussList],
     DiscussShowOutcome => [DiscussShow],
@@ -118,6 +122,7 @@ typed_outcomes! {
     TaskFlipOutcome => [TaskDone, TaskUndone],
     InProgressOutcome => [InProgressAdd],
     InProgressRemoveOutcome => [InProgressRemove],
+    DependsOutcome => [ChangeDepends],
     ArchiveOutcome => [Archive],
     DiscardOutcome => [Discard],
     DiscussionInfo => [DiscussNew],

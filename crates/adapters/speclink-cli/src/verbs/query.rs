@@ -10,10 +10,9 @@ use speclink_core as core;
 use speclink_protocol::query as protocol_query;
 
 use crate::color;
-use crate::common::{info_if_no_changes, open_project, print_json, run};
+use crate::common::{info_if_no_changes, open_project, print_json, run, worktree_overlay};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
 use core::listing::ListChangeJson;
-use core::store::Store;
 
 #[derive(Args)]
 pub(crate) struct ListArgs {
@@ -64,18 +63,7 @@ pub(crate) fn cmd_list(a: ListArgs) -> Result<()> {
     // Worktree overlay (D3): only a local MAIN checkout with the policy on gets
     // here — everywhere else `facts` is empty, git is never spawned, and both
     // the store and the payload are exactly what they were before this feature.
-    let facts = speclink_host::worktree::observed_facts(&ws, &fs_store, |key| std::env::var(key).ok());
-    let overlaid = speclink_host::worktree::WorktreeOverlay::new(
-        &fs_store,
-        facts
-            .iter()
-            .map(|(name, e)| {
-                let store: Box<dyn Store> =
-                    Box::new(speclink_fs::FsStore::new(&e.path, &ws.spec_dir_name));
-                (name.clone(), store)
-            })
-            .collect(),
-    );
+    let (facts, overlaid) = worktree_overlay(&ws, &fs_store);
     let list: core::command::ListOutcome = run(
         if facts.is_empty() { &fs_store } else { &overlaid },
         Some(&ws),

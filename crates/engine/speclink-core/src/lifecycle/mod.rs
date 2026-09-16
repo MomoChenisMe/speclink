@@ -6,6 +6,7 @@ pub mod inprogress;
 pub mod listing;
 pub mod model;
 pub mod newcmd;
+pub mod plan;
 pub mod preflight;
 pub mod status;
 pub mod tasks;

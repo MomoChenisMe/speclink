@@ -189,6 +189,13 @@ pub enum DomainEvent {
     ChangeClaimed { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeMarkedInProgress { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeInProgressRemoved { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    /// `change depends` actually changed the declaration; `depends_on` is the
+    /// full list after the write.
+    ChangeDependsChanged {
+        change: String,
+        depends_on: Vec<String>,
+        occurred_at: chrono::DateTime<chrono::Utc>,
+    },
     ChangeArchived { change: String, dated_name: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeDiscarded { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ReviewRoundAdded { change: String, round: usize, occurred_at: chrono::DateTime<chrono::Utc> },
@@ -220,6 +227,7 @@ impl DomainEvent {
             DomainEvent::ChangeClaimed { .. } => "change-claimed",
             DomainEvent::ChangeMarkedInProgress { .. } => "change-marked-in-progress",
             DomainEvent::ChangeInProgressRemoved { .. } => "change-in-progress-removed",
+            DomainEvent::ChangeDependsChanged { .. } => "change-depends-changed",
             DomainEvent::ChangeArchived { .. } => "change-archived",
             DomainEvent::ChangeDiscarded { .. } => "change-discarded",
             DomainEvent::ReviewRoundAdded { .. } => "review-round-added",
@@ -289,6 +297,8 @@ pub enum Command {
     Analyze { change: Option<String> },
     /// `trace <capability>`
     Trace { capability: String },
+    /// `plan [--json]` — the change-level execution order (read-only).
+    Plan,
     /// `artifact cat <artifact> [--change <name>]`
     ArtifactCat {
         artifact: String,
@@ -358,6 +368,9 @@ pub enum Command {
     /// `in-progress remove <name>` — the reverse verb, gated on zero work
     /// traces; unknown names error loudly (deliberately asymmetric with add).
     InProgressRemove { name: String },
+    /// `change depends <name> --on <other>... [--remove]` — declare (or drop)
+    /// prerequisites in the change's meta; every guard refuses with zero writes.
+    ChangeDepends { name: String, on: Vec<String>, remove: bool },
     /// `archive [change] [--skip-specs] [--no-validate] [--mark-tasks-complete]`
     /// (single change; the CLI's `--all`/bulk loop stays in the entry point).
     Archive {
@@ -425,6 +438,9 @@ pub enum Command {
     /// `verify discard <change>`
     VerifyDiscard { change: String },
 }
+
+/// `plan` outcome — the engine's plan payload as computed (design D3).
+pub type PlanReport = crate::plan::Plan;
 
 /// `list` outcome: the changes section (sorted per the requested key, absent
 /// for `--specs` alone) and the specs section (present when specs were
@@ -550,6 +566,15 @@ pub struct InProgressRemoveOutcome {
     pub removed: bool,
 }
 
+/// `change depends` outcome: the declaration after the call and whether THIS
+/// call changed it (false for the idempotent pass — no event then).
+#[derive(Debug)]
+pub struct DependsOutcome {
+    pub change: String,
+    pub depends_on: Vec<String>,
+    pub changed: bool,
+}
+
 /// `discuss context` / `discuss discard` outcome (subject only).
 #[derive(Debug)]
 pub struct DiscussSubjectOutcome {
@@ -636,6 +661,7 @@ pub enum CommandOutcome {
     Validate(ValidateOutcome),
     Analyze(crate::analyzer::AnalyzeReport),
     Trace(crate::trace::TraceReport),
+    Plan(PlanReport),
     /// Raw artifact content (`artifact cat`).
     ArtifactCat(String),
     /// Raw LANGUAGE document content (`language show`).
@@ -652,6 +678,7 @@ pub enum CommandOutcome {
     Claim(ClaimOutcome),
     InProgressAdd(InProgressOutcome),
     InProgressRemove(InProgressRemoveOutcome),
+    ChangeDepends(DependsOutcome),
     Archive(crate::archive::ArchiveOutcome),
     Discard(crate::discard::DiscardOutcome),
     DiscussNew(crate::discuss::DiscussionInfo),
@@ -727,6 +754,11 @@ pub fn execute(
         }
         Command::Analyze { change } => run_analyze(store, change.as_deref()),
         Command::Trace { capability } => run_trace(store, &capability),
+        // A dependency cycle is a data defect in the change metas, reported
+        // with the cycle in the message (`dependency cycle: a -> b -> a`).
+        Command::Plan => crate::plan::compute(store)
+            .map(CommandOutcome::Plan)
+            .map_err(|e| classify(e.into())),
         Command::ArtifactCat { artifact, change } => {
             run_artifact_cat(store, &artifact, change.as_deref())
         }
@@ -767,6 +799,7 @@ pub fn execute(
         Command::Claim { name } => run_claim(store, ctx.actor.as_deref(), &name),
         Command::InProgressAdd { name } => run_in_progress_add(store, ctx.actor.as_deref(), &name),
         Command::InProgressRemove { name } => run_in_progress_remove(store, &name),
+        Command::ChangeDepends { name, on, remove } => run_change_depends(store, &name, &on, remove),
         Command::Archive { change, skip_specs, no_validate, mark_tasks_complete, carry_review, carry_verify } => run_archive(
             store,
             ws,
@@ -894,6 +927,7 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         | CommandOutcome::Validate(_)
         | CommandOutcome::Analyze(_)
         | CommandOutcome::Trace(_)
+        | CommandOutcome::Plan(_)
         | CommandOutcome::ArtifactCat(_)
         | CommandOutcome::Language(_)
         | CommandOutcome::DiscussList(_)
@@ -938,6 +972,12 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         CommandOutcome::InProgressRemove(o) if !o.removed => Vec::new(),
         CommandOutcome::InProgressRemove(o) => vec![DomainEvent::ChangeInProgressRemoved {
             change: o.name.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::ChangeDepends(o) if !o.changed => Vec::new(),
+        CommandOutcome::ChangeDepends(o) => vec![DomainEvent::ChangeDependsChanged {
+            change: o.change.clone(),
+            depends_on: o.depends_on.clone(),
             occurred_at: at,
         }],
         CommandOutcome::Archive(o) => vec![DomainEvent::ChangeArchived {
@@ -1708,6 +1748,28 @@ fn run_in_progress_remove(
     Ok(CommandOutcome::InProgressRemove(InProgressRemoveOutcome {
         name: name.to_string(),
         removed,
+    }))
+}
+
+fn run_change_depends(
+    store: &dyn Store,
+    name: &str,
+    on: &[String],
+    remove: bool,
+) -> Result<CommandOutcome, CommandError> {
+    // Loud not-found under the stable code before the flow; every other guard
+    // is a typed Refusal inside the flow, a corrupt meta its MetaError.
+    if crate::model::find_change(store, name).is_none() {
+        return Err(CommandError::new(
+            ErrorCode::NotFound,
+            format!("Change '{name}' not found."),
+        ));
+    }
+    let write = crate::plan::set_depends(store, name, on, remove).map_err(classify)?;
+    Ok(CommandOutcome::ChangeDepends(DependsOutcome {
+        change: name.to_string(),
+        depends_on: write.depends_on,
+        changed: write.changed,
     }))
 }
 

@@ -105,3 +105,39 @@ pub(crate) fn open_project() -> Result<(core::workspace::Workspace, speclink_fs:
     let store = speclink_fs::FsStore::new(&ws.root, &ws.spec_dir_name);
     Ok((ws, store))
 }
+
+/// The change → worktree facts of this checkout. Only a local MAIN checkout
+/// with the policy on yields any — everywhere else the map is empty and git is
+/// never spawned.
+pub(crate) fn worktree_facts(
+    ws: &Workspace,
+    fs_store: &speclink_fs::FsStore,
+) -> speclink_host::worktree::WorktreeFacts {
+    speclink_host::worktree::observed_facts(ws, fs_store, |key| std::env::var(key).ok())
+}
+
+/// The worktree observation surface of a batch read (`list`, `plan`): the
+/// facts plus the overlay store built from them. With no facts, callers read
+/// `fs_store` directly so the output is exactly what it was before the
+/// overlay existed.
+pub(crate) fn worktree_overlay<'a>(
+    ws: &Workspace,
+    fs_store: &'a speclink_fs::FsStore,
+) -> (
+    speclink_host::worktree::WorktreeFacts,
+    speclink_host::worktree::WorktreeOverlay<'a>,
+) {
+    let facts = worktree_facts(ws, fs_store);
+    let overlaid = speclink_host::worktree::WorktreeOverlay::new(
+        fs_store,
+        facts
+            .iter()
+            .map(|(name, e)| {
+                let store: Box<dyn Store> =
+                    Box::new(speclink_fs::FsStore::new(&e.path, &ws.spec_dir_name));
+                (name.clone(), store)
+            })
+            .collect(),
+    );
+    (facts, overlaid)
+}
