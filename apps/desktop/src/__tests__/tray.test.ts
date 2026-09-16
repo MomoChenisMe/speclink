@@ -750,7 +750,7 @@ describe("initTray 接線（選單）", () => {
     const settings = lastItems.find((i) => i.text === "設定");
     expect(settings).toBeDefined();
     settings.action();
-    // openMainWindow 為 async（unminimize → show → setFocus）：沖洗微任務後再斷言
+    // openMainWindow 為 async（hide_tray_panel → unminimize → show → setFocus）：沖洗微任務後再斷言
     await new Promise((r) => setTimeout(r, 0));
     expect(win.show).toHaveBeenCalled();
     expect(win.setFocus).toHaveBeenCalled();
@@ -763,7 +763,7 @@ describe("initTray 接線（選單）", () => {
     const ps = lastItems.find((i) => i.text === "專案設定");
     expect(ps).toBeDefined();
     ps.action();
-    // openMainWindow 為 async（unminimize → show → setFocus）：沖洗微任務後再斷言
+    // openMainWindow 為 async（hide_tray_panel → unminimize → show → setFocus）：沖洗微任務後再斷言
     await new Promise((r) => setTimeout(r, 0));
     expect(win.show).toHaveBeenCalled();
     expect(win.setFocus).toHaveBeenCalled();
@@ -895,7 +895,7 @@ describe("initTray 接線（選單）", () => {
     // 動作回流：open-change 開主視窗並開啟該變更詳情
     const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
     (actionCall[1] as (e: AnyItem) => void)({ payload: { kind: "open-change", id: "alpha" } });
-    // openMainWindow 為 async（unminimize → show）：沖洗微任務後再斷言
+    // openMainWindow 為 async（hide_tray_panel → unminimize → show → setFocus）：沖洗微任務後再斷言
     await new Promise((r) => setTimeout(r, 0));
     expect(win.show).toHaveBeenCalled();
     expect(bag.openDetail).toHaveBeenCalledWith("alpha");

@@ -32,7 +32,7 @@ macOS 桌面 app 的系統匣面板（tray-status-menu「面板樣式（macOS）
 
 ### D2. 步驟 A：面板先收再喚起主視窗，用冪等的隱藏命令
 
-apps/desktop/src/tray.ts 所有會喚起主視窗的動作，在 openMainWindow 之前先呼叫新的 Tauri command `hide_tray_panel`（apps/desktop/src-tauri/src/lib.rs 單行委派到 panel.rs 的 hide；非 macOS 回 Ok 無事）。理由：交接當下不再有第二個視窗（面板）與主視窗同拍互踩；面板可能已因失焦先收合，所以命令必須冪等（已隱藏再 hide 無事）。
+apps/desktop/src/tray.ts 所有會喚起主視窗的動作，在 openMainWindow 之前先呼叫新的 Tauri command `hide_tray_panel`（apps/desktop/src-tauri/src/lib.rs 單行委派到 panel.rs 的 hide；非 macOS 無事）。理由：交接當下不再有第二個視窗（面板）與主視窗同拍互踩；面板可能已因失焦先收合，所以命令必須冪等（已隱藏再 hide 無事）。
 
 替代：重用既有 toggle_tray_panel——被否決，toggle 在面板已收合時會把它重新打開，交接時序不可靠。
 
@@ -65,11 +65,11 @@ apps/desktop/src/tray.ts 所有會喚起主視窗的動作，在 openMainWindow 
 
 **介面**：
 
-- Tauri command `hide_tray_panel`：無參數、回 Result<(), String>；面板不存在或已隱藏時回 Ok；非 macOS 回 Ok 無事。
+- Tauri command `hide_tray_panel`：無參數、無回傳值（不會失敗，與 quit_app 同型）；面板不存在或已隱藏時無事；非 macOS 無事。
 - Tauri command `focus_main_window`（僅步驟 B 以後存在；**未建立**，A 已通過）：無參數、回 Result<(), String>；找不到主視窗回 Err 單行訊息；非 macOS 委派既有 show＋set_focus。
 - 前端 openMainWindow 的呼叫順序契約：A 通過時為 hide_tray_panel → unminimize → show → setFocus；B 通過時為 hide_tray_panel → unminimize → focus_main_window。**實際落地為 A 的順序。**
 
-**失敗模式**：hide_tray_panel 失敗靜默（不阻斷喚起主視窗）；focus_main_window 失敗記 console.error、不彈窗，主視窗至少仍以既有 show＋setFocus 顯示。
+**失敗模式**：hide_tray_panel 本身不會失敗，前端仍以 .catch 吞 IPC 層錯誤（不阻斷喚起主視窗）；focus_main_window 失敗記 console.error、不彈窗，主視窗至少仍以既有 show＋setFocus 顯示。
 
 **驗收**：
 
