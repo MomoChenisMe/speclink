@@ -36,11 +36,11 @@ apps/desktop/src/tray.ts 所有會喚起主視窗的動作，在 openMainWindow 
 
 替代：重用既有 toggle_tray_panel——被否決，toggle 在面板已收合時會把它重新打開，交接時序不可靠。
 
-### D3. 步驟 B：Rust 端「顯示並聚焦主視窗」命令取代前端 setFocus
+### D3. 步驟 B：Rust 端「顯示並聚焦主視窗」命令取代前端 setFocus（未執行：A 已通過）
 
 新增 Tauri command `focus_main_window`（lib.rs 單行委派；實作放 panel.rs 的 macOS 視窗交接區段，非 macOS 委派回既有 show＋set_focus），順序固定為：activateIgnoringOtherApps → makeKeyAndOrderFront → 把主視窗的 WKWebView 設回 first responder（對齊 wry 建視窗時的做法）。apps/desktop/src/tray.ts 的 openMainWindow 改為 unminimize → invoke focus_main_window。理由：tao 的順序在 app 未啟用時會讓 makeKey 被 AppKit 延後到啟用那一拍，與面板收合同拍；先啟用再 makeKey 讓交接有明確先後。
 
-### D4. 步驟 C：交接後對主視窗重算追蹤區
+### D4. 步驟 C：交接後對主視窗重算追蹤區（未執行：A 已通過）
 
 在 focus_main_window 尾端（或 A 通過後獨立加在 hide_tray_panel 之後）對主視窗 contentView 呼叫一次 invalidateCursorRectsForView，並對 WKWebView 呼叫 updateTrackingAreas；兩者皆為 AppKit 公開 API、無視覺副作用。理由：最貼「追蹤區未重算」的病灶；列為最後一步是因為它是補丁、不是修因。
 
@@ -66,8 +66,8 @@ apps/desktop/src/tray.ts 所有會喚起主視窗的動作，在 openMainWindow 
 **介面**：
 
 - Tauri command `hide_tray_panel`：無參數、回 Result<(), String>；面板不存在或已隱藏時回 Ok；非 macOS 回 Ok 無事。
-- Tauri command `focus_main_window`（僅步驟 B 以後存在）：無參數、回 Result<(), String>；找不到主視窗回 Err 單行訊息；非 macOS 委派既有 show＋set_focus。
-- 前端 openMainWindow 的呼叫順序契約：A 通過時為 hide_tray_panel → unminimize → show → setFocus；B 通過時為 hide_tray_panel → unminimize → focus_main_window。
+- Tauri command `focus_main_window`（僅步驟 B 以後存在；**未建立**，A 已通過）：無參數、回 Result<(), String>；找不到主視窗回 Err 單行訊息；非 macOS 委派既有 show＋set_focus。
+- 前端 openMainWindow 的呼叫順序契約：A 通過時為 hide_tray_panel → unminimize → show → setFocus；B 通過時為 hide_tray_panel → unminimize → focus_main_window。**實際落地為 A 的順序。**
 
 **失敗模式**：hide_tray_panel 失敗靜默（不阻斷喚起主視窗）；focus_main_window 失敗記 console.error、不彈窗，主視窗至少仍以既有 show＋setFocus 顯示。
 
@@ -93,3 +93,4 @@ apps/desktop/src/tray.ts 所有會喚起主視窗的動作，在 openMainWindow 
 ## Open Questions
 
 - 若 A 就通過，B 與 C 的命令不建立——tasks.md 的對應任務以「不執行」勾銷並註明依據（第幾次實測）。
+  **已解**：第一次實測（2026-09-16，使用者於本機安裝 worktree 建置的開發版、引擎 v1.37.0）A 通過——三條路徑（變更列、「開啟 Speclink」、討論列）回前景後 hover 皆正常。B（D3）與 C（D4）未執行，focus_main_window 未建立；tasks.md 的 2.x 與 3.x 以「A 通過，不執行」勾銷。

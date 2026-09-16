@@ -18,7 +18,7 @@
 //! - `startup_dir`——讀行程環境（啟動時的工作目錄）
 //! - `connection_state`——讀記憶體中的 TokenManager 健康狀態
 //! - `remote_unwatch`——退訂事件中樞，只動記憶體中的訂閱表
-//! - `toggle_tray_panel`、`quit_app`——純視窗／行程操作
+//! - `toggle_tray_panel`、`hide_tray_panel`、`quit_app`——純視窗／行程操作
 //! - tray recovery 動作轉發（[`tray`] 模組）——只釘 action 名稱與聚焦政策
 //!
 //! 新增 command 時：只要碰到檔案系統或子進程，就是 async＋spawn_blocking。
@@ -1671,6 +1671,21 @@ fn toggle_tray_panel() -> Result<(), String> {
     Err("tray panel is macOS-only".to_string())
 }
 
+/// 面板交接主視窗前先收合（tray-status-menu「面板交接主視窗後滑鼠互動完整」）：
+/// macOS 委派 panel 模組的冪等 hide；其他平台無面板，恆回 Ok 無事——喚起主視窗
+/// 的前端路徑在各平台共用，此命令不得成為非 macOS 的阻斷點。
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn hide_tray_panel(app: tauri::AppHandle) -> Result<(), String> {
+    panel::hide(&app)
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn hide_tray_panel() -> Result<(), String> {
+    Ok(())
+}
+
 /// 結束 app（tray-status-menu「開啟視窗與結束動作」）：webview 無法自行結束
 /// 行程的能力橋接——面板動作區「結束」經此命令結束整個 app。
 #[tauri::command]
@@ -1816,6 +1831,7 @@ pub fn run() {
             remote_watch,
             remote_unwatch,
             toggle_tray_panel,
+            hide_tray_panel,
             quit_app
         ])
         .run(tauri::generate_context!())

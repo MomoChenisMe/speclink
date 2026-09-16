@@ -28,11 +28,13 @@
 
 依序試三個修法，第一個讓重現路徑不再發作的就收，其餘不做：
 
-- **A. 面板先收、再叫主視窗**：src/tray.ts 的 open-* 動作（open-change、open-discussion、open-app、open-recovery、open-server-settings、reauthenticate、add-project、open-project-settings、open-settings 等所有會喚起主視窗的動作）先把面板收合，再執行 openMainWindow。幾行 TypeScript，不碰 Rust。
+- **A. 面板先收、再叫主視窗**：src/tray.ts 的 open-* 動作（open-change、open-discussion、open-app、open-recovery、open-server-settings、reauthenticate、add-project、open-project-settings、open-settings 等所有會喚起主視窗的動作）先把面板收合，再執行 openMainWindow。一個冪等的 Rust 收合命令（hide_tray_panel）加幾行 TypeScript。
 - **B. Rust 端新命令取代 setFocus**：src-tauri/src/lib.rs 新增一個「顯示並聚焦主視窗」的 Tauri command，順序為先 activateIgnoringOtherApps、再 makeKeyAndOrderFront、再把主視窗的 WKWebView 設回 first responder（對齊 wry 建視窗時的做法）；src/tray.ts 的 openMainWindow 改呼叫此命令。
 - **C. 交接後重設追蹤區**：主視窗成為前景後，對主視窗呼叫一次 AppKit 的追蹤區重算（invalidateCursorRectsForView 或等價的無感 nudge）。最貼病灶、但最像補丁。
 
 每一步做完都以下方 Success Criteria 的重現路徑實機驗收；通過即停在該步。無 CLI 指令、設定欄位或技能檔異動，無相容性影響。
+
+**實測結果（2026-09-16）**：步驟 A 通過——使用者以本機安裝的開發版走三條重現路徑，hover 皆正常；B 與 C 未執行。
 
 ## Non-Goals
 
@@ -53,6 +55,7 @@
 
 - Affected specs: tray-status-menu（新增「面板交接主視窗後滑鼠互動完整」需求）
 - Affected code:
-  - Modified: apps/desktop/src/tray.ts、apps/desktop/src/__tests__/tray.test.ts、apps/desktop/src-tauri/src/lib.rs（僅 B 或 C 成立時）、apps/desktop/src-tauri/src/panel.rs（僅 B 或 C 成立時）
+  - Modified: apps/desktop/src/tray.ts、apps/desktop/src/__tests__/tray.test.ts、apps/desktop/src-tauri/src/lib.rs（A 的 hide_tray_panel 命令）、apps/desktop/src-tauri/src/panel.rs（A 的冪等 hide 函式）
   - New: 無
   - Removed: 無
+  - 未建立（A 通過，B 與 C 不執行）：Tauri command focus_main_window 與其追蹤區重算段落

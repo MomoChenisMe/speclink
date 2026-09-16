@@ -577,7 +577,9 @@ describe("initTray 接線（選單）", () => {
     // alpha 為進行中，是子選單（有 items）
     const alpha = lastItems.find((i) => Array.isArray(i.items) && (i.text ?? "").startsWith("alpha"));
     expect(alpha).toBeDefined();
-    await alpha.items[0].action();
+    alpha.items[0].action();
+    // openMainWindow 為 async（hide_tray_panel → unminimize → show → setFocus）：沖洗微任務後再斷言
+    await new Promise((r) => setTimeout(r, 0));
     expect(win.show).toHaveBeenCalled();
     expect(bag.openDetail).toHaveBeenCalledWith("alpha");
   });
@@ -712,7 +714,9 @@ describe("initTray 接線（選單）", () => {
     expect(disc.items[0].enabled).toBe(false);
     // 開啟此討論 → 主視窗＋openDiscussion
     expect(disc.items[1].text).toBe("開啟此討論");
-    await disc.items[1].action();
+    disc.items[1].action();
+    // openMainWindow 為 async（hide_tray_panel → unminimize → show → setFocus）：沖洗微任務後再斷言
+    await new Promise((r) => setTimeout(r, 0));
     expect(win.show).toHaveBeenCalled();
     expect(bag.openDiscussion).toHaveBeenCalledWith("d1");
     // 複製 slug → 剪貼簿為 slug
@@ -895,6 +899,36 @@ describe("initTray 接線（選單）", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(win.show).toHaveBeenCalled();
     expect(bag.openDetail).toHaveBeenCalledWith("alpha");
+  });
+
+  // spec「面板交接主視窗後滑鼠互動完整」（design D2、D5 自動層）：交接先收合面板
+  // 再喚起主視窗——invoke 的第一個呼叫是 hide_tray_panel，視窗 unminimize／show／
+  // setFocus 全在其後；收合失敗靜默，不阻斷喚起。
+  it("面板動作 open-change 先 invoke hide_tray_panel，之後才 unminimize／show／setFocus", async () => {
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
+    (actionCall[1] as (e: AnyItem) => void)({ payload: { kind: "open-change", id: "alpha" } });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(vi.mocked(invoke).mock.calls[0]?.[0]).toBe("hide_tray_panel");
+    const hideAt = vi.mocked(invoke).mock.invocationCallOrder[0];
+    expect(hideAt).toBeLessThan(win.unminimize.mock.invocationCallOrder[0]);
+    expect(hideAt).toBeLessThan(win.show.mock.invocationCallOrder[0]);
+    expect(hideAt).toBeLessThan(win.setFocus.mock.invocationCallOrder[0]);
+    expect(bag.openDetail).toHaveBeenCalledWith("alpha");
+  });
+
+  it("hide_tray_panel 拒絕時靜默，主視窗仍 show 並 setFocus", async () => {
+    const bag = makeStore();
+    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    vi.mocked(invoke).mockRejectedValueOnce(new Error("tray panel unavailable"));
+    const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
+    (actionCall[1] as (e: AnyItem) => void)({ payload: { kind: "open-change", id: "alpha" } });
+    // 沖洗微任務：rejection 須被吞掉，否則 vitest 以 unhandled rejection 失敗
+    await new Promise((r) => setTimeout(r, 0));
+    expect(invoke).toHaveBeenCalledWith("hide_tray_panel");
+    expect(win.show).toHaveBeenCalled();
+    expect(win.setFocus).toHaveBeenCalled();
   });
 
   it("面板動作 open-project 以 remote locator key 呼叫 activateTab", async () => {

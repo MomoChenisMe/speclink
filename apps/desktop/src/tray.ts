@@ -671,8 +671,12 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
   };
 }
 
-/** 顯示主視窗並取得焦點（自最小化亦還原）——選單「開啟 Speclink」項用。 */
+/** 顯示主視窗並取得焦點（自最小化亦還原）——選單與面板所有喚起主視窗的動作共用。
+ * 先收合面板再喚起（spec「面板交接主視窗後滑鼠互動完整」、design D2）：交接當下
+ * 不再有面板與主視窗同拍互踩；命令冪等，面板已因失焦先收合亦無事、不會重開。
+ * 收合失敗靜默——不阻斷後續 show 與 setFocus。 */
 async function openMainWindow(): Promise<void> {
+  await invoke("hide_tray_panel").catch(() => {});
   const win = getCurrentWindow();
   await win.unminimize();
   await win.show();
