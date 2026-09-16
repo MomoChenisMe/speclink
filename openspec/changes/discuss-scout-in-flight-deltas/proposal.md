@@ -1,15 +1,15 @@
 ## Why
 
-/speclink-discuss 開場偵察的規格段只讀已封存的正式規格（speclink list --specs --json），進行中變更帶的 delta 規格（openspec/changes/<name>/specs/<capability>/spec.md）完全不在偵察範圍；技能檔只在「Speclink Awareness」段跑 speclink list --json 列出變更名稱，而該 JSON 每筆只有 name／status／summary／completedTasks／totalTasks，沒有這個變更改了哪些 capability。結果是透過 AI 代理跑 SDD 的開發者、PO 與 PM 在開討論時，假設清單可能建立在一條正被某個進行中變更改掉的正式規格上，要到 propose 或 drift 階段才撞到。本 repo 此刻就有三個進行中變更、12 個 delta capability 目錄，偵察一個都看不到。
+/speclink-discuss 開場偵察的規格段只讀已封存的正式規格（speclink list --specs --json），進行中變更帶的 delta 規格（openspec/changes/<name>/specs/<capability>/spec.md）完全不在偵察範圍；技能檔只在「Speclink Awareness」段跑 speclink list --json 列出變更名稱，而該 JSON 每筆只有 name／status／summary／completedTasks／totalTasks，沒有這個變更改了哪些 capability；speclink show <name> --json 雖帶 deltaSpecs 欄位，技能檔從未規定偵察時用它。結果是透過 AI 代理跑 SDD 的開發者、PO 與 PM 在開討論時，假設清單可能建立在一條正被某個進行中變更改掉的正式規格上，要到 propose 或 drift 階段才撞到。本 repo 此刻就有三個進行中變更、12 個 delta capability 目錄，偵察一個都看不到。
 
 本變更承接討論 discuss-scout-in-flight-deltas 的結論：偵察順序不動，規格段擴大為「正式規格＋進行中 delta 規格」，零引擎改動。
 
 ## What Changes
 
 - **discuss 技能的偵察規格段納入進行中 delta 規格**（影響 speclink-core 的技能 asset；渲染至 claude 與 codex 兩個工具的 speclink-discuss 技能檔，事實來源 crates/engine/speclink-core/assets/skills/discuss.md）：
-  - Step 2 的 Canon pass 命中 capability 名後，技能檔規定順手比對 openspec/changes/*/specs/<capability>/spec.md 是否存在（以既有 Glob 工具或等價檔案列舉）；存在即為「進行中 delta 命中」，其變更名取自路徑的 <name> 段。
-  - 時間盒：delta 命中只讀 Requirement 標題與 ADDED／MODIFIED／REMOVED 標記，至多 3 份，不讀全文；與既有「正式規格讀 Purpose 至多 3 份、原始碼至多 5 檔」並列。
-  - 三段順序「正式規格 → 舊討論查核 → 程式碼」不變；delta 規格屬規格段的一部分，不另開一段。正式規格零命中時 delta 比對也跳過（沒有 capability 名可對）。
+  - Step 2 的 Canon pass 命中 capability 名後，技能檔規定對 speclink list --json 回傳的每個進行中變更執行 speclink show <name> --json，只取其 deltaSpecs 欄位與命中的 capability 名交集；交集即「進行中 delta 命中」，變更名即該次 show 的 <name>。不以檔案路徑比對：正典 verb-contract 禁止技能檔指示直接開啟規格目錄的檔案（skill_verbization 守門測試）。
+  - 時間盒：delta 命中以 speclink artifact cat specs/<capability> --change <name> 取內容，只讀 Requirement 標題與 ADDED／MODIFIED／REMOVED／RENAMED 標記，至多 3 份，不讀全文；與既有「正式規格讀 Purpose 至多 3 份、原始碼至多 5 檔」並列。兩動詞皆為 Dual，remote 模式同樣可用。
+  - 三段順序「正式規格 → 舊討論查核 → 程式碼」不變；delta 規格屬規格段的一部分，不另開一段。正式規格零命中或沒有進行中變更時 delta 比對跳過。
 - **假設清單的對照標記**：既有四類對照不增列；「Covered by canon」與「Conflicts with canon」兩類在 delta 命中時附加標記「（進行中變更 <name> 將改動）」，讓使用者一眼看出該假設踩在別人正在改的地方。不得以此擋下討論方向。
 - **Context 段**：不加新行；既有「related changes/specs」句的撰寫規定改為一併列出命中的 delta capability 與其變更名。`Prior discussions:` 行與 Context／Rounds／Conclusion 骨架不變。
 - **技能 asset 三連動**：ASSET_VERSION 升一個 minor 版、render golden 快照（claude、claude-worktree、codex、neutral-cli、neutral-tool-call）與 assets.lock 同批更新，speclink update 再生 .claude/skills 與 .agents/skills 下的 SKILL.md。
