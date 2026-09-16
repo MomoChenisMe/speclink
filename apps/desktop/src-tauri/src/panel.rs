@@ -52,14 +52,13 @@ pub fn toggle(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// 面板交接主視窗前的收合入口（tray-status-menu「面板交接主視窗後滑鼠互動完整」；
-/// design D2）：冪等——面板尚未建立或已因失焦先收合皆無事回 Ok，不像 toggle 會把
-/// 已收合的面板重新打開。hide 即 orderOut，對已隱藏的視窗本身就是無事。
-pub fn hide(app: &AppHandle) -> Result<(), String> {
+/// 面板收合入口——交接主視窗前（tray-status-menu「面板交接主視窗後滑鼠互動完整」；
+/// design D2）與失焦自動收合共用。冪等且不會失敗：面板尚未建立或已收合皆無事，
+/// 不像 toggle 會把已收合的面板重新打開；hide 即 orderOut，對已隱藏的視窗本身就是無事。
+pub fn hide(app: &AppHandle) {
     if let Ok(panel) = app.get_webview_panel(PANEL_LABEL) {
         panel.hide();
     }
-    Ok(())
 }
 
 /// 建立面板視窗：無邊框、透明、不進工作列、置頂、先隱藏；轉 NSPanel 後套
@@ -107,11 +106,7 @@ fn create(app: &AppHandle) -> Result<(), String> {
     // 失焦自動收合（spec：點面板外任意處面板收合）。
     let handler = TrayStatusPanelEvents::new();
     let handle = app.clone();
-    handler.window_did_resign_key(move |_notification| {
-        if let Ok(p) = handle.get_webview_panel(PANEL_LABEL) {
-            p.hide();
-        }
-    });
+    handler.window_did_resign_key(move |_notification| hide(&handle));
     panel.set_event_handler(Some(handler.as_ref()));
     Ok(())
 }
