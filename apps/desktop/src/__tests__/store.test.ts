@@ -5,6 +5,7 @@ import { createAppStore, openTicketStation } from "../store";
 import type { ConnectionsAdapter } from "../adapter/connections";
 import type { WorkspaceAdapter } from "../adapter/workspace";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
+import { STALE_PROBE } from "./helpers/assetFixtures";
 
 const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { error: toastError } }));
@@ -1332,13 +1333,6 @@ describe("device login 分段輪詢", () => {
 });
 
 // --- 指令檔過期提示（desktop-instruction-staleness-prompt；規格「指令檔過期提示」） ---
-
-const STALE_PROBE = {
-  status: "stale" as const,
-  currentVersion: "v1.3.0",
-  tools: [{ tool: "claude", workspaceVersion: "v0.9.0", stale: true, newer: false, missing: false }],
-  differingFiles: ["CLAUDE.md", ".claude/skills/speclink-apply/SKILL.md"],
-};
 
 const MISSING_PROBE = {
   ...STALE_PROBE,

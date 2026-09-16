@@ -7,6 +7,7 @@ import { App } from "../App";
 import { APP_MESSAGES } from "../i18n/messages";
 import { RELEASE_NOTES } from "../release-notes/release-notes";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
+import { STALE_PROBE } from "./helpers/assetFixtures";
 import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
 // 模擬 Tauri 事件層：捕捉 workspace-changed 的訂閱 handler，測試可手動觸發。
@@ -60,6 +61,9 @@ beforeEach(() => {
   toasterSpy.mockClear();
   // 各測試自行預置分頁持久化；先清掉避免跨測試洩漏。
   localStorage.removeItem("speclink.projectTabs");
+  // 技能檔提示的「保留現狀」記憶也是 localStorage：清掉，免得一條測試按過
+  // 保留現狀就讓後面期待提示出現的測試依執行順序逾時。
+  localStorage.removeItem("speclink.instructionSkips");
   // jsdom 的 navigator.language 為 en-US；既有中文斷言以明示偏好 zh-TW 固定 UI 語言。
   localStorage.setItem("speclink.uiLocale", "zh-TW");
 });
@@ -947,38 +951,56 @@ describe("main content scroll containment（主內容區捲動約束）", () => 
   // 直欄、提示包裹層 shrink-0，看板等視圖的根節點（h-full min-h-0）縮到扣除提示後的
   // 剩餘高度，而非被 overflow-hidden 裁切；設定頁仍整頁捲動。jsdom 無版面計算，這裡
   // 釘的是 class 契約（欄高算法由手動任務實機確認）。
-  it("技能檔提示存在時 main 為 flex 直欄、提示包裹層 shrink-0；設定頁維持 overflow-y-auto", async () => {
+  it("技能檔提示存在時 main 為 flex 直欄、包裹層 shrink-0 且釘選；專案設定頁維持 overflow-y-auto", async () => {
     const ws = {
       ...fakeWorkspace(),
       openProject: vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" }),
       // 過期探測回報 3 個受管檔有異 → store 帶 assetPrompt（kind stale、fileCount 3）。
       probeAssets: vi.fn().mockResolvedValue({
-        status: "stale",
-        currentVersion: "v1.3.0",
-        tools: [{ tool: "claude", workspaceVersion: "v0.9.0", stale: true, newer: false, missing: false }],
-        differingFiles: [
-          "CLAUDE.md",
-          ".claude/skills/speclink-apply/SKILL.md",
-          ".claude/skills/speclink-propose/SKILL.md",
-        ],
+        ...STALE_PROBE,
+        differingFiles: [...STALE_PROBE.differingFiles, ".claude/skills/speclink-propose/SKILL.md"],
       }),
       updateAssets: vi.fn().mockResolvedValue(undefined),
     };
     renderApp(fakeDataSource(), { ws });
     await screen.findByText("desktop-shell-and-browser");
-    const prompt = await screen.findByTestId("asset-prompt");
-    expect(prompt.textContent).toContain("3 個檔案");
+    await screen.findByTestId("asset-prompt");
+    const prompt = () => screen.getByTestId("asset-prompt");
+    const wrapper = () => prompt().parentElement as HTMLElement;
     const main = () => document.querySelector("main") as HTMLElement;
+    const aside = document.querySelector("aside") as HTMLElement;
+    expect(prompt().textContent).toContain("3 個檔案");
     // 看板：flex 直欄與 overflow-hidden 並存（classList 逐 token 比對，避免 flex-1 誤中）。
     expect(main().classList.contains("flex")).toBe(true);
     expect(main().classList.contains("flex-col")).toBe(true);
     expect(main().classList.contains("overflow-hidden")).toBe(true);
     // 提示包裹層不可被壓縮：剩餘高度全給視圖。
-    expect(prompt.parentElement?.classList.contains("shrink-0")).toBe(true);
-    // 設定頁：整頁捲動不受影響。
-    const aside = document.querySelector("aside") as HTMLElement;
-    fireEvent.click(within(aside).getByRole("button", { name: "設定" }));
+    expect(wrapper().classList.contains("shrink-0")).toBe(true);
+    // 規格頁與已封存頁（scenario「提示存在時清單頁的換頁控制列可見」）：提示仍在、同一組 class。
+    for (const [label, ready] of [
+      ["規格", "desktop-app"],
+      ["已封存", "已封存的變更"],
+    ] as const) {
+      fireEvent.click(within(aside).getByRole("button", { name: label }));
+      await waitFor(() => expect(screen.getByText(ready)).toBeTruthy());
+      expect(prompt()).toBeTruthy();
+      expect(main().classList.contains("flex-col")).toBe(true);
+      expect(main().classList.contains("overflow-hidden")).toBe(true);
+    }
+    // 專案設定頁（scenario「提示存在時設定頁維持整頁捲動」）：提示仍在、main 整頁捲動。
+    // 釘選（spec「指令檔過期提示捲動釘選」）與底色都由包裹層承擔，原因見 App.tsx 包裹層註解。
+    fireEvent.click(within(aside).getByRole("button", { name: "專案設定" }));
     await waitFor(() => expect(main().className).toContain("overflow-y-auto"));
+    expect(main().className).not.toContain("overflow-hidden");
+    expect(prompt()).toBeTruthy();
+    expect(wrapper().classList.contains("sticky")).toBe(true);
+    expect(wrapper().classList.contains("top-0")).toBe(true);
+    expect(wrapper().className).toMatch(/\bz-\d+\b/);
+    expect(wrapper().classList.contains("bg-background")).toBe(true);
+    // 應用程式設定頁：不屬專案語境，提示不掛；整頁捲動不變。
+    fireEvent.click(within(aside).getByRole("button", { name: "設定" }));
+    await waitFor(() => expect(screen.queryByTestId("asset-prompt")).toBeNull());
+    expect(main().className).toContain("overflow-y-auto");
     expect(main().className).not.toContain("overflow-hidden");
   });
 });

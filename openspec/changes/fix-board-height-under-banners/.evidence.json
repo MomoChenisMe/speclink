@@ -9,6 +9,18 @@
         "apps/desktop/src/App.tsx",
         "apps/desktop/src/__tests__/App.test.tsx"
       ]
+    },
+    {
+      "task_id": "1",
+      "task_desc": "1.1 落實規格「指令檔過期提示」的「提示 SHALL 只佔用自身高度」約束：主內容區 main 改為 flex 直欄，技能檔提示的包裹層加 shrink-0；提示存在時，看板、規格頁、手冊頁、已封存頁的根節點（各自已帶 h-full min-h-0）縮到 main 扣除提示後的剩餘高度，底緣貼齊 main 底緣、不再被 overflow-hidden 裁切；設定頁與專案設定頁的 main 仍為 overflow-y-auto 整頁捲動；捲動釘選（sticky top-0 z-10）搬到提示包裹層，提示本體不再自帶 sticky；RemoteWorkspaceRecovery 兩個根節點補 w-full。手冊視圖的提示包裹層維持既有的 px-5 pt-5 自補內距。影響路徑：apps/desktop/src/App.tsx、apps/desktop/src/components/AssetUpdatePrompt.tsx、apps/desktop/src/components/RemoteWorkspaceRecovery.tsx。驗證：任務 1.2 的新測試與既有 describe「main content scroll containment（主內容區捲動約束）」全部通過（`npm test -w @speclink/desktop`）。",
+      "files": [
+        "apps/desktop/src/__tests__/assetUpdatePrompt.test.tsx",
+        "apps/desktop/src/__tests__/remoteWorkspaceRecovery.test.tsx",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/components/AssetUpdatePrompt.tsx",
+        "apps/desktop/src/components/RemoteWorkspaceRecovery.tsx",
+        "apps/desktop/src/__tests__/helpers/assetFixtures.ts"
+      ]
     }
   ],
   "entries": [
@@ -23,6 +35,22 @@
         "apps/desktop/src/__tests__/App.test.tsx"
       ],
       "recordedAt": "2026-09-16T07:18:18Z"
+    },
+    {
+      "taskId": "tsk_01M2M39Y9XQV61QFQ31SDSP3FY",
+      "taskDesc": "1.1 落實規格「指令檔過期提示」的「提示 SHALL 只佔用自身高度」約束：主內容區 main 改為 flex 直欄，技能檔提示的包裹層加 shrink-0；提示存在時，看板、規格頁、手冊頁、已封存頁的根節點（各自已帶 h-full min-h-0）縮到 main 扣除提示後的剩餘高度，底緣貼齊 main 底緣、不再被 overflow-hidden 裁切；設定頁與專案設定頁的 main 仍為 overflow-y-auto 整頁捲動；捲動釘選（sticky top-0 z-10）搬到提示包裹層，提示本體不再自帶 sticky；RemoteWorkspaceRecovery 兩個根節點補 w-full。手冊視圖的提示包裹層維持既有的 px-5 pt-5 自補內距。影響路徑：apps/desktop/src/App.tsx、apps/desktop/src/components/AssetUpdatePrompt.tsx、apps/desktop/src/components/RemoteWorkspaceRecovery.tsx。驗證：任務 1.2 的新測試與既有 describe「main content scroll containment（主內容區捲動約束）」全部通過（`npm test -w @speclink/desktop`）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1b1bccd2082618538cbfa5f8ab8a3e0cb359996f",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/assetUpdatePrompt.test.tsx",
+        "apps/desktop/src/__tests__/remoteWorkspaceRecovery.test.tsx",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/components/AssetUpdatePrompt.tsx",
+        "apps/desktop/src/components/RemoteWorkspaceRecovery.tsx",
+        "apps/desktop/src/__tests__/helpers/assetFixtures.ts"
+      ],
+      "recordedAt": "2026-09-16T08:06:40Z"
     }
   ]
 }
