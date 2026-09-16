@@ -683,12 +683,15 @@ function AppInner({
 
         {/* 主內容：看板、規格頁、已封存頁填滿高度（清單於內部容器捲動、換頁控
             制列沉底常駐）；設定頁維持整頁縱向捲動；手冊頁的三欄分隔線要貫穿
-            主內容全高，padding 由 ManualPage 各欄自管 */}
-        <main className={`flex-1 ${s.boardView === "manual" ? "p-0" : "p-5"} ${s.boardView === "settings" || s.boardView === "project-settings" ? "overflow-y-auto" : "overflow-hidden"}`}>
+            主內容全高，padding 由 ManualPage 各欄自管。flex 直欄（spec「提示
+            SHALL 只佔用自身高度」）：技能檔提示存在時，各視圖根節點（h-full
+            min-h-0）縮到扣除提示後的剩餘高度，而非被 overflow-hidden 裁掉底部 */}
+        <main className={`flex flex-1 flex-col ${s.boardView === "manual" ? "p-0" : "p-5"} ${s.boardView === "settings" || s.boardView === "project-settings" ? "overflow-y-auto" : "overflow-hidden"}`}>
           {/* 指令檔提示（決策 7）：per 專案、分頁內容頂部、非阻斷；應用程式設定
-              頁不屬專案語境故不掛。手冊視圖的 main 無 padding，提示存在時自補。 */}
+              頁不屬專案語境故不掛。包裹層 shrink-0：提示只佔自身高度。手冊視圖的
+              main 無 padding，提示存在時自補。 */}
           {s.boardView !== "settings" && (
-            <div className={s.boardView === "manual" && s.assetPrompt ? "px-5 pt-5" : undefined}>
+            <div className={cn("shrink-0", s.boardView === "manual" && s.assetPrompt && "px-5 pt-5")}>
               <AssetUpdatePrompt
                 prompt={s.assetPrompt}
                 error={s.assetUpdateError}
