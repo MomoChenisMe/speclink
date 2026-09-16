@@ -56,6 +56,32 @@ fn status_returns_typed_outcome_without_events() {
 }
 
 #[test]
+fn plan_returns_typed_outcome_without_events() {
+    // change-plan：plan 是查詢，經唯一進入點回 Plan outcome、零事件。
+    let store = TestStore::with_meta("demo", META);
+    store.metas.borrow_mut().insert("later".to_string(), "schema: spec-driven\ndepends_on: demo\n".to_string());
+    let (outcome, events) = execute(&store, &ExecutionContext::default(), Command::Plan).expect("plan executes");
+    match outcome {
+        CommandOutcome::Plan(plan) => {
+            assert_eq!(plan.next.as_deref(), Some("demo"));
+            assert_eq!(plan.changes.len(), 2);
+            assert_eq!(plan.changes[1].blocked_by, ["demo"]);
+        }
+        other => panic!("expected a plan outcome, got {other:?}"),
+    }
+    assert!(events.is_empty(), "queries never produce events");
+}
+
+#[test]
+fn plan_dependency_cycle_is_an_error_naming_the_cycle() {
+    let store = TestStore::with_meta("a", "schema: spec-driven\ndepends_on: b\n");
+    store.metas.borrow_mut().insert("b".to_string(), "schema: spec-driven\ndepends_on: a\n".to_string());
+    let err = execute(&store, &ExecutionContext::default(), Command::Plan).expect_err("a cycle cannot plan");
+    assert_eq!(err.code, ErrorCode::Error);
+    assert_eq!(err.message, "dependency cycle: a -> b -> a");
+}
+
+#[test]
 fn validate_returns_typed_outcome_without_events() {
     let store = TestStore::with_meta("demo", META);
     let (outcome, events) = execute(
@@ -1252,6 +1278,72 @@ fn in_progress_remove_unknown_change_is_not_found() {
     assert!(err.message.contains("ghost"), "error names the change: {}", err.message);
 }
 
+// --- change depends：宣告依賴的 outcome、事件與守門分類（change-plan design D4/D6）---
+
+#[test]
+fn change_depends_reports_change_depends_changed_with_the_full_list() {
+    let store = TestStore::with_meta("demo", META);
+    store.metas.borrow_mut().insert("a".to_string(), META.to_string());
+    let (outcome, events) = ok(
+        &store,
+        Command::ChangeDepends { name: "demo".to_string(), on: vec!["a".to_string()], remove: false },
+    );
+    match outcome {
+        CommandOutcome::ChangeDepends(o) => {
+            assert_eq!(o.change, "demo");
+            assert_eq!(o.depends_on, ["a"]);
+            assert!(o.changed);
+        }
+        other => panic!("expected a change-depends outcome, got {other:?}"),
+    }
+    assert_eq!(kinds(&events), ["change-depends-changed"]);
+    match &events[0] {
+        DomainEvent::ChangeDependsChanged { change, depends_on, .. } => {
+            assert_eq!(change, "demo");
+            assert_eq!(depends_on, &["a".to_string()]);
+        }
+        other => panic!("unexpected event {other:?}"),
+    }
+    assert_eq!(store.meta("demo"), format!("{META}depends_on: a\n"));
+}
+
+#[test]
+fn change_depends_idempotent_pass_reports_no_event() {
+    let store = TestStore::with_meta("demo", &format!("{META}depends_on: a\n"));
+    store.metas.borrow_mut().insert("a".to_string(), META.to_string());
+    let (outcome, events) = ok(
+        &store,
+        Command::ChangeDepends { name: "demo".to_string(), on: vec!["a".to_string()], remove: false },
+    );
+    match outcome {
+        CommandOutcome::ChangeDepends(o) => assert!(!o.changed, "nothing changed"),
+        other => panic!("expected a change-depends outcome, got {other:?}"),
+    }
+    assert!(events.is_empty(), "an idempotent pass mutates nothing — no event");
+    assert_eq!(*store.meta_writes.borrow(), 0);
+}
+
+#[test]
+fn change_depends_guards_are_refused_and_unknown_target_is_not_found() {
+    let store = TestStore::with_meta("demo", META);
+    let err = execute(
+        &store,
+        &ExecutionContext::default(),
+        Command::ChangeDepends { name: "demo".to_string(), on: vec!["ghost".to_string()], remove: false },
+    )
+    .expect_err("an unknown prerequisite must refuse");
+    assert_eq!(err.code, ErrorCode::Refused);
+    assert!(err.message.contains("ghost"), "{}", err.message);
+    let err = execute(
+        &store,
+        &ExecutionContext::default(),
+        Command::ChangeDepends { name: "ghost".to_string(), on: vec!["demo".to_string()], remove: false },
+    )
+    .expect_err("an unknown target must error");
+    assert_eq!(err.code, ErrorCode::NotFound);
+    assert_eq!(*store.meta_writes.borrow(), 0);
+}
+
 #[test]
 fn archive_reports_change_archived() {
     let store = TestStore::with_meta("demo", META);
@@ -1707,6 +1799,10 @@ fn event_kind_table_matches_the_spec_coverage_table() {
             "change-marked-in-progress",
         ),
         (
+            DomainEvent::ChangeDependsChanged { change: s("c"), depends_on: vec![s("a")], occurred_at: at },
+            "change-depends-changed",
+        ),
+        (
             DomainEvent::ChangeArchived { change: s("c"), dated_name: s("2026-07-12-c"), occurred_at: at },
             "change-archived",
         ),
@@ -1754,7 +1850,7 @@ fn event_kind_table_matches_the_spec_coverage_table() {
         (DomainEvent::VerifyStamped { change: s("c"), occurred_at: at }, "verify-stamped"),
         (DomainEvent::VerifyDiscarded { change: s("c"), occurred_at: at }, "verify-discarded"),
     ];
-    assert_eq!(table.len(), 24, "the coverage table has 24 mutating verbs");
+    assert_eq!(table.len(), 25, "the coverage table has 25 mutating verbs");
     for (event, kind) in &table {
         assert_eq!(event.kind(), *kind, "for {event:?}");
     }
@@ -1776,6 +1872,7 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
         Command::Validate { item: _, all: _, changes: _, specs: _, strict: _ } => {}
         Command::Analyze { change: _ } => {}
         Command::Trace { capability: _ } => {}
+        Command::Plan => {}
         Command::ArtifactCat { artifact: _, change: _ } => {}
         Command::LanguageShow => {}
         Command::DiscussList { archived: _ } => {}
@@ -1796,6 +1893,7 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
         Command::Claim { name: _ } => {}
         Command::InProgressAdd { name: _ } => {}
         Command::InProgressRemove { name: _ } => {}
+        Command::ChangeDepends { name: _, on: _, remove: _ } => {}
         Command::Archive { change: _, skip_specs: _, no_validate: _, mark_tasks_complete: _, carry_review: _, carry_verify: _ } => {}
         Command::Discard { change: _, force: _ } => {}
         Command::DiscussNew { topic: _, slug: _, kind: _ } => {}

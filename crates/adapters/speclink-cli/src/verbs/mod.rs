@@ -17,6 +17,7 @@ pub(crate) mod init;
 pub(crate) mod instructions;
 pub(crate) mod lifecycle;
 pub(crate) mod new;
+pub(crate) mod plan;
 pub(crate) mod progress;
 pub(crate) mod query;
 pub(crate) mod station;

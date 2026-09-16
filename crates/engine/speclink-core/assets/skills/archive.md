@@ -43,6 +43,14 @@ Archive a completed change.
 
    **If no tasks file exists:** Proceed without task-related warning.
 
+3b. **Plan order hint**
+
+   Run `speclink plan --json` and find the target change in its `changes` array. If its `blockedBy` is non-empty, tell the user:
+
+   > plan 建議先封存 <blockedBy 的名稱>，再封存 <name>：這些 change 排在它前面（宣告依賴或動到同一份規格）。
+
+   This is a suggestion only. It does NOT block the archive and relies on no engine gate: if the user confirms, archive as usual. An empty `blockedBy`, a target missing from the plan, or a `plan` failure (a dependency cycle) → say nothing about ordering and continue.
+
 4. **Assess delta spec completeness**
 
    Check for delta specs at `{{SPEC_DIR}}changes/<name>/specs/`. If none exist, skip this step.

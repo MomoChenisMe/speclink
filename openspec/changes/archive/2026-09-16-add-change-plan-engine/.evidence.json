@@ -1,0 +1,260 @@
+{
+  "version": 2,
+  "change": "add-change-plan-engine",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 紅燈：在 crates/engine/speclink-core/src/lifecycle/model.rs 的測試模組新增「meta 新欄位向後相容」測試——含 `depends_on: a, b` 的 meta 解析出 `depends_on()` 為 [a, b]、缺席為空清單；在 crates/engine/speclink-core/src/lifecycle/listing.rs 沿 `list_json_payload_is_unchanged_by_board_rank` 家族新增 `list_json_payload_is_unchanged_by_depends_on`。驗證：`cargo test -p speclink-core` 兩測試先紅。",
+      "files": [
+        "crates/engine/speclink-core/src/lifecycle/listing.rs",
+        "crates/engine/speclink-core/src/lifecycle/model.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 紅燈：新增 crates/engine/speclink-core/src/lifecycle/plan.rs 的測試模組，以 TestStore 夾具覆蓋「執行順序的基底與拓樸修正」：基底三鍵（階段 → 有 rank 字典序在前、缺 rank 置後且 created 升冪、缺 created 殿後 → 名稱決斷）、宣告依賴推後波次、重疊互斥依基底順序定先後、指向已封存視為滿足、已開工者排在未開工者之前、規格 Example 的五 change 表（waves 為 [[r1, p2, n5], [n3], [n4]]、next 為 n5）、成環回 `PlanError::Cycle` 並列出環、壞 meta 列入 skipped。驗證：`cargo test -p speclink-core plan::` 先紅。",
+      "files": [
+        "crates/engine/speclink-core/src/lib.rs",
+        "crates/engine/speclink-core/src/lifecycle/mod.rs",
+        "crates/engine/speclink-core/src/lifecycle/plan.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.1 紅燈：新增 crates/adapters/speclink-cli/tests/it/plan_verbs.rs（於 tests/it/main.rs 註冊）覆蓋「plan 動詞輸出波次與阻擋清單」：`--json` 的 payload 含 waves、changes、next、skipped 四鍵且 changes 每項七鍵皆為 camelCase 與規格型別；`--no-color` 人眼輸出含 `Wave 1` 與 `next:` 行且無 ANSI；成環時 exit code 非零、stderr 含 `dependency cycle: a -> b -> a`、stdout 空；壞 meta 進 skipped；無 change 時 waves 為 `[]`、next 為 null。驗證：`cargo test -p speclink-cli --test it plan_verbs` 先紅。",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/main.rs",
+        "crates/adapters/speclink-cli/tests/it/plan_verbs.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.2 綠燈：`Command::Plan` 與 `PlanReport` 加進 crates/engine/speclink-core/src/command/mod.rs 與 typed.rs；新增 crates/adapters/speclink-cli/src/verbs/plan.rs 的 `cmd_plan`（與 `cmd_list` 同一套 observed_facts → WorktreeOverlay 組裝 store）、人眼渲染與 `--json`；於 crates/adapters/speclink-cli/src/main.rs 以 `fs_only` 宣告 `plan`（拒絕句依 D6）。驗證：3.1 全綠。",
+      "files": [
+        "crates/adapters/speclink-cli/src/common.rs",
+        "crates/adapters/speclink-cli/src/main.rs",
+        "crates/adapters/speclink-cli/src/verbs/mod.rs",
+        "crates/adapters/speclink-cli/src/verbs/query.rs",
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/src/command/typed.rs",
+        "crates/adapters/speclink-cli/src/verbs/plan.rs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "3.4 綠燈：`Command::ChangeDepends { name, on, remove }` 與 `DependsOutcome { change, depends_on, changed }`，實際改動時發布 `DomainEvent::ChangeDependsChanged`（kind `change-depends-changed`）、冪等零事件（command 測試斷言事件有無）；引擎 `plan::set_depends(store, name, on, remove)` 依 D4 順序守門、單次 `edit_meta` 內逐一 `push_list`／`remove_list`；CLI 新增 `change` 頂層動詞（子指令 `depends`，旗標 `--on` 多值、`--remove`、`--json`）並以 `fs_only` 宣告。驗證：3.3 全綠。",
+      "files": [
+        "crates/host/speclink-host/src/commit.rs"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "3.5 「模式分岔的單點宣告」：在 crates/adapters/speclink-cli/tests/it/mode_dispatch.rs 的 FsOnly 段補 `plan` 與 `change depends` 於 remote 模式且 server 不可達時 exit code 非零、stderr 含各自拒絕句、零請求。驗證：`cargo test -p speclink-cli --test it mode_dispatch` 全綠；`cargo test -p speclink-cli --test it remote_verb_parity` 不變。",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/mode_dispatch.rs"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "3.6 worktree 聚合面：沿 crates/adapters/speclink-cli/tests/it/worktree_overlay.rs 的夾具補一例——worktree 內已勾任務的 change 在主 checkout 執行 `speclink plan --json` 時 stage 為 in-progress。驗證：`cargo test -p speclink-cli --test it worktree_overlay` 全綠。",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/worktree_overlay.rs"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "4.1 改寫 crates/engine/speclink-core/assets/skills/propose.md 的「Pending-change landscape check」為 D8 的流程（只判本次 change 的軟依賴 → `speclink change depends` 落檔 → `speclink plan --json` 依 worktree 政策分波呈現；作用中只有本 change 時跳過），對應規格「收尾盤點提案中變更的執行順序」。驗證：內容審閱——段落含 `speclink change depends` 與 `speclink plan --json` 字面、不再含「read each proposal's Impact and tasks」的全盤判定。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/propose.md"
+      ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "4.2 改寫 crates/engine/speclink-core/assets/skills/apply.md 第 1 步「Select the change」為「apply 技能以 plan 挑選與守門」：先跑 `speclink plan --json`，未指名取 next（null 即列 blockedBy 並停止），指名且 blockedBy 非空即印前置並 STOP、不跑 review prepare 與 in-progress add；移除「只有一個 change 就自動選」。驗證：內容審閱——apply-with-worktree 經 B_APPLY 拼接自動帶到（4.4 的 claude-worktree golden 可見同段）。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/apply.md"
+      ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "4.3 於 crates/engine/speclink-core/assets/skills/archive.md 封存前置檢查加「Plan order hint」段落，對應「archive 技能以 plan 建議封存順序」：跑 `speclink plan --json`，目標 blockedBy 非空時提醒先封存前置，明載僅建議不阻擋。驗證：內容審閱——段落含 `speclink plan --json` 與「建議、不阻擋」語意。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/archive.md"
+      ]
+    },
+    {
+      "task_id": "16",
+      "task_desc": "4.4 crates/engine/speclink-core/src/workspace/init.rs 的 `ASSET_VERSION` 升為 v1.36.0，並同批更新 crates/engine/speclink-core/tests/golden/ 下 claude.snapshot.md、claude-worktree.snapshot.md、codex.snapshot.md 與 assets.lock。驗證：`cargo test -p speclink-core --test it render_golden::` 與 assets.lock 鎖定測試全綠；三份快照皆含 `speclink plan --json` 字面。",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ]
+    },
+    {
+      "task_id": "17",
+      "task_desc": "4.5 `cargo build -p speclink-cli` 後執行 `speclink update` 再生 .claude/skills 與 .agents/skills 下的 SKILL.md，並以 `git status` 確認 speclink-apply、speclink-apply-with-worktree、speclink-propose、speclink-archive 四組（claude 與 codex）皆更新；這批再生檔不進 evidence，收尾 commit 前手動帶上。驗證：`grep -l \"speclink plan --json\" .claude/skills/*/SKILL.md` 列出上述四份；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。",
+      "files": [
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M2J1KTEQMYYCC839R51208GB",
+      "taskDesc": "1.1 紅燈：在 crates/engine/speclink-core/src/lifecycle/model.rs 的測試模組新增「meta 新欄位向後相容」測試——含 `depends_on: a, b` 的 meta 解析出 `depends_on()` 為 [a, b]、缺席為空清單；在 crates/engine/speclink-core/src/lifecycle/listing.rs 沿 `list_json_payload_is_unchanged_by_board_rank` 家族新增 `list_json_payload_is_unchanged_by_depends_on`。驗證：`cargo test -p speclink-core` 兩測試先紅。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b8f174324556a1b1022d9eba187c9d47b81e4a00",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lifecycle/listing.rs",
+        "crates/engine/speclink-core/src/lifecycle/model.rs"
+      ],
+      "recordedAt": "2026-09-15T09:10:02Z"
+    },
+    {
+      "taskId": "tsk_01M2J1KTEQQKTJMS0AC45GVSTW",
+      "taskDesc": "2.1 紅燈：新增 crates/engine/speclink-core/src/lifecycle/plan.rs 的測試模組，以 TestStore 夾具覆蓋「執行順序的基底與拓樸修正」：基底三鍵（階段 → 有 rank 字典序在前、缺 rank 置後且 created 升冪、缺 created 殿後 → 名稱決斷）、宣告依賴推後波次、重疊互斥依基底順序定先後、指向已封存視為滿足、已開工者排在未開工者之前、規格 Example 的五 change 表（waves 為 [[r1, p2, n5], [n3], [n4]]、next 為 n5）、成環回 `PlanError::Cycle` 並列出環、壞 meta 列入 skipped。驗證：`cargo test -p speclink-core plan::` 先紅。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b8f174324556a1b1022d9eba187c9d47b81e4a00",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lib.rs",
+        "crates/engine/speclink-core/src/lifecycle/mod.rs",
+        "crates/engine/speclink-core/src/lifecycle/plan.rs"
+      ],
+      "recordedAt": "2026-09-15T09:15:01Z"
+    },
+    {
+      "taskId": "tsk_01M2J1KTEQ1GX5DM45BXE8Q725",
+      "taskDesc": "3.1 紅燈：新增 crates/adapters/speclink-cli/tests/it/plan_verbs.rs（於 tests/it/main.rs 註冊）覆蓋「plan 動詞輸出波次與阻擋清單」：`--json` 的 payload 含 waves、changes、next、skipped 四鍵且 changes 每項七鍵皆為 camelCase 與規格型別；`--no-color` 人眼輸出含 `Wave 1` 與 `next:` 行且無 ANSI；成環時 exit code 非零、stderr 含 `dependency cycle: a -> b -> a`、stdout 空；壞 meta 進 skipped；無 change 時 waves 為 `[]`、next 為 null。驗證：`cargo test -p speclink-cli --test it plan_verbs` 先紅。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b8f174324556a1b1022d9eba187c9d47b81e4a00",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/main.rs",
+        "crates/adapters/speclink-cli/tests/it/plan_verbs.rs"
+      ],
+      "recordedAt": "2026-09-15T09:41:02Z"
+    },
+    {
+      "taskId": "tsk_01M2J1KTEQZG6DPFYGPSTG509K",
+      "taskDesc": "3.2 綠燈：`Command::Plan` 與 `PlanReport` 加進 crates/engine/speclink-core/src/command/mod.rs 與 typed.rs；新增 crates/adapters/speclink-cli/src/verbs/plan.rs 的 `cmd_plan`（與 `cmd_list` 同一套 observed_facts → WorktreeOverlay 組裝 store）、人眼渲染與 `--json`；於 crates/adapters/speclink-cli/src/main.rs 以 `fs_only` 宣告 `plan`（拒絕句依 D6）。驗證：3.1 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b8f174324556a1b1022d9eba187c9d47b81e4a00",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/common.rs",
+        "crates/adapters/speclink-cli/src/main.rs",
+        "crates/adapters/speclink-cli/src/verbs/mod.rs",
+        "crates/adapters/speclink-cli/src/verbs/query.rs",
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/src/command/typed.rs",
+        "crates/adapters/speclink-cli/src/verbs/plan.rs"
+      ],
+      "recordedAt": "2026-09-15T09:59:05Z"
+    },
+    {
+      "taskId": "tsk_01M2J1KTEQN36PACY4RV2GANWZ",
+      "taskDesc": "3.4 綠燈：`Command::ChangeDepends { name, on, remove }` 與 `DependsOutcome { change, depends_on, changed }`，實際改動時發布 `DomainEvent::ChangeDependsChanged`（kind `change-depends-changed`）、冪等零事件（command 測試斷言事件有無）；引擎 `plan::set_depends(store, name, on, remove)` 依 D4 順序守門、單次 `edit_meta` 內逐一 `push_list`／`remove_list`；CLI 新增 `change` 頂層動詞（子指令 `depends`，旗標 `--on` 多值、`--remove`、`--json`）並以 `fs_only` 宣告。驗證：3.3 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b8f174324556a1b1022d9eba187c9d47b81e4a00",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/commit.rs"
+      ],
+      "recordedAt": "2026-09-15T14:01:59Z"
+    },
+    {
+      "taskId": "tsk_01M2J1KTEQ7QK9NAEN937AD1VZ",
+      "taskDesc": "3.5 「模式分岔的單點宣告」：在 crates/adapters/speclink-cli/tests/it/mode_dispatch.rs 的 FsOnly 段補 `plan` 與 `change depends` 於 remote 模式且 server 不可達時 exit code 非零、stderr 含各自拒絕句、零請求。驗證：`cargo test -p speclink-cli --test it mode_dispatch` 全綠；`cargo test -p speclink-cli --test it remote_verb_parity` 不變。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b8f174324556a1b1022d9eba187c9d47b81e4a00",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/mode_dispatch.rs"
+      ],
+      "recordedAt": "2026-09-15T14:03:36Z"
+    },
+    {
+      "taskId": "tsk_01M2J1KTEQS1KCY2H9WN2VGCV0",
+      "taskDesc": "3.6 worktree 聚合面：沿 crates/adapters/speclink-cli/tests/it/worktree_overlay.rs 的夾具補一例——worktree 內已勾任務的 change 在主 checkout 執行 `speclink plan --json` 時 stage 為 in-progress。驗證：`cargo test -p speclink-cli --test it worktree_overlay` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b8f174324556a1b1022d9eba187c9d47b81e4a00",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/worktree_overlay.rs"
+      ],
+      "recordedAt": "2026-09-15T14:04:28Z"
+    },
+    {
+      "taskId": "tsk_01M2J1KTEQ6FNJ2P4J6P2JBANZ",
+      "taskDesc": "4.1 改寫 crates/engine/speclink-core/assets/skills/propose.md 的「Pending-change landscape check」為 D8 的流程（只判本次 change 的軟依賴 → `speclink change depends` 落檔 → `speclink plan --json` 依 worktree 政策分波呈現；作用中只有本 change 時跳過），對應規格「收尾盤點提案中變更的執行順序」。驗證：內容審閱——段落含 `speclink change depends` 與 `speclink plan --json` 字面、不再含「read each proposal's Impact and tasks」的全盤判定。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b8f174324556a1b1022d9eba187c9d47b81e4a00",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/propose.md"
+      ],
+      "recordedAt": "2026-09-15T14:04:59Z"
+    },
+    {
+      "taskId": "tsk_01M2J1KTEQDX77E1N221G753ZC",
+      "taskDesc": "4.2 改寫 crates/engine/speclink-core/assets/skills/apply.md 第 1 步「Select the change」為「apply 技能以 plan 挑選與守門」：先跑 `speclink plan --json`，未指名取 next（null 即列 blockedBy 並停止），指名且 blockedBy 非空即印前置並 STOP、不跑 review prepare 與 in-progress add；移除「只有一個 change 就自動選」。驗證：內容審閱——apply-with-worktree 經 B_APPLY 拼接自動帶到（4.4 的 claude-worktree golden 可見同段）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b8f174324556a1b1022d9eba187c9d47b81e4a00",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/apply.md"
+      ],
+      "recordedAt": "2026-09-15T14:05:41Z"
+    },
+    {
+      "taskId": "tsk_01M2J1KTEQX50RRS1ENBB5JHST",
+      "taskDesc": "4.3 於 crates/engine/speclink-core/assets/skills/archive.md 封存前置檢查加「Plan order hint」段落，對應「archive 技能以 plan 建議封存順序」：跑 `speclink plan --json`，目標 blockedBy 非空時提醒先封存前置，明載僅建議不阻擋。驗證：內容審閱——段落含 `speclink plan --json` 與「建議、不阻擋」語意。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b8f174324556a1b1022d9eba187c9d47b81e4a00",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/archive.md"
+      ],
+      "recordedAt": "2026-09-15T14:05:52Z"
+    },
+    {
+      "taskId": "tsk_01M2J1KTEQDMFCJ663MN5VMSBH",
+      "taskDesc": "4.4 crates/engine/speclink-core/src/workspace/init.rs 的 `ASSET_VERSION` 升為 v1.36.0，並同批更新 crates/engine/speclink-core/tests/golden/ 下 claude.snapshot.md、claude-worktree.snapshot.md、codex.snapshot.md 與 assets.lock。驗證：`cargo test -p speclink-core --test it render_golden::` 與 assets.lock 鎖定測試全綠；三份快照皆含 `speclink plan --json` 字面。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b8f174324556a1b1022d9eba187c9d47b81e4a00",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ],
+      "recordedAt": "2026-09-15T14:17:20Z"
+    },
+    {
+      "taskId": "tsk_01M2J1KTEQMVM97J011KJ97JN9",
+      "taskDesc": "4.5 `cargo build -p speclink-cli` 後執行 `speclink update` 再生 .claude/skills 與 .agents/skills 下的 SKILL.md，並以 `git status` 確認 speclink-apply、speclink-apply-with-worktree、speclink-propose、speclink-archive 四組（claude 與 codex）皆更新；這批再生檔不進 evidence，收尾 commit 前手動帶上。驗證：`grep -l \"speclink plan --json\" .claude/skills/*/SKILL.md` 列出上述四份；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b8f174324556a1b1022d9eba187c9d47b81e4a00",
+      "touchedFiles": [
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md"
+      ],
+      "recordedAt": "2026-09-16T00:29:53Z"
+    }
+  ]
+}

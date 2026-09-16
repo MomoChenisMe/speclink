@@ -1,6 +1,6 @@
 Implement tasks from a Speclink change.
 
-**Input**: Optionally specify a change name (e.g., `/speclink:apply add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name (e.g., `/speclink:apply add-auth`). If omitted, check if it can be inferred from conversation context — inference only decides whether a name is given; the selection itself always goes through `speclink plan` in step 1.
 
 **Task tracking is file-based only.** The tasks file's markdown checkboxes (`- [ ]` / `- [x]`) are the single source of truth for progress. Do NOT use any external task management system, built-in task tracker, or todo tool. When a task is done, edit the checkbox in the tasks file — that is the only way to record progress.
 
@@ -8,12 +8,21 @@ Implement tasks from a Speclink change.
 
 **Steps**
 
-1. **Select the change**
+1. **Select the change with plan**
 
-   If a name is provided, use it. Otherwise:
-   - Infer from conversation context if the user mentioned a change
-   - Auto-select if only one active change exists
-   - If ambiguous, run `speclink list --json` to get all available changes. Use the **AskUserQuestion tool** to let the user select
+   Always run the execution-order query first:
+
+   ```bash
+   speclink plan --json
+   ```
+
+   It returns `waves` (changes that may run in parallel), `changes` (one entry per active change with `stage`, `blockedBy` and `ready`), `next` (the first proposed change with nothing blocking it, or `null`) and `skipped` (changes whose metadata could not be parsed). If the command fails (a dependency cycle, a project that is not initialized), show the error and STOP.
+
+   - **No name given** → take `next`. If `next` is `null`, there is nothing ready to start: list every change with its `blockedBy` and STOP — do not pick one anyway.
+   - **A name given** (from the argument or from conversation context) → find it in `changes`. If its `blockedBy` is non-empty, print the prerequisite list (`blockedBy`) and STOP: do NOT run `speclink review prepare`, do NOT run `speclink in-progress add`. The way out is the user's: land (archive) the blockers first; drop a declared prerequisite that is wrong with `speclink change depends <name> --on <prerequisite> --remove`; a blocker that comes from delta-capability overlap keeps its place until it lands. Then run apply again.
+   - A named change that is not in `changes` (archived, misspelled, or listed under `skipped`) → keep going; step 2's status check reports it the way it always has.
+
+   Never auto-select a change just because only one exists, and never bypass the plan because the user mentioned a change in conversation — the plan decides whether it may start.
 
    Always announce: "Using change: <name>" and how to override (e.g., `/speclink:apply <other>`).
 

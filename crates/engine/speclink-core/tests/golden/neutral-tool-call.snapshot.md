@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.35.0"
+  version: "v1.36.0"
   generatedBy: "Speclink"
 ---
 
@@ -18,7 +18,7 @@ This harness executes speclink verbs by calling the speclink tool with an argv a
 
 Implement tasks from a Speclink change.
 
-**Input**: Optionally specify a change name (e.g., `speclink apply add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name (e.g., `speclink apply add-auth`). If omitted, check if it can be inferred from conversation context — inference only decides whether a name is given; the selection itself always goes through `speclink plan` in step 1.
 
 **Task tracking is file-based only.** The tasks file's markdown checkboxes (`- [ ]` / `- [x]`) are the single source of truth for progress. Do NOT use any external task management system, built-in task tracker, or todo tool. When a task is done, edit the checkbox in the tasks file — that is the only way to record progress.
 
@@ -26,12 +26,21 @@ Implement tasks from a Speclink change.
 
 **Steps**
 
-1. **Select the change**
+1. **Select the change with plan**
 
-   If a name is provided, use it. Otherwise:
-   - Infer from conversation context if the user mentioned a change
-   - Auto-select if only one active change exists
-   - If ambiguous, run `speclink list --json` to get all available changes. Use the **AskUserQuestion tool** to let the user select
+   Always run the execution-order query first:
+
+   ```bash
+   speclink plan --json
+   ```
+
+   It returns `waves` (changes that may run in parallel), `changes` (one entry per active change with `stage`, `blockedBy` and `ready`), `next` (the first proposed change with nothing blocking it, or `null`) and `skipped` (changes whose metadata could not be parsed). If the command fails (a dependency cycle, a project that is not initialized), show the error and STOP.
+
+   - **No name given** → take `next`. If `next` is `null`, there is nothing ready to start: list every change with its `blockedBy` and STOP — do not pick one anyway.
+   - **A name given** (from the argument or from conversation context) → find it in `changes`. If its `blockedBy` is non-empty, print the prerequisite list (`blockedBy`) and STOP: do NOT run `speclink review prepare`, do NOT run `speclink in-progress add`. The way out is the user's: land (archive) the blockers first; drop a declared prerequisite that is wrong with `speclink change depends <name> --on <prerequisite> --remove`; a blocker that comes from delta-capability overlap keeps its place until it lands. Then run apply again.
+   - A named change that is not in `changes` (archived, misspelled, or listed under `skipped`) → keep going; step 2's status check reports it the way it always has.
+
+   Never auto-select a change just because only one exists, and never bypass the plan because the user mentioned a change in conversation — the plan decides whether it may start.
 
    Always announce: "Using change: <name>" and how to override (e.g., `speclink apply <other>`).
 
@@ -352,7 +361,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.35.0"
+  version: "v1.36.0"
   generatedBy: "Speclink"
 ---
 
@@ -406,6 +415,14 @@ Archive a completed change.
    - Proceed if user confirms
 
    **If no tasks file exists:** Proceed without task-related warning.
+
+3b. **Plan order hint**
+
+   Run `speclink plan --json` and find the target change in its `changes` array. If its `blockedBy` is non-empty, tell the user:
+
+   > plan 建議先封存 <blockedBy 的名稱>，再封存 <name>：這些 change 排在它前面（宣告依賴或動到同一份規格）。
+
+   This is a suggestion only. It does NOT block the archive and relies on no engine gate: if the user confirms, archive as usual. An empty `blockedBy`, a target missing from the plan, or a `plan` failure (a dependency cycle) → say nothing about ordering and continue.
 
 4. **Assess delta spec completeness**
 
@@ -652,7 +669,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.35.0"
+  version: "v1.36.0"
   generatedBy: "Speclink"
 ---
 
@@ -894,7 +911,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.35.0"
+  version: "v1.36.0"
   generatedBy: "Speclink"
 ---
 
@@ -1023,7 +1040,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.35.0"
+  version: "v1.36.0"
   generatedBy: "Speclink"
 ---
 
@@ -1300,7 +1317,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.35.0"
+  version: "v1.36.0"
   generatedBy: "Speclink"
 ---
 
@@ -1451,7 +1468,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.35.0"
+  version: "v1.36.0"
   generatedBy: "Speclink"
 ---
 
@@ -1938,7 +1955,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.35.0"
+  version: "v1.36.0"
   generatedBy: "Speclink"
 ---
 
@@ -2073,7 +2090,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.35.0"
+  version: "v1.36.0"
   generatedBy: "Speclink"
 ---
 
@@ -2264,7 +2281,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.35.0"
+  version: "v1.36.0"
   generatedBy: "Speclink"
 ---
 
@@ -2552,7 +2569,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.35.0"
+  version: "v1.36.0"
   generatedBy: "Speclink"
 ---
 
@@ -2769,7 +2786,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.35.0"
+  version: "v1.36.0"
   generatedBy: "Speclink"
 ---
 
@@ -3218,21 +3235,24 @@ If no argument is provided, the workflow will extract requirements from conversa
 
 Run this check after the summary, right before presenting the Next steps below.
 
-1. Run `speclink list --json` for the change names, then judge the stage from each change's own metadata: a change whose `openspec/changes/<name>/.openspec.yaml` carries none of the `started_*` lines (`started_at:` / `started_by:` / `started_with:`) is still at the proposal stage. The `list` payload alone cannot tell a started change from an unstarted one — do not judge from its `status` or task counts. The change just created counts.
-2. **Only one proposal-stage change** (the one just created) → skip the rest of this check; the Next steps edges below already cover it.
-3. **Two or more** → work out an execution order before any apply suggestion:
-   - **Hard signal — delta capability overlap**: two changes that both carry a delta for the same capability (the same directory name under `openspec/changes/<name>/specs/`) must run sequentially — their deltas rewrite the same canonical spec, and archiving them out of order can trip the merge gate.
-   - **Soft signal — likely code overlap or dependency**: read each proposal's Impact and tasks; changes that touch the same code areas, or where one builds on another's outcome, are safer run in sequence.
-4. Present the result according to the project's effective worktree policy (`speclink workflow-config show --json` → `worktree`; a `SPECLINK_WORKTREE` env override wins):
-   - **Policy on** → two groups: "parallel-safe — run each change in its own session via `speclink apply-with-worktree` (the multi-session recipe)" and "sequential — run in this order, one at a time".
-   - **Policy off** → one recommended order covering all of them.
-5. The check is suggestions only — report the grouping or order and stop; never invoke any skill automatically.
+1. Run `speclink list --json` for the active change names. The change just created counts.
+2. **Only one active change** (the one just created) → skip the rest of this check; the Next steps edges below already cover it.
+3. **Two or more** → judge the **soft dependencies of the change you just created only** — never re-judge the whole landscape:
+   - Read the Impact section of each other active change's proposal and decide whether the new change builds on that change's outcome, or edits the same code areas. Each such change is a prerequisite of the new one.
+   - Record every prerequisite you found: `speclink change depends <new-change> --on <prerequisite>...`. This writes `depends_on` into the new change's metadata so every later session reads it for free. A verbal note is not enough — if you found a prerequisite, the command must have run. The verb refuses (with zero writes) a self-dependency, an unknown or archived name, and an edge that would form a cycle; report the refusal and move on.
+   - No prerequisite found → run nothing; the change stays independent.
+   - **Hard signal — delta capability overlap** is the engine's job: `plan` below detects two changes that carry a delta for the same capability and sequences them. Do NOT judge overlap yourself.
+4. Run `speclink plan --json` and present its result according to the project's effective worktree policy (`speclink workflow-config show --json` → `worktree`; a `SPECLINK_WORKTREE` env override wins):
+   - **Policy on** → list wave 1 (`waves[0].changes`) as "parallel-safe — run each change in its own session via `speclink apply-with-worktree` (the multi-session recipe)", then each later wave in order as "after the wave before it lands". A change's `blockedBy` names what it waits for.
+   - **Policy off** → one recommended order: the `changes` array in its given order, one at a time.
+   - `next` is the first change that is ready to start; `skipped` lists changes whose metadata could not be parsed — name them so the user can repair them.
+5. The check is suggestions only — report the waves or the order and stop; never invoke any skill automatically.
 
 ## Next steps
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- Artifacts are complete → `speclink apply <change-name>` when the user is ready to implement (with two or more proposal-stage changes pending, the landscape check above sets the order first)
+- Artifacts are complete → `speclink apply <change-name>` when the user is ready to implement (with two or more active changes pending, the landscape check above sets the order first)
 - Several independent changes will be implemented at once, and the project's worktree policy is on → `speclink apply-with-worktree <change-name>` (one git worktree per change)
 - The requirements turned out to be fuzzier than they looked → `speclink discuss` before implementing
 
@@ -3244,7 +3264,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.35.0"
+  version: "v1.36.0"
   generatedBy: "Speclink"
 ---
 
@@ -3345,7 +3365,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.35.0"
+  version: "v1.36.0"
   generatedBy: "Speclink"
 ---
 
@@ -3547,7 +3567,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.35.0"
+  version: "v1.36.0"
   generatedBy: "Speclink"
 ---
 
@@ -3637,7 +3657,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.35.0"
+  version: "v1.36.0"
   generatedBy: "Speclink"
 ---
 

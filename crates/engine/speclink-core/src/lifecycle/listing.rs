@@ -286,6 +286,33 @@ mod tests {
     }
 
     #[test]
+    fn list_json_payload_is_unchanged_by_depends_on() {
+        // spec change-lifecycle「depends_on 不影響既有輸出」：含 depends_on 的
+        // meta 序列化結果與移除該行後逐位元一致，且不出現依賴相關欄位。
+        let dependent = TestStore::with_meta(
+            "demo",
+            "schema: spec-driven\ncreated: 2026-07-01\ndepends_on: other\n",
+        );
+        dependent.put_artifact("demo", "proposal.md", "## Why\n\nDemo.\n");
+        dependent.put_artifact("demo", "tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n- [x] 1.2 Second task\n");
+
+        let bare = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01\n");
+        bare.put_artifact("demo", "proposal.md", "## Why\n\nDemo.\n");
+        bare.put_artifact("demo", "tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n- [x] 1.2 Second task\n");
+
+        let json_of = |store: &TestStore| {
+            let changes = crate::model::list_changes(store);
+            serde_json::to_string(&changes_json(store, &changes)).unwrap()
+        };
+        let dependent_json = json_of(&dependent);
+        assert_eq!(dependent_json, json_of(&bare), "depends_on must not affect list --json");
+        assert!(
+            !dependent_json.contains("depends_on") && !dependent_json.contains("dependsOn"),
+            "no dependency field may leak into the CLI item: {dependent_json}"
+        );
+    }
+
+    #[test]
     fn list_json_payload_is_unchanged_by_reviewed_fields() {
         // spec review-station「CLI 清單輸出的相容性釘住」：帶全套 reviewed 欄位的
         // change 與不帶者序列化同形（審查狀態僅進 desktop 協定，不進 CLI 輸出）。

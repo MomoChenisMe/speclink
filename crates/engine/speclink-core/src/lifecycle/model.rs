@@ -43,6 +43,11 @@ pub struct ChangeMeta {
     /// 卡片置欄頂、回退現行排序。ChangeMeta 僅 Deserialize，CLI 輸出不受影響。
     #[serde(default)]
     pub board_rank: Option<String>,
+    /// 宣告前置 change 名的逗號清單（change-plan design D2）。缺席讀作無依賴；
+    /// 只由 `change depends` 經 `KeyLines` 清單手術寫入，CLI 的 list／status
+    /// 輸出不含此欄位。
+    #[serde(default)]
+    pub depends_on: Option<String>,
     /// The "reviewed" quality station（`review stamp` 蓋章；design D3）。全部
     /// `#[serde(default)]`——缺席讀作未審查，pre-migration metadata 照常解析。
     #[serde(default)]
@@ -123,33 +128,37 @@ impl ChangeMeta {
     /// originating discussion. A single value is the degenerate one-element list;
     /// absent reads as empty.
     pub fn from_discussions(&self) -> Vec<String> {
-        self.from_discussion
-            .as_deref()
-            .map(|v| {
-                v.split(',')
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default()
+        comma_list(self.from_discussion.as_deref())
     }
 
     /// The discussions this change reflected then went stale against (re-concluded after
     /// seal), read from the `restale_from` comma accumulator. Mirrors [`from_discussions`]:
     /// a single value is the one-element list, absent reads as empty.
     pub fn restale_from(&self) -> Vec<String> {
-        self.restale_from
-            .as_deref()
-            .map(|v| {
-                v.split(',')
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default()
+        comma_list(self.restale_from.as_deref())
     }
+
+    /// The changes this one declares as prerequisites, read from the `depends_on`
+    /// comma list the way [`restale_from`] reads its accumulator: split, trim, drop
+    /// empties; absent reads as empty. The list is the meta's verbatim declaration —
+    /// whether an entry is still active is the plan module's call.
+    pub fn depends_on(&self) -> Vec<String> {
+        comma_list(self.depends_on.as_deref())
+    }
+}
+
+/// A comma-list accumulator field as its entries: split on `,`, trim, drop
+/// empties; an absent field reads as empty.
+fn comma_list(value: Option<&str>) -> Vec<String> {
+    value
+        .map(|v| {
+            v.split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// A change's `.openspec.yaml` exists but cannot be parsed. Fail-closed
@@ -222,6 +231,51 @@ pub struct Change {
 /// List active changes, sorted by name.
 pub fn list_changes(store: &dyn Store) -> Vec<Change> {
     store.list_changes()
+}
+
+/// A change's lifecycle stage as the board and the plan see it (change-plan
+/// design D7) — one rule for every consumer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Stage {
+    /// Every task checked (and there is at least one): closest to archive.
+    Ready,
+    /// Started (a `started_at` stamp) or any task checked — the fallback covers
+    /// tasks.md edits that bypassed the verbs.
+    InProgress,
+    /// Neither.
+    Proposed,
+}
+
+impl Stage {
+    /// The plan payload's `stage` string.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Stage::Ready => "ready",
+            Stage::InProgress => "in-progress",
+            Stage::Proposed => "proposed",
+        }
+    }
+}
+
+/// The plan payload carries the stage as its string form — one source for
+/// `as_str` and the wire (`"ready"` / `"in-progress"` / `"proposed"`).
+impl serde::Serialize for Stage {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.as_str())
+    }
+}
+
+/// Derive a change's [`Stage`] from its task counts and started stamp — the
+/// same rule the desktop board's column derivation uses.
+pub fn stage(store: &dyn Store, change: &Change) -> Stage {
+    let (complete, total) = crate::listing::task_counts(store, change);
+    if total > 0 && complete >= total {
+        Stage::Ready
+    } else if change.meta.started_at.is_some() || complete > 0 {
+        Stage::InProgress
+    } else {
+        Stage::Proposed
+    }
 }
 
 /// 編輯一個 change 的 meta 文件：讀原文 → fail-closed 解析 → 套 `edit` 閉包做
@@ -541,6 +595,7 @@ pub fn missing_artifacts(schema: &Schema, store: &dyn Store, change: &str) -> Ve
 #[cfg(test)]
 mod tests {
     use super::ChangeMeta;
+    use crate::store::Store;
     use crate::teststore::TestStore;
 
     // --- from_text fail-closed（design 決策一：存在但解析失敗回 Err）---
@@ -832,6 +887,64 @@ mod tests {
             meta.restale_from(),
             vec!["alpha-search".to_string(), "beta-cache".to_string()]
         );
+    }
+
+    // --- depends_on 讀取（change-plan design D2；spec change-lifecycle
+    //     「meta 新欄位向後相容」）---
+
+    #[test]
+    fn depends_on_absent_yields_empty() {
+        // 缺席讀作無依賴：舊 meta 檔照常解析，讀取器回空清單。
+        let meta = ChangeMeta::from_text(Some("schema: spec-driven\ncreated: 2026-07-01\n")).expect("meta parses");
+        assert!(meta.depends_on().is_empty());
+    }
+
+    #[test]
+    fn depends_on_comma_accumulated_values() {
+        // 與 restale_from 同形：逗號切分、trim、去空。
+        let meta = ChangeMeta::from_text(Some(
+            "schema: spec-driven\ndepends_on: a, b\n",
+        )).expect("meta parses");
+        assert_eq!(meta.depends_on(), vec!["a".to_string(), "b".to_string()]);
+    }
+
+    // --- stage 三態（change-plan design D7；與桌面 core 的 change_stage 同規則）---
+
+    #[test]
+    fn stage_is_ready_when_every_task_is_checked() {
+        let store = TestStore::with_meta("demo", "schema: spec-driven\n");
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 a\n- [x] 1.2 b\n");
+        let change = store.find_change("demo").unwrap();
+        assert_eq!(super::stage(&store, &change), super::Stage::Ready);
+        assert_eq!(super::Stage::Ready.as_str(), "ready");
+    }
+
+    #[test]
+    fn stage_is_in_progress_on_a_started_stamp_or_any_checked_task() {
+        // 開工章：任務全未勾仍算進行中。
+        let stamped = TestStore::with_meta("demo", "schema: spec-driven\nstarted_at: 2026-07-03\n");
+        stamped.put_artifact("demo", "tasks.md", "- [ ] 1.1 a\n- [ ] 1.2 b\n");
+        let change = stamped.find_change("demo").unwrap();
+        assert_eq!(super::stage(&stamped, &change), super::Stage::InProgress);
+        // 無章但有已勾任務（繞過動詞手改 tasks.md）：同樣進行中。
+        let checked = TestStore::with_meta("demo", "schema: spec-driven\n");
+        checked.put_artifact("demo", "tasks.md", "- [x] 1.1 a\n- [ ] 1.2 b\n");
+        let change = checked.find_change("demo").unwrap();
+        assert_eq!(super::stage(&checked, &change), super::Stage::InProgress);
+        assert_eq!(super::Stage::InProgress.as_str(), "in-progress");
+    }
+
+    #[test]
+    fn stage_is_proposed_without_a_stamp_or_checked_tasks() {
+        // 零任務（無 tasks.md）與全未勾都算提案中——零任務不算已就緒。
+        let empty = TestStore::with_meta("demo", "schema: spec-driven\n");
+        let change = empty.find_change("demo").unwrap();
+        assert_eq!(super::stage(&empty, &change), super::Stage::Proposed);
+        let unchecked = TestStore::with_meta("demo", "schema: spec-driven\n");
+        unchecked.put_artifact("demo", "tasks.md", "- [ ] 1.1 a\n");
+        let change = unchecked.find_change("demo").unwrap();
+        assert_eq!(super::stage(&unchecked, &change), super::Stage::Proposed);
+        assert_eq!(super::Stage::Proposed.as_str(), "proposed");
     }
 
     // --- Purpose 合格判準（design D1；spec spec-validation

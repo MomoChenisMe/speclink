@@ -364,3 +364,77 @@ fn a_corrupt_worktree_meta_surfaces_the_existing_diagnostic() {
     assert!(item.get("metaError").is_some(), "got: {item}");
     assert!(item.get("worktree").is_some(), "映射仍成立: {item}");
 }
+
+#[test]
+fn change_depends_writes_the_worktree_copy_of_a_mapped_change() {
+    // change-plan spec「change depends 動詞寫入宣告依賴」：主 checkout 且政策開啟時，
+    // 目標 change 已映射到 worktree 就寫那份副本——plan 讀的也是它，宣告立刻可見；
+    // 主副本的 meta 不動。前置 add-auth 在分支前就存在，兩份 roster 都有它。
+    let f = Fixture::new("depends-worktree", true);
+    let auth = f.repo.join("openspec").join("changes").join("add-auth");
+    std::fs::create_dir_all(&auth).unwrap();
+    std::fs::write(auth.join(".openspec.yaml"), META).unwrap();
+    f.git(&["add", "-A"]);
+    f.git(&["commit", "-q", "-m", "add-auth"]);
+    let wt = f.add_worktree("add-dark-mode");
+
+    let out = f.run(&["change", "depends", "add-dark-mode", "--on", "add-auth"]);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let meta_of = |root: &Path| {
+        std::fs::read_to_string(
+            root.join("openspec")
+                .join("changes")
+                .join("add-dark-mode")
+                .join(".openspec.yaml"),
+        )
+        .unwrap()
+    };
+    assert_eq!(meta_of(&wt), format!("{META}depends_on: add-auth\n"));
+    assert_eq!(meta_of(&f.repo), META, "the main copy stays untouched");
+    let plan = json_of(&f.run(&["plan", "--json"]));
+    let dark = plan["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "add-dark-mode")
+        .cloned()
+        .unwrap();
+    assert_eq!(dark["dependsOn"], serde_json::json!(["add-auth"]), "{plan}");
+    assert_eq!(dark["blockedBy"], serde_json::json!(["add-auth"]), "{plan}");
+
+    // 對照：政策關閉時沒有映射，寫的是主副本（既有行為）。
+    let off = Fixture::new("depends-worktree-off", false);
+    let wt = off.add_worktree("add-dark-mode");
+    let out = off.run(&["change", "depends", "add-dark-mode", "--on", "add-dark-mode", "--remove"]);
+    assert!(!out.status.success(), "self reference still refuses");
+    let auth = off.repo.join("openspec").join("changes").join("add-auth");
+    std::fs::create_dir_all(&auth).unwrap();
+    std::fs::write(auth.join(".openspec.yaml"), META).unwrap();
+    let out = off.run(&["change", "depends", "add-dark-mode", "--on", "add-auth"]);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(meta_of(&off.repo), format!("{META}depends_on: add-auth\n"));
+    assert_eq!(meta_of(&wt), META, "policy off never touches the worktree copy");
+}
+
+#[test]
+fn plan_reads_the_worktree_copy_for_the_stage_derivation() {
+    // change-plan spec「plan 動詞輸出波次與阻擋清單」：主 checkout 且政策開啟時，
+    // plan 與 list 同一聚合面——worktree 內勾掉的任務讓階段判定為 in-progress，
+    // 主副本本身仍是 0/2 未開工。
+    let f = Fixture::new("plan-stage", true);
+    let wt = f.add_worktree("add-dark-mode");
+    check_one_task(&wt);
+
+    let out = f.run(&["plan", "--json"]);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let change = json_of(&out)["changes"][0].clone();
+    assert_eq!(change["name"], "add-dark-mode");
+    assert_eq!(change["stage"], "in-progress", "stage comes from the worktree copy: {change}");
+
+    // 對照：政策關閉時只讀主副本，同一顆 worktree 的勾選不進階段判定。
+    let off = Fixture::new("plan-stage-off", false);
+    let wt = off.add_worktree("add-dark-mode");
+    check_one_task(&wt);
+    let change = json_of(&off.run(&["plan", "--json"]))["changes"][0].clone();
+    assert_eq!(change["stage"], "proposed", "policy off reads the main copy: {change}");
+}
