@@ -48,3 +48,5 @@ verified_scope:
     hash: 138036588f7993018348f3f7654d26057c6f329149dd764c1005fc70579076ba
   - path: apps/desktop/src/components/RemoteWorkspaceRecovery.tsx
     hash: 6c67e4380d4423339c7a33d2e1a14244a227432772b00bf6b608b6b7b915ba6e
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-16
