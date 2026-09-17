@@ -14,6 +14,7 @@ mod engine_version;
 mod in_progress_remove;
 mod init_tools;
 mod instructions_policy;
+mod list_delta_capabilities;
 mod manual_pages_dir_ignored;
 mod manual_task_gates;
 mod meta_fail_closed;

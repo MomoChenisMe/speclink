@@ -304,6 +304,7 @@ fn to_list_change_json(c: &protocol_query::ChangeSummary) -> ListChangeJson {
         total_tasks: c.total_tasks,
         restale_from: c.restale_from.clone(),
         meta_error: c.meta_error.clone(),
+        delta_capabilities: c.delta_capabilities.clone(),
         // remote 恆缺席：worktree 是本機主 checkout 的觀察面，
         // server 端沒有這回事（spec scenario remote list 恆無 worktree 欄位）。
         worktree: None,

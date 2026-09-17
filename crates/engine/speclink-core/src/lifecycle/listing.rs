@@ -28,6 +28,13 @@ pub struct ListChangeJson {
     /// consumer's payload shape is untouched.
     #[serde(rename = "metaError", skip_serializing_if = "Option::is_none")]
     pub meta_error: Option<String>,
+    /// Capability names of the change's delta specs, ascending, from the store's
+    /// `delta_capabilities`. Under the main-checkout worktree overlay that store
+    /// reads a mapped change from its worktree copy (like every other value here),
+    /// while `show --json`'s `deltaSpecs` reads the main copy. Omitted when the
+    /// change has none, so a delta-less change's payload stays byte-identical.
+    #[serde(rename = "deltaCapabilities", skip_serializing_if = "Vec::is_empty")]
+    pub delta_capabilities: Vec<String>,
     /// The linked worktree this change is being implemented in (local main
     /// checkout only, worktree policy on). Last in the field order and omitted
     /// when absent, so every existing consumer's payload stays byte-identical.
@@ -150,6 +157,7 @@ pub fn changes_json_with(
                 total_tasks: total,
                 restale_from: c.meta.restale_from(),
                 meta_error: c.meta_error.clone(),
+                delta_capabilities: store.delta_capabilities(&c.name),
                 worktree: worktrees.get(&c.name).cloned(),
             }
         })

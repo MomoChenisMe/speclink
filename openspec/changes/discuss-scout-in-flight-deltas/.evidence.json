@@ -21,6 +21,34 @@
         "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
         "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
       ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 依 design「D1 delta 命中以 speclink list --json 的 deltaCapabilities 比對」在 crates/protocol/speclink-protocol/src/query.rs 的 ChangeSummary 增 delta_capabilities（camelCase、serde default、空清單省略），並補齊 apps/desktop/src-tauri 內以 struct literal 建構 ChangeSummary 的測試 helper，滿足 spec 需求「變更清單的 delta capability 欄位」的「delta capability 欄位序列化與缺席省略」場景。驗證：protocol 序列化測試（有值上鍵、空值省略、無此鍵的舊 payload 反序列化得空清單）先紅後綠；`cargo test -p speclink-desktop` 綠。",
+      "files": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "crates/host/speclink-server/src/api/routes.rs",
+        "crates/protocol/speclink-protocol/src/query.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.2 依同一決策在 crates/engine/speclink-core/src/lifecycle/listing.rs 的 ListChangeJson 增 delta_capabilities（serde rename deltaCapabilities、空清單省略），changes_json_with 以 Store 的 delta_capabilities 填值；crates/adapters/speclink-cli/src/verbs/query.rs 的 to_list_change_json 映射 ChangeSummary 的同名欄位，滿足 spec 需求「list --json 曝變更的 delta capability」的兩個場景。驗證：speclink-cli 整合測試——fs 模式帶 delta 規格的變更項含 deltaCapabilities（升冪）、沒有 delta 的變更項無此鍵、人眼 speclink list 不含該欄位；remote_read_path 的 list 同形測試在 mock 清單項帶 deltaCapabilities 時 remote 輸出含同值且與 fs 雙胞胎同鍵——先紅後綠。",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/query.rs",
+        "crates/adapters/speclink-cli/tests/it/main.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_read_path.rs",
+        "crates/engine/speclink-core/src/lifecycle/listing.rs",
+        "crates/adapters/speclink-cli/tests/it/list_delta_capabilities.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.3 在 crates/host/speclink-server/src/api/routes.rs 的 change_summary 把清單項的 delta_capabilities 映射上 wire，滿足 spec 需求「變更清單回應攜帶 delta capability 欄位」。驗證：speclink-server 的 GET /changes 測試（帶 delta 規格的變更項含 deltaCapabilities、沒有 delta 者無此鍵）先紅後綠。",
+      "files": [
+        "crates/host/speclink-server/tests/it/api/query_routes.rs"
+      ]
     }
   ],
   "entries": [
@@ -51,6 +79,46 @@
         "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
       ],
       "recordedAt": "2026-09-16T09:12:51Z"
+    },
+    {
+      "taskId": "tsk_01M2NADTSGTF5G1NXWNAA7AXTR",
+      "taskDesc": "3.1 依 design「D1 delta 命中以 speclink list --json 的 deltaCapabilities 比對」在 crates/protocol/speclink-protocol/src/query.rs 的 ChangeSummary 增 delta_capabilities（camelCase、serde default、空清單省略），並補齊 apps/desktop/src-tauri 內以 struct literal 建構 ChangeSummary 的測試 helper，滿足 spec 需求「變更清單的 delta capability 欄位」的「delta capability 欄位序列化與缺席省略」場景。驗證：protocol 序列化測試（有值上鍵、空值省略、無此鍵的舊 payload 反序列化得空清單）先紅後綠；`cargo test -p speclink-desktop` 綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ded13fcfb03f1654527c0931dfef79d6ffcf0544",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "crates/host/speclink-server/src/api/routes.rs",
+        "crates/protocol/speclink-protocol/src/query.rs"
+      ],
+      "recordedAt": "2026-09-16T14:37:41Z"
+    },
+    {
+      "taskId": "tsk_01M2NAN1SMFNX2Q16PVVY0NC4R",
+      "taskDesc": "3.2 依同一決策在 crates/engine/speclink-core/src/lifecycle/listing.rs 的 ListChangeJson 增 delta_capabilities（serde rename deltaCapabilities、空清單省略），changes_json_with 以 Store 的 delta_capabilities 填值；crates/adapters/speclink-cli/src/verbs/query.rs 的 to_list_change_json 映射 ChangeSummary 的同名欄位，滿足 spec 需求「list --json 曝變更的 delta capability」的兩個場景。驗證：speclink-cli 整合測試——fs 模式帶 delta 規格的變更項含 deltaCapabilities（升冪）、沒有 delta 的變更項無此鍵、人眼 speclink list 不含該欄位；remote_read_path 的 list 同形測試在 mock 清單項帶 deltaCapabilities 時 remote 輸出含同值且與 fs 雙胞胎同鍵——先紅後綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ded13fcfb03f1654527c0931dfef79d6ffcf0544",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/query.rs",
+        "crates/adapters/speclink-cli/tests/it/main.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_read_path.rs",
+        "crates/engine/speclink-core/src/lifecycle/listing.rs",
+        "crates/adapters/speclink-cli/tests/it/list_delta_capabilities.rs"
+      ],
+      "recordedAt": "2026-09-16T14:41:37Z"
+    },
+    {
+      "taskId": "tsk_01M2NAVNJS0TAWCPKSFJG7JHVQ",
+      "taskDesc": "3.3 在 crates/host/speclink-server/src/api/routes.rs 的 change_summary 把清單項的 delta_capabilities 映射上 wire，滿足 spec 需求「變更清單回應攜帶 delta capability 欄位」。驗證：speclink-server 的 GET /changes 測試（帶 delta 規格的變更項含 deltaCapabilities、沒有 delta 者無此鍵）先紅後綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ded13fcfb03f1654527c0931dfef79d6ffcf0544",
+      "touchedFiles": [
+        "crates/host/speclink-server/tests/it/api/query_routes.rs"
+      ],
+      "recordedAt": "2026-09-16T14:45:14Z"
     }
   ]
 }

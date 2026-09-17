@@ -6,3 +6,85 @@ from_discussion: discuss-scout-in-flight-deltas
 depends_on: add-plan-handoff-after-archive
 started_at: 2026-09-16
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-17
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 9
+reviewed_scope:
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 7005e41b3c0bf9b96b02d676ec26593854876e3db24f5c24c04c2d5bfbfe358e
+  - path: apps/desktop/src-tauri/tests/it/remote_data.rs
+    hash: ac698ccfca8c0db48a9e9a3bf489a74e22734ff0596979d1c72d5a0b3f0fbc20
+  - path: crates/adapters/speclink-cli/src/verbs/query.rs
+    hash: 75bfc184a878093cac40be3f4b756b98d91b01364c5ce4407180e1a6c8ad1110
+  - path: crates/adapters/speclink-cli/tests/it/list_delta_capabilities.rs
+    hash: a8065aa8bfc57c11fcac9178c2a923adfe168fa554f3c27b0e3ad5ef7b26a745
+  - path: crates/adapters/speclink-cli/tests/it/main.rs
+    hash: ecafccb45f68a425bf7a63b099fd583b91ed5e5541300cfb5d6c705bb1d8fda1
+  - path: crates/adapters/speclink-cli/tests/it/remote_read_path.rs
+    hash: 843b4a9224d2ed6ffad617692543b2ee9a81c78cac537c9e15cd54b736d157f2
+  - path: crates/engine/speclink-core/assets/skills/discuss.md
+    hash: c3bb381deed2878cf7f8ffcce1adae0b71ae8df88b748f2f0722ef99a5fedfed
+  - path: crates/engine/speclink-core/src/lifecycle/listing.rs
+    hash: 678d6b78bd49c326b60d59b9c8b7bba0bc4a25188933382bdd1b6e8ef4dc74f4
+  - path: crates/engine/speclink-core/src/workspace/init.rs
+    hash: 818ac5c09669f8353f3f653428430cf3325575d44eaeb1a5b11b60714ae6040c
+  - path: crates/engine/speclink-core/tests/golden/assets.lock
+    hash: 99dc7da6d7d6cf43483da1be8ab76c0a2b362dcd4aeed4abfd0b4cacd156b636
+  - path: crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: 64adc759e3e42b3da15e4c5e5c574357b3de8ae38fa29cc8610687d58008e542
+  - path: crates/engine/speclink-core/tests/golden/claude.snapshot.md
+    hash: f33b1769458ba37e99ee411dcf1e20a7a045d4dbaf52c5bbd2eb7180a948655b
+  - path: crates/engine/speclink-core/tests/golden/codex.snapshot.md
+    hash: 9ce4041827f5a9500a95cccd1ec42512302e109fbfee6141277a193fa6b5d466
+  - path: crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: a33e1851cf9b2c0cf97c7670d7cedab91673b28a64ecc95c412435d19b38b691
+  - path: crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: f76e530f046d4c70342b2907a237d0b8b2b6891c5502d9a76310ff7a0771625c
+  - path: crates/host/speclink-server/src/api/routes.rs
+    hash: 79cd463cebabe5dd87ccc2f393fc9fc22d0c860cbf641a6e374b2f71e536abf0
+  - path: crates/host/speclink-server/tests/it/api/query_routes.rs
+    hash: 031936e3f07d245b1bbaa64306208418cbb60d6fc28ad5f9d883e7b170388430
+  - path: crates/protocol/speclink-protocol/src/query.rs
+    hash: aa2d8bcbfd69d22a82102ee93aa9615e441fd66749f7e211257b26ea1bea037b
+verified_at: 2026-09-17
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 9
+verified_scope:
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 7005e41b3c0bf9b96b02d676ec26593854876e3db24f5c24c04c2d5bfbfe358e
+  - path: apps/desktop/src-tauri/tests/it/remote_data.rs
+    hash: ac698ccfca8c0db48a9e9a3bf489a74e22734ff0596979d1c72d5a0b3f0fbc20
+  - path: crates/adapters/speclink-cli/src/verbs/query.rs
+    hash: 75bfc184a878093cac40be3f4b756b98d91b01364c5ce4407180e1a6c8ad1110
+  - path: crates/adapters/speclink-cli/tests/it/list_delta_capabilities.rs
+    hash: a8065aa8bfc57c11fcac9178c2a923adfe168fa554f3c27b0e3ad5ef7b26a745
+  - path: crates/adapters/speclink-cli/tests/it/main.rs
+    hash: ecafccb45f68a425bf7a63b099fd583b91ed5e5541300cfb5d6c705bb1d8fda1
+  - path: crates/adapters/speclink-cli/tests/it/remote_read_path.rs
+    hash: 843b4a9224d2ed6ffad617692543b2ee9a81c78cac537c9e15cd54b736d157f2
+  - path: crates/engine/speclink-core/assets/skills/discuss.md
+    hash: c3bb381deed2878cf7f8ffcce1adae0b71ae8df88b748f2f0722ef99a5fedfed
+  - path: crates/engine/speclink-core/src/lifecycle/listing.rs
+    hash: 678d6b78bd49c326b60d59b9c8b7bba0bc4a25188933382bdd1b6e8ef4dc74f4
+  - path: crates/engine/speclink-core/src/workspace/init.rs
+    hash: 818ac5c09669f8353f3f653428430cf3325575d44eaeb1a5b11b60714ae6040c
+  - path: crates/engine/speclink-core/tests/golden/assets.lock
+    hash: 99dc7da6d7d6cf43483da1be8ab76c0a2b362dcd4aeed4abfd0b4cacd156b636
+  - path: crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: 64adc759e3e42b3da15e4c5e5c574357b3de8ae38fa29cc8610687d58008e542
+  - path: crates/engine/speclink-core/tests/golden/claude.snapshot.md
+    hash: f33b1769458ba37e99ee411dcf1e20a7a045d4dbaf52c5bbd2eb7180a948655b
+  - path: crates/engine/speclink-core/tests/golden/codex.snapshot.md
+    hash: 9ce4041827f5a9500a95cccd1ec42512302e109fbfee6141277a193fa6b5d466
+  - path: crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: a33e1851cf9b2c0cf97c7670d7cedab91673b28a64ecc95c412435d19b38b691
+  - path: crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: f76e530f046d4c70342b2907a237d0b8b2b6891c5502d9a76310ff7a0771625c
+  - path: crates/host/speclink-server/src/api/routes.rs
+    hash: 79cd463cebabe5dd87ccc2f393fc9fc22d0c860cbf641a6e374b2f71e536abf0
+  - path: crates/host/speclink-server/tests/it/api/query_routes.rs
+    hash: 031936e3f07d245b1bbaa64306208418cbb60d6fc28ad5f9d883e7b170388430
+  - path: crates/protocol/speclink-protocol/src/query.rs
+    hash: aa2d8bcbfd69d22a82102ee93aa9615e441fd66749f7e211257b26ea1bea037b

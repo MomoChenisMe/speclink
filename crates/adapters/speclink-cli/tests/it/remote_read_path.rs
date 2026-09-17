@@ -306,7 +306,7 @@ fn assert_same_keys(remote: &serde_json::Value, fs: &serde_json::Value, verb: &s
 
 // --- server payloads mirroring the fs twin ---
 
-const LIST_BODY: &str = r#"{"changes":[{"name":"demo","summary":"Demo change summary","status":"done","completedTasks":2,"totalTasks":2,"repo":"backend","lifecycle":"applying","claimedBy":"me"}]}"#;
+const LIST_BODY: &str = r#"{"changes":[{"name":"demo","summary":"Demo change summary","status":"done","completedTasks":2,"totalTasks":2,"repo":"backend","lifecycle":"applying","claimedBy":"me","deltaCapabilities":["cap-a"]}]}"#;
 
 const STATUS_BODY: &str = r#"{"changeName":"demo","schemaName":"spec-driven","isComplete":true,"applyRequires":["tasks"],"artifacts":[{"id":"proposal","outputPath":"proposal.md","status":"done","version":3},{"id":"design","outputPath":"design.md","status":"done","version":1},{"id":"specs","outputPath":"specs/**/*.md","status":"done","version":2},{"id":"tasks","outputPath":"tasks.md","status":"done","version":5}],"repo":"backend","lifecycle":"applying","statusVersion":4,"claimedBy":"me"}"#;
 
@@ -337,6 +337,18 @@ fn list_json_field_names_match_fs_mode() {
     for item in payload["changes"].as_array().expect("changes array") {
         assert!(item.get("worktree").is_none(), "remote item carries worktree: {item}");
     }
+    // Spec scenario「remote 模式同形」：清單項的 deltaCapabilities 原樣上 CLI 輸出，
+    // 與帶 cap-a delta 規格的 fs 雙胞胎同值。
+    assert_eq!(
+        payload["changes"][0]["deltaCapabilities"],
+        serde_json::json!(["cap-a"]),
+        "remote list carries the wire deltaCapabilities: {payload}"
+    );
+    assert_eq!(
+        stdout_json(&f)["changes"][0]["deltaCapabilities"],
+        serde_json::json!(["cap-a"]),
+        "fs twin lists its cap-a delta"
+    );
 }
 
 #[test]
