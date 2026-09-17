@@ -88,3 +88,5 @@ verified_scope:
     hash: 031936e3f07d245b1bbaa64306208418cbb60d6fc28ad5f9d883e7b170388430
   - path: crates/protocol/speclink-protocol/src/query.rs
     hash: aa2d8bcbfd69d22a82102ee93aa9615e441fd66749f7e211257b26ea1bea037b
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-17
