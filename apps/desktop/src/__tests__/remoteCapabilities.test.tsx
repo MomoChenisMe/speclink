@@ -11,6 +11,7 @@ import {
   type WorkspaceSession,
 } from "../session";
 import type { SpeclinkDataSource } from "@speclink/ui";
+import { changeList } from "./helpers/changeList";
 import { fakeRemoteDs, fakeRemoteSession, REMOTE_KEY } from "./helpers/remoteFixtures";
 
 // Tauri 事件層 mock（App 的 session 事件訂閱走它）。
@@ -244,8 +245,7 @@ describe("排程分頁的前置編輯依 role（add-change-plan-remote D7）", (
       item("remote-change", 2, ["base-change"]),
     ];
     return fakeRemoteDs({
-      listChanges: vi.fn().mockResolvedValue(changes),
-      listChangesWithPlan: vi.fn().mockResolvedValue({ changes, planError: null }),
+      listChanges: vi.fn().mockResolvedValue(changeList(changes)),
       setDepends: vi.fn().mockResolvedValue(undefined),
     } as never);
   }
@@ -311,9 +311,9 @@ describe("本地分頁不受影響（迴歸）", () => {
   it("搜尋照常可用、分析與刪除照常可點", async () => {
     const ds = fakeRemoteDs({
       // 本地全功能：改用可解析的本地行為樣本。
-      listChanges: vi.fn().mockResolvedValue([
+      listChanges: vi.fn().mockResolvedValue(changeList([
         { name: "local-change", status: "in-progress", totalTasks: 2, completedTasks: 0 },
-      ]),
+      ])),
       listArchived: vi.fn().mockResolvedValue([]),
       changeCapabilities: vi.fn().mockResolvedValue([]),
       changeMeta: vi.fn().mockResolvedValue(null),

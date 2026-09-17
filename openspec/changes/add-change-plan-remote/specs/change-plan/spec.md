@@ -6,7 +6,7 @@ change 層的執行順序：以看板排序鍵與建立日期為基底、以宣�
 
 ### Requirement: plan 與 change depends 的 remote 臂
 
-remote 模式下 `speclink plan` SHALL 呼叫 server 的 GET /plan 並把回應轉回引擎的 plan 報告後以 fs 模式同一渲染輸出，人眼與 --json 的 stdout 形狀 SHALL 與 fs 模式對同一內容一致；server 回 409（成環，reason refused）時 SHALL 以非零 exit code 結束、stderr 為 server 轉發的引擎訊息 `dependency cycle: …`、stdout 為空。remote 模式下 `speclink change depends` SHALL 呼叫 POST /changes/{name}/depends，成功時 stdout 與 fs 模式同一行 `✓ …`（--json 同形），server 的 404 與守門 409 SHALL 以 server 轉發的引擎單行訊息印於 stderr、非零 exit code。兩動詞在 remote 模式 SHALL NOT 讀寫本機 store。remote 拖排的宣告依賴檢查 SHALL 以引擎的純序列檢查函式對拖放後同階段的名稱序列與 plan 回應的 dependsOn 圖執行，只計涉及被拖卡的配對，違反時 SHALL NOT 發出 PUT /board-order、SHALL 以與 local 相同的單行訊息呈現；plan 不可得（舊 server、成環、請求失敗）時 SHALL 略過此檢查。
+remote 模式下 `speclink plan` SHALL 呼叫 server 的 GET /plan 並把回應轉回引擎的 plan 報告後以 fs 模式同一渲染輸出，人眼與 --json 的 stdout 形狀 SHALL 與 fs 模式對同一內容一致；server 回 409（成環，reason refused）時 SHALL 以非零 exit code 結束、stderr 為 server 轉發的引擎訊息 `dependency cycle: …`、stdout 為空。remote 模式下 `speclink change depends` SHALL 呼叫 POST /changes/{name}/depends，成功時 stdout 與 fs 模式同一行 `✓ …`（--json 同形），server 的 404 與守門 409 SHALL 以 server 轉發的引擎單行訊息印於 stderr、非零 exit code。兩動詞在 remote 模式 SHALL NOT 讀寫本機 store。remote 拖排的宣告依賴檢查 SHALL 以引擎的純序列檢查函式對拖放後同階段、plan 有配置的名稱序列（plan 略過的壞 meta 卡不列入，與 local 同構）與 plan 回應的 dependsOn 圖執行，只計涉及被拖卡的配對，違反時 SHALL NOT 發出 PUT /board-order、SHALL 以與 local 相同的單行訊息呈現；plan 不可得（舊 server、成環、請求失敗）時 SHALL 略過此檢查。
 
 #### Scenario: remote plan 同形
 

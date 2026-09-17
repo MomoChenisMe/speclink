@@ -5,6 +5,7 @@ import { vi } from "vitest";
 import type { SpeclinkDataSource } from "@speclink/ui";
 
 import type { WorkspaceCapabilities, WorkspaceSession } from "../../session";
+import { changeList } from "./changeList";
 
 export const REMOTE_KEY = "remote:c1/demo/backend";
 
@@ -43,10 +44,10 @@ export const REMOTE_CAPS: WorkspaceCapabilities = {
 export function fakeRemoteDs(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSource {
   const refuse = () => Promise.reject(new Error("此 server 尚未提供——功能已停用"));
   return {
-    listChanges: vi.fn().mockResolvedValue([
+    listChanges: vi.fn().mockResolvedValue(changeList([
       // 已就緒（2/2）：抽屜封存鈕的階段守門放行，capability 測試聚焦能力缺口本身。
       { name: "remote-change", status: "in-progress", totalTasks: 2, completedTasks: 2 },
-    ]),
+    ])),
     listSpecs: vi.fn().mockResolvedValue([{ id: "auth" }]),
     listArchived: vi.fn().mockResolvedValue([
       {

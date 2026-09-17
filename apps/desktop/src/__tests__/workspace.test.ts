@@ -9,16 +9,17 @@ import { locatorKey, LOCAL_CAPABILITIES, type WorkspaceSession } from "../sessio
 import { persistTabs, readPersistedTabs, type ProjectTab } from "../tabs";
 import { persistRecents, readPersistedRecents, RECENTS_STORAGE_KEY } from "../recents";
 import type { WorkspaceAdapter } from "../adapter/workspace";
+import { changeList } from "./helpers/changeList";
 
 const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { error: toastError } }));
 
 function fakeDataSource(): SpeclinkDataSource {
   return {
-    listChanges: vi.fn().mockResolvedValue([
+    listChanges: vi.fn().mockResolvedValue(changeList([
       { name: "started", status: "in-progress", totalTasks: 10, completedTasks: 0, startedAt: "2026-07-06" },
       { name: "proposed", status: "in-progress", totalTasks: 28, completedTasks: 0 },
-    ]),
+    ])),
     listSpecs: vi.fn().mockResolvedValue([]),
     listArchived: vi.fn().mockResolvedValue([]),
     listDiscussions: vi.fn().mockResolvedValue({ active: [], archived: [] }),
@@ -350,11 +351,11 @@ describe("分頁列（spec 需求「專案分頁列存於 app 本機」）", () 
   it("refresh 後分頁不攜帶計數徽章（spec「分頁不顯示計數徽章」）", async () => {
     const ds = fakeDataSource();
     // 契約範例：2 個已就緒變更＋1 份已結論未轉出討論 → 徽章 3。
-    ds.listChanges = vi.fn().mockResolvedValue([
+    ds.listChanges = vi.fn().mockResolvedValue(changeList([
       { name: "ready-a", status: "in-progress", totalTasks: 5, completedTasks: 5 },
       { name: "ready-b", status: "in-progress", totalTasks: 3, completedTasks: 3 },
       { name: "started", status: "in-progress", totalTasks: 10, completedTasks: 2, startedAt: "2026-07-06" },
-    ]);
+    ]));
     ds.listDiscussions = vi.fn().mockResolvedValue({
       active: [
         { slug: "alpha", topic: "a", status: "concluded", rounds: 1, created: "2026-01-02", promotedTo: [] },

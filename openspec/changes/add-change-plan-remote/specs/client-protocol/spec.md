@@ -2,7 +2,7 @@
 
 ### Requirement: plan 回應 payload
 
-protocol SHALL 以 Rust 型別定義 GET /plan 的回應：`waves`（陣列，每項 `index` 整數與 `changes` 字串陣列）、`changes`（陣列，每項 `name`、`wave`、`stage`、`dependsOn`、`overlaps`（每項 `change` 與 `capabilities`）、`blockedBy`、`ready`）、`next`（字串或 null）、`skipped`（每項 `change` 與 `reason`）。欄位一律 camelCase，陣列欄位缺席 SHALL 讀作空陣列。remote client SHALL 提供型別化的 plan 呼叫；CLI remote 模式 SHALL 把回應轉回引擎的 plan 報告型別後共用 fs 模式的渲染，SHALL NOT 另寫第二份渲染；`stage` 為 proposed／in-progress／ready 以外的值時轉換 SHALL 失敗並回報錯誤，SHALL NOT 猜測階段。
+protocol SHALL 以 Rust 型別定義 GET /plan 的回應：`waves`（陣列，每項 `index` 整數與 `changes` 字串陣列）、`changes`（陣列，每項 `name`、`wave`、`stage`、`dependsOn`、`overlaps`（每項 `change` 與 `capabilities`）、`blockedBy`、`ready`）、`next`（字串或 null）、`skipped`（每項 `change` 與 `reason`）。欄位一律 camelCase，陣列欄位缺席 SHALL 讀作空陣列。remote client SHALL 提供型別化的 plan 呼叫；CLI remote 模式 SHALL 把回應轉回引擎的 plan 報告型別後共用 fs 模式的渲染，SHALL NOT 另寫第二份渲染；`stage` 為 proposed／in-progress／ready 以外的值時轉換 SHALL 失敗並回報錯誤，SHALL NOT 猜測階段；`waves` 列出 `changes` 沒有的名稱時轉換同樣 SHALL 失敗並回報錯誤，SHALL NOT 使 CLI 崩潰。
 
 #### Scenario: 回應反序列化
 
@@ -13,6 +13,11 @@ protocol SHALL 以 Rust 型別定義 GET /plan 的回應：`waves`（陣列，�
 
 - **WHEN** client 收到 `{"waves":[],"changes":[{"name":"a","wave":1,"stage":"proposed","dependsOn":[],"blockedBy":[],"ready":true}],"next":"a","skipped":[]}`（change 項缺 overlaps 鍵）
 - **THEN** 反序列化成功且 changes[0].overlaps 為空陣列
+
+#### Scenario: wave 成員不在 changes 時轉換失敗
+
+- **WHEN** client 收到 `{"waves":[{"index":1,"changes":["add-a"]}],"next":"add-a"}`（缺 changes 鍵）並轉回引擎的 plan 報告
+- **THEN** 轉換回報錯誤、訊息含 `add-a`，不崩潰
 
 ### Requirement: 依賴寫入請求與回應
 

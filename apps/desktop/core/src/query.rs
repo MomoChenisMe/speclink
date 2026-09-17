@@ -238,19 +238,26 @@ pub(crate) fn board_order(
     let plan = speclink_core::plan::compute(store);
     let changes = match &plan {
         Ok(plan) => {
-            let placed = plan
-                .changes
-                .iter()
-                .filter_map(|p| basis.iter().find(|c| c.name == p.name).cloned());
-            let rest = basis
-                .iter()
-                .filter(|c| !plan.changes.iter().any(|p| p.name == c.name))
-                .cloned();
-            placed.chain(rest).collect()
+            let placed: Vec<&str> = plan.changes.iter().map(|p| p.name.as_str()).collect();
+            plan_placed(basis, &placed, |c| c.name.as_str())
         }
         Err(_) => basis,
     };
     (changes, plan)
+}
+
+/// 看板顯示序的排列規則（design D1；add-change-plan-remote D5／D6）：`placed`（plan 的配置
+/// 序）列到的項照其順序在前，其餘維持 `basis` 原序接在後面；`placed` 裡 basis 沒有的名稱
+/// 略過。本地（basis＝基底序）與 remote（basis＝server 回傳序）的清單與拖排共用這一條。
+pub fn plan_placed<T>(mut basis: Vec<T>, placed: &[&str], name_of: impl Fn(&T) -> &str) -> Vec<T> {
+    let mut ordered = Vec::with_capacity(basis.len());
+    for name in placed {
+        if let Some(i) = basis.iter().position(|item| name_of(item) == *name) {
+            ordered.push(basis.remove(i));
+        }
+    }
+    ordered.append(&mut basis);
+    ordered
 }
 
 /// 對應 `speclink list --specs --json`：`{ "specs": … }`。非專案回傳 `{ "specs": [] }`。
@@ -1119,6 +1126,15 @@ mod tests {
     // --- spec client-protocol「變更清單的排程欄位」（design D1）---
 
     use crate::testfixture::board_names;
+
+    #[test]
+    fn plan_placed_puts_the_plan_order_first_and_keeps_the_rest_in_basis_order() {
+        // 看板顯示序的排列規則（本機基底序與 remote server 序共用）：plan 列到的照其序
+        // 在前，沒列到的（壞 meta、兩次請求之間新增）維持 basis 原序接在後面；plan 有而
+        // basis 沒有的名稱略過。
+        let placed = plan_placed(vec!["d", "a", "c", "b"], &["c", "ghost", "a"], |s| *s);
+        assert_eq!(placed, ["c", "a", "d", "b"]);
+    }
 
     const PLAN_KEYS: [&str; 4] = ["wave", "blockedBy", "dependsOn", "overlaps"];
 

@@ -14,6 +14,7 @@ import {
   type RemoteOpenInfo,
   type WorkspaceSession,
 } from "../session";
+import { changeList } from "./helpers/changeList";
 import { fakeRemoteDs, REMOTE_CAPS, REMOTE_KEY } from "./helpers/remoteFixtures";
 
 vi.mock("@speclink/ui", async (importOriginal) => {
@@ -214,10 +215,10 @@ describe("remote offline stale snapshot", () => {
       .fn()
       .mockResolvedValue({ status: "project", root: "A", name: "Local" });
     const ds = fakeRemoteDs({
-      listChanges: vi.fn().mockResolvedValue([
+      listChanges: vi.fn().mockResolvedValue(changeList([
         // 已就緒（2/2）：封存鈕的階段守門放行，聚焦 remote 事件不影響本地寫入能力。
         { name: "local-change", status: "in-progress", totalTasks: 2, completedTasks: 2 },
-      ]),
+      ])),
       changeCapabilities: vi.fn().mockResolvedValue([]),
       changeMeta: vi.fn().mockResolvedValue(null),
     });
