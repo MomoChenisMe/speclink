@@ -5,6 +5,7 @@ mod discussion_routes;
 mod drift_api;
 mod health;
 mod import_api;
+mod plan_api;
 mod policy_write;
 mod query_routes;
 mod read_api;

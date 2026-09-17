@@ -328,7 +328,7 @@ export interface ChangeListPayload {
 export interface SpeclinkDataSource {
   listChanges(): Promise<ChangeItem[]>;
   /** 同一次清單 IO 連頂層 planError 一起回（add-change-plan-desktop design D1）。
-   * 未提供此面的後端（remote 第三刀前）走 listChanges，看板無成環提示。 */
+   * 未提供此面的後端走 listChanges，看板無成環提示。 */
   listChangesWithPlan?(): Promise<ChangeListPayload>;
   listSpecs(): Promise<SpecItem[]>;
   listArchived(): Promise<ArchivedItem[]>;
@@ -401,8 +401,14 @@ export interface SpeclinkDataSource {
   /**
    * 宣告（remove 為 true 時撤銷）`on` 為 `change` 的前置，寫回其 meta 的
    * depends_on（add-change-plan-desktop design D6）。引擎拒絕（自依賴、不存在、
-   * 已封存、成環）時 reject 單行訊息；未提供此面的後端（remote 第三刀前）reject
-   * 且 capability `setDepends` 為假。
+   * 已封存、成環）時 reject 單行訊息；不可寫的 membership（remote reader）的
+   * capability `setDepends` 為假，UI 不會呼叫。
    */
   setDepends(change: string, on: string[], remove: boolean): Promise<void>;
+  /**
+   * 排程分頁新增前置的候選名冊（add-change-plan-remote D9）：該變更所在名冊的其他
+   * 作用中變更——有 worktree 映射時為其副本，與 setDepends 寫入作用的 store 相同。
+   * 只有一份名冊的後端（remote）不提供，候選自清單派生。
+   */
+  dependsCandidates?(change: string): Promise<string[]>;
 }

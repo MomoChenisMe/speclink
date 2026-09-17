@@ -1076,7 +1076,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         try {
           loaded = await Promise.all([
             // 清單與頂層 planError 同一次 IO（add-change-plan-desktop design D1）；
-            // 資料源不供此面時（remote 第三刀前）清單照舊、planError 為 null。
+            // 資料源不供此面時清單照舊、planError 為 null。
             dataSource.listChangesWithPlan
               ? dataSource.listChangesWithPlan()
               : dataSource.listChanges().then((changes) => ({ changes, planError: null })),

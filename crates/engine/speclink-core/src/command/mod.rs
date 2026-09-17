@@ -297,8 +297,11 @@ pub enum Command {
     Analyze { change: Option<String> },
     /// `trace <capability>`
     Trace { capability: String },
-    /// `plan [--json]` — the change-level execution order (read-only).
-    Plan,
+    /// `plan [--json]` — the change-level execution order (read-only). `ranks`
+    /// is an external rank table for callers whose ranks live outside the
+    /// change metas (the server's board resource); `None` reads each meta's
+    /// own `board_rank`.
+    Plan { ranks: Option<std::collections::BTreeMap<String, String>> },
     /// `artifact cat <artifact> [--change <name>]`
     ArtifactCat {
         artifact: String,
@@ -756,9 +759,12 @@ pub fn execute(
         Command::Trace { capability } => run_trace(store, &capability),
         // A dependency cycle is a data defect in the change metas, reported
         // with the cycle in the message (`dependency cycle: a -> b -> a`).
-        Command::Plan => crate::plan::compute(store)
-            .map(CommandOutcome::Plan)
-            .map_err(|e| classify(e.into())),
+        Command::Plan { ranks } => match ranks {
+            Some(ranks) => crate::plan::compute_with_ranks(store, &ranks),
+            None => crate::plan::compute(store),
+        }
+        .map(CommandOutcome::Plan)
+        .map_err(|e| classify(e.into())),
         Command::ArtifactCat { artifact, change } => {
             run_artifact_cat(store, &artifact, change.as_deref())
         }

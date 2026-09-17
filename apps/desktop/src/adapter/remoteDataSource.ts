@@ -4,6 +4,7 @@ import type {
   SpeclinkDataSource,
   CardKind,
   ChangeItem,
+  ChangeListPayload,
   SpecItem,
   ArchivedItem,
   DiscussionItem,
@@ -77,8 +78,13 @@ export function createRemoteDataSource(
   }
   return {
     async listChanges(): Promise<ChangeItem[]> {
-      const r = await invoke<{ changes: ChangeItem[] }>("remote_list_changes", { ...locator });
+      const r = await invoke<ChangeListPayload>("remote_list_changes", { ...locator });
       return r.changes;
+    },
+    async listChangesWithPlan(): Promise<ChangeListPayload> {
+      // 同一個 remote_list_changes payload（add-change-plan-remote D5）：清單項已依
+      // plan 排序並帶排程欄位，頂層 planError 在 plan 成環時為訊息。
+      return await invoke<ChangeListPayload>("remote_list_changes", { ...locator });
     },
     async listSpecs(): Promise<SpecItem[]> {
       const r = await invoke<{ specs: SpecItem[] }>("remote_list_specs", { ...locator });
@@ -209,10 +215,8 @@ export function createRemoteDataSource(
     ): Promise<void> {
       await invoke("remote_reorder_card", { ...locator, kind, id, prevId, nextId });
     },
-    async setDepends(): Promise<void> {
-      // 前置編輯在 remote 尚不支援（第三刀）：capability setDepends 為假，UI 不長
-      // 編輯控制項；仍被呼叫時拒絕、不發請求。
-      throw new Error("setDepends is not available on remote workspaces");
+    async setDepends(change: string, on: string[], remove: boolean): Promise<void> {
+      await invoke("remote_set_change_depends", { ...locator, change, on, remove });
     },
   };
 }

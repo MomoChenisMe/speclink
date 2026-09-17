@@ -352,6 +352,26 @@ pub struct PromoteDiscussionResponse {
     pub change: String,
 }
 
+/// `POST /changes/{name}/depends` request body: the prerequisites to declare,
+/// or with `remove` to drop. Both fields always travel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SetDependsRequest {
+    pub on: Vec<String>,
+    #[serde(default)]
+    pub remove: bool,
+}
+
+/// `POST /changes/{name}/depends` response: the change's full `depends_on`
+/// declaration after the write (the CLI `change depends --json` shape).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SetDependsResponse {
+    pub change: String,
+    #[serde(default)]
+    pub depends_on: Vec<String>,
+}
+
 /// 工單一輪的 wire 形狀——鏡射 CLI `review show --json`（審查站對外契約）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -838,6 +858,37 @@ mod tests {
         assert!(!minimal.accept);
         assert!(minimal.scope.is_empty());
         assert!(minimal.missing.is_empty());
+    }
+
+    #[test]
+    fn set_depends_request_serializes_on_and_remove() {
+        // 規格「依賴寫入請求與回應」Scenario「請求序列化」。
+        let req = SetDependsRequest {
+            on: vec!["add-a".into(), "add-c".into()],
+            remove: false,
+        };
+        assert_eq!(
+            serde_json::to_string(&req).unwrap(),
+            r#"{"on":["add-a","add-c"],"remove":false}"#
+        );
+        let back: SetDependsRequest =
+            serde_json::from_str(r#"{"on":["add-a","add-c"],"remove":false}"#).unwrap();
+        assert_eq!(back, req);
+    }
+
+    #[test]
+    fn set_depends_response_carries_the_full_declaration_in_camel_case() {
+        let resp: SetDependsResponse =
+            serde_json::from_str(r#"{"change":"add-b","dependsOn":["add-a"]}"#).unwrap();
+        assert_eq!(resp.change, "add-b");
+        assert_eq!(resp.depends_on, ["add-a"]);
+        assert_eq!(
+            serde_json::to_value(&resp).unwrap(),
+            serde_json::json!({ "change": "add-b", "dependsOn": ["add-a"] })
+        );
+        // 移除到空的回應：舊寫法省略陣列時讀作空清單。
+        let emptied: SetDependsResponse = serde_json::from_str(r#"{"change":"add-b"}"#).unwrap();
+        assert!(emptied.depends_on.is_empty());
     }
 
     #[test]

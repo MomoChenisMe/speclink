@@ -483,9 +483,22 @@ pub fn check_rank_move(store: &dyn Store, name: &str, rank: &str) -> Result<(), 
         .iter()
         .map(|e| (e.name.clone(), e.depends_on.clone()))
         .collect();
+    blocked_move(&sequence, &depends_on, name)
+}
+
+/// Does `name`, where `sequence` places it, cross a declared dependency? Only
+/// the [`violations`] pairs that involve `name` count — an older violation
+/// between two other changes is not this move's doing. The one judgement
+/// behind [`check_rank_move`] and callers whose ranks live outside the change
+/// metas (the remote board resource).
+pub fn blocked_move(
+    sequence: &[&str],
+    depends_on: &BTreeMap<String, Vec<String>>,
+    name: &str,
+) -> Result<(), RankMoveBlocked> {
     let mut must_follow = Vec::new();
     let mut must_precede = Vec::new();
-    for (dependent, prereq) in violations(&sequence, &depends_on) {
+    for (dependent, prereq) in violations(sequence, depends_on) {
         if dependent == name && !must_follow.contains(&prereq) {
             must_follow.push(prereq);
         } else if prereq == name && !must_precede.contains(&dependent) {
@@ -973,6 +986,22 @@ mod tests {
         // 前置不在序列內（別的階段、已封存）不構成違規。
         let outside = deps_map(&[("a", &["zzz"])]);
         assert!(violations(&["a", "b"], &outside).is_empty());
+    }
+
+    #[test]
+    fn blocked_move_counts_only_the_pairs_that_involve_the_moved_change() {
+        // add-change-plan-remote D6：rank 不在 meta 的呼叫端（remote board resource）
+        // 以自己的拖放後序列呼叫同一判定、得到同一句訊息。
+        let deps = deps_map(&[("c", &["a"]), ("y", &["x"])]);
+        let err = blocked_move(&["c", "a", "y", "x"], &deps, "c").unwrap_err();
+        assert_eq!(err.change, "c");
+        assert_eq!(err.must_follow, ["a"]);
+        assert!(err.must_precede.is_empty(), "y 與 x 的違規與 c 無關");
+        assert_eq!(err.to_string(), "cannot move 'c' there: it depends on a");
+        let err = blocked_move(&["c", "a"], &deps, "a").unwrap_err();
+        assert!(err.must_follow.is_empty());
+        assert_eq!(err.must_precede, ["c"]);
+        assert_eq!(blocked_move(&["a", "c", "y", "x"], &deps, "c"), Ok(()));
     }
 
     #[test]

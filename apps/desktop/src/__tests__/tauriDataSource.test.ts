@@ -177,6 +177,14 @@ describe("createTauriDataSource", () => {
     });
   });
 
+  it("dependsCandidates invokes depends_candidates with root and change（add-change-plan-remote D9）", async () => {
+    // 排程分頁的候選名冊：有 worktree 映射時為副本名冊，由桌面 core 定根。
+    invoke.mockResolvedValueOnce(["add-auth"]);
+    const ds = createTauriDataSource("/r");
+    expect(await ds.dependsCandidates!("add-dark-mode")).toEqual(["add-auth"]);
+    expect(invoke).toHaveBeenCalledWith("depends_candidates", { root: "/r", change: "add-dark-mode" });
+  });
+
   it("手冊索引與內文各走自己的 command（desktop-manual-page design D1）", async () => {
     // spec desktop-manual-page：索引 `{ present, reason, pages, uncoveredNew, malformed }`
     // 原樣透傳；內文以 slug 定址。command 名與參數對應 src-tauri 的

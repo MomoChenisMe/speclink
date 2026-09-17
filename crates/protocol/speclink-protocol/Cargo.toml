@@ -8,6 +8,6 @@ license.workspace = true
 serde = { workspace = true }
 # JSON Schema 匯出僅限本 crate 依賴（design 決策二）；不得滲入 core／host。
 schemars = "1"
-
-[dev-dependencies]
+# BoardOrderDoc 的寬鬆解析（add-change-plan-remote D1）：桌面 overlay 與 server
+# plan 端點共用同一份；schemars 已把它帶進建置圖，不增新 crate。
 serde_json = { workspace = true }

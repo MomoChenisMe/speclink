@@ -141,6 +141,29 @@ pub struct PutBoardOrderResponse {
     pub revision: u64,
 }
 
+/// The board-order document's content as its readers see it: two rank maps
+/// (change name → rank, discussion slug → rank). The server stores the text
+/// opaquely; the desktop overlay and the plan endpoint's rank source both read
+/// it through [`BoardOrderDoc::from_content`], so the damage tolerance is one
+/// rule. Not a wire DTO — the wire carries the text in `content`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BoardOrderDoc {
+    pub changes: std::collections::BTreeMap<String, String>,
+    pub discussions: std::collections::BTreeMap<String, String>,
+}
+
+impl BoardOrderDoc {
+    /// Lenient read: absent content, or content that is not the expected shape
+    /// (bad JSON, a non-object, a section of the wrong type), reads as no ranks
+    /// at all — a damaged document degrades ordering, never fails a reader.
+    pub fn from_content(content: Option<&str>) -> BoardOrderDoc {
+        content
+            .and_then(|text| serde_json::from_str(text).ok())
+            .unwrap_or_default()
+    }
+}
+
 /// `GET /scopes` response: every project the caller is a member of, with its
 /// registered repos. This route is identity-scoped and precedes repo binding.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -627,6 +650,64 @@ pub struct DiscussionHit {
 #[serde(rename_all = "camelCase")]
 pub struct SearchDiscussionsResponse {
     pub hits: Vec<DiscussionHit>,
+}
+
+/// `GET /plan` response — the CLI `plan --json` shape: waves, every placed
+/// change in placement order, the next startable change, and the changes left
+/// out for corrupt metadata. Array fields read an absent key as empty.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanResponse {
+    #[serde(default)]
+    pub waves: Vec<PlanWave>,
+    #[serde(default)]
+    pub changes: Vec<PlanChangeEntry>,
+    pub next: Option<String>,
+    #[serde(default)]
+    pub skipped: Vec<PlanSkipped>,
+}
+
+/// One wave of the plan: the changes that may run in parallel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanWave {
+    pub index: usize,
+    #[serde(default)]
+    pub changes: Vec<String>,
+}
+
+/// One change's row of the plan. `stage` is the engine's stage string
+/// (`proposed` / `in-progress` / `ready`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanChangeEntry {
+    pub name: String,
+    pub wave: usize,
+    pub stage: String,
+    #[serde(default)]
+    pub depends_on: Vec<String>,
+    #[serde(default)]
+    pub overlaps: Vec<PlanOverlap>,
+    #[serde(default)]
+    pub blocked_by: Vec<String>,
+    pub ready: bool,
+}
+
+/// A delta-capability overlap with one other change.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanOverlap {
+    pub change: String,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+}
+
+/// A change left out of the plan because its metadata cannot be parsed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanSkipped {
+    pub change: String,
+    pub reason: String,
 }
 
 #[cfg(test)]
@@ -1218,5 +1299,99 @@ mod tests {
             status.contains("changeName") && status.contains("applyRequires"),
             "schema fields are camelCase: {status}"
         );
+    }
+
+    #[test]
+    fn plan_response_deserializes_the_plan_payload() {
+        // 規格「plan 回應 payload」Scenario「回應反序列化」。
+        let plan: PlanResponse = serde_json::from_str(
+            r#"{"waves":[{"index":1,"changes":["a"]}],"changes":[{"name":"a","wave":1,"stage":"proposed","dependsOn":[],"overlaps":[],"blockedBy":[],"ready":true}],"next":"a","skipped":[]}"#,
+        )
+        .unwrap();
+        assert_eq!(plan.next.as_deref(), Some("a"));
+        assert!(plan.changes[0].ready);
+        assert_eq!(plan.waves[0].index, 1);
+        assert_eq!(plan.waves[0].changes, ["a"]);
+        assert_eq!(plan.changes[0].stage, "proposed");
+    }
+
+    #[test]
+    fn plan_change_entry_reads_a_missing_array_as_empty() {
+        // 規格「plan 回應 payload」Scenario「缺陣列欄位容忍」。
+        let plan: PlanResponse = serde_json::from_str(
+            r#"{"waves":[],"changes":[{"name":"a","wave":1,"stage":"proposed","dependsOn":[],"blockedBy":[],"ready":true}],"next":"a","skipped":[]}"#,
+        )
+        .unwrap();
+        assert!(plan.changes[0].overlaps.is_empty());
+    }
+
+    #[test]
+    fn plan_response_serializes_the_cli_plan_json_keys() {
+        // 回應與 CLI `plan --json` 同形：camelCase、next 為 null 時照樣出現。
+        let plan = PlanResponse {
+            waves: vec![PlanWave { index: 1, changes: vec!["a".into(), "b".into()] }],
+            changes: vec![PlanChangeEntry {
+                name: "b".into(),
+                wave: 1,
+                stage: "in-progress".into(),
+                depends_on: vec!["gone".into()],
+                overlaps: vec![PlanOverlap { change: "a".into(), capabilities: vec!["auth".into()] }],
+                blocked_by: Vec::new(),
+                ready: true,
+            }],
+            next: None,
+            skipped: vec![PlanSkipped { change: "c".into(), reason: "bad meta".into() }],
+        };
+        let json = serde_json::to_value(&plan).unwrap();
+        // 比鍵集合、不比鍵序：serde_json 的 preserve_order 可能被別的 crate 統一開啟。
+        let keys = |v: &serde_json::Value| {
+            let mut k: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
+            k.sort();
+            k
+        };
+        assert_eq!(keys(&json), ["changes", "next", "skipped", "waves"]);
+        assert_eq!(
+            keys(&json["changes"][0]),
+            ["blockedBy", "dependsOn", "name", "overlaps", "ready", "stage", "wave"]
+        );
+        assert_eq!(json["next"], serde_json::Value::Null);
+        assert_eq!(json["changes"][0]["overlaps"][0]["capabilities"], serde_json::json!(["auth"]));
+        assert_eq!(json["skipped"][0]["reason"], "bad meta");
+    }
+
+    #[test]
+    fn board_order_doc_reads_both_rank_maps() {
+        let doc = BoardOrderDoc::from_content(Some(
+            r#"{"changes":{"add-a":"n"},"discussions":{"topic":"f"}}"#,
+        ));
+        assert_eq!(doc.changes["add-a"], "n");
+        assert_eq!(doc.discussions["topic"], "f");
+    }
+
+    #[test]
+    fn board_order_doc_reads_unusable_content_as_no_ranks() {
+        // 缺席、壞 JSON、非物件、段落型別錯：一律全員缺 rank，不失敗。
+        for content in [
+            None,
+            Some("not json"),
+            Some("[1,2]"),
+            Some("42"),
+            Some(r#"{"changes":"oops"}"#),
+        ] {
+            let doc = BoardOrderDoc::from_content(content);
+            assert!(doc.changes.is_empty() && doc.discussions.is_empty(), "{content:?}");
+        }
+        // 缺一段只影響那一段。
+        let doc = BoardOrderDoc::from_content(Some(r#"{"discussions":{"topic":"f"}}"#));
+        assert!(doc.changes.is_empty());
+        assert_eq!(doc.discussions["topic"], "f");
+    }
+
+    #[test]
+    fn plan_dtos_export_json_schema() {
+        let text = serde_json::to_string(&schemars::schema_for!(PlanResponse)).unwrap();
+        for field in ["waves", "dependsOn", "blockedBy", "skipped"] {
+            assert!(text.contains(field), "plan schema exposes {field}: {text}");
+        }
     }
 }

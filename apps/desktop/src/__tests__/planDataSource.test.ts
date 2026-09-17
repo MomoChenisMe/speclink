@@ -1,6 +1,6 @@
-// 前置編輯的資料面（add-change-plan-desktop design D6）：Tauri 資料源以正確參數
-// 委派 set_change_depends、remote 資料源在第三刀前拒絕、capability 旗標 local 真
-// ／remote 假（離線遮罩亦為假）。
+// 前置編輯的資料面（add-change-plan-desktop design D6；add-change-plan-remote D7）：
+// Tauri 資料源以正確參數委派 set_change_depends、remote 資料源委派
+// remote_set_change_depends、capability 旗標 local 真／remote reader 假（離線遮罩亦為假）。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const invoke = vi.fn();
@@ -39,11 +39,18 @@ describe("setDepends 資料源委派", () => {
     });
   });
 
-  it("remote 資料源拒絕 setDepends 且不發任何請求（第三刀前不可用）", async () => {
-    const remoteInvoke = vi.fn();
+  it("remote 資料源帶 locator 委派 remote_set_change_depends", async () => {
+    const remoteInvoke = vi.fn().mockResolvedValue(undefined);
     const ds = createRemoteDataSource("c1", "demo", "backend", remoteInvoke);
-    await expect(ds.setDepends("add-b", ["add-a"], false)).rejects.toThrow();
-    expect(remoteInvoke).not.toHaveBeenCalled();
+    await ds.setDepends("add-b", ["add-a"], false);
+    expect(remoteInvoke).toHaveBeenCalledWith("remote_set_change_depends", {
+      connectionId: "c1",
+      project: "demo",
+      repo: "backend",
+      change: "add-b",
+      on: ["add-a"],
+      remove: false,
+    });
   });
 });
 
@@ -52,7 +59,7 @@ describe("setDepends capability 旗標", () => {
     expect(LOCAL_CAPABILITIES.setDepends).toBe(true);
   });
 
-  it("remote 為 false，且離線遮罩後仍為 false", () => {
+  it("remote reader 為 false，且離線遮罩後仍為 false", () => {
     const info: RemoteOpenInfo = {
       projectKey: "demo",
       projectName: "Demo",

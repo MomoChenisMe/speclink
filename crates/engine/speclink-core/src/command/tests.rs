@@ -60,7 +60,7 @@ fn plan_returns_typed_outcome_without_events() {
     // change-plan：plan 是查詢，經唯一進入點回 Plan outcome、零事件。
     let store = TestStore::with_meta("demo", META);
     store.metas.borrow_mut().insert("later".to_string(), "schema: spec-driven\ndepends_on: demo\n".to_string());
-    let (outcome, events) = execute(&store, &ExecutionContext::default(), Command::Plan).expect("plan executes");
+    let (outcome, events) = execute(&store, &ExecutionContext::default(), Command::Plan { ranks: None }).expect("plan executes");
     match outcome {
         CommandOutcome::Plan(plan) => {
             assert_eq!(plan.next.as_deref(), Some("demo"));
@@ -73,10 +73,28 @@ fn plan_returns_typed_outcome_without_events() {
 }
 
 #[test]
+fn plan_with_an_external_rank_table_orders_by_that_table() {
+    // add-change-plan-remote D1：ranks 為 Some 時以外部 rank 圖為準（remote 的
+    // board resource），meta 的 board_rank 不參與；None 照舊讀 meta。
+    let store = TestStore::with_meta("alpha", "schema: spec-driven\nboard_rank: a\n");
+    store.metas.borrow_mut().insert("beta".to_string(), "schema: spec-driven\nboard_rank: z\n".to_string());
+    let names = |cmd: Command| match execute(&store, &ExecutionContext::default(), cmd).expect("plan executes").0 {
+        CommandOutcome::Plan(plan) => plan.changes.into_iter().map(|c| c.name).collect::<Vec<_>>(),
+        other => panic!("expected a plan outcome, got {other:?}"),
+    };
+    let external = std::collections::BTreeMap::from([
+        ("beta".to_string(), "b".to_string()),
+        ("alpha".to_string(), "f".to_string()),
+    ]);
+    assert_eq!(names(Command::Plan { ranks: Some(external) }), ["beta", "alpha"]);
+    assert_eq!(names(Command::Plan { ranks: None }), ["alpha", "beta"]);
+}
+
+#[test]
 fn plan_dependency_cycle_is_an_error_naming_the_cycle() {
     let store = TestStore::with_meta("a", "schema: spec-driven\ndepends_on: b\n");
     store.metas.borrow_mut().insert("b".to_string(), "schema: spec-driven\ndepends_on: a\n".to_string());
-    let err = execute(&store, &ExecutionContext::default(), Command::Plan).expect_err("a cycle cannot plan");
+    let err = execute(&store, &ExecutionContext::default(), Command::Plan { ranks: None }).expect_err("a cycle cannot plan");
     assert_eq!(err.code, ErrorCode::Error);
     assert_eq!(err.message, "dependency cycle: a -> b -> a");
 }
@@ -1872,7 +1890,7 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
         Command::Validate { item: _, all: _, changes: _, specs: _, strict: _ } => {}
         Command::Analyze { change: _ } => {}
         Command::Trace { capability: _ } => {}
-        Command::Plan => {}
+        Command::Plan { ranks: _ } => {}
         Command::ArtifactCat { artifact: _, change: _ } => {}
         Command::LanguageShow => {}
         Command::DiscussList { archived: _ } => {}

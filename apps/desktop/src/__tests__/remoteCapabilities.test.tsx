@@ -208,8 +208,9 @@ describe("remote 分頁的 capability 停用", () => {
     await waitFor(() => expect(ds.runVerb).toHaveBeenCalledWith("archive", "remote-change"));
   });
 
-  it("offline mask 同時維持 deleteChange 停用並關閉 archive", () => {
-    const session = fakeRemoteSession(fakeRemoteDs());
+  it("offline mask 同時維持 deleteChange 停用並關閉 archive 與前置編輯", () => {
+    const base = fakeRemoteSession(fakeRemoteDs());
+    const session = { ...base, capabilities: { ...base.capabilities, setDepends: true } };
     const offline = applyRemoteConnectionState(
       {
         ...session,
@@ -220,6 +221,61 @@ describe("remote 分頁的 capability 停用", () => {
     );
     expect(offline.capabilities.deleteChange).toBe(false);
     expect(offline.capabilities.archive).toBe(false);
+    expect(offline.capabilities.setDepends).toBe(false);
+  });
+});
+
+describe("排程分頁的前置編輯依 role（add-change-plan-remote D7）", () => {
+  /** 帶 plan 排程欄位的 remote 清單：remote-change 第 2 波、前置 base-change。 */
+  function plannedDs() {
+    const item = (name: string, wave: number, dependsOn: string[]) => ({
+      name,
+      status: "in-progress",
+      totalTasks: 2,
+      completedTasks: 0,
+      wave,
+      blockedBy: dependsOn,
+      dependsOn,
+      overlaps: [],
+    });
+    const changes = [
+      item("base-change", 1, []),
+      item("other-change", 1, []),
+      item("remote-change", 2, ["base-change"]),
+    ];
+    return fakeRemoteDs({
+      listChanges: vi.fn().mockResolvedValue(changes),
+      listChangesWithPlan: vi.fn().mockResolvedValue({ changes, planError: null }),
+      setDepends: vi.fn().mockResolvedValue(undefined),
+    } as never);
+  }
+
+  async function openPlanTab() {
+    await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
+    fireEvent.click(screen.getByText("remote-change"));
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /排程/ }));
+    await screen.findByText("第 2 波");
+  }
+
+  it("editor 可在排程分頁新增與移除前置，寫入走資料源 setDepends", async () => {
+    const ds = plannedDs();
+    renderRemoteApp(ds, { setDepends: true });
+    await openPlanTab();
+    expect(screen.getByRole("combobox", { name: "新增前置" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "移除前置 base-change" }));
+    await waitFor(() =>
+      expect(ds.setDepends).toHaveBeenCalledWith("remote-change", ["base-change"], true),
+    );
+  });
+
+  it("reader 的排程分頁沒有編輯控制項", async () => {
+    const ds = plannedDs();
+    renderRemoteApp(ds, { setDepends: false });
+    await openPlanTab();
+    const depends = document.querySelector('[data-plan-section="depends"]') as HTMLElement;
+    expect(within(depends).getByText("base-change")).toBeTruthy();
+    expect(within(depends).queryByRole("button", { name: /移除前置/ })).toBeNull();
+    expect(within(depends).queryByRole("combobox", { name: "新增前置" })).toBeNull();
   });
 });
 

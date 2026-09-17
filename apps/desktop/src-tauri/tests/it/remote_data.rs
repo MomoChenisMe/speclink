@@ -143,21 +143,21 @@ fn started_at_rides_the_remote_change_list_payload() {
     let changes = ws.list_changes(&credentials).expect("list changes").changes;
     let started = changes
         .iter()
-        .find(|c| c.name == "started-zero")
+        .find(|c| c.summary.name == "started-zero")
         .expect("started change listed");
     assert_eq!(
-        started.started_at.as_deref(),
+        started.summary.started_at.as_deref(),
         Some("2026-07-30"),
         "startedAt comes from the server meta"
     );
     assert_eq!(
-        remote::change_stage(started),
+        remote::change_stage(&started.summary),
         1,
         "帶 startedAt 且完成數 0 判為進行中"
     );
-    let unstarted = changes.iter().find(|c| c.name == "demo").expect("demo listed");
-    assert_eq!(unstarted.started_at, None, "未開工 change 不帶 startedAt");
-    assert_eq!(remote::change_stage(unstarted), 0, "未開工零進度停在提案中");
+    let unstarted = changes.iter().find(|c| c.summary.name == "demo").expect("demo listed");
+    assert_eq!(unstarted.summary.started_at, None, "未開工 change 不帶 startedAt");
+    assert_eq!(remote::change_stage(&unstarted.summary), 0, "未開工零進度停在提案中");
 }
 
 // --- 開啟入口：handshake fail-closed ---
@@ -344,8 +344,8 @@ fn changes_specs_and_artifacts_read_server_truth() {
 
     let changes = ws.list_changes(&credentials).expect("list changes");
     assert_eq!(changes.changes.len(), 1);
-    assert_eq!(changes.changes[0].name, "demo");
-    assert_eq!(changes.changes[0].total_tasks, 4, "任務數是 server 真值");
+    assert_eq!(changes.changes[0].summary.name, "demo");
+    assert_eq!(changes.changes[0].summary.total_tasks, 4, "任務數是 server 真值");
 
     let specs = ws.list_specs(&credentials).expect("list specs");
     assert!(
@@ -599,9 +599,156 @@ fn board_reorder_writes_the_board_resource_only_and_meta_is_untouched() {
 
     // 清單 overlay 反映新序：carol 移到欄頂（alpha 之前），跨讀取持久。
     let changes = ws.list_changes(&credentials).expect("list changes");
-    let names: Vec<&str> = changes.changes.iter().map(|c| c.name.as_str()).collect();
+    let names: Vec<&str> = changes.changes.iter().map(|c| c.summary.name.as_str()).collect();
     let pos = |n: &str| names.iter().position(|x| *x == n).expect("card present");
     assert!(pos("carol") < pos("alpha"), "拖排後 carol 在 alpha 前：{names:?}");
+}
+
+// --- 規格「remote 變更清單的排程欄位」「remote 排序 overlay 與本地語意同構」---
+
+/// 一次 commit 新建多份文件進 demo/backend scope。
+fn seed_docs(store: &dyn TeamStore, docs: &[(DocumentId, &str)]) {
+    let mut uow = store
+        .begin_unit_of_work(
+            &common::scope(),
+            CommandContext {
+                command: "seed".into(),
+                actor: "seed".into(),
+            },
+        )
+        .expect("begin uow");
+    for (id, content) in docs {
+        uow.create(id.clone(), *content);
+    }
+    store.commit(uow, Vec::new()).expect("seed docs");
+}
+
+fn change_meta(name: &str) -> DocumentId {
+    DocumentId::ChangeMeta {
+        change: name.into(),
+    }
+}
+
+#[test]
+fn change_list_follows_the_plan_order_and_carries_the_schedule_fields() {
+    // Scenario「remote 清單帶排程欄位」＋「變更卡依 plan 配置順序」：board 的
+    // rank 讓 add-b 在前，但 add-b 依賴 add-a——清單照 plan 排成 add-a、add-b。
+    let h = common::harness();
+    seed_docs(
+        h.store.as_ref(),
+        &[
+            (change_meta("add-a"), "schema: spec-driven\ncreated: 2026-09-01\n"),
+            (
+                change_meta("add-b"),
+                "schema: spec-driven\ncreated: 2026-09-02\ndepends_on: add-a\n",
+            ),
+            (
+                DocumentId::BoardOrder,
+                r#"{"changes":{"add-b":"b","add-a":"f"},"discussions":{"beta":"b","alpha":"f"}}"#,
+            ),
+        ],
+    );
+    seed_discussion(h.store.as_ref(), "alpha", "Alpha");
+    seed_discussion(h.store.as_ref(), "beta", "Beta");
+    let (credentials, manager) = runtime(&h);
+    let ws = open(&h, &credentials, &manager);
+
+    let list = ws.list_changes(&credentials).expect("list changes");
+    let names: Vec<&str> = list.changes.iter().map(|c| c.summary.name.as_str()).collect();
+    assert_eq!(names, ["add-a", "add-b"], "plan order, not the board overlay");
+    assert_eq!(list.plan_error, None);
+    let payload = serde_json::to_value(&list).expect("serialize list");
+    assert_eq!(payload["planError"], serde_json::Value::Null, "planError always travels");
+    assert_eq!(payload["changes"][0]["wave"], 1);
+    assert_eq!(payload["changes"][0]["blockedBy"], serde_json::json!([]));
+    assert_eq!(payload["changes"][1]["name"], "add-b");
+    assert_eq!(payload["changes"][1]["wave"], 2);
+    assert_eq!(payload["changes"][1]["blockedBy"], serde_json::json!(["add-a"]));
+    assert_eq!(payload["changes"][1]["dependsOn"], serde_json::json!(["add-a"]));
+    assert_eq!(payload["changes"][1]["overlaps"], serde_json::json!([]));
+    assert_eq!(payload["changes"][1]["totalTasks"], 0, "ChangeSummary fields stay flat");
+
+    // 討論卡仍照 board resource overlay。
+    let discussions = ws.list_discussions(&credentials).expect("list discussions");
+    let slugs: Vec<&str> = discussions.active.iter().map(|d| d.slug.as_str()).collect();
+    assert_eq!(slugs, ["beta", "alpha"]);
+}
+
+#[test]
+fn a_plan_cycle_falls_back_to_the_board_overlay_with_the_cycle_message() {
+    // Scenario「remote 成環退回」：plan 回 409 → board overlay 序、四欄缺席、
+    // planError 為訊息。
+    let h = common::harness();
+    seed_docs(
+        h.store.as_ref(),
+        &[
+            (
+                change_meta("add-a"),
+                "schema: spec-driven\ncreated: 2026-09-01\ndepends_on: add-b\n",
+            ),
+            (
+                change_meta("add-b"),
+                "schema: spec-driven\ncreated: 2026-09-02\ndepends_on: add-a\n",
+            ),
+            (DocumentId::BoardOrder, r#"{"changes":{"add-b":"b","add-a":"f"}}"#),
+        ],
+    );
+    let (credentials, manager) = runtime(&h);
+    let ws = open(&h, &credentials, &manager);
+
+    let list = ws.list_changes(&credentials).expect("a cycle still lists");
+    let names: Vec<&str> = list.changes.iter().map(|c| c.summary.name.as_str()).collect();
+    assert_eq!(names, ["add-b", "add-a"], "board overlay order");
+    assert_eq!(
+        list.plan_error.as_deref(),
+        Some("dependency cycle: add-b -> add-a -> add-b")
+    );
+    let payload = serde_json::to_value(&list).expect("serialize list");
+    for item in payload["changes"].as_array().expect("changes") {
+        for field in ["wave", "blockedBy", "dependsOn", "overlaps"] {
+            assert!(item.get(field).is_none(), "{field} is absent on a cycle: {item}");
+        }
+    }
+}
+
+#[test]
+fn a_remote_drag_across_a_declared_dependency_sends_no_put() {
+    // change-plan Scenario「remote 拖排違反依賴不發 PUT」：add-b 依賴 add-a，把
+    // add-b 拖到 add-a 之前——單行錯誤、board resource 的內容與 revision 皆不變。
+    let h = common::harness();
+    seed_docs(
+        h.store.as_ref(),
+        &[
+            (change_meta("add-a"), "schema: spec-driven\ncreated: 2026-09-01\n"),
+            (
+                change_meta("add-b"),
+                "schema: spec-driven\ncreated: 2026-09-02\ndepends_on: add-a\n",
+            ),
+            (DocumentId::BoardOrder, r#"{"changes":{"add-a":"f","add-b":"n"},"discussions":{}}"#),
+        ],
+    );
+    let (credentials, manager) = runtime(&h);
+    let ws = open(&h, &credentials, &manager);
+    let board = || {
+        h.store
+            .snapshot(&common::scope())
+            .expect("snapshot")
+            .read(&DocumentId::BoardOrder)
+            .expect("read board")
+            .map(|doc| (doc.content, doc.revision))
+    };
+    let before = board();
+
+    let error = ws
+        .reorder_card(&credentials, "change", "add-b", None, Some("add-a"))
+        .expect_err("crossing a declared dependency is refused");
+    assert_eq!(error.message, "cannot move 'add-b' there: it depends on add-a");
+    assert_eq!(board(), before, "no PUT reached the board resource");
+
+    // 不跨依賴的拖排照常落地。
+    ws.reorder_card(&credentials, "change", "add-a", None, Some("add-b"))
+        .expect("a legal move lands");
+    assert_ne!(board(), before, "the legal move rewrote the board resource");
 }
 
 #[test]
@@ -635,7 +782,7 @@ fn discussion_flow_reads_and_writes_through() {
     assert!(!promoted.change.is_empty(), "promote 回新 change 名");
     let changes = ws.list_changes(&credentials).expect("list changes");
     assert!(
-        changes.changes.iter().any(|c| c.name == promoted.change),
+        changes.changes.iter().any(|c| c.summary.name == promoted.change),
         "promote 產生的 change 出現在清單"
     );
 

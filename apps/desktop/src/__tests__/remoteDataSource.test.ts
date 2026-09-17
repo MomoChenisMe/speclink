@@ -22,7 +22,10 @@ const REPO = "backend";
 function fakeInvoke() {
   const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
   const results: Record<string, unknown> = {
-    remote_list_changes: { changes: [{ name: "chg", status: "in-progress", completedTasks: 1, totalTasks: 2, summary: "s", claimedBy: "Alice <a@example.com>" }] },
+    remote_list_changes: {
+      changes: [{ name: "chg", status: "in-progress", completedTasks: 1, totalTasks: 2, summary: "s", claimedBy: "Alice <a@example.com>" }],
+      planError: null,
+    },
     remote_list_specs: { specs: [{ id: "auth", path: "specs/auth/spec.md" }] },
     remote_list_archived: {
       archived: [
@@ -124,6 +127,7 @@ function fakeInvoke() {
     remote_delete_change: null,
     remote_move_task: null,
     remote_reorder_card: null,
+    remote_set_change_depends: null,
     remote_revert_change_to_proposed: null,
     remote_claim: { claimedBy: "Tester <t@example.com>" },
   };
@@ -161,7 +165,7 @@ function openInfo(): RemoteOpenInfo {
     promoteDiscussion: true,
     archiveDiscussion: true,
     reorderCard: true,
-    setDepends: false,
+    setDepends: true,
     policyWrite: true,
     claim: true,
     liveUpdates: true,
@@ -185,6 +189,7 @@ function readerInfo(): RemoteOpenInfo {
       deleteChange: false,
       moveTask: false,
       reorderCard: false,
+      setDepends: false,
       policyWrite: false,
       claim: false,
     },
@@ -314,6 +319,40 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
       project: PROJECT,
       repo: REPO,
       change: "chg",
+    });
+  });
+
+  it("listChangesWithPlan 帶出排程欄位與 planError，setDepends 映射 remote_set_change_depends（add-change-plan-remote D5/D7）", async () => {
+    const cycle = "dependency cycle: a -> b -> a";
+    const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+    const invoke = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+      calls.push({ cmd, args });
+      if (cmd === "remote_list_changes") {
+        return {
+          changes: [
+            { name: "a", status: "in-progress", completedTasks: 0, totalTasks: 1, dependsOn: ["b"] },
+          ],
+          planError: cycle,
+        } as T;
+      }
+      return null as T;
+    };
+    const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);
+
+    const payload = await ds.listChangesWithPlan!();
+    expect(payload.planError).toBe(cycle);
+    expect(payload.changes[0].dependsOn).toEqual(["b"]);
+    expect(await ds.listChanges()).toEqual(payload.changes);
+
+    await ds.setDepends("a", ["b", "c"], true);
+    const call = calls.find((c) => c.cmd === "remote_set_change_depends");
+    expect(call?.args).toEqual({
+      connectionId: CONN,
+      project: PROJECT,
+      repo: REPO,
+      change: "a",
+      on: ["b", "c"],
+      remove: true,
     });
   });
 
@@ -470,12 +509,14 @@ describe("createRemoteSession（決策 6/7：handshake 結果建 session）", ()
     expect(session.settings.policyWrite).toBe(true);
   });
 
-  it("capability 依 role：editor 的 reorderCard 真、reader 假（不偽造缺口）", () => {
+  it("capability 依 role：editor 的 reorderCard 與 setDepends 真、reader 假（不偽造缺口）", () => {
     const { invoke } = fakeInvoke();
     const editor = createRemoteSession(CONN, openInfo(), undefined, { invoke });
     expect(editor.capabilities.reorderCard).toBe(true);
+    expect(editor.capabilities.setDepends).toBe(true);
     const reader = createRemoteSession(CONN, readerInfo(), undefined, { invoke });
     expect(reader.capabilities.reorderCard).toBe(false);
+    expect(reader.capabilities.setDepends).toBe(false);
     expect(reader.capabilities.listChanges).toBe(true);
   });
 

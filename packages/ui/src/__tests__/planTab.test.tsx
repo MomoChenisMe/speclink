@@ -104,6 +104,34 @@ describe("排程分頁", () => {
     expect(props.onSetDepends).toHaveBeenCalledWith("add-c", ["add-d"], false);
   });
 
+  it("資料源提供名冊查詢時，候選以查詢結果為準（worktree 映射時的副本名冊）", async () => {
+    // Scenario「worktree 映射時候選來自副本名冊」的 UI 面：清單有 add-b、add-d，
+    // 名冊只有 add-a、add-b——add-a 已是前置、add-d 不在名冊，下拉只剩 add-b。
+    const loadDependsCandidates = vi.fn(async () => ["add-a", "add-b"]);
+    const props = makeProps({ loadDependsCandidates });
+    await openPlanTab(props);
+    expect(loadDependsCandidates).toHaveBeenCalledWith("add-c");
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(await screen.findByRole("combobox", { name: "新增前置" }));
+    const options = (await screen.findAllByRole("option")).map((o) => o.textContent);
+    expect(options).toEqual(["add-b"]);
+  });
+
+  it("名冊查詢未完成時不長新增下拉，失敗時退回自清單派生", async () => {
+    const pending = makeProps({ loadDependsCandidates: vi.fn(() => new Promise<string[]>(() => {})) });
+    await openPlanTab(pending);
+    expect(within(section("depends")).getByText("add-a")).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "新增前置" })).toBeNull();
+    cleanup();
+
+    const failing = makeProps({ loadDependsCandidates: vi.fn(async () => Promise.reject(new Error("boom"))) });
+    await openPlanTab(failing);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(await screen.findByRole("combobox", { name: "新增前置" }));
+    const options = (await screen.findAllByRole("option")).map((o) => o.textContent);
+    expect(options).toEqual(["add-b", "add-d"]);
+  });
+
   it("移除鈕觸發 onSetDepends(change, [name], true)", async () => {
     const props = makeProps();
     await openPlanTab(props);

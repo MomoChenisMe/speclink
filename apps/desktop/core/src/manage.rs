@@ -155,12 +155,43 @@ pub fn set_task_done_at(root: &Path, change: &str, task: &str, done: bool) -> Re
     }
 }
 
+/// 前置寫入作用的 store（design D6）：該 change 有 worktree 映射時為其副本，否則為主
+/// checkout。寫入與候選查詢共用這一個定根，兩者看到的名冊不會分叉
+/// （add-change-plan-remote D9）。
+fn depends_home(
+    ctx: &crate::ProjectContext,
+    facts: &speclink_host::worktree::WorktreeFacts,
+    change: &str,
+) -> speclink_fs::FsStore {
+    let home_root =
+        crate::worktree_root_for(ctx, facts, change).unwrap_or(ctx.workspace.root.as_path());
+    speclink_fs::FsStore::new(home_root, &ctx.workspace.spec_dir_name)
+}
+
+/// 排程分頁的新增候選（add-change-plan-remote D9）：該 change 所在名冊（[`depends_home`]）
+/// 的其他作用中 change，依名稱排序——分支後才在主 checkout 建立的 change 不在 worktree
+/// 副本的名冊裡，列出來只會被引擎拒絕。
+pub fn depends_candidates_at(root: &Path, change: &str) -> Result<Vec<String>, String> {
+    if !crate::query::is_safe_path_param(change) {
+        return Err(format!("invalid change name: {change}"));
+    }
+    let ctx = init_core_context(root)
+        .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
+    let facts = crate::facts_for(&ctx);
+    Ok(depends_home(&ctx, &facts, change)
+        .list_changes()
+        .into_iter()
+        .map(|c| c.name)
+        .filter(|name| name != change)
+        .collect())
+}
+
 /// 宣告（或 `remove` 時撤銷）`on` 為 `change` 的前置（design D6）：守門與寫入全在引擎
 /// `plan::set_depends`——自依賴、不存在、已封存、成環一律拒絕且零寫入，錯誤文字就是
 /// 引擎訊息。定根到該 change 的所在（有 worktree 映射寫其副本），寫入持全域寫回鎖。
 /// 引擎的成環守門只看寫入的那份 store：有 worktree 映射時，分支後主 checkout 才宣告
-/// 的反向邊副本看不到，而排程分頁的候選來自看板同源視圖（overlay）——新增後以 overlay
-/// 複檢一次，成環就撤銷剛加的邊、回引擎的成環訊息（看板不會出現 planError）。
+/// 的反向邊副本看不到，而看板同源視圖（overlay）看得到——新增後以 overlay 複檢一次，
+/// 成環就撤銷剛加的邊、回引擎的成環訊息（看板不會出現 planError）。
 pub fn set_depends_at(root: &Path, change: &str, on: &[String], remove: bool) -> Result<(), String> {
     if !crate::query::is_safe_path_param(change) {
         return Err(format!("invalid change name: {change}"));
@@ -169,9 +200,7 @@ pub fn set_depends_at(root: &Path, change: &str, on: &[String], remove: bool) ->
     let ctx = init_core_context(root)
         .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
     let facts = crate::facts_for(&ctx);
-    let home_root = crate::worktree_root_for(&ctx, &facts, change)
-        .unwrap_or(ctx.workspace.root.as_path());
-    let home = speclink_fs::FsStore::new(home_root, &ctx.workspace.spec_dir_name);
+    let home = depends_home(&ctx, &facts, change);
     let _guard = write_guard();
     let before = home.find_change(change).map(|c| c.meta.depends_on()).unwrap_or_default();
     let write = speclink_core::plan::set_depends(&home, change, on, remove).map_err(|e| e.to_string())?;
@@ -1853,6 +1882,40 @@ mod tests {
         assert!(set_depends_at(fx.root(), "../evil", &on(&["a"]), false).is_err(), "unsafe name");
 
         assert_eq!(meta_of(&fx, "b"), b_before, "refusals write nothing");
+    }
+
+    #[test]
+    fn depends_candidates_come_from_the_worktree_roster_when_the_change_has_one() {
+        // desktop-app Scenario「worktree 映射時候選來自副本名冊」：add-late 在分支後才於
+        // 主 checkout 建立、副本裡沒有——選了會被引擎拒絕，所以不能列成候選。
+        let fx = crate::testfixture::FixtureRoot::new("m-candidates-wt");
+        fx.add_change("add-auth", META_UNSTARTED);
+        fx.add_change("add-dark-mode", META_UNSTARTED);
+        let _wt = fx.attach_worktree("add-dark-mode");
+        fx.add_change("add-late", META_UNSTARTED);
+
+        assert_eq!(depends_candidates_at(fx.root(), "add-dark-mode").unwrap(), ["add-auth"]);
+        let listed = crate::query::list_changes_at(fx.root());
+        assert!(
+            listed["changes"].as_array().unwrap().iter().any(|c| c["name"] == "add-late"),
+            "the board still lists add-late"
+        );
+        // 候選就是寫入接受的名冊：add-auth 可寫、add-late 被拒。
+        set_depends_at(fx.root(), "add-dark-mode", &on(&["add-auth"]), false)
+            .expect("a roster candidate is accepted");
+        let err = set_depends_at(fx.root(), "add-dark-mode", &on(&["add-late"]), false)
+            .expect_err("an off-roster name is refused");
+        assert!(err.contains("no active change with that name"), "{err}");
+    }
+
+    #[test]
+    fn depends_candidates_without_a_worktree_are_the_checkouts_other_active_changes() {
+        let fx = crate::testfixture::FixtureRoot::new("m-candidates");
+        fx.add_change("b", META_UNSTARTED);
+        fx.add_change("c", META_UNSTARTED);
+        fx.add_change("a", META_UNSTARTED);
+        assert_eq!(depends_candidates_at(fx.root(), "b").unwrap(), ["a", "c"]);
+        assert!(depends_candidates_at(fx.root(), "../evil").is_err(), "unsafe name");
     }
 
     #[test]

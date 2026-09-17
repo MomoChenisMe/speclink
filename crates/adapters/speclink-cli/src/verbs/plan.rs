@@ -1,7 +1,8 @@
 //! Execution-order verbs: `plan` (read) and `change depends` (write).
 //!
-//! Both are FsOnly for now (change-plan design D6): they read and write the
-//! local openspec/ tree; the remote arms come with the server knife.
+//! Both are Dual (add-change-plan-remote D4): the fs arms read and write the
+//! local openspec/ tree; the remote arms call the server endpoints and render
+//! the response through the same functions, so both modes print alike.
 
 use anyhow::Result;
 use clap::{Args, Subcommand};
@@ -9,6 +10,7 @@ use speclink_core as core;
 
 use crate::color;
 use crate::common::{open_project, print_json, run, worktree_facts, worktree_overlay};
+use crate::remote_base::RemoteCtx;
 use core::store::Store;
 
 #[derive(Args)]
@@ -73,7 +75,23 @@ pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
                     remove,
                 },
             )?;
-            render_depends(&o, &on, remove, json)
+            render_depends(&o.change, &o.depends_on, &on, remove, json)
+        }
+    }
+}
+
+/// Remote arm: the server runs the same guards and write; its 404 and refused
+/// 409 carry the engine's line, which `?` prints exactly as fs mode does.
+pub(crate) fn remote_change(ctx: &RemoteCtx, a: ChangeVerbArgs) -> Result<()> {
+    match a.command {
+        ChangeCommands::Depends {
+            name,
+            on,
+            remove,
+            json,
+        } => {
+            let written = ctx.client.set_depends(&name, &on, remove)?;
+            render_depends(&written.change, &written.depends_on, &on, remove, json)
         }
     }
 }
@@ -81,30 +99,31 @@ pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
 /// One success line (design D4): the full declaration after an add, the
 /// dropped names after a remove; `--json` is the declaration after the write.
 fn render_depends(
-    o: &core::command::DependsOutcome,
+    change: &str,
+    depends_on: &[String],
     on: &[String],
     remove: bool,
     json: bool,
 ) -> Result<()> {
     if json {
         return print_json(&serde_json::json!({
-            "change": o.change,
-            "dependsOn": o.depends_on,
+            "change": change,
+            "dependsOn": depends_on,
         }));
     }
     if remove {
         println!(
             "{} {} no longer depends on: {}",
             color::green("✓"),
-            o.change,
+            change,
             on.join(", ")
         );
     } else {
         println!(
             "{} {} depends on: {}",
             color::green("✓"),
-            o.change,
-            o.depends_on.join(", ")
+            change,
+            depends_on.join(", ")
         );
     }
     Ok(())
@@ -123,8 +142,16 @@ pub(crate) fn cmd_plan(a: PlanArgs) -> Result<()> {
             &overlaid
         },
         Some(&ws),
-        core::command::Command::Plan,
+        core::command::Command::Plan { ranks: None },
     )?;
+    render_plan(&plan, a.json)
+}
+
+/// Remote arm: the server plans the scope (its board resource is the rank
+/// source); the response converts back to the engine's report so the renderer
+/// below prints it — a cycle arrives as a refused 409 carrying the engine line.
+pub(crate) fn remote_plan(ctx: &RemoteCtx, a: &PlanArgs) -> Result<()> {
+    let plan = speclink_remote::convert::plan_report(ctx.client.plan()?)?;
     render_plan(&plan, a.json)
 }
 

@@ -19,8 +19,8 @@ use speclink_protocol::command::{
     DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, InProgressRemoveResponse,
     MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse,
     PutArtifactRequest, PutArtifactResponse, ReviewScopeEntryDto, ReviewTicketResponse,
-    SetDiscussionContextRequest, StampReviewRequest, StampReviewResponse, TaskDoneRequest,
-    TaskDoneResponse, TaskUndoneResponse,
+    SetDependsRequest, SetDependsResponse, SetDiscussionContextRequest, StampReviewRequest,
+    StampReviewResponse, TaskDoneRequest, TaskDoneResponse, TaskUndoneResponse,
 };
 use speclink_protocol::context::{ContextSnapshot, ContextSnapshotRequest};
 use speclink_protocol::drift::SpecDriftResponse;
@@ -29,7 +29,7 @@ use speclink_protocol::query::{
     ArtifactInstructions, BoardOrderResponse, ChangeEvidenceResponse, ChangeStatus,
     ConfigResponse, ImportBundle,
     ImportReportResponse, LanguageResponse, ListChangesResponse, ListDiscussionsResponse,
-    ListSpecsResponse, PutBoardOrderRequest, PutBoardOrderResponse, PutConfigRequest,
+    ListSpecsResponse, PlanResponse, PutBoardOrderRequest, PutBoardOrderResponse, PutConfigRequest,
     PutConfigResponse, ScopesResponse, SearchDiscussionsResponse, SearchResponse,
     ShowDiscussionResponse,
     SpecDocumentResponse, ValidateChangeResponse, WhoamiResponse,
@@ -285,6 +285,13 @@ impl Client {
         self.get("/board-order")
     }
 
+    /// `GET /plan` — the scope's change-level execution order, ranked by the
+    /// scope's board resource. A dependency cycle comes back as a `refused`
+    /// 409 carrying the engine's cycle line verbatim.
+    pub fn plan(&self) -> Result<PlanResponse, RemoteError> {
+        self.get("/plan")
+    }
+
     /// `GET /changes/{name}/evidence` — the change's recorded completion
     /// evidence. A change that never recorded any answers with an empty set.
     pub fn change_evidence(&self, name: &str) -> Result<ChangeEvidenceResponse, RemoteError> {
@@ -441,6 +448,21 @@ impl Client {
     /// `POST /changes/{name}/claim`
     pub fn claim(&self, name: &str) -> Result<ClaimResponse, RemoteError> {
         self.post(&format!("/changes/{name}/claim"), &Empty {})
+    }
+
+    /// `POST /changes/{name}/depends` — declare (or with `remove`, drop) the
+    /// change's prerequisites. Guard refusals come back as `refused` 409s
+    /// carrying the engine's line verbatim.
+    pub fn set_depends(
+        &self,
+        name: &str,
+        on: &[String],
+        remove: bool,
+    ) -> Result<SetDependsResponse, RemoteError> {
+        self.post(
+            &format!("/changes/{name}/depends"),
+            &SetDependsRequest { on: on.to_vec(), remove },
+        )
     }
 
     /// `POST /changes/{name}/archive?carryReview=<bool>&carryVerify=<bool>` —
