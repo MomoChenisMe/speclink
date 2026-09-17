@@ -1092,6 +1092,112 @@ fn apply_with_worktree_refuses_more_than_one_change() {
             content.contains("一個 change 一個 session"),
             "{rel}: must print the multi-session recipe in the user's terms"
         );
+        // 多名字先以 plan 分組：blockedBy 空者可並行，非空者等前置落地再開。
+        let p0 = &content[guard..policy_gate];
+        for needle in ["speclink plan --json", "blockedBy", "落地再開"] {
+            assert!(
+                p0.contains(needle),
+                "{rel}: the multi-change guard must sort the names by plan — missing {needle:?}"
+            );
+        }
+    }
+}
+
+/// Spec「apply-with-worktree 技能的前置指示」Scenario「內文含 plan 選擇與守門指示」:
+/// the plan picks and guards the change in the main checkout, after the policy gate
+/// and before the artifacts are committed — a blocked, unknown or unpicked change
+/// stops with no commit and no worktree. The list-based existence check is gone.
+#[test]
+fn apply_with_worktree_selects_and_guards_with_plan() {
+    for (rel, content) in worktree_skill_for_both_tools("apply-wt-plan", "apply-with-worktree") {
+        let policy_gate = content
+            .find("Check the worktree policy")
+            .unwrap_or_else(|| panic!("{rel}: missing the policy gate"));
+        let select = content
+            .find("Select the change with plan")
+            .unwrap_or_else(|| panic!("{rel}: missing the plan selection step"));
+        let commit_step = content
+            .find("into HEAD")
+            .unwrap_or_else(|| panic!("{rel}: missing the commit-artifacts-into-HEAD step"));
+        assert!(
+            policy_gate < select && select < commit_step,
+            "{rel}: the plan step belongs after the policy gate and before the artifact commit"
+        );
+        let step = &content[select..commit_step];
+        for needle in [
+            "speclink plan --json",
+            "take `next`",
+            "`blockedBy`",
+            "`skipped`",
+            "do NOT commit the artifacts, do NOT create the worktree",
+            "Using change: <name>",
+        ] {
+            assert!(
+                step.contains(needle),
+                "{rel}: the plan step is missing {needle:?}"
+            );
+        }
+        assert!(
+            !content.contains("speclink list --json"),
+            "{rel}: the list-based existence check is folded into the plan step"
+        );
+        // P0 分組、P2 守門、本體第 1 步複查，各一次。
+        assert_eq!(
+            content.matches("speclink plan --json").count(),
+            3,
+            "{rel}: plan is consulted in P0, in P2 and in the apply body's step 1"
+        );
+    }
+}
+
+/// Same requirement, Scenario「內文含本體複查以主 checkout 為準指示」: inside the
+/// worktree the apply body's own plan step is only a re-check, and the main
+/// checkout's verdict wins. The note lives in the worktree preamble alone — the plain
+/// apply skill still renders its asset verbatim, with nothing added.
+#[test]
+fn apply_with_worktree_treats_the_body_plan_as_a_recheck() {
+    for (rel, content) in worktree_skill_for_both_tools("apply-wt-recheck", "apply-with-worktree") {
+        let from = content
+            .find("Work inside the worktree from here on")
+            .unwrap_or_else(|| panic!("{rel}: missing the work-inside-the-worktree step"));
+        let to = content
+            .find("以下為 apply 本體流程")
+            .unwrap_or_else(|| panic!("{rel}: missing the hand-over to the apply body"));
+        let p6 = &content[from..to];
+        for needle in ["only a re-check", "the main checkout's verdict wins"] {
+            assert!(
+                p6.contains(needle),
+                "{rel}: the worktree step is missing {needle:?}"
+            );
+        }
+    }
+    for (rel, content) in skill_for_both_tools("apply-plain-recheck", "apply") {
+        let tool = if rel.starts_with(".claude") { Tool::Claude } else { Tool::Codex };
+        let mut expected = skills::substitute(
+            skills::skill_body("apply").expect("apply body"),
+            tool,
+            "openspec",
+        );
+        while expected.ends_with("\n\n") {
+            expected.pop();
+        }
+        if !expected.ends_with('\n') {
+            expected.push('\n');
+        }
+        let body = content
+            .splitn(3, "---\n")
+            .nth(2)
+            .and_then(|rest| rest.strip_prefix('\n'))
+            .unwrap_or_else(|| panic!("{rel}: missing the frontmatter"));
+        assert_eq!(
+            normalize_eol(body),
+            normalize_eol(&expected),
+            "{rel}: the plain apply skill must render its asset verbatim"
+        );
+        assert!(
+            !content.contains("re-check"),
+            "{rel}: the re-check note belongs to the worktree preamble, not the apply body"
+        );
     }
 }
 
@@ -1144,6 +1250,51 @@ fn apply_with_worktree_stops_before_the_merge_and_hands_off() {
         assert!(
             content.contains("worktree-merge"),
             "{rel}: must name the follow-up skill"
+        );
+    }
+}
+
+// --- ingest skill: re-judge soft dependencies before the hand-off ---
+
+/// Spec ingest-skill「ingest 收尾重判本變更的軟依賴」: once the updated artifacts
+/// validate, ingest re-judges this change's soft dependencies and records them with
+/// `change depends` before sealing and before the Next steps hand-off. The seal step
+/// moves down one, so the Next steps pointer must follow it.
+#[test]
+fn ingest_skill_rejudges_soft_dependencies_before_handoff() {
+    for (rel, content) in skill_for_both_tools("ingest-rejudge", "ingest") {
+        let validate = content
+            .find("speclink validate \"<name>\"")
+            .unwrap_or_else(|| panic!("{rel}: missing the validation step"));
+        let depends = content
+            .find("speclink change depends")
+            .unwrap_or_else(|| panic!("{rel}: missing the soft-dependency re-judge"));
+        let seal = content
+            .find("**Seal the reflection**")
+            .unwrap_or_else(|| panic!("{rel}: missing the seal step"));
+        let next_steps = content
+            .find("## Next steps")
+            .unwrap_or_else(|| panic!("{rel}: missing the Next steps section"));
+        assert!(
+            validate < depends && depends < seal && seal < next_steps,
+            "{rel}: the re-judge belongs after validation, before the seal and the hand-off"
+        );
+        for needle in [
+            // 只有本變更時跳過；硬信號交引擎；拒絕時回報續行
+            "**Only one active change**",
+            "Do NOT judge overlap yourself",
+            "report the refusal and continue",
+            // 不刪既有依賴
+            "Never remove an existing `depends_on`",
+        ] {
+            assert!(
+                content.contains(needle),
+                "{rel}: the re-judge step is missing {needle:?}"
+            );
+        }
+        assert!(
+            content[next_steps..].contains("first (step 10)"),
+            "{rel}: Next steps must point at the renumbered seal step"
         );
     }
 }

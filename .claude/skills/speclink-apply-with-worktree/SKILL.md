@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.38.0"
+  version: "v1.39.0"
   generatedBy: "Speclink"
 ---
 
@@ -25,13 +25,30 @@ Complete these steps **before** any of the apply flow below. Each one can stop t
 
 This skill takes **exactly one** change. Parallel work means one session per change, each in its own worktree — not one session cycling through several.
 
-If the input names more than one change (e.g. `/speclink-apply-with-worktree add-auth add-billing add-search`), STOP and use the **AskUserQuestion tool** to have the user pick the one to run here. Then print the recipe for the rest, naming them:
+If the input names more than one change (e.g. `/speclink-apply-with-worktree add-auth add-billing add-search`), STOP — start none of them yet. First sort the names with the execution-order query:
+
+```bash
+speclink plan --json
+```
+
+Find each name in `changes`:
+
+- **`blockedBy` is empty** — the change is parallel-ready.
+- **`blockedBy` is non-empty** — the change waits for its prerequisites. Name it with them, in these terms:
+
+  > <change-name> 要等 <prerequisites> 落地再開。
+
+- **Not in `changes`** (archived, misspelled, or listed under `skipped`) — name it as not available.
+
+Then use the **AskUserQuestion tool** to have the user pick the one to run here, from the parallel-ready names only. Print the recipe for the other parallel-ready names, naming them:
 
 > 平行做法是一個 change 一個 session：另外開視窗，各自執行 `/speclink-apply-with-worktree <change-name>`。主資料夾的看板會同時顯示每個 worktree 的進度。
 
+If no name is parallel-ready, there is nothing to pick: report the waiting and unavailable names and STOP. If the query fails, show the error and STOP.
+
 Do **NOT** run them one after another in this session. A single session working through several changes serializes what the user asked to parallelize, and its context is spent on the wrong change by the time the second one starts.
 
-If there is no AskUserQuestion tool available, list the names as plain text, ask which one to run, and wait for the answer.
+If there is no AskUserQuestion tool available, list the parallel-ready names as plain text, ask which one to run, and wait for the answer.
 
 ### P1. Check the worktree policy
 
@@ -53,13 +70,24 @@ Read the EFFECTIVE value, the same way the CLI resolves it — the env layer win
 
   Do **NOT** fall back to running the apply flow in the main folder. Enabling the policy is the user's decision, not yours — offer to run `speclink workflow-config set worktree true` and wait for their answer.
 
-### P2. Confirm the change exists and is not archived
+### P2. Select the change with plan
+
+Pick and guard the change here, in the main checkout — before its artifacts are committed and before any worktree exists. Run the execution-order query:
 
 ```bash
-speclink list --json
+speclink plan --json
 ```
 
-The change must appear among the active changes. If it does not (unknown name, or already archived), STOP and report which change names are available.
+It returns `changes` (one entry per active change with its `blockedBy`), `next` (the first proposed change with nothing blocking it, or `null`) and `skipped` (changes whose metadata could not be parsed).
+
+- **No name given** → take `next`. If `next` is `null`, there is nothing ready to start: list every change with its `blockedBy` and STOP.
+- **A name given** → find it in `changes`. If its `blockedBy` is non-empty, print the prerequisite list (`blockedBy`) and STOP.
+- **The name is not in `changes`** (archived, misspelled, or listed under `skipped`) → STOP and report which change names are available.
+- **The command fails** (a dependency cycle, a project that is not initialized) → show the error and STOP.
+
+Every STOP in this step ends the run on the spot: do NOT commit the artifacts, do NOT create the worktree. The way out of a block is the user's: land (archive) the blockers first; drop a declared prerequisite that is wrong with `speclink change depends <name> --on <prerequisite> --remove`; a blocker that comes from delta-capability overlap keeps its place until it lands. Then run this skill again.
+
+Once a change is selected, announce: "Using change: <name>" and how to override (e.g., `/speclink-apply-with-worktree <other>`). Continue to P3.
 
 ### P3. Get the change's artifacts into HEAD
 
@@ -147,6 +175,8 @@ Every step of the apply flow below runs **inside the worktree folder**, not the 
 - `speclink` verbs run with the worktree as the working directory, so task checkboxes and stamps land in that copy.
 
 The main checkout stays untouched. Its `speclink list` will show this change with a `[worktree]` marker and reflect the worktree's task progress live — that is how the user watches parallel work from one place.
+
+The apply body's own step 1 (**Select the change with plan**) is only a re-check here. Its plan query runs inside the worktree, and a plan run there reads only the worktree's own copy: it cannot see the progress of other worktrees, or changes archived on the main branch after this worktree was created. When the re-check's result differs from P2, the main checkout's verdict wins — do not STOP because of the re-check, and continue with the change P2 selected.
 
 ---
 
