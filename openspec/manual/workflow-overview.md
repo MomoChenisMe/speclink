@@ -3,8 +3,8 @@ title: 工作流總覽：站別與交棒
 section: 開始使用
 order: 50
 keywords: [工作流, 技能, 交棒, 下一步, SDD, 站別, baseline, 手冊]
-sources: [skill-routing, user-documentation]
-generated: 2026-09-03
+sources: [skill-routing, user-documentation, "change-plan#apply 技能以 plan 挑選與守門"]
+generated: 2026-09-17T16:05:41+08:00
 ---
 
 # 工作流總覽：站別與交棒
@@ -46,10 +46,10 @@ Speclink 的工作流由一組 AI 技能串起來。每個技能就是一站：�
 
 - 必經的生命週期階段：propose → apply → archive。
 - 條件式階段：discuss、improve、baseline、drift、ingest、review、verify、quality、worktree 流程。看情況才走。
-- 工具技能：commit、analyze、audit、config、trace、manual。隨叫隨用，沒有固定的下一站。audit 是安全檢查，commit 是限定某個變更檔案的 Git 工具；兩者都不是每個變更必經的步驟。
+- 工具技能：commit、analyze、audit、config、trace、manual。隨叫隨用，沒有固定的下一站。audit 是安全檢查，commit 是限定某個變更檔案的 Git 工具；兩者都不是每個變更必經的步驟。唯一的例外是 commit 的「先封存再一起提交」子流程：它本身就是封存入口，所以帶著與 archive 相同的封存前順序提示與封存後提醒。
 
 > [!NOTE]
-> apply、drift、ingest、analyze、audit 這五個技能的內文行為沒有各自的規格，本手冊只寫路由層面的資訊。其他技能各有一頁。
+> apply、drift、analyze、audit 這四個技能的內文行為沒有各自的規格，本手冊只寫路由層面的資訊。apply 挑選變更的第一步（先看 plan 的順序與阻擋）與 ingest 收尾的依賴判定各自有規格，寫在[執行順序：plan 與依賴](plan.md)、[實作：完成任務](apply.md)與[續作與需求變更](drift-ingest.md)。其他技能各有一頁。
 
 ## 從哪裡開始
 
@@ -69,7 +69,7 @@ Speclink 的工作流由一組 AI 技能串起來。每個技能就是一站：�
 | --- | --- | --- |
 | baseline | 初始規格生成完 | 需求清楚→propose；還模糊→discuss |
 | discuss | 已寫結論且值得開變更 | propose 的 `--from-discussion` 入口 |
-| propose | 產物齊備 | apply。提案中變更有 2 個以上時，先盤點執行順序 |
+| propose | 產物齊備 | apply。提案中變更有 2 個以上時，先盤點執行順序（worktree 政策開啟時分可平行／須依序）。盤點的做法見[提案](propose.md)的收尾一節 |
 | apply | 全部勾完 | 品質關卡（review、verify 或 quality）或 archive。commit 技能的「先封存再一起提交」可以一步到位 |
 | apply | 需求中途變更 | ingest |
 | apply-with-worktree | worktree 內 commit 完 | 品質關卡（在 worktree 內）→ worktree-merge |
@@ -79,9 +79,12 @@ Speclink 的工作流由一組 AI 技能串起來。每個技能就是一站：�
 | ingest | 產物更新完 | 回 apply |
 | review、verify | 落章 | archive。在 worktree 內則先提交蓋章寫入的異動，再 worktree-merge |
 | quality | 兩站落章 | archive。在 worktree 內則 worktree-merge |
-| archive | 封存完成 | 提醒你提交封存產生的異動；工作區有 `openspec/manual/` 時另提醒可跑 manual 檢查手冊是否過期。都只提醒，不代跑 |
+| archive | 封存完成 | 提醒你提交封存產生的異動；工作區有 `openspec/manual/` 時另提醒可跑 manual 檢查手冊是否過期；plan 算得出下一個可開工的變更時，提一句「下一個可開工」。都只提醒，不代跑 |
+| commit（先封存子流程） | 封存並提交完 | 有 `openspec/manual/` 時提醒可跑 manual；plan 算得出下一個可開工時提「下一個可開工」。都只提醒，不代跑 |
 
 apply 完成時如果還剩手動任務，建議會說品質關卡可以先跑，封存要等手動任務完成。
+
+「下一個可開工」是 `speclink plan` 算出來的：第一個提案中、而且沒有被任何前置擋住的變更。變更之間的順序、波次與依賴怎麼算，見[執行順序：plan 與依賴](plan.md)。
 
 ## 提案時只產必要的產物
 
@@ -103,14 +106,15 @@ review 與 verify 蓋章時，會在同一個寫入裡寫下章欄位並刪除�
 2. [討論：需求還模糊時](discuss.md)
 3. [提案：建立變更與產物](propose.md)
 4. [實作：完成任務](apply.md)
-5. [續作與需求變更：drift 與 ingest](drift-ingest.md)
-6. [品質關卡總覽](quality-stations.md)、[審查站](review.md)、[驗證站](verify.md)
-7. [封存](archive.md)
-8. [提交單一變更的檔案](commit.md)
-9. [平行實作與合回：worktree](worktree.md)
-10. [溯源：一個功能怎麼來的](trace.md)
-11. [工作流政策與設定](policy-config.md)
-12. [產出流程 schema 管理](schemas.md)
-13. [操作手冊：生成與導覽](manual.md)
+5. [執行順序：plan 與依賴](plan.md)
+6. [續作與需求變更：drift 與 ingest](drift-ingest.md)
+7. [品質關卡總覽](quality-stations.md)、[審查站](review.md)、[驗證站](verify.md)
+8. [封存](archive.md)
+9. [提交單一變更的檔案](commit.md)
+10. [平行實作與合回：worktree](worktree.md)
+11. [溯源：一個功能怎麼來的](trace.md)
+12. [工作流政策與設定](policy-config.md)
+13. [產出流程 schema 管理](schemas.md)
+14. [操作手冊：生成與導覽](manual.md)
 
-**出處**：`skill-routing`、`user-documentation`
+**出處**：`skill-routing`、`user-documentation`、`change-plan`

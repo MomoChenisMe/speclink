@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 100
 keywords: [討論, discuss, 決策樹, slug, 結論, 轉為變更, 分期轉出, hold, 最後一刀, 改進討論, 搜尋舊討論, search]
 sources: [discuss-skill, discussion-docs, improve-skill, user-documentation]
-generated: 2026-09-14T16:01:31+08:00
+generated: 2026-09-17T16:05:41+08:00
 ---
 
 # 討論：需求還模糊時
@@ -19,14 +19,15 @@ generated: 2026-09-14T16:01:31+08:00
 
 agent 開場先做一輪淺掃，順序固定是三段：正式規格 → 舊討論 → 程式碼。
 
-1. 先查正式規格（`speclink list --specs`）。最多讀 3 份 Purpose，只有主題直接動到的 capability 才讀全文。零命中就靜默跳過。
+1. 先查正式規格（`speclink list --specs`）。候選最多 5 個：名稱命中關鍵字多的排前面，同數依指令列出的順序。依這個順序最多讀 3 份 Purpose，只有主題直接動到的 capability 才讀全文。零命中就靜默跳過。
+   命中 capability 之後，agent 再看這些 capability 有沒有「進行中的 delta」：用開場已經跑過的 `speclink list --json`，比對每個未封存變更的 delta capability 清單（不看變更的狀態，因為未封存的 delta 都還沒併進正式規格；也不逐一執行 `speclink show`）。命中的記下變更名，用 `speclink artifact cat specs/<capability> --change <變更名>` 只讀該 delta 的需求標題與 ADDED／MODIFIED／REMOVED／RENAMED 區段標記，最多 3 份、不讀全文；變更在 worktree 裡時到它的 worktree 路徑下讀。正式規格零命中、沒有進行中變更、或沒有變更的 delta 動到命中的 capability 時，這一小步靜默跳過。進行中的 delta 屬於規格這一段，不另立一段。
 2. 再查舊討論。agent 用你題目的關鍵字，加上正式規格掃描轉譯出來的英文詞，執行 `speclink discuss search`（見下方「搜尋舊討論的定案」）。命中的決定行全部列出；整份結論最多讀 3 份，topic 命中的優先。這一步不分討論種類，一般討論與改進討論一起查。
 3. 最後掃原始碼，最多讀 5 個檔。主題已經點名具體檔名或符號時，程式碼這條線直接開跑。
 
 淺掃的用途是接地與判斷需求清不清楚。深入查證留到決策樹逐節點進行。
 
 > [!NOTE]
-> 規格對開場淺掃有兩種說法：較早的版本是「正式規格 → 程式碼」兩段，較晚的版本加入舊討論查核成為三段。本頁依較晚的版本撰寫，詳見[本手冊的來源](about.md)。
+> 規格對開場淺掃有兩種說法：較早的版本是「正式規格 → 程式碼」兩段，較晚的版本加入舊討論查核成為三段。本頁依較晚的版本撰寫，詳見[本手冊的來源](about.md)。淺掃的時間盒是：正式規格最多 3 份 Purpose、進行中 delta 最多 3 份且只讀標題與區段標記、原始碼最多 5 個檔。
 
 ### 需求鈍或利，決定要不要先磨
 
@@ -54,6 +55,8 @@ agent 先攤開決策空間：根節點是「這題到底在決定什麼」，�
 
 - 正式規格已涵蓋：附規格證據。
 - 與正式規格衝突：指出衝突內容並附證據，由你決定改正式規格還是改需求。agent 不會因此擋下討論方向。
+
+  前兩類的 capability 有進行中的 delta 時，該條假設的類別標籤後面多一個標記「（進行中變更 <變更名> 將改動：<需求名>）」，一個變更一個標記，需求名取自那份 delta 的標題、逗號分隔。超出時間盒沒讀到的命中寫成「（進行中變更 <變更名> 將改動）」，不猜需求名。Evidence 同時列正式規格與那份 delta（寫法 `<變更名>: <capability>`）。這個標記只是提醒，agent 不會拿它擋下討論方向；對照表也不會為進行中的 delta 另開一類。例如：需求對應正式規格 client-protocol 的既有承諾，而 add-change-plan-remote 的 delta 動到它的「討論資訊 payload」需求，該條假設就寫成「Covered by canon（進行中變更 add-change-plan-remote 將改動：討論資訊 payload）」。
 - 正式規格沒講：新地盤。agent 順帶檢查 capability 命名是否貼近既有規格。
 - 舊討論已定案：某份舊討論已經對這件事下過決定。再細分三種：
   - 曾否決：附上當時的理由。你要重開這個方向時，agent 會請你說明當時的理由為什麼已經失效。
@@ -117,7 +120,7 @@ slug 只接受純 ASCII 的 kebab-case：小寫英文字母與數字的段落，
 
 每份記錄有 Context、Rounds、Conclusion 三個區段。每一輪有 Focus、Position、Ruled out、Open 四個欄位。首輪的 Position 攤開初始決策空間（可以含 ASCII 樹），之後每輪聚焦解掉一個節點，中途發現的新分支記進該輪的 Open。
 
-Context 固定有一行 `Prior discussions: <slug 清單>`，列出開場淺掃查到的舊討論；零命中時寫 none。
+Context 固定有一行 `Prior discussions: <slug 清單>`，列出開場淺掃查到的舊討論；零命中時寫 none。Context 既有的「相關變更與規格」那一句，會一併列出淺掃命中的進行中 delta，寫法 `<變更名>: <capability>`，多筆逗號分隔；零命中時那一句只列正式規格與變更名，不加任何空標記。記錄的骨架不變，不新增獨立的標記行，舊記錄不用遷移。
 
 輪只能往後追加。這三個指令寫內容：
 

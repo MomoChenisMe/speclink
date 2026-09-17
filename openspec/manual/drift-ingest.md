@@ -3,8 +3,8 @@ title: 續作與需求變更：drift 與 ingest
 section: SDD 工作流
 order: 130
 keywords: [drift, ingest, 漂移, 閒置, 需求變更, 過期, validate]
-sources: [drift-computation, archive-merge, skill-routing, user-documentation]
-generated: 2026-09-11T10:03:08+08:00
+sources: [drift-computation, archive-merge, skill-routing, user-documentation, ingest-skill]
+generated: 2026-09-17T16:05:41+08:00
 ---
 
 # 續作與需求變更：drift 與 ingest
@@ -15,7 +15,7 @@ generated: 2026-09-11T10:03:08+08:00
 - **實作到一半需求變了**：走 ingest，把新的需求併進這個變更的產物，再回去實作。
 
 > [!NOTE]
-> drift 與 ingest 兩個技能的內文行為規格未載。本頁只寫規格有寫的部分：drift 報告的內容、它與封存守門的關係，以及兩個技能的交棒方向。
+> drift 技能的內文行為規格未載；ingest 技能只有收尾的依賴判定有規格。本頁只寫規格有寫的部分：drift 報告的內容、它與封存守門的關係、ingest 收尾怎麼重判依賴，以及兩個技能的交棒方向。
 
 ## drift：看漂移了多少
 
@@ -71,6 +71,27 @@ drift 技能結尾依結果給建議，只建議、不代跑：
 
 link 只建立變更側的來源鏈；seal 只在內容已經反映後才做。討論的完整流程與 seal 的指令寫法見 [討論：需求還模糊時](discuss.md)。
 
+### ingest 收尾：重判這個變更的依賴
+
+需求變了，這個變更可能開始依賴別的變更。所以 ingest 在產物更新完、通過 `speclink validate` 之後、給下一步建議之前，多做一步：
+
+1. 用 `speclink list --json` 列出作用中的變更。只有這一個作用中變更時，這一步整個跳過。
+2. 有兩個以上時，只針對這次更新的變更判定：以更新後的產物為準，讀其他變更提案的 Impact 段，看這個變更是不是建立在某個變更的成果上。
+3. 是，就對每個前置各執行一次 `speclink change depends <這個變更> --on <前置>` 落檔，不只口頭報告。邊已經存在時指令直接成功。指令拒絕（指向自己、名稱不存在或已封存、會成環）時，agent 回報拒絕訊息，接著處理下一個前置，不重試。
+4. 只是動到同一段程式碼、不是建立在對方成果上的，不記為前置。這個變更如果已經在進行中，等一個還沒開工的變更會把它卡住。agent 改為向你提出這個重疊。
+
+硬信號（兩個變更的 delta 動到同一個 capability）由引擎在 plan 裡算，agent 不自己判。這一步不會移除任何既有的前置（刪邊是你的決定），也不會自動呼叫 apply。出邊仍是回 apply；apply 第一步的 plan 守門會讀到新宣告的前置。落檔的段落與 propose 技能收尾的寫法相同，見[提案：建立變更與產物](propose.md)。
+
+| 作用中變更 | 這次 ingest 的變更 | 更新後的判定 | agent 的動作 | 後續 |
+| --- | --- | --- | --- | --- |
+| add-a、add-b | add-b | 新需求要用 add-a 新增的動詞 | `speclink change depends add-b --on add-a` | 下次 `/speclink-apply add-b` 被 plan 擋到 add-a 封存 |
+| add-a、add-b | add-b | 新需求與 add-a 無關 | 不執行 | 回 apply，順序不變 |
+| add-a、add-b | add-b | 只和 add-a 動到同一段程式碼 | 不執行，向你提出重疊 | 回 apply |
+| add-a、add-b、add-c | add-b | 要用 add-a 與 add-c 的成果，但 add-c 已經依賴 add-b | add-a 照常落檔；add-c 因成環被拒，回報訊息、不重試 | 回 apply |
+| add-b | add-b | 唯一的作用中變更 | 跳過這一步 | 回 apply |
+
+順序、波次與依賴怎麼算，見[執行順序：plan 與依賴](plan.md)。
+
 ## 分清楚兩個入口
 
 | 你的情況 | 走哪裡 |
@@ -80,4 +101,4 @@ link 只建立變更側的來源鏈；seal 只在內容已經反映後才做。�
 
 變更曾反映的討論又重新下了結論，是第三種情況，見 [實作：完成任務](apply.md) 的「需求中途變更」一節。
 
-**出處**：`drift-computation`、`archive-merge`、`skill-routing`、`user-documentation`
+**出處**：`drift-computation`、`archive-merge`、`skill-routing`、`user-documentation`、`ingest-skill`

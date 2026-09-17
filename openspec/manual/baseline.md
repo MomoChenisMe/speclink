@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 90
 keywords: [baseline, 基準, 盤點, 既有專案, 採用, capability map, rules.specs, onboard]
 sources: [baseline-skill, skill-routing, user-documentation]
-generated: 2026-09-03
+generated: 2026-09-17T16:05:41+08:00
 ---
 
 # 基準盤點：既有專案採用 Speclink

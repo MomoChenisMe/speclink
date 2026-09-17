@@ -4,7 +4,7 @@ section: Remote 模式
 order: 410
 keywords: [server, npx, Docker, compose, SQLite, PostgreSQL]
 sources: [server-release, user-documentation]
-generated: 2026-09-02
+generated: 2026-09-17T16:05:41+08:00
 ---
 
 # 啟動 server

@@ -3,8 +3,8 @@ title: 實作：完成任務
 section: SDD 工作流
 order: 120
 keywords: [apply, 任務, 勾選, 手動任務, 開工, 證據]
-sources: [change-lifecycle, manual-task-marker, task-identity, verify-evidence, verb-contract, skill-routing]
-generated: 2026-09-07T13:20:04+08:00
+sources: [change-lifecycle, manual-task-marker, task-identity, verify-evidence, verb-contract, skill-routing, "change-plan#apply 技能以 plan 挑選與守門"]
+generated: 2026-09-17T16:05:41+08:00
 ---
 
 # 實作：完成任務
@@ -12,11 +12,23 @@ generated: 2026-09-07T13:20:04+08:00
 這一站把提案裡的任務一項一項做完、勾掉。你會用到 `/speclink-apply` 技能，或直接下 `speclink task done` 指令。變更第一次有任務被勾掉時，就自動從「提案中」進到「進行中」。
 
 > [!NOTE]
-> apply 技能本身的內文行為（怎麼讀任務、怎麼寫碼）規格未載。本頁只寫規格有寫的部分：任務行的格式、勾選與取消勾選的指令、手動任務的規則、開工標記，以及做完之後的交棒。
+> apply 技能本身的內文行為（怎麼讀任務、怎麼寫碼）規格未載。本頁只寫規格有寫的部分：挑選變更的第一步、任務行的格式、勾選與取消勾選的指令、手動任務的規則、開工標記，以及做完之後的交棒。
 
 ## 進入這一站之前
 
 apply 技能開始前，會先跑一段前置檢查。如果這個變更閒置了一陣子，前置檢查會提出「漂移警告」。看到警告就先走 [續作與需求變更](drift-ingest.md)，再回來實作。
+
+### 第一步：先看 plan，再挑變更
+
+技能挑選要做哪個變更時，第一件事是執行 `speclink plan --json`，拿到所有未封存變更的執行順序、波次與阻擋清單（怎麼算的見[執行順序：plan 與依賴](plan.md)）。之後依你有沒有指名分兩條路：
+
+| 你的呼叫 | 技能的處置 |
+| --- | --- |
+| 沒指名變更 | 取 plan 算出的「下一個可開工」。plan 說沒有可開工的變更時，技能列出每個變更被哪些前置擋住，然後停止 |
+| 指名了變更 | 讀該變更的阻擋清單。清單非空時，技能印出前置變更並停止，不會開審查工單、也不會蓋開工章 |
+| 指名的變更不在 plan 裡 | 沿既有的錯誤處理 |
+
+技能不會再用「只有一個變更就自動選它」繞過這一步。被擋住時的出路是先把前置變更做完並封存，或請人重新判斷那條依賴要不要留（見 plan 頁的「宣告依賴」）。
 
 ## 任務長什麼樣
 
@@ -101,6 +113,8 @@ speclink discard <變更名>
 
 remote 模式下每個變更恰好屬於一個 repo。建立變更時歸屬到你所在的 repo（單 repo 的專案自動預設），清單也只列這個 repo 的變更。需求跨 repo 時，拆成多個變更，每個各屬一個 repo。
 
+`speclink plan` 與 `speclink change depends` 在 remote 模式一樣可用：它們改向 server 查詢或寫入，輸出的長相與本機模式相同，不會碰本機的 openspec 資料夾。
+
 ## 做完之後
 
 apply 技能結尾只給建議、不會自動叫下一個技能：
@@ -114,4 +128,4 @@ apply 技能結尾只給建議、不會自動叫下一個技能：
 
 品質關卡的說明見 [品質關卡總覽](quality-stations.md)，封存見 [封存](archive.md)。
 
-**出處**：`change-lifecycle`、`manual-task-marker`、`task-identity`、`verify-evidence`、`verb-contract`、`skill-routing`
+**出處**：`change-lifecycle`、`manual-task-marker`、`task-identity`、`verify-evidence`、`verb-contract`、`skill-routing`、`change-plan`

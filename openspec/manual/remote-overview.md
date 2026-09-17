@@ -4,7 +4,7 @@ section: Remote 模式
 order: 400
 keywords: [remote, server, link, 參考實作, project-scoped URL, .speclink.yaml]
 sources: [user-documentation, remote-connection]
-generated: 2026-09-02
+generated: 2026-09-17T16:05:41+08:00
 ---
 # remote 模式總覽
 

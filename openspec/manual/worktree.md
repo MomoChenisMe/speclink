@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 190
 keywords: [worktree, 平行實作, apply-with-worktree, worktree-merge, 合併]
 sources: [worktree-apply-skill, worktree-merge-skill, worktree-overlay, workflow-config]
-generated: 2026-09-02
+generated: 2026-09-17T16:05:41+08:00
 ---
 # 平行實作與合回：worktree
 
@@ -29,14 +29,25 @@ speclink workflow-config set worktree true
 
 技能先做幾項前置檢查，再進入與一般實作完全相同的流程。
 
-1. **一次只收一個變更。** 你給了兩個以上的變更名時，技能停下來請你擇一，並印出「其餘變更各開一個新 session 執行本技能」的配方。它不會默默依序做完。
+1. **一次只收一個變更。** 你給了兩個以上的變更名時，技能先執行 `speclink plan --json`，把沒被擋住的變更列成並行配方（其餘變更各開一個新 session 執行本技能），被擋住的逐一列出前置並說明要等前置落地再開，然後停下來請你從並行名單擇一。恰好只有一個沒被擋住時，技能改問你要不要就在這裡做它，不印配方。一個都沒有時，技能列出要等的與不可用的名字，然後停止。它不會默默依序做完。
 2. **檢查政策。** 有效的 worktree 政策不是 true 時，技能拒絕執行，說明「本專案未啟用 worktree 流程」，並告訴你用 `workflow-config set worktree true` 開啟。它不會改在主資料夾執行實作。
-3. **確認變更存在且未封存。**
+3. **以 plan 選變更並守門。** 技能在主 checkout 執行 `speclink plan --json`。沒指名時取「下一個可開工」；沒有可開工的變更時列出每個變更的阻擋清單並停止。指名時讀該變更的阻擋清單，非空就印出前置並停止。指名的變更不在 plan 裡（已封存、不存在、或因 metadata 壞掉被略過）時，停止並列出可用的變更名。plan 失敗（依賴成環、專案未初始化）時顯示錯誤並停止。任何一種停止都不會提交產物、也不會建立 worktree。順序與阻擋怎麼算，見[執行順序：plan 與依賴](plan.md)。
 4. **確認變更的產物已提交進 HEAD。** worktree 由 HEAD 建出來。產物不在 HEAD，worktree 裡就沒有這個變更。未提交時，技能只提交該變更目錄本身，不夾帶其他髒檔。
 5. **檢查進度與程式碼有沒有分家。** 技能讀變更目錄裡的證據檔（.evidence.json）記錄的觸及檔案，對主資料夾查 git 狀態。任一檔案在主資料夾是髒的，技能停下列出髒檔，依推薦順序給你三個選項：「先執行 speclink-commit 將本 change 的程式碼提交進 HEAD 再回來」、「照樣繼續（明知 worktree 缺這些實作）」、「停止」。沒有證據檔或清單為空時，靜默續行。
 6. **建立 worktree。** 分支名為 `speclink/<變更名>`，位置在主資料夾旁邊的 `<repo 資料夾名>.worktrees/<變更名>/`。分支或 worktree 已存在時，沿用既有的續作，不重複建立。
 7. **印出建置成本提示。** worktree 是完整的原始碼副本，你要自行安裝依賴與建置產物。
-8. **在 worktree 資料夾內執行實作流程。** 之後的步驟與 [實作：完成任務](apply.md) 相同。
+8. **在 worktree 資料夾內執行實作流程。** 之後的步驟與 [實作：完成任務](apply.md) 相同。實作流程第一步在 worktree 內再跑的 plan 只是複查：worktree 裡的 plan 讀不到其他 worktree 的進度，也讀不到主線後來的封存。複查結果與第 3 步不同時，以主 checkout 的判定為準，第二步（開審查工單、蓋開工章）照常執行。
+
+多個變更名時，技能怎麼分組：
+
+| 你給的變更名 | plan 的阻擋清單 | 技能的處置 |
+| --- | --- | --- |
+| add-a、add-b、add-c | add-a 與 add-b 沒被擋；add-c 等 add-a | 並行配方列 add-a、add-b；add-c 說明「等 add-a 落地再開」；請你從 add-a、add-b 擇一 |
+| add-a、add-c | add-a 沒被擋；add-c 等 add-a | add-c 說明「等 add-a 落地再開」；不印配方，問你要不要就在這裡做 add-a |
+| add-b、add-c | 兩個都等 add-a | 各說明「等 add-a 落地再開」；沒有可選的變更，停止；不提交產物、不建立 worktree |
+| add-c | add-c 等 add-a | 印出前置 add-a 並停止；不提交產物、不建立 worktree |
+| （沒指名） | 下一個可開工是 add-a | 選 add-a，宣告「Using change: add-a」後續行第 4 步 |
+| （沒指名） | 沒有可開工的變更 | 列出每個變更的阻擋清單並停止 |
 
 ### 實作完成後
 
