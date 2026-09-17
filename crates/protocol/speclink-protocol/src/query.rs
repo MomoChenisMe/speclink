@@ -247,6 +247,8 @@ pub struct ChangeSummary {
     pub created: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub from_discussions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub delta_capabilities: Vec<String>,
 }
 
 /// `GET /changes/{name}` response — the fs `StatusReport` shape plus the
@@ -759,6 +761,25 @@ mod tests {
                 && legacy_json.get("created").is_none()
                 && legacy_json.get("fromDiscussions").is_none(),
             "absent creator fields are omitted: {legacy_json}"
+        );
+    }
+
+    #[test]
+    fn change_summary_delta_capabilities_are_optional_and_camel_case() {
+        // discuss-scout-in-flight-deltas：清單項的 delta capability 欄位，有值上鍵、空清單省略。
+        let full: ChangeSummary =
+            serde_json::from_str(r#"{"name":"demo","deltaCapabilities":["client-protocol"]}"#)
+                .unwrap();
+        assert_eq!(full.delta_capabilities, ["client-protocol"]);
+        let json = serde_json::to_value(&full).unwrap();
+        assert_eq!(json["deltaCapabilities"], serde_json::json!(["client-protocol"]));
+
+        let legacy: ChangeSummary = serde_json::from_str(r#"{"name":"demo"}"#).unwrap();
+        assert!(legacy.delta_capabilities.is_empty(), "舊 payload 無鍵仍可解析且得空清單");
+        let legacy_json = serde_json::to_value(&legacy).unwrap();
+        assert!(
+            legacy_json.get("deltaCapabilities").is_none(),
+            "empty list is omitted: {legacy_json}"
         );
     }
 

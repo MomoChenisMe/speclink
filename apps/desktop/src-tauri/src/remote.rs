@@ -1755,6 +1755,7 @@ mod board_order_tests {
             created_by: None,
             created: None,
             from_discussions: Vec::new(),
+            delta_capabilities: Vec::new(),
         }
     }
 

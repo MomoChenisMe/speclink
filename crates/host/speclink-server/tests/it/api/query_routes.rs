@@ -365,6 +365,54 @@ fn list_carries_the_creator_and_discussion_fields() {
 }
 
 #[test]
+fn list_carries_delta_capabilities() {
+    // discuss-scout-in-flight-deltas「變更清單回應攜帶 delta capability 欄位」：清單項與
+    // GET /changes/{name} 同源帶 deltaCapabilities，沒有 delta 規格即無鍵。
+    let store = MemoryStore::new();
+    let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope,
+            CommandContext { command: "seed".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(DocumentId::ChangeMeta { change: "with-delta".into() }, "schema: spec-driven\n");
+    uow.create(
+        DocumentId::ChangeArtifact {
+            change: "with-delta".into(),
+            artifact: "specs/auth/spec.md".into(),
+        },
+        "## ADDED Requirements\n",
+    );
+    uow.create(DocumentId::ChangeMeta { change: "bare".into() }, "schema: spec-driven\n");
+    store.commit(uow, Vec::new()).expect("seed commit");
+    let state = AppState {
+        events: common::detached_events(),
+        store: Arc::new(store),
+        identity: common::empty_identity(),
+        config: Arc::new(common::demo_config()),
+    };
+    common::seed_demo_registry(&*state.identity);
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+
+    let body: serde_json::Value =
+        ureq::get(&format!("{base}/api/speclink/v1/projects/demo/changes"))
+            .set("Authorization", &format!("Bearer {pat}"))
+            .set("X-Speclink-Api-Version", speclink_protocol::API_VERSION)
+            .set("X-Speclink-Repo", "backend")
+            .call()
+            .expect("GET /changes")
+            .into_json()
+            .expect("JSON body");
+    let items = body["changes"].as_array().expect("changes array");
+    let with = items.iter().find(|c| c["name"] == "with-delta").expect("with-delta item");
+    assert_eq!(with["deltaCapabilities"], serde_json::json!(["auth"]), "{with}");
+    let bare = items.iter().find(|c| c["name"] == "bare").expect("bare item");
+    assert!(bare.get("deltaCapabilities").is_none(), "no delta specs is omitted: {bare}");
+}
+
+#[test]
 fn a_missing_change_is_the_404_not_found_triple() {
     let (base, pat, _user) = seeded_base();
     let client = client(&base, &pat);

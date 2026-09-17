@@ -1921,6 +1921,7 @@ fn change_summary(
         created_by: meta.and_then(|m| m.created_by.clone()),
         created: meta.and_then(|m| m.created.clone()),
         from_discussions: meta.map(|m| m.from_discussions()).unwrap_or_default(),
+        delta_capabilities: change.delta_capabilities,
     }
 }
 
