@@ -60,3 +60,5 @@ verified_scope:
     hash: d5e97617406b83c7c5f873466716cef2406636798b27e3e0f3a01c51d52b553c
   - path: crates/engine/speclink-core/tests/it/render_golden.rs
     hash: 5c3255be709d2083e951617be4b60b873cb933852d3fac4a386edccc291379d7
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-17
