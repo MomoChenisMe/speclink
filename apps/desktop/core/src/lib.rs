@@ -61,6 +61,19 @@ pub(crate) fn worktree_root_for<'a>(
         .map(|e| e.path.as_path())
 }
 
+/// 某 change 的所在 store：有映射為其 worktree 副本、否則為主 checkout
+/// （[`worktree_root_for`] 的裁決）。給手上已有 facts、一次要處理多個 change 的呼叫端
+/// （拖排整欄補章、前置寫入後的 overlay 複檢），一次 git spawn 服務全部；只處理單一
+/// change 的動詞走 [`require_context_for_change`]。
+pub(crate) fn home_store_for(
+    ctx: &ProjectContext,
+    facts: &speclink_host::worktree::WorktreeFacts,
+    change: &str,
+) -> FsStore {
+    let root = worktree_root_for(ctx, facts, change).unwrap_or(ctx.workspace.root.as_path());
+    FsStore::new(root, &ctx.workspace.spec_dir_name)
+}
+
 /// 單一 change 的執行語境（design D1）：該 change 有 worktree 映射時，以那份
 /// worktree 副本為根建構 [`ProjectContext`]；否則沿用主 checkout。
 ///

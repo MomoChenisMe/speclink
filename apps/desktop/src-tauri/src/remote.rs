@@ -917,15 +917,15 @@ pub(crate) struct BoardSnapshot {
     pub(crate) plan: Option<PlanResponse>,
 }
 
-/// 欄內有缺 rank 卡、或 `respread`（呼叫端判定 rank 序與顯示序不一致）時，依當前
-/// 顯示序整欄補章（決策 5——等距鍵只落在 board resource 圖內，與本地 reorder 的
-/// 補章語意同構）；回傳欄成員的 id→rank 表。
+/// `respread`（呼叫端的判定：變更卡為缺 rank 或 rank 序與顯示序不一致，討論卡為缺
+/// rank）時依當前顯示序整欄補章（決策 5——等距鍵只落在 board resource 圖內，與本地
+/// reorder 的補章語意同構），否則沿用現值；回傳欄成員的 id→rank 表。
 fn ensure_column_ranks<'a>(
     members: &[&'a str],
     map: &mut BTreeMap<String, String>,
     respread: bool,
 ) -> HashMap<&'a str, String> {
-    if respread || members.iter().any(|member| !map.contains_key(*member)) {
+    if respread {
         let keys = speclink_desktop_core::rank::spread(members.len());
         for (member, key) in members.iter().zip(&keys) {
             map.insert((*member).to_string(), key.clone());
@@ -971,6 +971,22 @@ pub(crate) fn reorder_full_text(
                 .iter()
                 .find(|(c, _)| c.name == id)
                 .ok_or_else(|| card_not_found(id))?;
+            // 被拖卡本身被 plan 略過（壞 meta）：寫進 rank 也會被顯示序排回欄尾——與本地
+            // 寫壞 meta 被拒同構，回引擎同一句錯誤、不發 PUT。
+            if let Some(skipped) =
+                snapshot.plan.iter().flat_map(|p| &p.skipped).find(|s| s.change == id)
+            {
+                let broken = speclink_core::model::MetaError {
+                    change: id.to_string(),
+                    reason: skipped.reason.clone(),
+                };
+                return Err(RemoteError {
+                    message: broken.to_string(),
+                    reason: Some("invalid_config".to_string()),
+                    status: None,
+                    evidence: None,
+                });
+            }
             let stage = change_stage(dragged);
             // 欄成員＝畫面上同欄的全部卡，含 plan 略過的卡（壞 meta 排在欄尾）：board
             // resource 寫得進它的 rank，拖到它之後也要落在欄尾，所以它照常參與重派與落點。
@@ -1020,7 +1036,8 @@ pub(crate) fn reorder_full_text(
                 return Err(card_not_found(id));
             }
             let column: Vec<&str> = ordered.iter().map(|d| d.slug.as_str()).collect();
-            let ranks = ensure_column_ranks(&column, &mut doc.discussions, false);
+            let unranked = column.iter().any(|slug| !doc.discussions.contains_key(*slug));
+            let ranks = ensure_column_ranks(&column, &mut doc.discussions, unranked);
             let key = speclink_desktop_core::rank::neighbor_midpoint(&ranks, prev_id, next_id);
             doc.discussions.insert(id.to_string(), key);
         }
@@ -1694,8 +1711,15 @@ impl RemoteWorkspace {
                     .run(credentials, |client| client.list_discussions(false))?
                     .discussions;
                 let board = self.run(credentials, |client| client.board_order())?;
-                // plan 失敗（舊 server、成環、連線）不擋拖排：沒有顯示序修正與依賴圖可查。
-                let plan = self.run(credentials, |client| client.plan()).ok();
+                // 只有變更卡用得到 plan，而且必須在 board resource 之後讀：plan 反映的 board
+                // 狀態因此不早於 If-Match 的 revision——兩次讀取之間有人寫入時 PUT 會 409
+                // 重讀，不會拿舊的顯示序整欄重派、蓋掉別人的拖排。plan 失敗（舊 server、
+                // 成環、連線）不擋拖排：沒有顯示序修正與依賴圖可查。
+                let plan = if kind == "change" {
+                    self.run(credentials, |client| client.plan()).ok()
+                } else {
+                    None
+                };
                 Ok(BoardSnapshot {
                     changes,
                     discussions,
@@ -1978,7 +2002,7 @@ mod plan_merge_tests {
     use speclink_protocol::query::{BoardOrderDoc, PlanChangeEntry, PlanResponse};
     use speclink_remote::RemoteError;
 
-    fn entry(name: &str, wave: usize, depends_on: &[&str], blocked_by: &[&str]) -> PlanChangeEntry {
+    pub(super) fn entry(name: &str, wave: usize, depends_on: &[&str], blocked_by: &[&str]) -> PlanChangeEntry {
         PlanChangeEntry {
             name: name.into(),
             wave,
@@ -1990,7 +2014,7 @@ mod plan_merge_tests {
         }
     }
 
-    fn plan(entries: Vec<PlanChangeEntry>) -> PlanResponse {
+    pub(super) fn plan(entries: Vec<PlanChangeEntry>) -> PlanResponse {
         PlanResponse { waves: Vec::new(), changes: entries, next: None, skipped: Vec::new() }
     }
 
@@ -2098,8 +2122,9 @@ mod plan_merge_tests {
 #[cfg(test)]
 mod board_reorder_tests {
     use super::board_order_tests::{change, discussion};
+    use super::plan_merge_tests::{entry, plan};
     use super::{reorder_via, BoardOrderDoc, BoardSnapshot};
-    use speclink_protocol::query::{PlanChangeEntry, PlanResponse, PlanSkipped};
+    use speclink_protocol::query::PlanSkipped;
     use speclink_remote::RemoteError;
     use std::cell::{Cell, RefCell};
 
@@ -2177,27 +2202,6 @@ mod board_reorder_tests {
         }
     }
 
-    /// 依給定順序的 plan（每項：名稱、宣告前置）。
-    fn plan_of(order: &[(&str, &[&str])]) -> PlanResponse {
-        PlanResponse {
-            waves: Vec::new(),
-            changes: order
-                .iter()
-                .map(|(name, deps)| PlanChangeEntry {
-                    name: name.to_string(),
-                    wave: 1,
-                    stage: "proposed".into(),
-                    depends_on: deps.iter().map(|d| d.to_string()).collect(),
-                    overlaps: Vec::new(),
-                    blocked_by: Vec::new(),
-                    ready: true,
-                })
-                .collect(),
-            next: None,
-            skipped: Vec::new(),
-        }
-    }
-
     #[test]
     fn a_column_whose_ranks_disagree_with_the_plan_order_is_respread_before_the_move() {
         // 規格 Scenario「rank 序與顯示序不一致時整欄重派」：add-c 依賴 add-a 但
@@ -2208,7 +2212,11 @@ mod board_reorder_tests {
             Some(r#"{"changes":{"add-c":"d","add-a":"h","add-x":"p"},"discussions":{}}"#),
             3,
         );
-        snap.plan = Some(plan_of(&[("add-a", &[]), ("add-c", &["add-a"]), ("add-x", &[])]));
+        snap.plan = Some(plan(vec![
+            entry("add-a", 1, &[], &[]),
+            entry("add-c", 1, &["add-a"], &[]),
+            entry("add-x", 1, &[], &[]),
+        ]));
         let io = FakeIo::new(vec![snap], vec![true]);
         io.run("change", "add-x", Some("add-a"), Some("add-c")).expect("reorder lands");
         let doc = BoardOrderDoc::from_content(Some(&io.puts.borrow()[0].0));
@@ -2225,7 +2233,7 @@ mod board_reorder_tests {
             Some(r#"{"changes":{"add-a":"f","add-b":"n"},"discussions":{}}"#),
             3,
         );
-        snap.plan = Some(plan_of(&[("add-a", &[]), ("add-b", &["add-a"])]));
+        snap.plan = Some(plan(vec![entry("add-a", 1, &[], &[]), entry("add-b", 1, &["add-a"], &[])]));
         let io = FakeIo::new(vec![snap.clone()], vec![true]);
         let error = io.run("change", "add-b", None, Some("add-a")).expect_err("crossing is refused");
         assert_eq!(error.message, "cannot move 'add-b' there: it depends on add-a");
@@ -2249,9 +2257,9 @@ mod board_reorder_tests {
             Some(r#"{"changes":{"add-a":"f","add-b":"n","add-x":"t"},"discussions":{}}"#),
             3,
         );
-        let mut plan = plan_of(&[("add-a", &[]), ("add-b", &["add-x"])]);
-        plan.skipped.push(PlanSkipped { change: "add-x".into(), reason: "bad yaml".into() });
-        snap.plan = Some(plan);
+        let mut skipping = plan(vec![entry("add-a", 1, &[], &[]), entry("add-b", 1, &["add-x"], &[])]);
+        skipping.skipped.push(PlanSkipped { change: "add-x".into(), reason: "bad yaml".into() });
+        snap.plan = Some(skipping);
         let io = FakeIo::new(vec![snap], vec![true]);
         io.run("change", "add-b", None, Some("add-a")).expect("a skipped prerequisite blocks nothing");
         let doc = BoardOrderDoc::from_content(Some(&io.puts.borrow()[0].0));
@@ -2268,14 +2276,34 @@ mod board_reorder_tests {
             Some(r#"{"changes":{"add-a":"i","add-b":"q","add-x":"t"},"discussions":{}}"#),
             3,
         );
-        let mut plan = plan_of(&[("add-a", &[]), ("add-b", &[])]);
-        plan.skipped.push(PlanSkipped { change: "add-x".into(), reason: "bad yaml".into() });
-        snap.plan = Some(plan);
+        let mut skipping = plan(vec![entry("add-a", 1, &[], &[]), entry("add-b", 1, &[], &[])]);
+        skipping.skipped.push(PlanSkipped { change: "add-x".into(), reason: "bad yaml".into() });
+        snap.plan = Some(skipping);
         let io = FakeIo::new(vec![snap], vec![true]);
         io.run("change", "add-a", Some("add-x"), None).expect("reorder lands");
         let doc = BoardOrderDoc::from_content(Some(&io.puts.borrow()[0].0));
         let (a, b, x) = (&doc.changes["add-a"], &doc.changes["add-b"], &doc.changes["add-x"]);
         assert!(b < x && x < a, "add-a 落在欄底：{b} < {x} < {a}");
+    }
+
+    #[test]
+    fn dragging_a_skipped_card_is_refused_with_the_local_line_and_no_put() {
+        // 被拖卡本身被 plan 略過（壞 meta）：寫進 rank 也會被顯示序排回欄尾，與本地寫壞 meta
+        // 被拒同構——回同一句 `invalid …/.openspec.yaml: <原因>`，不發 PUT。
+        let mut snap = snapshot(
+            vec![change("add-a", 0, 4), change("add-x", 0, 4)],
+            vec![],
+            Some(r#"{"changes":{"add-a":"i","add-x":"t"},"discussions":{}}"#),
+            3,
+        );
+        let mut skipping = plan(vec![entry("add-a", 1, &[], &[])]);
+        skipping.skipped.push(PlanSkipped { change: "add-x".into(), reason: "bad yaml".into() });
+        snap.plan = Some(skipping);
+        let io = FakeIo::new(vec![snap], vec![true]);
+        let error = io.run("change", "add-x", None, Some("add-a")).expect_err("a skipped card cannot move");
+        assert_eq!(error.message, "invalid openspec/changes/add-x/.openspec.yaml: bad yaml");
+        assert_eq!(error.reason.as_deref(), Some("invalid_config"));
+        assert!(io.puts.borrow().is_empty(), "a refused move sends no PUT");
     }
 
     #[test]

@@ -247,6 +247,10 @@ pub enum Stage {
 }
 
 impl Stage {
+    /// Every stage once — the exhaustive match below stops the build when a
+    /// variant is added, so neither this list nor [`Stage::parse`] can miss it.
+    const ALL: [Stage; 3] = [Stage::Ready, Stage::InProgress, Stage::Proposed];
+
     /// The plan payload's `stage` string.
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -256,17 +260,18 @@ impl Stage {
         }
     }
 
-    /// The inverse of [`Stage::as_str`] — `None` for any other string, so a
-    /// caller reading the plan payload from elsewhere decides how to report it.
+    /// The inverse of [`Stage::as_str`] — the string table stays in `as_str`
+    /// alone; `None` for any other string, so a caller reading the plan payload
+    /// from elsewhere decides how to report it.
     pub fn parse(s: &str) -> Option<Stage> {
-        match s {
-            "ready" => Some(Stage::Ready),
-            "in-progress" => Some(Stage::InProgress),
-            "proposed" => Some(Stage::Proposed),
-            _ => None,
-        }
+        Stage::ALL.into_iter().find(|stage| stage.as_str() == s)
     }
 }
+
+// A new `Stage` variant fails to compile here: add it to `Stage::ALL` as well.
+const _: () = match Stage::Ready {
+    Stage::Ready | Stage::InProgress | Stage::Proposed => (),
+};
 
 /// The plan payload carries the stage as its string form — one source for
 /// `as_str` and the wire (`"ready"` / `"in-progress"` / `"proposed"`).

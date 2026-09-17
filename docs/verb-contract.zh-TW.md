@@ -19,8 +19,8 @@
 | 形狀 | 動詞 | 語意 |
 | --- | --- | --- |
 | **ModeFree** | `init`、`update`、`link`、`unlink`、`auth`、`schemas`、`templates`、`feedback`、`schema`、`config`、`completion` | 不觸發 store 模式解析。不讀專案設定的動詞（`completion`、`config`）不受壞掉的 `.speclink.yaml` 影響。 |
-| **Dual** | `list`、`show`、`validate`、`analyze`、`drift`、`archive`、`discard`、`artifact`、`language`、`status`、`instructions`、`new`、`workflow-config`、`task`、`in-progress`、`discuss`、`review`、`verify` | 本機模式作用於本機 store，remote 模式作用於 remote store，**不會**在 remote 模式靜默改作用於本機。缺任一臂構成建置失敗，而非執行期靜默回退。 |
-| **FsOnly** | `demo`、`trace`、`plan`、`change` | remote 模式以非零 exit code 明確拒絕，且不發出任何 server 請求——離線環境同樣拒絕。`plan` 與 `change` 待 remote 臂補齊後轉為 Dual。 |
+| **Dual** | `list`、`show`、`validate`、`analyze`、`drift`、`archive`、`discard`、`artifact`、`language`、`status`、`instructions`、`new`、`workflow-config`、`task`、`in-progress`、`discuss`、`review`、`verify`、`plan`、`change` | 本機模式作用於本機 store，remote 模式作用於 remote store，**不會**在 remote 模式靜默改作用於本機。缺任一臂構成建置失敗，而非執行期靜默回退。 |
+| **FsOnly** | `demo`、`trace` | remote 模式以非零 exit code 明確拒絕，且不發出任何 server 請求——離線環境同樣拒絕。 |
 | **RemoteOnly** | `claim` | 本機模式以非零 exit code 明確拒絕，並於 stderr 說明需要 remote store。 |
 
 模式判定是惰性的：只有宣告形狀需要時才解析模式，只有 remote 臂將執行時才建立連線。
@@ -87,6 +87,26 @@ Dual 動詞的人眼輸出（stdout 文本，含 `--no-color`）在兩模式下�
 ```
 
 錯誤：change 不存在時 `404 not_found`。
+
+## GET /plan
+
+scope 層的唯讀衍生查詢，**reader 與 editor 皆可用**。執行與 fs 模式 `speclink plan` 相同的引擎計算，rank 來源是 scope 的 board resource。端點以寬鬆方式讀取文件的 `changes` 圖：文件缺席、內容無法解析、不是物件或缺 `changes` 圖，一律視為「沒有 rank」，也絕不回寫文件；store 讀取故障則照常回錯。不寫入、不發事件。CLI 的 remote 臂把回應轉回引擎報告，所以 `speclink plan` 與 `speclink plan --json` 在兩模式下印出相同的位元組。
+
+回應 `200`：
+
+```json
+{
+  "waves": [{ "index": 1, "changes": ["add-a"] }, { "index": 2, "changes": ["add-b"] }],
+  "changes": [
+    { "name": "add-a", "wave": 1, "stage": "in-progress", "dependsOn": [], "overlaps": [], "blockedBy": [], "ready": true },
+    { "name": "add-b", "wave": 2, "stage": "proposed", "dependsOn": ["add-a"], "overlaps": [], "blockedBy": ["add-a"], "ready": false }
+  ],
+  "next": null,
+  "skipped": []
+}
+```
+
+錯誤：依賴成環時回 `409 refused`，message 為引擎原文，例如 `dependency cycle: add-a -> add-b -> add-a`。沒有這個端點的 server 回 `404`；桌面此時維持 board resource 的順序、不顯示排程欄位。
 
 ## DELETE /changes/{name}?force={bool}
 
@@ -187,6 +207,22 @@ commit 發布 `discussion-linked`。錯誤：討論或 change 不存在時 `404 
 ```json
 {}
 ```
+
+## POST /changes/{name}/depends
+
+經 Command gateway 宣告前置（`remove: true` 時撤銷），與 fs 模式 `speclink change depends` 是同一個引擎寫入。請求：
+
+```json
+{ "on": ["add-a"], "remove": false }
+```
+
+`on` 必填；`remove` 預設為 `false`。改動到 `depends_on` 的寫入會 commit、發布 `change-depends-changed`、推進 scope revision。沒有改動的寫入（前置早已宣告，或 `remove` 時本來就沒宣告）是零寫入、零事件的冪等 `200`。回應攜帶寫入後的清單：
+
+```json
+{ "change": "add-b", "dependsOn": ["add-a"] }
+```
+
+守門失敗回 `409 refused`、message 為引擎原文，且零寫入：`'add-b' cannot depend on itself`、`cannot depend on 'ghost': no active change with that name`、`cannot depend on 'old-change': it is already archived`、`dependency cycle: add-b -> add-a -> add-b`。`{name}` 不存在回 `404 not_found`，change 的 meta 壞掉回 `422 invalid_config`。本端點為 editor 限定：reader 收 `403`，命令不會執行。
 
 ## POST /changes/{name}/claim
 
