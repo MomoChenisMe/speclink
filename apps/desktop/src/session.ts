@@ -110,7 +110,7 @@ export interface WorkspaceCapabilities {
   promoteDiscussion: boolean;
   archiveDiscussion: boolean;
   reorderCard: boolean;
-  /** 前置編輯（排程分頁的新增／移除）：local 真；remote 第三刀前固定為假。 */
+  /** 前置編輯（排程分頁的新增／移除）：local 真；remote 依 membership role（與 reorderCard 同源）。 */
   setDepends: boolean;
   /** 認領（RemoteOnly）：remote 依 membership role；local 固定為 false。 */
   claim: boolean;

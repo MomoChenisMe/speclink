@@ -248,6 +248,17 @@ async fn set_change_depends(
 }
 
 #[tauri::command]
+// 排程分頁的前置候選名冊（add-change-plan-remote D9）：單行委派到桌面 core，與
+// set_change_depends 同一定根。
+async fn depends_candidates(root: PathBuf, change: String) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::manage::depends_candidates_at(&root, &change)
+    })
+    .await
+    .map_err(|e| format!("depends candidates worker failed: {e}"))?
+}
+
+#[tauri::command]
 async fn validate(root: PathBuf, change: String) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         speclink_desktop_core::verbs::validate_at(&root, &change)
@@ -1447,6 +1458,24 @@ async fn remote_claim(
     .await
 }
 
+/// 前置的新增與移除（add-change-plan-remote D7）：單行委派；守門失敗的 409
+/// 訊息是 server 轉發的引擎原文，原樣交前端成單行錯誤。
+#[tauri::command]
+async fn remote_set_change_depends(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    change: String,
+    on: Vec<String>,
+    remove: bool,
+) -> Result<(), String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        ws.set_depends(credentials, &change, &on, remove).map_err(|e| e.message)
+    })
+    .await
+}
+
 #[tauri::command]
 async fn remote_delete_change(
     app: tauri::AppHandle,
@@ -1754,6 +1783,7 @@ pub fn run() {
             move_task,
             reorder_card,
             set_change_depends,
+            depends_candidates,
             validate,
             analyze,
             archive,
@@ -1818,6 +1848,7 @@ pub fn run() {
             remote_validate,
             remote_analyze,
             remote_claim,
+            remote_set_change_depends,
             remote_delete_change,
             remote_revert_change_to_proposed,
             remote_move_task,

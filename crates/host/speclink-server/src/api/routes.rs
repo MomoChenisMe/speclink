@@ -30,19 +30,21 @@ use speclink_protocol::command::{
     DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, InProgressRemoveResponse,
     MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse,
     PutArtifactRequest, PutArtifactResponse, ReviewFindingDto, ReviewRoundDto,
-    ReviewTicketResponse, SetDiscussionContextRequest, StampReviewRequest, StampReviewResponse,
-    TaskDoneRequest, TaskDoneResponse, TaskUndoneResponse, UnlinkedDiscussion,
+    ReviewTicketResponse, SetDependsRequest, SetDependsResponse, SetDiscussionContextRequest,
+    StampReviewRequest, StampReviewResponse, TaskDoneRequest, TaskDoneResponse,
+    TaskUndoneResponse, UnlinkedDiscussion,
 };
 use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::events::InvalidationEvent;
 use speclink_protocol::query::{
     AnalyzeDimension, AnalyzeFinding, AnalyzeMsg, AnalyzeReportResponse, ApplyInstructions,
-    ArtifactContent, ArtifactInstructions, ArtifactStatus, BoardOrderResponse,
+    ArtifactContent, ArtifactInstructions, ArtifactStatus, BoardOrderDoc, BoardOrderResponse,
     ChangeEvidenceResponse, ChangeStatus,
     ChangeSummary, ConfigResponse, DependencyEntry, DiscussionHit, DiscussionInfo, DiscussionMatch,
     ImportBundle, ImportDocumentId,
     ImportDocumentOutcome, ImportReportResponse, ImportedDocument, LanguageResponse,
-    ListChangesResponse, ListDiscussionsResponse, ListSpecsResponse, Progress,
+    ListChangesResponse, ListDiscussionsResponse, ListSpecsResponse, PlanChangeEntry,
+    PlanOverlap, PlanResponse, PlanSkipped, PlanWave, Progress,
     PutBoardOrderRequest, PutBoardOrderResponse, PutConfigRequest, PutConfigResponse,
     SearchDiscussionsResponse, ShowDiscussionResponse, SpecSummary, TaskEntry,
     ValidateChangeResponse, WhoamiRepo,
@@ -317,6 +319,81 @@ pub async fn analyze_change(
         _ => return Err(wrong_outcome("analyze")),
     };
     Ok(ok(analyze_report(report), &result.etag))
+}
+
+/// `GET /plan` — the scope's change-level execution order through the Command
+/// gateway (server-verb-api「plan 唯讀衍生查詢端點」). The rank source is the
+/// scope's board resource, read leniently: absent or unusable content means no
+/// ranks, and the document is never written back. A dependency cycle comes back
+/// as a `refused` 409 carrying the engine's line (the error mapping point). A
+/// derived query: no commit, no event.
+pub async fn plan(State(state): State<AppState>, binding: Binding) -> Result<Response, ApiError> {
+    let board = verb::read_doc(&state, &binding, DocumentId::BoardOrder).await?;
+    let ranks = BoardOrderDoc::from_content(board.as_ref().map(|doc| doc.content.as_str())).changes;
+    let result = verb::run(&state, &binding, Command::Plan { ranks: Some(ranks) }).await?;
+    let plan = match result.execution.outcome {
+        CommandOutcome::Plan(plan) => plan,
+        _ => return Err(wrong_outcome("plan")),
+    };
+    let dto = PlanResponse {
+        waves: plan
+            .waves
+            .into_iter()
+            .map(|w| PlanWave { index: w.index, changes: w.changes })
+            .collect(),
+        changes: plan
+            .changes
+            .into_iter()
+            .map(|c| PlanChangeEntry {
+                name: c.name,
+                wave: c.wave,
+                stage: c.stage.as_str().to_string(),
+                depends_on: c.depends_on,
+                overlaps: c
+                    .overlaps
+                    .into_iter()
+                    .map(|o| PlanOverlap { change: o.change, capabilities: o.capabilities })
+                    .collect(),
+                blocked_by: c.blocked_by,
+                ready: c.ready,
+            })
+            .collect(),
+        next: plan.next,
+        skipped: plan
+            .skipped
+            .into_iter()
+            .map(|s| PlanSkipped { change: s.change, reason: s.reason })
+            .collect(),
+    };
+    Ok(ok(dto, &result.etag))
+}
+
+/// `POST /changes/{name}/depends` — Command::ChangeDepends 直通（server-verb-api
+/// 「變更依賴寫入端點」）：editor 限定；不存在 404；自依賴、目標不存在或已封存、
+/// 成環為引擎 Refused → 409 refused 附引擎原文、零寫入。實際改動時 bridge commit
+/// 帶 change-depends-changed 事件、revision 前進；冪等時零寫入零事件。
+pub async fn change_depends(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+    Json(req): Json<SetDependsRequest>,
+) -> Result<Response, ApiError> {
+    if !binding.editor {
+        return Err(ApiError::forbidden("reader memberships cannot declare prerequisites"));
+    }
+    let result = verb::run(
+        &state,
+        &binding,
+        Command::ChangeDepends { name, on: req.on, remove: req.remove },
+    )
+    .await?;
+    match result.execution.outcome {
+        CommandOutcome::ChangeDepends(o) => Ok(ok(
+            SetDependsResponse { change: o.change, depends_on: o.depends_on },
+            &result.etag,
+        )),
+        _ => Err(wrong_outcome("change depends")),
+    }
 }
 
 fn analyze_msg(m: speclink_core::analyzer::Msg) -> AnalyzeMsg {

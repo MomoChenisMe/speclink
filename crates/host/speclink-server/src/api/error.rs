@@ -146,12 +146,19 @@ impl From<CommandError> for ApiError {
                 }
             })
         });
+        // plan 的依賴成環（add-change-plan-remote D1）：引擎歸為一般錯誤（local
+        // CLI 行為不動），但它是 meta 的資料缺陷、不是 server 故障——依 source
+        // 型別改判 409 refused，訊息照舊逐字。
+        let plan_cycle = e.source.as_ref().is_some_and(|s| {
+            s.downcast_ref::<speclink_core::plan::PlanError>().is_some()
+        });
         let message = e.message;
         let mut api = match e.code {
             ErrorCode::InvalidArgv => ApiError::invalid_argument(message),
             ErrorCode::NotFound => ApiError::not_found(message),
             ErrorCode::InvalidConfig => ApiError::invalid_config(message),
             ErrorCode::Refused => ApiError::refused(message),
+            ErrorCode::Error if plan_cycle => ApiError::refused(message),
             ErrorCode::Error => ApiError::internal(message),
         };
         api.evidence = evidence;
@@ -323,6 +330,30 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_plan_dependency_cycle_is_a_refused_409_carrying_the_engine_line() {
+        // add-change-plan-remote D1：引擎把成環歸為一般錯誤；映射點依 source 的
+        // 型別改判 409 refused、訊息逐字——不比對字串。
+        let cycle = speclink_core::plan::PlanError::Cycle(vec!["a".into(), "b".into(), "a".into()]);
+        let api = ApiError::from(CommandError {
+            code: ErrorCode::Error,
+            message: cycle.to_string(),
+            source: Some(cycle.into()),
+        });
+        assert_eq!(api.status, StatusCode::CONFLICT);
+        assert_eq!(api.reason, ErrorReason::Refused);
+        assert_eq!(api.message, "dependency cycle: a -> b -> a");
+
+        // 其他一般錯誤照舊是 500，訊息同一句也不會被誤判。
+        let other = ApiError::from(CommandError {
+            code: ErrorCode::Error,
+            message: "dependency cycle: a -> b -> a".into(),
+            source: Some(anyhow::anyhow!("dependency cycle: a -> b -> a")),
+        });
+        assert_eq!(other.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(other.reason, ErrorReason::Internal);
     }
 
     #[test]

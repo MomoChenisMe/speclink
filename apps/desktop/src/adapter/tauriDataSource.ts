@@ -140,5 +140,9 @@ export function createTauriDataSource(
     async setDepends(change: string, on: string[], remove: boolean): Promise<void> {
       await invoke("set_change_depends", { root, change, on, remove });
     },
+    async dependsCandidates(change: string): Promise<string[]> {
+      // 候選名冊與 setDepends 同一定根（add-change-plan-remote D9）：worktree 映射時為副本。
+      return await invoke<string[]>("depends_candidates", { root, change });
+    },
   };
 }

@@ -840,13 +840,18 @@ function AppInner({
         // 連停用的入口都不長出來。
         onClaim={dataSource?.claim ? s.claimChange : undefined}
         onRevert={s.requestRevert}
-        // 排程分頁：同波夥伴與前置候選自清單派生；前置編輯只在 capability 為真時接線
-        //（remote 第三刀前為假，分頁唯讀）。
+        // 排程分頁：同波夥伴自清單派生；前置編輯只在 capability 為真時接線（remote 的
+        // reader 為假，分頁唯讀）；資料源提供候選名冊時以它為準（worktree 映射時為副本）。
         changes={s.changes}
         onSetDepends={
           caps && !caps.setDepends
             ? undefined
             : (change, on, remove) => void s.setDepends(change, on, remove)
+        }
+        loadDependsCandidates={
+          dataSource?.dependsCandidates
+            ? (change) => dataSource.dependsCandidates!(change)
+            : undefined
         }
         unavailable={
           caps && {

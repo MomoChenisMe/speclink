@@ -81,6 +81,9 @@ export interface RichDetailDrawerProps {
   /** 排程分頁的前置新增／移除（add-change-plan-desktop design D6）。未提供
    * （capability `setDepends` 為假）時分頁唯讀：不渲染移除鈕與新增下拉。 */
   onSetDepends?: (change: string, on: string[], remove: boolean) => void;
+  /** 排程分頁新增前置的候選名冊（add-change-plan-remote D9）：提供時以其結果為準
+   * （載入完成前不長新增下拉），未提供或載入失敗時候選自 `changes` 派生。 */
+  loadDependsCandidates?: (change: string) => Promise<string[]>;
   /** capability 缺口的停用說明（remote session）：欄位存在＝該 affordance
    * disabled 並以其文字顯示 tooltip。缺席＝全功能（本地不受影響）。 */
   unavailable?: {
@@ -176,10 +179,13 @@ function PlanName({ name }: { name: string }) {
 function PlanTab({
   change,
   changes,
+  roster,
   onSetDepends,
 }: {
   change: ChangeItem;
   changes: ChangeItem[];
+  /** 候選名冊：陣列＝查詢結果、null＝自清單派生、undefined＝查詢中（不給候選）。 */
+  roster: string[] | null | undefined;
   onSetDepends?: (change: string, on: string[], remove: boolean) => void;
 }) {
   const { t } = useI18n();
@@ -223,8 +229,10 @@ function PlanTab({
   const blockedBy = planBlockedBy(change);
   const others = changes.filter((c) => c.name !== change.name);
   const mates = others.filter((c) => planWave(c) === wave).map((c) => c.name);
-  // 新增候選：其他作用中變更，扣掉已宣告的前置（自依賴與成環留給引擎拒絕）。
-  const candidates = others.map((c) => c.name).filter((n) => !dependsOn.includes(n));
+  // 新增候選：該變更所在名冊的其他作用中變更（add-change-plan-remote D9；未提供名冊時
+  // 自清單派生），扣掉自己與已宣告的前置（成環留給引擎拒絕）。
+  const pool = roster === undefined ? [] : (roster ?? others.map((c) => c.name));
+  const candidates = pool.filter((n) => n !== change.name && !dependsOn.includes(n));
   return (
     <div className="flex flex-col gap-5 text-sm">
       <section data-plan-section="wave">
@@ -317,11 +325,14 @@ export function RichDetailDrawer({
   onOpenSibling,
   changes,
   onSetDepends,
+  loadDependsCandidates,
   unavailable,
 }: RichDetailDrawerProps) {
   const change = useLingering(changeProp);
   const { t } = useI18n();
   const [meta, setMeta] = useState<ChangeMetaInfo | null>(null);
+  // 前置候選名冊：陣列＝查詢結果、null＝自清單派生（無查詢或查詢失敗）、undefined＝查詢中。
+  const [roster, setRoster] = useState<string[] | null | undefined>(null);
   const [proposal, setProposal] = useState<Doc>();
   const [design, setDesign] = useState<Doc>();
   const [tasksMd, setTasksMd] = useState<Doc>();
@@ -354,6 +365,7 @@ export function RichDetailDrawer({
       setDesign(undefined);
       setTasksMd(undefined);
       setSpecDocs(undefined);
+      setRoster(loadDependsCandidates ? undefined : null);
     }
     const fresh = <T,>(apply: (v: T) => void) => (v: T) => {
       if (requestSeq.current === seq) apply(v);
@@ -364,6 +376,14 @@ export function RichDetailDrawer({
       if (requestSeq.current === seq) apply((prev) => (prev === undefined ? null : prev));
     };
     void loadMeta(target).then(fresh(setMeta)).catch(() => undefined);
+    if (loadDependsCandidates) {
+      // 失敗：首載退回自清單派生（null），重載維持前一次的名冊。
+      void loadDependsCandidates(target)
+        .then(fresh(setRoster))
+        .catch(() => {
+          if (requestSeq.current === seq) setRoster((prev) => (prev === undefined ? null : prev));
+        });
+    }
     void loadDocument(target, "proposal.md").then(fresh(setProposal)).catch(settled(setProposal));
     void loadDocument(target, "design.md").then(fresh(setDesign)).catch(settled(setDesign));
     void loadDocument(target, "tasks.md").then(fresh(setTasksMd)).catch(settled(setTasksMd));
@@ -816,7 +836,12 @@ export function RichDetailDrawer({
               )}
             </TabsContent>
             <TabsContent value="plan">
-              <PlanTab change={change} changes={changes ?? []} onSetDepends={onSetDepends} />
+              <PlanTab
+                change={change}
+                changes={changes ?? []}
+                roster={roster}
+                onSetDepends={onSetDepends}
+              />
             </TabsContent>
             </div>
           </div>

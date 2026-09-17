@@ -4,9 +4,9 @@
 //!
 //! - ModeFree: verbs that read no project config (completion, config) run
 //!   untouched under a broken .speclink.yaml.
-//! - FsOnly: demo, trace, plan and change depends under a remote-mode project
-//!   are refused at mode resolution — no server request leaves the process, so
-//!   offline refuses identically.
+//! - FsOnly: demo and trace under a remote-mode project are refused at mode
+//!   resolution — no server request leaves the process, so offline refuses
+//!   identically.
 //! - RemoteOnly: claim under an fs project is refused with the frozen message.
 
 use std::path::PathBuf;
@@ -97,7 +97,7 @@ fn mode_free_config_list_runs_under_broken_app_yaml() {
     );
 }
 
-// --- FsOnly: demo, trace, plan and change depends refuse remote mode at mode resolution — zero server requests ---
+// --- FsOnly: demo and trace refuse remote mode at mode resolution — zero server requests ---
 
 /// FsOnly 動詞於 remote 模式且 server 不可達：exit code 非零、stderr 含各自
 /// 拒絕句、stdout 空、零請求（listener 在線但從不說 HTTP——若動詞發出任何請求，
@@ -165,26 +165,6 @@ fn fs_only_trace_rejects_remote_mode_without_any_server_request() {
         "fsonly-trace",
         &["trace", "some-capability"],
         "trace is not available in remote mode — it assembles the provenance chain from the local openspec/ tree",
-    );
-}
-
-#[test]
-fn fs_only_plan_rejects_remote_mode_without_any_server_request() {
-    // Spec scenario FsOnly 動詞於 remote 模式零請求拒絕（change-plan design D6）.
-    assert_fs_only_refuses_remote(
-        "fsonly-plan",
-        &["plan", "--json"],
-        "plan is not available in remote mode yet — it reads the local openspec/ tree",
-    );
-}
-
-#[test]
-fn fs_only_change_depends_rejects_remote_mode_without_any_server_request() {
-    // Spec scenario FsOnly 動詞於 remote 模式零請求拒絕（change-plan design D6）.
-    assert_fs_only_refuses_remote(
-        "fsonly-change-depends",
-        &["change", "depends", "some-change", "--on", "other"],
-        "change depends is not available in remote mode yet — it writes the local change metadata",
     );
 }
 

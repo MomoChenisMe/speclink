@@ -78,6 +78,7 @@ pub fn router(state: AppState) -> Router {
         .route("/changes/{name}/verify/rounds", post(routes::verify_add_round))
         .route("/changes/{name}/verify/stamp", post(routes::verify_stamp))
         .route("/changes/{name}/claim", post(routes::claim))
+        .route("/changes/{name}/depends", post(routes::change_depends))
         .route(
             "/changes/{name}/in-progress",
             post(routes::in_progress).delete(routes::in_progress_remove),
@@ -114,6 +115,7 @@ pub fn router(state: AppState) -> Router {
             "/discussions/{slug}/promote",
             post(routes::promote_discussion),
         )
+        .route("/plan", get(routes::plan))
         .route("/specs", get(routes::list_specs))
         .route("/specs/{capability}/document", get(read_api::spec_document))
         .route("/archived", get(read_api::archived_list))

@@ -248,14 +248,14 @@ fn same_origin_workspaces_share_one_rotation_after_reconnect() {
         pm_changes.as_ref().is_ok_and(|list| list
             .changes
             .iter()
-            .any(|change| change.name == "pm-reconnect")),
+            .any(|change| change.summary.name == "pm-reconnect")),
         "PM workspace 應在重連 rotation 後恢復：{pm_changes:?}"
     );
     assert!(
         rd_changes.as_ref().is_ok_and(|list| list
             .changes
             .iter()
-            .any(|change| change.name == "rd-reconnect")),
+            .any(|change| change.summary.name == "rd-reconnect")),
         "RD workspace 應共用 rotation 並恢復：{rd_changes:?}"
     );
     assert_ne!(
@@ -334,7 +334,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
         &states,
         changes
             .as_ref()
-            .is_ok_and(|list| { list.changes.len() == 1 && list.changes[0].name == "pm-plan" }),
+            .is_ok_and(|list| { list.changes.len() == 1 && list.changes[0].summary.name == "pm-plan" }),
         "清單必須只包含前幕播種的 pm-plan"
     );
     let document = pm_workspace.document(credentials.as_ref(), "pm-plan", "tasks.md");
@@ -566,7 +566,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
             && second_workspace
                 .list_changes(credentials.as_ref())
                 .is_ok_and(|list| {
-                    list.changes.len() == 1 && list.changes[0].name == "second-plan"
+                    list.changes.len() == 1 && list.changes[0].summary.name == "second-plan"
                 }),
         "第二連線必須綁定 beta/main 且不能讀到第一個 server 的 changes"
     );
@@ -757,7 +757,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
             && second_during_outage.as_ref().is_ok_and(|list| {
                 list.changes
                     .iter()
-                    .any(|change| change.name == "second-during-outage")
+                    .any(|change| change.summary.name == "second-during-outage")
             })
             && second_state_rx.try_recv().is_err(),
         &format!(
@@ -795,7 +795,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
             && recovered_changes.as_ref().is_ok_and(|list| {
                 list.changes
                     .iter()
-                    .any(|change| change.name == "first-during-outage")
+                    .any(|change| change.summary.name == "first-during-outage")
             })
             && rejected_write_absent
                 .as_ref()
@@ -838,7 +838,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
             && recovered_in_place.as_ref().is_ok_and(|list| {
                 list.changes
                     .iter()
-                    .any(|change| change.name == "first-during-outage")
+                    .any(|change| change.summary.name == "first-during-outage")
             }),
         &format!(
             "同一 workspace／manager 應恢復：state={relogin_event:?}, list={recovered_in_place:?}"
@@ -859,7 +859,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
             && checkout.root().join(".git").is_dir()
             && rd_workspace
                 .list_changes(credentials.as_ref())
-                .is_ok_and(|list| list.changes.iter().any(|change| change.name == "rd-plan")),
+                .is_ok_and(|list| list.changes.iter().any(|change| change.summary.name == "rd-plan")),
         "本地資料層、PM spec-only 與 RD checkout 必須在同一劇本同時存活"
     );
 
@@ -959,7 +959,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
             && recovered_in_place.as_ref().is_ok_and(|list| {
                 list.changes
                     .iter()
-                    .any(|change| change.name == "first-during-outage")
+                    .any(|change| change.summary.name == "first-during-outage")
             }),
         &format!(
             "兩 scope 都應重連且 PM 應經 invalidate 重讀新真值：pm={}, rd={}, keys={recovery_keys:?}",

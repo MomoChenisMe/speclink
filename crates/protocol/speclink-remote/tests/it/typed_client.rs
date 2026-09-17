@@ -637,6 +637,52 @@ fn in_progress_remove_409_evidence_deserializes_structurally() {
 }
 
 #[test]
+fn plan_gets_the_typed_plan() {
+    // 規格「plan 回應 payload」：GET /plan 回型別化的 PlanResponse。
+    let mock = serve(
+        200,
+        r#"{"waves":[{"index":1,"changes":["a"]}],"changes":[{"name":"a","wave":1,"stage":"proposed","dependsOn":[],"overlaps":[],"blockedBy":[],"ready":true}],"next":"a","skipped":[]}"#,
+    );
+    let plan = client(&mock).plan().expect("plan ok");
+    assert_eq!(plan.next.as_deref(), Some("a"));
+    assert_eq!(plan.changes[0].name, "a");
+    assert_call(&mock.last(), "GET", "/plan");
+}
+
+#[test]
+fn set_depends_posts_on_and_remove() {
+    // 規格「依賴寫入請求與回應」Scenario「請求序列化」。
+    let mock = serve(200, r#"{"change":"add-b","dependsOn":["add-a","add-c"]}"#);
+    let resp = client(&mock)
+        .set_depends("add-b", &["add-a".to_string(), "add-c".to_string()], false)
+        .expect("set_depends ok");
+    assert_eq!(resp.change, "add-b");
+    assert_eq!(resp.depends_on, ["add-a", "add-c"]);
+    let cap = mock.last();
+    assert_call(&cap, "POST", "/changes/add-b/depends");
+    assert_eq!(cap.body, r#"{"on":["add-a","add-c"],"remove":false}"#);
+}
+
+#[test]
+fn a_409_refusal_relays_the_engine_message_verbatim() {
+    // 規格「依賴寫入請求與回應」Scenario「409 拒絕原文轉發」：沿用 refused，
+    // message 逐字轉發——CLI 與 fs 模式印同一句。
+    let mock = serve(
+        409,
+        r#"{"status":409,"reason":"refused","message":"dependency cycle: add-b -> add-a -> add-b"}"#,
+    );
+    let err = client(&mock)
+        .set_depends("add-b", &["add-a".to_string()], false)
+        .unwrap_err();
+    assert_eq!(err.status, Some(409));
+    assert_eq!(err.reason.as_deref(), Some("refused"));
+    assert_eq!(err.message, "dependency cycle: add-b -> add-a -> add-b");
+    let err = client(&mock).plan().unwrap_err();
+    assert_eq!(err.status, Some(409));
+    assert_eq!(err.message, "dependency cycle: add-b -> add-a -> add-b");
+}
+
+#[test]
 fn discussion_parity_verbs_map_a_404_to_the_typed_error() {
     // 未升級的舊 server 對新動詞回 404 → 語義化 RemoteError，不 panic。
     let mock = serve(

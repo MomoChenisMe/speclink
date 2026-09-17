@@ -99,6 +99,7 @@ fn command_label(outcome: &CommandOutcome) -> String {
         CommandOutcome::Claim(_) => "claim",
         CommandOutcome::InProgressAdd(_) => "in-progress-add",
         CommandOutcome::InProgressRemove(_) => "in-progress-remove",
+        CommandOutcome::ChangeDepends(_) => "change-depends",
         CommandOutcome::Archive(_) => "archive",
         CommandOutcome::Discard(_) => "discard",
         CommandOutcome::DiscussNew(_) => "discuss-new",

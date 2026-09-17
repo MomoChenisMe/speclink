@@ -28,7 +28,7 @@ use verbs::lifecycle::{
     DiscardArgs,
 };
 use verbs::new::{cmd_new, remote_new, NewArgs};
-use verbs::plan::{cmd_change, cmd_plan, ChangeVerbArgs, PlanArgs};
+use verbs::plan::{cmd_change, cmd_plan, remote_change, remote_plan, ChangeVerbArgs, PlanArgs};
 use verbs::progress::{
     cmd_in_progress, cmd_task, remote_in_progress, remote_task, InProgressArgs, TaskArgs,
 };
@@ -211,6 +211,8 @@ fn dispatch(cli: Cli) -> Result<()> {
         Commands::Task(a) => dual(a, cmd_task, remote_task),
         Commands::InProgress(a) => dual(a, cmd_in_progress, remote_in_progress),
         Commands::Discuss(a) => dual(a, cmd_discuss, remote_discuss),
+        Commands::Plan(a) => dual(a, cmd_plan, |ctx, a| remote_plan(ctx, &a)),
+        Commands::Change(a) => dual(a, cmd_change, remote_change),
         // review／verify 為 Dual 家族：clap → StationVerb 正規化先行，雙臂
         // 宣告在家族函式尾端（station_dual；review 的 prepare 自成雙臂）。
         Commands::Review(a) => cmd_review(a), // Dual（宣告於 station_dual）
@@ -218,8 +220,6 @@ fn dispatch(cli: Cli) -> Result<()> {
         // --- FsOnly：只解析模式、不握手，remote 明寫拒絕 ---
         Commands::Demo => fs_only(DEMO_REMOTE_REFUSAL, cmd_demo),
         Commands::Trace(a) => fs_only(TRACE_REMOTE_REFUSAL, || cmd_trace(a)),
-        Commands::Plan(a) => fs_only(PLAN_REMOTE_REFUSAL, || cmd_plan(a)),
-        Commands::Change(a) => fs_only(CHANGE_REMOTE_REFUSAL, || cmd_change(a)),
         // --- RemoteOnly：fs 明寫拒絕 ---
         Commands::Claim(a) => remote_only(a, CLAIM_FS_REFUSAL, |ctx, a| remote_claim(ctx, &a.name)),
     }
@@ -288,12 +288,3 @@ const DEMO_REMOTE_REFUSAL: &str =
 // change 的 Non-Goal（v1 僅本地 CLI），比照 demo 的 FsOnly 形狀明寫拒絕。
 const TRACE_REMOTE_REFUSAL: &str =
     "trace is not available in remote mode — it assembles the provenance chain from the local openspec/ tree";
-
-// plan 讀本機 change meta 與 delta 目錄算執行順序；remote 臂留待第三刀
-// （change-plan design D6），本刀比照 trace 的 FsOnly 形狀明寫拒絕。
-const PLAN_REMOTE_REFUSAL: &str =
-    "plan is not available in remote mode yet — it reads the local openspec/ tree";
-
-// change depends 寫本機 change meta；remote 臂同樣留待第三刀。
-const CHANGE_REMOTE_REFUSAL: &str =
-    "change depends is not available in remote mode yet — it writes the local change metadata";
