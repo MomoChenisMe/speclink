@@ -24,4 +24,4 @@
 ## 5. 收尾
 
 - [x] 5.1 全面回歸：`cargo test -p speclink-protocol`、`cargo test -p speclink-remote`、`cargo test -p speclink-server --test it api::plan_api`、`cargo test -p speclink-host`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-desktop --test it remote_data`、`cargo test -p speclink-desktop-core`、`npm test -w packages/ui`、`npm test -w apps/desktop` 全綠；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。 <!-- speclink-task:tsk_01M2J2FCGVHJVRMDFR05ECWJZG -->
-- [ ] [M] 5.2 以本機 server（npm run dev）開 remote 分頁：看板變更順序與 local 分頁對同一內容一致、卡片有波次章、editor 可在排程分頁新增前置且 SSE 刷新後順序更新、拖到宣告前置之前得到單行錯誤、以 reader 登入時排程分頁無編輯控制項；local 主 checkout 開一個有 worktree 映射的變更，排程分頁候選不含分支後才建立的變更。驗證：人工核對上述六項。 <!-- speclink-task:tsk_01M2J2FCGVGS3FYBPRPRRQ4XJX -->
+- [x] [M] 5.2 以本機 server（npm run dev）開 remote 分頁：看板變更順序與 local 分頁對同一內容一致、卡片有波次章、editor 可在排程分頁新增前置且 SSE 刷新後順序更新、拖到宣告前置之前得到單行錯誤、以 reader 登入時排程分頁無編輯控制項；local 主 checkout 開一個有 worktree 映射的變更，排程分頁候選不含分支後才建立的變更。驗證：人工核對上述六項。 <!-- speclink-task:tsk_01M2J2FCGVGS3FYBPRPRRQ4XJX -->
