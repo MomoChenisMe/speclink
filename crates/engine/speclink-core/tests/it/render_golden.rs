@@ -361,7 +361,7 @@ fn commit_skill_archive_sub_flow_carries_the_order_hint_and_the_hand_off() {
     }
 }
 
-/// The three blocks the two archive exits share, whitespace-collapsed so the
+/// A block that two assets spell out word for word, whitespace-collapsed so the
 /// list indentation and line wrapping of each file drop out of the comparison.
 fn shared_block(content: &str, start: &str, end: &str) -> String {
     let from = content
@@ -1001,18 +1001,19 @@ records the old fingerprint.\n{}",
 
 // --- worktree skills: generation, composition and the stop points ---
 
+/// The apply asset as the tool of the generated file `rel` renders it.
+fn rendered_apply_body(rel: &str) -> String {
+    let tool = if rel.starts_with(".claude") { Tool::Claude } else { Tool::Codex };
+    skills::substitute(skills::skill_body("apply").expect("apply body"), tool, "openspec")
+}
+
 /// Spec「apply-with-worktree 技能的生成與組合」: both tool targets generate the
 /// composed skill, and its body carries the WHOLE apply body verbatim (not a
 /// summary, not a reference).
 #[test]
 fn apply_with_worktree_embeds_the_entire_apply_body() {
     for (rel, content) in worktree_skill_for_both_tools("apply-wt-compose", "apply-with-worktree") {
-        let tool = if rel.starts_with(".claude") { Tool::Claude } else { Tool::Codex };
-        let apply_body = skills::substitute(
-            skills::skill_body("apply").expect("apply body"),
-            tool,
-            "openspec",
-        );
+        let apply_body = rendered_apply_body(&rel);
         assert!(
             normalize_eol(&content).contains(normalize_eol(apply_body.trim_end()).as_str()),
             "{rel}: the apply body must appear verbatim, not paraphrased"
@@ -1092,9 +1093,17 @@ fn apply_with_worktree_refuses_more_than_one_change() {
             content.contains("一個 change 一個 session"),
             "{rel}: must print the multi-session recipe in the user's terms"
         );
-        // 多名字先以 plan 分組：blockedBy 空者可並行，非空者等前置落地再開。
+        // 多名字先以 plan 分組：blockedBy 空者可並行，非空者等前置落地再開；
+        // 只剩一個可並行時改為確認，不硬湊選項；一個都沒有就列出後停止。
         let p0 = &content[guard..policy_gate];
-        for needle in ["speclink plan --json", "blockedBy", "落地再開"] {
+        for needle in [
+            "speclink plan --json",
+            "blockedBy",
+            "落地再開",
+            "from the parallel-ready names only",
+            "confirm running that change here",
+            "report the waiting and unavailable names",
+        ] {
             assert!(
                 p0.contains(needle),
                 "{rel}: the multi-change guard must sort the names by plan — missing {needle:?}"
@@ -1114,7 +1123,7 @@ fn apply_with_worktree_selects_and_guards_with_plan() {
             .find("Check the worktree policy")
             .unwrap_or_else(|| panic!("{rel}: missing the policy gate"));
         let select = content
-            .find("Select the change with plan")
+            .find("Select and guard the change in the main checkout")
             .unwrap_or_else(|| panic!("{rel}: missing the plan selection step"));
         let commit_step = content
             .find("into HEAD")
@@ -1127,33 +1136,32 @@ fn apply_with_worktree_selects_and_guards_with_plan() {
         for needle in [
             "speclink plan --json",
             "take `next`",
-            "`blockedBy`",
-            "`skipped`",
+            "print the prerequisite list",
+            "report which change names are available",
             "do NOT commit the artifacts, do NOT create the worktree",
-            "Using change: <name>",
+            "Using change: <change-name>",
         ] {
             assert!(
                 step.contains(needle),
                 "{rel}: the plan step is missing {needle:?}"
             );
         }
+        // 存在性檢查已併入 plan 步驟；只看前置段，本體與收尾段不在此列。
+        let body = content
+            .find("以下為 apply 本體流程")
+            .unwrap_or_else(|| panic!("{rel}: missing the hand-over to the apply body"));
         assert!(
-            !content.contains("speclink list --json"),
+            !content[..body].contains("speclink list --json"),
             "{rel}: the list-based existence check is folded into the plan step"
-        );
-        // P0 分組、P2 守門、本體第 1 步複查，各一次。
-        assert_eq!(
-            content.matches("speclink plan --json").count(),
-            3,
-            "{rel}: plan is consulted in P0, in P2 and in the apply body's step 1"
         );
     }
 }
 
 /// Same requirement, Scenario「內文含本體複查以主 checkout 為準指示」: inside the
-/// worktree the apply body's own plan step is only a re-check, and the main
-/// checkout's verdict wins. The note lives in the worktree preamble alone — the plain
-/// apply skill still renders its asset verbatim, with nothing added.
+/// worktree the apply body's own plan step is only a re-check, the main checkout's
+/// verdict wins, and step 2 still captures the review baseline. The note lives in the
+/// worktree preamble alone — the plain apply skill renders nothing but its asset. That
+/// the apply asset itself stays byte-identical is locked by the golden snapshots.
 #[test]
 fn apply_with_worktree_treats_the_body_plan_as_a_recheck() {
     for (rel, content) in worktree_skill_for_both_tools("apply-wt-recheck", "apply-with-worktree") {
@@ -1163,8 +1171,13 @@ fn apply_with_worktree_treats_the_body_plan_as_a_recheck() {
         let to = content
             .find("以下為 apply 本體流程")
             .unwrap_or_else(|| panic!("{rel}: missing the hand-over to the apply body"));
+        assert!(from < to, "{rel}: the worktree step must precede the apply body");
         let p6 = &content[from..to];
-        for needle in ["only a re-check", "the main checkout's verdict wins"] {
+        for needle in [
+            "only a re-check",
+            "the main checkout's verdict wins",
+            "`speclink review prepare` and `speclink in-progress add` included",
+        ] {
             assert!(
                 p6.contains(needle),
                 "{rel}: the worktree step is missing {needle:?}"
@@ -1172,27 +1185,14 @@ fn apply_with_worktree_treats_the_body_plan_as_a_recheck() {
         }
     }
     for (rel, content) in skill_for_both_tools("apply-plain-recheck", "apply") {
-        let tool = if rel.starts_with(".claude") { Tool::Claude } else { Tool::Codex };
-        let mut expected = skills::substitute(
-            skills::skill_body("apply").expect("apply body"),
-            tool,
-            "openspec",
-        );
-        while expected.ends_with("\n\n") {
-            expected.pop();
-        }
-        if !expected.ends_with('\n') {
-            expected.push('\n');
-        }
         let body = content
             .splitn(3, "---\n")
             .nth(2)
-            .and_then(|rest| rest.strip_prefix('\n'))
             .unwrap_or_else(|| panic!("{rel}: missing the frontmatter"));
         assert_eq!(
-            normalize_eol(body),
-            normalize_eol(&expected),
-            "{rel}: the plain apply skill must render its asset verbatim"
+            normalize_eol(body).trim(),
+            normalize_eol(&rendered_apply_body(&rel)).trim(),
+            "{rel}: the plain apply skill must render nothing but its asset"
         );
         assert!(
             !content.contains("re-check"),
@@ -1257,17 +1257,17 @@ fn apply_with_worktree_stops_before_the_merge_and_hands_off() {
 // --- ingest skill: re-judge soft dependencies before the hand-off ---
 
 /// Spec ingest-skill「ingest 收尾重判本變更的軟依賴」: once the updated artifacts
-/// validate, ingest re-judges this change's soft dependencies and records them with
-/// `change depends` before sealing and before the Next steps hand-off. The seal step
-/// moves down one, so the Next steps pointer must follow it.
+/// validate, ingest re-judges this change's soft dependencies — builds-on only, one
+/// `change depends` call per prerequisite — before sealing and before the Next steps
+/// hand-off. The Next steps pointer must name the seal step's actual number.
 #[test]
 fn ingest_skill_rejudges_soft_dependencies_before_handoff() {
     for (rel, content) in skill_for_both_tools("ingest-rejudge", "ingest") {
         let validate = content
             .find("speclink validate \"<name>\"")
             .unwrap_or_else(|| panic!("{rel}: missing the validation step"));
-        let depends = content
-            .find("speclink change depends")
+        let rejudge = content
+            .find("**Re-judge soft dependencies**")
             .unwrap_or_else(|| panic!("{rel}: missing the soft-dependency re-judge"));
         let seal = content
             .find("**Seal the reflection**")
@@ -1276,25 +1276,52 @@ fn ingest_skill_rejudges_soft_dependencies_before_handoff() {
             .find("## Next steps")
             .unwrap_or_else(|| panic!("{rel}: missing the Next steps section"));
         assert!(
-            validate < depends && depends < seal && seal < next_steps,
+            validate < rejudge && rejudge < seal && seal < next_steps,
             "{rel}: the re-judge belongs after validation, before the seal and the hand-off"
         );
+        let step = &content[rejudge..seal];
         for needle in [
-            // 只有本變更時跳過；硬信號交引擎；拒絕時回報續行
+            // 只有本變更時跳過；只記「建立在成果上」，同一段程式碼改為告知
             "**Only one active change**",
+            "builds on that change's outcome",
+            "Editing the same code areas alone is not a prerequisite here",
+            // 每個前置各一次呼叫；拒絕時回報續行、不重試；硬信號交引擎；不刪既有依賴
+            "speclink change depends <change-name> --on <prerequisite>`",
+            "do not retry it",
             "Do NOT judge overlap yourself",
-            "report the refusal and continue",
-            // 不刪既有依賴
             "Never remove an existing `depends_on`",
         ] {
             assert!(
-                content.contains(needle),
+                step.contains(needle),
                 "{rel}: the re-judge step is missing {needle:?}"
             );
         }
+        // Next steps 的步驟參照要指到 seal 實際的編號，重新編號時才會一起跟上。
+        let seal_line = content[..seal].rfind('\n').map_or(0, |i| i + 1);
+        let seal_number = content[seal_line..seal].trim().trim_end_matches('.');
         assert!(
-            content[next_steps..].contains("first (step 10)"),
-            "{rel}: Next steps must point at the renumbered seal step"
+            content[next_steps..].contains(&format!("first (step {seal_number})")),
+            "{rel}: Next steps must point at the seal step, number {seal_number}"
+        );
+    }
+}
+
+/// Propose and ingest both record soft dependencies with `change depends`. Both assets
+/// spell the recording rules out by hand, so this lock keeps them from drifting apart
+/// one wording tweak at a time — the same guard the archive and commit hand-offs use.
+#[test]
+fn propose_and_ingest_skills_share_the_depends_recording_wording() {
+    let proposes = skill_for_both_tools("share-propose", "propose");
+    let ingests = skill_for_both_tools("share-ingest", "ingest");
+    for ((propose_rel, propose), (ingest_rel, ingest)) in proposes.iter().zip(ingests.iter()) {
+        let (start, end) = (
+            "Record each prerequisite with its own call",
+            "Do NOT judge overlap yourself.",
+        );
+        assert_eq!(
+            shared_block(propose, start, end),
+            shared_block(ingest, start, end),
+            "{propose_rel} and {ingest_rel}: the depends-recording rules must read the same"
         );
     }
 }

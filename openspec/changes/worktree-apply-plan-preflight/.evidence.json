@@ -29,6 +29,13 @@
         "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
         "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
       ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "1.4 改寫 crates/engine/speclink-core/assets/skills/ingest.md，並對齊 crates/engine/speclink-core/assets/skills/propose.md 的落檔段落，落實「ingest 收尾重判本變更的軟依賴」：在第 8 步 Validation 之後、第 9 步 Seal 之前插入新步驟「Re-judge soft dependencies」（後續步驟編號順延）：以 speclink list --json 列作用中變更，只有本變更時跳過；兩個以上時只針對本變更、以更新後的 artifacts 為準讀其他變更的 proposal Impact 判定是否建立在其成果上，有則對每個前置各執行一次 speclink change depends <本變更> --on <前置>；只動到同一段程式碼不記為前置、改向使用者提出；動詞拒絕時回報並續行下一個前置、不重試；硬信號交引擎；不移除既有 depends_on；不代跑 apply。落檔段落（「Record each prerequisite with its own call」至「Do NOT judge overlap yourself.」）與 propose.md「Pending-change landscape check」第 3 點逐字一致，propose.md 同段同步改為每個前置各一次呼叫（propose 的判定規則不變）。Next steps 段的出邊不變，唯一改動是 seal 的步驟參照隨編號順延自「(step 9)」改為「(step 10)」（不改會指到新步驟）。驗證：內容審閱——ingest.md 含 `speclink change depends`、「Do NOT judge overlap yourself」、「Editing the same code areas alone is not a prerequisite here」與「Only one active change」跳過句，Next steps 段與改動前的差異只有「(step 9)」→「(step 10)」；`propose_and_ingest_skills_share_the_depends_recording_wording` 通過。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/propose.md"
+      ]
     }
   ],
   "entries": [
@@ -71,6 +78,17 @@
         "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
       ],
       "recordedAt": "2026-09-17T02:39:48Z"
+    },
+    {
+      "taskId": "tsk_01M2NBJ7MZE99AC0A8RSQH0JZP",
+      "taskDesc": "1.4 改寫 crates/engine/speclink-core/assets/skills/ingest.md，並對齊 crates/engine/speclink-core/assets/skills/propose.md 的落檔段落，落實「ingest 收尾重判本變更的軟依賴」：在第 8 步 Validation 之後、第 9 步 Seal 之前插入新步驟「Re-judge soft dependencies」（後續步驟編號順延）：以 speclink list --json 列作用中變更，只有本變更時跳過；兩個以上時只針對本變更、以更新後的 artifacts 為準讀其他變更的 proposal Impact 判定是否建立在其成果上，有則對每個前置各執行一次 speclink change depends <本變更> --on <前置>；只動到同一段程式碼不記為前置、改向使用者提出；動詞拒絕時回報並續行下一個前置、不重試；硬信號交引擎；不移除既有 depends_on；不代跑 apply。落檔段落（「Record each prerequisite with its own call」至「Do NOT judge overlap yourself.」）與 propose.md「Pending-change landscape check」第 3 點逐字一致，propose.md 同段同步改為每個前置各一次呼叫（propose 的判定規則不變）。Next steps 段的出邊不變，唯一改動是 seal 的步驟參照隨編號順延自「(step 9)」改為「(step 10)」（不改會指到新步驟）。驗證：內容審閱——ingest.md 含 `speclink change depends`、「Do NOT judge overlap yourself」、「Editing the same code areas alone is not a prerequisite here」與「Only one active change」跳過句，Next steps 段與改動前的差異只有「(step 9)」→「(step 10)」；`propose_and_ingest_skills_share_the_depends_recording_wording` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b532fa759876c0665f947e612a2a93c006a3c852",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/propose.md"
+      ],
+      "recordedAt": "2026-09-17T03:24:01Z"
     }
   ]
 }

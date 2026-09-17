@@ -481,15 +481,20 @@ Find each name in `changes`:
 
 - **Not in `changes`** (archived, misspelled, or listed under `skipped`) — name it as not available.
 
-Then use the **AskUserQuestion tool** to have the user pick the one to run here, from the parallel-ready names only. Print the recipe for the other parallel-ready names, naming them:
+Then act on how many names are parallel-ready:
 
-> 平行做法是一個 change 一個 session：另外開視窗，各自執行 `/speclink-apply-with-worktree <change-name>`。主資料夾的看板會同時顯示每個 worktree 的進度。
+- **Two or more** — use the **AskUserQuestion tool** to have the user pick the one to run here, from the parallel-ready names only. Print the recipe for the other parallel-ready names, naming them:
 
-If no name is parallel-ready, there is nothing to pick: report the waiting and unavailable names and STOP. If the query fails, show the error and STOP.
+  > 平行做法是一個 change 一個 session：另外開視窗，各自執行 `/speclink-apply-with-worktree <change-name>`。主資料夾的看板會同時顯示每個 worktree 的進度。
+
+- **Exactly one** — there is nothing to pick and no recipe to print: use the **AskUserQuestion tool** to confirm running that change here, with stopping as the other option.
+- **None** — report the waiting and unavailable names and STOP.
+
+If the query fails, show the error and STOP.
 
 Do **NOT** run them one after another in this session. A single session working through several changes serializes what the user asked to parallelize, and its context is spent on the wrong change by the time the second one starts.
 
-If there is no AskUserQuestion tool available, list the parallel-ready names as plain text, ask which one to run, and wait for the answer.
+If there is no AskUserQuestion tool available, ask the same question as plain text and wait for the answer.
 
 ### P1. Check the worktree policy
 
@@ -511,7 +516,7 @@ Read the EFFECTIVE value, the same way the CLI resolves it — the env layer win
 
   Do **NOT** fall back to running the apply flow in the main folder. Enabling the policy is the user's decision, not yours — offer to run `speclink workflow-config set worktree true` and wait for their answer.
 
-### P2. Select the change with plan
+### P2. Select and guard the change in the main checkout
 
 Pick and guard the change here, in the main checkout — before its artifacts are committed and before any worktree exists. Run the execution-order query:
 
@@ -526,9 +531,9 @@ It returns `changes` (one entry per active change with its `blockedBy`), `next` 
 - **The name is not in `changes`** (archived, misspelled, or listed under `skipped`) → STOP and report which change names are available.
 - **The command fails** (a dependency cycle, a project that is not initialized) → show the error and STOP.
 
-Every STOP in this step ends the run on the spot: do NOT commit the artifacts, do NOT create the worktree. The way out of a block is the user's: land (archive) the blockers first; drop a declared prerequisite that is wrong with `speclink change depends <name> --on <prerequisite> --remove`; a blocker that comes from delta-capability overlap keeps its place until it lands. Then run this skill again.
+Every STOP in this step ends the run on the spot: do NOT commit the artifacts, do NOT create the worktree. The way out of a block is the user's: land (archive) the blockers first; drop a declared prerequisite that is wrong with `speclink change depends <change-name> --on <prerequisite> --remove`; a blocker that comes from delta-capability overlap keeps its place until it lands. Then run this skill again.
 
-Once a change is selected, announce: "Using change: <name>" and how to override (e.g., `/speclink-apply-with-worktree <other>`). Continue to P3.
+Once a change is selected, announce: "Using change: <change-name>" and how to override (e.g., `/speclink-apply-with-worktree <other>`). Continue to P3.
 
 ### P3. Get the change's artifacts into HEAD
 
@@ -617,7 +622,7 @@ Every step of the apply flow below runs **inside the worktree folder**, not the 
 
 The main checkout stays untouched. Its `speclink list` will show this change with a `[worktree]` marker and reflect the worktree's task progress live — that is how the user watches parallel work from one place.
 
-The apply body's own step 1 (**Select the change with plan**) is only a re-check here. Its plan query runs inside the worktree, and a plan run there reads only the worktree's own copy: it cannot see the progress of other worktrees, or changes archived on the main branch after this worktree was created. When the re-check's result differs from P2, the main checkout's verdict wins — do not STOP because of the re-check, and continue with the change P2 selected.
+The apply body's own step 1 (**Select the change with plan**) is only a re-check here. Its plan query runs inside the worktree, and a plan run there reads only the worktree's own copy: it cannot see the progress of other worktrees, or changes archived on the main branch after this worktree was created. When the re-check's result differs from P2, the main checkout's verdict wins — do not STOP because of the re-check, and continue with the change P2 selected. Step 2 then runs as written, `speclink review prepare` and `speclink in-progress add` included: the review station needs the baseline they record.
 
 ---
 
@@ -3190,10 +3195,11 @@ Update an existing Speclink change — from a plan file or conversation context.
    1. Run `speclink list --json` for the active change names. The change you just updated counts.
    2. **Only one active change** (the one you just updated) → skip the rest of this step and run nothing.
    3. **Two or more** → judge the **soft dependencies of the change you just updated only** — never re-judge the whole landscape:
-      - Going by the updated artifacts, read the Impact section of each other active change's proposal and decide whether this change builds on that change's outcome, or edits the same code areas. Each such change is a prerequisite of this one.
-      - Record every prerequisite you found: `speclink change depends <name> --on <prerequisite>...`. This writes `depends_on` into the change's metadata, where the plan guard of the next apply reads it. A verbal note is not enough — if you found a prerequisite, the command must have run. An edge that already exists is left as it is. The verb refuses (with zero writes) a self-dependency, an unknown or archived name, and an edge that would form a cycle; report the refusal and continue — do not retry, and do not edit another change's `depends_on`.
+      - Going by the updated artifacts, read the Impact section of each other active change's proposal and decide whether this change builds on that change's outcome. Each such change is a prerequisite of this one.
+      - Editing the same code areas alone is not a prerequisite here: this change may already be under way, and waiting for a change that has not started would stall it. Name such an overlap to the user instead of recording it.
+      - Record each prerequisite with its own call: `speclink change depends <change-name> --on <prerequisite>`. The verb writes all of its `--on` names or none, so one call per prerequisite keeps one refusal from dropping the others. This writes `depends_on` into the change's metadata, where `speclink plan` and every later session read it. A verbal note is not enough — if you found a prerequisite, the command must have run. An edge that already exists is left as it is. The verb refuses (with zero writes) a self-dependency, an unknown or archived name, and an edge that would form a cycle; report the refusal and move on to the next prerequisite — do not retry it, and do not edit another change's `depends_on`.
       - No prerequisite found → run nothing.
-      - **Hard signal — delta capability overlap** is the engine's job: the plan detects two changes that carry a delta for the same capability and sequences them. Do NOT judge overlap yourself.
+      - **Hard signal — delta capability overlap** is the engine's job: `speclink plan` detects two changes that carry a delta for the same capability and sequences them. Do NOT judge overlap yourself.
    4. Never remove an existing `depends_on` entry here — dropping a prerequisite is the user's decision. Never run `/speclink-apply` yourself.
 
 10. **Seal the reflection** (discussion-sourced ingests only)
@@ -3903,9 +3909,9 @@ Run this check after the summary, right before presenting the Next steps below.
 2. **Only one active change** (the one just created) → skip the rest of this check; the Next steps edges below already cover it.
 3. **Two or more** → judge the **soft dependencies of the change you just created only** — never re-judge the whole landscape:
    - Read the Impact section of each other active change's proposal and decide whether the new change builds on that change's outcome, or edits the same code areas. Each such change is a prerequisite of the new one.
-   - Record every prerequisite you found: `speclink change depends <new-change> --on <prerequisite>...`. This writes `depends_on` into the new change's metadata so every later session reads it for free. A verbal note is not enough — if you found a prerequisite, the command must have run. The verb refuses (with zero writes) a self-dependency, an unknown or archived name, and an edge that would form a cycle; report the refusal and move on.
-   - No prerequisite found → run nothing; the change stays independent.
-   - **Hard signal — delta capability overlap** is the engine's job: `plan` below detects two changes that carry a delta for the same capability and sequences them. Do NOT judge overlap yourself.
+   - Record each prerequisite with its own call: `speclink change depends <change-name> --on <prerequisite>`. The verb writes all of its `--on` names or none, so one call per prerequisite keeps one refusal from dropping the others. This writes `depends_on` into the change's metadata, where `speclink plan` and every later session read it. A verbal note is not enough — if you found a prerequisite, the command must have run. An edge that already exists is left as it is. The verb refuses (with zero writes) a self-dependency, an unknown or archived name, and an edge that would form a cycle; report the refusal and move on to the next prerequisite — do not retry it, and do not edit another change's `depends_on`.
+   - No prerequisite found → run nothing.
+   - **Hard signal — delta capability overlap** is the engine's job: `speclink plan` detects two changes that carry a delta for the same capability and sequences them. Do NOT judge overlap yourself.
 4. Run `speclink plan --json` and present its result according to the project's effective worktree policy (`speclink workflow-config show --json` → `worktree`; a `SPECLINK_WORKTREE` env override wins):
    - **Policy on** → list wave 1 (`waves[0].changes`) as "parallel-safe — run each change in its own session via `/speclink-apply-with-worktree` (the multi-session recipe)", then each later wave in order as "after the wave before it lands". A change's `blockedBy` names what it waits for.
    - **Policy off** → one recommended order: the `changes` array in its given order, one at a time.
