@@ -59,7 +59,7 @@ describe("setDepends capability 旗標", () => {
     expect(LOCAL_CAPABILITIES.setDepends).toBe(true);
   });
 
-  it("remote reader 為 false，且離線遮罩後仍為 false", () => {
+  it("remote editor 為 true、reader 為 false，且離線遮罩後一律為 false", () => {
     const info: RemoteOpenInfo = {
       projectKey: "demo",
       projectName: "Demo",
@@ -76,6 +76,7 @@ describe("setDepends capability 旗標", () => {
       undefined,
       { invoke: vi.fn() },
     );
+    expect(online.capabilities.setDepends).toBe(true);
     const offline = applyRemoteConnectionState(online, {
       connectionId: "c1",
       state: "offline",

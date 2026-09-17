@@ -19,8 +19,8 @@ Every top-level verb belongs to one of four mode shapes, declared in one place i
 | Shape | Verbs | Semantics |
 | --- | --- | --- |
 | **ModeFree** | `init`, `update`, `link`, `unlink`, `auth`, `schemas`, `templates`, `feedback`, `schema`, `config`, `completion` | Never triggers store mode resolution. Verbs that do not read project settings (`completion`, `config`) are unaffected by a broken `.speclink.yaml`. |
-| **Dual** | `list`, `show`, `validate`, `analyze`, `drift`, `archive`, `discard`, `artifact`, `language`, `status`, `instructions`, `new`, `workflow-config`, `task`, `in-progress`, `discuss`, `review`, `verify` | Local mode acts on the local store and remote mode acts on the remote store; it **never** silently falls back to the local store in remote mode. A missing arm is a build failure, not a runtime fallback. |
-| **FsOnly** | `demo`, `trace`, `plan`, `change` | Remote mode refuses with a non-zero exit code and issues no server request at all — it refuses offline too. `plan` and `change` turn Dual once their remote arms land. |
+| **Dual** | `list`, `show`, `validate`, `analyze`, `drift`, `archive`, `discard`, `artifact`, `language`, `status`, `instructions`, `new`, `workflow-config`, `task`, `in-progress`, `discuss`, `review`, `verify`, `plan`, `change` | Local mode acts on the local store and remote mode acts on the remote store; it **never** silently falls back to the local store in remote mode. A missing arm is a build failure, not a runtime fallback. |
+| **FsOnly** | `demo`, `trace` | Remote mode refuses with a non-zero exit code and issues no server request at all — it refuses offline too. |
 | **RemoteOnly** | `claim` | Local mode refuses with a non-zero exit code and explains on stderr that a remote store is required. |
 
 Mode resolution is lazy. The CLI resolves the mode only when the declared shape needs it. It opens a connection only when the remote arm is about to run.
@@ -87,6 +87,26 @@ Response `200`:
 ```
 
 Errors: `404 not_found` when the change does not exist.
+
+## GET /plan
+
+Read-only derived query at the scope level, available to **reader and editor**. Runs the same engine computation as fs-mode `speclink plan`, with the scope's board resource as the rank source. The endpoint reads the document's `changes` map leniently: an absent document, unparsable content, a non-object, or a missing `changes` map all read as "no ranks", and the document is never rewritten. A store read failure still returns its error. Never writes, never publishes events. The CLI's remote arm converts the response back to the engine report, so `speclink plan` and `speclink plan --json` print the same bytes in both modes.
+
+Response `200`:
+
+```json
+{
+  "waves": [{ "index": 1, "changes": ["add-a"] }, { "index": 2, "changes": ["add-b"] }],
+  "changes": [
+    { "name": "add-a", "wave": 1, "stage": "in-progress", "dependsOn": [], "overlaps": [], "blockedBy": [], "ready": true },
+    { "name": "add-b", "wave": 2, "stage": "proposed", "dependsOn": ["add-a"], "overlaps": [], "blockedBy": ["add-a"], "ready": false }
+  ],
+  "next": null,
+  "skipped": []
+}
+```
+
+Errors: a dependency cycle returns `409 refused` with the engine line, for example `dependency cycle: add-a -> add-b -> add-a`. A server without this endpoint answers `404`; the desktop then keeps the board-resource order and shows no schedule fields.
 
 ## DELETE /changes/{name}?force={bool}
 
@@ -183,6 +203,22 @@ Silent lifecycle stamp through the Command gateway. The first call on an existin
 ```json
 {}
 ```
+
+## POST /changes/{name}/depends
+
+Declares prerequisites (or, with `remove: true`, withdraws them) through the Command gateway — the same engine write as fs-mode `speclink change depends`. Request:
+
+```json
+{ "on": ["add-a"], "remove": false }
+```
+
+`on` is required; `remove` defaults to `false`. A write that changes `depends_on` commits, publishes `change-depends-changed`, and advances the scope revision. A write that changes nothing (a prerequisite already declared, or one not declared under `remove`) is an idempotent `200` with zero writes and zero events. The response carries the resulting list:
+
+```json
+{ "change": "add-b", "dependsOn": ["add-a"] }
+```
+
+The guards return `409 refused` with the engine line and write nothing: `'add-b' cannot depend on itself`, `cannot depend on 'ghost': no active change with that name`, `cannot depend on 'old-change': it is already archived`, and `dependency cycle: add-b -> add-a -> add-b`. An unknown `{name}` returns `404 not_found`, and a change with corrupt metadata returns `422 invalid_config`. The endpoint is editor-gated: a reader gets `403` and the command does not run.
 
 ## POST /changes/{name}/claim
 

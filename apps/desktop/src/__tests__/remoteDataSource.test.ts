@@ -322,11 +322,10 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     });
   });
 
-  it("listChanges 帶出排程欄位與 planError，setDepends 映射 remote_set_change_depends（add-change-plan-remote D5/D7）", async () => {
+  it("listChanges 帶出排程欄位與 planError（add-change-plan-remote D5）", async () => {
+    // setDepends 的 command 映射與 capability 旗標由 planDataSource.test.ts 集中斷言。
     const cycle = "dependency cycle: a -> b -> a";
-    const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
-    const invoke = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
-      calls.push({ cmd, args });
+    const invoke = async <T,>(cmd: string): Promise<T> => {
       if (cmd === "remote_list_changes") {
         return {
           changes: [
@@ -342,17 +341,6 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     const payload = await ds.listChanges();
     expect(payload.planError).toBe(cycle);
     expect(payload.changes[0].dependsOn).toEqual(["b"]);
-
-    await ds.setDepends("a", ["b", "c"], true);
-    const call = calls.find((c) => c.cmd === "remote_set_change_depends");
-    expect(call?.args).toEqual({
-      connectionId: CONN,
-      project: PROJECT,
-      repo: REPO,
-      change: "a",
-      on: ["b", "c"],
-      remove: true,
-    });
   });
 
   it("listChanges 帶出 claimedBy（認領人呈現的資料源）", async () => {
@@ -508,14 +496,12 @@ describe("createRemoteSession（決策 6/7：handshake 結果建 session）", ()
     expect(session.settings.policyWrite).toBe(true);
   });
 
-  it("capability 依 role：editor 的 reorderCard 與 setDepends 真、reader 假（不偽造缺口）", () => {
+  it("capability 依 role：editor 的 reorderCard 真、reader 假（不偽造缺口）", () => {
     const { invoke } = fakeInvoke();
     const editor = createRemoteSession(CONN, openInfo(), undefined, { invoke });
     expect(editor.capabilities.reorderCard).toBe(true);
-    expect(editor.capabilities.setDepends).toBe(true);
     const reader = createRemoteSession(CONN, readerInfo(), undefined, { invoke });
     expect(reader.capabilities.reorderCard).toBe(false);
-    expect(reader.capabilities.setDepends).toBe(false);
     expect(reader.capabilities.listChanges).toBe(true);
   });
 

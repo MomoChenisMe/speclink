@@ -274,6 +274,36 @@ describe("App (kanban primary + rich detail)", () => {
     expect(screen.getByText("add-a")).toBeTruthy();
   });
 
+  it("資料源提供 dependsCandidates 時，排程分頁的新增候選取自它（宿主接線）", async () => {
+    // spec desktop-app Scenario「worktree 映射時候選來自副本名冊」的宿主面：看板清單有
+    // add-auth 與 add-late，名冊查詢只回 add-auth——新增下拉只列 add-auth。
+    const item = (name: string) => ({
+      name,
+      status: "in-progress",
+      totalTasks: 3,
+      completedTasks: 0,
+      wave: 1,
+      blockedBy: [],
+      dependsOn: [],
+      overlaps: [],
+    });
+    const dependsCandidates = vi.fn().mockResolvedValue(["add-auth"]);
+    const ds = fakeDataSource({
+      listChanges: vi
+        .fn()
+        .mockResolvedValue(changeList([item("add-dark-mode"), item("add-auth"), item("add-late")])),
+      dependsCandidates,
+    });
+    renderApp(ds);
+    fireEvent.click(await screen.findByText("add-dark-mode"));
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /排程/ }));
+    await waitFor(() => expect(dependsCandidates).toHaveBeenCalledWith("add-dark-mode"));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(await screen.findByRole("combobox", { name: "新增前置" }));
+    const options = (await screen.findAllByRole("option")).map((o) => o.textContent);
+    expect(options).toEqual(["add-auth"]);
+  });
+
   it("delete flow: drawer delete → confirm dialog → deleteChange called", async () => {
     // 階段守門後刪除鈕僅提案中可按（archive-readiness-gating）——改用提案中 fixture。
     const ds = fakeDataSource({

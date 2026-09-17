@@ -155,30 +155,15 @@ pub fn set_task_done_at(root: &Path, change: &str, task: &str, done: bool) -> Re
     }
 }
 
-/// 前置寫入作用的 store（design D6）：該 change 有 worktree 映射時為其副本，否則為主
-/// checkout。寫入與候選查詢共用這一個定根，兩者看到的名冊不會分叉
-/// （add-change-plan-remote D9）。
-fn depends_home(
-    ctx: &crate::ProjectContext,
-    facts: &speclink_host::worktree::WorktreeFacts,
-    change: &str,
-) -> speclink_fs::FsStore {
-    let home_root =
-        crate::worktree_root_for(ctx, facts, change).unwrap_or(ctx.workspace.root.as_path());
-    speclink_fs::FsStore::new(home_root, &ctx.workspace.spec_dir_name)
-}
-
-/// 排程分頁的新增候選（add-change-plan-remote D9）：該 change 所在名冊（[`depends_home`]）
-/// 的其他作用中 change，依名稱排序——分支後才在主 checkout 建立的 change 不在 worktree
-/// 副本的名冊裡，列出來只會被引擎拒絕。
+/// 排程分頁的新增候選（add-change-plan-remote D9）：該 change 所在名冊（與 [`set_depends_at`]
+/// 同一個定根：有 worktree 映射為其副本）的其他作用中 change，依名稱排序——分支後才在主
+/// checkout 建立的 change 不在 worktree 副本的名冊裡，列出來只會被引擎拒絕。
 pub fn depends_candidates_at(root: &Path, change: &str) -> Result<Vec<String>, String> {
     if !crate::query::is_safe_path_param(change) {
         return Err(format!("invalid change name: {change}"));
     }
-    let ctx = init_core_context(root)
-        .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
-    let facts = crate::facts_for(&ctx);
-    Ok(depends_home(&ctx, &facts, change)
+    Ok(crate::require_context_for_change(root, change)?
+        .store
         .list_changes()
         .into_iter()
         .map(|c| c.name)
@@ -200,7 +185,7 @@ pub fn set_depends_at(root: &Path, change: &str, on: &[String], remove: bool) ->
     let ctx = init_core_context(root)
         .ok_or_else(|| format!("not a speclink project: {}", root.display()))?;
     let facts = crate::facts_for(&ctx);
-    let home = depends_home(&ctx, &facts, change);
+    let home = crate::home_store_for(&ctx, &facts, change);
     let _guard = write_guard();
     let before = home.find_change(change).map(|c| c.meta.depends_on()).unwrap_or_default();
     let write = speclink_core::plan::set_depends(&home, change, on, remove).map_err(|e| e.to_string())?;
@@ -358,11 +343,7 @@ pub fn reorder_card_at(
             let facts = crate::facts_for(&ctx);
             let _guard = write_guard();
             let overlaid = crate::query::overlay_store(&ctx, &facts);
-            let home = |name: &str| {
-                let root = crate::worktree_root_for(&ctx, &facts, name)
-                    .unwrap_or(ctx.workspace.root.as_path());
-                speclink_fs::FsStore::new(root, &ctx.workspace.spec_dir_name)
-            };
+            let home = |name: &str| crate::home_store_for(&ctx, &facts, name);
             reorder_change(&overlaid, home, id, prev_id, next_id)
         }
         "discussion" => {
