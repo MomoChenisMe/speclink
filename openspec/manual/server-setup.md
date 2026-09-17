@@ -4,7 +4,7 @@ section: Remote 模式
 order: 420
 keywords: [setup, bootstrap token, Admin, Project, Repo, membership]
 sources: [server-setup, user-documentation]
-generated: 2026-09-02
+generated: 2026-09-17T16:05:41+08:00
 ---
 
 # 開箱：第一位 Admin 與第一組 Project／Repo

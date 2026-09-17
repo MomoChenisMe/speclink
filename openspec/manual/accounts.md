@@ -4,7 +4,7 @@ section: Remote 模式
 order: 430
 keywords: [邀請, 登入, 存取金鑰, PAT, membership, reader, editor, 403]
 sources: [server-identity, server-policy-write, user-documentation]
-generated: 2026-09-02
+generated: 2026-09-17T16:05:41+08:00
 ---
 
 # 帳號、邀請、存取金鑰與 membership

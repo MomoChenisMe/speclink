@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 180
 keywords: [commit, 提交, 確認, 檔案清單, git]
 sources: [commit-skill]
-generated: 2026-09-02
+generated: 2026-09-17T16:05:41+08:00
 ---
 
 # 提交單一變更的檔案
@@ -28,5 +28,18 @@ generated: 2026-09-02
 ## 先封存再一起提交
 
 確認時有一個選項是「Archive first, then commit together」。選了它，技能先跑封存子流程。封存完成後，技能重新輸出更新後的 commit 計畫，以及含「Archived: yes」的 commit 訊息，再問你一次確認。第二次確認通過，才真正暫存與提交。封存本身的規則見 [封存](archive.md)。
+
+這個子流程本身就是一個封存入口，所以它帶著與 archive 技能相同的順序提示與收尾提醒：
+
+- **封存前**：技能先執行 `speclink plan --json`。目標變更的阻擋清單非空時，提醒「plan 建議先封存 <前置變更>，再封存 <這個變更>」。這只是建議，不擋你；你確認後照常封存。阻擋清單為空、目標不在 plan 裡、或 plan 失敗時，不提順序。
+- **封存後**：工作區有 `openspec/manual/` 時，提醒可跑 `/speclink-manual` 檢查手冊是否過期（只看目錄存不存在）。技能再執行一次 `speclink plan --json`，算得出下一個可開工的變更時，提一句「plan 的下一個可開工：<變更名>，執行 /speclink-apply <變更名>」；有效的 worktree 政策開啟且第 1 波有兩個以上可開工時，再列出可並行名單。沒有可開工的變更或 plan 失敗時不提。
+
+兩段都只是提醒，技能不會代跑封存以外的任何技能。順序與阻擋怎麼算，見[執行順序：plan 與依賴](plan.md)。
+
+| 情況 | 技能的提示 |
+| --- | --- |
+| 目標變更被 add-a 擋住 | 封存前提醒「plan 建議先封存 add-a，再封存 <變更名>」，你確認後照常封存 |
+| 目標變更沒被擋住 | 不提順序，直接封存 |
+| 封存成功、有 `openspec/manual/`、下一個可開工是 add-b | 提醒手冊可能過期，並提「下一個可開工：add-b，執行 /speclink-apply add-b」 |
 
 **出處**：`commit-skill`

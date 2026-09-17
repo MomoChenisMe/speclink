@@ -4,7 +4,7 @@ section: Remote 模式
 order: 460
 keywords: [link, auth login, 裝置登入, 存取金鑰, 金鑰圈, logout, .speclink.yaml]
 sources: [remote-connection, remote-auth, server-device-auth, user-documentation]
-generated: 2026-09-02
+generated: 2026-09-17T16:05:41+08:00
 ---
 
 # CLI 連接 remote

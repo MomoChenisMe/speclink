@@ -4,7 +4,7 @@ section: 附錄
 order: 900
 keywords: [來源, 矛盾, 限制, 編纂日期, 規格]
 sources: []
-generated: 2026-09-14T16:01:31+08:00
+generated: 2026-09-17T16:05:41+08:00
 ---
 
 # 本手冊的來源
@@ -13,7 +13,7 @@ generated: 2026-09-14T16:01:31+08:00
 
 本手冊全部內容只取材自 `openspec/specs/` 底下的正式規格。README、`docs/` 與原始碼都不是來源。規格沒寫的，手冊就不寫，或在該處標明「規格未載」。每一頁的最後一行列出它取材的能力名稱。
 
-正式規格共 84 個能力。其中 57 個是使用者會操作或看到的東西（畫面、指令、技能、輸出、檔案），已入冊。其餘 27 個是引擎內部（儲存、wire 契約、host 執行期、測試骨架、建置與發布管線、本 repo 自用的發版技能與更新日誌的資料契約），不入冊：
+正式規格共 86 個能力。其中 59 個是使用者會操作或看到的東西（畫面、指令、技能、輸出、檔案），已入冊。其餘 27 個是引擎內部（儲存、wire 契約、host 執行期、測試骨架、建置與發布管線、本 repo 自用的發版技能與更新日誌的資料契約），不入冊：
 
 `client-protocol`、`command-runtime`、`delivery-baseline`、`desktop-release`、`dev-harness`、`host-runtime`、`node-sdk`、`node-sdk-release`、`phase2-acceptance`、`phase3-acceptance`、`postgres-team-store`、`reference-server`、`release-notes`、`release-skill`、`remote-board-order`、`remote-workspace-data`、`server-context-api`、`server-drift-api`、`server-event-stream`、`server-read-api`、`server-verb-api`、`serverfs-team-store`、`sqlite-team-store`、`store-abstraction`、`teamstore-contract`、`ui-copy-vocabulary`、`workspace-session`。
 
@@ -48,6 +48,7 @@ generated: 2026-09-14T16:01:31+08:00
 14. **封存時未結工單的第一個選項叫什麼**：`desktop-app`「封存入口的未結工單三選項」（2026-08-02）描述為「前往完成蓋章」；同規格「變更與討論抽屜開啟時底層落回看板」（2026-08-11）稱同一個按鈕為「去蓋章」。內文以「去蓋章」為按鈕字面。
 15. **討論開場淺掃有幾段**：`discuss-skill`「事實與決策分診及逐節點查證」（2026-08-21）把開場偵察規定為「正式規格 → 程式碼」兩段漏斗；同規格「開場舊討論查核與第四類對照」（2026-09-05）改為「正式規格 → 舊討論查核 → 程式碼」三段，並在假設清單的三分對照之外加入第四類「舊討論已定案」。內文採三段與四類。
 16. **保留在途的討論，卡片與詳情面板有沒有封存動作**：`desktop-app`「討論抽屜檢視與轉出變更」（2026-08-04）寫已結論且未封存的討論，在討論卡與討論詳情面板都有封存動作；同規格「討論於看板第 0 欄兩級呈現」（2026-09-10）寫已轉出、已結論但保留在途的卡片不提供任何動詞按鈕，收尾由 CLI 的 `speclink discuss archive` 明示解除，對詳情面板沒有另作規定。內文採卡片沒有按鈕；詳情面板照舊寫規格所載。
+17. **propose 收尾盤點的母體與做法**：`skill-routing` 交棒邊表的 propose 列（2026-09-16T16:37:51+08:00）寫「提案中變更 ≥2 時先盤點執行順序，worktree 政策開啟時分可平行／須依序」；`propose-skill`「收尾盤點提案中變更的執行順序」（2026-09-16T09:24:26+08:00）寫以「作用中變更」為母體、對本次建立的變更判定軟依賴並以 `speclink change depends` 落檔，再以 `speclink plan` 的波次呈現。兩者的時戳只差幾小時、後者才載有做法本身。[工作流總覽](workflow-overview.md)的交棒邊表照 `skill-routing` 的摘要寫，[提案](propose.md)的收尾一節照 `propose-skill` 的做法寫，並互相指路。
 
 附註（規格自己宣告的例外，不是矛盾）：
 
@@ -59,13 +60,13 @@ generated: 2026-09-14T16:01:31+08:00
 ## 已知限制
 
 - 沒有截圖。畫面文字與按鈕名稱逐字取自規格，實際畫面若不同，以執行中的產品為準。
-- apply、ingest、drift、audit 四個技能沒有各自的規格，手冊只寫 `skill-routing` 與 `user-documentation` 載明的入口情境與交棒關係。analyze 的技能本身也沒有規格，但 `speclink analyze` 指令的判定規則有 `change-analysis`，寫在[分析：交叉檢查變更的產物](analyze.md)。
+- drift、audit 兩個技能沒有各自的規格，手冊只寫 `skill-routing` 與 `user-documentation` 載明的入口情境與交棒關係。apply 只有挑選變更的第一步（plan 守門）有規格，載於 `change-plan`；ingest 只有收尾的依賴判定有規格，載於 `ingest-skill`；兩者其餘的內文行為未載。analyze 的技能本身也沒有規格，但 `speclink analyze` 指令的判定規則有 `change-analysis`，寫在[分析：交叉檢查變更的產物](analyze.md)。
 - 過期判定逐項比較：頁的生成時戳與規格的更新時戳都帶時區時比到秒，同一秒不算；任一邊只有純日期時比到日，同一天也算。每一頁的 `generated` 都寫成帶時區的秒級時戳；較早封存的規格，其更新時戳仍是純日期，封存不會回改。只取材某規格幾段需求的頁，`sources` 用「capability#需求名」錨定到那幾段，別段的封存不會把它標成可能過期；錨定的需求標題改名或移除時，該頁會被標為可能過期並整頁重寫。
-- 來源規格改了、但改的部分與某一頁的內容無關時，那一頁重生後內文不變，只換生成時戳，「可能過期」標記就消掉。取材自 `desktop-app` 的五頁（[認識桌面 app](desktop-overview.md)、[規格、討論、已封存與搜尋](desktop-browse.md)、[桌面上的品質關卡](desktop-quality.md)、[看板與任務](desktop-board.md)、[自動更新、安裝 CLI 與指令檔過期](desktop-update.md)）都已改成錨定寫法，各自只錨定它取材的需求段；後兩頁是 2026-09-14 這次改的，[自動更新、安裝 CLI 與指令檔過期](desktop-update.md) 對 `workspace-tools` 也一併錨定。
+- 來源規格改了、但改的部分與某一頁的內容無關時，那一頁重生後內文不變，只換生成時戳，「可能過期」標記就消掉。取材自 `desktop-app` 的五頁（[認識桌面 app](desktop-overview.md)、[規格、討論、已封存與搜尋](desktop-browse.md)、[桌面上的品質關卡](desktop-quality.md)、[看板與任務](desktop-board.md)、[自動更新、安裝 CLI 與指令檔過期](desktop-update.md)）都已改成錨定寫法，各自只錨定它取材的需求段；[自動更新、安裝 CLI 與指令檔過期](desktop-update.md) 對 `workspace-tools` 也一併錨定。2026-09-17 這次，[看板與任務](desktop-board.md) 為排程相關的四段需求新增錨定，[工作流總覽](workflow-overview.md)、[實作](apply.md)、[封存](archive.md) 各自只錨定 `change-plan` 裡與該頁相關的一段。
 - 規格裡的內部識別符（欄位名、型別名、旗標）不進手冊，改以白話描述效果。
 
 ## 編纂日期
 
-2026-09-14
+2026-09-17
 
 **出處**：本頁為說明頁，不直接取材自單一能力；各頁末行列出自己的出處。

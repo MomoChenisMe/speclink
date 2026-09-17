@@ -3,8 +3,8 @@ title: 封存
 section: SDD 工作流
 order: 170
 keywords: [封存, archive, 正式規格, 守門, Purpose, 證據, 手冊]
-sources: [archive-skill, archive-merge, change-lifecycle, verify-evidence, spec-validation]
-generated: 2026-09-11T10:03:08+08:00
+sources: [archive-skill, archive-merge, change-lifecycle, verify-evidence, spec-validation, "change-plan#archive 技能以 plan 建議封存順序"]
+generated: 2026-09-17T16:05:41+08:00
 ---
 
 # 封存
@@ -14,6 +14,12 @@ generated: 2026-09-11T10:03:08+08:00
 ## 在哪裡執行
 
 封存在主 checkout 執行。在 linked worktree（分支名以 `speclink/` 開頭）裡執行封存，引擎會拒絕，並指路先用 worktree-merge 技能合回主分支再封存。見 [平行實作與合回](worktree.md)。
+
+## 封存前先看 plan 的順序建議
+
+技能在執行封存指令之前，先執行 `speclink plan --json`。目標變更的阻擋清單非空時，技能提醒你「plan 建議先封存 <前置變更>，再封存 <這個變更>」。這只是建議：技能不會擋下封存，你確認後照常封存。阻擋清單為空、目標不在 plan 裡、或 plan 失敗（依賴成環）時，技能不提順序。
+
+沒指名變更時，技能列的候選清單也來自 plan：依 plan 的配置順序排列，每個候選標出它被哪些變更擋住（沒有就標「無阻擋」，有就標「等 <前置>」）。要封存哪一個仍由你選，技能不會自動選。plan 失敗時，候選清單退回 `speclink list` 的順序，不標阻擋。順序與阻擋怎麼算，見[執行順序：plan 與依賴](plan.md)。
 
 ## 封存前的守門
 
@@ -121,9 +127,18 @@ delta 新開一個正式規格還沒有的 capability 時，delta 檔頂部要�
 
 ## 封存之後
 
-封存完成後，技能提醒你兩件事。兩件都只是提醒，技能不會代跑。
+封存完成後，技能提醒你三件事。三件都只是提醒，技能不會代跑。
 
 - **提交收尾**：用一般的 git 提交收尾這次封存產生的異動：delta 併入正式規格、變更目錄搬進封存區。commit 技能的「挑選變更檔案」流程不適用於封存之後。
 - **檢查手冊是否過期**：工作區有 `openspec/manual/` 時，技能提醒你可以跑 `/speclink-manual` 檢查手冊有沒有因這次封存而過期。條件只看目錄存不存在，不看這次封存動到哪些規格。見[操作手冊：生成與導覽](manual.md)。
+- **下一個可開工**：技能再執行一次 `speclink plan --json`。算得出下一個可開工的變更時，提一句「plan 的下一個可開工：<變更名>，執行 /speclink-apply <變更名>」。有效的 worktree 政策開啟、而且第 1 波裡沒被擋住又還沒開工的變更有兩個以上時，再列出這份名單為可並行，各開一個 session 走 apply-with-worktree。沒有可開工的變更、或 plan 失敗（依賴成環）時，不提順序。
 
-**出處**：`archive-skill`、`archive-merge`、`change-lifecycle`、`verify-evidence`、`spec-validation`
+| plan 的結果 | worktree 政策 | 提示 |
+| --- | --- | --- |
+| 下一個可開工是 add-a，第 1 波可開工只有 add-a | 開或關 | 「下一個可開工：add-a，執行 /speclink-apply add-a」 |
+| 下一個可開工是 add-a，第 1 波可開工有 add-a、add-b | 開 | 上句再加「add-a、add-b 可並行，各開 session 走 apply-with-worktree」 |
+| 下一個可開工是 add-a，第 1 波可開工有 add-a、add-b | 關 | 只提 add-a |
+| 沒有可開工的變更 | 開或關 | 不提順序 |
+| plan 回報依賴成環 | 開或關 | 不提順序 |
+
+**出處**：`archive-skill`、`archive-merge`、`change-lifecycle`、`verify-evidence`、`spec-validation`、`change-plan`

@@ -4,7 +4,7 @@ section: 開始使用
 order: 40
 keywords: [openspec, 變更, 討論, 規格, 生命週期, 封存, 廢棄]
 sources: [change-lifecycle, discussion-docs, user-documentation]
-generated: 2026-09-14T16:01:31+08:00
+generated: 2026-09-17T16:05:41+08:00
 ---
 
 # 認識資料：變更、討論與規格
@@ -41,6 +41,8 @@ Speclink 在這個結構上多加了兩樣東西：
 | 封存 | 封存時間、封存者 | 封存時 |
 
 封存不會剝掉開工站的欄位。三站的章會一起留在封存目錄裡。
+
+狀態檔還可以有一行「前置變更」（`depends_on`）：逗號分隔的變更名清單，意思是這個變更要等那些變更先落地。這一行由 `speclink change depends` 寫入，沒有這一行就是沒有依賴。有沒有這一行，`speclink list` 與 `speclink status` 的輸出都一樣，前置只影響 `speclink plan` 算出來的順序與波次。見[執行順序：plan 與依賴](plan.md)。
 
 ### 開工標記
 

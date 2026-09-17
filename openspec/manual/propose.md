@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 110
 keywords: [提案, propose, 變更, capability, 命名守門, Purpose, 手動任務, validate, 最後一刀, 分期]
 sources: [propose-skill, capability-naming-guard, spec-validation, manual-task-marker]
-generated: 2026-09-14T16:01:31+08:00
+generated: 2026-09-17T16:05:41+08:00
 ---
 
 # 提案：建立變更與產物
@@ -136,23 +136,32 @@ delta 與正式規格對不上的問題（例如 MODIFIED 的目標需求已經�
 
 手動任務在實作階段怎麼被處理，見[實作：完成任務](apply.md)。
 
-## 收尾：盤點提案中變更的順序
+## 收尾：判定依賴、以 plan 看順序
 
-propose 完成、給下一步建議之前，agent 會列出所有還沒開工的變更。開工與否看變更狀態檔的開工章，不看任務數。
+propose 完成、給下一步建議之前，agent 用 `speclink list --json` 列出作用中的變更。作用中變更只有這次建立的這一個時，維持既有的下一步建議，不執行下面的步驟。
 
-還沒開工的變更有 2 個以上時，agent 會判定執行順序：
+有兩個以上時，agent 只針對這次建立的變更判定「軟依賴」：讀其他變更提案的 Impact 段，判斷這個變更是不是建立在某個變更的成果上、或動到同一段程式碼。有，就執行：
 
-- 硬信號：兩個變更的 delta 目錄含同一個 capability，就必須依序。兩份 delta 重寫同一份正式規格，亂序封存可能被合併守門拒絕。
-- 軟信號：讀提案與任務推測程式碼重疊或依賴。
+```
+speclink change depends <這個變更> --on <前置變更>...
+```
 
-| 變更 A 的 delta | 變更 B 的 delta | 判定 |
-| --- | --- | --- |
-| board-card-order | board-card-order 與 tray-status-menu | 須依序 |
-| discuss-skill | archive-skill | 可平行 |
+把前置寫進變更的狀態檔，不只口頭報告。硬信號（兩個變更的 delta 動到同一個 capability）由引擎在 plan 裡算，agent 不自己判。
 
-有效的 worktree 政策開啟時，結果分成「可平行」與「須依序」兩組；可平行的變更各開一個 session 走 `/speclink-apply-with-worktree`。政策關閉時給單一建議順序。只有 1 個提案中變更時不盤點。
+落檔後 agent 執行 `speclink plan --json`，依有效的 worktree 政策（含環境變數覆寫）呈現：
 
-盤點只是建議，agent 不會自動呼叫任何技能。
+- 政策開啟：列出第 1 波為「可平行——各開一個 session 以 apply-with-worktree 執行，沿用多 session 配方」，再列後續各波。
+- 政策關閉：依 plan 的配置順序給單一建議順序，不分組。
+
+| 作用中變更 | 這次建立 | agent 的判定 | 落檔指令 | plan 的波次 |
+| --- | --- | --- | --- | --- |
+| add-a、add-b | add-b | add-b 建立在 add-a 的新動詞上 | `speclink change depends add-b --on add-a` | add-a 第 1 波、add-b 第 2 波 |
+| add-a、add-c | add-c | 無關 | 不執行 | 兩者同為第 1 波（可平行） |
+
+盤點只是建議，agent 不會自動呼叫任何技能。順序、波次與依賴怎麼算，見[執行順序：plan 與依賴](plan.md)。
+
+> [!NOTE]
+> 工作流路由規格對這一段的摘要寫的是「提案中變更有 2 個以上時先盤點執行順序」，propose 技能規格則以「作用中變更」為母體並改成落檔加 plan。本頁依 propose 技能規格撰寫，差異記在[本手冊的來源](about.md)。
 
 下一步：[實作：完成任務](apply.md)。
 
