@@ -322,7 +322,7 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     });
   });
 
-  it("listChangesWithPlan 帶出排程欄位與 planError，setDepends 映射 remote_set_change_depends（add-change-plan-remote D5/D7）", async () => {
+  it("listChanges 帶出排程欄位與 planError，setDepends 映射 remote_set_change_depends（add-change-plan-remote D5/D7）", async () => {
     const cycle = "dependency cycle: a -> b -> a";
     const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
     const invoke = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
@@ -339,10 +339,9 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     };
     const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);
 
-    const payload = await ds.listChangesWithPlan!();
+    const payload = await ds.listChanges();
     expect(payload.planError).toBe(cycle);
     expect(payload.changes[0].dependsOn).toEqual(["b"]);
-    expect(await ds.listChanges()).toEqual(payload.changes);
 
     await ds.setDepends("a", ["b", "c"], true);
     const call = calls.find((c) => c.cmd === "remote_set_change_depends");
@@ -359,14 +358,14 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
   it("listChanges 帶出 claimedBy（認領人呈現的資料源）", async () => {
     const { invoke } = fakeInvoke();
     const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);
-    const [first] = await ds.listChanges();
+    const [first] = (await ds.listChanges()).changes;
     expect(first.claimedBy).toBe("Alice <a@example.com>");
   });
 
   it("returns server payloads in the UI shapes", async () => {
     const { invoke } = fakeInvoke();
     const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);
-    const changes = await ds.listChanges();
+    const { changes } = await ds.listChanges();
     expect(changes[0]).toMatchObject({ name: "chg", totalTasks: 2 });
     const specs = await ds.listSpecs();
     expect(specs[0].id).toBe("auth");
@@ -418,7 +417,7 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
         ],
       }) as T;
     const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);
-    const changes = await ds.listChanges();
+    const { changes } = await ds.listChanges();
     expect(changes[0].startedAt).toBe("2026-07-30");
     expect(changeStage(changes[0])).toBe("in-progress");
     expect(changes[1].startedAt).toBeUndefined();

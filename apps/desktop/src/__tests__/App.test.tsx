@@ -8,6 +8,7 @@ import { APP_MESSAGES } from "../i18n/messages";
 import { RELEASE_NOTES } from "../release-notes/release-notes";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 import { STALE_PROBE } from "./helpers/assetFixtures";
+import { changeList } from "./helpers/changeList";
 import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
 // 模擬 Tauri 事件層：捕捉 workspace-changed 的訂閱 handler，測試可手動觸發。
@@ -168,9 +169,9 @@ const STATUS: StatusReport = {
 
 function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSource {
   return {
-    listChanges: vi.fn().mockResolvedValue([
+    listChanges: vi.fn().mockResolvedValue(changeList([
       { name: "desktop-shell-and-browser", status: "in-progress", totalTasks: 30, completedTasks: 30 },
-    ]),
+    ])),
     listSpecs: vi.fn().mockResolvedValue([{ id: "desktop-app" }]),
     listArchived: vi.fn().mockResolvedValue([]),
     status: vi.fn().mockResolvedValue(STATUS),
@@ -261,10 +262,12 @@ describe("App (kanban primary + rich detail)", () => {
   it("清單 payload 帶 planError 時看板出現成環提示列（宿主自 payload 傳入）", async () => {
     // spec desktop-app「依賴成環時看板提示」Scenario「成環提示」。
     const ds = fakeDataSource({
-      listChangesWithPlan: vi.fn().mockResolvedValue({
-        changes: [{ name: "add-a", status: "in-progress", totalTasks: 3, completedTasks: 0 }],
-        planError: "dependency cycle: add-a -> add-b -> add-a",
-      }),
+      listChanges: vi.fn().mockResolvedValue(
+        changeList(
+          [{ name: "add-a", status: "in-progress", totalTasks: 3, completedTasks: 0 }],
+          "dependency cycle: add-a -> add-b -> add-a",
+        ),
+      ),
     });
     renderApp(ds);
     await waitFor(() => screen.getByText("依賴成環：dependency cycle: add-a -> add-b -> add-a"));
@@ -274,9 +277,9 @@ describe("App (kanban primary + rich detail)", () => {
   it("delete flow: drawer delete → confirm dialog → deleteChange called", async () => {
     // 階段守門後刪除鈕僅提案中可按（archive-readiness-gating）——改用提案中 fixture。
     const ds = fakeDataSource({
-      listChanges: vi.fn().mockResolvedValue([
+      listChanges: vi.fn().mockResolvedValue(changeList([
         { name: "desktop-shell-and-browser", status: "in-progress", totalTasks: 30, completedTasks: 0 },
-      ]),
+      ])),
     });
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
@@ -293,9 +296,9 @@ describe("App (kanban primary + rich detail)", () => {
     // spec Scenario「零痕跡變更確認後退回提案中欄」的前半:點擊先出確認,
     // 確認後才呼叫 adapter(UI 不預判守門)。
     const ds = fakeDataSource({
-      listChanges: vi.fn().mockResolvedValue([
+      listChanges: vi.fn().mockResolvedValue(changeList([
         { name: "oops-started", status: "in-progress", totalTasks: 10, completedTasks: 0, startedAt: "2026-07-30" },
-      ]),
+      ])),
     });
     renderApp(ds);
     const card = (await screen.findByText("oops-started")).closest("[data-change]") as HTMLElement;
@@ -311,9 +314,9 @@ describe("App (kanban primary + rich detail)", () => {
     // spec Scenario「有工作痕跡時顯示守門對話框」。
     const { RevertBlockedError } = await import("@speclink/ui");
     const ds = fakeDataSource({
-      listChanges: vi.fn().mockResolvedValue([
+      listChanges: vi.fn().mockResolvedValue(changeList([
         { name: "oops-started", status: "in-progress", totalTasks: 10, completedTasks: 3, startedAt: "2026-07-30" },
-      ]),
+      ])),
       revertChangeToProposed: vi
         .fn()
         .mockRejectedValue(
@@ -438,7 +441,7 @@ describe("App (kanban primary + rich detail)", () => {
 
   it("零分頁（注入 workspace）：顯示空狀態引導頁，經 chooser 沿用本機開啟", async () => {
     const ws = fakeWorkspace();
-    const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue([]) });
+    const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue(changeList([])) });
     render(<App createSession={makeSession(ds)} workspace={ws as never} />);
     expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
     // 空狀態與頂列皆匯流至新增 Workspace chooser，再選本機資料夾。
@@ -454,7 +457,7 @@ describe("App (kanban primary + rich detail)", () => {
     const ws = fakeWorkspace();
     ws.pickFolder = vi.fn().mockResolvedValue("D:/newproj");
     ws.openProject = vi.fn().mockResolvedValue({ status: "uninitialized", dir: "D:/newproj" });
-    const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue([]) });
+    const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue(changeList([])) });
     render(<App createSession={makeSession(ds)} workspace={ws as never} />);
     const openButtons = await screen.findAllByText("新增 Workspace");
     fireEvent.click(openButtons[openButtons.length - 1]);
@@ -487,7 +490,7 @@ describe("App (kanban primary + rich detail)", () => {
     ws.adoptProject = vi
       .fn()
       .mockResolvedValue({ status: "project", root: "D:/migrated", name: "migrated" });
-    const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue([]) });
+    const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue(changeList([])) });
     render(<App createSession={makeSession(ds)} workspace={ws as never} />);
     const openButtons = await screen.findAllByText("新增 Workspace");
     fireEvent.click(openButtons[openButtons.length - 1]);
@@ -513,7 +516,7 @@ describe("App (kanban primary + rich detail)", () => {
     const ws = fakeWorkspace();
     ws.pickFolder = vi.fn().mockResolvedValue("D:/migrated");
     ws.openProject = vi.fn().mockResolvedValue({ status: "unadopted", root: "D:/migrated" });
-    const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue([]) });
+    const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue(changeList([])) });
     render(<App createSession={makeSession(ds)} workspace={ws as never} />);
     const openButtons = await screen.findAllByText("新增 Workspace");
     fireEvent.click(openButtons[openButtons.length - 1]);
@@ -1143,9 +1146,9 @@ describe("看板首訪失敗終態的接線", () => {
     const ds = fakeDataSource({
       listChanges: vi
         .fn()
-        .mockResolvedValueOnce([
+        .mockResolvedValueOnce(changeList([
           { name: "kept-change", status: "in-progress", totalTasks: 2, completedTasks: 1 },
-        ])
+        ]))
         .mockRejectedValue(new Error("offline")),
     });
     renderApp(ds);
@@ -1330,10 +1333,10 @@ describe("抽屜溯源籤接線（drawer-provenance-links）", () => {
   it("封存討論抽屜衍生列三態：首籤（已封存）開封存變更抽屜、浮層列出活躍者階段詞與已刪除者「無封存記錄」", async () => {
     // spec Scenario「封存討論抽屜列出衍生變更並跳轉封存變更」「衍生變更籤的三態」。
     const ds = fakeDataSource({
-      listChanges: vi.fn().mockResolvedValue([
+      listChanges: vi.fn().mockResolvedValue(changeList([
         { name: "desktop-shell-and-browser", status: "in-progress", totalTasks: 30, completedTasks: 30 },
         { name: "live-child", status: "in-progress", totalTasks: 3, completedTasks: 1 },
-      ]),
+      ])),
       listArchived: vi.fn().mockResolvedValue([
         { datedName: "2026-09-02-arch-child", date: "2026-09-02", name: "arch-child", createdBy: null, fromDiscussions: ["old-topic"] },
       ]),
@@ -1384,10 +1387,10 @@ describe("抽屜溯源籤接線（drawer-provenance-links）", () => {
 
   it("封存討論抽屜點活躍子變更籤：開其詳情抽屜且底層落回看板", async () => {
     const ds = fakeDataSource({
-      listChanges: vi.fn().mockResolvedValue([
+      listChanges: vi.fn().mockResolvedValue(changeList([
         { name: "desktop-shell-and-browser", status: "in-progress", totalTasks: 30, completedTasks: 30 },
         { name: "live-child", status: "in-progress", totalTasks: 3, completedTasks: 1 },
-      ]),
+      ])),
       listDiscussions: vi.fn().mockResolvedValue({
         active: [],
         archived: [

@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type ReactElement,
+  type SetStateAction,
+} from "react";
 import {
   Archive,
   Check,
@@ -372,17 +379,13 @@ export function RichDetailDrawer({
     };
     // 失敗收斂：還沒有東西可顯示才落終態空文案（undefined 停著＝永久骨架）；
     // 已有內容維持前值——重載的短暫失敗不得抹成假空態。
-    const settled = (apply: typeof setProposal) => () => {
+    const settled = <T,>(apply: Dispatch<SetStateAction<T | null | undefined>>) => () => {
       if (requestSeq.current === seq) apply((prev) => (prev === undefined ? null : prev));
     };
     void loadMeta(target).then(fresh(setMeta)).catch(() => undefined);
     if (loadDependsCandidates) {
       // 失敗：首載退回自清單派生（null），重載維持前一次的名冊。
-      void loadDependsCandidates(target)
-        .then(fresh(setRoster))
-        .catch(() => {
-          if (requestSeq.current === seq) setRoster((prev) => (prev === undefined ? null : prev));
-        });
+      void loadDependsCandidates(target).then(fresh(setRoster)).catch(settled(setRoster));
     }
     void loadDocument(target, "proposal.md").then(fresh(setProposal)).catch(settled(setProposal));
     void loadDocument(target, "design.md").then(fresh(setDesign)).catch(settled(setDesign));

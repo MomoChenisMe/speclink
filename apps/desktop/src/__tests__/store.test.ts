@@ -1,11 +1,19 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import type { ChangeItem, ManualIndex, SearchHit, SpeclinkDataSource, StatusReport } from "@speclink/ui";
+import type {
+  ChangeItem,
+  ChangeListPayload,
+  ManualIndex,
+  SearchHit,
+  SpeclinkDataSource,
+  StatusReport,
+} from "@speclink/ui";
 
 import { createAppStore, openTicketStation } from "../store";
 import type { ConnectionsAdapter } from "../adapter/connections";
 import type { WorkspaceAdapter } from "../adapter/workspace";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 import { STALE_PROBE } from "./helpers/assetFixtures";
+import { changeList } from "./helpers/changeList";
 
 const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { error: toastError } }));
@@ -30,9 +38,9 @@ const BOTH_TICKETS_CHANGE = {
 
 function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSource {
   return {
-    listChanges: vi.fn().mockResolvedValue([
+    listChanges: vi.fn().mockResolvedValue(changeList([
       { name: "desktop-shell-and-browser", status: "in-progress", totalTasks: 26, completedTasks: 24 },
-    ]),
+    ])),
     listSpecs: vi.fn().mockResolvedValue([{ id: "desktop-app" }]),
     listArchived: vi.fn().mockResolvedValue([{ datedName: "2026-07-04-x", date: "2026-07-04", name: "x" }]),
     status: vi.fn().mockResolvedValue(STATUS),
@@ -180,10 +188,10 @@ describe("app store (Zustand)", () => {
   it("switches back to each remote session's own last-success snapshot when refresh fails", async () => {
     const aChanges = vi
       .fn()
-      .mockResolvedValue([{ name: "a-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }]);
+      .mockResolvedValue(changeList([{ name: "a-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }]));
     const bChanges = vi
       .fn()
-      .mockResolvedValue([{ name: "b-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }]);
+      .mockResolvedValue(changeList([{ name: "b-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }]));
     const a = remoteSession(fakeDataSource({ listChanges: aChanges }), "alpha");
     const b = remoteSession(fakeDataSource({ listChanges: bChanges }), "beta");
     const store = storeWithRemoteSessions(a, b);
@@ -211,7 +219,7 @@ describe("app store (Zustand)", () => {
       fakeDataSource({
         listChanges: vi
           .fn()
-          .mockResolvedValue([{ name: "a-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }]),
+          .mockResolvedValue(changeList([{ name: "a-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }])),
         listSpecs: vi.fn().mockResolvedValue([{ id: "a-spec" }]),
       }),
       "alpha",
@@ -244,7 +252,7 @@ describe("app store (Zustand)", () => {
       fakeDataSource({
         listChanges: vi
           .fn()
-          .mockResolvedValue([{ name: "a-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }]),
+          .mockResolvedValue(changeList([{ name: "a-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }])),
       }),
       "alpha",
     );
@@ -269,7 +277,7 @@ describe("app store (Zustand)", () => {
   });
 
   it("does not let a late refresh from workspace A overwrite active workspace B", async () => {
-    const pendingA = deferred<ChangeItem[]>();
+    const pendingA = deferred<ChangeListPayload>();
     const a = remoteSession(
       fakeDataSource({ listChanges: vi.fn(() => pendingA.promise) }),
       "alpha",
@@ -278,7 +286,7 @@ describe("app store (Zustand)", () => {
       fakeDataSource({
         listChanges: vi
           .fn()
-          .mockResolvedValue([{ name: "b-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }]),
+          .mockResolvedValue(changeList([{ name: "b-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }])),
       }),
       "beta",
     );
@@ -288,9 +296,9 @@ describe("app store (Zustand)", () => {
     await store.getState().activateTab(b.id);
     expect(store.getState().changes.map((change) => change.name)).toEqual(["b-change"]);
 
-    pendingA.resolve([
+    pendingA.resolve(changeList([
       { name: "a-late", status: "in-progress", totalTasks: 1, completedTasks: 0 },
-    ]);
+    ]));
     await aRefresh;
 
     expect(store.getState().activeKey).toBe(b.id);
@@ -298,8 +306,8 @@ describe("app store (Zustand)", () => {
   });
 
   it("keeps the latest refresh result when an older request for the same session finishes last", async () => {
-    const older = deferred<ChangeItem[]>();
-    const latest = deferred<ChangeItem[]>();
+    const older = deferred<ChangeListPayload>();
+    const latest = deferred<ChangeListPayload>();
     const listChanges = vi
       .fn()
       .mockImplementationOnce(() => older.promise)
@@ -310,13 +318,13 @@ describe("app store (Zustand)", () => {
 
     const olderRefresh = store.getState().refresh();
     const latestRefresh = store.getState().refresh();
-    latest.resolve([
+    latest.resolve(changeList([
       { name: "newer", status: "in-progress", totalTasks: 1, completedTasks: 0 },
-    ]);
+    ]));
     await latestRefresh;
-    older.resolve([
+    older.resolve(changeList([
       { name: "older", status: "in-progress", totalTasks: 1, completedTasks: 0 },
-    ]);
+    ]));
     await olderRefresh;
 
     expect(store.getState().changes.map((change) => change.name)).toEqual(["newer"]);
@@ -329,7 +337,7 @@ describe("app store (Zustand)", () => {
       fakeDataSource({
         listChanges: vi
           .fn()
-          .mockResolvedValue([{ name: "a-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }]),
+          .mockResolvedValue(changeList([{ name: "a-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }])),
         searchWorkspace: vi.fn(() => pendingSearch.promise),
       }),
       "alpha",
@@ -541,20 +549,21 @@ describe("app store (Zustand)", () => {
     expect(ds.listChanges).toHaveBeenCalled();
   });
 
-  it("refresh：資料源提供 listChangesWithPlan 時清單與 planError 同一次取得；未提供時 planError 為 null", async () => {
+  it("refresh：清單與頂層 planError 來自同一次 listChanges；無成環時 planError 為 null", async () => {
     // add-change-plan-desktop design D1／D5：planError 隨清單 payload 進 store，
     // 宿主據此讓看板出成環提示。
-    const withPlan = fakeDataSource({
-      listChangesWithPlan: vi.fn().mockResolvedValue({
-        changes: [{ name: "a", status: "in-progress", totalTasks: 1, completedTasks: 0 }],
-        planError: "dependency cycle: a -> b -> a",
-      }),
+    const cyclic = fakeDataSource({
+      listChanges: vi.fn().mockResolvedValue(
+        changeList(
+          [{ name: "a", status: "in-progress", totalTasks: 1, completedTasks: 0 }],
+          "dependency cycle: a -> b -> a",
+        ),
+      ),
     });
-    const store = storeWith(withPlan);
+    const store = storeWith(cyclic);
     await store.getState().refresh();
     expect(store.getState().changes.map((c) => c.name)).toEqual(["a"]);
     expect(store.getState().planError).toBe("dependency cycle: a -> b -> a");
-    expect(withPlan.listChanges).not.toHaveBeenCalled();
 
     const plain = storeWith(fakeDataSource());
     await plain.getState().refresh();
@@ -783,7 +792,7 @@ describe("app store (Zustand)", () => {
     const ds = fakeDataSource({
       discardReview: vi.fn().mockResolvedValue(undefined),
       archiveCarry: vi.fn().mockRejectedValue(new Error("refused")),
-      listChanges: vi.fn().mockResolvedValue([BOTH_TICKETS_CHANGE]),
+      listChanges: vi.fn().mockResolvedValue(changeList([BOTH_TICKETS_CHANGE])),
     });
     const store = storeWith(ds);
     await store.getState().refresh();
@@ -801,7 +810,7 @@ describe("app store (Zustand)", () => {
       discardReview: vi.fn().mockResolvedValue(undefined),
       discardVerify: vi.fn().mockResolvedValue(undefined),
       runVerb: vi.fn().mockRejectedValue(new Error("refused")),
-      listChanges: vi.fn().mockResolvedValue([BOTH_TICKETS_CHANGE]),
+      listChanges: vi.fn().mockResolvedValue(changeList([BOTH_TICKETS_CHANGE])),
     });
     const store = storeWith(ds);
     await store.getState().refresh();
@@ -853,7 +862,7 @@ describe("app store (Zustand)", () => {
     const archiveCarry = vi.fn().mockResolvedValue(undefined);
     const ds = fakeDataSource({
       archiveCarry,
-      listChanges: vi.fn().mockResolvedValue([
+      listChanges: vi.fn().mockResolvedValue(changeList([
         {
           name: "desktop-shell-and-browser",
           status: "in-progress",
@@ -862,7 +871,7 @@ describe("app store (Zustand)", () => {
           reviewStatus: "inReview",
           verifyStatus: "inVerify",
         },
-      ]),
+      ])),
     });
     const store = storeWith(ds);
     await store.getState().refresh();
@@ -890,7 +899,7 @@ describe("app store (Zustand)", () => {
     const ds = fakeDataSource({
       discardReview,
       discardVerify,
-      listChanges: vi.fn().mockResolvedValue([
+      listChanges: vi.fn().mockResolvedValue(changeList([
         {
           name: "desktop-shell-and-browser",
           status: "in-progress",
@@ -899,7 +908,7 @@ describe("app store (Zustand)", () => {
           reviewStatus: "inReview",
           verifyStatus: "inVerify",
         },
-      ]),
+      ])),
     });
     const store = storeWith(ds);
     await store.getState().refresh();
@@ -947,7 +956,7 @@ describe("app store (Zustand)", () => {
       { name: "beta", status: "proposed", totalTasks: 0, completedTasks: 0 },
     ];
     const ds = fakeDataSource({
-      listChanges: vi.fn().mockResolvedValue(listed),
+      listChanges: vi.fn().mockResolvedValue(changeList(listed)),
       reorderCard: vi.fn().mockReturnValue(writing.promise),
     });
     const active = remoteSession(ds, "backend");
@@ -968,7 +977,7 @@ describe("app store (Zustand)", () => {
       { name: "alpha", status: "proposed", totalTasks: 0, completedTasks: 0 },
       { name: "beta", status: "proposed", totalTasks: 0, completedTasks: 0 },
     ];
-    const listChanges = vi.fn().mockResolvedValueOnce(listed).mockRejectedValue(new Error("offline"));
+    const listChanges = vi.fn().mockResolvedValueOnce(changeList(listed)).mockRejectedValue(new Error("offline"));
     const ds = fakeDataSource({ listChanges, reorderCard: vi.fn().mockReturnValue(writing.promise) });
     const active = remoteSession(ds, "backend");
     const other = remoteSession(fakeDataSource(), "other");
@@ -988,7 +997,7 @@ describe("app store (Zustand)", () => {
   // 進了 Map，之後的翻頁 spread 不會覆蓋該欄位，前一個 workspace 的失敗記號
   // 就漏進來——沒失敗過的 workspace 顯示失敗提示。
   it("remote reorder 寫回失敗的回退快照保留 loadFailed 欄位，不受他 workspace 汙染", async () => {
-    const gate = deferred<ChangeItem[]>();
+    const gate = deferred<ChangeListPayload>();
     const dsA = fakeDataSource({
       listChanges: vi.fn(() => gate.promise),
       reorderCard: vi.fn().mockRejectedValue(new Error("write failed")),
@@ -1012,7 +1021,7 @@ describe("app store (Zustand)", () => {
     const back = store.getState().activateTab(a.id);
     expect(store.getState().loadFailed).toBe(false);
 
-    gate.resolve([]);
+    gate.resolve(changeList([]));
     await Promise.all([saving, back]);
   });
 
@@ -1023,7 +1032,7 @@ describe("app store (Zustand)", () => {
       { name: "beta", status: "proposed", totalTasks: 0, completedTasks: 0 },
     ];
     const ds = fakeDataSource({
-      listChanges: vi.fn().mockResolvedValue(listed),
+      listChanges: vi.fn().mockResolvedValue(changeList(listed)),
       reorderCard: vi.fn().mockReturnValue(writing.promise),
     });
     const store = storeWith(ds);
@@ -1647,7 +1656,7 @@ describe("切換中分頁（pendingTabKey）", () => {
   // 承擔——兩者並存會讓已切換完成的分頁持續掛「正在切換」。
   it("探測完成即清除 → 後續整批載入期間不再掛切換中", async () => {
     const probe = deferred<unknown>();
-    const load = deferred<ChangeItem[]>();
+    const load = deferred<ChangeListPayload>();
     const ds = fakeDataSource({ listChanges: vi.fn(() => load.promise) });
     const ws = fakeInstructionWorkspace({
       openProject: vi.fn().mockReturnValue(probe.promise),
@@ -1676,7 +1685,7 @@ describe("切換中分頁（pendingTabKey）", () => {
     expect(store.getState().loaded).toBe(false);
     expect(store.getState().pendingTabKey).toBeNull();
 
-    load.resolve([]);
+    load.resolve(changeList([]));
     await activation;
   });
 
@@ -1777,11 +1786,11 @@ describe("切換中分頁（pendingTabKey）", () => {
 // 所以失敗時 loaded 維持 false，但在途計數必須歸零讓骨架收掉。
 describe("整批載入的進行中旗標", () => {
   it("載入進行中 → loadingActive 為 true；完成後落回 false", async () => {
-    const d = deferred<ChangeItem[]>();
+    const d = deferred<ChangeListPayload>();
     const store = storeWith(fakeDataSource({ listChanges: vi.fn(() => d.promise) }));
     const pending = store.getState().refresh();
     expect(store.getState().loadingActive).toBe(true);
-    d.resolve([]);
+    d.resolve(changeList([]));
     await pending;
     expect(store.getState().loadingActive).toBe(false);
     expect(store.getState().loaded).toBe(true);
@@ -1799,7 +1808,7 @@ describe("整批載入的進行中旗標", () => {
   it("已有快取時讀取失敗 → 沿用最後一次成功快照，不覆蓋", async () => {
     const listChanges = vi
       .fn()
-      .mockResolvedValue([{ name: "kept", status: "in-progress", totalTasks: 1, completedTasks: 0 }]);
+      .mockResolvedValue(changeList([{ name: "kept", status: "in-progress", totalTasks: 1, completedTasks: 0 }]));
     const store = storeWith(fakeDataSource({ listChanges }));
     await store.getState().refresh();
     expect(store.getState().changes.map((c) => c.name)).toEqual(["kept"]);
@@ -1824,7 +1833,7 @@ describe("首訪載入失敗終態", () => {
   });
 
   it("失敗後成功載入 → loadFailed 落回 false", async () => {
-    const listChanges = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue([]);
+    const listChanges = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(changeList([]));
     const store = storeWith(fakeDataSource({ listChanges }));
     await store.getState().refresh();
     expect(store.getState().loadFailed).toBe(true);
@@ -1835,8 +1844,8 @@ describe("首訪載入失敗終態", () => {
   });
 
   it("過期世代的失敗回來 → 不得覆寫後發的成功", async () => {
-    const first = deferred<ChangeItem[]>();
-    const second = deferred<ChangeItem[]>();
+    const first = deferred<ChangeListPayload>();
+    const second = deferred<ChangeListPayload>();
     const listChanges = vi
       .fn()
       .mockReturnValueOnce(first.promise)
@@ -1845,7 +1854,7 @@ describe("首訪載入失敗終態", () => {
 
     const p1 = store.getState().refresh();
     const p2 = store.getState().refresh();
-    second.resolve([]);
+    second.resolve(changeList([]));
     await p2;
     first.reject(new Error("offline"));
     await p1;
@@ -1854,7 +1863,7 @@ describe("首訪載入失敗終態", () => {
   });
 
   it("切走再切回 → 失敗記錄隨快照存續（不重回骨架、不顯示空態）", async () => {
-    const gate = deferred<ChangeItem[]>();
+    const gate = deferred<ChangeListPayload>();
     const dsA = fakeDataSource({
       listChanges: vi
         .fn()
@@ -1876,7 +1885,7 @@ describe("首訪載入失敗終態", () => {
     expect(store.getState().loadFailed).toBe(true);
     expect(store.getState().loaded).toBe(false);
 
-    gate.resolve([]);
+    gate.resolve(changeList([]));
     await back;
     expect(store.getState().loadFailed).toBe(false);
   });
@@ -1886,7 +1895,7 @@ describe("首訪載入失敗終態", () => {
 // workspace 走。一旦兩者錯位就會卡在 true——那正是骨架永久掛著的老問題復發。
 describe("整批載入旗標的記帳邊界", () => {
   it("載入途中關掉該分頁 → 旗標不卡在 true", async () => {
-    const d = deferred<ChangeItem[]>();
+    const d = deferred<ChangeListPayload>();
     const ds = fakeDataSource({ listChanges: vi.fn(() => d.promise) });
     const store = trackedAppStore({ createSession: (root, name) => fakeSession(ds, root, name) });
     const a = fakeSession(ds, "A", "a");
@@ -1899,14 +1908,14 @@ describe("整批載入旗標的記帳邊界", () => {
     const pending = store.getState().refresh();
     expect(store.getState().loadingActive).toBe(true);
     store.getState().closeTab(a.id);
-    d.resolve([]);
+    d.resolve(changeList([]));
     await pending;
     expect(store.getState().loadingActive).toBe(false);
   });
 
   it("別的 workspace 的在途載入結束 → 不得清掉現任的旗標", async () => {
-    const aLoad = deferred<ChangeItem[]>();
-    const bLoad = deferred<ChangeItem[]>();
+    const aLoad = deferred<ChangeListPayload>();
+    const bLoad = deferred<ChangeListPayload>();
     const dsA = fakeDataSource({ listChanges: vi.fn(() => aLoad.promise) });
     const dsB = fakeDataSource({ listChanges: vi.fn(() => bLoad.promise) });
     const a = fakeSession(dsA, "A", "a");
@@ -1928,18 +1937,18 @@ describe("整批載入旗標的記帳邊界", () => {
     expect(store.getState().loadingActive).toBe(true);
 
     // A 的在途載入這時才回來——它已不是現任，不得把 B 的旗標收掉。
-    aLoad.resolve([]);
+    aLoad.resolve(changeList([]));
     await aPending;
     expect(store.getState().loadingActive).toBe(true);
 
-    bLoad.resolve([]);
+    bLoad.resolve(changeList([]));
     await bPending;
     expect(store.getState().loadingActive).toBe(false);
   });
 
   it("同 key 重疊載入：先發成功回來 → 不得清掉後發在途的旗標", async () => {
-    const first = deferred<ChangeItem[]>();
-    const second = deferred<ChangeItem[]>();
+    const first = deferred<ChangeListPayload>();
+    const second = deferred<ChangeListPayload>();
     const listChanges = vi
       .fn()
       .mockReturnValueOnce(first.promise)
@@ -1951,18 +1960,18 @@ describe("整批載入旗標的記帳邊界", () => {
     expect(store.getState().loadingActive).toBe(true);
 
     // 先發此刻已是過期世代——回來時後發還在載，旗標不得歸零。
-    first.resolve([]);
+    first.resolve(changeList([]));
     await p1;
     expect(store.getState().loadingActive).toBe(true);
 
-    second.resolve([]);
+    second.resolve(changeList([]));
     await p2;
     expect(store.getState().loadingActive).toBe(false);
   });
 
   it("同 key 重疊載入：先發失敗 → 不得清掉後發在途的旗標", async () => {
-    const first = deferred<ChangeItem[]>();
-    const second = deferred<ChangeItem[]>();
+    const first = deferred<ChangeListPayload>();
+    const second = deferred<ChangeListPayload>();
     const listChanges = vi
       .fn()
       .mockReturnValueOnce(first.promise)
@@ -1976,7 +1985,7 @@ describe("整批載入旗標的記帳邊界", () => {
     await p1;
     expect(store.getState().loadingActive).toBe(true);
 
-    second.resolve([]);
+    second.resolve(changeList([]));
     await p2;
     expect(store.getState().loadingActive).toBe(false);
   });
@@ -2002,7 +2011,7 @@ describe("整批載入旗標的記帳邊界", () => {
 // 那個窗口渲染的正是假空態。監看掛載慢時尤其明顯，故以卡住的 watch 把關。
 describe("翻頁與載入中標記同批", () => {
   it("翻到首訪 workspace → activeKey 翻轉當下即為載入中", async () => {
-    const load = deferred<ChangeItem[]>();
+    const load = deferred<ChangeListPayload>();
     const ds = fakeDataSource({ listChanges: vi.fn(() => load.promise) });
     let resolveWatch!: () => void;
     const watchGate = new Promise<void>((r) => {
@@ -2035,7 +2044,7 @@ describe("翻頁與載入中標記同批", () => {
     expect(store.getState().loadingActive).toBe(true);
 
     resolveWatch();
-    load.resolve([]);
+    load.resolve(changeList([]));
     await activation;
     expect(store.getState().loadingActive).toBe(false);
   });
@@ -2049,8 +2058,8 @@ describe("翻頁與載入中標記同批", () => {
     ];
     const listChanges = vi
       .fn()
-      .mockResolvedValueOnce(stale)
-      .mockResolvedValue(fresh);
+      .mockResolvedValueOnce(changeList(stale))
+      .mockResolvedValue(changeList(fresh));
     const ds = fakeDataSource({ listChanges });
     let resolveWatch!: () => void;
     const watchGate = new Promise<void>((r) => {

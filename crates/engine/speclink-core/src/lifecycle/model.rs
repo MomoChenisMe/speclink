@@ -255,6 +255,17 @@ impl Stage {
             Stage::Proposed => "proposed",
         }
     }
+
+    /// The inverse of [`Stage::as_str`] — `None` for any other string, so a
+    /// caller reading the plan payload from elsewhere decides how to report it.
+    pub fn parse(s: &str) -> Option<Stage> {
+        match s {
+            "ready" => Some(Stage::Ready),
+            "in-progress" => Some(Stage::InProgress),
+            "proposed" => Some(Stage::Proposed),
+            _ => None,
+        }
+    }
 }
 
 /// The plan payload carries the stage as its string form — one source for
@@ -945,6 +956,17 @@ mod tests {
         let change = unchecked.find_change("demo").unwrap();
         assert_eq!(super::stage(&unchecked, &change), super::Stage::Proposed);
         assert_eq!(super::Stage::Proposed.as_str(), "proposed");
+    }
+
+    #[test]
+    fn stage_parse_is_the_inverse_of_as_str() {
+        // 反查與 as_str 同一張表（add-change-plan-remote：remote 的 plan 回應轉回引擎型別）；
+        // 大小寫不同或未知值一律 None，由呼叫端決定怎麼報錯。
+        for stage in [super::Stage::Ready, super::Stage::InProgress, super::Stage::Proposed] {
+            assert_eq!(super::Stage::parse(stage.as_str()), Some(stage));
+        }
+        assert_eq!(super::Stage::parse("Ready"), None);
+        assert_eq!(super::Stage::parse("archived"), None);
     }
 
     // --- Purpose 合格判準（design D1；spec spec-validation

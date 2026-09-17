@@ -1075,11 +1075,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         let loaded: [ChangeListPayload, SpecItem[], ArchivedItem[], DiscussionLists];
         try {
           loaded = await Promise.all([
-            // 清單與頂層 planError 同一次 IO（add-change-plan-desktop design D1）；
-            // 資料源不供此面時清單照舊、planError 為 null。
-            dataSource.listChangesWithPlan
-              ? dataSource.listChangesWithPlan()
-              : dataSource.listChanges().then((changes) => ({ changes, planError: null })),
+            // 清單與頂層 planError 同一次 IO（add-change-plan-desktop design D1）。
+            dataSource.listChanges(),
             dataSource.listSpecs(),
             session.capabilities.listArchived ? dataSource.listArchived() : Promise.resolve([]),
             dataSource.listDiscussions(),

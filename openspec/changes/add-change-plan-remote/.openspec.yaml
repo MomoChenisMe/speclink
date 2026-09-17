@@ -5,3 +5,201 @@ created_with: claude
 from_discussion: change-execution-order
 started_at: 2026-09-16
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-17
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 13
+reviewed_scope:
+  - path: apps/desktop/core/src/manage.rs
+    hash: 4606907942540d3d68f1812a2dbeae7c03fcab2758d218caabaacb3a5be40d20
+  - path: apps/desktop/core/src/query.rs
+    hash: ea1c3890a9389704dbd2228fd9b7983d6ce30fa9d8bf82e722c135983064a1de
+  - path: apps/desktop/core/src/rank.rs
+    hash: 05d33d67cf0fef0396399d697feb11eb88ede44aca9ff4dafac661be089a93e9
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: e8684b44061744119b3fcc62ed2d6c932c3ec18bf57844ed499d28f5d9016c1c
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 7e08d41a9fd7e9656946b3058ab2776753c8efc490f322346330f977f7e9bc80
+  - path: apps/desktop/src-tauri/tests/it/phase3_chain.rs
+    hash: 9c060286fa93374d21b23ca1ed1a172631f0d2a3adaf95a92975c4e5d144536d
+  - path: apps/desktop/src-tauri/tests/it/remote_data.rs
+    hash: a7db7e4fed027e1698946c7b411d07e0f37b1b7ecfffc47236ef1da98048b609
+  - path: apps/desktop/src/App.tsx
+    hash: 1aff86689d29e2430346999bebd88c7c921100ecc1b6c8417bf0d7124ceaae10
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: bfb7c5ce0a7e9923f8cedfea020804ac0627fbbf1fb84f40695bae8818f688ac
+  - path: apps/desktop/src/__tests__/helpers/changeList.ts
+    hash: 89f09920b4f54fb662609f99788639918966e7c82aa58bd0ced69be35e04262b
+  - path: apps/desktop/src/__tests__/helpers/remoteFixtures.ts
+    hash: 16a213f59e0a929783d54a9d2d77e9426bcac24f9cbbad0b2e798c6fda2e1433
+  - path: apps/desktop/src/__tests__/planDataSource.test.ts
+    hash: 28bad4c9d0c602503202b471dc5e4f8c4d5b4c40ec9eec909db31d1695add6bd
+  - path: apps/desktop/src/__tests__/remoteCapabilities.test.tsx
+    hash: c6fb47d35c89e24889108c31310378b882960f96af13b7915dd3a279fa6389b6
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: fb48a6fb3dd15376709f957fca5c01f7d7ff5e83755c8dd6e77923b1a457fa7f
+  - path: apps/desktop/src/__tests__/remoteResilience.test.tsx
+    hash: 47fbce084916499bfa68908b4254e6ebe069fd750602c18633b54f148742bcf6
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: e82c5ee01dda90646d45bd231cd51b69fbceb646c0a79871e3c8c96cb62663bb
+  - path: apps/desktop/src/__tests__/tauriDataSource.test.ts
+    hash: 36648e3877b1dfe2e83746a5d4895ae639402961a0110c0a09b16afadfc1410d
+  - path: apps/desktop/src/__tests__/workspace.test.ts
+    hash: 8383ca6c307c2e374f4b35a92bc222e2cd5da7072249f6ced2fd7413ba9cb734
+  - path: apps/desktop/src/adapter/remoteDataSource.ts
+    hash: 241f9331c0baa48c2f3c66e5a4552e13dc8432990765cb51c9e21649521b69b8
+  - path: apps/desktop/src/adapter/tauriDataSource.ts
+    hash: ecbcf9c20b3508633d842cc63f11cd8d3a66616386ea1f74bbd7c005f6ec1070
+  - path: apps/desktop/src/session.ts
+    hash: a9ca2425fd40d46c6213d4066cc7993da01146db54e03ae94075186fe081c978
+  - path: apps/desktop/src/store.ts
+    hash: acd0ded727b5b5e092ef7e6e30e997e3ec0972c0dd1de702f4d1a161afb34f86
+  - path: crates/adapters/speclink-cli/src/main.rs
+    hash: e5baaaca0ca5df937ed16d858d6beb06ac73687022a433f3fa6536ed2280e3f3
+  - path: crates/adapters/speclink-cli/src/verbs/plan.rs
+    hash: 72605c11c0ffd68d15a1cb2c1ea2f9fef94397c538a05ab1f8978b3c70c039b6
+  - path: crates/adapters/speclink-cli/tests/it/main.rs
+    hash: d0ba8b088dedeffb731900d681c38e555d70661263fe0a08a7351c83c1e4e829
+  - path: crates/adapters/speclink-cli/tests/it/mode_dispatch.rs
+    hash: 8e7134c2697bb0ff713428d4ff0fd4705a9cd2966302d5a0cb461d8bed25b2c3
+  - path: crates/adapters/speclink-cli/tests/it/remote_plan.rs
+    hash: 024b0aeeb0f48be2daa2c96b7e543e2ef90f92314f6ba846d4ce2b8c26ac665b
+  - path: crates/engine/speclink-core/src/command/mod.rs
+    hash: 1caf697cfa4dc3c027858d76144238af382211ef4c0ee36fec336b58ba35885f
+  - path: crates/engine/speclink-core/src/command/tests.rs
+    hash: 39390317a2e8bdc5209d0577a0f1aa58f89de6669026f1897f5c5f5e00ce2e18
+  - path: crates/engine/speclink-core/src/lifecycle/model.rs
+    hash: 4f5f0994a9a8e89328d6fb68cf62984edbb08a3e3fb4ba31148d89d5bc3895cb
+  - path: crates/engine/speclink-core/src/lifecycle/plan.rs
+    hash: 5e1c24158512849f7d1ce80afa41629205756c4b1e7a628a450d18ebcfc4abed
+  - path: crates/host/speclink-host/src/bridge.rs
+    hash: 8cd9a1fd75724050136a715d9b653c3fd9ff516fd932a63186fba65790e5beb7
+  - path: crates/host/speclink-server/src/api/error.rs
+    hash: ef1842c307273a7ba27fc72a1bc1ff8cfb054cecf707e8fd39018d902678cfd4
+  - path: crates/host/speclink-server/src/api/events.rs
+    hash: 3c96a4de72c3e756796b794f62660bad807c956f2744f26005ce6d7f22496d30
+  - path: crates/host/speclink-server/src/api/routes.rs
+    hash: e1fc554cee8f1501563974fa23ef3c407ab0f23ef37517c10fe6cdff53d4baeb
+  - path: crates/host/speclink-server/src/app.rs
+    hash: 8f38dddafeb68ca330ea925490f9baa5543769630bfe2a926724a8de816d620d
+  - path: crates/host/speclink-server/tests/it/api/mod.rs
+    hash: 6dea02e231f7c9eb9c2953829de03c3a61572e9573a8d074b4bf3c25063a03d4
+  - path: crates/host/speclink-server/tests/it/api/plan_api.rs
+    hash: 94d5f8b79aa4694307542458b79a49be16bdeb5a69bcb9db7e6c9b1e8d416123
+  - path: crates/protocol/speclink-protocol/Cargo.toml
+    hash: 7c4bd2233280465f1e558a1c462463574e350ada7630d52a71313d608b987e20
+  - path: crates/protocol/speclink-protocol/src/command.rs
+    hash: 02afb6b6bd5b185a74df7027bfd69663d8c0c5dd8095a3623148a27d989d2d4c
+  - path: crates/protocol/speclink-protocol/src/query.rs
+    hash: cd7024bb60c33bb86829a1c070d5241d9fcdef4973c292ebcc89760e249e4412
+  - path: crates/protocol/speclink-remote/src/client.rs
+    hash: e4da21429accd2dc8330ba49a7b51c9c421b55126380ebef340f6f14bdeaa8bd
+  - path: crates/protocol/speclink-remote/src/convert.rs
+    hash: 121a6d8174aa5781fa1023f42d18efe9765f2a5c98610a2453a3305d8442d1de
+  - path: crates/protocol/speclink-remote/tests/it/typed_client.rs
+    hash: 257b4cff86e34828947a6d977f6fdd18ea5afbe98b5371a55f7fbb7a56c92f40
+  - path: packages/ui/src/__tests__/planTab.test.tsx
+    hash: c459e4b1bfd978a452defd8140f0897793221ac40fb2db5c5deb601878b57a4a
+  - path: packages/ui/src/adapter.ts
+    hash: 83fcf3c44d8bab457aead39491d6348ebc06f91ec75ff29ea974700157d67f11
+  - path: packages/ui/src/components/RichDetailDrawer.tsx
+    hash: 825f59ff48c1566d2f6fcca5d9c4254645d180ff0d4fd3e2d40e0797428b3fcb
+verified_at: 2026-09-17
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 13
+verified_scope:
+  - path: apps/desktop/core/src/manage.rs
+    hash: 4606907942540d3d68f1812a2dbeae7c03fcab2758d218caabaacb3a5be40d20
+  - path: apps/desktop/core/src/query.rs
+    hash: ea1c3890a9389704dbd2228fd9b7983d6ce30fa9d8bf82e722c135983064a1de
+  - path: apps/desktop/core/src/rank.rs
+    hash: 05d33d67cf0fef0396399d697feb11eb88ede44aca9ff4dafac661be089a93e9
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: e8684b44061744119b3fcc62ed2d6c932c3ec18bf57844ed499d28f5d9016c1c
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 7e08d41a9fd7e9656946b3058ab2776753c8efc490f322346330f977f7e9bc80
+  - path: apps/desktop/src-tauri/tests/it/phase3_chain.rs
+    hash: 9c060286fa93374d21b23ca1ed1a172631f0d2a3adaf95a92975c4e5d144536d
+  - path: apps/desktop/src-tauri/tests/it/remote_data.rs
+    hash: a7db7e4fed027e1698946c7b411d07e0f37b1b7ecfffc47236ef1da98048b609
+  - path: apps/desktop/src/App.tsx
+    hash: 1aff86689d29e2430346999bebd88c7c921100ecc1b6c8417bf0d7124ceaae10
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: bfb7c5ce0a7e9923f8cedfea020804ac0627fbbf1fb84f40695bae8818f688ac
+  - path: apps/desktop/src/__tests__/helpers/changeList.ts
+    hash: 89f09920b4f54fb662609f99788639918966e7c82aa58bd0ced69be35e04262b
+  - path: apps/desktop/src/__tests__/helpers/remoteFixtures.ts
+    hash: 16a213f59e0a929783d54a9d2d77e9426bcac24f9cbbad0b2e798c6fda2e1433
+  - path: apps/desktop/src/__tests__/planDataSource.test.ts
+    hash: 28bad4c9d0c602503202b471dc5e4f8c4d5b4c40ec9eec909db31d1695add6bd
+  - path: apps/desktop/src/__tests__/remoteCapabilities.test.tsx
+    hash: c6fb47d35c89e24889108c31310378b882960f96af13b7915dd3a279fa6389b6
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: fb48a6fb3dd15376709f957fca5c01f7d7ff5e83755c8dd6e77923b1a457fa7f
+  - path: apps/desktop/src/__tests__/remoteResilience.test.tsx
+    hash: 47fbce084916499bfa68908b4254e6ebe069fd750602c18633b54f148742bcf6
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: e82c5ee01dda90646d45bd231cd51b69fbceb646c0a79871e3c8c96cb62663bb
+  - path: apps/desktop/src/__tests__/tauriDataSource.test.ts
+    hash: 36648e3877b1dfe2e83746a5d4895ae639402961a0110c0a09b16afadfc1410d
+  - path: apps/desktop/src/__tests__/workspace.test.ts
+    hash: 8383ca6c307c2e374f4b35a92bc222e2cd5da7072249f6ced2fd7413ba9cb734
+  - path: apps/desktop/src/adapter/remoteDataSource.ts
+    hash: 241f9331c0baa48c2f3c66e5a4552e13dc8432990765cb51c9e21649521b69b8
+  - path: apps/desktop/src/adapter/tauriDataSource.ts
+    hash: ecbcf9c20b3508633d842cc63f11cd8d3a66616386ea1f74bbd7c005f6ec1070
+  - path: apps/desktop/src/session.ts
+    hash: a9ca2425fd40d46c6213d4066cc7993da01146db54e03ae94075186fe081c978
+  - path: apps/desktop/src/store.ts
+    hash: acd0ded727b5b5e092ef7e6e30e997e3ec0972c0dd1de702f4d1a161afb34f86
+  - path: crates/adapters/speclink-cli/src/main.rs
+    hash: e5baaaca0ca5df937ed16d858d6beb06ac73687022a433f3fa6536ed2280e3f3
+  - path: crates/adapters/speclink-cli/src/verbs/plan.rs
+    hash: 72605c11c0ffd68d15a1cb2c1ea2f9fef94397c538a05ab1f8978b3c70c039b6
+  - path: crates/adapters/speclink-cli/tests/it/main.rs
+    hash: d0ba8b088dedeffb731900d681c38e555d70661263fe0a08a7351c83c1e4e829
+  - path: crates/adapters/speclink-cli/tests/it/mode_dispatch.rs
+    hash: 8e7134c2697bb0ff713428d4ff0fd4705a9cd2966302d5a0cb461d8bed25b2c3
+  - path: crates/adapters/speclink-cli/tests/it/remote_plan.rs
+    hash: 024b0aeeb0f48be2daa2c96b7e543e2ef90f92314f6ba846d4ce2b8c26ac665b
+  - path: crates/engine/speclink-core/src/command/mod.rs
+    hash: 1caf697cfa4dc3c027858d76144238af382211ef4c0ee36fec336b58ba35885f
+  - path: crates/engine/speclink-core/src/command/tests.rs
+    hash: 39390317a2e8bdc5209d0577a0f1aa58f89de6669026f1897f5c5f5e00ce2e18
+  - path: crates/engine/speclink-core/src/lifecycle/model.rs
+    hash: 4f5f0994a9a8e89328d6fb68cf62984edbb08a3e3fb4ba31148d89d5bc3895cb
+  - path: crates/engine/speclink-core/src/lifecycle/plan.rs
+    hash: 5e1c24158512849f7d1ce80afa41629205756c4b1e7a628a450d18ebcfc4abed
+  - path: crates/host/speclink-host/src/bridge.rs
+    hash: 8cd9a1fd75724050136a715d9b653c3fd9ff516fd932a63186fba65790e5beb7
+  - path: crates/host/speclink-server/src/api/error.rs
+    hash: ef1842c307273a7ba27fc72a1bc1ff8cfb054cecf707e8fd39018d902678cfd4
+  - path: crates/host/speclink-server/src/api/events.rs
+    hash: 3c96a4de72c3e756796b794f62660bad807c956f2744f26005ce6d7f22496d30
+  - path: crates/host/speclink-server/src/api/routes.rs
+    hash: e1fc554cee8f1501563974fa23ef3c407ab0f23ef37517c10fe6cdff53d4baeb
+  - path: crates/host/speclink-server/src/app.rs
+    hash: 8f38dddafeb68ca330ea925490f9baa5543769630bfe2a926724a8de816d620d
+  - path: crates/host/speclink-server/tests/it/api/mod.rs
+    hash: 6dea02e231f7c9eb9c2953829de03c3a61572e9573a8d074b4bf3c25063a03d4
+  - path: crates/host/speclink-server/tests/it/api/plan_api.rs
+    hash: 94d5f8b79aa4694307542458b79a49be16bdeb5a69bcb9db7e6c9b1e8d416123
+  - path: crates/protocol/speclink-protocol/Cargo.toml
+    hash: 7c4bd2233280465f1e558a1c462463574e350ada7630d52a71313d608b987e20
+  - path: crates/protocol/speclink-protocol/src/command.rs
+    hash: 02afb6b6bd5b185a74df7027bfd69663d8c0c5dd8095a3623148a27d989d2d4c
+  - path: crates/protocol/speclink-protocol/src/query.rs
+    hash: cd7024bb60c33bb86829a1c070d5241d9fcdef4973c292ebcc89760e249e4412
+  - path: crates/protocol/speclink-remote/src/client.rs
+    hash: e4da21429accd2dc8330ba49a7b51c9c421b55126380ebef340f6f14bdeaa8bd
+  - path: crates/protocol/speclink-remote/src/convert.rs
+    hash: 121a6d8174aa5781fa1023f42d18efe9765f2a5c98610a2453a3305d8442d1de
+  - path: crates/protocol/speclink-remote/tests/it/typed_client.rs
+    hash: 257b4cff86e34828947a6d977f6fdd18ea5afbe98b5371a55f7fbb7a56c92f40
+  - path: packages/ui/src/__tests__/planTab.test.tsx
+    hash: c459e4b1bfd978a452defd8140f0897793221ac40fb2db5c5deb601878b57a4a
+  - path: packages/ui/src/adapter.ts
+    hash: 83fcf3c44d8bab457aead39491d6348ebc06f91ec75ff29ea974700157d67f11
+  - path: packages/ui/src/components/RichDetailDrawer.tsx
+    hash: 825f59ff48c1566d2f6fcca5d9c4254645d180ff0d4fd3e2d40e0797428b3fcb

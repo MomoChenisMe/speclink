@@ -10,28 +10,18 @@ import { createTauriDataSource } from "../adapter/tauriDataSource";
 describe("createTauriDataSource", () => {
   beforeEach(() => invoke.mockReset());
 
-  it("listChanges unwraps the { changes } envelope and carries the restaleFrom array", async () => {
-    // restaleFrom（待重新反映徽章資料源）隨清單項透傳至前端，供看板卡片渲染。
+  it("listChanges keeps the envelope: items (restaleFrom carried) plus the top-level planError", async () => {
+    // restaleFrom（待重新反映徽章資料源）隨清單項透傳至前端，供看板卡片渲染；spec
+    // client-protocol「變更清單的排程欄位」：頂層 planError（成環訊息或 null）隨清單
+    // 一起回到前端，同一次 IO。
     invoke.mockResolvedValueOnce({
       changes: [{ name: "a", status: "s", totalTasks: 1, completedTasks: 0, restaleFrom: ["alpha"] }],
-    });
-    const ds = createTauriDataSource("/r");
-    const changes = await ds.listChanges();
-    expect(invoke).toHaveBeenCalledWith("list_changes", { root: "/r" });
-    expect(changes[0].restaleFrom).toEqual(["alpha"]);
-  });
-
-  it("listChangesWithPlan keeps the envelope: changes plus the top-level planError", async () => {
-    // spec client-protocol「變更清單的排程欄位」：頂層 planError（成環訊息或 null）
-    // 隨清單一起回到前端，同一次 IO。
-    invoke.mockResolvedValueOnce({
-      changes: [{ name: "a", status: "s", totalTasks: 1, completedTasks: 0 }],
       planError: "dependency cycle: a -> b -> a",
     });
     const ds = createTauriDataSource("/r");
-    const payload = await ds.listChangesWithPlan!();
+    const payload = await ds.listChanges();
     expect(invoke).toHaveBeenCalledWith("list_changes", { root: "/r" });
-    expect(payload.changes.map((c) => c.name)).toEqual(["a"]);
+    expect(payload.changes[0].restaleFrom).toEqual(["alpha"]);
     expect(payload.planError).toBe("dependency cycle: a -> b -> a");
   });
 

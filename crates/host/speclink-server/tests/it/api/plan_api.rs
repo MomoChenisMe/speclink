@@ -306,7 +306,7 @@ fn an_unknown_change_is_a_404() {
 
 #[test]
 fn guard_refusals_are_refused_409s_with_the_engine_line_and_write_nothing() {
-    // Scenario「守門失敗 409」：自依賴、已封存、成環。
+    // Scenario「守門失敗 409」：自依賴、已封存、成環；另補需求內文列出的目標不存在。
     let f = fixture(&[
         ("add-a", meta("2026-09-01", Some("add-b"))),
         ("add-b", meta("2026-09-02", None)),
@@ -327,6 +327,7 @@ fn guard_refusals_are_refused_409s_with_the_engine_line_and_write_nothing() {
 
     for (on, message) in [
         ("add-b", "'add-b' cannot depend on itself"),
+        ("ghost", "cannot depend on 'ghost': no active change with that name"),
         ("old-change", "cannot depend on 'old-change': it is already archived"),
         ("add-a", "dependency cycle: add-b -> add-a -> add-b"),
     ] {

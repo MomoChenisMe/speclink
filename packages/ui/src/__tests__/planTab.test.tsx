@@ -2,7 +2,7 @@
 // design D6）：四段內容、前置的新增與移除經 onSetDepends、無 onSetDepends（capability
 // 假）時不長編輯控制項、缺 wave 時只剩一句說明。
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render as rtlRender, screen, waitFor, fireEvent, within, cleanup } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, fireEvent, within, cleanup, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 
@@ -130,6 +130,27 @@ describe("排程分頁", () => {
     await user.click(await screen.findByRole("combobox", { name: "新增前置" }));
     const options = (await screen.findAllByRole("option")).map((o) => o.textContent);
     expect(options).toEqual(["add-b", "add-d"]);
+  });
+
+  it("重新載入時名冊查詢失敗，沿用上一次的名冊，不退回自清單派生", async () => {
+    // 首載取得名冊 add-a、add-b；刷新世代前進後查詢失敗——候選仍只有 add-b（add-d 不在名冊）。
+    const loadDependsCandidates = vi
+      .fn<(change: string) => Promise<string[]>>()
+      .mockResolvedValueOnce(["add-a", "add-b"])
+      .mockRejectedValue(new Error("boom"));
+    const props = makeProps({ loadDependsCandidates, refreshGen: 0 });
+    const { rerender } = render(<RichDetailDrawer {...props} />);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /排程/ }));
+    await screen.findByRole("combobox", { name: "新增前置" });
+    rerender(<RichDetailDrawer {...props} refreshGen={1} />);
+    await waitFor(() => expect(loadDependsCandidates).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(await screen.findByRole("combobox", { name: "新增前置" }));
+    const options = (await screen.findAllByRole("option")).map((o) => o.textContent);
+    expect(options).toEqual(["add-b"]);
   });
 
   it("移除鈕觸發 onSetDepends(change, [name], true)", async () => {

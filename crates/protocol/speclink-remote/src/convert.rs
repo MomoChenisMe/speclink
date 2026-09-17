@@ -53,28 +53,25 @@ pub fn analyze_report(p: AnalyzeReportResponse) -> speclink_core::analyzer::Anal
     }
 }
 
-/// `GET /plan` 回應 → 引擎 `PlanReport`。`stage` 以引擎 `Stage::as_str` 反查（字串表
-/// 只有引擎那一份）；不認得的值是 server 違約，回錯誤而不猜階段。
+/// `GET /plan` 回應 → 引擎 `PlanReport`。`stage` 以引擎 `Stage::parse` 轉回（字串表只有
+/// 引擎那一份）。不認得的階段、或 wave 列了 changes 沒有的名稱，都是 server 違約：回錯誤，
+/// 不猜階段，也不讓渲染端逐波查無此項而 panic。
 pub fn plan_report(p: PlanResponse) -> Result<speclink_core::command::PlanReport, RemoteError> {
     use speclink_core::model::Stage;
     use speclink_core::plan::{Overlap, Plan, PlanChange, Skipped, Wave};
-    let stage = |wire: &str| {
-        [Stage::Ready, Stage::InProgress, Stage::Proposed]
-            .into_iter()
-            .find(|s| s.as_str() == wire)
-            .ok_or_else(|| RemoteError {
-                message: format!("unexpected server response — unknown plan stage '{wire}'"),
-                reason: None,
-                status: None,
-                evidence: None,
-            })
+    let violation = |detail: String| RemoteError {
+        message: format!("unexpected server response — {detail}"),
+        reason: None,
+        status: None,
+        evidence: None,
     };
     let changes = p
         .changes
         .into_iter()
         .map(|c| {
             Ok(PlanChange {
-                stage: stage(&c.stage)?,
+                stage: Stage::parse(&c.stage)
+                    .ok_or_else(|| violation(format!("unknown plan stage '{}'", c.stage)))?,
                 name: c.name,
                 wave: c.wave,
                 depends_on: c.depends_on,
@@ -88,6 +85,15 @@ pub fn plan_report(p: PlanResponse) -> Result<speclink_core::command::PlanReport
             })
         })
         .collect::<Result<Vec<_>, RemoteError>>()?;
+    let orphan = p.waves.iter().find_map(|w| {
+        w.changes
+            .iter()
+            .find(|name| !changes.iter().any(|c| &c.name == *name))
+            .map(|name| (w.index, name))
+    });
+    if let Some((index, name)) = orphan {
+        return Err(violation(format!("plan wave {index} lists '{name}' without a change entry")));
+    }
     Ok(Plan {
         waves: p
             .waves
@@ -168,5 +174,18 @@ mod tests {
         wire.changes[1].stage = "archived".into();
         let err = super::plan_report(wire).unwrap_err();
         assert!(err.message.contains("'archived'"), "{}", err.message);
+    }
+
+    #[test]
+    fn plan_report_refuses_a_wave_member_without_a_change_entry() {
+        // 缺 changes 鍵（serde default 為空）但 waves 有成員：server 違約，回錯誤——
+        // 渲染端逐波查 changes，不能讓它在 CLI 裡 panic。
+        let wire: PlanResponse = serde_json::from_value(serde_json::json!({
+            "waves": [{ "index": 1, "changes": ["add-a"] }],
+            "next": "add-a"
+        }))
+        .unwrap();
+        let err = super::plan_report(wire).unwrap_err();
+        assert!(err.message.contains("'add-a'"), "{}", err.message);
     }
 }

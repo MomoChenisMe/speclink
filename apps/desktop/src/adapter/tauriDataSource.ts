@@ -3,7 +3,6 @@ import { toRevertError } from "@speclink/ui";
 import type {
   SpeclinkDataSource,
   CardKind,
-  ChangeItem,
   ChangeListPayload,
   SpecItem,
   ArchivedItem,
@@ -25,12 +24,8 @@ export function createTauriDataSource(
   invoke: InvokeFn = tauriInvoke as InvokeFn,
 ): SpeclinkDataSource {
   return {
-    async listChanges(): Promise<ChangeItem[]> {
-      const r = await invoke<{ changes: ChangeItem[] }>("list_changes", { root });
-      return r.changes;
-    },
-    async listChangesWithPlan(): Promise<ChangeListPayload> {
-      // 同一個 list_changes payload：清單項＋頂層 planError，不另開請求。
+    async listChanges(): Promise<ChangeListPayload> {
+      // list_changes payload 原樣：清單項＋頂層 planError。
       return await invoke<ChangeListPayload>("list_changes", { root });
     },
     async listSpecs(): Promise<SpecItem[]> {

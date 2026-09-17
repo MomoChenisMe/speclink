@@ -105,6 +105,21 @@
         "packages/ui/src/__tests__/planTab.test.tsx",
         "packages/ui/src/components/RichDetailDrawer.tsx"
       ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "5.1 全面回歸：`cargo test -p speclink-protocol`、`cargo test -p speclink-remote`、`cargo test -p speclink-server --test it api::plan_api`、`cargo test -p speclink-host`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-desktop --test it remote_data`、`cargo test -p speclink-desktop-core`、`npm test -w packages/ui`、`npm test -w apps/desktop` 全綠；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。",
+      "files": [
+        "apps/desktop/core/src/query.rs",
+        "apps/desktop/core/src/rank.rs",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/helpers/remoteFixtures.ts",
+        "apps/desktop/src/__tests__/remoteResilience.test.tsx",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/__tests__/workspace.test.ts",
+        "crates/engine/speclink-core/src/lifecycle/model.rs",
+        "apps/desktop/src/__tests__/helpers/changeList.ts"
+      ]
     }
   ],
   "entries": [
@@ -255,6 +270,25 @@
         "packages/ui/src/components/RichDetailDrawer.tsx"
       ],
       "recordedAt": "2026-09-16T15:07:53Z"
+    },
+    {
+      "taskId": "tsk_01M2J2FCGVHJVRMDFR05ECWJZG",
+      "taskDesc": "5.1 全面回歸：`cargo test -p speclink-protocol`、`cargo test -p speclink-remote`、`cargo test -p speclink-server --test it api::plan_api`、`cargo test -p speclink-host`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-desktop --test it remote_data`、`cargo test -p speclink-desktop-core`、`npm test -w packages/ui`、`npm test -w apps/desktop` 全綠；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b4af32662d69b4f9cff2714a6e19a28ed0c4e443",
+      "touchedFiles": [
+        "apps/desktop/core/src/query.rs",
+        "apps/desktop/core/src/rank.rs",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/helpers/remoteFixtures.ts",
+        "apps/desktop/src/__tests__/remoteResilience.test.tsx",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/__tests__/workspace.test.ts",
+        "crates/engine/speclink-core/src/lifecycle/model.rs",
+        "apps/desktop/src/__tests__/helpers/changeList.ts"
+      ],
+      "recordedAt": "2026-09-17T02:40:40Z"
     }
   ]
 }

@@ -793,20 +793,23 @@ pub fn unsupported(operation: &str) -> RemoteError {
 // （add-change-plan-remote D1）。
 
 /// 桌面 remote 清單的一項（add-change-plan-remote D5）：server 的 ChangeSummary
-/// 原樣攤平，加 plan 的四個排程欄位——plan 不可得或成環時缺席。
+/// 原樣攤平，再攤平 plan 的排程欄組——plan 不可得或成環時整組缺席。
 #[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RemoteChangeItem {
     #[serde(flatten)]
     pub summary: ChangeSummary,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub wave: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub blocked_by: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub depends_on: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub overlaps: Option<Vec<PlanOverlap>>,
+    #[serde(flatten)]
+    pub schedule: Option<RemoteSchedule>,
+}
+
+/// plan 那一列帶給清單項的四個排程欄位：同一列產生，同有同無。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteSchedule {
+    pub wave: usize,
+    pub blocked_by: Vec<String>,
+    pub depends_on: Vec<String>,
+    pub overlaps: Vec<PlanOverlap>,
 }
 
 /// `remote_list_changes` 的 payload：清單項＋頂層 planError（成環時為訊息，否則 null）。
@@ -833,18 +836,21 @@ pub(crate) fn merge_plan(
         .into_iter()
         .map(|(summary, entry)| RemoteChangeItem {
             summary,
-            wave: entry.map(|e| e.wave),
-            blocked_by: entry.map(|e| e.blocked_by.clone()),
-            depends_on: entry.map(|e| e.depends_on.clone()),
-            overlaps: entry.map(|e| e.overlaps.clone()),
+            schedule: entry.map(|e| RemoteSchedule {
+                wave: e.wave,
+                blocked_by: e.blocked_by.clone(),
+                depends_on: e.depends_on.clone(),
+                overlaps: e.overlaps.clone(),
+            }),
         })
         .collect();
     RemoteChangeList { changes, plan_error }
 }
 
 /// 變更卡的顯示序（清單與拖排共用，D5／D6）：有 plan 時照其配置序，plan 沒列到
-/// 的項（兩次請求之間新增、壞 meta 被略過）接在末尾維持 server 序；無 plan 時照
-/// board overlay。每項附上它在 plan 裡的那一列（有的話）。
+/// 的項（兩次請求之間新增、壞 meta 被略過）接在末尾維持 server 序——排列規則與本地
+/// 看板同一條（desktop-core `query::plan_placed`）；無 plan 時照 board overlay。每項
+/// 附上它在 plan 裡的那一列（有的話）。
 fn display_order<'p>(
     mut changes: Vec<ChangeSummary>,
     board: &BoardOrderDoc,
@@ -854,14 +860,14 @@ fn display_order<'p>(
         overlay_changes_order(&mut changes, board);
         return changes.into_iter().map(|c| (c, None)).collect();
     };
-    let mut ordered = Vec::with_capacity(changes.len());
-    for entry in &plan.changes {
-        if let Some(i) = changes.iter().position(|c| c.name == entry.name) {
-            ordered.push((changes.remove(i), Some(entry)));
-        }
-    }
-    ordered.extend(changes.into_iter().map(|c| (c, None)));
-    ordered
+    let placed: Vec<&str> = plan.changes.iter().map(|e| e.name.as_str()).collect();
+    speclink_desktop_core::query::plan_placed(changes, &placed, |c| c.name.as_str())
+        .into_iter()
+        .map(|c| {
+            let entry = plan.changes.iter().find(|e| e.name == c.name);
+            (c, entry)
+        })
+        .collect()
 }
 
 /// 穩定排序疊上 rank 複合鍵（與本地 board_sorted_changes 同構——決策 4）：
@@ -966,27 +972,32 @@ pub(crate) fn reorder_full_text(
                 .find(|(c, _)| c.name == id)
                 .ok_or_else(|| card_not_found(id))?;
             let stage = change_stage(dragged);
-            let column: Vec<&str> = ordered
+            // 欄成員＝畫面上同欄的全部卡，含 plan 略過的卡（壞 meta 排在欄尾）：board
+            // resource 寫得進它的 rank，拖到它之後也要落在欄尾，所以它照常參與重派與落點。
+            let members: Vec<(&str, bool)> = ordered
                 .iter()
                 .filter(|(c, _)| change_stage(c) == stage)
-                .map(|(c, _)| c.name.as_str())
+                .map(|(c, entry)| (c.name.as_str(), entry.is_some()))
                 .collect();
-            // rank 序與顯示序不一致（plan 以宣告依賴修正過排序）時整欄重派——反序的
-            // 兩鄰居之間沒有可用的中點鍵（與 local board-card-order 同一規則）。
-            let out_of_order = column.windows(2).any(|pair| {
-                match (doc.changes.get(pair[0]), doc.changes.get(pair[1])) {
-                    (Some(a), Some(b)) => a >= b,
-                    _ => false,
-                }
-            });
-            let ranks = ensure_column_ranks(&column, &mut doc.changes, out_of_order);
+            let column: Vec<&str> = members.iter().map(|(name, _)| *name).collect();
+            // 缺 rank 或 rank 序與顯示序不一致（plan 以宣告依賴修正過排序）時整欄重派——
+            // 判定與本地拖排同一條（rank::ranked_in_order）。
+            let current: Vec<Option<&str>> =
+                column.iter().map(|m| doc.changes.get(*m).map(String::as_str)).collect();
+            let respread = !speclink_desktop_core::rank::ranked_in_order(&current);
+            let ranks = ensure_column_ranks(&column, &mut doc.changes, respread);
             let key = speclink_desktop_core::rank::neighbor_midpoint(&ranks, prev_id, next_id);
             doc.changes.insert(id.to_string(), key);
             if let Some(plan) = &snapshot.plan {
-                // 拖放後的序列＝欄成員依新 rank 排序；只擋涉及被拖卡的配對，訊息
-                // 與 local 同一句（引擎的同一判定）。
-                let mut sequence = column.clone();
-                sequence.sort_by(|a, b| doc.changes[*a].cmp(&doc.changes[*b]).then(a.cmp(b)));
+                // 拖放後的序列＝plan 有配置的欄成員依新 rank 排序：plan 略過的卡不列入——
+                // 引擎視對它的依賴為已滿足，與 local check_rank_move 的判定範圍相同。只擋
+                // 涉及被拖卡的配對，訊息與 local 同一句（引擎的同一判定）。
+                let mut sequence: Vec<&str> = members
+                    .iter()
+                    .filter(|(_, placed)| *placed)
+                    .map(|(name, _)| *name)
+                    .collect();
+                sort_with_ranks(&mut sequence, &doc.changes, |name| *name);
                 let depends_on: BTreeMap<String, Vec<String>> = plan
                     .changes
                     .iter()
@@ -2011,11 +2022,11 @@ mod plan_merge_tests {
         );
         assert_eq!(names(&list), ["a", "b"]);
         assert_eq!(list.plan_error, None);
-        let b = &list.changes[1];
-        assert_eq!(b.wave, Some(2));
-        assert_eq!(b.depends_on.as_deref(), Some(&["a".to_string()][..]));
-        assert_eq!(b.blocked_by.as_deref(), Some(&["a".to_string()][..]));
-        assert_eq!(b.overlaps.as_ref().map(Vec::len), Some(0));
+        let b = list.changes[1].schedule.as_ref().expect("the plan's row rides along");
+        assert_eq!(b.wave, 2);
+        assert_eq!(b.depends_on, ["a"]);
+        assert_eq!(b.blocked_by, ["a"]);
+        assert!(b.overlaps.is_empty());
     }
 
     #[test]
@@ -2027,8 +2038,8 @@ mod plan_merge_tests {
             Ok(plan(vec![entry("c", 1, &[], &[]), entry("a", 1, &[], &[])])),
         );
         assert_eq!(names(&list), ["c", "a", "b", "d"]);
-        assert_eq!(list.changes[2].wave, None);
-        assert_eq!(list.changes[3].depends_on, None);
+        assert_eq!(list.changes[2].schedule, None);
+        assert_eq!(list.changes[3].schedule, None);
     }
 
     #[test]
@@ -2041,10 +2052,7 @@ mod plan_merge_tests {
         );
         assert_eq!(names(&list), ["b", "a"]);
         assert_eq!(list.plan_error.as_deref(), Some("dependency cycle: a -> b -> a"));
-        assert!(list.changes.iter().all(|c| c.wave.is_none()
-            && c.blocked_by.is_none()
-            && c.depends_on.is_none()
-            && c.overlaps.is_none()));
+        assert!(list.changes.iter().all(|c| c.schedule.is_none()));
     }
 
     #[test]
@@ -2058,7 +2066,7 @@ mod plan_merge_tests {
             let list = merge_plan(vec![change("a", 0, 0), change("b", 0, 0)], &board(), Err(error));
             assert_eq!(names(&list), ["b", "a"], "board overlay order");
             assert_eq!(list.plan_error, None);
-            assert!(list.changes.iter().all(|c| c.wave.is_none()));
+            assert!(list.changes.iter().all(|c| c.schedule.is_none()));
         }
     }
 
@@ -2091,7 +2099,7 @@ mod plan_merge_tests {
 mod board_reorder_tests {
     use super::board_order_tests::{change, discussion};
     use super::{reorder_via, BoardOrderDoc, BoardSnapshot};
-    use speclink_protocol::query::{PlanChangeEntry, PlanResponse};
+    use speclink_protocol::query::{PlanChangeEntry, PlanResponse, PlanSkipped};
     use speclink_remote::RemoteError;
     use std::cell::{Cell, RefCell};
 
@@ -2228,6 +2236,46 @@ mod board_reorder_tests {
         let error = io.run("change", "add-a", Some("add-b"), None).expect_err("crossing is refused");
         assert_eq!(error.message, "cannot move 'add-a' there: add-b depend on it");
         assert!(io.puts.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_skipped_prerequisite_takes_no_part_in_the_dependency_check() {
+        // 引擎視對 plan 略過的卡（壞 meta）的依賴為已滿足，與本機 check_rank_move 的判定
+        // 範圍相同：add-b 宣告依賴排在欄尾的 add-x，桌面收到把 add-b 移到欄頂的寫回請求時
+        // 照常寫回。
+        let mut snap = snapshot(
+            vec![change("add-a", 0, 4), change("add-b", 0, 4), change("add-x", 0, 4)],
+            vec![],
+            Some(r#"{"changes":{"add-a":"f","add-b":"n","add-x":"t"},"discussions":{}}"#),
+            3,
+        );
+        let mut plan = plan_of(&[("add-a", &[]), ("add-b", &["add-x"])]);
+        plan.skipped.push(PlanSkipped { change: "add-x".into(), reason: "bad yaml".into() });
+        snap.plan = Some(plan);
+        let io = FakeIo::new(vec![snap], vec![true]);
+        io.run("change", "add-b", None, Some("add-a")).expect("a skipped prerequisite blocks nothing");
+        let doc = BoardOrderDoc::from_content(Some(&io.puts.borrow()[0].0));
+        assert!(doc.changes["add-b"] < doc.changes["add-a"], "add-b 落在欄頂");
+    }
+
+    #[test]
+    fn a_drop_after_a_trailing_skipped_card_lands_at_the_column_bottom() {
+        // plan 略過的卡顯示在欄尾，前端把它當成上方鄰居送出（prevId＝add-x、nextId＝null）：
+        // 它留在欄內參與落點計算，新鍵排在它之後，不被當成空欄的首鍵。
+        let mut snap = snapshot(
+            vec![change("add-a", 0, 4), change("add-b", 0, 4), change("add-x", 0, 4)],
+            vec![],
+            Some(r#"{"changes":{"add-a":"i","add-b":"q","add-x":"t"},"discussions":{}}"#),
+            3,
+        );
+        let mut plan = plan_of(&[("add-a", &[]), ("add-b", &[])]);
+        plan.skipped.push(PlanSkipped { change: "add-x".into(), reason: "bad yaml".into() });
+        snap.plan = Some(plan);
+        let io = FakeIo::new(vec![snap], vec![true]);
+        io.run("change", "add-a", Some("add-x"), None).expect("reorder lands");
+        let doc = BoardOrderDoc::from_content(Some(&io.puts.borrow()[0].0));
+        let (a, b, x) = (&doc.changes["add-a"], &doc.changes["add-b"], &doc.changes["add-x"]);
+        assert!(b < x && x < a, "add-a 落在欄底：{b} < {x} < {a}");
     }
 
     #[test]

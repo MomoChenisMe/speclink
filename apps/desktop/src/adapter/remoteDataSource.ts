@@ -3,7 +3,6 @@ import { emptyManualIndex, toRevertError } from "@speclink/ui";
 import type {
   SpeclinkDataSource,
   CardKind,
-  ChangeItem,
   ChangeListPayload,
   SpecItem,
   ArchivedItem,
@@ -77,13 +76,9 @@ export function createRemoteDataSource(
     return p;
   }
   return {
-    async listChanges(): Promise<ChangeItem[]> {
-      const r = await invoke<ChangeListPayload>("remote_list_changes", { ...locator });
-      return r.changes;
-    },
-    async listChangesWithPlan(): Promise<ChangeListPayload> {
-      // 同一個 remote_list_changes payload（add-change-plan-remote D5）：清單項已依
-      // plan 排序並帶排程欄位，頂層 planError 在 plan 成環時為訊息。
+    async listChanges(): Promise<ChangeListPayload> {
+      // remote_list_changes payload 原樣（add-change-plan-remote D5）：清單項已依 plan
+      // 排序並帶排程欄位，頂層 planError 在 plan 成環時為訊息。
       return await invoke<ChangeListPayload>("remote_list_changes", { ...locator });
     },
     async listSpecs(): Promise<SpecItem[]> {

@@ -107,9 +107,16 @@ pub fn neighbor_midpoint(
     midpoint(prev.as_deref(), next.as_deref())
 }
 
+/// 欄內現有 rank 能否沿用（design D2；add-change-plan-remote D6）：全員具 rank 且依顯示序
+/// 嚴格遞增。否則呼叫端依顯示序整欄重派——缺 rank 的卡沒有鄰居鍵，反序或同值的兩鄰居之間
+/// 也沒有中點鍵。本地拖排（manage）與 remote 拖排共用此判定。
+pub fn ranked_in_order(ranks: &[Option<&str>]) -> bool {
+    ranks.iter().all(Option::is_some) && ranks.windows(2).all(|pair| pair[0] < pair[1])
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{midpoint, spread};
+    use super::{midpoint, ranked_in_order, spread};
 
     /// 生成鍵的合法形狀：非空、僅小寫字母、不以 'a'（零位）結尾。
     fn assert_valid_key(k: &str) {
@@ -207,5 +214,15 @@ mod tests {
             }
         }
         assert!(spread(0).is_empty());
+    }
+
+    #[test]
+    fn ranked_in_order_needs_every_rank_present_and_strictly_increasing() {
+        // 整欄重派的判定（本機與 remote 拖排共用）：全員具 rank 且依顯示序嚴格遞增才沿用。
+        assert!(ranked_in_order(&[]));
+        assert!(ranked_in_order(&[Some("f"), Some("n"), Some("t")]));
+        assert!(!ranked_in_order(&[Some("f"), None, Some("t")]), "缺 rank 的卡沒有鄰居鍵");
+        assert!(!ranked_in_order(&[Some("n"), Some("f")]), "反序的兩鄰居之間沒有中點鍵");
+        assert!(!ranked_in_order(&[Some("f"), Some("f")]), "同值的兩鄰居之間也沒有");
     }
 }

@@ -317,8 +317,9 @@ export function toRevertError(raw: unknown): Error {
   return raw instanceof Error ? raw : new Error(text);
 }
 
-/** local 變更清單的完整回應（spec client-protocol「變更清單的排程欄位」）：清單項
- * 之外還有頂層 planError——依賴成環時為引擎訊息（此時各項無排程四欄），否則 null。 */
+/** 變更清單的完整回應（spec client-protocol「變更清單的排程欄位」與「remote 變更清單的
+ * 排程欄位」）：清單項之外還有頂層 planError——依賴成環時為引擎訊息（此時各項無排程
+ * 四欄），否則 null。 */
 export interface ChangeListPayload {
   changes: ChangeItem[];
   planError: string | null;
@@ -326,10 +327,8 @@ export interface ChangeListPayload {
 
 /** 元件透過此介面取得資料與觸發動詞——不知道背後是 Tauri 還是 HTTP。 */
 export interface SpeclinkDataSource {
-  listChanges(): Promise<ChangeItem[]>;
-  /** 同一次清單 IO 連頂層 planError 一起回（add-change-plan-desktop design D1）。
-   * 未提供此面的後端走 listChanges，看板無成環提示。 */
-  listChangesWithPlan?(): Promise<ChangeListPayload>;
+  /** 清單項連頂層 planError 同一次 IO 回來（add-change-plan-desktop design D1）。 */
+  listChanges(): Promise<ChangeListPayload>;
   listSpecs(): Promise<SpecItem[]>;
   listArchived(): Promise<ArchivedItem[]>;
   /** 取得一個 change 的 artifact DAG 狀態。 */

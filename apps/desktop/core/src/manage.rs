@@ -408,11 +408,11 @@ fn reorder_change(
         .collect();
     // 整欄重派（design D2／D3）：欄內有缺 rank 卡，或 rank 序與顯示序不一致（宣告
     // 依賴修正過基底序：兩鄰居的 rank 反序時中點鍵表達不了「兩者之間」）→ 依顯示序
-    // 等距派發，只涵蓋本欄。全員具 rank 且序一致時只改被拖卡一檔。
-    let ranked_in_display_order = column.iter().all(|c| c.meta.board_rank.is_some())
-        && column.windows(2).all(|w| w[0].meta.board_rank < w[1].meta.board_rank);
+    // 等距派發，只涵蓋本欄。全員具 rank 且序一致時只改被拖卡一檔。判定與 remote 拖排
+    // 共用 rank::ranked_in_order。
+    let current: Vec<Option<&str>> = column.iter().map(|c| c.meta.board_rank.as_deref()).collect();
     let ranks: std::collections::HashMap<&str, String> =
-        if !ranked_in_display_order {
+        if !crate::rank::ranked_in_order(&current) {
             let keys = crate::rank::spread(column.len());
             for (c, key) in column.iter().zip(&keys) {
                 speclink_core::model::set_board_rank(&home(&c.name), &c.name, key)
