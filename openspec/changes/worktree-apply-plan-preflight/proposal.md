@@ -8,7 +8,7 @@ add-change-plan-engine 把執行順序的判定放進引擎，apply 技能第 1 
 - P0 多名字時先跑 `speclink plan --json`：`blockedBy` 為空的名字列成並行配方（各開 session 走 apply-with-worktree），非空的說明「等 X 落地再開」，使用者從並行名單擇一。
 - 前段明寫：apply 本體第 1 步的 plan 在 worktree 內只是複查，結果與前段不同時以主 checkout 的判定為準；寫法沿後段「本體 Next steps 在此不適用」的先例。apply 本體（apply.md）位元不動，speclink-apply 的生成輸出不變。
 - ingest 技能（crates/engine/speclink-core/assets/skills/ingest.md）在驗證通過後、給下一步建議之前新增「重判軟依賴」步驟：沿 propose 收尾同一套規則，作用中 change 兩個以上時讀其他 change 的 proposal Impact，本 change 建立在某 change 成果上或動到同一段程式碼即執行 `speclink change depends <本 change> --on <前置>`；只判本 change 的入邊、硬信號（delta 重疊）交引擎、僅落檔不代跑 apply。
-- ASSET_VERSION 自 v1.37.0 升為 v1.38.0，claude／claude-worktree／codex／neutral-cli／neutral-tool-call 五份 golden 與 assets.lock 同批更新，`speclink update` 再生 SKILL.md。影響 claude 與 codex 兩個工具的 speclink-apply-with-worktree 與 speclink-ingest 技能。
+- ASSET_VERSION 自 v1.38.0 升為 v1.39.0（v1.38.0 已由先落地的 discuss-scout-in-flight-deltas 使用），claude／claude-worktree／codex／neutral-cli／neutral-tool-call 五份 golden 與 assets.lock 同批更新，`speclink update` 再生 SKILL.md。影響 claude 與 codex 兩個工具的 speclink-apply-with-worktree 與 speclink-ingest 技能。
 - 相容性影響：不動任何 CLI 指令與引擎行為；只有兩份技能資產的文字與 golden 快照變更。
 
 ## Non-Goals

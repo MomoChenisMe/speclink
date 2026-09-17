@@ -1,0 +1,76 @@
+{
+  "version": 2,
+  "change": "worktree-apply-plan-preflight",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 改寫 crates/engine/speclink-core/assets/skills/apply-worktree-pre.md，落實「apply-with-worktree 技能的前置指示」的 (2)：在 P1「Check the worktree policy」之後、原 P2 之前新增「P2. Select the change with plan」——於主 checkout 執行 speclink plan --json；未指名取 next（null 時列每個 change 的 blockedBy 並 STOP）；指名者 blockedBy 非空即印前置清單並 STOP；名字不在 changes（已封存、打錯、列於 skipped）即 STOP 並列可用 change 名；plan 失敗即顯示錯誤並 STOP；任一 STOP 都明寫「do NOT commit the artifacts, do NOT create the worktree」；選定後宣告「Using change: <name>」。原 P2 的 speclink list --json 存在性檢查整段移除（語意併入新 P2），P3 以後的編號與內文不動。驗證：內容審閱——apply-worktree-pre.md 含 `speclink plan --json`、`next`、`blockedBy`、「do NOT create the worktree」字面，且不再含 `speclink list --json`；`git diff crates/engine/speclink-core/assets/skills/apply.md` 為空。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/apply-worktree-pre.md",
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "1.4 改寫 crates/engine/speclink-core/assets/skills/ingest.md，落實「ingest 收尾重判本變更的軟依賴」：在第 8 步 Validation 之後、第 9 步 Seal 之前插入新步驟「Re-judge soft dependencies」（後續步驟編號順延）：以 speclink list --json 列作用中變更，只有本變更時跳過；兩個以上時只針對本變更、以更新後的 artifacts 為準讀其他變更的 proposal Impact 判定是否建立在其成果上或動到同一段程式碼，有則執行 speclink change depends <本變更> --on <前置>...；動詞拒絕時回報並續行；硬信號交引擎；不移除既有 depends_on；不代跑 apply。字面沿 propose.md「Pending-change landscape check」第 3 點。Next steps 段的出邊不變，唯一改動是 seal 的步驟參照隨編號順延自「(step 9)」改為「(step 10)」（不改會指到新步驟）。驗證：內容審閱——ingest.md 含 `speclink change depends`、「Do NOT judge overlap yourself」與「only one active change」跳過句，Next steps 段與改動前的差異只有「(step 9)」→「(step 10)」。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/ingest.md"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 crates/engine/speclink-core/src/workspace/init.rs 的 `ASSET_VERSION` 自 v1.38.0 升為 v1.39.0（v1.38.0 已由先落地的 discuss-scout-in-flight-deltas 使用），並以 `UPDATE_ASSETS_LOCK=1` 與 `UPDATE_GOLDEN=1` 同批更新 crates/engine/speclink-core/tests/golden/ 下 claude.snapshot.md、claude-worktree.snapshot.md、codex.snapshot.md、neutral-cli.snapshot.md、neutral-tool-call.snapshot.md 與 assets.lock。驗證：`cargo test -p speclink-core --test it render_golden::` 與 assets.lock 鎖定測試全綠；`git diff --stat crates/engine/speclink-core/assets/skills/` 只列 apply-worktree-pre.md 與 ingest.md；claude-worktree 快照的 apply-with-worktree 段含 `Select the change with plan`。",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M2NBJ7MZETBDWDFDTJ0RHDWZ",
+      "taskDesc": "1.1 改寫 crates/engine/speclink-core/assets/skills/apply-worktree-pre.md，落實「apply-with-worktree 技能的前置指示」的 (2)：在 P1「Check the worktree policy」之後、原 P2 之前新增「P2. Select the change with plan」——於主 checkout 執行 speclink plan --json；未指名取 next（null 時列每個 change 的 blockedBy 並 STOP）；指名者 blockedBy 非空即印前置清單並 STOP；名字不在 changes（已封存、打錯、列於 skipped）即 STOP 並列可用 change 名；plan 失敗即顯示錯誤並 STOP；任一 STOP 都明寫「do NOT commit the artifacts, do NOT create the worktree」；選定後宣告「Using change: <name>」。原 P2 的 speclink list --json 存在性檢查整段移除（語意併入新 P2），P3 以後的編號與內文不動。驗證：內容審閱——apply-worktree-pre.md 含 `speclink plan --json`、`next`、`blockedBy`、「do NOT create the worktree」字面，且不再含 `speclink list --json`；`git diff crates/engine/speclink-core/assets/skills/apply.md` 為空。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "02c3f73164d74ff376041fb1aec6a316d0f5ac71",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/apply-worktree-pre.md",
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ],
+      "recordedAt": "2026-09-17T02:36:35Z"
+    },
+    {
+      "taskId": "tsk_01M2NBJ7MZE99AC0A8RSQH0JZP",
+      "taskDesc": "1.4 改寫 crates/engine/speclink-core/assets/skills/ingest.md，落實「ingest 收尾重判本變更的軟依賴」：在第 8 步 Validation 之後、第 9 步 Seal 之前插入新步驟「Re-judge soft dependencies」（後續步驟編號順延）：以 speclink list --json 列作用中變更，只有本變更時跳過；兩個以上時只針對本變更、以更新後的 artifacts 為準讀其他變更的 proposal Impact 判定是否建立在其成果上或動到同一段程式碼，有則執行 speclink change depends <本變更> --on <前置>...；動詞拒絕時回報並續行；硬信號交引擎；不移除既有 depends_on；不代跑 apply。字面沿 propose.md「Pending-change landscape check」第 3 點。Next steps 段的出邊不變，唯一改動是 seal 的步驟參照隨編號順延自「(step 9)」改為「(step 10)」（不改會指到新步驟）。驗證：內容審閱——ingest.md 含 `speclink change depends`、「Do NOT judge overlap yourself」與「only one active change」跳過句，Next steps 段與改動前的差異只有「(step 9)」→「(step 10)」。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "02c3f73164d74ff376041fb1aec6a316d0f5ac71",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/ingest.md"
+      ],
+      "recordedAt": "2026-09-17T02:38:25Z"
+    },
+    {
+      "taskId": "tsk_01M2NBJ7MZD6T6SK1QF82ZQSSQ",
+      "taskDesc": "3.1 crates/engine/speclink-core/src/workspace/init.rs 的 `ASSET_VERSION` 自 v1.38.0 升為 v1.39.0（v1.38.0 已由先落地的 discuss-scout-in-flight-deltas 使用），並以 `UPDATE_ASSETS_LOCK=1` 與 `UPDATE_GOLDEN=1` 同批更新 crates/engine/speclink-core/tests/golden/ 下 claude.snapshot.md、claude-worktree.snapshot.md、codex.snapshot.md、neutral-cli.snapshot.md、neutral-tool-call.snapshot.md 與 assets.lock。驗證：`cargo test -p speclink-core --test it render_golden::` 與 assets.lock 鎖定測試全綠；`git diff --stat crates/engine/speclink-core/assets/skills/` 只列 apply-worktree-pre.md 與 ingest.md；claude-worktree 快照的 apply-with-worktree 段含 `Select the change with plan`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "02c3f73164d74ff376041fb1aec6a316d0f5ac71",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ],
+      "recordedAt": "2026-09-17T02:39:48Z"
+    }
+  ]
+}

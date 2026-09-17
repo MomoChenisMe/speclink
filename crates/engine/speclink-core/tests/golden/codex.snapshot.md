@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.38.0"
+  version: "v1.39.0"
   generatedBy: "Speclink"
 ---
 
@@ -355,7 +355,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.38.0"
+  version: "v1.39.0"
   generatedBy: "Speclink"
 ---
 
@@ -675,7 +675,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.38.0"
+  version: "v1.39.0"
   generatedBy: "Speclink"
 ---
 
@@ -911,7 +911,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.38.0"
+  version: "v1.39.0"
   generatedBy: "Speclink"
 ---
 
@@ -1034,7 +1034,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.38.0"
+  version: "v1.39.0"
   generatedBy: "Speclink"
 ---
 
@@ -1326,7 +1326,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.38.0"
+  version: "v1.39.0"
   generatedBy: "Speclink"
 ---
 
@@ -1471,7 +1471,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.38.0"
+  version: "v1.39.0"
   generatedBy: "Speclink"
 ---
 
@@ -1959,7 +1959,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.38.0"
+  version: "v1.39.0"
   generatedBy: "Speclink"
 ---
 
@@ -2088,7 +2088,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.38.0"
+  version: "v1.39.0"
   generatedBy: "Speclink"
 ---
 
@@ -2273,7 +2273,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.38.0"
+  version: "v1.39.0"
   generatedBy: "Speclink"
 ---
 
@@ -2509,7 +2509,20 @@ Update an existing Speclink change — from a plan file or conversation context.
 
    If validation fails, fix errors and re-validate.
 
-9. **Seal the reflection** (discussion-sourced ingests only)
+9. **Re-judge soft dependencies**
+
+   The update may have made this change build on another change's outcome. Record that now, so the plan guard of the next apply sees it:
+
+   1. Run `speclink list --json` for the active change names. The change you just updated counts.
+   2. **Only one active change** (the one you just updated) → skip the rest of this step and run nothing.
+   3. **Two or more** → judge the **soft dependencies of the change you just updated only** — never re-judge the whole landscape:
+      - Going by the updated artifacts, read the Impact section of each other active change's proposal and decide whether this change builds on that change's outcome, or edits the same code areas. Each such change is a prerequisite of this one.
+      - Record every prerequisite you found: `speclink change depends <name> --on <prerequisite>...`. This writes `depends_on` into the change's metadata, where the plan guard of the next apply reads it. A verbal note is not enough — if you found a prerequisite, the command must have run. An edge that already exists is left as it is. The verb refuses (with zero writes) a self-dependency, an unknown or archived name, and an edge that would form a cycle; report the refusal and continue — do not retry, and do not edit another change's `depends_on`.
+      - No prerequisite found → run nothing.
+      - **Hard signal — delta capability overlap** is the engine's job: the plan detects two changes that carry a delta for the same capability and sequences them. Do NOT judge overlap yourself.
+   4. Never remove an existing `depends_on` entry here — dropping a prerequisite is the user's decision. Never run `$speclink-apply` yourself.
+
+10. **Seal the reflection** (discussion-sourced ingests only)
 
    If this ingest folded a linked discussion's conclusion into the change, mark the reflection now that the content has landed:
 
@@ -2519,7 +2532,7 @@ Update an existing Speclink change — from a plan file or conversation context.
 
    `seal` flips the discussion to promoted (已轉出) and is idempotent — run it once per linked `from_discussion` slug (from `fromDiscussions` in `speclink show <change> --json`). This is what keeps "已轉出" honest: the discussion is marked reflected only after ingest actually carried its content in, never at link time. `seal` also clears that slug from the change's `restaleFrom` flag, so a re-ingest (triggered by a re-concluded discussion) closes the loop and the "待重新反映" marker disappears. Skip this step when no discussion fed the change.
 
-10. **Summary and next steps**
+11. **Summary and next steps**
 
    Show:
    - Source used: plan file (`<path>`) or conversation context
@@ -2546,7 +2559,7 @@ Update an existing Speclink change — from a plan file or conversation context.
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
 - The artifacts are updated and validated → `$speclink-apply <change-name>` to resume implementation
-- A linked discussion fed this change → `speclink discuss seal <slug>` first (step 9), then the same suggestion applies
+- A linked discussion fed this change → `speclink discuss seal <slug>` first (step 10), then the same suggestion applies
 
 === .agents/skills/speclink-manual/SKILL.md ===
 ---
@@ -2556,7 +2569,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.38.0"
+  version: "v1.39.0"
   generatedBy: "Speclink"
 ---
 
@@ -2767,7 +2780,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.38.0"
+  version: "v1.39.0"
   generatedBy: "Speclink"
 ---
 
@@ -3241,7 +3254,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.38.0"
+  version: "v1.39.0"
   generatedBy: "Speclink"
 ---
 
@@ -3336,7 +3349,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.38.0"
+  version: "v1.39.0"
   generatedBy: "Speclink"
 ---
 
@@ -3532,7 +3545,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.38.0"
+  version: "v1.39.0"
   generatedBy: "Speclink"
 ---
 
@@ -3616,7 +3629,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.38.0"
+  version: "v1.39.0"
   generatedBy: "Speclink"
 ---
 
