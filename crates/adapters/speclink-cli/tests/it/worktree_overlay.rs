@@ -48,6 +48,11 @@ impl Fixture {
         f.git(&["init", "-q", "-b", "main"]);
         f.git(&["config", "user.name", "Sandbox Tester"]);
         f.git(&["config", "user.email", "sandbox@example.com"]);
+        // Windows 的 git 預設 core.autocrlf=true，`git worktree add` 會在 checkout
+        // 時把 LF 換成 CRLF——worktree 副本的 .openspec.yaml 於是與 META 的位元
+        // 不同，引擎沿用各行行尾寫回後，拿 LF 字面逐位元比對便會誤紅。沙盒的
+        // 行尾由測試自己決定，不隨機器的 git 設定漂移。
+        f.git(&["config", "core.autocrlf", "false"]);
         f.git(&["add", "-A"]);
         f.git(&["commit", "-q", "-m", "init"]);
         f
