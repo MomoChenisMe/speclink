@@ -139,10 +139,14 @@ Once the user picks, this becomes an ordinary speclink discussion, run with the 
 
 ```bash
 speclink discuss conclude improve-<scope> --stdin <<'CONCLUSION_EOF'
-**Decision**: ...
-**Rationale**: ... (the trade-off that drove it)
-**Rejected alternatives**: ... (each candidate that lost, with why)
-**Deferred**: ... — or "none"
+**Decision**: ... (a one-sentence verdict; beyond one sentence, bullet it)
+- ... (one settled point per line — keep every detail, never trim)
+- **cut N `change-name`**: ... (one bullet per cut when the work is staged)
+  - ... (that cut's details, one item each)
+**Rationale**: ... (the trade-off that drove it — a single paragraph)
+**Rejected alternatives**:
+- ... — ... (each candidate that lost — why, one per line)
+**Deferred**: none (or `- question — why not now`, one per line)
 **Capture to**: proposal
 **Next**: /speclink-propose --from-discussion improve-<scope>
 CONCLUSION_EOF
@@ -156,8 +160,9 @@ Then fan out: `speclink discuss promote <slug>` (or `/speclink-propose --from-di
 speclink discuss conclude improve-<scope> --stdin <<'CONCLUSION_EOF'
 **Decision**: no change — none of this round's candidates are worth doing
 **Rationale**: ...
-**Rejected alternatives**: ... (every candidate, with the reason it lost)
-**Deferred**: ...
+**Rejected alternatives**:
+- ... — ... (every candidate, with the reason it lost, one per line)
+**Deferred**: none (or `- question — why not now`, one per line)
 CONCLUSION_EOF
 
 speclink discuss archive improve-<scope>
