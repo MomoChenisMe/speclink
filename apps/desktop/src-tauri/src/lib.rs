@@ -35,7 +35,7 @@ mod panel;
 
 use std::path::PathBuf;
 
-use serde_json::Value;
+use serde_json::{json, Value};
 use tauri::{Emitter, Manager};
 
 #[tauri::command]
@@ -346,6 +346,31 @@ async fn archived_capabilities(root: PathBuf, dated_name: String) -> Result<Vec<
     })
     .await
     .map_err(|e| format!("archived_capabilities worker failed: {e}"))
+}
+
+/// 一站的活工單（drawer-quality-ticket-tab D1／D2）：`{ "rounds": [ … ] }`，無工單、
+/// 未知站別或格式壞掉皆回 null。
+#[tauri::command]
+async fn station_ticket(root: PathBuf, change: String, station: String) -> Result<Option<Value>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::query::station_ticket_at(&root, &change, &station)
+    })
+    .await
+    .map_err(|e| format!("station_ticket worker failed: {e}"))
+}
+
+/// 已封存 change 帶走的工單，形狀與 null 語意同 `station_ticket`。
+#[tauri::command]
+async fn archived_station_ticket(
+    root: PathBuf,
+    dated_name: String,
+    station: String,
+) -> Result<Option<Value>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::query::archived_station_ticket_at(&root, &dated_name, &station)
+    })
+    .await
+    .map_err(|e| format!("archived_station_ticket worker failed: {e}"))
 }
 
 #[tauri::command]
@@ -1336,6 +1361,55 @@ async fn remote_document(
     .await
 }
 
+/// 遠端活工單：`GET /changes/{name}/{station}` 已是結構化 rounds，直接取 `rounds`
+/// 即 D1 形狀；404 與本地語意一致回 null。未知站別不拼 URL，直接 null。
+#[tauri::command]
+async fn remote_station_ticket(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    change: String,
+    station: String,
+) -> Result<Option<Value>, String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        let Some(st) = speclink_desktop_core::query::station_by_noun(&station) else {
+            return Ok(None);
+        };
+        ws.station_ticket(credentials, st.noun, &change)
+            .map(|ticket| ticket.map(|resp| json!({ "rounds": resp.rounds })))
+            .map_err(|error| error.message)
+    })
+    .await
+}
+
+/// 遠端封存工單：封存文件端點只給原文，取回後交引擎解析（desktop core 的
+/// `ticket_json_from_text`）；404 回 null，格式壞掉同樣 null。
+#[tauri::command]
+async fn remote_archived_station_ticket(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    dated_name: String,
+    station: String,
+) -> Result<Option<Value>, String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        let Some(st) = speclink_desktop_core::query::station_by_noun(&station) else {
+            return Ok(None);
+        };
+        match ws.archived_document(credentials, &dated_name, st.doc) {
+            Ok(document) => Ok(speclink_desktop_core::query::ticket_json_from_text(
+                st.noun,
+                &document.content,
+            )),
+            Err(error) if error.status == Some(404) => Ok(None),
+            Err(error) => Err(error.message),
+        }
+    })
+    .await
+}
+
 #[tauri::command]
 async fn remote_set_task_done(
     app: tauri::AppHandle,
@@ -1793,6 +1867,8 @@ pub fn run() {
             archived_changes,
             archived_document,
             archived_capabilities,
+            station_ticket,
+            archived_station_ticket,
             list_discussions,
             discussion_document,
             promote_discussion,
@@ -1842,6 +1918,8 @@ pub fn run() {
             remote_archived_capabilities,
             remote_status,
             remote_document,
+            remote_station_ticket,
+            remote_archived_station_ticket,
             remote_set_task_done,
             remote_set_all_tasks,
             remote_archive,

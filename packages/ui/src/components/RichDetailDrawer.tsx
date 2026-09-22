@@ -25,7 +25,14 @@ import {
   X,
 } from "lucide-react";
 
-import type { ChangeItem, ChangeMetaInfo, Verb, VerbDrawerResult } from "../adapter";
+import type {
+  ChangeItem,
+  ChangeMetaInfo,
+  StationTicket,
+  TicketStation,
+  Verb,
+  VerbDrawerResult,
+} from "../adapter";
 import { specDeltaCounts, sumDeltaCounts } from "../delta";
 import { changeStage, planBlockedBy, planWave, planWaveLabel } from "../stage";
 import { useI18n } from "../i18n";
@@ -44,6 +51,7 @@ import { DocSkeleton } from "./skeletons";
 import { TaskList } from "./TaskList";
 import { DeltaBadges, DeltaSpecView } from "./DeltaBadges";
 import { AnalyzePanel } from "./AnalyzePanel";
+import { TicketTabBody, type TicketDoc } from "./TicketView";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE, type ReviewBadgeStatus } from "./reviewStyle";
 import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE, type VerifyBadgeStatus } from "./verifyStyle";
 import { setTaskMark } from "../tasks";
@@ -58,6 +66,10 @@ export interface RichDetailDrawerProps {
   loadDocument: (change: string, artifact: string) => Promise<string | null>;
   loadCapabilities: (change: string) => Promise<string[]>;
   loadMeta: (change: string) => Promise<ChangeMetaInfo | null>;
+  /** 一站的活工單（spec desktop-app「詳情抽屜的工單分頁」）：分頁出現時載入、隨
+   * refreshGen 重載；回 null 或 reject 皆為分頁空態。未提供時分頁仍依清單狀態出現、
+   * 內容為空態。 */
+  loadStationTicket?: (change: string, station: TicketStation) => Promise<StationTicket | null>;
   onRunVerb?: (verb: Verb, change: string) => void;
   /** 抽屜內呈現的分析結構化結果（validate＋analyze 合併；僅當 change 相符時呈現；archive 不走此結果面）。 */
   drawerVerb?: VerbDrawerResult | null;
@@ -317,6 +329,7 @@ export function RichDetailDrawer({
   loadDocument,
   loadCapabilities,
   loadMeta,
+  loadStationTicket,
   onRunVerb,
   drawerVerb,
   onClearVerb,
@@ -345,6 +358,13 @@ export function RichDetailDrawer({
   const [tasksMd, setTasksMd] = useState<Doc>();
   // undefined＝capability 清單與其規格文件尚未載完（與「無 delta 規格」的空物件分流）。
   const [specDocs, setSpecDocs] = useState<Record<string, string | null> | undefined>();
+  // 兩站工單（design D3）：只在對應分頁出現時載入，狀態翻回非進行中即清回未載入。
+  const [tickets, setTickets] = useState<Record<TicketStation, TicketDoc>>({
+    review: undefined,
+    verify: undefined,
+  });
+  // 受控分頁：工單分頁退場時要能把當前分頁切回「提案」（design D3）。
+  const [tab, setTab] = useState("proposal");
   const [copied, markCopied] = useCopied();
   const [full, setFull] = useState(false);
   // 批次操作／拖放寫回進行中——鎖工具列與清單（design D4 例外）。單發勾選不設此旗標。
@@ -373,6 +393,7 @@ export function RichDetailDrawer({
       setTasksMd(undefined);
       setSpecDocs(undefined);
       setRoster(loadDependsCandidates ? undefined : null);
+      setTickets({ review: undefined, verify: undefined });
     }
     const fresh = <T,>(apply: (v: T) => void) => (v: T) => {
       if (requestSeq.current === seq) apply(v);
@@ -423,6 +444,42 @@ export function RichDetailDrawer({
     loadAll(gen, name, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, name, gen, taskBusy, dragActive, pendingWrites]);
+
+  const inReview = change?.reviewStatus === "inReview";
+  const inVerify = change?.verifyStatus === "inVerify";
+  // 工單載入 latest-wins：每站一個序號，換 change／世代交錯時晚到的舊回應丟棄。
+  const ticketSeq = useRef<Record<TicketStation, number>>({ review: 0, verify: 0 });
+  const loadTicket = (station: TicketStation, target: string) => {
+    const seq = ++ticketSeq.current[station];
+    const apply = (v: TicketDoc) => {
+      if (ticketSeq.current[station] === seq) setTickets((prev) => ({ ...prev, [station]: v }));
+    };
+    // 失敗與無工單同一終態（spec：讀取或解析失敗顯示空態而非錯誤）。
+    (loadStationTicket ? loadStationTicket(target, station) : Promise.resolve(null))
+      .then(apply)
+      .catch(() => apply(null));
+  };
+  // 分頁出現時載入、隨世代重載；分頁消失時清回未載入，下次出現重新走骨架。
+  useEffect(() => {
+    if (!open || !name) return;
+    if (inReview) loadTicket("review", name);
+    else setTickets((prev) => (prev.review === undefined ? prev : { ...prev, review: undefined }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, name, inReview, gen]);
+  useEffect(() => {
+    if (!open || !name) return;
+    if (inVerify) loadTicket("verify", name);
+    else setTickets((prev) => (prev.verify === undefined ? prev : { ...prev, verify: undefined }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, name, inVerify, gen]);
+  // 開啟／換 change 從「提案」起（uncontrolled 時內容隨 Sheet 重掛即如此，受控後明寫）。
+  useEffect(() => {
+    if (open) setTab("proposal");
+  }, [open, name]);
+  // 停在工單分頁而該站翻為非進行中（工單已蓋章或放棄刪除）：分頁消失，退回「提案」。
+  useEffect(() => {
+    if ((tab === "review" && !inReview) || (tab === "verify" && !inVerify)) setTab("proposal");
+  }, [tab, inReview, inVerify]);
 
   if (!change) return null;
 
@@ -755,7 +812,7 @@ export function RichDetailDrawer({
           )}
         </SheetHeader>
 
-        <Tabs defaultValue="proposal" className="flex-1 min-h-0 flex flex-col">
+        <Tabs value={tab} onValueChange={setTab} className="flex-1 min-h-0 flex flex-col">
           <TabsList>
             <TabsTrigger value="proposal">
               <FileText className="h-3.5 w-3.5" /> {t("common.tabProposal")}
@@ -774,6 +831,18 @@ export function RichDetailDrawer({
             <TabsTrigger value="plan">
               <ListOrdered className="h-3.5 w-3.5" /> {t("drawer.tab.plan")}
             </TabsTrigger>
+            {/* 條件式工單分頁（spec desktop-app「詳情抽屜的工單分頁」）：排程之後、
+                審查在前，與狀態列章籤同序；分頁名即站名。 */}
+            {inReview && (
+              <TabsTrigger value="review">
+                {REVIEW_ICON.inReview} {t("drawer.tab.review")}
+              </TabsTrigger>
+            )}
+            {inVerify && (
+              <TabsTrigger value="verify">
+                {VERIFY_ICON.inVerify} {t("drawer.tab.verify")}
+              </TabsTrigger>
+            )}
           </TabsList>
           <div className="flex-1 overflow-y-auto pt-3">
             {/* 共用置中容器包住分頁全部內容——區段標籤、任務清單與內文同欄（design D4）。 */}
@@ -846,6 +915,16 @@ export function RichDetailDrawer({
                 onSetDepends={onSetDepends}
               />
             </TabsContent>
+            {inReview && (
+              <TabsContent value="review">
+                <TicketTabBody station="review" ticket={tickets.review} />
+              </TabsContent>
+            )}
+            {inVerify && (
+              <TabsContent value="verify">
+                <TicketTabBody station="verify" ticket={tickets.verify} />
+              </TabsContent>
+            )}
             </div>
           </div>
         </Tabs>

@@ -167,6 +167,25 @@ describe("createTauriDataSource", () => {
     });
   });
 
+  it("工單分頁的兩個讀取各走自己的 command（drawer-quality-ticket-tab D2／D5）", async () => {
+    // 活工單以 change＋station 定址、封存工單以 datedName＋station 定址；payload
+    // 原樣透傳（null＝無工單、遠端 404 或格式壞掉，前端一律空態）。
+    const ticket = {
+      rounds: [{ index: 1, phase: "discovery", patchHash: null, scope: ["src/a.rs"], findings: [] }],
+    };
+    invoke.mockResolvedValueOnce(ticket);
+    const ds = createTauriDataSource("/r");
+    expect(await ds.getStationTicket("chg", "review")).toEqual(ticket);
+    expect(invoke).toHaveBeenCalledWith("station_ticket", { root: "/r", change: "chg", station: "review" });
+    invoke.mockResolvedValueOnce(null);
+    expect(await ds.getArchivedStationTicket("2026-01-01-old", "verify")).toBeNull();
+    expect(invoke).toHaveBeenCalledWith("archived_station_ticket", {
+      root: "/r",
+      datedName: "2026-01-01-old",
+      station: "verify",
+    });
+  });
+
   it("dependsCandidates invokes depends_candidates with root and change（add-change-plan-remote D9）", async () => {
     // 排程分頁的候選名冊：有 worktree 映射時為副本名冊，由桌面 core 定根。
     invoke.mockResolvedValueOnce(["add-auth"]);

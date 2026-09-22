@@ -76,6 +76,10 @@ export type {
   AnalyzeReport,
   VerbDrawerResult,
   RevertBlockedEvidence,
+  TicketStation,
+  TicketFinding,
+  TicketRound,
+  StationTicket,
 } from "./adapter";
 export { RevertBlockedError, toRevertError, emptyManualIndex } from "./adapter";
 export {
@@ -88,6 +92,7 @@ export { DocumentTree } from "./components/DocumentTree";
 export type { DocumentTreeProps, TreeSelection } from "./components/DocumentTree";
 export { DocumentViewer } from "./components/DocumentViewer";
 export type { DocumentViewerProps } from "./components/DocumentViewer";
+export { TicketView, type TicketViewProps } from "./components/TicketView";
 
 // 狀態語意色（單一來源；三紅分工見 tone.ts 表頭）
 export { SEMANTIC_TONE, SEMANTIC_SURFACE, type SemanticTone } from "./tone";

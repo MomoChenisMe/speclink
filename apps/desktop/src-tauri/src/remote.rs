@@ -21,6 +21,7 @@ use speclink_desktop_core::settings::{
 use speclink_protocol::binding::BindingResponse;
 use speclink_protocol::command::{
     ArchiveDiscussionResponse, ArchiveResponse, ClaimResponse, PromoteDiscussionResponse,
+    ReviewTicketResponse,
 };
 use speclink_protocol::events::TransportKind;
 use speclink_protocol::query::{
@@ -1548,6 +1549,18 @@ impl RemoteWorkspace {
         self.run(credentials, |client| {
             client.archived_capabilities(dated_name)
         })
+    }
+
+    /// 一站的活工單（drawer-quality-ticket-tab D2）：`GET /changes/{name}/{station}`
+    /// 的結構化 rounds。404（無工單或 change 不存在）→ `None`；其他錯誤原樣上拋
+    /// ——離線不得被讀成「沒有工單」。
+    pub fn station_ticket(
+        &self,
+        credentials: &dyn CredentialStore,
+        station: &str,
+        change: &str,
+    ) -> Result<Option<ReviewTicketResponse>, RemoteError> {
+        self.run(credentials, |client| client.station_ticket_if_any(station, change))
     }
 
     pub fn change_status(

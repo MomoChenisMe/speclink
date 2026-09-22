@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Code2, Copy, FileText, ListChecks, Maximize2, Minimize2, PenTool } from "lucide-react";
 
-import type { ArchivedItem } from "../adapter";
+import type { ArchivedItem, StationTicket, TicketStation } from "../adapter";
 import { useI18n } from "../i18n";
 import { useLingering } from "../lib/useLingering";
 import { Button } from "./ui/button";
@@ -18,9 +18,10 @@ import { LABEL_CLS, SectionedDoc } from "./SectionedDoc";
 import { TaskList } from "./TaskList";
 import { ImproveChip } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
-import { REVIEW_LABEL_KEY, REVIEW_TONE } from "./reviewStyle";
+import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE } from "./reviewStyle";
+import { TicketTabBody, type TicketDoc } from "./TicketView";
 import { useCopied } from "./useCopied";
-import { VERIFY_LABEL_KEY, VERIFY_TONE } from "./verifyStyle";
+import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE } from "./verifyStyle";
 
 /** 抽屜目標（design D1：discriminated target 兩型同檔）：封存變更或封存討論。 */
 export type ArchivedTarget =
@@ -37,6 +38,9 @@ export interface ArchivedDrawerProps {
   loadDocument: (datedName: string, artifact: string) => Promise<string | null>;
   /** 列出封存變更的 delta capability 名。 */
   loadCapabilities: (datedName: string) => Promise<string[]>;
+  /** 封存目錄帶走的化石工單（spec desktop-app「已封存抽屜的工單分頁」）：對應分頁
+   * 出現時載入；回 null 或 reject 皆為分頁空態。未提供時內容為空態。 */
+  loadStationTicket?: (datedName: string, station: TicketStation) => Promise<StationTicket | null>;
   /** 讀取封存討論記錄全文（slug 定址）；缺席回 null。 */
   loadDiscussionDocument: (slug: string) => Promise<string | null>;
   /** 封存變更的來源討論（slug＋topic，App 端解析；缺席/空＝不顯示 chips）。 */
@@ -75,6 +79,7 @@ export function ArchivedDrawer({
   refreshGen,
   loadDocument,
   loadCapabilities,
+  loadStationTicket,
   loadDiscussionDocument,
   sourceDiscussions,
   onOpenDiscussion,
@@ -96,6 +101,11 @@ export function ArchivedDrawer({
   // undefined＝capability 清單與其規格文件尚未載完（與「無規格差異」的空物件分流）。
   const [specDocs, setSpecDocs] = useState<Record<string, string | null> | undefined>();
   const [discussionDoc, setDiscussionDoc] = useState<Doc>();
+  // 帶走的化石工單（design D5）：只在對應結局分頁出現時載入。
+  const [tickets, setTickets] = useState<Record<TicketStation, TicketDoc>>({
+    review: undefined,
+    verify: undefined,
+  });
   const [full, setFull] = useState(false);
 
   const gen = refreshGen ?? 0;
@@ -115,6 +125,7 @@ export function ArchivedDrawer({
       setTasksMd(undefined);
       setSpecDocs(undefined);
       setDiscussionDoc(undefined);
+      setTickets({ review: undefined, verify: undefined });
     }
     const fresh = <T,>(apply: (v: T) => void) => (v: T) => {
       if (requestSeq.current === seq) apply(v);
@@ -163,6 +174,31 @@ export function ArchivedDrawer({
     loadAll(gen, target, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, targetKey, gen]);
+
+  // 工單分頁條件（spec「已封存抽屜的工單分頁」）：帶走化石工單而無章的結局。
+  const carriedReview = target?.kind === "change" && reviewStatus === "reviewedNotPassed";
+  const carriedVerify = target?.kind === "change" && verifyStatus === "verifiedNotPassed";
+  const datedName = target?.kind === "change" ? target.datedName : null;
+  const ticketSeq = useRef<Record<TicketStation, number>>({ review: 0, verify: 0 });
+  const loadTicket = (station: TicketStation, name: string) => {
+    const seq = ++ticketSeq.current[station];
+    const apply = (v: TicketDoc) => {
+      if (ticketSeq.current[station] === seq) setTickets((prev) => ({ ...prev, [station]: v }));
+    };
+    (loadStationTicket ? loadStationTicket(name, station) : Promise.resolve(null))
+      .then(apply)
+      .catch(() => apply(null));
+  };
+  useEffect(() => {
+    if (!open || !datedName || !carriedReview) return;
+    loadTicket("review", datedName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, datedName, carriedReview, gen]);
+  useEffect(() => {
+    if (!open || !datedName || !carriedVerify) return;
+    loadTicket("verify", datedName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, datedName, carriedVerify, gen]);
 
   if (!target) return null;
 
@@ -308,6 +344,17 @@ export function ArchivedDrawer({
                 <Code2 className="h-3.5 w-3.5" /> {t("common.tabSpecs")}
                 {specCount > 0 ? `＋${specCount}` : ""}
               </TabsTrigger>
+              {/* 條件式工單分頁：規格之後、審查在前，與已封存側標示同序。 */}
+              {carriedReview && (
+                <TabsTrigger value="review">
+                  {REVIEW_ICON.reviewedNotPassed} {t("drawer.tab.review")}
+                </TabsTrigger>
+              )}
+              {carriedVerify && (
+                <TabsTrigger value="verify">
+                  {VERIFY_ICON.verifiedNotPassed} {t("drawer.tab.verify")}
+                </TabsTrigger>
+              )}
             </TabsList>
             <div className="flex-1 overflow-y-auto pt-3">
               {/* 共用置中容器包住分頁全部內容——區段標籤、任務清單與內文同欄（design D4）。 */}
@@ -348,6 +395,16 @@ export function ArchivedDrawer({
                   ))
                 )}
               </TabsContent>
+              {carriedReview && (
+                <TabsContent value="review">
+                  <TicketTabBody station="review" ticket={tickets.review} />
+                </TabsContent>
+              )}
+              {carriedVerify && (
+                <TabsContent value="verify">
+                  <TicketTabBody station="verify" ticket={tickets.verify} />
+                </TabsContent>
+              )}
               </div>
             </div>
           </Tabs>
