@@ -456,31 +456,10 @@ pub fn ticket_json_from_text(station: &str, text: &str) -> Option<Value> {
     ticket_json_parsed(station_by_noun(station)?, text)
 }
 
-/// D1 形狀的唯一序列化落點：round 的欄位集合與 null 語意與 CLI `--json` 逐欄相同，
-/// 只是不帶 `change`／`lastRound`（前端取陣列末項）。
+/// D1 形狀：`{ "rounds": [ … ] }`，每輪交引擎 `Round::to_json`——與 CLI `--json`
+/// 同一份序列化，只是不帶 `change`／`lastRound`（前端取陣列末項）。
 pub fn ticket_json(ticket: &station::Ticket) -> Value {
-    let rounds: Vec<Value> = ticket
-        .rounds
-        .iter()
-        .map(|r| {
-            json!({
-                "index": r.index,
-                "phase": r.phase.map(|p| p.as_str()),
-                "patchHash": r.patch_hash,
-                "scope": r.scope,
-                "findings": r
-                    .findings
-                    .iter()
-                    .map(|f| json!({
-                        "severity": f.severity.as_str(),
-                        "path": f.path,
-                        "text": f.text,
-                    }))
-                    .collect::<Vec<_>>(),
-            })
-        })
-        .collect();
-    json!({ "rounds": rounds })
+    json!({ "rounds": ticket.rounds.iter().map(station::Round::to_json).collect::<Vec<_>>() })
 }
 
 fn ticket_json_parsed(st: &station::Station, text: &str) -> Option<Value> {

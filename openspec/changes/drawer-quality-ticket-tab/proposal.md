@@ -10,7 +10,7 @@
 - 載入三態沿用「抽屜文件載入以 skeleton 呈現」：載入中 skeleton、載入完成無工單顯示分頁空態、有內容渲染。使用者停在該分頁時工單被刪（蓋章／放棄）：狀態隨看板刷新翻為非進行中，分頁消失，選中分頁退回「提案」。
 - 資料來源介面（`packages/ui/src/adapter.ts` 的 `DataSource`）新增 `getStationTicket(change, station)` 與 `getArchivedStationTicket(datedName, station)`，回傳結構化工單 `{ rounds: [{ index, phase, patchHash, scope, findings: [{ severity, path, text }] }] }` 或 `null`（無工單）。形狀與 CLI `speclink review show --json` 的 `rounds` 及 server `GET /changes/{name}/review` 的 `rounds` 同構。
 - `apps/desktop/core` 新增查詢：本機活工單（經 change 的 store context 讀 `review.md`／`verify.md`，含 worktree 覆蓋層）與本機封存工單（`read_archived_artifact`）各解析成上述 JSON；`apps/desktop/src-tauri` 新增四個 Tauri 指令——本機活、本機封存、遠端活（走 `speclink-remote` 既有的 `station_ticket_if_any`，直接取 `rounds`）、遠端封存（走既有 `archived_artifact` 取原文後以引擎解析）。不放寬引擎 `artifact cat` 的 artifact 名白名單。
-- `speclink-core` 的 `quality::station::parse_ticket` 由私有升為 `pub`：純函式「站別＋工單文字 → `Ticket`」，供 desktop core 對封存原文與遠端封存原文解析。引擎行為不變，只是曝露既有解析。
+- `speclink-core` 的 `quality::station::parse_ticket` 由私有升為 `pub`：純函式「站別＋工單文字 → `Ticket`」，供 desktop core 對封存原文與遠端封存原文解析。輪的 JSON 形狀由引擎 `Round::to_json` 一處定義，CLI `--json` 與桌面共用。引擎行為不變，只是曝露既有解析與序列化。
 - `openspec/LANGUAGE.md` 新增詞條「首輪」（discovery 輪）與「複驗」（validation 輪），avoid「驗證輪」（與驗證站撞名）、「發現輪」；並於「換頁」詞條補註面板 tab 稱「分頁」不稱「頁籤」。
 - i18n（`packages/ui/src/i18n.tsx`）新增 tw／en 詞條：分頁標籤、階段詞、「範圍 N 檔」、「已接受」、「第 N 輪」、分頁空態。
 
@@ -34,7 +34,9 @@
     - packages/ui/src/components/TicketView.tsx（結構化工單元件：段標題、可收合輪次、finding 列）
     - packages/ui/src/__tests__/ticketView.test.tsx
   - Modified:
-    - crates/engine/speclink-core/src/quality/station.rs（`parse_ticket` 升為 pub）
+    - crates/engine/speclink-core/src/quality/station.rs（`parse_ticket` 升為 pub、新增 `Round::to_json`）
+    - crates/engine/speclink-core/src/quality/station/tests.rs（`Round::to_json` 形狀測試）
+    - crates/adapters/speclink-cli/src/verbs/station.rs（`round_json` 閉包改呼叫 `Round::to_json`，輸出不變）
     - apps/desktop/core/src/query.rs（本機活工單與封存工單查詢、`Ticket` → JSON）
     - apps/desktop/src-tauri/src/lib.rs（四個 Tauri 指令與註冊）
     - apps/desktop/src/adapter/tauriDataSource.ts（local 資料源實作兩個方法）

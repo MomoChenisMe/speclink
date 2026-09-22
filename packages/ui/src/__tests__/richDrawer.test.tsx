@@ -1427,6 +1427,39 @@ describe("詳情抽屜的工單分頁", () => {
     rerender(<RichDetailDrawer {...(props as never)} refreshGen={1} />);
     await waitFor(() => expect(loadStationTicket).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(headerText()).toMatch(/^審查 · 第 2 輪/));
+    // spec Scenario「工單追加輪後分頁更新」THEN：新末輪展開、舊輪收合。
+    const expanded = (index: number) =>
+      document
+        .querySelector(`[data-ticket-round="${index}"] [data-ticket-round-toggle]`)
+        ?.getAttribute("aria-expanded");
+    expect(expanded(2)).toBe("true");
+    expect(expanded(1)).toBe("false");
+  });
+
+  it("換 change 時在途的舊工單回應不落地：新 change 進入 inReview 先見骨架", async () => {
+    let settleX: (t: typeof REVIEW_TICKET) => void = () => {};
+    const loadStationTicket = vi.fn((change: string) =>
+      change === "x"
+        ? new Promise<typeof REVIEW_TICKET>((resolve) => {
+            settleX = resolve;
+          })
+        : new Promise<never>(() => {}),
+    );
+    const props = makeProps({ change: x({ reviewStatus: "inReview", verifyStatus: "none" }), loadStationTicket });
+    const { rerender } = render(<RichDetailDrawer {...(props as never)} />);
+    await waitFor(() => expect(loadStationTicket).toHaveBeenCalledWith("x", "review"));
+
+    // 切到沒有工單的 y，x 的回應才到——必須被丟棄。
+    rerender(<RichDetailDrawer {...(props as never)} change={x({ name: "y", reviewStatus: "none" })} />);
+    await waitFor(() => expect(screen.queryByRole("tab", { name: /審查/ })).toBeNull());
+    settleX(REVIEW_TICKET);
+    await screen.findByText(/doc for proposal.md/);
+
+    // y 進入 inReview：載入在途，分頁該是骨架，不得先閃出 x 的工單。
+    rerender(<RichDetailDrawer {...(props as never)} change={x({ name: "y", reviewStatus: "inReview" })} />);
+    await openTab(/審查/);
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeTruthy());
+    expect(document.querySelector("[data-ticket-header]")).toBeNull();
   });
 
   it("載入中 → 骨架；載入器 reject 或回 null → 「工單尚未抵達或已被刪除」，非錯誤", async () => {

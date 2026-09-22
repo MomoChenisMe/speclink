@@ -150,6 +150,29 @@ pub struct Round {
     pub findings: Vec<Finding>,
 }
 
+impl Round {
+    /// 一輪的 JSON 形狀——CLI `<station> show --json` 的 `rounds` 項與桌面工單分頁
+    /// 共用這一份（欄位集合與 null 語意是對外契約）：camelCase，legacy 輪的
+    /// `phase`／`patchHash` 為明確 null。server 的 `ReviewRoundDto` 是同形的型別化鏡射。
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "index": self.index,
+            "phase": self.phase.map(|p| p.as_str()),
+            "patchHash": self.patch_hash,
+            "scope": self.scope,
+            "findings": self
+                .findings
+                .iter()
+                .map(|f| serde_json::json!({
+                    "severity": f.severity.as_str(),
+                    "path": f.path,
+                    "text": f.text,
+                }))
+                .collect::<Vec<_>>(),
+        })
+    }
+}
+
 /// 解析後的工單。經 `add_round` 建立的工單至少含一輪。
 #[derive(Debug, Clone)]
 pub struct Ticket {

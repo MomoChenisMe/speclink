@@ -1553,12 +1553,13 @@ impl RemoteWorkspace {
 
     /// 一站的活工單（drawer-quality-ticket-tab D2）：`GET /changes/{name}/{station}`
     /// 的結構化 rounds。404（無工單或 change 不存在）→ `None`；其他錯誤原樣上拋
-    /// ——離線不得被讀成「沒有工單」。
+    /// ——離線不得被讀成「沒有工單」。參數順序同鄰近的 `document(credentials, change,
+    /// artifact)`：change 在前、站別在後。
     pub fn station_ticket(
         &self,
         credentials: &dyn CredentialStore,
-        station: &str,
         change: &str,
+        station: &str,
     ) -> Result<Option<ReviewTicketResponse>, RemoteError> {
         self.run(credentials, |client| client.station_ticket_if_any(station, change))
     }

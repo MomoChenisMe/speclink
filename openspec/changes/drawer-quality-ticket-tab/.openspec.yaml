@@ -5,3 +5,101 @@ created_with: claude
 from_discussion: drawer-quality-ticket-tab
 started_at: 2026-09-22
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-22
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 14
+reviewed_scope:
+  - path: apps/desktop/core/src/query.rs
+    hash: fcd5f97a45bf561dad975870e684082c241bba747e2fdb6bc7dccc4163fd2a75
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: d73e1632f5591c067bd0832c7945714a3eead2e397f02d564a389a3a25374ff6
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 7e4a2a1508e5cf0f85cc21404353a28bc26b855012dbc453c24db1416484c50d
+  - path: apps/desktop/src-tauri/tests/it/remote_data.rs
+    hash: 2b8b8aecf25ad6c9dacafedd0300056c891159658dab9e3338d27ad32a7f8355
+  - path: apps/desktop/src/App.tsx
+    hash: ea6249100a5e4b9a105c530a53015b036f7a916c5038005ae59f5aa0e61c275e
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 0e595e256a48dff8019e3b64bcd6d95245762d88689191f5d4fc9e8e214ab8b2
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: b3bf30b09c6fdf1f8a6eae7b5aed671b02ac33a809806996bda812557f4dc427
+  - path: apps/desktop/src/__tests__/tauriDataSource.test.ts
+    hash: 79c4774e5c74792378de8dd1b352c037b211fd4fcc880cd264a994a33ba5f3cb
+  - path: apps/desktop/src/adapter/remoteDataSource.ts
+    hash: 35a78bdf5f342ffab3623e83ad6c0f3b8578b2e8feec3e781908c06a80a85ae6
+  - path: apps/desktop/src/adapter/tauriDataSource.ts
+    hash: a3db6b2d8140e7e9fda0160226899f31b4fffef0117a29120515616f03931041
+  - path: crates/adapters/speclink-cli/src/verbs/station.rs
+    hash: c087b8345fdb45c9117fb093685a73e818f2dd05b431539ea18dd4511a542ff8
+  - path: crates/engine/speclink-core/src/quality/station.rs
+    hash: 4ac9e1023e548ab0cf24f3b3e56d32750fbab591e8aeffcfd16fb320f3f0d55f
+  - path: crates/engine/speclink-core/src/quality/station/tests.rs
+    hash: 0c1921618c2b30abf84a8fcd53d2fc56f3999b70080cc223d58c639e5a613aa0
+  - path: packages/ui/src/__tests__/archivedDrawer.test.tsx
+    hash: 5460d530fc60357b6447f0bd43df8f823e4018759d76d4b13c0d25a53500e5af
+  - path: packages/ui/src/__tests__/richDrawer.test.tsx
+    hash: a81098871b81be4869b49bc83cc75a1f4c62712f86f80b616993f709d2a0b772
+  - path: packages/ui/src/__tests__/ticketView.test.tsx
+    hash: 4c5446019d06fedb0b20b1546e112cc7075024e80ae39e87051ba0b9c8899373
+  - path: packages/ui/src/adapter.ts
+    hash: 720202c2be95e152863ad2f28bf5275c946fe874646fdc6148ece993b79b9b5e
+  - path: packages/ui/src/components/ArchivedDrawer.tsx
+    hash: 84bd80f7bfd02a0914a6c2290cd606a42703dca143a185bd5f682d7bc3b8362e
+  - path: packages/ui/src/components/RichDetailDrawer.tsx
+    hash: 61cbfc512979eb18ed181bc8918d966cb9ab53f82bddf8a16c93c34468e241e8
+  - path: packages/ui/src/components/TicketView.tsx
+    hash: ff52b58dea6e21714cf424f3dcb0e1200c833f48258e8048f90c845fe44d9d12
+  - path: packages/ui/src/i18n.tsx
+    hash: 9a1dce2fc1dc4609b39fe5a753efc4873e3e98bfab637de16cfd50435f09bd6a
+  - path: packages/ui/src/index.ts
+    hash: 919c7a2708d2441f134a8ac9efc794ef86f87ac51b01d5879fbe24be8027368e
+verified_at: 2026-09-22
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 14
+verified_scope:
+  - path: apps/desktop/core/src/query.rs
+    hash: fcd5f97a45bf561dad975870e684082c241bba747e2fdb6bc7dccc4163fd2a75
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: d73e1632f5591c067bd0832c7945714a3eead2e397f02d564a389a3a25374ff6
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 7e4a2a1508e5cf0f85cc21404353a28bc26b855012dbc453c24db1416484c50d
+  - path: apps/desktop/src-tauri/tests/it/remote_data.rs
+    hash: 2b8b8aecf25ad6c9dacafedd0300056c891159658dab9e3338d27ad32a7f8355
+  - path: apps/desktop/src/App.tsx
+    hash: ea6249100a5e4b9a105c530a53015b036f7a916c5038005ae59f5aa0e61c275e
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 0e595e256a48dff8019e3b64bcd6d95245762d88689191f5d4fc9e8e214ab8b2
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: b3bf30b09c6fdf1f8a6eae7b5aed671b02ac33a809806996bda812557f4dc427
+  - path: apps/desktop/src/__tests__/tauriDataSource.test.ts
+    hash: 79c4774e5c74792378de8dd1b352c037b211fd4fcc880cd264a994a33ba5f3cb
+  - path: apps/desktop/src/adapter/remoteDataSource.ts
+    hash: 35a78bdf5f342ffab3623e83ad6c0f3b8578b2e8feec3e781908c06a80a85ae6
+  - path: apps/desktop/src/adapter/tauriDataSource.ts
+    hash: a3db6b2d8140e7e9fda0160226899f31b4fffef0117a29120515616f03931041
+  - path: crates/adapters/speclink-cli/src/verbs/station.rs
+    hash: c087b8345fdb45c9117fb093685a73e818f2dd05b431539ea18dd4511a542ff8
+  - path: crates/engine/speclink-core/src/quality/station.rs
+    hash: 4ac9e1023e548ab0cf24f3b3e56d32750fbab591e8aeffcfd16fb320f3f0d55f
+  - path: crates/engine/speclink-core/src/quality/station/tests.rs
+    hash: 0c1921618c2b30abf84a8fcd53d2fc56f3999b70080cc223d58c639e5a613aa0
+  - path: packages/ui/src/__tests__/archivedDrawer.test.tsx
+    hash: 5460d530fc60357b6447f0bd43df8f823e4018759d76d4b13c0d25a53500e5af
+  - path: packages/ui/src/__tests__/richDrawer.test.tsx
+    hash: a81098871b81be4869b49bc83cc75a1f4c62712f86f80b616993f709d2a0b772
+  - path: packages/ui/src/__tests__/ticketView.test.tsx
+    hash: 4c5446019d06fedb0b20b1546e112cc7075024e80ae39e87051ba0b9c8899373
+  - path: packages/ui/src/adapter.ts
+    hash: 720202c2be95e152863ad2f28bf5275c946fe874646fdc6148ece993b79b9b5e
+  - path: packages/ui/src/components/ArchivedDrawer.tsx
+    hash: 84bd80f7bfd02a0914a6c2290cd606a42703dca143a185bd5f682d7bc3b8362e
+  - path: packages/ui/src/components/RichDetailDrawer.tsx
+    hash: 61cbfc512979eb18ed181bc8918d966cb9ab53f82bddf8a16c93c34468e241e8
+  - path: packages/ui/src/components/TicketView.tsx
+    hash: ff52b58dea6e21714cf424f3dcb0e1200c833f48258e8048f90c845fe44d9d12
+  - path: packages/ui/src/i18n.tsx
+    hash: 9a1dce2fc1dc4609b39fe5a753efc4873e3e98bfab637de16cfd50435f09bd6a
+  - path: packages/ui/src/index.ts
+    hash: 919c7a2708d2441f134a8ac9efc794ef86f87ac51b01d5879fbe24be8027368e

@@ -335,29 +335,12 @@ fn render_station_show(
     Ok(())
 }
 /// 工單的 `--json` payload（local／remote 之外，兩站也共用同一份組裝——欄位集合
-/// 與 null 語意是對外契約）。
+/// 與 null 語意是對外契約；輪的形狀由引擎 `Round::to_json` 一處定義）。
 fn ticket_json(change: &str, ticket: &core::station::Ticket) -> serde_json::Value {
-    let round_json = |r: &core::station::Round| {
-        serde_json::json!({
-            "index": r.index,
-            "phase": r.phase.map(|p| p.as_str()),
-            "patchHash": r.patch_hash,
-            "scope": r.scope,
-            "findings": r
-                .findings
-                .iter()
-                .map(|f| serde_json::json!({
-                    "severity": f.severity.as_str(),
-                    "path": f.path,
-                    "text": f.text,
-                }))
-                .collect::<Vec<_>>(),
-        })
-    };
     serde_json::json!({
         "change": change,
-        "rounds": ticket.rounds.iter().map(round_json).collect::<Vec<_>>(),
-        "lastRound": round_json(ticket.last_round()),
+        "rounds": ticket.rounds.iter().map(core::station::Round::to_json).collect::<Vec<_>>(),
+        "lastRound": ticket.last_round().to_json(),
     })
 }
 /// `review prepare` 的唯一實作（local／remote 共用）：sidecar 全在本地
