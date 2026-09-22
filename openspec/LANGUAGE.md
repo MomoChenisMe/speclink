@@ -89,7 +89,7 @@
 
 ### 換頁
 
-- **definition**: 清單分批瀏覽（pagination）。artifacts 散文稱「換頁」；UI 文案不出現「換頁／分頁」名詞，僅用「上一頁」「下一頁」「第 N／M 頁」。
+- **definition**: 清單分批瀏覽（pagination）。artifacts 散文稱「換頁」；UI 文案不出現「換頁／分頁」名詞，僅用「上一頁」「下一頁」「第 N／M 頁」。詳情面板的 tab 稱「分頁」（提案／設計／任務／規格／排程／審查／驗證分頁），不稱「頁籤」（drawer-quality-ticket-tab，2026-09-22 補註）。
 - **avoid**: 分頁（pagination 語意上）
 - **why**: 「分頁」已被詳情面板 tabs 語意佔用（提案／設計／任務／規格分頁），同詞兩義會使規格與討論記錄歧義。2026-07-11 討論「specs-archive-pagination」定案。
 
@@ -152,6 +152,18 @@
 - **definition**: 對 change 實作的 spec 合規檢查（verify 三維度：完整、正確、一致），與「審查」並行的可選品質關卡。對應 skill `/speclink-verify`。狀態詞同構：驗證中、已驗證、已驗證·其後有變動、曾驗證未通過。
 - **avoid**: verify（中文散文中）、校驗
 - **why**: 與「審查」對仗；兩站在看板上的章與狀態詞必須同構，使用者才能以同一心智模型讀懂兩種標示。2026-07-31 討論「code-review-stage」定案。
+
+### 首輪
+
+- **definition**: 工單的 discovery 輪——第一輪、唯一的全面盤點，對整個變更範圍逐檔檢查。詳情面板的工單分頁以「首輪」標示 phase 為 discovery 的輪次；沒有 phase 的舊工單輪次不標階段詞。
+- **avoid**: 發現輪、discovery 輪（中文散文中）
+- **why**: 「發現」在繁中讀不出「第一次全面看過」的意思；「首輪」直說它是第一輪，且與「複驗」對仗。2026-09-22 變更「drawer-quality-ticket-tab」定案。
+
+### 複驗
+
+- **definition**: 工單的 validation 輪——只判前輪 findings 是否修好與修補 patch 的直接回歸，不重新全面盤點。詳情面板的工單分頁以「複驗」標示 phase 為 validation 的輪次。審查站與驗證站的工單都有這種輪，詞通用。
+- **avoid**: 驗證輪、複審、validation 輪（中文散文中）
+- **why**: 「驗證輪」與驗證站撞名——審查工單也有 validation 輪，叫它「驗證輪」會被讀成驗證站的輪；「複審」又只像審查站的詞。「複驗」兩站通用、直說「再驗一次前輪的結果」。2026-09-22 變更「drawer-quality-ticket-tab」定案。
 
 ### 手動任務
 

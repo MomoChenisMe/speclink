@@ -187,6 +187,8 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
     runVerb: vi.fn().mockResolvedValue({ valid: true }),
     getArchivedDocument: vi.fn().mockResolvedValue(null),
     archivedCapabilities: vi.fn().mockResolvedValue([]),
+    getStationTicket: vi.fn().mockResolvedValue(null),
+    getArchivedStationTicket: vi.fn().mockResolvedValue(null),
     listDiscussions: vi.fn().mockResolvedValue({ active: [], archived: [] }),
     getDiscussionDocument: vi.fn().mockResolvedValue(null),
     promoteDiscussion: vi.fn().mockResolvedValue({ change: "promoted-change" }),
@@ -1538,5 +1540,77 @@ describe("更新日誌彈窗接線（desktop-app「更新日誌彈窗」）", ()
     fireEvent.click(within(dialog).getByRole("button", { name: "關閉" }));
     await waitFor(() => expect(screen.queryByTestId("release-notes-dialog")).toBeNull());
     expect(localStorage.getItem(KEY)).toBe(TOP);
+  });
+});
+
+// spec desktop-app「詳情抽屜的工單分頁」「已封存抽屜的工單分頁」的宿主接線
+// （drawer-quality-ticket-tab D3／D5）：兩個抽屜的 loadStationTicket 各接資料源的
+// getStationTicket／getArchivedStationTicket，與 loadDocument 同款包裝。
+describe("工單分頁接線（drawer-quality-ticket-tab）", () => {
+  const HASH = `sha256:${"a".repeat(64)}`;
+  const TICKET = {
+    rounds: [
+      {
+        index: 1,
+        phase: "discovery",
+        patchHash: HASH,
+        scope: ["src/a.rs"],
+        findings: [{ severity: "WARNING", path: "src/a.rs", text: "Correctness: 未處理空清單" }],
+      },
+    ],
+  };
+
+  it("inReview 變更的抽屜出現「審查」分頁，工單經 dataSource.getStationTicket 載入", async () => {
+    const ds = fakeDataSource({
+      listChanges: vi.fn().mockResolvedValue(
+        changeList([
+          { name: "desktop-shell-and-browser", status: "in-progress", totalTasks: 30, completedTasks: 30, reviewStatus: "inReview" },
+        ]),
+      ),
+      getStationTicket: vi.fn().mockResolvedValue(TICKET),
+    });
+    renderApp(ds);
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    expect(ds.getStationTicket).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("desktop-shell-and-browser"));
+    await waitFor(() => screen.getByRole("tab", { name: /審查/ }));
+    await waitFor(() => expect(ds.getStationTicket).toHaveBeenCalledWith("desktop-shell-and-browser", "review"));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /審查/ }));
+    await waitFor(() =>
+      expect((document.querySelector("[data-ticket-header]")?.textContent ?? "").replace(/\s+/g, " ")).toBe(
+        "審查 · 第 1 輪（首輪）CRITICAL 0 · WARNING 1 · SUGGESTION 0",
+      ),
+    );
+  });
+
+  it("reviewedNotPassed 的封存抽屜出現「審查」分頁，工單經 dataSource.getArchivedStationTicket 載入", async () => {
+    const ds = fakeDataSource({
+      listArchived: vi.fn().mockResolvedValue([
+        {
+          datedName: "2026-07-04-old",
+          date: "2026-07-04",
+          name: "old",
+          tasksTotal: 2,
+          tasksDone: 2,
+          specCount: 1,
+          createdBy: null,
+          fromDiscussions: [],
+          reviewStatus: "reviewedNotPassed",
+          verifyStatus: "none",
+        },
+      ]),
+      getArchivedDocument: vi.fn().mockResolvedValue("## Why\n\n封存提案內文。"),
+      getArchivedStationTicket: vi.fn().mockResolvedValue(TICKET),
+    });
+    renderApp(ds);
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    const aside = document.querySelector("aside") as HTMLElement;
+    fireEvent.click(within(aside).getByRole("button", { name: /已封存/ }));
+    await waitFor(() => screen.getByText("old"));
+    fireEvent.click(screen.getByText("old"));
+    await waitFor(() => screen.getByRole("tab", { name: /審查/ }));
+    await waitFor(() => expect(ds.getArchivedStationTicket).toHaveBeenCalledWith("2026-07-04-old", "review"));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /審查/ }));
+    await waitFor(() => expect(document.querySelector("[data-ticket-header]")).toBeTruthy());
   });
 });

@@ -425,6 +425,74 @@ pub fn archived_capabilities_at(root: &Path, dated_name: &str) -> Vec<String> {
     }
 }
 
+/// 工單分頁的資料（spec desktop-app「詳情抽屜的工單分頁」）：`{ "rounds": [ … ] }`，
+/// 每輪與 CLI `<station> show --json` 的 `rounds` 項同形（design D1）。`station` 為
+/// `review`／`verify`，其他值回 `None`；無工單、change 不存在或工單格式壞掉皆回
+/// `None`——面板顯示空態而非錯誤（design D2）。經 [`crate::context_for_change`]
+/// 取 store，有 worktree 映射時讀副本，與抽屜其他文件同源。
+pub fn station_ticket_at(root: &Path, change: &str, station: &str) -> Option<Value> {
+    if !is_safe_path_param(change) {
+        return None;
+    }
+    let st = station_by_noun(station)?;
+    let ctx = crate::context_for_change(root, change)?;
+    ticket_json_parsed(st, &ctx.store.read_artifact(change, st.doc)?)
+}
+
+/// 已封存 change 帶走的工單（spec desktop-app「已封存抽屜的工單分頁」）：形狀與
+/// `None` 語意同 [`station_ticket_at`]，改讀封存目錄。
+pub fn archived_station_ticket_at(root: &Path, dated_name: &str, station: &str) -> Option<Value> {
+    if !is_safe_path_param(dated_name) {
+        return None;
+    }
+    let st = station_by_noun(station)?;
+    let ctx = init_core_context(root)?;
+    ticket_json_parsed(st, &ctx.store.read_archived_artifact(dated_name, st.doc)?)
+}
+
+/// 工單原文 → D1 形狀：遠端封存文件只拿得到原文，殼層以此解析。站別未知或
+/// 格式壞掉回 `None`。
+pub fn ticket_json_from_text(station: &str, text: &str) -> Option<Value> {
+    ticket_json_parsed(station_by_noun(station)?, text)
+}
+
+/// D1 形狀的唯一序列化落點：round 的欄位集合與 null 語意與 CLI `--json` 逐欄相同，
+/// 只是不帶 `change`／`lastRound`（前端取陣列末項）。
+pub fn ticket_json(ticket: &station::Ticket) -> Value {
+    let rounds: Vec<Value> = ticket
+        .rounds
+        .iter()
+        .map(|r| {
+            json!({
+                "index": r.index,
+                "phase": r.phase.map(|p| p.as_str()),
+                "patchHash": r.patch_hash,
+                "scope": r.scope,
+                "findings": r
+                    .findings
+                    .iter()
+                    .map(|f| json!({
+                        "severity": f.severity.as_str(),
+                        "path": f.path,
+                        "text": f.text,
+                    }))
+                    .collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    json!({ "rounds": rounds })
+}
+
+fn ticket_json_parsed(st: &station::Station, text: &str) -> Option<Value> {
+    station::parse_ticket(st, text).ok().map(|ticket| ticket_json(&ticket))
+}
+
+/// 站別的 CLI 詞（`review`／`verify`）→ 站別常數；只認這兩個值。殼層的遠端
+/// 指令也拿它守門：未知站別在拼 URL 或選封存文件名之前就回 `None`。
+pub fn station_by_noun(noun: &str) -> Option<&'static station::Station> {
+    [&REVIEW, &VERIFY].into_iter().find(|st| st.noun == noun)
+}
+
 /// 拒絕會逃出目標目錄的路徑參數：`..` 段、絕對路徑、Windows 磁碟前綴。
 pub(crate) fn is_safe_path_param(s: &str) -> bool {
     if s.is_empty() {
@@ -1509,6 +1577,175 @@ mod tests {
         assert!(archived_capabilities_at(fx.root(), "../..").is_empty());
     }
 
+    /// 兩輪結構化工單：首輪三級各一，複驗輪帶行尾 `(accepted)` token。Patch 行
+    /// 要 64 個小寫十六進位字元，故以函式組字串而非 const。
+    fn two_round_ticket() -> String {
+        format!(
+            "# Review — x\n\n## Round 1\n\n**Phase**: discovery\n**Patch**: sha256:{a}\n**Scope**: src/a.rs, src/b.rs, src/c.rs\n\n- [CRITICAL] src/a.rs — Correctness: 未處理空清單\n- [WARNING] src/b.rs — Standards: 命名不一致\n- [SUGGESTION] src/c.rs — Style: 可簡化\n\n## Round 2\n\n**Phase**: validation\n**Patch**: sha256:{b}\n**Scope**: src/a.rs, src/b.rs, src/c.rs\n\n- [WARNING] src/b.rs — Standards: 命名不一致 (accepted)\n- [SUGGESTION] src/c.rs — Style: 可簡化\n",
+            a = "a".repeat(64),
+            b = "b".repeat(64),
+        )
+    }
+
+    #[test]
+    fn station_ticket_mirrors_the_cli_rounds_shape() {
+        // spec desktop-app「詳情抽屜的工單分頁」：工單資料形狀與 CLI
+        // `review show --json` 的 rounds 相同（design D1）——camelCase、每輪五欄、
+        // findings 三欄；不帶 lastRound／change／content。
+        let fx = FixtureRoot::new("q-ticket-shape");
+        fx.add_change("x", OLD_META);
+        fx.write("openspec/changes/x/review.md", &two_round_ticket());
+
+        let v = station_ticket_at(fx.root(), "x", "review").expect("ticket present");
+        let rounds = v["rounds"].as_array().expect("rounds array");
+        assert_eq!(rounds.len(), 2);
+        let r1 = &rounds[0];
+        for key in ["index", "phase", "patchHash", "scope", "findings"] {
+            assert!(r1.get(key).is_some(), "round missing camelCase key {key}: {r1}");
+        }
+        assert_eq!(r1["index"], 1);
+        assert_eq!(r1["phase"], "discovery");
+        assert_eq!(r1["patchHash"], format!("sha256:{}", "a".repeat(64)));
+        assert_eq!(r1["scope"], json!(["src/a.rs", "src/b.rs", "src/c.rs"]));
+        assert_eq!(
+            r1["findings"],
+            json!([
+                { "severity": "CRITICAL", "path": "src/a.rs", "text": "Correctness: 未處理空清單" },
+                { "severity": "WARNING", "path": "src/b.rs", "text": "Standards: 命名不一致" },
+                { "severity": "SUGGESTION", "path": "src/c.rs", "text": "Style: 可簡化" },
+            ])
+        );
+        let r2 = &rounds[1];
+        assert_eq!(r2["index"], 2);
+        assert_eq!(r2["phase"], "validation");
+        // 描述原文照傳——`(accepted)` token 的辨識是前端呈現規則（design D4）。
+        assert_eq!(r2["findings"][0]["text"], "Standards: 命名不一致 (accepted)");
+        assert!(r1.get("patch_hash").is_none(), "snake_case must not leak");
+        assert!(v.get("lastRound").is_none() && v.get("change").is_none() && v.get("content").is_none());
+    }
+
+    #[test]
+    fn station_ticket_legacy_round_carries_explicit_nulls() {
+        // legacy 輪（無 Phase／Patch）：兩欄恆出現、值為 null——與 wire 的
+        // additive shape 同款，前端不必分辨「缺鍵」與「null」。
+        let fx = FixtureRoot::new("q-ticket-legacy");
+        fx.add_change("x", OLD_META);
+        fx.write("openspec/changes/x/verify.md", TICKET);
+
+        let v = station_ticket_at(fx.root(), "x", "verify").expect("verify ticket present");
+        let r = &v["rounds"][0];
+        assert!(r.get("phase").is_some() && r.get("patchHash").is_some(), "{r}");
+        assert_eq!(r["phase"], Value::Null);
+        assert_eq!(r["patchHash"], Value::Null);
+        assert_eq!(r["findings"][0]["severity"], "WARNING");
+    }
+
+    #[test]
+    fn station_ticket_is_none_without_a_ticket_or_for_an_unknown_station() {
+        let fx = FixtureRoot::new("q-ticket-none");
+        fx.add_change("x", OLD_META);
+        assert!(station_ticket_at(fx.root(), "x", "review").is_none(), "no ticket → None");
+        fx.write("openspec/changes/x/review.md", TICKET);
+        assert!(station_ticket_at(fx.root(), "x", "verify").is_none(), "the other station's ticket does not count");
+        assert!(station_ticket_at(fx.root(), "x", "quality").is_none(), "unknown station → None");
+        assert!(station_ticket_at(fx.root(), "ghost", "review").is_none(), "unknown change → None");
+        assert!(station_ticket_at(fx.root(), "../..", "review").is_none(), "traversal in change name → None");
+    }
+
+    #[test]
+    fn station_ticket_is_none_when_the_ticket_is_corrupt() {
+        // 壞格式（Round 標頭非數字）→ None：面板顯示空態而非錯誤（design D2），
+        // 與其他文件分頁「缺件即空態」同款。
+        let fx = FixtureRoot::new("q-ticket-corrupt");
+        fx.add_change("x", OLD_META);
+        fx.write("openspec/changes/x/review.md", "# Review — x\n\n## Round one\n\n**Scope**: src/lib.rs\n");
+        assert!(station_ticket_at(fx.root(), "x", "review").is_none());
+    }
+
+    #[test]
+    fn station_ticket_comes_from_the_worktree_copy() {
+        // spec worktree-overlay「desktop 看板的 worktree 呈現」：工單與抽屜其他
+        // 文件同源——有映射時讀 worktree 副本。主 checkout 一輪、副本兩輪，
+        // 讀錯一份會停在一輪。
+        let fx = FixtureRoot::new("q-ticket-wt");
+        fx.add_change("x", OLD_META);
+        fx.write("openspec/changes/x/review.md", TICKET);
+        let wt = fx.attach_worktree("x");
+        std::fs::write(wt.change_dir("x").join("review.md"), two_round_ticket()).unwrap();
+
+        let v = station_ticket_at(fx.root(), "x", "review").expect("ticket present");
+        assert_eq!(v["rounds"].as_array().unwrap().len(), 2, "must read the worktree copy: {v}");
+    }
+
+    #[test]
+    fn archived_station_ticket_mirrors_the_live_shape() {
+        // spec desktop-app「已封存抽屜的工單分頁」：帶走的 verify.md 解析成與活
+        // 變更相同的形狀（同一序列化落點）；另一站無工單、幽靈封存、未知站別、
+        // 路徑穿越皆回 None。
+        let fx = FixtureRoot::new("q-archived-ticket");
+        let carried = two_round_ticket().replace("# Review — x", "# Verify — old");
+        fx.write(
+            "openspec/changes/archive/2026-07-04-old/.openspec.yaml",
+            "schema: spec-driven\ncreated: 2026-07-01\narchived_at: 2026-07-04\n",
+        );
+        fx.write("openspec/changes/archive/2026-07-04-old/proposal.md", "## Why\n\nOld body.\n");
+        fx.write("openspec/changes/archive/2026-07-04-old/verify.md", &carried);
+
+        let v = archived_station_ticket_at(fx.root(), "2026-07-04-old", "verify").expect("carried ticket");
+        let rounds = v["rounds"].as_array().expect("rounds array");
+        assert_eq!(rounds.len(), 2);
+        for key in ["index", "phase", "patchHash", "scope", "findings"] {
+            assert!(rounds[1].get(key).is_some(), "round missing camelCase key {key}: {v}");
+        }
+        assert_eq!(rounds[1]["index"], 2);
+        assert_eq!(rounds[1]["phase"], "validation");
+        assert_eq!(rounds[1]["scope"], json!(["src/a.rs", "src/b.rs", "src/c.rs"]));
+        assert_eq!(
+            rounds[1]["findings"][1],
+            json!({ "severity": "SUGGESTION", "path": "src/c.rs", "text": "Style: 可簡化" })
+        );
+        assert_eq!(v, ticket_json_from_text("verify", &carried).unwrap(), "one serializer for every entry point");
+        assert!(archived_station_ticket_at(fx.root(), "2026-07-04-old", "review").is_none(), "no review ticket carried");
+        assert!(archived_station_ticket_at(fx.root(), "2026-01-01-ghost", "verify").is_none());
+        assert!(archived_station_ticket_at(fx.root(), "2026-07-04-old", "quality").is_none());
+        assert!(archived_station_ticket_at(fx.root(), "../..", "verify").is_none());
+    }
+
+    #[test]
+    fn ticket_json_from_text_fails_closed_on_degenerate_input() {
+        // sharp-edges（Lazy／Confused Developer）：空字串、只有標題無輪、缺 Scope
+        // 的輪、站別大小寫不符或空白——皆回 None 不 panic。殼層把遠端封存原文
+        // 直接餵這裡，這些是它會收到的最鈍輸入。
+        assert!(ticket_json_from_text("review", "").is_none());
+        assert!(ticket_json_from_text("review", "# Review — x\n").is_none());
+        assert!(ticket_json_from_text("review", "## Round 1\n\n- [WARNING] a.rs — no scope line\n").is_none());
+        assert!(ticket_json_from_text("Review", TICKET).is_none(), "station token is case-sensitive like the CLI");
+        assert!(ticket_json_from_text("", TICKET).is_none());
+        assert_eq!(ticket_json_from_text("verify", TICKET).unwrap()["rounds"][0]["index"], 1);
+    }
+
+    #[test]
+    fn station_ticket_is_none_for_a_non_utf8_ticket_file() {
+        // 非 UTF-8 位元組的工單檔讀不成文字 → None（不 panic、不當成空工單），
+        // 活變更與封存兩條路一致。
+        let fx = FixtureRoot::new("q-ticket-bytes");
+        fx.add_change("x", OLD_META);
+        let live = fx.root().join("openspec").join("changes").join("x").join("review.md");
+        std::fs::write(&live, [0x23, 0x20, 0xFF, 0xFE, 0x0A]).unwrap();
+        assert!(station_ticket_at(fx.root(), "x", "review").is_none());
+
+        fx.write("openspec/changes/archive/2026-07-04-old/proposal.md", "## Why\n");
+        let carried = fx
+            .root()
+            .join("openspec")
+            .join("changes")
+            .join("archive")
+            .join("2026-07-04-old")
+            .join("verify.md");
+        std::fs::write(&carried, [0xFF, 0xFE]).unwrap();
+        assert!(archived_station_ticket_at(fx.root(), "2026-07-04-old", "verify").is_none());
+    }
+
     #[test]
     fn non_project_yields_empty_state_not_panic() {
         let root = crate::testfixture::fresh_non_project_dir("query");
@@ -1516,5 +1753,6 @@ mod tests {
         assert_eq!(list_specs_at(&root), json!({ "specs": [] }));
         assert!(status_at(&root, "anything").is_err());
         assert!(document_at(&root, "anything", "proposal").is_none());
+        assert!(station_ticket_at(&root, "anything", "review").is_none());
     }
 }

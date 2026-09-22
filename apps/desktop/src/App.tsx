@@ -819,6 +819,9 @@ function AppInner({
         change={s.detailChange}
         refreshGen={s.refreshGen}
         loadDocument={(change, artifact) => dataSource?.getDocument(change, artifact) ?? Promise.resolve(null)}
+        loadStationTicket={(change, station) =>
+          dataSource?.getStationTicket(change, station) ?? Promise.resolve(null)
+        }
         // changeCapabilities/changeMeta 於 remote 亦直達（status payload 映射，
         // remote-read-parity）；capability 為假時仍以空集呈現——同一條停用法則，
         // 不偽造、也不讓抽屜載入失敗。
@@ -914,6 +917,9 @@ function AppInner({
         target={s.detailArchived}
         refreshGen={s.refreshGen}
         loadDocument={(datedName, artifact) => dataSource?.getArchivedDocument(datedName, artifact) ?? Promise.resolve(null)}
+        loadStationTicket={(datedName, station) =>
+          dataSource?.getArchivedStationTicket(datedName, station) ?? Promise.resolve(null)
+        }
         loadCapabilities={(datedName) => dataSource?.archivedCapabilities(datedName) ?? Promise.resolve([])}
         loadDiscussionDocument={(slug) => dataSource?.getDiscussionDocument(slug) ?? Promise.resolve(null)}
         sourceDiscussions={archivedSourceDiscussions}

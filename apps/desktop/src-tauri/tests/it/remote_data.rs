@@ -919,3 +919,70 @@ fn claim_capability_follows_the_membership_role() {
             .expect("reader opens");
     assert!(!reader.capabilities.claim, "reader 的認領面停用");
 }
+
+#[test]
+fn station_ticket_maps_404_to_none_and_200_to_rounds() {
+    // spec desktop-app「詳情抽屜的工單分頁」Scenario「遠端工單 404 顯示空態」：
+    // 無工單時 GET /changes/{name}/{station} 是 404 → None（不是錯誤）；工單種下
+    // 後回結構化 rounds，serde 序列化即 D1 形狀（camelCase、patchHash）。兩站
+    // 互不混入：review 工單在，verify 仍是 None。
+    let h = common::harness();
+    common::seed_change(h.store.as_ref(), FOUR_TASKS);
+    let (credentials, manager) = runtime(&h);
+    let ws = open(&h, &credentials, &manager);
+
+    assert!(
+        ws.station_ticket(&credentials, "review", "demo")
+            .expect("404 is the plain no-ticket branch, not an error")
+            .is_none()
+    );
+    assert!(
+        ws.station_ticket(&credentials, "review", "ghost")
+            .expect("unknown change is 404 as well")
+            .is_none()
+    );
+
+    let mut uow = h
+        .store
+        .begin_unit_of_work(
+            &common::scope(),
+            CommandContext {
+                command: "seed-ticket".into(),
+                actor: "seed".into(),
+            },
+        )
+        .expect("begin uow");
+    uow.create(
+        DocumentId::ChangeArtifact {
+            change: "demo".into(),
+            artifact: "review.md".into(),
+        },
+        &format!(
+            "# Review — demo\n\n## Round 1\n\n**Phase**: discovery\n**Patch**: sha256:{}\n**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs — possible smell\n",
+            "a".repeat(64)
+        ),
+    );
+    h.store.commit(uow, Vec::new()).expect("seed ticket");
+
+    let ticket = ws
+        .station_ticket(&credentials, "review", "demo")
+        .expect("200")
+        .expect("ticket present");
+    assert_eq!(ticket.rounds.len(), 1);
+    assert_eq!(ticket.rounds[0].index, 1);
+    assert_eq!(ticket.rounds[0].phase.as_deref(), Some("discovery"));
+    assert_eq!(ticket.rounds[0].scope, ["src/lib.rs"]);
+    assert_eq!(ticket.rounds[0].findings[0].severity, "WARNING");
+    assert_eq!(ticket.rounds[0].findings[0].text, "possible smell");
+    let json = serde_json::to_value(&ticket.rounds).expect("rounds serialize");
+    assert!(
+        json[0].get("patchHash").is_some() && json[0].get("patch_hash").is_none(),
+        "D1 shape is camelCase: {json}"
+    );
+    assert!(
+        ws.station_ticket(&credentials, "verify", "demo")
+            .expect("404")
+            .is_none(),
+        "the review ticket must not leak into the verify station"
+    );
+}

@@ -10,7 +10,9 @@ import type {
   DiscussionLists,
   ManualIndex,
   SearchHit,
+  StationTicket,
   StatusReport,
+  TicketStation,
   Verb,
 } from "@speclink/ui";
 
@@ -169,11 +171,26 @@ export function createRemoteDataSource(
       if (verb === "analyze") return await invoke("remote_analyze", { ...locator, change });
       return await invoke("remote_archive", { ...locator, change });
     },
+    async getStationTicket(change: string, station: TicketStation): Promise<StationTicket | null> {
+      // 活工單走 GET /changes/{name}/{station} 的結構化 rounds（不走 artifact 白名單）。
+      return await invoke<StationTicket | null>("remote_station_ticket", { ...locator, change, station });
+    },
     async getArchivedDocument(datedName: string, artifact: string): Promise<string | null> {
       return await invoke<string | null>("remote_archived_document", {
         ...locator,
         datedName,
         artifact,
+      });
+    },
+    async getArchivedStationTicket(
+      datedName: string,
+      station: TicketStation,
+    ): Promise<StationTicket | null> {
+      // 封存工單只有原文端點——Rust 側取原文後以引擎解析成同一形狀。
+      return await invoke<StationTicket | null>("remote_archived_station_ticket", {
+        ...locator,
+        datedName,
+        station,
       });
     },
     async archivedCapabilities(datedName: string): Promise<string[]> {

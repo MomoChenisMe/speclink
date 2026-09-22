@@ -1263,3 +1263,203 @@ describe("規格分頁載入失敗的收斂", () => {
     expect(screen.queryByText("（此 change 無 delta 規格）")).toBeNull();
   });
 });
+
+// spec desktop-app「詳情抽屜的工單分頁」：條件式「審查」「驗證」分頁（排程之後、
+// 審查在前）、分頁出現時以 (change, station) 載入、隨 refreshGen 重載、狀態翻為
+// 非進行中即退場並切回「提案」、載入失敗與無工單皆為空態文案而非錯誤。
+describe("詳情抽屜的工單分頁", () => {
+  const HASH = `sha256:${"a".repeat(64)}`;
+  const SCOPE = ["src/a.rs", "src/b.rs", "src/c.rs"];
+  const REVIEW_TICKET = {
+    rounds: [
+      {
+        index: 1,
+        phase: "discovery",
+        patchHash: HASH,
+        scope: SCOPE,
+        findings: [
+          { severity: "WARNING", path: "src/a.rs", text: "Correctness: 未處理空清單" },
+          { severity: "WARNING", path: "src/b.rs", text: "Standards: 命名不一致" },
+        ],
+      },
+      {
+        index: 2,
+        phase: "validation",
+        patchHash: HASH,
+        scope: SCOPE,
+        findings: [
+          { severity: "WARNING", path: "src/b.rs", text: "Standards: 命名不一致 (accepted)" },
+          { severity: "SUGGESTION", path: "src/c.rs", text: "Style: 可簡化" },
+        ],
+      },
+    ],
+  };
+  const VERIFY_TICKET = {
+    rounds: [
+      {
+        index: 1,
+        phase: "discovery",
+        patchHash: HASH,
+        scope: ["src/a.rs"],
+        findings: [{ severity: "CRITICAL", path: "src/a.rs", text: "Spec: 缺 Scenario 覆蓋" }],
+      },
+    ],
+  };
+  const x = (over: Partial<ChangeItem>): ChangeItem => ({
+    name: "x",
+    status: "in-progress",
+    totalTasks: 2,
+    completedTasks: 1,
+    ...over,
+  });
+  const tabNames = () => screen.getAllByRole("tab").map((el) => (el.textContent ?? "").replace(/\s+/g, " ").trim());
+  const headerText = () =>
+    (document.querySelector("[data-ticket-header]")?.textContent ?? "").replace(/\s+/g, " ").trim();
+  async function openTab(name: RegExp) {
+    await waitFor(() => screen.getByRole("tab", { name }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name }));
+  }
+
+  it("inReview → 「審查」分頁排在排程之後，工單以 (x, review) 載入並結構化呈現", async () => {
+    const loadStationTicket = vi.fn(async () => REVIEW_TICKET);
+    render(
+      <RichDetailDrawer
+        {...(makeProps({ change: x({ reviewStatus: "inReview", verifyStatus: "none" }), loadStationTicket }) as never)}
+      />,
+    );
+    await waitFor(() => screen.getByRole("tab", { name: /審查/ }));
+    const names = tabNames();
+    expect(names).toHaveLength(6);
+    expect(names[4]).toMatch(/排程/);
+    expect(names[5]).toMatch(/審查/);
+    expect(screen.queryByRole("tab", { name: /驗證/ })).toBeNull();
+    // 分頁出現即載入（不必等使用者切過去）。
+    await waitFor(() => expect(loadStationTicket).toHaveBeenCalledWith("x", "review"));
+
+    await openTab(/審查/);
+    await waitFor(() =>
+      expect(headerText()).toBe("審查 · 第 2 輪（複驗）CRITICAL 0 · WARNING 1 · SUGGESTION 1"),
+    );
+    const r2 = document.querySelector('[data-ticket-round="2"]') as HTMLElement;
+    expect(r2.querySelectorAll("[data-ticket-finding]")).toHaveLength(2);
+    expect(within(r2).getByText("已接受")).toBeTruthy();
+    expect(within(r2).queryByText(/\(accepted\)/)).toBeNull();
+    const r1 = document.querySelector('[data-ticket-round="1"]') as HTMLElement;
+    expect(r1.querySelector("[data-ticket-round-toggle]")?.getAttribute("aria-expanded")).toBe("false");
+    expect((r1.querySelector("[data-ticket-round-header]")?.textContent ?? "").replace(/\s+/g, " ")).toContain(
+      "第 1 輪 · 首輪 · 範圍 3 檔 · 2 條",
+    );
+  });
+
+  it("兩站皆進行中 → 「審查」「驗證」依序出現、各載各站、內容互不混入", async () => {
+    const loadStationTicket = vi.fn(async (_c: string, station: string) =>
+      station === "review" ? REVIEW_TICKET : VERIFY_TICKET,
+    );
+    render(
+      <RichDetailDrawer
+        {...(makeProps({ change: x({ reviewStatus: "inReview", verifyStatus: "inVerify" }), loadStationTicket }) as never)}
+      />,
+    );
+    await waitFor(() => screen.getByRole("tab", { name: /驗證/ }));
+    const names = tabNames();
+    expect(names).toHaveLength(7);
+    expect(names[4]).toMatch(/排程/);
+    expect(names[5]).toMatch(/審查/);
+    expect(names[6]).toMatch(/驗證/);
+    await waitFor(() => expect(loadStationTicket).toHaveBeenCalledTimes(2));
+    expect(loadStationTicket).toHaveBeenCalledWith("x", "review");
+    expect(loadStationTicket).toHaveBeenCalledWith("x", "verify");
+
+    await openTab(/驗證/);
+    await waitFor(() =>
+      expect(headerText()).toBe("驗證 · 第 1 輪（首輪）CRITICAL 1 · WARNING 0 · SUGGESTION 0"),
+    );
+    expect(document.querySelectorAll("[data-ticket-header]")).toHaveLength(1);
+    await openTab(/審查/);
+    await waitFor(() => expect(headerText()).toMatch(/^審查 · 第 2 輪/));
+  });
+
+  it("reviewed／none → 兩分頁缺席，載入器未被呼叫", async () => {
+    const loadStationTicket = vi.fn(async () => REVIEW_TICKET);
+    render(
+      <RichDetailDrawer
+        {...(makeProps({ change: x({ reviewStatus: "reviewed", verifyStatus: "none" }), loadStationTicket }) as never)}
+      />,
+    );
+    await waitFor(() => screen.getByRole("tab", { name: /排程/ }));
+    await screen.findByText(/doc for proposal.md/);
+    expect(tabNames()).toHaveLength(5);
+    expect(screen.queryByRole("tab", { name: /審查/ })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /驗證/ })).toBeNull();
+    expect(loadStationTicket).not.toHaveBeenCalled();
+  });
+
+  it("停在「審查」分頁時狀態翻為 reviewed → 分頁消失、退回「提案」", async () => {
+    const loadStationTicket = vi.fn(async () => REVIEW_TICKET);
+    const props = makeProps({ change: x({ reviewStatus: "inReview", verifyStatus: "none" }), loadStationTicket });
+    const { rerender } = render(<RichDetailDrawer {...(props as never)} />);
+    await openTab(/審查/);
+    await waitFor(() => expect(headerText()).toMatch(/^審查/));
+    expect(screen.getByRole("tab", { name: /審查/ }).getAttribute("data-state")).toBe("active");
+
+    rerender(
+      <RichDetailDrawer
+        {...(props as never)}
+        change={x({ reviewStatus: "reviewed", verifyStatus: "none", reviewedAt: "2026-09-22", reviewedBy: "Rev <r@example.com>" })}
+      />,
+    );
+    await waitFor(() => expect(screen.queryByRole("tab", { name: /審查/ })).toBeNull());
+    expect(screen.getByRole("tab", { name: /提案/ }).getAttribute("data-state")).toBe("active");
+    await screen.findByText(/doc for proposal.md/);
+    expect(document.querySelector("[data-ticket-header]")).toBeNull();
+  });
+
+  it("refreshGen 遞增 → 工單重載（追加輪後段標題更新）", async () => {
+    let current = VERIFY_TICKET;
+    const loadStationTicket = vi.fn(async () => current);
+    const props = makeProps({ change: x({ reviewStatus: "inReview", verifyStatus: "none" }), loadStationTicket });
+    const { rerender } = render(<RichDetailDrawer {...(props as never)} />);
+    await openTab(/審查/);
+    await waitFor(() => expect(headerText()).toMatch(/^審查 · 第 1 輪/));
+    expect(loadStationTicket).toHaveBeenCalledTimes(1);
+
+    current = REVIEW_TICKET;
+    rerender(<RichDetailDrawer {...(props as never)} refreshGen={1} />);
+    await waitFor(() => expect(loadStationTicket).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(headerText()).toMatch(/^審查 · 第 2 輪/));
+  });
+
+  it("載入中 → 骨架；載入器 reject 或回 null → 「工單尚未抵達或已被刪除」，非錯誤", async () => {
+    const pending = () => new Promise<never>(() => {});
+    const first = render(
+      <RichDetailDrawer
+        {...(makeProps({ change: x({ reviewStatus: "inReview" }), loadStationTicket: vi.fn(pending) }) as never)}
+      />,
+    );
+    await openTab(/審查/);
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeTruthy());
+    expect(screen.queryByText("工單尚未抵達或已被刪除")).toBeNull();
+    first.unmount();
+
+    const second = render(
+      <RichDetailDrawer
+        {...(makeProps({
+          change: x({ reviewStatus: "inReview" }),
+          loadStationTicket: vi.fn(async () => Promise.reject(new Error("offline"))),
+        }) as never)}
+      />,
+    );
+    await openTab(/審查/);
+    await screen.findByText("工單尚未抵達或已被刪除");
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+    second.unmount();
+
+    render(
+      <RichDetailDrawer
+        {...(makeProps({ change: x({ reviewStatus: "inReview" }), loadStationTicket: vi.fn(async () => null) }) as never)}
+      />,
+    );
+    await openTab(/審查/);
+    await screen.findByText("工單尚未抵達或已被刪除");
+  });
+});

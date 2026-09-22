@@ -126,6 +126,33 @@ export interface ArchivedItem {
   created?: string;
 }
 
+/** 品質站站別——工單分頁的資料定址（`review.md`／`verify.md`）。 */
+export type TicketStation = "review" | "verify";
+
+/** 一條分級 finding（工單行 `- [severity] path — 描述`）；欄位與 CLI `--json` 同名，
+ * 描述為原文（`(accepted)` 結構 token 的辨識是呈現規則，不在資料層）。 */
+export interface TicketFinding {
+  severity: "CRITICAL" | "WARNING" | "SUGGESTION";
+  path: string;
+  text: string;
+}
+
+/** 工單的一輪。phase／patchHash 在結構化輪為成對值、legacy 輪皆為 null。 */
+export interface TicketRound {
+  index: number;
+  phase: "discovery" | "validation" | null;
+  patchHash: string | null;
+  scope: string[];
+  findings: TicketFinding[];
+}
+
+/** 一站的結構化工單（drawer-quality-ticket-tab D1）：與 CLI `speclink review show --json`
+ * 的 `rounds` 同構、camelCase；至少一輪，末輪即目前輪。本機（含 worktree 覆蓋層）
+ * 與遠端、活變更與已封存四條路回同一形狀。 */
+export interface StationTicket {
+  rounds: TicketRound[];
+}
+
 /** 一筆討論的清單項（camelCase；status: open | concluded | promoted）。 */
 export interface DiscussionItem {
   slug: string;
@@ -380,8 +407,14 @@ export interface SpeclinkDataSource {
   /** 帶著未結工單封存（`--carry-review`／`--carry-verify`）：該站封存側永久顯示
    * 「曾審查／曾驗證未通過」。兩個旗標各自獨立，雙工單並存時可同時帶。 */
   archiveCarry?(change: string, carryReview: boolean, carryVerify: boolean): Promise<unknown>;
+  /** 一站的活工單（spec desktop-app「詳情抽屜的工單分頁」）：無工單、遠端 404、
+   * 讀取或解析失敗皆回 null（分頁顯示空態而非錯誤）。 */
+  getStationTicket(change: string, station: TicketStation): Promise<StationTicket | null>;
   /** 讀取一個已封存 change 的 artifact 原文（dated name 定址）。缺件回 null。 */
   getArchivedDocument(datedName: string, artifact: string): Promise<string | null>;
+  /** 已封存 change 帶走的工單（spec desktop-app「已封存抽屜的工單分頁」）；null 語意同
+   * getStationTicket。 */
+  getArchivedStationTicket(datedName: string, station: TicketStation): Promise<StationTicket | null>;
   /** 列出一個已封存 change 的 delta capability 名。 */
   archivedCapabilities(datedName: string): Promise<string[]>;
   /** 討論清單（active＋archived）。非 speclink 專案回兩個空清單。 */

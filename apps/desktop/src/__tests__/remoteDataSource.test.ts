@@ -309,6 +309,30 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     });
   });
 
+  it("工單分頁的兩個讀取映射到 remote_station_ticket／remote_archived_station_ticket 並帶 locator", async () => {
+    // drawer-quality-ticket-tab D2：活工單走結構化端點、封存工單走原文端點後由
+    // Rust 解析——前端只認 command 名與參數，兩者皆回 StationTicket | null。
+    const { calls, invoke } = fakeInvoke();
+    const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);
+    await ds.getStationTicket("chg", "review");
+    await ds.getArchivedStationTicket("2026-01-01-old", "verify");
+    expect(calls.map((c) => c.cmd)).toEqual(["remote_station_ticket", "remote_archived_station_ticket"]);
+    expect(calls[0].args).toMatchObject({
+      connectionId: CONN,
+      project: PROJECT,
+      repo: REPO,
+      change: "chg",
+      station: "review",
+    });
+    expect(calls[1].args).toMatchObject({
+      connectionId: CONN,
+      project: PROJECT,
+      repo: REPO,
+      datedName: "2026-01-01-old",
+      station: "verify",
+    });
+  });
+
   it("claim maps to remote_claim carrying the locator（remote-claim-ownership）", async () => {
     const { calls, invoke } = fakeInvoke();
     const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);

@@ -783,8 +783,9 @@ fn parse_finding(line: &str) -> Result<Finding> {
     })
 }
 
-/// 解析整份工單：`## Round N` 分段，每段過同一輪文法。
-fn parse_ticket(st: &Station, text: &str) -> Result<Ticket> {
+/// 解析整份工單：`## Round N` 分段，每段過同一輪文法。純函式、無 I/O——
+/// 桌面對封存原文與遠端封存原文的解析也走這一份，工單文法只有一個實作。
+pub fn parse_ticket(st: &Station, text: &str) -> Result<Ticket> {
     let mut rounds = Vec::new();
     let mut current: Option<(usize, String)> = None;
     for line in text.lines() {

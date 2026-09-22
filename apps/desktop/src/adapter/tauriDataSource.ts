@@ -9,7 +9,9 @@ import type {
   DiscussionLists,
   ManualIndex,
   SearchHit,
+  StationTicket,
   StatusReport,
+  TicketStation,
   Verb,
 } from "@speclink/ui";
 
@@ -102,8 +104,17 @@ export function createTauriDataSource(
     ): Promise<unknown> {
       return await invoke("archive_carry", { root, change, carryReview, carryVerify });
     },
+    async getStationTicket(change: string, station: TicketStation): Promise<StationTicket | null> {
+      return await invoke<StationTicket | null>("station_ticket", { root, change, station });
+    },
     async getArchivedDocument(datedName: string, artifact: string): Promise<string | null> {
       return await invoke<string | null>("archived_document", { root, datedName, artifact });
+    },
+    async getArchivedStationTicket(
+      datedName: string,
+      station: TicketStation,
+    ): Promise<StationTicket | null> {
+      return await invoke<StationTicket | null>("archived_station_ticket", { root, datedName, station });
     },
     async archivedCapabilities(datedName: string): Promise<string[]> {
       return await invoke<string[]>("archived_capabilities", { root, datedName });

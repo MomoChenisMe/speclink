@@ -491,3 +491,121 @@ describe("ArchivedDrawer（封存討論的衍生列）", () => {
     expect(screen.queryByText("衍生")).toBeNull();
   });
 });
+
+// spec desktop-app「已封存抽屜的工單分頁」：reviewedNotPassed／verifiedNotPassed 於
+// 「規格」之後出現對應分頁（審查在前），以 (datedName, station) 載入化石工單並以同一
+// 工單元件呈現；reviewed／verified／none 不出分頁、不發請求。
+describe("已封存抽屜的工單分頁", () => {
+  const HASH = `sha256:${"a".repeat(64)}`;
+  const TICKET = {
+    rounds: [
+      {
+        index: 1,
+        phase: "discovery",
+        patchHash: HASH,
+        scope: ["src/a.rs", "src/b.rs"],
+        findings: [{ severity: "CRITICAL", path: "src/a.rs", text: "Correctness: 未處理空清單" }],
+      },
+      {
+        index: 2,
+        phase: "validation",
+        patchHash: HASH,
+        scope: ["src/a.rs", "src/b.rs"],
+        findings: [{ severity: "CRITICAL", path: "src/a.rs", text: "Correctness: 未處理空清單" }],
+      },
+    ],
+  };
+  const tabNames = () => screen.getAllByRole("tab").map((el) => (el.textContent ?? "").replace(/\s+/g, " ").trim());
+  const headerText = () =>
+    (document.querySelector("[data-ticket-header]")?.textContent ?? "").replace(/\s+/g, " ").trim();
+
+  it("reviewedNotPassed → 「審查」分頁排在規格之後，以 (datedName, review) 載入並呈現末輪", async () => {
+    const loadStationTicket = vi.fn(async () => TICKET);
+    render(
+      <ArchivedDrawer
+        {...(makeProps({ reviewStatus: "reviewedNotPassed", verifyStatus: "verified", loadStationTicket }) as never)}
+      />,
+    );
+    await waitFor(() => screen.getByRole("tab", { name: /審查/ }));
+    const names = tabNames();
+    expect(names).toHaveLength(5);
+    expect(names[3]).toMatch(/規格/);
+    expect(names[4]).toMatch(/審查/);
+    expect(screen.queryByRole("tab", { name: /驗證/ })).toBeNull();
+    await waitFor(() => expect(loadStationTicket).toHaveBeenCalledWith("2026-07-04-old-change", "review"));
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /審查/ }));
+    await waitFor(() =>
+      expect(headerText()).toBe("審查 · 第 2 輪（複驗）CRITICAL 1 · WARNING 0 · SUGGESTION 0"),
+    );
+    const r2 = document.querySelector('[data-ticket-round="2"]') as HTMLElement;
+    expect(r2.querySelector("[data-ticket-round-toggle]")?.getAttribute("aria-expanded")).toBe("true");
+    const r1 = document.querySelector('[data-ticket-round="1"]') as HTMLElement;
+    expect(r1.querySelector("[data-ticket-round-toggle]")?.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("verifiedNotPassed → 「驗證」分頁以 (datedName, verify) 載入", async () => {
+    const loadStationTicket = vi.fn(async () => TICKET);
+    render(
+      <ArchivedDrawer
+        {...(makeProps({ reviewStatus: "reviewed", verifyStatus: "verifiedNotPassed", loadStationTicket }) as never)}
+      />,
+    );
+    await waitFor(() => screen.getByRole("tab", { name: /驗證/ }));
+    expect(screen.queryByRole("tab", { name: /審查/ })).toBeNull();
+    await waitFor(() => expect(loadStationTicket).toHaveBeenCalledWith("2026-07-04-old-change", "verify"));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /驗證/ }));
+    await waitFor(() => expect(headerText()).toMatch(/^驗證 · 第 2 輪（複驗）/));
+  });
+
+  it("兩站皆帶走 → 「審查」「驗證」依序；reviewed／none → 皆缺席且未發請求", async () => {
+    const both = vi.fn(async () => TICKET);
+    const first = render(
+      <ArchivedDrawer
+        {...(makeProps({ reviewStatus: "reviewedNotPassed", verifyStatus: "verifiedNotPassed", loadStationTicket: both }) as never)}
+      />,
+    );
+    await waitFor(() => screen.getByRole("tab", { name: /驗證/ }));
+    const names = tabNames();
+    expect(names).toHaveLength(6);
+    expect(names[4]).toMatch(/審查/);
+    expect(names[5]).toMatch(/驗證/);
+    first.unmount();
+
+    const none = vi.fn(async () => TICKET);
+    render(
+      <ArchivedDrawer
+        {...(makeProps({ reviewStatus: "reviewed", verifyStatus: "none", loadStationTicket: none }) as never)}
+      />,
+    );
+    await screen.findByText("封存提案內文。");
+    expect(tabNames()).toHaveLength(4);
+    expect(screen.queryByRole("tab", { name: /審查/ })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /驗證/ })).toBeNull();
+    expect(none).not.toHaveBeenCalled();
+  });
+
+  it("載入器回 null 或 reject → 分頁顯示「工單尚未抵達或已被刪除」", async () => {
+    const first = render(
+      <ArchivedDrawer
+        {...(makeProps({ reviewStatus: "reviewedNotPassed", loadStationTicket: vi.fn(async () => null) }) as never)}
+      />,
+    );
+    await waitFor(() => screen.getByRole("tab", { name: /審查/ }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /審查/ }));
+    await screen.findByText("工單尚未抵達或已被刪除");
+    first.unmount();
+
+    render(
+      <ArchivedDrawer
+        {...(makeProps({
+          verifyStatus: "verifiedNotPassed",
+          loadStationTicket: vi.fn(async () => Promise.reject(new Error("offline"))),
+        }) as never)}
+      />,
+    );
+    await waitFor(() => screen.getByRole("tab", { name: /驗證/ }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /驗證/ }));
+    await screen.findByText("工單尚未抵達或已被刪除");
+  });
+});
