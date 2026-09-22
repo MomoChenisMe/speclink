@@ -1795,3 +1795,46 @@ fn baseline_skill_loads_workflow_config_and_applies_specs_rules() {
         );
     }
 }
+
+// --- discuss skill: discuss-conclusion-bullets ---
+
+/// Spec discuss-skill「討論記錄的樹慣例與格式不變」, Scenario「技能檔載有結論條列規則且
+/// 三種渲染目標同源」: the generated discuss skill carries Document rule 8 — the
+/// Conclusion counterpart of rule 5 — and both the `conclude` command example and
+/// the "Capture decisions" summary are themselves in bullet shape. The neutral
+/// targets share the asset and are pinned by their golden snapshots.
+#[test]
+fn discuss_skill_carries_the_conclusion_bullets_rule() {
+    for (rel, content) in skill_for_both_tools("discuss-conclusion-bullets", "discuss") {
+        for needle in [
+            // 第 8 條字面，與第 5 條對稱
+            "8. **Conclusion bullets over prose.**",
+            "Rationale / Capture to / Next stay a single paragraph",
+            // 多刀結論每刀一個 bullet 的固定起頭
+            "**cut N `change-name`**",
+        ] {
+            assert!(
+                content.contains(needle),
+                "{rel}: missing conclusion-rule phrase {needle:?}"
+            );
+        }
+        // conclude 指令範例與 Capture decisions 摘要：Decision 與 Rejected alternatives
+        // 之後緊接 `- ` 條列行 — 範例本身即為條列形。
+        for anchor in ["speclink discuss conclude <slug> --stdin", "### Capture decisions"] {
+            let start = content
+                .find(anchor)
+                .unwrap_or_else(|| panic!("{rel}: missing {anchor:?}"));
+            let block = &content[start..];
+            for field in ["**Decision**:", "**Rejected alternatives**:"] {
+                let at = block
+                    .find(field)
+                    .unwrap_or_else(|| panic!("{rel}: no {field} line after {anchor:?}"));
+                let next_line = block[at..].lines().nth(1).unwrap_or("");
+                assert!(
+                    next_line.starts_with("- "),
+                    "{rel}: the {field} line after {anchor:?} must be followed by a `- ` bullet, got {next_line:?}"
+                );
+            }
+        }
+    }
+}

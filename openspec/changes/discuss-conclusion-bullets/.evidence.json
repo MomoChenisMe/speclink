@@ -1,0 +1,74 @@
+{
+  "version": 2,
+  "change": "discuss-conclusion-bullets",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫紅燈測試：在 crates/engine/speclink-core/tests/it/render_golden.rs 新增 `discuss_skill_carries_the_conclusion_bullets_rule`，比照 `archive_skill_describes_two_field_trace_and_the_zero_evidence_note` 的寫法，以 `skill_for_both_tools` 取得各渲染目標產出的 speclink-discuss 技能檔並逐份斷言：Document rules 含第 8 條「Conclusion bullets over prose」字面、含「Rationale、Capture to、Next 維持單段」語意的英文句、含多刀 bullet 起頭 `**cut N \\`change-name\\`**` 的字面；conclude 指令範例與「Capture decisions」摘要的 Decision 行之後緊接 `- ` 起頭的條列行。驗證：`cargo test -p speclink-core --test it render_golden::discuss_skill_carries_the_conclusion_bullets_rule` 此時紅燈。",
+      "files": [
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 落實正式規格「討論記錄的樹慣例與格式不變」新增的結論條列規則：在 discuss.md 的 Document rules 加第 8 條「Conclusion bullets over prose」——Decision、Rejected alternatives、Deferred 超過一句 SHALL 條列（一句定論起頭、其後 `- ` 一點一行）；Rationale、Capture to、Next 維持單段；Decision 保留全部定案細節、不縮水、子項不回指輪次；多刀時每刀一個 bullet `**cut N \\`change-name\\`**：一句範圍`、細節縮排子項一子項一件事；Rejected alternatives 每項一行「方案——落敗理由」、Deferred 每項一行「問題——為何現在不解」或 none；規則只約束新寫入的結論。與第 5 條句型對稱、用英文寫。驗證：任務 1.1 的測試中 Document rules 相關斷言轉綠。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/discuss.md"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 ASSET_VERSION（crates/engine/speclink-core/src/workspace/init.rs）自 v1.39.0 升至 v1.40.0，並依測試訊息指示的順序重生鎖定檔：先 `UPDATE_ASSETS_LOCK=1 cargo test -p speclink-core --test it render_golden::` 重生 crates/engine/speclink-core/tests/golden/assets.lock，再 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 重生五份 golden（claude、claude-worktree、codex、neutral-cli、neutral-tool-call）。驗證：不帶環境變數重跑 `cargo test -p speclink-core --test it render_golden::` 全綠；`git diff --stat crates/engine/speclink-core/tests/golden/` 五份 snapshot 與 assets.lock 皆有變動，且 snapshot 的差異只落在 speclink-discuss 技能段與各技能 version 行。",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M33MQT83RD14GADWQ0RC6BQV",
+      "taskDesc": "1.1 先寫紅燈測試：在 crates/engine/speclink-core/tests/it/render_golden.rs 新增 `discuss_skill_carries_the_conclusion_bullets_rule`，比照 `archive_skill_describes_two_field_trace_and_the_zero_evidence_note` 的寫法，以 `skill_for_both_tools` 取得各渲染目標產出的 speclink-discuss 技能檔並逐份斷言：Document rules 含第 8 條「Conclusion bullets over prose」字面、含「Rationale、Capture to、Next 維持單段」語意的英文句、含多刀 bullet 起頭 `**cut N \\`change-name\\`**` 的字面；conclude 指令範例與「Capture decisions」摘要的 Decision 行之後緊接 `- ` 起頭的條列行。驗證：`cargo test -p speclink-core --test it render_golden::discuss_skill_carries_the_conclusion_bullets_rule` 此時紅燈。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "71ecc10b8c29a163ad66cb8a26b2668e25ad1dd5",
+      "touchedFiles": [
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ],
+      "recordedAt": "2026-09-22T04:34:42Z"
+    },
+    {
+      "taskId": "tsk_01M33MQT832Q2CN34VFSASR2GD",
+      "taskDesc": "1.2 落實正式規格「討論記錄的樹慣例與格式不變」新增的結論條列規則：在 discuss.md 的 Document rules 加第 8 條「Conclusion bullets over prose」——Decision、Rejected alternatives、Deferred 超過一句 SHALL 條列（一句定論起頭、其後 `- ` 一點一行）；Rationale、Capture to、Next 維持單段；Decision 保留全部定案細節、不縮水、子項不回指輪次；多刀時每刀一個 bullet `**cut N \\`change-name\\`**：一句範圍`、細節縮排子項一子項一件事；Rejected alternatives 每項一行「方案——落敗理由」、Deferred 每項一行「問題——為何現在不解」或 none；規則只約束新寫入的結論。與第 5 條句型對稱、用英文寫。驗證：任務 1.1 的測試中 Document rules 相關斷言轉綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "71ecc10b8c29a163ad66cb8a26b2668e25ad1dd5",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/discuss.md"
+      ],
+      "recordedAt": "2026-09-22T04:35:34Z"
+    },
+    {
+      "taskId": "tsk_01M33MQT83DTG8M45HVCW0EV25",
+      "taskDesc": "2.1 ASSET_VERSION（crates/engine/speclink-core/src/workspace/init.rs）自 v1.39.0 升至 v1.40.0，並依測試訊息指示的順序重生鎖定檔：先 `UPDATE_ASSETS_LOCK=1 cargo test -p speclink-core --test it render_golden::` 重生 crates/engine/speclink-core/tests/golden/assets.lock，再 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 重生五份 golden（claude、claude-worktree、codex、neutral-cli、neutral-tool-call）。驗證：不帶環境變數重跑 `cargo test -p speclink-core --test it render_golden::` 全綠；`git diff --stat crates/engine/speclink-core/tests/golden/` 五份 snapshot 與 assets.lock 皆有變動，且 snapshot 的差異只落在 speclink-discuss 技能段與各技能 version 行。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "71ecc10b8c29a163ad66cb8a26b2668e25ad1dd5",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ],
+      "recordedAt": "2026-09-22T04:37:41Z"
+    }
+  ]
+}
