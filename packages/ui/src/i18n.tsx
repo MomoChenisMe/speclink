@@ -102,7 +102,7 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "ticket.scopeFiles": "範圍 {n} 檔",
     "ticket.findings": "{n} 條",
     "ticket.accepted": "已接受",
-    "ticket.noFindings": "本輪無 findings",
+    "ticket.noFindings": "本輪無發現",
     "ticket.empty": "工單尚未抵達或已被刪除",
     "board.empty": "沒有 active change",
     "drawer.subtitle": "Artifact 管線與任務",

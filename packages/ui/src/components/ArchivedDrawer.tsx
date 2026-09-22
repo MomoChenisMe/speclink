@@ -19,7 +19,7 @@ import { TaskList } from "./TaskList";
 import { ImproveChip } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE } from "./reviewStyle";
-import { TicketTabBody, type TicketDoc } from "./TicketView";
+import { TicketTabBody, useStationTickets } from "./TicketView";
 import { useCopied } from "./useCopied";
 import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE } from "./verifyStyle";
 
@@ -85,14 +85,21 @@ export function ArchivedDrawer({
   onOpenDiscussion,
   promotedChanges,
   onOpenPromotedChange,
-  reviewStatus,
-  verifyStatus,
+  reviewStatus: reviewStatusProp,
+  verifyStatus: verifyStatusProp,
   discussionKind,
   createdBy,
   created,
   archivedDate,
 }: ArchivedDrawerProps) {
-  const target = useLingering(targetProp);
+  // 兩個結局狀態隨主體一起留住：宿主關抽屜時 target 與狀態同時設空，滑出動畫期間
+  // 章籤與工單分頁不得先消失（工單分頁的條件就是這兩個狀態）。
+  const body = useLingering(
+    targetProp ? { target: targetProp, reviewStatus: reviewStatusProp, verifyStatus: verifyStatusProp } : null,
+  );
+  const target = body?.target ?? null;
+  const reviewStatus = body?.reviewStatus;
+  const verifyStatus = body?.verifyStatus;
   const { t } = useI18n();
   const [copied, markCopied] = useCopied();
   const [proposal, setProposal] = useState<Doc>();
@@ -101,11 +108,6 @@ export function ArchivedDrawer({
   // undefined＝capability 清單與其規格文件尚未載完（與「無規格差異」的空物件分流）。
   const [specDocs, setSpecDocs] = useState<Record<string, string | null> | undefined>();
   const [discussionDoc, setDiscussionDoc] = useState<Doc>();
-  // 帶走的化石工單（design D5）：只在對應結局分頁出現時載入。
-  const [tickets, setTickets] = useState<Record<TicketStation, TicketDoc>>({
-    review: undefined,
-    verify: undefined,
-  });
   const [full, setFull] = useState(false);
 
   const gen = refreshGen ?? 0;
@@ -125,7 +127,6 @@ export function ArchivedDrawer({
       setTasksMd(undefined);
       setSpecDocs(undefined);
       setDiscussionDoc(undefined);
-      setTickets({ review: undefined, verify: undefined });
     }
     const fresh = <T,>(apply: (v: T) => void) => (v: T) => {
       if (requestSeq.current === seq) apply(v);
@@ -175,30 +176,16 @@ export function ArchivedDrawer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, targetKey, gen]);
 
-  // 工單分頁條件（spec「已封存抽屜的工單分頁」）：帶走化石工單而無章的結局。
+  // 工單分頁條件（spec「已封存抽屜的工單分頁」）：帶走化石工單而無章的結局；
+  // 帶走的化石工單（design D5）只在對應結局分頁出現時載入。
   const carriedReview = target?.kind === "change" && reviewStatus === "reviewedNotPassed";
   const carriedVerify = target?.kind === "change" && verifyStatus === "verifiedNotPassed";
-  const datedName = target?.kind === "change" ? target.datedName : null;
-  const ticketSeq = useRef<Record<TicketStation, number>>({ review: 0, verify: 0 });
-  const loadTicket = (station: TicketStation, name: string) => {
-    const seq = ++ticketSeq.current[station];
-    const apply = (v: TicketDoc) => {
-      if (ticketSeq.current[station] === seq) setTickets((prev) => ({ ...prev, [station]: v }));
-    };
-    (loadStationTicket ? loadStationTicket(name, station) : Promise.resolve(null))
-      .then(apply)
-      .catch(() => apply(null));
-  };
-  useEffect(() => {
-    if (!open || !datedName || !carriedReview) return;
-    loadTicket("review", datedName);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, datedName, carriedReview, gen]);
-  useEffect(() => {
-    if (!open || !datedName || !carriedVerify) return;
-    loadTicket("verify", datedName);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, datedName, carriedVerify, gen]);
+  const tickets = useStationTickets(
+    open && target?.kind === "change" ? target.datedName : null,
+    { review: carriedReview, verify: carriedVerify },
+    gen,
+    loadStationTicket,
+  );
 
   if (!target) return null;
 

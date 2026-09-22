@@ -932,12 +932,12 @@ fn station_ticket_maps_404_to_none_and_200_to_rounds() {
     let ws = open(&h, &credentials, &manager);
 
     assert!(
-        ws.station_ticket(&credentials, "review", "demo")
+        ws.station_ticket(&credentials, "demo", "review")
             .expect("404 is the plain no-ticket branch, not an error")
             .is_none()
     );
     assert!(
-        ws.station_ticket(&credentials, "review", "ghost")
+        ws.station_ticket(&credentials, "ghost", "review")
             .expect("unknown change is 404 as well")
             .is_none()
     );
@@ -965,7 +965,7 @@ fn station_ticket_maps_404_to_none_and_200_to_rounds() {
     h.store.commit(uow, Vec::new()).expect("seed ticket");
 
     let ticket = ws
-        .station_ticket(&credentials, "review", "demo")
+        .station_ticket(&credentials, "demo", "review")
         .expect("200")
         .expect("ticket present");
     assert_eq!(ticket.rounds.len(), 1);
@@ -980,9 +980,66 @@ fn station_ticket_maps_404_to_none_and_200_to_rounds() {
         "D1 shape is camelCase: {json}"
     );
     assert!(
-        ws.station_ticket(&credentials, "verify", "demo")
+        ws.station_ticket(&credentials, "demo", "verify")
             .expect("404")
             .is_none(),
         "the review ticket must not leak into the verify station"
     );
+}
+
+#[test]
+fn archived_station_ticket_text_parses_into_the_d1_shape() {
+    // spec desktop-app Scenario「遠端封存工單原文解析」：封存端點只給原文——
+    // GET /archived/{dated}/artifacts/verify.md 取回後交引擎解析（desktop core 的
+    // `ticket_json_from_text`），形狀與本機相同：rounds[].index／phase／patchHash／
+    // scope／findings[].severity／path／text。未帶走的站（review.md 缺席）是 404，
+    // 對應指令回 null。
+    let h = common::harness();
+    common::seed_change(h.store.as_ref(), FOUR_TASKS);
+    let dated_name = "2026-07-19-carried-verify";
+    let hash = "c".repeat(64);
+    let ticket_text = format!(
+        "# Verify — demo\n\n## Round 1\n\n**Phase**: discovery\n**Patch**: sha256:{hash}\n**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs — Correctness: scenario uncovered\n"
+    );
+    let archived = |doc: &str| DocumentId::ArchivedChange {
+        change: dated_name.into(),
+        doc: doc.into(),
+    };
+    seed_docs(
+        h.store.as_ref(),
+        &[
+            (archived(".openspec.yaml"), "schema: spec-driven\n"),
+            (archived("verify.md"), ticket_text.as_str()),
+        ],
+    );
+
+    let (credentials, manager) = runtime(&h);
+    let ws = open(&h, &credentials, &manager);
+    let document = ws
+        .archived_document(&credentials, dated_name, "verify.md")
+        .expect("carried verify.md is served as raw text");
+    let ticket =
+        speclink_desktop_core::query::ticket_json_from_text("verify", &document.content)
+            .expect("raw text parses through the engine");
+    assert_eq!(
+        ticket,
+        serde_json::json!({
+            "rounds": [{
+                "index": 1,
+                "phase": "discovery",
+                "patchHash": format!("sha256:{hash}"),
+                "scope": ["src/lib.rs"],
+                "findings": [{
+                    "severity": "WARNING",
+                    "path": "src/lib.rs",
+                    "text": "Correctness: scenario uncovered",
+                }],
+            }],
+        })
+    );
+    let missing = ws
+        .archived_document(&credentials, dated_name, "review.md")
+        .err()
+        .expect("review.md was not carried");
+    assert_eq!(missing.status, Some(404), "{}", missing.message);
 }

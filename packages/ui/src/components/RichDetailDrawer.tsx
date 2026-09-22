@@ -51,7 +51,7 @@ import { DocSkeleton } from "./skeletons";
 import { TaskList } from "./TaskList";
 import { DeltaBadges, DeltaSpecView } from "./DeltaBadges";
 import { AnalyzePanel } from "./AnalyzePanel";
-import { TicketTabBody, type TicketDoc } from "./TicketView";
+import { TicketTabBody, useStationTickets } from "./TicketView";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE, type ReviewBadgeStatus } from "./reviewStyle";
 import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE, type VerifyBadgeStatus } from "./verifyStyle";
 import { setTaskMark } from "../tasks";
@@ -358,11 +358,6 @@ export function RichDetailDrawer({
   const [tasksMd, setTasksMd] = useState<Doc>();
   // undefined＝capability 清單與其規格文件尚未載完（與「無 delta 規格」的空物件分流）。
   const [specDocs, setSpecDocs] = useState<Record<string, string | null> | undefined>();
-  // 兩站工單（design D3）：只在對應分頁出現時載入，狀態翻回非進行中即清回未載入。
-  const [tickets, setTickets] = useState<Record<TicketStation, TicketDoc>>({
-    review: undefined,
-    verify: undefined,
-  });
   // 受控分頁：工單分頁退場時要能把當前分頁切回「提案」（design D3）。
   const [tab, setTab] = useState("proposal");
   const [copied, markCopied] = useCopied();
@@ -393,7 +388,6 @@ export function RichDetailDrawer({
       setTasksMd(undefined);
       setSpecDocs(undefined);
       setRoster(loadDependsCandidates ? undefined : null);
-      setTickets({ review: undefined, verify: undefined });
     }
     const fresh = <T,>(apply: (v: T) => void) => (v: T) => {
       if (requestSeq.current === seq) apply(v);
@@ -447,31 +441,13 @@ export function RichDetailDrawer({
 
   const inReview = change?.reviewStatus === "inReview";
   const inVerify = change?.verifyStatus === "inVerify";
-  // 工單載入 latest-wins：每站一個序號，換 change／世代交錯時晚到的舊回應丟棄。
-  const ticketSeq = useRef<Record<TicketStation, number>>({ review: 0, verify: 0 });
-  const loadTicket = (station: TicketStation, target: string) => {
-    const seq = ++ticketSeq.current[station];
-    const apply = (v: TicketDoc) => {
-      if (ticketSeq.current[station] === seq) setTickets((prev) => ({ ...prev, [station]: v }));
-    };
-    // 失敗與無工單同一終態（spec：讀取或解析失敗顯示空態而非錯誤）。
-    (loadStationTicket ? loadStationTicket(target, station) : Promise.resolve(null))
-      .then(apply)
-      .catch(() => apply(null));
-  };
-  // 分頁出現時載入、隨世代重載；分頁消失時清回未載入，下次出現重新走骨架。
-  useEffect(() => {
-    if (!open || !name) return;
-    if (inReview) loadTicket("review", name);
-    else setTickets((prev) => (prev.review === undefined ? prev : { ...prev, review: undefined }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, name, inReview, gen]);
-  useEffect(() => {
-    if (!open || !name) return;
-    if (inVerify) loadTicket("verify", name);
-    else setTickets((prev) => (prev.verify === undefined ? prev : { ...prev, verify: undefined }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, name, inVerify, gen]);
+  // 兩站工單（design D3）：分頁出現時載入、隨世代重載、分頁消失時清回未載入。
+  const tickets = useStationTickets(
+    open && name ? name : null,
+    { review: inReview, verify: inVerify },
+    gen,
+    loadStationTicket,
+  );
   // 開啟／換 change 從「提案」起（uncontrolled 時內容隨 Sheet 重掛即如此，受控後明寫）。
   useEffect(() => {
     if (open) setTab("proposal");

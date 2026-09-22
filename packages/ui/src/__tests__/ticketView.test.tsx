@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render as rtlRender, fireEvent, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 
@@ -99,15 +99,40 @@ describe("TicketView（design D4 呈現規則）", () => {
     expect(r2.querySelectorAll("[data-ticket-scope-path]")).toHaveLength(3);
   });
 
-  it("零 findings 的輪顯示「本輪無 findings」", () => {
+  it("零 findings 的輪顯示「本輪無發現」", () => {
     const empty: StationTicket = {
       rounds: [{ index: 3, phase: "validation", patchHash: HASH, scope: ["src/a.rs"], findings: [] }],
     };
     const { container } = render(<TicketView station="verify" ticket={empty} />);
-    expect(text(round(container, 3))).toContain("本輪無 findings");
+    expect(text(round(container, 3))).toContain("本輪無發現");
+    expect(text(round(container, 3))).not.toContain("findings");
     expect(text(container.querySelector("[data-ticket-header]"))).toBe(
       "驗證 · 第 3 輪（複驗）CRITICAL 0 · WARNING 0 · SUGGESTION 0",
     );
+  });
+
+  // 引擎不檢查 `## Round N` 的 N 是否唯一：手改出同序號的工單，React key 與
+  // 「末輪展開」都以陣列位置決定，不撞 key、不把兩輪一起展開。
+  it("同序號的輪不撞 React key，只有位置上的末輪展開", () => {
+    const dup: StationTicket = {
+      rounds: [
+        { index: 1, phase: "discovery", patchHash: HASH, scope: SCOPE, findings: [] },
+        { index: 1, phase: "validation", patchHash: HASH, scope: SCOPE, findings: [] },
+      ],
+    };
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { container } = render(<TicketView station="review" ticket={dup} />);
+      const toggles = Array.from(
+        container.querySelectorAll("[data-ticket-round-toggle]"),
+      ) as HTMLButtonElement[];
+      expect(toggles).toHaveLength(2);
+      expect(toggles[0].getAttribute("aria-expanded")).toBe("false");
+      expect(toggles[1].getAttribute("aria-expanded")).toBe("true");
+      expect(errors.mock.calls.some((c) => String(c[0]).includes("same key"))).toBe(false);
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   // spec Example「階段詞與 accepted token」：一列一案。

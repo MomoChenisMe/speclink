@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 import type { StationTicket, TicketFinding, TicketRound, TicketStation } from "../adapter";
@@ -39,7 +39,49 @@ function splitAcceptedToken(text: string): { shown: string; accepted: boolean } 
 
 /** 工單分頁的載入三態（design D3）：undefined＝載入在途、null＝載入完成無工單
  * （不存在、遠端 404、讀取或解析失敗）、物件＝有內容。 */
-export type TicketDoc = StationTicket | null | undefined;
+type TicketDoc = StationTicket | null | undefined;
+
+/** 兩站工單的載入狀態（design D3／D5，兩個抽屜共用）：`key` 為 change 名或封存
+ * 目錄名，null＝抽屜關閉或無主體（留住內容陪滑出動畫）；`present` 為分頁是否出現
+ * ——出現時載入、隨 `gen` 重載、消失時清回未載入；換 `key` 先清回骨架再載。
+ * latest-wins：每站一個序號，清空與換主體也推進序號，晚到的舊回應一律丟棄。
+ * 失敗與無工單同一終態 null（spec：讀取或解析失敗顯示空態而非錯誤）。 */
+export function useStationTickets(
+  key: string | null,
+  present: Record<TicketStation, boolean>,
+  gen: number,
+  load: ((key: string, station: TicketStation) => Promise<StationTicket | null>) | undefined,
+): Record<TicketStation, TicketDoc> {
+  return {
+    review: useStationTicket("review", key, present.review, gen, load),
+    verify: useStationTicket("verify", key, present.verify, gen, load),
+  };
+}
+
+function useStationTicket(
+  station: TicketStation,
+  key: string | null,
+  present: boolean,
+  gen: number,
+  load: ((key: string, station: TicketStation) => Promise<StationTicket | null>) | undefined,
+): TicketDoc {
+  const [doc, setDoc] = useState<TicketDoc>(undefined);
+  const seq = useRef(0);
+  const shownKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!key) return;
+    const mine = ++seq.current;
+    if (!present || key !== shownKey.current) setDoc(undefined);
+    shownKey.current = key;
+    if (!present) return;
+    const settle = (v: TicketDoc) => {
+      if (seq.current === mine) setDoc(v);
+    };
+    (load ? load(key, station) : Promise.resolve(null)).then(settle).catch(() => settle(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, present, gen]);
+  return doc;
+}
 
 /** 兩個抽屜共用的分頁內容：三態依「抽屜文件載入以 skeleton 呈現」——載入中骨架、
  * 無工單空態文案、有內容交 [`TicketView`]。 */
@@ -64,16 +106,10 @@ export interface TicketViewProps {
  */
 export function TicketView({ station, ticket }: TicketViewProps) {
   const { t } = useI18n();
-  // IPC 邊界防禦：rounds 缺席或空陣列（畸形 payload）以空態呈現，不讓抽屜崩潰。
-  const rounds = [...(ticket.rounds ?? [])].sort((a, b) => a.index - b.index);
+  const rounds = [...ticket.rounds].sort((a, b) => a.index - b.index);
   const last = rounds[rounds.length - 1];
-  if (!last) {
-    return <p className="text-xs text-muted-foreground">{t("ticket.empty")}</p>;
-  }
   const counts = { CRITICAL: 0, WARNING: 0, SUGGESTION: 0 };
-  for (const f of last.findings) {
-    if (f.severity in counts) counts[f.severity] += 1;
-  }
+  for (const f of last.findings) counts[f.severity] += 1;
   const phase = last.phase ? t(PHASE_KEY[last.phase]) : null;
   const title = `${t(STATION_KEY[station])} · ${roundLabel(t, last.index)}${phase ? `（${phase}）` : " · "}`;
   return (
@@ -92,11 +128,12 @@ export function TicketView({ station, ticket }: TicketViewProps) {
           <span>SUGGESTION {counts.SUGGESTION}</span>
         </span>
       </div>
-      {/* key 綁末輪序號：追加輪後整組重掛，預設「末輪展開、其餘收合」重新成立
-          （spec Scenario「工單追加輪後分頁更新」），不必逐輪同步狀態。 */}
-      <ol key={last.index} className="flex flex-col gap-1.5">
-        {rounds.map((round) => (
-          <RoundBlock key={round.index} round={round} defaultOpen={round.index === last.index} />
+      {/* key 綁輪數：追加輪後整組重掛，預設「末輪展開、其餘收合」重新成立
+          （spec Scenario「工單追加輪後分頁更新」），不必逐輪同步狀態。輪的 key 用
+          陣列位置——引擎不檢查 `## Round N` 唯一，手改出的同序號不得撞 key。 */}
+      <ol key={rounds.length} className="flex flex-col gap-1.5">
+        {rounds.map((round, i) => (
+          <RoundBlock key={i} round={round} defaultOpen={i === rounds.length - 1} />
         ))}
       </ol>
     </div>
@@ -175,9 +212,7 @@ function FindingRow({ finding }: { finding: TicketFinding }) {
     <li data-ticket-finding className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
       <span
         data-ticket-severity
-        className={`shrink-0 rounded px-1 py-0.5 text-[10px] font-medium ${
-          SEVERITY_CLS[finding.severity] ?? "bg-muted text-muted-foreground"
-        }`}
+        className={`shrink-0 rounded px-1 py-0.5 text-[10px] font-medium ${SEVERITY_CLS[finding.severity]}`}
       >
         {finding.severity}
       </span>

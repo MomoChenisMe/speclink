@@ -40,17 +40,17 @@
 
 欄位名與型別與 `ReviewRoundDto`（protocol）及 CLI `--json` 的 `rounds` 一字不差，camelCase。不帶 `lastRound`（前端取陣列末項）、不帶 `content`（不渲染原文）。理由：wire 上已有這個形狀，遠端活變更可零轉換直接傳回；本機路徑用同形狀就不需要第二套型別。替代方案「回原文字串、前端自己解析」被排除：解析規則（Phase／Patch 成對、legacy 輪）已在引擎，前端重寫會分岔。
 
-### D2 解析只在引擎，desktop core 做序列化，四條路徑共用
+### D2 解析與輪序列化只在引擎，desktop core 組 `{ rounds }`，四條路徑共用
 
-- `speclink-core`：`quality::station::parse_ticket(st: &Station, text: &str) -> Result<Ticket>` 由私有升為 `pub`。純函式、無 I/O、無 ANSI。既有 `show` 改為呼叫它（實際上已是），行為不變。
+- `speclink-core`：`quality::station::parse_ticket(st: &Station, text: &str) -> Result<Ticket>` 由私有升為 `pub`。純函式、無 I/O、無 ANSI。既有 `show` 改為呼叫它（實際上已是），行為不變。輪的 JSON 形狀由引擎 `Round::to_json(&self) -> Value` 一處定義：CLI `--json` 的 `rounds`／`lastRound` 與桌面工單分頁共用這一份（CLI 原本的 `round_json` 閉包改呼叫它，輸出逐字不變）；server 的 `ReviewRoundDto` 是同形的型別化鏡射，不經 `Value`，維持原樣。
 - `speclink-desktop-core`（`apps/desktop/core/src/query.rs`）新增：
   - `station_ticket_at(root, change, station: &str) -> Option<Value>`：`station` 為 `"review"`／`"verify"`，其他值回 `None`；經 `context_for_change`（worktree 覆蓋層）取 store，`store.read_artifact(change, st.doc)` 無檔回 `None`，有檔以 `parse_ticket` 解析後轉 D1 形狀；解析失敗（格式壞掉）回 `None`——面板顯示空態而非錯誤，與其他文件分頁「缺件即空態」同款。
   - `archived_station_ticket_at(root, dated_name, station) -> Option<Value>`：同法，改讀 `store.read_archived_artifact(dated_name, st.doc)`。
-  - `ticket_json(&Ticket) -> Value`：D1 形狀的唯一序列化落點；`ticket_json_from_text(station, text) -> Option<Value>` 供遠端封存原文使用。
+  - `ticket_json(&Ticket) -> Value`：組 `{ "rounds": [ … ] }`，每輪交引擎 `Round::to_json`；`ticket_json_from_text(station, text) -> Option<Value>` 供遠端封存原文使用。
 - `apps/desktop/src-tauri/src/lib.rs` 四個 Tauri 指令，每個單行委派：
   - `station_ticket(root, change, station)` → `query::station_ticket_at`
   - `archived_station_ticket(root, dated_name, station)` → `query::archived_station_ticket_at`
-  - `remote_station_ticket(connection_id, project, repo, change, station)` → `with_remote` 內呼叫 `RemoteWorkspace` 新增的 `station_ticket(credentials, station, change)`（包 client 的 `station_ticket_if_any`），`Some(resp)` 時回 `{ "rounds": resp.rounds }`（serde 直接序列化 `ReviewRoundDto`，形狀即 D1），`None` 回 `null`。
+  - `remote_station_ticket(connection_id, project, repo, change, station)` → `with_remote` 內呼叫 `RemoteWorkspace` 新增的 `station_ticket(credentials, change, station)`（包 client 的 `station_ticket_if_any`；參數順序同鄰近的 `document(credentials, change, artifact)`），`Some(resp)` 時回 `{ "rounds": resp.rounds }`（serde 直接序列化 `ReviewRoundDto`，形狀即 D1），`None` 回 `null`。
   - `remote_archived_station_ticket(connection_id, project, repo, dated_name, station)` → `with_remote` 內用既有 `archived_document(credentials, dated_name, "review.md"|"verify.md")` 取原文，404 回 `null`，其他以 `ticket_json_from_text` 解析。
 - 遠端活變更不走原文＋解析：`GET /changes/{name}/artifacts/review.md` 會被引擎白名單拒絕，且 `GET /changes/{name}/review` 已回結構化 `rounds`。不放寬白名單——白名單是 verb-contract 的一部分，放寬會連動 CLI 與規格。
 
@@ -59,7 +59,7 @@
 ### D3 分頁顯示條件沿用清單狀態，Tabs 改受控以處理退場
 
 - 不新增「工單是否存在」查詢。活面板：`change.reviewStatus === "inReview"` 出「審查」分頁、`change.verifyStatus === "inVerify"` 出「驗證」分頁；已封存面板：`reviewStatus === "reviewedNotPassed"`／`verifyStatus === "verifiedNotPassed"`。分頁排在「排程」（活面板）或「規格」（已封存面板）之後，審查在前、驗證在後，與狀態列章籤同序。
-- 工單載入時機：分頁出現時載入（不是面板開啟就載），並隨既有 `refreshGen`（外部檔案變更）重載——工單追加輪後內容要跟著更新。載入器由 host（`apps/desktop/src/App.tsx`）以 `loadStationTicket(change, station)`／`loadArchivedStationTicket(datedName, station)` props 傳入，與 `loadDocument` 同款。
+- 工單載入時機：分頁出現時載入（不是面板開啟就載），並隨既有 `refreshGen`（外部檔案變更）重載——工單追加輪後內容要跟著更新。載入器由 host（`apps/desktop/src/App.tsx`）以 `loadStationTicket(change, station)`／`loadArchivedStationTicket(datedName, station)` props 傳入，與 `loadDocument` 同款。兩個抽屜的載入狀態共用 `TicketView.tsx` 的 `useStationTickets(key, present, gen, load)`：換主體先清回骨架、分頁消失清回未載入、每站一個序號 latest-wins（清空與換主體也推進序號，晚到的舊回應丟棄，不會閃出前一個 change 的工單）。
 - `Tabs` 由 `defaultValue` 改為受控 `value`／`onValueChange`：當前分頁為「審查」或「驗證」而對應狀態翻為非進行中（看板刷新後工單已刪）時，把 `value` 設回 `"proposal"`。切換變更（`change.name` 改變）時同樣重設為 `"proposal"`（現行 uncontrolled 已是如此，受控後要明寫）。
 
 替代方案「面板開啟就預載兩份工單」被排除：多數變更沒有工單，會多兩次無意義 I/O；「工單消失時留在空分頁」被排除：分頁已不存在，留在其內容區是壞狀態。
@@ -71,15 +71,16 @@
 - 段標題：站名（「審查」／「驗證」）、「第 N 輪」（N 為末輪 index）、括號內末輪階段詞、末輪三級計數「CRITICAL n · WARNING n · SUGGESTION n」（嚴重度標籤維持英文，與工單原文一致）。
 - 輪次列表：依 index 升序，每輪一個可收合區塊；末輪預設展開，其餘預設收合。輪標題：「第 N 輪」＋階段詞（`discovery` →「首輪」、`validation` →「複驗」、`null` → 不顯示階段詞）＋「範圍 N 檔」（N 為 `scope.length`；點擊展開檔案路徑清單，等寬字）＋「M 條」（`findings.length`）。
 - finding 列：嚴重度色章（CRITICAL 用 destructive 紅、WARNING 用既有 amber、SUGGESTION 用 muted 灰，色票沿用 `reviewStyle.tsx` 已定義的三紅分工原則）、路徑等寬字、描述原文。描述行尾若以結構 token `(accepted)` 結尾（允許尾端空白），去掉 token 後顯示「已接受」籤；token 只在行尾辨識，行中出現不處理。描述不翻譯、不截斷、可換行。
-- 零 findings 的輪顯示「本輪無 findings」。
+- 零 findings 的輪顯示「本輪無發現」（同分頁的條數用「條」，不在中文文案直出 findings）。
 - 空態（分頁存在但載入完成無內容）：「工單尚未抵達或已被刪除」。
 - 大小：無虛擬化——工單輪數通常個位數，findings 數十條以內。
+- 輪的 React key 與「末輪」以陣列位置決定，不用 `index`：引擎不檢查 `## Round N` 唯一，手改出同序號的工單不得撞 key。
 
 替代方案「以 finding 為主、不分輪次」被排除：驗證輪會逐字帶前輪未解 findings，不分輪會重複顯示且看不出收斂。
 
 ### D5 已封存面板同元件、同載入器形狀
 
-`ArchivedDrawer` 新增 `loadStationTicket(datedName, station)` prop，分頁條件用既有 `reviewStatus`／`verifyStatus` props（`reviewedNotPassed`／`verifiedNotPassed`）。內容以同一個 `TicketView` 渲染。`DataSource` 介面（`packages/ui/src/adapter.ts`）新增 `getStationTicket(change, station)` 與 `getArchivedStationTicket(datedName, station)`，`apps/desktop` 的 `tauriDataSource.ts` 與 `remoteDataSource.ts` 各接對應 Tauri 指令；`App.test.tsx` 的資料源假件補兩個方法。
+`ArchivedDrawer` 新增 `loadStationTicket(datedName, station)` prop，分頁條件用既有 `reviewStatus`／`verifyStatus` props（`reviewedNotPassed`／`verifiedNotPassed`）；兩個狀態與 target 一起交 `useLingering` 留住——宿主關抽屜時三者同時設空，滑出動畫期間章籤與工單分頁不先消失。內容以同一個 `TicketView` 渲染。`DataSource` 介面（`packages/ui/src/adapter.ts`）新增 `getStationTicket(change, station)` 與 `getArchivedStationTicket(datedName, station)`，`apps/desktop` 的 `tauriDataSource.ts` 與 `remoteDataSource.ts` 各接對應 Tauri 指令；`App.test.tsx` 的資料源假件補兩個方法。
 
 ### D6 詞彙：「首輪」「複驗」入 LANGUAGE.md
 
@@ -101,8 +102,8 @@
 - `StationTicket`／`TicketRound`／`TicketFinding` 型別（D1）匯出自 `packages/ui`。
 - Tauri 指令：`station_ticket`、`archived_station_ticket`、`remote_station_ticket`、`remote_archived_station_ticket`，回 `Option<Value>`。
 - desktop core：`station_ticket_at`、`archived_station_ticket_at`、`ticket_json`、`ticket_json_from_text`。
-- 引擎：`speclink_core::station::parse_ticket` 為 `pub`。
-- i18n 新詞條（tw／en）：`drawer.tab.review`（審查／Review）、`drawer.tab.verify`（驗證／Verify）、`ticket.round`（第 {n} 輪／Round {n}）、`ticket.phase.discovery`（首輪／First pass）、`ticket.phase.validation`（複驗／Re-check）、`ticket.scopeFiles`（範圍 {n} 檔／{n} files in scope）、`ticket.findings`（{n} 條／{n} findings）、`ticket.accepted`（已接受／Accepted）、`ticket.noFindings`（本輪無 findings／No findings this round）、`ticket.empty`（工單尚未抵達或已被刪除／Ticket not loaded or already removed）。
+- 引擎：`speclink_core::station::parse_ticket` 為 `pub`；`Round::to_json` 為 CLI 與桌面共用的輪序列化。
+- i18n 新詞條（tw／en）：`drawer.tab.review`（審查／Review）、`drawer.tab.verify`（驗證／Verify）、`ticket.round`（第 {n} 輪／Round {n}）、`ticket.phase.discovery`（首輪／First pass）、`ticket.phase.validation`（複驗／Re-check）、`ticket.scopeFiles`（範圍 {n} 檔／{n} files in scope）、`ticket.findings`（{n} 條／{n} findings）、`ticket.accepted`（已接受／Accepted）、`ticket.noFindings`（本輪無發現／No findings this round）、`ticket.empty`（工單尚未抵達或已被刪除／Ticket not loaded or already removed）。
 
 **驗收**
 
@@ -116,7 +117,7 @@
 **範圍界線**
 
 - In：上述四層（引擎公開函式、desktop core、Tauri 殼、`packages/ui`＋`apps/desktop` 接線）、`desktop-app` delta 規格、LANGUAGE.md、i18n。
-- Out：server、CLI、`speclink-node`、`apps/server-web`、任何動詞、章籤點擊跳分頁、歷史回看。
+- Out：server、CLI 的行為（CLI 只把 `round_json` 改呼叫引擎 `Round::to_json`，`--json` 輸出不變）、`speclink-node`、`apps/server-web`、任何動詞、章籤點擊跳分頁、歷史回看。
 
 ## Risks / Trade-offs
 

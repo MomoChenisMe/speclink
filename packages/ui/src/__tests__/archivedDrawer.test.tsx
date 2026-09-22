@@ -608,4 +608,21 @@ describe("已封存抽屜的工單分頁", () => {
     fireEvent.mouseDown(screen.getByRole("tab", { name: /驗證/ }));
     await screen.findByText("工單尚未抵達或已被刪除");
   });
+
+  // 宿主關抽屜時把 target 與兩個狀態一起設為空（App 由 detailArchived 查表），
+  // 滑出動畫期間主體靠 useLingering 留住——工單分頁的條件也要跟著留住，否則停在
+  // 「審查」分頁時分頁列與內容會在動畫期間先消失、留下空白分頁區。
+  it("宿主把 target 與狀態一起設空 → 工單分頁與內容隨最後主體留住", async () => {
+    const loadStationTicket = vi.fn(async () => TICKET);
+    const props = makeProps({ reviewStatus: "reviewedNotPassed", verifyStatus: "verified", loadStationTicket });
+    const { rerender } = render(<ArchivedDrawer {...(props as never)} />);
+    await waitFor(() => screen.getByRole("tab", { name: /審查/ }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /審查/ }));
+    await waitFor(() => expect(headerText()).toMatch(/^審查 · 第 2 輪/));
+
+    rerender(<ArchivedDrawer {...(props as never)} target={null} reviewStatus={undefined} verifyStatus={undefined} />);
+    expect(screen.getByRole("tab", { name: /審查/ }).getAttribute("data-state")).toBe("active");
+    expect(headerText()).toMatch(/^審查 · 第 2 輪/);
+    expect(screen.getByText("2026-07-04-old-change")).toBeTruthy();
+  });
 });

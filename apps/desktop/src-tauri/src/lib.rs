@@ -1376,7 +1376,7 @@ async fn remote_station_ticket(
         let Some(st) = speclink_desktop_core::query::station_by_noun(&station) else {
             return Ok(None);
         };
-        ws.station_ticket(credentials, st.noun, &change)
+        ws.station_ticket(credentials, &change, st.noun)
             .map(|ticket| ticket.map(|resp| json!({ "rounds": resp.rounds })))
             .map_err(|error| error.message)
     })

@@ -21,6 +21,39 @@ fn stamp_demo(store: &TestStore, accept: bool) -> Result<()> {
 }
 
 #[test]
+fn round_to_json_is_the_one_wire_shape_for_cli_and_desktop() {
+    // CLI `--json` 的 `rounds` 項與桌面工單分頁（drawer-quality-ticket-tab D1）共用
+    // 這一份序列化：欄位 camelCase、legacy 輪的 phase／patchHash 為明確 null。
+    let text = format!(
+        "# Review — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n\n- [WARNING] src/a.rs — old style\n\n\
+         ## Round 2\n\n**Phase**: validation\n**Patch**: sha256:{}\n**Scope**: src/a.rs, src/b.rs\n\n\
+         - [SUGGESTION] src/b.rs — nit (accepted)\n",
+        "b".repeat(64)
+    );
+    let ticket = parse_ticket(&REVIEW, &text).expect("two rounds parse");
+    assert_eq!(
+        ticket.rounds[0].to_json(),
+        serde_json::json!({
+            "index": 1,
+            "phase": null,
+            "patchHash": null,
+            "scope": ["src/a.rs"],
+            "findings": [{ "severity": "WARNING", "path": "src/a.rs", "text": "old style" }],
+        })
+    );
+    assert_eq!(
+        ticket.rounds[1].to_json(),
+        serde_json::json!({
+            "index": 2,
+            "phase": "validation",
+            "patchHash": format!("sha256:{}", "b".repeat(64)),
+            "scope": ["src/a.rs", "src/b.rs"],
+            "findings": [{ "severity": "SUGGESTION", "path": "src/b.rs", "text": "nit (accepted)" }],
+        })
+    );
+}
+
+#[test]
 fn gate_ignores_suggestion_findings() {
     // 守門 (2) 的分界：SUGGESTION 不是必修，僅 SUGGESTION 的末輪放行。
     let store = store_with_round(

@@ -87,6 +87,14 @@
       "files": [
         "apps/desktop/src/App.tsx"
       ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 `crates/engine/speclink-core/src/quality/station.rs` 把 `parse_ticket(st, text)` 升為 `pub`（純函式，簽名與行為不變），`apps/desktop/core/src/query.rs` 實作 `ticket_json(&Ticket)`（組 `{ rounds }`，每輪交引擎 `Round::to_json`——CLI 與桌面共用的序列化）、`ticket_json_from_text(station, text)`、`station_ticket_at`（經 `context_for_change` 取含 worktree 覆蓋層的 store，`read_artifact(change, st.doc)`）與 `archived_station_ticket_at`（`read_archived_artifact`）。行為：四個入口對同一份工單回同一 JSON。驗證：1.1 測試綠；`cargo test -p speclink-core` 綠且 golden 不變（無輸出改動）。",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/station.rs",
+        "crates/engine/speclink-core/src/quality/station/tests.rs"
+      ]
     }
   ],
   "entries": [
@@ -219,6 +227,18 @@
         "apps/desktop/src/App.tsx"
       ],
       "recordedAt": "2026-09-22T05:07:17Z"
+    },
+    {
+      "taskId": "tsk_01M33MXY7P853DZSHEZ2S40AAH",
+      "taskDesc": "1.2 `crates/engine/speclink-core/src/quality/station.rs` 把 `parse_ticket(st, text)` 升為 `pub`（純函式，簽名與行為不變），`apps/desktop/core/src/query.rs` 實作 `ticket_json(&Ticket)`（組 `{ rounds }`，每輪交引擎 `Round::to_json`——CLI 與桌面共用的序列化）、`ticket_json_from_text(station, text)`、`station_ticket_at`（經 `context_for_change` 取含 worktree 覆蓋層的 store，`read_artifact(change, st.doc)`）與 `archived_station_ticket_at`（`read_archived_artifact`）。行為：四個入口對同一份工單回同一 JSON。驗證：1.1 測試綠；`cargo test -p speclink-core` 綠且 golden 不變（無輸出改動）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "54556324110272830d048278f6d376aab4e784e1",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/station.rs",
+        "crates/engine/speclink-core/src/quality/station/tests.rs"
+      ],
+      "recordedAt": "2026-09-22T06:13:30Z"
     }
   ]
 }
