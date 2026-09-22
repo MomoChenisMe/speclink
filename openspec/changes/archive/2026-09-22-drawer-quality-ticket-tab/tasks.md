@@ -25,4 +25,4 @@
 ## 5. 詞彙與收尾（D6 詞彙：「首輪」「複驗」入 LANGUAGE.md）
 
 - [x] 5.1 `openspec/LANGUAGE.md` 新增「首輪」「複驗」詞條（definition／avoid／why 依 design D6），並於「換頁」詞條補註詳情面板的 tab 稱「分頁」不稱「頁籤」；掃描 `packages/ui/src/i18n.tsx`、`apps/desktop/src/i18n/messages.ts`、README 與 docs 面確認新 avoid 詞（發現輪、驗證輪、複審）零命中。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 綠。 <!-- speclink-task:tsk_01M33MXY7PQJAMBAV29J6GCJCQ -->
-- [ ] [M] 5.2 於本機 speclink 專案以 `/speclink-review` 跑到工單落地後開啟桌面 app：確認該變更抽屜出現「審查」分頁、段標題輪數與計數正確、末輪展開；蓋章後分頁消失且退回「提案」；再以「照樣帶走」封存一個有工單的變更，確認已封存抽屜出現對應分頁。驗證：人工核對上述四點，並跑 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 確認詞彙守門仍綠。 <!-- speclink-task:tsk_01M33MXY7P6GZ68D6FTPXRW2VS -->
+- [x] [M] 5.2 於本機 speclink 專案以 `/speclink-review` 跑到工單落地後開啟桌面 app：確認該變更抽屜出現「審查」分頁、段標題輪數與計數正確、末輪展開；蓋章後分頁消失且退回「提案」；再以「照樣帶走」封存一個有工單的變更，確認已封存抽屜出現對應分頁。驗證：人工核對上述四點，並跑 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 確認詞彙守門仍綠。 <!-- speclink-task:tsk_01M33MXY7P6GZ68D6FTPXRW2VS -->

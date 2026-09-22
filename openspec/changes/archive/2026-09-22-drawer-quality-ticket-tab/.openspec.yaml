@@ -103,3 +103,5 @@ verified_scope:
     hash: 9a1dce2fc1dc4609b39fe5a753efc4873e3e98bfab637de16cfd50435f09bd6a
   - path: packages/ui/src/index.ts
     hash: 919c7a2708d2441f134a8ac9efc794ef86f87ac51b01d5879fbe24be8027368e
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-22
