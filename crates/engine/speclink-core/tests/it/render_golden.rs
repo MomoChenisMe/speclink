@@ -1796,45 +1796,137 @@ fn baseline_skill_loads_workflow_config_and_applies_specs_rules() {
     }
 }
 
-// --- discuss skill: discuss-conclusion-bullets ---
+// --- discuss and improve skills: discuss-conclusion-bullets ---
+
+/// One Conclusion template of a generated skill: the text from `start` (inclusive) up to
+/// the first `end` after it — a `speclink discuss conclude` heredoc ends at its
+/// `CONCLUSION_EOF` line, the "Capture decisions" summary at the paragraph that follows
+/// it. Bounding the block keeps a field line missing from THIS template from being
+/// found in the next template further down the file.
+fn conclusion_template<'a>(rel: &str, content: &'a str, start: &str, end: &str) -> &'a str {
+    let from = content
+        .find(start)
+        .unwrap_or_else(|| panic!("{rel}: missing {start:?}"));
+    let block = &content[from..];
+    let to = block
+        .find(end)
+        .unwrap_or_else(|| panic!("{rel}: the {start:?} block has no {end:?}"));
+    &block[..to]
+}
+
+/// The line right after the first line of `block` that starts with `field`.
+fn line_after<'a>(rel: &str, block: &'a str, field: &str) -> &'a str {
+    let at = block
+        .find(field)
+        .unwrap_or_else(|| panic!("{rel}: no {field} line in the template:\n{block}"));
+    block[at..].lines().nth(1).unwrap_or("")
+}
+
+/// A Conclusion template in Document rule 8 shape: `- ` bullets right under
+/// `**Decision**:` together with the per-cut bullet and its indented sub-point (unless the
+/// template's verdict is a single sentence), `- ` bullets under `**Rejected alternatives**:`,
+/// and the `- ` item shape demonstrated on the `**Deferred**:` line.
+fn assert_conclusion_bullets(rel: &str, block: &str, decision_bulleted: bool) {
+    if decision_bulleted {
+        let next = line_after(rel, block, "**Decision**:");
+        assert!(
+            next.starts_with("- "),
+            "{rel}: Decision must be followed by a `- ` bullet, got {next:?}"
+        );
+        // 多刀 bullet 與其縮排子項：Decision 條列的模板一律示範，缺行即 panic
+        let next = line_after(rel, block, "- **cut N `change-name`**:");
+        assert!(
+            next.starts_with("  - "),
+            "{rel}: the per-cut bullet must carry an indented sub-point, got {next:?}"
+        );
+    }
+    let next = line_after(rel, block, "**Rejected alternatives**:");
+    assert!(
+        next.starts_with("- "),
+        "{rel}: Rejected alternatives must be followed by a `- ` bullet, got {next:?}"
+    );
+    let deferred = block
+        .lines()
+        .find(|line| line.starts_with("**Deferred**:"))
+        .unwrap_or_else(|| panic!("{rel}: no **Deferred**: line in the template:\n{block}"));
+    assert!(
+        deferred.contains("`- "),
+        "{rel}: Deferred must show the `- ` item shape, got {deferred:?}"
+    );
+}
 
 /// Spec discuss-skill「討論記錄的樹慣例與格式不變」, Scenario「技能檔載有結論條列規則且
-/// 三種渲染目標同源」: the generated discuss skill carries Document rule 8 — the
-/// Conclusion counterpart of rule 5 — and both the `conclude` command example and
-/// the "Capture decisions" summary are themselves in bullet shape. The neutral
-/// targets share the asset and are pinned by their golden snapshots.
+/// 三種渲染目標同源」＋ improve-skill「conclude 範例與討論結論條列規則同形」: the
+/// generated discuss skill carries Document rule 8 — the Conclusion counterpart of rule
+/// 5 — and every Conclusion template is itself in bullet shape: discuss's conclude
+/// heredoc and "Capture decisions" summary (which also share their hint wording), and
+/// improve's two conclude heredocs. The neutral targets share the assets and are pinned
+/// by their golden snapshots.
 #[test]
 fn discuss_skill_carries_the_conclusion_bullets_rule() {
+    // 第 8 條的字面 — 與第 5 條對稱的規則名、條件句、單段句、多刀子句、不回改句。
+    const RULE_PHRASES: [&str; 6] = [
+        "8. **Conclusion bullets over prose.**",
+        "exceeds one sentence it SHALL be bulleted",
+        "Rationale / Capture to / Next stay a single paragraph",
+        // 第 8 條專屬片語：範例只寫 `one bullet per cut when …`，不含這句
+        "one bullet per cut, headed",
+        "**cut N `change-name`**",
+        "existing records are not rewritten",
+    ];
+    // 兩份 discuss 模板的提示字句同文；佔位符慣例照舊各異（`...` vs `[...]`）。
+    const SHARED_HINTS: [&str; 7] = [
+        "a one-sentence verdict; beyond one sentence, bullet it",
+        "one settled point per line — keep every detail, never trim",
+        "one bullet per cut when several changes spin out",
+        "that cut's details, one item each",
+        "the key trade-off that drove it — a single paragraph",
+        "option — why it lost, one per line",
+        "`- question — why not now`, one per line",
+    ];
     for (rel, content) in skill_for_both_tools("discuss-conclusion-bullets", "discuss") {
-        for needle in [
-            // 第 8 條字面，與第 5 條對稱
-            "8. **Conclusion bullets over prose.**",
-            "Rationale / Capture to / Next stay a single paragraph",
-            // 多刀結論每刀一個 bullet 的固定起頭
-            "**cut N `change-name`**",
-        ] {
+        for needle in RULE_PHRASES {
             assert!(
                 content.contains(needle),
                 "{rel}: missing conclusion-rule phrase {needle:?}"
             );
         }
-        // conclude 指令範例與 Capture decisions 摘要：Decision 與 Rejected alternatives
-        // 之後緊接 `- ` 條列行 — 範例本身即為條列形。
-        for anchor in ["speclink discuss conclude <slug> --stdin", "### Capture decisions"] {
-            let start = content
-                .find(anchor)
-                .unwrap_or_else(|| panic!("{rel}: missing {anchor:?}"));
-            let block = &content[start..];
-            for field in ["**Decision**:", "**Rejected alternatives**:"] {
-                let at = block
-                    .find(field)
-                    .unwrap_or_else(|| panic!("{rel}: no {field} line after {anchor:?}"));
-                let next_line = block[at..].lines().nth(1).unwrap_or("");
+        let heredoc = conclusion_template(
+            &rel,
+            &content,
+            "speclink discuss conclude <slug> --stdin",
+            "\nCONCLUSION_EOF",
+        );
+        let summary =
+            conclusion_template(&rel, &content, "### Capture decisions", "Where to capture:");
+        for block in [heredoc, summary] {
+            assert_conclusion_bullets(&rel, block, true);
+            for hint in SHARED_HINTS {
                 assert!(
-                    next_line.starts_with("- "),
-                    "{rel}: the {field} line after {anchor:?} must be followed by a `- ` bullet, got {next_line:?}"
+                    block.contains(hint),
+                    "{rel}: template lacks the shared hint {hint:?}:\n{block}"
                 );
             }
+        }
+    }
+    // improve 是 discuss 的鏡像入口、寫同一種記錄：收斂範例的 Decision 條列，全數否決
+    // 範例的 Decision 是一句「不做」定論、只有 Rejected alternatives 條列。
+    for (rel, content) in skill_for_both_tools("improve-conclusion-bullets", "improve") {
+        let anchor = "speclink discuss conclude improve-<scope> --stdin";
+        let blocks: Vec<&str> = content
+            .match_indices(anchor)
+            .map(|(from, _)| {
+                conclusion_template(&rel, &content[from..], anchor, "\nCONCLUSION_EOF")
+            })
+            .collect();
+        assert_eq!(
+            blocks.len(),
+            2,
+            "{rel}: expected the converging and the no-change conclude examples"
+        );
+        for block in blocks {
+            let no_change = block.contains("**Decision**: no change");
+            assert_conclusion_bullets(&rel, block, !no_change);
         }
     }
 }

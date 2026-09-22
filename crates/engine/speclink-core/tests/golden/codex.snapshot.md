@@ -1515,7 +1515,7 @@ The document has a fixed skeleton — like the proposal template, every discussi
 5. **Position bullets over prose.** When a Position exceeds one sentence it SHALL be bulleted — a one-sentence verdict first, then `- ` points one per line. A single-line wall-of-text Position is unreadable in every viewer. Focus / Ruled out / Open stay single-line.
 6. **The rounds trace the decision tree.** The first round's Position lays out the initial decision space (an ASCII tree is welcome); each later round resolves one node; branches discovered mid-round are recorded in that round's Open. The Open ledger is thus always the exact frontier of the unexplored tree.
 7. **Multi-requirement backlog.** When one discussion carries several requirements (say 5-10 at once), the first round's Open lays out the full requirement list; every later round's Open restates the items still open; and where a settled item went (decided, promoted, dropped) is carried by the first sentence of that round's Position. Open and Position as they already exist — no new section, no format change. These are the same fields the resume ritual ("At the start" below) reads back.
-8. **Conclusion bullets over prose.** When the Conclusion's Decision, Rejected alternatives or Deferred exceeds one sentence it SHALL be bulleted — a one-sentence verdict first, then `- ` points one per line. Rationale / Capture to / Next stay a single paragraph. The Decision keeps every settled detail — never trim it to shorten the record — and none of its points refers back to a round ("see Round 3"); when the conclusion plans several cuts to spin out, the Decision carries one bullet per cut, headed ``**cut N `change-name`**: one-sentence scope``, with that cut's details as indented sub-points, one item each. Rejected alternatives take one line per item, `option — why it lost`; Deferred takes one line per item, `question — why not now`, or the single word `none`. The rule binds the conclusions written from here on; existing records are not rewritten.
+8. **Conclusion bullets over prose.** When the Conclusion's Decision, Rejected alternatives or Deferred exceeds one sentence it SHALL be bulleted — `- ` points one per line: the Decision opens with a one-sentence verdict and bullets the rest, while Rejected alternatives and Deferred keep the `**Field**:` header bare and carry one `- ` line per item. Rationale / Capture to / Next stay a single paragraph. The Decision keeps every settled detail — never trim it to shorten the record — and none of its points refers back to a round ("see Round 3"); when the conclusion plans several cuts to spin out, the Decision carries one bullet per cut, headed ``**cut N `change-name`**: one-sentence scope``, with that cut's details as indented sub-points, one item each. A Rejected alternatives line reads `option — why it lost`; a Deferred line reads `question — why not now`, or the field holds the single word `none`. The rule binds the conclusions written from here on; existing records are not rewritten.
 
 **At the start (before Step 0):**
 
@@ -1589,7 +1589,7 @@ speclink discuss conclude <slug> --stdin <<'CONCLUSION_EOF'
 **Rationale**: ... (the key trade-off that drove it — a single paragraph)
 **Rejected alternatives**:
 - ... — ... (option — why it lost, one per line)
-**Deferred**: none (or one line per item: question — why not now)
+**Deferred**: none (or `- question — why not now`, one per line)
 **Capture to**: proposal | design | spec | tasks | LANGUAGE.md
 **Next**: $speclink-propose --from-discussion <slug>
 CONCLUSION_EOF
@@ -1904,14 +1904,14 @@ Summary format:
 ```
 ## Conclusion
 
-**Decision**: [One-sentence verdict]
-- [One settled point per line — every detail kept]
-- **cut N `change-name`**: [one-sentence scope — one bullet per cut when several spin out]
-  - [That cut's details, one item each]
-**Rationale**: [Why — the key trade-off that drove this; a single paragraph]
+**Decision**: [a one-sentence verdict; beyond one sentence, bullet it]
+- [one settled point per line — keep every detail, never trim]
+- **cut N `change-name`**: [one bullet per cut when several changes spin out]
+  - [that cut's details, one item each]
+**Rationale**: [the key trade-off that drove it — a single paragraph]
 **Rejected alternatives**:
-- [Option — why it lost, one per line]
-**Deferred**: none [or one line per item: question — why not now]
+- [option — why it lost, one per line]
+**Deferred**: none [or `- question — why not now`, one per line]
 **Capture to**: [Where this should be recorded]
 ```
 
@@ -2230,10 +2230,14 @@ Once the user picks, this becomes an ordinary speclink discussion, run with the 
 
 ```bash
 speclink discuss conclude improve-<scope> --stdin <<'CONCLUSION_EOF'
-**Decision**: ...
-**Rationale**: ... (the trade-off that drove it)
-**Rejected alternatives**: ... (each candidate that lost, with why)
-**Deferred**: ... — or "none"
+**Decision**: ... (a one-sentence verdict; beyond one sentence, bullet it)
+- ... (one settled point per line — keep every detail, never trim)
+- **cut N `change-name`**: ... (one bullet per cut when the work is staged)
+  - ... (that cut's details, one item each)
+**Rationale**: ... (the trade-off that drove it — a single paragraph)
+**Rejected alternatives**:
+- ... — ... (each candidate that lost — why, one per line)
+**Deferred**: none (or `- question — why not now`, one per line)
 **Capture to**: proposal
 **Next**: $speclink-propose --from-discussion improve-<scope>
 CONCLUSION_EOF
@@ -2247,8 +2251,9 @@ Then fan out: `speclink discuss promote <slug>` (or `$speclink-propose --from-di
 speclink discuss conclude improve-<scope> --stdin <<'CONCLUSION_EOF'
 **Decision**: no change — none of this round's candidates are worth doing
 **Rationale**: ...
-**Rejected alternatives**: ... (every candidate, with the reason it lost)
-**Deferred**: ...
+**Rejected alternatives**:
+- ... — ... (every candidate, with the reason it lost, one per line)
+**Deferred**: none (or `- question — why not now`, one per line)
 CONCLUSION_EOF
 
 speclink discuss archive improve-<scope>

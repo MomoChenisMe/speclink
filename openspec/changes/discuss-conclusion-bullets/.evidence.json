@@ -28,6 +28,13 @@
         "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
         "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
       ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 受影響面全綠：`cargo test -p speclink-core` 通過（含 render_golden 五份 golden 位元一致、assets.lock 鎖定測試、skill_verbization 與 no_direct_fs 守門）；`speclink validate discuss-conclusion-bullets` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過（詞彙守門掃 openspec/ 與 docs 面）。驗證：三條指令的 exit code 皆為 0。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/improve.md"
+      ]
     }
   ],
   "entries": [
@@ -69,6 +76,17 @@
         "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
       ],
       "recordedAt": "2026-09-22T04:37:41Z"
+    },
+    {
+      "taskId": "tsk_01M33MQT83YCHTJZTVD5SZBTSD",
+      "taskDesc": "3.1 受影響面全綠：`cargo test -p speclink-core` 通過（含 render_golden 五份 golden 位元一致、assets.lock 鎖定測試、skill_verbization 與 no_direct_fs 守門）；`speclink validate discuss-conclusion-bullets` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過（詞彙守門掃 openspec/ 與 docs 面）。驗證：三條指令的 exit code 皆為 0。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8eaa3b21caf871f6b2314334ad339b799260d5de",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/improve.md"
+      ],
+      "recordedAt": "2026-09-22T05:25:54Z"
     }
   ]
 }
