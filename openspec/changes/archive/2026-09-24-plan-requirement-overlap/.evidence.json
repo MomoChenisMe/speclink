@@ -1,0 +1,250 @@
+{
+  "version": 2,
+  "change": "plan-requirement-overlap",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 在 crates/engine/speclink-core/src/lifecycle/plan.rs 新增 delta_touches(store, change)：對 delta_capabilities 的每個 capability 以 read_artifact 讀 delta 文字，經換行正規化後用 archive 模組的 parse_delta 取 ADDED／MODIFIED／REMOVED 的 requirement 名、用 model 模組的 rename_pairs 取 RENAMED 的 FROM 與 TO 名，回傳 (capability, operation, requirement) 三元組；delta 讀不到或空白回空清單。驗證：plan.rs 單元測試 delta_touches_lists_every_operation_including_rename_from_and_to 與 delta_touches_empty_delta_is_zero_touch，`cargo test -p speclink-core plan::`。（規格：執行順序的基底與拓樸修正）",
+      "files": [
+        "crates/engine/speclink-core/src/lifecycle/archive.rs",
+        "crates/engine/speclink-core/src/lifecycle/plan.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 為 compute 加 strict 開關（compute_with_ranks 與 compute 各多一個 strict: bool 參數或以 PlanOptions 結構承載）：strict 時目錄級重疊推波次並併入 blockedBy，與本變更前輸出逐位元一致；requirementOverlap 與 archiveAfter 照常計算。驗證：單元測試 strict_overlap_reproduces_capability_level_waves 以既有 basis_order 測試資料斷言舊波次與舊 blockedBy，`cargo test -p speclink-core plan::`。（規格：執行順序的基底與拓樸修正）",
+      "files": [
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/command/tests.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.3 speclink-remote 的 crates/protocol/speclink-remote/src/convert.rs 在 wire 型別未變前以空 Vec 填 PlanChange 的兩個新欄位（含其測試資料），apps/desktop/core/src/manage.rs 與 apps/desktop/src-tauri/src/remote.rs 中 PlanChange 的建構補上新欄位；apps/desktop/core/src/query.rs 的 plan 注入測試改為新語意（只共用 capability 的夥伴同為第 1 波、blockedBy 空，overlaps 仍列目錄級）；整個 workspace 編譯通過。驗證：`cargo build --workspace`、`cargo test -p speclink-remote`、`cargo test -p speclink-desktop-core query::`，既有 typed_client 測試不變。",
+      "files": [
+        "apps/desktop/core/src/manage.rs",
+        "apps/desktop/core/src/query.rs",
+        "crates/adapters/speclink-cli/src/verbs/plan.rs",
+        "crates/engine/speclink-core/assets/skills/apply-worktree-pre.md",
+        "crates/engine/speclink-core/assets/skills/apply.md",
+        "crates/host/speclink-server/src/api/routes.rs",
+        "crates/protocol/speclink-remote/src/convert.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.1 把 apps/desktop/core/src/rank.rs 的 midpoint、spread、neighbor_midpoint、ranked_in_order 與其測試整檔搬到 crates/engine/speclink-core/src/lifecycle/rank.rs，於 lifecycle 模組宣告並由 crate 根（crates/engine/speclink-core/src/lib.rs）re-export 為 `speclink_core::rank`；apps/desktop/core/src/rank.rs 改為 `pub use speclink_core::rank::*` 轉出，apps/desktop/core/src/manage.rs 的引用不變。驗證：`cargo test -p speclink-core rank::` 與 `cargo test -p speclink-desktop-core` 皆綠，且 speclink-desktop-core 無 E0255 同名衝突。",
+      "files": [
+        "apps/desktop/core/src/rank.rs",
+        "crates/engine/speclink-core/src/lib.rs",
+        "crates/engine/speclink-core/src/lifecycle/mod.rs",
+        "crates/engine/speclink-core/src/lifecycle/rank.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.2 crates/engine/speclink-core/src/command/mod.rs 新增 Command::ChangeRank { name, anchor, before, force } 與 RankOutcome { change, anchor, position }，引擎在 plan.rs 實作 set_rank：守門依序（兩者皆作用中且 metadata 可解析、不相同、同階段、name 無 rank 或帶 force）→ 欄內（name 除外）缺 rank 或 rank 序與看板顯示序不一致（ranked_in_order 為假）時以 spread 按顯示序算補章（name 除外），與看板拖排同一判定 → neighbor_midpoint 算新 rank → check_rank_move → 寫入順序為補章逐一 set_board_rank、最後寫 name；任一守門失敗零寫入，補章中途失敗停止回報且已寫保留。驗證：單元測試 rank_before_unranked_anchor_stamps_column_then_writes、rank_refuses_when_already_ranked_without_force、rank_force_overwrites、rank_refuses_across_declared_dependency、rank_refuses_different_stage、rank_refuses_self_anchor，`cargo test -p speclink-core plan::`。（規格：change rank 動詞寫入看板順序鍵）",
+      "files": [
+        "crates/engine/speclink-core/src/command/typed.rs",
+        "crates/engine/speclink-core/src/teststore.rs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.3 crates/adapters/speclink-cli/src/verbs/plan.rs 的 ChangeCommands 加 Rank 子指令：`speclink change rank <name> (--before <other> | --after <other>) [--force] [--json]`，--before 與 --after 以 clap 互斥且必擇一；fs 臂經 worktree 映射（沿 depends 同一段）呼叫 Command::ChangeRank，成功 stdout 一行 `✓ <name> ranked before <other>`（或 after），--json 輸出 { \"change\", \"anchor\", \"position\" } 三鍵不含 rank 值；remote 臂明確拒絕、stderr 說明順序由 board resource 決定、非零 exit、不發請求。驗證：crates/adapters/speclink-cli/tests/it/plan_verbs.rs 新增 change_rank_before_writes_board_rank_and_reorders_plan、change_rank_json_shape_has_no_rank_value、change_rank_refuses_already_ranked_and_force_overwrites、change_rank_refuses_dependency_cross、change_rank_refuses_different_stage、change_rank_remote_mode_refuses_without_request，`cargo test -p speclink-cli --test it plan_verbs`。（規格：change rank 動詞寫入看板順序鍵）",
+      "files": [
+        "crates/adapters/speclink-cli/src/main.rs",
+        "crates/adapters/speclink-cli/tests/it/plan_verbs.rs",
+        "crates/adapters/speclink-cli/tests/it/worktree_overlay.rs",
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.1 speclink plan 加 `--strict-overlap` 旗標並傳入引擎；`--json` 的 changes 每項為九鍵（name、wave、stage、dependsOn、overlaps、blockedBy、ready、requirementOverlap、archiveAfter），requirementOverlap 每項六鍵 camelCase。remote 模式帶此旗標時由 crates/adapters/speclink-cli/src/main.rs 的 dispatch 以固定訊息拒絕、不發任何請求；新增 specs/verb-contract delta 把它列為兩模式輸出的第 6 項明文分歧，docs/verb-contract.md 與 docs/verb-contract.zh-TW.md 同步。驗證：plan_verbs.rs 新增 plan_json_has_nine_keys_and_requirement_overlap_shape（斷言鍵名與型別）、plan_strict_overlap_reproduces_old_waves，remote_plan.rs 新增 remote_plan_refuses_strict_overlap_without_a_request，`cargo test -p speclink-cli --test it plan_verbs`、`cargo test -p speclink-cli --test it remote_plan`。（規格：plan 動詞輸出波次與阻擋清單）",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/remote_plan.rs"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "6.1 crates/engine/speclink-core/assets/skills/propose.md 的 Pending-change landscape check：硬信號段改為「requirement 級重疊由 plan 算成 archiveAfter、ADDED 同名為 conflict；代理人不判定重疊，conflict 時向使用者提改名」；depends 落檔後加插隊判定段（提案中、task 數少且無人依賴而急 → `speclink change rank <本變更> --before <第一個比它大的提案中變更>`；拒絕時口頭建議不加 --force）；plan 呈現段加 archiveAfter 的封存順序句。驗證：內容審閱——再生後的 .claude/skills/speclink-propose/SKILL.md 含 `change rank`、`archiveAfter`、`conflict` 字面且不含「delta capability overlap」。（規格：收尾盤點提案中變更的執行順序）",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/archive.md",
+        "crates/engine/speclink-core/assets/skills/commit.md",
+        "crates/engine/speclink-core/assets/skills/ingest.md",
+        "crates/engine/speclink-core/assets/skills/propose.md",
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ]
+    },
+    {
+      "task_id": "18",
+      "task_desc": "7.1 crates/protocol/speclink-protocol/src/query.rs 的 PlanChangeEntry 追加 `requirement_overlap: Vec<PlanRequirementOverlap>` 與 `archive_after: Vec<String>`（皆 serde default、camelCase），新增 PlanRequirementOverlap 六欄型別（兩個操作以字串搬運），JSON Schema 匯出隨型別更新；序列化九鍵、缺兩新鍵反序列化為空陣列。驗證：query.rs 單元測試 plan_response_deserializes_the_plan_payload、plan_change_entry_reads_a_missing_array_as_empty、plan_response_serializes_the_cli_plan_json_keys、plan_dtos_export_json_schema，`cargo test -p speclink-protocol`（規格：plan 回應 payload）。",
+      "files": [
+        "apps/desktop/core/src/lib.rs",
+        "apps/desktop/src-tauri/src/remote.rs",
+        "crates/host/speclink-server/tests/it/api/plan_api.rs",
+        "crates/protocol/speclink-protocol/src/query.rs",
+        "crates/protocol/speclink-remote/tests/it/typed_client.rs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.3 crates/adapters/speclink-cli/src/verbs/plan.rs 的 ChangeCommands 加 Rank 子指令：`speclink change rank <name> (--before <other> | --after <other>) [--force] [--json]`，--before 與 --after 以 clap 互斥且必擇一；fs 臂直接呼叫引擎 set_rank——讀取走 worktree overlay（與 plan 同一視角），寫入經 crates/adapters/speclink-cli/src/common.rs 的 home_store_for 逐 change 落在各自的副本（副本已不含該 change 時退回主 checkout，與 overlay 讀取同一個存在判定；change depends 也改用它，單元測試 home_store_follows_the_copy_that_still_holds_the_change）；成功 stdout 一行 `✓ <name> ranked before <other>`（或 after），--json 輸出 { \"change\", \"anchor\", \"position\" } 三鍵不含 rank 值；remote 模式由 crates/adapters/speclink-cli/src/main.rs 的 dispatch 明確拒絕、stderr 說明順序由 board resource 決定、非零 exit、不發請求。驗證：crates/adapters/speclink-cli/tests/it/plan_verbs.rs 的 change_rank_before_writes_board_rank_and_reorders_plan、change_rank_json_shape_has_no_rank_value、change_rank_refuses_already_ranked_and_force_overwrites、change_rank_refuses_dependency_cross、change_rank_refuses_different_stage、change_rank_remote_mode_refuses_without_request、change_rank_refuses_a_change_without_metadata_before_any_write，crates/adapters/speclink-cli/tests/it/worktree_overlay.rs 的 change_rank_writes_the_worktree_copy_of_a_mapped_change、change_rank_sees_a_change_created_after_the_worktree_branched、change_rank_stamps_each_change_in_its_own_copy，`cargo test -p speclink-cli --test it plan_verbs`、`cargo test -p speclink-cli --test it worktree_overlay`。（規格：change rank 動詞寫入看板順序鍵）",
+      "files": [
+        "crates/adapters/speclink-cli/src/common.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M38JDHAYC5CJAVV9E3VV80Q0",
+      "taskDesc": "1.1 在 crates/engine/speclink-core/src/lifecycle/plan.rs 新增 delta_touches(store, change)：對 delta_capabilities 的每個 capability 以 read_artifact 讀 delta 文字，經換行正規化後用 archive 模組的 parse_delta 取 ADDED／MODIFIED／REMOVED 的 requirement 名、用 model 模組的 rename_pairs 取 RENAMED 的 FROM 與 TO 名，回傳 (capability, operation, requirement) 三元組；delta 讀不到或空白回空清單。驗證：plan.rs 單元測試 delta_touches_lists_every_operation_including_rename_from_and_to 與 delta_touches_empty_delta_is_zero_touch，`cargo test -p speclink-core plan::`。（規格：執行順序的基底與拓樸修正）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ac816f0e1e11a74e5066574bad357afb93930cc2",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lifecycle/archive.rs",
+        "crates/engine/speclink-core/src/lifecycle/plan.rs"
+      ],
+      "recordedAt": "2026-09-24T02:26:26Z"
+    },
+    {
+      "taskId": "tsk_01M38JDHAY5AS3TVJTSY2TZKSM",
+      "taskDesc": "2.2 為 compute 加 strict 開關（compute_with_ranks 與 compute 各多一個 strict: bool 參數或以 PlanOptions 結構承載）：strict 時目錄級重疊推波次並併入 blockedBy，與本變更前輸出逐位元一致；requirementOverlap 與 archiveAfter 照常計算。驗證：單元測試 strict_overlap_reproduces_capability_level_waves 以既有 basis_order 測試資料斷言舊波次與舊 blockedBy，`cargo test -p speclink-core plan::`。（規格：執行順序的基底與拓樸修正）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ac816f0e1e11a74e5066574bad357afb93930cc2",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/command/tests.rs"
+      ],
+      "recordedAt": "2026-09-24T02:33:26Z"
+    },
+    {
+      "taskId": "tsk_01M38JDHAYASY3WE5V4W6GJM0R",
+      "taskDesc": "2.3 speclink-remote 的 crates/protocol/speclink-remote/src/convert.rs 在 wire 型別未變前以空 Vec 填 PlanChange 的兩個新欄位（含其測試資料），apps/desktop/core/src/manage.rs 與 apps/desktop/src-tauri/src/remote.rs 中 PlanChange 的建構補上新欄位；apps/desktop/core/src/query.rs 的 plan 注入測試改為新語意（只共用 capability 的夥伴同為第 1 波、blockedBy 空，overlaps 仍列目錄級）；整個 workspace 編譯通過。驗證：`cargo build --workspace`、`cargo test -p speclink-remote`、`cargo test -p speclink-desktop-core query::`，既有 typed_client 測試不變。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ac816f0e1e11a74e5066574bad357afb93930cc2",
+      "touchedFiles": [
+        "apps/desktop/core/src/manage.rs",
+        "apps/desktop/core/src/query.rs",
+        "crates/adapters/speclink-cli/src/verbs/plan.rs",
+        "crates/engine/speclink-core/assets/skills/apply-worktree-pre.md",
+        "crates/engine/speclink-core/assets/skills/apply.md",
+        "crates/host/speclink-server/src/api/routes.rs",
+        "crates/protocol/speclink-remote/src/convert.rs"
+      ],
+      "recordedAt": "2026-09-24T02:44:59Z"
+    },
+    {
+      "taskId": "tsk_01M38JDHAYJ3B3T08WBSH26E7R",
+      "taskDesc": "4.1 把 apps/desktop/core/src/rank.rs 的 midpoint、spread、neighbor_midpoint、ranked_in_order 與其測試整檔搬到 crates/engine/speclink-core/src/lifecycle/rank.rs，於 lifecycle 模組宣告並由 crate 根（crates/engine/speclink-core/src/lib.rs）re-export 為 `speclink_core::rank`；apps/desktop/core/src/rank.rs 改為 `pub use speclink_core::rank::*` 轉出，apps/desktop/core/src/manage.rs 的引用不變。驗證：`cargo test -p speclink-core rank::` 與 `cargo test -p speclink-desktop-core` 皆綠，且 speclink-desktop-core 無 E0255 同名衝突。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ac816f0e1e11a74e5066574bad357afb93930cc2",
+      "touchedFiles": [
+        "apps/desktop/core/src/rank.rs",
+        "crates/engine/speclink-core/src/lib.rs",
+        "crates/engine/speclink-core/src/lifecycle/mod.rs",
+        "crates/engine/speclink-core/src/lifecycle/rank.rs"
+      ],
+      "recordedAt": "2026-09-24T03:02:24Z"
+    },
+    {
+      "taskId": "tsk_01M38JDHAY0BMZ1P0YC4BACATD",
+      "taskDesc": "4.2 crates/engine/speclink-core/src/command/mod.rs 新增 Command::ChangeRank { name, anchor, before, force } 與 RankOutcome { change, anchor, position }，引擎在 plan.rs 實作 set_rank：守門依序（兩者皆作用中且 metadata 可解析、不相同、同階段、name 無 rank 或帶 force）→ 欄內（name 除外）缺 rank 或 rank 序與看板顯示序不一致（ranked_in_order 為假）時以 spread 按顯示序算補章（name 除外），與看板拖排同一判定 → neighbor_midpoint 算新 rank → check_rank_move → 寫入順序為補章逐一 set_board_rank、最後寫 name；任一守門失敗零寫入，補章中途失敗停止回報且已寫保留。驗證：單元測試 rank_before_unranked_anchor_stamps_column_then_writes、rank_refuses_when_already_ranked_without_force、rank_force_overwrites、rank_refuses_across_declared_dependency、rank_refuses_different_stage、rank_refuses_self_anchor，`cargo test -p speclink-core plan::`。（規格：change rank 動詞寫入看板順序鍵）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ac816f0e1e11a74e5066574bad357afb93930cc2",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/typed.rs",
+        "crates/engine/speclink-core/src/teststore.rs"
+      ],
+      "recordedAt": "2026-09-24T03:12:44Z"
+    },
+    {
+      "taskId": "tsk_01M38JDHAYGRBMW6DKDHD9VP5M",
+      "taskDesc": "4.3 crates/adapters/speclink-cli/src/verbs/plan.rs 的 ChangeCommands 加 Rank 子指令：`speclink change rank <name> (--before <other> | --after <other>) [--force] [--json]`，--before 與 --after 以 clap 互斥且必擇一；fs 臂經 worktree 映射（沿 depends 同一段）呼叫 Command::ChangeRank，成功 stdout 一行 `✓ <name> ranked before <other>`（或 after），--json 輸出 { \"change\", \"anchor\", \"position\" } 三鍵不含 rank 值；remote 臂明確拒絕、stderr 說明順序由 board resource 決定、非零 exit、不發請求。驗證：crates/adapters/speclink-cli/tests/it/plan_verbs.rs 新增 change_rank_before_writes_board_rank_and_reorders_plan、change_rank_json_shape_has_no_rank_value、change_rank_refuses_already_ranked_and_force_overwrites、change_rank_refuses_dependency_cross、change_rank_refuses_different_stage、change_rank_remote_mode_refuses_without_request，`cargo test -p speclink-cli --test it plan_verbs`。（規格：change rank 動詞寫入看板順序鍵）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ac816f0e1e11a74e5066574bad357afb93930cc2",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/main.rs",
+        "crates/adapters/speclink-cli/tests/it/plan_verbs.rs",
+        "crates/adapters/speclink-cli/tests/it/worktree_overlay.rs",
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md"
+      ],
+      "recordedAt": "2026-09-24T03:31:43Z"
+    },
+    {
+      "taskId": "tsk_01M38JDHAY9AQKY8PGF51J6ZW4",
+      "taskDesc": "5.1 speclink plan 加 `--strict-overlap` 旗標並傳入引擎；`--json` 的 changes 每項為九鍵（name、wave、stage、dependsOn、overlaps、blockedBy、ready、requirementOverlap、archiveAfter），requirementOverlap 每項六鍵 camelCase。remote 模式帶此旗標時由 crates/adapters/speclink-cli/src/main.rs 的 dispatch 以固定訊息拒絕、不發任何請求；新增 specs/verb-contract delta 把它列為兩模式輸出的第 6 項明文分歧，docs/verb-contract.md 與 docs/verb-contract.zh-TW.md 同步。驗證：plan_verbs.rs 新增 plan_json_has_nine_keys_and_requirement_overlap_shape（斷言鍵名與型別）、plan_strict_overlap_reproduces_old_waves，remote_plan.rs 新增 remote_plan_refuses_strict_overlap_without_a_request，`cargo test -p speclink-cli --test it plan_verbs`、`cargo test -p speclink-cli --test it remote_plan`。（規格：plan 動詞輸出波次與阻擋清單）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ac816f0e1e11a74e5066574bad357afb93930cc2",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/remote_plan.rs"
+      ],
+      "recordedAt": "2026-09-24T03:54:06Z"
+    },
+    {
+      "taskId": "tsk_01M38JDHAYZS6ZVBV6DVN3XCJ7",
+      "taskDesc": "6.1 crates/engine/speclink-core/assets/skills/propose.md 的 Pending-change landscape check：硬信號段改為「requirement 級重疊由 plan 算成 archiveAfter、ADDED 同名為 conflict；代理人不判定重疊，conflict 時向使用者提改名」；depends 落檔後加插隊判定段（提案中、task 數少且無人依賴而急 → `speclink change rank <本變更> --before <第一個比它大的提案中變更>`；拒絕時口頭建議不加 --force）；plan 呈現段加 archiveAfter 的封存順序句。驗證：內容審閱——再生後的 .claude/skills/speclink-propose/SKILL.md 含 `change rank`、`archiveAfter`、`conflict` 字面且不含「delta capability overlap」。（規格：收尾盤點提案中變更的執行順序）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ac816f0e1e11a74e5066574bad357afb93930cc2",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/archive.md",
+        "crates/engine/speclink-core/assets/skills/commit.md",
+        "crates/engine/speclink-core/assets/skills/ingest.md",
+        "crates/engine/speclink-core/assets/skills/propose.md",
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ],
+      "recordedAt": "2026-09-24T04:10:19Z"
+    },
+    {
+      "taskId": "tsk_01M38JQ5S6A1QJFWRHTF8GW5MX",
+      "taskDesc": "7.1 crates/protocol/speclink-protocol/src/query.rs 的 PlanChangeEntry 追加 `requirement_overlap: Vec<PlanRequirementOverlap>` 與 `archive_after: Vec<String>`（皆 serde default、camelCase），新增 PlanRequirementOverlap 六欄型別（兩個操作以字串搬運），JSON Schema 匯出隨型別更新；序列化九鍵、缺兩新鍵反序列化為空陣列。驗證：query.rs 單元測試 plan_response_deserializes_the_plan_payload、plan_change_entry_reads_a_missing_array_as_empty、plan_response_serializes_the_cli_plan_json_keys、plan_dtos_export_json_schema，`cargo test -p speclink-protocol`（規格：plan 回應 payload）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ac816f0e1e11a74e5066574bad357afb93930cc2",
+      "touchedFiles": [
+        "apps/desktop/core/src/lib.rs",
+        "apps/desktop/src-tauri/src/remote.rs",
+        "crates/host/speclink-server/tests/it/api/plan_api.rs",
+        "crates/protocol/speclink-protocol/src/query.rs",
+        "crates/protocol/speclink-remote/tests/it/typed_client.rs"
+      ],
+      "recordedAt": "2026-09-24T07:08:19Z"
+    },
+    {
+      "taskId": "tsk_01M38JDHAYGRBMW6DKDHD9VP5M",
+      "taskDesc": "4.3 crates/adapters/speclink-cli/src/verbs/plan.rs 的 ChangeCommands 加 Rank 子指令：`speclink change rank <name> (--before <other> | --after <other>) [--force] [--json]`，--before 與 --after 以 clap 互斥且必擇一；fs 臂直接呼叫引擎 set_rank——讀取走 worktree overlay（與 plan 同一視角），寫入經 crates/adapters/speclink-cli/src/common.rs 的 home_store_for 逐 change 落在各自的副本（副本已不含該 change 時退回主 checkout，與 overlay 讀取同一個存在判定；change depends 也改用它，單元測試 home_store_follows_the_copy_that_still_holds_the_change）；成功 stdout 一行 `✓ <name> ranked before <other>`（或 after），--json 輸出 { \"change\", \"anchor\", \"position\" } 三鍵不含 rank 值；remote 模式由 crates/adapters/speclink-cli/src/main.rs 的 dispatch 明確拒絕、stderr 說明順序由 board resource 決定、非零 exit、不發請求。驗證：crates/adapters/speclink-cli/tests/it/plan_verbs.rs 的 change_rank_before_writes_board_rank_and_reorders_plan、change_rank_json_shape_has_no_rank_value、change_rank_refuses_already_ranked_and_force_overwrites、change_rank_refuses_dependency_cross、change_rank_refuses_different_stage、change_rank_remote_mode_refuses_without_request、change_rank_refuses_a_change_without_metadata_before_any_write，crates/adapters/speclink-cli/tests/it/worktree_overlay.rs 的 change_rank_writes_the_worktree_copy_of_a_mapped_change、change_rank_sees_a_change_created_after_the_worktree_branched、change_rank_stamps_each_change_in_its_own_copy，`cargo test -p speclink-cli --test it plan_verbs`、`cargo test -p speclink-cli --test it worktree_overlay`。（規格：change rank 動詞寫入看板順序鍵）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ac816f0e1e11a74e5066574bad357afb93930cc2",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/common.rs"
+      ],
+      "recordedAt": "2026-09-24T11:42:20Z"
+    }
+  ]
+}

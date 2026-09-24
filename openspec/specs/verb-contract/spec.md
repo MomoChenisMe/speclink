@@ -434,6 +434,7 @@ CLI 動詞的人眼輸出（stdout 文本，含 --no-color 模式）在本機與
 3. status 的 schema 覆寫旗標——remote 以固定訊息明確拒絕（server 的 workflow config 決定 schema）
 4. workflow-config 的文件標籤——remote 以 config.yaml 為標籤（server 端無本機路徑可印）
 5. discuss promote 的 Path 行與其後的 propose 提示行——本機印、remote 不印（新變更目錄是 store 端的檔案系統位置，同第 1 項的裁定；兩行綁在一起去留）
+6. plan 的 --strict-overlap 旗標——remote 以固定訊息明確拒絕，拒絕判定只解析模式、不發出任何 server 請求（server 只以 requirement 級重疊規劃，沒有目錄級開關）
 
 同形範圍涵蓋 list、discuss 全部子指令、task done 與 task undone、in-progress remove、discard、archive、review 與 verify 的 add-round／stamp／discard／show。模式差異 SHALL 只存在於資料取得與守門拒絕，SHALL NOT 存在於輸出文本的組版。
 
@@ -457,9 +458,15 @@ CLI 動詞的人眼輸出（stdout 文本，含 --no-color 模式）在本機與
 - **WHEN** remote server 為舊版（回應缺新欄位），於 remote 模式執行 archive 與 review show
 - **THEN** 兩指令輸出整體退回既有 remote 輸出（簡短封存行、結構化工單摘要），exit code 0，SHALL NOT 出現新舊欄位混合的部分渲染
 
+#### Scenario: plan 的 --strict-overlap 於 remote 明確拒絕
+
+- **WHEN** 於 remote 模式設定的專案執行 speclink plan --strict-overlap --json
+- **THEN** exit code 非零，stderr 含 `plan --strict-overlap is not available in remote mode`，stdout 為空，且未發出任何 server 請求（連握手都不發）
+
+
 <!-- @trace
-source: cli-render-unification
-updated: 2026-08-08
+source: plan-requirement-overlap
+updated: 2026-09-24T22:20:29+08:00
 -->
 
 ---
@@ -490,7 +497,7 @@ CLI 頂層動詞 SHALL 逐一歸屬四種模式形狀之一，本機（fs）/rem
 
 - **ModeFree**（init、update、link、unlink、auth、schemas、templates、feedback、schema、config、completion）：執行 SHALL NOT 觸發 store 模式解析，dispatch SHALL NOT 因宣告層而對其引入 .speclink.yaml 的解析失敗——不讀取專案設定的動詞（completion、config）SHALL 不受壞的 .speclink.yaml 影響；部分動詞（如 schemas、templates、update）的 workspace 探索本就讀取 .speclink.yaml 以解析 spec_dir，其於壞檔下的既有失敗行為維持不變；連線管理動詞（link、unlink、auth）的連線解析由動詞自理。
 - **Dual**（list、show、validate、analyze、drift、archive、discard、artifact、language、status、instructions、new、workflow-config、task、in-progress、discuss、review、verify、plan、change）：fs 模式 SHALL 作用於本機 store，remote 模式 SHALL 作用於 remote store，SHALL NOT 於 remote 模式靜默作用於本機 store；宣告 SHALL 同時載明本機臂與 remote 臂，缺任一臂 SHALL 構成建置失敗而非執行期靜默回退；不消費 store 的前置步驟（instructions 的 --skill 分流、workflow-config 的 argv／stdin 正規化）SHALL 先於模式解析執行，維持既有可觀察順序。
-- **FsOnly**（demo、trace）：remote 模式 SHALL 以非零 exit code 明確拒絕，拒絕判定 SHALL 僅解析模式而不建立連線——SHALL NOT 發出任何 server 請求，離線環境同樣拒絕。
+- **FsOnly**（demo、trace；以及 Dual 家族內只限本機的兩個子情形——change 的 rank 子指令、plan 的 --strict-overlap 旗標）：remote 模式 SHALL 以非零 exit code 明確拒絕，拒絕判定 SHALL 僅解析模式而不建立連線——SHALL NOT 發出任何 server 請求，離線環境同樣拒絕。子情形的歸屬 SHALL 同樣在 dispatch 的宣告層依子指令或旗標決定，同一動詞的其餘子指令與不帶該旗標的呼叫維持 Dual。
 - **RemoteOnly**（claim）：fs 模式 SHALL 以非零 exit code 明確拒絕並於 stderr 說明需要 remote store。
 
 模式判定 SHALL 惰性執行：僅於宣告形狀需要時解析模式，僅於 remote 臂將執行時建立連線。
@@ -505,6 +512,11 @@ CLI 頂層動詞 SHALL 逐一歸屬四種模式形狀之一，本機（fs）/rem
 - **WHEN** 於 remote 模式設定且 server 不可達的環境下執行 speclink demo
 - **THEN** exit code 非零，stderr 說明該動詞僅限本機模式，且過程未發出任何 server 請求
 
+#### Scenario: Dual 家族內的 FsOnly 子情形零請求拒絕
+
+- **WHEN** 於 remote 模式設定且 server 不可達的環境下分別執行 speclink change rank c --before a 與 speclink plan --strict-overlap
+- **THEN** 兩者 exit code 非零，stderr 分別說明 change rank 與 plan --strict-overlap 僅限本機模式，且過程未發出任何 server 請求
+
 #### Scenario: RemoteOnly 動詞於 fs 模式明確拒絕
 
 - **WHEN** 於 fs 模式專案執行 speclink claim 指定 change
@@ -517,6 +529,6 @@ CLI 頂層動詞 SHALL 逐一歸屬四種模式形狀之一，本機（fs）/rem
 
 
 <!-- @trace
-source: add-change-plan-remote
-updated: 2026-09-17T15:34:04+08:00
+source: plan-requirement-overlap
+updated: 2026-09-24T22:20:29+08:00
 -->
