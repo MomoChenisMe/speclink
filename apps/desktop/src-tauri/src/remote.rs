@@ -927,7 +927,7 @@ fn ensure_column_ranks<'a>(
     respread: bool,
 ) -> HashMap<&'a str, String> {
     if respread {
-        let keys = speclink_desktop_core::rank::spread(members.len());
+        let keys = speclink_core::rank::spread(members.len());
         for (member, key) in members.iter().zip(&keys) {
             map.insert((*member).to_string(), key.clone());
         }
@@ -1001,13 +1001,13 @@ pub(crate) fn reorder_full_text(
             // 判定與本地拖排同一條（rank::ranked_in_order）。
             let current: Vec<Option<&str>> =
                 column.iter().map(|m| doc.changes.get(*m).map(String::as_str)).collect();
-            let respread = !speclink_desktop_core::rank::ranked_in_order(&current);
+            let respread = !speclink_core::rank::ranked_in_order(&current);
             let ranks = ensure_column_ranks(&column, &mut doc.changes, respread);
-            let key = speclink_desktop_core::rank::neighbor_midpoint(&ranks, prev_id, next_id);
+            let key = speclink_core::rank::neighbor_midpoint(&ranks, prev_id, next_id);
             doc.changes.insert(id.to_string(), key);
             if let Some(plan) = &snapshot.plan {
                 // 拖放後的序列＝plan 有配置的欄成員依新 rank 排序：plan 略過的卡不列入——
-                // 引擎視對它的依賴為已滿足，與 local check_rank_move 的判定範圍相同。只擋
+                // 引擎視對它的依賴為已滿足，與本機拖排（引擎 move_rank 寫入前的依賴檢查）的判定範圍相同。只擋
                 // 涉及被拖卡的配對，訊息與 local 同一句（引擎的同一判定）。
                 let mut sequence: Vec<&str> = members
                     .iter()
@@ -1039,7 +1039,7 @@ pub(crate) fn reorder_full_text(
             let column: Vec<&str> = ordered.iter().map(|d| d.slug.as_str()).collect();
             let unranked = column.iter().any(|slug| !doc.discussions.contains_key(*slug));
             let ranks = ensure_column_ranks(&column, &mut doc.discussions, unranked);
-            let key = speclink_desktop_core::rank::neighbor_midpoint(&ranks, prev_id, next_id);
+            let key = speclink_core::rank::neighbor_midpoint(&ranks, prev_id, next_id);
             doc.discussions.insert(id.to_string(), key);
         }
         other => {
@@ -2025,6 +2025,8 @@ mod plan_merge_tests {
             overlaps: Vec::new(),
             blocked_by: blocked_by.iter().map(|s| s.to_string()).collect(),
             ready: blocked_by.is_empty(),
+            requirement_overlap: Vec::new(),
+            archive_after: Vec::new(),
         }
     }
 
@@ -2262,8 +2264,8 @@ mod board_reorder_tests {
 
     #[test]
     fn a_skipped_prerequisite_takes_no_part_in_the_dependency_check() {
-        // 引擎視對 plan 略過的卡（壞 meta）的依賴為已滿足，與本機 check_rank_move 的判定
-        // 範圍相同：add-b 宣告依賴排在欄尾的 add-x，桌面收到把 add-b 移到欄頂的寫回請求時
+        // 引擎視對 plan 略過的卡（壞 meta）的依賴為已滿足，與本機拖排（引擎 move_rank 的
+        // 依賴檢查）的判定範圍相同：add-b 宣告依賴排在欄尾的 add-x，桌面收到把 add-b 移到欄頂的寫回請求時
         // 照常寫回。
         let mut snap = snapshot(
             vec![change("add-a", 0, 4), change("add-b", 0, 4), change("add-x", 0, 4)],

@@ -132,6 +132,17 @@ impl TempProject {
         std::fs::write(dir.join(".openspec.yaml"), meta).unwrap();
     }
 
+    /// 給 change 一份 capability delta，MODIFIED 一個 requirement。
+    fn put_modified(&self, change: &str, cap: &str, requirement: &str) {
+        let dir = self.dir.join("openspec").join("changes").join(change).join("specs").join(cap);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("spec.md"),
+            format!("## MODIFIED Requirements\n\n### Requirement: {requirement}\n\nbody\n"),
+        )
+        .unwrap();
+    }
+
     fn run(&self, args: &[&str]) -> Output {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_speclink"));
         cmd.args(args).current_dir(&self.dir);
@@ -178,8 +189,11 @@ fn fs_pair(tag: &str) -> TempProject {
 #[test]
 fn remote_plan_prints_the_fs_output_for_the_same_content() {
     // Scenario「remote plan 同形」：fs 的 --json 就是 server 對同內容的回應形狀；
-    // remote 臂把它轉回引擎型別再渲染，--json 與人眼行都要與 fs 逐位元一致。
+    // remote 臂把它轉回引擎型別再渲染，--json 與人眼行都要與 fs 逐位元一致——
+    // 含 requirement 級重疊與封存順序（兩者 MODIFIED 同一個 requirement）。
     let fs = fs_pair("plan-fs");
+    fs.put_modified("add-a", "auth", "Login");
+    fs.put_modified("add-b", "auth", "Login");
     let fs_json = fs.run(&["plan", "--json"]);
     assert!(fs_json.status.success(), "fs stderr: {}", stderr_of(&fs_json));
     let fs_human = fs.run(&["plan", "--no-color"]);
@@ -197,10 +211,16 @@ fn remote_plan_prints_the_fs_output_for_the_same_content() {
     let mut keys: Vec<&str> = payload.as_object().unwrap().keys().map(String::as_str).collect();
     keys.sort();
     assert_eq!(keys, ["changes", "next", "skipped", "waves"]);
+    let add_b = &payload["changes"][1];
+    assert_eq!(add_b["name"], "add-b");
+    assert_eq!(add_b.as_object().unwrap().len(), 9, "nine keys per change: {add_b}");
+    assert_eq!(add_b["archiveAfter"], serde_json::json!(["add-a"]));
+    assert_eq!(add_b["requirementOverlap"][0]["ownOperation"], "MODIFIED");
 
     let human = remote.run(&["plan", "--no-color"]);
     assert!(human.status.success(), "stderr: {}", stderr_of(&human));
     assert_eq!(stdout_of(&human), stdout_of(&fs_human), "remote human lines match fs");
+    assert!(stdout_of(&human).contains("archive after: add-a"), "{}", stdout_of(&human));
     assert!(!stdout_of(&human).contains("local-only"), "the local openspec/ tree is never read");
     assert_eq!(mock.verb_calls(), ["GET /plan", "GET /plan"]);
 }
@@ -231,6 +251,26 @@ fn remote_plan_cycle_exits_non_zero_with_the_engine_line() {
     );
     assert_eq!(stderr_of(&out), stderr_of(&fs_out), "the same line as fs mode");
     assert!(stdout_of(&out).is_empty(), "stdout stays empty");
+}
+
+#[test]
+fn remote_plan_refuses_strict_overlap_without_a_request() {
+    // verb-contract 明文分歧第 6 項：server 只以 requirement 級重疊規劃、沒有目錄級
+    // 開關，remote 模式以固定訊息拒絕——只解析模式，握手與 GET /plan 都不發。
+    let mock = mock_server(vec![("GET", "/plan".into(), 200, "{}".into())]);
+    let remote = TempProject::remote("strict-remote", &mock.base);
+    let out = remote.run(&["plan", "--strict-overlap", "--json"]);
+    assert!(!out.status.success(), "the flag is refused in remote mode");
+    assert!(
+        stderr_of(&out).contains("plan --strict-overlap is not available in remote mode"),
+        "stderr: {}",
+        stderr_of(&out)
+    );
+    assert!(stdout_of(&out).is_empty(), "stdout stays empty");
+    assert!(
+        mock.captured.lock().unwrap().is_empty(),
+        "no request at all, the handshake included"
+    );
 }
 
 // --- change depends ---

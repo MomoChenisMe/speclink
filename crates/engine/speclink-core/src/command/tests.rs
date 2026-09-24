@@ -91,6 +91,24 @@ fn plan_with_an_external_rank_table_orders_by_that_table() {
 }
 
 #[test]
+fn plan_strict_overlap_reaches_the_engine() {
+    // `plan --strict-overlap` 是自己的命令：共用 delta capability 的兩者在 strict
+    // 下分兩波，預設的 plan 下同波。
+    let store = TestStore::with_meta("a", "schema: spec-driven\ncreated: 2026-09-01\n");
+    store.metas.borrow_mut().insert("b".to_string(), "schema: spec-driven\ncreated: 2026-09-02\n".to_string());
+    store.put_artifact("a", "specs/desktop-app/spec.md", "## ADDED Requirements\n");
+    store.put_artifact("b", "specs/desktop-app/spec.md", "## ADDED Requirements\n");
+    let waves = |strict_overlap: bool| {
+        match execute(&store, &ExecutionContext::default(), if strict_overlap { Command::PlanStrict } else { Command::Plan { ranks: None } }).expect("plan executes").0 {
+            CommandOutcome::Plan(plan) => plan.changes.iter().map(|c| c.wave).collect::<Vec<_>>(),
+            other => panic!("expected a plan outcome, got {other:?}"),
+        }
+    };
+    assert_eq!(waves(true), [1, 2]);
+    assert_eq!(waves(false), [1, 1]);
+}
+
+#[test]
 fn plan_dependency_cycle_is_an_error_naming_the_cycle() {
     let store = TestStore::with_meta("a", "schema: spec-driven\ndepends_on: b\n");
     store.metas.borrow_mut().insert("b".to_string(), "schema: spec-driven\ndepends_on: a\n".to_string());
@@ -1891,6 +1909,7 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
         Command::Analyze { change: _ } => {}
         Command::Trace { capability: _ } => {}
         Command::Plan { ranks: _ } => {}
+        Command::PlanStrict => {}
         Command::ArtifactCat { artifact: _, change: _ } => {}
         Command::LanguageShow => {}
         Command::DiscussList { archived: _ } => {}

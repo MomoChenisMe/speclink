@@ -20,20 +20,21 @@ Every top-level verb belongs to one of four mode shapes, declared in one place i
 | --- | --- | --- |
 | **ModeFree** | `init`, `update`, `link`, `unlink`, `auth`, `schemas`, `templates`, `feedback`, `schema`, `config`, `completion` | Never triggers store mode resolution. Verbs that do not read project settings (`completion`, `config`) are unaffected by a broken `.speclink.yaml`. |
 | **Dual** | `list`, `show`, `validate`, `analyze`, `drift`, `archive`, `discard`, `artifact`, `language`, `status`, `instructions`, `new`, `workflow-config`, `task`, `in-progress`, `discuss`, `review`, `verify`, `plan`, `change` | Local mode acts on the local store and remote mode acts on the remote store; it **never** silently falls back to the local store in remote mode. A missing arm is a build failure, not a runtime fallback. |
-| **FsOnly** | `demo`, `trace` | Remote mode refuses with a non-zero exit code and issues no server request at all — it refuses offline too. |
+| **FsOnly** | `demo`, `trace`, `change rank` (the one FsOnly subcommand of the Dual `change`: a remote scope keeps its board order in the board resource), and `plan --strict-overlap` (the server has no capability-level switch) | Remote mode refuses with a non-zero exit code and issues no server request at all — it refuses offline too. |
 | **RemoteOnly** | `claim` | Local mode refuses with a non-zero exit code and explains on stderr that a remote store is required. |
 
 Mode resolution is lazy. The CLI resolves the mode only when the declared shape needs it. It opens a connection only when the remote arm is about to run.
 
 ## Output parity across modes
 
-For Dual verbs the human-readable output (stdout text, including under `--no-color`) is byte-identical across both modes, with exactly five declared divergences:
+For Dual verbs the human-readable output (stdout text, including under `--no-color`) is byte-identical across both modes, with exactly six declared divergences:
 
 1. The Path line from `new change` — printed locally, omitted remotely (a server-side path means nothing to a local user).
 2. The worktree marker in `list` — always absent remotely (worktrees are an observation of the local main checkout).
 3. The schema override flag on `status` — refused explicitly in remote mode (the server's workflow config decides the schema).
 4. The document label in `workflow-config` — remote labels it `config.yaml`.
 5. The Path line from `discuss promote` and the prompt line after it — printed locally, omitted remotely (the two travel together).
+6. The `--strict-overlap` flag on `plan` — refused explicitly in remote mode, before any server request (the server plans with requirement-level overlap only).
 
 Any output difference outside that list is a defect. Mode differences exist only in data acquisition and gate refusals, never in the typesetting of the output text.
 

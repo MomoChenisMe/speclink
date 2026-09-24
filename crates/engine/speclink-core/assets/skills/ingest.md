@@ -234,15 +234,21 @@ Update an existing Speclink change — from a plan file or conversation context.
 
    The update may have made this change build on another change's outcome. Record that now, so the plan guard of the next apply sees it:
 
-   1. Run `speclink list --json` for the active change names. The change you just updated counts.
-   2. **Only one active change** (the one you just updated) → skip the rest of this step and run nothing.
+   1. Run `speclink list --json` for the active change names and their task counts (`totalTasks`). The change you just updated counts.
+   2. **Only one active change** (the one you just updated) → skip the rest of this step and run nothing — neither `change depends` nor `change rank`.
    3. **Two or more** → judge the **soft dependencies of the change you just updated only** — never re-judge the whole landscape:
       - Going by the updated artifacts, read the Impact section of each other active change's proposal and decide whether this change builds on that change's outcome. Each such change is a prerequisite of this one.
       - Editing the same code areas alone is not a prerequisite here: this change may already be under way, and waiting for a change that has not started would stall it. Name such an overlap to the user instead of recording it.
       - Record each prerequisite with its own call: `speclink change depends <change-name> --on <prerequisite>`. The verb writes all of its `--on` names or none, so one call per prerequisite keeps one refusal from dropping the others. This writes `depends_on` into the change's metadata, where `speclink plan` and every later session read it. A verbal note is not enough — if you found a prerequisite, the command must have run. An edge that already exists is left as it is. The verb refuses (with zero writes) a self-dependency, an unknown or archived name, and an edge that would form a cycle; report the refusal and move on to the next prerequisite — do not retry it, and do not edit another change's `depends_on`.
       - No prerequisite found → run nothing.
-      - **Hard signal — delta capability overlap** is the engine's job: `speclink plan` detects two changes that carry a delta for the same capability and sequences them. Do NOT judge overlap yourself.
-   4. Never remove an existing `depends_on` entry here — dropping a prerequisite is the user's decision. Never run `/speclink:apply` yourself.
+      - **Hard signal — requirement-level overlap** is the engine's job: `speclink plan` reads every delta. When two changes touch the same requirement of the same capability, the plan lists the one to archive first in the other's `archiveAfter`. It checks whether the canonical spec has that name now, and puts first the change whose archive leaves the name the way the other change needs it — for example, a change that ADDs a name the canonical spec lacks archives before one that MODIFIES it, and one that MODIFIES a name archives before one that REMOVES it. Two changes that both bring the same name in (ADD it, or rename a requirement to it), or both take it away (REMOVE it, or rename it away), are marked `conflict` in `requirementOverlap`. Overlap never delays a start. Do NOT judge overlap yourself. When the plan marks a `conflict` for this change, tell the user that one of the two sides has to change: whichever change archives second fails, on a duplicate name or on a name that is already gone.
+   4. **Queue jump — by stage and board rank.** Run `speclink plan --json` and read this change's `stage`:
+      - **Proposed** → judge the queue jump the way propose does. When it is small next to the proposed changes placed before it — fewer tasks than the one it would pass (`totalTasks` from the `speclink list --json` run above), and no change lists it in `dependsOn` — and it is urgent (for example a small fix from hands-on feedback that the user wants soon), move it ahead: find the first proposed change in the plan's `changes` placed before it that has more tasks, and run `speclink change rank <change-name> --before <that change>`. The verb writes the change's board rank — the same order key a drag on the desktop board writes — and `plan` follows it at once.
+        - The verb refuses because `<change-name>` already has a board rank (someone ordered it by hand) → only suggest the move to the user. Never add `--force`: it would overwrite that order.
+        - The verb refuses because the move would cross a declared dependency → report the refusal and leave the order as it is.
+        - Not small, or not urgent → run nothing.
+      - **In progress or ready** → do not run `change rank`: its place in the queue settled when work started. Re-judge `depends_on` only.
+   5. Never remove an existing `depends_on` entry here — dropping a prerequisite is the user's decision. Never run `/speclink:apply` yourself.
 
 10. **Seal the reflection** (discussion-sourced ingests only)
 

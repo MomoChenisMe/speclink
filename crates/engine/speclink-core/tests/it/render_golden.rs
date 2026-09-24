@@ -288,17 +288,34 @@ fn commit_skill_attributes_files_from_the_change_directory_record() {
 
 /// Spec archive-skill「未指名時的候選清單依 plan 順序」＋「封存完成後的收尾提交
 /// 提醒」Scenario「封存後提示下一個可開工」: the rendered archive skill lists
-/// candidates from `speclink plan --json` (labelled by `blockedBy`, falling back to
-/// `list --json` when plan fails) and closes with the next-ready hint — a reminder
-/// only, never an apply run.
+/// candidates from `speclink plan --json` (labelled by `archiveAfter`, plus
+/// `blockedBy` when a prerequisite is unarchived, falling back to `list --json`
+/// when plan fails) and closes with the next-ready hint — a reminder only, never
+/// an apply run.
 #[test]
 fn archive_skill_lists_plan_candidates_and_hands_off_the_next_ready_change() {
     for (rel, content) in skill_for_both_tools("archive-plan-handoff", "archive") {
         for needle in [
-            // 第 1 步：候選依 plan 順序、標 blockedBy、plan 失敗退回 list
+            // 第 1 步：候選依 plan 順序、標 archiveAfter（空「可封存」）與未封存前置、
+            // plan 失敗退回 list
             "list the candidates from its `changes` array",
-            "無阻擋",
+            "Label each candidate with its `archiveAfter`",
+            "「可封存」",
+            "「等 <archiveAfter 的名稱> 封存」",
+            "「前置 <blockedBy 的名稱> 未封存」",
             "fall back to `speclink list --json`",
+            // 3b：先封存 archiveAfter、重讀同名 requirement 對照正式規格重寫；衝突（都帶進或
+            // 都拿走）先改掉其中一邊；不以 drift 當補救；記下排在本 change 之後的 change
+            "plan 建議先封存 <archiveAfter 的名稱>",
+            "對照正式規格重寫",
+            "或都移除（或改名掉）它",
+            "先改掉其中一邊",
+            "宣告前置 <blockedBy 的名稱> 尚未封存",
+            "Do not offer `speclink drift` as the remedy",
+            "keep the list for it",
+            "even when none of the hints above applies",
+            // 封存後：提醒排在後面的 change 先對照正式規格重寫再封存
+            "<那些 change 的名稱> 要在 <name> 之後封存",
             // 尾段：下一個可開工、worktree 政策開時列可並行名單、僅提醒
             "plan 的下一個可開工：<next>",
             "apply <next>",
@@ -312,6 +329,11 @@ fn archive_skill_lists_plan_candidates_and_hands_off_the_next_ready_change() {
                 content.contains(needle),
                 "{rel}: missing plan hand-off phrase {needle:?}"
             );
+        }
+        // 舊字面不得殘留：阻擋不再來自「動到同一份規格」，drift 也不是重疊的補救；
+        // 提示用「正式規格」（LANGUAGE.md），不用沒說明的「合併閘」。
+        for gone in ["跑 drift", "動到同一份規格", "無阻擋", "對照正典", "合併閘"] {
+            assert!(!content.contains(gone), "{rel}: stale wording {gone:?}");
         }
         // 三處 plan 呼叫：第 1 步候選、3b 順序提示、封存後的下一個可開工。
         assert_eq!(
@@ -340,7 +362,15 @@ fn commit_skill_archive_sub_flow_carries_the_order_hint_and_the_hand_off() {
             "{rel}: the order hint must come before `speclink archive` runs"
         );
         for needle in [
-            // 無阻擋不提：blockedBy 空、目標不在 plan、plan 失敗都靜默進封存
+            // 三種提示：先封存 archiveAfter 並對照正式規格重寫、衝突先改掉其中一邊、宣告前置
+            // 未封存；三者皆空、目標不在 plan、plan 失敗都靜默進封存；封存後提醒排在後面的
+            // change 重寫
+            "plan 建議先封存 <archiveAfter 的名稱>",
+            "對照正式規格重寫",
+            "先改掉其中一邊",
+            "keep the list for it",
+            "<那些 change 的名稱> 要在 <name> 之後封存",
+            "宣告前置 <blockedBy 的名稱> 尚未封存",
             "say nothing about ordering and continue",
             "manual/` directory",
             "plan 的下一個可開工：<next>",
@@ -358,6 +388,11 @@ fn commit_skill_archive_sub_flow_carries_the_order_hint_and_the_hand_off() {
             2,
             "{rel}: plan is consulted before the archive and after it"
         );
+        // 與 archive 同一組舊字面：drift 不是重疊的補救（SHALL NOT 寫「跑 drift 即可」），
+        // 提示用「正式規格」、不用沒說明的「合併閘」。
+        for gone in ["跑 drift", "對照正典", "合併閘"] {
+            assert!(!content.contains(gone), "{rel}: stale wording {gone:?}");
+        }
     }
 }
 
@@ -392,6 +427,10 @@ fn archive_and_commit_skills_share_the_plan_hand_off_wording() {
             (
                 "the manual may be stale now",
                 "that is the manual skill's report.",
+            ),
+            (
+                "When the plan order hint noted changes that list",
+                "never run the ingest yourself.",
             ),
             (
                 "`speclink plan --json` and hand the user the next change to start",
@@ -1290,6 +1329,12 @@ fn ingest_skill_rejudges_soft_dependencies_before_handoff() {
             "do not retry it",
             "Do NOT judge overlap yourself",
             "Never remove an existing `depends_on`",
+            // 插隊依階段與有無 rank 分岔：提案中代寫、已有 rank 只口頭建議、開工後不碰
+            "neither `change depends` nor `change rank`",
+            "speclink change rank <change-name> --before",
+            "already has a board rank",
+            "Never add `--force`",
+            "do not run `change rank`",
         ] {
             assert!(
                 step.contains(needle),
@@ -1306,22 +1351,62 @@ fn ingest_skill_rejudges_soft_dependencies_before_handoff() {
     }
 }
 
-/// Propose and ingest both record soft dependencies with `change depends`. Both assets
-/// spell the recording rules out by hand, so this lock keeps them from drifting apart
-/// one wording tweak at a time — the same guard the archive and commit hand-offs use.
+/// Propose and ingest both record soft dependencies with `change depends` and judge a
+/// queue jump with `change rank`. Both assets spell these rules out by hand, so this lock
+/// keeps them from drifting apart one wording tweak at a time — the same guard the archive
+/// and commit hand-offs use. The first block runs through the requirement-level hard
+/// signal and its conflict; the second is the queue-jump judgement.
 #[test]
-fn propose_and_ingest_skills_share_the_depends_recording_wording() {
+fn propose_and_ingest_skills_share_the_landscape_wording() {
     let proposes = skill_for_both_tools("share-propose", "propose");
     let ingests = skill_for_both_tools("share-ingest", "ingest");
     for ((propose_rel, propose), (ingest_rel, ingest)) in proposes.iter().zip(ingests.iter()) {
-        let (start, end) = (
-            "Record each prerequisite with its own call",
-            "Do NOT judge overlap yourself.",
-        );
-        assert_eq!(
-            shared_block(propose, start, end),
-            shared_block(ingest, start, end),
-            "{propose_rel} and {ingest_rel}: the depends-recording rules must read the same"
+        for (start, end) in [
+            (
+                "Record each prerequisite with its own call",
+                "on a name that is already gone.",
+            ),
+            (
+                "When it is small next to the proposed changes placed before it",
+                "Not small, or not urgent → run nothing.",
+            ),
+        ] {
+            assert_eq!(
+                shared_block(propose, start, end),
+                shared_block(ingest, start, end),
+                "{propose_rel} and {ingest_rel}: the block starting {start:?} must read the same"
+            );
+        }
+    }
+}
+
+/// Spec propose-skill「收尾盤點提案中變更的執行順序」: the hard signal is the plan's
+/// requirement-level overlap (archiveAfter and conflict); after recording
+/// prerequisites the skill judges a queue jump with `change rank --before`, never
+/// with `--force`; and the plan presentation notes every archive order.
+#[test]
+fn propose_skill_ranks_a_small_urgent_change_and_notes_the_archive_order() {
+    for (rel, content) in skill_for_both_tools("propose-rank", "propose") {
+        let check = content
+            .find("## Pending-change landscape check")
+            .unwrap_or_else(|| panic!("{rel}: missing the landscape check"));
+        let step = &content[check..];
+        for needle in [
+            "**Hard signal — requirement-level overlap**",
+            "`archiveAfter`",
+            "marked `conflict` in `requirementOverlap`",
+            "one of the two sides has to change",
+            "**Queue jump**",
+            "speclink change rank <change-name> --before <that change>",
+            "already has a board rank",
+            "Never add `--force`",
+            "「封存時 <change> 要在 <archiveAfter 的名稱> 之後」",
+        ] {
+            assert!(step.contains(needle), "{rel}: the landscape check is missing {needle:?}");
+        }
+        assert!(
+            !content.contains("delta capability overlap"),
+            "{rel}: the capability-level hard signal is gone"
         );
     }
 }

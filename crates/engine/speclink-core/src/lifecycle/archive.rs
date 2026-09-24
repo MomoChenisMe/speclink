@@ -340,6 +340,35 @@ fn normalize_newlines(text: &str) -> String {
     text.replace("\r\n", "\n")
 }
 
+/// A delta's operation-section requirements and its rename pairs, read on
+/// newline-normalized text the one way the merge gate reads a delta. The pair
+/// scan covers both documented RENAMED syntaxes, so header-form RENAMED
+/// entries are left out of the requirements. The plan reads deltas through
+/// this too, so it names what the gate names.
+pub(crate) fn delta_operations(text: &str) -> (Vec<DeltaReq>, Vec<(String, String)>) {
+    let text = normalize_newlines(text);
+    let reqs = parse_delta(&text)
+        .into_iter()
+        .filter(|r| r.operation != "RENAMED")
+        .collect();
+    (reqs, model::rename_pairs(&text))
+}
+
+/// The requirement names the canonical spec of `cap` carries now, read the way
+/// the merge gate reads them; none when the capability has no spec yet.
+pub(crate) fn canonical_names(store: &dyn Store, cap: &str) -> std::collections::BTreeSet<String> {
+    store
+        .read_canonical_spec(cap)
+        .map(|text| {
+            parse_canonical(&normalize_newlines(&text))
+                .1
+                .into_iter()
+                .map(|(name, _)| name)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Every merge violation across the change's delta capabilities, empty when the deltas
 /// still apply cleanly. Reads only Store spec facts, so drift, the bulk pre-check and
 /// archive itself all reach the same verdict.
@@ -357,16 +386,14 @@ pub fn merge_violations(store: &dyn Store, change: &str) -> Vec<MergeViolation> 
 
 /// The violation list of design「違規清單與聚合錯誤形狀」 for one capability — the six
 /// designed classes plus the malformed-note and dangling-rename guards that keep them
-/// airtight. RENAMED is judged through the shared pair scan (it covers both documented
-/// syntaxes), so `parse_delta`'s header-form RENAMED entries are skipped throughout.
+/// airtight. RENAMED is judged through the shared pair scan ([`delta_operations`]).
 pub(crate) fn capability_violations(
     cap: &str,
     delta_text: &str,
     canonical: Option<&str>,
 ) -> Vec<MergeViolation> {
     let delta_text = normalize_newlines(delta_text);
-    let reqs = parse_delta(&delta_text);
-    let renames = model::rename_pairs(&delta_text);
+    let (reqs, renames) = delta_operations(&delta_text);
     let mut out: Vec<MergeViolation> = Vec::new();
     let violation = |operation: &str, requirement: &str, reason: &str| MergeViolation {
         capability: cap.to_string(),
@@ -381,7 +408,7 @@ pub(crate) fn capability_violations(
     // relies on every cleared name being unique.
     let mut mentions: std::collections::BTreeMap<&str, Vec<&str>> =
         std::collections::BTreeMap::new();
-    for r in reqs.iter().filter(|r| r.operation != "RENAMED") {
+    for r in &reqs {
         mentions.entry(r.name.as_str()).or_default().push(r.operation.as_str());
     }
     for (from, to) in &renames {
@@ -423,7 +450,7 @@ pub(crate) fn capability_violations(
             let reason = format!("{} — archive would refuse it", defect.reason());
             out.push(violation(PURPOSE_OP, PURPOSE_SECTION, &reason));
         }
-        for r in reqs.iter().filter(|r| !matches!(r.operation.as_str(), "ADDED" | "RENAMED")) {
+        for r in reqs.iter().filter(|r| r.operation != "ADDED") {
             out.push(violation(&r.operation, &r.name, CANON_ABSENT));
         }
         for (from, _) in &renames {
@@ -436,7 +463,7 @@ pub(crate) fn capability_violations(
     let blocks = parse_canonical(&canonical).1;
     let names: std::collections::BTreeSet<&str> =
         blocks.iter().map(|(n, _)| n.as_str()).collect();
-    for r in reqs.iter().filter(|r| r.operation != "RENAMED") {
+    for r in &reqs {
         match r.operation.as_str() {
             // (1) ADDED colliding with a requirement the canon already carries.
             "ADDED" if names.contains(r.name.as_str()) => {

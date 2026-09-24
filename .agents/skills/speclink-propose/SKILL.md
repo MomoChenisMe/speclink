@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 
@@ -450,18 +450,23 @@ If no argument is provided, the workflow will extract requirements from conversa
 
 Run this check after the summary, right before presenting the Next steps below.
 
-1. Run `speclink list --json` for the active change names. The change just created counts.
+1. Run `speclink list --json` for the active change names and their task counts (`totalTasks`). The change just created counts.
 2. **Only one active change** (the one just created) → skip the rest of this check; the Next steps edges below already cover it.
 3. **Two or more** → judge the **soft dependencies of the change you just created only** — never re-judge the whole landscape:
    - Read the Impact section of each other active change's proposal and decide whether the new change builds on that change's outcome, or edits the same code areas. Each such change is a prerequisite of the new one.
    - Record each prerequisite with its own call: `speclink change depends <change-name> --on <prerequisite>`. The verb writes all of its `--on` names or none, so one call per prerequisite keeps one refusal from dropping the others. This writes `depends_on` into the change's metadata, where `speclink plan` and every later session read it. A verbal note is not enough — if you found a prerequisite, the command must have run. An edge that already exists is left as it is. The verb refuses (with zero writes) a self-dependency, an unknown or archived name, and an edge that would form a cycle; report the refusal and move on to the next prerequisite — do not retry it, and do not edit another change's `depends_on`.
    - No prerequisite found → run nothing.
-   - **Hard signal — delta capability overlap** is the engine's job: `speclink plan` detects two changes that carry a delta for the same capability and sequences them. Do NOT judge overlap yourself.
-4. Run `speclink plan --json` and present its result according to the project's effective worktree policy (`speclink workflow-config show --json` → `worktree`; a `SPECLINK_WORKTREE` env override wins):
+   - **Hard signal — requirement-level overlap** is the engine's job: `speclink plan` reads every delta. When two changes touch the same requirement of the same capability, the plan lists the one to archive first in the other's `archiveAfter`. It checks whether the canonical spec has that name now, and puts first the change whose archive leaves the name the way the other change needs it — for example, a change that ADDs a name the canonical spec lacks archives before one that MODIFIES it, and one that MODIFIES a name archives before one that REMOVES it. Two changes that both bring the same name in (ADD it, or rename a requirement to it), or both take it away (REMOVE it, or rename it away), are marked `conflict` in `requirementOverlap`. Overlap never delays a start. Do NOT judge overlap yourself. When the plan marks a `conflict` for this change, tell the user that one of the two sides has to change: whichever change archives second fails, on a duplicate name or on a name that is already gone.
+4. **Queue jump** — the new change is proposed, and the plan puts it after the proposed changes that came before it. Run `speclink plan --json`. When it is small next to the proposed changes placed before it — fewer tasks than the one it would pass (`totalTasks` from the `speclink list --json` run above), and no change lists it in `dependsOn` — and it is urgent (for example a small fix from hands-on feedback that the user wants soon), move it ahead: find the first proposed change in the plan's `changes` placed before it that has more tasks, and run `speclink change rank <change-name> --before <that change>`. The verb writes the change's board rank — the same order key a drag on the desktop board writes — and `plan` follows it at once.
+   - The verb refuses because `<change-name>` already has a board rank (someone ordered it by hand) → only suggest the move to the user. Never add `--force`: it would overwrite that order.
+   - The verb refuses because the move would cross a declared dependency → report the refusal and leave the order as it is.
+   - Not small, or not urgent → run nothing.
+5. Run `speclink plan --json` (again, when step 4 moved the change) and present its result according to the project's effective worktree policy (`speclink workflow-config show --json` → `worktree`; a `SPECLINK_WORKTREE` env override wins):
    - **Policy on** → list wave 1 (`waves[0].changes`) as "parallel-safe — run each change in its own session via `$speclink-apply-with-worktree` (the multi-session recipe)", then each later wave in order as "after the wave before it lands". A change's `blockedBy` names what it waits for.
    - **Policy off** → one recommended order: the `changes` array in its given order, one at a time.
    - `next` is the first change that is ready to start; `skipped` lists changes whose metadata could not be parsed — name them so the user can repair them.
-5. The check is suggestions only — report the waves or the order and stop; never invoke any skill automatically.
+   - For each change whose `archiveAfter` is non-empty, add one line: 「封存時 <change> 要在 <archiveAfter 的名稱> 之後」 — an archive-order note only; it never delays a start.
+6. The check is suggestions only — report the waves or the order and stop; never invoke any skill automatically.
 
 ## Next steps
 

@@ -29,6 +29,12 @@ pub(crate) struct TestStore {
     pub canonical: RefCell<HashMap<String, String>>,
     /// Number of `write_change_meta` calls (idempotence assertions).
     pub meta_writes: RefCell<u32>,
+    /// The change names `write_change_meta` wrote, in order (write-order
+    /// assertions).
+    pub meta_write_log: RefCell<Vec<String>>,
+    /// When set to a change name, `write_change_meta` fails for it — lets rank
+    /// tests probe a write that fails midway through a column stamp.
+    pub fail_meta_write: RefCell<Option<String>>,
     /// Number of `write_artifact` calls (no-write assertions).
     pub artifact_writes: RefCell<u32>,
     /// Live discussion slug → document text.
@@ -140,8 +146,12 @@ impl Store for TestStore {
         self.metas.borrow().get(name).cloned()
     }
     fn write_change_meta(&self, name: &str, content: &str) -> Result<()> {
+        if self.fail_meta_write.borrow().as_deref() == Some(name) {
+            anyhow::bail!("simulated meta write failure for {name}");
+        }
         self.metas.borrow_mut().insert(name.to_string(), content.to_string());
         *self.meta_writes.borrow_mut() += 1;
+        self.meta_write_log.borrow_mut().push(name.to_string());
         Ok(())
     }
     fn delete_change(&self, name: &str) -> Result<()> {

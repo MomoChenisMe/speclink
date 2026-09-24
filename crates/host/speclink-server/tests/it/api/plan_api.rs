@@ -232,6 +232,58 @@ fn unusable_board_content_reads_as_no_ranks_and_is_never_rewritten() {
     assert_eq!(revision(&f), before);
 }
 
+/// A delta for `change` that MODIFIES `requirement` in capability `cap`.
+fn modified(change: &str, cap: &str, requirement: &str) -> (DocumentId, String) {
+    (
+        DocumentId::ChangeArtifact { change: change.into(), artifact: format!("specs/{cap}/spec.md") },
+        format!("## MODIFIED Requirements\n\n### Requirement: {requirement}\n\nbody\n"),
+    )
+}
+
+#[test]
+fn plan_entry_carries_requirement_overlap_and_archive_after() {
+    // Scenario「同 requirement 重疊帶 archiveAfter」：兩者 MODIFIED 同一 requirement，
+    // 無依賴、無 rank、add-a 配置在前——add-b 排在 add-a 之後封存，兩者同波。
+    let f = fixture(&[
+        ("add-a", meta("2026-09-01", None)),
+        ("add-b", meta("2026-09-02", None)),
+    ]);
+    seed(&f.store, &[modified("add-a", "auth", "Login"), modified("add-b", "auth", "Login")]);
+    let (plan, _) = get_plan(&f, &f.reader_pat);
+    assert_eq!(order(&plan), ["add-a", "add-b"]);
+    let add_b = &plan["changes"][1];
+    assert_eq!(add_b["wave"], 1);
+    assert_eq!(add_b["archiveAfter"], json!(["add-a"]));
+    assert_eq!(
+        add_b["requirementOverlap"],
+        json!([{
+            "change": "add-a",
+            "capability": "auth",
+            "requirement": "Login",
+            "ownOperation": "MODIFIED",
+            "otherOperation": "MODIFIED",
+            "conflict": false,
+        }])
+    );
+    assert_eq!(plan["changes"][0]["archiveAfter"], json!([]));
+}
+
+#[test]
+fn plan_same_capability_different_requirement_has_empty_archive_after() {
+    // 同 capability、不同 requirement 不算重疊：兩者同波，兩個新欄位都為空陣列。
+    let f = fixture(&[
+        ("add-a", meta("2026-09-01", None)),
+        ("add-b", meta("2026-09-02", None)),
+    ]);
+    seed(&f.store, &[modified("add-a", "auth", "Login"), modified("add-b", "auth", "Logout")]);
+    let (plan, _) = get_plan(&f, &f.reader_pat);
+    assert_eq!(plan["waves"], json!([{ "index": 1, "changes": ["add-a", "add-b"] }]));
+    for change in plan["changes"].as_array().unwrap() {
+        assert_eq!(change["archiveAfter"], json!([]), "{change}");
+        assert_eq!(change["requirementOverlap"], json!([]), "{change}");
+    }
+}
+
 #[test]
 fn a_dependency_cycle_is_a_refused_409_with_the_engine_line() {
     // Scenario「成環回 409」。

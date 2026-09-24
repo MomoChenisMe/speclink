@@ -3,6 +3,9 @@
 //! 鍵為小寫英文字母字串，視為 base-26 分數（'a'=0 … 'z'=25），字典序＝數值序
 //! （生成鍵永不以 'a' 結尾，避免同值異字串）。中點取前後鄰居的字典序中位，
 //! 無縫隙時延長鍵長——以延長取代重平衡，重平衡機制整個不需要。
+//!
+//! 桌面拖排（本地與 remote）與 CLI 的 `change rank` 共用這一份演算，兩端寫出的
+//! 鍵同形。
 
 const BASE: u32 = 26;
 
@@ -114,9 +117,15 @@ pub fn ranked_in_order(ranks: &[Option<&str>]) -> bool {
     ranks.iter().all(Option::is_some) && ranks.windows(2).all(|pair| pair[0] < pair[1])
 }
 
+/// 鍵合不合本演算的生成格式：合法的 board_rank，且不以零位 'a' 結尾。手改或外來的鍵
+/// 不合格式時算不出中點；本機的寫入步驟（plan 模組的 move_rank）把它當成缺 rank。
+pub(crate) fn generated_shape(key: &str) -> bool {
+    crate::util::is_valid_board_rank(key) && !key.ends_with('a')
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{midpoint, ranked_in_order, spread};
+    use super::{generated_shape, midpoint, ranked_in_order, spread};
 
     /// 生成鍵的合法形狀：非空、僅小寫字母、不以 'a'（零位）結尾。
     fn assert_valid_key(k: &str) {
@@ -224,5 +233,19 @@ mod tests {
         assert!(!ranked_in_order(&[Some("f"), None, Some("t")]), "缺 rank 的卡沒有鄰居鍵");
         assert!(!ranked_in_order(&[Some("n"), Some("f")]), "反序的兩鄰居之間沒有中點鍵");
         assert!(!ranked_in_order(&[Some("f"), Some("f")]), "同值的兩鄰居之間也沒有");
+    }
+
+    #[test]
+    fn generated_shape_accepts_only_keys_the_midpoint_can_use() {
+        // 手改或外來的鍵不合生成格式：大寫字母算中點會溢位，以 'a' 結尾的鍵當上界
+        // 時中點永遠延長不完，空字串不是鍵。本機寫入把它們當成缺 rank；remote 拖排
+        // 共用的 ranked_in_order 只看有無與順序，不看格式（remote-board-order 的規則）。
+        for bad in ["N", "a", "na", ""] {
+            assert!(!generated_shape(bad), "{bad:?}");
+        }
+        for good in ["n", "ab", "zz"] {
+            assert!(generated_shape(good), "{good:?}");
+        }
+        assert!(ranked_in_order(&[Some("N"), Some("n")]));
     }
 }
