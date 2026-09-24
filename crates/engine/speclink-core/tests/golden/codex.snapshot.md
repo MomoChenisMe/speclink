@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 
@@ -31,7 +31,7 @@ Implement tasks from a Speclink change.
    It returns `waves` (changes that may run in parallel), `changes` (one entry per active change with `stage`, `blockedBy` and `ready`), `next` (the first proposed change with nothing blocking it, or `null`) and `skipped` (changes whose metadata could not be parsed). If the command fails (a dependency cycle, a project that is not initialized), show the error and STOP.
 
    - **No name given** → take `next`. If `next` is `null`, there is nothing ready to start: list every change with its `blockedBy` and STOP — do not pick one anyway.
-   - **A name given** (from the argument or from conversation context) → find it in `changes`. If its `blockedBy` is non-empty, print the prerequisite list (`blockedBy`) and STOP: do NOT run `speclink review prepare`, do NOT run `speclink in-progress add`. The way out is the user's: land (archive) the blockers first; drop a declared prerequisite that is wrong with `speclink change depends <name> --on <prerequisite> --remove`; a blocker that comes from delta-capability overlap keeps its place until it lands. Then run apply again.
+   - **A name given** (from the argument or from conversation context) → find it in `changes`. If its `blockedBy` is non-empty, print the prerequisite list (`blockedBy`) and STOP: do NOT run `speclink review prepare`, do NOT run `speclink in-progress add`. The way out is the user's: land (archive) the blockers first; drop a declared prerequisite that is wrong with `speclink change depends <name> --on <prerequisite> --remove`. Then run apply again.
    - A named change that is not in `changes` (archived, misspelled, or listed under `skipped`) → keep going; step 2's status check reports it the way it always has.
 
    Never auto-select a change just because only one exists, and never bypass the plan because the user mentioned a change in conversation — the plan decides whether it may start.
@@ -355,7 +355,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 
@@ -371,14 +371,14 @@ Archive a completed change.
 
 1. **If no change name provided, prompt for selection**
 
-   Run `speclink plan --json` and list the candidates from its `changes` array in the given order — the archive order that honors declared dependencies and delta overlap. Label each candidate with its `blockedBy`: an empty array reads as 「無阻擋」, a non-empty one as 「等 <blockedBy 的名稱>」. Append the names in `skipped` (changes whose metadata the plan could not parse) at the end, marked 「metadata 壞掉」 — they stay selectable, as `list --json` would have shown them. Use the **AskUserQuestion tool** to let the user select.
+   Run `speclink plan --json` and list the candidates from its `changes` array in the given order — the order that honors declared dependencies. Label each candidate with its `archiveAfter` (the changes to archive before it, because both touch the same requirement): an empty array reads as 「可封存」, a non-empty one as 「等 <archiveAfter 的名稱> 封存」. When its `blockedBy` is non-empty, add 「前置 <blockedBy 的名稱> 未封存」. Append the names in `skipped` (changes whose metadata the plan could not parse) at the end, marked 「metadata 壞掉」 — they stay selectable, as `list --json` would have shown them. Use the **AskUserQuestion tool** to let the user select.
 
    If `plan` fails (a dependency cycle), fall back to `speclink list --json` and list the active changes in its order, with no blocking labels.
 
    Show only active changes (not already archived).
    Include the schema used for each change if available.
 
-   **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose — a candidate with no blockers is not picked for them either.
+   **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose — a candidate marked 「可封存」 is not picked for them either.
 
 2. **Check artifact completion status**
 
@@ -408,11 +408,25 @@ Archive a completed change.
 
 3b. **Plan order hint**
 
-   Run `speclink plan --json` and find the target change in its `changes` array. If its `blockedBy` is non-empty, tell the user:
+   Run `speclink plan --json` and find the target change in its `changes` array. Tell the user each of these that applies:
 
-   > plan 建議先封存 <blockedBy 的名稱>，再封存 <name>：這些 change 排在它前面（宣告依賴或動到同一份規格）。
+   - `archiveAfter` is non-empty:
 
-   then use the **AskUserQuestion tool** to ask which way to go — archive `<name>` now anyway, or stop here and archive those prerequisites first (plain text + wait if the tool is unavailable). This is a suggestion only. It does NOT block the archive and relies on no engine gate: if the user confirms, archive as usual. An empty `blockedBy`, a target missing from the plan, or a `plan` failure (a dependency cycle) → say nothing about ordering and continue. When the user stops instead, end the run without archiving.
+     > plan 建議先封存 <archiveAfter 的名稱>；它們封存後，重讀本 change 對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `$speclink-ingest`）再封存 <name>。重疊的 requirement：<requirementOverlap 裡對應那些 change 的 capability › requirement>。
+
+   - `requirementOverlap` holds an entry whose `conflict` is true:
+
+     > <name> 與 <change> 都新增（或改名成）同名的 requirement <requirement>，或都移除（或改名掉）它；後封存的那一個會封存失敗（名字重複，或名字已不存在），先改掉其中一邊。
+
+   - `blockedBy` is non-empty:
+
+     > 宣告前置 <blockedBy 的名稱> 尚未封存。
+
+   Do not offer `speclink drift` as the remedy for an overlap: drift only checks that the requirement names still exist, and cannot see content that an earlier archive overwrote.
+
+   Also note every other entry of `changes` that lists `<name>` in its `archiveAfter` — even when none of the hints above applies: those changes archive after `<name>` and touch the same requirements. Once `<name>` is archived, the plan no longer names it, so the reminder after the archive is the last point where their rewrite gets named — keep the list for it. The note asks nothing now.
+
+   Then use the **AskUserQuestion tool** to ask which way to go — archive `<name>` now anyway, or stop here and handle those first (plain text + wait if the tool is unavailable). This is a suggestion only. It does NOT block the archive and relies on no engine gate: if the user confirms, archive as usual. An empty `archiveAfter` and `blockedBy` with no conflict, a target missing from the plan, or a `plan` failure (a dependency cycle) → say nothing about ordering and continue. When the user stops instead, end the run without archiving.
 
 4. **Assess delta spec completeness**
 
@@ -651,6 +665,13 @@ do not work out which specs this archive touched, and do not judge whether the m
 is actually stale; that is the manual skill's report. This too is a reminder only —
 never run `$speclink-manual` yourself.
 
+When the plan order hint noted changes that list `<name>` in their `archiveAfter`, add
+one more line:
+
+> <那些 change 的名稱> 要在 <name> 之後封存，並動到同名的 requirement：先重讀它們對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `$speclink-ingest`），再封存它們。
+
+This too is a reminder only — never run the ingest yourself.
+
 Then run `speclink plan --json` and hand the user the next change to start. When `next`
 is non-null, add one more line:
 
@@ -675,7 +696,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 
@@ -911,7 +932,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 
@@ -1034,7 +1055,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 
@@ -1197,11 +1218,25 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     **7a-ii-b. Plan order hint**
 
-    Run `speclink plan --json` and find the target change in its `changes` array. If its `blockedBy` is non-empty, tell the user:
+    Run `speclink plan --json` and find the target change in its `changes` array. Tell the user each of these that applies:
 
-    > plan 建議先封存 <blockedBy 的名稱>，再封存 <name>：這些 change 排在它前面（宣告依賴或動到同一份規格）。
+    - `archiveAfter` is non-empty:
 
-    then use the **AskUserQuestion tool** to ask which way to go — archive `<name>` now anyway, or stop here and archive those prerequisites first (plain text + wait if the tool is unavailable). This is a suggestion only. It does NOT block the archive and relies on no engine gate: if the user confirms, archive as usual. An empty `blockedBy`, a target missing from the plan, or a `plan` failure (a dependency cycle) → say nothing about ordering and continue. When the user stops instead, skip the archive (commit without it): the prerequisites get archived first.
+      > plan 建議先封存 <archiveAfter 的名稱>；它們封存後，重讀本 change 對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `$speclink-ingest`）再封存 <name>。重疊的 requirement：<requirementOverlap 裡對應那些 change 的 capability › requirement>。
+
+    - `requirementOverlap` holds an entry whose `conflict` is true:
+
+      > <name> 與 <change> 都新增（或改名成）同名的 requirement <requirement>，或都移除（或改名掉）它；後封存的那一個會封存失敗（名字重複，或名字已不存在），先改掉其中一邊。
+
+    - `blockedBy` is non-empty:
+
+      > 宣告前置 <blockedBy 的名稱> 尚未封存。
+
+    Do not offer `speclink drift` as the remedy for an overlap: drift only checks that the requirement names still exist, and cannot see content that an earlier archive overwrote.
+
+    Also note every other entry of `changes` that lists `<name>` in its `archiveAfter` — even when none of the hints above applies: those changes archive after `<name>` and touch the same requirements. Once `<name>` is archived, the plan no longer names it, so the reminder after the archive is the last point where their rewrite gets named — keep the list for it. The note asks nothing now.
+
+    Then use the **AskUserQuestion tool** to ask which way to go — archive `<name>` now anyway, or stop here and handle those first (plain text + wait if the tool is unavailable). This is a suggestion only. It does NOT block the archive and relies on no engine gate: if the user confirms, archive as usual. An empty `archiveAfter` and `blockedBy` with no conflict, a target missing from the plan, or a `plan` failure (a dependency cycle) → say nothing about ordering and continue. When the user stops instead, skip the archive (commit without it): the changes named above get archived first, or one side of the conflict gets changed first.
 
     **7a-iii. Archive execution, re-display, and re-confirmation**
 
@@ -1249,9 +1284,14 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     5. Use the **AskUserQuestion tool** again to confirm the updated plan and message (the archive option is no longer offered). Only continue to step 8 after this re-confirmation.
 
-    6. Close the sub-flow with two reminders. Print them once, wherever the flow ends: after the step 10 result, or right where the user stops at the re-confirmation above — the archive has already run either way, and after a stop its file moves are still uncommitted, so also remind the user to commit them with a plain git commit:
+    6. Close the sub-flow with the reminders below. Print them once, wherever the flow ends: after the step 10 result, or right where the user stops at the re-confirmation above — the archive has already run either way, and after a stop its file moves are still uncommitted, so also remind the user to commit them with a plain git commit:
 
        - When the workspace has a `openspec/manual/` directory, add one line: the manual may be stale now, and `$speclink-manual` will report which pages this archive's spec changes outdated. The condition is the directory's existence only — do not work out which specs this archive touched, and do not judge whether the manual is actually stale; that is the manual skill's report. This is a reminder only — never run `$speclink-manual` yourself.
+       - When the plan order hint noted changes that list `<name>` in their `archiveAfter`, add one more line:
+
+         > <那些 change 的名稱> 要在 <name> 之後封存，並動到同名的 requirement：先重讀它們對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `$speclink-ingest`），再封存它們。
+
+         This too is a reminder only — never run the ingest yourself.
        - Run `speclink plan --json` and hand the user the next change to start. When `next` is non-null, add one more line:
 
          > plan 的下一個可開工：<next>，執行 `$speclink-apply <next>`。
@@ -1326,7 +1366,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 
@@ -1471,7 +1511,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 
@@ -1968,7 +2008,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 
@@ -2097,7 +2137,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 
@@ -2287,7 +2327,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 
@@ -2527,15 +2567,21 @@ Update an existing Speclink change — from a plan file or conversation context.
 
    The update may have made this change build on another change's outcome. Record that now, so the plan guard of the next apply sees it:
 
-   1. Run `speclink list --json` for the active change names. The change you just updated counts.
-   2. **Only one active change** (the one you just updated) → skip the rest of this step and run nothing.
+   1. Run `speclink list --json` for the active change names and their task counts (`totalTasks`). The change you just updated counts.
+   2. **Only one active change** (the one you just updated) → skip the rest of this step and run nothing — neither `change depends` nor `change rank`.
    3. **Two or more** → judge the **soft dependencies of the change you just updated only** — never re-judge the whole landscape:
       - Going by the updated artifacts, read the Impact section of each other active change's proposal and decide whether this change builds on that change's outcome. Each such change is a prerequisite of this one.
       - Editing the same code areas alone is not a prerequisite here: this change may already be under way, and waiting for a change that has not started would stall it. Name such an overlap to the user instead of recording it.
       - Record each prerequisite with its own call: `speclink change depends <change-name> --on <prerequisite>`. The verb writes all of its `--on` names or none, so one call per prerequisite keeps one refusal from dropping the others. This writes `depends_on` into the change's metadata, where `speclink plan` and every later session read it. A verbal note is not enough — if you found a prerequisite, the command must have run. An edge that already exists is left as it is. The verb refuses (with zero writes) a self-dependency, an unknown or archived name, and an edge that would form a cycle; report the refusal and move on to the next prerequisite — do not retry it, and do not edit another change's `depends_on`.
       - No prerequisite found → run nothing.
-      - **Hard signal — delta capability overlap** is the engine's job: `speclink plan` detects two changes that carry a delta for the same capability and sequences them. Do NOT judge overlap yourself.
-   4. Never remove an existing `depends_on` entry here — dropping a prerequisite is the user's decision. Never run `$speclink-apply` yourself.
+      - **Hard signal — requirement-level overlap** is the engine's job: `speclink plan` reads every delta. When two changes touch the same requirement of the same capability, the plan lists the one to archive first in the other's `archiveAfter`. It checks whether the canonical spec has that name now, and puts first the change whose archive leaves the name the way the other change needs it — for example, a change that ADDs a name the canonical spec lacks archives before one that MODIFIES it, and one that MODIFIES a name archives before one that REMOVES it. Two changes that both bring the same name in (ADD it, or rename a requirement to it), or both take it away (REMOVE it, or rename it away), are marked `conflict` in `requirementOverlap`. Overlap never delays a start. Do NOT judge overlap yourself. When the plan marks a `conflict` for this change, tell the user that one of the two sides has to change: whichever change archives second fails, on a duplicate name or on a name that is already gone.
+   4. **Queue jump — by stage and board rank.** Run `speclink plan --json` and read this change's `stage`:
+      - **Proposed** → judge the queue jump the way propose does. When it is small next to the proposed changes placed before it — fewer tasks than the one it would pass (`totalTasks` from the `speclink list --json` run above), and no change lists it in `dependsOn` — and it is urgent (for example a small fix from hands-on feedback that the user wants soon), move it ahead: find the first proposed change in the plan's `changes` placed before it that has more tasks, and run `speclink change rank <change-name> --before <that change>`. The verb writes the change's board rank — the same order key a drag on the desktop board writes — and `plan` follows it at once.
+        - The verb refuses because `<change-name>` already has a board rank (someone ordered it by hand) → only suggest the move to the user. Never add `--force`: it would overwrite that order.
+        - The verb refuses because the move would cross a declared dependency → report the refusal and leave the order as it is.
+        - Not small, or not urgent → run nothing.
+      - **In progress or ready** → do not run `change rank`: its place in the queue settled when work started. Re-judge `depends_on` only.
+   5. Never remove an existing `depends_on` entry here — dropping a prerequisite is the user's decision. Never run `$speclink-apply` yourself.
 
 10. **Seal the reflection** (discussion-sourced ingests only)
 
@@ -2584,7 +2630,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 
@@ -2795,7 +2841,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 
@@ -3240,18 +3286,23 @@ If no argument is provided, the workflow will extract requirements from conversa
 
 Run this check after the summary, right before presenting the Next steps below.
 
-1. Run `speclink list --json` for the active change names. The change just created counts.
+1. Run `speclink list --json` for the active change names and their task counts (`totalTasks`). The change just created counts.
 2. **Only one active change** (the one just created) → skip the rest of this check; the Next steps edges below already cover it.
 3. **Two or more** → judge the **soft dependencies of the change you just created only** — never re-judge the whole landscape:
    - Read the Impact section of each other active change's proposal and decide whether the new change builds on that change's outcome, or edits the same code areas. Each such change is a prerequisite of the new one.
    - Record each prerequisite with its own call: `speclink change depends <change-name> --on <prerequisite>`. The verb writes all of its `--on` names or none, so one call per prerequisite keeps one refusal from dropping the others. This writes `depends_on` into the change's metadata, where `speclink plan` and every later session read it. A verbal note is not enough — if you found a prerequisite, the command must have run. An edge that already exists is left as it is. The verb refuses (with zero writes) a self-dependency, an unknown or archived name, and an edge that would form a cycle; report the refusal and move on to the next prerequisite — do not retry it, and do not edit another change's `depends_on`.
    - No prerequisite found → run nothing.
-   - **Hard signal — delta capability overlap** is the engine's job: `speclink plan` detects two changes that carry a delta for the same capability and sequences them. Do NOT judge overlap yourself.
-4. Run `speclink plan --json` and present its result according to the project's effective worktree policy (`speclink workflow-config show --json` → `worktree`; a `SPECLINK_WORKTREE` env override wins):
+   - **Hard signal — requirement-level overlap** is the engine's job: `speclink plan` reads every delta. When two changes touch the same requirement of the same capability, the plan lists the one to archive first in the other's `archiveAfter`. It checks whether the canonical spec has that name now, and puts first the change whose archive leaves the name the way the other change needs it — for example, a change that ADDs a name the canonical spec lacks archives before one that MODIFIES it, and one that MODIFIES a name archives before one that REMOVES it. Two changes that both bring the same name in (ADD it, or rename a requirement to it), or both take it away (REMOVE it, or rename it away), are marked `conflict` in `requirementOverlap`. Overlap never delays a start. Do NOT judge overlap yourself. When the plan marks a `conflict` for this change, tell the user that one of the two sides has to change: whichever change archives second fails, on a duplicate name or on a name that is already gone.
+4. **Queue jump** — the new change is proposed, and the plan puts it after the proposed changes that came before it. Run `speclink plan --json`. When it is small next to the proposed changes placed before it — fewer tasks than the one it would pass (`totalTasks` from the `speclink list --json` run above), and no change lists it in `dependsOn` — and it is urgent (for example a small fix from hands-on feedback that the user wants soon), move it ahead: find the first proposed change in the plan's `changes` placed before it that has more tasks, and run `speclink change rank <change-name> --before <that change>`. The verb writes the change's board rank — the same order key a drag on the desktop board writes — and `plan` follows it at once.
+   - The verb refuses because `<change-name>` already has a board rank (someone ordered it by hand) → only suggest the move to the user. Never add `--force`: it would overwrite that order.
+   - The verb refuses because the move would cross a declared dependency → report the refusal and leave the order as it is.
+   - Not small, or not urgent → run nothing.
+5. Run `speclink plan --json` (again, when step 4 moved the change) and present its result according to the project's effective worktree policy (`speclink workflow-config show --json` → `worktree`; a `SPECLINK_WORKTREE` env override wins):
    - **Policy on** → list wave 1 (`waves[0].changes`) as "parallel-safe — run each change in its own session via `$speclink-apply-with-worktree` (the multi-session recipe)", then each later wave in order as "after the wave before it lands". A change's `blockedBy` names what it waits for.
    - **Policy off** → one recommended order: the `changes` array in its given order, one at a time.
    - `next` is the first change that is ready to start; `skipped` lists changes whose metadata could not be parsed — name them so the user can repair them.
-5. The check is suggestions only — report the waves or the order and stop; never invoke any skill automatically.
+   - For each change whose `archiveAfter` is non-empty, add one line: 「封存時 <change> 要在 <archiveAfter 的名稱> 之後」 — an archive-order note only; it never delays a start.
+6. The check is suggestions only — report the waves or the order and stop; never invoke any skill automatically.
 
 ## Next steps
 
@@ -3269,7 +3320,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 
@@ -3364,7 +3415,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 
@@ -3560,7 +3611,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 
@@ -3644,7 +3695,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 

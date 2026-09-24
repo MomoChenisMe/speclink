@@ -53,17 +53,21 @@ pub fn analyze_report(p: AnalyzeReportResponse) -> speclink_core::analyzer::Anal
     }
 }
 
-/// `GET /plan` 回應 → 引擎 `PlanReport`。`stage` 以引擎 `Stage::parse` 轉回（字串表只有
-/// 引擎那一份）。不認得的階段、或 wave 列了 changes 沒有的名稱，都是 server 違約：回錯誤，
-/// 不猜階段，也不讓渲染端逐波查無此項而 panic。
+/// `GET /plan` 回應 → 引擎 `PlanReport`，九鍵逐欄搬運。`stage` 以引擎 `Stage::parse`、
+/// requirement 重疊的兩個操作以 `DeltaOp::parse` 轉回（字串表只有引擎那一份）。不認得的
+/// 階段或操作、或 wave 列了 changes 沒有的名稱，都是 server 違約：回錯誤，不猜，也不讓
+/// 渲染端逐波查無此項而 panic。
 pub fn plan_report(p: PlanResponse) -> Result<speclink_core::command::PlanReport, RemoteError> {
     use speclink_core::model::Stage;
-    use speclink_core::plan::{Overlap, Plan, PlanChange, Skipped, Wave};
+    use speclink_core::plan::{DeltaOp, Overlap, Plan, PlanChange, RequirementOverlap, Skipped, Wave};
     let violation = |detail: String| RemoteError {
         message: format!("unexpected server response — {detail}"),
         reason: None,
         status: None,
         evidence: None,
+    };
+    let op = |s: String| {
+        DeltaOp::parse(&s).ok_or_else(|| violation(format!("unknown delta operation '{s}'")))
     };
     let changes = p
         .changes
@@ -82,6 +86,21 @@ pub fn plan_report(p: PlanResponse) -> Result<speclink_core::command::PlanReport
                     .collect(),
                 blocked_by: c.blocked_by,
                 ready: c.ready,
+                requirement_overlap: c
+                    .requirement_overlap
+                    .into_iter()
+                    .map(|o| {
+                        Ok(RequirementOverlap {
+                            change: o.change,
+                            capability: o.capability,
+                            requirement: o.requirement,
+                            own_operation: op(o.own_operation)?,
+                            other_operation: op(o.other_operation)?,
+                            conflict: o.conflict,
+                        })
+                    })
+                    .collect::<Result<_, RemoteError>>()?,
+                archive_after: c.archive_after,
             })
         })
         .collect::<Result<Vec<_>, RemoteError>>()?;
@@ -113,10 +132,10 @@ pub fn plan_report(p: PlanResponse) -> Result<speclink_core::command::PlanReport
 #[cfg(test)]
 mod tests {
     use speclink_core::model::Stage;
-    use speclink_core::plan::{Overlap, Plan, PlanChange, Skipped, Wave};
+    use speclink_core::plan::{DeltaOp, Overlap, Plan, PlanChange, RequirementOverlap, Skipped, Wave};
     use speclink_protocol::query::PlanResponse;
 
-    /// 三個階段、重疊、壞 meta 各一的引擎 plan。
+    /// 三個階段、重疊、壞 meta 各一的引擎 plan；add-b 帶一項 requirement 重疊與封存順序。
     fn engine_plan() -> Plan {
         Plan {
             waves: vec![
@@ -132,6 +151,8 @@ mod tests {
                     overlaps: vec![Overlap { change: "add-b".into(), capabilities: vec!["auth".into()] }],
                     blocked_by: Vec::new(),
                     ready: true,
+                    requirement_overlap: Vec::new(),
+                    archive_after: Vec::new(),
                 },
                 PlanChange {
                     name: "add-c".into(),
@@ -141,6 +162,8 @@ mod tests {
                     overlaps: Vec::new(),
                     blocked_by: Vec::new(),
                     ready: true,
+                    requirement_overlap: Vec::new(),
+                    archive_after: Vec::new(),
                 },
                 PlanChange {
                     name: "add-b".into(),
@@ -150,6 +173,15 @@ mod tests {
                     overlaps: vec![Overlap { change: "add-a".into(), capabilities: vec!["auth".into()] }],
                     blocked_by: vec!["add-a".into()],
                     ready: false,
+                    requirement_overlap: vec![RequirementOverlap {
+                        change: "add-a".into(),
+                        capability: "auth".into(),
+                        requirement: "Login".into(),
+                        own_operation: DeltaOp::Modified,
+                        other_operation: DeltaOp::Removed,
+                        conflict: false,
+                    }],
+                    archive_after: vec!["add-a".into()],
                 },
             ],
             next: None,
@@ -165,6 +197,27 @@ mod tests {
         let wire: PlanResponse =
             serde_json::from_value(serde_json::to_value(&plan).unwrap()).unwrap();
         assert_eq!(super::plan_report(wire).unwrap(), plan);
+    }
+
+    #[test]
+    fn plan_report_carries_requirement_overlap_and_archive_after() {
+        // 規格「plan 回應 payload」Scenario「轉回引擎報告逐欄搬運」。
+        let wire: PlanResponse =
+            serde_json::from_value(serde_json::to_value(engine_plan()).unwrap()).unwrap();
+        let report = super::plan_report(wire).unwrap();
+        let b = report.changes.iter().find(|c| c.name == "add-b").unwrap();
+        assert_eq!(b.requirement_overlap.len(), 1);
+        assert_eq!(b.requirement_overlap[0].other_operation, DeltaOp::Removed);
+        assert_eq!(b.archive_after, ["add-a"]);
+    }
+
+    #[test]
+    fn plan_report_refuses_a_delta_operation_it_does_not_know() {
+        let mut wire: PlanResponse =
+            serde_json::from_value(serde_json::to_value(engine_plan()).unwrap()).unwrap();
+        wire.changes[2].requirement_overlap[0].own_operation = "MOVED".into();
+        let err = super::plan_report(wire).unwrap_err();
+        assert!(err.message.contains("'MOVED'"), "{}", err.message);
     }
 
     #[test]

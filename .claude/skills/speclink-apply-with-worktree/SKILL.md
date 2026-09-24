@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 
@@ -90,7 +90,7 @@ It returns `changes` (one entry per active change with its `blockedBy`), `next` 
 - **The name is not in `changes`** (archived, misspelled, or listed under `skipped`) → STOP and report which change names are available.
 - **The command fails** (a dependency cycle, a project that is not initialized) → show the error and STOP.
 
-Every STOP in this step ends the run on the spot: do NOT commit the artifacts, do NOT create the worktree. The way out of a block is the user's: land (archive) the blockers first; drop a declared prerequisite that is wrong with `speclink change depends <change-name> --on <prerequisite> --remove`; a blocker that comes from delta-capability overlap keeps its place until it lands. Then run this skill again.
+Every STOP in this step ends the run on the spot: do NOT commit the artifacts, do NOT create the worktree. The way out of a block is the user's: land (archive) the blockers first; drop a declared prerequisite that is wrong with `speclink change depends <change-name> --on <prerequisite> --remove`. Then run this skill again.
 
 Once a change is selected, announce: "Using change: <change-name>" and how to override (e.g., `/speclink-apply-with-worktree <other>`). Continue to P3.
 
@@ -210,7 +210,7 @@ Implement tasks from a Speclink change.
    It returns `waves` (changes that may run in parallel), `changes` (one entry per active change with `stage`, `blockedBy` and `ready`), `next` (the first proposed change with nothing blocking it, or `null`) and `skipped` (changes whose metadata could not be parsed). If the command fails (a dependency cycle, a project that is not initialized), show the error and STOP.
 
    - **No name given** → take `next`. If `next` is `null`, there is nothing ready to start: list every change with its `blockedBy` and STOP — do not pick one anyway.
-   - **A name given** (from the argument or from conversation context) → find it in `changes`. If its `blockedBy` is non-empty, print the prerequisite list (`blockedBy`) and STOP: do NOT run `speclink review prepare`, do NOT run `speclink in-progress add`. The way out is the user's: land (archive) the blockers first; drop a declared prerequisite that is wrong with `speclink change depends <name> --on <prerequisite> --remove`; a blocker that comes from delta-capability overlap keeps its place until it lands. Then run apply again.
+   - **A name given** (from the argument or from conversation context) → find it in `changes`. If its `blockedBy` is non-empty, print the prerequisite list (`blockedBy`) and STOP: do NOT run `speclink review prepare`, do NOT run `speclink in-progress add`. The way out is the user's: land (archive) the blockers first; drop a declared prerequisite that is wrong with `speclink change depends <name> --on <prerequisite> --remove`. Then run apply again.
    - A named change that is not in `changes` (archived, misspelled, or listed under `skipped`) → keep going; step 2's status check reports it the way it always has.
 
    Never auto-select a change just because only one exists, and never bypass the plan because the user mentioned a change in conversation — the plan decides whether it may start.

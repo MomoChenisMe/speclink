@@ -211,7 +211,17 @@ fn dispatch(cli: Cli) -> Result<()> {
         Commands::Task(a) => dual(a, cmd_task, remote_task),
         Commands::InProgress(a) => dual(a, cmd_in_progress, remote_in_progress),
         Commands::Discuss(a) => dual(a, cmd_discuss, remote_discuss),
+        // `plan --strict-overlap` 同理只限本機：server 沒有目錄級開關（verb-contract
+        // 明文分歧第 6 項）——只解析模式、不握手即拒。
+        Commands::Plan(a) if a.strict_overlap => {
+            fs_only(PLAN_STRICT_REMOTE_REFUSAL, || cmd_plan(a))
+        }
         Commands::Plan(a) => dual(a, cmd_plan, |ctx, a| remote_plan(ctx, &a)),
+        // `change rank` 在 Dual 家族裡是 FsOnly：它寫卡片 meta 的 board_rank，remote
+        // 的順序真相在 board resource——只解析模式、不握手即拒。
+        Commands::Change(a) if a.is_rank() => {
+            fs_only(CHANGE_RANK_REMOTE_REFUSAL, || cmd_change(a))
+        }
         Commands::Change(a) => dual(a, cmd_change, remote_change),
         // review／verify 為 Dual 家族：clap → StationVerb 正規化先行，雙臂
         // 宣告在家族函式尾端（station_dual；review 的 prepare 自成雙臂）。
@@ -288,3 +298,9 @@ const DEMO_REMOTE_REFUSAL: &str =
 // change 的 Non-Goal（v1 僅本地 CLI），比照 demo 的 FsOnly 形狀明寫拒絕。
 const TRACE_REMOTE_REFUSAL: &str =
     "trace is not available in remote mode — it assembles the provenance chain from the local openspec/ tree";
+
+// Dual 家族裡只限本機的兩個子情形（理由見 dispatch 的對應分支）。
+const CHANGE_RANK_REMOTE_REFUSAL: &str =
+    "change rank is not available in remote mode: the board order lives in the board resource";
+const PLAN_STRICT_REMOTE_REFUSAL: &str =
+    "plan --strict-overlap is not available in remote mode: the server plans with requirement-level overlap only";

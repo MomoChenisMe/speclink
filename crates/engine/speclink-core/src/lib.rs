@@ -27,7 +27,7 @@ pub mod util;
 
 pub use lifecycle::{
     archive, capname, discard, discuss, inprogress, listing, model, newcmd, plan, preflight,
-    status, tasks, trace,
+    rank, status, tasks, trace,
 };
 pub use quality::{analyzer, drift, station, validate};
 pub use workspace_group::{config, init, instructions, schema, skills, workspace};

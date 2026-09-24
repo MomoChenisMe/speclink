@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.40.0"
+  version: "v1.41.0"
   generatedBy: "Speclink"
 ---
 
@@ -21,14 +21,14 @@ Archive a completed change.
 
 1. **If no change name provided, prompt for selection**
 
-   Run `speclink plan --json` and list the candidates from its `changes` array in the given order — the archive order that honors declared dependencies and delta overlap. Label each candidate with its `blockedBy`: an empty array reads as 「無阻擋」, a non-empty one as 「等 <blockedBy 的名稱>」. Append the names in `skipped` (changes whose metadata the plan could not parse) at the end, marked 「metadata 壞掉」 — they stay selectable, as `list --json` would have shown them. Use the **AskUserQuestion tool** to let the user select.
+   Run `speclink plan --json` and list the candidates from its `changes` array in the given order — the order that honors declared dependencies. Label each candidate with its `archiveAfter` (the changes to archive before it, because both touch the same requirement): an empty array reads as 「可封存」, a non-empty one as 「等 <archiveAfter 的名稱> 封存」. When its `blockedBy` is non-empty, add 「前置 <blockedBy 的名稱> 未封存」. Append the names in `skipped` (changes whose metadata the plan could not parse) at the end, marked 「metadata 壞掉」 — they stay selectable, as `list --json` would have shown them. Use the **AskUserQuestion tool** to let the user select.
 
    If `plan` fails (a dependency cycle), fall back to `speclink list --json` and list the active changes in its order, with no blocking labels.
 
    Show only active changes (not already archived).
    Include the schema used for each change if available.
 
-   **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose — a candidate with no blockers is not picked for them either.
+   **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose — a candidate marked 「可封存」 is not picked for them either.
 
 2. **Check artifact completion status**
 
@@ -58,11 +58,25 @@ Archive a completed change.
 
 3b. **Plan order hint**
 
-   Run `speclink plan --json` and find the target change in its `changes` array. If its `blockedBy` is non-empty, tell the user:
+   Run `speclink plan --json` and find the target change in its `changes` array. Tell the user each of these that applies:
 
-   > plan 建議先封存 <blockedBy 的名稱>，再封存 <name>：這些 change 排在它前面（宣告依賴或動到同一份規格）。
+   - `archiveAfter` is non-empty:
 
-   then use the **AskUserQuestion tool** to ask which way to go — archive `<name>` now anyway, or stop here and archive those prerequisites first (plain text + wait if the tool is unavailable). This is a suggestion only. It does NOT block the archive and relies on no engine gate: if the user confirms, archive as usual. An empty `blockedBy`, a target missing from the plan, or a `plan` failure (a dependency cycle) → say nothing about ordering and continue. When the user stops instead, end the run without archiving.
+     > plan 建議先封存 <archiveAfter 的名稱>；它們封存後，重讀本 change 對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `$speclink-ingest`）再封存 <name>。重疊的 requirement：<requirementOverlap 裡對應那些 change 的 capability › requirement>。
+
+   - `requirementOverlap` holds an entry whose `conflict` is true:
+
+     > <name> 與 <change> 都新增（或改名成）同名的 requirement <requirement>，或都移除（或改名掉）它；後封存的那一個會封存失敗（名字重複，或名字已不存在），先改掉其中一邊。
+
+   - `blockedBy` is non-empty:
+
+     > 宣告前置 <blockedBy 的名稱> 尚未封存。
+
+   Do not offer `speclink drift` as the remedy for an overlap: drift only checks that the requirement names still exist, and cannot see content that an earlier archive overwrote.
+
+   Also note every other entry of `changes` that lists `<name>` in its `archiveAfter` — even when none of the hints above applies: those changes archive after `<name>` and touch the same requirements. Once `<name>` is archived, the plan no longer names it, so the reminder after the archive is the last point where their rewrite gets named — keep the list for it. The note asks nothing now.
+
+   Then use the **AskUserQuestion tool** to ask which way to go — archive `<name>` now anyway, or stop here and handle those first (plain text + wait if the tool is unavailable). This is a suggestion only. It does NOT block the archive and relies on no engine gate: if the user confirms, archive as usual. An empty `archiveAfter` and `blockedBy` with no conflict, a target missing from the plan, or a `plan` failure (a dependency cycle) → say nothing about ordering and continue. When the user stops instead, end the run without archiving.
 
 4. **Assess delta spec completeness**
 
@@ -300,6 +314,13 @@ this archive's spec changes outdated. The condition is the directory's existence
 do not work out which specs this archive touched, and do not judge whether the manual
 is actually stale; that is the manual skill's report. This too is a reminder only —
 never run `$speclink-manual` yourself.
+
+When the plan order hint noted changes that list `<name>` in their `archiveAfter`, add
+one more line:
+
+> <那些 change 的名稱> 要在 <name> 之後封存，並動到同名的 requirement：先重讀它們對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `$speclink-ingest`），再封存它們。
+
+This too is a reminder only — never run the ingest yourself.
 
 Then run `speclink plan --json` and hand the user the next change to start. When `next`
 is non-null, add one more line:

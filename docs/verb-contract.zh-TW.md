@@ -20,20 +20,21 @@
 | --- | --- | --- |
 | **ModeFree** | `init`、`update`、`link`、`unlink`、`auth`、`schemas`、`templates`、`feedback`、`schema`、`config`、`completion` | 不觸發 store 模式解析。不讀專案設定的動詞（`completion`、`config`）不受壞掉的 `.speclink.yaml` 影響。 |
 | **Dual** | `list`、`show`、`validate`、`analyze`、`drift`、`archive`、`discard`、`artifact`、`language`、`status`、`instructions`、`new`、`workflow-config`、`task`、`in-progress`、`discuss`、`review`、`verify`、`plan`、`change` | 本機模式作用於本機 store，remote 模式作用於 remote store，**不會**在 remote 模式靜默改作用於本機。缺任一臂構成建置失敗，而非執行期靜默回退。 |
-| **FsOnly** | `demo`、`trace` | remote 模式以非零 exit code 明確拒絕，且不發出任何 server 請求——離線環境同樣拒絕。 |
+| **FsOnly** | `demo`、`trace`、`change rank`（Dual 的 `change` 底下唯一的 FsOnly 子指令：remote 的看板順序存在 board resource）、`plan --strict-overlap`（server 沒有目錄級開關） | remote 模式以非零 exit code 明確拒絕，且不發出任何 server 請求——離線環境同樣拒絕。 |
 | **RemoteOnly** | `claim` | 本機模式以非零 exit code 明確拒絕，並於 stderr 說明需要 remote store。 |
 
 模式判定是惰性的：只有宣告形狀需要時才解析模式，只有 remote 臂將執行時才建立連線。
 
 ## 兩模式的輸出同形
 
-Dual 動詞的人眼輸出（stdout 文本，含 `--no-color`）在兩模式下逐位元一致，只有五項明文分歧：
+Dual 動詞的人眼輸出（stdout 文本，含 `--no-color`）在兩模式下逐位元一致，只有六項明文分歧：
 
 1. `new change` 的 Path 行——本機印、remote 不印（server 端路徑對本機使用者無意義）。
 2. `list` 的 worktree 標示——remote 恆缺席（worktree 是本機主 checkout 的觀察面）。
 3. `status` 的 schema 覆寫旗標——remote 明確拒絕（server 的工作流設定決定 schema）。
 4. `workflow-config` 的文件標籤——remote 以 `config.yaml` 為標籤。
 5. `discuss promote` 的 Path 行與其後的提示行——本機印、remote 不印（兩行綁在一起去留）。
+6. `plan` 的 `--strict-overlap` 旗標——remote 模式在發出任何 server 請求前明確拒絕（server 只以 requirement 級重疊規劃）。
 
 清單以外的任何輸出差異都是缺陷。模式差異只存在於資料取得與守門拒絕，不存在於輸出文本的組版。
 

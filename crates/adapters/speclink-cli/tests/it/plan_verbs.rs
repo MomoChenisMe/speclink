@@ -43,6 +43,13 @@ impl TempProject {
         std::fs::write(self.change_dir(name).join("tasks.md"), tasks_md).unwrap();
     }
 
+    /// 寫入（或覆寫）一份 delta spec 的原文。
+    fn put_delta(&self, name: &str, cap: &str, text: &str) {
+        let spec = self.change_dir(name).join("specs").join(cap);
+        std::fs::create_dir_all(&spec).unwrap();
+        std::fs::write(spec.join("spec.md"), text).unwrap();
+    }
+
     fn archive(&self, dated_name: &str, meta: &str) {
         let dir = self
             .dir
@@ -103,16 +110,25 @@ fn json_of(out: &Output) -> serde_json::Value {
 
 // --- plan：查詢動詞 ---
 
+/// 一份只 MODIFIED 一個 requirement 的 delta 原文。
+fn modified(requirement: &str) -> String {
+    format!("## MODIFIED Requirements\n\n### Requirement: {requirement}\n\nbody\n")
+}
+
 #[test]
-fn plan_json_carries_the_four_keys_and_seven_camel_case_fields_per_change() {
-    // Scenario JSON 輸出形狀：兩個提案中 change（b 依賴 a）。
+fn plan_json_has_nine_keys_and_requirement_overlap_shape() {
+    // Scenario JSON 輸出形狀：兩個提案中 change（b 依賴 a），各自 MODIFIED
+    // desktop-app 的同一個 requirement。
     let p = TempProject::new("json-shape");
-    p.put_change("a", PROPOSED, &["desktop-app"]);
+    p.put_change("a", PROPOSED, &[]);
     p.put_change(
         "b",
         "schema: spec-driven\ncreated: 2026-09-02\ndepends_on: a\n",
-        &["desktop-app"],
+        &[],
     );
+    for name in ["a", "b"] {
+        p.put_delta(name, "desktop-app", &modified("看板與任務"));
+    }
     let out = p.run(&["plan", "--json"]);
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     let json = json_of(&out);
@@ -130,11 +146,13 @@ fn plan_json_carries_the_four_keys_and_seven_camel_case_fields_per_change() {
         assert_eq!(
             keys(c),
             [
+                "archiveAfter",
                 "blockedBy",
                 "dependsOn",
                 "name",
                 "overlaps",
                 "ready",
+                "requirementOverlap",
                 "stage",
                 "wave"
             ]
@@ -142,6 +160,21 @@ fn plan_json_carries_the_four_keys_and_seven_camel_case_fields_per_change() {
         assert!(c["name"].is_string() && c["wave"].is_u64() && c["stage"].is_string());
         assert!(c["dependsOn"].is_array() && c["overlaps"].is_array());
         assert!(c["blockedBy"].is_array() && c["ready"].is_boolean());
+        assert!(c["requirementOverlap"].is_array() && c["archiveAfter"].is_array());
+        for o in c["requirementOverlap"].as_array().unwrap() {
+            assert_eq!(
+                keys(o),
+                [
+                    "capability",
+                    "change",
+                    "conflict",
+                    "otherOperation",
+                    "ownOperation",
+                    "requirement"
+                ]
+            );
+            assert!(o["conflict"].is_boolean() && o["ownOperation"].is_string());
+        }
     }
     let b = &changes[1];
     assert_eq!(b["name"], "b");
@@ -153,6 +186,51 @@ fn plan_json_carries_the_four_keys_and_seven_camel_case_fields_per_change() {
     assert_eq!(
         b["overlaps"],
         serde_json::json!([{ "change": "a", "capabilities": ["desktop-app"] }])
+    );
+    assert_eq!(b["archiveAfter"], serde_json::json!(["a"]));
+    assert_eq!(
+        b["requirementOverlap"],
+        serde_json::json!([{
+            "change": "a",
+            "capability": "desktop-app",
+            "requirement": "看板與任務",
+            "ownOperation": "MODIFIED",
+            "otherOperation": "MODIFIED",
+            "conflict": false
+        }])
+    );
+    assert_eq!(changes[0]["archiveAfter"], serde_json::json!([]));
+}
+
+#[test]
+fn plan_strict_overlap_reproduces_old_waves() {
+    // Scenario strict-overlap 退回目錄級推波：a、b 共用 desktop-app 但動到不同
+    // requirement——預設同波；--strict-overlap 時 b 第 2 波、被 a 擋住。
+    let p = TempProject::new("strict");
+    p.put_change("a", PROPOSED, &[]);
+    p.put_change("b", "schema: spec-driven\ncreated: 2026-09-02\n", &[]);
+    p.put_delta("a", "desktop-app", &modified("Run rewind point"));
+    p.put_delta("b", "desktop-app", &modified("Conversation pin"));
+    let default = json_of(&p.run(&["plan", "--json"]));
+    assert_eq!(
+        default["waves"],
+        serde_json::json!([{ "index": 1, "changes": ["a", "b"] }])
+    );
+    let out = p.run(&["plan", "--strict-overlap", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let strict = json_of(&out);
+    assert_eq!(
+        strict["waves"],
+        serde_json::json!([{ "index": 1, "changes": ["a"] }, { "index": 2, "changes": ["b"] }])
+    );
+    let b = &strict["changes"][1];
+    assert_eq!(b["blockedBy"], serde_json::json!(["a"]));
+    assert_eq!(b["ready"], false);
+    assert_eq!(b["archiveAfter"], serde_json::json!([]));
+    let human = stdout_of(&p.run(&["plan", "--strict-overlap", "--no-color"]));
+    assert!(
+        human.contains("Wave 2") && human.contains("blocked by: a"),
+        "got: {human}"
     );
 }
 
@@ -195,6 +273,70 @@ fn plan_human_output_prints_waves_and_next_without_ansi_under_no_color() {
         "got: {text}"
     );
     assert_eq!(lines.last().copied(), Some("next: a"), "got: {text}");
+}
+
+/// 一份只 ADDED 一個 requirement 的 delta 原文。
+fn added(requirement: &str) -> String {
+    format!("## ADDED Requirements\n\n### Requirement: {requirement}\n\nbody\n")
+}
+
+/// 人眼輸出裡某個 change 那一行（去掉行首縮排）。
+fn human_line(text: &str, name: &str) -> String {
+    text.lines()
+        .map(str::trim_start)
+        .find(|l| l.starts_with(&format!("• {name} ")))
+        .unwrap_or_else(|| panic!("no line for {name}: {text}"))
+        .to_string()
+}
+
+#[test]
+fn plan_human_output_orders_three_suffixes() {
+    // Example「一個 change 三種尾註的順序」：e 依賴 a、與 b MODIFIED 同一個
+    // requirement、與 c ADDED 同名 requirement。行首沿用既有 `• <名稱> [<階段>]`。
+    let p = TempProject::new("three-suffixes");
+    p.put_change("a", PROPOSED, &[]);
+    p.put_change("b", "schema: spec-driven\ncreated: 2026-09-02\n", &[]);
+    p.put_change("c", "schema: spec-driven\ncreated: 2026-09-03\n", &[]);
+    p.put_change(
+        "e",
+        "schema: spec-driven\ncreated: 2026-09-04\ndepends_on: a\n",
+        &[],
+    );
+    p.put_delta("b", "desktop-app", &modified("看板與任務"));
+    p.put_delta("c", "export", &added("匯出"));
+    p.put_delta("e", "desktop-app", &modified("看板與任務"));
+    p.put_delta("e", "export", &added("匯出"));
+    let out = p.run_env(&["plan", "--no-color"], &[("CLICOLOR_FORCE", "1")]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let text = stdout_of(&out);
+    assert!(!text.contains('\u{1b}'), "no ANSI under --no-color: {text:?}");
+    assert_eq!(
+        human_line(&text, "e"),
+        "• e [proposed] — blocked by: a — archive after: b — conflicts with: c"
+    );
+    assert_eq!(human_line(&text, "c"), "• c [proposed] — conflicts with: e");
+    assert_eq!(human_line(&text, "b"), "• b [proposed]", "b archives first: no suffix");
+}
+
+#[test]
+fn plan_human_output_marks_archive_order_and_conflicts_without_blockers() {
+    // Scenario 人眼輸出的封存順序與衝突尾註：b 的 archiveAfter 為 [a]、c 與 d 互為
+    // ADDED 同名衝突，兩者都沒有宣告前置。
+    let p = TempProject::new("archive-and-conflict");
+    p.put_change("a", PROPOSED, &[]);
+    p.put_change("b", "schema: spec-driven\ncreated: 2026-09-02\n", &[]);
+    p.put_change("c", "schema: spec-driven\ncreated: 2026-09-03\n", &[]);
+    p.put_change("d", "schema: spec-driven\ncreated: 2026-09-04\n", &[]);
+    p.put_delta("a", "desktop-app", &modified("看板與任務"));
+    p.put_delta("b", "desktop-app", &modified("看板與任務"));
+    p.put_delta("c", "export", &added("匯出"));
+    p.put_delta("d", "export", &added("匯出"));
+    let text = stdout_of(&p.run(&["plan", "--no-color"]));
+    let b = human_line(&text, "b");
+    let c = human_line(&text, "c");
+    assert!(b.ends_with("archive after: a") && !b.contains("blocked by:"), "{b}");
+    assert!(c.ends_with("conflicts with: d") && !c.contains("blocked by:"), "{c}");
+    assert_eq!(text.lines().next(), Some("Wave 1 (parallel)"), "all four start together");
 }
 
 #[test]
@@ -568,6 +710,166 @@ fn list_and_status_json_ignore_depends_on_byte_for_byte() {
     }
 }
 
+// --- change rank：看板順序鍵寫入動詞（spec「change rank 動詞寫入看板順序鍵」）---
+
+/// meta 原文裡 `board_rank:` 那一行的值。
+fn rank_line(meta: &[u8]) -> Option<String> {
+    String::from_utf8_lossy(meta)
+        .lines()
+        .find_map(|l| l.strip_prefix("board_rank: ").map(str::to_string))
+}
+
+fn plan_names(p: &TempProject) -> Vec<String> {
+    json_of(&p.run(&["plan", "--json"]))["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap().to_string())
+        .collect()
+}
+
+#[test]
+fn change_rank_before_writes_board_rank_and_reorders_plan() {
+    // Scenario 無 rank 的 change 排到另一個之前：欄內只有 a（rank n）與 c。
+    const RANKED: &str = "schema: spec-driven\ncreated: 2026-09-01\nboard_rank: n\n";
+    let p = TempProject::new("rank-before");
+    p.put_change("a", RANKED, &[]);
+    p.put_change("c", STAMPED, &[]);
+    assert_eq!(plan_names(&p), ["a", "c"]);
+    let out = p.run(&["change", "rank", "c", "--before", "a"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stdout_of(&out), "✓ c ranked before a\n");
+    let rank = rank_line(&p.meta("c")).expect("c gained a board_rank line");
+    assert!(rank.as_str() < "n", "{rank} sorts before n");
+    assert_eq!(
+        p.meta("c"),
+        format!("{STAMPED}board_rank: {rank}\n").into_bytes(),
+        "every other byte is kept"
+    );
+    assert_eq!(p.meta("a"), RANKED.as_bytes(), "the anchor is untouched");
+    assert_eq!(plan_names(&p), ["c", "a"]);
+}
+
+#[test]
+fn change_rank_json_shape_has_no_rank_value() {
+    let p = TempProject::new("rank-json");
+    p.put_change("a", "schema: spec-driven\nboard_rank: n\n", &[]);
+    p.put_change("c", PROPOSED, &[]);
+    let out = p.run(&["change", "rank", "c", "--after", "a", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(
+        json_of(&out),
+        serde_json::json!({ "change": "c", "anchor": "a", "position": "after" })
+    );
+    // 寫入後 list --json 照舊不帶 rank（board_rank 不進 CLI 輸出）。
+    let list = stdout_of(&p.run(&["list", "--json"]));
+    assert!(!list.contains("board_rank") && !list.contains("boardRank"), "{list}");
+}
+
+#[test]
+fn change_rank_refuses_already_ranked_and_force_overwrites() {
+    // Scenario 已有 rank 未帶 --force 被拒／帶 --force 覆寫既有 rank。
+    let p = TempProject::new("rank-force");
+    p.put_change("a", "schema: spec-driven\nboard_rank: n\n", &[]);
+    p.put_change("c", "schema: spec-driven\nboard_rank: b\n", &[]);
+    let out = p.run(&["change", "rank", "c", "--after", "a"]);
+    assert!(!out.status.success(), "an existing rank refuses without --force");
+    let err = stderr_of(&out);
+    assert!(
+        err.contains("already has a board rank") && err.contains("--force"),
+        "stderr: {err}"
+    );
+    assert!(out.stdout.is_empty());
+    assert_eq!(p.meta("c"), b"schema: spec-driven\nboard_rank: b\n", "zero writes");
+    let out = p.run(&["change", "rank", "c", "--after", "a", "--force"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert!(rank_line(&p.meta("c")).unwrap().as_str() > "n");
+    assert_eq!(plan_names(&p), ["a", "c"]);
+}
+
+#[test]
+fn change_rank_refuses_dependency_cross() {
+    // Scenario 跨宣告依賴被拒：c 依賴 a，c --before a → 兩份 meta 都不動。
+    let p = TempProject::new("rank-dependency");
+    p.put_change("a", PROPOSED, &[]);
+    p.put_change("c", &format!("{STAMPED}depends_on: a\n"), &[]);
+    let out = p.run(&["change", "rank", "c", "--before", "a"]);
+    assert!(!out.status.success(), "crossing a prerequisite refuses");
+    let err = stderr_of(&out);
+    assert!(
+        err.contains("cannot move 'c' there") && err.contains("it depends on a"),
+        "stderr: {err}"
+    );
+    assert_eq!(p.meta("a"), PROPOSED.as_bytes());
+    assert_eq!(
+        p.meta("c"),
+        format!("{STAMPED}depends_on: a\n").into_bytes()
+    );
+}
+
+#[test]
+fn change_rank_refuses_different_stage() {
+    // Scenario 不同階段被拒：a 進行中、c 提案中。
+    let p = TempProject::new("rank-stage");
+    const STARTED: &str = "schema: spec-driven\ncreated: 2026-09-01\nstarted_at: 2026-09-02\n";
+    p.put_change("a", STARTED, &[]);
+    p.put_change("c", PROPOSED, &[]);
+    let out = p.run(&["change", "rank", "c", "--before", "a"]);
+    assert!(!out.status.success(), "a rank only orders one stage");
+    let err = stderr_of(&out);
+    assert!(err.contains("in-progress") && err.contains("proposed"), "stderr: {err}");
+    assert_eq!(p.meta("a"), STARTED.as_bytes());
+    assert_eq!(p.meta("c"), PROPOSED.as_bytes());
+}
+
+#[test]
+fn change_rank_needs_exactly_one_side() {
+    // --before 與 --after 互斥且必擇一：兩者皆缺或皆給都是 argv 錯誤、零寫入。
+    let p = TempProject::new("rank-side");
+    p.put_change("a", PROPOSED, &[]);
+    p.put_change("c", PROPOSED, &[]);
+    for args in [
+        &["change", "rank", "c"][..],
+        &["change", "rank", "c", "--before", "a", "--after", "a"][..],
+    ] {
+        let out = p.run(args);
+        assert!(!out.status.success(), "{args:?} must be refused");
+        assert!(out.stdout.is_empty(), "{args:?}");
+    }
+    assert_eq!(p.meta("c"), PROPOSED.as_bytes());
+}
+
+#[test]
+fn change_rank_remote_mode_refuses_without_request() {
+    // Scenario remote 模式拒絕：只解析模式、不握手。listener 在線但從不回話——
+    // 若發出任何請求，連線會躺在 backlog 裡被 accept() 撿到。
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let p = TempProject::new("rank-remote");
+    p.put_change("a", PROPOSED, &[]);
+    p.put_change("c", PROPOSED, &[]);
+    std::fs::write(
+        p.dir.join(".speclink.yaml"),
+        format!("remote:\n  url: http://127.0.0.1:{port}/api/speclink/v1/projects/demo\n"),
+    )
+    .unwrap();
+    let out = p.run(&["change", "rank", "c", "--before", "a"]);
+    assert!(!out.status.success(), "remote mode refuses the verb");
+    let err = stderr_of(&out);
+    assert!(
+        err.contains("change rank is not available in remote mode")
+            && err.contains("the board order lives in the board resource"),
+        "stderr: {err}"
+    );
+    assert!(out.stdout.is_empty());
+    assert_eq!(p.meta("c"), PROPOSED.as_bytes(), "the local copy is untouched");
+    listener.set_nonblocking(true).unwrap();
+    match listener.accept() {
+        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+        other => panic!("no server request may be emitted, got {other:?}"),
+    }
+}
+
 #[test]
 fn spec_example_soft_dependency_declared_after_propose() {
     // propose-skill Example「軟依賴落檔後的 plan 呈現」——兩列各一組值。
@@ -603,4 +905,68 @@ fn spec_example_soft_dependency_declared_after_propose() {
         json["waves"],
         serde_json::json!([{ "index": 1, "changes": ["add-a", "add-c"] }])
     );
+    // 列 3：add-d 只有 5 個 task、add-a 有 40 個且無人依賴；add-a 已有 board_rank，
+    // 所以排在 add-d 前面 → change rank add-d --before add-a → 同為第 1 波，
+    // 配置順序 add-d 在前。
+    queue_jump_example("spec-example-propose-rank", ("add-a", 40), ("add-d", 5));
+}
+
+/// `n` 個未勾選任務的 tasks.md。
+fn open_tasks(n: usize) -> String {
+    (1..=n).map(|i| format!("- [ ] 1.{i} t\n")).collect()
+}
+
+/// propose／ingest 的插隊例子：`big` 已有 board_rank（使用者拖排過，所以排在前面），
+/// 小的 `small` 沒有 rank——技能執行 `change rank <small> --before <big>` 後兩者
+/// 同為第 1 波、small 在前。兩者都沒有 rank 時新 tie-break 本就讓小的在前，
+/// 技能不會插隊，所以這個前提是例子的一部分。
+fn queue_jump_example(tag: &str, big: (&str, usize), small: (&str, usize)) {
+    let p = TempProject::new(tag);
+    p.put_change(big.0, "schema: spec-driven\ncreated: 2026-09-01\nboard_rank: n\n", &[]);
+    p.put_tasks(big.0, &open_tasks(big.1));
+    p.put_change(small.0, "schema: spec-driven\ncreated: 2026-09-20\n", &[]);
+    p.put_tasks(small.0, &open_tasks(small.1));
+    assert_eq!(plan_names(&p), [big.0, small.0], "the ranked big change sits in front");
+    let out = p.run(&["change", "rank", small.0, "--before", big.0]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let json = json_of(&p.run(&["plan", "--json"]));
+    assert_eq!(
+        json["waves"],
+        serde_json::json!([{ "index": 1, "changes": [small.0, big.0] }])
+    );
+}
+
+#[test]
+fn spec_example_ingest_shrunk_change_jumps_the_queue() {
+    // ingest-skill Example「中途改需求後新增前置」列 5：add-b（提案中、無 rank）縮到
+    // 4 個 task，add-a 有 30 個且無人依賴、已有 board_rank → change rank add-b
+    // --before add-a → 兩者同波，配置順序 add-b 在前。
+    queue_jump_example("spec-example-ingest-rank", ("add-a", 30), ("add-b", 4));
+}
+
+#[test]
+fn change_rank_refuses_a_change_without_metadata_before_any_write() {
+    // 缺 .openspec.yaml 的 change 仍在 plan 裡，但沒有地方寫 rank：不論它是被移動
+    // 的那個、還是欄內要補章的那個，都在第一筆寫入前拒絕，零寫入。
+    let p = TempProject::new("rank-no-meta");
+    p.put_change("p1", "schema: spec-driven\ncreated: 2026-09-01\n", &[]);
+    std::fs::create_dir_all(p.change_dir("p2")).unwrap();
+    std::fs::write(p.change_dir("p2").join("proposal.md"), "## Why\nx\n").unwrap();
+    p.put_change("p3", "schema: spec-driven\ncreated: 2026-09-03\n", &[]);
+    assert_eq!(plan_names(&p), ["p1", "p3", "p2"], "the metadata-less change is planned");
+
+    let out = p.run(&["change", "rank", "p2", "--before", "p1"]);
+    assert!(!out.status.success(), "the moved change has no metadata");
+    let err = stderr_of(&out);
+    assert!(err.contains("openspec/changes/p2/.openspec.yaml is missing"), "stderr: {err}");
+
+    let out = p.run(&["change", "rank", "p3", "--before", "p1"]);
+    assert!(!out.status.success(), "a change to stamp has no metadata");
+    let err = stderr_of(&out);
+    assert!(err.contains("openspec/changes/p2/.openspec.yaml is missing"), "stderr: {err}");
+
+    for change in ["p1", "p3"] {
+        assert_eq!(rank_line(&p.meta(change)), None, "{change} is not stamped");
+    }
+    assert!(!p.change_dir("p2").join(".openspec.yaml").exists());
 }

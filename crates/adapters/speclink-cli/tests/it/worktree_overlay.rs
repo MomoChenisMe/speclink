@@ -422,6 +422,93 @@ fn change_depends_writes_the_worktree_copy_of_a_mapped_change() {
 }
 
 #[test]
+fn change_rank_writes_the_worktree_copy_of_a_mapped_change() {
+    // change-plan spec「change rank 動詞寫入看板順序鍵」：與 change depends 同一
+    // 聚合面——主 checkout 且政策開啟時，已映射的 change 寫它的 worktree 副本，
+    // plan 讀的也是那份，順序立刻可見；主副本不動。錨點 add-auth 已有 rank，
+    // 這一欄不需補章，只寫被移動的那一檔。
+    let f = Fixture::new("rank-worktree", true);
+    let auth = f.repo.join("openspec").join("changes").join("add-auth");
+    std::fs::create_dir_all(&auth).unwrap();
+    std::fs::write(auth.join(".openspec.yaml"), format!("{META}board_rank: n\n")).unwrap();
+    f.git(&["add", "-A"]);
+    f.git(&["commit", "-q", "-m", "add-auth"]);
+    let wt = f.add_worktree("add-dark-mode");
+
+    let out = f.run(&["change", "rank", "add-dark-mode", "--before", "add-auth"]);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let meta_of = |root: &Path, change: &str| {
+        std::fs::read_to_string(root.join("openspec").join("changes").join(change).join(".openspec.yaml"))
+            .unwrap()
+    };
+    assert!(meta_of(&wt, "add-dark-mode").contains("board_rank: "), "the worktree copy is ranked");
+    assert_eq!(meta_of(&f.repo, "add-dark-mode"), META, "the main copy stays untouched");
+    assert_eq!(meta_of(&f.repo, "add-auth"), format!("{META}board_rank: n\n"));
+    let plan = json_of(&f.run(&["plan", "--json"]));
+    let names: Vec<&str> = plan["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["add-dark-mode", "add-auth"], "{plan}");
+}
+
+/// 一個只在主 checkout 新建的 change（worktree 分支之後才出現，副本裡沒有它）。
+fn add_main_only(f: &Fixture, change: &str) {
+    let dir = f.repo.join("openspec").join("changes").join(change);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join(".openspec.yaml"), META).unwrap();
+}
+
+fn meta_at(root: &Path, change: &str) -> String {
+    std::fs::read_to_string(root.join("openspec").join("changes").join(change).join(".openspec.yaml"))
+        .unwrap()
+}
+
+fn plan_order(f: &Fixture) -> Vec<String> {
+    json_of(&f.run(&["plan", "--json"]))["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap().to_string())
+        .collect()
+}
+
+#[test]
+fn change_rank_sees_a_change_created_after_the_worktree_branched() {
+    // 欄序與 plan 同一視角（主 roster ＋映射 change 的副本）：add-late 只在主
+    // checkout，映射到 worktree 的 add-dark-mode 仍可排到它前面。add-late 的補章
+    // 寫主 checkout，add-dark-mode 的新 rank 寫它自己的 worktree 副本。
+    let f = Fixture::new("rank-late-anchor", true);
+    let wt = f.add_worktree("add-dark-mode");
+    add_main_only(&f, "add-late");
+
+    let out = f.run(&["change", "rank", "add-dark-mode", "--before", "add-late"]);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(meta_at(&f.repo, "add-late").contains("board_rank: "), "add-late stamped in main");
+    assert!(meta_at(&wt, "add-dark-mode").contains("board_rank: "), "the worktree copy is ranked");
+    assert_eq!(meta_at(&f.repo, "add-dark-mode"), META, "the main copy of a mapped change is untouched");
+    assert_eq!(plan_order(&f), ["add-dark-mode", "add-late"]);
+}
+
+#[test]
+fn change_rank_stamps_each_change_in_its_own_copy() {
+    // 補章逐 change 寫回各自的副本：add-dark-mode 映射到 worktree、缺 rank，要被
+    // 補章；它的章必須落在 worktree 副本（plan 讀那份），不能落在主副本。
+    let f = Fixture::new("rank-stamp-homes", true);
+    let wt = f.add_worktree("add-dark-mode");
+    add_main_only(&f, "add-late");
+
+    let out = f.run(&["change", "rank", "add-late", "--after", "add-dark-mode"]);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(meta_at(&wt, "add-dark-mode").contains("board_rank: "), "the stamp lands in the worktree copy");
+    assert_eq!(meta_at(&f.repo, "add-dark-mode"), META, "the main copy is never stamped");
+    assert!(meta_at(&f.repo, "add-late").contains("board_rank: "));
+    assert_eq!(plan_order(&f), ["add-dark-mode", "add-late"]);
+}
+
+#[test]
 fn plan_reads_the_worktree_copy_for_the_stage_derivation() {
     // change-plan spec「plan 動詞輸出波次與阻擋清單」：主 checkout 且政策開啟時，
     // plan 與 list 同一聚合面——worktree 內勾掉的任務讓階段判定為 in-progress，

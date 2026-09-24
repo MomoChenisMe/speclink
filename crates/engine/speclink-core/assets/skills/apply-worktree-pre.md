@@ -79,7 +79,7 @@ It returns `changes` (one entry per active change with its `blockedBy`), `next` 
 - **The name is not in `changes`** (archived, misspelled, or listed under `skipped`) → STOP and report which change names are available.
 - **The command fails** (a dependency cycle, a project that is not initialized) → show the error and STOP.
 
-Every STOP in this step ends the run on the spot: do NOT commit the artifacts, do NOT create the worktree. The way out of a block is the user's: land (archive) the blockers first; drop a declared prerequisite that is wrong with `speclink change depends <change-name> --on <prerequisite> --remove`; a blocker that comes from delta-capability overlap keeps its place until it lands. Then run this skill again.
+Every STOP in this step ends the run on the spot: do NOT commit the artifacts, do NOT create the worktree. The way out of a block is the user's: land (archive) the blockers first; drop a declared prerequisite that is wrong with `speclink change depends <change-name> --on <prerequisite> --remove`. Then run this skill again.
 
 Once a change is selected, announce: "Using change: <change-name>" and how to override (e.g., `/speclink:apply-with-worktree <other>`). Continue to P3.
 

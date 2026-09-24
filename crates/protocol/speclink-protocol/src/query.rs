@@ -691,6 +691,24 @@ pub struct PlanChangeEntry {
     #[serde(default)]
     pub blocked_by: Vec<String>,
     pub ready: bool,
+    #[serde(default)]
+    pub requirement_overlap: Vec<PlanRequirementOverlap>,
+    #[serde(default)]
+    pub archive_after: Vec<String>,
+}
+
+/// A requirement this change and `change` both touch in one capability. The
+/// operations are the engine's delta section strings (`ADDED` / `MODIFIED` /
+/// `REMOVED` / `RENAMED`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanRequirementOverlap {
+    pub change: String,
+    pub capability: String,
+    pub requirement: String,
+    pub own_operation: String,
+    pub other_operation: String,
+    pub conflict: bool,
 }
 
 /// A delta-capability overlap with one other change.
@@ -1305,7 +1323,7 @@ mod tests {
     fn plan_response_deserializes_the_plan_payload() {
         // 規格「plan 回應 payload」Scenario「回應反序列化」。
         let plan: PlanResponse = serde_json::from_str(
-            r#"{"waves":[{"index":1,"changes":["a"]}],"changes":[{"name":"a","wave":1,"stage":"proposed","dependsOn":[],"overlaps":[],"blockedBy":[],"ready":true}],"next":"a","skipped":[]}"#,
+            r#"{"waves":[{"index":1,"changes":["a"]}],"changes":[{"name":"a","wave":1,"stage":"proposed","dependsOn":[],"overlaps":[],"blockedBy":[],"ready":true,"requirementOverlap":[{"change":"b","capability":"desktop-app","requirement":"看板與任務","ownOperation":"MODIFIED","otherOperation":"MODIFIED","conflict":false}],"archiveAfter":["b"]}],"next":"a","skipped":[]}"#,
         )
         .unwrap();
         assert_eq!(plan.next.as_deref(), Some("a"));
@@ -1313,16 +1331,22 @@ mod tests {
         assert_eq!(plan.waves[0].index, 1);
         assert_eq!(plan.waves[0].changes, ["a"]);
         assert_eq!(plan.changes[0].stage, "proposed");
+        let overlap = &plan.changes[0].requirement_overlap[0];
+        assert!(!overlap.conflict);
+        assert_eq!(overlap.own_operation, "MODIFIED");
+        assert_eq!(plan.changes[0].archive_after, ["b"]);
     }
 
     #[test]
     fn plan_change_entry_reads_a_missing_array_as_empty() {
-        // 規格「plan 回應 payload」Scenario「缺陣列欄位容忍」。
+        // 規格「plan 回應 payload」Scenario「缺陣列欄位容忍」：新 client 讀舊 server。
         let plan: PlanResponse = serde_json::from_str(
             r#"{"waves":[],"changes":[{"name":"a","wave":1,"stage":"proposed","dependsOn":[],"blockedBy":[],"ready":true}],"next":"a","skipped":[]}"#,
         )
         .unwrap();
         assert!(plan.changes[0].overlaps.is_empty());
+        assert!(plan.changes[0].requirement_overlap.is_empty());
+        assert!(plan.changes[0].archive_after.is_empty());
     }
 
     #[test]
@@ -1338,6 +1362,15 @@ mod tests {
                 overlaps: vec![PlanOverlap { change: "a".into(), capabilities: vec!["auth".into()] }],
                 blocked_by: Vec::new(),
                 ready: true,
+                requirement_overlap: vec![PlanRequirementOverlap {
+                    change: "a".into(),
+                    capability: "auth".into(),
+                    requirement: "Login".into(),
+                    own_operation: "ADDED".into(),
+                    other_operation: "ADDED".into(),
+                    conflict: true,
+                }],
+                archive_after: Vec::new(),
             }],
             next: None,
             skipped: vec![PlanSkipped { change: "c".into(), reason: "bad meta".into() }],
@@ -1352,7 +1385,21 @@ mod tests {
         assert_eq!(keys(&json), ["changes", "next", "skipped", "waves"]);
         assert_eq!(
             keys(&json["changes"][0]),
-            ["blockedBy", "dependsOn", "name", "overlaps", "ready", "stage", "wave"]
+            [
+                "archiveAfter",
+                "blockedBy",
+                "dependsOn",
+                "name",
+                "overlaps",
+                "ready",
+                "requirementOverlap",
+                "stage",
+                "wave"
+            ]
+        );
+        assert_eq!(
+            keys(&json["changes"][0]["requirementOverlap"][0]),
+            ["capability", "change", "conflict", "otherOperation", "ownOperation", "requirement"]
         );
         assert_eq!(json["next"], serde_json::Value::Null);
         assert_eq!(json["changes"][0]["overlaps"][0]["capabilities"], serde_json::json!(["auth"]));
@@ -1390,7 +1437,15 @@ mod tests {
     #[test]
     fn plan_dtos_export_json_schema() {
         let text = serde_json::to_string(&schemars::schema_for!(PlanResponse)).unwrap();
-        for field in ["waves", "dependsOn", "blockedBy", "skipped"] {
+        for field in [
+            "waves",
+            "dependsOn",
+            "blockedBy",
+            "skipped",
+            "requirementOverlap",
+            "archiveAfter",
+            "ownOperation",
+        ] {
             assert!(text.contains(field), "plan schema exposes {field}: {text}");
         }
     }

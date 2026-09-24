@@ -641,11 +641,13 @@ fn plan_gets_the_typed_plan() {
     // 規格「plan 回應 payload」：GET /plan 回型別化的 PlanResponse。
     let mock = serve(
         200,
-        r#"{"waves":[{"index":1,"changes":["a"]}],"changes":[{"name":"a","wave":1,"stage":"proposed","dependsOn":[],"overlaps":[],"blockedBy":[],"ready":true}],"next":"a","skipped":[]}"#,
+        r#"{"waves":[{"index":1,"changes":["a"]}],"changes":[{"name":"a","wave":1,"stage":"proposed","dependsOn":[],"overlaps":[],"blockedBy":[],"ready":true,"requirementOverlap":[{"change":"b","capability":"auth","requirement":"Login","ownOperation":"MODIFIED","otherOperation":"ADDED","conflict":false}],"archiveAfter":["b"]}],"next":"a","skipped":[]}"#,
     );
     let plan = client(&mock).plan().expect("plan ok");
     assert_eq!(plan.next.as_deref(), Some("a"));
     assert_eq!(plan.changes[0].name, "a");
+    assert_eq!(plan.changes[0].requirement_overlap[0].other_operation, "ADDED");
+    assert_eq!(plan.changes[0].archive_after, ["b"]);
     assert_call(&mock.last(), "GET", "/plan");
 }
 

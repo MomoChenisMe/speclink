@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use speclink_core::store::Store;
 
 use crate::init_core_context;
-use crate::rank::neighbor_midpoint;
+use speclink_core::rank::neighbor_midpoint;
 
 /// 每專案根一次的 git 身分快取（design D1：identity 每根快取）：完成路徑高頻取用，
 /// 而 GUI 進程 spawn git 在部分環境極慢（防毒掃描，實測單次 ~3 秒）——首次取得後
@@ -337,14 +337,19 @@ pub fn reorder_card_at(
         // 變更卡：讀走看板同源視圖（overlay：主 roster ＋映射 change 的副本現值），
         // 寫逐 change 解析落點——有映射寫其 worktree 副本、無映射寫主 checkout。
         // 整欄補章因此各回各家，不會把別的 change 的 rank 污染進被拖卡的 worktree
-        // 分支；分支後才新建的 change 也在欄內。討論卡沒有 worktree 映射，直走主 store。
+        // 分支；分支後才新建的 change 也在欄內。欄序、補章、中點與依賴檢查是引擎
+        // `plan::move_rank` 那一份（CLI 的 change rank 同一份），檢查全在寫入之前，
+        // 被拒即零寫入。討論卡沒有 worktree 映射，直走主 store。
         // facts 現取（含 git spawn）在取寫回鎖之前完成。
         "change" => {
             let facts = crate::facts_for(&ctx);
             let _guard = write_guard();
             let overlaid = crate::query::overlay_store(&ctx, &facts);
-            let home = |name: &str| crate::home_store_for(&ctx, &facts, name);
-            reorder_change(&overlaid, home, id, prev_id, next_id)
+            let write = |name: &str, key: &str| {
+                speclink_core::model::set_board_rank(&crate::home_store_for(&ctx, &facts, name), name, key)
+            };
+            speclink_core::plan::move_rank(&overlaid, &write, id, prev_id, next_id)
+                .map_err(|e| e.to_string())
         }
         "discussion" => {
             let _guard = write_guard();
@@ -352,65 +357,6 @@ pub fn reorder_card_at(
         }
         other => Err(format!("invalid card kind: {other}")),
     }
-}
-
-/// 變更卡的所屬欄（design D8）：規則只有引擎 `model::stage` 一份，這裡映射到既有的
-/// u8 欄序——ready(2)、in-progress(1)、proposed(0)。
-fn change_stage(store: &dyn Store, c: &speclink_core::model::Change) -> u8 {
-    use speclink_core::model::Stage;
-    match speclink_core::model::stage(store, c) {
-        Stage::Ready => 2,
-        Stage::InProgress => 1,
-        Stage::Proposed => 0,
-    }
-}
-
-fn reorder_change(
-    store: &dyn Store,
-    home: impl Fn(&str) -> speclink_fs::FsStore,
-    id: &str,
-    prev_id: Option<&str>,
-    next_id: Option<&str>,
-) -> Result<(), String> {
-    // 補章依當前顯示序派發（design D2）：與清單 payload 同一個入口，顯示序已滿足
-    // 宣告依賴，補章只是把它固化。
-    let (all, _) = crate::query::board_order(store);
-    let dragged = all
-        .iter()
-        .find(|c| c.name == id)
-        .ok_or_else(|| format!("change not found: {id}"))?;
-    let stage = change_stage(store, dragged);
-    // 補章排除 invalid 卡（design 決策五）：壞 metadata 卡不列入「缺 rank」
-    // 清單、不觸發寫入（單一壞卡不得癱瘓整欄）；被拖卡本身若損壞，最終寫回
-    // 由 set_board_rank 的解析守門拒絕。
-    let column: Vec<_> = all
-        .iter()
-        .filter(|c| c.meta_error.is_none() && change_stage(store, c) == stage)
-        .collect();
-    // 整欄重派（design D2／D3）：欄內有缺 rank 卡，或 rank 序與顯示序不一致（宣告
-    // 依賴修正過基底序：兩鄰居的 rank 反序時中點鍵表達不了「兩者之間」）→ 依顯示序
-    // 等距派發，只涵蓋本欄。全員具 rank 且序一致時只改被拖卡一檔。判定與 remote 拖排
-    // 共用 rank::ranked_in_order。
-    let current: Vec<Option<&str>> = column.iter().map(|c| c.meta.board_rank.as_deref()).collect();
-    let ranks: std::collections::HashMap<&str, String> =
-        if !crate::rank::ranked_in_order(&current) {
-            let keys = crate::rank::spread(column.len());
-            for (c, key) in column.iter().zip(&keys) {
-                speclink_core::model::set_board_rank(&home(&c.name), &c.name, key)
-                    .map_err(|e| e.to_string())?;
-            }
-            column.iter().map(|c| c.name.as_str()).zip(keys).collect()
-        } else {
-            column
-                .iter()
-                .map(|c| (c.name.as_str(), c.meta.board_rank.clone().expect("all ranked")))
-                .collect()
-        };
-    let key = neighbor_midpoint(&ranks, prev_id, next_id);
-    // 引擎層守門（design D3）：新鍵會把卡排到宣告前置之前、或依賴它的卡之後即拒絕，
-    // 錯誤文字就是引擎的 Display。補章已落盤不回滾——補章只固化當前顯示序。
-    speclink_core::plan::check_rank_move(store, id, &key).map_err(|e| e.to_string())?;
-    speclink_core::model::set_board_rank(&home(id), id, &key).map_err(|e| e.to_string())
 }
 
 fn reorder_discussion(
@@ -425,7 +371,7 @@ fn reorder_discussion(
     }
     let ranks: std::collections::HashMap<&str, String> =
         if active.iter().any(|(r, _)| r.is_none()) {
-            let keys = crate::rank::spread(active.len());
+            let keys = speclink_core::rank::spread(active.len());
             for ((_, i), key) in active.iter().zip(&keys) {
                 speclink_core::discuss::set_board_rank(store, &i.slug, key)
                     .map_err(|e| e.to_string())?;
@@ -1552,29 +1498,6 @@ mod tests {
     }
 
     #[test]
-    fn change_stage_is_the_engine_stage_mapped_to_the_column_index() {
-        // design D8：欄判定只剩引擎 `model::stage` 一份規則；三欄各一張卡對照。
-        let fx = crate::testfixture::FixtureRoot::new("r-stage");
-        fx.add_change("proposed", META_UNSTARTED);
-        fx.write("openspec/changes/proposed/tasks.md", "- [ ] 1.1 t\n");
-        fx.add_change("started", &format!("{META_UNSTARTED}started_at: 2026-07-06\n"));
-        fx.write("openspec/changes/started/tasks.md", "- [ ] 1.1 t\n");
-        fx.add_change("ready", META_UNSTARTED);
-        fx.write("openspec/changes/ready/tasks.md", "- [x] 1.1 t\n");
-        let ctx = init_core_context(fx.root()).expect("project");
-        let store: &dyn Store = &ctx.store;
-        for (name, stage, column) in [
-            ("proposed", speclink_core::model::Stage::Proposed, 0),
-            ("started", speclink_core::model::Stage::InProgress, 1),
-            ("ready", speclink_core::model::Stage::Ready, 2),
-        ] {
-            let c = store.find_change(name).expect("change");
-            assert_eq!(speclink_core::model::stage(store, &c), stage, "{name}");
-            assert_eq!(change_stage(store, &c), column, "{name}");
-        }
-    }
-
-    #[test]
     fn reorder_change_steady_state_writes_only_dragged_meta() {
         // spec「欄內拖排以中點 rank 單檔寫回」：穩態下只改被拖卡 meta，
         // 其餘內容逐位元組不變、鄰居檔案不動。
@@ -1735,19 +1658,19 @@ mod tests {
     }
 
     #[test]
-    fn reorder_refusal_keeps_the_backfill_stamp_but_not_the_move() {
-        // 補章寫入允許存在（design D3）：欄內有缺 rank 卡時先依顯示序補章，之後
-        // 被拒——c 的 rank 是補章值、仍排在 a 之後，不是移動後的中點鍵。
+    fn reorder_refusal_writes_nothing_even_when_the_column_needs_stamps() {
+        // 依賴檢查在任何寫入之前（引擎 move_rank，與 CLI 的 change rank 同一份）：
+        // 欄內有缺 rank 卡、本該先補章，但移動被拒——a 與 c 都不寫，順序照舊。
         let fx = crate::testfixture::FixtureRoot::new("r-dep-refused-stamp");
         fx.add_change("a", META_UNSTARTED);
         fx.add_change("c", &format!("{META_UNSTARTED}depends_on: a\n"));
+        let (a_before, c_before) = (meta_of(&fx, "a"), meta_of(&fx, "c"));
 
         reorder_card_at(fx.root(), "change", "c", None, Some("a"))
             .expect_err("crossing a declared prerequisite must be refused");
 
-        let ra = rank_of(&meta_of(&fx, "a")).expect("a stamped by the backfill");
-        let rc = rank_of(&meta_of(&fx, "c")).expect("c stamped by the backfill");
-        assert!(ra < rc, "backfill order a < c survives the refusal: a={ra} c={rc}");
+        assert_eq!(meta_of(&fx, "a"), a_before, "no backfill stamp on a refused move");
+        assert_eq!(meta_of(&fx, "c"), c_before, "the dragged card is not written");
         assert_eq!(board_names(fx.root()), ["a", "c"]);
     }
 

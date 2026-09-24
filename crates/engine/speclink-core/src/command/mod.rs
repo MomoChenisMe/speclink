@@ -302,6 +302,10 @@ pub enum Command {
     /// change metas (the server's board resource); `None` reads each meta's
     /// own `board_rank`.
     Plan { ranks: Option<std::collections::BTreeMap<String, String>> },
+    /// `plan --strict-overlap [--json]` — the plan before requirement-level
+    /// overlap, on each meta's own `board_rank`. A CLI-local query: the server
+    /// has no such switch.
+    PlanStrict,
     /// `artifact cat <artifact> [--change <name>]`
     ArtifactCat {
         artifact: String,
@@ -765,6 +769,9 @@ pub fn execute(
         }
         .map(CommandOutcome::Plan)
         .map_err(|e| classify(e.into())),
+        Command::PlanStrict => crate::plan::compute_strict(store)
+            .map(CommandOutcome::Plan)
+            .map_err(|e| classify(e.into())),
         Command::ArtifactCat { artifact, change } => {
             run_artifact_cat(store, &artifact, change.as_deref())
         }

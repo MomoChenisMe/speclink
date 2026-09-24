@@ -8,6 +8,7 @@ pub mod model;
 pub mod newcmd;
 pub mod plan;
 pub mod preflight;
+pub mod rank;
 pub mod status;
 pub mod tasks;
 pub mod trace;

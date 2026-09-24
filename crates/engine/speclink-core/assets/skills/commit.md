@@ -157,11 +157,25 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     **7a-ii-b. Plan order hint**
 
-    Run `speclink plan --json` and find the target change in its `changes` array. If its `blockedBy` is non-empty, tell the user:
+    Run `speclink plan --json` and find the target change in its `changes` array. Tell the user each of these that applies:
 
-    > plan 建議先封存 <blockedBy 的名稱>，再封存 <name>：這些 change 排在它前面（宣告依賴或動到同一份規格）。
+    - `archiveAfter` is non-empty:
 
-    then use the **AskUserQuestion tool** to ask which way to go — archive `<name>` now anyway, or stop here and archive those prerequisites first (plain text + wait if the tool is unavailable). This is a suggestion only. It does NOT block the archive and relies on no engine gate: if the user confirms, archive as usual. An empty `blockedBy`, a target missing from the plan, or a `plan` failure (a dependency cycle) → say nothing about ordering and continue. When the user stops instead, skip the archive (commit without it): the prerequisites get archived first.
+      > plan 建議先封存 <archiveAfter 的名稱>；它們封存後，重讀本 change 對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `/speclink:ingest`）再封存 <name>。重疊的 requirement：<requirementOverlap 裡對應那些 change 的 capability › requirement>。
+
+    - `requirementOverlap` holds an entry whose `conflict` is true:
+
+      > <name> 與 <change> 都新增（或改名成）同名的 requirement <requirement>，或都移除（或改名掉）它；後封存的那一個會封存失敗（名字重複，或名字已不存在），先改掉其中一邊。
+
+    - `blockedBy` is non-empty:
+
+      > 宣告前置 <blockedBy 的名稱> 尚未封存。
+
+    Do not offer `speclink drift` as the remedy for an overlap: drift only checks that the requirement names still exist, and cannot see content that an earlier archive overwrote.
+
+    Also note every other entry of `changes` that lists `<name>` in its `archiveAfter` — even when none of the hints above applies: those changes archive after `<name>` and touch the same requirements. Once `<name>` is archived, the plan no longer names it, so the reminder after the archive is the last point where their rewrite gets named — keep the list for it. The note asks nothing now.
+
+    Then use the **AskUserQuestion tool** to ask which way to go — archive `<name>` now anyway, or stop here and handle those first (plain text + wait if the tool is unavailable). This is a suggestion only. It does NOT block the archive and relies on no engine gate: if the user confirms, archive as usual. An empty `archiveAfter` and `blockedBy` with no conflict, a target missing from the plan, or a `plan` failure (a dependency cycle) → say nothing about ordering and continue. When the user stops instead, skip the archive (commit without it): the changes named above get archived first, or one side of the conflict gets changed first.
 
     **7a-iii. Archive execution, re-display, and re-confirmation**
 
@@ -209,9 +223,14 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     5. Use the **AskUserQuestion tool** again to confirm the updated plan and message (the archive option is no longer offered). Only continue to step 8 after this re-confirmation.
 
-    6. Close the sub-flow with two reminders. Print them once, wherever the flow ends: after the step 10 result, or right where the user stops at the re-confirmation above — the archive has already run either way, and after a stop its file moves are still uncommitted, so also remind the user to commit them with a plain git commit:
+    6. Close the sub-flow with the reminders below. Print them once, wherever the flow ends: after the step 10 result, or right where the user stops at the re-confirmation above — the archive has already run either way, and after a stop its file moves are still uncommitted, so also remind the user to commit them with a plain git commit:
 
        - When the workspace has a `{{SPEC_DIR}}manual/` directory, add one line: the manual may be stale now, and `/speclink:manual` will report which pages this archive's spec changes outdated. The condition is the directory's existence only — do not work out which specs this archive touched, and do not judge whether the manual is actually stale; that is the manual skill's report. This is a reminder only — never run `/speclink:manual` yourself.
+       - When the plan order hint noted changes that list `<name>` in their `archiveAfter`, add one more line:
+
+         > <那些 change 的名稱> 要在 <name> 之後封存，並動到同名的 requirement：先重讀它們對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `/speclink:ingest`），再封存它們。
+
+         This too is a reminder only — never run the ingest yourself.
        - Run `speclink plan --json` and hand the user the next change to start. When `next` is non-null, add one more line:
 
          > plan 的下一個可開工：<next>，執行 `/speclink:apply <next>`。
