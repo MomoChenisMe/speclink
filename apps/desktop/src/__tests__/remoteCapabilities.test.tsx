@@ -11,7 +11,7 @@ import {
   type WorkspaceSession,
 } from "../session";
 import type { SpeclinkDataSource } from "@speclink/ui";
-import { changeList } from "./helpers/changeList";
+import { changeList, sharedBoardRequirement } from "./helpers/changeList";
 import { fakeRemoteDs, fakeRemoteSession, REMOTE_KEY } from "./helpers/remoteFixtures";
 
 // Tauri 事件層 mock（App 的 session 事件訂閱走它）。
@@ -227,9 +227,10 @@ describe("remote 分頁的 capability 停用", () => {
 });
 
 describe("排程分頁的前置編輯依 role（add-change-plan-remote D7）", () => {
-  /** 帶 plan 排程欄位的 remote 清單：remote-change 第 2 波、前置 base-change。 */
+  /** 帶 plan 排程欄位的 remote 清單：remote-change 第 2 波、前置 base-change，
+   * 與 other-change 同動「看板與任務」且排在它之後封存。 */
   function plannedDs() {
-    const item = (name: string, wave: number, dependsOn: string[]) => ({
+    const item = (name: string, wave: number, dependsOn: string[], overlapWith: string[], archiveAfter: string[]) => ({
       name,
       status: "in-progress",
       totalTasks: 2,
@@ -237,12 +238,14 @@ describe("排程分頁的前置編輯依 role（add-change-plan-remote D7）", (
       wave,
       blockedBy: dependsOn,
       dependsOn,
-      overlaps: [],
+      overlaps: overlapWith.map((change) => ({ change, capabilities: ["desktop-app"] })),
+      requirementOverlap: overlapWith.map(sharedBoardRequirement),
+      archiveAfter,
     });
     const changes = [
-      item("base-change", 1, []),
-      item("other-change", 1, []),
-      item("remote-change", 2, ["base-change"]),
+      item("base-change", 1, [], [], []),
+      item("other-change", 1, [], ["remote-change"], []),
+      item("remote-change", 2, ["base-change"], ["other-change"], ["other-change"]),
     ];
     return fakeRemoteDs({
       listChanges: vi.fn().mockResolvedValue(changeList(changes)),
@@ -268,14 +271,22 @@ describe("排程分頁的前置編輯依 role（add-change-plan-remote D7）", (
     );
   });
 
-  it("reader 的排程分頁沒有編輯控制項", async () => {
+  it("reader 的排程分頁四卡照常顯示、沒有編輯控制項", async () => {
+    // Scenario「remote 分頁唯讀」：清單的排程欄位照樣進四張卡片，只是不長移除鈕與新增下拉。
     const ds = plannedDs();
     renderRemoteApp(ds, { setDepends: false });
     await openPlanTab();
-    const depends = document.querySelector('[data-plan-section="depends"]') as HTMLElement;
+    const section = (name: string) => document.querySelector(`[data-plan-section="${name}"]`) as HTMLElement;
+    const cards = Array.from(document.querySelectorAll<HTMLElement>("[data-plan-section]"));
+    expect(cards.map((c) => c.dataset.planSection)).toEqual(["wave", "depends", "overlaps", "archive"]);
+    const depends = section("depends");
     expect(within(depends).getByText("base-change")).toBeTruthy();
+    expect(within(depends).getByText("等 1 項")).toBeTruthy();
     expect(within(depends).queryByRole("button", { name: /移除前置/ })).toBeNull();
     expect(within(depends).queryByRole("combobox", { name: "新增前置" })).toBeNull();
+    expect(within(section("overlaps")).getByText("other-change")).toBeTruthy();
+    expect(within(section("overlaps")).getByText("desktop-app › 看板與任務")).toBeTruthy();
+    expect(within(section("archive")).getByText("other-change")).toBeTruthy();
   });
 });
 

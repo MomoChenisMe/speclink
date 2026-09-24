@@ -4,6 +4,7 @@ import {
   useState,
   type Dispatch,
   type ReactElement,
+  type ReactNode,
   type SetStateAction,
 } from "react";
 import {
@@ -28,13 +29,22 @@ import {
 import type {
   ChangeItem,
   ChangeMetaInfo,
+  DeltaOperation,
   StationTicket,
   TicketStation,
   Verb,
   VerbDrawerResult,
 } from "../adapter";
 import { specDeltaCounts, sumDeltaCounts } from "../delta";
-import { changeStage, planBlockedBy, planWave, planWaveLabel } from "../stage";
+import {
+  changeStage,
+  planArchiveAfter,
+  planBlockedBy,
+  planBlockedLabel,
+  planRequirementOverlap,
+  planWave,
+  planWaveLabel,
+} from "../stage";
 import { useI18n } from "../i18n";
 import { useLingering } from "../lib/useLingering";
 import { relativeDays } from "../time";
@@ -49,7 +59,7 @@ import { READING_COLUMN_CLS } from "./Markdown";
 import { SectionedDoc } from "./SectionedDoc";
 import { DocSkeleton } from "./skeletons";
 import { TaskList } from "./TaskList";
-import { DeltaBadges, DeltaSpecView } from "./DeltaBadges";
+import { DELTA_COLORS, DELTA_LABEL_KEYS, DeltaBadges, DeltaSpecView } from "./DeltaBadges";
 import { AnalyzePanel } from "./AnalyzePanel";
 import { TicketTabBody, useStationTickets } from "./TicketView";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE, type ReviewBadgeStatus } from "./reviewStyle";
@@ -184,16 +194,56 @@ function StationStamp({
   );
 }
 
-/** 排程分頁內的名稱籤（同波夥伴、前置、重疊、阻擋共用）。 */
+/** 排程分頁內的名稱籤（同波夥伴、前置、重疊、封存順序共用）。 */
 function PlanName({ name }: { name: string }) {
   return <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{name}</span>;
 }
 
+/** 重疊卡的 delta 操作小標籤：用詞與配色和規格分頁的 delta 區段同源；title 標出屬於哪一方。 */
+function OpTag({ op, owner }: { op: DeltaOperation; owner: string }) {
+  const { t } = useI18n();
+  const key = op.toLowerCase() as Lowercase<DeltaOperation>;
+  return (
+    <span title={owner} className={`rounded border border-border/60 px-1 py-0.5 text-[10px] ${DELTA_COLORS[key]}`}>
+      {t(DELTA_LABEL_KEYS[key])}
+    </span>
+  );
+}
+
+/** 排程分頁的一張卡片：外觀沿工單分頁的邊框卡片，標題列（右側可放徽章）與內容區以分隔線分格。 */
+function PlanCard({
+  section,
+  title,
+  badge,
+  children,
+}: {
+  section: "wave" | "depends" | "overlaps" | "archive";
+  title: string;
+  badge?: ReactElement;
+  children: ReactNode;
+}) {
+  return (
+    <section data-plan-section={section} className="rounded-md border border-border/60 bg-muted/20">
+      <div
+        data-plan-card-header
+        className="flex items-center justify-between px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+      >
+        <span>{title}</span>
+        {badge}
+      </div>
+      <div data-plan-card-body className="border-t border-border/60 px-2 py-1.5 text-sm">
+        {children}
+      </div>
+    </section>
+  );
+}
+
 /**
- * 排程分頁（spec desktop-app「詳情抽屜的排程分頁」；design D6）：波次（同波夥伴）、
- * 前置（可增減）、重疊（唯讀）、阻擋四段。清單項缺 wave 時：remote 摘要（亦缺
- * dependsOn）只剩一句說明；plan 成環（payload 仍帶 dependsOn 原文）另渲染前置段、
- * 只能移除——解環的出口。判定沿 stage.ts 的 planWave／planBlockedBy 單一入口。
+ * 排程分頁（spec desktop-app「詳情抽屜的排程分頁」）：波次（同波夥伴）、前置（可增減，
+ * 標題列的狀態徽章取代獨立的阻擋段）、重疊（唯讀）、封存順序四張卡片。清單項缺 wave
+ * 時：remote 摘要（亦缺 dependsOn）只剩一句說明；plan 成環（payload 仍帶 dependsOn
+ * 原文）另渲染前置卡（無徽章）、只能移除——解環的出口。判定沿 stage.ts 的 planWave／
+ * planBlockedBy／planRequirementOverlap／planArchiveAfter 單一入口。
  */
 function PlanTab({
   change,
@@ -210,52 +260,75 @@ function PlanTab({
   const { t } = useI18n();
   const wave = planWave(change);
   const dependsOn = change.dependsOn ?? [];
-  const heading = "text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1";
-  const dependsList = (
-    <ul className="flex flex-col gap-1">
-      {dependsOn.map((n) => (
-        <li key={n} className="flex items-center gap-2">
-          <PlanName name={n} />
-          {onSetDepends && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              aria-label={t("plan.remove").replace("{name}", n)}
-              onClick={() => onSetDepends(change.name, [n], true)}
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          )}
-        </li>
-      ))}
-    </ul>
+  // 前置卡內文（成環與一般兩個分支共用）：宣告的前置每項一列，空時「尚無前置」。
+  const dependsBody = (
+    <>
+      {dependsOn.length === 0 && <div className="text-muted-foreground">{t("plan.noDepends")}</div>}
+      <ul className="flex flex-col gap-1">
+        {dependsOn.map((n) => (
+          <li key={n} className="flex items-center gap-2">
+            <PlanName name={n} />
+            {onSetDepends && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                aria-label={t("plan.remove").replace("{name}", n)}
+                onClick={() => onSetDepends(change.name, [n], true)}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </>
   );
   if (wave === null) {
     return (
-      <div className="flex flex-col gap-5 text-sm">
+      <div className="flex flex-col gap-3 text-sm">
         <div className="text-muted-foreground py-6">{t(change.dependsOn ? "plan.cycle" : "plan.unavailable")}</div>
         {change.dependsOn && (
-          <section data-plan-section="depends">
-            <div className={heading}>{t("plan.depends")}</div>
-            {dependsList}
-          </section>
+          <PlanCard section="depends" title={t("plan.depends")}>
+            {dependsBody}
+          </PlanCard>
         )}
       </div>
     );
   }
-  const overlaps = change.overlaps ?? [];
+  const requirementOverlaps = planRequirementOverlap(change);
+  const archiveAfter = planArchiveAfter(change);
   const blockedBy = planBlockedBy(change);
+  // 舊 server 的 blockedBy 另含先配置、共用 capability 的變更（本機與新 server 只含宣告
+  // 前置）：列出 dependsOn 以外的名稱，徽章的數字才對得上卡片內容。
+  const undeclaredWaits = blockedBy.filter((n) => !dependsOn.includes(n));
   const others = changes.filter((c) => c.name !== change.name);
   const mates = others.filter((c) => planWave(c) === wave).map((c) => c.name);
   // 新增候選：該變更所在名冊的其他作用中變更（add-change-plan-remote D9；未提供名冊時
   // 自清單派生），扣掉自己與已宣告的前置（成環留給引擎拒絕）。
   const pool = roster === undefined ? [] : (roster ?? others.map((c) => c.name));
   const candidates = pool.filter((n) => n !== change.name && !dependsOn.includes(n));
+  // 封存卡的兩種警示：同名衝突（雙方都帶進或都拿走，先後救不了）與互相等待（雙方互列
+  // archiveAfter，封存互卡）——兩者引擎都不會讓任一方「可直接封存」。
+  const conflictWith = [...new Set(requirementOverlaps.filter((o) => o.conflict).map((o) => o.change))];
+  const mutualWaits = archiveAfter.filter((n) =>
+    others.some((c) => c.name === n && planArchiveAfter(c).includes(change.name)),
+  );
+  const names = (list: string[]) => list.join(t("common.listSeparator"));
+  // 徽章是狀態不是標題：不繼承標題列的全大寫與字距。
+  const statusBadge =
+    blockedBy.length === 0 ? (
+      <Badge variant="secondary" className="normal-case tracking-normal">
+        {t("plan.canStart")}
+      </Badge>
+    ) : (
+      <Badge variant="outline" className="normal-case tracking-normal" title={planBlockedLabel(blockedBy, t)}>
+        {t("plan.blockedCount").replace("{n}", String(blockedBy.length))}
+      </Badge>
+    );
   return (
-    <div className="flex flex-col gap-5 text-sm">
-      <section data-plan-section="wave">
-        <div className={heading}>{t("plan.waveLabel")}</div>
+    <div className="flex flex-col gap-3 text-sm">
+      <PlanCard section="wave" title={t("plan.waveLabel")}>
         <div className="font-medium">{planWaveLabel(wave, t)}</div>
         {mates.length === 0 ? (
           <div className="text-muted-foreground">{t("plan.onlyOne")}</div>
@@ -267,11 +340,17 @@ function PlanTab({
             ))}
           </div>
         )}
-      </section>
-      <section data-plan-section="depends">
-        <div className={heading}>{t("plan.depends")}</div>
-        {dependsOn.length === 0 && <div className="text-muted-foreground">{t("plan.noDepends")}</div>}
-        {dependsList}
+      </PlanCard>
+      <PlanCard section="depends" title={t("plan.depends")} badge={statusBadge}>
+        {dependsBody}
+        {undeclaredWaits.length > 0 && (
+          <div data-plan-undeclared-waits className="mt-1 flex flex-wrap items-center gap-1.5">
+            <span className="text-muted-foreground">{t("plan.undeclaredWaits")}</span>
+            {undeclaredWaits.map((n) => (
+              <PlanName key={n} name={n} />
+            ))}
+          </div>
+        )}
         {onSetDepends && candidates.length > 0 && (
           // 只當挑選器用：value 固定為空，選擇即寫入、trigger 回到提示文字。
           <Select value="" onValueChange={(name) => onSetDepends(change.name, [name], false)}>
@@ -287,35 +366,47 @@ function PlanTab({
             </SelectContent>
           </Select>
         )}
-      </section>
-      <section data-plan-section="overlaps">
-        <div className={heading}>{t("plan.overlaps")}</div>
-        {overlaps.length === 0 && <div className="text-muted-foreground">{t("plan.noOverlaps")}</div>}
+      </PlanCard>
+      <PlanCard section="overlaps" title={t("plan.overlaps")}>
+        {requirementOverlaps.length === 0 && <div className="text-muted-foreground">{t("plan.noOverlaps")}</div>}
         <ul className="flex flex-col gap-1">
-          {overlaps.map((o) => (
-            <li key={o.change} className="flex flex-wrap items-center gap-1.5">
+          {requirementOverlaps.map((o) => (
+            <li key={`${o.change}/${o.capability}/${o.requirement}`} className="flex flex-wrap items-center gap-1.5">
               <PlanName name={o.change} />
-              {o.capabilities.map((cap) => (
-                <span key={cap} className="text-xs text-muted-foreground">
-                  {cap}
+              <span className="text-xs">{`${o.capability} › ${o.requirement}`}</span>
+              {/* 雙方操作：本變更在前、對方在後。 */}
+              <OpTag op={o.ownOperation} owner={change.name} />
+              <OpTag op={o.otherOperation} owner={o.change} />
+              {o.conflict && (
+                <span className="rounded border border-destructive/60 px-1 py-0.5 text-[10px] text-destructive">
+                  {t("plan.conflict")}
                 </span>
-              ))}
+              )}
             </li>
           ))}
         </ul>
-      </section>
-      <section data-plan-section="blocked">
-        <div className={heading}>{t("plan.blocked")}</div>
-        {blockedBy.length === 0 ? (
-          <div className="text-muted-foreground">{t("plan.canStart")}</div>
-        ) : (
-          <div className="flex flex-wrap items-center gap-1.5">
-            {blockedBy.map((n) => (
-              <PlanName key={n} name={n} />
-            ))}
-          </div>
+      </PlanCard>
+      <PlanCard section="archive" title={t("plan.archiveAfter")}>
+        {archiveAfter.length === 0 && conflictWith.length === 0 && (
+          <div className="text-muted-foreground">{t("plan.noArchiveAfter")}</div>
         )}
-      </section>
+        {archiveAfter.length > 0 && (
+          <>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {archiveAfter.map((n) => (
+                <PlanName key={n} name={n} />
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{t("plan.archiveHint")}</p>
+          </>
+        )}
+        {mutualWaits.length > 0 && (
+          <p className="mt-1 text-xs text-destructive">{t("plan.archiveDeadlock").replace("{names}", names(mutualWaits))}</p>
+        )}
+        {conflictWith.length > 0 && (
+          <p className="mt-1 text-xs text-destructive">{t("plan.archiveConflict").replace("{names}", names(conflictWith))}</p>
+        )}
+      </PlanCard>
     </div>
   );
 }

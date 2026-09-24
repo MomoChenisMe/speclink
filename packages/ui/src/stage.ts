@@ -1,4 +1,4 @@
-import type { ChangeItem } from "./adapter";
+import type { ChangeItem, ChangeRequirementOverlap } from "./adapter";
 
 /** SDD 生命週期階段（不含 Archived——歸檔由歸檔清單另計）。 */
 export type Stage = "proposed" | "in-progress" | "ready";
@@ -69,9 +69,19 @@ export function planWave(c: ChangeItem): number | null {
   return typeof c.wave === "number" ? c.wave : null;
 }
 
-/** 阻擋清單讀取入口：只在波次存在時成立（四欄同進同出），其餘回空陣列。 */
+/** 阻擋清單讀取入口：只在波次存在時成立（排程欄位同進同出），其餘回空陣列。 */
 export function planBlockedBy(c: ChangeItem): string[] {
   return planWave(c) === null ? [] : (c.blockedBy ?? []);
+}
+
+/** requirement 級重疊讀取入口：與 planBlockedBy 同一規則；舊 server 缺欄位時也回空陣列。 */
+export function planRequirementOverlap(c: ChangeItem): ChangeRequirementOverlap[] {
+  return planWave(c) === null ? [] : (c.requirementOverlap ?? []);
+}
+
+/** 封存順序讀取入口（本變更該排在其後封存的變更）：與 planBlockedBy 同一規則。 */
+export function planArchiveAfter(c: ChangeItem): string[] {
+  return planWave(c) === null ? [] : (c.archiveAfter ?? []);
 }
 
 /** 波次文字（card.wave）：卡片章、面板列首、排程分頁共用同一處組裝。 */

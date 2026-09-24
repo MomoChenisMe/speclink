@@ -1,0 +1,118 @@
+{
+  "version": 2,
+  "change": "plan-requirement-overlap-desktop",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 apps/desktop/core/src/query.rs 在 plan 列存在時多寫 `requirementOverlap` 與 `archiveAfter` 兩鍵；成環或壞 meta 時與 wave 等一起缺席，dependsOn 成環例外維持。驗證：query.rs 測試 PLAN_KEYS 改為六鍵、新增 list_change_carries_requirement_overlap_and_archive_after 與 cycle_omits_all_plan_keys_but_depends_on，`cargo test -p speclink-desktop-core query::`（規格：變更清單的排程欄位）。",
+      "files": [
+        "apps/desktop/core/src/query.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 packages/ui/src/adapter.ts 的 ChangeItem 加 `requirementOverlap?: ChangeRequirementOverlap[]` 與 `archiveAfter?: string[]` 並定義 ChangeRequirementOverlap 型別；packages/ui/src/stage.ts 新增 planRequirementOverlap(c) 與 planArchiveAfter(c)（wave 缺席即空陣列）。驗證：packages/ui/src/__tests__/stage.test.ts 追加兩個入口的缺席與存在測試（與 planWave／planBlockedBy 同處）；packages/ui/src/__tests__/planBadge.test.tsx 既有案例不動，追加一條「requirementOverlap 與 archiveAfter 不讓卡片變淡、tooltip 不多出等待」，`npm test -w packages/ui -- stage planBadge`（規格：詳情抽屜的排程分頁）。",
+      "files": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "packages/ui/src/__tests__/planBadge.test.tsx",
+        "packages/ui/src/__tests__/stage.test.ts",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/index.ts",
+        "packages/ui/src/stage.ts"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 packages/ui/src/components/RichDetailDrawer.tsx 的 PlanTab 改為四張邊框卡片（data-plan-section 為 wave、depends、overlaps、archive，外觀沿 TicketView 的 `rounded-md border border-border/60 bg-muted/20`、標題列與內容區以 border-t 分格）；移除 data-plan-section=\"blocked\" 段；前置卡標題列右側渲染 Badge：blockedBy 空為「可以開工」（secondary）、非空為「等 N 項」（outline）且 title 為 planBlockedLabel 的前置名。驗證：packages/ui/src/__tests__/planTab.test.tsx 改寫為四卡錨定，新增 depends_card_badge_ready_and_waiting 與 no_blocked_section_rendered，`npm test -w packages/ui -- planTab`（規格：詳情抽屜的排程分頁）。",
+      "files": [
+        "packages/ui/src/__tests__/planTab.test.tsx",
+        "packages/ui/src/components/RichDetailDrawer.tsx",
+        "packages/ui/src/i18n.tsx"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.1 apps/desktop/src/__tests__/App.test.tsx 與 apps/desktop/src/__tests__/remoteCapabilities.test.tsx 對排程分頁的斷言改為四卡錨定：remote 資料源（setDepends 為 false）四卡照常顯示且無移除鈕與下拉；local 清單項六欄注入後抽屜顯示重疊卡與封存順序卡內容。驗證：`npm test -w apps/desktop -- App remoteCapabilities`（規格：詳情抽屜的排程分頁、remote 變更清單的排程欄位）。",
+      "files": [
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/remoteCapabilities.test.tsx"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.2 重疊卡改列 requirementOverlap：每列對方 PlanName、`capability › requirement` 文字、ownOperation 與 otherOperation 兩枚小標籤（`rounded border border-border/60 px-1 py-0.5 text-[10px]`，用詞與配色取自 packages/ui/src/components/DeltaBadges.tsx 的 DELTA_LABEL_KEYS／DELTA_COLORS，如 MODIFIED 顯示「修改」；title 為所屬變更名）、conflict 為 true 時加 destructive 色「同名衝突」標籤；不再渲染目錄級 overlaps；空時「無重疊」。驗證：planTab.test.tsx 新增 overlaps_card_lists_requirement_level_rows 與 conflict_row_shows_name_conflict_tag，`npm test -w packages/ui -- planTab`（規格：詳情抽屜的排程分頁）。",
+      "files": [
+        "apps/desktop/src/__tests__/helpers/changeList.ts",
+        "packages/ui/src/components/DeltaBadges.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M38JQ5S614Y30SQRHAM1BEGD",
+      "taskDesc": "1.1 apps/desktop/core/src/query.rs 在 plan 列存在時多寫 `requirementOverlap` 與 `archiveAfter` 兩鍵；成環或壞 meta 時與 wave 等一起缺席，dependsOn 成環例外維持。驗證：query.rs 測試 PLAN_KEYS 改為六鍵、新增 list_change_carries_requirement_overlap_and_archive_after 與 cycle_omits_all_plan_keys_but_depends_on，`cargo test -p speclink-desktop-core query::`（規格：變更清單的排程欄位）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7803f9fe9fa320c705388e153987f83861e2faa2",
+      "touchedFiles": [
+        "apps/desktop/core/src/query.rs"
+      ],
+      "recordedAt": "2026-09-24T14:35:22Z"
+    },
+    {
+      "taskId": "tsk_01M38JQ5S62XT9TKNH0YNTS53T",
+      "taskDesc": "1.3 packages/ui/src/adapter.ts 的 ChangeItem 加 `requirementOverlap?: ChangeRequirementOverlap[]` 與 `archiveAfter?: string[]` 並定義 ChangeRequirementOverlap 型別；packages/ui/src/stage.ts 新增 planRequirementOverlap(c) 與 planArchiveAfter(c)（wave 缺席即空陣列）。驗證：packages/ui/src/__tests__/stage.test.ts 追加兩個入口的缺席與存在測試（與 planWave／planBlockedBy 同處）；packages/ui/src/__tests__/planBadge.test.tsx 既有案例不動，追加一條「requirementOverlap 與 archiveAfter 不讓卡片變淡、tooltip 不多出等待」，`npm test -w packages/ui -- stage planBadge`（規格：詳情抽屜的排程分頁）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7803f9fe9fa320c705388e153987f83861e2faa2",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "packages/ui/src/__tests__/planBadge.test.tsx",
+        "packages/ui/src/__tests__/stage.test.ts",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/index.ts",
+        "packages/ui/src/stage.ts"
+      ],
+      "recordedAt": "2026-09-24T14:43:15Z"
+    },
+    {
+      "taskId": "tsk_01M38JQ5S6P90FNPBD4QHRT34D",
+      "taskDesc": "2.1 packages/ui/src/components/RichDetailDrawer.tsx 的 PlanTab 改為四張邊框卡片（data-plan-section 為 wave、depends、overlaps、archive，外觀沿 TicketView 的 `rounded-md border border-border/60 bg-muted/20`、標題列與內容區以 border-t 分格）；移除 data-plan-section=\"blocked\" 段；前置卡標題列右側渲染 Badge：blockedBy 空為「可以開工」（secondary）、非空為「等 N 項」（outline）且 title 為 planBlockedLabel 的前置名。驗證：packages/ui/src/__tests__/planTab.test.tsx 改寫為四卡錨定，新增 depends_card_badge_ready_and_waiting 與 no_blocked_section_rendered，`npm test -w packages/ui -- planTab`（規格：詳情抽屜的排程分頁）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7803f9fe9fa320c705388e153987f83861e2faa2",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/planTab.test.tsx",
+        "packages/ui/src/components/RichDetailDrawer.tsx",
+        "packages/ui/src/i18n.tsx"
+      ],
+      "recordedAt": "2026-09-24T14:46:43Z"
+    },
+    {
+      "taskId": "tsk_01M38JQ5S6QRV3YDJA266R67ME",
+      "taskDesc": "4.1 apps/desktop/src/__tests__/App.test.tsx 與 apps/desktop/src/__tests__/remoteCapabilities.test.tsx 對排程分頁的斷言改為四卡錨定：remote 資料源（setDepends 為 false）四卡照常顯示且無移除鈕與下拉；local 清單項六欄注入後抽屜顯示重疊卡與封存順序卡內容。驗證：`npm test -w apps/desktop -- App remoteCapabilities`（規格：詳情抽屜的排程分頁、remote 變更清單的排程欄位）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7803f9fe9fa320c705388e153987f83861e2faa2",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/remoteCapabilities.test.tsx"
+      ],
+      "recordedAt": "2026-09-24T14:50:23Z"
+    },
+    {
+      "taskId": "tsk_01M38JQ5S6SAEDYZGNZTFP3Z9G",
+      "taskDesc": "2.2 重疊卡改列 requirementOverlap：每列對方 PlanName、`capability › requirement` 文字、ownOperation 與 otherOperation 兩枚小標籤（`rounded border border-border/60 px-1 py-0.5 text-[10px]`，用詞與配色取自 packages/ui/src/components/DeltaBadges.tsx 的 DELTA_LABEL_KEYS／DELTA_COLORS，如 MODIFIED 顯示「修改」；title 為所屬變更名）、conflict 為 true 時加 destructive 色「同名衝突」標籤；不再渲染目錄級 overlaps；空時「無重疊」。驗證：planTab.test.tsx 新增 overlaps_card_lists_requirement_level_rows 與 conflict_row_shows_name_conflict_tag，`npm test -w packages/ui -- planTab`（規格：詳情抽屜的排程分頁）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7803f9fe9fa320c705388e153987f83861e2faa2",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/helpers/changeList.ts",
+        "packages/ui/src/components/DeltaBadges.tsx"
+      ],
+      "recordedAt": "2026-09-24T15:57:43Z"
+    }
+  ]
+}

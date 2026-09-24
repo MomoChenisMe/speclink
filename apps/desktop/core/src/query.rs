@@ -11,6 +11,12 @@ use speclink_core::store::Store;
 
 use crate::init_core_context;
 
+/// 清單項上的排程欄位鍵（camelCase，與引擎 plan 列同名；spec client-protocol「變更清單的
+/// 排程欄位」「remote 變更清單的排程欄位」）：本機與 remote 清單都照這份清單從 plan 列逐鍵
+/// 搬運，兩邊的測試也共用——加欄位只改這裡。
+pub const PLAN_FIELDS: &[&str] =
+    &["wave", "blockedBy", "dependsOn", "overlaps", "requirementOverlap", "archiveAfter"];
+
 /// 對應 `speclink list --json`：`{ "changes": [ … ] }`。非專案回傳 `{ "changes": [] }`。
 pub fn list_changes_at(root: &Path) -> Value {
     let Some(ctx) = init_core_context(root) else {
@@ -23,7 +29,8 @@ pub fn list_changes_at(root: &Path) -> Value {
     let overlaid = overlay_store(&ctx, &facts);
     let store: &dyn Store = if facts.is_empty() { &ctx.store } else { &overlaid };
     // 顯示序＝引擎 plan 的配置順序（design D1）：同一份 overlay 後的 store，與 CLI
-    // plan 同一聚合面；成環時退回基底序，四欄位缺席、planError 帶成環訊息。
+    // plan 同一聚合面；成環時退回基底序，排程欄位缺席（dependsOn 除外）、planError
+    // 帶成環訊息。
     let (changes, plan) = board_order(store);
     let plan_row = |name: &str| {
         plan.as_ref()
@@ -113,16 +120,18 @@ pub fn list_changes_at(root: &Path) -> Value {
                 v["verifiedAt"] = json!(c.meta.verified_at);
                 v["verifiedBy"] = json!(c.meta.verified_by);
             }
-            // 排程四欄（spec client-protocol「變更清單的排程欄位」）：值取自引擎
-            // plan 的同一入口，不在呈現層另算；壞 meta（plan 的 skipped）的項沒有
-            // 這四鍵，卡片因欄位缺席自動不顯示章。成環時 wave／blockedBy／overlaps
+            // 排程欄位（spec client-protocol「變更清單的排程欄位」）：照 PLAN_FIELDS
+            // 從引擎 plan 列逐鍵照搬，不在呈現層另算；壞 meta（plan 的 skipped）的項
+            // 沒有這組鍵，卡片因欄位缺席自動不顯示章。成環時 dependsOn 以外的排程鍵
             // 缺席，dependsOn 仍給 meta 的宣告原文（與 plan 列同一來源）——排程分頁
             // 靠它讓使用者移除成環的前置。
             if let Some(row) = plan_row(&c.name) {
-                v["wave"] = json!(row.wave);
-                v["blockedBy"] = json!(row.blocked_by);
-                v["dependsOn"] = json!(row.depends_on);
-                v["overlaps"] = json!(row.overlaps);
+                let row = serde_json::to_value(row).unwrap_or_else(|_| json!({}));
+                for &key in PLAN_FIELDS {
+                    if let Some(value) = row.get(key) {
+                        v[key] = value.clone();
+                    }
+                }
             } else if plan.is_err() && c.meta_error.is_none() {
                 v["dependsOn"] = json!(c.meta.depends_on());
             }
@@ -1171,7 +1180,73 @@ mod tests {
         assert_eq!(placed, ["c", "a", "d", "b"]);
     }
 
-    const PLAN_KEYS: [&str; 4] = ["wave", "blockedBy", "dependsOn", "overlaps"];
+    /// 在 `change` 的 desktop-app delta 以 MODIFIED 動到「看板與任務」。
+    fn modify_board_requirement(fx: &FixtureRoot, change: &str) {
+        fx.write(
+            &format!("openspec/changes/{change}/specs/desktop-app/spec.md"),
+            "## MODIFIED Requirements\n\n### Requirement: 看板與任務\n\nText.\n",
+        );
+    }
+
+    #[test]
+    fn list_change_carries_requirement_overlap_and_archive_after() {
+        // Scenario「清單項帶排程欄位」：add-b 宣告前置 add-a，add-b 與 add-c MODIFIED
+        // 同一個 requirement 且 add-c 配置在 add-b 前（rank 讓基底序為 add-b、add-c、
+        // add-a，依賴修正後為 add-c、add-a、add-b）→ add-b 帶 requirement 級重疊與
+        // archiveAfter=["add-c"]；不重疊的 add-a 兩鍵為空陣列而非缺席。
+        let fx = FixtureRoot::new("q-plan-requirement-overlap");
+        fx.add_change("add-a", &format!("{OLD_META}board_rank: f\n"));
+        fx.add_change("add-b", &format!("{OLD_META}board_rank: b\ndepends_on: add-a\n"));
+        fx.add_change("add-c", &format!("{OLD_META}board_rank: c\n"));
+        modify_board_requirement(&fx, "add-b");
+        modify_board_requirement(&fx, "add-c");
+        let v = list_changes_at(fx.root());
+        assert!(v["planError"].is_null(), "{v}");
+        assert_eq!(board_names(fx.root()), ["add-c", "add-a", "add-b"]);
+        let arr = v["changes"].as_array().unwrap();
+        let by_name = |name: &str| arr.iter().find(|c| c["name"] == name).unwrap().clone();
+        let overlap_with = |other: &str| {
+            json!([{
+                "change": other,
+                "capability": "desktop-app",
+                "requirement": "看板與任務",
+                "ownOperation": "MODIFIED",
+                "otherOperation": "MODIFIED",
+                "conflict": false,
+            }])
+        };
+        let b = by_name("add-b");
+        assert_eq!(b["wave"], 2, "{b}");
+        assert_eq!(b["blockedBy"], json!(["add-a"]), "{b}");
+        assert_eq!(b["dependsOn"], json!(["add-a"]), "{b}");
+        assert_eq!(b["requirementOverlap"], overlap_with("add-c"), "{b}");
+        assert_eq!(b["archiveAfter"], json!(["add-c"]), "{b}");
+        let c = by_name("add-c");
+        assert_eq!(c["requirementOverlap"], overlap_with("add-b"), "{c}");
+        assert_eq!(c["archiveAfter"], json!([]), "{c}");
+        let a = by_name("add-a");
+        assert_eq!(a["requirementOverlap"], json!([]), "{a}");
+        assert_eq!(a["archiveAfter"], json!([]), "{a}");
+    }
+
+    #[test]
+    fn cycle_omits_all_plan_keys_but_depends_on() {
+        // Scenario「成環退回」：互依的 add-a 與 add-b 另動到同一個 requirement——
+        // plan 失敗時 dependsOn 以外的排程鍵（連同 requirementOverlap 與 archiveAfter）
+        // 一起缺席，只有 dependsOn 留下宣告原文（排程分頁靠它解環）。
+        let fx = FixtureRoot::new("q-plan-cycle-all-keys");
+        fx.add_change("add-a", &format!("{OLD_META}depends_on: add-b\n"));
+        fx.add_change("add-b", &format!("{OLD_META}depends_on: add-a\n"));
+        modify_board_requirement(&fx, "add-a");
+        modify_board_requirement(&fx, "add-b");
+        let v = list_changes_at(fx.root());
+        assert!(v["planError"].is_string(), "{v}");
+        for item in v["changes"].as_array().unwrap() {
+            for &key in PLAN_FIELDS {
+                assert_eq!(item.get(key).is_some(), key == "dependsOn", "cycle → {key}: {item}");
+            }
+        }
+    }
 
     #[test]
     fn list_changes_follows_plan_order_and_carries_the_plan_fields() {
@@ -1220,7 +1295,7 @@ mod tests {
             }
         }
         // Scenario「CLI 清單不含排程欄位」：`speclink list --json` 的項走引擎的
-        // changes_json，同一份 store 下四鍵一律缺席（parity 紅線的可執行斷言）。
+        // changes_json，同一份 store 下排程鍵一律缺席（parity 紅線的可執行斷言）。
         let ctx = init_core_context(fx.root()).expect("project");
         let cli = serde_json::to_value(speclink_core::listing::changes_json(
             &ctx.store,
@@ -1228,7 +1303,7 @@ mod tests {
         ))
         .unwrap();
         for item in cli.as_array().unwrap() {
-            for key in PLAN_KEYS {
+            for key in PLAN_FIELDS {
                 assert!(item.get(key).is_none(), "CLI list carries no {key}: {item}");
             }
         }
@@ -1237,7 +1312,8 @@ mod tests {
     #[test]
     fn list_changes_falls_back_to_the_basis_order_on_a_dependency_cycle() {
         // Scenario「成環退回」：add-a 與 add-b 互依 → 順序退回基底序（具 rank 的
-        // add-c 在前、缺 rank 的依名稱）、四鍵缺席、planError 為引擎成環訊息。
+        // add-c 在前、缺 rank 的依名稱）、planError 為引擎成環訊息；其餘排程鍵的
+        // 缺席由 cycle_omits_all_plan_keys_but_depends_on 釘住。
         let fx = FixtureRoot::new("q-plan-cycle");
         fx.add_change("add-a", &format!("{OLD_META}depends_on: add-b\n"));
         fx.add_change("add-b", &format!("{OLD_META}depends_on: add-a\n"));
@@ -1245,13 +1321,8 @@ mod tests {
         let v = list_changes_at(fx.root());
         assert_eq!(v["planError"], "dependency cycle: add-a -> add-b -> add-a", "{v}");
         assert_eq!(board_names(fx.root()), ["add-c", "add-a", "add-b"]);
-        // 成環時 wave／blockedBy／overlaps 缺席；dependsOn 仍為各自 meta 的宣告原文
-        // ——排程分頁靠它讓使用者移除成環的前置（審查 Round 1）。
-        for item in v["changes"].as_array().unwrap() {
-            for key in ["wave", "blockedBy", "overlaps"] {
-                assert!(item.get(key).is_none(), "cycle → no {key}: {item}");
-            }
-        }
+        // dependsOn 仍為各自 meta 的宣告原文——排程分頁靠它讓使用者移除成環的前置
+        // （審查 Round 1）。
         let by_name = |name: &str| {
             v["changes"].as_array().unwrap().iter().find(|c| c["name"] == name).unwrap().clone()
         };
@@ -1275,7 +1346,7 @@ mod tests {
 
     #[test]
     fn list_changes_keeps_listing_a_corrupt_card_without_plan_fields() {
-        // 壞 meta 項照舊列出（metaError 已在）且四鍵缺席；有效卡照常帶四鍵。
+        // 壞 meta 項照舊列出（metaError 已在）且排程鍵缺席；有效卡照常帶齊。
         let fx = FixtureRoot::new("q-plan-corrupt");
         fx.add_change("good", OLD_META);
         fx.add_change("broken", ": : :\n\t bad yaml [unclosed\n");
@@ -1286,7 +1357,7 @@ mod tests {
         let by_name = |name: &str| arr.iter().find(|c| c["name"] == name).unwrap().clone();
         let broken = by_name("broken");
         assert!(broken["metaError"].is_string());
-        for key in PLAN_KEYS {
+        for key in PLAN_FIELDS {
             assert!(broken.get(key).is_none(), "corrupt card carries no {key}: {broken}");
             assert!(by_name("good").get(key).is_some(), "valid card carries {key}");
         }

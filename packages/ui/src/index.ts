@@ -63,6 +63,8 @@ export type {
   ChangeItem,
   ChangeListPayload,
   ChangeOverlap,
+  ChangeRequirementOverlap,
+  DeltaOperation,
   SpecItem,
   ArchivedItem,
   DiscussionItem,
@@ -100,8 +102,10 @@ export { SEMANTIC_TONE, SEMANTIC_SURFACE, type SemanticTone } from "./tone";
 // 看板
 export {
   changeStage,
+  planArchiveAfter,
   planBlockedBy,
   planBlockedLabel,
+  planRequirementOverlap,
   planWave,
   planWaveLabel,
   STAGE_BADGE,

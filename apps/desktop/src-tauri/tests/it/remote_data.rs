@@ -15,6 +15,7 @@ use crate::common::Harness;
 use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 use speclink_desktop_lib::remote::{self, RemoteWorkspace, TokenManager};
 use speclink_remote::RemoteError;
+use speclink_desktop_core::query::PLAN_FIELDS;
 use speclink_protocol::query::ChangeSummary;
 use speclink_server::identity::{IdentityStore, NewInvitation};
 use speclink_store::{CommandContext, DocumentId, TeamStore};
@@ -675,8 +676,66 @@ fn change_list_follows_the_plan_order_and_carries_the_schedule_fields() {
 }
 
 #[test]
+fn merge_plan_carries_six_plan_fields() {
+    // Scenario「remote 清單帶排程欄位」：add-b 依賴 add-a，add-b 與 add-c MODIFIED
+    // 同一個 requirement；board 的 rank 讓 add-c 配置在 add-b 前——server 的 plan
+    // 帶來的排程欄位全部疊到 add-b 上，archiveAfter 為 ["add-c"]。
+    let h = common::harness();
+    let modified = |change: &str| DocumentId::ChangeArtifact {
+        change: change.into(),
+        artifact: "specs/desktop-app/spec.md".into(),
+    };
+    let delta = "## MODIFIED Requirements\n\n### Requirement: 看板與任務\n\nbody\n";
+    seed_docs(
+        h.store.as_ref(),
+        &[
+            (change_meta("add-a"), "schema: spec-driven\ncreated: 2026-09-01\n"),
+            (
+                change_meta("add-b"),
+                "schema: spec-driven\ncreated: 2026-09-02\ndepends_on: add-a\n",
+            ),
+            (change_meta("add-c"), "schema: spec-driven\ncreated: 2026-09-03\n"),
+            (modified("add-b"), delta),
+            (modified("add-c"), delta),
+            (DocumentId::BoardOrder, r#"{"changes":{"add-b":"b","add-c":"c","add-a":"f"}}"#),
+        ],
+    );
+    let (credentials, manager) = runtime(&h);
+    let ws = open(&h, &credentials, &manager);
+
+    let list = ws.list_changes(&credentials).expect("list changes");
+    let names: Vec<&str> = list.changes.iter().map(|c| c.summary.name.as_str()).collect();
+    assert_eq!(names, ["add-c", "add-a", "add-b"], "plan order");
+    let payload = serde_json::to_value(&list).expect("serialize list");
+    let add_b = &payload["changes"][2];
+    assert_eq!(add_b["wave"], 2, "{add_b}");
+    assert_eq!(add_b["blockedBy"], serde_json::json!(["add-a"]), "{add_b}");
+    assert_eq!(add_b["dependsOn"], serde_json::json!(["add-a"]), "{add_b}");
+    assert_eq!(
+        add_b["overlaps"],
+        serde_json::json!([{ "change": "add-c", "capabilities": ["desktop-app"] }]),
+        "{add_b}"
+    );
+    assert_eq!(
+        add_b["requirementOverlap"],
+        serde_json::json!([{
+            "change": "add-c",
+            "capability": "desktop-app",
+            "requirement": "看板與任務",
+            "ownOperation": "MODIFIED",
+            "otherOperation": "MODIFIED",
+            "conflict": false,
+        }]),
+        "{add_b}"
+    );
+    assert_eq!(add_b["archiveAfter"], serde_json::json!(["add-c"]), "{add_b}");
+    // 配置在前的 add-c 不必等任何人封存。
+    assert_eq!(payload["changes"][0]["archiveAfter"], serde_json::json!([]));
+}
+
+#[test]
 fn a_plan_cycle_falls_back_to_the_board_overlay_with_the_cycle_message() {
-    // Scenario「remote 成環退回」：plan 回 409 → board overlay 序、四欄缺席、
+    // Scenario「remote 成環退回」：plan 回 409 → board overlay 序、排程欄位缺席、
     // planError 為訊息。
     let h = common::harness();
     seed_docs(
@@ -705,7 +764,7 @@ fn a_plan_cycle_falls_back_to_the_board_overlay_with_the_cycle_message() {
     );
     let payload = serde_json::to_value(&list).expect("serialize list");
     for item in payload["changes"].as_array().expect("changes") {
-        for field in ["wave", "blockedBy", "dependsOn", "overlaps"] {
+        for field in PLAN_FIELDS {
             assert!(item.get(field).is_none(), "{field} is absent on a cycle: {item}");
         }
     }
