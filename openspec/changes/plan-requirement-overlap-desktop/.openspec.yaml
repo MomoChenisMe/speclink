@@ -1,0 +1,6 @@
+schema: spec-driven
+created: 2026-09-24
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: plan-overlap-granularity
+depends_on: plan-requirement-overlap
