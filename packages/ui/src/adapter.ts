@@ -3,6 +3,8 @@
 // 桌面 app 注入以 Tauri invoke 為後端的實作；未來 web 端可注入 HTTP 後端。
 // 元件本身不引用任何 Tauri 專屬全域，一律經此介面取資料。
 
+import type { DeltaCounts } from "./delta";
+
 /** 一個 active change 的清單項（CLI 同形欄位＋桌面疊加的生命週期標記）。 */
 export interface ChangeItem {
   name: string;
@@ -51,14 +53,18 @@ export interface ChangeItem {
   /** 這個 change 正在其中實作的 linked worktree（僅本機主 checkout、政策開啟時
    * 才有）；缺席＝在主資料夾裡做。 */
   worktree?: { branch: string; path: string } | null;
-  /** 排程四欄（spec client-protocol「變更清單的排程欄位」）：值取自引擎 plan 的
-   * 同一入口。wave 為波次（同波同號＝可並行）；blockedBy 為前置與排在前面的重疊
-   * 夥伴；dependsOn 為 meta 宣告的前置原文；overlaps 為共用 delta 能力的其他變更。
-   * remote 摘要、plan 成環或壞 meta 時四欄缺席——章與排程分頁據缺席隱藏。 */
+  /** 排程欄位（spec client-protocol「變更清單的排程欄位」）：值取自引擎 plan 的
+   * 同一入口。wave 為波次（同波同號＝可並行）；blockedBy 為作用中的宣告前置；
+   * dependsOn 為 meta 宣告的前置原文；overlaps 為共用 delta 能力的其他變更（目錄級）；
+   * requirementOverlap 為同動一個 requirement 的其他變更；archiveAfter 為本變更該排在
+   * 其後封存的變更。remote 摘要、plan 成環或壞 meta 時整組缺席——章與排程分頁據缺席
+   * 隱藏；舊 server 只缺 requirementOverlap 與 archiveAfter，讀取入口補成空陣列。 */
   wave?: number;
   blockedBy?: string[];
   dependsOn?: string[];
   overlaps?: ChangeOverlap[];
+  requirementOverlap?: ChangeRequirementOverlap[];
+  archiveAfter?: string[];
 }
 
 /** 與另一個變更的 delta 能力重疊。 */
@@ -67,6 +73,22 @@ export interface ChangeOverlap {
   /** 共用的 capability 名，升冪。 */
   capabilities: string[];
 }
+
+/** 與另一個變更同動的一個 requirement：同一 capability 下同名，雙方各以一種 delta 操作動到。 */
+export interface ChangeRequirementOverlap {
+  change: string;
+  capability: string;
+  requirement: string;
+  ownOperation: DeltaOperation;
+  otherOperation: DeltaOperation;
+  /** 雙方都帶進（ADDED、改名的新名）或都拿走（REMOVED、改名的舊名）這個名稱——
+   * 封存先後救不了，得改掉其中一邊。 */
+  conflict: boolean;
+}
+
+/** requirement 的 delta 操作（ADDED／MODIFIED／REMOVED／RENAMED），與 delta 計數的四種操作同源；
+ * RENAMED 涵蓋改名的舊名與新名兩端。 */
+export type DeltaOperation = Uppercase<keyof DeltaCounts>;
 
 /** 一個 canonical spec 的清單項（CLI 同形欄位＋桌面疊加的呈現層輔助欄位）。
  * 規格卡收合資訊由 Rust 端清單 payload 帶出（spec-archive-drawer design D4）；

@@ -27,7 +27,7 @@ use speclink_protocol::events::TransportKind;
 use speclink_protocol::query::{
     ArchivedListResponse, ArtifactContent, BoardOrderDoc, ChangeStatus, ChangeSummary,
     DiscussionInfo, ImportBundle, ImportBundleDocument, ImportDocumentId, ImportReportResponse,
-    ImportScope, ListSpecsResponse, PlanChangeEntry, PlanOverlap, PlanResponse, ScopesResponse,
+    ImportScope, ListSpecsResponse, PlanChangeEntry, PlanResponse, ScopesResponse,
     SearchResponse, ShowDiscussionResponse, SpecDocumentResponse,
 };
 use speclink_remote::client::Client;
@@ -794,23 +794,24 @@ pub fn unsupported(operation: &str) -> RemoteError {
 // （add-change-plan-remote D1）。
 
 /// 桌面 remote 清單的一項（add-change-plan-remote D5）：server 的 ChangeSummary
-/// 原樣攤平，再攤平 plan 的排程欄組——plan 不可得或成環時整組缺席。
+/// 原樣攤平，再攤平 plan 那一列的排程欄位——plan 不可得或成環時整組缺席。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RemoteChangeItem {
     #[serde(flatten)]
     pub summary: ChangeSummary,
+    /// 由 [`schedule_of`] 照 desktop-core 的 `PLAN_FIELDS` 組成（與本機清單同一份鍵清單）。
     #[serde(flatten)]
-    pub schedule: Option<RemoteSchedule>,
+    pub schedule: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
-/// plan 那一列帶給清單項的四個排程欄位：同一列產生，同有同無。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RemoteSchedule {
-    pub wave: usize,
-    pub blocked_by: Vec<String>,
-    pub depends_on: Vec<String>,
-    pub overlaps: Vec<PlanOverlap>,
+/// plan 那一列帶給清單項的排程欄位：照 `PLAN_FIELDS` 從該列逐鍵照搬，不另算。舊 server
+/// 的列缺 requirementOverlap 與 archiveAfter 時，wire 型別的 default 已把兩者讀成空陣列。
+fn schedule_of(entry: &PlanChangeEntry) -> serde_json::Map<String, serde_json::Value> {
+    let row = serde_json::to_value(entry).unwrap_or_default();
+    speclink_desktop_core::query::PLAN_FIELDS
+        .iter()
+        .filter_map(|&key| row.get(key).map(|value| (key.to_string(), value.clone())))
+        .collect()
 }
 
 /// `remote_list_changes` 的 payload：清單項＋頂層 planError（成環時為訊息，否則 null）。
@@ -821,7 +822,7 @@ pub struct RemoteChangeList {
     pub plan_error: Option<String>,
 }
 
-/// 清單合併 plan（D5）：順序與四欄來自 [`display_order`]。GET /plan 唯一的 409
+/// 清單合併 plan（D5）：順序與排程欄位來自 [`display_order`]。GET /plan 唯一的 409
 /// 是依賴成環——planError 帶訊息；其他錯誤（舊 server 的 404、連線失敗）planError
 /// 為 null，不打擾使用者。
 pub(crate) fn merge_plan(
@@ -837,12 +838,7 @@ pub(crate) fn merge_plan(
         .into_iter()
         .map(|(summary, entry)| RemoteChangeItem {
             summary,
-            schedule: entry.map(|e| RemoteSchedule {
-                wave: e.wave,
-                blocked_by: e.blocked_by.clone(),
-                depends_on: e.depends_on.clone(),
-                overlaps: e.overlaps.clone(),
-            }),
+            schedule: entry.map(schedule_of),
         })
         .collect();
     RemoteChangeList { changes, plan_error }
@@ -2013,6 +2009,7 @@ mod board_order_tests {
 mod plan_merge_tests {
     use super::board_order_tests::change;
     use super::{merge_plan, RemoteChangeList};
+    use speclink_desktop_core::query::PLAN_FIELDS;
     use speclink_protocol::query::{BoardOrderDoc, PlanChangeEntry, PlanResponse};
     use speclink_remote::RemoteError;
 
@@ -2063,10 +2060,13 @@ mod plan_merge_tests {
         assert_eq!(names(&list), ["a", "b"]);
         assert_eq!(list.plan_error, None);
         let b = list.changes[1].schedule.as_ref().expect("the plan's row rides along");
-        assert_eq!(b.wave, 2);
-        assert_eq!(b.depends_on, ["a"]);
-        assert_eq!(b.blocked_by, ["a"]);
-        assert!(b.overlaps.is_empty());
+        assert_eq!(b["wave"], 2);
+        assert_eq!(b["dependsOn"], serde_json::json!(["a"]));
+        assert_eq!(b["blockedBy"], serde_json::json!(["a"]));
+        assert_eq!(b["overlaps"], serde_json::json!([]));
+        // 只搬排程欄位：plan 列的 name、stage、ready 不疊到清單項上。
+        let keys: Vec<&str> = b.keys().map(String::as_str).collect();
+        assert_eq!(keys.len(), PLAN_FIELDS.len(), "{keys:?}");
     }
 
     #[test]
@@ -2122,6 +2122,9 @@ mod plan_merge_tests {
         assert_eq!(json["changes"][0]["name"], "a");
         assert_eq!(json["changes"][0]["completedTasks"], 1);
         assert_eq!(json["changes"][0]["blockedBy"], serde_json::json!([]));
+        for field in PLAN_FIELDS {
+            assert!(json["changes"][0].get(field).is_some(), "{field} carried");
+        }
 
         let without = merge_plan(
             vec![change("a", 1, 2)],
@@ -2129,8 +2132,38 @@ mod plan_merge_tests {
             Err(failure(Some(404), None, "")),
         );
         let json = serde_json::to_value(&without).unwrap();
-        for field in ["wave", "blockedBy", "dependsOn", "overlaps"] {
+        for field in PLAN_FIELDS {
             assert!(json["changes"][0].get(field).is_none(), "{field} omitted");
+        }
+    }
+
+    #[test]
+    fn merge_plan_old_server_yields_empty_new_fields() {
+        // 規格 Scenario「舊 server 缺新欄位讀作空陣列」：plan 回應每項只有七鍵（in-process
+        // server 一定回九鍵，舊 server 只能在這層以真實回應本文模擬）——兩個新欄位沿
+        // wire 型別的 default 成為空陣列而非缺席，wave 與 blockedBy 照常。
+        let old_server: PlanResponse = serde_json::from_str(
+            r#"{"waves":[{"index":1,"changes":["a"]},{"index":2,"changes":["b"]}],
+                "changes":[
+                  {"name":"a","wave":1,"stage":"proposed","dependsOn":[],"overlaps":[],"blockedBy":[],"ready":true},
+                  {"name":"b","wave":2,"stage":"proposed","dependsOn":["a"],"overlaps":[],"blockedBy":["a"],"ready":false}
+                ],
+                "next":"a","skipped":[]}"#,
+        )
+        .expect("an old server's plan still parses");
+        let list = merge_plan(
+            vec![change("a", 0, 0), change("b", 0, 0)],
+            &BoardOrderDoc::default(),
+            Ok(old_server),
+        );
+        let json = serde_json::to_value(&list).unwrap();
+        let b = &json["changes"][1];
+        assert_eq!(b["name"], "b");
+        assert_eq!(b["wave"], 2, "{b}");
+        assert_eq!(b["blockedBy"], serde_json::json!(["a"]), "{b}");
+        for item in json["changes"].as_array().unwrap() {
+            assert_eq!(item["requirementOverlap"], serde_json::json!([]), "{item}");
+            assert_eq!(item["archiveAfter"], serde_json::json!([]), "{item}");
         }
     }
 }

@@ -8,7 +8,7 @@ import { APP_MESSAGES } from "../i18n/messages";
 import { RELEASE_NOTES } from "../release-notes/release-notes";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 import { STALE_PROBE } from "./helpers/assetFixtures";
-import { changeList } from "./helpers/changeList";
+import { changeList, sharedBoardRequirement } from "./helpers/changeList";
 import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
 // 模擬 Tauri 事件層：捕捉 workspace-changed 的訂閱 handler，測試可手動觸發。
@@ -304,6 +304,44 @@ describe("App (kanban primary + rich detail)", () => {
     await user.click(await screen.findByRole("combobox", { name: "新增前置" }));
     const options = (await screen.findAllByRole("option")).map((o) => o.textContent);
     expect(options).toEqual(["add-auth"]);
+  });
+
+  it("local 清單項帶齊排程欄位時，排程分頁的重疊卡與封存順序卡顯示其內容", async () => {
+    // spec client-protocol「變更清單的排程欄位」的宿主面：list_changes payload 原樣進抽屜——
+    // add-b 與 add-c 同動「看板與任務」，add-b 排在 add-c 之後封存。
+    const item = (name: string, other: string, archiveAfter: string[]) => ({
+      name,
+      status: "in-progress",
+      totalTasks: 3,
+      completedTasks: 0,
+      wave: 1,
+      blockedBy: [],
+      dependsOn: [],
+      overlaps: [{ change: other, capabilities: ["desktop-app"] }],
+      requirementOverlap: [sharedBoardRequirement(other)],
+      archiveAfter,
+    });
+    const ds = fakeDataSource({
+      listChanges: vi.fn().mockResolvedValue(changeList([item("add-c", "add-b", []), item("add-b", "add-c", ["add-c"])])),
+    });
+    renderApp(ds);
+    fireEvent.click(await screen.findByText("add-b"));
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /排程/ }));
+    const section = (name: string) => document.querySelector(`[data-plan-section="${name}"]`) as HTMLElement;
+    await waitFor(() => expect(section("archive")).toBeTruthy());
+    const overlaps = section("overlaps");
+    expect(within(overlaps).getByText("add-c")).toBeTruthy();
+    expect(within(overlaps).getByText("desktop-app › 看板與任務")).toBeTruthy();
+    expect(within(overlaps).getAllByText("修改")).toHaveLength(2);
+    const archive = section("archive");
+    expect(within(archive).getByText("add-c")).toBeTruthy();
+    expect(within(archive).getByText("先封存它們，再對照正式規格重寫同名 requirement 後封存本變更")).toBeTruthy();
+    // design Implementation Contract 行為 2：第 1 波、可以開工、尚無前置與新增下拉。
+    expect(within(section("wave")).getByText("第 1 波")).toBeTruthy();
+    const depends = section("depends");
+    expect(within(depends).getByText("可以開工")).toBeTruthy();
+    expect(within(depends).getByText("尚無前置")).toBeTruthy();
+    expect(within(depends).getByRole("combobox", { name: "新增前置" })).toBeTruthy();
   });
 
   it("delete flow: drawer delete → confirm dialog → deleteChange called", async () => {

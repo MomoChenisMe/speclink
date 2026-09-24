@@ -1,7 +1,18 @@
 // spec 需求「看板欄位由生命週期標記驅動」：全完成＝已就緒 ＞ started_at 或任務
 // 完成數>0＝進行中 ＞ 其餘＝提案中。矩陣值取自 spec 的 Example「欄位判定矩陣」表。
 import { describe, it, expect } from "vitest";
-import { awaitingManualCount, changeStage, planBlockedBy, planBlockedLabel, planWave, planWaveLabel, STAGE_BAR, STAGE_ICON } from "../stage";
+import {
+  awaitingManualCount,
+  changeStage,
+  planArchiveAfter,
+  planBlockedBy,
+  planBlockedLabel,
+  planRequirementOverlap,
+  planWave,
+  planWaveLabel,
+  STAGE_BAR,
+  STAGE_ICON,
+} from "../stage";
 import type { ChangeItem } from "../adapter";
 
 function ci(total: number, done: number, startedAt?: string): ChangeItem {
@@ -95,6 +106,35 @@ describe("planWave / planBlockedBy（排程欄位讀取入口）", () => {
     expect(planBlockedBy(base)).toEqual([]);
     // 缺 wave 的不合法組合：blockedBy 不單獨成立。
     expect(planBlockedBy({ ...base, blockedBy: ["a"] })).toEqual([]);
+  });
+});
+
+// spec desktop-app「詳情抽屜的排程分頁」：requirement 級重疊與封存順序同走單一入口——
+// wave 缺席（remote 未取得 plan、plan 成環、壞 meta）即空陣列；wave 在而新欄位缺席
+// （舊 server）同為空陣列，分頁據此顯示空態。
+describe("planRequirementOverlap / planArchiveAfter（排程新欄位讀取入口）", () => {
+  const base: ChangeItem = { name: "c", status: "proposed", totalTasks: 3, completedTasks: 0 };
+  const row = {
+    change: "add-b",
+    capability: "desktop-app",
+    requirement: "看板與任務",
+    ownOperation: "MODIFIED",
+    otherOperation: "MODIFIED",
+    conflict: false,
+  } as const;
+
+  it("requirementOverlap 只在 wave 存在時回傳，其餘回空陣列", () => {
+    expect(planRequirementOverlap({ ...base, wave: 1, requirementOverlap: [row] })).toEqual([row]);
+    expect(planRequirementOverlap({ ...base, wave: 1 })).toEqual([]);
+    expect(planRequirementOverlap(base)).toEqual([]);
+    expect(planRequirementOverlap({ ...base, requirementOverlap: [row] })).toEqual([]);
+  });
+
+  it("archiveAfter 只在 wave 存在時回傳，其餘回空陣列", () => {
+    expect(planArchiveAfter({ ...base, wave: 2, archiveAfter: ["add-b"] })).toEqual(["add-b"]);
+    expect(planArchiveAfter({ ...base, wave: 2 })).toEqual([]);
+    expect(planArchiveAfter(base)).toEqual([]);
+    expect(planArchiveAfter({ ...base, archiveAfter: ["add-b"] })).toEqual([]);
   });
 });
 

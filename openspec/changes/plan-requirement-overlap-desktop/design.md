@@ -18,7 +18,7 @@
 
 ### 桌面清單六欄同進同出
 
-apps/desktop/core 的 query 模組在 plan 列存在時多寫 `requirementOverlap` 與 `archiveAfter` 兩鍵（成環或壞 meta 時與其他四欄一起缺席，dependsOn 的成環例外維持）；src-tauri 的 remote 模組的排程欄組加同兩欄。packages/ui 的 ChangeItem 加 `requirementOverlap?: ChangeRequirementOverlap[]` 與 `archiveAfter?: string[]`；stage 模組新增 planArchiveAfter(c) 與 planRequirementOverlap(c)，與 planBlockedBy 同一規則（wave 缺席即空陣列），PlanTab 只讀結果。
+apps/desktop/core 的 query 模組在 plan 列存在時多寫 `requirementOverlap` 與 `archiveAfter` 兩鍵（成環或壞 meta 時與其他四欄一起缺席，dependsOn 的成環例外維持）；src-tauri 的 remote 模組的排程欄組加同兩欄。兩邊都照 desktop-core `query::PLAN_FIELDS` 這份鍵清單從 plan 列逐鍵搬運（remote 的排程欄組因此是 JSON map，不再是具名型別），兩個 crate 的測試也共用它——加欄位只改這一處。packages/ui 的 ChangeItem 加 `requirementOverlap?: ChangeRequirementOverlap[]` 與 `archiveAfter?: string[]`；stage 模組新增 planArchiveAfter(c) 與 planRequirementOverlap(c)，與 planBlockedBy 同一規則（wave 缺席即空陣列），PlanTab 只讀結果。
 
 ### 排程分頁卡片化，阻擋併入前置卡的狀態徽章
 
@@ -27,30 +27,32 @@ PlanTab 的每一段改為一個 `<section data-plan-section="…">`，外觀沿
 | 段 | data-plan-section | 標題列 | 內容 |
 | --- | --- | --- | --- |
 | 波次 | wave | 「波次」 | 「第 N 波」＋同波夥伴名（PlanName 晶片），無夥伴時「本波只有這個變更」 |
-| 前置 | depends | 「前置」＋右側狀態徽章 | dependsOn 每項一列附移除鈕（capability 為真時）、底部新增下拉；空時「尚無前置」 |
-| 重疊 | overlaps | 「重疊」 | requirementOverlap 每項一列：對方 PlanName、`capability › requirement` 文字、雙方操作各一枚小標籤（`rounded border border-border/60 px-1 py-0.5 text-[10px]`）、conflict 時加一枚「同名衝突」destructive 色標籤；空時「無重疊」 |
-| 封存順序 | archive | 「封存順序」 | archiveAfter 每項 PlanName，下方一句「先封存它們，再對照正典重寫同名 requirement 後封存本變更」；空時「可直接封存」 |
+| 前置 | depends | 「前置」＋右側狀態徽章 | dependsOn 每項一列附移除鈕（capability 為真時）、底部新增下拉；空時「尚無前置」；blockedBy 含 dependsOn 以外的名稱（舊 server 依重疊判定）時另一列「另需等待（server 依重疊判定）：」＋名稱（唯讀） |
+| 重疊 | overlaps | 「重疊」 | requirementOverlap 每項一列：對方 PlanName、`capability › requirement` 文字、雙方操作各一枚小標籤（`rounded border border-border/60 px-1 py-0.5 text-[10px]`，用詞與配色取自 DeltaBadges 的 DELTA_LABEL_KEYS／DELTA_COLORS，title 為所屬變更名）、conflict 時加一枚「同名衝突」destructive 色標籤；空時「無重疊」 |
+| 封存順序 | archive | 「封存順序」 | archiveAfter 每項 PlanName，下方一句「先封存它們，再對照正式規格重寫同名 requirement 後封存本變更」；與其中某項互列 archiveAfter 時加 destructive 色的互相等待警示；有 conflict 列時加 destructive 色的同名衝突警示；archiveAfter 空且無衝突時「可直接封存」 |
 
-前置卡標題列右側的狀態徽章沿既有 Badge 元件：blockedBy 空時 variant secondary 文字「可以開工」；非空時 variant outline 文字「等 N 項」、title 為 planBlockedLabel 的前置名。原本的 `data-plan-section="blocked"` 段移除。wave 缺席的兩種說明句（remote 未取得 plan、成環）維持原樣，成環時只渲染前置卡（無徽章、無新增下拉）。捨棄「維持段落只換標題徽章」（使用者選卡片化）與「重疊卡繼續顯示目錄級 overlaps」（第一刀後它不再影響任何順序，顯示只會誤導）。
+前置卡標題列右側的狀態徽章沿既有 Badge 元件：blockedBy 空時 variant secondary 文字「可以開工」；非空時 variant outline 文字「等 N 項」、title 為 planBlockedLabel 的前置名。原本的 `data-plan-section="blocked"` 段移除。wave 缺席的兩種說明句（remote 未取得 plan、成環）維持原樣，成環時只渲染前置卡（無徽章、無新增下拉；dependsOn 為空時照樣顯示「尚無前置」，前置卡內文由兩個分支共用）。卡片的標題列與內容區帶 `data-plan-card-header`／`data-plan-card-body` 錨點，前置卡的非宣告等待列帶 `data-plan-undeclared-waits`，測試不依 DOM 位置取元素。捨棄「維持段落只換標題徽章」（使用者選卡片化）與「重疊卡繼續顯示目錄級 overlaps」（第一刀後它不再影響任何順序，顯示只會誤導）。
 
 ### i18n 詞條
 
-新增 tw／en：`plan.archiveAfter`「封存順序」／"Archive order"、`plan.archiveHint`「先封存它們，再對照正典重寫同名 requirement 後封存本變更」／"Archive them first, then rewrite the same-named requirement against the canon before archiving this change"、`plan.noArchiveAfter`「可直接封存」／"Nothing to wait for"、`plan.conflict`「同名衝突」／"Name conflict"、`plan.blockedCount`「等 {n} 項」／"Waiting on {n}"。改寫：`plan.overlaps` 維持「重疊」／"Overlaps"、`plan.noOverlaps` 維持。移除：`plan.blocked`（阻擋段標題不再使用）。`plan.canStart` 改用於徽章。
+新增 tw／en：`plan.archiveAfter`「封存順序」／"Archive order"、`plan.archiveHint`「先封存它們，再對照正式規格重寫同名 requirement 後封存本變更」／"Archive them first, then rewrite the same-named requirement against the canonical spec before archiving this change"、`plan.noArchiveAfter`「可直接封存」／"Nothing to wait for"、`plan.conflict`「同名衝突」／"Name conflict"、`plan.blockedCount`「等 {n} 項」／"Waiting on {n}"、`plan.undeclaredWaits`「另需等待（server 依重疊判定）：」／"Also waiting on (server overlap rule):"、`plan.archiveConflict`「與 {names} 同名衝突：先改掉其中一邊，較晚封存的一方才不會被拒」／"Name conflict with {names}: change one side first, or the later archive is refused"、`plan.archiveDeadlock`「與 {names} 互相等待：兩邊都要先等對方封存，須調整拆分」／"Waiting on each other with {names}: each must archive first, so adjust how the changes are split"。改寫：`plan.overlaps` 維持「重疊」／"Overlaps"、`plan.noOverlaps` 維持。移除：`plan.blocked`（阻擋段標題不再使用）。`plan.canStart` 改用於徽章。
 
 ## Implementation Contract
 
 **Behavior**
 
 - remote 專案的排程分頁與 local 對同一 scope 內容顯示相同的四段內容；舊 server（無新欄位）時重疊卡「無重疊」、封存順序卡「可直接封存」，其餘不變。
-- 開啟 wave=1、dependsOn=[]、blockedBy=[]、requirementOverlap=[{change:"add-b",capability:"desktop-app",requirement:"看板與任務",ownOperation:"MODIFIED",otherOperation:"MODIFIED",conflict:false}]、archiveAfter=["add-b"] 的變更：波次卡「第 1 波」；前置卡徽章「可以開工」、內容「尚無前置」與新增下拉；重疊卡一列 add-b、`desktop-app › 看板與任務`、兩枚 MODIFIED 標籤；封存順序卡列 add-b 與提示句。
+- 開啟 wave=1、dependsOn=[]、blockedBy=[]、requirementOverlap=[{change:"add-b",capability:"desktop-app",requirement:"看板與任務",ownOperation:"MODIFIED",otherOperation:"MODIFIED",conflict:false}]、archiveAfter=["add-b"] 的變更：波次卡「第 1 波」；前置卡徽章「可以開工」、內容「尚無前置」與新增下拉；重疊卡一列 add-b、`desktop-app › 看板與任務`、兩枚「修改」標籤；封存順序卡列 add-b 與提示句。
 - 開啟 blockedBy=["add-a","add-c"] 的變更：前置卡徽章「等 2 項」、title 含 add-a、add-c；頁面不存在 data-plan-section="blocked"。
-- conflict 為 true 的重疊列多一枚「同名衝突」標籤。
+- conflict 為 true 的重疊列多一枚「同名衝突」標籤，封存順序卡改顯示同名衝突警示、不顯示「可直接封存」；與對方互列 archiveAfter 時封存順序卡另顯示互相等待警示。
+- 舊 server（0.7.0）的 blockedBy 含先配置、共用 capability 的變更：前置卡另列「另需等待（server 依重疊判定）：」與這些名稱（唯讀），徽章數字與卡片內容一致。
 
 **Interface / data shape**
 
 - GET /plan 回應沿第一刀：changes 每項九鍵、requirementOverlap 每項六鍵 camelCase、缺席讀作空陣列（本刀只讀，不改 wire）。
 - 桌面 local 與 remote 清單項：wave、blockedBy、dependsOn、overlaps、requirementOverlap、archiveAfter 六欄同進同出；頂層 planError 不變。
-- packages/ui：ChangeItem 新兩欄可選；stage 模組匯出 planArchiveAfter、planRequirementOverlap。
+- packages/ui：ChangeItem 新兩欄可選；stage 模組匯出 planArchiveAfter、planRequirementOverlap，套件入口一併匯出，連同 ChangeRequirementOverlap 與 DeltaOperation 型別（DeltaOperation 由 delta 計數的四種操作推導）。
+- desktop-core `query::PLAN_FIELDS` 是清單排程欄位的唯一鍵清單：本機與 remote 都照它從 plan 列逐鍵搬運，兩個 crate 的測試也共用；remote 清單項的排程欄組是 JSON map。
 
 **Failure modes**
 
@@ -60,9 +62,9 @@ PlanTab 的每一段改為一個 `<section data-plan-section="…">`，外觀沿
 **Acceptance criteria**
 
 - speclink-desktop-core query 測試：清單項六欄同進同出。
-- src-tauri remote_data 測試：merge_plan 帶六欄。
-- packages/ui planTab 測試：四張卡片的 data-plan-section 與內容、前置卡徽章兩態、conflict 標籤、舊 server 空態；planBadge 測試不變。
-- apps/desktop App 與 remoteCapabilities 測試：remote 分頁排程分頁唯讀且顯示新卡片。
+- src-tauri remote_data 測試：merge_plan 帶六欄；remote 模組的 plan_merge_tests：舊 server 的七鍵回應讓兩個新欄位讀作空陣列。
+- packages/ui planTab 測試：四張卡片的 data-plan-section 與內容、前置卡徽章兩態、conflict 標籤、舊 server 空態與非宣告等待列、封存卡兩種警示、成環時環外變更的空態；stage 測試補 planRequirementOverlap 與 planArchiveAfter 的缺席與存在；planBadge 既有案例不變，追加一條「requirementOverlap 與 archiveAfter 不讓卡片變淡」。
+- apps/desktop App 與 remoteCapabilities 測試：remote 分頁排程分頁唯讀且顯示新卡片；local 案例斷言 Implementation Contract 行為 2 的第 1 波、可以開工、尚無前置與新增下拉。
 
 **Scope boundaries**
 
@@ -73,8 +75,9 @@ PlanTab 的每一段改為一個 `<section data-plan-section="…">`，外觀沿
 
 - [排程分頁 DOM 改變讓既有 planTab 測試整批紅] → 同批改寫測試，以 data-plan-section 四值為錨。
 - [舊 server 與新桌面：兩卡永遠空態] → 接受：空態文案明確，且第一刀 CLI 對舊 server 同樣退化。
+- [新桌面連 0.7.0 server：舊引擎的 blockedBy 含先配置、共用 capability 的變更，前置卡原本會出現「尚無前置」配「等 1 項」] → 前置卡另列 dependsOn 以外的等待名（唯讀），徽章數字與內容一致；本機與新 server 的 blockedBy 只含宣告前置，不受影響。
 - [跨平台] → 純型別與前端改動，無路徑或 git 假設；vitest 與 cargo 測試在三平台同行為。
-- [main 上 desktop lib 測試耗時] → 只跑受影響 target（apps/desktop 的 vitest、speclink-desktop-core 的 query 測試、src-tauri 的 remote_data）。
+- [main 上 desktop lib 測試耗時] → 只跑受影響 target（apps/desktop 的 vitest、speclink-desktop-core 的 query 測試、src-tauri 的 remote_data 與 lib 的 plan_merge_tests）。
 
 ## Migration Plan
 

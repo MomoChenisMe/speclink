@@ -85,6 +85,39 @@ describe("ChangeCard 波次章與被擋變淡", () => {
     expect(cardEl().getAttribute("data-blocked")).toBeNull();
   });
 
+  it("requirement 級重疊與封存順序不讓卡片變淡、tooltip 不多出等待", () => {
+    // blockedBy 只含宣告前置；requirementOverlap 與 archiveAfter 只排封存先後、不擋開工
+    // ——卡片只反映 blockedBy。
+    vi.useFakeTimers();
+    render(
+      <ChangeCard
+        change={card({
+          wave: 1,
+          blockedBy: [],
+          dependsOn: [],
+          overlaps: [],
+          requirementOverlap: [
+            {
+              change: "add-b",
+              capability: "desktop-app",
+              requirement: "看板與任務",
+              ownOperation: "MODIFIED",
+              otherOperation: "MODIFIED",
+              conflict: false,
+            },
+          ],
+          archiveAfter: ["add-b"],
+        })}
+      />,
+    );
+    const wave = screen.getByLabelText("第 1 波");
+    expect(cardEl().getAttribute("data-blocked")).toBeNull();
+    expect(cardEl().className).not.toContain("opacity-60");
+    const tip = hoverTooltip(wave);
+    expect(tip).toContain("第 1 波");
+    expect(tip).not.toContain("等待");
+  });
+
   it("en 文案：Wave 2 · Waiting for: add-a, add-b", () => {
     vi.useFakeTimers();
     render(

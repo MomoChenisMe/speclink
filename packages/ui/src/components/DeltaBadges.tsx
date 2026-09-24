@@ -18,7 +18,8 @@ const DELTA_MARKS: Record<keyof DeltaCounts, string> = {
   renamed: "→",
 };
 
-const DELTA_LABEL_KEYS: Record<keyof DeltaCounts, string> = {
+/** delta 四種操作的 i18n 詞條鍵——規格分頁色標區段與排程分頁的操作標籤共用。 */
+export const DELTA_LABEL_KEYS: Record<keyof DeltaCounts, string> = {
   added: "delta.added",
   modified: "delta.modified",
   removed: "delta.removed",
