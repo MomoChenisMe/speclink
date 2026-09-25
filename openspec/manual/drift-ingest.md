@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 130
 keywords: [drift, ingest, 漂移, 閒置, 需求變更, 過期, validate]
 sources: [drift-computation, archive-merge, skill-routing, user-documentation, ingest-skill]
-generated: 2026-09-17T16:05:41+08:00
+generated: 2026-09-25T08:39:09+08:00
 ---
 
 # 續作與需求變更：drift 與 ingest
@@ -75,12 +75,20 @@ link 只建立變更側的來源鏈；seal 只在內容已經反映後才做。�
 
 需求變了，這個變更可能開始依賴別的變更。所以 ingest 在產物更新完、通過 `speclink validate` 之後、給下一步建議之前，多做一步：
 
-1. 用 `speclink list --json` 列出作用中的變更。只有這一個作用中變更時，這一步整個跳過。
+1. 用 `speclink list --json` 列出作用中的變更。只有這一個作用中變更時，這一步整個跳過，不執行 `speclink change depends` 與 `speclink change rank`。
 2. 有兩個以上時，只針對這次更新的變更判定：以更新後的產物為準，讀其他變更提案的 Impact 段，看這個變更是不是建立在某個變更的成果上。
 3. 是，就對每個前置各執行一次 `speclink change depends <這個變更> --on <前置>` 落檔，不只口頭報告。邊已經存在時指令直接成功。指令拒絕（指向自己、名稱不存在或已封存、會成環）時，agent 回報拒絕訊息，接著處理下一個前置，不重試。
 4. 只是動到同一段程式碼、不是建立在對方成果上的，不記為前置。這個變更如果已經在進行中，等一個還沒開工的變更會把它卡住。agent 改為向你提出這個重疊。
 
-硬信號（兩個變更的 delta 動到同一個 capability）由引擎在 plan 裡算，agent 不自己判。這一步不會移除任何既有的前置（刪邊是你的決定），也不會自動呼叫 apply。出邊仍是回 apply；apply 第一步的 plan 守門會讀到新宣告的前置。落檔的段落與 propose 技能收尾的寫法相同，見[提案：建立變更與產物](propose.md)。
+硬信號由引擎在 plan 裡算，agent 不自己判：兩個變更動到同一個 capability 的同一個 requirement 名時，plan 依這個名稱此刻在不在正式規格裡排出封存的先後；兩邊都帶進（新增或改名成）、或都拿走（移除或改名掉）同一個名稱時，plan 標為衝突。plan 回報這個變更有衝突時，agent 會向你提出其中一邊要改。
+
+接著處理看板順序，依這個變更的階段與有沒有順序鍵分成三種：
+
+- **提案中、沒有順序鍵**：沿用 propose 收尾同一套插隊判定。更新後的任務數比排在它前面的提案中變更少、沒人依賴它，而且急，agent 就執行 `speclink change rank <這個變更> --before <那個變更>` 落檔。
+- **提案中、但指令以「已有順序鍵」拒絕**：agent 只口頭建議，不加 `--force`。
+- **進行中或已就緒**：不執行 `speclink change rank`。
+
+這一步不會移除任何既有的前置（刪邊是你的決定），也不會自動呼叫 apply。出邊仍是回 apply；apply 第一步的 plan 守門會讀到新宣告的前置。落檔的段落與插隊判定的段落，都與 propose 技能收尾的寫法相同，見[提案：建立變更與產物](propose.md)。
 
 | 作用中變更 | 這次 ingest 的變更 | 更新後的判定 | agent 的動作 | 後續 |
 | --- | --- | --- | --- | --- |
@@ -88,6 +96,8 @@ link 只建立變更側的來源鏈；seal 只在內容已經反映後才做。�
 | add-a、add-b | add-b | 新需求與 add-a 無關 | 不執行 | 回 apply，順序不變 |
 | add-a、add-b | add-b | 只和 add-a 動到同一段程式碼 | 不執行，向你提出重疊 | 回 apply |
 | add-a、add-b、add-c | add-b | 要用 add-a 與 add-c 的成果，但 add-c 已經依賴 add-b | add-a 照常落檔；add-c 因成環被拒，回報訊息、不重試 | 回 apply |
+| add-a、add-b | add-b（提案中、沒有順序鍵） | 新需求把 add-b 縮到 4 個任務；add-a 有 30 個任務；兩者都沒人依賴；add-a 已有順序鍵，排在 add-b 前面 | `speclink change rank add-b --before add-a` | 兩者同波，配置順序 add-b 在前 |
+| add-a、add-b | add-b（進行中） | 任何判定 | 只執行 `speclink change depends`（如果有前置） | 不碰順序鍵 |
 | add-b | add-b | 唯一的作用中變更 | 跳過這一步 | 回 apply |
 
 順序、波次與依賴怎麼算，見[執行順序：plan 與依賴](plan.md)。

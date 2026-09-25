@@ -2,9 +2,9 @@
 title: 提案：建立變更與產物
 section: SDD 工作流
 order: 110
-keywords: [提案, propose, 變更, capability, 命名守門, Purpose, 手動任務, validate, 最後一刀, 分期]
+keywords: [提案, propose, 變更, capability, 命名守門, Purpose, 手動任務, validate, 最後一刀, 分期, 依賴, 插隊]
 sources: [propose-skill, capability-naming-guard, spec-validation, manual-task-marker]
-generated: 2026-09-17T16:05:41+08:00
+generated: 2026-09-25T08:39:09+08:00
 ---
 
 # 提案：建立變更與產物
@@ -136,32 +136,47 @@ delta 與正式規格對不上的問題（例如 MODIFIED 的目標需求已經�
 
 手動任務在實作階段怎麼被處理，見[實作：完成任務](apply.md)。
 
-## 收尾：判定依賴、以 plan 看順序
+## 收尾：判定依賴與插隊、以 plan 看順序
 
-propose 完成、給下一步建議之前，agent 用 `speclink list --json` 列出作用中的變更。作用中變更只有這次建立的這一個時，維持既有的下一步建議，不執行下面的步驟。
+propose 完成、給下一步建議之前，agent 用 `speclink list --json` 列出作用中的變更。作用中變更只有這次建立的這一個時，維持既有的下一步建議，不執行 `speclink change depends`、`speclink change rank` 與 `speclink plan`。
 
-有兩個以上時，agent 只針對這次建立的變更判定「軟依賴」：讀其他變更提案的 Impact 段，判斷這個變更是不是建立在某個變更的成果上、或動到同一段程式碼。有，就執行：
+有兩個以上時，依序做三件事。
+
+**1. 判定軟依賴、落檔。** agent 只針對這次建立的變更判定：讀其他變更提案的 Impact 段，判斷這個變更是不是建立在某個變更的成果上、或動到同一段程式碼。有，就執行：
 
 ```
 speclink change depends <這個變更> --on <前置變更>...
 ```
 
-把前置寫進變更的狀態檔，不只口頭報告。硬信號（兩個變更的 delta 動到同一個 capability）由引擎在 plan 裡算，agent 不自己判。
+把前置寫進變更的狀態檔，不只口頭報告。硬信號由引擎在 plan 裡算，agent 不自己判重疊：兩個變更動到同一個 capability 的同一個 requirement 名時，plan 依這個名稱此刻在不在正式規格裡排出封存的先後；兩邊都帶進（新增或改名成）、或都拿走（移除或改名掉）同一個名稱時，plan 標為衝突。plan 回報這個變更有衝突時，agent 會向你提出其中一邊要改。
 
-落檔後 agent 執行 `speclink plan --json`，依有效的 worktree 政策（含環境變數覆寫）呈現：
+**2. 判定要不要插隊。** 這個變更是提案中，比排在它前面的提案中變更小（任務數較少，而且沒人依賴它），而且急時，agent 執行：
+
+```
+speclink change rank <這個變更> --before <第一個比它大的提案中變更>
+```
+
+指令以「已有順序鍵」拒絕時，agent 只口頭建議，不加 `--force`。判定不急或不小時，不執行。這一段判定與 ingest 收尾的寫法相同。
+
+**3. 以 plan 呈現順序。** agent 執行 `speclink plan --json`，依有效的 worktree 政策（含環境變數覆寫）呈現：
 
 - 政策開啟：列出第 1 波為「可平行——各開一個 session 以 apply-with-worktree 執行，沿用多 session 配方」，再列後續各波。
 - 政策關閉：依 plan 的配置順序給單一建議順序，不分組。
 
-| 作用中變更 | 這次建立 | agent 的判定 | 落檔指令 | plan 的波次 |
+任何一個變更封存要等別的變更時，再附一句「封存時 X 要在 Y 之後」。
+
+| 作用中變更 | 這次建立 | agent 的判定 | 落檔指令 | plan 的結果 |
 | --- | --- | --- | --- | --- |
 | add-a、add-b | add-b | add-b 建立在 add-a 的新動詞上 | `speclink change depends add-b --on add-a` | add-a 第 1 波、add-b 第 2 波 |
 | add-a、add-c | add-c | 無關 | 不執行 | 兩者同為第 1 波（可平行） |
+| add-a、add-d | add-d | 無關；add-d 只有 5 個任務、add-a 有 40 個，兩者都沒人依賴；add-a 已有順序鍵，排在 add-d 前面 | `speclink change rank add-d --before add-a` | 兩者同為第 1 波，配置順序 add-d 在前 |
+
+第三列的前提是 add-a 已有順序鍵：兩者都沒有順序鍵時，任務少的本來就排在前面，不必插隊。
 
 盤點只是建議，agent 不會自動呼叫任何技能。順序、波次與依賴怎麼算，見[執行順序：plan 與依賴](plan.md)。
 
 > [!NOTE]
-> 工作流路由規格對這一段的摘要寫的是「提案中變更有 2 個以上時先盤點執行順序」，propose 技能規格則以「作用中變更」為母體並改成落檔加 plan。本頁依 propose 技能規格撰寫，差異記在[本手冊的來源](about.md)。
+> 工作流路由規格對這一段的摘要寫的是「提案中變更有 2 個以上時先盤點執行順序」，propose 技能規格則以「作用中變更」為母體並改成落檔加 plan。另外，ingest 技能規格要求每個前置各執行一次 `speclink change depends`，並說這一段與 propose 收尾逐字相同；propose 技能規格寫的卻是一次帶多個前置。本頁依 propose 技能規格撰寫，兩處差異都記在[本手冊的來源](about.md)。
 
 下一步：[實作：完成任務](apply.md)。
 

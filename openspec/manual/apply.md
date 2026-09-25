@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 120
 keywords: [apply, 任務, 勾選, 手動任務, 開工, 證據]
 sources: [change-lifecycle, manual-task-marker, task-identity, verify-evidence, verb-contract, skill-routing, "change-plan#apply 技能以 plan 挑選與守門"]
-generated: 2026-09-17T16:05:41+08:00
+generated: 2026-09-25T08:39:09+08:00
 ---
 
 # 實作：完成任務

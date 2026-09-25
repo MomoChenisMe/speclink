@@ -4,7 +4,7 @@ section: 附錄
 order: 900
 keywords: [來源, 矛盾, 限制, 編纂日期, 規格]
 sources: []
-generated: 2026-09-22T15:37:29+08:00
+generated: 2026-09-25T08:39:09+08:00
 ---
 
 # 本手冊的來源
@@ -48,26 +48,30 @@ generated: 2026-09-22T15:37:29+08:00
 14. **封存時未結工單的第一個選項叫什麼**：`desktop-app`「封存入口的未結工單三選項」（2026-08-02）描述為「前往完成蓋章」；同規格「變更與討論抽屜開啟時底層落回看板」（2026-08-11）稱同一個按鈕為「去蓋章」。內文以「去蓋章」為按鈕字面。
 15. **討論開場淺掃有幾段**：`discuss-skill`「事實與決策分診及逐節點查證」（2026-08-21）把開場偵察規定為「正式規格 → 程式碼」兩段漏斗；同規格「開場舊討論查核與第四類對照」（2026-09-05）改為「正式規格 → 舊討論查核 → 程式碼」三段，並在假設清單的三分對照之外加入第四類「舊討論已定案」。內文採三段與四類。
 16. **保留在途的討論，卡片與詳情面板有沒有封存動作**：`desktop-app`「討論抽屜檢視與轉出變更」（2026-08-04）寫已結論且未封存的討論，在討論卡與討論詳情面板都有封存動作；同規格「討論於看板第 0 欄兩級呈現」（2026-09-10）寫已轉出、已結論但保留在途的卡片不提供任何動詞按鈕，收尾由 CLI 的 `speclink discuss archive` 明示解除，對詳情面板沒有另作規定。內文採卡片沒有按鈕；詳情面板照舊寫規格所載。
-17. **propose 收尾盤點的母體與做法**：`skill-routing` 交棒邊表的 propose 列（2026-09-16T16:37:51+08:00）寫「提案中變更 ≥2 時先盤點執行順序，worktree 政策開啟時分可平行／須依序」；`propose-skill`「收尾盤點提案中變更的執行順序」（2026-09-16T09:24:26+08:00）寫以「作用中變更」為母體、對本次建立的變更判定軟依賴並以 `speclink change depends` 落檔，再以 `speclink plan` 的波次呈現。兩者的時戳只差幾小時、後者才載有做法本身。[工作流總覽](workflow-overview.md)的交棒邊表照 `skill-routing` 的摘要寫，[提案](propose.md)的收尾一節照 `propose-skill` 的做法寫，並互相指路。
+17. **propose 收尾盤點的母體與做法**：`skill-routing` 交棒邊表的 propose 列（2026-09-16T16:37:51+08:00）寫「提案中變更 ≥2 時先盤點執行順序，worktree 政策開啟時分可平行／須依序」；`propose-skill`「收尾盤點提案中變更的執行順序」（最新 2026-09-24T22:20:29+08:00）寫以「作用中變更」為母體、對本次建立的變更判定軟依賴並以 `speclink change depends` 落檔，再判定插隊、以 `speclink plan` 的波次呈現。後者時戳較晚，[提案](propose.md)的收尾一節照 `propose-skill` 寫。[工作流總覽](workflow-overview.md)的交棒邊表照 `skill-routing` 的摘要寫；該頁的來源沒有更新，本次沒有重寫，兩頁互相指路。
+18. **delta 重疊還算不算阻擋**：`change-plan` 的 Purpose 寫「以宣告依賴與 delta capability 重疊做拓樸修正，算出波次與每個 change 的阻擋清單」；同規格「執行順序的基底與拓樸修正」（2026-09-24T22:20:29+08:00）改為 delta 重疊不推後波次、不構成有向邊、不進阻擋清單，改以同名 requirement 重疊算封存順序，只有 `speclink plan --strict-overlap` 退回舊算法。Purpose 也沒有提到新的 `speclink change rank`。內文採需求段的說法。
+19. **拖排時被拖的卡缺順序鍵要不要整欄補章**：`board-card-order` 的 Purpose 寫「欄內出現缺 rank 的卡時整欄補章」；同規格「欄內存在缺 rank 卡時整欄補章」（2026-09-24T22:20:29+08:00）排除被拖的卡本身：只有它缺鍵時只寫它一檔。內文採需求段的說法。
+20. **前置要一次落檔還是逐一落檔**：`ingest-skill`「ingest 收尾重判本變更的軟依賴」（2026-09-24T22:20:29+08:00）要求每個前置各執行一次 `speclink change depends`，並規定這一段與 propose 收尾的同一段逐字一致；`propose-skill`「收尾盤點提案中變更的執行順序」（同一時戳、同一次封存）寫的是一次帶多個前置的指令，也沒有提到被拒時的處置。兩者時戳相同、出自同一次封存，無法依較晚者裁定。[提案](propose.md)照 `propose-skill` 寫，[續作與需求變更](drift-ingest.md)照 `ingest-skill` 寫，提案頁以附註指出差異。
 
 附註（規格自己宣告的例外，不是矛盾）：
 
 - `worktree-overlay`（2026-08-04）讓 `speclink list` 讀到壞掉的政策檔時照常輸出，與 `workflow-config` 的「壞檔即拒絕」不同；規格自述為僅限觀察面的例外。
 - `change-lifecycle`（2026-07-27）寫 remote 模式下 `speclink discard` 回報不支援；`server-verb-api`（2026-07-23）寫 server 提供 discard 語意的刪除端點。一個講 CLI 動詞、一個講 server 端點。
 - `review-station`（2026-08-03）對審查工單的續輪沒有寫碼任務守門；`verify-station`（2026-08-11）對驗證工單的續輪有。兩站不對稱，各頁照各自規格寫。
+- `propose-skill` 把「只動到同一段程式碼」列為要落檔的軟依賴；`ingest-skill` 則規定只動到同一段程式碼不記為前置、改向使用者提出，理由是本變更若已在進行中，等一個還沒開工的變更會卡住它。兩者時機不同（新建的變更一定還沒開工），各頁照各自規格寫。
 - `desktop-app` 早期需求（2026-07-05、2026-07-17）寫「歸檔」，後期一律寫「封存」；規格也把面板稱為「抽屜」、把品質關卡稱為「品質站」。內文依 `openspec/LANGUAGE.md` 的正典詞彙一律用「封存」「詳情面板」「品質關卡」，引用需求名稱時保留原字。
 
 ## 已知限制
 
 - 沒有截圖。畫面文字與按鈕名稱逐字取自規格，實際畫面若不同，以執行中的產品為準。
-- drift、audit 兩個技能沒有各自的規格，手冊只寫 `skill-routing` 與 `user-documentation` 載明的入口情境與交棒關係。apply 只有挑選變更的第一步（plan 守門）有規格，載於 `change-plan`；ingest 只有收尾的依賴判定有規格，載於 `ingest-skill`；兩者其餘的內文行為未載。analyze 的技能本身也沒有規格，但 `speclink analyze` 指令的判定規則有 `change-analysis`，寫在[分析：交叉檢查變更的產物](analyze.md)。
+- drift、audit 兩個技能沒有各自的規格，手冊只寫 `skill-routing` 與 `user-documentation` 載明的入口情境與交棒關係。apply 只有挑選變更的第一步（plan 守門）有規格，載於 `change-plan`；ingest 只有收尾的依賴與插隊判定有規格，載於 `ingest-skill`；兩者其餘的內文行為未載。analyze 的技能本身也沒有規格，但 `speclink analyze` 指令的判定規則有 `change-analysis`，寫在[分析：交叉檢查變更的產物](analyze.md)。
 - 過期判定逐項比較：頁的生成時戳與規格的更新時戳都帶時區時比到秒，同一秒不算；任一邊只有純日期時比到日，同一天也算。每一頁的 `generated` 都寫成帶時區的秒級時戳；較早封存的規格，其更新時戳仍是純日期，封存不會回改。只取材某規格幾段需求的頁，`sources` 用「capability#需求名」錨定到那幾段，別段的封存不會把它標成可能過期；錨定的需求標題改名或移除時，該頁會被標為可能過期並整頁重寫。
-- 來源規格改了、但改的部分與某一頁的內容無關時，那一頁重生後內文不變，只換生成時戳，「可能過期」標記就消掉。取材自 `desktop-app` 的五頁（[認識桌面 app](desktop-overview.md)、[規格、討論、已封存與搜尋](desktop-browse.md)、[桌面上的品質關卡](desktop-quality.md)、[看板與任務](desktop-board.md)、[自動更新、安裝 CLI 與指令檔過期](desktop-update.md)）都已改成錨定寫法，各自只錨定它取材的需求段；[自動更新、安裝 CLI 與指令檔過期](desktop-update.md) 對 `workspace-tools` 也一併錨定。2026-09-17 這次，[看板與任務](desktop-board.md) 為排程相關的四段需求新增錨定，[工作流總覽](workflow-overview.md)、[實作](apply.md)、[封存](archive.md) 各自只錨定 `change-plan` 裡與該頁相關的一段。 2026-09-22 這次只重生[討論](discuss.md)一頁，納入 `discuss-skill` 與 `improve-skill` 新增的結論條列規則。
+- 來源規格改了、但改的部分與某一頁的內容無關時，那一頁重生後內文不變，只換生成時戳，「可能過期」標記就消掉。取材自 `desktop-app` 的五頁（[認識桌面 app](desktop-overview.md)、[規格、討論、已封存與搜尋](desktop-browse.md)、[桌面上的品質關卡](desktop-quality.md)、[看板與任務](desktop-board.md)、[自動更新、安裝 CLI 與指令檔過期](desktop-update.md)）都已改成錨定寫法，各自只錨定它取材的需求段；[自動更新、安裝 CLI 與指令檔過期](desktop-update.md) 對 `workspace-tools` 也一併錨定。2026-09-17 這次，[看板與任務](desktop-board.md) 為排程相關的四段需求新增錨定，[工作流總覽](workflow-overview.md)、[實作](apply.md)、[封存](archive.md) 各自只錨定 `change-plan` 裡與該頁相關的一段。 2026-09-22 這次只重生[討論](discuss.md)一頁，納入 `discuss-skill` 與 `improve-skill` 新增的結論條列規則。2026-09-25 這次重生六頁的相關段落，反映同名 requirement 重疊與封存順序、`speclink change rank`、沒有順序鍵的卡改依被依賴數與任務數排，以及排程分頁改成四張卡片：[執行順序：plan 與依賴](plan.md)整頁重寫，[封存](archive.md)、[提交單一變更的檔案](commit.md)、[續作與需求變更](drift-ingest.md)、[提案](propose.md)、[看板與任務](desktop-board.md)逐段改寫；[實作](apply.md)的來源 `verb-contract` 只新增了 remote 模式下兩個只限本機的子情形，與該頁內文無關，只換生成時戳。
 - 錨定寫法有一個盲點：某能力新增一段需求時，沒有任何頁錨定到它，過期判定不會亮。2026-09-22 封存進 `desktop-app` 的兩段需求「詳情抽屜的工單分頁」與「已封存抽屜的工單分頁」就是這種情況，尚未入冊；補寫時以範圍提示重生[桌面上的品質關卡](desktop-quality.md)。
 - 規格裡的內部識別符（欄位名、型別名、旗標）不進手冊，改以白話描述效果。
 
 ## 編纂日期
 
-2026-09-22
+2026-09-25
 
 **出處**：本頁為說明頁，不直接取材自單一能力；各頁末行列出自己的出處。
