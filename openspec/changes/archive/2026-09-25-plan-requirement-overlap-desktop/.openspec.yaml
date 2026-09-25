@@ -1,0 +1,80 @@
+schema: spec-driven
+created: 2026-09-24
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: plan-overlap-granularity
+depends_on: plan-requirement-overlap
+started_at: 2026-09-24
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-09-25
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 9
+reviewed_scope:
+  - path: apps/desktop/core/src/query.rs
+    hash: f4c3690eaaa7a3eeb601b8674743a82b626e520b3c946fb72edcd24de898277c
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 4fef74acedcb3c3f1037c302e551179d2d8524e4e6bfb5c69b4f82dcbc0a852f
+  - path: apps/desktop/src-tauri/tests/it/remote_data.rs
+    hash: 2b0f1227b60a31be0e9830298d0dd59d71db754cec11eb4da086f8e3866aafef
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 6025d029550ad4e80b8579dbc52a1b9dd3d55485af1acf1f7a1b7c8e01e4a2af
+  - path: apps/desktop/src/__tests__/helpers/changeList.ts
+    hash: 502892e620619708e1564b880266444c0db9f40a832f3d3ea7b84ffb6196103a
+  - path: apps/desktop/src/__tests__/remoteCapabilities.test.tsx
+    hash: b9ec87fa962df76f55637925b7244941b0aa626f70ee48e90bce02189c35820b
+  - path: packages/ui/src/__tests__/planBadge.test.tsx
+    hash: 14accf4d6018043a5de6778a2fe0247e491caea27c222d4edee205010c5a160a
+  - path: packages/ui/src/__tests__/planTab.test.tsx
+    hash: f3cf288f37a3c6be4074c2972d45e22a149ff3cb456db60143f3601d9920bcca
+  - path: packages/ui/src/__tests__/stage.test.ts
+    hash: 7af6f01260f55d68100c5da5c093b27f8ed55e5c5e05981bfa6e823243e4706e
+  - path: packages/ui/src/adapter.ts
+    hash: 4bd87f54cb8f6b331d73764a313ec8aaa13c5190051f0467c9a700398921e661
+  - path: packages/ui/src/components/DeltaBadges.tsx
+    hash: 591dd8b08d2fa8a3eb45a09d716862f122e2b15ef48bf7490545717065cb5f4f
+  - path: packages/ui/src/components/RichDetailDrawer.tsx
+    hash: 28abddea831b65d78299b0d1c236f981d448c314f9ec1b10a0f27c641d7e3090
+  - path: packages/ui/src/i18n.tsx
+    hash: 77c09d8cd8fe6da153241caba33c652b2f960cb63188a24effe08d2ac408ea0c
+  - path: packages/ui/src/index.ts
+    hash: 820d6d6ad96efbb60ce77fb0dd1f62fffe97c2cac500da5658a48d405b30fee0
+  - path: packages/ui/src/stage.ts
+    hash: a235ec3d462070b0b53cd280a2acec38908bfed7fe1d27791961179b156f34ef
+verified_at: 2026-09-25
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 9
+verified_scope:
+  - path: apps/desktop/core/src/query.rs
+    hash: f4c3690eaaa7a3eeb601b8674743a82b626e520b3c946fb72edcd24de898277c
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 4fef74acedcb3c3f1037c302e551179d2d8524e4e6bfb5c69b4f82dcbc0a852f
+  - path: apps/desktop/src-tauri/tests/it/remote_data.rs
+    hash: 2b0f1227b60a31be0e9830298d0dd59d71db754cec11eb4da086f8e3866aafef
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 6025d029550ad4e80b8579dbc52a1b9dd3d55485af1acf1f7a1b7c8e01e4a2af
+  - path: apps/desktop/src/__tests__/helpers/changeList.ts
+    hash: 502892e620619708e1564b880266444c0db9f40a832f3d3ea7b84ffb6196103a
+  - path: apps/desktop/src/__tests__/remoteCapabilities.test.tsx
+    hash: b9ec87fa962df76f55637925b7244941b0aa626f70ee48e90bce02189c35820b
+  - path: packages/ui/src/__tests__/planBadge.test.tsx
+    hash: 14accf4d6018043a5de6778a2fe0247e491caea27c222d4edee205010c5a160a
+  - path: packages/ui/src/__tests__/planTab.test.tsx
+    hash: f3cf288f37a3c6be4074c2972d45e22a149ff3cb456db60143f3601d9920bcca
+  - path: packages/ui/src/__tests__/stage.test.ts
+    hash: 7af6f01260f55d68100c5da5c093b27f8ed55e5c5e05981bfa6e823243e4706e
+  - path: packages/ui/src/adapter.ts
+    hash: 4bd87f54cb8f6b331d73764a313ec8aaa13c5190051f0467c9a700398921e661
+  - path: packages/ui/src/components/DeltaBadges.tsx
+    hash: 591dd8b08d2fa8a3eb45a09d716862f122e2b15ef48bf7490545717065cb5f4f
+  - path: packages/ui/src/components/RichDetailDrawer.tsx
+    hash: 28abddea831b65d78299b0d1c236f981d448c314f9ec1b10a0f27c641d7e3090
+  - path: packages/ui/src/i18n.tsx
+    hash: 77c09d8cd8fe6da153241caba33c652b2f960cb63188a24effe08d2ac408ea0c
+  - path: packages/ui/src/index.ts
+    hash: 820d6d6ad96efbb60ce77fb0dd1f62fffe97c2cac500da5658a48d405b30fee0
+  - path: packages/ui/src/stage.ts
+    hash: a235ec3d462070b0b53cd280a2acec38908bfed7fe1d27791961179b156f34ef
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-09-25
