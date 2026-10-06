@@ -5,12 +5,16 @@
 It adds two things to Claude Code:
 
 - **Skill bar**: a row of speclink skill buttons above the prompt, in five tabs that follow the workflow: Plan, Build, Quality, Ship and More. A click puts the `/speclink-…` command into the prompt box, and keeps what you already typed behind it as the arguments. `archive+commit` on the Ship tab puts in `/speclink-archive + /speclink-commit` in one click. When the mouse is on a skill, the right end of the skill row shows its description.
-- **Side panel**: press "Panel" on the skill bar, or type `/speclink-panel`, to open or close it. The panel lists the next change, the discussions, and the proposed, in-progress and ready changes (wave, worktree, task progress, and what blocks them). A click on a name puts it into the prompt box as the argument of the command at the front.
+- **Side panel**: press "Panel" on the skill bar, or type `/speclink-panel`, to open or close it. It has three tabs:
+  - **Board**: the next change, and the proposed, in-progress and ready changes (wave, worktree, task progress, and what blocks them). The ▸ before a change expands it: whether its proposal, design, specs and tasks are done, and its tasks grouped by `##` heading (done tasks dim, `[M]` tasks marked "Manual").
+  - **Discussions**: open and concluded discussions in two sections. The ▸ expands a discussion to show its text.
+  - **Quality**: the open review and verify tickets of each change, with the round and the number of findings at each severity. The ▸ expands the findings.
+  - The ▾ before each section title collapses that section. A click on a name puts it into the prompt box as the argument of the command at the front. The panel only shows data: it does not check tasks or change anything.
 
 ## Requirements
 
 - Claude Code 2.1.290 or later (tested on this version). The mod API is early access, so a Claude Code release can make an update of this mod necessary.
-- The `speclink` CLI on PATH. The panel reads the `--json` output of `speclink list`, `speclink plan` and `speclink discuss list`.
+- The `speclink` CLI on PATH. The panel reads the `--json` output of `speclink list`, `speclink plan` and `speclink discuss list`. It reads `show` and `status` when you expand a change, `discuss show` when you expand a discussion, and `review show` and `verify show` for each change when you open the Quality tab. For a change in a worktree, it reads in that worktree folder.
 - A project where `speclink init` ran. The skill bar shows only the speclink skills that the project has; a project without them shows no skill bar.
 - Mouse clicks on the buttons need Claude Code's fullscreen layout (`"tui": "fullscreen"` in settings.json).
 
@@ -38,7 +42,7 @@ Update: run `claude plugin update speclink-skills`, then restart Claude Code.
 
 ## Known limits
 
-- **The panel shows no review or verify stamps**: the CLI output has no stamp state. `list --json` leaves those fields out on purpose, and a stamp removes the ticket, so `review show` fails after a stamp too. The stamp is recorded only in the change's `.openspec.yaml`; use the desktop app to see stamps.
+- **The panel shows no review or verify stamps** (the Quality tab lists only open tickets): the CLI output has no stamp state. `list --json` leaves those fields out on purpose, and a stamp removes the ticket, so `review show` fails after a stamp too. The stamp is recorded only in the change's `.openspec.yaml`; use the desktop app to see stamps.
 - **`archive+commit`**: Claude Code treats only the first slash command as a command. It runs `/speclink-archive`, and `+ /speclink-commit …` becomes its arguments, so the model commits after the archive.
 - **Windows**: the panel runs the CLI through `cmd.exe /d /c speclink …`. The npm-installed `speclink` is a `.cmd` shim, and the mod runs commands without a shell, so a direct call fails. This path is not yet tested on a real Windows machine.
 

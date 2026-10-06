@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { buildBoard, speclinkArgv } from '../hooks/board'
+import { buildBoard, discussionBody, isNoTicket, parseTasks, speclinkArgv, toTicket } from '../hooks/board'
 import type { PlanJson } from '../hooks/board'
 import { commandHead, groupSkills, withArgument, withCommand } from '../hooks/skills'
 import { resolveLang } from '../hooks/text'
@@ -39,7 +39,12 @@ const TYPED = {
 
 const LIST = {
   changes: [
-    { name: 'add-auth', completedTasks: 5, totalTasks: 12, worktree: { branch: 'speclink/add-auth' } },
+    {
+      name: 'add-auth',
+      completedTasks: 5,
+      totalTasks: 12,
+      worktree: { path: '/repo/.worktrees/add-auth', branch: 'speclink/add-auth' },
+    },
     { name: 'refactor-store', completedTasks: 0, totalTasks: 8 },
   ],
 }
@@ -54,13 +59,55 @@ const PLAN: PlanJson = {
 const TALK = {
   discussions: [
     { slug: 'hold-auto-close', topic: 'hold 收尾', rounds: 2, status: 'open' },
+    { slug: 'ship-it', topic: '收尾流程', rounds: 4, status: 'concluded' },
     { slug: 'old-idea', topic: '已轉出', rounds: 3, status: 'promoted' },
   ],
 }
+const TASKS = `## 1. 登入
+
+- [x] 1.1 加上 OAuth 設定 <!-- speclink-task:tsk_01 -->
+- [ ] 1.2 接上回呼路由 <!-- speclink-task:tsk_02 -->
+
+## 2. 驗收
+
+- [ ] [M] 2.1 在瀏覽器手動登入一次 <!-- speclink-task:tsk_03 -->
+`
+const ARTIFACTS = {
+  artifacts: [
+    { id: 'proposal', status: 'done' },
+    { id: 'design', status: 'done' },
+    { id: 'specs', status: 'done' },
+    { id: 'tasks', status: 'ready' },
+  ],
+}
+const TICKET = {
+  change: 'add-auth',
+  lastRound: {
+    index: 2,
+    findings: [
+      { severity: 'CRITICAL', path: 'src/auth.ts', text: 'token 沒有檢查過期' },
+      { severity: 'WARNING', path: 'src/routes.ts', text: '回呼路由缺少錯誤處理' },
+    ],
+  },
+}
+
+type Run = { argv: readonly string[]; cwd?: string }
+
+// CLI 的替身：依參數回 JSON；沒有工單時照 CLI 的樣子以 exit 1 失敗。
+const cli = (argv: readonly string[]) => {
+  const [verb, sub, name] = argv.slice(1)
+  if (verb === 'list') return LIST
+  if (verb === 'plan') return PLAN
+  if (verb === 'discuss' && sub === 'list') return TALK
+  if (verb === 'discuss' && sub === 'show') return { content: `---\ntopic: ${name}\n---\n\n# 背景\n\n討論 ${name} 的內文。\n`, info: {} }
+  if (verb === 'show') return { tasks: TASKS }
+  if (verb === 'status') return ARTIFACTS
+  if (verb === 'review' && name === 'add-auth') return TICKET
+  return null
+}
 
 // 引擎在測試裡的替身：已安裝的技能、設定、輸入框與 CLI 輸出。
-const engine = (on: On, filled: string[], claudeLanguage: string) => {
-  const outputs: Record<string, unknown> = { list: LIST, plan: PLAN, discuss: TALK }
+const engine = (on: On, filled: string[], claudeLanguage: string, runs: Run[] = []) => {
   mock.env(on, {})
   on('settings.read', () => ({ value: { language: claudeLanguage } }))
   on('command.list', () => ({
@@ -79,15 +126,20 @@ const engine = (on: On, filled: string[], claudeLanguage: string) => {
     filled.push(e.text)
     return { isFilled: true }
   })
-  on('process.run', ($, e) => ({
-    value: {
-      exitCode: 0,
-      stdout: JSON.stringify(outputs[e.argv[1] ?? '']),
-      stderr: '',
-      isStdoutTruncated: false,
-      isStderrTruncated: false,
-    },
-  }))
+  on('process.run', ($, e) => {
+    runs.push({ argv: e.argv, cwd: e.init?.cwd })
+    const out = cli(e.argv)
+    const station = e.argv[1] ?? ''
+    return {
+      value: {
+        exitCode: out === null ? 1 : 0,
+        stdout: out === null ? '' : JSON.stringify(out),
+        stderr: out === null ? `Error: no ${station} ticket for change '${e.argv[3] ?? ''}'` : '',
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    }
+  })
   on('ui.panes', () => ({ value: [] }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
@@ -140,10 +192,28 @@ test('面板資料：順序與階段取 plan，任務數取 list，已轉出的�
   const board = buildBoard(LIST, PLAN, TALK)
 
   expect(board.changes).toEqual([
-    { name: 'add-auth', stage: 'in-progress', wave: 1, blockedBy: [], done: 5, total: 12, branch: 'speclink/add-auth' },
-    { name: 'refactor-store', stage: 'proposed', wave: 2, blockedBy: ['add-auth'], done: 0, total: 8, branch: null },
+    {
+      name: 'add-auth',
+      stage: 'in-progress',
+      wave: 1,
+      blockedBy: [],
+      done: 5,
+      total: 12,
+      branch: 'speclink/add-auth',
+      cwd: '/repo/.worktrees/add-auth',
+    },
+    {
+      name: 'refactor-store',
+      stage: 'proposed',
+      wave: 2,
+      blockedBy: ['add-auth'],
+      done: 0,
+      total: 8,
+      branch: null,
+      cwd: null,
+    },
   ])
-  expect(board.discussions.map(d => d.slug)).toEqual(['hold-auto-close'])
+  expect(board.discussions.map(d => d.slug)).toEqual(['hold-auto-close', 'ship-it'])
   expect(board.next).toBe('add-auth')
 })
 
@@ -233,12 +303,100 @@ test('/speclink-panel 開啟面板，點 change 名稱填進輸入框當參數',
   const ui = await $.ui.mount({ plugin: 'speclink-skills', surface: 'terminal', ...PANE })
 
   expect(await ui.find({ type: 'Button', key: 'next', text: 'add-auth' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^進行中 1$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ 進行中 1$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '▰▰▰▱▱▱ 5/12' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /等 add-auth/ })).toBeDefined()
-  expect(await ui.find({ type: 'Button', key: 'talk:hold-auto-close' })).toBeDefined()
-  expect(await ui.find({ type: 'Button', key: 'talk:old-idea' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: ' 看板 ' })).toBeDefined()
 
   await ui.press({ key: 'change:add-auth' })
   expect(filled).toEqual(['add-x add-auth'])
+})
+
+test('任務清單：依 ## 分組，已勾與未勾分開，[M] 是手動任務，行尾 ID 不顯示', () => {
+  expect(parseTasks(TASKS)).toEqual([
+    {
+      title: '1. 登入',
+      tasks: [
+        { done: true, manual: false, label: '1.1 加上 OAuth 設定' },
+        { done: false, manual: false, label: '1.2 接上回呼路由' },
+      ],
+    },
+    { title: '2. 驗收', tasks: [{ done: false, manual: true, label: '2.1 在瀏覽器手動登入一次' }] },
+  ])
+  expect(parseTasks('- [X] 沒有標題的任務')).toEqual([{ title: '', tasks: [{ done: true, manual: false, label: '沒有標題的任務' }] }])
+})
+
+test('工單只取最後一輪；沒有工單的失敗不算錯誤；討論內文去掉 front matter', () => {
+  expect(toTicket(TICKET)).toEqual({ round: 2, findings: TICKET.lastRound.findings })
+  expect(isNoTicket("Error: no verify ticket for change 'add-auth'")).toBe(true)
+  expect(isNoTicket('Error: Change not found')).toBe(false)
+  expect(discussionBody('---\ntopic: x\n---\n\n# 背景\r\n內文\n')).toBe('# 背景\n內文')
+  expect(discussionBody('# 討論\n\n<!--\n規則\n-->\n\n## 背景\n內文')).toBe('# 討論\n\n## 背景\n內文')
+})
+
+test('看板：展開 change 在 worktree 裡讀文件與任務；區塊可以收起', async ($, on) => {
+  const runs: Run[] = []
+  engine(on, [], '台灣繁體中文zh-tw', runs)
+
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  await $.command.run({ command: 'speclink-panel', ...TYPED })
+  const ui = await $.ui.mount({ plugin: 'speclink-skills', surface: 'terminal', ...PANE })
+
+  expect(await ui.find({ type: 'Text', text: /1\.2 接上回呼路由/ })).toBeUndefined()
+  await ui.press({ key: 'open:change:add-auth' })
+
+  expect(runs.filter(r => r.argv[1] === 'show' || r.argv[1] === 'status').map(r => [r.argv[1], r.cwd])).toEqual([
+    ['show', '/repo/.worktrees/add-auth'],
+    ['status', '/repo/.worktrees/add-auth'],
+  ])
+  expect(await ui.find({ type: 'Text', text: '✓ 提案  ✓ 設計  ✓ 規格  ○ 任務  ' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '1. 登入' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '1/2' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '☑ 1.1 加上 OAuth 設定' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '☐ [手動] 2.1 在瀏覽器手動登入一次' })).toBeDefined()
+
+  await ui.press({ key: 'open:change:add-auth' })
+  expect(await ui.find({ type: 'Text', text: /1\.1 加上 OAuth 設定/ })).toBeUndefined()
+
+  await ui.press({ key: 'section:stage:in-progress' })
+  expect(await ui.find({ type: 'Button', key: 'change:add-auth' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'change:refactor-store' })).toBeDefined()
+})
+
+test('討論分頁：討論中與已結論分開，已轉出的不列，展開顯示內文', async ($, on) => {
+  engine(on, [], '台灣繁體中文zh-tw')
+
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  await $.command.run({ command: 'speclink-panel', ...TYPED })
+  const ui = await $.ui.mount({ plugin: 'speclink-skills', surface: 'terminal', ...PANE })
+
+  expect(await ui.find({ type: 'Button', key: 'talk:hold-auto-close' })).toBeUndefined()
+  await ui.press({ key: 'view:talk' })
+
+  expect(await ui.find({ type: 'Text', text: /^ 討論中 1$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ 已結論 1$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'talk:hold-auto-close' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'talk:old-idea' })).toBeUndefined()
+
+  await ui.press({ key: 'open:talk:hold-auto-close' })
+  expect(await ui.find({ type: 'Markdown', text: '# 背景\n\n討論 hold-auto-close 的內文。' })).toBeDefined()
+})
+
+test('品質分頁：只列有工單的 change，顯示輪數與各嚴重度條數，展開看發現', async ($, on) => {
+  engine(on, [], '台灣繁體中文zh-tw')
+
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  await $.command.run({ command: 'speclink-panel', ...TYPED })
+  const ui = await $.ui.mount({ plugin: 'speclink-skills', surface: 'terminal', ...PANE })
+
+  await ui.press({ key: 'view:quality' })
+
+  expect(await ui.find({ type: 'Button', key: 'ticket:add-auth' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'ticket:refactor-store' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: '   審查  第 2 輪 · 1 CRITICAL 1 WARNING ' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '   驗證  沒有工單' })).toBeDefined()
+
+  await ui.press({ key: 'open:ticket:add-auth' })
+  expect(await ui.find({ type: 'Text', text: '審查 · 2 條' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'token 沒有檢查過期' })).toBeDefined()
 })
