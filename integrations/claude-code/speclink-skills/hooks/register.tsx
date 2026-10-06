@@ -1,16 +1,17 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Board, Lang, PanelChange, SkillNames } from '../types'
+import type { Board, Lang, PanelChange, Skill } from '../types'
 
 import { buildBoard, speclinkArgv } from './board'
 import type { DiscussJson, ListJson, PlanJson } from './board'
+import type { GroupId } from './groups'
 import { commandHead, groupSkills, PREFIX, withArgument, withCommand } from './skills'
 import { resolveLang, TEXT } from './text'
 
 const PANE = 'speclink-panel'
 const PANEL_COMMAND = 'speclink-panel'
-const names = atom({ plugin: 'speclink-skills', key: 'names' } as const, [] as SkillNames)
+const skills = atom({ plugin: 'speclink-skills', key: 'skills' } as const, [] as Skill[])
 const tab = atom({ plugin: 'speclink-skills', key: 'tab' } as const, '')
 const board = atom({ plugin: 'speclink-skills', key: 'board' } as const, null as Board | null)
 const lang = atom({ plugin: 'speclink-skills', key: 'lang' } as const, 'en' as Lang)
@@ -19,9 +20,9 @@ const lang = atom({ plugin: 'speclink-skills', key: 'lang' } as const, 'en' as L
 
 const refresh = async ($: EngineInterface) => {
   const found = (await $.command.list())
-    .map(c => c.name)
-    .filter(n => n.startsWith(PREFIX) && n !== PANEL_COMMAND)
-  await update($, names, () => found)
+    .filter(c => c.name.startsWith(PREFIX) && c.name !== PANEL_COMMAND)
+    .map(c => ({ name: c.name, description: c.description }))
+  await update($, skills, () => found)
 }
 
 const putCommand = async ($: EngineInterface, skill: string) => {
@@ -75,6 +76,15 @@ const togglePanel = async ($: EngineInterface) => {
   await $.ui.open({ id: PANE, title: 'speclink' })
   await refreshBoard($)
   return true
+}
+
+// 分頁顏色用主題色鍵，跟著使用者的深淺主題走。
+const GROUP_COLOR: Record<GroupId, string> = {
+  plan: 'merged',
+  build: 'ide',
+  quality: 'claude',
+  ship: 'success',
+  other: 'inactive',
 }
 
 const STAGES = [
@@ -132,9 +142,13 @@ export const register: Register = (on, options) => {
     return { text: isOpen ? t.panelOpened : t.panelClosed }
   })
 
+  // 上方空一列，和 Claude Code 自己的訊息分開。每個分頁前面一顆同色圓點，選中的
+  // 分頁是有底色的膠囊；沒選中的左右各留一格，切換分頁時位置不會跳動。滑鼠移到技能上，
+  // 技能和技能列右邊的說明同屬一個 hover scope，一起亮起來；說明平常藏著，不佔位置。
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const below = await next(e)
-    const groups = groupSkills(await read($, names))
+    const installed = await read($, skills)
+    const groups = groupSkills(installed.map(s => s.name))
     if (e.props.hasSurvey || groups.length === 0) {
       return below
     }
@@ -143,32 +157,63 @@ export const register: Register = (on, options) => {
     const t = TEXT[await read($, lang)]
     const chosen = await read($, tab)
     const current = groups.find(g => g.id === chosen) ?? groups[0]!
+    const color = GROUP_COLOR[current.id]
+    // 合併鈕沒有自己的 description，只列指令，不分語言。
+    const about = (skill: string) =>
+      skill.includes('+')
+        ? skill.split('+').map(commandHead).join(' → ')
+        : (installed.find(s => s.name === PREFIX + skill)?.description ?? '')
 
     return (
       <Box flexDirection="column">
-        <Box>
-          <Text dimColor>speclink </Text>
-          <Box flexDirection="column">
-            <Box flexWrap="wrap" columnGap={2}>
-              {groups.map(g => {
-                const look = g.id === current.id ? { variant: 'primary' as const } : { plain: true as const, dimColor: true }
-                return (
-                  <Button
-                    key={`tab:${g.id}`}
-                    label={t.groups[g.id]}
-                    {...look}
-                    onPress={() => update($, tab, () => g.id)}
-                  />
-                )
-              })}
-              <Text dimColor>│</Text>
-              <Button key="panel" label={t.panel} plain dimColor onPress={() => togglePanel($)} />
-            </Box>
+        <Box marginTop={1}>
+          <Box flexShrink={0} marginRight={2}>
+            <Text dimColor>speclink</Text>
+          </Box>
+          <Box flexDirection="column" flexGrow={1}>
             <Box flexWrap="wrap" columnGap={1}>
-              {current.skills.flatMap((skill, i) => [
-                i > 0 && <Text dimColor>·</Text>,
-                <Button key={skill} label={skill} plain onPress={() => putCommand($, skill)} />,
-              ])}
+              {groups.map(g => (
+                <Box>
+                  <Text color={GROUP_COLOR[g.id]}>●</Text>
+                  {g.id === current.id ? (
+                    <Text backgroundColor={color} color="inverseText" bold>{` ${t.groups[g.id]} `}</Text>
+                  ) : (
+                    <Box paddingX={1}>
+                      <Button
+                        key={`tab:${g.id}`}
+                        label={t.groups[g.id]}
+                        plain
+                        dimColor
+                        onPress={() => update($, tab, () => g.id)}
+                      />
+                    </Box>
+                  )}
+                </Box>
+              ))}
+              <Text dimColor> │ </Text>
+              <Button key="panel" label={`◧ ${t.panel}`} plain dimColor onPress={() => togglePanel($)} />
+            </Box>
+            <Box paddingLeft={2}>
+              <Box flexWrap="wrap" columnGap={2} flexShrink={1}>
+                {current.skills.map(skill => (
+                  <Button
+                    key={skill}
+                    label={skill}
+                    plain
+                    hover={{ scope: `skill:${skill}`, color }}
+                    onPress={() => putCommand($, skill)}
+                  />
+                ))}
+              </Box>
+              <Box width={0} flexGrow={1} marginLeft={3} flexDirection="column" overflow="hidden">
+                {current.skills.map(skill => (
+                  <Box display="none" hover={{ scope: `skill:${skill}`, display: 'flex' }}>
+                    <Text dimColor wrap="truncate-end">
+                      {about(skill)}
+                    </Text>
+                  </Box>
+                ))}
+              </Box>
             </Box>
           </Box>
         </Box>
