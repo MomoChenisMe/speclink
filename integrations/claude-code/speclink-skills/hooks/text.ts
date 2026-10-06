@@ -1,4 +1,4 @@
-import type { Lang, Stage } from '../types'
+import type { Lang, PanelTab, Stage } from '../types'
 
 import type { GroupId } from './groups'
 
@@ -12,18 +12,32 @@ type Text = {
   updated: (time: string) => string
   refresh: string
   next: string
-  discussions: string
+  tabs: Record<PanelTab, string>
   rounds: (n: number) => string
+  open: string
   concluded: string
   stages: Record<Stage, string>
   waitsFor: (names: string) => string
-  empty: string
+  noChanges: string
+  noDiscussions: string
+  artifacts: Record<string, string>
+  manual: string
+  noTasks: string
+  review: string
+  verify: string
+  round: (n: number) => string
+  findings: (n: number) => string
+  noFindings: string
+  noTicket: string
+  noTickets: string
+  ticketNote: string
   skipped: (names: string) => string
   cliHint: string
 }
 
-// 介面文字。階段、輪數、空狀態沿用 desktop 的正典詞彙（packages/ui 的 stage.*、
-// common.rounds、board.empty），中英兩版對等。
+// 介面文字。階段、輪數、空狀態、文件、任務與工單沿用 desktop 的正典詞彙（packages/ui 的
+// stage.*、common.rounds、board.empty、common.tab*、tasks.*、ticket.*、discussion.status*），
+// 中英兩版對等。
 export const TEXT: Record<Lang, Text> = {
   en: {
     groups: { plan: 'Plan', build: 'Build', quality: 'Quality', ship: 'Ship', other: 'More' },
@@ -35,12 +49,25 @@ export const TEXT: Record<Lang, Text> = {
     updated: time => `Updated ${time}`,
     refresh: '↻ Refresh',
     next: 'Next ▸ ',
-    discussions: 'Discussions',
+    tabs: { board: 'Board', talk: 'Discussions', quality: 'Quality' },
     rounds: n => `${n} rounds`,
+    open: 'Open',
     concluded: 'Concluded',
     stages: { proposed: 'Proposed', 'in-progress': 'In progress', ready: 'Ready' },
     waitsFor: names => `Waiting on ${names}`,
-    empty: 'No active changes or discussions.',
+    noChanges: 'No active changes',
+    noDiscussions: 'No discussions',
+    artifacts: { proposal: 'Proposal', design: 'Design', specs: 'Specs', tasks: 'Tasks' },
+    manual: 'Manual',
+    noTasks: '(no tasks)',
+    review: 'Review',
+    verify: 'Verify',
+    round: n => `Round ${n}`,
+    findings: n => `${n} findings`,
+    noFindings: 'No findings this round',
+    noTicket: 'No ticket',
+    noTickets: 'No open review or verify tickets.',
+    ticketNote: 'A stamp deletes its ticket, so only open tickets show.',
     skipped: names => `Skipped (bad meta): ${names}`,
     cliHint: 'The panel needs the speclink CLI on PATH.',
   },
@@ -54,12 +81,25 @@ export const TEXT: Record<Lang, Text> = {
     updated: time => `更新於 ${time}`,
     refresh: '↻ 重新整理',
     next: '下一步 ▸ ',
-    discussions: '討論',
+    tabs: { board: '看板', talk: '討論', quality: '品質' },
     rounds: n => `${n} 輪`,
+    open: '討論中',
     concluded: '已結論',
     stages: { proposed: '提案中', 'in-progress': '進行中', ready: '已就緒' },
     waitsFor: names => `等 ${names}`,
-    empty: '沒有 active change 或討論。',
+    noChanges: '沒有 active change',
+    noDiscussions: '沒有討論',
+    artifacts: { proposal: '提案', design: '設計', specs: '規格', tasks: '任務' },
+    manual: '手動',
+    noTasks: '（無任務）',
+    review: '審查',
+    verify: '驗證',
+    round: n => `第 ${n} 輪`,
+    findings: n => `${n} 條`,
+    noFindings: '本輪無發現',
+    noTicket: '沒有工單',
+    noTickets: '沒有未結的審查或驗證工單。',
+    ticketNote: '蓋章後工單會刪除，這裡只列未結的工單。',
     skipped: names => `略過（meta 有誤）：${names}`,
     cliHint: '面板需要 PATH 上有 speclink CLI。',
   },

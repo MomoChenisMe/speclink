@@ -125,7 +125,7 @@ Windows 的安裝檔目前未經程式碼簽章，首次執行時 SmartScreen �
 
 **遠端模式不綁這一份 server。** 正式規格放在哪、由誰守，是 Host 與 Protocol 兩份公開契約定義的；官方 server 只是照這兩份契約做出來的一個實作。要接自家的認證、資料庫或權限模型，就拿 Speclink 引擎自己寫一個 server 端，CLI 與桌面 app 照樣接得上。契約見 `openspec/specs/` 的 `client-protocol` 與 `host-runtime`，載入引擎的方式見 [Node SDK](docs/sdk-node.zh-TW.md)。
 
-**Claude Code mod**（選用）——在 Claude Code 的輸入框上方加一排可以點的 speclink 技能按鈕，以及一個列出變更與討論的側邊面板。在 Claude Code 裡輸入：
+**Claude Code mod**（選用）——在 Claude Code 的輸入框上方加一排可以點的 speclink 技能按鈕，以及一個分頁列出變更、討論與未結品質工單的側邊面板。在 Claude Code 裡輸入：
 
 ```
 /plugin install speclink-skills --marketplace MomoChenisMe/speclink

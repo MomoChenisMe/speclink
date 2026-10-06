@@ -13,6 +13,8 @@ export type PanelChange = {
   done: number
   total: number
   branch: string | null
+  // worktree 的資料夾；change 在 worktree 裡時，show／status 要在這裡跑才讀得到它那份。
+  cwd: string | null
 }
 
 export type PanelDiscussion = { slug: string; topic: string; rounds: number; status: string }
@@ -26,8 +28,41 @@ export type Board = {
   error: string | null
 }
 
+export type PanelTab = 'board' | 'talk' | 'quality'
+
+// 面板的分頁、收起的區塊、展開的列（`change:<name>`、`talk:<slug>`、`ticket:<name>`）。
+export type PanelView = { tab: PanelTab; closed: string[]; open: string[] }
+
+export type TaskItem = { done: boolean; manual: boolean; label: string }
+
+export type TaskGroup = { title: string; tasks: TaskItem[] }
+
+export type Finding = { severity: string; path: string; text: string }
+
+export type Ticket = { round: number; findings: Finding[] }
+
+// 展開一列時才讀的內容。
+export type Detail =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'change'; artifacts: { id: string; done: boolean }[]; groups: TaskGroup[] }
+  | { kind: 'talk'; body: string }
+
+export type QualityRow = { change: string; review: Ticket | null; verify: Ticket | null }
+
+// 品質分頁：切過去才讀；null 是還沒讀完。
+export type Quality = { rows: QualityRow[]; error: string | null }
+
 declare module 'claude-code' {
   interface PluginState {
-    'speclink-skills': { skills: Skill[]; tab: string; board: Board | null; lang: Lang }
+    'speclink-skills': {
+      skills: Skill[]
+      tab: string
+      board: Board | null
+      lang: Lang
+      view: PanelView
+      details: Record<string, Detail>
+      quality: Quality | null
+    }
   }
 }
