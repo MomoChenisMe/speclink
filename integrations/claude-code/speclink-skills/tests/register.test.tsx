@@ -66,8 +66,8 @@ const engine = (on: On, filled: string[], claudeLanguage: string) => {
   on('command.list', () => ({
     value: [
       { name: 'speclink-apply', description: '', source: 'user' },
-      { name: 'speclink-propose', description: '', source: 'user' },
-      { name: 'speclink-archive', description: '', source: 'user' },
+      { name: 'speclink-propose', description: 'Use when a change needs planning', source: 'user' },
+      { name: 'speclink-archive', description: 'Use when a change is finished', source: 'user' },
       { name: 'speclink-commit', description: '', source: 'user' },
       { name: 'commit', description: '', source: 'user' },
     ],
@@ -168,7 +168,8 @@ test('技能列：切分頁、點技能把指令填進輸入框', async ($, on) 
   await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount({ plugin: 'speclink-skills', surface: 'terminal', ...BAND })
 
-  expect(await ui.find({ type: 'Button', key: 'tab:plan', text: 'Plan' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: ' Plan ' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'tab:plan' })).toBeUndefined()
   expect(await ui.find({ type: 'Button', key: 'propose' })).toBeDefined()
   expect(await ui.find({ type: 'Button', key: 'apply' })).toBeUndefined()
 
@@ -183,8 +184,9 @@ test('Claude Code 設定是中文時，技能列用繁中標籤', async ($, on) 
   await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount({ plugin: 'speclink-skills', surface: 'terminal', ...BAND })
 
-  expect(await ui.find({ type: 'Button', key: 'tab:plan', text: '規劃' })).toBeDefined()
-  expect(await ui.find({ type: 'Button', key: 'panel', text: '面板' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: ' 規劃 ' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'tab:build', text: '實作' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'panel', text: '◧ 面板' })).toBeDefined()
 })
 
 test('設定選項 language 明選 en 時，不跟 Claude Code 的中文設定', { options: { language: 'en' } }, async ($, on) => {
@@ -193,7 +195,20 @@ test('設定選項 language 明選 en 時，不跟 Claude Code 的中文設定',
   await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount({ plugin: 'speclink-skills', surface: 'terminal', ...BAND })
 
-  expect(await ui.find({ type: 'Button', key: 'tab:plan', text: 'Plan' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'tab:build', text: 'Build' })).toBeDefined()
+})
+
+test('技能說明：平常藏著、滑鼠移上去才顯示；合併鈕的說明只列兩個指令', async ($, on) => {
+  engine(on, [], 'English')
+
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount({ plugin: 'speclink-skills', surface: 'terminal', ...BAND })
+
+  expect(await ui.find({ type: 'Text', text: 'Use when a change needs planning' })).toBeDefined()
+
+  await ui.press({ key: 'tab:ship' })
+  expect(await ui.find({ type: 'Text', text: 'Use when a change is finished' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '/speclink-archive → /speclink-commit' })).toBeDefined()
 })
 
 test('/speclink-panel 開啟面板，點 change 名稱填進輸入框當參數', async ($, on) => {

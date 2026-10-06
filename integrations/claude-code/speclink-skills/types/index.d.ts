@@ -1,4 +1,5 @@
-export type SkillNames = string[]
+// 已安裝的 speclink 技能：完整名稱與輸入框提示用的那行說明。
+export type Skill = { name: string; description: string }
 
 export type Lang = 'en' | 'zh-TW'
 
@@ -27,6 +28,6 @@ export type Board = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'speclink-skills': { names: SkillNames; tab: string; board: Board | null; lang: Lang }
+    'speclink-skills': { skills: Skill[]; tab: string; board: Board | null; lang: Lang }
   }
 }

@@ -4,7 +4,7 @@
 
 在 Claude Code 裡加上兩樣東西：
 
-- **技能列**：輸入框上方一排 speclink 技能按鈕，依工作流程分成「規劃／實作／品質／收尾／其他」五頁。點一下就把 `/speclink-…` 指令填進輸入框，已經打的字留在後面當參數。「收尾」頁的 `archive+commit` 一次填入 `/speclink-archive + /speclink-commit`。
+- **技能列**：輸入框上方一排 speclink 技能按鈕，依工作流程分成「規劃／實作／品質／收尾／其他」五頁。點一下就把 `/speclink-…` 指令填進輸入框，已經打的字留在後面當參數。「收尾」頁的 `archive+commit` 一次填入 `/speclink-archive + /speclink-commit`。滑鼠移到技能上，技能列右邊會顯示它的說明（技能本身的 description）。
 - **側邊面板**：點技能列的「面板」或輸入 `/speclink-panel` 開關。面板列出下一步、討論，以及提案中／進行中／已就緒的變更（波次、worktree、任務進度、被誰擋住）。點名稱會把它填進輸入框，成為最前面那個指令的參數。
 
 ## 需求
