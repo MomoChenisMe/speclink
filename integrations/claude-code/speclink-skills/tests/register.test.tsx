@@ -178,6 +178,17 @@ test('技能列：切分頁、點技能把指令填進輸入框', async ($, on) 
   expect(filled).toEqual(['/speclink-apply add-x'])
 })
 
+test('/clear 之後沒有 session.start，技能列仍然補抓清單、畫得出來', async ($, on) => {
+  engine(on, [], 'English')
+  on('classic.SessionStart', () => ({}))
+
+  await $.classic.SessionStart({ source: 'clear' })
+  const ui = await $.ui.mount({ plugin: 'speclink-skills', surface: 'terminal', ...BAND })
+
+  expect(await ui.find({ type: 'Button', key: 'propose' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'panel', text: '◧ Panel' })).toBeDefined()
+})
+
 test('Claude Code 設定是中文時，技能列用繁中標籤', async ($, on) => {
   engine(on, [], '台灣繁體中文zh-tw')
 
