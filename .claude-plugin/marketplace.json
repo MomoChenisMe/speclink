@@ -1,0 +1,13 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "speclink",
+  "description": "Speclink add-ons for Claude Code",
+  "owner": { "name": "MomoChen" },
+  "plugins": [
+    {
+      "name": "speclink-skills",
+      "description": "Clickable speclink skills above the prompt, and a side panel of the active changes and discussions",
+      "source": "./integrations/claude-code/speclink-skills"
+    }
+  ]
+}

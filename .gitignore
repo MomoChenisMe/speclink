@@ -27,3 +27,6 @@ deploy/.env
 # macOS
 .DS_Store
 apps/desktop/src-tauri/binaries/
+
+# Claude Code 載入 mod 時自動產生的型別檔，每次載入都會重寫
+integrations/claude-code/*/.claude-plugin/types/

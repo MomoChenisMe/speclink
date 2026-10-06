@@ -132,6 +132,14 @@ The default is SQLite with data under `./speclink-data` (`/data` inside a contai
 
 **Remote mode does not bind you to this server.** Two public contracts, Host and Protocol, define where the spec canon lives and who guards it. The official server is one implementation of those contracts. To plug in your own authentication, database, or permission model, build your own server on the Speclink engine — the CLI and the desktop app still connect to it. The contracts are `client-protocol` and `host-runtime` under `openspec/specs/`, and the [Node SDK](docs/sdk-node.md) shows how to load the engine.
 
+**Claude Code mod** (optional) — adds a row of clickable speclink skill buttons above Claude Code's prompt, and a side panel that lists the changes and discussions. In Claude Code, type:
+
+```
+/plugin install speclink-skills --marketplace MomoChenisMe/speclink
+```
+
+Requirements, settings and known limits: [speclink-skills](integrations/claude-code/speclink-skills/README.en.md).
+
 ## Local Repo quick start / Local Repo 快速開始
 
 In the repo you want to adopt Speclink in:
