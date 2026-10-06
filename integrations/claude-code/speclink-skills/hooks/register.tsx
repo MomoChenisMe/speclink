@@ -214,6 +214,9 @@ const STAGES = [
 const cut = (text: string, room: number) =>
   text.length <= room ? text : `${text.slice(0, Math.max(1, room - 1))}…`
 
+// 文字在終端機佔幾格：中日韓文字（U+2E80 起）一個字兩格。
+export const cells = (text: string) => [...text].reduce((n, ch) => n + (ch.codePointAt(0)! >= 0x2e80 ? 2 : 1), 0)
+
 const mini = (done: number, total: number) => {
   const filled = Math.round((done / total) * 6)
   return '▰'.repeat(filled) + '▱'.repeat(6 - filled)
@@ -288,6 +291,65 @@ export const register: Register = (on, options) => {
         ? skill.split('+').map(commandHead).join(' → ')
         : (installed.find(s => s.name === PREFIX + skill)?.description ?? '')
 
+    const tabs = (
+      <Box flexWrap="wrap" columnGap={1}>
+        {groups.map(g => (
+          <Box>
+            <Text color={GROUP_COLOR[g.id]}>●</Text>
+            {g.id === current.id ? (
+              <Text backgroundColor={color} color="inverseText" bold>{` ${t.groups[g.id]} `}</Text>
+            ) : (
+              <Box paddingX={1}>
+                <Button
+                  key={`tab:${g.id}`}
+                  label={t.groups[g.id]}
+                  plain
+                  dimColor
+                  onPress={() => update($, tab, () => g.id)}
+                />
+              </Box>
+            )}
+          </Box>
+        ))}
+      </Box>
+    )
+    const panelButton = <Button key="panel" label={`◧ ${t.panel}`} plain dimColor onPress={() => togglePanel($)} />
+    const skillButtons = (
+      <Box flexWrap="wrap" columnGap={2} flexShrink={1}>
+        {current.skills.map(skill => (
+          <Button
+            key={skill}
+            label={skill}
+            plain
+            hover={{ scope: `skill:${skill}`, color }}
+            onPress={() => putCommand($, skill)}
+          />
+        ))}
+      </Box>
+    )
+
+    // 寬版的第一列是「speclink  ● 規劃 … ● 其他 │ ◧ 面板」，技能列的寬度（終端機扣掉引擎
+    // 右邊放 [-] 的五格）放不下這一列就改窄版：
+    // 「speclink」與面板鈕一列、分頁一列、技能一列，分頁不會從中間拆開。窄版右邊沒有
+    // 地方放技能說明，所以不顯示。
+    const tabsWidth = groups.reduce((n, g) => n + cells(t.groups[g.id]) + 3, groups.length - 1)
+    const wideWidth = cells('speclink') + 2 + tabsWidth + 5 + cells(`◧ ${t.panel}`)
+    if (e.props.bodyColumns < wideWidth) {
+      return (
+        <Box flexDirection="column">
+          <Box marginTop={1} flexDirection="column" alignSelf="flex-start">
+            <Box justifyContent="space-between" columnGap={2}>
+              <Text dimColor>speclink</Text>
+              {panelButton}
+            </Box>
+            {tabs}
+            <Box paddingLeft={2}>{skillButtons}</Box>
+          </Box>
+          {below}
+        </Box>
+      )
+    }
+
     return (
       <Box flexDirection="column">
         <Box marginTop={1}>
@@ -296,39 +358,12 @@ export const register: Register = (on, options) => {
           </Box>
           <Box flexDirection="column" flexGrow={1}>
             <Box flexWrap="wrap" columnGap={1}>
-              {groups.map(g => (
-                <Box>
-                  <Text color={GROUP_COLOR[g.id]}>●</Text>
-                  {g.id === current.id ? (
-                    <Text backgroundColor={color} color="inverseText" bold>{` ${t.groups[g.id]} `}</Text>
-                  ) : (
-                    <Box paddingX={1}>
-                      <Button
-                        key={`tab:${g.id}`}
-                        label={t.groups[g.id]}
-                        plain
-                        dimColor
-                        onPress={() => update($, tab, () => g.id)}
-                      />
-                    </Box>
-                  )}
-                </Box>
-              ))}
+              {tabs}
               <Text dimColor> │ </Text>
-              <Button key="panel" label={`◧ ${t.panel}`} plain dimColor onPress={() => togglePanel($)} />
+              {panelButton}
             </Box>
             <Box paddingLeft={2}>
-              <Box flexWrap="wrap" columnGap={2} flexShrink={1}>
-                {current.skills.map(skill => (
-                  <Button
-                    key={skill}
-                    label={skill}
-                    plain
-                    hover={{ scope: `skill:${skill}`, color }}
-                    onPress={() => putCommand($, skill)}
-                  />
-                ))}
-              </Box>
+              {skillButtons}
               <Box width={0} flexGrow={1} marginLeft={3} flexDirection="column" overflow="hidden">
                 {current.skills.map(skill => (
                   <Box display="none" hover={{ scope: `skill:${skill}`, display: 'flex' }}>

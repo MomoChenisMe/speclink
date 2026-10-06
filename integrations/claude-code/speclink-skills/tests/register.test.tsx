@@ -3,6 +3,7 @@ import type { On } from 'claude-code'
 
 import { buildBoard, discussionBody, isNoTicket, parseTasks, speclinkArgv, toTicket } from '../hooks/board'
 import type { PlanJson } from '../hooks/board'
+import { cells } from '../hooks/register'
 import { commandHead, groupSkills, withArgument, withCommand } from '../hooks/skills'
 import { resolveLang } from '../hooks/text'
 
@@ -277,6 +278,36 @@ test('設定選項 language 明選 en 時，不跟 Claude Code 的中文設定',
   const ui = await $.ui.mount({ plugin: 'speclink-skills', surface: 'terminal', ...BAND })
 
   expect(await ui.find({ type: 'Button', key: 'tab:build', text: 'Build' })).toBeDefined()
+})
+
+test('終端機放不下一列時，技能列改成三列：speclink 與面板鈕、分頁、技能', async ($, on) => {
+  engine(on, [], '台灣繁體中文zh-tw')
+  expect(cells('speclink')).toBe(8)
+  expect(cells('◧ 面板')).toBe(6)
+
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  // 規劃、實作、收尾、其他四個分頁：寬版那一列要 8 + 2 + 31 + 5 + 6 = 52 格。
+  const narrow = await $.ui.mount({
+    plugin: 'speclink-skills',
+    surface: 'terminal',
+    ...BAND,
+    props: { ...BAND.props, bodyColumns: 51 },
+  })
+  expect(await narrow.find({ type: 'Text', text: ' 規劃 ' })).toBeDefined()
+  expect(await narrow.find({ type: 'Button', key: 'panel', text: '◧ 面板' })).toBeDefined()
+  expect(await narrow.find({ type: 'Button', key: 'propose' })).toBeDefined()
+  expect(await narrow.find({ type: 'Text', text: ' │ ' })).toBeUndefined()
+  expect(await narrow.find({ type: 'Text', text: 'Use when a change needs planning' })).toBeUndefined()
+  await narrow.unmount()
+
+  const wide = await $.ui.mount({
+    plugin: 'speclink-skills',
+    surface: 'terminal',
+    ...BAND,
+    props: { ...BAND.props, bodyColumns: 52 },
+  })
+  expect(await wide.find({ type: 'Text', text: ' │ ' })).toBeDefined()
+  expect(await wide.find({ type: 'Text', text: 'Use when a change needs planning' })).toBeDefined()
 })
 
 test('技能說明：平常藏著、滑鼠移上去才顯示；合併鈕的說明只列兩個指令', async ($, on) => {
