@@ -1,6 +1,6 @@
 {
   "name": "speclink-skills",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Speclink for Claude Code: clickable speclink skills above the prompt, and a side panel with tabs for the active changes, discussions and open quality tickets",
   "author": { "name": "MomoChen" },
   "homepage": "https://github.com/MomoChenisMe/speclink/tree/main/integrations/claude-code/speclink-skills",
