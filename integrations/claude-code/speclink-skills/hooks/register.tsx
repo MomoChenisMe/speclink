@@ -25,6 +25,14 @@ const refresh = async ($: EngineInterface) => {
   await update($, skills, () => found)
 }
 
+// 語言、面板指令與技能清單都跟著 session 走。
+const setup = async ($: EngineInterface, language: unknown) => {
+  const chosen = resolveLang(language, (await $.settings.read()).language)
+  await update($, lang, () => chosen)
+  await $.command.register({ name: PANEL_COMMAND, description: TEXT[chosen].panelCommand })
+  await refresh($)
+}
+
 const putCommand = async ($: EngineInterface, skill: string) => {
   const { text } = await $.prompt.read()
   await $.prompt.fill({ text: withCommand(text, commandHead(skill)) })
@@ -106,10 +114,16 @@ const hhmm = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`
 
 export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
-    const chosen = resolveLang(options.language, (await $.settings.read()).language)
-    await update($, lang, () => chosen)
-    await $.command.register({ name: PANEL_COMMAND, description: TEXT[chosen].panelCommand })
-    await refresh($)
+    await setup($, options.language)
+
+    return next(e)
+  })
+
+  // `/clear` 換成新的 session，卻不發 session.start；技能清單空著，技能列就整列不畫。
+  on('classic.SessionStart', async ($, e, next) => {
+    if (e.source === 'clear') {
+      await setup($, options.language)
+    }
 
     return next(e)
   })
