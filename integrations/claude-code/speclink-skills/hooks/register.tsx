@@ -26,6 +26,8 @@ const focus = atom({ plugin: 'speclink-skills', key: 'focus' } as const, { verb:
 let known: { names: string[]; worktrees: { name: string; path: string }[]; loadedAt: number } = { names: [], worktrees: [], loadedAt: 0 }
 // /clear 帶過來的標題是這個 mod 設的：下一次送出時改回「Claude Code」（/clear 當下引擎不讓 mod 改標題）。
 let staleTitle = false
+// 送出的技能指令換掉焦點之前的那一個；模型開始跑工具時清掉。這一輪在那之前就被 Esc 中斷，焦點回到它。
+let undo: Focus | null = null
 
 // 用 `$` 的函式都留在這個檔：`$` 只能傳進同檔宣告的函式，不能跨 import。
 
@@ -307,9 +309,17 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  // `speclink update` 可能在 session 中途增減技能；這一輪也可能動到面板上的 change。
+  // `speclink update` 可能在 session 中途增減技能；這一輪也可能動到面板上的 change。送出技能指令後
+  // 還沒跑任何工具就按了 Esc：那一步沒有開始，技能列回到原本的焦點（標題等下一次送出才改得回來）。
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
+    if (e.agentId === undefined) {
+      const back = e.isAborted ? undo : null
+      undo = null
+      if (back !== null) {
+        await update($, focus, () => back)
+      }
+    }
     await refresh($)
     if (await isPanelOpen($)) {
       await refreshBoard($)
@@ -335,6 +345,15 @@ export const register: Register = (on, options) => {
     return ran
   }).catch(($, e, next) => next(e))
 
+  // 主對話開始跑工具，送出的那一步就算開始了，之後被中斷也不回到上一步。
+  on('tool.call', async ($, e, next) => {
+    if (e.agentId === undefined) {
+      undo = null
+    }
+
+    return next(e)
+  })
+
   // 模型自己呼叫的 speclink 技能（例如 quality 裡接著跑 review）：換成那一步。
   on('tool.call', { tool: 'Skill' }, async ($, e, next) => {
     if (e.agentId === undefined && e.skill.startsWith(PREFIX)) {
@@ -351,6 +370,7 @@ export const register: Register = (on, options) => {
     const done = await next(e)
     const before = staleTitle ? await read($, focus) : await recall($, e.session_title)
     const after = afterPrompt(before, e.prompt, known.names, PANEL_COMMAND)
+    undo = after !== before ? before : null
     if (after !== before) {
       await update($, focus, () => after)
     }

@@ -580,3 +580,30 @@ test('封存指令跑完、change 從清單消失後，技能列與標題標上 
     LIST.changes = before
   }
 })
+
+test('送出技能指令後馬上按 Esc（還沒跑任何工具）：技能列回到原本的步驟；工具開始跑之後才中斷就留著', async ($, on) => {
+  focusEngine(on)
+  on('turn.complete', () => ({ text: '' }))
+  const turn = $.turn as unknown as { complete: (e: unknown) => Promise<unknown> }
+  const finish = (isAborted: boolean) =>
+    turn.complete({ turnId: 't', durationMs: 1000, answer: '', isAborted, reason: isAborted ? 'aborted' : 'answer' })
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await $.classic.UserPromptSubmit({ prompt: '/speclink-apply add-auth' })
+  await finish(false)
+  const ui = await $.ui.mount({ plugin: 'speclink-skills', surface: 'terminal', ...BAND })
+
+  await $.classic.UserPromptSubmit({ prompt: '/speclink-quality add-auth' })
+  expect(await ui.find({ type: 'Text', text: 'quality' })).toBeDefined()
+  await finish(true)
+  expect(await ui.find({ type: 'Text', text: 'apply' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'quality' })).toBeUndefined()
+  // 標題只能在送出時改：下一次送出就回到原本的步驟。
+  const next = await $.classic.UserPromptSubmit({ prompt: '繼續工作' })
+  expect(next.sessionTitle).toBe('apply · add-auth')
+  await finish(false)
+
+  await $.classic.UserPromptSubmit({ prompt: '/speclink-quality add-auth' })
+  await $.tool.call({ tool: 'Bash', command: 'git status' } as never)
+  await finish(true)
+  expect(await ui.find({ type: 'Text', text: 'quality' })).toBeDefined()
+})
