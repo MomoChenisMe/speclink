@@ -139,11 +139,14 @@ Merge a new requirement, a plan, or a discussion conclusion into an existing cha
 
 - **When to use**: The requirement or the context changes during the work, or a discussion conclusion must go into an existing change. **Skip**: You only continue the work and the documents do not change (use `apply`), or no change exists yet (use `propose`).
 - **Input → output**: An existing change, and the conversation or a plan file → updated proposal, design, specs, and tasks. Done tasks stay the same.
-- **Skill**: `/speclink-ingest` (uses the current conversation) or `/speclink-ingest <plan-file>`. The argument is a plan file, not a change name. The skill finds the change from the conversation, or it asks you.
+- **Skill**: There are three forms.
+  - `/speclink-ingest <change-name>`: The skill updates this active change from the current conversation. It does not ask you which change to update.
+  - `/speclink-ingest`: The skill uses the current conversation. It finds the change from the conversation, or it asks you.
+  - `/speclink-ingest <plan-file>`: The skill uses a plan file. If the argument is the name of an active change and also the name of a plan file, the skill uses the change. To use the plan file, write its full path.
 - **CLI**: `speclink instructions <artifact> --json`, `analyze`, `validate`. For a discussion, run `speclink discuss seal <slug> <change-name>` after the content is in the documents.
 - **Done**: The new context is in all affected documents, no done task changed, and `analyze` and `validate` pass. If you used `link`, the discussion is sealed.
 - **Next**: Go back to `apply`.
-- **If something goes wrong**: Do not seal first and add the content later. A seal means that the content is already in the documents.
+- **If something goes wrong**: Do not seal first and add the content later. A seal means that the content is already in the documents. If the argument has a typing error, the skill tells you that it is not an active change and that no plan file has that name. The message also tells you to give only the change name and to put the details in the conversation. Then the skill stops and changes no document.
 
 ### <a id="drift"></a>drift: check for drift
 
@@ -341,7 +344,7 @@ Put all open changes in an execution order.
 | --- | --- | --- | --- | --- |
 | New change, all documents at once | The conclusion is clear, and you want all documents now | `/speclink-propose --from-discussion <slug>` | Creates and links the change, and writes all documents for the work | After the checks pass, you decide when to `apply` |
 | New change, placeholder first | You want the change now and the full proposal later | `speclink discuss promote <slug> [--name <change-name>]` | Creates the change, fills the Why of the proposal from the conclusion (or from the topic when no conclusion exists), and marks the discussion as promoted. **Not ready for the work yet** | Run `propose` on this change to complete the documents |
-| Merge into an existing change | The conclusion corrects an active change | `speclink discuss link <slug> <change>` → `/speclink-ingest` → `speclink discuss seal <slug> <change>` | `link` adds only the source link. `ingest` writes the content into the documents. `seal` marks the discussion as promoted | Go back to `apply` |
+| Merge into an existing change | The conclusion corrects an active change | `speclink discuss link <slug> <change>` → `/speclink-ingest <change>` → `speclink discuss seal <slug> <change>` | `link` adds only the source link. `ingest` writes the content into the documents. `seal` marks the discussion as promoted | Go back to `apply` |
 | Do not do it | The discussion has content, but the decision is "no" | `speclink discuss archive <slug>` | Keeps the conclusion and the reasons, and creates no empty change | None |
 
 - A discussion does not have to end before you promote part of it.

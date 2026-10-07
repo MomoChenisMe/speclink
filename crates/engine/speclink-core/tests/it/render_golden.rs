@@ -1351,6 +1351,63 @@ fn ingest_skill_rejudges_soft_dependencies_before_handoff() {
     }
 }
 
+// --- ingest skill: the argument may name the change to update ---
+
+/// Spec ingest-skill「ingest 參數可指定要更新的變更」: the argument resolves in a fixed
+/// order — a path-like argument stays a plan file (a bare name still resolves under the plan
+/// directory), then an active change name selects that change from conversation context, then
+/// a plan file name; an argument that is neither stops with an error naming both misses. The
+/// resolution lives before the change-selection step, and that step honors it.
+#[test]
+fn ingest_skill_resolves_a_change_name_argument() {
+    for (rel, content) in skill_for_both_tools("ingest-change-arg", "ingest") {
+        let select = content
+            .find("**Check for active changes**")
+            .unwrap_or_else(|| panic!("{rel}: missing the change-selection step"));
+        let resolve = &content[..select];
+        let at = |needle: &str| {
+            resolve.find(needle).unwrap_or_else(|| {
+                panic!("{rel}: the argument resolution before the change-selection step is missing {needle:?}")
+            })
+        };
+        // 三段依序：路徑樣式 → 進行中的變更名 → 計畫檔名稱
+        let path_like = at("contains `/` or ends in `.md`");
+        let change_name = at("equals the name of an active change");
+        let plan_name = at("treat it as a plan file name");
+        assert!(
+            path_like < change_name && change_name < plan_name,
+            "{rel}: the argument resolves as a path, then a change name, then a plan file name"
+        );
+        // 路徑樣式沒有 `/` 時，照舊到計畫目錄找
+        assert!(
+            resolve[path_like..change_name].contains("when it has no `/`"),
+            "{rel}: a bare `.md` argument must still resolve under the plan directory"
+        );
+        for needle in [
+            // 同名即為要更新的變更：來源是對話內容，不找計畫檔
+            "speclink list --json",
+            "the source is conversation context",
+            "Do NOT look for a plan file with that name",
+            // 兩種都找不到：錯誤同時說明兩者、提示只寫變更名，並停止且不改 artifact
+            "is not an active change name",
+            "and no plan file",
+            "pass only its name",
+            "without touching any artifact",
+        ] {
+            at(needle);
+        }
+        let step = &content[select..];
+        let end = step
+            .find("**Select the change**")
+            .unwrap_or_else(|| panic!("{rel}: missing the select-the-change step"));
+        assert!(
+            step[..end].contains("**The argument named an active change**")
+                && step[..end].contains("do NOT ask which change to update"),
+            "{rel}: the change-selection step must take the named change without asking"
+        );
+    }
+}
+
 /// Propose and ingest both record soft dependencies with `change depends` and judge a
 /// queue jump with `change rank`. Both assets spell these rules out by hand, so this lock
 /// keeps them from drifting apart one wording tweak at a time — the same guard the archive
