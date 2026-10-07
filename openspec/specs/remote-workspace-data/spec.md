@@ -176,7 +176,7 @@ code:
 ---
 ### Requirement: capability 驅動停用且不偽造缺口
 
-RemoteDataSource SHALL 附帶逐操作的 capability 描述（來源＝handshake 回應與端點覆蓋矩陣）；封存瀏覽、全文搜尋、正式規格內文、validate/analyze 動詞、刪除變更、任務拖排與看板拖排、change 詮釋資料與 capability 清單 SHALL 直達 server 對應端點、與本地 session 同形呈現（寫入面操作依 role：reader 呈現停用附繁體中文說明）；其中 change 詮釋資料與 capability 清單 SHALL 以單 change 讀取回應既有 payload 映射實作、不另開請求，接不送新欄位的舊 server 時 SHALL 以欄位缺席呈現（對應 UI 列不顯示）、SHALL NOT 偽造非空值——缺的是欄位而非能力；討論清單的 promotedTo 與 concluded SHALL 映射 wire 欄位、SHALL NOT 以 client 端固定值補齊——concluded 缺席（舊 server）時 SHALL 以未知呈現、SHALL NOT 補成 false。未來出現 server 無對應端點的操作時 SHALL 於 UI 停用並附繁體中文說明、對應 DataSource 方法 SHALL 回拒絕錯誤；SHALL NOT 於 client 端偽造或近似實作缺口。本地 session 的全部操作 SHALL 維持可用且行為零改動。批次任務操作以逐任務寫回組合時，中途失敗 SHALL 中止並回報已完成筆數。
+RemoteDataSource SHALL 附帶逐操作的 capability 描述（來源＝handshake 回應與端點覆蓋矩陣）；封存瀏覽、全文搜尋、正式規格內文、validate/analyze 動詞、刪除變更、任務拖排與看板拖排、change 詮釋資料與 capability 清單 SHALL 直達 server 對應端點、與本地 session 同形呈現（寫入面操作依 role：reader 的刪除變更、任務拖排、看板拖排、勾選任務、全勾任務、封存變更、轉為變更、封存討論、認領與前置編輯 SHALL 全部停用；其中有操作入口的刪除變更、看板拖排、勾選任務、全勾任務、封存變更與認領 SHALL 呈現停用附繁體中文說明，連線正常時說明 SHALL 指出原因是角色為檢視者，SHALL NOT 沿用離線唯讀的說明文字；任務拖排、前置編輯、封存討論與轉為變更對 reader SHALL NOT 呈現操作入口）；其中 change 詮釋資料與 capability 清單 SHALL 以單 change 讀取回應既有 payload 映射實作、不另開請求，接不送新欄位的舊 server 時 SHALL 以欄位缺席呈現（對應 UI 列不顯示）、SHALL NOT 偽造非空值——缺的是欄位而非能力；討論清單的 promotedTo 與 concluded SHALL 映射 wire 欄位、SHALL NOT 以 client 端固定值補齊——concluded 缺席（舊 server）時 SHALL 以未知呈現、SHALL NOT 補成 false。未來出現 server 無對應端點的操作時 SHALL 於 UI 停用並附繁體中文說明、對應 DataSource 方法 SHALL 回拒絕錯誤；SHALL NOT 於 client 端偽造或近似實作缺口。本地 session 的全部操作 SHALL 維持可用且行為零改動。批次任務操作以逐任務寫回組合時，中途失敗 SHALL 中止並回報已完成筆數。
 
 #### Scenario: 全操作面直達
 
@@ -185,8 +185,18 @@ RemoteDataSource SHALL 附帶逐操作的 capability 描述（來源＝handshake
 
 #### Scenario: reader 的寫入面呈現停用
 
-- **WHEN** 以 reader 身分開啟 remote 分頁
-- **THEN** 刪除變更、任務拖排與看板拖排呈現停用附繁中說明、讀取面與 validate/analyze 照常可用，對應停用方法回拒絕錯誤
+- **WHEN** 以 reader 身分開啟 remote 分頁，連線狀態為 online
+- **THEN** 刪除變更、任務拖排、看板拖排、勾選任務、全勾任務、封存變更、轉為變更、封存討論、認領與前置編輯全部停用：刪除變更、看板拖排、勾選任務、全勾任務、封存變更與認領呈現停用，說明文字指出角色為檢視者、只能查看；任務拖排、前置編輯、封存討論與轉為變更不呈現操作入口；讀取面與 validate/analyze 照常可用，對應停用方法回拒絕錯誤
+
+#### Scenario: reader 分頁離線時的說明
+
+- **WHEN** reader 的 remote 分頁進入 offline
+- **THEN** 寫入面維持停用，說明文字改為離線唯讀的說明；連線恢復後說明回到角色為檢視者的文字，寫入面仍停用
+
+#### Scenario: editor 的寫入面不因角色停用
+
+- **WHEN** 以 editor 身分開啟 remote 分頁，連線狀態為 online
+- **THEN** 勾選任務、全勾任務、封存變更與封存討論皆可操作，轉為變更的 capability 為可用，無角色停用說明
 
 #### Scenario: 詮釋資料與 capability 清單直達且誠實降級
 
@@ -205,8 +215,8 @@ RemoteDataSource SHALL 附帶逐操作的 capability 描述（來源＝handshake
 
 
 <!-- @trace
-source: conclusion-gated-discussion-archive
-updated: 2026-09-01
+source: server-reader-write-guard
+updated: 2026-10-07T22:21:31+08:00
 -->
 
 ---

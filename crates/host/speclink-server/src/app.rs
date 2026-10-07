@@ -13,8 +13,8 @@ use crate::setup;
 use crate::state::AppState;
 use crate::web;
 use axum::body::{to_bytes, Body};
-use axum::extract::{DefaultBodyLimit, Request, State};
-use axum::http::StatusCode;
+use axum::extract::{DefaultBodyLimit, FromRequestParts, Request, State};
+use axum::http::{Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
@@ -142,8 +142,14 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/whoami", get(routes::whoami))
         .route("/sync-state", get(routes::sync_state))
-        .route("/context", post(context::snapshot))
         .route("/events", get(routes::events))
+        // 寫入檢查（fail-closed）：以上每條路由的非 GET／HEAD 方法都要 editor。
+        .route_layer(middleware::from_fn_with_state(state.clone(), require_editor));
+    // 寫入檢查的唯一例外：唯讀但以 POST 傳輸的查詢，reader 照常可用。新增這類
+    // 端點要放這裡，並在設計中說明。
+    let read_only_posts = Router::new().route("/context", post(context::snapshot));
+    let project = project
+        .merge(read_only_posts)
         .layer(middleware::from_fn(read_body_before_routing));
     Router::new()
         .route("/healthz", get(healthz))
@@ -194,6 +200,34 @@ async fn read_body_before_routing(req: Request, next: Next) -> Response {
             ApiError::payload_too_large(format!("request body unreadable: {e}")).into_response()
         }
     }
+}
+
+/// 專案範圍寫入檢查（server-verb-api「寫入端點一律要求 editor 角色」）：GET／HEAD
+/// 放行，其他方法要求 editor 角色，否則 403、處理函式不執行。以 `route_layer`
+/// 掛在路由註冊之後，之後新增的寫入路由預設受保護。解析好的 [`Binding`] 放進
+/// request extensions，處理函式的 extractor 直接取用，不再解析第二次。
+///
+/// `route_layer` 也包住每條路由「方法不支援」的 405 處理：對既有路徑送沒有
+/// 註冊的非 GET 方法（例如 `POST /changes/{name}/drift`），reader 先收到 403、
+/// 沒帶憑證收到 401，只有 editor 會看到 405。寫入一樣擋下，只是狀態碼不同。
+async fn require_editor(State(state): State<AppState>, req: Request, next: Next) -> Response {
+    if matches!(*req.method(), Method::GET | Method::HEAD) {
+        return next.run(req).await;
+    }
+    let (mut parts, body) = req.into_parts();
+    let binding = match Binding::from_request_parts(&mut parts, &state).await {
+        Ok(binding) => binding,
+        Err(e) => return e.into_response(),
+    };
+    if !binding.editor {
+        return ApiError::forbidden(format!(
+            "your role in project '{}' is reader; this action needs the editor role",
+            binding.project.key
+        ))
+        .into_response();
+    }
+    parts.extensions.insert(binding);
+    next.run(Request::from_parts(parts, body)).await
 }
 
 /// `GET /healthz` — process liveness. Answers as long as the process serves,

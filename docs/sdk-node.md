@@ -90,7 +90,7 @@ On failure, the Promise rejects with an `Error`. The `message` is the same text 
 
 | `code` | Meaning |
 | --- | --- |
-| `invalid_argv` | The arguments are wrong, or the SDK does not support the verb yet |
+| `invalid_argv` | The arguments are wrong, the SDK does not support the verb yet, or the written content has a bad format (for example, tasks with no `- [ ]`, or a review round without a `**Scope**:` line) |
 | `not_found` | The change or the discussion does not exist |
 | `invalid_config` | A config file exists but cannot be parsed (Speclink never uses defaults instead) |
 | `refused` | A precondition is not met |

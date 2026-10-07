@@ -547,6 +547,93 @@ fn error_code_registry_strings_are_stable() {
     assert_eq!(ErrorCode::Error.as_str(), "error");
 }
 
+// --- 內容格式錯誤：invalid_argv，訊息沿用現行 CLI 文字 ---
+
+#[test]
+fn malformed_artifact_content_is_invalid_argv_with_the_cli_message() {
+    // spec「內容格式錯誤歸類為 invalid_argv」：呼叫者送入的內容不合格式不得
+    // 落入 error（server 會轉成 500）；訊息逐字等於 CLI 印出的文字。
+    let cases = [
+        ("tasks", "## 1. Work\n\n- [x] 1.1 done already\n", "Tasks must contain at least one checkbox (- [ ])"),
+        ("proposal", "## Background\n\nNo required heading.\n", "Proposal must contain a ## Why, ## Problem, or ## Summary section"),
+    ];
+    for (kind, content, message) in cases {
+        let store = TestStore::with_meta("demo", META);
+        let err = execute(
+            &store,
+            &ExecutionContext::default(),
+            Command::NewArtifact {
+                kind: kind.to_string(),
+                capability: None,
+                change: Some("demo".to_string()),
+                content: Some(content.to_string()),
+                force: false,
+                new_capability: false,
+            },
+        )
+        .expect_err("malformed content must be refused");
+        assert_eq!(err.code, ErrorCode::InvalidArgv, "{kind}: {}", err.message);
+        assert_eq!(err.message, message, "{kind}: frozen CLI text");
+        assert_eq!(*store.artifact_writes.borrow(), 0, "{kind}: nothing written");
+    }
+}
+
+#[test]
+fn round_without_scope_line_is_invalid_argv_with_the_cli_message() {
+    let store = TestStore::with_meta("demo", META);
+    store.put_artifact("demo", "tasks.md", "- [x] 1 a\n");
+    let err = execute(
+        &store,
+        &ExecutionContext::default(),
+        Command::ReviewAddRound {
+            change: "demo".to_string(),
+            content: "- [WARNING] src/lib.rs — no scope line\n".to_string(),
+        },
+    )
+    .expect_err("a round without **Scope**: must be refused");
+    assert_eq!(err.code, ErrorCode::InvalidArgv, "{}", err.message);
+    assert_eq!(
+        err.message,
+        "round content must contain a `**Scope**:` line listing the files reviewed",
+        "frozen CLI text"
+    );
+    assert_eq!(*store.artifact_writes.borrow(), 0, "no ticket written");
+}
+
+#[test]
+fn round_out_of_phase_sequence_is_invalid_argv_with_the_cli_message() {
+    // 輪的 `**Phase**:` 與工單狀態不符，也是呼叫端送入的輪內容不合格式。
+    let store = TestStore::with_meta("demo", META);
+    store.put_artifact("demo", "tasks.md", "- [x] 1 a\n");
+    let round = |phase: &str| Command::ReviewAddRound {
+        change: "demo".to_string(),
+        content: format!(
+            "**Phase**: {phase}\n**Patch**: sha256:{}\n**Scope**: src/lib.rs\n",
+            "a".repeat(64)
+        ),
+    };
+
+    let err = execute(&store, &ExecutionContext::default(), round("validation"))
+        .expect_err("a validation round needs an existing ticket");
+    assert_eq!(err.code, ErrorCode::InvalidArgv, "{}", err.message);
+    assert_eq!(
+        err.message,
+        "a validation round needs an existing ticket to validate — the first structured round is discovery",
+        "frozen CLI text"
+    );
+    assert_eq!(*store.artifact_writes.borrow(), 0, "no ticket written");
+
+    ok(&store, round("discovery"));
+    let err = execute(&store, &ExecutionContext::default(), round("discovery"))
+        .expect_err("a second discovery round must be refused");
+    assert_eq!(err.code, ErrorCode::InvalidArgv, "{}", err.message);
+    assert_eq!(
+        err.message,
+        "the ticket already carries a structured round — subsequent structured rounds must be validation",
+        "frozen CLI text"
+    );
+}
+
 // === 變更型動詞的領域事件（spec: 變更型動詞的領域事件） ===
 
 /// Ghost workspace: nonexistent root — git probes fail soft, no snapshot

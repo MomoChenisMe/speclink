@@ -242,8 +242,11 @@ pub fn add_round(st: &Station, store: &dyn Store, change: &str, content: &str) -
     if !store.change_exists(change) {
         bail!(NotFound(format!("change not found: {change}")));
     }
-    // 寫入前先驗證（系統邊界：stdin 為外部輸入）——拒絕路徑零寫入。
-    let body = parse_round_body(st, content)?;
+    // 寫入前先驗證（系統邊界：stdin 為外部輸入）——拒絕路徑零寫入。文法錯誤
+    // 只在這裡標成呼叫端內容錯誤（invalid_argv）；同一文法解析既存工單時的
+    // 壞檔仍是一般錯誤。
+    let body = parse_round_body(st, content)
+        .map_err(|e| crate::command::InvalidContent(e.to_string()))?;
     // 刻意不對稱（design D3）：驗證工單語意限定為成品驗證，中途盤點輪不落工單
     // ——誤落的盤點輪會讓「未結工單」失去語意，還會誤觸 archive 守門。
     if st.round_requires_tasks_complete {
@@ -261,21 +264,24 @@ pub fn add_round(st: &Station, store: &dyn Store, change: &str, content: &str) -
     let ticket = existing.as_deref().map(|t| parse_ticket(st, t)).transpose()?;
     // Sequence guard（spec「工單的建立與追加」）：工單首個結構化 round 是
     // discovery；已有結構化 round 後只能追加 validation；validation 必須有可
-    // 驗收的既有輪次（legacy ticket 也算）。
+    // 驗收的既有輪次（legacy ticket 也算）。`**Phase**:` 與工單狀態不符同樣是
+    // 呼叫端內容錯誤（invalid_argv）。
     match body.phase {
         Some(RoundPhase::Discovery)
             if ticket.as_ref().is_some_and(|t| t.rounds.iter().any(|r| r.phase.is_some())) =>
         {
-            bail!(
+            bail!(crate::command::InvalidContent(
                 "the ticket already carries a structured round — subsequent structured \
                  rounds must be validation"
-            );
+                    .into()
+            ));
         }
         Some(RoundPhase::Validation) if ticket.is_none() => {
-            bail!(
+            bail!(crate::command::InvalidContent(
                 "a validation round needs an existing ticket to validate — the first \
                  structured round is discovery"
-            );
+                    .into()
+            ));
         }
         _ => {}
     }

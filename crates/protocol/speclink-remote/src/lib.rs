@@ -112,9 +112,10 @@ pub fn translate_protocol_error(status: u16, body: &str) -> RemoteError {
         ErrorReason::PermissionDenied if status == 401 => {
             "authentication failed — run `speclink auth login`".to_string()
         }
+        // 403 relays the server's reason inside the client-owned frame: a
+        // non-member and a reader write need different fixes.
         ErrorReason::PermissionDenied => {
-            "access denied — your account has no access to this project; ask a project admin"
-                .to_string()
+            format!("access denied — {}; ask a project admin", err.message)
         }
         ErrorReason::NotFound
         | ErrorReason::InvalidArgument

@@ -90,7 +90,7 @@ await engine.dispatch(
 
 | `code` | 意思 |
 | --- | --- |
-| `invalid_argv` | 參數有誤，或這個動詞還沒接上 SDK |
+| `invalid_argv` | 參數有誤、這個動詞還沒接上 SDK，或寫入的內容格式不對（例如 tasks 沒有 `- [ ]`、審查輪缺 `**Scope**:` 行） |
 | `not_found` | 找不到 change 或討論 |
 | `invalid_config` | 設定檔存在但無法解析（不會改用預設值） |
 | `refused` | 前置條件不成立 |

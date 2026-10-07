@@ -391,9 +391,6 @@ pub async fn change_depends(
     Path((_key, name)): Path<(String, String)>,
     Json(req): Json<SetDependsRequest>,
 ) -> Result<Response, ApiError> {
-    if !binding.editor {
-        return Err(ApiError::forbidden("reader memberships cannot declare prerequisites"));
-    }
     let result = verb::run(
         &state,
         &binding,
@@ -461,10 +458,6 @@ pub async fn delete_change(
     Path((_key, name)): Path<(String, String)>,
     Query(query): Query<DeleteChangeQuery>,
 ) -> Result<Response, ApiError> {
-    // UI capability 只是提示；request-time role 檢查才是最終執行點。
-    if !binding.editor {
-        return Err(ApiError::forbidden("reader memberships cannot delete changes"));
-    }
     let result = verb::run(
         &state,
         &binding,
@@ -494,9 +487,6 @@ pub async fn move_task(
     Path((_key, name)): Path<(String, String)>,
     Json(req): Json<MoveTaskRequest>,
 ) -> Result<Response, ApiError> {
-    if !binding.editor {
-        return Err(ApiError::forbidden("reader memberships cannot move tasks"));
-    }
     let result = verb::run(
         &state,
         &binding,
@@ -656,16 +646,8 @@ pub async fn put_config(
     binding: Binding,
     Json(req): Json<PutConfigRequest>,
 ) -> Result<Response, ApiError> {
-    // First defense: the UI capability is only a hint; this request-time role
-    // decision is the final enforcement point.
-    if !binding.policy_write {
-        return Err(ApiError::forbidden(
-            "reader memberships cannot write workflow policy",
-        ));
-    }
-
-    // Second defense: parse the complete document through the engine config
-    // model before a write is staged. A malformed document never reaches CAS.
+    // Parse the complete document through the engine config model before a
+    // write is staged. A malformed document never reaches CAS.
     let parsed = WorkflowConfig::from_text(Some(&req.content))
         .map_err(|e| ApiError::invalid_config(e.to_string()))?;
     // Value-domain gate shares the engine rule with every client seam; the
@@ -807,14 +789,6 @@ pub async fn put_board_order(
     headers: HeaderMap,
     Json(req): Json<PutBoardOrderRequest>,
 ) -> Result<Response, ApiError> {
-    // The UI capability is only a hint; this request-time role decision is
-    // the final enforcement point.
-    if !binding.policy_write {
-        return Err(ApiError::forbidden(
-            "reader memberships cannot write the board order",
-        ));
-    }
-
     // The board-order document is a small rank map; anything near this cap
     // is a malfunctioning client, refused before any write is staged.
     const BOARD_ORDER_CONTENT_CAP_BYTES: usize = 1024 * 1024;
@@ -890,12 +864,6 @@ pub async fn import_bundle(
     binding: Binding,
     Json(request): Json<ImportBundle>,
 ) -> Result<Response, ApiError> {
-    if !binding.policy_write {
-        return Err(ApiError::forbidden(
-            "reader memberships cannot import a workspace",
-        ));
-    }
-
     if request.format_version != BUNDLE_FORMAT_VERSION {
         return Err(ApiError::refused(format!(
             "unsupported bundle format version {} (supported: {})",
@@ -1263,10 +1231,6 @@ pub async fn review_stamp(
     Path((_key, name)): Path<(String, String)>,
     Json(req): Json<StampReviewRequest>,
 ) -> Result<Response, ApiError> {
-    // 蓋章同樣以刪掉工單收場——editor 限定比照 discard，只擋 DELETE 守不住。
-    if !binding.editor {
-        return Err(ApiError::forbidden("reader memberships cannot stamp reviews"));
-    }
     let scope = req
         .scope
         .into_iter()
@@ -1292,11 +1256,6 @@ pub async fn review_discard(
     binding: Binding,
     Path((_key, name)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    if !binding.editor {
-        return Err(ApiError::forbidden(
-            "reader memberships cannot discard review tickets",
-        ));
-    }
     let result = verb::run(&state, &binding, Command::ReviewDiscard { change: name }).await?;
     let change = match result.execution.outcome {
         CommandOutcome::ReviewDiscard(o) => o.change,
@@ -1351,9 +1310,6 @@ pub async fn verify_stamp(
     Path((_key, name)): Path<(String, String)>,
     Json(req): Json<StampReviewRequest>,
 ) -> Result<Response, ApiError> {
-    if !binding.editor {
-        return Err(ApiError::forbidden("reader memberships cannot stamp verifications"));
-    }
     let scope = req
         .scope
         .into_iter()
@@ -1379,11 +1335,6 @@ pub async fn verify_discard(
     binding: Binding,
     Path((_key, name)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    if !binding.editor {
-        return Err(ApiError::forbidden(
-            "reader memberships cannot discard verify tickets",
-        ));
-    }
     let result = verb::run(&state, &binding, Command::VerifyDiscard { change: name }).await?;
     let change = match result.execution.outcome {
         CommandOutcome::VerifyDiscard(o) => o.change,
@@ -1460,9 +1411,6 @@ pub async fn claim(
     binding: Binding,
     Path((_key, name)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    if !binding.editor {
-        return Err(ApiError::forbidden("reader memberships cannot claim changes"));
-    }
     let result = verb::run(&state, &binding, Command::Claim { name }).await?;
     let outcome = match result.execution.outcome {
         CommandOutcome::Claim(o) => o,
@@ -1764,11 +1712,6 @@ pub async fn delete_discussion(
     Path((_key, slug)): Path<(String, String)>,
     Query(query): Query<DeleteDiscussionQuery>,
 ) -> Result<Response, ApiError> {
-    if !binding.editor {
-        return Err(ApiError::forbidden(
-            "reader memberships cannot delete discussions",
-        ));
-    }
     let result = verb::run(
         &state,
         &binding,

@@ -85,7 +85,7 @@ You can use two kinds of credential. One is an access key (PAT) that starts with
 
 ### Roles
 
-A project member has the `reader` role or the `editor` role. If the "Minimum role" column says `editor`, a reader gets 403 `permission_denied`. The official server checks the role only on those endpoints. Any member, a reader too, can call the other write endpoints today.
+A project member has the `reader` role or the `editor` role. A reader can only read. Every write endpoint (an endpoint whose method is not GET) needs `editor`. A reader gets 403 `permission_denied` with the `message` `your role in project '<key>' is reader; this action needs the editor role`, and the server writes nothing. The one exception is `POST /context`: it sends its query with POST, but it only reads data, so a reader can call it.
 
 ### Handshake
 
@@ -160,17 +160,15 @@ Every non-2xx response has the same JSON shape, the error envelope:
 | `reason` | HTTP | When it occurs |
 | --- | --- | --- |
 | `permission_denied` | 401 | The credential is missing, invalid, expired, or revoked, or the account is suspended. |
-| `permission_denied` | 403 | The account is not a project member, or a reader calls an editor-only endpoint. |
+| `permission_denied` | 403 | The account is not a project member, or a reader calls a write endpoint. |
 | `not_found` | 404 | The project or repo is not registered, or the change, discussion, artifact, or spec does not exist. |
-| `invalid_argument` | 400 | A value is wrong: a bad slug, a missing `If-Match`, a non-numeric `If-Match`, an unknown artifact, or an empty search query. |
+| `invalid_argument` | 400 | A value is wrong: a bad slug, a missing `If-Match`, a non-numeric `If-Match`, an unknown artifact, or an empty search query. Or the written content has a bad format: a `tasks.md` with no `- [ ]` checkbox, a proposal without `## Why`, `## Problem`, or `## Summary`, a design without `## Context`, a delta spec without an operation section, or a review or verify round without a `**Scope**:` line or with a `**Phase**:` that does not fit the ticket state. |
 | `invalid_config` | 422 | The change metadata is corrupt, or the server cannot parse the workflow config. |
 | `refused` | 409 | A precondition fails: API version mismatch, no repo in a multi-repo project, `force` needed, task number out of range, change claimed by someone else, dependency cycle, or import into a non-empty target. |
 | `refused` | 413 | The request body is larger than 32 MiB, or the board-order content is larger than 1 MiB. |
 | `revision_conflict` | 409 | The version that you sent with a write is stale (see [Shared request rules](#request-rules)). |
 | `unavailable` | 503 | The store is temporarily unavailable. |
 | `internal` | 500 | All other failures. |
-
-Note: some content checks answer 500 `internal` today, but `message` still gives the cause. Two examples: a `tasks.md` write with no `- [ ]` checkbox, and a review round without a `**Scope**:` line. Use `message` to decide whether a retry can help.
 
 ## <a id="endpoints"></a>Endpoint reference
 
@@ -191,7 +189,7 @@ All paths follow the [project URL](#request-rules). `{name}` is a change name, a
 | Method | Path | Minimum role | Purpose |
 | --- | --- | --- | --- |
 | GET | `/changes` | reader | List the changes of this repo (`speclink list`) |
-| POST | `/changes` | reader | Create a change (`speclink new change`) |
+| POST | `/changes` | editor | Create a change (`speclink new change`) |
 | GET | `/changes/{name}` | reader | Status and metadata of one change (`speclink status`, `show`) |
 | DELETE | `/changes/{name}?force=<bool>` | editor | Discard a change (`speclink discard`) |
 | GET | `/changes/{name}/drift` | reader | Drift data from the spec side (`speclink drift`) |
@@ -199,20 +197,20 @@ All paths follow the [project URL](#request-rules). `{name}` is a change name, a
 | GET | `/changes/{name}/analyze` | reader | Cross-artifact analysis report (`speclink analyze`) |
 | GET | `/changes/{name}/instructions/{kind}` | reader | Artifact instructions. `{kind}` is `proposal`, `design`, `specs`, or `tasks`; `apply` gives the implementation progress (`speclink instructions`). |
 | GET | `/changes/{name}/artifacts/{artifact}` | reader | Read an artifact and its `version` (`speclink artifact cat`) |
-| PUT | `/changes/{name}/artifacts/{artifact}` | reader | Write an artifact. It needs `If-Match`. |
+| PUT | `/changes/{name}/artifacts/{artifact}` | editor | Write an artifact. It needs `If-Match`. |
 | GET | `/changes/{name}/evidence` | reader | Completion evidence: the files that `task done` records for each task |
-| POST | `/changes/{name}/in-progress` | reader | Mark the change as started (`speclink in-progress add`) |
-| DELETE | `/changes/{name}/in-progress` | reader | Remove the start marker (`speclink in-progress remove`) |
+| POST | `/changes/{name}/in-progress` | editor | Mark the change as started (`speclink in-progress add`) |
+| DELETE | `/changes/{name}/in-progress` | editor | Remove the start marker (`speclink in-progress remove`) |
 | POST | `/changes/{name}/claim` | editor | Claim the change (`speclink claim`) |
 | POST | `/changes/{name}/depends` | editor | Declare or remove prerequisite changes (`speclink change depends`) |
-| POST | `/changes/{name}/archive?carryReview=<bool>&carryVerify=<bool>` | reader | Archive (`speclink archive`) |
+| POST | `/changes/{name}/archive?carryReview=<bool>&carryVerify=<bool>` | editor | Archive (`speclink archive`) |
 
 ### Tasks
 
 | Method | Path | Minimum role | Purpose |
 | --- | --- | --- | --- |
-| POST | `/changes/{name}/tasks/{taskId}/done` | reader | Check a task (`speclink task done`). `{taskId}` is a task number or a stable ID that starts with `tsk_`. |
-| POST | `/changes/{name}/tasks/{taskId}/undone` | reader | Uncheck a task (`speclink task undone`) |
+| POST | `/changes/{name}/tasks/{taskId}/done` | editor | Check a task (`speclink task done`). `{taskId}` is a task number or a stable ID that starts with `tsk_`. |
+| POST | `/changes/{name}/tasks/{taskId}/undone` | editor | Uncheck a task (`speclink task undone`) |
 | POST | `/changes/{name}/tasks/move` | editor | Move a task and renumber the list (drag in the desktop app) |
 
 ### Quality gates
@@ -222,7 +220,7 @@ All paths follow the [project URL](#request-rules). `{name}` is a change name, a
 | Method | Path | Minimum role | Purpose |
 | --- | --- | --- | --- |
 | GET | `/changes/{name}/{station}` | reader | Read the ticket (`speclink review show`) |
-| POST | `/changes/{name}/{station}/rounds` | reader | Add a round (`speclink review add-round`) |
+| POST | `/changes/{name}/{station}/rounds` | editor | Add a round (`speclink review add-round`) |
 | POST | `/changes/{name}/{station}/stamp` | editor | Stamp (`speclink review stamp`) |
 | DELETE | `/changes/{name}/{station}` | editor | Discard the ticket (`speclink review discard`) |
 
@@ -231,17 +229,17 @@ All paths follow the [project URL](#request-rules). `{name}` is a change name, a
 | Method | Path | Minimum role | Purpose |
 | --- | --- | --- | --- |
 | GET | `/discussions?archived=<bool>` | reader | List discussions. `archived=true` lists the archived ones. |
-| POST | `/discussions` | reader | Create a discussion (`speclink discuss new`) |
+| POST | `/discussions` | editor | Create a discussion (`speclink discuss new`) |
 | GET | `/discussions/search?q=<keywords>` | reader | Search discussions. Separate keywords with spaces (`speclink discuss search`). |
 | GET | `/discussions/{slug}` | reader | Read one discussion and its full text (`speclink discuss show`) |
 | DELETE | `/discussions/{slug}?force=<bool>` | editor | Delete a discussion (`speclink discuss discard`) |
-| PUT | `/discussions/{slug}/context` | reader | Write the Context section (`speclink discuss context`) |
-| POST | `/discussions/{slug}/rounds` | reader | Add a round (`speclink discuss add-round`) |
-| POST | `/discussions/{slug}/conclude` | reader | Write the conclusion (`speclink discuss conclude`) |
-| POST | `/discussions/{slug}/archive` | reader | Archive the discussion (`speclink discuss archive`) |
-| POST | `/discussions/{slug}/promote` | reader | Turn the discussion into a change (`speclink discuss promote`) |
-| POST | `/discussions/{slug}/link` | reader | Link an existing change to the discussion (`speclink discuss link`) |
-| POST | `/discussions/{slug}/seal` | reader | Mark the discussion as promoted after its content lands (`speclink discuss seal`) |
+| PUT | `/discussions/{slug}/context` | editor | Write the Context section (`speclink discuss context`) |
+| POST | `/discussions/{slug}/rounds` | editor | Add a round (`speclink discuss add-round`) |
+| POST | `/discussions/{slug}/conclude` | editor | Write the conclusion (`speclink discuss conclude`) |
+| POST | `/discussions/{slug}/archive` | editor | Archive the discussion (`speclink discuss archive`) |
+| POST | `/discussions/{slug}/promote` | editor | Turn the discussion into a change (`speclink discuss promote`) |
+| POST | `/discussions/{slug}/link` | editor | Link an existing change to the discussion (`speclink discuss link`) |
+| POST | `/discussions/{slug}/seal` | editor | Mark the discussion as promoted after its content lands (`speclink discuss seal`) |
 
 ### Project data
 
