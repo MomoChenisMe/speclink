@@ -53,6 +53,10 @@ export type QualityRow = { change: string; review: Ticket | null; verify: Ticket
 // 品質分頁：切過去才讀；null 是還沒讀完。
 export type Quality = { rows: QualityRow[]; error: string | null }
 
+// 這個 session 正在跑的 speclink 步驟（技能名稱去掉 speclink-，例如 apply）與 change；還不知道是 null。
+// archived：這個 change 已經在這個 session 封存。
+export type Focus = { verb: string | null; change: string | null; archived?: true }
+
 declare module 'claude-code' {
   interface PluginState {
     'speclink-skills': {
@@ -63,6 +67,7 @@ declare module 'claude-code' {
       view: PanelView
       details: Record<string, Detail>
       quality: Quality | null
+      focus: Focus
     }
   }
 }
