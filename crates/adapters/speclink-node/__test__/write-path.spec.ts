@@ -65,13 +65,16 @@ describe('dispatch write path — stdin parameter form', () => {
     expect(onDisk).toBe(content)
   })
 
-  it('content validation failures reject with the semantic CLI message', async () => {
+  it('content validation failures reject with invalid_argv and the semantic CLI message', async () => {
     const engine = createEngine({ store: memoryStore(fixtureProject()) })
     await expect(
       engine.dispatch(['new', 'artifact', 'tasks', '--change', 'alpha', '--stdin', '--force'], {
         stdin: 'no checkboxes here\n',
       }),
-    ).rejects.toThrow(/Tasks must contain at least one checkbox/)
+    ).rejects.toMatchObject({
+      message: 'Tasks must contain at least one checkbox (- [ ])',
+      code: 'invalid_argv',
+    })
   })
 })
 

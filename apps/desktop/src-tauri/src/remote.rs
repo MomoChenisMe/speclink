@@ -1146,18 +1146,23 @@ impl RemoteCapabilities {
                 .transports
                 .iter()
                 .any(|t| t.kind == TransportKind::Sse);
+        // 「本 membership 可寫 change」的既有宣告（claim 同源）：server 對 reader
+        // 的每個寫入都回 403，寫入面隨它停用（server-reader-write-guard D5）。
+        // 下方 reorder_card／set_depends 沿用的 policyWrite 與 deleteChange 在
+        // server 端都等於 editor 角色，兩個來源等價。
+        let writable = binding.capabilities.delete_change;
         RemoteCapabilities {
             list_changes: true,
             list_specs: true,
             status: true,
             get_document: true,
-            set_task_done: true,
-            archive: true,
+            set_task_done: writable,
+            archive: writable,
             list_discussions: true,
             get_discussion_document: true,
-            promote_discussion: true,
-            archive_discussion: true,
-            set_all_tasks: true,
+            promote_discussion: writable,
+            archive_discussion: writable,
+            set_all_tasks: writable,
             list_archived: true,
             get_archived_document: true,
             archived_capabilities: true,
@@ -1171,7 +1176,7 @@ impl RemoteCapabilities {
             set_depends: binding.capabilities.policy_write,
             change_meta: true,
             change_capabilities: true,
-            claim: binding.capabilities.delete_change,
+            claim: writable,
             policy_write: binding.capabilities.policy_write,
             live_updates,
         }
@@ -1867,6 +1872,12 @@ mod capability_tests {
         assert!(caps.move_task, "moveTask follows the handshake");
         assert!(caps.reorder_card, "board reorder follows the editor role");
         assert!(caps.set_depends, "prerequisite editing follows the editor role like board reorder");
+        // server-reader-write-guard D5：其餘寫入面同樣隨 deleteChange 的角色宣告。
+        assert!(caps.set_task_done);
+        assert!(caps.set_all_tasks);
+        assert!(caps.archive);
+        assert!(caps.promote_discussion);
+        assert!(caps.archive_discussion);
     }
 
     #[test]
@@ -1884,6 +1895,12 @@ mod capability_tests {
         assert!(!caps.move_task);
         assert!(!caps.reorder_card, "reader board reorder stays disabled");
         assert!(!caps.set_depends);
+        // server 對 reader 的每個寫入都回 403——寫入面不得呈現可用。
+        assert!(!caps.set_task_done, "reader task check-off stays disabled");
+        assert!(!caps.set_all_tasks);
+        assert!(!caps.archive);
+        assert!(!caps.promote_discussion);
+        assert!(!caps.archive_discussion);
     }
 }
 

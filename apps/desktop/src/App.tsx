@@ -341,6 +341,9 @@ function AppInner({
   useEffect(() => {
     setAppT(t);
   }, [t]);
+  // 寫入面的停用說明（server-reader-write-guard D5）：離線時是連線原因；連線
+  // 正常仍停用的寫入只剩角色原因——server 對 reader 的每個寫入都回 403。
+  const writeDisabledReason = t(stale ? "remote.writeUnavailable" : "remote.readerRole");
 
   // 看板拖曳手勢讓路（design D6、TaskList 同款）：手勢中暫緩 workspace-changed
   // 的整批 refresh（避免拖曳中卡片重排打斷手勢），放開後補跑一次。
@@ -788,7 +791,7 @@ function AppInner({
                   : undefined
               }
               reorderUnavailableReason={
-                caps && !caps.reorderCard ? t("remote.reorderUnavailable") : undefined
+                caps && !caps.reorderCard ? writeDisabledReason : undefined
               }
               planError={s.planError}
               onDragActiveChange={handleBoardDragActive}
@@ -860,11 +863,10 @@ function AppInner({
           caps && {
             analyze:
               caps.validate && caps.analyze ? undefined : t("remote.analyzeUnavailable"),
-            archive: caps.archive ? undefined : t("remote.writeUnavailable"),
-            delete: caps.deleteChange ? undefined : t("remote.deleteUnavailable"),
-            tasks:
-              caps.setTaskDone && caps.setAllTasks ? undefined : t("remote.writeUnavailable"),
-            claim: caps.claim ? undefined : t("remote.claimUnavailable"),
+            archive: caps.archive ? undefined : writeDisabledReason,
+            delete: caps.deleteChange ? undefined : writeDisabledReason,
+            tasks: caps.setTaskDone && caps.setAllTasks ? undefined : writeDisabledReason,
+            claim: caps.claim ? undefined : writeDisabledReason,
           }
         }
         onToggleTask={

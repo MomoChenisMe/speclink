@@ -85,7 +85,7 @@ https://<server>/api/speclink/v1/projects/<專案代號>
 
 ### 角色
 
-專案成員有 `reader` 與 `editor` 兩種角色。端點總表「最低角色」欄寫 `editor` 的端點，reader 呼叫會收到 403 `permission_denied`。官方 server 只在這些端點檢查角色；其他寫入端點目前任何成員都能呼叫，包括 reader。
+專案成員有 `reader` 與 `editor` 兩種角色。reader 只能讀：所有寫入端點（方法不是 GET 的端點）都要 editor，reader 呼叫會收到 403 `permission_denied`，`message` 為 `your role in project '<代號>' is reader; this action needs the editor role`，server 什麼都不寫。唯一的例外是 `POST /context`：它用 POST 傳送查詢條件，但只讀資料，reader 照常可用。
 
 ### 握手
 
@@ -160,17 +160,15 @@ ETag 是 HTTP 回應標頭，用來判斷資料有沒有變。
 | `reason` | HTTP | 什麼時候發生 |
 | --- | --- | --- |
 | `permission_denied` | 401 | 沒帶憑證，或憑證無效、過期、已撤銷，或帳號已停用 |
-| `permission_denied` | 403 | 帳號不是這個專案的成員；reader 呼叫只限 editor 的端點 |
+| `permission_denied` | 403 | 帳號不是這個專案的成員；reader 呼叫寫入端點 |
 | `not_found` | 404 | 專案或 repo 沒有註冊；變更、討論、artifact 或規格不存在 |
-| `invalid_argument` | 400 | 參數值不對：slug 格式錯、缺 `If-Match`、`If-Match` 不是數字、未知的 artifact、搜尋關鍵字是空的 |
+| `invalid_argument` | 400 | 參數值不對：slug 格式錯、缺 `If-Match`、`If-Match` 不是數字、未知的 artifact、搜尋關鍵字是空的；或寫入的內容格式不對：`tasks.md` 沒有 `- [ ]` 核取方塊、proposal 缺 `## Why`／`## Problem`／`## Summary`、design 缺 `## Context`、delta spec 沒有操作區段、審查站或驗證站的輪缺 `**Scope**:` 行，或輪的 `**Phase**:` 與工單狀態不符 |
 | `invalid_config` | 422 | 變更的 metadata 壞掉；工作流設定文件解析不了 |
 | `refused` | 409 | 前置條件不成立：API 版本不符、多 repo 卻沒指定 repo、需要 `force`、任務序號超出範圍、變更已被別人認領、依賴成環、匯入的目標不是空的 |
 | `refused` | 413 | 請求 body 超過 32 MiB，或看板順序內容超過 1 MiB |
 | `revision_conflict` | 409 | 寫入時附的版本已經不是最新（見[請求的共同規則](#request-rules)） |
 | `unavailable` | 503 | 儲存後端暫時無法服務 |
 | `internal` | 500 | 其他失敗 |
-
-注意：有些內容檢查目前會以 500 `internal` 回應，但 `message` 仍會說明原因。例如寫入的 `tasks.md` 沒有 `- [ ]` 核取方塊，或審查輪的內容缺 `**Scope**:` 行。要不要重試，請看 `message` 判斷。
 
 ## <a id="endpoints"></a>端點總表
 
@@ -191,7 +189,7 @@ ETag 是 HTTP 回應標頭，用來判斷資料有沒有變。
 | 方法 | 路徑 | 最低角色 | 用途 |
 | --- | --- | --- | --- |
 | GET | `/changes` | reader | 列出這個 repo 的變更（`speclink list`） |
-| POST | `/changes` | reader | 建立變更（`speclink new change`） |
+| POST | `/changes` | editor | 建立變更（`speclink new change`） |
 | GET | `/changes/{name}` | reader | 單一變更的狀態與 metadata（`speclink status`、`show`） |
 | DELETE | `/changes/{name}?force=<bool>` | editor | 捨棄變更（`speclink discard`） |
 | GET | `/changes/{name}/drift` | reader | 規格那一側的偏移資料（`speclink drift`） |
@@ -199,20 +197,20 @@ ETag 是 HTTP 回應標頭，用來判斷資料有沒有變。
 | GET | `/changes/{name}/analyze` | reader | 交叉分析報告（`speclink analyze`） |
 | GET | `/changes/{name}/instructions/{kind}` | reader | 產出指示；`{kind}` 是 `proposal`、`design`、`specs` 或 `tasks`，寫 `apply` 時回實作進度（`speclink instructions`） |
 | GET | `/changes/{name}/artifacts/{artifact}` | reader | 讀 artifact 內容與 `version`（`speclink artifact cat`） |
-| PUT | `/changes/{name}/artifacts/{artifact}` | reader | 寫 artifact，需帶 `If-Match` |
+| PUT | `/changes/{name}/artifacts/{artifact}` | editor | 寫 artifact，需帶 `If-Match` |
 | GET | `/changes/{name}/evidence` | reader | 完成證據：勾選任務時記下的檔案 |
-| POST | `/changes/{name}/in-progress` | reader | 標記開工（`speclink in-progress add`） |
-| DELETE | `/changes/{name}/in-progress` | reader | 移除開工標記（`speclink in-progress remove`） |
+| POST | `/changes/{name}/in-progress` | editor | 標記開工（`speclink in-progress add`） |
+| DELETE | `/changes/{name}/in-progress` | editor | 移除開工標記（`speclink in-progress remove`） |
 | POST | `/changes/{name}/claim` | editor | 認領（`speclink claim`） |
 | POST | `/changes/{name}/depends` | editor | 宣告或移除前置變更（`speclink change depends`） |
-| POST | `/changes/{name}/archive?carryReview=<bool>&carryVerify=<bool>` | reader | 封存（`speclink archive`） |
+| POST | `/changes/{name}/archive?carryReview=<bool>&carryVerify=<bool>` | editor | 封存（`speclink archive`） |
 
 ### 任務
 
 | 方法 | 路徑 | 最低角色 | 用途 |
 | --- | --- | --- | --- |
-| POST | `/changes/{name}/tasks/{taskId}/done` | reader | 勾選任務（`speclink task done`）；`{taskId}` 是序號或 `tsk_` 開頭的穩定 ID |
-| POST | `/changes/{name}/tasks/{taskId}/undone` | reader | 取消勾選（`speclink task undone`） |
+| POST | `/changes/{name}/tasks/{taskId}/done` | editor | 勾選任務（`speclink task done`）；`{taskId}` 是序號或 `tsk_` 開頭的穩定 ID |
+| POST | `/changes/{name}/tasks/{taskId}/undone` | editor | 取消勾選（`speclink task undone`） |
 | POST | `/changes/{name}/tasks/move` | editor | 搬移任務並重排編號（桌面 app 的拖曳） |
 
 ### 品質關卡
@@ -222,7 +220,7 @@ ETag 是 HTTP 回應標頭，用來判斷資料有沒有變。
 | 方法 | 路徑 | 最低角色 | 用途 |
 | --- | --- | --- | --- |
 | GET | `/changes/{name}/{station}` | reader | 讀工單（`speclink review show`） |
-| POST | `/changes/{name}/{station}/rounds` | reader | 新增一輪（`speclink review add-round`） |
+| POST | `/changes/{name}/{station}/rounds` | editor | 新增一輪（`speclink review add-round`） |
 | POST | `/changes/{name}/{station}/stamp` | editor | 蓋章（`speclink review stamp`） |
 | DELETE | `/changes/{name}/{station}` | editor | 丟棄工單（`speclink review discard`） |
 
@@ -231,17 +229,17 @@ ETag 是 HTTP 回應標頭，用來判斷資料有沒有變。
 | 方法 | 路徑 | 最低角色 | 用途 |
 | --- | --- | --- | --- |
 | GET | `/discussions?archived=<bool>` | reader | 列出討論；`archived=true` 列出封存的討論 |
-| POST | `/discussions` | reader | 建立討論（`speclink discuss new`） |
+| POST | `/discussions` | editor | 建立討論（`speclink discuss new`） |
 | GET | `/discussions/search?q=<關鍵字>` | reader | 搜尋討論，多個關鍵字以空白分隔（`speclink discuss search`） |
 | GET | `/discussions/{slug}` | reader | 讀單一討論與全文（`speclink discuss show`） |
 | DELETE | `/discussions/{slug}?force=<bool>` | editor | 刪除討論（`speclink discuss discard`） |
-| PUT | `/discussions/{slug}/context` | reader | 寫背景段（`speclink discuss context`） |
-| POST | `/discussions/{slug}/rounds` | reader | 新增一輪（`speclink discuss add-round`） |
-| POST | `/discussions/{slug}/conclude` | reader | 寫結論（`speclink discuss conclude`） |
-| POST | `/discussions/{slug}/archive` | reader | 封存討論（`speclink discuss archive`） |
-| POST | `/discussions/{slug}/promote` | reader | 轉為變更（`speclink discuss promote`） |
-| POST | `/discussions/{slug}/link` | reader | 把既有變更連到這個討論（`speclink discuss link`） |
-| POST | `/discussions/{slug}/seal` | reader | 內容寫好後，把討論標為已轉出變更（`speclink discuss seal`） |
+| PUT | `/discussions/{slug}/context` | editor | 寫背景段（`speclink discuss context`） |
+| POST | `/discussions/{slug}/rounds` | editor | 新增一輪（`speclink discuss add-round`） |
+| POST | `/discussions/{slug}/conclude` | editor | 寫結論（`speclink discuss conclude`） |
+| POST | `/discussions/{slug}/archive` | editor | 封存討論（`speclink discuss archive`） |
+| POST | `/discussions/{slug}/promote` | editor | 轉為變更（`speclink discuss promote`） |
+| POST | `/discussions/{slug}/link` | editor | 把既有變更連到這個討論（`speclink discuss link`） |
+| POST | `/discussions/{slug}/seal` | editor | 內容寫好後，把討論標為已轉出變更（`speclink discuss seal`） |
 
 ### 專案層資料
 

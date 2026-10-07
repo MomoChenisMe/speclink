@@ -937,6 +937,11 @@ export function RichDetailDrawer({
                   {t("tasks.writeFailed").replace("{msg}", taskError)}
                 </div>
               )}
+              {unavailable?.tasks && (
+                <div data-testid="tasks-unavailable" className="mb-2 text-sm text-muted-foreground">
+                  {unavailable.tasks}
+                </div>
+              )}
               {tasksMd === undefined ? (
                 <DocSkeleton />
               ) : (

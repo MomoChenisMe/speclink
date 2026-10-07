@@ -47,7 +47,7 @@
 - reader 呼叫任何一個寫入端點，都回 403 `permission_denied`，專案資料零改動；editor 的行為不變。
 - reader 呼叫 `POST /context` 與所有 GET 端點照常成功。
 - 寫入格式錯誤的 tasks.md 或缺 `**Scope**:` 的審查輪，server 回 400 `invalid_argument`、訊息文字與 CLI 相同；Node SDK 的錯誤碼為 `invalid_argv`。
-- 桌面遠端看板以 reader 開啟時，勾任務、全勾、封存、轉為變更、封存討論、刪除、搬移、排序、認領、前置編輯全部停用，說明文字是角色原因；離線時的說明維持原樣。
+- 桌面遠端看板以 reader 開啟時，勾任務、全勾、封存、轉為變更、封存討論、刪除、搬移、排序、認領、前置編輯全部停用。有操作入口的勾任務、全勾、封存、刪除、排序、認領顯示角色原因的說明；搬移、前置編輯、封存討論、轉為變更不顯示操作入口。離線時的說明維持原樣。
 
 ### 相容性影響
 
@@ -80,11 +80,15 @@
   - Modified: crates/engine/speclink-core/src/command/mod.rs
   - Modified: crates/engine/speclink-core/src/lifecycle/newcmd.rs
   - Modified: crates/engine/speclink-core/src/quality/station.rs
+  - Modified: crates/engine/speclink-core/src/command/tests.rs
+  - Modified: crates/adapters/speclink-node/__test__/write-path.spec.ts
   - Modified: crates/protocol/speclink-remote/src/lib.rs
   - Modified: crates/protocol/speclink-remote/tests/it/typed_client.rs
   - Modified: apps/desktop/src-tauri/src/remote.rs
   - Modified: apps/desktop/src/App.tsx
   - Modified: apps/desktop/src/i18n/messages.ts
+  - Modified: apps/desktop/src/__tests__/remoteCapabilities.test.tsx
+  - Modified: packages/ui/src/components/RichDetailDrawer.tsx
   - Modified: docs/verb-contract.zh-TW.md
   - Modified: docs/verb-contract.md
   - Modified: docs/sdk-node.zh-TW.md

@@ -51,6 +51,7 @@ speclink-core 命令層新增一個內容格式錯誤的型別標記（比照既
 - 訊息文字逐字不變，CLI 的 stderr 輸出位元級相同；CLI 對所有錯誤碼用同一個 exit code，所以 exit code 也不變。
 - server 端不需修改：既有對照把 `InvalidArgv` 轉成 400 `invalid_argument`。
 - Node SDK 的錯誤碼從 `error` 變成 `invalid_argv`（刻意變更，文件同步）。
+- 標記只加在呼叫端送入內容的入口：`add_round` 解析輪內容、檢查輪的 `**Phase**:` 與工單狀態是否相符時標記。解析 store 裡已存在的工單失敗時仍是 `error`，因為那不是呼叫端的輸入。
 
 替代方案：在 server 端依訊息字串判斷改回 400——字串比對脆弱，且 Node SDK 與其他入口的錯誤碼仍不一致，違反 command-runtime「同一失敗情境的錯誤碼不因入口而異」。
 
@@ -105,6 +106,7 @@ D4 讓錯誤分類留在引擎命令層，各入口（CLI、server、Node、desk
 - [回歸對照：CLI 錯誤訊息被意外改動] → 型別標記的 Display 輸出原訊息；golden 與 CLI 測試不更新即須通過。
 - [桌面測試前置條件] → speclink-desktop crate 的測試需要先佈 sidecar 與 server-web dist；實作時依 docs/development 的測試前置步驟執行。
 - [跨平台] → 只動 HTTP 層與錯誤分類，沒有檔案路徑或平台差異；CI 三平台照常執行。
+- [舊 server 沒宣告 `deleteChange`] → 桌面以 `deleteChange` 推導寫入面，欄位缺席時 editor 也會被停用，並看到角色說明。這個宣告自 2026-07-23（remote-verb-parity）起就存在，v0.1.0 以來的 server 都有；更早的 server 尚未開放遠端寫入動詞。明確接受。
 - [`POST /context` 以外未來新增的唯讀 POST 會被擋] → 預設擋下是刻意的 fail-closed；新增唯讀 POST 時，需要在 `route_layer` 之後註冊，並在設計中說明。
 
 ## Migration Plan

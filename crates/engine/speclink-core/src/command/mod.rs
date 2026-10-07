@@ -103,13 +103,31 @@ impl std::fmt::Display for Refusal {
 
 impl std::error::Error for Refusal {}
 
-/// Classify a core-flow anyhow error: a [`Refusal`] marker → `refused`, a
-/// [`crate::model::MetaError`] (corrupt `.openspec.yaml`) → `invalid_config`,
-/// everything else → `error`. Message text passes through verbatim; the
-/// original error rides along as `source` for host-side refinement.
+/// Typed marker for caller-supplied content that fails its format check
+/// (artifact content gate, quality-station round grammar) so the runtime
+/// classifies it `invalid_argv` instead of `error`. Display is the exact
+/// frozen CLI text, same as [`Refusal`].
+#[derive(Debug)]
+pub struct InvalidContent(pub String);
+
+impl std::fmt::Display for InvalidContent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for InvalidContent {}
+
+/// Classify a core-flow anyhow error: a [`Refusal`] marker → `refused`, an
+/// [`InvalidContent`] marker → `invalid_argv`, a [`crate::model::MetaError`]
+/// (corrupt `.openspec.yaml`) → `invalid_config`, everything else → `error`.
+/// Message text passes through verbatim; the original error rides along as
+/// `source` for host-side refinement.
 fn classify(e: anyhow::Error) -> CommandError {
     let (code, message) = if let Some(r) = e.downcast_ref::<Refusal>() {
         (ErrorCode::Refused, r.0.clone())
+    } else if let Some(c) = e.downcast_ref::<InvalidContent>() {
+        (ErrorCode::InvalidArgv, c.0.clone())
     } else if let Some(b) = e.downcast_ref::<crate::inprogress::RevertBlocked>() {
         (ErrorCode::Refused, b.to_string())
     } else if let Some(m) = e.downcast_ref::<crate::model::MetaError>() {
