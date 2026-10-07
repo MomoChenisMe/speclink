@@ -9,7 +9,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.42.0"
   generatedBy: "Speclink"
 ---
 
@@ -97,7 +97,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.42.0"
   generatedBy: "Speclink"
 ---
 
@@ -446,7 +446,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.42.0"
   generatedBy: "Speclink"
 ---
 
@@ -788,7 +788,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.42.0"
   generatedBy: "Speclink"
 ---
 
@@ -1024,7 +1024,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.42.0"
   generatedBy: "Speclink"
 ---
 
@@ -1147,7 +1147,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.42.0"
   generatedBy: "Speclink"
 ---
 
@@ -1459,7 +1459,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.42.0"
   generatedBy: "Speclink"
 ---
 
@@ -1605,7 +1605,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.42.0"
   generatedBy: "Speclink"
 ---
 
@@ -2105,7 +2105,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.42.0"
   generatedBy: "Speclink"
 ---
 
@@ -2243,7 +2243,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.42.0"
   generatedBy: "Speclink"
 ---
 
@@ -2433,7 +2433,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.42.0"
   generatedBy: "Speclink"
 ---
 
@@ -2443,8 +2443,9 @@ Update an existing Speclink change — from a plan file or conversation context.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
-**Input**: Optionally specify a plan file path or name.
+**Input**: Optionally specify an active change name, or a plan file path or name.
 
+- `/speclink-ingest add-auth` (update the active change `add-auth` from conversation context)
 - `/speclink-ingest ~/.claude/plans/agile-discovering-rocket.md`
 - `/speclink-ingest agile-discovering-rocket`
 - `/speclink-ingest` (use conversation context or auto-detect plan file)
@@ -2453,9 +2454,14 @@ Update an existing Speclink change — from a plan file or conversation context.
 
 1. **Locate the requirement source**
 
-   a. **Argument provided** → treat as plan file reference (prepend `~/.claude/plans/` and append `.md` if needed)
-   - If the file exists → use it as the plan file source, proceed to Step 2
-   - If the file does NOT exist → report the error and **stop**
+   a. **Argument provided** → resolve it in this order:
+   i. **Path-like** (it contains `/` or ends in `.md`) → treat it as a plan file reference (prepend `~/.claude/plans/` when it has no `/`, and append `.md` if needed)
+      - If the file exists → use it as the plan file source, proceed to Step 2
+      - If the file does NOT exist → report the error and **stop**
+   ii. **An active change name** → run `speclink list --json`. When the argument equals the name of an active change, that change is the change to update, and the source is conversation context (plus its linked discussion conclusion, see below). Do NOT look for a plan file with that name: skip Step 2 and go to Step 3
+   iii. **Otherwise** → treat it as a plan file name (prepend `~/.claude/plans/` and append `.md`)
+      - If the file exists → use it as the plan file source, proceed to Step 2
+      - If the file does NOT exist → report an error that says both: `<argument>` is not an active change name, and no plan file `~/.claude/plans/<argument>.md` exists. Add a hint: to update a change, pass only its name and give the details in the conversation. Then **stop** without touching any artifact
 
    b. **No argument, plan file detectable**:
    - Check conversation context for plan file path (plan mode system messages include the path like `~/.claude/plans/<name>.md`)
@@ -2518,6 +2524,7 @@ Update an existing Speclink change — from a plan file or conversation context.
    ```
 
    Parse the JSON output to get the full list of changes.
+   - **The argument named an active change** (Step 1a) → update that change; do NOT ask which change to update
    - If one change exists → use the **AskUserQuestion tool** to confirm updating it
    - If multiple changes exist → use the **AskUserQuestion tool** to let user pick which one to update
    - If no changes at all → tell the user: "No active change found. Use `/speclink-propose` first to create one." and **stop**
@@ -2736,7 +2743,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.42.0"
   generatedBy: "Speclink"
 ---
 
@@ -2947,7 +2954,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.42.0"
   generatedBy: "Speclink"
 ---
 
@@ -3426,7 +3433,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.42.0"
   generatedBy: "Speclink"
 ---
 
@@ -3521,7 +3528,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.42.0"
   generatedBy: "Speclink"
 ---
 
@@ -3720,7 +3727,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.42.0"
   generatedBy: "Speclink"
 ---
 
@@ -3804,7 +3811,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.42.0"
   generatedBy: "Speclink"
 ---
 

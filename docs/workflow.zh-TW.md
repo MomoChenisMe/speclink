@@ -139,11 +139,14 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 - **什麼時候用**：實作途中需求或背景改變，或一份討論的結論要併進既有變更。**跳過**：只是繼續實作、文件不用改（用 `apply`）；還沒有變更（用 `propose`）。
 - **輸入 → 產物**：既有的變更，加上對話內容或一份計畫檔 → 更新後的提案、設計、規格與任務。已完成的任務不會被改寫。
-- **技能**：`/speclink-ingest`（用目前對話的內容），或 `/speclink-ingest <計畫檔>`。參數是計畫檔，不是變更名稱；要更新哪個變更，技能會從對話判斷或問你。
+- **技能**：三種寫法。
+  - `/speclink-ingest <變更名稱>`：技能用目前對話的內容，更新這個進行中的變更。技能不會再問你要更新哪一個。
+  - `/speclink-ingest`：用目前對話的內容。要更新哪個變更，技能會從對話判斷或問你。
+  - `/speclink-ingest <計畫檔>`：用一份計畫檔。參數同時是進行中的變更名稱和計畫檔名稱時，技能用變更；要用計畫檔，請寫完整路徑。
 - **底層 CLI**：`speclink instructions <artifact> --json`、`analyze`、`validate`。討論併入時，內容寫進去之後再跑 `speclink discuss seal <slug> <變更名稱>`。
 - **完成**：新背景都反映到受影響的文件，已完成的任務沒被改寫，`analyze` 與 `validate` 通過。有 link 的話也已經 seal。
 - **下一步**：回 `apply`。
-- **出狀況**：不要先 seal 再補內容。seal 代表內容已經寫進去了。
+- **出狀況**：不要先 seal 再補內容。seal 代表內容已經寫進去了。參數打錯時，技能會說明兩件事：參數不是進行中的變更，也找不到同名計畫檔。訊息也會提醒你：要指定變更，參數只寫變更名稱，說明放在對話裡。然後技能會停下，不改任何文件。
 
 ### <a id="drift"></a>drift：檢查漂移
 
@@ -341,7 +344,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 | --- | --- | --- | --- | --- |
 | 建立新變更，一次寫完 | 結論明確，想直接拿到全部文件 | `/speclink-propose --from-discussion <slug>` | 建立並連結變更，寫完開工需要的全部文件 | 文件檢查通過後，由你決定何時 `apply` |
 | 建立新變更，先佔位 | 只想先建立變更，稍後再寫完整提案 | `speclink discuss promote <slug> [--name <變更名稱>]` | 建立變更，用結論（沒有結論時用主題）預填 proposal 的 Why，討論標為已轉出變更。**還不能開工** | 對這個變更再跑一次 `propose`，補齊文件 |
-| 併入既有變更 | 結論要修正一個進行中的變更 | `speclink discuss link <slug> <變更>` → `/speclink-ingest` → `speclink discuss seal <slug> <變更>` | `link` 只建立來源連結；`ingest` 把內容寫進文件；`seal` 才把討論標為已轉出變更 | 回 `apply` |
+| 併入既有變更 | 結論要修正一個進行中的變更 | `speclink discuss link <slug> <變更>` → `/speclink-ingest <變更>` → `speclink discuss seal <slug> <變更>` | `link` 只建立來源連結；`ingest` 把內容寫進文件；`seal` 才把討論標為已轉出變更 | 回 `apply` |
 | 決定不做 | 談出了內容，但結論是不做 | `speclink discuss archive <slug>` | 保留結論與理由，不建立空的變更 | 無 |
 
 - 轉為變更不一定要等討論結束：討論還在進行時，就可以先轉出一部分。

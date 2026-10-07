@@ -1,0 +1,94 @@
+{
+  "version": 2,
+  "change": "ingest-accepts-change-name",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫失敗測試：在 crates/engine/speclink-core/tests/it/render_golden.rs 新增 `ingest_skill_resolves_a_change_name_argument`，對 claude 與 codex 兩份產生的 speclink-ingest SKILL.md 斷言：含「參數含 `/` 或以 `.md` 結尾時當成計畫檔」、「參數等於 `speclink list --json` 的作用中變更名時當成要更新的變更、不再詢問」與「兩種都找不到時回報錯誤並停止」三段指示，且這些指示位於 `**Check for active changes**` 步驟之前；驗證：`cargo test -p speclink-core --test it render_golden::ingest_skill_resolves_a_change_name_argument` 失敗",
+      "files": [
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 讓 1.1 轉綠（ingest 參數可指定要更新的變更）：改寫 crates/engine/speclink-core/assets/skills/ingest.md 的 Input 說明與「Locate the requirement source」步驟，加入上述解析順序；「Check for active changes」步驟在參數已指定作用中變更時直接採用、不再詢問；不帶參數與計畫檔路徑的既有流程不變；驗證：`cargo test -p speclink-core --test it render_golden::ingest_skill_resolves_a_change_name_argument` 通過，且既有的 `ingest_skill_rejudges_soft_dependencies_before_handoff` 仍通過",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/ingest.md"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 依技能資產規則同批更新衍生物：crates/engine/speclink-core/src/workspace/init.rs 的 `ASSET_VERSION` 從 v1.41.0 升到 v1.42.0；在乾淨樹（`git status` 除本變更外沒有影響渲染的改動）執行 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 再生 crates/engine/speclink-core/tests/golden/ 的 claude、claude-worktree、codex、neutral-cli、neutral-tool-call 五份快照，接著 `UPDATE_ASSETS_LOCK=1 cargo test -p speclink-core --test it render_golden::` 再生 assets.lock；驗證：不帶環境變數重跑 `cargo test -p speclink-core --test it render_golden::` 通過，快照的 diff 只有 ingest 段落與版號行",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.1 docs/workflow.zh-TW.md 與 docs/workflow.md 的 ingest 段落改寫參數說明：`/speclink-ingest <變更名稱>` 更新指定的變更、`/speclink-ingest` 用目前對話、`/speclink-ingest <計畫檔>` 用計畫檔，刪除「參數是計畫檔，不是變更名稱」；討論結論表的併入流程寫成 `/speclink-ingest <變更>`；兩語版事實對等；驗證：內容對照本變更的 ingest-skill delta，並執行 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全過",
+      "files": [
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4AVKHX2S1H1X40V9MSN4CEF",
+      "taskDesc": "1.1 先寫失敗測試：在 crates/engine/speclink-core/tests/it/render_golden.rs 新增 `ingest_skill_resolves_a_change_name_argument`，對 claude 與 codex 兩份產生的 speclink-ingest SKILL.md 斷言：含「參數含 `/` 或以 `.md` 結尾時當成計畫檔」、「參數等於 `speclink list --json` 的作用中變更名時當成要更新的變更、不再詢問」與「兩種都找不到時回報錯誤並停止」三段指示，且這些指示位於 `**Check for active changes**` 步驟之前；驗證：`cargo test -p speclink-core --test it render_golden::ingest_skill_resolves_a_change_name_argument` 失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "59bb628717cedef4d159c37b4b61d8bd3d98f8a3",
+      "touchedFiles": [
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ],
+      "recordedAt": "2026-10-07T10:30:52Z"
+    },
+    {
+      "taskId": "tsk_01M4AVKHX2ZWEBY5QJER32VTV9",
+      "taskDesc": "1.2 讓 1.1 轉綠（ingest 參數可指定要更新的變更）：改寫 crates/engine/speclink-core/assets/skills/ingest.md 的 Input 說明與「Locate the requirement source」步驟，加入上述解析順序；「Check for active changes」步驟在參數已指定作用中變更時直接採用、不再詢問；不帶參數與計畫檔路徑的既有流程不變；驗證：`cargo test -p speclink-core --test it render_golden::ingest_skill_resolves_a_change_name_argument` 通過，且既有的 `ingest_skill_rejudges_soft_dependencies_before_handoff` 仍通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "59bb628717cedef4d159c37b4b61d8bd3d98f8a3",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/ingest.md"
+      ],
+      "recordedAt": "2026-10-07T10:31:46Z"
+    },
+    {
+      "taskId": "tsk_01M4AVKHX2KDF9M5A0AHZES2HJ",
+      "taskDesc": "1.3 依技能資產規則同批更新衍生物：crates/engine/speclink-core/src/workspace/init.rs 的 `ASSET_VERSION` 從 v1.41.0 升到 v1.42.0；在乾淨樹（`git status` 除本變更外沒有影響渲染的改動）執行 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 再生 crates/engine/speclink-core/tests/golden/ 的 claude、claude-worktree、codex、neutral-cli、neutral-tool-call 五份快照，接著 `UPDATE_ASSETS_LOCK=1 cargo test -p speclink-core --test it render_golden::` 再生 assets.lock；驗證：不帶環境變數重跑 `cargo test -p speclink-core --test it render_golden::` 通過，快照的 diff 只有 ingest 段落與版號行",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "59bb628717cedef4d159c37b4b61d8bd3d98f8a3",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ],
+      "recordedAt": "2026-10-07T10:32:40Z"
+    },
+    {
+      "taskId": "tsk_01M4AVKHX20PQWCZ0HM18SW4WP",
+      "taskDesc": "2.1 docs/workflow.zh-TW.md 與 docs/workflow.md 的 ingest 段落改寫參數說明：`/speclink-ingest <變更名稱>` 更新指定的變更、`/speclink-ingest` 用目前對話、`/speclink-ingest <計畫檔>` 用計畫檔，刪除「參數是計畫檔，不是變更名稱」；討論結論表的併入流程寫成 `/speclink-ingest <變更>`；兩語版事實對等；驗證：內容對照本變更的 ingest-skill delta，並執行 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "59bb628717cedef4d159c37b4b61d8bd3d98f8a3",
+      "touchedFiles": [
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md"
+      ],
+      "recordedAt": "2026-10-07T10:35:34Z"
+    }
+  ]
+}
