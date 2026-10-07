@@ -232,9 +232,9 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  // `/clear` 換成新的 session，卻不發 session.start；技能清單空著，技能列就整列不畫。
+  // `/clear`、`/resume` 換成另一個 session，卻不發 session.start；技能清單空著，技能列就整列不畫。
   on('classic.SessionStart', async ($, e, next) => {
-    if (e.source === 'clear') {
+    if (e.source === 'clear' || e.source === 'resume') {
       await setup($, options.language)
     }
 
