@@ -1,209 +1,78 @@
 # Node SDK (@speclink/engine)
 
-> **Status:** This document describes the currently implemented Node SDK surface. The typed Command Runtime, the TeamStore contract, and the Host boundary are canonically defined by `command-runtime`, `teamstore-contract`, `host-runtime`, and `node-sdk` under `openspec/specs/`; Copilot Tool packaging is not implemented yet — see the [Project Roadmap](roadmap.md) for that direction.
+[繁體中文](sdk-node.zh-TW.md) · **English**
 
-`@speclink/engine` embeds the Speclink engine in a Node.js process: your
-server (or AI-agent host) dispatches speclink verbs in-process, stores spec
-documents in its own database through a `Store` object, and renders the
-workflow knowledge (skill files) for whatever harness it runs.
+`@speclink/engine` lets a Node.js program run Speclink verbs, store specs in its own database, and make skill files for any AI tool. It is the same Rust engine that the CLI uses, bound to Node with [napi-rs](https://napi.rs). It is not a second implementation, so verb behavior, `--json` output shapes, and skill content match the CLI.
 
-It is the same Rust engine the CLI ships — bound with [napi-rs](https://napi.rs),
-not re-implemented — so verb behavior, `--json` payload shapes, and rendered
-content are identical by construction. (The Rust SDK is simply the
-`speclink-core` crate.)
+Two common uses:
 
-This SDK has two uses. First, wire Speclink into an existing flow: a script, or
-an internal tool. Second, use it as **the engine of your own server**. The
-official `speclink-server` is only a reference implementation of the Host
-contract. You can build your own against `host-runtime` and `client-protocol`
-under `openspec/specs/`, with your own authentication, database, and permission
-model. The CLI and the desktop app still connect to it.
+- Connect Speclink to an existing flow, such as a script, an internal tool, or a service that runs an AI agent.
+- Use it as **the engine of your own server**. The official `speclink-server` is only a reference implementation. Two public contracts under `openspec/specs/` define remote mode: `host-runtime` and `client-protocol`. You can follow these contracts and build your own server on this engine, with your own authentication, database, and permission model. The CLI and the desktop app connect to it the same way. For the official server, see [Remote Getting Started](remote-getting-started.md).
 
-## Obtaining the package and platform notes
+## <a id="install"></a>Install
 
 ```bash
 npm install @speclink/engine
 ```
 
+You can install it from npm from version 0.2.0 on. Its version follows the Speclink release. It needs Node.js 18 or later. Prebuilt packages exist for five platforms: Windows x64, macOS x64 and arm64, Linux x64 and arm64 (glibc). npm downloads only the package for your platform, and you do not need Rust. No prebuilt package exists for musl Linux, such as Alpine.
+
 ```js
-const { createEngine } = require('@speclink/engine')
+const { createEngine, skills } = require('@speclink/engine')
 ```
-
-All five platforms — Windows x64, macOS x64 and arm64, Linux x64 and arm64
-(glibc) — ship as prebuilt sub-packages alongside the main package. Only the one
-matching your platform is downloaded, and **no Rust toolchain is required**.
-
-> **When this takes effect.** The publishing pipeline is wired: every release tag
-> publishes the engine to npm under that version. Whether `npm install` actually
-> resolves depends on the **first release that carries the engine** — before that
-> the package is not on the registry yet, so use the repository build below. For
-> today's status see the Node SDK row in
-> [Project Capability Status](product-status.md).
 
 ### Alternative: build from the repository
 
-When no installable version exists yet, or you are changing the engine itself:
+Build from source when you change the engine itself, or when your platform has no prebuilt package. You need a Rust toolchain:
 
 ```bash
 git clone https://github.com/MomoChenisMe/speclink.git
 cd speclink/crates/adapters/speclink-node
 npm ci
-npm run build          # napi builds the .node for your current platform
+npm run build          # builds the .node file for the current platform
 ```
 
-Reference the build output from your project by path:
+Then require it by path:
 
 ```js
 const { createEngine } = require('/path/to/speclink/crates/adapters/speclink-node')
 ```
 
-- This is a **native module**: the engine is compiled Rust, loaded as a Node
-  addon. The `npm run build` above produces a binary for the **current
-  platform**, so run it on (or cross-build it for) your deploy target.
-- Building requires a Rust toolchain (`rustup`); installing from npm does not.
+`npm run build` builds a file for the current platform only. Build it on the platform that you deploy to.
 
-## createEngine — two storage forms
+## <a id="create-engine"></a>Create an engine
 
-```js
-const { createEngine } = require('@speclink/engine')
-```
+`createEngine` supports two storage forms.
 
-**Built-in fs store** — point the engine at a local project root (the
-directory that contains `openspec/`). Zero bridging cost; ideal for local
-tools and tests:
+**Local files**: point the engine at a project root that contains `openspec/`. This form suits local tools and tests.
 
 ```js
 const engine = createEngine({ store: { type: 'fs', root: '/path/to/project' } })
 // optional: specDir (default "openspec")
 ```
 
-**Host Store object** — implement the storage interface yourself (e.g. over
-Postgres) and the engine reads/writes documents through it:
+**Your own Store**: pass an object that implements the Store interface (see [Implement your own Store](#store)). The engine reads and writes documents through it.
 
 ```js
 const engine = createEngine({ store: myStore })
 ```
 
-Every `Store` method may return a value **or a Promise** — the bridge accepts
-both. If the object is missing required methods, `createEngine` throws
-synchronously and lists every missing method name (fail fast; no engine
-instance is created).
+If the object does not have all required methods, `createEngine` throws at once and lists every missing method name.
 
-**`actor` (optional) — this engine's operator identity.** Both storage forms
-accept it, in `"Name <email>"` form:
+**`actor` (optional)**: the operator of this engine, in `"Name <email>"` form. The engine writes it as `created_by` (`new change`), `reviewed_by` (`review stamp`), and `verified_by` (`verify stamp`).
 
 ```js
 const engine = createEngine({ store: myStore, actor: 'Alice <alice@example.com>' })
 ```
 
-It decides who every stamp this engine writes is attributed to: `created_by`
-(`new change`) and `reviewed_by` / `verified_by` (`review stamp` /
-`verify stamp`).
+- One instance has one identity. `dispatch` has no identity parameter, so a caller cannot use another person's identity. In a multi-user system, make one instance per request (or per user). An instance is only an object, so this costs little.
+- Without `actor`, the local-files form uses the git identity of the workspace (the same as the CLI). Your own Store records no identity. A blank value counts as no value.
+- Your system decides who can use which identity. The SDK only takes the result.
 
-- **One instance, one identity.** The identity is bound at construction and
-  `dispatch` deliberately takes none — a caller cannot claim someone else's.
-  A multi-tenant host builds one engine per request (or per identity); an
-  engine is just an object, not a connection pool.
-- **When omitted**: the fs form falls back to the workspace's git identity
-  (byte-for-byte what the CLI stamps); the host-store form has no local
-  workspace and stamps no identity at all. A blank string (after trimming)
-  reads as omitted.
-- **Who may claim which identity is yours to decide.** Authentication and
-  authorization belong to the host; the SDK only takes the result.
-
-> **Warning — never call the engine synchronously from inside a Store
-> method.** `dispatch` runs on a background worker that waits for your store
-> methods to settle. A store method that synchronously blocks on another
-> `engine.dispatch(...)` of the same engine creates a wait cycle. Issuing a
-> new dispatch *after* your store method has returned (or from unrelated
-> code) is fine — concurrent dispatches are supported and tested.
-
-## The Store interface — implementation guide
-
-The interface is one-to-one with the engine core's storage seam
-(`speclink-core`'s `Store` trait), camelCase. The engine speaks in domain
-terms — changes, artifacts, delta/canonical specs, discussions, workflow
-config — and your implementation owns the physical layout. Full signatures
-live in [`index.d.ts`](../crates/adapters/speclink-node/index.d.ts); `path`/`dir`
-return values are **labels shown in payloads**, not filesystem paths that the
-engine opens.
-
-| Group | Methods | Notes |
-|---|---|---|
-| Changes | `listChanges`, `findChange`, `changeExists`, `createChange`, `updatedAtSecs` | `listChanges` returns `{name, dir?, meta?}` sorted by name; `meta` carries the `.openspec.yaml` keys the bridge consumes: `schema`, `created`, `createdBy`, `createdWith`, `fromDiscussion`, `restaleFrom`, `startedAt`, `startedBy`, `startedWith`, `boardRank`. The claim fields (`claimedBy`/`claimedAt`) and the review/verify stamp fields do not travel through this bridge. `updatedAtSecs` is the "most recently updated" sort key (whole seconds; missing change → 0). |
-| Artifacts | `readArtifact`, `writeArtifact`, `artifactExists`, `deleteArtifact` (optional) | Artifact ids are schema output paths relative to the change: `proposal.md`, `design.md`, `tasks.md`, `specs/<capability>/spec.md`. An empty document counts as existing. `deleteArtifact` is only reached by review/verify stamping (which deletes the ticket); without it only that path fails. |
-| Change metadata (optional) | `readChangeMeta`, `writeChangeMeta` | The raw metadata document of a change (the `.openspec.yaml` text). Stamping is a read-modify-write of this document, so the stamp verbs treat this pair plus `deleteArtifact` as prerequisites: missing any of the three, the stamp refuses before touching anything (ticket intact). No other verb calls them. |
-| Completion evidence (optional) | `readEvidence`, `writeEvidence` | The change's completion-evidence record text (the `.evidence.json` content; the store never interprets it). Without `readEvidence` the engine reads "no record" — a normal state anyway; without `writeEvidence` the call fails loudly the moment a completion actually has files to record, never dropping evidence silently. |
-| Delta specs | `deltaCapabilities`, `hasCapabilityDirs` | Capability names that have a delta spec inside a change, sorted. |
-| Canonical specs | `listCanonicalCapabilities`, `canonicalSpecExists`, `readCanonicalSpec`, `writeCanonicalSpec`, `canonicalSpecPath` | The project-level truth that archiving merges deltas into. |
-| Archive | `archivedChangeExists`, `archiveChange`, `readArchivedMeta`, `writeArchivedMeta` | `archiveChange(name, datedName)` moves an active change under its dated archive name (`YYYY-MM-DD-<name>`). |
-| Discussions | `liveDiscussionExists`, `archivedDiscussionExists`, `liveDiscussionPath`, `readLiveDiscussion`, `writeLiveDiscussion`, `deleteLiveDiscussion`, `readDiscussion`, `listLiveDiscussions`, `listArchivedDiscussions`, `archiveDiscussion` | Documents are stored as raw text; parsing (rounds, conclusion) is engine logic. `readDiscussion` resolves live first, then the newest archived candidate. |
-| Config / vocabulary | `readWorkflowConfig`, `readLanguage` | Raw `config.yaml` text (or null) and the LANGUAGE document (or null — a missing vocabulary is a normal state). |
-| Optional | `claim` | Ownership adjudication for team systems — see below. |
-
-A wadpilot-style database mapping, sketched:
+## <a id="dispatch"></a>Run verbs
 
 ```js
-// Tables: changes(name PK, meta JSONB, updated_at),
-//         artifacts(change_name, path, content, PRIMARY KEY (change_name, path)),
-//         canonical_specs(capability PK, content),
-//         discussions(slug, text, archived, stored_name)
-const store = {
-  async listChanges() {
-    const rows = await db.query('SELECT name, meta FROM changes ORDER BY name')
-    return rows.map((r) => ({ name: r.name, dir: `changes/${r.name}`, meta: r.meta }))
-  },
-  async readArtifact(change, artifact) {
-    const row = await db.maybeOne(
-      'SELECT content FROM artifacts WHERE change_name = $1 AND path = $2',
-      [change, artifact],
-    )
-    return row ? row.content : null
-  },
-  async writeArtifact(change, artifact, content) {
-    await db.query(
-      `INSERT INTO artifacts (change_name, path, content) VALUES ($1, $2, $3)
-       ON CONFLICT (change_name, path) DO UPDATE SET content = $3`,
-      [change, artifact, content],
-    )
-    await db.query('UPDATE changes SET updated_at = now() WHERE name = $1', [change])
-    return `changes/${change}/${artifact}`
-  },
-  async deltaCapabilities(change) {
-    const rows = await db.query(
-      `SELECT DISTINCT split_part(path, '/', 2) AS cap FROM artifacts
-       WHERE change_name = $1 AND path LIKE 'specs/%/spec.md' ORDER BY cap`,
-      [change],
-    )
-    return rows.map((r) => r.cap)
-  },
-  // …and so on for the remaining methods.
-}
-```
-
-When a store method throws or rejects, the in-flight `dispatch` rejects with
-an `Error` whose message is prefixed with the store method name
-(`readArtifact: connection refused`) and whose `code` carries the JS error's
-`code` (or `store_error`).
-
-### `claim` (optional)
-
-Ownership is a team-system concept, and on this bridge the engine leaves
-adjudication to your store (on the official server, by contrast, the engine
-adjudicates: the claim lands in the change meta, and a conflict answers with
-HTTP 409, the registry reason `refused`, and a message naming the holder).
-If your store implements `claim(name)`, `dispatch(['claim', '<name>'])`
-routes to it: resolve with your payload (e.g. `{ claimed: true, claimedBy:
-'you' }`) or reject with an `Error` whose `code` is a code your store
-chooses (e.g. `ownership_lost`) and whose message states who holds the
-change and what to do — the SDK passes both through to the caller
-unchanged. Without `claim`, the verb fails loud (as it does on the fs
-store).
-
-## dispatch — the single entry point
-
-```js
-const result = await engine.dispatch(['list', '--json'])
+const list = await engine.dispatch(['list', '--json'])
 const status = await engine.dispatch(['status', '--change', 'add-auth', '--json'])
 await engine.dispatch(
   ['new', 'artifact', 'proposal', '--change', 'add-auth', '--stdin'],
@@ -211,122 +80,159 @@ await engine.dispatch(
 )
 ```
 
-- **Input**: a string array, one-to-one with the CLI verb vocabulary (shell
-  argv without the program name). There is no interactive input — verbs that
-  read stdin in the CLI take the content via the second parameter
-  (`{ stdin }`).
-- **Output**: a Promise resolving to the same structured object the CLI
-  prints with `--json` (camelCase field names). Verbs without a `--json` form
-  resolve to `{ output: string }`. The current TypeScript shapes live in
-  [`index.d.ts`](../crates/adapters/speclink-node/index.d.ts); the remote
-  Command/Query payloads are governed by the shipped Protocol crate
-  (`crates/protocol/speclink-protocol`), whose Rust types are the wire canon.
-- **Errors**: the Promise rejects with an `Error` — `message` is the CLI's
-  semantic message (safe to hand straight back to an agent), `code`
-  classifies it: `invalid_argv` (bad argv), `not_found` (change/discussion
-  lookup), `invalid_config` (a bad workflow config is rejected, never
-  silently replaced with defaults), `refused` (a precondition refusal —
-  `claim` on the fs store lands here), `error` (engine failure, the CLI's
-  exit-1 category), a host store's own code passed through unchanged
-  (e.g. `ownership_lost`), `store_error` (store failure without a code), or
-  `panic`.
-- **Never blocks the event loop**: every dispatch runs on a background
-  worker thread; concurrent dispatches are supported.
+- **Input**: an array of strings. Write it like the CLI arguments, without the program name. A verb that reads stdin in the CLI takes its content from the second parameter, `{ stdin }`.
+- **Output**: a Promise. The result is the same as the CLI `--json` output, with camelCase fields. A verb without a `--json` form (for example `new change`) returns `{ output: string }`. The TypeScript type is `Promise<unknown>`. For the field shapes, see [Verb and Flag Contract](verb-contract.md).
+- **No blocked event loop**: each dispatch runs on a background thread. You can run many at the same time.
 
-Currently routed verbs: `list`, `status`, `new change`, `new artifact`,
-`claim`, `review add-round`, `review stamp`, `verify add-round`,
-`verify stamp`. The vocabulary grows toward full CLI parity; an unroutable
-verb rejects with `invalid_argv`.
+Supported verbs today: `list`, `status`, `new change`, `new artifact`, `claim`, `review add-round`, `review stamp`, `verify add-round`, `verify stamp`. Other verbs fail with `invalid_argv`.
 
-### Stamping verbs — `review` and `verify`
+On failure, the Promise rejects with an `Error`. The `message` is the same text that the CLI prints, so you can show it to a user or an agent. The `code` gives the category:
 
-Each quality station routes two verbs, with the CLI's argv vocabulary:
+| `code` | Meaning |
+| --- | --- |
+| `invalid_argv` | The arguments are wrong, or the SDK does not support the verb yet |
+| `not_found` | The change or the discussion does not exist |
+| `invalid_config` | A config file exists but cannot be parsed (Speclink never uses defaults instead) |
+| `refused` | A precondition is not met |
+| `error` | Any other engine error. `claim` on the local-files form, or on a Store without `claim`, also gives this code |
+| A code from your Store | Your Store method throws an error with a `code`, and the SDK passes it on unchanged, for example `ownership_lost` |
+| `store_error` | Your Store method throws an error without a `code` |
+| `panic` | An internal engine error |
+
+## <a id="store"></a>Implement your own Store
+
+A Store is an object that the engine uses to read and write changes, artifacts, specs, and discussions. You decide how to keep the data: tables, files, or object storage. [`index.d.ts`](../crates/adapters/speclink-node/index.d.ts) has the full method signatures. Each method can return a value or a Promise.
+
+**Required methods** (31):
+
+| Group | Methods |
+| --- | --- |
+| Changes | `listChanges`, `findChange`, `changeExists`, `createChange`, `updatedAtSecs` |
+| Artifacts | `readArtifact`, `writeArtifact`, `artifactExists` |
+| Delta specs | `deltaCapabilities`, `hasCapabilityDirs` |
+| Canonical specs | `listCanonicalCapabilities`, `canonicalSpecExists`, `readCanonicalSpec`, `writeCanonicalSpec`, `canonicalSpecPath` |
+| Archive | `archivedChangeExists`, `archiveChange`, `readArchivedMeta`, `writeArchivedMeta` |
+| Discussions | `liveDiscussionExists`, `archivedDiscussionExists`, `liveDiscussionPath`, `readLiveDiscussion`, `writeLiveDiscussion`, `deleteLiveDiscussion`, `readDiscussion`, `listLiveDiscussions`, `listArchivedDiscussions`, `archiveDiscussion` |
+| Config and vocabulary | `readWorkflowConfig`, `readLanguage` |
+
+**Optional methods**:
+
+| Method | When you need it |
+| --- | --- |
+| `readChangeMeta`, `writeChangeMeta`, `deleteArtifact` | For `review stamp` and `verify stamp`. If one is missing, the stamp fails before it changes anything |
+| `claim` | For the `claim` verb. See below |
+| `deleteChange`, `readEvidence`, `writeEvidence` | The supported verbs do not use them yet, so you can skip them |
+
+Points to watch:
+
+- **The change meta uses two naming styles.** `createChange(name, metaText)` gets YAML text with snake_case keys, for example `created_by: Alice <alice@example.com>`. `listChanges` and `findChange` must return objects with camelCase meta keys, for example `createdBy`.
+- **Return the correct types.** If a boolean, number, or string has the wrong type, the engine does not fail. It uses a default value instead (for example, a non-boolean from `changeExists` reads as `false`). A wrong shape from `listChanges` or `findChange` causes an error.
+- **Values such as `path` and `dir` are display labels only.** The engine never opens them as files.
+- **Artifact ids** are paths relative to the change: `proposal.md`, `design.md`, `tasks.md`, `specs/<capability>/spec.md`. An empty document counts as present.
+- **Only the built-in schema works.** Your own Store has no local workspace, so the engine cannot find project-level or user-level custom schemas.
+- **Errors**: when a Store method throws or rejects, the running `dispatch` rejects with an `Error`. The message starts with the method name, for example `listChanges: connection refused`.
+- **Do not wait synchronously for another `dispatch` of the same engine inside a Store method.** The two calls wait for each other and stop. A new dispatch after the Store method returns is fine.
+
+This fragment keeps data in a `Map` in memory and shows the two naming styles:
 
 ```js
-// Open a round: the content rides the stdin parameter (same mechanism as
-// `new artifact --stdin`).
+const changes = new Map() // name → { metaText, artifacts: Map }
+
+const store = {
+  createChange(name, metaText) {
+    // metaText is like "schema: spec-driven\ncreated: 2026-10-07\ncreated_by: Alice <alice@example.com>\n"
+    changes.set(name, { metaText, artifacts: new Map() })
+    return `changes/${name}`
+  },
+  findChange(name) {
+    const c = changes.get(name)
+    if (!c) return null
+    const meta = parseYaml(c.metaText) // use your usual YAML package
+    return { name, meta: { schema: meta.schema, created: meta.created, createdBy: meta.created_by } }
+  },
+  listChanges() {
+    return [...changes.keys()].sort().map((name) => store.findChange(name))
+  },
+  changeExists: (name) => changes.has(name),
+  readArtifact: (change, artifact) => changes.get(change)?.artifacts.get(artifact) ?? null,
+  writeArtifact(change, artifact, content) {
+    changes.get(change).artifacts.set(artifact, content)
+    return `changes/${change}/${artifact}`
+  },
+  // …add the other required methods the same way
+}
+```
+
+### `claim` (optional)
+
+A claim is a team-system concept, so your Store decides who can claim a change. When you implement `claim(name)`, `dispatch(['claim', '<name>'])` calls it:
+
+- On success, return your own data, for example `{ claimed: true, claimedBy: 'alice' }`. The SDK gives it to the caller unchanged.
+- On a conflict, throw an `Error` with a `code` (for example `ownership_lost`). The message must say who holds the change and what to do. The SDK passes it on unchanged.
+
+Without `claim`, the verb fails with `error`.
+
+## <a id="stamp"></a>Quality stations: `review` and `verify`
+
+Each quality station supports two verbs, with the same arguments as the CLI:
+
+```js
+// Add a round: pass the content in the stdin parameter
 await engine.dispatch(['review', 'add-round', 'add-auth', '--stdin'], { stdin: round })
 // → { change: 'add-auth', round: 1 }
 
-// Stamp: fingerprints do not fit in argv, so they ride stdin as JSON.
-await engine.dispatch(['review', 'stamp', 'add-auth', '--accept', '--agent', 'claude', '--stdin'], {
+// Stamp: put the file fingerprints in JSON on stdin
+await engine.dispatch(['review', 'stamp', 'add-auth', '--agent', 'claude', '--stdin'], {
   stdin: JSON.stringify({
-    scope: [{ path: 'src/auth.ts', hash: '0f9c' }],
+    scope: [{ path: 'src/auth.ts', hash: '<sha256>' }],
     missing: [],
   }),
 })
 // → { change: 'add-auth' }
 ```
 
-- The stdin JSON is the **`scope`/`missing` SUBSET** of the server's stamp
-  request body — `accept`/`agent` are argv flags here, and unknown fields
-  are rejected (`invalid_argv`), not ignored.
-- `scope` holds **fingerprints you computed** — a host has no work tree and
-  the engine never re-hashes; `missing` declares which paths of the ticket's
-  scope are gone. The engine checks that `scope ∪ missing` equals the
-  ticket's union and that the two are disjoint, and refuses otherwise. Both
-  fields default to empty, and omitting `--stdin` is the same as both empty.
-- The stamped `reviewed_by` / `verified_by` is the construction-time `actor`
-  (see createEngine above); `--agent` stamps `reviewed_with` /
-  `verified_with`.
-- **The gates pass through untouched**: unfinished tasks, or unresolved
-  CRITICAL/WARNING findings in the last round (`--accept` waives the
-  must-fix condition; SUGGESTION never blocks) reject with the engine's
-  semantic message.
-- Stamping has three prerequisite store methods: `deleteArtifact` (removes
-  the ticket) plus `readChangeMeta` / `writeChangeMeta` (the metadata
-  read-modify-write). Missing any of them, the stamp refuses up front —
-  ticket and metadata untouched.
-- **Concurrency**: stamps within one engine instance serialize automatically
-  (two stamps never clobber each other); coordinating stamps on the same
-  change across instances or processes is your store's job.
+- `scope` holds **file fingerprints that you calculate**. The engine cannot see your work tree, so it does not calculate them. To match the CLI, use the SHA-256 of the file content in hex. For a text file, change CRLF to LF first.
+- `missing` lists files in the ticket scope that no longer exist. Together, `scope` and `missing` must equal the files of the ticket, with no path in both. Otherwise the stamp fails. You can leave out either field (it reads as an empty list). An extra field fails with `invalid_argv`.
+- The stamp fails if a task is not done. Manual tasks marked `[M]` do not count. The stamp also fails if the last round has a CRITICAL or WARNING finding. `--accept` skips the must-fix findings. A SUGGESTION never blocks a stamp.
+- `reviewed_by` / `verified_by` is the `actor` of the engine. `--agent` goes into `reviewed_with` / `verified_with`.
+- A stamp needs `readChangeMeta`, `writeChangeMeta`, and `deleteArtifact`. If one is missing, the stamp fails before it starts, and the ticket and the meta stay unchanged.
+- Stamps in one engine instance run one at a time, so they never overwrite each other. Your Store must coordinate stamps on the same change across instances or processes.
 
-## Render API
+## <a id="render"></a>Make skill files
 
-Workflow knowledge for your harness — the same generation code `speclink
-init`/`update` uses, so content cannot drift from the CLI:
+`skills` uses the same generator as `speclink init` and `speclink update`, so its content always matches the CLI.
 
 ```js
-const { skills } = require('@speclink/engine')
+skills.list() // [{ name: 'analyze', description: '…' }, …]
 
-skills.list() // [{ name: 'propose', description: '…' }, …]
-
-// The render matrix: target (claude|codex|neutral) × invocation (cli|tool-call)
-const skillMd = skills.render('propose', {
-  target: 'neutral',
-  invocation: 'tool-call',
-})
+const skillMd = skills.render('propose', { target: 'neutral', invocation: 'tool-call' })
 ```
 
-- `target: 'neutral'` renders for a custom harness: no `/speclink-` slash
-  prefix, no plan-mode references; `toolName` (default `"speclink"`)
-  substitutes `{{TOOL}}`.
-- `invocation: 'tool-call'` words verb references as "call the speclink tool
-  with an argv array" — matching a `dispatch`-backed tool; `'cli'` words them
-  as shell commands.
-- Feed `skills.render(...)` files to your agent (e.g. write them under a
-  directory you pass as `skillDirectories`). Routing rides those files: each
-  skill's `description` states when to use it, and its closing **Next steps**
-  section states what to suggest afterwards — there is no separate instructions
-  block to inject, and none is generated any more.
+| Option | Values | Notes |
+| --- | --- | --- |
+| `target` | `claude`, `codex`, `neutral` | `neutral` is for custom tools: no `/speclink-` slash commands and no plan-mode text |
+| `invocation` | `cli` (default), `tool-call` | `tool-call` writes verbs as "call the speclink tool with an argv array", for a tool built on `dispatch`. `cli` writes shell commands |
+| `specDir` | A string | The spec directory name in the skill text. Default: `openspec` |
+| `toolName` | A string | `neutral` only: the tool name in the skill text. Default: `speclink` |
 
-## Complete integration example — Copilot SDK
+Write each `SKILL.md` into a directory, and let your agent load it. The `description` of each skill says when to use it. The Next steps section at the end says what to suggest after it. You do not need a separate system prompt. Your agent must read the skill descriptions for this to work.
 
-One tool named `speclink` whose parameter is the argv array, plus generated
-skills on disk:
+## <a id="example"></a>Full example: Copilot SDK
+
+This example makes one tool named `speclink` with an argv array parameter, and adds the generated skill files. The official Copilot SDK documents are the authority for its API. This example uses `@github/copilot-sdk` 1.0.16.
 
 ```js
 const { createEngine, skills } = require('@speclink/engine')
-const { defineTool, CopilotClient } = require('@github/copilot-sdk') // illustrative imports
+const { CopilotClient, defineTool } = require('@github/copilot-sdk')
 const { mkdirSync, writeFileSync } = require('node:fs')
 const { join } = require('node:path')
 
-const engine = createEngine({ store: myDatabaseStore })
+const engine = createEngine({ store: myDatabaseStore, actor: 'Alice <alice@example.com>' })
 
-// 1. The speclink tool: argv in, structured payload out; errors go back as text.
+// 1. The speclink tool: argv in, result out; errors go back to the agent as text.
 const speclinkTool = defineTool('speclink', {
   description:
-    'Run a speclink verb. Pass the argv array exactly as the skill documents say, ' +
+    'Run a speclink verb. Pass the argv array exactly as the skill says, ' +
     "e.g. ['status', '--change', 'add-auth', '--json'].",
   parameters: {
     type: 'object',
@@ -340,39 +246,32 @@ const speclinkTool = defineTool('speclink', {
     try {
       return await engine.dispatch(argv, stdin === undefined ? undefined : { stdin })
     } catch (err) {
-      // err.message is the semantic message — hand it straight to the agent.
       return { error: err.message, code: err.code }
     }
   },
 })
 
-// 2. Generate the skill files once (or at boot) and feed them as skillDirectories.
-const skillsRoot = join(process.cwd(), '.wad', 'skills')
+// 2. Make the skill files.
+const skillsRoot = join(process.cwd(), '.my-agent', 'skills')
 for (const { name } of skills.list()) {
   const dir = join(skillsRoot, `speclink-${name}`)
   mkdirSync(dir, { recursive: true })
-  writeFileSync(
-    join(dir, 'SKILL.md'),
-    skills.render(name, { target: 'neutral', invocation: 'tool-call' }),
-  )
+  writeFileSync(join(dir, 'SKILL.md'), skills.render(name, { target: 'neutral', invocation: 'tool-call' }))
 }
 
-// 3. Wire both into the agent session. Routing needs no system prompt of its
-//    own: each skill's description says when to use it.
-const client = new CopilotClient({
-  tools: [speclinkTool],
-  skillDirectories: [skillsRoot],
-})
+// 3. Give the tool and the skill directory to the session.
+async function startSession() {
+  const client = new CopilotClient()
+  return client.createSession({ tools: [speclinkTool], skillDirectories: [skillsRoot] })
+}
 ```
 
-The generated skills reference verbs as speclink tool calls, the tool routes
-them into the in-process engine, and the engine persists through your store —
-no CLI, no child processes, no local `openspec/` tree.
+The skills describe each verb as a tool call. The tool sends the call to the engine in the same process, and the engine saves through your Store. No CLI, no child process, and no local `openspec/` directory take part.
 
-Your harness has to load those skill descriptions for routing to work; a
-harness that ignores them has no workflow routing at all.
+## <a id="limits"></a>Current limits
 
-## See also
-
-- [`index.d.ts`](../crates/adapters/speclink-node/index.d.ts) — the currently shipped
-  Node API and payload types.
+- The SDK supports nine verbs only (see [Run verbs](#dispatch)). You cannot run `archive`, `task`, `discuss`, or other verbs through the SDK yet.
+- Your own Store can use only the built-in schema.
+- No prebuilt package exists for musl Linux.
+- When a Store method throws, stderr can show one extra Rust panic line. The Promise still rejects as described above.
+- The return value of `dispatch` has no per-verb TypeScript type. [Verb and Flag Contract](verb-contract.md) defines the shapes.

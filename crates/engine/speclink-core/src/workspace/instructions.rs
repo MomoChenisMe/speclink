@@ -262,7 +262,7 @@ pub struct ApplyInstructions {
 }
 
 /// Remote mode retargets apply `contextFiles` onto the Context Projection
-/// mirror (platform architecture §7): the key set and the server's
+/// mirror: the key set and the server's
 /// collection logic stay untouched — every value becomes the corresponding
 /// path under the projection's spec-root mirror, so skills read the
 /// read-only projection instead of unreachable server paths. Never called

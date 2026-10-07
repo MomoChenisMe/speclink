@@ -1,5 +1,7 @@
 # Speclink 品牌資產
 
+**繁體中文** · [English](README.en.md)
+
 Speclink 的 Logo 與圖示來源。標誌由「文件輪廓 + 電路節點」構成——規格是文件，節點與走線是規格之間的連結與流程。
 
 ## 配色
@@ -25,10 +27,6 @@ app 端的完整色票見 `apps/desktop/src/index.css`（Tailwind v4 token，主
 | `transparent/` | 上述各檔的去背版本 | 疊在非白色背景上時使用 |
 
 桌面 app 由 `transparent/` 的兩張圖供給：`speclink-logo-mark.png` 合成 `apps/desktop/src-tauri/icons/`（`tauri icon`，視窗／工作列圖示）與 `apps/desktop/public/logo-mark.png`（頁首圖示與 favicon）；`speclink-wordmark.png` 裁切至緊邊界後為 `apps/desktop/public/speclink-wordmark.png`（頁首文字標誌，與 mark 併排）。
-
-## explorations/
-
-早期概念稿與被淘汰的方向，**不作為正式資產使用**，僅保留設計脈絡。`selected-*` 是選定方向的高解析原稿。
 
 ## 深色背景注意
 

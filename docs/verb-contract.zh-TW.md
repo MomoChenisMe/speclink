@@ -1,279 +1,462 @@
 # 動詞與旗標契約
 
-> **誰需要讀這份**：要自己串接 Speclink 遠端 API、寫客戶端，或要確認某個動詞在遠端模式會怎麼表現的人。
-> 只用桌面 app 或 CLI 的話，這份可以完全跳過——日常操作看[完整 SDD 工作流](workflow.zh-TW.md)就夠。
+**繁體中文** · [English](verb-contract.md)
 
-本文件回答動詞層的契約。它涵蓋兩塊：CLI 動詞在本機與 remote 兩模式的歸屬與輸出規則，以及正式規格 `verb-contract` 指定的端點、payload 與錯誤形狀。
+## <a id="audience"></a>這份文件給誰
 
-端點那一塊目前涵蓋動詞補全（verb-parity）端點：validate、analyze、刪除變更、任務搬移、討論建立帶 slug、討論 discard、討論 link、討論 seal、變更開工標記，以及變更認領。其餘動詞的契約仍以 canonical specs 為準：
+要自己寫客戶端、自己架 server，或想用 HTTP 直接接 Speclink 的開發者看這份。只用桌面 app 或 CLI 的話可以跳過，日常操作看[完整 SDD 工作流](workflow.zh-TW.md)就夠。
 
-- [動詞契約的正式規格](../openspec/specs/verb-contract/spec.md)
-- [Client Protocol spec](../openspec/specs/client-protocol/spec.md)
+這份文件回答三件事：
 
-以下端點都位於 project base `/api/speclink/v1/projects/{key}` 之下。每個請求都要帶標準契約 headers：`Authorization: Bearer …`、`X-Speclink-Api-Version`，以及已選定時的 `X-Speclink-Repo`。所有成功回應都附 scope ETag header，值是 project revision。
+- CLI 的每個動詞在本機模式與遠端模式能不能用、輸出哪裡不同。本機模式指文件存在 repo 裡的 `openspec/`；遠端模式指 `.speclink.yaml` 有 `remote:` 區段、文件存在 server 上。
+- 遠端 HTTP API 的共同規則、錯誤碼與全部端點。
+- 需要送 body 的端點，請求與回應長什麼樣子。
 
-## CLI 動詞的模式歸屬
+官方 `speclink-server` 是參考實作，你可以照這份文件自建 server。這份文件與正式規格有出入時，以正式規格為準：
 
-每個頂層動詞歸屬四種模式形狀之一，分岔決策集中宣告於 dispatch 層，不散在各動詞函式裡：
+- [動詞契約正式規格](../openspec/specs/verb-contract/spec.md)
+- [客戶端協定正式規格](../openspec/specs/client-protocol/spec.md)
 
-| 形狀 | 動詞 | 語意 |
+架 server、建立存取金鑰（PAT）的步驟見 [Remote 入門](remote-getting-started.zh-TW.md)。
+
+## <a id="mode-assignment"></a>動詞的模式歸屬
+
+除了下表「只限本機」與「只限遠端」兩列，其他動詞兩種模式都能用。
+
+| 歸屬 | 動詞 | 在不支援的模式下執行 |
 | --- | --- | --- |
-| **ModeFree** | `init`、`update`、`link`、`unlink`、`auth`、`schemas`、`templates`、`feedback`、`schema`、`config`、`completion` | 不觸發 store 模式解析。不讀專案設定的動詞（`completion`、`config`）不受壞掉的 `.speclink.yaml` 影響。 |
-| **Dual** | `list`、`show`、`validate`、`analyze`、`drift`、`archive`、`discard`、`artifact`、`language`、`status`、`instructions`、`new`、`workflow-config`、`task`、`in-progress`、`discuss`、`review`、`verify`、`plan`、`change` | 本機模式作用於本機 store，remote 模式作用於 remote store，**不會**在 remote 模式靜默改作用於本機。缺任一臂構成建置失敗，而非執行期靜默回退。 |
-| **FsOnly** | `demo`、`trace`、`change rank`（Dual 的 `change` 底下唯一的 FsOnly 子指令：remote 的看板順序存在 board resource）、`plan --strict-overlap`（server 沒有目錄級開關） | remote 模式以非零 exit code 明確拒絕，且不發出任何 server 請求——離線環境同樣拒絕。 |
-| **RemoteOnly** | `claim` | 本機模式以非零 exit code 明確拒絕，並於 stderr 說明需要 remote store。 |
+| 只限本機 | `demo`、`trace`、`change rank`、`plan --strict-overlap` | 遠端模式直接拒絕、非零結束，連一個請求都不送（離線也一樣拒絕） |
+| 只限遠端 | `claim` | 本機模式直接拒絕、非零結束，stderr 說明需要遠端儲存後端 |
+| 兩種模式都可用 | `list`、`show`、`validate`、`analyze`、`drift`、`archive`、`discard`、`artifact`、`language`、`status`、`instructions`、`new`、`workflow-config`、`task`、`in-progress`、`discuss`、`review`、`verify`、`plan`、`change`（`change rank` 除外） | 不適用。遠端模式只讀寫 server，不會偷偷改用本機檔案 |
+| 不分模式 | `init`、`update`、`link`、`unlink`、`auth`、`schemas`、`templates`、`feedback`、`schema`、`config`、`completion` | 不適用。這些動詞不碰儲存後端 |
 
-模式判定是惰性的：只有宣告形狀需要時才解析模式，只有 remote 臂將執行時才建立連線。
+為什麼只限本機：
 
-## 兩模式的輸出同形
+- `demo` 把示範變更寫進本機的 `openspec/`。
+- `trace` 從本機 `openspec/` 的封存變更與討論檔組出溯源鏈。
+- `change rank` 寫本機卡片的排序；遠端的看板順序存在 `/board-order`。
+- `plan --strict-overlap` 依目錄判斷重疊；server 只依 requirement 判斷。
 
-Dual 動詞的人眼輸出（stdout 文本，含 `--no-color`）在兩模式下逐位元一致，只有六項明文分歧：
+`claim` 只限遠端，因為「認領」記錄的是團隊裡誰在做這個變更，本機沒有這個狀態。
 
-1. `new change` 的 Path 行——本機印、remote 不印（server 端路徑對本機使用者無意義）。
-2. `list` 的 worktree 標示——remote 恆缺席（worktree 是本機主 checkout 的觀察面）。
-3. `status` 的 schema 覆寫旗標——remote 明確拒絕（server 的工作流設定決定 schema）。
-4. `workflow-config` 的文件標籤——remote 以 `config.yaml` 為標籤。
-5. `discuss promote` 的 Path 行與其後的提示行——本機印、remote 不印（兩行綁在一起去留）。
-6. `plan` 的 `--strict-overlap` 旗標——remote 模式在發出任何 server 請求前明確拒絕（server 只以 requirement 級重疊規劃）。
+## <a id="output-differences"></a>兩種模式的輸出差異
 
-清單以外的任何輸出差異都是缺陷。模式差異只存在於資料取得與守門拒絕，不存在於輸出文本的組版。
+兩種模式都可用的動詞，給人看的輸出（含 `--no-color`）應該一字不差。已知的差異只有下表。
 
-`--json` 的欄位集合與 camelCase 命名是凍結契約：不改名、不移除既有欄位，工單原文不出現在任何 `--json` 輸出。
+| # | 動詞 | 遠端模式的不同 |
+| --- | --- | --- |
+| 1 | `new change` | 不印 `Path:` 行（server 上的路徑對你沒有意義） |
+| 2 | `list` | 不出現 worktree 標示（worktree 屬於本機 checkout） |
+| 3 | `status --schema` | 拒絕；schema 由 server 的工作流設定決定 |
+| 4 | `workflow-config` | 文件標籤固定是 `config.yaml` |
+| 5 | `discuss promote` | 不印 `Path:` 行，也不印它下一行的提示 |
+| 6 | `plan --strict-overlap` | 拒絕，原因見上一節 |
+| 7 | `list` | 本機預設依最近修改排序；遠端依名稱排序。`--sort created` 與 `--sort modified` 在遠端也是名稱順序 |
+| 8 | `validate`（一次驗多個變更） | 本機依最近修改排列結果；遠端依名稱排列。遠端驗變更時一律不嚴格，`--strict` 只對 `--specs` 有效 |
+| 9 | `instructions --schema` | 拒絕，原因同第 3 項 |
+| 10 | `archive` | 一次只封存一個，而且要寫名字；`--all` 或多個名字會被拒絕。`--skip-specs`、`--no-validate`、`--mark-tasks-complete` 在遠端不生效 |
 
-想知道每個動詞「什麼時候用、完成判準是什麼」不在本文——那是[完整 SDD 工作流](workflow.zh-TW.md)的責任。
+第 1–6 項是正式規格明列的差異。第 7–10 項是目前程式的實際行為，正式規格還沒列入。
 
-## 錯誤封套
+`--json` 的欄位集合與 camelCase 命名是凍結的契約：不改名、不刪除既有欄位，而且工單原文不會出現在任何 `--json` 輸出裡。
 
-所有非 2xx 回應皆為 protocol 錯誤封套：
+## <a id="request-rules"></a>請求的共同規則
 
-```json
-{ "status": 409, "reason": "refused", "message": "…人類可讀的引擎凍結文字…" }
+### 網址
+
+每個專案的 API 都在這個網址底下：
+
+```text
+https://<server>/api/speclink/v1/projects/<專案代號>
 ```
 
-`reason` 為機器可判的註冊表值（`not_found`、`permission_denied`、`refused`、`invalid_argument`、`invalid_config`、`revision_conflict`、`unavailable`、`internal`）。
+下文端點表的路徑都接在它後面。CLI 的 `.speclink.yaml` 裡 `remote.url` 存的就是這個網址（由 `speclink link <url>` 寫入）。
 
-## GET /changes/{name}/validate
+### 每個請求都要帶的標頭
 
-唯讀衍生查詢，**reader 與 editor 皆可用**。它經 Command gateway 執行與 fs 模式 `speclink validate` 相同的引擎運算：單 change、spec-driven schema、非 strict。它不寫入、不發事件，scope revision 也不前進。
+| 標頭 | 值 | 缺少或錯誤時 |
+| --- | --- | --- |
+| `Authorization` | `Bearer <憑證>` | 401 `permission_denied` |
+| `X-Speclink-Api-Version` | `1` | 409 `refused`（版本不相容） |
+| `X-Speclink-Repo` | 儲存庫代號 | 專案只有一個 repo 時可省略；有多個 repo 卻省略回 409 `refused`；寫了沒註冊的 repo 回 404 `not_found` |
+| `Content-Type` | `application/json`（有 body 時） | 415，回應是純文字 |
 
-回應 `200`：
+憑證有兩種：存取金鑰（PAT，`spk_pat_` 開頭，在 server 的帳號頁建立），或 `speclink auth login` 取得的裝置登入憑證（`spk_at_` 開頭）。憑證有效但帳號不是這個專案的成員，回 403。
 
-```json
-{ "change": "demo", "valid": false, "errors": ["…"], "warnings": ["…"] }
-```
+### 角色
 
-錯誤：change 不存在時 `404 not_found`。
+專案成員有 `reader` 與 `editor` 兩種角色。端點總表「最低角色」欄寫 `editor` 的端點，reader 呼叫會收到 403 `permission_denied`。官方 server 只在這些端點檢查角色；其他寫入端點目前任何成員都能呼叫，包括 reader。
 
-**聚合規則**：端點固定單 change。CLI 的聚合語意——無參數、`--all`、`--changes`——由 **client 組合**：先 list，再逐 change 呼叫本端點。聚合輸出形狀與 fs 模式一致。任一 change invalid 時，CLI 以非零 exit code 結束。
+### 握手
 
-## GET /changes/{name}/analyze
-
-唯讀衍生查詢，**reader 與 editor 皆可用**。回傳引擎完整的 `AnalyzeReport`。不寫入、不發事件。
-
-回應 `200`：
+連上之後先呼叫 `GET /binding`。它告訴你目前是誰、綁到哪個專案與 repo、server 版本，以及依角色開放的能力：
 
 ```json
 {
-  "changeId": "demo",
-  "dimensions": [{ "dimension": "Coverage", "status": "Clean", "findingCount": 0 }],
-  "findings": [{
-    "id": "AMB-1", "dimension": "Ambiguity", "severity": "Suggestion",
-    "location": "specs/auth/spec.md", "summary": "…", "recommendation": "…",
-    "summaryMsg": { "key": "…", "params": { "scenario": "…" } },
-    "recommendationMsg": { "key": "…", "params": {} }
-  }],
-  "artifactsAnalyzed": ["proposal.md"],
-  "artifactsMissing": ["design.md"]
+  "actor": { "id": "usr_…", "name": "Demo" },
+  "project": { "id": "prj_acme", "key": "acme", "name": "acme" },
+  "repo": { "id": "repo_backend", "key": "backend", "name": "backend" },
+  "apiVersion": "1",
+  "engineVersion": "0.8.0",
+  "capabilities": {
+    "contextSnapshots": true,
+    "policyWrite": true,
+    "validate": true,
+    "analyze": true,
+    "deleteChange": true,
+    "moveTask": true,
+    "authentication": [],
+    "events": {
+      "transports": [{ "type": "sse", "url": "/events", "resume": true }],
+      "polling": { "url": "/sync-state", "etag": true }
+    }
+  }
 }
 ```
 
-錯誤：change 不存在時 `404 not_found`。
+- `apiVersion` 與你送出的版本不同時，客戶端應該停下來，不要繼續呼叫其他端點。
+- `policyWrite`、`deleteChange`、`moveTask` 只有 editor 是 `true`；`validate`、`analyze` 對所有角色都是 `true`。
+- `capabilities` 只是讓畫面停用按鈕的提示。真正的權限檢查發生在每個請求上。
 
-## GET /plan
+### ETag 與寫入前的版本檢查
 
-scope 層的唯讀衍生查詢，**reader 與 editor 皆可用**。執行與 fs 模式 `speclink plan` 相同的引擎計算，rank 來源是 scope 的 board resource。端點以寬鬆方式讀取文件的 `changes` 圖：文件缺席、內容無法解析、不是物件或缺 `changes` 圖，一律視為「沒有 rank」，也絕不回寫文件；store 讀取故障則照常回錯。不寫入、不發事件。CLI 的 remote 臂把回應轉回引擎報告，所以 `speclink plan` 與 `speclink plan --json` 在兩模式下印出相同的位元組。
+ETag 是 HTTP 回應標頭，用來判斷資料有沒有變。
 
-回應 `200`：
+- 成功回應大多帶 `ETag`，值是專案修訂號，例如 `"16"`。專案裡任何一次寫入都會讓它變大。`GET /binding` 與 `GET /events` 不帶 `ETag`。
+- 想知道資料有沒有變：呼叫 `GET /sync-state` 並帶 `If-None-Match: <ETag>`，沒變回 304。`POST /context` 也接受 `If-None-Match`。
+- 寫入前要附版本的端點只有三個，而且帶法不同：
+
+| 端點 | 版本放在哪裡 | 版本從哪裡來 |
+| --- | --- | --- |
+| `PUT /changes/{name}/artifacts/{artifact}` | `If-Match: <數字>`，不加引號 | 同一份 artifact 的 `GET` 回應裡的 `version`；`0` 代表「只能新建」 |
+| `PUT /board-order` | `If-Match: <ETag>`，引號可有可無 | 任一回應的 `ETag`，例如 `GET /board-order` |
+| `PUT /config` | body 的 `expectedRevision` | `GET /config` 回應裡的 `revision` |
+
+版本對不上時回 409 `revision_conflict`，什麼都不寫。前兩個端點缺 `If-Match` 時回 400 `invalid_argument`。其他寫入端點不檢查版本。
+
+## <a id="repo-ownership"></a>變更的 repo 歸屬
+
+每個變更恰好屬於一個 repo；同時牽涉兩個 repo 的需求，要拆成多個變更。
+
+- 遠端模式建立變更（`POST /changes`）時，歸屬取自請求的 `X-Speclink-Repo`。專案只有一個 repo 時自動用那一個。回應的 `repo` 欄位會回報歸屬。
+- 列舉變更（`GET /changes`）只回請求那個 repo 的變更，其他 repo 的變更不會出現。
+- 一個需求要同時改兩個 repo（例如 backend 與 frontend）時，拆成兩個變更，各自在自己的 repo 建立。契約沒有「跨 repo 的變更」。
+- 不只變更：討論、正式規格、封存、工作流設定與看板順序也都分 repo 存放。
+- CLI 送出的 repo 名稱來自 `.speclink.yaml` 的 `remote.repo`，用 `speclink link <url> --repo <名稱>` 設定。
+
+## <a id="errors"></a>錯誤封套與錯誤碼
+
+非 2xx 的回應都是同一個 JSON 形狀，叫作錯誤封套：
+
+```json
+{ "status": 409, "reason": "refused", "message": "change 'add-login' has started work (started_at set or tasks checked) — discard refuses to delete it; pass --force to discard anyway" }
+```
+
+- `reason` 給程式判斷，`message` 給人看（與本機 CLI 印的是同一句）。
+- `reason` 只有下表八個值。收到不認得的值，當成一般錯誤、顯示 `message` 即可。
+- `DELETE /changes/{name}/in-progress` 被拒時，封套會多帶 `checkedTasks` 與 `touchedFiles` 兩個欄位。
+- 例外：請求 body 本身格式錯誤時，回應是純文字而不是封套。例如缺 `Content-Type: application/json` 回 415，缺必填欄位回 422。
+
+| `reason` | HTTP | 什麼時候發生 |
+| --- | --- | --- |
+| `permission_denied` | 401 | 沒帶憑證，或憑證無效、過期、已撤銷，或帳號已停用 |
+| `permission_denied` | 403 | 帳號不是這個專案的成員；reader 呼叫只限 editor 的端點 |
+| `not_found` | 404 | 專案或 repo 沒有註冊；變更、討論、artifact 或規格不存在 |
+| `invalid_argument` | 400 | 參數值不對：slug 格式錯、缺 `If-Match`、`If-Match` 不是數字、未知的 artifact、搜尋關鍵字是空的 |
+| `invalid_config` | 422 | 變更的 metadata 壞掉；工作流設定文件解析不了 |
+| `refused` | 409 | 前置條件不成立：API 版本不符、多 repo 卻沒指定 repo、需要 `force`、任務序號超出範圍、變更已被別人認領、依賴成環、匯入的目標不是空的 |
+| `refused` | 413 | 請求 body 超過 32 MiB，或看板順序內容超過 1 MiB |
+| `revision_conflict` | 409 | 寫入時附的版本已經不是最新（見[請求的共同規則](#request-rules)） |
+| `unavailable` | 503 | 儲存後端暫時無法服務 |
+| `internal` | 500 | 其他失敗 |
+
+注意：有些內容檢查目前會以 500 `internal` 回應，但 `message` 仍會說明原因。例如寫入的 `tasks.md` 沒有 `- [ ]` 核取方塊，或審查輪的內容缺 `**Scope**:` 行。要不要重試，請看 `message` 判斷。
+
+## <a id="endpoints"></a>端點總表
+
+路徑都接在[專案網址](#request-rules)後面。`{name}` 是變更名稱，`{slug}` 是討論代號，`{artifact}` 是 `proposal`、`design`、`tasks` 或 `specs/<capability>`。「最低角色」寫 `reader` 代表所有成員都能呼叫。
+
+### 連線與同步
+
+| 方法 | 路徑 | 最低角色 | 用途 |
+| --- | --- | --- | --- |
+| GET | `/binding` | reader | 握手：身分、專案、repo、版本與能力 |
+| GET | `/whoami` | reader | 目前使用者，以及這個專案的所有 repo |
+| GET | `/sync-state` | reader | 只回 `ETag`；帶 `If-None-Match` 且沒變時回 304 |
+| GET | `/events` | reader | SSE 事件流，見下方[事件流](#events) |
+| POST | `/context` | reader | 一次取回一致的文件快照；body 可帶 `change` 縮小範圍 |
+
+### 變更
+
+| 方法 | 路徑 | 最低角色 | 用途 |
+| --- | --- | --- | --- |
+| GET | `/changes` | reader | 列出這個 repo 的變更（`speclink list`） |
+| POST | `/changes` | reader | 建立變更（`speclink new change`） |
+| GET | `/changes/{name}` | reader | 單一變更的狀態與 metadata（`speclink status`、`show`） |
+| DELETE | `/changes/{name}?force=<bool>` | editor | 捨棄變更（`speclink discard`） |
+| GET | `/changes/{name}/drift` | reader | 規格那一側的偏移資料（`speclink drift`） |
+| GET | `/changes/{name}/validate` | reader | 驗證單一變更（`speclink validate`） |
+| GET | `/changes/{name}/analyze` | reader | 交叉分析報告（`speclink analyze`） |
+| GET | `/changes/{name}/instructions/{kind}` | reader | 產出指示；`{kind}` 是 `proposal`、`design`、`specs` 或 `tasks`，寫 `apply` 時回實作進度（`speclink instructions`） |
+| GET | `/changes/{name}/artifacts/{artifact}` | reader | 讀 artifact 內容與 `version`（`speclink artifact cat`） |
+| PUT | `/changes/{name}/artifacts/{artifact}` | reader | 寫 artifact，需帶 `If-Match` |
+| GET | `/changes/{name}/evidence` | reader | 完成證據：勾選任務時記下的檔案 |
+| POST | `/changes/{name}/in-progress` | reader | 標記開工（`speclink in-progress add`） |
+| DELETE | `/changes/{name}/in-progress` | reader | 移除開工標記（`speclink in-progress remove`） |
+| POST | `/changes/{name}/claim` | editor | 認領（`speclink claim`） |
+| POST | `/changes/{name}/depends` | editor | 宣告或移除前置變更（`speclink change depends`） |
+| POST | `/changes/{name}/archive?carryReview=<bool>&carryVerify=<bool>` | reader | 封存（`speclink archive`） |
+
+### 任務
+
+| 方法 | 路徑 | 最低角色 | 用途 |
+| --- | --- | --- | --- |
+| POST | `/changes/{name}/tasks/{taskId}/done` | reader | 勾選任務（`speclink task done`）；`{taskId}` 是序號或 `tsk_` 開頭的穩定 ID |
+| POST | `/changes/{name}/tasks/{taskId}/undone` | reader | 取消勾選（`speclink task undone`） |
+| POST | `/changes/{name}/tasks/move` | editor | 搬移任務並重排編號（桌面 app 的拖曳） |
+
+### 品質關卡
+
+`{station}` 是 `review`（審查）或 `verify`（驗證），兩站的端點與 payload 相同。
+
+| 方法 | 路徑 | 最低角色 | 用途 |
+| --- | --- | --- | --- |
+| GET | `/changes/{name}/{station}` | reader | 讀工單（`speclink review show`） |
+| POST | `/changes/{name}/{station}/rounds` | reader | 新增一輪（`speclink review add-round`） |
+| POST | `/changes/{name}/{station}/stamp` | editor | 蓋章（`speclink review stamp`） |
+| DELETE | `/changes/{name}/{station}` | editor | 丟棄工單（`speclink review discard`） |
+
+### 討論
+
+| 方法 | 路徑 | 最低角色 | 用途 |
+| --- | --- | --- | --- |
+| GET | `/discussions?archived=<bool>` | reader | 列出討論；`archived=true` 列出封存的討論 |
+| POST | `/discussions` | reader | 建立討論（`speclink discuss new`） |
+| GET | `/discussions/search?q=<關鍵字>` | reader | 搜尋討論，多個關鍵字以空白分隔（`speclink discuss search`） |
+| GET | `/discussions/{slug}` | reader | 讀單一討論與全文（`speclink discuss show`） |
+| DELETE | `/discussions/{slug}?force=<bool>` | editor | 刪除討論（`speclink discuss discard`） |
+| PUT | `/discussions/{slug}/context` | reader | 寫背景段（`speclink discuss context`） |
+| POST | `/discussions/{slug}/rounds` | reader | 新增一輪（`speclink discuss add-round`） |
+| POST | `/discussions/{slug}/conclude` | reader | 寫結論（`speclink discuss conclude`） |
+| POST | `/discussions/{slug}/archive` | reader | 封存討論（`speclink discuss archive`） |
+| POST | `/discussions/{slug}/promote` | reader | 轉為變更（`speclink discuss promote`） |
+| POST | `/discussions/{slug}/link` | reader | 把既有變更連到這個討論（`speclink discuss link`） |
+| POST | `/discussions/{slug}/seal` | reader | 內容寫好後，把討論標為已轉出變更（`speclink discuss seal`） |
+
+### 專案層資料
+
+| 方法 | 路徑 | 最低角色 | 用途 |
+| --- | --- | --- | --- |
+| GET | `/plan` | reader | 變更的執行順序（`speclink plan`） |
+| GET | `/specs` | reader | 正式規格清單 |
+| GET | `/specs/{capability}/document` | reader | 一份正式規格的全文 |
+| GET | `/archived` | reader | 已封存變更清單 |
+| GET | `/archived/{datedName}/artifacts/{path}` | reader | 已封存變更裡的一份文件，`{path}` 例如 `proposal.md` |
+| GET | `/archived/{datedName}/capabilities` | reader | 該次封存動到的 capability 名稱 |
+| GET | `/search?q=<文字>` | reader | 桌面 app 的全文搜尋（只搜在途的變更與討論） |
+| GET | `/language` | reader | 共用詞彙文件（`speclink language show`） |
+| GET | `/config` | reader | 工作流設定原文與修訂號 |
+| PUT | `/config` | editor | 寫工作流設定（`speclink workflow-config set`） |
+| GET | `/board-order` | reader | 看板順序 |
+| PUT | `/board-order` | editor | 整份取代看板順序，需帶 `If-Match` |
+| POST | `/import` | editor | 把本機專案整包搬上 server（桌面 app 使用）；目標 repo 必須是空的 |
+
+### 專案網址以外的端點
+
+這幾個端點直接接在 `https://<server>` 後面：
+
+| 方法 | 路徑 | 需要什麼 | 用途 |
+| --- | --- | --- | --- |
+| GET | `/healthz` | 不需要 | 程序在執行就回 200 |
+| GET | `/readyz` | 不需要 | 儲存後端可用才回 200，否則 503 |
+| GET | `/auth/whoami` | 只需憑證 | 憑證屬於誰（還沒選專案時用） |
+| GET | `/api/speclink/v1/scopes` | 只需憑證 | 這個帳號看得到的專案與 repo |
+
+`/auth/device`、`/auth/device/token`、`/auth/refresh` 與 `/auth/revoke` 是 `speclink auth login` 用的裝置登入流程。
+
+### <a id="events"></a>事件流
+
+`GET /events` 是 SSE（Server-Sent Events：server 透過一條長連線持續推送事件）。
+
+- `invalidate` 事件：某個資源變了。`data` 例如 `{"eventId":"42","scope":"change","resourceId":"add-login","revision":42}`，`scope` 是 `change`、`discussion` 或 `spec`。收到後重新讀取對應資源。
+- `reset` 事件：你的續傳位置已被清掉，請重新讀取全部資料。
+- 斷線重連時帶 `Last-Event-ID`，可以補收中間漏掉的事件。
+- 閒置時 server 會送 heartbeat 註解行，維持連線。
+
+## <a id="payload-examples"></a>請求與回應範例
+
+以下範例的欄位形狀取自官方 server 的實際回應。請求 body 欄寫「無」的端點，送 `{}` 或不送都可以；其他端點一定要送 JSON body，並帶 `Content-Type: application/json`。
+
+### 變更與任務
+
+| 端點 | 請求 body | 成功回應 |
+| --- | --- | --- |
+| `POST /changes` | `{"name":"add-login","agent":"claude"}` | `{"name":"add-login","schema":"spec-driven","repo":"backend"}` |
+| `DELETE /changes/{name}?force=true` | 無 | `{"change":"add-search-bar","unlinkedDiscussions":[{"slug":"board-search-bar","status":"concluded"}]}` |
+| `POST /changes/{name}/claim` | 無 | `{"claimedBy":"Demo <demo@example.com>"}` |
+| `POST /changes/{name}/depends` | `{"on":["add-login"],"remove":false}` | `{"change":"add-logout","dependsOn":["add-login"]}` |
+| `POST /changes/{name}/in-progress` | 無 | `{}` |
+| `DELETE /changes/{name}/in-progress` | 無 | `{"removed":true}`；本來就沒開工時是 `{"removed":false}` |
+| `POST /changes/{name}/archive` | 無 | `{"specs":[],"datedName":"2026-10-07-fix-typo","snapshotCreated":false,"archivedDiscussions":[],"evidenceRecorded":false}` |
+| `POST /changes/{name}/tasks/{taskId}/done` | `{"touchedFiles":["src/login.rs"],"headCommit":"0123…"}` | `{"taskDesc":"1.1 Add the login form","alreadyDone":false}` |
+| `POST /changes/{name}/tasks/{taskId}/undone` | 無 | `{"taskDesc":"1.1 Add the login form","alreadyUndone":false}` |
+| `POST /changes/{name}/tasks/move` | `{"from":2,"to":1}` | `{"change":"add-login","description":"1.1 Add the session check"}` |
+
+補充：
+
+- `POST /changes` 的選填欄位：`schema`、`description`、`agent`、`fromDiscussion`（來源討論代號）、`last`（搭配 `fromDiscussion`，表示這是結論規劃的最後一個變更）。
+- `DELETE /changes/{name}` 的 `force` 預設 `false`。變更已開工（有開工標記或任一任務已勾）時，不帶 `force=true` 會回 409 `refused`，什麼都不刪。metadata 壞掉時，即使 `force=true` 也回 422 `invalid_config`。回應的 `unlinkedDiscussions` 列出被解除連結的來源討論，以及解除後的狀態。
+- `POST /changes/{name}/claim`：同一個人重複認領，照樣成功、不重寫；別人已認領時回 409 `refused`，`message` 寫出目前的持有人。
+- `POST /changes/{name}/depends`：`on` 必填，`remove` 預設 `false`。自己依賴自己、目標不存在或已封存、依賴成環，都回 409 `refused`。
+- `POST /changes/{name}/in-progress`：重複呼叫，或變更名稱不存在，照樣回 200 `{}`，什麼都不寫。
+- `DELETE /changes/{name}/in-progress`：還有勾選的任務或記錄過的檔案時回 409 `refused`，封套多帶 `"checkedTasks":1,"touchedFiles":["src/login.rs"]`。
+- `POST /changes/{name}/archive`：`specs` 的每一項有 `capability`，以及 `added`、`modified`、`removed`、`renamed` 四個 requirement 數量。`carryReview=true`、`carryVerify=true` 表示即使該站還有未結的工單也封存，工單跟著變更一起搬進封存區。
+- `tasks/{taskId}/done`：`touchedFiles` 是這個任務動到的檔案，`headCommit` 是你看到那些檔案時的 commit；兩者都可省略，但 body 至少要送 `{}`。任務已勾時照樣回 200，`alreadyDone` 為 `true`。
+- `tasks/move`：`from`、`to` 是從 1 起算的任務序號；選填的 `before` 為 `true` 時插在目標任務之前，`false` 插在之後，省略時依搬移方向判斷。序號超出範圍回 409 `refused`。
+
+### 寫入 artifact
+
+先讀，拿到 `version`：
+
+```text
+GET /changes/add-login/artifacts/tasks
+→ {"artifact":"tasks","content":"## 1. Login\n\n- [ ] 1.1 Add the login form <!-- speclink-task:tsk_01M4… -->\n…","version":2}
+```
+
+再帶著 `version` 寫回：
+
+```text
+PUT /changes/add-login/artifacts/tasks
+If-Match: 2
+{"content":"## 1. Login\n\n- [ ] 1.1 Add the login form\n…"}
+→ {"artifact":"tasks","version":<新的版本號>}
+```
+
+- 新建一份還不存在的 artifact 時用 `If-Match: 0`。
+- 寫入 `tasks.md` 時，server 會在每個任務行尾補上穩定 ID 註解（`<!-- speclink-task:tsk_… -->`）。
+
+### 品質關卡
+
+| 端點 | 請求 body | 成功回應 |
+| --- | --- | --- |
+| `POST /changes/{name}/review/rounds` | `{"content":"<一輪工單的 Markdown>"}` | `{"round":1}` |
+| `POST /changes/{name}/review/stamp` | `{"accept":false,"agent":"claude-code","scope":[{"path":"src/login.rs","hash":"<64 字元>"}],"missing":[]}` | `{"change":"add-login"}` |
+| `DELETE /changes/{name}/review` | 無 | `{"change":"add-login"}` |
+
+- 一輪的內容格式與 `speclink review add-round` 從 stdin 收的內容相同，必須有 `**Scope**:` 行。
+- `GET /changes/{name}/review` 回 `change`、`rounds`、`lastRound` 與 `content`（工單原文）。每一輪有 `index`、`phase`、`patchHash`、`scope` 與 `findings`（每項 `severity`、`path`、`text`）。
+- 蓋章的 `scope` 是工單各輪 Scope 列過的檔案，在你工作目錄裡的內容指紋。`hash` 是檔案內容的 SHA-256（小寫十六進位）；UTF-8 文字檔先把 CRLF 換成 LF 再算。
+- 工作目錄裡已經不存在的檔案放進 `missing`。`scope` 加 `missing` 必須剛好等於工單列過的檔案；server 不重算指紋，只檢查檔案集合。
+- 蓋章前，變更的寫碼任務必須全部完成。`accept: true` 表示最後一輪還有必須修的發現（CRITICAL／WARNING）也照樣蓋章。
+
+### 討論
+
+| 端點 | 請求 body | 成功回應 |
+| --- | --- | --- |
+| `POST /discussions` | `{"topic":"看板搜尋列","slug":"board-search-bar"}` | `{"slug":"board-search-bar","topic":"看板搜尋列","path":"discussions/board-search-bar.md"}` |
+| `PUT /discussions/{slug}/context` | `{"content":"…"}` | `{}` |
+| `POST /discussions/{slug}/rounds` | `{"mode":"interview","content":"…"}` | `{"round":1}` |
+| `POST /discussions/{slug}/conclude` | `{"content":"…","hold":true}` | `{"restaleFlagged":[],"held":true}` |
+| `POST /discussions/{slug}/promote` | `{"name":"add-search-bar"}` | `{"change":"add-search-bar"}` |
+| `POST /discussions/{slug}/link` | `{"change":"add-auth"}` | `{"slug":"auth-scope","change":"add-auth"}` |
+| `POST /discussions/{slug}/seal` | `{"change":"add-auth"}` | `{"slug":"auth-scope","change":"add-auth"}` |
+| `POST /discussions/{slug}/archive` | 無 | `{"archivedTo":"discussions/archive/<檔名>"}` |
+| `DELETE /discussions/{slug}?force=true` | 無 | `{"slug":"board-search-bar"}` |
+
+- `POST /discussions`：`slug` 選填，省略時由 `topic` 推導；必須是小寫英數字以單一連字號分隔，不合格回 400 `invalid_argument`。選填 `kind` 目前只接受 `improve`。
+- `conclude`：`hold: true` 表示結論之後記錄保留在途，還欠尚未建立的變更。回應的 `restaleFlagged` 列出因重寫結論而被打回的變更；`autoArchived: true` 只在結論順便封存了記錄時出現。
+- `promote`：`name` 選填。`promote` 與 `seal` 都接受選填的 `last: true`，表示這是結論規劃的最後一個變更，會解除記錄的保留旗標。
+- `seal`：變更必須先用 `link` 連到這個討論，否則回 409 `refused`。
+- `DELETE /discussions/{slug}`：`force` 預設 `false`。已有輪的討論不帶 `force=true` 會回 409 `refused`；封存的討論不能刪，也回 409 `refused`。
+
+### 專案層資料
+
+| 端點 | 請求 body | 成功回應 |
+| --- | --- | --- |
+| `PUT /config` | `{"content":"schema: spec-driven\n","expectedRevision":16}` | `{"revision":17}` |
+| `PUT /board-order`（加 `If-Match: "16"`） | `{"content":"{\"changes\":{\"add-logout\":\"a\"}}"}` | `{"revision":17}` |
+
+- `PUT /config` 收整份設定文件；server 先解析，解析不了回 422 `invalid_config`。
+- `POST /context` 的 body 可帶 `change`，只取這個變更的文件；送 `{}` 就取全部。回應有 `snapshotId`、`digest` 與 `documents`，每份文件有 `path`、`content`、`revision` 與 `digest`。CLI 用它把 server 上的文件鏡像到本機的唯讀目錄 `.speclink/context/`。
+- 看板順序的 `content` 是一段 JSON 文字，形如 `{"changes":{"<變更>":"<排序鍵>"},"discussions":{…}}`。server 只存不解析；`GET /plan` 讀取時看不懂的內容一律當作沒有排序。
+
+`GET /changes/{name}/validate` 的回應：
+
+```json
+{ "change": "add-login", "valid": true, "errors": [], "warnings": ["No delta specs found"] }
+```
+
+端點一次只驗一個變更。想一次驗多個，先 `GET /changes` 再逐一呼叫，CLI 的 `validate --all` 就是這樣做。
+
+`GET /plan` 的回應：
 
 ```json
 {
-  "waves": [{ "index": 1, "changes": ["add-a"] }, { "index": 2, "changes": ["add-b"] }],
+  "waves": [{ "index": 1, "changes": ["add-login"] }, { "index": 2, "changes": ["add-logout"] }],
   "changes": [
-    { "name": "add-a", "wave": 1, "stage": "in-progress", "dependsOn": [], "overlaps": [], "blockedBy": [], "ready": true },
-    { "name": "add-b", "wave": 2, "stage": "proposed", "dependsOn": ["add-a"], "overlaps": [], "blockedBy": ["add-a"], "ready": false }
+    { "name": "add-login", "wave": 1, "stage": "in-progress", "dependsOn": [], "overlaps": [], "blockedBy": [], "ready": true, "requirementOverlap": [], "archiveAfter": [] },
+    { "name": "add-logout", "wave": 2, "stage": "proposed", "dependsOn": ["add-login"], "overlaps": [], "blockedBy": ["add-login"], "ready": false, "requirementOverlap": [], "archiveAfter": [] }
   ],
   "next": null,
   "skipped": []
 }
 ```
 
-錯誤：依賴成環時回 `409 refused`，message 為引擎原文，例如 `dependency cycle: add-a -> add-b -> add-a`。沒有這個端點的 server 回 `404`；桌面此時維持 board resource 的順序、不顯示排程欄位。
+依賴成環時回 409 `refused`，`message` 例如 `dependency cycle: add-login -> add-logout -> add-login`。
 
-## DELETE /changes/{name}?force={bool}
+## <a id="response-fields"></a>清單與詳情的選填欄位
 
-**editor 限定**，reader 收 `403 permission_denied`。它經 Command gateway 執行 discard 的全部語意：fail-closed metadata 檢查、started-work guard、來源討論 unlink、change 全部文件的原子刪除，以及 touched 記錄清理。commit 發布 `change-discarded` 事件，SSE 訂閱端收到 invalidate。
+下列選填欄位沒有值時，整個鍵都不出現。客戶端遇到缺席的欄位，不要自己補預設值。
 
-query 參數 `force` 預設 `false`。
+### `GET /changes` 的每一項
 
-- `force=false` 對帶開工痕跡的 change（`started_at` 已蓋或任一任務已勾）→ `409 refused`，message 為引擎的凍結 needs-force 文字。**在本端點上，`reason: "refused"` 即機器可判的 needs-force 訊號。** 零寫入。
-- `force=true` 無視開工痕跡刪除。metadata 損壞時即使 `force=true` 也拒絕（`invalid_config`）。
+必定出現：`name`、`summary`、`status`、`completedTasks`、`totalTasks`。
 
-回應 `200`：
+選填：
 
-```json
-{ "change": "demo", "unlinkedDiscussions": [{ "slug": "auth-flow", "status": "concluded" }] }
-```
-
-**兩個入口的 force 語意不同。** CLI 直通使用者的 `--force` 旗標，與本地 discard 的 guard 行為 parity。桌面的 remote 刪除固定送 `force=true`，與本地桌面無 guard 直刪同模式——確認對話框在 UI 層。
-
-## POST /changes/{name}/tasks/move
-
-**editor 限定**，reader 收 `403 permission_denied`。它搬移一個 checkbox 任務並重算「數字.數字」編號前綴，結果與本地拖排逐位元一致——引擎只有這一份搬移實作。
-
-請求：
+| 欄位 | 內容 |
+| --- | --- |
+| `startedAt` | 開工日期，格式 `YYYY-MM-DD`；沒開工就不出現 |
+| `createdBy`、`created` | 建立者與建立日期 |
+| `fromDiscussions` | 來源討論代號清單 |
+| `claimedBy` | 認領人；沒人認領就不出現 |
+| `deltaCapabilities` | 這個變更的 delta 規格動到的 capability |
+| `restaleFrom` | 重寫了結論、需要這個變更重新吸收內容的來源討論代號 |
+| `metaError` | metadata 壞掉時的原因 |
 
 ```json
-{ "from": 1, "to": 3, "before": null }
+{ "name": "add-login", "summary": "", "status": "in-progress", "completedTasks": 0, "totalTasks": 2, "startedAt": "2026-10-07", "createdBy": "Demo <demo@example.com>", "created": "2026-10-07" }
 ```
 
-`from`／`to` 為 1-based checkbox ordinal（與任務勾選／取消勾選同一定址域）。`before` 為可省略的明確側別：`true` 插於錨任務行之前（跨過群組標題即成為錨所屬群組的組首）、`false` 插於錨任務行之後、省略／`null` 依方向推斷（向上插前、向下插後）。
+### `GET /changes/{name}`
 
-回應 `200`：
+必定出現：`changeName`、`schemaName`、`isComplete`、`applyRequires`、`artifacts`（每項 `id`、`outputPath`、`status`，被擋住時多 `missingDeps`）。
+
+八個選填欄位：`created`（只有 metadata 同時記了 schema 與建立日期時才出現）、`fromDiscussions`、`deltaCapabilities`、`createdBy`、`createdWith`、`startedAt`、`startedBy`、`claimedBy`。CLI 遠端模式的 `show` 與桌面 app 的詳情面板都靠這些欄位。
 
 ```json
-{ "change": "demo", "description": "2.2 甲" }
+{ "changeName": "add-login", "schemaName": "spec-driven", "isComplete": false, "applyRequires": ["tasks"], "artifacts": [{ "id": "tasks", "outputPath": "tasks.md", "status": "done" }], "created": "2026-10-07", "createdBy": "Demo <demo@example.com>", "createdWith": "claude", "startedAt": "2026-10-07", "startedBy": "Demo <demo@example.com>" }
 ```
 
-`description` 為搬移**後**的任務描述（前綴已重編號）。commit 發布 `task-moved` 事件 → SSE invalidate。
+### `GET /discussions` 的每一項
 
-錯誤：
+必定出現：`slug`、`topic`、`status`、`rounds`、`created`、`path`、`archived`。官方 server 也一定會填 `concluded`（結論段是否已寫）與 `hold`（是否保留在途）。
 
-- `from`／`to` 越界時回 `409 refused`，message 為 `task index out of range (1..=N)`。他人同時編輯造成的過期索引是可預期的競態，SSE invalidate 會矯正 client 視圖。零寫入。
-- 該 change 無 `tasks.md` 時 `404 not_found`。
-
-## POST /discussions——選填 slug 覆寫
-
-建立討論請求接受選填 `slug` 欄位（camelCase、缺席即省略——舊 client 的 body 逐位元不變）：
+選填：`createdBy`、`kind`（改進討論為 `improve`），以及 `promotedTo`——這則討論已轉出的變更名稱，依轉出先後排列。`promotedTo` 直接取自討論記錄，沒有轉出過就不出現。
 
 ```json
-{ "topic": "看板搜尋列", "slug": "board-search-bar" }
+{ "slug": "board-search-bar", "topic": "看板搜尋列", "status": "promoted", "rounds": 1, "created": "2026-10-07", "createdBy": "Demo <demo@example.com>", "promotedTo": ["add-search-bar"], "concluded": true, "hold": true, "path": "discussions/board-search-bar.md", "archived": false }
 ```
 
-檢查規則只住在引擎裡：ASCII kebab-case，小寫字母與數字，以單一連字號分隔。非法值回 `400 invalid_argument`，message 為引擎凍結文本，零寫入。未帶 `slug` 時，server 照舊由 topic 推導。
+### `speclink list --json` 的本機 `worktree` 欄位
 
-回應 `200`（形狀不變；帶覆寫時 `slug` 回覆寫值）：
+本機模式的 `list --json` 可能在某個變更上多一個 `worktree` 物件，表示這個變更正在某個 git worktree 裡實作：
 
 ```json
-{ "slug": "board-search-bar", "topic": "看板搜尋列", "path": "discussions/board-search-bar.md" }
+{ "completedTasks": 3, "name": "add-dark-mode", "status": "in-progress", "totalTasks": 5, "worktree": { "path": "/path/to/speclink.worktrees/add-dark-mode", "branch": "speclink/add-dark-mode" } }
 ```
 
-## DELETE /discussions/{slug}?force={bool}
-
-**僅 editor**，reader 收 `403 permission_denied`。它直通引擎的討論 discard。0 輪的記錄直接刪除。已有輪時引擎拒絕，需要 `force=true`：回 `409 refused`，message 為凍結的 needs-force 文本，記錄逐位元保留。commit 發布 `discussion-discarded`。
-
-query 參數 `force` 預設 `false`。回應 `200`：
-
-```json
-{ "slug": "board-search-bar" }
-```
-
-錯誤：該 slug 無 live 討論時 `404 not_found`；封存記錄拒絕刪除（`409 refused`——封存記錄留存、不 discard）。
-
-## POST /discussions/{slug}/link
-
-鑄變更側 `from_discussion` 鏈（引擎 link 語意：逗號累加、同一配對冪等）。請求／回應：
-
-```json
-{ "change": "add-auth" }
-```
-
-```json
-{ "slug": "auth-scope", "change": "add-auth" }
-```
-
-commit 發布 `discussion-linked`。錯誤：討論或 change 不存在時 `404 not_found`（引擎凍結 message 指名缺席主體）。
-
-## POST /discussions/{slug}/seal
-
-內容落地後，它把討論標記為已轉出：status 變 `promoted`，`promoted_to` 累加變更名，並清除該 change 對本 slug 的 re-ingest 旗標。請求與回應形狀同 link。
-
-守衛：change 的 `from_discussion` 鏈必須先含該 slug，否則回 `409 refused`，message 為引擎的先跑 link 文本。commit 發布 `discussion-sealed`。討論或 change 缺席時回 `404 not_found`。
-
-## POST /changes/{name}/in-progress
-
-經 Command gateway 的靜默生命週期蓋章。對存在且未開工的 change 首次呼叫時，它把 `started_at` 與 `started_by` 寫進 change meta，發布 `change-marked-in-progress`，並讓 scope revision 前進。`started_by` 是呼叫者的認證身分，與 `created_*` 同一歸屬機制。
-
-重複呼叫或未知 change 名稱，維持引擎凍結的靜默成功：`200`、零寫入、零事件、revision 不前進。兩種情形的 body 都是空物件：
-
-```json
-{}
-```
-
-## POST /changes/{name}/depends
-
-經 Command gateway 宣告前置（`remove: true` 時撤銷），與 fs 模式 `speclink change depends` 是同一個引擎寫入。請求：
-
-```json
-{ "on": ["add-a"], "remove": false }
-```
-
-`on` 必填；`remove` 預設為 `false`。改動到 `depends_on` 的寫入會 commit、發布 `change-depends-changed`、推進 scope revision。沒有改動的寫入（前置早已宣告，或 `remove` 時本來就沒宣告）是零寫入、零事件的冪等 `200`。回應攜帶寫入後的清單：
-
-```json
-{ "change": "add-b", "dependsOn": ["add-a"] }
-```
-
-守門失敗回 `409 refused`、message 為引擎原文，且零寫入：`'add-b' cannot depend on itself`、`cannot depend on 'ghost': no active change with that name`、`cannot depend on 'old-change': it is already archived`、`dependency cycle: add-b -> add-a -> add-b`。`{name}` 不存在回 `404 not_found`，change 的 meta 壞掉回 `422 invalid_config`。本端點為 editor 限定：reader 收 `403`，命令不會執行。
-
-## POST /changes/{name}/claim
-
-經 Command gateway 的持久化認領。對沒有人持有的 change 呼叫時，它以呼叫者的認證身分把 `claimed_by` 與 `claimed_at` 寫進 change meta——寫入隨 unit of work 落盤、發布 `change-claimed`、scope revision 前進，所以認領跨 server 重啟仍在、每台裝置都看得到。同一身分重複呼叫是零寫入的冪等成功。回應攜帶持有人：
-
-```json
-{ "claimedBy": "Demo <d@e.com>" }
-```
-
-已被他人持有的 change 回 `409 refused`——message 寫明目前持有人與建議動作，meta 零改動。wire 上沒有專屬的 ownership reason；衝突以八值 registry 內既有的 `refused` 傳遞。本端點比照其他寫入動詞為 editor 限定：reader 收 `403` 且 scope 零改動，未知 change 回 `404 not_found`。本機 fs 模式對這個動詞直接拒絕（RemoteOnly），所以這個端點是它唯一的家。
-
-## 變更清單的 meta 欄位
-
-`GET /changes` 清單項攜帶多個選填的 camelCase 欄位，值來自 change meta：`startedAt`（來自 `started_at`；未開工省略）、`createdBy` 與 `created`（建立歸屬）、`fromDiscussions`（來源討論鏈，空清單省略）、`claimedBy`（來自 `claimed_by`，未認領省略）。消費端以 `startedAt` 做欄位推導（「已開工即進行中」，完成數 fallback 保留以涵蓋繞過工具的寫入路徑）：
-
-```json
-{ "name": "demo", "status": "in-progress", "completedTasks": 0, "totalTasks": 15, "startedAt": "2026-07-30", "createdBy": "Demo <d@e.com>", "created": "2026-07-29", "fromDiscussions": ["auth-scope"], "claimedBy": "Demo <d@e.com>" }
-```
-
-## `speclink list --json`——僅本機的 `worktree` 欄位
-
-`list --json` 的變更項目可帶一個選填的 `worktree` 物件——那是「這個變更正在某個 linked git worktree 裡實作」的本機觀察面：
-
-```json
-{ "name": "add-dark-mode", "completedTasks": 3, "totalTasks": 5, "worktree": { "path": "/repos/speclink.worktrees/add-dark-mode", "branch": "speclink/add-dark-mode" } }
-```
-
-- `path`——字串，worktree 目錄的絕對路徑。`branch`——字串，完整分支名（`speclink/<change>`）。
-- **只有**在 fs 模式、由**主 checkout**（workspace 根目錄的 `.git` 是目錄）、`worktree` 工作流政策開啟、且該變更的對應關係成立時才出現。其餘情況一律缺席，而且缺席時**不序列化**該欄位。
-- remote 模式的 `list` 項目**恆不帶**此欄位：它描述的是呼叫端的本機 checkout，server 對此一無所知。因此在沒有 worktree 的情況下，fs 與 remote 的 payload 逐欄位完全相同。
-- 欄位存在時，該項目的 `completedTasks`／`totalTasks`／`status`／`metaError` 取自**那個 worktree 內**的變更副本，不是主 checkout 的。欄位名稱與型別不變。
-
-## GET /changes/{name}——show 組合的 meta 欄位
-
-單 change 讀取另攜帶七個選填欄位，餵 CLI remote `show` 的讀取組合與桌面詳情面板：`created`（僅 meta 的 schema+created 成對時出現——引擎的成對回報規則）、`fromDiscussions`、`deltaCapabilities`（空清單即省略），以及歸屬四欄 `createdBy`、`createdWith`、`startedAt`、`startedBy`（逐欄映射 meta、缺席即省略）。`claimedBy` 也在其列，自 meta 的 `claimed_by` 組裝、未認領即省略。舊 server 不送、舊 client 忽略，client 對缺席欄位不偽造預設值。
-
-```json
-{ "changeName": "demo", "schemaName": "spec-driven", "…": "…", "created": "2026-07-29", "fromDiscussions": ["auth-scope"], "deltaCapabilities": ["auth"], "createdBy": "Demo <d@e.com>", "createdWith": "claude-code", "startedAt": "2026-08-25T00:00:00Z", "startedBy": "Demo <d@e.com>", "claimedBy": "Demo <d@e.com>" }
-```
-
-## GET /discussions——`promotedTo` 欄位
-
-討論列表的每筆項目可帶選填的 `promotedTo`——這則討論轉出成了哪些 change，順序沿 frontmatter 累加順序。它由 server 在 route 邊緣以引擎的 promoted-to 查詢函式組裝；引擎的討論列表結構與本機 `discuss list --json` 輸出維持逐位元不變。空清單即省略；單筆討論查詢失敗時以欄位缺席容錯，列表不失敗。
-
-## capability 宣告
-
-`GET /binding` handshake 依 membership role 宣告這些動詞：
-
-```json
-"capabilities": { "validate": true, "analyze": true, "deleteChange": true, "moveTask": true, … }
-```
-
-`validate`／`analyze` 對全 role 為 `true`；`deleteChange`／`moveTask` 僅 editor 為 `true`。capability 為 `false` 時 client 停用對應 affordance；server 的 request-time role 檢查仍是最終權限防線。
+- `path` 是 worktree 目錄的絕對路徑，`branch` 是完整分支名（`speclink/<變更>`）。
+- 只在這些條件都成立時出現：本機模式、從主 checkout 執行、工作流設定開啟 `worktree`，而且找得到這個變更對應的 worktree。其他情況整個鍵都不出現。
+- 遠端模式的 `list` 永遠不帶這個欄位，因為 server 不知道你本機的 checkout。所以沒有 worktree 時，兩種模式的輸出逐欄一致。
+- 欄位出現時，這一項的 `completedTasks`、`totalTasks`、`status` 與 `metaError` 取自 worktree 裡的副本，不是主 checkout 的。

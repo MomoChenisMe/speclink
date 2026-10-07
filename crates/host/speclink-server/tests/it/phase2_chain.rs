@@ -836,7 +836,7 @@ fn phase2_chain_walks_all_stages_with_reset_recovery() {
 
 /// remote task done 的 touchedFiles 一路走到 store：outbox 的 task-completed
 /// payload 帶著同一份清單（事件面），evidence 端點讀得回這筆 entry（文件面）。
-/// 架構藍圖 §9.4：Remote Store 保存 task completion 回報的 touched-file evidence。
+/// Remote Store 保存 task completion 回報的 touched-file evidence。
 #[test]
 fn task_done_with_touched_files_leaves_queryable_evidence_on_the_server() {
     let _gate = crate::common::acquire_process_gate();

@@ -1,82 +1,94 @@
-# Speclink 專案能力狀態
+# 專案能力狀態
 
 **繁體中文** · [English](product-status.md)
 
-最後查核日期：**2026-08-27**。本文是「目前能不能用」的正典。行為與邊界的正式規格則在 `openspec/specs/` 底下，[專案路線圖](roadmap.zh-TW.md)則描述對使用者有意義的方向。
+最後查核日期：**2026-10-07**（0.8.0）。
 
-檔案、crate 或正式規格單獨存在，不代表交付路徑已完整。
+這份文件回答「這項能力現在能不能用」。行為的正式定義在 `openspec/specs/`；還沒做的方向在[專案路線圖](roadmap.zh-TW.md)。只有程式碼、crate 或正式規格存在，不代表使用者已經用得到。
 
-要從全新本地資料實際操作 Remote Server、Desktop 與 CLI，請依
-[Remote 入門](remote-getting-started.zh-TW.md)完成 setup、membership、登入、workspace 與恢復測試。
+要實際操作 Remote Server、Desktop 與 CLI，照 [Remote 入門](remote-getting-started.zh-TW.md)做一次。
 
-## Status model / 狀態模型
+## <a id="status-model"></a>狀態怎麼判定
 
-- **Available（可用）**：有可操作入口，並有至少兩項獨立證據或一項端到端證據。
-- **Partial（部分可用）**：可操作子集已存在，但完整流程仍有明確缺口。
-- **Planned（規劃中）**：只有目標設計、基礎型別或尚未閉合的入口，不應寫成目前支援。
-- **Deprecated（已棄用）**：相容或歷史路徑仍可被找到，但已不是目標架構。
+| 狀態 | 意思 |
+| --- | --- |
+| Available（可用） | 有使用者入口，而且有兩項互相獨立的證據，或一項端到端測試。 |
+| Partial（部分可用） | 有一部分可以用，完整流程還有明確的缺口。 |
+| Planned（規劃中） | 還沒有可用的入口。細節見[專案路線圖](roadmap.zh-TW.md)。 |
+| Deprecated（已棄用） | 程式裡還找得到，但已經不是目標架構。目前沒有這類項目。 |
 
-## Local and Remote / 本地與遠端能力對照
+## <a id="local-and-remote"></a>本地與遠端對照
 
-兩條路徑的差異集中在這一張表，不必跨文件拼湊。表中的 Remote Store 一欄以官方參考 server `speclink-server` 為量測對象；遠端模式本身由 Host 與 Protocol 契約定義，自建 server 端同樣適用這些欄位。CLI 動詞的模式歸屬由[動詞契約的正式規格](../openspec/specs/verb-contract/spec.md)單點宣告。絕大多數動詞是 **Dual**：本地與遠端各有一臂，缺任一臂就構成建置失敗。只有 `demo` 限本地，`claim` 限遠端。
+本地與遠端的差異都在這張表。Remote Store 一欄以官方參考 server `speclink-server` 量測；遠端模式由 Host 與 Protocol 契約定義，自建 server 同樣適用這些欄位。
 
-| Capability / 能力 | Local Repo | Remote Store | Note / 說明 |
+大多數 CLI 動詞在本地與遠端都能用（Dual）。例外如下，完整清單見[動詞與旗標契約](verb-contract.zh-TW.md)：
+
+- 只限本地：`demo`、`trace`、`change rank`、`plan --strict-overlap`。
+- 只限遠端：`claim`。
+
+在錯的模式下執行這些動詞，CLI 會明確拒絕，不會改走另一邊。
+
+| 能力 | Local Repo | Remote Store | 說明 |
 | --- | --- | --- | --- |
-| 規格與變更的讀寫 | Available（可用） | Available（可用） | 本地直接讀寫 `openspec/`；遠端一律經 Host command，不落第二份可寫本地真相。 |
-| 變更生命週期動詞（`propose`→`apply`→`archive`） | Available（可用） | Available（可用） | `status`、`instructions`、`new`、`task`、`in-progress`、`archive`、`discard` 皆為 Dual。遠端不支援批次封存，一次一個。 |
-| 討論（`discuss`） | Available（可用） | Available（可用） | Dual；轉為變更、併入既有變更與封存流程兩邊相同。 |
-| 品質關卡（`review`／`verify`） | Available（可用） | Available（可用） | Dual；工單、輪與蓋章語意兩邊一致。 |
-| 認領變更（`claim`） | 不適用 | Available（可用） | RemoteOnly——本地模式以非零 exit code 明確拒絕。認領會落盤：認領人寫進 change meta、server 重啟後仍在，清單與單 change 讀取都看得到；認領到別人持有的 change 回 409，訊息裡寫著持有人。 |
-| 示範資料（`demo`） | Available（可用） | 不適用 | FsOnly——遠端模式明確拒絕，且不發出任何 server 請求。 |
-| Agent 讀取脈絡 | Available（可用） | Available（可用） | 本地直接讀 repo；遠端讀唯讀的 `.speclink/context/`，寫入仍走 Host command。 |
-| Desktop 看板與詳情面板 | Available（可用） | Partial（部分可用） | 連線、登入與 chooser 開遠端看板皆可用；看板看得到 change 詮釋資料、capability 清單與認領人，詳情面板可直接認領。剩下的見能力表。 |
-| task 的 touched-file evidence | Available（可用） | Available（可用） | 本地落在變更目錄的 `.evidence.json`；遠端把回報的 touched files 存進 Store，`GET /changes/{name}/evidence` 讀得回。 |
-| 帳號、PAT 與 membership | 不適用 | Available（可用） | 本地路徑不需要帳號；遠端有 `/setup`、invite、PAT 與 device login。 |
-| 備份還原 | 由 Git 承擔 | Available（可用） | 遠端有 `backup`／`verify-backup`／`restore`，目前需要維護窗口。 |
-| 離線工作 | Available（可用） | 需連線 | 本地完全不需要 server；遠端寫入需要可連得上 Host。 |
+| 規格與變更的讀寫 | 可用 | 可用 | 本地直接讀寫 `openspec/`；遠端一律經 Host 指令寫入，不會在本機留第二份可寫的資料。 |
+| 變更生命週期（`propose` → `apply` → `archive`） | 可用 | 可用 | 遠端一次只能封存一個變更。 |
+| 討論（`discuss`） | 可用 | 可用 | 轉為變更、併入既有變更與封存，兩邊相同。 |
+| 品質關卡（`review`、`verify`） | 可用 | 可用 | 工單、輪與蓋章的規則兩邊相同。 |
+| 執行順序（`plan`、`change depends`） | 可用 | 可用 | 0.6.0 起遠端也能讀 plan、寫前置。`change rank` 只限本地。 |
+| 溯源（`trace`） | 可用 | 不適用 | 只限本地。 |
+| 認領變更（`claim`） | 不適用 | 可用 | 認領人存進變更資料，重啟後還在。認領別人持有的變更會回 409，訊息寫出持有人。 |
+| 示範資料（`demo`） | 可用 | 不適用 | 只限本地；遠端模式直接拒絕，不送出請求。 |
+| Agent 讀取背景資料 | 可用 | 可用 | 本地直接讀 repo；遠端讀唯讀的 `.speclink/context/`。 |
+| 任務的 touched-file 證據 | 可用 | 可用 | 本地寫進 `.evidence.json`；遠端存進 Store，可經 `GET /changes/{name}/evidence` 讀回。 |
+| 桌面看板與詳情面板 | 可用 | 部分可用 | 遠端看板在桌面上勾任務時，不回報 touched files。 |
+| 帳號、存取金鑰與 membership | 不適用 | 可用 | 本地不需要帳號。 |
+| 備份還原 | 由 Git 負責 | 可用 | 遠端備份目前要停機進行。 |
+| 離線工作 | 可用 | 需連線 | 遠端斷線時只能讀，寫入會被拒絕。 |
 
-## Capability matrix / 能力矩陣
+## <a id="capabilities"></a>能力清單
 
-| Capability / 能力 | Status / 狀態 | User entry / 使用者入口 | Evidence / 證據 | Limits and next step / 限制與下一步 | Checked / 查核 |
+| 能力 | 狀態 | 使用者入口 | 證據 | 限制與下一步 | 查核 |
 | --- | --- | --- | --- | --- | --- |
-| Local Repo CLI | Available（可用） | `speclink init`、`list`、`show`、`status`、`validate`、`analyze`、`drift`、`archive` 與 discussion verbs | [`speclink-cli` 入口](../crates/adapters/speclink-cli/src/main.rs)<br>[CLI 整合測試](../crates/adapters/speclink-cli/tests/it/doc_verbs.rs) | Local Repo 完全不需要 server；進階使用時仍須依各子指令 `--help` 判斷旗標。 | 2026-08-13 |
-| Generated Agent Skills | Available（可用） | Claude `/speclink-*`、Codex `$speclink-*`（也可從 `/skills` 清單挑選） | [生成的 apply skill](../.agents/skills/speclink-apply/SKILL.md)<br>[生成的 verify skill](../.agents/skills/speclink-verify/SKILL.md) | 生成面已涵蓋 baseline／discuss／improve／propose／apply／worktree／ingest／drift／quality／review／verify／archive 與 audit／commit／config；唯一不對稱是 `analyze` 只有 Claude 側，Codex 直接用 CLI。生成數量取決於 `worktree` 政策：關閉時 Claude 15 個、Codex 14 個，開啟時各多兩個 worktree 技能（本 repo 已開啟，因此是 17 與 16）。 | 2026-08-13 |
-| Local Desktop | Available（可用） | Tauri/React change 看板、spec、discussion、archive、tasks、設定與 tray | [Desktop scripts](../apps/desktop/package.json)<br>[Desktop UI tests](../apps/desktop/src/__tests__/App.test.tsx) | Local workspace 可用；Remote Workspace 的完成度另見本表。 | 2026-08-13 |
-| Quality stations（review／verify） | Available（可用） | `/speclink-review`、`/speclink-verify`、`/speclink-quality`；CLI 為 `speclink review`／`speclink verify` | [站別生命週期、蓋章與工單語意](../crates/engine/speclink-core/src/quality/station.rs) | 兩道關卡都落工單、多輪，必修集合為空才蓋章（SUGGESTION 不擋章）；蓋章後範圍內檔案再被改會降級為「其後有變動」。 | 2026-08-13 |
-| Node N-API SDK | Partial（部分可用） | `npm install @speclink/engine`（自首個帶 engine 的 release 起）；在那之前自本 repo 建置 `crates/adapters/speclink-node` 後以路徑載入 | [Node 套件入口](../crates/adapters/speclink-node/package.json)<br>[dispatch contract tests](../crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts)<br>[npm 發布 job](../.github/workflows/release.yml)<br>[版號蓋章測試](../scripts/npm/npm-engine-package.test.mjs) | **發布管線已接、registry 上還沒有套件**：每推一個 release tag 就以該 tag 版號發布主套件與五個平台子套件，實際能 `npm install` 到以首個帶 engine 的 release 為準；在那之前只能自 repo 建置（需 Rust 工具鏈）。Engine／Store bridge 本身可用；完整 Node Host 與 Copilot Tool 套件尚未交付。 | 2026-08-23 |
-| Install channels / 安裝通路 | Available（可用） | 桌面安裝檔（macOS universal dmg、Windows NSIS、Linux AppImage）、CLI 的 npm（`@speclink/cli`）／安裝腳本／Homebrew tap、server 的 npx 與 Docker | [npm shim 與 postinstall 測試](../scripts/npm/npm-cli-launcher.test.mjs)<br>[npm 套件物化測試](../scripts/npm/npm-cli-package.test.mjs)<br>[安裝腳本測試](../scripts/install.test.mjs)<br>[Homebrew formula 產生器](../scripts/release/homebrew-formula.mjs) | 桌面與 CLI 三平台皆有通路；Windows 安裝檔目前未經程式碼簽章，首次執行需放行 SmartScreen。 | 2026-09-14 |
-| Command Runtime, Host and Protocol | Available（可用） | Rust crates 供 CLI、Server 與 Node adapter 共用 | [Host 雙路徑測試](../crates/host/speclink-host/tests/bridge_dual_path.rs)<br>[Client Protocol spec](../openspec/specs/client-protocol/spec.md) | 基礎 typed command/query/context 路徑已存在；Agent 生態包裝與部分進階 gate 仍分列為 Partial／Planned。 | 2026-08-13 |
-| SQLite TeamStore | Available（可用） | `speclink-server` 的預設 `sqlite` driver | [SQLite conformance tests](../crates/store/speclink-store-sqlite/tests/conformance.rs)<br>[driver 選型文件](server-store-drivers.zh-TW.md) | 單一 instance 定位；cluster 不在目前能力內。 | 2026-08-13 |
-| Server FS TeamStore | Available（可用） | server config 的 `serverfs` driver | [Server FS conformance tests](../crates/store/speclink-store-fs/tests/it/conformance.rs)<br>[atomic publish tests](../crates/store/speclink-store-fs/tests/it/atomic_publish.rs) | 需要可靠的 OS advisory lock／flock 語意，單一資料目錄只允許一個 server。 | 2026-08-13 |
-| PostgreSQL TeamStore | Available（可用） | server config 的 `postgres` driver | [PostgreSQL conformance tests](../crates/store/speclink-store-postgres/tests/it/conformance.rs)<br>[resilience tests](../crates/store/speclink-store-postgres/tests/it/resilience.rs) | 完整測試需要 PostgreSQL 與 `SPECLINK_TEST_POSTGRES_URL`；目前 server 仍以單一 instance 為定位。 | 2026-08-13 |
-| `speclink-server` | Available（可用） | native binary／Docker／npx，HTTP Command／Query／Context／Event API | [Server binary](../crates/host/speclink-server/src/main.rs)<br>[CLI-to-server E2E](../crates/host/speclink-server/tests/it/e2e_cli.rs) | 單節點 server 已可運作；遠端 task done 回報的 touched-file evidence 已落庫可查，見 Remote task evidence 一列。 | 2026-08-25 |
-| Server Admin, setup and identity | Available（可用） | `/setup`、`/admin`、`/account`、PAT／device flow／invite 與 headless admin commands | [Admin E2E tests](../crates/host/speclink-server/tests/it/admin/e2e.rs)<br>[Device-flow E2E tests](../crates/host/speclink-server/tests/it/identity/device_e2e.rs) | 目前涵蓋單節點安裝與帳號管理；SSO 與 cluster 管理仍是規劃能力。 | 2026-08-13 |
-| Desktop Server Connections | Available（可用） | Desktop 設定中的 Server 清單、device login、PAT fallback、logout 與 OS Keychain | [Tauri connection orchestration](../apps/desktop/src-tauri/src/connections.rs)<br>[Servers panel tests](../apps/desktop/src/__tests__/serversPanel.test.tsx) | 可管理連線與身分；登入後即可在 chooser 開遠端 workspace，剩餘小縫見下一列。 | 2026-08-23 |
-| Desktop Remote Workspace | Partial（部分可用） | Workspace chooser 的遠端開啟：skip（免 checkout）與 folder（綁本機 checkout）兩模式；詳情面板可認領，卡片與詳情面板呈現認領人 | [Workspace chooser](../apps/desktop/src/components/WorkspaceChooser.tsx)<br>[Remote session 工廠](../apps/desktop/src/session.ts)<br>[遠端開啟測試](../apps/desktop/src/__tests__/remoteOpen.test.ts)<br>[Remote capabilities 測試](../apps/desktop/src/__tests__/remoteCapabilities.test.tsx) | 遠端看板可開、可勾任務、可讀寫 artifact；change 詮釋資料、capability 清單與已轉出討論的去向都直接來自 server；認領撞衝突時呈現持有人與建議動作，reader 看到認領停用附說明。剩下的：在這個看板勾任務仍不回報 touched files；認領還沒有釋放或搶佔的動詞；衝突呈現的殘餘面（勾任務或搬移撞到過期版本走一般錯誤訊息）很小、暫不立案。 | 2026-08-27 |
-| Remote CLI and Context Projection | Available（可用） | `speclink link`、`auth`、`artifact` 與唯讀 `.speclink/context/` | [Remote CLI tests](../crates/adapters/speclink-cli/tests/it/remote_read_path.rs)<br>[Context materializer](../crates/host/speclink-host/src/projection.rs) | 現行 Client Protocol 路徑可用；Desktop Remote Workspace 的剩餘小縫不因此視為完成。 | 2026-08-13 |
-| Remote task evidence | Available（可用） | 本地 `speclink task done` 落 `.evidence.json`；遠端同動詞把 touched files 存進 Store，`GET /changes/{name}/evidence` 讀得回 | [Task evidence 實作](../crates/engine/speclink-core/src/lifecycle/tasks.rs)<br>[遠端證據端到端測試](../crates/host/speclink-server/tests/it/phase2_chain.rs) | evidence 與任務勾選、task-completed 事件在同一交易落地，隨 change 封存或廢棄同生命週期移動。Desktop 遠端勾任務不送 touched files，沿「無新髒檔不新增記錄」語意。 | 2026-08-23 |
-| Server operations | Available（可用） | native／Docker／Compose、health/readiness、backup／verify-backup／restore | [部署文件](server-deployment.zh-TW.md)<br>[Backup E2E tests](../crates/host/speclink-server/tests/it/admin/backup_e2e.rs) | 備份目前要求維護窗口；沒有滾動升級或 cluster 操作。 | 2026-08-13 |
-| MCP and Copilot in-process tools | Planned（規劃中） | 尚無可安裝的 Copilot tools 套件或 MCP adapter | [目前 workspace package inventory](../package.json)<br>[方向與可觀察下一步](roadmap.zh-TW.md) | 不得把架構示意當成目前套件；後續需完成 tool adapter、身分收口與端到端測試。 | 2026-08-13 |
-| SSO, runtime plugins and cluster mode | Planned（規劃中） | 尚無可用入口 | [方向與可觀察下一步](roadmap.zh-TW.md) | 屬後續平台／生態能力，尚未排定先後；目前 Server 與 drivers 的正式定位仍是單一 instance。 | 2026-08-13 |
-| Legacy remote REST v1 | Deprecated（已棄用） | 歷史 remote client prototype | [歷史 prototype crate](../crates/protocol/speclink-remote/src/lib.rs)<br>[現行 Client Protocol 正式規格](../openspec/specs/client-protocol/spec.md) | 不作為新 Client Protocol 的相容負擔或正式 Server contract；新文件只說明遷移方向，不引導讀者走此路徑。 | 2026-08-13 |
-| Advanced verb-contract user guide | Available（可用） | [動詞與旗標契約](verb-contract.zh-TW.md)（中英兩版） | [Canonical verb contract](../openspec/specs/verb-contract/spec.md)<br>[Client Protocol spec](../openspec/specs/client-protocol/spec.md) | 文件已建立，涵蓋動詞的模式歸屬、兩模式輸出同形與端點契約；仍以正式規格為準，文件隨其更新。 | 2026-08-13 |
+| Local Repo CLI | 可用 | `speclink init`、`list`、`show`、`status`、`validate`、`analyze`、`drift`、`archive`、`discuss` 等 | [CLI 入口](../crates/adapters/speclink-cli/src/main.rs)<br>[CLI 整合測試](../crates/adapters/speclink-cli/tests/it/doc_verbs.rs) | 不需要 server。旗標以各子指令的 `--help` 為準。 | 2026-10-07 |
+| Agent 技能 | 可用 | Claude `/speclink-*`、Codex `$speclink-*` | [生成的 apply 技能](../.agents/skills/speclink-apply/SKILL.md)<br>[生成的 manual 技能](../.claude/skills/speclink-manual/SKILL.md)<br>[自訂工具描述子測試](../crates/adapters/speclink-cli/tests/it/tools_descriptor.rs) | `analyze` 技能只有 Claude 有，Codex 直接用 CLI。技能數量：`worktree` 政策關閉時 Claude 17 個、Codex 16 個；開啟時各多 2 個。其他 AI 工具可用自訂工具描述子產生技能。 | 2026-10-07 |
+| 品質關卡 | 可用 | `/speclink-review`、`/speclink-verify`、`/speclink-quality`；CLI `speclink review`、`speclink verify` | [關卡的蓋章與工單規則](../crates/engine/speclink-core/src/quality/station.rs)<br>[review 動詞測試](../crates/adapters/speclink-cli/tests/it/review_verbs.rs) | SUGGESTION 不擋章。蓋章後範圍內的檔案再被改，章會降級為「其後有變動」。 | 2026-10-07 |
+| 執行順序 | 可用 | `speclink plan`、`speclink change depends`、`speclink change rank`；桌面詳情面板的「排程」分頁 | [plan 動詞測試](../crates/adapters/speclink-cli/tests/it/plan_verbs.rs)<br>[server 的 plan API 測試](../crates/host/speclink-server/tests/it/api/plan_api.rs) | `change rank` 與 `plan --strict-overlap` 只限本地。 | 2026-10-07 |
+| 手冊與溯源 | 可用 | `/speclink-manual`、桌面「手冊」頁；`speclink trace`、`/speclink-trace` | [手冊頁測試](../packages/ui/src/__tests__/manualPage.test.tsx)<br>[trace 測試](../crates/adapters/speclink-cli/tests/it/trace.rs) | 遠端專案還不能生成手冊（導覽可以）。`trace` 只限本地。 | 2026-10-07 |
+| Local 桌面 app | 可用 | 看板、規格、討論、已封存、手冊、設定與系統匣 | [Desktop scripts](../apps/desktop/package.json)<br>[Desktop UI 測試](../apps/desktop/src/__tests__/App.test.tsx)<br>[自動更新測試](../apps/desktop/src/__tests__/updater.test.ts) | 遠端 workspace 的狀態另列在下面。 | 2026-10-07 |
+| 安裝通路 | 可用 | 桌面安裝檔（macOS universal dmg、Windows 安裝器、Linux AppImage）；CLI 的 npm、安裝腳本、Homebrew；server 的 npx 與 Docker | [npm 啟動器測試](../scripts/npm/npm-cli-launcher.test.mjs)<br>[安裝腳本測試](../scripts/install.test.mjs)<br>[Homebrew formula 產生器](../scripts/release/homebrew-formula.mjs) | Windows 安裝檔沒有程式碼簽章，第一次執行要放行 SmartScreen。 | 2026-10-07 |
+| Node SDK（`@speclink/engine`） | 可用 | `npm install @speclink/engine` | [套件入口](../crates/adapters/speclink-node/package.json)<br>[dispatch 契約測試](../crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts)<br>[版號測試](../scripts/npm/npm-engine-package.test.mjs) | 0.2.0 起在 npm 上，含五個平台子套件。還沒有：型別化的 JS 方法、JS 版遠端 client、Agent 工具層。見[路線圖](roadmap.zh-TW.md)。 | 2026-10-07 |
+| Command Runtime、Host 與 Protocol | 可用 | CLI、server 與 Node SDK 共用的 Rust crates | [Host 雙路徑測試](../crates/host/speclink-host/tests/bridge_dual_path.rs)<br>[Client Protocol 正式規格](../openspec/specs/client-protocol/spec.md) | 給 Agent 用的工具包裝還沒做。 | 2026-10-07 |
+| SQLite TeamStore | 可用 | `speclink-server` 預設的 `sqlite` | [SQLite 一致性測試](../crates/store/speclink-store-sqlite/tests/conformance.rs)<br>[儲存後端選擇](server-store-drivers.zh-TW.md) | 只支援單一 server instance。 | 2026-10-07 |
+| Server FS TeamStore | 可用 | server 設定的 `serverfs` | [Server FS 一致性測試](../crates/store/speclink-store-fs/tests/it/conformance.rs)<br>[原子發布測試](../crates/store/speclink-store-fs/tests/it/atomic_publish.rs) | 需要可靠的檔案鎖（flock）；一個資料目錄只能有一個 server。 | 2026-10-07 |
+| PostgreSQL TeamStore | 可用 | server 設定的 `postgres` | [PostgreSQL 一致性測試](../crates/store/speclink-store-postgres/tests/it/conformance.rs)<br>[韌性測試](../crates/store/speclink-store-postgres/tests/it/resilience.rs) | server 仍是單一 instance。 | 2026-10-07 |
+| `speclink-server` | 可用 | npx、Docker、Compose；自原始碼建置 native binary | [server 入口](../crates/host/speclink-server/src/main.rs)<br>[CLI 到 server 端到端測試](../crates/host/speclink-server/tests/it/e2e_cli.rs) | Release 不附 native binary。 | 2026-10-07 |
+| Server 後台、設定與帳號 | 可用 | `/setup`、`/admin`、`/account`、存取金鑰、device 登入、邀請與命令列管理指令 | [後台端到端測試](../crates/host/speclink-server/tests/it/admin/e2e.rs)<br>[device 登入端到端測試](../crates/host/speclink-server/tests/it/identity/device_e2e.rs) | 沒有 SSO，見[路線圖](roadmap.zh-TW.md)。 | 2026-10-07 |
+| Server 營運 | 可用 | 部署、健康檢查、`backup`、`verify-backup`、`restore` | [部署文件](server-deployment.zh-TW.md)<br>[備份端到端測試](../crates/host/speclink-server/tests/it/admin/backup_e2e.rs) | 備份要停機；沒有滾動升級與多節點。 | 2026-10-07 |
+| Remote CLI 與唯讀投影 | 可用 | `speclink link`、`auth`、`artifact`；唯讀的 `.speclink/context/` | [Remote CLI 測試](../crates/adapters/speclink-cli/tests/it/remote_read_path.rs)<br>[投影實作](../crates/host/speclink-host/src/projection.rs) | — | 2026-10-07 |
+| 遠端任務證據 | 可用 | 遠端的 `speclink task done` 把 touched files 存進 Store | [證據實作](../crates/engine/speclink-core/src/lifecycle/tasks.rs)<br>[遠端證據端到端測試](../crates/host/speclink-server/tests/it/phase2_chain.rs) | 桌面遠端看板勾任務時不送 touched files。 | 2026-10-07 |
+| 桌面 Server 連線 | 可用 | 設定裡的 Server 清單、device 登入、存取金鑰、登出與 OS Keychain | [連線流程](../apps/desktop/src-tauri/src/connections.rs)<br>[Servers 面板測試](../apps/desktop/src/__tests__/serversPanel.test.tsx) | — | 2026-10-07 |
+| 桌面遠端 workspace | 部分可用 | workspace chooser 的遠端開啟：只看規格，或綁本機 checkout；詳情面板可認領 | [Workspace chooser](../apps/desktop/src/components/WorkspaceChooser.tsx)<br>[遠端開啟測試](../apps/desktop/src/__tests__/remoteOpen.test.ts) | 可瀏覽、勾任務、讀寫 artifact。缺口：勾任務不回報 touched files；認領沒有釋放或接手的動詞。 | 2026-10-07 |
+| Claude Code 外掛（`speclink-skills`） | 部分可用 | `/plugin install speclink-skills --marketplace MomoChenisMe/speclink` | [外掛測試](../integrations/claude-code/speclink-skills/tests/register.test.tsx)<br>[技能分組測試](../scripts/claude-code/skill-groups.test.mjs) | 建立在 Claude Code 的 early-access 外掛介面上，Claude Code 改版時可能要跟著更新。Windows 尚未實機測試。 | 2026-10-07 |
+| MCP 與 Agent 工具套件 | 規劃中 | 沒有入口 | [方向與下一步](roadmap.zh-TW.md) | 見路線圖的「Agent 工具整合」。 | 2026-10-07 |
+| SSO、runtime plugin 與多節點 | 規劃中 | 沒有入口 | [方向與下一步](roadmap.zh-TW.md) | 見路線圖的「系統整合」。 | 2026-10-07 |
 
-## Verification baseline / 查核基線
+## <a id="recheck"></a>怎麼重新查核
 
-本次狀態判定可用下列方式重做：
+之後要更新這份文件時，用當下的 checkout 重做判斷，不要沿用舊日期的結論：
 
-1. 執行 `speclink --help` 與相關子指令 `--help`，確認 Local／Remote CLI surface。
-2. 執行 `speclink-server --help`，確認 server、identity 與 backup 操作入口。
-3. 比較 `.claude/skills/` 與 `.agents/skills/` 兩個生成面的目錄清單，區分「引擎有 asset」和「目前 Host 已生成技能」。兩邊的差額只有 `speclink-analyze`（僅 Claude 側）；總數則隨 `worktree` 政策而變。
-4. 以[動詞契約的正式規格](../openspec/specs/verb-contract/spec.md)的模式分岔宣告核對本地與遠端對照表——該宣告是單點來源，逐動詞歸屬 ModeFree／Dual／FsOnly／RemoteOnly。
-5. 由 workspace `Cargo.toml`、各 package scripts、integration／E2E／conformance tests 與正式規格交叉核對。沒有使用者入口的能力，不得因為 crate 存在就標為 Available。
+1. 執行 `speclink --help` 與各子指令的 `--help`，核對 CLI 入口。
+2. 執行 `speclink-server --help`，核對 server、帳號與備份的入口。
+3. 比較 `.claude/skills/` 與 `.agents/skills/` 的目錄清單。兩邊只差 `speclink-analyze`（只有 Claude 有）。
+4. 用[動詞契約的正式規格](../openspec/specs/verb-contract/spec.md)核對本地與遠端對照表。
+5. 用 `npm view @speclink/engine version` 等指令核對 npm 上的版本。
+6. 交叉核對 `Cargo.toml`、各 package 的 scripts、整合與端到端測試，以及正式規格。沒有使用者入口的能力，不能因為 crate 存在就標成可用。
 
-## Known documentation gap / 已知文件缺口
+## <a id="doc-gaps"></a>已知文件缺口
 
-`@speclink/engine` 的發布管線已接上，但 registry 上還沒有套件——實際可 `npm install` 以首個帶 engine 的 release 為準。在那之前 [Node SDK](sdk-node.zh-TW.md) 的自 repo 建置段仍是唯一可行路徑。npm 通路的方向與可觀察下一步見[專案路線圖](roadmap.zh-TW.md)。
+- 還沒有「從零做一個客戶端」的文件。方向見[路線圖](roadmap.zh-TW.md)的「以引擎自建客戶端」。
 
-## Target references / 目標參考
+## <a id="related"></a>相關文件
 
-- [完整 SDD 工作流](workflow.zh-TW.md)：每一站的用途、對應技能、完成判準與下一站。
-- [專案路線圖](roadmap.zh-TW.md)：對使用者有意義的方向。
-- [Server 部署](server-deployment.zh-TW.md)、[Store drivers](server-store-drivers.zh-TW.md)、[備份與還原](server-backup.zh-TW.md)：目前 Server 營運方式。
+- [完整 SDD 工作流](workflow.zh-TW.md)：每一站的用途、技能、完成判準與下一站。
+- [專案路線圖](roadmap.zh-TW.md)：還沒做的方向。
+- [Server 部署](server-deployment.zh-TW.md)、[儲存後端](server-store-drivers.zh-TW.md)、[備份與還原](server-backup.zh-TW.md)：server 的營運方式。

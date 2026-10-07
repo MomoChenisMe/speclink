@@ -13,8 +13,15 @@ function read(relativePath) {
   return readFileSync(path.join(root, relativePath), 'utf8');
 }
 
+/// H2 行首帶 `<a id="..."></a>`：兩語言標題文字不同，靠 id 對齊章節。
+const ANCHOR = /^<a id="([^"]+)"><\/a>/;
+
 function h2s(markdown) {
   return [...markdown.matchAll(/^## (.+)$/gm)].map((match) => match[1]);
+}
+
+function h2Anchors(markdown) {
+  return h2s(markdown).map((heading) => ANCHOR.exec(heading)?.[1] ?? `（缺錨點）${heading}`);
 }
 
 function localMarkdownLinks(markdown) {
@@ -27,11 +34,14 @@ function literal(text) {
   return new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 }
 
-/// 取出以 prefix 開頭的 h2 章節內文，讓斷言綁在該章節而不是整份文件。
-function sectionStartingWith(markdown, prefix, relativePath) {
-  const section = markdown.split(/^## /m).slice(1).find((body) => body.startsWith(prefix));
-  assert.ok(section, `${relativePath}: 找不到以「${prefix}」開頭的章節`);
-  return section;
+/// 取出錨點為 id 的 h2 章節內文，讓斷言綁在該章節而不是整份文件。
+function section(markdown, id, relativePath) {
+  const body = markdown
+    .split(/^## /m)
+    .slice(1)
+    .find((chunk) => ANCHOR.exec(chunk)?.[1] === id);
+  assert.ok(body, `${relativePath}: 找不到錨點為「${id}」的章節`);
+  return body;
 }
 
 const remoteGuides = [
@@ -45,13 +55,13 @@ test('remote getting-started guides exist with matching section order', () => {
 
   const zh = read('docs/remote-getting-started.zh-TW.md');
   const en = read('docs/remote-getting-started.md');
-  assert.deepEqual(h2s(zh), h2s(en));
+  assert.deepEqual(h2Anchors(zh), h2Anchors(en));
 });
 
 test('development guides exist with matching section order', () => {
   const zh = read('docs/development.zh-TW.md');
   const en = read('docs/development.md');
-  assert.deepEqual(h2s(zh), h2s(en));
+  assert.deepEqual(h2Anchors(zh), h2Anchors(en));
 
   // 五個一鍵入口各有一節（規格「開發者入口文件雙語對」）。
   for (const entry of [
@@ -121,25 +131,28 @@ test('documented browser routes reflect the SPA + browser-API surface', () => {
   }
 });
 
-test('both guides tie the dev startup step to the checkout CLI build', () => {
-  for (const relativePath of remoteGuides) {
-    const startup = sectionStartingWith(read(relativePath), '2.', relativePath);
-    assert.match(startup, literal('speclink-cli'));
+// checkout 內的開發入口（先建 CLI、wrapper 核對）屬開發環境文件；Remote 入門只連過去。
+const devGuides = ['docs/development.zh-TW.md', 'docs/development.md'];
+
+test('development guides tie the dev startup step to the checkout CLI build', () => {
+  for (const relativePath of devGuides) {
+    assert.match(section(read(relativePath), 'dev', relativePath), literal('speclink-cli'));
   }
 });
 
-test('both guides verify the CLI through the checkout wrapper', () => {
-  for (const relativePath of remoteGuides) {
+test('development guides verify the CLI through the checkout wrapper', () => {
+  for (const relativePath of devGuides) {
     const guide = read(relativePath);
-    for (const required of [
-      'npm run cli -- ',
-      'npm run --silent cli -- ',
-      'npm --prefix ',
-    ]) {
+    for (const required of ['npm run cli -- ', 'npm run --silent cli -- ', 'npm --prefix ']) {
       assert.match(guide, literal(required), `${relativePath}: 缺少 ${required}`);
     }
+  }
+});
+
+test('no guide teaches the absolute path of the checkout binary', () => {
+  for (const relativePath of [...remoteGuides, ...devGuides]) {
     assert.doesNotMatch(
-      guide,
+      read(relativePath),
       /path\/to\/speclink\/target\/debug\/speclink/,
       `${relativePath}: 不應再教使用者手打 binary 絕對路徑`,
     );
@@ -148,16 +161,10 @@ test('both guides verify the CLI through the checkout wrapper', () => {
 
 test('both guides troubleshoot a stale speclink on PATH', () => {
   for (const relativePath of remoteGuides) {
-    const troubleshooting = sectionStartingWith(read(relativePath), '10.', relativePath);
+    const troubleshooting = section(read(relativePath), 'troubleshooting', relativePath);
     assert.match(troubleshooting, literal('PATH'));
     assert.match(troubleshooting, literal('npm run cli'));
   }
-});
-
-test('platform architecture records the dev CLI build gate', () => {
-  const doc = read('docs/design/platform-architecture.zh-TW.md');
-  assert.match(doc, literal('speclink-cli'));
-  assert.match(doc, literal('npm run cli'));
 });
 
 /// 這個 repo 建出來的 CLI。刻意不走 PATH 上的 `speclink`：那可能是使用者安裝的舊版
@@ -206,7 +213,6 @@ test('relative Markdown links in the changed documentation resolve', () => {
     'docs/product-status.zh-TW.md',
     'docs/product-status.md',
     'docs/server-deployment.zh-TW.md',
-    'docs/design/platform-architecture.zh-TW.md',
     'docs/development.zh-TW.md',
     'docs/development.md',
   ];

@@ -1,47 +1,55 @@
-# Speclink Local Repo Getting Started
+# Getting started with a Local Repo
 
 [繁體中文](getting-started.zh-TW.md) · **English**
 
-Follow this document through one full Local Repo loop: **init → propose → apply → checks → archive**. Specs live in the repo's `openspec/`, collaborate through Git, and need no server.
+Follow this guide to complete one full round: **install → init → propose → apply → check → archive**. The specs live in your repo, and Git handles collaboration. No server is necessary.
 
-Every step states its expected output. What you see should match what this document shows. When it does not match, something is wrong. Stop and find the difference.
+Each step shows the expected output. If your output is different, stop and find the difference first. This guide covers only the main path. For the other branches, see the [SDD workflow](workflow.md).
 
-This document covers the happy path only. Optional branches all link out to the [Complete SDD Workflow](workflow.md).
+## <a id="before"></a>Before you start
 
-## Before you start / 開始前
+The example requirement is "add CSV export", and the requirement is clear. If you still compare approaches or need a decision, run `discuss` first (see the [workflow](workflow.md#discuss)).
 
-This example assumes the requirement is already clear: "add CSV export". If you are still comparing directions or need to reach a decision, use `discuss` first — do not record every question as a discussion.
+You can work in three ways. All three give the same result:
 
-Agent commands come in two invocation literals: `/speclink-*` in Claude and `$speclink-*` in Codex. In Codex the `$` prefix invokes a skill explicitly. You can also type `/skills` and pick the same skill from the list. Both routes work.
+| Way | Syntax | Note |
+| --- | --- | --- |
+| Claude Code | `/speclink-propose add-csv-export` | A slash command |
+| Codex | `$speclink-propose add-csv-export` | `$` and the skill name; you can also enter `/skills` and pick from the list |
+| CLI only | `speclink new change add-csv-export` | No agent; you write each document yourself |
 
-Both literals are listed below; pick one. Blocks marked as shell run the CLI directly. For what the skill, CLI, and Host layers each own, see [Call layers](workflow.md#call-layers--呼叫層級) in the workflow document.
+A skill is a workflow guide for the agent: what to read, how to write the documents, and when to stop and ask you. The `speclink` CLI does the actual work. Most users only need the skills.
 
-## 1. Install / 安裝
+## <a id="install"></a>1. Install
 
-Install the CLI, one of:
+Install the CLI. Pick one method:
 
 ```bash
 # With Node.js (any platform)
 npm i -g @speclink/cli
 
-# Without Node.js on macOS/Linux (servers, WSL, CI)
+# macOS or Linux without Node.js (servers, WSL, CI)
 curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh
 
-# Homebrew (macOS/Linux)
+# Homebrew (macOS or Linux)
 brew install MomoChenisMe/tap/speclink
 ```
 
-If you want the graphical interface, [Releases](https://github.com/MomoChenisMe/speclink/releases/latest) carries desktop installers for all three platforms, each bundling a matching CLI. Read this if you already installed the CLI with a script above: the desktop app replaces that binary. Read [the install section in the README](../README.en.md#install--安裝) before you pick one. Check the install:
+For a GUI, download a desktop installer from [Releases](https://github.com/MomoChenisMe/speclink/releases/latest) (macOS universal dmg, Windows installer, Linux AppImage). Each installer includes the CLI of the same version. Windows has no install script: use npm or the desktop app.
+
+If you have the CLI and want the desktop app too, read the [install notes in the README](../README.en.md#install) first. The desktop app can replace your CLI.
+
+Check the install:
 
 ```bash
 speclink --version
 ```
 
-**Expected output**: one version line, shaped like `speclink 0.1.0 (arm64, engine v1.x.y)`. `speclink --help` lists the current commands, including `init`, `status`, `validate`, `analyze`, `drift`, `archive`, `discuss`, `review`, and `verify`.
+**Expected output**: one version line, for example `speclink 0.8.0 (arm64, engine v1.41.0)`.
 
-## 2. Initialize / 初始化
+## <a id="init"></a>2. Initialize
 
-Change into the repo you want to adopt Speclink in:
+Go to your repo and run:
 
 ```bash
 speclink init --tools claude,codex
@@ -54,37 +62,43 @@ speclink init --tools claude,codex
 Generated files for: claude, codex
 ```
 
-This creates `openspec/` and `.speclink.yaml`, generates the skill files for the Hosts you selected (`.claude/skills/`, `.agents/skills/`), and adds `.speclink/` to `.gitignore`. No instruction file is written — `CLAUDE.md` and `AGENTS.md` are yours, and workflow routing rides the skills' own descriptions. It does not create `.speclink/` itself; that directory appears later, when there is local working data to store.
+This step does three things:
 
-**This is what Local mode produces.** The `openspec/` structure follows the OpenSpec conventions on purpose. You can read and edit it directly, and you can move an existing OpenSpec tree in:
+- It creates `openspec/` and `.speclink.yaml`.
+- It writes skill files: `.claude/skills/` for Claude and `.agents/skills/` for Codex.
+- It adds `.speclink/` (local work data) to `.gitignore`.
+
+It does not change your `CLAUDE.md` or `AGENTS.md`. The agent reads the description in each skill file to choose the right skill.
+
+`openspec/` uses the OpenSpec folder layout:
 
 ```text
 openspec/
-├── config.yaml              workflow policy (locale, tdd, audit, worktree)
-├── specs/<capability>/spec.md   canonical specs, one file per capability
-├── changes/<name>/           active changes (proposal, design, tasks, specs delta)
-├── changes/archive/          archived changes
-└── discussions/              discussion records (added by Speclink)
+├── config.yaml                  workflow settings
+├── specs/<capability>/spec.md   specs, one file for each capability
+├── changes/<name>/              active changes
+├── changes/archive/             archived changes
+└── discussions/                 discussion records (added by Speclink)
 ```
 
-Every file is plain Markdown or YAML. There is no database and no proprietary format. You can read and edit the files without Speclink, and Git shows a diff for every spec change. Speclink adds only two things: `discussions/`, and an `.openspec.yaml` inside each change directory that holds lifecycle metadata such as the start time and the source discussion.
+All files are plain Markdown and YAML. You can read and edit them without Speclink, and each change shows in the Git diff. Speclink adds only two items: `discussions/`, and a `.openspec.yaml` file in each change folder. That file keeps lifecycle data, such as the start time and the source discussion.
 
-This compatibility covers Local mode only. After you attach to a remote, the Store holds the canonical specs. The machine keeps a read-only projection at `.speclink/context/`, not a writable file tree.
+This compatibility applies to Local mode only. After you connect a remote server, the specs live in the Store. Your machine keeps only a read-only projection (`.speclink/context/`).
 
-Check that the starting point is clean:
+Make sure that you start from an empty state:
 
 ```bash
 speclink list
 speclink validate --specs --all --strict
 ```
 
-**Expected output**: `list` prints `No active changes.`, and with no canonical specs yet `validate` prints **nothing at all** and exits 0 — no output is the pass.
+**Expected output**: `list` prints `No active changes.`. When no specs exist yet, `validate` prints nothing and exits with 0. No output means a pass.
 
-If the repo already has substantial code but no canonical specs, run `/speclink-baseline` (`$speclink-baseline` in Codex) to derive specs from current behavior before opening a new change.
+If your repo has a lot of code but no specs, run `/speclink-baseline` first (`$speclink-baseline` in Codex). It writes specs from the current behavior. Then start a new change.
 
-## 3. Propose / 提案
+## <a id="propose"></a>3. Propose
 
-In Claude:
+Ask the agent to create the change. In Claude Code:
 
 ```text
 /speclink-propose add-csv-export
@@ -96,41 +110,54 @@ In Codex:
 $speclink-propose add-csv-export
 ```
 
-The Agent creates the change, reads the schema instructions one by one, and completes the artifacts along the `applyRequires` chain. Check the DAG at any point:
+The agent creates the change and writes the documents that the work needs:
+
+- `proposal.md`: why and what.
+- The delta specs: the specs that this change adds or changes.
+- `tasks.md`: the task list.
+
+`design.md` (technical design) is optional. The agent writes it only for work across modules or for important technical decisions. Thus a change does not always have four documents.
+
+You can check the progress at any time:
 
 ```bash
-speclink status --change add-csv-export --json
+speclink status --change add-csv-export
 ```
 
-**Expected output**: right after creation only the proposal is writable and the rest are blocked —
+**Expected output** (after the documents are complete):
 
 ```text
-proposal → ready
-design   → blocked
-specs    → blocked
-tasks    → blocked
+Change: add-csv-export
+Schema: spec-driven
+
+  ✓ proposal (proposal.md)
+  ○ design (design.md)
+  ✓ specs (specs/**/*.md)
+  ✓ tasks (tasks.md)
 ```
 
-Once they are filled in:
+`✓` means done. `○` means ready but not written. `✗` means blocked by an earlier document. It is normal for `design` to stay at `○`: the work can start when `tasks` is done.
 
-```text
-proposal → done
-design   → ready
-specs    → done
-tasks    → done
-```
+When the proposal is complete, the agent runs `analyze` and `validate` to check the documents.
 
-Notice that `design` stops at `ready` rather than `done`, and `isComplete` is still `false` — **that is normal**. Design is a conditional artifact, needed for cross-module work or significant technical decisions, and `applyRequires` only demands `tasks`. This is why "not every change produces the same four files".
+If the requirement comes from a concluded discussion, use `/speclink-propose --from-discussion <slug>`. For the other outcomes of a discussion, see [Discussion outcomes](workflow.md#discussion-outcomes).
 
-To drive the CLI directly, the underlying flow is:
+<details>
+<summary>Write the documents with the CLI, without an agent</summary>
+
+This way is for people who know the document format. The flow is: create the change, read the writing instructions for a document, then write it from stdin.
 
 ```bash
 speclink new change add-csv-export
-speclink instructions proposal --change add-csv-export --json
-speclink new artifact proposal --change add-csv-export --stdin
+speclink instructions proposal --change add-csv-export
+speclink new artifact proposal --change add-csv-export --stdin < proposal.md
+speclink new artifact spec csv-export --change add-csv-export --new --stdin < spec.md
+speclink new artifact tasks --change add-csv-export --stdin < tasks.md
 ```
 
-**Expected output** (first line):
+- `instructions` shows the sections and the template for a document.
+- For a new capability, add `--new`. The delta spec must start with a `## Purpose` section (one or two sentences, 50 characters or more).
+- The expected output of `new change`:
 
 ```text
 ✓ Created change: add-csv-export
@@ -138,13 +165,11 @@ speclink new artifact proposal --change add-csv-export --stdin
   Schema: spec-driven
 ```
 
-The last command reads complete Markdown matching the instructions template from stdin; specs use `speclink new artifact spec <capability> --change add-csv-export --stdin`. Driving the CLI directly suits people who already know the artifact contract; otherwise use the skill.
+</details>
 
-When the source is a concluded discussion, use `/speclink-propose --from-discussion <slug>` instead. Other promotion and fold-in routes are in [Discussion outcomes](workflow.md#discussion-outcomes--討論結論分流).
+## <a id="apply"></a>4. Apply
 
-## 4. Apply / 實作
-
-Once the artifacts are complete, in Claude:
+When the documents are complete, ask the agent to start the work. In Claude Code:
 
 ```text
 /speclink-apply add-csv-export
@@ -156,76 +181,62 @@ In Codex:
 $speclink-apply add-csv-export
 ```
 
-The Agent reads the proposal, specs, design (if present), and tasks, then implements and verifies them one at a time. The underlying progress entries are:
-
-```bash
-speclink instructions apply --change add-csv-export --json
-speclink task done --change add-csv-export 1
-```
-
-**Expected output**: `task done` reports exactly which item it checked off —
+First, the agent runs `speclink plan` to make sure that no other change blocks this one. Then it reads the proposal, the specs, the design (if one exists), and the tasks, and it does the tasks one by one. After each task, it runs `speclink task done`:
 
 ```text
 ✓ Task 1 marked as done: 1.1 Serialize report rows to CSV
 ```
 
-Only check an item off once its behavior, implementation contract, and verification target all pass. If you checked the wrong one or rolled the implementation back, use `speclink task undone --change add-csv-export 1` rather than editing `tasks.md` by hand.
+Check a task only when its behavior and its tests pass. To clear a wrong check, run `speclink task undone --change add-csv-export <number>`. Do not edit the checkboxes in `tasks.md` directly.
 
-After everything is checked:
+A task with `[M]` is a manual task. You check it yourself. The agent does not check it for you.
 
-```bash
-speclink instructions apply --change add-csv-export --json
-speclink list
-```
-
-**Expected output**: the instructions `state` becomes `all_done`, and `list` shows a full count —
+When all tasks are done, `speclink list` shows full progress:
 
 ```text
 Changes:
   • add-csv-export [2/2] — Reports can only be read insid…
 ```
 
-## 5. Check / 檢查
+## <a id="check"></a>5. Check
 
-**Most of the time you do not run this step yourself.** The `propose`, `apply`, and `ingest` skills all run `analyze` for you:
-
-- `propose` and `ingest`: they run it before they finish, repair every Critical finding, write the artifacts, then run `validate` once
-- `apply`: it runs `analyze` before implementation starts, and stops to ask you when it finds a Critical
-
-Run these two commands yourself in three cases. You want a quick look outside the flow. The Agent did not run them. Or you gate a CI job on them.
+**Usually you do not need to do this step yourself.** The `propose`, `ingest`, and `apply` skills run `analyze` for you. To look for yourself, or to add a gate in CI, run:
 
 ```bash
-speclink analyze add-csv-export --json
+speclink analyze add-csv-export
 speclink validate add-csv-export
 ```
 
-**Expected output**: `analyze` reports per dimension and `validate` prints one result line —
+- `analyze` compares the proposal, specs, design, and tasks. It looks for four types of problems: Coverage, Consistency, Ambiguity, and Gaps.
+- `validate` checks the format and the required sections of each document.
+
+**Expected output**:
 
 ```text
-Coverage    → 1 issue(s) found
-Consistency → Skipped (insufficient artifacts)
-Ambiguity   → 1 issue(s) found
-Gaps        → Clean
+Change: add-csv-export
+
+  ● Coverage       1 issue(s) found (1 findings)
+  ✓ Consistency    Skipped (insufficient artifacts) (0 findings)
+  ✓ Ambiguity      Clean (0 findings)
+  ✓ Gaps           Clean (0 findings)
+  ...
+  [WARNING] Requirement 'Export report as CSV' has no matching task
 
 ✓ add-csv-export — valid
 ```
 
-Both findings show up on almost every first loop, and they mean:
+This WARNING means that the specs have a requirement, but no task clearly matches it. Consistency shows `Skipped` because no `design.md` exists.
 
-- Coverage's `Requirement 'X' has no matching task` (Warning) — a spec states a requirement that no task covers.
-- Ambiguity's `Scenario 'X' has no concrete examples` (Suggestion) — the scenario is prose with no concrete GIVEN/WHEN/THEN values.
+- CRITICAL: fix the documents before you start the work.
+- WARNING and SUGGESTION: they do not block you, but read them before you continue.
 
-Consistency shows `Skipped` because there is no design. That dimension compares artifacts against each other, so it does not judge when one is absent.
+`analyze` and `validate` check only the documents. **They do not replace code tests.** Run the tests, lint, and build of your project as usual.
 
-Warnings and Suggestions do not stop you, but both deserve a decision. Repair a Critical in the artifact before you implement.
+Two optional quality stations check the code. `/speclink-review` checks code craft. `/speclink-verify` checks that the delivery matches the specs. To run both, use `/speclink-quality`. For a small first change, you can skip them. For the rules, see the [workflow](workflow.md#quality).
 
-Then run your own project's tests, lint, build, or manual acceptance. `validate` and `analyze` only check artifacts and **do not substitute for code correctness**.
+## <a id="archive"></a>6. Archive
 
-Two optional quality stations cover the implementation side — `/speclink-review` for code craft and `/speclink-verify` for spec compliance, or `/speclink-quality` to run both. Skipping them on a low-risk first loop is a legitimate choice; their criteria, stamping sequence, and must-fix rules are in the [Complete SDD Workflow](workflow.md).
-
-## 6. Archive / 封存
-
-Once every task is complete, the artifacts are valid, delta assumptions are current, and any quality station you ran is closed, in Claude:
+When all tasks are done, the checks pass, and the quality stations that you chose are complete, ask the agent to archive. In Claude Code:
 
 ```text
 /speclink-archive add-csv-export
@@ -237,7 +248,7 @@ In Codex:
 $speclink-archive add-csv-export
 ```
 
-Or directly:
+Or run the CLI:
 
 ```bash
 speclink archive add-csv-export -y
@@ -251,28 +262,30 @@ Specs applied: csv-export (added: 1, modified: 0, removed: 0, renamed: 0)
 Snapshot created for unarchive support.
 ```
 
-Archiving merges the delta specs into the canonical specs and moves the change into `openspec/changes/archive/`. Afterwards `speclink list` returns to `No active changes.` and `openspec/specs/csv-export/` appears. That is where this loop landed.
+The archive step merges the delta specs into the specs and moves the change to `openspec/changes/archive/`. After that, `speclink list` shows `No active changes.` again, and `openspec/specs/csv-export/` exists. This folder is the result of the round.
 
-Do not reach for `--mark-tasks-complete` or `--no-validate` to route around unfinished work.
+Do not use `--mark-tasks-complete` or `--no-validate` to skip work that is not done.
 
-## What was created / 產物位置
+## <a id="created"></a>Where the files are
 
-| Path / 路徑 | Meaning / 意義 |
+| Path | Content |
 | --- | --- |
-| `openspec/specs/<capability>/spec.md` | Canonical specs — the truth about current behavior |
-| `openspec/changes/<name>/` | An active change and the artifacts its schema requires |
-| `openspec/changes/archive/` | Audit records for archived changes |
-| `openspec/discussions/` | Discussion records, created only when a decision is needed |
-| `openspec/config.yaml` | Workflow policy, context, rules, locale, TDD/audit |
-| `.speclink.yaml` | Workspace binding and local tool integration |
-| `.speclink/` | The gitignored Context Projection and working data |
+| `openspec/specs/<capability>/spec.md` | The specs: the current behavior of the system |
+| `openspec/changes/<name>/` | An active change and its documents |
+| `openspec/changes/archive/` | Archived changes |
+| `openspec/discussions/` | Discussion records (only when a decision is necessary) |
+| `openspec/config.yaml` | Workflow settings: language, project context, rules, TDD, audit, worktree |
+| `.speclink.yaml` | The tools and the remote binding of this workspace |
+| `.speclink/` | Local work data (not in Git) |
 
-## Leave the happy path / 離開主路徑
+For the settings, see [Configuration](configuration.md).
 
-- Requirements still fuzzy: start with `discuss`; if you cannot name what to change, use `improve`.
-- A discussion conclusion should scaffold a change or fold into an existing one: see [Discussion outcomes](workflow.md#discussion-outcomes--討論結論分流).
-- Requirements changed mid-implementation: `/speclink-ingest <change>`.
-- Resuming a paused change: run `/speclink-drift <change>` first.
-- Pushing several changes in parallel: `/speclink-apply-with-worktree`, closing with `/speclink-worktree-merge`.
-- Using a shared Remote Store instead of a local repo: see [Remote Getting Started](remote-getting-started.md).
-- Deciding whether a capability works today: check [Project Capability Status](product-status.md) rather than inferring delivery from the architecture blueprint.
+## <a id="next"></a>What to do next
+
+- The requirement needs decisions: `/speclink-discuss`. You cannot name the area to improve: `/speclink-improve`.
+- The requirement changes during the work: `/speclink-ingest`.
+- You resume a change after a pause: run `/speclink-drift <change-name>` first.
+- You want to move several independent changes at the same time: use the worktree flow. See the [workflow](workflow.md#worktree).
+- You want to know which change comes first: `speclink plan`.
+- You want to share specs with a team: see [Remote getting started](remote-getting-started.md).
+- You want to know if a capability is available now: see [Product status](product-status.md).

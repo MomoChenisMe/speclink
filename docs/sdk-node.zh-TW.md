@@ -1,155 +1,78 @@
 # Node SDK（@speclink/engine）
 
-> **文件狀態**：本文描述目前已實作的 Node SDK surface。Typed Command Runtime、TeamStore 契約與 Host 邊界的正式規格是 `openspec/specs/` 底下的 `command-runtime`、`teamstore-contract`、`host-runtime` 與 `node-sdk`；Copilot Tool 封裝尚未實作，方向見[專案路線圖](roadmap.zh-TW.md)。
+**繁體中文** · [English](sdk-node.md)
 
-`@speclink/engine` 讓你把 Speclink 引擎內嵌進 Node.js 行程：伺服器（或 AI agent 宿主）在行程內 dispatch speclink 動詞、以自家資料庫透過 `Store` 物件儲存規格文件，並為任何 harness 渲染流程知識（技能檔）。
+`@speclink/engine` 讓你在 Node.js 程式裡直接執行 Speclink 的動詞、把規格存進自己的資料庫，並為任何 AI 工具產生技能檔。它就是 CLI 用的那顆 Rust 引擎，透過 [napi-rs](https://napi.rs) 接到 Node，不是另外重寫的版本，所以動詞行為、`--json` 輸出形狀與技能內容都和 CLI 一致。
 
-它就是 CLI 隨附的那顆 Rust 引擎，以 [napi-rs](https://napi.rs) 綁定，不是重新實作一份。所以動詞行為、`--json` payload 形狀與渲染內容，從結構上就保證一致。Rust SDK 則是 `speclink-core` crate 本身。
+常見的兩種用法：
 
-這個 SDK 有兩種用法。一是把 Speclink 接進既有流程，例如寫腳本或做內部工具。二是拿它當**自建 server 端的引擎**——官方的 `speclink-server` 只是 Host 契約的參考實作，你可以照 `openspec/specs/` 的 `host-runtime` 與 `client-protocol` 做自己那一份，配上自家的認證、資料庫與權限模型，CLI 與桌面 app 照樣接得上。
+- 把 Speclink 接進既有流程，例如腳本、內部工具，或執行 AI agent 的服務。
+- 拿它當**自建 server 的引擎**。官方的 `speclink-server` 只是參考實作；遠端模式由 `openspec/specs/` 底下的 `host-runtime` 與 `client-protocol` 兩份公開契約定義。你可以照這兩份契約，用這個引擎寫自己的 server，接上自家的認證、資料庫與權限模型，CLI 與桌面 app 一樣接得上。官方 server 的用法見 [Remote 入門](remote-getting-started.zh-TW.md)。
 
-## 取得方式與平台注意事項
+## <a id="install"></a>安裝
 
 ```bash
 npm install @speclink/engine
 ```
 
+0.2.0 起可從 npm 安裝，版號跟著 Speclink 的 release 走。需要 Node.js 18 以上。Windows x64、macOS x64 與 arm64、Linux x64 與 arm64（glibc）五個平台都有預先編譯好的套件，安裝時只下載你的平台那一份，不需要 Rust。Alpine 這類 musl Linux 沒有預編譯套件。
+
 ```js
-const { createEngine } = require('@speclink/engine')
+const { createEngine, skills } = require('@speclink/engine')
 ```
-
-五個平台（Windows x64、macOS x64 與 arm64、Linux x64 與 arm64 glibc）以預編譯子套件隨主套件發布，安裝時只下載符合你平台的那一份，**不需要 Rust 工具鏈**。
-
-> **生效時點。**發布管線已經接上：每推一個 release tag，engine 就以該版號發布至 npm。實際能 `npm install` 到，以**首個帶 engine 的 release** 為準——在那之前 registry 上還沒有這個套件，請走下方的自 repo 建置。目前狀態見[專案能力狀態](product-status.zh-TW.md)的 Node SDK 一列。
 
 ### 替代路徑：自 repo 建置
 
-尚未有可安裝的版本、或你要改引擎本身時：
+要改引擎本身，或你的平台沒有預編譯套件時，從原始碼建置（需要 Rust 工具鏈）：
 
 ```bash
 git clone https://github.com/MomoChenisMe/speclink.git
 cd speclink/crates/adapters/speclink-node
 npm ci
-npm run build          # napi 建置出本機平台的 .node
+npm run build          # 為目前的平台建出 .node 檔
 ```
 
-在你的專案中以路徑引用建置產物：
+然後用路徑引用：
 
 ```js
 const { createEngine } = require('/path/to/speclink/crates/adapters/speclink-node')
 ```
 
-- 這是一個 **native module**。引擎是編譯後的 Rust，以 Node addon 載入。上述 `npm run build` 只產出**當前平台**的二進位，所以要在部署目標平台上執行，或針對該平台交叉建置。
-- 建置需要 Rust 工具鏈（`rustup`）；走 npm 安裝則不需要。
+`npm run build` 只建出目前平台的檔案，所以要在部署的目標平台上建置。
 
-## createEngine——兩種儲存形式
+## <a id="create-engine"></a>建立引擎
 
-```js
-const { createEngine } = require('@speclink/engine')
-```
+`createEngine` 有兩種儲存方式。
 
-**內建 fs 儲存**——把引擎指向本地專案根目錄（含 `openspec/` 的目錄）。零橋接成本，適合本地工具與測試：
+**本機檔案**：指向含 `openspec/` 的專案根目錄，適合本機工具與測試。
 
 ```js
 const engine = createEngine({ store: { type: 'fs', root: '/path/to/project' } })
 // 選填：specDir（預設 "openspec"）
 ```
 
-**宿主 Store 物件**——自行實作儲存介面（例如接 Postgres），引擎透過它讀寫文件：
+**自己的 Store**：傳入一個實作 Store 介面的物件（見[自己實作 Store](#store)），引擎透過它讀寫文件。
 
 ```js
 const engine = createEngine({ store: myStore })
 ```
 
-每個 `Store` 方法可以回傳值**或 Promise**，橋接層兩者都接受。物件缺少必要方法時，`createEngine` 會同步拋錯並列出所有缺少的方法名。這是 fail fast，不會產生引擎實例。
+物件缺少必要方法時，`createEngine` 會立刻拋錯，並列出所有缺少的方法名。
 
-**`actor`（選填）——這顆引擎的操作者身分。** 兩種儲存形式都收，格式是 `"Name <email>"`：
+**`actor`（選填）**：這顆引擎的操作者，格式是 `"Name <email>"`。引擎記下的 `created_by`（`new change`）、`reviewed_by`（`review stamp`）與 `verified_by`（`verify stamp`）都是它。
 
 ```js
 const engine = createEngine({ store: myStore, actor: 'Alice <alice@example.com>' })
 ```
 
-它決定引擎蓋下的每個章歸誰：`created_by`（`new change`）、`reviewed_by`／`verified_by`（`review stamp`／`verify stamp`）。
+- 一個實例只有一個身分。`dispatch` 沒有身分參數，呼叫端無法冒用別人。多人系統請每個請求（或每個使用者）建一個實例；建立成本只是一個物件。
+- 沒給 `actor` 時，本機檔案形式用該 workspace 的 git 身分（和 CLI 相同）；自己的 Store 則不記身分。只有空白也視同沒給。
+- 誰可以用哪個身分，由你的系統決定。SDK 只接收結果。
 
-- **一個實例一個身分。** 身分在建構時綁定，`dispatch` 刻意沒有身分參數——呼叫端無從冒用別人。多人系統的用法是每個請求（或每個身分）開一顆 engine 實例；建構成本只是一個物件，不是連線池。
-- **沒給的時候**：fs 形式回退到該 workspace 的 git identity（與 CLI 蓋章逐位元一致）；宿主 Store 形式沒有本地 workspace，就不蓋身分（維持匿名）。trim 後為空字串視同沒給。
-- **誰可以宣稱哪個身分，是你的事。** 認證與權限判定屬於宿主，SDK 只收結果。
-
-> **警告——絕不要在 Store 方法內同步回呼引擎。** `dispatch` 在背景工作執行緒上等待你的 store 方法解決。若某個 store 方法同步阻塞等待同一顆引擎的另一個 `engine.dispatch(...)`，會形成互等循環。在 store 方法回傳*之後*（或無關的程式碼中）發起新的 dispatch 沒有問題——並發 dispatch 是支援且被測試覆蓋的。
-
-## Store 介面——實作說明
-
-這個介面與引擎核心的儲存縫線一對一，也就是 `speclink-core` 的 `Store` trait，命名採 camelCase。引擎只講領域詞彙：change、artifact、delta 與 canonical spec、討論、workflow config。實體佈局由你的實作決定。
-
-完整簽名見 [`index.d.ts`](../crates/adapters/speclink-node/index.d.ts)。`path` 與 `dir` 的回傳值是**呈現在 payload 裡的字串**，不是引擎會去開的檔案路徑。
-
-| 分組 | 方法 | 說明 |
-|---|---|---|
-| Changes | `listChanges`、`findChange`、`changeExists`、`createChange`、`updatedAtSecs` | `listChanges` 回傳 `{name, dir?, meta?}` 且按名稱排序；`meta` 帶的是 bridge 會消費的 `.openspec.yaml` 鍵：`schema`、`created`、`createdBy`、`createdWith`、`fromDiscussion`、`restaleFrom`、`startedAt`、`startedBy`、`startedWith`、`boardRank`。認領欄位（`claimedBy`／`claimedAt`）與 review／verify 蓋章欄位不經過這座 bridge。`updatedAtSecs` 是「最近更新」排序鍵（整數秒；change 不存在 → 0）。 |
-| Artifacts | `readArtifact`、`writeArtifact`、`artifactExists`、`deleteArtifact`（選配） | artifact 識別碼是 schema 定義、相對於 change 的輸出路徑：`proposal.md`、`design.md`、`tasks.md`、`specs/<capability>/spec.md`。空文件也算存在。`deleteArtifact` 只有 review／verify 蓋章會用到（蓋章會刪掉工單），沒實作就只有蓋章路徑失敗。 |
-| Change metadata（選配） | `readChangeMeta`、`writeChangeMeta` | change 的 metadata 原文（`.openspec.yaml` 內容）。蓋章是這份文件的 read-modify-write，所以 stamp 動詞把這對方法與 `deleteArtifact` 一起當前置：缺任何一個，蓋章在動手前就整個拒絕（工單不動）；其餘動詞從不呼叫它們。 |
-| Completion evidence（選配） | `readEvidence`、`writeEvidence` | change 的完成證據記錄原文（`.evidence.json` 內容，store 不解讀）。缺 `readEvidence` 讀成「沒有記錄」（本來就是正常狀態）；缺 `writeEvidence` 則在某次完成真的有檔案要記時大聲失敗，不會靜默丟證據。 |
-| Delta specs | `deltaCapabilities`、`hasCapabilityDirs` | change 內含 delta spec 的 capability 名稱，排序後回傳。 |
-| Canonical specs | `listCanonicalCapabilities`、`canonicalSpecExists`、`readCanonicalSpec`、`writeCanonicalSpec`、`canonicalSpecPath` | 專案層級的正式規格，archive 時 delta 併入之處。 |
-| Archive | `archivedChangeExists`、`archiveChange`、`readArchivedMeta`、`writeArchivedMeta` | `archiveChange(name, datedName)` 把使用中的 change 移到含日期的封存名下（`YYYY-MM-DD-<name>`）。 |
-| Discussions | `liveDiscussionExists`、`archivedDiscussionExists`、`liveDiscussionPath`、`readLiveDiscussion`、`writeLiveDiscussion`、`deleteLiveDiscussion`、`readDiscussion`、`listLiveDiscussions`、`listArchivedDiscussions`、`archiveDiscussion` | 文件以原始文字儲存；解析（輪、結論）是引擎邏輯。`readDiscussion` 先找 live，再找最新的封存候選。 |
-| Config／詞彙 | `readWorkflowConfig`、`readLanguage` | `config.yaml` 原文（或 null）與 LANGUAGE 文件（或 null——沒有共用詞彙是正常狀態）。 |
-| 選配 | `claim` | 團隊系統的所有權裁決——見下文。 |
-
-wadpilot 式的資料庫映射示意：
+## <a id="dispatch"></a>執行動詞
 
 ```js
-// 資料表：changes(name PK, meta JSONB, updated_at)、
-//        artifacts(change_name, path, content, PRIMARY KEY (change_name, path))、
-//        canonical_specs(capability PK, content)、
-//        discussions(slug, text, archived, stored_name)
-const store = {
-  async listChanges() {
-    const rows = await db.query('SELECT name, meta FROM changes ORDER BY name')
-    return rows.map((r) => ({ name: r.name, dir: `changes/${r.name}`, meta: r.meta }))
-  },
-  async readArtifact(change, artifact) {
-    const row = await db.maybeOne(
-      'SELECT content FROM artifacts WHERE change_name = $1 AND path = $2',
-      [change, artifact],
-    )
-    return row ? row.content : null
-  },
-  async writeArtifact(change, artifact, content) {
-    await db.query(
-      `INSERT INTO artifacts (change_name, path, content) VALUES ($1, $2, $3)
-       ON CONFLICT (change_name, path) DO UPDATE SET content = $3`,
-      [change, artifact, content],
-    )
-    await db.query('UPDATE changes SET updated_at = now() WHERE name = $1', [change])
-    return `changes/${change}/${artifact}`
-  },
-  async deltaCapabilities(change) {
-    const rows = await db.query(
-      `SELECT DISTINCT split_part(path, '/', 2) AS cap FROM artifacts
-       WHERE change_name = $1 AND path LIKE 'specs/%/spec.md' ORDER BY cap`,
-      [change],
-    )
-    return rows.map((r) => r.cap)
-  },
-  // ……其餘方法依此類推。
-}
-```
-
-store 方法拋錯或 reject 時，進行中的 `dispatch` 會以 `Error` 拒絕。message 帶 store 方法名前綴，例如 `readArtifact: connection refused`。`code` 承載 JS 錯誤自己的 `code`，沒有的話就是 `store_error`。
-
-### `claim`（選配）
-
-所有權是團隊系統的概念，在這座 bridge 上引擎把裁決留給你的 store（對照：在官方 server 上引擎會自己裁決——認領寫進 change meta，衝突回 HTTP 409、registry 的 `refused`、message 寫明持有人）。若你的 store 實作了 `claim(name)`，`dispatch(['claim', '<name>'])` 會路由過去。
-
-成功時它 resolve 你的 payload，例如 `{ claimed: true, claimedBy: 'you' }`。衝突時它 reject 一個 `Error`：`code` 是你的 store 自選的碼（例如 `ownership_lost`），message 說明誰持有該 change、該怎麼做。SDK 把兩者原樣傳給呼叫端。
-
-沒有 `claim` 方法時，該動詞就像在 fs store 上一樣直接失敗。
-
-## dispatch——統一入口
-
-```js
-const result = await engine.dispatch(['list', '--json'])
+const list = await engine.dispatch(['list', '--json'])
 const status = await engine.dispatch(['status', '--change', 'add-auth', '--json'])
 await engine.dispatch(
   ['new', 'artifact', 'proposal', '--change', 'add-auth', '--stdin'],
@@ -157,75 +80,159 @@ await engine.dispatch(
 )
 ```
 
-- **輸入**：字串陣列，與 CLI 動詞詞彙一對一，等同 shell argv 去掉程式名。它不支援互動式輸入。CLI 中讀 stdin 的動詞，改由第二參數傳內容：`{ stdin }`。
-- **輸出**：Promise，解析為與 CLI `--json` 完全一致的結構化物件（camelCase 欄位名）。沒有 `--json` 形式的動詞解析為 `{ output: string }`。目前 TypeScript shape 以 [`index.d.ts`](../crates/adapters/speclink-node/index.d.ts) 為準；遠端 Command/Query payload 由已交付的 Protocol crate（`crates/protocol/speclink-protocol`）定義，其 Rust 型別就是 wire 正典。
-- **錯誤**：Promise 以 `Error` 拒絕——`message` 是 CLI 的語義化訊息（可直接回給 agent），`code` 分類失敗：`invalid_argv`（argv 有誤）、`not_found`（change／討論查找）、`invalid_config`（壞的工作流設定一律拒絕，不會靜默改用預設值）、`refused`（前置拒絕——fs store 上的 `claim` 就落在這裡）、`error`（引擎失敗，即 CLI 的 exit-1 類別）、宿主 store 自選的碼原樣傳遞（例如 `ownership_lost`）、`store_error`（無 code 的 store 失敗）、`panic`。
-- **絕不阻塞事件迴圈**：每次 dispatch 都在背景工作執行緒上執行；支援並發 dispatch。
+- **輸入**：字串陣列，和 CLI 的寫法一樣，只是去掉程式名。CLI 從 stdin 讀內容的動詞，改用第二個參數 `{ stdin }` 傳入。
+- **輸出**：Promise，結果和 CLI `--json` 的輸出相同（欄位是 camelCase）。沒有 `--json` 形式的動詞（例如 `new change`）回傳 `{ output: string }`。TypeScript 型別是 `Promise<unknown>`，欄位形狀見[動詞與旗標契約](verb-contract.zh-TW.md)。
+- **不會卡住事件迴圈**：每次 dispatch 都在背景執行緒執行，可以同時發出多個。
 
-目前已路由的動詞：`list`、`status`、`new change`、`new artifact`、`claim`、`review add-round`、`review stamp`、`verify add-round`、`verify stamp`。詞彙會朝完整 CLI 對等擴充；未支援的動詞以 `invalid_argv` 拒絕。
+目前接上的動詞：`list`、`status`、`new change`、`new artifact`、`claim`、`review add-round`、`review stamp`、`verify add-round`、`verify stamp`。其他動詞會以 `invalid_argv` 拒絕。
 
-### 蓋章動詞——`review` 與 `verify`
+失敗時 Promise 以 `Error` 拒絕。`message` 和 CLI 印出的訊息相同，可以直接交給使用者或 agent；`code` 是分類：
 
-兩個品質關卡各有兩個動詞，argv 沿用 CLI 詞彙：
+| `code` | 意思 |
+| --- | --- |
+| `invalid_argv` | 參數有誤，或這個動詞還沒接上 SDK |
+| `not_found` | 找不到 change 或討論 |
+| `invalid_config` | 設定檔存在但無法解析（不會改用預設值） |
+| `refused` | 前置條件不成立 |
+| `error` | 其他引擎錯誤。在本機檔案形式或沒實作 `claim` 的 Store 上執行 `claim`，也會得到這個 |
+| Store 自訂的 code | Store 方法拋出帶 `code` 的錯誤時原樣傳回，例如 `ownership_lost` |
+| `store_error` | Store 方法拋出沒有 `code` 的錯誤 |
+| `panic` | 引擎內部錯誤 |
+
+## <a id="store"></a>自己實作 Store
+
+Store 是一個物件，引擎透過它讀寫 change、artifact、規格與討論。資料要怎麼存（資料表、檔案、物件儲存）由你決定。完整的方法簽名見 [`index.d.ts`](../crates/adapters/speclink-node/index.d.ts)。每個方法可以直接回傳值，也可以回傳 Promise。
+
+**必要方法**（共 31 個）：
+
+| 分組 | 方法 |
+| --- | --- |
+| Change | `listChanges`、`findChange`、`changeExists`、`createChange`、`updatedAtSecs` |
+| Artifact | `readArtifact`、`writeArtifact`、`artifactExists` |
+| Delta 規格 | `deltaCapabilities`、`hasCapabilityDirs` |
+| 正式規格 | `listCanonicalCapabilities`、`canonicalSpecExists`、`readCanonicalSpec`、`writeCanonicalSpec`、`canonicalSpecPath` |
+| 封存 | `archivedChangeExists`、`archiveChange`、`readArchivedMeta`、`writeArchivedMeta` |
+| 討論 | `liveDiscussionExists`、`archivedDiscussionExists`、`liveDiscussionPath`、`readLiveDiscussion`、`writeLiveDiscussion`、`deleteLiveDiscussion`、`readDiscussion`、`listLiveDiscussions`、`listArchivedDiscussions`、`archiveDiscussion` |
+| 設定與詞彙 | `readWorkflowConfig`、`readLanguage` |
+
+**選配方法**：
+
+| 方法 | 什麼時候需要 |
+| --- | --- |
+| `readChangeMeta`、`writeChangeMeta`、`deleteArtifact` | `review stamp`、`verify stamp`。缺任何一個，蓋章會在動手前拒絕 |
+| `claim` | `claim` 動詞。見下方 |
+| `deleteChange`、`readEvidence`、`writeEvidence` | 目前接上的動詞用不到，可以先不實作 |
+
+實作時要注意：
+
+- **change 的 meta 兩邊命名不同。** `createChange(name, metaText)` 收到的是 YAML 文字，鍵名用底線，例如 `created_by: Alice <alice@example.com>`。`listChanges` 與 `findChange` 要回傳物件，meta 的鍵名用駝峰，例如 `createdBy`。
+- **回傳型別要對。** 布林、數字、字串型別不對時，引擎不會報錯，而是當成預設值（例如 `changeExists` 回傳非布林會被當成 `false`）。`listChanges`、`findChange` 的形狀不對則會報錯。
+- **`path`、`dir` 這類回傳值只是顯示用的字串**，引擎不會拿它去開檔案。
+- **artifact 的識別碼**是相對於 change 的路徑：`proposal.md`、`design.md`、`tasks.md`、`specs/<capability>/spec.md`。空文件也算存在。
+- **只能用內建 schema。** 自己的 Store 沒有本機 workspace，所以專案層與使用者層的自訂 schema 都讀不到。
+- **錯誤處理**：Store 方法拋錯或 reject 時，進行中的 `dispatch` 會以 `Error` 拒絕，訊息前面加上方法名，例如 `listChanges: connection refused`。
+- **不要在 Store 方法裡同步等待同一顆引擎的另一個 `dispatch`**，兩邊會互相等待而卡住。Store 方法回傳之後再發新的 dispatch 沒有問題。
+
+下面是用 `Map` 存在記憶體的片段，示範 meta 的兩種命名：
 
 ```js
-// 開一輪：內容走 stdin 參數（與 new artifact --stdin 同一個機制）
+const changes = new Map() // name → { metaText, artifacts: Map }
+
+const store = {
+  createChange(name, metaText) {
+    // metaText 例如 "schema: spec-driven\ncreated: 2026-10-07\ncreated_by: Alice <alice@example.com>\n"
+    changes.set(name, { metaText, artifacts: new Map() })
+    return `changes/${name}`
+  },
+  findChange(name) {
+    const c = changes.get(name)
+    if (!c) return null
+    const meta = parseYaml(c.metaText) // 用你慣用的 YAML 套件
+    return { name, meta: { schema: meta.schema, created: meta.created, createdBy: meta.created_by } }
+  },
+  listChanges() {
+    return [...changes.keys()].sort().map((name) => store.findChange(name))
+  },
+  changeExists: (name) => changes.has(name),
+  readArtifact: (change, artifact) => changes.get(change)?.artifacts.get(artifact) ?? null,
+  writeArtifact(change, artifact, content) {
+    changes.get(change).artifacts.set(artifact, content)
+    return `changes/${change}/${artifact}`
+  },
+  // ……其餘必要方法依此類推
+}
+```
+
+### `claim`（選配）
+
+認領（claim）是團隊系統的概念，由你的 Store 決定誰可以認領。實作 `claim(name)` 之後，`dispatch(['claim', '<name>'])` 會呼叫它：
+
+- 成功時回傳你自己的資料，例如 `{ claimed: true, claimedBy: 'alice' }`，SDK 原樣交給呼叫端。
+- 衝突時拋出帶 `code` 的 `Error`（例如 `ownership_lost`），訊息寫明誰持有這個 change、該怎麼做。SDK 也原樣傳回。
+
+沒有實作 `claim` 時，這個動詞以 `error` 失敗。
+
+## <a id="stamp"></a>品質關卡：`review` 與 `verify`
+
+兩個品質關卡各接上兩個動詞，參數和 CLI 相同：
+
+```js
+// 新增一輪：內容用 stdin 參數傳入
 await engine.dispatch(['review', 'add-round', 'add-auth', '--stdin'], { stdin: round })
 // → { change: 'add-auth', round: 1 }
 
-// 落章：scope 指紋 argv 塞不下，走 stdin 的 JSON
-await engine.dispatch(['review', 'stamp', 'add-auth', '--accept', '--agent', 'claude', '--stdin'], {
+// 蓋章：檔案指紋放進 stdin 的 JSON
+await engine.dispatch(['review', 'stamp', 'add-auth', '--agent', 'claude', '--stdin'], {
   stdin: JSON.stringify({
-    scope: [{ path: 'src/auth.ts', hash: '0f9c' }],
+    scope: [{ path: 'src/auth.ts', hash: '<sha256>' }],
     missing: [],
   }),
 })
 // → { change: 'add-auth' }
 ```
 
-- stdin 的 JSON 是 server stamp request body 的 **`scope`／`missing` 子集**——`accept`／`agent` 在這裡走 argv 旗標，多出來的欄位會被拒絕（`invalid_argv`），不是被忽略。
-- `scope` 是**你算好的指紋**——宿主沒有工作樹，引擎不會替你重算；`missing` 是工單範圍裡已經不存在的檔。引擎驗「scope ∪ missing ＝工單聯集且不相交」，不合就拒。兩個欄位都可省略（讀作空清單），不帶 `--stdin` 等同兩者皆空。
-- 落下的 `reviewed_by`／`verified_by` 就是建構期的 `actor`（見上面 createEngine 段）；`--agent` 落 `reviewed_with`／`verified_with`。
-- **守門原封傳遞**：任務沒做完、末輪還有未解的 CRITICAL／WARNING（`--accept` 可豁免必修條件、SUGGESTION 本來就不擋章），都會以引擎的語義化訊息 reject。
-- 蓋章的前置方法有三個：`deleteArtifact`（刪工單）＋`readChangeMeta`／`writeChangeMeta`（metadata 的 read-modify-write）。缺任何一個，stamp 在動手前就拒絕——工單與 metadata 都不動。
-- **並發**：同一顆 engine 實例內的 stamp 會自動序列化（兩個章不會互吃）；跨實例、跨程序對同一 change 蓋章的協調，屬於你的 store 的職責。
+- `scope` 是**你算好的檔案指紋**。引擎看不到你的工作目錄，所以不會替你計算。要和 CLI 相容，就用檔案內容的 SHA-256（十六進位）；文字檔先把 CRLF 換成 LF。
+- `missing` 列出工單範圍裡已經不存在的檔案。`scope` 與 `missing` 合起來必須剛好等於工單涵蓋的檔案、而且不重複，否則拒絕。兩個欄位都可以省略（視為空清單），多出其他欄位會以 `invalid_argv` 拒絕。
+- 任務還沒做完（標 `[M]` 的手動任務不算），或最後一輪還有 CRITICAL／WARNING 時，蓋章會被拒絕。`--accept` 可以略過必修發現；SUGGESTION 本來就不擋。
+- `reviewed_by`／`verified_by` 是建立引擎時的 `actor`；`--agent` 記在 `reviewed_with`／`verified_with`。
+- 蓋章需要 `readChangeMeta`、`writeChangeMeta`、`deleteArtifact` 三個方法，缺一個就在動手前拒絕，工單與 meta 都不會被改。
+- 同一個引擎實例裡的蓋章會自動排隊，不會互相覆蓋。跨實例、跨程序對同一個 change 蓋章時，由你的 Store 負責協調。
 
-## 渲染 API
+## <a id="render"></a>產生技能檔
 
-為你的 harness 取得流程知識——與 `speclink init`／`update` 共用同一份生成程式碼，內容不會與 CLI 漂移：
+`skills` 用的是和 `speclink init`／`speclink update` 同一份產生程式，內容不會和 CLI 有落差。
 
 ```js
-const { skills } = require('@speclink/engine')
+skills.list() // [{ name: 'analyze', description: '…' }, …]
 
-skills.list() // [{ name: 'propose', description: '…' }, …]
-
-// 渲染矩陣：target（claude|codex|neutral）× invocation（cli|tool-call）
-const skillMd = skills.render('propose', {
-  target: 'neutral',
-  invocation: 'tool-call',
-})
+const skillMd = skills.render('propose', { target: 'neutral', invocation: 'tool-call' })
 ```
 
-- `target: 'neutral'` 為自訂 harness 渲染：沒有 `/speclink-` 斜線前綴、沒有 plan-mode 措辭；`toolName`（預設 `"speclink"`）代入 `{{TOOL}}`。
-- `invocation: 'tool-call'` 把動詞表述為「以 argv 陣列呼叫 speclink 工具」——對應以 `dispatch` 為後端的 tool；`'cli'` 則表述為 shell 指令。
-- 把 `skills.render(...)` 的檔案餵給 agent（例如寫到一個目錄後以 `skillDirectories` 傳入）。路由就在這些檔案裡：每個技能的 `description` 說明何時該用它，結尾的 **Next steps** 段說明跑完之後建議做什麼——不需要、也不再生成任何獨立的 instructions 區塊。
+| 選項 | 值 | 說明 |
+| --- | --- | --- |
+| `target` | `claude`、`codex`、`neutral` | `neutral` 給自訂工具用：沒有 `/speclink-` 斜線指令，也不提 plan mode |
+| `invocation` | `cli`（預設）、`tool-call` | `tool-call` 把動詞寫成「呼叫 speclink 工具，參數是 argv 陣列」，搭配以 `dispatch` 實作的工具；`cli` 寫成 shell 指令 |
+| `specDir` | 字串 | 技能內文裡的規格目錄名，預設 `openspec` |
+| `toolName` | 字串 | 只用於 `neutral`：技能內文裡的工具名稱，預設 `speclink` |
 
-## 完整整合範例——Copilot SDK
+把產生的 `SKILL.md` 寫進一個目錄，交給你的 agent 載入。每個技能的 `description` 說明什麼時候用它，結尾的 Next steps 說明之後建議做什麼，不需要另外的系統提示。前提是你的 agent 會讀技能的 description。
 
-一個名為 `speclink`、參數是 argv 陣列的 tool，加上落地的 skills：
+## <a id="example"></a>完整範例：接上 Copilot SDK
+
+一個名為 `speclink`、參數是 argv 陣列的工具，加上產生好的技能檔。Copilot SDK 的 API 以它的官方文件為準；這個範例對照的是 `@github/copilot-sdk` 1.0.16。
 
 ```js
 const { createEngine, skills } = require('@speclink/engine')
-const { defineTool, CopilotClient } = require('@github/copilot-sdk') // 示意 import
+const { CopilotClient, defineTool } = require('@github/copilot-sdk')
 const { mkdirSync, writeFileSync } = require('node:fs')
 const { join } = require('node:path')
 
-const engine = createEngine({ store: myDatabaseStore })
+const engine = createEngine({ store: myDatabaseStore, actor: 'Alice <alice@example.com>' })
 
-// 1. speclink tool：argv 進、結構化 payload 出；錯誤以文字回給 agent。
+// 1. speclink 工具：argv 進、結果出；錯誤以文字交回 agent。
 const speclinkTool = defineTool('speclink', {
   description:
-    'Run a speclink verb. Pass the argv array exactly as the skill documents say, ' +
+    'Run a speclink verb. Pass the argv array exactly as the skill says, ' +
     "e.g. ['status', '--change', 'add-auth', '--json'].",
   parameters: {
     type: 'object',
@@ -239,35 +246,32 @@ const speclinkTool = defineTool('speclink', {
     try {
       return await engine.dispatch(argv, stdin === undefined ? undefined : { stdin })
     } catch (err) {
-      // err.message 是語義化訊息——直接交給 agent。
       return { error: err.message, code: err.code }
     }
   },
 })
 
-// 2. 生成 skill 檔案（一次性或開機時），以 skillDirectories 餵入。
-const skillsRoot = join(process.cwd(), '.wad', 'skills')
+// 2. 產生技能檔。
+const skillsRoot = join(process.cwd(), '.my-agent', 'skills')
 for (const { name } of skills.list()) {
   const dir = join(skillsRoot, `speclink-${name}`)
   mkdirSync(dir, { recursive: true })
-  writeFileSync(
-    join(dir, 'SKILL.md'),
-    skills.render(name, { target: 'neutral', invocation: 'tool-call' }),
-  )
+  writeFileSync(join(dir, 'SKILL.md'), skills.render(name, { target: 'neutral', invocation: 'tool-call' }))
 }
 
-// 3. 接進 agent session。路由不需要額外的 system prompt：每個技能的
-//    description 就寫著什麼情境該用它。
-const client = new CopilotClient({
-  tools: [speclinkTool],
-  skillDirectories: [skillsRoot],
-})
+// 3. 建立 session 時交給它工具與技能目錄。
+async function startSession() {
+  const client = new CopilotClient()
+  return client.createSession({ tools: [speclinkTool], skillDirectories: [skillsRoot] })
+}
 ```
 
-生成的 skills 以 speclink tool 呼叫表述動詞，tool 把它們路由進行程內的引擎，引擎再透過你的 store 持久化——沒有 CLI、沒有子行程、沒有本地 `openspec/` 樹。
+技能用工具呼叫的方式描述動詞，工具把呼叫送進同一個程序裡的引擎，引擎再透過你的 Store 存檔。整條路上沒有 CLI、沒有子程序，也不需要本機的 `openspec/` 目錄。
 
-前提是你的 harness 會載入這些技能的 description；不載入的 harness 等於沒有流程路由。
+## <a id="limits"></a>目前的限制
 
-## 延伸閱讀
-
-- [`index.d.ts`](../crates/adapters/speclink-node/index.d.ts)——目前發布的 Node API 與 payload types。
+- 只接上九個動詞（見[執行動詞](#dispatch)）；`archive`、`task`、`discuss` 等其他動詞還不能透過 SDK 執行。
+- 自己的 Store 只能用內建 schema。
+- 沒有 musl Linux 的預編譯套件。
+- Store 方法拋錯時，stderr 可能會多印一行 Rust 的 panic 訊息；Promise 仍會照上面的規則拒絕。
+- `dispatch` 的回傳值沒有個別的 TypeScript 型別，形狀以[動詞與旗標契約](verb-contract.zh-TW.md)為準。

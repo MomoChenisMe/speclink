@@ -1,4 +1,4 @@
-//! Agent Context Projection materializer (platform architecture §7).
+//! Agent Context Projection materializer.
 //!
 //! Remote canon, local read-only snapshot: the materializer writes one
 //! consistent [`ContextSnapshot`] into `<workspace>/.speclink/context/` —

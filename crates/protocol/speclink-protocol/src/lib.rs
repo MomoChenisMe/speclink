@@ -1,5 +1,5 @@
 //! speclink-protocol: the single Rust definition of the Speclink Client
-//! Protocol wire contract (see `docs/platform-architecture.zh-TW.md` §4.5).
+//! Protocol wire contract (see `openspec/specs/client-protocol/spec.md`).
 //!
 //! Rust types are the canon; JSON Schema is an export (design decision two).
 //! This crate holds types, constants, and the error reason registry only —
