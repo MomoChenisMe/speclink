@@ -1,10 +1,11 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderChildren } from 'claude-code'
 
-import type { Board, Detail, Lang, PanelChange, PanelDiscussion, PanelTab, PanelView, Quality, Skill, Ticket } from '../types'
+import type { Board, Detail, Focus, Lang, PanelChange, PanelDiscussion, PanelTab, PanelView, Quality, Skill, Ticket } from '../types'
 
 import { buildBoard, discussionBody, isNoTicket, parseTasks, speclinkArgv, toTicket } from './board'
 import type { DiscussJson, DiscussShowJson, ListJson, PlanJson, ShowJson, StatusJson, TicketJson } from './board'
+import { afterPrompt, changeIn, focusFromHistory, focusFromTitle, PLAIN_TITLE, speclinkCommand, titleOf } from './focus'
 import type { GroupId } from './groups'
 import { commandHead, groupSkills, PREFIX, withArgument, withCommand } from './skills'
 import { resolveLang, TEXT } from './text'
@@ -18,6 +19,13 @@ const lang = atom({ plugin: 'speclink-skills', key: 'lang' } as const, 'en' as L
 const view = atom({ plugin: 'speclink-skills', key: 'view' } as const, { tab: 'board', closed: [], open: [] } as PanelView)
 const details = atom({ plugin: 'speclink-skills', key: 'details' } as const, {} as Record<string, Detail>)
 const quality = atom({ plugin: 'speclink-skills', key: 'quality' } as const, null as Quality | null)
+// 這個 session 正在跑的步驟與 change，畫在技能列上，也拿來當 session 標題。
+const focus = atom({ plugin: 'speclink-skills', key: 'focus' } as const, { verb: null, change: null } as Focus)
+
+// 已知的 change 名稱與 worktree 資料夾（`speclink list`），用來從指令裡認出 change。
+let known: { names: string[]; worktrees: { name: string; path: string }[]; loadedAt: number } = { names: [], worktrees: [], loadedAt: 0 }
+// /clear 帶過來的標題是這個 mod 設的：下一次送出時改回「Claude Code」（/clear 當下引擎不讓 mod 改標題）。
+let staleTitle = false
 
 // 用 `$` 的函式都留在這個檔：`$` 只能傳進同檔宣告的函式，不能跨 import。
 
@@ -34,6 +42,54 @@ const setup = async ($: EngineInterface, language: unknown) => {
   await update($, lang, () => chosen)
   await $.command.register({ name: PANEL_COMMAND, description: TEXT[chosen].panelCommand })
   await refresh($)
+  await loadKnown($)
+}
+
+// 讀不到（不是 speclink 專案、沒裝 CLI）就當作沒有 change。
+const loadKnown = async ($: EngineInterface) => {
+  try {
+    const list = await speclinkJson<ListJson>($, ['list'])
+    known = {
+      names: list.changes.map(c => c.name),
+      worktrees: list.changes.flatMap(c => (c.worktree === undefined ? [] : [{ name: c.name, path: c.worktree.path }])),
+      loadedAt: Date.now(),
+    }
+  } catch {
+    known = { names: [], worktrees: [], loadedAt: Date.now() }
+  }
+}
+
+// 還不知道焦點時（剛開 session、/resume 接回）：在某個 change 的 worktree 裡開的 session 就是那個
+// change；否則從對話紀錄找最後的步驟與 change，再找不到就看 session 標題是不是這個 mod 設的。
+const recall = async ($: EngineInterface, title?: string) => {
+  const current = await read($, focus)
+  if (current.verb !== null || current.change !== null) {
+    return current
+  }
+  const cwd = await $.session.cwd()
+  const here = known.worktrees.find(w => cwd === w.path || cwd.startsWith(`${w.path}/`))
+  const history = here !== undefined ? { verb: null, change: here.name } : focusFromHistory(await $.session.messages(), known.names, PANEL_COMMAND)
+  const found = history.verb !== null || history.change !== null ? history : (focusFromTitle(title, known.names) ?? history)
+  await update($, focus, () => found)
+  return found
+}
+
+// speclink 指令跑完後認 change；認不出來時可能是剛建的 change，重讀一次清單（最多每 10 秒一次）。
+// 封存指令跑完也重讀：change 從清單消失就是封存好了，標上 ✓。名稱要用封存前的清單認。
+const noteCommand = async ($: EngineInterface, command: string) => {
+  let change = changeIn(command, known.names)
+  const archiving = /(^|[\s;&|(])speclink\s+archive\b/.test(command)
+  if (archiving || (change === null && Date.now() - known.loadedAt > 10_000)) {
+    await loadKnown($)
+    change ??= changeIn(command, known.names)
+  }
+  if (change === null) {
+    return
+  }
+  const archived = archiving && !known.names.includes(change)
+  await update($, focus, f =>
+    f.change === change && (f.archived === true) === archived ? f : archived ? { ...f, change, archived: true as const } : { verb: f.verb, change },
+  )
 }
 
 const putCommand = async ($: EngineInterface, skill: string) => {
@@ -228,14 +284,24 @@ const hhmm = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`
 export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await setup($, options.language)
+    await recall($)
 
     return next(e)
   })
 
   // `/clear`、`/resume` 換成另一個 session，卻不發 session.start；技能清單空著，技能列就整列不畫。
+  // /clear：新 session 沒有焦點；Claude Code 會把舊標題帶過來，是這個 mod 設的就在下一次送出時改回
+  // 「Claude Code」，你自己取的不動。/resume：接回的 session 帶著它的標題，從標題找回步驟與 change。
   on('classic.SessionStart', async ($, e, next) => {
-    if (e.source === 'clear' || e.source === 'resume') {
-      await setup($, options.language)
+    if (e.source !== 'clear' && e.source !== 'resume') {
+      return next(e)
+    }
+    await setup($, options.language)
+    const fromTitle = focusFromTitle(e.session_title, known.names)
+    if (e.source === 'clear') {
+      staleTitle = fromTitle !== null
+    } else if (fromTitle !== null) {
+      await update($, focus, f => (f.verb === null && f.change === null ? fromTitle : f))
     }
 
     return next(e)
@@ -252,14 +318,46 @@ export const register: Register = (on, options) => {
     return done
   })
 
-  // 一輪做到一半的 `speclink task done`（或任何 speclink 呼叫）立刻反映到面板。
+  // 一輪做到一半的 `speclink task done`（或任何 speclink 呼叫）立刻反映到面板；指令裡的 change 名稱
+  // 就是這個 session 正在處理的 change。subagent 的指令（帶 agentId）不算。
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const ran = await next(e)
-    if (/\bspeclink\s/.test(e.command) && (await isPanelOpen($))) {
-      await refreshBoard($)
+    const command = speclinkCommand(e.command)
+    if (command !== null) {
+      if (e.agentId === undefined) {
+        await noteCommand($, command)
+      }
+      if (await isPanelOpen($)) {
+        await refreshBoard($)
+      }
     }
 
     return ran
+  }).catch(($, e, next) => next(e))
+
+  // 模型自己呼叫的 speclink 技能（例如 quality 裡接著跑 review）：換成那一步。
+  on('tool.call', { tool: 'Skill' }, async ($, e, next) => {
+    if (e.agentId === undefined && e.skill.startsWith(PREFIX)) {
+      await update($, focus, f => ({ ...f, verb: e.skill.slice(PREFIX.length) }))
+    }
+
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // 你送出訊息時：speclink 技能指令換成新的步驟；然後把「步驟 · change」設成 session 標題，Warp
+  // 側欄的分頁名稱就是它。標題只能在送出訊息與開 session 時改，所以技能中途才認出的 change，
+  // 要到下一次送出才會出現在標題上。
+  on('classic.UserPromptSubmit', async ($, e, next) => {
+    const done = await next(e)
+    const before = staleTitle ? await read($, focus) : await recall($, e.session_title)
+    const after = afterPrompt(before, e.prompt, known.names, PANEL_COMMAND)
+    if (after !== before) {
+      await update($, focus, () => after)
+    }
+    const title = titleOf(after) ?? (staleTitle ? PLAIN_TITLE : null)
+    staleTitle = false
+
+    return title === null ? done : { ...done, sessionTitle: title }
   }).catch(($, e, next) => next(e))
 
   on('command.run', { command: PANEL_COMMAND }, async $ => {
@@ -314,6 +412,22 @@ export const register: Register = (on, options) => {
       </Box>
     )
     const panelButton = <Button key="panel" label={`◧ ${t.panel}`} plain dimColor onPress={() => togglePanel($)} />
+    // 這個 session 正在跑的步驟與 change：「▸ apply · add-x」，步驟用它所在分頁的顏色。
+    const now = await read($, focus)
+    const nowGroup = groups.find(g => now.verb !== null && g.skills.includes(now.verb))
+    const nowLine = (now.verb !== null || now.change !== null) && (
+      <Box>
+        <Text dimColor>▸ </Text>
+        {now.verb !== null && (
+          <Text color={nowGroup === undefined ? undefined : GROUP_COLOR[nowGroup.id]} bold>
+            {now.verb}
+          </Text>
+        )}
+        {now.verb !== null && now.change !== null && <Text dimColor> · </Text>}
+        {now.change !== null && <Text wrap="truncate-end">{now.change}</Text>}
+        {now.archived === true && <Text color="success"> ✓</Text>}
+      </Box>
+    )
     const skillButtons = (
       <Box flexWrap="wrap" columnGap={2} flexShrink={1}>
         {current.skills.map(skill => (
@@ -328,18 +442,23 @@ export const register: Register = (on, options) => {
       </Box>
     )
 
-    // 寬版的第一列是「speclink  ● 規劃 … ● 其他 │ ◧ 面板」，技能列的寬度（終端機扣掉引擎
-    // 右邊放 [-] 的五格）放不下這一列就改窄版：
-    // 「speclink」與面板鈕一列、分頁一列、技能一列，分頁不會從中間拆開。窄版右邊沒有
-    // 地方放技能說明，所以不顯示。
+    // 第一列是「speclink」與目前在處理的步驟、change，下面一列分頁與面板鈕，再下面一列技能。技能列的
+    // 寬度（終端機扣掉引擎右邊放 [-] 的五格）放不下「分頁 │ 面板」時改窄版：面板鈕移到第一列最右邊，
+    // 分頁不會從中間拆開。窄版右邊沒有地方放技能說明，所以不顯示。
+    const title = (
+      <Box columnGap={2} flexShrink={1}>
+        <Text dimColor>speclink</Text>
+        {nowLine}
+      </Box>
+    )
     const tabsWidth = groups.reduce((n, g) => n + cells(t.groups[g.id]) + 3, groups.length - 1)
-    const wideWidth = cells('speclink') + 2 + tabsWidth + 5 + cells(`◧ ${t.panel}`)
+    const wideWidth = tabsWidth + 5 + cells(`◧ ${t.panel}`)
     if (e.props.bodyColumns < wideWidth) {
       return (
         <Box flexDirection="column">
           <Box marginTop={1} flexDirection="column" alignSelf="flex-start">
             <Box justifyContent="space-between" columnGap={2}>
-              <Text dimColor>speclink</Text>
+              {title}
               {panelButton}
             </Box>
             {tabs}
@@ -352,27 +471,23 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column">
-        <Box marginTop={1}>
-          <Box flexShrink={0} marginRight={2}>
-            <Text dimColor>speclink</Text>
+        <Box marginTop={1} flexDirection="column">
+          {title}
+          <Box flexWrap="wrap" columnGap={1}>
+            {tabs}
+            <Text dimColor> │ </Text>
+            {panelButton}
           </Box>
-          <Box flexDirection="column" flexGrow={1}>
-            <Box flexWrap="wrap" columnGap={1}>
-              {tabs}
-              <Text dimColor> │ </Text>
-              {panelButton}
-            </Box>
-            <Box paddingLeft={2}>
-              {skillButtons}
-              <Box width={0} flexGrow={1} marginLeft={3} flexDirection="column" overflow="hidden">
-                {current.skills.map(skill => (
-                  <Box display="none" hover={{ scope: `skill:${skill}`, display: 'flex' }}>
-                    <Text dimColor wrap="truncate-end">
-                      {about(skill)}
-                    </Text>
-                  </Box>
-                ))}
-              </Box>
+          <Box paddingLeft={2}>
+            {skillButtons}
+            <Box width={0} flexGrow={1} marginLeft={3} flexDirection="column" overflow="hidden">
+              {current.skills.map(skill => (
+                <Box display="none" hover={{ scope: `skill:${skill}`, display: 'flex' }}>
+                  <Text dimColor wrap="truncate-end">
+                    {about(skill)}
+                  </Text>
+                </Box>
+              ))}
             </Box>
           </Box>
         </Box>

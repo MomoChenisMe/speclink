@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
+import { afterPrompt, changeIn, focusFromHistory, focusFromTitle, speclinkCommand, titleOf, verbOf } from '../hooks/focus'
 import { buildBoard, discussionBody, isNoTicket, parseTasks, speclinkArgv, toTicket } from '../hooks/board'
 import type { PlanJson } from '../hooks/board'
 import { cells } from '../hooks/register'
@@ -149,6 +150,52 @@ const engine = (on: On, filled: string[], claudeLanguage: string, runs: Run[] = 
   })
 }
 
+test('從送出的指令、技能呼叫與 speclink 指令認出步驟和 change', () => {
+  const names = ['add-auth', 'refactor-store']
+  expect(verbOf('/speclink-apply add-auth', 'speclink-panel')).toBe('apply')
+  expect(verbOf('/speclink-archive + /speclink-commit add-auth', 'speclink-panel')).toBe('archive+commit')
+  expect(verbOf('<command-name>/speclink-quality</command-name>\n<command-args>add-auth</command-args>', 'speclink-panel')).toBe('quality')
+  expect(verbOf('/speclink-panel', 'speclink-panel')).toBe(null)
+  expect(verbOf('/commit', 'speclink-panel')).toBe(null)
+  expect(verbOf('幫我看 /speclink-apply 怎麼用', 'speclink-panel')).toBe(null)
+
+  expect(changeIn('speclink status --change "add-auth" --json', names)).toBe('add-auth')
+  expect(changeIn('speclink review scope refactor-store --json', names)).toBe('refactor-store')
+  expect(changeIn('speclink list --json', names)).toBe(null)
+  expect(changeIn('cat add-auth-notes.md', names)).toBe(null)
+  expect(speclinkCommand('cd /repo && speclink task done x')).not.toBe(null)
+  expect(speclinkCommand('cat speclink.toml')).toBe(null)
+
+  // 新的技能指令換步驟；沒寫名稱時留著上一個 change，其他訊息不動。
+  const start = { verb: null, change: null }
+  const applying = afterPrompt(start, '/speclink-apply add-auth', names, 'speclink-panel')
+  expect(applying).toEqual({ verb: 'apply', change: 'add-auth' })
+  expect(afterPrompt(applying, '/speclink-quality', names, 'speclink-panel')).toEqual({ verb: 'quality', change: 'add-auth' })
+  expect(afterPrompt(applying, '繼續工作', names, 'speclink-panel')).toBe(applying)
+
+  // 接回的對話：最後的技能呼叫與 speclink 指令為準。
+  const history = [
+    { role: 'user', text: '/speclink-apply add-auth', toolUses: [] },
+    { role: 'assistant', text: '', toolUses: [{ tool: 'Skill', input: { skill: 'speclink-review' } }] },
+    { role: 'assistant', text: '', toolUses: [{ tool: 'Bash', input: { command: 'speclink review scope refactor-store --json' } }] },
+  ]
+  expect(focusFromHistory(history, names, 'speclink-panel')).toEqual({ verb: 'review', change: 'refactor-store' })
+
+  expect(titleOf({ verb: 'apply', change: 'add-auth' })).toBe('apply · add-auth')
+  expect(titleOf({ verb: 'archive', change: 'add-auth', archived: true })).toBe('archive · add-auth ✓')
+
+  // 標題解析回焦點：要是現有的 change，或標了 ✓ 的封存；你自己取的標題不算。
+  expect(focusFromTitle('apply · add-auth', names)).toEqual({ verb: 'apply', change: 'add-auth' })
+  expect(focusFromTitle('refactor-store', names)).toEqual({ verb: null, change: 'refactor-store' })
+  expect(focusFromTitle('archive · gone-change ✓', names)).toEqual({ verb: 'archive', change: 'gone-change', archived: true })
+  expect(focusFromTitle('apply · gone-change', names)).toBe(null)
+  expect(focusFromTitle('整理 statusbar 的按鈕', names)).toBe(null)
+  expect(focusFromTitle('Claude Code', names)).toBe(null)
+  expect(focusFromTitle(undefined, names)).toBe(null)
+  expect(titleOf({ verb: null, change: 'add-auth' })).toBe('add-auth')
+  expect(titleOf(start)).toBe(null)
+})
+
 test('指令放最前面，已經打的字留在後面當參數', () => {
   expect(withCommand('', '/speclink-apply')).toBe('/speclink-apply ')
   expect(withCommand('add-x', '/speclink-apply')).toBe('/speclink-apply add-x')
@@ -282,18 +329,18 @@ test('設定選項 language 明選 en 時，不跟 Claude Code 的中文設定',
   expect(await ui.find({ type: 'Button', key: 'tab:build', text: 'Build' })).toBeDefined()
 })
 
-test('終端機放不下一列時，技能列改成三列：speclink 與面板鈕、分頁、技能', async ($, on) => {
+test('分頁與面板鈕放不下一列時，面板鈕移到 speclink 那一列', async ($, on) => {
   engine(on, [], '台灣繁體中文zh-tw')
   expect(cells('speclink')).toBe(8)
   expect(cells('◧ 面板')).toBe(6)
 
   await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
-  // 規劃、實作、收尾、其他四個分頁：寬版那一列要 8 + 2 + 31 + 5 + 6 = 52 格。
+  // 規劃、實作、收尾、其他四個分頁加上面板鈕：「分頁 │ 面板」那一列要 31 + 5 + 6 = 42 格。
   const narrow = await $.ui.mount({
     plugin: 'speclink-skills',
     surface: 'terminal',
     ...BAND,
-    props: { ...BAND.props, bodyColumns: 51 },
+    props: { ...BAND.props, bodyColumns: 41 },
   })
   expect(await narrow.find({ type: 'Text', text: ' 規劃 ' })).toBeDefined()
   expect(await narrow.find({ type: 'Button', key: 'panel', text: '◧ 面板' })).toBeDefined()
@@ -306,7 +353,7 @@ test('終端機放不下一列時，技能列改成三列：speclink 與面板�
     plugin: 'speclink-skills',
     surface: 'terminal',
     ...BAND,
-    props: { ...BAND.props, bodyColumns: 52 },
+    props: { ...BAND.props, bodyColumns: 42 },
   })
   expect(await wide.find({ type: 'Text', text: ' │ ' })).toBeDefined()
   expect(await wide.find({ type: 'Text', text: 'Use when a change needs planning' })).toBeDefined()
@@ -432,4 +479,104 @@ test('品質分頁：只列有工單的 change，顯示輪數與各嚴重度條�
   await ui.press({ key: 'open:ticket:add-auth' })
   expect(await ui.find({ type: 'Text', text: '審查 · 2 條' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: 'token 沒有檢查過期' })).toBeDefined()
+})
+
+test('送出 speclink 技能指令後，技能列標出步驟與 change，session 標題也換成它；speclink 指令裡的 change 跟著更新', async ($, on) => {
+  engine(on, [], 'English')
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('session.messages', () => ({ value: [] }))
+  on('classic.UserPromptSubmit', () => ({}))
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }) as never)
+
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  const result = await $.classic.UserPromptSubmit({ prompt: '/speclink-apply add-auth' })
+  expect(result.sessionTitle).toBe('apply · add-auth')
+
+  const ui = await $.ui.mount({ plugin: 'speclink-skills', surface: 'terminal', ...BAND })
+  expect(await ui.find({ type: 'Text', text: 'apply' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'add-auth' })).toBeDefined()
+
+  // 技能中途用另一個 change 呼叫 CLI：技能列立刻換，標題等下一次送出。
+  await $.tool.call({ tool: 'Bash', command: 'speclink status --change "refactor-store" --json' } as never)
+  expect(await ui.find({ type: 'Text', text: 'refactor-store' })).toBeDefined()
+  const next = await $.classic.UserPromptSubmit({ prompt: '繼續工作' })
+  expect(next.sessionTitle).toBe('apply · refactor-store')
+})
+
+test('還沒碰過 speclink 的 session 不畫焦點，也不改標題', async ($, on) => {
+  engine(on, [], 'English')
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('session.messages', () => ({ value: [] }))
+  on('classic.UserPromptSubmit', () => ({}))
+
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  const result = await $.classic.UserPromptSubmit({ prompt: '幫我看一下 README' })
+  expect(result.sessionTitle).toBeUndefined()
+  const ui = await $.ui.mount({ plugin: 'speclink-skills', surface: 'terminal', ...BAND })
+  expect(await ui.find({ type: 'Text', text: '▸ ' })).toBeUndefined()
+})
+
+test('在某個 change 的 worktree 裡開的 session，一開始就標出那個 change', async ($, on) => {
+  engine(on, [], 'English')
+  on('session.cwd', () => ({ value: '/repo/.worktrees/add-auth' }))
+  on('session.messages', () => ({ value: [] }))
+
+  await $.session.start({ cwd: '/repo/.worktrees/add-auth', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount({ plugin: 'speclink-skills', surface: 'terminal', ...BAND })
+  expect(await ui.find({ type: 'Text', text: 'add-auth' })).toBeDefined()
+})
+
+// 焦點測試的引擎替身：技能、CLI、對話紀錄與 classic 事件的底層。
+const focusEngine = (on: On, cwd = '/repo') => {
+  engine(on, [], 'English')
+  on('session.cwd', () => ({ value: cwd }))
+  on('session.messages', () => ({ value: [] }))
+  on('classic.UserPromptSubmit', () => ({}))
+  on('classic.SessionStart', () => ({}))
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }) as never)
+}
+
+test('/clear：技能列清空；標題是這個 mod 設的，下一次送出時改回 Claude Code，你自己取的不動', async ($, on) => {
+  focusEngine(on)
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+
+  // /clear 當下引擎不讓 mod 改標題，等下一次送出。
+  const cleared = await $.classic.SessionStart({ source: 'clear', session_title: 'apply · add-auth' })
+  expect(cleared.sessionTitle).toBeUndefined()
+  const first = await $.classic.UserPromptSubmit({ prompt: '幫我看 README', session_title: 'apply · add-auth' })
+  expect(first.sessionTitle).toBe('Claude Code')
+  const ui = await $.ui.mount({ plugin: 'speclink-skills', surface: 'terminal', ...BAND })
+  expect(await ui.find({ type: 'Text', text: '▸ ' })).toBeUndefined()
+
+  await $.classic.SessionStart({ source: 'clear', session_title: '我的工作' })
+  const mine = await $.classic.UserPromptSubmit({ prompt: '幫我看 README', session_title: '我的工作' })
+  expect(mine.sessionTitle).toBeUndefined()
+})
+
+test('/resume：從接回 session 的標題找回步驟與 change，封存過的帶 ✓', async ($, on) => {
+  focusEngine(on)
+  await $.classic.SessionStart({ source: 'resume', session_title: 'review · refactor-store' })
+  const ui = await $.ui.mount({ plugin: 'speclink-skills', surface: 'terminal', ...BAND })
+  expect(await ui.find({ type: 'Text', text: 'review' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'refactor-store' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: ' ✓' })).toBeUndefined()
+})
+
+test('封存指令跑完、change 從清單消失後，技能列與標題標上 ✓', async ($, on) => {
+  focusEngine(on)
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await $.classic.UserPromptSubmit({ prompt: '/speclink-archive add-auth' })
+
+  const before = LIST.changes
+  LIST.changes = LIST.changes.filter(c => c.name !== 'add-auth')
+  try {
+    await $.tool.call({ tool: 'Bash', command: 'speclink archive add-auth --yes' } as never)
+    const ui = await $.ui.mount({ plugin: 'speclink-skills', surface: 'terminal', ...BAND })
+    expect(await ui.find({ type: 'Text', text: 'add-auth' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: ' ✓' })).toBeDefined()
+    const next = await $.classic.UserPromptSubmit({ prompt: '好' })
+    expect(next.sessionTitle).toBe('archive · add-auth ✓')
+  } finally {
+    LIST.changes = before
+  }
 })
