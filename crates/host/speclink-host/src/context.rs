@@ -1,6 +1,6 @@
 //! SpeclinkExecutionContext — the Host-resolved execution identity.
 //!
-//! Resolved exactly once at the entry point (platform architecture §4.6):
+//! Resolved exactly once at the entry point:
 //! who acts (actor), where (project/repo binding), how storage is reached
 //! (mode), and under which effective workflow policy. The Engine only ever
 //! consumes this context; command inputs carry no actor or policy fields,

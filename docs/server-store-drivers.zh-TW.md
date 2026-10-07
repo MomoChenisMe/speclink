@@ -1,19 +1,31 @@
-# Server Store Driver 選型
+# Server 儲存後端
 
-官方 `speclink-server` 的持久層由組態檔的 `store` 段決定，經單一建構點接線。
+**繁體中文** · [English](server-store-drivers.md)
 
-所有 driver 都通過同一套 TeamStore conformance suite：能力檢查、CAS race、mixed snapshot、partial commit、outbox failure、crash recovery 四故障點，以及 tenant scope。所以**動詞行為與 driver 無關**——換 driver 不會改變 API 的可觀察結果。
+儲存後端（Store driver）決定 server 把專案資料（規格、變更、討論等）放在哪裡。大多數情況用預設的 `sqlite` 就好。
 
-| driver | 承載 | 適用 |
-|---|---|---|
-| `sqlite` | 單一資料庫檔 | **預設**。無特殊前提，任何檔案系統可用 |
-| `serverfs` | 單一資料目錄 | 偏好純檔案持久層（備份工具直接可見目錄、無資料庫維運）；**前提見下** |
-| `postgres` | PostgreSQL 資料庫 | 已有 PostgreSQL 維運基礎（統一資料庫棧、既有備份與監控直接套用）；**前提見下** |
-| `memory` | 記憶體 | **僅供測試組態**，行程結束即消失 |
+幾件先知道的事：
 
-遇到未知的 driver 名稱，server 啟動失敗並列出支援清單（fail closed）。拼錯 `serverfs` 不會靜默退回別的持久層。
+- 帳號、成員資格與憑證放在另一個 SQLite 檔（組態檔的 `identity` 段），不跟著儲存後端換。
+- 三種儲存後端都通過同一套一致性測試，所以 API 與 CLI 的行為完全相同，換後端不影響使用方式。
+- 每種儲存後端都只支援**一個** server instance。
 
-## sqlite（預設）
+部署方式與完整的組態欄位見 [Server 部署](server-deployment.zh-TW.md)。
+
+## <a id="choose"></a>怎麼選
+
+| 儲存後端 | 資料放哪 | 適合 | 要注意 |
+| --- | --- | --- | --- |
+| `sqlite`（預設） | 一個資料庫檔 | 大多數情況 | 只能放在本機磁碟。不會擋第二個 instance。 |
+| `serverfs` | 一個資料目錄 | 想用純檔案保存資料、不想維運資料庫 | 檔案系統要支援 `flock` 檔案鎖。 |
+| `postgres` | PostgreSQL 資料庫 | 已經有 PostgreSQL 維運與備份的團隊 | PostgreSQL 15 以上；不支援 TLS 連線。不會擋第二個 instance。 |
+| `memory` | 記憶體 | 只供測試 | 程序結束資料就消失。npx 啟動器不接受它。 |
+
+組態裡寫了不認得的儲存後端名稱，server 不會啟動，錯誤訊息會列出支援的名稱。拼錯 `serverfs` 不會默默改用別的後端。
+
+npx 用環境變數 `SPECLINK_STORE` 選後端；其他跑法在組態檔的 `store` 段設定，見下面各節。
+
+## <a id="sqlite"></a>sqlite（預設）
 
 ```yaml
 store:
@@ -24,93 +36,87 @@ identity:
   path: /var/lib/speclink/identity.db
 ```
 
-## serverfs
+- 資料庫用 SQLite 的 WAL 模式，旁邊會多出 `store.db-wal` 與 `store.db-shm` 工作檔。搬移或複製資料時要一起處理，或者直接用 [`backup`](server-backup.zh-TW.md)。
+- 請放在本機磁碟。WAL 模式不支援 NFS、SMB 這類網路檔案系統。
+- 只能有一個 server 使用這個檔案。server **不會**擋第二個指向同一個檔案的 instance，所以要靠你自己避免。
+
+## <a id="serverfs"></a>serverfs
 
 ```yaml
 store:
   driver: serverfs
-  path: /var/lib/speclink/store     # 資料目錄，非檔案
+  path: /var/lib/speclink/store     # 這是目錄，不是檔案
 identity:
   driver: sqlite
   path: /var/lib/speclink/identity.db
 ```
 
-`path` 指向**資料目錄**。目錄不存在時 driver 會建立它。空目錄則初始化為現行 schema version。
+`path` 指向一個**資料目錄**。目錄不存在時，server 會建立它；空目錄會被初始化成新的儲存區。
 
-### 前提：檔案系統須支援 flock 語意
+### 檔案鎖
 
-serverfs 以資料目錄內鎖檔的 **OS advisory lock（flock 語意）**取得單寫者排他。鎖由 kernel 持有。所以持有者程序死亡時——被 kill、panic 或斷電——鎖會自動釋放，新 server 可直接接管。你不需要偵測、接管或破除殘留鎖。
+serverfs 用作業系統的檔案鎖（`flock`）保證同一時間只有一個 server 寫入。鎖由作業系統持有：server 被強制結束、當掉或斷電時，鎖會自動釋放，下一個 server 可以直接接手，不需要手動清鎖。
 
-**部署前請確認資料目錄所在的檔案系統支援 flock。** 本地碟一律可用。網路檔案系統的 advisory lock 語意在部分設定下不可靠，NFS 尤其如此。
+第二個 server 指向同一個目錄時，它會啟動失敗並回報 `unavailable`，不會等待也不會搶走鎖。
 
-driver **不會**改用「鎖檔存在性／mtime」自製鎖。那種做法分不出「持有者還活著」與「持有者已死」，結果是 store 要嘛永久卡死，要嘛從活著的寫者手上偷走鎖。
+部署前請確認資料目錄所在的檔案系統支援 `flock`。本機磁碟都支援；NFS 等網路檔案系統在部分設定下不可靠，不建議使用。
 
-其他前提：
+### 拒絕啟動的情況
 
-- **Single-node only。** 一個資料目錄同時只允許一個 server。第二個 server 指向同一目錄會**啟動失敗**並回 `unavailable`。它不會等待、不會搶占，也不會交錯寫入。driver 不宣告 cluster 能力。
-- **目錄是 driver 私有格式。** 手動編輯視同損毀，版本守門與 index 參照會攔下大部分亂改。要人類可讀的匯出，用 `backup` 產生的 export bundle。
-- **檔案時間戳不承載任何語意。** 排序與 revision 全部出自 index 與檔名內的序號。備份與還原工具重寫 mtime 不影響任何行為。
+下列情況 server 不會啟動，而且不改動目錄裡的任何內容：
 
-### 拒用的情況（fail closed）
+- 目錄不是空的，也不是 serverfs 建立的（例如路徑打錯，指到別的資料夾）。
+- 目錄裡的版本資訊損壞，或版本比這個 server 支援的還新。
+- 目錄被別的儲存後端標記過。
 
-以下情況啟動失敗且**目錄內容位元不變**——不會留下 marker、鎖檔或任何痕跡：
+### 其他限制
 
-- 目錄非空且不是本 driver 建立的（例如路徑打錯，指到既有資料夾）
-- meta 檔損毀、或記錄的 schema version 高於本 driver 支援
-- 目錄由其他 driver 標記
+- 目錄格式是 serverfs 私有的。不要手動編輯；要人看得懂的匯出，用 [`backup`](server-backup.zh-TW.md)。
+- 檔案的修改時間不代表任何意義。備份工具改寫修改時間，不影響任何行為。
+- 每次寫入都會為改動的文件寫一個新版本檔。被取代的舊版本檔要等**下次啟動**時才清掉，所以長時間不重啟，磁碟用量會隨寫入量增加。目前沒有壓縮或歷史裁剪。
 
-### 磁碟用量
-
-每次 commit 都為異動文件寫入一個新的 revision 內容檔。被取代的舊 revision 檔在**下次開啟時**由孤兒掃描清除。所以長時間執行的 server 在重啟之前，磁碟用量會隨累計寫入量成長。目前不做壓縮、去重或歷史裁剪。
-
-## postgres
+## <a id="postgres"></a>postgres
 
 ```yaml
 store:
   driver: postgres
-  url: postgres://speclink@db.internal:5432/speclink   # 密碼建議留空，見下
+  url: postgres://speclink@db.internal:5432/speclink   # 不放密碼，見下方
 identity:
   driver: sqlite
   path: /var/lib/speclink/identity.db
 ```
 
-driver 在連線的 current schema 建四張表：`documents`、`history`、`outbox` 與 `meta`。所以 URL 帶 `search_path` 就能讓多個 store 共用一個資料庫。空 schema 會初始化為現行 schema version。
+server 會在連線的目前 schema 建四張資料表：`documents`、`history`、`outbox` 與 `meta`。所以用不同的 `search_path`，就能讓多個儲存區共用一個資料庫。空的 schema 會被初始化。
 
-### 密碼來源
+### 密碼
 
-密碼**優先來自環境變數 `SPECLINK_POSTGRES_PASSWORD`**。URL 省略密碼時，由它補全。
+密碼請放在環境變數 `SPECLINK_POSTGRES_PASSWORD`。連線 URL 不含密碼時，server 會用這個變數補上。
 
-URL 內嵌密碼仍可啟動，但 server 會在 stderr 輸出一行警告：組態檔會被複製、diff、貼進 issue，密碼不該躺在裡面。URL 已經帶密碼時，環境變數不覆蓋它。
+URL 裡直接寫密碼也能啟動，但 server 會在 stderr 印一行警告：組態檔常被複製、比對、貼進 issue，不該放密碼。URL 已經帶密碼時，環境變數不會覆蓋它。
 
-### 前提
+### 限制
 
-- **Single-node only。** 同 scope 的寫入以 PostgreSQL **transaction-scoped advisory lock**（`pg_advisory_xact_lock`）序列化。鎖隨 transaction 結束或連線死亡自動釋放，**不會有殘留鎖**。跨 scope 的寫入互不阻塞，讀取則完全不取鎖。
-  但與 serverfs 不同，**兩個 server 指向同一資料庫不會被拒絕**——advisory lock 只序列化，不獨占。正確性不受影響（CAS 與 transaction 原子性照舊），資料也不會損毀。但 driver **不宣告 cluster 能力**，多節點請靠部署紀律。cluster 模式要等 distributed coordination 完成後另行處理。
-- **最低支援版本：PostgreSQL 15。** CI 以該版本執行完整測試集。driver 沒有用到更新的功能，但只有 15 以上受測。
-- **schema 是 driver 私有格式。** 手動編輯視同損毀，版本守門會攔下大部分亂改。要人類可讀的匯出，用 `backup` 產生的 export bundle。
+- **最低版本 PostgreSQL 15。** CI 用這個版本跑完整測試。
+- **不支援 TLS 連線。** server 一律用不加密的連線。只接受 TLS 的託管 PostgreSQL 會連不上；請把資料庫放在受信任的內部網路。
+- **只能有一個 server。** 同一範圍的寫入會依序執行，資料不會損壞，但 server **不會**拒絕第二個指向同一個資料庫的 instance。多台 server 共用一個資料庫不在支援範圍內。
+- **資料表格式是私有的。** 不要手動編輯；要人看得懂的匯出，用 [`backup`](server-backup.zh-TW.md)。
 
-### 拒用的情況（fail closed）
+### 拒絕啟動的情況
 
-以下情況啟動失敗且**資料庫內容不變**——偵測全程唯讀，不會留下任何痕跡：
+下列情況 server 不會啟動，也不改動資料庫的內容：
 
-- schema 已有資料表但不是本 driver 建立的（例如 URL 打錯，指到既有資料庫）
-- `meta` 記錄的 schema version 高於本 driver 支援
-- 認證失敗或資料庫不存在（回 `backend` 並帶伺服器原文）
+- schema 裡已經有資料表，但不是 Speclink 建立的（例如 URL 打錯，指到別的資料庫）。
+- `meta` 記錄的版本比這個 server 支援的還新。
+- 認證失敗或資料庫不存在。錯誤訊息會附上 PostgreSQL 的原文。
 
-運行中連線中斷不算損毀。請求回 `unavailable`，`/readyz` 轉紅。連線恢復後同一個 server 直接續用，不需要重啟。
+執行中斷線不算資料損壞：請求回 `unavailable`，`/readyz` 回 `503`。連線恢復後，同一個 server 會直接續用，不需要重啟。
 
-### 測試前提
+## <a id="switch"></a>更換儲存後端
 
-本 driver 的測試集需要**真實 PostgreSQL 實例**，由環境變數 `SPECLINK_TEST_POSTGRES_URL` 指定。未設定時，測試以顯性 `skipped` 結束並印出啟用指引，不會靜默回報通過。
+儲存後端之間不能直接搬檔案，要經過備份檔：
 
-所以 `npm run test:all` 在沒有 PostgreSQL 的機器上仍可全綠，但**完整測過這個 driver 需要 PG**。CI 另有一個 job 起 PostgreSQL 15 service container 必跑該測試集，而且對 `skipped` 直接紅燈。
+1. 停掉 server，用舊組態執行 `backup`。
+2. 準備新組態，指向一個空的新儲存區。
+3. 用新組態執行 `restore`，再用新組態啟動 server。
 
-一行啟用：
-
-```
-docker run --rm -d -p 5432:5432 -e POSTGRES_PASSWORD=speclink --name speclink-pg postgres:15 && export SPECLINK_TEST_POSTGRES_URL=postgres://postgres:speclink@localhost:5432/postgres
-```
-
-## 更換 driver
-
-資料遷移走 driver 無關的 export bundle，見[備份、還原與驗證](server-backup.zh-TW.md)。步驟是：以舊組態跑 `backup`，換上新組態後 `restore` 到空目標。bundle 的逐文件 digest 由契約定義，跨 driver 一致。
+備份檔的內容與儲存後端無關，`restore` 會逐項比對還原結果。指令與規則見 [Server 備份與還原](server-backup.zh-TW.md)。

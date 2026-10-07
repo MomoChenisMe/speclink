@@ -1,5 +1,5 @@
 //! speclink-remote: the typed protocol client for the Speclink Client
-//! Protocol (see `docs/platform-architecture.zh-TW.md` §4.5), used by the
+//! Protocol (see `openspec/specs/client-protocol/spec.md`), used by the
 //! CLI's remote mode.
 //!
 //! These concerns live here and nowhere else:

@@ -2,11 +2,11 @@
 //!
 //! A binding names the (project, repo) pair an execution is scoped to.
 //! Resolution rejects with a typed reason when the binding is missing,
-//! not permitted, or ambiguous — it never auto-picks the first candidate
-//! (platform architecture §4.7). Local fs mode maps the workspace root to
-//! a fixed default project/repo with zero configuration; remote candidate
-//! discovery (the network handshake) is Phase 2 — this module owns the
-//! validation logic and the error shapes only.
+//! not permitted, or ambiguous — it never auto-picks the first candidate.
+//! Local fs mode maps the workspace root to a fixed default project/repo
+//! with zero configuration; remote candidate discovery (the network
+//! handshake) is Phase 2 — this module owns the validation logic and the
+//! error shapes only.
 
 use speclink_store::{ProjectId, RepoId};
 

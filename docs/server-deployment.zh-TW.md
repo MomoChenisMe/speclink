@@ -1,83 +1,66 @@
 # Server 部署
 
-`speclink-server` 是 Speclink Host 的**官方參考實作**——它是 wire contract 的活基準，也是給你開箱即用與測試遠端功能的那一份。遠端模式不限定用它：Host 與 Protocol 是公開契約（見 `openspec/specs/` 的 `host-runtime` 與 `client-protocol`），你可以照契約做自己的 server 端。本文只講官方這一份怎麼部署。
+**繁體中文** · [English](server-deployment.md)
 
-它有四種發布形態：
+這份文件說明怎麼把官方 `speclink-server` 跑起來給團隊用：選跑法、設定、HTTPS、管理指令，以及升級與回退。第一次試用請先照 [Remote 入門](remote-getting-started.zh-TW.md)走一次；那份文件帶你完成初始設定、成員資格與 Desktop、CLI 的連線。
 
-1. npx 一行啟動（npm 套件）
-2. Docker image 直跑
-3. SQLite 單容器 compose
-4. PostgreSQL compose profile
+## <a id="reference-implementation"></a>官方 server 是參考實作
 
-後三種共用同一個映像，發布於 `ghcr.io/momochenisme/speclink-server`；tag 對齊 release 版本，另附 `latest`。native binary 不隨 GitHub Release 發布，需要時走[從原始碼建置](#替代路徑從原始碼建置native-binary)的替代路徑。
+`speclink-server` 是 Speclink 官方的**參考實作**，讓你開箱即用、試遠端功能。遠端模式不綁這一份 server：它由 `openspec/specs/` 底下的兩份公開契約 `host-runtime` 與 `client-protocol` 定義。你可以用 Speclink 引擎自己寫 server，接上自家的認證、資料庫與權限模型，CLI 與 Desktop 一樣接得上。本文只講官方這一份怎麼部署。
 
-若目標是從全新資料完成 `/setup`、membership、Desktop 與 Remote CLI，而不是部署正式服務，請先依
-[Remote Server、Desktop 與 CLI 入門](remote-getting-started.zh-TW.md)操作。
+## <a id="choose"></a>選一種跑法
 
-## 交付物：內嵌 SPA 的單一 binary／image
+| 跑法 | 適合 | 資料位置 |
+| --- | --- | --- |
+| [npx](#npx) | 有 Node.js 的單機試用 | `./speclink-data/` |
+| [Docker](#docker) | 單一容器 | 容器內 `/data` |
+| [Docker Compose（SQLite）](#compose) | 正式部署的預設選擇 | named volume |
+| [Docker Compose（PostgreSQL）](#compose) | 已經有 PostgreSQL 維運的團隊 | PostgreSQL＋named volume |
+| [從原始碼建置](#build-from-source) | 需要自己的 binary | 組態檔指定的位置 |
 
-瀏覽器主控台是 `apps/server-web` 的 React SPA，它在**編譯期內嵌**進 `speclink-server`。`index.html`、manifest、hashed JS 與 CSS、字型與圖示，全部與 API 打包在同一支 binary 或 image 裡，永遠 same-origin、永遠同版本。
+不論哪種跑法，都是同一支 binary。瀏覽器主控台（`apps/server-web`）在編譯時就內嵌進 `speclink-server`，和 API 由同一個網址提供。執行時不需要 Node.js、外部的 `dist` 資料夾、CDN，也不需要另一個靜態檔服務。
 
-**runtime 不需要 Node、外部 `dist` volume、CDN，也不需要第二個靜態檔服務。** 把單一 binary 或 image 放進空環境，就載入得出完整 UI。
+每種儲存後端都只支援**一個** server instance。不要 `--scale`，也不要讓兩個 server 指向同一份資料；SQLite 與 PostgreSQL 不會擋第二個 instance，詳見 [Server 儲存後端](server-store-drivers.zh-TW.md)。
 
-需要編譯的三種形態——native binary、Docker image、本機 production build——都走同一個建置順序：
+啟動後，每種跑法的行為都一樣：
 
-1. `npm ci`：依 lockfile 安裝依賴。
-2. `npm run build -w apps/server-web`：Vite production build 產出 `dist`。
-3. `cargo build --release -p speclink-server`：於編譯期內嵌 `dist`。
+- `GET /healthz` 回 `200` 代表程序活著；`GET /readyz` 回 `200` 代表儲存後端可用，不可用時回 `503`。
+- 第一次啟動（還沒有管理員）時，stdout 印出一次性的 `/setup?token=…` 連結，24 小時內有效。完成設定後，設定就永久關閉。
+- 組態有錯（檔案讀不到、格式不對、未知的儲存後端）時，server 不開埠，直接以非零 exit code 結束。
 
-缺少 `index.html` 或 manifest 時，server 的 release build **fail closed**：以非零 exit code 結束，並提示「先建置 `apps/server-web`」。它不會產出只有 API、沒有 UI 的 artifact。
+## <a id="npx"></a>npx
 
-Docker image 以 multi-stage 達成同一個保證：Node stage 產 `dist`，Rust stage 內嵌，最終 runtime 只有 non-root server binary。映像內不帶 Node runtime。
-
-不論哪種形態，啟動後的行為一致：
-
-- **健康檢查**：`GET /healthz` 回程序存活、`GET /readyz` 回 store 就緒（未就緒為 503）。
-- **setup token**：首次啟動（尚無 admin）時，stdout 印一行含 `/setup?token=…` 的一次性連結，24 小時內有效。容器形態用 `docker compose logs server`（或 `docker logs <容器>`）取得。開瀏覽器走完 `/setup`（建立 admin → 首個 project/repo）後 setup 永久關閉。
-- **組態**：YAML 檔經 `--config` 指定，欄位與各 store driver 的選型見[Server Store Driver 選型](server-store-drivers.zh-TW.md)。組態壞或 driver 未知時 server 拒絕啟動並以非零 exit code 結束（fail closed），不會以部分預設服務。
-
-## 單一 instance 限制
-
-SQLite 與 serverfs profile **只允許一個 server instance**。不要 `--scale`，也不要讓多個 replica 指向同一個資料目錄或 volume。SQLite 的單寫者檔案鎖會讓第二個 instance 顯性報錯，而不是靜默共用。
-
-需要多 instance 之前，先換 PostgreSQL driver。即便如此，目前的官方形態仍以單 instance 為設計定位。
-
-## 形態一：npx 一行啟動
-
-有 Node.js（18+）就能起一個本機 server，毋須 Docker：
+需要 Node.js 18 以上。支援 macOS（arm64、x64）、Linux（x64、arm64）與 Windows（x64）。
 
 ```bash
 npx @speclink/server
 ```
 
-首次執行會下載對應平台的 server 套件，並在 `./speclink-data` 產生組態與資料檔，預設走 SQLite。啟動後 stdout 印出 `/setup` 的一次性連結。基礎參數用環境變數調：
+不帶參數時，啟動器做三件事：
 
-| 變數 | 預設 | 說明 |
-| --- | --- | --- |
-| `SPECLINK_STORE` | `sqlite` | 資料放哪種後端：`sqlite`（單檔資料庫）、`serverfs`（純目錄）、`postgres`（連現成的 PostgreSQL）。 |
-| `SPECLINK_DATA_DIR` | `./speclink-data` | 資料目錄（組態、store 與 identity 檔都在這裡）。 |
-| `SPECLINK_PUBLIC_URL` | `http://localhost:<埠>` | 對外網址；setup 連結與同源檢查以此為準。 |
-| `SPECLINK_PORT` | `8080` | 綁定埠（僅本機 127.0.0.1）。 |
-| `SPECLINK_POSTGRES_URL` | （`postgres` 時必填） | PostgreSQL 連線 URL；密碼可拆到 `SPECLINK_POSTGRES_PASSWORD`。 |
-| `SPECLINK_CONFIG` | （無） | 直接指定既有組態 YAML，跳過上面全部插值。 |
+1. 依[環境變數](#configuration)產生 `speclink-data/config.yaml`。每次啟動都重新產生，手改的內容會被蓋掉。
+2. 預設用 SQLite，資料放在 `./speclink-data/`。
+3. 啟動 server，只聽 `127.0.0.1:<SPECLINK_PORT>`。
 
-launcher 做的事只有一件：把環境變數寫成一份組態 YAML，再啟動 server binary。那份 YAML 落在資料目錄，你可以打開檢視。server 的單一組態來源與 fail closed 契約都不變。
+帶了參數時，啟動器把參數原封不動交給 server binary，例如 `npx @speclink/server invite --config ./speclink-data/config.yaml …`。想要固定的 `speclink-server` 指令，可以 `npm i -g @speclink/server`。
 
-帶 `--config` 或子命令（`invite`、`backup` 等）時，launcher 純透傳，行為與直接執行 binary 完全相同。正式對外部署仍建議下面的 Docker 或 compose 形態。
+npx 預設只有本機連得到。要給團隊用，建議改用 Docker Compose，並在前面架 [HTTPS 反向代理](#https)。如果一定要用 npx，請自己維護一份組態檔，用 `npx @speclink/server --config <檔案> --addr 0.0.0.0:8080` 啟動；帶 `--config` 時，啟動器不會改寫你的組態檔。
 
-## 形態二：docker run
+## <a id="docker"></a>Docker
 
-映像的 ENTRYPOINT 是 server binary。它內建預設組態，store 與 identity 兩個 SQLite 檔都落在 `/data`。它以非 root 使用者（uid 10001）執行，HEALTHCHECK 打 `/healthz`：
+官方映像是 `ghcr.io/momochenisme/speclink-server`，支援 `linux/amd64` 與 `linux/arm64`。每次發版會推三個 tag：完整版號（例如 `0.8.0`）、`主.次` 版號（例如 `0.8`）與 `latest`。
 
 ```bash
 docker run -d --name speclink \
   -p 8080:8080 \
   -v speclink-data:/data \
   ghcr.io/momochenisme/speclink-server:latest
-docker logs speclink        # 取 setup token
+docker logs speclink        # 取得一次性設定連結
 ```
 
-要改 `public_url` 等欄位時，掛載自訂組態覆蓋映像內的預設檔（組態 YAML 不做環境變數展開）：
+映像內建一份組態：store 與 identity 兩個 SQLite 檔都放在 `/data`，`public_url` 是預設的 `http://localhost:8080`。server 以 uid 10001 的非 root 使用者執行，容器的健康檢查打 `/healthz`。
+
+組態檔不展開環境變數。要改 `public_url` 或換儲存後端，就掛載自己的組態檔，蓋掉映像內的那一份：
 
 ```bash
 docker run -d --name speclink \
@@ -87,63 +70,39 @@ docker run -d --name speclink \
   ghcr.io/momochenisme/speclink-server:latest
 ```
 
-## 形態三：SQLite compose（一行開箱）
+埠對映不是 `8080:8080`，或對外網址不是 `http://localhost:8080` 時，一定要改 `public_url`。否則設定連結的網址不對，瀏覽器送出的表單也會因為來源不符而被拒。
 
-`deploy/docker-compose.yml` 是正典示範：named volume 持久化 `/data`，`public_url` 經環境變數插值。
+## <a id="compose"></a>Docker Compose
+
+repo 的 `deploy/` 有兩份 compose 檔。兩份都用 named volume 保存 `/data`，並由環境變數產生組態。
+
+SQLite（預設）：
 
 ```bash
 cd deploy
-docker compose pull          # 取官方映像；略過則直接從原始碼建置
+docker compose pull          # 先拉官方映像
 docker compose up -d
-docker compose logs server   # 取 setup token，開瀏覽器完成 /setup
+docker compose logs server   # 取得一次性設定連結
 ```
 
-compose 同時寫了 `image:` 與 `build:`。本機沒有映像時，`up` 會就地從原始碼建置——需要完整的 repo，Rust 編譯要數分鐘。所以**首次正式發版前也能起**。要用官方映像，就先跑 `docker compose pull`。
-
-容器重啟後資料存留於 volume，setup token 不會重印、`/setup` 維持關閉。
-
-## 形態四：PostgreSQL compose profile
-
-`deploy/docker-compose.postgres.yml` 起 server ＋ postgres 兩服務：postgres 帶 `pg_isready` healthcheck，server 等它 healthy 才啟動。密碼只經環境變數注入——store url 不含密碼，由 `SPECLINK_POSTGRES_PASSWORD` 補全（見 [Server Store Driver 選型](server-store-drivers.zh-TW.md)的密碼來源）。identity 資料庫維持 `/data` 下的 SQLite 檔。
+PostgreSQL（server＋postgres 兩個服務）：
 
 ```bash
 cd deploy
-cp .env.example .env         # 填入 SPECLINK_POSTGRES_PASSWORD；.env 不入版本控制
+cp .env.example .env         # 填入 SPECLINK_POSTGRES_PASSWORD；.env 不進版本控制
 docker compose -f docker-compose.postgres.yml pull
 docker compose -f docker-compose.postgres.yml up -d
 ```
 
-## 驗收：部署完成後該看到什麼
+PostgreSQL 版的 server 會等 postgres 健康後才啟動；帳號資料（identity）仍是 `/data` 底下的 SQLite 檔。儲存後端的限制見 [Server 儲存後端](server-store-drivers.zh-TW.md#postgres)。
 
-四種形態任一條走完、`/setup` 也完成之後，用下面兩個畫面確認這台 server 真的可用。
+compose 檔同時寫了 `image:` 與 `build:`。沒有先 `pull` 而本機也沒有映像時，`up` 會從原始碼建置映像；這需要完整的 repo，Rust 編譯要幾分鐘。
 
-先看總覽。它把連線所需的三項資訊擺在最上面：服務網址、專案代號、儲存庫代號。這三項組成使用者 `speclink link` 要用的 project-scoped URL。再下面是使用者、專案與憑證的計數，以及系統健康：
+容器重啟後，資料留在 volume 裡，設定連結不會再印。
 
-![Server 後台總覽，顯示服務網址、專案與儲存庫代號、計數與系統健康](assets/screenshots/server-overview.png)
+## <a id="build-from-source"></a>從原始碼建置
 
-驗收判準：
-
-- 服務網址要與你實際對外的位址一致，不該是 `localhost`——除非你就是要本機用。不一致就改 `SPECLINK_PUBLIC_URL`，或組態裡的 `public_url`。setup 連結與同源檢查都以它為準。
-- 系統健康顯示「正常」，資料結構版本有值。
-- 「需要處理」區塊如果說「尚無有效憑證——遠端工作流程無法連線」，那是預期的。憑證要由使用者自己在 `/account` 建立，或由你發邀請。
-
-再看使用者頁，確認成員資格這一層。帳號能登入不等於看得到專案——角色與成員資格是分開的兩欄：
-
-![Server 後台的使用者頁與成員詳情，顯示角色與成員資格欄](assets/screenshots/server-members.png)
-
-驗收判準：至少有一位管理員，且每位要用遠端的成員在「成員資格」欄看得到目標專案。發邀請與角色指派的操作見[Remote 入門](remote-getting-started.zh-TW.md)。
-
-最後用 CLI 從外面打一次，確認不是只有瀏覽器連得到：
-
-```bash
-curl -o /dev/null -w "%{http_code}\n" https://<你的網址>/healthz
-```
-
-回 `200` 才算通過。
-
-## 替代路徑：從原始碼建置（native binary）
-
-在 repo checkout 依上述建置順序自行建出單一 binary（產物在 `target/release/speclink-server`）：
+從原始碼建置的順序是 `npm ci`、`npm run build -w apps/server-web`，再編譯 `speclink-server`。在 repo 的 checkout 裡執行：
 
 ```bash
 npm ci
@@ -151,82 +110,151 @@ npm run build -w apps/server-web
 cargo build --release -p speclink-server
 ```
 
-準備組態檔後啟動：
+產物是 `target/release/speclink-server`。第二步產出的 `apps/server-web/dist` 會在第三步內嵌進 binary。少了 `apps/server-web/dist/index.html`，release 建置會直接編譯失敗，不會產出只有 API、沒有主控台的 binary。Docker 映像用多階段建置走同一個順序，最終映像裡沒有 Node.js。
+
+準備好組態檔後啟動：
 
 ```bash
-speclink-server --config /etc/speclink/server.yaml --addr 0.0.0.0:8080
+./target/release/speclink-server --config /etc/speclink/server.yaml --addr 0.0.0.0:8080
 ```
 
-`--addr` 預設 `127.0.0.1:8080`（僅本機）；要對外服務必須明示綁定位址。搭配 systemd 等程序管理器時，`Restart=on-failure` 即可承接 fail closed 的退出。
+binary 一定要帶 `--config`。`--addr` 預設是 `127.0.0.1:8080`，只有本機連得到；要對外服務，就明確指定綁定位址。用 systemd 等程序管理器時，設 `Restart=on-failure` 即可。
 
-## 環境變數清單
+## <a id="configuration"></a>環境變數與組態檔
 
-compose 形態可用的環境變數（`.env` 或 shell 匯出皆可）：
+### 環境變數
 
-| 變數 | 預設 | 說明 |
+| 變數 | 適用跑法 | 預設 | 說明 |
+| --- | --- | --- | --- |
+| `SPECLINK_STORE` | npx | `sqlite` | 儲存後端：`sqlite`、`serverfs` 或 `postgres`。 |
+| `SPECLINK_DATA_DIR` | npx | `./speclink-data` | 資料目錄，組態檔、資料庫都放這裡。 |
+| `SPECLINK_PORT` | npx、Compose | `8080` | npx：server 在 `127.0.0.1` 上聽的埠。Compose：主機對外的埠（容器內固定是 8080）。 |
+| `SPECLINK_PUBLIC_URL` | npx、Compose | `http://localhost:<SPECLINK_PORT>` | 對外網址，也就是使用者瀏覽器網址列上的協定、主機與埠。設定連結、邀請連結與同源檢查都以它為準。正式部署一定要設。 |
+| `SPECLINK_POSTGRES_URL` | npx | 無（`postgres` 時必填） | PostgreSQL 連線 URL，建議不含密碼。 |
+| `SPECLINK_POSTGRES_PASSWORD` | 所有跑法 | 無（Compose 的 PostgreSQL 版必填） | PostgreSQL 密碼。server 程式自己讀這個變數，補進不含密碼的連線 URL。 |
+| `SPECLINK_CONFIG` | npx | 無 | 改用一份既有的組態檔。設了之後，上面 npx 專用的變數都不作用，也不帶 `--addr`，所以 server 聽 `127.0.0.1:8080`。這時 `invite` 這類子命令仍要自己帶 `--config`。 |
+
+直接執行 binary 或 `docker run` 時，只有 `SPECLINK_POSTGRES_PASSWORD` 會被讀取；其他設定都寫在組態檔裡。
+
+### 組態檔
+
+server 只讀一份 YAML 組態檔：
+
+| 欄位 | 必填 | 說明 |
 | --- | --- | --- |
-| `SPECLINK_PUBLIC_URL` | `http://localhost:8080` | 對外網址。同源檢查與 setup 連結都以此為準，正式部署必設。 |
-| `SPECLINK_PORT` | `8080` | 對外埠映射（容器內固定 8080）。 |
-| `SPECLINK_POSTGRES_PASSWORD` | （必填，僅 PostgreSQL profile） | 資料庫密碼。同一值初始化 postgres 服務並補全 server 連線 URL；server 程序本身也讀這個變數。 |
+| `store` | 是 | 儲存後端（`driver` 加上 `path` 或 `url`），見 [Server 儲存後端](server-store-drivers.zh-TW.md)。 |
+| `identity` | 是 | 帳號資料庫：`driver: sqlite` 加上 `path`。 |
+| `public_url` | 否 | 對外網址，預設 `http://localhost:8080`。 |
+| `events` | 否 | 即時事件串流的調整值：`retention`（每個範圍保留的事件數，預設 1024）、`buffer`（每條連線的緩衝，預設 256）、`heartbeat_secs`（心跳間隔秒數，預設 15）。 |
 
-## 容器內執行子命令
+範例：
 
-映像的 ENTRYPOINT 是 server binary，`docker run`／`docker compose run` 的尾參數就是子命令。`backup`、`verify-backup`、`restore` 對**未運行**的資料操作（離線一致性，詳見[Server 備份、還原與驗證](server-backup.zh-TW.md)），流程是停 server → 以同一 volume 起一次性容器跑子命令 → 再啟動。
-
-映像以 uid 10001 執行，因此**掛進去的宿主目錄必須先開放給該 uid 寫入**，否則 `--output` 會得到 Permission denied（Docker Desktop 會做 ownership 重映射而看不出來，Linux 主機則必然踩到）：
-
-```bash
-cd deploy
-mkdir -p backups && sudo chown 10001:10001 backups   # 一次性；容器內的 uid
-
-docker compose stop server
-docker compose run --rm -v ./backups:/backups server \
-  backup --config /etc/speclink/config.yaml --output /backups/backup-$(date -u +%Y%m%dT%H%M%SZ).tar
-docker compose start server
-
-# 驗證備份不需要停機、不需要空目標
-docker compose run --rm -v ./backups:/backups server \
-  verify-backup --input /backups/backup-latest.tar
+```yaml
+store:
+  driver: sqlite
+  path: /var/lib/speclink/store.db
+identity:
+  driver: sqlite
+  path: /var/lib/speclink/identity.db
+public_url: https://speclink.example.com
 ```
 
-還原**只接受空目標**（store 與 identity 皆空，非空即拒絕）。在全新環境把 volume 準備好但**不啟動 server**（不走 /setup），直接以一次性容器還原，完成後再啟動：
+舊版組態裡的 `tokens` 或 `projects` 段已經廢除。留著它們，server 會拒絕啟動，並說明替代做法。
+
+## <a id="https"></a>HTTPS 與反向代理
+
+server 本身不處理 TLS。給團隊用時，請在前面架一層反向代理，由它提供 HTTPS。
+
+這是必要的：登入用的 cookie 一律帶 `Secure` 屬性，瀏覽器只在 HTTPS 或 `http://localhost` 下保存它。用 `http://` 加上非 localhost 的網址部署時，瀏覽器不會保存登入狀態，主控台與裝置登入的核准頁都登不進去。
+
+反向代理要做到這幾件事：
+
+- 提供 HTTPS，把請求轉給 server 的埠。
+- 把 `public_url` 設成使用者實際開的 HTTPS 網址。協定、主機或埠不一致時，瀏覽器送出的寫入請求會被拒（`403`，`same_origin_required`）。
+- 不要緩衝 `/api/speclink/v1/projects/<專案代號>/events`。這是長時間開著的事件串流（Server-Sent Events），server 每 15 秒送一次心跳；代理的閒置逾時要比這個長。
+
+## <a id="manage"></a>管理指令
+
+管理主控台能做的事，大多也有命令列版本，適合寫成腳本。每個子命令都要用 `--config` 指向 server 的組態檔：
+
+| 指令 | 用途 |
+| --- | --- |
+| `invite --email <email> --display <名稱>` | 建立一次性邀請，印出接受網址。`--project <專案代號>` 可重複，對方接受後成為該專案的 `editor`；`--admin` 給管理員身分；`--expires-in-days` 預設 7 天。 |
+| `user suspend --email <email>`／`user reactivate --email <email>` | 停權或復權。最後一位有效的管理員不能停權。 |
+| `token revoke --token-id <id>` | 撤銷一把存取金鑰。id 以 `pat_` 開頭，不是金鑰明文；主控台只顯示前綴，所以一般在 `/admin/credentials` 撤銷比較方便。 |
+| `project create --key <專案代號> [--name <名稱>]` | 建立專案。 |
+| `repo create --project <專案代號> --key <儲存庫代號> [--name <名稱>]` | 在專案裡建立儲存庫。 |
+
+沒有替既有帳號加成員資格的命令列指令；請用 `/admin/users`。
+
+依跑法不同，指令的開頭也不同：
 
 ```bash
-cd deploy
-docker compose create server      # 建立容器與空 volume，不啟動
-docker compose run --rm -v ./backups:/backups server \
-  restore --config /etc/speclink/config.yaml --input /backups/backup-latest.tar
-docker compose start server
-```
+# npx（在資料目錄的上一層執行）
+npx @speclink/server invite --config ./speclink-data/config.yaml \
+  --email dev@example.com --display "Dev" --project demo
 
-`invite` 等 identity 操作可直接在運行中的容器內執行：
-
-```bash
+# Docker Compose（server 執行中）
 docker compose exec server speclink-server invite \
   --config /etc/speclink/config.yaml \
   --email dev@example.com --display "Dev" --project demo
 ```
 
-## 升級
+備份、驗證與還原的指令見 [Server 備份與還原](server-backup.zh-TW.md)。
 
-升級＝換映像重啟，沒有滾動更新（單 instance 定位）：
+## <a id="verify-deployment"></a>部署後檢查
 
-1. 先備份（上一節），確認 `verify-backup` 綠。
-2. `docker compose pull && docker compose up -d` 以新映像重建容器（volume 不動）。
-3. 啟動守門承接相容性：組態或資料不相容時容器以非零 exit code 結束，資料不會被半升級；資料庫 schema 落後新版時 server 會啟動但 `/readyz` 回 503。
-4. 需要資料層遷移時，由 admin 在 `/admin` 資料操作頁觸發 store 遷移（前置 health 檢查通過才執行，成功記入 audit）。
-5. `/healthz`、`/readyz` 皆綠即完成。
+部署好、完成 `/setup` 之後，用下面三項確認 server 真的能用。
 
-## 回退（rollback）
+第一，看主控台總覽。剛完成設定時，總覽最上面會出現一次「開始使用」區塊，列出服務網址、專案代號與儲存庫代號：
 
-回退＝部署**上一版** binary／image，沒有資料修復步驟：
+![Server 主控台總覽，顯示服務網址、專案與儲存庫代號、計數與系統健康](assets/screenshots/server-overview.png)
 
-- 沒有 identity schema、TeamStore 或設定 migration；資料與 session schema 跨版本相容，回退不需要動資料。
-- 新 SPA release 若出現資產或呈現問題，直接以上一版 binary／image 重啟即可回退；切換前的 git revision 就是短期 rollback surface。
-- Docker 形態把 `docker compose` 指回上一版 image tag 後 `up -d` 重建容器（volume 不動）；自建 binary 則 checkout 上一版 tag 重新建置（或乾脆改用上一版 image）。
+- 服務網址要和使用者實際開的網址一樣。不一樣就改 `public_url`。
+- 「系統健康」顯示「正常」，資料結構版本有值。
+- 「需要處理」寫著「尚無有效憑證——遠端工作流程無法連線」是正常的。有人用 Desktop 或 CLI 登入、或建立存取金鑰之後，它就會消失。
 
-## 相關文件
+第二，看使用者頁，確認成員資格。能登入不等於看得到專案；角色與成員資格是兩個欄位。初始設定建立的管理員，成員資格一開始是空的：
 
-- [Server 備份、還原與驗證](server-backup.zh-TW.md)——backup/verify-backup/restore 的完整語意與排程範例
-- [Server Store Driver 選型](server-store-drivers.zh-TW.md)——sqlite/serverfs/postgres 的組態欄位、前提與 fail closed 條件
-- 發布形態、secret 紀律與開箱流程的正式規格是 `openspec/specs/` 的 `server-release`、`server-setup` 與 `reference-server`
+![Server 主控台的使用者頁與使用者詳情，顯示角色與成員資格欄](assets/screenshots/server-members.png)
+
+每位要用遠端的人，都要在「成員資格」欄看到目標專案。加成員資格的步驟見 [Remote 入門](remote-getting-started.zh-TW.md#grant-membership)。
+
+第三，從另一台電腦打一次健康檢查：
+
+```bash
+curl -o /dev/null -w "%{http_code}\n" https://<你的網址>/healthz
+```
+
+回 `200` 才算通過。
+
+## <a id="upgrade"></a>升級
+
+升級就是換新版重啟。server 只跑一個 instance，所以沒有滾動更新。
+
+1. 先備份，並確認 `verify-backup` 通過。做法見 [Server 備份與還原](server-backup.zh-TW.md)。
+2. 換成新版並重啟：
+   - Docker Compose：`docker compose pull && docker compose up -d`。volume 不受影響。
+   - npx：`npx @speclink/server@<新版號>`。
+   - 自建 binary：換掉 binary 後重啟。
+3. 確認 `/healthz` 與 `/readyz` 都回 `200`。
+
+新版需要較新的帳號資料庫（identity）結構時，server 啟動時會自動升級它。組態或資料不相容時，server 直接以非零 exit code 結束，不會帶著錯誤啟動。
+
+## <a id="rollback"></a>回退
+
+回退就是部署**上一版**的 binary 或映像：
+
+- Docker Compose：把 compose 檔的 `image:` 改成上一版的 tag（例如 `ghcr.io/momochenisme/speclink-server:0.7.0`），再 `docker compose up -d`。volume 不受影響。
+- npx：`npx @speclink/server@<上一版號>`。
+- 自建 binary：checkout 上一版的 tag 重新建置，或改用上一版的映像。
+
+到 0.8.0 為止，各版的資料格式都相同（帳號資料庫結構版本 6、儲存格式版本 1），回退不需要動資料。主控台「系統」頁的「資料結構版本」顯示目前的帳號資料庫版本。
+
+之後如果有新版提高帳號資料庫的版本，升級時會自動改寫資料庫，而舊版 server 會拒絕開啟較新的資料庫。那時要回退，就得用升級前的備份，還原到空的目標。所以升級前一定要先備份。
+
+## <a id="related"></a>相關文件
+
+- [Remote 入門](remote-getting-started.zh-TW.md)：第一次設定、成員資格、Desktop 與 CLI 連線。
+- [Server 儲存後端](server-store-drivers.zh-TW.md)：SQLite、serverfs、PostgreSQL 怎麼選。
+- [Server 備份與還原](server-backup.zh-TW.md)：`backup`、`verify-backup`、`restore` 與排程。

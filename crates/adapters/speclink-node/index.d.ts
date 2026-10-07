@@ -203,7 +203,7 @@ export interface Engine {
    * Resolves to the same structured object the CLI prints with `--json`
    * (camelCase); verbs without a `--json` form resolve to `{ output: string }`.
    * The verb surface and payload contract are described in
-   * docs/platform-architecture.zh-TW.md.
+   * docs/verb-contract.md.
    *
    * Rejects with an `Error` whose `message` is the CLI's semantic message and
    * whose `code` property classifies the failure (`error`, `not_found`,

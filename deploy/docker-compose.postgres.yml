@@ -3,7 +3,7 @@
 #   cp .env.example .env    # 填入密碼；.env 不入版本控制
 #   docker compose -f docker-compose.postgres.yml up -d
 #
-# secret 紀律（架構 §13.2）：密碼只經環境變數注入——store url 不含密碼，
+# secret 紀律：密碼只經環境變數注入——store url 不含密碼，
 # server 由 SPECLINK_POSTGRES_PASSWORD 補全；postgres 服務用同源的變數初始化。
 # 版本控制內（本檔與 .env.example）沒有任何明文密碼。
 #

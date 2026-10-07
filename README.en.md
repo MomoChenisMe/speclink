@@ -3,216 +3,223 @@
 </p>
 
 <p align="center">
-  <b>One SDD Engine, for both Local Repo and Remote Store</b>
+  <b>One SDD Engine for Local Repo and Remote Store</b>
+</p>
+
+<p align="center">
+  <a href="https://github.com/MomoChenisMe/speclink/actions/workflows/ci.yml"><img src="https://github.com/MomoChenisMe/speclink/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/MomoChenisMe/speclink/releases/latest"><img src="https://img.shields.io/github/v/release/MomoChenisMe/speclink?label=release" alt="Release" /></a>
+  <a href="https://www.npmjs.com/package/@speclink/cli"><img src="https://img.shields.io/npm/v/@speclink/cli?label=npm" alt="npm" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT" /></a>
 </p>
 
 <p align="center">
   <a href="README.md">繁體中文</a> · <b>English</b>
 </p>
 
-Speclink is a Spec-Driven Development (SDD) engine and tooling platform written in Rust. PMs, POs, engineers,
-and AI Agents all use one vocabulary here: change, artifact, task, verify, archive. It also keeps two deployment
-paths open:
+Speclink is a Spec-Driven Development (SDD) engine and tool platform written in Rust. PMs, POs, engineers, and AI agents use one shared set of terms: change, artifact, task, verify, and archive.
 
-- **Local Repo**: specs live in the repo's `openspec/`, collaborate through Git, no server required.
-- **Remote Store**: specs live in a shared Store, with Speclink Host handling authentication, revisions, transactions, events, and workflow adjudication. Host and Protocol are both public contracts, so you can run the official server or write your own.
+Speclink has two deployment paths:
 
-**Local mode** keeps the OpenSpec directory structure on purpose: `specs/<capability>/spec.md`, `changes/<name>/`,
-`changes/archive/`, and `config.yaml`. Every file is plain Markdown or YAML. There is no database and no proprietary
-format. You can read and edit the files without Speclink, and Git shows a diff for every spec change. Speclink adds
-only two things to this structure: `discussions/` for discussion records, and an `.openspec.yaml` per change for
-lifecycle metadata.
+- **Local Repo**: Specs live in the `openspec/` folder of your repo. Git handles collaboration. No server is necessary.
+- **Remote Store**: Specs live in a shared Store. A Host handles authentication, revisions, transactions, events, and workflow decisions. The Host and Protocol are public contracts, so you can use the official server or write your own.
 
-The Local CLI took the CLI bundled with [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app) as its
-behavioral reference. Golden and CLI integration tests hold the human-readable output, the `--json` shapes, and
-the core workflow. On that base Speclink adds discussions, Desktop, Store abstraction, a Node SDK, and the
-Remote Platform.
+The Local CLI started with the CLI of [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app) as its behavior reference. Golden tests and CLI integration tests protect the human output, the `--json` shape, and the core workflow. On top of that base, Speclink adds discussions, a desktop app, a Store abstraction, a Node SDK, and a remote platform.
 
-Specs are not documents you write once and abandon. The desktop app puts every change on a board, so you can see
-which station it stands at, how far its tasks moved, and what its specs changed:
+![The change board in the Speclink desktop app](docs/assets/screenshots/desktop-board.png)
 
-![The Speclink desktop change board with the change detail drawer](docs/assets/screenshots/desktop-board.png)
+## <a id="features"></a>Features
 
-(Screenshots are captured with the interface in Traditional Chinese; the interface language is switchable in settings.)
+- **Plain text, OpenSpec-compatible**: Local mode uses the OpenSpec folder layout: `specs/<capability>/spec.md`, `changes/<name>/`, `changes/archive/`, and `config.yaml`. All content is Markdown and YAML. You can read and edit it without Speclink, and each change shows in the Git diff. Speclink adds only two items: `discussions/` (discussion records) and a `.openspec.yaml` file in each change (lifecycle metadata). This applies to Local mode only. In remote mode, the specs live in the Store, and your machine has only a read-only projection.
+- **Skills for AI agents**: `speclink init` writes skill files for Claude Code and Codex. Each stage, from discussion to archive, has a `/speclink-*` command (`$speclink-*` in Codex).
+- **Desktop board**: Each change is a card. You can see its stage, its task progress, and the spec changes it makes.
+- **Quality stations**: `review` checks code craft. `verify` checks that the delivery matches the specs. Both stations are optional.
+- **Execution order**: `speclink plan` puts changes into waves from their declared dependencies and shows the next change that is ready to start.
+- **Team sharing**: After you connect a server, the CLI, the desktop app, and AI agents read and write the same specs.
 
-## Current capabilities / 目前能力
+## <a id="status"></a>Status
 
-- **Available:** Local Repo CLI, Local Desktop, generated Agent skills (every station, for both Claude and Codex), Command Runtime/Host/Protocol, SQLite/Server FS/PostgreSQL TeamStore, single-node Server with Admin and Auth, Remote CLI and Context Projection, remote task evidence, Server operations (deployment, backup and restore), and the desktop and CLI install channels.
-- **Partial:** the Node SDK (the binding works and the npm publishing pipeline is wired; it reaches npm with the first release that carries the engine) and the Desktop Remote Workspace.
-- **Planned:** MCP and Copilot in-process tools, SSO, runtime plugins, and cluster mode.
-- **Deprecated:** the legacy remote REST v1 prototype; new work uses the current Client Protocol and Host path.
+- **Available**: Local Repo CLI, Local desktop app, agent skills (Claude and Codex), quality stations, execution order, manual and trace, Node SDK (`@speclink/engine`), three TeamStores (SQLite, Server FS, PostgreSQL), single-node server and admin console, Remote CLI, install channels, server operations (deployment, backup, and restore).
+- **Partial**: Remote workspaces in the desktop app, the Claude Code plugin.
+- **Planned**: Agent tool packages and MCP, SSO, runtime plugins, multi-node deployment.
 
-Per-item evidence, limits, and the last audit date are not duplicated here — [Project Capability Status](docs/product-status.md) is the canon. For where things are heading, see the [Project Roadmap](docs/roadmap.md).
+For the evidence, limits, and check date of each item, see [Product status](docs/product-status.md). For the work that is not done yet, see the [Roadmap](docs/roadmap.md).
 
-## SDD workflow / SDD 工作流
+## <a id="install"></a>Install
 
-```text
-baseline? → discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
-                                            ↑
-                                  resuming after a pause: drift first
+The desktop app and the CLI are two ways to use the same engine. Pick one:
 
-worktree: apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) → worktree-merge → archive
+- To see the board, specs, and discussions, install the desktop app. The installer includes the CLI of the same version.
+- To work without a GUI, or in scripts and CI, install only the CLI. It has all the features.
 
-utilities: validate / analyze / audit / commit / config / manual
-```
+You need a server only when a team shares one set of specs. For one person in one repo, you do not need a server.
 
-Where you enter depends on what you have:
+### Desktop app
 
-- The requirement is already clear → go straight to `propose`
-- The requirement still needs convergence → `discuss` (you bring the topic) or `improve` (you ask the model to find topics)
-- Requirements shift mid-implementation → `ingest`
-- The change sat idle and you resume it → run `drift` first
-
-Two optional quality stations sit before archiving: `review` for craft and `verify` for compliance. Combine them as the risk warrants. To skip both on a low-risk change is a legitimate choice.
-
-When several non-conflicting changes should move at once, take the worktree flow. You implement each change in its own git worktree, without interference. `worktree-merge` then lands the branch on the main branch before you archive.
-
-For each station's purpose, its `/speclink-*` skill, completion criteria, and next station — plus discussion outcome routing and recovery paths — see the [Complete SDD Workflow](docs/workflow.md).
-
-## Install / 安裝
-
-The desktop app and the CLI are **two ways to use the same engine — pick one**. Install the desktop app if you want the board, specs, and discussions on screen. Install only the CLI if you do not want a graphical interface, or if you want Speclink in scripts and CI. You lose no capability either way.
-
-The Server is a third piece. You **need it only when a team shares one spec canon**. Alone in your own repo you never need it.
-
-**Desktop app** — download the installer for your platform from [Releases](https://github.com/MomoChenisMe/speclink/releases/latest):
+Download the installer for your platform from [Releases](https://github.com/MomoChenisMe/speclink/releases/latest):
 
 | Platform | Installer |
 | --- | --- |
 | macOS | `Speclink_<version>_universal.dmg` (one file for Apple Silicon and Intel) |
 | Windows | `Speclink_<version>_x64-setup.exe` |
-| Linux desktop | `Speclink_<version>_amd64.AppImage` (x86_64), `Speclink_<version>_aarch64.AppImage` (arm64); portable |
+| Linux desktop | `Speclink_<version>_amd64.AppImage` (x86_64) or `Speclink_<version>_aarch64.AppImage` (arm64), no install step |
 
-The desktop installer bundles a matching CLI, installable to your PATH from the app's settings. A Linux machine without a graphical desktop (a server, WSL, CI) does not need the desktop app — use the one-line CLI install below.
+- The Windows installer has no code signature. On the first run, SmartScreen shows a warning. Click "More info", then "Run anyway".
+- Releases do not include a `.deb` package after 0.5.0. If you installed the `.deb`, run `sudo apt remove speclink`, then use the AppImage.
+- On Linux without a GUI (servers, WSL, CI), use the CLI below, not the desktop app.
 
-If you installed an earlier version from `.deb`: the `.deb` is no longer published as of 0.5.0. Run `sudo apt remove speclink`, then switch to the AppImage.
+### CLI
 
-**Read this if you already installed the CLI. Install the CLI first and the desktop app second, and your
-`speclink` becomes the desktop app's version.**
-
-Both use the path `~/.local/bin/speclink`. The behavior differs per platform:
-
-| Platform | What the desktop app does to `~/.local/bin/speclink` |
-| --- | --- |
-| macOS | Deletes the existing file at every start and writes a symlink to its bundled CLI |
-| Linux AppImage | Replaces it only on a version mismatch |
-| Windows | Leaves this path alone; the installer manages the PATH |
-
-A version pinned with `SPECLINK_INSTALL_VERSION` goes away too. To keep your own CLI, install it to a different
-directory with `SPECLINK_INSTALL_DIR`. Then put that directory before `~/.local/bin` in your PATH.
-
-**CLI** — pick one (all three install the same binary; the source is `@speclink/cli` on npm):
+All three methods install the same binary (the source is `@speclink/cli` on npm). Pick one:
 
 ```bash
 # With Node.js (any platform)
 npm i -g @speclink/cli
 
-# Without Node.js on macOS/Linux (servers, WSL, CI)
+# macOS or Linux without Node.js (servers, WSL, CI)
 curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh
 
-# Homebrew (macOS/Linux)
+# Homebrew (macOS or Linux)
 brew install MomoChenisMe/tap/speclink
 ```
 
-There is no install script for Windows: use npm if you have Node.js, otherwise install the desktop app (its installer bundles the CLI and sets your PATH).
+Windows has no install script. With Node.js, use npm. Without Node.js, install the desktop app. Its installer also puts the CLI on your PATH.
 
-The install script detects your platform, checks npm's sha512 integrity, and places `speclink` in `~/.local/bin`. `SPECLINK_INSTALL_DIR` changes the location. `SPECLINK_INSTALL_VERSION` pins a version (`0.5.0` or `v0.5.0`; versions before 0.5.0 are not on npm and cannot be pinned). `SPECLINK_INSTALL_REGISTRY` switches the registry.
+The install script finds your platform, checks the sha512 of the npm package, and puts `speclink` in `~/.local/bin`. Three environment variables change its behavior:
 
-Windows installers are not code-signed yet, so SmartScreen warns on first run — choose "More info" then "Run anyway".
-
-**Server** (only needed when a team shares one canon) — `speclink-server` is the official **reference implementation**. Use it out of the box, or to try the remote features. Pick one of three shapes; each prints a one-time `/setup` link on first start (a normal restart does not reprint it):
-
-| Shape | Command |
+| Variable | Use |
 | --- | --- |
-| npx (anywhere Node runs) | `npx @speclink/server` |
+| `SPECLINK_INSTALL_DIR` | Change the install folder |
+| `SPECLINK_INSTALL_VERSION` | Pin a version (`0.5.0` or `v0.5.0`; versions before 0.5.0 are not on npm) |
+| `SPECLINK_INSTALL_REGISTRY` | Use a different npm registry |
+
+<details>
+<summary><b>Do you have the CLI and want the desktop app too? Read this first</b></summary>
+
+The desktop app and the install script both use `~/.local/bin/speclink`. Thus the desktop app can replace your CLI:
+
+| Platform | What the desktop app does to `~/.local/bin/speclink` |
+| --- | --- |
+| macOS | It checks on each start. If the CLI is missing or its version is different from the app, it deletes the file and puts a symlink to the bundled CLI in its place |
+| Linux AppImage | It writes over the file only when the versions are different |
+| Windows | It does not touch this location; the installer manages PATH |
+
+Thus a version that you pin with `SPECLINK_INSTALL_VERSION` does not stay: if it is different from the app version, the app replaces it. To keep your own CLI, set `SPECLINK_INSTALL_DIR` to a different folder when you install. Then put that folder before `~/.local/bin` in your PATH.
+
+</details>
+
+### Server (optional)
+
+`speclink-server` is the official **reference implementation**. Use it to start fast or to try the remote features. Pick one way to run it:
+
+| Method | Command |
+| --- | --- |
+| npx (needs only Node.js) | `npx @speclink/server` |
 | Docker | `docker run -d -p 8080:8080 -v speclink-data:/data ghcr.io/momochenisme/speclink-server:latest` |
-| Compose | `cd deploy && docker compose up -d` |
+| Docker Compose | `cd deploy && docker compose up -d` |
 
-The default is SQLite with data under `./speclink-data` (`/data` inside a container). Environment variables, the PostgreSQL profile, and upgrade and rollback steps are in [Server Deployment](docs/server-deployment.zh-TW.md) (Traditional Chinese only).
+On the first start, the server prints a one-time `/setup` link. A normal restart does not print it again. The default Store is SQLite, and the data goes to `./speclink-data` (`/data` in the container). For environment variables, PostgreSQL, upgrades, and rollbacks, see [Server deployment](docs/server-deployment.md).
 
-**Remote mode does not bind you to this server.** Two public contracts, Host and Protocol, define where the spec canon lives and who guards it. The official server is one implementation of those contracts. To plug in your own authentication, database, or permission model, build your own server on the Speclink engine — the CLI and the desktop app still connect to it. The contracts are `client-protocol` and `host-runtime` under `openspec/specs/`, and the [Node SDK](docs/sdk-node.md) shows how to load the engine.
+Remote mode does not depend on this server. Two public contracts define remote mode: `host-runtime` and `client-protocol` in `openspec/specs/`. You can write your own server with the Speclink engine and connect your own authentication, database, and permission model. The CLI and the desktop app work with it too. To load the engine, see the [Node SDK](docs/sdk-node.md).
 
-**Claude Code mod** (optional) — adds a row of clickable speclink skill buttons above Claude Code's prompt, and a side panel with tabs for the changes, discussions and open quality tickets. In Claude Code, type:
+### Claude Code plugin (optional)
 
-```
+`speclink-skills` adds a row of speclink skill buttons above the Claude Code input box. It also adds a side panel that lists changes, discussions, and open quality tickets. In Claude Code, enter:
+
+```text
 /plugin install speclink-skills --marketplace MomoChenisMe/speclink
 ```
 
-Requirements, settings and known limits: [speclink-skills](integrations/claude-code/speclink-skills/README.en.md).
+For requirements, settings, and known limits, see [speclink-skills](integrations/claude-code/speclink-skills/README.en.md).
 
-## Local Repo quick start / Local Repo 快速開始
+## <a id="quick-start"></a>Quick start
 
-In the repo you want to adopt Speclink in:
+In the repo where you want to use Speclink, run:
 
 ```bash
 speclink init --tools claude,codex
 speclink list
 ```
 
-Then call `/speclink-propose <change>` in Claude, or `$speclink-propose <change>` in Codex; the Agent creates the
-required artifacts from the schema DAG. For a copyable first loop with the direct CLI equivalents, see
-[Getting Started](docs/getting-started.md).
+Then ask your agent to start a change. In Claude Code, enter `/speclink-propose <change-name>`. In Codex, enter `$speclink-propose <change-name>`. The agent creates the documents that the change needs.
 
-## Deployment paths / 部署路徑
+For the full first round (propose, apply, check, archive), see [Getting started](docs/getting-started.md). To connect to a remote server, see [Remote getting started](docs/remote-getting-started.md).
 
-- **Local Repo:** Embedded Rust Runtime → FsStore → `openspec/` → Git. Suited to a single repo and local or offline collaboration.
-- **Remote Store:** CLI/Desktop/other clients → Speclink Host → the same Rust Runtime → TeamStore. Suited to a shared spec canon with centralized authentication, revisions, transactions, and events. That Host can be the official `speclink-server`, or your own implementation of the Protocol.
+## <a id="workflow"></a>Workflow
 
-A Remote Store never syncs into a second writable local truth. An Agent with a checkout only reads
-`.speclink/context/`, and remote writes still go through Host commands. The specs under `openspec/specs/` define
-these boundaries: `host-runtime`, `client-protocol`, `teamstore-contract`, `context-projection`, and others. For
-the full path from setup to sign-in, see [Remote Getting Started](docs/remote-getting-started.md).
+```text
+baseline? → discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
+                                            ↑
+                                    resume after a pause: drift first
 
-## Documentation map / 文件地圖
+worktree: apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) → worktree-merge → archive
 
-**Working alone? These three are enough to start.**
+tools: validate / analyze / audit / commit / config / manual / trace / plan
+```
 
-| Document | Purpose |
+A stage with `?` is optional. Your situation tells you where to start:
+
+| Situation | Entry |
 | --- | --- |
-| [Getting Started](docs/getting-started.md) | The copyable first Local Repo loop |
-| [Complete SDD Workflow](docs/workflow.md) | Every station's purpose, skill, completion criteria, and next station |
-| [Project Capability Status](docs/product-status.md) | Available/Partial/Planned/Deprecated, with evidence and limits |
+| The requirement is clear | `propose` |
+| The requirement needs decisions | `discuss` (you bring the topic) or `improve` (the model finds topics) |
+| The code has no specs yet | `baseline` |
+| The requirement changes during the work | `ingest` |
+| You resume a change after a pause | `drift` first |
+| You want to move several independent changes at the same time | the worktree flow |
 
-**Only needed when a team shares one spec canon**
+Before archive, two optional quality stations are available: `review` checks craft, and `verify` checks the specs. Choose the stations from the risk. For a low-risk change, you can skip both.
 
-| Document | Purpose |
+For the purpose, skill, done criteria, and next step of each stage, see the [SDD workflow](docs/workflow.md).
+
+## <a id="docs"></a>Documentation
+
+**For one person, start with these three**
+
+| Document | Content |
 | --- | --- |
-| [Remote Server, Desktop, and CLI Getting Started](docs/remote-getting-started.md) | The full path from a one-line `npx @speclink/server` start through `/setup`, membership (including the first Admin's self-grant), sign-in, Desktop/CLI, and recovery |
-| [Server Deployment](docs/server-deployment.zh-TW.md) | npx/Docker/Compose and upgrades (Traditional Chinese only) |
-| [Server Store Drivers](docs/server-store-drivers.zh-TW.md) | Choosing between SQLite/Server FS/PostgreSQL (Traditional Chinese only) |
-| [Server Backup and Restore](docs/server-backup.zh-TW.md) | backup/verify-backup/restore (Traditional Chinese only) |
+| [Getting started](docs/getting-started.md) | From install to your first archive |
+| [SDD workflow](docs/workflow.md) | The purpose, skill, done criteria, and next step of each stage |
+| [Configuration](docs/configuration.md) | `.speclink.yaml`, `openspec/config.yaml`, and remote settings |
 
-**Look these up when something needs adjusting**
+**For a team that shares one set of specs**
 
-| Document | Purpose |
+| Document | Content |
 | --- | --- |
-| [Configuration](docs/configuration.md) | Where Local and Remote settings live, and the current fields |
-| [Development Entries](docs/development.md) | One-command dev environments, the checkout CLI, and test commands |
-| [Project Roadmap](docs/roadmap.md) | Where things are heading: the SDK, building your own client, remote collaboration, Agent tools, system integration |
-| [Brand Assets](docs/assets/brand/README.md) | Logo, palette, and usage |
+| [Remote getting started](docs/remote-getting-started.md) | From server start to a connected desktop app and CLI |
+| [Server deployment](docs/server-deployment.md) | npx, Docker, Compose, upgrades, and rollbacks |
+| [Server Store drivers](docs/server-store-drivers.md) | How to choose SQLite, Server FS, or PostgreSQL |
+| [Server backup and restore](docs/server-backup.md) | `backup`, `verify-backup`, and `restore` |
 
-**Needed only to drive Speclink from your own program, or to build your own client.** Just use the desktop app or the CLI? Skip both.
+**To connect Speclink to your own program**
 
-| Document | Purpose |
+| Document | Content |
 | --- | --- |
-| [Node SDK](docs/sdk-node.md) | How to load `@speclink/engine`, the Store bridge, and the dispatch surface |
-| [Verb and Flag Contract](docs/verb-contract.md) | Verb mode assignment, cross-mode output parity, and endpoint payload and error shapes |
+| [Node SDK](docs/sdk-node.md) | Load `@speclink/engine`, the Store interface, and `dispatch` |
+| [Verb and flag contract](docs/verb-contract.md) | Local and remote verbs, output shapes, and HTTP endpoints |
 
-`openspec/changes/archive/` and `openspec/discussions/archive/` are historical audit data, not a current manual.
+**Project status and direction**
 
-## Development / 開發
+| Document | Content |
+| --- | --- |
+| [Product status](docs/product-status.md) | What is available and what is partial, with evidence and limits |
+| [Roadmap](docs/roadmap.md) | The work that comes next |
+| [Changelog](CHANGELOG.md) | The changes in each version (Traditional Chinese) |
+| [Brand assets](docs/assets/brand/README.en.md) | Logo, colors, and usage |
 
-Build the CLI from source (a stable Rust toolchain is required):
+`openspec/` holds the specs of Speclink itself. `openspec/changes/archive/` and `openspec/discussions/archive/` are history records, not user guides.
+
+## <a id="contributing"></a>Contributing
+
+To build the CLI from source (you need a stable Rust toolchain):
 
 ```bash
 cargo install --path crates/adapters/speclink-cli
 speclink --version
 ```
 
-[Development Entries](docs/development.md) holds three things: the four one-command dev entries (full
-`npm run dev`, server only, desktop only, the checkout CLI), the complete test commands, and the bypass steps for
-unsigned installers.
+For the one-command dev environment (`npm run dev` and four more entry points), the full test commands, and the repo layout, see [Development](docs/development.md).
 
-## License / 授權
+## <a id="license"></a>License
 
 [MIT](LICENSE)

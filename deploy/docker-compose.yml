@@ -1,4 +1,4 @@
-# Speclink server — SQLite 單容器「一行開箱」（架構 §13.4）：
+# Speclink server — SQLite 單容器「一行開箱」（說明見 docs/server-deployment.zh-TW.md）：
 #
 #   docker compose up -d
 #   docker compose logs server        # 取一次性 setup token（含 /setup?token=… 的那行）
@@ -8,10 +8,9 @@
 #   SPECLINK_PUBLIC_URL  對外網址（預設 http://localhost:8080）
 #   SPECLINK_PORT        對外埠（預設 8080）
 #
-# ⚠ 單一 instance 限制（架構 §13.1）：SQLite profile 只允許一個 server instance。
+# ⚠ 單一 instance 限制：同一個 volume 只能有一個 server instance。
 #   不得 docker compose up --scale、不得多個 replica 指向同一個 volume——
-#   SQLite 的單寫者檔案鎖會讓第二個 instance 顯性報錯而非靜默共用。
-#   需要水平擴充前先換 PostgreSQL driver（見 docker-compose.postgres.yml）。
+#   SQLite driver 不會擋第二個 instance，兩個 server 會同時寫同一個資料庫。
 
 name: speclink
 

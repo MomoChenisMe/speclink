@@ -1,388 +1,383 @@
-# Complete Speclink SDD Workflow
+# SDD workflow
 
 [繁體中文](workflow.zh-TW.md) · **English**
 
-This is the user-facing workflow canon. For every station it answers: what it does, which skill invokes it, when to skip it, what counts as done, and where you go next. For a first Local Repo loop, start with [Getting Started](getting-started.md). To decide whether a capability is usable today, see [Project Capability Status](product-status.md).
+This document explains each stage of Speclink: what it does, which skill to use, when to skip it, when it is done, and where to go next.
 
-## Mental model / 心智模型
+If this is your first time, do one round with [Getting started](getting-started.md). To know if a capability is available now, see [Product status](product-status.md).
+
+## <a id="mental-model"></a>The whole flow
 
 ```text
 baseline? → discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
                                             ↑
-                                  resuming after a pause: drift first
+                                    resume after a pause: drift first
 
 worktree: apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) → worktree-merge → archive
 
-utilities: validate / analyze / audit / commit / config / manual
+tools: validate / analyze / audit / commit / config / manual / trace / plan
 ```
 
-- `baseline` creates current-behavior canonical specs once for an existing codebase.
-- `discuss` and `improve` are both optional convergence entries; the difference is who brings the topic. **You bring the topic to `discuss`; you ask the model to find topics with `improve`.**
-- `propose → apply ⇄ ingest → archive` is the main change lifecycle.
-- The two quality stations (`review`, `verify`) run in parallel and depend on neither the other nor a fixed order. Skipping both on a low-risk change is a legitimate choice.
-- `drift` conditionally precedes resumed work. `validate`, `analyze`, `audit`, `commit`, `config`, and `manual` are utilities or gates, not lifecycle states every change visits in sequence.
+- A stage with `?` is optional.
+- `propose → apply → archive` is the main line for each change. If the requirement changes during the work, go between `apply` and `ingest`.
+- Before archive, two optional quality stations are available. `review` checks code craft. `verify` checks that the delivery matches the specs. The two stations do not depend on each other. Choose them from the risk. For a low-risk change, you can skip both.
+- Use the tool stages only when you need them. A change does not have to go through them.
 
-The board draws this route as three columns — proposed, in progress, archived — and every card is one change standing at its current station:
+The desktop app shows this flow as a board with four columns: Discussions, Proposed, In progress, and Ready. Each card is a change or a discussion. Archived changes have their own page.
 
-![The Speclink desktop change board with its discussion, proposed, and in-progress columns](assets/screenshots/desktop-board.png)
+![The board in the Speclink desktop app, with the columns Discussions, Proposed, In progress, and Ready](assets/screenshots/desktop-board.png)
 
-(Screenshots are captured with the interface in Traditional Chinese; the interface language is switchable in settings.)
+## <a id="entry"></a>Where to start
 
-## Choose the entry / 選擇入口
+Answer these questions in order. The first "yes" gives your entry:
 
-Ask six questions in order. The first match is the recommended entry:
+| Question | Entry |
+| --- | --- |
+| Do you only want to understand something, with no decision to make? | Ask the agent directly. Do not create a discussion record. |
+| Does the code have no specs yet? | Run `baseline` first. It describes only the current behavior and creates no change. |
+| Does a related change exist? | To continue the work, use `apply`. If new context changes the documents, use `ingest`. |
+| Did the change stop for a while, so the plan can be out of date? | Run `drift` first. Then go back to `apply` or `ingest` from its result. |
+| Do you want better code, but cannot name the area? | Use `improve`. The model scans the code and suggests candidates. |
+| Is the new requirement clear? | If it is clear, use `propose`. If it needs decisions, use `discuss`. |
 
-| Question / 問題 | Answer / 判斷 | Recommended entry / 推薦入口 |
+## <a id="stage-types"></a>Types of stages
+
+| Type | Stages | Note |
 | --- | --- | --- |
-| Do you only want to understand something, with nothing to decide? | Yes | Just ask. Do not open a discussion. |
-| Does a related change already exist? | Yes | To keep implementing, use `apply`. If new context changes artifacts, use `ingest`. |
-| Has the change been idle, or has the codebase moved past the assumptions it was planned against? | Yes | Run `drift` first, then return to `apply` or `ingest` as directed. |
-| Have requirements or outside context shifted mid-implementation? | Yes | `ingest`, update artifacts, then return to `apply`. |
-| Do you want to improve the codebase but cannot name what to change? | Yes | `improve` — let the model scan and propose candidates. |
-| Is the new requirement already clear? | Yes/No | Clear means `propose`; still weighing trade-offs means `discuss`. |
+| Main line | `propose`, `apply`, `ingest`, `archive` | A change goes from plan to work to requirement updates, and then merges into the specs. |
+| Conditional | `baseline`, `discuss`, `improve`, `drift`, worktree flow | Use them for the first specs of existing code, for requirements that need decisions, to resume after a pause, or to work on several changes at the same time. |
+| Quality stations | `review`, `verify`, `quality` | Two optional checks before archive. Each one keeps a ticket and gives a stamp. |
+| Tools | `validate`, `analyze`, `audit`, `commit`, `config`, `manual`, `trace`, `plan` | Document checks, security checks, commits, settings, manuals, trace, and execution order. |
 
-If an existing codebase has no canonical specs yet, run `baseline` once before any of the above. It creates no change and describes no future ideal.
+## <a id="how-to-call"></a>How to call a stage
 
-## Lifecycle and utilities / 生命週期與工具
-
-| Kind / 類型 | Stages / 階段 | Meaning / 意義 |
+| Layer | What it does | Example |
 | --- | --- | --- |
-| Main lifecycle / 主生命週期 | `propose`, `apply`, `ingest`, `archive` | A change from planning through implementation and requirement updates to merging into canon. |
-| Conditional / 條件式 | `baseline`, `discuss`, `improve`, `drift`, the worktree flow | Only for first-time spec creation, requirement convergence, resumed work, or pushing several changes in parallel. |
-| Quality stations / 品質關卡 | `review`, `verify`, `quality` | Two optional gates before archiving — craft and compliance — each with its own ticket and stamp. |
-| Utilities / 工具 | `validate`, `analyze`, `audit`, `commit`, `config`, `manual` | Structure checks, artifact consistency, security sharp edges, change-scoped commits, workflow configuration, and the spec-derived manual. |
+| Skill | Workflow knowledge for the agent: what to read, how to write and check documents, and when to stop and ask you. | Claude `/speclink-propose`, Codex `$speclink-propose` |
+| `speclink` CLI | The command line that does the actual work. Local and remote mode both use it. | `speclink status --change add-csv-export` |
+| Host | Joins the engine, the Store, authentication, revisions, transactions, and events. The CLI, the server, and the Node SDK all go through it. | Built into the CLI, or `speclink-server` |
 
-## Stage reference / 階段參考
+The skill names below use the Claude syntax. In Codex, change the first `/` to `$`, or enter `/skills` and pick from the list. One exception: Codex has no `analyze` skill. Use the CLI instead.
 
-Every station uses the same shape. It gives the purpose, when to use it, and when to skip it. It then gives the input, the outputs, and how each surface invokes it. It ends with the completion criteria, the next station, and the recovery route.
+After you upgrade Speclink, run `speclink update` to write the skill files again.
 
-### baseline
+## <a id="stages"></a>Stages
 
-- **Purpose / 目的:** Derive current-behavior canonical specs from existing code and tests — the spec baseline later changes build on（舊稱 onboard）.
-- **Use / 使用:** An adopted codebase has no specs, or uncovered capabilities need gap-filling.
-- **Skip / 跳過:** Canonical coverage is adequate, or the request describes new behavior.
-- **Input / 輸入:** README, entry points, source, tests, the workflow config from `speclink workflow-config show --json` (`context`, `specLocale`, `rules.specs`), and a user-confirmed capability map.
-- **Outputs / 產物:** `openspec/specs/<capability>/spec.md` directly; no change is created.
-- **Claude:** `/speclink-baseline [scope]`.
-- **Codex:** `$speclink-baseline [scope]`.
-- **CLI/Host:** There is no `speclink baseline` subcommand. The Agent writes canonical specs after investigation, then runs `speclink validate --specs --all --strict`.
-- **Done / 完成:** The user confirms capability boundaries, specs cite observable evidence, and strict validation passes.
-- **Next / 下一步:** Use `propose` for new behavior, or `discuss` first when it is fuzzy.
-- **Recover / 恢復:** If an existing spec must change, open a change instead of rewriting it in baseline.
+Each stage uses the same format. The first sentence gives the purpose. The list below it gives the details.
 
-### discuss
+### <a id="baseline"></a>baseline: write the first specs
 
-- **Purpose / 目的:** Converge a question that needs trade-offs, round by round, keeping a traceable conclusion.
-- **Use / 使用:** Requirements are fuzzy, several designs are defensible, or a decision must be recorded.
-- **Skip / 跳過:** You only want to understand something and there is no verdict to reach, or the requirement is already clear enough to propose.
-- **Input / 輸入:** One focused topic, current code and spec context, and the question to settle. The topic may also be a file path: a plan you wrote, plan-mode output, or any readable document. The station then triages its claims clause by clause against the codebase.
-- **Outputs / 產物:** Context, rounds, and a conclusion in `openspec/discussions/<slug>.md`.
-- **Claude:** `/speclink-discuss <topic>`.
-- **Codex:** `$speclink-discuss <topic>`.
-- **CLI/Host:** `speclink discuss new/context/add-round/conclude`. After concluding, pick `promote`, `link`, `seal`, or `archive` per [Discussion outcomes](#discussion-outcomes--討論結論分流).
-- **Done / 完成:** The conclusion carries a decision, rationale, rejected alternatives, deferred items, where it lands, and the next step.
-- **Next / 下一步:** Create a full change, scaffold one quickly, fold it into an existing change, or decide against it and archive.
-- **Recover / 恢復:** A discussion with substantive rounds should be concluded and archived; `discuss discard` is only for one that never produced content.
+Write specs for the current behavior from the existing code and tests. The old name of this stage is onboard.
 
-### improve
+- **When to use**: An existing project starts to use Speclink and has no specs, or you want to add a capability that the specs do not cover. **Skip**: The specs are already sufficient, or you want to describe a new requirement.
+- **Input → output**: The README, entry points, source code, tests, the project context and rules in `openspec/config.yaml`, and the capability list that you approve → specs in `openspec/specs/<capability>/spec.md`. It creates no change.
+- **Skill**: `/speclink-baseline [scope]`
+- **CLI**: No `speclink baseline` command exists. After the agent writes the specs, it runs `speclink validate --specs --all --strict`.
+- **Done**: You approve the capability boundaries, each spec has evidence from the code, and the strict check passes.
+- **Next**: For a new requirement, use `propose`. If it is not clear, use `discuss` first.
+- **If something goes wrong**: If an existing spec must change, do not change it in baseline. Start a new change.
 
-- **Purpose / 目的:** Scan the codebase, propose structural improvement candidates, and record them as a discussion.
-- **Use / 使用:** You want to improve the codebase but cannot name what to change.
-- **Skip / 跳過:** You already know what to change — that is a `discuss` or a straight `propose`.
-- **Input / 輸入:** A direction you name (preferred), or a scope inferred from git log hotspots. Always narrow the scope before scanning; sweeping the whole repo only yields generic candidates.
-- **Outputs / 產物:** The same discussion record `discuss` produces, marked with `--kind improve` (board cards and the discussion drawer show a badge). Every candidate carries Files, Problem, Solution, Wins, and a recommendation strength.
-- **Claude:** `/speclink-improve [scope]`.
-- **Codex:** `$speclink-improve [scope]`.
-- **CLI/Host:** `speclink discuss new <topic> --kind improve`. Rounds, conclusion, promotion, and archiving are identical to `discuss`.
-- **Done / 完成:** The station lists the candidates, you interrogate one in depth, and you write a conclusion. **Write and archive a conclusion even when you adopt none of them.** The rejection reasoning stops the next scan from raising them again.
-- **Next / 下一步:** Adopted candidates go to `propose` → `apply`; a full rejection archives the discussion.
-- **Recover / 恢復:** The opening pass reads ruled-out items from archived discussions and in-flight changes so it does not re-raise settled or ongoing work. When something is re-raised anyway, point at the source discussion.
+### <a id="discuss"></a>discuss: discussion
 
-Two limits keep this entry from misuse. First, `improve` **is user-initiated only**; the model never runs it on its own. Second, it **produces a discussion record, never code**. To land an improvement you still go through `propose` → `apply`.
+Talk through a decision round by round, and keep a conclusion with its sources.
 
-### propose
+- **When to use**: The requirement is not clear, several approaches are possible, or you must make a decision. **Skip**: You only want to understand something, or the requirement is clear (use `propose`).
+- **Input → output**: A topic, or the path of a document (your own plan, or a plan-mode output) → `openspec/discussions/<slug>.md` with the context, the rounds, and the conclusion.
+- **Skill**: `/speclink-discuss <topic or document path>`. At the start, it searches old discussions so that it does not bring back a rejected idea.
+- **CLI**: `speclink discuss new`, `context`, `add-round`, `conclude`, `search`.
+- **Done**: The conclusion states the decision, the reasons, the rejected options, the deferred items, and the next step.
+- **Next**: See [Discussion outcomes](#discussion-outcomes).
+- **If something goes wrong**: If a discussion has content, write a conclusion and archive it. Use `speclink discuss discard` only when the discussion has no content yet.
 
-- **Purpose / 目的:** Create a change and the artifacts its schema requires, ready to hand to an implementer.
-- **Use / 使用:** New work whose requirements are clear, or a concluded discussion that should become a full proposal.
-- **Skip / 跳過:** Pure Q&A, capturing current behavior only, or an existing change that just needs new context folded in.
-- **Input / 輸入:** A clear requirement, a concluded discussion slug, or a file path via `--from-doc`.
-- **Outputs / 產物:** Change metadata, proposal, delta specs, tasks, and a design where warranted. The actual set is decided by the schema DAG and `applyRequires`.
-- **Claude:** `/speclink-propose <change>`, `/speclink-propose --from-discussion <slug>`, or `/speclink-propose --from-doc <path>`.
-- **Codex:** The same commands as `$speclink-propose ...`.
-- **CLI/Host:** `speclink new change`, `speclink instructions <artifact> --json`, `speclink new artifact ... --stdin`, `speclink analyze`, `speclink validate`.
-- **Done / 完成:** `speclink status --change <name> --json` shows every `applyRequires` artifact complete, analyze reports no Critical or Warning, and validate passes.
-- **Next / 下一步:** You decide when to call `apply`.
-- **Recover / 恢復:** When `discuss promote` only scaffolds, run propose again on the same change to fill it in. If requirements are unclear, go back to `discuss`.
+### <a id="improve"></a>improve: find improvements
 
-### apply
+Ask the model to scan the code and suggest candidates for improvement. The result is a discussion.
 
-- **Purpose / 目的:** Change code and docs against the tasks and the implementation contract, verifying and recording each one.
-- **Use / 使用:** The change's `applyRequires` artifacts are complete.
-- **Skip / 跳過:** Artifacts are missing, requirements are shifting, or the change sat idle without a `drift` pass.
-- **Input / 輸入:** Proposal, design (if any), delta specs, tasks, and the current workspace.
-- **Outputs / 產物:** Implementation changes, test and verification results, checked tasks, and touched-file evidence in `openspec/changes/<name>/.evidence.json`, committed with the change directory.
-- **Claude:** `/speclink-apply <change>`.
-- **Codex:** `$speclink-apply <change>`.
-- **CLI/Host:** Before starting, `speclink review prepare <change>` records the Apply baseline the quality stations resolve against, then `speclink in-progress add <change>`. The Agent reads context via `speclink instructions apply --change <name> --json` and marks each finished item with `speclink task done --change <name> <id>`.
-- **Done / 完成:** Every task's behavior, contract, and verification target passes, and apply instructions report `state: all_done`. Tasks prefixed `[M]` are manual verification you perform; the model will not check them off for you.
-- **Next / 下一步:** Run whichever quality stations the risk warrants, then `archive`. If requirements changed, `ingest` first.
-- **Recover / 恢復:** After rolling back a task, use `speclink task undone`. A change started by mistake with zero work traces returns to proposed via `speclink in-progress remove`. When a remote Context Projection is stale or modified, re-fetch apply instructions to refresh it.
+- **When to use**: You want better code, but you cannot name the area. **Skip**: You know what to change. That is a topic for `discuss` or `propose`.
+- **Limits**: Only you can start it. The model does not start it by itself. It writes only a discussion record and does not change code.
+- **Input → output**: A direction from you (recommended), or a scope from the hot spots in the Git history → a discussion record with the improve mark. Each candidate shows the files, the problem, the solution, the benefit, and a strength.
+- **Skill**: `/speclink-improve [scope]`
+- **CLI**: `speclink discuss new <topic> --kind improve`. After that, the flow is the same as `discuss`.
+- **Done**: All candidates are listed, you discuss one of them, and the conclusion is written. If you reject all candidates, write a conclusion and archive it too. Then the next scan does not suggest them again.
+- **Next**: Use `propose` for an accepted candidate. If you reject all of them, archive the discussion.
+- **If something goes wrong**: If the model suggests a rejected candidate again, it names the discussion that rejected it.
 
-The change drawer is the main view during apply. Its proposal, design, tasks, and specs tabs map onto the same artifact set. The tasks tab shows exactly what `speclink task done` records.
+### <a id="propose"></a>propose: proposal
 
-![The change drawer showing proposal content alongside the tasks and specs tabs](assets/screenshots/desktop-change-drawer.png)
+Create a change that is ready for the work.
 
-### worktree (parallel implementation)
+- **When to use**: The requirement is clear, or a concluded discussion must become a full proposal. **Skip**: You only have a question, you only want specs for the current code (use `baseline`), or the change exists and only needs an update (use `ingest`).
+- **Input → output**: A requirement, a discussion (`--from-discussion <slug>`), or a document (`--from-doc <path>`) → `proposal.md`, delta specs, `tasks.md`, and `design.md` when it is necessary. The workflow schema sets the exact list.
+- **Skill**: `/speclink-propose <change-name>`. After it writes the documents, it runs `analyze` and fixes the problems (two rounds at most). Then it runs `validate`. At the end, it uses `speclink change depends` to record the changes that must come first.
+- **CLI**: `speclink new change`, `instructions`, `new artifact`, `analyze`, `validate`, `change depends`.
+- **Done**: `speclink status --change <name>` shows that the documents for the work are complete, and `validate` passes.
+- **Next**: You decide when to `apply`.
+- **If something goes wrong**: If the requirement is not clear, go back to `discuss`.
 
-- **Purpose / 目的:** Push several independent changes at once, each implemented in its own git worktree without interference.
-- **Use / 使用:** You have two or more changes in hand that do not conflict.
-- **Skip / 跳過:** A single change, or several changes touching the same files — queueing those is faster.
-- **Prerequisite / 前置:** Turn the `worktree` policy on first with `speclink workflow-config set worktree true`. The two worktree skills are generated only while that policy is on; with it off they do not exist.
-- **Input / 輸入:** Several apply-ready changes.
-- **Outputs / 產物:** One worktree and branch per change; implementation, quality stations, and commits all happen inside it.
-- **Claude:** `/speclink-apply-with-worktree <changes>`, closing with `/speclink-worktree-merge <change>`.
-- **Codex:** `$speclink-apply-with-worktree` and `$speclink-worktree-merge`.
-- **CLI/Host:** `speclink list` marks worktree-backed changes with `[worktree]`.
-- **Done / 完成:** Tasks inside the worktree are complete, the quality stations you chose carry a stamp, and you commit the change. `worktree-merge` then lands the branch on the main branch and removes the worktree.
-- **Next / 下一步:** Return to the main checkout for `archive` — **archiving only runs from the main checkout**; the engine refuses it inside a linked worktree.
-- **Recover / 恢復:** Quality stations belong inside the worktree, since the Apply baseline lives there. A worktree change has two copies of `tasks.md`; edit only the worktree's copy.
+### <a id="apply"></a>apply: do the work
 
-### ingest
+Do the tasks in the task list, and check each task when it is done.
 
-- **Purpose / 目的:** Fold new conversation, plans, external documents, or discussion decisions into an existing change's artifacts.
-- **Use / 使用:** Requirements or context shifted mid-implementation, or a concluded discussion belongs to a change that already exists.
-- **Skip / 跳過:** Pure implementation with no artifact change, or no change yet (use `propose`).
-- **Input / 輸入:** The existing change plus the new outside context. For a discussion, run `discuss link` first.
-- **Outputs / 產物:** Merged proposal, design, specs, and tasks. Completed tasks are left untouched.
-- **Claude:** `/speclink-ingest <change>`.
-- **Codex:** `$speclink-ingest <change>`.
-- **CLI/Host:** Fetch `speclink instructions ... --json` per artifact, then run `speclink analyze` and `speclink validate`. After the discussion content lands, run `speclink discuss seal <slug> <change>`.
-- **Done / 完成:** The new context is mapped onto every affected artifact, completed tasks are unrewritten, analyze and validate pass, and any link is sealed.
-- **Next / 下一步:** Back to `apply`.
-- **Recover / 恢復:** If ingest shows an existing assumption is dead, repair the artifacts before continuing. Never seal without reflecting the content.
+- **When to use**: The documents for the work are complete. **Skip**: Documents are missing, the requirement is changing, or the change stopped for a while and you did not run `drift`.
+- **Input → output**: The proposal, specs, design (if one exists), and tasks → code and test changes, checked tasks, and file evidence. The evidence lists the files that each task touched. It goes into `openspec/changes/<name>/.evidence.json`, and you commit it with the change.
+- **Skill**: `/speclink-apply <change-name>`
+- **CLI**: Before the work starts, the agent runs `speclink plan` and stops if another change blocks this one. Then it runs `speclink review prepare` (to record the start point for the quality stations) and `speclink in-progress add`. During the work, it uses `speclink instructions apply --change <name> --json` for context and runs `speclink task done --change <name> <number>` after each task.
+- **Done**: The behavior and tests of each task pass, and `instructions apply` reports `state: all_done`. You check the `[M]` manual tasks yourself. The agent does not check them.
+- **Next**: Choose the quality stations from the risk, then `archive`. If the requirement changes, use `ingest` first.
+- **If something goes wrong**:
+  - A wrong check, or work that you rolled back: `speclink task undone --change <name> <number>`.
+  - You started the change by mistake and changed nothing: `speclink in-progress remove <name>` moves it back to Proposed.
+  - You do not want the change: `speclink discard <name>`. After the work starts, add `--force`.
 
-### drift
+During the work, the detail panel of the change is the best view. The Proposal, Design, Tasks, and Specs tabs show the same documents. The progress in the Tasks tab is the result of `speclink task done`.
 
-- **Purpose / 目的:** Judge whether an idle change drifted from the current codebase, design anchors, touched files, and the assumptions it was planned against.
-- **Use / 使用:** You resume a paused change, or you suspect outside commits reached the same scope.
-- **Skip / 跳過:** Short continuous apply sessions where nothing moved underneath the change.
-- **Input / 輸入:** Change artifacts, git history, current code, and evidence.
-- **Outputs / 產物:** A Light, Moderate, or Heavy drift report with one recommended next step.
-- **Claude:** `/speclink-drift <change>`.
-- **Codex:** `$speclink-drift <change>`.
-- **CLI/Host:** `speclink drift <change> --json`.
-- **Done / 完成:** The report names elapsed time, broken anchors, task collisions, and a recommended route.
-- **Next / 下一步:** Light usually returns to `apply`; stale requirement or delta assumptions route to `ingest`; Heavy updates artifacts first.
-- **Recover / 恢復:** Preserve outside modifications you cannot explain. Do not resolve them by resetting or overwriting the user's worktree.
+![The detail panel of a change, with the proposal and the Tasks and Specs tabs](assets/screenshots/desktop-change-drawer.png)
 
-### quality (both stations together)
+### <a id="ingest"></a>ingest: update the requirement
 
-- **Purpose / 目的:** Orchestrate both quality stations over one change: neither stamps up front, and every round stops for your call.
-- **Use / 使用:** A large change where both craft and compliance matter.
-- **Skip / 跳過:** Only one station — call `/speclink-review` or `/speclink-verify` directly and keep that station's stamp-when-clean default.
-- **Input / 輸入:** A change with every task complete.
-- **Outputs / 產物:** Two tickets (`review.md`, `verify.md`) and two stamps.
-- **Claude:** `/speclink-quality <change>`.
-- **Codex:** `$speclink-quality <change>`.
-- **CLI/Host:** Underneath it is `speclink review` and `speclink verify` with their own `scope`, `add-round`, `show`, and `stamp`.
-- **Done / 完成:** Only once you say so do both stamps land, back to back — review first, verify second.
-- **Next / 下一步:** `archive` (or `worktree-merge` first, in the worktree flow).
-- **Recover / 恢復:** A clean round stops too; nothing stamps or archives itself. Do not commit midway through a re-verification loop — that silently leaves the frozen review scope.
+Merge a new requirement, a plan, or a discussion conclusion into an existing change.
 
-How the two divide the work:
+- **When to use**: The requirement or the context changes during the work, or a discussion conclusion must go into an existing change. **Skip**: You only continue the work and the documents do not change (use `apply`), or no change exists yet (use `propose`).
+- **Input → output**: An existing change, and the conversation or a plan file → updated proposal, design, specs, and tasks. Done tasks stay the same.
+- **Skill**: `/speclink-ingest` (uses the current conversation) or `/speclink-ingest <plan-file>`. The argument is a plan file, not a change name. The skill finds the change from the conversation, or it asks you.
+- **CLI**: `speclink instructions <artifact> --json`, `analyze`, `validate`. For a discussion, run `speclink discuss seal <slug> <change-name>` after the content is in the documents.
+- **Done**: The new context is in all affected documents, no done task changed, and `analyze` and `validate` pass. If you used `link`, the discussion is sealed.
+- **Next**: Go back to `apply`.
+- **If something goes wrong**: Do not seal first and add the content later. A seal means that the content is already in the documents.
+
+### <a id="drift"></a>drift: check for drift
+
+Check how far a paused change is from the current code.
+
+- **When to use**: You resume a paused change, or you think that other commits touched the same area. **Skip**: You work without a pause and the base did not change. If a change is more than 5 days old and nobody touched it in the last 3 days, `apply` recommends drift first.
+- **Input → output**: The documents of the change, the Git history, the current code, and the evidence → a report. The report shows the drift level (light, medium, or heavy), broken references, task conflicts, and one recommended next step.
+- **Skill**: `/speclink-drift <change-name>`
+- **CLI**: `speclink drift <change-name> --json`
+- **Done**: The report shows the time gap, broken references, task conflicts, and a recommendation, and you choose the next step.
+- **Next**: For light, go back to `apply`. For medium, use `ingest` to update the plan. For heavy, the recommendation is to close the change with `speclink archive <name> --skip-specs` and start again. You can also try `ingest` first.
+- **If something goes wrong**: Keep outside changes that you do not understand. Do not reset or overwrite them.
+
+### <a id="worktree"></a>worktree: parallel work
+
+Work on several independent changes at the same time. Each change gets its own git worktree, so the changes do not interfere.
+
+- **When to use**: You have two or more changes that do not conflict. **Skip**: You have only one change, or the changes touch the same files (one after another is faster).
+- **Before you start**: Turn on the worktree setting with `speclink workflow-config set worktree true`. The two worktree skills exist only when this setting is on.
+- **Input → output**: A change that is ready to start → one worktree and one branch. The work, the quality stations, and the commit all happen in the worktree.
+- **Skill**: `/speclink-apply-with-worktree <change-name>`. To finish, use `/speclink-worktree-merge <change-name>`. Each run takes one change. For parallel work, open one session for each change.
+- **CLI**: `speclink plan` shows which changes can run in parallel. `speclink list` marks the changes in a worktree with `[worktree]`.
+- **Done**: The tasks in the worktree are done, the quality stations that you chose have stamps, and the change is committed. `worktree-merge` merges the branch back into the main branch and removes the worktree.
+- **Next**: Go back to the main checkout and run `archive`. Archive works only in the main checkout. In a worktree, it fails.
+- **If something goes wrong**: Run the quality stations in the worktree, because the start point is there. The worktree and the main checkout each have their own `tasks.md`. Change only the one in the worktree.
+
+### <a id="quality"></a>quality: run both stations
+
+When you want both quality stations for one change, use this skill to run them together.
+
+- **When to use**: The change is large, and both code craft and spec match are important. **Skip**: If you want only one station, use `/speclink-review` or `/speclink-verify`.
+- **Input → output**: A change with all code tasks done → two tickets (`review.md` and `verify.md`), and then two stamps.
+- **Skill**: `/speclink-quality <change-name>`
+- **CLI**: `scope`, `add-round`, `show`, and `stamp` of `speclink review` and `speclink verify`.
+- **Done**: Both stations check first and do not stamp. After each round, the skill stops for your decision: fix all, fix some, or fix none. When you say that the result is good, the skill stamps review first, then verify.
+- **Next**: `archive` (in the worktree flow, `worktree-merge` first).
+- **If something goes wrong**: The skill also stops after a clean round. It does not stamp or archive by itself. Do not commit during the checks. A commit moves the changes out of the checked scope.
+
+### <a id="review"></a>review: code review
+
+Check the craft of the code, and record the problems by severity in a ticket.
+
+- **When to use**: The change is large, crosses modules, or adds code that people will maintain for a long time. **Skip**: A small, low-risk change. Skipping is a valid choice, not a debt.
+- **Input → output**: The changes from the start point that apply recorded → a `review.md` ticket. Problems have three levels: CRITICAL, WARNING, and SUGGESTION. The criteria are the convention documents of the repo, common code smells, and bug hunting.
+- **Skill**: `/speclink-review <change-name>`
+- **CLI**: `speclink review prepare`, `scope`, `add-round`, `show`, `stamp`, `discard`.
+- **Done**: When all code tasks are done and the last round has no must-fix problems (CRITICAL or WARNING), you can stamp. A SUGGESTION does not block the stamp.
+- **Next**: If you also want `verify`, run it. If not, `archive`.
+- **If something goes wrong**: If must-fix problems remain and you accept them, use `speclink review stamp --accept` to stamp with the problems.
+
+### <a id="verify"></a>verify: spec check
+
+Compare the delivery with each spec of the change, one by one.
+
+- **When to use**: The specs have many requirements, or spec match is the main goal of the delivery. **Skip**: A small, low-risk change.
+- **Input → output**: All documents of the change and the frozen changes → a `verify.md` ticket.
+- **Skill**: `/speclink-verify <change-name>`. You can also run it before the tasks are done, as a progress check.
+- **CLI**: `speclink verify scope`, `add-round`, `show`, `stamp`, `discard`.
+- **Done**: All code tasks are done, and the last round has no must-fix problems. A SUGGESTION does not block the stamp.
+- **Next**: `archive`.
+- **If something goes wrong**: The first round is a full check. Each later round looks only at the open problems of the last round and at new problems that the fixes caused. The must-fix count must go down in each round. If it does not, the station stops as "not passed", keeps the ticket, and gives no stamp.
+
+### <a id="quality-rules"></a>Rules for both quality stations
 
 | | `review` | `verify` |
 | --- | --- | --- |
-| Question answered | Is the code well made (craft)? | Does the delivery match the spec (compliance)? |
-| Criteria | Repo convention docs, a Fowler smells baseline (repo docs win), and bug hunting | The change's specs, clause by clause, across three dimensions |
-| Role of artifacts | Context for judgement; produces no compliance verdict | The center of the check |
-| Precondition | Every task complete | Runs any time (a mid-flight run is a progress audit); closing the ticket requires every task complete |
-| Output | A multi-round `review.md` ticket, stamped once the must-fix set is empty | A multi-round `verify.md` ticket, stamped once the must-fix set is empty |
+| Question | Is the code well written? | Does the delivery match the specs? |
+| Looks at | The changed code, against the repo conventions | Each spec of the change, against the changes |
+| Output | `review.md` ticket | `verify.md` ticket |
 | Stamp order | First | Second |
 
-Running both is a four-beat sequence. Neither station stamps at first. Every round stops for your call: fix all, fix some, or stop without fixing. The fixes you chose then land together, both stations re-check, and it stops again. Both stamps land only when you say so.
+- **Start condition**: Only code tasks count. A `[M]` manual task that is not checked does not block a check or a stamp. Archive still needs it.
+- **With both stations, fix everything first, then stamp both**: A stamp records the content of the files in scope. A fix for the second station makes the first stamp "changed since".
+- **A stamp uses up the ticket**: One write adds the stamp and deletes the ticket (`review.md` or `verify.md`). Thus an archived change with stamps has no ticket files, and `show` reports no ticket after a stamp. That is normal. In local mode, the ticket text stays only in the Git history. In remote mode, you cannot read the ticket text after the stamp.
+- **Only open tickets go with the archive**: You must ask for this with `--carry-review` or `--carry-verify`.
+- **Files change after the stamp**: The card shows "Reviewed · changed since" or "Verified · changed since", and archive stops. Run that station again and stamp again.
+- **Archive stops at an open ticket**: Go back and stamp, give up that station with `discard`, or take the ticket with `--carry-*`.
 
-The sequence exists because **a stamp freezes a content fingerprint of the files in scope**. The other station's fixes knock an earlier stamp down to "modified since". Finish the fixes before you stamp and that cannot happen.
+On cards and in the tray panel, the review stamp and the verify stamp show side by side, review first.
 
-**A stamp consumes the ticket.** The stamp fields land and the ticket (`review.md` / `verify.md`) is deleted in the same atomic write — no state exists where the stamp is written and the ticket still remains. An archived stamped change therefore contains no `review.md` or `verify.md`; only an open ticket travels with the archive, via `--carry-review` or `--carry-verify`. In fs mode the deleted ticket's text survives only in git history; in remote mode the store keeps no deleted-document content, so after stamping the ticket text cannot be read back.
+### <a id="archive"></a>archive: archive
 
-### review
+Merge the delta specs into the specs, and move the done change into the archive.
 
-- **Purpose / 目的:** Review the implementation against craft standards, recording graded findings in a ticket.
-- **Use / 使用:** Large changes, cross-subsystem work, or code that will be maintained for a long time.
-- **Skip / 跳過:** Small low-risk edits. Skipping is a legitimate choice, not a debt.
-- **Input / 輸入:** The change scope frozen from the Apply baseline — the HEAD and initially-dirty files `speclink review prepare` recorded before work started.
-- **Outputs / 產物:** A `review.md` ticket with findings graded CRITICAL, WARNING, and SUGGESTION.
-- **Claude:** `/speclink-review <change>`.
-- **Codex:** `$speclink-review <change>`.
-- **CLI/Host:** `speclink review prepare/scope/add-round/show/stamp/discard`.
-- **Done / 完成:** Every task complete and the last round's must-fix set empty — **SUGGESTION never blocks the stamp**. Stamping writes the reviewed fields and deletes `review.md` in one atomic write; in fs mode the ticket text survives only in git history, and in remote mode it cannot be read back after stamping.
-- **Next / 下一步:** `verify` if you are running it, otherwise `archive`.
-- **Recover / 恢復:** Editing a file in scope after stamping downgrades the card to "reviewed · modified since". Archiving detects an open ticket and stops (go stamp it, abandon the review, or take it anyway). Finding paths in the ticket must carry no line numbers and must match files in the frozen snapshot verbatim.
+- **When to use**: All tasks are done (`[M]` manual tasks too), the document checks pass, the plan is not out of date, and the quality stations that you chose are complete. **Skip**: Some tasks are not done, `validate` fails, or the requirement still changes.
+- **Input → output**: A change that is ready → updated specs and `openspec/changes/archive/<date>-<name>/`.
+- **Skill**: `/speclink-archive <change-name>`. Before the archive, it uses `plan` to show the archive order. After the archive, it names the next change that is ready to start.
+- **CLI**: `speclink archive <name>`. You can give several names, or use `--all` to archive every change that is ready. Remote mode archives one change at a time.
+- **Done**: The command succeeds, shows the merge counts for the specs, and the change is in the archive. If the change came from a concluded discussion and it is the last open change of that discussion, the discussion goes into the archive too (not when the discussion has `hold`).
+- **Next**: Commit with `/speclink-commit` or your own method.
+- **If something goes wrong**:
+  - Do not use `--no-validate` or `--mark-tasks-complete` to skip work that is not done.
+  - The plan is out of date: go back to `drift` or `ingest`. Do not force the archive.
+  - A stale stamp or an open ticket stops the archive: see [Rules for both quality stations](#quality-rules).
 
-### verify
+### <a id="validate"></a>validate: format check
 
-- **Purpose / 目的:** Check the delivery clause by clause against the change's specs.
-- **Use / 使用:** Specs with many clauses, or where compliance is itself the deliverable.
-- **Skip / 跳過:** Small low-risk edits — again, a legitimate choice.
-- **Input / 輸入:** All of the change's artifacts and the frozen change patch.
-- **Outputs / 產物:** A multi-round `verify.md` ticket.
-- **Claude:** `/speclink-verify <change>`.
-- **Codex:** `$speclink-verify <change>`.
-- **CLI/Host:** `speclink verify scope/add-round/show/stamp/discard`.
-- **Done / 完成:** Every task complete and the last round's must-fix set empty; **SUGGESTION does not block here either**. Stamping writes the verified fields and deletes `verify.md` in one atomic write; in fs mode the ticket text survives only in git history, and in remote mode it cannot be read back after stamping.
-- **Next / 下一步:** `archive`.
-- **Recover / 恢復:** After every task is complete, the first round is the only full discovery pass. It reads all artifacts and confines code evidence to the frozen change patch. Every later round checks only two things: the previous round's unresolved findings, and regressions the fixes caused directly. It does not re-sweep unmodified areas. **The must-fix set must shrink strictly every round** to earn another attempt. The first round without progress stops as "not passed". It keeps the ticket and withholds the stamp.
+Check the format, the required sections, and the rules of a change or of the specs. It also finds, early, the deltas that archive would reject: a target requirement that does not exist, a name conflict, or a removed scenario without a declaration.
 
-Cards and the tray panel show the verify and review stamps side by side (review first, verify second). With both tickets open, archiving requires disposing of each station separately.
+- **When to use**: After a proposal, after a document update, and before archive. Do not skip it before a delivery.
+- **Skill**: No separate skill. `propose`, `ingest`, and `archive` call it.
+- **CLI**: `speclink validate <name>`. For all specs: `speclink validate --specs --all --strict`.
+- **Done**: The exit code is 0, and the output shows valid.
+- **Next**: `analyze`, the work, or `archive`.
+- **If something goes wrong**: Fix the documents from the error message, then run it again.
 
-### archive
+### <a id="analyze"></a>analyze: cross-check
 
-- **Purpose / 目的:** Merge delta specs into canonical specs and archive the finished change with its linked discussion.
-- **Use / 使用:** Every task complete, artifacts valid, assumptions current, and any quality station you ran closed out.
-- **Skip / 跳過:** Unfinished tasks, a stale delta, failed verification, or requirements still in motion.
-- **Input / 輸入:** A ready change, complete final-state deltas, and completion evidence.
-- **Outputs / 產物:** Updated canonical specs and a record under `openspec/changes/archive/`. Archiving the last surviving change also archives its linked discussion. A stamped change archives without its ticket files; only an open ticket moves along, via `--carry-review` / `--carry-verify`.
-- **Claude:** `/speclink-archive <change>`.
-- **Codex:** `$speclink-archive <change>`.
-- **CLI/Host:** `speclink archive <change>`. Do not reach for `--no-validate` or `--mark-tasks-complete` to route around unfinished work.
-- **Done / 完成:** The CLI succeeds, the canonical spec delta counts are right, and the change moves into the archive.
-- **Next / 下一步:** Commit the archived result with a change-scoped commit when you want it recorded.
-- **Recover / 恢復:** Normalize an incomplete delta first. Stale assumptions route back to `drift` or `ingest` rather than a forced archive. A MODIFIED block replaces the whole block. So a renamed scenario reads as an undeclared deletion. Neither validate nor analyze catches it before archive. Declare the rename with a `REMOVED-SCENARIO` note.
+Compare the proposal, design, specs, and tasks, and find four types of problems: coverage, consistency, ambiguity, and gaps.
 
-### validate
+- **When to use**: After a proposal or an ingest (the skills run it for you). It is not a code test.
+- **Skill**: `/speclink-analyze <change-name>` (Claude only; Codex uses the CLI).
+- **CLI**: `speclink analyze <name> [--json]`
+- **Done**: No CRITICAL. You read each WARNING and SUGGESTION and decide what to do.
+- **Next**: Fix the documents, or `apply`.
+- **If something goes wrong**: If a CRITICAL exists, fix the documents before you start the work.
 
-- **Purpose / 目的:** Check a change or spec against structure, required fields, and schema rules.
-- **Use / 使用:** After a proposal completes, after artifact updates, before archiving, and during doc acceptance.
-- **Skip / 跳過:** Never before delivery; exploratory reading may skip it.
-- **Input / 輸入:** A change name, a spec, or the `--all` scope.
-- **Outputs / 產物:** A valid or invalid result, optionally as `--json`.
-- **Claude/Codex:** No standalone skill; the propose, ingest, and archive flows call it.
-- **CLI/Host:** `speclink validate <change>`, or `speclink validate --specs --all --strict` for the whole canon.
-- **Done / 完成:** Exit code 0 and the target reported valid.
-- **Next / 下一步:** Move on to analyze, implementation verification, or `archive`.
-- **Recover / 恢復:** Fix the artifacts per the error and rerun. Do not paper over it with `--no-validate`.
+### <a id="audit"></a>audit: security check
 
-### analyze
+Check the code changes that are not committed yet, from a security view: dangerous defaults, type confusion, and silent failures.
 
-- **Purpose / 目的:** Check Coverage, Consistency, Ambiguity, and Gaps across proposal, design, specs, and tasks.
-- **Use / 使用:** After a proposal or ingest completes, and as a final artifact regression.
-- **Skip / 跳過:** Plain queries against existing specs. Never mistake it for a code test.
-- **Input / 輸入:** One active change.
-- **Outputs / 產物:** Findings across four dimensions with severity, location, and recommendation.
-- **Claude:** `/speclink-analyze <change>`.
-- **Codex:** No skill is generated yet; use the CLI directly.
-- **CLI/Host:** `speclink analyze <change> --json`.
-- **Done / 完成:** At minimum no Critical or Warning; Suggestions need an explicit call on whether they affect delivery.
-- **Next / 下一步:** Fix artifacts, `apply`, or final acceptance.
-- **Recover / 恢復:** Repair the artifact contract behind a Critical before starting implementation.
+- **When to use**: The change touches authentication, permissions, settings, outside input, or public interfaces. When `openspec/config.yaml` has `audit: true`, `apply` also uses a short version of this check during the work. **Skip**: Changes to documents only.
+- **Input → output**: `git diff HEAD` (changes that are not committed yet) → a list of problems by severity. It does not change the state of a change, and a change does not have to go through it.
+- **Skill**: `/speclink-audit` (no change name)
+- **CLI**: No `speclink audit` command exists.
+- **Done**: Each problem shows the location, how someone can misuse it, and how to fix it. Or the report says that no problems exist.
+- **Next**: Fix the problems, then go back to `apply` or run the tests.
 
-### audit
+### <a id="commit"></a>commit: scoped commit
 
-- **Purpose / 目的:** Audit changed code for dangerous defaults, type confusion, and silent failures.
-- **Use / 使用:** Security-sensitive APIs, configuration, authentication, Store and Server boundaries, or a project set to `audit: true`.
-- **Skip / 跳過:** Documentation-only work introducing no interface or security semantics.
-- **Input / 輸入:** The change's diff, design, and specs.
-- **Outputs / 產物:** Sharp-edge findings ordered by severity. It changes no lifecycle state.
-- **Claude:** `/speclink-audit <change>`.
-- **Codex:** `$speclink-audit <change>`.
-- **CLI/Host:** There is no `speclink audit` subcommand; the skill audits from artifacts and the diff.
-- **Done / 完成:** Every finding names a location, a misuse path, and a repair direction — or it reports no findings explicitly.
-- **Next / 下一步:** Back to tests and `apply` after fixes; otherwise on to archive preparation.
-- **Recover / 恢復:** "The caller's responsibility" is not a reason to leave a dangerous interface alone.
+Commit only the files that belong to one change.
 
-### commit
+- **When to use**: You want a commit that holds only one change. **Skip**: You have your own commit method. A change does not have to go through this stage.
+- **Input → output**: The change name, the Git status, and the task evidence → a file list that you approve, and one commit.
+- **Skill**: `/speclink-commit <change-name>`. It also supports "archive first, then commit both".
+- **CLI**: The skill uses `speclink list --json`, `.evidence.json`, `speclink artifact cat`, `speclink plan`, and Git to find the files. It does not use `git add .`.
+- **Done**: The commit holds only the files that you approved, and the skill reports the hash and the message.
+- **Next**: Continue with `apply`, or `archive`. A commit does not replace the archive.
+- **If something goes wrong**: If the list has files that do not belong, leave them out. Do not overwrite or delete them.
 
-- **Purpose / 目的:** Stage and commit only one change's artifacts and related implementation files.
-- **Use / 使用:** You want an auditable commit scoped to a single change.
-- **Skip / 跳過:** You have another commit strategy, or the scope is not settled.
-- **Input / 輸入:** The change name, git status, touched files, and task progress.
-- **Outputs / 產物:** A selective stage you confirmed, and a git commit.
-- **Claude:** `/speclink-commit <change>`.
-- **Codex:** `$speclink-commit <change>`.
-- **CLI/Host:** The skill combines `speclink status` and `speclink artifact` with git. It never runs `git add .` or `git add -A`.
-- **Done / 完成:** The commit contains only confirmed files for that change, and reports its hash and message.
-- **Next / 下一步:** Continue with `apply`, or `archive` once finished. A commit is not a substitute for archiving.
-- **Recover / 恢復:** Exclude unrelated files and re-confirm rather than overwriting or clearing them. When parallel sessions touch the same files, re-check `git status` right before committing.
+### <a id="config"></a>config: workflow settings
 
-### config
+Write the project context and rules from the code into `openspec/config.yaml`, so that the documents from the agent fit this repo.
 
-- **Purpose / 目的:** Compose the workflow configuration's context and rules from the codebase (`openspec/config.yaml`).
-- **Use / 使用:** You want Agent-produced artifacts to match this repo's conventions.
-- **Skip / 跳過:** The defaults are good enough.
-- **Input / 輸入:** Codebase conventions, existing docs, and tests.
-- **Outputs / 產物:** An approved diff landed into `openspec/config.yaml`.
-- **Claude:** `/speclink-config`.
-- **Codex:** `$speclink-config`.
-- **CLI/Host:** `speclink workflow-config`.
-- **Done / 完成:** The diff is approved and applied.
-- **Next / 下一步:** Any station. The configuration shapes every artifact produced afterwards.
-- **Recover / 恢復:** A bad configuration is undone by running it again; existing changes are unaffected.
+- **When to use**: When you start with Speclink, or after the project conventions change. **Skip**: The defaults are sufficient.
+- **Input → output**: The code, package settings, README, and tests → a diff that you approve.
+- **Skill**: `/speclink-config`
+- **CLI**: `speclink workflow-config show`, `set`, `context`, `rules`. For the fields, see [Configuration](configuration.md).
+- **Done**: You approve the diff, and the skill writes it.
+- **Next**: Go back to any stage. New documents use the new settings.
+- **If something goes wrong**: Run it again to correct a wrong setting. Existing changes stay the same.
 
-### manual
+### <a id="manual"></a>manual: manual
 
-- **Purpose / 目的:** Generate a wiki-style operating manual under `openspec/manual/` from the canonical specs, or tour the system in conversation.
-- **Use / 使用:** Someone needs a human-readable operating manual, or a newcomer wants to be walked through the system; also after an archive, to check whether the manual went stale.
-- **Skip / 跳過:** The project has no user-facing specs yet, or nobody reads the manual.
-- **Input / 輸入:** The canonical specs (`openspec/specs/`) and the frontmatter of existing manual pages; never README, docs, or code.
-- **Outputs / 產物:** Generation writes `openspec/manual/*.md` (including the index and about pages) and reports stale pages and unlisted capabilities; tour mode writes nothing.
-- **Claude:** `/speclink-manual` (generate), `/speclink-manual 導覽` (tour).
-- **Codex:** `$speclink-manual`.
-- **CLI/Host:** There is no `speclink manual` subcommand; the skill reads specs with `speclink list --specs` and `speclink show`.
-- **Done / 完成:** The summary lists the added, regenerated, and untouched page counts plus the stale-page and unlisted-capability lists; with nothing to do it says the manual is up to date.
-- **Next / 下一步:** Commit the manual changes with a plain commit (a suggestion only). A remote-bound project gets no generation yet; the tour still works.
-- **Recover / 恢復:** Manual pages are plain files — delete or restore them; regeneration touches stale pages only and keeps the existing order.
+Generate a manual for people from the specs (`openspec/manual/`), or get a tour of the system in the conversation.
 
-## Discussion outcomes / 討論結論分流
+- **When to use**: You need a manual, or a tour for a new person. Or, after an archive, you want to know which manual pages can be stale. **Skip**: No specs describe user-facing behavior, or nobody reads the manual.
+- **Input → output**: Only the specs. It does not read the README, docs, or code → manual pages (with a home page and a source page). The tour mode writes no files.
+- **Skill**: `/speclink-manual` (generate), `/speclink-manual tour` (tour)
+- **CLI**: No `speclink manual` command exists. The Manual page of the desktop app shows the manual.
+- **Done**: The summary shows the counts of new, rewritten, and unchanged pages, and the pages that can be stale.
+- **Next**: Commit the manual changes. Remote projects cannot generate a manual yet. The tour works.
+- **If something goes wrong**: Manual pages are normal files. Delete or restore them.
 
-| Outcome / 結論去向 | Use when / 使用時機 | Command or skill / 呼叫 | Result / 結果 | Required next step / 必要下一步 |
+### <a id="trace"></a>trace: trace
+
+Answer "how did this feature come to be, and why does it work this way". It goes back from the specs to the archived changes, the discussions, and the code.
+
+- **When to use**: You take over a feature that you do not know, or you want to change a design. Local only.
+- **Input → output**: A capability name or a question → a trace chain: which changes, which discussions, and which files, each with its source.
+- **Skill**: `/speclink-trace <capability or question>`
+- **CLI**: `speclink trace <capability> [--json]`
+- **Next**: To change something, use `discuss` or `propose`.
+
+### <a id="plan"></a>plan: execution order
+
+Put all open changes in an execution order.
+
+- **When to use**: You have several changes and do not know which one comes first. The skills also use it: propose records dependencies at the end, apply checks it before the work, and archive shows the order before and after.
+- **Input → output**: All open changes and their declared dependencies → an order that shows:
+  - Waves. The changes in one wave can run in parallel.
+  - The blockers of each change.
+  - The next change that is ready.
+  - The archive order when two changes touch the same requirement.
+- **Skill**: No separate skill.
+- **CLI**:
+  - `speclink plan [--json]`
+  - Declare a dependency: `speclink change depends <change> --on <prerequisite>` (add `--remove` to drop it)
+  - Change the order in one column: `speclink change rank <change> --before <other-change>` (or `--after`; local only)
+- **Next**: Start the change that `next` names. The Schedule tab in the desktop detail panel shows the same data.
+
+## <a id="discussion-outcomes"></a>Discussion outcomes
+
+| Outcome | When | How | Result | Next step |
 | --- | --- | --- | --- | --- |
-| New change, complete proposal | The conclusion is clear and you want every required artifact at once | `/speclink-propose --from-discussion <slug>` (`$speclink-propose` in Codex) | Creates and links the change, then runs the full artifact workflow | Once artifacts are green, you decide when to `apply` |
-| New change, fast scaffold | You only need the change to exist now and will fill in the proposal later | `speclink discuss promote <slug> [--name <change>]` | Creates the change, prefills the proposal's Why from the conclusion, links both sides, and marks the discussion promoted; not apply-ready | Run propose again on that change to complete the required artifacts |
-| Existing change | The conclusion corrects work already in flight and warrants no new change | `speclink discuss link <slug> <change>` → `/speclink-ingest <change>` → `speclink discuss seal <slug> <change>` | `link` only forges the change-side source chain; ingest reflects the content; `seal` marks it promoted | Back to `apply` |
-| Do not implement | The reasoning was substantive but the answer is no | `speclink discuss archive <slug>` | Preserves the conclusion and reasoning without creating an empty change | None; a future question opens a new discussion |
+| New change, all documents at once | The conclusion is clear, and you want all documents now | `/speclink-propose --from-discussion <slug>` | Creates and links the change, and writes all documents for the work | After the checks pass, you decide when to `apply` |
+| New change, placeholder first | You want the change now and the full proposal later | `speclink discuss promote <slug> [--name <change-name>]` | Creates the change, fills the Why of the proposal from the conclusion (or from the topic when no conclusion exists), and marks the discussion as promoted. **Not ready for the work yet** | Run `propose` on this change to complete the documents |
+| Merge into an existing change | The conclusion corrects an active change | `speclink discuss link <slug> <change>` → `/speclink-ingest` → `speclink discuss seal <slug> <change>` | `link` adds only the source link. `ingest` writes the content into the documents. `seal` marks the discussion as promoted | Go back to `apply` |
+| Do not do it | The discussion has content, but the decision is "no" | `speclink discuss archive <slug>` | Keeps the conclusion and the reasons, and creates no empty change | None |
 
-One discussion can fan out into several changes; `promoted_to` accumulates their names. It is archived automatically along with the last surviving change linked to it. After `link`, never `seal` before the content lands — sealing asserts the decision is already reflected in the artifacts.
+- A discussion does not have to end before you promote part of it.
+- One discussion can produce several changes. To promote in parts, keep the discussion open with `speclink discuss conclude --hold`. For the last part, add `--last` (`discuss promote`, `new change --from-discussion`, and `discuss seal` accept it).
+- When the discussion has a conclusion and no `hold`, and its last linked change goes into the archive, the discussion goes into the archive too.
+- After `link`, do not `seal` first and add the content later. A seal means that the decision is already in the documents.
+- To find an old decision, run `speclink discuss search <keyword>`. It searches open and archived discussions.
 
-## Recovery paths / 恢復路徑
+## <a id="recovery"></a>When something goes wrong
 
-| Symptom / 症狀 | Route / 恢復路徑 |
+| Problem | What to do |
 | --- | --- |
-| A promoted change has only a proposal scaffold | Run propose on that change; do not apply directly. |
-| A discussion conclusion belongs to an existing change | `link → ingest → seal`; all three. |
-| A change sat idle | Run drift first. Light returns to apply; stale assumptions route to ingest. |
-| Requirements changed mid-implementation | ingest to update artifacts, re-run analyze and validate, then return to apply. |
-| apply reports a missing artifact | Return to propose and complete the `applyRequires` chain. |
-| A task was checked by mistake or rolled back | `speclink task undone --change <name> <id>`. |
-| A change was started by mistake | `speclink in-progress remove <change>`, possible only with zero work traces. |
-| The Context Projection is STALE or modified | Never edit the projection; re-fetch instructions to refresh it. |
-| analyze reports a Critical | Fix the artifacts' coverage, consistency, or gap before implementing. |
-| Files changed after a station stamped | The card downgrades to "modified since"; return to that station for another round. |
-| Archiving is blocked by an open ticket | Go stamp it, abandon that station, or explicitly take it anyway. |
-| Archiving inside a worktree is refused | Run `worktree-merge` first; archiving only runs from the main checkout. |
-| archive reports a stale delta or incomplete final state | Return to drift or ingest, normalize the delta, and validate again. |
+| After promote, the change has only a proposal skeleton | Run `propose` on the same change. Do not `apply` directly. |
+| A discussion conclusion must go into an existing change | `link` → `ingest` → `seal`. You need all three. |
+| The change stopped for a while | Run `drift` first. For light, go back to `apply`. If the plan is out of date, use `ingest`. |
+| The requirement changes during the work | Use `ingest` to update the documents, run `analyze` and `validate`, then go back to `apply`. |
+| `apply` reports missing documents | Go back to `propose` and complete them. |
+| `apply` reports that another change blocks this one | Do the blocking change first, or drop a dependency that you do not need with `speclink change depends --remove`. |
+| A wrong task check, or work that you rolled back | `speclink task undone --change <name> <number>`. |
+| You started a change by mistake | `speclink in-progress remove <name>`. This works only if you changed nothing. |
+| The remote read-only projection is stale or changed | Do not edit the projection. Get the instructions again to refresh it. |
+| `analyze` reports a CRITICAL | Fix the coverage, consistency, and gap problems in the documents before the work. |
+| Files changed after a stamp | Run that station again and stamp again. |
+| An open ticket stops the archive | Go back and stamp, give up that station, or take the ticket with `--carry-*`. |
+| Archive fails in a worktree | Run `worktree-merge` first, then archive in the main checkout. |
+| Archive reports a stale or incomplete delta | Go back to `drift` or `ingest`, correct the delta, and run `validate`. |
 
-## Call layers / 呼叫層級
+## <a id="limits"></a>Current limits
 
-| Layer / 層級 | Responsibility / 責任 | Example / 範例 |
-| --- | --- | --- |
-| Speclink skill | Tells the Agent when to read context, how to produce and validate artifacts, and when to stop. It is workflow knowledge. | Claude `/speclink-propose`, Codex `$speclink-propose` |
-| `speclink` CLI | The command-line adapter for Local and Remote, running status, instructions, artifact, task, and lifecycle verbs. | `speclink status --change demo --json` |
-| Speclink Host/Runtime | Composes Engine, Store, auth, binding, revision, transactions, and events. This is the application boundary that owns execution semantics. | Embedded Host or `speclink-server` |
+- `validate` and `analyze` check only the documents. They are not code tests, and they do not show that the code matches the specs. The quality stations check the code.
+- When you check a task on a remote board in the desktop app, the app does not report the touched files (the CLI does). For other limits, see [Product status](product-status.md).
 
-Do not treat a skill as a runtime, and do not assume every Host uses the same invocation literal. Claude uses slash commands. Codex invokes a skill explicitly with `$skill-name`, and `/skills` lists the same skills for you to pick. The CLI is a separate lower-level entry.
+## <a id="related"></a>Related documents
 
-## Current limitations / 目前限制
-
-- `validate` and `analyze` check artifacts. Neither equals code tests nor full implementation conformance; the quality stations cover the implementation side.
-- Desktop Server Connections work. The full Desktop Remote Workspace is still partial: checking a task from the desktop remote board reports no touched files (the CLI path stores them).
-- The legacy remote REST v1 prototype is deprecated; new work follows the current Client Protocol and Host path.
-- Per-item evidence and the last audit date live in [Project Capability Status](product-status.md); this document does not maintain a second status matrix.
-
-## Related documents / 相關文件
-
-- [Getting Started](getting-started.md)
-- [Remote Server, Desktop, and CLI Getting Started](remote-getting-started.md)
-- [Project Capability Status](product-status.md)
-- [Verb and Flag Contract](verb-contract.md)
-- [Project Roadmap](roadmap.md)
+- [Getting started](getting-started.md)
+- [Remote getting started](remote-getting-started.md)
+- [Configuration](configuration.md)
+- [Product status](product-status.md)
+- [Verb and flag contract](verb-contract.md)

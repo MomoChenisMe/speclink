@@ -1,81 +1,94 @@
-# Speclink Project Capability Status
+# Product status
 
 [繁體中文](product-status.zh-TW.md) · **English**
 
-Last audited: **2026-08-27**. This document is the canon for "can I use this yet". The specs under `openspec/specs/` are the canon for behavior and boundaries, and the [Project Roadmap](roadmap.md) describes the direction that matters to users.
+Last check: **2026-10-07** (0.8.0).
 
-A file, a crate, or a canonical spec on its own does not mean the delivery path is complete.
+This document tells you if a capability is available now. The specs in `openspec/specs/` define the behavior. The [Roadmap](roadmap.md) lists the work that is not done yet. Code, a crate, or a spec alone does not make a capability available to users.
 
-To exercise the Remote Server, Desktop, and CLI from a clean local state, follow [Remote Getting Started](remote-getting-started.md) through setup, membership, sign-in, workspace, and recovery.
+To try the Remote Server, the desktop app, and the CLI, follow [Remote getting started](remote-getting-started.md).
 
-## Status model / 狀態模型
+## <a id="status-model"></a>Status model
 
-- **Available**: there is a working entry point, backed by at least two independent pieces of evidence or one end-to-end proof.
-- **Partial**: a usable subset exists, but the full flow still has a named gap.
-- **Planned**: only a target design, base types, or an unclosed entry exists. It must not be written up as supported today.
-- **Deprecated**: a compatibility or historical path is still findable but is no longer part of the target architecture.
+| Status | Meaning |
+| --- | --- |
+| Available | It has a user entry point and two independent pieces of evidence, or one end-to-end test. |
+| Partial | Some of it works. The full flow has a known gap. |
+| Planned | It has no usable entry point yet. For details, see the [Roadmap](roadmap.md). |
+| Deprecated | The code still has it, but it is not part of the target architecture. No item has this status now. |
 
-## Local and Remote / 本地與遠端能力對照
+## <a id="local-and-remote"></a>Local and remote
 
-The difference between the two paths lives in this one table, so you never reassemble it across documents. The Remote Store column is measured against the official reference server, `speclink-server`. Remote mode itself is defined by the Host and Protocol contracts, so the same rows apply to a server you build yourself. The [canonical verb contract](../openspec/specs/verb-contract/spec.md) declares CLI verb mode assignment in a single place. Nearly every verb is **Dual**: it has a local arm and a remote arm, and a missing arm is a build failure. Only `demo` is local-only and only `claim` is remote-only.
+This table holds all the differences between the two paths. The Remote Store column measures the official reference server, `speclink-server`. The Host and Protocol contracts define remote mode, so these columns also apply to a server that you build.
 
-| Capability / 能力 | Local Repo | Remote Store | Note / 說明 |
+Most CLI verbs work in local and remote mode (Dual). The exceptions are below. For the full list, see the [Verb and flag contract](verb-contract.md):
+
+- Local only: `demo`, `trace`, `change rank`, `plan --strict-overlap`.
+- Remote only: `claim`.
+
+In the wrong mode, the CLI rejects these verbs. It does not switch to the other mode.
+
+| Capability | Local Repo | Remote Store | Note |
 | --- | --- | --- | --- |
-| Reading and writing specs and changes | Available | Available | Local reads and writes `openspec/` directly; remote always goes through Host commands and never creates a second writable local truth. |
-| Change lifecycle verbs (`propose`→`apply`→`archive`) | Available | Available | `status`, `instructions`, `new`, `task`, `in-progress`, `archive`, and `discard` are all Dual. Remote does not support bulk archiving — one change at a time. |
-| Discussions (`discuss`) | Available | Available | Dual; promoting, folding into an existing change, and archiving behave identically on both. |
-| Quality stations (`review`/`verify`) | Available | Available | Dual; ticket, round, and stamping semantics are the same on both. |
-| Claiming a change (`claim`) | Not applicable | Available | Remote-only — local mode refuses with a non-zero exit code. The claim is durable: the claimant is written into the change meta, survives server restarts, and shows in list and single-change reads; claiming a change someone else holds returns a 409 that names the holder. |
-| Demo data (`demo`) | Available | Not applicable | Local-only — remote mode refuses explicitly and issues no server request at all. |
-| Agent reading context | Available | Available | Local reads the repo directly; remote reads the read-only `.speclink/context/`, with writes still going through Host commands. |
-| Desktop board and drawer | Available | Partial | Connections, sign-in, and opening a remote board from the chooser all work; the board shows change metadata, capability lists, and claimants, and the detail drawer claims a change directly. What is left is in the capability table. |
-| Touched-file evidence for tasks | Available | Available | Local writes `.evidence.json` in the change directory; remote stores the reported touched files, and `GET /changes/{name}/evidence` reads them back. |
-| Accounts, PATs, and membership | Not applicable | Available | The local path needs no accounts; remote has `/setup`, invites, PATs, and device login. |
-| Backup and restore | Carried by Git | Available | Remote has `backup`, `verify-backup`, and `restore`, currently requiring a maintenance window. |
-| Working offline | Available | Needs a connection | Local needs no server at all; remote writes need a reachable Host. |
+| Read and write specs and changes | Available | Available | Local mode reads and writes `openspec/` directly. Remote mode writes only through Host commands and keeps no second writable copy on your machine. |
+| Change lifecycle (`propose` → `apply` → `archive`) | Available | Available | Remote mode archives one change at a time. |
+| Discussions (`discuss`) | Available | Available | Promote, link to an existing change, and archive work the same in both modes. |
+| Quality stations (`review`, `verify`) | Available | Available | Tickets, rounds, and stamps follow the same rules in both modes. |
+| Execution order (`plan`, `change depends`) | Available | Available | `change rank` is local only. |
+| Trace (`trace`) | Available | Not applicable | Local only. |
+| Claim a change (`claim`) | Not applicable | Available | The Store keeps the claimant after a restart. A claim on a change that another person holds returns 409, and the message names the holder. |
+| Demo data (`demo`) | Available | Not applicable | Local only. Remote mode rejects it and sends no request. |
+| Agent context | Available | Available | Local mode reads the repo. Remote mode reads the read-only `.speclink/context/`. |
+| Touched-file evidence for tasks | Available | Available | Local mode writes `.evidence.json`. Remote mode keeps it in the Store, and `GET /changes/{name}/evidence` returns it. |
+| Desktop board and detail panel | Available | Partial | When you check a task on a remote board in the desktop app, the app does not report touched files. |
+| Accounts, access tokens, and membership | Not applicable | Available | Local mode needs no account. |
+| Backup and restore | Git does it | Available | A remote backup needs a stopped server. |
+| Offline work | Available | Needs a connection | When the connection drops, remote mode is read-only and rejects writes. |
 
-## Capability matrix / 能力矩陣
+## <a id="capabilities"></a>Capabilities
 
-| Capability / 能力 | Status / 狀態 | User entry / 使用者入口 | Evidence / 證據 | Limits and next step / 限制與下一步 | Checked / 查核 |
+| Capability | Status | User entry | Evidence | Limits and next step | Checked |
 | --- | --- | --- | --- | --- | --- |
-| Local Repo CLI | Available | `speclink init`, `list`, `show`, `status`, `validate`, `analyze`, `drift`, `archive`, and the discussion verbs | [`speclink-cli` entry](../crates/adapters/speclink-cli/src/main.rs)<br>[CLI integration tests](../crates/adapters/speclink-cli/tests/it/doc_verbs.rs) | Local Repo needs no server at all; advanced use still means reading each subcommand's `--help` for flags. | 2026-08-13 |
-| Generated Agent Skills | Available | Claude `/speclink-*`, Codex `$speclink-*` (also selectable from the `/skills` list) | [Generated apply skill](../.agents/skills/speclink-apply/SKILL.md)<br>[Generated verify skill](../.agents/skills/speclink-verify/SKILL.md) | Generation covers baseline, discuss, improve, propose, apply, worktree, ingest, drift, quality, review, verify, archive, audit, commit, and config. The one asymmetry is `analyze`, which exists on the Claude side only; Codex uses the CLI directly. The count depends on the `worktree` policy: with it off you get 15 Claude skills and 14 Codex skills; with it on each side gains the two worktree skills, which is why this repo has 17 and 16. | 2026-08-13 |
-| Local Desktop | Available | Tauri/React change board, specs, discussions, archive, tasks, settings, and tray | [Desktop scripts](../apps/desktop/package.json)<br>[Desktop UI tests](../apps/desktop/src/__tests__/App.test.tsx) | The local workspace works; Remote Workspace completeness is tracked separately in this table. | 2026-08-13 |
-| Quality stations (review/verify) | Available | `/speclink-review`, `/speclink-verify`, `/speclink-quality`; `speclink review` and `speclink verify` on the CLI | [Station lifecycle, stamping and ticket semantics](../crates/engine/speclink-core/src/quality/station.rs) | Both stations keep a multi-round ticket and stamp only once the must-fix set is empty (SUGGESTION never blocks). Editing a file in scope after stamping downgrades it to "modified since". | 2026-08-13 |
-| Node N-API SDK | Partial | `npm install @speclink/engine` from the first release that carries the engine; until then, build `crates/adapters/speclink-node` from this repo and load it by path | [Node package entry](../crates/adapters/speclink-node/package.json)<br>[dispatch contract tests](../crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts)<br>[npm publish job](../.github/workflows/release.yml)<br>[Version stamping tests](../scripts/npm/npm-engine-package.test.mjs) | **Pipeline wired, nothing on the registry yet**: every release tag publishes the main package and the five platform sub-packages under that tag's version, so whether `npm install` resolves depends on the first release that carries the engine; until then a repo build (and a Rust toolchain) is required. The Engine and Store bridge itself works; the full Node Host and Copilot Tool packages are not delivered. | 2026-08-23 |
-| Install channels | Available | Desktop installers (macOS universal dmg, Windows NSIS, Linux AppImage), CLI via npm (`@speclink/cli`), install script and a Homebrew tap, npx and Docker for the server | [npm launcher and postinstall tests](../scripts/npm/npm-cli-launcher.test.mjs)<br>[npm package materialization tests](../scripts/npm/npm-cli-package.test.mjs)<br>[Install script tests](../scripts/install.test.mjs)<br>[Homebrew formula generator](../scripts/release/homebrew-formula.mjs) | Desktop and CLI both have channels on all three platforms. Windows installers are not code-signed yet, so first run needs a SmartScreen bypass. | 2026-09-14 |
-| Command Runtime, Host and Protocol | Available | Rust crates shared by the CLI, Server, and Node adapter | [Host dual-path tests](../crates/host/speclink-host/tests/bridge_dual_path.rs)<br>[Client Protocol spec](../openspec/specs/client-protocol/spec.md) | The base typed command/query/context path exists; Agent ecosystem packaging and some advanced gates remain Partial or Planned. | 2026-08-13 |
-| SQLite TeamStore | Available | The default `sqlite` driver in `speclink-server` | [SQLite conformance tests](../crates/store/speclink-store-sqlite/tests/conformance.rs)<br>[Driver selection guide](server-store-drivers.zh-TW.md) | Positioned for a single instance; clustering is out of current scope. | 2026-08-13 |
-| Server FS TeamStore | Available | The `serverfs` driver in server config | [Server FS conformance tests](../crates/store/speclink-store-fs/tests/it/conformance.rs)<br>[Atomic publish tests](../crates/store/speclink-store-fs/tests/it/atomic_publish.rs) | Requires dependable OS advisory lock/flock semantics; one data directory allows only one server. | 2026-08-13 |
-| PostgreSQL TeamStore | Available | The `postgres` driver in server config | [PostgreSQL conformance tests](../crates/store/speclink-store-postgres/tests/it/conformance.rs)<br>[Resilience tests](../crates/store/speclink-store-postgres/tests/it/resilience.rs) | The full test run needs PostgreSQL and `SPECLINK_TEST_POSTGRES_URL`; the server is still positioned as a single instance. | 2026-08-13 |
-| `speclink-server` | Available | Native binary, Docker, or npx, with HTTP Command/Query/Context/Event APIs | [Server binary](../crates/host/speclink-server/src/main.rs)<br>[CLI-to-server E2E](../crates/host/speclink-server/tests/it/e2e_cli.rs) | The single-node server works; remote task completions now persist their reported touched-file evidence — see the Remote task evidence row. | 2026-08-25 |
-| Server Admin, setup and identity | Available | `/setup`, `/admin`, `/account`, PAT, device flow, invites, and headless admin commands | [Admin E2E tests](../crates/host/speclink-server/tests/it/admin/e2e.rs)<br>[Device-flow E2E tests](../crates/host/speclink-server/tests/it/identity/device_e2e.rs) | Covers single-node installation and account management; SSO and cluster administration remain planned. | 2026-08-13 |
-| Desktop Server Connections | Available | The Server list in Desktop settings, device login, PAT fallback, logout, and the OS keychain | [Tauri connection orchestration](../apps/desktop/src-tauri/src/connections.rs)<br>[Servers panel tests](../apps/desktop/src/__tests__/serversPanel.test.tsx) | Connections and identity are manageable; once signed in, the chooser opens a remote workspace — see the next row for what is left. | 2026-08-23 |
-| Desktop Remote Workspace | Partial | Opening a remote workspace from the chooser, in either skip (no checkout) or folder (bound to a local checkout) mode; claiming from the detail drawer, with the claimant shown on cards and in the drawer | [Workspace chooser](../apps/desktop/src/components/WorkspaceChooser.tsx)<br>[Remote session factory](../apps/desktop/src/session.ts)<br>[Remote open tests](../apps/desktop/src/__tests__/remoteOpen.test.ts)<br>[Remote capabilities tests](../apps/desktop/src/__tests__/remoteCapabilities.test.tsx) | The remote board opens, tasks can be checked, and artifacts read and written; change metadata, capability lists, and a promoted discussion's destination come straight from the server; a claim conflict surfaces the holder and a suggested action, and readers see the claim action disabled with an explanation. What is left: checking a task from this board still reports no touched files, and a claim has no release or takeover verb; the residual conflict surface (a task check or move hitting a stale version falls back to a plain error) is small and deliberately not scheduled. | 2026-08-27 |
-| Remote CLI and Context Projection | Available | `speclink link`, `auth`, `artifact`, and the read-only `.speclink/context/` | [Remote CLI tests](../crates/adapters/speclink-cli/tests/it/remote_read_path.rs)<br>[Context materializer](../crates/host/speclink-host/src/projection.rs) | The current Client Protocol path works; it does not close what is left of the Desktop Remote Workspace. | 2026-08-13 |
-| Remote task evidence | Available | Local `speclink task done` writes `.evidence.json`; the same verb remotely stores the reported touched files, and `GET /changes/{name}/evidence` reads them back | [Task evidence implementation](../crates/engine/speclink-core/src/lifecycle/tasks.rs)<br>[Remote evidence end-to-end test](../crates/host/speclink-server/tests/it/phase2_chain.rs) | The record commits in the same transaction as the checkbox and the task-completed event, and travels with the change when it is archived or discarded. Checking a task from the Desktop remote board sends no touched files, keeping the "no new dirty file, no record" semantics. | 2026-08-23 |
-| Server operations | Available | Native, Docker, and Compose; health and readiness; backup, verify-backup, and restore | [Deployment guide](server-deployment.zh-TW.md)<br>[Backup E2E tests](../crates/host/speclink-server/tests/it/admin/backup_e2e.rs) | Backups currently need a maintenance window; there is no rolling upgrade or cluster operation. | 2026-08-13 |
-| MCP and Copilot in-process tools | Planned | No installable Copilot tools package or MCP adapter yet | [Current workspace package inventory](../package.json)<br>[Direction and observable next step](roadmap.md) | Do not read an architecture diagram as a shipped package; a tool adapter, identity closure, and end-to-end tests still have to land. | 2026-08-13 |
-| SSO, runtime plugins and cluster mode | Planned | No usable entry yet | [Direction and observable next step](roadmap.md) | Later platform and ecosystem capabilities, with no committed ordering; the Server and drivers remain officially positioned as a single instance. | 2026-08-13 |
-| Legacy remote REST v1 | Deprecated | The historical remote client prototype | [The historical prototype crate](../crates/protocol/speclink-remote/src/lib.rs)<br>[Current Client Protocol canon](../openspec/specs/client-protocol/spec.md) | Not a compatibility burden on the new Client Protocol nor an official Server contract; new documentation explains migration only and does not teach this path. | 2026-08-13 |
-| Advanced verb-contract user guide | Available | [Verb and Flag Contract](verb-contract.md) (both languages) | [Canonical verb contract](../openspec/specs/verb-contract/spec.md)<br>[Client Protocol spec](../openspec/specs/client-protocol/spec.md) | The guide exists and covers verb mode assignment, cross-mode output parity, and endpoint contracts; the canon is still the specs, and the guide tracks them. | 2026-08-13 |
+| Local Repo CLI | Available | `speclink init`, `list`, `show`, `status`, `validate`, `analyze`, `drift`, `archive`, `discuss`, and more | [CLI entry](../crates/adapters/speclink-cli/src/main.rs)<br>[CLI integration tests](../crates/adapters/speclink-cli/tests/it/doc_verbs.rs) | No server is necessary. The `--help` of each subcommand is the reference for flags. | 2026-10-07 |
+| Agent skills | Available | Claude `/speclink-*`, Codex `$speclink-*` | [Generated apply skill](../.agents/skills/speclink-apply/SKILL.md)<br>[Generated manual skill](../.claude/skills/speclink-manual/SKILL.md)<br>[Custom tool descriptor tests](../crates/adapters/speclink-cli/tests/it/tools_descriptor.rs) | Only Claude has the `analyze` skill; Codex uses the CLI. Skill count: with the `worktree` policy off, Claude has 17 and Codex has 16. With it on, each gets 2 more. Other AI tools can get skills through a custom tool descriptor. | 2026-10-07 |
+| Quality stations | Available | `/speclink-review`, `/speclink-verify`, `/speclink-quality`; CLI `speclink review`, `speclink verify` | [Station stamp and ticket rules](../crates/engine/speclink-core/src/quality/station.rs)<br>[Review verb tests](../crates/adapters/speclink-cli/tests/it/review_verbs.rs) | A SUGGESTION does not block the stamp. If a file in scope changes after the stamp, the stamp drops to "changed since". | 2026-10-07 |
+| Execution order | Available | `speclink plan`, `speclink change depends`, `speclink change rank`; the Schedule tab in the desktop detail panel | [Plan verb tests](../crates/adapters/speclink-cli/tests/it/plan_verbs.rs)<br>[Server plan API tests](../crates/host/speclink-server/tests/it/api/plan_api.rs) | `change rank` and `plan --strict-overlap` are local only. | 2026-10-07 |
+| Manual and trace | Available | `/speclink-manual`, the Manual page in the desktop app; `speclink trace`, `/speclink-trace` | [Manual page tests](../packages/ui/src/__tests__/manualPage.test.tsx)<br>[Trace tests](../crates/adapters/speclink-cli/tests/it/trace.rs) | Remote projects cannot generate a manual yet (the tour works). `trace` is local only. | 2026-10-07 |
+| Local desktop app | Available | Board, specs, discussions, archive, manual, settings, and tray | [Desktop scripts](../apps/desktop/package.json)<br>[Desktop UI tests](../apps/desktop/src/__tests__/App.test.tsx)<br>[Auto-update tests](../apps/desktop/src/__tests__/updater.test.ts) | Remote workspaces have their own row below. | 2026-10-07 |
+| Install channels | Available | Desktop installers (macOS universal dmg, Windows installer, Linux AppImage); CLI through npm, install script, and Homebrew; server through npx and Docker | [npm launcher tests](../scripts/npm/npm-cli-launcher.test.mjs)<br>[Install script tests](../scripts/install.test.mjs)<br>[Homebrew formula generator](../scripts/release/homebrew-formula.mjs) | The Windows installer has no code signature. On the first run, you must allow it in SmartScreen. | 2026-10-07 |
+| Node SDK (`@speclink/engine`) | Available | `npm install @speclink/engine` | [Package entry](../crates/adapters/speclink-node/package.json)<br>[Dispatch contract tests](../crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts)<br>[Version tests](../scripts/npm/npm-engine-package.test.mjs) | On npm since 0.2.0, with five platform packages. Not done yet: typed JS methods, a JS remote client, an agent tool layer. See the [Roadmap](roadmap.md). | 2026-10-07 |
+| Command Runtime, Host, and Protocol | Available | Rust crates that the CLI, the server, and the Node SDK share | [Host dual-path tests](../crates/host/speclink-host/tests/bridge_dual_path.rs)<br>[Client Protocol spec](../openspec/specs/client-protocol/spec.md) | The tool wrapper for agents is not done yet. | 2026-10-07 |
+| SQLite TeamStore | Available | The default `sqlite` driver of `speclink-server` | [SQLite conformance tests](../crates/store/speclink-store-sqlite/tests/conformance.rs)<br>[Store driver choice](server-store-drivers.md) | One server instance only. | 2026-10-07 |
+| Server FS TeamStore | Available | The `serverfs` driver in the server config | [Server FS conformance tests](../crates/store/speclink-store-fs/tests/it/conformance.rs)<br>[Atomic publish tests](../crates/store/speclink-store-fs/tests/it/atomic_publish.rs) | Needs reliable file locks (flock). One data folder allows one server. | 2026-10-07 |
+| PostgreSQL TeamStore | Available | The `postgres` driver in the server config | [PostgreSQL conformance tests](../crates/store/speclink-store-postgres/tests/it/conformance.rs)<br>[Resilience tests](../crates/store/speclink-store-postgres/tests/it/resilience.rs) | The server is still one instance. | 2026-10-07 |
+| `speclink-server` | Available | npx, Docker, Compose; a native binary that you build from source | [Server entry](../crates/host/speclink-server/src/main.rs)<br>[CLI-to-server end-to-end tests](../crates/host/speclink-server/tests/it/e2e_cli.rs) | Releases do not include a native binary. | 2026-10-07 |
+| Server admin, setup, and accounts | Available | `/setup`, `/admin`, `/account`, access tokens, device login, invites, and command-line admin commands | [Admin end-to-end tests](../crates/host/speclink-server/tests/it/admin/e2e.rs)<br>[Device login end-to-end tests](../crates/host/speclink-server/tests/it/identity/device_e2e.rs) | No SSO. See the [Roadmap](roadmap.md). | 2026-10-07 |
+| Server operations | Available | Deployment, health checks, `backup`, `verify-backup`, `restore` | [Deployment document](server-deployment.md)<br>[Backup end-to-end tests](../crates/host/speclink-server/tests/it/admin/backup_e2e.rs) | A backup needs a stopped server. No rolling upgrades and no multi-node mode. | 2026-10-07 |
+| Remote CLI and read-only projection | Available | `speclink link`, `auth`, `artifact`; the read-only `.speclink/context/` | [Remote CLI tests](../crates/adapters/speclink-cli/tests/it/remote_read_path.rs)<br>[Projection code](../crates/host/speclink-host/src/projection.rs) | — | 2026-10-07 |
+| Remote task evidence | Available | In remote mode, `speclink task done` keeps the touched files in the Store | [Evidence code](../crates/engine/speclink-core/src/lifecycle/tasks.rs)<br>[Remote evidence end-to-end tests](../crates/host/speclink-server/tests/it/phase2_chain.rs) | The remote board in the desktop app does not send touched files. | 2026-10-07 |
+| Desktop server connections | Available | The server list in settings, device login, access tokens, logout, and the OS Keychain | [Connection flow](../apps/desktop/src-tauri/src/connections.rs)<br>[Servers panel tests](../apps/desktop/src/__tests__/serversPanel.test.tsx) | — | 2026-10-07 |
+| Desktop remote workspace | Partial | Remote open in the workspace chooser: specs only, or with a local checkout; claim from the detail panel | [Workspace chooser](../apps/desktop/src/components/WorkspaceChooser.tsx)<br>[Remote open tests](../apps/desktop/src/__tests__/remoteOpen.test.ts) | You can browse, check tasks, and read and write artifacts. Gaps: a checked task does not report touched files; a claim has no release or takeover verb. | 2026-10-07 |
+| Claude Code plugin (`speclink-skills`) | Partial | `/plugin install speclink-skills --marketplace MomoChenisMe/speclink` | [Plugin tests](../integrations/claude-code/speclink-skills/tests/register.test.tsx)<br>[Skill group tests](../scripts/claude-code/skill-groups.test.mjs) | It uses the early-access plugin API of Claude Code, so a new Claude Code version can break it. Not tested on a real Windows machine yet. | 2026-10-07 |
+| MCP and agent tool packages | Planned | No entry point | [Direction and next steps](roadmap.md) | See "Agent tool integration" in the roadmap. | 2026-10-07 |
+| SSO, runtime plugins, and multi-node mode | Planned | No entry point | [Direction and next steps](roadmap.md) | See "System integration" in the roadmap. | 2026-10-07 |
 
-## Verification baseline / 查核基線
+## <a id="recheck"></a>How to check again
 
-This status assessment can be reproduced as follows:
+When you update this document, check again with the current checkout. Do not keep the result of an old check date:
 
-1. Run `speclink --help` and the relevant subcommand `--help` output to check the Local and Remote CLI surface.
-2. Run `speclink-server --help` to check the server, identity, and backup entry points.
-3. Compare the directory listings of `.claude/skills/` and `.agents/skills/`. That separates "the engine holds an asset" from "this Host generated a skill". The only difference between the two sides is `speclink-analyze`, which exists on the Claude side alone; the totals move with the `worktree` policy.
-4. Check the Local and Remote table against the mode declarations in the [canonical verb contract](../openspec/specs/verb-contract/spec.md). That declaration is the single source. It assigns every verb to ModeFree, Dual, FsOnly, or RemoteOnly.
-5. Cross-check the workspace `Cargo.toml`, each package's scripts, the integration/E2E/conformance tests, and the canonical specs. A capability with no user entry must not be marked Available just because a crate exists.
+1. Run `speclink --help` and the `--help` of each subcommand to check the CLI entry points.
+2. Run `speclink-server --help` to check the server, account, and backup entry points.
+3. Compare the folder lists of `.claude/skills/` and `.agents/skills/`. The only difference is `speclink-analyze` (Claude only).
+4. Use the [verb contract spec](../openspec/specs/verb-contract/spec.md) to check the local and remote table.
+5. Use `npm view @speclink/engine version` and similar commands to check the versions on npm.
+6. Compare `Cargo.toml`, the package scripts, the integration and end-to-end tests, and the specs. A crate without a user entry point does not make a capability available.
 
-## Known documentation gap / 已知文件缺口
+## <a id="doc-gaps"></a>Known documentation gaps
 
-`@speclink/engine` has its publishing pipeline wired but is not on the registry yet — whether `npm install` resolves depends on the first release that carries the engine. Until then the repo-built loading path in [Node SDK](sdk-node.md) is the only one that works. The direction and observable next step for the npm channel are in the [Project Roadmap](roadmap.md).
+- No document shows how to build a client from zero. For the direction, see "Build your own client" in the [Roadmap](roadmap.md).
 
-## Target references / 目標參考
+## <a id="related"></a>Related documents
 
-- [Complete SDD Workflow](workflow.md): every station's purpose, skill, completion criteria, and next station.
-- [Project Roadmap](roadmap.md): the direction that matters to users.
-- [Server Deployment](server-deployment.zh-TW.md), [Store Drivers](server-store-drivers.zh-TW.md), [Backup and Restore](server-backup.zh-TW.md) (Traditional Chinese only): how the Server is operated today.
+- [SDD workflow](workflow.md): the purpose, skill, done criteria, and next step of each stage.
+- [Roadmap](roadmap.md): the work that is not done yet.
+- [Server deployment](server-deployment.md), [Store drivers](server-store-drivers.md), [Backup and restore](server-backup.md): how to operate the server.

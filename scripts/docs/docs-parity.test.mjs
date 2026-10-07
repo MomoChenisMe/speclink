@@ -11,20 +11,31 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const read = (relative) => readFileSync(path.join(ROOT, relative), 'utf8');
 
-/// D5 點名的五組成對文件。單語的 server 三份不在本要求範圍。
+/// D5 點名的五組成對文件，加上之後補齊雙語的參考文件。
+/// remote-getting-started 與 development 兩組由 remote-docs.test.mjs 守。
 const PAIRS = [
   ['README.md', 'README.en.md'],
   ['docs/getting-started.zh-TW.md', 'docs/getting-started.md'],
   ['docs/workflow.zh-TW.md', 'docs/workflow.md'],
   ['docs/product-status.zh-TW.md', 'docs/product-status.md'],
   ['docs/roadmap.zh-TW.md', 'docs/roadmap.md'],
+  ['docs/configuration.zh-TW.md', 'docs/configuration.md'],
+  ['docs/verb-contract.zh-TW.md', 'docs/verb-contract.md'],
+  ['docs/sdk-node.zh-TW.md', 'docs/sdk-node.md'],
+  ['docs/server-deployment.zh-TW.md', 'docs/server-deployment.md'],
+  ['docs/server-store-drivers.zh-TW.md', 'docs/server-store-drivers.md'],
+  ['docs/server-backup.zh-TW.md', 'docs/server-backup.md'],
 ];
+
+/// 兩語言的標題文字各寫各的，章節靠行首的 `<a id="..."></a>` 對齊；
+/// 缺錨點的標題以原文出列，兩版必然不等而被點名。
+const ANCHORED_H2 = /^## <a id="([^"]+)"><\/a>/;
 
 const h2s = (markdown) =>
   markdown
     .split('\n')
     .filter((line) => line.startsWith('## '))
-    .map((line) => line.slice(3).trim());
+    .map((line) => ANCHORED_H2.exec(line)?.[1] ?? `（缺錨點）${line.slice(3).trim()}`);
 
 const shots = (markdown) => markdown.match(/[\w./-]*assets\/screenshots\/[a-z-]+\.png/g) ?? [];
 
@@ -55,10 +66,13 @@ const ZH_DOCS = [
   'docs/verb-contract.zh-TW.md',
   'docs/sdk-node.zh-TW.md',
   'docs/development.zh-TW.md',
+  'docs/server-deployment.zh-TW.md',
+  'docs/server-store-drivers.zh-TW.md',
+  'docs/server-backup.zh-TW.md',
 ];
 
 for (const [zhPath, enPath] of PAIRS) {
-  test(`中英對等：${zhPath} 與 ${enPath} 的 H2 章節序列逐項相同`, () => {
+  test(`中英對等：${zhPath} 與 ${enPath} 的 H2 錨點序列逐項相同`, () => {
     assert.deepEqual(h2s(read(zhPath)), h2s(read(enPath)));
   });
 
