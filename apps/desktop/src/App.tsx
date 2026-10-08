@@ -562,7 +562,10 @@ function AppInner({
             aria-hidden="true"
             className="h-5 w-5"
           />
-          <img src="./speclink-wordmark.png" alt="Speclink" className="h-5 w-auto" />
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcSet="./speclink-wordmark-dark.png" />
+            <img src="./speclink-wordmark.png" alt="Speclink" className="h-5 w-auto" />
+          </picture>
         </div>
         {workspace !== undefined ? (
           // 專案分頁列取代「目前專案」佔位（design D10）：active 分頁即目前專案。

@@ -2,32 +2,47 @@
 
 **繁體中文** · [English](README.en.md)
 
-Speclink 的 Logo 與圖示來源。標誌由「文件輪廓 + 電路節點」構成——規格是文件，節點與走線是規格之間的連結與流程。
+正式標誌採「接合 S」：兩段形狀在中央接合，代表需求、規格與實作之間的連結。App 圖示使用青綠圓角底板與白色 S，底板外側透明；Windows 的圓角直接存在圖檔內，不依賴系統遮罩。
 
 ## 配色
 
-| 角色 | 值 | 用途 |
+| 角色 | 色值 | 用途 |
 | --- | --- | --- |
-| Ink（墨藍） | 深墨藍 navy | 文件輪廓、`Spec` 字樣、主要線條 |
-| Teal（主色） | `oklch(0.52 0.1 192)` | 電路節點、走線、`link` 字樣、app 主色（`--primary`） |
+| 青綠 | `#167873` | 標記、App 底板、`link` 字樣 |
+| 深灰 | `#292c32` | 淺色背景的 `Spec` 字樣 |
+| 淺灰白 | `#f5f5f5` | 深色背景的 `Spec` 字樣 |
+| 淺青綠 | `#4bb9b3` | 深色背景的標記與 `link` 字樣 |
 
-app 端的完整色票見 `apps/desktop/src/index.css`（Tailwind v4 token，主色 hue 192）。
+品牌固定色值與介面 theme token 分開管理；介面主色仍以 `packages/ui/src/theme.css` 為準。
 
 ## 檔案
 
-正式資產放在本目錄，每種鎖版（lockup）都有實心白底與去背兩版：
+`svg/` 是可編輯的向量原稿，文字已轉成路徑，不需安裝字型。`transparent/` 是透明 PNG；本目錄的同名 PNG 為白底（`-dark` 為深色底）版本。
 
-| 檔案 | 說明 | 建議用途 |
-| --- | --- | --- |
-| `speclink-logo-horizontal.png` | 橫式鎖版（mark + 字樣並排） | README hero、網站頁首、文件封面 |
-| `speclink-logo-vertical.png` | 直式鎖版（mark 在上、字樣在下） | 方形版面、社群大頭貼、啟動畫面 |
-| `speclink-logo-mark.png` | 無文字 mark（icon only） | app／視窗圖示、favicon、小尺寸場景 |
-| `speclink-wordmark.png` | 純文字 wordmark（無 mark） | 與 mark 併排的頁首鎖版、需要文字標誌但不要圖示時 |
-| `speclink-logo-system-sheet.png` | 三種鎖版一覽 | 對外提案、簡報 |
-| `transparent/` | 上述各檔的去背版本 | 疊在非白色背景上時使用 |
+| 檔名（省略副檔名） | 內容 |
+| --- | --- |
+| `speclink-app-icon` | 圓角底板＋白色 S，供 App／favicon 使用 |
+| `speclink-logo-mark` | 青綠 S，無底板、無文字 |
+| `speclink-wordmark` | 純文字 `Speclink`，Spec 深灰、link 青綠 |
+| `speclink-wordmark-dark` | 深色背景用純文字版 |
+| `speclink-logo-horizontal` | S＋字樣的橫式組合 |
+| `speclink-logo-horizontal-dark` | 深色背景用橫式組合 |
+| `speclink-logo-vertical` | S 在上、字樣在下 |
+| `speclink-logo-system-sheet` | 全套組合與縮小尺寸一覽（展示板有背景） |
 
-桌面 app 由 `transparent/` 的兩張圖供給：`speclink-logo-mark.png` 合成 `apps/desktop/src-tauri/icons/`（`tauri icon`，視窗／工作列圖示）與 `apps/desktop/public/logo-mark.png`（頁首圖示與 favicon）；`speclink-wordmark.png` 裁切至緊邊界後為 `apps/desktop/public/speclink-wordmark.png`（頁首文字標誌，與 mark 併排）。
+## App 使用位置
 
-## 深色背景注意
+- Desktop：`apps/desktop/public/logo-mark.png`、`speclink-wordmark.png`、`speclink-wordmark-dark.png`。
+- Server Web：`apps/server-web/src/assets/` 的同名資產。
+- 原生 App：`apps/desktop/src-tauri/icons/`，包含 Windows `.ico`、macOS `.icns` 與各尺寸 PNG。
+- 系統匣：18／36 px 單色 S（無底板），macOS 以 alpha 作為系統 template；36 px 版本同時內嵌於 `apps/desktop/src/trayIcon.ts`。
 
-正式鎖版為墨藍字，設計給淺色背景。疊在深色背景時，優先使用實心白底版本以確保可讀性（尚無深色專用變體）。
+現有兩個 App 沿用 PNG 接線；介面改版的共用 BrandMark／Wordmark 可改用這裡的 SVG 原稿。
+
+重新產生原生圖示：
+
+```sh
+npx tauri icon docs/assets/brand/transparent/speclink-app-icon.png -o /tmp/speclink-icons
+```
+
+只將輸出目錄頂層的桌面圖示複製到 `apps/desktop/src-tauri/icons/`；不收錄自動產生的 iOS／Android 資產。系統匣使用獨立的單色圖檔，更新後需同步其 base64 常數。
