@@ -1,0 +1,504 @@
+{
+  "version": 2,
+  "change": "optimize-skill-prompts",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 保存舊版執行檔並探測評測工具（design「評測套件的位置與載入方式」）：確認 add-copilot-tool 已合併，執行 `cargo build -p speclink-cli`，確認 `target/debug/speclink --version` 的 engine 版號等於當下 `crates/engine/speclink-core/src/workspace/init.rs` 的 ASSET_VERSION，立刻複製成 `target/skill-evals/speclink-old`。建立 `integrations/claude-code/skill-evals/.claude-plugin/plugin.json`（name 為 `speclink-skill-evals`）與第一題 `evals/discuss-no-record-before-reply/`（prompt.md、case.yaml、scaffold.sh、graders/），把 `target/skill-evals/speclink-old` 以 `speclink` 之名放到 PATH 最前面，以 `claude plugin eval integrations/claude-code/skill-evals --case discuss-no-record-before-reply --runs 1 --model claude-haiku-5-5 --scaffold --ablation none --allow-tools Bash Edit Write --trust-plugin --no-publish --threshold 0` 跑一次。驗證：產生 aggregate-result.json；由 trace 確認受測模型讀到 scaffold 產生的專案技能；確認 scaffold_script 的寫法與 aggregate-result.json 標示題目的欄位；把三項結果寫回 design 的 Open Questions，並決定採用主要做法或「plugin 的 skills/」替代做法。",
+      "files": [
+        "integrations/claude-code/skill-evals/.claude-plugin/plugin.json",
+        "integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/case.yaml",
+        "integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/graders/ends-with-question.md",
+        "integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/graders/no-discuss-new.md",
+        "integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/prompt.md",
+        "integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/scaffold.sh"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 先寫失敗的測試（技能評測套件）：新增 `scripts/claude-code/skill-evals.test.mjs`，涵蓋 `compareResults` 的退步、持平、進步、題目缺少四種情況（含 skill-authoring 規格「比較的判定」Example 表的三列），以及涵蓋度守門：repo 內 `.claude/skills/speclink-*` 的每個短名都至少有一題 prompt.md 的 tags 含 `skill:<短名>`。驗證：`node --test scripts/claude-code/skill-evals.test.mjs` 紅燈（模組尚不存在、只有一題）。",
+      "files": [
+        "scripts/claude-code/skill-evals.test.mjs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 實作評測執行腳本（design「評測執行腳本與新舊比較」）：新增 `scripts/claude-code/skill-evals.mjs`，`compare <舊> <新>` 逐題印出題目、舊分數、新分數、差值，退步 exit 1、題目集合不同 exit 2 並列出缺題、結果檔不存在時 stderr 指名檔案並以非零結束；`run --speclink --model --label --max-cost-usd` 把執行檔放到 `target/skill-evals/bin-<label>/speclink` 並置於 PATH 最前面、寫 `target/skill-evals/<label>/speclink-version.txt`、以每題 3 次與 `--ablation none` 執行並沿用 claude 的 exit code，缺參數時 stderr 列出缺少的參數並以非零結束。驗證：`compareResults` 的單元測試轉綠；手動執行 `node scripts/claude-code/skill-evals.mjs run --speclink target/debug/speclink --label new-opus` 看到 stderr 列出缺少 --model 與 --max-cost-usd、exit code 非零。",
+      "files": [
+        "scripts/claude-code/skill-evals.mjs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.1 先寫失敗的測試（寫法規範的機械守門，design「守門測試的五項機械檢查」）：新增 `crates/engine/speclink-core/tests/it/skill_authoring.rs` 並掛進 `tests/it/main.rs`，以 inline 字串驗證五項檢查：skill-authoring 規格「強調字的計次」Example 表四列、CRLF 與 LF 行數相同、fenced code block 與行內程式碼內的日期不命中而散文中的日期命中、含 `AskUserQuestion` 而無 `plain text` 時失敗、未登記的原稿檔名被要求登記、寫死的 `/speclink-apply`、`$speclink-apply` 與 `--agent codex` 命中而 `.claude/skills/speclink-propose/SKILL.md` 路徑不命中。驗證：`cargo test -p speclink-core --test it skill_authoring` 紅燈（檢查函式尚未實作）。",
+      "files": [
+        "crates/engine/speclink-core/tests/it/main.rs",
+        "crates/engine/speclink-core/tests/it/skill_authoring.rs",
+        "integrations/claude-code/skill-evals/evals/analyze-reports-only/case.yaml",
+        "integrations/claude-code/skill-evals/evals/analyze-reports-only/graders/no-edit.md",
+        "integrations/claude-code/skill-evals/evals/analyze-reports-only/graders/no-write.md",
+        "integrations/claude-code/skill-evals/evals/analyze-reports-only/graders/reports-findings.md",
+        "integrations/claude-code/skill-evals/evals/analyze-reports-only/prompt.md",
+        "integrations/claude-code/skill-evals/evals/analyze-reports-only/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/case.yaml",
+        "integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/graders/code-task-checked.md",
+        "integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/graders/greeting-created.md",
+        "integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/graders/manual-task-left-open.md",
+        "integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/prompt.md",
+        "integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/case.yaml",
+        "integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/graders/creates-worktree.md",
+        "integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/graders/hands-off-to-merge.md",
+        "integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/graders/no-merge.md",
+        "integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/prompt.md",
+        "integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/archive-folds-delta/case.yaml",
+        "integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/no-hand-edit.md",
+        "integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/spec-merged.md",
+        "integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/uses-archive-verb.md",
+        "integrations/claude-code/skill-evals/evals/archive-folds-delta/prompt.md",
+        "integrations/claude-code/skill-evals/evals/archive-folds-delta/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/case.yaml",
+        "integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/graders/default-no-longer-false.md",
+        "integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/graders/names-the-option.md",
+        "integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/prompt.md",
+        "integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/baseline-map-before-specs/case.yaml",
+        "integrations/claude-code/skill-evals/evals/baseline-map-before-specs/graders/asks-to-confirm-map.md",
+        "integrations/claude-code/skill-evals/evals/baseline-map-before-specs/graders/no-specs-yet.md",
+        "integrations/claude-code/skill-evals/evals/baseline-map-before-specs/prompt.md",
+        "integrations/claude-code/skill-evals/evals/baseline-map-before-specs/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/case.yaml",
+        "integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/graders/no-commit-yet.md",
+        "integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/graders/plan-then-confirm.md",
+        "integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/prompt.md",
+        "integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/config-asks-before-writing/case.yaml",
+        "integrations/claude-code/skill-evals/evals/config-asks-before-writing/graders/asks-or-shows-diff.md",
+        "integrations/claude-code/skill-evals/evals/config-asks-before-writing/graders/no-config-write.md",
+        "integrations/claude-code/skill-evals/evals/config-asks-before-writing/prompt.md",
+        "integrations/claude-code/skill-evals/evals/config-asks-before-writing/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/drift-reports-only/case.yaml",
+        "integrations/claude-code/skill-evals/evals/drift-reports-only/graders/names-missing-file.md",
+        "integrations/claude-code/skill-evals/evals/drift-reports-only/graders/no-edit.md",
+        "integrations/claude-code/skill-evals/evals/drift-reports-only/graders/no-write.md",
+        "integrations/claude-code/skill-evals/evals/drift-reports-only/prompt.md",
+        "integrations/claude-code/skill-evals/evals/drift-reports-only/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/fixtures.sh",
+        "integrations/claude-code/skill-evals/evals/improve-scan-without-edits/case.yaml",
+        "integrations/claude-code/skill-evals/evals/improve-scan-without-edits/graders/lists-candidates.md",
+        "integrations/claude-code/skill-evals/evals/improve-scan-without-edits/graders/no-edit.md",
+        "integrations/claude-code/skill-evals/evals/improve-scan-without-edits/graders/no-write.md",
+        "integrations/claude-code/skill-evals/evals/improve-scan-without-edits/prompt.md",
+        "integrations/claude-code/skill-evals/evals/improve-scan-without-edits/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/case.yaml",
+        "integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/graders/delta-has-new-requirement.md",
+        "integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/graders/runs-validate.md",
+        "integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/prompt.md",
+        "integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/manual-generates-pages/case.yaml",
+        "integrations/claude-code/skill-evals/evals/manual-generates-pages/graders/manual-page-written.md",
+        "integrations/claude-code/skill-evals/evals/manual-generates-pages/prompt.md",
+        "integrations/claude-code/skill-evals/evals/manual-generates-pages/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/propose-from-discussion/case.yaml",
+        "integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/manual-marker-after-checkbox.md",
+        "integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/no-apply.md",
+        "integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/no-marker-after-number.md",
+        "integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/runs-validate.md",
+        "integrations/claude-code/skill-evals/evals/propose-from-discussion/prompt.md",
+        "integrations/claude-code/skill-evals/evals/propose-from-discussion/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/quality-pauses-after-round/case.yaml",
+        "integrations/claude-code/skill-evals/evals/quality-pauses-after-round/graders/no-stamp.md",
+        "integrations/claude-code/skill-evals/evals/quality-pauses-after-round/graders/reports-both-then-stops.md",
+        "integrations/claude-code/skill-evals/evals/quality-pauses-after-round/prompt.md",
+        "integrations/claude-code/skill-evals/evals/quality-pauses-after-round/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/review-freezes-scope/case.yaml",
+        "integrations/claude-code/skill-evals/evals/review-freezes-scope/graders/findings-then-options.md",
+        "integrations/claude-code/skill-evals/evals/review-freezes-scope/graders/freezes-scope.md",
+        "integrations/claude-code/skill-evals/evals/review-freezes-scope/graders/no-stamp.md",
+        "integrations/claude-code/skill-evals/evals/review-freezes-scope/prompt.md",
+        "integrations/claude-code/skill-evals/evals/review-freezes-scope/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/trace-cites-archive/case.yaml",
+        "integrations/claude-code/skill-evals/evals/trace-cites-archive/graders/cites-archived-change.md",
+        "integrations/claude-code/skill-evals/evals/trace-cites-archive/graders/no-edit.md",
+        "integrations/claude-code/skill-evals/evals/trace-cites-archive/graders/no-write.md",
+        "integrations/claude-code/skill-evals/evals/trace-cites-archive/prompt.md",
+        "integrations/claude-code/skill-evals/evals/trace-cites-archive/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/verify-freezes-scope/case.yaml",
+        "integrations/claude-code/skill-evals/evals/verify-freezes-scope/graders/findings-then-options.md",
+        "integrations/claude-code/skill-evals/evals/verify-freezes-scope/graders/freezes-scope.md",
+        "integrations/claude-code/skill-evals/evals/verify-freezes-scope/graders/no-stamp.md",
+        "integrations/claude-code/skill-evals/evals/verify-freezes-scope/prompt.md",
+        "integrations/claude-code/skill-evals/evals/verify-freezes-scope/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/case.yaml",
+        "integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/graders/merges-branch.md",
+        "integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/graders/removes-worktree.md",
+        "integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/prompt.md",
+        "integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/scaffold.sh"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "3.2 實作五項檢查與全原稿掃描，並把 drift、archive、apply、commit 四份原稿中 14 處寫死的 `/speclink-<名稱>` 改成 `/speclink:<名稱>`：以 `read_dir` 列出 `crates/engine/speclink-core/assets/skills/` 全部 `.md` 並依檔名排序，強調字登記表先以現況次數登記全部 23 份原稿；失敗訊息含原稿檔名、違反項目與出處「skill-authoring 規格『技能原稿的跨模型寫法規範』」。驗證：`cargo test -p speclink-core --test it skill_authoring` 轉綠（propose 期以同一套規則模擬：前四項現況全部通過，第五項只命中這 14 處）。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/apply.md",
+        "crates/engine/speclink-core/assets/skills/archive.md",
+        "crates/engine/speclink-core/assets/skills/commit.md",
+        "crates/engine/speclink-core/assets/skills/drift.md"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.1 改寫 discuss 與 improve（design「寫法規範十條與出處」「原稿改寫的順序與行為不變的檢查」）：先把 `crates/engine/speclink-core/tests/it/render_golden.rs` 的 `discuss_skill_carries_the_conclusion_bullets_rule` 改成 discuss-skill「討論記錄的樹慣例與格式不變」的新要求（結論條列規則全文只出現一次且位於 conclude 步驟、conclude 範例為條列形、文件規則清單與 Capture decisions 段以一句話指向 conclude 步驟）並確認紅燈；再依「技能原稿的跨模型寫法規範」十條改寫 `crates/engine/speclink-core/assets/skills/discuss.md` 與 `improve.md`，改寫前列出 discuss-skill、improve-skill、skill-routing、verb-contract 要求兩份技能保留的內容，改寫後逐條核對。驗證：`cargo test -p speclink-core --test it -- --skip bit_identical --skip neutral_ --skip embedded_assets_are_locked` 全綠（golden 快照與 assets.lock 留到 5.2 重產；add-copilot-tool 新增的 `copilot_rendering_is_bit_identical_to_golden` 也由 `--skip bit_identical` 略過）；`node --test scripts/docs/vocabulary-guard.test.mjs` 全綠。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/discuss.md",
+        "crates/engine/speclink-core/assets/skills/improve.md",
+        "crates/engine/speclink-core/tests/it/render_golden.rs",
+        "integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/graders/no-edit.md",
+        "integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/graders/no-write.md"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "4.2 改寫 propose 與 ingest：依十條改寫 `crates/engine/speclink-core/assets/skills/propose.md` 與 `ingest.md`，保留 propose-skill、ingest-skill、manual-task-marker、skill-routing、verb-contract 要求的內容（含 `[M]` 標記位置說明與兩份技能共用的 landscape 段落字面）；逐字比對片語依 design「規格釘字的處理原則」處理，需要改 scenario 字面時以 MODIFIED 補進本變更的 delta。驗證：同 4.1 的 cargo 與 node 指令全綠，改寫後逐條核對保留清單。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/ingest.md",
+        "crates/engine/speclink-core/assets/skills/propose.md"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "4.3 改寫 baseline、config 與 manual：依十條改寫 `crates/engine/speclink-core/assets/skills/baseline.md`、`config.md`、`manual.md`，保留 baseline-skill、config-skill、manual-skill 要求的內容；manual 的時間戳範例留在程式碼區塊或行內程式碼中。驗證：同 4.1 的 cargo 與 node 指令全綠，逐條核對保留清單。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/baseline.md",
+        "crates/engine/speclink-core/assets/skills/config.md",
+        "crates/engine/speclink-core/assets/skills/manual.md"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "4.4 改寫實作類：依十條改寫 `crates/engine/speclink-core/assets/skills/apply.md`、`apply-worktree-pre.md`、`apply-worktree-post.md`、`worktree-merge.md`，保留 manual-task-marker「apply 技能的手動任務處理」、worktree-apply-skill、worktree-merge-skill 要求的內容，並寫明 apply 遇到 `[M]` 任務時停下的規則優先於持續做完任務。驗證：同 4.1 的 cargo 與 node 指令全綠（含 apply_with_worktree_* 與 apply_skill_* 的逐字比對），逐條核對保留清單。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/apply-worktree-post.md",
+        "crates/engine/speclink-core/assets/skills/apply-worktree-pre.md",
+        "crates/engine/speclink-core/assets/skills/worktree-merge.md"
+      ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "4.5 改寫品質關卡類：依十條改寫 `crates/engine/speclink-core/assets/skills/review.md`、`verify.md`、`quality.md`，保留 review-skill、verify-skill、quality-skill、review-station、verify-station 要求的內容；強調字只留在停下等使用者、蓋章與子代理不得改檔這類鐵律。驗證：同 4.1 的 cargo 與 node 指令全綠（含 review_skill_*、verify_skill_*、quality_skill_* 的逐字比對），逐條核對保留清單。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/quality.md",
+        "crates/engine/speclink-core/assets/skills/review.md",
+        "crates/engine/speclink-core/assets/skills/verify.md"
+      ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "4.6 改寫檢查與查詢類：依十條改寫 `crates/engine/speclink-core/assets/skills/analyze.md`、`audit.md`、`drift.md`、`trace.md`，保留 change-analysis、drift-computation、trace-skill 要求的內容；audit 的平行稽核代理附「不能開子代理時自己依序執行」的退路。驗證：同 4.1 的 cargo 與 node 指令全綠（含 trace_skill_* 的逐字比對），逐條核對保留清單。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/analyze.md",
+        "crates/engine/speclink-core/assets/skills/audit.md",
+        "crates/engine/speclink-core/assets/skills/trace.md"
+      ]
+    },
+    {
+      "task_id": "18",
+      "task_desc": "5.2 依 design「版號、golden 與 assets.lock 一次重產」，把 ASSET_VERSION 依當下版號升一個 minor，以 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 重產全部 golden（含 Copilot 快照）並逐份確認 diff 只有原稿內文改變、codex 與 neutral 快照中那 14 處引用分別變為 `$speclink-<名稱>` 與 `speclink <名稱>`，以 `UPDATE_ASSETS_LOCK=1` 重產 `crates/engine/speclink-core/tests/golden/assets.lock`，再 `cargo build -p speclink-cli` 並用 `target/debug/speclink update` 重產本 repo 的 `.claude/skills` 與 `.agents/skills` 技能檔。驗證：`cargo test -p speclink-core --test it` 全綠；`cargo test -p speclink-cli --test it` 全綠（engine_version、update_downgrade_guard、init_tools）；`target/debug/speclink --version` 顯示升版後的 engine 版號。",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ]
+    },
+    {
+      "task_id": "19",
+      "task_desc": "6.1 跑新版評測並比較：向使用者確認 `--max-cost-usd` 金額後，以 `target/debug/speclink` 跑 `new-opus`（claude-opus-5-5）與 `new-haiku`（claude-haiku-5-5），再執行 `node scripts/claude-code/skill-evals.mjs compare target/skill-evals/old-opus target/skill-evals/new-opus` 與 haiku 一組。某題退步時，用 `--case <題目>` 新舊兩版各重跑一次；仍退步就依十條修改該技能、重跑 5.2 的 golden 與 lock 重產，再重跑該題。驗證：兩組 compare 都 exit 0，stdout 的逐題分數表貼進本任務的完成說明。",
+      "files": [
+        "integrations/claude-code/speclink-skills/hooks/register.tsx",
+        "integrations/claude-code/speclink-skills/tests/register.test.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4CMCZW5S3XJEHFMETYQTDP2",
+      "taskDesc": "1.1 保存舊版執行檔並探測評測工具（design「評測套件的位置與載入方式」）：確認 add-copilot-tool 已合併，執行 `cargo build -p speclink-cli`，確認 `target/debug/speclink --version` 的 engine 版號等於當下 `crates/engine/speclink-core/src/workspace/init.rs` 的 ASSET_VERSION，立刻複製成 `target/skill-evals/speclink-old`。建立 `integrations/claude-code/skill-evals/.claude-plugin/plugin.json`（name 為 `speclink-skill-evals`）與第一題 `evals/discuss-no-record-before-reply/`（prompt.md、case.yaml、scaffold.sh、graders/），把 `target/skill-evals/speclink-old` 以 `speclink` 之名放到 PATH 最前面，以 `claude plugin eval integrations/claude-code/skill-evals --case discuss-no-record-before-reply --runs 1 --model claude-haiku-5-5 --scaffold --ablation none --allow-tools Bash Edit Write --trust-plugin --no-publish --threshold 0` 跑一次。驗證：產生 aggregate-result.json；由 trace 確認受測模型讀到 scaffold 產生的專案技能；確認 scaffold_script 的寫法與 aggregate-result.json 標示題目的欄位；把三項結果寫回 design 的 Open Questions，並決定採用主要做法或「plugin 的 skills/」替代做法。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c0ba80591684300f3a6d8559fef21bd0bff7acef",
+      "touchedFiles": [
+        "integrations/claude-code/skill-evals/.claude-plugin/plugin.json",
+        "integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/case.yaml",
+        "integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/graders/ends-with-question.md",
+        "integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/graders/no-discuss-new.md",
+        "integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/prompt.md",
+        "integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/scaffold.sh"
+      ],
+      "recordedAt": "2026-10-08T04:13:50Z"
+    },
+    {
+      "taskId": "tsk_01M4CMCZW6DDH7KFWER57MX4AF",
+      "taskDesc": "1.2 先寫失敗的測試（技能評測套件）：新增 `scripts/claude-code/skill-evals.test.mjs`，涵蓋 `compareResults` 的退步、持平、進步、題目缺少四種情況（含 skill-authoring 規格「比較的判定」Example 表的三列），以及涵蓋度守門：repo 內 `.claude/skills/speclink-*` 的每個短名都至少有一題 prompt.md 的 tags 含 `skill:<短名>`。驗證：`node --test scripts/claude-code/skill-evals.test.mjs` 紅燈（模組尚不存在、只有一題）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c0ba80591684300f3a6d8559fef21bd0bff7acef",
+      "touchedFiles": [
+        "scripts/claude-code/skill-evals.test.mjs"
+      ],
+      "recordedAt": "2026-10-08T04:14:40Z"
+    },
+    {
+      "taskId": "tsk_01M4CMCZW6X7A2HP2S2ZBV7Y0J",
+      "taskDesc": "1.3 實作評測執行腳本（design「評測執行腳本與新舊比較」）：新增 `scripts/claude-code/skill-evals.mjs`，`compare <舊> <新>` 逐題印出題目、舊分數、新分數、差值，退步 exit 1、題目集合不同 exit 2 並列出缺題、結果檔不存在時 stderr 指名檔案並以非零結束；`run --speclink --model --label --max-cost-usd` 把執行檔放到 `target/skill-evals/bin-<label>/speclink` 並置於 PATH 最前面、寫 `target/skill-evals/<label>/speclink-version.txt`、以每題 3 次與 `--ablation none` 執行並沿用 claude 的 exit code，缺參數時 stderr 列出缺少的參數並以非零結束。驗證：`compareResults` 的單元測試轉綠；手動執行 `node scripts/claude-code/skill-evals.mjs run --speclink target/debug/speclink --label new-opus` 看到 stderr 列出缺少 --model 與 --max-cost-usd、exit code 非零。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c0ba80591684300f3a6d8559fef21bd0bff7acef",
+      "touchedFiles": [
+        "scripts/claude-code/skill-evals.mjs"
+      ],
+      "recordedAt": "2026-10-08T04:16:18Z"
+    },
+    {
+      "taskId": "tsk_01M4CMCZW604YMJSVGHKRB2QX6",
+      "taskDesc": "3.1 先寫失敗的測試（寫法規範的機械守門，design「守門測試的五項機械檢查」）：新增 `crates/engine/speclink-core/tests/it/skill_authoring.rs` 並掛進 `tests/it/main.rs`，以 inline 字串驗證五項檢查：skill-authoring 規格「強調字的計次」Example 表四列、CRLF 與 LF 行數相同、fenced code block 與行內程式碼內的日期不命中而散文中的日期命中、含 `AskUserQuestion` 而無 `plain text` 時失敗、未登記的原稿檔名被要求登記、寫死的 `/speclink-apply`、`$speclink-apply` 與 `--agent codex` 命中而 `.claude/skills/speclink-propose/SKILL.md` 路徑不命中。驗證：`cargo test -p speclink-core --test it skill_authoring` 紅燈（檢查函式尚未實作）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c0ba80591684300f3a6d8559fef21bd0bff7acef",
+      "touchedFiles": [
+        "crates/engine/speclink-core/tests/it/main.rs",
+        "crates/engine/speclink-core/tests/it/skill_authoring.rs",
+        "integrations/claude-code/skill-evals/evals/analyze-reports-only/case.yaml",
+        "integrations/claude-code/skill-evals/evals/analyze-reports-only/graders/no-edit.md",
+        "integrations/claude-code/skill-evals/evals/analyze-reports-only/graders/no-write.md",
+        "integrations/claude-code/skill-evals/evals/analyze-reports-only/graders/reports-findings.md",
+        "integrations/claude-code/skill-evals/evals/analyze-reports-only/prompt.md",
+        "integrations/claude-code/skill-evals/evals/analyze-reports-only/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/case.yaml",
+        "integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/graders/code-task-checked.md",
+        "integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/graders/greeting-created.md",
+        "integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/graders/manual-task-left-open.md",
+        "integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/prompt.md",
+        "integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/case.yaml",
+        "integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/graders/creates-worktree.md",
+        "integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/graders/hands-off-to-merge.md",
+        "integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/graders/no-merge.md",
+        "integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/prompt.md",
+        "integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/archive-folds-delta/case.yaml",
+        "integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/no-hand-edit.md",
+        "integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/spec-merged.md",
+        "integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/uses-archive-verb.md",
+        "integrations/claude-code/skill-evals/evals/archive-folds-delta/prompt.md",
+        "integrations/claude-code/skill-evals/evals/archive-folds-delta/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/case.yaml",
+        "integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/graders/default-no-longer-false.md",
+        "integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/graders/names-the-option.md",
+        "integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/prompt.md",
+        "integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/baseline-map-before-specs/case.yaml",
+        "integrations/claude-code/skill-evals/evals/baseline-map-before-specs/graders/asks-to-confirm-map.md",
+        "integrations/claude-code/skill-evals/evals/baseline-map-before-specs/graders/no-specs-yet.md",
+        "integrations/claude-code/skill-evals/evals/baseline-map-before-specs/prompt.md",
+        "integrations/claude-code/skill-evals/evals/baseline-map-before-specs/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/case.yaml",
+        "integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/graders/no-commit-yet.md",
+        "integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/graders/plan-then-confirm.md",
+        "integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/prompt.md",
+        "integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/config-asks-before-writing/case.yaml",
+        "integrations/claude-code/skill-evals/evals/config-asks-before-writing/graders/asks-or-shows-diff.md",
+        "integrations/claude-code/skill-evals/evals/config-asks-before-writing/graders/no-config-write.md",
+        "integrations/claude-code/skill-evals/evals/config-asks-before-writing/prompt.md",
+        "integrations/claude-code/skill-evals/evals/config-asks-before-writing/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/drift-reports-only/case.yaml",
+        "integrations/claude-code/skill-evals/evals/drift-reports-only/graders/names-missing-file.md",
+        "integrations/claude-code/skill-evals/evals/drift-reports-only/graders/no-edit.md",
+        "integrations/claude-code/skill-evals/evals/drift-reports-only/graders/no-write.md",
+        "integrations/claude-code/skill-evals/evals/drift-reports-only/prompt.md",
+        "integrations/claude-code/skill-evals/evals/drift-reports-only/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/fixtures.sh",
+        "integrations/claude-code/skill-evals/evals/improve-scan-without-edits/case.yaml",
+        "integrations/claude-code/skill-evals/evals/improve-scan-without-edits/graders/lists-candidates.md",
+        "integrations/claude-code/skill-evals/evals/improve-scan-without-edits/graders/no-edit.md",
+        "integrations/claude-code/skill-evals/evals/improve-scan-without-edits/graders/no-write.md",
+        "integrations/claude-code/skill-evals/evals/improve-scan-without-edits/prompt.md",
+        "integrations/claude-code/skill-evals/evals/improve-scan-without-edits/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/case.yaml",
+        "integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/graders/delta-has-new-requirement.md",
+        "integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/graders/runs-validate.md",
+        "integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/prompt.md",
+        "integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/manual-generates-pages/case.yaml",
+        "integrations/claude-code/skill-evals/evals/manual-generates-pages/graders/manual-page-written.md",
+        "integrations/claude-code/skill-evals/evals/manual-generates-pages/prompt.md",
+        "integrations/claude-code/skill-evals/evals/manual-generates-pages/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/propose-from-discussion/case.yaml",
+        "integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/manual-marker-after-checkbox.md",
+        "integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/no-apply.md",
+        "integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/no-marker-after-number.md",
+        "integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/runs-validate.md",
+        "integrations/claude-code/skill-evals/evals/propose-from-discussion/prompt.md",
+        "integrations/claude-code/skill-evals/evals/propose-from-discussion/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/quality-pauses-after-round/case.yaml",
+        "integrations/claude-code/skill-evals/evals/quality-pauses-after-round/graders/no-stamp.md",
+        "integrations/claude-code/skill-evals/evals/quality-pauses-after-round/graders/reports-both-then-stops.md",
+        "integrations/claude-code/skill-evals/evals/quality-pauses-after-round/prompt.md",
+        "integrations/claude-code/skill-evals/evals/quality-pauses-after-round/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/review-freezes-scope/case.yaml",
+        "integrations/claude-code/skill-evals/evals/review-freezes-scope/graders/findings-then-options.md",
+        "integrations/claude-code/skill-evals/evals/review-freezes-scope/graders/freezes-scope.md",
+        "integrations/claude-code/skill-evals/evals/review-freezes-scope/graders/no-stamp.md",
+        "integrations/claude-code/skill-evals/evals/review-freezes-scope/prompt.md",
+        "integrations/claude-code/skill-evals/evals/review-freezes-scope/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/trace-cites-archive/case.yaml",
+        "integrations/claude-code/skill-evals/evals/trace-cites-archive/graders/cites-archived-change.md",
+        "integrations/claude-code/skill-evals/evals/trace-cites-archive/graders/no-edit.md",
+        "integrations/claude-code/skill-evals/evals/trace-cites-archive/graders/no-write.md",
+        "integrations/claude-code/skill-evals/evals/trace-cites-archive/prompt.md",
+        "integrations/claude-code/skill-evals/evals/trace-cites-archive/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/verify-freezes-scope/case.yaml",
+        "integrations/claude-code/skill-evals/evals/verify-freezes-scope/graders/findings-then-options.md",
+        "integrations/claude-code/skill-evals/evals/verify-freezes-scope/graders/freezes-scope.md",
+        "integrations/claude-code/skill-evals/evals/verify-freezes-scope/graders/no-stamp.md",
+        "integrations/claude-code/skill-evals/evals/verify-freezes-scope/prompt.md",
+        "integrations/claude-code/skill-evals/evals/verify-freezes-scope/scaffold.sh",
+        "integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/case.yaml",
+        "integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/graders/merges-branch.md",
+        "integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/graders/removes-worktree.md",
+        "integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/prompt.md",
+        "integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/scaffold.sh"
+      ],
+      "recordedAt": "2026-10-08T04:25:05Z"
+    },
+    {
+      "taskId": "tsk_01M4CMCZW6QVV031J5Z6KWGZ39",
+      "taskDesc": "3.2 實作五項檢查與全原稿掃描，並把 drift、archive、apply、commit 四份原稿中 14 處寫死的 `/speclink-<名稱>` 改成 `/speclink:<名稱>`：以 `read_dir` 列出 `crates/engine/speclink-core/assets/skills/` 全部 `.md` 並依檔名排序，強調字登記表先以現況次數登記全部 23 份原稿；失敗訊息含原稿檔名、違反項目與出處「skill-authoring 規格『技能原稿的跨模型寫法規範』」。驗證：`cargo test -p speclink-core --test it skill_authoring` 轉綠（propose 期以同一套規則模擬：前四項現況全部通過，第五項只命中這 14 處）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c0ba80591684300f3a6d8559fef21bd0bff7acef",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/apply.md",
+        "crates/engine/speclink-core/assets/skills/archive.md",
+        "crates/engine/speclink-core/assets/skills/commit.md",
+        "crates/engine/speclink-core/assets/skills/drift.md"
+      ],
+      "recordedAt": "2026-10-08T04:27:13Z"
+    },
+    {
+      "taskId": "tsk_01M4CMCZW6XD7F3E865062BDHZ",
+      "taskDesc": "4.1 改寫 discuss 與 improve（design「寫法規範十條與出處」「原稿改寫的順序與行為不變的檢查」）：先把 `crates/engine/speclink-core/tests/it/render_golden.rs` 的 `discuss_skill_carries_the_conclusion_bullets_rule` 改成 discuss-skill「討論記錄的樹慣例與格式不變」的新要求（結論條列規則全文只出現一次且位於 conclude 步驟、conclude 範例為條列形、文件規則清單與 Capture decisions 段以一句話指向 conclude 步驟）並確認紅燈；再依「技能原稿的跨模型寫法規範」十條改寫 `crates/engine/speclink-core/assets/skills/discuss.md` 與 `improve.md`，改寫前列出 discuss-skill、improve-skill、skill-routing、verb-contract 要求兩份技能保留的內容，改寫後逐條核對。驗證：`cargo test -p speclink-core --test it -- --skip bit_identical --skip neutral_ --skip embedded_assets_are_locked` 全綠（golden 快照與 assets.lock 留到 5.2 重產；add-copilot-tool 新增的 `copilot_rendering_is_bit_identical_to_golden` 也由 `--skip bit_identical` 略過）；`node --test scripts/docs/vocabulary-guard.test.mjs` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c0ba80591684300f3a6d8559fef21bd0bff7acef",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/discuss.md",
+        "crates/engine/speclink-core/assets/skills/improve.md",
+        "crates/engine/speclink-core/tests/it/render_golden.rs",
+        "integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/graders/no-edit.md",
+        "integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/graders/no-write.md"
+      ],
+      "recordedAt": "2026-10-08T04:46:12Z"
+    },
+    {
+      "taskId": "tsk_01M4CMCZW6RK8VBRMAJE0GRATY",
+      "taskDesc": "4.2 改寫 propose 與 ingest：依十條改寫 `crates/engine/speclink-core/assets/skills/propose.md` 與 `ingest.md`，保留 propose-skill、ingest-skill、manual-task-marker、skill-routing、verb-contract 要求的內容（含 `[M]` 標記位置說明與兩份技能共用的 landscape 段落字面）；逐字比對片語依 design「規格釘字的處理原則」處理，需要改 scenario 字面時以 MODIFIED 補進本變更的 delta。驗證：同 4.1 的 cargo 與 node 指令全綠，改寫後逐條核對保留清單。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c0ba80591684300f3a6d8559fef21bd0bff7acef",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/ingest.md",
+        "crates/engine/speclink-core/assets/skills/propose.md"
+      ],
+      "recordedAt": "2026-10-08T04:54:04Z"
+    },
+    {
+      "taskId": "tsk_01M4CMCZW6AJY56M89M62896T2",
+      "taskDesc": "4.3 改寫 baseline、config 與 manual：依十條改寫 `crates/engine/speclink-core/assets/skills/baseline.md`、`config.md`、`manual.md`，保留 baseline-skill、config-skill、manual-skill 要求的內容；manual 的時間戳範例留在程式碼區塊或行內程式碼中。驗證：同 4.1 的 cargo 與 node 指令全綠，逐條核對保留清單。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c0ba80591684300f3a6d8559fef21bd0bff7acef",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/baseline.md",
+        "crates/engine/speclink-core/assets/skills/config.md",
+        "crates/engine/speclink-core/assets/skills/manual.md"
+      ],
+      "recordedAt": "2026-10-08T05:00:00Z"
+    },
+    {
+      "taskId": "tsk_01M4CMCZW6GKZYHW4B3QV3AMD1",
+      "taskDesc": "4.4 改寫實作類：依十條改寫 `crates/engine/speclink-core/assets/skills/apply.md`、`apply-worktree-pre.md`、`apply-worktree-post.md`、`worktree-merge.md`，保留 manual-task-marker「apply 技能的手動任務處理」、worktree-apply-skill、worktree-merge-skill 要求的內容，並寫明 apply 遇到 `[M]` 任務時停下的規則優先於持續做完任務。驗證：同 4.1 的 cargo 與 node 指令全綠（含 apply_with_worktree_* 與 apply_skill_* 的逐字比對），逐條核對保留清單。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c0ba80591684300f3a6d8559fef21bd0bff7acef",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/apply-worktree-post.md",
+        "crates/engine/speclink-core/assets/skills/apply-worktree-pre.md",
+        "crates/engine/speclink-core/assets/skills/worktree-merge.md"
+      ],
+      "recordedAt": "2026-10-08T05:04:02Z"
+    },
+    {
+      "taskId": "tsk_01M4CMCZW6Z4QXVHY6V741TS7Z",
+      "taskDesc": "4.5 改寫品質關卡類：依十條改寫 `crates/engine/speclink-core/assets/skills/review.md`、`verify.md`、`quality.md`，保留 review-skill、verify-skill、quality-skill、review-station、verify-station 要求的內容；強調字只留在停下等使用者、蓋章與子代理不得改檔這類鐵律。驗證：同 4.1 的 cargo 與 node 指令全綠（含 review_skill_*、verify_skill_*、quality_skill_* 的逐字比對），逐條核對保留清單。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c0ba80591684300f3a6d8559fef21bd0bff7acef",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/quality.md",
+        "crates/engine/speclink-core/assets/skills/review.md",
+        "crates/engine/speclink-core/assets/skills/verify.md"
+      ],
+      "recordedAt": "2026-10-08T05:06:15Z"
+    },
+    {
+      "taskId": "tsk_01M4CMCZW6V2QZ6YY9VEVJC249",
+      "taskDesc": "4.6 改寫檢查與查詢類：依十條改寫 `crates/engine/speclink-core/assets/skills/analyze.md`、`audit.md`、`drift.md`、`trace.md`，保留 change-analysis、drift-computation、trace-skill 要求的內容；audit 的平行稽核代理附「不能開子代理時自己依序執行」的退路。驗證：同 4.1 的 cargo 與 node 指令全綠（含 trace_skill_* 的逐字比對），逐條核對保留清單。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c0ba80591684300f3a6d8559fef21bd0bff7acef",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/analyze.md",
+        "crates/engine/speclink-core/assets/skills/audit.md",
+        "crates/engine/speclink-core/assets/skills/trace.md"
+      ],
+      "recordedAt": "2026-10-08T05:23:02Z"
+    },
+    {
+      "taskId": "tsk_01M4CMCZW6W2BGHXA07D2N568T",
+      "taskDesc": "5.2 依 design「版號、golden 與 assets.lock 一次重產」，把 ASSET_VERSION 依當下版號升一個 minor，以 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 重產全部 golden（含 Copilot 快照）並逐份確認 diff 只有原稿內文改變、codex 與 neutral 快照中那 14 處引用分別變為 `$speclink-<名稱>` 與 `speclink <名稱>`，以 `UPDATE_ASSETS_LOCK=1` 重產 `crates/engine/speclink-core/tests/golden/assets.lock`，再 `cargo build -p speclink-cli` 並用 `target/debug/speclink update` 重產本 repo 的 `.claude/skills` 與 `.agents/skills` 技能檔。驗證：`cargo test -p speclink-core --test it` 全綠；`cargo test -p speclink-cli --test it` 全綠（engine_version、update_downgrade_guard、init_tools）；`target/debug/speclink --version` 顯示升版後的 engine 版號。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c0ba80591684300f3a6d8559fef21bd0bff7acef",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ],
+      "recordedAt": "2026-10-08T05:34:41Z"
+    },
+    {
+      "taskId": "tsk_01M4CMCZW6AWPTSXYNR7F33FHQ",
+      "taskDesc": "6.1 跑新版評測並比較：向使用者確認 `--max-cost-usd` 金額後，以 `target/debug/speclink` 跑 `new-opus`（claude-opus-5-5）與 `new-haiku`（claude-haiku-5-5），再執行 `node scripts/claude-code/skill-evals.mjs compare target/skill-evals/old-opus target/skill-evals/new-opus` 與 haiku 一組。某題退步時，用 `--case <題目>` 新舊兩版各重跑一次；仍退步就依十條修改該技能、重跑 5.2 的 golden 與 lock 重產，再重跑該題。驗證：兩組 compare 都 exit 0，stdout 的逐題分數表貼進本任務的完成說明。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c0ba80591684300f3a6d8559fef21bd0bff7acef",
+      "touchedFiles": [
+        "integrations/claude-code/speclink-skills/hooks/register.tsx",
+        "integrations/claude-code/speclink-skills/tests/register.test.tsx"
+      ],
+      "recordedAt": "2026-10-08T06:29:06Z"
+    }
+  ]
+}

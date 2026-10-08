@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -14,7 +14,7 @@ Merge a finished Speclink worktree branch back into the main branch, then clean 
 
 This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops right after committing inside the worktree; this one takes it from there. It is **human-triggered**: merging is a decision, and a conflict is the user's call.
 
-**Input**: Optionally specify a change name (e.g., `/speclink-worktree-merge add-auth`). If omitted, run `git worktree list --porcelain` and offer the `speclink/*` branches found. If more than one is a candidate you MUST ask which one — never guess.
+**Input**: Optionally specify a change name (e.g., `/speclink-worktree-merge add-auth`). If omitted, run `git worktree list --porcelain` and offer the `speclink/*` branches found. If more than one is a candidate you MUST ask which one and wait for the answer — never guess.
 
 **Prerequisites**: This skill requires `git`. Run `git --version`. If git is not available, report it and STOP. Every step below is driven from the **main checkout**; the steps that act on the worktree — its status check and the rebase — reach it with `git -C <worktree-path>` rather than moving you there.
 
@@ -153,12 +153,14 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 
 **Guardrails**
 
-- Never stash or commit on the user's behalf — in the main checkout or in the worktree
-- Never resolve merge conflicts yourself; abort the merge and report
-- Never resolve rebase conflicts yourself; `rebase --abort` and fall back to the plain merge
-- Never leave a half-finished merge state behind
-- Never force-remove a worktree that still has uncommitted work
-- Never merge a change whose worktree you did not verify is fully committed
+Check these before you report:
+
+- [ ] Never stash or commit on the user's behalf — in the main checkout or in the worktree (step 2)
+- [ ] Never resolve merge conflicts yourself; abort the merge and report (step 4)
+- [ ] Never resolve rebase conflicts yourself; `rebase --abort` and fall back to the plain merge (step 3)
+- [ ] Never leave a half-finished merge state behind (step 4)
+- [ ] Never force-remove a worktree that still has uncommitted work (step 5)
+- [ ] Never merge a change whose worktree you did not verify is fully committed (step 2)
 
 ## Next steps
 

@@ -1,0 +1,8 @@
+{
+  "name": "speclink-skill-evals",
+  "version": "0.1.0",
+  "description": "Single-turn evals for the speclink skills. scripts/claude-code/skill-evals.mjs renders the skills under test with a given speclink binary into this plugin's skills/ and puts the same binary first on PATH, so old and new versions differ only in that binary.",
+  "author": { "name": "MomoChen" },
+  "repository": "https://github.com/MomoChenisMe/speclink",
+  "license": "MIT"
+}

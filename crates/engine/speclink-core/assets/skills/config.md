@@ -4,7 +4,7 @@ Compose the workflow config's `context` and `rules` from what the codebase struc
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
-**What this document is.** `context` is the shared briefing every artifact prompt carries; `rules` are per-artifact constraints. Both exist to add what the engine does NOT already know. The policy fields (`locale`, `spec_locale`, `tdd`, `audit`) are answers, not findings — never infer them.
+**What this document is.** `context` is the shared briefing every artifact prompt carries; `rules` are per-artifact constraints. Both exist to add what the engine does not already know. The policy fields (`locale`, `spec_locale`, `tdd`, `audit`) are answers, not findings — never infer them.
 
 **This skill never writes without approval.** Every change reaches the file through `speclink workflow-config ... --dry-run`, shown as a diff, and is only applied after the user says so.
 
@@ -12,7 +12,7 @@ Compose the workflow config's `context` and `rules` from what the codebase struc
 
 ## Step 1: Read the fixed input set
 
-Scan ONLY the sources below. **Do NOT scan the source tree.** The goal is what the project structurally declares about itself; prose derived from implementation files ages out within a sprint and produces the churn this skill exists to prevent.
+Scan only the sources below. **Do not scan the source tree.** The goal is what the project structurally declares about itself; prose derived from implementation files ages out within a sprint and produces the churn this skill exists to prevent.
 
 1. **Dependency manifests** — the workspace manifest (member list, shared dependency table) and each package's own dependency list. These name the components, their boundaries, and which runtimes each component is allowed to touch.
 2. **README** — the project's own statement of what it is and who it serves.
@@ -42,7 +42,7 @@ Read the returned instruction text and check your candidate line against it, one
 
 ### Criterion 2 — Artifact-specific content belongs in rules
 
-If a line only bites on ONE artifact, it is a rule for that artifact, not context. `context` is for what every artifact prompt needs: what the system is, how it is partitioned, which constraints cut across all of them. When in doubt, demote to rules — an over-broad context line is paid for on every single prompt.
+If a line only bites on one artifact, it is a rule for that artifact, not context. `context` is for what every artifact prompt needs: what the system is, how it is partitioned, which constraints cut across all of them. When in doubt, demote to rules — an over-broad context line is paid for on every single prompt.
 
 ### Criterion 3 — Nothing that goes stale
 
@@ -73,7 +73,7 @@ With a scope hint, criteria 1–3 are re-judged only over the artifacts in scope
 
 ## Step 3: Ask for the policy fields — do not infer them
 
-The four policy fields are the user's decision. Ask each one explicitly, one at a time, with the **AskUserQuestion tool** (or as plain text if unavailable), showing the current value from Step 1:
+The four policy fields are the user's decision. Ask each one explicitly, one at a time, with the **AskUserQuestion tool** — or, if that tool is unavailable, as plain text — showing the current value from Step 1, and wait for each answer before the next question:
 
 - `locale` — the language for generated prose
 - `spec_locale` — the language for spec files (unset = English, `auto` = follow `locale`)
@@ -82,7 +82,7 @@ The four policy fields are the user's decision. Ask each one explicitly, one at 
 
 **Locale fields take locale CODES, never display names.** `locale` accepts exactly `tw`, `ja`, `en`; `spec_locale` accepts `tw`, `ja`, `en`, `auto`. Map the user's natural-language answer to its code before writing — 「繁體中文」 → `tw`, 「日本語」 → `ja`, "English" → `en` — the write verb rejects any value outside the code set, including display names.
 
-Never derive an answer from the repo (a test directory does NOT mean `tdd: true`). Leave a field alone when the user has no opinion.
+Never derive an answer from the repo (a test directory does not mean `tdd: true`). Leave a field alone when the user has no opinion.
 
 ### The fifth question — how much testing a task's verification runs
 
@@ -107,26 +107,28 @@ speclink workflow-config rules <artifact> --stdin --dry-run
 
 Never compute a diff yourself — a hand-made preview and the real serialization can disagree, and a preview that lies is worse than none.
 
-Present the diffs and WAIT. Only after the user approves, re-run the same commands without `--dry-run`. Note for the user that a rewrite drops template comments from the file (the read-modify-write trade-off) — that is expected, not damage.
+Present the diffs and WAIT — NEVER write before the user approves. Only after the user approves, re-run the same commands without `--dry-run`. Note for the user that a rewrite drops template comments from the file (the read-modify-write trade-off) — that is expected, not damage.
 
 The same commands work in both local and remote mode; in remote mode the write is guarded against concurrent edits, and a refusal means someone else changed the document — re-run the command and it applies on top.
 
 ## Step 5: Verify convergence
 
-Run this skill a second time against the same, unchanged codebase. **The second run's diffs MUST be empty.**
+Run this skill a second time against the same, unchanged codebase. **The second run's diffs must be empty.**
 
-A non-empty second diff is not a reason to write again — it means a criterion was applied loosely (usually 3, restating something measurable, or 2, moving a line between `context` and `rules`). Go back to Step 2, find which line moved, and fix the judgment. Do NOT land the second diff.
+A non-empty second diff is not a reason to write again — it means a criterion was applied loosely (usually 3, restating something measurable, or 2, moving a line between `context` and `rules`). Go back to Step 2, find which line moved, and fix the judgment. Do not land the second diff.
 
 Report at the end: which of the five sources were read, what was added, what was dropped and under which criterion, and the convergence result.
 
 ## Guardrails
 
-- **Don't scan the source tree** — the fixed input set is the whole input.
-- **Don't restate injected instructions** — disprove with `speclink instructions <artifact> --json`, per line.
-- **Don't restate quality-station canon** — read the generated station skill; a copy here is a second canon that drifts.
-- **Don't write anything that can go stale** — no versions, counts, or dates.
-- **Don't reference what doesn't exist** — verify every command, test, and path statically, every run; the referenced test and build commands themselves are never executed.
-- **Don't delete for the wrong reason** — a line falls only to the four criteria or to the user's own withdrawal; "cannot be derived from the fixed input set" is never a reason.
-- **Don't infer the policy fields** — ask all four, plus the test-scope question.
-- **Don't write without approval** — `--dry-run` first, always.
-- **Don't land a non-empty second run** — that is a signal to re-judge, not to write.
+Check these before you report:
+
+- [ ] **Don't scan the source tree** — the fixed input set is the whole input.
+- [ ] **Don't restate injected instructions** — disprove with `speclink instructions <artifact> --json`, per line.
+- [ ] **Don't restate quality-station canon** — read the generated station skill; a copy here is a second canon that drifts.
+- [ ] **Don't write anything that can go stale** — no versions, counts, or dates.
+- [ ] **Don't reference what doesn't exist** — verify every command, test, and path statically, every run; the referenced test and build commands themselves are never executed.
+- [ ] **Don't delete for the wrong reason** — a line falls only to the four criteria or to the user's own withdrawal; "cannot be derived from the fixed input set" is never a reason.
+- [ ] **Don't infer the policy fields** — ask all four, plus the test-scope question.
+- [ ] **Don't write without approval** — `--dry-run` first, always.
+- [ ] **Don't land a non-empty second run** — that is a signal to re-judge, not to write.

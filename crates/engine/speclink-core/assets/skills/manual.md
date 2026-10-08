@@ -10,7 +10,7 @@ Generate a human-readable operating manual from the canonical specs, or walk the
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
-**The one-source rule**: the manual's content comes from the canonical specs under `{{SPEC_DIR}}specs/` and nothing else. NEVER read README files, a `docs/` directory, or source code as a content source — not to fill a gap, not to "confirm" wording, not for screenshots. Where the specs are silent, the manual is silent or says so. Every page cites the capabilities it was written from.
+**The one-source rule**: the manual's content comes from the canonical specs under `{{SPEC_DIR}}specs/` and nothing else. Never read README files, a `docs/` directory, or source code as a content source — not to fill a gap, not to "confirm" wording, not for screenshots. Where the specs are silent, the manual is silent or says so. Every page cites the capabilities it was written from.
 
 ---
 
@@ -146,7 +146,7 @@ When no capability is user-facing, still write both pages: `about.md` says `尚�
 
 - A page whose filename already exists keeps its `section` and `order` verbatim (unless the user explicitly asked to reorder).
 - A new page takes an integer between its neighbours (between 20 and 30 → 25); existing pages are never renumbered. When no integer fits — neighbours 20 and 21, or a page that must land after the last page while `about.md` has to stay the maximum — do NOT renumber on your own: leave that page out of this run, list it in the report, and ask the user for a reorder; their explicit request is what allows renumbering.
-- Pages that are not stale are not touched at all — byte-identical. A stale page whose regenerated text (its re-derived `sources` included) equals the file except for `generated` is stamp-only (Step 3): rewrite that one line, nothing else; a page whose anchor no longer resolves is never stamp-only.
+- Untouched, stamp-only and fully rewritten pages follow the decision in Step 3.
 - Every new page and every page rewritten in full writes its `sources` by coverage: when the page draws on only some requirements of a capability, one anchored item per requirement (`"<capability>#<Requirement 名>"`, the heading text verbatim); when it draws on the whole capability, the bare name. Prefer anchors for large specs — they are what keeps an unrelated archive from marking this page stale.
 - Orphan pages (Step 3) stay on disk and appear in the report.
 
@@ -184,15 +184,17 @@ Tour mode writes NOTHING — no manual pages, no notes, no scratch files. It is 
 2. **No manual**: say so — `尚無手冊，改以規格直接導覽` — then tour from the specs: `speclink list --specs` for the map, `speclink show <capability> --item-type spec` for each station, sources cited by capability name.
 3. **Remote-bound project**: tour mode proceeds as usual, from an existing manual or from the specs.
 
-When the tour ends you may suggest running generation mode (`/speclink:manual`) to produce the manual — a suggestion only. NEVER invoke another skill from here.
+When the tour ends you may suggest running generation mode (`/speclink:manual`) to produce the manual — a suggestion only. Never invoke another skill from here.
 
 ---
 
 ## Guardrails
 
-- Specs are the only content source. README, docs and code are off-limits for manual content — in both modes.
-- Generation writes only under `{{SPEC_DIR}}manual/`; tour writes nothing; a remote-bound project gets no generation at all.
-- Never delete a page. Never renumber an existing page unless the user explicitly asks for a reorder. Never overwrite a page whose frontmatter you could not parse.
-- Frontmatter has exactly the six fields above. The about page's title and the `**出處**：` line are contract literals.
-- Contradictions inside the specs are recorded on the about page, never silently resolved.
-- Tool skill: no fixed next step. The commit line in the summary and the tour's closing suggestion are suggestions — this skill never runs a commit or another skill.
+Check these before you report:
+
+- [ ] Content came from the canonical specs only — no README, docs or code ("The one-source rule"), in both modes.
+- [ ] Generation wrote only under `{{SPEC_DIR}}manual/` (Step 5); tour mode wrote nothing; a remote-bound project got no generation (Step 0).
+- [ ] No page was deleted or renumbered, and no page with unparseable frontmatter was overwritten (Steps 1, 3 and 5).
+- [ ] Every page has exactly the six frontmatter fields, the `**出處**：` line, and a `generated` value that matches the format check (Step 5).
+- [ ] Contradictions inside the specs are listed on the about page, never silently resolved (Step 5).
+- [ ] No commit and no other skill was run — the commit line and the tour's closing suggestion are suggestions only (Step 6, Tour mode).

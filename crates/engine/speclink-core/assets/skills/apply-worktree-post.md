@@ -35,6 +35,14 @@ Tell the user, plainly:
 
 Report alongside it: the worktree path, the branch name, and the tasks completed this session.
 
+### Wrap-up check
+
+Check these before you hand off:
+
+- [ ] The commit in the worktree holds only this change's artifacts and evidence-recorded source files (W1).
+- [ ] Nothing was merged, no worktree or branch was removed, and the main checkout was not touched (W2).
+- [ ] The hand-off names the worktree path, the branch, the tasks completed, and `/speclink:worktree-merge` as the next step (W3).
+
 ## Next steps
 
 {{NEXT_STEPS_LEAD}}

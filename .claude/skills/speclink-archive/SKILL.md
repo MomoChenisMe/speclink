@@ -5,15 +5,17 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
 Archive a completed change.
 
-**Input**: Optionally specify a change name after `/speclink-archive` (e.g., `/speclink-archive add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name after `/speclink-archive` (e.g., `/speclink-archive add-auth`). If omitted, check if it can be inferred from conversation context; if it is still vague or ambiguous, step 1 asks the user.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
+
+**Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response.
 
 **Where to run it**: archiving runs in the **main checkout**. Inside a linked worktree on a `speclink/` branch the engine refuses the archive outright — the unarchive backup would land in the worktree's gitignored `.speclink/snapshots/` and vanish with the worktree, and deltas would merge onto the branch point's stale canon. If you are in a worktree, wrap it up with the `/speclink-worktree-merge` skill first, then archive from the main checkout.
 
@@ -28,7 +30,7 @@ Archive a completed change.
    Show only active changes (not already archived).
    Include the schema used for each change if available.
 
-   **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose — a candidate marked 「可封存」 is not picked for them either.
+   Do NOT guess or auto-select a change — always let the user choose, and wait for the answer; a candidate marked 「可封存」 is not picked for them either.
 
 2. **Check artifact completion status**
 
@@ -237,15 +239,13 @@ Target archive directory already exists.
 
 **Guardrails**
 
-- Always prompt for change selection if not provided
-- Use artifact graph (speclink status --json) for completion checking
-- Don't block archive on warnings - just inform and confirm
-- Preserve .openspec.yaml when moving to archive (it moves with the directory)
-- Show clear summary of what happened
-- Fixing a delta rewrites delta files only — NEVER edit main specs directly; delta application is the archive CLI's job
-- If delta specs exist, always run the completeness assessment; only prompt when a fix is actually needed
-- Never work around the merge gate — it protects the canonical specs from silent data loss; fix the delta instead
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+Check these before you show the summary:
+
+- [ ] The user chose the change; nothing was auto-selected (step 1).
+- [ ] Completion was checked with the artifact graph (`speclink status --json`, step 2); warnings were reported and confirmed, not treated as blockers (steps 2–3).
+- [ ] When delta specs exist, the completeness assessment ran, and a prompt appeared only when a fix was needed (step 4).
+- [ ] Only delta files were edited — never the main specs; delta application is the archive CLI's job, and the merge gate was not worked around (steps 4–5).
+- [ ] `.openspec.yaml` moved with the change directory, and the summary says clearly what happened (step 6).
 
 
 ## RENAMED is actually executed (speclink-specific)

@@ -64,8 +64,10 @@ Answer "how did this come to be / why is it designed this way" for a feature: ma
 
 **Guardrails**
 
-- Every claim carries a source path; a claim you cannot source gets qualified or dropped.
-- The answer NEVER contains internal pipeline words — "degraded", "fallback", "old era", "incomplete data", "no evidence recorded" and the like. All sources (discussions, proposals, commits, code) are woven in as natural citations of one story.
-- Missing records change where you look, never what the reader sees: the answer format is identical whether it was assembled from the chain, from git history, or from code archaeology.
-- git commit-message conventions are best-effort leads; when they yield nothing, discussions and proposals carry the answer.
-- Do not edit any file — this skill only reads and answers.
+Check these before you answer:
+
+- [ ] Every claim carries a source path; a claim you cannot source gets qualified or dropped.
+- [ ] The answer NEVER contains internal pipeline words — "degraded", "fallback", "old era", "incomplete data", "no evidence recorded" and the like. All sources (discussions, proposals, commits, code) are woven in as natural citations of one story.
+- [ ] Missing records change where you look, never what the reader sees: the answer format is identical whether it was assembled from the chain, from git history, or from code archaeology.
+- [ ] git commit-message conventions are best-effort leads; when they yield nothing, discussions and proposals carry the answer.
+- [ ] Do not edit any file — this skill only reads and answers.

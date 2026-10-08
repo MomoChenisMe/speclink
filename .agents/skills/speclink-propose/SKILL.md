@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -17,9 +17,13 @@ Create a complete Speclink change proposal — from requirement to validated art
 - `$speclink-propose fix the login page crash`
 - `$speclink-propose improve search performance`
 
-If no argument is provided, the workflow will extract requirements from conversation context or ask.
+If no argument is provided, the workflow extracts requirements from conversation context or asks.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
+
+**Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response.
+
+**This workflow writes artifacts, not code.** Never write application code or implement features during this workflow, never skip the artifact workflow to write code directly, and never reinterpret requirements by ignoring the proposal file. The workflow ends after step 11 and its landscape check — it NEVER invokes `$speclink-apply`; the user decides when implementation starts.
 
 **Steps**
 
@@ -30,12 +34,12 @@ If no argument is provided, the workflow will extract requirements from conversa
    a. **Argument provided** (e.g., "add dark mode") → use it as the requirement description, skip to deriving the change name below. A `--from-doc <path>` argument explicitly selects the document in (b); a `--from-discussion <slug>` argument explicitly selects the discussion document in (c).
 
    b. **Document supplied directly** (`--from-doc <path>`, speclink enhancement):
-   - This is a skill-text convention modelled on `--from-discussion`, NOT an engine flag — it changes no CLI syntax and requires nothing new from the engine.
+   - This is a skill-text convention modelled on `--from-discussion`, not an engine flag — it changes no CLI syntax and requires nothing new from the engine.
    - When the user passes it, read that document and use it as the requirement source: its title or opening statement gives the requirement description, its content feeds Why, What Changes, Capabilities, and Impact. **No existing discussion is needed** — this is the path for building a proposal straight from a plan the user brought, without going through `$speclink-discuss` first.
    - The document is consumed, not grilled: itemized challenge of its claims belongs to `discuss`. Never edit the user's original document.
-   - **Leave a provenance line.** A proposal built from `--from-doc` SHALL carry one line `Source doc: <path>` in its Why or Impact section, naming the document it came from — a `--from-discussion` proposal gets its origin recorded by the link, and this line is the `--from-doc` counterpart. Skill-text convention only; the engine records nothing for you.
+   - **Leave a provenance line.** A proposal built from `--from-doc` carries one line `Source doc: <path>` in its Why or Impact section, naming the document it came from — a `--from-discussion` proposal gets its origin recorded by the link, and this line is the `--from-doc` counterpart. Skill-text convention only; the engine records nothing for you.
    - `--from-doc` outranks (c) and (d): when it is present, do not go hunting for a discussion record or a plan file.
-   - When the user did NOT pass `--from-doc`, this entry does not apply at all — requirement-source determination proceeds exactly as before, with no extra file reading.
+   - When the user did not pass `--from-doc`, this entry does not apply at all — requirement-source determination runs through (a), (c), (d) and (e) with no extra file reading.
 
    c. **Discussion document available** (speclink enhancement):
    - List recorded discussions:
@@ -52,13 +56,13 @@ If no argument is provided, the workflow will extract requirements from conversa
    - **Follow the `Source doc:` line.** If the discussion's `## Context` carries a line `Source doc: <path>`, read that original document as well — the record stores only the decision diff, so the underlying plan lives in that file. Synthesize the two with **overlay semantics**: the document is the base layer, the discussion is the winning layer.
      - **Decided in the discussion** → the discussion wins. It is newer and it was stress-tested against the codebase.
      - **Untouched by the discussion** → the document's content carries over into the proposal as-is.
-     - **Ruled out in the discussion** → SHALL NOT reappear in the proposal in any form, even where the document still advocates it.
+     - **Ruled out in the discussion** → it never reappears in the proposal in any form, even where the document still advocates it.
 
      Worked example: the document proposes SSE plus three-times retry; the discussion ruled out SSE in favour of WebSocket and never touched retry → the proposal is WebSocket plus three-times retry, and SSE appears nowhere in it.
 
-     Do NOT re-grill the document here — itemized challenge of a document's claims is `discuss`'s job; propose only consumes it, synthesizing or adopting verbatim. Never edit the user's original document.
+     Do not re-grill the document here — itemized challenge of a document's claims is `discuss`'s job; propose only consumes it, synthesizing or adopting verbatim. Never edit the user's original document.
 
-     If the Context has no `Source doc:` line, this step is skipped entirely: the from-discussion flow is exactly as before, with no extra file reading.
+     If the Context has no `Source doc:` line, this step is skipped entirely: the from-discussion flow reads only the record, with no extra file reading.
    - If no discussion exists or the user declines → fall through to (d).
 
    d. **Plan file available**:
@@ -81,7 +85,7 @@ If no argument is provided, the workflow will extract requirements from conversa
    From the resolved description, derive a kebab-case change name (e.g., "add dark mode" → `add-dark-mode`).
    Do not keep archive-style date prefixes in active change names. If the source name starts with `YYYY-MM-DD-`, strip that date prefix before running `speclink new change`; archived change names and directories are historical references, not active names to reuse.
 
-   **IMPORTANT**: Do NOT proceed without understanding what the user wants to build.
+   Do not continue past this step until you know what the user wants to build. This is the one point where a missing requirement stops the workflow; from step 2 on, prefer reasonable decisions over questions (step 7c).
 
 2. **Classify the change type**
 
@@ -101,18 +105,17 @@ If no argument is provided, the workflow will extract requirements from conversa
    1. Run `speclink list --specs --json` to get the spec identifier list
    2. Compare against the user's description to identify related specs (max 5 candidates)
    3. For each candidate (max 3), run `speclink show <spec-id>` and read the Purpose section at the top of the output
-   4. If related specs are found, display them as an informational summary
-   5. Leave a trace of the scan result in the proposal: name the related specs you found (or state that none matched) — the "why no existing spec covers this" sentence required for each New Capability in step 5 builds on this trace
-
-   **IMPORTANT**:
-   - If related specs are found, display them but do NOT stop or ask for confirmation — continue to the next step
-   - If no related specs are found, proceed without pausing — the scan outcome still gets its trace in the proposal
+   4. Related specs found → display them as an informational summary, then continue to the next step — do not stop or ask for confirmation
+   5. No related specs found → proceed without pausing
+   6. Either way, leave a trace of the scan result in the proposal: name the related specs you found (or state that none matched) — the "why no existing spec covers this" sentence required for each New Capability in step 5 builds on this trace
 
 4. **Create the change directory**
 
    ```bash
    speclink new change "<name>" --agent codex
    ```
+
+   If a change with that name already exists, suggest continuing the existing change instead of creating a new one.
 
    When the proposal is sourced from a discussion document (path (c) in step 1), pass the link so the change records its origin and the discussion is marked `promoted` (it will be archived together with the change later):
 
@@ -133,14 +136,12 @@ If no argument is provided, the workflow will extract requirements from conversa
 
    What `--last` does: the engine drops the record's `hold: true` line in the same write that accumulates `promoted_to`, so when the last spun-out change is archived, the discussion is co-archived automatically — nobody has to remember to close the series. Passing it on a cut that was **not** the last is the one mistake to avoid: the record would be co-archived when the last in-flight change is archived, and spinning out the next cut then needs the record moved back from `openspec/discussions/archive/` to `openspec/discussions/` (drop the `<date>-` prefix) — the engine's error message points at that path. Forgetting it is cheap: the record stays live, the board shows it as "promoted · on hold", and one `speclink discuss archive <slug>` closes the series by hand.
 
-   If a change with that name already exists, suggest continuing the existing change instead of creating a new one.
-
 5. **Write the proposal**
 
-   **IMPORTANT — file path rules for the `## Impact` section:**
-   - All file paths SHALL be written relative to the project root (e.g., `src/lib/foo.ts`, `src-tauri/crates/core/src/bar.rs`, `docs/specs/specs/auth/spec.md`).
-   - Do NOT use relative fragments (e.g., `parser/mod.rs`, `core/mod.rs`) — preflight rejects them as non-anchored paths.
-   - Do NOT wrap shell commands in backticks inside artifact text (e.g., `` `git mv a.rs b.rs` ``) — preflight's backtick extractor will otherwise mis-parse the command as a file reference.
+   **File path rules for the `## Impact` section:**
+   - All file paths are written relative to the project root (e.g., `src/lib/foo.ts`, `src-tauri/crates/core/src/bar.rs`, `docs/specs/specs/auth/spec.md`).
+   - Do not use relative fragments (e.g., `parser/mod.rs`, `core/mod.rs`) — preflight rejects them as non-anchored paths.
+   - Do not wrap shell commands in backticks inside artifact text (e.g., `` `git mv a.rs b.rs` ``) — preflight's backtick extractor will otherwise mis-parse the command as a file reference.
    - When referring to a file without naming its concrete path, use descriptive prose (e.g., "Parser 入口檔") rather than a backticked path fragment.
 
    Get instructions:
@@ -273,24 +274,25 @@ If no argument is provided, the workflow will extract requirements from conversa
    Loop through artifacts in dependency order (skip proposal since it's already done):
 
    a. **For each artifact that is `ready` (dependencies satisfied)**:
-   - **Check if the artifact is optional**: If the artifact is NOT in the dependency chain of any `applyRequires` artifact (i.e., removing it would not block reaching apply), it is optional. Get its instructions and read the `instruction` field. If the instruction contains conditional criteria (e.g., "create only if any apply"), evaluate whether any criteria apply to this change based on the proposal content. If none apply, skip the artifact and show: "⊘ Skipped <artifact-id> (not needed for this change)". Then continue to the next artifact.
+   - **Check if the artifact is optional**: If the artifact is not in the dependency chain of any `applyRequires` artifact (i.e., removing it would not block reaching apply), it is optional. Get its instructions and read the `instruction` field. If the instruction contains conditional criteria (e.g., "create only if any apply"), evaluate whether any criteria apply to this change based on the proposal content. If none apply, skip the artifact and show: "⊘ Skipped <artifact-id> (not needed for this change)". Then continue to the next artifact.
    - Get instructions:
      ```bash
      speclink instructions <artifact-id> --change "<name>" --json
      ```
    - The instructions JSON includes:
-     - `context`: Project background (constraints for you - do NOT include in output)
-     - `rules`: Artifact-specific rules (constraints for you - do NOT include in output)
+     - `context`: Project background (constraints for you - do not include in output)
+     - `rules`: Artifact-specific rules (constraints for you - do not include in output)
      - `template`: The structure to use for your output file
      - `instruction`: Schema-specific guidance
      - `outputPath`: Where to write the artifact
      - `dependencies`: Completed artifacts to read for context
-     - `locale`: The language to write the artifact in (e.g., "Japanese (日本語)"). If present, you MUST write the artifact content in this language. Spec files (specs/\*_/_.md) default to English instead — unless the project sets `spec_locale` in `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
-   - Read each completed dependency for context via `speclink artifact cat <artifact-id> --change "<name>"` (never open artifact files by path — the documents may live in a remote store)
-   - Generate the artifact content using `template` as the structure
+     - `locale`: The language to write the artifact in (e.g., "Japanese (日本語)"). If present, write the artifact content in this language. Spec files (specs/\*_/_.md) default to English instead — unless the project sets `spec_locale` in `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
+   - Read each completed dependency for context via `speclink artifact cat <artifact-id> --change "<name>"` before you write the new artifact (never open artifact files by path — the documents may live in a remote store)
+   - Follow the `instruction` field and use `template` as the structure for your output file — fill in its sections
+   - `context` and `rules` are constraints for you, not content for the file: apply them, but never copy `<context>`, `<rules>`, or `<project_context>` blocks into the artifact
    - **Mark manual tasks with `[M]`** (tasks artifact only): a task the agent cannot do itself — the user has to do it by hand, whether that is operating the product and accepting the result, creating an account on an external service, or placing a key — carries an `[M]` marker. Anything the agent can do itself, including code and automated tests, never carries it. The marker is what lets the quality stations judge "the code is finished" separately from "a human did their part": they run once every non-`[M]` task is checked, while archive still waits for all of them.
 
-     **The marker goes right after the checkbox, separated by exactly one space; the task number comes after the marker, never before it.** Putting the number first reads naturally and is the easy mistake — the engine does not accept the marker there.
+     **The marker goes right after the checkbox, separated by exactly one space; the task number comes after the marker, NEVER before it.** Putting the number first reads naturally and is the easy mistake — the engine does not accept the marker there.
 
      ```
      Write:  - [ ] [M] 3.2 Open the imported document and confirm the list stays one list
@@ -299,7 +301,6 @@ If no argument is provided, the workflow will extract requirements from conversa
      ```
 
      A misplaced marker is read as ordinary description text: the task silently counts as code work, "code tasks all complete" never becomes true, and apply stalls on a task no agent may check off. `speclink validate` reports it as an error.
-   - Apply `context` and `rules` as constraints - but do NOT copy them into the file
    - Write the artifact via CLI (the CLI handles directory creation and format validation):
 
      For **design** or **tasks**:
@@ -320,7 +321,7 @@ If no argument is provided, the workflow will extract requirements from conversa
 
      If the command fails with a validation error, fix the content and retry.
 
-     **The `--new` flag declares a new capability.** A capability the canonical specs do not carry yet is refused by default, and the error lists up to three similar existing names with their Purpose lines. Always run the command WITHOUT `--new` first; only when it refuses AND you have confirmed the suggestion list holds no synonym of your capability, re-run the same command with `--new` appended to declare it as genuinely new. If a suggested name IS the same capability, reuse that exact name instead of declaring a new one.
+     **The `--new` flag declares a new capability.** A capability the canonical specs do not carry yet is refused by default, and the error lists up to three similar existing names with their Purpose lines. Always run the command without `--new` first; only when it refuses AND you have confirmed the suggestion list holds no synonym of your capability, re-run the same command with `--new` appended to declare it as genuinely new. If a suggested name IS the same capability, reuse that exact name instead of declaring a new one.
 
    - Show brief progress: "✓ Created <artifact-id>"
 
@@ -329,9 +330,7 @@ If no argument is provided, the workflow will extract requirements from conversa
    - Check if every artifact ID in `applyRequires` has `status: "done"`
    - Stop when all `applyRequires` artifacts are done
 
-   c. **If an artifact requires user input** (unclear context):
-   - Use **AskUserQuestion tool** to clarify
-   - Then continue with creation
+   c. **An artifact needs input you do not have** → prefer a reasonable decision that keeps the momentum; only when the context is critically unclear, use the **AskUserQuestion tool** to clarify, then continue with creation.
 
 8. **Inline Self-Review** (before CLI analysis)
 
@@ -363,43 +362,26 @@ If no argument is provided, the workflow will extract requirements from conversa
    - Are boundary conditions defined (empty input, max limits, error cases)?
    - Could "the system" refer to multiple components? Be explicit.
 
-   **Check 5: Durable Handoff Review** (run BEFORE the CLI analyzer)
+   **Check 5: Durable Handoff Review** (run before the CLI analyzer)
 
    This change has to survive being handed to another agent. Reject and fix any of the following:
-   - **File-path-only tasks**: a task whose entire description is "edit file X" with no behavior, contract, or verification target. File paths are locator context — the task SHALL still describe what is observably true when complete.
+   - **File-path-only tasks**: a task whose entire description is "edit file X" with no behavior, contract, or verification target. File paths are locator context — the task still describes what is observably true when complete.
    - **Line-number-coupled instructions**: design or tasks content that points to "line 42" / "the function on lines 80-95" as the only way to identify the work. Source line numbers drift; name the function, command, struct, or behavior instead.
    - **Vague acceptance criteria**: success conditions like "works correctly", "behaves as expected", "handles edge cases" without naming the observable behavior or the verification target (test name, CLI invocation, analyzer rule, manual assertion).
-   - **Missing scope boundaries on non-trivial work**: design lacking explicit "in scope" / "out of scope" lines for any change that touches more than one subsystem or introduces new behavior. Trivial artifact-only edits MAY skip this; runtime, build, or tooling effects MUST NOT.
+   - **Missing scope boundaries on non-trivial work**: design lacking explicit "in scope" / "out of scope" lines for any change that touches more than one subsystem or introduces new behavior. Trivial artifact-only edits may skip this; runtime, build, or tooling effects may not.
 
    Fix every failure inline using the existing context before running the CLI analyzer. If a failure cannot be fixed without new input from the user, surface it explicitly rather than papering over it.
-
----
-
-## Rationalization Table
-
-| What You're Thinking                                          | What You Should Do                                                                    |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| "The requirements are clear enough, no need for discuss"      | Fine if true — but check you're not skipping because you're lazy                      |
-| "This artifact isn't needed for this change"                  | Check `applyRequires` — if it's in the dependency chain, create it                    |
-| "The spec doesn't need scenarios, the requirement is obvious" | Obvious to you now. Write scenarios for the implementer who doesn't have your context |
-| "I'll keep the design brief, code will be self-explanatory"   | Design exists so implementers don't reverse-engineer intent. Be specific              |
-| "This is a small change, skip the scope check"                | Small changes touching 5 subsystems aren't small. Check                               |
-| "The placeholder is fine for now, I'll fill it in later"      | There is no "later" — implementation is next. Fill it in now                          |
-
----
 
 9. **Analyze-Fix Loop** (max 2 iterations)
    1. Run `speclink analyze <change-name> --json`
    2. Filter findings to **Critical and Warning only** (ignore Suggestion)
-   3. If no Critical/Warning findings → show "Artifacts look consistent ✓" and proceed
-   4. If Critical/Warning findings exist:
+   3. No Critical/Warning findings → show "Artifacts look consistent ✓" and proceed
+   4. Critical/Warning findings exist →
       a. Show: "Found N issue(s), fixing... (attempt M/2)"
       b. Fix each finding in the affected artifact
       c. Re-run `speclink analyze <change-name> --json`
       d. Repeat up to 2 total iterations
-   5. After 2 attempts, if findings remain:
-      - Show remaining findings as a summary
-      - Proceed normally (do NOT block)
+   5. Findings remain after 2 attempts → show them as a summary and proceed normally (do not block)
 
 10. **Validation**
 
@@ -418,33 +400,24 @@ If no argument is provided, the workflow will extract requirements from conversa
 
     Inform the user that the change is ready and that running `$speclink-apply <change-name>` when ready will start implementation.
 
-    If you are currently in Codex Plan Mode, also remind the user to switch the session to normal mode before running `$speclink-apply <change-name>`. This is only a reminder: do NOT try to use ExitPlanMode or EnterPlanMode, do NOT ask whether to switch modes, and do NOT invoke apply.
+    If you are currently in Codex Plan Mode, also remind the user to switch the session to normal mode before running `$speclink-apply <change-name>`. This is only a reminder: do not try to use ExitPlanMode or EnterPlanMode, do not ask whether to switch modes, and do not invoke apply.
 
-    The propose workflow ENDS here. Do NOT invoke `$speclink-apply`. Do NOT call **AskUserQuestion** to ask whether to apply. This behavior is identical across Auto Mode, interactive mode, and any other agent mode.
+    The propose workflow ENDS here. Do not invoke `$speclink-apply`, and do not call **AskUserQuestion** to ask whether to apply. This behavior is identical across Auto Mode, interactive mode, and any other agent mode.
 
     After the summary, run the **Pending-change landscape check** below before presenting Next steps.
 
-**Artifact Creation Guidelines**
+---
 
-- Follow the `instruction` field from `speclink instructions` for each artifact type
-- Read dependency artifacts for context before creating new ones
-- Use `template` as the structure for your output file - fill in its sections
-- **IMPORTANT**: `context` and `rules` are constraints for YOU, not content for the file
-  - Do NOT copy `<context>`, `<rules>`, `<project_context>` blocks into the artifact
-  - These guide what you write, but should never appear in the output
+## Rationalization Table
 
-**Guardrails**
-
-- Create all artifacts needed for implementation. Optional artifacts (those not in the `applyRequires` dependency chain) may be skipped if their inclusion criteria don't apply.
-- Always read dependency artifacts before creating a new one
-- If context is critically unclear, ask the user - but prefer making reasonable decisions to keep momentum
-- If a change with that name already exists, suggest continuing that change instead
-- Verify each artifact file exists after writing before proceeding to next
-- **NEVER** write application code or implement features during this workflow
-- **NEVER** skip the artifact workflow to write code directly
-- **NEVER** reinterpret requirements by ignoring the proposal file
-- **NEVER** invoke `$speclink-apply` — this workflow ends after artifact creation. The user decides when to start implementation
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+| What You're Thinking                                          | What You Should Do                                                                    |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| "The requirements are clear enough, no need for discuss"      | Fine if true — but check you're not skipping because you're lazy                      |
+| "This artifact isn't needed for this change"                  | Check `applyRequires` — if it's in the dependency chain, create it                    |
+| "The spec doesn't need scenarios, the requirement is obvious" | Obvious to you now. Write scenarios for the implementer who doesn't have your context |
+| "I'll keep the design brief, code will be self-explanatory"   | Design exists so implementers don't reverse-engineer intent. Be specific              |
+| "This is a small change, skip the scope check"                | Small changes touching 5 subsystems aren't small. Check                               |
+| "The placeholder is fine for now, I'll fill it in later"      | There is no "later" — implementation is next. Fill it in now                          |
 
 ## Pending-change landscape check
 
@@ -467,6 +440,16 @@ Run this check after the summary, right before presenting the Next steps below.
    - `next` is the first change that is ready to start; `skipped` lists changes whose metadata could not be parsed — name them so the user can repair them.
    - For each change whose `archiveAfter` is non-empty, add one line: 「封存時 <change> 要在 <archiveAfter 的名稱> 之後」 — an archive-order note only; it never delays a start.
 6. The check is suggestions only — report the waves or the order and stop; never invoke any skill automatically.
+
+## Guardrails
+
+Check these before you present the Next steps:
+
+- [ ] Every artifact in the `applyRequires` chain exists and `speclink status` shows it done; optional artifacts were skipped only when their criteria did not apply (step 7).
+- [ ] No application code was written, and `$speclink-apply` was not invoked (step 11).
+- [ ] Every manual task carries `[M]` right after the checkbox, before the task number (step 7).
+- [ ] `speclink validate` passed (step 10).
+- [ ] The landscape check ran when two or more changes are active, and each prerequisite it found was recorded with `speclink change depends`.
 
 ## Next steps
 

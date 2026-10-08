@@ -5,13 +5,13 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
 Verify that an implementation matches the change artifacts (specs, tasks, design).
 
-**Input**: Optionally specify a change name after `/speclink-verify` (e.g., `/speclink-verify add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name after `/speclink-verify` (e.g., `/speclink-verify add-auth`). If omitted, check if it can be inferred from conversation context; if it is still vague or ambiguous, step 1 asks the user.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
@@ -25,7 +25,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
    Include the schema used for each change if available.
    Mark changes with incomplete tasks as "(In Progress)".
 
-   **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose.
+   Do NOT guess or auto-select a change — always let the user choose, and wait for the answer.
 
 2. **Check status to understand the schema**
 
@@ -45,15 +45,15 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
    This returns the change directory and context files. Read all available artifacts from `contextFiles`, and note `progress` (complete vs total tasks).
 
-   **Remote mode**: when the workspace is connected to a remote store, `contextFiles` points into the read-only Context Projection (`.speclink/context/`) — a local snapshot of the remote canon. Read, search, and grep it freely, but NEVER edit projection files: a direct edit is not a remote write and the next command will reject the projection as modified. Any spec or artifact change goes through speclink verbs. If a `STALE` marker file exists at the projection root or a command reports the projection as modified, re-run `speclink instructions apply` to refresh it.
+   **Remote mode**: when the workspace is connected to a remote store, `contextFiles` points into the read-only Context Projection (`.speclink/context/`) — a local snapshot of the remote canon. Read, search, and grep it freely, but never edit projection files: a direct edit is not a remote write and the next command will reject the projection as modified. Any spec or artifact change goes through speclink verbs. If a `STALE` marker file exists at the projection root or a command reports the projection as modified, re-run `speclink instructions apply` to refresh it.
 
    The payload also carries `locale` — the resolved language for AI output (e.g., "Traditional Chinese (繁體中文)"). Remember it: the verification report is written in this language (see Output Format).
 
 4. **Branch on the call: mid-flight check-in, closing stamp re-entry, or finished-work verification**
 
-   **Not every code task is done (`codeRemaining > 0`) → mid-flight progress check-in.** Run the three dimensions as a conversation report only (steps 6–9 below, reading whatever artifacts and code you need). Do NOT run `speclink verify scope`, do NOT run `speclink verify add-round`, and do NOT stamp. The verify ticket records the verification of finished work — a check-in round landing in it would make "open ticket" stop meaning "the product's verification is unfinished" and would trip the archive gate for nothing. Report and STOP after step 9.
+   **Not every code task is done (`codeRemaining > 0`) → mid-flight progress check-in.** Run the three dimensions as a conversation report only (steps 6–9 below, reading whatever artifacts and code you need). Do not run `speclink verify scope`, do not run `speclink verify add-round`, and do NOT stamp. The verify ticket records the verification of finished work — a check-in round landing in it would make "open ticket" stop meaning "the product's verification is unfinished" and would trip the archive gate for nothing. Report and STOP after step 9.
 
-   **The `/speclink-quality` timeline's closing stamp call, and the ticket's last round's must-fix set is empty** (`speclink verify show "<name>" --json` — `lastRound.findings` has no CRITICAL/WARNING entries; SUGGESTION-only counts as empty) → branch at the entry, do not walk the full flow: run `speclink verify scope "<name>" --json`. An empty movement patch (nothing moved since that round) → skip the checking pass entirely, run `speclink verify stamp "<name>" --agent claude` directly and report — do NOT record another empty round. A non-empty patch → continue from step 6 as a normal validation pass; on this call step 13's defer exception is off, so the cleared round stamps immediately. `needsInput` or a scope failure here follows step 5's disposals unchanged — never guess past them.
+   **The `/speclink-quality` timeline's closing stamp call, and the ticket's last round's must-fix set is empty** (`speclink verify show "<name>" --json` — `lastRound.findings` has no CRITICAL/WARNING entries; SUGGESTION-only counts as empty) → branch at the entry, do not walk the full flow: run `speclink verify scope "<name>" --json`. An empty movement patch (nothing moved since that round) → skip the checking pass entirely, run `speclink verify stamp "<name>" --agent claude` directly and report — do not record another empty round. A non-empty patch → continue from step 6 as a normal validation pass; on this call step 13's defer exception is off, so the cleared round stamps immediately. `needsInput` or a scope failure here follows step 5's disposals unchanged — never guess past them.
 
    **Every code task is done (`codeRemaining` is 0) → finished-work verification.** Continue to step 5. `[M]` manual tasks do not hold this back — they are work only the user can do by hand, and the stamp deliberately does not wait for it. When `remaining` is still above 0, name the open manual tasks in the report: the verification covers the code, and archive is what waits for the manual runs.
 
@@ -75,11 +75,11 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
    **Discovery (`phase: discovery`) — the one and only exploration pass.** Run the full three dimensions (steps 7–9) against every change artifact, using the frozen patch and the callers/tests needed to judge its direct impact as the code evidence.
 
-   **Validation (`phase: validation`) — remediation validation, never re-discovery.** Take ONLY the last round's unresolved findings (verbatim), the accepted list, the remediation patch frozen in step 5, and the adjacent callers/tests needed to judge it. Decide per original finding: resolved or unresolved. Report only regressions the remediation patch directly introduces. Do NOT re-scan the whole change, the finding's whole file, or any unmodified area; do NOT raise new SUGGESTIONs or pre-existing issues in unchanged areas.
+   **Validation (`phase: validation`) — remediation validation, never re-discovery.** Take ONLY the last round's unresolved findings (verbatim), the accepted list, the remediation patch frozen in step 5, and the adjacent callers/tests needed to judge it. Decide per original finding: resolved or unresolved. Report only regressions the remediation patch directly introduces. Do not re-scan the whole change, the finding's whole file, or any unmodified area; do not raise new SUGGESTIONs or pre-existing issues in unchanged areas.
 
    **Segments marked `attribution: "adjacent"`** are files the remediation moved that no finding named — a caller, a test, a regenerated artifact, or a parallel session's edit leaking in. Confirm segment by segment that each genuinely belongs to THIS remediation, and report anything that does not as a regression. Never adopt an adjacent segment silently.
 
-   **Unrelated late findings during validation**: something new that the remediation patch did not cause must NOT be added to the current round and must NOT reopen discovery. Only when it carries evidence — a realistic trigger path plus one of a reproduction, a failing test, or a clear invariant violation — AND it affects security, data loss, or wrong behavior, end this station as **scope changed / failed**: keep the ticket, do not stamp, and recommend a separate discovery or a spun-off change. Anything below that bar is a note for later, never a blocker.
+   **Unrelated late findings during validation**: something new that the remediation patch did not cause must not be added to the current round and must not reopen discovery. Only when it carries evidence — a realistic trigger path plus one of a reproduction, a failing test, or a clear invariant violation — AND it affects security, data loss, or wrong behavior, end this station as **scope changed / failed**: keep the ticket, do not stamp, and recommend a separate discovery or a spun-off change. Anything below that bar is a note for later, never a blocker.
 
 7. **Verify Completeness**
 
@@ -187,7 +187,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
     - **Must-fix** — CRITICAL findings; Correctness findings with a realistic trigger path (WARNING included); requirements or scenarios with no implementation at all.
     - **Discretionary** — pattern-consistency observations and other nice-to-fix items. Give each one line: the cost of fixing weighed against the benefit.
 
-    Severity IS the blocking boundary: must-fix findings are recorded as CRITICAL or WARNING; discretionary findings are ALWAYS recorded as SUGGESTION — never WARNING. SUGGESTION-level findings do not block the stamp, need nobody's approval, and never enter the acceptance mechanism.
+    Severity IS the blocking boundary: must-fix findings are recorded as CRITICAL or WARNING; discretionary findings are always recorded as SUGGESTION — never WARNING. SUGGESTION-level findings do not block the stamp, need nobody's approval, and never enter the acceptance mechanism.
 
     The **blocking set** of a round is its must-fix findings the user has not accepted — step 13's loop rule runs on its size.
 
@@ -230,7 +230,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
       2. **Accept as-is and stamp** — `speclink verify stamp "<name>" --accept --agent claude` (stamps with reservations; the round's findings stay on record in the change history).
       3. **Stop without stamping** — end the session; the ticket and its frozen snapshot stay for a later session or another verifier (`speclink verify show <name> --json` hands them the last round).
 
-    - **Bn is not strictly smaller than Bn-1** (equal or larger) → the round is already recorded; report **failed** immediately: keep the ticket, do NOT stamp, do NOT start another round automatically. The user decides what happens next (more work outside this loop, `--accept`, or discard).
+    - **Bn is not strictly smaller than Bn-1** (equal or larger) → the round is already recorded; report **failed** immediately: keep the ticket, do NOT stamp, do not start another round automatically. The user decides what happens next (more work outside this loop, `--accept`, or discard).
 
     The shrinking blocking set only decides whether the automatic loop may continue — it is never a quality score and never described as "passed". There is no fixed maximum round count; every automatic continuation must strictly shrink the blocking set.
 
@@ -262,18 +262,20 @@ Use clear markdown with:
 
 **Guardrails**
 
-- `/speclink-verify` judges spec compliance; the review station judges craft — never issue craft verdicts here
-- The mid-flight check-in never touches the ticket: no `verify scope`, no `verify add-round`, no stamp
-- Round 1 is the only discovery pass; validation rounds judge the original findings and the remediation patch's direct regressions — nothing else
-- The frozen patch from `speclink verify scope` is the code evidence; touched file lists and worktree state never substitute for it
-- needsInput and scope failures wait for an explicit disposal (trusted `--base`, hash-pinned selection, isolated worktree, or discard) — never guess past them
-- The checking pass is read-only; every fix returns to the main thread
-- The ticket is verb-owned: create, append, and close it only through `speclink verify` verbs
-- Unresolved findings travel verbatim between rounds — rewording fakes progress
-- The verification gate is hard: no next round starts on a failing build or test suite
-- Accepted findings are carried, never re-reported
-- Thin artifacts: verify what exists, never invent requirements
-- Stop on errors and report — don't guess past a failing verb
+Check these before you report:
+
+- [ ] `/speclink-verify` judges spec compliance; the review station judges craft — never issue craft verdicts here
+- [ ] The mid-flight check-in never touches the ticket: no `verify scope`, no `verify add-round`, no stamp
+- [ ] Round 1 is the only discovery pass; validation rounds judge the original findings and the remediation patch's direct regressions — nothing else
+- [ ] The frozen patch from `speclink verify scope` is the code evidence; touched file lists and worktree state never substitute for it
+- [ ] needsInput and scope failures wait for an explicit disposal (trusted `--base`, hash-pinned selection, isolated worktree, or discard) — never guess past them
+- [ ] The checking pass is read-only; every fix returns to the main thread
+- [ ] The ticket is verb-owned: create, append, and close it only through `speclink verify` verbs
+- [ ] Unresolved findings travel verbatim between rounds — rewording fakes progress
+- [ ] The verification gate is hard: no next round starts on a failing build or test suite
+- [ ] Accepted findings are carried, never re-reported
+- [ ] Thin artifacts: verify what exists, never invent requirements
+- [ ] Stop on errors and report — don't guess past a failing verb
 
 ## Next steps
 

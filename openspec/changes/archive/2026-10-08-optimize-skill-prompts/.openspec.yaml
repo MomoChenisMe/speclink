@@ -1,0 +1,588 @@
+schema: spec-driven
+created: 2026-10-08
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: skill-prompt-optimization
+depends_on: add-copilot-tool
+started_at: 2026-10-08
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-08
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 23
+reviewed_scope:
+  - path: crates/engine/speclink-core/assets/skills/analyze.md
+    hash: cf484e96ac04e10fbed9ab061fb5ff0fbdc291d6d6ae6dae41890df1db1b72c1
+  - path: crates/engine/speclink-core/assets/skills/apply-worktree-post.md
+    hash: 3ad1e4cd7d9108ea3dd0642a7f19beeb27eea9b07fd71c81e59fe3eb95af76db
+  - path: crates/engine/speclink-core/assets/skills/apply-worktree-pre.md
+    hash: 99bbf3c87d50fe04d155f6e39f3a1a518201f059fc9f8a451be9a14d26076da2
+  - path: crates/engine/speclink-core/assets/skills/apply.md
+    hash: 69608b38fbee9027310b1123d88e738612acbc1c9a5ea1f525364da53fdd252e
+  - path: crates/engine/speclink-core/assets/skills/archive.md
+    hash: b8156bc53ca8d4c210d92bb6578cdf8c30a8bdc95a112178e6c6a54b0fd06736
+  - path: crates/engine/speclink-core/assets/skills/audit.md
+    hash: 715101007de4dbff9753a7f3fbb9351a2ba253378c4c87c0ba8341fc1d52d848
+  - path: crates/engine/speclink-core/assets/skills/baseline.md
+    hash: 430441d4f21d29f44456e8ff952e5e69822a47f7f708164fb87e3bf2c02c3aca
+  - path: crates/engine/speclink-core/assets/skills/commit.md
+    hash: ee4f3551f3e437e89bb86db70e5f398da6593db1954ffa689de0835d3cb951de
+  - path: crates/engine/speclink-core/assets/skills/config.md
+    hash: 519920eb4b8e3518b87af55d64c1630a66ef45c3ff975850cff20d624eb206b1
+  - path: crates/engine/speclink-core/assets/skills/discuss.md
+    hash: 31dacb26212b2880c58daa6bb873aad74ee1a4266d72e6bf516a768d4d03c9f0
+  - path: crates/engine/speclink-core/assets/skills/drift.md
+    hash: 8dff25a193f5317b5e2344caf8bcc5c57735d3830a2890f52da860806c0e89d5
+  - path: crates/engine/speclink-core/assets/skills/improve.md
+    hash: 8b2fbee73184c319a7eac0692a9f01eddeeef2c6133b5d4d3731437ac6e59da3
+  - path: crates/engine/speclink-core/assets/skills/ingest.md
+    hash: 961cf29ac0a200d8494a81230b62651344a8cd9759f374fd242234253cc3274f
+  - path: crates/engine/speclink-core/assets/skills/manual.md
+    hash: 44d02195fd818b75a03f7867b7d80f6a2ca14b32e1bdb7976c54c799bdfd8dfa
+  - path: crates/engine/speclink-core/assets/skills/propose.md
+    hash: 92f5a0a6d62958df3a1b5ff95803680c47c9cef60da25cf3fcb8607dac6aef22
+  - path: crates/engine/speclink-core/assets/skills/quality.md
+    hash: 3067863ccebd905eea8d5c587dbcaa59d3d9c3372f1757b3c491694e45021193
+  - path: crates/engine/speclink-core/assets/skills/review.md
+    hash: 1a70e4b6e919099a92531a7057f20c580eeabe7c2169a08f8f92a184ee034696
+  - path: crates/engine/speclink-core/assets/skills/trace.md
+    hash: 1173d95ac4d012145a7af86174d3833fa1b2eccf9b99ceb4ee7429a8ed634cf8
+  - path: crates/engine/speclink-core/assets/skills/verify.md
+    hash: e2019f2bbbb1611ff9183530b6cc0148ae1f00f23622d12803d72f07d9d7e758
+  - path: crates/engine/speclink-core/assets/skills/worktree-merge.md
+    hash: 4ba724017f1b3ae1953b25bf393e292646f9d7bcf73e5cd2abd767a9148c637a
+  - path: crates/engine/speclink-core/src/workspace/init.rs
+    hash: 45e65f89c5b2cef5a0716840c50841a6ac010b44a6ef41df5ccc514dd6f50711
+  - path: crates/engine/speclink-core/tests/golden/assets.lock
+    hash: 02136f09101d3cde14d9bbcfa148aee96bee6d0cfd67a1bcff83322e29d749f2
+  - path: crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: e6babae30d44ab2367028c454fd5482068c7bef39a654b9ad562b63edd5bcf6a
+  - path: crates/engine/speclink-core/tests/golden/claude.snapshot.md
+    hash: 4ba21fa102364e68d26b74a6d5cace9d4b339388f6673a07aced1489e6168e99
+  - path: crates/engine/speclink-core/tests/golden/codex.snapshot.md
+    hash: e6d36b1ba155893aa2e29d07934194e7c8f2c70146debfbb9d726951b4545d5f
+  - path: crates/engine/speclink-core/tests/golden/copilot.snapshot.md
+    hash: 5632dc06f449ed3222163683e8820401dd242711682329519e27e9083c77c957
+  - path: crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: 02ca9e8f8e640ba6202c51dbf61b8fb7586696b430960a5db06908737140003c
+  - path: crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: d7dafd3d540606335b9dccc2743a487e61a10661cac077fc0822b3a1ca9ae5f4
+  - path: crates/engine/speclink-core/tests/it/main.rs
+    hash: 11cf08bf7c431185bd90d0539c817e2c262f76ed8cb2dcb04d54f212a9d76c34
+  - path: crates/engine/speclink-core/tests/it/render_golden.rs
+    hash: 05af5f98b4aeb0bb39af169caa8939c97d53d9ea39e4ce6d388bc7dbe73c0c83
+  - path: crates/engine/speclink-core/tests/it/skill_authoring.rs
+    hash: 14e2696966f3b3a2cacb7ff92ea79741552c586ef7bb0c907e676bc4974e85cb
+  - path: integrations/claude-code/skill-evals/.claude-plugin/plugin.json
+    hash: 355094a4f1dc04733131185c0065f1a6f6d5099b2c419867e8ed18940d251f70
+  - path: integrations/claude-code/skill-evals/evals/analyze-reports-only/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/analyze-reports-only/graders/no-edit.md
+    hash: f6397e6357e613abd483b977042203e76f5da4cbae2d53a26c6727b0044df1ba
+  - path: integrations/claude-code/skill-evals/evals/analyze-reports-only/graders/no-write.md
+    hash: 08de7c84f579d4feed1a07efd08c2064f2e97212657c52b1229cfb6adb9d939d
+  - path: integrations/claude-code/skill-evals/evals/analyze-reports-only/graders/reports-findings.md
+    hash: 8361e8c2bee3c92119f81b5478819cc90f6004f8e71cdb9af8b491a36e3874d0
+  - path: integrations/claude-code/skill-evals/evals/analyze-reports-only/prompt.md
+    hash: 0898a02f0e81e125377115e4962f9cecdb4273532ef2c5b829be729aa23673a2
+  - path: integrations/claude-code/skill-evals/evals/analyze-reports-only/scaffold.sh
+    hash: a353f03e01c95a54190b08e00c55738ad21e4e539b7271498ad89807aec331e3
+  - path: integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/graders/code-task-checked.md
+    hash: 94bab8fa59641589e987451dcd04ad8d2bad53011a314191404c57e030f54877
+  - path: integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/graders/greeting-created.md
+    hash: 0bdc366c2d3b9e94943eb4246db5ee609c70c90d3ca356457b82bc396e047c87
+  - path: integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/graders/manual-task-left-open.md
+    hash: 31c80c791659244708f944cb7e93d98ff4e8551f82f4ad049bc1504e8828b29f
+  - path: integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/prompt.md
+    hash: 4ad28c244be16a7e9906b2f329c56cd86e4d9067bdb741ae34fe7b119289335d
+  - path: integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/scaffold.sh
+    hash: aa7e50a202b75808c839f233bc603c13c2c959677e9a2762db6dcee94c6b08c8
+  - path: integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/graders/creates-worktree.md
+    hash: 2fdf9cd31494beefb932701c80e1ebc14fd6a3ab211b4e0a2d13a2b3de9f60c7
+  - path: integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/graders/hands-off-to-merge.md
+    hash: d113430997f4beaf05dc6c540e262e00adbd827fc3fc43b0cbfc85ffd1845c29
+  - path: integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/graders/no-merge.md
+    hash: 061b5c20e2a9d054e4485ee0a89ea85884fcd634a064b6a481960e5c7e3bc003
+  - path: integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/prompt.md
+    hash: 20fdf2d0b715f391295ecbb59e76ecb3bcb6647128ebcee967a0da2571fdd60d
+  - path: integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/scaffold.sh
+    hash: 1b831ccda3457e9c73d19759bb32e298dda162ae25aaafdee9fae5aac2fcdcda
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/no-hand-edit.md
+    hash: 2d4e45c9785c3e2947f8d5cb84c3e251bc224fd9a21617b65b45e54b3a89fc1e
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/no-hand-write.md
+    hash: a40d6fc67452dddac85758e88b7813ab56b7776a163e612407cf125341826961
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/spec-merged.md
+    hash: 0dc2f81404b82b10439302475f1236ede82eae3fb3b257ce5dfe558f64884efd
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/uses-archive-verb.md
+    hash: dd767708dd90c4fe89e25de93f33c2a08dac0567fd025ff1334a71dc7ca20817
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/prompt.md
+    hash: 190e15890702119b5384a574e9bd63a9fb38eaf1313cae15a387087e6a976745
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/scaffold.sh
+    hash: a9c26278949efdb227d4be75b1405ed910999d96b81237e0f719e314c3907154
+  - path: integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/graders/names-the-option.md
+    hash: ed29bc2c5842fd4b560b14f2161c20a9dba74f6c59d86de6145c51fa5649e9b1
+  - path: integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/graders/no-edit.md
+    hash: f6397e6357e613abd483b977042203e76f5da4cbae2d53a26c6727b0044df1ba
+  - path: integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/graders/no-write.md
+    hash: 08de7c84f579d4feed1a07efd08c2064f2e97212657c52b1229cfb6adb9d939d
+  - path: integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/prompt.md
+    hash: 028c9c406dc8a5231aa569366712b0010a3827987ead90dfd9905347e2f60b53
+  - path: integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/scaffold.sh
+    hash: 9a1eb6dedba69056e4e96ab7a58f7f7906b3fc8cec013a4e3cebaaaa4c9d8198
+  - path: integrations/claude-code/skill-evals/evals/baseline-map-before-specs/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/baseline-map-before-specs/graders/asks-to-confirm-map.md
+    hash: bbb3cd7b70db882db1484ef87ccef513966d37a369a93e16a46194b951d0dcf5
+  - path: integrations/claude-code/skill-evals/evals/baseline-map-before-specs/graders/no-specs-yet.md
+    hash: 4d2c0cf16c991bb1ce6469a915c267acfddaa18d104c085aad94ff1860dfd3a5
+  - path: integrations/claude-code/skill-evals/evals/baseline-map-before-specs/prompt.md
+    hash: eb9d197a2cde874b939df207806ed952d835dd541f1bfb91b276c07a9aefe56b
+  - path: integrations/claude-code/skill-evals/evals/baseline-map-before-specs/scaffold.sh
+    hash: d64054aa1eb5c1f6433601a5d87610674c57935244ce0342601f24a731e54a75
+  - path: integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/graders/no-commit-yet.md
+    hash: 7169874a13fc04e8b640c2f312f6952578f37070d1e7ddec86a2cb87724fb2f8
+  - path: integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/graders/plan-then-confirm.md
+    hash: 203e7e2a91a9eb8ee861ce0ba73d0dfbf7dc9aeaf6a33a4ebe5529d25586b971
+  - path: integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/prompt.md
+    hash: 351071066a3ee8aa17bfba3cb4264b5e02675f20bb97b01749f25dbd2d8f3ab0
+  - path: integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/scaffold.sh
+    hash: 3452883abb6c1a0cc747e19614d54aa3b1dc33eb6998ae43c2b33023f2eb2d68
+  - path: integrations/claude-code/skill-evals/evals/config-asks-before-writing/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/config-asks-before-writing/graders/asks-or-shows-diff.md
+    hash: aa3fde7bb7bfbeb88e94aad8484ee3189511318f56e3687bcfb019d5b654ecc5
+  - path: integrations/claude-code/skill-evals/evals/config-asks-before-writing/graders/no-config-write.md
+    hash: 95b25d07345fe423078b5c0a09e38fbeb75d8d2244567da4d842215e97c36c56
+  - path: integrations/claude-code/skill-evals/evals/config-asks-before-writing/prompt.md
+    hash: 170250a8c03950c23289b59ee8eea111ad8619b83d6026862b52b279cff5d955
+  - path: integrations/claude-code/skill-evals/evals/config-asks-before-writing/scaffold.sh
+    hash: 1f277473e109bccdb784d4ed135f6ccb1607203e918a4c34126fc9ec17213d5b
+  - path: integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/graders/ends-with-question.md
+    hash: a0a330ccda777908b67561ced8ab9b0585f36e3221a04c749dcc12819833aa47
+  - path: integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/graders/no-discuss-new.md
+    hash: ab823d76282b47f719434096a2f33ecec1017155c1da70c392d43788d543d03b
+  - path: integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/prompt.md
+    hash: 2fba37bd2d149086b549e37406400fabde063477bffbb54be59ac4476ae61d97
+  - path: integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/scaffold.sh
+    hash: 11692b544781834b9390eda9cfa0e023794a21010d4da1b20dc6c580c39479aa
+  - path: integrations/claude-code/skill-evals/evals/drift-reports-only/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/drift-reports-only/graders/names-missing-file.md
+    hash: 9a99f2e3843018e41a93f73382b8282ac7e52f5aa248be9a314a106f23f9b0dd
+  - path: integrations/claude-code/skill-evals/evals/drift-reports-only/graders/no-edit.md
+    hash: f6397e6357e613abd483b977042203e76f5da4cbae2d53a26c6727b0044df1ba
+  - path: integrations/claude-code/skill-evals/evals/drift-reports-only/graders/no-write.md
+    hash: 08de7c84f579d4feed1a07efd08c2064f2e97212657c52b1229cfb6adb9d939d
+  - path: integrations/claude-code/skill-evals/evals/drift-reports-only/prompt.md
+    hash: 76fb2f98c5dc120a128755059876797fc9da43f2a6be80088a0fbad9ec289bbb
+  - path: integrations/claude-code/skill-evals/evals/drift-reports-only/scaffold.sh
+    hash: 03662458442cbd1a81a2f6c70d27035c8f25ac5afd02a8701caa0229ae402076
+  - path: integrations/claude-code/skill-evals/evals/fixtures.sh
+    hash: 1a7e871212acc3c1ccc69216ee99a61db3b599fd72062186c5f631f8ce96e47b
+  - path: integrations/claude-code/skill-evals/evals/improve-scan-without-edits/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/improve-scan-without-edits/graders/lists-candidates.md
+    hash: 855639b3e6f5559b0ff3d5d48b539d3b6610c1df75ca31b5c8d656920036e121
+  - path: integrations/claude-code/skill-evals/evals/improve-scan-without-edits/graders/no-edit.md
+    hash: f6397e6357e613abd483b977042203e76f5da4cbae2d53a26c6727b0044df1ba
+  - path: integrations/claude-code/skill-evals/evals/improve-scan-without-edits/graders/no-write.md
+    hash: 08de7c84f579d4feed1a07efd08c2064f2e97212657c52b1229cfb6adb9d939d
+  - path: integrations/claude-code/skill-evals/evals/improve-scan-without-edits/prompt.md
+    hash: c478850a4e81d1bd1431274aec688d01a62705819edaf69af2591161648eda42
+  - path: integrations/claude-code/skill-evals/evals/improve-scan-without-edits/scaffold.sh
+    hash: 98f6ee7a198ed35732d19e19ea52d35cc35327b4adc3a2ed74ea2d2e312a68f6
+  - path: integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/graders/delta-has-new-requirement.md
+    hash: f018103acc964b5eb35191ceabcbae3faad4bff6844eb99571ab3164be223337
+  - path: integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/graders/runs-validate.md
+    hash: 03ac29aee886f212e2b247742268ea4c60243ccd800371084b7ed6bb2a60720d
+  - path: integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/prompt.md
+    hash: 90ce072c4ddd046b9d60a93945b212854fd88b5fbe1774307812fb500f36a11c
+  - path: integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/scaffold.sh
+    hash: 76ce934d5f20d38e44e02fee540ee14c3df50895616b2396dddea3d277eac0af
+  - path: integrations/claude-code/skill-evals/evals/manual-generates-pages/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/manual-generates-pages/graders/manual-page-written.md
+    hash: 50077bf4f44315c2da804407aaaf72088f809a25cd577c5f5ef32e8c9394f71a
+  - path: integrations/claude-code/skill-evals/evals/manual-generates-pages/prompt.md
+    hash: 4408979f119432c35cffd88e64985d59eaa64b2dbcd6cc8036e1cd64dc8f7457
+  - path: integrations/claude-code/skill-evals/evals/manual-generates-pages/scaffold.sh
+    hash: 89eb166561e465ee4f5889de7b888236807ec5b8100cd94e87b56be610a9fdd7
+  - path: integrations/claude-code/skill-evals/evals/propose-from-discussion/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/manual-marker-after-checkbox.md
+    hash: 7af1105206b3a0041dfa1f467adf1b2aeec4c62a268298c3c9685de97aae4d7a
+  - path: integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/no-apply.md
+    hash: 124fae524be1e40fe651da6e41f83b7092aa570ad0b43b93085e947bcb73c88c
+  - path: integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/no-marker-after-number.md
+    hash: 1cea4e2c4c40c4e473d9df0e13dd536fb51f3d3d4755073d8cb637373ffea918
+  - path: integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/runs-validate.md
+    hash: 03ac29aee886f212e2b247742268ea4c60243ccd800371084b7ed6bb2a60720d
+  - path: integrations/claude-code/skill-evals/evals/propose-from-discussion/prompt.md
+    hash: 276e5f86eb130f83d1179c969869c69de62ae77cdee1567a96df14c4cad270a1
+  - path: integrations/claude-code/skill-evals/evals/propose-from-discussion/scaffold.sh
+    hash: be1ee2606f9ef7074da4adb3173531761f0f682a22e4994fdc818f22c99695f9
+  - path: integrations/claude-code/skill-evals/evals/quality-pauses-after-round/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/quality-pauses-after-round/graders/no-stamp.md
+    hash: 325d771fd4d3c8c9eae4fbc074a7f31833348a3f1177cf7c1d0be6a6ccc97dc2
+  - path: integrations/claude-code/skill-evals/evals/quality-pauses-after-round/graders/reports-both-then-stops.md
+    hash: 41ed7e639fa1b27a7e672c596f9af3a158de58f462476dd058f5d2e0feffe80d
+  - path: integrations/claude-code/skill-evals/evals/quality-pauses-after-round/prompt.md
+    hash: dd5d7fd7705027e9832ed0a814efd34aa4cdcb4946691a8a0df5b3cd34677961
+  - path: integrations/claude-code/skill-evals/evals/quality-pauses-after-round/scaffold.sh
+    hash: bf8cf5bccf6b6b03ebcebbd9d8970b82b4f868d0d17388596ef8e20e15abdaec
+  - path: integrations/claude-code/skill-evals/evals/review-freezes-scope/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/review-freezes-scope/graders/findings-then-options.md
+    hash: e46a3f6be0598fc8d02d4fffa9809f4bfc42b7a61c3b2ab08b6e4ef2edd3d697
+  - path: integrations/claude-code/skill-evals/evals/review-freezes-scope/graders/freezes-scope.md
+    hash: 7fb0f62eb114c69bac9febe66d4bb9548fef29240378ed80d7ef0cd21cc7829f
+  - path: integrations/claude-code/skill-evals/evals/review-freezes-scope/graders/no-stamp.md
+    hash: d12871b20bf711e9ef84d9ae11121b832c76352e41c8861a2c248b38161fd98c
+  - path: integrations/claude-code/skill-evals/evals/review-freezes-scope/prompt.md
+    hash: c78e8456fc3974aec6f6bbebf0a4d614f514048efc88f1047ded5f15250bc593
+  - path: integrations/claude-code/skill-evals/evals/review-freezes-scope/scaffold.sh
+    hash: bf8cf5bccf6b6b03ebcebbd9d8970b82b4f868d0d17388596ef8e20e15abdaec
+  - path: integrations/claude-code/skill-evals/evals/trace-cites-archive/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/trace-cites-archive/graders/cites-archived-change.md
+    hash: 5fd925b87a54a827b6914fa9a007eea7b7048b4dea8da0e5c6ef033be1b43fa4
+  - path: integrations/claude-code/skill-evals/evals/trace-cites-archive/graders/no-edit.md
+    hash: f6397e6357e613abd483b977042203e76f5da4cbae2d53a26c6727b0044df1ba
+  - path: integrations/claude-code/skill-evals/evals/trace-cites-archive/graders/no-write.md
+    hash: 08de7c84f579d4feed1a07efd08c2064f2e97212657c52b1229cfb6adb9d939d
+  - path: integrations/claude-code/skill-evals/evals/trace-cites-archive/prompt.md
+    hash: 5079f47ad682085da17d1d624fd8acec1cf62a457a38762bd9f2b915f3835af0
+  - path: integrations/claude-code/skill-evals/evals/trace-cites-archive/scaffold.sh
+    hash: ac355aaf2b2c2baa7b461305daf3e20a8518e27ec7e66656560d0261be33d46c
+  - path: integrations/claude-code/skill-evals/evals/verify-freezes-scope/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/verify-freezes-scope/graders/findings-then-options.md
+    hash: b36f38438b05b0e306bef8db4345008c91d300e4b6d27e2677d95662410230b5
+  - path: integrations/claude-code/skill-evals/evals/verify-freezes-scope/graders/freezes-scope.md
+    hash: 0eac3d55904a7949a297b01e6d89242d09a3dc265b50606cd491278672365143
+  - path: integrations/claude-code/skill-evals/evals/verify-freezes-scope/graders/no-stamp.md
+    hash: b81f307a28576ab426424ee5caedae31337dd871955cff020a59d0d67a19b449
+  - path: integrations/claude-code/skill-evals/evals/verify-freezes-scope/prompt.md
+    hash: 2bbc22accbc7c58cb489596b2f7f5c7e076a7f08daeddb6e3b082689441ada65
+  - path: integrations/claude-code/skill-evals/evals/verify-freezes-scope/scaffold.sh
+    hash: bf8cf5bccf6b6b03ebcebbd9d8970b82b4f868d0d17388596ef8e20e15abdaec
+  - path: integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/graders/merges-branch.md
+    hash: 61d4c306f6ab0a783035d23fc5695e9af98c993cb45a7502f567050c3b72d218
+  - path: integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/graders/removes-worktree.md
+    hash: 6e484bb05a539ce9cca1d50015d146a052b62f6edcbdc2d4ce6d0b8c9010dd87
+  - path: integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/prompt.md
+    hash: 2b715bd359c2d05492184457d2dd61ae31bcf4244b48f0e46a8b7380ac64a6d0
+  - path: integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/scaffold.sh
+    hash: c8325a3c337b025877775795c3dde363a7ca57c9c6a47805a9c665883ca1b1e2
+  - path: scripts/claude-code/skill-evals.mjs
+    hash: 09eb6040dc267049024fdc8a83630c833b19089b2a9a470bdc02866af0022769
+  - path: scripts/claude-code/skill-evals.test.mjs
+    hash: 66421b1429759a643b02b07e52c1d8c8cee9b04745698a85913b140b76907545
+verified_at: 2026-10-08
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 23
+verified_scope:
+  - path: crates/engine/speclink-core/assets/skills/analyze.md
+    hash: cf484e96ac04e10fbed9ab061fb5ff0fbdc291d6d6ae6dae41890df1db1b72c1
+  - path: crates/engine/speclink-core/assets/skills/apply-worktree-post.md
+    hash: 3ad1e4cd7d9108ea3dd0642a7f19beeb27eea9b07fd71c81e59fe3eb95af76db
+  - path: crates/engine/speclink-core/assets/skills/apply-worktree-pre.md
+    hash: 99bbf3c87d50fe04d155f6e39f3a1a518201f059fc9f8a451be9a14d26076da2
+  - path: crates/engine/speclink-core/assets/skills/apply.md
+    hash: 69608b38fbee9027310b1123d88e738612acbc1c9a5ea1f525364da53fdd252e
+  - path: crates/engine/speclink-core/assets/skills/archive.md
+    hash: b8156bc53ca8d4c210d92bb6578cdf8c30a8bdc95a112178e6c6a54b0fd06736
+  - path: crates/engine/speclink-core/assets/skills/audit.md
+    hash: 715101007de4dbff9753a7f3fbb9351a2ba253378c4c87c0ba8341fc1d52d848
+  - path: crates/engine/speclink-core/assets/skills/baseline.md
+    hash: 430441d4f21d29f44456e8ff952e5e69822a47f7f708164fb87e3bf2c02c3aca
+  - path: crates/engine/speclink-core/assets/skills/commit.md
+    hash: ee4f3551f3e437e89bb86db70e5f398da6593db1954ffa689de0835d3cb951de
+  - path: crates/engine/speclink-core/assets/skills/config.md
+    hash: 519920eb4b8e3518b87af55d64c1630a66ef45c3ff975850cff20d624eb206b1
+  - path: crates/engine/speclink-core/assets/skills/discuss.md
+    hash: 31dacb26212b2880c58daa6bb873aad74ee1a4266d72e6bf516a768d4d03c9f0
+  - path: crates/engine/speclink-core/assets/skills/drift.md
+    hash: 8dff25a193f5317b5e2344caf8bcc5c57735d3830a2890f52da860806c0e89d5
+  - path: crates/engine/speclink-core/assets/skills/improve.md
+    hash: 8b2fbee73184c319a7eac0692a9f01eddeeef2c6133b5d4d3731437ac6e59da3
+  - path: crates/engine/speclink-core/assets/skills/ingest.md
+    hash: 961cf29ac0a200d8494a81230b62651344a8cd9759f374fd242234253cc3274f
+  - path: crates/engine/speclink-core/assets/skills/manual.md
+    hash: 44d02195fd818b75a03f7867b7d80f6a2ca14b32e1bdb7976c54c799bdfd8dfa
+  - path: crates/engine/speclink-core/assets/skills/propose.md
+    hash: 92f5a0a6d62958df3a1b5ff95803680c47c9cef60da25cf3fcb8607dac6aef22
+  - path: crates/engine/speclink-core/assets/skills/quality.md
+    hash: 3067863ccebd905eea8d5c587dbcaa59d3d9c3372f1757b3c491694e45021193
+  - path: crates/engine/speclink-core/assets/skills/review.md
+    hash: 1a70e4b6e919099a92531a7057f20c580eeabe7c2169a08f8f92a184ee034696
+  - path: crates/engine/speclink-core/assets/skills/trace.md
+    hash: 1173d95ac4d012145a7af86174d3833fa1b2eccf9b99ceb4ee7429a8ed634cf8
+  - path: crates/engine/speclink-core/assets/skills/verify.md
+    hash: e2019f2bbbb1611ff9183530b6cc0148ae1f00f23622d12803d72f07d9d7e758
+  - path: crates/engine/speclink-core/assets/skills/worktree-merge.md
+    hash: 4ba724017f1b3ae1953b25bf393e292646f9d7bcf73e5cd2abd767a9148c637a
+  - path: crates/engine/speclink-core/src/workspace/init.rs
+    hash: 45e65f89c5b2cef5a0716840c50841a6ac010b44a6ef41df5ccc514dd6f50711
+  - path: crates/engine/speclink-core/tests/golden/assets.lock
+    hash: 02136f09101d3cde14d9bbcfa148aee96bee6d0cfd67a1bcff83322e29d749f2
+  - path: crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: e6babae30d44ab2367028c454fd5482068c7bef39a654b9ad562b63edd5bcf6a
+  - path: crates/engine/speclink-core/tests/golden/claude.snapshot.md
+    hash: 4ba21fa102364e68d26b74a6d5cace9d4b339388f6673a07aced1489e6168e99
+  - path: crates/engine/speclink-core/tests/golden/codex.snapshot.md
+    hash: e6d36b1ba155893aa2e29d07934194e7c8f2c70146debfbb9d726951b4545d5f
+  - path: crates/engine/speclink-core/tests/golden/copilot.snapshot.md
+    hash: 5632dc06f449ed3222163683e8820401dd242711682329519e27e9083c77c957
+  - path: crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: 02ca9e8f8e640ba6202c51dbf61b8fb7586696b430960a5db06908737140003c
+  - path: crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: d7dafd3d540606335b9dccc2743a487e61a10661cac077fc0822b3a1ca9ae5f4
+  - path: crates/engine/speclink-core/tests/it/main.rs
+    hash: 11cf08bf7c431185bd90d0539c817e2c262f76ed8cb2dcb04d54f212a9d76c34
+  - path: crates/engine/speclink-core/tests/it/render_golden.rs
+    hash: 05af5f98b4aeb0bb39af169caa8939c97d53d9ea39e4ce6d388bc7dbe73c0c83
+  - path: crates/engine/speclink-core/tests/it/skill_authoring.rs
+    hash: 14e2696966f3b3a2cacb7ff92ea79741552c586ef7bb0c907e676bc4974e85cb
+  - path: integrations/claude-code/skill-evals/.claude-plugin/plugin.json
+    hash: 355094a4f1dc04733131185c0065f1a6f6d5099b2c419867e8ed18940d251f70
+  - path: integrations/claude-code/skill-evals/evals/analyze-reports-only/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/analyze-reports-only/graders/no-edit.md
+    hash: f6397e6357e613abd483b977042203e76f5da4cbae2d53a26c6727b0044df1ba
+  - path: integrations/claude-code/skill-evals/evals/analyze-reports-only/graders/no-write.md
+    hash: 08de7c84f579d4feed1a07efd08c2064f2e97212657c52b1229cfb6adb9d939d
+  - path: integrations/claude-code/skill-evals/evals/analyze-reports-only/graders/reports-findings.md
+    hash: 8361e8c2bee3c92119f81b5478819cc90f6004f8e71cdb9af8b491a36e3874d0
+  - path: integrations/claude-code/skill-evals/evals/analyze-reports-only/prompt.md
+    hash: 0898a02f0e81e125377115e4962f9cecdb4273532ef2c5b829be729aa23673a2
+  - path: integrations/claude-code/skill-evals/evals/analyze-reports-only/scaffold.sh
+    hash: a353f03e01c95a54190b08e00c55738ad21e4e539b7271498ad89807aec331e3
+  - path: integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/graders/code-task-checked.md
+    hash: 94bab8fa59641589e987451dcd04ad8d2bad53011a314191404c57e030f54877
+  - path: integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/graders/greeting-created.md
+    hash: 0bdc366c2d3b9e94943eb4246db5ee609c70c90d3ca356457b82bc396e047c87
+  - path: integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/graders/manual-task-left-open.md
+    hash: 31c80c791659244708f944cb7e93d98ff4e8551f82f4ad049bc1504e8828b29f
+  - path: integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/prompt.md
+    hash: 4ad28c244be16a7e9906b2f329c56cd86e4d9067bdb741ae34fe7b119289335d
+  - path: integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/scaffold.sh
+    hash: aa7e50a202b75808c839f233bc603c13c2c959677e9a2762db6dcee94c6b08c8
+  - path: integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/graders/creates-worktree.md
+    hash: 2fdf9cd31494beefb932701c80e1ebc14fd6a3ab211b4e0a2d13a2b3de9f60c7
+  - path: integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/graders/hands-off-to-merge.md
+    hash: d113430997f4beaf05dc6c540e262e00adbd827fc3fc43b0cbfc85ffd1845c29
+  - path: integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/graders/no-merge.md
+    hash: 061b5c20e2a9d054e4485ee0a89ea85884fcd634a064b6a481960e5c7e3bc003
+  - path: integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/prompt.md
+    hash: 20fdf2d0b715f391295ecbb59e76ecb3bcb6647128ebcee967a0da2571fdd60d
+  - path: integrations/claude-code/skill-evals/evals/apply-with-worktree-isolates/scaffold.sh
+    hash: 1b831ccda3457e9c73d19759bb32e298dda162ae25aaafdee9fae5aac2fcdcda
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/no-hand-edit.md
+    hash: 2d4e45c9785c3e2947f8d5cb84c3e251bc224fd9a21617b65b45e54b3a89fc1e
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/no-hand-write.md
+    hash: a40d6fc67452dddac85758e88b7813ab56b7776a163e612407cf125341826961
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/spec-merged.md
+    hash: 0dc2f81404b82b10439302475f1236ede82eae3fb3b257ce5dfe558f64884efd
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/uses-archive-verb.md
+    hash: dd767708dd90c4fe89e25de93f33c2a08dac0567fd025ff1334a71dc7ca20817
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/prompt.md
+    hash: 190e15890702119b5384a574e9bd63a9fb38eaf1313cae15a387087e6a976745
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/scaffold.sh
+    hash: a9c26278949efdb227d4be75b1405ed910999d96b81237e0f719e314c3907154
+  - path: integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/graders/names-the-option.md
+    hash: ed29bc2c5842fd4b560b14f2161c20a9dba74f6c59d86de6145c51fa5649e9b1
+  - path: integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/graders/no-edit.md
+    hash: f6397e6357e613abd483b977042203e76f5da4cbae2d53a26c6727b0044df1ba
+  - path: integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/graders/no-write.md
+    hash: 08de7c84f579d4feed1a07efd08c2064f2e97212657c52b1229cfb6adb9d939d
+  - path: integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/prompt.md
+    hash: 028c9c406dc8a5231aa569366712b0010a3827987ead90dfd9905347e2f60b53
+  - path: integrations/claude-code/skill-evals/evals/audit-finds-dangerous-default/scaffold.sh
+    hash: 9a1eb6dedba69056e4e96ab7a58f7f7906b3fc8cec013a4e3cebaaaa4c9d8198
+  - path: integrations/claude-code/skill-evals/evals/baseline-map-before-specs/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/baseline-map-before-specs/graders/asks-to-confirm-map.md
+    hash: bbb3cd7b70db882db1484ef87ccef513966d37a369a93e16a46194b951d0dcf5
+  - path: integrations/claude-code/skill-evals/evals/baseline-map-before-specs/graders/no-specs-yet.md
+    hash: 4d2c0cf16c991bb1ce6469a915c267acfddaa18d104c085aad94ff1860dfd3a5
+  - path: integrations/claude-code/skill-evals/evals/baseline-map-before-specs/prompt.md
+    hash: eb9d197a2cde874b939df207806ed952d835dd541f1bfb91b276c07a9aefe56b
+  - path: integrations/claude-code/skill-evals/evals/baseline-map-before-specs/scaffold.sh
+    hash: d64054aa1eb5c1f6433601a5d87610674c57935244ce0342601f24a731e54a75
+  - path: integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/graders/no-commit-yet.md
+    hash: 7169874a13fc04e8b640c2f312f6952578f37070d1e7ddec86a2cb87724fb2f8
+  - path: integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/graders/plan-then-confirm.md
+    hash: 203e7e2a91a9eb8ee861ce0ba73d0dfbf7dc9aeaf6a33a4ebe5529d25586b971
+  - path: integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/prompt.md
+    hash: 351071066a3ee8aa17bfba3cb4264b5e02675f20bb97b01749f25dbd2d8f3ab0
+  - path: integrations/claude-code/skill-evals/evals/commit-gate-shows-plan/scaffold.sh
+    hash: 3452883abb6c1a0cc747e19614d54aa3b1dc33eb6998ae43c2b33023f2eb2d68
+  - path: integrations/claude-code/skill-evals/evals/config-asks-before-writing/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/config-asks-before-writing/graders/asks-or-shows-diff.md
+    hash: aa3fde7bb7bfbeb88e94aad8484ee3189511318f56e3687bcfb019d5b654ecc5
+  - path: integrations/claude-code/skill-evals/evals/config-asks-before-writing/graders/no-config-write.md
+    hash: 95b25d07345fe423078b5c0a09e38fbeb75d8d2244567da4d842215e97c36c56
+  - path: integrations/claude-code/skill-evals/evals/config-asks-before-writing/prompt.md
+    hash: 170250a8c03950c23289b59ee8eea111ad8619b83d6026862b52b279cff5d955
+  - path: integrations/claude-code/skill-evals/evals/config-asks-before-writing/scaffold.sh
+    hash: 1f277473e109bccdb784d4ed135f6ccb1607203e918a4c34126fc9ec17213d5b
+  - path: integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/graders/ends-with-question.md
+    hash: a0a330ccda777908b67561ced8ab9b0585f36e3221a04c749dcc12819833aa47
+  - path: integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/graders/no-discuss-new.md
+    hash: ab823d76282b47f719434096a2f33ecec1017155c1da70c392d43788d543d03b
+  - path: integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/prompt.md
+    hash: 2fba37bd2d149086b549e37406400fabde063477bffbb54be59ac4476ae61d97
+  - path: integrations/claude-code/skill-evals/evals/discuss-no-record-before-reply/scaffold.sh
+    hash: 11692b544781834b9390eda9cfa0e023794a21010d4da1b20dc6c580c39479aa
+  - path: integrations/claude-code/skill-evals/evals/drift-reports-only/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/drift-reports-only/graders/names-missing-file.md
+    hash: 9a99f2e3843018e41a93f73382b8282ac7e52f5aa248be9a314a106f23f9b0dd
+  - path: integrations/claude-code/skill-evals/evals/drift-reports-only/graders/no-edit.md
+    hash: f6397e6357e613abd483b977042203e76f5da4cbae2d53a26c6727b0044df1ba
+  - path: integrations/claude-code/skill-evals/evals/drift-reports-only/graders/no-write.md
+    hash: 08de7c84f579d4feed1a07efd08c2064f2e97212657c52b1229cfb6adb9d939d
+  - path: integrations/claude-code/skill-evals/evals/drift-reports-only/prompt.md
+    hash: 76fb2f98c5dc120a128755059876797fc9da43f2a6be80088a0fbad9ec289bbb
+  - path: integrations/claude-code/skill-evals/evals/drift-reports-only/scaffold.sh
+    hash: 03662458442cbd1a81a2f6c70d27035c8f25ac5afd02a8701caa0229ae402076
+  - path: integrations/claude-code/skill-evals/evals/fixtures.sh
+    hash: 1a7e871212acc3c1ccc69216ee99a61db3b599fd72062186c5f631f8ce96e47b
+  - path: integrations/claude-code/skill-evals/evals/improve-scan-without-edits/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/improve-scan-without-edits/graders/lists-candidates.md
+    hash: 855639b3e6f5559b0ff3d5d48b539d3b6610c1df75ca31b5c8d656920036e121
+  - path: integrations/claude-code/skill-evals/evals/improve-scan-without-edits/graders/no-edit.md
+    hash: f6397e6357e613abd483b977042203e76f5da4cbae2d53a26c6727b0044df1ba
+  - path: integrations/claude-code/skill-evals/evals/improve-scan-without-edits/graders/no-write.md
+    hash: 08de7c84f579d4feed1a07efd08c2064f2e97212657c52b1229cfb6adb9d939d
+  - path: integrations/claude-code/skill-evals/evals/improve-scan-without-edits/prompt.md
+    hash: c478850a4e81d1bd1431274aec688d01a62705819edaf69af2591161648eda42
+  - path: integrations/claude-code/skill-evals/evals/improve-scan-without-edits/scaffold.sh
+    hash: 98f6ee7a198ed35732d19e19ea52d35cc35327b4adc3a2ed74ea2d2e312a68f6
+  - path: integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/graders/delta-has-new-requirement.md
+    hash: f018103acc964b5eb35191ceabcbae3faad4bff6844eb99571ab3164be223337
+  - path: integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/graders/runs-validate.md
+    hash: 03ac29aee886f212e2b247742268ea4c60243ccd800371084b7ed6bb2a60720d
+  - path: integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/prompt.md
+    hash: 90ce072c4ddd046b9d60a93945b212854fd88b5fbe1774307812fb500f36a11c
+  - path: integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/scaffold.sh
+    hash: 76ce934d5f20d38e44e02fee540ee14c3df50895616b2396dddea3d277eac0af
+  - path: integrations/claude-code/skill-evals/evals/manual-generates-pages/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/manual-generates-pages/graders/manual-page-written.md
+    hash: 50077bf4f44315c2da804407aaaf72088f809a25cd577c5f5ef32e8c9394f71a
+  - path: integrations/claude-code/skill-evals/evals/manual-generates-pages/prompt.md
+    hash: 4408979f119432c35cffd88e64985d59eaa64b2dbcd6cc8036e1cd64dc8f7457
+  - path: integrations/claude-code/skill-evals/evals/manual-generates-pages/scaffold.sh
+    hash: 89eb166561e465ee4f5889de7b888236807ec5b8100cd94e87b56be610a9fdd7
+  - path: integrations/claude-code/skill-evals/evals/propose-from-discussion/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/manual-marker-after-checkbox.md
+    hash: 7af1105206b3a0041dfa1f467adf1b2aeec4c62a268298c3c9685de97aae4d7a
+  - path: integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/no-apply.md
+    hash: 124fae524be1e40fe651da6e41f83b7092aa570ad0b43b93085e947bcb73c88c
+  - path: integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/no-marker-after-number.md
+    hash: 1cea4e2c4c40c4e473d9df0e13dd536fb51f3d3d4755073d8cb637373ffea918
+  - path: integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/runs-validate.md
+    hash: 03ac29aee886f212e2b247742268ea4c60243ccd800371084b7ed6bb2a60720d
+  - path: integrations/claude-code/skill-evals/evals/propose-from-discussion/prompt.md
+    hash: 276e5f86eb130f83d1179c969869c69de62ae77cdee1567a96df14c4cad270a1
+  - path: integrations/claude-code/skill-evals/evals/propose-from-discussion/scaffold.sh
+    hash: be1ee2606f9ef7074da4adb3173531761f0f682a22e4994fdc818f22c99695f9
+  - path: integrations/claude-code/skill-evals/evals/quality-pauses-after-round/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/quality-pauses-after-round/graders/no-stamp.md
+    hash: 325d771fd4d3c8c9eae4fbc074a7f31833348a3f1177cf7c1d0be6a6ccc97dc2
+  - path: integrations/claude-code/skill-evals/evals/quality-pauses-after-round/graders/reports-both-then-stops.md
+    hash: 41ed7e639fa1b27a7e672c596f9af3a158de58f462476dd058f5d2e0feffe80d
+  - path: integrations/claude-code/skill-evals/evals/quality-pauses-after-round/prompt.md
+    hash: dd5d7fd7705027e9832ed0a814efd34aa4cdcb4946691a8a0df5b3cd34677961
+  - path: integrations/claude-code/skill-evals/evals/quality-pauses-after-round/scaffold.sh
+    hash: bf8cf5bccf6b6b03ebcebbd9d8970b82b4f868d0d17388596ef8e20e15abdaec
+  - path: integrations/claude-code/skill-evals/evals/review-freezes-scope/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/review-freezes-scope/graders/findings-then-options.md
+    hash: e46a3f6be0598fc8d02d4fffa9809f4bfc42b7a61c3b2ab08b6e4ef2edd3d697
+  - path: integrations/claude-code/skill-evals/evals/review-freezes-scope/graders/freezes-scope.md
+    hash: 7fb0f62eb114c69bac9febe66d4bb9548fef29240378ed80d7ef0cd21cc7829f
+  - path: integrations/claude-code/skill-evals/evals/review-freezes-scope/graders/no-stamp.md
+    hash: d12871b20bf711e9ef84d9ae11121b832c76352e41c8861a2c248b38161fd98c
+  - path: integrations/claude-code/skill-evals/evals/review-freezes-scope/prompt.md
+    hash: c78e8456fc3974aec6f6bbebf0a4d614f514048efc88f1047ded5f15250bc593
+  - path: integrations/claude-code/skill-evals/evals/review-freezes-scope/scaffold.sh
+    hash: bf8cf5bccf6b6b03ebcebbd9d8970b82b4f868d0d17388596ef8e20e15abdaec
+  - path: integrations/claude-code/skill-evals/evals/trace-cites-archive/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/trace-cites-archive/graders/cites-archived-change.md
+    hash: 5fd925b87a54a827b6914fa9a007eea7b7048b4dea8da0e5c6ef033be1b43fa4
+  - path: integrations/claude-code/skill-evals/evals/trace-cites-archive/graders/no-edit.md
+    hash: f6397e6357e613abd483b977042203e76f5da4cbae2d53a26c6727b0044df1ba
+  - path: integrations/claude-code/skill-evals/evals/trace-cites-archive/graders/no-write.md
+    hash: 08de7c84f579d4feed1a07efd08c2064f2e97212657c52b1229cfb6adb9d939d
+  - path: integrations/claude-code/skill-evals/evals/trace-cites-archive/prompt.md
+    hash: 5079f47ad682085da17d1d624fd8acec1cf62a457a38762bd9f2b915f3835af0
+  - path: integrations/claude-code/skill-evals/evals/trace-cites-archive/scaffold.sh
+    hash: ac355aaf2b2c2baa7b461305daf3e20a8518e27ec7e66656560d0261be33d46c
+  - path: integrations/claude-code/skill-evals/evals/verify-freezes-scope/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/verify-freezes-scope/graders/findings-then-options.md
+    hash: b36f38438b05b0e306bef8db4345008c91d300e4b6d27e2677d95662410230b5
+  - path: integrations/claude-code/skill-evals/evals/verify-freezes-scope/graders/freezes-scope.md
+    hash: 0eac3d55904a7949a297b01e6d89242d09a3dc265b50606cd491278672365143
+  - path: integrations/claude-code/skill-evals/evals/verify-freezes-scope/graders/no-stamp.md
+    hash: b81f307a28576ab426424ee5caedae31337dd871955cff020a59d0d67a19b449
+  - path: integrations/claude-code/skill-evals/evals/verify-freezes-scope/prompt.md
+    hash: 2bbc22accbc7c58cb489596b2f7f5c7e076a7f08daeddb6e3b082689441ada65
+  - path: integrations/claude-code/skill-evals/evals/verify-freezes-scope/scaffold.sh
+    hash: bf8cf5bccf6b6b03ebcebbd9d8970b82b4f868d0d17388596ef8e20e15abdaec
+  - path: integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/case.yaml
+    hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
+  - path: integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/graders/merges-branch.md
+    hash: 61d4c306f6ab0a783035d23fc5695e9af98c993cb45a7502f567050c3b72d218
+  - path: integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/graders/removes-worktree.md
+    hash: 6e484bb05a539ce9cca1d50015d146a052b62f6edcbdc2d4ce6d0b8c9010dd87
+  - path: integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/prompt.md
+    hash: 2b715bd359c2d05492184457d2dd61ae31bcf4244b48f0e46a8b7380ac64a6d0
+  - path: integrations/claude-code/skill-evals/evals/worktree-merge-lands-branch/scaffold.sh
+    hash: c8325a3c337b025877775795c3dde363a7ca57c9c6a47805a9c665883ca1b1e2
+  - path: scripts/claude-code/skill-evals.mjs
+    hash: 09eb6040dc267049024fdc8a83630c833b19089b2a9a470bdc02866af0022769
+  - path: scripts/claude-code/skill-evals.test.mjs
+    hash: 66421b1429759a643b02b07e52c1d8c8cee9b04745698a85913b140b76907545
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-08

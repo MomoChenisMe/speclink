@@ -5,15 +5,17 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
-Run both quality stations over one change as a single pass that pauses after every round: `/speclink-review` and `/speclink-verify` each do their checking WITHOUT stamping, then this skill reports both stations' findings together and STOPS for the user's call on what to fix, when to stamp, and whether to archive. Nothing is fixed, stamped or archived without their answer. Use this when both stations are known up front to be in play. Running only one station does NOT go through this skill — call that station directly and let it keep its own stamp-when-clean default.
+Run both quality stations over one change as a single pass that pauses after every round: `/speclink-review` and `/speclink-verify` each do their checking WITHOUT stamping, then this skill reports both stations' findings together and STOPS for the user's call on what to fix, when to stamp, and whether to archive. Nothing is fixed, stamped or archived without their answer. Use this when both stations are known up front to be in play. Running only one station does not go through this skill — call that station directly and let it keep its own stamp-when-clean default.
 
-**Input**: Optionally specify a change name after `/speclink-quality` (e.g., `/speclink-quality add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous, resolve it BEFORE step 1: run `speclink list --json` and prompt with the available changes (the AskUserQuestion tool, or plain text + wait if unavailable), then pass the same name to every station call.
+**Input**: Optionally specify a change name after `/speclink-quality` (e.g., `/speclink-quality add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous, resolve it BEFORE step 1: run `speclink list --json` and prompt with the available changes, then pass the same name to every station call.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
+
+**Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response.
 
 **What this skill owns**
 
@@ -35,20 +37,22 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
    Run `/speclink-review` for the change. At its closing question, take the **stop without stamping** exit — the ticket and its frozen snapshot stay for the rounds that follow. A clean pass takes the same exit; the station's own quality-timeline exception covers it.
 
+   That exit ends the review station, not this run: do not ask the user anything here, and go straight on to step 2 in the same turn. This skill's only pause is step 3, and it comes after both stations have reported — it takes priority over the station's own closing question.
+
 2. **Verify check, no stamp**
 
    Run `/speclink-verify` for the same change and take the same **stop without stamping** exit, clean pass included.
 
 3. **Stop and ask — the round's pause**
 
-   Both stations have reported. Summarize their findings TOGETHER — grouped by station, must-fix separated from the rest — and then STOP: put the next step to the user with the AskUserQuestion tool (no such tool: ask in plain text and wait for an answer). Make no edits before the answer arrives.
+   Both stations have reported. Summarize their findings TOGETHER — grouped by station, must-fix separated from the rest — and then STOP: put the next step to the user (see **Asking the user**). Make no edits before the answer arrives.
 
    The options:
 
    - **Fix everything** — every finding from both stations.
    - **Fix a selection** — the user names which ones; the rest stay in the tickets, unfixed.
    - **Fix nothing and stop** — end the pass right here. Both stations already left through their **stop without stamping** exit, so both tickets and their frozen snapshots stay on disk, no stamp lands, and nothing is archived.
-   - **Go to the closing stamps** — offer this option ONLY when both stations' must-fix sets are empty. While any must-fix is outstanding it is not on the menu: must-fix-cleared-before-the-stamp is the stations' rule and this skill does not route around it. When must-fix findings the user passed on still sit in a ticket, the option must say so up front: that station's stamp lands **with reservations** (the station's `--accept`), and choosing the option here IS the explicit say-so the stations require — never presume it from anything less. Leftover SUGGESTION-level findings are NOT reservations: a station whose ticket carries only SUGGESTIONs stamps clean, no authorization needed.
+   - **Go to the closing stamps** — offer this option ONLY when both stations' must-fix sets are empty. While any must-fix is outstanding it is not on the menu: must-fix-cleared-before-the-stamp is the stations' rule and this skill does not route around it. When must-fix findings the user passed on still sit in a ticket, the option must say so up front: that station's stamp lands **with reservations** (the station's `--accept`), and choosing the option here IS the explicit say-so the stations require — never presume it from anything less. Leftover SUGGESTION-level findings are not reservations: a station whose ticket carries only SUGGESTIONs stamps clean, no authorization needed.
 
    Options with nothing to act on simply do not appear — a round where both stations found nothing offers the last two.
 
@@ -68,7 +72,7 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 7. **Archive — a recommendation**
 
-   Both stamps are green: recommend `/speclink-archive` and leave the run to the user. When the change still carries unchecked `[M]` manual tasks, the recommendation MUST say so: the manual work has to be completed and those tasks checked off before archive will let the change through.
+   Both stamps are green: recommend `/speclink-archive` and leave the run to the user. When the change still carries unchecked `[M]` manual tasks, the recommendation says so: the manual work has to be completed and those tasks checked off before archive will let the change through.
 
 **Edge cases**
 
@@ -77,12 +81,14 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 **Guardrails**
 
-- Never restate or override a station's checking, ticket or stamping rules — route to the station and follow what it says
-- Both checking passes finish before any fixing starts; neither stamp lands before both stations' re-validations are clean
-- Every round ends with step 3's pause, a clean round included — never fix, stamp or archive without the user's answer
-- Fix only what the user picked; the findings they passed on stay in their tickets, unfixed and unargued
-- No edits between the two stamps, and none between them and archive
-- A station's refusal or error stops this flow and is reported as-is — do not work around it
+Check these before you report:
+
+- [ ] Never restate or override a station's checking, ticket or stamping rules — route to the station and follow what it says
+- [ ] Both checking passes finish before any fixing starts; neither stamp lands before both stations' re-validations are clean
+- [ ] Every round ends with step 3's pause, a clean round included — never fix, stamp or archive without the user's answer
+- [ ] Fix only what the user picked; the findings they passed on stay in their tickets, unfixed and unargued
+- [ ] No edits between the two stamps, and none between them and archive
+- [ ] A station's refusal or error stops this flow and is reported as-is — do not work around it
 
 ## Next steps
 
