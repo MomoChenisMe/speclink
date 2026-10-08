@@ -210,7 +210,7 @@ const skillMd = skills.render('propose', { target: 'neutral', invocation: 'tool-
 
 | Option | Values | Notes |
 | --- | --- | --- |
-| `target` | `claude`, `codex`, `neutral` | `neutral` is for custom tools: no `/speclink-` slash commands and no plan-mode text |
+| `target` | `claude`, `codex`, `copilot`, `neutral` | `neutral` is for custom tools: no `/speclink-` slash commands and no plan-mode text |
 | `invocation` | `cli` (default), `tool-call` | `tool-call` writes verbs as "call the speclink tool with an argv array", for a tool built on `dispatch`. `cli` writes shell commands |
 | `specDir` | A string | The spec directory name in the skill text. Default: `openspec` |
 | `toolName` | A string | `neutral` only: the tool name in the skill text. Default: `speclink` |

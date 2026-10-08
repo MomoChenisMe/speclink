@@ -53,11 +53,11 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 | 層 | 負責什麼 | 例子 |
 | --- | --- | --- |
-| 技能 | 寫給 Agent 讀的流程知識：什麼時候讀什麼、怎麼產生與檢查文件、什麼時候停下來問你。 | Claude `/speclink-propose`、Codex `$speclink-propose` |
+| 技能 | 寫給 Agent 讀的流程知識：什麼時候讀什麼、怎麼產生與檢查文件、什麼時候停下來問你。 | Claude 與 GitHub Copilot `/speclink-propose`、Codex `$speclink-propose` |
 | `speclink` CLI | 真正執行動作的命令列。本地與遠端都用它。 | `speclink status --change add-csv-export` |
 | Host | 把引擎、Store、認證、版本、交易與事件組在一起。CLI、server 與 Node SDK 都經過它。 | 內嵌在 CLI 裡，或 `speclink-server` |
 
-下面的技能名都用 Claude 的寫法。Codex 把開頭的 `/` 換成 `$`，也可以輸入 `/skills` 從清單挑。`analyze` 是例外：Codex 沒有這個技能，直接用 CLI。
+下面的技能名都用 Claude 的寫法，GitHub Copilot 的寫法相同。Codex 把開頭的 `/` 換成 `$`，也可以輸入 `/skills` 從清單挑。`analyze` 是例外：Codex 與 GitHub Copilot 沒有這個技能，直接用 CLI。
 
 升級 Speclink 之後，執行 `speclink update` 重新產生技能檔。
 
@@ -266,7 +266,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 交叉比對提案、設計、規格與任務，找出涵蓋、一致、模糊與缺漏四類問題。
 
 - **什麼時候用**：提案或 ingest 完成後（技能會自動跑）。它不是程式測試。
-- **技能**：`/speclink-analyze <變更名稱>`（只有 Claude 有；Codex 直接用 CLI）。
+- **技能**：`/speclink-analyze <變更名稱>`（只有 Claude 有；Codex 與 GitHub Copilot 直接用 CLI）。
 - **CLI**：`speclink analyze <名稱> [--json]`
 - **完成**：沒有 CRITICAL；WARNING 與 SUGGESTION 看過並決定是否處理。
 - **下一步**：修文件，或 `apply`。

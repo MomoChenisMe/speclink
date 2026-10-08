@@ -78,7 +78,7 @@ dispatch SHALL 由與 CLI 共用的引擎命令層執行：argv 詞彙、回傳�
 
 ---
 ### Requirement: 渲染 API
-SDK SHALL 提供 skills.list()（回傳技能名與描述清單）、skills.render(name, options) 與 instructions.render(options)——options 涵蓋渲染矩陣：target（claude｜codex｜neutral）、invocation（cli｜tool-call）、store（fs｜remote）；回傳字串內容 SHALL 與 CLI 以對等參數生成的內容一致。
+SDK SHALL 提供 skills.list()（回傳技能名與描述清單）、skills.render(name, options) 與 instructions.render(options)——options 涵蓋渲染矩陣：target（claude｜codex｜copilot｜neutral）、invocation（cli｜tool-call）、store（fs｜remote）；回傳字串內容 SHALL 與 CLI 以對等參數生成的內容一致。target 不在值域內時 SHALL 拋出錯誤，訊息 SHALL 列出 claude、codex、copilot、neutral 四個合法值。
 
 #### Scenario: 中性 tool-call 渲染
 - **WHEN** 執行 skills.render('propose', { target: 'neutral', invocation: 'tool-call', store: 'remote' })
@@ -88,36 +88,18 @@ SDK SHALL 提供 skills.list()（回傳技能名與描述清單）、skills.rend
 - **WHEN** 以 target claude、store fs 呼叫 skills.render('apply', …)，並與 speclink init 於 fs 專案生成的 .claude/skills/speclink-apply/SKILL.md 比對
 - **THEN** 兩者內容一致
 
+#### Scenario: copilot target 與 CLI 生成一致
+- **WHEN** 以 target copilot、store fs 呼叫 skills.render('apply', …)，並與 speclink init --tools copilot 於 fs 專案生成的 .github/skills/speclink-apply/SKILL.md 比對
+- **THEN** 兩者內容一致，且回傳字串的技能引用為 `/speclink-` 形式、不含 `$speclink-`
+
+#### Scenario: 未知 target 被拒
+- **WHEN** 執行 skills.render('apply', { target: 'github-copilot' })
+- **THEN** 呼叫拋出錯誤，訊息含 `github-copilot` 與 claude、codex、copilot、neutral 四個合法值
+
+
 <!-- @trace
-source: node-sdk
-updated: 2026-07-05
-code:
-  - .github/workflows/node-sdk.yml
-  - Cargo.lock
-  - Cargo.toml
-  - README.md
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-node/.gitignore
-  - crates/speclink-node/Cargo.toml
-  - crates/speclink-node/__test__/engine.spec.ts
-  - crates/speclink-node/__test__/helpers.ts
-  - crates/speclink-node/__test__/render.spec.ts
-  - crates/speclink-node/__test__/store-bridge.spec.ts
-  - crates/speclink-node/__test__/stress.spec.ts
-  - crates/speclink-node/__test__/write-path.spec.ts
-  - crates/speclink-node/build.rs
-  - crates/speclink-node/index.d.ts
-  - crates/speclink-node/index.js
-  - crates/speclink-node/package-lock.json
-  - crates/speclink-node/package.json
-  - crates/speclink-node/src/lib.rs
-  - crates/speclink-node/src/render.rs
-  - crates/speclink-node/src/store_bridge.rs
-  - docs/sdk-node.md
-  - docs/sdk-node.zh-TW.md
+source: add-copilot-tool
+updated: 2026-10-08T11:52:22+08:00
 -->
 
 ---

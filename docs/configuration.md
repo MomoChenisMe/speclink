@@ -113,7 +113,10 @@ The `tools` list in `.speclink.yaml` decides which AI tools get skill files:
 | --- | --- |
 | `claude` | `.claude/skills/` |
 | `codex` (`agents` is an alias) | `.agents/skills/` |
+| `copilot` | `.github/skills/` |
 | A custom tool descriptor | The `skills_dir` of the descriptor |
+
+GitHub Copilot also reads `.claude/skills/` and `.agents/skills/`, but it reads `.github/skills/` first. Thus, when you select `copilot`, Copilot uses the skills that Speclink writes for it.
 
 After you change `tools`, run `speclink update`. A new tool gets its skill files. For a tool that you remove, Speclink deletes its `speclink-*` skill directories and any directory that becomes empty. When you select built-in tools in the desktop settings page, the app does the same sync.
 
@@ -129,12 +132,14 @@ tools:
 
 | Field | Required | Rules |
 | --- | --- | --- |
-| `name` | Yes | kebab-case, 2–50 characters of `a-z`, `0-9`, `-`. It cannot be `claude`, `codex`, or `agents` |
-| `skills_dir` | Yes | A relative path inside the project root. It cannot leave the project, cannot be the project root itself, and cannot be `.claude/skills` or `.agents/skills` |
+| `name` | Yes | kebab-case, 2–50 characters of `a-z`, `0-9`, `-`. It cannot be `claude`, `codex`, `agents`, or `copilot` |
+| `skills_dir` | Yes | A relative path inside the project root. It cannot leave the project, cannot be the project root itself, and cannot be `.claude/skills`, `.agents/skills`, or `.github/skills` (in any letter case) |
 | `invocation` | No | `cli` (default): skills say "run `speclink <verb>`". `tool-call`: skills say "call the speclink tool with an argv array" |
 | `instructions_file` | No, deprecated | Speclink writes nothing to it. `speclink update` uses it only to remove an old `SPECLINK` block. If you keep it, stderr shows a one-line deprecation notice |
 
-If a field is not valid, the command prints one error line that names the field and exits non-zero. Skills for a descriptor have no `/speclink-` slash commands and do not mention plan mode. The built-in claude and codex output does not change.
+If a field is not valid, the command prints one error line that names the field and exits non-zero. Skills for a descriptor have no `/speclink-` slash commands and do not mention plan mode. The built-in claude, codex, and copilot output does not change.
+
+Old versions accepted a descriptor named `copilot`, or a descriptor with `skills_dir` set to `.github/skills`. After you upgrade, `speclink update` rejects such a descriptor and exits non-zero. Remove the descriptor and add `copilot` to `tools`.
 
 ## <a id="remote"></a>Remote mode
 
@@ -169,7 +174,7 @@ Speclink ignores other keys.
 | Key | Values | Default | Use |
 | --- | --- | --- | --- |
 | `spec_dir` | A relative path | `openspec` | The spec directory, relative to the project root |
-| `tools` | A list | None | AI tools that get skill files: `claude`, `codex`, or custom tool descriptors |
+| `tools` | A list | None | AI tools that get skill files: `claude`, `codex`, `copilot`, or custom tool descriptors |
 | `remote.url` | A URL | None | The connection URL of the remote project (project-scoped URL) |
 | `remote.repo` | A name | None | The registered name of this repo in the remote project. A project with one repo can leave it out |
 

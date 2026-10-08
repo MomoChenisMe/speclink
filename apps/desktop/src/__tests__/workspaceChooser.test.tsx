@@ -241,12 +241,17 @@ describe("WorkspaceChooser", () => {
     await chooseDesktopRepo();
     await reachCheckoutFolder();
 
-    // inspect 回傳 codex → codex 勾選、claude 未勾。
+    // inspect 回傳 codex → codex 勾選、claude 與 copilot 未勾。
     expect(
       (screen.getByRole("checkbox", { name: /codex/i }) as HTMLInputElement).getAttribute(
         "aria-checked",
       ),
     ).toBe("true");
+    expect(
+      (screen.getByRole("checkbox", { name: /copilot/i }) as HTMLInputElement).getAttribute(
+        "aria-checked",
+      ),
+    ).toBe("false");
     expect(
       (screen.getByRole("checkbox", { name: /claude/i }) as HTMLInputElement).getAttribute(
         "aria-checked",

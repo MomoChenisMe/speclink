@@ -10,12 +10,13 @@ Each step shows the expected output. If your output is different, stop and find 
 
 The example requirement is "add CSV export", and the requirement is clear. If you still compare approaches or need a decision, run `discuss` first (see the [workflow](workflow.md#discuss)).
 
-You can work in three ways. All three give the same result:
+You can work in four ways. All four give the same result:
 
 | Way | Syntax | Note |
 | --- | --- | --- |
 | Claude Code | `/speclink-propose add-csv-export` | A slash command |
 | Codex | `$speclink-propose add-csv-export` | `$` and the skill name; you can also enter `/skills` and pick from the list |
+| GitHub Copilot | `/speclink-propose add-csv-export` | A slash command, the same as in Claude Code |
 | CLI only | `speclink new change add-csv-export` | No agent; you write each document yourself |
 
 A skill is a workflow guide for the agent: what to read, how to write the documents, and when to stop and ask you. The `speclink` CLI does the actual work. Most users only need the skills.
@@ -62,13 +63,15 @@ speclink init --tools claude,codex
 Generated files for: claude, codex
 ```
 
+`--tools` selects the agent tools that get skills: `claude`, `codex`, and `copilot`, in any comma-separated combination. If you use only GitHub Copilot, write `--tools copilot`.
+
 This step does three things:
 
 - It creates `openspec/` and `.speclink.yaml`.
-- It writes skill files: `.claude/skills/` for Claude and `.agents/skills/` for Codex.
+- It writes skill files for the tools that you select: `.claude/skills/` for Claude, `.agents/skills/` for Codex, and `.github/skills/` for GitHub Copilot.
 - It adds `.speclink/` (local work data) to `.gitignore`.
 
-It does not change your `CLAUDE.md` or `AGENTS.md`. The agent reads the description in each skill file to choose the right skill.
+It does not change your `CLAUDE.md`, `AGENTS.md`, or `.github/copilot-instructions.md`. The agent reads the description in each skill file to choose the right skill.
 
 `openspec/` uses the OpenSpec folder layout:
 
@@ -98,7 +101,7 @@ If your repo has a lot of code but no specs, run `/speclink-baseline` first (`$s
 
 ## <a id="propose"></a>3. Propose
 
-Ask the agent to create the change. In Claude Code:
+Ask the agent to create the change. In Claude Code or GitHub Copilot:
 
 ```text
 /speclink-propose add-csv-export
@@ -169,7 +172,7 @@ speclink new artifact tasks --change add-csv-export --stdin < tasks.md
 
 ## <a id="apply"></a>4. Apply
 
-When the documents are complete, ask the agent to start the work. In Claude Code:
+When the documents are complete, ask the agent to start the work. In Claude Code or GitHub Copilot:
 
 ```text
 /speclink-apply add-csv-export
@@ -236,7 +239,7 @@ Two optional quality stations check the code. `/speclink-review` checks code cra
 
 ## <a id="archive"></a>6. Archive
 
-When all tasks are done, the checks pass, and the quality stations that you chose are complete, ask the agent to archive. In Claude Code:
+When all tasks are done, the checks pass, and the quality stations that you chose are complete, ask the agent to archive. In Claude Code or GitHub Copilot:
 
 ```text
 /speclink-archive add-csv-export

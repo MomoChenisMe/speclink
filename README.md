@@ -31,7 +31,7 @@ Local CLI 設計之初以 [Spectra App 2.3.1](https://github.com/kaochenlong/spe
 ## <a id="features"></a>特色
 
 - **純文字，相容 OpenSpec**：Local 模式沿用 OpenSpec 的目錄結構：`specs/<capability>/spec.md`、`changes/<名稱>/`、`changes/archive/` 與 `config.yaml`。內容全是 Markdown 與 YAML，不裝 Speclink 也讀得懂、改得動，每次變動都看得到 Git diff。Speclink 只多放兩樣東西：`discussions/`（討論記錄）與每個變更的 `.openspec.yaml`（生命週期資料）。這一點只適用 Local 模式；遠端模式的正式規格在 Store，本機只有唯讀投影。
-- **給 AI Agent 的技能**：`speclink init` 為 Claude Code 與 Codex 產生技能檔。從討論、提案、實作、品質關卡到封存，每一站都有對應的 `/speclink-*` 指令（Codex 寫成 `$speclink-*`）。
+- **給 AI Agent 的技能**：`speclink init` 為 Claude Code、Codex 與 GitHub Copilot 產生技能檔。從討論、提案、實作、品質關卡到封存，每一站都有對應的 `/speclink-*` 指令（Codex 寫成 `$speclink-*`）。
 - **桌面看板**：每個變更是一張卡片。你看得到它在哪一站、任務做到哪裡、規格改了什麼。
 - **品質關卡**：`review` 看程式碼寫得好不好，`verify` 看交付是否符合規格。兩道都是選用的。
 - **執行順序**：`speclink plan` 依宣告的依賴把變更分成一波一波，並指出下一個可以開工的變更。
@@ -39,7 +39,7 @@ Local CLI 設計之初以 [Spectra App 2.3.1](https://github.com/kaochenlong/spe
 
 ## <a id="status"></a>目前狀態
 
-- **可用**：Local Repo CLI、Local 桌面 app、Agent 技能（Claude 與 Codex）、品質關卡、執行順序、手冊與溯源、Node SDK（`@speclink/engine`）、三種 TeamStore（SQLite、Server FS、PostgreSQL）、單節點 server 與後台、Remote CLI、安裝通路、server 營運（部署、備份還原）。
+- **可用**：Local Repo CLI、Local 桌面 app、Agent 技能（Claude、Codex 與 GitHub Copilot）、品質關卡、執行順序、手冊與溯源、Node SDK（`@speclink/engine`）、三種 TeamStore（SQLite、Server FS、PostgreSQL）、單節點 server 與後台、Remote CLI、安裝通路、server 營運（部署、備份還原）。
 - **部分可用**：桌面 app 的遠端 workspace、Claude Code 外掛。
 - **規劃中**：Agent 工具套件與 MCP、SSO、runtime plugin、多節點部署。
 
@@ -141,7 +141,9 @@ speclink init --tools claude,codex
 speclink list
 ```
 
-接著請 Agent 開一個變更：在 Claude Code 輸入 `/speclink-propose <變更名稱>`，在 Codex 輸入 `$speclink-propose <變更名稱>`。Agent 會建立這個變更需要的文件。
+`--tools` 列出你用的 Agent 工具：`claude`、`codex`、`copilot`，用逗號任意組合。
+
+接著請 Agent 開一個變更：在 Claude Code 或 GitHub Copilot 輸入 `/speclink-propose <變更名稱>`，在 Codex 輸入 `$speclink-propose <變更名稱>`。Agent 會建立這個變更需要的文件。
 
 完整的第一輪（提案、實作、檢查、封存）見 [Local Repo 入門](docs/getting-started.zh-TW.md)。要接遠端 server，見 [Remote 入門](docs/remote-getting-started.zh-TW.md)。
 

@@ -538,11 +538,14 @@ describe("App (kanban primary + rich detail)", () => {
     const dialog = claude.closest('[role="alertdialog"]') as HTMLElement;
     expect(dialog).toBeTruthy();
     const codex = within(dialog).getByRole("checkbox", { name: "codex" });
+    // spec「未初始化目錄經確認後自動初始化」：多選含 copilot，預設只勾 claude。
+    const copilot = within(dialog).getByRole("checkbox", { name: "copilot" });
     // 主題化原語（button 元素）而非原生 input。
     expect(claude.tagName).not.toBe("INPUT");
     // 預設勾選狀態與替換前相同：claude 勾、codex 未勾。
     expect(claude.getAttribute("aria-checked")).toBe("true");
     expect(codex.getAttribute("aria-checked")).toBe("false");
+    expect(copilot.getAttribute("aria-checked")).toBe("false");
     // 可獨立切換：勾 codex 不影響 claude；取消 claude 不影響 codex。
     fireEvent.click(codex);
     expect(codex.getAttribute("aria-checked")).toBe("true");
@@ -576,6 +579,9 @@ describe("App (kanban primary + rich detail)", () => {
     expect(claude.getAttribute("aria-checked")).toBe("true");
     const codex = within(dialog).getByRole("checkbox", { name: "codex" });
     expect(codex.getAttribute("aria-checked")).toBe("false");
+    // 多選含 copilot、預設未勾。
+    const copilot = within(dialog).getByRole("checkbox", { name: "copilot" });
+    expect(copilot.getAttribute("aria-checked")).toBe("false");
     // 確認 → 以所選工具呼叫 adopt（而非 init）。
     fireEvent.click(within(dialog).getByRole("button", { name: "啟用" }));
     await waitFor(() => expect(ws.adoptProject).toHaveBeenCalledWith("D:/migrated", ["claude"]));

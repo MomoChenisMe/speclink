@@ -210,7 +210,7 @@ const skillMd = skills.render('propose', { target: 'neutral', invocation: 'tool-
 
 | 選項 | 值 | 說明 |
 | --- | --- | --- |
-| `target` | `claude`、`codex`、`neutral` | `neutral` 給自訂工具用：沒有 `/speclink-` 斜線指令，也不提 plan mode |
+| `target` | `claude`、`codex`、`copilot`、`neutral` | `neutral` 給自訂工具用：沒有 `/speclink-` 斜線指令，也不提 plan mode |
 | `invocation` | `cli`（預設）、`tool-call` | `tool-call` 把動詞寫成「呼叫 speclink 工具，參數是 argv 陣列」，搭配以 `dispatch` 實作的工具；`cli` 寫成 shell 指令 |
 | `specDir` | 字串 | 技能內文裡的規格目錄名，預設 `openspec` |
 | `toolName` | 字串 | 只用於 `neutral`：技能內文裡的工具名稱，預設 `speclink` |

@@ -25,6 +25,7 @@ import type { RecentEntry } from "../recents";
 import { locatorKey } from "../session";
 import type { ConnectionPhase } from "../store";
 import { AwaitingApproval, PatLoginInput } from "./connectionLogin";
+import { BUILTIN_TOOLS } from "../builtinTools";
 
 type Step = "source" | "server" | "scopes" | "checkout";
 
@@ -262,7 +263,7 @@ export function WorkspaceChooser({
   }
 
   // 既有 marker 缺工具選集的入口：載入 scopes、依 key 預選 scope、直達 checkout
-  // 步驟並以預填 path inspect（顯示既有選集），讓使用者明示選擇 Claude／Codex。
+  // 步驟並以預填 path inspect（顯示既有選集），讓使用者明示選擇 Claude／Codex／Copilot。
   async function startAtCheckout(
     selected: ConnectionView,
     scopeKeys: { projectKey: string; repoKey: string },
@@ -781,7 +782,7 @@ export function WorkspaceChooser({
               <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
                 <span className="text-sm font-medium">{t("chooser.checkoutTools")}</span>
                 <div className="flex gap-4">
-                  {["claude", "codex"].map((tool) => (
+                  {BUILTIN_TOOLS.map((tool) => (
                     <label
                       key={tool}
                       htmlFor={`checkout-tool-${tool}`}

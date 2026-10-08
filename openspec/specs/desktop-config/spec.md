@@ -94,7 +94,7 @@ code:
 ---
 ### Requirement: 未初始化目錄經確認後自動初始化
 
-所選目錄向上探索未命中任何 speclink 專案時，app SHALL NOT 逕行寫入，而 SHALL 顯示初始化確認對話框（含 AI 工具多選 claude／codex，預設勾選 claude）。使用者確認後 app SHALL 執行與 speclink init 等效的初始化（openspec/ 骨架含 specs/、changes/archive/ 與 config.yaml、專案根的 .speclink.yaml 記錄所選 tools、為每個所選工具生成 skills 檔），隨即切換至該專案；使用者取消時 app SHALL 維持原專案，且目標目錄 SHALL NOT 產生任何寫入。初始化失敗時 app SHALL 顯示單行錯誤訊息且 SHALL NOT 切換 root。
+所選目錄向上探索未命中任何 speclink 專案時，app SHALL NOT 逕行寫入，而 SHALL 顯示初始化確認對話框（含 AI 工具多選 claude／codex／copilot，預設只勾選 claude）。使用者確認後 app SHALL 執行與 speclink init 等效的初始化（openspec/ 骨架含 specs/、changes/archive/ 與 config.yaml、專案根的 .speclink.yaml 記錄所選 tools、為每個所選工具生成 skills 檔），隨即切換至該專案；使用者取消時 app SHALL 維持原專案，且目標目錄 SHALL NOT 產生任何寫入。初始化失敗時 app SHALL 顯示單行錯誤訊息且 SHALL NOT 切換 root。
 
 #### Scenario: 確認後初始化並切入新專案
 
@@ -111,10 +111,15 @@ code:
 - **WHEN** 使用者於確認對話框取消
 - **THEN** app 維持原專案，所選目錄內容與選擇前完全相同（無任何新檔案或目錄）
 
+#### Scenario: 勾選 copilot 時生成對應工具檔
+
+- **WHEN** 使用者於確認對話框加勾 copilot 後確認
+- **THEN** 目標目錄除 claude 對應檔案外，另產生 .github/skills/ 技能檔，不產生 .github/copilot-instructions.md、AGENTS.md，.speclink.yaml 的 tools 同時記錄 claude 與 copilot
+
 
 <!-- @trace
-source: remove-marker-injection
-updated: 2026-08-23
+source: add-copilot-tool
+updated: 2026-10-08T11:52:22+08:00
 -->
 
 ---
@@ -161,7 +166,7 @@ updated: 2026-09-03
 專案設定頁 SHALL 以兩頁簽組織，標籤依序為 config.yaml、.speclink.yaml，預設 SHALL 落在 config.yaml 簽：
 
 - **config.yaml** 簽 SHALL 含「專案說明」卡與「產出規則」卡（行為見需求「設定頁編輯專案說明與產出規則」），及「產出政策」卡——locale、spec_locale（下拉）與 tdd、audit（開關）。
-- **.speclink.yaml** 簽 SHALL 含「AI 工具」卡——內建工具 claude／codex 多選，自訂工具描述子原樣呈現為不可編輯項。
+- **.speclink.yaml** 簽 SHALL 含「AI 工具」卡——內建工具 claude／codex／copilot 多選，自訂工具描述子原樣呈現為不可編輯項。
 
 應用程式設定頁 SHALL 以兩頁簽組織，標籤依序為本機設定、伺服器，預設 SHALL 落在本機設定簽：
 
@@ -215,6 +220,11 @@ config.yaml 與 .speclink.yaml 簽首 SHALL 以等寬字註記對應檔案路徑
 - **WHEN** .speclink.yaml 原 tools 僅 claude，使用者加選 codex 並儲存
 - **THEN** .speclink.yaml 的 tools 記錄 claude 與 codex，且專案根新增 .agents/skills/ 技能檔而無 AGENTS.md
 
+#### Scenario: 加選與取消 copilot 後技能同步
+
+- **WHEN** .speclink.yaml 原 tools 僅 claude，使用者加選 copilot 並儲存，之後再取消 copilot 並儲存
+- **THEN** 第一次儲存後 tools 記錄 claude 與 copilot、專案根新增 .github/skills/ 技能檔；第二次儲存後 tools 僅含 claude，.github/skills/ 下 speclink- 前綴目錄全數移除，.github/ 下其他檔案位元級不變
+
 #### Scenario: 自訂工具描述子原樣保留
 
 - **WHEN** .speclink.yaml 的 tools 含一個自訂描述子物件，使用者於專案設定頁變更內建工具勾選並儲存
@@ -227,8 +237,8 @@ config.yaml 與 .speclink.yaml 簽首 SHALL 以等寬字註記對應檔案路徑
 
 
 <!-- @trace
-source: remove-marker-injection
-updated: 2026-08-23
+source: add-copilot-tool
+updated: 2026-10-08T11:52:22+08:00
 -->
 
 ---
@@ -519,14 +529,14 @@ code:
 ---
 ### Requirement: 未啟用資料夾經確認後補齊啟用
 
-所選目錄向上探索命中 workspace、store mode 為本地檔案、且該 workspace root 不存在 `.speclink.yaml` 時，app SHALL 判定為未啟用 speclink，SHALL NOT 逕行寫入亦 SHALL NOT 直接以既有專案開啟，而 SHALL 顯示啟用確認對話框（含 AI 工具多選 claude／codex，預設勾選 claude；文案為啟用語意，遵循 openspec/LANGUAGE.md、不出現工程詞）。判定與寫入 SHALL 錨定向上命中的 workspace root，而非使用者所選的子目錄。
+所選目錄向上探索命中 workspace、store mode 為本地檔案、且該 workspace root 不存在 `.speclink.yaml` 時，app SHALL 判定為未啟用 speclink，SHALL NOT 逕行寫入亦 SHALL NOT 直接以既有專案開啟，而 SHALL 顯示啟用確認對話框（含 AI 工具多選 claude／codex／copilot，預設只勾選 claude；文案為啟用語意，遵循 openspec/LANGUAGE.md、不出現工程詞）。判定與寫入 SHALL 錨定向上命中的 workspace root，而非使用者所選的子目錄。
 
-使用者確認後 app SHALL 經引擎的工作區補齊入口執行啟用（補 openspec/ 骨架缺件、專案根 `.speclink.yaml` 記錄所選 tools、為每個所選工具生成指令檔受管區塊與 skills 檔），既有 openspec/ 內容 SHALL 零觸碰，隨即切換至該專案；使用者取消時 app SHALL 維持原專案，目標目錄 SHALL NOT 產生任何寫入。啟用失敗時 app SHALL 顯示單行錯誤訊息且 SHALL NOT 切換 root。`.speclink.yaml` 存在的專案 SHALL 照舊直接開啟，SHALL NOT 出現啟用對話框；向上探索完全未命中的目錄 SHALL 照舊走初始化確認流程。
+使用者確認後 app SHALL 經引擎的工作區補齊入口執行啟用（補 openspec/ 骨架缺件、專案根 `.speclink.yaml` 記錄所選 tools、為每個所選工具生成 skills 檔，不生成指令檔），既有 openspec/ 內容 SHALL 零觸碰，隨即切換至該專案；使用者取消時 app SHALL 維持原專案，目標目錄 SHALL NOT 產生任何寫入。啟用失敗時 app SHALL 顯示單行錯誤訊息且 SHALL NOT 切換 root。`.speclink.yaml` 存在的專案 SHALL 照舊直接開啟，SHALL NOT 出現啟用對話框；向上探索完全未命中的目錄 SHALL 照舊走初始化確認流程。
 
 #### Scenario: 遷移資料夾確認啟用後補齊並切入
 
 - **WHEN** 使用者選定含 openspec/（內有既有規格文件）但無 .speclink.yaml 的資料夾，於啟用確認對話框保持預設（claude）並確認
-- **THEN** 專案根產生 .speclink.yaml（tools 含 claude）、CLAUDE.md 的受管區塊與 .claude/skills/ 技能檔，openspec/ 內既有文件位元級不變，app 切換至該專案並於看板呈現既有內容
+- **THEN** 專案根產生 .speclink.yaml（tools 含 claude）與 .claude/skills/ 技能檔、不產生 CLAUDE.md，openspec/ 內既有文件位元級不變，app 切換至該專案並於看板呈現既有內容
 
 #### Scenario: 取消啟用則零寫入
 
@@ -548,19 +558,15 @@ code:
 - **WHEN** 未啟用資料夾的 openspec/config.yaml 已存在且含使用者自訂政策，使用者確認啟用
 - **THEN** 該檔位元級不變，僅補齊其餘缺件
 
+#### Scenario: 啟用時勾選 copilot
+
+- **WHEN** 使用者選定含 openspec/ 但無 .speclink.yaml 的資料夾，於啟用確認對話框改為只勾 copilot 並確認
+- **THEN** 專案根產生 .speclink.yaml（tools 僅含 copilot）與 .github/skills/ 技能檔，不產生 .claude/、.agents/、CLAUDE.md、AGENTS.md，openspec/ 內既有文件位元級不變
+
+
 <!-- @trace
-source: desktop-enable-speclink-prompt
-updated: 2026-07-31
-code:
-  - apps/desktop/core/src/project.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/workspace.test.ts
-  - apps/desktop/src/adapter/workspace.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-core/src/init.rs
+source: add-copilot-tool
+updated: 2026-10-08T11:52:22+08:00
 -->
 
 ---
