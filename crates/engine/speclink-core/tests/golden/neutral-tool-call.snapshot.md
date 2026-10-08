@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -20,9 +20,11 @@ Implement tasks from a Speclink change.
 
 **Input**: Optionally specify a change name (e.g., `speclink apply add-auth`). If omitted, check if it can be inferred from conversation context — inference only decides whether a name is given; the selection itself always goes through `speclink plan` in step 1.
 
-**Task tracking is file-based only.** The tasks file's markdown checkboxes (`- [ ]` / `- [x]`) are the single source of truth for progress. Do NOT use any external task management system, built-in task tracker, or todo tool. When a task is done, edit the checkbox in the tasks file — that is the only way to record progress.
+**Task tracking is file-based only.** The tasks file's markdown checkboxes (`- [ ]` / `- [x]`) are the single source of truth for progress. Do not use any external task management system, built-in task tracker, or todo tool. When a task is done, `speclink task done` (step 7) checks its box — that is the only way to record progress.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
+
+**Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response.
 
 **Steps**
 
@@ -37,8 +39,8 @@ Implement tasks from a Speclink change.
    It returns `waves` (changes that may run in parallel), `changes` (one entry per active change with `stage`, `blockedBy` and `ready`), `next` (the first proposed change with nothing blocking it, or `null`) and `skipped` (changes whose metadata could not be parsed). If the command fails (a dependency cycle, a project that is not initialized), show the error and STOP.
 
    - **No name given** → take `next`. If `next` is `null`, there is nothing ready to start: list every change with its `blockedBy` and STOP — do not pick one anyway.
-   - **A name given** (from the argument or from conversation context) → find it in `changes`. If its `blockedBy` is non-empty, print the prerequisite list (`blockedBy`) and STOP: do NOT run `speclink review prepare`, do NOT run `speclink in-progress add`. The way out is the user's: land (archive) the blockers first; drop a declared prerequisite that is wrong with `speclink change depends <name> --on <prerequisite> --remove`. Then run apply again.
-   - A named change that is not in `changes` (archived, misspelled, or listed under `skipped`) → keep going; step 2's status check reports it the way it always has.
+   - **A name given** (from the argument or from conversation context) → find it in `changes`. If its `blockedBy` is non-empty, print the prerequisite list (`blockedBy`) and STOP: do not run `speclink review prepare`, do not run `speclink in-progress add`. The way out is the user's: land (archive) the blockers first; drop a declared prerequisite that is wrong with `speclink change depends <name> --on <prerequisite> --remove`. Then run apply again.
+   - **A named change that is not in `changes`** (archived, misspelled, or listed under `skipped`) → keep going; step 2's status check reports it.
 
    Never auto-select a change just because only one exists, and never bypass the plan because the user mentioned a change in conversation — the plan decides whether it may start.
 
@@ -50,16 +52,15 @@ Implement tasks from a Speclink change.
    speclink status --change "<name>" --json
    ```
 
-   **If the command fails**: show the error and STOP.
+   - **The command fails** → show the error and STOP.
+   - **The command succeeds** → capture the review baseline, then mark the change as in-progress:
 
-   **If the command succeeds**, capture the review baseline, then mark the change as in-progress:
+     ```bash
+     speclink review prepare "<name>"
+     speclink in-progress add "<name>"
+     ```
 
-   ```bash
-   speclink review prepare "<name>"
-   speclink in-progress add "<name>"
-   ```
-
-   `review prepare` records the host-local Apply baseline (HEAD, dirty files at start) that the review station later resolves its frozen change scope against. Both are silent operations — do not show their output to the user. A stderr warning from `review prepare` (late or unavailable baseline) is fine — continue. If `speclink review prepare` fails, report the error and STOP — do NOT run `speclink in-progress add`.
+     `review prepare` records the host-local Apply baseline (HEAD, dirty files at start) that the review station later resolves its frozen change scope against. Both are silent operations — do not show their output to the user. A stderr warning from `review prepare` (late or unavailable baseline) is fine — continue. If `speclink review prepare` fails, report the error and STOP — do NOT run `speclink in-progress add`.
 
    Parse the JSON to understand:
    - `schemaName`: The workflow being used (e.g., "spec-driven")
@@ -78,16 +79,16 @@ Implement tasks from a Speclink change.
    - Dynamic instruction based on current state
 
    **Handle states:**
-   - If `state: "blocked"` (missing artifacts): show message, suggest using `speclink propose` to create the change artifacts first
-   - If `state: "all_done"`: congratulate, suggest archive
-   - Otherwise: proceed to implementation
+   - `state: "blocked"` (missing artifacts) → show the message, suggest using `speclink propose` to create the change artifacts first
+   - `state: "all_done"` → congratulate, suggest archive
+   - Otherwise → proceed to implementation
 
 3b. **Preflight check**
 
 If the apply instructions JSON includes a `preflight` field, act on its `status`:
 
-- **`"clean"`**: silently continue — no output needed.
-- **`"warnings"`**: display a brief summary, then continue automatically:
+- **`"clean"`** → silently continue — no output needed.
+- **`"warnings"`** → display a brief summary, then continue automatically:
   ```
   ⚠ Preflight warnings:
   - Drifted files (modified after change was created): <list paths>
@@ -95,7 +96,7 @@ If the apply instructions JSON includes a `preflight` field, act on its `status`
   Continuing...
   ```
   Only show the lines that are relevant (skip drifted if none, skip staleness if not stale).
-- **`"critical"`**: display missing files with their source artifact, then use the **AskUserQuestion tool** to ask the user:
+- **`"critical"`** → display missing files with their source artifact, then use the **AskUserQuestion tool** to ask the user:
 
   ```
   ⚠ Preflight: missing files detected
@@ -104,12 +105,7 @@ If the apply instructions JSON includes a `preflight` field, act on its `status`
   These files are referenced in the change artifacts but no longer exist on disk.
   ```
 
-  Options: "Continue anyway" / "Stop"
-  If the user chooses "Stop", end the workflow.
-
-  If there is no AskUserQuestion tool available:
-  Display the same information as plain text and ask whether to continue or stop.
-  Wait for the user's response.
+  Options: "Continue anyway" / "Stop". If the user chooses "Stop", end the workflow.
 
 If the `preflight` field is absent (blocked or all_done states), skip this step.
 
@@ -117,14 +113,12 @@ If the `preflight` field is absent (blocked or all_done states), skip this step.
 
 Run `speclink analyze <change-name> --json` to check cross-artifact consistency (Coverage, Consistency, Ambiguity, Gaps).
 
-- **Zero findings**: silently continue.
-- **Warning/Suggestion only**: display a one-line summary (e.g., "⚠ Artifact analysis: 2 warnings found") and continue automatically.
-- **Critical findings**: display each Critical finding (summary + location + recommendation), then use the **AskUserQuestion tool**:
+- **Zero findings** → silently continue.
+- **Warning/Suggestion only** → display a one-line summary (e.g., "⚠ Artifact analysis: 2 warnings found") and continue automatically.
+- **Critical findings** → display each Critical finding (summary + location + recommendation), then use the **AskUserQuestion tool**:
   - **Fix and continue** — fix the artifact issues inline, then proceed
   - **Continue anyway** — skip fixes and start implementation
   - **Stop** — end the workflow
-
-  If there is no AskUserQuestion tool available, present options as plain text and wait for the user's response.
 
 3d. **Drift dormancy check** (passive trigger for stale changes)
 
@@ -132,40 +126,37 @@ When the change has been dormant for more than 5 days AND the change directory h
 
 Detect dormancy from `.openspec.yaml` `created` and `git log -1 --format=%at -- openspec/changes/<name>/`:
 
-- **Both conditions met**: run `speclink drift <change-name>`, display the report, then use the **AskUserQuestion tool**:
+- **Both conditions met** → run `speclink drift <change-name>`, display the report, then use the **AskUserQuestion tool**:
   - **Continue with apply** — proceed to tasks (recommended for Light drift)
-  - **Refresh first** — pause apply, run `speclink-ingest <change-name>` to update artifacts, then resume
+  - **Refresh first** — pause apply, run `speclink ingest <change-name>` to update artifacts, then resume
   - **Stop** — end the workflow
-- **Either condition not met**: silently continue, no output.
+- **Either condition not met** → silently continue, no output.
 
-The trigger is guidance only — it MUST NOT block apply from proceeding when the user chooses to continue. Hard-blocking on dormancy would punish legitimate "I came back after a long weekend" cases.
+The trigger is guidance only — it does not block apply from proceeding when the user chooses to continue. Hard-blocking on dormancy would punish legitimate "I came back after a long weekend" cases.
 
 (Threshold reasoning: AI-assisted commits are daily-cadence. ≥5 days dormant + ≥3 days no commit ≈ genuine stagnation, not normal pacing.)
 
-If there is no AskUserQuestion tool available, present options as plain text and wait for the user's response.
-
 4. **Read context files**
 
-   Read the files listed in `contextFiles` from the apply instructions output.
+   Read the files listed in `contextFiles` from the apply instructions output — never assume specific file names.
    The files depend on the schema being used:
    - **spec-driven**: proposal, specs, design, tasks
    - Other schemas: follow the contextFiles from CLI output
 
-   **Remote mode**: when the workspace is connected to a remote store, `contextFiles` points into the read-only Context Projection (`.speclink/context/`) — a local snapshot of the remote canon. Read, search, and grep it freely, but NEVER edit projection files: a direct edit is not a remote write and the next command will reject the projection as modified. Any spec or artifact change goes through speclink verbs. If a `STALE` marker file exists at the projection root or a command reports the projection as modified, re-run `speclink instructions apply` to refresh it.
+   **Remote mode**: when the workspace is connected to a remote store, `contextFiles` points into the read-only Context Projection (`.speclink/context/`) — a local snapshot of the remote canon. Read, search, and grep it freely, but never edit projection files: a direct edit is not a remote write and the next command will reject the projection as modified. Any spec or artifact change goes through speclink verbs. If a `STALE` marker file exists at the projection root or a command reports the projection as modified, re-run `speclink instructions apply` to refresh it.
 
 5. **Check project preferences**
 
    The apply instructions payload carries the effective policy toggles as the `tdd` and `audit` boolean fields — read them from the payload; do not read any config file for these.
-   If `tdd` is true, apply TDD discipline throughout implementation:
-   - For each task, write a failing test FIRST, then implement to make it pass
-   - Fetch TDD instructions by running `speclink instructions --skill tdd`, then follow the Red-Green-Refactor cycle
-   - For bug fixes, reproduce the bug with a failing test before fixing
-
-   If `audit` is true, apply sharp-edges discipline throughout implementation:
-   - When designing APIs or interfaces, evaluate through 3 adversary lenses (Scoundrel, Lazy Developer, Confused Developer)
-   - When adding configuration options, verify defaults are secure and zero/empty values are safe
-   - When accepting parameters, check for type confusion and silent failures
-   - Fetch audit instructions by running `speclink instructions --skill audit`, follow the discipline checklist (not the standalone 3-agent workflow)
+   - **`tdd` is true** → apply TDD discipline throughout implementation:
+     - For each task, write a failing test FIRST, then implement to make it pass
+     - Fetch TDD instructions by running `speclink instructions --skill tdd`, then follow the Red-Green-Refactor cycle
+     - For bug fixes, reproduce the bug with a failing test before fixing
+   - **`audit` is true** → apply sharp-edges discipline throughout implementation:
+     - When designing APIs or interfaces, evaluate through 3 adversary lenses (Scoundrel, Lazy Developer, Confused Developer)
+     - When adding configuration options, verify defaults are secure and zero/empty values are safe
+     - When accepting parameters, check for type confusion and silent failures
+     - Fetch audit instructions by running `speclink instructions --skill audit`, follow the discipline checklist (not the standalone 3-agent workflow)
 
 6. **Show current progress**
 
@@ -177,7 +168,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
 
 7. **Implement tasks (loop until done or blocked)**
 
-   **Reminder: Track progress by editing checkboxes in the tasks file only. Do not use any built-in task tracker.**
+   Keep going through the pending tasks until every non-`[M]` task is done or something stops you. The stops below — an `[M]` task that blocks a code task, an unclear task, a design issue, an error — take priority over finishing the list.
 
    For each pending task:
    - Show which task is being worked on
@@ -187,7 +178,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
      - only names files to edit ("edit `foo.rs`", "update `bar.svelte`") with no behavior, contract, or verification target;
      - is vague ("handle edge cases", "wire it up", "make it work");
      - conflicts with the implementation contract (asks for behavior the contract excludes, or omits behavior the contract requires).
-       When this happens, pause. Either update the artifact (design or tasks) so the task names a concrete behavior and verification target, or report the blocker and wait for guidance. Do NOT silently guess against unclear requirements.
+       When this happens, pause. Either update the artifact (design or tasks) so the task names a concrete behavior and verification target, or report the blocker and wait for guidance. Do not silently guess against unclear requirements.
    - Before writing code, check:
      1. **Reuse** — search adjacent modules and shared utilities for existing implementations before writing new code
      2. **Quality** — derive values from existing state instead of duplicating; use existing types and constants over new literals
@@ -197,23 +188,23 @@ If there is no AskUserQuestion tool available, present options as plain text and
         - When TDD is enabled: derive the first failing test directly from the example's GIVEN/WHEN/THEN values
         - When TDD is not enabled: after implementing, verify the code handles the example's input→output correctly
         - Example tables map to parameterized tests — one test per row
-          Do NOT invent additional test values beyond what the spec examples provide without reason. The examples ARE the agreed specification.
+          Do not invent additional test values beyond what the spec examples provide without reason. The examples ARE the agreed specification.
    - Make the code changes required
    - Keep changes minimal and focused
    - **Verify before marking done** — re-read the task description from the tasks file AND the relevant Implementation Contract content from design.md. For each requirement stated in the task description and each contract item that covers this task's scope, confirm it is addressed by your changes. Confirm the verification target named by the task (test name, CLI invocation, analyzer check, or manual assertion) actually passes. If any contract item, task requirement, or verification target is missing or failing, implement/fix it now. Do not mark the task complete until every part of the description is covered and the contract for this task is satisfied.
-   - Mark task complete by running: `speclink task done --change "<name>" <task-id>`
+   - Mark task complete right away by running: `speclink task done --change "<name>" <task-id>`
      This command marks the checkbox in tasks.md AND records which files were modified for this task.
-   - **Never check off an `[M]` task.** A task whose description carries the `[M]` prefix is manual work the user performs by hand — not only manual testing, but anything you cannot do yourself: accepting a result by operating the product, creating an account on an external service, placing a key. You cannot observe the outcome, so you cannot attest to it. Skip it and move on — unless a code task depends on it, which is the next point's blocked case. Once every non-`[M]` task is checked, apply is finished: report completion, name the `[M]` tasks left for the user, and say that the quality stations (`speclink review`, `speclink verify`, or `speclink quality` for both) can run now while archive waits for the manual runs.
+   - **NEVER check off an `[M]` task.** A task whose description carries the `[M]` prefix is manual work the user performs by hand — not only manual testing, but anything you cannot do yourself: accepting a result by operating the product, creating an account on an external service, placing a key. You cannot observe the outcome, so you cannot attest to it. Skip it and move on — unless a code task depends on it, which is the next point's blocked case. Once every non-`[M]` task is checked, apply is finished: report completion, name the `[M]` tasks left for the user, and say that the quality stations (`speclink review`, `speclink verify`, or `speclink quality` for both) can run now while archive waits for the manual runs.
    - **A code task blocked by an open `[M]` task stops you.** Some manual tasks come first, not last — the external account has to exist before the code that calls it can be written. When implementing a code task requires an unchecked `[M]` task to be done, stop and ask the user to complete that manual task. Never check it off on their behalf, and never work around it.
    - If a task was checked by mistake or its implementation is rolled back, run: `speclink task undone --change "<name>" <task-id>`
-     Do NOT edit tasks.md directly to uncheck a task.
+     Do not edit tasks.md directly to uncheck a task.
    - Continue to next task
 
-   **Pause if:**
-   - Task is unclear → ask for clarification
+   **Pause and wait for guidance when:**
+   - The task is unclear → ask for clarification
    - Implementation reveals a design issue → suggest updating artifacts
-   - Error or blocker encountered → report and wait for guidance
-   - User interrupts
+   - An error or blocker comes up → report it
+   - The user interrupts
 
    **Started the wrong change?**
 
@@ -235,23 +226,6 @@ If there is no AskUserQuestion tool available, present options as plain text and
    Unlike `in-progress add`, an unknown change name errors loudly — check the
    name with `speclink list` if it reports not found.
 
----
-
-## Rationalization Table
-
-| What You're Thinking                                               | What You Should Do                                                                                                                            |
-| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| "This task looks done, I'll mark it complete"                      | Re-read the task description first. Check whether your diff covers every part of it. Incomplete tasks marked done are the #1 source of rework |
-| "This task is trivial, I don't need to re-read the design"         | Re-read. Context compression loses details. 30s of reading saves 30min of rework                                                              |
-| "I already know how this works, skip the code search"              | Search anyway. Someone may have added a utility since you last looked                                                                         |
-| "The test is obvious, I'll add it after implementation"            | If TDD is enabled, test first. If not, still write it before marking done                                                                     |
-| "This is just a small refactor, no test needed"                    | Small refactors are how regressions sneak in. Write the test                                                                                  |
-| "The artifact says X but Y makes more sense"                       | Pause and suggest updating the artifact. Don't silently deviate                                                                               |
-| "I'll fix this other thing I noticed while I'm here"               | Finish current task first. Address the other thing separately                                                                                 |
-| "The example values are just illustrations, I'll pick better ones" | Use the spec example values exactly. They were chosen deliberately                                                                            |
-
----
-
 8. **Final check**
 
    After completing all tasks, re-run:
@@ -267,8 +241,8 @@ If there is no AskUserQuestion tool available, present options as plain text and
    Display:
    - Tasks completed this session
    - Overall progress: "N/M tasks complete"
-   - If all done: suggest archive
-   - If paused: explain why and wait for guidance
+   - All done → suggest archive
+   - Paused → explain why and wait for guidance
 
 **Output During Implementation**
 
@@ -324,18 +298,29 @@ in one step via `speclink commit` ("Archive first, then commit together").
 What would you like to do?
 ```
 
+---
+
+## Rationalization Table
+
+| What You're Thinking                                               | What You Should Do                                                                                                                            |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| "This task looks done, I'll mark it complete"                      | Re-read the task description first. Check whether your diff covers every part of it. Incomplete tasks marked done are the #1 source of rework |
+| "This task is trivial, I don't need to re-read the design"         | Re-read. Context compression loses details. 30s of reading saves 30min of rework                                                              |
+| "I already know how this works, skip the code search"              | Search anyway. Someone may have added a utility since you last looked                                                                         |
+| "The test is obvious, I'll add it after implementation"            | If TDD is enabled, test first. If not, still write it before marking done                                                                     |
+| "This is just a small refactor, no test needed"                    | Small refactors are how regressions sneak in. Write the test                                                                                  |
+| "The artifact says X but Y makes more sense"                       | Pause and suggest updating the artifact. Don't silently deviate                                                                               |
+| "I'll fix this other thing I noticed while I'm here"               | Finish current task first. Address the other thing separately                                                                                 |
+| "The example values are just illustrations, I'll pick better ones" | Use the spec example values exactly. They were chosen deliberately                                                                            |
+
 **Guardrails**
 
-- Keep going through tasks until done or blocked
-- Always read context files before starting (from the apply instructions output)
-- If task is ambiguous, pause and ask before implementing
-- If implementation reveals issues, pause and suggest artifact updates
-- Keep code changes minimal and scoped to each task
-- Update task checkbox immediately after completing each task
-- Pause on errors, blockers, or unclear requirements - don't guess
-- Use contextFiles from CLI output, don't assume specific file names
-- **No external task tracking** — do not use any built-in task management, todo list, or progress tracking tool; the tasks file is the only system
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+Check these before you show the final status:
+
+- [ ] The context files came from the apply instructions output and were read before the first task (step 4).
+- [ ] Every finished task was checked with `speclink task done` right away; no external task tracker was used.
+- [ ] No `[M]` task was checked, and a code task blocked by an open `[M]` task stopped the run (step 7).
+- [ ] Code changes stayed minimal and scoped to each task; ambiguity, design issues and errors paused the run instead of a guess (step 7).
 
 **Fluid Workflow Integration**
 
@@ -361,7 +346,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -373,9 +358,11 @@ This harness executes speclink verbs by calling the speclink tool with an argv a
 
 Archive a completed change.
 
-**Input**: Optionally specify a change name after `speclink archive` (e.g., `speclink archive add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name after `speclink archive` (e.g., `speclink archive add-auth`). If omitted, check if it can be inferred from conversation context; if it is still vague or ambiguous, step 1 asks the user.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
+
+**Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response.
 
 **Where to run it**: archiving runs in the **main checkout**. Inside a linked worktree on a `speclink/` branch the engine refuses the archive outright — the unarchive backup would land in the worktree's gitignored `.speclink/snapshots/` and vanish with the worktree, and deltas would merge onto the branch point's stale canon. If you are in a worktree, wrap it up with the `speclink worktree-merge` skill first, then archive from the main checkout.
 
@@ -390,7 +377,7 @@ Archive a completed change.
    Show only active changes (not already archived).
    Include the schema used for each change if available.
 
-   **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose — a candidate marked 「可封存」 is not picked for them either.
+   Do NOT guess or auto-select a change — always let the user choose, and wait for the answer; a candidate marked 「可封存」 is not picked for them either.
 
 2. **Check artifact completion status**
 
@@ -479,7 +466,7 @@ Archive a completed change.
      - merge the omitted canonical content into each MODIFIED requirement so it reads as the complete final state, or declare the drop with `<!-- REMOVED-SCENARIO: … -->`
      - drop or retarget each pre-existing ADDED requirement (a requirement the canon already carries is edited via MODIFIED, not re-added)
      - do NOT edit the main specs — only the delta files change
-   - "Refresh from the codebase": run `speclink-drift <name>` to see what moved, then `speclink-ingest <name>` to update the delta — the route the refusal message itself points at
+   - "Refresh from the codebase": run `speclink drift <name>` to see what moved, then `speclink ingest <name>` to update the delta — the route the refusal message itself points at
    - "Cancel"
 
    After fixing, show a brief diff summary of the rewritten delta files, then continue.
@@ -509,7 +496,7 @@ Archive a completed change.
 
    **If the merge gate refuses**, the error lists every offending operation
    (capability / operation / requirement / reason) at once. Fix them in one round on the
-   delta files — `speclink drift <name>` shows what moved, `speclink-ingest <name>`
+   delta files — `speclink drift <name>` shows what moved, `speclink ingest <name>`
    updates the delta — then re-run the archive. `--no-validate` does not unlock the gate;
    `--skip-specs` skips spec application entirely.
 
@@ -526,7 +513,7 @@ Archive a completed change.
    It is a note, not a refusal — nothing to waive, no flag to pass, exit code unchanged. A
    spec-only or docs-only change earns no code evidence by construction, so the note is
    expected there. Anywhere else, read it as a prompt to check whether the work actually
-   went through `speclink-apply` before archiving.
+   went through `speclink apply` before archiving.
 
 6. **Display summary**
 
@@ -599,15 +586,13 @@ Target archive directory already exists.
 
 **Guardrails**
 
-- Always prompt for change selection if not provided
-- Use artifact graph (speclink status --json) for completion checking
-- Don't block archive on warnings - just inform and confirm
-- Preserve .openspec.yaml when moving to archive (it moves with the directory)
-- Show clear summary of what happened
-- Fixing a delta rewrites delta files only — NEVER edit main specs directly; delta application is the archive CLI's job
-- If delta specs exist, always run the completeness assessment; only prompt when a fix is actually needed
-- Never work around the merge gate — it protects the canonical specs from silent data loss; fix the delta instead
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+Check these before you show the summary:
+
+- [ ] The user chose the change; nothing was auto-selected (step 1).
+- [ ] Completion was checked with the artifact graph (`speclink status --json`, step 2); warnings were reported and confirmed, not treated as blockers (steps 2–3).
+- [ ] When delta specs exist, the completeness assessment ran, and a prompt appeared only when a fix was needed (step 4).
+- [ ] Only delta files were edited — never the main specs; delta application is the archive CLI's job, and the merge gate was not worked around (steps 4–5).
+- [ ] `.openspec.yaml` moved with the change directory, and the summary says clearly what happened (step 6).
 
 
 ## RENAMED is actually executed (speclink-specific)
@@ -708,7 +693,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -747,7 +732,7 @@ If there are no changes, report "No changes to audit" and stop.
 
 ### Phase 2: Parallel 3-Agent Analysis
 
-Launch 3 agents in parallel (one message, 3 tool calls). Each agent receives the full diff and analyzes it through one adversary lens.
+Launch 3 agents in parallel (one message, 3 tool calls). Each agent receives the full diff and analyzes it through one adversary lens. If you cannot spawn sub-agents, run the three lenses yourself one after another, and keep each lens's findings separate until Phase 3.
 
 **Agent 1 — The Scoundrel (壞蛋)**
 
@@ -785,15 +770,23 @@ Search the diff for:
 - Configuration cliffs: one wrong value = catastrophe with no warning (e.g., `verify_ssl: fasle`)
 - Stringly-typed security: permissions as comma-separated strings instead of enums
 
-### Phase 3: Consolidate and Fix
+### Phase 3: Consolidate and Report
 
-Merge findings from all 3 agents. For each finding:
+Standalone mode reports; it does not edit files. Fixing is the user's call — a change through `speclink propose`, or their own edit. (Discipline mode below fixes as it goes, because there it runs inside apply.)
 
-- If fixable: apply the fix directly
-- If false positive or not worth changing: skip without debate
+Merge findings from all 3 lenses. For each finding:
+
+- Fixable → name the fix: the file, and the change that removes the trap
+- False positive or not worth changing → skip without debate
 - Classify severity: Critical / High / Medium / Low
 
-End with a brief summary of what was fixed (or confirm the code is clean).
+End with a brief summary of the findings and their proposed fixes (or confirm the code is clean).
+
+**Standalone check** — before you report:
+
+- [ ] All three lenses ran over the full diff (Phase 2), as agents or one after another.
+- [ ] No file was edited; every fixable finding names its fix (Phase 3).
+- [ ] Every finding has a severity from the table in **Severity Classification**.
 
 ---
 
@@ -950,7 +943,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -962,7 +955,7 @@ This harness executes speclink verbs by calling the speclink tool with an argv a
 
 Establish the baseline for an existing codebase: generate the initial canonical specs from current behavior, so later changes have a spec baseline to build on.
 
-**IMPORTANT: The baseline documents what the system does TODAY — not what it should do.** Specs written here describe observed behavior with evidence. Aspirations, fixes, and improvements belong in a change (`speclink propose`) AFTER the baseline is written. Because nothing is changing, baseline writes directly to `openspec/specs/` — no change folder is involved.
+**The baseline documents what the system does TODAY — not what it should do.** Specs written here describe observed behavior with evidence. Aspirations, fixes, and improvements belong in a change (`speclink propose`) after the baseline is written. Because nothing is changing, baseline writes directly to `openspec/specs/` — no change folder is involved, and no code is changed: do not refactor while writing the baseline.
 
 **Input**: Optionally a scope hint after `speclink baseline` (e.g., "auth and billing only"). If omitted, baseline the whole codebase.
 
@@ -976,9 +969,9 @@ speclink workflow-config show --json
 ```
 
 - **No specs yet** → full baseline pass; continue below.
-- **Some specs exist** → gap-filling mode: inventory what is NOT yet covered and scope the rest of this flow to those areas. Never rewrite an existing spec here — propose a change instead.
+- **Some specs exist** → gap-filling mode: inventory what is not yet covered and scope the rest of this flow to those areas. Never rewrite an existing spec here — modifications go through a change (`speclink propose`).
 
-The `workflow-config show --json` payload is the canonical workflow config for this workspace — the values `openspec/config.yaml` holds (the store's config document in remote mode), in the same shape either way. Environment overrides (`SPECLINK_*`) are NOT applied; that is the same reading the file itself gives. Read these fields from it:
+The `workflow-config show --json` payload is the canonical workflow config for this workspace — the values `openspec/config.yaml` holds (the store's config document in remote mode), in the same shape either way. Environment overrides (`SPECLINK_*`) are not applied; that is the same reading the file itself gives. Read these fields from it:
 
 - `context` — the project context; carry it as background for the inventory and for every spec you write.
 - `specLocale` — the JSON name of `spec_locale`: the language for spec prose. `null` means English, `auto` means use the payload's `locale`, any other value is the locale code to write in. Structural markers and SHALL/MUST keywords stay in English regardless.
@@ -997,13 +990,13 @@ Build a behavioral map before writing anything:
 
 Spend effort proportional to repo size; for large repos, sample entry points and tests first.
 
-## Step 3: Propose the capability map — and WAIT
+## Step 3: Propose the capability map — and wait
 
-Draft a capability list (kebab-case names, one behavior area each — the same granularity a change's delta specs would use). For each: one-line purpose + the evidence files behind it.
+Draft a capability list (kebab-case names, one behavior area each — the same granularity a change's delta specs would use). For each: one-line purpose + the evidence files behind it. Keep capabilities small — a capability that needs 15 requirements is probably two capabilities.
 
-Present the map with the **AskUserQuestion tool** (or as plain text if unavailable) and let the user confirm, merge, split, or drop capabilities. **Do NOT write any spec before the map is confirmed** — wrong boundaries here are expensive to undo later.
+Present the map with the **AskUserQuestion tool** — or, if that tool is unavailable, as plain text — and let the user confirm, merge, split, or drop capabilities. Then wait for the answer. Do NOT write any spec before the map is confirmed — wrong boundaries here are expensive to undo later.
 
-The confirmation MUST also show which specs rules this run applies, so no rule shapes the output silently. Append this block to the map, quoting each entry of `rules.specs` verbatim:
+The confirmation also shows which specs rules this run applies, so no rule shapes the output silently. Append this block to the map, quoting each entry of `rules.specs` verbatim:
 
 ```
 Specs rules applied this run (from rules.specs, N entries):
@@ -1040,7 +1033,7 @@ For each confirmed capability, create `openspec/specs/<capability>/spec.md`:
 
 Rules:
 
-- **Evidence or flag it.** Every requirement must trace to code or tests you actually read. If a behavior is inferred but unverified, ask the user or leave it out — do not guess it into the record.
+- **Evidence or flag it.** Every requirement traces to code or tests you actually read. If a behavior is inferred but unverified, ask the user or leave it out — do not guess it into the record.
 - Concrete scenarios: real values from tests make the best WHEN/THEN data; add `##### Example:` blocks where tests provide exact input→output pairs.
 - Behavior only — no implementation details (module names, algorithms) in requirement text.
 - 4 hashes for `#### Scenario:`, SHALL/MUST keywords in English, prose in the `specLocale` language.
@@ -1056,13 +1049,14 @@ Fix structural findings, then report: capabilities created (with requirement/sce
 
 ## Guardrails
 
-- **Don't invent behavior** — evidence-based only; unverified inferences are flagged or omitted.
-- **Don't refactor while writing the baseline** — no code changes at all.
-- **Don't rewrite existing specs** — gap-fill only; modifications go through a change.
-- **Don't apply rules silently** — the `Specs rules applied this run` block appears in the map confirmation and in the final report.
-- **Don't hand-read `openspec/config.yaml`** — the workflow config comes from `speclink workflow-config show --json`; if that command fails, stop.
-- **Do confirm the capability map before writing** — boundaries are the expensive decision.
-- **Do keep specs small** — a capability that needs 15 requirements is probably two capabilities.
+Check these before you report:
+
+- [ ] Every requirement traces to code or tests you read; unverified inferences are flagged or omitted (Step 4).
+- [ ] No code was changed and no change folder was created — only `openspec/specs/` was written.
+- [ ] No existing spec was rewritten (Step 1).
+- [ ] The capability map was confirmed before any spec was written (Step 3).
+- [ ] The `Specs rules applied this run` block appeared in the map confirmation and in the final report (Steps 3 and 5).
+- [ ] The workflow config came from `speclink workflow-config show --json`, never from reading `openspec/config.yaml` (Step 1).
 
 ## Next steps
 
@@ -1079,7 +1073,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -1093,9 +1087,11 @@ Commit files related to a specific Speclink change.
 
 This is a **utility skill** (not a workflow step). It reads source file tracking data and artifact changes to stage and commit only the files belonging to one change — useful when multiple changes are in progress simultaneously.
 
-**Input**: Optionally specify a change name after `speclink commit` (e.g., `speclink commit add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name after `speclink commit` (e.g., `speclink commit add-auth`). If omitted, check if it can be inferred from conversation context; if it is still vague or ambiguous, step 1 asks the user.
 
 **Prerequisites**: This skill requires `git`. Run `git --version`. If git is not available (command not found or similar error), inform the user to install git and STOP.
+
+**Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response. The display-first rule of step 7 applies to the plain-text question too.
 
 **Steps**
 
@@ -1104,7 +1100,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    If a name is provided, use it. Otherwise:
    - Infer from conversation context if the user mentioned a change
    - Auto-select if only one active change exists
-   - If ambiguous, run `speclink list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select
+   - If ambiguous, run `speclink list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select, and wait for the answer
 
    Always announce: "Committing for change: <name>"
 
@@ -1139,7 +1135,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
 4. **Identify unrelated dirty files**
 
-   From the full `git status --porcelain` output, any dirty files NOT in the artifact set and NOT in the evidence record are "unrelated changes."
+   From the full `git status --porcelain` output, any dirty files that are neither in the artifact set nor in the evidence record are "unrelated changes."
 
 5. **Generate commit message**
 
@@ -1231,8 +1227,6 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
         - **Yes**: set a flag to pass `--mark-tasks-complete` to `speclink archive`
         - **No**: proceed without the flag (archive will continue with a warning)
 
-      If **AskUserQuestion tool** is not available, ask the same question as plain text and wait for the user's response.
-
     **7a-ii. Delta spec completeness check**
 
     Check whether delta specs exist at `openspec/changes/<name>/specs/`.
@@ -1242,9 +1236,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
       - If every delta is complete final-state and no ADDED requirement pre-exists: skip to 7a-ii-b.
       - Otherwise use the **AskUserQuestion tool** to ask: "Delta specs would be refused by the archive merge gate. Fix them before archiving?"
         - **Yes**: rewrite the delta files in place — merge the omitted canonical content into MODIFIED requirements (or declare deliberate drops with `<!-- REMOVED-SCENARIO: … -->`), drop or retarget pre-existing ADDED requirements — then proceed. Do NOT edit main specs.
-        - **No**: skip the archive (commit without it) and route the delta repair through `speclink drift <name>` → `speclink-ingest <name>` — archiving as-is would exit non-zero
-
-      If **AskUserQuestion tool** is not available, ask the same question as plain text and wait for the user's response.
+        - **No**: skip the archive (commit without it) and route the delta repair through `speclink drift <name>` → `speclink ingest <name>` — archiving as-is would exit non-zero
 
     **7a-ii-b. Plan order hint**
 
@@ -1279,7 +1271,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     After archive completes successfully:
 
-    1. Re-run `git status --porcelain` to capture all file changes produced by the archive (deletions from `openspec/changes/<name>/`, additions in `openspec/archived/`)
+    1. Re-run `git status --porcelain` to capture all file changes produced by the archive (deletions from `openspec/changes/<name>/`, additions in `openspec/changes/archive/`)
     2. Add these archive-related file changes to the commit set
     3. Regenerate the commit message with an `Archived: yes` line appended to the body
     4. Display an **updated commit plan and message** as one visible message, showing all sections:
@@ -1380,13 +1372,13 @@ No dirty files found for this change (no modified artifacts, no tracked source f
 
 **Guardrails**
 
-- **NEVER use `git add .` or `git add -A`** — every file must be staged individually with `git add <file>`
-- **NEVER commit files the user hasn't confirmed** — always show the file list and get explicit confirmation first
-- **Always show the full file list before committing** — no silent staging
-- **NEVER ask for confirmation before the commit plan and the full commit message have been output as visible message text** — the confirmation question must not reference content that was never displayed in the conversation (e.g., "the plan above" when no plan was shown). This applies equally to the plain-text fallback: display first, then ask
-- If the evidence record is missing, warn but don't block — artifact-only commits are valid
-- The "Unrelated Changes" section is informational only — these files are excluded by default
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+Check these before you commit:
+
+- [ ] Every file was staged individually with `git add <file>` — no `git add .` or `git add -A` (step 8).
+- [ ] The user confirmed the exact file list; nothing unconfirmed was committed, and nothing was staged silently (step 7).
+- [ ] **NEVER ask for confirmation before the commit plan and the full commit message have been output as visible message text** — the confirmation question must not reference content that was never displayed in the conversation (e.g., "the plan above" when no plan was shown). This applies equally to the plain-text fallback: display first, then ask.
+- [ ] A missing evidence record produced a warning, not a block — artifact-only commits are valid (step 6).
+- [ ] The "Unrelated Changes" section stayed informational; those files were excluded by default (step 6).
 
 === .wad/skills/speclink-config/SKILL.md ===
 ---
@@ -1396,7 +1388,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -1412,7 +1404,7 @@ Compose the workflow config's `context` and `rules` from what the codebase struc
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
-**What this document is.** `context` is the shared briefing every artifact prompt carries; `rules` are per-artifact constraints. Both exist to add what the engine does NOT already know. The policy fields (`locale`, `spec_locale`, `tdd`, `audit`) are answers, not findings — never infer them.
+**What this document is.** `context` is the shared briefing every artifact prompt carries; `rules` are per-artifact constraints. Both exist to add what the engine does not already know. The policy fields (`locale`, `spec_locale`, `tdd`, `audit`) are answers, not findings — never infer them.
 
 **This skill never writes without approval.** Every change reaches the file through `speclink workflow-config ... --dry-run`, shown as a diff, and is only applied after the user says so.
 
@@ -1420,7 +1412,7 @@ Compose the workflow config's `context` and `rules` from what the codebase struc
 
 ## Step 1: Read the fixed input set
 
-Scan ONLY the sources below. **Do NOT scan the source tree.** The goal is what the project structurally declares about itself; prose derived from implementation files ages out within a sprint and produces the churn this skill exists to prevent.
+Scan only the sources below. **Do not scan the source tree.** The goal is what the project structurally declares about itself; prose derived from implementation files ages out within a sprint and produces the churn this skill exists to prevent.
 
 1. **Dependency manifests** — the workspace manifest (member list, shared dependency table) and each package's own dependency list. These name the components, their boundaries, and which runtimes each component is allowed to touch.
 2. **README** — the project's own statement of what it is and who it serves.
@@ -1450,7 +1442,7 @@ Read the returned instruction text and check your candidate line against it, one
 
 ### Criterion 2 — Artifact-specific content belongs in rules
 
-If a line only bites on ONE artifact, it is a rule for that artifact, not context. `context` is for what every artifact prompt needs: what the system is, how it is partitioned, which constraints cut across all of them. When in doubt, demote to rules — an over-broad context line is paid for on every single prompt.
+If a line only bites on one artifact, it is a rule for that artifact, not context. `context` is for what every artifact prompt needs: what the system is, how it is partitioned, which constraints cut across all of them. When in doubt, demote to rules — an over-broad context line is paid for on every single prompt.
 
 ### Criterion 3 — Nothing that goes stale
 
@@ -1481,7 +1473,7 @@ With a scope hint, criteria 1–3 are re-judged only over the artifacts in scope
 
 ## Step 3: Ask for the policy fields — do not infer them
 
-The four policy fields are the user's decision. Ask each one explicitly, one at a time, with the **AskUserQuestion tool** (or as plain text if unavailable), showing the current value from Step 1:
+The four policy fields are the user's decision. Ask each one explicitly, one at a time, with the **AskUserQuestion tool** — or, if that tool is unavailable, as plain text — showing the current value from Step 1, and wait for each answer before the next question:
 
 - `locale` — the language for generated prose
 - `spec_locale` — the language for spec files (unset = English, `auto` = follow `locale`)
@@ -1490,7 +1482,7 @@ The four policy fields are the user's decision. Ask each one explicitly, one at 
 
 **Locale fields take locale CODES, never display names.** `locale` accepts exactly `tw`, `ja`, `en`; `spec_locale` accepts `tw`, `ja`, `en`, `auto`. Map the user's natural-language answer to its code before writing — 「繁體中文」 → `tw`, 「日本語」 → `ja`, "English" → `en` — the write verb rejects any value outside the code set, including display names.
 
-Never derive an answer from the repo (a test directory does NOT mean `tdd: true`). Leave a field alone when the user has no opinion.
+Never derive an answer from the repo (a test directory does not mean `tdd: true`). Leave a field alone when the user has no opinion.
 
 ### The fifth question — how much testing a task's verification runs
 
@@ -1515,29 +1507,31 @@ speclink workflow-config rules <artifact> --stdin --dry-run
 
 Never compute a diff yourself — a hand-made preview and the real serialization can disagree, and a preview that lies is worse than none.
 
-Present the diffs and WAIT. Only after the user approves, re-run the same commands without `--dry-run`. Note for the user that a rewrite drops template comments from the file (the read-modify-write trade-off) — that is expected, not damage.
+Present the diffs and WAIT — NEVER write before the user approves. Only after the user approves, re-run the same commands without `--dry-run`. Note for the user that a rewrite drops template comments from the file (the read-modify-write trade-off) — that is expected, not damage.
 
 The same commands work in both local and remote mode; in remote mode the write is guarded against concurrent edits, and a refusal means someone else changed the document — re-run the command and it applies on top.
 
 ## Step 5: Verify convergence
 
-Run this skill a second time against the same, unchanged codebase. **The second run's diffs MUST be empty.**
+Run this skill a second time against the same, unchanged codebase. **The second run's diffs must be empty.**
 
-A non-empty second diff is not a reason to write again — it means a criterion was applied loosely (usually 3, restating something measurable, or 2, moving a line between `context` and `rules`). Go back to Step 2, find which line moved, and fix the judgment. Do NOT land the second diff.
+A non-empty second diff is not a reason to write again — it means a criterion was applied loosely (usually 3, restating something measurable, or 2, moving a line between `context` and `rules`). Go back to Step 2, find which line moved, and fix the judgment. Do not land the second diff.
 
 Report at the end: which of the five sources were read, what was added, what was dropped and under which criterion, and the convergence result.
 
 ## Guardrails
 
-- **Don't scan the source tree** — the fixed input set is the whole input.
-- **Don't restate injected instructions** — disprove with `speclink instructions <artifact> --json`, per line.
-- **Don't restate quality-station canon** — read the generated station skill; a copy here is a second canon that drifts.
-- **Don't write anything that can go stale** — no versions, counts, or dates.
-- **Don't reference what doesn't exist** — verify every command, test, and path statically, every run; the referenced test and build commands themselves are never executed.
-- **Don't delete for the wrong reason** — a line falls only to the four criteria or to the user's own withdrawal; "cannot be derived from the fixed input set" is never a reason.
-- **Don't infer the policy fields** — ask all four, plus the test-scope question.
-- **Don't write without approval** — `--dry-run` first, always.
-- **Don't land a non-empty second run** — that is a signal to re-judge, not to write.
+Check these before you report:
+
+- [ ] **Don't scan the source tree** — the fixed input set is the whole input.
+- [ ] **Don't restate injected instructions** — disprove with `speclink instructions <artifact> --json`, per line.
+- [ ] **Don't restate quality-station canon** — read the generated station skill; a copy here is a second canon that drifts.
+- [ ] **Don't write anything that can go stale** — no versions, counts, or dates.
+- [ ] **Don't reference what doesn't exist** — verify every command, test, and path statically, every run; the referenced test and build commands themselves are never executed.
+- [ ] **Don't delete for the wrong reason** — a line falls only to the four criteria or to the user's own withdrawal; "cannot be derived from the fixed input set" is never a reason.
+- [ ] **Don't infer the policy fields** — ask all four, plus the test-scope question.
+- [ ] **Don't write without approval** — `--dry-run` first, always.
+- [ ] **Don't land a non-empty second run** — that is a signal to re-judge, not to write.
 
 === .wad/skills/speclink-discuss/SKILL.md ===
 ---
@@ -1547,7 +1541,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -1557,30 +1551,28 @@ This harness executes speclink verbs by calling the speclink tool with an argv a
 
 ---
 
-Have a focused discussion about a topic and reach a conclusion.
+Have a focused discussion about a topic and reach a conclusion. Every discussion has a topic, works toward a goal, and ends with a clear conclusion — unlike open-ended exploration, discuss mode converges.
 
-**IMPORTANT: Discuss mode is for thinking, not implementing.** You may read files, search code, and investigate the codebase, but you must NEVER write code or implement features. If the user asks you to implement something, remind them to exit discuss mode first (e.g., start a change with `speclink propose`). You MAY create Speclink artifacts (proposals, designs, specs) if the user asks—that's capturing thinking, not implementing.
+**Discuss mode is for thinking, not implementing.** You may read files, search code, and investigate the codebase, but you NEVER write application code or implement features. If the user asks you to implement something, remind them to leave discuss mode first (e.g., start a change with `speclink propose`). Writing the discussion record, and creating Speclink artifacts (proposals, designs, specs) when the user asks, is capturing thinking — that is allowed.
 
-**This is a task-oriented discussion.** Every discussion has a topic, works toward a goal, and ends with a clear conclusion. Unlike open-ended exploration, discuss mode converges.
-
-**Input**: The argument after `speclink discuss` is the topic. Could be:
+**Input**: The argument after `speclink discuss` is the topic. It can be:
 
 - A design question: "should we use WebSockets or SSE?"
 - A problem to solve: "the auth system is getting unwieldy"
 - A change name: "add-dark-mode" (discuss in context of that change)
 - An architecture decision: "how to structure the plugin system"
 - A vague idea that needs sharpening: "real-time collaboration"
-- A document path: `docs/plans/realtime.md` — a plan you wrote by hand, a plan-mode output, a doc under the repo, or any readable path (see "Document input" below)
+- A document path: `docs/plans/realtime.md` — a plan you wrote by hand, a plan-mode output, a doc under the repo, or any readable path (see "Document input" in Step 3)
 
-**Not every topic is a discussion.** If the request is really a question — the user wants to understand how something works or whether something is feasible, and no decision hangs on the answer — answer it directly in the conversation and do not open a discussion record. A discussion exists to settle something; understanding-seeking without a verdict is ask-shaped, not discuss-shaped. When in doubt, start talking without a record: the record is only created at the first substantive round (see below), so nothing is lost by waiting.
+**Not every topic is a discussion.** If the request is really a question — the user wants to understand how something works or whether something is feasible, and no decision hangs on the answer — answer it directly in the conversation and do not open a discussion record. A discussion exists to settle something; understanding-seeking without a verdict is ask-shaped, not discuss-shaped. When in doubt, start talking without a record: the record is created only at the first substantive round (Step 5), so nothing is lost by waiting.
 
 ---
 
-## Recording the discussion (speclink)
+## The discussion record
 
-Unlike an ephemeral chat, **every speclink discussion is persisted to a document** (`openspec/discussions/<slug>.md`) so the conversation keeps its thread across turns and sessions, and so a later `speclink propose --from-discussion <slug>` can seed a proposal directly from it. Drive the record through the CLI — never hand-write the file.
+Every speclink discussion is persisted to a document (`openspec/discussions/<slug>.md`), so the conversation keeps its thread across turns and sessions, and a later `speclink propose --from-discussion <slug>` can seed a proposal directly from it. Drive the record through the `speclink discuss` verbs — NEVER hand-write or edit the file.
 
-The document has a fixed skeleton — like the proposal template, every discussion record has the same shape:
+Every record has the same fixed skeleton:
 
 ```
 ## Context      ← the framing, set once when the record is created (discuss context)
@@ -1597,128 +1589,27 @@ The document has a fixed skeleton — like the proposal template, every discussi
 5. **Position bullets over prose.** When a Position exceeds one sentence it SHALL be bulleted — a one-sentence verdict first, then `- ` points one per line. A single-line wall-of-text Position is unreadable in every viewer. Focus / Ruled out / Open stay single-line.
 6. **The rounds trace the decision tree.** The first round's Position lays out the initial decision space (an ASCII tree is welcome); each later round resolves one node; branches discovered mid-round are recorded in that round's Open. The Open ledger is thus always the exact frontier of the unexplored tree.
 7. **Multi-requirement backlog.** When one discussion carries several requirements (say 5-10 at once), the first round's Open lays out the full requirement list; every later round's Open restates the items still open; and where a settled item went (decided, promoted, dropped) is carried by the first sentence of that round's Position. Open and Position as they already exist — no new section, no format change. These are the same fields the resume ritual ("At the start" below) reads back.
-8. **Conclusion bullets over prose.** When the Conclusion's Decision, Rejected alternatives or Deferred exceeds one sentence it SHALL be bulleted — `- ` points one per line: the Decision opens with a one-sentence verdict and bullets the rest, while Rejected alternatives and Deferred keep the `**Field**:` header bare and carry one `- ` line per item. Rationale / Capture to / Next stay a single paragraph. The Decision keeps every settled detail — never trim it to shorten the record — and none of its points refers back to a round ("see Round 3"); when the conclusion plans several cuts to spin out, the Decision carries one bullet per cut, headed ``**cut N `change-name`**: one-sentence scope``, with that cut's details as indented sub-points, one item each. A Rejected alternatives line reads `option — why it lost`; a Deferred line reads `question — why not now`, or the field holds the single word `none`. The rule binds the conclusions written from here on; existing records are not rewritten.
-
-**At the start (before Step 0):**
-
-1. Check for an existing open discussion on this topic:
-   ```bash
-   speclink discuss list --json
-   ```
-2. If one matches the topic and it is still live — `status` `open`, or `promoted` mid-way through a spin-out (see **Mid-discussion spin-out** below) — resume it (reuse its `slug`): the record already exists; every later `add-round`/`conclude` call uses it. Only `concluded` and archived records are past resuming. **Resume ritual**: before continuing, present a recap derived from the record — one line per round (its Focus → the first sentence of its Position), then the last round's Open ledger as the current frontier — and only then pick the discussion back up. The recap is mechanically derived from fields the record already has; it introduces no new format and existing records need no migration.
-3. Otherwise **do not create the record yet.** Derive an English kebab-case slug from the topic (translate when the topic is not English — e.g. 「看板搜尋列」 → `board-search-bar`), announce it ("This discussion will be recorded as `<slug>` once it has substance."), and proceed — scout, judge requirement clarity, present your first assumptions or question with nothing on disk. A mis-invocation or a topic answered in one exchange leaves no file behind.
-
-**Create the record at the first substantive round** — and "substantive" is defined by the user's reply, never by your own output: the trigger is the moment the user's response moves the topic (they confirmed or corrected your assumptions list, their answer to a question settled something). Your own research, however deep, and your first assumptions list do NOT count as substance — never run `speclink discuss new` before the user has replied. Right before recording that first round, run:
-
-```bash
-speclink discuss new "<topic>" --slug <english-kebab-slug>
-```
-
-Always pass `--slug` with the English kebab-case slug you derived — the slug names the record file; the topic stays in the user's language verbatim. Without `--slug` the filename falls back to deriving from the topic, so non-English topics produce non-English filenames. Write the Context section (below), then `add-round`. From here on the record is live and every exchange is persisted.
-
-**When the record is created**, fill the Context section once — the framing a future reader (or `propose`) needs before the rounds make sense:
-
-```bash
-speclink discuss context <slug> --stdin <<'CTX_EOF'
-What prompted this discussion, whether a grill stage (Step 3) was needed and why,
-and the related changes/specs the scout (Step 2) surfaced, its in-flight delta hits
-written as <name>: <capability>, comma-separated.
-Prior discussions: <slug list>
-CTX_EOF
-```
-
-The `Prior discussions:` line is mandatory: it names the records the prior-discussion check (Step 2) hit, comma-separated; when the check hit nothing, write `Prior discussions: none`.
-
-The in-flight delta hits go inside that related changes/specs sentence, in the form the template shows (e.g. `add-change-plan-remote: client-protocol`). With zero delta hits the sentence reads exactly as it always has — the canon hits and the change names, no empty marker. Never add a separate line for deltas (no `In-flight deltas:` line): the sentence carries them, and the `Prior discussions:` line stays exactly as specified above.
-
-**Source doc convention** — when the topic named a document (see "Document input" below), the Context SHALL carry one line naming it:
-
-```
-Source doc: <path>
-```
-
-That line is the mechanical marker a later `speclink propose --from-discussion <slug>` looks for to know there is an underlying document to read. Three rules travel with it:
-
-- **Evidence cites the document by reference, not by transcription.** When a round's Evidence points at the document, name the section heading or quote a short phrase from it.
-- **The record stores the outcome of the discussion only.** It SHALL NOT embed the planning document in full — the document stays where it is, and the record holds the decision diff against it.
-- **Never modify the user's original document.** Corrections live in the record; merging document and decisions is `propose`'s job, not yours.
-
-When the topic named no document, none of this applies: the Context has no `Source doc:` line, there is no extra file-reading step, and recording proceeds exactly as it does today.
-
-**After each round** (each Assumptions list you present, or each question-and-answer that moves the topic forward), persist a concise summary so the record shows how the thinking evolved:
-
-```bash
-speclink discuss add-round <slug> --mode assumptions --stdin <<'ROUND_EOF'
-**Focus**: the one question this round examined
-**Position**: one-sentence verdict of the direction taken, expanded as bullets:
-- one point per line — the decision detail and the evidence (files, probe results) behind it
-- keep bulleting until the position is fully stated; never fold it back into one long line
-**Ruled out**: options eliminated this round — each with the reason it lost
-**Open**: questions still unresolved, for the next round to pick up
-ROUND_EOF
-```
-
-Use `--mode assumptions` for rounds that presented an assumptions list and `--mode interview` for question-driven rounds (grill stage or node fallback). Omit a line rather than pad it (e.g. no `**Ruled out**` when nothing was eliminated). Keep each round terse — it is a durable summary following the Document rules above, not a transcript. This is the mechanism that keeps a long discussion from drifting off-topic: each round is anchored to the record.
-
-**At convergence**, write the conclusion into the record (see the Convergence and "Capture decisions" sections below). Add `--hold` when the conclusion plans further changes to spin out from this same record later — it keeps the record live past its conclusion and past every spin-out, until the last cut is spun out with `--last` or you release it by hand (see **Mid-discussion spin-out** below):
-
-```bash
-speclink discuss conclude <slug> --stdin <<'CONCLUSION_EOF'
-**Decision**: ... (a one-sentence verdict; beyond one sentence, bullet it)
-- ... (one settled point per line — keep every detail, never trim)
-- **cut N `change-name`**: ... (one bullet per cut when several changes spin out)
-  - ... (that cut's details, one item each)
-**Rationale**: ... (the key trade-off that drove it — a single paragraph)
-**Rejected alternatives**:
-- ... — ... (option — why it lost, one per line)
-**Deferred**: none (or `- question — why not now`, one per line)
-**Capture to**: proposal | design | spec | tasks | LANGUAGE.md
-**Next**: speclink propose --from-discussion <slug>
-CONCLUSION_EOF
-```
-
-This flips the record's `status` to `concluded`. The step logic below (vocabulary load, the scout, the requirement-clarity judgement, interface depth check, convergence, conclusion capture) is unchanged — recording sits alongside it.
-
-**A concluded discussion hands off through propose**: `speclink propose --from-discussion <slug>` seeds the proposal from the recorded Decision and rounds and builds every artifact in one pass — the single next step once the conclusion is written.
-
-**Mid-discussion spin-out** — in a multi-requirement discussion, one item can be filed the moment it is settled; don't hold it hostage to the rest:
-
-1. **Promote now**: run `speclink discuss promote <slug> --name <change-name>` (`--name` is optional — the change name defaults to the slug) — the engine scaffolds the change, prefills the proposal's Why (from the conclusion when one exists, otherwise from the topic), and links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record). One discussion can fan out into several changes — spin out again and `promoted_to` accumulates each name; the discussion is archived automatically when the last of its changes is archived and its conclusion is written — an unconcluded record stays live for more rounds (a later `conclude` closes it once every spun-out change is archived). **When the conclusion stages several cuts to spin out from this same record** (cut A now, cut B once A lands, cut C after that), run `conclude` with `--hold` **once** — an ordinary spin-out never clears the flag, so the single call covers the whole series. The record stays live past its conclusion and past every middle cut's archive. The **last cut is spun out with `--last`** (`speclink propose --from-discussion <slug>` decides this from the conclusion's cut list and the record's `promoted_to`; on the raw verbs it is `speclink discuss promote <slug> --last`, `speclink new change <name> --from-discussion <slug> --last`, or `speclink discuss seal <slug> <change> --last`): that spin-out drops the flag in the same write, and when the last spun-out change is archived the record is co-archived automatically — there is nothing to close by hand. Besides `--last`, only a `conclude` without `--hold` or a manual `speclink discuss archive <slug>` releases the flag. Forgot `--last`? The record simply stays live (the board labels it "promoted · on hold"); run `speclink discuss archive <slug>` once to close the series. Without `--hold` the record is archived along with the last of its changes, and any later cut needs a new discussion. The remaining artifacts are still created via `speclink propose`.
-2. **Keep discussing**: `add-round` continues as normal for the remaining items; promotion does not close the record.
-3. **Conclude as usual at the end**: the record keeps its `promoted` status, the conclusion is written in, and the engine flags the already-promoted changes as needing the conclusion re-reflected. When the conclusion is unrelated to a spun-out change, that flag needs a single confirmation — no rework.
-
-Never require a conclusion before a mid-discussion promote, and never conclude the whole discussion early just to free one item.
-
-**Archived by mistake?** (For example, `--last` went on a cut that was not the last one, and the record was co-archived with it.) Move the record file from `openspec/discussions/archive/` back to `openspec/discussions/` and drop the `<date>-` prefix from its name — it is live again and every verb works on it. The engine's error for spinning out from an archived record points at the same path.
-
-**Conclusion routed to an EXISTING change**: when the conclusion's **Capture to** points at a change already in flight (the decision updates its artifacts instead of spawning a new one), run link first, then hand off to ingest:
-
-```bash
-speclink discuss link <slug> <existing-change>
-```
-
-`link` forges the change-side chain (`from_discussion` in the change metadata) without scaffolding anything, so drawer links and auto-archive engage — the discussion is archived automatically when the last linked change is archived and its conclusion is written. Unlike promote, `link` does NOT mark the discussion 已轉出 (`promoted`): that reflection is sealed by `speclink ingest`, which folds the decision into the change's artifacts and then runs `speclink discuss seal` — so the discussion flips to promoted only once its content has actually landed, never at link time. Then run `speclink ingest <existing-change>` to fold the decision in and seal. Without the link, a concluded-then-ingested discussion sits on the board forever with nothing to archive it.
-
-**Lifecycle**: a discussion that concluded without spawning a change (an explicit "don't do this" is a valid outcome) should be closed out with:
-
-```bash
-speclink discuss archive <slug>       # → discussions/archive/<created>-<slug>.md
-```
-
-Archived discussions stay readable — `speclink discuss show <slug>` falls back to the archive, and `speclink discuss list --archived` lists them. The slug becomes free for a future discussion.
-
-A discussion that turns out not to be needed at all — the user abandons it mid-way, or the topic proved ask-shaped after all — is **discarded**, not archived:
-
-```bash
-speclink discuss discard <slug>            # refuses once rounds exist
-speclink discuss discard <slug> --force    # delete despite recorded rounds
-```
-
-`discard` deletes the live record (archived records are never touched). Once rounds exist it refuses without `--force` — a discussion that examined real trade-offs should keep its reasoning through `conclude` + `archive`, even when the conclusion is "don't do this". Use `discard` freely for records that settled nothing; never leave an abandoned discussion sitting `open`.
+8. **Conclusion bullets over prose.** The Conclusion's field shape is stated once, in Step 8, next to the conclude template.
 
 ---
 
-## Before You Speak
+## At the start (before Step 0)
+
+1. Check for an existing discussion on this topic and for the changes in flight:
+
+   ```bash
+   speclink discuss list --json
+   speclink list --json
+   ```
+
+2. Act on what the discussion list shows:
+   - **A record matches the topic and is still live** — `status` `open`, or `promoted` mid-way through a spin-out (Step 9) → resume it (reuse its `slug`): the record already exists; every later `add-round`/`conclude` call uses it. Only `concluded` and archived records are past resuming. **Resume ritual**: before continuing, present a recap derived from the record — one line per round (its Focus → the first sentence of its Position), then the last round's Open ledger as the current frontier — and only then pick the discussion back up. The recap is mechanically derived from fields the record already has; it introduces no new format and existing records need no migration.
+   - **No live record matches** → do not create one yet. Derive an English kebab-case slug from the topic (translate when the topic is not English — e.g. 「看板搜尋列」 → `board-search-bar`), announce it ("This discussion will be recorded as `<slug>` once it has substance."), and proceed — scout, judge requirement clarity, present your first assumptions or question with nothing on disk. A mis-invocation or a topic answered in one exchange leaves no file behind. Step 5 says when the record is created.
+3. If the user mentioned a specific change name, read its artifacts for context.
+
+---
+
+## Before you speak
 
 Before asking anything, load the shared vocabulary, then do a quick codebase scout to decide how to run this discussion.
 
@@ -1726,8 +1617,8 @@ Before asking anything, load the shared vocabulary, then do a quick codebase sco
 
 Run `speclink language show`. It prints the project's canonical vocabulary — terms with `definition`, `avoid`, and `why` notes, plus principles for when legacy terminology may remain.
 
-- **If the command succeeds**: scan the canonical terms and their avoided synonyms. Prefer the canonical term when you summarize, capture conclusions, or update artifacts. If you notice a relevant `avoid` synonym in the user's topic or in the artifacts you read, plan to surface that as vocabulary drift in the conclusion.
-- **If the command fails (no vocabulary document)**: continue silently with the normal flow. A missing vocabulary is not an error; do not announce it, do not block, and do not stop to ask the user to create it.
+- **The command succeeds** → scan the canonical terms and their avoided synonyms. Prefer the canonical term when you summarize, capture conclusions, or update artifacts. If you notice a relevant `avoid` synonym in the user's topic or in the artifacts you read, plan to surface that as vocabulary drift in the conclusion (Step 7).
+- **The command fails (no vocabulary document)** → continue silently with the normal flow. A missing vocabulary is not an error; do not announce it, do not block, and do not stop to ask the user to create it.
 
 This step runs before the scout, the assumptions list, any question to the user, and the conclusion capture.
 
@@ -1741,7 +1632,7 @@ The scout is a funnel: the canon, plus the in-flight deltas about to change it, 
 
 1. **Canon pass** — run `speclink list --specs --json` and match the keywords against capability names. Keep at most 5 candidates in **candidate order** — the names that match the most keywords first, ties in the order the command lists them. Read the Purpose of at most 3 of them in that order (each hit's `path` is the capability's directory — its `spec.md` holds the Purpose), and read a spec in full only when the topic directly targets that capability. Zero hits → skip silently: don't mention specs at all and run the code pass with the original keywords.
 
-   **In-flight deltas belong to this pass.** Every change `speclink list --json` returns (see "Speclink Awareness") is still active: whatever its `status`, its delta specs have not landed in the canon yet. Each change entry's `deltaCapabilities` field names the capabilities those deltas rewrite (the field is absent when the change has none), so the list you ran at the start already holds the answer — no further call. Every change whose `deltaCapabilities` holds a capability the canon pass hit is an **in-flight delta hit** — note it as `<name>: <capability>`. Time-box: read at most 3 hits — the first 3 in candidate order, several changes on one capability in the order `speclink list --json` returned them — with `speclink artifact cat specs/<capability> --change <name>`, and keep only its `## ADDED` / `MODIFIED` / `REMOVED` / `RENAMED` section markers and `### Requirement:` headings, never the delta's full text. When that change's list entry carries a `worktree` object, run the command from its `worktree.path`: the list took that change's deltas from the worktree copy, so the headings have to come from there too. Zero canon hits, no active changes, or no `deltaCapabilities` holding a hit capability → skip silently: say nothing about in-flight deltas. Both verbs work in remote mode, so the check runs the same way there. The hits feed the in-flight marker on the first two triage rows (below) and the Context's "related changes/specs" line; they never open a stage of their own.
+   **In-flight deltas belong to this pass.** Every change `speclink list --json` returned ("At the start", item 1) is still active: whatever its `status`, its delta specs have not landed in the canon yet. Each change entry's `deltaCapabilities` field names the capabilities those deltas rewrite (the field is absent when the change has none), so that list already holds the answer — no further call. Every change whose `deltaCapabilities` holds a capability the canon pass hit is an **in-flight delta hit** — note it as `<name>: <capability>`. Time-box: read at most 3 hits — the first 3 in candidate order, several changes on one capability in the order `speclink list --json` returned them — with `speclink artifact cat specs/<capability> --change <name>`, and keep only its `## ADDED` / `MODIFIED` / `REMOVED` / `RENAMED` section markers and `### Requirement:` headings, never the delta's full text. When that change's list entry carries a `worktree` object, run the command from its `worktree.path`: the list took that change's deltas from the worktree copy, so the headings have to come from there too. Zero canon hits, no active changes, or no `deltaCapabilities` holding a hit capability → skip silently: say nothing about in-flight deltas. Both verbs work in remote mode, so the check runs the same way there. The hits feed the in-flight marker on the first two triage rows (Step 3) and the Context's "related changes/specs" line (Step 5); they never open a stage of their own.
 2. **Translate** — rewrite the search terms using the capability names and canonical vocabulary the canon pass surfaced (on top of Step 0's vocabulary), so the code scan speaks the system's language instead of the user's.
 3. **Prior-discussion check** — run one search with the Step 1 keywords plus the English terms the translation produced:
 
@@ -1749,30 +1640,30 @@ The scout is a funnel: the canon, plus the in-flight deltas about to change it, 
    speclink discuss search <keyword>... --json
    ```
 
-   It covers live and archived records alike and matches only the topic, the slug and the decision lines — each round's `Ruled out` and the Conclusion's `Decision` / `Rejected alternatives` / `Deferred`; any one keyword matching counts. **List every matching decision line the hits return** — they are one-line verdicts, and the point is to see them all. Then read the full Conclusion of **at most 3** records with `speclink discuss show <slug>`, **topic hits first**. Do not filter by `kind`: an `improve` record's rejections weigh the same as a plain discussion's. Zero hits → skip silently. What this pass surfaces feeds the fourth triage row ("Settled by a prior discussion", below) and the Context's `Prior discussions:` line.
+   It covers live and archived records alike and matches only the topic, the slug and the decision lines — each round's `Ruled out` and the Conclusion's `Decision` / `Rejected alternatives` / `Deferred`; any one keyword matching counts. **List every matching decision line the hits return** — they are one-line verdicts, and the point is to see them all. Then read the full Conclusion of **at most 3** records with `speclink discuss show <slug>`, **topic hits first**. Do not filter by `kind`: an `improve` record's rejections weigh the same as a plain discussion's. Zero hits → skip silently. What this pass surfaces feeds the fourth triage row ("Settled by a prior discussion", Step 3) and the Context's `Prior discussions:` line (Step 5).
 4. **Code pass** — Grep/Glob with the translated terms; read up to 5 of the most relevant files.
 
 **Shortcut**: when the topic already names a concrete file or symbol, start the code pass immediately — don't wait for the canon pass. Run the canon pass afterwards anyway: the shortcut reorders the funnel, it doesn't skip a stage (the canon triage and the Context's related-specs line still need it).
 
-The scout exists to ground the discussion and judge requirement clarity (Step 3) — it is not the investigation. Deeper verification happens later, node by node along the decision tree (see "How to Discuss"). The canon hits and in-flight delta hits from this step, together with the change hits from `speclink list --json` (see "Speclink Awareness"), are what the Context's "related changes/specs" line records; the prior-discussion hits fill its `Prior discussions:` line.
+The scout exists to ground the discussion and judge requirement clarity (Step 3) — it is not the investigation. Deeper verification happens later, node by node along the decision tree ("How to discuss").
 
 ### Step 3: Judge requirement clarity
 
 Assumptions is the only default posture — every discussion arrives there. The only fork is whether the requirement needs sharpening first:
 
-- **Dull requirement** (no verifiable goal, no threshold, "improve / better / cleaner"-style wording) → run a **grill stage** first: sharpen the requirement one question per exchange — goal, scope, threshold, success criteria (see "How to Discuss" for the question rules). The moment the requirement is sharp, stop grilling and present assumptions.
+- **Dull requirement** (no verifiable goal, no threshold, "improve / better / cleaner"-style wording) → run a **grill stage** first: sharpen the requirement one question per exchange — goal, scope, threshold, success criteria (see "How to discuss" for the question rules). The moment the requirement is sharp, stop grilling and present assumptions.
 - **Sharp requirement** (a verifiable goal and its boundaries are already stated) → the grill stage collapses to zero questions: go straight to assumptions.
 - **The topic is a document path** → **Document input** (below): the document supplies the tree already filled in, so skip the "list 3-5 assumptions" opening and triage its claims instead. The scout still runs — it is what you triage the claims against.
 
-How much code the scout found never decides the posture — there is no file-count fork. Inside assumptions, a node whose Evidence cannot support a stance becomes a single question carrying your best guess (the node fallback — see "How to Discuss").
+How much code the scout found never decides the posture — there is no file-count fork. Inside assumptions, a node whose Evidence cannot support a stance becomes a single question carrying your best guess (the node fallback — see "How to discuss").
 
 Announce the posture and why: "The goal here is verifiable — here are my assumptions." or "'Make it better' isn't a testable goal yet — one question first."
 
-The user can redirect at any time: **"ask me questions instead"** / **"one at a time"** walks the remaining nodes as questions, one per exchange, under the "How to Discuss" rules; **"just list your assumptions"** / **"what do you think?"** runs the scout if not done yet and presents assumptions.
+The user can redirect at any time: **"ask me questions instead"** / **"one at a time"** walks the remaining nodes as questions, one per exchange, under the "How to discuss" rules; **"just list your assumptions"** / **"what do you think?"** runs the scout if not done yet and presents assumptions.
 
-### Presenting assumptions
+#### Presenting assumptions
 
-A single-requirement topic gets 3-5 assumptions; a multi-requirement discussion covers every requirement on its backlog instead of trimming to that cap — one assumption per decision, the canon triage below included. Each one MUST include:
+A single-requirement topic gets 3-5 assumptions; a multi-requirement discussion covers every requirement on its backlog instead of trimming to that cap — one assumption per decision, the canon triage below included. Each one includes:
 
 1. **Approach**: what you'd do and why
 2. **Evidence**: file path(s) that informed this assumption
@@ -1809,14 +1700,14 @@ Example:
 
 The discipline: **the user's requirement is the goal; the canon and the prior discussions are evidence, not a verdict.** Departing from the canon, or reopening a direction an earlier discussion rejected, is a legitimate direction — it just goes into the record as a conscious decision, with the old reason and why it no longer holds.
 
-After presenting, ask: **"Which of these are wrong?"**
+After presenting, ask: **"Which of these are wrong?"** Then stop and wait for the user's reply. When it arrives:
 
-- If the user says all are fine → proceed to Convergence with these as established context.
-- If the user flags corrections → for each one, ask ONE focused follow-up question to understand their intent, then proceed to Convergence with the corrected understanding.
+- **The user says all are fine** → create the record (Step 5), then proceed to convergence (Step 7) with these as established context.
+- **The user flags corrections** → create the record (Step 5); for each correction, ask ONE focused follow-up question to understand their intent, then proceed to convergence with the corrected understanding.
 
-### Document input
+#### Document input
 
-When the topic names a **file path** rather than a sentence — a plan the user wrote by hand, a plan-mode output, a doc under the repo, or any readable path — read that file and treat it as **someone else's assumptions list**: a decision tree that arrives pre-filled and now has to be stress-tested. The document SHALL NOT be read once as background material and then set aside; it is not colour for opinions you form independently.
+When the topic names a **file path** rather than a sentence — a plan the user wrote by hand, a plan-mode output, a doc under the repo, or any readable path — read that file and treat it as **someone else's assumptions list**: a decision tree that arrives pre-filled and now has to be stress-tested. The document is not read once as background material and then set aside; it is not colour for opinions you form independently.
 
 Extract every claim the document makes as a tree node, then triage each claim against the codebase:
 
@@ -1828,10 +1719,10 @@ Extract every claim the document makes as a tree node, then triage each claim ag
 
 - **Contradictions are itemized, one claim at a time.** For each contradicted claim, state what the document asserts, what the code actually does, and the evidence for the latter. Summarizing the document, or a blanket "parts of this are out of date", is not triage.
 - **Confirmed nodes do not need a user round.** They are settled facts — say so and move on.
-- **Only real decisions reach the user**, one at a time, in dependency order (see "How to Discuss").
+- **Only real decisions reach the user**, one at a time, in dependency order (see "How to discuss").
 - The triage IS the first round's Position, and it replaces the "list 3-5 assumptions" opening — the document already listed them.
 
-Recording follows the **Source doc convention** above: the Context carries `Source doc: <path>`, Evidence cites the document by section heading or short phrase, and the original document is never modified.
+Recording follows the **Source doc convention** in Step 5.
 
 ### Step 4: Interface depth check (conditional)
 
@@ -1842,7 +1733,7 @@ After the codebase scout, evaluate whether the topic introduces a new architectu
 - A **cross-layer Rust ↔ Tauri ↔ Svelte flow** that did not exist before.
 - A **new storage abstraction** (new on-disk format, new database table, new file-system layout, new adapter over existing storage).
 
-If none of those conditions apply, **skip this check**. Topics that only change static UI copy, visual styling, documentation wording, or other non-architectural surfaces SHALL skip the depth check entirely. The vocabulary load from Step 0 still happens; nothing else from this step runs.
+If none of those conditions apply, **skip this check**. Topics that only change static UI copy, visual styling, documentation wording, or other non-architectural surfaces skip the depth check entirely. The vocabulary load from Step 0 still happens; nothing else from this step runs.
 
 When the check is triggered, work through these four questions before you finalize assumptions or proposed answers:
 
@@ -1855,7 +1746,7 @@ Surface the answers in the conclusion (or the assumptions list) so the depth que
 
 ---
 
-## How to Discuss
+## How to discuss
 
 _This section governs every question you ask the user — the grill stage questions that sharpen a dull requirement, and the node fallback questions that arise inside assumptions._
 
@@ -1870,7 +1761,7 @@ _This section governs every question you ask the user — the grill stage questi
 
 Either way the user only needs to agree or correct. Never hand the user a bare open question that evidence could have grounded first. (This is the same Evidence convention the assumptions list already uses, applied per question.)
 
-**Triage every node: fact or decision.** Before resolving a node, classify it. A **fact** is anything the environment can answer — code, file system, tool output; a **decision** is a judgment call only the user can make. Facts MUST be verified yourself with Grep/Read at the node where they arise — never ask the user for a fact, and never answer one from memory. Only genuine decisions go to the user. Verification depth follows the tree: spend deep reads on branches you will actually traverse, and don't pre-read branches that get pruned.
+**Triage every node: fact or decision.** Before resolving a node, classify it. A **fact** is anything the environment can answer — code, file system, tool output; a **decision** is a judgment call only the user can make. Verify facts yourself with Grep/Read at the node where they arise — never ask the user for a fact, and never answer one from memory. Only genuine decisions go to the user. Verification depth follows the tree: spend deep reads on branches you will actually traverse, and don't pre-read branches that get pruned.
 
 **Propose concrete options.** When exploring approaches, present 2-3 specific options with trade-offs — not abstract possibilities. Use comparison tables when helpful:
 
@@ -1891,6 +1782,8 @@ Either way the user only needs to agree or correct. Never hand the user a bare o
 ```
 
 System diagrams, state machines, data flows, dependency graphs — whatever helps.
+
+**Don't fake understanding.** If something is unclear, dig deeper.
 
 **Challenge assumptions.** Including the user's and your own. Ask "do we actually need this?" Apply YAGNI — the simplest solution that works is often the best.
 
@@ -1936,7 +1829,65 @@ Good: "Which errors are causing problems now? Are users seeing
 
 ---
 
-## Convergence
+## Step 5: Create the record at the first substantive round
+
+"Substantive" is defined by the user's reply, never by your own output: the trigger is the moment the user's response moves the topic (they confirmed or corrected your assumptions list, their answer to a question settled something). Your own research, however deep, and your first assumptions list do not count as substance — NEVER run `speclink discuss new` before the user has replied. Right before recording that first round, run:
+
+```bash
+speclink discuss new "<topic>" --slug <english-kebab-slug>
+```
+
+Always pass `--slug` with the English kebab-case slug you derived — the slug names the record file; the topic stays in the user's language verbatim. Without `--slug` the filename falls back to deriving from the topic, so non-English topics produce non-English filenames.
+
+Then fill the Context section once — the framing a future reader (or `propose`) needs before the rounds make sense:
+
+```bash
+speclink discuss context <slug> --stdin <<'CTX_EOF'
+What prompted this discussion, whether a grill stage (Step 3) was needed and why,
+and the related changes/specs the scout (Step 2) surfaced, its in-flight delta hits
+written as <name>: <capability>, comma-separated.
+Prior discussions: <slug list>
+CTX_EOF
+```
+
+The `Prior discussions:` line is mandatory: it names the records the prior-discussion check (Step 2) hit, comma-separated; when the check hit nothing, write `Prior discussions: none`.
+
+The related changes/specs sentence names the canon hits and in-flight delta hits from Step 2 together with the change hits from `speclink list --json`. The in-flight delta hits go inside that sentence, in the form the template shows (e.g. `add-change-plan-remote: client-protocol`). With zero delta hits the sentence names only the canon hits and the change names, with no empty marker. Never add a separate line for deltas (no `In-flight deltas:` line): the sentence carries them, and the `Prior discussions:` line stays exactly as specified above.
+
+**Source doc convention** — when the topic named a document (Step 3, "Document input"), the Context carries one line naming it:
+
+```
+Source doc: <path>
+```
+
+That line is the mechanical marker a later `speclink propose --from-discussion <slug>` looks for to know there is an underlying document to read. Three rules travel with it:
+
+- **Evidence cites the document by reference, not by transcription.** When a round's Evidence points at the document, name the section heading or quote a short phrase from it.
+- **The record stores the outcome of the discussion only.** It never embeds the planning document in full — the document stays where it is, and the record holds the decision diff against it.
+- **Never modify the user's original document.** Corrections live in the record; merging document and decisions is `propose`'s job, not yours.
+
+When the topic named no document, none of this applies: the Context has no `Source doc:` line, there is no extra file-reading step, and recording proceeds as usual.
+
+From here on the record is live: record the first round (Step 6), and every later exchange is persisted the same way.
+
+## Step 6: Append a round after each exchange
+
+After each round — each Assumptions list you present, or each question-and-answer that moves the topic forward — persist a concise summary so the record shows how the thinking evolved:
+
+```bash
+speclink discuss add-round <slug> --mode assumptions --stdin <<'ROUND_EOF'
+**Focus**: the one question this round examined
+**Position**: one-sentence verdict of the direction taken, expanded as bullets:
+- one point per line — the decision detail and the evidence (files, probe results) behind it
+- keep bulleting until the position is fully stated; never fold it back into one long line
+**Ruled out**: options eliminated this round — each with the reason it lost
+**Open**: questions still unresolved, for the next round to pick up
+ROUND_EOF
+```
+
+Use `--mode assumptions` for rounds that presented an assumptions list and `--mode interview` for question-driven rounds (grill stage or node fallback). Omit a line rather than pad it (e.g. no `**Ruled out**` when nothing was eliminated). Keep each round terse — it is a durable summary following the Document rules, not a transcript. This is the mechanism that keeps a long discussion from drifting off-topic: each round is anchored to the record.
+
+## Step 7: Converge
 
 Discussions must converge. As the conversation progresses:
 
@@ -1956,46 +1907,16 @@ The conclusion should be one of:
 
 **If the user wants to move faster.** Sometimes the user signals impatience — "let's just go with X", "I don't want to overthink this", "can we move on?". The user owns the stopping point: the decision tree is a map, not a contract, and convergence never requires every branch to be resolved. Respect their pace:
 
-1. **First time**: Briefly flag if there's an important unresolved question — one sentence, not a lecture. "Before we commit to X, worth noting that Y could affect Z. Want to address it or move forward?"
-2. **If they push again**: Respect it. Skip remaining questions, go straight to convergence with the best conclusion you can form from what's been discussed, and record the branches left untraversed under **Deferred** in the conclusion. Don't push back a second time.
+1. **First time** → briefly flag an important unresolved question, if there is one — one sentence, not a lecture. "Before we commit to X, worth noting that Y could affect Z. Want to address it or move forward?"
+2. **They push again** → respect it. Skip remaining questions, go straight to convergence with the best conclusion you can form from what's been discussed, and record the branches left untraversed under **Deferred** in the conclusion. Don't push back a second time.
 
 The goal is thoroughness, not interrogation. One nudge maximum.
 
----
-
-## Speclink Awareness
-
-You have full context of the Speclink system. Use it naturally.
-
-### Check for context
-
-At the start, quickly check what exists:
-
-```bash
-speclink list --json
-```
-
-If the user mentioned a specific change name, read its artifacts for context.
+**Leaving without a conclusion**: if the user tries to end without a conclusion, summarize where things stand and state what's unresolved.
 
 ### Capture decisions
 
-When the discussion converges, **proactively present a conclusion summary**. Don't wait to be asked — propose it, and let the user opt out.
-
-Summary format:
-
-```
-## Conclusion
-
-**Decision**: [a one-sentence verdict; beyond one sentence, bullet it]
-- [one settled point per line — keep every detail, never trim]
-- **cut N `change-name`**: [one bullet per cut when several changes spin out]
-  - [that cut's details, one item each]
-**Rationale**: [the key trade-off that drove it — a single paragraph]
-**Rejected alternatives**:
-- [option — why it lost, one per line]
-**Deferred**: none [or `- question — why not now`, one per line]
-**Capture to**: [Where this should be recorded]
-```
+When the discussion converges, proactively present a conclusion summary — don't wait to be asked; propose it, and let the user opt out. The summary uses the Conclusion shape and template in Step 8.
 
 Where to capture:
 
@@ -2007,31 +1928,88 @@ Where to capture:
 | New work identified        | `tasks.md`                   |
 | Vocabulary drift           | `openspec/LANGUAGE.md`    |
 
-**Vocabulary drift** means the discussion surfaced a recurring concept that is missing, ambiguous, or pulling away from the shared vocabulary loaded in Step 0. Examples: the topic uses a term that the vocabulary lists as an `avoid` synonym, or the discussion repeatedly names a concept that has no entry yet. When this happens, name it as vocabulary drift in the conclusion summary and direct the capture to `openspec/LANGUAGE.md`. The conclusion summary SHALL preserve this contract — do not silently rewrite the term in the artifacts without recording the drift.
+**Vocabulary drift** means the discussion surfaced a recurring concept that is missing, ambiguous, or pulling away from the shared vocabulary loaded in Step 0. Examples: the topic uses a term that the vocabulary lists as an `avoid` synonym, or the discussion repeatedly names a concept that has no entry yet. When this happens, name it as vocabulary drift in the conclusion summary and direct the capture to `openspec/LANGUAGE.md`. The conclusion summary preserves this contract — do not silently rewrite the term in the artifacts without recording the drift.
 
 Present the summary and say something like "I'll capture this to design.md unless you'd rather not." Default to capturing — the user can decline.
 
-### Transition to action
+## Step 8: Write the conclusion
 
-When the discussion converges on building something:
+Write the conclusion into the record with `speclink discuss conclude`; it flips the record's `status` to `concluded`.
 
-- First record the conclusion in the discussion document: `speclink discuss conclude <slug> --stdin` (see "Recording the discussion" above). This flips its status to `concluded`.
-- Then: "Ready to formalize this? `speclink propose --from-discussion <slug>`" — propose will seed the proposal from the recorded Decision and rounds.
-- Or capture the decision in existing artifacts and continue
+**Conclusion bullets over prose.** When the Conclusion's Decision, Rejected alternatives or Deferred exceeds one sentence it SHALL be bulleted — `- ` points one per line: the Decision opens with a one-sentence verdict and bullets the rest, while Rejected alternatives and Deferred keep the `**Field**:` header bare and carry one `- ` line per item. Rationale / Capture to / Next stay a single paragraph. The Decision keeps every settled detail — never trim it to shorten the record — and none of its points refers back to a round ("see Round 3"); when the conclusion plans several cuts to spin out, the Decision carries one bullet per cut, headed ``**cut N `change-name`**: one-sentence scope``, with that cut's details as indented sub-points, one item each. A Rejected alternatives line reads `option — why it lost`; a Deferred line reads `question — why not now`, or the field holds the single word `none`. The rule binds new conclusions only; existing records are not rewritten.
+
+```bash
+speclink discuss conclude <slug> --stdin <<'CONCLUSION_EOF'
+**Decision**: ... (a one-sentence verdict; beyond one sentence, bullet it)
+- ... (one settled point per line — keep every detail, never trim)
+- **cut N `change-name`**: ... (one bullet per cut when several changes spin out)
+  - ... (that cut's details, one item each)
+**Rationale**: ... (the key trade-off that drove it — a single paragraph)
+**Rejected alternatives**:
+- ... — ... (option — why it lost, one per line)
+**Deferred**: none (or `- question — why not now`, one per line)
+**Capture to**: proposal | design | spec | tasks | LANGUAGE.md
+**Next**: speclink propose --from-discussion <slug>
+CONCLUSION_EOF
+```
+
+**`--hold`**: add it (`speclink discuss conclude <slug> --hold --stdin`) when the conclusion plans further changes to spin out from this same record later — "Staged cuts" in Step 9 says how the flag is released.
+
+## Step 9: Hand off
+
+Pick the exit that matches the conclusion:
+
+- **The conclusion warrants its own change** → hand off through propose: "Ready to formalize this? `speclink propose --from-discussion <slug>`" — propose seeds the proposal from the recorded Decision and rounds and builds every artifact in one pass; it is the single next step once the conclusion is written.
+- **The conclusion belongs in a change already in flight** (its **Capture to** points at an existing change) → run link first, then hand off to ingest:
+
+  ```bash
+  speclink discuss link <slug> <existing-change>
+  ```
+
+  `link` forges the change-side chain (`from_discussion` in the change metadata) without scaffolding anything, so drawer links and auto-archive engage — the discussion is archived automatically when the last linked change is archived and its conclusion is written. Unlike promote, `link` does not mark the discussion 已轉出 (`promoted`): that reflection is sealed by `speclink ingest`, which folds the decision into the change's artifacts and then runs `speclink discuss seal` — so the discussion flips to promoted only once its content has actually landed, never at link time. Then run `speclink ingest <existing-change>` to fold the decision in and seal. Without the link, a concluded-then-ingested discussion sits on the board forever with nothing to archive it.
+- **The conclusion is "don't do this"** (a valid outcome) → conclude anyway (Step 8), then close the record out:
+
+  ```bash
+  speclink discuss archive <slug>       # → discussions/archive/<created>-<slug>.md
+  ```
+
+  Archived discussions stay readable — `speclink discuss show <slug>` falls back to the archive, and `speclink discuss list --archived` lists them. The slug becomes free for a future discussion.
+- **The discussion turns out not to be needed at all** — the user abandons it mid-way, or the topic proved ask-shaped after all → discard it, do not archive it:
+
+  ```bash
+  speclink discuss discard <slug>            # refuses once rounds exist
+  speclink discuss discard <slug> --force    # delete despite recorded rounds
+  ```
+
+  `discard` deletes the live record (archived records are never touched). Once rounds exist it refuses without `--force` — a discussion that examined real trade-offs should keep its reasoning through `conclude` + `archive`, even when the conclusion is "don't do this". Use `discard` freely for records that settled nothing; never leave an abandoned discussion sitting `open`.
+
+### Mid-discussion spin-out
+
+In a multi-requirement discussion, one item can be filed the moment it is settled, while the record is still open; don't hold it hostage to the rest:
+
+1. **Promote now**: run `speclink discuss promote <slug> --name <change-name>` (`--name` is optional — the change name defaults to the slug). The engine scaffolds the change, prefills the proposal's Why (from the conclusion when one exists, otherwise from the topic), and links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record). One discussion can fan out into several changes — spin out again and `promoted_to` accumulates each name; the discussion is archived automatically when the last of its changes is archived and its conclusion is written — an unconcluded record stays live for more rounds (a later `conclude` closes it once every spun-out change is archived). For a series of staged cuts, see "Staged cuts" below. The remaining artifacts are still created via `speclink propose`.
+2. **Keep discussing**: `add-round` continues as normal for the remaining items; promotion does not close the record.
+3. **Conclude as usual at the end**: the record keeps its `promoted` status, the conclusion is written in, and the engine flags the already-promoted changes as needing the conclusion re-reflected. When the conclusion is unrelated to a spun-out change, that flag needs a single confirmation — no rework.
+
+Never require a conclusion before a mid-discussion promote, and never conclude the whole discussion early just to free one item.
+
+**Staged cuts — `--hold`.** When the conclusion plans further changes to spin out from this same record later (cut A now, cut B once A lands, cut C after that), run `conclude` with `--hold` **once** — an ordinary spin-out never clears the flag, so the single call covers the whole series. The record stays live past its conclusion and past every middle cut's archive. The **last cut is spun out with `--last`** (`speclink propose --from-discussion <slug>` decides this from the conclusion's cut list and the record's `promoted_to`; on the raw verbs it is `speclink discuss promote <slug> --last`, `speclink new change <name> --from-discussion <slug> --last`, or `speclink discuss seal <slug> <change> --last`): that spin-out drops the flag in the same write, and when the last spun-out change is archived the record is co-archived automatically — there is nothing to close by hand. Besides `--last`, only a `conclude` without `--hold` or a manual `speclink discuss archive <slug>` releases the flag. Forgot `--last`? The record simply stays live (the board labels it "promoted · on hold"); run `speclink discuss archive <slug>` once to close the series. Without `--hold` the record is archived along with the last of its changes, and any later cut needs a new discussion.
+
+**Archived by mistake?** (For example, `--last` went on a cut that was not the last one, and the record was co-archived with it.) Move the record file from `openspec/discussions/archive/` back to `openspec/discussions/` and drop the `<date>-` prefix from its name — it is live again and every verb works on it. The engine's error for spinning out from an archived record points at the same path.
 
 ---
 
 ## Guardrails
 
-- **Do record the discussion** — Announce the intended English kebab-case slug at the start, open the record at the first substantive round (`speclink discuss new` with `--slug`), append a round after each exchange, and `conclude` at the end. The document is the durable thread; keep it current. If the discussion is abandoned instead, `speclink discuss discard` the record — never leave it sitting `open`.
-- **Don't implement** — Never write code or implement features. Creating Speclink artifacts and discussion records is fine, writing application code is not.
-- **Don't leave without a conclusion** — If the user tries to end without a conclusion, summarize where things stand and state what's unresolved.
-- **Don't fake understanding** — If something is unclear, dig deeper.
-- **Don't overwhelm** — One question at a time, not a barrage.
-- **Don't over-engineer** — Challenge complexity. Prefer simpler solutions.
-- **Do visualize** — A good diagram is worth many paragraphs.
-- **Do explore the codebase** — Ground discussions in reality.
-- **Do be opinionated** — Have a recommendation. The user can disagree.
+Check these before you end each turn:
+
+- [ ] No application code was written ("Discuss mode is for thinking").
+- [ ] The record exists only if the user has replied with substance (Step 5); every exchange since then has its round (Step 6).
+- [ ] The record was touched only through `speclink discuss` verbs.
+- [ ] One question per exchange, and every question carries its evidence ("How to discuss").
+- [ ] Facts were verified with Grep/Read, not asked or guessed ("How to discuss").
+- [ ] A recommendation was given — the user can disagree ("Be direct").
+- [ ] The conclusion follows the Step 8 shape, and an abandoned discussion was discarded instead of left `open` (Step 9).
 
 ## Next steps
 
@@ -2050,7 +2028,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -2062,7 +2040,9 @@ This harness executes speclink verbs by calling the speclink tool with an argv a
 
 Detect drift between a Speclink change and the current codebase state. Reports time dormancy, broken design anchors, task collisions with external commits, and a single recommended next command.
 
-**Input**: Optionally specify a change name (e.g., `speclink-drift add-auth`). If omitted, infer from conversation context or auto-select if only one active change exists.
+**Read-only**: never modify files, artifacts, or git state based on drift findings.
+
+**Input**: Optionally specify a change name (e.g., `speclink drift add-auth`). If omitted, infer from conversation context or auto-select if only one active change exists.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
@@ -2077,6 +2057,8 @@ Detect drift between a Speclink change and the current codebase state. Reports t
    ```bash
    speclink drift <change-name> --json
    ```
+
+   A non-zero exit code (e.g., a binary without the drift subcommand) → report the error and stop.
 
    The JSON contains:
    - `severity`: `"light"` / `"medium"` / `"heavy"`
@@ -2093,7 +2075,7 @@ Detect drift between a Speclink change and the current codebase state. Reports t
 
    **Report language**: run `speclink instructions apply --change "<name>" --json` and use its `locale` field (e.g., "Traditional Chinese (繁體中文)") — write the report in that language, prose, headings, and table labels included. Keep severity labels (light/medium/heavy), command lines, and code references in English. If the field is absent or the call fails, write in English.
 
-   Use a user-readable, conclusion-first format. The first substantive paragraph after the title MUST be a plain-language conclusion that says what to do next before showing score tables, broken anchors, task collisions, or severity labels.
+   Use a user-readable, conclusion-first format. The first substantive paragraph after the title is a plain-language conclusion that says what to do next before showing score tables, broken anchors, task collisions, or severity labels.
 
    Translate severity into action-oriented meaning:
    - **Light**: the change can continue with apply.
@@ -2133,42 +2115,41 @@ Detect drift between a Speclink change and the current codebase state. Reports t
 
 4. **Apply the recommendation interactively**
 
-   Use the **AskUserQuestion tool** to offer one decision based on `severity`. Use plain-language option labels (in the report language) while preserving the exact command in each option description. Do NOT auto-invoke `speclink-apply`, `speclink-ingest`, or `speclink archive`; always wait for the user's choice.
+   Use the **AskUserQuestion tool** to offer one decision based on `severity`. Use plain-language option labels (in the report language) while preserving the exact command in each option description. Do NOT auto-invoke `speclink apply`, `speclink ingest`, `speclink archive`, or any other follow-up command; always wait for the user's choice. If the **AskUserQuestion tool** is not available, present the same plain-language choices as plain text and wait for the user's response.
    - **Light** (score 0-3, drift is minor):
      - Recommended label: "Directly start work"
-       - Description: run `speclink-apply <name>`
+       - Description: run `speclink apply <name>`
      - Alternate label: "Pause for now"
        - Description: do nothing until the user reviews manually
    - **Medium** (score 4-8, refresh worth doing):
      - Recommended label: "Refresh the plan"
-       - Description: run `speclink-ingest <name>` with the broken references and task collisions as context
+       - Description: run `speclink ingest <name>` with the broken references and task collisions as context
      - Alternate label: "Directly start work"
-       - Description: run `speclink-apply <name>` only if the user knows the reported changes are harmless
+       - Description: run `speclink apply <name>` only if the user knows the reported changes are harmless
      - Alternate label: "Pause for now"
        - Description: do nothing until the user reviews manually
    - **Heavy** (score >8 or anchor decay >30%, design diverges from code):
      - Recommended label: "Archive and restart"
        - Description: run `<primary_recommendation>`
      - Alternate label: "Refresh the plan"
-       - Description: try `speclink-ingest <name>` before restarting
+       - Description: try `speclink ingest <name>` before restarting
      - Alternate label: "Pause for now"
        - Description: do nothing until the user reviews manually
 
-   If the **AskUserQuestion tool** is not available, present the same plain-language choices as text and wait for the user's response.
 
 **Passive Trigger**
 
-When `speclink-apply` is invoked on a change whose `.openspec.yaml created` date is more than 5 days ago AND no commits have touched the change directory in the past 3 days, the apply skill SHOULD run drift analysis first and surface findings before tasks begin. The trigger is guidance only and MUST NOT block apply from proceeding.
+When `speclink apply` is invoked on a change whose `.openspec.yaml created` date is more than 5 days ago AND no commits have touched the change directory in the past 3 days, the apply skill SHOULD run drift analysis first and surface findings before tasks begin. The trigger is guidance only and does not block apply from proceeding.
 
 (Threshold reasoning: AI-assisted commits are daily-cadence, not weekly. A change sitting ≥5 days with ≥3 days of no commits is almost always genuine stagnation rather than normal pacing.)
 
 **Guardrails**
 
-- Read-only: NEVER modify files, artifacts, or git state based on drift findings
-- The CLI caps anchor checks at 50 via `ANCHOR_CAP` in `speclink_core::drift` to bound run-time
-- If `speclink drift` returns a non-zero exit code (e.g., older binary without the drift subcommand), report the error and stop
-- Do NOT auto-invoke any follow-up command — recommendations are user-confirmed
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+Check these before you report (the CLI caps anchor checks at 50 via `ANCHOR_CAP` in `speclink_core::drift` to bound run-time):
+
+- [ ] Nothing was modified ("Read-only").
+- [ ] The report opens with the plain-language conclusion, and stale delta assumptions lead it when present (step 3).
+- [ ] No follow-up command ran without the user's choice (step 4).
 
 ## Next steps
 
@@ -2185,7 +2166,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -2197,15 +2178,15 @@ This harness executes speclink verbs by calling the speclink tool with an argv a
 
 Scan the codebase for architectural improvements and turn the best ones into a recorded discussion. This is the mirror image of `speclink discuss`: there the user brings the topic, here the model brings the candidates. Everything downstream — rounds, conclusion, promote/link, archive — is the same discussion machinery.
 
-**IMPORTANT: This skill is user-initiated only.** Never trigger it on your own. Do not offer to "run improve" in the middle of another task, and do not start scanning because some code looked messy while you were doing something else. It runs when the user asks for it, and only then.
+**This skill is user-initiated only.** Never trigger it on your own. Do not offer to "run improve" in the middle of another task, and do not start scanning because some code looked messy while you were doing something else. It runs when the user asks for it, and only then.
 
-**IMPORTANT: This skill never implements.** You read files, search code, run git, and record a discussion. You do NOT write application code, refactor anything, or fix what you find. Improvements reach the codebase through the normal route: conclusion → `speclink propose` (or `promote`) → `speclink apply`. If the user asks you to just fix one of the candidates, tell them to conclude the discussion first and start a change.
+**This skill never implements.** You read files, search code, run git, and record a discussion. You do not write application code, refactor anything, or fix what you find. Improvements reach the codebase through the normal route: conclusion → `speclink propose` (or `promote`) → `speclink apply`. If the user asks you to just fix one of the candidates, tell them to conclude the discussion first and start a change.
 
 **Input**: Optionally a direction after `speclink improve` — a module, subsystem, crate, or pain point ("the store layer", "everything around auth", "the CLI feels bloated"). When given, that direction IS the scope and Step 2's inference is skipped. When omitted, Step 2 infers the scope.
 
 **Prerequisites**: This skill requires the `speclink` CLI and `git`. If any command fails with "command not found" or similar, report the error and STOP.
 
-**What counts as an improvement here**: structural deepening — making modules deeper, seams fewer and better placed, complexity concentrated instead of smeared. Behavioural correctness is NOT this skill's job: bugs belong to `speclink review`, spec compliance to `speclink verify`, security sharp edges to `speclink audit`.
+**What counts as an improvement here**: structural deepening — making modules deeper, seams fewer and better placed, complexity concentrated instead of smeared. Behavioural correctness is not this skill's job: bugs belong to `speclink review`, spec compliance to `speclink verify`, security sharp edges to `speclink audit`.
 
 ---
 
@@ -2215,8 +2196,8 @@ Scan the codebase for architectural improvements and turn the best ones into a r
 
 Run `speclink language show`. It prints the project's canonical vocabulary — terms with `definition`, `avoid`, and `why`.
 
-- **Succeeds**: use the canonical terms when you name candidates and write the record. A candidate whose description drifts into an `avoid` synonym reads as a different problem than it is.
-- **Fails (no vocabulary document)**: continue silently. A missing vocabulary is not an error — do not announce it, do not block.
+- **Succeeds** → use the canonical terms when you name candidates and write the record. A candidate whose description drifts into an `avoid` synonym reads as a different problem than it is.
+- **Fails (no vocabulary document)** → continue silently. A missing vocabulary is not an error — do not announce it, do not block.
 
 Architecture vocabulary (seam, depth, adapter, shallow module) stays in this document — it is working vocabulary for the scan, not project vocabulary for `LANGUAGE.md`.
 
@@ -2230,15 +2211,15 @@ speclink list --json
 ```
 
 - **Search the discussions with your scope's keywords** — the module, crate or pain-point nouns. This check always runs before the scan (Step 3); its keywords come from the user's direction when one was given, and from the scope Step 2 settles when it was not — in that case do Step 2 first, then come back here. `discuss search` covers live and archived records alike and matches only the topic, the slug and the decision lines — each round's `Ruled out` and the Conclusion's `Decision` / `Rejected alternatives` / `Deferred`; any one keyword matching counts. Those lines are this project's decision record: an option that lost, with the reason it lost. Read the full Conclusion of the hits that touch your scope (`speclink discuss show <slug>` falls back to the archive), **earlier `improve` records for the same scope first** — a hit whose `kind` is `improve` is the closest precedent to what you are about to propose.
-- **A previously rejected approach SHALL NOT be re-proposed as a candidate** — unless you can name the reason it was rejected AND state concretely why that reason no longer holds (the code it depended on is gone, the constraint was lifted, the trade-off inverted). Say so in the candidate itself; do not quietly re-file it.
-- **Read the in-flight changes** from `speclink list --json` and their proposals. A candidate that overlaps the area an in-flight change is already rewriting SHALL NOT be proposed — the work is happening, and a discussion about it now collides with a change mid-flight.
+- **A previously rejected approach is not re-proposed as a candidate** — unless you can name the reason it was rejected AND state concretely why that reason no longer holds (the code it depended on is gone, the constraint was lifted, the trade-off inverted). Say so in the candidate itself; do not quietly re-file it.
+- **Read the in-flight changes** from `speclink list --json` and their proposals. A candidate that overlaps the area an in-flight change is already rewriting is not proposed — the work is happening, and a discussion about it now collides with a change mid-flight.
 
 ### Step 2: Converge the scope (scope before you scan)
 
 Never blind-scan the whole repository. Candidates from unrelated corners are not comparable, and the discussion loses its focus.
 
-- **When the user named a direction** (a module, subsystem, or pain point), that IS the scope. Use it directly and skip the inference below entirely.
-- **Otherwise, infer from git history.** Look for hotspots — the areas that change most often:
+- **The user named a direction** (a module, subsystem, or pain point) → that IS the scope. Use it directly and skip the inference below entirely.
+- **No direction** → infer from git history. Look for hotspots — the areas that change most often:
 
   ```bash
   git log --since="3 months ago" --name-only --pretty=format: | sort | uniq -c | sort -rn | head -40
@@ -2246,8 +2227,8 @@ Never blind-scan the whole repository. Candidates from unrelated corners are not
 
   **Weight recent churn more heavily.** The payoff of deepening is that future changes get easier, so the code that keeps changing is where that payoff lands.
 
-- **Local supplement**: cross-check the archived changes' touched records (`.evidence.json` under `openspec/changes/archive/<dated-name>/`, the same records `speclink commit` uses). Where a bare `git log` says "these files changed together", the touched records say *which intent* moved *which files* — a stronger signal for what belongs to one seam.
-- **When the hotspots are diffuse** — no clear focus, churn spread evenly — **widen the net** instead of forcing one. Take a larger area (a whole crate, a whole layer) and scan it as one scope rather than picking an arbitrary hot file.
+  **Local supplement**: cross-check the archived changes' touched records (`.evidence.json` under `openspec/changes/archive/<dated-name>/`, the same records `speclink commit` uses). Where a bare `git log` says "these files changed together", the touched records say *which intent* moved *which files* — a stronger signal for what belongs to one seam.
+- **The hotspots are diffuse** — no clear focus, churn spread evenly → **widen the net** instead of forcing one. Take a larger area (a whole crate, a whole layer) and scan it as one scope rather than picking an arbitrary hot file.
 
 Announce the scope you settled on and why, in one or two sentences, before scanning.
 
@@ -2268,7 +2249,7 @@ Explore the scope organically — read the code, follow what looks strange, chas
 
 **The sixth signal has its own admission criterion.** Deleting a folder concentrates nothing, so the deletion test does not apply to it. Ask the reader-prediction test instead: could someone opening this directory for the first time predict where a piece of behaviour lives and which files form one group, without searching? A layout candidate qualifies only when all three hold: (a) the grouping has an objective source — dependency direction between modules, a layering an existing design document already states, or which files are linked from outside; (b) it is invisible to callers — existing paths stay valid through a root-level re-export, and a guard test asserts no stale path remains where re-export is not possible (scripts, docs, CI); (c) moving the files is the whole change — a candidate that needs every caller to change its paths is a move, not a grouping. Drop it. When a candidate trips both a code signal and the sixth, the deletion test decides first: if deleting the scattered pieces would concentrate the behaviour, it is a code candidate and the layout is only the symptom. The sixth signal covers only what stays as it is and merely moves.
 
-**Scanning mechanism**: **inline is the default** — read and search the scope yourself. Dispatch an `Explore` subagent only when the user named no direction, or when the scope genuinely spans several crates. **The hard limit is 2 subagents.** Never spawn a third; if two are not enough, the scope was too wide — go back to Step 2 and narrow it.
+**Scanning mechanism**: **inline is the default** — read and search the scope yourself. Dispatch an `Explore` subagent only when the user named no direction, or when the scope genuinely spans several crates. **The hard limit is 2 subagents.** Never spawn a third; if two are not enough, the scope was too wide — go back to Step 2 and narrow it. If you cannot spawn subagents, scan the whole scope inline yourself.
 
 Aim for 3-6 candidates. Fewer is fine when the scope is clean; a list of twelve is a sign the admission criteria were not applied.
 
@@ -2306,7 +2287,7 @@ ROUND_EOF
 
 The three recommendation strengths are not decoration — they tell the user where to spend their attention. `strongly recommended`: the friction is evidenced and the admission criterion is clearly met — the deletion test, or the reader-prediction test for a sixth-signal candidate. `worth exploring`: the friction is real but the right shape of the fix is not obvious. `speculative`: you suspect something is off but the evidence is thin.
 
-**End the round with your own pick.** Say which candidate you would take first and why, then ask the user which one to dig into. Do not grill anything until they answer — the pick is theirs.
+**End the round with your own pick.** Say which candidate you would take first and why, then ask the user which one to dig into. Stop there and wait — do not grill anything until they answer; the pick is theirs.
 
 ### Step 5: Grill the chosen candidate to a conclusion
 
@@ -2339,7 +2320,7 @@ CONCLUSION_EOF
 
 Then fan out: `speclink discuss promote <slug>` (or `speclink propose --from-discussion <slug>`) for a new change, or `speclink discuss link <slug> <existing-change>` when the improvement belongs to a change already in flight. One scan can fan out into several changes — the record accumulates each name and is archived automatically when the last of them is archived and its conclusion is written. **When the conclusion stages the work — cut A now, cut B once A lands** — run `conclude` with `--hold` once: the record stays live past every middle cut's archive. The last cut is spun out with `--last` (`speclink propose --from-discussion <slug>` decides this from the conclusion's cut list and the record's `promoted_to`), which drops the flag so the last archive co-archives the record automatically — nothing to close by hand. Besides `--last`, only a `conclude` without `--hold` or a manual `speclink discuss archive <slug>` releases it; forgot `--last`, and the record just stays live until you run `speclink discuss archive <slug>` once. Without `--hold` the record is archived with the last of its changes, and any later cut needs a new discussion.
 
-**When the user rejects every candidate, the scan still concluded something.** Write the conclusion — that nothing here is worth doing, and why each candidate lost — and archive the record:
+**The user rejects every candidate** → the scan still concluded something. Write the conclusion — that nothing here is worth doing, and why each candidate lost — and archive the record:
 
 ```bash
 speclink discuss conclude improve-<scope> --stdin <<'CONCLUSION_EOF'
@@ -2353,19 +2334,21 @@ CONCLUSION_EOF
 speclink discuss archive improve-<scope>
 ```
 
-**Never `discard` an improvement discussion.** The rejections ARE the value: they are what stops the next scan from proposing the same thing again. A discarded record takes that memory with it.
+**NEVER `discard` an improvement discussion.** The rejections ARE the value: they are what stops the next scan from proposing the same thing again. A discarded record takes that memory with it.
 
 ---
 
 ## Guardrails
 
-- **User-initiated only** — never start a scan on your own initiative
-- **Never implement** — the output is a discussion record, not a diff
-- **Scope before you scan** — no blind whole-repo sweeps
-- **An admission criterion gates every candidate** — the deletion test for the first five signals, the reader-prediction test for the sixth, and moving complexity around never counts
-- **At most 2 Explore subagents** — inline is the default
-- **Check the archive first** — a settled rejection is not a candidate
-- **Conclude and archive, never discard** — even when the answer is "do nothing"
+Check these before you end each turn:
+
+- [ ] The user asked for this scan — it was not started on your own initiative.
+- [ ] No application code was written or changed; the output is a discussion record, not a diff.
+- [ ] The scope was settled before scanning (Step 2) — no blind whole-repo sweep.
+- [ ] Every candidate passed its admission criterion (Step 3) — the deletion test for the first five signals, the reader-prediction test for the sixth; moving complexity around never counts.
+- [ ] At most 2 Explore subagents ran (Step 3).
+- [ ] Settled rejections and in-flight areas were left out (Step 1).
+- [ ] A finished scan was concluded and archived, never discarded (Step 5).
 
 ## Next steps
 
@@ -2381,7 +2364,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -2397,6 +2380,10 @@ Update an existing Speclink change — from a plan file or conversation context.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
+**Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response.
+
+**This skill updates artifacts, not code.** Never write application code, and never skip the artifact workflow to write code directly. It only updates existing changes — it never creates one (step 3).
+
 **Input**: Optionally specify an active change name, or a plan file path or name.
 
 - `speclink ingest add-auth` (update the active change `add-auth` from conversation context)
@@ -2410,29 +2397,29 @@ Update an existing Speclink change — from a plan file or conversation context.
 
    a. **Argument provided** → resolve it in this order:
    i. **Path-like** (it contains `/` or ends in `.md`) → treat it as a plan file reference (prepend `` when it has no `/`, and append `.md` if needed)
-      - If the file exists → use it as the plan file source, proceed to Step 2
-      - If the file does NOT exist → report the error and **stop**
+      - The file exists → use it as the plan file source, proceed to Step 2
+      - The file does not exist → report the error and **stop**
    ii. **An active change name** → run `speclink list --json`. When the argument equals the name of an active change, that change is the change to update, and the source is conversation context (plus its linked discussion conclusion, see below). Do NOT look for a plan file with that name: skip Step 2 and go to Step 3
    iii. **Otherwise** → treat it as a plan file name (prepend `` and append `.md`)
-      - If the file exists → use it as the plan file source, proceed to Step 2
-      - If the file does NOT exist → report an error that says both: `<argument>` is not an active change name, and no plan file `<argument>.md` exists. Add a hint: to update a change, pass only its name and give the details in the conversation. Then **stop** without touching any artifact
+      - The file exists → use it as the plan file source, proceed to Step 2
+      - The file does not exist → report an error that says both: `<argument>` is not an active change name, and no plan file `<argument>.md` exists. Add a hint: to update a change, pass only its name and give the details in the conversation. Then **stop** without touching any artifact
 
    b. **No argument, plan file detectable**:
-   - If found and the file exists → use the **AskUserQuestion tool** to ask:
+   - Found and the file exists → use the **AskUserQuestion tool** to ask:
      - Option 1: Use the plan file
      - Option 2: Use conversation context
-   - If the user picks plan file → proceed to Step 2
-   - If the user picks conversation context → skip Step 2, go to Step 3
+   - The user picks the plan file → proceed to Step 2
+   - The user picks conversation context → skip Step 2, go to Step 3
 
    c. **No argument, no plan file detectable**:
    - Check `` for recent files
-   - If recent files exist → list 5 most recent with the **AskUserQuestion tool**, include "Use conversation context" as an additional option
-   - If the user picks a file → proceed to Step 2
-   - If the user picks conversation context → skip Step 2, go to Step 3
+   - Recent files exist → list the 5 most recent with the **AskUserQuestion tool**, include "Use conversation context" as an additional option
+   - The user picks a file → proceed to Step 2
+   - The user picks conversation context → skip Step 2, go to Step 3
 
    d. **Conversation context fallback** (no plan files found at all):
    - Use conversation context to update artifacts
-   - If conversation context is insufficient, use the **AskUserQuestion tool** to get more details
+   - Conversation context is insufficient → use the **AskUserQuestion tool** to get more details
    - Warn: "No plan file found. Using conversation context."
 
    **Source is a discussion conclusion?** When the update being folded in comes from a concluded discussion — the discuss skill routed its **Capture to** at this existing change, or the change already carries a `from_discussion` link — treat that discussion's conclusion as a first-class source, not just the conversation context:
@@ -2450,11 +2437,13 @@ Update an existing Speclink change — from a plan file or conversation context.
       speclink discuss link <slug> <change>
       ```
 
-   `link` is idempotent (a no-op when the discuss step already ran it) and forges ONLY the change-side chain — it does NOT mark the discussion promoted. Marking it 已轉出 is sealed at the END of this workflow (see the final step), once the artifacts actually carry the discussion's content. Without the link, the discussion never archives with the change it fed.
+   `link` is idempotent (a no-op when the discuss step already ran it) and forges only the change-side chain — it does not mark the discussion promoted. Marking it 已轉出 is sealed at the end of this workflow (step 10), once the artifacts actually carry the discussion's content. Without the link, the discussion never archives with the change it fed.
 
-   **Change flagged stale (`restaleFrom`)?** When `speclink show <change> --json` exposes a non-empty `restaleFrom`, those discussions were re-concluded *after* this change last sealed them — its artifacts are now stale against the newer conclusions (`speclink analyze <change>` surfaces the same as an informational finding, and the desktop board shows a "待重新反映" badge). This is exactly a re-ingest: for each slug in `restaleFrom`, read the discussion's current conclusion (`speclink discuss show <slug> --json`), fold the revised decision into the artifacts, and the seal at the END of this workflow clears that slug from `restaleFrom` — marking the reflection honest again.
+   **Change flagged stale (`restaleFrom`)?** When `speclink show <change> --json` exposes a non-empty `restaleFrom`, those discussions were re-concluded *after* this change last sealed them — its artifacts are now stale against the newer conclusions (`speclink analyze <change>` surfaces the same as an informational finding, and the desktop board shows a "待重新反映" badge). This is exactly a re-ingest: for each slug in `restaleFrom`, read the discussion's current conclusion (`speclink discuss show <slug> --json`), fold the revised decision into the artifacts, and the seal in step 10 clears that slug from `restaleFrom` — marking the reflection honest again.
 
 2. **Parse the plan structure** (skip if using conversation context)
+
+   Read the plan file; NEVER modify it — it is the user's original document in ``.
 
    Claude Code plan files typically contain:
    - **Title** (`# ...`) — the high-level goal
@@ -2470,7 +2459,7 @@ Update an existing Speclink change — from a plan file or conversation context.
    - `plan_files`: all file paths mentioned
    - `plan_verification`: verification steps
 
-3. **Check for active changes** (REQUIRED — ingest only updates existing changes)
+3. **Check for active changes** (required — ingest only updates existing changes)
 
    ```bash
    speclink list --json
@@ -2478,9 +2467,9 @@ Update an existing Speclink change — from a plan file or conversation context.
 
    Parse the JSON output to get the full list of changes.
    - **The argument named an active change** (Step 1a) → update that change; do NOT ask which change to update
-   - If one change exists → use the **AskUserQuestion tool** to confirm updating it
-   - If multiple changes exist → use the **AskUserQuestion tool** to let user pick which one to update
-   - If no changes at all → tell the user: "No active change found. Use `speclink propose` first to create one." and **stop**
+   - One change exists → use the **AskUserQuestion tool** to confirm updating it
+   - Multiple changes exist → use the **AskUserQuestion tool** to let the user pick which one to update
+   - No changes at all → tell the user: "No active change found. Use `speclink propose` first to create one." and **stop**
 
 4. **Select the change**
 
@@ -2494,9 +2483,9 @@ Update an existing Speclink change — from a plan file or conversation context.
    speclink instructions <artifact-id> --change "<name>" --json
    ```
 
-   Use the `template` from instructions as the output structure. Apply `context` and `rules` as constraints but do NOT copy them into the file.
+   Use the `template` from instructions as the output structure. Apply `context` and `rules` as constraints but do not copy them into the file.
 
-   The instructions JSON includes `locale` — the language to write artifacts in. If present, you MUST write the artifact content in that language. Spec files (specs/\*/\*.md) default to English instead — unless the project sets `spec_locale` in `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
+   The instructions JSON includes `locale` — the language to write artifacts in. If present, write the artifact content in that language. Spec files (specs/\*/\*.md) default to English instead — unless the project sets `spec_locale` in `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
 
    **Plan-to-Artifact Mapping** (when using a plan file):
 
@@ -2520,14 +2509,15 @@ Update an existing Speclink change — from a plan file or conversation context.
 
    **When updating an existing change:**
    - Merge new context into existing proposal (don't replace)
-   - Add new tasks from plan stages or conversation, **preserve completed `[x]` items**
-   - Do NOT remove existing content
+   - Add new tasks from plan stages or conversation, and **preserve every completed `[x]` item** — never revert progress
+   - Do not remove existing content
+   - The source content is too brief to fill an artifact section → use the **AskUserQuestion tool** to get more details rather than inventing content
 
    **Before adding a new delta capability**, compare its name against the existing ones — the canonical specs (`speclink list --specs --json`) and the delta capabilities of other in-flight changes. If an existing name means the same capability, reuse that exact name instead of opening a near-duplicate; `speclink validate` warns on near-named new capabilities.
 
    **Mark manual tasks with `[M]`**: a task the agent cannot do itself — the user has to do it by hand, whether that is operating the product and accepting the result, creating an account on an external service, or placing a key — carries an `[M]` marker, so the quality stations can judge "the code is finished" separately from "a human did their part". Anything the agent can do itself, including code and automated tests, never carries it.
 
-   **The marker goes right after the checkbox, separated by exactly one space; the task number comes after the marker, never before it.** Putting the number first reads naturally and is the easy mistake — the engine does not accept the marker there.
+   **The marker goes right after the checkbox, separated by exactly one space; the task number comes after the marker, NEVER before it.** Putting the number first reads naturally and is the easy mistake — the engine does not accept the marker there.
 
    ```
    Write:  - [ ] [M] 3.2 Open the imported document and confirm the list stays one list
@@ -2579,30 +2569,15 @@ Update an existing Speclink change — from a plan file or conversation context.
    - Are all completed tasks `[x]` still present and unchanged?
    - Was existing content merged (not replaced)?
 
-   **Check 6: Durable Handoff Review** (run BEFORE the CLI analyzer)
+   **Check 6: Durable Handoff Review** (run before the CLI analyzer)
 
    The updated change has to survive being handed to another agent. Reject and fix any of the following on **incomplete** design and task content (do not rewrite completed `[x]` tasks):
-   - **File-path-only tasks**: a pending task whose entire description is "edit file X" with no behavior, contract, or verification target. File paths are locator context — the task SHALL still describe what is observably true when complete.
+   - **File-path-only tasks**: a pending task whose entire description is "edit file X" with no behavior, contract, or verification target. File paths are locator context — the task still describes what is observably true when complete.
    - **Line-number-coupled instructions**: design or task content that points to "line 42" / "the function on lines 80-95" as the only way to identify the work. Source line numbers drift; name the function, command, struct, or behavior instead.
    - **Vague acceptance criteria**: success conditions like "works correctly", "behaves as expected", "handles edge cases" without naming the observable behavior or the verification target (test name, CLI invocation, analyzer rule, manual assertion).
-   - **Missing scope boundaries on non-trivial work**: design lacking explicit "in scope" / "out of scope" lines for any change that touches more than one subsystem or introduces new behavior. Trivial artifact-only edits MAY skip this; runtime, build, or tooling effects MUST NOT.
+   - **Missing scope boundaries on non-trivial work**: design lacking explicit "in scope" / "out of scope" lines for any change that touches more than one subsystem or introduces new behavior. Trivial artifact-only edits may skip this; runtime, build, or tooling effects may not.
 
    Fix every failure inline using the existing context and the new plan/conversation source before running the CLI analyzer. Update incomplete design and task content so behavior contracts, verification criteria, and scope boundaries stay current with the new context. Preserve completed tasks unchanged.
-
----
-
-## Rationalization Table
-
-| What You're Thinking                                             | What You Should Do                                                            |
-| ---------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| "The existing artifacts are close enough, just adjust the tasks" | Read the new context carefully. "Close enough" means you're missing something |
-| "The proposal doesn't need updating, the change is the same"     | If new context exists, the proposal likely needs updates. At minimum, check   |
-| "I can merge these tasks, they're basically the same"            | Keep tasks granular. Merged tasks are harder to track                         |
-| "The completed tasks still apply, no need to review"             | Verify they're still relevant to updated scope. Don't blindly keep stale work |
-| "This spec change is minor, skip the scenario update"            | If the requirement changed, the scenario must change                          |
-| "The conversation didn't discuss this artifact, so skip it"      | Absence of discussion doesn't mean absence of impact. Check                   |
-
----
 
 7. **Analyze-Fix Loop** (max 2 iterations)
 
@@ -2611,15 +2586,13 @@ Update an existing Speclink change — from a plan file or conversation context.
    ```
 
    1. Filter findings to **Critical and Warning only** (ignore Suggestion)
-   2. If no Critical/Warning findings → show "Artifacts look consistent ✓" and proceed
-   3. If Critical/Warning findings exist:
+   2. No Critical/Warning findings → show "Artifacts look consistent ✓" and proceed
+   3. Critical/Warning findings exist →
       a. Show: "Found N issue(s), fixing... (attempt M/2)"
       b. Fix each finding in the affected artifact
       c. Re-run `speclink analyze <name> --json`
       d. Repeat up to 2 total iterations
-   4. After 2 attempts, if findings remain:
-      - Show remaining findings as a summary
-      - Proceed normally (do NOT block)
+   4. Findings remain after 2 attempts → show them as a summary and proceed normally (do not block)
 
 8. **Validation**
 
@@ -2647,7 +2620,7 @@ Update an existing Speclink change — from a plan file or conversation context.
         - The verb refuses because the move would cross a declared dependency → report the refusal and leave the order as it is.
         - Not small, or not urgent → run nothing.
       - **In progress or ready** → do not run `change rank`: its place in the queue settled when work started. Re-judge `depends_on` only.
-   5. Never remove an existing `depends_on` entry here — dropping a prerequisite is the user's decision. Never run `speclink apply` yourself.
+   5. Never remove an existing `depends_on` entry here — dropping a prerequisite is the user's decision.
 
 10. **Seal the reflection** (discussion-sourced ingests only)
 
@@ -2667,19 +2640,31 @@ Update an existing Speclink change — from a plan file or conversation context.
    - Artifacts created/updated
    - Validation result
 
-   Then state the suggestion from **Next steps** and STOP. Never invoke `speclink apply` yourself — starting implementation is the user's call, and this workflow is over once the summary is out.
+   Then state the suggestion from **Next steps** and STOP. NEVER invoke `speclink apply` yourself — starting implementation is the user's call, and this workflow is over once the summary is out.
 
-**Guardrails**
+---
 
-- **NEVER** modify the original plan file in ``
-- **NEVER** write application code — this skill only creates/updates Speclink artifacts
-- **NEVER** create new changes — ingest only updates existing changes. If no active change exists, direct user to `speclink propose`
-- When updating existing changes, **preserve all completed tasks** (`[x]`) — never revert progress
-- If the source content is too brief to fill all artifact sections, use the **AskUserQuestion tool** to get more details rather than inventing content
-- If `speclink` CLI is not available, report the error and stop
-- Verify each artifact file exists after writing before proceeding to next
-- **NEVER** skip the artifact workflow to write code directly
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+## Rationalization Table
+
+| What You're Thinking                                             | What You Should Do                                                            |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| "The existing artifacts are close enough, just adjust the tasks" | Read the new context carefully. "Close enough" means you're missing something |
+| "The proposal doesn't need updating, the change is the same"     | If new context exists, the proposal likely needs updates. At minimum, check   |
+| "I can merge these tasks, they're basically the same"            | Keep tasks granular. Merged tasks are harder to track                         |
+| "The completed tasks still apply, no need to review"             | Verify they're still relevant to updated scope. Don't blindly keep stale work |
+| "This spec change is minor, skip the scenario update"            | If the requirement changed, the scenario must change                          |
+| "The conversation didn't discuss this artifact, so skip it"      | Absence of discussion doesn't mean absence of impact. Check                   |
+
+## Guardrails
+
+Check these before you present the summary:
+
+- [ ] The plan file in `` is unchanged (step 2), and no application code was written.
+- [ ] Only an existing change was updated — no new change was created (step 3).
+- [ ] Every completed `[x]` task is still present and unchanged (step 5).
+- [ ] `speclink status` shows each updated artifact, and `speclink validate` passed (steps 5 and 8).
+- [ ] Soft dependencies were re-judged (step 9), and every linked discussion was sealed (step 10).
+- [ ] `speclink apply` was not invoked (step 11).
 
 ## Next steps
 
@@ -2696,7 +2681,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -2718,7 +2703,7 @@ Generate a human-readable operating manual from the canonical specs, or walk the
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
-**The one-source rule**: the manual's content comes from the canonical specs under `openspec/specs/` and nothing else. NEVER read README files, a `docs/` directory, or source code as a content source — not to fill a gap, not to "confirm" wording, not for screenshots. Where the specs are silent, the manual is silent or says so. Every page cites the capabilities it was written from.
+**The one-source rule**: the manual's content comes from the canonical specs under `openspec/specs/` and nothing else. Never read README files, a `docs/` directory, or source code as a content source — not to fill a gap, not to "confirm" wording, not for screenshots. Where the specs are silent, the manual is silent or says so. Every page cites the capabilities it was written from.
 
 ---
 
@@ -2854,7 +2839,7 @@ When no capability is user-facing, still write both pages: `about.md` says `尚�
 
 - A page whose filename already exists keeps its `section` and `order` verbatim (unless the user explicitly asked to reorder).
 - A new page takes an integer between its neighbours (between 20 and 30 → 25); existing pages are never renumbered. When no integer fits — neighbours 20 and 21, or a page that must land after the last page while `about.md` has to stay the maximum — do NOT renumber on your own: leave that page out of this run, list it in the report, and ask the user for a reorder; their explicit request is what allows renumbering.
-- Pages that are not stale are not touched at all — byte-identical. A stale page whose regenerated text (its re-derived `sources` included) equals the file except for `generated` is stamp-only (Step 3): rewrite that one line, nothing else; a page whose anchor no longer resolves is never stamp-only.
+- Untouched, stamp-only and fully rewritten pages follow the decision in Step 3.
 - Every new page and every page rewritten in full writes its `sources` by coverage: when the page draws on only some requirements of a capability, one anchored item per requirement (`"<capability>#<Requirement 名>"`, the heading text verbatim); when it draws on the whole capability, the bare name. Prefer anchors for large specs — they are what keeps an unrelated archive from marking this page stale.
 - Orphan pages (Step 3) stay on disk and appear in the report.
 
@@ -2892,18 +2877,20 @@ Tour mode writes NOTHING — no manual pages, no notes, no scratch files. It is 
 2. **No manual**: say so — `尚無手冊，改以規格直接導覽` — then tour from the specs: `speclink list --specs` for the map, `speclink show <capability> --item-type spec` for each station, sources cited by capability name.
 3. **Remote-bound project**: tour mode proceeds as usual, from an existing manual or from the specs.
 
-When the tour ends you may suggest running generation mode (`speclink manual`) to produce the manual — a suggestion only. NEVER invoke another skill from here.
+When the tour ends you may suggest running generation mode (`speclink manual`) to produce the manual — a suggestion only. Never invoke another skill from here.
 
 ---
 
 ## Guardrails
 
-- Specs are the only content source. README, docs and code are off-limits for manual content — in both modes.
-- Generation writes only under `openspec/manual/`; tour writes nothing; a remote-bound project gets no generation at all.
-- Never delete a page. Never renumber an existing page unless the user explicitly asks for a reorder. Never overwrite a page whose frontmatter you could not parse.
-- Frontmatter has exactly the six fields above. The about page's title and the `**出處**：` line are contract literals.
-- Contradictions inside the specs are recorded on the about page, never silently resolved.
-- Tool skill: no fixed next step. The commit line in the summary and the tour's closing suggestion are suggestions — this skill never runs a commit or another skill.
+Check these before you report:
+
+- [ ] Content came from the canonical specs only — no README, docs or code ("The one-source rule"), in both modes.
+- [ ] Generation wrote only under `openspec/manual/` (Step 5); tour mode wrote nothing; a remote-bound project got no generation (Step 0).
+- [ ] No page was deleted or renumbered, and no page with unparseable frontmatter was overwritten (Steps 1, 3 and 5).
+- [ ] Every page has exactly the six frontmatter fields, the `**出處**：` line, and a `generated` value that matches the format check (Step 5).
+- [ ] Contradictions inside the specs are listed on the about page, never silently resolved (Step 5).
+- [ ] No commit and no other skill was run — the commit line and the tour's closing suggestion are suggestions only (Step 6, Tour mode).
 
 === .wad/skills/speclink-propose/SKILL.md ===
 ---
@@ -2913,7 +2900,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -2931,9 +2918,13 @@ Create a complete Speclink change proposal — from requirement to validated art
 - `speclink propose fix the login page crash`
 - `speclink propose improve search performance`
 
-If no argument is provided, the workflow will extract requirements from conversation context or ask.
+If no argument is provided, the workflow extracts requirements from conversation context or asks.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
+
+**Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response.
+
+**This workflow writes artifacts, not code.** Never write application code or implement features during this workflow, never skip the artifact workflow to write code directly, and never reinterpret requirements by ignoring the proposal file. The workflow ends after step 11 and its landscape check — it NEVER invokes `speclink apply`; the user decides when implementation starts.
 
 **Steps**
 
@@ -2944,12 +2935,12 @@ If no argument is provided, the workflow will extract requirements from conversa
    a. **Argument provided** (e.g., "add dark mode") → use it as the requirement description, skip to deriving the change name below. A `--from-doc <path>` argument explicitly selects the document in (b); a `--from-discussion <slug>` argument explicitly selects the discussion document in (c).
 
    b. **Document supplied directly** (`--from-doc <path>`, speclink enhancement):
-   - This is a skill-text convention modelled on `--from-discussion`, NOT an engine flag — it changes no CLI syntax and requires nothing new from the engine.
+   - This is a skill-text convention modelled on `--from-discussion`, not an engine flag — it changes no CLI syntax and requires nothing new from the engine.
    - When the user passes it, read that document and use it as the requirement source: its title or opening statement gives the requirement description, its content feeds Why, What Changes, Capabilities, and Impact. **No existing discussion is needed** — this is the path for building a proposal straight from a plan the user brought, without going through `speclink discuss` first.
    - The document is consumed, not grilled: itemized challenge of its claims belongs to `discuss`. Never edit the user's original document.
-   - **Leave a provenance line.** A proposal built from `--from-doc` SHALL carry one line `Source doc: <path>` in its Why or Impact section, naming the document it came from — a `--from-discussion` proposal gets its origin recorded by the link, and this line is the `--from-doc` counterpart. Skill-text convention only; the engine records nothing for you.
+   - **Leave a provenance line.** A proposal built from `--from-doc` carries one line `Source doc: <path>` in its Why or Impact section, naming the document it came from — a `--from-discussion` proposal gets its origin recorded by the link, and this line is the `--from-doc` counterpart. Skill-text convention only; the engine records nothing for you.
    - `--from-doc` outranks (c) and (d): when it is present, do not go hunting for a discussion record or a plan file.
-   - When the user did NOT pass `--from-doc`, this entry does not apply at all — requirement-source determination proceeds exactly as before, with no extra file reading.
+   - When the user did not pass `--from-doc`, this entry does not apply at all — requirement-source determination runs through (a), (c), (d) and (e) with no extra file reading.
 
    c. **Discussion document available** (speclink enhancement):
    - List recorded discussions:
@@ -2966,13 +2957,13 @@ If no argument is provided, the workflow will extract requirements from conversa
    - **Follow the `Source doc:` line.** If the discussion's `## Context` carries a line `Source doc: <path>`, read that original document as well — the record stores only the decision diff, so the underlying plan lives in that file. Synthesize the two with **overlay semantics**: the document is the base layer, the discussion is the winning layer.
      - **Decided in the discussion** → the discussion wins. It is newer and it was stress-tested against the codebase.
      - **Untouched by the discussion** → the document's content carries over into the proposal as-is.
-     - **Ruled out in the discussion** → SHALL NOT reappear in the proposal in any form, even where the document still advocates it.
+     - **Ruled out in the discussion** → it never reappears in the proposal in any form, even where the document still advocates it.
 
      Worked example: the document proposes SSE plus three-times retry; the discussion ruled out SSE in favour of WebSocket and never touched retry → the proposal is WebSocket plus three-times retry, and SSE appears nowhere in it.
 
-     Do NOT re-grill the document here — itemized challenge of a document's claims is `discuss`'s job; propose only consumes it, synthesizing or adopting verbatim. Never edit the user's original document.
+     Do not re-grill the document here — itemized challenge of a document's claims is `discuss`'s job; propose only consumes it, synthesizing or adopting verbatim. Never edit the user's original document.
 
-     If the Context has no `Source doc:` line, this step is skipped entirely: the from-discussion flow is exactly as before, with no extra file reading.
+     If the Context has no `Source doc:` line, this step is skipped entirely: the from-discussion flow reads only the record, with no extra file reading.
    - If no discussion exists or the user declines → fall through to (d).
 
    d. **Plan file available**:
@@ -2994,7 +2985,7 @@ If no argument is provided, the workflow will extract requirements from conversa
    From the resolved description, derive a kebab-case change name (e.g., "add dark mode" → `add-dark-mode`).
    Do not keep archive-style date prefixes in active change names. If the source name starts with `YYYY-MM-DD-`, strip that date prefix before running `speclink new change`; archived change names and directories are historical references, not active names to reuse.
 
-   **IMPORTANT**: Do NOT proceed without understanding what the user wants to build.
+   Do not continue past this step until you know what the user wants to build. This is the one point where a missing requirement stops the workflow; from step 2 on, prefer reasonable decisions over questions (step 7c).
 
 2. **Classify the change type**
 
@@ -3014,18 +3005,17 @@ If no argument is provided, the workflow will extract requirements from conversa
    1. Run `speclink list --specs --json` to get the spec identifier list
    2. Compare against the user's description to identify related specs (max 5 candidates)
    3. For each candidate (max 3), run `speclink show <spec-id>` and read the Purpose section at the top of the output
-   4. If related specs are found, display them as an informational summary
-   5. Leave a trace of the scan result in the proposal: name the related specs you found (or state that none matched) — the "why no existing spec covers this" sentence required for each New Capability in step 5 builds on this trace
-
-   **IMPORTANT**:
-   - If related specs are found, display them but do NOT stop or ask for confirmation — continue to the next step
-   - If no related specs are found, proceed without pausing — the scan outcome still gets its trace in the proposal
+   4. Related specs found → display them as an informational summary, then continue to the next step — do not stop or ask for confirmation
+   5. No related specs found → proceed without pausing
+   6. Either way, leave a trace of the scan result in the proposal: name the related specs you found (or state that none matched) — the "why no existing spec covers this" sentence required for each New Capability in step 5 builds on this trace
 
 4. **Create the change directory**
 
    ```bash
    speclink new change "<name>" --agent wad-harness
    ```
+
+   If a change with that name already exists, suggest continuing the existing change instead of creating a new one.
 
    When the proposal is sourced from a discussion document (path (c) in step 1), pass the link so the change records its origin and the discussion is marked `promoted` (it will be archived together with the change later):
 
@@ -3046,14 +3036,12 @@ If no argument is provided, the workflow will extract requirements from conversa
 
    What `--last` does: the engine drops the record's `hold: true` line in the same write that accumulates `promoted_to`, so when the last spun-out change is archived, the discussion is co-archived automatically — nobody has to remember to close the series. Passing it on a cut that was **not** the last is the one mistake to avoid: the record would be co-archived when the last in-flight change is archived, and spinning out the next cut then needs the record moved back from `openspec/discussions/archive/` to `openspec/discussions/` (drop the `<date>-` prefix) — the engine's error message points at that path. Forgetting it is cheap: the record stays live, the board shows it as "promoted · on hold", and one `speclink discuss archive <slug>` closes the series by hand.
 
-   If a change with that name already exists, suggest continuing the existing change instead of creating a new one.
-
 5. **Write the proposal**
 
-   **IMPORTANT — file path rules for the `## Impact` section:**
-   - All file paths SHALL be written relative to the project root (e.g., `src/lib/foo.ts`, `src-tauri/crates/core/src/bar.rs`, `docs/specs/specs/auth/spec.md`).
-   - Do NOT use relative fragments (e.g., `parser/mod.rs`, `core/mod.rs`) — preflight rejects them as non-anchored paths.
-   - Do NOT wrap shell commands in backticks inside artifact text (e.g., `` `git mv a.rs b.rs` ``) — preflight's backtick extractor will otherwise mis-parse the command as a file reference.
+   **File path rules for the `## Impact` section:**
+   - All file paths are written relative to the project root (e.g., `src/lib/foo.ts`, `src-tauri/crates/core/src/bar.rs`, `docs/specs/specs/auth/spec.md`).
+   - Do not use relative fragments (e.g., `parser/mod.rs`, `core/mod.rs`) — preflight rejects them as non-anchored paths.
+   - Do not wrap shell commands in backticks inside artifact text (e.g., `` `git mv a.rs b.rs` ``) — preflight's backtick extractor will otherwise mis-parse the command as a file reference.
    - When referring to a file without naming its concrete path, use descriptive prose (e.g., "Parser 入口檔") rather than a backticked path fragment.
 
    Get instructions:
@@ -3186,24 +3174,25 @@ If no argument is provided, the workflow will extract requirements from conversa
    Loop through artifacts in dependency order (skip proposal since it's already done):
 
    a. **For each artifact that is `ready` (dependencies satisfied)**:
-   - **Check if the artifact is optional**: If the artifact is NOT in the dependency chain of any `applyRequires` artifact (i.e., removing it would not block reaching apply), it is optional. Get its instructions and read the `instruction` field. If the instruction contains conditional criteria (e.g., "create only if any apply"), evaluate whether any criteria apply to this change based on the proposal content. If none apply, skip the artifact and show: "⊘ Skipped <artifact-id> (not needed for this change)". Then continue to the next artifact.
+   - **Check if the artifact is optional**: If the artifact is not in the dependency chain of any `applyRequires` artifact (i.e., removing it would not block reaching apply), it is optional. Get its instructions and read the `instruction` field. If the instruction contains conditional criteria (e.g., "create only if any apply"), evaluate whether any criteria apply to this change based on the proposal content. If none apply, skip the artifact and show: "⊘ Skipped <artifact-id> (not needed for this change)". Then continue to the next artifact.
    - Get instructions:
      ```bash
      speclink instructions <artifact-id> --change "<name>" --json
      ```
    - The instructions JSON includes:
-     - `context`: Project background (constraints for you - do NOT include in output)
-     - `rules`: Artifact-specific rules (constraints for you - do NOT include in output)
+     - `context`: Project background (constraints for you - do not include in output)
+     - `rules`: Artifact-specific rules (constraints for you - do not include in output)
      - `template`: The structure to use for your output file
      - `instruction`: Schema-specific guidance
      - `outputPath`: Where to write the artifact
      - `dependencies`: Completed artifacts to read for context
-     - `locale`: The language to write the artifact in (e.g., "Japanese (日本語)"). If present, you MUST write the artifact content in this language. Spec files (specs/\*_/_.md) default to English instead — unless the project sets `spec_locale` in `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
-   - Read each completed dependency for context via `speclink artifact cat <artifact-id> --change "<name>"` (never open artifact files by path — the documents may live in a remote store)
-   - Generate the artifact content using `template` as the structure
+     - `locale`: The language to write the artifact in (e.g., "Japanese (日本語)"). If present, write the artifact content in this language. Spec files (specs/\*_/_.md) default to English instead — unless the project sets `spec_locale` in `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
+   - Read each completed dependency for context via `speclink artifact cat <artifact-id> --change "<name>"` before you write the new artifact (never open artifact files by path — the documents may live in a remote store)
+   - Follow the `instruction` field and use `template` as the structure for your output file — fill in its sections
+   - `context` and `rules` are constraints for you, not content for the file: apply them, but never copy `<context>`, `<rules>`, or `<project_context>` blocks into the artifact
    - **Mark manual tasks with `[M]`** (tasks artifact only): a task the agent cannot do itself — the user has to do it by hand, whether that is operating the product and accepting the result, creating an account on an external service, or placing a key — carries an `[M]` marker. Anything the agent can do itself, including code and automated tests, never carries it. The marker is what lets the quality stations judge "the code is finished" separately from "a human did their part": they run once every non-`[M]` task is checked, while archive still waits for all of them.
 
-     **The marker goes right after the checkbox, separated by exactly one space; the task number comes after the marker, never before it.** Putting the number first reads naturally and is the easy mistake — the engine does not accept the marker there.
+     **The marker goes right after the checkbox, separated by exactly one space; the task number comes after the marker, NEVER before it.** Putting the number first reads naturally and is the easy mistake — the engine does not accept the marker there.
 
      ```
      Write:  - [ ] [M] 3.2 Open the imported document and confirm the list stays one list
@@ -3212,7 +3201,6 @@ If no argument is provided, the workflow will extract requirements from conversa
      ```
 
      A misplaced marker is read as ordinary description text: the task silently counts as code work, "code tasks all complete" never becomes true, and apply stalls on a task no agent may check off. `speclink validate` reports it as an error.
-   - Apply `context` and `rules` as constraints - but do NOT copy them into the file
    - Write the artifact via CLI (the CLI handles directory creation and format validation):
 
      For **design** or **tasks**:
@@ -3233,7 +3221,7 @@ If no argument is provided, the workflow will extract requirements from conversa
 
      If the command fails with a validation error, fix the content and retry.
 
-     **The `--new` flag declares a new capability.** A capability the canonical specs do not carry yet is refused by default, and the error lists up to three similar existing names with their Purpose lines. Always run the command WITHOUT `--new` first; only when it refuses AND you have confirmed the suggestion list holds no synonym of your capability, re-run the same command with `--new` appended to declare it as genuinely new. If a suggested name IS the same capability, reuse that exact name instead of declaring a new one.
+     **The `--new` flag declares a new capability.** A capability the canonical specs do not carry yet is refused by default, and the error lists up to three similar existing names with their Purpose lines. Always run the command without `--new` first; only when it refuses AND you have confirmed the suggestion list holds no synonym of your capability, re-run the same command with `--new` appended to declare it as genuinely new. If a suggested name IS the same capability, reuse that exact name instead of declaring a new one.
 
    - Show brief progress: "✓ Created <artifact-id>"
 
@@ -3242,9 +3230,7 @@ If no argument is provided, the workflow will extract requirements from conversa
    - Check if every artifact ID in `applyRequires` has `status: "done"`
    - Stop when all `applyRequires` artifacts are done
 
-   c. **If an artifact requires user input** (unclear context):
-   - Use **AskUserQuestion tool** to clarify
-   - Then continue with creation
+   c. **An artifact needs input you do not have** → prefer a reasonable decision that keeps the momentum; only when the context is critically unclear, use the **AskUserQuestion tool** to clarify, then continue with creation.
 
 8. **Inline Self-Review** (before CLI analysis)
 
@@ -3276,43 +3262,26 @@ If no argument is provided, the workflow will extract requirements from conversa
    - Are boundary conditions defined (empty input, max limits, error cases)?
    - Could "the system" refer to multiple components? Be explicit.
 
-   **Check 5: Durable Handoff Review** (run BEFORE the CLI analyzer)
+   **Check 5: Durable Handoff Review** (run before the CLI analyzer)
 
    This change has to survive being handed to another agent. Reject and fix any of the following:
-   - **File-path-only tasks**: a task whose entire description is "edit file X" with no behavior, contract, or verification target. File paths are locator context — the task SHALL still describe what is observably true when complete.
+   - **File-path-only tasks**: a task whose entire description is "edit file X" with no behavior, contract, or verification target. File paths are locator context — the task still describes what is observably true when complete.
    - **Line-number-coupled instructions**: design or tasks content that points to "line 42" / "the function on lines 80-95" as the only way to identify the work. Source line numbers drift; name the function, command, struct, or behavior instead.
    - **Vague acceptance criteria**: success conditions like "works correctly", "behaves as expected", "handles edge cases" without naming the observable behavior or the verification target (test name, CLI invocation, analyzer rule, manual assertion).
-   - **Missing scope boundaries on non-trivial work**: design lacking explicit "in scope" / "out of scope" lines for any change that touches more than one subsystem or introduces new behavior. Trivial artifact-only edits MAY skip this; runtime, build, or tooling effects MUST NOT.
+   - **Missing scope boundaries on non-trivial work**: design lacking explicit "in scope" / "out of scope" lines for any change that touches more than one subsystem or introduces new behavior. Trivial artifact-only edits may skip this; runtime, build, or tooling effects may not.
 
    Fix every failure inline using the existing context before running the CLI analyzer. If a failure cannot be fixed without new input from the user, surface it explicitly rather than papering over it.
-
----
-
-## Rationalization Table
-
-| What You're Thinking                                          | What You Should Do                                                                    |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| "The requirements are clear enough, no need for discuss"      | Fine if true — but check you're not skipping because you're lazy                      |
-| "This artifact isn't needed for this change"                  | Check `applyRequires` — if it's in the dependency chain, create it                    |
-| "The spec doesn't need scenarios, the requirement is obvious" | Obvious to you now. Write scenarios for the implementer who doesn't have your context |
-| "I'll keep the design brief, code will be self-explanatory"   | Design exists so implementers don't reverse-engineer intent. Be specific              |
-| "This is a small change, skip the scope check"                | Small changes touching 5 subsystems aren't small. Check                               |
-| "The placeholder is fine for now, I'll fill it in later"      | There is no "later" — implementation is next. Fill it in now                          |
-
----
 
 9. **Analyze-Fix Loop** (max 2 iterations)
    1. Run `speclink analyze <change-name> --json`
    2. Filter findings to **Critical and Warning only** (ignore Suggestion)
-   3. If no Critical/Warning findings → show "Artifacts look consistent ✓" and proceed
-   4. If Critical/Warning findings exist:
+   3. No Critical/Warning findings → show "Artifacts look consistent ✓" and proceed
+   4. Critical/Warning findings exist →
       a. Show: "Found N issue(s), fixing... (attempt M/2)"
       b. Fix each finding in the affected artifact
       c. Re-run `speclink analyze <change-name> --json`
       d. Repeat up to 2 total iterations
-   5. After 2 attempts, if findings remain:
-      - Show remaining findings as a summary
-      - Proceed normally (do NOT block)
+   5. Findings remain after 2 attempts → show them as a summary and proceed normally (do not block)
 
 10. **Validation**
 
@@ -3332,31 +3301,22 @@ If no argument is provided, the workflow will extract requirements from conversa
     Inform the user that the change is ready and that running `speclink apply <change-name>` when ready will start implementation.
 
 
-    The propose workflow ENDS here. Do NOT invoke `speclink apply`. Do NOT call **AskUserQuestion** to ask whether to apply. This behavior is identical across Auto Mode, interactive mode, and any other agent mode.
+    The propose workflow ENDS here. Do not invoke `speclink apply`, and do not call **AskUserQuestion** to ask whether to apply. This behavior is identical across Auto Mode, interactive mode, and any other agent mode.
 
     After the summary, run the **Pending-change landscape check** below before presenting Next steps.
 
-**Artifact Creation Guidelines**
+---
 
-- Follow the `instruction` field from `speclink instructions` for each artifact type
-- Read dependency artifacts for context before creating new ones
-- Use `template` as the structure for your output file - fill in its sections
-- **IMPORTANT**: `context` and `rules` are constraints for YOU, not content for the file
-  - Do NOT copy `<context>`, `<rules>`, `<project_context>` blocks into the artifact
-  - These guide what you write, but should never appear in the output
+## Rationalization Table
 
-**Guardrails**
-
-- Create all artifacts needed for implementation. Optional artifacts (those not in the `applyRequires` dependency chain) may be skipped if their inclusion criteria don't apply.
-- Always read dependency artifacts before creating a new one
-- If context is critically unclear, ask the user - but prefer making reasonable decisions to keep momentum
-- If a change with that name already exists, suggest continuing that change instead
-- Verify each artifact file exists after writing before proceeding to next
-- **NEVER** write application code or implement features during this workflow
-- **NEVER** skip the artifact workflow to write code directly
-- **NEVER** reinterpret requirements by ignoring the proposal file
-- **NEVER** invoke `speclink apply` — this workflow ends after artifact creation. The user decides when to start implementation
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+| What You're Thinking                                          | What You Should Do                                                                    |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| "The requirements are clear enough, no need for discuss"      | Fine if true — but check you're not skipping because you're lazy                      |
+| "This artifact isn't needed for this change"                  | Check `applyRequires` — if it's in the dependency chain, create it                    |
+| "The spec doesn't need scenarios, the requirement is obvious" | Obvious to you now. Write scenarios for the implementer who doesn't have your context |
+| "I'll keep the design brief, code will be self-explanatory"   | Design exists so implementers don't reverse-engineer intent. Be specific              |
+| "This is a small change, skip the scope check"                | Small changes touching 5 subsystems aren't small. Check                               |
+| "The placeholder is fine for now, I'll fill it in later"      | There is no "later" — implementation is next. Fill it in now                          |
 
 ## Pending-change landscape check
 
@@ -3380,6 +3340,16 @@ Run this check after the summary, right before presenting the Next steps below.
    - For each change whose `archiveAfter` is non-empty, add one line: 「封存時 <change> 要在 <archiveAfter 的名稱> 之後」 — an archive-order note only; it never delays a start.
 6. The check is suggestions only — report the waves or the order and stop; never invoke any skill automatically.
 
+## Guardrails
+
+Check these before you present the Next steps:
+
+- [ ] Every artifact in the `applyRequires` chain exists and `speclink status` shows it done; optional artifacts were skipped only when their criteria did not apply (step 7).
+- [ ] No application code was written, and `speclink apply` was not invoked (step 11).
+- [ ] Every manual task carries `[M]` right after the checkbox, before the task number (step 7).
+- [ ] `speclink validate` passed (step 10).
+- [ ] The landscape check ran when two or more changes are active, and each prerequisite it found was recorded with `speclink change depends`.
+
 ## Next steps
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
@@ -3396,7 +3366,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -3406,11 +3376,13 @@ This harness executes speclink verbs by calling the speclink tool with an argv a
 
 ---
 
-Run both quality stations over one change as a single pass that pauses after every round: `speclink review` and `speclink verify` each do their checking WITHOUT stamping, then this skill reports both stations' findings together and STOPS for the user's call on what to fix, when to stamp, and whether to archive. Nothing is fixed, stamped or archived without their answer. Use this when both stations are known up front to be in play. Running only one station does NOT go through this skill — call that station directly and let it keep its own stamp-when-clean default.
+Run both quality stations over one change as a single pass that pauses after every round: `speclink review` and `speclink verify` each do their checking WITHOUT stamping, then this skill reports both stations' findings together and STOPS for the user's call on what to fix, when to stamp, and whether to archive. Nothing is fixed, stamped or archived without their answer. Use this when both stations are known up front to be in play. Running only one station does not go through this skill — call that station directly and let it keep its own stamp-when-clean default.
 
-**Input**: Optionally specify a change name after `speclink quality` (e.g., `speclink quality add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous, resolve it BEFORE step 1: run `speclink list --json` and prompt with the available changes (the AskUserQuestion tool, or plain text + wait if unavailable), then pass the same name to every station call.
+**Input**: Optionally specify a change name after `speclink quality` (e.g., `speclink quality add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous, resolve it BEFORE step 1: run `speclink list --json` and prompt with the available changes, then pass the same name to every station call.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
+
+**Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response.
 
 **What this skill owns**
 
@@ -3432,20 +3404,22 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
    Run `speclink review` for the change. At its closing question, take the **stop without stamping** exit — the ticket and its frozen snapshot stay for the rounds that follow. A clean pass takes the same exit; the station's own quality-timeline exception covers it.
 
+   That exit ends the review station, not this run: do not ask the user anything here, and go straight on to step 2 in the same turn. This skill's only pause is step 3, and it comes after both stations have reported — it takes priority over the station's own closing question.
+
 2. **Verify check, no stamp**
 
    Run `speclink verify` for the same change and take the same **stop without stamping** exit, clean pass included.
 
 3. **Stop and ask — the round's pause**
 
-   Both stations have reported. Summarize their findings TOGETHER — grouped by station, must-fix separated from the rest — and then STOP: put the next step to the user with the AskUserQuestion tool (no such tool: ask in plain text and wait for an answer). Make no edits before the answer arrives.
+   Both stations have reported. Summarize their findings TOGETHER — grouped by station, must-fix separated from the rest — and then STOP: put the next step to the user (see **Asking the user**). Make no edits before the answer arrives.
 
    The options:
 
    - **Fix everything** — every finding from both stations.
    - **Fix a selection** — the user names which ones; the rest stay in the tickets, unfixed.
    - **Fix nothing and stop** — end the pass right here. Both stations already left through their **stop without stamping** exit, so both tickets and their frozen snapshots stay on disk, no stamp lands, and nothing is archived.
-   - **Go to the closing stamps** — offer this option ONLY when both stations' must-fix sets are empty. While any must-fix is outstanding it is not on the menu: must-fix-cleared-before-the-stamp is the stations' rule and this skill does not route around it. When must-fix findings the user passed on still sit in a ticket, the option must say so up front: that station's stamp lands **with reservations** (the station's `--accept`), and choosing the option here IS the explicit say-so the stations require — never presume it from anything less. Leftover SUGGESTION-level findings are NOT reservations: a station whose ticket carries only SUGGESTIONs stamps clean, no authorization needed.
+   - **Go to the closing stamps** — offer this option ONLY when both stations' must-fix sets are empty. While any must-fix is outstanding it is not on the menu: must-fix-cleared-before-the-stamp is the stations' rule and this skill does not route around it. When must-fix findings the user passed on still sit in a ticket, the option must say so up front: that station's stamp lands **with reservations** (the station's `--accept`), and choosing the option here IS the explicit say-so the stations require — never presume it from anything less. Leftover SUGGESTION-level findings are not reservations: a station whose ticket carries only SUGGESTIONs stamps clean, no authorization needed.
 
    Options with nothing to act on simply do not appear — a round where both stations found nothing offers the last two.
 
@@ -3465,7 +3439,7 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 7. **Archive — a recommendation**
 
-   Both stamps are green: recommend `speclink archive` and leave the run to the user. When the change still carries unchecked `[M]` manual tasks, the recommendation MUST say so: the manual work has to be completed and those tasks checked off before archive will let the change through.
+   Both stamps are green: recommend `speclink archive` and leave the run to the user. When the change still carries unchecked `[M]` manual tasks, the recommendation says so: the manual work has to be completed and those tasks checked off before archive will let the change through.
 
 **Edge cases**
 
@@ -3474,12 +3448,14 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 **Guardrails**
 
-- Never restate or override a station's checking, ticket or stamping rules — route to the station and follow what it says
-- Both checking passes finish before any fixing starts; neither stamp lands before both stations' re-validations are clean
-- Every round ends with step 3's pause, a clean round included — never fix, stamp or archive without the user's answer
-- Fix only what the user picked; the findings they passed on stay in their tickets, unfixed and unargued
-- No edits between the two stamps, and none between them and archive
-- A station's refusal or error stops this flow and is reported as-is — do not work around it
+Check these before you report:
+
+- [ ] Never restate or override a station's checking, ticket or stamping rules — route to the station and follow what it says
+- [ ] Both checking passes finish before any fixing starts; neither stamp lands before both stations' re-validations are clean
+- [ ] Every round ends with step 3's pause, a clean round included — never fix, stamp or archive without the user's answer
+- [ ] Fix only what the user picked; the findings they passed on stay in their tickets, unfixed and unargued
+- [ ] No edits between the two stamps, and none between them and archive
+- [ ] A station's refusal or error stops this flow and is reported as-is — do not work around it
 
 ## Next steps
 
@@ -3497,7 +3473,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -3507,9 +3483,9 @@ This harness executes speclink verbs by calling the speclink tool with an argv a
 
 ---
 
-Review a change's implementation for craft quality: two parallel read-only axes — **Standards** (repo conventions + a fixed code-smell baseline) and **Correctness** (bug hunting) — run ONCE against a frozen change patch, then validated round by round to a review ticket, closed by a stamp. Round 1 is the only discovery pass; every later round only validates remediation. Spec compliance is NOT this skill's job — that is `speclink verify`; the two quality stations run independently and either, both, or neither may be used per change.
+Review a change's implementation for craft quality: two parallel read-only axes — **Standards** (repo conventions + a fixed code-smell baseline) and **Correctness** (bug hunting) — run ONCE against a frozen change patch, then validated round by round to a review ticket, closed by a stamp. Round 1 is the only discovery pass; every later round only validates remediation. Spec compliance is not this skill's job — that is `speclink verify`; the two quality stations run independently and either, both, or neither may be used per change.
 
-**Input**: Optionally specify a change name after `speclink review` (e.g., `speclink review add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name after `speclink review` (e.g., `speclink review add-auth`). If omitted, check if it can be inferred from conversation context; if it is still vague or ambiguous, step 1 asks the user.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
@@ -3521,7 +3497,7 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    Show changes that have implementation tasks (tasks artifact exists).
 
-   **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose.
+   Do NOT guess or auto-select a change — always let the user choose, and wait for the answer.
 
 2. **Gate: all code tasks must be complete**
 
@@ -3529,7 +3505,7 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    speclink instructions apply --change "<name>" --json
    ```
 
-   Read `progress`. If `codeRemaining > 0`, STOP and explain: the review station requires every code task complete before reviewing — finish `speclink apply` first. Do NOT spawn sub-agents and do NOT write the ticket.
+   Read `progress`. If `codeRemaining > 0`, STOP and explain: the review station requires every code task complete before reviewing — finish `speclink apply` first. Do not spawn sub-agents and do not write the ticket.
 
    `[M]` manual tasks are deliberately excluded from `codeRemaining`: they are work only the user can do by hand, and reviewing before them is the point — a review that changes code would void a manual run done earlier. When `codeRemaining` is 0 but `remaining` is not, continue with the review and tell the user in the result presentation which manual tasks are still open, plus the sequence that follows: the stamp can land now, the manual tasks are checked off afterwards, and archive is what waits for them.
 
@@ -3542,10 +3518,10 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    ```
 
    - **Ticket exists and the last round's must-fix set is empty** (`lastRound.findings` has no CRITICAL/WARNING entries; SUGGESTION-only counts as empty) → how the cleared round got there decides the path:
-     - **A refused stamp left it behind** (an external gate turned the stamp away) → do NOT re-review: once the gate recovers, retry the stamp directly — `speclink review stamp "<name>" --agent wad-harness` — and report the outcome. No new discovery, no new validation.
+     - **A refused stamp left it behind** (an external gate turned the stamp away) → do not re-review: once the gate recovers, retry the stamp directly — `speclink review stamp "<name>" --agent wad-harness` — and report the outcome. No new discovery, no new validation.
      - **The `speclink quality` timeline left it unstamped on purpose** → do NOT stamp blindly. Only the timeline's **closing stamp call** may stamp here; any earlier call in that timeline (a re-validation step) must leave without stamping, whatever the scope says. Resolve `speclink review scope "<name>" --json` first:
        - **This IS the closing stamp call** → an empty validation patch (nothing moved since the cleared round) means retry the stamp directly as above. A non-empty patch means the movement gets validated first: continue from step 4 with this frozen patch and let step 9 close the round — on this call step 9's defer exception is off, so a cleared round stamps in this same call.
-       - **This is NOT the closing stamp call** → an empty patch means there is nothing new to judge: report that and end without stamping, ticket untouched. A non-empty patch goes through step 4 as a normal validation pass, and step 9's defer exception keeps the stamp for later.
+       - **This is not the closing stamp call** → an empty patch means there is nothing new to judge: report that and end without stamping, ticket untouched. A non-empty patch goes through step 4 as a normal validation pass, and step 9's defer exception keeps the stamp for later.
    - **Otherwise** (no ticket, or the last round carries must-fix findings) → resolve the frozen scope:
 
    ```bash
@@ -3553,17 +3529,17 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    ```
 
    - **State `resolved`** → keep the payload. `phase` names the pass (`discovery` on a ticketless change, `validation` on a follow-up), `patchHash` is the frozen patch identity, and `patch` / `files` carry the exact hunks under review. Every later step judges THIS frozen patch — the file list is never the review surface. `outOfScopeChanged` lists candidate files that moved but no round ever captured (the user excluded them at discovery): relay them verbatim when you present the results and keep them OUT of the review surface and the ticket's findings.
-   - **State `needsInput` (non-zero exit — discovery only)** → the scope is ambiguous (files dirty before Apply started, an overlapping active change, a missing or late baseline, or empty touched records). Relay the reported reasons and wait for the user to resolve it explicitly by one of: a trusted `--base <rev>`; a hash-pinned hunk selection (`--candidate-hash <sha256>` plus repeated `--include-hunk <id>`, ids from the needsInput payload); or redoing the work in an isolated worktree. Do NOT substitute the touched file list and do NOT widen to the whole worktree — commit-graph diffs and file lists both miss what the frozen patch pins. A validation pass never reports `needsInput`: it resolves its scope by content movement against the frozen snapshot chain.
-   - **Command fails** (legacy ticket without a snapshot, drifted candidate, missing baseline for a follow-up) → report the error verbatim and stop; the explicit way out is the user's call: keep the ticket for later, or `speclink review discard "<name>"` and re-run discovery with an explicit trusted base. NEVER fall back to re-reviewing whole files.
+   - **State `needsInput` (non-zero exit — discovery only)** → the scope is ambiguous (files dirty before Apply started, an overlapping active change, a missing or late baseline, or empty touched records). Relay the reported reasons and wait for the user to resolve it explicitly by one of: a trusted `--base <rev>`; a hash-pinned hunk selection (`--candidate-hash <sha256>` plus repeated `--include-hunk <id>`, ids from the needsInput payload); or redoing the work in an isolated worktree. Do not substitute the touched file list and do not widen to the whole worktree — commit-graph diffs and file lists both miss what the frozen patch pins. A validation pass never reports `needsInput`: it resolves its scope by content movement against the frozen snapshot chain.
+   - **Command fails** (legacy ticket without a snapshot, drifted candidate, missing baseline for a follow-up) → report the error verbatim and stop; the explicit way out is the user's call: keep the ticket for later, or `speclink review discard "<name>"` and re-run discovery with an explicit trusted base. Never fall back to re-reviewing whole files.
 
 4. **Read the change artifacts as judging context**
 
    Read `contextFiles` (proposal, design, specs, tasks). They tell the reviewers what the code intends — pass the relevant intent into both briefs. Two hard rules:
 
-   - Do NOT issue spec-compliance verdicts here — that is `speclink verify`'s dimension.
+   - Do not issue spec-compliance verdicts here — that is `speclink verify`'s dimension.
    - When artifacts are thin, judge only from the code and tests. Never invent requirements.
 
-   **Remote mode**: when the workspace is connected to a remote store, `contextFiles` points into the read-only Context Projection (`.speclink/context/`). Read it freely, but NEVER edit projection files; spec changes go through speclink verbs.
+   **Remote mode**: when the workspace is connected to a remote store, `contextFiles` points into the read-only Context Projection (`.speclink/context/`). Read it freely, but never edit projection files; spec changes go through speclink verbs.
 
 5. **Branch on `phase`**
 
@@ -3575,7 +3551,7 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    Both briefs also carry the resolved `locale` (step 2): finding descriptions are written in that language; severity labels, the `Standards:` / `Correctness:` axis prefixes, file paths, and command lines stay in English. If `locale` is absent, everything is English.
 
-   When accepted findings exist in the ticket's last round (the `(accepted)` token), both briefs also carry that list with a hard instruction: do NOT re-report these items or near-variants of them — they are already adjudicated.
+   When accepted findings exist in the ticket's last round (the `(accepted)` token), both briefs also carry that list with a hard instruction: do not re-report these items or near-variants of them — they are already adjudicated.
 
    **Standards axis brief** — first gather what the repo documents (CLAUDE.md / AGENTS.md, CONTRIBUTING, style docs, lint configs) and check the frozen hunks against it, citing the document for each violation. On top of whatever the repo documents, the Standards axis always carries the smell baseline below — a fixed set of Fowler code smells (Refactoring, ch.3) that applies even when a repo documents nothing. Two rules bind it:
 
@@ -3607,13 +3583,13 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    Send the same two parallel read-only axes, but each brief carries ONLY: the last round's unresolved findings (verbatim), the accepted list, the remediation patch (step 3's frozen validation patch), and the necessary adjacent callers/tests plus artifact intent. Each axis judges, per original finding, resolved or unresolved — and reports only regressions the remediation patch directly introduces. It must NOT report new smells, SUGGESTIONs, or pre-existing issues in unchanged areas. The locale binding and the reporting contract are the same as in discovery.
 
-   **Segments marked `attribution: "adjacent"`** are files the remediation moved that no finding named — a caller, a test, a regenerated artifact, or a parallel session's edit leaking in. State this in both briefs: each axis MUST confirm segment by segment that an adjacent segment genuinely belongs to THIS remediation, and report anything that does not as a regression. Never adopt an adjacent segment silently.
+   **Segments marked `attribution: "adjacent"`** are files the remediation moved that no finding named — a caller, a test, a regenerated artifact, or a parallel session's edit leaking in. State this in both briefs: each axis must confirm segment by segment that an adjacent segment genuinely belongs to THIS remediation, and report anything that does not as a regression. Never adopt an adjacent segment silently.
 
-   **Unrelated late findings during validation**: something new that the remediation patch did not cause must NOT be added to the current round and must NOT reopen discovery. Only when it carries evidence — a realistic trigger path plus one of a reproduction, a failing test, or a clear invariant violation — AND it affects security, data loss, or wrong behavior, end this station as **scope changed / failed**: keep the ticket, do not stamp, and recommend a separate discovery or a spun-off change. Anything below that bar is a note for later, never a blocker.
+   **Unrelated late findings during validation**: something new that the remediation patch did not cause must not be added to the current round and must not reopen discovery. Only when it carries evidence — a realistic trigger path plus one of a reproduction, a failing test, or a clear invariant violation — AND it affects security, data loss, or wrong behavior, end this station as **scope changed / failed**: keep the ticket, do not stamp, and recommend a separate discovery or a spun-off change. Anything below that bar is a note for later, never a blocker.
 
 6. **Present both reports side by side**
 
-   Render the two reports verbatim under `## Standards` and `## Correctness` headings — do NOT merge them, do NOT re-rank across axes. The reports already arrive in the `locale` language (bound in step 5) — never translate them. Close with exactly one summary line in that same language: the findings count per axis and the worst severity within each (never across).
+   Render the two reports verbatim under `## Standards` and `## Correctness` headings — do not merge them, do not re-rank across axes. The reports already arrive in the `locale` language (bound in step 5) — never translate them. Close with exactly one summary line in that same language: the findings count per axis and the worst severity within each (never across).
 
 7. **Triage every finding**
 
@@ -3622,7 +3598,7 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    - **Must-fix** — CRITICAL findings; Correctness findings with a realistic trigger path (WARNING included); unambiguous violations of a documented repo standard.
    - **Discretionary** — "possible X" smell judgements and other nice-to-fix items. Give each one line: the cost of fixing weighed against the benefit.
 
-   Severity IS the blocking boundary: must-fix findings are recorded as CRITICAL or WARNING; discretionary findings are ALWAYS recorded as SUGGESTION — never WARNING. SUGGESTION-level findings do not block the stamp, need nobody's approval, and never enter the acceptance mechanism.
+   Severity IS the blocking boundary: must-fix findings are recorded as CRITICAL or WARNING; discretionary findings are always recorded as SUGGESTION — never WARNING. SUGGESTION-level findings do not block the stamp, need nobody's approval, and never enter the acceptance mechanism.
 
    The **blocking set** of a round is its must-fix findings the user has not accepted — step 9's loop rule runs on its size.
 
@@ -3665,23 +3641,25 @@ Review a change's implementation for craft quality: two parallel read-only axes 
      2. **Accept as-is and stamp** — `speclink review stamp "<name>" --accept --agent wad-harness` (stamps with reservations; the round's findings stay on record in the change history).
      3. **Stop without stamping** — end the session; the ticket and its frozen snapshot stay for a later session or another reviewer (`speclink review show <name> --json` hands them the last round).
 
-   - **Bn is not strictly smaller than Bn-1** (equal or larger) → the round is already recorded; report **failed** immediately: keep the ticket, do NOT stamp, do NOT start another round automatically. The user decides what happens next (more work outside this loop, `--accept`, or discard).
+   - **Bn is not strictly smaller than Bn-1** (equal or larger) → the round is already recorded; report **failed** immediately: keep the ticket, do NOT stamp, do not start another round automatically. The user decides what happens next (more work outside this loop, `--accept`, or discard).
 
    The shrinking blocking set only decides whether the automatic loop may continue — it is never a quality score and never described as "passed". There is no fixed maximum round count; every automatic continuation must strictly shrink the blocking set.
 
 **Guardrails**
 
-- The review station judges craft; `speclink verify` judges spec compliance — never issue compliance verdicts here
-- Round 1 is the only discovery pass; validation rounds judge the original findings and the remediation patch's direct regressions — nothing else
-- The frozen patch from `speclink review scope` is the review surface; touched file lists and worktree state never substitute for it
-- needsInput and scope failures wait for an explicit disposal (trusted `--base`, hash-pinned selection, isolated worktree, or discard) — never guess past them
-- Sub-agents are read-only; every fix returns to the main thread
-- The ticket is verb-owned: create, append, and close it only through `speclink review` verbs
-- Unresolved findings travel verbatim between rounds — rewording fakes progress
-- The verification gate is hard: no next round starts on a failing build or test suite
-- Accepted findings are carried, never re-reported: sub-agents get the no-re-report list, the round record keeps the items
-- Thin artifacts: judge from code and tests, never invent requirements
-- Stop on errors and report — don't guess past a failing verb
+Check these before you report:
+
+- [ ] The review station judges craft; `speclink verify` judges spec compliance — never issue compliance verdicts here
+- [ ] Round 1 is the only discovery pass; validation rounds judge the original findings and the remediation patch's direct regressions — nothing else
+- [ ] The frozen patch from `speclink review scope` is the review surface; touched file lists and worktree state never substitute for it
+- [ ] needsInput and scope failures wait for an explicit disposal (trusted `--base`, hash-pinned selection, isolated worktree, or discard) — never guess past them
+- [ ] Sub-agents are read-only; every fix returns to the main thread
+- [ ] The ticket is verb-owned: create, append, and close it only through `speclink review` verbs
+- [ ] Unresolved findings travel verbatim between rounds — rewording fakes progress
+- [ ] The verification gate is hard: no next round starts on a failing build or test suite
+- [ ] Accepted findings are carried, never re-reported: sub-agents get the no-re-report list, the round record keeps the items
+- [ ] Thin artifacts: judge from code and tests, never invent requirements
+- [ ] Stop on errors and report — don't guess past a failing verb
 
 ## Next steps
 
@@ -3699,7 +3677,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -3775,11 +3753,13 @@ Answer "how did this come to be / why is it designed this way" for a feature: ma
 
 **Guardrails**
 
-- Every claim carries a source path; a claim you cannot source gets qualified or dropped.
-- The answer NEVER contains internal pipeline words — "degraded", "fallback", "old era", "incomplete data", "no evidence recorded" and the like. All sources (discussions, proposals, commits, code) are woven in as natural citations of one story.
-- Missing records change where you look, never what the reader sees: the answer format is identical whether it was assembled from the chain, from git history, or from code archaeology.
-- git commit-message conventions are best-effort leads; when they yield nothing, discussions and proposals carry the answer.
-- Do not edit any file — this skill only reads and answers.
+Check these before you answer:
+
+- [ ] Every claim carries a source path; a claim you cannot source gets qualified or dropped.
+- [ ] The answer NEVER contains internal pipeline words — "degraded", "fallback", "old era", "incomplete data", "no evidence recorded" and the like. All sources (discussions, proposals, commits, code) are woven in as natural citations of one story.
+- [ ] Missing records change where you look, never what the reader sees: the answer format is identical whether it was assembled from the chain, from git history, or from code archaeology.
+- [ ] git commit-message conventions are best-effort leads; when they yield nothing, discussions and proposals carry the answer.
+- [ ] Do not edit any file — this skill only reads and answers.
 
 === .wad/skills/speclink-verify/SKILL.md ===
 ---
@@ -3789,7 +3769,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -3801,7 +3781,7 @@ This harness executes speclink verbs by calling the speclink tool with an argv a
 
 Verify that an implementation matches the change artifacts (specs, tasks, design).
 
-**Input**: Optionally specify a change name after `speclink verify` (e.g., `speclink verify add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name after `speclink verify` (e.g., `speclink verify add-auth`). If omitted, check if it can be inferred from conversation context; if it is still vague or ambiguous, step 1 asks the user.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
@@ -3815,7 +3795,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
    Include the schema used for each change if available.
    Mark changes with incomplete tasks as "(In Progress)".
 
-   **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose.
+   Do NOT guess or auto-select a change — always let the user choose, and wait for the answer.
 
 2. **Check status to understand the schema**
 
@@ -3835,15 +3815,15 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
    This returns the change directory and context files. Read all available artifacts from `contextFiles`, and note `progress` (complete vs total tasks).
 
-   **Remote mode**: when the workspace is connected to a remote store, `contextFiles` points into the read-only Context Projection (`.speclink/context/`) — a local snapshot of the remote canon. Read, search, and grep it freely, but NEVER edit projection files: a direct edit is not a remote write and the next command will reject the projection as modified. Any spec or artifact change goes through speclink verbs. If a `STALE` marker file exists at the projection root or a command reports the projection as modified, re-run `speclink instructions apply` to refresh it.
+   **Remote mode**: when the workspace is connected to a remote store, `contextFiles` points into the read-only Context Projection (`.speclink/context/`) — a local snapshot of the remote canon. Read, search, and grep it freely, but never edit projection files: a direct edit is not a remote write and the next command will reject the projection as modified. Any spec or artifact change goes through speclink verbs. If a `STALE` marker file exists at the projection root or a command reports the projection as modified, re-run `speclink instructions apply` to refresh it.
 
    The payload also carries `locale` — the resolved language for AI output (e.g., "Traditional Chinese (繁體中文)"). Remember it: the verification report is written in this language (see Output Format).
 
 4. **Branch on the call: mid-flight check-in, closing stamp re-entry, or finished-work verification**
 
-   **Not every code task is done (`codeRemaining > 0`) → mid-flight progress check-in.** Run the three dimensions as a conversation report only (steps 6–9 below, reading whatever artifacts and code you need). Do NOT run `speclink verify scope`, do NOT run `speclink verify add-round`, and do NOT stamp. The verify ticket records the verification of finished work — a check-in round landing in it would make "open ticket" stop meaning "the product's verification is unfinished" and would trip the archive gate for nothing. Report and STOP after step 9.
+   **Not every code task is done (`codeRemaining > 0`) → mid-flight progress check-in.** Run the three dimensions as a conversation report only (steps 6–9 below, reading whatever artifacts and code you need). Do not run `speclink verify scope`, do not run `speclink verify add-round`, and do NOT stamp. The verify ticket records the verification of finished work — a check-in round landing in it would make "open ticket" stop meaning "the product's verification is unfinished" and would trip the archive gate for nothing. Report and STOP after step 9.
 
-   **The `speclink quality` timeline's closing stamp call, and the ticket's last round's must-fix set is empty** (`speclink verify show "<name>" --json` — `lastRound.findings` has no CRITICAL/WARNING entries; SUGGESTION-only counts as empty) → branch at the entry, do not walk the full flow: run `speclink verify scope "<name>" --json`. An empty movement patch (nothing moved since that round) → skip the checking pass entirely, run `speclink verify stamp "<name>" --agent wad-harness` directly and report — do NOT record another empty round. A non-empty patch → continue from step 6 as a normal validation pass; on this call step 13's defer exception is off, so the cleared round stamps immediately. `needsInput` or a scope failure here follows step 5's disposals unchanged — never guess past them.
+   **The `speclink quality` timeline's closing stamp call, and the ticket's last round's must-fix set is empty** (`speclink verify show "<name>" --json` — `lastRound.findings` has no CRITICAL/WARNING entries; SUGGESTION-only counts as empty) → branch at the entry, do not walk the full flow: run `speclink verify scope "<name>" --json`. An empty movement patch (nothing moved since that round) → skip the checking pass entirely, run `speclink verify stamp "<name>" --agent wad-harness` directly and report — do not record another empty round. A non-empty patch → continue from step 6 as a normal validation pass; on this call step 13's defer exception is off, so the cleared round stamps immediately. `needsInput` or a scope failure here follows step 5's disposals unchanged — never guess past them.
 
    **Every code task is done (`codeRemaining` is 0) → finished-work verification.** Continue to step 5. `[M]` manual tasks do not hold this back — they are work only the user can do by hand, and the stamp deliberately does not wait for it. When `remaining` is still above 0, name the open manual tasks in the report: the verification covers the code, and archive is what waits for the manual runs.
 
@@ -3865,11 +3845,11 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
    **Discovery (`phase: discovery`) — the one and only exploration pass.** Run the full three dimensions (steps 7–9) against every change artifact, using the frozen patch and the callers/tests needed to judge its direct impact as the code evidence.
 
-   **Validation (`phase: validation`) — remediation validation, never re-discovery.** Take ONLY the last round's unresolved findings (verbatim), the accepted list, the remediation patch frozen in step 5, and the adjacent callers/tests needed to judge it. Decide per original finding: resolved or unresolved. Report only regressions the remediation patch directly introduces. Do NOT re-scan the whole change, the finding's whole file, or any unmodified area; do NOT raise new SUGGESTIONs or pre-existing issues in unchanged areas.
+   **Validation (`phase: validation`) — remediation validation, never re-discovery.** Take ONLY the last round's unresolved findings (verbatim), the accepted list, the remediation patch frozen in step 5, and the adjacent callers/tests needed to judge it. Decide per original finding: resolved or unresolved. Report only regressions the remediation patch directly introduces. Do not re-scan the whole change, the finding's whole file, or any unmodified area; do not raise new SUGGESTIONs or pre-existing issues in unchanged areas.
 
    **Segments marked `attribution: "adjacent"`** are files the remediation moved that no finding named — a caller, a test, a regenerated artifact, or a parallel session's edit leaking in. Confirm segment by segment that each genuinely belongs to THIS remediation, and report anything that does not as a regression. Never adopt an adjacent segment silently.
 
-   **Unrelated late findings during validation**: something new that the remediation patch did not cause must NOT be added to the current round and must NOT reopen discovery. Only when it carries evidence — a realistic trigger path plus one of a reproduction, a failing test, or a clear invariant violation — AND it affects security, data loss, or wrong behavior, end this station as **scope changed / failed**: keep the ticket, do not stamp, and recommend a separate discovery or a spun-off change. Anything below that bar is a note for later, never a blocker.
+   **Unrelated late findings during validation**: something new that the remediation patch did not cause must not be added to the current round and must not reopen discovery. Only when it carries evidence — a realistic trigger path plus one of a reproduction, a failing test, or a clear invariant violation — AND it affects security, data loss, or wrong behavior, end this station as **scope changed / failed**: keep the ticket, do not stamp, and recommend a separate discovery or a spun-off change. Anything below that bar is a note for later, never a blocker.
 
 7. **Verify Completeness**
 
@@ -3977,7 +3957,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
     - **Must-fix** — CRITICAL findings; Correctness findings with a realistic trigger path (WARNING included); requirements or scenarios with no implementation at all.
     - **Discretionary** — pattern-consistency observations and other nice-to-fix items. Give each one line: the cost of fixing weighed against the benefit.
 
-    Severity IS the blocking boundary: must-fix findings are recorded as CRITICAL or WARNING; discretionary findings are ALWAYS recorded as SUGGESTION — never WARNING. SUGGESTION-level findings do not block the stamp, need nobody's approval, and never enter the acceptance mechanism.
+    Severity IS the blocking boundary: must-fix findings are recorded as CRITICAL or WARNING; discretionary findings are always recorded as SUGGESTION — never WARNING. SUGGESTION-level findings do not block the stamp, need nobody's approval, and never enter the acceptance mechanism.
 
     The **blocking set** of a round is its must-fix findings the user has not accepted — step 13's loop rule runs on its size.
 
@@ -4020,7 +4000,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
       2. **Accept as-is and stamp** — `speclink verify stamp "<name>" --accept --agent wad-harness` (stamps with reservations; the round's findings stay on record in the change history).
       3. **Stop without stamping** — end the session; the ticket and its frozen snapshot stay for a later session or another verifier (`speclink verify show <name> --json` hands them the last round).
 
-    - **Bn is not strictly smaller than Bn-1** (equal or larger) → the round is already recorded; report **failed** immediately: keep the ticket, do NOT stamp, do NOT start another round automatically. The user decides what happens next (more work outside this loop, `--accept`, or discard).
+    - **Bn is not strictly smaller than Bn-1** (equal or larger) → the round is already recorded; report **failed** immediately: keep the ticket, do NOT stamp, do not start another round automatically. The user decides what happens next (more work outside this loop, `--accept`, or discard).
 
     The shrinking blocking set only decides whether the automatic loop may continue — it is never a quality score and never described as "passed". There is no fixed maximum round count; every automatic continuation must strictly shrink the blocking set.
 
@@ -4052,18 +4032,20 @@ Use clear markdown with:
 
 **Guardrails**
 
-- `speclink verify` judges spec compliance; the review station judges craft — never issue craft verdicts here
-- The mid-flight check-in never touches the ticket: no `verify scope`, no `verify add-round`, no stamp
-- Round 1 is the only discovery pass; validation rounds judge the original findings and the remediation patch's direct regressions — nothing else
-- The frozen patch from `speclink verify scope` is the code evidence; touched file lists and worktree state never substitute for it
-- needsInput and scope failures wait for an explicit disposal (trusted `--base`, hash-pinned selection, isolated worktree, or discard) — never guess past them
-- The checking pass is read-only; every fix returns to the main thread
-- The ticket is verb-owned: create, append, and close it only through `speclink verify` verbs
-- Unresolved findings travel verbatim between rounds — rewording fakes progress
-- The verification gate is hard: no next round starts on a failing build or test suite
-- Accepted findings are carried, never re-reported
-- Thin artifacts: verify what exists, never invent requirements
-- Stop on errors and report — don't guess past a failing verb
+Check these before you report:
+
+- [ ] `speclink verify` judges spec compliance; the review station judges craft — never issue craft verdicts here
+- [ ] The mid-flight check-in never touches the ticket: no `verify scope`, no `verify add-round`, no stamp
+- [ ] Round 1 is the only discovery pass; validation rounds judge the original findings and the remediation patch's direct regressions — nothing else
+- [ ] The frozen patch from `speclink verify scope` is the code evidence; touched file lists and worktree state never substitute for it
+- [ ] needsInput and scope failures wait for an explicit disposal (trusted `--base`, hash-pinned selection, isolated worktree, or discard) — never guess past them
+- [ ] The checking pass is read-only; every fix returns to the main thread
+- [ ] The ticket is verb-owned: create, append, and close it only through `speclink verify` verbs
+- [ ] Unresolved findings travel verbatim between rounds — rewording fakes progress
+- [ ] The verification gate is hard: no next round starts on a failing build or test suite
+- [ ] Accepted findings are carried, never re-reported
+- [ ] Thin artifacts: verify what exists, never invent requirements
+- [ ] Stop on errors and report — don't guess past a failing verb
 
 ## Next steps
 

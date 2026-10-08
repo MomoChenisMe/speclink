@@ -2004,27 +2004,122 @@ fn assert_conclusion_bullets(rel: &str, block: &str, decision_bulleted: bool) {
     );
 }
 
+/// The heading line (`## ` or `### `, outside fenced code) of the section that holds byte
+/// offset `at`, and the section's text from that heading up to the next heading.
+fn section_around<'a>(rel: &str, content: &'a str, at: usize) -> (&'a str, &'a str) {
+    let headings: Vec<usize> = crate::lines_outside_fences(content)
+        .into_iter()
+        .filter(|(_, line)| line.starts_with("## ") || line.starts_with("### "))
+        .map(|(offset, _)| offset)
+        .collect();
+    let start = *headings
+        .iter()
+        .rev()
+        .find(|&&h| h <= at)
+        .unwrap_or_else(|| panic!("{rel}: no heading above offset {at}"));
+    let end = headings
+        .iter()
+        .copied()
+        .find(|&h| h > at)
+        .unwrap_or(content.len());
+    let heading = content[start..].lines().next().unwrap_or("");
+    (heading, &content[start..end])
+}
+
+/// Whether `text` names `step` ("Step 8") as a whole number, so "Step 80" does not count.
+fn names_step(text: &str, step: &str) -> bool {
+    text.match_indices(step)
+        .any(|(at, _)| !text[at + step.len()..].starts_with(|c: char| c.is_ascii_digit()))
+}
+
+#[test]
+fn names_step_does_not_take_a_longer_step_number() {
+    assert!(names_step("see Step 8.", "Step 8"));
+    assert!(names_step("see Step 8", "Step 8"));
+    assert!(!names_step("see Step 80.", "Step 8"));
+    assert!(!names_step("see Step 81 and Step 9", "Step 8"));
+}
+
+/// Spec skill-authoring「技能原稿的跨模型寫法規範」, Scenario「技能引用依工具渲染」＋
+/// Example「同一個引用在四種渲染目標」: drift's source writes `/speclink:ingest`, and each
+/// render target spells it its own way; the codex files carry no `/speclink-` reference
+/// (skill directory paths such as `.agents/skills/speclink-apply` are not references).
+#[test]
+fn skill_references_render_per_tool() {
+    let expected = "ingest <change-name>`";
+    for (tag, tool, skills_dir, spelling) in [
+        (
+            "reference-claude",
+            Tool::Claude,
+            ".claude/skills",
+            "/speclink-",
+        ),
+        (
+            "reference-codex",
+            Tool::Codex,
+            ".agents/skills",
+            "$speclink-",
+        ),
+        (
+            "reference-copilot",
+            Tool::Copilot,
+            ".github/skills",
+            "/speclink-",
+        ),
+    ] {
+        let root = TempRoot::new(tag);
+        init::init(&root.dir, &[tool], true, "openspec").unwrap();
+        let files = generated_files(&root.dir, skills_dir);
+        let (rel, drift) = files
+            .iter()
+            .find(|(rel, _)| rel.contains("speclink-drift/"))
+            .unwrap_or_else(|| panic!("{tag}: no drift skill"));
+        assert!(
+            drift.contains(&format!("`{spelling}{expected}")),
+            "{rel}: /speclink:ingest must render as {spelling}ingest"
+        );
+        if tool == Tool::Codex {
+            let reference = crate::slash_skill_reference();
+            for (rel, content) in &files {
+                assert!(
+                    !reference.is_match(content),
+                    "{rel}: a codex skill must not carry a /speclink- reference"
+                );
+            }
+        }
+    }
+    let root = neutral_project("reference-neutral", "cli");
+    let files = generated_files(&root.dir, ".wad/skills");
+    let (rel, drift) = files
+        .iter()
+        .find(|(rel, _)| rel.contains("speclink-drift/"))
+        .expect("neutral drift skill");
+    assert!(
+        drift.contains(&format!("`speclink {expected}")),
+        "{rel}: /speclink:ingest must render as `speclink ingest`"
+    );
+}
+
 /// Spec discuss-skill「討論記錄的樹慣例與格式不變」, Scenario「技能檔載有結論條列規則且
 /// 三種渲染目標同源」＋ improve-skill「conclude 範例與討論結論條列規則同形」: the
-/// generated discuss skill carries Document rule 8 — the Conclusion counterpart of rule
-/// 5 — and every Conclusion template is itself in bullet shape: discuss's conclude
-/// heredoc and "Capture decisions" summary (which also share their hint wording), and
-/// improve's two conclude heredocs. The neutral targets share the assets and are pinned
-/// by their golden snapshots.
+/// generated discuss skill states the Conclusion counterpart of the Position rule exactly
+/// once, in the step that writes the conclusion, next to the bullet-shaped conclude
+/// heredoc; the Document rules list and the "Capture decisions" summary point at that
+/// step in one sentence instead of copying the rule or a second template. improve's two
+/// conclude heredocs are bullet-shaped too. The neutral targets share the assets and are
+/// pinned by their golden snapshots.
 #[test]
 fn discuss_skill_carries_the_conclusion_bullets_rule() {
-    // 第 8 條的字面 — 與第 5 條對稱的規則名、條件句、單段句、多刀子句、不回改句。
-    const RULE_PHRASES: [&str; 6] = [
-        "8. **Conclusion bullets over prose.**",
-        "exceeds one sentence it SHALL be bulleted",
+    // 規則全文的片語：各只出現一次，且都在 conclude 步驟裡。
+    const RULE_PHRASES: [&str; 5] = [
+        "Rejected alternatives or Deferred exceeds one sentence it SHALL be bulleted",
         "Rationale / Capture to / Next stay a single paragraph",
-        // 第 8 條專屬片語：範例只寫 `one bullet per cut when …`，不含這句
+        "never trim it to shorten the record",
         "one bullet per cut, headed",
-        "**cut N `change-name`**",
         "existing records are not rewritten",
     ];
-    // 兩份 discuss 模板的提示字句同文；佔位符慣例照舊各異（`...` vs `[...]`）。
-    const SHARED_HINTS: [&str; 7] = [
+    // conclude 範例的提示字句。
+    const TEMPLATE_HINTS: [&str; 7] = [
         "a one-sentence verdict; beyond one sentence, bullet it",
         "one settled point per line — keep every detail, never trim",
         "one bullet per cut when several changes spin out",
@@ -2034,28 +2129,66 @@ fn discuss_skill_carries_the_conclusion_bullets_rule() {
         "`- question — why not now`, one per line",
     ];
     for (rel, content) in skill_for_both_tools("discuss-conclusion-bullets", "discuss") {
-        for needle in RULE_PHRASES {
+        let anchor = "speclink discuss conclude <slug> --stdin";
+        let heredoc = conclusion_template(&rel, &content, anchor, "\nCONCLUSION_EOF");
+        assert_conclusion_bullets(&rel, heredoc, true);
+        for hint in TEMPLATE_HINTS {
             assert!(
-                content.contains(needle),
-                "{rel}: missing conclusion-rule phrase {needle:?}"
+                heredoc.contains(hint),
+                "{rel}: the conclude template lacks the hint {hint:?}:\n{heredoc}"
             );
         }
-        let heredoc = conclusion_template(
+        let (heading, conclude_step) =
+            section_around(&rel, &content, content.find(anchor).unwrap());
+        let step = heading
+            .split_whitespace()
+            .skip_while(|word| *word != "Step")
+            .take(2)
+            .collect::<Vec<_>>()
+            .join(" ")
+            .trim_end_matches(':')
+            .to_string();
+        assert!(
+            step.starts_with("Step "),
+            "{rel}: the conclude heredoc must sit in a numbered step, got heading {heading:?}"
+        );
+        for needle in RULE_PHRASES {
+            assert_eq!(
+                content.matches(needle).count(),
+                1,
+                "{rel}: the conclusion rule must be stated exactly once ({needle:?})"
+            );
+            assert!(
+                conclude_step.contains(needle),
+                "{rel}: {needle:?} must sit in the conclude step ({heading})"
+            );
+        }
+        // 文件規則清單：第 8 條只剩一句指向 conclude 步驟。
+        let pointer = content
+            .lines()
+            .find(|line| line.starts_with("8. **Conclusion bullets over prose.**"))
+            .unwrap_or_else(|| panic!("{rel}: Document rule 8 is missing"));
+        assert!(
+            names_step(pointer, &step),
+            "{rel}: Document rule 8 must point at {step}, got {pointer:?}"
+        );
+        // Capture decisions：一句話指向 conclude 步驟，不另抄結論樣板。
+        let (_, capture) = section_around(
             &rel,
             &content,
-            "speclink discuss conclude <slug> --stdin",
-            "\nCONCLUSION_EOF",
+            content
+                .find("### Capture decisions")
+                .unwrap_or_else(|| panic!("{rel}: missing the Capture decisions section")),
         );
-        let summary =
-            conclusion_template(&rel, &content, "### Capture decisions", "Where to capture:");
-        for block in [heredoc, summary] {
-            assert_conclusion_bullets(&rel, block, true);
-            for hint in SHARED_HINTS {
-                assert!(
-                    block.contains(hint),
-                    "{rel}: template lacks the shared hint {hint:?}:\n{block}"
-                );
-            }
+        assert!(
+            names_step(capture, &step),
+            "{rel}: Capture decisions must point at {step}"
+        );
+        for field in ["**Decision**:", "**Rejected alternatives**:"] {
+            assert!(
+                !capture.contains(field),
+                "{rel}: Capture decisions must not carry a second conclusion template ({field})"
+            );
         }
     }
     // improve 是 discuss 的鏡像入口、寫同一種記錄：收斂範例的 Decision 條列，全數否決

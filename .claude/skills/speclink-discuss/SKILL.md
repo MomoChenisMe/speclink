@@ -6,34 +6,32 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
-Have a focused discussion about a topic and reach a conclusion.
+Have a focused discussion about a topic and reach a conclusion. Every discussion has a topic, works toward a goal, and ends with a clear conclusion — unlike open-ended exploration, discuss mode converges.
 
-**IMPORTANT: Discuss mode is for thinking, not implementing.** You may read files, search code, and investigate the codebase, but you must NEVER write code or implement features. If the user asks you to implement something, remind them to exit discuss mode first (e.g., start a change with `/speclink-propose`). You MAY create Speclink artifacts (proposals, designs, specs) if the user asks—that's capturing thinking, not implementing.
+**Discuss mode is for thinking, not implementing.** You may read files, search code, and investigate the codebase, but you NEVER write application code or implement features. If the user asks you to implement something, remind them to leave discuss mode first (e.g., start a change with `/speclink-propose`). Writing the discussion record, and creating Speclink artifacts (proposals, designs, specs) when the user asks, is capturing thinking — that is allowed.
 
-**This is a task-oriented discussion.** Every discussion has a topic, works toward a goal, and ends with a clear conclusion. Unlike open-ended exploration, discuss mode converges.
-
-**Input**: The argument after `/speclink-discuss` is the topic. Could be:
+**Input**: The argument after `/speclink-discuss` is the topic. It can be:
 
 - A design question: "should we use WebSockets or SSE?"
 - A problem to solve: "the auth system is getting unwieldy"
 - A change name: "add-dark-mode" (discuss in context of that change)
 - An architecture decision: "how to structure the plugin system"
 - A vague idea that needs sharpening: "real-time collaboration"
-- A document path: `docs/plans/realtime.md` — a plan you wrote by hand, a plan-mode output, a doc under the repo, or any readable path (see "Document input" below)
+- A document path: `docs/plans/realtime.md` — a plan you wrote by hand, a plan-mode output, a doc under the repo, or any readable path (see "Document input" in Step 3)
 
-**Not every topic is a discussion.** If the request is really a question — the user wants to understand how something works or whether something is feasible, and no decision hangs on the answer — answer it directly in the conversation and do not open a discussion record. A discussion exists to settle something; understanding-seeking without a verdict is ask-shaped, not discuss-shaped. When in doubt, start talking without a record: the record is only created at the first substantive round (see below), so nothing is lost by waiting.
+**Not every topic is a discussion.** If the request is really a question — the user wants to understand how something works or whether something is feasible, and no decision hangs on the answer — answer it directly in the conversation and do not open a discussion record. A discussion exists to settle something; understanding-seeking without a verdict is ask-shaped, not discuss-shaped. When in doubt, start talking without a record: the record is created only at the first substantive round (Step 5), so nothing is lost by waiting.
 
 ---
 
-## Recording the discussion (speclink)
+## The discussion record
 
-Unlike an ephemeral chat, **every speclink discussion is persisted to a document** (`openspec/discussions/<slug>.md`) so the conversation keeps its thread across turns and sessions, and so a later `/speclink-propose --from-discussion <slug>` can seed a proposal directly from it. Drive the record through the CLI — never hand-write the file.
+Every speclink discussion is persisted to a document (`openspec/discussions/<slug>.md`), so the conversation keeps its thread across turns and sessions, and a later `/speclink-propose --from-discussion <slug>` can seed a proposal directly from it. Drive the record through the `speclink discuss` verbs — NEVER hand-write or edit the file.
 
-The document has a fixed skeleton — like the proposal template, every discussion record has the same shape:
+Every record has the same fixed skeleton:
 
 ```
 ## Context      ← the framing, set once when the record is created (discuss context)
@@ -50,128 +48,27 @@ The document has a fixed skeleton — like the proposal template, every discussi
 5. **Position bullets over prose.** When a Position exceeds one sentence it SHALL be bulleted — a one-sentence verdict first, then `- ` points one per line. A single-line wall-of-text Position is unreadable in every viewer. Focus / Ruled out / Open stay single-line.
 6. **The rounds trace the decision tree.** The first round's Position lays out the initial decision space (an ASCII tree is welcome); each later round resolves one node; branches discovered mid-round are recorded in that round's Open. The Open ledger is thus always the exact frontier of the unexplored tree.
 7. **Multi-requirement backlog.** When one discussion carries several requirements (say 5-10 at once), the first round's Open lays out the full requirement list; every later round's Open restates the items still open; and where a settled item went (decided, promoted, dropped) is carried by the first sentence of that round's Position. Open and Position as they already exist — no new section, no format change. These are the same fields the resume ritual ("At the start" below) reads back.
-8. **Conclusion bullets over prose.** When the Conclusion's Decision, Rejected alternatives or Deferred exceeds one sentence it SHALL be bulleted — `- ` points one per line: the Decision opens with a one-sentence verdict and bullets the rest, while Rejected alternatives and Deferred keep the `**Field**:` header bare and carry one `- ` line per item. Rationale / Capture to / Next stay a single paragraph. The Decision keeps every settled detail — never trim it to shorten the record — and none of its points refers back to a round ("see Round 3"); when the conclusion plans several cuts to spin out, the Decision carries one bullet per cut, headed ``**cut N `change-name`**: one-sentence scope``, with that cut's details as indented sub-points, one item each. A Rejected alternatives line reads `option — why it lost`; a Deferred line reads `question — why not now`, or the field holds the single word `none`. The rule binds the conclusions written from here on; existing records are not rewritten.
-
-**At the start (before Step 0):**
-
-1. Check for an existing open discussion on this topic:
-   ```bash
-   speclink discuss list --json
-   ```
-2. If one matches the topic and it is still live — `status` `open`, or `promoted` mid-way through a spin-out (see **Mid-discussion spin-out** below) — resume it (reuse its `slug`): the record already exists; every later `add-round`/`conclude` call uses it. Only `concluded` and archived records are past resuming. **Resume ritual**: before continuing, present a recap derived from the record — one line per round (its Focus → the first sentence of its Position), then the last round's Open ledger as the current frontier — and only then pick the discussion back up. The recap is mechanically derived from fields the record already has; it introduces no new format and existing records need no migration.
-3. Otherwise **do not create the record yet.** Derive an English kebab-case slug from the topic (translate when the topic is not English — e.g. 「看板搜尋列」 → `board-search-bar`), announce it ("This discussion will be recorded as `<slug>` once it has substance."), and proceed — scout, judge requirement clarity, present your first assumptions or question with nothing on disk. A mis-invocation or a topic answered in one exchange leaves no file behind.
-
-**Create the record at the first substantive round** — and "substantive" is defined by the user's reply, never by your own output: the trigger is the moment the user's response moves the topic (they confirmed or corrected your assumptions list, their answer to a question settled something). Your own research, however deep, and your first assumptions list do NOT count as substance — never run `speclink discuss new` before the user has replied. Right before recording that first round, run:
-
-```bash
-speclink discuss new "<topic>" --slug <english-kebab-slug>
-```
-
-Always pass `--slug` with the English kebab-case slug you derived — the slug names the record file; the topic stays in the user's language verbatim. Without `--slug` the filename falls back to deriving from the topic, so non-English topics produce non-English filenames. Write the Context section (below), then `add-round`. From here on the record is live and every exchange is persisted.
-
-**When the record is created**, fill the Context section once — the framing a future reader (or `propose`) needs before the rounds make sense:
-
-```bash
-speclink discuss context <slug> --stdin <<'CTX_EOF'
-What prompted this discussion, whether a grill stage (Step 3) was needed and why,
-and the related changes/specs the scout (Step 2) surfaced, its in-flight delta hits
-written as <name>: <capability>, comma-separated.
-Prior discussions: <slug list>
-CTX_EOF
-```
-
-The `Prior discussions:` line is mandatory: it names the records the prior-discussion check (Step 2) hit, comma-separated; when the check hit nothing, write `Prior discussions: none`.
-
-The in-flight delta hits go inside that related changes/specs sentence, in the form the template shows (e.g. `add-change-plan-remote: client-protocol`). With zero delta hits the sentence reads exactly as it always has — the canon hits and the change names, no empty marker. Never add a separate line for deltas (no `In-flight deltas:` line): the sentence carries them, and the `Prior discussions:` line stays exactly as specified above.
-
-**Source doc convention** — when the topic named a document (see "Document input" below), the Context SHALL carry one line naming it:
-
-```
-Source doc: <path>
-```
-
-That line is the mechanical marker a later `/speclink-propose --from-discussion <slug>` looks for to know there is an underlying document to read. Three rules travel with it:
-
-- **Evidence cites the document by reference, not by transcription.** When a round's Evidence points at the document, name the section heading or quote a short phrase from it.
-- **The record stores the outcome of the discussion only.** It SHALL NOT embed the planning document in full — the document stays where it is, and the record holds the decision diff against it.
-- **Never modify the user's original document.** Corrections live in the record; merging document and decisions is `propose`'s job, not yours.
-
-When the topic named no document, none of this applies: the Context has no `Source doc:` line, there is no extra file-reading step, and recording proceeds exactly as it does today.
-
-**After each round** (each Assumptions list you present, or each question-and-answer that moves the topic forward), persist a concise summary so the record shows how the thinking evolved:
-
-```bash
-speclink discuss add-round <slug> --mode assumptions --stdin <<'ROUND_EOF'
-**Focus**: the one question this round examined
-**Position**: one-sentence verdict of the direction taken, expanded as bullets:
-- one point per line — the decision detail and the evidence (files, probe results) behind it
-- keep bulleting until the position is fully stated; never fold it back into one long line
-**Ruled out**: options eliminated this round — each with the reason it lost
-**Open**: questions still unresolved, for the next round to pick up
-ROUND_EOF
-```
-
-Use `--mode assumptions` for rounds that presented an assumptions list and `--mode interview` for question-driven rounds (grill stage or node fallback). Omit a line rather than pad it (e.g. no `**Ruled out**` when nothing was eliminated). Keep each round terse — it is a durable summary following the Document rules above, not a transcript. This is the mechanism that keeps a long discussion from drifting off-topic: each round is anchored to the record.
-
-**At convergence**, write the conclusion into the record (see the Convergence and "Capture decisions" sections below). Add `--hold` when the conclusion plans further changes to spin out from this same record later — it keeps the record live past its conclusion and past every spin-out, until the last cut is spun out with `--last` or you release it by hand (see **Mid-discussion spin-out** below):
-
-```bash
-speclink discuss conclude <slug> --stdin <<'CONCLUSION_EOF'
-**Decision**: ... (a one-sentence verdict; beyond one sentence, bullet it)
-- ... (one settled point per line — keep every detail, never trim)
-- **cut N `change-name`**: ... (one bullet per cut when several changes spin out)
-  - ... (that cut's details, one item each)
-**Rationale**: ... (the key trade-off that drove it — a single paragraph)
-**Rejected alternatives**:
-- ... — ... (option — why it lost, one per line)
-**Deferred**: none (or `- question — why not now`, one per line)
-**Capture to**: proposal | design | spec | tasks | LANGUAGE.md
-**Next**: /speclink-propose --from-discussion <slug>
-CONCLUSION_EOF
-```
-
-This flips the record's `status` to `concluded`. The step logic below (vocabulary load, the scout, the requirement-clarity judgement, interface depth check, convergence, conclusion capture) is unchanged — recording sits alongside it.
-
-**A concluded discussion hands off through propose**: `/speclink-propose --from-discussion <slug>` seeds the proposal from the recorded Decision and rounds and builds every artifact in one pass — the single next step once the conclusion is written.
-
-**Mid-discussion spin-out** — in a multi-requirement discussion, one item can be filed the moment it is settled; don't hold it hostage to the rest:
-
-1. **Promote now**: run `speclink discuss promote <slug> --name <change-name>` (`--name` is optional — the change name defaults to the slug) — the engine scaffolds the change, prefills the proposal's Why (from the conclusion when one exists, otherwise from the topic), and links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record). One discussion can fan out into several changes — spin out again and `promoted_to` accumulates each name; the discussion is archived automatically when the last of its changes is archived and its conclusion is written — an unconcluded record stays live for more rounds (a later `conclude` closes it once every spun-out change is archived). **When the conclusion stages several cuts to spin out from this same record** (cut A now, cut B once A lands, cut C after that), run `conclude` with `--hold` **once** — an ordinary spin-out never clears the flag, so the single call covers the whole series. The record stays live past its conclusion and past every middle cut's archive. The **last cut is spun out with `--last`** (`/speclink-propose --from-discussion <slug>` decides this from the conclusion's cut list and the record's `promoted_to`; on the raw verbs it is `speclink discuss promote <slug> --last`, `speclink new change <name> --from-discussion <slug> --last`, or `speclink discuss seal <slug> <change> --last`): that spin-out drops the flag in the same write, and when the last spun-out change is archived the record is co-archived automatically — there is nothing to close by hand. Besides `--last`, only a `conclude` without `--hold` or a manual `speclink discuss archive <slug>` releases the flag. Forgot `--last`? The record simply stays live (the board labels it "promoted · on hold"); run `speclink discuss archive <slug>` once to close the series. Without `--hold` the record is archived along with the last of its changes, and any later cut needs a new discussion. The remaining artifacts are still created via `/speclink-propose`.
-2. **Keep discussing**: `add-round` continues as normal for the remaining items; promotion does not close the record.
-3. **Conclude as usual at the end**: the record keeps its `promoted` status, the conclusion is written in, and the engine flags the already-promoted changes as needing the conclusion re-reflected. When the conclusion is unrelated to a spun-out change, that flag needs a single confirmation — no rework.
-
-Never require a conclusion before a mid-discussion promote, and never conclude the whole discussion early just to free one item.
-
-**Archived by mistake?** (For example, `--last` went on a cut that was not the last one, and the record was co-archived with it.) Move the record file from `openspec/discussions/archive/` back to `openspec/discussions/` and drop the `<date>-` prefix from its name — it is live again and every verb works on it. The engine's error for spinning out from an archived record points at the same path.
-
-**Conclusion routed to an EXISTING change**: when the conclusion's **Capture to** points at a change already in flight (the decision updates its artifacts instead of spawning a new one), run link first, then hand off to ingest:
-
-```bash
-speclink discuss link <slug> <existing-change>
-```
-
-`link` forges the change-side chain (`from_discussion` in the change metadata) without scaffolding anything, so drawer links and auto-archive engage — the discussion is archived automatically when the last linked change is archived and its conclusion is written. Unlike promote, `link` does NOT mark the discussion 已轉出 (`promoted`): that reflection is sealed by `/speclink-ingest`, which folds the decision into the change's artifacts and then runs `speclink discuss seal` — so the discussion flips to promoted only once its content has actually landed, never at link time. Then run `/speclink-ingest <existing-change>` to fold the decision in and seal. Without the link, a concluded-then-ingested discussion sits on the board forever with nothing to archive it.
-
-**Lifecycle**: a discussion that concluded without spawning a change (an explicit "don't do this" is a valid outcome) should be closed out with:
-
-```bash
-speclink discuss archive <slug>       # → discussions/archive/<created>-<slug>.md
-```
-
-Archived discussions stay readable — `speclink discuss show <slug>` falls back to the archive, and `speclink discuss list --archived` lists them. The slug becomes free for a future discussion.
-
-A discussion that turns out not to be needed at all — the user abandons it mid-way, or the topic proved ask-shaped after all — is **discarded**, not archived:
-
-```bash
-speclink discuss discard <slug>            # refuses once rounds exist
-speclink discuss discard <slug> --force    # delete despite recorded rounds
-```
-
-`discard` deletes the live record (archived records are never touched). Once rounds exist it refuses without `--force` — a discussion that examined real trade-offs should keep its reasoning through `conclude` + `archive`, even when the conclusion is "don't do this". Use `discard` freely for records that settled nothing; never leave an abandoned discussion sitting `open`.
+8. **Conclusion bullets over prose.** The Conclusion's field shape is stated once, in Step 8, next to the conclude template.
 
 ---
 
-## Before You Speak
+## At the start (before Step 0)
+
+1. Check for an existing discussion on this topic and for the changes in flight:
+
+   ```bash
+   speclink discuss list --json
+   speclink list --json
+   ```
+
+2. Act on what the discussion list shows:
+   - **A record matches the topic and is still live** — `status` `open`, or `promoted` mid-way through a spin-out (Step 9) → resume it (reuse its `slug`): the record already exists; every later `add-round`/`conclude` call uses it. Only `concluded` and archived records are past resuming. **Resume ritual**: before continuing, present a recap derived from the record — one line per round (its Focus → the first sentence of its Position), then the last round's Open ledger as the current frontier — and only then pick the discussion back up. The recap is mechanically derived from fields the record already has; it introduces no new format and existing records need no migration.
+   - **No live record matches** → do not create one yet. Derive an English kebab-case slug from the topic (translate when the topic is not English — e.g. 「看板搜尋列」 → `board-search-bar`), announce it ("This discussion will be recorded as `<slug>` once it has substance."), and proceed — scout, judge requirement clarity, present your first assumptions or question with nothing on disk. A mis-invocation or a topic answered in one exchange leaves no file behind. Step 5 says when the record is created.
+3. If the user mentioned a specific change name, read its artifacts for context.
+
+---
+
+## Before you speak
 
 Before asking anything, load the shared vocabulary, then do a quick codebase scout to decide how to run this discussion.
 
@@ -179,8 +76,8 @@ Before asking anything, load the shared vocabulary, then do a quick codebase sco
 
 Run `speclink language show`. It prints the project's canonical vocabulary — terms with `definition`, `avoid`, and `why` notes, plus principles for when legacy terminology may remain.
 
-- **If the command succeeds**: scan the canonical terms and their avoided synonyms. Prefer the canonical term when you summarize, capture conclusions, or update artifacts. If you notice a relevant `avoid` synonym in the user's topic or in the artifacts you read, plan to surface that as vocabulary drift in the conclusion.
-- **If the command fails (no vocabulary document)**: continue silently with the normal flow. A missing vocabulary is not an error; do not announce it, do not block, and do not stop to ask the user to create it.
+- **The command succeeds** → scan the canonical terms and their avoided synonyms. Prefer the canonical term when you summarize, capture conclusions, or update artifacts. If you notice a relevant `avoid` synonym in the user's topic or in the artifacts you read, plan to surface that as vocabulary drift in the conclusion (Step 7).
+- **The command fails (no vocabulary document)** → continue silently with the normal flow. A missing vocabulary is not an error; do not announce it, do not block, and do not stop to ask the user to create it.
 
 This step runs before the scout, the assumptions list, any question to the user, and the conclusion capture.
 
@@ -194,7 +91,7 @@ The scout is a funnel: the canon, plus the in-flight deltas about to change it, 
 
 1. **Canon pass** — run `speclink list --specs --json` and match the keywords against capability names. Keep at most 5 candidates in **candidate order** — the names that match the most keywords first, ties in the order the command lists them. Read the Purpose of at most 3 of them in that order (each hit's `path` is the capability's directory — its `spec.md` holds the Purpose), and read a spec in full only when the topic directly targets that capability. Zero hits → skip silently: don't mention specs at all and run the code pass with the original keywords.
 
-   **In-flight deltas belong to this pass.** Every change `speclink list --json` returns (see "Speclink Awareness") is still active: whatever its `status`, its delta specs have not landed in the canon yet. Each change entry's `deltaCapabilities` field names the capabilities those deltas rewrite (the field is absent when the change has none), so the list you ran at the start already holds the answer — no further call. Every change whose `deltaCapabilities` holds a capability the canon pass hit is an **in-flight delta hit** — note it as `<name>: <capability>`. Time-box: read at most 3 hits — the first 3 in candidate order, several changes on one capability in the order `speclink list --json` returned them — with `speclink artifact cat specs/<capability> --change <name>`, and keep only its `## ADDED` / `MODIFIED` / `REMOVED` / `RENAMED` section markers and `### Requirement:` headings, never the delta's full text. When that change's list entry carries a `worktree` object, run the command from its `worktree.path`: the list took that change's deltas from the worktree copy, so the headings have to come from there too. Zero canon hits, no active changes, or no `deltaCapabilities` holding a hit capability → skip silently: say nothing about in-flight deltas. Both verbs work in remote mode, so the check runs the same way there. The hits feed the in-flight marker on the first two triage rows (below) and the Context's "related changes/specs" line; they never open a stage of their own.
+   **In-flight deltas belong to this pass.** Every change `speclink list --json` returned ("At the start", item 1) is still active: whatever its `status`, its delta specs have not landed in the canon yet. Each change entry's `deltaCapabilities` field names the capabilities those deltas rewrite (the field is absent when the change has none), so that list already holds the answer — no further call. Every change whose `deltaCapabilities` holds a capability the canon pass hit is an **in-flight delta hit** — note it as `<name>: <capability>`. Time-box: read at most 3 hits — the first 3 in candidate order, several changes on one capability in the order `speclink list --json` returned them — with `speclink artifact cat specs/<capability> --change <name>`, and keep only its `## ADDED` / `MODIFIED` / `REMOVED` / `RENAMED` section markers and `### Requirement:` headings, never the delta's full text. When that change's list entry carries a `worktree` object, run the command from its `worktree.path`: the list took that change's deltas from the worktree copy, so the headings have to come from there too. Zero canon hits, no active changes, or no `deltaCapabilities` holding a hit capability → skip silently: say nothing about in-flight deltas. Both verbs work in remote mode, so the check runs the same way there. The hits feed the in-flight marker on the first two triage rows (Step 3) and the Context's "related changes/specs" line (Step 5); they never open a stage of their own.
 2. **Translate** — rewrite the search terms using the capability names and canonical vocabulary the canon pass surfaced (on top of Step 0's vocabulary), so the code scan speaks the system's language instead of the user's.
 3. **Prior-discussion check** — run one search with the Step 1 keywords plus the English terms the translation produced:
 
@@ -202,30 +99,30 @@ The scout is a funnel: the canon, plus the in-flight deltas about to change it, 
    speclink discuss search <keyword>... --json
    ```
 
-   It covers live and archived records alike and matches only the topic, the slug and the decision lines — each round's `Ruled out` and the Conclusion's `Decision` / `Rejected alternatives` / `Deferred`; any one keyword matching counts. **List every matching decision line the hits return** — they are one-line verdicts, and the point is to see them all. Then read the full Conclusion of **at most 3** records with `speclink discuss show <slug>`, **topic hits first**. Do not filter by `kind`: an `improve` record's rejections weigh the same as a plain discussion's. Zero hits → skip silently. What this pass surfaces feeds the fourth triage row ("Settled by a prior discussion", below) and the Context's `Prior discussions:` line.
+   It covers live and archived records alike and matches only the topic, the slug and the decision lines — each round's `Ruled out` and the Conclusion's `Decision` / `Rejected alternatives` / `Deferred`; any one keyword matching counts. **List every matching decision line the hits return** — they are one-line verdicts, and the point is to see them all. Then read the full Conclusion of **at most 3** records with `speclink discuss show <slug>`, **topic hits first**. Do not filter by `kind`: an `improve` record's rejections weigh the same as a plain discussion's. Zero hits → skip silently. What this pass surfaces feeds the fourth triage row ("Settled by a prior discussion", Step 3) and the Context's `Prior discussions:` line (Step 5).
 4. **Code pass** — Grep/Glob with the translated terms; read up to 5 of the most relevant files.
 
 **Shortcut**: when the topic already names a concrete file or symbol, start the code pass immediately — don't wait for the canon pass. Run the canon pass afterwards anyway: the shortcut reorders the funnel, it doesn't skip a stage (the canon triage and the Context's related-specs line still need it).
 
-The scout exists to ground the discussion and judge requirement clarity (Step 3) — it is not the investigation. Deeper verification happens later, node by node along the decision tree (see "How to Discuss"). The canon hits and in-flight delta hits from this step, together with the change hits from `speclink list --json` (see "Speclink Awareness"), are what the Context's "related changes/specs" line records; the prior-discussion hits fill its `Prior discussions:` line.
+The scout exists to ground the discussion and judge requirement clarity (Step 3) — it is not the investigation. Deeper verification happens later, node by node along the decision tree ("How to discuss").
 
 ### Step 3: Judge requirement clarity
 
 Assumptions is the only default posture — every discussion arrives there. The only fork is whether the requirement needs sharpening first:
 
-- **Dull requirement** (no verifiable goal, no threshold, "improve / better / cleaner"-style wording) → run a **grill stage** first: sharpen the requirement one question per exchange — goal, scope, threshold, success criteria (see "How to Discuss" for the question rules). The moment the requirement is sharp, stop grilling and present assumptions.
+- **Dull requirement** (no verifiable goal, no threshold, "improve / better / cleaner"-style wording) → run a **grill stage** first: sharpen the requirement one question per exchange — goal, scope, threshold, success criteria (see "How to discuss" for the question rules). The moment the requirement is sharp, stop grilling and present assumptions.
 - **Sharp requirement** (a verifiable goal and its boundaries are already stated) → the grill stage collapses to zero questions: go straight to assumptions.
 - **The topic is a document path** → **Document input** (below): the document supplies the tree already filled in, so skip the "list 3-5 assumptions" opening and triage its claims instead. The scout still runs — it is what you triage the claims against.
 
-How much code the scout found never decides the posture — there is no file-count fork. Inside assumptions, a node whose Evidence cannot support a stance becomes a single question carrying your best guess (the node fallback — see "How to Discuss").
+How much code the scout found never decides the posture — there is no file-count fork. Inside assumptions, a node whose Evidence cannot support a stance becomes a single question carrying your best guess (the node fallback — see "How to discuss").
 
 Announce the posture and why: "The goal here is verifiable — here are my assumptions." or "'Make it better' isn't a testable goal yet — one question first."
 
-The user can redirect at any time: **"ask me questions instead"** / **"one at a time"** walks the remaining nodes as questions, one per exchange, under the "How to Discuss" rules; **"just list your assumptions"** / **"what do you think?"** runs the scout if not done yet and presents assumptions.
+The user can redirect at any time: **"ask me questions instead"** / **"one at a time"** walks the remaining nodes as questions, one per exchange, under the "How to discuss" rules; **"just list your assumptions"** / **"what do you think?"** runs the scout if not done yet and presents assumptions.
 
-### Presenting assumptions
+#### Presenting assumptions
 
-A single-requirement topic gets 3-5 assumptions; a multi-requirement discussion covers every requirement on its backlog instead of trimming to that cap — one assumption per decision, the canon triage below included. Each one MUST include:
+A single-requirement topic gets 3-5 assumptions; a multi-requirement discussion covers every requirement on its backlog instead of trimming to that cap — one assumption per decision, the canon triage below included. Each one includes:
 
 1. **Approach**: what you'd do and why
 2. **Evidence**: file path(s) that informed this assumption
@@ -262,14 +159,14 @@ Example:
 
 The discipline: **the user's requirement is the goal; the canon and the prior discussions are evidence, not a verdict.** Departing from the canon, or reopening a direction an earlier discussion rejected, is a legitimate direction — it just goes into the record as a conscious decision, with the old reason and why it no longer holds.
 
-After presenting, ask: **"Which of these are wrong?"**
+After presenting, ask: **"Which of these are wrong?"** Then stop and wait for the user's reply. When it arrives:
 
-- If the user says all are fine → proceed to Convergence with these as established context.
-- If the user flags corrections → for each one, ask ONE focused follow-up question to understand their intent, then proceed to Convergence with the corrected understanding.
+- **The user says all are fine** → create the record (Step 5), then proceed to convergence (Step 7) with these as established context.
+- **The user flags corrections** → create the record (Step 5); for each correction, ask ONE focused follow-up question to understand their intent, then proceed to convergence with the corrected understanding.
 
-### Document input
+#### Document input
 
-When the topic names a **file path** rather than a sentence — a plan the user wrote by hand, a plan-mode output, a doc under the repo, or any readable path — read that file and treat it as **someone else's assumptions list**: a decision tree that arrives pre-filled and now has to be stress-tested. The document SHALL NOT be read once as background material and then set aside; it is not colour for opinions you form independently.
+When the topic names a **file path** rather than a sentence — a plan the user wrote by hand, a plan-mode output, a doc under the repo, or any readable path — read that file and treat it as **someone else's assumptions list**: a decision tree that arrives pre-filled and now has to be stress-tested. The document is not read once as background material and then set aside; it is not colour for opinions you form independently.
 
 Extract every claim the document makes as a tree node, then triage each claim against the codebase:
 
@@ -281,10 +178,10 @@ Extract every claim the document makes as a tree node, then triage each claim ag
 
 - **Contradictions are itemized, one claim at a time.** For each contradicted claim, state what the document asserts, what the code actually does, and the evidence for the latter. Summarizing the document, or a blanket "parts of this are out of date", is not triage.
 - **Confirmed nodes do not need a user round.** They are settled facts — say so and move on.
-- **Only real decisions reach the user**, one at a time, in dependency order (see "How to Discuss").
+- **Only real decisions reach the user**, one at a time, in dependency order (see "How to discuss").
 - The triage IS the first round's Position, and it replaces the "list 3-5 assumptions" opening — the document already listed them.
 
-Recording follows the **Source doc convention** above: the Context carries `Source doc: <path>`, Evidence cites the document by section heading or short phrase, and the original document is never modified.
+Recording follows the **Source doc convention** in Step 5.
 
 ### Step 4: Interface depth check (conditional)
 
@@ -295,7 +192,7 @@ After the codebase scout, evaluate whether the topic introduces a new architectu
 - A **cross-layer Rust ↔ Tauri ↔ Svelte flow** that did not exist before.
 - A **new storage abstraction** (new on-disk format, new database table, new file-system layout, new adapter over existing storage).
 
-If none of those conditions apply, **skip this check**. Topics that only change static UI copy, visual styling, documentation wording, or other non-architectural surfaces SHALL skip the depth check entirely. The vocabulary load from Step 0 still happens; nothing else from this step runs.
+If none of those conditions apply, **skip this check**. Topics that only change static UI copy, visual styling, documentation wording, or other non-architectural surfaces skip the depth check entirely. The vocabulary load from Step 0 still happens; nothing else from this step runs.
 
 When the check is triggered, work through these four questions before you finalize assumptions or proposed answers:
 
@@ -308,7 +205,7 @@ Surface the answers in the conclusion (or the assumptions list) so the depth que
 
 ---
 
-## How to Discuss
+## How to discuss
 
 _This section governs every question you ask the user — the grill stage questions that sharpen a dull requirement, and the node fallback questions that arise inside assumptions._
 
@@ -323,7 +220,7 @@ _This section governs every question you ask the user — the grill stage questi
 
 Either way the user only needs to agree or correct. Never hand the user a bare open question that evidence could have grounded first. (This is the same Evidence convention the assumptions list already uses, applied per question.)
 
-**Triage every node: fact or decision.** Before resolving a node, classify it. A **fact** is anything the environment can answer — code, file system, tool output; a **decision** is a judgment call only the user can make. Facts MUST be verified yourself with Grep/Read at the node where they arise — never ask the user for a fact, and never answer one from memory. Only genuine decisions go to the user. Verification depth follows the tree: spend deep reads on branches you will actually traverse, and don't pre-read branches that get pruned.
+**Triage every node: fact or decision.** Before resolving a node, classify it. A **fact** is anything the environment can answer — code, file system, tool output; a **decision** is a judgment call only the user can make. Verify facts yourself with Grep/Read at the node where they arise — never ask the user for a fact, and never answer one from memory. Only genuine decisions go to the user. Verification depth follows the tree: spend deep reads on branches you will actually traverse, and don't pre-read branches that get pruned.
 
 **Propose concrete options.** When exploring approaches, present 2-3 specific options with trade-offs — not abstract possibilities. Use comparison tables when helpful:
 
@@ -344,6 +241,8 @@ Either way the user only needs to agree or correct. Never hand the user a bare o
 ```
 
 System diagrams, state machines, data flows, dependency graphs — whatever helps.
+
+**Don't fake understanding.** If something is unclear, dig deeper.
 
 **Challenge assumptions.** Including the user's and your own. Ask "do we actually need this?" Apply YAGNI — the simplest solution that works is often the best.
 
@@ -389,7 +288,65 @@ Good: "Which errors are causing problems now? Are users seeing
 
 ---
 
-## Convergence
+## Step 5: Create the record at the first substantive round
+
+"Substantive" is defined by the user's reply, never by your own output: the trigger is the moment the user's response moves the topic (they confirmed or corrected your assumptions list, their answer to a question settled something). Your own research, however deep, and your first assumptions list do not count as substance — NEVER run `speclink discuss new` before the user has replied. Right before recording that first round, run:
+
+```bash
+speclink discuss new "<topic>" --slug <english-kebab-slug>
+```
+
+Always pass `--slug` with the English kebab-case slug you derived — the slug names the record file; the topic stays in the user's language verbatim. Without `--slug` the filename falls back to deriving from the topic, so non-English topics produce non-English filenames.
+
+Then fill the Context section once — the framing a future reader (or `propose`) needs before the rounds make sense:
+
+```bash
+speclink discuss context <slug> --stdin <<'CTX_EOF'
+What prompted this discussion, whether a grill stage (Step 3) was needed and why,
+and the related changes/specs the scout (Step 2) surfaced, its in-flight delta hits
+written as <name>: <capability>, comma-separated.
+Prior discussions: <slug list>
+CTX_EOF
+```
+
+The `Prior discussions:` line is mandatory: it names the records the prior-discussion check (Step 2) hit, comma-separated; when the check hit nothing, write `Prior discussions: none`.
+
+The related changes/specs sentence names the canon hits and in-flight delta hits from Step 2 together with the change hits from `speclink list --json`. The in-flight delta hits go inside that sentence, in the form the template shows (e.g. `add-change-plan-remote: client-protocol`). With zero delta hits the sentence names only the canon hits and the change names, with no empty marker. Never add a separate line for deltas (no `In-flight deltas:` line): the sentence carries them, and the `Prior discussions:` line stays exactly as specified above.
+
+**Source doc convention** — when the topic named a document (Step 3, "Document input"), the Context carries one line naming it:
+
+```
+Source doc: <path>
+```
+
+That line is the mechanical marker a later `/speclink-propose --from-discussion <slug>` looks for to know there is an underlying document to read. Three rules travel with it:
+
+- **Evidence cites the document by reference, not by transcription.** When a round's Evidence points at the document, name the section heading or quote a short phrase from it.
+- **The record stores the outcome of the discussion only.** It never embeds the planning document in full — the document stays where it is, and the record holds the decision diff against it.
+- **Never modify the user's original document.** Corrections live in the record; merging document and decisions is `propose`'s job, not yours.
+
+When the topic named no document, none of this applies: the Context has no `Source doc:` line, there is no extra file-reading step, and recording proceeds as usual.
+
+From here on the record is live: record the first round (Step 6), and every later exchange is persisted the same way.
+
+## Step 6: Append a round after each exchange
+
+After each round — each Assumptions list you present, or each question-and-answer that moves the topic forward — persist a concise summary so the record shows how the thinking evolved:
+
+```bash
+speclink discuss add-round <slug> --mode assumptions --stdin <<'ROUND_EOF'
+**Focus**: the one question this round examined
+**Position**: one-sentence verdict of the direction taken, expanded as bullets:
+- one point per line — the decision detail and the evidence (files, probe results) behind it
+- keep bulleting until the position is fully stated; never fold it back into one long line
+**Ruled out**: options eliminated this round — each with the reason it lost
+**Open**: questions still unresolved, for the next round to pick up
+ROUND_EOF
+```
+
+Use `--mode assumptions` for rounds that presented an assumptions list and `--mode interview` for question-driven rounds (grill stage or node fallback). Omit a line rather than pad it (e.g. no `**Ruled out**` when nothing was eliminated). Keep each round terse — it is a durable summary following the Document rules, not a transcript. This is the mechanism that keeps a long discussion from drifting off-topic: each round is anchored to the record.
+
+## Step 7: Converge
 
 Discussions must converge. As the conversation progresses:
 
@@ -409,46 +366,16 @@ The conclusion should be one of:
 
 **If the user wants to move faster.** Sometimes the user signals impatience — "let's just go with X", "I don't want to overthink this", "can we move on?". The user owns the stopping point: the decision tree is a map, not a contract, and convergence never requires every branch to be resolved. Respect their pace:
 
-1. **First time**: Briefly flag if there's an important unresolved question — one sentence, not a lecture. "Before we commit to X, worth noting that Y could affect Z. Want to address it or move forward?"
-2. **If they push again**: Respect it. Skip remaining questions, go straight to convergence with the best conclusion you can form from what's been discussed, and record the branches left untraversed under **Deferred** in the conclusion. Don't push back a second time.
+1. **First time** → briefly flag an important unresolved question, if there is one — one sentence, not a lecture. "Before we commit to X, worth noting that Y could affect Z. Want to address it or move forward?"
+2. **They push again** → respect it. Skip remaining questions, go straight to convergence with the best conclusion you can form from what's been discussed, and record the branches left untraversed under **Deferred** in the conclusion. Don't push back a second time.
 
 The goal is thoroughness, not interrogation. One nudge maximum.
 
----
-
-## Speclink Awareness
-
-You have full context of the Speclink system. Use it naturally.
-
-### Check for context
-
-At the start, quickly check what exists:
-
-```bash
-speclink list --json
-```
-
-If the user mentioned a specific change name, read its artifacts for context.
+**Leaving without a conclusion**: if the user tries to end without a conclusion, summarize where things stand and state what's unresolved.
 
 ### Capture decisions
 
-When the discussion converges, **proactively present a conclusion summary**. Don't wait to be asked — propose it, and let the user opt out.
-
-Summary format:
-
-```
-## Conclusion
-
-**Decision**: [a one-sentence verdict; beyond one sentence, bullet it]
-- [one settled point per line — keep every detail, never trim]
-- **cut N `change-name`**: [one bullet per cut when several changes spin out]
-  - [that cut's details, one item each]
-**Rationale**: [the key trade-off that drove it — a single paragraph]
-**Rejected alternatives**:
-- [option — why it lost, one per line]
-**Deferred**: none [or `- question — why not now`, one per line]
-**Capture to**: [Where this should be recorded]
-```
+When the discussion converges, proactively present a conclusion summary — don't wait to be asked; propose it, and let the user opt out. The summary uses the Conclusion shape and template in Step 8.
 
 Where to capture:
 
@@ -460,31 +387,88 @@ Where to capture:
 | New work identified        | `tasks.md`                   |
 | Vocabulary drift           | `openspec/LANGUAGE.md`    |
 
-**Vocabulary drift** means the discussion surfaced a recurring concept that is missing, ambiguous, or pulling away from the shared vocabulary loaded in Step 0. Examples: the topic uses a term that the vocabulary lists as an `avoid` synonym, or the discussion repeatedly names a concept that has no entry yet. When this happens, name it as vocabulary drift in the conclusion summary and direct the capture to `openspec/LANGUAGE.md`. The conclusion summary SHALL preserve this contract — do not silently rewrite the term in the artifacts without recording the drift.
+**Vocabulary drift** means the discussion surfaced a recurring concept that is missing, ambiguous, or pulling away from the shared vocabulary loaded in Step 0. Examples: the topic uses a term that the vocabulary lists as an `avoid` synonym, or the discussion repeatedly names a concept that has no entry yet. When this happens, name it as vocabulary drift in the conclusion summary and direct the capture to `openspec/LANGUAGE.md`. The conclusion summary preserves this contract — do not silently rewrite the term in the artifacts without recording the drift.
 
 Present the summary and say something like "I'll capture this to design.md unless you'd rather not." Default to capturing — the user can decline.
 
-### Transition to action
+## Step 8: Write the conclusion
 
-When the discussion converges on building something:
+Write the conclusion into the record with `speclink discuss conclude`; it flips the record's `status` to `concluded`.
 
-- First record the conclusion in the discussion document: `speclink discuss conclude <slug> --stdin` (see "Recording the discussion" above). This flips its status to `concluded`.
-- Then: "Ready to formalize this? `/speclink-propose --from-discussion <slug>`" — propose will seed the proposal from the recorded Decision and rounds.
-- Or capture the decision in existing artifacts and continue
+**Conclusion bullets over prose.** When the Conclusion's Decision, Rejected alternatives or Deferred exceeds one sentence it SHALL be bulleted — `- ` points one per line: the Decision opens with a one-sentence verdict and bullets the rest, while Rejected alternatives and Deferred keep the `**Field**:` header bare and carry one `- ` line per item. Rationale / Capture to / Next stay a single paragraph. The Decision keeps every settled detail — never trim it to shorten the record — and none of its points refers back to a round ("see Round 3"); when the conclusion plans several cuts to spin out, the Decision carries one bullet per cut, headed ``**cut N `change-name`**: one-sentence scope``, with that cut's details as indented sub-points, one item each. A Rejected alternatives line reads `option — why it lost`; a Deferred line reads `question — why not now`, or the field holds the single word `none`. The rule binds new conclusions only; existing records are not rewritten.
+
+```bash
+speclink discuss conclude <slug> --stdin <<'CONCLUSION_EOF'
+**Decision**: ... (a one-sentence verdict; beyond one sentence, bullet it)
+- ... (one settled point per line — keep every detail, never trim)
+- **cut N `change-name`**: ... (one bullet per cut when several changes spin out)
+  - ... (that cut's details, one item each)
+**Rationale**: ... (the key trade-off that drove it — a single paragraph)
+**Rejected alternatives**:
+- ... — ... (option — why it lost, one per line)
+**Deferred**: none (or `- question — why not now`, one per line)
+**Capture to**: proposal | design | spec | tasks | LANGUAGE.md
+**Next**: /speclink-propose --from-discussion <slug>
+CONCLUSION_EOF
+```
+
+**`--hold`**: add it (`speclink discuss conclude <slug> --hold --stdin`) when the conclusion plans further changes to spin out from this same record later — "Staged cuts" in Step 9 says how the flag is released.
+
+## Step 9: Hand off
+
+Pick the exit that matches the conclusion:
+
+- **The conclusion warrants its own change** → hand off through propose: "Ready to formalize this? `/speclink-propose --from-discussion <slug>`" — propose seeds the proposal from the recorded Decision and rounds and builds every artifact in one pass; it is the single next step once the conclusion is written.
+- **The conclusion belongs in a change already in flight** (its **Capture to** points at an existing change) → run link first, then hand off to ingest:
+
+  ```bash
+  speclink discuss link <slug> <existing-change>
+  ```
+
+  `link` forges the change-side chain (`from_discussion` in the change metadata) without scaffolding anything, so drawer links and auto-archive engage — the discussion is archived automatically when the last linked change is archived and its conclusion is written. Unlike promote, `link` does not mark the discussion 已轉出 (`promoted`): that reflection is sealed by `/speclink-ingest`, which folds the decision into the change's artifacts and then runs `speclink discuss seal` — so the discussion flips to promoted only once its content has actually landed, never at link time. Then run `/speclink-ingest <existing-change>` to fold the decision in and seal. Without the link, a concluded-then-ingested discussion sits on the board forever with nothing to archive it.
+- **The conclusion is "don't do this"** (a valid outcome) → conclude anyway (Step 8), then close the record out:
+
+  ```bash
+  speclink discuss archive <slug>       # → discussions/archive/<created>-<slug>.md
+  ```
+
+  Archived discussions stay readable — `speclink discuss show <slug>` falls back to the archive, and `speclink discuss list --archived` lists them. The slug becomes free for a future discussion.
+- **The discussion turns out not to be needed at all** — the user abandons it mid-way, or the topic proved ask-shaped after all → discard it, do not archive it:
+
+  ```bash
+  speclink discuss discard <slug>            # refuses once rounds exist
+  speclink discuss discard <slug> --force    # delete despite recorded rounds
+  ```
+
+  `discard` deletes the live record (archived records are never touched). Once rounds exist it refuses without `--force` — a discussion that examined real trade-offs should keep its reasoning through `conclude` + `archive`, even when the conclusion is "don't do this". Use `discard` freely for records that settled nothing; never leave an abandoned discussion sitting `open`.
+
+### Mid-discussion spin-out
+
+In a multi-requirement discussion, one item can be filed the moment it is settled, while the record is still open; don't hold it hostage to the rest:
+
+1. **Promote now**: run `speclink discuss promote <slug> --name <change-name>` (`--name` is optional — the change name defaults to the slug). The engine scaffolds the change, prefills the proposal's Why (from the conclusion when one exists, otherwise from the topic), and links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record). One discussion can fan out into several changes — spin out again and `promoted_to` accumulates each name; the discussion is archived automatically when the last of its changes is archived and its conclusion is written — an unconcluded record stays live for more rounds (a later `conclude` closes it once every spun-out change is archived). For a series of staged cuts, see "Staged cuts" below. The remaining artifacts are still created via `/speclink-propose`.
+2. **Keep discussing**: `add-round` continues as normal for the remaining items; promotion does not close the record.
+3. **Conclude as usual at the end**: the record keeps its `promoted` status, the conclusion is written in, and the engine flags the already-promoted changes as needing the conclusion re-reflected. When the conclusion is unrelated to a spun-out change, that flag needs a single confirmation — no rework.
+
+Never require a conclusion before a mid-discussion promote, and never conclude the whole discussion early just to free one item.
+
+**Staged cuts — `--hold`.** When the conclusion plans further changes to spin out from this same record later (cut A now, cut B once A lands, cut C after that), run `conclude` with `--hold` **once** — an ordinary spin-out never clears the flag, so the single call covers the whole series. The record stays live past its conclusion and past every middle cut's archive. The **last cut is spun out with `--last`** (`/speclink-propose --from-discussion <slug>` decides this from the conclusion's cut list and the record's `promoted_to`; on the raw verbs it is `speclink discuss promote <slug> --last`, `speclink new change <name> --from-discussion <slug> --last`, or `speclink discuss seal <slug> <change> --last`): that spin-out drops the flag in the same write, and when the last spun-out change is archived the record is co-archived automatically — there is nothing to close by hand. Besides `--last`, only a `conclude` without `--hold` or a manual `speclink discuss archive <slug>` releases the flag. Forgot `--last`? The record simply stays live (the board labels it "promoted · on hold"); run `speclink discuss archive <slug>` once to close the series. Without `--hold` the record is archived along with the last of its changes, and any later cut needs a new discussion.
+
+**Archived by mistake?** (For example, `--last` went on a cut that was not the last one, and the record was co-archived with it.) Move the record file from `openspec/discussions/archive/` back to `openspec/discussions/` and drop the `<date>-` prefix from its name — it is live again and every verb works on it. The engine's error for spinning out from an archived record points at the same path.
 
 ---
 
 ## Guardrails
 
-- **Do record the discussion** — Announce the intended English kebab-case slug at the start, open the record at the first substantive round (`speclink discuss new` with `--slug`), append a round after each exchange, and `conclude` at the end. The document is the durable thread; keep it current. If the discussion is abandoned instead, `speclink discuss discard` the record — never leave it sitting `open`.
-- **Don't implement** — Never write code or implement features. Creating Speclink artifacts and discussion records is fine, writing application code is not.
-- **Don't leave without a conclusion** — If the user tries to end without a conclusion, summarize where things stand and state what's unresolved.
-- **Don't fake understanding** — If something is unclear, dig deeper.
-- **Don't overwhelm** — One question at a time, not a barrage.
-- **Don't over-engineer** — Challenge complexity. Prefer simpler solutions.
-- **Do visualize** — A good diagram is worth many paragraphs.
-- **Do explore the codebase** — Ground discussions in reality.
-- **Do be opinionated** — Have a recommendation. The user can disagree.
+Check these before you end each turn:
+
+- [ ] No application code was written ("Discuss mode is for thinking").
+- [ ] The record exists only if the user has replied with substance (Step 5); every exchange since then has its round (Step 6).
+- [ ] The record was touched only through `speclink discuss` verbs.
+- [ ] One question per exchange, and every question carries its evidence ("How to discuss").
+- [ ] Facts were verified with Grep/Read, not asked or guessed ("How to discuss").
+- [ ] A recommendation was given — the user can disagree ("Be direct").
+- [ ] The conclusion follows the Step 8 shape, and an abandoned discussion was discarded instead of left `open` (Step 9).
 
 ## Next steps
 

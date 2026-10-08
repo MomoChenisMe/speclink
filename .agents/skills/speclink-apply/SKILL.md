@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
@@ -13,9 +13,11 @@ Implement tasks from a Speclink change.
 
 **Input**: Optionally specify a change name (e.g., `$speclink-apply add-auth`). If omitted, check if it can be inferred from conversation context — inference only decides whether a name is given; the selection itself always goes through `speclink plan` in step 1.
 
-**Task tracking is file-based only.** The tasks file's markdown checkboxes (`- [ ]` / `- [x]`) are the single source of truth for progress. Do NOT use any external task management system, built-in task tracker, or todo tool. When a task is done, edit the checkbox in the tasks file — that is the only way to record progress.
+**Task tracking is file-based only.** The tasks file's markdown checkboxes (`- [ ]` / `- [x]`) are the single source of truth for progress. Do not use any external task management system, built-in task tracker, or todo tool. When a task is done, `speclink task done` (step 7) checks its box — that is the only way to record progress.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
+
+**Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response.
 
 **Steps**
 
@@ -30,8 +32,8 @@ Implement tasks from a Speclink change.
    It returns `waves` (changes that may run in parallel), `changes` (one entry per active change with `stage`, `blockedBy` and `ready`), `next` (the first proposed change with nothing blocking it, or `null`) and `skipped` (changes whose metadata could not be parsed). If the command fails (a dependency cycle, a project that is not initialized), show the error and STOP.
 
    - **No name given** → take `next`. If `next` is `null`, there is nothing ready to start: list every change with its `blockedBy` and STOP — do not pick one anyway.
-   - **A name given** (from the argument or from conversation context) → find it in `changes`. If its `blockedBy` is non-empty, print the prerequisite list (`blockedBy`) and STOP: do NOT run `speclink review prepare`, do NOT run `speclink in-progress add`. The way out is the user's: land (archive) the blockers first; drop a declared prerequisite that is wrong with `speclink change depends <name> --on <prerequisite> --remove`. Then run apply again.
-   - A named change that is not in `changes` (archived, misspelled, or listed under `skipped`) → keep going; step 2's status check reports it the way it always has.
+   - **A name given** (from the argument or from conversation context) → find it in `changes`. If its `blockedBy` is non-empty, print the prerequisite list (`blockedBy`) and STOP: do not run `speclink review prepare`, do not run `speclink in-progress add`. The way out is the user's: land (archive) the blockers first; drop a declared prerequisite that is wrong with `speclink change depends <name> --on <prerequisite> --remove`. Then run apply again.
+   - **A named change that is not in `changes`** (archived, misspelled, or listed under `skipped`) → keep going; step 2's status check reports it.
 
    Never auto-select a change just because only one exists, and never bypass the plan because the user mentioned a change in conversation — the plan decides whether it may start.
 
@@ -43,16 +45,15 @@ Implement tasks from a Speclink change.
    speclink status --change "<name>" --json
    ```
 
-   **If the command fails**: show the error and STOP.
+   - **The command fails** → show the error and STOP.
+   - **The command succeeds** → capture the review baseline, then mark the change as in-progress:
 
-   **If the command succeeds**, capture the review baseline, then mark the change as in-progress:
+     ```bash
+     speclink review prepare "<name>"
+     speclink in-progress add "<name>"
+     ```
 
-   ```bash
-   speclink review prepare "<name>"
-   speclink in-progress add "<name>"
-   ```
-
-   `review prepare` records the host-local Apply baseline (HEAD, dirty files at start) that the review station later resolves its frozen change scope against. Both are silent operations — do not show their output to the user. A stderr warning from `review prepare` (late or unavailable baseline) is fine — continue. If `speclink review prepare` fails, report the error and STOP — do NOT run `speclink in-progress add`.
+     `review prepare` records the host-local Apply baseline (HEAD, dirty files at start) that the review station later resolves its frozen change scope against. Both are silent operations — do not show their output to the user. A stderr warning from `review prepare` (late or unavailable baseline) is fine — continue. If `speclink review prepare` fails, report the error and STOP — do NOT run `speclink in-progress add`.
 
    Parse the JSON to understand:
    - `schemaName`: The workflow being used (e.g., "spec-driven")
@@ -71,16 +72,16 @@ Implement tasks from a Speclink change.
    - Dynamic instruction based on current state
 
    **Handle states:**
-   - If `state: "blocked"` (missing artifacts): show message, suggest using `$speclink-propose` to create the change artifacts first
-   - If `state: "all_done"`: congratulate, suggest archive
-   - Otherwise: proceed to implementation
+   - `state: "blocked"` (missing artifacts) → show the message, suggest using `$speclink-propose` to create the change artifacts first
+   - `state: "all_done"` → congratulate, suggest archive
+   - Otherwise → proceed to implementation
 
 3b. **Preflight check**
 
 If the apply instructions JSON includes a `preflight` field, act on its `status`:
 
-- **`"clean"`**: silently continue — no output needed.
-- **`"warnings"`**: display a brief summary, then continue automatically:
+- **`"clean"`** → silently continue — no output needed.
+- **`"warnings"`** → display a brief summary, then continue automatically:
   ```
   ⚠ Preflight warnings:
   - Drifted files (modified after change was created): <list paths>
@@ -88,7 +89,7 @@ If the apply instructions JSON includes a `preflight` field, act on its `status`
   Continuing...
   ```
   Only show the lines that are relevant (skip drifted if none, skip staleness if not stale).
-- **`"critical"`**: display missing files with their source artifact, then use the **AskUserQuestion tool** to ask the user:
+- **`"critical"`** → display missing files with their source artifact, then use the **AskUserQuestion tool** to ask the user:
 
   ```
   ⚠ Preflight: missing files detected
@@ -97,12 +98,7 @@ If the apply instructions JSON includes a `preflight` field, act on its `status`
   These files are referenced in the change artifacts but no longer exist on disk.
   ```
 
-  Options: "Continue anyway" / "Stop"
-  If the user chooses "Stop", end the workflow.
-
-  If there is no AskUserQuestion tool available:
-  Display the same information as plain text and ask whether to continue or stop.
-  Wait for the user's response.
+  Options: "Continue anyway" / "Stop". If the user chooses "Stop", end the workflow.
 
 If the `preflight` field is absent (blocked or all_done states), skip this step.
 
@@ -110,14 +106,12 @@ If the `preflight` field is absent (blocked or all_done states), skip this step.
 
 Run `speclink analyze <change-name> --json` to check cross-artifact consistency (Coverage, Consistency, Ambiguity, Gaps).
 
-- **Zero findings**: silently continue.
-- **Warning/Suggestion only**: display a one-line summary (e.g., "⚠ Artifact analysis: 2 warnings found") and continue automatically.
-- **Critical findings**: display each Critical finding (summary + location + recommendation), then use the **AskUserQuestion tool**:
+- **Zero findings** → silently continue.
+- **Warning/Suggestion only** → display a one-line summary (e.g., "⚠ Artifact analysis: 2 warnings found") and continue automatically.
+- **Critical findings** → display each Critical finding (summary + location + recommendation), then use the **AskUserQuestion tool**:
   - **Fix and continue** — fix the artifact issues inline, then proceed
   - **Continue anyway** — skip fixes and start implementation
   - **Stop** — end the workflow
-
-  If there is no AskUserQuestion tool available, present options as plain text and wait for the user's response.
 
 3d. **Drift dormancy check** (passive trigger for stale changes)
 
@@ -125,40 +119,37 @@ When the change has been dormant for more than 5 days AND the change directory h
 
 Detect dormancy from `.openspec.yaml` `created` and `git log -1 --format=%at -- openspec/changes/<name>/`:
 
-- **Both conditions met**: run `speclink drift <change-name>`, display the report, then use the **AskUserQuestion tool**:
+- **Both conditions met** → run `speclink drift <change-name>`, display the report, then use the **AskUserQuestion tool**:
   - **Continue with apply** — proceed to tasks (recommended for Light drift)
-  - **Refresh first** — pause apply, run `/speclink-ingest <change-name>` to update artifacts, then resume
+  - **Refresh first** — pause apply, run `$speclink-ingest <change-name>` to update artifacts, then resume
   - **Stop** — end the workflow
-- **Either condition not met**: silently continue, no output.
+- **Either condition not met** → silently continue, no output.
 
-The trigger is guidance only — it MUST NOT block apply from proceeding when the user chooses to continue. Hard-blocking on dormancy would punish legitimate "I came back after a long weekend" cases.
+The trigger is guidance only — it does not block apply from proceeding when the user chooses to continue. Hard-blocking on dormancy would punish legitimate "I came back after a long weekend" cases.
 
 (Threshold reasoning: AI-assisted commits are daily-cadence. ≥5 days dormant + ≥3 days no commit ≈ genuine stagnation, not normal pacing.)
 
-If there is no AskUserQuestion tool available, present options as plain text and wait for the user's response.
-
 4. **Read context files**
 
-   Read the files listed in `contextFiles` from the apply instructions output.
+   Read the files listed in `contextFiles` from the apply instructions output — never assume specific file names.
    The files depend on the schema being used:
    - **spec-driven**: proposal, specs, design, tasks
    - Other schemas: follow the contextFiles from CLI output
 
-   **Remote mode**: when the workspace is connected to a remote store, `contextFiles` points into the read-only Context Projection (`.speclink/context/`) — a local snapshot of the remote canon. Read, search, and grep it freely, but NEVER edit projection files: a direct edit is not a remote write and the next command will reject the projection as modified. Any spec or artifact change goes through speclink verbs. If a `STALE` marker file exists at the projection root or a command reports the projection as modified, re-run `speclink instructions apply` to refresh it.
+   **Remote mode**: when the workspace is connected to a remote store, `contextFiles` points into the read-only Context Projection (`.speclink/context/`) — a local snapshot of the remote canon. Read, search, and grep it freely, but never edit projection files: a direct edit is not a remote write and the next command will reject the projection as modified. Any spec or artifact change goes through speclink verbs. If a `STALE` marker file exists at the projection root or a command reports the projection as modified, re-run `speclink instructions apply` to refresh it.
 
 5. **Check project preferences**
 
    The apply instructions payload carries the effective policy toggles as the `tdd` and `audit` boolean fields — read them from the payload; do not read any config file for these.
-   If `tdd` is true, apply TDD discipline throughout implementation:
-   - For each task, write a failing test FIRST, then implement to make it pass
-   - Fetch TDD instructions by running `speclink instructions --skill tdd`, then follow the Red-Green-Refactor cycle
-   - For bug fixes, reproduce the bug with a failing test before fixing
-
-   If `audit` is true, apply sharp-edges discipline throughout implementation:
-   - When designing APIs or interfaces, evaluate through 3 adversary lenses (Scoundrel, Lazy Developer, Confused Developer)
-   - When adding configuration options, verify defaults are secure and zero/empty values are safe
-   - When accepting parameters, check for type confusion and silent failures
-   - Fetch audit instructions by running `speclink instructions --skill audit`, follow the discipline checklist (not the standalone 3-agent workflow)
+   - **`tdd` is true** → apply TDD discipline throughout implementation:
+     - For each task, write a failing test FIRST, then implement to make it pass
+     - Fetch TDD instructions by running `speclink instructions --skill tdd`, then follow the Red-Green-Refactor cycle
+     - For bug fixes, reproduce the bug with a failing test before fixing
+   - **`audit` is true** → apply sharp-edges discipline throughout implementation:
+     - When designing APIs or interfaces, evaluate through 3 adversary lenses (Scoundrel, Lazy Developer, Confused Developer)
+     - When adding configuration options, verify defaults are secure and zero/empty values are safe
+     - When accepting parameters, check for type confusion and silent failures
+     - Fetch audit instructions by running `speclink instructions --skill audit`, follow the discipline checklist (not the standalone 3-agent workflow)
 
 6. **Show current progress**
 
@@ -170,7 +161,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
 
 7. **Implement tasks (loop until done or blocked)**
 
-   **Reminder: Track progress by editing checkboxes in the tasks file only. Do not use any built-in task tracker.**
+   Keep going through the pending tasks until every non-`[M]` task is done or something stops you. The stops below — an `[M]` task that blocks a code task, an unclear task, a design issue, an error — take priority over finishing the list.
 
    For each pending task:
    - Show which task is being worked on
@@ -180,7 +171,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
      - only names files to edit ("edit `foo.rs`", "update `bar.svelte`") with no behavior, contract, or verification target;
      - is vague ("handle edge cases", "wire it up", "make it work");
      - conflicts with the implementation contract (asks for behavior the contract excludes, or omits behavior the contract requires).
-       When this happens, pause. Either update the artifact (design or tasks) so the task names a concrete behavior and verification target, or report the blocker and wait for guidance. Do NOT silently guess against unclear requirements.
+       When this happens, pause. Either update the artifact (design or tasks) so the task names a concrete behavior and verification target, or report the blocker and wait for guidance. Do not silently guess against unclear requirements.
    - Before writing code, check:
      1. **Reuse** — search adjacent modules and shared utilities for existing implementations before writing new code
      2. **Quality** — derive values from existing state instead of duplicating; use existing types and constants over new literals
@@ -190,23 +181,23 @@ If there is no AskUserQuestion tool available, present options as plain text and
         - When TDD is enabled: derive the first failing test directly from the example's GIVEN/WHEN/THEN values
         - When TDD is not enabled: after implementing, verify the code handles the example's input→output correctly
         - Example tables map to parameterized tests — one test per row
-          Do NOT invent additional test values beyond what the spec examples provide without reason. The examples ARE the agreed specification.
+          Do not invent additional test values beyond what the spec examples provide without reason. The examples ARE the agreed specification.
    - Make the code changes required
    - Keep changes minimal and focused
    - **Verify before marking done** — re-read the task description from the tasks file AND the relevant Implementation Contract content from design.md. For each requirement stated in the task description and each contract item that covers this task's scope, confirm it is addressed by your changes. Confirm the verification target named by the task (test name, CLI invocation, analyzer check, or manual assertion) actually passes. If any contract item, task requirement, or verification target is missing or failing, implement/fix it now. Do not mark the task complete until every part of the description is covered and the contract for this task is satisfied.
-   - Mark task complete by running: `speclink task done --change "<name>" <task-id>`
+   - Mark task complete right away by running: `speclink task done --change "<name>" <task-id>`
      This command marks the checkbox in tasks.md AND records which files were modified for this task.
-   - **Never check off an `[M]` task.** A task whose description carries the `[M]` prefix is manual work the user performs by hand — not only manual testing, but anything you cannot do yourself: accepting a result by operating the product, creating an account on an external service, placing a key. You cannot observe the outcome, so you cannot attest to it. Skip it and move on — unless a code task depends on it, which is the next point's blocked case. Once every non-`[M]` task is checked, apply is finished: report completion, name the `[M]` tasks left for the user, and say that the quality stations (`$speclink-review`, `$speclink-verify`, or `$speclink-quality` for both) can run now while archive waits for the manual runs.
+   - **NEVER check off an `[M]` task.** A task whose description carries the `[M]` prefix is manual work the user performs by hand — not only manual testing, but anything you cannot do yourself: accepting a result by operating the product, creating an account on an external service, placing a key. You cannot observe the outcome, so you cannot attest to it. Skip it and move on — unless a code task depends on it, which is the next point's blocked case. Once every non-`[M]` task is checked, apply is finished: report completion, name the `[M]` tasks left for the user, and say that the quality stations (`$speclink-review`, `$speclink-verify`, or `$speclink-quality` for both) can run now while archive waits for the manual runs.
    - **A code task blocked by an open `[M]` task stops you.** Some manual tasks come first, not last — the external account has to exist before the code that calls it can be written. When implementing a code task requires an unchecked `[M]` task to be done, stop and ask the user to complete that manual task. Never check it off on their behalf, and never work around it.
    - If a task was checked by mistake or its implementation is rolled back, run: `speclink task undone --change "<name>" <task-id>`
-     Do NOT edit tasks.md directly to uncheck a task.
+     Do not edit tasks.md directly to uncheck a task.
    - Continue to next task
 
-   **Pause if:**
-   - Task is unclear → ask for clarification
+   **Pause and wait for guidance when:**
+   - The task is unclear → ask for clarification
    - Implementation reveals a design issue → suggest updating artifacts
-   - Error or blocker encountered → report and wait for guidance
-   - User interrupts
+   - An error or blocker comes up → report it
+   - The user interrupts
 
    **Started the wrong change?**
 
@@ -228,23 +219,6 @@ If there is no AskUserQuestion tool available, present options as plain text and
    Unlike `in-progress add`, an unknown change name errors loudly — check the
    name with `speclink list` if it reports not found.
 
----
-
-## Rationalization Table
-
-| What You're Thinking                                               | What You Should Do                                                                                                                            |
-| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| "This task looks done, I'll mark it complete"                      | Re-read the task description first. Check whether your diff covers every part of it. Incomplete tasks marked done are the #1 source of rework |
-| "This task is trivial, I don't need to re-read the design"         | Re-read. Context compression loses details. 30s of reading saves 30min of rework                                                              |
-| "I already know how this works, skip the code search"              | Search anyway. Someone may have added a utility since you last looked                                                                         |
-| "The test is obvious, I'll add it after implementation"            | If TDD is enabled, test first. If not, still write it before marking done                                                                     |
-| "This is just a small refactor, no test needed"                    | Small refactors are how regressions sneak in. Write the test                                                                                  |
-| "The artifact says X but Y makes more sense"                       | Pause and suggest updating the artifact. Don't silently deviate                                                                               |
-| "I'll fix this other thing I noticed while I'm here"               | Finish current task first. Address the other thing separately                                                                                 |
-| "The example values are just illustrations, I'll pick better ones" | Use the spec example values exactly. They were chosen deliberately                                                                            |
-
----
-
 8. **Final check**
 
    After completing all tasks, re-run:
@@ -260,8 +234,8 @@ If there is no AskUserQuestion tool available, present options as plain text and
    Display:
    - Tasks completed this session
    - Overall progress: "N/M tasks complete"
-   - If all done: suggest archive
-   - If paused: explain why and wait for guidance
+   - All done → suggest archive
+   - Paused → explain why and wait for guidance
 
 **Output During Implementation**
 
@@ -317,18 +291,29 @@ in one step via `$speclink-commit` ("Archive first, then commit together").
 What would you like to do?
 ```
 
+---
+
+## Rationalization Table
+
+| What You're Thinking                                               | What You Should Do                                                                                                                            |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| "This task looks done, I'll mark it complete"                      | Re-read the task description first. Check whether your diff covers every part of it. Incomplete tasks marked done are the #1 source of rework |
+| "This task is trivial, I don't need to re-read the design"         | Re-read. Context compression loses details. 30s of reading saves 30min of rework                                                              |
+| "I already know how this works, skip the code search"              | Search anyway. Someone may have added a utility since you last looked                                                                         |
+| "The test is obvious, I'll add it after implementation"            | If TDD is enabled, test first. If not, still write it before marking done                                                                     |
+| "This is just a small refactor, no test needed"                    | Small refactors are how regressions sneak in. Write the test                                                                                  |
+| "The artifact says X but Y makes more sense"                       | Pause and suggest updating the artifact. Don't silently deviate                                                                               |
+| "I'll fix this other thing I noticed while I'm here"               | Finish current task first. Address the other thing separately                                                                                 |
+| "The example values are just illustrations, I'll pick better ones" | Use the spec example values exactly. They were chosen deliberately                                                                            |
+
 **Guardrails**
 
-- Keep going through tasks until done or blocked
-- Always read context files before starting (from the apply instructions output)
-- If task is ambiguous, pause and ask before implementing
-- If implementation reveals issues, pause and suggest artifact updates
-- Keep code changes minimal and scoped to each task
-- Update task checkbox immediately after completing each task
-- Pause on errors, blockers, or unclear requirements - don't guess
-- Use contextFiles from CLI output, don't assume specific file names
-- **No external task tracking** — do not use any built-in task management, todo list, or progress tracking tool; the tasks file is the only system
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+Check these before you show the final status:
+
+- [ ] The context files came from the apply instructions output and were read before the first task (step 4).
+- [ ] Every finished task was checked with `speclink task done` right away; no external task tracker was used.
+- [ ] No `[M]` task was checked, and a code task blocked by an open `[M]` task stopped the run (step 7).
+- [ ] Code changes stayed minimal and scoped to each task; ambiguity, design issues and errors paused the run instead of a guess (step 7).
 
 **Fluid Workflow Integration**
 

@@ -1,8 +1,10 @@
 Archive a completed change.
 
-**Input**: Optionally specify a change name after `/speclink:archive` (e.g., `/speclink:archive add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name after `/speclink:archive` (e.g., `/speclink:archive add-auth`). If omitted, check if it can be inferred from conversation context; if it is still vague or ambiguous, step 1 asks the user.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
+
+**Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response.
 
 **Where to run it**: archiving runs in the **main checkout**. Inside a linked worktree on a `speclink/` branch the engine refuses the archive outright — the unarchive backup would land in the worktree's gitignored `.speclink/snapshots/` and vanish with the worktree, and deltas would merge onto the branch point's stale canon. If you are in a worktree, wrap it up with the `/speclink:worktree-merge` skill first, then archive from the main checkout.
 
@@ -17,7 +19,7 @@ Archive a completed change.
    Show only active changes (not already archived).
    Include the schema used for each change if available.
 
-   **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose — a candidate marked 「可封存」 is not picked for them either.
+   Do NOT guess or auto-select a change — always let the user choose, and wait for the answer; a candidate marked 「可封存」 is not picked for them either.
 
 2. **Check artifact completion status**
 
@@ -106,7 +108,7 @@ Archive a completed change.
      - merge the omitted canonical content into each MODIFIED requirement so it reads as the complete final state, or declare the drop with `<!-- REMOVED-SCENARIO: … -->`
      - drop or retarget each pre-existing ADDED requirement (a requirement the canon already carries is edited via MODIFIED, not re-added)
      - do NOT edit the main specs — only the delta files change
-   - "Refresh from the codebase": run `/speclink-drift <name>` to see what moved, then `/speclink-ingest <name>` to update the delta — the route the refusal message itself points at
+   - "Refresh from the codebase": run `/speclink:drift <name>` to see what moved, then `/speclink:ingest <name>` to update the delta — the route the refusal message itself points at
    - "Cancel"
 
    After fixing, show a brief diff summary of the rewritten delta files, then continue.
@@ -136,7 +138,7 @@ Archive a completed change.
 
    **If the merge gate refuses**, the error lists every offending operation
    (capability / operation / requirement / reason) at once. Fix them in one round on the
-   delta files — `speclink drift <name>` shows what moved, `/speclink-ingest <name>`
+   delta files — `speclink drift <name>` shows what moved, `/speclink:ingest <name>`
    updates the delta — then re-run the archive. `--no-validate` does not unlock the gate;
    `--skip-specs` skips spec application entirely.
 
@@ -153,7 +155,7 @@ Archive a completed change.
    It is a note, not a refusal — nothing to waive, no flag to pass, exit code unchanged. A
    spec-only or docs-only change earns no code evidence by construction, so the note is
    expected there. Anywhere else, read it as a prompt to check whether the work actually
-   went through `/speclink-apply` before archiving.
+   went through `/speclink:apply` before archiving.
 
 6. **Display summary**
 
@@ -226,15 +228,13 @@ Target archive directory already exists.
 
 **Guardrails**
 
-- Always prompt for change selection if not provided
-- Use artifact graph (speclink status --json) for completion checking
-- Don't block archive on warnings - just inform and confirm
-- Preserve .openspec.yaml when moving to archive (it moves with the directory)
-- Show clear summary of what happened
-- Fixing a delta rewrites delta files only — NEVER edit main specs directly; delta application is the archive CLI's job
-- If delta specs exist, always run the completeness assessment; only prompt when a fix is actually needed
-- Never work around the merge gate — it protects the canonical specs from silent data loss; fix the delta instead
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+Check these before you show the summary:
+
+- [ ] The user chose the change; nothing was auto-selected (step 1).
+- [ ] Completion was checked with the artifact graph (`speclink status --json`, step 2); warnings were reported and confirmed, not treated as blockers (steps 2–3).
+- [ ] When delta specs exist, the completeness assessment ran, and a prompt appeared only when a fix was needed (step 4).
+- [ ] Only delta files were edited — never the main specs; delta application is the archive CLI's job, and the merge gate was not worked around (steps 4–5).
+- [ ] `.openspec.yaml` moved with the change directory, and the summary says clearly what happened (step 6).
 
 
 ## RENAMED is actually executed (speclink-specific)

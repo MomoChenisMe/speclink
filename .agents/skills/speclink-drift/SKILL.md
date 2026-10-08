@@ -5,13 +5,15 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.43.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
 Detect drift between a Speclink change and the current codebase state. Reports time dormancy, broken design anchors, task collisions with external commits, and a single recommended next command.
 
-**Input**: Optionally specify a change name (e.g., `/speclink-drift add-auth`). If omitted, infer from conversation context or auto-select if only one active change exists.
+**Read-only**: never modify files, artifacts, or git state based on drift findings.
+
+**Input**: Optionally specify a change name (e.g., `$speclink-drift add-auth`). If omitted, infer from conversation context or auto-select if only one active change exists.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
@@ -26,6 +28,8 @@ Detect drift between a Speclink change and the current codebase state. Reports t
    ```bash
    speclink drift <change-name> --json
    ```
+
+   A non-zero exit code (e.g., a binary without the drift subcommand) → report the error and stop.
 
    The JSON contains:
    - `severity`: `"light"` / `"medium"` / `"heavy"`
@@ -42,7 +46,7 @@ Detect drift between a Speclink change and the current codebase state. Reports t
 
    **Report language**: run `speclink instructions apply --change "<name>" --json` and use its `locale` field (e.g., "Traditional Chinese (繁體中文)") — write the report in that language, prose, headings, and table labels included. Keep severity labels (light/medium/heavy), command lines, and code references in English. If the field is absent or the call fails, write in English.
 
-   Use a user-readable, conclusion-first format. The first substantive paragraph after the title MUST be a plain-language conclusion that says what to do next before showing score tables, broken anchors, task collisions, or severity labels.
+   Use a user-readable, conclusion-first format. The first substantive paragraph after the title is a plain-language conclusion that says what to do next before showing score tables, broken anchors, task collisions, or severity labels.
 
    Translate severity into action-oriented meaning:
    - **Light**: the change can continue with apply.
@@ -82,42 +86,41 @@ Detect drift between a Speclink change and the current codebase state. Reports t
 
 4. **Apply the recommendation interactively**
 
-   Use the **AskUserQuestion tool** to offer one decision based on `severity`. Use plain-language option labels (in the report language) while preserving the exact command in each option description. Do NOT auto-invoke `/speclink-apply`, `/speclink-ingest`, or `speclink archive`; always wait for the user's choice.
+   Use the **AskUserQuestion tool** to offer one decision based on `severity`. Use plain-language option labels (in the report language) while preserving the exact command in each option description. Do NOT auto-invoke `$speclink-apply`, `$speclink-ingest`, `speclink archive`, or any other follow-up command; always wait for the user's choice. If the **AskUserQuestion tool** is not available, present the same plain-language choices as plain text and wait for the user's response.
    - **Light** (score 0-3, drift is minor):
      - Recommended label: "Directly start work"
-       - Description: run `/speclink-apply <name>`
+       - Description: run `$speclink-apply <name>`
      - Alternate label: "Pause for now"
        - Description: do nothing until the user reviews manually
    - **Medium** (score 4-8, refresh worth doing):
      - Recommended label: "Refresh the plan"
-       - Description: run `/speclink-ingest <name>` with the broken references and task collisions as context
+       - Description: run `$speclink-ingest <name>` with the broken references and task collisions as context
      - Alternate label: "Directly start work"
-       - Description: run `/speclink-apply <name>` only if the user knows the reported changes are harmless
+       - Description: run `$speclink-apply <name>` only if the user knows the reported changes are harmless
      - Alternate label: "Pause for now"
        - Description: do nothing until the user reviews manually
    - **Heavy** (score >8 or anchor decay >30%, design diverges from code):
      - Recommended label: "Archive and restart"
        - Description: run `<primary_recommendation>`
      - Alternate label: "Refresh the plan"
-       - Description: try `/speclink-ingest <name>` before restarting
+       - Description: try `$speclink-ingest <name>` before restarting
      - Alternate label: "Pause for now"
        - Description: do nothing until the user reviews manually
 
-   If the **AskUserQuestion tool** is not available, present the same plain-language choices as text and wait for the user's response.
 
 **Passive Trigger**
 
-When `/speclink-apply` is invoked on a change whose `.openspec.yaml created` date is more than 5 days ago AND no commits have touched the change directory in the past 3 days, the apply skill SHOULD run drift analysis first and surface findings before tasks begin. The trigger is guidance only and MUST NOT block apply from proceeding.
+When `$speclink-apply` is invoked on a change whose `.openspec.yaml created` date is more than 5 days ago AND no commits have touched the change directory in the past 3 days, the apply skill SHOULD run drift analysis first and surface findings before tasks begin. The trigger is guidance only and does not block apply from proceeding.
 
 (Threshold reasoning: AI-assisted commits are daily-cadence, not weekly. A change sitting ≥5 days with ≥3 days of no commits is almost always genuine stagnation rather than normal pacing.)
 
 **Guardrails**
 
-- Read-only: NEVER modify files, artifacts, or git state based on drift findings
-- The CLI caps anchor checks at 50 via `ANCHOR_CAP` in `speclink_core::drift` to bound run-time
-- If `speclink drift` returns a non-zero exit code (e.g., older binary without the drift subcommand), report the error and stop
-- Do NOT auto-invoke any follow-up command — recommendations are user-confirmed
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+Check these before you report (the CLI caps anchor checks at 50 via `ANCHOR_CAP` in `speclink_core::drift` to bound run-time):
+
+- [ ] Nothing was modified ("Read-only").
+- [ ] The report opens with the plain-language conclusion, and stale delta assumptions lead it when present (step 3).
+- [ ] No follow-up command ran without the user's choice (step 4).
 
 ## Next steps
 

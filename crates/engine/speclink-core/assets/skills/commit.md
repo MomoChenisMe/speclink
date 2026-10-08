@@ -2,9 +2,11 @@ Commit files related to a specific Speclink change.
 
 This is a **utility skill** (not a workflow step). It reads source file tracking data and artifact changes to stage and commit only the files belonging to one change — useful when multiple changes are in progress simultaneously.
 
-**Input**: Optionally specify a change name after `/speclink:commit` (e.g., `/speclink:commit add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name after `/speclink:commit` (e.g., `/speclink:commit add-auth`). If omitted, check if it can be inferred from conversation context; if it is still vague or ambiguous, step 1 asks the user.
 
 **Prerequisites**: This skill requires `git`. Run `git --version`. If git is not available (command not found or similar error), inform the user to install git and STOP.
+
+**Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response. The display-first rule of step 7 applies to the plain-text question too.
 
 **Steps**
 
@@ -13,7 +15,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    If a name is provided, use it. Otherwise:
    - Infer from conversation context if the user mentioned a change
    - Auto-select if only one active change exists
-   - If ambiguous, run `speclink list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select
+   - If ambiguous, run `speclink list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select, and wait for the answer
 
    Always announce: "Committing for change: <name>"
 
@@ -48,7 +50,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
 4. **Identify unrelated dirty files**
 
-   From the full `git status --porcelain` output, any dirty files NOT in the artifact set and NOT in the evidence record are "unrelated changes."
+   From the full `git status --porcelain` output, any dirty files that are neither in the artifact set nor in the evidence record are "unrelated changes."
 
 5. **Generate commit message**
 
@@ -140,8 +142,6 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
         - **Yes**: set a flag to pass `--mark-tasks-complete` to `speclink archive`
         - **No**: proceed without the flag (archive will continue with a warning)
 
-      If **AskUserQuestion tool** is not available, ask the same question as plain text and wait for the user's response.
-
     **7a-ii. Delta spec completeness check**
 
     Check whether delta specs exist at `{{SPEC_DIR}}changes/<name>/specs/`.
@@ -151,9 +151,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
       - If every delta is complete final-state and no ADDED requirement pre-exists: skip to 7a-ii-b.
       - Otherwise use the **AskUserQuestion tool** to ask: "Delta specs would be refused by the archive merge gate. Fix them before archiving?"
         - **Yes**: rewrite the delta files in place — merge the omitted canonical content into MODIFIED requirements (or declare deliberate drops with `<!-- REMOVED-SCENARIO: … -->`), drop or retarget pre-existing ADDED requirements — then proceed. Do NOT edit main specs.
-        - **No**: skip the archive (commit without it) and route the delta repair through `speclink drift <name>` → `/speclink-ingest <name>` — archiving as-is would exit non-zero
-
-      If **AskUserQuestion tool** is not available, ask the same question as plain text and wait for the user's response.
+        - **No**: skip the archive (commit without it) and route the delta repair through `speclink drift <name>` → `/speclink:ingest <name>` — archiving as-is would exit non-zero
 
     **7a-ii-b. Plan order hint**
 
@@ -188,7 +186,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     After archive completes successfully:
 
-    1. Re-run `git status --porcelain` to capture all file changes produced by the archive (deletions from `{{SPEC_DIR}}changes/<name>/`, additions in `{{SPEC_DIR}}archived/`)
+    1. Re-run `git status --porcelain` to capture all file changes produced by the archive (deletions from `{{SPEC_DIR}}changes/<name>/`, additions in `{{SPEC_DIR}}changes/archive/`)
     2. Add these archive-related file changes to the commit set
     3. Regenerate the commit message with an `Archived: yes` line appended to the body
     4. Display an **updated commit plan and message** as one visible message, showing all sections:
@@ -289,11 +287,11 @@ No dirty files found for this change (no modified artifacts, no tracked source f
 
 **Guardrails**
 
-- **NEVER use `git add .` or `git add -A`** — every file must be staged individually with `git add <file>`
-- **NEVER commit files the user hasn't confirmed** — always show the file list and get explicit confirmation first
-- **Always show the full file list before committing** — no silent staging
-- **NEVER ask for confirmation before the commit plan and the full commit message have been output as visible message text** — the confirmation question must not reference content that was never displayed in the conversation (e.g., "the plan above" when no plan was shown). This applies equally to the plain-text fallback: display first, then ask
-- If the evidence record is missing, warn but don't block — artifact-only commits are valid
-- The "Unrelated Changes" section is informational only — these files are excluded by default
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+Check these before you commit:
+
+- [ ] Every file was staged individually with `git add <file>` — no `git add .` or `git add -A` (step 8).
+- [ ] The user confirmed the exact file list; nothing unconfirmed was committed, and nothing was staged silently (step 7).
+- [ ] **NEVER ask for confirmation before the commit plan and the full commit message have been output as visible message text** — the confirmation question must not reference content that was never displayed in the conversation (e.g., "the plan above" when no plan was shown). This applies equally to the plain-text fallback: display first, then ask.
+- [ ] A missing evidence record produced a warning, not a block — artifact-only commits are valid (step 6).
+- [ ] The "Unrelated Changes" section stayed informational; those files were excluded by default (step 6).
 

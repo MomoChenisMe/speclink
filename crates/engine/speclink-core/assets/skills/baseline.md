@@ -1,6 +1,6 @@
 Establish the baseline for an existing codebase: generate the initial canonical specs from current behavior, so later changes have a spec baseline to build on.
 
-**IMPORTANT: The baseline documents what the system does TODAY — not what it should do.** Specs written here describe observed behavior with evidence. Aspirations, fixes, and improvements belong in a change (`/speclink:propose`) AFTER the baseline is written. Because nothing is changing, baseline writes directly to `{{SPEC_DIR}}specs/` — no change folder is involved.
+**The baseline documents what the system does TODAY — not what it should do.** Specs written here describe observed behavior with evidence. Aspirations, fixes, and improvements belong in a change (`/speclink:propose`) after the baseline is written. Because nothing is changing, baseline writes directly to `{{SPEC_DIR}}specs/` — no change folder is involved, and no code is changed: do not refactor while writing the baseline.
 
 **Input**: Optionally a scope hint after `/speclink:baseline` (e.g., "auth and billing only"). If omitted, baseline the whole codebase.
 
@@ -14,9 +14,9 @@ speclink workflow-config show --json
 ```
 
 - **No specs yet** → full baseline pass; continue below.
-- **Some specs exist** → gap-filling mode: inventory what is NOT yet covered and scope the rest of this flow to those areas. Never rewrite an existing spec here — propose a change instead.
+- **Some specs exist** → gap-filling mode: inventory what is not yet covered and scope the rest of this flow to those areas. Never rewrite an existing spec here — modifications go through a change (`/speclink:propose`).
 
-The `workflow-config show --json` payload is the canonical workflow config for this workspace — the values `{{SPEC_DIR}}config.yaml` holds (the store's config document in remote mode), in the same shape either way. Environment overrides (`SPECLINK_*`) are NOT applied; that is the same reading the file itself gives. Read these fields from it:
+The `workflow-config show --json` payload is the canonical workflow config for this workspace — the values `{{SPEC_DIR}}config.yaml` holds (the store's config document in remote mode), in the same shape either way. Environment overrides (`SPECLINK_*`) are not applied; that is the same reading the file itself gives. Read these fields from it:
 
 - `context` — the project context; carry it as background for the inventory and for every spec you write.
 - `specLocale` — the JSON name of `spec_locale`: the language for spec prose. `null` means English, `auto` means use the payload's `locale`, any other value is the locale code to write in. Structural markers and SHALL/MUST keywords stay in English regardless.
@@ -35,13 +35,13 @@ Build a behavioral map before writing anything:
 
 Spend effort proportional to repo size; for large repos, sample entry points and tests first.
 
-## Step 3: Propose the capability map — and WAIT
+## Step 3: Propose the capability map — and wait
 
-Draft a capability list (kebab-case names, one behavior area each — the same granularity a change's delta specs would use). For each: one-line purpose + the evidence files behind it.
+Draft a capability list (kebab-case names, one behavior area each — the same granularity a change's delta specs would use). For each: one-line purpose + the evidence files behind it. Keep capabilities small — a capability that needs 15 requirements is probably two capabilities.
 
-Present the map with the **AskUserQuestion tool** (or as plain text if unavailable) and let the user confirm, merge, split, or drop capabilities. **Do NOT write any spec before the map is confirmed** — wrong boundaries here are expensive to undo later.
+Present the map with the **AskUserQuestion tool** — or, if that tool is unavailable, as plain text — and let the user confirm, merge, split, or drop capabilities. Then wait for the answer. Do NOT write any spec before the map is confirmed — wrong boundaries here are expensive to undo later.
 
-The confirmation MUST also show which specs rules this run applies, so no rule shapes the output silently. Append this block to the map, quoting each entry of `rules.specs` verbatim:
+The confirmation also shows which specs rules this run applies, so no rule shapes the output silently. Append this block to the map, quoting each entry of `rules.specs` verbatim:
 
 ```
 Specs rules applied this run (from rules.specs, N entries):
@@ -78,7 +78,7 @@ For each confirmed capability, create `{{SPEC_DIR}}specs/<capability>/spec.md`:
 
 Rules:
 
-- **Evidence or flag it.** Every requirement must trace to code or tests you actually read. If a behavior is inferred but unverified, ask the user or leave it out — do not guess it into the record.
+- **Evidence or flag it.** Every requirement traces to code or tests you actually read. If a behavior is inferred but unverified, ask the user or leave it out — do not guess it into the record.
 - Concrete scenarios: real values from tests make the best WHEN/THEN data; add `##### Example:` blocks where tests provide exact input→output pairs.
 - Behavior only — no implementation details (module names, algorithms) in requirement text.
 - 4 hashes for `#### Scenario:`, SHALL/MUST keywords in English, prose in the `specLocale` language.
@@ -94,13 +94,14 @@ Fix structural findings, then report: capabilities created (with requirement/sce
 
 ## Guardrails
 
-- **Don't invent behavior** — evidence-based only; unverified inferences are flagged or omitted.
-- **Don't refactor while writing the baseline** — no code changes at all.
-- **Don't rewrite existing specs** — gap-fill only; modifications go through a change.
-- **Don't apply rules silently** — the `Specs rules applied this run` block appears in the map confirmation and in the final report.
-- **Don't hand-read `{{SPEC_DIR}}config.yaml`** — the workflow config comes from `speclink workflow-config show --json`; if that command fails, stop.
-- **Do confirm the capability map before writing** — boundaries are the expensive decision.
-- **Do keep specs small** — a capability that needs 15 requirements is probably two capabilities.
+Check these before you report:
+
+- [ ] Every requirement traces to code or tests you read; unverified inferences are flagged or omitted (Step 4).
+- [ ] No code was changed and no change folder was created — only `{{SPEC_DIR}}specs/` was written.
+- [ ] No existing spec was rewritten (Step 1).
+- [ ] The capability map was confirmed before any spec was written (Step 3).
+- [ ] The `Specs rules applied this run` block appeared in the map confirmation and in the final report (Steps 3 and 5).
+- [ ] The workflow config came from `speclink workflow-config show --json`, never from reading `{{SPEC_DIR}}config.yaml` (Step 1).
 
 ## Next steps
 
