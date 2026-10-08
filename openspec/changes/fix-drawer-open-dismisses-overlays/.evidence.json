@@ -1,0 +1,48 @@
+{
+  "version": 2,
+  "change": "fix-drawer-open-dismisses-overlays",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 `apps/desktop/src/store.ts` 新增回傳部分狀態的純函式（依 design D5，例如 `cancelableOverlaysCleared()`），`openDetail` 與 `openDiscussion` 在既有的同一次 set 內展開它（design D1：互斥仍由 store 開啟動作保證；D2：歸零集合只含可取消浮層）：`workspaceChooser`、`pendingInit`、`pendingAdopt`、`pendingArchive`、`pendingArchiveDiscussion`、`pendingDelete`、`pendingRevert`、`revertBlocked` 設為 null，`pendingArchiveSettled` 設回 `{ review: false, verify: false }`，其餘既有欄位（自身抽屜、`boardView: \"board\"`、其他三個抽屜欄位、`drawerVerb`）照舊。驗證：`apps/desktop/src/__tests__/store.test.ts` 新增案例「open 動作清除可取消浮層」——八種浮層各開一個，分別呼叫 `openDetail` 與 `openDiscussion`，斷言浮層欄位歸零、對應抽屜欄位已設、`boardView` 為 board；既有「detail 抽屜互斥」四組轉移案例不改且通過；`npm test -w apps/desktop -- store`。",
+      "files": [
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/store.ts"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 `apps/desktop/src/App.tsx` 新增一個 effect：`detailChange` 或 `detailDiscussion` 自 null 變為非 null 時把本地 `releaseNotes` 設為 null（design D3）；不呼叫記錄「已看過」的路徑，whatsNew 下次啟動照舊彈出；`releaseNotes` 不搬進 store。驗證：`apps/desktop/src/__tests__/App.test.tsx` 的「更新日誌彈窗接線」新增案例「抽屜開啟時更新日誌關閉且不記為已看過」——以 whatsNew 模式渲染 App、點看板卡片觸發 store `openDetail`，斷言對話框不在畫面、變更詳情抽屜開啟、已看過版號未寫入；`npm test -w apps/desktop -- App.test`。",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4CTE5R5ZTQC3P4W1KG576T2",
+      "taskDesc": "1.1 `apps/desktop/src/store.ts` 新增回傳部分狀態的純函式（依 design D5，例如 `cancelableOverlaysCleared()`），`openDetail` 與 `openDiscussion` 在既有的同一次 set 內展開它（design D1：互斥仍由 store 開啟動作保證；D2：歸零集合只含可取消浮層）：`workspaceChooser`、`pendingInit`、`pendingAdopt`、`pendingArchive`、`pendingArchiveDiscussion`、`pendingDelete`、`pendingRevert`、`revertBlocked` 設為 null，`pendingArchiveSettled` 設回 `{ review: false, verify: false }`，其餘既有欄位（自身抽屜、`boardView: \"board\"`、其他三個抽屜欄位、`drawerVerb`）照舊。驗證：`apps/desktop/src/__tests__/store.test.ts` 新增案例「open 動作清除可取消浮層」——八種浮層各開一個，分別呼叫 `openDetail` 與 `openDiscussion`，斷言浮層欄位歸零、對應抽屜欄位已設、`boardView` 為 board；既有「detail 抽屜互斥」四組轉移案例不改且通過；`npm test -w apps/desktop -- store`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3cdef80883f1a197546c605e74b07f371d91bd5f",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/store.ts"
+      ],
+      "recordedAt": "2026-10-08T08:56:40Z"
+    },
+    {
+      "taskId": "tsk_01M4CTE5R63129644RCR4RKF6P",
+      "taskDesc": "2.1 `apps/desktop/src/App.tsx` 新增一個 effect：`detailChange` 或 `detailDiscussion` 自 null 變為非 null 時把本地 `releaseNotes` 設為 null（design D3）；不呼叫記錄「已看過」的路徑，whatsNew 下次啟動照舊彈出；`releaseNotes` 不搬進 store。驗證：`apps/desktop/src/__tests__/App.test.tsx` 的「更新日誌彈窗接線」新增案例「抽屜開啟時更新日誌關閉且不記為已看過」——以 whatsNew 模式渲染 App、點看板卡片觸發 store `openDetail`，斷言對話框不在畫面、變更詳情抽屜開啟、已看過版號未寫入；`npm test -w apps/desktop -- App.test`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "3cdef80883f1a197546c605e74b07f371d91bd5f",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx"
+      ],
+      "recordedAt": "2026-10-08T08:58:32Z"
+    }
+  ]
+}

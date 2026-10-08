@@ -1512,15 +1512,27 @@ describe("更新日誌彈窗接線（desktop-app「更新日誌彈窗」）", ()
     vi.mocked(getVersion).mockResolvedValue("0.1.0");
   });
 
-  function renderWithUpdater() {
+  function renderWithUpdater(ds: SpeclinkDataSource = fakeDataSource()) {
     const ws = fakeWorkspace();
     ws.openProject = vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
     render(
       <App
-        createSession={makeSession(fakeDataSource())}
+        createSession={makeSession(ds)}
         workspace={ws as never}
         updater={{ check: vi.fn().mockResolvedValue(null), relaunch: vi.fn() }}
       />,
+    );
+  }
+
+  /** 預置專案分頁 A，讓看板有卡片可點（抽屜相關案例用）。 */
+  function seedProjectTab() {
+    localStorage.setItem(
+      "speclink.projectTabs",
+      JSON.stringify({
+        version: 2,
+        tabs: [{ locator: { kind: "local", root: "A" }, name: "proj-a" }],
+        activeKey: "local:A",
+      }),
     );
   }
 
@@ -1584,6 +1596,70 @@ describe("更新日誌彈窗接線（desktop-app「更新日誌彈窗」）", ()
     fireEvent.click(within(dialog).getByRole("button", { name: "關閉" }));
     await waitFor(() => expect(screen.queryByTestId("release-notes-dialog")).toBeNull());
     expect(localStorage.getItem(KEY)).toBe(TOP);
+  });
+
+  it("抽屜開啟時更新日誌關閉且不記為已看過（規格「detail 抽屜互斥」）", async () => {
+    localStorage.setItem(KEY, "0.1.0");
+    seedProjectTab();
+    renderWithUpdater();
+    await screen.findByTestId("release-notes-dialog");
+
+    // 看板卡片走 store openDetail；fireEvent 不送 pointerdown，不會誤走對話框的點外關閉。
+    fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+
+    await waitFor(() => expect(screen.queryByTestId("release-notes-dialog")).toBeNull());
+    expect(drawerSpy.rich[drawerSpy.rich.length - 1].open).toBe(true);
+    expect(localStorage.getItem(KEY)).toBe("0.1.0");
+  });
+
+  it("whatsNew 開啟中開啟討論：對話框關閉、討論抽屜開啟且不記為已看過", async () => {
+    // 規格 Example「更新日誌（whatsNew）｜開啟討論」。
+    localStorage.setItem(KEY, "0.1.0");
+    seedProjectTab();
+    renderWithUpdater(
+      fakeDataSource({
+        listDiscussions: vi.fn().mockResolvedValue({
+          active: [
+            { slug: "topic-a", topic: "Topic A", status: "open", rounds: 1, created: "2026-07-17", promotedTo: [] },
+          ],
+          archived: [],
+        }),
+      }),
+    );
+    await screen.findByTestId("release-notes-dialog");
+
+    fireEvent.click(await screen.findByText("Topic A"));
+
+    await waitFor(() => expect(screen.queryByTestId("release-notes-dialog")).toBeNull());
+    expect(drawerSpy.disc[drawerSpy.disc.length - 1].open).toBe(true);
+    expect(localStorage.getItem(KEY)).toBe("0.1.0");
+  });
+
+  it("抽屜已開著時 whatsNew 才彈出：換開另一個 change 仍收掉更新日誌", async () => {
+    localStorage.setItem(KEY, "0.1.0");
+    seedProjectTab();
+    let resolveVersion!: (version: string) => void;
+    vi.mocked(getVersion).mockReturnValueOnce(new Promise((resolve) => (resolveVersion = resolve)));
+    renderWithUpdater(
+      fakeDataSource({
+        listChanges: vi.fn().mockResolvedValue(
+          changeList([
+            { name: "change-a", status: "in-progress", totalTasks: 3, completedTasks: 1 },
+            { name: "change-b", status: "in-progress", totalTasks: 3, completedTasks: 1 },
+          ]),
+        ),
+      }),
+    );
+    fireEvent.click(await screen.findByText("change-a"));
+    await waitFor(() => expect(drawerSpy.rich[drawerSpy.rich.length - 1].open).toBe(true));
+    await act(async () => resolveVersion(TOP));
+    await screen.findByTestId("release-notes-dialog");
+
+    fireEvent.click(screen.getByText("change-b"));
+
+    await waitFor(() => expect(screen.queryByTestId("release-notes-dialog")).toBeNull());
+    expect((drawerSpy.rich[drawerSpy.rich.length - 1].change as { name: string }).name).toBe("change-b");
+    expect(localStorage.getItem(KEY)).toBe("0.1.0");
   });
 });
 
