@@ -485,7 +485,7 @@ describe("remote marker 與本機 openspec 並存", () => {
     for (const name of [/^繼續本機/, /^以 Server 為準/, /^遷移本機內容/]) {
       const cls = screen.getByRole("button", { name }).className;
       expect(cls).toContain("border-border");
-      expect(cls).not.toContain("amber");
+      expect(cls).not.toContain("status-warning");
       expect(cls).not.toContain("bg-primary");
     }
     fireEvent.click(screen.getByRole("button", { name: /^繼續本機/ }));

@@ -1,13 +1,11 @@
 // spec desktop-manual-page「Markdown 的 GitHub Alert 提示框」（design：共用 Markdown
-// 元件的內建 remark 轉換、不新增依賴）：四型 blockquote 呈現為帶類型 class 與類型
-// 標籤的提示框、標記文字消失、其餘內容保留；首段不以標記開頭的 blockquote 與
-// 純 react-markdown 管線輸出逐位元一致；配色取介面狀態語意色 token。
+// 元件的內建 remark 轉換）：四型 blockquote 呈現為帶類型 class 與類型標籤的提示框、
+// 標記文字消失、其餘內容保留；首段不以標記開頭的 blockquote 維持原樣；配色取介面
+// 狀態語意色 token。渲染管線為 Streamdown（desktop-design-foundation D10）：提示框
+// 的 class 必須通過它的 sanitize，所以這裡逐案驗證輸出的 class。
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
 import type { ReactNode } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkBreaks from "remark-breaks";
-import remarkGfm from "remark-gfm";
 
 import { I18nProvider, type UiLocale } from "../i18n";
 import { Markdown } from "../components/Markdown";
@@ -44,7 +42,8 @@ describe("Markdown GitHub Alert 提示框", () => {
     expect(container.textContent).not.toContain(`[!${marker}]`);
     expect(box!.textContent).toContain("第一行內容");
     expect(box!.textContent).toContain("第二行");
-    expect(box!.querySelector("strong")?.textContent).toBe("粗體");
+    // Streamdown 以帶 data-streamdown="strong" 的元素呈現粗體。
+    expect(box!.querySelector('[data-streamdown="strong"]')?.textContent).toBe("粗體");
     // 提示框外的內容照常。
     expect(container.textContent).toContain("一般段落。");
     expect(container.querySelector("blockquote")).toBeNull();
@@ -83,7 +82,7 @@ describe("Markdown GitHub Alert 提示框", () => {
     expect(box.textContent).toContain("第二段");
   });
 
-  it("首段不以四種標記開頭的 blockquote：輸出與純 react-markdown 管線逐位元一致", () => {
+  it("首段不以四種標記開頭的 blockquote 維持原樣（不轉換、標記文字照常顯示）", () => {
     // spec Scenario「一般引言不受影響」：一般引言、標記不在首段行首、標記與文字
     // 同行（GitHub 不視為 alert）、未知類型、非 blockquote 的標記文字。
     const md = [
@@ -95,25 +94,21 @@ describe("Markdown GitHub Alert 提示框", () => {
       "[!NOTE] 不在 blockquote 內",
       "> 第一段\n>\n> [!WARNING]\n> 第二段才有標記",
     ].join("\n\n");
-    const { container: ours } = renderMd(md);
-    const { container: reference } = render(
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} skipHtml>
-        {md}
-      </ReactMarkdown>,
-    );
-    expect(ours.querySelector(".markdown")!.innerHTML).toBe(reference.innerHTML);
-    expect(ours.querySelectorAll("blockquote").length).toBe(6);
-    expect(ours.querySelector(".markdown-alert")).toBeNull();
+    const { container } = renderMd(md);
+    const quotes = container.querySelectorAll("blockquote");
+    expect(quotes.length).toBe(6);
+    expect(container.querySelector(".markdown-alert")).toBeNull();
+    expect(quotes[2].textContent).toContain("[!NOTE] 同行文字");
+    expect(quotes[3].textContent).toContain("[!IMPORTANT]");
+    expect(quotes[5].textContent).toContain("[!WARNING]");
+    expect(container.textContent).toContain("[!NOTE] 不在 blockquote 內");
   });
 
-  it("無 blockquote 的一般文件輸出逐位元不變", () => {
+  it("無 blockquote 的一般文件不出現提示框", () => {
     const md = "# 標題\n\n段落一\n換行\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n- [ ] 任務";
-    const { container: ours } = renderMd(md);
-    const { container: reference } = render(
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} skipHtml>
-        {md}
-      </ReactMarkdown>,
-    );
-    expect(ours.querySelector(".markdown")!.innerHTML).toBe(reference.innerHTML);
+    const { container } = renderMd(md);
+    expect(container.querySelector(".markdown-alert")).toBeNull();
+    expect(container.querySelector("h1")?.textContent).toBe("標題");
+    expect(container.querySelector("table")).toBeTruthy();
   });
 });

@@ -8,12 +8,11 @@ const TOKEN_STYLE = {
   "--normal-bg": "var(--card)",
   "--normal-text": "var(--card-foreground)",
   "--normal-border": "var(--border)",
-  "--border-radius": "var(--radius)",
   fontFamily: "inherit",
 } as CSSProperties;
 
 const TOKEN_CLASS_NAMES = {
-  toast: "!shadow-lg",
+  toast: "!rounded-xl !shadow-lg",
   error: "!border-destructive/40 [&_[data-icon]]:text-destructive",
   closeButton:
     "!border-border !bg-card !text-muted-foreground hover:!bg-accent hover:!text-accent-foreground",

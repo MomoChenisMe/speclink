@@ -50,11 +50,13 @@ describe("Toaster", () => {
     expect(toaster?.style.getPropertyValue("--normal-bg")).toBe("var(--card)");
     expect(toaster?.style.getPropertyValue("--normal-text")).toBe("var(--card-foreground)");
     expect(toaster?.style.getPropertyValue("--normal-border")).toBe("var(--border)");
-    expect(toaster?.style.getPropertyValue("--border-radius")).toBe("var(--radius)");
+    // 圓角走 Tailwind 預設四階（design D2）：不再引用已移除的自訂圓角 token。
+    expect(toaster?.style.getPropertyValue("--border-radius")).toBe("");
     expect(toaster?.style.fontFamily).toBe("inherit");
 
     expect(toastNode?.getAttribute("data-rich-colors")).toBeNull();
     expect(toastNode?.className).toContain("!shadow-lg");
+    expect(toastNode?.className).toContain("!rounded-xl");
     expect(toastNode?.className).toContain("!border-destructive/40");
     expect(toastNode?.className).toContain("[&_[data-icon]]:text-destructive");
     expect(toastNode?.className).not.toContain("bg-destructive");

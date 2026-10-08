@@ -183,9 +183,9 @@ describe("審查標示配色（四態各自可辨識，不落回灰階）", () =
 
   it("卡片章：審查中＝藍、已審查＝紫（深淺主題皆非主色）、其後有變動＝琥珀", () => {
     const tones: Array<[ChangeItem["reviewStatus"], string, string]> = [
-      ["inReview", "審查中", "text-sky-600"],
-      ["reviewed", "已審查", "text-violet-600 dark:text-violet-400"],
-      ["reviewedStale", "已審查·其後有變動", "text-amber-600"],
+      ["inReview", "審查中", "text-status-progress"],
+      ["reviewed", "已審查", "text-stamp"],
+      ["reviewedStale", "已審查·其後有變動", "text-status-warning"],
     ];
     for (const [reviewStatus, label, cls] of tones) {
       const { unmount } = render(<ChangeCard change={{ ...base, reviewStatus }} />);
@@ -198,9 +198,9 @@ describe("審查標示配色（四態各自可辨識，不落回灰階）", () =
 
   it("抽屜資訊列：狀態詞依狀態上色", () => {
     const tones: Array<[ChangeItem["reviewStatus"], string]> = [
-      ["inReview", "text-sky-600"],
-      ["reviewed", "text-violet-600 dark:text-violet-400"],
-      ["reviewedStale", "text-amber-600"],
+      ["inReview", "text-status-progress"],
+      ["reviewed", "text-stamp"],
+      ["reviewedStale", "text-status-warning"],
     ];
     for (const [reviewStatus, cls] of tones) {
       const { unmount } = render(
@@ -223,16 +223,14 @@ describe("審查標示配色（四態各自可辨識，不落回灰階）", () =
         onOpen={() => {}}
       />,
     );
-    expect(screen.getByLabelText("已審查").className).toContain(
-      "text-violet-600 dark:text-violet-400",
-    );
-    expect(screen.getByLabelText("曾審查未通過").className).toContain("text-rose-600");
+    expect(screen.getByLabelText("已審查").className).toContain("text-stamp");
+    expect(screen.getByLabelText("曾審查未通過").className).toContain("text-destructive");
   });
 
   it("已封存抽屜：已審查＝紫、曾審查未通過＝紅", () => {
     for (const [reviewStatus, cls] of [
-      ["reviewed", "text-violet-600 dark:text-violet-400"],
-      ["reviewedNotPassed", "text-rose-600"],
+      ["reviewed", "text-stamp"],
+      ["reviewedNotPassed", "text-destructive"],
     ] as const) {
       const { unmount } = render(
         <ArchivedDrawer
@@ -263,10 +261,8 @@ describe("審查標示配色（四態各自可辨識，不落回灰階）", () =
         onCarryReview={vi.fn()}
       />,
     );
-    // 危險動作（按鈕）走 destructive；rose 專屬「曾審查未通過」的永久標示，
-    // 兩者分工才不會讓同一片紅同時代表「按下去會怎樣」與「結果是什麼」。
+    // 危險動作（按鈕）走 destructive（錯誤與危險共用一個 token，不另設紅系）。
     expect(screen.getByText("照樣帶走").className).toContain("text-destructive");
-    expect(screen.getByText("照樣帶走").className).not.toContain("rose");
   });
 });
 

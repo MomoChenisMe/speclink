@@ -249,7 +249,9 @@ describe("ArchivedDrawer（標頭複製鈕與出身列）", () => {
     await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
     fireEvent.click(screen.getByLabelText("複製封存名稱"));
     expect(writeText).toHaveBeenCalledWith("2026-07-04-old-change");
-    await waitFor(() => expect(screen.queryByLabelText("已複製")).toBeTruthy());
+    // 共用 CopyButton：成功以 status 宣告「已複製」，複製鈕名稱維持不變。
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("已複製"));
+    expect(screen.getByLabelText("複製封存名稱")).toBeTruthy();
   });
 
   it("封存討論標頭的複製鈕寫入 slug", async () => {

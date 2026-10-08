@@ -126,7 +126,7 @@ describe("帳號自助頁", () => {
     expect(screen.getByRole("button", { name: /複製/ })).toBeTruthy();
     // spec「揭示橫幅為成功語意」：一次性明碼是「建好了」的回饋，走綠系而非主色。
     const notice = plaintext.closest("[role='status']") as HTMLElement;
-    expect(notice.className).toContain("emerald");
+    expect(notice.className).toContain("status-success");
     expect(notice.className).not.toContain("border-primary");
   });
 
@@ -134,7 +134,7 @@ describe("帳號自助頁", () => {
     // spec「憑證狀態徽章」：帳號頁與後台憑證頁講同一件事，色彩層級也要一致。
     renderAt("/account", makeClient());
     const valid = await screen.findAllByText("有效");
-    expect(valid[0].className).toContain("emerald");
+    expect(valid[0].className).toContain("status-success");
   });
 
   // 我的專案區塊（server-web-console「帳號頁呈現我的專案」）：資料來自 account

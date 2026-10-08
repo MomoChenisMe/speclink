@@ -1,18 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { ChevronRight, UserPlus } from "lucide-react";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
   Badge,
   Button,
   Card,
   Checkbox,
+  ConfirmDialog,
+  CopyButton,
   Label,
   Select,
   SelectContent,
@@ -33,15 +27,14 @@ import { readFormError } from "../../lib/formError";
 import { Field } from "../../components/Field";
 import { DetailSheet } from "../../components/DetailSheet";
 import { DataList, type Column } from "../../components/DataList";
-import { CopyButton } from "../../components/CopyButton";
 import { ListToolbar, ToolbarSelect } from "../../components/ListToolbar";
-import { NoMatchState } from "../../components/EmptyState";
+import { NoMatchState } from "../../components/NoMatchState";
 import { AdminError, AdminLoading } from "./states";
 import type { AdminPendingInvitation, AdminProject, AdminUser } from "../../api/client";
 
 // 管理使用者頁（server-web-console「管理列表以抽屜承載建立與編輯」）：列表為主體，
 // 列內不含任何輸入控制項，整列可點開細節抽屜；邀請由頁面唯一 primary action 開啟抽屜。
-// 停權等破壞性動作維持 AlertDialog 確認；最後一位 active admin 受保護（canSuspend／
+// 停權等破壞性動作維持確認框確認（確認鈕為紅系）；最後一位 active admin 受保護（canSuspend／
 // canRemoveAdmin 為 false 時停用對應控制）。
 
 type Confirm = { title: string; body: string; action: string; run: () => Promise<void> };
@@ -174,7 +167,7 @@ export function UsersPage() {
           {/* 給受邀者的是可直接開啟的連結，不是要他自己拼網址的 token。 */}
           <div className="mt-1 flex items-start gap-3">
             <code className="min-w-0 flex-1 break-all font-mono text-sm">{inviteUrl(token)}</code>
-            <CopyButton value={inviteUrl(token)} />
+            <CopyButton size="sm" value={inviteUrl(token)} label={t("common.copy")} />
           </div>
         </div>
       )}
@@ -263,20 +256,16 @@ export function UsersPage() {
         }}
       />
 
-      <AlertDialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirm?.title}</AlertDialogTitle>
-            <AlertDialogDescription>{confirm?.body}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={runConfirmed} disabled={busy}>
-              {confirm?.action}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(open) => !open && setConfirm(null)}
+        title={confirm?.title ?? ""}
+        description={confirm?.body}
+        confirmLabel={confirm?.action ?? ""}
+        destructive
+        busy={busy}
+        onConfirm={runConfirmed}
+      />
     </div>
   );
 }

@@ -161,6 +161,15 @@ describe("RichDetailDrawer", () => {
     expect(screen.getAllByText(/30\/30/).length).toBeGreaterThan(0);
   });
 
+  it("標頭複製名稱鈕寫入變更名，成功以 status 宣告「已複製」（共用 CopyButton）", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    render(<RichDetailDrawer {...(makeProps() as never)} />);
+    fireEvent.click(screen.getByRole("button", { name: "複製名稱" }));
+    expect(writeText).toHaveBeenCalledWith("desktop-shell-and-browser");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("已複製"));
+  });
+
   it("shows spec delta counts on the specs tab", async () => {
     render(<RichDetailDrawer {...(makeProps() as never)} />);
     await waitFor(() => expect(screen.getByText(/\+2/)).toBeTruthy());
@@ -1079,7 +1088,7 @@ describe("標頭四層結構", () => {
     // spec「worktree 標示以藍呈現」下半句：抽屜的分支與路徑維持中性——掃視層
     // （卡片）搶眼、閱讀層（抽屜出身列）安靜。
     expect(row.className).toContain("text-muted-foreground");
-    expect(branch.className).not.toContain("sky");
+    expect(branch.className).not.toContain("status-progress");
     unmount();
 
     const plain = render(<RichDetailDrawer {...(makeProps() as never)} />);

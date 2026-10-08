@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, Copy, Maximize2, Minimize2 } from "lucide-react";
+import { Maximize2, Minimize2 } from "lucide-react";
 
 import type { ArchivedItem } from "../adapter";
 import { useI18n } from "../i18n";
@@ -10,7 +10,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Markdown, READING_COLUMN_CLS } from "./Markdown";
 import { DocSkeleton } from "./skeletons";
 import { SourceChipRow, type SourceLinkItem } from "./SourceDiscussionChip";
-import { useCopied } from "./useCopied";
+import { CopyButton } from "./CopyButton";
 
 export interface SpecDrawerProps {
   open: boolean;
@@ -80,7 +80,6 @@ export function SpecDrawer({
   const { t } = useI18n();
   const [doc, setDoc] = useState<Doc>();
   const [full, setFull] = useState(false);
-  const [copied, markCopied] = useCopied();
 
   const gen = refreshGen ?? 0;
   // latest-wins：每次載入取遞增序號，回應到達時序號已過期即丟棄（涵蓋世代與換目標的交錯）。
@@ -125,11 +124,6 @@ export function SpecDrawer({
     const datedName = traceItems.find((it) => it.slug === name)?.datedName;
     if (datedName) onOpenArchivedChange?.(datedName);
   };
-  const copyName = () => {
-    void navigator.clipboard?.writeText(capability);
-    markCopied();
-  };
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -150,16 +144,7 @@ export function SpecDrawer({
           {/* 標題列：capability 名＋複製名稱鈕（與規格卡、已封存抽屜的複製鈕同款）。 */}
           <div className="flex items-center gap-2 pr-14">
             <SheetTitle className="truncate">{capability}</SheetTitle>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={copied ? t("specs.copied") : t("common.copyName")}
-              className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
-              onClick={copyName}
-            >
-              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-            </Button>
+            <CopyButton value={capability} label={t("common.copyName")} />
           </div>
           {/* 出身列（design D1）：「來自」＋溯源變更籤，首籤直出、其餘收 +N——與變更詳情
               抽屜、已封存抽屜的出身列同一元件；無 @trace 來源時整列缺席。 */}

@@ -8,12 +8,12 @@ import {
   SheetTitle,
   SheetTrigger,
   useI18n,
+  Wordmark,
 } from "@speclink/ui";
 import { SkipLink } from "../components/SkipLink";
 import { AdminNav } from "../components/AdminNav";
 import { TourProvider } from "../components/Tour";
 import { HeaderAccount } from "../components/HeaderAccount";
-import { Wordmark } from "../components/Wordmark";
 import { useSession } from "../app/context";
 import { useFocusMain } from "../lib/useFocusMain";
 import { useMediaQuery } from "../lib/useMediaQuery";
@@ -59,7 +59,7 @@ export function ConsoleLayout({ children }: { children: ReactNode }) {
               </SheetContent>
             </Sheet>
           )}
-          <Wordmark />
+          <Wordmark className="h-5" />
         </div>
         <HeaderAccount />
       </header>

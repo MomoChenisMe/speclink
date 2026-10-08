@@ -6,6 +6,8 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
   changeStage,
+  CopyButton,
+  DISCUSSION_TONE,
   planBlockedBy,
   planBlockedLabel,
   planWave,
@@ -24,6 +26,7 @@ import {
   VERIFY_LABEL_KEY,
   VERIFY_TONE,
   cn,
+  SectionHeader,
   useI18n,
   type ChangeItem,
   type Stage,
@@ -31,11 +34,9 @@ import {
 import {
   AlertTriangle,
   ArrowUpRight,
-  Check,
   CircleCheckBig,
   Cloud,
   CloudOff,
-  Copy,
   Folder,
   GitBranch,
   Hammer,
@@ -88,72 +89,23 @@ export interface TrayPanelProps {
   onReauthenticate: (connectionId: string) => void;
 }
 
-/** 列尾常駐複製鈕：stopPropagation 使複製不觸發列本體的開啟；
-    點擊後短暫轉勾號回饋（1.2 秒復原——看板 ChangeList 的 copied 同模式）。 */
-function CopyButton({ label, text, onCopy }: { label: string; text: string; onCopy: (t: string) => void }) {
-  const [copied, setCopied] = useState(false);
+/** 列尾常駐複製鈕（共用 CopyButton）：tabIndex=-1 退出 tab 順序（design D4）——面板成
+    key window 後 WebKit 會把焦點給第一個可 tab 元素，複製鈕不退出就吃到焦點框。列 hover
+    整列反白為主色，圖示隨之轉 primary-foreground 才看得見（共用元件的 inverted）。 */
+function RowCopyButton({ label, text, onCopy }: { label: string; text: string; onCopy: (t: string) => void }) {
   return (
-    <button
-      type="button"
-      // 退出 tab 順序（design D4）：面板成 key window 後 WebKit 會把焦點給
-      // 第一個可 tab 元素——複製鈕是面板唯一 button，不退出就吃到焦點框。
+    <CopyButton
+      value={text}
+      label={label}
+      onCopy={onCopy}
       tabIndex={-1}
-      aria-label={label}
-      title={label}
-      onClick={(e) => {
-        e.stopPropagation();
-        onCopy(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1200);
-      }}
-      className="shrink-0 rounded p-1 text-muted-foreground hover:bg-foreground/15 group-hover:text-primary-foreground"
-    >
-      {copied ? (
-        <Check className="h-3.5 w-3.5 text-primary group-hover:text-primary-foreground" />
-      ) : (
-        <Copy className="h-3.5 w-3.5" />
-      )}
-    </button>
+      inverted
+    />
   );
 }
 
-function SectionHeader({
-  icon: Icon,
-  label,
-  iconCls,
-  count,
-  badgeCls,
-  countUnknown,
-}: {
-  icon: LucideIcon;
-  label: string;
-  /** 分區圖示色（生命週期依 STAGE_ICON 階梯、討論／已轉出分區中性）。 */
-  iconCls: string;
-  /** 分區項目計數（design D8）：徽章與看板欄計數同語彙。 */
-  count: number;
-  /** 計數徽章配色：生命週期取 STAGE_BADGE[stage]、討論／已轉出分區中性。 */
-  badgeCls: string;
-  /** 計數未知（首訪載入中或載入失敗）：顯示 0 會謊報空——徽章整個不出。 */
-  countUnknown?: boolean;
-}) {
-  return (
-    <div className="flex items-center gap-1.5 px-2 pt-1.5 pb-1 text-xs font-semibold text-muted-foreground">
-      <Icon className={cn("h-3.5 w-3.5", iconCls)} />
-      {label}
-      {!countUnknown && (
-        <span
-          data-testid="panel-section-count"
-          className={cn(
-            "ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums",
-            badgeCls,
-          )}
-        >
-          {count}
-        </span>
-      )}
-    </div>
-  );
-}
+/** 分區卡片的區段標題列內距（六個分區同款）。 */
+const SECTION_HEADER_PAD = "px-2 pt-1.5 pb-1";
 
 /** 分區卡片容器（spec「面板樣式（macOS）」；design D2）：半透明圓角卡疊在
     vibrancy 上——底色用主題 token 的低透明度（非寫死色值），毛玻璃可透出。 */
@@ -467,6 +419,16 @@ export function TrayPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const moreLabel = (n: number) => t("tray.more").replace("{n}", String(n));
   const collapseLabel = t("tray.collapse");
+  // 討論分區四種狀態（載入中、失敗、有料、空）共用同一標題，只差計數。
+  const discussionsHeader = (count?: number) => (
+    <SectionHeader
+      icon={<MessageSquareText className={cn("h-3.5 w-3.5", DISCUSSION_TONE.icon)} />}
+      label={t("tray.discussionsHeader")}
+      count={count}
+      countClassName={DISCUSSION_TONE.badge}
+      className={SECTION_HEADER_PAD}
+    />
+  );
   const tabs = snapshot?.tabs ?? [];
   const changes = snapshot?.changes ?? [];
   const discussions = snapshot?.discussions ?? [];
@@ -474,6 +436,7 @@ export function TrayPanel({
   const promotedDiscussions = discussions.filter((d) => d.promoted);
   const staged = STAGES.map((stage) => ({
     stage,
+    Icon: STAGE_ICONS[stage],
     items: changes.filter((c) => changeStage(c) === stage),
   }));
   const pendingTabKey = snapshot?.pendingTabKey ?? null;
@@ -650,38 +613,18 @@ export function TrayPanel({
       {loading ? (
         /* 首訪載入中（design D5）：標題照常、內容為佔位列——與計數 0 的空狀態卡可區分。 */
         <SectionCard testid="panel-section-discussions">
-          <SectionHeader
-            icon={MessageSquareText}
-            iconCls="text-muted-foreground/70"
-            label={t("tray.discussionsHeader")}
-            count={0}
-            badgeCls="bg-muted text-muted-foreground"
-            countUnknown
-          />
+          {discussionsHeader()}
           <SectionSkeleton />
         </SectionCard>
       ) : loadFailed ? (
         /* 首訪載入失敗：計數未知（不謊報 0），內容為失敗提示而非空態文案。 */
         <SectionCard testid="panel-section-discussions">
-          <SectionHeader
-            icon={MessageSquareText}
-            iconCls="text-muted-foreground/70"
-            label={t("tray.discussionsHeader")}
-            count={0}
-            badgeCls="bg-muted text-muted-foreground"
-            countUnknown
-          />
+          {discussionsHeader()}
           <SectionLoadFailed label={t("tray.loadFailed")} />
         </SectionCard>
       ) : openDiscussions.length > 0 ? (
         <SectionCard testid="panel-section-discussions">
-          <SectionHeader
-            icon={MessageSquareText}
-            iconCls="text-muted-foreground/70"
-            label={t("tray.discussionsHeader")}
-            count={openDiscussions.length}
-            badgeCls="bg-muted text-muted-foreground"
-          />
+          {discussionsHeader(openDiscussions.length)}
           <OverflowGroup
             moreLabel={moreLabel}
             collapseLabel={collapseLabel}
@@ -693,23 +636,16 @@ export function TrayPanel({
       ) : (
         /* 空狀態與非空同構（design D8）：標題＋計數 0、最小高度垂直置中。 */
         <SectionCard testid="panel-section-discussions" className={emptyCardClass}>
-          <SectionHeader
-            icon={MessageSquareText}
-            iconCls="text-muted-foreground/70"
-            label={t("tray.discussionsHeader")}
-            count={0}
-            badgeCls="bg-muted text-muted-foreground"
-          />
+          {discussionsHeader(0)}
         </SectionCard>
       )}
       {!loading && promotedDiscussions.length > 0 && (
         <SectionCard testid="panel-section-promoted">
           <SectionHeader
-            icon={ArrowUpRight}
-            iconCls="text-muted-foreground/70"
+            icon={<ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground/70" />}
             label={t("tray.promotedHeader")}
             count={promotedDiscussions.length}
-            badgeCls="bg-muted text-muted-foreground"
+            className={SECTION_HEADER_PAD}
           />
           <OverflowGroup
             moreLabel={moreLabel}
@@ -726,19 +662,18 @@ export function TrayPanel({
       {/* 生命週期分區：三階段分區卡常駐（工作站常駐、衍生群組有料才現）——
           零筆階段呈標題＋計數 0 的空狀態卡（與討論分區同構，design D8），
           分區位置固定不隨資料增減跳動；原生選單的全空佔位文案不在此重現。 */}
-      {staged.map(({ stage, items }) => (
+      {staged.map(({ stage, Icon, items }) => (
         <SectionCard
           key={stage}
           testid={`panel-section-${stage}`}
           className={!loading && !loadFailed && items.length === 0 ? emptyCardClass : undefined}
         >
           <SectionHeader
-            icon={STAGE_ICONS[stage]}
-            iconCls={STAGE_ICON[stage]}
+            icon={<Icon className={cn("h-3.5 w-3.5", STAGE_ICON[stage])} />}
             label={t(`stage.${stage}`)}
-            count={items.length}
-            badgeCls={STAGE_BADGE[stage]}
-            countUnknown={loading || loadFailed}
+            count={loading || loadFailed ? undefined : items.length}
+            countClassName={STAGE_BADGE[stage]}
+            className={SECTION_HEADER_PAD}
           />
           {loading ? (
             <SectionSkeleton />
@@ -819,7 +754,7 @@ function DiscussionRow({
           {d.topic}
         </div>
       </div>
-      <CopyButton label={copyLabel} text={d.slug} onCopy={onCopy} />
+      <RowCopyButton label={copyLabel} text={d.slug} onCopy={onCopy} />
     </div>
   );
 }
@@ -940,7 +875,7 @@ function ChangeRow({
           </div>
         )}
       </div>
-      <CopyButton label={copyLabel} text={c.name} onCopy={onCopy} />
+      <RowCopyButton label={copyLabel} text={c.name} onCopy={onCopy} />
     </div>
   );
 }

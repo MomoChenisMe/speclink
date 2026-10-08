@@ -169,6 +169,6 @@ describe("總覽的歡迎區塊與儲存後端健康", () => {
   it("儲存健康徽章：正常為綠系，與異常的紅系一眼可辨", async () => {
     renderAt("/admin", makeAdminClient({ getAdminOverview: vi.fn(async () => HEALTHY) }));
     const badge = await screen.findByText("正常");
-    expect(badge.className).toContain("emerald");
+    expect(badge.className).toContain("status-success");
   });
 });

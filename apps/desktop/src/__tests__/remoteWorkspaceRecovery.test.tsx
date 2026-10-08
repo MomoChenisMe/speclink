@@ -159,7 +159,7 @@ describe("RemoteWorkspaceRecovery", () => {
       />,
     );
     const spinner = screen.getByRole("status").querySelector("div") as HTMLElement;
-    expect(spinner.className).toContain("sky");
+    expect(spinner.className).toContain("status-progress");
     expect(spinner.className).not.toContain("primary");
     unmount();
 
@@ -180,6 +180,6 @@ describe("RemoteWorkspaceRecovery", () => {
 
     expect(renderFailure("access-denied").className).toContain("destructive");
     cleanup();
-    expect(renderFailure("needs-reauth").className).toContain("amber");
+    expect(renderFailure("needs-reauth").className).toContain("status-warning");
   });
 });

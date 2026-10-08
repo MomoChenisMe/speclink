@@ -99,9 +99,9 @@ describe("ArchivedList（封存變更卡）", () => {
     renderList();
     // spec Example：前者警示樣式顯示 20/21，後者一般樣式顯示 48/48。
     const warnBadge = screen.getByText("20/21");
-    expect(warnBadge.className).toContain("amber");
+    expect(warnBadge.className).toContain("status-warning");
     const fullBadge = screen.getByText("48/48");
-    expect(fullBadge.className).not.toContain("amber");
+    expect(fullBadge.className).not.toContain("status-warning");
     // 任務數徽章維持 pill（狀態徽章例外，design D7 增補）。
     expect(warnBadge.className).toContain("rounded-full");
     expect(fullBadge.className).toContain("rounded-full");
@@ -194,7 +194,8 @@ describe("ArchivedList（封存討論卡）", () => {
     fireEvent.click(within(disc).getByLabelText("複製 slug"));
     expect(writeText).toHaveBeenCalledWith("old-topic");
     expect(onOpen).not.toHaveBeenCalled();
-    await waitFor(() => expect(within(disc).queryByLabelText("已複製")).toBeTruthy());
+    // 共用 CopyButton：成功以 status 宣告「已複製」，複製鈕名稱維持不變。
+    await waitFor(() => expect(within(disc).getByRole("status").textContent).toBe("已複製"));
   });
 
   it("slug 為等寬強調標題、topic 降為描述列一行截斷（與看板討論卡同構）", () => {

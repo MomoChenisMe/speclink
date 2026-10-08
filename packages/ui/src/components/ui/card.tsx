@@ -1,14 +1,28 @@
 import * as React from "react";
+import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "../../lib/utils";
 
-export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div
-      ref={ref}
-      className={cn("rounded-lg border border-border bg-card text-card-foreground shadow-sm", className)}
-      {...props}
-    />
+/** 卡片：細框白底無陰影；容器內的小卡（看板卡片、對話框內清單卡）用 nested。
+ *  呼叫端不以 className 覆蓋圓角與陰影。 */
+const cardVariants = cva("border border-border bg-card text-card-foreground", {
+  variants: {
+    size: { default: "rounded-2xl", nested: "rounded-xl" },
+    interactive: {
+      true: "transition-colors hover:border-foreground/20 hover:bg-muted/40",
+      false: "",
+    },
+  },
+  defaultVariants: { size: "default", interactive: false },
+});
+
+export interface CardProps
+  extends React.HTMLAttributes<HTMLDivElement>,
+    VariantProps<typeof cardVariants> {}
+
+export const Card = React.forwardRef<HTMLDivElement, CardProps>(
+  ({ className, size, interactive, ...props }, ref) => (
+    <div ref={ref} className={cn(cardVariants({ size, interactive }), className)} {...props} />
   ),
 );
 Card.displayName = "Card";

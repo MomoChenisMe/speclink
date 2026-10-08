@@ -9,9 +9,7 @@ import {
 } from "react";
 import {
   Archive,
-  Check,
   Code2,
-  Copy,
   FileText,
   GitBranch,
   Hand,
@@ -65,7 +63,7 @@ import { TicketTabBody, useStationTickets } from "./TicketView";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE, type ReviewBadgeStatus } from "./reviewStyle";
 import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE, type VerifyBadgeStatus } from "./verifyStyle";
 import { setTaskMark } from "../tasks";
-import { useCopied } from "./useCopied";
+import { CopyButton } from "./CopyButton";
 
 export interface RichDetailDrawerProps {
   open: boolean;
@@ -451,7 +449,6 @@ export function RichDetailDrawer({
   const [specDocs, setSpecDocs] = useState<Record<string, string | null> | undefined>();
   // 受控分頁：工單分頁退場時要能把當前分頁切回「提案」（design D3）。
   const [tab, setTab] = useState("proposal");
-  const [copied, markCopied] = useCopied();
   const [full, setFull] = useState(false);
   // 批次操作／拖放寫回進行中——鎖工具列與清單（design D4 例外）。單發勾選不設此旗標。
   const [taskBusy, setTaskBusy] = useState(false);
@@ -557,11 +554,6 @@ export function RichDetailDrawer({
   const delta = sumDeltaCounts(Object.values(specDocs ?? {}).map(specDeltaCounts));
   const rel = relativeDays(meta?.created, t);
 
-  const copyName = () => {
-    void navigator.clipboard?.writeText(change.name);
-    markCopied();
-  };
-
   // 勾選走樂觀更新（design D3）：本地先翻轉 tasksMd 立即反映，再發寫回；失敗
   // 還原快照並顯示單行錯誤。不鎖清單——僅以 pendingWrites 讓世代重載讓路，
   // 寫回成功後的重載仍統一由宿主 refresh 的世代遞增驅動（單一資料流）。
@@ -664,16 +656,7 @@ export function RichDetailDrawer({
         <SheetHeader>
           <div className="flex items-center gap-2 pr-14">
             <SheetTitle className="truncate">{change.name}</SheetTitle>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={t("common.copyName")}
-              className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
-              onClick={copyName}
-            >
-              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-            </Button>
+            <CopyButton value={change.name} label={t("common.copyName")} />
           </div>
           {/* 狀態列（spec「變更詳情抽屜標頭的四層結構」）：進度條＋百分比；兩站狀態
               非 none 時同列呈章籤（圖示＋狀態詞），蓋章日期與蓋章者完整識別收進提示

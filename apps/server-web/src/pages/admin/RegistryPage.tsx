@@ -1,9 +1,10 @@
 import { useState, type FormEvent, type ReactNode } from "react";
-import { ChevronRight, FolderPlus } from "lucide-react";
+import { ChevronRight, FolderPlus, Inbox } from "lucide-react";
 import {
   Badge,
   Button,
   Card,
+  EmptyState,
   Input,
   Label,
   Tabs,
@@ -18,7 +19,7 @@ import { readFormError } from "../../lib/formError";
 import { Field } from "../../components/Field";
 import { DetailSheet } from "../../components/DetailSheet";
 import { ListToolbar } from "../../components/ListToolbar";
-import { EmptyState, NoMatchState } from "../../components/EmptyState";
+import { NoMatchState } from "../../components/NoMatchState";
 import { AdminError, AdminLoading } from "./states";
 import type { AdminProject } from "../../api/client";
 
@@ -64,6 +65,7 @@ export function RegistryPage() {
       {data &&
         (data.projects.length === 0 ? (
           <EmptyState
+            icon={Inbox}
             title={t("registry.emptyTitle")}
             description={t("registry.emptyBody")}
             action={

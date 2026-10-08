@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, Code2, Copy, FileText, ListChecks, Maximize2, Minimize2, PenTool } from "lucide-react";
+import { Code2, FileText, ListChecks, Maximize2, Minimize2, PenTool } from "lucide-react";
 
 import type { ArchivedItem, StationTicket, TicketStation } from "../adapter";
 import { useI18n } from "../i18n";
@@ -20,7 +20,7 @@ import { ImproveChip } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE } from "./reviewStyle";
 import { TicketTabBody, useStationTickets } from "./TicketView";
-import { useCopied } from "./useCopied";
+import { CopyButton } from "./CopyButton";
 import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE } from "./verifyStyle";
 
 /** 抽屜目標（design D1：discriminated target 兩型同檔）：封存變更或封存討論。 */
@@ -101,7 +101,6 @@ export function ArchivedDrawer({
   const reviewStatus = body?.reviewStatus;
   const verifyStatus = body?.verifyStatus;
   const { t } = useI18n();
-  const [copied, markCopied] = useCopied();
   const [proposal, setProposal] = useState<Doc>();
   const [design, setDesign] = useState<Doc>();
   const [tasksMd, setTasksMd] = useState<Doc>();
@@ -194,10 +193,6 @@ export function ArchivedDrawer({
   const sections = discussionDoc ? splitDiscussionSections(discussionDoc) : null;
   // 複製鈕（spec「已封存項目以抽屜檢視」）：封存變更複製含日期前綴的封存目錄名、
   // 封存討論複製 slug——標題文字本身即複製值。
-  const copyTitle = () => {
-    void navigator.clipboard?.writeText(title);
-    markCopied();
-  };
   const copyLabel = target.kind === "change" ? t("archived.copyName") : t("discussion.copySlug");
   // 出身列：三欄各自缺席獨立——任一欄資料不可得時該欄缺席，其餘照常。
   const hasProvenance = Boolean(createdBy || created || archivedDate);
@@ -221,16 +216,7 @@ export function ArchivedDrawer({
         <SheetHeader>
           <div className="flex items-center gap-2 pr-14">
             <SheetTitle className="truncate">{title}</SheetTitle>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={copied ? t("specs.copied") : copyLabel}
-              className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
-              onClick={copyTitle}
-            >
-              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-            </Button>
+            <CopyButton value={title} label={copyLabel} />
           </div>
           {/* 出身列（spec「已封存項目以抽屜檢視」）：建立者（首字母圓標＋名字，
               完整識別收提示）、建立日期、封存日期；恆定單行、溢出裁切——與變更

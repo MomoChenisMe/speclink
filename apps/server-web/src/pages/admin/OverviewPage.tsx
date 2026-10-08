@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   Activity,
@@ -11,7 +11,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { Badge, Button, Card, SEMANTIC_SURFACE, SEMANTIC_TONE, useI18n } from "@speclink/ui";
+import { Badge, Button, Card, CopyButton, SEMANTIC_SURFACE, SEMANTIC_TONE, useI18n } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
 import { AdminError, AdminLoading } from "./states";
@@ -263,28 +263,11 @@ function WelcomeConnection({ connection }: { connection: AdminConnection }) {
 
 function CopyRow({ label, value }: { label: string; value: string }) {
   const { t } = useI18n();
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    void navigator.clipboard?.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
-  };
   return (
     <div className="flex items-center gap-3">
       <dt className="w-24 shrink-0 text-sm text-muted-foreground">{label}</dt>
       <dd className="min-w-0 flex-1 truncate font-mono text-sm">{value}</dd>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        aria-label={t("common.copyField").replace("{name}", label)}
-        onClick={copy}
-      >
-        {copied ? t("common.copied") : t("common.copy")}
-      </Button>
-      <span role="status" aria-live="polite" className="sr-only">
-        {copied ? t("common.copiedField").replace("{name}", label) : ""}
-      </span>
+      <CopyButton size="sm" value={value} label={t("common.copyField").replace("{name}", label)} />
     </div>
   );
 }

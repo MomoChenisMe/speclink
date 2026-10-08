@@ -63,6 +63,7 @@ rules:
   - 若涉及 git 互動（drift / archive），必須說明用到的 git 行為與跨平台考量
   - 涉及規格儲存或流程抽象的決策，須說明如何朝「storage 解耦的規格驅動引擎」靠攏（或為何暫時不）
   - Risks 段須優先涵蓋回歸對照（golden 與 CLI 測試）與跨平台（Windows／macOS／Linux）
+  - 前端共用元件優先用 @speclink/ui 既有原語與領域元件；呼叫端不得以 className 覆蓋變體的顏色、圓角與陰影；apps/* 不得定義與 @speclink/ui 匯出同名的元件
   specs:
   - 場景只以使用者或呼叫者可觀察的行為描述（CLI 的 stdout/stderr 與 exit code、`--json` 欄位、檔案系統效果、UI 或 Protocol 回應），不得以 Rust 型別或函式名稱代替行為
   - 必須涵蓋正常流程與異常流程（錯誤輸入、找不到變更、驗證失敗）

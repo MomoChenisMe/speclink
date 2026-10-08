@@ -98,7 +98,7 @@ describe("SpecList（規格頁清單）", () => {
     renderList();
     const sdk = card("node-sdk");
     const hint = within(sdk).getByText("Purpose 待補");
-    expect(hint.className).toContain("amber");
+    expect(hint.className).toContain("status-warning");
     expect(within(sdk).queryByText(/TBD - created by archiving/)).toBeNull();
   });
 
@@ -129,7 +129,9 @@ describe("SpecList（規格頁清單）", () => {
     expect(copyBtn.className).toContain("group-hover:opacity-100");
     fireEvent.click(copyBtn);
     expect(writeText).toHaveBeenCalledWith("desktop-app");
-    await waitFor(() => expect(within(app).getByLabelText("已複製")).toBeTruthy());
+    // 共用 CopyButton：成功以 status 宣告「已複製」，複製鈕名稱維持不變。
+    await waitFor(() => expect(within(app).getByRole("status").textContent).toBe("已複製"));
+    expect(within(group).getByLabelText("複製名稱")).toBe(copyBtn);
     expect(onOpen).not.toHaveBeenCalled();
   });
 

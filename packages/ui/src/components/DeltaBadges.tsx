@@ -1,14 +1,16 @@
 import { splitDeltaSections, type DeltaCounts } from "../delta";
 import { useI18n } from "../i18n";
+import { SEMANTIC_TONE } from "../tone";
 import { Markdown } from "./Markdown";
 import { LABEL_CLS } from "./SectionedDoc";
 
-/** delta 四種操作的色彩 class——計數徽章與規格分頁色標區段共用的單一來源。 */
+/** delta 四種操作的色彩 class——計數徽章與規格分頁色標區段共用的單一來源。
+ *  新增＝成功、修改＝警示、移除＝destructive、更名＝進行中，色值在 theme.css。 */
 export const DELTA_COLORS: Record<keyof DeltaCounts, string> = {
-  added: "text-emerald-600 dark:text-emerald-400",
-  modified: "text-amber-600 dark:text-amber-400",
-  removed: "text-red-600 dark:text-red-400",
-  renamed: "text-sky-600 dark:text-sky-400",
+  added: SEMANTIC_TONE.success,
+  modified: SEMANTIC_TONE.warning,
+  removed: SEMANTIC_TONE.danger,
+  renamed: SEMANTIC_TONE.inProgress,
 };
 
 const DELTA_MARKS: Record<keyof DeltaCounts, string> = {

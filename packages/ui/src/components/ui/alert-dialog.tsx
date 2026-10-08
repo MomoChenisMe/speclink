@@ -14,7 +14,7 @@ export const AlertDialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Overlay
     ref={ref}
-    className={cn("fixed inset-0 z-50 bg-black/50", className)}
+    className={cn("fixed inset-0 z-50 bg-foreground/30", className)}
     {...props}
   />
 ));
@@ -29,7 +29,7 @@ export const AlertDialogContent = React.forwardRef<
     <AlertDialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-card p-6 shadow-lg flex flex-col gap-4",
+        "fixed left-1/2 top-1/2 z-50 w-[28rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-5 shadow-lg flex flex-col gap-4",
         className,
       )}
       {...props}
@@ -47,11 +47,11 @@ export function AlertDialogFooter({ className, ...props }: React.HTMLAttributes<
 }
 
 export function AlertDialogTitle({ className, ...props }: React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Title>) {
-  return <AlertDialogPrimitive.Title className={cn("text-base font-semibold", className)} {...props} />;
+  return <AlertDialogPrimitive.Title className={cn("text-[15px] font-medium", className)} {...props} />;
 }
 
 export function AlertDialogDescription({ className, ...props }: React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Description>) {
-  return <AlertDialogPrimitive.Description className={cn("text-sm text-muted-foreground", className)} {...props} />;
+  return <AlertDialogPrimitive.Description className={cn("text-[13px] text-muted-foreground", className)} {...props} />;
 }
 
 export const AlertDialogAction = React.forwardRef<
@@ -68,7 +68,7 @@ export const AlertDialogCancel = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Cancel
     ref={ref}
-    className={cn(buttonVariants({ variant: "outline" }), className)}
+    className={cn(buttonVariants({ variant: "ghost" }), className)}
     {...props}
   />
 ));

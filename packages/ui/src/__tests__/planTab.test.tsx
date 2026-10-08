@@ -138,7 +138,7 @@ describe("排程分頁", () => {
 
     await openPlanTab(makeProps({ change: changes[0] }));
     const ready = within(header("depends")).getByText("可以開工");
-    expect(ready.className).toContain("bg-secondary"); // secondary
+    expect(ready.className).toContain("bg-muted"); // secondary
     expect(within(section("depends")).queryByText(/等 \d+ 項/)).toBeNull();
   });
 

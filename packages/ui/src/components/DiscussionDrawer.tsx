@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Archive, ArrowUpRight, Check, Copy, FileText, Flag, MessagesSquare, Rocket } from "lucide-react";
+import { Archive, ArrowUpRight, FileText, Flag, MessagesSquare, Rocket } from "lucide-react";
 
 import type { ArchivedItem, ChangeItem, DiscussionItem } from "../adapter";
 import { useI18n } from "../i18n";
@@ -13,7 +13,7 @@ import { LABEL_CLS } from "./SectionedDoc";
 import { discussionChipStage } from "./DiscussionColumn";
 import { ImproveChip } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
-import { useCopied } from "./useCopied";
+import { CopyButton } from "./CopyButton";
 
 /** 討論記錄的三個標準區段。 */
 export interface DiscussionSections {
@@ -298,13 +298,7 @@ export function DiscussionDrawer({
   const discussion = useLingering(discussionProp);
   const { t } = useI18n();
   const [doc, setDoc] = useState<string | null | undefined>();
-  const [copied, markCopied] = useCopied();
   const slug = discussion?.slug ?? null;
-  const copySlug = () => {
-    if (!slug) return;
-    void navigator.clipboard?.writeText(slug);
-    markCopied();
-  };
   const gen = refreshGen ?? 0;
   // latest-wins：回應帶發起序號，落後即丟棄（涵蓋世代與換討論的交錯）。
   const requestSeq = useRef(0);
@@ -402,16 +396,7 @@ export function DiscussionDrawer({
               LANGUAGE.md 受控例外擴充）；topic 降為副標。 */}
           <div className="flex items-center gap-2 pr-14">
             <SheetTitle className="truncate font-mono">{discussion.slug}</SheetTitle>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={t("discussion.copySlug")}
-              className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
-              onClick={copySlug}
-            >
-              {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
-            </Button>
+            <CopyButton value={discussion.slug} label={t("discussion.copySlug")} />
           </div>
           <div className="text-sm leading-snug text-foreground/80">{discussion.topic}</div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

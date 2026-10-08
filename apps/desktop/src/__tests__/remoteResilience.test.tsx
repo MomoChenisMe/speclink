@@ -404,7 +404,7 @@ describe("remote offline stale snapshot", () => {
     });
     const reauth = await screen.findByRole("button", { name: "重新登入" });
     // stale 橫幅整條已是琥珀警示；按鈕再塗琥珀只會兩片顏色互搶，改中性 outline。
-    expect(reauth.className).not.toContain("amber");
+    expect(reauth.className).not.toContain("status-warning");
     expect(reauth.className).toContain("border");
     fireEvent.click(reauth);
     const login = await screen.findByTestId("reauth-login-c1");
