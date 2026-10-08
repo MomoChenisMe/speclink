@@ -1,0 +1,184 @@
+{
+  "version": 2,
+  "change": "sync-specs-after-docs-cleanup",
+  "touched": [
+    {
+      "task_id": "2",
+      "task_desc": "1.2 先寫失敗測試：在 crates/engine/speclink-core/src/workspace/init/tests.rs 新增案例，斷言 `init` 產生的 `.speclink.yaml` 含 `https://github.com/MomoChenisMe/speclink`、不含 `speclink-app`；驗證：`cargo test -p speclink-core init::tests` 出現這個案例失敗",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/init/tests.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "1.5 桌面設定頁的產出規則說明符合現況：apps/desktop/src/i18n/messages.ts 的 `settings.rulesHelp` 中英文案改成「儲存只改動這些規則，config.yaml 的其他內容與註解會保留」的意思，保留「依 artifact 分節、一行一條、頭尾空白不保留、行序即注入順序」；驗證：`npm test -w apps/desktop` 通過，`node --test scripts/docs/vocabulary-guard.test.mjs` 通過",
+      "files": [
+        ".github/workflows/ci.yml",
+        ".speclink.yaml",
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "apps/desktop/src/i18n/messages.ts",
+        "crates/adapters/speclink-cli/src/verbs/toolchain.rs",
+        "crates/engine/speclink-core/src/workspace/init.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "2.2 先寫失敗測試（使用者文件以截圖呈現實際介面）：在 scripts/docs/docs-screenshots.test.mjs 新增「截圖腳本清單裡的每張截圖都被 README 或 docs/ 的至少一份文件引用」，沒被引用時點名檔名；驗證：`node --test scripts/docs/docs-screenshots.test.mjs` 失敗並點名 desktop-spec.png、desktop-discussion.png、desktop-archived.png、desktop-settings.png",
+      "files": [
+        "scripts/docs/docs-screenshots.test.mjs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "2.3 讓 2.2 轉綠：把規格頁截圖放進 docs/getting-started.zh-TW.md 與 docs/getting-started.md 的封存步驟、討論頁截圖放進兩版 workflow 的 discuss 段落、已封存頁截圖放進兩版 workflow 的 archive 段落、設定頁截圖放進兩版 configuration；圖說各用該版語言；驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全過（含截圖引用兩版一致、連結有效、沒有孤兒截圖）",
+      "files": [
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md",
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md",
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "3.2 補齊「文件準確性具可重複驗證清單」承諾的三項守門測試（3.1 核對發現守門測試只涵蓋連結、H2 錨點與正典詞彙）：scripts/docs/docs-parity.test.mjs 新增 product-status 中英矩陣逐列對應、每個能力列有證據、限制與下一步及查核日期；新增 scripts/docs/docs-surface.test.mjs，檢查 getting-started 與 workflow（中英）寫成可直接使用的 `speclink` 子指令與旗標都出現在目前 CLI 的 `--help`（文件寫明「沒有這個指令」的必須確實不存在；沒建置 CLI 時 skip），以及 `/speclink-*` 存在於 `.claude/skills/`、`$speclink-*` 存在於 `.agents/skills/`；驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全過，並逐一做突變檢查——文件加假旗標、假子指令、假技能，或刪掉一列查核日期時，對應測試失敗並點名該名稱",
+      "files": [
+        "scripts/docs/docs-parity.test.mjs",
+        "scripts/docs/docs-surface.test.mjs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "2.1 重拍全部 9 張截圖：先關閉桌面 app，執行 `node scripts/docs/docs-screenshots.mjs --setup`，依腳本清單拍桌面的 6 張；server 的 3 張依 docs/development.zh-TW.md 以 `npm run dev:server` 啟動後拍攝；覆蓋 docs/assets/screenshots/ 的同名檔案；確認：畫面是示範 workspace、沒有真實的人名與 email，規格頁顯示「正式規格」",
+      "files": [
+        "docs/assets/screenshots/desktop-archived.png",
+        "docs/assets/screenshots/desktop-board.png",
+        "docs/assets/screenshots/desktop-change-drawer.png",
+        "docs/assets/screenshots/desktop-discussion.png",
+        "docs/assets/screenshots/desktop-settings.png",
+        "docs/assets/screenshots/desktop-spec.png",
+        "docs/assets/screenshots/server-members.png",
+        "docs/assets/screenshots/server-overview.png",
+        "docs/assets/screenshots/server-setup.png"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "3.2 補齊「文件準確性具可重複驗證清單」承諾的三項守門測試（3.1 核對發現守門測試只涵蓋連結、H2 錨點與正典詞彙）：scripts/docs/docs-parity.test.mjs 新增 product-status 中英矩陣逐列對應、每個能力列有證據、限制與下一步及查核日期；新增 scripts/docs/docs-surface.test.mjs，檢查 getting-started 與 workflow（中英）寫成可直接使用的 `speclink` 子指令與旗標都出現在目前 CLI 的 `--help`（文件寫明「沒有這個指令」的必須確實不存在；沒建置 CLI 時 skip），以及 `/speclink-*` 存在於 `.claude/skills/`、`$speclink-*` 存在於 `.agents/skills/`；docs-surface 與 remote-docs 共用 scripts/docs/built-cli.mjs 找 CLI（debug 與 release 都在時取較新的）；docs-parity 的成對清單補上 remote-getting-started 與 development，13 組都比對 H2 錨點與截圖；驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全過，並逐一做突變檢查——文件加假旗標、假子指令、假技能，或刪掉一列查核日期時，對應測試失敗並點名該名稱",
+      "files": [
+        "Cargo.toml",
+        "crates/adapters/speclink-cli/Cargo.toml",
+        "crates/engine/speclink-core/Cargo.toml",
+        "scripts/docs/docs-links.test.mjs",
+        "scripts/docs/remote-docs.test.mjs",
+        "scripts/docs/built-cli.mjs",
+        "scripts/docs/built-cli.test.mjs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4AVSVAH70Y311N7YAQJT73X",
+      "taskDesc": "1.2 先寫失敗測試：在 crates/engine/speclink-core/src/workspace/init/tests.rs 新增案例，斷言 `init` 產生的 `.speclink.yaml` 含 `https://github.com/MomoChenisMe/speclink`、不含 `speclink-app`；驗證：`cargo test -p speclink-core init::tests` 出現這個案例失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a7c97c1fefa8d9e0e50cffcd54859a96def75804",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/init/tests.rs"
+      ],
+      "recordedAt": "2026-10-07T14:29:18Z"
+    },
+    {
+      "taskId": "tsk_01M4AVSVAH7H646GCV5JCYS1JT",
+      "taskDesc": "1.5 桌面設定頁的產出規則說明符合現況：apps/desktop/src/i18n/messages.ts 的 `settings.rulesHelp` 中英文案改成「儲存只改動這些規則，config.yaml 的其他內容與註解會保留」的意思，保留「依 artifact 分節、一行一條、頭尾空白不保留、行序即注入順序」；驗證：`npm test -w apps/desktop` 通過，`node --test scripts/docs/vocabulary-guard.test.mjs` 通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a7c97c1fefa8d9e0e50cffcd54859a96def75804",
+      "touchedFiles": [
+        ".github/workflows/ci.yml",
+        ".speclink.yaml",
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "apps/desktop/src/i18n/messages.ts",
+        "crates/adapters/speclink-cli/src/verbs/toolchain.rs",
+        "crates/engine/speclink-core/src/workspace/init.rs"
+      ],
+      "recordedAt": "2026-10-07T14:33:08Z"
+    },
+    {
+      "taskId": "tsk_01M4AVSVAHQ4EFTM2QBM6YA1F2",
+      "taskDesc": "2.2 先寫失敗測試（使用者文件以截圖呈現實際介面）：在 scripts/docs/docs-screenshots.test.mjs 新增「截圖腳本清單裡的每張截圖都被 README 或 docs/ 的至少一份文件引用」，沒被引用時點名檔名；驗證：`node --test scripts/docs/docs-screenshots.test.mjs` 失敗並點名 desktop-spec.png、desktop-discussion.png、desktop-archived.png、desktop-settings.png",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a7c97c1fefa8d9e0e50cffcd54859a96def75804",
+      "touchedFiles": [
+        "scripts/docs/docs-screenshots.test.mjs"
+      ],
+      "recordedAt": "2026-10-07T14:34:06Z"
+    },
+    {
+      "taskId": "tsk_01M4AVSVAHW32QNTVWB8TJA641",
+      "taskDesc": "2.3 讓 2.2 轉綠：把規格頁截圖放進 docs/getting-started.zh-TW.md 與 docs/getting-started.md 的封存步驟、討論頁截圖放進兩版 workflow 的 discuss 段落、已封存頁截圖放進兩版 workflow 的 archive 段落、設定頁截圖放進兩版 configuration；圖說各用該版語言；驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全過（含截圖引用兩版一致、連結有效、沒有孤兒截圖）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a7c97c1fefa8d9e0e50cffcd54859a96def75804",
+      "touchedFiles": [
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md",
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md",
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md"
+      ],
+      "recordedAt": "2026-10-07T14:35:54Z"
+    },
+    {
+      "taskId": "tsk_01M4BD3QAT6GX4H3WHRJZJ37K1",
+      "taskDesc": "3.2 補齊「文件準確性具可重複驗證清單」承諾的三項守門測試（3.1 核對發現守門測試只涵蓋連結、H2 錨點與正典詞彙）：scripts/docs/docs-parity.test.mjs 新增 product-status 中英矩陣逐列對應、每個能力列有證據、限制與下一步及查核日期；新增 scripts/docs/docs-surface.test.mjs，檢查 getting-started 與 workflow（中英）寫成可直接使用的 `speclink` 子指令與旗標都出現在目前 CLI 的 `--help`（文件寫明「沒有這個指令」的必須確實不存在；沒建置 CLI 時 skip），以及 `/speclink-*` 存在於 `.claude/skills/`、`$speclink-*` 存在於 `.agents/skills/`；驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全過，並逐一做突變檢查——文件加假旗標、假子指令、假技能，或刪掉一列查核日期時，對應測試失敗並點名該名稱",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a7c97c1fefa8d9e0e50cffcd54859a96def75804",
+      "touchedFiles": [
+        "scripts/docs/docs-parity.test.mjs",
+        "scripts/docs/docs-surface.test.mjs"
+      ],
+      "recordedAt": "2026-10-07T14:46:10Z"
+    },
+    {
+      "taskId": "tsk_01M4AVSVAH1HTPWB7CZNHKQ3GW",
+      "taskDesc": "2.1 重拍全部 9 張截圖：先關閉桌面 app，執行 `node scripts/docs/docs-screenshots.mjs --setup`，依腳本清單拍桌面的 6 張；server 的 3 張依 docs/development.zh-TW.md 以 `npm run dev:server` 啟動後拍攝；覆蓋 docs/assets/screenshots/ 的同名檔案；確認：畫面是示範 workspace、沒有真實的人名與 email，規格頁顯示「正式規格」",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a7c97c1fefa8d9e0e50cffcd54859a96def75804",
+      "touchedFiles": [
+        "docs/assets/screenshots/desktop-archived.png",
+        "docs/assets/screenshots/desktop-board.png",
+        "docs/assets/screenshots/desktop-change-drawer.png",
+        "docs/assets/screenshots/desktop-discussion.png",
+        "docs/assets/screenshots/desktop-settings.png",
+        "docs/assets/screenshots/desktop-spec.png",
+        "docs/assets/screenshots/server-members.png",
+        "docs/assets/screenshots/server-overview.png",
+        "docs/assets/screenshots/server-setup.png"
+      ],
+      "recordedAt": "2026-10-08T00:56:17Z"
+    },
+    {
+      "taskId": "tsk_01M4BD3QAT6GX4H3WHRJZJ37K1",
+      "taskDesc": "3.2 補齊「文件準確性具可重複驗證清單」承諾的三項守門測試（3.1 核對發現守門測試只涵蓋連結、H2 錨點與正典詞彙）：scripts/docs/docs-parity.test.mjs 新增 product-status 中英矩陣逐列對應、每個能力列有證據、限制與下一步及查核日期；新增 scripts/docs/docs-surface.test.mjs，檢查 getting-started 與 workflow（中英）寫成可直接使用的 `speclink` 子指令與旗標都出現在目前 CLI 的 `--help`（文件寫明「沒有這個指令」的必須確實不存在；沒建置 CLI 時 skip），以及 `/speclink-*` 存在於 `.claude/skills/`、`$speclink-*` 存在於 `.agents/skills/`；docs-surface 與 remote-docs 共用 scripts/docs/built-cli.mjs 找 CLI（debug 與 release 都在時取較新的）；docs-parity 的成對清單補上 remote-getting-started 與 development，13 組都比對 H2 錨點與截圖；驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全過，並逐一做突變檢查——文件加假旗標、假子指令、假技能，或刪掉一列查核日期時，對應測試失敗並點名該名稱",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a7c97c1fefa8d9e0e50cffcd54859a96def75804",
+      "touchedFiles": [
+        "Cargo.toml",
+        "crates/adapters/speclink-cli/Cargo.toml",
+        "crates/engine/speclink-core/Cargo.toml",
+        "scripts/docs/docs-links.test.mjs",
+        "scripts/docs/remote-docs.test.mjs",
+        "scripts/docs/built-cli.mjs",
+        "scripts/docs/built-cli.test.mjs"
+      ],
+      "recordedAt": "2026-10-08T01:36:45Z"
+    }
+  ]
+}

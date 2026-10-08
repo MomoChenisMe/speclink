@@ -70,66 +70,20 @@ updated: 2026-08-27
 
 ---
 ### Requirement: 樂觀並行控制與 409 語意
-artifact 寫入 SHALL 攜帶讀取時取得的版本（If-Match）；版本過期時 server 回 409 且 body SHALL 含機器可判的 reason 欄位。CLI 對每個 409 reason SHALL 輸出對應的建議動作訊息（version_conflict → 重新拉取後再寫；ownership_lost → 重新認領；change_busy → 等待進行中的變更完成；repo_mismatch → 於歸屬 repo 執行）。
+artifact 寫入 SHALL 攜帶讀取時取得的版本（If-Match）；版本過期時 server 回 409 且 body SHALL 含機器可判的 reason 欄位。reason 的值 SHALL 取自 Protocol 的錯誤 reason 註冊表（409 用到 `revision_conflict` 與 `refused`），SHALL NOT 使用註冊表以外的值。CLI 對 409 SHALL 輸出可讀的建議動作訊息，SHALL NOT 顯示裸狀態碼：reason 為 `revision_conflict` 時 SHALL 說明內容在讀取後已被更新、建議重新讀取後再套用修改；reason 為 `refused` 時 SHALL 轉述 server 的訊息（認領衝突時訊息含目前持有人與建議動作）。
 
 #### Scenario: 版本衝突的可讀訊息
-- **WHEN** 於 remote 模式寫入 artifact，而該 artifact 已被他人更新（server 回 409、reason 為 version_conflict）
-- **THEN** exit code 非 0，stderr 單行訊息說明內容已被更新並建議重新拉取，不顯示裸狀態碼
+- **WHEN** 於 remote 模式寫入 artifact，而該 artifact 已被他人更新（server 回 409、reason 為 revision_conflict）
+- **THEN** exit code 非 0，stderr 單行訊息含 `content changed since you read it — re-read it and re-apply your edit`，不顯示裸狀態碼
 
 #### Scenario: 認領被搶佔
-- **WHEN** 執行 speclink claim 某 change，而 server 回 409、reason 為 ownership_lost（已被他人認領）
-- **THEN** exit code 非 0，stderr 訊息含目前持有人資訊與建議動作
+- **WHEN** 執行 speclink claim 某 change，而 server 回 409、reason 為 refused（已被他人認領）
+- **THEN** exit code 非 0，stderr 訊息含目前持有人資訊與建議動作，例如 `change 'add-auth' is already claimed by Alice <alice@example.com> — coordinate with them, or ask them to release it`
 
 
 <!-- @trace
-source: verb-contract-and-remote-client
-updated: 2026-07-05
-code:
-  - .speclink.yaml
-  - Cargo.lock
-  - Cargo.toml
-  - README.md
-  - crates/speclink-cli/Cargo.toml
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/doc_verbs.rs
-  - crates/speclink-cli/tests/remote_connect.rs
-  - crates/speclink-cli/tests/remote_read_path.rs
-  - crates/speclink-cli/tests/remote_write_path.rs
-  - crates/speclink-core/Cargo.toml
-  - crates/speclink-core/assets/skills/archive.md
-  - crates/speclink-core/assets/skills/commit.md
-  - crates/speclink-core/assets/skills/discuss.md
-  - crates/speclink-core/assets/skills/propose.md
-  - crates/speclink-core/assets/skills/sync.md
-  - crates/speclink-core/src/discuss.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/instructions.rs
-  - crates/speclink-core/src/preflight.rs
-  - crates/speclink-core/src/status.rs
-  - crates/speclink-core/src/store.rs
-  - crates/speclink-core/src/workspace.rs
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-core/tests/golden/remote-claude.marker.md
-  - crates/speclink-core/tests/mode_resolution.rs
-  - crates/speclink-core/tests/render_golden.rs
-  - crates/speclink-core/tests/skill_verbization.rs
-  - crates/speclink-fs/src/layout.rs
-  - crates/speclink-fs/src/lib.rs
-  - crates/speclink-remote/Cargo.toml
-  - crates/speclink-remote/src/auth.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/src/lib.rs
-  - crates/speclink-remote/tests/auth_store.rs
-  - crates/speclink-remote/tests/client_errors.rs
-  - docs/team-mode.md
-  - docs/team-mode.zh-TW.md
-  - docs/verb-contract.md
-  - docs/verb-contract.zh-TW.md
+source: sync-specs-after-docs-cleanup
+updated: 2026-10-08T10:00:10+08:00
 -->
 
 ---

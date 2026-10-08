@@ -1,11 +1,14 @@
 // 使用者文件的連結完整性（user-documentation spec「文件內部連結全部可解析」）。
-// 純函式部分以字串驗證；最後一條掃過版本庫實況，讓斷鏈在 scripts 測試面就擋下來。
+// 純函式部分以字串驗證；最後兩條掃過版本庫實況，讓斷鏈與沒有文件引用的截圖在 scripts
+// 測試面就擋下來（後者對應 spec「使用者文件以截圖呈現實際介面」）。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { brokenIn, docFilesIn, extractTargets, resolveTarget, scanDocs } from './docs-links.mjs';
+import { SHOT_DIR, SHOT_LIST } from './docs-screenshots.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -98,4 +101,18 @@ test('版本庫實況：使用者文件沒有任何斷鏈', () => {
     broken.map((b) => `${b.file}:${b.line} → ${b.target}`),
     [],
   );
+});
+
+test('版本庫實況：截圖腳本清單裡的每張截圖都被 README 或 docs/ 的至少一份文件引用', () => {
+  const referenced = new Set(
+    docFilesIn(ROOT).flatMap((file) =>
+      extractTargets(readFileSync(path.join(ROOT, file), 'utf8')).map(({ target }) =>
+        resolveTarget({ fromFile: file, target, root: ROOT }),
+      ),
+    ),
+  );
+  const orphans = SHOT_LIST.map((shot) => shot.file).filter(
+    (file) => !referenced.has(path.join(ROOT, SHOT_DIR, file)),
+  );
+  assert.deepEqual(orphans, [], `沒有文件引用的截圖：${orphans.join('、')}`);
 });

@@ -608,7 +608,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     );
   });
 
-  it("卡名採正典詞；編輯態說明載明一行一條規則、頭尾空白不保留與註解不保留（design 風險緩解）", async () => {
+  it("卡名採正典詞；編輯態說明載明一行一條規則、頭尾空白不保留，以及產出規則區塊內的註解不保留", async () => {
     renderView(projectSnap());
     const ctxCard = await screen.findByTestId("context-card");
     const rulesCard = screen.getByTestId("rules-card");
@@ -618,7 +618,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     expect(within(ctxCard).getByText(/清空儲存即移除該鍵/)).toBeTruthy();
     fireEvent.click(within(rulesCard).getByTestId("rules-edit"));
     expect(within(rulesCard).getByText(/一行一條規則（頭尾空白不保留）/)).toBeTruthy();
-    expect(within(rulesCard).getByText(/檔內註解不會保留/)).toBeTruthy();
+    expect(within(rulesCard).getByText(/儲存只改動產出規則：產出規則區塊內的註解不會保留，config.yaml 的其他內容與註解會保留/)).toBeTruthy();
   });
 });
 

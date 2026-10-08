@@ -181,7 +181,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
       "寫入 config.yaml 的 context 鍵——專案背景的自由文字，注入每次 artifact 產出指令；清空儲存即移除該鍵。",
     "settings.rulesLabel": "產出規則",
     "settings.rulesHelp":
-      "依 artifact 分節，一行一條規則（頭尾空白不保留）、行序即指令注入順序；儲存會重寫 config.yaml，檔內註解不會保留。",
+      "依 artifact 分節，一行一條規則（頭尾空白不保留）、行序即指令注入順序；儲存只改動產出規則：產出規則區塊內的註解不會保留，config.yaml 的其他內容與註解會保留。",
     "settings.schemaCard": "產出流程",
     // 頁籤標籤直出 Schema（LANGUAGE.md 明文例外：頁籤列全是技術 token，
     // 與 config.yaml／.speclink.yaml 同列的原生詞一致性；desktop-schema-panel）。
@@ -515,7 +515,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
       "Written to the context key in config.yaml — free-form project background injected into every artifact instruction; save empty to remove the key.",
     "settings.rulesLabel": "Output rules",
     "settings.rulesHelp":
-      "One rule per line per artifact key (leading/trailing whitespace is trimmed); line order is the instruction injection order. Saving rewrites config.yaml — file comments are not preserved.",
+      "One rule per line per artifact key (leading/trailing whitespace is trimmed); line order is the instruction injection order. Saving updates only these rules: comments under the rules key are not kept, and the rest of config.yaml, comments included, stays as is.",
     // en 語系裡 "schema" 是這個概念的原生詞（與頁籤標籤同一條裁定線），保留；
     // 但格式術語與檔案路徑（kebab-case、openspec/schemas/）仍不進使用者可見
     // 文案——與 zh 版的人話寫法對齊（review R1）。

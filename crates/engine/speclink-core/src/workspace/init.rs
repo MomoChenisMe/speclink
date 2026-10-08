@@ -11,8 +11,11 @@ use std::path::{Path, PathBuf};
 /// 與 app／CLI 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
 pub const ASSET_VERSION: &str = "v1.42.0";
 
-const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
-# See: https://github.com/speclink-app/speclink
+const APP_CONFIG_TEMPLATE: &str = concat!(
+    "# Speclink application config
+# See: ",
+    env!("CARGO_PKG_REPOSITORY"),
+    "
 
 # OpenSpec directory path (relative to project root)
 # spec_dir: docs/specs
@@ -21,7 +24,8 @@ const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
 # tools:
 #   - claude
 #   - codex
-";
+",
+);
 
 const WORKFLOW_CONFIG_TEMPLATE: &str = "schema: spec-driven
 

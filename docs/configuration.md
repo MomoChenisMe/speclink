@@ -23,6 +23,10 @@ The user config directory is here:
 
 The desktop app keeps its UI language and its server list in its own app folder. It keeps credentials in the system keychain. None of these go into the project.
 
+The Settings page of the desktop app has two tabs. The Local settings tab holds values that stay on this computer. The Servers tab manages the list of server connections.
+
+![The Settings page of the desktop app, with the Local settings and Servers tabs](assets/screenshots/desktop-settings.png)
+
 Use these three rules to place a new setting:
 
 - A setting that changes what the workflow produces (language, TDD, audit, the worktree flow) is **policy**. Put it in `openspec/config.yaml`, so the whole team reads the same values.

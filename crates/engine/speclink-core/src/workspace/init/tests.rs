@@ -78,6 +78,21 @@ fn init_app_config_template_has_no_policy_keys() {
 }
 
 #[test]
+fn init_app_config_template_links_the_real_repository() {
+    let root = TempRoot::new("app-template-url");
+    init(&root.dir, &[], false, "openspec").unwrap();
+    let app = root.read(".speclink.yaml");
+    assert!(
+        app.contains("https://github.com/MomoChenisMe/speclink"),
+        ".speclink.yaml template must link the project repository:\n{app}"
+    );
+    assert!(
+        !app.contains("speclink-app"),
+        ".speclink.yaml template must not link the wrong organization:\n{app}"
+    );
+}
+
+#[test]
 fn init_with_tools_records_selection_without_policy_keys() {
     let root = TempRoot::new("app-tools");
     init(&root.dir, &[Tool::Claude, Tool::Codex], false, "openspec").unwrap();
