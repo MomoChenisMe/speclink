@@ -1,9 +1,9 @@
 //! Golden tests for skill rendering.
 //!
-//! Three render targets exist: built-in claude, built-in codex, and custom descriptors
-//! (neutral body, wording decided by `invocation`). The claude and codex snapshots lock
-//! the pre-existing output BIT-FOR-BIT — the neutral work must not drift them. The
-//! neutral snapshots pin the cli and tool-call wordings. Instruction files are not part
+//! Render targets: the built-in tools (claude, codex, copilot) and custom descriptors
+//! (neutral body, wording decided by `invocation`). The built-in snapshots lock their
+//! output BIT-FOR-BIT — the neutral work must not drift them. The neutral snapshots pin
+//! the cli and tool-call wordings. Instruction files are not part
 //! of the generated set (change: remove-marker-injection), so nothing here reads one.
 //!
 //! Regenerate goldens deliberately with: UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::
@@ -104,6 +104,16 @@ fn codex_rendering_is_bit_identical_to_golden() {
     assert_matches_golden(
         "codex.snapshot.md",
         &snapshot(&root.dir, ".agents/skills"),
+    );
+}
+
+#[test]
+fn copilot_rendering_is_bit_identical_to_golden() {
+    let root = TempRoot::new("copilot");
+    init::init(&root.dir, &[Tool::Copilot], true, "openspec").unwrap();
+    assert_matches_golden(
+        "copilot.snapshot.md",
+        &snapshot(&root.dir, ".github/skills"),
     );
 }
 
@@ -923,8 +933,8 @@ fn fingerprint(input: &str) -> String {
     format!("{hash:016x}")
 }
 
-/// Every render output the lock covers, aggregated deterministically: the three skill
-/// render targets for every registered skill. Instruction-file content left the managed
+/// Every render output the lock covers, aggregated deterministically: every built-in
+/// tool plus one custom descriptor, for every registered skill. Instruction-file content left the managed
 /// set with change remove-marker-injection, so skills are now the whole asset surface.
 ///
 /// ASSET_VERSION is stamped INTO those outputs (skill frontmatter), so it is normalized
@@ -939,11 +949,8 @@ fn render_fingerprint_input() -> String {
     };
     let mut parts = Vec::new();
     for skill in skills::registry() {
-        for target in [
-            skills::RenderTarget::Builtin(Tool::Claude),
-            skills::RenderTarget::Builtin(Tool::Codex),
-            skills::RenderTarget::Custom(&custom),
-        ] {
+        let builtins = Tool::ALL.into_iter().map(skills::RenderTarget::Builtin);
+        for target in builtins.chain([skills::RenderTarget::Custom(&custom)]) {
             parts.push(skills::render_skill_file_for(target, &skill, "openspec"));
         }
     }

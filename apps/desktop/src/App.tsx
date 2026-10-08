@@ -74,6 +74,7 @@ import {
   type LocalePreference,
 } from "./i18n/locale";
 import { setAppT } from "./i18n/runtime";
+import { BUILTIN_TOOLS } from "./builtinTools";
 
 export interface AppProps {
   /** local session 工廠（root 綁定 dataSource／settings／events；workspace-session 決策 3/6）。 */
@@ -1036,7 +1037,7 @@ function AppInner({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="flex gap-4">
-            {["claude", "codex"].map((tool) => (
+            {BUILTIN_TOOLS.map((tool) => (
               <label key={tool} className="flex items-center gap-1.5 text-sm">
                 <Checkbox
                   checked={initTools.includes(tool)}
@@ -1071,7 +1072,7 @@ function AppInner({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="flex gap-4">
-            {["claude", "codex"].map((tool) => (
+            {BUILTIN_TOOLS.map((tool) => (
               <label key={tool} className="flex items-center gap-1.5 text-sm">
                 <Checkbox
                   checked={adoptTools.includes(tool)}

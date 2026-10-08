@@ -926,6 +926,33 @@ mod tests {
     }
 
     #[test]
+    fn write_tools_adds_then_prunes_copilot_skills() {
+        // spec Scenario「加選與取消 copilot 後技能同步」：加選生成 .github/skills/，
+        // 取消後 speclink- 目錄全數移除，.github/ 下其他檔案不動。
+        let fx = FixtureRoot::new("tools-write-copilot");
+        std::fs::remove_dir_all(fx.root().join("openspec")).unwrap();
+        crate::project::init_project_at(fx.root(), &["claude".into()]).expect("init ok");
+        let workflow = fx.root().join(".github").join("workflows").join("ci.yml");
+        std::fs::create_dir_all(workflow.parent().unwrap()).unwrap();
+        std::fs::write(&workflow, "on: push\n").unwrap();
+        let skills = fx.root().join(".github").join("skills");
+
+        write_tools_at(fx.root(), &["claude".into(), "copilot".into()]).expect("add ok");
+        let app = read(&fx.root().join(".speclink.yaml"));
+        assert!(
+            app.contains("claude") && app.contains("copilot"),
+            "tools recorded: {app}"
+        );
+        assert!(skills.join("speclink-propose").join("SKILL.md").is_file());
+
+        write_tools_at(fx.root(), &["claude".into()]).expect("remove ok");
+        let app = read(&fx.root().join(".speclink.yaml"));
+        assert!(!app.contains("copilot"), "tools recorded: {app}");
+        assert!(!skills.exists(), "變空的 .github/skills/ 須移除");
+        assert_eq!(read(&workflow), "on: push\n", ".github/ 下其他檔案不得變動");
+    }
+
+    #[test]
     fn write_tools_strips_a_legacy_instruction_marker() {
         // spec Scenario「tools 變更後技能同步」的遺留面（design D2）：同步時把舊版
         // 引擎注入的區塊剝掉，使用者自己的段落原樣保留。

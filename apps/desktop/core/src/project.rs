@@ -565,6 +565,43 @@ mod tests {
     }
 
     #[test]
+    fn init_project_at_with_copilot_only_adds_github_skills() {
+        // spec Scenario「勾選 copilot 時生成對應工具檔」的只選 copilot 情形。
+        let plain = PlainDir::new("init-copilot");
+        init_project_at(plain.path(), &["copilot".into()]).expect("init ok");
+        let p = plain.path();
+        assert!(p
+            .join(".github")
+            .join("skills")
+            .join("speclink-propose")
+            .join("SKILL.md")
+            .is_file());
+        for absent in ["CLAUDE.md", "AGENTS.md", ".claude", ".agents"] {
+            assert!(!p.join(absent).exists(), "{absent} 不得生成");
+        }
+        assert!(!p.join(".github").join("copilot-instructions.md").exists());
+        assert!(read(&p.join(".speclink.yaml")).contains("copilot"));
+    }
+
+    #[test]
+    fn init_project_at_with_claude_and_copilot_adds_both_skill_sets() {
+        // spec Scenario「勾選 copilot 時生成對應工具檔」：預設的 claude 再加勾 copilot。
+        let plain = PlainDir::new("init-claude-copilot");
+        init_project_at(plain.path(), &["claude".into(), "copilot".into()]).expect("init ok");
+        let p = plain.path();
+        for skills in [".claude", ".github"] {
+            let propose = p.join(skills).join("skills").join("speclink-propose");
+            assert!(propose.join("SKILL.md").is_file(), "{skills} 技能須生成");
+        }
+        assert!(!p.join(".github").join("copilot-instructions.md").exists());
+        let app = read(&p.join(".speclink.yaml"));
+        assert!(
+            app.contains("claude") && app.contains("copilot"),
+            "tools must record both: {app}"
+        );
+    }
+
+    #[test]
     fn init_project_at_unwritable_target_is_a_single_line_error() {
         // 目標路徑是檔案 → 建骨架必然失敗；Err 單行且不得 panic。
         let fx = FixtureRoot::new("init-unwritable");
@@ -698,6 +735,34 @@ mod tests {
         assert!(p.join(".claude").join("skills").is_dir());
         assert_eq!(
             read(&p.join("openspec").join("specs").join("auth").join("spec.md")),
+            "## Purpose\n既有規格。\n"
+        );
+    }
+
+    #[test]
+    fn adopt_project_at_with_copilot_only_adds_github_skills() {
+        // spec Scenario「啟用時勾選 copilot」。
+        let fx = FixtureRoot::new("adopt-copilot");
+        fx.write("openspec/specs/auth/spec.md", "## Purpose\n既有規格。\n");
+        adopt_project_at(fx.root(), &["copilot".into()]).expect("adopt ok");
+        let p = fx.root();
+        assert!(read(&p.join(".speclink.yaml")).contains("copilot"));
+        assert!(p
+            .join(".github")
+            .join("skills")
+            .join("speclink-propose")
+            .join("SKILL.md")
+            .is_file());
+        for absent in ["CLAUDE.md", "AGENTS.md", ".claude", ".agents"] {
+            assert!(!p.join(absent).exists(), "{absent} 不得生成");
+        }
+        assert_eq!(
+            read(
+                &p.join("openspec")
+                    .join("specs")
+                    .join("auth")
+                    .join("spec.md")
+            ),
             "## Purpose\n既有規格。\n"
         );
     }

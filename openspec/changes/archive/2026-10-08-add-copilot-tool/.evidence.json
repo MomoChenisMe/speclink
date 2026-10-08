@@ -1,0 +1,300 @@
+{
+  "version": 2,
+  "change": "add-copilot-tool",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫失敗測試（Copilot 渲染目標、worktree 技能的政策條件式生成）：在 crates/engine/speclink-core/src/workspace/init/tests.rs 新增測試，鎖定以 `[Tool::Copilot]` init 後的可觀察結果——`.github/skills/speclink-<name>/SKILL.md` 的目錄名集合等於 codex 的 for_codex 子集（不含 speclink-analyze，worktree 政策關閉時不含兩顆 worktree 技能、開啟時含）；`speclink-propose` 的 frontmatter 只有 name、description、license、compatibility、metadata 五個頂層鍵，內文含 `/speclink-apply` 與 `--agent copilot`、不含 `$speclink-` 與 `## Claude fork context`；專案根不存在 `AGENTS.md`、`CLAUDE.md`、`.github/copilot-instructions.md`；同一技能的 copilot 內容把 `/speclink-` 換成 `$speclink-`、`copilot` 換成 `codex` 之後與 codex 內容逐字相同；含 `.claude/` 與 `.github/workflows/ci.yml`、無 tools 清單的專案經 `detect_footprint_tools` 與 update 都不選 copilot；驗證：`cargo test -p speclink-core --lib workspace::init` 因 `Tool::Copilot` 不存在而編譯失敗",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/init/tests.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 讓 1.1 轉綠（決策「內建工具列舉加入 Copilot 並集中為 Tool::ALL」「Copilot 渲染沿用 codex 路徑只換前綴」「footprint 偵測不推斷 copilot」「遺留 marker 剝除只對 claude 與 codex」）：crates/engine/speclink-core/src/workspace/skills.rs 的 `Tool` 加 `Copilot` 變體（name `copilot`、skills_dir `.github/skills`、plan_dir 空字串、前綴 `/speclink-`、`Tool::parse` 只認 `copilot`）與依 claude、codex、copilot 排序的 `Tool::ALL`；crates/engine/speclink-core/src/workspace/init.rs 的 `SyncPlan::resolve` 生成目標與取消勾選清單改走 `Tool::ALL`，內建指令檔對照改成可選值（copilot 無指令檔、剝除迴圈跳過），`parse_tool_names` 的 unknown tool 訊息與 `ToolSelection` 的 unknown tool note 改列 `claude, codex, copilot`，`detect_footprint_tools` 不加 copilot 分支；更新兩個檔案裡「只支援 claude + codex」的註解；驗證：`cargo test -p speclink-core --lib workspace_group::` 全過，1.1 的測試轉綠",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/src/workspace/skills.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "1.4 先寫失敗測試（tools 自訂描述子的接受與驗證）：在 crates/engine/speclink-core/src/workspace/config/tests.rs 新增——描述子 name `copilot` 被拒且訊息指明與內建工具名衝突、列出 claude、codex、copilot；skills_dir 為 `.github/skills`、`./.github/skills`、`.github/skills/.`、`.github//skills`、`.wad/../.github/skills` 一律被拒且訊息指明屬內建 copilot 目錄；`.github/skills-extra` 與 `.github/agents` 被接受；驗證：`cargo test -p speclink-core --lib workspace_group::config` 這些新測試失敗",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/config/tests.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "1.5 讓 1.4 轉綠（決策「描述子驗證保留 copilot 名稱與 .github/skills 目錄」）：crates/engine/speclink-core/src/workspace/config.rs 的 `ToolDescriptor::validate` 保留名加 `copilot`、錯誤訊息改列三個工具，保留目錄改走 `Tool::ALL` 的 skills_dir；驗證：`cargo test -p speclink-core --lib workspace_group::config` 全過",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/config.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "2.1 先寫失敗測試（中性渲染目標）：crates/engine/speclink-core/tests/it/render_golden.rs 新增 `copilot_rendering_is_bit_identical_to_golden`（以 `[Tool::Copilot]` init 後快照 `.github/skills`，比對 `copilot.snapshot.md`），assets.lock 的指紋輸入改走 `Tool::ALL` 以納入 copilot 渲染，並更新檔頭「三種渲染目標」的說明；驗證：`cargo test -p speclink-core --test it render_golden` 失敗在缺 copilot golden 與版號鎖定測試（指紋變了但版號沒變）",
+      "files": [
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "2.2 讓 2.1 轉綠（決策「產物層版號遞增與 golden 再生」）：crates/engine/speclink-core/src/workspace/init.rs 的 `ASSET_VERSION` 從 `v1.42.0` 改為 `v1.43.0`；以 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 生成 copilot golden 並重生既有五份 golden，再於乾淨樹以 `UPDATE_ASSETS_LOCK=1` 重生 crates/engine/speclink-core/tests/golden/assets.lock；驗證：`git diff -U0 crates/engine/speclink-core/tests/golden/*.snapshot.md` 對既有五份只有 `version: \"v1.42.0\"` → `version: \"v1.43.0\"` 的行，新的 copilot.snapshot.md 不含 `$speclink-`、`agent: Explore`、`disallowedTools`、`speclink-analyze`，含 `--agent copilot`；`cargo test -p speclink-core --test it render_golden` 全過",
+      "files": [
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.1 先寫失敗測試（init 內建 Agent 工具選擇）：crates/adapters/speclink-cli/src/verbs/init.rs 的單元測試與 crates/adapters/speclink-cli/tests/it/init_tools.rs 新增——`--tools copilot` 只生成 `.github/skills/` 且 stdout 的 `Generated files for:` 行含 `copilot`；`--tools claude,codex,copilot` 依序記錄三個工具並生成三組技能；`Copilot`、`copilot,copilot` 被接受；`github-copilot` 被拒、exit code 非 0、stderr 單行列出 claude、codex、copilot、零寫入；互動終端依 Claude、Codex、Copilot 順序詢問三題，答 y、y、n 選出 claude 與 codex，答 n、n、n 時 stderr 印出 `Pick at least one tool: claude, codex, copilot, or any combination.` 後從 Claude 重問；非互動缺 `--tools` 時 stdout 空、stderr 單行含 `--tools`、claude、codex、copilot；既有以兩題答案餵入的測試改成三題；驗證：`cargo test -p speclink-cli verbs::init` 與 `cargo test -p speclink-cli --test it init_tools` 新測試失敗",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/init.rs",
+        "crates/adapters/speclink-cli/tests/it/init_tools.rs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.1 先寫失敗測試（渲染 API）：crates/adapters/speclink-node/__test__/render.spec.ts 新增——`skills.render('apply', { target: 'copilot' })` 與在暫存目錄以 CLI `init --tools copilot` 生成的 `.github/skills/speclink-apply/SKILL.md` 逐字相同，且含 `/speclink-`、不含 `$speclink-`；`skills.render('apply', { target: 'github-copilot' })` 拋出的錯誤訊息含 `github-copilot` 與 claude、codex、copilot、neutral；驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 中未知 target 訊息的測試失敗",
+      "files": [
+        "crates/adapters/speclink-node/__test__/render.spec.ts"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "4.2 讓 4.1 轉綠（決策「Node SDK target 加入 copilot」）：crates/adapters/speclink-node/src/render.rs 的 target 錯誤訊息改為 `target '<x>' must be 'claude', 'codex', 'copilot', or 'neutral'`、模組註解的 target 列舉加 copilot，crates/adapters/speclink-node/index.d.ts 的 `target` 聯集加 `'copilot'`；驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 全過",
+      "files": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/src/render.rs"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "5.1 先寫失敗測試（未初始化目錄經確認後自動初始化、未啟用資料夾經確認後補齊啟用、設定頁圖形化讀寫兩層設定、checkout 綁定驗證與 marker 寫入、remote marker 資料夾的探測分流）：apps/desktop/src/__tests__ 的 App、workspaceChooser、projectSettingsView 測試新增「初始化確認、啟用確認、checkout 步驟、設定頁 AI 工具卡都出現 copilot 勾選，初始化與啟用預設只勾 claude」；apps/desktop/core/src/settings.rs 新增「加選 copilot 生成 `.github/skills/`、再取消後 `speclink-` 目錄全數移除且 `.github/workflows/ci.yml` 不變」；apps/desktop/core/src/project.rs 新增「`init_project_at` 與 `adopt_project_at` 只選 copilot 時只生成 `.github/skills/`、不生成 CLAUDE.md 與 AGENTS.md」；apps/desktop/src-tauri/src/connections.rs 新增「marker 的 tools 為 `[copilot]` 時 inspect 回報 `[\"copilot\"]`」「無 tools 清單、含 `.github/workflows/` 的 checkout 不預選 copilot」「bind `[claude, copilot]` 生成兩組技能」「空選集錯誤訊息列出 claude、codex、copilot」；驗證：`npm test -w @speclink/desktop` 的新測試失敗，`cargo test -p speclink-desktop-core` 與 `cargo test -p speclink-desktop --lib connections` 的新測試失敗（只依賴 1.2 的 desktop-core 測試若已綠屬預期，記在完成說明）",
+      "files": [
+        "apps/desktop/core/src/project.rs",
+        "apps/desktop/core/src/settings.rs",
+        "apps/desktop/src-tauri/src/connections.rs",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/workspaceChooser.test.tsx"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "5.2 讓 5.1 轉綠（決策「desktop 四處勾選共用 BUILTIN_TOOLS 常數」）：新增 apps/desktop/src/builtinTools.ts 匯出 `BUILTIN_TOOLS = [\"claude\", \"codex\", \"copilot\"] as const`，apps/desktop/src/App.tsx 的初始化與啟用對話框、apps/desktop/src/components/WorkspaceChooser.tsx 的 checkout 步驟、apps/desktop/src/views/ProjectSettingsView.tsx 的 AI 工具卡改讀它；apps/desktop/src-tauri/src/connections.rs 的空選集訊息改為「請至少選擇一個內建工具：claude、codex、copilot」並更新 `preselected_tools` 註解，apps/desktop/src/adapter/connections.ts 的 `CheckoutInspection` 註解改列三個工具；驗證：`npm test -w @speclink/desktop`、`cargo test -p speclink-desktop-core`、`cargo test -p speclink-desktop --lib connections` 全過",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/adapter/connections.ts",
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "apps/desktop/src/views/ProjectSettingsView.tsx",
+        "apps/desktop/src/builtinTools.ts"
+      ]
+    },
+    {
+      "task_id": "17",
+      "task_desc": "6.4 文件同步並符合 Getting Started 僅使用已驗證入口（決策「文件同步」）：README.md 與 README.en.md 的功能列、「可用」列與入門段加 Copilot（`/speclink-propose <變更名稱>`）；docs/getting-started.zh-TW.md 與 docs/getting-started.md 的入口表加 Copilot 列、init 產物說明加 `.github/skills/`、「在 Codex：」分支說明 Copilot 寫法與 Claude 相同且沒有 `/speclink-analyze`；docs/configuration.zh-TW.md 與 docs/configuration.md 的內建工具表加 `copilot` → `.github/skills/`、描述子 name 不得為 `claude`、`codex`、`agents`、`copilot` 並寫明舊 copilot 描述子的遷移方式、tools 欄位列三個工具；docs/workflow.zh-TW.md 與 docs/workflow.md 說明 Copilot 與 Claude 同用 `/`、analyze 只有 Claude 有；docs/sdk-node.zh-TW.md 與 docs/sdk-node.md 的 target 值域加 `copilot`；docs/product-status.zh-TW.md 與 docs/product-status.md 的 Agent 技能列加 Copilot；中英兩版結構與事實對等；驗證：`speclink validate add-copilot-tool` 通過，`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全過",
+      "files": [
+        "README.en.md",
+        "README.md",
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md",
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md",
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 讓 1.1 轉綠（決策「內建工具列舉加入 Copilot 並集中為 Tool::ALL」「Copilot 渲染沿用 codex 路徑只換前綴」「footprint 偵測不推斷 copilot」「遺留 marker 剝除只對 claude 與 codex」）：crates/engine/speclink-core/src/workspace/skills.rs 的 `Tool` 加 `Copilot` 變體（name `copilot`、skills_dir `.github/skills`、plan_dir 空字串、前綴 `/speclink-`、`Tool::parse` 只認 `copilot`）與依 claude、codex、copilot 排序的 `Tool::ALL`；crates/engine/speclink-core/src/workspace/init.rs 的 `SyncPlan::resolve` 生成目標與取消勾選清單改走 `Tool::ALL`，內建指令檔對照改成可選值（copilot 無指令檔、剝除迴圈跳過），`parse_tool_names` 的 unknown tool 訊息與 `ToolSelection` 的 unknown tool note 改列 `claude, codex, copilot`，`detect_footprint_tools` 不加 copilot 分支；更新兩個檔案裡「只支援 claude + codex」的註解；驗證：`cargo test -p speclink-core --lib workspace_group::` 全過，1.1 的測試轉綠",
+      "files": [
+        "crates/engine/speclink-core/tests/it/skill_verbization.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4BC103KEV98Y6DCFHKNFTE0",
+      "taskDesc": "1.1 先寫失敗測試（Copilot 渲染目標、worktree 技能的政策條件式生成）：在 crates/engine/speclink-core/src/workspace/init/tests.rs 新增測試，鎖定以 `[Tool::Copilot]` init 後的可觀察結果——`.github/skills/speclink-<name>/SKILL.md` 的目錄名集合等於 codex 的 for_codex 子集（不含 speclink-analyze，worktree 政策關閉時不含兩顆 worktree 技能、開啟時含）；`speclink-propose` 的 frontmatter 只有 name、description、license、compatibility、metadata 五個頂層鍵，內文含 `/speclink-apply` 與 `--agent copilot`、不含 `$speclink-` 與 `## Claude fork context`；專案根不存在 `AGENTS.md`、`CLAUDE.md`、`.github/copilot-instructions.md`；同一技能的 copilot 內容把 `/speclink-` 換成 `$speclink-`、`copilot` 換成 `codex` 之後與 codex 內容逐字相同；含 `.claude/` 與 `.github/workflows/ci.yml`、無 tools 清單的專案經 `detect_footprint_tools` 與 update 都不選 copilot；驗證：`cargo test -p speclink-core --lib workspace::init` 因 `Tool::Copilot` 不存在而編譯失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "870748908cc5b73f4bbe9c611c78b2eec47a0632",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/init/tests.rs"
+      ],
+      "recordedAt": "2026-10-08T02:14:39Z"
+    },
+    {
+      "taskId": "tsk_01M4BC103KD33DCME11NP548VK",
+      "taskDesc": "1.2 讓 1.1 轉綠（決策「內建工具列舉加入 Copilot 並集中為 Tool::ALL」「Copilot 渲染沿用 codex 路徑只換前綴」「footprint 偵測不推斷 copilot」「遺留 marker 剝除只對 claude 與 codex」）：crates/engine/speclink-core/src/workspace/skills.rs 的 `Tool` 加 `Copilot` 變體（name `copilot`、skills_dir `.github/skills`、plan_dir 空字串、前綴 `/speclink-`、`Tool::parse` 只認 `copilot`）與依 claude、codex、copilot 排序的 `Tool::ALL`；crates/engine/speclink-core/src/workspace/init.rs 的 `SyncPlan::resolve` 生成目標與取消勾選清單改走 `Tool::ALL`，內建指令檔對照改成可選值（copilot 無指令檔、剝除迴圈跳過），`parse_tool_names` 的 unknown tool 訊息與 `ToolSelection` 的 unknown tool note 改列 `claude, codex, copilot`，`detect_footprint_tools` 不加 copilot 分支；更新兩個檔案裡「只支援 claude + codex」的註解；驗證：`cargo test -p speclink-core --lib workspace_group::` 全過，1.1 的測試轉綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "870748908cc5b73f4bbe9c611c78b2eec47a0632",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/src/workspace/skills.rs"
+      ],
+      "recordedAt": "2026-10-08T02:17:02Z"
+    },
+    {
+      "taskId": "tsk_01M4BC103K1E7R7A9BV045ZG1Q",
+      "taskDesc": "1.4 先寫失敗測試（tools 自訂描述子的接受與驗證）：在 crates/engine/speclink-core/src/workspace/config/tests.rs 新增——描述子 name `copilot` 被拒且訊息指明與內建工具名衝突、列出 claude、codex、copilot；skills_dir 為 `.github/skills`、`./.github/skills`、`.github/skills/.`、`.github//skills`、`.wad/../.github/skills` 一律被拒且訊息指明屬內建 copilot 目錄；`.github/skills-extra` 與 `.github/agents` 被接受；驗證：`cargo test -p speclink-core --lib workspace_group::config` 這些新測試失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "870748908cc5b73f4bbe9c611c78b2eec47a0632",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/config/tests.rs"
+      ],
+      "recordedAt": "2026-10-08T02:19:08Z"
+    },
+    {
+      "taskId": "tsk_01M4BC103K91GRE00KKPB3GTD1",
+      "taskDesc": "1.5 讓 1.4 轉綠（決策「描述子驗證保留 copilot 名稱與 .github/skills 目錄」）：crates/engine/speclink-core/src/workspace/config.rs 的 `ToolDescriptor::validate` 保留名加 `copilot`、錯誤訊息改列三個工具，保留目錄改走 `Tool::ALL` 的 skills_dir；驗證：`cargo test -p speclink-core --lib workspace_group::config` 全過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "870748908cc5b73f4bbe9c611c78b2eec47a0632",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/config.rs"
+      ],
+      "recordedAt": "2026-10-08T02:20:04Z"
+    },
+    {
+      "taskId": "tsk_01M4BC103KYFQ2R0MRYNVAW2XW",
+      "taskDesc": "2.1 先寫失敗測試（中性渲染目標）：crates/engine/speclink-core/tests/it/render_golden.rs 新增 `copilot_rendering_is_bit_identical_to_golden`（以 `[Tool::Copilot]` init 後快照 `.github/skills`，比對 `copilot.snapshot.md`），assets.lock 的指紋輸入改走 `Tool::ALL` 以納入 copilot 渲染，並更新檔頭「三種渲染目標」的說明；驗證：`cargo test -p speclink-core --test it render_golden` 失敗在缺 copilot golden 與版號鎖定測試（指紋變了但版號沒變）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "870748908cc5b73f4bbe9c611c78b2eec47a0632",
+      "touchedFiles": [
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ],
+      "recordedAt": "2026-10-08T02:22:01Z"
+    },
+    {
+      "taskId": "tsk_01M4BC103KFZ64YHE2WZ4X07S4",
+      "taskDesc": "2.2 讓 2.1 轉綠（決策「產物層版號遞增與 golden 再生」）：crates/engine/speclink-core/src/workspace/init.rs 的 `ASSET_VERSION` 從 `v1.42.0` 改為 `v1.43.0`；以 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 生成 copilot golden 並重生既有五份 golden，再於乾淨樹以 `UPDATE_ASSETS_LOCK=1` 重生 crates/engine/speclink-core/tests/golden/assets.lock；驗證：`git diff -U0 crates/engine/speclink-core/tests/golden/*.snapshot.md` 對既有五份只有 `version: \"v1.42.0\"` → `version: \"v1.43.0\"` 的行，新的 copilot.snapshot.md 不含 `$speclink-`、`agent: Explore`、`disallowedTools`、`speclink-analyze`，含 `--agent copilot`；`cargo test -p speclink-core --test it render_golden` 全過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "870748908cc5b73f4bbe9c611c78b2eec47a0632",
+      "touchedFiles": [
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md"
+      ],
+      "recordedAt": "2026-10-08T02:23:12Z"
+    },
+    {
+      "taskId": "tsk_01M4BC103K87BYAZTH5BYWMDPF",
+      "taskDesc": "3.1 先寫失敗測試（init 內建 Agent 工具選擇）：crates/adapters/speclink-cli/src/verbs/init.rs 的單元測試與 crates/adapters/speclink-cli/tests/it/init_tools.rs 新增——`--tools copilot` 只生成 `.github/skills/` 且 stdout 的 `Generated files for:` 行含 `copilot`；`--tools claude,codex,copilot` 依序記錄三個工具並生成三組技能；`Copilot`、`copilot,copilot` 被接受；`github-copilot` 被拒、exit code 非 0、stderr 單行列出 claude、codex、copilot、零寫入；互動終端依 Claude、Codex、Copilot 順序詢問三題，答 y、y、n 選出 claude 與 codex，答 n、n、n 時 stderr 印出 `Pick at least one tool: claude, codex, copilot, or any combination.` 後從 Claude 重問；非互動缺 `--tools` 時 stdout 空、stderr 單行含 `--tools`、claude、codex、copilot；既有以兩題答案餵入的測試改成三題；驗證：`cargo test -p speclink-cli verbs::init` 與 `cargo test -p speclink-cli --test it init_tools` 新測試失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "870748908cc5b73f4bbe9c611c78b2eec47a0632",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/init.rs",
+        "crates/adapters/speclink-cli/tests/it/init_tools.rs"
+      ],
+      "recordedAt": "2026-10-08T02:25:50Z"
+    },
+    {
+      "taskId": "tsk_01M4BC103KXA5DY6A5Z3BBP361",
+      "taskDesc": "4.1 先寫失敗測試（渲染 API）：crates/adapters/speclink-node/__test__/render.spec.ts 新增——`skills.render('apply', { target: 'copilot' })` 與在暫存目錄以 CLI `init --tools copilot` 生成的 `.github/skills/speclink-apply/SKILL.md` 逐字相同，且含 `/speclink-`、不含 `$speclink-`；`skills.render('apply', { target: 'github-copilot' })` 拋出的錯誤訊息含 `github-copilot` 與 claude、codex、copilot、neutral；驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 中未知 target 訊息的測試失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "870748908cc5b73f4bbe9c611c78b2eec47a0632",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/__test__/render.spec.ts"
+      ],
+      "recordedAt": "2026-10-08T02:30:50Z"
+    },
+    {
+      "taskId": "tsk_01M4BC103K8BX4T91PC8F6SMYF",
+      "taskDesc": "4.2 讓 4.1 轉綠（決策「Node SDK target 加入 copilot」）：crates/adapters/speclink-node/src/render.rs 的 target 錯誤訊息改為 `target '<x>' must be 'claude', 'codex', 'copilot', or 'neutral'`、模組註解的 target 列舉加 copilot，crates/adapters/speclink-node/index.d.ts 的 `target` 聯集加 `'copilot'`；驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 全過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "870748908cc5b73f4bbe9c611c78b2eec47a0632",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/src/render.rs"
+      ],
+      "recordedAt": "2026-10-08T02:31:02Z"
+    },
+    {
+      "taskId": "tsk_01M4BC103K3ZJM1EDJFXDCRF9R",
+      "taskDesc": "5.1 先寫失敗測試（未初始化目錄經確認後自動初始化、未啟用資料夾經確認後補齊啟用、設定頁圖形化讀寫兩層設定、checkout 綁定驗證與 marker 寫入、remote marker 資料夾的探測分流）：apps/desktop/src/__tests__ 的 App、workspaceChooser、projectSettingsView 測試新增「初始化確認、啟用確認、checkout 步驟、設定頁 AI 工具卡都出現 copilot 勾選，初始化與啟用預設只勾 claude」；apps/desktop/core/src/settings.rs 新增「加選 copilot 生成 `.github/skills/`、再取消後 `speclink-` 目錄全數移除且 `.github/workflows/ci.yml` 不變」；apps/desktop/core/src/project.rs 新增「`init_project_at` 與 `adopt_project_at` 只選 copilot 時只生成 `.github/skills/`、不生成 CLAUDE.md 與 AGENTS.md」；apps/desktop/src-tauri/src/connections.rs 新增「marker 的 tools 為 `[copilot]` 時 inspect 回報 `[\"copilot\"]`」「無 tools 清單、含 `.github/workflows/` 的 checkout 不預選 copilot」「bind `[claude, copilot]` 生成兩組技能」「空選集錯誤訊息列出 claude、codex、copilot」；驗證：`npm test -w @speclink/desktop` 的新測試失敗，`cargo test -p speclink-desktop-core` 與 `cargo test -p speclink-desktop --lib connections` 的新測試失敗（只依賴 1.2 的 desktop-core 測試若已綠屬預期，記在完成說明）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "870748908cc5b73f4bbe9c611c78b2eec47a0632",
+      "touchedFiles": [
+        "apps/desktop/core/src/project.rs",
+        "apps/desktop/core/src/settings.rs",
+        "apps/desktop/src-tauri/src/connections.rs",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/workspaceChooser.test.tsx"
+      ],
+      "recordedAt": "2026-10-08T02:35:43Z"
+    },
+    {
+      "taskId": "tsk_01M4BC103KMV6CC88QKH1VREG1",
+      "taskDesc": "5.2 讓 5.1 轉綠（決策「desktop 四處勾選共用 BUILTIN_TOOLS 常數」）：新增 apps/desktop/src/builtinTools.ts 匯出 `BUILTIN_TOOLS = [\"claude\", \"codex\", \"copilot\"] as const`，apps/desktop/src/App.tsx 的初始化與啟用對話框、apps/desktop/src/components/WorkspaceChooser.tsx 的 checkout 步驟、apps/desktop/src/views/ProjectSettingsView.tsx 的 AI 工具卡改讀它；apps/desktop/src-tauri/src/connections.rs 的空選集訊息改為「請至少選擇一個內建工具：claude、codex、copilot」並更新 `preselected_tools` 註解，apps/desktop/src/adapter/connections.ts 的 `CheckoutInspection` 註解改列三個工具；驗證：`npm test -w @speclink/desktop`、`cargo test -p speclink-desktop-core`、`cargo test -p speclink-desktop --lib connections` 全過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "870748908cc5b73f4bbe9c611c78b2eec47a0632",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/adapter/connections.ts",
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "apps/desktop/src/views/ProjectSettingsView.tsx",
+        "apps/desktop/src/builtinTools.ts"
+      ],
+      "recordedAt": "2026-10-08T02:38:10Z"
+    },
+    {
+      "taskId": "tsk_01M4BC103KX38V3V040D6VFJRY",
+      "taskDesc": "6.4 文件同步並符合 Getting Started 僅使用已驗證入口（決策「文件同步」）：README.md 與 README.en.md 的功能列、「可用」列與入門段加 Copilot（`/speclink-propose <變更名稱>`）；docs/getting-started.zh-TW.md 與 docs/getting-started.md 的入口表加 Copilot 列、init 產物說明加 `.github/skills/`、「在 Codex：」分支說明 Copilot 寫法與 Claude 相同且沒有 `/speclink-analyze`；docs/configuration.zh-TW.md 與 docs/configuration.md 的內建工具表加 `copilot` → `.github/skills/`、描述子 name 不得為 `claude`、`codex`、`agents`、`copilot` 並寫明舊 copilot 描述子的遷移方式、tools 欄位列三個工具；docs/workflow.zh-TW.md 與 docs/workflow.md 說明 Copilot 與 Claude 同用 `/`、analyze 只有 Claude 有；docs/sdk-node.zh-TW.md 與 docs/sdk-node.md 的 target 值域加 `copilot`；docs/product-status.zh-TW.md 與 docs/product-status.md 的 Agent 技能列加 Copilot；中英兩版結構與事實對等；驗證：`speclink validate add-copilot-tool` 通過，`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "870748908cc5b73f4bbe9c611c78b2eec47a0632",
+      "touchedFiles": [
+        "README.en.md",
+        "README.md",
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md",
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md",
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md"
+      ],
+      "recordedAt": "2026-10-08T02:41:15Z"
+    },
+    {
+      "taskId": "tsk_01M4BC103KD33DCME11NP548VK",
+      "taskDesc": "1.2 讓 1.1 轉綠（決策「內建工具列舉加入 Copilot 並集中為 Tool::ALL」「Copilot 渲染沿用 codex 路徑只換前綴」「footprint 偵測不推斷 copilot」「遺留 marker 剝除只對 claude 與 codex」）：crates/engine/speclink-core/src/workspace/skills.rs 的 `Tool` 加 `Copilot` 變體（name `copilot`、skills_dir `.github/skills`、plan_dir 空字串、前綴 `/speclink-`、`Tool::parse` 只認 `copilot`）與依 claude、codex、copilot 排序的 `Tool::ALL`；crates/engine/speclink-core/src/workspace/init.rs 的 `SyncPlan::resolve` 生成目標與取消勾選清單改走 `Tool::ALL`，內建指令檔對照改成可選值（copilot 無指令檔、剝除迴圈跳過），`parse_tool_names` 的 unknown tool 訊息與 `ToolSelection` 的 unknown tool note 改列 `claude, codex, copilot`，`detect_footprint_tools` 不加 copilot 分支；更新兩個檔案裡「只支援 claude + codex」的註解；驗證：`cargo test -p speclink-core --lib workspace_group::` 全過，1.1 的測試轉綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "870748908cc5b73f4bbe9c611c78b2eec47a0632",
+      "touchedFiles": [
+        "crates/engine/speclink-core/tests/it/skill_verbization.rs"
+      ],
+      "recordedAt": "2026-10-08T03:32:11Z"
+    }
+  ]
+}

@@ -53,11 +53,11 @@ Answer these questions in order. The first "yes" gives your entry:
 
 | Layer | What it does | Example |
 | --- | --- | --- |
-| Skill | Workflow knowledge for the agent: what to read, how to write and check documents, and when to stop and ask you. | Claude `/speclink-propose`, Codex `$speclink-propose` |
+| Skill | Workflow knowledge for the agent: what to read, how to write and check documents, and when to stop and ask you. | Claude and GitHub Copilot `/speclink-propose`, Codex `$speclink-propose` |
 | `speclink` CLI | The command line that does the actual work. Local and remote mode both use it. | `speclink status --change add-csv-export` |
 | Host | Joins the engine, the Store, authentication, revisions, transactions, and events. The CLI, the server, and the Node SDK all go through it. | Built into the CLI, or `speclink-server` |
 
-The skill names below use the Claude syntax. In Codex, change the first `/` to `$`, or enter `/skills` and pick from the list. One exception: Codex has no `analyze` skill. Use the CLI instead.
+The skill names below use the Claude syntax. GitHub Copilot uses the same syntax. In Codex, change the first `/` to `$`, or enter `/skills` and pick from the list. One exception: Codex and GitHub Copilot have no `analyze` skill. Use the CLI instead.
 
 After you upgrade Speclink, run `speclink update` to write the skill files again.
 
@@ -266,7 +266,7 @@ Check the format, the required sections, and the rules of a change or of the spe
 Compare the proposal, design, specs, and tasks, and find four types of problems: coverage, consistency, ambiguity, and gaps.
 
 - **When to use**: After a proposal or an ingest (the skills run it for you). It is not a code test.
-- **Skill**: `/speclink-analyze <change-name>` (Claude only; Codex uses the CLI).
+- **Skill**: `/speclink-analyze <change-name>` (Claude only; Codex and GitHub Copilot use the CLI).
 - **CLI**: `speclink analyze <name> [--json]`
 - **Done**: No CRITICAL. You read each WARNING and SUGGESTION and decide what to do.
 - **Next**: Fix the documents, or `apply`.

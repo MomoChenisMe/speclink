@@ -149,7 +149,7 @@ pub fn upsert_connection(
 }
 
 /// `inspect_checkout` 的零寫入結果：確認過的 checkout 根路徑，以及要在 picker
-/// 中預選的既有 built-in 工具選集（僅 claude／codex，順序穩定）。IPC 序列化為
+/// 中預選的既有 built-in 工具選集（claude／codex／copilot，順序穩定）。IPC 序列化為
 /// camelCase `{ root, tools }`——不攜帶任何 credential 或 Server 資料。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -198,9 +198,9 @@ fn validate_checkout(
     Ok(root.display().to_string())
 }
 
-/// 決定 picker 的預選：`.speclink.yaml` 記錄了 built-in 選集就用它（僅 claude／codex，
+/// 決定 picker 的預選：`.speclink.yaml` 記錄了 built-in 選集就用它（claude／codex／copilot，
 /// 去重、順序穩定）；缺清單、或清單裡沒有任何可解析的內建名（只有描述子／未知名）時，
-/// 只依實際 Claude／Codex footprint 預選，絕不補 Claude fallback。
+/// 只依實際 Claude／Codex footprint 預選（`.github/` 不算 Copilot footprint），絕不補 Claude fallback。
 fn preselected_tools(root: &Path) -> Vec<String> {
     let app = match speclink_core::config::AppConfig::load(&root.join(".speclink.yaml")) {
         Ok(app) => app,
@@ -246,7 +246,7 @@ pub fn bind_checkout(
     let selected =
         speclink_core::init::parse_tool_names(tools).map_err(|e| single_line(&e.to_string()))?;
     if selected.is_empty() {
-        return Err("請至少選擇一個內建工具：claude、codex 或兩者".to_string());
+        return Err("請至少選擇一個內建工具：claude、codex、copilot".to_string());
     }
     let root_str = validate_checkout(root, selected_origin, selected_repo)?;
 
@@ -666,6 +666,62 @@ mod checkout_tests {
     }
 
     #[test]
+    fn inspect_without_a_tools_list_never_preselects_copilot() {
+        // spec Scenario「勾選 Copilot 綁定 checkout」：.github/ 的存在不預選 Copilot。
+        let dir = git_checkout();
+        write_marker(dir.path(), ORIGIN, REPO);
+        write(dir.path(), ".github/workflows/ci.yml", "on: push\n");
+        write(
+            dir.path(),
+            ".github/skills/my-skill/SKILL.md",
+            "---\nname: my-skill\n---\n",
+        );
+
+        assert!(inspect(dir.path())
+            .expect("github checkout")
+            .tools
+            .is_empty());
+    }
+
+    #[test]
+    fn inspect_reports_a_copilot_only_marker() {
+        // spec Scenario「只選 Copilot 的 checkout 直達 remote tab」的判定面：
+        // [copilot] 是有效的 built-in 選集。
+        let dir = git_checkout();
+        write_full_marker(dir.path(), &["copilot"]);
+
+        assert_eq!(
+            inspect(dir.path()).expect("copilot marker").tools,
+            vec!["copilot"]
+        );
+    }
+
+    #[test]
+    fn bind_claude_and_copilot_generates_both_skill_sets() {
+        let dir = git_checkout();
+        write(dir.path(), ".github/workflows/ci.yml", "on: push\n");
+
+        bind(dir.path(), &["claude", "copilot"]).expect("new binding");
+
+        assert!(exists(
+            dir.path(),
+            ".claude/skills/speclink-propose/SKILL.md"
+        ));
+        assert!(exists(
+            dir.path(),
+            ".github/skills/speclink-propose/SKILL.md"
+        ));
+        for absent in [".github/copilot-instructions.md", "AGENTS.md", "CLAUDE.md"] {
+            assert!(!exists(dir.path(), absent), "{absent} 不得生成");
+        }
+        assert_eq!(read(dir.path(), ".github/workflows/ci.yml"), "on: push\n");
+        assert_eq!(
+            inspect(dir.path()).expect("re-inspect").tools,
+            vec!["claude", "copilot"]
+        );
+    }
+
+    #[test]
     fn inspect_with_a_descriptor_only_tools_list_falls_back_to_footprints() {
         // 清單存在但沒有任何可解析的內建名：與缺清單同樣只依實際 footprint 預選。
         let dir = git_checkout();
@@ -697,7 +753,9 @@ mod checkout_tests {
 
         let err = bind(dir.path(), &[]).expect_err("空選集必須被拒");
 
-        assert!(err.contains("claude") && err.contains("codex"), "{err}");
+        for tool in ["claude", "codex", "copilot"] {
+            assert!(err.contains(tool), "must list {tool}: {err}");
+        }
         assert_eq!(snapshot(dir.path()), before, "拒絕時磁碟不變");
     }
 

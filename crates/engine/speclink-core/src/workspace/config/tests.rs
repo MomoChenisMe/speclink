@@ -426,6 +426,72 @@ fn descriptor_validation_rejects_builtin_name_conflict() {
 }
 
 #[test]
+fn descriptor_validation_reserves_the_copilot_name() {
+    // Scenario「名為 copilot 或指向 Copilot 目錄的既有描述子升級後被拒」的名稱分支：
+    // copilot 成了內建工具，訊息須列出三個內建名。
+    let err = descriptor("copilot", ".copilot-skills", "WAD.md")
+        .validate()
+        .unwrap_err();
+    assert!(err.contains("name"), "must name the field: {err}");
+    for builtin in ["claude", "codex", "copilot"] {
+        assert!(err.contains(builtin), "must list {builtin}: {err}");
+    }
+    assert!(!err.contains('\n'), "single line: {err:?}");
+}
+
+#[test]
+fn descriptor_validation_rejects_the_copilot_skills_dir() {
+    // Example 表的 .github/skills 列與其等價拼法：比對走路徑正規化。
+    for bad in [
+        ".github/skills",
+        "./.github/skills",
+        ".github/skills/.",
+        ".github//skills",
+        ".wad/../.github/skills",
+    ] {
+        let err = descriptor("my-copilot", bad, "WAD.md")
+            .validate()
+            .unwrap_err();
+        assert!(
+            err.contains("skills_dir"),
+            "must name the field for {bad:?}: {err}"
+        );
+        assert!(
+            err.contains("copilot"),
+            "must name the built-in it belongs to for {bad:?}: {err}"
+        );
+        assert!(!err.contains('\n'), "single line: {err:?}");
+    }
+}
+
+#[test]
+fn descriptor_validation_rejects_built_in_skills_dirs_in_any_case() {
+    // macOS／Windows 的檔案系統不分大小寫：換大小寫的拼法仍是同一個目錄。
+    for (bad, builtin) in [
+        (".GitHub/skills", "copilot"),
+        (".github/Skills", "copilot"),
+        (".Claude/skills", "claude"),
+        (".AGENTS/SKILLS", "codex"),
+    ] {
+        let err = descriptor("wad-harness", bad, "WAD.md")
+            .validate()
+            .unwrap_err();
+        assert!(
+            err.contains(builtin),
+            "must name the built-in it belongs to for {bad:?}: {err}"
+        );
+    }
+}
+
+#[test]
+fn descriptor_validation_accepts_a_directory_next_to_the_copilot_one() {
+    for ok in [".github/skills-extra", ".github/agents"] {
+        let v = descriptor("wad-harness", ok, "WAD.md").validate();
+        assert!(v.is_ok(), "{ok} 應被接受：{v:?}");
+    }
+}
+
+#[test]
 fn descriptor_validation_rejects_non_kebab_case_names() {
     for bad in ["Wad-Harness", "wad_harness", "-wad", "wad-", "w", &"x".repeat(51)] {
         let err = descriptor(bad, ".wad/skills", "WAD.md").validate().unwrap_err();
@@ -485,7 +551,7 @@ fn descriptor_validation_accepts_a_directory_next_to_a_builtin_one() {
 #[test]
 fn descriptor_validation_rejects_a_builtin_skills_dir() {
     // 描述子指到內建工具的 skills 目錄：兩個 target 會對同一份 SKILL.md 各比一次
-    // 期望內容（探測永遠回報過期），且生成時後手的 for_codex 子集會把前手剛寫的
+    // 期望內容（探測永遠回報過期），且生成時後手的 非 Claude 子集會把前手剛寫的
     // claude 專屬技能當成孤兒刪掉。名稱衝突已擋，目錄衝突同理。
     // 等價拼法與字面拼法一樣被擋：比對走路徑正規化，不是字串相等。
     for bad in [

@@ -128,10 +128,12 @@ fn assert_rejected_with_zero_writes(env: &TempEnv, out: &Output, before: &[(Stri
 #[test]
 fn fs_init_explicit_tools_generate_exactly_the_selection() {
     // 三種顯式選法逐一：只有被選取的工具留下 Skills；指令檔一律不生成。
-    let cases: [(&str, &[&str]); 3] = [
+    let cases: [(&str, &[&str]); 5] = [
         ("claude", &["claude"]),
         ("codex", &["codex"]),
         ("claude,codex", &["claude", "codex"]),
+        ("copilot", &["copilot"]),
+        ("claude,codex,copilot", &["claude", "codex", "copilot"]),
     ];
     for (spec, want) in cases {
         let env = TempEnv::new(&format!("fs-explicit-{}", spec.replace(',', "-")));
@@ -157,6 +159,27 @@ fn fs_init_explicit_tools_generate_exactly_the_selection() {
             env.exists(".agents/skills/speclink-propose/SKILL.md"),
             codex,
             "--tools {spec}: Codex skills"
+        );
+        // spec Scenario「filesystem init 顯式選擇 Copilot」：技能在 .github/skills/，
+        // 不寫 Copilot 的指令檔。
+        let copilot = want.contains(&"copilot");
+        assert_eq!(
+            env.exists(".github/skills/speclink-propose/SKILL.md"),
+            copilot,
+            "--tools {spec}: Copilot skills"
+        );
+        assert!(
+            !env.exists(".github/copilot-instructions.md"),
+            "--tools {spec}: copilot-instructions.md 不得生成"
+        );
+        let generated = stdout
+            .lines()
+            .find(|l| l.starts_with("Generated files for:"))
+            .unwrap();
+        assert_eq!(
+            generated.contains("copilot"),
+            copilot,
+            "--tools {spec}: {generated}"
         );
         assert!(env.exists("openspec/specs"), "--tools {spec}: filesystem spec tree");
     }
@@ -241,7 +264,7 @@ fn fs_init_without_tools_on_a_pipe_fails_with_zero_writes() {
 
     assert_rejected_with_zero_writes(&env, &out, &before);
     let stderr = stderr_of(&out);
-    for token in ["--tools", "claude", "codex"] {
+    for token in ["--tools", "claude", "codex", "copilot"] {
         assert!(stderr.contains(token), "stderr must mention {token}: {stderr}");
     }
 }
@@ -256,7 +279,7 @@ fn remote_init_without_tools_on_a_pipe_fails_with_zero_writes() {
 
     assert_rejected_with_zero_writes(&env, &out, &before);
     let stderr = stderr_of(&out);
-    for token in ["--tools", "claude", "codex"] {
+    for token in ["--tools", "claude", "codex", "copilot"] {
         assert!(stderr.contains(token), "stderr must mention {token}: {stderr}");
     }
 }
@@ -286,6 +309,24 @@ fn explicit_unknown_tool_is_rejected_with_zero_writes() {
         "stderr must name the offender: {}",
         stderr_of(&out)
     );
+}
+
+#[test]
+fn explicit_github_copilot_is_rejected_listing_the_supported_tools() {
+    let env = TempEnv::new("unknown-github-copilot");
+    let before = env.snapshot();
+
+    let out = env.run(&["init", "--tools", "github-copilot"]);
+
+    assert_rejected_with_zero_writes(&env, &out, &before);
+    let stderr = stderr_of(&out);
+    // 輸入本身就含 copilot：要比對完整的支援清單，單看 token 測不到漏列。
+    for token in ["github-copilot", "supported: claude, codex, copilot"] {
+        assert!(
+            stderr.contains(token),
+            "stderr must mention {token}: {stderr}"
+        );
+    }
 }
 
 // --- --no-color（spec Scenario「no-color 不改變工具選擇語意」） ---
@@ -342,6 +383,7 @@ fn update_rejects_a_descriptor_skills_dir_at_the_root_or_a_builtin_directory() {
     for (tag, bad, needle) in [
         ("root", "/", "project root"),
         ("builtin", ".claude/skills", "built-in"),
+        ("copilot", ".github/skills", "built-in copilot"),
     ] {
         let env = TempEnv::new(&format!("descriptor-bad-dir-{tag}"));
         assert!(env.run(&["init", "--tools", "claude"]).status.success());

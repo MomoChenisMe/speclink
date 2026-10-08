@@ -104,6 +104,7 @@ describe("ProjectSettingsView 載入", () => {
     switchToTab(".speclink.yaml");
     expect(screen.getByLabelText("claude").getAttribute("aria-checked")).toBe("true");
     expect(screen.getByLabelText("codex").getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByLabelText("copilot").getAttribute("aria-checked")).toBe("false");
   });
 
   it("自訂工具描述子呈現為不可編輯項", async () => {
@@ -154,6 +155,16 @@ describe("ProjectSettingsView 寫入", () => {
     fireEvent.click(await screen.findByLabelText("codex"));
     fireEvent.click(screen.getByTestId("save-app"));
     await waitFor(() => expect(ws.writeAppTools).toHaveBeenCalledWith(["claude", "codex"]));
+  });
+
+  it("tools 加選 copilot 後儲存 → writeAppTools 收到完整選集", async () => {
+    // spec「設定頁圖形化讀寫兩層設定」：AI 工具卡多選含 copilot。
+    const ws = renderView(snapshot());
+    await screen.findByRole("tab", { name: ".speclink.yaml" });
+    switchToTab(".speclink.yaml");
+    fireEvent.click(await screen.findByLabelText("copilot"));
+    fireEvent.click(screen.getByTestId("save-app"));
+    await waitFor(() => expect(ws.writeAppTools).toHaveBeenCalledWith(["claude", "copilot"]));
   });
 
   it("audit 切開後儲存 → writeWorkflowConfig 收到完整目標狀態（含讀入現值）", async () => {

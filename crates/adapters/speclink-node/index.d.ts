@@ -222,7 +222,7 @@ export function createEngine(options: CreateEngineOptions): Engine
 
 /** The render matrix: target × invocation. */
 export interface RenderOptions {
-  target: 'claude' | 'codex' | 'neutral'
+  target: 'claude' | 'codex' | 'copilot' | 'neutral'
   /** How the harness executes speclink verbs. Default: `'cli'`. */
   invocation?: 'cli' | 'tool-call'
   /** Spec directory name substituted into rendered content. Default: `"openspec"`. */

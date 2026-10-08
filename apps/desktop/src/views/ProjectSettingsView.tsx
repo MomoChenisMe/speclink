@@ -40,6 +40,7 @@ import {
 
 import type { SchemaEntry, SettingsSnapshot, WorkflowFields } from "../adapter/workspace";
 import type { WorkspaceSettingsProvider } from "../session";
+import { BUILTIN_TOOLS } from "../builtinTools";
 
 /** locale／spec_locale 的「未設定」在 config 裡是空字串，Radix Select 的 item 不接受空字串。 */
 const LOCALE_UNSET = "__unset__";
@@ -1266,7 +1267,7 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
             <CardContent className="gap-2.5">
               <div className="flex flex-col gap-1.5">
                 <div className="flex gap-4">
-                  {["claude", "codex"].map((tool) => (
+                  {BUILTIN_TOOLS.map((tool) => (
                     <label key={tool} htmlFor={`tool-${tool}`} className="flex items-center gap-1.5 text-sm">
                       <Checkbox
                         id={`tool-${tool}`}

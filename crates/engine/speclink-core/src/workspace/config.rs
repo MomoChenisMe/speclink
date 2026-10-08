@@ -88,7 +88,7 @@ where
     Ok(Some(v.unwrap_or_default()))
 }
 
-/// One entry of the `tools:` list — a built-in tool name string (claude, codex) or a
+/// One entry of the `tools:` list — a built-in tool name string (claude, codex, copilot) or a
 /// custom harness descriptor object.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
@@ -151,9 +151,10 @@ impl ToolDescriptor {
         }
         // "agents" is Tool::parse's alias for codex, so it is reserved alongside the
         // canonical built-in names.
-        if ["claude", "codex", "agents"].contains(&name) {
+        if crate::skills::Tool::parse(name).is_some() {
             return Err(format!(
-                "tool descriptor: name '{name}' conflicts with a built-in tool name (claude, codex)"
+                "tool descriptor: name '{name}' conflicts with a built-in tool name ({})",
+                crate::skills::Tool::supported_names()
             ));
         }
         // skills_dir 在這個邊界一次正規化：削去結尾分隔符，讓生成、足跡記錄與過期
@@ -172,10 +173,12 @@ impl ToolDescriptor {
             ));
         }
         // 內建工具的 skills 目錄同樣被保留：兩個 target 指向同一個目錄時，探測會對同
-        // 一份 SKILL.md 比兩種期望內容而永遠回報過期，生成時後手的 for_codex 子集也
+        // 一份 SKILL.md 比兩種期望內容而永遠回報過期，生成時後手的非 Claude 子集也
         // 會把前手剛寫的 claude 專屬技能當成孤兒刪掉。名稱衝突已擋，目錄衝突同理。
-        for builtin in [crate::skills::Tool::Claude, crate::skills::Tool::Codex] {
-            if normalized == Path::new(builtin.skills_dir()) {
+        // 比對不分大小寫：macOS／Windows 上 `.GitHub/skills` 就是 `.github/skills`。
+        let folded = normalized.to_string_lossy().to_lowercase();
+        for builtin in crate::skills::Tool::ALL {
+            if Path::new(&folded) == Path::new(builtin.skills_dir()) {
                 return Err(format!(
                     "tool descriptor '{name}': skills_dir '{raw}' is the built-in {} skills directory (choose another directory)",
                     builtin.name()

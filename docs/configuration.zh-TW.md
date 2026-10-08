@@ -113,7 +113,10 @@ cat CONTEXT.md | speclink workflow-config context --stdin
 | --- | --- |
 | `claude` | `.claude/skills/` |
 | `codex`（`agents` 是它的別名） | `.agents/skills/` |
+| `copilot` | `.github/skills/` |
 | 自訂工具描述子 | 描述子的 `skills_dir` |
+
+GitHub Copilot 也會讀 `.claude/skills/` 與 `.agents/skills/`，但它先讀 `.github/skills/`。所以選了 `copilot`，Copilot 用的就是寫給它的那一份。
 
 改完 `tools` 後執行 `speclink update`。新加的工具會產生技能檔；從清單拿掉的工具，它的 `speclink-*` 技能目錄會被刪除，因此變空的目錄也一併移除。桌面 app 的設定頁勾選內建工具時，會自動做同樣的同步。
 
@@ -129,12 +132,14 @@ tools:
 
 | 欄位 | 必填 | 規則 |
 | --- | --- | --- |
-| `name` | 是 | kebab-case，2–50 個字元，只能用 `a-z`、`0-9`、`-`。不能是 `claude`、`codex`、`agents` |
-| `skills_dir` | 是 | 專案根目錄下的相對路徑。不能跑出專案、不能是專案根目錄本身，也不能是 `.claude/skills` 或 `.agents/skills` |
+| `name` | 是 | kebab-case，2–50 個字元，只能用 `a-z`、`0-9`、`-`。不能是 `claude`、`codex`、`agents`、`copilot` |
+| `skills_dir` | 是 | 專案根目錄下的相對路徑。不能跑出專案、不能是專案根目錄本身，也不能是 `.claude/skills`、`.agents/skills` 或 `.github/skills`（不分大小寫） |
 | `invocation` | 否 | `cli`（預設）：技能寫「執行 `speclink <動詞>`」。`tool-call`：技能寫「呼叫 speclink 工具，參數是 argv 陣列」 |
 | `instructions_file` | 否，已棄用 | 不再產生任何內容，只用來讓 `speclink update` 清掉舊版留下的 `SPECLINK` 區塊。留著會在 stderr 印一行棄用提示 |
 
-欄位不合法時，指令印出一行指出欄位的錯誤，並以非零結束。描述子產生的技能沒有 `/speclink-` 斜線指令，也不提 plan mode；內建的 claude 與 codex 不受影響。
+欄位不合法時，指令印出一行指出欄位的錯誤，並以非零結束。描述子產生的技能沒有 `/speclink-` 斜線指令，也不提 plan mode；內建的 claude、codex、copilot 不受影響。
+
+舊版允許名為 `copilot`、或 `skills_dir` 是 `.github/skills` 的描述子。升級後 `speclink update` 會拒絕它並以非零結束。刪掉這個描述子，改在 `tools` 寫 `copilot` 即可。
 
 ## <a id="remote"></a>遠端模式
 
@@ -169,7 +174,7 @@ tools:
 | 鍵 | 值 | 預設 | 用途 |
 | --- | --- | --- | --- |
 | `spec_dir` | 相對路徑 | `openspec` | 規格目錄的位置，相對於專案根目錄 |
-| `tools` | 清單 | 無 | 要產生技能檔的 AI 工具：`claude`、`codex` 或自訂工具描述子 |
+| `tools` | 清單 | 無 | 要產生技能檔的 AI 工具：`claude`、`codex`、`copilot` 或自訂工具描述子 |
 | `remote.url` | 網址 | 無 | 遠端專案的連線網址（project-scoped URL） |
 | `remote.repo` | 名稱 | 無 | 這個 repo 在遠端專案裡的註冊名稱；只有一個 repo 的專案可以省略 |
 

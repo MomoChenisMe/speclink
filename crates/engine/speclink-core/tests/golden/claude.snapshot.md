@@ -9,7 +9,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.42.0"
+  version: "v1.43.0"
   generatedBy: "Speclink"
 ---
 
@@ -97,7 +97,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.42.0"
+  version: "v1.43.0"
   generatedBy: "Speclink"
 ---
 
@@ -446,7 +446,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.42.0"
+  version: "v1.43.0"
   generatedBy: "Speclink"
 ---
 
@@ -788,7 +788,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.42.0"
+  version: "v1.43.0"
   generatedBy: "Speclink"
 ---
 
@@ -1024,7 +1024,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.42.0"
+  version: "v1.43.0"
   generatedBy: "Speclink"
 ---
 
@@ -1147,7 +1147,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.42.0"
+  version: "v1.43.0"
   generatedBy: "Speclink"
 ---
 
@@ -1459,7 +1459,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.42.0"
+  version: "v1.43.0"
   generatedBy: "Speclink"
 ---
 
@@ -1605,7 +1605,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.42.0"
+  version: "v1.43.0"
   generatedBy: "Speclink"
 ---
 
@@ -2105,7 +2105,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.42.0"
+  version: "v1.43.0"
   generatedBy: "Speclink"
 ---
 
@@ -2243,7 +2243,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.42.0"
+  version: "v1.43.0"
   generatedBy: "Speclink"
 ---
 
@@ -2433,7 +2433,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.42.0"
+  version: "v1.43.0"
   generatedBy: "Speclink"
 ---
 
@@ -2743,7 +2743,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.42.0"
+  version: "v1.43.0"
   generatedBy: "Speclink"
 ---
 
@@ -2954,7 +2954,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.42.0"
+  version: "v1.43.0"
   generatedBy: "Speclink"
 ---
 
@@ -3433,7 +3433,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.42.0"
+  version: "v1.43.0"
   generatedBy: "Speclink"
 ---
 
@@ -3528,7 +3528,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.42.0"
+  version: "v1.43.0"
   generatedBy: "Speclink"
 ---
 
@@ -3727,7 +3727,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.42.0"
+  version: "v1.43.0"
   generatedBy: "Speclink"
 ---
 
@@ -3811,7 +3811,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.42.0"
+  version: "v1.43.0"
   generatedBy: "Speclink"
 ---
 
