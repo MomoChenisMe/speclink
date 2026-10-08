@@ -9,6 +9,9 @@
 | 啟用確認 | store `pendingAdopt` | 尚未送出的確認 |
 | 封存確認與工單三選項框 | store `pendingArchive`＋`pendingArchiveSettled`（App.tsx 由此派生 `pendingArchiveStation`） | 尚未送出的確認 |
 | 封存討論確認 | store `pendingArchiveDiscussion` | 尚未送出的確認 |
+| 刪除確認 | store `pendingDelete` | 尚未送出的確認 |
+| 退回提案中確認 | store `pendingRevert` | 尚未送出的確認 |
+| 退回被擋說明 | store `revertBlocked` | 純檢視 |
 | 更新日誌 | `apps/desktop/src/App.tsx` 本地 state `releaseNotes` | 純檢視 |
 | 遷移對話框 | store `migrationRoot` | 已開始的寫入流程 |
 | 遠端衝突對話框 | store `pendingRemoteConflict` | 等待裁決的衝突寫入 |
@@ -38,11 +41,11 @@
 
 ### D2 可取消與不可取消的判準
 
-判準是「使用者按取消會不會丟掉已提交的工作」：尚未送出的確認或選擇（新增 Workspace、初始化、啟用、封存、封存討論、更新日誌）可取消，歸零等同使用者按「取消」，與 `cancelInit`／`cancelAdopt`／`cancelArchive`／`cancelArchiveDiscussion`／`closeWorkspaceChooser` 的寫入相同；已開始的寫入流程（遷移）與等待裁決的衝突寫入（遠端衝突）不可取消。`pendingArchiveSettled` 隨 `pendingArchive` 一起還原為初始值，避免下一次封存入口沿用上一輪的站別處置。
+判準是「使用者按取消會不會丟掉已提交的工作」：尚未送出的確認、選擇或純說明（新增 Workspace、初始化、啟用、封存、封存討論、刪除、退回、退回被擋說明、更新日誌）可取消，歸零等同使用者按「取消」或「關閉」，與 `cancelInit`／`cancelAdopt`／`cancelArchive`／`cancelArchiveDiscussion`／`cancelDelete`／`cancelRevert`／`dismissRevertBlocked`／`closeWorkspaceChooser` 的寫入相同；已開始的寫入流程（遷移）與等待裁決的衝突寫入（遠端衝突）不可取消。`pendingArchiveSettled` 隨 `pendingArchive` 一起還原為初始值，避免下一次封存入口沿用上一輪的站別處置。刪除、退回與退回被擋說明三個浮層在 apply 期盤點時補入：刪除與退回確認從變更詳情抽屜內開啟，不收的話換抽屜後舊 change 的確認框會疊在新抽屜上。已送出的處置不在「可取消」之列：三選項框按下「放棄」後 CLI 刪工單途中被收掉時，`settleStation` 照按下當下的守門快照走完（沒有下一站就照常封存；還有下一站就停住，等同在下一站按取消），守門狀態只在封存目標仍是同一個 change 時回寫——工單刪了不可回復，封存不得默默不做（quality 輪 R1 補入）。
 
 ### D3 更新日誌對話框跟隨抽屜狀態關閉
 
-`releaseNotes` 留在 App.tsx。App.tsx 以一個 effect 觀察 `detailChange`／`detailDiscussion` 自 null 變為非 null 的瞬間，將 `releaseNotes` 設為 null。開啟動作仍是單一真相；更新日誌是跟著狀態反應，不是呼叫端先關。替代方案「搬進 store」違反既有 spec；「系統匣特判」違反 D1。
+`releaseNotes` 留在 App.tsx。App.tsx 以一個 effect 觀察開著的抽屜是哪一個（以 `change:<name>`／`discussion:<slug>` 為鍵），抽屜開啟或換開另一個時將 `releaseNotes` 設為 null。以名稱為鍵是因為重載會換掉同一個 change 的物件，那不算換開；換開也要收，是因為 whatsNew 非同步彈出時可能已經有抽屜開著（quality 輪 R3 補入）。開啟動作仍是單一真相；更新日誌是跟著狀態反應，不是呼叫端先關。替代方案「搬進 store」違反既有 spec；「系統匣特判」違反 D1。
 
 ### D4 不可取消浮層開啟中，開啟動作為 no-op
 
@@ -56,8 +59,8 @@ store 內加一個回傳部分狀態物件的純函式（命名依既有 snake�
 
 **Behavior**
 
-- 可取消浮層任一開啟中，呼叫 `openDetail(name)`（name 存在於 `changes`）或 `openDiscussion(slug)`（slug 存在於 active 或 archived 討論）：同一次 set 內設定自身抽屜欄位、`boardView` 切回 `"board"`、清除其他三個抽屜欄位與 `drawerVerb`，並把 `workspaceChooser`、`pendingInit`、`pendingAdopt`、`pendingArchive`、`pendingArchiveDiscussion` 設為 null、`pendingArchiveSettled` 設回 `{ review: false, verify: false }`。
-- `releaseNotes` 非 null 且 `detailChange` 或 `detailDiscussion` 自 null 變為非 null：更新日誌對話框關閉；whatsNew 模式下不寫「已看過」記錄（與使用者按關閉不同，關閉鈕才記錄；下次啟動照舊彈出）。
+- 可取消浮層任一開啟中，呼叫 `openDetail(name)`（name 存在於 `changes`）或 `openDiscussion(slug)`（slug 存在於 active 或 archived 討論）：同一次 set 內設定自身抽屜欄位、`boardView` 切回 `"board"`、清除其他三個抽屜欄位與 `drawerVerb`，並把 `workspaceChooser`、`pendingInit`、`pendingAdopt`、`pendingArchive`、`pendingArchiveDiscussion`、`pendingDelete`、`pendingRevert`、`revertBlocked` 設為 null、`pendingArchiveSettled` 設回 `{ review: false, verify: false }`。
+- `releaseNotes` 非 null 且變更詳情或討論抽屜開啟、或換開另一個 change／討論：更新日誌對話框關閉；whatsNew 模式下不寫「已看過」記錄（與使用者按關閉不同，關閉鈕才記錄；下次啟動照舊彈出）。
 - `migrationRoot` 或 `pendingRemoteConflict` 非 null：`openDetail`／`openDiscussion` 不改任何狀態（含不切 `boardView`）。
 - `openSpec`／`openArchived`、`closeDetail`／`closeDiscussion` 行為不變。
 
@@ -73,7 +76,7 @@ store 內加一個回傳部分狀態物件的純函式（命名依既有 snake�
 
 **Acceptance criteria**
 
-- `apps/desktop/src/__tests__/store.test.ts` 新增：（a）五種可取消浮層各開一個再 `openDetail`／`openDiscussion`，斷言浮層欄位歸零、抽屜開啟、`boardView` 為 board；（b）`migrationRoot` 與 `pendingRemoteConflict` 各非 null 時呼叫兩個動作，斷言整個 state 物件淺比較不變。
+- `apps/desktop/src/__tests__/store.test.ts` 新增：（a）八種可取消浮層（store 內）各開一個再 `openDetail`／`openDiscussion`，斷言浮層欄位歸零、抽屜開啟、`boardView` 為 board；（b）`migrationRoot` 與 `pendingRemoteConflict` 各非 null 時呼叫兩個動作，斷言整個 state 物件淺比較不變。
 - `apps/desktop/src/__tests__/` 的 App 層測試新增：更新日誌開啟→store `openDetail`→對話框不可見。
 - 既有「detail 抽屜互斥」四組轉移測試不變且通過。
 - 手動：面板開「新增 Workspace」→系統匣點「開啟此變更」→只剩抽屜。

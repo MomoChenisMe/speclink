@@ -8,7 +8,7 @@ import type {
   StatusReport,
 } from "@speclink/ui";
 
-import { createAppStore, openTicketStation } from "../store";
+import { createAppStore, openTicketStation, type AppState } from "../store";
 import type { ConnectionsAdapter } from "../adapter/connections";
 import type { WorkspaceAdapter } from "../adapter/workspace";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
@@ -67,6 +67,19 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
     getManualPage: vi.fn().mockResolvedValue(null),
     ...over,
   };
+}
+
+/** 帶一則 active 討論 topic-a 的資料源（討論抽屜相關測試共用）。 */
+function withTopicA(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSource {
+  return fakeDataSource({
+    listDiscussions: vi.fn().mockResolvedValue({
+      active: [
+        { slug: "topic-a", topic: "t", status: "open", rounds: 1, created: "2026-07-17", promotedTo: [] },
+      ],
+      archived: [],
+    }),
+    ...over,
+  });
 }
 
 /** 假 session（workspace-session 決策 6）：資料載入一律經活躍 session 的 dataSource。 */
@@ -921,6 +934,46 @@ describe("app store (Zustand)", () => {
     expect(ds.runVerb).toHaveBeenCalledWith("archive", "desktop-shell-and-browser");
   });
 
+  it("放棄工單途中開啟抽屜：已送出的處置照常走完封存，不遺失前一站的處置", async () => {
+    // 規格「detail 抽屜互斥」收掉的是未送出的確認；工單已刪、不可回復，封存不得默默不做。
+    const verifyDiscard = deferred<void>();
+    const ds = fakeDataSource({
+      discardReview: vi.fn().mockResolvedValue(undefined),
+      discardVerify: vi.fn().mockReturnValue(verifyDiscard.promise),
+      listChanges: vi.fn().mockResolvedValue(changeList([BOTH_TICKETS_CHANGE])),
+    });
+    const store = storeWith(ds);
+    await store.getState().refresh();
+    store.getState().requestArchive("desktop-shell-and-browser");
+    await store.getState().confirmArchiveDiscardTicket("review");
+    const settling = store.getState().confirmArchiveDiscardTicket("verify");
+
+    store.getState().openDetail("desktop-shell-and-browser");
+    verifyDiscard.resolve();
+    await settling;
+
+    expect(ds.runVerb).toHaveBeenCalledWith("archive", "desktop-shell-and-browser");
+  });
+
+  it("放棄工單途中封存目標換成別的 change：不改寫新目標的守門狀態", async () => {
+    const reviewDiscard = deferred<void>();
+    const ds = fakeDataSource({ discardReview: vi.fn().mockReturnValue(reviewDiscard.promise) });
+    const store = storeWith(ds);
+    store.getState().requestArchive("desktop-shell-and-browser");
+    const settling = store.getState().confirmArchiveDiscardTicket("review");
+
+    store.getState().requestArchive("other-change");
+    reviewDiscard.resolve();
+    await settling;
+
+    expect(ds.runVerb).toHaveBeenCalledWith("archive", "desktop-shell-and-browser");
+    expect(store.getState()).toMatchObject({
+      pendingArchive: "other-change",
+      pendingArchiveSettled: { review: false, verify: false },
+      pendingArchiveCarry: { review: false, verify: false },
+    });
+  });
+
   it("openTicketStation 的順序固定：審查站在前、驗證站在後", () => {
     const both = [
       {
@@ -1068,14 +1121,7 @@ describe("app store (Zustand)", () => {
 
   it("detail 抽屜互斥：任一 open* 動作清除其他三個 detail 欄位（後開者取代先開者）", async () => {
     // 規格「detail 抽屜互斥」Example 表：討論→變更詳情→規格→封存→討論。
-    const ds = fakeDataSource({
-      listDiscussions: vi.fn().mockResolvedValue({
-        active: [
-          { slug: "topic-a", topic: "t", status: "open", rounds: 1, created: "2026-07-17", promotedTo: [] },
-        ],
-        archived: [],
-      }),
-    });
+    const ds = withTopicA();
     const store = storeWith(ds);
     await store.getState().refresh();
 
@@ -1121,14 +1167,7 @@ describe("app store (Zustand)", () => {
   });
 
   it("openDiscussion 於規格頁把底層頁面切回看板", async () => {
-    const ds = fakeDataSource({
-      listDiscussions: vi.fn().mockResolvedValue({
-        active: [
-          { slug: "topic-a", topic: "t", status: "open", rounds: 1, created: "2026-07-17", promotedTo: [] },
-        ],
-        archived: [],
-      }),
-    });
+    const ds = withTopicA();
     const store = storeWith(ds);
     await store.getState().refresh();
     store.getState().setBoardView("specs");
@@ -1152,6 +1191,88 @@ describe("app store (Zustand)", () => {
     expect(store.getState().boardView).toBe("archived");
   });
 
+  // 規格「detail 抽屜互斥」：變更詳情與討論抽屜的開啟動作同時收掉可取消浮層，
+  // 語意等同按「取消」——浮層欄位歸零，封存守門的站別處置一併還原。
+  const OPENERS: [string, (s: AppState) => void, (s: AppState) => boolean][] = [
+    [
+      "openDetail",
+      (s) => s.openDetail("desktop-shell-and-browser"),
+      (s) => s.detailChange?.name === "desktop-shell-and-browser",
+    ],
+    ["openDiscussion", (s) => s.openDiscussion("topic-a"), (s) => s.detailDiscussion?.slug === "topic-a"],
+  ];
+  describe.each(OPENERS)("open 動作清除可取消浮層：%s", (_name, open, drawerOpen) => {
+    it.each<[string, Partial<AppState>]>([
+      ["新增 Workspace", { workspaceChooser: {} }],
+      ["初始化確認", { pendingInit: "/tmp/new-project" }],
+      ["啟用確認", { pendingAdopt: "/tmp/old-project" }],
+      ["封存確認", { pendingArchive: "desktop-shell-and-browser" }],
+      [
+        "工單三選項框（已處置一站並選帶走）",
+        {
+          pendingArchive: "desktop-shell-and-browser",
+          pendingArchiveSettled: { review: true, verify: false },
+          pendingArchiveCarry: { review: true, verify: false },
+        },
+      ],
+      ["封存討論確認", { pendingArchiveDiscussion: "topic-a" }],
+      ["刪除確認", { pendingDelete: "desktop-shell-and-browser" }],
+      ["退回提案中確認", { pendingRevert: "desktop-shell-and-browser" }],
+      [
+        "退回被擋說明",
+        { revertBlocked: { change: "desktop-shell-and-browser", checkedTasks: 2, touchedFiles: ["a.rs"] } },
+      ],
+    ])("%s", async (_overlay, overlay) => {
+      const ds = withTopicA({ discardReview: vi.fn(), discardVerify: vi.fn() });
+      const store = storeWith(ds);
+      await store.getState().refresh();
+      store.getState().setBoardView("specs");
+      store.setState(overlay);
+      const activeKey = store.getState().activeKey;
+
+      open(store.getState());
+
+      const s = store.getState();
+      expect(drawerOpen(s)).toBe(true);
+      expect(s).toMatchObject({
+        boardView: "board",
+        activeKey,
+        workspaceChooser: null,
+        pendingInit: null,
+        pendingAdopt: null,
+        pendingArchive: null,
+        pendingArchiveSettled: { review: false, verify: false },
+        pendingArchiveCarry: { review: false, verify: false },
+        pendingArchiveDiscussion: null,
+        pendingDelete: null,
+        pendingRevert: null,
+        revertBlocked: null,
+      });
+      // 收掉等同按取消：沒有任何未確認的動作被送出（無封存、無刪除、工單維持未結）。
+      for (const write of [ds.runVerb, ds.deleteChange, ds.archiveDiscussion, ds.discardReview, ds.discardVerify]) {
+        expect(write).not.toHaveBeenCalled();
+      }
+    });
+  });
+
+  // 遷移與遠端衝突不可取消：開啟動作靜默 no-op，連 set 都不呼叫（state 參考不變）。
+  describe.each(OPENERS)("不可取消浮層開啟中 open 動作不改狀態：%s", (_name, open) => {
+    it.each<[string, Partial<AppState>]>([
+      ["遷移對話框", { migrationRoot: "/tmp/migrating" }],
+      ["遠端衝突對話框", { pendingRemoteConflict: { path: "/tmp/x", url: "https://example.test", repo: null } }],
+    ])("%s", async (_overlay, overlay) => {
+      const store = storeWith(withTopicA());
+      await store.getState().refresh();
+      store.getState().setBoardView("specs");
+      store.setState(overlay);
+      const before = store.getState();
+
+      open(before);
+
+      expect(store.getState()).toBe(before);
+      expect(store.getState().boardView).toBe("specs");
+    });
+  });
 });
 
 // ---- 系統匣樣式由平台決定（tray-macos-panel-only：規格「系統匣圖示與原生選單」平台分流） ----

@@ -327,6 +327,17 @@ function AppInner({
         .catch(() => {});
     }
   }, [updater]);
+  // 變更詳情或討論抽屜開啟或換開另一個時收掉更新日誌（spec「detail 抽屜互斥」）：被
+  // 抽屜頂掉不走關閉鈕，whatsNew 不記為已看過、下次啟動照舊彈出。以名稱為鍵，重載
+  // 換掉同一個 change 的物件不算換開。
+  const openedDrawer = s.detailChange
+    ? `change:${s.detailChange.name}`
+    : s.detailDiscussion
+      ? `discussion:${s.detailDiscussion.slug}`
+      : null;
+  useEffect(() => {
+    if (openedDrawer !== null) setReleaseNotes(null);
+  }, [openedDrawer]);
   // 初始化確認框的工具多選（預設勾 claude）；對話框每次開啟重設。
   const [initTools, setInitTools] = useState<string[]>(["claude"]);
   useEffect(() => {

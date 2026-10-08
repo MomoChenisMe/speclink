@@ -501,6 +501,38 @@ export function openTicketStation(
   return null;
 }
 
+/** 封存守門的閒置狀態：無待封存目標，兩站都未處置、未帶走。 */
+function idleArchiveGate(): Pick<AppState, "pendingArchive" | "pendingArchiveSettled" | "pendingArchiveCarry"> {
+  return {
+    pendingArchive: null,
+    pendingArchiveSettled: { review: false, verify: false },
+    pendingArchiveCarry: { review: false, verify: false },
+  };
+}
+
+/**
+ * 可取消浮層的歸零片段（spec「detail 抽屜互斥」）：變更詳情與討論抽屜開啟時展開
+ * 進同一次 set，語意等同使用者按各浮層的「取消」或「關閉」。站別處置隨封存守門
+ * 一起還原，下一次封存入口不沿用上一輪。之後新增可取消浮層只改這裡。
+ */
+function cancelableOverlaysCleared(): Partial<AppState> {
+  return {
+    workspaceChooser: null,
+    pendingInit: null,
+    pendingAdopt: null,
+    ...idleArchiveGate(),
+    pendingArchiveDiscussion: null,
+    pendingDelete: null,
+    pendingRevert: null,
+    revertBlocked: null,
+  };
+}
+
+/** 不可取消浮層（遷移、遠端衝突）開啟中——變更詳情與討論的開啟動作此時不改任何狀態。 */
+function uncancelableOverlayOpen(s: AppState): boolean {
+  return s.migrationRoot !== null || s.pendingRemoteConflict !== null;
+}
+
 /**
  * 建立 app 狀態 store（Zustand）。狀態集中此處、留在 apps/desktop；共用元件
  * （packages/ui）不依賴 store，仍經 props 取資料——守住資料源解耦。資料載入
@@ -568,9 +600,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         detailDiscussion: null,
         detailSpec: null,
         detailArchived: null,
-        pendingArchive: null,
-        pendingArchiveSettled: { review: false, verify: false },
-        pendingArchiveCarry: { review: false, verify: false },
+        ...idleArchiveGate(),
         pendingDelete: null,
         pendingRevert: null,
         revertBlocked: null,
@@ -690,15 +720,26 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
      * 已處置與是否帶走，另一站仍有未結工單就留在守門流程（App 會彈該站的對話
      * 框），否則帶著累積的旗標真正封存。工單在 discard 已刪且不可回復——封存
      * 此後失敗的提示由「已放棄了哪些站」導出，不得退化成單純「封存失敗」。
+     *
+     * `prior` 是按下處置當下的守門快照：discard 在途時守門可能已被收掉（開抽屜）或
+     * 換了目標（另一個封存入口），已送出的處置照快照走完，守門狀態只在仍屬本
+     * change 時回寫。
      */
-    async function settleStation(change: string, station: "review" | "verify", carry: boolean) {
-      const settled = { ...get().pendingArchiveSettled, [station]: true };
-      const carried = { ...get().pendingArchiveCarry, [station]: carry };
-      set({ pendingArchiveSettled: settled, pendingArchiveCarry: carried });
+    async function settleStation(
+      change: string,
+      station: "review" | "verify",
+      carry: boolean,
+      prior: Pick<AppState, "pendingArchiveSettled" | "pendingArchiveCarry">,
+    ) {
+      const settled = { ...prior.pendingArchiveSettled, [station]: true };
+      const carried = { ...prior.pendingArchiveCarry, [station]: carry };
+      const stillGating = get().pendingArchive === change;
+      if (stillGating) set({ pendingArchiveSettled: settled, pendingArchiveCarry: carried });
       if (openTicketStation(get().changes, change, settled)) {
-        return; // 另一站的工單還沒處置——守門流程繼續。
+        // 另一站的工單還沒處置——守門流程繼續；守門已被收掉則停在這裡，等同在下一站按取消。
+        return;
       }
-      set({ pendingArchive: null });
+      if (stillGating) set({ pendingArchive: null });
       const dataSource = activeDataSource();
       if (!dataSource) {
         showFailureToast(change, "store.reviewActionUnsupported");
@@ -1048,9 +1089,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     detailDiscussion: null,
     detailSpec: null,
     detailArchived: null,
-    pendingArchive: null,
-    pendingArchiveSettled: { review: false, verify: false },
-    pendingArchiveCarry: { review: false, verify: false },
+    ...idleArchiveGate(),
     pendingDelete: null,
     pendingRevert: null,
     revertBlocked: null,
@@ -1215,8 +1254,10 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     // 落頁歸位（desktop-archived-parity D1）：變更詳情與討論抽屜的宿主頁面是看板，
     // 開啟時同一次 set 內把底層切回看板，一個落點涵蓋全部入口（系統匣、抽屜內
     // 跳轉、封存前「去蓋章」）；openSpec／openArchived 不在此列——其宿主頁面
-    // 本就是規格頁與已封存頁。
+    // 本就是規格頁與已封存頁。兩者同時收掉可取消浮層（cancelableOverlaysCleared）；
+    // 不可取消浮層開啟中則不改任何狀態（系統匣仍會把主視窗帶到前景）。
     openDetail(name) {
+      if (uncancelableOverlayOpen(get())) return;
       const c = get().changes.find((x) => x.name === name);
       // 換 change 清掉上一個 change 的動詞結果（drawerVerb keyed by change）。
       if (c)
@@ -1227,6 +1268,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           detailDiscussion: null,
           detailSpec: null,
           detailArchived: null,
+          ...cancelableOverlaysCleared(),
         });
     },
 
@@ -1235,6 +1277,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     openDiscussion(slug) {
+      if (uncancelableOverlayOpen(get())) return;
       const lists = get().discussions;
       const d =
         lists.active.find((x) => x.slug === slug) ??
@@ -1248,6 +1291,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           drawerVerb: null,
           detailSpec: null,
           detailArchived: null,
+          ...cancelableOverlaysCleared(),
         });
     },
 
@@ -1284,11 +1328,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     requestArchive(name) {
-      set({
-        pendingArchive: name,
-        pendingArchiveSettled: { review: false, verify: false },
-        pendingArchiveCarry: { review: false, verify: false },
-      });
+      set({ ...idleArchiveGate(), pendingArchive: name });
     },
 
     async confirmArchive() {
@@ -1302,7 +1342,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     async confirmArchiveDiscardTicket(station) {
-      const name = get().pendingArchive;
+      const gate = get();
+      const name = gate.pendingArchive;
       if (!name || ticketSettling) return;
       const dataSource = activeDataSource();
       const discard = station === "review" ? dataSource?.discardReview : dataSource?.discardVerify;
@@ -1325,18 +1366,19 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           await get().refresh();
           return;
         }
-        await settleStation(name, station, false);
+        await settleStation(name, station, false, gate);
       } finally {
         ticketSettling = false;
       }
     },
 
     async confirmArchiveCarryTicket(station) {
-      const name = get().pendingArchive;
+      const gate = get();
+      const name = gate.pendingArchive;
       if (!name || ticketSettling) return;
       ticketSettling = true;
       try {
-        await settleStation(name, station, true);
+        await settleStation(name, station, true, gate);
       } finally {
         ticketSettling = false;
       }
