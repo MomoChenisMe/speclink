@@ -292,6 +292,7 @@ export const register: Register = (on, options) => {
   })
 
   // `/clear`、`/resume` 換成另一個 session，卻不發 session.start；技能清單空著，技能列就整列不畫。
+  // 面板留在畫面上，資料卻是新 session 的（空的），開著就重讀，否則會一直停在「讀取中」。
   // /clear：新 session 沒有焦點；Claude Code 會把舊標題帶過來，是這個 mod 設的就在下一次送出時改回
   // 「Claude Code」，你自己取的不動。/resume：接回的 session 帶著它的標題，從標題找回步驟與 change。
   on('classic.SessionStart', async ($, e, next) => {
@@ -299,6 +300,9 @@ export const register: Register = (on, options) => {
       return next(e)
     }
     await setup($, options.language)
+    if (await isPanelOpen($)) {
+      await refreshBoard($)
+    }
     const fromTitle = focusFromTitle(e.session_title, known.names)
     if (e.source === 'clear') {
       staleTitle = fromTitle !== null

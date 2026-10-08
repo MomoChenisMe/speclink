@@ -109,7 +109,8 @@ const cli = (argv: readonly string[]) => {
 }
 
 // 引擎在測試裡的替身：已安裝的技能、設定、輸入框與 CLI 輸出。
-const engine = (on: On, filled: string[], claudeLanguage: string, runs: Run[] = []) => {
+// panes：開著的面板（ui.panes 的答案）。
+const engine = (on: On, filled: string[], claudeLanguage: string, runs: Run[] = [], panes: () => string[] = () => []) => {
   mock.env(on, {})
   on('settings.read', () => ({ value: { language: claudeLanguage } }))
   on('command.list', () => ({
@@ -142,7 +143,7 @@ const engine = (on: On, filled: string[], claudeLanguage: string, runs: Run[] = 
       },
     }
   })
-  on('ui.panes', () => ({ value: [] }))
+  on('ui.panes', () => ({ value: panes().map(id => ({ id, title: id })) }) as never)
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
     const { Box } = $.ui.resolve(e)
@@ -606,4 +607,26 @@ test('送出技能指令後馬上按 Esc（還沒跑任何工具）：技能列�
   await $.tool.call({ tool: 'Bash', command: 'git status' } as never)
   await finish(true)
   expect(await ui.find({ type: 'Text', text: 'quality' })).toBeDefined()
+})
+
+test('/clear、/resume 換成新 session 時，開著的面板重新讀取，不會一直停在讀取中', async ($, on) => {
+  const runs: Run[] = []
+  let isOpen = false
+  engine(on, [], 'English', runs, () => (isOpen ? ['speclink-panel'] : []))
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('session.messages', () => ({ value: [] }))
+  on('classic.SessionStart', () => ({}))
+  const readsBoard = () => runs.some(r => r.argv.includes('plan'))
+
+  for (const source of ['clear', 'resume'] as const) {
+    isOpen = false
+    runs.length = 0
+    await $.classic.SessionStart({ source })
+    expect(readsBoard()).toBe(false)
+
+    isOpen = true
+    runs.length = 0
+    await $.classic.SessionStart({ source })
+    expect(readsBoard()).toBe(true)
+  }
 })
