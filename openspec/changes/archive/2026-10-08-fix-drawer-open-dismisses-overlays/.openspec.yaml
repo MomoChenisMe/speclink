@@ -1,0 +1,35 @@
+schema: spec-driven
+created: 2026-10-08
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: desktop-ui-redesign
+started_at: 2026-10-08
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-08
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 5
+reviewed_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: f97c8392321a3fcbba8e854c6c4d2b13a99943d5f7b4fba8aed244ebcfd65036
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 5b793e2b03766eb2203c58ef4a2b7d12030767e74565cdd74f383c9f18bd5426
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: f39a7be6cf73e719c1e4a2639fb2f86a41b01d044d59917296a20a3dfe834a80
+  - path: apps/desktop/src/store.ts
+    hash: a3b6cc5769eb3e88889e55a09fdfc770d0a3aaf9a191d3b58bf53989924a95d2
+verified_at: 2026-10-08
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 5
+verified_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: f97c8392321a3fcbba8e854c6c4d2b13a99943d5f7b4fba8aed244ebcfd65036
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 5b793e2b03766eb2203c58ef4a2b7d12030767e74565cdd74f383c9f18bd5426
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: f39a7be6cf73e719c1e4a2639fb2f86a41b01d044d59917296a20a3dfe834a80
+  - path: apps/desktop/src/store.ts
+    hash: a3b6cc5769eb3e88889e55a09fdfc770d0a3aaf9a191d3b58bf53989924a95d2
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-08
