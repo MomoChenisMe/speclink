@@ -28,7 +28,7 @@ context: |
   ＋ `apps/desktop/src-tauri`（Tauri 殼）、`apps/desktop`、`apps/server-web`、`packages/ui`。
 
   現況與限制以 `docs/product-status.zh-TW.md` 為準；
-  `docs/design/platform-architecture.zh-TW.md` 僅是架構藍圖，不是現行行為正典。
+  之後的方向見 `docs/roadmap.zh-TW.md`。
 
   ## 跨 artifact 的載重約束
 

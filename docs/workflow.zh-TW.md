@@ -89,6 +89,10 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 - **下一步**：見[討論結論怎麼走](#discussion-outcomes)。
 - **出狀況**：已經談出內容的討論，寫結論後封存。什麼都還沒談出來，才用 `speclink discuss discard` 刪掉。
 
+在桌面 app 的看板點一則討論，會開啟它的詳情面板，結論、討論過程、背景與衍生變更各占一個分頁。
+
+![討論的詳情面板，顯示結論以及討論過程、背景、衍生變更分頁](assets/screenshots/desktop-discussion.png)
+
 ### <a id="improve"></a>improve：找改進點
 
 請模型掃描程式碼，提出可以改進的候選，寫成一份討論。
@@ -241,6 +245,10 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
   - 不要用 `--no-validate` 或 `--mark-tasks-complete` 跳過沒做完的事。
   - 規劃時的假設已經過期：回 `drift` 或 `ingest`，不要硬封存。
   - 被章失效或沒結的工單擋下：見[品質關卡的共同規則](#quality-rules)。
+
+封存後的變更與討論都在桌面 app 的「已封存」頁，分成已封存的變更與已封存的討論兩個分頁。
+
+![桌面 app 的已封存頁，分成已封存的變更與已封存的討論兩個分頁](assets/screenshots/desktop-archived.png)
 
 ### <a id="validate"></a>validate：格式檢查
 

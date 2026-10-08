@@ -11,7 +11,7 @@
 - `openspec/config.yaml` 的專案說明仍引用已移除的 docs/design/platform-architecture.zh-TW.md。
 - `speclink init` 產生的 `.speclink.yaml` 註解、`speclink feedback` 的輸出，以及本 repo 根目錄的 `.speclink.yaml`，都寫著錯的網址 `github.com/speclink-app/speclink`。
 - CI smoke test 的 `test -f CLAUDE.md && test -f AGENTS.md && ...` 沒有作用：`init` 已不產生這兩個檔，而 `&&` 串列前段失敗不會觸發 `set -e`。
-- 桌面設定頁的 `settings.rulesHelp` 文案仍寫「儲存會重寫 config.yaml，檔內註解不會保留」，現在只改目標那幾行、註解會保留。
+- 桌面設定頁的 `settings.rulesHelp` 文案仍寫「儲存會重寫 config.yaml，檔內註解不會保留」，現在只改 rules 鍵：config.yaml 的其他內容與註解會保留，但 rules 鍵底下的註解不保留。
 - 文件截圖拍的是真實的 speclink repo，不是截圖腳本的示範 workspace；規格頁那張還顯示舊詞「正典規格」；腳本列出的 9 張截圖有 4 張沒有文件使用。
 
 使用者是讀文件與規格的開發者／PO／PM，以及照規格實作的 AI 代理；情境是查詢正式規格、照文件操作，以及 `/speclink-manual` 從規格產生手冊。本變更來自討論 `docs-cleanup-findings` 的最後一刀，排在 `server-reader-write-guard` 與 `ingest-accepts-change-name` 之後。
@@ -23,10 +23,11 @@
    - `verb-contract`：409 reason 改成註冊表的 `revision_conflict` 與 `refused`，CLI 訊息照現行實作。
 2. **工作流設定**：以 `speclink workflow-config context` 改掉 `openspec/config.yaml` 專案說明中引用 docs/design 的那一句，改指 docs/roadmap.zh-TW.md。
 3. **文字修正**（speclink-core、speclink-cli、apps/desktop、CI）：
-   - `.speclink.yaml` 範本、`speclink feedback` 輸出與本 repo 的 `.speclink.yaml` 的網址改成 `https://github.com/MomoChenisMe/speclink`。
+   - `.speclink.yaml` 範本、`speclink feedback` 輸出與本 repo 的 `.speclink.yaml` 的網址改成 `https://github.com/MomoChenisMe/speclink`；兩支 Rust 程式改讀 Cargo `[workspace.package]` 新增的 `repository`，網址只寫在一處。
    - CI smoke test 改成逐行檢查 `init` 實際產生的 `.claude/skills/speclink-propose/SKILL.md` 與 `.agents/skills/speclink-propose/SKILL.md`。
-   - 桌面 `settings.rulesHelp` 中英文案改成「只改目標那幾行，檔內註解會保留」。
+   - 桌面 `settings.rulesHelp` 中英文案改成「只改動產出規則：產出規則區塊內的註解不會保留，其他內容與註解會保留」。
 4. **截圖**：用 `scripts/docs/docs-screenshots.mjs` 的示範 workspace 重拍全部 9 張（手動）；新增守門測試「腳本列出的每張截圖都要被文件引用」；把規格頁、討論頁、已封存頁、設定頁四張截圖放進入門、workflow 與設定說明的中英兩版。
+5. **文件守門測試**：讓「文件準確性具可重複驗證清單」列出的查核都由 `node --test` 執行——補上 product-status 中英矩陣列、getting-started／workflow 的 CLI 指令與旗標對照 `--help`、技能名稱對照產生的技能三項（原本只涵蓋連結、H2 錨點與正典詞彙）；中英對等的成對清單補齊 13 組，截圖引用也逐組比對。
 
 ## Non-Goals
 
@@ -61,12 +62,21 @@
 - Affected code:
   - Modified: openspec/config.yaml
   - Modified: .speclink.yaml
+  - Modified: Cargo.toml
+  - Modified: crates/engine/speclink-core/Cargo.toml
+  - Modified: crates/adapters/speclink-cli/Cargo.toml
   - Modified: crates/engine/speclink-core/src/workspace/init.rs
   - Modified: crates/engine/speclink-core/src/workspace/init/tests.rs
   - Modified: crates/adapters/speclink-cli/src/verbs/toolchain.rs
   - Modified: .github/workflows/ci.yml
   - Modified: apps/desktop/src/i18n/messages.ts
-  - Modified: scripts/docs/docs-screenshots.test.mjs
+  - Modified: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+  - Modified: scripts/docs/docs-links.test.mjs
+  - Modified: scripts/docs/docs-parity.test.mjs
+  - Modified: scripts/docs/remote-docs.test.mjs
+  - New: scripts/docs/docs-surface.test.mjs
+  - New: scripts/docs/built-cli.mjs
+  - New: scripts/docs/built-cli.test.mjs
   - Modified: docs/assets/screenshots/（重拍的 9 張 png）
   - Modified: docs/getting-started.zh-TW.md
   - Modified: docs/getting-started.md

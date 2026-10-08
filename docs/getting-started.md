@@ -264,6 +264,10 @@ Snapshot created for unarchive support.
 
 The archive step merges the delta specs into the specs and moves the change to `openspec/changes/archive/`. After that, `speclink list` shows `No active changes.` again, and `openspec/specs/csv-export/` exists. This folder is the result of the round.
 
+In the desktop app, the Specs page shows the merged specs, with one card for each capability.
+
+![The Specs page in the desktop app, with a card for each spec](assets/screenshots/desktop-spec.png)
+
 Do not use `--mark-tasks-complete` or `--no-validate` to skip work that is not done.
 
 ## <a id="created"></a>Where the files are

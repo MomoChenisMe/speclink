@@ -6,6 +6,7 @@ members = ["crates/engine/speclink-core", "crates/engine/speclink-fs", "crates/p
 version = "0.8.0"
 edition = "2021"
 license = "MIT"
+repository = "https://github.com/MomoChenisMe/speclink"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

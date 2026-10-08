@@ -264,6 +264,10 @@ Snapshot created for unarchive support.
 
 封存會把 delta 規格合併進正式規格，並把變更移到 `openspec/changes/archive/`。之後 `speclink list` 回到 `No active changes.`，`openspec/specs/csv-export/` 出現。這就是這一輪的成果。
 
+在桌面 app 的「規格」頁可以看到合併後的正式規格，每項能力一張卡片。
+
+![桌面 app 的規格頁，以卡片列出全部正式規格](assets/screenshots/desktop-spec.png)
+
 不要用 `--mark-tasks-complete` 或 `--no-validate` 跳過沒做完的工作。
 
 ## <a id="created"></a>產物在哪裡

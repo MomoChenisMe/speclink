@@ -181,7 +181,7 @@ pub(crate) fn cmd_templates(a: TemplatesArgs) -> Result<()> {
 pub(crate) fn cmd_feedback(a: FeedbackArgs) -> Result<()> {
     let _ = a.body;
     println!("Thanks for your feedback!");
-    println!("Please open an issue at https://github.com/speclink-app/speclink/issues");
+    println!("Please open an issue at {}/issues", env!("CARGO_PKG_REPOSITORY"));
     println!("Message: {}", a.message);
     Ok(())
 }

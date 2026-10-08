@@ -5,6 +5,8 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { NO_BUILT_CLI, builtCli } from './built-cli.mjs';
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const zhPath = path.join(root, 'docs/remote-getting-started.zh-TW.md');
 const enPath = path.join(root, 'docs/remote-getting-started.md');
@@ -167,23 +169,11 @@ test('both guides troubleshoot a stale speclink on PATH', () => {
   }
 });
 
-/// 這個 repo 建出來的 CLI。刻意不走 PATH 上的 `speclink`：那可能是使用者安裝的舊版
-/// （於是文件比對的是過期的 help surface），而 CI 上根本沒有，spawn 直接 ENOENT。
-/// debug 優先——本機開發者用的就是它；CI 只建 release，於是落到第二順位。
-function builtCli() {
-  const exe = process.platform === 'win32' ? 'speclink.exe' : 'speclink';
-  for (const profile of ['debug', 'release']) {
-    const candidate = path.join(root, 'target', profile, exe);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
 const cli = builtCli();
 
 test(
   'documented CLI commands are present in the current help surface',
-  { skip: !cli && '尚未建置 CLI（target/{debug,release} 皆無）' },
+  { skip: !cli && NO_BUILT_CLI },
   () => {
     // clap 的 Usage 行用的是執行檔名——Windows 上是 speclink.exe，故程式名後
     // 容許 .exe 尾碼；文件教的指令寫法不受影響。

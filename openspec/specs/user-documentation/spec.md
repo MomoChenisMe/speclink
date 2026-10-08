@@ -8,12 +8,12 @@
 
 ### Requirement: 使用者文件採漸進揭露與單一責任
 
-Speclink 使用者文件 SHALL 以 README、getting-started、workflow、product-status、平台架構與實作路線圖形成漸進揭露入口。README SHALL 保留品牌圖片、標語「一套 SDD Engine，支援 Local Repo 與 Remote Store」、語言切換、Rust SDD 引擎與工具平台定位、PM／PO／RD／AI Agent 共用 change／artifact／task／verify／archive 語意、Local Repo／Remote Store 雙路徑、設計之初以 Spectra App 2.3.1 CLI 為行為參考的歷史起源，並 SHALL 提供由 product-status 校正的目前狀態摘要、最短流程心智模型、Local Repo 開始入口與文件地圖。getting-started SHALL 只承載可直接完成的 Local Repo 第一輪，workflow SHALL 作為完整使用流程正典，product-status SHALL 作為目前能力狀態正典，平台架構 SHALL 維持唯一目標架構正典，實作路線圖 SHALL 維持其下的交付順序伴隨文件。各文件 SHALL 以連結導向下一層細節，SHALL NOT 在 README 或 getting-started 複製完整架構與狀態矩陣。
+Speclink 使用者文件 SHALL 以 README、getting-started、workflow、product-status 與 roadmap 形成漸進揭露入口。README SHALL 保留品牌圖片、標語「一套 SDD Engine，支援 Local Repo 與 Remote Store」、語言切換、Rust SDD 引擎與工具平台定位、PM／PO／RD／AI Agent 共用 change／artifact／task／verify／archive 語意、Local Repo／Remote Store 雙路徑、設計之初以 Spectra App 2.3.1 CLI 為行為參考的歷史起源，並 SHALL 提供由 product-status 校正的目前狀態摘要、最短流程心智模型、Local Repo 開始入口與文件地圖。getting-started SHALL 只承載可直接完成的 Local Repo 第一輪，workflow SHALL 作為完整使用流程正典，product-status SHALL 作為目前能力狀態正典，roadmap SHALL 作為尚未完成的方向的唯一落點。各文件 SHALL 以連結導向下一層細節，SHALL NOT 在 README 或 getting-started 複製完整架構與狀態矩陣。
 
 #### Scenario: README 保留專案定位與起源
 
 - **WHEN** 使用者開啟繁體中文或英文 README 判斷 Speclink 是什麼及為何存在
-- **THEN** 首段可見品牌圖片、SDD Engine 標語、語言切換、Rust 實作與共同流程語意、Local Repo／Remote Store 說明及 Spectra App 2.3.1 行為參考起源，後續目前狀態清楚區分已可運作與分階段建置內容，並連到實作重構路線圖
+- **THEN** 首段可見品牌圖片、SDD Engine 標語、語言切換、Rust 實作與共同流程語意、Local Repo／Remote Store 說明及 Spectra App 2.3.1 行為參考起源，後續目前狀態清楚區分已可運作與規劃中內容，並連到專案路線圖
 - **AND** 文件整理只校正過時事實、術語與連結，不得將上述首段改成僅含導覽連結的入口
 
 #### Scenario: 首次使用者由 README 到完成第一輪
@@ -24,57 +24,12 @@ Speclink 使用者文件 SHALL 以 README、getting-started、workflow、product
 #### Scenario: 進階使用者查詢目前能力與目標
 
 - **WHEN** 使用者要判斷 Desktop Remote Workspace 或 Server 某項能力目前是否可用及最終目標
-- **THEN** README 導向 product-status 取得目前狀態、證據與限制，並由該列導向平台架構或實作路線圖取得目標與交付順序，兩者 SHALL NOT 混成同一狀態描述
+- **THEN** README 導向 product-status 取得目前狀態、證據與限制，並由該列導向專案路線圖取得之後的方向，兩者 SHALL NOT 混成同一狀態描述
 
 
 <!-- @trace
-source: spectra-legacy-cleanup
-updated: 2026-07-27
-code:
-  - README.en.md
-  - README.md
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/components/ProjectTabs.tsx
-  - apps/desktop/src/index.css
-  - crates/speclink-cli/src/color.rs
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
-  - crates/speclink-cli/tests/task_done_stamps.rs
-  - crates/speclink-core/assets/skills/archive.md
-  - crates/speclink-core/src/analyzer.rs
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/config.rs
-  - crates/speclink-core/src/demo.rs
-  - crates/speclink-core/src/discuss.rs
-  - crates/speclink-core/src/drift.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/instructions.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/newcmd.rs
-  - crates/speclink-core/src/preflight.rs
-  - crates/speclink-core/src/schema.rs
-  - crates/speclink-core/src/skills.rs
-  - crates/speclink-core/src/status.rs
-  - crates/speclink-core/src/tasks.rs
-  - crates/speclink-core/src/validate.rs
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-host/src/context.rs
-  - docs/platform-architecture.zh-TW.md
-  - packages/ui/src/__tests__/delta.test.ts
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/components/ChangeList.tsx
-  - packages/ui/src/components/DeltaBadges.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/delta.ts
-  - packages/ui/src/index.ts
-  - packages/ui/src/theme.css
+source: sync-specs-after-docs-cleanup
+updated: 2026-10-08T10:00:10+08:00
 -->
 
 ---
@@ -220,7 +175,7 @@ code:
 ---
 ### Requirement: 中英文文件保持結構與事實對等
 
-`README.md`／`README.en.md`、`docs/getting-started.zh-TW.md`／`docs/getting-started.md`、`docs/workflow.zh-TW.md`／`docs/workflow.md`、`docs/product-status.zh-TW.md`／`docs/product-status.md`、`docs/roadmap.zh-TW.md`／`docs/roadmap.md` SHALL 分別保持相同的 H2 章節集合與順序、狀態矩陣列集合、命令語意、截圖引用集合及交叉連結。兩版 README SHALL 共用品牌圖片與截圖，並保持標語、產品定位、共同流程語意、Local Repo／Remote Store、Spectra App 2.3.1 行為參考起源及目前狀態摘要的概念對等。繁體中文散文 SHALL 使用 `openspec/LANGUAGE.md` 的正典詞彙；引擎動詞、CLI 命令、欄位名與程式識別符 SHALL 保留於 code span，不以避免詞取代使用者文案。僅提供單一語言的 server 部署、Store driver 選型與備份還原文件不在本要求範圍。
+`README.md`／`README.en.md`，以及 `docs/` 下每一組 `<名稱>.zh-TW.md`／`<名稱>.md`（getting-started、workflow、product-status、roadmap、remote-getting-started、development、configuration、verb-contract、sdk-node、server-deployment、server-store-drivers、server-backup）SHALL 分別保持相同的 H2 章節集合與順序、狀態矩陣列集合、命令語意、截圖引用集合及交叉連結。每個 H2 SHALL 寫成 `## <a id="<錨點>"></a><標題>`，兩版的錨點序列 SHALL 逐項相同；標題文字 SHALL 各用該版的語言，SHALL NOT 在單一語言版本使用雙語標題。兩版 README SHALL 共用品牌圖片與截圖，並保持標語、產品定位、共同流程語意、Local Repo／Remote Store、Spectra App 2.3.1 行為參考起源及目前狀態摘要的概念對等。繁體中文散文 SHALL 使用 `openspec/LANGUAGE.md` 的正典詞彙；引擎動詞、CLI 命令、欄位名與程式識別符 SHALL 保留於 code span，不以避免詞取代使用者文案。
 
 #### Scenario: 語言切換不遺失流程資訊
 
@@ -239,51 +194,18 @@ code:
 
 
 <!-- @trace
-source: user-docs-overhaul
-updated: 2026-08-14
--->
-
----
-### Requirement: 目標架構與目前狀態維持清楚邊界
-
-平台架構藍圖 SHALL 保持唯一目標架構基準與既有章節順序；實作重構路線圖 SHALL 保持該架構下的執行伴隨定位與既有 Phase／Gate 順序。兩者 SHALL 在文件開頭連到 product-status 取得目前可用能力，product-status SHALL 反向連到目標架構與路線圖；README 與 getting-started 中的「目前」敘述 SHALL 由 product-status 摘要而來，不得把 architecture 的未交付目標寫成可用操作。
-
-#### Scenario: 閱讀架構藍圖不誤認為全部已交付
-
-- **WHEN** 使用者開啟平台架構藍圖閱讀 Server、Remote Workspace 或 Agent 生態設計
-- **THEN** 文件開頭明示其為目標架構並提供 product-status 連結，使用者可立即查到相應能力的目前狀態與限制
-
-#### Scenario: 路線圖不成為第二份目標架構
-
-- **WHEN** 使用者比較平台架構藍圖與實作重構路線圖
-- **THEN** 兩者維持「唯一目標架構／其下執行順序」關係，既有 Phase 與 Gate 順序不因本次文件整理而重排
-
-
-<!-- @trace
-source: unify-user-documentation
-updated: 2026-07-17
-code:
-  - README.en.md
-  - README.md
-  - docs/getting-started.md
-  - docs/getting-started.zh-TW.md
-  - docs/implementation-refactor-roadmap.zh-TW.md
-  - docs/platform-architecture.zh-TW.md
-  - docs/product-status.md
-  - docs/product-status.zh-TW.md
-  - docs/workflow.md
-  - docs/workflow.zh-TW.md
-  - packages/ui/src/__tests__/sonner.test.tsx
+source: sync-specs-after-docs-cleanup
+updated: 2026-10-08T10:00:10+08:00
 -->
 
 ---
 ### Requirement: 文件準確性具可重複驗證清單
 
-本 change 的 tasks SHALL 記錄並執行文件查核：所有相對 Markdown 連結目標存在；中英文成對文件 H2 集合與順序一致；product-status 成對矩陣列一致且每列有證據、限制／下一步與查核日期；getting-started／workflow 的 CLI 命令與旗標可由目前 help 觀察；skill 名存在於相應生成 surface；繁體中文散文遵循正典詞彙。已確認缺失且刻意延後的文件 SHALL 以純文字缺口呈現，SHALL NOT 建立失效連結或空白 placeholder。
+版本庫 SHALL 提供可重複執行的文件查核（`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 涵蓋的文件守門測試），改動使用者文件的變更 SHALL 在 tasks 中執行它：所有相對 Markdown 連結目標存在；中英文成對文件的 H2 錨點序列一致；product-status 成對矩陣列一致且每列有證據、限制／下一步與查核日期；getting-started／workflow 的 CLI 命令與旗標可由目前 help 觀察；skill 名存在於相應生成 surface；繁體中文散文遵循正典詞彙。已確認缺失且刻意延後的文件 SHALL 以純文字缺口呈現，SHALL NOT 建立失效連結或空白 placeholder。
 
 #### Scenario: 文件連結與語言對等查核通過
 
-- **WHEN** 維護者執行 tasks 指定的相對連結與中英文 H2／矩陣結構查核
+- **WHEN** 維護者執行文件守門測試的相對連結與中英文 H2 錨點／矩陣結構查核
 - **THEN** 所有實際連結目標存在、成對文件結構與狀態列一致，且查核以 exit code 0 完成
 
 #### Scenario: 不存在的 skill 或旗標使查核失敗
@@ -293,24 +215,13 @@ code:
 
 #### Scenario: 已知文件缺口不偽裝成完成
 
-- **WHEN** 稽核發現 `docs/verb-contract.md` 等已被引用但未存在的進階文件且本 change 明確不補其內容
+- **WHEN** 稽核發現一份已被引用但尚未撰寫的進階文件（例如「從零做一個客戶端」），且當下的變更明確不補其內容
 - **THEN** 文件地圖或 product-status 以無超連結的缺口項目記錄並導向後續 change，SHALL NOT 產生空檔、失效連結或宣稱其已交付
 
+
 <!-- @trace
-source: unify-user-documentation
-updated: 2026-07-17
-code:
-  - README.en.md
-  - README.md
-  - docs/getting-started.md
-  - docs/getting-started.zh-TW.md
-  - docs/implementation-refactor-roadmap.zh-TW.md
-  - docs/platform-architecture.zh-TW.md
-  - docs/product-status.md
-  - docs/product-status.zh-TW.md
-  - docs/workflow.md
-  - docs/workflow.zh-TW.md
-  - packages/ui/src/__tests__/sonner.test.tsx
+source: sync-specs-after-docs-cleanup
+updated: 2026-10-08T10:00:10+08:00
 -->
 
 ---
@@ -342,12 +253,12 @@ updated: 2026-08-27
 ---
 ### Requirement: 帳號、PAT 與 membership 的操作邊界明確
 
-Remote Getting Started 與架構交叉連結 SHALL 指示瀏覽器開啟 `/account` 管理自身 PAT，由該頁表單 POST `/account/tokens`；文件 SHALL 明說直接以 GET 開啟 `/account/tokens` 會得到 HTTP 405 Method Not Allowed。文件 SHALL 說明建立 Project／Repo registry 不會授予 membership，Server Admin 身分不會繞過 Project membership；管理員 SHALL 由 `/admin/users` 對帳號授予或更新 `reader`／`editor`，Desktop scope 清單才顯示該 Project 及其 Repos。PAT 明文只顯示一次，文件 SHALL NOT 以 URL、repo 設定或帶值的 shell argument 示範保存 PAT。
+Remote Getting Started SHALL 指示瀏覽器開啟 `/account` 管理自身 PAT，由該頁送出 POST `/api/speclink/v1/web/account/tokens`；文件 SHALL 明說以瀏覽器 GET 開啟 `/api/speclink/v1/web/account/tokens` 會得到 HTTP 405 Method Not Allowed。PAT 沒有專案範圍，權限等於帳號在各專案的 membership。文件 SHALL 說明建立 Project／Repo registry 不會授予 membership，Server Admin 身分不會繞過 Project membership；管理員 SHALL 由 `/admin/users` 對帳號授予或更新 `reader`／`editor`，Desktop scope 清單才顯示該 Project 及其 Repos。PAT 明文只顯示一次，文件 SHALL NOT 以 URL、repo 設定或帶值的 shell argument 示範保存 PAT。
 
 #### Scenario: 使用者直接開啟 PAT action URL
 
-- **WHEN** 使用者在瀏覽器網址列開啟 `http://localhost:8080/account/tokens`
-- **THEN** 故障排除指出 405 代表該路由只接受表單 POST，並導向 `http://localhost:8080/account` 登入後由 Personal Access Tokens 表單建立 PAT
+- **WHEN** 使用者在瀏覽器網址列開啟 `http://localhost:8080/api/speclink/v1/web/account/tokens`
+- **THEN** 故障排除指出 405 代表該網址只接受 POST，並導向 `http://localhost:8080/account` 登入後由存取金鑰表單建立 PAT
 
 #### Scenario: Desktop scopes 回傳空清單
 
@@ -359,49 +270,31 @@ Remote Getting Started 與架構交叉連結 SHALL 指示瀏覽器開啟 `/accou
 - **WHEN** 使用者選擇 Desktop PAT fallback 或 CLI `auth login`
 - **THEN** 教學要求從 `/account` 複製只顯示一次的 PAT並貼入應用或 stdin，不把真實 PAT 放進 URL、`.speclink.yaml`、repo、文件範例或 shell history
 
+
 <!-- @trace
-source: add-remote-getting-started
-updated: 2026-07-24
-code:
-  - README.en.md
-  - README.md
-  - docs/platform-architecture.zh-TW.md
-  - docs/product-status.md
-  - docs/product-status.zh-TW.md
-  - docs/remote-getting-started.md
-  - docs/remote-getting-started.zh-TW.md
-  - docs/server-deployment.zh-TW.md
-  - scripts/remote-docs.test.mjs
+source: sync-specs-after-docs-cleanup
+updated: 2026-10-08T10:00:10+08:00
 -->
 
 ---
 ### Requirement: Remote 教學具雙語導流與可重複查核
 
-README 與產品能力狀態的中英文版本 SHALL 連到對應語言的 Remote Getting Started，既有繁中 Server 部署指南 SHALL 連到繁中 Remote Getting Started；兩份新教學 SHALL 維持相同 H2 集合與順序、命令語意、網址角色、membership 規則、故障排除症狀集合及目前能力邊界。文件查核 SHALL 驗證所有相對 Markdown 連結目標存在、現行 Server 路由與 CLI 指令可由 source／help 觀察、繁中與英文 H2 對等，並 SHALL 驗證關鍵字串涵蓋 `/account`、POST `/account/tokens`、`/admin/users`、HTTP 405、membership、project-scoped URL、spec-only、checkout、offline 與 `npm run dev:reset`。
+README 與產品能力狀態的中英文版本 SHALL 連到對應語言的 Remote Getting Started，既有繁中 Server 部署指南 SHALL 連到繁中 Remote Getting Started；兩份新教學 SHALL 維持相同 H2 集合與順序、命令語意、網址角色、membership 規則、故障排除症狀集合及目前能力邊界。文件查核 SHALL 驗證所有相對 Markdown 連結目標存在、現行 Server 路由與 CLI 指令可由 source／help 觀察、繁中與英文 H2 對等，並 SHALL 驗證關鍵字串涵蓋 `/account`、POST `/api/speclink/v1/web/account/tokens`、`/admin/users`、403、`permission_denied`、membership、project-scoped URL、spec-only、checkout、offline 與 `npm run dev:reset`。
 
 #### Scenario: 使用者從既有文件找到 Remote 教學
 
 - **WHEN** 使用者從任一語言 README、任一語言產品能力狀態或繁中 Server 部署指南尋找 Remote Server／Desktop／CLI 的首次操作方式
-- **THEN** 文件提供有效連結到同語言 Remote Getting Started，而平台架構仍只作目標與安全邊界的正典
+- **THEN** 文件提供有效連結到同語言 Remote Getting Started
 
 #### Scenario: 雙語與入口查核阻止文件漂移
 
 - **WHEN** 維護者執行 tasks 指定的雙語 H2、相對連結、路由、CLI surface 與關鍵流程檢查
-- **THEN** 全部檢查以 exit code 0 完成；任一語言缺少步驟、連到不存在檔案、把 `/account/tokens` 寫成 GET 頁面或引用不存在指令時以非零結果指出缺口
+- **THEN** 全部檢查以 exit code 0 完成；任一語言缺少步驟、連到不存在檔案、把 `/api/speclink/v1/web/account/tokens` 寫成可直接開啟的頁面或引用不存在指令時以非零結果指出缺口
+
 
 <!-- @trace
-source: add-remote-getting-started
-updated: 2026-07-24
-code:
-  - README.en.md
-  - README.md
-  - docs/platform-architecture.zh-TW.md
-  - docs/product-status.md
-  - docs/product-status.zh-TW.md
-  - docs/remote-getting-started.md
-  - docs/remote-getting-started.zh-TW.md
-  - docs/server-deployment.zh-TW.md
-  - scripts/remote-docs.test.mjs
+source: sync-specs-after-docs-cleanup
+updated: 2026-10-08T10:00:10+08:00
 -->
 
 ---
@@ -448,7 +341,7 @@ code:
 ---
 ### Requirement: 安裝通路文件與發布狀態誠實化
 
-README（中英）SHALL 提供安裝區塊：桌面三平台安裝檔的下載入口（macOS 單一 universal dmg 並註明兩種晶片同一檔、Windows 安裝器、Linux AppImage 依架構各一）、CLI 的三條一行安裝指令（npm 全域安裝、安裝腳本 curl 一行、Homebrew tap），並 SHALL 註明 Windows 沒有安裝腳本（走 npm 或桌面安裝器）、無圖形介面的 Linux 走 CLI 一行安裝，將從原始碼建置的安裝方式降為開發者導向段落；getting-started（中英）的安裝節 SHALL 與 README 呈現的通路一致。文件 SHALL NOT 指示尚不存在的安裝入口；發布管線已接、只待首個 release 才上架的通路 SHALL 以「管線已接＋生效時點」表述，SHALL NOT 讓讀者誤以為現在就裝得到：@speclink/engine 的 sdk-node 文件（中英）SHALL 以 `npm install @speclink/engine` 為主路徑，同段 SHALL 明示實際可安裝以首個帶 engine 的 release 為準，並 SHALL 保留自 repo 建置作為替代路徑。中英兩語版本 SHALL 維持結構與事實對等。
+README（中英）SHALL 提供安裝區塊：桌面三平台安裝檔的下載入口（macOS 單一 universal dmg 並註明兩種晶片同一檔、Windows 安裝器、Linux AppImage 依架構各一）、CLI 的三條一行安裝指令（npm 全域安裝、安裝腳本 curl 一行、Homebrew tap），並 SHALL 註明 Windows 沒有安裝腳本（走 npm 或桌面安裝器）、無圖形介面的 Linux 走 CLI 一行安裝，將從原始碼建置的安裝方式降為開發者導向段落；getting-started（中英）的安裝節 SHALL 與 README 呈現的通路一致。文件 SHALL NOT 指示尚不存在的安裝入口；發布管線已接、只待首個 release 才上架的通路 SHALL 以「管線已接＋生效時點」表述，SHALL NOT 讓讀者誤以為現在就裝得到：@speclink/engine 的 sdk-node 文件（中英）SHALL 以 `npm install @speclink/engine` 為主路徑，同段 SHALL 寫明可從 npm 安裝的起始版本（0.2.0），並 SHALL 保留自 repo 建置作為替代路徑。中英兩語版本 SHALL 維持結構與事實對等。
 
 #### Scenario: README 安裝區塊涵蓋桌面與 CLI 通路
 
@@ -458,23 +351,28 @@ README（中英）SHALL 提供安裝區塊：桌面三平台安裝檔的下載�
 #### Scenario: sdk-node 以 npm install 為主路徑並標注生效時點
 
 - **WHEN** 讀者依任一語言的 sdk-node 文件嘗試取得 @speclink/engine
-- **THEN** 文件以 `npm install @speclink/engine` 為主路徑，同段明示實際可安裝以首個帶 engine 的 release 為準，且自 repo 建置仍以替代路徑呈現
+- **THEN** 文件以 `npm install @speclink/engine` 為主路徑，同段寫明自 0.2.0 起可從 npm 安裝，且自 repo 建置仍以替代路徑呈現
 
 
 <!-- @trace
-source: release-assets-trim
-updated: 2026-09-14T21:53:29+08:00
+source: sync-specs-after-docs-cleanup
+updated: 2026-10-08T10:00:10+08:00
 -->
 
 ---
 ### Requirement: 使用者文件以截圖呈現實際介面
 
-面向使用者的文件 SHALL 內嵌 desktop 與 server 後台的截圖，使讀者在安裝前即可判斷產品樣貌。`README.md` 與 `README.en.md` SHALL 於定位段落之後至少內嵌一張 desktop 截圖。截圖 SHALL 以相對路徑內嵌於版本庫、中英兩版共用同一組圖片檔，SHALL NOT 依賴外部圖床。截圖場景 SHALL 由版本庫內的腳本佈置為不含任何使用者真實資料的示範 workspace；該腳本 SHALL 在佈置前備份 desktop 的使用者狀態目錄，並在收尾或中斷時還原，SHALL 於 app 執行中時拒絕開始而不代為結束 app。
+面向使用者的文件 SHALL 內嵌 desktop 與 server 後台的截圖，使讀者在安裝前即可判斷產品樣貌。`README.md` 與 `README.en.md` SHALL 於定位段落之後至少內嵌一張 desktop 截圖。截圖 SHALL 以相對路徑內嵌於版本庫、中英兩版共用同一組圖片檔，SHALL NOT 依賴外部圖床。截圖場景 SHALL 由版本庫內的腳本佈置為不含任何使用者真實資料的示範 workspace；該腳本 SHALL 在佈置前備份 desktop 的使用者狀態目錄，並在收尾或中斷時還原，SHALL 於 app 執行中時拒絕開始而不代為結束 app。截圖腳本列出的每一張截圖 SHALL 至少被一份使用者文件引用，SHALL NOT 留下沒有文件使用的截圖。
 
 #### Scenario: README 可見產品畫面
 
 - **WHEN** 讀者在 GitHub 上開啟任一語言的 README
 - **THEN** 定位段落之後可見至少一張 desktop 截圖，圖片以版本庫內的相對路徑載入
+
+#### Scenario: 沒有孤兒截圖
+
+- **WHEN** 執行文件守門測試
+- **THEN** 截圖腳本列出的每一張截圖都至少出現在 README 或 docs/ 的一份文件中；任一張沒有被引用時測試以非零結果點名該檔
 
 #### Scenario: 拍攝不損毀使用者既有狀態
 
@@ -486,9 +384,10 @@ updated: 2026-09-14T21:53:29+08:00
 - **WHEN** desktop app 正在執行時啟動截圖場景腳本
 - **THEN** 腳本以非零結束並說明須先關閉 app，不搬移任何目錄、不代為結束 app
 
+
 <!-- @trace
-source: user-docs-overhaul
-updated: 2026-08-14
+source: sync-specs-after-docs-cleanup
+updated: 2026-10-08T10:00:10+08:00
 -->
 
 ---
@@ -535,16 +434,17 @@ updated: 2026-08-14
 ---
 ### Requirement: 使用者面路線圖與內部交付順序分列
 
-版本庫 SHALL 提供面向使用者的路線圖文件 `docs/roadmap.zh-TW.md` 與 `docs/roadmap.md`，涵蓋 SDK 發布、以引擎自建客戶端與 server 端（使用者以 SDK 引擎自行開發桌面、其他前端或自家 server）、遠端協作完整化、agent 工具整合與系統整合五條方向，每條載明要解決的問題、目前進度與可觀察的下一步。該文件 SHALL NOT 出現版本號或日期承諾。使用者文件 SHALL NOT 引用維護者自用的架構文件（`docs/platform-architecture.zh-TW.md`、`docs/implementation-refactor-roadmap.zh-TW.md`）——那兩份不面向使用者且將被移除，任何指向它們的連結都是未來的斷鏈。
+版本庫 SHALL 提供面向使用者的路線圖文件 `docs/roadmap.zh-TW.md` 與 `docs/roadmap.md`，涵蓋 SDK 發布、以引擎自建客戶端與 server 端（使用者以 SDK 引擎自行開發桌面、其他前端或自家 server）、遠端協作完整化、agent 工具整合與系統整合五條方向，每條載明要解決的問題、目前進度與可觀察的下一步。該文件 SHALL NOT 出現版本號或日期承諾。尚未完成的方向 SHALL 集中寫在路線圖；product-status 的規劃中列 SHALL 只連到路線圖，SHALL NOT 另行敘述規劃內容。
 
 #### Scenario: 對外方向不含時程承諾
 
 - **WHEN** 讀者開啟任一語言的使用者面路線圖
 - **THEN** 五條方向各自可見問題、進度與下一步，且全文不含版本號或日期形式的交付承諾
 
+
 <!-- @trace
-source: user-docs-overhaul
-updated: 2026-08-14
+source: sync-specs-after-docs-cleanup
+updated: 2026-10-08T10:00:10+08:00
 -->
 
 ---
@@ -602,7 +502,7 @@ updated: 2026-08-14
 ---
 ### Requirement: 安裝章節載明桌面 app 與 CLI 的佈署衝突
 
-安裝章節 SHALL 載明桌面 app 與 CLI 共用同一個佈署位置所造成的覆蓋行為：macOS 上桌面 app 於每次啟動將該位置換為指向內建 CLI 的 symlink 並刪除原有檔案，Linux AppImage 僅於版本不符時覆蓋，Windows 由安裝器管理而不動該位置。說明 SHALL 一併給出保留自有 CLI 的做法（改安裝目錄並調整 PATH 順序），SHALL 指出釘選版本會一併失效，並 SHALL 為既有 deb 安裝者註明遷移方式（移除 deb 套件後改裝 AppImage）。
+安裝章節 SHALL 載明桌面 app 與 CLI 共用同一個佈署位置所造成的覆蓋行為：macOS 上桌面 app 於每次啟動檢查該位置，未安裝或版本與 app 不同時刪除原有檔案並換為指向內建 CLI 的 symlink，Linux AppImage 僅於版本不符時覆蓋，Windows 由安裝器管理而不動該位置。說明 SHALL 一併給出保留自有 CLI 的做法（改安裝目錄並調整 PATH 順序），SHALL 指出釘選版本會一併失效，並 SHALL 為既有 deb 安裝者註明遷移方式（移除 deb 套件後改裝 AppImage）。
 
 #### Scenario: 先裝 CLI 再裝桌面 app 的人讀得到後果
 
@@ -616,8 +516,8 @@ updated: 2026-08-14
 
 
 <!-- @trace
-source: release-assets-trim
-updated: 2026-09-14T21:53:29+08:00
+source: sync-specs-after-docs-cleanup
+updated: 2026-10-08T10:00:10+08:00
 -->
 
 ---

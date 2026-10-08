@@ -23,6 +23,10 @@ Speclink 的設定分三層：工作流政策寫在 `openspec/config.yaml`，跟
 
 桌面 app 自己的介面語言與伺服器連線清單存在 app 的資料夾，憑證存在系統鑰匙圈，都不寫進專案。
 
+桌面 app 的「設定」頁分成兩個分頁：「本機設定」的內容只存在這台機器，「伺服器」管理伺服器連線清單。
+
+![桌面 app 的設定頁，分成本機設定與伺服器兩個分頁](assets/screenshots/desktop-settings.png)
+
 新設定該放哪裡，照這三條判斷：
 
 - 會改變產出內容的設定（語言、TDD、audit、worktree 流程）是**政策**，放 `openspec/config.yaml`，全隊讀到同一份。

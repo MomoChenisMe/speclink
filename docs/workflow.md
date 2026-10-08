@@ -89,6 +89,10 @@ Talk through a decision round by round, and keep a conclusion with its sources.
 - **Next**: See [Discussion outcomes](#discussion-outcomes).
 - **If something goes wrong**: If a discussion has content, write a conclusion and archive it. Use `speclink discuss discard` only when the discussion has no content yet.
 
+On the board in the desktop app, click a discussion to open its detail panel. The Conclusion, Rounds, Context, and Promoted changes tabs each show one part of the discussion.
+
+![The detail panel of a discussion, with the conclusion and the Rounds, Context, and Promoted changes tabs](assets/screenshots/desktop-discussion.png)
+
 ### <a id="improve"></a>improve: find improvements
 
 Ask the model to scan the code and suggest candidates for improvement. The result is a discussion.
@@ -241,6 +245,10 @@ Merge the delta specs into the specs, and move the done change into the archive.
   - Do not use `--no-validate` or `--mark-tasks-complete` to skip work that is not done.
   - The plan is out of date: go back to `drift` or `ingest`. Do not force the archive.
   - A stale stamp or an open ticket stops the archive: see [Rules for both quality stations](#quality-rules).
+
+The desktop app shows archived changes and archived discussions on the Archived page, in two tabs.
+
+![The Archived page in the desktop app, with the Archived changes and Archived discussions tabs](assets/screenshots/desktop-archived.png)
 
 ### <a id="validate"></a>validate: format check
 
