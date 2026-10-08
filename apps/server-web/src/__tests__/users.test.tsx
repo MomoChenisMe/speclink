@@ -201,7 +201,7 @@ describe("使用者列表", () => {
     expect(notice, "邀請連結以 aria-live 區塊回饋").toBeTruthy();
     expect(within(notice).getByRole("button", { name: /複製/ })).toBeTruthy();
     // spec「揭示橫幅為成功語意」：主色是連結／互動的顏色，用在這裡讀不出「成功了」。
-    expect(notice.className).toContain("emerald");
+    expect(notice.className).toContain("status-success");
     expect(notice.className).not.toContain("border-primary");
   });
 
@@ -216,8 +216,8 @@ describe("使用者列表", () => {
       makeAdminClient({ getAdminUsers: vi.fn(async () => suspended) }),
     );
     const table = await screen.findByRole("table");
-    expect(within(table).getByText("有效").className).toContain("emerald");
-    expect(within(table).getByText("已停權").className).toContain("amber");
+    expect(within(table).getByText("有效").className).toContain("status-success");
+    expect(within(table).getByText("已停權").className).toContain("status-warning");
   });
 
   // 邀請寄錯人或寄錯權限時要收得回來——連結一旦流出去，唯一的止血就是讓它失效。

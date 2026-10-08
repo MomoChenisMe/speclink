@@ -245,6 +245,18 @@ describe("App (kanban primary + rich detail)", () => {
     expect(header.querySelector(".font-mono")).toBeNull();
   });
 
+  // spec desktop-app Scenario「品牌資產只有一處」：頂欄字標來自共用元件庫的橫式鎖版，
+  // 依系統偏好切換深色版。
+  it("頂欄以共用 Wordmark 呈現橫式字標，深色版經 picture source 切換", async () => {
+    renderApp();
+    const header = document.querySelector("header") as HTMLElement;
+    const lockup = (await within(header).findByAltText("Speclink")) as HTMLImageElement;
+    expect(lockup.getAttribute("src")).toContain("logo-horizontal");
+    const dark = lockup.parentElement?.querySelector("source") as HTMLSourceElement;
+    expect(dark.getAttribute("media")).toBe("(prefers-color-scheme: dark)");
+    expect(dark.getAttribute("srcset")).toContain("logo-horizontal-dark");
+  });
+
   it("renders the kanban board by default with change cards", async () => {
     renderApp();
     await waitFor(() => expect(screen.getByText("desktop-shell-and-browser")).toBeTruthy());

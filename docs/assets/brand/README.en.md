@@ -30,9 +30,7 @@ Brand colors are fixed artwork values. UI tokens remain in `packages/ui/src/them
 
 ## App integration
 
-Desktop public assets and Server Web source assets use `logo-mark.png`, `speclink-wordmark.png` and `speclink-wordmark-dark.png`. Native desktop icons live in `apps/desktop/src-tauri/icons/`, including ICO, ICNS and sized PNGs. The tray uses separate monochrome 18/36 px symbols; the 36 px PNG is also embedded in `apps/desktop/src/trayIcon.ts`.
-
-The current apps retain PNG integration. The planned shared BrandMark/Wordmark components can consume the SVG masters.
+Desktop and Server Web share three SVGs in `packages/ui/src/assets/`: `logo-mark.svg` (the bare mark, copied from `speclink-logo-mark.svg` with its fill changed to `currentColor`), `logo-horizontal.svg` and `logo-horizontal-dark.svg` (copied verbatim). `packages/ui/src/components/Brand.tsx` renders them as `BrandMark` (the mark follows the primary color) and `Wordmark` (the horizontal lockup, switching to the dark version under a dark system preference). To change the logo, replace those three files. The desktop favicon stays at `apps/desktop/public/logo-mark.png` (referenced by `index.html`). Native desktop icons live in `apps/desktop/src-tauri/icons/`, including ICO, ICNS and sized PNGs. The tray uses separate monochrome 18/36 px symbols; the 36 px PNG is also embedded in `apps/desktop/src/trayIcon.ts`.
 
 To regenerate native icons:
 

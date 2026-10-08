@@ -10,17 +10,23 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        secondary: "bg-primary/10 text-primary hover:bg-primary/15",
         outline:
           "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
         ghost: "hover:bg-accent hover:text-accent-foreground",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        /** 圖示鈕：靜態無底，hover 才浮出淡底。 */
+        subtle: "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
         link: "text-primary underline-offset-4 hover:underline",
+        destructive: "bg-destructive text-white hover:bg-destructive/90",
+        danger: "bg-destructive/10 text-destructive hover:bg-destructive/15",
       },
       size: {
         default: "h-9 px-4 py-2",
-        sm: "h-8 rounded-md px-3 text-xs",
-        lg: "h-10 rounded-md px-6",
-        icon: "h-9 w-9",
+        sm: "h-7 px-2.5 text-xs",
+        toolbar: "h-8 px-3",
+        icon: "h-8 w-8",
+        "icon-sm": "h-7 w-7",
+        "icon-xs": "h-6 w-6",
       },
     },
     defaultVariants: { variant: "default", size: "default" },

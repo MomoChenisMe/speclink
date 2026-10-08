@@ -14,17 +14,13 @@ type Dict = Record<string, string>;
 export const APP_MESSAGES: Record<UiLocale, Dict> = {
   "zh-TW": {
     // 共用
-    "common.cancel": "取消",
     "common.confirm": "確認",
     "common.revoke": "撤銷",
     "common.retry": "重試",
     "common.remove": "移除",
     "common.add": "加入",
     "common.rename": "更名",
-    "common.copy": "複製",
-    "common.copied": "已複製",
     "common.copyField": "複製 {name}",
-    "common.copiedField": "{name} 已複製",
     "common.search": "搜尋",
     "common.loading": "載入中…",
     "common.creating": "建立中…",
@@ -341,17 +337,13 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
   en: {
     // Shared
-    "common.cancel": "Cancel",
     "common.confirm": "Confirm",
     "common.revoke": "Revoke",
     "common.retry": "Retry",
     "common.remove": "Remove",
     "common.add": "Add",
     "common.rename": "Rename",
-    "common.copy": "Copy",
-    "common.copied": "Copied",
     "common.copyField": "Copy {name}",
-    "common.copiedField": "{name} copied",
     "common.search": "Search",
     "common.loading": "Loading…",
     "common.creating": "Creating…",

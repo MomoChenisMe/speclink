@@ -158,7 +158,7 @@ describe("ProjectTabs", () => {
     expect(tab.querySelector('[data-tab-status="error"]')?.getAttribute("class")).toContain(
       "destructive",
     );
-    expect(tab.getAttribute("class")).not.toContain("amber");
+    expect(tab.getAttribute("class")).not.toContain("status-warning");
   });
 
   it("background recovery tab supports mouse and keyboard activation", () => {

@@ -51,8 +51,8 @@ describe("憑證頁", () => {
     const table = await screen.findByRole("table");
     const valid = within(table).getAllByText("有效")[0];
     const revoked = within(table).getByText("已撤銷");
-    expect(valid.className).toContain("emerald");
-    expect(revoked.className).not.toContain("emerald");
+    expect(valid.className).toContain("status-success");
+    expect(revoked.className).not.toContain("status-success");
     expect(revoked.className).toContain("text-muted-foreground");
   });
 

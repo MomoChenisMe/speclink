@@ -226,7 +226,7 @@ describe("已封存側驗證結局標示", () => {
     for (const label of ["已驗證", "曾驗證未通過"]) {
       expect(within(card("2026-08-04-plain")).queryByLabelText(label)).toBeNull();
     }
-    expect(screen.getByLabelText("曾驗證未通過").className).toContain("text-rose-600");
+    expect(screen.getByLabelText("曾驗證未通過").className).toContain("text-destructive");
   });
 
   it("抽屜顯示「曾驗證未通過」標示", () => {
@@ -244,7 +244,7 @@ describe("已封存側驗證結局標示", () => {
     const outcome = document.querySelector("[data-verify-outcome]") as HTMLElement;
     expect(outcome).toBeTruthy();
     expect(outcome.textContent).toContain("曾驗證未通過");
-    expect(outcome.className).toContain("text-rose-600");
+    expect(outcome.className).toContain("text-destructive");
   });
 });
 

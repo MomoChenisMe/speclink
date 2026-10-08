@@ -11,7 +11,7 @@ import { Skeleton } from "./ui/skeleton";
 /** 看板佔位卡：模仿 ChangeCard 的名稱列＋進度條輪廓。外框直接用 Card 而非自刻。 */
 export function CardSkeleton() {
   return (
-    <Card aria-busy="true" className="p-3 flex flex-col gap-2">
+    <Card aria-busy="true" size="nested" className="p-3 flex flex-col gap-2">
       <Skeleton className="h-3.5 w-2/3" />
       <Skeleton className="h-2 w-full" />
     </Card>

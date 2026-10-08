@@ -631,6 +631,8 @@ describe("DiscussionDrawer 標題 slug 化（design D4）", () => {
     expect(screen.getByText("Alpha search")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "複製 slug" }));
     expect(writeText).toHaveBeenCalledWith("alpha-search");
+    // 共用 CopyButton：成功以 status 宣告「已複製」。
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("已複製"));
   });
 });
 

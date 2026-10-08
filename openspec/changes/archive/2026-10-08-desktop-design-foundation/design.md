@@ -72,7 +72,7 @@
 | button | 圓角 `rounded-md`；變體 default（`bg-primary` 白字）、secondary（`bg-primary/10 text-primary`）、outline（白底細框）、ghost、subtle（圖示鈕，hover 才 `bg-foreground/5`）、link、destructive（實心紅）、danger（`bg-destructive/10 text-destructive`）；尺寸 default h-9、sm h-7、toolbar h-8、icon 32／28／24px；焦點 `focus-visible:ring-2 ring-ring` |
 | card | `rounded-2xl border bg-card`，無陰影；`size="nested"` 變體為 `rounded-xl`（容器內的小卡：看板卡片、對話框內的清單卡）；`interactive` 變體提供 hover（框變深＋底微灰）；呼叫端不得以 className 覆蓋圓角與陰影 |
 | badge | `rounded-full px-1.5 py-px text-[11px]`；變體 secondary（`bg-muted`）、outline、default（`bg-primary`） |
-| tabs | 卡片標頭式底線：List `flex w-full items-center px-2 bg-card border border-border rounded-t-2xl`（作為內容卡的頂部；內容卡以 `rounded-t-none border-t-0` 接在下方），Trigger `h-10 px-3.5 text-sm font-medium text-muted-foreground border-b-2 border-transparent -mb-px`，作用中 `text-primary border-primary`、無底色無陰影；計數徽章緊接在文字後；List 右端保留一個 `actions` slot 放頁級動作（如「開啟 ▾」） |
+| tabs | 底線式，兩個 List 變體：預設 `underline`＝`flex w-full items-center border-b border-border`（整列底線、無外框無底色）；`variant="card"`＝卡片標頭式 `flex w-full items-center px-2 bg-card border border-border rounded-t-2xl`（作為內容卡的頂部；內容卡以 `rounded-t-none border-t-0` 接在下方）。本刀所有消費者用預設：卡片標頭式要有內容卡接在下方才成立，而接內容卡是各頁版面（已封存頁 cut 3a、詳情頁 cut 3b、設定 cut 4），server-web 使用者／憑證／專案頁不在任何一刀，預設畫卡片標頭會在接上之前留下一條斷掉的卡。Trigger `h-10 px-3.5 text-sm font-medium text-muted-foreground border-b-2 border-transparent -mb-px`，作用中 `text-primary border-primary`、無底色無陰影；計數徽章緊接在文字後；List 右端保留一個 `actions` slot 放頁級動作（如「開啟 ▾」） |
 | input／textarea | `h-8 rounded-lg border-input bg-background`，無 `shadow-sm`；聚焦 `border-ring ring-2 ring-ring/30` |
 | select | Trigger 與 input 同高同框；Content `min-w-56 rounded-xl p-1.5 shadow-lg shadow-black/5`；Item `rounded-lg px-2.5 py-1.5 text-[13px]`，hover `bg-muted`、選取為勾號不填主色；分隔線 `mx-2`；外殼刀的 dropdown-menu 沿用同一組 class |
 | popover | `rounded-xl p-3 shadow-md` |
@@ -100,18 +100,19 @@ interface ConfirmDialogProps {
   cancelLabel?: string;        // 預設 i18n common.cancel
   destructive?: boolean;       // 確認鈕用 destructive 變體
   busy?: boolean;              // 確認鈕 disabled＋取消鈕 disabled
+  confirmDisabled?: boolean;   // 只停用確認鈕（封存、封存討論依遠端能力停用時）
   onConfirm: () => void | Promise<void>;
   children?: ReactNode;        // 標題與說明之後、按鈕之前的額外內容（如工具多選）
 }
 ```
 
-兩鍵式確認框全部改用它：App.tsx 的初始化、啟用、封存、封存討論、退回提案中、刪除等；`ProjectSettingsView.tsx` 的三處；server-web `UsersPage`／`SystemPage`／`CredentialsPage`／`AccountPage`。三選項以上的對話框（`ReviewArchiveDialog`、`RevertBlockedDialog`、`WorkspaceChooser`、`MigrationDialog`、`RemoteConflictDialog`、`ReleaseNotesDialog`）維持各自的 `AlertDialog` 組裝。
+兩鍵式確認框全部改用它：App.tsx 的初始化、啟用、封存、封存討論、退回提案中、刪除等；`ProjectSettingsView.tsx` 的 schema 刪除確認（一處）；server-web `UsersPage`／`SystemPage`／`CredentialsPage`／`AccountPage`。三選項以上的對話框（`ReviewArchiveDialog`、`RevertBlockedDialog`、`WorkspaceChooser`、`MigrationDialog`、`RemoteConflictDialog`、`ReleaseNotesDialog`）維持各自的 `AlertDialog` 組裝。
 
 ### D8 CopyButton／EmptyState／SectionHeader／Brand 的形狀
 
-- `CopyButton({ value, label, size?: "sm" | "icon", onCopy?, className? })`：預設走 `navigator.clipboard.writeText`，`onCopy` 可覆寫（系統匣面板改接 Tauri clipboard plugin）；複製成功後圖示換勾號 1.5 秒（spec 豁免項「複製成功勾號為主色」維持）。
+- `CopyButton({ value, label, size?: "sm" | "icon", onCopy?, tabIndex?, inverted?, className? })`：預設走 `navigator.clipboard.writeText`，`onCopy` 可覆寫（系統匣面板改接 Tauri clipboard plugin）；複製成功後圖示換勾號 1.5 秒（spec 豁免項「複製成功勾號為主色」維持），並以 `status` 宣告「已複製」，按鈕名稱不變；寫入完成前元件已卸載則不再開計時器。`tabIndex` 供系統匣退出 tab 順序；`inverted` 供 hover 整列主色反白的列（系統匣面板），hover 時圖示改主色前景色——呼叫端不以 className 改色。勾號計時器 `useCopied` 只由 `CopyButton` 使用。消費端：看板卡片名稱列（`CardNameRow`）、討論欄已轉出細列、規格清單、已封存清單、變更／規格／討論／已封存四個抽屜標頭、系統匣面板、桌面連線登入、server-web 各頁。
 - `EmptyState({ icon, title, description?, action? })`：置中直欄，圖示 40px、標題 2xl 一般字重、描述 13px 灰字、動作為 default 按鈕。
-- `SectionHeader({ icon?, label, count?, countClassName?, action?, className? })`：`text-xs font-semibold text-muted-foreground` 一列，計數為 badge。
+- `SectionHeader({ icon?, label, count?, countClassName?, action?, className? })`：`text-xs font-semibold text-muted-foreground` 一列，計數為 badge；未給 `countClassName` 時為 Badge 的 secondary 變體（中性），不另以 className 改色。
 - `Brand.tsx` 匯出 `BrandMark({ size?: number, className? })` 與 `Wordmark({ className? })`。資產放 `packages/ui/src/assets/` 三個 SVG：`logo-mark.svg`（自 `docs/assets/brand/svg/speclink-logo-mark.svg` 複製，唯一改動是 `fill="#167873"` 改成 `fill="currentColor"`）、`logo-horizontal.svg` 與 `logo-horizontal-dark.svg`（逐字複製）；`packages/ui/src/vite-env.d.ts` 加 `/// <reference types="vite/client" />` 讓 `.svg` 與 `?raw` 匯入有型別。換 Logo 只換這三個檔。
   - `BrandMark`：以 `import mark from "../assets/logo-mark.svg?raw"` 取得 SVG 字串（建置期常數，不是使用者內容），渲染 `<span role="img" aria-label="Speclink" className={cn("inline-block text-primary [&>svg]:h-full [&>svg]:w-auto", className)} style={{ height: size }} dangerouslySetInnerHTML={{ __html: mark }} />`；`size` 預設 26。顏色跟 `text-primary` 走：淺色主色 teal、深色淺青綠，與 D1 校準後的 `--primary` 同值。不用 app 圖示的「青綠底板＋白 S」——它與作用中專案方塊同形。本刀沒有畫面消費者（圖示列頂在 cut 2），仍於本刀建立：它與三個資產、`Wordmark` 同屬一個品牌模組，討論結論把資產收口整個指派給本刀；形狀由 `brand.test.tsx` 驗證。這是 D6 的唯一例外。
   - `Wordmark`：`<picture>` 帶 `<source media="(prefers-color-scheme: dark)" srcSet={horizontalDark} />` 與 `<img src={horizontal} alt="Speclink" className={cn("w-auto", className)} />`，高度由呼叫端給：本刀的桌面頂欄、server-web `ConsoleLayout` 與 `FocusLayout` 傳 `h-5`（與現狀同高）；cut 2 在零專案空狀態與「關於 Speclink」改 `h-10`（40px），其他地方不再出現字標。
@@ -127,7 +128,11 @@ interface ConfirmDialogProps {
 ### D10 Streamdown 的接法
 
 - `packages/ui/package.json` 加 `streamdown`（^2.6.0）與 `@streamdown/code`；移除 `react-markdown`；`remark-gfm` 由 Streamdown 自帶（移除直接相依）、`remark-breaks` 保留。`apps/desktop/package.json` 移除 `@tailwindcss/typography`。
-- `Markdown.tsx`：`<div className="markdown max-w-[96ch]"><Streamdown mode="static" remarkPlugins={[...Object.values(defaultRemarkPlugins), alerts, remarkBreaks]} rehypePlugins={rehypeWithAlertSchema} plugins={{ code }} controls={{ code: { copy: true, download: false }, table: false, mermaid: false }} translations={{ copyCode: t("markdown.copyCode"), copied: t("markdown.copied") }} icons={{ CopyIcon: Copy, CheckIcon: Check }} linkSafety={{ enabled: false }} shikiTheme={["github-light", "github-dark"]}>{content}</Streamdown></div>`。`rehypeWithAlertSchema` 以 `defaultRehypePlugins` 為底，把 sanitize schema 擴充成允許 `div` 帶 `markdown-alert*`、語意 surface 與 title 的 class（Streamdown 傳自訂 rehypePlugins 後不再自動擴充 schema）；`remarkGithubAlerts` 不變。raw HTML 由 Streamdown 的 rehype-raw＋sanitize 承擔：HTML 註解不進畫面、code fence 內原文照常。
+- `Markdown.tsx`：`<div className="markdown max-w-[96ch]"><Streamdown mode="static" remarkPlugins={[...Object.values(defaultRemarkPlugins), remarkDropHtml, [remarkGithubAlerts, alertLabels], remarkBreaks]} rehypePlugins={[[sanitize, alertSchema]]} plugins={{ code }} controls={{ code: { copy: true, download: false }, table: false, mermaid: false }} translations={{ copyCode: t("markdown.copyCode"), copied: t("markdown.copied") }} icons={{ CopyIcon: Copy, CheckIcon: Check }} linkSafety={{ enabled: false }} shikiTheme={["github-light", "github-dark"]} tableMaxHeight={0} codeBlockMaxHeight={0}>{content}</Streamdown></div>`；固定設定放模組層、隨語系變動的以 `useMemo` 包住（Streamdown 的區塊 memo 逐一比對屬性物件）。
+  - 原始 HTML：與改版前的 `skipHtml` 一致，整段丟棄——`remarkDropHtml` 在 mdast 階段移除 html 節點（rehype 管線不含 raw 時，Streamdown 會把 html 節點轉成字面文字）。不接 `defaultRehypePlugins.raw`：文件正文常把 `<summary>`、`<template>` 這類佔位字當字面寫，解析成標籤會把後文藏進收合區塊或整段吞掉。HTML 註解不進畫面、code fence 內原文照常。
+  - rehype 管線只取 `defaultRehypePlugins.sanitize`，schema 擴充成允許 `div` 帶 `markdown-alert*`、語意 surface 與 title 的 class token（Streamdown 傳自訂 rehypePlugins 後不再自動擴充 schema；hProperties 的 class 逐 token 提供，sanitize 逐 token 比對）。不接 `harden`：它在沒有 defaultOrigin 時把 `editor.md` 這類裸相對連結換成 [blocked]，而手冊的跨頁連結正是這種寫法；連結協定由 sanitize 把關（擋 `javascript:` 等）。
+  - `remarkGithubAlerts` 的語系標籤以外掛選項傳入：Streamdown 以「外掛函式名＋選項 JSON」快取 processor，閉包式外掛會讓不同語系共用同一份。
+  - `tableMaxHeight={0}`、`codeBlockMaxHeight={0}`：表格與程式碼區塊不設高度上限，維持整份展開閱讀；寬表格由 Streamdown 表格容器的 `overflow-x-auto` 橫捲。
 - `packages/ui/src/theme.css` 加 `@source "../../../node_modules/streamdown/dist/*.js";`（兩個 app 經 `@import` 共用，不各自加）。
 - `apps/desktop/src/index.css`：移除 `@plugin "@tailwindcss/typography"` 與整段 `--tw-prose-*` 對照、`code::before/after`、`pre` 邊框、`table` display／overflow、`th` 底色（Streamdown 自帶表格容器與程式碼框）；保留並改寫 `.markdown` 為 `font-size: 1rem; line-height: 1.7`、行內 code chip（teal 底）、`del` 灰字、GFM 任務清單四條規則。
 - 深色：Streamdown 以 `dark:` 變體切 Shiki 深色，Tailwind v4 的 `dark:` 預設跟 `prefers-color-scheme`，與 theme.css 同步，不加 `@custom-variant`。
@@ -150,8 +155,9 @@ interface ConfirmDialogProps {
 **Interface / data shape**
 
 - 新 token 名與 utility 名：`sidebar`、`status-progress`、`status-success`、`status-warning`、`stamp`、`improve`、`stage-discussion`、`stage-proposed`、`stage-in-progress`、`stage-ready`。
-- `@speclink/ui` 新匯出：`ConfirmDialog`、`CopyButton`、`EmptyState`、`SectionHeader`、`BrandMark({ size?: number = 26, className? })`、`Wordmark({ className? })`、`DISCUSSION_TONE`；移除匯出：無。
+- `@speclink/ui` 新匯出：`ConfirmDialog`（屬性見 D7，含 `confirmDisabled`）、`CopyButton`（屬性見 D8，含 `tabIndex`、`inverted`）、`EmptyState`、`SectionHeader`、`BrandMark({ size?: number = 26, className? })`、`Wordmark({ className? })`、`DISCUSSION_TONE`；移除匯出：無。
 - `Button` 變體集合：default、secondary、outline、ghost、subtle、link、destructive、danger；尺寸：default、sm、toolbar、icon、icon-sm、icon-xs。
+- `TabsList` 變體：`underline`（預設）、`card`；`actions?: ReactNode` 渲染在 tablist 之外的同列右端。
 - i18n 新鍵：`markdown.copyCode`、`markdown.copied`（兩語系鍵集合維持相等）。
 - `openspec/config.yaml`：`rules.design` 多一條字串。
 
@@ -164,10 +170,10 @@ interface ConfirmDialogProps {
 **Acceptance criteria**
 
 - `npm test -w packages/ui`、`npm test -w apps/desktop`、`npm test -w apps/server-web` 全綠；`theme.test.ts` 新快照、`uiSingleSource.test.ts`、`markdownAlerts.test.tsx`、`stage.test.ts` 更新後通過。
-- `grep -rE '(text|bg|border|ring|from|to)-(sky|amber|emerald|rose|red|teal|green|violet|purple|orange|yellow|fuchsia|indigo|slate|gray|zinc|neutral|stone)-[0-9]{2,3}'` 在三個 src 根（排除 `__tests__`）零命中。
+- 原生色階守門（`theme.test.ts`）以「任意 utility 前綴＋Tailwind 全部 26 個色名＋色階數字」比對三個 src 根的 .ts／.tsx／.css（排除 `__tests__`、去註解），零命中；比對式本身由涵蓋度測試釘住（`text-blue-600`、`fill-sky-500`、`border-t-amber-500` 等必中，token class 不誤中）。
 - `apps/desktop`、`apps/server-web` 的 `vite build` 通過。
 - `grep -rn 'logo-mark\|wordmark' apps/ --include='*.ts' --include='*.tsx' --include='*.html'` 只命中 `apps/desktop/index.html` 的 favicon；`apps/server-web/src/assets/` 不含任何品牌 PNG。
-- 手動：desktop 看板在淺色與深色各看一次，四欄色相正確、卡片無陰影、分頁為卡片標頭式底線；開一份含程式碼區塊的規格，上色與複製鈕可用；server-web 總覽頁外觀同步。
+- 手動：desktop 看板在淺色與深色各看一次，四欄色相正確、卡片無陰影、分頁為整列底線（作用中主色底線、無底色）；開一份含程式碼區塊的規格，上色與複製鈕可用；server-web 總覽頁外觀同步。
 
 **Scope boundaries**
 
@@ -181,6 +187,7 @@ interface ConfirmDialogProps {
 - [Streamdown 自帶元素樣式與 `.markdown` 規則重疊] → 覆寫只留四類（字級行高、code chip、del、任務清單），其餘刪除；markdown 結構測試守住清單符號、編號、16px。
 - [theme.test 無白名單後，任何新原生色階立即紅燈] → 這是目的；訊息列出檔案與 class，改成 token class 即可。
 - [`BrandMark` 以 `dangerouslySetInnerHTML` 內嵌 SVG] → 字串來自 `?raw` 匯入的建置期常數，不經任何執行期輸入；`brand.test.tsx` 斷言渲染結果含 `fill="currentColor"` 的 `<svg>`。
+- [分頁卡片標頭式在內容卡接上前是一條斷掉的卡] → `TabsList` 預設整列底線、卡片標頭式改為 `variant="card"`，由接上內容卡的刀採用（apply 期手動驗收發現後調整）。
 - [`--primary` 校準改變所有主色消費者的色值] → 與現值差距在 chroma 0.015、hue 2° 內，肉眼接近；theme 快照更新即可。
 - [uiSingleSource 以正規式掃頂層定義，可能漏掉巢狀定義] → 守門只針對「散落的同名元件」這一類，巢狀區域函式不是重複實作來源；接受。
 - [回歸對照] → 不動 CLI、golden、`--json`；前端三個 workspace 的測試是基準。

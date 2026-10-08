@@ -1,17 +1,10 @@
 import { useState, type ReactNode } from "react";
 import { Compass, Database, Download, Server, TriangleAlert, type LucideIcon } from "lucide-react";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   Table,
   TableBody,
   TableCell,
@@ -166,20 +159,15 @@ export function SystemPage() {
         </>
       )}
 
-      <AlertDialog open={confirmMigrate} onOpenChange={(open) => !open && setConfirmMigrate(false)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("system.migrateConfirm")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("system.migrateWarning")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={runMigrate} disabled={busy}>
-              {t("system.migrateAction")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={confirmMigrate}
+        onOpenChange={(open) => !open && setConfirmMigrate(false)}
+        title={t("system.migrateConfirm")}
+        description={t("system.migrateWarning")}
+        confirmLabel={t("system.migrateAction")}
+        busy={busy}
+        onConfirm={runMigrate}
+      />
     </div>
   );
 }

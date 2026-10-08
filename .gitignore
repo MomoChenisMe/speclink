@@ -30,3 +30,6 @@ apps/desktop/src-tauri/binaries/
 
 # Claude Code 載入 mod 時自動產生的型別檔，每次載入都會重寫
 integrations/claude-code/*/.claude-plugin/types/
+
+# 品牌套件壓縮檔不進 repo（原稿在 docs/assets/brand/svg）
+docs/assets/brand/*.zip

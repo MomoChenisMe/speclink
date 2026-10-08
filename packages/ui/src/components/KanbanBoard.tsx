@@ -45,25 +45,25 @@ export const DRAG_ACTIVATION_DISTANCE = 8;
 /** 篩選維度的「全部」在 BoardFilters 裡是 null，但 Radix Select 的 item 不接受空字串。 */
 const FILTER_ALL = "__all__";
 
-/** 各階段的視覺主題——單一 teal 色相、以深淺表達生命週期推進，守住主色系。 */
+/** 各階段的視覺主題——每階一色相，全部取 stage.ts 的 stage-* token 對照。 */
 const STAGE_STYLE: Record<Stage, { icon: LucideIcon; top: string; badge: string; bar: string; iconCls: string }> = {
   proposed: {
     icon: Lightbulb,
-    top: "border-t-primary/25",
+    top: "border-t-stage-proposed",
     badge: STAGE_BADGE.proposed,
     bar: STAGE_BAR.proposed,
     iconCls: STAGE_ICON.proposed,
   },
   "in-progress": {
     icon: Hammer,
-    top: "border-t-primary/55",
+    top: "border-t-stage-in-progress",
     badge: STAGE_BADGE["in-progress"],
     bar: STAGE_BAR["in-progress"],
     iconCls: STAGE_ICON["in-progress"],
   },
   ready: {
     icon: CircleCheckBig,
-    top: "border-t-primary",
+    top: "border-t-stage-ready",
     badge: STAGE_BADGE.ready,
     bar: STAGE_BAR.ready,
     iconCls: STAGE_ICON.ready,

@@ -6,6 +6,7 @@ import { act, cleanup, render as rtlRender, screen, fireEvent, within } from "@t
 import type { ReactElement, ReactNode } from "react";
 import {
   I18nProvider,
+  DISCUSSION_TONE,
   REVIEW_TONE,
   SEMANTIC_TONE,
   STAGE_BADGE,
@@ -268,12 +269,12 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
     for (const id of ["panel-section-proposed", "panel-section-in-progress", "panel-section-ready"]) {
       const card = screen.getByTestId(id);
       expect(card.className.split(/\s+/)).toEqual(expect.arrayContaining(["min-h-12", "justify-center"]));
-      expect(within(card).getByTestId("panel-section-count").textContent).toBe("0");
+      expect(within(card).getByTestId("section-count").textContent).toBe("0");
     }
     const disc = screen.getByTestId("panel-section-discussions");
     expect(disc.className.split(/\s+/)).toEqual(expect.arrayContaining(["min-h-12", "justify-center"]));
     expect(within(disc).getByText("討論")).toBeTruthy();
-    expect(within(disc).getByTestId("panel-section-count").textContent).toBe("0");
+    expect(within(disc).getByTestId("section-count").textContent).toBe("0");
   });
 
   it("部分有資料時空階段分區仍常駐：計數 0/1/0、順序固定提案中→進行中→已就緒", () => {
@@ -285,7 +286,7 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
     });
     const ids = ["panel-section-proposed", "panel-section-in-progress", "panel-section-ready"];
     const counts = ids.map(
-      (id) => within(screen.getByTestId(id)).getByTestId("panel-section-count").textContent,
+      (id) => within(screen.getByTestId(id)).getByTestId("section-count").textContent,
     );
     expect(counts).toEqual(["0", "1", "0"]);
     expect(within(screen.getByTestId("panel-section-in-progress")).getByTestId("panel-change-solo")).toBeTruthy();
@@ -437,19 +438,23 @@ describe("TrayPanel 分區卡片化與主色（spec「面板樣式（macOS）」
     expect(document.querySelector("hr")).toBeNull();
   });
 
-  it("生命週期分區圖示維持主色階梯，討論／已轉出分區圖示為中性", () => {
-    // spec「生命週期階梯與互動回饋豁免」：主色階梯是三個生命週期分區的語彙；
-    // 討論與已轉出不在該階梯上，借穿階梯樣式會讓「顏色＝階段」的讀法失準。
+  it("生命週期與討論分區圖示各取所屬色相，已轉出分區圖示為中性", () => {
+    // spec「生命週期四欄各一色相」：系統匣分區與看板四欄同色，同一來源（stage.ts）；
+    // 已轉出不是生命週期階段，維持中性。
     renderPanel({ snapshot: snapshot({ discussions: discBoth }) });
     const iconClasses = (id: string) =>
       (screen.getByTestId(id).querySelector("svg")?.getAttribute("class") ?? "").split(/\s+/);
     expect(iconClasses("panel-section-proposed")).toContain(STAGE_ICON.proposed);
     expect(iconClasses("panel-section-in-progress")).toContain(STAGE_ICON["in-progress"]);
     expect(iconClasses("panel-section-ready")).toContain(STAGE_ICON.ready);
-    for (const id of ["panel-section-discussions", "panel-section-promoted"]) {
-      expect(iconClasses(id).join(" ")).not.toContain("primary");
-      expect(iconClasses(id).join(" ")).toContain("muted-foreground");
-    }
+    expect(STAGE_ICON.proposed).toBe("text-stage-proposed");
+    expect(STAGE_ICON["in-progress"]).toBe("text-stage-in-progress");
+    expect(STAGE_ICON.ready).toBe("text-stage-ready");
+    expect(iconClasses("panel-section-discussions")).toContain(DISCUSSION_TONE.icon);
+    expect(DISCUSSION_TONE.icon).toBe("text-stage-discussion");
+    const promoted = iconClasses("panel-section-promoted").join(" ");
+    expect(promoted).toContain("text-muted-foreground");
+    expect(promoted).not.toContain("stage-");
   });
 
   it("根容器以毛玻璃同半徑圓角裁切（wash 不得畫出 vibrancy 圓角外）", () => {
@@ -491,7 +496,7 @@ describe("TrayPanel 分區計數（spec「面板樣式（macOS）」；design D8
       }),
     });
     const count = (id: string) =>
-      screen.getByTestId(id).querySelector('[data-testid="panel-section-count"]')!;
+      screen.getByTestId(id).querySelector('[data-testid="section-count"]')!;
     for (const id of [
       "panel-section-proposed",
       "panel-section-in-progress",
@@ -507,12 +512,15 @@ describe("TrayPanel 分區計數（spec「面板樣式（macOS）」；design D8
     expect(count("panel-section-ready").className.split(/\s+/)).toEqual(
       expect.arrayContaining(STAGE_BADGE.ready.split(/\s+/)),
     );
-    // 討論／已轉出不在生命週期階梯上：計數徽章轉中性（與欄頭圖示同一判斷）。
-    for (const id of ["panel-section-discussions", "panel-section-promoted"]) {
-      const cls = count(id).className;
-      expect(cls).toContain("bg-muted");
-      expect(cls).not.toContain("primary");
-    }
+    // 討論分區計數取桃紫（與看板討論欄同款）；已轉出不是生命週期階段，維持中性。
+    expect(count("panel-section-discussions").className.split(/\s+/)).toEqual(
+      expect.arrayContaining(DISCUSSION_TONE.badge.split(/\s+/)),
+    );
+    // 中性＝SectionHeader 計數徽章的預設（Badge secondary 變體），呼叫端不另給配色。
+    const promoted = count("panel-section-promoted").className;
+    expect(promoted).toContain("bg-muted");
+    expect(promoted).toContain("text-foreground");
+    expect(promoted).not.toContain("stage-");
   });
 });
 
@@ -547,7 +555,7 @@ describe("TrayPanel 狀態語意色（spec「介面狀態語意色分層」）",
     cleanup();
 
     renderTab({ status: "error", failureKind: "needs-reauth" });
-    expect(iconWrap().className).toContain("amber");
+    expect(iconWrap().className).toContain("status-warning");
   });
 
   it("作用中非 ready 分頁：選取以主色外框表達，狀態由列內語意色承載", () => {
@@ -555,7 +563,7 @@ describe("TrayPanel 狀態語意色（spec「介面狀態語意色分層」）",
     const tab = screen.getByTestId("panel-project-remote:c1/demo/backend");
     // 選取＝主色外框（不是琥珀底，琥珀是警示語意，兩者混用會誤讀為「這個分頁有問題」）。
     expect(tab.className).toContain("border-primary");
-    expect(tab.className).not.toContain("amber");
+    expect(tab.className).not.toContain("status-warning");
     // 狀態文字自己帶語意色：還原中＝藍。
     const status = within(tab).getByText("正在連線");
     expect(status.className).toContain(SEMANTIC_TONE.inProgress);
@@ -566,7 +574,7 @@ describe("TrayPanel 狀態語意色（spec「介面狀態語意色分層」）",
     const stale = screen.getByTestId("panel-stale-status");
     const button = within(stale).getByRole("button", { name: "重新登入" });
     expect(button.className).toContain("border");
-    expect(button.className).not.toContain("amber");
+    expect(button.className).not.toContain("status-warning");
   });
 });
 
@@ -636,11 +644,13 @@ describe("TrayPanel 互動（開啟與 hover 複製）", () => {
     });
     expect(discBtn.getAttribute("tabindex")).toBe("-1");
     expect(changeBtn.getAttribute("tabindex")).toBe("-1");
+    // 列 hover 整列主色反白：複製鈕的反白配色由共用 CopyButton 的 inverted 負責。
+    for (const b of [discBtn, changeBtn]) expect(b.className).toContain("group-hover:text-primary-foreground");
     fireEvent.click(discBtn);
     expect(h.onCopy).toHaveBeenCalledWith("d1");
   });
 
-  it("複製回饋：點擊後圖示短暫轉勾號、約 1.2 秒後復原（看板 copied 同模式）", () => {
+  it("複製回饋：點擊後圖示短暫轉勾號、1.5 秒後復原（共用 CopyButton）", () => {
     vi.useFakeTimers();
     const h = renderPanel();
     const row = screen.getByTestId("panel-discussion-d1");
@@ -651,7 +661,11 @@ describe("TrayPanel 互動（開啟與 hover 複製）", () => {
     expect(btn.querySelector("svg.lucide-check")).toBeTruthy();
     expect(btn.querySelector("svg.lucide-copy")).toBeNull();
     act(() => {
-      vi.advanceTimersByTime(1300);
+      vi.advanceTimersByTime(1400);
+    });
+    expect(btn.querySelector("svg.lucide-check")).toBeTruthy();
+    act(() => {
+      vi.advanceTimersByTime(200);
     });
     expect(btn.querySelector("svg.lucide-check")).toBeNull();
     expect(btn.querySelector("svg.lucide-copy")).toBeTruthy();
@@ -959,7 +973,7 @@ describe("面板載入回饋", () => {
 
   it("首訪未載入 → 不顯示分區計數（不謊報 0 筆）", () => {
     renderPanel({ snapshot: snapshot({ workspaceLoading: true, changes: [], discussions: [] }) });
-    expect(document.querySelector('[data-testid="panel-section-count"]')).toBeNull();
+    expect(document.querySelector('[data-testid="section-count"]')).toBeNull();
   });
 
   it("首訪未載入 → 不顯示空狀態文案", () => {

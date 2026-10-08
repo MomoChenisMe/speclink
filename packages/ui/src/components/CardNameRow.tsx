@@ -1,8 +1,5 @@
-import { Check, Copy } from "lucide-react";
-
-import { Button } from "./ui/button";
+import { CopyButton, REVEAL_ON_HOVER } from "./CopyButton";
 import { HighlightText } from "./HighlightText";
-import { useCopied } from "./useCopied";
 
 /**
  * 看板全尺寸卡的識別列名稱＋複製鈕（spec「看板卡片統一解剖學」：標題恆單行、
@@ -19,12 +16,6 @@ export function CardNameRow({
   copyLabel: string;
   highlight?: string;
 }) {
-  const [copied, markCopied] = useCopied();
-  const copy = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    void navigator.clipboard?.writeText(text);
-    markCopied();
-  };
   return (
     <span className="flex min-w-0 flex-1 items-center gap-1">
       <span
@@ -33,16 +24,7 @@ export function CardNameRow({
       >
         <HighlightText text={text} query={highlight} />
       </span>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        aria-label={copyLabel}
-        className={`inline-flex h-4 w-4 shrink-0 text-muted-foreground hover:text-foreground transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-        onClick={copy}
-      >
-        {copied ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}
-      </Button>
+      <CopyButton value={text} label={copyLabel} className={REVEAL_ON_HOVER} />
     </span>
   );
 }

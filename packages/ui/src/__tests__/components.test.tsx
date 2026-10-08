@@ -54,11 +54,37 @@ describe("Markdown", () => {
     expect(container.textContent).toContain("<div>x</div>");
   });
 
-  it("renders inside a prose container with the markdown hook class", () => {
+  // 文件正文常把 `<name>` 當佔位字寫；佔位字剛好是 HTML 標籤名時，原始 HTML 若被解析，
+  // <summary>／<details> 會把後文包進收合區塊、<template> 會吞掉後文。原始 HTML 一律丟棄。
+  it("drops raw HTML so placeholder-like tags do not hide or swallow the following text", () => {
+    const { container } = render(
+      <Markdown
+        content={"- 格式 speclink(<change-name>): <summary> 與欄位\n- 第二項 <template> 之後\n- 第三項 <details> 收合"}
+      />,
+    );
+    expect(container.querySelector("summary, details, template")).toBeNull();
+    for (const text of ["與欄位", "之後", "第三項", "收合"]) expect(container.textContent).toContain(text);
+  });
+
+  it("does not render raw HTML elements or their id attributes", () => {
+    const { container } = render(<Markdown content={'前 <span id="manual-h-1">中</span> 後'} />);
+    expect(container.querySelector("#manual-h-1")).toBeNull();
+    expect(container.textContent).toContain("中");
+  });
+
+  // spec「寬表格於容器內橫捲」：表格外層容器橫向可捲、不設高度上限。
+  it("wraps wide tables in a horizontally scrollable container without a height cap", () => {
+    const { container } = render(<Markdown content={"| a | b |\n| - | - |\n| 1 | 2 |"} />);
+    const scroller = container.querySelector('[data-streamdown="table"]')?.parentElement as HTMLElement;
+    expect(scroller.className).toContain("overflow-x-auto");
+    expect(scroller.style.maxHeight).toBe("");
+  });
+
+  it("renders inside the markdown hook class without typography prose (desktop-design-foundation D10)", () => {
     const { container } = render(<Markdown content={"hello"} />);
     const root = container.querySelector(".markdown");
     expect(root).toBeTruthy();
-    expect(root?.className).toContain("prose");
+    expect(root?.className).not.toContain("prose");
   });
 
   // spec「markdown 文件內容行寬有上限」（design D3 文件容器）：

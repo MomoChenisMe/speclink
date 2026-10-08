@@ -81,6 +81,14 @@ describe("依角色裁切的主控台殼", () => {
     expect(within(nav).queryByText("帳號")).toBeNull();
   });
 
+  it("header 呈現共用元件庫的橫式鎖版字標（spec「品牌資產只有一處」）", async () => {
+    renderAt("/admin", makeClient());
+    const banner = await screen.findByRole("banner");
+    const lockup = within(banner).getByAltText("Speclink") as HTMLImageElement;
+    expect(lockup.getAttribute("src")).toContain("logo-horizontal");
+    expect(lockup.className).toContain("h-5");
+  });
+
   it("header 以電子郵件連結進入帳號，並與登出並列", async () => {
     renderAt("/admin", makeClient());
     const banner = await screen.findByRole("banner");

@@ -21,22 +21,17 @@ import {
   DiscussionDrawer,
   RevertBlockedDialog,
   ReviewArchiveDialog,
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogFooter,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogAction,
-  AlertDialogCancel,
   Button,
   Checkbox,
+  ConfirmDialog,
+  EmptyState,
   I18nProvider,
   SEMANTIC_SURFACE,
   SEMANTIC_TONE,
   Toaster,
   cn,
   useI18n,
+  Wordmark,
   siblingChangesOf,
   discussionChipStage,
   type Verb,
@@ -112,21 +107,6 @@ const DISABLED_CHOOSER_CONNECTIONS: Pick<
     throw new Error("此環境未提供 server 連線功能");
   },
 };
-
-/** 零分頁空狀態引導頁（spec：取代空看板；說明既有專案與一般目錄初始化兩條路）。 */
-function EmptyState({ onOpen }: { onOpen: () => void }) {
-  const { t } = useI18n();
-  return (
-    <div className="flex flex-col items-center justify-center h-full gap-3 text-center" data-empty-state>
-      <FolderOpen className="h-10 w-10 text-muted-foreground/40" />
-      <h2 className="text-lg font-semibold">{t("app.emptyTitle")}</h2>
-      <p className="text-sm text-muted-foreground max-w-md">{t("app.emptyDesc")}</p>
-      <Button className="gap-1.5" onClick={onOpen}>
-        <FolderOpen className="h-4 w-4" /> {t("app.addWorkspace")}
-      </Button>
-    </div>
-  );
-}
 
 /** 對話框描述文字內嵌粗體名稱：以 {name} 佔位切分渲染。 */
 function BoldName({ text, name }: { text: string; name: string }) {
@@ -566,18 +546,7 @@ function AppInner({
       />
       {/* 頂欄 */}
       <header className="flex items-center gap-3 px-4 h-12 border-b border-border shrink-0">
-        <div className="flex items-center gap-1.5 shrink-0">
-          <img
-            src="./logo-mark.png"
-            alt=""
-            aria-hidden="true"
-            className="h-5 w-5"
-          />
-          <picture>
-            <source media="(prefers-color-scheme: dark)" srcSet="./speclink-wordmark-dark.png" />
-            <img src="./speclink-wordmark.png" alt="Speclink" className="h-5 w-auto" />
-          </picture>
-        </div>
+        <Wordmark className="h-5" />
         {workspace !== undefined ? (
           // 專案分頁列取代「目前專案」佔位（design D10）：active 分頁即目前專案。
           <ProjectTabs
@@ -758,8 +727,18 @@ function AppInner({
               }
             />
           ) : workspace !== undefined && s.tabs.length === 0 ? (
-            // 零分頁（首次使用）：專案範圍頁面落入空狀態；應用程式設定已於上方先行處理。
-            <EmptyState onOpen={() => s.openWorkspaceChooser()} />
+            // 零分頁（首次使用）：專案範圍頁面落入空狀態引導頁（取代空看板）；應用程式設定已於上方先行處理。
+            <EmptyState
+              icon={FolderOpen}
+              title={t("app.emptyTitle")}
+              description={t("app.emptyDesc")}
+              action={
+                <Button className="gap-1.5" onClick={() => s.openWorkspaceChooser()}>
+                  <FolderOpen className="h-4 w-4" /> {t("app.addWorkspace")}
+                </Button>
+              }
+              className="h-full"
+            />
           ) : activeRecoveryTab && activeRecovery && activeRecoveryConnectionId ? (
             <RemoteWorkspaceRecovery
               tab={activeRecoveryTab}
@@ -1041,99 +1020,70 @@ function AppInner({
         onMigrateLocal={s.migrateLocalFromConflict}
       />
 
-      {/* 初始化確認（design D3：寫入型確認框——取消靠左持預設焦點、建立靠右拉開距離） */}
-      <AlertDialog open={s.pendingInit !== null} onOpenChange={(o) => !o && s.cancelInit()}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("app.initTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              <BoldName text={t("app.initDesc")} name={s.pendingInit ?? ""} />
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="flex gap-4">
-            {BUILTIN_TOOLS.map((tool) => (
-              <label key={tool} className="flex items-center gap-1.5 text-sm">
-                <Checkbox
-                  checked={initTools.includes(tool)}
-                  onCheckedChange={(v) =>
-                    setInitTools((prev) =>
-                      v === true ? [...prev, tool] : prev.filter((x) => x !== tool),
-                    )
-                  }
-                />
-                {tool}
-              </label>
-            ))}
-          </div>
-          <AlertDialogFooter className="justify-between sm:justify-between">
-            <AlertDialogCancel autoFocus onClick={s.cancelInit}>
-              {t("app.cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={() => void s.confirmInit(initTools)}>
-              {t("app.initConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* 初始化確認（寫入型確認框：Radix 預設焦點落在取消） */}
+      <ConfirmDialog
+        open={s.pendingInit !== null}
+        onOpenChange={(o) => !o && s.cancelInit()}
+        title={t("app.initTitle")}
+        description={<BoldName text={t("app.initDesc")} name={s.pendingInit ?? ""} />}
+        confirmLabel={t("app.initConfirm")}
+        onConfirm={() => s.confirmInit(initTools)}
+      >
+        <div className="flex gap-4">
+          {BUILTIN_TOOLS.map((tool) => (
+            <label key={tool} className="flex items-center gap-1.5 text-sm">
+              <Checkbox
+                checked={initTools.includes(tool)}
+                onCheckedChange={(v) =>
+                  setInitTools((prev) =>
+                    v === true ? [...prev, tool] : prev.filter((x) => x !== tool),
+                  )
+                }
+              />
+              {tool}
+            </label>
+          ))}
+        </div>
+      </ConfirmDialog>
 
       {/* 啟用確認（spec「未啟用資料夾經確認後補齊啟用」；與初始化確認框同型、獨立狀態） */}
-      <AlertDialog open={s.pendingAdopt !== null} onOpenChange={(o) => !o && s.cancelAdopt()}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("app.adoptTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              <BoldName text={t("app.adoptDesc")} name={s.pendingAdopt ?? ""} />
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="flex gap-4">
-            {BUILTIN_TOOLS.map((tool) => (
-              <label key={tool} className="flex items-center gap-1.5 text-sm">
-                <Checkbox
-                  checked={adoptTools.includes(tool)}
-                  onCheckedChange={(v) =>
-                    setAdoptTools((prev) =>
-                      v === true ? [...prev, tool] : prev.filter((x) => x !== tool),
-                    )
-                  }
-                />
-                {tool}
-              </label>
-            ))}
-          </div>
-          <AlertDialogFooter className="justify-between sm:justify-between">
-            <AlertDialogCancel autoFocus onClick={s.cancelAdopt}>
-              {t("app.cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={() => void s.confirmAdopt(adoptTools)}>
-              {t("app.adoptConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={s.pendingAdopt !== null}
+        onOpenChange={(o) => !o && s.cancelAdopt()}
+        title={t("app.adoptTitle")}
+        description={<BoldName text={t("app.adoptDesc")} name={s.pendingAdopt ?? ""} />}
+        confirmLabel={t("app.adoptConfirm")}
+        onConfirm={() => s.confirmAdopt(adoptTools)}
+      >
+        <div className="flex gap-4">
+          {BUILTIN_TOOLS.map((tool) => (
+            <label key={tool} className="flex items-center gap-1.5 text-sm">
+              <Checkbox
+                checked={adoptTools.includes(tool)}
+                onCheckedChange={(v) =>
+                  setAdoptTools((prev) =>
+                    v === true ? [...prev, tool] : prev.filter((x) => x !== tool),
+                  )
+                }
+              />
+              {tool}
+            </label>
+          ))}
+        </div>
+      </ConfirmDialog>
 
       {/* 討論封存確認 */}
-      <AlertDialog
+      <ConfirmDialog
         open={s.pendingArchiveDiscussion !== null}
         onOpenChange={(o) => !o && s.cancelArchiveDiscussion()}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("app.archiveDiscussionTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              <BoldName text={t("app.archiveDiscussionDesc")} name={s.pendingArchiveDiscussion ?? ""} />
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={s.cancelArchiveDiscussion}>{t("app.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={caps !== undefined && !caps.archiveDiscussion}
-              onClick={s.confirmArchiveDiscussion}
-            >
-              {t("app.archiveConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={t("app.archiveDiscussionTitle")}
+        description={
+          <BoldName text={t("app.archiveDiscussionDesc")} name={s.pendingArchiveDiscussion ?? ""} />
+        }
+        confirmLabel={t("app.archiveConfirm")}
+        confirmDisabled={caps !== undefined && !caps.archiveDiscussion}
+        onConfirm={s.confirmArchiveDiscussion}
+      />
 
       {/* 封存入口的未結工單三選項（spec「封存入口三選項擴及驗證工單」）：目標
           change 該站工單未結時取代一般封存確認；未選擇前不執行封存。remote
@@ -1155,75 +1105,48 @@ function AppInner({
       />
 
       {/* 封存確認 */}
-      <AlertDialog
+      <ConfirmDialog
         open={s.pendingArchive !== null && pendingArchiveStation === null}
         onOpenChange={(o) => !o && s.cancelArchive()}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("app.archiveTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              <BoldName text={t("app.archiveDesc")} name={s.pendingArchive ?? ""} />
-              {remoteArchiveScope && (
-                <span className="mt-2 block rounded-md border border-border bg-muted/45 px-2.5 py-2 font-mono text-xs text-foreground">
-                  {t("app.archiveRemoteScope").replace("{scope}", remoteArchiveScope)}
-                </span>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={s.cancelArchive}>{t("app.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={caps !== undefined && !caps.archive}
-              onClick={() => void confirmDetailAction(s.confirmArchive)}
-            >
-              {t("app.archiveConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={t("app.archiveTitle")}
+        description={
+          <>
+            <BoldName text={t("app.archiveDesc")} name={s.pendingArchive ?? ""} />
+            {remoteArchiveScope && (
+              <span className="mt-2 block rounded-md border border-border bg-muted/45 px-2.5 py-2 font-mono text-xs text-foreground">
+                {t("app.archiveRemoteScope").replace("{scope}", remoteArchiveScope)}
+              </span>
+            )}
+          </>
+        }
+        confirmLabel={t("app.archiveConfirm")}
+        confirmDisabled={caps !== undefined && !caps.archive}
+        onConfirm={() => confirmDetailAction(s.confirmArchive)}
+      />
 
       {/* 退回提案中確認：確認後直接呼叫引擎動詞,UI 不預判守門。 */}
-      <AlertDialog open={s.pendingRevert !== null} onOpenChange={(o) => !o && s.cancelRevert()}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("app.revertTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              <BoldName text={t("app.revertDesc")} name={s.pendingRevert ?? ""} />
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={s.cancelRevert}>{t("app.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void confirmDetailAction(s.confirmRevert)}>
-              {t("app.revertConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={s.pendingRevert !== null}
+        onOpenChange={(o) => !o && s.cancelRevert()}
+        title={t("app.revertTitle")}
+        description={<BoldName text={t("app.revertDesc")} name={s.pendingRevert ?? ""} />}
+        confirmLabel={t("app.revertConfirm")}
+        onConfirm={() => confirmDetailAction(s.confirmRevert)}
+      />
 
       {/* 退回被守門擋下：列引擎證據與出路,無清理或強制退回的機械出路。 */}
       <RevertBlockedDialog info={s.revertBlocked} onClose={s.dismissRevertBlocked} />
 
       {/* 刪除確認 */}
-      <AlertDialog open={s.pendingDelete !== null} onOpenChange={(o) => !o && s.cancelDelete()}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("app.deleteTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              <BoldName text={t("app.deleteDesc")} name={s.pendingDelete ?? ""} />
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={s.cancelDelete}>{t("app.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive hover:bg-destructive/90"
-              onClick={() => void confirmDetailAction(s.confirmDelete)}
-            >
-              {t("app.deleteConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={s.pendingDelete !== null}
+        onOpenChange={(o) => !o && s.cancelDelete()}
+        title={t("app.deleteTitle")}
+        description={<BoldName text={t("app.deleteDesc")} name={s.pendingDelete ?? ""} />}
+        confirmLabel={t("app.deleteConfirm")}
+        destructive
+        onConfirm={() => confirmDetailAction(s.confirmDelete)}
+      />
     </div>
   );
 }

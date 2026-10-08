@@ -47,6 +47,62 @@ function column(id: string): HTMLElement {
   return document.querySelector(`[data-column="${id}"]`) as HTMLElement;
 }
 
+describe("KanbanBoard 生命週期四欄色相（spec「生命週期四欄各一色相」；design D4）", () => {
+  it("三欄頂條、標頭圖示與計數徽章取各自 stage token；討論欄取 stage-discussion", () => {
+    render(
+      <KanbanBoard
+        changes={changes}
+        discussions={{
+          active: [{ slug: "d1", topic: "D1", status: "open", rounds: 1, created: "2026-10-08", promotedTo: [] }],
+          archived: [],
+        }}
+      />,
+    );
+    for (const stage of ["discussions", "proposed", "in-progress", "ready"] as const) {
+      const token = stage === "discussions" ? "stage-discussion" : `stage-${stage}`;
+      const col = column(stage);
+      expect(col.className).toContain(`border-t-${token}`);
+      const icon = col.querySelector("h2")!.previousElementSibling as Element;
+      expect(icon.getAttribute("class")).toContain(`text-${token}`);
+      expect(within(col).getByTestId("column-count").className).toContain(token);
+    }
+  });
+
+  it("變更卡與討論卡為容器內小卡（nested＋interactive）：12px 圓角、無陰影", () => {
+    render(
+      <KanbanBoard
+        changes={changes}
+        discussions={{
+          active: [{ slug: "d1", topic: "D1", status: "open", rounds: 1, created: "2026-10-08", promotedTo: [] }],
+          archived: [],
+        }}
+      />,
+    );
+    for (const card of [
+      document.querySelector('[data-change="working-y"]')!,
+      document.querySelector('[data-discussion="d1"]')!,
+    ]) {
+      const cls = card.className.split(/\s+/);
+      expect(cls).toContain("rounded-xl");
+      expect(cls.some((c) => c.includes("shadow"))).toBe(false);
+      expect(cls.some((c) => c.startsWith("hover:bg-"))).toBe(true);
+    }
+  });
+
+  it("卡片波次章隨所在欄色相，與欄計數徽章同色", () => {
+    const waved: ChangeItem[] = [
+      { name: "w-prop", status: "proposed", totalTasks: 3, completedTasks: 0, wave: 1 },
+      { name: "w-prog", status: "in-progress", totalTasks: 3, completedTasks: 1, wave: 2 },
+    ];
+    render(<KanbanBoard changes={waved} />);
+    const prop = within(column("proposed")).getByLabelText("第 1 波");
+    const prog = within(column("in-progress")).getByLabelText("第 2 波");
+    expect(prop.className).toContain("stage-proposed");
+    expect(prop.className).not.toContain("stage-in-progress");
+    expect(prog.className).toContain("stage-in-progress");
+  });
+});
+
 describe("KanbanBoard", () => {
   it("places each change in its lifecycle column (Chinese labels, no archived column)", () => {
     render(<KanbanBoard changes={changes} />);
@@ -181,7 +237,7 @@ describe("KanbanBoard", () => {
     const staleCard = screen.getByText("stale-a").closest("[data-change]") as HTMLElement;
     const restale = within(staleCard).getByLabelText("待重新反映");
     expect(restale).toBeTruthy();
-    // 警示語意走語意色表（含深色變體）——舊實作只有單一 amber-500，深色底下偏暗。
+    // 警示語意走語意色表（深色值由 theme.css 的深色 token 承擔）。
     expect(restale.className).toContain(SEMANTIC_TONE.warning);
     const freshCard = screen.getByText("fresh-b").closest("[data-change]") as HTMLElement;
     expect(within(freshCard).queryByLabelText("待重新反映")).toBeNull();
@@ -495,7 +551,7 @@ describe("命中高亮與 snippet（design D7）", () => {
     expect(mark).toBeTruthy();
     expect(mark!.textContent).toBe("engine");
     // 搜尋高亮是「注意這裡」的警示層級，不是互動——改琥珀 mark，不佔用主色。
-    expect(mark!.className).toContain("amber");
+    expect(mark!.className).toContain("status-warning");
     expect(mark!.className).not.toContain("primary");
   });
 

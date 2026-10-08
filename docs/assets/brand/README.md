@@ -32,12 +32,10 @@
 
 ## App 使用位置
 
-- Desktop：`apps/desktop/public/logo-mark.png`、`speclink-wordmark.png`、`speclink-wordmark-dark.png`。
-- Server Web：`apps/server-web/src/assets/` 的同名資產。
+- 介面（Desktop 與 Server Web 共用）：`packages/ui/src/assets/` 的三個 SVG——`logo-mark.svg`（裸標記，由 `speclink-logo-mark.svg` 複製並把填色改成 `currentColor`）、`logo-horizontal.svg` 與 `logo-horizontal-dark.svg`（逐字複製）；由 `packages/ui/src/components/Brand.tsx` 的 `BrandMark`（標記跟主色走）與 `Wordmark`（橫式鎖版，深色偏好取深色版）渲染。換 Logo 只換這三個檔。
+- Desktop favicon：`apps/desktop/public/logo-mark.png`（`index.html` 引用）。
 - 原生 App：`apps/desktop/src-tauri/icons/`，包含 Windows `.ico`、macOS `.icns` 與各尺寸 PNG。
 - 系統匣：18／36 px 單色 S（無底板），macOS 以 alpha 作為系統 template；36 px 版本同時內嵌於 `apps/desktop/src/trayIcon.ts`。
-
-現有兩個 App 沿用 PNG 接線；介面改版的共用 BrandMark／Wordmark 可改用這裡的 SVG 原稿。
 
 重新產生原生圖示：
 

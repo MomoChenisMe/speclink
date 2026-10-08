@@ -169,7 +169,7 @@ describe("TaskList", () => {
       const badge = screen.getByLabelText("手動");
       expect(badge.className).not.toContain("bg-muted");
       expect(badge.className).not.toContain("text-muted-foreground");
-      expect(badge.className).toContain("sky");
+      expect(badge.className).toContain("status-progress");
     });
 
     it("長描述換行時徽章仍獨佔描述上方那一行", () => {

@@ -26,8 +26,8 @@ const TooltipContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        // 反色中性氣泡（shadcn 傳統深底）：主色實心氣泡會與「已就緒」實心徽章撞色。
-        "z-50 overflow-hidden rounded-md bg-foreground px-3 py-1.5 text-xs text-background",
+        // 白底細框氣泡（與浮層同一套）：主色實心氣泡會與「已就緒」實心徽章撞色。
+        "z-50 overflow-hidden rounded-md border border-border bg-card px-3 py-1.5 text-xs text-foreground shadow-md",
         // Radix Tooltip 開啟態的 data-state 是 delayed-open／instant-open（沒有 open）：
         // 進場變體要掛這兩個值，掛 data-[state=open] 永遠不命中、進場動畫直接消失。
         "data-[state=delayed-open]:animate-in data-[state=instant-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=instant-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-[state=instant-open]:zoom-in-95",

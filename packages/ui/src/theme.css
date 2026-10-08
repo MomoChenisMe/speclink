@@ -1,6 +1,6 @@
 /* @speclink/ui 共用 semantic theme（跨 Desktop／Server Web）。
-   青綠語意 token、Tailwind utility 映射與 body 字型的單一真相源——Desktop 與
-   Server Web 各自 import 這份，證明「抽取只改所有權、不改值」。本 change 不改色。
+   色值的單一真相源：基底、狀態語意、蓋章、改進、生命週期 token 只在這裡寫值，
+   淺色深色各一套；TS 常數表只保存「狀態→token class」對照，元件只寫 token class。
 
    深色跟隨系統偏好（prefers-color-scheme）；若某宿主要手動切換主題，另加
    class 層即可，勿在此更動預設值以免 Desktop 觀察 token 漂移。 */
@@ -9,15 +9,19 @@
    tooltip 的 data-[state] class 依賴它；Tailwind v4 不再內建，缺了就是「抽屜無動畫」。 */
 @import "tw-animate-css";
 
-/* shadcn/ui 設計 token（Tailwind v4）。淺色為預設，深色跟隨系統偏好。 */
+/* Streamdown 元件內建的 utility class 要被 Tailwind 掃到；兩個 app 經 @import 共用這一行。 */
+@source "../../../node_modules/streamdown/dist/*.js";
+
+/* shadcn/ui 設計 token（Tailwind v4）。淺色為預設，深色跟隨系統偏好。
+   圓角用 Tailwind 預設四階（md 6px、lg 8px、xl 12px、2xl 16px），不另設自訂圓角 token。
+   原生色階值逐字取自 tailwindcss/theme.css，不手調。 */
 :root {
-  --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
-  /* Speclink 主色：teal 青綠——取「link」的連結語意 */
-  --primary: oklch(0.52 0.1 192);
+  /* Speclink 主色：品牌青綠 #167873 換算（oklch(0.519 0.084 189.5)），讓介面主色與 Logo 一致 */
+  --primary: oklch(0.52 0.085 190);
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -29,19 +33,35 @@
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.62 0.1 192);
+  /* 專案欄底（neutral-50） */
+  --sidebar: oklch(0.985 0 0);
+  /* 狀態語意：進行中 sky-600、成功 emerald-600、警示 amber-600；錯誤沿用 --destructive */
+  --status-progress: oklch(58.8% 0.158 241.966);
+  --status-success: oklch(59.6% 0.145 163.225);
+  --status-warning: oklch(66.6% 0.179 58.318);
+  /* 品質站蓋章專屬 violet-600、改進標示 indigo-600 */
+  --stamp: oklch(54.1% 0.281 293.009);
+  --improve: oklch(51.1% 0.262 276.966);
+  /* 生命週期：討論 fuchsia-600 專屬；提案中＝主色、進行中＝進行中、已就緒＝成功 */
+  --stage-discussion: oklch(59.1% 0.293 322.896);
+  --stage-proposed: var(--primary);
+  --stage-in-progress: var(--status-progress);
+  --stage-ready: var(--status-success);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: oklch(0.155 0.008 260);
+    /* 深色基底純中性，與淺色對稱（neutral-950／900／800） */
+    --background: oklch(0.145 0 0);
     --foreground: oklch(0.945 0 0);
-    --card: oklch(0.205 0.008 260);
+    --card: oklch(0.205 0 0);
     --card-foreground: oklch(0.945 0 0);
-    --primary: oklch(0.74 0.11 192);
+    /* 品牌淺青綠 #4bb9b3 換算（oklch(0.721 0.1 190.2)） */
+    --primary: oklch(0.72 0.1 190);
     --primary-foreground: oklch(0.16 0.02 210);
-    --secondary: oklch(0.27 0.008 260);
+    --secondary: oklch(0.269 0 0);
     --secondary-foreground: oklch(0.945 0 0);
-    --muted: oklch(0.27 0.008 260);
+    --muted: oklch(0.269 0 0);
     --muted-foreground: oklch(0.7 0 0);
     --accent: oklch(0.3 0.045 192);
     --accent-foreground: oklch(0.945 0 0);
@@ -49,13 +69,19 @@
     --border: oklch(1 0 0 / 12%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.64 0.1 192);
+    --sidebar: oklch(0.185 0 0);
+    /* sky-400、emerald-400、amber-500、violet-400、indigo-400、fuchsia-400；
+       stage-proposed／in-progress／ready 經 var() 自動跟著深色值走 */
+    --status-progress: oklch(74.6% 0.16 232.661);
+    --status-success: oklch(76.5% 0.177 163.223);
+    --status-warning: oklch(76.9% 0.188 70.08);
+    --stamp: oklch(70.2% 0.183 293.541);
+    --improve: oklch(67.3% 0.182 276.935);
+    --stage-discussion: oklch(74% 0.238 322.16);
   }
 }
 
 @theme inline {
-  --radius-lg: var(--radius);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-sm: calc(var(--radius) - 4px);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -72,6 +98,16 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-status-progress: var(--status-progress);
+  --color-status-success: var(--status-success);
+  --color-status-warning: var(--status-warning);
+  --color-stamp: var(--stamp);
+  --color-improve: var(--improve);
+  --color-stage-discussion: var(--stage-discussion);
+  --color-stage-proposed: var(--stage-proposed);
+  --color-stage-in-progress: var(--stage-in-progress);
+  --color-stage-ready: var(--stage-ready);
 }
 
 /* 截斷省略號的統一字形（spec desktop-app「截斷省略號的統一字形」）：省略號長什麼

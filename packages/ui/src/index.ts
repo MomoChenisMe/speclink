@@ -45,6 +45,7 @@ export {
   AlertDialogAction,
   AlertDialogCancel,
 } from "./components/ui/alert-dialog";
+export { ConfirmDialog, type ConfirmDialogProps } from "./components/ui/confirm-dialog";
 export { Label } from "./components/ui/label";
 export {
   Sheet,
@@ -102,6 +103,7 @@ export { SEMANTIC_TONE, SEMANTIC_SURFACE, type SemanticTone } from "./tone";
 // 看板
 export {
   changeStage,
+  DISCUSSION_TONE,
   planArchiveAfter,
   planBlockedBy,
   planBlockedLabel,
@@ -165,6 +167,10 @@ export { RichDetailDrawer, type RichDetailDrawerProps } from "./components/RichD
 export { parseTaskDoc, type TaskDocItem } from "./tasks";
 export { TaskList, type TaskListProps } from "./components/TaskList";
 export { DeltaBadges } from "./components/DeltaBadges";
+export { CopyButton, type CopyButtonProps } from "./components/CopyButton";
+export { EmptyState, type EmptyStateProps } from "./components/EmptyState";
+export { SectionHeader, type SectionHeaderProps } from "./components/SectionHeader";
+export { BrandMark, Wordmark } from "./components/Brand";
 export { ArchivedList, type ArchivedListProps } from "./components/ArchivedList";
 export { ArchivedDrawer, type ArchivedDrawerProps, type ArchivedTarget } from "./components/ArchivedDrawer";
 export { ReviewArchiveDialog, type ReviewArchiveDialogProps } from "./components/ReviewArchiveDialog";

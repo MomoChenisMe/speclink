@@ -3,31 +3,9 @@
 // 兩處無重複實作。credential 不經此層：PAT 僅單次過境 onSubmit。
 import { useEffect, useState } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { Button, Input, SEMANTIC_TONE, useI18n } from "@speclink/ui";
+import { Button, CopyButton, Input, SEMANTIC_TONE, useI18n } from "@speclink/ui";
 
 import type { ConnectionPhase } from "../store";
-
-/** 複製鈕：沿用系統匣複製 slug 的語彙——寫剪貼簿（Rust 端外掛）、失敗靜默，
- * 成功後短暫顯示已複製。 */
-function CopyButton({ label, value }: { label: string; value: string }) {
-  const { t } = useI18n();
-  const [copied, setCopied] = useState(false);
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      aria-label={label}
-      onClick={() => {
-        void writeText(value).catch(() => {});
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1200);
-      }}
-    >
-      {copied ? t("servers.copied") : t("servers.copy")}
-    </Button>
-  );
-}
 
 /** 授權有效期限的剩餘時間（分:秒）：以截止時刻減現在時間計算、每秒更新，
  * 不依賴輪詢節奏（design 決策三）；歸零即停在 0:00。 */
@@ -66,12 +44,12 @@ export function AwaitingApproval({
       <div className="flex items-center gap-1.5">
         <span className="text-xs text-muted-foreground">{t("servers.deviceCode")}</span>
         <code className="font-mono text-sm tracking-widest">{phase.userCode}</code>
-        <CopyButton label={t("servers.copyDeviceCode")} value={phase.userCode} />
+        <CopyButton size="sm" label={t("servers.copyDeviceCode")} value={phase.userCode} onCopy={writeText} />
       </div>
       <div className="flex items-center gap-1.5">
         <span className="text-xs text-muted-foreground">{t("servers.verificationUri")}</span>
         <span className="min-w-0 truncate font-mono text-xs">{phase.verificationUri}</span>
-        <CopyButton label={t("servers.copyVerificationUri")} value={phase.verificationUri} />
+        <CopyButton size="sm" label={t("servers.copyVerificationUri")} value={phase.verificationUri} onCopy={writeText} />
       </div>
       <div className="flex items-center gap-3">
         <Countdown expiresAt={phase.expiresAt} />

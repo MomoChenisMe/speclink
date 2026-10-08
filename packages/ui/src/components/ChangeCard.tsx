@@ -2,7 +2,15 @@ import { AlertTriangle, Archive, FileText, GitBranch, Hand, MessageSquareText, R
 
 import type { ChangeItem, SearchHit } from "../adapter";
 import { useI18n } from "../i18n";
-import { awaitingManualCount, changeStage, planBlockedBy, planBlockedLabel, planWave, planWaveLabel } from "../stage";
+import {
+  awaitingManualCount,
+  changeStage,
+  planBlockedBy,
+  planBlockedLabel,
+  planWave,
+  planWaveLabel,
+  STAGE_BADGE,
+} from "../stage";
 import { SEMANTIC_TONE } from "../tone";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
@@ -54,7 +62,9 @@ export function ChangeCard({
     <Card
       data-change={change.name}
       data-blocked={blocked ? "true" : undefined}
-      className={`group cursor-pointer transition-[border-color,box-shadow] hover:border-primary/60 hover:shadow-md${blocked ? " opacity-60" : ""}`}
+      size="nested"
+      interactive
+      className={`group cursor-pointer${blocked ? " opacity-60" : ""}`}
       onClick={() => onOpen?.(change.name)}
     >
       <CardHeader className="p-3 flex-row items-start gap-1.5">
@@ -210,7 +220,7 @@ export function ChangeCard({
               <TooltipTrigger asChild>
                 <span
                   aria-label={waveLabel}
-                  className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full border border-primary/60 px-1 text-[10px] font-semibold leading-none text-primary"
+                  className={`inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-none ${STAGE_BADGE[stage]}`}
                 >
                   {wave}
                 </span>

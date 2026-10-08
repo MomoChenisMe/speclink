@@ -7,46 +7,23 @@
 /* 共用元件庫在 node_modules（Tailwind 預設不掃），明確納入其 class 來源。 */
 @source "../../../packages/ui/src";
 
-/* markdown 排版（prose）——基準 16px、段落/列表/表格結構齊備。 */
-@plugin "@tailwindcss/typography";
-
-/* markdown 排版由 typography 的 prose 接管（基準 16px）；.markdown 為薄覆寫掛鉤。
-   prose 色彩變數映射設計 token——token 已隨系統深色偏好翻轉，毋需 prose-invert。
-   下方覆寫僅保留本專案特調：teal code chip、GFM 任務清單、表格橫向捲動。 */
+/* markdown 排版由 Streamdown 承擔（清單、表格容器、程式碼框）；.markdown 為薄覆寫掛鉤，
+   只留基準字級與行高、teal code chip、刪除線灰字與 GFM 任務清單。 */
 .markdown {
-  --tw-prose-body: var(--foreground);
-  --tw-prose-headings: var(--foreground);
-  --tw-prose-lead: var(--muted-foreground);
-  --tw-prose-links: var(--primary);
-  --tw-prose-bold: var(--foreground);
-  --tw-prose-counters: var(--muted-foreground);
-  --tw-prose-bullets: var(--muted-foreground);
-  --tw-prose-hr: var(--border);
-  --tw-prose-quotes: var(--muted-foreground);
-  --tw-prose-quote-borders: var(--border);
-  --tw-prose-captions: var(--muted-foreground);
-  --tw-prose-code: color-mix(in oklch, var(--primary) 88%, var(--foreground));
-  --tw-prose-pre-code: var(--foreground);
-  --tw-prose-pre-bg: var(--muted);
-  --tw-prose-th-borders: var(--border);
-  --tw-prose-td-borders: var(--border);
+  font-size: 1rem;
+  line-height: 1.7;
 }
-/* teal code chip：移除 prose 的反引號偽元素、主色底 */
+/* teal code chip（主色底） */
 .markdown code:not(pre code) {
   font-family: "Cascadia Code", "Consolas", ui-monospace, monospace;
   font-size: 0.86em; padding: 0.12em 0.4em; border-radius: 5px;
   background: color-mix(in oklch, var(--primary) 14%, transparent);
 }
-.markdown code::before, .markdown code::after { content: none; }
-.markdown pre { border: 1px solid var(--border); }
 .markdown del { color: var(--muted-foreground); }
-/* 表格橫向捲動（prose 不處理 overflow） */
-.markdown table { display: block; overflow-x: auto; }
-.markdown th { background: var(--muted); }
-/* GFM 任務清單 checkbox（懸掛縮排對齊、完成項刪除線） */
+/* GFM 任務清單 checkbox（懸掛縮排對齊、完成項刪除線）；Streamdown 的清單符號在行內，
+   不需要負邊界把 checkbox 拉回外側。 */
 .markdown li:has(> input[type="checkbox"]) {
   list-style: none;
-  margin-left: -1.2em;
   padding: 0.15em 0 0.15em 1.6em;
   position: relative;
 }

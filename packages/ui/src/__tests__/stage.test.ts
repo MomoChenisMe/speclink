@@ -10,10 +10,17 @@ import {
   planRequirementOverlap,
   planWave,
   planWaveLabel,
+  DISCUSSION_TONE,
+  STAGE_BADGE,
   STAGE_BAR,
   STAGE_ICON,
 } from "../stage";
 import type { ChangeItem } from "../adapter";
+import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
+import { REVIEW_TONE } from "../components/reviewStyle";
+import { VERIFY_TONE } from "../components/verifyStyle";
+import { IMPROVE_CHIP_TONE, IMPROVE_TONE } from "../components/improveStyle";
+import { DELTA_COLORS } from "../components/DeltaBadges";
 
 function ci(total: number, done: number, startedAt?: string): ChangeItem {
   return { name: "c", status: "x", totalTasks: total, completedTasks: done, startedAt };
@@ -35,22 +42,85 @@ describe("changeStage（標記驅動）", () => {
   });
 });
 
-// 進度條與圖示的階段色階單一來源（與 STAGE_BADGE 同模式）：看板與系統匣
-// 面板共用，防兩處 magic value 漂移。值即現行看板深淺階梯（50→75→100）。
-describe("STAGE_BAR / STAGE_ICON（單一 teal 深淺階梯）", () => {
-  it("進度條填色依階段遞深", () => {
-    expect(STAGE_BAR).toEqual({
-      proposed: "bg-primary/50",
-      "in-progress": "bg-primary/75",
-      ready: "bg-primary",
+// 生命週期與討論的色相單一來源（design D4）：每階一色相，色值只在 theme.css 的
+// stage-* token；看板與系統匣共用這幾張表，表內只保存「階段→token class」對照。
+describe("STAGE_* / DISCUSSION_TONE（生命週期每階一色相）", () => {
+  it("計數徽章：提案中與進行中為淡底實色字、已就緒為實心", () => {
+    expect(STAGE_BADGE).toEqual({
+      proposed: "bg-stage-proposed/10 text-stage-proposed",
+      "in-progress": "bg-stage-in-progress/10 text-stage-in-progress",
+      ready: "bg-stage-ready text-primary-foreground",
     });
   });
 
-  it("圖示色依階段遞深", () => {
+  it("進度條填色取各階段 token", () => {
+    expect(STAGE_BAR).toEqual({
+      proposed: "bg-stage-proposed",
+      "in-progress": "bg-stage-in-progress",
+      ready: "bg-stage-ready",
+    });
+  });
+
+  it("圖示色取各階段 token", () => {
     expect(STAGE_ICON).toEqual({
-      proposed: "text-primary/50",
-      "in-progress": "text-primary/75",
-      ready: "text-primary",
+      proposed: "text-stage-proposed",
+      "in-progress": "text-stage-in-progress",
+      ready: "text-stage-ready",
+    });
+  });
+
+  it("討論欄與系統匣討論分區共用桃紫 token", () => {
+    expect(DISCUSSION_TONE).toEqual({
+      icon: "text-stage-discussion",
+      badge: "bg-stage-discussion/10 text-stage-discussion",
+    });
+  });
+});
+
+// 狀態→token class 對照（design D1）：集中常數檔只保存對照，深色由 theme.css 的
+// 深色 token 承擔，表內不得出現 dark: 成對寫法或原生色階。
+describe("語意色對照表只含 token class", () => {
+  it("SEMANTIC_TONE／SEMANTIC_SURFACE 取 status token 與 destructive", () => {
+    expect(SEMANTIC_TONE).toEqual({
+      inProgress: "text-status-progress",
+      success: "text-status-success",
+      warning: "text-status-warning",
+      danger: "text-destructive",
+    });
+    expect(SEMANTIC_SURFACE).toEqual({
+      inProgress: "border-status-progress/40 bg-status-progress/10",
+      success: "border-status-success/40 bg-status-success/10",
+      warning: "border-status-warning/40 bg-status-warning/10",
+      danger: "border-destructive/40 bg-destructive/10",
+    });
+  });
+
+  it("審查與驗證章：蓋章取 stamp，其餘三態取 status token", () => {
+    expect(REVIEW_TONE).toEqual({
+      inReview: "text-status-progress",
+      reviewed: "text-stamp",
+      reviewedStale: "text-status-warning",
+      reviewedNotPassed: "text-destructive",
+    });
+    expect(VERIFY_TONE).toEqual({
+      inVerify: "text-status-progress",
+      verified: "text-stamp",
+      verifiedStale: "text-status-warning",
+      verifiedNotPassed: "text-destructive",
+    });
+  });
+
+  it("改進標示取 improve token", () => {
+    expect(IMPROVE_TONE).toBe("text-improve");
+    expect(IMPROVE_CHIP_TONE).toBe("bg-improve/10");
+  });
+
+  it("delta 四色：新增＝成功、修改＝警示、移除＝destructive、更名＝進行中", () => {
+    expect(DELTA_COLORS).toEqual({
+      added: "text-status-success",
+      modified: "text-status-warning",
+      removed: "text-destructive",
+      renamed: "text-status-progress",
     });
   });
 });

@@ -1,19 +1,20 @@
 import type { ReactElement } from "react";
 import { BadgeAlert, BadgeCheck, BadgeX, Stamp } from "lucide-react";
 
+import { SEMANTIC_TONE } from "../tone";
+
 /* 審查標示配色（spec desktop-app「看板卡片的審查標示」「詳情抽屜的審查資訊列」
    「已封存側的審查標示」共用）：四態各給可辨識的色，不落回灰階。
-   審查中＝進行中的藍；已審查＝紫；其後有變動＝沿用專案的琥珀警示；
-   曾審查未通過＝紅（永久結局，警示層級最高）。
+   審查中＝進行中的藍；已審查＝蓋章紫；其後有變動＝警示琥珀；
+   曾審查未通過＝紅（destructive，永久結局，警示層級最高）。
    紫是品質站蓋章專屬（spec desktop-app「品質站蓋章配色與主色分離」）：主色 teal
    同時承載進度條、分頁、連結籤，蓋章引用主色會淹在滿版 teal 裡，因此讓出主色，
-   改用全 app 零佔用的紫。一般的成功／新增語意不歸這裡，由 emerald 承載（屬全域
-   色彩系統變更，另案處理）。驗證站與本表共用同一張 tone 表，不另立一份。 */
+   改用 stamp token。色值都在 theme.css；驗證站與本表共用同一張 tone 表，不另立一份。 */
 export const REVIEW_TONE = {
-  inReview: "text-sky-600 dark:text-sky-400",
-  reviewed: "text-violet-600 dark:text-violet-400",
-  reviewedStale: "text-amber-600 dark:text-amber-500",
-  reviewedNotPassed: "text-rose-600 dark:text-rose-400",
+  inReview: SEMANTIC_TONE.inProgress,
+  reviewed: "text-stamp",
+  reviewedStale: SEMANTIC_TONE.warning,
+  reviewedNotPassed: SEMANTIC_TONE.danger,
 } as const;
 
 /** 審查狀態 → i18n 詞條 key（active 四態與 archived 三態同一張表）：狀態詞在

@@ -203,7 +203,9 @@ describe("SpecDrawer（標頭：標題列與出身列）", () => {
     await waitFor(() => expect(screen.getByText("清單內文。")).toBeTruthy());
     fireEvent.click(screen.getByLabelText("複製名稱"));
     expect(writeText).toHaveBeenCalledWith("desktop-app");
-    await waitFor(() => expect(screen.queryByLabelText("已複製")).toBeTruthy());
+    // 共用 CopyButton：成功以 status 宣告「已複製」，複製鈕名稱維持不變。
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("已複製"));
+    expect(screen.getByLabelText("複製名稱")).toBeTruthy();
   });
 
   it("文件缺席顯示空狀態而非錯誤，且出身列缺席", async () => {

@@ -4,17 +4,16 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Archive,
   ArrowUpRight,
-  Check,
   ChevronDown,
   ChevronRight,
-  Copy,
   MessageSquareText,
 } from "lucide-react";
 
 import type { ArchivedItem, ChangeItem, DiscussionItem, SearchHit } from "../adapter";
 import { cardDndId } from "../boardDnd";
 import { useI18n } from "../i18n";
-import { changeStage, STAGE_BADGE } from "../stage";
+import { cn } from "../lib/utils";
+import { changeStage, DISCUSSION_TONE, STAGE_BADGE } from "../stage";
 import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
 import { Button } from "./ui/button";
 import { ColumnLoadFailed, ColumnSkeleton } from "./skeletons";
@@ -24,7 +23,7 @@ import { HighlightText } from "./HighlightText";
 import { ImproveStamp } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
-import { useCopied } from "./useCopied";
+import { CopyButton, REVEAL_ON_HOVER } from "./CopyButton";
 
 /**
  * promoted_to 子變更的階段標示（純前端由清單存在性派生）——active 清單命中
@@ -44,7 +43,7 @@ export function discussionChipStage(
 
 /**
  * promoted 子變更 chip 的配色（design D2）——與 discussionChipStage 同分類規則：
- * active 命中取看板階段的 STAGE_BADGE teal 濃度、封存命中為中性色、皆無為
+ * active 命中取看板階段的 STAGE_BADGE 色相、封存命中為中性色、皆無為
  * destructive 加刪除線（已刪除）。與看板欄配色同一來源，不引入新色輪。
  */
 export function discussionChipClass(
@@ -133,7 +132,9 @@ export function DiscussionCard({
   return (
     <Card
       data-discussion={d.slug}
-      className="group cursor-pointer transition-[border-color,box-shadow] hover:border-primary/60 hover:shadow-md"
+      size="nested"
+      interactive
+      className="group cursor-pointer"
       onClick={() => onOpenDiscussion?.(d.slug)}
     >
       <CardHeader className="p-3 flex-row items-start gap-1.5">
@@ -242,12 +243,6 @@ function PromotedRow({
   onOpenDiscussion,
 }: { d: DiscussionItem } & Pick<DiscussionColumnProps, "changes" | "archived" | "onOpenDiscussion">) {
   const { t } = useI18n();
-  const [copied, markCopied] = useCopied();
-  const copySlug = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    void navigator.clipboard?.writeText(d.slug);
-    markCopied();
-  };
   // 衍生樹細列：slug（檔名）為首行錨點——CLI 動詞把手，帶複製鈕（LANGUAGE.md
   // 受控例外，desktop-ux-polish 擴充）；topic 降為次行描述；子變更以樹狀前綴
   // 逐列列出——父子（討論→衍生變更）關係一眼可讀。
@@ -272,16 +267,11 @@ function PromotedRow({
             <ImproveStamp />
           </span>
         )}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={t("discussion.copySlug")}
-          className={`ml-1 inline-flex h-4 w-4 align-text-bottom text-muted-foreground hover:text-foreground transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-          onClick={copySlug}
-        >
-          {copied ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}
-        </Button>
+        <CopyButton
+          value={d.slug}
+          label={t("discussion.copySlug")}
+          className={cn("ml-1 align-text-bottom", REVEAL_ON_HOVER)}
+        />
       </span>
       <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{d.topic}</span>
       <span className="mt-1 flex flex-col gap-0.5">
@@ -351,15 +341,14 @@ export function DiscussionColumn({
       />
     ),
   );
-  // 欄頭（色條／圖示／計數）一律中性：討論欄不是生命週期階段，主色深淺階梯是
-  // 看板三欄的語彙，照抄會讓「顏色＝階段」的讀法失準（系統匣的討論分區同樣中性）。
+  // 欄頭（色條／圖示／計數）取討論專屬的桃紫：與系統匣討論分區同一來源（DISCUSSION_TONE）。
   return (
     <div
       data-column="discussions"
-      className="flex h-full min-h-0 flex-1 min-w-[250px] max-w-[360px] flex-col gap-2 rounded-xl border-t-4 border-t-border bg-muted/40 p-2"
+      className="flex h-full min-h-0 flex-1 min-w-[250px] max-w-[360px] flex-col gap-2 rounded-xl border-t-4 border-t-stage-discussion bg-muted/40 p-2"
     >
       <div className="flex items-center gap-1.5 px-1.5 pt-0.5 shrink-0">
-        <MessageSquareText className="h-3.5 w-3.5 text-muted-foreground/60" />
+        <MessageSquareText className={`h-3.5 w-3.5 ${DISCUSSION_TONE.icon}`} />
         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           {t("discussion.heading")}
         </h2>
@@ -367,7 +356,7 @@ export function DiscussionColumn({
         {!loading && !loadFailed && (
           <span
             data-testid="column-count"
-            className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums bg-muted text-muted-foreground"
+            className={`inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums ${DISCUSSION_TONE.badge}`}
           >
             {full.length}
           </span>

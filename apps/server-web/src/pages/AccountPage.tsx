@@ -1,17 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { KeyRound } from "lucide-react";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
   Badge,
   Button,
   Card,
+  ConfirmDialog,
+  CopyButton,
   Table,
   TableBody,
   TableCell,
@@ -27,12 +21,11 @@ import { useAsync } from "../lib/useAsync";
 import { readFormError } from "../lib/formError";
 import { Field } from "../components/Field";
 import { DetailSheet } from "../components/DetailSheet";
-import { CopyButton } from "../components/CopyButton";
 import type { DeviceFamilyMeta, MembershipMeta, PatMeta, SessionMeta } from "../api/client";
 
 // 帳號自助頁（server-identity「帳號 browser API 保持憑證祕密邊界」, D4／D6）：使用者、
 // 存取金鑰、登入工作階段與裝置。金鑰明文只在建立時顯示一次；撤銷等破壞性操作先以
-// AlertDialog 確認且立即生效。所有 server 資料留在本 route 的 component state（D1）。
+// 確認框確認且立即生效。所有 server 資料留在本 route 的 component state（D1）。
 
 type Confirm = { title: string; run: () => Promise<void> };
 
@@ -108,7 +101,7 @@ export function AccountPage() {
           <p className="text-sm font-medium">{t("account.newKeyNotice")}</p>
           <div className="mt-1 flex items-start gap-3">
             <code className="min-w-0 flex-1 break-all font-mono text-sm">{plaintext}</code>
-            <CopyButton value={plaintext} />
+            <CopyButton size="sm" value={plaintext} label={t("common.copy")} />
           </div>
         </div>
       )}
@@ -147,20 +140,16 @@ export function AccountPage() {
         }}
       />
 
-      <AlertDialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirm?.title}</AlertDialogTitle>
-            <AlertDialogDescription>{t("account.revokeBody")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={runConfirmed} disabled={busy}>
-              {t("common.revoke")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(open) => !open && setConfirm(null)}
+        title={confirm?.title ?? ""}
+        description={t("account.revokeBody")}
+        confirmLabel={t("common.revoke")}
+        destructive
+        busy={busy}
+        onConfirm={runConfirmed}
+      />
     </div>
   );
 }

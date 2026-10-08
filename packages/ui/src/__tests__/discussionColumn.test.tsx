@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { render as rtlRender, screen, fireEvent, within } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { act, render as rtlRender, screen, fireEvent, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider, MESSAGES } from "../i18n";
@@ -14,7 +14,12 @@ function render(ui: ReactElement) {
 
 import { KanbanBoard } from "../components/KanbanBoard";
 import { DiscussionColumn, discussionChipStage } from "../components/DiscussionColumn";
+import { DISCUSSION_TONE } from "../stage";
 import type { ChangeItem, ArchivedItem, DiscussionItem, DiscussionLists } from "../adapter";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 // spec 需求「討論於看板第 0 欄兩級呈現」的 jsdom 可驗部分。
 
@@ -252,6 +257,34 @@ describe("DiscussionColumn（兩級呈現）", () => {
     expect(slugSpan.contains(copyBtn)).toBe(true);
   });
 
+  // spec「共用元件唯一來源」：看板卡片的複製鈕與系統匣、已封存清單同一元件——主色勾號 1.5 秒。
+  it("細列複製鈕來自共用 CopyButton：主色勾號維持 1.5 秒，並以 status 宣告已複製", async () => {
+    vi.useFakeTimers();
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    render(
+      <DiscussionColumn
+        discussions={[promotedD]}
+        changes={chipChanges}
+        archived={chipArchived}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /已轉出/ }));
+    const row = screen.getByText("fanout").closest("[data-discussion]") as HTMLElement;
+    const copyBtn = within(row).getByRole("button", { name: "複製 slug" });
+    fireEvent.click(copyBtn);
+    await act(async () => {});
+    expect(copyBtn.querySelector("svg.lucide-check")).toBeTruthy();
+    expect(within(row).getByRole("status").textContent).toBe("已複製");
+    act(() => {
+      vi.advanceTimersByTime(1400);
+    });
+    expect(copyBtn.querySelector("svg.lucide-check")).toBeTruthy();
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(copyBtn.querySelector("svg.lucide-check")).toBeNull();
+  });
+
   it("點細列複製鈕把 slug 寫入剪貼簿、不開啟抽屜", () => {
     const writeText = vi.fn();
     Object.assign(navigator, { clipboard: { writeText } });
@@ -338,18 +371,23 @@ describe("DiscussionColumn 計數只算 active 與空狀態（design D3）", () 
     expect(screen.getByTestId("column-count").textContent).toBe("0");
   });
 
-  it("欄頭圖示、頂部色條與計數徽章為中性，不自建平行主色階梯", () => {
-    // 討論欄不是生命週期階段：主色深淺階梯是看板三欄的語彙，討論欄照抄會讓
-    // 「顏色＝階段」的讀法失準（系統匣的討論分區同樣走中性）。
+  it("欄頭圖示、頂部色條與計數徽章取討論專屬的桃紫（DISCUSSION_TONE）", () => {
+    // spec「生命週期四欄各一色相」：討論欄有自己的色相，與系統匣討論分區同一來源。
     render(<DiscussionColumn discussions={[openD]} changes={[]} archived={[]} />);
     const col = document.querySelector('[data-column="discussions"]') as HTMLElement;
-    expect(col.className).not.toContain("border-t-primary");
+    expect(col.className).toContain("border-t-stage-discussion");
     const count = screen.getByTestId("column-count");
-    expect(count.className).toContain("bg-muted");
-    expect(count.className).not.toContain("primary");
+    for (const cls of DISCUSSION_TONE.badge.split(" ")) expect(count.className).toContain(cls);
     const heading = screen.getByText("討論");
     const icon = heading.previousElementSibling as HTMLElement;
-    expect(icon.getAttribute("class")).not.toContain("primary");
+    expect(icon.getAttribute("class")).toContain(DISCUSSION_TONE.icon);
+  });
+
+  it("已轉出收合列維持中性", () => {
+    render(<DiscussionColumn discussions={[promotedD]} changes={[]} archived={[]} />);
+    const toggle = screen.getByRole("button", { name: /已轉出/ });
+    expect(toggle.className).toContain("text-muted-foreground");
+    expect(toggle.className).not.toContain("stage-");
   });
 });
 
@@ -461,7 +499,7 @@ describe("DiscussionColumn hold 分區（discussion-hold-until-release）", () =
 });
 
 describe("DiscussionColumn promoted chip 階段配色（design D2）", () => {
-  it("chip 沿看板 STAGE_STYLE 配色：提案中/進行中/已就緒 teal 濃度、已封存中性、已刪除 destructive 加刪除線", () => {
+  it("chip 沿看板 STAGE_BADGE 配色：提案中/進行中/已就緒各階段色相、已封存中性、已刪除 destructive 加刪除線", () => {
     // 五態各一子變更：提案中/進行中/已就緒（active 清單）、已封存、已刪除。
     const d: DiscussionItem = {
       ...promotedD,
@@ -470,10 +508,11 @@ describe("DiscussionColumn promoted chip 階段配色（design D2）", () => {
     render(<DiscussionColumn discussions={[d]} changes={chipChanges} archived={chipArchived} />);
     fireEvent.click(screen.getByRole("button", { name: /已轉出/ }));
     const chipCls = (label: string) => screen.getByText(label).className;
-    // 提案中/進行中沿 STAGE_STYLE badge 的 teal 濃度階梯。
-    expect(chipCls("提案中")).toContain("bg-primary/8");
-    expect(chipCls("進行中")).toContain("bg-primary/12");
-    // 已就緒為實心主色（以 text-primary-foreground 辨識，與濃度階梯區隔）。
+    // 提案中/進行中沿 STAGE_BADGE 的各階段淡底實色字。
+    expect(chipCls("提案中")).toContain("bg-stage-proposed/10");
+    expect(chipCls("進行中")).toContain("bg-stage-in-progress/10");
+    // 已就緒為實心（以 text-primary-foreground 辨識，與淡底區隔）。
+    expect(chipCls("已就緒")).toContain("bg-stage-ready");
     expect(chipCls("已就緒")).toContain("text-primary-foreground");
     // 已封存中性色。
     expect(chipCls("已封存")).toContain("bg-muted");

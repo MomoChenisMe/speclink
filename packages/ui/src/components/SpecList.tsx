@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Copy, FileText, History } from "lucide-react";
+import { FileText, History } from "lucide-react";
 
 import type { SpecItem } from "../adapter";
 import { useI18n } from "../i18n";
@@ -9,21 +9,13 @@ import { SEMANTIC_TONE } from "../tone";
 import { Input } from "./ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { ListPager, PAGE_SIZE } from "./ListPager";
-import { useCopied } from "./useCopied";
+import { CopyButton, REVEAL_ON_HOVER } from "./CopyButton";
 
 /** 規格卡（spec-archive-drawer design D7）：標題＋複製鈕成群組、meta（需求數、
  * 溯源變更數、相對修改時間）靠右；第二列 Purpose 摘要一行截斷，佔位時改顯
  * 琥珀「Purpose 待補」警示。點整列開唯讀規格抽屜，無行內展開。 */
 function SpecCard({ item, onOpen }: { item: SpecItem; onOpen: (capability: string) => void }) {
   const { t } = useI18n();
-  const [copied, markCopied] = useCopied();
-
-  const copy = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    void navigator.clipboard?.writeText(item.id);
-    markCopied();
-  };
-
   const rel = relativeDays(item.modifiedAt, t);
   const reqCount = item.requirementCount ?? 0;
   const traceCount = item.traceCount ?? 0;
@@ -38,14 +30,7 @@ function SpecCard({ item, onOpen }: { item: SpecItem; onOpen: (capability: strin
           {/* 標題＋複製鈕成一個群組吃 flex-1（標題 truncate、複製鈕緊跟 hover 顯現）。 */}
           <span data-title-group className="flex min-w-0 flex-1 items-center gap-1">
             <span className="min-w-0 truncate text-sm font-medium">{item.id}</span>
-            <span
-              role="button"
-              aria-label={copied ? t("specs.copied") : t("common.copyName")}
-              className={`shrink-0 text-muted-foreground transition-opacity hover:text-foreground ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-              onClick={copy}
-            >
-              {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
-            </span>
+            <CopyButton value={item.id} label={t("common.copyName")} className={REVEAL_ON_HOVER} />
           </span>
           {/* meta 靠右：需求數徽章、溯源變更數、相對修改時間。 */}
           <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">

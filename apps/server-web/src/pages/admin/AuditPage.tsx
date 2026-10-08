@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Badge, Button, SelectItem, useI18n } from "@speclink/ui";
+import { Inbox } from "lucide-react";
+import { Badge, Button, EmptyState, SelectItem, useI18n } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
 import { ListToolbar, ToolbarDate, ToolbarSelect } from "../../components/ListToolbar";
-import { EmptyState } from "../../components/EmptyState";
 import { DataList, type Column } from "../../components/DataList";
 import { AdminError, AdminLoading } from "./states";
 import type { AdminAuditEntry } from "../../api/client";
@@ -124,6 +124,7 @@ export function AuditPage() {
       {data &&
         (data.entries.length === 0 ? (
           <EmptyState
+            icon={Inbox}
             title={t("audit.emptyTitle")}
             description={t("audit.emptyBody")}
           />

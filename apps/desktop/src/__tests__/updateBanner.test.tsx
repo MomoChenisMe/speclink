@@ -69,7 +69,7 @@ describe("UpdateBanner", () => {
       <UpdateBanner state={{ phase: "error", message: "invalid signature" }} {...h} />,
     );
     const errorBanner = screen.getByTestId("update-banner");
-    expect(errorBanner.className).not.toContain("amber");
+    expect(errorBanner.className).not.toContain("status-warning");
     expect(errorBanner.className).not.toContain("bg-primary");
     expect(errorBanner.querySelector("svg")?.getAttribute("class")).toContain("destructive");
     unmount();

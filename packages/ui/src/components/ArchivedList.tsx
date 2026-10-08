@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Code2, Copy, GitFork, MessageSquareText } from "lucide-react";
+import { Code2, GitFork, MessageSquareText } from "lucide-react";
 
 import type { ArchivedItem, DiscussionItem } from "../adapter";
 import { useI18n } from "../i18n";
@@ -13,31 +13,9 @@ import type { ArchivedTarget } from "./ArchivedDrawer";
 import { ImproveStamp } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
 import { ListPager, PAGE_SIZE } from "./ListPager";
-import { useCopied } from "./useCopied";
+import { CopyButton, REVEAL_ON_HOVER } from "./CopyButton";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE } from "./reviewStyle";
 import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE } from "./verifyStyle";
-
-/** 標題後緊跟的複製鈕（design D7 卡片版面）：hover 顯現、copied 打勾回饋、
- * 點擊不冒泡（不開抽屜）。 */
-function CopyButton({ value, label }: { value: string; label: string }) {
-  const { t } = useI18n();
-  const [copied, markCopied] = useCopied();
-  const copy = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    void navigator.clipboard?.writeText(value);
-    markCopied();
-  };
-  return (
-    <span
-      role="button"
-      aria-label={copied ? t("specs.copied") : label}
-      className={`shrink-0 text-muted-foreground transition-opacity hover:text-foreground ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-      onClick={copy}
-    >
-      {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
-    </span>
-  );
-}
 
 /** 描述列（封存卡雙行 anatomy）：一行截斷、與看板卡片描述列同款字級與色調。 */
 function CardDescription({ text }: { text: string }) {
@@ -70,7 +48,7 @@ function ArchivedCard({ item, onOpen }: { item: ArchivedItem; onOpen: (target: A
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{item.date}</span>
         <span data-title-group className="flex min-w-0 flex-1 items-center gap-1">
           <span className="min-w-0 truncate text-sm font-medium">{item.name}</span>
-          <CopyButton value={item.datedName} label={t("archived.copyName")} />
+          <CopyButton value={item.datedName} label={t("archived.copyName")} className={REVEAL_ON_HOVER} />
         </span>
         <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
           {badge && (
@@ -186,7 +164,7 @@ function ArchivedDiscussionCard({
           </span>
           {/* 改進小章：封存後標示不變（spec「已封存的改進討論維持標示」）。 */}
           {isImproveKind(item.kind) && <ImproveStamp />}
-          <CopyButton value={item.slug} label={t("discussion.copySlug")} />
+          <CopyButton value={item.slug} label={t("discussion.copySlug")} className={REVEAL_ON_HOVER} />
         </span>
         <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
           <span className="tabular-nums">{t("common.rounds").replace("{n}", String(item.rounds))}</span>

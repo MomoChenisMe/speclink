@@ -6,20 +6,13 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
   Button,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
   Checkbox,
+  ConfirmDialog,
   Input,
   Markdown,
   Select,
@@ -242,7 +235,7 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
   const [expandedSchema, setExpandedSchema] = useState<string | null>(null);
   const [schemaMsg, setSchemaMsg] = useState<string | null>(null);
   const [createName, setCreateName] = useState("");
-  /** 待確認刪除的專案層 schema 名稱（AlertDialog 開關；D7 確認後才執行）。 */
+  /** 待確認刪除的專案層 schema 名稱（確認框開關；D7 確認後才執行）。 */
   const [pendingDeleteSchema, setPendingDeleteSchema] = useState<string | null>(null);
 
   const hydrate = (next: SettingsSnapshot) => {
@@ -1224,36 +1217,21 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
             </CardContent>
           </Card>
 
-          {/* 刪除確認（D7；沿變更刪除的 AlertDialog 模式） */}
-          <AlertDialog
+          {/* 刪除確認（D7；沿變更刪除的確認框模式） */}
+          <ConfirmDialog
             open={pendingDeleteSchema !== null}
             onOpenChange={(o) => !o && setPendingDeleteSchema(null)}
-          >
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>{t("settings.schemaDeleteTitle")}</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {t("settings.schemaDeleteDesc")}{" "}
-                  <span className="font-mono font-medium">{pendingDeleteSchema}</span>
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel
-                  data-testid="schema-delete-cancel"
-                  onClick={() => setPendingDeleteSchema(null)}
-                >
-                  {t("app.cancel")}
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  data-testid="schema-delete-confirm"
-                  className="bg-destructive hover:bg-destructive/90"
-                  onClick={() => void confirmDeleteSchema()}
-                >
-                  {t("settings.schemaDelete")}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+            title={t("settings.schemaDeleteTitle")}
+            description={
+              <>
+                {t("settings.schemaDeleteDesc")}{" "}
+                <span className="font-mono font-medium">{pendingDeleteSchema}</span>
+              </>
+            }
+            confirmLabel={t("settings.schemaDelete")}
+            destructive
+            onConfirm={confirmDeleteSchema}
+          />
         </TabsContent>
 
         {/* .speclink.yaml 簽：AI 工具 */}

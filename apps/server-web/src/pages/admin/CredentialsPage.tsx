@@ -1,17 +1,11 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { KeyRound } from "lucide-react";
+import { Inbox, KeyRound } from "lucide-react";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
   Badge,
   Button,
+  ConfirmDialog,
+  EmptyState,
   SelectItem,
   Tabs,
   TabsContent,
@@ -25,13 +19,13 @@ import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
 import { ListToolbar, ToolbarSelect } from "../../components/ListToolbar";
 import { DataList, type Column } from "../../components/DataList";
-import { EmptyState, NoMatchState } from "../../components/EmptyState";
+import { NoMatchState } from "../../components/NoMatchState";
 import { AdminError, AdminLoading } from "./states";
 import type { AdminCredFamily, AdminPat } from "../../api/client";
 
 // 管理憑證頁（server-admin, server-web-console「管理列表提供搜尋、篩選、分頁與具引導的
 // 空狀態」）：全站存取金鑰與裝置憑證的 metadata（絕不呈現祕密——payload 亦無祕密），
-// 以兩個分頁區分。撤銷是列尾的明確動作，先以 AlertDialog 確認後立即生效。
+// 以兩個分頁區分。撤銷是列尾的明確動作，先以確認框確認後立即生效。
 
 type Confirm = { title: string; run: () => Promise<void> };
 
@@ -149,6 +143,7 @@ export function CredentialsPage() {
       {data &&
         (nothingAtAll ? (
           <EmptyState
+            icon={Inbox}
             title={t("credentials.emptyTitle")}
             description={t("credentials.emptyBody")}
           />
@@ -238,20 +233,16 @@ export function CredentialsPage() {
           </>
         ))}
 
-      <AlertDialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirm?.title}？</AlertDialogTitle>
-            <AlertDialogDescription>{t("credentials.revokeBody")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={runConfirmed} disabled={busy}>
-              {t("common.revoke")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(open) => !open && setConfirm(null)}
+        title={`${confirm?.title ?? ""}？`}
+        description={t("credentials.revokeBody")}
+        confirmLabel={t("common.revoke")}
+        destructive
+        busy={busy}
+        onConfirm={runConfirmed}
+      />
     </div>
   );
 }
