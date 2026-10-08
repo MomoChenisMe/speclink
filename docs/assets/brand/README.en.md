@@ -2,35 +2,42 @@
 
 [繁體中文](README.md) · **English**
 
-This folder holds the source files of the Speclink logo and icons. The mark is a document outline with circuit nodes: a spec is a document, and the nodes and traces are the links and flows between specs.
+The interlocking S consists of two complementary shapes, expressing connections between requirements, specifications and implementation. The app icon uses a teal rounded tile with a white S. Outside the tile is transparent, including in the Windows ICO; rounded corners do not depend on an OS mask.
 
 ## Colors
 
 | Role | Value | Use |
 | --- | --- | --- |
-| Ink (navy) | Dark navy | Document outline, the `Spec` text, main lines |
-| Teal (primary) | `oklch(0.52 0.1 192)` | Circuit nodes, traces, the `link` text, the app primary color (`--primary`) |
+| Teal | `#167873` | Symbol, app tile and `link` |
+| Charcoal | `#292c32` | `Spec` on light backgrounds |
+| Off-white | `#f5f5f5` | `Spec` on dark backgrounds |
+| Light teal | `#4bb9b3` | Symbol and `link` on dark backgrounds |
 
-For the full color tokens of the app, see `apps/desktop/src/index.css` (Tailwind v4 tokens, primary hue 192).
+Brand colors are fixed artwork values. UI tokens remain in `packages/ui/src/theme.css`.
 
 ## Files
 
-The official assets are in this folder. Each lockup has a version with a solid white background and a transparent version:
+`svg/` contains editable vector masters with outlined lettering, requiring no installed font. `transparent/` contains transparent PNG exports. Top-level PNGs have white backgrounds (dark backgrounds for `-dark` files). The system sheet is a presentation board with a background.
 
-| File | Description | Recommended use |
-| --- | --- | --- |
-| `speclink-logo-horizontal.png` | Horizontal lockup (mark and text side by side) | README hero, site header, document cover |
-| `speclink-logo-vertical.png` | Vertical lockup (mark above, text below) | Square layouts, social avatars, splash screens |
-| `speclink-logo-mark.png` | Mark only, no text | App and window icons, favicon, small sizes |
-| `speclink-wordmark.png` | Text only, no mark | A header lockup next to the mark, or when you need text without the icon |
-| `speclink-logo-system-sheet.png` | All three lockups on one sheet | Proposals and slides |
-| `transparent/` | Transparent versions of the files above | On a background that is not white |
+- `speclink-app-icon`: rounded app tile and white S.
+- `speclink-logo-mark`: standalone teal S, no tile or text.
+- `speclink-wordmark`: text only; charcoal Spec and teal link.
+- `speclink-wordmark-dark`: text-only variant for dark backgrounds.
+- `speclink-logo-horizontal`: symbol and wordmark.
+- `speclink-logo-horizontal-dark`: horizontal dark-background variant.
+- `speclink-logo-vertical`: symbol above wordmark.
+- `speclink-logo-system-sheet`: lockups and small-size previews.
 
-The desktop app uses two files from `transparent/`:
+## App integration
 
-- `speclink-logo-mark.png` is the source of `apps/desktop/src-tauri/icons/` (through `tauri icon`, for window and taskbar icons) and of `apps/desktop/public/logo-mark.png` (header icon and favicon).
-- `speclink-wordmark.png`, cropped to tight bounds, becomes `apps/desktop/public/speclink-wordmark.png` (the header text next to the mark).
+Desktop public assets and Server Web source assets use `logo-mark.png`, `speclink-wordmark.png` and `speclink-wordmark-dark.png`. Native desktop icons live in `apps/desktop/src-tauri/icons/`, including ICO, ICNS and sized PNGs. The tray uses separate monochrome 18/36 px symbols; the 36 px PNG is also embedded in `apps/desktop/src/trayIcon.ts`.
 
-## Dark backgrounds
+The current apps retain PNG integration. The planned shared BrandMark/Wordmark components can consume the SVG masters.
 
-The official lockups use navy text and are for light backgrounds. On a dark background, use the version with the solid white background so that the logo stays readable. No dark-mode variant exists yet.
+To regenerate native icons:
+
+```sh
+npx tauri icon docs/assets/brand/transparent/speclink-app-icon.png -o /tmp/speclink-icons
+```
+
+Copy only the top-level desktop outputs into `apps/desktop/src-tauri/icons/`; exclude generated mobile assets. Regenerate the tray PNGs separately and synchronize their embedded base64 constant.
