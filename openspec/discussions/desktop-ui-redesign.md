@@ -5,7 +5,7 @@ status: promoted
 created: 2026-10-08
 created_by: MomoChen <momochenisme@gmail.com>
 hold: true
-promoted_to: fix-drawer-open-dismisses-overlays, desktop-design-foundation
+promoted_to: fix-drawer-open-dismisses-overlays, desktop-design-foundation, desktop-shell-redesign, desktop-notice-relocation, desktop-native-menu, desktop-board-reskin, desktop-list-pages-reskin
 ---
 
 # Discussion: 重新設計整個 Desktop 介面：白底中性灰、單一點綴色、扁平細框的桌面工具風格，含共用元件整理、原生選單、標題列與設定頁
@@ -294,15 +294,15 @@ Prior discussions: card-drawer-header-colors, desktop-導覽與專案首頁重�
 - 詞彙漂移：「新增 Workspace」「加入專案」「專案分頁」三處指同一件事，LANGUAGE.md 定「專案」為正典、「Workspace」列 avoid，於圖示列「＋」落地時收斂
 - 其餘頁面的版面：規格頁與已封存頁為列式容器（一列一筆、籤與日期靠右、›），內容區全寬、列表卡以 flex 撐滿畫面並在卡內捲動，底部固定換頁工具列（左：第 a–b 筆共 N 筆＋每頁 N 個下拉；右：‹ 頁碼 1 2 3 … M › 作用中 teal 淡底＋「跳到 __ 頁」數字輸入；規格頁與已封存頁共用同一個 pager 元件），頁級搜尋；已封存頁以卡片標頭分頁分變更／討論；規格詳情頁與討論詳情頁與變更詳情頁同骨架（標題列、meta、狀態卡、卡片標頭分頁、內容卡、‹ ›），規格詳情的需求以「Requirement 標籤＋標題＋來源錨點、需求文、左線縮排的 Scenario」分段、寬於 1200px 時左側列需求目錄，討論詳情的狀態卡含階段步驟列與衍生變更籤、結論以欄位標籤呈現；手冊頁主區三欄（240px 目錄樹——節點右端「可能過期」琥珀小字、768px 閱讀卡、200px 本頁目錄），閱讀欄底部一條固定列（白底、上緣細線、對齊 768px）放「出處」capability 籤（點開規格詳情頁）與「上一頁／下一頁」框線鈕，內文在其上方捲動；零專案空狀態無專案欄、主區置中直欄（Wordmark、標題、說明、新增專案＋連線 Server、最近開啟卡）；新增專案步驟 2–4 為單選列（Server、兩層專案／儲存庫、checkout 路徑與記住綁定）；伺服器設定頁為連線卡（狀態籤、登出／重新登入、⋯）＋預設卡＋登入方式卡；Windows 視窗 1px 邊框、左側標題列內容從 12px 起、主區頂列右端三顆自繪視窗鈕（各 46×48、hover 灰底、關閉 hover 紅底白字）
 - 互動原型：二十張畫板（看板、詳情頁、新增專案、設定一般頁、專案說明、產出規則、系統匣面板、token、原語與品牌一覽、技能檔提示確認框、設定更新頁、討論詳情頁、規格頁、規格詳情頁、已封存頁、手冊頁、零專案空狀態、新增專案步驟 2–4、伺服器設定頁、Windows 標題列、設定關於頁）記錄於 https://claude.ai/artifact/1QhDWmQi6muFFQnHTqqHa3，各刀 design 以它為視覺基準
-- **cut 0 `fix-drawer-open-dismisses-overlays`**: 獨立 bug 修，不等換皮（已轉出）
+- **cut 0 `fix-drawer-open-dismisses-overlays`**: 獨立 bug 修，不等換皮（已封存）
   - openDetail／openDiscussion 清掉可取消浮層、遷移與遠端衝突進行中不開
   - desktop-app「detail 抽屜互斥」MODIFIED
-- **cut 1 `desktop-design-foundation`**: 地基（已轉出；tabs 卡片標頭式與 Logo 三項皆已 ingest）
+- **cut 1 `desktop-design-foundation`**: 地基（已封存）
   - theme.css 新 token、深色去藍調、圓角改 Tailwind 預設；TS 表縮成對照；theme.test.ts 全掃描面無白名單
   - 17 個原語扁平化；六個有消費者的共用元件；三處本地重複改 import；同名本地定義守門；config.yaml 產出規則
   - Markdown 換 Streamdown
   - desktop-app「介面狀態語意色分層」MODIFIED、ADDED「共用元件唯一來源」
-- **cut 2 `desktop-shell-redesign`**: 外殼
+- **cut 2 外殼**（propose 期拆三個 change：`desktop-shell-redesign` 外殼結構、`desktop-notice-relocation` 提示歸位（依賴前者）、`desktop-native-menu` macOS 原生選單（獨立）；三者皆已轉出）
   - 三平台標題列（左側連續標題列承載紅綠燈與專案名、主區麵包屑）、圖示列＋固定寬專案欄（不收合）、專案層「⋯」檔案系統動作、專案欄底部提示卡與圖示列「有新版本」鈕、頁標題區、零專案空狀態；desktop-app「指令檔過期提示」「指令檔過期提示捲動釘選」「桌面自動更新」MODIFIED
   - 看板頁套用版面規則（24px 標題＋說明、搜尋與篩選為頁級動作）
   - 新增專案對話框換皮與改名（含步驟 2–4 的單選列）、零專案空狀態、Windows 自繪視窗鈕
@@ -310,7 +310,7 @@ Prior discussions: card-drawer-header-colors, desktop-導覽與專案首頁重�
   - 新原語 dropdown-menu、kbd、page-header
   - server-web ConsoleLayout 同步
   - desktop-config「專案分頁列存於 app 本機」MODIFIED（頂欄分頁列改左側專案列，持久化／上限 10／去重／關閉／錯誤態／快捷鍵全保留）；desktop-app「側欄導覽結構」MODIFIED；workspace-chooser 外觀相關需求 MODIFIED；LANGUAGE.md 收斂 Workspace
-- **cut 3a `desktop-board-reskin`**: 看板
+- **cut 3a 看板**（propose 期拆兩個 change：`desktop-board-reskin` 欄與卡、`desktop-list-pages-reskin` 規格／已封存／手冊三頁；皆依賴 desktop-shell-redesign；兩者皆已轉出）
   - 規格頁、已封存頁改列式容器＋換頁；手冊頁三欄版面
   - 看板頁內容：麵包屑「專案名 / 變更」；頁標題「變更」＋說明「依生命週期分欄；拖曳卡片調整順序，點卡片開詳情頁」；頁級動作＝全圓搜尋（280px）＋篩選圖示鈕；四欄等寬 grid、間距 12px
   - 看板欄改白底細框 16px 圓角卡：3px 色相頂條、白底標頭（色相圖示、名稱、色相淡底計數）下細線、卡片區鋪 neutral-50、討論欄底白底「已轉出 N ›」收合列細線分隔並記憶；空欄置中灰字（如「沒有已就緒的變更」）
@@ -364,4 +364,4 @@ Prior discussions: card-drawer-header-colors, desktop-導覽與專案首頁重�
 - 四欄色相與語意 token 的確切色階 — design 期在真實畫面調
 - 產出規則單條寫回動詞 — 現以整份寫回，單條增刪改另議
 **Capture to**: proposal、design、spec（desktop-app、desktop-config、workspace-chooser、tray-status-menu MODIFIED）、tasks、LANGUAGE.md
-**Next**: /speclink-propose --from-discussion desktop-ui-redesign（cut 0、1 已轉出；依序 cut 2 → 3a → 3b；cut 4 與 5 可與 3a、3b 並行；最後一刀帶 --last）
+**Next**: cut 2 其餘兩塊與 cut 3a 兩塊依 speclink plan 的波次 apply；之後 /speclink-propose --from-discussion desktop-ui-redesign 建 cut 3b；cut 4 與 5 可與 3a、3b 並行；最後一刀帶 --last
