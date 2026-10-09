@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vite
 import { render, screen, waitFor, fireEvent, within, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { getVersion } from "@tauri-apps/api/app";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { toast } from "sonner";
 
 import { App } from "../App";
 import { APP_MESSAGES } from "../i18n/messages";
@@ -29,6 +31,24 @@ vi.mock("@tauri-apps/api/event", () => ({
 vi.mock("@tauri-apps/api/app", () => ({
   getVersion: vi.fn().mockResolvedValue("0.1.0"),
 }));
+
+// macOS 原生選單（desktop-native-menu）：攔下 installAppMenu，取得 App 傳入的 deps
+// （dispatch、初始 t／hasProject）與每次 rebuild 的輸入；選單模型本身由 appMenu.test 承載。
+const { appMenuSpy } = vi.hoisted(() => ({
+  appMenuSpy: {
+    deps: [] as Array<Parameters<typeof import("../appMenu").installAppMenu>[0]>,
+    rebuild: vi.fn().mockResolvedValue(undefined),
+    dispose: vi.fn(),
+  },
+}));
+vi.mock("../appMenu", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../appMenu")>()),
+  installAppMenu: (deps: (typeof appMenuSpy.deps)[number]) => {
+    appMenuSpy.deps.push(deps);
+    return { rebuild: appMenuSpy.rebuild, dispose: appMenuSpy.dispose };
+  },
+}));
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn().mockResolvedValue(undefined) }));
 
 // 兩個抽屜的 pass-through spy：捕捉 props（驗證刷新世代下發）後照常渲染原元件；
 // Toaster 以 marker 驗證由 App 根層掛載，行為整合由 packages/ui 測試承載。
@@ -60,6 +80,9 @@ beforeEach(() => {
   drawerSpy.rich.length = 0;
   drawerSpy.disc.length = 0;
   toasterSpy.mockClear();
+  appMenuSpy.deps.length = 0;
+  appMenuSpy.rebuild.mockClear();
+  appMenuSpy.dispose.mockClear();
   // 各測試自行預置分頁持久化；先清掉避免跨測試洩漏。
   localStorage.removeItem("speclink.projectTabs");
   // 技能檔提示的「保留現狀」記憶也是 localStorage：清掉，免得一條測試按過
@@ -1727,6 +1750,18 @@ describe("更新日誌彈窗接線（desktop-app「更新日誌彈窗」）", ()
     expect(localStorage.getItem(KEY)).toBe(TOP);
   });
 
+  it("macOS 原生選單的「更新日誌」以 speclink:show-release-notes 事件開瀏覽模式", async () => {
+    localStorage.setItem(KEY, TOP);
+    renderWithUpdater();
+    await screen.findByTestId("left-titlebar");
+    expect(screen.queryByTestId("release-notes-dialog")).toBeNull();
+    act(() => {
+      window.dispatchEvent(new CustomEvent("speclink:show-release-notes"));
+    });
+    const dialog = await screen.findByTestId("release-notes-dialog");
+    expect(within(dialog).getByText("更新日誌")).toBeTruthy();
+  });
+
   it("寫入已看過記錄失敗時對話框仍關得掉", async () => {
     localStorage.setItem(KEY, "0.1.0");
     // vitest.setup 掛的 localStorage 來自另一個 jsdom window，全域 Storage.prototype 攔不到；
@@ -1960,5 +1995,70 @@ describe("看板討論欄收合列的展開記憶接線（desktop-board-reskin�
     const bar = await screen.findByRole("button", { name: /已轉出/ });
     expect(bar.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByText("Fanout topic")).toBeTruthy();
+  });
+});
+
+// desktop-app「macOS 原生選單」的 App 層接線（desktop-native-menu design D3）：語言與
+// 專案有無改變時 rebuild、選單動作派發到 store 既有動作或外部瀏覽器。
+describe("macOS 原生選單接線（desktop-app「macOS 原生選單」）", () => {
+  const menuDeps = () => appMenuSpy.deps[appMenuSpy.deps.length - 1];
+  const lastRebuild = () =>
+    appMenuSpy.rebuild.mock.calls[appMenuSpy.rebuild.mock.calls.length - 1]?.[0] as
+      | { t: (key: string) => string; hasProject: boolean }
+      | undefined;
+
+  it("切換 UI 語言後以新語言 rebuild", async () => {
+    renderApp();
+    await screen.findByText("desktop-shell-and-browser");
+    expect(menuDeps().t("menu.file.title")).toBe("檔案");
+    fireEvent.click(settingsGear());
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "本機設定" }));
+    fireEvent.click(within(await screen.findByTestId("ui-locale")).getByText("English"));
+    await waitFor(() => expect(lastRebuild()?.t("menu.file.title")).toBe("File"));
+  });
+
+  it("dispatch(\"viewSpecs\") 切到規格頁", async () => {
+    renderApp();
+    await screen.findByText("desktop-shell-and-browser");
+    act(() => menuDeps().dispatch("viewSpecs"));
+    await waitFor(() => expect(screen.getByTestId("main-titlebar").textContent).toBe("proj-a/規格"));
+  });
+
+  it("零專案時 rebuild 收到 hasProject=false", async () => {
+    render(<App createSession={makeSession(fakeDataSource())} workspace={fakeWorkspace() as never} />);
+    expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
+    expect(menuDeps().hasProject).toBe(false);
+    await waitFor(() => expect(lastRebuild()?.hasProject).toBe(false));
+  });
+
+  it("dispatch(\"closeProject\") 關掉作用中專案後 rebuild 收到 hasProject=false", async () => {
+    renderApp();
+    await screen.findByText("desktop-shell-and-browser");
+    expect(lastRebuild()?.hasProject).toBe(true);
+    act(() => menuDeps().dispatch("closeProject"));
+    expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
+    await waitFor(() => expect(lastRebuild()?.hasProject).toBe(false));
+  });
+
+  it("dispatch(\"github\")／dispatch(\"reportIssue\") 以 openUrl 開 repo 網址", async () => {
+    renderApp();
+    await screen.findByText("desktop-shell-and-browser");
+    vi.mocked(openUrl).mockClear();
+    act(() => menuDeps().dispatch("github"));
+    act(() => menuDeps().dispatch("reportIssue"));
+    expect(vi.mocked(openUrl).mock.calls).toEqual([
+      ["https://github.com/MomoChenisMe/speclink"],
+      ["https://github.com/MomoChenisMe/speclink/issues/new"],
+    ]);
+  });
+
+  it("openUrl 失敗時 toast 錯誤原文", async () => {
+    const error = vi.spyOn(toast, "error");
+    vi.mocked(openUrl).mockRejectedValueOnce("no default browser");
+    renderApp();
+    await screen.findByText("desktop-shell-and-browser");
+    act(() => menuDeps().dispatch("github"));
+    await waitFor(() => expect(error).toHaveBeenCalledWith("no default browser"));
+    error.mockRestore();
   });
 });

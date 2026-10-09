@@ -1,0 +1,94 @@
+{
+  "version": 2,
+  "change": "desktop-native-menu",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 新增 `apps/desktop/src/appMenu.ts` 的 `buildAppMenuModel({ t, hasProject })`（design D2：六組、項目、快捷鍵、enabled、predefined 項）與 `AppMenuAction` 型別；`apps/desktop/src/i18n/messages.ts` 兩語系加 36 個 `menu.*` 鍵（spec「macOS 原生選單」）。驗證：新增 `apps/desktop/src/__tests__/appMenu.test.ts`——六組順序與各組項目 id 順序、每個帶快捷鍵自訂項目的 accelerator 字串（`CmdOrCtrl+,`、`Cmd+O`、`Cmd+W`、`Cmd+1`…`Cmd+4`、`Cmd+F`、`Cmd+R`、`Ctrl+Tab`）、Hide／HideOthers／Quit／Minimize 為系統預設項（`Cmd+H`、`Alt+Cmd+H`、`Cmd+Q`、`Cmd+M` 由系統自帶，design D2）、`hasProject=false` 時停用集合恰為關閉專案＋檢視組八項＋說明手冊、以 zh-TW 與 en 字典各建一次文案不同且皆非 key 本身；`apps/desktop/src/__tests__/messages.test.ts` 鍵集合相等；`npm test -w apps/desktop -- appMenu messages`。",
+      "files": [
+        "apps/desktop/src/__tests__/messages.test.ts",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/__tests__/appMenu.test.ts",
+        "apps/desktop/src/appMenu.ts"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 `apps/desktop/src/appMenu.ts` 加 `installAppMenu(deps)`（design D1 的 JS 選單 API 路線；design D3：macOS 才建、`Menu.new`＋`setAsAppMenu`、`rebuild`／`dispose`、項目 action 呼叫 `dispatch(id)`、失敗 console.error 不拋）；`apps/desktop/src-tauri/capabilities/default.json` 加 `opener:allow-open-url`（限 `https://github.com/MomoChenisMe/speclink*`）。驗證：`appMenu.test.ts` 加——mock `menuApi` 下 macOS 安裝呼叫 `Menu.new` 與 `setAsAppMenu` 各一次、`rebuild` 後各兩次、觸發某 `MenuItem` 的 action 呼叫 `dispatch` 帶對應 id、非 macOS 零呼叫、`Menu.new` 拋錯時不向外拋；`cargo check -p speclink-desktop` 通過（能力檔解析）；`npm test -w apps/desktop -- appMenu`。",
+      "files": [
+        "apps/desktop/src-tauri/capabilities/default.json"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 `packages/ui/src/components/BoardSearchBar.tsx` 監聽 `window` 的 `speclink:focus-search` 事件聚焦搜尋輸入（既有 ⌘F keydown 保留）。驗證：`packages/ui/src/__tests__/boardSearchBar.test.tsx` 加「派發事件後輸入為 `document.activeElement`」一案，既有 ⌘F 案例通過；`npm test -w packages/ui -- boardSearchBar`。",
+      "files": [
+        "packages/ui/src/__tests__/boardSearchBar.test.tsx",
+        "packages/ui/src/components/BoardSearchBar.tsx"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 `apps/desktop/src/App.tsx` 於 `uiLocale` 與作用中專案有無改變時 `rebuild`、卸載 `dispose`；`apps/desktop/package.json` 加 `@tauri-apps/plugin-opener` 相依（`package-lock.json` 以 Node 20 同步）；`dispatch` 對照 design D3 與 D4（關於頁落地前「關於」進設定頁；切頁、開專案、關專案、重新整理、下一個專案、手動檢查更新＋進設定頁、設定／安裝 CLI／關於進設定頁、`bringAllToFront` 聚焦視窗、github／reportIssue 以 `@tauri-apps/plugin-opener` 的 `openUrl` 開啟、失敗 toast）；監聽 `speclink:show-release-notes` 事件開更新日誌對話框（spec「macOS 原生選單」、desktop-config「UI 介面語言支援 zh-TW 與 en」）。驗證：`apps/desktop/src/__tests__/App.test.tsx` 新增——mock `installAppMenu` 後語言切換觸發 `rebuild` 且傳入的 `t(\"menu.file.title\")` 為新語言文案、`dispatch(\"viewSpecs\")` 後 `boardView` 為 specs、零專案時 `rebuild` 收到 `hasProject=false`、派發 `speclink:show-release-notes` 後出現更新日誌對話框、`dispatch(\"github\")` 呼叫 `openUrl` 帶 repo 網址；`npm test -w apps/desktop -- App`。",
+      "files": [
+        "apps/desktop/package.json",
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "package-lock.json"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4DZE2EC1V8VQZ4XW8HTFMZV",
+      "taskDesc": "1.1 新增 `apps/desktop/src/appMenu.ts` 的 `buildAppMenuModel({ t, hasProject })`（design D2：六組、項目、快捷鍵、enabled、predefined 項）與 `AppMenuAction` 型別；`apps/desktop/src/i18n/messages.ts` 兩語系加 36 個 `menu.*` 鍵（spec「macOS 原生選單」）。驗證：新增 `apps/desktop/src/__tests__/appMenu.test.ts`——六組順序與各組項目 id 順序、每個帶快捷鍵自訂項目的 accelerator 字串（`CmdOrCtrl+,`、`Cmd+O`、`Cmd+W`、`Cmd+1`…`Cmd+4`、`Cmd+F`、`Cmd+R`、`Ctrl+Tab`）、Hide／HideOthers／Quit／Minimize 為系統預設項（`Cmd+H`、`Alt+Cmd+H`、`Cmd+Q`、`Cmd+M` 由系統自帶，design D2）、`hasProject=false` 時停用集合恰為關閉專案＋檢視組八項＋說明手冊、以 zh-TW 與 en 字典各建一次文案不同且皆非 key 本身；`apps/desktop/src/__tests__/messages.test.ts` 鍵集合相等；`npm test -w apps/desktop -- appMenu messages`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "78a4f2840f08182abc778bd5dd35a5ea8e4565d2",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/messages.test.ts",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/__tests__/appMenu.test.ts",
+        "apps/desktop/src/appMenu.ts"
+      ],
+      "recordedAt": "2026-10-09T05:15:11Z"
+    },
+    {
+      "taskId": "tsk_01M4DZE2ECJ4YPF6KF2V8QXRPH",
+      "taskDesc": "1.2 `apps/desktop/src/appMenu.ts` 加 `installAppMenu(deps)`（design D1 的 JS 選單 API 路線；design D3：macOS 才建、`Menu.new`＋`setAsAppMenu`、`rebuild`／`dispose`、項目 action 呼叫 `dispatch(id)`、失敗 console.error 不拋）；`apps/desktop/src-tauri/capabilities/default.json` 加 `opener:allow-open-url`（限 `https://github.com/MomoChenisMe/speclink*`）。驗證：`appMenu.test.ts` 加——mock `menuApi` 下 macOS 安裝呼叫 `Menu.new` 與 `setAsAppMenu` 各一次、`rebuild` 後各兩次、觸發某 `MenuItem` 的 action 呼叫 `dispatch` 帶對應 id、非 macOS 零呼叫、`Menu.new` 拋錯時不向外拋；`cargo check -p speclink-desktop` 通過（能力檔解析）；`npm test -w apps/desktop -- appMenu`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "78a4f2840f08182abc778bd5dd35a5ea8e4565d2",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/capabilities/default.json"
+      ],
+      "recordedAt": "2026-10-09T05:18:04Z"
+    },
+    {
+      "taskId": "tsk_01M4DZE2ECQ88Z0BCGZ9H01505",
+      "taskDesc": "2.2 `packages/ui/src/components/BoardSearchBar.tsx` 監聽 `window` 的 `speclink:focus-search` 事件聚焦搜尋輸入（既有 ⌘F keydown 保留）。驗證：`packages/ui/src/__tests__/boardSearchBar.test.tsx` 加「派發事件後輸入為 `document.activeElement`」一案，既有 ⌘F 案例通過；`npm test -w packages/ui -- boardSearchBar`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "78a4f2840f08182abc778bd5dd35a5ea8e4565d2",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/boardSearchBar.test.tsx",
+        "packages/ui/src/components/BoardSearchBar.tsx"
+      ],
+      "recordedAt": "2026-10-09T05:18:27Z"
+    },
+    {
+      "taskId": "tsk_01M4DZE2ECTRR334R8QM15QZY7",
+      "taskDesc": "2.1 `apps/desktop/src/App.tsx` 於 `uiLocale` 與作用中專案有無改變時 `rebuild`、卸載 `dispose`；`apps/desktop/package.json` 加 `@tauri-apps/plugin-opener` 相依（`package-lock.json` 以 Node 20 同步）；`dispatch` 對照 design D3 與 D4（關於頁落地前「關於」進設定頁；切頁、開專案、關專案、重新整理、下一個專案、手動檢查更新＋進設定頁、設定／安裝 CLI／關於進設定頁、`bringAllToFront` 聚焦視窗、github／reportIssue 以 `@tauri-apps/plugin-opener` 的 `openUrl` 開啟、失敗 toast）；監聽 `speclink:show-release-notes` 事件開更新日誌對話框（spec「macOS 原生選單」、desktop-config「UI 介面語言支援 zh-TW 與 en」）。驗證：`apps/desktop/src/__tests__/App.test.tsx` 新增——mock `installAppMenu` 後語言切換觸發 `rebuild` 且傳入的 `t(\"menu.file.title\")` 為新語言文案、`dispatch(\"viewSpecs\")` 後 `boardView` 為 specs、零專案時 `rebuild` 收到 `hasProject=false`、派發 `speclink:show-release-notes` 後出現更新日誌對話框、`dispatch(\"github\")` 呼叫 `openUrl` 帶 repo 網址；`npm test -w apps/desktop -- App`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "78a4f2840f08182abc778bd5dd35a5ea8e4565d2",
+      "touchedFiles": [
+        "apps/desktop/package.json",
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "package-lock.json"
+      ],
+      "recordedAt": "2026-10-09T05:21:28Z"
+    }
+  ]
+}
