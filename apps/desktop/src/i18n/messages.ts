@@ -106,6 +106,8 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.followSystem": "跟隨系統",
     "settings.localTabLabel": "本機設定",
     "settings.localTabNote": "此簽的內容僅存於此裝置，不寫入版本庫。",
+    "settings.shortcutsTitle": "鍵盤快捷鍵",
+    "settings.shortcutsGotoProject": "跳到第 1–9 個專案",
     "settings.policyCard": "產出政策",
     "settings.toolsLabel": "AI 工具",
     "settings.toolsHelp":
@@ -495,6 +497,8 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.followSystem": "Follow system",
     "settings.localTabLabel": "Local settings",
     "settings.localTabNote": "Everything on this tab is stored on this device only — never written to the repository.",
+    "settings.shortcutsTitle": "Keyboard Shortcuts",
+    "settings.shortcutsGotoProject": "Go to Project 1–9",
     "settings.policyCard": "Output policy",
     "settings.toolsLabel": "AI tools",
     "settings.toolsHelp":

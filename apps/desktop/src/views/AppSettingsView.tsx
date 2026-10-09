@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import {
   Button,
@@ -5,6 +6,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  Kbd,
   Tabs,
   TabsContent,
   TabsList,
@@ -14,8 +16,10 @@ import {
   useI18n,
 } from "@speclink/ui";
 
+import { buildShortcutList } from "../appMenu";
 import { ServersPanel, type ServersPanelProps } from "../components/ServersPanel";
 import type { LocalePreference } from "../i18n/locale";
+import type { Platform } from "../platform";
 import type { UpdaterState } from "../core/updater";
 import type { CliInstallView } from "../store";
 
@@ -29,6 +33,8 @@ export interface AppSettingsUpdaterProps {
 }
 
 export interface AppSettingsViewProps {
+  /** 鍵盤快捷鍵卡依平台列出實際生效的快捷鍵（desktop-native-menu design D5）。 */
+  platform: Platform;
   /** UI 語言偏好現值（null＝跟隨系統）。 */
   localePref: LocalePreference;
   /** 切換即時生效並持久化（App 層負責寫 localStorage）。 */
@@ -124,6 +130,7 @@ function TrayPanelError({ message }: { message: string }) {
 
 /** 與任何 workspace 分頁無關的應用程式設定：本機偏好與伺服器連線。 */
 export function AppSettingsView({
+  platform,
   localePref,
   onLocalePrefChange,
   trayPanelError = null,
@@ -138,13 +145,18 @@ export function AppSettingsView({
     { value: "zh-TW", label: "繁體中文" },
     { value: "en", label: "English" },
   ];
+  // needs-reauth 導向時預選伺服器簽；手動檢查更新一開始就切到本機設定簽，讓原生選單
+  // 「檢查更新…」進來時看得到軟體更新卡（背景自動檢查不切）。
+  const [tab, setTab] = useState(focusConnectionId ? "servers" : "local");
+  useEffect(() => setTab(focusConnectionId ? "servers" : "local"), [focusConnectionId]);
+  const manualCheck = updater?.state.phase === "checking" && updater.state.manual;
+  useEffect(() => {
+    if (manualCheck) setTab("local");
+  }, [manualCheck]);
 
   return (
     <div className="max-w-2xl mx-auto w-full">
-      <Tabs
-        key={focusConnectionId ?? "settings"}
-        defaultValue={focusConnectionId ? "servers" : "local"}
-      >
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="local">{t("settings.localTabLabel")}</TabsTrigger>
           {servers && <TabsTrigger value="servers">{t("settings.serversTabLabel")}</TabsTrigger>}
@@ -271,6 +283,21 @@ export function AppSettingsView({
               </CardContent>
             </Card>
           )}
+          <Card data-testid="shortcuts-card">
+            <CardHeader>
+              <CardTitle className="text-base">{t("settings.shortcutsTitle")}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="m-0 p-0 list-none flex flex-col gap-2">
+                {buildShortcutList({ t, platform }).map((row) => (
+                  <li key={row.id} className="flex items-center justify-between gap-4 text-sm">
+                    <span>{row.text}</span>
+                    <Kbd>{row.keys}</Kbd>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
           {trayPanelError && <TrayPanelError message={trayPanelError} />}
         </TabsContent>
 

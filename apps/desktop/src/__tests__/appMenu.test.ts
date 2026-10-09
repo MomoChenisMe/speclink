@@ -1,12 +1,17 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { Menu } from "@tauri-apps/api/menu";
 
 import {
   buildAppMenuModel,
+  buildShortcutList,
   installAppMenu,
   type AppMenuEntry,
   type AppMenuModel,
 } from "../appMenu";
 import { APP_MESSAGES } from "../i18n/messages";
+import type { Platform } from "../platform";
+
+vi.mock("@tauri-apps/api/menu", () => ({ Menu: { new: vi.fn() } }));
 
 const tOf = (locale: "zh-TW" | "en") => (key: string): string => APP_MESSAGES[locale][key] ?? key;
 
@@ -143,17 +148,21 @@ describe("buildAppMenuModel（design D2）", () => {
 
 type MenuOptionsTree = { text?: string; item?: unknown; action?: () => void; items?: MenuOptionsTree[] };
 
-/** 假的 Tauri 選單 API：記下每次 Menu.new 收到的整棵選項物件與 setAsAppMenu 次數。 */
-function fakeMenuApi() {
-  const setAsAppMenu = vi.fn().mockResolvedValue(null);
+/** 假的 Tauri 選單：記下每次 Menu.new 收到的整棵選項物件；setAsAppMenu 回傳被換下的舊選單。 */
+function fakeMenus() {
   const built: MenuOptionsTree[][] = [];
-  const Menu = {
-    new: vi.fn(async (opts: { items: MenuOptionsTree[] }) => {
-      built.push(opts.items);
-      return { setAsAppMenu };
-    }),
-  };
-  return { menuApi: { Menu } as never, Menu, setAsAppMenu, built };
+  const menus: Array<{ setAsAppMenu: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> }> = [];
+  const replaced = { close: vi.fn().mockResolvedValue(undefined) };
+  vi.mocked(Menu.new).mockImplementation(async (opts) => {
+    built.push((opts?.items ?? []) as MenuOptionsTree[]);
+    const menu = {
+      setAsAppMenu: vi.fn().mockResolvedValue(replaced),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    menus.push(menu);
+    return menu as never;
+  });
+  return { built, menus, replaced };
 }
 
 const findItem = (tree: MenuOptionsTree[], text: string): MenuOptionsTree | undefined => {
@@ -166,36 +175,37 @@ const findItem = (tree: MenuOptionsTree[], text: string): MenuOptionsTree | unde
 };
 
 describe("installAppMenu（design D3）", () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.mocked(Menu.new).mockReset();
+    vi.restoreAllMocks();
+  });
 
-  const base = (overrides: Partial<Parameters<typeof installAppMenu>[0]> = {}) => {
-    const api = fakeMenuApi();
+  const install = (overrides: Partial<Parameters<typeof installAppMenu>[0]> = {}) => {
     const dispatch = vi.fn();
-    const controller = installAppMenu({
-      isMacOS: () => true,
+    const cancel = installAppMenu({
+      isMacOS: true,
       t: tOf("zh-TW"),
       hasProject: true,
       dispatch,
-      menuApi: api.menuApi,
       ...overrides,
     });
-    return { ...api, dispatch, controller };
+    return { dispatch, cancel };
   };
 
-  it("macOS 安裝即建一次並設為 app 選單；rebuild 後各兩次", async () => {
-    const { Menu, setAsAppMenu, controller } = base();
-    await vi.waitFor(() => expect(setAsAppMenu).toHaveBeenCalledTimes(1));
+  it("macOS 建一次並設為 app 選單，再關掉被換下的舊選單", async () => {
+    const { menus, replaced } = fakeMenus();
+    install();
+    await vi.waitFor(() => expect(replaced.close).toHaveBeenCalledTimes(1));
     expect(Menu.new).toHaveBeenCalledTimes(1);
-
-    await controller.rebuild({ t: tOf("en"), hasProject: true });
-    expect(Menu.new).toHaveBeenCalledTimes(2);
-    expect(setAsAppMenu).toHaveBeenCalledTimes(2);
+    expect(menus[0].setAsAppMenu).toHaveBeenCalledTimes(1);
+    expect(menus[0].close).not.toHaveBeenCalled();
   });
 
-  it("rebuild 依新語言建出六組子選單", async () => {
-    const { built, controller } = base();
-    await controller.rebuild({ t: tOf("en"), hasProject: true });
-    expect(built[built.length - 1].map((group) => group.text)).toEqual([
+  it("依傳入的語言建出六組子選單", async () => {
+    const { built } = fakeMenus();
+    install({ t: tOf("en") });
+    await vi.waitFor(() => expect(built).toHaveLength(1));
+    expect(built[0].map((group) => group.text)).toEqual([
       "Speclink",
       "File",
       "Edit",
@@ -205,50 +215,84 @@ describe("installAppMenu（design D3）", () => {
     ]);
   });
 
-  it("rebuild 的輸入與上次相同時不重建", async () => {
-    const t = tOf("zh-TW");
-    const { Menu, controller } = base({ t });
-    await controller.rebuild({ t, hasProject: true });
-    expect(Menu.new).toHaveBeenCalledTimes(1);
-  });
-
   it("觸發選單項的 action 以對應動作 id 呼叫 dispatch", async () => {
-    const { built, dispatch, setAsAppMenu } = base();
-    await vi.waitFor(() => expect(setAsAppMenu).toHaveBeenCalledTimes(1));
+    const { built } = fakeMenus();
+    const { dispatch } = install();
+    await vi.waitFor(() => expect(built).toHaveLength(1));
     findItem(built[0], "規格")?.action?.();
     findItem(built[0], "回報問題")?.action?.();
     expect(dispatch.mock.calls).toEqual([["viewSpecs"], ["reportIssue"]]);
   });
 
-  it("非 macOS 不呼叫任何選單 API，rebuild 與 dispose 為 no-op", async () => {
-    const { Menu, setAsAppMenu, controller } = base({ isMacOS: () => false });
-    await controller.rebuild({ t: tOf("en"), hasProject: false });
-    controller.dispose();
+  it("非 macOS 不呼叫任何選單 API", () => {
+    fakeMenus();
+    const { cancel } = install({ isMacOS: false });
+    cancel();
     expect(Menu.new).not.toHaveBeenCalled();
-    expect(setAsAppMenu).not.toHaveBeenCalled();
   });
 
-  it("dispose 後的 rebuild 不再建選單", async () => {
-    const { Menu, setAsAppMenu, controller } = base();
-    await vi.waitFor(() => expect(setAsAppMenu).toHaveBeenCalledTimes(1));
-    controller.dispose();
-    await controller.rebuild({ t: tOf("en"), hasProject: true });
-    expect(Menu.new).toHaveBeenCalledTimes(1);
+  it("取消後才建好的選單不設為 app 選單，並關掉它", async () => {
+    const { menus } = fakeMenus();
+    const { cancel } = install();
+    cancel();
+    await vi.waitFor(() => expect(menus[0]?.close).toHaveBeenCalledTimes(1));
+    expect(menus[0].setAsAppMenu).not.toHaveBeenCalled();
   });
 
   it("Menu.new 拋錯時記 console.error、不向外拋", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    const api = fakeMenuApi();
-    api.Menu.new.mockRejectedValue(new Error("menu unavailable"));
-    const controller = installAppMenu({
-      isMacOS: () => true,
-      t: tOf("zh-TW"),
-      hasProject: true,
-      dispatch: vi.fn(),
-      menuApi: api.menuApi,
-    });
-    await expect(controller.rebuild({ t: tOf("en"), hasProject: true })).resolves.toBeUndefined();
-    expect(error).toHaveBeenCalledTimes(2);
-    expect(api.setAsAppMenu).not.toHaveBeenCalled();
+    vi.mocked(Menu.new).mockRejectedValue(new Error("menu unavailable"));
+    install();
+    await vi.waitFor(() => expect(error).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("buildShortcutList（design D5）", () => {
+  const rows = (platform: Platform, locale: "zh-TW" | "en" = "zh-TW") =>
+    buildShortcutList({ t: tOf(locale), platform }).map((row) => [row.text, row.keys]);
+
+  it("macOS 回 11 列，逐列等於 spec Example「macOS 的卡片內容」", () => {
+    expect(rows("macos")).toEqual([
+      ["設定…", "⌘,"],
+      ["開啟專案…", "⌘O"],
+      ["關閉專案", "⌘W"],
+      ["變更", "⌘1"],
+      ["已封存", "⌘2"],
+      ["規格", "⌘3"],
+      ["手冊", "⌘4"],
+      ["搜尋看板", "⌘F"],
+      ["重新整理", "⌘R"],
+      ["下一個專案", "⌃Tab"],
+      ["跳到第 1–9 個專案", "⌃1–9"],
+    ]);
+  });
+
+  it.each(["windows", "linux"] as const)(
+    "%s 回 5 列，逐列等於 spec Example「Windows 與 Linux 的卡片內容」",
+    (platform) => {
+      expect(rows(platform)).toEqual([
+        ["關閉專案", "Ctrl+W"],
+        ["搜尋看板", "Ctrl+F"],
+        ["重新整理", "Ctrl+R"],
+        ["下一個專案", "Ctrl+Tab"],
+        ["跳到第 1–9 個專案", "Ctrl+1–9"],
+      ]);
+    },
+  );
+
+  it("以 en 字典建時動作名稱為英文、按鍵不變", () => {
+    expect(rows("macos", "en")).toEqual([
+      ["Settings…", "⌘,"],
+      ["Open Project…", "⌘O"],
+      ["Close Project", "⌘W"],
+      ["Changes", "⌘1"],
+      ["Archived", "⌘2"],
+      ["Specs", "⌘3"],
+      ["Manual", "⌘4"],
+      ["Search Board", "⌘F"],
+      ["Refresh", "⌘R"],
+      ["Next Project", "⌃Tab"],
+      ["Go to Project 1–9", "⌃1–9"],
+    ]);
   });
 });

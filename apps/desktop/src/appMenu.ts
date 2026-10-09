@@ -1,12 +1,14 @@
 // macOS 原生選單列（desktop-native-menu design D1–D3）：與系統匣同一機制——文案取自
 // i18n 字典、語言或「有無專案」改變時整個重建。分兩層：buildAppMenuModel 是純函式
-// （直測）；installAppMenu 以注入的 Tauri 選單 API 建出並設為 app 選單。
-import type {
+// （直測）；installAppMenu 以 Tauri 選單 API 建出並設為 app 選單。
+import {
   Menu,
-  MenuItemOptions,
-  PredefinedMenuItemOptions,
-  SubmenuOptions,
+  type MenuItemOptions,
+  type PredefinedMenuItemOptions,
+  type SubmenuOptions,
 } from "@tauri-apps/api/menu";
+
+import type { Platform } from "./platform";
 
 /** 自訂選單項的動作 id：App 依此派發到 store 既有動作或 window 事件。 */
 export type AppMenuAction =
@@ -161,27 +163,74 @@ export function buildAppMenuModel({
   ];
 }
 
+/** 設定頁「鍵盤快捷鍵」卡的一列（design D5）。 */
+export interface ShortcutRow {
+  id: AppMenuAction | "gotoProject";
+  text: string;
+  keys: string;
+}
+
+const MODIFIER_SYMBOLS: Record<string, string> = { Cmd: "⌘", CmdOrCtrl: "⌘", Ctrl: "⌃" };
+
+/** 選單 accelerator 轉成 macOS 按鍵符號：`CmdOrCtrl+,` → `⌘,`、`Ctrl+Tab` → `⌃Tab`。 */
+function formatAccelerator(accelerator: string): string {
+  return accelerator
+    .split("+")
+    .map((part) => MODIFIER_SYMBOLS[part] ?? part)
+    .join("");
+}
+
+/**
+ * 設定頁「鍵盤快捷鍵」卡的列表（design D5），只列實際生效的快捷鍵。macOS 由選單模型導出，
+ * 卡片與選單只有一份定義；Windows／Linux 沒有選單列，五列對應 App.tsx 的 keydown（Ctrl+W、
+ * Ctrl+R、Ctrl+Tab、Ctrl+1–9）與 BoardSearchBar 的 Ctrl+F——改那兩處的按鍵時要同批改這裡。
+ */
+export function buildShortcutList({
+  t,
+  platform,
+}: {
+  t: (key: string) => string;
+  platform: Platform;
+}): ShortcutRow[] {
+  const gotoProject = (keys: string): ShortcutRow => ({
+    id: "gotoProject",
+    text: t("settings.shortcutsGotoProject"),
+    keys,
+  });
+  if (platform === "macos") {
+    const menuRows = buildAppMenuModel({ t, hasProject: true })
+      .flatMap((group) => group.items)
+      .flatMap((entry): ShortcutRow[] =>
+        entry.kind === "item" && entry.accelerator
+          ? [{ id: entry.id, text: entry.text, keys: formatAccelerator(entry.accelerator) }]
+          : [],
+      );
+    return [...menuRows, gotoProject("⌃1–9")];
+  }
+  return [
+    { id: "closeProject", text: t("menu.file.closeProject"), keys: "Ctrl+W" },
+    { id: "focusSearch", text: t("menu.view.search"), keys: "Ctrl+F" },
+    { id: "refresh", text: t("menu.view.refresh"), keys: "Ctrl+R" },
+    { id: "nextProject", text: t("menu.view.nextProject"), keys: "Ctrl+Tab" },
+    gotoProject("Ctrl+1–9"),
+  ];
+}
+
 export interface AppMenuDeps {
-  isMacOS: () => boolean;
+  isMacOS: boolean;
   t: (key: string) => string;
   hasProject: boolean;
   dispatch: (action: AppMenuAction) => void;
-  menuApi: { Menu: Pick<typeof Menu, "new"> };
-}
-
-export interface AppMenuController {
-  /** 以新語言或專案有無重建；輸入與上次相同時不重建。 */
-  rebuild: (next: { t: (key: string) => string; hasProject: boolean }) => Promise<void>;
-  dispose: () => void;
 }
 
 /**
  * 安裝 macOS 原生選單列（design D3）：與系統匣同一做法，把模型轉成整棵選項物件一次交給
- * `Menu.new` 後 `setAsAppMenu()`。非 macOS 不呼叫任何選單 API。重建依序執行，較舊的一次
- * 不會蓋掉較新的選單；建立失敗只記 console.error——app 照常、僅無選單列。
+ * `Menu.new` 後 `setAsAppMenu()`，再關掉被換下的舊選單（釋放 Rust 端資源）。非 macOS 不呼叫
+ * 任何選單 API。回傳取消函式：語言或專案有無改變時 App 以新的一次取代，取消後才建好的
+ * 選單不套用並關掉。建立失敗只記 console.error——app 照常、僅無選單列。
  */
-export function installAppMenu(deps: AppMenuDeps): AppMenuController {
-  if (!deps.isMacOS()) return { rebuild: async () => {}, dispose: () => {} };
+export function installAppMenu(deps: AppMenuDeps): () => void {
+  if (!deps.isMacOS) return () => {};
 
   const toOptions = (entry: AppMenuEntry): MenuItemOptions | PredefinedMenuItemOptions => {
     switch (entry.kind) {
@@ -198,35 +247,22 @@ export function installAppMenu(deps: AppMenuDeps): AppMenuController {
         return { item: "Separator" };
     }
   };
+  const items = buildAppMenuModel(deps).map(
+    (group): SubmenuOptions => ({ text: group.text, items: group.items.map(toOptions) }),
+  );
 
-  let disposed = false;
-  let last = { t: deps.t, hasProject: deps.hasProject };
-  let queue = Promise.resolve();
-  const build = (input: typeof last) => {
-    const items = buildAppMenuModel(input).map(
-      (group): SubmenuOptions => ({ text: group.text, items: group.items.map(toOptions) }),
-    );
-    queue = queue.then(async () => {
-      if (disposed) return;
-      try {
-        const menu = await deps.menuApi.Menu.new({ items });
-        if (!disposed) await menu.setAsAppMenu();
-      } catch (e) {
-        console.error("app menu build failed", e);
-      }
-    });
-    return queue;
-  };
-
-  void build(last);
-  return {
-    rebuild: (next) => {
-      if (next.t === last.t && next.hasProject === last.hasProject) return queue;
-      last = next;
-      return build(next);
-    },
-    dispose: () => {
-      disposed = true;
-    },
+  let cancelled = false;
+  void (async () => {
+    try {
+      const menu = await Menu.new({ items });
+      if (cancelled) return void (await menu.close());
+      const replaced = await menu.setAsAppMenu();
+      await replaced?.close();
+    } catch (e) {
+      console.error("app menu build failed", e);
+    }
+  })();
+  return () => {
+    cancelled = true;
   };
 }
