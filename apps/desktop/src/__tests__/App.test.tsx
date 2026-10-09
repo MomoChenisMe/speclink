@@ -1098,6 +1098,28 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     expect(specsNav.className).not.toContain("bg-primary");
   });
 
+  it("切到規格頁與已封存頁各有對應頁標題 h2 與全圓搜尋框，列表卡填滿主區（desktop-list-pages-reskin）", async () => {
+    // spec「規格頁提供清單、搜尋與展開檢視」「已封存頁含討論節」：App 傳 title／description，
+    // 頁標題區在列表卡之上；已封存頁的列表卡以卡片標頭式分頁接在頂部。
+    renderApp();
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    const aside = projectColumn();
+    fireEvent.click(within(aside).getByRole("button", { name: "規格" }));
+    await waitFor(() => expect(screen.getByText("desktop-app")).toBeTruthy());
+    const specsHeader = document.querySelector("main [data-page-header]") as HTMLElement;
+    expect(within(specsHeader).getByRole("heading", { level: 2 }).textContent).toBe("規格");
+    expect(within(specsHeader).getByPlaceholderText("搜尋規格…").className).toContain("rounded-full");
+    expect(document.querySelector("main [data-list-card]")).toBeTruthy();
+    expect(document.querySelector("main")!.className).toContain("p-5");
+    fireEvent.click(within(aside).getByRole("button", { name: "已封存" }));
+    await waitFor(() => expect(screen.getByText("已封存的變更")).toBeTruthy());
+    const archivedHeader = document.querySelector("main [data-page-header]") as HTMLElement;
+    expect(within(archivedHeader).getByRole("heading", { level: 2 }).textContent).toBe("已封存");
+    expect(within(archivedHeader).getByPlaceholderText("搜尋已封存的變更與討論…").className).toContain("rounded-full");
+    expect(document.querySelector("main [data-list-card]")!.className).toContain("rounded-t-none");
+    expect(document.querySelector("main")!.className).toContain("p-5");
+  });
+
   it("規格頁點卡開唯讀規格抽屜，經 dataSource.getSpecDocument 載入正式規格全文", async () => {
     // spec Scenario「選定 spec 以抽屜顯示其正式規格內容」：App 掛載 SpecDrawer 並接線
     // store.detailSpec 與 dataSource.getSpecDocument（spec-archive-drawer design D2）。

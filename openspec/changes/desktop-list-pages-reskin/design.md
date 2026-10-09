@@ -28,7 +28,7 @@
 
 - props 改為 `{ page, pageCount, total, pageSize, pageSizeOptions?: number[], onPage, onPageSize }`；`total === 0` 時回 null；渲染 `flex items-center justify-between gap-3 px-4 py-2 text-xs text-muted-foreground`：
   - 左：`pager.range`（zh「第 {a}–{b} 筆，共 {n} 筆」、en「{a}–{b} of {n}」；a＝(page−1)×pageSize+1、b＝min(page×pageSize, total)）＋`Select`（`pager.perPage`：zh「每頁 {n} 個」、en「{n} per page」；選項預設 `[20, 50, 100]`）——改每頁筆數時呼叫 `onPageSize(n)`，呼叫端重算 `pageCount` 並把頁碼鉗制。
-  - 右（`pageCount > 1` 時）：‹ 鈕、頁碼鈕列、› 鈕、「跳到 [__] 頁」：頁碼視窗演算法 `pageWindow(page, pageCount)`——總頁數 ≤ 7 全列；否則恆列 1 與 M，中段為 page−1..page+1，與兩端不相鄰處插入 `…`（純函式、單元測試）；作用中頁碼 `bg-primary/12 text-primary font-medium`，其餘 ghost；‹ 於第 1 頁、› 於末頁停用；跳頁輸入 `type="number" min=1 max=pageCount` 寬 3em，Enter 或失焦時 `onPage(clamp(value))`、非數字忽略；aria-label `pager.jump`（zh「跳到第幾頁」）、頁碼鈕 aria-label `pager.pageN`（「第 {n} 頁」）。
+  - 右（`pageCount > 1` 時）：‹ 鈕、頁碼鈕列、› 鈕、「跳到 [__] 頁」：頁碼視窗演算法 `pageWindow(page, pageCount)`——總頁數 ≤ 7 全列；否則恆列 1 與 M，中段為 page−1..page+1，與兩端不相鄰處插入 `…`（純函式、單元測試）；作用中頁碼 `bg-primary/12 text-primary font-medium`，其餘 ghost；‹ 於第 1 頁、› 於末頁停用；跳頁輸入 `type="number" min=1 max=pageCount` 寬 3em，Enter 或失焦時 `onPage(clamp(value))`、非數字忽略；aria-label `pager.jump`（zh「跳到第幾頁」）、輸入框前後的可見文字來自 `pager.jumpTo`（zh「跳到 {n} 頁」）、頁碼鈕 aria-label `pager.pageN`（「第 {n} 頁」）；每頁筆數下拉的 aria-label 即其可見文字（`pager.perPage`）。
 - `PAGE_SIZE` 常數保留為預設值；`SpecList`／`ArchivedList` 各自持有 `pageSize` state（預設 20、不持久化），過濾結果或每頁筆數改變時頁碼鉗制至末頁、搜尋變更回第 1 頁（既有）。
 
 ### D3 規格頁
@@ -47,7 +47,7 @@
 ### D5 手冊頁
 
 - `ManualTree`：`w-60`（240px）`bg-sidebar border-r`，列為 `NavItem` 風格（32px、8px 圓角、作用中主色淡底）；「可能過期」琥珀小字與未入冊提示不變；搜尋框改 `SearchField` 全圓。
-- 中欄：`READING_COLUMN_CLS` 改 `mx-auto w-full max-w-[768px]`；頁首 `h1 text-2xl font-normal`＋灰字一行「產生於 {generated}」（`generated` 缺席時不顯示；文案鍵 `manual.generatedAt`）；內文區維持捲動（`px-6 py-5`），內文包在 `Card`（`rounded-2xl border bg-card p-6`）內；底列 `footer` 改 `shrink-0 border-t border-border bg-card px-6 py-2.5`，內層 `mx-auto w-full max-w-[768px] flex items-center justify-between gap-3`：左「出處」標籤＋capability 籤（`Badge variant="outline"` 等寬字、存在者為 `button` 可點、不存在者純文字），右上一頁／下一頁 `Button variant="outline" size="sm"`（內含 11px 灰字「上一頁」／「下一頁」＋目標頁標題，無目標時該鈕缺席）。
+- 中欄：手冊頁自有 `MANUAL_COLUMN_CLS = "mx-auto w-full max-w-[768px]"`（共用的 `READING_COLUMN_CLS` 仍供規格與封存抽屜使用、不動）；頁首 `h1 text-2xl font-normal`＋灰字一行「產生於 {generated}」（`generated` 缺席時不顯示；文案鍵 `manual.generatedAt`）；內文區維持捲動（`px-6 py-5`），內文包在 `Card`（`rounded-2xl border bg-card p-6`）內；底列 `footer` 改 `shrink-0 border-t border-border bg-card px-6 py-2.5`，內層 `mx-auto w-full max-w-[768px] flex items-center justify-between gap-3`：左「出處」標籤＋capability 籤（`Badge variant="outline"` 等寬字、存在者為 `button` 可點、不存在者純文字），右上一頁／下一頁 `Button variant="outline" size="sm"`（內含 11px 灰字「上一頁」／「下一頁」＋目標頁標題，無目標時該鈕缺席）。
 - `ManualToc`：`w-[200px]`，列 12px、作用中主色；顯示條件不變。
 
 ### D6 規格字面
@@ -70,7 +70,7 @@
 **Interface / data shape**
 
 - `@speclink/ui` 新匯出：`ListRow`、`ListCard`、`SearchField`、`pageWindow`；`ListPagerProps` 新形狀（D2）；`SpecListProps`／`ArchivedListProps` 新增 `title`、`description`。
-- i18n 新鍵（兩語系）：`pager.range`、`pager.perPage`、`pager.jump`、`pager.pageN`、`specs.pageDesc`、`archived.pageDesc`、`manual.generatedAt`、`manual.prevLabel`、`manual.nextLabel`；移除 `pager.page`。
+- i18n 新鍵（兩語系）：`pager.range`、`pager.perPage`、`pager.jump`（跳頁輸入的 aria-label）、`pager.jumpTo`（跳頁輸入前後的可見文字「跳到 {n} 頁」，以 `{n}` 切成兩段包住輸入框）、`pager.pageN`、`specs.pageDesc`、`archived.pageDesc`、`manual.generatedAt`、`manual.prevLabel`、`manual.nextLabel`；移除 `pager.page`。
 - 清單資料欄位與持久化：不變。
 
 **Failure modes**

@@ -51,7 +51,7 @@ export function ManualToc({ bodyRef, markdownBody }: ManualTocProps) {
     <nav
       data-manual-toc
       aria-label={t("manual.toc")}
-      className="hidden w-52 shrink-0 flex-col gap-1 overflow-y-auto border-l border-border py-5 pl-3 pr-5 lg:flex"
+      className="hidden w-[200px] shrink-0 flex-col gap-1 overflow-y-auto border-l border-border py-5 pl-3 pr-5 lg:flex"
     >
       <div className="px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
         {t("manual.toc")}

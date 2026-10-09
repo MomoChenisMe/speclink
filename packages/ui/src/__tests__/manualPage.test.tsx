@@ -427,13 +427,18 @@ describe("ManualPage 內頁渲染與出處", () => {
     expect(onOpenSpec).toHaveBeenCalledWith("editor");
   });
 
-  it("GitHub Alert 在手冊內文呈現為提示框、以共用閱讀欄渲染", async () => {
+  it("GitHub Alert 在手冊內文呈現為提示框、內文在 768px 置中閱讀卡內渲染", async () => {
     renderManual();
     await screen.findByText("歡迎。");
     fireEvent.click(row("editor"));
     await screen.findByText("提示內容");
     expect(content().querySelector(".markdown-alert-note")).toBeTruthy();
-    expect(content().querySelector(".max-w-\\[96ch\\]")).toBeTruthy();
+    const body = content().querySelector("[data-manual-body]") as HTMLElement;
+    expect(body.querySelector(".max-w-\\[768px\\]")).toBeTruthy();
+    // 內文包在白底閱讀卡內（design D5）。
+    const readingCard = body.querySelector("[data-manual-card]") as HTMLElement;
+    expect(readingCard.className).toContain("bg-card");
+    expect(readingCard.contains(body.querySelector(".markdown")!)).toBe(true);
   });
 
   it("頁首標題與頁尾出處／上下頁固定在內文捲動區外；內文不重複 H1、無 H1 時退回索引 title", async () => {
@@ -474,6 +479,7 @@ describe("ManualPage 內頁渲染與出處", () => {
         expect(el).toBeTruthy();
         return el;
       });
+      expect(toc.className).toContain("w-[200px]");
       const anchors = Array.from(toc.querySelectorAll("[data-manual-anchor]"));
       expect(anchors.map((a) => a.textContent)).toEqual(["看板", "卡片", "抽屜"]);
       expect(anchors[0].getAttribute("aria-current")).toBe("location");
@@ -601,5 +607,67 @@ describe("ManualPage 空狀態", () => {
     expect(screen.getByText("remote 模式尚不支援手冊")).toBeTruthy();
     expect(document.querySelector("[data-manual-empty]")?.getAttribute("data-manual-empty")).toBe("remote");
     expect(loadPage).not.toHaveBeenCalled();
+  });
+});
+
+// spec desktop-manual-page「內頁渲染與出處跳規格」（desktop-list-pages-reskin design D5）：
+// 三欄寬度（240／768 置中／200）、頁首 24px 標題與產生時間行、白底上緣細線的固定底列
+// 對齊 768px、出處籤與帶目標頁標題的上一頁／下一頁框線鈕。
+describe("ManualPage 三欄版面與固定底列", () => {
+  it("目錄樹容器為 240px 淡灰底；列為 NavItem 風格（作用中主色淡底）", async () => {
+    renderManual();
+    await screen.findByText("歡迎。");
+    const aside = tree().closest("aside") as HTMLElement;
+    expect(aside.className).toContain("w-60");
+    expect(aside.className).toContain("bg-sidebar");
+    expect(row("index").className).toContain("bg-primary/12");
+    expect(row("index").className).toContain("rounded-lg");
+    expect(row("first-login").className).not.toContain("bg-primary/12");
+    // 樹的搜尋框為全圓。
+    expect(screen.getByPlaceholderText("搜尋手冊…").className).toContain("rounded-full");
+  });
+
+  it("頁首為 24px 一般字重標題＋灰字「產生於 {generated}」；generated 缺席時該行缺席", async () => {
+    renderManual();
+    await screen.findByText("歡迎。");
+    const header = content().querySelector("[data-manual-header]") as HTMLElement;
+    const h1 = within(header).getByRole("heading", { level: 1 });
+    expect(h1.className).toContain("text-2xl");
+    expect(h1.className).toContain("font-normal");
+    expect(header.textContent).toContain("產生於 2026-09-01");
+    expect(header.querySelector("[data-manual-generated]")!.className).toContain("text-muted-foreground");
+    fireEvent.click(row("about"));
+    await screen.findByText("取材範圍。");
+    expect(header.textContent).not.toContain("產生於");
+    expect(header.querySelector("[data-manual-generated]")).toBeNull();
+  });
+
+  it("底列固定：白底、上緣細線、內容對齊 768px；左出處籤為框線籤、右為帶小字標籤與目標頁標題的框線鈕", async () => {
+    renderManual();
+    await screen.findByText("歡迎。");
+    fireEvent.click(row("first-login"));
+    await screen.findByText("用 GitHub 登入。");
+    const footer = content().querySelector("[data-manual-footer]") as HTMLElement;
+    expect(footer.className).toContain("bg-card");
+    expect(footer.className).toContain("border-t");
+    expect(footer.className).toContain("shrink-0");
+    expect(footer.querySelector(".max-w-\\[768px\\]")).toBeTruthy();
+    // 出處籤：存在者為可點 button 的框線籤（等寬字）、不存在者純文字。
+    const sources = footer.querySelector("[data-manual-sources]") as HTMLElement;
+    const chip = within(sources).getByRole("button", { name: "github-oauth" });
+    expect(chip.className).toContain("font-mono");
+    expect(chip.className).toContain("border");
+    expect(within(sources).queryByRole("button", { name: "user-pending-blocked-pages" })).toBeNull();
+    // 上一頁／下一頁：框線鈕、小字標籤＋目標頁標題；無障礙名稱維持「上一頁」「下一頁」。
+    const prev = prevButton()!;
+    const next = nextButton()!;
+    expect(footer.contains(prev)).toBe(true);
+    expect(prev.className).toContain("border");
+    expect(prev.textContent).toContain("上一頁");
+    expect(prev.textContent).toContain("手冊");
+    expect(next.textContent).toContain("下一頁");
+    expect(next.textContent).toContain("認識畫面");
+    expect(prevTarget()).toBe("index");
+    expect(nextTarget()).toBe("editor");
   });
 });

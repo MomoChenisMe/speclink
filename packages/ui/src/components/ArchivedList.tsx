@@ -6,51 +6,41 @@ import { useI18n } from "../i18n";
 import { matchesQuery } from "../search";
 import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
 import { Badge } from "./ui/badge";
-import { Input } from "./ui/input";
+import { PageHeader } from "./ui/page-header";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import type { ArchivedTarget } from "./ArchivedDrawer";
 import { ImproveStamp } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
+import { ListCard } from "./ListCard";
 import { ListPager, PAGE_SIZE } from "./ListPager";
-import { CopyButton, REVEAL_ON_HOVER } from "./CopyButton";
+import { ListRow } from "./ListRow";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE } from "./reviewStyle";
+import { SearchField } from "./SearchField";
 import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE } from "./verifyStyle";
 
-/** 描述列（封存卡雙行 anatomy）：一行截斷、與看板卡片描述列同款字級與色調。 */
-function CardDescription({ text }: { text: string }) {
-  return (
-    <div data-desc className="mt-1 truncate text-[11px] text-muted-foreground">
-      {text}
-    </div>
-  );
-}
-
-/** 封存變更卡（design D7）：日期＋標題＋複製鈕成群組、meta 靠右——任務徽章
- *（全完成靜默、未全完成琥珀警示：「沒做完就封存」才是需要被看見的異常）、
- * 觸及規格數、createdBy 頭像圓點（與 ChangeCard 同款）、來源討論標記。
- * 標題下方為 Why 首句描述列（whyExcerpt 缺席時整列缺席、卡片退回單行）。
- * 點整列開唯讀抽屜，無行內展開。 */
-function ArchivedCard({ item, onOpen }: { item: ArchivedItem; onOpen: (target: ArchivedTarget) => void }) {
+/** 封存變更列（spec「規格與封存卡片收合資訊」；design D4）：日期在最左、等寬標題＋
+ * 複製鈕、Why 首句描述列（缺席時列退回單行）、meta 為任務徽章（全完成靜默、未全完成
+ * 琥珀警示：「沒做完就封存」才是需要被看見的異常）、觸及規格數、審查／驗證結局、
+ * createdBy 頭像圓點、來源討論標記。點整列開唯讀抽屜。 */
+function ArchivedRow({ item, onOpen }: { item: ArchivedItem; onOpen: (target: ArchivedTarget) => void }) {
   const { t } = useI18n();
   const badge =
     item.tasksTotal != null && item.tasksDone != null ? `${item.tasksDone}/${item.tasksTotal}` : null;
   const incomplete = badge != null && item.tasksDone! < item.tasksTotal!;
   const specCount = item.specCount ?? 0;
   const discussions = item.fromDiscussions ?? [];
+  const specLabel = t("archived.specCount").replace("{n}", String(specCount));
   return (
-    <div
+    <ListRow
       data-archived={item.datedName}
-      className="group cursor-pointer rounded-lg border border-border bg-card p-3 transition-[border-color,box-shadow] hover:border-primary/60 hover:shadow-md"
-      onClick={() => onOpen({ kind: "change", datedName: item.datedName })}
-    >
-      <div className="flex items-center gap-2.5">
-        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{item.date}</span>
-        <span data-title-group className="flex min-w-0 flex-1 items-center gap-1">
-          <span className="min-w-0 truncate text-sm font-medium">{item.name}</span>
-          <CopyButton value={item.datedName} label={t("archived.copyName")} className={REVEAL_ON_HOVER} />
-        </span>
-        <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+      leading={item.date}
+      title={item.name}
+      copyValue={item.datedName}
+      copyLabel={t("archived.copyName")}
+      description={item.whyExcerpt}
+      meta={
+        <>
           {badge && (
             <Badge
               variant="secondary"
@@ -64,15 +54,12 @@ function ArchivedCard({ item, onOpen }: { item: ArchivedItem; onOpen: (target: A
           {specCount > 0 && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span
-                  aria-label={t("archived.specCount").replace("{n}", String(specCount))}
-                  className="inline-flex items-center gap-1 tabular-nums"
-                >
+                <span aria-label={specLabel} className="inline-flex items-center gap-1 tabular-nums">
                   <Code2 className="h-3 w-3" />
                   {specCount}
                 </span>
               </TooltipTrigger>
-              <TooltipContent>{t("archived.specCount").replace("{n}", String(specCount))}</TooltipContent>
+              <TooltipContent>{specLabel}</TooltipContent>
             </Tooltip>
           )}
           {/* 審查結局標示（spec「已封存側的審查標示」）：帶章＝已審查、化石工單
@@ -90,8 +77,7 @@ function ArchivedCard({ item, onOpen }: { item: ArchivedItem; onOpen: (target: A
               <TooltipContent>{t(REVIEW_LABEL_KEY[item.reviewStatus])}</TooltipContent>
             </Tooltip>
           )}
-          {/* 驗證結局標示（spec「已封存側的驗證標示」）：與審查結局並存，順序
-              固定在其後。 */}
+          {/* 驗證結局標示（spec「已封存側的驗證標示」）：與審查結局並存，順序固定在其後。 */}
           {(item.verifyStatus === "verified" || item.verifyStatus === "verifiedNotPassed") && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -130,18 +116,17 @@ function ArchivedCard({ item, onOpen }: { item: ArchivedItem; onOpen: (target: A
               </TooltipContent>
             </Tooltip>
           )}
-        </span>
-      </div>
-      {item.whyExcerpt && <CardDescription text={item.whyExcerpt} />}
-    </div>
+        </>
+      }
+      onClick={() => onOpen({ kind: "change", datedName: item.datedName })}
+    />
   );
 }
 
-/** 封存討論卡（design D7）：日期＋slug 標題＋複製 slug 鈕成群組、meta＝「N 輪」＋
- * 衍生變更數徽章（自既有 promotedTo 長度派生）；topic 降為標題下方的描述列——
- * 與看板討論卡同構（slug 為 CLI 動詞把手，等寬強調；LANGUAGE.md 受控例外）。
- * 點整列開唯讀抽屜。 */
-function ArchivedDiscussionCard({
+/** 封存討論列（design D4）：slug 為等寬標題＋複製 slug 鈕、改進小章在標題旁、topic 降為
+ * 描述列；meta 為日期、「N 輪」、衍生變更數（自既有 promotedTo 長度派生）——與看板討論卡
+ * 同構（slug 為 CLI 動詞把手；LANGUAGE.md 受控例外）。點整列開唯讀抽屜。 */
+function ArchivedDiscussionRow({
   item,
   onOpen,
 }: {
@@ -150,44 +135,36 @@ function ArchivedDiscussionCard({
 }) {
   const { t } = useI18n();
   const promoted = item.promotedTo.length;
+  const promotedLabel = t("archived.promotedCount").replace("{n}", String(promoted));
   return (
-    <div
+    <ListRow
       data-archived-discussion={item.slug}
-      className="group cursor-pointer rounded-lg border border-border bg-card p-3 transition-[border-color,box-shadow] hover:border-primary/60 hover:shadow-md"
-      onClick={() => onOpen({ kind: "discussion", slug: item.slug })}
-    >
-      <div className="flex items-center gap-2.5">
-        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{item.created}</span>
-        <span data-title-group className="flex min-w-0 flex-1 items-center gap-1">
-          <span className="min-w-0 truncate font-mono text-sm font-semibold leading-tight">
-            {item.slug}
-          </span>
-          {/* 改進小章：封存後標示不變（spec「已封存的改進討論維持標示」）。 */}
-          {isImproveKind(item.kind) && <ImproveStamp />}
-          <CopyButton value={item.slug} label={t("discussion.copySlug")} className={REVEAL_ON_HOVER} />
-        </span>
-        <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+      title={item.slug}
+      copyValue={item.slug}
+      copyLabel={t("discussion.copySlug")}
+      description={item.topic}
+      meta={
+        <>
+          <span className="tabular-nums">{item.created}</span>
           <span className="tabular-nums">{t("common.rounds").replace("{n}", String(item.rounds))}</span>
           {promoted > 0 && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span
-                  aria-label={t("archived.promotedCount").replace("{n}", String(promoted))}
-                  className="inline-flex items-center gap-1 tabular-nums"
-                >
+                <span aria-label={promotedLabel} className="inline-flex items-center gap-1 tabular-nums">
                   <GitFork className="h-3 w-3" />
                   {promoted}
                 </span>
               </TooltipTrigger>
-              <TooltipContent>
-                {t("archived.promotedCount").replace("{n}", String(promoted))}
-              </TooltipContent>
+              <TooltipContent>{promotedLabel}</TooltipContent>
             </Tooltip>
           )}
-        </span>
-      </div>
-      <CardDescription text={item.topic} />
-    </div>
+        </>
+      }
+      onClick={() => onOpen({ kind: "discussion", slug: item.slug })}
+    >
+      {/* 改進小章：封存後標示不變（spec「已封存的改進討論維持標示」）。 */}
+      {isImproveKind(item.kind) && <ImproveStamp />}
+    </ListRow>
   );
 }
 
@@ -197,30 +174,47 @@ export interface ArchivedListProps {
   onQuery: (q: string) => void;
   /** 封存討論（討論節；缺席時不顯示該節，向後相容）。 */
   archivedDiscussions?: DiscussionItem[];
-  /** 點卡片開唯讀封存抽屜（discriminated target：封存變更或封存討論）。 */
+  /** 點列開唯讀封存抽屜（discriminated target：封存變更或封存討論）。 */
   onOpen: (target: ArchivedTarget) => void;
+  /** 頁標題區的標題；缺席時不渲染頁標題區，只有搜尋框。 */
+  title?: string;
+  /** 頁標題區的灰字說明。 */
+  description?: string;
 }
 
-/** 子頁籤標籤上的筆數徽章——沿用頁面計數 pill 樣式。 */
+/** 分頁標籤上的筆數徽章——沿用頁面計數 pill 樣式。 */
 const COUNT_PILL_CLS =
   "inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium tabular-nums";
 
-/** 已封存獨立頁（design D3 子頁籤）：搜尋框頂置、其下「變更」「討論」兩子頁籤
- * 各帶過濾後筆數徽章；兩節皆為卡片清單、點卡開抽屜、無行內展開；搜尋同時過濾
- * 兩節、兩子頁籤頁碼互相獨立（spec「已封存頁含討論節」「清單最新在前與換頁瀏覽」）。
- * 清單最新在前：封存變更依 datedName 字典序降冪、封存討論依 created 降冪同日
- * slug 升冪；archivedDiscussions 缺席（向後相容路徑）時子頁籤列缺席。
- * 版面填滿視窗高度：搜尋框與子頁籤列固定頂部、卡片清單於內部容器捲動、
- * 換頁控制列沉底常駐（不捲動即可換頁）。 */
-export function ArchivedList({ archived, query, onQuery, archivedDiscussions, onOpen }: ArchivedListProps) {
+type Section = "changes" | "discussions";
+
+const EMPTY_CLS = "py-8 text-center text-sm text-muted-foreground";
+
+/** 已封存頁（spec「已封存頁含討論節」；design D4）：頁標題區（標題、說明、右端全圓
+ * 搜尋框）之下為一張列表卡，卡頂為卡片標頭式分頁「變更」「討論」各帶過濾後筆數徽章；
+ * 兩節皆為列式清單、點列開抽屜、無行內展開；搜尋同時過濾兩節、兩節頁碼與每頁筆數
+ * 互相獨立（spec「清單最新在前與換頁瀏覽」）。清單最新在前：封存變更依 datedName
+ * 字典序降冪、封存討論依 created 降冪同日 slug 升冪；archivedDiscussions 缺席（向後
+ * 相容路徑）時分頁列缺席、列表卡維持完整圓角。版面填滿主區高度：頁標題區與分頁列
+ * 固定、列於卡內捲動、工具列固定卡底。 */
+export function ArchivedList({
+  archived,
+  query,
+  onQuery,
+  archivedDiscussions,
+  onOpen,
+  title,
+  description,
+}: ArchivedListProps) {
   const { t } = useI18n();
-  // 兩子頁籤頁碼互相獨立；以 min(page, pageCount) 鉗制派生，清單縮短不停在越界頁。
+  const [section, setSection] = useState<Section>("changes");
+  // 兩節頁碼與每頁筆數互相獨立；頁碼以 min(page, pageCount) 鉗制派生，清單縮短不停在越界頁。
   const [changeRawPage, setChangeRawPage] = useState(1);
+  const [changePageSize, setChangePageSize] = useState(PAGE_SIZE);
   const [discRawPage, setDiscRawPage] = useState(1);
-  // 填滿高度版面：卡片清單於內部容器捲動、換頁控制列沉底常駐，兩子頁籤各自
-  // 持有捲動容器 ref 供換頁歸位（spec「清單最新在前與換頁瀏覽」）。
-  const changeScrollRef = useRef<HTMLDivElement>(null);
-  const discScrollRef = useRef<HTMLDivElement>(null);
+  const [discPageSize, setDiscPageSize] = useState(PAGE_SIZE);
+  // 兩節共用列表卡的捲動容器——換頁後歸位（清單自己捲、頁面不捲）。
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // 搜尋字串變更（query 為外部受控 prop）：兩側頁碼皆回第 1 頁。
   useEffect(() => {
@@ -248,84 +242,110 @@ export function ArchivedList({ archived, query, onQuery, archivedDiscussions, on
   const discussions = sortedDiscussions.filter((d) => matchesQuery(query, d.topic, d.slug));
   const showDiscussions = archivedDiscussions !== undefined;
 
-  const changePageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const changePageCount = Math.max(1, Math.ceil(filtered.length / changePageSize));
   const changePage = Math.min(changeRawPage, changePageCount);
-  const changeItems = filtered.slice((changePage - 1) * PAGE_SIZE, changePage * PAGE_SIZE);
-  const discPageCount = Math.max(1, Math.ceil(discussions.length / PAGE_SIZE));
+  const changeItems = filtered.slice((changePage - 1) * changePageSize, changePage * changePageSize);
+  const discPageCount = Math.max(1, Math.ceil(discussions.length / discPageSize));
   const discPage = Math.min(discRawPage, discPageCount);
-  const discItems = discussions.slice((discPage - 1) * PAGE_SIZE, discPage * PAGE_SIZE);
+  const discItems = discussions.slice((discPage - 1) * discPageSize, discPage * discPageSize);
 
   // 換頁後內部捲動容器捲回頂部（清單自己捲、頁面不捲）。
-  const resetScroll = (ref: React.RefObject<HTMLDivElement | null>) => {
-    if (ref.current) ref.current.scrollTop = 0;
+  const resetScroll = () => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
   };
+  // 改每頁筆數：重算總頁數並把頁碼鉗制到末頁（寫回 state，改回原筆數時不彈回舊頁）。
+  const clampTo = (count: number, size: number) => (p: number) => Math.min(p, Math.max(1, Math.ceil(count / size)));
 
-  const changesPane = (
-    <>
-      <div ref={changeScrollRef} data-list-scroll className="flex flex-1 min-h-0 flex-col gap-2.5 overflow-y-auto">
-        {filtered.length === 0 ? (
-          <div className="text-muted-foreground text-sm py-8 text-center">{t("archived.noChanges")}</div>
-        ) : (
-          changeItems.map((a) => <ArchivedCard key={a.datedName} item={a} onOpen={onOpen} />)
-        )}
-      </div>
-      <ListPager
-        page={changePage}
-        pageCount={changePageCount}
-        onPage={(n) => {
-          setChangeRawPage(n);
-          resetScroll(changeScrollRef);
-        }}
-      />
-    </>
+  const changesPager = (
+    <ListPager
+      page={changePage}
+      pageCount={changePageCount}
+      total={filtered.length}
+      pageSize={changePageSize}
+      onPage={(n) => {
+        setChangeRawPage(n);
+        resetScroll();
+      }}
+      onPageSize={(size) => {
+        setChangePageSize(size);
+        setChangeRawPage(clampTo(filtered.length, size));
+        resetScroll();
+      }}
+    />
+  );
+  const discussionsPager = (
+    <ListPager
+      page={discPage}
+      pageCount={discPageCount}
+      total={discussions.length}
+      pageSize={discPageSize}
+      onPage={(n) => {
+        setDiscRawPage(n);
+        resetScroll();
+      }}
+      onPageSize={(size) => {
+        setDiscPageSize(size);
+        setDiscRawPage(clampTo(discussions.length, size));
+        resetScroll();
+      }}
+    />
+  );
+
+  const changesRows =
+    filtered.length === 0 ? (
+      <div className={EMPTY_CLS}>{t("archived.noChanges")}</div>
+    ) : (
+      changeItems.map((a) => <ArchivedRow key={a.datedName} item={a} onOpen={onOpen} />)
+    );
+
+  const search = (
+    <SearchField value={query} placeholder={t("archived.searchPlaceholder")} onChange={onQuery} />
   );
 
   return (
     <TooltipProvider>
-      <div className="flex h-full min-h-0 flex-col gap-3 max-w-3xl mx-auto w-full">
-        <Input placeholder={t("archived.searchPlaceholder")} value={query} onChange={(e) => onQuery(e.target.value)} />
+      <div className="flex h-full min-h-0 w-full flex-col gap-4">
+        {title ? <PageHeader title={title} description={description} actions={search} /> : search}
         {showDiscussions ? (
-          <Tabs defaultValue="changes" className="flex flex-1 min-h-0 flex-col gap-3">
-            <TabsList>
-              <TabsTrigger value="changes">
-                {t("archived.changesHeading")}
-                <span className={COUNT_PILL_CLS}>{filtered.length}</span>
-              </TabsTrigger>
-              <TabsTrigger value="discussions">
-                {t("archived.discussionsHeading")}
-                <span className={COUNT_PILL_CLS}>{discussions.length}</span>
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="changes" className="flex flex-1 min-h-0 flex-col gap-3">
-              {changesPane}
-            </TabsContent>
-            <TabsContent value="discussions" className="flex flex-1 min-h-0 flex-col gap-3">
-              <div ref={discScrollRef} data-list-scroll className="flex flex-1 min-h-0 flex-col gap-2.5 overflow-y-auto">
+          <Tabs
+            value={section}
+            onValueChange={(v) => {
+              setSection(v as Section);
+              resetScroll();
+            }}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <ListCard
+              scrollRef={scrollRef}
+              header={
+                <TabsList variant="card">
+                  <TabsTrigger value="changes">
+                    {t("archived.changesHeading")}
+                    <span className={COUNT_PILL_CLS}>{filtered.length}</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="discussions">
+                    {t("archived.discussionsHeading")}
+                    <span className={COUNT_PILL_CLS}>{discussions.length}</span>
+                  </TabsTrigger>
+                </TabsList>
+              }
+              footer={section === "changes" ? changesPager : discussionsPager}
+            >
+              <TabsContent value="changes">{changesRows}</TabsContent>
+              <TabsContent value="discussions">
                 {discussions.length === 0 ? (
-                  <div className="text-muted-foreground text-sm py-8 text-center">{t("archived.noDiscussions")}</div>
+                  <div className={EMPTY_CLS}>{t("archived.noDiscussions")}</div>
                 ) : (
-                  discItems.map((d) => <ArchivedDiscussionCard key={d.slug} item={d} onOpen={onOpen} />)
+                  discItems.map((d) => <ArchivedDiscussionRow key={d.slug} item={d} onOpen={onOpen} />)
                 )}
-              </div>
-              <ListPager
-                page={discPage}
-                pageCount={discPageCount}
-                onPage={(n) => {
-                  setDiscRawPage(n);
-                  resetScroll(discScrollRef);
-                }}
-              />
-            </TabsContent>
+              </TabsContent>
+            </ListCard>
           </Tabs>
         ) : (
-          <>
-            {/* 向後相容路徑：無討論清單資料，維持原「已封存的變更」標題＋計數。 */}
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-semibold">{t("archived.changesHeading")}</h2>
-              <span className={COUNT_PILL_CLS}>{filtered.length}</span>
-            </div>
-            {changesPane}
-          </>
+          // 向後相容路徑：無討論清單資料，列表卡不帶分頁列、只有變更清單。
+          <ListCard scrollRef={scrollRef} footer={changesPager}>
+            {changesRows}
+          </ListCard>
         )}
       </div>
     </TooltipProvider>
