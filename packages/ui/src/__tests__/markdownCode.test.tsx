@@ -33,10 +33,10 @@ describe("Markdown 程式碼區塊", () => {
     const { container } = render(<Markdown content={"```ts\n" + CODE + "\n```"} />, {
       wrapper: zhWrapper,
     });
-    const pre = container.querySelector("pre") as HTMLElement;
+    // 上色完成後 Streamdown 會換掉整個 <pre>：每次都重新查，不能抓住第一次 render 的節點。
     await waitFor(
       () => {
-        const keyword = [...pre.querySelectorAll("span[style]")].find(
+        const keyword = [...container.querySelectorAll("pre span[style]")].find(
           (s) => s.textContent === "const",
         ) as HTMLElement | undefined;
         expect(keyword).toBeTruthy();
