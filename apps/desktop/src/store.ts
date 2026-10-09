@@ -166,6 +166,19 @@ export interface RemoteMarkerConflict {
   repo: string | null;
 }
 
+/** 看板討論欄底「已轉出」收合列的展開記憶鍵（desktop-board-reskin design D2）：
+ * app 本機（localStorage）、值為 "true"／"false"，不寫入任何專案目錄。 */
+export const PROMOTED_EXPANDED_STORAGE_KEY = "speclink.board.promotedExpanded";
+
+/** 鍵缺席、壞值或 localStorage 不可用一律視為收合（false），不拋錯。 */
+function readPromotedExpanded(): boolean {
+  try {
+    return localStorage.getItem(PROMOTED_EXPANDED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 export interface AppState {
   changes: ChangeItem[];
   /** 清單 payload 的頂層 planError（依賴成環訊息；null＝無成環或資料源不供）。 */
@@ -195,6 +208,8 @@ export interface AppState {
   query: string;
   /** 看板搜尋字串——與已封存頁的 query 各自獨立；不持久化、不跨啟動保留（spec）。 */
   boardQuery: string;
+  /** 討論欄底「已轉出」收合列的展開狀態（design D2）：初值自 app 本機鍵讀，跨啟動保留。 */
+  promotedExpanded: boolean;
   /** 看板全文查詢命中（design D6）：去抖後由 searchWorkspace 回填；空 query 恆空。 */
   searchHits: SearchHit[];
   expandedName: string | null;
@@ -236,6 +251,8 @@ export interface AppState {
   setView: (v: ListView) => void;
   setQuery: (q: string) => void;
   setBoardQuery: (q: string) => void;
+  /** 寫回同一個 app 本機鍵（"true"／"false"）。 */
+  setPromotedExpanded: (expanded: boolean) => void;
   /** 生命週期清理：取消在途搜尋去抖 timer 並作廢在途回填——由擁有此 store 的
    * 元件卸載時呼叫，杜絕去抖在 store 卸載後才開火（否則漏出的 timer 會非同步觸發）。 */
   disposeSearch: () => void;
@@ -1107,6 +1124,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     view: "active",
     query: "",
     boardQuery: "",
+    promotedExpanded: readPromotedExpanded(),
     searchHits: [],
     expandedName: null,
     detailChange: null,
@@ -1234,6 +1252,15 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     setQuery(query) {
       set({ query });
+    },
+
+    setPromotedExpanded(promotedExpanded) {
+      set({ promotedExpanded });
+      try {
+        localStorage.setItem(PROMOTED_EXPANDED_STORAGE_KEY, String(promotedExpanded));
+      } catch {
+        // 寫不進 app 本機（私密模式、配額）只失去跨啟動記憶，本次執行期照常展開。
+      }
     },
 
     setBoardQuery(boardQuery) {

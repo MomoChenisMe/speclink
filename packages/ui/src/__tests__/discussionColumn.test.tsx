@@ -375,7 +375,9 @@ describe("DiscussionColumn 計數只算 active 與空狀態（design D3）", () 
     // spec「生命週期四欄各一色相」：討論欄有自己的色相，與系統匣討論分區同一來源。
     render(<DiscussionColumn discussions={[openD]} changes={[]} archived={[]} />);
     const col = document.querySelector('[data-column="discussions"]') as HTMLElement;
-    expect(col.className).toContain("border-t-stage-discussion");
+    // 與三個階段欄同一套容器（design D1）：首子節點為 3px 色相條，不再以 border-t 當色條。
+    expect(col.firstElementChild!.className).toContain("bg-stage-discussion");
+    expect(col.className).not.toContain("border-t-");
     const count = screen.getByTestId("column-count");
     for (const cls of DISCUSSION_TONE.badge.split(" ")) expect(count.className).toContain(cls);
     const heading = screen.getByText("討論");
@@ -584,5 +586,106 @@ describe("KanbanBoard 四欄整合", () => {
   it("未傳 discussions 時維持三欄（向後相容）", () => {
     render(<KanbanBoard changes={changes} />);
     expect(column("discussions")).toBeNull();
+  });
+});
+
+// spec「看板欄與卡片的容器外觀」＋「討論於看板第 0 欄兩級呈現」（desktop-board-reskin design D1／D2）：
+// 討論欄與階段欄共用容器卡；欄底收合列為白底上緣細線列、› 展開旋轉；展開狀態可由宿主受控。
+describe("DiscussionColumn 容器卡與受控收合列（desktop-board-reskin）", () => {
+  it("欄為白底細框 16px 圓角容器：淡灰卡片區、白底標頭、欄名不全大寫", () => {
+    render(<DiscussionColumn discussions={[openD]} changes={[]} archived={[]} />);
+    const col = document.querySelector('[data-column="discussions"]') as HTMLElement;
+    const cls = col.className.split(/\s+/);
+    expect(cls).toContain("rounded-2xl");
+    expect(cls).toContain("bg-sidebar");
+    expect(cls).toContain("border");
+    const heading = screen.getByText("討論");
+    expect(heading.className).not.toContain("uppercase");
+    expect(heading.parentElement!.className).toContain("bg-card");
+  });
+
+  it("「尚無討論」置中灰字，與其他欄的空文案同款", () => {
+    render(<DiscussionColumn discussions={[]} changes={[]} archived={[]} />);
+    const empty = screen.getByText("尚無討論");
+    expect(empty.className).toContain("text-center");
+    expect(empty.className).toContain("text-muted-foreground");
+  });
+
+  it("收合列為白底上緣細線列，右端 › 於展開時旋轉；promoted 細列為白底細框 8px 圓角", () => {
+    render(<DiscussionColumn discussions={[openD, promotedD]} changes={chipChanges} archived={chipArchived} />);
+    const bar = screen.getByRole("button", { name: /已轉出/ });
+    expect(bar.className).toContain("bg-card");
+    expect(bar.className).toContain("border-t");
+    const chevron = () => bar.querySelector("svg.lucide-chevron-right") as SVGElement;
+    expect(chevron().getAttribute("class")).not.toContain("rotate-90");
+    fireEvent.click(bar);
+    expect(chevron().getAttribute("class")).toContain("rotate-90");
+    const row = document.querySelector('[data-discussion="fanout"]') as HTMLElement;
+    const rowCls = row.className.split(/\s+/);
+    expect(rowCls).toContain("rounded-lg");
+    expect(rowCls).toContain("bg-card");
+    expect(rowCls).toContain("border-border");
+    expect(rowCls.some((c) => c.startsWith("bg-background"))).toBe(false);
+  });
+
+  it("受控：點收合列呼叫 onPromotedExpandedChange(true) 且不自行展開", () => {
+    const onChange = vi.fn();
+    render(
+      <DiscussionColumn
+        discussions={[openD, promotedD]}
+        changes={chipChanges}
+        archived={chipArchived}
+        promotedExpanded={false}
+        onPromotedExpandedChange={onChange}
+      />,
+    );
+    const bar = screen.getByRole("button", { name: /已轉出/ });
+    fireEvent.click(bar);
+    expect(onChange).toHaveBeenCalledWith(true);
+    expect(bar.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("Fanout topic")).toBeNull();
+  });
+
+  it("受控：promotedExpanded={true} 時細列可見，點收合列回報 false", () => {
+    const onChange = vi.fn();
+    render(
+      <DiscussionColumn
+        discussions={[openD, promotedD]}
+        changes={chipChanges}
+        archived={chipArchived}
+        promotedExpanded
+        onPromotedExpandedChange={onChange}
+      />,
+    );
+    const bar = screen.getByRole("button", { name: /已轉出/ });
+    expect(bar.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Fanout topic")).toBeTruthy();
+    expect(screen.getByText("Open topic")).toBeTruthy();
+    fireEvent.click(bar);
+    expect(onChange).toHaveBeenCalledWith(false);
+  });
+
+  it("非受控（兩個 props 皆缺席）：點收合列仍自行展開", () => {
+    render(<DiscussionColumn discussions={[openD, promotedD]} changes={chipChanges} archived={chipArchived} />);
+    const bar = screen.getByRole("button", { name: /已轉出/ });
+    fireEvent.click(bar);
+    expect(bar.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Fanout topic")).toBeTruthy();
+  });
+
+  it("KanbanBoard 同名透傳 promotedExpanded／onPromotedExpandedChange", () => {
+    const onChange = vi.fn();
+    render(
+      <KanbanBoard
+        changes={[]}
+        discussions={{ active: [openD, promotedD], archived: [] }}
+        archivedChanges={chipArchived}
+        promotedExpanded
+        onPromotedExpandedChange={onChange}
+      />,
+    );
+    expect(screen.getByText("Fanout topic")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /已轉出/ }));
+    expect(onChange).toHaveBeenCalledWith(false);
   });
 });

@@ -46,25 +46,23 @@ export const DRAG_ACTIVATION_DISTANCE = 8;
 /** 篩選維度的「全部」在 BoardFilters 裡是 null，但 Radix Select 的 item 不接受空字串。 */
 const FILTER_ALL = "__all__";
 
-/** 各階段的視覺主題——每階一色相，全部取 stage.ts 的 stage-* token 對照。 */
-const STAGE_STYLE: Record<Stage, { icon: LucideIcon; top: string; badge: string; bar: string; iconCls: string }> = {
+/** 各階段的視覺主題——每階一色相，全部取 stage.ts 的 stage-* token 對照；
+ *  欄頂色相條與卡片進度條同用 bar（純 bg-stage-*）。 */
+const STAGE_STYLE: Record<Stage, { icon: LucideIcon; badge: string; bar: string; iconCls: string }> = {
   proposed: {
     icon: Lightbulb,
-    top: "border-t-stage-proposed",
     badge: STAGE_BADGE.proposed,
     bar: STAGE_BAR.proposed,
     iconCls: STAGE_ICON.proposed,
   },
   "in-progress": {
     icon: Hammer,
-    top: "border-t-stage-in-progress",
     badge: STAGE_BADGE["in-progress"],
     bar: STAGE_BAR["in-progress"],
     iconCls: STAGE_ICON["in-progress"],
   },
   ready: {
     icon: CircleCheckBig,
-    top: "border-t-stage-ready",
     badge: STAGE_BADGE.ready,
     bar: STAGE_BAR.ready,
     iconCls: STAGE_ICON.ready,
@@ -115,6 +113,10 @@ export interface KanbanBoardProps {
    * 缺席＝搜尋列照舊單獨一列。 */
   title?: string;
   description?: string;
+  /** 討論欄底「已轉出」收合列的展開狀態（design D2）：同名透傳 DiscussionColumn——
+   * 兩者皆提供時受控（桌面 app 跨啟動保留），缺席時欄內部狀態、不持久化。 */
+  promotedExpanded?: boolean;
+  onPromotedExpandedChange?: (expanded: boolean) => void;
 }
 
 function Column({
@@ -134,16 +136,17 @@ function Column({
   const Icon = style.icon;
   // 欄容器不作 droppable：跨欄放開為彈回＋零寫入（spec「跨欄拖曳不改變變更
   // 階段」），isOver 高亮會假示可跨欄放置；唯一的欄外落點是封存浮層。
+  // 容器卡（design D1）：白底細框 16px 圓角，頂端 3px 色相條、白底標頭下細線、
+  // 卡片區鋪側欄淡灰讓白卡浮出——與設定頁、系統匣面板同一套容器規則。
   return (
     <div
       data-column={stage}
-      className={`flex h-full min-h-0 flex-1 min-w-[250px] max-w-[360px] flex-col gap-2 rounded-xl border-t-4 ${style.top} p-2 bg-muted/40`}
+      className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-sidebar"
     >
-      <div className="flex items-center gap-1.5 px-1.5 pt-0.5 shrink-0">
+      <div className={`h-[3px] shrink-0 ${style.bar}`} />
+      <div className="flex items-center gap-2 bg-card px-3 py-2.5 border-b border-border/70 shrink-0">
         <Icon className={`h-3.5 w-3.5 ${style.iconCls}`} />
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {t(`stage.${stage}`)}
-        </h2>
+        <h2 className="text-xs font-semibold text-foreground">{t(`stage.${stage}`)}</h2>
         <div className="flex-1" />
         {!countUnknown && (
           <span
@@ -154,15 +157,23 @@ function Column({
           </span>
         )}
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">{children}</div>
+      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2 p-2">
+        {/* 空欄（過濾後零卡且非載入中／失敗）：置中灰字；搜尋無命中時同樣顯示。 */}
+        {!countUnknown && count === 0 && (
+          <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+            {t(`board.emptyColumn.${stage}`)}
+          </p>
+        )}
+        {children}
+      </div>
     </div>
   );
 }
 
 /**
  * 拖曳變更卡時才浮現的封存落點（design D8）：絕對定位浮層疊於看板右緣上方、
- * 不參與欄列 flex 佈局——浮現與消失時欄寬零變動。半透明底＋backdrop 讓其
- * 下方的欄內容仍可辨識。
+ * 不參與欄列佈局——浮現與消失時欄寬零變動。外觀只取 theme token（主色虛線框
+ * ＋主色淡底，isOver 時底色加深；desktop-board-reskin D3）。
  */
 function ArchiveDropZone() {
   const { t } = useI18n();
@@ -171,10 +182,8 @@ function ArchiveDropZone() {
     <div
       ref={setNodeRef}
       data-column="archived"
-      className={`absolute inset-y-2 right-2 z-10 flex w-[120px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed backdrop-blur-sm transition-colors ${
-        isOver
-          ? "border-primary bg-accent/80 text-primary"
-          : "border-border bg-background/80 text-muted-foreground"
+      className={`absolute inset-y-2 right-2 z-10 flex w-[120px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary/60 text-primary transition-colors ${
+        isOver ? "bg-primary/20" : "bg-primary/10"
       }`}
     >
       <Archive className="h-5 w-5" />
@@ -254,6 +263,8 @@ export function KanbanBoard({
   loadFailed,
   title,
   description,
+  promotedExpanded,
+  onPromotedExpandedChange,
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const { t } = useI18n();
@@ -497,7 +508,7 @@ export function KanbanBoard({
         <PageHeader
           title={title}
           description={description}
-          actions={searchBar && <div className="w-[22rem] max-w-full">{searchBar}</div>}
+          actions={searchBar}
         />
       ) : (
         searchBar
@@ -505,8 +516,14 @@ export function KanbanBoard({
       {/* relative wrapper 供封存落點浮層錨定於「可視」右緣（design D8）——浮層
           在捲動容器之外、不進 flex 流，欄寬零變動且不隨水平捲動漂移。 */}
       <div className="relative flex-1 min-h-0">
-      {/* safe center：寬螢幕置中、內容溢出時回到可捲動的靠左 */}
-      <div className="flex h-full min-h-0 gap-3 overflow-x-auto [justify-content:safe_center]">
+      {/* 等寬 grid 填滿主區（design D1）：欄最小 220px，再窄才水平捲動；討論欄缺席時三欄。 */}
+      <div
+        className={`grid h-full min-h-0 gap-3 overflow-x-auto ${
+          discussions
+            ? "grid-cols-[repeat(4,minmax(220px,1fr))]"
+            : "grid-cols-[repeat(3,minmax(220px,1fr))]"
+        }`}
+      >
         {discussions && (
           <DiscussionColumn
             discussions={visibleDiscussions ?? []}
@@ -519,6 +536,8 @@ export function KanbanBoard({
             fulltextHits={fulltextHits}
             loading={loading}
             loadFailed={failed}
+            promotedExpanded={promotedExpanded}
+            onPromotedExpandedChange={onPromotedExpandedChange}
           />
         )}
         {STAGES.map((stage) => (
@@ -576,11 +595,11 @@ export function KanbanBoard({
       {/* 拖曳浮動複本：渲染在最上層，不受欄位 overflow 裁切 */}
       <DragOverlay dropAnimation={null}>
         {activeChange ? (
-          <div className="shadow-lg rounded-lg rotate-2 cursor-grabbing">
+          <div className="rounded-xl shadow-lg rotate-2 cursor-grabbing">
             <ChangeCard change={activeChange} barClass={STAGE_STYLE[changeStage(activeChange)].bar} />
           </div>
         ) : activeDiscussion ? (
-          <div className="shadow-lg rounded-lg rotate-2 cursor-grabbing">
+          <div className="rounded-xl shadow-lg rotate-2 cursor-grabbing">
             <DiscussionCard d={activeDiscussion} />
           </div>
         ) : null}
