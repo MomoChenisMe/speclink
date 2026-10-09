@@ -64,12 +64,12 @@ updated: 2026-09-02
 ---
 ### Requirement: 內頁渲染與出處跳規格
 
-選定頁的內文 SHALL 以共用 Markdown 元件渲染（去除 frontmatter），沿用共用閱讀欄與行寬上限、16px 基準字級、淺色與深色主題。內容區 SHALL 分三段：頁首固定顯示頁標題——內文第一個非空行為 `# 標題` 時取該行且內文 SHALL NOT 重複呈現該 H1，否則取索引的 `title`；中段為內文捲動區；頁尾固定顯示出處列與上一頁／下一頁。頁首與頁尾 SHALL NOT 隨內文捲動。內文含 h2／h3 標題時，內容區右側 SHALL 顯示錨點列依序列出各標題（h3 縮排一級）：點擊 SHALL 捲至該標題，捲動時 SHALL 高亮目前段；內文無 h2／h3 時錨點列 SHALL 缺席。換頁 SHALL 回到內文頂端；外部改內文觸發的重載 SHALL 維持捲動位置。頁尾出處列 SHALL 依索引 `sources` 推導：每項取第一個 `#` 前的 capability 名並去重，錨定文字 SHALL NOT 出現在出處列。出處列中的 capability 名 SHALL 可點：點擊 SHALL 於手冊頁上開啟該 capability 的唯讀規格抽屜（與規格頁共用同一抽屜），SHALL NOT 切離手冊頁；該 capability 在正式規格中不存在時 SHALL 呈現為不可點文字。內文載入中 SHALL 以 skeleton 佔位，載入失敗 SHALL 於內容區顯示失敗文案且側欄照常。
+手冊頁主區 SHALL 為三欄：240px 目錄樹（側欄淡灰底）、閱讀欄、200px 本頁目錄（錨點列）。選定頁的內文 SHALL 以共用 Markdown 元件渲染（去除 frontmatter），閱讀欄內容寬 768px 置中、沿用行寬上限、16px 基準字級、淺色與深色主題。閱讀欄 SHALL 分三段：頁首固定顯示 24px 一般字重的頁標題——內文第一個非空行為 `# 標題` 時取該行且內文 SHALL NOT 重複呈現該 H1，否則取索引的 `title`——與一行灰字「產生於 {generated}」（`generated` 缺席時該行缺席）；中段為白底閱讀卡內的內文捲動區；頁尾為固定底列（白底、上緣細線、內容對齊 768px）：左為出處列，右為上一頁／下一頁框線鈕（各帶小字標籤與目標頁標題，無目標時該鈕缺席）。頁首與底列 SHALL NOT 隨內文捲動。內文含 h2／h3 標題時，內容區右側 SHALL 顯示錨點列依序列出各標題（h3 縮排一級）：點擊 SHALL 捲至該標題，捲動時 SHALL 高亮目前段；內文無 h2／h3 時錨點列 SHALL 缺席。換頁 SHALL 回到內文頂端；外部改內文觸發的重載 SHALL 維持捲動位置。頁尾出處列 SHALL 依索引 `sources` 推導：每項取第一個 `#` 前的 capability 名並去重，錨定文字 SHALL NOT 出現在出處列。出處列中的 capability 名 SHALL 可點：點擊 SHALL 於手冊頁上開啟該 capability 的唯讀規格抽屜（與規格頁共用同一抽屜），SHALL NOT 切離手冊頁；該 capability 在正式規格中不存在時 SHALL 呈現為不可點文字。內文載入中 SHALL 以 skeleton 佔位，載入失敗 SHALL 於內容區顯示失敗文案且側欄照常。
 
 #### Scenario: 頁首與頁尾固定
 
 - **WHEN** 開啟一頁內文長於可視區、開頭為 `# Speclink 操作手冊` 的頁，並捲至內文底部
-- **THEN** 頁標題「Speclink 操作手冊」仍固定於頂部可見，出處列與上一頁／下一頁仍固定於底部可見，內文捲動區內沒有重複的 H1
+- **THEN** 頁標題「Speclink 操作手冊」仍固定於頂部可見，白底上緣細線的底列（出處籤與帶目標頁標題的上一頁／下一頁鈕）仍固定於底部可見且與 768px 閱讀欄對齊，內文捲動區內沒有重複的 H1
 
 #### Scenario: 右側錨點列
 
@@ -98,8 +98,8 @@ updated: 2026-09-02
 
 
 <!-- @trace
-source: manual-stale-requirement-anchor
-updated: 2026-09-11T11:59:38+08:00
+source: desktop-list-pages-reskin
+updated: 2026-10-09T22:35:44+08:00
 -->
 
 ---

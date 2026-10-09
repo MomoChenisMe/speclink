@@ -13,7 +13,7 @@ import type { ArchivedTarget } from "./ArchivedDrawer";
 import { ImproveStamp } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
 import { ListCard } from "./ListCard";
-import { ListPager, usePageSize } from "./ListPager";
+import { ListPager, usePaging } from "./ListPager";
 import { ListRow } from "./ListRow";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE } from "./reviewStyle";
 import { SearchField } from "./SearchField";
@@ -36,8 +36,7 @@ function ArchivedRow({ item, onOpen }: { item: ArchivedItem; onOpen: (target: Ar
       data-archived={item.datedName}
       leading={item.date}
       title={item.name}
-      copyValue={item.datedName}
-      copyLabel={t("archived.copyName")}
+      copy={{ value: item.datedName, label: t("archived.copyName") }}
       description={item.whyExcerpt}
       meta={
         <>
@@ -140,8 +139,7 @@ function ArchivedDiscussionRow({
     <ListRow
       data-archived-discussion={item.slug}
       title={item.slug}
-      copyValue={item.slug}
-      copyLabel={t("discussion.copySlug")}
+      copy={{ value: item.slug, label: t("discussion.copySlug") }}
       description={item.topic}
       meta={
         <>
@@ -217,19 +215,11 @@ export function ArchivedList({
 }: ArchivedListProps) {
   const { t } = useI18n();
   const [section, setSection] = useState<Section>("changes");
-  // 兩節頁碼與每頁筆數互相獨立；頁碼以 min(page, pageCount) 鉗制派生，清單縮短不停在越界頁。
-  const [changeRawPage, setChangeRawPage] = useState(1);
-  const [changePageSize, setChangePageSize] = usePageSize(changesPageSize, onChangesPageSizeChange);
-  const [discRawPage, setDiscRawPage] = useState(1);
-  const [discPageSize, setDiscPageSize] = usePageSize(discussionsPageSize, onDiscussionsPageSizeChange);
   // 兩節共用列表卡的捲動容器——換頁後歸位（清單自己捲、頁面不捲）。
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  // 搜尋字串變更（query 為外部受控 prop）：兩側頁碼皆回第 1 頁。
-  useEffect(() => {
-    setChangeRawPage(1);
-    setDiscRawPage(1);
-  }, [query]);
+  const resetScroll = () => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  };
 
   // datedName 前綴 YYYY-MM-DD 使字典序＝時間序，降冪即封存日期新→舊（同日由字串降冪涵蓋）。
   const sortedChanges = useMemo(
@@ -251,60 +241,35 @@ export function ArchivedList({
   const discussions = sortedDiscussions.filter((d) => matchesQuery(query, d.topic, d.slug));
   const showDiscussions = archivedDiscussions !== undefined;
 
-  const changePageCount = Math.max(1, Math.ceil(filtered.length / changePageSize));
-  const changePage = Math.min(changeRawPage, changePageCount);
-  const changeItems = filtered.slice((changePage - 1) * changePageSize, changePage * changePageSize);
-  const discPageCount = Math.max(1, Math.ceil(discussions.length / discPageSize));
-  const discPage = Math.min(discRawPage, discPageCount);
-  const discItems = discussions.slice((discPage - 1) * discPageSize, discPage * discPageSize);
+  // 兩節頁碼與每頁筆數互相獨立。
+  const changes = usePaging(filtered, {
+    pageSize: changesPageSize,
+    onPageSizeChange: onChangesPageSizeChange,
+    onMove: resetScroll,
+  });
+  const discs = usePaging(discussions, {
+    pageSize: discussionsPageSize,
+    onPageSizeChange: onDiscussionsPageSizeChange,
+    onMove: resetScroll,
+  });
+  const { setPage: setChangePage } = changes;
+  const { setPage: setDiscPage } = discs;
 
-  // 換頁後內部捲動容器捲回頂部（清單自己捲、頁面不捲）。
-  const resetScroll = () => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  };
-  // 改每頁筆數：重算總頁數並把頁碼鉗制到末頁（寫回 state，改回原筆數時不彈回舊頁）。
-  const clampTo = (count: number, size: number) => (p: number) => Math.min(p, Math.max(1, Math.ceil(count / size)));
+  // 搜尋字串變更（query 為外部受控 prop）：兩側頁碼皆回第 1 頁。
+  useEffect(() => {
+    setChangePage(1);
+    setDiscPage(1);
+  }, [query, setChangePage, setDiscPage]);
 
-  const changesPager = (
-    <ListPager
-      page={changePage}
-      pageCount={changePageCount}
-      total={filtered.length}
-      pageSize={changePageSize}
-      onPage={(n) => {
-        setChangeRawPage(n);
-        resetScroll();
-      }}
-      onPageSize={(size) => {
-        setChangePageSize(size);
-        setChangeRawPage(clampTo(filtered.length, size));
-        resetScroll();
-      }}
-    />
-  );
-  const discussionsPager = (
-    <ListPager
-      page={discPage}
-      pageCount={discPageCount}
-      total={discussions.length}
-      pageSize={discPageSize}
-      onPage={(n) => {
-        setDiscRawPage(n);
-        resetScroll();
-      }}
-      onPageSize={(size) => {
-        setDiscPageSize(size);
-        setDiscRawPage(clampTo(discussions.length, size));
-        resetScroll();
-      }}
-    />
-  );
+  // 兩節的工具列落在同一個卡底槽：各帶 key，切換分頁時不共用跳頁輸入的狀態。
+  const changesPager = <ListPager key="changes" {...changes.pager} />;
+  const discussionsPager = <ListPager key="discussions" {...discs.pager} />;
 
   const changesRows =
     filtered.length === 0 ? (
       <div className={EMPTY_CLS}>{t("archived.noChanges")}</div>
     ) : (
-      changeItems.map((a) => <ArchivedRow key={a.datedName} item={a} onOpen={onOpen} />)
+      changes.pageItems.map((a) => <ArchivedRow key={a.datedName} item={a} onOpen={onOpen} />)
     );
 
   const search = (
@@ -345,7 +310,7 @@ export function ArchivedList({
                 {discussions.length === 0 ? (
                   <div className={EMPTY_CLS}>{t("archived.noDiscussions")}</div>
                 ) : (
-                  discItems.map((d) => <ArchivedDiscussionRow key={d.slug} item={d} onOpen={onOpen} />)
+                  discs.pageItems.map((d) => <ArchivedDiscussionRow key={d.slug} item={d} onOpen={onOpen} />)
                 )}
               </TabsContent>
             </ListCard>

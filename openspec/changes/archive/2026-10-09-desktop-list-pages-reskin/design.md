@@ -21,28 +21,28 @@
 
 ### D1 `ListRow` 與 `ListCard`
 
-- `packages/ui/src/components/ListRow.tsx`：`ListRow({ title, titleClassName?, copyValue?, copyLabel?, description?, leading?, meta?, onClick, children?, ...dataAttrs })`——`div role="button" tabIndex={0}` `group flex items-center gap-4 px-4 py-3 border-b border-border/70 last:border-b-0 cursor-pointer hover:bg-foreground/[0.03] focus-visible:bg-foreground/[0.03] outline-none`；`leading` 槽（已封存列的日期）在最左 `shrink-0 text-xs text-muted-foreground tabular-nums`；中段 `min-w-0 flex-1`：標題列 `flex items-center gap-1`（標題 `truncate font-mono text-sm font-semibold`＋`CopyButton`（`REVEAL_ON_HOVER`）＋`children`（標題旁的章，如改進小章）），描述 `truncate text-[13px] text-muted-foreground`（缺席時不渲染，列退回單行）；右端 `meta` 槽 `flex shrink-0 items-center gap-3 text-xs text-muted-foreground` 後接 `ChevronRight h-4 w-4 text-muted-foreground`。Enter／Space 觸發 `onClick`；複製鈕點擊不冒泡。
-- `packages/ui/src/components/ListCard.tsx`：`ListCard({ header?, footer?, children, className? })`——`Card` 外框（`rounded-2xl border bg-card p-0`，`flex flex-1 min-h-0 flex-col overflow-hidden`），`header` 槽（已封存頁的卡片標頭分頁列）在頂部；`children` 在 `flex-1 min-h-0 overflow-y-auto`（`data-list-scroll`，換頁後捲回頂部的目標）；`footer` 槽 `shrink-0 border-t border-border`。空清單時呼叫端把空態文案放進 `children`（置中灰字）。
+- `packages/ui/src/components/ListRow.tsx`：`ListRow({ title, copy?: { value, label }, description?, leading?, meta?, onClick, children?, ...dataAttrs })`——`div role="button" tabIndex={0}` `group flex items-center gap-4 px-4 py-3 border-b border-border/70 last:border-b-0 cursor-pointer hover:bg-foreground/[0.03] focus-visible:bg-foreground/[0.03] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring outline-none`，`aria-labelledby` 指向標題（朗讀名稱只取標題，不把描述與 meta 串進來）；`leading` 槽（已封存列的日期）在最左 `shrink-0 text-xs text-muted-foreground tabular-nums`；中段 `min-w-0 flex-1`：標題列 `flex items-center gap-1`（標題 `truncate font-mono text-sm font-semibold`＋`CopyButton`（`REVEAL_ON_HOVER`；`copy` 給了才有，value 寫入剪貼簿、label 為無障礙名稱）＋`children`（複製鈕之後的章，如改進小章——與看板討論卡「slug → 複製鈕 → 章」同序）），描述 `truncate text-[13px] text-muted-foreground`（缺席時不渲染，列退回單行）；右端 `meta` 槽 `flex shrink-0 items-center gap-3 text-xs text-muted-foreground` 後接 `ChevronRight h-4 w-4 text-muted-foreground`。Enter／Space 觸發 `onClick`；複製鈕點擊不冒泡。
+- `packages/ui/src/components/ListCard.tsx`：`ListCard({ header?, footer?, children, scrollRef? })`——`Card` 外框（`rounded-2xl border bg-card p-0`，`flex flex-1 min-h-0 flex-col overflow-hidden`），`header` 槽（已封存頁的卡片標頭分頁列）在頂部；`children` 在 `flex-1 min-h-0 overflow-y-auto`（`data-list-scroll`，換頁後捲回頂部的目標）；`footer` 槽 `shrink-0`、本身不畫分隔線（分隔線屬工具列；`ListPager` 於 `total === 0` 回 null 時卡底不留空線）。空清單時呼叫端把空態文案放進 `children`（置中灰字）。
 - 兩者自 `index.ts` 匯出；`uiSingleSource` 守門涵蓋。
 
 ### D2 `ListPager` 工具列
 
-- props 改為 `{ page, pageCount, total, pageSize, pageSizeOptions?: number[], onPage, onPageSize }`；`total === 0` 時回 null；渲染 `flex items-center justify-between gap-3 px-4 py-2 text-xs text-muted-foreground`：
-  - 左：`pager.range`（zh「第 {a}–{b} 筆，共 {n} 筆」、en「{a}–{b} of {n}」；a＝(page−1)×pageSize+1、b＝min(page×pageSize, total)）＋`Select`（`pager.perPage`：zh「每頁 {n} 個」、en「{n} per page」；選項預設 `[20, 50, 100]`）——改每頁筆數時呼叫 `onPageSize(n)`，呼叫端重算 `pageCount` 並把頁碼鉗制。
-  - 右（`pageCount > 1` 時）：« 鈕（`ChevronsLeft`，`onPage(1)`）、‹ 鈕、頁碼鈕列、› 鈕、» 鈕（`ChevronsRight`，`onPage(pageCount)`）、「跳到 [__] 頁」：頁碼視窗演算法 `pageWindow(page, pageCount)`——總頁數 ≤ 7 全列；否則恆列 1 與 M，中段為 page−1..page+1，與兩端不相鄰處插入 `…`（純函式、單元測試）；作用中頁碼 `bg-primary/12 text-primary font-medium`，其餘 ghost；« 與 ‹ 於第 1 頁停用、› 與 » 於末頁停用；« » 的 aria-label 為 `pager.first`（zh「第一頁」、en「First page」）與 `pager.last`（zh「最後一頁」、en「Last page」）；跳頁輸入 `type="number" min=1 max=pageCount` 寬 3em，Enter 或失焦時 `onPage(clamp(value))`、非數字忽略；aria-label `pager.jump`（zh「跳到第幾頁」）、輸入框前後的可見文字來自 `pager.jumpTo`（zh「跳到 {n} 頁」）、頁碼鈕 aria-label `pager.pageN`（「第 {n} 頁」）；每頁筆數下拉的 aria-label 即其可見文字（`pager.perPage`）。
-- `PAGE_SIZE` 常數保留為預設值，選項陣列匯出為 `PAGE_SIZE_OPTIONS`（`[20, 50, 100]`，桌面 store 驗證記住的值用）；`SpecList`／`ArchivedList` 的每頁筆數可受控（D7），未受控時各自持有 `pageSize` state（預設 20）；過濾結果或每頁筆數改變時頁碼鉗制至末頁、搜尋變更回第 1 頁（既有）。
+- props 改為 `{ page, pageCount, total, pageSize, onPage, onPageSize }`；`total === 0` 時回 null；渲染 `flex items-center justify-between gap-3 border-t border-border px-4 py-2 text-xs text-muted-foreground`（上緣分隔線由工具列自帶）：
+  - 左：`pager.range`（zh「第 {a}–{b} 筆，共 {n} 筆」、en「{a}–{b} of {n}」；a＝(page−1)×pageSize+1、b＝min(page×pageSize, total)）＋`Select`（`pager.perPage`：zh「每頁 {n} 個」、en「{n} per page」；選項固定為 `PAGE_SIZE_OPTIONS`，即 `[20, 50, 100]`）——改每頁筆數時呼叫 `onPageSize(n)`，呼叫端重算 `pageCount` 並把頁碼鉗制。
+  - 右（`pageCount > 1` 時）：« 鈕（`ChevronsLeft`，`onPage(1)`）、‹ 鈕、頁碼鈕列、› 鈕、» 鈕（`ChevronsRight`，`onPage(pageCount)`）、「跳到 [__] 頁」：頁碼視窗演算法 `pageWindow(page, pageCount)`——總頁數 ≤ 7 全列；否則恆列 1 與 M，中段為 page−1..page+1，與兩端不相鄰處插入 `…`（純函式、單元測試）；作用中頁碼 `bg-primary/12 text-primary font-medium`，其餘 ghost；« 與 ‹ 於第 1 頁停用、› 與 » 於末頁停用；« » 的 aria-label 為 `pager.first`（zh「第一頁」、en「First page」）與 `pager.last`（zh「最後一頁」、en「Last page」）；跳頁輸入 `type="number" min=1 max=pageCount` 寬 3em，只在 Enter 時 `onPage(clamp(value))`、非數字忽略；失焦一律捨棄輸入、不換頁——滑鼠按下即失焦、早於點擊，此時換頁會讓該次點擊落空，而 macOS 的 WKWebView 點按鈕不給焦點（`relatedTarget` 為 null），無從分辨焦點去向；aria-label `pager.jump`（zh「跳到第幾頁」）、輸入框前後的可見文字來自 `pager.jumpTo`（zh「跳到 {n} 頁」）、頁碼鈕 aria-label `pager.pageN`（「第 {n} 頁」）；每頁筆數下拉的 aria-label 即其可見文字（`pager.perPage`）。
+- `PAGE_SIZE` 常數保留為預設值，選項陣列匯出為 `PAGE_SIZE_OPTIONS`（`[20, 50, 100]`，桌面 store 驗證記住的值用）；`SpecList`／`ArchivedList` 的每頁筆數可受控（D7），未受控時各自持有 `pageSize` state（預設 20）；過濾結果或每頁筆數改變時頁碼鉗制至末頁、搜尋變更回第 1 頁（既有）。頁碼、每頁筆數與鉗制由 `ListPager.tsx` 的 hook `usePaging(items, { pageSize?, onPageSizeChange?, onMove })` 持有，規格頁與已封存兩節共用：回傳本頁項目 `pageItems`、只改頁碼的 `setPage`（搜尋重設、聚焦列用）與直接展開給 `ListPager` 的 `pager`；換頁與改每頁筆數後呼叫 `onMove`（捲回頂部）。已封存兩節的 `ListPager` 落在同一個卡底槽，各帶 key（`changes`／`discussions`），切換分頁時不共用跳頁輸入的狀態。
 
 ### D3 規格頁
 
 - 結構：`<PageHeader title description actions={搜尋框} />` → `<ListCard footer={<ListPager …/>}>`（列或空態）。`SpecList` 新增 props `title`、`description`（桌面傳「規格」與「正式規格一覽；點一列看全文與來源變更。」）。
-- 搜尋框：`Input` `h-8 w-[280px] rounded-full pl-8`＋左側 `Search` 圖示（與看板同款；抽成 `packages/ui/src/components/SearchField.tsx` 讓看板與兩個清單共用——`SearchField({ value, onChange, placeholder, className? })`，`BoardSearchBar` 於 desktop-board-reskin 落地後改用它；本塊只新增並讓兩個清單用）。
-- 列：`title=item.id`（等寬）、`copyValue=item.id`、`description`＝Purpose 摘要（`item.purposeSummary`；佔位時以 `text-status-warning` 顯示「Purpose 待補」）、`meta`＝需求數（`FileText`＋n，tooltip）、溯源數（`History`＋n，>0 才顯示）、相對時間；`onClick=onOpen(item.id)`；`data-spec` 不變。`focus` 行為（捲到指定規格並高亮）維持。
+- 搜尋框：`Input` `h-8 w-[280px] rounded-full pl-8`＋左側 `Search` 圖示（與看板同款；抽成 `packages/ui/src/components/SearchField.tsx` 讓看板與兩個清單共用——`SearchField({ value, onChange, placeholder? })`，`BoardSearchBar` 於 desktop-board-reskin 落地後改用它；本塊只新增並讓兩個清單用）。
+- 列：`title=item.id`（等寬）、`copy={ value: item.id, label: common.copyName }`、`description`＝Purpose 摘要（`item.purposeSummary`；佔位時以 `text-status-warning` 顯示「Purpose 待補」）、`meta`＝需求數（`FileText`＋n，tooltip）、溯源數（`History`＋n，>0 才顯示）、相對時間；`onClick=onOpen(item.id)`；`data-spec` 不變。`focus` 行為（捲到指定規格並高亮）維持。
 - 空態：無規格「specs.empty」、無命中「specs.noResults」置中於卡內。
 
 ### D4 已封存頁
 
 - 結構：`<PageHeader title="已封存" description actions={搜尋框} />` → `<Tabs defaultValue="changes">` 包 `<ListCard header={<TabsList variant="card">變更 N／討論 N</TabsList>} footer={目前節的 ListPager}>`，`TabsContent` 各渲染該節的列；`ListCard` 的內容卡以 `rounded-t-none border-t-0` 接在分頁列下（`Tabs variant="card"` 的既定接法）。
-- 變更列：`leading=item.date`、`title=item.name`、`copyValue=item.datedName`、`description`＝Why 首句（缺席則單行）、`meta`＝任務徽章（`Badge`，未全完成 warning 樣式）、觸及規格數、建立者頭像圓點、來源討論籤（既有元件）；`data-archived` 不變。討論列：`title=slug`、`copyValue=slug`、`description=topic`、`meta`＝日期、「N 輪」、衍生變更數；改進小章放標題旁 `children`。
+- 變更列：`leading=item.date`、`title=item.name`、`copy.value=item.datedName`、`description`＝Why 首句（缺席則單行）、`meta`＝任務徽章（`Badge`，未全完成 warning 樣式）、觸及規格數、建立者頭像圓點、來源討論籤（既有元件）；`data-archived` 不變。討論列：`title=slug`、`copy.value=slug`、`description=topic`、`meta`＝日期、「N 輪」、衍生變更數；改進小章放 `children`（複製鈕之後）。
 - 兩節各自 `page`、`pageSize`；搜尋同時過濾兩節、徽章顯示各自命中數（既有）。
 
 ### D5 手冊頁
@@ -81,7 +81,7 @@
 
 **Interface / data shape**
 
-- `@speclink/ui` 新匯出：`ListRow`、`ListCard`、`SearchField`、`pageWindow`、`PAGE_SIZE`、`PAGE_SIZE_OPTIONS`；`ListPagerProps` 新形狀（D2）；`SpecListProps`／`ArchivedListProps` 新增 `title`、`description` 與 D7 的受控每頁筆數 props。
+- `@speclink/ui` 新匯出：`ListRow`、`ListCard`、`SearchField`、`PAGE_SIZE`、`PAGE_SIZE_OPTIONS`（`pageWindow` 與 `usePaging` 只供套件內部與單元測試，不對外匯出——套件外沒有消費者）；`ListPagerProps` 新形狀（D2）；`SpecListProps`／`ArchivedListProps` 新增 `title`、`description` 與 D7 的受控每頁筆數 props。
 - i18n 新鍵（兩語系）：`pager.range`、`pager.perPage`、`pager.jump`（跳頁輸入的 aria-label）、`pager.jumpTo`（跳頁輸入前後的可見文字「跳到 {n} 頁」，以 `{n}` 切成兩段包住輸入框）、`pager.pageN`、`pager.first`、`pager.last`、`specs.pageDesc`、`archived.pageDesc`、`manual.generatedAt`、`manual.prevLabel`、`manual.nextLabel`；移除 `pager.page`。
 - 清單資料欄位：不變。
 - 桌面 store：`pageSizes`、`setPageSize`；localStorage 鍵 `speclink.list.pageSizes`（D7）。
@@ -96,7 +96,7 @@
 **Acceptance criteria**
 
 - `npm test -w packages/ui`、`npm test -w apps/desktop` 全綠。
-- `listRow.test.tsx`：標題／描述／meta／›、無描述單行、Enter 觸發、複製不冒泡；`listPager.test.tsx`：範圍文案、每頁下拉呼叫 `onPageSize`、`pageWindow` 七種輸入（含省略號）、作用中頁碼 class、跳頁 Enter 與鉗制、單頁時無頁碼、« » 於首末頁停用且點擊呼叫 `onPage(1)`／`onPage(pageCount)`；`specList.test.tsx`／`archivedList.test.tsx`：改為列斷言後既有排序、搜尋、換頁、徽章、焦點案例通過，加「頁標題與搜尋框」「分頁列為 card variant」；`manualPage.test.tsx`：底列固定、出處籤、上一頁／下一頁帶標題、產生時間行；`App.test.tsx` 三頁 title 傳入；`store.test.ts`：`pageSizes` 讀取（缺席、壞 JSON、非法值、部分合法）與 `setPageSize` 寫回；`specList.test.tsx`／`archivedList.test.tsx`：受控每頁筆數時以 prop 為準並呼叫回呼；`App.test.tsx`：在規格頁改每頁 50 後重建 App，規格頁仍為每頁 50、已封存兩節仍為 20。
+- `listRow.test.tsx`：標題／描述／meta／›、無描述單行、Enter 觸發、複製不冒泡、朗讀名稱只取標題、鍵盤焦點外框、複製鈕在章之前、列表卡 footer 槽不畫線；`listPager.test.tsx`：範圍文案、每頁下拉呼叫 `onPageSize`、`pageWindow` 七種輸入（含省略號）、作用中頁碼 class、跳頁 Enter 與鉗制、單頁時無頁碼、« » 於首末頁停用且點擊呼叫 `onPage(1)`／`onPage(pageCount)`、工具列自帶上緣線、跳頁只認 Enter（失焦捨棄輸入）、`usePaging` 的切頁／鉗制／受控；`archivedList.test.tsx`：兩節跳頁輸入互相獨立；`specList.test.tsx`／`archivedList.test.tsx`：改為列斷言後既有排序、搜尋、換頁、徽章、焦點案例通過，加「頁標題與搜尋框」「分頁列為 card variant」；`manualPage.test.tsx`：底列固定、出處籤、上一頁／下一頁帶標題、產生時間行；`App.test.tsx` 三頁 title 傳入；`store.test.ts`：`pageSizes` 讀取（缺席、壞 JSON、非法值、部分合法）與 `setPageSize` 寫回；`specList.test.tsx`／`archivedList.test.tsx`：受控每頁筆數時以 prop 為準並呼叫回呼；`App.test.tsx`：在規格頁改每頁 50 後重建 App，規格頁仍為每頁 50、已封存兩節仍為 20。
 - 手動：三頁淺色深色各看一次；86 份規格翻頁、跳頁、« » 跳首末頁、改每頁 50 後重開 app 仍為 50；已封存兩節切換；手冊讀三頁。
 
 **Scope boundaries**

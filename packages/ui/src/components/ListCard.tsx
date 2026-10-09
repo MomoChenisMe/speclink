@@ -6,10 +6,9 @@ import { Card } from "./ui/card";
 export interface ListCardProps {
   /** 卡頂槽（已封存頁的卡片標頭式分頁列）；有它時內容卡以 rounded-t-none border-t-0 接在其下。 */
   header?: ReactNode;
-  /** 卡底固定槽（換頁工具列）。 */
+  /** 卡底固定槽（換頁工具列）；槽本身不畫分隔線——分隔線屬工具列，工具列不渲染時卡底不留空線。 */
   footer?: ReactNode;
   children: ReactNode;
-  className?: string;
   /** 內容捲動容器（data-list-scroll）——換頁後捲回頂部、聚焦列捲入視窗的目標。 */
   scrollRef?: Ref<HTMLDivElement>;
 }
@@ -19,9 +18,9 @@ export interface ListCardProps {
  * 主區剩餘高度，列在卡內縱向捲動，header／footer 固定不隨列捲動。header 為
  * Tabs card variant 的分頁列時，內容卡依該原語的既定接法去掉上圓角與上框線。
  */
-export function ListCard({ header, footer, children, className, scrollRef }: ListCardProps) {
+export function ListCard({ header, footer, children, scrollRef }: ListCardProps) {
   return (
-    <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
+    <div className="flex min-h-0 flex-1 flex-col">
       {header}
       <Card
         data-list-card
@@ -31,7 +30,7 @@ export function ListCard({ header, footer, children, className, scrollRef }: Lis
           {children}
         </div>
         {footer && (
-          <div data-list-footer className="shrink-0 border-t border-border">
+          <div data-list-footer className="shrink-0">
             {footer}
           </div>
         )}
