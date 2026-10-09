@@ -1,0 +1,338 @@
+{
+  "version": 2,
+  "change": "desktop-shell-redesign",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 新增 `apps/desktop/src/platform.ts`（design D1）：`detectPlatform(ua?)` 依 UA 回 `macos`／`windows`／`linux`（非瀏覽器環境回 `linux`）、`isMacOS()`；`apps/desktop/src/tray.ts` 的 `detectMacOS` 改為呼叫它並保留同名匯出。驗證：新增 `apps/desktop/src/__tests__/platform.test.ts`（三種 UA 各一案、無 navigator 一案）；`npm test -w apps/desktop -- platform tray`。",
+      "files": [
+        "apps/desktop/src/tray.ts",
+        "apps/desktop/src/__tests__/platform.test.ts",
+        "apps/desktop/src/platform.ts"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 新增 `apps/desktop/src-tauri/tauri.macos.conf.json`（main 視窗 `titleBarStyle: \"Overlay\"`、`hiddenTitle: true`、`trafficLightPosition: {x:16,y:17}`）與 `apps/desktop/src-tauri/tauri.windows.conf.json`（`decorations: false`、`shadow: true`），`apps/desktop/src-tauri/capabilities/default.json` 加 `core:window:allow-start-dragging`、`allow-minimize`、`allow-toggle-maximize`、`allow-close`、`allow-is-maximized` 五條（design D1）。驗證：`cargo check -p speclink-desktop` 通過（tauri-build 會解析並合併平台覆蓋檔與能力檔）；兩個覆蓋檔以 `node -e \"JSON.parse(require('fs').readFileSync(p,'utf8'))\"` 可解析。",
+      "files": [
+        "apps/desktop/src-tauri/capabilities/default.json",
+        "apps/desktop/src-tauri/tauri.macos.conf.json",
+        "apps/desktop/src-tauri/tauri.windows.conf.json"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 新增 `apps/desktop/src/components/TitleBar.tsx`（design D1／D6）：`LeftTitleBar({ platform, title, menu })`（48px、`data-tauri-drag-region`、macOS `pl-[88px]` 其餘 `pl-3`、純文字標題 `title` 屬性為路徑、右端 `menu` 槽）、`MainTitleBar({ platform, crumbs })`（麵包屑段落、最後一段深字、可點段呼叫 onClick、Windows 時右端 `WindowControls`）、`WindowControls`（三顆 46×48 鈕呼叫 `getCurrentWindow().minimize()`／`toggleMaximize()`／`close()`，圖示依 `isMaximized()` 與 `onResized` 切換，aria-label 走 `titlebar.*` 鍵）；i18n 兩語系加 `titlebar.minimize`／`maximize`／`restore`／`close`。驗證：新增 `apps/desktop/src/__tests__/titleBar.test.tsx`——macOS 無視窗鈕且左內距 class 為 `pl-[88px]`、Windows 三顆鈕各觸發對應 mock 方法、麵包屑三段渲染且第一段可點、Linux 無視窗鈕；`npm test -w apps/desktop -- titleBar`。",
+      "files": [
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/__tests__/titleBar.test.tsx",
+        "apps/desktop/src/components/TitleBar.tsx"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 packages/ui 新增領域元件 `packages/ui/src/components/NavItem.tsx`（design D4：32px、`rounded-lg`、圖示＋標籤＋右端計數徽章、作用中 `bg-primary/12 text-primary`、`asChild` 走 Slot）並自 `index.ts` 匯出；`apps/desktop/src/App.tsx` 的本地 `NavItem` 刪除；新增 `apps/desktop/src/components/ProjectColumn.tsx`（四頁＋底部專案設定，active 依 `boardView`、設定模式全部非作用中、i18n 鍵沿用）。驗證：新增 `packages/ui/src/__tests__/navItem.test.tsx`（作用中 class、計數徽章、`asChild` 渲染成子元素、aria-label）；`packages/ui/src/__tests__/uiSingleSource.test.ts` 綠；`npm test -w packages/ui -- navItem uiSingleSource`。",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "packages/ui/src/index.ts",
+        "apps/desktop/src/components/ProjectColumn.tsx",
+        "packages/ui/src/__tests__/navItem.test.tsx",
+        "packages/ui/src/components/NavItem.tsx"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "3.3 packages/ui 新增原語 `packages/ui/src/components/ui/dropdown-menu.tsx`、`context-menu.tsx`、`kbd.tsx`（design D5 的 class 規格；兩套選單共用 `menuContentClass`／`menuItemClass` 常數；`DropdownMenuItem` 與 `ContextMenuItem` 支援 `variant=\"destructive\"`；`DropdownMenuShortcut` 渲染 `Kbd`）並自 `index.ts` 匯出；`packages/ui/package.json` 加 `@radix-ui/react-dropdown-menu` 與 `@radix-ui/react-context-menu`。驗證：新增 `packages/ui/src/__tests__/menus.test.tsx`——觸發後 Content 帶 `rounded-xl` 與 `shadow-lg`、Item 帶 `rounded-lg`、destructive 項帶 `text-destructive`、Shortcut 渲染 `<kbd>`、Separator 存在；ContextMenu 以 `fireEvent.contextMenu` 開啟並含同樣 class；`theme.test.ts` 守門綠（無原生色階）；`npm test -w packages/ui -- menus theme`。",
+      "files": [
+        "package-lock.json",
+        "packages/ui/package.json",
+        "packages/ui/src/__tests__/menus.test.tsx",
+        "packages/ui/src/components/ui/context-menu.tsx",
+        "packages/ui/src/components/ui/dropdown-menu.tsx",
+        "packages/ui/src/components/ui/kbd.tsx"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.1 新增 `apps/desktop/core/src/fs_actions.rs`（design D5：`Platform`、`Spawn`、`terminal_candidates`、`editor_candidates`，純函式）並於 `apps/desktop/core/src/lib.rs` 宣告 `pub mod fs_actions`。驗證：`#[cfg(test)]` 斷言 macOS 候選為 `open -a Terminal <path>` 一筆、Windows 為 `wt -d` 與 `cmd /c start cmd /K cd /d` 兩筆依序、Linux 四筆依序且各帶工作目錄參數、編輯器四筆依序 `code`／`cursor`／`zed`／`subl` 各帶路徑；`cargo test -p speclink-desktop-core fs_actions`。",
+      "files": [
+        "apps/desktop/core/src/lib.rs",
+        "apps/desktop/core/src/fs_actions.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.2 新增 `apps/desktop/src-tauri/src/fs_actions.rs` 兩個 Tauri command（「在檔案管理員顯示」沿用既有 `reveal_in_folder`；`open_in_terminal`／`open_in_editor` 依候選順序 spawn、第一個成功即回 Ok、全失敗回 `Err(\"fs.noTerminal\")`／`Err(\"fs.noEditor\")`，不等待子程序）並在 `apps/desktop/src-tauri/src/lib.rs` 的 `generate_handler!` 註冊；新增 `apps/desktop/src/adapter/fsActions.ts` 三個 `invoke` 包裝；`apps/desktop/src/store.ts` 新增 `revealProject`、`openProjectInTerminal`、`openProjectInEditor`、`copyProjectPath`（`writeText`）四個動作——成功靜默、失敗 `toast.error`（錯誤為 i18n 鍵時查表、否則原文）；i18n 加 `fs.noTerminal`、`fs.noEditor`。驗證：`cargo check -p speclink-desktop` 通過；`apps/desktop/src/__tests__/store.test.ts` 新增四案（成功不呼叫 toast、`Err(\"fs.noEditor\")` 顯示對應文案、原文錯誤原樣顯示、remote 無 checkout 時四個動作不呼叫 invoke）；`npm test -w apps/desktop -- store`。",
+      "files": [
+        "apps/desktop/src-tauri/src/cli_install.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/store.ts",
+        "apps/desktop/src-tauri/src/fs_actions.rs",
+        "apps/desktop/src/adapter/fsActions.ts"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.2 新增 `apps/desktop/src/components/ProjectRail.tsx` 取代 `apps/desktop/src/components/ProjectTabs.tsx`（design D3；spec「專案分頁列存於 app 本機」「分頁切換中即時回饋」：`BrandMark` 26px、首字母方塊、作用中 teal 底、tooltip 全名與路徑、角落紅點／琥珀點、探測中 spinner、錯誤態點擊開錯誤選單、「＋」虛線方塊、底部齒輪、`role=\"tablist\"` 與 `aria-label`、無計數徽章；i18n 加 `app.projectRail`）；刪除 `ProjectTabs.tsx` 與 `apps/desktop/src/__tests__/projectTabs.test.tsx`，其案例逐條搬到新測試。驗證：新增 `apps/desktop/src/__tests__/projectRail.test.tsx`——方塊順序與作用中 class、tooltip 內容（local 路徑、remote checkout 路徑、無 checkout 顯示 locator）、錯誤紅點與錯誤選單含「自專案列移除」、remote offline 琥珀點、`pendingKey` 方塊為 spinner 且 aria-label 含「正在切換」、「＋」觸發 `onOpen`、齒輪觸發 `onOpenSettings` 且 `settingsActive` 時作用中、方塊無任何計數文字；案例數不少於原 `projectTabs.test.tsx`；`npm test -w apps/desktop -- projectRail`。",
+      "files": [
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/projectTabs.test.tsx",
+        "apps/desktop/src/__tests__/remoteCapabilities.test.tsx",
+        "apps/desktop/src/__tests__/remoteResilience.test.tsx",
+        "apps/desktop/src/components/ProjectTabs.tsx",
+        "apps/desktop/src/__tests__/projectActionsMenu.test.tsx",
+        "apps/desktop/src/__tests__/projectRail.test.tsx",
+        "apps/desktop/src/components/ProjectActionsMenu.tsx",
+        "apps/desktop/src/components/ProjectRail.tsx"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "4.1 packages/ui 新增原語 `packages/ui/src/components/ui/page-header.tsx`（design D6）並匯出；`packages/ui/src/components/KanbanBoard.tsx` 新增選配 `title`／`description` props，提供時以 `PageHeader` 包住既有 `BoardSearchBar` 作為動作槽、不提供時渲染不變；`App.tsx` 傳入標題「變更」與說明（i18n 加 `board.pageDesc`）。驗證：新增 `packages/ui/src/__tests__/pageHeader.test.tsx`（標題 `text-2xl font-normal`、說明、動作槽）；`packages/ui/src/__tests__/kanban.test.tsx` 加兩案——傳 `title` 時出現 h2 且搜尋輸入仍存在於同一列、不傳時無 h2 且既有搜尋案例全部通過；`npm test -w packages/ui -- pageHeader kanban`。",
+      "files": [
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/components/KanbanBoard.tsx",
+        "packages/ui/src/__tests__/pageHeader.test.tsx",
+        "packages/ui/src/components/ui/page-header.tsx"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "4.2 自 `apps/desktop/src/components/WorkspaceChooser.tsx` 抽出 `apps/desktop/src/components/RecentList.tsx`（design D7；spec「最近開啟清單」：`variant=\"dialog\" | \"card\"`、條目渲染、錯誤態、連線狀態、hover 才現的 ×、remote「遠端」籤；判定函式沿用 `recents.ts` 與 chooser 既有函式）；新增 `apps/desktop/src/components/EmptyWorkspace.tsx`（`Wordmark` 40px、標題、說明、「新增專案」與「連線 Server」兩鈕、`RecentList variant=\"card\"`、底部 CLI 提示）取代 `App.tsx` 零專案的 `EmptyState`；`store.ts` 的 `WorkspaceChooserIntent` 加 `initialStep?: \"server\"`，chooser 起始步驟判定合併；i18n 加 `app.connectServer`、`app.emptyCli`、`recent.title`、`chooser.remoteTag`，`app.emptyDesc` 改寫含初始化提示。驗證：新增 `apps/desktop/src/__tests__/recentList.test.tsx`（兩種 variant 外框、本機與 remote 條目文字與「遠端」籤、錯誤態、× 呼叫 `onRemove`）與 `emptyWorkspace.test.tsx`（`alt=\"Speclink\"` 字標、兩鈕各呼叫 callback 且「連線 Server」帶 `initialStep: \"server\"`、有記錄時卡存在、無記錄時不渲染區段）；`workspaceChooser.test.tsx` 既有最近開啟案例通過、新增「`initialStep: \"server\"` 起始於 Server 步驟」一案；`npm test -w apps/desktop -- recentList emptyWorkspace workspaceChooser`。",
+      "files": [
+        "apps/desktop/src/__tests__/workspaceChooser.test.tsx",
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "apps/desktop/src/__tests__/emptyWorkspace.test.tsx",
+        "apps/desktop/src/__tests__/recentList.test.tsx",
+        "apps/desktop/src/components/EmptyWorkspace.tsx",
+        "apps/desktop/src/components/RecentList.tsx"
+      ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "5.2 詞彙收斂（design D9）：`apps/desktop/src/i18n/messages.ts` 兩語系的 26 處「Workspace」改「專案」／「project」（含 `app.addWorkspace`→「新增專案」、`chooser.sourceTitle`、`chooser.open`、`app.workspaceTabs`→「專案列」、`app.closeTab`→「關閉專案」、`app.removeTab`→「自專案列移除」、`chooser.conflictTitle`、`tray.recovery.*`、`remote.recovery.*`、`servers.openWorkspace`）與 4 處「工作區」；`openspec/LANGUAGE.md` 新增「專案（開啟的工作目錄）」詞條（avoid：Workspace、workspace、工作區、專案分頁）並把「Server」詞條定義文的「新增 Workspace」改「新增專案」；`docs/product-status.md`、`docs/product-status.zh-TW.md`、`docs/remote-getting-started.md`、`docs/remote-getting-started.zh-TW.md` 的 6 處同步。驗證：`grep -rn \"Workspace\\|工作區\\|專案分頁\" apps/desktop/src/i18n/messages.ts docs/*.md` 零命中；`apps/desktop/src/__tests__/messages.test.ts` 鍵集合相等案通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs`（詞彙守門含新 avoid 詞）綠；`npm test -w apps/desktop -- messages`。",
+      "files": [
+        "apps/desktop/src/__tests__/remoteWorkspaceRecovery.test.tsx",
+        "apps/desktop/src/__tests__/serversPanel.test.tsx",
+        "apps/desktop/src/__tests__/workspace.test.ts",
+        "apps/desktop/src/adapter/workspace.ts",
+        "apps/desktop/src/components/ServersPanel.tsx",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/remote-getting-started.md",
+        "docs/remote-getting-started.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "6.1 `apps/server-web/src/components/AdminNav.tsx` 改用 `@speclink/ui` 的 `NavItem asChild` 包 `NavLink`（刪除本地 `itemClass`），`apps/server-web/src/layouts/ConsoleLayout.tsx` 側欄 `bg-card` 改 `bg-sidebar`（design D4／D10）。驗證：`apps/server-web/src/__tests__/admin-console-shell.test.tsx` 的作用中斷言改為 `text-primary` 且六個目的地與 Sheet 版導覽案例通過；`npm test -w apps/server-web -- admin-console-shell`。",
+      "files": [
+        "apps/server-web/src/__tests__/admin-console-shell.test.tsx",
+        "apps/server-web/src/components/AdminNav.tsx",
+        "apps/server-web/src/layouts/ConsoleLayout.tsx"
+      ]
+    },
+    {
+      "task_id": "17",
+      "task_desc": "6.3 全部對齊：`./target/debug/speclink validate desktop-shell-redesign` 通過；`npm test -w packages/ui`、`npm test -w apps/desktop`、`npm test -w apps/server-web` 全綠；`cargo test -p speclink-desktop-core`、`cargo check -p speclink-desktop` 通過；`npm run build -w apps/desktop`、`npm run build -w apps/server-web` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
+      "files": [
+        "apps/desktop/src/main.tsx",
+        "apps/desktop/src/panel/TrayPanel.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4DYW6GRNPD2CWAHPFMDMGZE",
+      "taskDesc": "1.1 新增 `apps/desktop/src/platform.ts`（design D1）：`detectPlatform(ua?)` 依 UA 回 `macos`／`windows`／`linux`（非瀏覽器環境回 `linux`）、`isMacOS()`；`apps/desktop/src/tray.ts` 的 `detectMacOS` 改為呼叫它並保留同名匯出。驗證：新增 `apps/desktop/src/__tests__/platform.test.ts`（三種 UA 各一案、無 navigator 一案）；`npm test -w apps/desktop -- platform tray`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "bdf1d7ccb6d8cca5a5e898711c5be03af7b2ae57",
+      "touchedFiles": [
+        "apps/desktop/src/tray.ts",
+        "apps/desktop/src/__tests__/platform.test.ts",
+        "apps/desktop/src/platform.ts"
+      ],
+      "recordedAt": "2026-10-08T15:00:39Z"
+    },
+    {
+      "taskId": "tsk_01M4DYW6GRVHHVNENB1VTEVE9S",
+      "taskDesc": "1.2 新增 `apps/desktop/src-tauri/tauri.macos.conf.json`（main 視窗 `titleBarStyle: \"Overlay\"`、`hiddenTitle: true`、`trafficLightPosition: {x:16,y:17}`）與 `apps/desktop/src-tauri/tauri.windows.conf.json`（`decorations: false`、`shadow: true`），`apps/desktop/src-tauri/capabilities/default.json` 加 `core:window:allow-start-dragging`、`allow-minimize`、`allow-toggle-maximize`、`allow-close`、`allow-is-maximized` 五條（design D1）。驗證：`cargo check -p speclink-desktop` 通過（tauri-build 會解析並合併平台覆蓋檔與能力檔）；兩個覆蓋檔以 `node -e \"JSON.parse(require('fs').readFileSync(p,'utf8'))\"` 可解析。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "bdf1d7ccb6d8cca5a5e898711c5be03af7b2ae57",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/capabilities/default.json",
+        "apps/desktop/src-tauri/tauri.macos.conf.json",
+        "apps/desktop/src-tauri/tauri.windows.conf.json"
+      ],
+      "recordedAt": "2026-10-08T15:04:36Z"
+    },
+    {
+      "taskId": "tsk_01M4DYW6GRK956ARXMZB2BD783",
+      "taskDesc": "1.3 新增 `apps/desktop/src/components/TitleBar.tsx`（design D1／D6）：`LeftTitleBar({ platform, title, menu })`（48px、`data-tauri-drag-region`、macOS `pl-[88px]` 其餘 `pl-3`、純文字標題 `title` 屬性為路徑、右端 `menu` 槽）、`MainTitleBar({ platform, crumbs })`（麵包屑段落、最後一段深字、可點段呼叫 onClick、Windows 時右端 `WindowControls`）、`WindowControls`（三顆 46×48 鈕呼叫 `getCurrentWindow().minimize()`／`toggleMaximize()`／`close()`，圖示依 `isMaximized()` 與 `onResized` 切換，aria-label 走 `titlebar.*` 鍵）；i18n 兩語系加 `titlebar.minimize`／`maximize`／`restore`／`close`。驗證：新增 `apps/desktop/src/__tests__/titleBar.test.tsx`——macOS 無視窗鈕且左內距 class 為 `pl-[88px]`、Windows 三顆鈕各觸發對應 mock 方法、麵包屑三段渲染且第一段可點、Linux 無視窗鈕；`npm test -w apps/desktop -- titleBar`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "bdf1d7ccb6d8cca5a5e898711c5be03af7b2ae57",
+      "touchedFiles": [
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/__tests__/titleBar.test.tsx",
+        "apps/desktop/src/components/TitleBar.tsx"
+      ],
+      "recordedAt": "2026-10-08T15:06:35Z"
+    },
+    {
+      "taskId": "tsk_01M4DYW6GRZ0HH6WJCGND02JP6",
+      "taskDesc": "2.1 packages/ui 新增領域元件 `packages/ui/src/components/NavItem.tsx`（design D4：32px、`rounded-lg`、圖示＋標籤＋右端計數徽章、作用中 `bg-primary/12 text-primary`、`asChild` 走 Slot）並自 `index.ts` 匯出；`apps/desktop/src/App.tsx` 的本地 `NavItem` 刪除；新增 `apps/desktop/src/components/ProjectColumn.tsx`（四頁＋底部專案設定，active 依 `boardView`、設定模式全部非作用中、i18n 鍵沿用）。驗證：新增 `packages/ui/src/__tests__/navItem.test.tsx`（作用中 class、計數徽章、`asChild` 渲染成子元素、aria-label）；`packages/ui/src/__tests__/uiSingleSource.test.ts` 綠；`npm test -w packages/ui -- navItem uiSingleSource`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "bdf1d7ccb6d8cca5a5e898711c5be03af7b2ae57",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "packages/ui/src/index.ts",
+        "apps/desktop/src/components/ProjectColumn.tsx",
+        "packages/ui/src/__tests__/navItem.test.tsx",
+        "packages/ui/src/components/NavItem.tsx"
+      ],
+      "recordedAt": "2026-10-08T15:09:05Z"
+    },
+    {
+      "taskId": "tsk_01M4DYW6GRKH9B0C4DP9ENB1KN",
+      "taskDesc": "3.3 packages/ui 新增原語 `packages/ui/src/components/ui/dropdown-menu.tsx`、`context-menu.tsx`、`kbd.tsx`（design D5 的 class 規格；兩套選單共用 `menuContentClass`／`menuItemClass` 常數；`DropdownMenuItem` 與 `ContextMenuItem` 支援 `variant=\"destructive\"`；`DropdownMenuShortcut` 渲染 `Kbd`）並自 `index.ts` 匯出；`packages/ui/package.json` 加 `@radix-ui/react-dropdown-menu` 與 `@radix-ui/react-context-menu`。驗證：新增 `packages/ui/src/__tests__/menus.test.tsx`——觸發後 Content 帶 `rounded-xl` 與 `shadow-lg`、Item 帶 `rounded-lg`、destructive 項帶 `text-destructive`、Shortcut 渲染 `<kbd>`、Separator 存在；ContextMenu 以 `fireEvent.contextMenu` 開啟並含同樣 class；`theme.test.ts` 守門綠（無原生色階）；`npm test -w packages/ui -- menus theme`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "bdf1d7ccb6d8cca5a5e898711c5be03af7b2ae57",
+      "touchedFiles": [
+        "package-lock.json",
+        "packages/ui/package.json",
+        "packages/ui/src/__tests__/menus.test.tsx",
+        "packages/ui/src/components/ui/context-menu.tsx",
+        "packages/ui/src/components/ui/dropdown-menu.tsx",
+        "packages/ui/src/components/ui/kbd.tsx"
+      ],
+      "recordedAt": "2026-10-08T15:11:14Z"
+    },
+    {
+      "taskId": "tsk_01M4DYW6GR8226AXB0QN4EGW1F",
+      "taskDesc": "3.1 新增 `apps/desktop/core/src/fs_actions.rs`（design D5：`Platform`、`Spawn`、`terminal_candidates`、`editor_candidates`，純函式）並於 `apps/desktop/core/src/lib.rs` 宣告 `pub mod fs_actions`。驗證：`#[cfg(test)]` 斷言 macOS 候選為 `open -a Terminal <path>` 一筆、Windows 為 `wt -d` 與 `cmd /c start cmd /K cd /d` 兩筆依序、Linux 四筆依序且各帶工作目錄參數、編輯器四筆依序 `code`／`cursor`／`zed`／`subl` 各帶路徑；`cargo test -p speclink-desktop-core fs_actions`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "bdf1d7ccb6d8cca5a5e898711c5be03af7b2ae57",
+      "touchedFiles": [
+        "apps/desktop/core/src/lib.rs",
+        "apps/desktop/core/src/fs_actions.rs"
+      ],
+      "recordedAt": "2026-10-08T15:20:44Z"
+    },
+    {
+      "taskId": "tsk_01M4DYW6GRV26RCR2N1W3TZJ1Q",
+      "taskDesc": "3.2 新增 `apps/desktop/src-tauri/src/fs_actions.rs` 兩個 Tauri command（「在檔案管理員顯示」沿用既有 `reveal_in_folder`；`open_in_terminal`／`open_in_editor` 依候選順序 spawn、第一個成功即回 Ok、全失敗回 `Err(\"fs.noTerminal\")`／`Err(\"fs.noEditor\")`，不等待子程序）並在 `apps/desktop/src-tauri/src/lib.rs` 的 `generate_handler!` 註冊；新增 `apps/desktop/src/adapter/fsActions.ts` 三個 `invoke` 包裝；`apps/desktop/src/store.ts` 新增 `revealProject`、`openProjectInTerminal`、`openProjectInEditor`、`copyProjectPath`（`writeText`）四個動作——成功靜默、失敗 `toast.error`（錯誤為 i18n 鍵時查表、否則原文）；i18n 加 `fs.noTerminal`、`fs.noEditor`。驗證：`cargo check -p speclink-desktop` 通過；`apps/desktop/src/__tests__/store.test.ts` 新增四案（成功不呼叫 toast、`Err(\"fs.noEditor\")` 顯示對應文案、原文錯誤原樣顯示、remote 無 checkout 時四個動作不呼叫 invoke）；`npm test -w apps/desktop -- store`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "bdf1d7ccb6d8cca5a5e898711c5be03af7b2ae57",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/cli_install.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/store.ts",
+        "apps/desktop/src-tauri/src/fs_actions.rs",
+        "apps/desktop/src/adapter/fsActions.ts"
+      ],
+      "recordedAt": "2026-10-09T00:51:56Z"
+    },
+    {
+      "taskId": "tsk_01M4DYW6GR4FA0TX6BFH1TQV01",
+      "taskDesc": "2.2 新增 `apps/desktop/src/components/ProjectRail.tsx` 取代 `apps/desktop/src/components/ProjectTabs.tsx`（design D3；spec「專案分頁列存於 app 本機」「分頁切換中即時回饋」：`BrandMark` 26px、首字母方塊、作用中 teal 底、tooltip 全名與路徑、角落紅點／琥珀點、探測中 spinner、錯誤態點擊開錯誤選單、「＋」虛線方塊、底部齒輪、`role=\"tablist\"` 與 `aria-label`、無計數徽章；i18n 加 `app.projectRail`）；刪除 `ProjectTabs.tsx` 與 `apps/desktop/src/__tests__/projectTabs.test.tsx`，其案例逐條搬到新測試。驗證：新增 `apps/desktop/src/__tests__/projectRail.test.tsx`——方塊順序與作用中 class、tooltip 內容（local 路徑、remote checkout 路徑、無 checkout 顯示 locator）、錯誤紅點與錯誤選單含「自專案列移除」、remote offline 琥珀點、`pendingKey` 方塊為 spinner 且 aria-label 含「正在切換」、「＋」觸發 `onOpen`、齒輪觸發 `onOpenSettings` 且 `settingsActive` 時作用中、方塊無任何計數文字；案例數不少於原 `projectTabs.test.tsx`；`npm test -w apps/desktop -- projectRail`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "bdf1d7ccb6d8cca5a5e898711c5be03af7b2ae57",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/projectTabs.test.tsx",
+        "apps/desktop/src/__tests__/remoteCapabilities.test.tsx",
+        "apps/desktop/src/__tests__/remoteResilience.test.tsx",
+        "apps/desktop/src/components/ProjectTabs.tsx",
+        "apps/desktop/src/__tests__/projectActionsMenu.test.tsx",
+        "apps/desktop/src/__tests__/projectRail.test.tsx",
+        "apps/desktop/src/components/ProjectActionsMenu.tsx",
+        "apps/desktop/src/components/ProjectRail.tsx"
+      ],
+      "recordedAt": "2026-10-09T00:59:55Z"
+    },
+    {
+      "taskId": "tsk_01M4DYW6GRW17QNA7YMFN6PB4F",
+      "taskDesc": "4.1 packages/ui 新增原語 `packages/ui/src/components/ui/page-header.tsx`（design D6）並匯出；`packages/ui/src/components/KanbanBoard.tsx` 新增選配 `title`／`description` props，提供時以 `PageHeader` 包住既有 `BoardSearchBar` 作為動作槽、不提供時渲染不變；`App.tsx` 傳入標題「變更」與說明（i18n 加 `board.pageDesc`）。驗證：新增 `packages/ui/src/__tests__/pageHeader.test.tsx`（標題 `text-2xl font-normal`、說明、動作槽）；`packages/ui/src/__tests__/kanban.test.tsx` 加兩案——傳 `title` 時出現 h2 且搜尋輸入仍存在於同一列、不傳時無 h2 且既有搜尋案例全部通過；`npm test -w packages/ui -- pageHeader kanban`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "bdf1d7ccb6d8cca5a5e898711c5be03af7b2ae57",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/components/KanbanBoard.tsx",
+        "packages/ui/src/__tests__/pageHeader.test.tsx",
+        "packages/ui/src/components/ui/page-header.tsx"
+      ],
+      "recordedAt": "2026-10-09T01:01:30Z"
+    },
+    {
+      "taskId": "tsk_01M4DYW6GRGFKYF5MFQCZ88MX4",
+      "taskDesc": "4.2 自 `apps/desktop/src/components/WorkspaceChooser.tsx` 抽出 `apps/desktop/src/components/RecentList.tsx`（design D7；spec「最近開啟清單」：`variant=\"dialog\" | \"card\"`、條目渲染、錯誤態、連線狀態、hover 才現的 ×、remote「遠端」籤；判定函式沿用 `recents.ts` 與 chooser 既有函式）；新增 `apps/desktop/src/components/EmptyWorkspace.tsx`（`Wordmark` 40px、標題、說明、「新增專案」與「連線 Server」兩鈕、`RecentList variant=\"card\"`、底部 CLI 提示）取代 `App.tsx` 零專案的 `EmptyState`；`store.ts` 的 `WorkspaceChooserIntent` 加 `initialStep?: \"server\"`，chooser 起始步驟判定合併；i18n 加 `app.connectServer`、`app.emptyCli`、`recent.title`、`chooser.remoteTag`，`app.emptyDesc` 改寫含初始化提示。驗證：新增 `apps/desktop/src/__tests__/recentList.test.tsx`（兩種 variant 外框、本機與 remote 條目文字與「遠端」籤、錯誤態、× 呼叫 `onRemove`）與 `emptyWorkspace.test.tsx`（`alt=\"Speclink\"` 字標、兩鈕各呼叫 callback 且「連線 Server」帶 `initialStep: \"server\"`、有記錄時卡存在、無記錄時不渲染區段）；`workspaceChooser.test.tsx` 既有最近開啟案例通過、新增「`initialStep: \"server\"` 起始於 Server 步驟」一案；`npm test -w apps/desktop -- recentList emptyWorkspace workspaceChooser`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "bdf1d7ccb6d8cca5a5e898711c5be03af7b2ae57",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/workspaceChooser.test.tsx",
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "apps/desktop/src/__tests__/emptyWorkspace.test.tsx",
+        "apps/desktop/src/__tests__/recentList.test.tsx",
+        "apps/desktop/src/components/EmptyWorkspace.tsx",
+        "apps/desktop/src/components/RecentList.tsx"
+      ],
+      "recordedAt": "2026-10-09T01:05:06Z"
+    },
+    {
+      "taskId": "tsk_01M4DYW6GRFHR7TE307G98WVTB",
+      "taskDesc": "5.2 詞彙收斂（design D9）：`apps/desktop/src/i18n/messages.ts` 兩語系的 26 處「Workspace」改「專案」／「project」（含 `app.addWorkspace`→「新增專案」、`chooser.sourceTitle`、`chooser.open`、`app.workspaceTabs`→「專案列」、`app.closeTab`→「關閉專案」、`app.removeTab`→「自專案列移除」、`chooser.conflictTitle`、`tray.recovery.*`、`remote.recovery.*`、`servers.openWorkspace`）與 4 處「工作區」；`openspec/LANGUAGE.md` 新增「專案（開啟的工作目錄）」詞條（avoid：Workspace、workspace、工作區、專案分頁）並把「Server」詞條定義文的「新增 Workspace」改「新增專案」；`docs/product-status.md`、`docs/product-status.zh-TW.md`、`docs/remote-getting-started.md`、`docs/remote-getting-started.zh-TW.md` 的 6 處同步。驗證：`grep -rn \"Workspace\\|工作區\\|專案分頁\" apps/desktop/src/i18n/messages.ts docs/*.md` 零命中；`apps/desktop/src/__tests__/messages.test.ts` 鍵集合相等案通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs`（詞彙守門含新 avoid 詞）綠；`npm test -w apps/desktop -- messages`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "bdf1d7ccb6d8cca5a5e898711c5be03af7b2ae57",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/remoteWorkspaceRecovery.test.tsx",
+        "apps/desktop/src/__tests__/serversPanel.test.tsx",
+        "apps/desktop/src/__tests__/workspace.test.ts",
+        "apps/desktop/src/adapter/workspace.ts",
+        "apps/desktop/src/components/ServersPanel.tsx",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/remote-getting-started.md",
+        "docs/remote-getting-started.zh-TW.md"
+      ],
+      "recordedAt": "2026-10-09T01:11:08Z"
+    },
+    {
+      "taskId": "tsk_01M4DYW6GR5GX1JVMQQYD03S50",
+      "taskDesc": "6.1 `apps/server-web/src/components/AdminNav.tsx` 改用 `@speclink/ui` 的 `NavItem asChild` 包 `NavLink`（刪除本地 `itemClass`），`apps/server-web/src/layouts/ConsoleLayout.tsx` 側欄 `bg-card` 改 `bg-sidebar`（design D4／D10）。驗證：`apps/server-web/src/__tests__/admin-console-shell.test.tsx` 的作用中斷言改為 `text-primary` 且六個目的地與 Sheet 版導覽案例通過；`npm test -w apps/server-web -- admin-console-shell`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "bdf1d7ccb6d8cca5a5e898711c5be03af7b2ae57",
+      "touchedFiles": [
+        "apps/server-web/src/__tests__/admin-console-shell.test.tsx",
+        "apps/server-web/src/components/AdminNav.tsx",
+        "apps/server-web/src/layouts/ConsoleLayout.tsx"
+      ],
+      "recordedAt": "2026-10-09T01:12:07Z"
+    },
+    {
+      "taskId": "tsk_01M4DYW6GR32HA29FW4BR5KFC2",
+      "taskDesc": "6.3 全部對齊：`./target/debug/speclink validate desktop-shell-redesign` 通過；`npm test -w packages/ui`、`npm test -w apps/desktop`、`npm test -w apps/server-web` 全綠；`cargo test -p speclink-desktop-core`、`cargo check -p speclink-desktop` 通過；`npm run build -w apps/desktop`、`npm run build -w apps/server-web` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "bdf1d7ccb6d8cca5a5e898711c5be03af7b2ae57",
+      "touchedFiles": [
+        "apps/desktop/src/main.tsx",
+        "apps/desktop/src/panel/TrayPanel.tsx"
+      ],
+      "recordedAt": "2026-10-09T02:30:28Z"
+    }
+  ]
+}

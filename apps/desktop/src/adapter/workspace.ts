@@ -240,9 +240,9 @@ export function createRemoteSettings(
           expectedRevision: expectedRevision(),
         }),
       ),
-    forkSchema: () => Promise.reject(new Error("遠端工作區尚不支援 fork 產出流程")),
-    createSchema: () => Promise.reject(new Error("遠端工作區尚不支援建立產出流程")),
-    revealSchema: () => Promise.reject(new Error("遠端工作區沒有本機檔案可顯示")),
-    deleteSchema: () => Promise.reject(new Error("遠端工作區尚不支援刪除產出流程")),
+    forkSchema: () => Promise.reject(new Error("遠端專案尚不支援 fork 產出流程")),
+    createSchema: () => Promise.reject(new Error("遠端專案尚不支援建立產出流程")),
+    revealSchema: () => Promise.reject(new Error("遠端專案沒有本機檔案可顯示")),
+    deleteSchema: () => Promise.reject(new Error("遠端專案尚不支援刪除產出流程")),
   };
 }

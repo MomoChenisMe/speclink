@@ -316,7 +316,7 @@ describe("ServersPanel", () => {
   }
 
   function openWorkspaceChooser() {
-    fireEvent.click(screen.getByRole("button", { name: "開啟 workspace" }));
+    fireEvent.click(screen.getByRole("button", { name: "開啟專案" }));
   }
 
   it("已登入條目開啟統一 chooser 並預選該 connection", () => {

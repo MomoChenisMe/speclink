@@ -29,6 +29,7 @@ import {
   type WorkspaceSession,
 } from "./session";
 import { trayIconBytes } from "./trayIcon";
+import { detectPlatform } from "./platform";
 
 /** 系統匣互動樣式：由平台決定（macOS＝panel、其餘＝native-menu），panel 建立失敗時
     退回 native-menu——執行期狀態、不持久化（tray-macos-panel-only 拆除偏好）。 */
@@ -362,11 +363,9 @@ export interface TrayController {
   dispose: () => void;
 }
 
-/** 平台偵測：navigator.userAgent 判 macOS——無 os plugin，前端自足且可測。 */
+/** 平台偵測：沿用舊名，判定落在 platform.ts。 */
 export function detectMacOS(): boolean {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent || (navigator as { platform?: string }).platform || "";
-  return /Macintosh|Mac OS/i.test(ua);
+  return detectPlatform() === "macos";
 }
 
 /** 面板骨架條件（design D3）：探測中或整批載入在途，且尚無真值。與 App.tsx

@@ -81,6 +81,21 @@ describe("依角色裁切的主控台殼", () => {
     expect(within(nav).queryByText("帳號")).toBeNull();
   });
 
+  // design D4／D10：導覽項是共用 NavItem——作用中為主色淡底主色字（不再實心主色），側欄淡灰底。
+  it("作用中目的地為主色淡底主色字，其餘不是；側欄底色為 bg-sidebar", async () => {
+    renderAt("/admin", makeClient());
+    const nav = await screen.findByRole("navigation", { name: "管理導覽" });
+    expect(nav.className).toContain("bg-sidebar");
+    const overview = within(nav).getByRole("link", { name: "總覽" });
+    expect(overview.getAttribute("aria-current")).toBe("page");
+    expect(overview.className).toContain("text-primary");
+    expect(overview.className).toContain("bg-primary/12");
+    expect(overview.className).not.toContain("text-primary-foreground");
+    const users = within(nav).getByRole("link", { name: "使用者" });
+    expect(users.className).not.toContain("text-primary");
+    expect(users.getAttribute("aria-current")).toBeNull();
+  });
+
   it("header 呈現共用元件庫的橫式鎖版字標（spec「品牌資產只有一處」）", async () => {
     renderAt("/admin", makeClient());
     const banner = await screen.findByRole("banner");

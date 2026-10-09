@@ -1,15 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  Archive,
-  BookOpen,
-  CloudOff,
-  GitBranch,
-  FileText,
-  Settings,
-  SlidersHorizontal,
-  FolderOpen,
-} from "lucide-react";
+import { CloudOff, MoreHorizontal } from "lucide-react";
 import {
   KanbanBoard,
   ArchivedList,
@@ -24,14 +15,15 @@ import {
   Button,
   Checkbox,
   ConfirmDialog,
-  EmptyState,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
   I18nProvider,
   SEMANTIC_SURFACE,
   SEMANTIC_TONE,
   Toaster,
   cn,
   useI18n,
-  Wordmark,
   siblingChangesOf,
   discussionChipStage,
   type Verb,
@@ -40,7 +32,12 @@ import {
 import { createAppStore, openTicketStation } from "./store";
 import { locatorKey, type WorkspaceSession } from "./session";
 import { initTray, type TrayController } from "./tray";
-import { ProjectTabs } from "./components/ProjectTabs";
+import { ProjectRail, tabPathHint } from "./components/ProjectRail";
+import { ProjectColumn } from "./components/ProjectColumn";
+import { EmptyWorkspace } from "./components/EmptyWorkspace";
+import { ProjectActionItems, type ProjectActions } from "./components/ProjectActionsMenu";
+import { LeftTitleBar, MainTitleBar, type Crumb } from "./components/TitleBar";
+import { detectPlatform } from "./platform";
 import { WorkspaceChooser } from "./components/WorkspaceChooser";
 import { visibleRecents } from "./recents";
 import { MigrationDialog } from "./components/MigrationDialog";
@@ -54,6 +51,7 @@ import { ReleaseNotesDialog } from "./components/ReleaseNotesDialog";
 import { readLastSeenVersion, whatsNewDecision, writeLastSeenVersion } from "./core/whatsNew";
 import { RELEASE_NOTES, type ReleaseNotesEntry } from "./release-notes/release-notes";
 import type { CliInstallAdapter } from "./adapter/cliInstall";
+import type { FsActionsAdapter } from "./adapter/fsActions";
 import { ProjectSettingsView } from "./views/ProjectSettingsView";
 import type { ConnectionsAdapter } from "./adapter/connections";
 import type { WorkspaceAdapter } from "./adapter/workspace";
@@ -91,6 +89,8 @@ export interface AppProps {
   updater?: UpdaterAdapter;
   /** CLI 佈署面（desktop-app「安裝 CLI 指令到 PATH」）；未注入時 CLI 卡不啟用。 */
   cliInstall?: CliInstallAdapter;
+  /** 專案層檔案系統動作面（desktop-app「專案層檔案系統動作」）；未注入時選單動作不動作。 */
+  fsActions?: FsActionsAdapter;
 }
 
 const DEFAULT_MIGRATION_ADAPTER = createMigrationAdapter();
@@ -120,43 +120,6 @@ function BoldName({ text, name }: { text: string; name: string }) {
   );
 }
 
-function NavItem({
-  icon,
-  label,
-  active,
-  onClick,
-  trailing,
-  ariaLabel,
-  className,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  onClick?: () => void;
-  /** 尾隨元素（如計數徽章）；設 ariaLabel 使無障礙名稱不被徽章數字污染。 */
-  trailing?: React.ReactNode;
-  ariaLabel?: string;
-  /** 附加版面 class（如 mt-auto 沉底）；不影響既有樣式與行為。 */
-  className?: string;
-}) {
-  return (
-    <Button
-      variant="ghost"
-      aria-label={ariaLabel}
-      onClick={onClick}
-      className={`h-auto w-full justify-start gap-2 px-3 py-2 text-sm font-normal ${
-        active
-          ? "bg-primary text-primary-foreground font-medium hover:bg-primary hover:text-primary-foreground"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground"
-      }${className ? ` ${className}` : ""}`}
-    >
-      {icon}
-      {label}
-      {trailing && <span className="ml-auto">{trailing}</span>}
-    </Button>
-  );
-}
-
 /** 桌面 app 進入點：解析 UI 語言（偏好優先、null 跟隨系統）並掛 I18nProvider。 */
 export function App({
   createSession,
@@ -166,6 +129,7 @@ export function App({
   migration = DEFAULT_MIGRATION_ADAPTER,
   updater,
   cliInstall,
+  fsActions,
 }: AppProps) {
   const [localePref, setLocalePrefState] = useState<LocalePreference>(() => readLocalePreference());
   // 切換即時生效並持久化（設定頁的 UI 語言三選接這裡）。
@@ -187,6 +151,7 @@ export function App({
         migration={migration}
         updater={updater}
         cliInstall={cliInstall}
+        fsActions={fsActions}
         localePref={localePref}
         onLocalePrefChange={setLocalePref}
       />
@@ -210,6 +175,7 @@ function AppInner({
   migration,
   updater,
   cliInstall,
+  fsActions,
   localePref,
   onLocalePrefChange,
 }: AppInnerProps) {
@@ -223,8 +189,9 @@ function AppInner({
         migration,
         updater,
         cliInstall,
+        fsActions,
       }),
-    [createSession, openRemote, workspace, connections, migration, updater, cliInstall],
+    [createSession, openRemote, workspace, connections, migration, updater, cliInstall, fsActions],
   );
   const s = useStore();
   // 活躍 session（workspace-session 決策 6）：詳情／規格／封存抽屜的文件載入
@@ -445,9 +412,18 @@ function AppInner({
     };
   }, [useStore]);
 
-  // 鍵盤切換分頁：Ctrl+Tab 循環、Ctrl+1..9 直達（spec「專案分頁列存於 app 本機」）。
+  const platform = useMemo(() => detectPlatform(), []);
+  // 鍵盤切換分頁：Ctrl+Tab 循環、Ctrl+1..9 直達（spec「專案分頁列存於 app 本機」）；
+  // 專案動作選單標示的 ⌘R／Ctrl+R 重新整理、Ctrl+W 關閉專案（spec「專案層檔案系統動作」）。
+  // macOS 的 ⌘W 先被系統預設選單攔走（關閉視窗），由原生選單承接，這裡不接。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      if (key === "r" && (platform === "macos" ? e.metaKey : e.ctrlKey)) {
+        e.preventDefault();
+        void useStore.getState().refresh();
+        return;
+      }
       if (!e.ctrlKey) return;
       if (e.key === "Tab") {
         e.preventDefault();
@@ -455,11 +431,15 @@ function AppInner({
       } else if (e.key >= "1" && e.key <= "9") {
         e.preventDefault();
         void useStore.getState().gotoTab(Number(e.key));
+      } else if (key === "w" && platform !== "macos") {
+        e.preventDefault();
+        const { activeKey, closeTab } = useStore.getState();
+        if (activeKey) closeTab(activeKey);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [useStore]);
+  }, [useStore, platform]);
 
   const onRunVerb = (verb: Verb, change: string) => {
     if (verb === "archive") s.requestArchive(change);
@@ -535,278 +515,296 @@ function AppInner({
     return {};
   })();
 
+  // 殼（design D2）：標題列文字與麵包屑依模式——設定、有作用中專案、零專案（留白）。
+  // projectTab＝標題列要呈現的專案（設定模式時沒有）。
+  const projectTab = s.boardView === "settings" ? undefined : activeTab;
+  const connectionNames = Object.fromEntries(s.connections.map((c) => [c.id, c.name]));
+  const PAGE_LABEL_KEY: Record<Exclude<typeof s.boardView, "settings">, string> = {
+    board: "app.navChanges",
+    archived: "app.archived",
+    specs: "app.navSpecs",
+    manual: "app.navManual",
+    "project-settings": "app.navProjectSettings",
+  };
+  const crumbs: Crumb[] =
+    s.boardView === "settings"
+      ? [{ label: t("app.settingsTitle") }]
+      : projectTab
+        ? [
+            { label: projectTab.name, onClick: () => s.setBoardView("board") },
+            { label: t(PAGE_LABEL_KEY[s.boardView]) },
+          ]
+        : [];
+  const projectActions: ProjectActions = {
+    reveal: (key) => void s.revealProject(key),
+    openTerminal: (key) => void s.openProjectInTerminal(key),
+    openEditor: (key) => void s.openProjectInEditor(key),
+    copyPath: (key) => void s.copyProjectPath(key),
+    // 背景專案沒有載入中的資料可重整：切過去即重新載入。
+    refresh: (key) => (key === s.activeKey ? void s.refresh() : void s.activateTab(key)),
+    close: s.closeTab,
+  };
+
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
-      {/* 更新通知列（徵詢／下載中／待重啟／錯誤時浮出；其餘狀態不佔畫面） */}
-      <UpdateBanner
-        state={s.updater}
-        onAccept={() => void s.acceptUpdate()}
-        onDismiss={s.dismissUpdate}
-        onRelaunch={() => void s.relaunchToUpdate()}
-      />
-      {/* 頂欄 */}
-      <header className="flex items-center gap-3 px-4 h-12 border-b border-border shrink-0">
-        <Wordmark className="h-5" />
-        {workspace !== undefined ? (
-          // 專案分頁列取代「目前專案」佔位（design D10）：active 分頁即目前專案。
-          <ProjectTabs
+    <div className="flex h-screen overflow-hidden">
+      {/* 左側（design D2）：圖示列與專案欄共用一條 48px 標題列；零專案時只剩圖示列 */}
+      <div
+        className={cn(
+          "flex shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar",
+          s.tabs.length > 0 ? "w-[256px]" : "w-14",
+        )}
+      >
+        {/* 零專案時 56px 放不下文字（macOS 紅綠燈也佔住這段），「設定」只在麵包屑 */}
+        <LeftTitleBar
+          title={
+            s.boardView === "settings"
+              ? s.tabs.length > 0
+                ? t("app.settingsTitle")
+                : undefined
+              : projectTab?.name
+          }
+          path={projectTab && tabPathHint(projectTab, connectionNames, t)}
+          menu={
+            projectTab ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t("app.projectActions")}
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <ProjectActionItems
+                    menu="dropdown"
+                    tab={projectTab}
+                    platform={platform}
+                    actions={projectActions}
+                  />
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : undefined
+          }
+        />
+        <div className="flex min-h-0 flex-1">
+          <ProjectRail
             tabs={s.tabs}
             activeKey={s.activeKey}
             tabErrors={s.tabErrors}
             recoveryStates={s.remoteRecovery}
             connectionStates={sessionConnectionStates}
+            connectionNames={connectionNames}
             pendingKey={s.pendingTabKey}
+            platform={platform}
+            actions={projectActions}
             onActivate={(key) => void s.activateTab(key)}
-            onClose={s.closeTab}
             onOpen={() => s.openWorkspaceChooser()}
+            onOpenSettings={() => s.setBoardView("settings")}
+            settingsActive={s.boardView === "settings"}
           />
-        ) : (
-          <span className="text-xs text-muted-foreground px-2 py-0.5 rounded border border-border">
-            {t("app.currentProject")}
-          </span>
-        )}
-        <div className="flex-1" />
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-1.5 px-2 text-sm font-normal text-muted-foreground hover:text-foreground"
-          onClick={() => s.openWorkspaceChooser()}
-        >
-          <FolderOpen className="h-4 w-4" /> {t("app.addWorkspace")}
-        </Button>
-      </header>
-
-      {stale && connectionState && (
-        <div
-          role="status"
-          data-testid="remote-stale-banner"
-          data-connection-state={connectionState.state}
-          className={cn(
-            "flex min-h-10 shrink-0 items-center gap-2 border-b px-4 py-2",
-            SEMANTIC_SURFACE.warning,
-          )}
-        >
-          <CloudOff className={cn("h-4 w-4 shrink-0", SEMANTIC_TONE.warning)} />
-          <div className="min-w-0 text-xs">
-            <span className="font-semibold">
-              {connectionState.state === "needs-reauth"
-                ? t("remote.reauthTitle")
-                : t("remote.offlineTitle")}
-            </span>
-            <span className="ml-2 text-muted-foreground">
-              {connectionState.message ?? t("remote.staleHint")}
-            </span>
-          </div>
-          <span className="ml-auto rounded border border-border bg-background/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            stale
-          </span>
-          {connectionState.state === "needs-reauth" && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 bg-background/80 text-xs"
-              onClick={() => s.openConnectionReauth(connectionState.connectionId)}
-            >
-              {t("remote.reauthAction")}
-            </Button>
+          {s.tabs.length > 0 && (
+            <ProjectColumn
+              boardView={s.boardView}
+              archivedCount={s.archived.length}
+              onNavigate={s.setBoardView}
+            />
           )}
         </div>
-      )}
+      </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* 左側欄 */}
-        <aside className="w-[200px] shrink-0 border-r border-border bg-card p-2 flex flex-col gap-1">
-          <NavItem
-            icon={<GitBranch className="h-4 w-4" />}
-            label={t("app.navChanges")}
-            active={s.boardView === "board"}
-            onClick={() => s.setBoardView("board")}
-          />
-          {/* 已封存入口（獨立頁）：切頁語意，返回看板改點「變更」。 */}
-          <NavItem
-            icon={<Archive className="h-4 w-4" />}
-            label={t("app.archived")}
-            ariaLabel={t("app.archived")}
-            active={s.boardView === "archived"}
-            onClick={() => s.setBoardView("archived")}
-            trailing={
-              <span className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-muted text-muted-foreground text-[10px] tabular-nums">
-                {s.archived.length}
-              </span>
-            }
-          />
-          {/* 規格頁入口：切頁語意（與已封存頁同型），返回看板改點「變更」。 */}
-          <NavItem
-            icon={<FileText className="h-4 w-4" />}
-            label={t("app.navSpecs")}
-            active={s.boardView === "specs"}
-            onClick={() => s.setBoardView("specs")}
-          />
-          {/* 手冊頁入口（desktop-manual-page）：切頁語意同規格頁；無障礙標籤「手冊」。 */}
-          <NavItem
-            icon={<BookOpen className="h-4 w-4" />}
-            label={t("app.navManual")}
-            ariaLabel={t("app.navManual")}
-            active={s.boardView === "manual"}
-            onClick={() => s.setBoardView("manual")}
-          />
-          {/* 底部群組沉底：專案設定帶自動上邊距推至側欄底部、設定緊隨其後（design D5），
-              切頁與高亮語意不變。 */}
-          <NavItem
-            icon={<SlidersHorizontal className="h-4 w-4" />}
-            label={t("app.navProjectSettings")}
-            active={s.boardView === "project-settings"}
-            onClick={() => s.setBoardView("project-settings")}
-            className="mt-auto"
-          />
-          <NavItem
-            icon={<Settings className="h-4 w-4" />}
-            label={t("app.navSettings")}
-            active={s.boardView === "settings"}
-            onClick={() => s.setBoardView("settings")}
-          />
-        </aside>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <MainTitleBar platform={platform} crumbs={crumbs} />
+        {/* 更新通知列（徵詢／下載中／待重啟／錯誤時浮出；其餘狀態不佔畫面）。排在頂列之下：
+            頂列要與左側標題列同高，Windows 的自繪視窗鈕要留在右上角。 */}
+        <UpdateBanner
+          state={s.updater}
+          onAccept={() => void s.acceptUpdate()}
+          onDismiss={s.dismissUpdate}
+          onRelaunch={() => void s.relaunchToUpdate()}
+        />
 
-        {/* 主內容：看板、規格頁、已封存頁填滿高度（清單於內部容器捲動、換頁控
-            制列沉底常駐）；設定頁維持整頁縱向捲動；手冊頁的三欄分隔線要貫穿
-            主內容全高，padding 由 ManualPage 各欄自管。flex 直欄（spec「提示
-            SHALL 只佔用自身高度」）：技能檔提示存在時，各視圖根節點（h-full
-            min-h-0）縮到扣除提示後的剩餘高度，而非被 overflow-hidden 裁掉底部 */}
-        <main
-          className={cn(
-            "flex flex-1 flex-col",
-            s.boardView === "manual" ? "p-0" : "p-5",
-            s.boardView === "settings" || s.boardView === "project-settings"
-              ? "overflow-y-auto"
-              : "overflow-hidden",
-          )}
-        >
-          {/* 技能檔提示（spec「指令檔過期提示」、決策 7）：per 專案、分頁內容頂部、
-              非阻斷；應用程式設定頁不屬專案語境故不掛。包裹層 shrink-0：提示只佔
-              自身高度。捲動釘選也住在包裹層：sticky 只能在包住它的區塊內移動，
-              提示自帶 sticky 會被剛好等高的包裹層鎖死；包裹層是 main 這個捲動容器
-              的直接子節點，才釘得住專案設定頁整段捲動。包裹層帶頁面底色：提示的
-              mb-4 落在包裹層內側，釘住時那 1rem 才不是透出內容的透明帶。手冊視圖
-              的 main 無 padding，提示存在時自補。 */}
-          {s.boardView !== "settings" && (
+          {stale && connectionState && (
             <div
+              role="status"
+              data-testid="remote-stale-banner"
+              data-connection-state={connectionState.state}
               className={cn(
-                "sticky top-0 z-10 shrink-0 bg-background",
-                s.boardView === "manual" && s.assetPrompt && "px-5 pt-5",
+                "flex min-h-10 shrink-0 items-center gap-2 border-b px-4 py-2",
+                SEMANTIC_SURFACE.warning,
               )}
             >
-              <AssetUpdatePrompt
-                prompt={s.assetPrompt}
-                error={s.assetUpdateError}
-                busy={s.assetUpdating}
-                onApply={() => void s.applyAssetUpdate()}
-                onDismiss={s.dismissAssetPrompt}
-              />
+              <CloudOff className={cn("h-4 w-4 shrink-0", SEMANTIC_TONE.warning)} />
+              <div className="min-w-0 text-xs">
+                <span className="font-semibold">
+                  {connectionState.state === "needs-reauth"
+                    ? t("remote.reauthTitle")
+                    : t("remote.offlineTitle")}
+                </span>
+                <span className="ml-2 text-muted-foreground">
+                  {connectionState.message ?? t("remote.staleHint")}
+                </span>
+              </div>
+              <span className="ml-auto rounded border border-border bg-background/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                stale
+              </span>
+              {connectionState.state === "needs-reauth" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 bg-background/80 text-xs"
+                  onClick={() => s.openConnectionReauth(connectionState.connectionId)}
+                >
+                  {t("remote.reauthAction")}
+                </Button>
+              )}
             </div>
           )}
-          {s.boardView === "settings" ? (
-            <AppSettingsView
-              localePref={localePref}
-              onLocalePrefChange={onLocalePrefChange}
-              trayPanelError={s.trayPanelError}
-              servers={servers}
-              focusConnectionId={s.reauthConnectionId}
-              updater={
-                updater && {
-                  state: s.updater,
-                  currentVersion,
-                  onCheck: () => void s.checkForUpdates(true),
-                  onShowReleaseNotes: () => setReleaseNotes({ mode: "browse" }),
+
+          {/* 主內容：看板、規格頁、已封存頁填滿高度（清單於內部容器捲動、換頁控
+              制列沉底常駐）；設定頁維持整頁縱向捲動；手冊頁的三欄分隔線要貫穿
+              主內容全高，padding 由 ManualPage 各欄自管。flex 直欄（spec「提示
+              SHALL 只佔用自身高度」）：技能檔提示存在時，各視圖根節點（h-full
+              min-h-0）縮到扣除提示後的剩餘高度，而非被 overflow-hidden 裁掉底部 */}
+          <main
+            className={cn(
+              "flex flex-1 flex-col",
+              s.boardView === "manual" ? "p-0" : "p-5",
+              s.boardView === "settings" || s.boardView === "project-settings"
+                ? "overflow-y-auto"
+                : "overflow-hidden",
+            )}
+          >
+            {/* 技能檔提示（spec「指令檔過期提示」、決策 7）：per 專案、分頁內容頂部、
+                非阻斷；應用程式設定頁不屬專案語境故不掛。包裹層 shrink-0：提示只佔
+                自身高度。捲動釘選也住在包裹層：sticky 只能在包住它的區塊內移動，
+                提示自帶 sticky 會被剛好等高的包裹層鎖死；包裹層是 main 這個捲動容器
+                的直接子節點，才釘得住專案設定頁整段捲動。包裹層帶頁面底色：提示的
+                mb-4 落在包裹層內側，釘住時那 1rem 才不是透出內容的透明帶。手冊視圖
+                的 main 無 padding，提示存在時自補。 */}
+            {s.boardView !== "settings" && (
+              <div
+                className={cn(
+                  "sticky top-0 z-10 shrink-0 bg-background",
+                  s.boardView === "manual" && s.assetPrompt && "px-5 pt-5",
+                )}
+              >
+                <AssetUpdatePrompt
+                  prompt={s.assetPrompt}
+                  error={s.assetUpdateError}
+                  busy={s.assetUpdating}
+                  onApply={() => void s.applyAssetUpdate()}
+                  onDismiss={s.dismissAssetPrompt}
+                />
+              </div>
+            )}
+            {s.boardView === "settings" ? (
+              <AppSettingsView
+                localePref={localePref}
+                onLocalePrefChange={onLocalePrefChange}
+                trayPanelError={s.trayPanelError}
+                servers={servers}
+                focusConnectionId={s.reauthConnectionId}
+                updater={
+                  updater && {
+                    state: s.updater,
+                    currentVersion,
+                    onCheck: () => void s.checkForUpdates(true),
+                    onShowReleaseNotes: () => setReleaseNotes({ mode: "browse" }),
+                  }
                 }
-              }
-              cliInstall={
-                s.cliInstall
-                  ? { view: s.cliInstall, onInstall: () => void s.installCli() }
-                  : undefined
-              }
-            />
-          ) : workspace !== undefined && s.tabs.length === 0 ? (
-            // 零分頁（首次使用）：專案範圍頁面落入空狀態引導頁（取代空看板）；應用程式設定已於上方先行處理。
-            <EmptyState
-              icon={FolderOpen}
-              title={t("app.emptyTitle")}
-              description={t("app.emptyDesc")}
-              action={
-                <Button className="gap-1.5" onClick={() => s.openWorkspaceChooser()}>
-                  <FolderOpen className="h-4 w-4" /> {t("app.addWorkspace")}
-                </Button>
-              }
-              className="h-full"
-            />
-          ) : activeRecoveryTab && activeRecovery && activeRecoveryConnectionId ? (
-            <RemoteWorkspaceRecovery
-              tab={activeRecoveryTab}
-              recovery={activeRecovery}
-              connection={activeRecoveryConnection}
-              onRetry={() => void s.retryRemoteWorkspace(locatorKey(activeRecoveryTab.locator))}
-              onOpenSettings={() => s.openConnectionReauth(activeRecoveryConnectionId)}
-              onReauthenticate={() => s.openConnectionReauth(activeRecoveryConnectionId)}
-              onRemove={() => s.closeTab(locatorKey(activeRecoveryTab.locator))}
-            />
-          ) : s.boardView === "project-settings" && activeSession !== undefined ? (
-            <ProjectSettingsView settings={activeSession.settings} />
-          ) : s.boardView === "manual" ? (
-            <ManualPage
-              index={s.manual}
-              loadPage={(slug) => dataSource?.getManualPage(slug) ?? Promise.resolve(null)}
-              onOpenSpec={s.openSpec}
-              capabilities={s.specs.map((spec) => spec.id)}
-              refreshGen={s.refreshGen}
-            />
-          ) : s.boardView === "specs" ? (
-            <SpecList specs={s.specs} onOpen={s.openSpec} focus={s.detailSpec} />
-          ) : s.boardView === "board" ? (
-            <KanbanBoard
-              changes={s.changes}
-              onOpenChange={s.openDetail}
-              onArchive={caps && !caps.archive ? undefined : s.requestArchive}
-              onRevert={s.requestRevert}
-              discussions={s.discussions}
-              archivedChanges={s.archived}
-              onOpenDiscussion={s.openDiscussion}
-              onArchiveDiscussion={
-                caps && !caps.archiveDiscussion ? undefined : s.requestArchiveDiscussion
-              }
-              query={s.boardQuery}
-              onQuery={s.setBoardQuery}
-              fulltextHits={s.searchHits}
-              searchUnavailableReason={
-                caps && !caps.searchWorkspace ? t("remote.searchUnavailable") : undefined
-              }
-              onReorder={
-                caps?.reorderCard
-                  ? (kind, id, prevId, nextId) => void s.reorderCard(kind, id, prevId, nextId)
-                  : undefined
-              }
-              reorderUnavailableReason={
-                caps && !caps.reorderCard ? writeDisabledReason : undefined
-              }
-              planError={s.planError}
-              onDragActiveChange={handleBoardDragActive}
-              // 骨架的前提是「首訪的載入正在進行」：探測中（pendingTabKey）或整批
-              // 載入中（loadingActive），且尚無真值。只看 loaded 會讓探測失敗或讀取
-              // 失敗的 workspace 永遠停在載入中——讀不到不等於還在讀。
-              loading={(s.pendingTabKey !== null || s.loadingActive) && !s.loaded}
-              // 首訪失敗的終態：讀不到 ≠ 確認是空的，故不落回空態文案。已有舊
-              // 快取（loaded）時照舊靜默沿用最後成功快照，不顯示提示。
-              loadFailed={!s.loaded && s.loadFailed}
-            />
-          ) : (
-            <ArchivedList
-              archived={s.archived}
-              query={s.query}
-              onQuery={s.setQuery}
-              archivedDiscussions={s.discussions.archived}
-              onOpen={s.openArchived}
-            />
-          )}
-        </main>
+                cliInstall={
+                  s.cliInstall
+                    ? { view: s.cliInstall, onInstall: () => void s.installCli() }
+                    : undefined
+                }
+              />
+            ) : workspace !== undefined && s.tabs.length === 0 ? (
+              // 零分頁（首次使用）：專案範圍頁面落入空狀態引導頁（取代空看板）；應用程式設定已於上方先行處理。
+              <EmptyWorkspace
+                recents={visibleRecents(s.recents, s.tabs)}
+                connections={s.connections}
+                onRefreshConnections={s.refreshConnections}
+                workspace={workspace}
+                connectionAdapter={connections ?? DISABLED_CHOOSER_CONNECTIONS}
+                onOpenLocal={s.openProjectAt}
+                onOpenRemote={s.openRemoteWorkspace}
+                onRemoveRecent={s.forgetRecent}
+                onOpenChooser={s.openWorkspaceChooser}
+              />
+            ) : activeRecoveryTab && activeRecovery && activeRecoveryConnectionId ? (
+              <RemoteWorkspaceRecovery
+                tab={activeRecoveryTab}
+                recovery={activeRecovery}
+                connection={activeRecoveryConnection}
+                onRetry={() => void s.retryRemoteWorkspace(locatorKey(activeRecoveryTab.locator))}
+                onOpenSettings={() => s.openConnectionReauth(activeRecoveryConnectionId)}
+                onReauthenticate={() => s.openConnectionReauth(activeRecoveryConnectionId)}
+                onRemove={() => s.closeTab(locatorKey(activeRecoveryTab.locator))}
+              />
+            ) : s.boardView === "project-settings" && activeSession !== undefined ? (
+              <ProjectSettingsView settings={activeSession.settings} />
+            ) : s.boardView === "manual" ? (
+              <ManualPage
+                index={s.manual}
+                loadPage={(slug) => dataSource?.getManualPage(slug) ?? Promise.resolve(null)}
+                onOpenSpec={s.openSpec}
+                capabilities={s.specs.map((spec) => spec.id)}
+                refreshGen={s.refreshGen}
+              />
+            ) : s.boardView === "specs" ? (
+              <SpecList specs={s.specs} onOpen={s.openSpec} focus={s.detailSpec} />
+            ) : s.boardView === "board" ? (
+              <KanbanBoard
+                title={t("app.navChanges")}
+                description={t("board.pageDesc")}
+                changes={s.changes}
+                onOpenChange={s.openDetail}
+                onArchive={caps && !caps.archive ? undefined : s.requestArchive}
+                onRevert={s.requestRevert}
+                discussions={s.discussions}
+                archivedChanges={s.archived}
+                onOpenDiscussion={s.openDiscussion}
+                onArchiveDiscussion={
+                  caps && !caps.archiveDiscussion ? undefined : s.requestArchiveDiscussion
+                }
+                query={s.boardQuery}
+                onQuery={s.setBoardQuery}
+                fulltextHits={s.searchHits}
+                searchUnavailableReason={
+                  caps && !caps.searchWorkspace ? t("remote.searchUnavailable") : undefined
+                }
+                onReorder={
+                  caps?.reorderCard
+                    ? (kind, id, prevId, nextId) => void s.reorderCard(kind, id, prevId, nextId)
+                    : undefined
+                }
+                reorderUnavailableReason={
+                  caps && !caps.reorderCard ? writeDisabledReason : undefined
+                }
+                planError={s.planError}
+                onDragActiveChange={handleBoardDragActive}
+                // 骨架的前提是「首訪的載入正在進行」：探測中（pendingTabKey）或整批
+                // 載入中（loadingActive），且尚無真值。只看 loaded 會讓探測失敗或讀取
+                // 失敗的 workspace 永遠停在載入中——讀不到不等於還在讀。
+                loading={(s.pendingTabKey !== null || s.loadingActive) && !s.loaded}
+                // 首訪失敗的終態：讀不到 ≠ 確認是空的，故不落回空態文案。已有舊
+                // 快取（loaded）時照舊靜默沿用最後成功快照，不顯示提示。
+                loadFailed={!s.loaded && s.loadFailed}
+              />
+            ) : (
+              <ArchivedList
+                archived={s.archived}
+                query={s.query}
+                onQuery={s.setQuery}
+                archivedDiscussions={s.discussions.archived}
+                onOpen={s.openArchived}
+              />
+            )}
+          </main>
       </div>
 
       {/* 富詳情抽屜（含互動任務） */}
@@ -979,6 +977,7 @@ function AppInner({
           onRemoveRecent={s.forgetRecent}
           initialConnectionId={s.workspaceChooser?.initialConnectionId}
           initialServerUrl={s.workspaceChooser?.initialServerUrl}
+          initialStep={s.workspaceChooser?.initialStep}
           initialScope={s.workspaceChooser?.initialScope}
           initialCheckoutPath={s.workspaceChooser?.initialCheckoutPath}
         />

@@ -1,0 +1,15 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Speclink",
+        "width": 1440,
+        "height": 900,
+        "center": true,
+        "decorations": false,
+        "shadow": true
+      }
+    ]
+  }
+}

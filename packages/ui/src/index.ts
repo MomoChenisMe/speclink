@@ -148,6 +148,24 @@ export {
   SelectItem,
 } from "./components/ui/select";
 export { Checkbox, type CheckboxProps } from "./components/ui/checkbox";
+export {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "./components/ui/dropdown-menu";
+export {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+} from "./components/ui/context-menu";
+export { Kbd, MenuShortcut } from "./components/ui/kbd";
+export { PageHeader } from "./components/ui/page-header";
 export { Textarea, type TextareaProps } from "./components/ui/textarea";
 export { Skeleton } from "./components/ui/skeleton";
 export {
@@ -171,6 +189,7 @@ export { CopyButton, type CopyButtonProps } from "./components/CopyButton";
 export { EmptyState, type EmptyStateProps } from "./components/EmptyState";
 export { SectionHeader, type SectionHeaderProps } from "./components/SectionHeader";
 export { BrandMark, Wordmark } from "./components/Brand";
+export { NavItem, type NavItemProps } from "./components/NavItem";
 export { ArchivedList, type ArchivedListProps } from "./components/ArchivedList";
 export { ArchivedDrawer, type ArchivedDrawerProps, type ArchivedTarget } from "./components/ArchivedDrawer";
 export { ReviewArchiveDialog, type ReviewArchiveDialogProps } from "./components/ReviewArchiveDialog";

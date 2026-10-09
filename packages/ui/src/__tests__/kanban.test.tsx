@@ -438,6 +438,32 @@ describe("KanbanBoard search（看板搜尋過濾卡片）", () => {
   });
 });
 
+// desktop-app「看板頁的頁標題區」（design D6）：title 選配；提供時搜尋與篩選落在標題同一列右端。
+describe("KanbanBoard 頁標題區", () => {
+  it("傳 title 時出現 h2 標題與說明，搜尋輸入在同一列", () => {
+    render(
+      <KanbanBoard
+        changes={changes}
+        query=""
+        onQuery={vi.fn()}
+        title="變更"
+        description="依生命週期分欄。"
+      />,
+    );
+    const heading = screen.getByRole("heading", { level: 2, name: "變更" });
+    const header = heading.closest("[data-page-header]") as HTMLElement;
+    expect(within(header).getByText("依生命週期分欄。")).toBeTruthy();
+    expect(within(header).getByPlaceholderText("搜尋看板卡片…")).toBeTruthy();
+  });
+
+  it("不傳 title 時無頁標題區，搜尋列照舊", () => {
+    render(<KanbanBoard changes={changes} query="" onQuery={vi.fn()} />);
+    expect(screen.queryByRole("heading", { name: "變更" })).toBeNull();
+    expect(document.querySelector("[data-page-header]")).toBeNull();
+    expect(screen.getByPlaceholderText("搜尋看板卡片…")).toBeTruthy();
+  });
+});
+
 describe("KanbanBoard 拖排（design D6）", () => {
   // 每欄可見卡的識別碼（視覺序）——resolveCardDrop 的輸入形狀。
   const cols: ColumnCards[] = [

@@ -52,6 +52,7 @@ import {
   type AssetPromptState,
 } from "./assetPrompt";
 import { detectMacOS, type TrayStyle } from "./tray";
+import { projectDirOf, type FsActionsAdapter } from "./adapter/fsActions";
 import {
   focusRecheckAllowed,
   focusRecheckDue,
@@ -139,6 +140,8 @@ export interface WorkspaceChooserIntent {
   initialScope?: { projectKey: string; repoKey: string } | null;
   /** 既有 marker 缺工具選集時，預填 checkout 資料夾路徑（chooser 直接 inspect）。 */
   initialCheckoutPath?: string | null;
+  /** 空狀態「連線 Server」入口：chooser 直接起始於 Server 步驟。 */
+  initialStep?: "server";
 }
 
 /** 設定頁 CLI 卡的呈現視圖（core 判定的彙整結果）。 */
@@ -341,6 +344,12 @@ export interface AppState {
   /** 由 Tray 顯式開啟問題詳情：選取既有 recovery destination，但不隱含重試。 */
   showRemoteWorkspaceRecovery: (key: string) => void;
   closeTab: (key: string) => void;
+  /** 專案層檔案系統動作（design D5）：作用於本機根或 remote checkout；無本機目錄時不動作。
+   * 成功靜默、失敗 toast（i18n 鍵查表，否則原文）。 */
+  revealProject: (key: string) => Promise<void>;
+  openProjectInTerminal: (key: string) => Promise<void>;
+  openProjectInEditor: (key: string) => Promise<void>;
+  copyProjectPath: (key: string) => Promise<void>;
   confirmInit: (tools: string[]) => Promise<void>;
   cancelInit: () => void;
   confirmAdopt: (tools: string[]) => Promise<void>;
@@ -482,6 +491,8 @@ export interface AppStoreDeps {
   updater?: UpdaterAdapter;
   /** CLI 佈署面（探測與計畫執行）；未注入時安裝 CLI 卡不啟用。 */
   cliInstall?: CliInstallAdapter;
+  /** 專案層檔案系統動作面（design D5）；未注入時四個動作不動作。 */
+  fsActions?: FsActionsAdapter;
 }
 
 /**
@@ -547,8 +558,21 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     migration,
     updater: updaterAdapter,
     cliInstall: cliInstallAdapter,
+    fsActions: fsActionsAdapter,
   } = deps;
   return create<AppState>((set, get) => {
+    /** 對分頁的本機目錄執行檔案系統動作；remote 無 checkout 時沒有本機目錄、不動作。 */
+    const runOnProjectDir = async (key: string, action: keyof FsActionsAdapter) => {
+      const tab = get().tabs.find((entry) => locatorKey(entry.locator) === key);
+      const dir = tab ? projectDirOf(tab.locator) : null;
+      if (!fsActionsAdapter || dir === null) return;
+      try {
+        await fsActionsAdapter[action](dir);
+      } catch (e) {
+        // appT 對未知鍵回原字串：i18n 鍵（fs.noEditor）查表、opener 原文照舊。
+        toast.error(appT(String(e)));
+      }
+    };
     // 全文查詢的去抖與 latest-wins 狀態（design D6）——閉包層、不進 store state。
     let searchSeq = 0;
     let searchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -864,7 +888,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           const fresh = locator.checkoutRoot
             ? await openRemote(connectionId, target, locator.checkoutRoot)
             : await openRemote(connectionId, target);
-          if (fresh.id !== key) throw new Error("重新連線後 workspace 身分不一致");
+          if (fresh.id !== key) throw new Error("重新連線後專案身分不一致");
           sessions[key] = fresh;
           delete tabErrors[key];
         } catch (error) {
@@ -1022,7 +1046,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           : await openRemote(connectionId, `${projectId}/${repoId}`);
         if (!isCurrentRemoteOpen(key, generation)) return;
         if (!get().tabs.some((candidate) => locatorKey(candidate.locator) === key)) return;
-        if (session.id !== key) throw new Error("重新連線後 workspace 身分不一致");
+        if (session.id !== key) throw new Error("重新連線後專案身分不一致");
 
         const tabs = get().tabs.map((candidate) =>
           locatorKey(candidate.locator) === key
@@ -2156,6 +2180,11 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       set({ recents });
       persistRecents(recents);
     },
+
+    revealProject: (key) => runOnProjectDir(key, "reveal"),
+    openProjectInTerminal: (key) => runOnProjectDir(key, "openTerminal"),
+    openProjectInEditor: (key) => runOnProjectDir(key, "openEditor"),
+    copyProjectPath: (key) => runOnProjectDir(key, "copyPath"),
 
     closeTab(key) {
       bumpRemoteOpenGeneration(key);

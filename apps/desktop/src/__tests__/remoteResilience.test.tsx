@@ -195,7 +195,11 @@ describe("remote offline stale snapshot", () => {
 
     expect((await screen.findByTestId("remote-stale-banner")).textContent).toContain("離線");
     expect(screen.getAllByText("remote-change").length).toBeGreaterThan(0);
-    expect(document.querySelector(`[data-cloud-off="${REMOTE_KEY}"]`)).toBeTruthy();
+    // 圖示列方塊：離線＝角落琥珀點。
+    const square = Array.from(document.querySelectorAll("[data-tab]")).find(
+      (el) => el.getAttribute("data-tab") === REMOTE_KEY,
+    );
+    expect(square?.querySelector('[data-tab-dot="warning"]')).toBeTruthy();
     expect((screen.getByRole("button", { name: "封存" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getAllByRole("checkbox")[0] as HTMLInputElement).disabled).toBe(true);
   });
@@ -285,7 +289,11 @@ describe("remote offline stale snapshot", () => {
 
     await screen.findByText("recovered-change");
     expect(screen.queryByTestId("remote-stale-banner")).toBeNull();
-    expect(document.querySelector(`[data-cloud-off="${REMOTE_KEY}"]`)).toBeNull();
+    const square = Array.from(document.querySelectorAll("[data-tab]")).find(
+      (el) => el.getAttribute("data-tab") === REMOTE_KEY,
+    );
+    expect(square).toBeTruthy();
+    expect(square?.querySelector("[data-tab-dot]")).toBeNull();
   });
 
   it("needs-reauth 導向聚焦登入，成功後依序 re-handshake 全部 remote sessions、重查並重掛 worker", async () => {

@@ -10,6 +10,9 @@ import type {
 
 import { createAppStore, openTicketStation, type AppState } from "../store";
 import type { ConnectionsAdapter } from "../adapter/connections";
+import type { FsActionsAdapter } from "../adapter/fsActions";
+import { APP_MESSAGES } from "../i18n/messages";
+import fsActionsRs from "../../core/src/fs_actions.rs?raw";
 import type { WorkspaceAdapter } from "../adapter/workspace";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 import { STALE_PROBE } from "./helpers/assetFixtures";
@@ -1203,7 +1206,7 @@ describe("app store (Zustand)", () => {
   ];
   describe.each(OPENERS)("open 動作清除可取消浮層：%s", (_name, open, drawerOpen) => {
     it.each<[string, Partial<AppState>]>([
-      ["新增 Workspace", { workspaceChooser: {} }],
+      ["新增專案", { workspaceChooser: {} }],
       ["初始化確認", { pendingInit: "/tmp/new-project" }],
       ["啟用確認", { pendingAdopt: "/tmp/old-project" }],
       ["封存確認", { pendingArchive: "desktop-shell-and-browser" }],
@@ -2301,5 +2304,112 @@ describe("手冊索引的重取（refreshManual）", () => {
     store.getState().openSpec("desktop-app");
     expect(store.getState().boardView).toBe("manual");
     expect(store.getState().detailSpec).toBe("desktop-app");
+  });
+});
+
+// desktop-app「專案層檔案系統動作」（design D5）：成功靜默、失敗 toast；
+// remote 無 checkout 時沒有本機目錄，四個動作都不碰檔案系統。
+describe("專案層檔案系統動作", () => {
+  beforeEach(() => {
+    toastError.mockReset();
+  });
+
+  function fakeFsActions(): { [K in keyof FsActionsAdapter]: ReturnType<typeof vi.fn> } {
+    return {
+      reveal: vi.fn().mockResolvedValue(undefined),
+      openTerminal: vi.fn().mockResolvedValue(undefined),
+      openEditor: vi.fn().mockResolvedValue(undefined),
+      copyPath: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  function storeWithTabs(fsActions = fakeFsActions()) {
+    const ds = fakeDataSource();
+    const store = trackedAppStore({
+      createSession: (root, name) => fakeSession(ds, root, name),
+      fsActions: fsActions as unknown as FsActionsAdapter,
+    });
+    store.setState({
+      tabs: [
+        { locator: { kind: "local", root: "/work/alpha" }, name: "alpha" },
+        {
+          locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "api" },
+          name: "Demo/api",
+        },
+        {
+          locator: {
+            kind: "remote",
+            connectionId: "c1",
+            projectId: "demo",
+            repoId: "web",
+            checkoutRoot: "/work/web",
+          },
+          name: "Demo/web",
+        },
+      ],
+    });
+    return { store, fsActions };
+  }
+
+  it("成功時四個動作都不呼叫 toast，路徑為專案根或 checkout", async () => {
+    const { store, fsActions } = storeWithTabs();
+    await store.getState().revealProject("local:/work/alpha");
+    await store.getState().openProjectInTerminal("local:/work/alpha");
+    await store.getState().openProjectInEditor("remote:c1/demo/web");
+    await store.getState().copyProjectPath("local:/work/alpha");
+    expect(fsActions.reveal).toHaveBeenCalledWith("/work/alpha");
+    expect(fsActions.openTerminal).toHaveBeenCalledWith("/work/alpha");
+    expect(fsActions.openEditor).toHaveBeenCalledWith("/work/web");
+    expect(fsActions.copyPath).toHaveBeenCalledWith("/work/alpha");
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("i18n 鍵的錯誤以對應文案顯示 toast（找不到終端機、找不到編輯器、目錄已不存在）", async () => {
+    const fsActions = fakeFsActions();
+    fsActions.openTerminal.mockRejectedValueOnce("fs.noTerminal").mockRejectedValueOnce("fs.dirMissing");
+    fsActions.openEditor.mockRejectedValue("fs.noEditor");
+    const { store } = storeWithTabs(fsActions);
+    await store.getState().openProjectInTerminal("local:/work/alpha");
+    await store.getState().openProjectInEditor("local:/work/alpha");
+    await store.getState().openProjectInTerminal("local:/work/alpha");
+    expect(toastError.mock.calls).toEqual([
+      ["找不到可用的終端機"],
+      ["找不到可用的編輯器（支援 VS Code、Cursor、Zed、Sublime）"],
+      ["專案目錄已不存在"],
+    ]);
+  });
+
+  it("「找不到編輯器」文案列出的編輯器與 Rust 候選清單同一份、同順序（兩語系）", () => {
+    // 增減編輯器時，Rust 清單、兩語系文案要一起改；漏改任一處這裡就紅。
+    const LABEL: Record<string, string> = { code: "VS Code", cursor: "Cursor", zed: "Zed", subl: "Sublime" };
+    const list = /Platform::MacOs \| Platform::Linux => \[([^\]]*)\]/.exec(fsActionsRs)?.[1] ?? "";
+    const labels = [...list.matchAll(/"([^"]+)"/g)].map(([, program]) => LABEL[program] ?? `?${program}`);
+    expect(labels.length).toBeGreaterThan(0);
+    expect(APP_MESSAGES["zh-TW"]["fs.noEditor"]).toBe(`找不到可用的編輯器（支援 ${labels.join("、")}）`);
+    expect(APP_MESSAGES.en["fs.noEditor"]).toBe(`No editor found (supports ${labels.join(", ")})`);
+  });
+
+  it("非 i18n 鍵的錯誤原樣顯示（如 opener 的路徑不存在）", async () => {
+    const fsActions = fakeFsActions();
+    fsActions.reveal.mockRejectedValue("No such file or directory (os error 2)");
+    fsActions.copyPath.mockRejectedValue(new Error("clipboard denied"));
+    const { store } = storeWithTabs(fsActions);
+    await store.getState().revealProject("local:/work/alpha");
+    await store.getState().copyProjectPath("local:/work/alpha");
+    expect(toastError.mock.calls).toEqual([
+      ["No such file or directory (os error 2)"],
+      ["Error: clipboard denied"],
+    ]);
+  });
+
+  it("remote 無 checkout 時四個動作都不呼叫檔案系統面", async () => {
+    const { store, fsActions } = storeWithTabs();
+    const key = "remote:c1/demo/api";
+    await store.getState().revealProject(key);
+    await store.getState().openProjectInTerminal(key);
+    await store.getState().openProjectInEditor(key);
+    await store.getState().copyProjectPath(key);
+    for (const action of Object.values(fsActions)) expect(action).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
   });
 });

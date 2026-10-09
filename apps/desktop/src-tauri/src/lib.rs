@@ -26,6 +26,7 @@
 pub mod cli_install;
 pub mod connections;
 pub mod event_manager;
+mod fs_actions;
 pub mod remote;
 pub mod tray;
 mod watch;
@@ -1890,6 +1891,8 @@ pub fn run() {
             fork_schema,
             init_schema,
             reveal_in_folder,
+            fs_actions::open_in_terminal,
+            fs_actions::open_in_editor,
             delete_schema,
             connection_list,
             connection_add,

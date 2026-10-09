@@ -33,6 +33,7 @@ import {
 } from "../search";
 import { changeStage, STAGE_BADGE, STAGE_BAR, STAGE_ICON, STAGES, type Stage } from "../stage";
 import { BoardSearchBar } from "./BoardSearchBar";
+import { PageHeader } from "./ui/page-header";
 import { ChangeCard } from "./ChangeCard";
 import { ColumnLoadFailed, ColumnSkeleton } from "./skeletons";
 import { DiscussionCard, DiscussionColumn, isCollapsedPromoted } from "./DiscussionColumn";
@@ -110,6 +111,10 @@ export interface KanbanBoardProps {
   /** 首訪整批載入以失敗收場：各欄卡片區顯示載入失敗提示，取代空態文案。
    * 讀不到 ≠ 確認是空的；loading 為真時不生效（重試在途，先畫骨架）。 */
   loadFailed?: boolean;
+  /** 頁標題（design D6）：提供時以頁標題區包住搜尋列（搜尋與篩選在標題同一列右端）；
+   * 缺席＝搜尋列照舊單獨一列。 */
+  title?: string;
+  description?: string;
 }
 
 function Column({
@@ -247,6 +252,8 @@ export function KanbanBoard({
   onDragActiveChange,
   loading,
   loadFailed,
+  title,
+  description,
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const { t } = useI18n();
@@ -366,6 +373,98 @@ export function KanbanBoard({
     onReorder?.(drop.kind, drop.id, drop.prevId, drop.nextId);
   };
 
+  const searchBar = showSearch && (
+    <BoardSearchBar
+      query={query}
+      onQuery={onQuery}
+      disabledReason={searchUnavailableReason}
+      hitCount={visibleChanges.length + (visibleDiscussions?.length ?? 0)}
+      filtersOpen={filtersOpen}
+      onToggleFilters={() => setFiltersOpen((v) => !v)}
+      onCloseFilters={() => setFiltersOpen(false)}
+      activeFilterCount={activeFilterCount}
+    >
+      {/* 篩選面板內容（design D5）：三維度選單直欄堆疊，選回「全部」即單獨清除。 */}
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-muted-foreground">{t("filter.createdBy")}</span>
+        <Select
+          value={filters.createdBy ?? FILTER_ALL}
+          onValueChange={(v) =>
+            setFilters({ ...filters, createdBy: v === FILTER_ALL ? null : v })
+          }
+        >
+          <SelectTrigger aria-label={t("filter.createdBy")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={FILTER_ALL}>{t("filter.all")}</SelectItem>
+            {creators.map((c) => (
+              <SelectItem key={c} value={c}>
+                {c}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-muted-foreground">{t("filter.createdWithin")}</span>
+        <Select
+          value={filters.createdWithin ?? FILTER_ALL}
+          onValueChange={(v) =>
+            setFilters({
+              ...filters,
+              createdWithin: (v === FILTER_ALL
+                ? null
+                : v) as BoardFilters["createdWithin"],
+            })
+          }
+        >
+          <SelectTrigger aria-label={t("filter.createdWithin")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={FILTER_ALL}>{t("filter.all")}</SelectItem>
+            <SelectItem value="7d">{t("filter.range7d")}</SelectItem>
+            <SelectItem value="30d">{t("filter.range30d")}</SelectItem>
+            <SelectItem value="earlier">{t("filter.rangeEarlier")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-muted-foreground">{t("filter.fromDiscussion")}</span>
+        <Select
+          value={filters.fromDiscussion ?? FILTER_ALL}
+          onValueChange={(v) =>
+            setFilters({ ...filters, fromDiscussion: v === FILTER_ALL ? null : v })
+          }
+        >
+          <SelectTrigger aria-label={t("filter.fromDiscussion")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={FILTER_ALL}>{t("filter.all")}</SelectItem>
+            {sourceDiscussions.map((d) => (
+              <SelectItem key={d.slug} value={d.slug}>
+                {d.slug}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      {activeFilterCount > 0 && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 justify-center text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => setFilters(EMPTY_FILTERS)}
+        >
+          {t("filter.clearAll")}
+        </Button>
+      )}
+    </BoardSearchBar>
+  );
+
   return (
     <DndContext
       sensors={sensors}
@@ -394,96 +493,14 @@ export function KanbanBoard({
           {planError}
         </div>
       )}
-      {showSearch && (
-        <BoardSearchBar
-          query={query}
-          onQuery={onQuery}
-          disabledReason={searchUnavailableReason}
-          hitCount={visibleChanges.length + (visibleDiscussions?.length ?? 0)}
-          filtersOpen={filtersOpen}
-          onToggleFilters={() => setFiltersOpen((v) => !v)}
-          onCloseFilters={() => setFiltersOpen(false)}
-          activeFilterCount={activeFilterCount}
-        >
-          {/* 篩選面板內容（design D5）：三維度選單直欄堆疊，選回「全部」即單獨清除。 */}
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">{t("filter.createdBy")}</span>
-            <Select
-              value={filters.createdBy ?? FILTER_ALL}
-              onValueChange={(v) =>
-                setFilters({ ...filters, createdBy: v === FILTER_ALL ? null : v })
-              }
-            >
-              <SelectTrigger aria-label={t("filter.createdBy")}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={FILTER_ALL}>{t("filter.all")}</SelectItem>
-                {creators.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">{t("filter.createdWithin")}</span>
-            <Select
-              value={filters.createdWithin ?? FILTER_ALL}
-              onValueChange={(v) =>
-                setFilters({
-                  ...filters,
-                  createdWithin: (v === FILTER_ALL
-                    ? null
-                    : v) as BoardFilters["createdWithin"],
-                })
-              }
-            >
-              <SelectTrigger aria-label={t("filter.createdWithin")}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={FILTER_ALL}>{t("filter.all")}</SelectItem>
-                <SelectItem value="7d">{t("filter.range7d")}</SelectItem>
-                <SelectItem value="30d">{t("filter.range30d")}</SelectItem>
-                <SelectItem value="earlier">{t("filter.rangeEarlier")}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">{t("filter.fromDiscussion")}</span>
-            <Select
-              value={filters.fromDiscussion ?? FILTER_ALL}
-              onValueChange={(v) =>
-                setFilters({ ...filters, fromDiscussion: v === FILTER_ALL ? null : v })
-              }
-            >
-              <SelectTrigger aria-label={t("filter.fromDiscussion")}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={FILTER_ALL}>{t("filter.all")}</SelectItem>
-                {sourceDiscussions.map((d) => (
-                  <SelectItem key={d.slug} value={d.slug}>
-                    {d.slug}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {activeFilterCount > 0 && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 justify-center text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => setFilters(EMPTY_FILTERS)}
-            >
-              {t("filter.clearAll")}
-            </Button>
-          )}
-        </BoardSearchBar>
+      {title ? (
+        <PageHeader
+          title={title}
+          description={description}
+          actions={searchBar && <div className="w-[22rem] max-w-full">{searchBar}</div>}
+        />
+      ) : (
+        searchBar
       )}
       {/* relative wrapper 供封存落點浮層錨定於「可視」右緣（design D8）——浮層
           在捲動容器之外、不進 flex 流，欄寬零變動且不隨水平捲動漂移。 */}

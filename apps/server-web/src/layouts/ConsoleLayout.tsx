@@ -67,7 +67,7 @@ export function ConsoleLayout({ children }: { children: ReactNode }) {
         {admin && !narrow && (
           <nav
             aria-label={t("shell.adminNav")}
-            className="w-[200px] shrink-0 overflow-y-auto border-r border-border bg-card p-2"
+            className="w-[200px] shrink-0 overflow-y-auto border-r border-border bg-sidebar p-2"
           >
             <AdminNav />
           </nav>

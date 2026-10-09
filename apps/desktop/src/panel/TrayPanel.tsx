@@ -476,7 +476,7 @@ export function TrayPanel({
       <div
         data-testid="panel-project-tabs"
         role="tablist"
-        aria-label={t("app.workspaceTabs")}
+        aria-label={t("app.projectRail")}
         className="flex gap-1 overflow-x-auto p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
           {tabs.map((tab) => {
