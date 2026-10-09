@@ -79,6 +79,14 @@ describe("BoardSearchBar（搜尋列，design D5）", () => {
     expect(document.activeElement).toBe(input);
   });
 
+  it("macOS 原生選單的「搜尋看板」以 speclink:focus-search 事件聚焦搜尋輸入", () => {
+    render(<Host />);
+    const input = screen.getByPlaceholderText("搜尋看板卡片…");
+    expect(document.activeElement).not.toBe(input);
+    fireEvent(window, new CustomEvent("speclink:focus-search"));
+    expect(document.activeElement).toBe(input);
+  });
+
   it("搜尋圖示呈現於輸入框內", () => {
     render(<Host />);
     expect(document.querySelector("svg.lucide-search")).toBeTruthy();

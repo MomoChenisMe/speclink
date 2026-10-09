@@ -12,6 +12,15 @@ describe("APP_MESSAGES", () => {
     expect(zh.length).toBeGreaterThan(0);
   });
 
+  it("macOS 原生選單的 menu.* 文案鍵兩語系各 36 個且集合相等（desktop-native-menu design D2）", () => {
+    const menuKeys = (locale: "zh-TW" | "en") =>
+      Object.keys(APP_MESSAGES[locale])
+        .filter((key) => key.startsWith("menu."))
+        .sort();
+    expect(menuKeys("zh-TW")).toHaveLength(36);
+    expect(menuKeys("zh-TW")).toEqual(menuKeys("en"));
+  });
+
   it("側欄手冊項的文案鍵存在於兩語系（LANGUAGE.md 用語「手冊」）", () => {
     expect(APP_MESSAGES["zh-TW"]["app.navManual"]).toBe("手冊");
     expect(APP_MESSAGES.en["app.navManual"]).toBe("Manual");

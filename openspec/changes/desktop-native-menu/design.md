@@ -1,6 +1,6 @@
 ## Context
 
-macOS 上 Tauri 2 在 app 未設定選單時給預設英文選單列；本 app 沒有任何 `set_menu` 或 JS 選單呼叫，選單列與 UI 語言脫節。系統匣（`apps/desktop/src/tray.ts`）已用 `@tauri-apps/api/menu` 的 `Menu.new`、`MenuItemOptions`／`PredefinedMenuItemOptions`／`SubmenuOptions` 從 i18n 字典建選單、以 `deps` 注入 Tauri 介面讓 `tray.test.ts` 用 mock 驗證，語言切換時重建。UI 語言在 `App.tsx` 的 `localePref` → `resolveUiLocale` → `I18nProvider`；`apps/desktop/src/i18n/runtime.ts` 的 `appT` 提供 store 層的翻譯。看板搜尋的 ⌘F 在 `packages/ui/src/components/BoardSearchBar.tsx` 以 `window` keydown 聚焦；⌃Tab／⌃1–9 在 `App.tsx` 的 keydown 監聽呼叫 store 的 `cycleTab`／`gotoTab`。更新日誌對話框是 `App.tsx` 本地 state（`setReleaseNotes`）。能力檔已有 `core:menu:default`（含 `allow-new`、`allow-set-as-app-menu`），沒有 `opener:allow-open-url`。
+macOS 上 Tauri 2 在 app 未設定選單時給預設英文選單列；本 app 沒有任何 `set_menu` 或 JS 選單呼叫，選單列與 UI 語言脫節。系統匣（`apps/desktop/src/tray.ts`）已用 `@tauri-apps/api/menu` 的 `Menu.new`、`MenuItemOptions`／`PredefinedMenuItemOptions`／`SubmenuOptions` 從 i18n 字典建選單、以 `deps` 注入 Tauri 介面讓 `tray.test.ts` 用 mock 驗證，語言切換時重建。UI 語言在 `App.tsx` 的 `localePref` → `resolveUiLocale` → `I18nProvider`；`apps/desktop/src/i18n/runtime.ts` 的 `appT` 提供 store 層的翻譯。看板搜尋的 ⌘F 在 `packages/ui/src/components/BoardSearchBar.tsx` 以 `window` keydown 聚焦；⌃Tab／⌃1–9 在 `App.tsx` 的 keydown 監聽呼叫 store 的 `cycleTab`／`gotoTab`。更新日誌對話框是 `App.tsx` 本地 state（`setReleaseNotes`）。能力檔已有 `core:menu:default`（含 `allow-new`、`allow-set-as-app-menu`），沒有 `opener:allow-open-url`。Rust 端已註冊 `tauri_plugin_opener`，但前端尚未安裝 `@tauri-apps/plugin-opener`，本刀補進 `apps/desktop/package.json`。
 
 討論結論寫「Rust MenuBuilder 自建」，本設計改走 JS 選單 API（理由見 D1），功能清單與語言行為與結論一致。
 
@@ -29,11 +29,12 @@ macOS 上 Tauri 2 在 app 未設定選單時給預設英文選單列；本 app �
 - `type AppMenuAction = "about" | "checkUpdates" | "settings" | "openProject" | "closeProject" | "installCli" | "viewBoard" | "viewArchived" | "viewSpecs" | "viewManual" | "viewProjectSettings" | "focusSearch" | "refresh" | "nextProject" | "bringAllToFront" | "helpManual" | "releaseNotes" | "github" | "reportIssue"`。
 - `buildAppMenuModel({ t, hasProject }): AppMenuModel`——六個 `{ id, text, items }`，項目為 `{ kind: "item", id, text, accelerator?, enabled, action }`、`{ kind: "predefined", item: "Services" | "Hide" | "HideOthers" | "ShowAll" | "Quit" | "Undo" | "Redo" | "Cut" | "Copy" | "Paste" | "SelectAll" | "Minimize" | "Maximize", text? }` 或 `{ kind: "separator" }`。
 - 內容與快捷鍵：Speclink＝about（「關於 Speclink」）、checkUpdates（「檢查更新…」）、separator、settings（「設定…」`CmdOrCtrl+,`）、separator、Services、separator、Hide（`Cmd+H`）、HideOthers（`Alt+Cmd+H`）、ShowAll、separator、Quit（`Cmd+Q`，文案「結束 Speclink」）；檔案＝openProject（「開啟專案…」`Cmd+O`）、closeProject（「關閉專案」`Cmd+W`，`enabled: hasProject`）、separator、installCli（「安裝 CLI…」）；編輯＝Undo、Redo、separator、Cut、Copy、Paste、SelectAll（文案取 `menu.edit.*` 鍵）；檢視＝viewBoard（「變更」`Cmd+1`）、viewArchived（「已封存」`Cmd+2`）、viewSpecs（「規格」`Cmd+3`）、viewManual（「手冊」`Cmd+4`）、viewProjectSettings（「專案設定」）、separator、focusSearch（「搜尋看板」`Cmd+F`）、refresh（「重新整理」`Cmd+R`）、separator、nextProject（「下一個專案」`Ctrl+Tab`）——檢視組全部 `enabled: hasProject`；視窗＝Minimize（`Cmd+M`）、Maximize（文案「縮放」）、separator、bringAllToFront（「全部移到最前」）；說明＝helpManual（「手冊」`enabled: hasProject`）、releaseNotes（「更新日誌」）、separator、github（「GitHub」）、reportIssue（「回報問題」）。
+- 預設項的快捷鍵（Hide `Cmd+H`、HideOthers `Alt+Cmd+H`、Quit `Cmd+Q`、Minimize `Cmd+M`，以及編輯組）由系統預設項自帶——Tauri 的 `PredefinedMenuItemOptions` 不接受 accelerator，模型的 predefined 項因此不帶快捷鍵；實際按鍵由手動驗收確認。
 - 文案鍵：`menu.app.about`、`menu.app.checkUpdates`、`menu.app.settings`、`menu.app.hide`、`menu.app.hideOthers`、`menu.app.showAll`、`menu.app.quit`、`menu.file.title`、`menu.file.openProject`、`menu.file.closeProject`、`menu.file.installCli`、`menu.edit.title`、`menu.edit.undo`、`menu.edit.redo`、`menu.edit.cut`、`menu.edit.copy`、`menu.edit.paste`、`menu.edit.selectAll`、`menu.view.title`、`menu.view.board`、`menu.view.archived`、`menu.view.specs`、`menu.view.manual`、`menu.view.projectSettings`、`menu.view.search`、`menu.view.refresh`、`menu.view.nextProject`、`menu.window.title`、`menu.window.minimize`、`menu.window.zoom`、`menu.window.bringAllToFront`、`menu.help.title`、`menu.help.manual`、`menu.help.releaseNotes`、`menu.help.github`、`menu.help.reportIssue`；兩語系鍵集合相等。
 
 ### D3 安裝與重建
 
-- `installAppMenu(deps: { isMacOS: () => boolean; t: (key) => string; hasProject: boolean; dispatch: (action: AppMenuAction) => void; menuApi: { Menu, Submenu, MenuItem, PredefinedMenuItem } })` → 回傳 `{ rebuild({ t, hasProject }), dispose() }`。非 macOS 時 `rebuild` 與 `dispose` 為 no-op 且不呼叫 `menuApi`。每次 rebuild：以模型建 `Submenu`／`MenuItem`（`action: () => dispatch(id)`）／`PredefinedMenuItem`，`Menu.new({ items })` 後 `setAsAppMenu()`。
+- `installAppMenu(deps: { isMacOS: () => boolean; t: (key) => string; hasProject: boolean; dispatch: (action: AppMenuAction) => void; menuApi: { Menu } })` → 回傳 `{ rebuild({ t, hasProject }), dispose() }`。非 macOS 時 `rebuild` 與 `dispose` 為 no-op 且不呼叫 `menuApi`。每次 rebuild：與系統匣同一做法，把模型轉成 `SubmenuOptions`／`MenuItemOptions`（`action: () => dispatch(id)`）／`PredefinedMenuItemOptions` 的整棵選項物件，一次交給 `Menu.new({ items })`（一次 IPC 建好，不逐項 `.new()`）後 `setAsAppMenu()`；前後兩次 rebuild 依序執行，較舊的一次不會蓋掉較新的選單。
 - `App.tsx`：`useEffect` 於 `uiLocale` 與 `hasProject`（`activeKey !== null`）變化時呼叫 `rebuild`；卸載 `dispose`。`dispatch` 對照：about／installCli → `setBoardView("settings")`；checkUpdates → `checkForUpdates(true)` 後 `openSettingsUpdate()`（desktop-notice-relocation 提供；若尚未落地則 `setBoardView("settings")`，實作時以 store 是否有該動作判斷）；settings → `setBoardView("settings")`；openProject → `openWorkspaceChooser()`；closeProject → `closeTab(activeKey)`；viewBoard／viewArchived／viewSpecs／viewManual／viewProjectSettings／helpManual → `setBoardView(...)`；refresh → `refresh()`；nextProject → `cycleTab()`；focusSearch → `window.dispatchEvent(new CustomEvent("speclink:focus-search"))`；releaseNotes → `window.dispatchEvent(new CustomEvent("speclink:show-release-notes"))`，`App.tsx` 監聽後 `setReleaseNotes({ mode: "browse" })`；bringAllToFront → `getCurrentWindow().setFocus()`；github → `openUrl("https://github.com/MomoChenisMe/speclink")`；reportIssue → `openUrl("https://github.com/MomoChenisMe/speclink/issues/new")`。
 - `BoardSearchBar.tsx`：除既有 ⌘F keydown，另監聽 `speclink:focus-search` 事件聚焦輸入（原生快捷鍵由選單消費後 WebView 收不到 keydown）。
 - 能力檔：`capabilities/default.json` 加 `{ "identifier": "opener:allow-open-url", "allow": [{ "url": "https://github.com/MomoChenisMe/speclink*" }] }`。
@@ -54,7 +55,7 @@ cut 4 的「關於 Speclink」頁落地前，about 開應用程式設定頁；cu
 - `buildAppMenuModel({ t, hasProject })`、`installAppMenu(deps)`、`AppMenuAction`（D2）。
 - `window` 自訂事件：`speclink:focus-search`、`speclink:show-release-notes`（無 detail）。
 - i18n 新鍵 36 個（D2），兩語系鍵集合相等。
-- 能力檔新增一條 opener 權限。
+- 能力檔新增一條 opener 權限；`apps/desktop/package.json` 新增 `@tauri-apps/plugin-opener` 相依。
 
 **Failure modes**
 
@@ -64,7 +65,7 @@ cut 4 的「關於 Speclink」頁落地前，about 開應用程式設定頁；cu
 
 **Acceptance criteria**
 
-- `apps/desktop/src/__tests__/appMenu.test.ts`：模型六組與順序、每個快捷鍵、`hasProject=false` 時停用集合、zh-TW 與 en 文案各取自字典；`installAppMenu` 以 mock `menuApi` 驗證——macOS 時 `Menu.new` 與 `setAsAppMenu` 各呼叫一次、rebuild 再呼叫一次、項目 action 觸發 dispatch 對應 id；非 macOS 零呼叫。
+- `apps/desktop/src/__tests__/appMenu.test.ts`：模型六組與順序、每個自訂項目的快捷鍵與 Hide／HideOthers／Quit／Minimize 為系統預設項、`hasProject=false` 時停用集合、zh-TW 與 en 文案各取自字典；`installAppMenu` 以 mock `menuApi` 驗證——macOS 時 `Menu.new` 與 `setAsAppMenu` 各呼叫一次、rebuild 再呼叫一次、項目 action 觸發 dispatch 對應 id；非 macOS 零呼叫。
 - `App.test.tsx`：語言切換後 rebuild 被呼叫且文案為新語言；`speclink:show-release-notes` 事件開更新日誌對話框。
 - `packages/ui/src/__tests__/boardSearchBar.test.tsx`：派發 `speclink:focus-search` 後輸入取得焦點。
 - `messages.test.ts` 鍵集合相等；`npm test -w apps/desktop`、`npm test -w packages/ui` 綠。
@@ -72,7 +73,7 @@ cut 4 的「關於 Speclink」頁落地前，about 開應用程式設定頁；cu
 
 **Scope boundaries**
 
-- In：`appMenu.ts` 與測試、`App.tsx` 接線、`store.ts` 無新動作（只呼叫既有）、`BoardSearchBar` 事件監聽、i18n、能力檔一條。
+- In：`appMenu.ts` 與測試、`App.tsx` 接線、`store.ts` 無新動作（只呼叫既有）、`BoardSearchBar` 事件監聽、i18n、能力檔一條、`@tauri-apps/plugin-opener` 前端相依。
 - Out：Windows／Linux 選單、關於頁、系統匣、Rust 端。
 
 ## Risks / Trade-offs

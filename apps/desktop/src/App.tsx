@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { Menu } from "@tauri-apps/api/menu";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { CloudOff, MoreHorizontal } from "lucide-react";
+import { toast } from "sonner";
 import {
   KanbanBoard,
   ArchivedList,
@@ -32,6 +36,7 @@ import {
 import { createAppStore, openTicketStation } from "./store";
 import { locatorKey, type WorkspaceSession } from "./session";
 import { initTray, type TrayController } from "./tray";
+import { installAppMenu, type AppMenuAction, type AppMenuController } from "./appMenu";
 import { ProjectRail, tabPathHint } from "./components/ProjectRail";
 import { ProjectColumn } from "./components/ProjectColumn";
 import { EmptyWorkspace } from "./components/EmptyWorkspace";
@@ -94,6 +99,9 @@ export interface AppProps {
 }
 
 const DEFAULT_MIGRATION_ADAPTER = createMigrationAdapter();
+
+/** 說明選單的 GitHub 與回報問題目的地（能力檔的 opener 權限只放行這個前綴）。 */
+const REPO_URL = "https://github.com/MomoChenisMe/speclink";
 
 const DISABLED_CHOOSER_CONNECTIONS: Pick<
   ConnectionsAdapter,
@@ -440,6 +448,83 @@ function AppInner({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [useStore, platform]);
+
+  // macOS 原生選單列（desktop-native-menu design D3／D4）：安裝一次，語言或專案有無改變
+  // 時重建；非 macOS 由 installAppMenu 自行 no-op。選單動作只派發到 store 既有動作、
+  // 給看板搜尋列與更新日誌對話框的 window 事件，或外部瀏覽器。
+  const hasProject = s.activeKey !== null;
+  const appMenu = useRef<AppMenuController | null>(null);
+  useEffect(() => {
+    const openExternal = (url: string) => {
+      openUrl(url).catch((e) => toast.error(String(e)));
+    };
+    const dispatch = (action: AppMenuAction) => {
+      const st = useStore.getState();
+      switch (action) {
+        // 「關於」頁落地前（cut 4）先進應用程式設定頁。
+        case "about":
+        case "settings":
+        case "installCli":
+          return st.setBoardView("settings");
+        case "checkUpdates":
+          // 手動檢查的進度與結果呈現在設定頁的軟體更新卡。
+          st.setBoardView("settings");
+          return void st.checkForUpdates(true);
+        case "openProject":
+          return st.openWorkspaceChooser();
+        case "closeProject":
+          if (st.activeKey) st.closeTab(st.activeKey);
+          return;
+        case "viewBoard":
+          return st.setBoardView("board");
+        case "viewArchived":
+          return st.setBoardView("archived");
+        case "viewSpecs":
+          return st.setBoardView("specs");
+        case "viewManual":
+        case "helpManual":
+          return st.setBoardView("manual");
+        case "viewProjectSettings":
+          return st.setBoardView("project-settings");
+        case "focusSearch":
+          return void window.dispatchEvent(new CustomEvent("speclink:focus-search"));
+        case "refresh":
+          return void st.refresh();
+        case "nextProject":
+          return void st.cycleTab();
+        case "bringAllToFront":
+          return void getCurrentWindow().setFocus();
+        case "releaseNotes":
+          return void window.dispatchEvent(new CustomEvent("speclink:show-release-notes"));
+        case "github":
+          return openExternal(REPO_URL);
+        case "reportIssue":
+          return openExternal(`${REPO_URL}/issues/new`);
+      }
+    };
+    const menu = installAppMenu({
+      isMacOS: () => platform === "macos",
+      t,
+      hasProject,
+      dispatch,
+      menuApi: { Menu },
+    });
+    appMenu.current = menu;
+    return () => {
+      menu.dispose();
+      appMenu.current = null;
+    };
+    // 語言與專案有無的變化交給下方 rebuild，不重裝。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useStore, platform]);
+  useEffect(() => {
+    void appMenu.current?.rebuild({ t, hasProject });
+  }, [t, hasProject]);
+  useEffect(() => {
+    const show = () => setReleaseNotes({ mode: "browse" });
+    window.addEventListener("speclink:show-release-notes", show);
+    return () => window.removeEventListener("speclink:show-release-notes", show);
+  }, []);
 
   const onRunVerb = (verb: Verb, change: string) => {
     if (verb === "archive") s.requestArchive(change);

@@ -46,16 +46,22 @@ export function BoardSearchBar({
   const inputRef = useRef<HTMLInputElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   // 全域快捷鍵聚焦：macOS Cmd+F、其他平台 Ctrl+F（spec「快捷鍵聚焦搜尋輸入」）。
+  // macOS 原生選單吃掉 ⌘F 後 WebView 收不到 keydown，選單改派 speclink:focus-search。
   useEffect(() => {
     if (disabledReason !== undefined) return; // 停用時快捷鍵一併不掛。
+    const focus = () => inputRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
         e.preventDefault();
-        inputRef.current?.focus();
+        focus();
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("speclink:focus-search", focus);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("speclink:focus-search", focus);
+    };
   }, [disabledReason]);
   // 面板關閉路徑：Esc 與點擊面板外（開關鈕在 popoverRef 內，點它走 toggle 不誤關）。
   const close = onCloseFilters ?? onToggleFilters;
