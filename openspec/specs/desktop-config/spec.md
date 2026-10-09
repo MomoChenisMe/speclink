@@ -330,12 +330,12 @@ code:
 ---
 ### Requirement: UI 介面語言支援 zh-TW 與 en
 
-app 的 UI 介面語言 SHALL 支援 zh-TW 與 en：未設定偏好時 SHALL 跟隨系統語言（系統語言以 zh 開頭判為 zh-TW，其餘判為 en）；設定頁 SHALL 提供「跟隨系統／zh-TW／en」三選，切換 SHALL 即時對全介面生效並持久化於 app 本機。UI 語言偏好與 config.yaml 的 locale（AI artifacts 產出語言）SHALL 互不影響。兩語言字典的 key 集合 SHALL 相等；查無 key 時 SHALL 顯示 key 本身而非另一語言的字串。
+app 的 UI 介面語言 SHALL 支援 zh-TW 與 en:未設定偏好時 SHALL 跟隨系統語言(系統語言以 zh 開頭判為 zh-TW,其餘判為 en);設定頁 SHALL 提供「跟隨系統／zh-TW／en」三選,切換 SHALL 即時對全介面生效並持久化於 app 本機;macOS 的原生選單列 SHALL 同樣跟隨 UI 語言,切換時 SHALL 立即重建。UI 語言偏好與 config.yaml 的 locale(AI artifacts 產出語言)SHALL 互不影響。兩語言字典的 key 集合 SHALL 相等;查無 key 時 SHALL 顯示 key 本身而非另一語言的字串。
 
 #### Scenario: 未設定偏好時跟隨系統語言
 
 - **WHEN** app 於 UI 語言偏好未設定的狀態下啟動
-- **THEN** 系統語言以 zh 開頭時全介面呈現 zh-TW，否則呈現 en
+- **THEN** 系統語言以 zh 開頭時全介面(含 macOS 選單列)呈現 zh-TW,否則呈現 en
 
 ##### Example: 系統語言判定
 
@@ -349,76 +349,17 @@ app 的 UI 介面語言 SHALL 支援 zh-TW 與 en：未設定偏好時 SHALL 跟
 #### Scenario: 手動切換即時生效並持久化
 
 - **WHEN** 使用者於設定頁將 UI 語言由 zh-TW 切為 en
-- **THEN** 全介面（頂欄、側欄、看板、對話框）即時改為英文，重啟 app 後仍為英文，且 config.yaml 內容未被此操作改動
+- **THEN** 全介面(標題列、圖示列、專案欄、看板、對話框、macOS 選單列)即時改為英文,重啟 app 後仍為英文,且 config.yaml 內容未被此操作改動
 
 #### Scenario: UI 語言與 artifacts 產出語言互不影響
 
-- **WHEN** config.yaml 設定 locale: tw，使用者將 UI 語言切為 en
-- **THEN** UI 呈現英文，而 config.yaml 的 locale 仍為 tw（引擎產出 artifacts 的語言政策不受 UI 語言影響）
+- **WHEN** config.yaml 設定 locale: tw,使用者將 UI 語言切為 en
+- **THEN** UI 呈現英文,而 config.yaml 的 locale 仍為 tw(引擎產出 artifacts 的語言政策不受 UI 語言影響)
+
 
 <!-- @trace
-source: desktop-config-multiproject
-updated: 2026-07-07
-code:
-  - CLAUDE.md
-  - Cargo.lock
-  - apps/desktop/core/Cargo.toml
-  - apps/desktop/core/src/lib.rs
-  - apps/desktop/core/src/project.rs
-  - apps/desktop/core/src/settings.rs
-  - apps/desktop/package.json
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/capabilities/default.json
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/locale.test.ts
-  - apps/desktop/src/__tests__/messages.test.ts
-  - apps/desktop/src/__tests__/projectTabs.test.tsx
-  - apps/desktop/src/__tests__/settingsView.test.tsx
-  - apps/desktop/src/__tests__/tabs.test.ts
-  - apps/desktop/src/__tests__/workspace.test.ts
-  - apps/desktop/src/adapter/workspace.ts
-  - apps/desktop/src/components/ProjectTabs.tsx
-  - apps/desktop/src/i18n/locale.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/i18n/runtime.ts
-  - apps/desktop/src/main.tsx
-  - apps/desktop/src/store.ts
-  - apps/desktop/src/tabs.ts
-  - apps/desktop/src/views/SettingsView.tsx
-  - crates/speclink-core/src/config.rs
-  - package-lock.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/changeListItem.test.tsx
-  - packages/ui/src/__tests__/components.test.tsx
-  - packages/ui/src/__tests__/discussionColumn.test.tsx
-  - packages/ui/src/__tests__/discussionDrawer.test.tsx
-  - packages/ui/src/__tests__/i18n.test.tsx
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/__tests__/ui.test.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeBoard.tsx
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/ChangeList.tsx
-  - packages/ui/src/components/ChangeListItem.tsx
-  - packages/ui/src/components/DetailDrawer.tsx
-  - packages/ui/src/components/DiscussionColumn.tsx
-  - packages/ui/src/components/DiscussionDrawer.tsx
-  - packages/ui/src/components/DocumentViewer.tsx
-  - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/components/Markdown.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/components/ui/checkbox.tsx
-  - packages/ui/src/components/ui/select.tsx
-  - packages/ui/src/components/ui/tooltip.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
-  - packages/ui/src/stage.ts
+source: desktop-native-menu
+updated: 2026-10-09T21:29:17+08:00
 -->
 
 ---
