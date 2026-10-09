@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Menu } from "@tauri-apps/api/menu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { CloudOff, MoreHorizontal } from "lucide-react";
@@ -36,7 +35,7 @@ import {
 import { createAppStore, openTicketStation } from "./store";
 import { locatorKey, type WorkspaceSession } from "./session";
 import { initTray, type TrayController } from "./tray";
-import { installAppMenu, type AppMenuAction, type AppMenuController } from "./appMenu";
+import { installAppMenu, type AppMenuAction } from "./appMenu";
 import { ProjectRail, tabPathHint } from "./components/ProjectRail";
 import { ProjectColumn } from "./components/ProjectColumn";
 import { EmptyWorkspace } from "./components/EmptyWorkspace";
@@ -102,6 +101,12 @@ const DEFAULT_MIGRATION_ADAPTER = createMigrationAdapter();
 
 /** 說明選單的 GitHub 與回報問題目的地（能力檔的 opener 權限只放行這個前綴）。 */
 const REPO_URL = "https://github.com/MomoChenisMe/speclink";
+
+/** 關閉作用中專案（非 macOS 的 Ctrl+W 與原生選單「關閉專案」共用）。 */
+function closeActiveProject(store: ReturnType<typeof createAppStore>) {
+  const { activeKey, closeTab } = store.getState();
+  if (activeKey) closeTab(activeKey);
+}
 
 const DISABLED_CHOOSER_CONNECTIONS: Pick<
   ConnectionsAdapter,
@@ -441,19 +446,24 @@ function AppInner({
         void useStore.getState().gotoTab(Number(e.key));
       } else if (key === "w" && platform !== "macos") {
         e.preventDefault();
-        const { activeKey, closeTab } = useStore.getState();
-        if (activeKey) closeTab(activeKey);
+        closeActiveProject(useStore);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [useStore, platform]);
 
-  // macOS 原生選單列（desktop-native-menu design D3／D4）：安裝一次，語言或專案有無改變
-  // 時重建；非 macOS 由 installAppMenu 自行 no-op。選單動作只派發到 store 既有動作、
-  // 給看板搜尋列與更新日誌對話框的 window 事件，或外部瀏覽器。
+  // macOS 原生選單列（desktop-native-menu design D3／D4）：語言或專案有無改變時重裝，cleanup
+  // 取消尚未套用的上一次；非 macOS 由 installAppMenu 自行 no-op。選單動作只派發到 store 既有
+  // 動作、看板搜尋列的 window 事件、更新日誌對話框，或外部瀏覽器。
   const hasProject = s.activeKey !== null;
-  const appMenu = useRef<AppMenuController | null>(null);
+  // 不在看板時的「搜尋看板」：先切回看板，等搜尋列掛上（子元件的 effect 先於本元件）再聚焦。
+  const pendingSearchFocus = useRef(false);
+  useEffect(() => {
+    if (s.boardView !== "board" || !pendingSearchFocus.current) return;
+    pendingSearchFocus.current = false;
+    window.dispatchEvent(new CustomEvent("speclink:focus-search"));
+  }, [s.boardView]);
   useEffect(() => {
     const openExternal = (url: string) => {
       openUrl(url).catch((e) => toast.error(String(e)));
@@ -473,8 +483,10 @@ function AppInner({
         case "openProject":
           return st.openWorkspaceChooser();
         case "closeProject":
-          if (st.activeKey) st.closeTab(st.activeKey);
-          return;
+          // 系統匣面板（nonactivating NSPanel）在前景時 ⌘W 也會進到 app 選單：主視窗為焦點才關。
+          return void getCurrentWindow()
+            .isFocused()
+            .then((focused) => focused && closeActiveProject(useStore));
         case "viewBoard":
           return st.setBoardView("board");
         case "viewArchived":
@@ -487,7 +499,11 @@ function AppInner({
         case "viewProjectSettings":
           return st.setBoardView("project-settings");
         case "focusSearch":
-          return void window.dispatchEvent(new CustomEvent("speclink:focus-search"));
+          if (st.boardView === "board") {
+            return void window.dispatchEvent(new CustomEvent("speclink:focus-search"));
+          }
+          pendingSearchFocus.current = true;
+          return st.setBoardView("board");
         case "refresh":
           return void st.refresh();
         case "nextProject":
@@ -495,36 +511,15 @@ function AppInner({
         case "bringAllToFront":
           return void getCurrentWindow().setFocus();
         case "releaseNotes":
-          return void window.dispatchEvent(new CustomEvent("speclink:show-release-notes"));
+          return setReleaseNotes({ mode: "browse" });
         case "github":
           return openExternal(REPO_URL);
         case "reportIssue":
           return openExternal(`${REPO_URL}/issues/new`);
       }
     };
-    const menu = installAppMenu({
-      isMacOS: () => platform === "macos",
-      t,
-      hasProject,
-      dispatch,
-      menuApi: { Menu },
-    });
-    appMenu.current = menu;
-    return () => {
-      menu.dispose();
-      appMenu.current = null;
-    };
-    // 語言與專案有無的變化交給下方 rebuild，不重裝。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useStore, platform]);
-  useEffect(() => {
-    void appMenu.current?.rebuild({ t, hasProject });
-  }, [t, hasProject]);
-  useEffect(() => {
-    const show = () => setReleaseNotes({ mode: "browse" });
-    window.addEventListener("speclink:show-release-notes", show);
-    return () => window.removeEventListener("speclink:show-release-notes", show);
-  }, []);
+    return installAppMenu({ isMacOS: platform === "macos", t, hasProject, dispatch });
+  }, [useStore, platform, t, hasProject]);
 
   const onRunVerb = (verb: Verb, change: string) => {
     if (verb === "archive") s.requestArchive(change);
@@ -788,6 +783,7 @@ function AppInner({
             )}
             {s.boardView === "settings" ? (
               <AppSettingsView
+                platform={platform}
                 localePref={localePref}
                 onLocalePrefChange={onLocalePrefChange}
                 trayPanelError={s.trayPanelError}

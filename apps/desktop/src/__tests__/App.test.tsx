@@ -6,7 +6,9 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 
 import { App } from "../App";
+import { buildShortcutList } from "../appMenu";
 import { APP_MESSAGES } from "../i18n/messages";
+import { detectPlatform } from "../platform";
 import { RELEASE_NOTES } from "../release-notes/release-notes";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 import { STALE_PROBE } from "./helpers/assetFixtures";
@@ -32,23 +34,28 @@ vi.mock("@tauri-apps/api/app", () => ({
   getVersion: vi.fn().mockResolvedValue("0.1.0"),
 }));
 
-// macOS 原生選單（desktop-native-menu）：攔下 installAppMenu，取得 App 傳入的 deps
-// （dispatch、初始 t／hasProject）與每次 rebuild 的輸入；選單模型本身由 appMenu.test 承載。
-const { appMenuSpy } = vi.hoisted(() => ({
+// macOS 原生選單（desktop-native-menu）：攔下 installAppMenu，取得 App 每次安裝傳入的 deps
+// （dispatch、t、hasProject）與取消函式的呼叫；選單模型本身由 appMenu.test 承載。
+const { appMenuSpy, windowSpy } = vi.hoisted(() => ({
   appMenuSpy: {
     deps: [] as Array<Parameters<typeof import("../appMenu").installAppMenu>[0]>,
-    rebuild: vi.fn().mockResolvedValue(undefined),
-    dispose: vi.fn(),
+    cancel: vi.fn(),
   },
+  windowSpy: { isFocused: vi.fn(), setFocus: vi.fn() },
 }));
 vi.mock("../appMenu", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../appMenu")>()),
   installAppMenu: (deps: (typeof appMenuSpy.deps)[number]) => {
     appMenuSpy.deps.push(deps);
-    return { rebuild: appMenuSpy.rebuild, dispose: appMenuSpy.dispose };
+    return appMenuSpy.cancel;
   },
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn().mockResolvedValue(undefined) }));
+// 選單「關閉專案」只在主視窗為焦點時動作：jsdom 無 Tauri 視窗，以可控的焦點狀態模擬。
+vi.mock("@tauri-apps/api/window", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tauri-apps/api/window")>()),
+  getCurrentWindow: () => windowSpy,
+}));
 
 // 兩個抽屜的 pass-through spy：捕捉 props（驗證刷新世代下發）後照常渲染原元件；
 // Toaster 以 marker 驗證由 App 根層掛載，行為整合由 packages/ui 測試承載。
@@ -81,8 +88,8 @@ beforeEach(() => {
   drawerSpy.disc.length = 0;
   toasterSpy.mockClear();
   appMenuSpy.deps.length = 0;
-  appMenuSpy.rebuild.mockClear();
-  appMenuSpy.dispose.mockClear();
+  appMenuSpy.cancel.mockClear();
+  windowSpy.isFocused.mockReset().mockResolvedValue(true);
   // 各測試自行預置分頁持久化；先清掉避免跨測試洩漏。
   localStorage.removeItem("speclink.projectTabs");
   // 技能檔提示的「保留現狀」記憶也是 localStorage：清掉，免得一條測試按過
@@ -163,7 +170,11 @@ function makeSession(ds: SpeclinkDataSource, settings = fakeSettings()) {
  * 資料經活躍 session 的 dataSource 載入（App 無全域 dataSource）。 */
 function renderApp(
   ds: SpeclinkDataSource = fakeDataSource(),
-  over: { ws?: ReturnType<typeof fakeWorkspace>; settings?: ReturnType<typeof fakeSettings> } = {},
+  over: {
+    ws?: ReturnType<typeof fakeWorkspace>;
+    settings?: ReturnType<typeof fakeSettings>;
+    updater?: { check: Mock; relaunch: Mock };
+  } = {},
 ) {
   localStorage.setItem(
     "speclink.projectTabs",
@@ -178,7 +189,13 @@ function renderApp(
     ws.openProject = vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
   }
   const settings = over.settings ?? fakeSettings();
-  render(<App createSession={makeSession(ds, settings)} workspace={ws as never} />);
+  render(
+    <App
+      createSession={makeSession(ds, settings)}
+      workspace={ws as never}
+      updater={over.updater as never}
+    />,
+  );
   return { ds, ws, settings };
 }
 
@@ -1750,14 +1767,12 @@ describe("更新日誌彈窗接線（desktop-app「更新日誌彈窗」）", ()
     expect(localStorage.getItem(KEY)).toBe(TOP);
   });
 
-  it("macOS 原生選單的「更新日誌」以 speclink:show-release-notes 事件開瀏覽模式", async () => {
+  it("macOS 原生選單的「更新日誌」開瀏覽模式", async () => {
     localStorage.setItem(KEY, TOP);
     renderWithUpdater();
     await screen.findByTestId("left-titlebar");
     expect(screen.queryByTestId("release-notes-dialog")).toBeNull();
-    act(() => {
-      window.dispatchEvent(new CustomEvent("speclink:show-release-notes"));
-    });
+    act(() => appMenuSpy.deps[appMenuSpy.deps.length - 1].dispatch("releaseNotes"));
     const dialog = await screen.findByTestId("release-notes-dialog");
     expect(within(dialog).getByText("更新日誌")).toBeTruthy();
   });
@@ -2002,42 +2017,90 @@ describe("看板討論欄收合列的展開記憶接線（desktop-board-reskin�
 // 專案有無改變時 rebuild、選單動作派發到 store 既有動作或外部瀏覽器。
 describe("macOS 原生選單接線（desktop-app「macOS 原生選單」）", () => {
   const menuDeps = () => appMenuSpy.deps[appMenuSpy.deps.length - 1];
-  const lastRebuild = () =>
-    appMenuSpy.rebuild.mock.calls[appMenuSpy.rebuild.mock.calls.length - 1]?.[0] as
-      | { t: (key: string) => string; hasProject: boolean }
-      | undefined;
+  const searchInput = () => screen.getByPlaceholderText("搜尋看板卡片…");
 
-  it("切換 UI 語言後以新語言 rebuild", async () => {
+  it("切換 UI 語言後以新語言重裝選單（取消上一次），切回 zh-TW 變回繁中", async () => {
     renderApp();
     await screen.findByText("desktop-shell-and-browser");
     expect(menuDeps().t("menu.file.title")).toBe("檔案");
     fireEvent.click(settingsGear());
     fireEvent.mouseDown(await screen.findByRole("tab", { name: "本機設定" }));
+    const cancelsBefore = appMenuSpy.cancel.mock.calls.length;
     fireEvent.click(within(await screen.findByTestId("ui-locale")).getByText("English"));
-    await waitFor(() => expect(lastRebuild()?.t("menu.file.title")).toBe("File"));
+    await waitFor(() => expect(menuDeps().t("menu.file.title")).toBe("File"));
+    expect(appMenuSpy.cancel.mock.calls.length).toBeGreaterThan(cancelsBefore);
+    fireEvent.click(within(screen.getByTestId("ui-locale")).getByText("繁體中文"));
+    await waitFor(() => expect(menuDeps().t("menu.file.title")).toBe("檔案"));
   });
 
-  it("dispatch(\"viewSpecs\") 切到規格頁", async () => {
+  it("dispatch(\"viewSpecs\") 切到規格頁且專案欄「規格」為作用中；dispatch(\"viewBoard\") 回到看板", async () => {
     renderApp();
     await screen.findByText("desktop-shell-and-browser");
     act(() => menuDeps().dispatch("viewSpecs"));
     await waitFor(() => expect(screen.getByTestId("main-titlebar").textContent).toBe("proj-a/規格"));
+    expect(within(projectColumn()).getByRole("button", { name: "規格" }).className).toContain(
+      "bg-primary",
+    );
+    act(() => menuDeps().dispatch("viewBoard"));
+    await waitFor(() => expect(screen.getByTestId("main-titlebar").textContent).toBe("proj-a/變更"));
+    expect(document.querySelector('[data-column="ready"]')).toBeTruthy();
   });
 
-  it("零專案時 rebuild 收到 hasProject=false", async () => {
+  it("零專案時安裝收到 hasProject=false；dispatch(\"openProject\") 開新增專案對話框", async () => {
     render(<App createSession={makeSession(fakeDataSource())} workspace={fakeWorkspace() as never} />);
     expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
     expect(menuDeps().hasProject).toBe(false);
-    await waitFor(() => expect(lastRebuild()?.hasProject).toBe(false));
+    act(() => menuDeps().dispatch("openProject"));
+    const chooser = await screen.findByRole("alertdialog");
+    expect(within(chooser).getByRole("button", { name: /本機資料夾/ })).toBeTruthy();
   });
 
-  it("dispatch(\"closeProject\") 關掉作用中專案後 rebuild 收到 hasProject=false", async () => {
+  it("dispatch(\"closeProject\") 關掉作用中專案後重裝收到 hasProject=false", async () => {
     renderApp();
     await screen.findByText("desktop-shell-and-browser");
-    expect(lastRebuild()?.hasProject).toBe(true);
+    expect(menuDeps().hasProject).toBe(true);
     act(() => menuDeps().dispatch("closeProject"));
     expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
-    await waitFor(() => expect(lastRebuild()?.hasProject).toBe(false));
+    await waitFor(() => expect(menuDeps().hasProject).toBe(false));
+  });
+
+  it("主視窗不在焦點（系統匣面板在前景）時 dispatch(\"closeProject\") 不關專案", async () => {
+    windowSpy.isFocused.mockResolvedValue(false);
+    renderApp();
+    await screen.findByText("desktop-shell-and-browser");
+    act(() => menuDeps().dispatch("closeProject"));
+    await waitFor(() => expect(windowSpy.isFocused).toHaveBeenCalled());
+    await act(async () => {});
+    expect(screen.queryByText("開啟一個專案開始")).toBeNull();
+    expect(menuDeps().hasProject).toBe(true);
+  });
+
+  it("看板顯示時 dispatch(\"focusSearch\") 讓看板搜尋輸入取得焦點", async () => {
+    renderApp();
+    await screen.findByText("desktop-shell-and-browser");
+    act(() => menuDeps().dispatch("focusSearch"));
+    expect(document.activeElement).toBe(searchInput());
+  });
+
+  it("規格頁 dispatch(\"focusSearch\") 先切回看板再聚焦搜尋輸入", async () => {
+    renderApp();
+    await screen.findByText("desktop-shell-and-browser");
+    act(() => menuDeps().dispatch("viewSpecs"));
+    await waitFor(() => expect(screen.getByTestId("main-titlebar").textContent).toBe("proj-a/規格"));
+    act(() => menuDeps().dispatch("focusSearch"));
+    await waitFor(() => expect(document.activeElement).toBe(searchInput()));
+    expect(screen.getByTestId("main-titlebar").textContent).toBe("proj-a/變更");
+  });
+
+  it("dispatch(\"checkUpdates\") 進設定頁並執行手動檢查", async () => {
+    const updater = { check: vi.fn().mockResolvedValue(null), relaunch: vi.fn() };
+    renderApp(fakeDataSource(), { updater });
+    await screen.findByText("desktop-shell-and-browser");
+    const checksBefore = updater.check.mock.calls.length;
+    act(() => menuDeps().dispatch("checkUpdates"));
+    await waitFor(() => expect(updater.check.mock.calls.length).toBeGreaterThan(checksBefore));
+    expect(screen.getByTestId("main-titlebar").textContent).toBe("設定");
+    expect(await screen.findByTestId("updater-card")).toBeTruthy();
   });
 
   it("dispatch(\"github\")／dispatch(\"reportIssue\") 以 openUrl 開 repo 網址", async () => {
@@ -2061,4 +2124,32 @@ describe("macOS 原生選單接線（desktop-app「macOS 原生選單」）", ()
     await waitFor(() => expect(error).toHaveBeenCalledWith("no default browser"));
     error.mockRestore();
   });
+});
+
+// 快捷鍵卡與實際按鍵不漂移（desktop-native-menu design D5）：非 macOS 卡片的每一列，按下去
+// 都要有 App 的 keydown 或看板搜尋列接手（preventDefault）。改了按鍵卻沒改卡片時這裡會紅。
+describe("非 macOS 快捷鍵卡與 keydown 一致", () => {
+  const zhT = (key: string) => APP_MESSAGES["zh-TW"][key] ?? key;
+  const platform = detectPlatform();
+  /** 卡片按鍵字串轉成要按的鍵：`Ctrl+W` → w、`Ctrl+Tab` → Tab、`Ctrl+1–9` → 1 與 9。 */
+  const keysOf = (keys: string) => {
+    const key = keys.replace(/^Ctrl\+/, "");
+    if (key.includes("–")) return key.split("–");
+    return [key.length === 1 ? key.toLowerCase() : key];
+  };
+
+  it("jsdom 以非 macOS 平台渲染", () => {
+    expect(platform).not.toBe("macos");
+  });
+
+  it.each(buildShortcutList({ t: zhT, platform }).map((row) => [row.text, row.keys] as const))(
+    "「%s」%s 有人接手",
+    async (_text, keys) => {
+      renderApp();
+      await screen.findByText("desktop-shell-and-browser");
+      for (const key of keysOf(keys)) {
+        expect(fireEvent.keyDown(window, { key, ctrlKey: true })).toBe(false);
+      }
+    },
+  );
 });

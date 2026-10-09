@@ -46,7 +46,8 @@ export function BoardSearchBar({
   const inputRef = useRef<HTMLInputElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   // 全域快捷鍵聚焦：macOS Cmd+F、其他平台 Ctrl+F（spec「快捷鍵聚焦搜尋輸入」）。
-  // macOS 原生選單吃掉 ⌘F 後 WebView 收不到 keydown，選單改派 speclink:focus-search。
+  // macOS 的 ⌘F 也是這裡的 keydown 先收到（preventDefault 後原生選單不再觸發）；原生選單的
+  // 「搜尋看板」項目（點選，或不在看板時按 ⌘F）改派 speclink:focus-search。
   useEffect(() => {
     if (disabledReason !== undefined) return; // 停用時快捷鍵一併不掛。
     const focus = () => inputRef.current?.focus();

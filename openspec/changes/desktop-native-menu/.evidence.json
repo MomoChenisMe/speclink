@@ -36,6 +36,14 @@
         "apps/desktop/src/__tests__/App.test.tsx",
         "package-lock.json"
       ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.2 `apps/desktop/src/views/AppSettingsView.tsx` 加必填 prop `platform` 與本機設定簽最後一張「鍵盤快捷鍵」卡（`data-testid=\"shortcuts-card\"`，逐列動作名稱＋`Kbd` 按鍵，零專案照常顯示，design D5）；`apps/desktop/src/App.tsx` 傳入既有的 `platform`。驗證：`apps/desktop/src/__tests__/appSettingsView.test.tsx` 既有渲染點補 `platform`，並加——`platform=\"macos\"` 時本機設定簽最後一張卡標題為「鍵盤快捷鍵」、11 列、含 `⌘,` 與 `⌃1–9`；`platform=\"windows\"` 時 5 列、整張卡不含 `⌘`；`npm test -w apps/desktop -- appSettingsView App`。",
+      "files": [
+        "apps/desktop/src/__tests__/appSettingsView.test.tsx",
+        "apps/desktop/src/views/AppSettingsView.tsx"
+      ]
     }
   ],
   "entries": [
@@ -89,6 +97,18 @@
         "package-lock.json"
       ],
       "recordedAt": "2026-10-09T05:21:28Z"
+    },
+    {
+      "taskId": "tsk_01M4G50Z3RYFZGMCJPYPGWZCKS",
+      "taskDesc": "4.2 `apps/desktop/src/views/AppSettingsView.tsx` 加必填 prop `platform` 與本機設定簽最後一張「鍵盤快捷鍵」卡（`data-testid=\"shortcuts-card\"`，逐列動作名稱＋`Kbd` 按鍵，零專案照常顯示，design D5）；`apps/desktop/src/App.tsx` 傳入既有的 `platform`。驗證：`apps/desktop/src/__tests__/appSettingsView.test.tsx` 既有渲染點補 `platform`，並加——`platform=\"macos\"` 時本機設定簽最後一張卡標題為「鍵盤快捷鍵」、11 列、含 `⌘,` 與 `⌃1–9`；`platform=\"windows\"` 時 5 列、整張卡不含 `⌘`；`npm test -w apps/desktop -- appSettingsView App`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "104dc8633546bfc6be1a9258d9c5c8ecf738ebef",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/appSettingsView.test.tsx",
+        "apps/desktop/src/views/AppSettingsView.tsx"
+      ],
+      "recordedAt": "2026-10-09T11:22:40Z"
     }
   ]
 }

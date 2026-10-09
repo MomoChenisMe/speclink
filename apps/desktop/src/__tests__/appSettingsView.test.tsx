@@ -6,6 +6,7 @@ import { I18nProvider, SEMANTIC_TONE } from "@speclink/ui";
 import { AppSettingsView } from "../views/AppSettingsView";
 import { APP_MESSAGES } from "../i18n/messages";
 import type { CliInstallView } from "../store";
+import type { UpdaterState } from "../core/updater";
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider locale="zh-TW" messages={APP_MESSAGES}>
@@ -32,6 +33,7 @@ describe("AppSettingsView 資訊架構", () => {
   it("頁簽依序為本機設定、伺服器且預設本機設定，內容含介面語言卡與裝置本機註記", () => {
     render(
       <AppSettingsView
+        platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
         servers={servers}
@@ -52,6 +54,7 @@ describe("AppSettingsView 資訊架構", () => {
     const onLocalePrefChange = vi.fn();
     render(
       <AppSettingsView
+        platform="macos"
         localePref={null}
         onLocalePrefChange={onLocalePrefChange}
       />,
@@ -69,6 +72,7 @@ describe("AppSettingsView 資訊架構", () => {
   it("面板建立失敗時，本機設定簽以獨立警示行浮出錯誤", () => {
     render(
       <AppSettingsView
+        platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
         trayPanelError="tray panel window creation failed: boom"
@@ -85,13 +89,14 @@ describe("AppSettingsView 資訊架構", () => {
 
 describe("AppSettingsView 軟體更新卡", () => {
   it("未注入 updater 面時不出現更新卡", () => {
-    render(<AppSettingsView localePref={null} onLocalePrefChange={vi.fn()} />);
+    render(<AppSettingsView platform="macos" localePref={null} onLocalePrefChange={vi.fn()} />);
     expect(screen.queryByTestId("updater-card")).toBeNull();
   });
 
   it("更新卡常駐顯示目前版本號", () => {
     render(
       <AppSettingsView
+        platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
         updater={{ state: { phase: "idle" }, currentVersion: "0.1.0", onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
@@ -104,6 +109,7 @@ describe("AppSettingsView 軟體更新卡", () => {
     const onCheck = vi.fn();
     const { unmount } = render(
       <AppSettingsView
+        platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
         updater={{ state: { phase: "idle" }, onCheck, onShowReleaseNotes: vi.fn() }}
@@ -115,6 +121,7 @@ describe("AppSettingsView 軟體更新卡", () => {
 
     render(
       <AppSettingsView
+        platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
         updater={{ state: { phase: "checking", manual: true }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
@@ -128,6 +135,7 @@ describe("AppSettingsView 軟體更新卡", () => {
   it("手動檢查已最新顯示已是最新；檢查失敗顯示無法檢查更新", () => {
     const { unmount } = render(
       <AppSettingsView
+        platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
         updater={{ state: { phase: "upToDate" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
@@ -138,6 +146,7 @@ describe("AppSettingsView 軟體更新卡", () => {
 
     render(
       <AppSettingsView
+        platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
         updater={{ state: { phase: "checkFailed" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
@@ -149,6 +158,7 @@ describe("AppSettingsView 軟體更新卡", () => {
   it("發現新版時更新卡顯示目標版本", () => {
     render(
       <AppSettingsView
+        platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
         updater={{ state: { phase: "available", version: "0.2.0" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
@@ -161,6 +171,7 @@ describe("AppSettingsView 軟體更新卡", () => {
     // spec「錯誤態以紅呈現」：更新檢查失敗是錯誤，不是待辦提醒。
     const { unmount } = render(
       <AppSettingsView
+        platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
         updater={{ state: { phase: "checkFailed" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
@@ -171,6 +182,7 @@ describe("AppSettingsView 軟體更新卡", () => {
 
     render(
       <AppSettingsView
+        platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
         updater={{ state: { phase: "available", version: "0.2.0" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
@@ -197,7 +209,7 @@ function cliView(over: Partial<CliInstallView> = {}): CliInstallView {
 
 describe("AppSettingsView CLI 指令卡", () => {
   it("未注入 cliInstall 面時不出現 CLI 卡", () => {
-    render(<AppSettingsView localePref={null} onLocalePrefChange={vi.fn()} />);
+    render(<AppSettingsView platform="macos" localePref={null} onLocalePrefChange={vi.fn()} />);
     expect(screen.queryByTestId("cli-install-card")).toBeNull();
   });
 
@@ -205,6 +217,7 @@ describe("AppSettingsView CLI 指令卡", () => {
     const onInstall = vi.fn();
     render(
       <AppSettingsView
+        platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
         cliInstall={{ view: cliView(), onInstall }}
@@ -218,6 +231,7 @@ describe("AppSettingsView CLI 指令卡", () => {
   it("已安裝同版：顯示已安裝與版本、不出現安裝按鈕", () => {
     render(
       <AppSettingsView
+        platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
         cliInstall={{
@@ -236,6 +250,7 @@ describe("AppSettingsView CLI 指令卡", () => {
     const onInstall = vi.fn();
     render(
       <AppSettingsView
+        platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
         cliInstall={{
@@ -252,6 +267,7 @@ describe("AppSettingsView CLI 指令卡", () => {
   it("佈署目錄不在 PATH：提示加入方式", () => {
     render(
       <AppSettingsView
+        platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
         cliInstall={{
@@ -270,6 +286,7 @@ describe("AppSettingsView CLI 指令卡", () => {
   it("Windows 僅回報狀態：無安裝按鈕、顯示安裝器管理說明", () => {
     render(
       <AppSettingsView
+        platform="windows"
         localePref={null}
         onLocalePrefChange={vi.fn()}
         cliInstall={{
@@ -291,6 +308,7 @@ describe("AppSettingsView CLI 指令卡", () => {
   it("Linux 非 AppImage 執行僅回報狀態：無安裝按鈕、說明沒有可佈署的 CLI", () => {
     render(
       <AppSettingsView
+        platform="linux"
         localePref={null}
         onLocalePrefChange={vi.fn()}
         cliInstall={{
@@ -312,6 +330,7 @@ describe("AppSettingsView CLI 指令卡", () => {
   it("佈署失敗錯誤浮出於卡內", () => {
     render(
       <AppSettingsView
+        platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
         cliInstall={{
@@ -329,6 +348,7 @@ describe("AppSettingsView 更新日誌入口（desktop-app「更新日誌彈窗�
     const onShowReleaseNotes = vi.fn();
     render(
       <AppSettingsView
+        platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
         updater={{ state: { phase: "idle" }, onCheck: vi.fn(), onShowReleaseNotes }}
@@ -339,7 +359,89 @@ describe("AppSettingsView 更新日誌入口（desktop-app「更新日誌彈窗�
   });
 
   it("updater 未注入時「更新日誌」按鈕不存在", () => {
-    render(<AppSettingsView localePref={null} onLocalePrefChange={vi.fn()} />);
+    render(<AppSettingsView platform="macos" localePref={null} onLocalePrefChange={vi.fn()} />);
     expect(screen.queryByRole("button", { name: "更新日誌" })).toBeNull();
+  });
+});
+
+describe("AppSettingsView 鍵盤快捷鍵卡（desktop-native-menu design D5）", () => {
+  const localCards = () =>
+    Array.from(screen.getByRole("tabpanel").children)
+      .map((el) => el.getAttribute("data-testid") ?? "")
+      .filter((id) => id.endsWith("-card"));
+
+  it("macOS：本機設定簽最後一張卡為「鍵盤快捷鍵」，列出 11 列且含 ⌘, 與 ⌃1–9", () => {
+    render(
+      <AppSettingsView
+        platform="macos"
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        updater={{ state: { phase: "idle" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
+        cliInstall={{ view: cliView(), onInstall: vi.fn() }}
+      />,
+    );
+    const cards = localCards();
+    expect(cards[cards.length - 1]).toBe("shortcuts-card");
+    const card = screen.getByTestId("shortcuts-card");
+    expect(within(card).getByText("鍵盤快捷鍵")).toBeTruthy();
+    expect(within(card).getAllByRole("listitem")).toHaveLength(11);
+    expect(card.textContent).toContain("⌘,");
+    expect(card.textContent).toContain("⌃1–9");
+  });
+
+  it("en 介面：卡片標題為 Keyboard Shortcuts", () => {
+    rtlRender(<AppSettingsView platform="macos" localePref="en" onLocalePrefChange={vi.fn()} />, {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <I18nProvider locale="en" messages={APP_MESSAGES}>
+          {children}
+        </I18nProvider>
+      ),
+    });
+    expect(within(screen.getByTestId("shortcuts-card")).getByText("Keyboard Shortcuts")).toBeTruthy();
+  });
+
+  it("Windows：列出 5 列，整張卡沒有 ⌘", () => {
+    render(<AppSettingsView platform="windows" localePref={null} onLocalePrefChange={vi.fn()} />);
+    const card = screen.getByTestId("shortcuts-card");
+    expect(within(card).getAllByRole("listitem")).toHaveLength(5);
+    expect(card.textContent).not.toContain("⌘");
+  });
+});
+
+describe("AppSettingsView 手動檢查更新時顯示軟體更新卡（desktop-native-menu「檢查更新…」）", () => {
+  const view = (state: UpdaterState, focusConnectionId: string | null = null) => (
+    <AppSettingsView
+      platform="macos"
+      localePref={null}
+      onLocalePrefChange={vi.fn()}
+      servers={servers}
+      focusConnectionId={focusConnectionId}
+      updater={{ state, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
+    />
+  );
+  const activeTab = () =>
+    screen.getAllByRole("tab").find((tab) => tab.getAttribute("data-state") === "active")?.textContent;
+
+  it("停在伺服器簽時開始手動檢查，切回本機設定簽", () => {
+    const { rerender } = render(view({ phase: "idle" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "伺服器" }));
+    expect(activeTab()).toBe("伺服器");
+    rerender(view({ phase: "checking", manual: true }));
+    expect(activeTab()).toBe("本機設定");
+    expect(screen.getByTestId("updater-card")).toBeTruthy();
+  });
+
+  it("需要重新登入的導向（focusConnectionId）切到伺服器簽", () => {
+    const { rerender } = render(view({ phase: "idle" }));
+    expect(activeTab()).toBe("本機設定");
+    rerender(view({ phase: "idle" }, "conn-1"));
+    expect(activeTab()).toBe("伺服器");
+  });
+
+  it("背景自動檢查不切簽", () => {
+    const { rerender } = render(view({ phase: "idle" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "伺服器" }));
+    rerender(view({ phase: "checking", manual: false }));
+    expect(activeTab()).toBe("伺服器");
   });
 });
