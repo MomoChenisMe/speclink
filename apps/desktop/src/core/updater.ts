@@ -62,8 +62,11 @@ export function reduceUpdater(state: UpdaterState, event: UpdaterEvent): Updater
         ? { phase: "downloading", version: state.version }
         : state;
     case "dismissed":
-      // available＝稍後、error＝關閉錯誤提示；皆回閒置。
-      return state.phase === "available" || state.phase === "error" ? { phase: "idle" } : state;
+      // available＝稍後、error＝關閉錯誤提示、downloading＝取消（放棄本次同意；外掛的下載仍在
+      // 背景跑，其後到達的 downloaded／installFailed 在閒置態被忽略）；皆回閒置。
+      return state.phase === "available" || state.phase === "error" || state.phase === "downloading"
+        ? { phase: "idle" }
+        : state;
     case "downloaded":
       return state.phase === "downloading"
         ? { phase: "restartPending", version: state.version }

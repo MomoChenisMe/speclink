@@ -262,6 +262,24 @@ describe("ProjectRail", () => {
     }
   });
 
+  it("assetPrompts 有值的背景方塊：角落琥珀點、tooltip 附「技能檔需要處理」（spec「其他專案的狀況以琥珀點提示」）", async () => {
+    renderRail({
+      assetPrompts: {
+        [KEY_ALPHA]: null,
+        [KEY_BETA]: { kind: "stale", fileCount: 2, version: "v1.3.0", projectVersion: "v0.9.0" },
+      },
+    });
+    // 與 remote 離線點同一顆、同色；無狀況的方塊無點。
+    expect(square(KEY_BETA).querySelector("[data-tab-dot]")?.className).toContain("bg-status-warning");
+    expect(square(KEY_ALPHA).querySelector("[data-tab-dot]")).toBeNull();
+    expect(square(KEY_BETA).getAttribute("aria-label")).toContain("技能檔需要處理");
+    fireEvent.focus(square(KEY_BETA));
+    const tip = await screen.findByRole("tooltip");
+    expect(tip.textContent).toContain("技能檔需要處理");
+    // 文案不含版號：背景分頁的點是上次看過時的狀態。
+    expect(tip.textContent).not.toContain("v1.3.0");
+  });
+
   it("背景復原中的方塊：滑鼠與鍵盤皆可啟用，還原 spinner 為進行中色", () => {
     const onActivate = vi.fn();
     renderRail({

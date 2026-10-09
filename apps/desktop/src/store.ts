@@ -414,7 +414,11 @@ export interface AppState {
   gotoTab: (n: number) => Promise<void>;
 
   // --- 技能檔過期提示（desktop-instruction-staleness-prompt；決策 4/6/7） ---
-  /** 活躍本地分頁的提示現值（null＝不提示：現版、無法判定或已略過同版）。 */
+  /** 各分頁上次探測的提示（locator key → 值；null＝不提示）。只在分頁活躍時探測，
+   * 切走後保留上次結果供圖示列琥珀點用（desktop-notice-relocation design D1）。 */
+  assetPrompts: Record<string, AssetPromptState | null>;
+  /** 活躍分頁的提示現值——`assetPrompts[activeKey]` 的派生值（null＝不提示：現版、
+   * 無法判定或已略過同版）。 */
   assetPrompt: AssetPromptState | null;
   /** 更新失敗的單行訊息（呈現於提示原位、可重試）；成功或重查即清空。 */
   assetUpdateError: string | null;
@@ -443,6 +447,12 @@ export interface AppState {
   dismissUpdate: () => void;
   /** 套用完成後重啟為新版。 */
   relaunchToUpdate: () => Promise<void>;
+  /** 設定頁軟體更新卡的聚焦旗標（圖示列更新鈕、toast「查看」、較新態「更新 Speclink」舉旗；
+   * AppSettingsView 捲到卡後清回 false）。執行期狀態、不持久化。 */
+  focusUpdater: boolean;
+  /** 進設定頁並聚焦軟體更新卡（desktop-notice-relocation design D2／D4）。 */
+  openSettingsUpdate: () => void;
+  clearFocusUpdater: () => void;
 
   // --- 安裝 CLI 指令（desktop-app「安裝 CLI 指令到 PATH」；design D5） ---
   /** CLI 佈署狀態視圖（null＝尚未探測或無 adapter；執行期狀態、不持久化）。 */
@@ -632,6 +642,9 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     let pendingUpdate: PendingUpdate | null = null;
     // 上次真正進入檢查中的時刻（前景重檢的節流依據；design D2）——閉包層、不持久化。
     let lastCheckedAt: number | null = null;
+    // 已以 toast 提示過的目標版本（desktop-notice-relocation design D4：同一版本於 app 執行期間
+    // 只發一次）——閉包層、執行期記憶、不持久化。
+    let notifiedVersion: string | null = null;
     // 最後一次 CLI 佈署探測（installCli 取 home 與 sidecar 路徑）——閉包層。
     let lastCliProbe: Awaited<ReturnType<CliInstallAdapter["probe"]>> | null = null;
     // remote handshake 世代只屬目前 app 執行期；同 locator 僅最新結果可落地。
@@ -1812,6 +1825,15 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
             update ? { type: "updateFound", version: update.version } : { type: "noUpdate" },
           ),
         });
+        // 背景檢查（啟動或前景重檢）發現新版本：toast 一次，「查看」進設定頁軟體更新卡；手動
+        // 檢查的結果在卡內行內呈現、不發；同版本第二次不再發（spec「背景檢查的 toast 只發一次」）。
+        if (update && !manual && notifiedVersion !== update.version) {
+          notifiedVersion = update.version;
+          toast(appT("updater.toast.available").replace("{version}", update.version), {
+            id: "updater-available",
+            action: { label: appT("updater.toast.view"), onClick: () => get().openSettingsUpdate() },
+          });
+        }
       } catch {
         // 離線／端點不可達：reducer 決定靜默（自動）或浮出（手動）。
         set({ updater: reduceUpdater(get().updater, { type: "checkFailed" }) });
@@ -1847,6 +1869,14 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
     async relaunchToUpdate() {
       await updaterAdapter?.relaunch();
+    },
+    focusUpdater: false,
+    openSettingsUpdate() {
+      get().setBoardView("settings");
+      set({ focusUpdater: true });
+    },
+    clearFocusUpdater() {
+      set({ focusUpdater: false });
     },
 
     // --- 安裝 CLI 指令（desktop-app「安裝 CLI 指令到 PATH」；design D5） ---
@@ -2344,31 +2374,31 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       await get().activateTab(locatorKey(target.locator));
     },
 
+    assetPrompts: {},
     assetPrompt: null,
     assetUpdateError: null,
     assetUpdating: false,
 
     async refreshAssetPrompt() {
+      const key = get().activeKey;
       const root = activeLocalRoot();
       // remote 分頁無本地受管技能檔可查（決策 4）；無 adapter 時 UI 不啟用。
-      if (!workspace || !root) {
+      if (!workspace || !root || !key) {
         set({ assetPrompt: null, assetUpdateError: null });
         return;
       }
-      let probe;
+      // 派生值先對齊這個分頁上次的記憶：切分頁時不殘留前一分頁的提示卡。
+      set({ assetPrompt: get().assetPrompts[key] ?? null, assetUpdateError: null });
+      let next: AssetPromptState | null;
       try {
-        probe = await workspace.probeAssets(root);
+        next = assetPrompt(await workspace.probeAssets(root), root, readAssetSkips());
       } catch {
         // 探測不可用等同無法判定：靜默不提示，開專案不受影響（既有降級語意）。
-        set({ assetPrompt: null });
-        return;
+        next = null;
       }
-      // 分頁在探測期間被切走：結果屬於前一個 root，不得落地。
-      if (activeLocalRoot() !== root) return;
-      set({
-        assetPrompt: assetPrompt(probe, root, readAssetSkips()),
-        assetUpdateError: null,
-      });
+      // 結果屬於探測時的分頁：記進該分頁的記憶；派生值只在它仍活躍時更新。
+      set({ assetPrompts: { ...get().assetPrompts, [key]: next } });
+      if (get().activeKey === key) set({ assetPrompt: next });
     },
 
     async applyAssetUpdate() {
@@ -2387,11 +2417,16 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     dismissAssetPrompt() {
+      const key = get().activeKey;
       const root = activeLocalRoot();
       const prompt = get().assetPrompt;
-      if (!root || !prompt) return;
+      if (!key || !root || !prompt) return;
       writeAssetSkip(root, prompt.version);
-      set({ assetPrompt: null, assetUpdateError: null });
+      set({
+        assetPrompts: { ...get().assetPrompts, [key]: null },
+        assetPrompt: null,
+        assetUpdateError: null,
+      });
     },
 
     async restoreTabs() {

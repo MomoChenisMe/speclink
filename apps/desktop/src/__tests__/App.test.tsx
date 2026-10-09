@@ -13,6 +13,7 @@ import { RELEASE_NOTES } from "../release-notes/release-notes";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 import { STALE_PROBE } from "./helpers/assetFixtures";
 import { changeList, sharedBoardRequirement } from "./helpers/changeList";
+import { REMOTE_KEY, fakeRemoteDs, fakeRemoteSession } from "./helpers/remoteFixtures";
 import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
 // 模擬 Tauri 事件層：捕捉 workspace-changed 的訂閱 handler，測試可手動觸發。
@@ -112,6 +113,19 @@ function fakeWorkspace() {
     projectStats: vi.fn().mockResolvedValue({ pendingWrapUp: 0 }),
     watchWorkspace: vi.fn().mockResolvedValue(undefined),
     pickFolder: vi.fn().mockResolvedValue(null),
+  };
+}
+
+/** 技能檔探測回報過期（3 個受管檔有異）的 workspace 面：store 帶 assetPrompt（kind stale、fileCount 3）。 */
+function staleWorkspace() {
+  return {
+    ...fakeWorkspace(),
+    openProject: vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" }),
+    probeAssets: vi.fn().mockResolvedValue({
+      ...STALE_PROBE,
+      differingFiles: [...STALE_PROBE.differingFiles, ".claude/skills/speclink-propose/SKILL.md"],
+    }),
+    updateAssets: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -824,7 +838,10 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     expect(screen.queryByText("備忘")).toBeNull();
     const rail = document.querySelector("[data-project-rail]") as HTMLElement;
     expect(rail.contains(settingsGear())).toBe(true);
-    expect(rail.lastElementChild).toBe(settingsGear());
+    // 齒輪是圖示列最後一個按鈕（沉底的一組：更新鈕＋齒輪，更新鈕無事時不渲染）。
+    const railButtons = within(rail).getAllByRole("button");
+    expect(railButtons[railButtons.length - 1]).toBe(settingsGear());
+    expect(rail.lastElementChild?.contains(settingsGear())).toBe(true);
     // 左側標題列：作用中專案名與「⋯」專案動作鈕。
     const titleBar = screen.getByTestId("left-titlebar");
     expect(within(titleBar).getByText("proj-a").getAttribute("title")).toBe("A");
@@ -836,8 +853,9 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     await screen.findByText("desktop-shell-and-browser");
     const aside = projectColumn();
     const projectSettingsNav = within(aside).getByRole("button", { name: "專案設定" });
-    // 彈性區隔：jsdom 無版面計算，以等效自動上邊距 class 斷言。
-    expect(projectSettingsNav.className).toContain("mt-auto");
+    // 彈性區隔：jsdom 無版面計算，以等效自動上邊距 class 斷言——沉底的是「提示卡＋專案設定」
+    // 這一組（desktop-notice-relocation：技能檔提示卡落在彈性空白與專案設定之間）。
+    expect(projectSettingsNav.parentElement?.className).toContain("mt-auto");
     const changesNav = within(aside).getByRole("button", { name: "變更" });
     expect(changesNav.className).toContain("bg-primary");
 
@@ -934,7 +952,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     }
   });
 
-  it("更新通知列排在主區頂列之下：頂列維持視窗最上緣（與左側標題列同高、Windows 視窗鈕在右上角）", async () => {
+  it("有新版本時視窗頂端無更新橫幅：主區頂列之下直接是主內容（spec「視窗頂端 SHALL NOT 出現更新橫幅」）", async () => {
     const ws = fakeWorkspace();
     ws.openProject = vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
     render(
@@ -947,10 +965,34 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
         }}
       />,
     );
-    const banner = await screen.findByTestId("update-banner");
+    await screen.findByRole("button", { name: /有新版本 9\.9\.9/ });
     const titleBar = screen.getByTestId("main-titlebar");
     expect(titleBar.parentElement?.firstElementChild).toBe(titleBar);
-    expect(titleBar.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(titleBar.nextElementSibling?.tagName).toBe("MAIN");
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("有新版本時圖示列齒輪上方出現更新鈕（提示帶版號）；點擊進設定頁、齒輪作用中（spec「桌面自動更新」）", async () => {
+    const ws = fakeWorkspace();
+    ws.openProject = vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
+    render(
+      <App
+        createSession={makeSession(fakeDataSource())}
+        workspace={ws as never}
+        updater={{
+          check: vi.fn().mockResolvedValue({ version: "9.9.9", downloadAndInstall: vi.fn() }),
+          relaunch: vi.fn(),
+        }}
+      />,
+    );
+    const button = await screen.findByRole("button", { name: /有新版本 9\.9\.9/ });
+    const rail = document.querySelector("[data-project-rail]") as HTMLElement;
+    expect(rail.contains(button)).toBe(true);
+    // 齒輪上方：更新鈕在文件順序上先於齒輪。
+    expect(button.compareDocumentPosition(settingsGear()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.getByTestId("updater-card")).toBeTruthy());
+    expect(settingsGear().className).toContain("bg-primary");
   });
 
   it("麵包屑隨頁面切換，點專案名回看板", async () => {
@@ -1304,61 +1346,82 @@ describe("main content scroll containment（主內容區捲動約束）", () => 
     expect(main().className).not.toContain("overflow-hidden");
   });
 
-  // spec「指令檔過期提示」的「提示 SHALL 只佔用自身高度」：提示存在時 main 為 flex
-  // 直欄、提示包裹層 shrink-0，看板等視圖的根節點（h-full min-h-0）縮到扣除提示後的
-  // 剩餘高度，而非被 overflow-hidden 裁切；設定頁仍整頁捲動。jsdom 無版面計算，這裡
-  // 釘的是 class 契約（欄高算法由手動任務實機確認）。
-  it("技能檔提示存在時 main 為 flex 直欄、包裹層 shrink-0 且釘選；專案設定頁維持 overflow-y-auto", async () => {
-    const ws = {
-      ...fakeWorkspace(),
-      openProject: vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" }),
-      // 過期探測回報 3 個受管檔有異 → store 帶 assetPrompt（kind stale、fileCount 3）。
-      probeAssets: vi.fn().mockResolvedValue({
-        ...STALE_PROBE,
-        differingFiles: [...STALE_PROBE.differingFiles, ".claude/skills/speclink-propose/SKILL.md"],
-      }),
-      updateAssets: vi.fn().mockResolvedValue(undefined),
-    };
+  // spec「指令檔過期提示」「指令檔過期提示捲動釘選」（desktop-notice-relocation）：提示卡住在
+  // 專案欄、不屬主區任何捲動容器；跨頁常駐；主區無舊橫幅、無 sticky 包裹層、捲動約束不因提示
+  // 改變。jsdom 無版面計算，這裡釘的是 DOM 歸屬與 class 契約。
+  it("技能檔提示卡渲染在專案欄內、主區無舊橫幅與釘選包裹層；切規格、已封存與專案設定頁仍在", async () => {
+    const ws = staleWorkspace();
     renderApp(fakeDataSource(), { ws });
     await screen.findByText("desktop-shell-and-browser");
-    await screen.findByTestId("asset-prompt");
-    const prompt = () => screen.getByTestId("asset-prompt");
-    const wrapper = () => prompt().parentElement as HTMLElement;
+    const card = await screen.findByTestId("asset-notice-card");
     const main = () => document.querySelector("main") as HTMLElement;
     const aside = projectColumn();
-    expect(prompt().textContent).toContain("3 個檔案");
-    // 看板：flex 直欄與 overflow-hidden 並存（classList 逐 token 比對，避免 flex-1 誤中）。
-    expect(main().classList.contains("flex")).toBe(true);
-    expect(main().classList.contains("flex-col")).toBe(true);
+    expect(aside.contains(card)).toBe(true);
+    expect(card.textContent).toContain("3 個檔案");
+    // 主區：舊橫幅退場、無釘選包裹層、捲動約束照舊。
+    expect(screen.queryByTestId("asset-prompt")).toBeNull();
+    expect(main().querySelector('[data-testid="asset-notice-card"]')).toBeNull();
+    expect(main().querySelector(".sticky")).toBeNull();
     expect(main().classList.contains("overflow-hidden")).toBe(true);
-    // 提示包裹層不可被壓縮：剩餘高度全給視圖。
-    expect(wrapper().classList.contains("shrink-0")).toBe(true);
-    // 規格頁與已封存頁（scenario「提示存在時清單頁的換頁控制列可見」）：提示仍在、同一組 class。
     for (const [label, ready] of [
       ["規格", "desktop-app"],
       ["已封存", "已封存的變更"],
     ] as const) {
       fireEvent.click(within(aside).getByRole("button", { name: label }));
       await waitFor(() => expect(screen.getByText(ready)).toBeTruthy());
-      expect(prompt()).toBeTruthy();
-      expect(main().classList.contains("flex-col")).toBe(true);
+      expect(projectColumn().contains(screen.getByTestId("asset-notice-card"))).toBe(true);
       expect(main().classList.contains("overflow-hidden")).toBe(true);
     }
-    // 專案設定頁（scenario「提示存在時設定頁維持整頁捲動」）：提示仍在、main 整頁捲動。
-    // 釘選（spec「指令檔過期提示捲動釘選」）與底色都由包裹層承擔，原因見 App.tsx 包裹層註解。
     fireEvent.click(within(aside).getByRole("button", { name: "專案設定" }));
     await waitFor(() => expect(main().className).toContain("overflow-y-auto"));
-    expect(main().className).not.toContain("overflow-hidden");
-    expect(prompt()).toBeTruthy();
-    expect(wrapper().classList.contains("sticky")).toBe(true);
-    expect(wrapper().classList.contains("top-0")).toBe(true);
-    expect(wrapper().className).toMatch(/\bz-\d+\b/);
-    expect(wrapper().classList.contains("bg-background")).toBe(true);
-    // 應用程式設定頁：不屬專案語境，提示不掛；整頁捲動不變。
-    fireEvent.click(settingsGear());
-    await waitFor(() => expect(screen.queryByTestId("asset-prompt")).toBeNull());
-    expect(main().className).toContain("overflow-y-auto");
-    expect(main().className).not.toContain("overflow-hidden");
+    expect(projectColumn().contains(screen.getByTestId("asset-notice-card"))).toBe(true);
+    expect(main().querySelector(".sticky")).toBeNull();
+  });
+
+  it("點提示卡開確認框；開啟變更抽屜時確認框關閉（可取消浮層互斥）", async () => {
+    renderApp(fakeDataSource(), { ws: staleWorkspace() });
+    await screen.findByText("desktop-shell-and-browser");
+    fireEvent.click(await screen.findByTestId("asset-notice-card"));
+    const dialog = await screen.findByTestId("asset-notice-dialog");
+    expect(within(dialog).getByRole("button", { name: "更新技能檔" })).toBeTruthy();
+    // 看板卡片走 store openDetail；fireEvent 不送 pointerdown，不會誤走對話框的點外關閉。
+    fireEvent.click(screen.getByText("desktop-shell-and-browser"));
+    await waitFor(() => expect(screen.queryByTestId("asset-notice-dialog")).toBeNull());
+    expect(drawerSpy.rich[drawerSpy.rich.length - 1].open).toBe(true);
+    // 被抽屜頂掉等同「稍後」：提示卡仍在（抽屜開啟時 Radix 把其餘區域標為 aria-hidden，
+    // 角色查詢找不到專案欄，改以 testid 斷言存在）。
+    expect(screen.getByTestId("asset-notice-card")).toBeTruthy();
+  });
+
+  it("remote 分頁不探測技能檔、專案欄無提示卡", async () => {
+    localStorage.setItem(
+      "speclink.projectTabs",
+      JSON.stringify({
+        version: 2,
+        tabs: [
+          {
+            locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
+            name: "Demo/backend",
+          },
+        ],
+        activeKey: REMOTE_KEY,
+      }),
+    );
+    const ws = staleWorkspace();
+    const ds = fakeRemoteDs();
+    render(
+      <App
+        createSession={() => {
+          throw new Error("remote 流程不應觸發 local 工廠");
+        }}
+        openRemote={vi.fn(async () => fakeRemoteSession(ds))}
+        workspace={ws as never}
+      />,
+    );
+    await screen.findByText("remote-change");
+    expect(projectColumn()).toBeTruthy();
+    expect(ws.probeAssets).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("asset-notice-card")).toBeNull();
   });
 });
 

@@ -18,18 +18,30 @@ import {
 
 import { buildShortcutList } from "../appMenu";
 import { ServersPanel, type ServersPanelProps } from "../components/ServersPanel";
+import { UpdateInstallRow } from "../components/UpdateInstallRow";
 import type { LocalePreference } from "../i18n/locale";
 import type { Platform } from "../platform";
 import type { UpdaterState } from "../core/updater";
 import type { CliInstallView } from "../store";
 
-/** 軟體更新卡的注入面：狀態機現值＋手動檢查入口＋更新日誌瀏覽入口＋常駐現版號（null＝尚未取得）。 */
+/** 軟體更新卡的注入面：狀態機現值＋手動檢查入口＋更新日誌瀏覽入口＋常駐現版號（null＝尚未取得）
+ * ＋「下載與安裝」列的動作（desktop-notice-relocation design D3）＋聚焦捲動（D2／D4）。 */
 export interface AppSettingsUpdaterProps {
   state: UpdaterState;
   onCheck: () => void;
   /** 開啟更新日誌對話框的瀏覽模式（desktop-app「更新日誌彈窗」）。 */
   onShowReleaseNotes: () => void;
   currentVersion?: string | null;
+  /** 使用者同意：下載並套用。 */
+  onAccept: () => void;
+  /** 取消下載＝放棄本次同意、回閒置。 */
+  onCancel: () => void;
+  /** 套用完成後重啟為新版。 */
+  onRelaunch: () => void;
+  /** true＝進頁後捲到軟體更新卡一次（圖示列更新鈕、toast「查看」、技能檔較新態的入口）。 */
+  focus?: boolean;
+  /** 捲到卡後回呼，呼叫端清旗標。 */
+  onFocusHandled?: () => void;
 }
 
 export interface AppSettingsViewProps {
@@ -55,7 +67,8 @@ function FieldHelp({ children }: { children: React.ReactNode }) {
   return <p className="text-xs text-muted-foreground m-0">{children}</p>;
 }
 
-/** 軟體更新卡的行內狀態（手動檢查結果與進行中狀態；閒置不顯示）。 */
+/** 軟體更新卡的行內狀態：只承載手動檢查的結果（檢查中、已最新、無法檢查）；待同意、下載中、
+ * 待重啟與失敗由「下載與安裝」列承載，這裡不重複；閒置不顯示。 */
 function UpdaterInlineStatus({ state }: { state: UpdaterState }) {
   const { t } = useI18n();
   switch (state.phase) {
@@ -70,26 +83,9 @@ function UpdaterInlineStatus({ state }: { state: UpdaterState }) {
         </span>
       );
     case "available":
-      return (
-        <span className={`text-xs ${SEMANTIC_TONE.inProgress}`}>
-          {t("updater.available")} {state.version}
-        </span>
-      );
     case "downloading":
-      return (
-        <span className="text-xs text-muted-foreground">
-          {t("updater.downloading")} {state.version}…
-        </span>
-      );
     case "restartPending":
-      return <span className="text-xs text-primary">{t("updater.restartPending")}</span>;
     case "error":
-      return (
-        <span className={`text-xs ${SEMANTIC_TONE.danger}`}>
-          {t("updater.errorPrefix")}
-          {state.message}
-        </span>
-      );
     case "idle":
       return null;
   }
@@ -153,6 +149,22 @@ export function AppSettingsView({
   useEffect(() => {
     if (manualCheck) setTab("local");
   }, [manualCheck]);
+  // 聚焦捲動（desktop-notice-relocation design D2／D4）：圖示列更新鈕、toast「查看」與技能檔
+  // 較新態的入口舉旗。軟體更新卡在本機設定簽：卡不在（停在伺服器簽）就先切簽；Radix 的簽
+  // 內容晚一輪才掛上，所以卡節點走 callback ref 進 state，掛上時再跑一次，捲一次並回呼清
+  // 旗標。jsdom 無 scrollIntoView，以可選呼叫容忍。
+  const [updaterCard, setUpdaterCard] = useState<HTMLDivElement | null>(null);
+  const focusUpdater = updater?.focus === true;
+  const onFocusHandled = updater?.onFocusHandled;
+  useEffect(() => {
+    if (!focusUpdater) return;
+    if (!updaterCard) {
+      setTab("local");
+      return;
+    }
+    updaterCard.scrollIntoView?.({ block: "start", behavior: "smooth" });
+    onFocusHandled?.();
+  }, [focusUpdater, updaterCard, onFocusHandled]);
 
   return (
     <div className="max-w-2xl mx-auto w-full">
@@ -194,7 +206,7 @@ export function AppSettingsView({
             </CardContent>
           </Card>
           {updater && (
-            <Card data-testid="updater-card">
+            <Card data-testid="updater-card" ref={setUpdaterCard}>
               <CardHeader>
                 <CardTitle className="text-base">{t("updater.cardTitle")}</CardTitle>
               </CardHeader>
@@ -226,6 +238,13 @@ export function AppSettingsView({
                   )}
                   <UpdaterInlineStatus state={updater.state} />
                 </div>
+                <UpdateInstallRow
+                  state={updater.state}
+                  onAccept={updater.onAccept}
+                  onCancel={updater.onCancel}
+                  onRelaunch={updater.onRelaunch}
+                  onRetry={updater.onCheck}
+                />
                 <FieldHelp>{t("updater.help")}</FieldHelp>
               </CardContent>
             </Card>

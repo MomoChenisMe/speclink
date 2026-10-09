@@ -3,10 +3,10 @@ import { fireEvent, render as rtlRender, screen, within } from "@testing-library
 import type { ReactElement, ReactNode } from "react";
 import { I18nProvider, SEMANTIC_TONE } from "@speclink/ui";
 
-import { AppSettingsView } from "../views/AppSettingsView";
+import { AppSettingsView, type AppSettingsUpdaterProps } from "../views/AppSettingsView";
+import type { UpdaterState } from "../core/updater";
 import { APP_MESSAGES } from "../i18n/messages";
 import type { CliInstallView } from "../store";
-import type { UpdaterState } from "../core/updater";
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider locale="zh-TW" messages={APP_MESSAGES}>
@@ -28,6 +28,20 @@ const servers = {
   onRemove: vi.fn(),
   onRefresh: vi.fn(),
 };
+
+
+/** 軟體更新面的最小注入：狀態＋五個回呼（下載與安裝列的動作）。 */
+function updaterProps(state: UpdaterState, over: Partial<AppSettingsUpdaterProps> = {}): AppSettingsUpdaterProps {
+  return {
+    state,
+    onCheck: vi.fn(),
+    onShowReleaseNotes: vi.fn(),
+    onAccept: vi.fn(),
+    onCancel: vi.fn(),
+    onRelaunch: vi.fn(),
+    ...over,
+  };
+}
 
 describe("AppSettingsView 資訊架構", () => {
   it("頁簽依序為本機設定、伺服器且預設本機設定，內容含介面語言卡與裝置本機註記", () => {
@@ -99,7 +113,7 @@ describe("AppSettingsView 軟體更新卡", () => {
         platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "idle" }, currentVersion: "0.1.0", onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
+        updater={updaterProps({ phase: "idle" }, { currentVersion: "0.1.0", onCheck: vi.fn(), onShowReleaseNotes: vi.fn() })}
       />,
     );
     expect(screen.getByTestId("updater-card").textContent).toContain("目前版本 0.1.0");
@@ -112,7 +126,7 @@ describe("AppSettingsView 軟體更新卡", () => {
         platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "idle" }, onCheck, onShowReleaseNotes: vi.fn() }}
+        updater={updaterProps({ phase: "idle" }, { onCheck, onShowReleaseNotes: vi.fn() })}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "檢查更新" }));
@@ -124,7 +138,7 @@ describe("AppSettingsView 軟體更新卡", () => {
         platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "checking", manual: true }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
+        updater={updaterProps({ phase: "checking", manual: true }, { onCheck: vi.fn(), onShowReleaseNotes: vi.fn() })}
       />,
     );
     expect(
@@ -138,7 +152,7 @@ describe("AppSettingsView 軟體更新卡", () => {
         platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "upToDate" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
+        updater={updaterProps({ phase: "upToDate" }, { onCheck: vi.fn(), onShowReleaseNotes: vi.fn() })}
       />,
     );
     expect(screen.getByTestId("updater-card").textContent).toContain("已是最新版本");
@@ -149,7 +163,7 @@ describe("AppSettingsView 軟體更新卡", () => {
         platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "checkFailed" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
+        updater={updaterProps({ phase: "checkFailed" }, { onCheck: vi.fn(), onShowReleaseNotes: vi.fn() })}
       />,
     );
     expect(screen.getByTestId("updater-card").textContent).toContain("無法檢查更新");
@@ -161,7 +175,7 @@ describe("AppSettingsView 軟體更新卡", () => {
         platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "available", version: "0.2.0" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
+        updater={updaterProps({ phase: "available", version: "0.2.0" }, { onCheck: vi.fn(), onShowReleaseNotes: vi.fn() })}
       />,
     );
     expect(screen.getByTestId("updater-card").textContent).toContain("0.2.0");
@@ -174,7 +188,7 @@ describe("AppSettingsView 軟體更新卡", () => {
         platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "checkFailed" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
+        updater={updaterProps({ phase: "checkFailed" }, { onCheck: vi.fn(), onShowReleaseNotes: vi.fn() })}
       />,
     );
     expect(screen.getByText("無法檢查更新").className).toContain("destructive");
@@ -185,10 +199,66 @@ describe("AppSettingsView 軟體更新卡", () => {
         platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "available", version: "0.2.0" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
+        updater={updaterProps({ phase: "available", version: "0.2.0" }, { onCheck: vi.fn(), onShowReleaseNotes: vi.fn() })}
       />,
     );
     expect(screen.getByText(/有新版本/).className).toContain(SEMANTIC_TONE.inProgress);
+  });
+
+  // --- 「下載與安裝」列（desktop-notice-relocation design D3）與聚焦捲動 ---
+
+  it("發現新版時卡內有「下載與安裝」列與「下載」鈕；行內狀態不重複顯示；按下回呼 onAccept", () => {
+    const updater = updaterProps({ phase: "available", version: "0.2.0" });
+    render(<AppSettingsView platform="macos" localePref={null} onLocalePrefChange={vi.fn()} updater={updater} />);
+    const card = screen.getByTestId("updater-card");
+    expect(within(card).getByTestId("update-install-row")).toBeTruthy();
+    expect(within(card).getAllByText(/有新版本/)).toHaveLength(1);
+    fireEvent.click(within(card).getByRole("button", { name: "下載" }));
+    expect(updater.onAccept).toHaveBeenCalledTimes(1);
+  });
+
+  it("下載中、待重啟與失敗：列承載控制，行內狀態不重複；閒置無列", () => {
+    for (const [state, label] of [
+      [{ phase: "downloading", version: "0.2.0" }, "取消"],
+      [{ phase: "restartPending", version: "0.2.0" }, "安裝並重新啟動"],
+      [{ phase: "error", message: "invalid signature" }, "重試"],
+    ] as const) {
+      const { unmount } = render(
+        <AppSettingsView platform="macos" localePref={null} onLocalePrefChange={vi.fn()} updater={updaterProps(state)} />,
+      );
+      const card = screen.getByTestId("updater-card");
+      expect(within(card).getByRole("button", { name: label })).toBeTruthy();
+      expect(within(card).getAllByTestId("update-install-row")).toHaveLength(1);
+      unmount();
+    }
+    render(<AppSettingsView platform="macos" localePref={null} onLocalePrefChange={vi.fn()} updater={updaterProps({ phase: "idle" })} />);
+    expect(screen.queryByTestId("update-install-row")).toBeNull();
+  });
+
+  it("focus 為 true 時捲到軟體更新卡一次並回呼 onFocusHandled；false 時不捲", () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const onFocusHandled = vi.fn();
+    const { rerender } = render(
+      <AppSettingsView
+        platform="macos"
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        updater={updaterProps({ phase: "available", version: "0.2.0" }, { focus: false, onFocusHandled })}
+      />,
+    );
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    rerender(
+      <AppSettingsView
+        platform="macos"
+        localePref={null}
+        onLocalePrefChange={vi.fn()}
+        updater={updaterProps({ phase: "available", version: "0.2.0" }, { focus: true, onFocusHandled })}
+      />,
+    );
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView.mock.instances[0]).toBe(screen.getByTestId("updater-card"));
+    expect(onFocusHandled).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -351,7 +421,7 @@ describe("AppSettingsView 更新日誌入口（desktop-app「更新日誌彈窗�
         platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "idle" }, onCheck: vi.fn(), onShowReleaseNotes }}
+        updater={updaterProps({ phase: "idle" }, { onCheck: vi.fn(), onShowReleaseNotes })}
       />,
     );
     fireEvent.click(within(screen.getByTestId("updater-card")).getByRole("button", { name: "更新日誌" }));
@@ -376,7 +446,7 @@ describe("AppSettingsView 鍵盤快捷鍵卡（desktop-native-menu design D5）"
         platform="macos"
         localePref={null}
         onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "idle" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
+        updater={updaterProps({ phase: "idle" })}
         cliInstall={{ view: cliView(), onInstall: vi.fn() }}
       />,
     );
@@ -409,14 +479,18 @@ describe("AppSettingsView 鍵盤快捷鍵卡（desktop-native-menu design D5）"
 });
 
 describe("AppSettingsView 手動檢查更新時顯示軟體更新卡（desktop-native-menu「檢查更新…」）", () => {
-  const view = (state: UpdaterState, focusConnectionId: string | null = null) => (
+  const view = (
+    state: UpdaterState,
+    focusConnectionId: string | null = null,
+    over: Partial<AppSettingsUpdaterProps> = {},
+  ) => (
     <AppSettingsView
       platform="macos"
       localePref={null}
       onLocalePrefChange={vi.fn()}
       servers={servers}
       focusConnectionId={focusConnectionId}
-      updater={{ state, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
+      updater={updaterProps(state, over)}
     />
   );
   const activeTab = () =>
@@ -443,5 +517,22 @@ describe("AppSettingsView 手動檢查更新時顯示軟體更新卡（desktop-n
     fireEvent.mouseDown(screen.getByRole("tab", { name: "伺服器" }));
     rerender(view({ phase: "checking", manual: false }));
     expect(activeTab()).toBe("伺服器");
+  });
+
+  it("停在伺服器簽時聚焦軟體更新卡（圖示列更新鈕、toast「查看」）：切回本機設定簽並捲到卡一次", () => {
+    // desktop-notice-relocation × desktop-native-menu：聚焦與手動檢查同理，卡在本機設定簽，
+    // 停在伺服器簽時要先切簽、等卡掛上才捲。
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const onFocusHandled = vi.fn();
+    const available = { phase: "available", version: "0.2.0" } as const;
+    const { rerender } = render(view(available, null, { focus: false, onFocusHandled }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "伺服器" }));
+    expect(activeTab()).toBe("伺服器");
+    rerender(view(available, null, { focus: true, onFocusHandled }));
+    expect(activeTab()).toBe("本機設定");
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView.mock.instances[0]).toBe(screen.getByTestId("updater-card"));
+    expect(onFocusHandled).toHaveBeenCalledTimes(1);
   });
 });
