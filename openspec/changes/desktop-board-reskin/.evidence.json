@@ -1,0 +1,94 @@
+{
+  "version": 2,
+  "change": "desktop-board-reskin",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 `packages/ui/src/stage.ts` 的 `STAGE_BAR` 改為純 `bg-stage-*`；`packages/ui/src/components/KanbanBoard.tsx` 欄列改 `grid grid-cols-[repeat(4,minmax(220px,1fr))] gap-3`（無討論欄時三欄）、`Column` 改白底細框 16px 圓角容器（色相條、`bg-card` 標頭含 12px 中粗欄名與 `STAGE_BADGE` 計數、細線、淡灰卡片區）、零卡且非載入時渲染置中灰字；`packages/ui/src/i18n.tsx` 兩語系加 `board.emptyColumn.proposed`／`in-progress`／`ready`（design D1、D5；spec「看板欄與卡片的容器外觀」）。驗證：`packages/ui/src/__tests__/kanban.test.tsx` 新增或改寫——`[data-column]` 容器 class 含 `rounded-2xl` 與 `bg-sidebar`、每欄首個子節點帶 `bg-stage-<stage>`、標頭含 `bg-card`、欄名不含 `uppercase`、零卡欄顯示對應空文案且搜尋無命中時三欄各顯示空文案、欄列 class 含 `grid-cols-`；`packages/ui/src/__tests__/stage.test.ts` 的 `STAGE_BAR` 斷言改為 `bg-stage-*`；`theme.test.ts` 綠；`npm test -w packages/ui -- kanban stage theme`。",
+      "files": [
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/components/KanbanBoard.tsx",
+        "packages/ui/src/i18n.tsx"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 `packages/ui/src/components/DiscussionColumn.tsx` 外框改與 `Column` 相同容器（色相條 `bg-stage-discussion`、標頭取 `DISCUSSION_TONE`、「尚無討論」置中樣式一致）；欄底收合列改白底上緣細線＋右端 › 展開旋轉；`PromotedRow` 改 `rounded-lg border border-border bg-card`；新增受控 props `promotedExpanded`／`onPromotedExpandedChange`（缺席時內部狀態），`KanbanBoard` 同名透傳（design D2；spec「討論於看板第 0 欄兩級呈現」）。驗證：`packages/ui/src/__tests__/discussionColumn.test.tsx` 新增——收合列 class 含 `bg-card` 與 `border-t`、受控下點擊呼叫 `onPromotedExpandedChange(true)` 且不自行展開、`promotedExpanded={true}` 時細列可見、非受控點擊仍展開；既有判準案例全部通過；`npm test -w packages/ui -- discussionColumn kanban`。",
+      "files": [
+        "packages/ui/src/__tests__/discussionColumn.test.tsx",
+        "packages/ui/src/components/DiscussionColumn.tsx"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "1.4 `packages/ui/src/components/BoardSearchBar.tsx` 輸入改 `h-8 w-[280px] rounded-full pl-8`（active 時 `pr-20`）、容器不再 `w-full`、篩選鈕改 32px `rounded-lg` 圖示鈕（啟用計數角標不變）；`KanbanBoard.tsx` 的 `PageHeader` 動作槽拿掉 `w-[22rem]` 包裹（design D4；spec「看板搜尋過濾卡片」）。驗證：`packages/ui/src/__tests__/boardSearchBar.test.tsx` 加「輸入 class 含 `rounded-full` 與 `w-[280px]`、篩選鈕 class 含 `rounded-lg`」，既有命中數、清除鈕、⌘F、篩選面板案例通過；`kanban.test.tsx` 的「傳 title 時搜尋輸入在 h2 同一列」案通過；`npm test -w packages/ui -- boardSearchBar kanban`。",
+      "files": [
+        "packages/ui/src/__tests__/boardSearchBar.test.tsx",
+        "packages/ui/src/components/BoardSearchBar.tsx"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.1 `apps/desktop/src/store.ts` 新增 `promotedExpanded`（初值讀 `localStorage` 鍵 `speclink.board.promotedExpanded`，壞值為 false）與 `setPromotedExpanded(v)`（寫回同鍵）；`apps/desktop/src/App.tsx` 傳給 `KanbanBoard` 的 `promotedExpanded`／`onPromotedExpandedChange`（design D2）。驗證：`apps/desktop/src/__tests__/store.test.ts` 加——無鍵時 false、鍵為 \"true\" 時 true、壞值時 false、`setPromotedExpanded(true)` 後鍵為 \"true\"；`apps/desktop/src/__tests__/App.test.tsx` 加「點收合列後 store 的 `promotedExpanded` 為 true」；`npm test -w apps/desktop -- store App`。",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/store.ts"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4F72BJB394AJFCR1S7KFY5S",
+      "taskDesc": "1.1 `packages/ui/src/stage.ts` 的 `STAGE_BAR` 改為純 `bg-stage-*`；`packages/ui/src/components/KanbanBoard.tsx` 欄列改 `grid grid-cols-[repeat(4,minmax(220px,1fr))] gap-3`（無討論欄時三欄）、`Column` 改白底細框 16px 圓角容器（色相條、`bg-card` 標頭含 12px 中粗欄名與 `STAGE_BADGE` 計數、細線、淡灰卡片區）、零卡且非載入時渲染置中灰字；`packages/ui/src/i18n.tsx` 兩語系加 `board.emptyColumn.proposed`／`in-progress`／`ready`（design D1、D5；spec「看板欄與卡片的容器外觀」）。驗證：`packages/ui/src/__tests__/kanban.test.tsx` 新增或改寫——`[data-column]` 容器 class 含 `rounded-2xl` 與 `bg-sidebar`、每欄首個子節點帶 `bg-stage-<stage>`、標頭含 `bg-card`、欄名不含 `uppercase`、零卡欄顯示對應空文案且搜尋無命中時三欄各顯示空文案、欄列 class 含 `grid-cols-`；`packages/ui/src/__tests__/stage.test.ts` 的 `STAGE_BAR` 斷言改為 `bg-stage-*`；`theme.test.ts` 綠；`npm test -w packages/ui -- kanban stage theme`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "78a4f2840f08182abc778bd5dd35a5ea8e4565d2",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/components/KanbanBoard.tsx",
+        "packages/ui/src/i18n.tsx"
+      ],
+      "recordedAt": "2026-10-09T05:12:00Z"
+    },
+    {
+      "taskId": "tsk_01M4F72BJCXKFD9MWKQD7JAT4H",
+      "taskDesc": "1.2 `packages/ui/src/components/DiscussionColumn.tsx` 外框改與 `Column` 相同容器（色相條 `bg-stage-discussion`、標頭取 `DISCUSSION_TONE`、「尚無討論」置中樣式一致）；欄底收合列改白底上緣細線＋右端 › 展開旋轉；`PromotedRow` 改 `rounded-lg border border-border bg-card`；新增受控 props `promotedExpanded`／`onPromotedExpandedChange`（缺席時內部狀態），`KanbanBoard` 同名透傳（design D2；spec「討論於看板第 0 欄兩級呈現」）。驗證：`packages/ui/src/__tests__/discussionColumn.test.tsx` 新增——收合列 class 含 `bg-card` 與 `border-t`、受控下點擊呼叫 `onPromotedExpandedChange(true)` 且不自行展開、`promotedExpanded={true}` 時細列可見、非受控點擊仍展開；既有判準案例全部通過；`npm test -w packages/ui -- discussionColumn kanban`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "78a4f2840f08182abc778bd5dd35a5ea8e4565d2",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/discussionColumn.test.tsx",
+        "packages/ui/src/components/DiscussionColumn.tsx"
+      ],
+      "recordedAt": "2026-10-09T05:14:48Z"
+    },
+    {
+      "taskId": "tsk_01M4F72BJCBFFCE74BVZBK17X8",
+      "taskDesc": "1.4 `packages/ui/src/components/BoardSearchBar.tsx` 輸入改 `h-8 w-[280px] rounded-full pl-8`（active 時 `pr-20`）、容器不再 `w-full`、篩選鈕改 32px `rounded-lg` 圖示鈕（啟用計數角標不變）；`KanbanBoard.tsx` 的 `PageHeader` 動作槽拿掉 `w-[22rem]` 包裹（design D4；spec「看板搜尋過濾卡片」）。驗證：`packages/ui/src/__tests__/boardSearchBar.test.tsx` 加「輸入 class 含 `rounded-full` 與 `w-[280px]`、篩選鈕 class 含 `rounded-lg`」，既有命中數、清除鈕、⌘F、篩選面板案例通過；`kanban.test.tsx` 的「傳 title 時搜尋輸入在 h2 同一列」案通過；`npm test -w packages/ui -- boardSearchBar kanban`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "78a4f2840f08182abc778bd5dd35a5ea8e4565d2",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/boardSearchBar.test.tsx",
+        "packages/ui/src/components/BoardSearchBar.tsx"
+      ],
+      "recordedAt": "2026-10-09T05:17:34Z"
+    },
+    {
+      "taskId": "tsk_01M4F72BJCCSM0Z7SAZH22PM0G",
+      "taskDesc": "2.1 `apps/desktop/src/store.ts` 新增 `promotedExpanded`（初值讀 `localStorage` 鍵 `speclink.board.promotedExpanded`，壞值為 false）與 `setPromotedExpanded(v)`（寫回同鍵）；`apps/desktop/src/App.tsx` 傳給 `KanbanBoard` 的 `promotedExpanded`／`onPromotedExpandedChange`（design D2）。驗證：`apps/desktop/src/__tests__/store.test.ts` 加——無鍵時 false、鍵為 \"true\" 時 true、壞值時 false、`setPromotedExpanded(true)` 後鍵為 \"true\"；`apps/desktop/src/__tests__/App.test.tsx` 加「點收合列後 store 的 `promotedExpanded` 為 true」；`npm test -w apps/desktop -- store App`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "78a4f2840f08182abc778bd5dd35a5ea8e4565d2",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/store.ts"
+      ],
+      "recordedAt": "2026-10-09T05:19:09Z"
+    }
+  ]
+}

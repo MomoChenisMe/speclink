@@ -2413,3 +2413,36 @@ describe("專案層檔案系統動作", () => {
     expect(toastError).not.toHaveBeenCalled();
   });
 });
+
+// desktop-board-reskin design D2：看板討論欄底「已轉出」收合列的展開狀態存於 app 本機
+// （localStorage 鍵 speclink.board.promotedExpanded）跨啟動保留；壞值或缺席一律收合。
+describe("promotedExpanded（討論欄收合列的跨啟動記憶）", () => {
+  const KEY = "speclink.board.promotedExpanded";
+
+  it("無鍵時為 false", () => {
+    const store = storeWith(fakeDataSource());
+    expect(store.getState().promotedExpanded).toBe(false);
+  });
+
+  it('鍵為 "true" 時為 true', () => {
+    localStorage.setItem(KEY, "true");
+    const store = storeWith(fakeDataSource());
+    expect(store.getState().promotedExpanded).toBe(true);
+  });
+
+  it("壞值視為 false、不拋錯", () => {
+    localStorage.setItem(KEY, "yes");
+    const store = storeWith(fakeDataSource());
+    expect(store.getState().promotedExpanded).toBe(false);
+  });
+
+  it('setPromotedExpanded(true) 後鍵為 "true"；false 寫回 "false"', () => {
+    const store = storeWith(fakeDataSource());
+    store.getState().setPromotedExpanded(true);
+    expect(store.getState().promotedExpanded).toBe(true);
+    expect(localStorage.getItem(KEY)).toBe("true");
+    store.getState().setPromotedExpanded(false);
+    expect(store.getState().promotedExpanded).toBe(false);
+    expect(localStorage.getItem(KEY)).toBe("false");
+  });
+});

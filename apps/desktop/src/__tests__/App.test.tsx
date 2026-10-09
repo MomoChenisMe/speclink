@@ -1915,3 +1915,50 @@ describe("工單分頁接線（drawer-quality-ticket-tab）", () => {
     await waitFor(() => expect(document.querySelector("[data-ticket-header]")).toBeTruthy());
   });
 });
+
+// desktop-board-reskin design D2：App 把 store 的 promotedExpanded／setPromotedExpanded 接給看板；
+// 點討論欄底的收合列即寫回 app 本機鍵，重啟（鍵已存在）時啟動即展開。App 的 store 是
+// 內部建立的，store 狀態以其可觀察結果斷言：收合列 aria-expanded 與 localStorage 鍵。
+describe("看板討論欄收合列的展開記憶接線（desktop-board-reskin）", () => {
+  const KEY = "speclink.board.promotedExpanded";
+  const promotedOnly = () =>
+    fakeDataSource({
+      listDiscussions: vi.fn().mockResolvedValue({
+        active: [
+          {
+            slug: "fanout",
+            topic: "Fanout topic",
+            status: "promoted",
+            rounds: 4,
+            created: "2026-07-03",
+            promotedTo: ["desktop-shell-and-browser"],
+          },
+        ],
+        archived: [],
+      }),
+    });
+
+  afterEach(() => {
+    localStorage.removeItem(KEY);
+  });
+
+  it('點收合列後 store 的 promotedExpanded 為 true：細列展開且鍵寫為 "true"', async () => {
+    localStorage.removeItem(KEY);
+    renderApp(promotedOnly());
+    const bar = await screen.findByRole("button", { name: /已轉出/ });
+    expect(bar.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("Fanout topic")).toBeNull();
+    fireEvent.click(bar);
+    expect(bar.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Fanout topic")).toBeTruthy();
+    expect(localStorage.getItem(KEY)).toBe("true");
+  });
+
+  it('鍵已為 "true" 時啟動即展開（跨啟動保留）', async () => {
+    localStorage.setItem(KEY, "true");
+    renderApp(promotedOnly());
+    const bar = await screen.findByRole("button", { name: /已轉出/ });
+    expect(bar.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Fanout topic")).toBeTruthy();
+  });
+});

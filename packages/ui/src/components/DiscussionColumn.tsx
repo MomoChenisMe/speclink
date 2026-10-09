@@ -1,13 +1,7 @@
 import { useState } from "react";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-  Archive,
-  ArrowUpRight,
-  ChevronDown,
-  ChevronRight,
-  MessageSquareText,
-} from "lucide-react";
+import { Archive, ChevronRight, MessageSquareText } from "lucide-react";
 
 import type { ArchivedItem, ChangeItem, DiscussionItem, SearchHit } from "../adapter";
 import { cardDndId } from "../boardDnd";
@@ -80,6 +74,12 @@ export interface DiscussionColumnProps {
   loading?: boolean;
   /** 首訪載入失敗：卡片區顯示載入失敗提示，取代空態文案（呼叫端已排除 loading）。 */
   loadFailed?: boolean;
+  /**
+   * 欄底「已轉出」收合列的展開狀態（design D2）：兩者皆提供時為受控——展開狀態由
+   * 宿主持有（桌面 app 存於 app 本機跨啟動保留）；缺席時元件內部狀態、不持久化。
+   */
+  promotedExpanded?: boolean;
+  onPromotedExpandedChange?: (expanded: boolean) => void;
 }
 
 const STATUS_BADGE: Record<string, { labelKey: string; cls: string }> = {
@@ -251,7 +251,7 @@ function PromotedRow({
       role="button"
       tabIndex={0}
       data-discussion={d.slug}
-      className="group cursor-pointer rounded-md border border-border/60 bg-background/60 px-2 py-1.5 text-left transition-colors hover:border-primary/60"
+      className="group cursor-pointer rounded-lg border border-border bg-card px-2.5 py-2 text-left transition-colors hover:border-foreground/20"
       onClick={() => onOpenDiscussion?.(d.slug)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") onOpenDiscussion?.(d.slug);
@@ -297,8 +297,9 @@ function PromotedRow({
  * 看板第 0 欄「討論」（兩級呈現，上下兩區同屏、不互斥切換；design D3）：
  * - 上區：open／concluded 全尺寸卡（open 唯讀、concluded 帶「封存」動詞——
  *   轉為變更已自 GUI 撤除）。
- * - 欄底：「已轉出 N」常駐收合列（有 promoted 時呈現、預設收合、不持久化），
- *   點按就地展開 promoted 衍生樹細列（slug 首行＋topic＋衍生變更樹＋階段 chip）。
+ * - 欄底：「已轉出 N ›」常駐收合列（有 promoted 時呈現、預設收合），點按就地在
+ *   卡片區底部展開 promoted 衍生樹細列（slug 首行＋topic＋衍生變更樹＋階段 chip）；
+ *   展開狀態可由宿主受控（桌面 app 跨啟動保留），缺席時元件內部狀態、不持久化。
  */
 export function DiscussionColumn({
   discussions,
@@ -311,12 +312,20 @@ export function DiscussionColumn({
   fulltextHits,
   loading,
   loadFailed,
+  promotedExpanded,
+  onPromotedExpandedChange,
 }: DiscussionColumnProps) {
   const { t } = useI18n();
   const full = discussions.filter((d) => !isCollapsedPromoted(d));
   const promoted = discussions.filter(isCollapsedPromoted);
-  // D3：欄底收合列的展開狀態——元件 local、預設收合、不跨啟動持久化。
-  const [promotedOpen, setPromotedOpen] = useState(false);
+  // 收合列展開狀態（design D2）：兩個 props 皆提供時受控，否則內部狀態、預設收合。
+  const controlled = promotedExpanded !== undefined && onPromotedExpandedChange !== undefined;
+  const [localOpen, setLocalOpen] = useState(false);
+  const promotedOpen = controlled ? promotedExpanded : localOpen;
+  const togglePromoted = () => {
+    if (controlled) onPromotedExpandedChange(!promotedOpen);
+    else setLocalOpen((v) => !v);
+  };
   const hitBySlug = new Map(
     (fulltextHits ?? []).filter((h) => h.kind === "discussion").map((h) => [h.id, h]),
   );
@@ -341,17 +350,17 @@ export function DiscussionColumn({
       />
     ),
   );
-  // 欄頭（色條／圖示／計數）取討論專屬的桃紫：與系統匣討論分區同一來源（DISCUSSION_TONE）。
+  // 容器卡與三個階段欄同一套（design D1）；欄頭（色條／圖示／計數）取討論專屬的
+  // 桃紫：與系統匣討論分區同一來源（DISCUSSION_TONE）。
   return (
     <div
       data-column="discussions"
-      className="flex h-full min-h-0 flex-1 min-w-[250px] max-w-[360px] flex-col gap-2 rounded-xl border-t-4 border-t-stage-discussion bg-muted/40 p-2"
+      className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-sidebar"
     >
-      <div className="flex items-center gap-1.5 px-1.5 pt-0.5 shrink-0">
+      <div className="h-[3px] shrink-0 bg-stage-discussion" />
+      <div className="flex items-center gap-2 bg-card px-3 py-2.5 border-b border-border/70 shrink-0">
         <MessageSquareText className={`h-3.5 w-3.5 ${DISCUSSION_TONE.icon}`} />
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {t("discussion.heading")}
-        </h2>
+        <h2 className="text-xs font-semibold text-foreground">{t("discussion.heading")}</h2>
         <div className="flex-1" />
         {!loading && !loadFailed && (
           <span
@@ -362,7 +371,7 @@ export function DiscussionColumn({
           </span>
         )}
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
+      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2 p-2">
         {loading ? (
           <ColumnSkeleton />
         ) : loadFailed ? (
@@ -370,7 +379,7 @@ export function DiscussionColumn({
         ) : (
           <>
             {full.length === 0 && promoted.length === 0 && (
-              <p className="px-1.5 pt-2 text-xs text-muted-foreground">{t("discussion.none")}</p>
+              <p className="px-2 py-6 text-center text-xs text-muted-foreground">{t("discussion.none")}</p>
             )}
             {sortable ? (
               <SortableContext
@@ -382,43 +391,37 @@ export function DiscussionColumn({
             ) : (
               fullCards
             )}
+            {/* 展開的 promoted 細列落在卡片區底部（淡灰底上），收合列本身固定在欄底。 */}
+            {promoted.length > 0 && promotedOpen && (
+              <div className="flex flex-col gap-1.5">
+                {promoted.map((d) => (
+                  <PromotedRow
+                    key={d.slug}
+                    d={d}
+                    changes={changes}
+                    archived={archived}
+                    onOpenDiscussion={onOpenDiscussion}
+                  />
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>
       {!loading && promoted.length > 0 && (
-        <div className="shrink-0 flex flex-col gap-1.5 border-t border-border/60 pt-1.5">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-expanded={promotedOpen}
-            onClick={() => setPromotedOpen((v) => !v)}
-            className="h-6 w-full justify-start gap-1 px-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
-          >
-            <ArrowUpRight className="h-3 w-3" />
-            <span className="tabular-nums">
-              {t("discussion.promotedBar").replace("{n}", String(promoted.length))}
-            </span>
-            {promotedOpen ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
-          </Button>
-          {promotedOpen && (
-            <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto">
-              {promoted.map((d) => (
-                <PromotedRow
-                  key={d.slug}
-                  d={d}
-                  changes={changes}
-                  archived={archived}
-                  onOpenDiscussion={onOpenDiscussion}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+        <button
+          type="button"
+          aria-expanded={promotedOpen}
+          onClick={togglePromoted}
+          className="flex w-full shrink-0 items-center gap-2 border-t border-border/70 bg-card px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <span className="flex-1 text-left tabular-nums">
+            {t("discussion.promotedBar").replace("{n}", String(promoted.length))}
+          </span>
+          <ChevronRight
+            className={`h-3.5 w-3.5 shrink-0 transition-transform ${promotedOpen ? "rotate-90" : ""}`}
+          />
+        </button>
       )}
     </div>
   );

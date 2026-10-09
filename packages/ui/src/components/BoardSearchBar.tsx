@@ -6,8 +6,9 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
 /**
- * 看板搜尋工具列（design D5，單列）：搜尋輸入填滿剩餘寬度（帶圖示、輸入非空時
- * 的清除鈕與即時命中數）＋同高的篩選開關鈕（漏斗；啟用中篩選帶計數徽章）。
+ * 看板搜尋工具列（design D5，單列；desktop-board-reskin D4 改為頁標題區右端的
+ * 280px 全圓輸入）：搜尋輸入帶圖示、輸入非空時的清除鈕與即時命中數，＋同高的
+ * 32px 篩選開關圖示鈕（啟用中篩選帶計數徽章）。
  * 點開關於其下方彈出篩選面板（children，由宿主組裝）；再點開關、點面板外或
  * 按 Esc 關閉——關閉不清除已啟用篩選。Cmd+F／Ctrl+F 聚焦快捷鍵。
  * 純受控元件——query 與面板開闔狀態皆在宿主，本元件不持久化。
@@ -80,9 +81,10 @@ export function BoardSearchBar({
   }, [filtersOpen, close]);
   const active = query.trim().length > 0;
   return (
-    <div className="flex w-full shrink-0 items-center gap-1.5">
-      <div className="relative min-w-0 flex-1">
+    <div className="flex shrink-0 items-center gap-1.5">
+      <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        {/* 280px 全圓（design D4）：命中數與清除鈕仍在右端內側，active 時留 pr-20 給它們。 */}
         <Input
           ref={inputRef}
           placeholder={t("kanban.searchPlaceholder")}
@@ -90,7 +92,7 @@ export function BoardSearchBar({
           disabled={disabledReason !== undefined}
           title={disabledReason}
           onChange={(e) => onQuery(e.target.value)}
-          className={`pl-8 ${active ? "pr-24" : ""}`}
+          className={`h-8 w-[280px] rounded-full pl-8 text-[13px] ${active ? "pr-20" : "pr-2"}`}
         />
         {active && (
           <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
@@ -122,7 +124,7 @@ export function BoardSearchBar({
             aria-label={t("filter.toggle")}
             aria-expanded={!!filtersOpen}
             onClick={onToggleFilters}
-            className={`relative h-9 w-9 ${filtersOpen ? "bg-accent text-foreground" : "text-muted-foreground"}`}
+            className={`relative rounded-lg ${filtersOpen ? "bg-muted text-foreground" : "text-muted-foreground"}`}
           >
             <SlidersHorizontal className="h-4 w-4" />
             {activeFilterCount > 0 && (

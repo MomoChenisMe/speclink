@@ -787,6 +787,8 @@ function AppInner({
                 }
                 planError={s.planError}
                 onDragActiveChange={handleBoardDragActive}
+                promotedExpanded={s.promotedExpanded}
+                onPromotedExpandedChange={s.setPromotedExpanded}
                 // 骨架的前提是「首訪的載入正在進行」：探測中（pendingTabKey）或整批
                 // 載入中（loadingActive），且尚無真值。只看 loaded 會讓探測失敗或讀取
                 // 失敗的 workspace 永遠停在載入中——讀不到不等於還在讀。
