@@ -1,0 +1,71 @@
+schema: spec-driven
+created: 2026-10-08
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: desktop-ui-redesign
+started_at: 2026-10-09
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-09
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 10
+reviewed_scope:
+  - path: apps/desktop/package.json
+    hash: ecdd7d7193e48fb4b7f71767c1fd368e9678d6d2a58f13969a4b001e6768894e
+  - path: apps/desktop/src-tauri/capabilities/default.json
+    hash: 55de30a7ba65883ac8dbc45044e9415d18936c924bb459d6151e3970865163c5
+  - path: apps/desktop/src/App.tsx
+    hash: 827214e8878b74d9ba6e4e0e57dfa87475e6b1a7385e6ee0423adf9e295ad364
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 96a7ab9aa7d5f98d9738dd595980e1d021b355fcb852e699212b0fbbc3118ad7
+  - path: apps/desktop/src/__tests__/appMenu.test.ts
+    hash: 0fe90fd935bbfb7232e850ab164ed2fbf379b21c33c7a7ea3526191a72fa2dbe
+  - path: apps/desktop/src/__tests__/appSettingsView.test.tsx
+    hash: 06f56148c89c0542ca8f13a1eedb1738261c83714394e4fb3573721c06640c08
+  - path: apps/desktop/src/__tests__/messages.test.ts
+    hash: 1163ce2f113bbcb69164b1ea98a9edb1736320c786312aa3d2b078719b97b0a0
+  - path: apps/desktop/src/appMenu.ts
+    hash: 6df265b98098e37bdc8cb5daf5378b93e250dd658081866723d41ef66ecad262
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 5ff56b51e56c18dc22258ac1c83f061ca6bac4be40c4fa12a0e959254418021f
+  - path: apps/desktop/src/views/AppSettingsView.tsx
+    hash: 63de862259e479937b79851f808e289c316dde1bb6883f1819786ce7a37dcf09
+  - path: package-lock.json
+    hash: 11c8bbde66265c3fef9760bcd9c25afb49a2df273aa93565fc824dcaa199af4d
+  - path: packages/ui/src/__tests__/boardSearchBar.test.tsx
+    hash: afa69b52a093e69a4d1e7b11a25ee19ac1d53845d3209e54c01062fc4c7ff878
+  - path: packages/ui/src/components/BoardSearchBar.tsx
+    hash: 773c3b89aaf2b526d88a5677c750f57577f87c21c3208a7e029de91819ca1a89
+verified_at: 2026-10-09
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 10
+verified_scope:
+  - path: apps/desktop/package.json
+    hash: ecdd7d7193e48fb4b7f71767c1fd368e9678d6d2a58f13969a4b001e6768894e
+  - path: apps/desktop/src-tauri/capabilities/default.json
+    hash: 55de30a7ba65883ac8dbc45044e9415d18936c924bb459d6151e3970865163c5
+  - path: apps/desktop/src/App.tsx
+    hash: 827214e8878b74d9ba6e4e0e57dfa87475e6b1a7385e6ee0423adf9e295ad364
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 96a7ab9aa7d5f98d9738dd595980e1d021b355fcb852e699212b0fbbc3118ad7
+  - path: apps/desktop/src/__tests__/appMenu.test.ts
+    hash: 0fe90fd935bbfb7232e850ab164ed2fbf379b21c33c7a7ea3526191a72fa2dbe
+  - path: apps/desktop/src/__tests__/appSettingsView.test.tsx
+    hash: 06f56148c89c0542ca8f13a1eedb1738261c83714394e4fb3573721c06640c08
+  - path: apps/desktop/src/__tests__/messages.test.ts
+    hash: 1163ce2f113bbcb69164b1ea98a9edb1736320c786312aa3d2b078719b97b0a0
+  - path: apps/desktop/src/appMenu.ts
+    hash: 6df265b98098e37bdc8cb5daf5378b93e250dd658081866723d41ef66ecad262
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 5ff56b51e56c18dc22258ac1c83f061ca6bac4be40c4fa12a0e959254418021f
+  - path: apps/desktop/src/views/AppSettingsView.tsx
+    hash: 63de862259e479937b79851f808e289c316dde1bb6883f1819786ce7a37dcf09
+  - path: package-lock.json
+    hash: 11c8bbde66265c3fef9760bcd9c25afb49a2df273aa93565fc824dcaa199af4d
+  - path: packages/ui/src/__tests__/boardSearchBar.test.tsx
+    hash: afa69b52a093e69a4d1e7b11a25ee19ac1d53845d3209e54c01062fc4c7ff878
+  - path: packages/ui/src/components/BoardSearchBar.tsx
+    hash: 773c3b89aaf2b526d88a5677c750f57577f87c21c3208a7e029de91819ca1a89
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-09
