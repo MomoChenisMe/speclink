@@ -187,7 +187,7 @@ export function ServersPanel({
                           data-testid={`open-workspace-${entry.origin}`}
                           onClick={() => onOpenWorkspace(entry.id)}
                         >
-                          {t("servers.openWorkspace")}
+                          {t("servers.openProject")}
                         </Button>
                       )}
                       {entry.loggedIn && !needsReauth ? (

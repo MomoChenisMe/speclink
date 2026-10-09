@@ -224,9 +224,15 @@
 - **avoid**: 過時、stale（中文散文中）
 - **why**: 與規格的「過期」章語意平行——都是「源頭比衍生物新」；加「可能」是因為日期比對只證明來源動過，不證明內容真的變了。2026-09-02 變更「manual-skill」定案。
 
+### 專案（開啟的工作目錄）
+
+- **definition**: 桌面 app 開著的一個工作目錄——本機資料夾或 server 上的 Project／Repo；圖示列一個方塊＝一個專案，專案欄的四頁與專案設定都屬於它。
+- **avoid**: Workspace、workspace、工作區、專案分頁（使用者可見文案中）
+- **why**: 「新增 Workspace」「加入專案」「專案分頁」三處指同一件事，依「一個概念一個詞」收斂為「專案」；與 server 端的 Project 詞義分層——server 的 Project 是 scope 的上層分組，中文一律寫「Project／Repo」。Workspace 與 workspace 為純 ASCII，依 `ui-copy-vocabulary` 的既有設計不入機械守門集，由撰稿時人工判斷。討論「desktop-ui-redesign」第 5 回合提出詞彙漂移、結論定案，2026-10-08 變更「desktop-shell-redesign」落地。
+
 ### Server
 
-- **definition**: speclink server 服務端——桌面 app 連線的那一端（`speclink-server`）。桌面「新增 Workspace」第一步的來源卡、其下一步標題與伺服器連線說明皆以此稱之。
+- **definition**: speclink server 服務端——桌面 app 連線的那一端（`speclink-server`）。桌面「新增專案」第一步的來源卡、其下一步標題與伺服器連線說明皆以此稱之。
 - **avoid**: Speclink Server
 - **why**: 使用者要選的是「哪一台 server」，不是「哪一個品牌的 server」；品牌前綴綁死了通用概念，且同一個 chooser 內既有的「遷移到 Server…」「以 Server 為準」早已不帶前綴，前後不一致。直出英文而非中譯，沿用既有的「開發者工具中原生詞即最直觀」裁定線（先例：config.yaml 頁籤、討論 slug、worktree 直出）——本專案的使用者就是會 curl 自己那台 server 的開發者。此 avoid 詞為純 ASCII，依 `ui-copy-vocabulary` 的既有設計不入機械守門集，由撰稿時人工判斷。「Server」與「伺服器」的中英用詞統一是另一個待決問題，本詞條不預判其結果。2026-09-03 變更「server-wording-debrand」定案。
 

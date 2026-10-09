@@ -72,7 +72,7 @@ describe("RemoteWorkspaceRecovery", () => {
     expect(screen.getByText(/Team Server/).textContent).toContain("spec.example.test");
     expect(screen.getByRole("button", { name: "重新連線" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "伺服器設定" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "自分頁移除" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "自專案列移除" })).toBeTruthy();
 
     const disclosure = screen.getByRole("button", { name: "技術細節" });
     expect(disclosure.getAttribute("aria-expanded")).toBe("false");
@@ -83,7 +83,7 @@ describe("RemoteWorkspaceRecovery", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "重新連線" }));
     fireEvent.click(screen.getByRole("button", { name: "伺服器設定" }));
-    fireEvent.click(screen.getByRole("button", { name: "自分頁移除" }));
+    fireEvent.click(screen.getByRole("button", { name: "自專案列移除" }));
     expect(onRetry).toHaveBeenCalledTimes(1);
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
     expect(onRemove).toHaveBeenCalledTimes(1);

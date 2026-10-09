@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useMatch } from "react-router-dom";
 import {
   Activity,
   FolderGit2,
@@ -8,10 +8,10 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { cn, useI18n } from "@speclink/ui";
+import { NavItem, useI18n } from "@speclink/ui";
 
 // 管理導覽的六個固定目的地，分為日常與維運兩組。帳號不是側欄目的地——入口在 header
-// 的電子郵件連結（HeaderAccount）。圖示與選中態（實心主色）對齊 Desktop 側欄語彙。
+// 的電子郵件連結（HeaderAccount）。導覽項是共用 NavItem（design D4），與 Desktop 專案欄同一份。
 // tour 是首次導覽的目標標記（components/Tour.tsx）；每個目的地一步。
 type Destination = { to: string; labelKey: string; icon: LucideIcon; tour: string; end?: boolean };
 
@@ -27,31 +27,30 @@ const OPERATIONS: Destination[] = [
   { to: "/admin/audit", labelKey: "nav.audit", icon: ScrollText, tour: "nav-audit" },
 ];
 
-function itemClass(isActive: boolean): string {
-  return cn(
-    "flex min-h-11 items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-    isActive
-      ? "bg-primary font-medium text-primary-foreground"
-      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+/** 作用中與否以 NavLink 同一套比對（含 end）決定，交給 NavItem 套樣式。 */
+function Item({
+  to,
+  labelKey,
+  icon: Icon,
+  tour,
+  end,
+  onNavigate,
+}: Destination & { onNavigate?: () => void }) {
+  const { t } = useI18n();
+  const active = useMatch({ path: to, end: end ?? false }) !== null;
+  return (
+    <NavItem asChild active={active} icon={<Icon aria-hidden="true" />} label={t(labelKey)}>
+      <NavLink to={to} end={end} data-tour={tour} onClick={onNavigate} />
+    </NavItem>
   );
 }
 
 function Group({ items, onNavigate }: { items: Destination[]; onNavigate?: () => void }) {
-  const { t } = useI18n();
   return (
     <ul className="space-y-1">
-      {items.map(({ to, labelKey, icon: Icon, tour, end }) => (
-        <li key={to}>
-          <NavLink
-            to={to}
-            end={end}
-            data-tour={tour}
-            onClick={onNavigate}
-            className={({ isActive }) => itemClass(isActive)}
-          >
-            <Icon aria-hidden="true" className="h-4 w-4 shrink-0" />
-            {t(labelKey)}
-          </NavLink>
+      {items.map((item) => (
+        <li key={item.to}>
+          <Item {...item} onNavigate={onNavigate} />
         </li>
       ))}
     </ul>

@@ -10,6 +10,7 @@ use speclink_fs::FsStore;
 
 pub mod cache;
 pub mod discussions;
+pub mod fs_actions;
 pub mod manage;
 pub mod manual;
 pub mod project;

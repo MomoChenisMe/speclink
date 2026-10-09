@@ -120,12 +120,12 @@ curl -o /dev/null -w "%{http_code}\n" http://localhost:8080/healthz
 
 ## <a id="desktop"></a>5. 用 Desktop 連上
 
-1. 在 Desktop 的分頁列按「新增 Workspace」，來源選「Server」。
+1. 在 Desktop 左側圖示列按「＋」（新增專案），選「Server」來源卡，再按「下一步」。
 2. 在「選擇 Server」下方填伺服器位址 `http://localhost:8080`（Server base URL），按「新增並登入」。
 3. Desktop 會開瀏覽器到裝置登入頁 `/activate`。還沒登入就先登入，確認代碼和 Desktop 上的一樣，再按「核准」。
 4. 回到 Desktop，在「選擇 Project 與 Repo」選 `demo` 與 `backend`。
 5. 在「連接本機 checkout？」選一種開法，見下方說明。
-6. 按「開啟 Workspace」。
+6. 按「開啟專案」。
 
 清單是空的，代表第 3 節還沒做。補上成員資格後，回 Desktop 重新載入清單。
 

@@ -122,12 +122,12 @@ Keep these three rules in mind:
 
 ## <a id="desktop"></a>5. Connect the Desktop app
 
-1. In the Desktop tab bar, click "Add Workspace", and then select "Server" as the source.
+1. In the icon rail on the left of the Desktop app, click "+" (New project). Select the "Server" source card, and then click "Next".
 2. Under "Choose a Server", enter the server URL `http://localhost:8080` (the Server base URL), and then click "Add and sign in".
 3. The Desktop app opens the device sign-in page `/activate` in a browser. Sign in if necessary. Make sure that the code is the same as the code in the Desktop app, and then click "Approve".
 4. Go back to the Desktop app. Under "Choose a Project and Repo", select `demo` and `backend`.
 5. Under "Connect a local checkout?", select one of the two modes below.
-6. Click "Open Workspace".
+6. Click "Open Project".
 
 An empty list means that you did not do section 3. Add the membership, and then reload the list in the Desktop app.
 

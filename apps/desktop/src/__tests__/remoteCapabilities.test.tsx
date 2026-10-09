@@ -136,7 +136,7 @@ describe("remote 分頁的 capability 停用", () => {
     const ds = fakeRemoteDs();
     renderRemoteApp(ds);
     await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = screen.getByRole("navigation", { name: "專案導覽" });
     fireEvent.click(within(aside).getByRole("button", { name: "規格" }));
     await waitFor(() => expect(screen.getByText("auth")).toBeTruthy());
     fireEvent.click(screen.getByText("auth"));

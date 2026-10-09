@@ -159,6 +159,12 @@ function renderApp(
   return { ds, ws, settings };
 }
 
+/** 殼（design D2）：專案欄是帶「專案導覽」標籤的 nav；設定入口是圖示列底部齒輪。 */
+const projectColumn = () => screen.getByRole("navigation", { name: "專案導覽" });
+const settingsGear = () => screen.getByRole("button", { name: "設定" });
+/** 左側整欄（標題列＋圖示列＋專案欄）。 */
+const leftSide = () => screen.getByTestId("left-titlebar").parentElement as HTMLElement;
+
 const STATUS: StatusReport = {
   changeName: "desktop-shell-and-browser",
   schemaName: "spec-driven",
@@ -235,26 +241,23 @@ const MANUAL_INDEX = {
 };
 
 describe("App (kanban primary + rich detail)", () => {
-  it("根層掛載 Toaster，頂欄不含操作結果文字節點", async () => {
+  it("根層掛載 Toaster，主區頂列不含操作結果文字節點", async () => {
     renderApp();
     await waitFor(() => expect(screen.getByTestId("app-toaster")).toBeTruthy());
     expect(toasterSpy).toHaveBeenCalledTimes(1);
 
-    const header = document.querySelector("header") as HTMLElement;
-    expect(header).toBeTruthy();
-    expect(header.querySelector(".font-mono")).toBeNull();
+    const bar = screen.getByTestId("main-titlebar");
+    expect(bar.querySelector(".font-mono")).toBeNull();
   });
 
-  // spec desktop-app Scenario「品牌資產只有一處」：頂欄字標來自共用元件庫的橫式鎖版，
-  // 依系統偏好切換深色版。
-  it("頂欄以共用 Wordmark 呈現橫式字標，深色版經 picture source 切換", async () => {
+  // spec desktop-app「側欄導覽結構」：圖示列頂端是共用元件庫的品牌標記；殼上不再有橫式字標
+  // （字標只在零專案空狀態）。
+  it("圖示列頂端為共用 BrandMark，有專案時殼上無橫式字標", async () => {
     renderApp();
-    const header = document.querySelector("header") as HTMLElement;
-    const lockup = (await within(header).findByAltText("Speclink")) as HTMLImageElement;
-    expect(lockup.getAttribute("src")).toContain("logo-horizontal");
-    const dark = lockup.parentElement?.querySelector("source") as HTMLSourceElement;
-    expect(dark.getAttribute("media")).toBe("(prefers-color-scheme: dark)");
-    expect(dark.getAttribute("srcset")).toContain("logo-horizontal-dark");
+    await screen.findByText("desktop-shell-and-browser");
+    const rail = document.querySelector("[data-project-rail]") as HTMLElement;
+    expect(rail.firstElementChild?.getAttribute("aria-label")).toBe("Speclink");
+    expect(document.querySelector('img[alt="Speclink"]')).toBeNull();
   });
 
   it("renders the kanban board by default with change cards", async () => {
@@ -526,12 +529,22 @@ describe("App (kanban primary + rich detail)", () => {
     const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue(changeList([])) });
     render(<App createSession={makeSession(ds)} workspace={ws as never} />);
     expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
-    // 空狀態與頂列皆匯流至新增 Workspace chooser，再選本機資料夾。
-    const openButtons = screen.getAllByText("新增 Workspace");
+    // 空狀態與圖示列「＋」皆匯流至新增專案對話框，選本機卡後按「選擇資料夾…」。
+    const openButtons = screen.getAllByText("新增專案");
     fireEvent.click(openButtons[openButtons.length - 1]);
     const chooser = await screen.findByRole("alertdialog");
     fireEvent.click(within(chooser).getByRole("button", { name: /本機資料夾/ }));
+    fireEvent.click(within(chooser).getByRole("button", { name: "選擇資料夾…" }));
     await waitFor(() => expect(ws.pickFolder).toHaveBeenCalled());
+  });
+
+  it("零分頁空狀態「連線 Server」開對話框並直接呈現 Server 步驟（步驟條第 2 步）", async () => {
+    const ws = fakeWorkspace();
+    render(<App createSession={makeSession(fakeDataSource())} workspace={ws as never} />);
+    fireEvent.click(await screen.findByRole("button", { name: "連線 Server" }));
+    const chooser = await screen.findByRole("alertdialog");
+    expect(within(chooser).getByText("選擇 Server")).toBeTruthy();
+    expect(within(chooser).getByText("步驟 2 / 4")).toBeTruthy();
   });
 
   // spec「表單控制項與按鈕以主題化元件呈現」Scenario「初始化對話框工具多選主題化」
@@ -541,10 +554,11 @@ describe("App (kanban primary + rich detail)", () => {
     ws.openProject = vi.fn().mockResolvedValue({ status: "uninitialized", dir: "D:/newproj" });
     const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue(changeList([])) });
     render(<App createSession={makeSession(ds)} workspace={ws as never} />);
-    const openButtons = await screen.findAllByText("新增 Workspace");
+    const openButtons = await screen.findAllByText("新增專案");
     fireEvent.click(openButtons[openButtons.length - 1]);
     const chooser = await screen.findByRole("alertdialog");
     fireEvent.click(within(chooser).getByRole("button", { name: /本機資料夾/ }));
+    fireEvent.click(within(chooser).getByRole("button", { name: "選擇資料夾…" }));
     // chooser 關閉有離場動畫；等待初始化框的專屬控制項，避免抓到尚未卸載的 chooser。
     const claude = await screen.findByRole("checkbox", { name: "claude" });
     const dialog = claude.closest('[role="alertdialog"]') as HTMLElement;
@@ -577,10 +591,11 @@ describe("App (kanban primary + rich detail)", () => {
       .mockResolvedValue({ status: "project", root: "D:/migrated", name: "migrated" });
     const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue(changeList([])) });
     render(<App createSession={makeSession(ds)} workspace={ws as never} />);
-    const openButtons = await screen.findAllByText("新增 Workspace");
+    const openButtons = await screen.findAllByText("新增專案");
     fireEvent.click(openButtons[openButtons.length - 1]);
     const chooser = await screen.findByRole("alertdialog");
     fireEvent.click(within(chooser).getByRole("button", { name: /本機資料夾/ }));
+    fireEvent.click(within(chooser).getByRole("button", { name: "選擇資料夾…" }));
     // chooser 關閉有離場動畫；等待啟用框的專屬控制項。
     const claude = await screen.findByRole("checkbox", { name: "claude" });
     const dialog = claude.closest('[role="alertdialog"]') as HTMLElement;
@@ -606,10 +621,11 @@ describe("App (kanban primary + rich detail)", () => {
     ws.openProject = vi.fn().mockResolvedValue({ status: "unadopted", root: "D:/migrated" });
     const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue(changeList([])) });
     render(<App createSession={makeSession(ds)} workspace={ws as never} />);
-    const openButtons = await screen.findAllByText("新增 Workspace");
+    const openButtons = await screen.findAllByText("新增專案");
     fireEvent.click(openButtons[openButtons.length - 1]);
     const chooser = await screen.findByRole("alertdialog");
     fireEvent.click(within(chooser).getByRole("button", { name: /本機資料夾/ }));
+    fireEvent.click(within(chooser).getByRole("button", { name: "選擇資料夾…" }));
     const claude = await screen.findByRole("checkbox", { name: "claude" });
     const dialog = claude.closest('[role="alertdialog"]') as HTMLElement;
     fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
@@ -618,7 +634,7 @@ describe("App (kanban primary + rich detail)", () => {
     expect(ws.initProject).not.toHaveBeenCalled();
   });
 
-  it("分頁列取代頂欄「目前專案」佔位；點分頁切換後 active 標示更新", async () => {
+  it("圖示列方塊：點背景方塊切換後作用中標示、標題列專案名與麵包屑同步更新", async () => {
     localStorage.setItem(
       "speclink.projectTabs",
       JSON.stringify({
@@ -636,15 +652,16 @@ describe("App (kanban primary + rich detail)", () => {
         Promise.resolve({ status: "project", root: p, name: p === "A" ? "proj-a" : "proj-b" }),
       );
     render(<App createSession={makeSession(fakeDataSource())} workspace={ws as never} />);
-    const tabA = (await screen.findByText("proj-a")).closest("[data-tab]") as HTMLElement;
-    expect(tabA.getAttribute("data-active")).toBe("true");
-    // 佔位文字已被分頁列取代。
-    expect(screen.queryByText("目前專案")).toBeNull();
-    fireEvent.click(screen.getByText("proj-b"));
-    await waitFor(() => {
-      const tabB = screen.getByText("proj-b").closest("[data-tab]") as HTMLElement;
-      expect(tabB.getAttribute("data-active")).toBe("true");
-    });
+    const squareOf = (key: string) =>
+      Array.from(document.querySelectorAll<HTMLElement>("[data-tab]")).find(
+        (el) => el.getAttribute("data-tab") === key,
+      ) as HTMLElement;
+    await waitFor(() => expect(squareOf("local:A").getAttribute("data-active")).toBe("true"));
+    expect(within(screen.getByTestId("left-titlebar")).getByText("proj-a")).toBeTruthy();
+    fireEvent.click(squareOf("local:B"));
+    await waitFor(() => expect(squareOf("local:B").getAttribute("data-active")).toBe("true"));
+    expect(within(screen.getByTestId("left-titlebar")).getByText("proj-b")).toBeTruthy();
+    expect(screen.getByTestId("main-titlebar").textContent).toBe("proj-b/變更");
   });
 
   it("切換 UI 語言即時全介面生效、持久化於本機且不觸碰 config.yaml（spec 互不影響）", async () => {
@@ -659,12 +676,13 @@ describe("App (kanban primary + rich detail)", () => {
     const settings = fakeSettings();
     render(<App createSession={makeSession(fakeDataSource(), settings)} workspace={ws as never} />);
     // 開應用程式設定頁 → 本機設定為預設簽 → 切 English。
-    fireEvent.click(await screen.findByText("設定"));
+    fireEvent.click(await screen.findByRole("button", { name: "設定" }));
     fireEvent.mouseDown(await screen.findByRole("tab", { name: "本機設定" }));
     const group = await screen.findByTestId("ui-locale");
     fireEvent.click(within(group).getByText("English"));
-    // 即時全介面生效：側欄改為英文。
-    expect(await screen.findByText("Settings")).toBeTruthy();
+    // 即時全介面生效：標題列、齒輪與專案欄改為英文。
+    expect((await screen.findAllByText("Settings")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Settings" })).toBeTruthy();
     expect(screen.getByText("Changes")).toBeTruthy();
     // 持久化於 app 本機；config.yaml 未被觸碰。
     expect(localStorage.getItem("speclink.uiLocale")).toBe("en");
@@ -693,7 +711,7 @@ describe("App (kanban primary + rich detail)", () => {
       ),
     );
     // UI 語言不受影響：介面仍為 zh-TW、偏好鍵未被改動。
-    expect(screen.getByText("設定")).toBeTruthy();
+    expect(settingsGear()).toBeTruthy();
     expect(localStorage.getItem("speclink.uiLocale")).toBe("zh-TW");
   });
 
@@ -713,6 +731,15 @@ describe("App (kanban primary + rich detail)", () => {
 });
 
 describe("board search wiring（看板搜尋接線）", () => {
+  it("看板頁以頁標題區開頭：標題「變更」與說明，搜尋輸入在同一列", async () => {
+    renderApp();
+    await screen.findByText("desktop-shell-and-browser");
+    const heading = screen.getByRole("heading", { level: 2, name: "變更" });
+    const header = heading.closest("[data-page-header]") as HTMLElement;
+    expect(header.textContent).toContain("依生命週期分欄；拖曳卡片調整順序，點卡片開詳情。");
+    expect(within(header).getByPlaceholderText("搜尋看板卡片…")).toBeTruthy();
+  });
+
   it("kanban view renders a search input that filters cards and reflects boardQuery", async () => {
     renderApp();
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
@@ -742,50 +769,195 @@ describe("board search wiring（看板搜尋接線）", () => {
 });
 
 describe("sidebar navigation structure（側欄導覽結構）", () => {
-  it("側欄頂部依序為變更/已封存/規格/手冊，底部為專案設定/設定，無備忘項且頂欄無已封存鈕", async () => {
+  it("專案欄依序為變更/已封存/規格/手冊與底部專案設定，不含設定與備忘；設定在圖示列底部", async () => {
     renderApp();
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     // 已封存項以 aria-label 為無障礙名稱（徽章數字不污染），其餘取文字內容。
     const labels = within(aside)
       .getAllByRole("button")
       .map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
-    expect(labels).toEqual(["變更", "已封存", "規格", "手冊", "專案設定", "設定"]);
+    expect(labels).toEqual(["變更", "已封存", "規格", "手冊", "專案設定"]);
+    expect(leftSide().className).toContain("w-[256px]");
     expect(screen.queryByText("備忘")).toBeNull();
-    const header = document.querySelector("header") as HTMLElement;
-    expect(within(header).queryByLabelText("已封存")).toBeNull();
-    expect(within(header).queryByText("已封存")).toBeNull();
+    const rail = document.querySelector("[data-project-rail]") as HTMLElement;
+    expect(rail.contains(settingsGear())).toBe(true);
+    expect(rail.lastElementChild).toBe(settingsGear());
+    // 左側標題列：作用中專案名與「⋯」專案動作鈕。
+    const titleBar = screen.getByTestId("left-titlebar");
+    expect(within(titleBar).getByText("proj-a").getAttribute("title")).toBe("A");
+    expect(within(titleBar).getByRole("button", { name: "專案動作" })).toBeTruthy();
   });
 
-  it("底部群組沉底：專案設定帶自動上邊距、設定為側欄最末子元素，與頂部四項彈性區隔，切頁與高亮語意不變", async () => {
+  it("專案設定沉底（自動上邊距）；點齒輪進設定頁：左側標題列為「設定」、齒輪作用中、專案欄無作用中項", async () => {
     renderApp();
     await screen.findByText("desktop-shell-and-browser");
-    const aside = document.querySelector("aside") as HTMLElement;
-    const settingsNav = within(aside).getByRole("button", { name: "設定" });
+    const aside = projectColumn();
     const projectSettingsNav = within(aside).getByRole("button", { name: "專案設定" });
-    // 頂部四項維持依序；底部群組專案設定在上、設定為側欄最末子元素。
-    const labels = within(aside)
-      .getAllByRole("button")
-      .map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
-    expect(labels.slice(0, 4)).toEqual(["變更", "已封存", "規格", "手冊"]);
-    expect(labels.slice(4)).toEqual(["專案設定", "設定"]);
-    expect(aside.lastElementChild).toBe(settingsNav);
-    // 彈性區隔：jsdom 無版面計算，以等效自動上邊距 class 斷言（design D5）——
-    // 上邊距落在底部群組的第一項（專案設定），設定緊隨其後不再另帶。
+    // 彈性區隔：jsdom 無版面計算，以等效自動上邊距 class 斷言。
     expect(projectSettingsNav.className).toContain("mt-auto");
-    expect(settingsNav.className).not.toContain("mt-auto");
-    // 切頁與高亮語意不變：點設定離開看板並高亮設定項。
     const changesNav = within(aside).getByRole("button", { name: "變更" });
-    fireEvent.click(settingsNav);
+    expect(changesNav.className).toContain("bg-primary");
+
+    fireEvent.click(settingsGear());
     await waitFor(() => expect(document.querySelector('[data-column="ready"]')).toBeNull());
-    expect(settingsNav.className).toContain("bg-primary");
-    expect(changesNav.className).not.toContain("bg-primary");
+    expect(settingsGear().className).toContain("bg-primary");
+    for (const item of within(projectColumn()).getAllByRole("button")) {
+      expect(item.className).not.toContain("bg-primary");
+    }
+    const titleBar = screen.getByTestId("left-titlebar");
+    expect(titleBar.textContent).toBe("設定");
+    expect(within(titleBar).queryByRole("button", { name: "專案動作" })).toBeNull();
+    expect(screen.getByTestId("main-titlebar").textContent).toBe("設定");
+  });
+
+  it("標題列「⋯」開專案動作選單（與方塊右鍵同一份）；選「關閉專案」關掉作用中專案", async () => {
+    renderApp();
+    await screen.findByText("desktop-shell-and-browser");
+    // Radix 選單開著時 body 為 pointer-events: none（內容層照常可點）。
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(
+      within(screen.getByTestId("left-titlebar")).getByRole("button", { name: "專案動作" }),
+    );
+    const items = screen.getAllByRole("menuitem").map((i) => i.querySelector("span")?.textContent);
+    expect(items).toEqual([
+      "在檔案管理員顯示",
+      "在終端機開啟",
+      "以編輯器開啟",
+      "複製路徑",
+      "重新整理",
+      "關閉專案",
+    ]);
+    await user.click(screen.getByRole("menuitem", { name: /^關閉專案/ }));
+    expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
+    expect(screen.queryByRole("navigation", { name: "專案導覽" })).toBeNull();
+  });
+
+  it("背景方塊右鍵選「重新整理」：切到該專案（切換即重新載入），不是重載作用中專案", async () => {
+    localStorage.setItem(
+      "speclink.projectTabs",
+      JSON.stringify({
+        tabs: [
+          { root: "A", name: "proj-a" },
+          { root: "B", name: "proj-b" },
+        ],
+        activeRoot: "A",
+      }),
+    );
+    const ws = fakeWorkspace();
+    ws.openProject = vi
+      .fn()
+      .mockImplementation((p: string) =>
+        Promise.resolve({ status: "project", root: p, name: p === "A" ? "proj-a" : "proj-b" }),
+      );
+    render(<App createSession={makeSession(fakeDataSource())} workspace={ws as never} />);
+    const squareOf = (key: string) =>
+      Array.from(document.querySelectorAll<HTMLElement>("[data-tab]")).find(
+        (el) => el.getAttribute("data-tab") === key,
+      ) as HTMLElement;
+    await waitFor(() => expect(squareOf("local:A").getAttribute("data-active")).toBe("true"));
+    fireEvent.contextMenu(squareOf("local:B"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /^重新整理/ }));
+    await waitFor(() => expect(squareOf("local:B").getAttribute("data-active")).toBe("true"));
+  });
+
+  it("Ctrl+R 重新整理作用中專案、Ctrl+W 關閉作用中專案（Windows／Linux 的選單快捷鍵）", async () => {
+    const { ds } = renderApp();
+    await screen.findByText("desktop-shell-and-browser");
+    const before = vi.mocked(ds.listChanges).mock.calls.length;
+    fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+    await waitFor(() => expect(vi.mocked(ds.listChanges).mock.calls.length).toBeGreaterThan(before));
+    fireEvent.keyDown(window, { key: "w", ctrlKey: true });
+    expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
+  });
+
+  it("macOS：⌘R 重新整理；⌘W 不在網頁層接（交給原生選單），專案仍開著", async () => {
+    const ua = vi
+      .spyOn(navigator, "userAgent", "get")
+      .mockReturnValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15");
+    try {
+      const { ds } = renderApp();
+      await screen.findByText("desktop-shell-and-browser");
+      const before = vi.mocked(ds.listChanges).mock.calls.length;
+      fireEvent.keyDown(window, { key: "r", metaKey: true });
+      await waitFor(() =>
+        expect(vi.mocked(ds.listChanges).mock.calls.length).toBeGreaterThan(before),
+      );
+      fireEvent.keyDown(window, { key: "w", metaKey: true });
+      fireEvent.keyDown(window, { key: "w", ctrlKey: true });
+      expect(screen.queryByText("開啟一個專案開始")).toBeNull();
+      expect(screen.getByTestId("left-titlebar").textContent).toContain("proj-a");
+    } finally {
+      ua.mockRestore();
+    }
+  });
+
+  it("更新通知列排在主區頂列之下：頂列維持視窗最上緣（與左側標題列同高、Windows 視窗鈕在右上角）", async () => {
+    const ws = fakeWorkspace();
+    ws.openProject = vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
+    render(
+      <App
+        createSession={makeSession(fakeDataSource())}
+        workspace={ws as never}
+        updater={{
+          check: vi.fn().mockResolvedValue({ version: "9.9.9", downloadAndInstall: vi.fn() }),
+          relaunch: vi.fn(),
+        }}
+      />,
+    );
+    const banner = await screen.findByTestId("update-banner");
+    const titleBar = screen.getByTestId("main-titlebar");
+    expect(titleBar.parentElement?.firstElementChild).toBe(titleBar);
+    expect(titleBar.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("麵包屑隨頁面切換，點專案名回看板", async () => {
+    renderApp();
+    await screen.findByText("desktop-shell-and-browser");
+    const crumbs = screen.getByTestId("main-titlebar");
+    expect(crumbs.textContent).toBe("proj-a/變更");
+    fireEvent.click(within(projectColumn()).getByRole("button", { name: "規格" }));
+    await waitFor(() => expect(crumbs.textContent).toBe("proj-a/規格"));
+    fireEvent.click(within(crumbs).getByRole("button", { name: "proj-a" }));
+    await waitFor(() => expect(document.querySelector('[data-column="ready"]')).toBeTruthy());
+    expect(crumbs.textContent).toBe("proj-a/變更");
+    fireEvent.click(within(projectColumn()).getByRole("button", { name: "手冊" }));
+    await waitFor(() => expect(crumbs.textContent).toBe("proj-a/手冊"));
+  });
+
+  it("麵包屑隨專案切換：A / 規格 → B / 規格（切專案保留所在頁）", async () => {
+    localStorage.setItem(
+      "speclink.projectTabs",
+      JSON.stringify({
+        tabs: [
+          { root: "A", name: "proj-a" },
+          { root: "B", name: "proj-b" },
+        ],
+        activeRoot: "A",
+      }),
+    );
+    const ws = fakeWorkspace();
+    ws.openProject = vi
+      .fn()
+      .mockImplementation((p: string) =>
+        Promise.resolve({ status: "project", root: p, name: p === "A" ? "proj-a" : "proj-b" }),
+      );
+    render(<App createSession={makeSession(fakeDataSource())} workspace={ws as never} />);
+    const crumbs = await screen.findByTestId("main-titlebar");
+    await waitFor(() => expect(crumbs.textContent).toBe("proj-a/變更"));
+    fireEvent.click(within(projectColumn()).getByRole("button", { name: "規格" }));
+    await waitFor(() => expect(crumbs.textContent).toBe("proj-a/規格"));
+    const squareB = Array.from(document.querySelectorAll<HTMLElement>("[data-tab]")).find(
+      (el) => el.getAttribute("data-tab") === "local:B",
+    ) as HTMLElement;
+    fireEvent.click(squareB);
+    await waitFor(() => expect(crumbs.textContent).toBe("proj-b/規格"));
   });
 
   it("點專案設定切至專案設定頁並轉移高亮", async () => {
     renderApp();
     await screen.findByText("desktop-shell-and-browser");
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     const projectSettingsNav = within(aside).getByRole("button", { name: "專案設定" });
     const changesNav = within(aside).getByRole("button", { name: "變更" });
 
@@ -797,23 +969,24 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     expect(changesNav.className).not.toContain("bg-primary");
   });
 
-  it("零分頁時設定仍進入應用程式設定頁，專案設定則呈現空狀態引導頁", async () => {
+  it("零分頁：左側只有圖示列（無專案欄、無專案設定）；齒輪仍進入應用程式設定頁", async () => {
     const ws = fakeWorkspace();
     render(<App createSession={makeSession(fakeDataSource())} workspace={ws as never} />);
     expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
-    const aside = document.querySelector("aside") as HTMLElement;
-    const settingsNav = within(aside).getByRole("button", { name: "設定" });
+    expect(screen.queryByRole("navigation", { name: "專案導覽" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "專案設定" })).toBeNull();
+    // 左側只剩 56px 圖示列（macOS 標題列的紅綠燈留白不得把它撐寬）。
+    expect(leftSide().className).toContain("w-14");
+    expect(screen.getByTestId("left-titlebar").textContent).toBe("");
+    expect(screen.getByTestId("main-titlebar").textContent).toBe("");
 
-    fireEvent.click(settingsNav);
+    fireEvent.click(settingsGear());
     expect(await screen.findByRole("tab", { name: "本機設定" })).toBeTruthy();
     expect(screen.queryByText("開啟一個專案開始")).toBeNull();
-    expect(settingsNav.className).toContain("bg-primary");
-
-    const projectSettingsNav = within(aside).getByRole("button", { name: "專案設定" });
-    fireEvent.click(projectSettingsNav);
-    expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
-    expect(projectSettingsNav.className).toContain("bg-primary");
-    expect(settingsNav.className).not.toContain("bg-primary");
+    expect(settingsGear().className).toContain("bg-primary");
+    // 56px 圖示列放不下標題文字（macOS 紅綠燈也佔住這段）：左側留白，「設定」由主區麵包屑呈現。
+    expect(screen.getByTestId("left-titlebar").textContent).toBe("");
+    expect(screen.getByTestId("main-titlebar").textContent).toBe("設定");
   });
 
   it("已封存導覽項帶封存數量徽章，無障礙標籤為「已封存」", async () => {
@@ -825,7 +998,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     });
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     const nav = within(aside).getByRole("button", { name: "已封存" });
     await waitFor(() => expect(nav.textContent).toContain("2"));
   });
@@ -837,7 +1010,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     });
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     const nav = within(aside).getByRole("button", { name: "已封存" });
     expect(nav.textContent).toContain("0");
     // 模擬外部終端封存一個變更：檔案監看發 workspace-changed → 整批 refresh。
@@ -849,7 +1022,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
   it("已封存導覽為切頁而非 toggle：再點停留在已封存頁，點變更才返回看板", async () => {
     renderApp();
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     const archivedNav = within(aside).getByRole("button", { name: "已封存" });
     fireEvent.click(archivedNav);
     await waitFor(() => expect(screen.getByText("已封存的變更")).toBeTruthy());
@@ -871,7 +1044,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     // 主內容渲染 SpecList（正式規格卡片＋搜尋列），返回看板點「變更」。
     renderApp();
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     const specsNav = within(aside).getByRole("button", { name: "規格" });
     fireEvent.click(specsNav);
     await waitFor(() => expect(screen.getByText("desktop-app")).toBeTruthy());
@@ -893,7 +1066,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     });
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     fireEvent.click(within(aside).getByRole("button", { name: "規格" }));
     await waitFor(() => screen.getByText("desktop-app"));
     expect(ds.getSpecDocument).not.toHaveBeenCalled();
@@ -922,7 +1095,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     });
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     fireEvent.click(within(aside).getByRole("button", { name: /已封存/ }));
     await waitFor(() => screen.getByText("old"));
     expect(ds.getArchivedDocument).not.toHaveBeenCalled();
@@ -962,7 +1135,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     });
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     fireEvent.click(within(aside).getByRole("button", { name: /已封存/ }));
     await waitFor(() => screen.getByText("old"));
     fireEvent.click(screen.getByText("old"));
@@ -990,7 +1163,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     });
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     fireEvent.click(within(aside).getByRole("button", { name: /已封存/ }));
     // 已封存頁為「變更／討論」子頁籤（specs-archive-pagination design D3）：
     // 討論卡在「已封存的討論」子頁籤下。
@@ -1019,7 +1192,7 @@ describe("main content scroll containment（主內容區捲動約束）", () => 
     renderApp();
     await screen.findByText("desktop-shell-and-browser");
     const main = () => document.querySelector("main") as HTMLElement;
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     // 看板（預設）：既有 overflow-hidden。
     expect(main().className).toContain("overflow-hidden");
     // 規格頁：改 overflow-hidden，清單於內部容器捲動。
@@ -1033,7 +1206,7 @@ describe("main content scroll containment（主內容區捲動約束）", () => 
     expect(main().className).toContain("overflow-hidden");
     expect(main().className).not.toContain("overflow-y-auto");
     // 設定頁：維持整頁捲動。
-    fireEvent.click(within(aside).getByRole("button", { name: "設定" }));
+    fireEvent.click(settingsGear());
     await waitFor(() => expect(main().className).toContain("overflow-y-auto"));
     expect(main().className).not.toContain("overflow-hidden");
   });
@@ -1059,7 +1232,7 @@ describe("main content scroll containment（主內容區捲動約束）", () => 
     const prompt = () => screen.getByTestId("asset-prompt");
     const wrapper = () => prompt().parentElement as HTMLElement;
     const main = () => document.querySelector("main") as HTMLElement;
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     expect(prompt().textContent).toContain("3 個檔案");
     // 看板：flex 直欄與 overflow-hidden 並存（classList 逐 token 比對，避免 flex-1 誤中）。
     expect(main().classList.contains("flex")).toBe(true);
@@ -1089,7 +1262,7 @@ describe("main content scroll containment（主內容區捲動約束）", () => 
     expect(wrapper().className).toMatch(/\bz-\d+\b/);
     expect(wrapper().classList.contains("bg-background")).toBe(true);
     // 應用程式設定頁：不屬專案語境，提示不掛；整頁捲動不變。
-    fireEvent.click(within(aside).getByRole("button", { name: "設定" }));
+    fireEvent.click(settingsGear());
     await waitFor(() => expect(screen.queryByTestId("asset-prompt")).toBeNull());
     expect(main().className).toContain("overflow-y-auto");
     expect(main().className).not.toContain("overflow-hidden");
@@ -1107,18 +1280,18 @@ describe("側欄無常駐版號（desktop-app 規格「側欄導覽結構」）"
         updater={{ check: vi.fn().mockResolvedValue(null), relaunch: vi.fn() }}
       />,
     );
-    const aside = await screen.findByRole("complementary");
-    await waitFor(() => expect(within(aside).getByRole("button", { name: "設定" })).toBeTruthy());
+    const aside = (await screen.findByTestId("left-titlebar")).parentElement as HTMLElement;
+    await waitFor(() => expect(settingsGear()).toBeTruthy());
     expect(aside.textContent).not.toContain("v0.1.0");
 
     // 設定頁軟體更新卡仍顯示目前版本。
-    fireEvent.click(within(aside).getByRole("button", { name: "設定" }));
+    fireEvent.click(settingsGear());
     await waitFor(() => expect(screen.getByText(/目前版本\s*0\.1\.0/)).toBeTruthy());
   });
 
   it("未注入 updater 面時同樣無版號文字", async () => {
     renderApp();
-    await waitFor(() => expect(screen.getByRole("complementary")).toBeTruthy());
+    await waitFor(() => expect(leftSide()).toBeTruthy());
     expect(screen.queryByText(/^v\d/)).toBeNull();
   });
 });
@@ -1193,7 +1366,7 @@ describe("主視窗回到前景時重檢更新", () => {
       const adapter = { check: vi.fn().mockResolvedValue(null), relaunch: vi.fn() };
       renderWith(adapter);
       await waitFor(() => expect(adapter.check).toHaveBeenCalledTimes(1));
-      await waitFor(() => expect(screen.getByRole("complementary")).toBeTruthy());
+      await waitFor(() => expect(leftSide()).toBeTruthy());
       expect(adapter.check).toHaveBeenCalledTimes(1);
       expect(consoleError).not.toHaveBeenCalled();
     } finally {
@@ -1260,7 +1433,7 @@ describe("手冊頁接線（desktop-manual-page）", () => {
     await screen.findByText("desktop-shell-and-browser");
     // 進手冊頁前不讀索引（只在手冊視圖活躍時讀）。
     expect(ds.listManualPages).not.toHaveBeenCalled();
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     const manualNav = within(aside).getByRole("button", { name: "手冊" });
     const changesNav = within(aside).getByRole("button", { name: "變更" });
     fireEvent.click(manualNav);
@@ -1282,7 +1455,7 @@ describe("手冊頁接線（desktop-manual-page）", () => {
   it("無手冊目錄時主內容為尚無手冊空狀態，手冊項高亮、無錯誤彈窗", async () => {
     renderApp();
     await screen.findByText("desktop-shell-and-browser");
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     const manualNav = within(aside).getByRole("button", { name: "手冊" });
     fireEvent.click(manualNav);
     expect(await screen.findByText("尚無手冊")).toBeTruthy();
@@ -1290,16 +1463,12 @@ describe("手冊頁接線（desktop-manual-page）", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
-  it("零分頁點手冊呈現與變更頁相同的空狀態引導頁，手冊項高亮", async () => {
+  it("零分頁時手冊不可達：無專案欄、不讀手冊索引，主區為空狀態", async () => {
     const ws = fakeWorkspace();
     const ds = fakeDataSource();
     render(<App createSession={makeSession(ds)} workspace={ws as never} />);
     expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
-    const aside = document.querySelector("aside") as HTMLElement;
-    const manualNav = within(aside).getByRole("button", { name: "手冊" });
-    fireEvent.click(manualNav);
-    expect(await screen.findByText("開啟一個專案開始")).toBeTruthy();
-    expect(manualNav.className).toContain("bg-primary");
+    expect(screen.queryByRole("button", { name: "手冊" })).toBeNull();
     expect(ds.listManualPages).not.toHaveBeenCalled();
   });
 
@@ -1314,7 +1483,7 @@ describe("手冊頁接線（desktop-manual-page）", () => {
     });
     renderApp(ds);
     await screen.findByText("desktop-shell-and-browser");
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     const manualNav = within(aside).getByRole("button", { name: "手冊" });
     const specsNav = within(aside).getByRole("button", { name: "規格" });
     fireEvent.click(manualNav);
@@ -1348,7 +1517,7 @@ describe("手冊頁接線（desktop-manual-page）", () => {
     renderApp(ds);
     await screen.findByText("desktop-shell-and-browser");
     await waitFor(() => expect(workspaceHandlers.length).toBeGreaterThan(0));
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     fireEvent.click(within(aside).getByRole("button", { name: "手冊" }));
     await screen.findByText("第一版內文。");
     const indexCalls = (ds.listManualPages as Mock).mock.calls.length;
@@ -1390,7 +1559,7 @@ describe("抽屜溯源籤接線（drawer-provenance-links）", () => {
     });
     renderApp(ds);
     await screen.findByText("desktop-shell-and-browser");
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     const manualNav = within(aside).getByRole("button", { name: "手冊" });
     fireEvent.click(manualNav);
     await screen.findByText("看板說明。");
@@ -1446,7 +1615,7 @@ describe("抽屜溯源籤接線（drawer-provenance-links）", () => {
     });
     renderApp(ds);
     await screen.findByText("desktop-shell-and-browser");
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     const archivedNav = within(aside).getByRole("button", { name: /已封存/ });
     fireEvent.click(archivedNav);
     fireEvent.mouseDown(await screen.findByRole("tab", { name: /已封存的討論/ }));
@@ -1489,7 +1658,7 @@ describe("抽屜溯源籤接線（drawer-provenance-links）", () => {
     });
     renderApp(ds);
     await screen.findByText("desktop-shell-and-browser");
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     const archivedNav = within(aside).getByRole("button", { name: /已封存/ });
     const changesNav = within(aside).getByRole("button", { name: "變更" });
     fireEvent.click(archivedNav);
@@ -1574,8 +1743,8 @@ describe("更新日誌彈窗接線（desktop-app「更新日誌彈窗」）", ()
       fireEvent.click(within(dialog).getByRole("button", { name: "知道了" }));
       await waitFor(() => expect(screen.queryByTestId("release-notes-dialog")).toBeNull());
       expect(spy).toHaveBeenCalledWith(KEY, TOP);
-      // app 沒有整個炸掉：側欄還在。
-      expect(screen.getByRole("complementary")).toBeTruthy();
+      // app 沒有整個炸掉：左側還在。
+      expect(leftSide()).toBeTruthy();
     } finally {
       spy.mockRestore();
     }
@@ -1591,7 +1760,7 @@ describe("更新日誌彈窗接線（desktop-app「更新日誌彈窗」）", ()
     vi.stubEnv("DEV", true);
     renderWithUpdater();
     await waitFor(() => expect(screen.getByText(/目前版本/)).toBeTruthy(), { timeout: 100 }).catch(() => {});
-    await screen.findByRole("complementary");
+    await screen.findByTestId("left-titlebar");
     expect(screen.queryByTestId("release-notes-dialog")).toBeNull();
     expect(localStorage.getItem(KEY)).toBeNull();
   });
@@ -1599,9 +1768,9 @@ describe("更新日誌彈窗接線（desktop-app「更新日誌彈窗」）", ()
   it("設定頁「更新日誌」開瀏覽模式，關閉後已看過記錄不變", async () => {
     localStorage.setItem(KEY, TOP);
     renderWithUpdater();
-    const aside = await screen.findByRole("complementary");
-    await waitFor(() => expect(within(aside).getByRole("button", { name: "設定" })).toBeTruthy());
-    fireEvent.click(within(aside).getByRole("button", { name: "設定" }));
+    const aside = (await screen.findByTestId("left-titlebar")).parentElement as HTMLElement;
+    await waitFor(() => expect(settingsGear()).toBeTruthy());
+    fireEvent.click(settingsGear());
     fireEvent.click(await screen.findByRole("button", { name: "更新日誌" }));
     const dialog = await screen.findByTestId("release-notes-dialog");
     expect(within(dialog).getByText("更新日誌")).toBeTruthy();
@@ -1736,7 +1905,7 @@ describe("工單分頁接線（drawer-quality-ticket-tab）", () => {
     });
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = projectColumn();
     fireEvent.click(within(aside).getByRole("button", { name: /已封存/ }));
     await waitFor(() => screen.getByText("old"));
     fireEvent.click(screen.getByText("old"));
