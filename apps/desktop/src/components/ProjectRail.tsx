@@ -70,7 +70,9 @@ export function tabPathHint(
   return `${connection} · ${locator.projectId}/${locator.repoId}`;
 }
 
-const SQUARE = "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[13px] font-medium";
+/** 圖示列方塊的尺寸樣式（專案方塊、「＋」、齒輪與更新鈕共用）。 */
+export const RAIL_SQUARE =
+  "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[13px] font-medium";
 
 export function ProjectRail({
   tabs,
@@ -156,7 +158,7 @@ export function ProjectRail({
                 data-error={String(status === "error")}
                 data-status={status}
                 className={cn(
-                  SQUARE,
+                  RAIL_SQUARE,
                   "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   active
                     ? "bg-primary text-primary-foreground"
@@ -246,7 +248,7 @@ export function ProjectRail({
           type="button"
           aria-label={t("app.newProject")}
           className={cn(
-            SQUARE,
+            RAIL_SQUARE,
             "mt-2 border border-dashed border-border bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
           )}
           onClick={onOpen}
@@ -260,7 +262,7 @@ export function ProjectRail({
             type="button"
             aria-label={t("app.navSettings")}
             className={cn(
-              SQUARE,
+              RAIL_SQUARE,
               settingsActive
                 ? "bg-primary text-primary-foreground"
                 : "bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",

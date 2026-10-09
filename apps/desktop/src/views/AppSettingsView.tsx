@@ -152,7 +152,7 @@ export function AppSettingsView({
   // 聚焦捲動（desktop-notice-relocation design D2／D4）：圖示列更新鈕、toast「查看」與技能檔
   // 較新態的入口舉旗。軟體更新卡在本機設定簽：卡不在（停在伺服器簽）就先切簽；Radix 的簽
   // 內容晚一輪才掛上，所以卡節點走 callback ref 進 state，掛上時再跑一次，捲一次並回呼清
-  // 旗標。jsdom 無 scrollIntoView，以可選呼叫容忍。
+  // 旗標。
   const [updaterCard, setUpdaterCard] = useState<HTMLDivElement | null>(null);
   const focusUpdater = updater?.focus === true;
   const onFocusHandled = updater?.onFocusHandled;
@@ -162,7 +162,7 @@ export function AppSettingsView({
       setTab("local");
       return;
     }
-    updaterCard.scrollIntoView?.({ block: "start", behavior: "smooth" });
+    updaterCard.scrollIntoView({ block: "start", behavior: "smooth" });
     onFocusHandled?.();
   }, [focusUpdater, updaterCard, onFocusHandled]);
 

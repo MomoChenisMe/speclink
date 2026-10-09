@@ -1,7 +1,7 @@
 // 更新狀態機（desktop-app spec「桌面自動更新」，design D6）：純 reducer、不依賴
 // Tauri。自動檢查失敗靜默回閒置、手動檢查失敗才呈現無法檢查；簽章驗證失敗轉
 // 錯誤態（不進待重啟＝既有安裝不受影響）；同意前不下載。
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import {
   FOCUS_RECHECK_INTERVAL_MS,
@@ -9,10 +9,16 @@ import {
   focusRecheckDue,
   initialUpdaterState,
   reduceUpdater,
+  updateNeedsAttention,
   type UpdaterState,
 } from "../core/updater";
 import type { PendingUpdate, UpdaterAdapter } from "../adapter/updater";
 import { createAppStore } from "../store";
+
+// 背景檢查發現新版本的 toast（desktop-app「背景檢查的 toast 只發一次」）：mock sonner 才斷言得到。
+const { toastFn } = vi.hoisted(() => ({ toastFn: vi.fn() }));
+vi.mock("sonner", () => ({ toast: Object.assign(toastFn, { error: vi.fn() }) }));
+beforeEach(() => toastFn.mockClear());
 
 // 前景重檢測試的共用時間軸（規格 Example「節流邊界」以 09:00 為上次檢查）。
 const T0 = Date.UTC(2026, 0, 1, 9, 0, 0);
@@ -159,6 +165,22 @@ describe("前景重檢的狀態守門（core/updater focusRecheckAllowed）", ()
   });
 });
 
+// 圖示列更新鈕與設定卡「下載與安裝」列共用的呈現判斷：有事要使用者看的四態才出現。
+describe("更新狀態是否需要呈現（core/updater updateNeedsAttention）", () => {
+  it.each<[UpdaterState, boolean]>([
+    [{ phase: "available", version: "0.5.1" }, true],
+    [{ phase: "downloading", version: "0.5.1" }, true],
+    [{ phase: "restartPending", version: "0.5.1" }, true],
+    [{ phase: "error", message: "invalid signature" }, true],
+    [{ phase: "idle" }, false],
+    [{ phase: "checking", manual: true }, false],
+    [{ phase: "upToDate" }, false],
+    [{ phase: "checkFailed" }, false],
+  ])("%o → %s", (state, shown) => {
+    expect(updateNeedsAttention(state)).toBe(shown);
+  });
+});
+
 // --- store 接線（design D6：plugin 事件經 adapter 注入，store 只驅動 reducer） ---
 
 function storeWith(adapter?: UpdaterAdapter) {
@@ -172,7 +194,8 @@ describe("更新 store 接線", () => {
   it("checkForUpdates 找到新版：狀態轉 available 並帶版本", async () => {
     const pending: PendingUpdate = {
       version: "0.2.0",
-      downloadAndInstall: vi.fn().mockResolvedValue(undefined),
+      download: vi.fn().mockResolvedValue(undefined),
+      install: vi.fn().mockResolvedValue(undefined),
     };
     const store = storeWith({ check: vi.fn().mockResolvedValue(pending), relaunch: vi.fn() });
 
@@ -180,29 +203,46 @@ describe("更新 store 接線", () => {
     expect(store.getState().updater).toEqual({ phase: "available", version: "0.2.0" });
   });
 
-  it("同意後下載套用成功：downloadAndInstall 恰被呼叫一次、轉待重啟", async () => {
+  it("同意後下載並安裝：download 與 install 各被呼叫一次、轉待重啟", async () => {
     const pending: PendingUpdate = {
       version: "0.2.0",
-      downloadAndInstall: vi.fn().mockResolvedValue(undefined),
+      download: vi.fn().mockResolvedValue(undefined),
+      install: vi.fn().mockResolvedValue(undefined),
     };
     const store = storeWith({ check: vi.fn().mockResolvedValue(pending), relaunch: vi.fn() });
 
     await store.getState().checkForUpdates(false);
     await store.getState().acceptUpdate();
-    expect(pending.downloadAndInstall).toHaveBeenCalledTimes(1);
+    expect(pending.download).toHaveBeenCalledTimes(1);
+    expect(pending.install).toHaveBeenCalledTimes(1);
     expect(store.getState().updater).toEqual({ phase: "restartPending", version: "0.2.0" });
   });
 
-  it("下載套用被拒（簽章驗證失敗）：轉錯誤態並帶訊息", async () => {
+  it("安裝被拒：轉錯誤態並帶訊息、不進待重啟", async () => {
     const pending: PendingUpdate = {
       version: "0.2.0",
-      downloadAndInstall: vi.fn().mockRejectedValue(new Error("invalid signature")),
+      download: vi.fn().mockResolvedValue(undefined),
+      install: vi.fn().mockRejectedValue(new Error("install failed")),
+    };
+    const store = storeWith({ check: vi.fn().mockResolvedValue(pending), relaunch: vi.fn() });
+
+    await store.getState().checkForUpdates(false);
+    await store.getState().acceptUpdate();
+    expect(store.getState().updater).toEqual({ phase: "error", message: "install failed" });
+  });
+
+  it("下載被拒（簽章驗證失敗）：轉錯誤態並帶訊息、不呼叫 install", async () => {
+    const pending: PendingUpdate = {
+      version: "0.2.0",
+      download: vi.fn().mockRejectedValue(new Error("invalid signature")),
+      install: vi.fn().mockResolvedValue(undefined),
     };
     const store = storeWith({ check: vi.fn().mockResolvedValue(pending), relaunch: vi.fn() });
 
     await store.getState().checkForUpdates(false);
     await store.getState().acceptUpdate();
     expect(store.getState().updater).toEqual({ phase: "error", message: "invalid signature" });
+    expect(pending.install).not.toHaveBeenCalled();
   });
 
   it("check reject：自動檢查靜默回閒置、手動檢查浮出無法檢查", async () => {
@@ -275,7 +315,8 @@ describe("前景重檢 store 接線（recheckOnFocus）", () => {
   it("Example「開著三小時後切回」：09:00 啟動時最新、期間發布 0.5.1、12:00 切回 → 提示 0.5.1 等待同意", async () => {
     const released: PendingUpdate = {
       version: "0.5.1",
-      downloadAndInstall: vi.fn().mockResolvedValue(undefined),
+      download: vi.fn().mockResolvedValue(undefined),
+      install: vi.fn().mockResolvedValue(undefined),
     };
     const check = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(released);
     const adapter: UpdaterAdapter = { check, relaunch: vi.fn() };
@@ -289,7 +330,10 @@ describe("前景重檢 store 接線（recheckOnFocus）", () => {
       await store.getState().recheckOnFocus(T0 + 180 * MINUTES); // 12:00 切回
       expect(check).toHaveBeenCalledTimes(2);
       expect(store.getState().updater).toEqual({ phase: "available", version: "0.5.1" });
-      expect(released.downloadAndInstall).not.toHaveBeenCalled(); // 等待同意，不自動下載
+      expect(released.download).not.toHaveBeenCalled(); // 等待同意，不自動下載
+      // THEN：toast 顯示 0.5.1（圖示列更新鈕的提示由 updateRailButton.test 以同一狀態斷言）。
+      expect(toastFn).toHaveBeenCalledTimes(1);
+      expect((toastFn.mock.calls[0] as [string])[0]).toContain("0.5.1");
     } finally {
       vi.useRealTimers();
     }
@@ -316,7 +360,8 @@ describe("前景重檢 store 接線（recheckOnFocus）", () => {
   it("Example 節流邊界「09:00 檢查、09:30 起下載中 → 10:30 切回不重檢」", async () => {
     const pending: PendingUpdate = {
       version: "0.5.1",
-      downloadAndInstall: vi.fn(() => new Promise<void>(() => {})), // 永不結束＝停在下載中
+      download: vi.fn(() => new Promise<void>(() => {})), // 永不結束＝停在下載中
+      install: vi.fn(),
     };
     const adapter: UpdaterAdapter = { check: vi.fn().mockResolvedValue(pending), relaunch: vi.fn() };
     const store = storeWith(adapter);
@@ -339,7 +384,8 @@ describe("前景重檢 store 接線（recheckOnFocus）", () => {
   it("Example 節流邊界「09:00 檢查到新版、提示待同意 → 10:30 切回不重檢」：提示留到使用者處置", async () => {
     const pending: PendingUpdate = {
       version: "0.5.1",
-      downloadAndInstall: vi.fn().mockResolvedValue(undefined),
+      download: vi.fn().mockResolvedValue(undefined),
+      install: vi.fn().mockResolvedValue(undefined),
     };
     const adapter: UpdaterAdapter = { check: vi.fn().mockResolvedValue(pending), relaunch: vi.fn() };
     const store = storeWith(adapter);
@@ -357,10 +403,11 @@ describe("前景重檢 store 接線（recheckOnFocus）", () => {
     }
   });
 
-  it("Example 節流邊界「09:00 安裝失敗顯示錯誤 → 10:30 切回不重檢」：錯誤訊息留到使用者關閉", async () => {
+  it("Example 節流邊界「09:00 安裝失敗顯示錯誤 → 10:30 切回不重檢」：錯誤訊息留到使用者重試", async () => {
     const pending: PendingUpdate = {
       version: "0.5.1",
-      downloadAndInstall: vi.fn().mockRejectedValue(new Error("invalid signature")),
+      download: vi.fn().mockRejectedValue(new Error("invalid signature")),
+      install: vi.fn().mockResolvedValue(undefined),
     };
     const adapter: UpdaterAdapter = { check: vi.fn().mockResolvedValue(pending), relaunch: vi.fn() };
     const store = storeWith(adapter);
@@ -382,7 +429,8 @@ describe("前景重檢 store 接線（recheckOnFocus）", () => {
   it("Example 節流邊界「09:00 下載完成待重啟 → 10:30 切回不重檢」", async () => {
     const pending: PendingUpdate = {
       version: "0.5.1",
-      downloadAndInstall: vi.fn().mockResolvedValue(undefined),
+      download: vi.fn().mockResolvedValue(undefined),
+      install: vi.fn().mockResolvedValue(undefined),
     };
     const adapter: UpdaterAdapter = { check: vi.fn().mockResolvedValue(pending), relaunch: vi.fn() };
     const store = storeWith(adapter);

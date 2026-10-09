@@ -5,7 +5,8 @@
 import { AlertTriangle, Download, LoaderCircle, RotateCw } from "lucide-react";
 import { SEMANTIC_TONE, Tooltip, TooltipContent, TooltipTrigger, cn, useI18n } from "@speclink/ui";
 
-import type { UpdaterState } from "../core/updater";
+import { updateNeedsAttention, type UpdaterState } from "../core/updater";
+import { RAIL_SQUARE } from "./ProjectRail";
 
 export interface UpdateRailButtonProps {
   state: UpdaterState;
@@ -14,14 +15,7 @@ export interface UpdateRailButtonProps {
 
 export function UpdateRailButton({ state, onClick }: UpdateRailButtonProps) {
   const { t } = useI18n();
-  if (
-    state.phase !== "available" &&
-    state.phase !== "downloading" &&
-    state.phase !== "restartPending" &&
-    state.phase !== "error"
-  ) {
-    return null;
-  }
+  if (!updateNeedsAttention(state)) return null;
   const label =
     state.phase === "error"
       ? t("updater.rail.error")
@@ -36,7 +30,10 @@ export function UpdateRailButton({ state, onClick }: UpdateRailButtonProps) {
           data-testid="update-rail-button"
           data-phase={state.phase}
           aria-label={label}
-          className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-transparent text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+          className={cn(
+            RAIL_SQUARE,
+            "bg-transparent text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+          )}
           onClick={onClick}
         >
           {state.phase === "available" && <Download className="h-4 w-4" />}

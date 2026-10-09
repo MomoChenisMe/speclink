@@ -55,11 +55,16 @@ export function assetPrompt(
     return null;
   }
   if (skips[root] === probe.currentVersion) return null;
+  // 專案的技能檔版號取觸發這個狀態的工具：較新取領先的、過期取落後的；缺失（從未安裝）為 null。
+  const status = probe.status;
+  const flagged =
+    status === "missing"
+      ? undefined
+      : probe.tools.find((tool) => (status === "newer" ? tool.newer : tool.stale) && tool.workspaceVersion !== null);
   return {
-    kind: probe.status,
+    kind: status,
     fileCount: probe.differingFiles.length,
     version: probe.currentVersion,
-    // 逐工具回報各自的標記版號；受管檔同批再生，取第一個有標記的即代表專案。
-    projectVersion: probe.tools.find((tool) => tool.workspaceVersion !== null)?.workspaceVersion ?? null,
+    projectVersion: flagged?.workspaceVersion ?? null,
   };
 }

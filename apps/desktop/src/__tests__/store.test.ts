@@ -8,7 +8,8 @@ import type {
   StatusReport,
 } from "@speclink/ui";
 
-import { createAppStore, openTicketStation, type AppState } from "../store";
+import { createAppStore, openTicketStation, selectAssetPrompt, type AppState } from "../store";
+import { assetPrompt } from "../assetPrompt";
 import type { ConnectionsAdapter } from "../adapter/connections";
 import type { FsActionsAdapter } from "../adapter/fsActions";
 import { APP_MESSAGES } from "../i18n/messages";
@@ -1554,7 +1555,7 @@ describe("指令檔過期提示的顯示裁決", () => {
   it("過期且未略過：以更新語意提示並帶差異檔數", async () => {
     const store = storeWithAssetProbe(fakeInstructionWorkspace());
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).toEqual({
+    expect(selectAssetPrompt(store.getState())).toEqual({
       kind: "stale",
       fileCount: 2,
       version: "v1.3.0",
@@ -1567,9 +1568,9 @@ describe("指令檔過期提示的顯示裁決", () => {
       fakeInstructionWorkspace({ probeAssets: vi.fn().mockResolvedValue(MISSING_PROBE) }),
     );
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt?.kind).toBe("missing");
+    expect(selectAssetPrompt(store.getState())?.kind).toBe("missing");
     // 從未安裝：tools 全無標記版號，確認框第一列顯示「—」的依據。
-    expect(store.getState().assetPrompt?.projectVersion).toBeNull();
+    expect(selectAssetPrompt(store.getState())?.projectVersion).toBeNull();
   });
 
   it("保留現狀後同版不再提示，且不寫入專案內任何檔案", async () => {
@@ -1577,10 +1578,10 @@ describe("指令檔過期提示的顯示裁決", () => {
     const store = storeWithAssetProbe(ws);
     await store.getState().refreshAssetPrompt();
     store.getState().dismissAssetPrompt();
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
 
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
     expect(ws.updateAssets).not.toHaveBeenCalled();
   });
 
@@ -1589,7 +1590,7 @@ describe("指令檔過期提示的顯示裁決", () => {
       fakeInstructionWorkspace({ probeAssets: vi.fn().mockResolvedValue(NEWER_PROBE) }),
     );
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).toEqual({
+    expect(selectAssetPrompt(store.getState())).toEqual({
       kind: "newer",
       fileCount: 2,
       version: "v1.3.0",
@@ -1604,7 +1605,7 @@ describe("指令檔過期提示的顯示裁決", () => {
     await store.getState().refreshAssetPrompt();
     store.getState().dismissAssetPrompt();
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
   });
 
   it("缺失態的保留現狀與過期共用同一略過記憶", async () => {
@@ -1614,7 +1615,7 @@ describe("指令檔過期提示的顯示裁決", () => {
     await store.getState().refreshAssetPrompt();
     store.getState().dismissAssetPrompt();
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
   });
 
   it("已略過舊版、產物層版號變動後重新提示", async () => {
@@ -1625,7 +1626,7 @@ describe("指令檔過期提示的顯示裁決", () => {
 
     probe.mockResolvedValue({ ...STALE_PROBE, currentVersion: "v1.4.0" });
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt?.version).toBe("v1.4.0");
+    expect(selectAssetPrompt(store.getState())?.version).toBe("v1.4.0");
   });
 
   it("無法判定：不提示且不記入略過（後續判過期仍提示）", async () => {
@@ -1637,12 +1638,12 @@ describe("指令檔過期提示的顯示裁決", () => {
     });
     const store = storeWithAssetProbe(fakeInstructionWorkspace({ probeAssets: probe }));
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
     expect(localStorage.getItem("speclink.assetSkips")).toBeNull();
 
     probe.mockResolvedValue(STALE_PROBE);
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt?.kind).toBe("stale");
+    expect(selectAssetPrompt(store.getState())?.kind).toBe("stale");
   });
 
   it("現版：不提示", async () => {
@@ -1657,7 +1658,7 @@ describe("指令檔過期提示的顯示裁決", () => {
       }),
     );
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
   });
 
   it("remote 分頁不執行探測", async () => {
@@ -1678,7 +1679,7 @@ describe("指令檔過期提示的顯示裁決", () => {
 
     await store.getState().refreshAssetPrompt();
     expect(ws.probeAssets).not.toHaveBeenCalled();
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
   });
 
   it("更新成功：整套再生後重查，提示消失", async () => {
@@ -1696,7 +1697,7 @@ describe("指令檔過期提示的顯示裁決", () => {
     await store.getState().applyAssetUpdate();
 
     expect(ws.updateAssets).toHaveBeenCalledWith("A");
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
     expect(store.getState().assetUpdateError).toBeNull();
   });
 
@@ -1709,14 +1710,14 @@ describe("指令檔過期提示的顯示裁決", () => {
     await store.getState().applyAssetUpdate();
 
     expect(store.getState().assetUpdateError).toContain("permission denied");
-    expect(store.getState().assetPrompt).not.toBeNull();
+    expect(selectAssetPrompt(store.getState())).not.toBeNull();
   });
 
   it("外部 speclink update 後（workspace-changed 重查）提示自然消失", async () => {
     const probe = vi.fn().mockResolvedValue(STALE_PROBE);
     const store = storeWithAssetProbe(fakeInstructionWorkspace({ probeAssets: probe }));
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).not.toBeNull();
+    expect(selectAssetPrompt(store.getState())).not.toBeNull();
 
     // 使用者於終端跑 speclink update：受管檔成為現版，重查即收合。
     probe.mockResolvedValue({
@@ -1726,7 +1727,7 @@ describe("指令檔過期提示的顯示裁決", () => {
       differingFiles: [],
     });
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
   });
 
   // --- 多分頁記憶（desktop-notice-relocation design D1）：探測結果以 locator key 為鍵
@@ -1768,7 +1769,7 @@ describe("指令檔過期提示的顯示裁決", () => {
       version: "v1.3.0",
       projectVersion: "v0.9.0",
     });
-    expect(store.getState().assetPrompt).toEqual(store.getState().assetPrompts["local:A"]);
+    expect(selectAssetPrompt(store.getState())).toEqual(store.getState().assetPrompts["local:A"]);
   });
 
   it("切到另一分頁後原分頁的探測結果保留；作用中提示改為新分頁的值", async () => {
@@ -1777,11 +1778,11 @@ describe("指令檔過期提示的顯示裁決", () => {
       .mockImplementation((root: string) => Promise.resolve(root === "A" ? STALE_PROBE : CURRENT_PROBE));
     const store = storeWithTwoLocalTabs(fakeInstructionWorkspace({ probeAssets: probe }));
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt?.kind).toBe("stale");
+    expect(selectAssetPrompt(store.getState())?.kind).toBe("stale");
 
     store.setState({ activeKey: "local:B" });
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
     expect(store.getState().assetPrompts["local:B"]).toBeNull();
     expect(store.getState().assetPrompts["local:A"]?.kind).toBe("stale");
   });
@@ -1794,13 +1795,64 @@ describe("指令檔過期提示的顯示裁決", () => {
     expect(store.getState().assetPrompts["local:B"]?.kind).toBe("stale");
 
     store.getState().dismissAssetPrompt();
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
     expect(store.getState().assetPrompts["local:B"]).toBeNull();
     expect(store.getState().assetPrompts["local:A"]?.kind).toBe("stale");
     // 略過記憶以專案路徑為鍵：只記 B，A 下次探測照樣提示。
     expect(JSON.parse(localStorage.getItem("speclink.instructionSkips") ?? "{}")).toEqual({
       B: "v1.3.0",
     });
+  });
+
+  it("套用途中切走分頁：完成後重探套用的那個分頁，它的提示收合、另一分頁的記憶不受影響", async () => {
+    const update = deferred<void>();
+    const probe = vi.fn().mockResolvedValue(STALE_PROBE);
+    const ws = fakeInstructionWorkspace({ probeAssets: probe, updateAssets: vi.fn(() => update.promise) });
+    const store = storeWithTwoLocalTabs(ws);
+    await store.getState().refreshAssetPrompt();
+    store.setState({ activeKey: "local:B" });
+    await store.getState().refreshAssetPrompt();
+    store.setState({ activeKey: "local:A" });
+
+    const applying = store.getState().applyAssetUpdate();
+    store.setState({ activeKey: "local:B" });
+    probe.mockImplementation((root: string) => Promise.resolve(root === "A" ? CURRENT_PROBE : STALE_PROBE));
+    update.resolve();
+    await applying;
+
+    expect(ws.updateAssets).toHaveBeenCalledWith("A");
+    expect(probe).toHaveBeenLastCalledWith("A");
+    expect(store.getState().assetPrompts["local:A"]).toBeNull();
+    expect(store.getState().assetPrompts["local:B"]?.kind).toBe("stale");
+    expect(selectAssetPrompt(store.getState())?.kind).toBe("stale");
+  });
+
+  it("projectVersion 依狀態挑工具：較新取領先的工具、過期取落後的工具、缺失為 null", () => {
+    const tool = (name: string, version: string | null, flags: { stale?: boolean; newer?: boolean; missing?: boolean }) => ({
+      tool: name,
+      workspaceVersion: version,
+      stale: flags.stale ?? false,
+      newer: flags.newer ?? false,
+      missing: flags.missing ?? false,
+    });
+    const newer = assetPrompt(
+      { ...STALE_PROBE, status: "newer", tools: [tool("claude", "v0.9.0", { stale: true }), tool("codex", "v1.4.0", { newer: true })] },
+      "A",
+      {},
+    );
+    expect(newer?.projectVersion).toBe("v1.4.0");
+    const stale = assetPrompt(
+      { ...STALE_PROBE, status: "stale", tools: [tool("codex", "v1.3.0", {}), tool("claude", "v0.9.0", { stale: true })] },
+      "A",
+      {},
+    );
+    expect(stale?.projectVersion).toBe("v0.9.0");
+    const missing = assetPrompt(
+      { ...STALE_PROBE, status: "missing", tools: [tool("claude", "v1.3.0", {}), tool("codex", null, { missing: true })] },
+      "A",
+      {},
+    );
+    expect(missing?.projectVersion).toBeNull();
   });
 });
 
@@ -1811,7 +1863,11 @@ describe("背景檢查發現新版本的 toast", () => {
   function updaterStore(versions: string[]) {
     const check = vi.fn();
     for (const version of versions) {
-      check.mockResolvedValueOnce({ version, downloadAndInstall: vi.fn().mockResolvedValue(undefined) });
+      check.mockResolvedValueOnce({
+        version,
+        download: vi.fn(() => new Promise<void>(() => {})), // 停在下載中，供「取消」回閒置
+        install: vi.fn(),
+      });
     }
     return trackedAppStore({ createSession: vi.fn() as never, updater: { check, relaunch: vi.fn() } });
   }
@@ -1830,14 +1886,22 @@ describe("背景檢查發現新版本的 toast", () => {
     expect(store.getState().focusUpdater).toBe(true);
   });
 
-  it("同版本第二次背景檢查不再發 toast；換了版本才再發一次", async () => {
+  it("Scenario「背景檢查的 toast 只發一次」：下載後取消回閒置，一小時後前景重檢回報同版本不再發；換了版本才再發", async () => {
     const store = updaterStore(["0.5.1", "0.5.1", "0.5.2"]);
     await store.getState().checkForUpdates(false);
-    await store.getState().checkForUpdates(false);
+    expect(toastFn).toHaveBeenCalledTimes(1);
+    // 待同意時前景重檢被擋（提示留到使用者處置）；取消下載回閒置後才會重檢。
+    void store.getState().acceptUpdate();
+    store.getState().dismissUpdate();
+    expect(store.getState().updater).toEqual({ phase: "idle" });
+
+    await store.getState().recheckOnFocus(Date.now() + 60 * 60 * 1000);
     expect(store.getState().updater).toEqual({ phase: "available", version: "0.5.1" });
     expect(toastFn).toHaveBeenCalledTimes(1);
 
-    await store.getState().checkForUpdates(false);
+    void store.getState().acceptUpdate();
+    store.getState().dismissUpdate();
+    await store.getState().recheckOnFocus(Date.now() + 2 * 60 * 60 * 1000);
     expect(toastFn).toHaveBeenCalledTimes(2);
     expect((toastFn.mock.calls[1] as [string])[0]).toContain("0.5.2");
   });
@@ -1853,12 +1917,19 @@ describe("背景檢查發現新版本的 toast", () => {
 // --- 版本更新的取消（desktop-app「取消下載回到閒置」；desktop-notice-relocation design D3） ---
 
 describe("取消下載", () => {
-  it("dismissed 後下載完成事件不進 restartPending：狀態留在閒置", async () => {
+  function pendingUpdate(version: string) {
     const download = deferred<void>();
-    const pending = { version: "0.2.0", downloadAndInstall: vi.fn().mockReturnValue(download.promise) };
+    return {
+      download,
+      pending: { version, download: vi.fn(() => download.promise), install: vi.fn().mockResolvedValue(undefined) },
+    };
+  }
+
+  it("取消後下載完成：不安裝、不進 restartPending，狀態留在閒置", async () => {
+    const first = pendingUpdate("0.2.0");
     const store = trackedAppStore({
       createSession: vi.fn() as never,
-      updater: { check: vi.fn().mockResolvedValue(pending), relaunch: vi.fn() },
+      updater: { check: vi.fn().mockResolvedValue(first.pending), relaunch: vi.fn() },
     });
     await store.getState().checkForUpdates(false);
     const accepting = store.getState().acceptUpdate();
@@ -1867,9 +1938,63 @@ describe("取消下載", () => {
     store.getState().dismissUpdate();
     expect(store.getState().updater).toEqual({ phase: "idle" });
 
-    download.resolve();
+    first.download.resolve();
     await accepting;
+    expect(first.pending.install).not.toHaveBeenCalled();
     expect(store.getState().updater).toEqual({ phase: "idle" });
+  });
+
+  it("取消後重新檢查並再次下載：舊下載晚到完成不推進新下載、也不安裝舊包", async () => {
+    const first = pendingUpdate("0.2.0");
+    const second = pendingUpdate("0.2.0");
+    const store = trackedAppStore({
+      createSession: vi.fn() as never,
+      updater: {
+        check: vi.fn().mockResolvedValueOnce(first.pending).mockResolvedValueOnce(second.pending),
+        relaunch: vi.fn(),
+      },
+    });
+    await store.getState().checkForUpdates(false);
+    const firstAccept = store.getState().acceptUpdate();
+    store.getState().dismissUpdate();
+    await store.getState().checkForUpdates(true);
+    const secondAccept = store.getState().acceptUpdate();
+    expect(store.getState().updater).toEqual({ phase: "downloading", version: "0.2.0" });
+
+    first.download.resolve();
+    await firstAccept;
+    expect(first.pending.install).not.toHaveBeenCalled();
+    expect(store.getState().updater).toEqual({ phase: "downloading", version: "0.2.0" });
+
+    second.download.resolve();
+    await secondAccept;
+    expect(second.pending.install).toHaveBeenCalledTimes(1);
+    expect(store.getState().updater).toEqual({ phase: "restartPending", version: "0.2.0" });
+  });
+
+  it("取消後重新檢查：舊下載晚到失敗不轉錯誤、不清掉新的待更新項（「下載」仍可用）", async () => {
+    const first = pendingUpdate("0.2.0");
+    const second = pendingUpdate("0.2.0");
+    const store = trackedAppStore({
+      createSession: vi.fn() as never,
+      updater: {
+        check: vi.fn().mockResolvedValueOnce(first.pending).mockResolvedValueOnce(second.pending),
+        relaunch: vi.fn(),
+      },
+    });
+    await store.getState().checkForUpdates(false);
+    const firstAccept = store.getState().acceptUpdate();
+    store.getState().dismissUpdate();
+    await store.getState().checkForUpdates(true);
+    expect(store.getState().updater).toEqual({ phase: "available", version: "0.2.0" });
+
+    first.download.reject(new Error("network"));
+    await firstAccept;
+    expect(store.getState().updater).toEqual({ phase: "available", version: "0.2.0" });
+
+    void store.getState().acceptUpdate();
+    expect(second.pending.download).toHaveBeenCalledTimes(1);
+    expect(store.getState().updater).toEqual({ phase: "downloading", version: "0.2.0" });
   });
 });
 

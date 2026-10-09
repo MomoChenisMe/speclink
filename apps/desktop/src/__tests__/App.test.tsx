@@ -960,7 +960,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
         createSession={makeSession(fakeDataSource())}
         workspace={ws as never}
         updater={{
-          check: vi.fn().mockResolvedValue({ version: "9.9.9", downloadAndInstall: vi.fn() }),
+          check: vi.fn().mockResolvedValue({ version: "9.9.9", download: vi.fn(), install: vi.fn() }),
           relaunch: vi.fn(),
         }}
       />,
@@ -980,7 +980,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
         createSession={makeSession(fakeDataSource())}
         workspace={ws as never}
         updater={{
-          check: vi.fn().mockResolvedValue({ version: "9.9.9", downloadAndInstall: vi.fn() }),
+          check: vi.fn().mockResolvedValue({ version: "9.9.9", download: vi.fn(), install: vi.fn() }),
           relaunch: vi.fn(),
         }}
       />,
@@ -1359,16 +1359,14 @@ describe("main content scroll containment（主內容區捲動約束）", () => 
     expect(aside.contains(card)).toBe(true);
     expect(card.textContent).toContain("3 個檔案");
     // 主區：舊橫幅退場、無釘選包裹層、捲動約束照舊。
-    expect(screen.queryByTestId("asset-prompt")).toBeNull();
     expect(main().querySelector('[data-testid="asset-notice-card"]')).toBeNull();
     expect(main().querySelector(".sticky")).toBeNull();
     expect(main().classList.contains("overflow-hidden")).toBe(true);
-    for (const [label, ready] of [
-      ["規格", "desktop-app"],
-      ["已封存", "已封存的變更"],
-    ] as const) {
+    // Scenario「提示卡跨頁常駐」：規格、手冊、已封存、專案設定依序切（手冊頁是舊實作有特例的頁）。
+    const crumbs = screen.getByTestId("main-titlebar");
+    for (const label of ["規格", "手冊", "已封存"] as const) {
       fireEvent.click(within(aside).getByRole("button", { name: label }));
-      await waitFor(() => expect(screen.getByText(ready)).toBeTruthy());
+      await waitFor(() => expect(crumbs.textContent).toBe(`proj-a/${label}`));
       expect(projectColumn().contains(screen.getByTestId("asset-notice-card"))).toBe(true);
       expect(main().classList.contains("overflow-hidden")).toBe(true);
     }

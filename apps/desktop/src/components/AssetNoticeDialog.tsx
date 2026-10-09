@@ -28,8 +28,6 @@ export interface AssetNoticeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   prompt: AssetPromptState | null;
-  /** app 自身版本（null＝尚未取得，顯示「—」）。 */
-  appVersion: string | null;
   /** 再生進行中：全部動作鍵停用。 */
   busy: boolean;
   /** 上次更新／安裝的失敗訊息（呈現於內容卡下方、可重試）。 */
@@ -44,7 +42,6 @@ export function AssetNoticeDialog({
   open,
   onOpenChange,
   prompt,
-  appVersion,
   busy,
   error,
   onApply,
@@ -54,9 +51,10 @@ export function AssetNoticeDialog({
   const { t } = useI18n();
   if (!prompt) return null;
   const newer = prompt.kind === "newer";
+  // 前兩列同一套技能檔版號（專案的標記 vs 這版 Speclink 帶的），一眼比得出誰新誰舊。
   const rows: Array<[string, string]> = [
     [t("assets.dialog.projectVersion"), prompt.projectVersion ?? "—"],
-    [t("assets.dialog.appVersion"), appVersion ?? "—"],
+    [t("assets.dialog.appVersion"), prompt.version],
     [t(newer ? "assets.dialog.revertCount" : "assets.dialog.fileCount"), String(prompt.fileCount)],
   ];
   return (
@@ -65,9 +63,9 @@ export function AssetNoticeDialog({
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <AlertCircle className={cn("h-5 w-5 shrink-0", SEMANTIC_TONE.warning)} />
-            {t(`assets.dialog.title.${prompt.kind}`)}
+            {t(`assets.dialog.${prompt.kind}Title`)}
           </AlertDialogTitle>
-          <AlertDialogDescription>{t(`assets.dialog.desc.${prompt.kind}`)}</AlertDialogDescription>
+          <AlertDialogDescription>{t(`assets.dialog.${prompt.kind}Desc`)}</AlertDialogDescription>
         </AlertDialogHeader>
         <Card size="nested" data-testid="asset-notice-rows" className="divide-y divide-border text-[13px]">
           {rows.map(([label, value]) => (

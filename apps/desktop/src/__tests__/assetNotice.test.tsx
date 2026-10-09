@@ -30,7 +30,7 @@ const button = (name: string) => screen.getByRole("button", { name }) as HTMLBut
 
 describe("AssetNoticeCard", () => {
   it.each([
-    ["過期", STALE, "技能檔是舊版", "3 個檔案會被換回舊內容"],
+    ["過期", STALE, "技能檔是舊版", "更新會改寫 3 個檔案"],
     ["缺失", MISSING, "還沒安裝技能檔", "安裝會新建 12 個檔案"],
     ["較新", NEWER, "技能檔比 Speclink 新", "更新 Speclink 才能安全改寫"],
   ])("%s態：一句標題、一句說明（代入檔案數）", (_label, prompt, title, desc) => {
@@ -64,7 +64,6 @@ function dialogProps(over: Partial<AssetNoticeDialogProps> = {}): AssetNoticeDia
     open: true,
     onOpenChange: vi.fn(),
     prompt: STALE,
-    appVersion: "0.8.0",
     busy: false,
     error: null,
     onApply: vi.fn(),
@@ -80,18 +79,19 @@ const rowValues = () =>
     .map((el) => el.textContent);
 
 describe("AssetNoticeDialog", () => {
-  it("框內三列：這個專案的技能檔版本、你的 Speclink 版本、會改寫的檔案數", () => {
+  it("框內三列：這個專案的技能檔版本、你的 Speclink 版本、會改寫的檔案數——前兩列同一套技能檔版號", () => {
     render(<AssetNoticeDialog {...dialogProps()} />);
     const rows = screen.getByTestId("asset-notice-rows");
     for (const label of ["這個專案的技能檔版本", "你的 Speclink 版本", "會改寫的檔案數"]) {
       expect(rows.textContent).toContain(label);
     }
-    expect(rowValues()).toEqual(["v0.9.0", "0.8.0", "3"]);
+    // 第二列是 Speclink 這版帶的技能檔版號（探測的 currentVersion），不是 app 發版號：兩列比得出新舊。
+    expect(rowValues()).toEqual(["v0.9.0", "v1.3.0", "3"]);
   });
 
-  it("從未安裝：專案技能檔版本顯示「—」；app 版本未取得亦顯示「—」", () => {
-    render(<AssetNoticeDialog {...dialogProps({ prompt: MISSING, appVersion: null })} />);
-    expect(rowValues()).toEqual(["—", "—", "12"]);
+  it("從未安裝：專案技能檔版本顯示「—」", () => {
+    render(<AssetNoticeDialog {...dialogProps({ prompt: MISSING })} />);
+    expect(rowValues()).toEqual(["—", "v1.3.0", "12"]);
   });
 
   it("較新態：第三列改為會被換回舊內容的檔案數", () => {
@@ -99,7 +99,7 @@ describe("AssetNoticeDialog", () => {
     const rows = screen.getByTestId("asset-notice-rows");
     expect(rows.textContent).toContain("會被換回舊內容的檔案數");
     expect(rows.textContent).not.toContain("會改寫的檔案數");
-    expect(rowValues()).toEqual(["v1.4.0", "0.8.0", "2"]);
+    expect(rowValues()).toEqual(["v1.4.0", "v1.3.0", "2"]);
   });
 
   it.each([
