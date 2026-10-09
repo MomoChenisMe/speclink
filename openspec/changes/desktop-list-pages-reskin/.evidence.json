@@ -55,6 +55,14 @@
         "apps/desktop/src/App.tsx",
         "apps/desktop/src/__tests__/App.test.tsx"
       ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "3.3 `apps/desktop/src/store.ts` 加 `pageSizes`（`specs`／`archivedChanges`／`archivedDiscussions`）與 `setPageSize(list, size)`，以 localStorage 鍵 `speclink.list.pageSizes`（JSON 物件）跨啟動記住；讀取時缺席、壞 JSON、localStorage 不可用或不在 `PAGE_SIZE_OPTIONS` 的欄位一律退回 20、不拋錯；寫入失敗只失去跨啟動記憶；`apps/desktop/src/App.tsx` 把三組值與回呼接到 `SpecList`／`ArchivedList`（design D7；spec scenario「每頁筆數跨啟動記住」及其 Example）。驗證：`apps/desktop/src/__tests__/store.test.ts` 依 spec Example 四列各一案（缺席、specs 50＋archivedDiscussions 100、specs 0＋archivedChanges 37、無法解析的文字）並加「`setPageSize` 寫回整個物件」；`apps/desktop/src/__tests__/App.test.tsx` 新增「規格頁改每頁 50 後卸載重建 App，規格頁仍為每頁 50、已封存變更節仍為 20」；收尾重跑 4.2 全套（`./target/debug/speclink validate desktop-list-pages-reskin`、`npm test -w packages/ui`、`npm test -w apps/desktop`、`npm run build -w apps/desktop`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs`）全綠。",
+      "files": [
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/store.ts"
+      ]
     }
   ],
   "entries": [
@@ -135,6 +143,18 @@
         "apps/desktop/src/__tests__/App.test.tsx"
       ],
       "recordedAt": "2026-10-09T05:25:43Z"
+    },
+    {
+      "taskId": "tsk_01M4GE6KTA4692A0CWDHMHNYBJ",
+      "taskDesc": "3.3 `apps/desktop/src/store.ts` 加 `pageSizes`（`specs`／`archivedChanges`／`archivedDiscussions`）與 `setPageSize(list, size)`，以 localStorage 鍵 `speclink.list.pageSizes`（JSON 物件）跨啟動記住；讀取時缺席、壞 JSON、localStorage 不可用或不在 `PAGE_SIZE_OPTIONS` 的欄位一律退回 20、不拋錯；寫入失敗只失去跨啟動記憶；`apps/desktop/src/App.tsx` 把三組值與回呼接到 `SpecList`／`ArchivedList`（design D7；spec scenario「每頁筆數跨啟動記住」及其 Example）。驗證：`apps/desktop/src/__tests__/store.test.ts` 依 spec Example 四列各一案（缺席、specs 50＋archivedDiscussions 100、specs 0＋archivedChanges 37、無法解析的文字）並加「`setPageSize` 寫回整個物件」；`apps/desktop/src/__tests__/App.test.tsx` 新增「規格頁改每頁 50 後卸載重建 App，規格頁仍為每頁 50、已封存變更節仍為 20」；收尾重跑 4.2 全套（`./target/debug/speclink validate desktop-list-pages-reskin`、`npm test -w packages/ui`、`npm test -w apps/desktop`、`npm run build -w apps/desktop`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs`）全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6ac7739fa60674f3d4b488abfa654bc9d786b010",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/store.ts"
+      ],
+      "recordedAt": "2026-10-09T13:47:46Z"
     }
   ]
 }

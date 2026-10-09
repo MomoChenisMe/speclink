@@ -13,7 +13,7 @@ import type { ArchivedTarget } from "./ArchivedDrawer";
 import { ImproveStamp } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
 import { ListCard } from "./ListCard";
-import { ListPager, PAGE_SIZE } from "./ListPager";
+import { ListPager, usePageSize } from "./ListPager";
 import { ListRow } from "./ListRow";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE } from "./reviewStyle";
 import { SearchField } from "./SearchField";
@@ -180,6 +180,11 @@ export interface ArchivedListProps {
   title?: string;
   /** 頁標題區的灰字說明。 */
   description?: string;
+  /** 受控每頁筆數（design D7），兩節各自一組：值與回呼一起給時以它為準；缺席時元件自持（預設 20）。 */
+  changesPageSize?: number;
+  onChangesPageSizeChange?: (size: number) => void;
+  discussionsPageSize?: number;
+  onDiscussionsPageSizeChange?: (size: number) => void;
 }
 
 /** 分頁標籤上的筆數徽章——沿用頁面計數 pill 樣式。 */
@@ -205,14 +210,18 @@ export function ArchivedList({
   onOpen,
   title,
   description,
+  changesPageSize,
+  onChangesPageSizeChange,
+  discussionsPageSize,
+  onDiscussionsPageSizeChange,
 }: ArchivedListProps) {
   const { t } = useI18n();
   const [section, setSection] = useState<Section>("changes");
   // 兩節頁碼與每頁筆數互相獨立；頁碼以 min(page, pageCount) 鉗制派生，清單縮短不停在越界頁。
   const [changeRawPage, setChangeRawPage] = useState(1);
-  const [changePageSize, setChangePageSize] = useState(PAGE_SIZE);
+  const [changePageSize, setChangePageSize] = usePageSize(changesPageSize, onChangesPageSizeChange);
   const [discRawPage, setDiscRawPage] = useState(1);
-  const [discPageSize, setDiscPageSize] = useState(PAGE_SIZE);
+  const [discPageSize, setDiscPageSize] = usePageSize(discussionsPageSize, onDiscussionsPageSizeChange);
   // 兩節共用列表卡的捲動容器——換頁後歸位（清單自己捲、頁面不捲）。
   const scrollRef = useRef<HTMLDivElement>(null);
 

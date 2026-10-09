@@ -504,3 +504,72 @@ describe("ArchivedList（頁標題區）", () => {
     expect(screen.getByPlaceholderText("搜尋已封存的變更與討論…").className).toContain("rounded-full");
   });
 });
+
+// desktop-list-pages-reskin design D7：兩節的每頁筆數各自可受控（桌面 store 記住並傳入）。
+describe("ArchivedList（受控每頁筆數）", () => {
+  const mkChange = (n: number): ArchivedItem => ({
+    datedName: `2026-06-${String(22 - n).padStart(2, "0")}-k-${String(n).padStart(2, "0")}`,
+    date: `2026-06-${String(22 - n).padStart(2, "0")}`,
+    name: `k-${String(n).padStart(2, "0")}`,
+    specCount: 0,
+    createdBy: null,
+    fromDiscussions: [],
+  });
+  const mkDisc = (n: number): DiscussionItem => ({
+    slug: `d-${String(n).padStart(2, "0")}`,
+    topic: `topic ${n}`,
+    status: "promoted",
+    rounds: 1,
+    created: `2026-05-${String(22 - n).padStart(2, "0")}`,
+    promotedTo: [],
+  });
+  const CHANGES = Array.from({ length: 21 }, (_, i) => mkChange(i + 1));
+  const DISCS = Array.from({ length: 21 }, (_, i) => mkDisc(i + 1));
+
+  it("changesPageSize={50} 只影響變更節，討論節仍為每頁 20", () => {
+    render(
+      <ArchivedList
+        archived={CHANGES}
+        query=""
+        onQuery={() => {}}
+        archivedDiscussions={DISCS}
+        onOpen={vi.fn()}
+        changesPageSize={50}
+        onChangesPageSizeChange={vi.fn()}
+      />,
+    );
+    expect(document.querySelectorAll("[data-archived]")).toHaveLength(21);
+    expect(screen.getByText("第 1–21 筆，共 21 筆")).toBeTruthy();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /已封存的討論/ }));
+    expect(document.querySelectorAll("[data-archived-discussion]")).toHaveLength(20);
+    expect(screen.getByText("第 1–20 筆，共 21 筆")).toBeTruthy();
+  });
+
+  it("在各節改每頁筆數只呼叫該節的回呼", async () => {
+    const user = userEvent.setup();
+    const onChanges = vi.fn();
+    const onDiscussions = vi.fn();
+    render(
+      <ArchivedList
+        archived={CHANGES}
+        query=""
+        onQuery={() => {}}
+        archivedDiscussions={DISCS}
+        onOpen={vi.fn()}
+        changesPageSize={20}
+        onChangesPageSizeChange={onChanges}
+        discussionsPageSize={20}
+        onDiscussionsPageSizeChange={onDiscussions}
+      />,
+    );
+    await user.click(screen.getByRole("combobox", { name: "每頁 20 個" }));
+    await user.click(await screen.findByRole("option", { name: "每頁 50 個" }));
+    expect(onChanges).toHaveBeenCalledWith(50);
+    expect(onDiscussions).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("tab", { name: /已封存的討論/ }));
+    await user.click(screen.getByRole("combobox", { name: "每頁 20 個" }));
+    await user.click(await screen.findByRole("option", { name: "每頁 100 個" }));
+    expect(onDiscussions).toHaveBeenCalledWith(100);
+    expect(onChanges).toHaveBeenCalledTimes(1);
+  });
+});

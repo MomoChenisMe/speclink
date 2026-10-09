@@ -17,7 +17,13 @@ import type {
   AnalyzeReport,
   VerbDrawerResult,
 } from "@speclink/ui";
-import { RevertBlockedError, emptyManualIndex, type RevertBlockedInfo } from "@speclink/ui";
+import {
+  PAGE_SIZE,
+  PAGE_SIZE_OPTIONS,
+  RevertBlockedError,
+  emptyManualIndex,
+  type RevertBlockedInfo,
+} from "@speclink/ui";
 
 import { appT } from "./i18n/runtime";
 import type { ConnectionsAdapter, ConnectionView } from "./adapter/connections";
@@ -179,6 +185,31 @@ function readPromotedExpanded(): boolean {
   }
 }
 
+/** 清單每頁筆數的記憶鍵（desktop-list-pages-reskin design D7）：app 本機（localStorage）、
+ * 值為 JSON 物件，不寫入任何專案目錄。 */
+export const PAGE_SIZES_STORAGE_KEY = "speclink.list.pageSizes";
+
+/** 記住每頁筆數的三個清單：規格頁、已封存「變更」節與「討論」節。 */
+export type PageSizeList = "specs" | "archivedChanges" | "archivedDiscussions";
+export type PageSizes = Record<PageSizeList, number>;
+
+/** 逐欄讀回：只接受 PAGE_SIZE_OPTIONS 內的值（0 會讓總頁數變無限大），其他一律 PAGE_SIZE。
+ * 鍵缺席、壞 JSON、非物件或 localStorage 不可用都不拋錯。 */
+function readPageSizes(): PageSizes {
+  let saved: unknown = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(PAGE_SIZES_STORAGE_KEY) ?? "null");
+  } catch {
+    // 壞 JSON 或 localStorage 不可用：當作沒記過。
+  }
+  const record = saved !== null && typeof saved === "object" && !Array.isArray(saved) ? (saved as Record<string, unknown>) : {};
+  const pick = (list: PageSizeList) => {
+    const value = record[list];
+    return typeof value === "number" && PAGE_SIZE_OPTIONS.includes(value) ? value : PAGE_SIZE;
+  };
+  return { specs: pick("specs"), archivedChanges: pick("archivedChanges"), archivedDiscussions: pick("archivedDiscussions") };
+}
+
 export interface AppState {
   changes: ChangeItem[];
   /** 清單 payload 的頂層 planError（依賴成環訊息；null＝無成環或資料源不供）。 */
@@ -210,6 +241,8 @@ export interface AppState {
   boardQuery: string;
   /** 討論欄底「已轉出」收合列的展開狀態（design D2）：初值自 app 本機鍵讀，跨啟動保留。 */
   promotedExpanded: boolean;
+  /** 清單每頁筆數（design D7）：初值自 app 本機鍵讀，三個清單各自跨啟動保留。 */
+  pageSizes: PageSizes;
   /** 看板全文查詢命中（design D6）：去抖後由 searchWorkspace 回填；空 query 恆空。 */
   searchHits: SearchHit[];
   expandedName: string | null;
@@ -253,6 +286,8 @@ export interface AppState {
   setBoardQuery: (q: string) => void;
   /** 寫回同一個 app 本機鍵（"true"／"false"）。 */
   setPromotedExpanded: (expanded: boolean) => void;
+  /** 改一個清單的每頁筆數，並把整組值寫回同一個 app 本機鍵。 */
+  setPageSize: (list: PageSizeList, size: number) => void;
   /** 生命週期清理：取消在途搜尋去抖 timer 並作廢在途回填——由擁有此 store 的
    * 元件卸載時呼叫，杜絕去抖在 store 卸載後才開火（否則漏出的 timer 會非同步觸發）。 */
   disposeSearch: () => void;
@@ -1125,6 +1160,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     query: "",
     boardQuery: "",
     promotedExpanded: readPromotedExpanded(),
+    pageSizes: readPageSizes(),
     searchHits: [],
     expandedName: null,
     detailChange: null,
@@ -1260,6 +1296,16 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         localStorage.setItem(PROMOTED_EXPANDED_STORAGE_KEY, String(promotedExpanded));
       } catch {
         // 寫不進 app 本機（私密模式、配額）只失去跨啟動記憶，本次執行期照常展開。
+      }
+    },
+
+    setPageSize(list, size) {
+      const pageSizes = { ...get().pageSizes, [list]: size };
+      set({ pageSizes });
+      try {
+        localStorage.setItem(PAGE_SIZES_STORAGE_KEY, JSON.stringify(pageSizes));
+      } catch {
+        // 寫不進 app 本機（私密模式、配額）只失去跨啟動記憶，本次執行期照常生效。
       }
     },
 

@@ -843,6 +843,8 @@ function AppInner({
                 specs={s.specs}
                 onOpen={s.openSpec}
                 focus={s.detailSpec}
+                pageSize={s.pageSizes.specs}
+                onPageSizeChange={(size) => s.setPageSize("specs", size)}
               />
             ) : s.boardView === "board" ? (
               <KanbanBoard
@@ -893,6 +895,10 @@ function AppInner({
                 onQuery={s.setQuery}
                 archivedDiscussions={s.discussions.archived}
                 onOpen={s.openArchived}
+                changesPageSize={s.pageSizes.archivedChanges}
+                onChangesPageSizeChange={(size) => s.setPageSize("archivedChanges", size)}
+                discussionsPageSize={s.pageSizes.archivedDiscussions}
+                onDiscussionsPageSizeChange={(size) => s.setPageSize("archivedDiscussions", size)}
               />
             )}
           </main>

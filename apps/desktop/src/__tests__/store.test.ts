@@ -2446,3 +2446,76 @@ describe("promotedExpanded（討論欄收合列的跨啟動記憶）", () => {
     expect(localStorage.getItem(KEY)).toBe("false");
   });
 });
+
+// desktop-list-pages-reskin design D7：清單每頁筆數存於 app 本機（localStorage 鍵
+// speclink.list.pageSizes，JSON 物件）跨啟動保留；三個清單各自記住，缺席、壞 JSON 或
+// 不在 20／50／100 之內的欄位一律退回 20。spec scenario「每頁筆數跨啟動記住」Example。
+describe("pageSizes（清單每頁筆數的跨啟動記憶）", () => {
+  const KEY = "speclink.list.pageSizes";
+
+  it.each<[string, string | null, { specs: number; archivedChanges: number; archivedDiscussions: number }]>([
+    ["缺席", null, { specs: 20, archivedChanges: 20, archivedDiscussions: 20 }],
+    [
+      "specs 50、archivedDiscussions 100",
+      JSON.stringify({ specs: 50, archivedDiscussions: 100 }),
+      { specs: 50, archivedChanges: 20, archivedDiscussions: 100 },
+    ],
+    [
+      "specs 0、archivedChanges 37",
+      JSON.stringify({ specs: 0, archivedChanges: 37 }),
+      { specs: 20, archivedChanges: 20, archivedDiscussions: 20 },
+    ],
+    ["無法解析的文字", "not json{", { specs: 20, archivedChanges: 20, archivedDiscussions: 20 }],
+  ])("記憶內容 %s", (_label, raw, expected) => {
+    if (raw !== null) localStorage.setItem(KEY, raw);
+    const store = storeWith(fakeDataSource());
+    expect(store.getState().pageSizes).toEqual(expected);
+  });
+
+  it("記憶內容不是物件（陣列、字串）時三個清單都退回 20", () => {
+    localStorage.setItem(KEY, JSON.stringify([50, 50, 50]));
+    expect(storeWith(fakeDataSource()).getState().pageSizes).toEqual({
+      specs: 20,
+      archivedChanges: 20,
+      archivedDiscussions: 20,
+    });
+    localStorage.setItem(KEY, JSON.stringify("50"));
+    expect(storeWith(fakeDataSource()).getState().pageSizes.specs).toBe(20);
+  });
+
+  it("setPageSize 更新該清單並把整個物件寫回鍵；其他清單不變", () => {
+    const store = storeWith(fakeDataSource());
+    store.getState().setPageSize("specs", 50);
+    expect(store.getState().pageSizes).toEqual({ specs: 50, archivedChanges: 20, archivedDiscussions: 20 });
+    expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual({
+      specs: 50,
+      archivedChanges: 20,
+      archivedDiscussions: 20,
+    });
+    store.getState().setPageSize("archivedDiscussions", 100);
+    expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual({
+      specs: 50,
+      archivedChanges: 20,
+      archivedDiscussions: 100,
+    });
+    // 新建的 store（重開 app）讀回同一組值。
+    expect(storeWith(fakeDataSource()).getState().pageSizes).toEqual({
+      specs: 50,
+      archivedChanges: 20,
+      archivedDiscussions: 100,
+    });
+  });
+
+  it("localStorage 寫入失敗時本次執行期照常生效、不拋錯", () => {
+    const store = storeWith(fakeDataSource());
+    const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota");
+    });
+    try {
+      expect(() => store.getState().setPageSize("archivedChanges", 50)).not.toThrow();
+      expect(store.getState().pageSizes.archivedChanges).toBe(50);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});

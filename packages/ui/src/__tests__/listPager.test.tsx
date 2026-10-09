@@ -135,13 +135,43 @@ describe("ListPager（換頁工具列）", () => {
     expect(within(bar).getAllByText("…")).toHaveLength(2);
   });
 
-  it("單頁（總頁數 1）時只有左側：無頁碼鈕、無 ‹ ›、無跳頁輸入", () => {
+  it("單頁（總頁數 1）時只有左側：無頁碼鈕、無 « ‹ › »、無跳頁輸入", () => {
     render(<ListPager page={1} pageCount={1} total={13} pageSize={20} onPage={noop} onPageSize={noop} />);
     expect(screen.getByText("第 1–13 筆，共 13 筆")).toBeTruthy();
     expect(screen.getByRole("combobox", { name: "每頁 20 個" })).toBeTruthy();
     expect(pageButtons()).toEqual([]);
+    expect(screen.queryByRole("button", { name: "第一頁" })).toBeNull();
     expect(screen.queryByRole("button", { name: "上一頁" })).toBeNull();
     expect(screen.queryByRole("button", { name: "下一頁" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "最後一頁" })).toBeNull();
     expect(screen.queryByRole("spinbutton")).toBeNull();
+  });
+
+  // spec scenario「第一頁與最後一頁鈕」：« 在 ‹ 左側、» 在 › 右側，首末頁時停用。
+  it("« 第一頁鈕與 » 最後一頁鈕：位於 ‹ › 外側；第 1 頁時 « 停用、末頁時 » 停用", () => {
+    const { rerender } = render(
+      <ListPager page={1} pageCount={3} total={45} pageSize={20} onPage={noop} onPageSize={noop} />,
+    );
+    const first = () => screen.getByRole("button", { name: "第一頁" }) as HTMLButtonElement;
+    const last = () => screen.getByRole("button", { name: "最後一頁" }) as HTMLButtonElement;
+    const nav = screen.getByRole("navigation");
+    const order = within(nav)
+      .getAllByRole("button")
+      .map((b) => b.getAttribute("aria-label"));
+    expect(order).toEqual(["第一頁", "上一頁", "第 1 頁", "第 2 頁", "第 3 頁", "下一頁", "最後一頁"]);
+    expect(first().disabled).toBe(true);
+    expect(last().disabled).toBe(false);
+    rerender(<ListPager page={3} pageCount={3} total={45} pageSize={20} onPage={noop} onPageSize={noop} />);
+    expect(first().disabled).toBe(false);
+    expect(last().disabled).toBe(true);
+  });
+
+  it("第 2 頁點 » 呼叫 onPage(3)、點 « 呼叫 onPage(1)", () => {
+    const onPage = vi.fn();
+    render(<ListPager page={2} pageCount={3} total={45} pageSize={20} onPage={onPage} onPageSize={noop} />);
+    fireEvent.click(screen.getByRole("button", { name: "最後一頁" }));
+    expect(onPage).toHaveBeenLastCalledWith(3);
+    fireEvent.click(screen.getByRole("button", { name: "第一頁" }));
+    expect(onPage).toHaveBeenLastCalledWith(1);
   });
 });
