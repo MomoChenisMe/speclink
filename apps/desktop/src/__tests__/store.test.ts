@@ -18,8 +18,9 @@ import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 import { STALE_PROBE } from "./helpers/assetFixtures";
 import { changeList } from "./helpers/changeList";
 
-const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
-vi.mock("sonner", () => ({ toast: { error: toastError } }));
+// sonner 雙面 mock：toast() 本體（背景檢查發現新版本的提示）與 toast.error（失敗路徑）。
+const { toastError, toastFn } = vi.hoisted(() => ({ toastError: vi.fn(), toastFn: vi.fn() }));
+vi.mock("sonner", () => ({ toast: Object.assign(toastFn, { error: toastError }) }));
 
 const STATUS: StatusReport = {
   changeName: "x",
@@ -165,6 +166,7 @@ function deferred<T>() {
 
 beforeEach(() => {
   toastError.mockClear();
+  toastFn.mockClear();
   localStorage.clear();
 });
 
@@ -1556,6 +1558,7 @@ describe("指令檔過期提示的顯示裁決", () => {
       kind: "stale",
       fileCount: 2,
       version: "v1.3.0",
+      projectVersion: "v0.9.0",
     });
   });
 
@@ -1565,6 +1568,8 @@ describe("指令檔過期提示的顯示裁決", () => {
     );
     await store.getState().refreshAssetPrompt();
     expect(store.getState().assetPrompt?.kind).toBe("missing");
+    // 從未安裝：tools 全無標記版號，確認框第一列顯示「—」的依據。
+    expect(store.getState().assetPrompt?.projectVersion).toBeNull();
   });
 
   it("保留現狀後同版不再提示，且不寫入專案內任何檔案", async () => {
@@ -1588,6 +1593,7 @@ describe("指令檔過期提示的顯示裁決", () => {
       kind: "newer",
       fileCount: 2,
       version: "v1.3.0",
+      projectVersion: "v1.4.0",
     });
   });
 
@@ -1721,6 +1727,149 @@ describe("指令檔過期提示的顯示裁決", () => {
     });
     await store.getState().refreshAssetPrompt();
     expect(store.getState().assetPrompt).toBeNull();
+  });
+
+  // --- 多分頁記憶（desktop-notice-relocation design D1）：探測結果以 locator key 為鍵
+  // 保留，assetPrompt 是作用中分頁的派生值；背景分頁的值供圖示列琥珀點用。 ---
+
+  const CURRENT_PROBE = {
+    status: "current" as const,
+    currentVersion: "v1.3.0",
+    tools: [],
+    differingFiles: [],
+  };
+
+  /** 兩個本地分頁 A（作用中）與 B，共用同一個 workspace 探測面。 */
+  function storeWithTwoLocalTabs(ws: WorkspaceAdapter) {
+    const ds = fakeDataSource();
+    const store = trackedAppStore({
+      createSession: (root, name) => fakeSession(ds, root, name),
+      workspace: ws,
+    });
+    const a = fakeSession(ds, "A", "a");
+    const b = fakeSession(ds, "B", "b");
+    store.setState({
+      tabs: [
+        { locator: a.locator, name: a.descriptor.name },
+        { locator: b.locator, name: b.descriptor.name },
+      ],
+      sessions: { [a.id]: a, [b.id]: b },
+      activeKey: a.id,
+    });
+    return store;
+  }
+
+  it("探測後以 locator key 記下結果；projectVersion 取 tools 第一個非 null 的標記版號", async () => {
+    const store = storeWithAssetProbe(fakeInstructionWorkspace());
+    await store.getState().refreshAssetPrompt();
+    expect(store.getState().assetPrompts["local:A"]).toEqual({
+      kind: "stale",
+      fileCount: 2,
+      version: "v1.3.0",
+      projectVersion: "v0.9.0",
+    });
+    expect(store.getState().assetPrompt).toEqual(store.getState().assetPrompts["local:A"]);
+  });
+
+  it("切到另一分頁後原分頁的探測結果保留；作用中提示改為新分頁的值", async () => {
+    const probe = vi
+      .fn()
+      .mockImplementation((root: string) => Promise.resolve(root === "A" ? STALE_PROBE : CURRENT_PROBE));
+    const store = storeWithTwoLocalTabs(fakeInstructionWorkspace({ probeAssets: probe }));
+    await store.getState().refreshAssetPrompt();
+    expect(store.getState().assetPrompt?.kind).toBe("stale");
+
+    store.setState({ activeKey: "local:B" });
+    await store.getState().refreshAssetPrompt();
+    expect(store.getState().assetPrompt).toBeNull();
+    expect(store.getState().assetPrompts["local:B"]).toBeNull();
+    expect(store.getState().assetPrompts["local:A"]?.kind).toBe("stale");
+  });
+
+  it("保留現狀只清作用中分頁的記憶，背景分頁的值不受影響", async () => {
+    const store = storeWithTwoLocalTabs(fakeInstructionWorkspace());
+    await store.getState().refreshAssetPrompt();
+    store.setState({ activeKey: "local:B" });
+    await store.getState().refreshAssetPrompt();
+    expect(store.getState().assetPrompts["local:B"]?.kind).toBe("stale");
+
+    store.getState().dismissAssetPrompt();
+    expect(store.getState().assetPrompt).toBeNull();
+    expect(store.getState().assetPrompts["local:B"]).toBeNull();
+    expect(store.getState().assetPrompts["local:A"]?.kind).toBe("stale");
+    // 略過記憶以專案路徑為鍵：只記 B，A 下次探測照樣提示。
+    expect(JSON.parse(localStorage.getItem("speclink.instructionSkips") ?? "{}")).toEqual({
+      B: "v1.3.0",
+    });
+  });
+});
+
+// --- 背景檢查發現新版本的 toast（desktop-app「背景檢查的 toast 只發一次」；design D4） ---
+
+describe("背景檢查發現新版本的 toast", () => {
+  type ToastOptions = { id?: string; action?: { label: string; onClick: () => void } };
+  function updaterStore(versions: string[]) {
+    const check = vi.fn();
+    for (const version of versions) {
+      check.mockResolvedValueOnce({ version, downloadAndInstall: vi.fn().mockResolvedValue(undefined) });
+    }
+    return trackedAppStore({ createSession: vi.fn() as never, updater: { check, relaunch: vi.fn() } });
+  }
+
+  it("背景檢查發現新版本：toast 一次（含版號、固定 id）；「查看」進設定頁並聚焦軟體更新卡", async () => {
+    const store = updaterStore(["0.5.1"]);
+    await store.getState().checkForUpdates(false);
+    expect(store.getState().updater).toEqual({ phase: "available", version: "0.5.1" });
+    expect(toastFn).toHaveBeenCalledTimes(1);
+    const [message, options] = toastFn.mock.calls[0] as [string, ToastOptions];
+    expect(message).toContain("0.5.1");
+    expect(options.id).toBe("updater-available");
+    expect(options.action?.label).toBe("查看");
+    options.action?.onClick();
+    expect(store.getState().boardView).toBe("settings");
+    expect(store.getState().focusUpdater).toBe(true);
+  });
+
+  it("同版本第二次背景檢查不再發 toast；換了版本才再發一次", async () => {
+    const store = updaterStore(["0.5.1", "0.5.1", "0.5.2"]);
+    await store.getState().checkForUpdates(false);
+    await store.getState().checkForUpdates(false);
+    expect(store.getState().updater).toEqual({ phase: "available", version: "0.5.1" });
+    expect(toastFn).toHaveBeenCalledTimes(1);
+
+    await store.getState().checkForUpdates(false);
+    expect(toastFn).toHaveBeenCalledTimes(2);
+    expect((toastFn.mock.calls[1] as [string])[0]).toContain("0.5.2");
+  });
+
+  it("手動檢查不發 toast：結果以卡內行內文字呈現", async () => {
+    const store = updaterStore(["0.5.1"]);
+    await store.getState().checkForUpdates(true);
+    expect(store.getState().updater).toEqual({ phase: "available", version: "0.5.1" });
+    expect(toastFn).not.toHaveBeenCalled();
+  });
+});
+
+// --- 版本更新的取消（desktop-app「取消下載回到閒置」；desktop-notice-relocation design D3） ---
+
+describe("取消下載", () => {
+  it("dismissed 後下載完成事件不進 restartPending：狀態留在閒置", async () => {
+    const download = deferred<void>();
+    const pending = { version: "0.2.0", downloadAndInstall: vi.fn().mockReturnValue(download.promise) };
+    const store = trackedAppStore({
+      createSession: vi.fn() as never,
+      updater: { check: vi.fn().mockResolvedValue(pending), relaunch: vi.fn() },
+    });
+    await store.getState().checkForUpdates(false);
+    const accepting = store.getState().acceptUpdate();
+    expect(store.getState().updater).toEqual({ phase: "downloading", version: "0.2.0" });
+
+    store.getState().dismissUpdate();
+    expect(store.getState().updater).toEqual({ phase: "idle" });
+
+    download.resolve();
+    await accepting;
+    expect(store.getState().updater).toEqual({ phase: "idle" });
   });
 });
 

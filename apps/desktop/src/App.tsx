@@ -48,8 +48,9 @@ import { MigrationDialog } from "./components/MigrationDialog";
 import { RemoteConflictDialog } from "./components/RemoteConflictDialog";
 import { RemoteWorkspaceRecovery } from "./components/RemoteWorkspaceRecovery";
 import { AppSettingsView } from "./views/AppSettingsView";
-import { UpdateBanner } from "./components/UpdateBanner";
-import { AssetUpdatePrompt } from "./components/AssetUpdatePrompt";
+import { AssetNoticeCard } from "./components/AssetNoticeCard";
+import { AssetNoticeDialog } from "./components/AssetNoticeDialog";
+import { UpdateRailButton } from "./components/UpdateRailButton";
 import { appVersion, type UpdaterAdapter } from "./adapter/updater";
 import { ReleaseNotesDialog } from "./components/ReleaseNotesDialog";
 import { readLastSeenVersion, whatsNewDecision, writeLastSeenVersion } from "./core/whatsNew";
@@ -295,9 +296,18 @@ function AppInner({
     : s.detailDiscussion
       ? `discussion:${s.detailDiscussion.slug}`
       : null;
+  // 技能檔提示確認框（desktop-notice-relocation design D1）：純 UI 開關，與 releaseNotes 同型；
+  // 抽屜開啟時一併收掉（可取消浮層互斥），提示消失（更新成功、保留現狀、切分頁）時也關。
+  const [assetDialogOpen, setAssetDialogOpen] = useState(false);
   useEffect(() => {
-    if (openedDrawer !== null) setReleaseNotes(null);
+    if (openedDrawer !== null) {
+      setReleaseNotes(null);
+      setAssetDialogOpen(false);
+    }
   }, [openedDrawer]);
+  useEffect(() => {
+    if (!s.assetPrompt) setAssetDialogOpen(false);
+  }, [s.assetPrompt]);
   // 初始化確認框的工具多選（預設勾 claude）；對話框每次開啟重設。
   const [initTools, setInitTools] = useState<string[]>(["claude"]);
   useEffect(() => {
@@ -678,18 +688,25 @@ function AppInner({
             connectionStates={sessionConnectionStates}
             connectionNames={connectionNames}
             pendingKey={s.pendingTabKey}
+            assetPrompts={s.assetPrompts}
             platform={platform}
             actions={projectActions}
             onActivate={(key) => void s.activateTab(key)}
             onOpen={() => s.openWorkspaceChooser()}
             onOpenSettings={() => s.setBoardView("settings")}
             settingsActive={s.boardView === "settings"}
+            updateButton={
+              updater && <UpdateRailButton state={s.updater} onClick={s.openSettingsUpdate} />
+            }
           />
           {s.tabs.length > 0 && (
             <ProjectColumn
               boardView={s.boardView}
               archivedCount={s.archived.length}
               onNavigate={s.setBoardView}
+              notice={
+                <AssetNoticeCard prompt={s.assetPrompt} onOpen={() => setAssetDialogOpen(true)} />
+              }
             />
           )}
         </div>
@@ -697,14 +714,6 @@ function AppInner({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <MainTitleBar platform={platform} crumbs={crumbs} />
-        {/* 更新通知列（徵詢／下載中／待重啟／錯誤時浮出；其餘狀態不佔畫面）。排在頂列之下：
-            頂列要與左側標題列同高，Windows 的自繪視窗鈕要留在右上角。 */}
-        <UpdateBanner
-          state={s.updater}
-          onAccept={() => void s.acceptUpdate()}
-          onDismiss={s.dismissUpdate}
-          onRelaunch={() => void s.relaunchToUpdate()}
-        />
 
           {stale && connectionState && (
             <div
@@ -746,9 +755,8 @@ function AppInner({
 
           {/* 主內容：看板、規格頁、已封存頁填滿高度（清單於內部容器捲動、換頁控
               制列沉底常駐）；設定頁維持整頁縱向捲動；手冊頁的三欄分隔線要貫穿
-              主內容全高，padding 由 ManualPage 各欄自管。flex 直欄（spec「提示
-              SHALL 只佔用自身高度」）：技能檔提示存在時，各視圖根節點（h-full
-              min-h-0）縮到扣除提示後的剩餘高度，而非被 overflow-hidden 裁掉底部 */}
+              主內容全高，padding 由 ManualPage 各欄自管。flex 直欄讓各視圖根節點
+              （h-full min-h-0）填滿主區；技能檔提示住在專案欄，主區不為它扣高度 */}
           <main
             className={cn(
               "flex flex-1 flex-col",
@@ -758,29 +766,6 @@ function AppInner({
                 : "overflow-hidden",
             )}
           >
-            {/* 技能檔提示（spec「指令檔過期提示」、決策 7）：per 專案、分頁內容頂部、
-                非阻斷；應用程式設定頁不屬專案語境故不掛。包裹層 shrink-0：提示只佔
-                自身高度。捲動釘選也住在包裹層：sticky 只能在包住它的區塊內移動，
-                提示自帶 sticky 會被剛好等高的包裹層鎖死；包裹層是 main 這個捲動容器
-                的直接子節點，才釘得住專案設定頁整段捲動。包裹層帶頁面底色：提示的
-                mb-4 落在包裹層內側，釘住時那 1rem 才不是透出內容的透明帶。手冊視圖
-                的 main 無 padding，提示存在時自補。 */}
-            {s.boardView !== "settings" && (
-              <div
-                className={cn(
-                  "sticky top-0 z-10 shrink-0 bg-background",
-                  s.boardView === "manual" && s.assetPrompt && "px-5 pt-5",
-                )}
-              >
-                <AssetUpdatePrompt
-                  prompt={s.assetPrompt}
-                  error={s.assetUpdateError}
-                  busy={s.assetUpdating}
-                  onApply={() => void s.applyAssetUpdate()}
-                  onDismiss={s.dismissAssetPrompt}
-                />
-              </div>
-            )}
             {s.boardView === "settings" ? (
               <AppSettingsView
                 platform={platform}
@@ -795,6 +780,11 @@ function AppInner({
                     currentVersion,
                     onCheck: () => void s.checkForUpdates(true),
                     onShowReleaseNotes: () => setReleaseNotes({ mode: "browse" }),
+                    onAccept: () => void s.acceptUpdate(),
+                    onCancel: s.dismissUpdate,
+                    onRelaunch: () => void s.relaunchToUpdate(),
+                    focus: s.focusUpdater,
+                    onFocusHandled: s.clearFocusUpdater,
                   }
                 }
                 cliInstall={
@@ -1093,6 +1083,20 @@ function AppInner({
           }
         />
       )}
+
+      {/* 技能檔提示確認框（spec「指令檔過期提示」）：三列資訊、依狀態的按鈕；較新態的主
+          動作改開設定頁軟體更新卡。 */}
+      <AssetNoticeDialog
+        open={assetDialogOpen}
+        onOpenChange={setAssetDialogOpen}
+        prompt={s.assetPrompt}
+        appVersion={currentVersion}
+        busy={s.assetUpdating}
+        error={s.assetUpdateError}
+        onApply={() => void s.applyAssetUpdate()}
+        onDismiss={s.dismissAssetPrompt}
+        onOpenSettingsUpdate={s.openSettingsUpdate}
+      />
 
       {updater && (
         <ReleaseNotesDialog

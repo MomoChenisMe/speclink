@@ -10,6 +10,8 @@ export interface AssetPromptState {
   fileCount: number;
   /** 此提示對應的產物層版號（「保留現狀」記的就是它）。 */
   version: string;
+  /** 專案指令檔的標記版號（確認框「這個專案的技能檔版本」列）；從未安裝為 null。 */
+  projectVersion: string | null;
 }
 
 // 沿用改名前的 key：既有使用者的略過記憶存在這個名字下，換名等於全部失效。
@@ -57,5 +59,7 @@ export function assetPrompt(
     kind: probe.status,
     fileCount: probe.differingFiles.length,
     version: probe.currentVersion,
+    // 逐工具回報各自的標記版號；受管檔同批再生，取第一個有標記的即代表專案。
+    projectVersion: probe.tools.find((tool) => tool.workspaceVersion !== null)?.workspaceVersion ?? null,
   };
 }

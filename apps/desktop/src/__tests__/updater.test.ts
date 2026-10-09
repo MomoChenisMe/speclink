@@ -95,6 +95,18 @@ describe("更新狀態機（core/updater）", () => {
     });
   });
 
+  it("下載中取消（dismissed）回閒置；其後到達的 downloaded 不進待重啟（spec「取消下載回到閒置」）", () => {
+    const cancelled = replay([
+      { type: "checkStarted", manual: false },
+      { type: "updateFound", version: "0.2.0" },
+      { type: "accepted" },
+      { type: "dismissed" },
+    ]);
+    expect(cancelled).toEqual({ phase: "idle" });
+    expect(reduceUpdater(cancelled, { type: "downloaded" })).toEqual({ phase: "idle" });
+    expect(reduceUpdater(cancelled, { type: "installFailed", message: "x" })).toEqual({ phase: "idle" });
+  });
+
   it("非法事件不改變狀態（閒置時收到 downloaded 仍為閒置）", () => {
     const state = reduceUpdater(initialUpdaterState, { type: "downloaded" });
     expect(state).toEqual({ phase: "idle" });
@@ -205,6 +217,17 @@ describe("更新 store 接線", () => {
     const manual = storeWith(adapter);
     await manual.getState().checkForUpdates(true);
     expect(manual.getState().updater).toEqual({ phase: "checkFailed" });
+  });
+
+  it("openSettingsUpdate：切到設定頁並舉旗 focusUpdater；clearFocusUpdater 清旗標、不離開設定頁", () => {
+    const store = storeWith();
+    expect(store.getState().focusUpdater).toBe(false);
+    store.getState().openSettingsUpdate();
+    expect(store.getState().boardView).toBe("settings");
+    expect(store.getState().focusUpdater).toBe(true);
+    store.getState().clearFocusUpdater();
+    expect(store.getState().focusUpdater).toBe(false);
+    expect(store.getState().boardView).toBe("settings");
   });
 
   it("未注入 adapter 時 checkForUpdates 為 no-op", async () => {
