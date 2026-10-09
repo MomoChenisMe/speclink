@@ -689,3 +689,61 @@ describe("DiscussionColumn 容器卡與受控收合列（desktop-board-reskin）
     expect(onChange).toHaveBeenCalledWith(false);
   });
 });
+
+// 品質關卡 round 1 修補（review R-C1／R-C2、R-S1）：展開的 promoted 細列落在收合列正上方的
+// 有界區塊（欄內卡片再多也看得到）；受控 props 兩者同進同出；階段欄與討論欄共用同一欄殼。
+describe("DiscussionColumn 收合列展開區與欄殼（quality round 1）", () => {
+  const manyOpen: DiscussionItem[] = Array.from({ length: 12 }, (_, i) => ({
+    ...openD,
+    slug: `open-${i}`,
+    topic: `Open ${i}`,
+  }));
+
+  it("展開的 promoted 細列在收合列正上方的有界區塊，不在可捲動的卡片區底部", () => {
+    render(
+      <DiscussionColumn discussions={[...manyOpen, promotedD]} changes={chipChanges} archived={chipArchived} />,
+    );
+    const bar = screen.getByRole("button", { name: /已轉出/ });
+    fireEvent.click(bar);
+    const block = bar.previousElementSibling as HTMLElement;
+    const blockCls = block.className.split(/\s+/);
+    expect(blockCls).toEqual(expect.arrayContaining(["max-h-64", "overflow-y-auto"]));
+    // 不帶 shrink-0：視窗很矮時區塊可被壓縮，收合列不會被欄外框的 overflow-hidden 切掉（review round 2）。
+    expect(blockCls).not.toContain("shrink-0");
+    expect(within(block).getByText("Fanout topic")).toBeTruthy();
+    // 卡片區（flex-1 捲動區）只放全卡，不再包含 promoted 細列。
+    const cardArea = block.previousElementSibling as HTMLElement;
+    expect(cardArea.className).toContain("flex-1");
+    expect(within(cardArea).queryByText("Fanout topic")).toBeNull();
+    expect(within(cardArea).getByText("Open 11")).toBeTruthy();
+  });
+
+  it("收合時沒有展開區塊，收合列緊接在卡片區之後", () => {
+    render(<DiscussionColumn discussions={[openD, promotedD]} changes={chipChanges} archived={chipArchived} />);
+    const bar = screen.getByRole("button", { name: /已轉出/ });
+    expect((bar.previousElementSibling as HTMLElement).className).toContain("flex-1");
+  });
+
+  it("只給受控 props 其一：型別層擋下；執行期退回內部狀態（預設收合、點按自行展開）", () => {
+    render(
+      // @ts-expect-error — promotedExpanded 與 onPromotedExpandedChange 必須同進同出
+      <DiscussionColumn discussions={[openD, promotedD]} changes={chipChanges} archived={chipArchived} promotedExpanded />,
+    );
+    const bar = screen.getByRole("button", { name: /已轉出/ });
+    expect(bar.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(bar);
+    expect(bar.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("階段欄與討論欄共用同一欄殼：外框、色相條高度、標頭、卡片區 class 一致", () => {
+    render(<KanbanBoard changes={[]} discussions={{ active: [], archived: [] }} />);
+    const disc = column("discussions") as HTMLElement;
+    const prop = column("proposed") as HTMLElement;
+    const strip = (cls: string) => cls.split(/\s+/).filter((c) => !c.startsWith("bg-stage-")).sort();
+    expect(disc.className).toBe(prop.className);
+    expect(strip(disc.children[0].className)).toEqual(strip(prop.children[0].className));
+    expect(disc.children[1].className).toBe(prop.children[1].className);
+    expect(disc.children[2].className).toBe(prop.children[2].className);
+    expect(screen.getByText("尚無討論").className).toBe(screen.getByText("沒有提案中的變更").className);
+  });
+});

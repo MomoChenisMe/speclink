@@ -11,7 +11,7 @@
 1. **欄容器**：`KanbanBoard` 的四欄改為 `grid grid-cols-4 gap-3` 等寬填滿主區（欄最小 220px，再窄才水平捲動）；每欄 `rounded-2xl border border-border bg-sidebar overflow-hidden`：頂端 3px 色相條（討論 fuchsia、提案中 teal、進行中 sky、已就緒 emerald，取 `stage-*` token）、標頭 `bg-card` 內放色相圖示＋12px 中粗名稱（不再全大寫）＋色相淡底計數徽章、標頭下細線、卡片區 `p-2 gap-2` 在淡灰底上縱向捲動；空欄置中 12px 灰字（「沒有提案中的變更」「沒有進行中的變更」「沒有已就緒的變更」；討論欄沿用「尚無討論」）。skeleton 與載入失敗態不變。
 2. **討論欄底收合列**：「已轉出 N ›」改為欄底白底列（上緣細線、右端 › 展開時轉 90°），展開狀態由桌面 app 存於 app 本機（`speclink.board.promotedExpanded`）跨啟動保留；`DiscussionColumn` 以可控 props 承接（不傳時維持元件內狀態、不持久化），promoted 細列改 8px 圓角白底細框。
 3. **卡片**：變更卡與討論卡沿用 cut 1 的 `Card size="nested" interactive`（12px 圓角、白底細框無陰影、hover 框變深底微灰）——本塊確認無任何殘留的陰影或 `bg-background/60` 類寫法；拖曳中的浮動卡 `rounded-xl shadow-lg`（浮層才有陰影）；不合法落點降透明度、封存落點浮層的虛線框與底色改 token（`border-primary/60 bg-primary/10`），語意不變。
-4. **頁級動作**：`BoardSearchBar` 的輸入改全圓 `rounded-full h-8 w-[280px]`（搜尋圖示在左、清除鈕與命中數在右端內側），篩選改 32px 圖示鈕（啟用計數角標不變），兩者同列放在頁標題區右端；全文比對、模糊比對、篩選面板、快捷鍵全部不變。
+4. **頁級動作**：`BoardSearchBar` 的輸入改全圓 `h-8 w-[280px]`（搜尋圖示在左、清除鈕與命中數在右端內側），篩選改 32px 圖示鈕（啟用計數角標不變），圓角與展開態底色由 `Input`／`Button` 新增的變體提供（呼叫端不以 className 覆蓋變體），兩者同列放在頁標題區右端；全文比對、模糊比對、篩選面板、快捷鍵全部不變。
 5. **規格字面**：desktop-app 新增「看板欄與卡片的容器外觀」需求（欄容器結構、等寬、色相條、標頭、淡灰卡片區、空欄文案、卡片與浮層的外觀）；「看板搜尋過濾卡片」第一段改為頁標題區右端的 280px 全圓搜尋與同列篩選鈕；「討論於看板第 0 欄兩級呈現」的收合列改為跨啟動記憶並描述白底列。
 
 不新增或變更任何 CLI 指令、技能或 Agent 指令。設定欄位：無。持久化：桌面 app 新增一個 app 本機布林鍵 `speclink.board.promotedExpanded`，不寫入任何專案目錄。相容性：`--json` 與 CLI 輸出不變。
@@ -34,6 +34,6 @@
 
 - Affected specs: `desktop-app`（ADDED「看板欄與卡片的容器外觀」；MODIFIED「看板搜尋過濾卡片」——搜尋與篩選的位置與形狀；MODIFIED「討論於看板第 0 欄兩級呈現」——收合列外觀與跨啟動記憶）
 - Affected code:
-  - Modified: `packages/ui/src/components/KanbanBoard.tsx`、`packages/ui/src/components/DiscussionColumn.tsx`、`packages/ui/src/components/BoardSearchBar.tsx`、`packages/ui/src/components/ChangeCard.tsx`、`packages/ui/src/i18n.tsx`、`packages/ui/src/__tests__/kanban.test.tsx`、`packages/ui/src/__tests__/discussionColumn.test.tsx`、`packages/ui/src/__tests__/boardSearchBar.test.tsx`、`apps/desktop/src/App.tsx`、`apps/desktop/src/store.ts`、`apps/desktop/src/__tests__/store.test.ts`
-  - New: 無
+  - Modified: `packages/ui/src/components/KanbanBoard.tsx`、`packages/ui/src/components/DiscussionColumn.tsx`、`packages/ui/src/components/BoardSearchBar.tsx`、`packages/ui/src/components/ui/input.tsx`、`packages/ui/src/components/ui/button.tsx`、`packages/ui/src/i18n.tsx`、`packages/ui/src/__tests__/kanban.test.tsx`、`packages/ui/src/__tests__/discussionColumn.test.tsx`、`packages/ui/src/__tests__/boardSearchBar.test.tsx`、`packages/ui/src/__tests__/ui.test.tsx`、`apps/desktop/src/App.tsx`、`apps/desktop/src/store.ts`、`apps/desktop/src/__tests__/store.test.ts`、`apps/desktop/src/__tests__/App.test.tsx`（`packages/ui/src/components/ChangeCard.tsx` 只確認無陰影，不改）
+  - New: `packages/ui/src/components/BoardColumn.tsx`
   - Removed: 無

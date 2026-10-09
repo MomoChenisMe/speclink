@@ -11,7 +11,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Archive, CircleCheckBig, Hammer, Lightbulb, type LucideIcon } from "lucide-react";
+import { Archive, CircleCheckBig, Hammer, Lightbulb } from "lucide-react";
 
 import type { ArchivedItem, CardKind, ChangeItem, DiscussionLists, SearchHit } from "../adapter";
 import {
@@ -32,11 +32,17 @@ import {
   type BoardFilters,
 } from "../search";
 import { changeStage, STAGE_BADGE, STAGE_BAR, STAGE_ICON, STAGES, type Stage } from "../stage";
+import { BoardColumn, type ColumnTone } from "./BoardColumn";
 import { BoardSearchBar } from "./BoardSearchBar";
 import { PageHeader } from "./ui/page-header";
 import { ChangeCard } from "./ChangeCard";
 import { ColumnLoadFailed, ColumnSkeleton } from "./skeletons";
-import { DiscussionCard, DiscussionColumn, isCollapsedPromoted } from "./DiscussionColumn";
+import {
+  DiscussionCard,
+  DiscussionColumn,
+  isCollapsedPromoted,
+  type PromotedExpansionProps,
+} from "./DiscussionColumn";
 import { Button } from "./ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
@@ -48,7 +54,7 @@ const FILTER_ALL = "__all__";
 
 /** 各階段的視覺主題——每階一色相，全部取 stage.ts 的 stage-* token 對照；
  *  欄頂色相條與卡片進度條同用 bar（純 bg-stage-*）。 */
-const STAGE_STYLE: Record<Stage, { icon: LucideIcon; badge: string; bar: string; iconCls: string }> = {
+const STAGE_STYLE: Record<Stage, ColumnTone> = {
   proposed: {
     icon: Lightbulb,
     badge: STAGE_BADGE.proposed,
@@ -69,7 +75,7 @@ const STAGE_STYLE: Record<Stage, { icon: LucideIcon; badge: string; bar: string;
   },
 };
 
-export interface KanbanBoardProps {
+interface KanbanBoardBaseProps {
   changes: ChangeItem[];
   onOpenChange?: (name: string) => void;
   /** 封存請求：ready 卡的封存鈕與拖曳落點皆經此觸發（app 端接確認流程）。 */
@@ -113,62 +119,11 @@ export interface KanbanBoardProps {
    * 缺席＝搜尋列照舊單獨一列。 */
   title?: string;
   description?: string;
-  /** 討論欄底「已轉出」收合列的展開狀態（design D2）：同名透傳 DiscussionColumn——
-   * 兩者皆提供時受控（桌面 app 跨啟動保留），缺席時欄內部狀態、不持久化。 */
-  promotedExpanded?: boolean;
-  onPromotedExpandedChange?: (expanded: boolean) => void;
 }
 
-function Column({
-  stage,
-  count,
-  countUnknown,
-  children,
-}: {
-  stage: Stage;
-  count: number;
-  /** 計數未知（首訪載入中或載入失敗）：顯示 0 會謊報空，徽章整個不出。 */
-  countUnknown?: boolean;
-  children: React.ReactNode;
-}) {
-  const { t } = useI18n();
-  const style = STAGE_STYLE[stage];
-  const Icon = style.icon;
-  // 欄容器不作 droppable：跨欄放開為彈回＋零寫入（spec「跨欄拖曳不改變變更
-  // 階段」），isOver 高亮會假示可跨欄放置；唯一的欄外落點是封存浮層。
-  // 容器卡（design D1）：白底細框 16px 圓角，頂端 3px 色相條、白底標頭下細線、
-  // 卡片區鋪側欄淡灰讓白卡浮出——與設定頁、系統匣面板同一套容器規則。
-  return (
-    <div
-      data-column={stage}
-      className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-sidebar"
-    >
-      <div className={`h-[3px] shrink-0 ${style.bar}`} />
-      <div className="flex items-center gap-2 bg-card px-3 py-2.5 border-b border-border/70 shrink-0">
-        <Icon className={`h-3.5 w-3.5 ${style.iconCls}`} />
-        <h2 className="text-xs font-semibold text-foreground">{t(`stage.${stage}`)}</h2>
-        <div className="flex-1" />
-        {!countUnknown && (
-          <span
-            data-testid="column-count"
-            className={`inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums ${style.badge}`}
-          >
-            {count}
-          </span>
-        )}
-      </div>
-      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2 p-2">
-        {/* 空欄（過濾後零卡且非載入中／失敗）：置中灰字；搜尋無命中時同樣顯示。 */}
-        {!countUnknown && count === 0 && (
-          <p className="px-2 py-6 text-center text-xs text-muted-foreground">
-            {t(`board.emptyColumn.${stage}`)}
-          </p>
-        )}
-        {children}
-      </div>
-    </div>
-  );
-}
+/** 另含討論欄底「已轉出」收合列的展開狀態（design D2）：同名透傳 DiscussionColumn——
+ * 兩者同進同出時受控（桌面 app 跨啟動保留），皆缺席時欄內部狀態、不持久化。 */
+export type KanbanBoardProps = KanbanBoardBaseProps & PromotedExpansionProps;
 
 /**
  * 拖曳變更卡時才浮現的封存落點（design D8）：絕對定位浮層疊於看板右緣上方、
@@ -263,8 +218,7 @@ export function KanbanBoard({
   loadFailed,
   title,
   description,
-  promotedExpanded,
-  onPromotedExpandedChange,
+  ...promotedExpansion
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const { t } = useI18n();
@@ -536,16 +490,22 @@ export function KanbanBoard({
             fulltextHits={fulltextHits}
             loading={loading}
             loadFailed={failed}
-            promotedExpanded={promotedExpanded}
-            onPromotedExpandedChange={onPromotedExpandedChange}
+            {...promotedExpansion}
           />
         )}
         {STAGES.map((stage) => (
-          <Column
+          <BoardColumn
             key={stage}
-            stage={stage}
-            count={byStage[stage].length}
-            countUnknown={loading || failed}
+            id={stage}
+            title={t(`stage.${stage}`)}
+            tone={STAGE_STYLE[stage]}
+            count={loading || failed ? null : byStage[stage].length}
+            // 空欄（過濾後零卡且非載入中／失敗）：置中灰字；搜尋無命中時同樣顯示。
+            empty={
+              !loading && !failed && byStage[stage].length === 0
+                ? t(`board.emptyColumn.${stage}`)
+                : null
+            }
           >
             {loading ? (
               <ColumnSkeleton />
@@ -584,7 +544,7 @@ export function KanbanBoard({
                 />
               ))
             )}
-          </Column>
+          </BoardColumn>
         ))}
       </div>
       {/* 僅拖曳已就緒變更卡時浮現（archiveZoneVisible）：非就緒卡＝純排序、

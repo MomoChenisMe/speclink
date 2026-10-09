@@ -15,14 +15,18 @@ function render(ui: ReactElement) {
 // 捕捉 DndContext 的接線 props（onDragStart/onDragEnd）——jsdom 無法模擬真實
 // pointer 拖曳手勢，改直接驅動接線回呼驗證落點渲染與 archived 分支守門；
 // 元件本身仍以原 DndContext 渲染，既有測試不受影響。
-const captured = vi.hoisted(() => ({ dnd: null as any }));
+const captured = vi.hoisted(() => ({ dnd: null as any, overlayChildren: false }));
 vi.mock("@dnd-kit/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@dnd-kit/core")>();
   const Wrapped = (props: any) => {
     captured.dnd = props;
     return <actual.DndContext {...props} />;
   };
-  return { ...actual, DndContext: Wrapped };
+  // DragOverlay 只在 dnd-kit 內部 active 存在時渲染子節點；直接驅動回呼的測試要看浮動卡時
+  // 打開 overlayChildren，改為原樣渲染子節點（預設關閉，其餘測試照舊）。
+  const Overlay = (props: any) =>
+    captured.overlayChildren ? <div data-drag-overlay>{props.children}</div> : <actual.DragOverlay {...props} />;
+  return { ...actual, DndContext: Wrapped, DragOverlay: Overlay };
 });
 
 import { act } from "@testing-library/react";
@@ -93,6 +97,19 @@ describe("KanbanBoard 生命週期四欄色相（spec「生命週期四欄各一
     expect(within(column("proposed")).getByText("沒有提案中的變更")).toBeTruthy();
     expect(within(column("in-progress")).getByText("沒有進行中的變更")).toBeTruthy();
     expect(within(column("ready")).getByText("沒有已就緒的變更")).toBeTruthy();
+  });
+
+  it("已就緒零卡且搜尋使進行中無命中：兩欄各顯示空文案、計數為 0（spec「空欄顯示置中灰字」）", () => {
+    const noReady = changes.filter((c) => c.name !== "ready-z");
+    render(<KanbanBoard changes={noReady} query="proposing" onQuery={vi.fn()} />);
+    const count = (id: string) => within(column(id)).getByTestId("column-count").textContent;
+    expect(within(column("ready")).getByText("沒有已就緒的變更")).toBeTruthy();
+    expect(within(column("in-progress")).getByText("沒有進行中的變更")).toBeTruthy();
+    expect(count("ready")).toBe("0");
+    expect(count("in-progress")).toBe("0");
+    // 有命中的欄照常顯示卡片、不出空文案。
+    expect(column("proposed").querySelector('[data-change="proposing-x"]')).toBeTruthy();
+    expect(within(column("proposed")).queryByText("沒有提案中的變更")).toBeNull();
   });
 
   it("有卡片的欄、載入中與載入失敗的欄都不顯示空文案", () => {
@@ -750,6 +767,22 @@ describe("封存落點浮層（design D8 + archive-readiness-gating D3）", () =
     expect(cls).toContain("text-primary");
     expect(cls.some((c) => c.startsWith("backdrop-"))).toBe(false);
     expect(cls.some((c) => c.startsWith("bg-background"))).toBe(false);
+  });
+
+  it("拖曳中的浮動卡帶陰影（浮層）；放開後浮動卡消失（spec「卡片無陰影而浮動卡有陰影」）", () => {
+    captured.overlayChildren = true;
+    try {
+      render(<KanbanBoard changes={changes} onReorder={vi.fn()} />);
+      startDrag(cardDndId("change", "ready-z"));
+      const overlay = document.querySelector("[data-drag-overlay]") as HTMLElement;
+      const floating = overlay.firstElementChild as HTMLElement;
+      expect(floating.className.split(/\s+/)).toEqual(expect.arrayContaining(["rounded-xl", "shadow-lg"]));
+      expect(floating.querySelector('[data-change="ready-z"]')).toBeTruthy();
+      endDrag(cardDndId("change", "ready-z"), null);
+      expect(overlay.childElementCount).toBe(0);
+    } finally {
+      captured.overlayChildren = false;
+    }
   });
 
   it("靜置的變更卡與其 sortable 包裝層都無陰影（陰影只在拖曳浮動卡）", () => {

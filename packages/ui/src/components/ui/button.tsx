@@ -16,6 +16,9 @@ const buttonVariants = cva(
         ghost: "hover:bg-accent hover:text-accent-foreground",
         /** 圖示鈕：靜態無底，hover 才浮出淡底。 */
         subtle: "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+        /** 開關圖示鈕（看板篩選）：8px 圓角、靜態無底；展開態（aria-expanded）淺灰底深字。 */
+        toggle:
+          "rounded-lg text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
         link: "text-primary underline-offset-4 hover:underline",
         destructive: "bg-destructive text-white hover:bg-destructive/90",
         danger: "bg-destructive/10 text-destructive hover:bg-destructive/15",
