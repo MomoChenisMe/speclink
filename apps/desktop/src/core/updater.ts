@@ -43,6 +43,21 @@ export function focusRecheckAllowed(state: UpdaterState): boolean {
   return state.phase === "idle" || state.phase === "upToDate" || state.phase === "checkFailed";
 }
 
+/**
+ * 圖示列更新鈕與設定卡「下載與安裝」列共用的呈現判斷（desktop-app「桌面自動更新」）：待同意、
+ * 下載中、待重啟與失敗要使用者看到；閒置、檢查中、已最新與檢查失敗不佔畫面。
+ */
+export function updateNeedsAttention(
+  state: UpdaterState,
+): state is Extract<UpdaterState, { phase: "available" | "downloading" | "restartPending" | "error" }> {
+  return (
+    state.phase === "available" ||
+    state.phase === "downloading" ||
+    state.phase === "restartPending" ||
+    state.phase === "error"
+  );
+}
+
 export function reduceUpdater(state: UpdaterState, event: UpdaterEvent): UpdaterState {
   switch (event.type) {
     case "checkStarted":
@@ -63,7 +78,7 @@ export function reduceUpdater(state: UpdaterState, event: UpdaterEvent): Updater
         : state;
     case "dismissed":
       // available＝稍後、error＝關閉錯誤提示、downloading＝取消（放棄本次同意；外掛的下載仍在
-      // 背景跑，其後到達的 downloaded／installFailed 在閒置態被忽略）；皆回閒置。
+      // 背景跑完，store 見同意已失效就不安裝，其後的 downloaded／installFailed 在閒置態也被忽略）；皆回閒置。
       return state.phase === "available" || state.phase === "error" || state.phase === "downloading"
         ? { phase: "idle" }
         : state;

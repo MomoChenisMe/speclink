@@ -6,6 +6,7 @@ import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 import { I18nProvider, TooltipProvider } from "@speclink/ui";
 
+import { RAIL_SQUARE } from "../components/ProjectRail";
 import { UpdateRailButton } from "../components/UpdateRailButton";
 import type { UpdaterState } from "../core/updater";
 import { APP_MESSAGES } from "../i18n/messages";
@@ -62,6 +63,12 @@ describe("UpdateRailButton", () => {
   ])("%s：不渲染", (_label, state) => {
     render(<UpdateRailButton state={state} onClick={vi.fn()} />);
     expect(screen.queryByTestId("update-rail-button")).toBeNull();
+  });
+
+  it("與圖示列方塊同一套尺寸樣式、hover 與齒輪一致", () => {
+    render(<UpdateRailButton state={{ phase: "available", version: "0.5.1" }} onClick={vi.fn()} />);
+    for (const token of RAIL_SQUARE.split(" ")) expect(button().classList.contains(token)).toBe(true);
+    expect(button().classList.contains("hover:bg-muted")).toBe(true);
   });
 
   it("點擊呼叫 onClick", () => {

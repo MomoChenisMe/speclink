@@ -6,7 +6,7 @@
 // 事件未接（design Non-Goals）。
 import { Button, SEMANTIC_TONE, cn, useI18n } from "@speclink/ui";
 
-import type { UpdaterState } from "../core/updater";
+import { updateNeedsAttention, type UpdaterState } from "../core/updater";
 
 export interface UpdateInstallRowProps {
   state: UpdaterState;
@@ -19,14 +19,7 @@ export interface UpdateInstallRowProps {
 
 export function UpdateInstallRow({ state, onAccept, onCancel, onRelaunch, onRetry }: UpdateInstallRowProps) {
   const { t } = useI18n();
-  if (
-    state.phase !== "available" &&
-    state.phase !== "downloading" &&
-    state.phase !== "restartPending" &&
-    state.phase !== "error"
-  ) {
-    return null;
-  }
+  if (!updateNeedsAttention(state)) return null;
   return (
     <div
       data-testid="update-install-row"

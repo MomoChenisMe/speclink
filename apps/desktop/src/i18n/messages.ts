@@ -155,18 +155,18 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "releaseNotes.empty": "目前沒有更新日誌。",
     "assets.errorPrefix": "無法完成：",
     "assets.card.staleTitle": "技能檔是舊版",
-    "assets.card.staleDesc": "先更新再改寫，否則 {count} 個檔案會被換回舊內容",
+    "assets.card.staleDesc": "更新會改寫 {count} 個檔案",
     "assets.card.missingTitle": "還沒安裝技能檔",
     "assets.card.missingDesc": "安裝會新建 {count} 個檔案",
     "assets.card.newerTitle": "技能檔比 Speclink 新",
     "assets.card.newerDesc": "更新 Speclink 才能安全改寫",
-    "assets.dialog.title.stale": "這個專案的技能檔是舊版",
-    "assets.dialog.title.missing": "這個專案還沒安裝技能檔",
-    "assets.dialog.title.newer": "這個專案的技能檔比你的 Speclink 新",
-    "assets.dialog.desc.stale":
-      "更新會以現版內容改寫受管的技能檔；若你曾手動調整過這些檔案，調整會被覆蓋。",
-    "assets.dialog.desc.missing": "安裝會在這個專案新建技能檔，AI 代理才會照現版流程工作。",
-    "assets.dialog.desc.newer":
+    "assets.dialog.staleTitle": "這個專案的技能檔是舊版",
+    "assets.dialog.missingTitle": "這個專案還沒安裝技能檔",
+    "assets.dialog.newerTitle": "這個專案的技能檔比你的 Speclink 新",
+    "assets.dialog.staleDesc":
+      "更新會把這個專案的技能檔換成你的 Speclink 這一版；若你曾手動調整過這些檔案，調整會被覆蓋。",
+    "assets.dialog.missingDesc": "安裝會在這個專案新建技能檔，AI 代理才會照現版流程工作。",
+    "assets.dialog.newerDesc":
       "你的 Speclink 是舊版，現在改寫會把專案的技能檔換回舊內容。先更新 Speclink，再回來處理。",
     "assets.dialog.projectVersion": "這個專案的技能檔版本",
     "assets.dialog.appVersion": "你的 Speclink 版本",
@@ -565,19 +565,19 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "releaseNotes.empty": "No changelog entries yet.",
     "assets.errorPrefix": "Could not complete: ",
     "assets.card.staleTitle": "Skill files are outdated",
-    "assets.card.staleDesc": "Update before rewriting, or {count} files go back to older content",
+    "assets.card.staleDesc": "Updating rewrites {count} files",
     "assets.card.missingTitle": "Skill files not installed yet",
     "assets.card.missingDesc": "Installing creates {count} files",
     "assets.card.newerTitle": "Skill files are newer than Speclink",
     "assets.card.newerDesc": "Update Speclink to rewrite safely",
-    "assets.dialog.title.stale": "This project's skill files are outdated",
-    "assets.dialog.title.missing": "This project has no skill files yet",
-    "assets.dialog.title.newer": "This project's skill files are newer than your Speclink",
-    "assets.dialog.desc.stale":
-      "Updating rewrites the managed skill files with the current version; any manual edits to them will be overwritten.",
-    "assets.dialog.desc.missing":
+    "assets.dialog.staleTitle": "This project's skill files are outdated",
+    "assets.dialog.missingTitle": "This project has no skill files yet",
+    "assets.dialog.newerTitle": "This project's skill files are newer than your Speclink",
+    "assets.dialog.staleDesc":
+      "Updating replaces this project's skill files with the ones from your Speclink version; any manual edits to them will be overwritten.",
+    "assets.dialog.missingDesc":
       "Installing creates the skill files in this project so AI agents follow the current workflow.",
-    "assets.dialog.desc.newer":
+    "assets.dialog.newerDesc":
       "Your Speclink is an older version; rewriting now would put the project's skill files back to older content. Update Speclink first, then come back.",
     "assets.dialog.projectVersion": "This project's skill file version",
     "assets.dialog.appVersion": "Your Speclink version",

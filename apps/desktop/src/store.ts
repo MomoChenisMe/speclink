@@ -414,12 +414,10 @@ export interface AppState {
   gotoTab: (n: number) => Promise<void>;
 
   // --- 技能檔過期提示（desktop-instruction-staleness-prompt；決策 4/6/7） ---
-  /** 各分頁上次探測的提示（locator key → 值；null＝不提示）。只在分頁活躍時探測，
-   * 切走後保留上次結果供圖示列琥珀點用（desktop-notice-relocation design D1）。 */
+  /** 各分頁上次探測的提示（locator key → 值；null＝不提示：現版、無法判定或已略過同版）。
+   * 只在分頁活躍時探測，切走後保留上次結果供圖示列琥珀點用；活躍分頁的提示以
+   * `selectAssetPrompt` 推算（desktop-notice-relocation design D1）。 */
   assetPrompts: Record<string, AssetPromptState | null>;
-  /** 活躍分頁的提示現值——`assetPrompts[activeKey]` 的派生值（null＝不提示：現版、
-   * 無法判定或已略過同版）。 */
-  assetPrompt: AssetPromptState | null;
   /** 更新失敗的單行訊息（呈現於提示原位、可重試）；成功或重查即清空。 */
   assetUpdateError: string | null;
   /** 更新進行中（動作停用、避免重複觸發）。 */
@@ -606,6 +604,13 @@ function uncancelableOverlayOpen(s: AppState): boolean {
   return s.migrationRoot !== null || s.pendingRemoteConflict !== null;
 }
 
+/** 活躍分頁的技能檔提示：`assetPrompts[activeKey]` 的推算值（null＝不提示）。 */
+export function selectAssetPrompt(
+  state: Pick<AppState, "activeKey" | "assetPrompts">,
+): AssetPromptState | null {
+  return state.activeKey ? (state.assetPrompts[state.activeKey] ?? null) : null;
+}
+
 /**
  * 建立 app 狀態 store（Zustand）。狀態集中此處、留在 apps/desktop；共用元件
  * （packages/ui）不依賴 store，仍經 props 取資料——守住資料源解耦。資料載入
@@ -697,6 +702,18 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         drawerVerb: null,
         manual: null,
       };
+    }
+
+    /** 探測指定分頁的技能檔並記進該分頁的記憶（結果屬於探測時的分頁，期間切走也不錯置）。 */
+    async function probeAssetPromptFor(ws: WorkspaceAdapter, key: string, root: string): Promise<void> {
+      let next: AssetPromptState | null;
+      try {
+        next = assetPrompt(await ws.probeAssets(root), root, readAssetSkips());
+      } catch {
+        // 探測不可用等同無法判定：靜默不提示，開專案不受影響（既有降級語意）。
+        next = null;
+      }
+      set({ assetPrompts: { ...get().assetPrompts, [key]: next } });
     }
 
     /** 活躍分頁的本地專案根；remote 分頁與零分頁回 null（技能檔探測只對本地
@@ -1850,10 +1867,17 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const pending = pendingUpdate;
       if (!pending) return;
       set({ updater: reduceUpdater(get().updater, { type: "accepted" }) });
+      // 這次同意是否仍有效：使用者取消（回閒置）或重新檢查換掉了待套用項之後，晚到的下載
+      // 結果一律不落地——不安裝、不推進狀態、不清掉新的待套用項（desktop-app「取消下載回到閒置」）。
+      const stillAccepted = () => pendingUpdate === pending && get().updater.phase === "downloading";
       try {
-        await pending.downloadAndInstall();
+        await pending.download();
+        if (!stillAccepted()) return;
+        await pending.install();
+        if (!stillAccepted()) return;
         set({ updater: reduceUpdater(get().updater, { type: "downloaded" }) });
       } catch (error) {
+        if (!stillAccepted()) return;
         // 簽章驗證失敗等：轉錯誤態、清掉待套用項；既有安裝不受影響。
         pendingUpdate = null;
         set({
@@ -2375,35 +2399,22 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     assetPrompts: {},
-    assetPrompt: null,
     assetUpdateError: null,
     assetUpdating: false,
 
     async refreshAssetPrompt() {
       const key = get().activeKey;
       const root = activeLocalRoot();
+      set({ assetUpdateError: null });
       // remote 分頁無本地受管技能檔可查（決策 4）；無 adapter 時 UI 不啟用。
-      if (!workspace || !root || !key) {
-        set({ assetPrompt: null, assetUpdateError: null });
-        return;
-      }
-      // 派生值先對齊這個分頁上次的記憶：切分頁時不殘留前一分頁的提示卡。
-      set({ assetPrompt: get().assetPrompts[key] ?? null, assetUpdateError: null });
-      let next: AssetPromptState | null;
-      try {
-        next = assetPrompt(await workspace.probeAssets(root), root, readAssetSkips());
-      } catch {
-        // 探測不可用等同無法判定：靜默不提示，開專案不受影響（既有降級語意）。
-        next = null;
-      }
-      // 結果屬於探測時的分頁：記進該分頁的記憶；派生值只在它仍活躍時更新。
-      set({ assetPrompts: { ...get().assetPrompts, [key]: next } });
-      if (get().activeKey === key) set({ assetPrompt: next });
+      if (!workspace || !root || !key) return;
+      await probeAssetPromptFor(workspace, key, root);
     },
 
     async applyAssetUpdate() {
+      const key = get().activeKey;
       const root = activeLocalRoot();
-      if (!workspace || !root || get().assetUpdating) return;
+      if (!workspace || !root || !key || get().assetUpdating) return;
       set({ assetUpdating: true, assetUpdateError: null });
       try {
         await workspace.updateAssets(root);
@@ -2413,20 +2424,17 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         return;
       }
       set({ assetUpdating: false });
-      await get().refreshAssetPrompt();
+      // 重探套用的那個分頁：使用者途中切走，它的提示與琥珀點仍要收合。
+      await probeAssetPromptFor(workspace, key, root);
     },
 
     dismissAssetPrompt() {
       const key = get().activeKey;
       const root = activeLocalRoot();
-      const prompt = get().assetPrompt;
+      const prompt = selectAssetPrompt(get());
       if (!key || !root || !prompt) return;
       writeAssetSkip(root, prompt.version);
-      set({
-        assetPrompts: { ...get().assetPrompts, [key]: null },
-        assetPrompt: null,
-        assetUpdateError: null,
-      });
+      set({ assetPrompts: { ...get().assetPrompts, [key]: null }, assetUpdateError: null });
     },
 
     async restoreTabs() {

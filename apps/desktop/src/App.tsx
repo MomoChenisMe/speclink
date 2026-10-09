@@ -32,7 +32,7 @@ import {
   type Verb,
 } from "@speclink/ui";
 
-import { createAppStore, openTicketStation } from "./store";
+import { createAppStore, openTicketStation, selectAssetPrompt } from "./store";
 import { locatorKey, type WorkspaceSession } from "./session";
 import { initTray, type TrayController } from "./tray";
 import { installAppMenu, type AppMenuAction } from "./appMenu";
@@ -299,6 +299,7 @@ function AppInner({
   // 技能檔提示確認框（desktop-notice-relocation design D1）：純 UI 開關，與 releaseNotes 同型；
   // 抽屜開啟時一併收掉（可取消浮層互斥），提示消失（更新成功、保留現狀、切分頁）時也關。
   const [assetDialogOpen, setAssetDialogOpen] = useState(false);
+  const assetPromptNow = selectAssetPrompt(s);
   useEffect(() => {
     if (openedDrawer !== null) {
       setReleaseNotes(null);
@@ -306,8 +307,8 @@ function AppInner({
     }
   }, [openedDrawer]);
   useEffect(() => {
-    if (!s.assetPrompt) setAssetDialogOpen(false);
-  }, [s.assetPrompt]);
+    if (!assetPromptNow) setAssetDialogOpen(false);
+  }, [assetPromptNow]);
   // 初始化確認框的工具多選（預設勾 claude）；對話框每次開啟重設。
   const [initTools, setInitTools] = useState<string[]>(["claude"]);
   useEffect(() => {
@@ -705,7 +706,7 @@ function AppInner({
               archivedCount={s.archived.length}
               onNavigate={s.setBoardView}
               notice={
-                <AssetNoticeCard prompt={s.assetPrompt} onOpen={() => setAssetDialogOpen(true)} />
+                <AssetNoticeCard prompt={assetPromptNow} onOpen={() => setAssetDialogOpen(true)} />
               }
             />
           )}
@@ -1089,8 +1090,7 @@ function AppInner({
       <AssetNoticeDialog
         open={assetDialogOpen}
         onOpenChange={setAssetDialogOpen}
-        prompt={s.assetPrompt}
-        appVersion={currentVersion}
+        prompt={assetPromptNow}
         busy={s.assetUpdating}
         error={s.assetUpdateError}
         onApply={() => void s.applyAssetUpdate()}
