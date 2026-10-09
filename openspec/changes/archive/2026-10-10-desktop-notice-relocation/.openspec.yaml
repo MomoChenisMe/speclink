@@ -1,0 +1,104 @@
+schema: spec-driven
+created: 2026-10-08
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: desktop-ui-redesign
+depends_on: desktop-shell-redesign
+started_at: 2026-10-09
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-10
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 8
+reviewed_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: 0f97d263804df8730a09e25e15bd9ef9f886399da2eccc441627f1d6e69513f0
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 827a2bfd92ae8e1874b972ed43ccf83733a15b608693f2f50dfabd72228bd8db
+  - path: apps/desktop/src/__tests__/appSettingsView.test.tsx
+    hash: b6e3a4f5e64683328014de9e861a410802bf03e4ebb1878312803a635eeff3fb
+  - path: apps/desktop/src/__tests__/assetNotice.test.tsx
+    hash: a618f0c117893ca0600b8fe6d8f0a9ad35c07d46b4074c457cf088c8b798262f
+  - path: apps/desktop/src/__tests__/projectRail.test.tsx
+    hash: c1bcdb885310c7bb7b5e229e1d10375d0acd95dd1e944ed293511a03ce450aa0
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 36423b3d18141670af528ffbcf1c8bcb2170cd5e26dc28b6235a77108ed60682
+  - path: apps/desktop/src/__tests__/updateInstallRow.test.tsx
+    hash: 9564f53bb13775511d1cd07cc8da26760e754f447f471f7963bb7e5551d6209e
+  - path: apps/desktop/src/__tests__/updateRailButton.test.tsx
+    hash: 49002fc213a90c17bb706f1c4acef1dd27ec5c4f9d944e17b0e0f53db111f784
+  - path: apps/desktop/src/__tests__/updater.test.ts
+    hash: fe9baa449077402ade3f538cd2f648a9677474d0c9aebcdf7a8aa5c0e9adf13d
+  - path: apps/desktop/src/adapter/updater.ts
+    hash: ee8f87765074fe32daa6b0f7002d40c3f8d024fa69113b6c4dd4d1173da8ee70
+  - path: apps/desktop/src/assetPrompt.ts
+    hash: 5412ee435fea71199ba3b6ec747945e068ecf45df4e5c96d443e999709409f78
+  - path: apps/desktop/src/components/AssetNoticeCard.tsx
+    hash: d740f95eb58207543321f076195ad3e8368e2a973ec112a67023f96b3e454db9
+  - path: apps/desktop/src/components/AssetNoticeDialog.tsx
+    hash: e60fa621b07a5057c573b0da8c0603619d0876ae3bee4c4684c7ea6ff3da52c5
+  - path: apps/desktop/src/components/ProjectColumn.tsx
+    hash: e12e0897434158cc8adbc1bf0e58e73b359988e7f2c531a085a1c3906f71d909
+  - path: apps/desktop/src/components/ProjectRail.tsx
+    hash: 9ca0743e958e923dce875728f3bf7d7e4c68e37e183d5fc7498ad78196ef06a6
+  - path: apps/desktop/src/components/UpdateInstallRow.tsx
+    hash: 115f67b844608fb2092708977f7bc03cd1302847e16b300e37a955e285e8fca4
+  - path: apps/desktop/src/components/UpdateRailButton.tsx
+    hash: f99eb3c52f05b2bbcf128d9c1b9a503adf7bc92a80e68070c36e66aeec1ab262
+  - path: apps/desktop/src/core/updater.ts
+    hash: f15001c7e0c555b00b7e4abea12d71649a0b83c7bf7e9bcea6a5b10213479c81
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 7c97e187a47d3f8f6fa0edb6720f127e2b1fd16c1316f941e05d9599e23c8042
+  - path: apps/desktop/src/store.ts
+    hash: eb6fbf1841f8263fcbf484ebd275cb441eacd85652edcd43a7b5e7d005322f67
+  - path: apps/desktop/src/views/AppSettingsView.tsx
+    hash: a17e713424c3180c8936acd16d6ee647db1450d909c49935bc9cb40791d990b1
+verified_at: 2026-10-10
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 8
+verified_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: 0f97d263804df8730a09e25e15bd9ef9f886399da2eccc441627f1d6e69513f0
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 827a2bfd92ae8e1874b972ed43ccf83733a15b608693f2f50dfabd72228bd8db
+  - path: apps/desktop/src/__tests__/appSettingsView.test.tsx
+    hash: b6e3a4f5e64683328014de9e861a410802bf03e4ebb1878312803a635eeff3fb
+  - path: apps/desktop/src/__tests__/assetNotice.test.tsx
+    hash: a618f0c117893ca0600b8fe6d8f0a9ad35c07d46b4074c457cf088c8b798262f
+  - path: apps/desktop/src/__tests__/projectRail.test.tsx
+    hash: c1bcdb885310c7bb7b5e229e1d10375d0acd95dd1e944ed293511a03ce450aa0
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 36423b3d18141670af528ffbcf1c8bcb2170cd5e26dc28b6235a77108ed60682
+  - path: apps/desktop/src/__tests__/updateInstallRow.test.tsx
+    hash: 9564f53bb13775511d1cd07cc8da26760e754f447f471f7963bb7e5551d6209e
+  - path: apps/desktop/src/__tests__/updateRailButton.test.tsx
+    hash: 49002fc213a90c17bb706f1c4acef1dd27ec5c4f9d944e17b0e0f53db111f784
+  - path: apps/desktop/src/__tests__/updater.test.ts
+    hash: fe9baa449077402ade3f538cd2f648a9677474d0c9aebcdf7a8aa5c0e9adf13d
+  - path: apps/desktop/src/adapter/updater.ts
+    hash: ee8f87765074fe32daa6b0f7002d40c3f8d024fa69113b6c4dd4d1173da8ee70
+  - path: apps/desktop/src/assetPrompt.ts
+    hash: 5412ee435fea71199ba3b6ec747945e068ecf45df4e5c96d443e999709409f78
+  - path: apps/desktop/src/components/AssetNoticeCard.tsx
+    hash: d740f95eb58207543321f076195ad3e8368e2a973ec112a67023f96b3e454db9
+  - path: apps/desktop/src/components/AssetNoticeDialog.tsx
+    hash: e60fa621b07a5057c573b0da8c0603619d0876ae3bee4c4684c7ea6ff3da52c5
+  - path: apps/desktop/src/components/ProjectColumn.tsx
+    hash: e12e0897434158cc8adbc1bf0e58e73b359988e7f2c531a085a1c3906f71d909
+  - path: apps/desktop/src/components/ProjectRail.tsx
+    hash: 9ca0743e958e923dce875728f3bf7d7e4c68e37e183d5fc7498ad78196ef06a6
+  - path: apps/desktop/src/components/UpdateInstallRow.tsx
+    hash: 115f67b844608fb2092708977f7bc03cd1302847e16b300e37a955e285e8fca4
+  - path: apps/desktop/src/components/UpdateRailButton.tsx
+    hash: f99eb3c52f05b2bbcf128d9c1b9a503adf7bc92a80e68070c36e66aeec1ab262
+  - path: apps/desktop/src/core/updater.ts
+    hash: f15001c7e0c555b00b7e4abea12d71649a0b83c7bf7e9bcea6a5b10213479c81
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 7c97e187a47d3f8f6fa0edb6720f127e2b1fd16c1316f941e05d9599e23c8042
+  - path: apps/desktop/src/store.ts
+    hash: eb6fbf1841f8263fcbf484ebd275cb441eacd85652edcd43a7b5e7d005322f67
+  - path: apps/desktop/src/views/AppSettingsView.tsx
+    hash: a17e713424c3180c8936acd16d6ee647db1450d909c49935bc9cb40791d990b1
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-10
