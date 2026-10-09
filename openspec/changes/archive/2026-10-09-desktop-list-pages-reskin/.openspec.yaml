@@ -1,0 +1,100 @@
+schema: spec-driven
+created: 2026-10-09
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: desktop-ui-redesign
+depends_on: desktop-shell-redesign
+started_at: 2026-10-09
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-09
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 11
+reviewed_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: 42b1a32161ae457c8413a2c2ddf0de104e5d3389ac24050de6a70f735d2dc20f
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: d6bda53ff59a45a2fa2e4b05492ecef46b8eab626c3b5602c63292b77997fdf6
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: c1e485653ef1d8317112bcf468e8a56b26c32d05dbe5e8c20fed70e5d54e33c6
+  - path: apps/desktop/src/store.ts
+    hash: 92bd5fe93d4f8412932670bb66dfd5c95d6e0433cd17234a1e282d00592ddedc
+  - path: packages/ui/src/__tests__/archivedList.test.tsx
+    hash: 4ad4b0dc0d546ea86f3bf5866fd17a890aa7855334597d46c1d85eedd4b40d56
+  - path: packages/ui/src/__tests__/listPager.test.tsx
+    hash: befbabe54431d54f2f7340c80670d48b3ee5e9d3d44bf0b2a5d20283652cbf83
+  - path: packages/ui/src/__tests__/listRow.test.tsx
+    hash: 2bc6c425991d692ad4bac298f7c3cfe7fe70201348ce11221e18e75ed557f56f
+  - path: packages/ui/src/__tests__/manualPage.test.tsx
+    hash: e6f5032a29d7eccbe1d461a229e0d8e4ce89b6b594e74eaa2f6e06848337f723
+  - path: packages/ui/src/__tests__/specList.test.tsx
+    hash: 88dbd23fa33e1f26fe881985a983b9e3f9577a597abdc10c4bebca9842872164
+  - path: packages/ui/src/components/ArchivedList.tsx
+    hash: ac1301bc7d19a683c6de02f3beae4df4738a9ffa9a2ea56f60e5f3c3039d29fd
+  - path: packages/ui/src/components/ListCard.tsx
+    hash: 5b5f7ffd71e0e421d3643d66110a6629027ba4f39c1c655242bc4f52bc5bc7b9
+  - path: packages/ui/src/components/ListPager.tsx
+    hash: ad84301a18d91322a5faab0c360de969f562955cf78f36c943bc4d6ad69f268a
+  - path: packages/ui/src/components/ListRow.tsx
+    hash: 505de2e5612a3829a872e34fd8559b1719391ef3f1d03bf0b9d90d15d3e6d003
+  - path: packages/ui/src/components/ManualPage.tsx
+    hash: eb38bf07ddd7f940acd233bb3c96b2396e378b32190d4df324aca1d234f72f8e
+  - path: packages/ui/src/components/ManualToc.tsx
+    hash: 8dffa9877da8c54161dff8a485a721f9bc9549faaf8a5c362115380922549842
+  - path: packages/ui/src/components/ManualTree.tsx
+    hash: 6215b1d74fd99c6c3c62fb187c6c02634bc077245f0e17af7487ac2075a1e234
+  - path: packages/ui/src/components/SearchField.tsx
+    hash: 53574b1a089245ecc183d80e5d52c14f9118318c33deddbf941213e30b1241d2
+  - path: packages/ui/src/components/SpecList.tsx
+    hash: aca8a354f2bb18dfc2deddbe34b68ac1b7ceb633033bd7f98707d467bdaae709
+  - path: packages/ui/src/i18n.tsx
+    hash: 19b7e00330dfb9d26906670a93215ca852a674dd931ceb5c65b61658115efa96
+  - path: packages/ui/src/index.ts
+    hash: 81faa5afa290c63bdcba5b637d08d5b2855c923085c99a75d093e61aad29f103
+verified_at: 2026-10-09
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 11
+verified_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: 42b1a32161ae457c8413a2c2ddf0de104e5d3389ac24050de6a70f735d2dc20f
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: d6bda53ff59a45a2fa2e4b05492ecef46b8eab626c3b5602c63292b77997fdf6
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: c1e485653ef1d8317112bcf468e8a56b26c32d05dbe5e8c20fed70e5d54e33c6
+  - path: apps/desktop/src/store.ts
+    hash: 92bd5fe93d4f8412932670bb66dfd5c95d6e0433cd17234a1e282d00592ddedc
+  - path: packages/ui/src/__tests__/archivedList.test.tsx
+    hash: 4ad4b0dc0d546ea86f3bf5866fd17a890aa7855334597d46c1d85eedd4b40d56
+  - path: packages/ui/src/__tests__/listPager.test.tsx
+    hash: befbabe54431d54f2f7340c80670d48b3ee5e9d3d44bf0b2a5d20283652cbf83
+  - path: packages/ui/src/__tests__/listRow.test.tsx
+    hash: 2bc6c425991d692ad4bac298f7c3cfe7fe70201348ce11221e18e75ed557f56f
+  - path: packages/ui/src/__tests__/manualPage.test.tsx
+    hash: e6f5032a29d7eccbe1d461a229e0d8e4ce89b6b594e74eaa2f6e06848337f723
+  - path: packages/ui/src/__tests__/specList.test.tsx
+    hash: 88dbd23fa33e1f26fe881985a983b9e3f9577a597abdc10c4bebca9842872164
+  - path: packages/ui/src/components/ArchivedList.tsx
+    hash: ac1301bc7d19a683c6de02f3beae4df4738a9ffa9a2ea56f60e5f3c3039d29fd
+  - path: packages/ui/src/components/ListCard.tsx
+    hash: 5b5f7ffd71e0e421d3643d66110a6629027ba4f39c1c655242bc4f52bc5bc7b9
+  - path: packages/ui/src/components/ListPager.tsx
+    hash: ad84301a18d91322a5faab0c360de969f562955cf78f36c943bc4d6ad69f268a
+  - path: packages/ui/src/components/ListRow.tsx
+    hash: 505de2e5612a3829a872e34fd8559b1719391ef3f1d03bf0b9d90d15d3e6d003
+  - path: packages/ui/src/components/ManualPage.tsx
+    hash: eb38bf07ddd7f940acd233bb3c96b2396e378b32190d4df324aca1d234f72f8e
+  - path: packages/ui/src/components/ManualToc.tsx
+    hash: 8dffa9877da8c54161dff8a485a721f9bc9549faaf8a5c362115380922549842
+  - path: packages/ui/src/components/ManualTree.tsx
+    hash: 6215b1d74fd99c6c3c62fb187c6c02634bc077245f0e17af7487ac2075a1e234
+  - path: packages/ui/src/components/SearchField.tsx
+    hash: 53574b1a089245ecc183d80e5d52c14f9118318c33deddbf941213e30b1241d2
+  - path: packages/ui/src/components/SpecList.tsx
+    hash: aca8a354f2bb18dfc2deddbe34b68ac1b7ceb633033bd7f98707d467bdaae709
+  - path: packages/ui/src/i18n.tsx
+    hash: 19b7e00330dfb9d26906670a93215ca852a674dd931ceb5c65b61658115efa96
+  - path: packages/ui/src/index.ts
+    hash: 81faa5afa290c63bdcba5b637d08d5b2855c923085c99a75d093e61aad29f103
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-09

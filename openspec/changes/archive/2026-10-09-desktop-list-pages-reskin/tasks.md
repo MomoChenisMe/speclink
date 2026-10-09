@@ -18,5 +18,5 @@
 
 ## 4. 驗收與收尾
 
-- [ ] [M] 4.1 手動驗收（`npm run dev -w apps/desktop`）：規格頁翻頁碼、跳頁、« » 跳到第一頁與最後一頁、每頁改 50、搜尋、點列開檢視；每頁改 50 後關閉並重開 app 仍為 50、已封存兩節不受影響；已封存頁兩節切換與各自換頁；手冊頁三欄寬度、底列固定、出處籤開規格、上一頁／下一頁；淺色與深色各看一次。驗證：觀察結果與 spec「清單最新在前與換頁瀏覽」（含「第一頁與最後一頁鈕」「每頁筆數跨啟動記住」）「規格頁提供清單、搜尋與展開檢視」「已封存頁含討論節」與 desktop-manual-page「內頁渲染與出處跳規格」的 scenario 一致。 <!-- speclink-task:tsk_01M4F7CBBNAVQ1JK3TD31VJBD4 -->
+- [x] [M] 4.1 手動驗收（`npm run dev -w apps/desktop`）：規格頁翻頁碼、跳頁、« » 跳到第一頁與最後一頁、每頁改 50、搜尋、點列開檢視；每頁改 50 後關閉並重開 app 仍為 50、已封存兩節不受影響；已封存頁兩節切換與各自換頁；手冊頁三欄寬度、底列固定、出處籤開規格、上一頁／下一頁；淺色與深色各看一次。驗證：觀察結果與 spec「清單最新在前與換頁瀏覽」（含「第一頁與最後一頁鈕」「每頁筆數跨啟動記住」）「規格頁提供清單、搜尋與展開檢視」「已封存頁含討論節」與 desktop-manual-page「內頁渲染與出處跳規格」的 scenario 一致。 <!-- speclink-task:tsk_01M4F7CBBNAVQ1JK3TD31VJBD4 -->
 - [x] 4.2 全部對齊：`./target/debug/speclink validate desktop-list-pages-reskin` 通過；`npm test -w packages/ui`、`npm test -w apps/desktop` 全綠；`npm run build -w apps/desktop` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。 <!-- speclink-task:tsk_01M4F7CBBN47TQN73PQ66FS6VJ -->

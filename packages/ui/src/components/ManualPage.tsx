@@ -35,6 +35,12 @@ interface LoadedDoc {
   body: string | null;
 }
 
+/** 上一頁／下一頁兩向的差異：DOM 錨點、aria-label、小字標籤鍵與對齊。 */
+const PAGE_NAV = {
+  prev: { anchor: "data-manual-prev", ariaKey: "pager.prev", labelKey: "manual.prevLabel", align: "items-start" },
+  next: { anchor: "data-manual-next", ariaKey: "pager.next", labelKey: "manual.nextLabel", align: "items-end" },
+} as const;
+
 /** 底列的上一頁／下一頁框線鈕（design D5）：小字標籤＋目標頁標題；無目標時呼叫端不渲染。 */
 function PageNavButton({
   direction,
@@ -46,25 +52,22 @@ function PageNavButton({
   onSelect: (slug: string) => void;
 }) {
   const { t } = useI18n();
-  const prev = direction === "prev";
-  const hook = prev ? { "data-manual-prev": target.slug } : { "data-manual-next": target.slug };
+  const nav = PAGE_NAV[direction];
   return (
     <Button
       variant="outline"
       size="sm"
-      aria-label={t(prev ? "pager.prev" : "pager.next")}
+      aria-label={t(nav.ariaKey)}
       className="h-auto gap-1.5 py-1"
       onClick={() => onSelect(target.slug)}
-      {...hook}
+      {...{ [nav.anchor]: target.slug }}
     >
-      {prev && <ChevronLeft className="h-4 w-4" />}
-      <span className={cn("flex flex-col leading-tight", prev ? "items-start" : "items-end")}>
-        <span className="text-[11px] font-normal text-muted-foreground">
-          {t(prev ? "manual.prevLabel" : "manual.nextLabel")}
-        </span>
+      {direction === "prev" && <ChevronLeft className="h-4 w-4" />}
+      <span className={cn("flex flex-col leading-tight", nav.align)}>
+        <span className="text-[11px] font-normal text-muted-foreground">{t(nav.labelKey)}</span>
         <span className="max-w-48 truncate">{target.title}</span>
       </span>
-      {!prev && <ChevronRight className="h-4 w-4" />}
+      {direction === "next" && <ChevronRight className="h-4 w-4" />}
     </Button>
   );
 }

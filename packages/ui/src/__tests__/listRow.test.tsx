@@ -36,6 +36,9 @@ describe("ListRow（共用列）", () => {
     const el = row();
     expect(el.getAttribute("role")).toBe("button");
     expect(el.getAttribute("tabindex")).toBe("0");
+    // 朗讀名稱只取標題（不把描述、meta 串進來）；鍵盤聚焦有明顯外框。
+    expect(screen.getByRole("button", { name: "desktop-app" })).toBe(el);
+    expect(el.className).toContain("focus-visible:ring-2");
     // 標題等寬強調、一行截斷；與複製鈕同屬標題群組。
     const title = within(el).getByText("desktop-app");
     expect(title.className).toContain("font-mono");
@@ -67,12 +70,12 @@ describe("ListRow（共用列）", () => {
     expect(onClick).toHaveBeenCalledTimes(2);
   });
 
-  it("複製鈕 hover 才顯現，點擊寫入 copyValue 且不觸發 onClick；Enter 在複製鈕上也不開列", () => {
+  it("複製鈕 hover 才顯現，點擊寫入 copy.value 且不觸發 onClick；Enter 在複製鈕上也不開列", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     const onClick = vi.fn();
     render(
-      <ListRow data-row="d" title="old-topic" copyValue="old-topic" copyLabel="複製 slug" onClick={onClick} />,
+      <ListRow data-row="d" title="old-topic" copy={{ value: "old-topic", label: "複製 slug" }} onClick={onClick} />,
     );
     const copyBtn = within(row()).getByLabelText("複製 slug");
     expect(copyBtn.className).toContain("opacity-0");
@@ -83,7 +86,7 @@ describe("ListRow（共用列）", () => {
     expect(onClick).not.toHaveBeenCalled();
   });
 
-  it("未給 copyValue 時無複製鈕；children 落在標題旁", () => {
+  it("未給 copy 時無複製鈕；children 落在標題旁", () => {
     render(
       <ListRow data-row="e" title="t" onClick={() => {}}>
         <span data-stamp>章</span>
@@ -91,6 +94,21 @@ describe("ListRow（共用列）", () => {
     );
     expect(within(row()).queryByRole("button", { name: /複製/ })).toBeNull();
     expect(row().querySelector("[data-title-group] [data-stamp]")).toBeTruthy();
+  });
+
+  it("複製鈕緊跟標題、children（章）排在複製鈕之後（spec「規格與封存卡片收合資訊」；與看板討論卡同序）", () => {
+    render(
+      <ListRow data-row="f" title="old-topic" copy={{ value: "old-topic", label: "複製 slug" }} onClick={() => {}}>
+        <span data-stamp>章</span>
+      </ListRow>,
+    );
+    const group = row().querySelector("[data-title-group]") as HTMLElement;
+    const title = within(group).getByText("old-topic");
+    const copyBtn = within(group).getByLabelText("複製 slug");
+    const stamp = group.querySelector("[data-stamp]") as HTMLElement;
+    // 文件順序：標題 → 複製鈕 → 章。
+    expect(title.compareDocumentPosition(copyBtn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(copyBtn.compareDocumentPosition(stamp) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 
@@ -119,6 +137,8 @@ describe("ListCard（列表卡）", () => {
     expect(card.className).toContain("border-t-0");
     expect(card.contains(head)).toBe(false);
     expect(card.contains(foot)).toBe(true);
+    // footer 槽本身不畫分隔線：分隔線屬工具列（ListPager），工具列回 null 時卡底不留空線。
+    expect((document.querySelector("[data-list-footer]") as HTMLElement).className).not.toContain("border-t");
   });
 
   it("無 header 時內容卡維持完整圓角；無 footer 時底列缺席", () => {

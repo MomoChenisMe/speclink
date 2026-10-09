@@ -347,6 +347,13 @@ describe("ArchivedList（子頁籤、排序與換頁）", () => {
     expect(screen.getByText("第 21–21 筆，共 21 筆")).toBeTruthy();
   });
 
+  it("兩分頁的跳頁輸入互相獨立：變更節打了頁碼未提交，切到討論節時輸入框為空", () => {
+    renderList(MANY_CHANGES, { archivedDiscussions: MANY_DISCS });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "跳到第幾頁" }), { target: { value: "2" } });
+    toDiscussionsTab();
+    expect((screen.getByRole("spinbutton", { name: "跳到第幾頁" }) as HTMLInputElement).value).toBe("");
+  });
+
   it("spec Example「改每頁筆數鉗制頁碼」：45 筆於第 3 頁改每頁 50 → 單頁 45 筆、頁碼鈕消失；改回 20 回第 1 頁", async () => {
     const user = userEvent.setup();
     const forty5 = Array.from({ length: 45 }, (_, i) =>

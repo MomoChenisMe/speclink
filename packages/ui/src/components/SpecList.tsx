@@ -9,7 +9,7 @@ import { SEMANTIC_TONE } from "../tone";
 import { PageHeader } from "./ui/page-header";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { ListCard } from "./ListCard";
-import { ListPager, usePageSize } from "./ListPager";
+import { ListPager, usePaging } from "./ListPager";
 import { ListRow } from "./ListRow";
 import { SearchField } from "./SearchField";
 
@@ -27,8 +27,7 @@ function SpecRow({ item, onOpen }: { item: SpecItem; onOpen: (capability: string
     <ListRow
       data-spec={item.id}
       title={item.id}
-      copyValue={item.id}
-      copyLabel={t("common.copyName")}
+      copy={{ value: item.id, label: t("common.copyName") }}
       description={
         item.purposeTbd ? (
           <span className={`font-medium ${SEMANTIC_TONE.warning}`}>{t("specs.purposeTbd")}</span>
@@ -100,9 +99,6 @@ export function SpecList({
   const { t } = useI18n();
   // 搜尋字串留元件內——規格頁無跨視圖保留需求（比對規則共用 matchesQuery）。
   const [query, setQuery] = useState("");
-  // 頁碼 state 以 min(page, pageCount) 鉗制派生——清單縮短不停在越界頁。
-  const [rawPage, setRawPage] = useState(1);
-  const [pageSize, setPageSize] = usePageSize(controlledPageSize, onPageSizeChange);
   // 內部捲動容器 ref——換頁後歸位（清單自己捲、頁面不捲）。
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -118,9 +114,13 @@ export function SpecList({
     [specs],
   );
   const filtered = sorted.filter((s) => matchesQuery(query, s.id));
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const page = Math.min(rawPage, pageCount);
-  const pageItems = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const { pageItems, setPage, pager } = usePaging(filtered, {
+    pageSize: controlledPageSize,
+    onPageSizeChange,
+    onMove: () => {
+      if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    },
+  });
 
   useEffect(() => {
     if (!focus) return;
@@ -128,7 +128,7 @@ export function SpecList({
     const at = (visible ? filtered : sorted).findIndex((s) => s.id === focus);
     if (at < 0) return;
     if (!visible) setQuery("");
-    setRawPage(Math.floor(at / pageSize) + 1);
+    setPage(Math.floor(at / pager.pageSize) + 1);
     // 換頁後列才在 DOM：下一幀再捲至該列。
     const frame = requestAnimationFrame(() => {
       scrollRef.current?.querySelector(`[data-spec="${focus}"]`)?.scrollIntoView({ block: "nearest" });
@@ -137,27 +137,13 @@ export function SpecList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus]);
 
-  const resetScroll = () => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  };
-  const goPage = (next: number) => {
-    setRawPage(next);
-    resetScroll();
-  };
-  // 改每頁筆數：重算總頁數並把頁碼鉗制到末頁（寫回 state，改回原筆數時不彈回舊頁）。
-  const changePageSize = (size: number) => {
-    setPageSize(size);
-    setRawPage((p) => Math.min(p, Math.max(1, Math.ceil(filtered.length / size))));
-    resetScroll();
-  };
-
   const search = (
     <SearchField
       value={query}
       placeholder={t("specs.searchPlaceholder")}
       onChange={(value) => {
         setQuery(value);
-        setRawPage(1);
+        setPage(1);
       }}
     />
   );
@@ -166,19 +152,7 @@ export function SpecList({
     <TooltipProvider>
       <div className="flex h-full min-h-0 w-full flex-col gap-4">
         {title ? <PageHeader title={title} description={description} actions={search} /> : search}
-        <ListCard
-          scrollRef={scrollRef}
-          footer={
-            <ListPager
-              page={page}
-              pageCount={pageCount}
-              total={filtered.length}
-              pageSize={pageSize}
-              onPage={goPage}
-              onPageSize={changePageSize}
-            />
-          }
-        >
+        <ListCard scrollRef={scrollRef} footer={<ListPager {...pager} />}>
           {specs.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">{t("specs.empty")}</div>
           ) : filtered.length === 0 ? (
