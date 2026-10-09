@@ -1,0 +1,80 @@
+schema: spec-driven
+created: 2026-10-09
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: desktop-ui-redesign
+depends_on: desktop-shell-redesign
+started_at: 2026-10-09
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-09
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 7
+reviewed_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: 7ca641cf2542d62f70bd58b753a4b07306f5ef47fd33a12e47a412b64308e972
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: c91a7865abe07c5de94f4c368ef3247efef38609f8b7c03625984276f1686c1a
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: f0f640cb0d0ef54f42e19e620a5db756887c1859f7ce1cd000da4dc8c2a75ad0
+  - path: apps/desktop/src/store.ts
+    hash: 302165051502e4dbeace4e3095666a68c9b76dfc636099ed648741138482d7ec
+  - path: packages/ui/src/__tests__/boardSearchBar.test.tsx
+    hash: f826d5393e9a4704524aa62a47d7cbb56d1d2071cbcb349f059f815400827989
+  - path: packages/ui/src/__tests__/discussionColumn.test.tsx
+    hash: 684be3c270e1f211b6802696aa315fc30af316e7dac99305ae371d62dc18f866
+  - path: packages/ui/src/__tests__/kanban.test.tsx
+    hash: eccbd121ab9ebe45aea937d04f59e8d262a85ae905d30f336abcc2a66dce9c8f
+  - path: packages/ui/src/__tests__/ui.test.tsx
+    hash: bb834c84d206f68e1cc36fb27dcf655115c64fa9ccaea5f6ee3835c7d5ffcfc7
+  - path: packages/ui/src/components/BoardColumn.tsx
+    hash: 9cd95ac44e5376c782d8301af10ea8630e47b812b9102d7cc6ae44ff5a262703
+  - path: packages/ui/src/components/BoardSearchBar.tsx
+    hash: 00a8e4e2e93f593735cf27e5dd3e92993d0f9a77f37f1131fc88f5f7778ee8d2
+  - path: packages/ui/src/components/DiscussionColumn.tsx
+    hash: 8b13e622a248c812f11fe438e11bd2f9fad50314d433f9cdfe722619cd255c19
+  - path: packages/ui/src/components/KanbanBoard.tsx
+    hash: b18beb9af11f1fa027140edffb3cad1d683bc3e018e7f8ff275042c06483c4c8
+  - path: packages/ui/src/components/ui/button.tsx
+    hash: 4168227d26b2742ff1307e7d84bdfe7e2e8169dd2e13796e16c2101c90d1b8d2
+  - path: packages/ui/src/components/ui/input.tsx
+    hash: f0324840b2a6f3da120cb0a6d8d9cd0bb00abb829c097128218222b90e43344a
+  - path: packages/ui/src/i18n.tsx
+    hash: db121a1dde5272b809eba63f8405be6cfc21a262d859caaecb0843ec0d182f43
+verified_at: 2026-10-09
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 7
+verified_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: 7ca641cf2542d62f70bd58b753a4b07306f5ef47fd33a12e47a412b64308e972
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: c91a7865abe07c5de94f4c368ef3247efef38609f8b7c03625984276f1686c1a
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: f0f640cb0d0ef54f42e19e620a5db756887c1859f7ce1cd000da4dc8c2a75ad0
+  - path: apps/desktop/src/store.ts
+    hash: 302165051502e4dbeace4e3095666a68c9b76dfc636099ed648741138482d7ec
+  - path: packages/ui/src/__tests__/boardSearchBar.test.tsx
+    hash: f826d5393e9a4704524aa62a47d7cbb56d1d2071cbcb349f059f815400827989
+  - path: packages/ui/src/__tests__/discussionColumn.test.tsx
+    hash: 684be3c270e1f211b6802696aa315fc30af316e7dac99305ae371d62dc18f866
+  - path: packages/ui/src/__tests__/kanban.test.tsx
+    hash: eccbd121ab9ebe45aea937d04f59e8d262a85ae905d30f336abcc2a66dce9c8f
+  - path: packages/ui/src/__tests__/ui.test.tsx
+    hash: bb834c84d206f68e1cc36fb27dcf655115c64fa9ccaea5f6ee3835c7d5ffcfc7
+  - path: packages/ui/src/components/BoardColumn.tsx
+    hash: 9cd95ac44e5376c782d8301af10ea8630e47b812b9102d7cc6ae44ff5a262703
+  - path: packages/ui/src/components/BoardSearchBar.tsx
+    hash: 00a8e4e2e93f593735cf27e5dd3e92993d0f9a77f37f1131fc88f5f7778ee8d2
+  - path: packages/ui/src/components/DiscussionColumn.tsx
+    hash: 8b13e622a248c812f11fe438e11bd2f9fad50314d433f9cdfe722619cd255c19
+  - path: packages/ui/src/components/KanbanBoard.tsx
+    hash: b18beb9af11f1fa027140edffb3cad1d683bc3e018e7f8ff275042c06483c4c8
+  - path: packages/ui/src/components/ui/button.tsx
+    hash: 4168227d26b2742ff1307e7d84bdfe7e2e8169dd2e13796e16c2101c90d1b8d2
+  - path: packages/ui/src/components/ui/input.tsx
+    hash: f0324840b2a6f3da120cb0a6d8d9cd0bb00abb829c097128218222b90e43344a
+  - path: packages/ui/src/i18n.tsx
+    hash: db121a1dde5272b809eba63f8405be6cfc21a262d859caaecb0843ec0d182f43
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-09

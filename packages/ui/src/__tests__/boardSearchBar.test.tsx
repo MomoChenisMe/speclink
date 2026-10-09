@@ -234,7 +234,7 @@ describe("全文命中與名稱層模糊比對併入可見集合", () => {
 // desktop-board-reskin design D4：搜尋輸入為 280px 全圓（左留搜尋圖示位、輸入非空時右留命中數
 // 與清除鈕位）、篩選鈕為 32px 圓角圖示鈕，兩者同列置於頁標題區右端；容器不再填滿整列。
 describe("搜尋列外觀（desktop-board-reskin D4）", () => {
-  it("輸入為 h-8 w-[280px] rounded-full pl-8；輸入非空時改 pr-20", () => {
+  it("輸入為 h-8 w-[280px] rounded-full pl-8；輸入非空時改 pr-24（三位數命中數與清除鈕放得下）", () => {
     render(<Host />);
     const input = screen.getByPlaceholderText("搜尋看板卡片…");
     const cls = () => input.className.split(/\s+/);
@@ -242,9 +242,9 @@ describe("搜尋列外觀（desktop-board-reskin D4）", () => {
     expect(cls()).toContain("w-[280px]");
     expect(cls()).toContain("h-8");
     expect(cls()).toContain("pl-8");
-    expect(cls()).not.toContain("pr-20");
+    expect(cls()).not.toContain("pr-24");
     fireEvent.change(input, { target: { value: "engine" } });
-    expect(cls()).toContain("pr-20");
+    expect(cls()).toContain("pr-24");
   });
 
   it("容器不再 w-full；篩選鈕為 32px rounded-lg 圖示鈕、啟用計數角標照舊", async () => {
@@ -260,6 +260,18 @@ describe("搜尋列外觀（desktop-board-reskin D4）", () => {
     fireEvent.click(toggle);
     await pick("建立時間", "近 7 天");
     expect(toggle.textContent).toContain("1");
+  });
+
+  it("篩選鈕走 toggle 變體：展開態底色由 aria-expanded 帶出，呼叫端不隨開闔切換顏色 class", () => {
+    render(<Host />);
+    const toggle = screen.getByRole("button", { name: "篩選" });
+    const staticCls = () => toggle.className.split(/\s+/).filter((c) => !c.includes(":"));
+    expect(toggle.className).toContain("aria-expanded:bg-muted");
+    expect(staticCls()).toContain("text-muted-foreground");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(staticCls()).not.toContain("bg-muted");
+    expect(staticCls()).toContain("text-muted-foreground");
   });
 
   it("傳 title 時搜尋列直接落在頁標題區動作槽，沒有 22rem 的包裹層", () => {

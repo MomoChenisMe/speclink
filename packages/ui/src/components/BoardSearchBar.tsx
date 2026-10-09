@@ -84,15 +84,17 @@ export function BoardSearchBar({
     <div className="flex shrink-0 items-center gap-1.5">
       <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-        {/* 280px 全圓（design D4）：命中數與清除鈕仍在右端內側，active 時留 pr-20 給它們。 */}
+        {/* 280px 全圓（design D4）：圓角取 Input 的 pill 變體；命中數與清除鈕在右端內側，
+            active 時留 pr-24 給它們（en 三位數命中數也放得下）。 */}
         <Input
           ref={inputRef}
+          shape="pill"
           placeholder={t("kanban.searchPlaceholder")}
           value={query}
           disabled={disabledReason !== undefined}
           title={disabledReason}
           onChange={(e) => onQuery(e.target.value)}
-          className={`h-8 w-[280px] rounded-full pl-8 text-[13px] ${active ? "pr-20" : "pr-2"}`}
+          className={`w-[280px] pl-8 text-[13px] ${active ? "pr-24" : "pr-2"}`}
         />
         {active && (
           <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
@@ -117,14 +119,15 @@ export function BoardSearchBar({
       </div>
       {onToggleFilters && (
         <div ref={popoverRef} className="relative shrink-0">
+          {/* 32px 開關圖示鈕：圓角與展開態底色取 Button 的 toggle 變體（隨 aria-expanded）。 */}
           <Button
             type="button"
-            variant="ghost"
+            variant="toggle"
             size="icon"
             aria-label={t("filter.toggle")}
             aria-expanded={!!filtersOpen}
             onClick={onToggleFilters}
-            className={`relative rounded-lg ${filtersOpen ? "bg-muted text-foreground" : "text-muted-foreground"}`}
+            className="relative"
           >
             <SlidersHorizontal className="h-4 w-4" />
             {activeFilterCount > 0 && (

@@ -36,6 +36,22 @@
         "apps/desktop/src/__tests__/store.test.ts",
         "apps/desktop/src/store.ts"
       ]
+    },
+    {
+      "task_id": "1",
+      "task_desc": "1.1 `packages/ui/src/stage.ts` 的 `STAGE_BAR` 改為純 `bg-stage-*`；`packages/ui/src/components/KanbanBoard.tsx` 欄列改 `grid grid-cols-[repeat(4,minmax(220px,1fr))] gap-3`（無討論欄時三欄）、`Column` 改白底細框 16px 圓角容器（色相條、`bg-card` 標頭含 12px 中粗欄名與 `STAGE_BADGE` 計數、細線、淡灰卡片區）、零卡且非載入時渲染置中灰字；`packages/ui/src/i18n.tsx` 兩語系加 `board.emptyColumn.proposed`／`in-progress`／`ready`（design D1、D5；spec「看板欄與卡片的容器外觀」）。驗證：`packages/ui/src/__tests__/kanban.test.tsx` 新增或改寫——`[data-column]` 容器 class 含 `rounded-2xl` 與 `bg-sidebar`、每欄首個子節點帶 `bg-stage-<stage>`、標頭含 `bg-card`、欄名不含 `uppercase`、零卡欄顯示對應空文案且搜尋無命中時三欄各顯示空文案、欄列 class 含 `grid-cols-`；`packages/ui/src/__tests__/stage.test.ts` 的 `STAGE_BAR` 斷言改為 `bg-stage-*`；`theme.test.ts` 綠；`npm test -w packages/ui -- kanban stage theme`。",
+      "files": [
+        "packages/ui/src/components/BoardColumn.tsx"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "1.4 `packages/ui/src/components/BoardSearchBar.tsx` 輸入改 `h-8 w-[280px] rounded-full pl-8`（active 時 `pr-20`）、容器不再 `w-full`、篩選鈕改 32px `rounded-lg` 圖示鈕（啟用計數角標不變）；`KanbanBoard.tsx` 的 `PageHeader` 動作槽拿掉 `w-[22rem]` 包裹（design D4；spec「看板搜尋過濾卡片」）。驗證：`packages/ui/src/__tests__/boardSearchBar.test.tsx` 加「輸入 class 含 `rounded-full` 與 `w-[280px]`、篩選鈕 class 含 `rounded-lg`」，既有命中數、清除鈕、⌘F、篩選面板案例通過；`kanban.test.tsx` 的「傳 title 時搜尋輸入在 h2 同一列」案通過；`npm test -w packages/ui -- boardSearchBar kanban`。",
+      "files": [
+        "packages/ui/src/__tests__/ui.test.tsx",
+        "packages/ui/src/components/ui/button.tsx",
+        "packages/ui/src/components/ui/input.tsx"
+      ]
     }
   ],
   "entries": [
@@ -89,6 +105,30 @@
         "apps/desktop/src/store.ts"
       ],
       "recordedAt": "2026-10-09T05:19:09Z"
+    },
+    {
+      "taskId": "tsk_01M4F72BJB394AJFCR1S7KFY5S",
+      "taskDesc": "1.1 `packages/ui/src/stage.ts` 的 `STAGE_BAR` 改為純 `bg-stage-*`；`packages/ui/src/components/KanbanBoard.tsx` 欄列改 `grid grid-cols-[repeat(4,minmax(220px,1fr))] gap-3`（無討論欄時三欄）、`Column` 改白底細框 16px 圓角容器（色相條、`bg-card` 標頭含 12px 中粗欄名與 `STAGE_BADGE` 計數、細線、淡灰卡片區）、零卡且非載入時渲染置中灰字；`packages/ui/src/i18n.tsx` 兩語系加 `board.emptyColumn.proposed`／`in-progress`／`ready`（design D1、D5；spec「看板欄與卡片的容器外觀」）。驗證：`packages/ui/src/__tests__/kanban.test.tsx` 新增或改寫——`[data-column]` 容器 class 含 `rounded-2xl` 與 `bg-sidebar`、每欄首個子節點帶 `bg-stage-<stage>`、標頭含 `bg-card`、欄名不含 `uppercase`、零卡欄顯示對應空文案且搜尋無命中時三欄各顯示空文案、欄列 class 含 `grid-cols-`；`packages/ui/src/__tests__/stage.test.ts` 的 `STAGE_BAR` 斷言改為 `bg-stage-*`；`theme.test.ts` 綠；`npm test -w packages/ui -- kanban stage theme`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "32a2c846e24a38c490cdaff3ba20cba2c215d771",
+      "touchedFiles": [
+        "packages/ui/src/components/BoardColumn.tsx"
+      ],
+      "recordedAt": "2026-10-09T09:59:08Z"
+    },
+    {
+      "taskId": "tsk_01M4F72BJCBFFCE74BVZBK17X8",
+      "taskDesc": "1.4 `packages/ui/src/components/BoardSearchBar.tsx` 輸入改 `h-8 w-[280px] rounded-full pl-8`（active 時 `pr-20`）、容器不再 `w-full`、篩選鈕改 32px `rounded-lg` 圖示鈕（啟用計數角標不變）；`KanbanBoard.tsx` 的 `PageHeader` 動作槽拿掉 `w-[22rem]` 包裹（design D4；spec「看板搜尋過濾卡片」）。驗證：`packages/ui/src/__tests__/boardSearchBar.test.tsx` 加「輸入 class 含 `rounded-full` 與 `w-[280px]`、篩選鈕 class 含 `rounded-lg`」，既有命中數、清除鈕、⌘F、篩選面板案例通過；`kanban.test.tsx` 的「傳 title 時搜尋輸入在 h2 同一列」案通過；`npm test -w packages/ui -- boardSearchBar kanban`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "32a2c846e24a38c490cdaff3ba20cba2c215d771",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/ui.test.tsx",
+        "packages/ui/src/components/ui/button.tsx",
+        "packages/ui/src/components/ui/input.tsx"
+      ],
+      "recordedAt": "2026-10-09T10:00:32Z"
     }
   ]
 }

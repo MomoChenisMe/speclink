@@ -22,16 +22,16 @@
 ### D1 欄容器與等寬
 
 - 欄列：`grid h-full min-h-0 grid-cols-[repeat(4,minmax(220px,1fr))] gap-3 overflow-x-auto`（討論欄缺席時 `grid-cols-[repeat(3,…)]`）；拿掉 `safe_center` 與每欄的 `min-w`／`max-w`。
-- `Column`：`data-column={stage}`、`flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-sidebar`；第一個子節點色相條 `h-[3px] shrink-0 ${STAGE_BAR[stage]}`（`STAGE_BAR` 改為純 `bg-stage-*`，不再帶 `border-t-*`）；標頭 `flex items-center gap-2 bg-card px-3 py-2.5 border-b border-border/70 shrink-0`，含 `Icon`（`STAGE_ICON`）、`h2 text-xs font-semibold text-foreground`（移除 `uppercase tracking-wider`）、`flex-1`、計數 `STAGE_BADGE`；卡片區 `flex-1 min-h-0 overflow-y-auto flex flex-col gap-2 p-2`。
+- 欄殼：新增 `packages/ui/src/components/BoardColumn.tsx`，階段欄與討論欄共用（欄外觀只定義一處），`KanbanBoard` 的 `Column` 移除。`data-column={id}`、`flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-sidebar`；第一個子節點色相條 `h-[3px] shrink-0 ${tone.bar}`（`STAGE_BAR` 已由 cut 1 落地為純 `bg-stage-*`，本刀不改；拿掉的是 `KanbanBoard` 的 `STAGE_STYLE.top`＝`border-t-*` 欄頂色）；色相組 `ColumnTone`（`icon`、`bar`、`iconCls`、`badge`）；標頭 `flex items-center gap-2 bg-card px-3 py-2.5 border-b border-border/70 shrink-0`，含 `Icon`（`STAGE_ICON`）、`h2 text-xs font-semibold text-foreground`（移除 `uppercase tracking-wider`）、`flex-1`、計數 `STAGE_BADGE`；卡片區 `flex-1 min-h-0 overflow-y-auto flex flex-col gap-2 p-2`。
 - 空欄：該欄過濾後零卡且非 loading／failed 時渲染 `<p className="px-2 py-6 text-center text-xs text-muted-foreground">`，文案鍵 `board.emptyColumn.proposed`／`board.emptyColumn.in-progress`／`board.emptyColumn.ready`（zh：沒有提案中的變更／沒有進行中的變更／沒有已就緒的變更；en：No proposed changes／No changes in progress／No ready changes）。搜尋無命中時同樣顯示（spec「無命中時顯示空欄與零計數」的「空欄」即此文案）。
-- 討論欄共用同一容器（`DiscussionColumn` 內的外框改成相同 class、色相條 `bg-stage-discussion`、標頭取 `DISCUSSION_TONE`）；「尚無討論」文案沿用 `discussion.none`，置中樣式與其他欄一致。
+- 討論欄共用同一欄殼（`DiscussionColumn` 改用 `BoardColumn`、色相條 `bg-stage-discussion`、標頭取 `DISCUSSION_TONE`）；「尚無討論」文案沿用 `discussion.none`，置中樣式與其他欄一致。
 
 替代方案「全白三層」「灰底欄」「無底色欄」在討論中否決。
 
 ### D2 討論欄底收合列與記憶
 
-- 收合列：`button` 全寬 `flex items-center gap-2 bg-card px-3 py-2 text-xs border-t border-border/70 shrink-0`，文字「已轉出 N」（既有鍵 `discussion.promotedBar`）＋右端 `ChevronRight`（展開時 `rotate-90`）；展開內容在卡片區底部（淡灰底上）以 promoted 細列列出，細列改 `rounded-lg border border-border bg-card px-2.5 py-2`。
-- 可控 props：`DiscussionColumnProps` 新增 `promotedExpanded?: boolean`、`onPromotedExpandedChange?: (v: boolean) => void`；兩者皆提供時為受控，否則內部 `useState(false)`。`KanbanBoardProps` 同名透傳。
+- 收合列：`button` 全寬 `flex items-center gap-2 bg-card px-3 py-2 text-xs border-t border-border/70 shrink-0`，文字「已轉出 N」（既有鍵 `discussion.promotedBar`）＋右端 `ChevronRight`（展開時 `rotate-90`）；展開內容放在卡片區與收合列之間的有界區塊（`max-h-64 overflow-y-auto px-2 pb-2`，淡灰底上、自捲；不加 `shrink-0`，視窗很矮時可被壓縮、收合列不被欄外框切掉）以 promoted 細列列出——欄內全卡再多也看得到，不會被擠到卡片捲動區最底部；細列改 `rounded-lg border border-border bg-card px-2.5 py-2`。
+- 可控 props：`DiscussionColumnProps` 新增 `promotedExpanded`、`onPromotedExpandedChange: (v: boolean) => void`，以聯合型別 `PromotedExpansionProps` 規定兩者同進同出（只給其一在型別層擋下）；皆提供時為受控，皆缺席時內部 `useState(false)`。`KanbanBoardProps` 同名透傳。
 - 桌面 app：`store.ts` 新增 `promotedExpanded: boolean`（初值自 `localStorage` 鍵 `speclink.board.promotedExpanded` 讀，壞值視為 false）與 `setPromotedExpanded(v)`（寫回同鍵）；`App.tsx` 傳入。server-web 不傳，維持不持久化。
 
 ### D3 卡片與浮層
@@ -43,7 +43,8 @@
 
 ### D4 頁級動作
 
-- `BoardSearchBar`：輸入 `className="h-8 w-[280px] rounded-full pl-8 pr-2 text-[13px]"`（active 時 `pr-20` 留命中數與清除鈕），容器 `flex items-center gap-1.5`（不再 `w-full`）；篩選鈕 `size="icon-sm"`（32px）`rounded-lg`，`filtersOpen` 時 `bg-muted text-foreground`；篩選面板位置與內容不變。
+- `BoardSearchBar`：輸入 `shape="pill"`（全圓）＋`className="w-[280px] pl-8 pr-2 text-[13px]"`（高度取 `Input` 基底 `h-8`；active 時 `pr-24` 留命中數與清除鈕，en 三位數命中數也放得下），容器 `flex items-center gap-1.5`（不再 `w-full`）；篩選鈕 `variant="toggle" size="icon"`（32px、8px 圓角，展開態由 `aria-expanded` 帶出 `bg-muted text-foreground`）；篩選面板位置與內容不變。
+- 原語變體（`openspec/config.yaml` rules.design：呼叫端不得以 className 覆蓋變體的顏色、圓角與陰影）：`packages/ui/src/components/ui/input.tsx` 新增 `shape` 變體（`default` 8px、`pill` 全圓），`packages/ui/src/components/ui/button.tsx` 新增 `toggle` 變體（`rounded-lg text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground`）；呼叫端只選變體，className 只留寬度與內距。
 - `KanbanBoard` 的 `PageHeader` 動作槽拿掉 `w-[22rem]` 包裹，直接放 `searchBar`。
 - 搜尋輸入 280px 下的命中數與清除鈕仍在輸入框右端內側；文字過長時輸入框內捲動（原生行為）。
 
@@ -64,8 +65,10 @@
 
 **Interface / data shape**
 
-- `KanbanBoardProps`／`DiscussionColumnProps` 新增 `promotedExpanded?`、`onPromotedExpandedChange?`。
-- `STAGE_BAR` 值改為純 `bg-stage-*`（消費者：`KanbanBoard` 色相條、`ChangeCard` 的 `barClass` 進度條——後者仍為 `bg-*` 可直接用）。
+- `KanbanBoardProps`／`DiscussionColumnProps` 新增 `promotedExpanded`、`onPromotedExpandedChange`（`PromotedExpansionProps`：兩者同進同出或皆缺席）。
+- `STAGE_BAR` 沿用 cut 1 的純 `bg-stage-*`（消費者：`BoardColumn` 色相條、`ChangeCard` 的 `barClass` 進度條）。
+- `BoardColumn`（`id`、`title`、`tone: ColumnTone`、`count: number | null`、`empty: string | null`、`footer?`、`children`）：`packages/ui` 內部元件，不對外匯出。
+- 原語：`Input` 新增 `shape?: "default" | "pill"`；`Button` 新增 `variant="toggle"`。
 - i18n 新鍵（`packages/ui/src/i18n.tsx` 兩語系）：`board.emptyColumn.proposed`、`board.emptyColumn.in-progress`、`board.emptyColumn.ready`。
 - 桌面持久化鍵：`speclink.board.promotedExpanded`（"true"／"false"）。
 
@@ -77,18 +80,18 @@
 **Acceptance criteria**
 
 - `npm test -w packages/ui`、`npm test -w apps/desktop` 全綠；`theme.test.ts` 守門綠。
-- `kanban.test.tsx`：欄容器 class 含 `rounded-2xl`、`bg-sidebar`，色相條元素帶 `bg-stage-proposed` 等三種，標頭含 `bg-card`，空欄文案三種，欄列為 grid 四欄；`discussionColumn.test.tsx`：收合列 `bg-card`、受控 props 下點擊呼叫 `onPromotedExpandedChange(true)`、非受控仍可展開；`boardSearchBar.test.tsx`：輸入 class 含 `rounded-full` 與 `w-[280px]`，既有搜尋／篩選案例通過；`store.test.ts`：`promotedExpanded` 讀寫 localStorage。
+- `kanban.test.tsx`：欄容器 class 含 `rounded-2xl`、`bg-sidebar`，色相條元素帶 `bg-stage-proposed` 等三種，標頭含 `bg-card`，空欄文案三種，欄列為 grid 四欄；`discussionColumn.test.tsx`：收合列 `bg-card`、受控 props 下點擊呼叫 `onPromotedExpandedChange(true)`、非受控仍可展開；`boardSearchBar.test.tsx`：輸入 class 含 `rounded-full` 與 `w-[280px]`、篩選鈕展開態走 `aria-expanded` 變體，既有搜尋／篩選案例通過；`ui.test.tsx`：`Input shape="pill"` 與 `Button variant="toggle"` 的 class；`store.test.ts`：`promotedExpanded` 讀寫 localStorage。
 - 手動：淺色與深色各看一次看板；拖一張已就緒卡看浮層與浮動卡；展開已轉出後重啟。
 
 **Scope boundaries**
 
-- In：`KanbanBoard`、`DiscussionColumn`、`BoardSearchBar`、`ChangeCard` 的外觀 class 與空欄文案、`stage.ts` 的 `STAGE_BAR` 值、i18n 三鍵、desktop store 一個布林鍵、對應測試、三條 spec 字面。
+- In：`KanbanBoard`、`DiscussionColumn`、`BoardSearchBar` 的外觀 class 與空欄文案、共用欄殼 `BoardColumn`、`Input`／`Button` 各一個新變體、i18n 三鍵、desktop store 一個布林鍵、對應測試、三條 spec 字面；`ChangeCard` 只確認無陰影、不改。
 - Out：清單頁、手冊頁、詳情、設定、系統匣；欄位判定、拖排寫回、搜尋比對、篩選維度、卡片骨架與標示。
 
 ## Risks / Trade-offs
 
 - [等寬 grid 取代置中可捲欄列，窄視窗時版面變化] → 220px 下限＋水平捲動；視窗預設 1440 下四欄各約 300px。
-- [`STAGE_BAR` 值變更影響既有斷言] → `stage.test.ts` 與 `kanban.test.tsx` 同批改斷言為 `bg-stage-*`。
+- [欄頂色條從 `border-t-*` 改為色相條元素，影響既有斷言] → `kanban.test.tsx` 與 `discussionColumn.test.tsx` 同批改為斷言首子節點 `bg-stage-*`；`STAGE_BAR` 值不變，`stage.test.ts` 不動。
 - [展開狀態持久化只在桌面] → ui 元件受控／非受控雙模式，server-web 行為不變。
 - [回歸對照] → 不動 CLI、golden、`--json`；ui 與 desktop 測試為基準。
 - [跨平台] → 純 CSS／TS。

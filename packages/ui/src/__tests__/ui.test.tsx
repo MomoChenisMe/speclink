@@ -18,6 +18,7 @@ import { Card } from "../components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { Textarea } from "../components/ui/textarea";
+import { Input } from "../components/ui/input";
 import { Checkbox } from "../components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import {
@@ -259,5 +260,33 @@ describe("原語扁平化：表單與浮層（design D5）", () => {
     const cancel = classes(screen.getByRole("button", { name: "取消" }));
     expect(cancel).toContain("hover:bg-accent");
     expect(cancel).not.toContain("border");
+  });
+});
+
+// desktop-board-reskin 品質關卡 round 1（review CRITICAL）：openspec/config.yaml rules.design 規定
+// 「呼叫端不得以 className 覆蓋變體的顏色、圓角與陰影」——搜尋列要的全圓輸入與篩選開關鈕
+// 改由原語變體提供，呼叫端只選變體。
+describe("原語變體：全圓輸入與開關圖示鈕", () => {
+  it("Input 預設 8px 圓角；shape=pill 為全圓、不殘留 rounded-lg", () => {
+    render(
+      <>
+        <Input aria-label="plain" />
+        <Input aria-label="pill" shape="pill" />
+      </>,
+    );
+    expect(classes(screen.getByLabelText("plain"))).toContain("rounded-lg");
+    const pill = classes(screen.getByLabelText("pill"));
+    expect(pill).toContain("rounded-full");
+    expect(pill).not.toContain("rounded-lg");
+  });
+
+  it("Button toggle 變體：8px 圓角、靜態無底灰字，展開態（aria-expanded）淺灰底深字", () => {
+    render(<Button variant="toggle" size="icon" aria-label="filters" aria-expanded={false} />);
+    const btn = screen.getByRole("button", { name: "filters" });
+    expect(classes(btn)).toEqual(
+      expect.arrayContaining(["rounded-lg", "text-muted-foreground", "aria-expanded:bg-muted", "aria-expanded:text-foreground"]),
+    );
+    expect(classes(btn)).not.toContain("rounded-md");
+    expect(staticClasses(btn).some((c) => c.startsWith("bg-"))).toBe(false);
   });
 });
