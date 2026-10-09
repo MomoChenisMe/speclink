@@ -837,7 +837,13 @@ function AppInner({
                 refreshGen={s.refreshGen}
               />
             ) : s.boardView === "specs" ? (
-              <SpecList specs={s.specs} onOpen={s.openSpec} focus={s.detailSpec} />
+              <SpecList
+                title={t("app.navSpecs")}
+                description={t("specs.pageDesc")}
+                specs={s.specs}
+                onOpen={s.openSpec}
+                focus={s.detailSpec}
+              />
             ) : s.boardView === "board" ? (
               <KanbanBoard
                 title={t("app.navChanges")}
@@ -880,6 +886,8 @@ function AppInner({
               />
             ) : (
               <ArchivedList
+                title={t("app.archived")}
+                description={t("archived.pageDesc")}
                 archived={s.archived}
                 query={s.query}
                 onQuery={s.setQuery}

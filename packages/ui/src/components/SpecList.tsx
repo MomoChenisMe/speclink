@@ -6,101 +6,91 @@ import { useI18n } from "../i18n";
 import { matchesQuery } from "../search";
 import { relativeDays } from "../time";
 import { SEMANTIC_TONE } from "../tone";
-import { Input } from "./ui/input";
+import { PageHeader } from "./ui/page-header";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { ListCard } from "./ListCard";
 import { ListPager, PAGE_SIZE } from "./ListPager";
-import { CopyButton, REVEAL_ON_HOVER } from "./CopyButton";
+import { ListRow } from "./ListRow";
+import { SearchField } from "./SearchField";
 
-/** 規格卡（spec-archive-drawer design D7）：標題＋複製鈕成群組、meta（需求數、
- * 溯源變更數、相對修改時間）靠右；第二列 Purpose 摘要一行截斷，佔位時改顯
- * 琥珀「Purpose 待補」警示。點整列開唯讀規格抽屜，無行內展開。 */
-function SpecCard({ item, onOpen }: { item: SpecItem; onOpen: (capability: string) => void }) {
+/** 規格列（spec「規格與封存卡片收合資訊」；design D3）：等寬名稱＋複製鈕、描述列為
+ * Purpose 摘要一行截斷（佔位時改顯琥珀「Purpose 待補」警示）、meta 為需求數、溯源
+ * 變更數（>0 才顯示）與相對修改時間。點整列開唯讀規格檢視，無行內展開。 */
+function SpecRow({ item, onOpen }: { item: SpecItem; onOpen: (capability: string) => void }) {
   const { t } = useI18n();
   const rel = relativeDays(item.modifiedAt, t);
   const reqCount = item.requirementCount ?? 0;
   const traceCount = item.traceCount ?? 0;
+  const reqLabel = t("specs.requirementCount").replace("{n}", String(reqCount));
+  const traceLabel = t("specs.traceCount").replace("{n}", String(traceCount));
   return (
-    <TooltipProvider>
-      <div
-        data-spec={item.id}
-        className="group cursor-pointer rounded-lg border border-border bg-card p-3 transition-[border-color,box-shadow] hover:border-primary/60 hover:shadow-md"
-        onClick={() => onOpen(item.id)}
-      >
-        <div className="flex items-center gap-2.5">
-          {/* 標題＋複製鈕成一個群組吃 flex-1（標題 truncate、複製鈕緊跟 hover 顯現）。 */}
-          <span data-title-group className="flex min-w-0 flex-1 items-center gap-1">
-            <span className="min-w-0 truncate text-sm font-medium">{item.id}</span>
-            <CopyButton value={item.id} label={t("common.copyName")} className={REVEAL_ON_HOVER} />
-          </span>
-          {/* meta 靠右：需求數徽章、溯源變更數、相對修改時間。 */}
-          <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+    <ListRow
+      data-spec={item.id}
+      title={item.id}
+      copyValue={item.id}
+      copyLabel={t("common.copyName")}
+      description={
+        item.purposeTbd ? (
+          <span className={`font-medium ${SEMANTIC_TONE.warning}`}>{t("specs.purposeTbd")}</span>
+        ) : (
+          (item.purposeExcerpt ?? undefined)
+        )
+      }
+      meta={
+        <>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span aria-label={reqLabel} className="inline-flex items-center gap-1 tabular-nums">
+                <FileText className="h-3 w-3" />
+                {reqCount}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{reqLabel}</TooltipContent>
+          </Tooltip>
+          {traceCount > 0 && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span
-                  aria-label={t("specs.requirementCount").replace("{n}", String(reqCount))}
-                  className="inline-flex items-center gap-1 tabular-nums"
-                >
-                  <FileText className="h-3 w-3" />
-                  {reqCount}
+                <span aria-label={traceLabel} className="inline-flex items-center gap-1 tabular-nums">
+                  <History className="h-3 w-3" />
+                  {traceCount}
                 </span>
               </TooltipTrigger>
-              <TooltipContent>
-                {t("specs.requirementCount").replace("{n}", String(reqCount))}
-              </TooltipContent>
+              <TooltipContent>{traceLabel}</TooltipContent>
             </Tooltip>
-            {traceCount > 0 && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    aria-label={t("specs.traceCount").replace("{n}", String(traceCount))}
-                    className="inline-flex items-center gap-1 tabular-nums"
-                  >
-                    <History className="h-3 w-3" />
-                    {traceCount}
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>{t("specs.traceCount").replace("{n}", String(traceCount))}</TooltipContent>
-              </Tooltip>
-            )}
-            {rel && <span className="tabular-nums">{rel}</span>}
-          </span>
-        </div>
-        {/* 描述列：purposeTbd 以琥珀警示取代摘要，否則 Purpose 首行一行截斷；皆缺席時整列缺席。 */}
-        {item.purposeTbd ? (
-          <div className={`mt-1 text-[11px] font-medium ${SEMANTIC_TONE.warning}`}>
-            {t("specs.purposeTbd")}
-          </div>
-        ) : (
-          item.purposeExcerpt && (
-            <div className="mt-1 truncate text-[11px] text-muted-foreground">{item.purposeExcerpt}</div>
-          )
-        )}
-      </div>
-    </TooltipProvider>
+          )}
+          {rel && <span className="tabular-nums">{rel}</span>}
+        </>
+      }
+      onClick={() => onOpen(item.id)}
+    />
   );
 }
 
 export interface SpecListProps {
   specs: SpecItem[];
-  /** 點卡片開唯讀規格抽屜（capability 定址）。 */
+  /** 點列開唯讀規格檢視（capability 定址）。 */
   onOpen: (capability: string) => void;
-  /** 外部指定聚焦的 capability（手冊出處跳規格）：翻到該卡所在頁並捲至該卡；
+  /** 外部指定聚焦的 capability（手冊出處跳規格）：翻到該列所在頁並捲至該列；
    * 搜尋字串遮住它時清空搜尋。 */
   focus?: string | null;
+  /** 頁標題區的標題；缺席時不渲染頁標題區，只有搜尋框。 */
+  title?: string;
+  /** 頁標題區的灰字說明。 */
+  description?: string;
 }
 
-/** 規格頁（design D1）：正式規格卡片清單＋名稱搜尋（design D3：大小寫不敏感
- * 子字串、純前端即打即濾）；點卡片開抽屜檢視全文，無行內展開、無任何規格寫入動詞。
- * 清單最新在前（modifiedAt 降冪、缺席殿後、名稱升冪決勝）並依 PAGE_SIZE 換頁
- *（spec「清單最新在前與換頁瀏覽」）——排序與換頁純屬呈現層。
- * 版面填滿視窗高度：搜尋框與標題列固定頂部、卡片清單於內部容器捲動、
- * 換頁控制列沉底常駐（不捲動即可換頁）。 */
-export function SpecList({ specs, onOpen, focus }: SpecListProps) {
+/** 規格頁（spec「規格頁提供清單、搜尋與展開檢視」；design D3）：頁標題區（標題、說明、
+ * 右端全圓搜尋框——大小寫不敏感子字串、純前端即打即濾）之下為一張列表卡，一列一份
+ * 正式規格；點列開檢視，無行內展開、無任何規格寫入動詞。清單最新在前（modifiedAt
+ * 降冪、缺席殿後、名稱升冪決勝）並依每頁筆數換頁（預設 20、不持久化）——排序與換頁
+ * 純屬呈現層。版面填滿主區高度：頁標題區固定頂部、列於卡內捲動、工具列固定卡底。 */
+export function SpecList({ specs, onOpen, focus, title, description }: SpecListProps) {
   const { t } = useI18n();
   // 搜尋字串留元件內——規格頁無跨視圖保留需求（比對規則共用 matchesQuery）。
   const [query, setQuery] = useState("");
   // 頁碼 state 以 min(page, pageCount) 鉗制派生——清單縮短不停在越界頁。
   const [rawPage, setRawPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   // 內部捲動容器 ref——換頁後歸位（清單自己捲、頁面不捲）。
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -116,9 +106,9 @@ export function SpecList({ specs, onOpen, focus }: SpecListProps) {
     [specs],
   );
   const filtered = sorted.filter((s) => matchesQuery(query, s.id));
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const page = Math.min(rawPage, pageCount);
-  const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const pageItems = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   useEffect(() => {
     if (!focus) return;
@@ -126,8 +116,8 @@ export function SpecList({ specs, onOpen, focus }: SpecListProps) {
     const at = (visible ? filtered : sorted).findIndex((s) => s.id === focus);
     if (at < 0) return;
     if (!visible) setQuery("");
-    setRawPage(Math.floor(at / PAGE_SIZE) + 1);
-    // 換頁後卡片才在 DOM：下一幀再捲至該卡。
+    setRawPage(Math.floor(at / pageSize) + 1);
+    // 換頁後列才在 DOM：下一幀再捲至該列。
     const frame = requestAnimationFrame(() => {
       scrollRef.current?.querySelector(`[data-spec="${focus}"]`)?.scrollIntoView({ block: "nearest" });
     });
@@ -135,37 +125,57 @@ export function SpecList({ specs, onOpen, focus }: SpecListProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus]);
 
-  const goPage = (next: number) => {
-    setRawPage(next);
+  const resetScroll = () => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   };
+  const goPage = (next: number) => {
+    setRawPage(next);
+    resetScroll();
+  };
+  // 改每頁筆數：重算總頁數並把頁碼鉗制到末頁（寫回 state，改回原筆數時不彈回舊頁）。
+  const changePageSize = (size: number) => {
+    setPageSize(size);
+    setRawPage((p) => Math.min(p, Math.max(1, Math.ceil(filtered.length / size))));
+    resetScroll();
+  };
+
+  const search = (
+    <SearchField
+      value={query}
+      placeholder={t("specs.searchPlaceholder")}
+      onChange={(value) => {
+        setQuery(value);
+        setRawPage(1);
+      }}
+    />
+  );
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 max-w-3xl mx-auto w-full">
-      <Input
-        placeholder={t("specs.searchPlaceholder")}
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setRawPage(1);
-        }}
-      />
-      <div className="flex items-center gap-2">
-        <h2 className="text-base font-semibold">{t("specs.heading")}</h2>
-        <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium tabular-nums">
-          {filtered.length}
-        </span>
+    <TooltipProvider>
+      <div className="flex h-full min-h-0 w-full flex-col gap-4">
+        {title ? <PageHeader title={title} description={description} actions={search} /> : search}
+        <ListCard
+          scrollRef={scrollRef}
+          footer={
+            <ListPager
+              page={page}
+              pageCount={pageCount}
+              total={filtered.length}
+              pageSize={pageSize}
+              onPage={goPage}
+              onPageSize={changePageSize}
+            />
+          }
+        >
+          {specs.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">{t("specs.empty")}</div>
+          ) : filtered.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">{t("specs.noResults")}</div>
+          ) : (
+            pageItems.map((s) => <SpecRow key={s.id} item={s} onOpen={onOpen} />)
+          )}
+        </ListCard>
       </div>
-      <div ref={scrollRef} data-list-scroll className="flex flex-1 min-h-0 flex-col gap-2.5 overflow-y-auto">
-        {specs.length === 0 ? (
-          <div className="text-muted-foreground text-sm py-8 text-center">{t("specs.empty")}</div>
-        ) : filtered.length === 0 ? (
-          <div className="text-muted-foreground text-sm py-8 text-center">{t("specs.noResults")}</div>
-        ) : (
-          pageItems.map((s) => <SpecCard key={s.id} item={s} onOpen={onOpen} />)
-        )}
-      </div>
-      <ListPager page={page} pageCount={pageCount} onPage={goPage} />
-    </div>
+    </TooltipProvider>
   );
 }

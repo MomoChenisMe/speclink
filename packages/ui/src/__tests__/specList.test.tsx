@@ -1,8 +1,9 @@
-// spec 需求「桌面 app 呈現 change 與 spec 的清單與內容」（抽屜語意：點整列開
-// 抽屜、無行內展開）＋「規格與封存卡片收合資訊」（規格卡）：收合資訊欄位、
+// spec 需求「規格頁提供清單、搜尋與展開檢視」（列式容器卡、頁標題區搜尋、點列開
+// 檢視、無行內展開）＋「規格與封存卡片收合資訊」（規格列）：收合資訊欄位、
 // 名稱搜尋（維持現狀）、複製名稱回饋、空狀態。
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render as rtlRender, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
@@ -102,16 +103,19 @@ describe("SpecList（規格頁清單）", () => {
     expect(within(sdk).queryByText(/TBD - created by archiving/)).toBeNull();
   });
 
-  it("點整列觸發 onOpen 開抽屜；無 chevron 與行內展開", () => {
+  it("點整列觸發 onOpen 開檢視；列為共用 ListRow（等寬標題、› 收尾）、無行內展開", () => {
     const onOpen = renderList();
     fireEvent.click(screen.getByText("desktop-app"));
     expect(onOpen).toHaveBeenCalledWith("desktop-app");
-    // 卡片本身不展開內容（載入語意已搬進抽屜）。
+    // 列本身不展開內容（載入語意已搬進抽屜）。
     expect(screen.queryByText("載入中…")).toBeNull();
-    // chevron 與 aria-expanded 全數移除。
-    expect(document.querySelector(".lucide-chevron-right")).toBeNull();
-    expect(document.querySelector(".lucide-chevron-down")).toBeNull();
-    expect(document.querySelector("[aria-expanded]")).toBeNull();
+    const app = card("desktop-app");
+    expect(app.getAttribute("role")).toBe("button");
+    expect(within(app).getByText("desktop-app").className).toContain("font-mono");
+    expect(app.querySelector(".lucide-chevron-right")).toBeTruthy();
+    // 行內展開的 chevron-down 與 aria-expanded 全數移除（列內斷言：工具列的每頁下拉自帶 chevron-down）。
+    expect(app.querySelector(".lucide-chevron-down")).toBeNull();
+    expect(app.querySelector("[aria-expanded]")).toBeNull();
   });
 
   it("複製鈕位於標題群組內（標題後緊跟、hover 顯現），點擊寫入剪貼簿且不開抽屜", async () => {
@@ -202,34 +206,55 @@ describe("SpecList（最新在前與換頁）", () => {
     return bare(`s${String(n).padStart(2, "0")}`, `2026-06-${day}`);
   });
 
-  it("21 筆時第 1 頁僅 20 筆且出現換頁控制列，點下一頁顯示第 21 筆", () => {
+  it("21 筆時第 1 頁僅 20 筆且工具列有頁碼，點下一頁顯示第 21 筆", () => {
     renderList(MANY);
     expect(cardOrder()).toHaveLength(20);
     expect(screen.getByText("s01")).toBeTruthy();
     expect(screen.queryByText("s21")).toBeNull();
-    expect(screen.getByText("第 1／2 頁")).toBeTruthy();
+    expect(screen.getByText("第 1–20 筆，共 21 筆")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "第 2 頁" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
     expect(screen.getByText("s21")).toBeTruthy();
     expect(screen.queryByText("s01")).toBeNull();
-    expect(screen.getByText("第 2／2 頁")).toBeTruthy();
+    expect(screen.getByText("第 21–21 筆，共 21 筆")).toBeTruthy();
   });
 
-  it("13 筆時無換頁控制列", () => {
+  it("13 筆時工具列只有筆數範圍與每頁筆數：無頁碼鈕、無 ‹ ›、無跳頁輸入", () => {
     renderList(MANY.slice(0, 13));
     expect(cardOrder()).toHaveLength(13);
-    expect(screen.queryByText(/第 \d+／\d+ 頁/)).toBeNull();
+    expect(screen.getByText("第 1–13 筆，共 13 筆")).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "每頁 20 個" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "下一頁" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^第 \d+ 頁$/ })).toBeNull();
+    expect(screen.queryByRole("spinbutton")).toBeNull();
   });
 
   it("於第 2 頁修改搜尋字串後回到第 1 頁", () => {
     renderList(MANY);
     fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
-    expect(screen.getByText("第 2／2 頁")).toBeTruthy();
+    expect(screen.getByText("第 21–21 筆，共 21 筆")).toBeTruthy();
     // 查詢 "s" 命中全部 21 筆（仍兩頁）——頁碼必須重設回第 1 頁。
     fireEvent.change(screen.getByPlaceholderText("搜尋規格…"), { target: { value: "s" } });
-    expect(screen.getByText("第 1／2 頁")).toBeTruthy();
+    expect(screen.getByText("第 1–20 筆，共 21 筆")).toBeTruthy();
     expect(screen.getByText("s01")).toBeTruthy();
     expect(screen.queryByText("s21")).toBeNull();
+  });
+
+  it("每頁改 50 後 21 筆單頁顯示、頁碼鈕消失；改回 20 回到第 1 頁", async () => {
+    const user = userEvent.setup();
+    renderList(MANY);
+    fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
+    expect(screen.getByText("s21")).toBeTruthy();
+    await user.click(screen.getByRole("combobox", { name: "每頁 20 個" }));
+    await user.click(await screen.findByRole("option", { name: "每頁 50 個" }));
+    expect(cardOrder()).toHaveLength(21);
+    expect(screen.getByText("第 1–21 筆，共 21 筆")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^第 \d+ 頁$/ })).toBeNull();
+    // 改回 20：頁碼已被鉗制成第 1 頁，不回到先前的第 2 頁。
+    await user.click(screen.getByRole("combobox", { name: "每頁 50 個" }));
+    await user.click(await screen.findByRole("option", { name: "每頁 20 個" }));
+    expect(screen.getByText("第 1–20 筆，共 21 筆")).toBeTruthy();
+    expect(screen.getByText("s01")).toBeTruthy();
   });
 });
 
@@ -251,7 +276,7 @@ describe("SpecList（填滿高度版面與換頁控制列沉底）", () => {
   const scrollEl = () => document.querySelector("[data-list-scroll]") as HTMLElement;
   const renderMany = () => render(<SpecList specs={MANY} onOpen={vi.fn()} />);
 
-  it("根容器為填滿高度 flex 直欄；清單容器內部捲動；換頁控制列在捲動容器外沉底", () => {
+  it("根容器為填滿高度 flex 直欄；列於列表卡內捲動；工具列在捲動容器外的卡底", () => {
     const { container } = renderMany();
     const root = container.firstElementChild as HTMLElement;
     expect(root.className).toContain("h-full");
@@ -261,7 +286,10 @@ describe("SpecList（填滿高度版面與換頁控制列沉底）", () => {
     expect(scroll.className).toContain("overflow-y-auto");
     expect(scroll.className).toContain("flex-1");
     expect(scroll.className).toContain("min-h-0");
-    // 換頁控制列是捲動容器的手足（直欄末端），不被清單內容捲走。
+    // 列在列表卡內；工具列是捲動容器的手足（卡底），不被清單內容捲走。
+    const listCard = document.querySelector("[data-list-card]") as HTMLElement;
+    expect(listCard.contains(scroll)).toBe(true);
+    expect(listCard.className).toContain("rounded-2xl");
     const nextBtn = screen.getByRole("button", { name: "下一頁" });
     expect(scroll.contains(nextBtn)).toBe(false);
     expect(scroll.parentElement!.contains(nextBtn)).toBe(true);
@@ -272,5 +300,26 @@ describe("SpecList（填滿高度版面與換頁控制列沉底）", () => {
     scrollEl().scrollTop = 150;
     fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
     expect(scrollEl().scrollTop).toBe(0);
+  });
+});
+
+// spec 需求「規格頁提供清單、搜尋與展開檢視」（頁標題區）：標題、灰字說明與全圓搜尋框
+// 在列表卡之上；未傳 title 時只有搜尋框。
+describe("SpecList（頁標題區）", () => {
+  it("傳 title 與 description 時出現 h2、說明與全圓搜尋框", () => {
+    render(<SpecList specs={SPECS} onOpen={vi.fn()} title="規格" description="正式規格一覽。" />);
+    const header = document.querySelector("[data-page-header]") as HTMLElement;
+    expect(within(header).getByRole("heading", { level: 2 }).textContent).toBe("規格");
+    expect(header.textContent).toContain("正式規格一覽。");
+    const input = within(header).getByPlaceholderText("搜尋規格…");
+    expect(input.className).toContain("rounded-full");
+    expect(document.querySelector("[data-list-card]")!.contains(header)).toBe(false);
+  });
+
+  it("未傳 title 時無頁標題區，搜尋框仍在", () => {
+    render(<SpecList specs={SPECS} onOpen={vi.fn()} />);
+    expect(document.querySelector("[data-page-header]")).toBeNull();
+    expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
+    expect(screen.getByPlaceholderText("搜尋規格…").className).toContain("rounded-full");
   });
 });

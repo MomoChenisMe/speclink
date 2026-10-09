@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { BookOpen, ChevronLeft, ChevronRight, CloudOff } from "lucide-react";
 
-import type { ManualIndex } from "../adapter";
+import type { ManualIndex, ManualPageItem } from "../adapter";
 import { useI18n } from "../i18n";
+import { cn } from "../lib/utils";
 import { manualLinkSlug, splitLeadingHeading, stripSourcesLine } from "../manualDoc";
 import { ManualToc } from "./ManualToc";
 import { ManualTree } from "./ManualTree";
-import { Markdown, READING_COLUMN_CLS } from "./Markdown";
+import { Markdown } from "./Markdown";
 import { DocSkeleton, RowSkeleton } from "./skeletons";
+import { badgeVariants } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Card } from "./ui/card";
+
+/** 手冊閱讀欄（design D5）：768px 置中；頁首、閱讀卡與底列內容同寬對齊。 */
+const MANUAL_COLUMN_CLS = "mx-auto w-full max-w-[768px]";
 
 export interface ManualPageProps {
   /** 手冊索引（已依閱讀序排好）；null＝載入中（骨架）。 */
@@ -29,10 +35,45 @@ interface LoadedDoc {
   body: string | null;
 }
 
-/** 手冊頁（desktop-manual-page design「側欄樹、搜尋與上下頁在前端由索引推導」）：
- * 左欄 ManualTree、右側 ManualToc，中間以共用 Markdown 與閱讀欄渲染選定頁——頁首
- * 標題與頁尾上一頁／下一頁＋出處列固定不隨內文捲動。本元件只管選頁、內文載入
- * （latest-wins）與三段切分；唯讀、無任何寫入操作。 */
+/** 底列的上一頁／下一頁框線鈕（design D5）：小字標籤＋目標頁標題；無目標時呼叫端不渲染。 */
+function PageNavButton({
+  direction,
+  target,
+  onSelect,
+}: {
+  direction: "prev" | "next";
+  target: ManualPageItem;
+  onSelect: (slug: string) => void;
+}) {
+  const { t } = useI18n();
+  const prev = direction === "prev";
+  const hook = prev ? { "data-manual-prev": target.slug } : { "data-manual-next": target.slug };
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      aria-label={t(prev ? "pager.prev" : "pager.next")}
+      className="h-auto gap-1.5 py-1"
+      onClick={() => onSelect(target.slug)}
+      {...hook}
+    >
+      {prev && <ChevronLeft className="h-4 w-4" />}
+      <span className={cn("flex flex-col leading-tight", prev ? "items-start" : "items-end")}>
+        <span className="text-[11px] font-normal text-muted-foreground">
+          {t(prev ? "manual.prevLabel" : "manual.nextLabel")}
+        </span>
+        <span className="max-w-48 truncate">{target.title}</span>
+      </span>
+      {!prev && <ChevronRight className="h-4 w-4" />}
+    </Button>
+  );
+}
+
+/** 手冊頁（desktop-manual-page design「側欄樹、搜尋與上下頁在前端由索引推導」；
+ * desktop-list-pages-reskin design D5 三欄：240px 目錄樹、768px 置中閱讀欄、200px 本頁
+ * 目錄）：中欄以共用 Markdown 於白底閱讀卡內渲染選定頁——頁首（標題＋產生時間）與
+ * 白底上緣細線的底列（出處籤＋上一頁／下一頁）固定不隨內文捲動。本元件只管選頁、
+ * 內文載入（latest-wins）與三段切分；唯讀、無任何寫入操作。 */
 export function ManualPage({ index, loadPage, onOpenSpec, capabilities, refreshGen }: ManualPageProps) {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
@@ -82,12 +123,12 @@ export function ManualPage({ index, loadPage, onOpenSpec, capabilities, refreshG
   if (index === null) {
     return (
       <div className="flex h-full min-h-0">
-        <aside className="flex w-64 shrink-0 flex-col gap-1 border-r border-border py-5 pl-5 pr-3">
+        <aside className="flex w-60 shrink-0 flex-col gap-1 border-r border-border bg-sidebar p-3">
           <RowSkeleton />
           <RowSkeleton />
           <RowSkeleton />
         </aside>
-        <div className="flex-1 p-5">
+        <div className="flex-1 p-6">
           <DocSkeleton />
         </div>
       </div>
@@ -143,16 +184,23 @@ export function ManualPage({ index, loadPage, onOpenSpec, capabilities, refreshG
 
       <div data-manual-content className="flex min-h-0 flex-1">
         <div className="flex min-h-0 flex-1 flex-col">
-          <header data-manual-header className="shrink-0 border-b border-border px-5 pt-5 pb-3">
-            <h1 className={`${READING_COLUMN_CLS} text-xl font-bold tracking-tight`}>{heading}</h1>
+          <header data-manual-header className="shrink-0 px-6 pt-6 pb-3">
+            <div className={MANUAL_COLUMN_CLS}>
+              <h1 className="text-2xl font-normal">{heading}</h1>
+              {current.generated && (
+                <p data-manual-generated className="mt-1 text-xs text-muted-foreground">
+                  {t("manual.generatedAt").replace("{generated}", current.generated)}
+                </p>
+              )}
+            </div>
           </header>
           <div
             ref={bodyRef}
             data-manual-body
-            className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
+            className="min-h-0 flex-1 overflow-y-auto px-6 py-5"
             onClick={onBodyClick}
           >
-            <div className={READING_COLUMN_CLS}>
+            <Card data-manual-card className={`${MANUAL_COLUMN_CLS} p-6`}>
               {!loaded ? (
                 <DocSkeleton />
               ) : loaded.body === null ? (
@@ -166,14 +214,14 @@ export function ManualPage({ index, loadPage, onOpenSpec, capabilities, refreshG
               ) : (
                 <Markdown content={markdownBody} />
               )}
-            </div>
+            </Card>
           </div>
-          <footer data-manual-footer className="shrink-0 border-t border-border px-5 pt-3 pb-5">
-            <div className={`${READING_COLUMN_CLS} flex flex-col gap-3`}>
-              {sourceNames.length > 0 && (
+          <footer data-manual-footer className="shrink-0 border-t border-border bg-card px-6 py-2.5">
+            <div className={`${MANUAL_COLUMN_CLS} flex items-center justify-between gap-3`}>
+              {sourceNames.length > 0 ? (
                 <div
                   data-manual-sources
-                  className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
+                  className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
                 >
                   <span>{t("manual.sources")}</span>
                   {sourceNames.map((name) =>
@@ -181,50 +229,24 @@ export function ManualPage({ index, loadPage, onOpenSpec, capabilities, refreshG
                       <button
                         key={name}
                         type="button"
-                        className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-primary hover:bg-accent"
+                        className={cn(badgeVariants({ variant: "outline" }), "cursor-pointer font-mono hover:bg-muted")}
                         onClick={() => onOpenSpec(name)}
                       >
                         {name}
                       </button>
                     ) : (
-                      <span key={name} className="rounded border border-border px-1.5 py-0.5 font-mono text-[11px]">
+                      <span key={name} className="font-mono">
                         {name}
                       </span>
                     ),
                   )}
                 </div>
+              ) : (
+                <span />
               )}
-              <div className="flex items-center justify-between gap-2">
-                {prev ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    aria-label={t("pager.prev")}
-                    data-manual-prev={prev.slug}
-                    className="gap-1"
-                    onClick={() => setSelected(prev.slug)}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    <span className="max-w-48 truncate">{prev.title}</span>
-                  </Button>
-                ) : (
-                  <span />
-                )}
-                {next ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    aria-label={t("pager.next")}
-                    data-manual-next={next.slug}
-                    className="gap-1"
-                    onClick={() => setSelected(next.slug)}
-                  >
-                    <span className="max-w-48 truncate">{next.title}</span>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                ) : (
-                  <span />
-                )}
+              <div className="flex shrink-0 items-center gap-2">
+                {prev && <PageNavButton direction="prev" target={prev} onSelect={setSelected} />}
+                {next && <PageNavButton direction="next" target={next} onSelect={setSelected} />}
               </div>
             </div>
           </footer>
