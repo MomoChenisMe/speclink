@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 
 import { useI18n } from "../i18n";
 import { cn } from "../lib/utils";
@@ -10,8 +10,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 /** 每頁筆數預設值（spec「清單最新在前與換頁瀏覽」）——清單元件與測試共用。 */
 export const PAGE_SIZE = 20;
 
-/** 每頁筆數下拉的預設選項。 */
-const PAGE_SIZE_OPTIONS = [20, 50, 100];
+/** 每頁筆數下拉的選項——也是桌面 store 讀回記住的每頁筆數時唯一接受的值。 */
+export const PAGE_SIZE_OPTIONS: readonly number[] = [20, 50, 100];
+
+/**
+ * 清單的每頁筆數（design D7）：值與回呼都給時受控（桌面 store 跨啟動記住），否則退回
+ * 元件內 state（預設 PAGE_SIZE；server-web 與單元測試走這條）。
+ */
+export function usePageSize(value?: number, onChange?: (size: number) => void): [number, (size: number) => void] {
+  const [local, setLocal] = useState(PAGE_SIZE);
+  return value !== undefined && onChange !== undefined ? [value, onChange] : [local, setLocal];
+}
 
 /** 頁碼視窗要列的頁數上限；超過時恆列首尾頁、目前頁前後各一頁，其餘以 … 收攏。 */
 const FULL_WINDOW = 7;
@@ -43,7 +52,7 @@ export interface ListPagerProps {
   total: number;
   /** 每頁筆數（受控，呼叫端持有）。 */
   pageSize: number;
-  pageSizeOptions?: number[];
+  pageSizeOptions?: readonly number[];
   /** 換頁回呼——受控形態，頁碼狀態由呼叫端持有。 */
   onPage: (next: number) => void;
   /** 改每頁筆數回呼；呼叫端重算總頁數並鉗制頁碼。 */
@@ -113,6 +122,16 @@ export function ListPager({
             type="button"
             variant="ghost"
             size="icon-sm"
+            aria-label={t("pager.first")}
+            disabled={page <= 1}
+            onClick={() => onPage(1)}
+          >
+            <ChevronsLeft className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
             aria-label={t("pager.prev")}
             disabled={page <= 1}
             onClick={() => onPage(page - 1)}
@@ -148,6 +167,16 @@ export function ListPager({
             onClick={() => onPage(page + 1)}
           >
             <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t("pager.last")}
+            disabled={page >= pageCount}
+            onClick={() => onPage(pageCount)}
+          >
+            <ChevronsRight className="h-3.5 w-3.5" />
           </Button>
           <label className="ml-2 flex items-center gap-1">
             <span>{jumpPrefix}</span>

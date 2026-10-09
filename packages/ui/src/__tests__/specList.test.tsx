@@ -323,3 +323,28 @@ describe("SpecList（頁標題區）", () => {
     expect(screen.getByPlaceholderText("搜尋規格…").className).toContain("rounded-full");
   });
 });
+
+// desktop-list-pages-reskin design D7：每頁筆數可受控（桌面 store 記住並傳入）；值與回呼
+// 都給時以 prop 為準，改下拉只呼叫回呼。
+describe("SpecList（受控每頁筆數）", () => {
+  const MANY21: SpecItem[] = Array.from({ length: 21 }, (_, i) => ({
+    id: `c${String(i + 1).padStart(2, "0")}`,
+    modifiedAt: `2026-06-${String(22 - (i + 1)).padStart(2, "0")}`,
+    requirementCount: 0,
+    purposeExcerpt: null,
+    purposeTbd: false,
+    traceCount: 0,
+  }));
+
+  it("傳 pageSize={50} 時 21 筆單頁顯示；選每頁 100 呼叫 onPageSizeChange(100)，值仍以 prop 為準", async () => {
+    const user = userEvent.setup();
+    const onPageSizeChange = vi.fn();
+    render(<SpecList specs={MANY21} onOpen={vi.fn()} pageSize={50} onPageSizeChange={onPageSizeChange} />);
+    expect(document.querySelectorAll("[data-spec]")).toHaveLength(21);
+    expect(screen.getByText("第 1–21 筆，共 21 筆")).toBeTruthy();
+    await user.click(screen.getByRole("combobox", { name: "每頁 50 個" }));
+    await user.click(await screen.findByRole("option", { name: "每頁 100 個" }));
+    expect(onPageSizeChange).toHaveBeenCalledWith(100);
+    expect(screen.getByRole("combobox", { name: "每頁 50 個" })).toBeTruthy();
+  });
+});

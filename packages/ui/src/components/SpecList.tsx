@@ -9,7 +9,7 @@ import { SEMANTIC_TONE } from "../tone";
 import { PageHeader } from "./ui/page-header";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { ListCard } from "./ListCard";
-import { ListPager, PAGE_SIZE } from "./ListPager";
+import { ListPager, usePageSize } from "./ListPager";
 import { ListRow } from "./ListRow";
 import { SearchField } from "./SearchField";
 
@@ -77,20 +77,32 @@ export interface SpecListProps {
   title?: string;
   /** 頁標題區的灰字說明。 */
   description?: string;
+  /** 受控每頁筆數（design D7）：與 onPageSizeChange 一起給時以它為準；缺席時元件自持（預設 20）。 */
+  pageSize?: number;
+  onPageSizeChange?: (size: number) => void;
 }
 
 /** 規格頁（spec「規格頁提供清單、搜尋與展開檢視」；design D3）：頁標題區（標題、說明、
  * 右端全圓搜尋框——大小寫不敏感子字串、純前端即打即濾）之下為一張列表卡，一列一份
  * 正式規格；點列開檢視，無行內展開、無任何規格寫入動詞。清單最新在前（modifiedAt
- * 降冪、缺席殿後、名稱升冪決勝）並依每頁筆數換頁（預設 20、不持久化）——排序與換頁
- * 純屬呈現層。版面填滿主區高度：頁標題區固定頂部、列於卡內捲動、工具列固定卡底。 */
-export function SpecList({ specs, onOpen, focus, title, description }: SpecListProps) {
+ * 降冪、缺席殿後、名稱升冪決勝）並依每頁筆數換頁（預設 20；桌面 app 以受控 props
+ * 跨啟動記住）——排序與換頁純屬呈現層。版面填滿主區高度：頁標題區固定頂部、列於卡內
+ * 捲動、工具列固定卡底。 */
+export function SpecList({
+  specs,
+  onOpen,
+  focus,
+  title,
+  description,
+  pageSize: controlledPageSize,
+  onPageSizeChange,
+}: SpecListProps) {
   const { t } = useI18n();
   // 搜尋字串留元件內——規格頁無跨視圖保留需求（比對規則共用 matchesQuery）。
   const [query, setQuery] = useState("");
   // 頁碼 state 以 min(page, pageCount) 鉗制派生——清單縮短不停在越界頁。
   const [rawPage, setRawPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const [pageSize, setPageSize] = usePageSize(controlledPageSize, onPageSizeChange);
   // 內部捲動容器 ref——換頁後歸位（清單自己捲、頁面不捲）。
   const scrollRef = useRef<HTMLDivElement>(null);
 

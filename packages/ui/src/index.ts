@@ -192,6 +192,7 @@ export { BrandMark, Wordmark } from "./components/Brand";
 export { NavItem, type NavItemProps } from "./components/NavItem";
 export { ListRow, type ListRowProps } from "./components/ListRow";
 export { ListCard, type ListCardProps } from "./components/ListCard";
+export { PAGE_SIZE, PAGE_SIZE_OPTIONS } from "./components/ListPager";
 export { SearchField, type SearchFieldProps } from "./components/SearchField";
 export { ArchivedList, type ArchivedListProps } from "./components/ArchivedList";
 export { ArchivedDrawer, type ArchivedDrawerProps, type ArchivedTarget } from "./components/ArchivedDrawer";

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
-import { render, screen, waitFor, fireEvent, within, act } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within, act, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -95,6 +95,8 @@ beforeEach(() => {
   // 技能檔提示的「保留現狀」記憶也是 localStorage：清掉，免得一條測試按過
   // 保留現狀就讓後面期待提示出現的測試依執行順序逾時。
   localStorage.removeItem("speclink.instructionSkips");
+  // 清單每頁筆數記憶（desktop-list-pages-reskin design D7）同樣跨測試洩漏。
+  localStorage.removeItem("speclink.list.pageSizes");
   // jsdom 的 navigator.language 為 en-US；既有中文斷言以明示偏好 zh-TW 固定 UI 語言。
   localStorage.setItem("speclink.uiLocale", "zh-TW");
 });
@@ -1096,6 +1098,35 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     fireEvent.click(changesNav);
     await waitFor(() => expect(document.querySelector('[data-column="ready"]')).toBeTruthy());
     expect(specsNav.className).not.toContain("bg-primary");
+  });
+
+  it("規格頁改每頁 50 後重開 app 仍為每頁 50，已封存變更節仍為 20（desktop-list-pages-reskin design D7）", async () => {
+    // spec scenario「每頁筆數跨啟動記住」：記憶存在 app 本機，重建 App（新 store）後讀回。
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderApp();
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    fireEvent.click(within(projectColumn()).getByRole("button", { name: "規格" }));
+    await waitFor(() => expect(screen.getByText("desktop-app")).toBeTruthy());
+    await user.click(screen.getByRole("combobox", { name: "每頁 20 個" }));
+    await user.click(await screen.findByRole("option", { name: "每頁 50 個" }));
+    expect(screen.getByRole("combobox", { name: "每頁 50 個" })).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem("speclink.list.pageSizes")!).specs).toBe(50);
+    // 重開 app：卸載後以新 store 重建（給一筆封存變更，已封存頁才有工具列）。
+    cleanup();
+    renderApp(
+      fakeDataSource({
+        listArchived: vi.fn().mockResolvedValue([
+          { datedName: "2026-07-04-old-change", date: "2026-07-04", name: "old-change" },
+        ]),
+      }),
+    );
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    fireEvent.click(within(projectColumn()).getByRole("button", { name: "規格" }));
+    await waitFor(() => expect(screen.getByText("desktop-app")).toBeTruthy());
+    expect(screen.getByRole("combobox", { name: "每頁 50 個" })).toBeTruthy();
+    fireEvent.click(within(projectColumn()).getByRole("button", { name: "已封存" }));
+    await waitFor(() => expect(screen.getByText("old-change")).toBeTruthy());
+    expect(screen.getByRole("combobox", { name: "每頁 20 個" })).toBeTruthy();
   });
 
   it("切到規格頁與已封存頁各有對應頁標題 h2 與全圓搜尋框，列表卡填滿主區（desktop-list-pages-reskin）", async () => {
