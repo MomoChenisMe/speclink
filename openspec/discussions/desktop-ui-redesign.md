@@ -5,7 +5,7 @@ status: promoted
 created: 2026-10-08
 created_by: MomoChen <momochenisme@gmail.com>
 hold: true
-promoted_to: fix-drawer-open-dismisses-overlays, desktop-design-foundation, desktop-shell-redesign, desktop-notice-relocation, desktop-native-menu, desktop-board-reskin, desktop-list-pages-reskin
+promoted_to: fix-drawer-open-dismisses-overlays, desktop-design-foundation, desktop-shell-redesign, desktop-notice-relocation, desktop-native-menu, desktop-board-reskin, desktop-list-pages-reskin, desktop-detail-page, desktop-readonly-detail-pages, desktop-settings-mode, desktop-about-page, desktop-settings-editors
 ---
 
 # Discussion: 重新設計整個 Desktop 介面：白底中性灰、單一點綴色、扁平細框的桌面工具風格，含共用元件整理、原生選單、標題列與設定頁
@@ -316,11 +316,11 @@ Prior discussions: card-drawer-header-colors, desktop-導覽與專案首頁重�
   - 看板欄改白底細框 16px 圓角卡：3px 色相頂條、白底標頭（色相圖示、名稱、色相淡底計數）下細線、卡片區鋪 neutral-50、討論欄底白底「已轉出 N ›」收合列細線分隔並記憶；空欄置中灰字（如「沒有已就緒的變更」）
   - 卡片 12px 圓角白底細框無陰影、三列骨架不變（等寬名稱＋複製鈕＋右端 meta 圖示與頭像、描述一行截斷、meta 列＝波次章＋進度條＋n/m；討論卡＝狀態 chip、輪數、日期）、hover 框變深底微灰；拖曳中落點與不合法落點灰化沿用既有規格、只換成 token 色
   - desktop-app 看板卡片與欄位相關需求的外觀字面 MODIFIED
-- **cut 3b `desktop-detail-page`**: 詳情頁取代抽屜
+- **cut 3b 詳情頁**（propose 期拆兩個 change：`desktop-detail-page` 頁層、麵包屑與 ‹ › 導覽、「開啟 ▾」、變更與討論詳情頁；`desktop-readonly-detail-pages` 規格與已封存詳情頁（依賴前者）；兩者皆已轉出）
   - 變更、討論、規格、已封存四種詳情頁；‹ › 與快捷鍵；狀態卡（討論頁含階段步驟列與衍生變更籤）；卡片標頭分頁與「開啟 ▾」文件動作；規格詳情的需求分段與需求目錄；任務列整列可點；Esc／麵包屑返回保留看板狀態
-  - 新原語 status-pill；Sheet 原語退場
+  - 新原語 status-pill；Sheet 原語自桌面退場（原語留在 packages/ui 供 server-web 管理面使用）
   - desktop-app 約 15 條含「抽屜」的需求 MODIFIED 或 RENAMED 為詳情頁語意（互斥、底層落回看板、標頭結構、開關動畫、skeleton、審查／驗證資訊列、排程與工單分頁、已封存抽屜）；tray-status-menu「變更子選單動作」「討論列表」的開啟語意 MODIFIED；「detail 抽屜互斥」在 cut 0 之後再 MODIFIED 為開頁語意（封存順序在 cut 0 之後）
-- **cut 4 `desktop-settings-mode`**: 設定模式（add-copilot-tool 已封存，可隨時開始）
+- **cut 4 設定模式**（propose 期拆三個 change：`desktop-settings-mode` 分類欄、五個設定零件與 Switch、外觀偏好、一般／語言與外觀／更新／CLI／伺服器五頁、專案設定四頁；`desktop-about-page` 關於頁（依賴前者）；`desktop-settings-editors` 專案說明與產出規則的 CodeMirror 編輯器（依賴前者）；三者皆已轉出。search-input 以 cut 3a 的 SearchField 承接不另建；產出政策卡落在產出流程頁；伺服器頁的「登入過期時提醒」列與「以金鑰登入…」鈕不做）
   - 全域設定與專案設定兩種分類欄、五個設定零件、switch 與 search-input 原語、外觀切換列、「更新」頁（新版本、更新日誌、下載進度、安裝並重新啟動）、「伺服器」頁（連線卡、預設卡、登入方式卡）
   - 專案說明 CodeMirror markdown 編輯器（編輯／預覽、⌘S、保真寫回）、產出規則 CodeMirror 純文字一行一條
   - desktop-config 設定頁需求 MODIFIED
@@ -359,9 +359,9 @@ Prior discussions: card-drawer-header-colors, desktop-導覽與專案首頁重�
 - 直接以舊 topic 字面記錄 — 參考風格來自私人專案，記錄改用中性風格描述
 **Deferred**:
 - Windows 隱藏標題列後選單列的行為 — 無 Windows 機器可查，cut 2 design 期實測
-- 詳情頁的瀏覽歷史（返回鍵是否經 history、看板捲動保留的實作方式） — cut 3b design 期定
+- 詳情頁的瀏覽歷史（返回鍵是否經 history、看板捲動保留的實作方式） — 已於 desktop-detail-page 的 design 定案：不經 history、一層頁；宿主頁保留掛載並設為不可互動，捲動、搜尋與篩選原樣保留
 - Streamdown 的數學與 mermaid 外掛 — 規格文件沒有用到
 - 四欄色相與語意 token 的確切色階 — design 期在真實畫面調
 - 產出規則單條寫回動詞 — 現以整份寫回，單條增刪改另議
 **Capture to**: proposal、design、spec（desktop-app、desktop-config、workspace-chooser、tray-status-menu MODIFIED）、tasks、LANGUAGE.md
-**Next**: cut 2 其餘兩塊與 cut 3a 兩塊依 speclink plan 的波次 apply；之後 /speclink-propose --from-discussion desktop-ui-redesign 建 cut 3b；cut 4 與 5 可與 3a、3b 並行；最後一刀帶 --last
+**Next**: desktop-readonly-detail-pages 跑品質關卡後封存；cut 4 三塊依 speclink plan 的波次 apply（先 desktop-settings-mode，之後關於頁與編輯器可並行）；/speclink-propose --from-discussion desktop-ui-redesign 建 cut 5 `tray-panel-restyle` 時帶 --last（最後一刀）

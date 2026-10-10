@@ -1,0 +1,13 @@
+## 1. 編輯器元件
+
+- [ ] 1.1 `apps/desktop/package.json` 加 `@codemirror/state`、`@codemirror/view`、`@codemirror/language`、`@codemirror/commands`、`@codemirror/lang-markdown`、`@lezer/highlight`（`npm install` 更新 `package-lock.json`）；新增 `apps/desktop/src/components/CodeEditor.tsx`（design D1：props、`EditorView` 掛載與 value 同步、擴充集、token 配色 theme、Mod-s 綁 `onSave`、底部狀態列、`rounded-xl border bg-card` 外殼）與 `apps/desktop/src/__tests__/helpers/codemirror.ts`（jsdom polyfill）；`apps/desktop/src/index.css` 加 `.cm-editor` 的 token 覆寫若 theme 需要（spec「表單控制項與按鈕以主題化元件呈現」）。驗證：新增 `apps/desktop/src/__tests__/codeEditor.test.tsx`——掛載後呈現初值、輸入後 `onChange` 收到全文、`value` 外部變動反映、Mod-s 呼叫 `onSave`、`readOnly` 不可輸入、狀態列顯示模式與行欄、markdown 模式有行號節點；`grep -n 'oklch\|#[0-9a-f]\{6\}' apps/desktop/src/components/CodeEditor.tsx` 零命中；`npm test -w apps/desktop -- codeEditor`。 <!-- speclink-task:tsk_01M4JKYGAJHKAS5CE4QRKK1Z1R -->
+
+## 2. 兩頁接線
+
+- [ ] 2.1 `apps/desktop/src/views/project-settings/ContextPage.tsx`：編輯態以 `CodeEditor mode="markdown"` 取代 `Textarea`、頁標題右側「編輯／預覽」分段切換＋取消＋儲存 `Kbd` ⌘S、預覽以 `Markdown` 渲染草稿並以 `hidden` 保留編輯器、頁層 keydown 補 ⌘S；`useProjectSettings.ts` 的 `saveContext` 改為原字串寫入（不 trim、不改檔尾換行；全空白仍清空）；i18n 加 `settings.editor.*`（design D2、D4；spec「設定頁編輯專案說明與產出規則」）。驗證：`apps/desktop/src/__tests__/projectSettingsView.test.tsx` 專案說明既有案例改走編輯器並通過，新增——點編輯後有 `.cm-editor` 與「編輯／預覽」切換、切預覽渲染草稿且切回內容不變、⌘S 呼叫寫入且參數為含兩層縮排與檔尾換行的原字串、取消不寫入；`npm test -w apps/desktop -- projectSettingsView`。 <!-- speclink-task:tsk_01M4JKYGAJTK4E5RDBRAYAAA16 -->
+- [ ] 2.2 `apps/desktop/src/views/project-settings/RulesPage.tsx`：編輯態每個固定鍵一張 `Card size="nested"`（`SettingsGroupHeader` 等寬鍵名＋即時「N 條」）內 `CodeEditor mode="plain" minLines={3}`，頁標題右側取消＋儲存 ⌘S；儲存語意不變（trim、略空行、整份寫回）；i18n 加 `settings.rules.count`（design D3；spec「設定頁編輯專案說明與產出規則」）。驗證：`projectSettingsView.test.tsx` 產出規則既有案例（保留字元、行序、清空移除鍵、固定鍵）改走編輯器並通過，新增——四張小卡各帶計數、輸入一行後計數加一且空行不計、⌘S 寫回；`grep -n 'Textarea' apps/desktop/src/views/project-settings/*.tsx` 零命中；`npm test -w apps/desktop -- projectSettingsView`。 <!-- speclink-task:tsk_01M4JKYGAJDVHWDWSE5RG1CTSG -->
+
+## 3. 對齊
+
+- [ ] [M] 3.1 手動驗收（`npm run dev -w apps/desktop`）：專案說明頁編輯看行號、標題與行內 code 上色、自動換行、狀態列；編輯／預覽切換；⌘S 儲存後 `git diff openspec/config.yaml` 只有改到的行、縮排與檔尾換行不變；深色主題下編輯器配色；產出規則頁四張小卡與計數。驗證：觀察結果與 spec「設定頁編輯專案說明與產出規則」「表單控制項與按鈕以主題化元件呈現」的 scenario 一致。 <!-- speclink-task:tsk_01M4JKYGAJCY1YP6AD453GBF6B -->
+- [ ] 3.2 全部對齊：`./target/debug/speclink validate desktop-settings-editors` 通過；`npm test -w apps/desktop` 全綠；`npm run build -w apps/desktop` 通過（bundle 含 CodeMirror 不含內建配色 CSS）；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。 <!-- speclink-task:tsk_01M4JKYGAJTV9AFZ8HGRYK23M4 -->
