@@ -10,6 +10,7 @@ import {
 import { code } from "@streamdown/code";
 
 import { useI18n } from "../i18n";
+import { rehypeSpecKeywords } from "../specSections";
 import { SEMANTIC_SURFACE, SEMANTIC_TONE, type SemanticTone } from "../tone";
 
 /** 共用閱讀欄置中容器（design D4，spec「markdown 文件內容行寬有上限」）：
@@ -22,6 +23,8 @@ export interface MarkdownProps {
   content: string | null;
   /** 空狀態文案；省略時用 i18n 預設「（無內容）」。 */
   empty?: string;
+  /** 以等寬灰底標示 SHALL／MUST 關鍵字（規格詳情頁的需求文與 Scenario）。 */
+  specKeywords?: boolean;
 }
 
 /** GitHub Alert 四型（desktop-manual-page spec「Markdown 的 GitHub Alert 提示框」）
@@ -73,6 +76,8 @@ const REHYPE_PLUGINS: Pluggable[] = [
     },
   ] as Pluggable,
 ];
+// 關鍵字外掛接在 sanitize 之後：它產生的 spec-kw class 不經放行清單。
+const SPEC_REHYPE_PLUGINS: Pluggable[] = [...REHYPE_PLUGINS, rehypeSpecKeywords as Pluggable];
 
 const PLUGINS: StreamdownProps["plugins"] = { code };
 const CONTROLS: StreamdownProps["controls"] = { code: { copy: true, download: false }, table: false, mermaid: false };
@@ -154,7 +159,7 @@ function remarkGithubAlerts(labels: Record<AlertType, string>) {
  * 行寬上限 96ch（≈48 全形字 @16px）——抽屜全螢幕時行寬不隨之增長（spec
  * 「markdown 文件內容行寬有上限」）；寬表格由 Streamdown 的表格容器橫捲。
  * GitHub Alert（`> [!NOTE]` 等四型）恆開、對所有 Markdown 檢視生效。 */
-export function Markdown({ content, empty }: MarkdownProps) {
+export function Markdown({ content, empty, specKeywords = false }: MarkdownProps) {
   const { t } = useI18n();
   // Streamdown 的區塊 memo 逐一比對屬性物件是否同一個：固定設定放模組層，隨語系變動的用 useMemo。
   const remarkPlugins = useMemo(
@@ -183,7 +188,7 @@ export function Markdown({ content, empty }: MarkdownProps) {
       <Streamdown
         mode="static"
         remarkPlugins={remarkPlugins}
-        rehypePlugins={REHYPE_PLUGINS}
+        rehypePlugins={specKeywords ? SPEC_REHYPE_PLUGINS : REHYPE_PLUGINS}
         plugins={PLUGINS}
         controls={CONTROLS}
         translations={translations}

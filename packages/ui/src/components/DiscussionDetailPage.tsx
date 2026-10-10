@@ -299,6 +299,91 @@ function statusPill(d: DiscussionItem): { labelKey: string; tone: StatusPillTone
   return { labelKey: "discussion.statusOpen", tone: "neutral" };
 }
 
+/** 狀態卡的階段步驟列（討論中 → 已結論 → 已轉出 → 已封存）：現站主色籤、已過站打勾、
+ * 未到站灰圈。討論詳情頁與已封存討論頁共用（後者現站恆為「已封存」）。 */
+export function DiscussionStageRow({ current }: { current: number }) {
+  const { t } = useI18n();
+  const stations = [
+    t("discussion.statusOpen"),
+    t("discussion.statusConcluded"),
+    t("ddrawer.stationPromoted"),
+    t("ddetail.stationArchived"),
+  ];
+  return (
+    <StatusRow mark="stage" label={t("ddetail.stageLabel")} wrap>
+      {stations.map((label, i) => (
+        <span key={label} className="flex items-center gap-1.5 text-xs">
+          {i > 0 && <span className="text-muted-foreground/50">→</span>}
+          {i === current ? (
+            <StatusPill tone="primary" aria-current="step">
+              {label}
+            </StatusPill>
+          ) : i < current ? (
+            <span className="inline-flex items-center gap-1 text-muted-foreground">
+              <Check aria-hidden="true" className="h-3 w-3" />
+              {label}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-muted-foreground/50">
+              <Circle aria-hidden="true" className="h-2.5 w-2.5" />
+              {label}
+            </span>
+          )}
+        </span>
+      ))}
+    </StatusRow>
+  );
+}
+
+/** 預設分頁＝讀者第一想看的：結論非空（去除鷹架註解後有內容）開結論，否則背景。
+ * 討論詳情頁與已封存討論頁共用。 */
+export function defaultDiscussionTab(sections: DiscussionSections | null): "conclusion" | "context" {
+  const hasConclusion = !!sections && sections.conclusion.replace(/<!--[\s\S]*?-->/g, "").trim().length > 0;
+  return hasConclusion ? "conclusion" : "context";
+}
+
+/** 衍生變更（列與籤共用）：變更名、狀態標示；`onOpen` 缺席＝不可開啟。 */
+interface PromotedChangeProps {
+  name: string;
+  badge: ReactNode;
+  onOpen?: () => void;
+}
+
+/** 「衍生變更」分頁的一列：等寬變更名、狀態標示，可開啟時附「開啟」鈕。討論詳情頁與已封存討論頁共用。 */
+export function PromotedChangeRow({ name, badge, onOpen }: PromotedChangeProps) {
+  const { t } = useI18n();
+  return (
+    <div data-promoted-row={name} className="flex items-center gap-2 rounded-md border border-border/60 px-2.5 py-1.5">
+      <span className="min-w-0 flex-1 truncate font-mono text-sm font-medium">{name}</span>
+      {badge}
+      {onOpen && (
+        <Button variant="outline" size="sm" className="h-6 shrink-0 gap-1 px-2 text-xs" onClick={onOpen}>
+          <ArrowUpRight className="h-3 w-3" /> {t("ddrawer.openCard")}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/** 狀態卡「衍生變更」列的一顆籤：變更名鈕（不可開啟時停用）＋狀態標示。討論詳情頁與已封存討論頁共用。 */
+export function PromotedChangeChip({ name, badge, onOpen }: PromotedChangeProps) {
+  return (
+    <span data-promoted-chip={name} className="inline-flex items-center gap-1">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled={!onOpen}
+        className="h-auto rounded-full bg-muted px-2 py-0.5 font-mono text-xs font-medium hover:bg-accent"
+        onClick={onOpen}
+      >
+        {name}
+      </Button>
+      {badge}
+    </span>
+  );
+}
+
 /** 衍生變更的階段籤 tone：作用中依看板欄色相、已封存中性、已刪除警示（加刪除線）。 */
 const STAGE_PILL_TONE: Record<Stage, StatusPillTone> = {
   proposed: "primary",
@@ -373,6 +458,16 @@ export function DiscussionDetailPage({
     if (archivedChanges.some((a) => a.name === name)) return { label, tone: "neutral", alive: false };
     return { label, tone: "destructive", alive: false };
   };
+  // 衍生列與衍生籤共用：階段籤，與只有作用中的子變更可開啟。
+  const stageBadge = (name: string) => {
+    const stage = childStage(name);
+    return (
+      <StatusPill tone={stage.tone} className={stage.tone === "destructive" ? "line-through" : undefined}>
+        {stage.label}
+      </StatusPill>
+    );
+  };
+  const openChild = (name: string) => (childStage(name).alive ? () => onOpenChangeCard?.(name) : undefined);
 
   const promotePane = (
     <div className="flex h-full flex-col gap-2">
@@ -380,49 +475,18 @@ export function DiscussionDetailPage({
         <p className="py-4 text-sm text-muted-foreground">{t("ddrawer.notPromoted")}</p>
       ) : (
         <div className="flex flex-col gap-1.5">
-          {discussion.promotedTo.map((name) => {
-            const stage = childStage(name);
-            return (
-              <div
-                key={name}
-                data-promoted-row={name}
-                className="flex items-center gap-2 rounded-md border border-border/60 px-2.5 py-1.5"
-              >
-                <span className="min-w-0 flex-1 truncate font-mono text-sm font-medium">{name}</span>
-                <StatusPill tone={stage.tone} className={stage.tone === "destructive" ? "line-through" : undefined}>
-                  {stage.label}
-                </StatusPill>
-                {stage.alive && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-6 shrink-0 gap-1 px-2 text-xs"
-                    onClick={() => onOpenChangeCard?.(name)}
-                  >
-                    <ArrowUpRight className="h-3 w-3" /> {t("ddrawer.openCard")}
-                  </Button>
-                )}
-              </div>
-            );
-          })}
+          {discussion.promotedTo.map((name) => (
+            <PromotedChangeRow key={name} name={name} badge={stageBadge(name)} onOpen={openChild(name)} />
+          ))}
         </div>
       )}
     </div>
   );
 
-  // 預設分頁＝讀者第一想看的：結論非空（去除鷹架註解後有內容）開結論，否則背景。
-  const conclusionHasContent =
-    !!sections && sections.conclusion.replace(/<!--[\s\S]*?-->/g, "").trim().length > 0;
-  const defaultTab = conclusionHasContent ? "conclusion" : "context";
+  const defaultTab = defaultDiscussionTab(sections);
 
-  // 階段步驟列：現站由 status 派生；「已封存」站保留給已封存討論頁共用本元件。
+  // 階段步驟列：現站由 status 派生；「已封存」站留給已封存討論頁。
   const stationIndex = discussion.status === "promoted" ? 2 : discussion.status === "concluded" ? 1 : 0;
-  const stations = [
-    t("discussion.statusOpen"),
-    t("discussion.statusConcluded"),
-    t("ddrawer.stationPromoted"),
-    t("ddetail.stationArchived"),
-  ];
 
   // 封存動詞：concluded 才可及；保留在途（hold）時停用並說明最後一刀轉出後自動封存。
   const archiveAction =
@@ -477,28 +541,7 @@ export function DiscussionDetailPage({
         />
 
         <StatusCard>
-          <StatusRow mark="stage" label={t("ddetail.stageLabel")} wrap>
-            {stations.map((label, i) => (
-              <span key={label} className="flex items-center gap-1.5 text-xs">
-                {i > 0 && <span className="text-muted-foreground/50">→</span>}
-                {i === stationIndex ? (
-                  <StatusPill tone="primary" aria-current="step">
-                    {label}
-                  </StatusPill>
-                ) : i < stationIndex ? (
-                  <span className="inline-flex items-center gap-1 text-muted-foreground">
-                    <Check aria-hidden="true" className="h-3 w-3" />
-                    {label}
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-muted-foreground/50">
-                    <Circle aria-hidden="true" className="h-2.5 w-2.5" />
-                    {label}
-                  </span>
-                )}
-              </span>
-            ))}
-          </StatusRow>
+          <DiscussionStageRow current={stationIndex} />
           {hold && (
             <StatusRow mark="hold" label={t("ddetail.holdLabel")} wrap>
               <span className="text-muted-foreground">{t("ddetail.holdHint")}</span>
@@ -506,29 +549,9 @@ export function DiscussionDetailPage({
           )}
           {promoteCount > 0 && (
             <StatusRow mark="promoted" label={t("ddetail.promotedLabel")} wrap>
-              {discussion.promotedTo.map((name) => {
-                const stage = childStage(name);
-                return (
-                  <span key={name} data-promoted-chip={name} className="inline-flex items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={!stage.alive}
-                      className="h-auto rounded-full bg-muted px-2 py-0.5 font-mono text-xs font-medium hover:bg-accent"
-                      onClick={() => onOpenChangeCard?.(name)}
-                    >
-                      {name}
-                    </Button>
-                    <StatusPill
-                      tone={stage.tone}
-                      className={stage.tone === "destructive" ? "line-through" : undefined}
-                    >
-                      {stage.label}
-                    </StatusPill>
-                  </span>
-                );
-              })}
+              {discussion.promotedTo.map((name) => (
+                <PromotedChangeChip key={name} name={name} badge={stageBadge(name)} onOpen={openChild(name)} />
+              ))}
             </StatusRow>
           )}
         </StatusCard>

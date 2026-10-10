@@ -7,9 +7,10 @@ import { toast } from "sonner";
 import {
   KanbanBoard,
   ArchivedList,
-  ArchivedDrawer,
+  ArchivedDetailPage,
   SpecList,
-  SpecDrawer,
+  SpecDetailPage,
+  sortSpecs,
   ManualPage,
   ChangeDetailPage,
   DiscussionDetailPage,
@@ -33,7 +34,7 @@ import {
   type Verb,
 } from "@speclink/ui";
 
-import { createAppStore, openTicketStation, selectAssetPrompt } from "./store";
+import { createAppStore, openTicketStation, selectAssetPrompt, type AppState } from "./store";
 import { locatorKey, type WorkspaceSession } from "./session";
 import { initTray, type TrayController } from "./tray";
 import { installAppMenu, type AppMenuAction } from "./appMenu";
@@ -42,7 +43,8 @@ import { ProjectColumn } from "./components/ProjectColumn";
 import { EmptyWorkspace } from "./components/EmptyWorkspace";
 import { ProjectActionItems, type ProjectActions } from "./components/ProjectActionsMenu";
 import { LeftTitleBar, MainTitleBar, type Crumb } from "./components/TitleBar";
-import { DetailNav } from "./components/DetailNav";
+import { DetailBack, DetailNav, isBackShortcut } from "./components/DetailNav";
+import { SwipeBack } from "./components/SwipeBack";
 import { DocumentActionsMenu } from "./components/DocumentActionsMenu";
 import { detectPlatform } from "./platform";
 import { WorkspaceChooser } from "./components/WorkspaceChooser";
@@ -110,6 +112,58 @@ const REPO_URL = "https://github.com/MomoChenisMe/speclink";
 function closeActiveProject(store: ReturnType<typeof createAppStore>) {
   const { activeKey, closeTab } = store.getState();
   if (activeKey) closeTab(activeKey);
+}
+
+/** 四種詳情頁任一開著（spec「詳情頁互斥」：同時至多一個）。 */
+function detailPageOpen(
+  st: Pick<AppState, "detailChange" | "detailDiscussion" | "detailSpec" | "detailArchived">,
+): boolean {
+  return st.detailChange !== null || st.detailDiscussion !== null || st.detailSpec !== null || st.detailArchived !== null;
+}
+
+/** 有確認框（封存、退回、刪除、討論封存）待確認：確認框屬於目前詳情頁，返回與切換都不作用。 */
+function confirmPending(
+  st: Pick<AppState, "pendingArchive" | "pendingRevert" | "pendingDelete" | "pendingArchiveDiscussion">,
+): boolean {
+  return st.pendingArchive !== null || st.pendingRevert !== null || st.pendingDelete !== null || st.pendingArchiveDiscussion !== null;
+}
+
+/** 各清單頁回報的呈現順序（含搜尋與篩選）——詳情頁 ‹ › 序列的來源。 */
+type VisibleOrder = Record<"changes" | "discussions" | "specs" | "archivedChanges" | "archivedDiscussions", string[]>;
+
+/** 開著的詳情頁：種類、目前項目、‹ › 序列與在序列內開啟某項的動作（與開啟同一個狀態層動作）。 */
+interface OpenDetail {
+  kind: "change" | "discussion" | "spec" | "archived";
+  current: string;
+  sequence: string[];
+  open: (key: string) => void;
+}
+
+/**
+ * 詳情頁種類的唯一分派處（序列、麵包屑、切換、渲染共用）。規格與已封存的序列依宿主取：宿主是
+ * 對應清單頁時用它回報的順序；否則（手冊頁、規格頁開已封存）用 store 清單的未過濾順序——規格
+ * 依規格頁的預設排序，已封存沿清單序。
+ */
+function openDetailOf(s: AppState, order: VisibleOrder): OpenDetail | null {
+  const archivedHost = s.boardView === "archived";
+  const a = s.detailArchived;
+  if (s.detailChange) return { kind: "change", current: s.detailChange.name, sequence: order.changes, open: s.openDetail };
+  if (s.detailDiscussion) {
+    return { kind: "discussion", current: s.detailDiscussion.slug, sequence: order.discussions, open: s.openDiscussion };
+  }
+  if (s.detailSpec !== null) {
+    const sequence = s.boardView === "specs" ? order.specs : sortSpecs(s.specs).map((spec) => spec.id);
+    return { kind: "spec", current: s.detailSpec, sequence, open: s.openSpec };
+  }
+  if (a?.kind === "change") {
+    const sequence = archivedHost ? order.archivedChanges : s.archived.map((x) => x.datedName);
+    return { kind: "archived", current: a.datedName, sequence, open: (datedName) => s.openArchived({ kind: "change", datedName }) };
+  }
+  if (a?.kind === "discussion") {
+    const sequence = archivedHost ? order.archivedDiscussions : s.discussions.archived.map((d) => d.slug);
+    return { kind: "archived", current: a.slug, sequence, open: (slug) => s.openArchived({ kind: "discussion", slug }) };
+  }
+  return null;
 }
 
 const DISABLED_CHOOSER_CONNECTIONS: Pick<
@@ -439,27 +493,32 @@ function AppInner({
   }, [useStore]);
 
   const platform = useMemo(() => detectPlatform(), []);
-  // 詳情頁序列（design D2）：看板回報的呈現順序（含搜尋與篩選），‹ › 與 ⌥↑／⌥↓ 共用。
-  const [visibleOrder, setVisibleOrder] = useState<{ changes: string[]; discussions: string[] }>({
+  // 詳情頁序列（design D2；desktop-readonly-detail-pages D4）：各清單頁回報的呈現順序（含搜尋
+  // 與篩選），‹ › 與 ⌥↑／⌥↓ 共用。
+  const [visibleOrder, setVisibleOrder] = useState<VisibleOrder>({
     changes: [],
     discussions: [],
+    specs: [],
+    archivedChanges: [],
+    archivedDiscussions: [],
   });
-  const pageOpen = s.detailChange !== null || s.detailDiscussion !== null;
-  const detailSequence = s.detailChange
-    ? visibleOrder.changes
-    : s.detailDiscussion
-      ? visibleOrder.discussions
-      : [];
-  const detailCurrent = s.detailChange?.name ?? s.detailDiscussion?.slug ?? null;
-  const detailIndex = detailCurrent === null ? -1 : detailSequence.indexOf(detailCurrent);
+  const detail = openDetailOf(s, visibleOrder);
+  const pageOpen = detail !== null;
+  const detailCurrent = detail?.current ?? null;
+  const detailIndex = detail ? detail.sequence.indexOf(detail.current) : -1;
+  // 確認（封存、刪除、退回）框開著或在途時，切換與返回都不作用：確認框屬於目前詳情頁，
+  // 會被一起收掉；在途確認成功後 store 關掉的是「目前」詳情頁，切過去的新頁會被誤關。
+  // 以 getState 讀：window 事件處理器只掛一次。
+  const detailActionsBlocked = () => detailConfirmInFlight.current || confirmPending(useStore.getState());
   /** 在序列內切換：越界不動、不循環；經與開啟相同的狀態層動作（互斥與浮層規則同樣適用）。 */
   const stepDetail = (delta: -1 | 1) => {
-    // 確認（封存、刪除、退回）在途時不切換：成功後 store 關掉的是「目前」詳情頁，切過去的新頁會被誤關。
-    if (detailConfirmInFlight.current) return;
-    const next = detailIndex < 0 ? undefined : detailSequence[detailIndex + delta];
-    if (next === undefined) return;
-    if (s.detailChange) s.openDetail(next);
-    else s.openDiscussion(next);
+    const next = detail?.sequence[detailIndex + delta];
+    if (!detail || detailIndex < 0 || next === undefined || detailActionsBlocked()) return;
+    detail.open(next);
+  };
+  // 返回鈕以外的返回途徑（Esc、返回快捷鍵、滑鼠側鍵、觸控板滑動）共用的關頁動作。
+  const backFromDetail = () => {
+    if (!detailActionsBlocked()) useStore.getState().closeDetailPage();
   };
   // 切換項目時頁層捲回頂端：捲動容器不重掛，否則沿用上一項的捲動位置。
   const detailLayerRef = useRef<HTMLDivElement>(null);
@@ -471,14 +530,16 @@ function AppInner({
   stepDetailRef.current = stepDetail;
   const handleDetailKey = (e: KeyboardEvent): boolean => {
     const st = useStore.getState();
-    if (e.defaultPrevented || (st.detailChange === null && st.detailDiscussion === null)) return false;
+    if (e.defaultPrevented || !detailPageOpen(st)) return false;
     const target = e.target as HTMLElement | null;
     if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
       return false;
     }
-    if (e.key === "Escape" && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    // 返回（design D8）：Esc 與 ⌘[、⌘←（非 macOS 為 Alt+←）等效於返回鈕。
+    const escape = e.key === "Escape" && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
+    if (escape || isBackShortcut(e, platform)) {
       e.preventDefault();
-      if (!detailConfirmInFlight.current) st.closeDetailPage();
+      backFromDetail();
       return true;
     }
     if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
@@ -517,6 +578,16 @@ function AppInner({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [useStore, platform]);
+  // 滑鼠側鍵「上一頁」（button 3）：WebView 是否送出此事件依平台而異，以真機驗收為準。
+  useEffect(() => {
+    const onMouseUp = (e: MouseEvent) => {
+      if (e.button !== 3 || !detailPageOpen(useStore.getState())) return;
+      e.preventDefault();
+      backFromDetail();
+    };
+    window.addEventListener("mouseup", onMouseUp);
+    return () => window.removeEventListener("mouseup", onMouseUp);
+  }, [useStore]);
 
   // macOS 原生選單列（desktop-native-menu design D3／D4）：語言或專案有無改變時重裝，cleanup
   // 取消尚未套用的上一次；非 macOS 由 installAppMenu 自行 no-op。選單動作只派發到 store 既有
@@ -614,10 +685,13 @@ function AppInner({
   const siblingChanges = siblingChangesOf(s.changes, fromSlugs, s.detailChange?.name ?? "");
   // 封存變更抽屜的來源討論（design D1 增補）：自封存清單以 datedName 查 fromDiscussions，
   // topic 同上解析、記錄已不在時退回 slug。
-  const archivedFromSlugs =
-    s.detailArchived?.kind === "change"
-      ? (s.archived.find((a) => a.datedName === s.detailArchived?.datedName)?.fromDiscussions ?? [])
-      : [];
+  const detailArchived = s.detailArchived;
+  const archivedItem =
+    detailArchived?.kind === "change" ? s.archived.find((a) => a.datedName === detailArchived.datedName) : undefined;
+  // 封存討論的記錄 live 優先、封存後備（與載入同一序）。
+  const archivedDiscussion =
+    detailArchived?.kind === "discussion" ? allDiscussions.find((d) => d.slug === detailArchived.slug) : undefined;
+  const archivedFromSlugs = archivedItem?.fromDiscussions ?? [];
   const archivedSourceDiscussions = archivedFromSlugs.map((slug) => ({
     slug,
     topic: allDiscussions.find((d) => d.slug === slug)?.topic ?? slug,
@@ -625,10 +699,7 @@ function AppInner({
   // 封存討論抽屜的衍生列（drawer-provenance-links design D4）：自封存討論清單項的 promotedTo
   // 派生三態——封存清單命中→副標封存日期；活躍清單命中→副標看板階段詞；皆無→不可點「無封存記錄」。
   // 順序沿 promotedTo 原序（轉出順序、出身在前）。
-  const detailArchived = s.detailArchived;
-  const archivedDiscussionTarget = detailArchived?.kind === "discussion" ? detailArchived : null;
-  const archivedPromotedChanges = archivedDiscussionTarget
-    ? (s.discussions.archived.find((d) => d.slug === archivedDiscussionTarget.slug)?.promotedTo ?? []).map(
+  const archivedPromotedChanges = (archivedDiscussion?.promotedTo ?? []).map(
         (name) => {
           const archivedHit = s.archived.find((a) => a.name === name);
           if (archivedHit) return { slug: name, topic: archivedHit.date };
@@ -637,8 +708,7 @@ function AppInner({
           }
           return { slug: name, topic: t("rdrawer.noArchiveRecord"), disabled: true };
         },
-      )
-    : [];
+      );
   // 點衍生籤：已封存→封存抽屜（底層不切頁）；活躍→詳情抽屜（openDetail 依正典落回看板）。
   const openPromotedChange = (name: string) => {
     const archivedHit = s.archived.find((a) => a.name === name);
@@ -647,18 +717,9 @@ function AppInner({
   };
   // 封存抽屜出身列的三欄（desktop-archived-parity D4）：一律自封存清單項帶入，
   // 抽屜零新查詢。封存討論無封存日期欄位——該欄自然缺席。
-  const archivedProvenance = (() => {
-    const target = s.detailArchived;
-    if (target?.kind === "change") {
-      const item = s.archived.find((a) => a.datedName === target.datedName);
-      return { createdBy: item?.createdBy, created: item?.created, archivedDate: item?.date };
-    }
-    if (target?.kind === "discussion") {
-      const item = s.discussions.archived.find((d) => d.slug === target.slug);
-      return { createdBy: item?.createdBy, created: item?.created };
-    }
-    return {};
-  })();
+  const archivedProvenance = archivedItem
+    ? { createdBy: archivedItem.createdBy, created: archivedItem.created, archivedDate: archivedItem.date }
+    : { createdBy: archivedDiscussion?.createdBy, created: archivedDiscussion?.created };
 
   // 殼（design D2）：標題列文字與麵包屑依模式——設定、有作用中專案、零專案（留白）。
   // projectTab＝標題列要呈現的專案（設定模式時沒有）。
@@ -676,7 +737,7 @@ function AppInner({
   const crumbs: Crumb[] =
     s.boardView === "settings"
       ? [{ label: t("app.settingsTitle") }]
-      : projectTab && pageOpen && detailCurrent !== null
+      : projectTab && detail
         ? [
             {
               label: projectTab.name,
@@ -686,7 +747,8 @@ function AppInner({
               },
             },
             { label: t(PAGE_LABEL_KEY[s.boardView]), onClick: s.closeDetailPage },
-            { label: detailCurrent, mono: true },
+            // 已封存變更以變更名呈現（序列與複製用含日期前綴的封存目錄名）。
+            { label: archivedItem?.name ?? detail.current, mono: true },
           ]
         : projectTab
           ? [
@@ -822,6 +884,40 @@ function AppInner({
       renderDocumentActions={renderDocumentActions}
     />
   );
+  // 規格詳情頁（desktop-readonly-detail-pages design D2）：宿主為規格頁或手冊頁，皆不切頁。
+  const specDetailPage = (
+    <SpecDetailPage
+      capability={s.detailSpec}
+      refreshGen={s.refreshGen}
+      loadDocument={(capability) => dataSource?.getSpecDocument(capability) ?? Promise.resolve(null)}
+      archivedChanges={s.archived}
+      onOpenArchivedChange={(datedName) => s.openArchived({ kind: "change", datedName })}
+      renderDocumentActions={renderDocumentActions}
+    />
+  );
+  // 已封存詳情頁（design D3）：props 自原已封存抽屜的接線搬移。
+  const archivedDetailPage = (
+    <ArchivedDetailPage
+      target={s.detailArchived}
+      refreshGen={s.refreshGen}
+      loadDocument={(datedName, artifact) => dataSource?.getArchivedDocument(datedName, artifact) ?? Promise.resolve(null)}
+      loadStationTicket={(datedName, station) =>
+        dataSource?.getArchivedStationTicket(datedName, station) ?? Promise.resolve(null)
+      }
+      loadCapabilities={(datedName) => dataSource?.archivedCapabilities(datedName) ?? Promise.resolve([])}
+      loadDiscussionDocument={(slug) => dataSource?.getDiscussionDocument(slug) ?? Promise.resolve(null)}
+      sourceDiscussions={archivedSourceDiscussions}
+      onOpenDiscussion={(slug) => s.openArchived({ kind: "discussion", slug })}
+      promotedChanges={archivedPromotedChanges}
+      onOpenPromotedChange={openPromotedChange}
+      reviewStatus={archivedItem?.reviewStatus}
+      verifyStatus={archivedItem?.verifyStatus}
+      discussionKind={archivedDiscussion?.kind}
+      discussionTopic={archivedDiscussion?.topic}
+      {...archivedProvenance}
+      renderDocumentActions={renderDocumentActions}
+    />
+  );
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -904,9 +1000,18 @@ function AppInner({
         <MainTitleBar
           platform={platform}
           crumbs={crumbs}
+          leading={
+            pageOpen && s.boardView !== "settings" ? (
+              <DetailBack
+                page={t(PAGE_LABEL_KEY[s.boardView])}
+                keys={platform === "macos" ? "⌘[" : "Alt+←"}
+                onBack={s.closeDetailPage}
+              />
+            ) : undefined
+          }
           trailing={
             pageOpen ? (
-              <DetailNav index={detailIndex} total={detailSequence.length} onStep={stepDetail} />
+              <DetailNav index={detailIndex} total={detail?.sequence.length ?? 0} onStep={stepDetail} />
             ) : undefined
           }
         />
@@ -1039,6 +1144,7 @@ function AppInner({
                 focus={s.detailSpec}
                 pageSize={s.pageSizes.specs}
                 onPageSizeChange={(size) => s.setPageSize("specs", size)}
+                onVisibleOrderChange={(specs) => setVisibleOrder((v) => ({ ...v, specs }))}
               />
             ) : s.boardView === "board" ? (
               <KanbanBoard
@@ -1070,7 +1176,7 @@ function AppInner({
                 }
                 planError={s.planError}
                 onDragActiveChange={handleBoardDragActive}
-                onVisibleOrderChange={setVisibleOrder}
+                onVisibleOrderChange={(order) => setVisibleOrder((v) => ({ ...v, ...order }))}
                 promotedExpanded={s.promotedExpanded}
                 onPromotedExpandedChange={s.setPromotedExpanded}
                 // 骨架的前提是「首訪的載入正在進行」：探測中（pendingTabKey）或整批
@@ -1094,68 +1200,37 @@ function AppInner({
                 onChangesPageSizeChange={(size) => s.setPageSize("archivedChanges", size)}
                 discussionsPageSize={s.pageSizes.archivedDiscussions}
                 onDiscussionsPageSizeChange={(size) => s.setPageSize("archivedDiscussions", size)}
+                onVisibleOrderChange={(order) =>
+                  setVisibleOrder((v) => ({
+                    ...v,
+                    archivedChanges: order.changes,
+                    archivedDiscussions: order.discussions,
+                  }))
+                }
               />
             )}
             </div>
             {/* 詳情頁層（design D1／D9）：覆蓋主區，150ms 淡入＋4px 位移；關閉直接移除。 */}
-            {pageOpen && (
+            {detail && (
               <div
                 ref={detailLayerRef}
                 data-testid="detail-page"
                 className="absolute inset-0 overflow-x-hidden overflow-y-auto bg-background animate-in fade-in slide-in-from-bottom-1 duration-150 ease-out motion-reduce:animate-none"
               >
-                {s.detailChange ? changeDetailPage : discussionDetailPage}
+                {
+                  {
+                    change: changeDetailPage,
+                    discussion: discussionDetailPage,
+                    spec: specDetailPage,
+                    archived: archivedDetailPage,
+                  }[detail.kind]
+                }
               </div>
             )}
+            {/* 觸控板滑動返回（design D8）：左緣「←」指示，過門檻放開即回宿主頁。 */}
+            <SwipeBack enabled={pageOpen && !confirmPending(s)} onBack={backFromDetail} />
           </main>
       </div>
-
-      {/* 唯讀規格抽屜（spec-archive-drawer design D1/D2） */}
-      <SpecDrawer
-        open={s.detailSpec !== null}
-        onOpenChange={(o) => !o && s.closeSpec()}
-        capability={s.detailSpec}
-        refreshGen={s.refreshGen}
-        archivedChanges={s.archived}
-        onOpenArchivedChange={(datedName) => s.openArchived({ kind: "change", datedName })}
-        loadDocument={(capability) =>
-          dataSource?.getSpecDocument(capability) ?? Promise.resolve(null)
-        }
-      />
-
-      {/* 唯讀封存抽屜（封存變更四分頁／封存討論三區段） */}
-      <ArchivedDrawer
-        open={s.detailArchived !== null}
-        onOpenChange={(o) => !o && s.closeArchived()}
-        target={s.detailArchived}
-        refreshGen={s.refreshGen}
-        loadDocument={(datedName, artifact) => dataSource?.getArchivedDocument(datedName, artifact) ?? Promise.resolve(null)}
-        loadStationTicket={(datedName, station) =>
-          dataSource?.getArchivedStationTicket(datedName, station) ?? Promise.resolve(null)
-        }
-        loadCapabilities={(datedName) => dataSource?.archivedCapabilities(datedName) ?? Promise.resolve([])}
-        loadDiscussionDocument={(slug) => dataSource?.getDiscussionDocument(slug) ?? Promise.resolve(null)}
-        sourceDiscussions={archivedSourceDiscussions}
-        onOpenDiscussion={(slug) => s.openArchived({ kind: "discussion", slug })}
-        promotedChanges={archivedPromotedChanges}
-        onOpenPromotedChange={openPromotedChange}
-        reviewStatus={
-          s.detailArchived?.kind === "change"
-            ? s.archived.find((a) => a.datedName === s.detailArchived?.datedName)?.reviewStatus
-            : undefined
-        }
-        verifyStatus={
-          s.detailArchived?.kind === "change"
-            ? s.archived.find((a) => a.datedName === s.detailArchived?.datedName)?.verifyStatus
-            : undefined
-        }
-        discussionKind={
-          s.detailArchived?.kind === "discussion"
-            ? s.discussions.archived.find((d) => d.slug === s.detailArchived?.slug)?.kind
-            : undefined
-        }
-        {...archivedProvenance}
-      />
 
       {workspace && (
         <WorkspaceChooser

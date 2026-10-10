@@ -94,7 +94,13 @@ code:
 ---
 ### Requirement: 桌面 app 呈現 change 與 spec 的清單與內容
 
-桌面 app SHALL 呈現當前專案的 change 清單（含每個 change 的 proposal 與 tasks 完成度狀態）與 spec 清單，並 SHALL 於使用者選定任一 change 或 spec 時顯示其對應 markdown 文件內容（change 的 proposal/design/tasks、spec 的 spec.md）。spec 的選定 SHALL 開啟唯讀規格抽屜——呈現正式規格 spec.md 全文與溯源資訊，寬度與全螢幕切換與變更詳情抽屜一致，開啟期間內容隨外部檔案變更反映；規格清單 SHALL NOT 提供行內展開。規格抽屜的標頭 SHALL 為兩層：標題列（capability 名，其後緊跟複製名稱鈕，複製後 SHALL 有已複製回饋）與出身列（前綴「來自」＋溯源變更籤）。溯源變更籤 SHALL 自正式規格全文的 `@trace` 來源變更名聚合去重；封存清單中有對應的變更名 SHALL 為可點籤、副標為封存日期，第一顆籤 SHALL 為封存日期最早的變更，其餘依封存日期升冪收進「+N」數字籤（N 為未直接顯示的數量），點擊「+N」SHALL 開啟浮層列出其餘全部；封存清單中無對應的變更名 SHALL 呈現為不可點籤、副標「無封存記錄」，並排在所有可點籤之後。點擊任一可點籤（含浮層項）SHALL 開啟該封存變更的唯讀抽屜——規格抽屜依 detail 抽屜互斥關閉、底層頁面 SHALL 維持不變。正式規格全文無 `@trace` 來源時出身列 SHALL 缺席；內文底部 SHALL NOT 再有溯源文字行。出身列 SHALL 恆定單行、SHALL NOT 撐寬抽屜。清單與狀態資料的欄位與值 SHALL 與對應 CLI `--json` 輸出一致；自檔案系統衍生的呈現層輔助欄位（如 spec 的最後修改時間、需求數、Purpose 摘要、溯源變更數）不屬此對齊範圍，SHALL NOT 出現在 CLI 輸出對照要求中。
+桌面 app SHALL 呈現當前專案的 change 清單（含每個 change 的 proposal 與 tasks 完成度狀態）與 spec 清單，並 SHALL 於使用者選定任一 change 或 spec 時顯示其對應 markdown 文件內容（change 的 proposal/design/tasks、spec 的 spec.md）。spec 的選定 SHALL 開啟規格詳情頁——宿主頁（規格頁或手冊頁）維持不變、頁覆蓋主區，開啟期間內容隨外部檔案變更反映；規格清單 SHALL NOT 提供行內展開。
+
+規格詳情頁的標頭 SHALL 為：標題列（capability 名，等寬字型，其後緊跟複製名稱鈕，複製後 SHALL 有已複製回饋）與灰字 meta 列「N 條需求 · 來自 M 個已封存變更 · 最近更新 YYYY-MM-DD（<變更>）」（N 為 `### Requirement:` 段數、M 為 `@trace` 來源變更去重數、最近更新取全部 `@trace` 的最大 updated 與其 source；缺席段整段缺席）；標題列右端 SHALL 提供「搜尋需求」輸入，以大小寫不敏感子字串比對需求標題、只呈現命中的需求段（Purpose 段恆在），無命中時顯示「沒有符合的需求」，字串 SHALL NOT 持久化。內容卡標頭分頁 SHALL 為「規格 N」與「溯源 M」。
+
+「規格」分頁 SHALL 先呈現 Purpose 段，其後每條需求一段：「Requirement」小標＋需求標題＋右端錨點「來自 <變更> · <日期>」（取該需求段尾的 `@trace` source 與 updated；該變更在封存清單中時錨點可點、點擊開啟該封存變更的已封存詳情頁；無 `@trace` 時錨點缺席）、需求文（`SHALL`／`SHALL NOT`／`MUST`／`MUST NOT` 以等寬灰底標示）、每個 Scenario 為左側細線縮排區塊（標題＋內文，`##### Example` 歸屬所在 Scenario）。頁寬於 1200px 時內容區左側 SHALL 列出需求目錄（Purpose 與全部需求標題），點擊 SHALL 捲至該段、捲動時 SHALL 高亮目前段；搜尋過濾後目錄只列命中段。需求段之外的內容（`## Requirements` 下的引言、需求之間或之後的其他 `## ` 區段）SHALL 照原文呈現、SHALL NOT 丟棄：引言在 Purpose 段之後、其他區段在全部需求段之後。辨認結構時 fenced code block 內的行一律是內容，收尾圍欄 SHALL 與開頭同字元且不短於開頭（巢狀圍欄內的 `### Requirement:` 不是需求）。規格全文不含任何 `### Requirement:` 標題時 SHALL 整篇以單一 markdown 檢視退回、無目錄，不報錯。
+
+「溯源」分頁 SHALL 列出正式規格全文 `@trace` 來源變更名的去重清單，一列一個變更：封存清單中有對應者為可點列、副標為封存日期、依封存日期升冪在前，點擊 SHALL 開啟該封存變更的已封存詳情頁（規格詳情頁依「詳情頁互斥」關閉、宿主頁 SHALL 維持不變）；無對應者為不可點列、副標「無封存記錄」，排在所有可點列之後、依文件首次出現序。全文無 `@trace` 來源時分頁徽章為 0 且卡內顯示「此規格沒有來源變更」。清單與狀態資料的欄位與值 SHALL 與對應 CLI `--json` 輸出一致；自檔案系統衍生的呈現層輔助欄位（如 spec 的最後修改時間、需求數、Purpose 摘要、溯源變更數）不屬此對齊範圍，SHALL NOT 出現在 CLI 輸出對照要求中。
 
 #### Scenario: 顯示 change 清單與狀態
 
@@ -106,48 +112,63 @@ code:
 - **WHEN** 使用者在清單中選定一個 change
 - **THEN** app 顯示該 change 的 proposal 內容，並可切換檢視其 design 與 tasks（若存在）
 
-#### Scenario: 選定 spec 以抽屜顯示其正式規格內容
+#### Scenario: 選定 spec 以詳情頁顯示需求分段
 
-- **WHEN** 使用者於規格頁點擊一張規格卡
-- **THEN** 開啟唯讀規格抽屜顯示該 spec 的正式規格 spec.md 全文，標頭為標題列與出身列，溯源變更以籤呈現於出身列，內文底部無溯源文字行，清單卡片無行內展開，抽屜寬度與變更詳情抽屜一致
+- **WHEN** 使用者於規格頁點一列含 Purpose、三條需求（各帶 Scenario 與 `@trace`）的規格
+- **THEN** 主區換成規格詳情頁：標題列為等寬名稱＋複製鈕、meta 列「3 條需求 · 來自 2 個已封存變更 · 最近更新 …」；「規格」分頁依序為 Purpose 段與三個需求段，各段有「Requirement」小標、標題、右端「來自 <變更> · 日期」錨點、SHALL 關鍵字為等寬灰底、Scenario 為左線縮排區塊；規格頁清單無行內展開、宿主維持規格頁
 
-#### Scenario: 溯源籤依封存日期排序且首籤為出身
+#### Scenario: 需求目錄與搜尋需求
 
-- **WHEN** 使用者開啟一份正式規格全文含三個 `@trace` 來源變更、且三者皆在封存清單中的規格抽屜
-- **THEN** 出身列顯示「來自」、封存日期最早的變更籤與「+2」籤；點擊「+2」開啟浮層依封存日期升冪列出其餘兩個，每項主行為變更名、副標為封存日期
+- **WHEN** 視窗寬 1600px 時使用者於規格詳情頁的「搜尋需求」輸入只命中一條需求標題的字串
+- **THEN** 內容區左側目錄只列 Purpose 與該條需求，「規格」分頁只呈現 Purpose 段與該需求段；清空後全部還原；視窗縮至 1100px 時目錄缺席、內文照常
+
+#### Scenario: 溯源分頁依封存日期排序
+
+- **WHEN** 使用者開啟一份正式規格全文含三個 `@trace` 來源變更、且三者皆在封存清單中的規格詳情頁並切到「溯源」分頁
+- **THEN** 分頁徽章為 3，三列依封存日期升冪排列，每列主行為變更名、副標為封存日期
 
 ##### Example: 三個來源變更的排序
 
 | 正式規格全文出現序 | 變更名 | 封存日期 | 呈現位置 |
 | --- | --- | --- | --- |
-| 1 | drawer-polish | 2026-08-04 | 浮層第 1 項 |
-| 2 | spec-archive-drawer | 2026-07-11 | 第一顆籤（出身） |
-| 3 | desktop-archived-parity | 2026-08-11 | 浮層第 2 項 |
+| 1 | drawer-polish | 2026-08-04 | 第 2 列 |
+| 2 | spec-archive-drawer | 2026-07-11 | 第 1 列 |
+| 3 | desktop-archived-parity | 2026-08-11 | 第 3 列 |
 
-#### Scenario: 點擊溯源籤開啟封存變更抽屜且底層不切頁
+#### Scenario: 點擊溯源列開啟已封存詳情頁且宿主不切頁
 
-- **WHEN** 使用者於手冊頁經出處開啟規格抽屜，再點擊出身列的一顆可點溯源籤
-- **THEN** 規格抽屜關閉、該封存變更的唯讀抽屜開啟，底層頁面維持手冊頁
+- **WHEN** 使用者於手冊頁經出處開啟規格詳情頁，再於「溯源」分頁點一個可點列
+- **THEN** 規格詳情頁關閉、該封存變更的已封存詳情頁開啟，宿主頁面維持手冊頁；按 Esc 回到手冊頁
 
 #### Scenario: 無封存記錄的來源變更不可點
 
-- **WHEN** 使用者開啟一份正式規格全文含兩個 `@trace` 來源變更、其中一個不在封存清單中的規格抽屜
-- **THEN** 有對應者為第一顆可點籤，無對應者以不可點的灰籤呈現於「+1」浮層中、副標「無封存記錄」，點擊灰籤不開啟任何抽屜
+- **WHEN** 使用者開啟一份正式規格全文含兩個 `@trace` 來源變更、其中一個不在封存清單中的規格詳情頁並切到「溯源」分頁
+- **THEN** 有對應者為第一列可點，無對應者排在其後、副標「無封存記錄」且不可點，點擊無任何效果
 
-#### Scenario: 無溯源來源時出身列缺席
+#### Scenario: 無溯源來源時溯源分頁空態
 
-- **WHEN** 使用者開啟一份正式規格全文不含任何 `@trace` 註解的規格抽屜
-- **THEN** 標頭只有標題列，無「來自」列，內文底部亦無溯源文字
+- **WHEN** 使用者開啟一份正式規格全文不含任何 `@trace` 註解的規格詳情頁
+- **THEN** meta 列無「來自」與「最近更新」段，「規格」分頁各需求段無錨點，「溯源」分頁徽章為 0 且顯示「此規格沒有來源變更」
+
+#### Scenario: 需求段之外的內容照樣呈現
+
+- **WHEN** 使用者開啟一份規格詳情頁，其 `## Requirements` 下有一段引言、最後一條需求之後另有 `## 附錄` 區段
+- **THEN** 「規格」分頁依序為 Purpose 段、引言、需求段、附錄區段，引言與附錄的內文都可見
+
+#### Scenario: 無需求標題的規格整篇退回
+
+- **WHEN** 使用者開啟一份不含任何 `### Requirement:` 標題的規格
+- **THEN** 「規格」分頁整篇以單一 markdown 檢視呈現、無目錄、無錯誤訊息
 
 #### Scenario: 複製名稱鈕
 
-- **WHEN** 使用者於規格抽屜點擊標題旁的複製名稱鈕
+- **WHEN** 使用者於規格詳情頁點擊標題旁的複製名稱鈕
 - **THEN** capability 名寫入剪貼簿並短暫顯示已複製回饋
 
 
 <!-- @trace
-source: drawer-provenance-links
-updated: 2026-09-03
+source: desktop-readonly-detail-pages
+updated: 2026-10-10T19:39:25+08:00
 -->
 
 ---
@@ -647,7 +668,7 @@ updated: 2026-10-10T15:55:28+08:00
 ---
 ### Requirement: 已封存頁含討論節
 
-已封存頁 SHALL 以頁標題區（標題「已封存」、灰字說明、右端全圓搜尋框）與一張白底細框列表卡呈現，列表卡頂部為卡片標頭式分頁「變更」與「討論」兩節，預設顯示「變更」；分頁標籤 SHALL 各帶該節目前（搜尋過濾後）筆數徽章。兩節皆為列式清單（一列一筆，列 anatomy 見「規格與封存卡片收合資訊」），點擊列開啟唯讀抽屜（檢視行為見「已封存項目以抽屜檢視」）；討論節 SHALL 列出封存討論（日期＋slug 標題＋topic 描述），SHALL NOT 提供任何寫入動詞。頁標題區的搜尋框 SHALL 同時過濾兩節——身處任一子頁籤時，另一子頁籤的徽章 SHALL 反映其命中數。兩子頁籤的換頁頁碼 SHALL 互相獨立。討論清單資料缺席（向後相容路徑）時子頁籤列 SHALL 缺席、僅顯示變更清單。隨最後一個子變更歸檔而自動封存的討論、與經 GUI 或 CLI 手動封存的討論 SHALL 一致地出現於討論節。抽屜檢視的區段標題 SHALL 使用「背景」「討論過程」「結論」。
+已封存頁 SHALL 以頁標題區（標題「已封存」、灰字說明、右端全圓搜尋框）與一張白底細框列表卡呈現，列表卡頂部為卡片標頭式分頁「變更」與「討論」兩節，預設顯示「變更」；分頁標籤 SHALL 各帶該節目前（搜尋過濾後）筆數徽章。兩節皆為列式清單（一列一筆，列 anatomy 見「規格與封存卡片收合資訊」），點擊列開啟唯讀的已封存詳情頁（檢視行為見「已封存項目以詳情頁檢視」）；討論節 SHALL 列出封存討論（日期＋slug 標題＋topic 描述），SHALL NOT 提供任何寫入動詞。頁標題區的搜尋框 SHALL 同時過濾兩節——身處任一子頁籤時，另一子頁籤的徽章 SHALL 反映其命中數。兩子頁籤的換頁頁碼 SHALL 互相獨立。討論清單資料缺席（向後相容路徑）時子頁籤列 SHALL 缺席、僅顯示變更清單。隨最後一個子變更歸檔而自動封存的討論、與經 GUI 或 CLI 手動封存的討論 SHALL 一致地出現於討論節。已封存討論詳情頁的分頁 SHALL 使用「背景」「討論過程」「結論」。
 
 #### Scenario: 切換子頁籤直達討論清單
 
@@ -666,8 +687,8 @@ updated: 2026-10-10T15:55:28+08:00
 
 
 <!-- @trace
-source: desktop-list-pages-reskin
-updated: 2026-10-09T22:35:44+08:00
+source: desktop-readonly-detail-pages
+updated: 2026-10-10T19:39:25+08:00
 -->
 
 ---
@@ -1290,7 +1311,7 @@ updated: 2026-10-10T15:55:28+08:00
 ---
 ### Requirement: 規格頁提供清單、搜尋與展開檢視
 
-專案欄的「規格」項 SHALL 進入規格頁：頁標題區（標題「規格」、灰字說明、右端全圓搜尋框）之下為一張白底細框列表卡，以列式清單呈現全部正式規格：每列 SHALL 含 spec 名稱（等寬字型）、hover 才顯示的複製名稱鈕、一行截斷的 Purpose 摘要（為封存流程佔位文字時改顯警示樣式「Purpose 待補」）、右端的需求數、溯源變更數、最後修改相對時間（自檔案系統 mtime 衍生，天級：今天／昨天／N 天前；mtime 不可得時該資訊缺席）與 › 收尾。搜尋框 SHALL 以大小寫不敏感的名稱子字串即時過濾清單。點列 SHALL 開啟該規格的唯讀檢視（現為規格抽屜，與手冊頁出處所開的同一檢視），檢視內顯示 spec.md 全文（markdown 渲染）與來源變更籤（該檔全部 @trace 區塊的 source 去重、依文件首次出現順序；無 source 時缺席）；全文 SHALL 於開啟時才載入。無 spec 的專案與搜尋無結果 SHALL 各於列表卡內顯示空狀態文案。規格頁 SHALL 為唯讀，SHALL NOT 提供任何規格寫入操作。
+專案欄的「規格」項 SHALL 進入規格頁：頁標題區（標題「規格」、灰字說明、右端全圓搜尋框）之下為一張白底細框列表卡，以列式清單呈現全部正式規格：每列 SHALL 含 spec 名稱（等寬字型）、hover 才顯示的複製名稱鈕、一行截斷的 Purpose 摘要（為封存流程佔位文字時改顯警示樣式「Purpose 待補」）、右端的需求數、溯源變更數、最後修改相對時間（自檔案系統 mtime 衍生，天級：今天／昨天／N 天前；mtime 不可得時該資訊缺席）與 › 收尾。搜尋框 SHALL 以大小寫不敏感的名稱子字串即時過濾清單。點列 SHALL 開啟該規格的詳情頁（與手冊頁出處所開的同一頁，呈現規則見「桌面 app 呈現 change 與 spec 的清單與內容」）；全文 SHALL 於開啟時才載入。無 spec 的專案與搜尋無結果 SHALL 各於列表卡內顯示空狀態文案。規格頁 SHALL 為唯讀，SHALL NOT 提供任何規格寫入操作。
 
 #### Scenario: 進入規格頁顯示卡片清單
 
@@ -1310,18 +1331,10 @@ updated: 2026-10-10T15:55:28+08:00
 | desktop-app、desktop-config、node-sdk | SDK | node-sdk |
 | desktop-app、desktop-config、node-sdk | zzz | 無結果空狀態 |
 
-#### Scenario: 點列開啟規格檢視
+#### Scenario: 點列開啟規格詳情頁
 
 - **WHEN** 點一列規格
-- **THEN** 開啟該 spec 的唯讀檢視，顯示 spec.md 全文 markdown 渲染（先呈載入態）與來源變更籤（依 @trace source 去重、首次出現順序；無 source 時缺席）；清單與搜尋字串維持不變
-
-##### Example: 來源去重與排序
-
-| spec.md 內 @trace source 出現序 | 來源變更籤 |
-| ------------------------------- | ---------- |
-| A、A、B | A、B |
-| B、A、B | B、A |
-| （無 @trace 或無 source） | 缺席 |
+- **THEN** 主區換成該 spec 的規格詳情頁（先呈載入態），需求逐條分段、溯源分頁列出來源變更（依 @trace source 去重）；關閉後清單與搜尋字串維持不變
 
 #### Scenario: 複製名稱
 
@@ -1336,12 +1349,12 @@ updated: 2026-10-10T15:55:28+08:00
 #### Scenario: 外部變更後反映
 
 - **WHEN** 規格頁開啟期間外部寫者修改某 spec 的 spec.md
-- **THEN** 世代重載後列的修改時間更新，開啟中的檢視反映新全文
+- **THEN** 世代重載後列的修改時間更新，開啟中的規格詳情頁反映新全文
 
 
 <!-- @trace
-source: desktop-list-pages-reskin
-updated: 2026-10-09T22:35:44+08:00
+source: desktop-readonly-detail-pages
+updated: 2026-10-10T19:39:25+08:00
 -->
 
 ---
@@ -1546,73 +1559,9 @@ updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
-### Requirement: 已封存項目以抽屜檢視
-
-已封存頁的變更列與討論列 SHALL 以卡片清單呈現，點擊卡片 SHALL 開啟唯讀抽屜，SHALL NOT 提供行內展開。封存變更抽屜 SHALL 至少含提案、設計、任務、規格分頁，內容來自封存目錄的實體文件；任務分頁的核取方塊不可點擊且無批次工具列；有來源討論的封存變更 SHALL 於標題下方顯示可點的來源討論標記，點擊 SHALL 於同一抽屜切換至該討論的唯讀檢視（記錄以 live 優先、封存後備載入），無來源討論時該標記 SHALL 缺席。封存討論抽屜 SHALL 呈現「背景」「討論過程」「結論」區段。有衍生變更（promoted_to 非空）的封存討論抽屜 SHALL 於出身列之下顯示「衍生」列：前綴「衍生」＋第一顆衍生變更籤，其餘收進「+N」數字籤並以浮層列出，順序依轉出順序；每顆籤 SHALL 依子變更所在呈現三態——子變更在封存清單中者為可點籤、副標為封存日期、點擊 SHALL 開啟該封存變更的唯讀抽屜；子變更在活躍變更清單中者為可點籤、副標為其看板階段詞、點擊 SHALL 開啟該變更的詳情抽屜（底層依「變更與討論抽屜開啟時底層落回看板」切回看板）；兩者皆無者為不可點籤、副標「無封存記錄」。無衍生變更時「衍生」列 SHALL 缺席；封存變更抽屜 SHALL NOT 顯示「衍生」列。兩抽屜的標頭 SHALL 於標題文字後緊跟複製鈕——封存變更複製含日期前綴的封存目錄名、封存討論複製 slug，複製後 SHALL 有已複製回饋；標題之下 SHALL 有出身列，顯示建立者（首字母圓標＋名字，完整識別收 hover 提示）、建立日期與封存日期，恆定單行、溢出裁切——與變更詳情抽屜的出身列同構；出身列的任一欄位資料缺席時該欄位 SHALL 缺席、其餘欄位照常呈現。封存抽屜標頭 SHALL NOT 呈現進度條與動詞動作列——封存是唯讀定格。兩抽屜 SHALL 為唯讀——SHALL NOT 提供任務勾選、動詞執行或任何寫入操作；寬度與全螢幕切換 SHALL 與變更詳情抽屜一致；開啟期間內容 SHALL 隨外部檔案變更反映。所請求的文件不存在時對應分頁或區段 SHALL 顯示空狀態而非錯誤。
-
-#### Scenario: 點擊封存變更卡開啟四分頁抽屜
-
-- **WHEN** 使用者於已封存頁點擊一個含完整 artifacts 的封存變更卡
-- **THEN** 開啟唯讀抽屜顯示提案／設計／任務／規格分頁，各分頁呈現封存目錄內對應文件的內容，任務分頁的核取方塊不可點擊，清單卡片本身無行內展開
-
-#### Scenario: 點擊封存討論卡開啟唯讀抽屜
-
-- **WHEN** 使用者於已封存頁討論節點擊一筆封存討論卡
-- **THEN** 開啟唯讀抽屜顯示背景、討論過程、結論區段，無轉為變更、封存或任何寫入按鈕
-
-#### Scenario: 缺件文件顯示空狀態
-
-- **WHEN** 使用者開啟一個無 design.md 的封存變更抽屜並切至設計分頁
-- **THEN** 分頁顯示空狀態文字，無錯誤彈窗，其餘分頁照常可用
-
-#### Scenario: 自封存變更抽屜跳轉來源討論
-
-- **WHEN** 使用者開啟一個帶來源討論的封存變更抽屜，點擊標題下方的來源討論標記
-- **THEN** 同一抽屜切換為該討論的唯讀檢視（背景／討論過程／結論），記錄以 live 優先、封存後備載入；無來源討論的封存變更抽屜不顯示此標記
-
-#### Scenario: 封存變更抽屜標頭的複製鈕與出身列
-
-- **WHEN** 使用者開啟一筆建立者與建立日期俱在的封存變更抽屜並點擊標題旁的複製鈕
-- **THEN** 剪貼簿寫入含日期前綴的封存目錄名並顯示已複製回饋；標題下方的出身列顯示建立者首字母圓標＋名字、建立日期與封存日期，無進度條與動詞動作列
-
-#### Scenario: 出身列欄位缺席時其餘照常
-
-- **WHEN** 使用者開啟一筆建立日期不可得、建立者可得的封存變更抽屜
-- **THEN** 出身列顯示建立者與封存日期，建立日期欄位缺席，無錯誤與空欄佔位
-
-#### Scenario: 封存討論抽屜列出衍生變更並跳轉封存變更
-
-- **WHEN** 使用者開啟一筆 promoted_to 含兩個已封存子變更的封存討論抽屜，點擊「衍生」列的第一顆籤
-- **THEN** 出身列之下顯示「衍生」、第一顆子變更籤與「+1」籤；點擊後封存討論抽屜關閉、該子變更的封存抽屜開啟，底層頁面維持已封存頁
-
-#### Scenario: 衍生變更籤的三態
-
-- **WHEN** 使用者開啟一筆 promoted_to 含三個子變更的封存討論抽屜——一個已封存、一個仍在看板進行中、一個已刪除
-- **THEN** 三顆籤依轉出順序呈現，各自的副標與可點性如下表；點擊活躍者開啟其詳情抽屜且底層切回看板，點擊已刪除者無任何動作
-
-##### Example: 三態對照
-
-| 子變更所在 | 副標 | 可點 | 點擊結果 |
-| --- | --- | --- | --- |
-| 封存清單 | 封存日期（如 2026-09-02） | 是 | 開啟該封存變更抽屜，底層不切頁 |
-| 活躍變更清單 | 看板階段詞（如「進行中」） | 是 | 開啟該變更詳情抽屜，底層落回看板 |
-| 兩者皆無 | 無封存記錄 | 否 | 無 |
-
-#### Scenario: 無衍生變更時衍生列缺席
-
-- **WHEN** 使用者開啟一筆 promoted_to 為空的封存討論抽屜
-- **THEN** 出身列只有建立者與建立日期，無「衍生」列；封存變更抽屜亦無「衍生」列
-
-
-<!-- @trace
-source: drawer-provenance-links
-updated: 2026-09-03
--->
-
----
 ### Requirement: 規格與封存卡片收合資訊
 
-規格列 SHALL 於標題文字後緊跟 hover 才顯示的複製名稱鈕，並顯示需求數、溯源變更數與相對修改時間；Purpose 摘要 SHALL 取正式規格 Purpose 區段首個非空行一行截斷顯示，當 Purpose 為封存流程產生的佔位文字時 SHALL 改顯「Purpose 待補」警示樣式而非佔位原文。封存變更列 SHALL 於最左顯示日期、標題（change 名）後緊跟複製鈕、任務數徽章（未全完成 SHALL 以警示樣式呈現，與全完成可辨；無 tasks.md 者不顯示徽章）、觸及規格數、建立者標記（hover 顯示全名）與來源討論標記（無來源討論時缺席）；標題下方 SHALL 有描述列，一行截斷顯示封存 proposal 的 Why 首句（清單資料的 Why 首句欄位缺席時描述列 SHALL 缺席、列退回單行）——與看板變更卡的描述列同構。封存討論列 SHALL 以 slug 為標題（等寬強調、緊跟複製 slug 鈕），topic SHALL 降為標題下方的描述列一行截斷顯示，並顯示日期、輪數與衍生變更數——與看板討論卡的 slug 標題＋topic 描述同構（slug 作為討論識別錨點屬 LANGUAGE.md 受控例外的既有適用範圍）。三種列的計數 meta（需求數、溯源變更數、觸及規格數、衍生變更數）SHALL 以一致的「icon＋數字」樣式呈現——SHALL NOT 混用 pill 底色或無 icon 的圓圈數字；任務數徽章 SHALL 維持 pill 樣式與配色分級（狀態語意例外）。上述資訊 SHALL 於列上（未開啟任何抽屜）即可見；三種列 SHALL 以共用列元件呈現（整列可點、細線分隔、hover 微灰、右端 › 收尾），資料 SHALL 由清單載入一次帶出，SHALL NOT 逐列讀取文件全文。
+規格列 SHALL 於標題文字後緊跟 hover 才顯示的複製名稱鈕，並顯示需求數、溯源變更數與相對修改時間；Purpose 摘要 SHALL 取正式規格 Purpose 區段首個非空行一行截斷顯示，當 Purpose 為封存流程產生的佔位文字時 SHALL 改顯「Purpose 待補」警示樣式而非佔位原文。封存變更列 SHALL 於最左顯示日期、標題（change 名）後緊跟複製鈕、任務數徽章（未全完成 SHALL 以警示樣式呈現，與全完成可辨；無 tasks.md 者不顯示徽章）、觸及規格數、建立者標記（hover 顯示全名）與來源討論標記（無來源討論時缺席）；標題下方 SHALL 有描述列，一行截斷顯示封存 proposal 的 Why 首句（清單資料的 Why 首句欄位缺席時描述列 SHALL 缺席、列退回單行）——與看板變更卡的描述列同構。封存討論列 SHALL 以 slug 為標題（等寬強調、緊跟複製 slug 鈕），topic SHALL 降為標題下方的描述列一行截斷顯示，並顯示日期、輪數與衍生變更數——與看板討論卡的 slug 標題＋topic 描述同構（slug 作為討論識別錨點屬 LANGUAGE.md 受控例外的既有適用範圍）。三種列的計數 meta（需求數、溯源變更數、觸及規格數、衍生變更數）SHALL 以一致的「icon＋數字」樣式呈現——SHALL NOT 混用 pill 底色或無 icon 的圓圈數字；任務數徽章 SHALL 維持 pill 樣式與配色分級（狀態語意例外）。上述資訊 SHALL 於列上（未開啟任何詳情頁）即可見；三種列 SHALL 以共用列元件呈現（整列可點、細線分隔、hover 微灰、右端 › 收尾），資料 SHALL 由清單載入一次帶出，SHALL NOT 逐列讀取文件全文。
 
 #### Scenario: 規格卡收合資訊
 
@@ -1632,7 +1581,7 @@ updated: 2026-09-03
 #### Scenario: 封存討論卡顯示衍生變更數與複製 slug
 
 - **WHEN** 已封存頁討論節含一筆轉出 2 個變更的封存討論
-- **THEN** 該列顯示衍生變更數 2 與 hover 才顯示的複製 slug 鈕，點擊複製鈕將 slug 寫入剪貼簿且不開啟抽屜
+- **THEN** 該列顯示衍生變更數 2 與 hover 才顯示的複製 slug 鈕，點擊複製鈕將 slug 寫入剪貼簿且不開啟詳情頁
 
 #### Scenario: 封存變更卡顯示 Why 首句描述列
 
@@ -1646,8 +1595,8 @@ updated: 2026-09-03
 
 
 <!-- @trace
-source: desktop-list-pages-reskin
-updated: 2026-10-09T22:35:44+08:00
+source: desktop-readonly-detail-pages
+updated: 2026-10-10T19:39:25+08:00
 -->
 
 ---
@@ -2148,79 +2097,17 @@ code:
 ---
 ### Requirement: 已封存側的審查標示
 
-已封存頁的清單與抽屜 SHALL 依封存時的審查結局標示：帶章者顯示「已審查」；帶化石工單而無章者顯示「曾審查未通過」；皆無者無標示。
+已封存頁的清單與詳情頁 SHALL 依封存時的審查結局標示：帶章者顯示「已審查」；帶化石工單而無章者顯示「曾審查未通過」；皆無者無標示。
 
 #### Scenario: 曾審查未通過
 
 - **WHEN** 已封存 change 的目錄含 review.md 而 metadata 無 reviewed 欄位
-- **THEN** 已封存清單項與抽屜顯示「曾審查未通過」標示
+- **THEN** 已封存清單項與詳情頁顯示「曾審查未通過」標示
+
 
 <!-- @trace
-source: code-review-stage
-updated: 2026-08-02
-code:
-  - AGENTS.md
-  - CLAUDE.md
-  - README.en.md
-  - README.md
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/verbs.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/review_verbs.rs
-  - crates/speclink-core/assets/skills/review.md
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/inprogress.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/review.rs
-  - crates/speclink-core/src/skills.rs
-  - crates/speclink-core/src/store.rs
-  - crates/speclink-core/src/teststore.rs
-  - crates/speclink-core/src/util.rs
-  - crates/speclink-core/tests/golden/assets.lock
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-core/tests/golden/remote-claude.marker.md
-  - crates/speclink-core/tests/render_golden.rs
-  - crates/speclink-fs/src/lib.rs
-  - crates/speclink-host/src/bridge.rs
-  - crates/speclink-host/src/commit.rs
-  - crates/speclink-node/src/store_bridge.rs
-  - crates/speclink-protocol/src/command.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/tests/client_errors.rs
-  - crates/speclink-remote/tests/typed_client.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/read_api.rs
-  - crates/speclink-server/tests/review_api.rs
-  - packages/ui/src/__tests__/reviewBadge.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedDrawer.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/ReviewArchiveDialog.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/reviewStyle.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
+source: desktop-readonly-detail-pages
+updated: 2026-10-10T19:39:25+08:00
 -->
 
 ---
@@ -2368,16 +2255,17 @@ updated: 2026-08-06
 ---
 ### Requirement: 已封存側的驗證標示
 
-已封存頁的清單與抽屜 SHALL 依封存時的驗證結局標示：帶章者「已驗證」；帶化石驗證工單而無章者「曾驗證未通過」；皆無者無標示。與審查結局標示可並存。
+已封存頁的清單與詳情頁 SHALL 依封存時的驗證結局標示：帶章者「已驗證」；帶化石驗證工單而無章者「曾驗證未通過」；皆無者無標示。與審查結局標示可並存。
 
 #### Scenario: 曾驗證未通過
 
 - **WHEN** 已封存 change 的目錄含 verify.md 而 metadata 無 verified 欄位
-- **THEN** 已封存清單項與抽屜顯示「曾驗證未通過」標示
+- **THEN** 已封存清單項與詳情頁顯示「曾驗證未通過」標示
+
 
 <!-- @trace
-source: verify-station-parity
-updated: 2026-08-06
+source: desktop-readonly-detail-pages
+updated: 2026-10-10T19:39:25+08:00
 -->
 
 ---
@@ -2770,31 +2658,6 @@ updated: 2026-09-16T14:57:15+08:00
 <!-- @trace
 source: add-change-plan-remote
 updated: 2026-09-17T15:34:04+08:00
--->
-
----
-### Requirement: 已封存抽屜的工單分頁
-
-已封存變更抽屜 SHALL 於「規格」分頁之後提供兩個條件式分頁：封存清單項 `reviewStatus` 為 `reviewedNotPassed` 時 SHALL 出現「審查」分頁，`verifyStatus` 為 `verifiedNotPassed` 時 SHALL 出現「驗證」分頁，審查在前；其他狀態（`none`、`reviewed`、`verified`）SHALL NOT 渲染對應分頁。分頁內容、載入三態、空態文案與工單資料形狀 SHALL 與「詳情抽屜的工單分頁」相同，資料來自封存目錄內的 `review.md`／`verify.md`（本機讀封存目錄；遠端以 `GET /archived/{datedName}/artifacts/review.md` 或 `verify.md` 取原文後解析）。分頁 SHALL 為唯讀。
-
-#### Scenario: 曾審查未通過的封存抽屜顯示審查分頁
-
-- **WHEN** 開啟 `reviewStatus: "reviewedNotPassed"`、`verifyStatus: "verified"` 的封存變更抽屜
-- **THEN** 分頁列為提案／設計／任務／規格／審查，無「驗證」分頁；「審查」分頁以結構化方式呈現封存目錄內 review.md 的各輪，末輪展開
-
-#### Scenario: 蓋章封存的抽屜無工單分頁
-
-- **WHEN** 開啟 `reviewStatus: "reviewed"`、`verifyStatus: "none"` 的封存變更抽屜
-- **THEN** 分頁列維持提案／設計／任務／規格四個，未發出工單讀取請求
-
-#### Scenario: 遠端封存工單原文解析
-
-- **WHEN** 於 remote 資料源開啟 `verifiedNotPassed` 的封存變更抽屜並切到「驗證」分頁，server 對 `GET /archived/{datedName}/artifacts/verify.md` 回傳工單原文
-- **THEN** 分頁呈現與本機相同形狀的結構化輪次（`rounds[].index`、`phase`、`patchHash`、`scope`、`findings[].severity`／`path`／`text`）
-
-<!-- @trace
-source: drawer-quality-ticket-tab
-updated: 2026-09-22T15:13:01+08:00
 -->
 
 ---
@@ -3507,7 +3370,7 @@ updated: 2026-10-10T15:55:28+08:00
 ---
 ### Requirement: 詳情頁的導覽與返回
 
-詳情頁開啟時主區頂列的麵包屑 SHALL 為「專案名 / 頁名 / 項目名」三段：專案名與頁名 SHALL 可點、點擊 SHALL 關閉詳情頁回宿主頁；項目名 SHALL 以等寬字型呈現且不可點。麵包屑右端 SHALL 呈現 ‹ n／m ›：m 為宿主清單目前呈現順序的項目數、n 為目前項目的序位，順序 SHALL 為宿主清單的呈現順序含搜尋與篩選——看板的變更依欄序（提案中、進行中、已就緒）再依欄內順序，看板的討論為上區全卡依序、其後接欄底「已轉出」細列；到頭時對應鈕 SHALL 停用，SHALL NOT 循環；目前項目不在序列中時整組 SHALL 缺席。快捷鍵 ⌥↑／⌥↓（非 macOS 為 Alt+↑／Alt+↓）SHALL 等效於 ‹ ›，Esc SHALL 關閉詳情頁；三者於焦點在文字輸入（input、textarea、contenteditable）時 SHALL NOT 作用，且 SHALL NOT 攔截已被浮層（選單、對話框、提示）處理掉的 Esc。切換項目 SHALL 經與開啟相同的狀態層動作（互斥與浮層收掉規則同樣適用），切換後頁 SHALL 自頂端呈現；封存、刪除或退回的確認在途時切換 SHALL NOT 作用。詳情頁開啟時經專案欄、應用程式選單或系統匣切換主區頁面 SHALL 先關閉詳情頁再呈現該頁。
+詳情頁開啟時主區頂列的麵包屑 SHALL 為「專案名 / 頁名 / 項目名」三段：專案名與頁名 SHALL 可點、點擊 SHALL 關閉詳情頁回宿主頁；項目名 SHALL 以等寬字型呈現且不可點。麵包屑左側 SHALL 有返回鈕（「←」圖示，無障礙名稱為「返回<頁名>」，提示另標示 Esc 與返回快捷鍵），點擊 SHALL 關閉詳情頁回宿主頁。麵包屑右端 SHALL 呈現 ‹ n／m ›：m 為宿主清單目前呈現順序的項目數、n 為目前項目的序位，順序 SHALL 為宿主清單的呈現順序含搜尋與篩選——看板的變更依欄序（提案中、進行中、已就緒）再依欄內順序，看板的討論為上區全卡依序、其後接欄底「已轉出」細列，規格頁的規格、已封存頁的封存變更與封存討論各為該清單過濾後的全部頁順序；宿主不是該項目所屬的清單頁時（手冊頁開啟的規格詳情頁、規格詳情頁溯源列開啟的已封存詳情頁），序列為該清單未過濾的全部項目（規格依規格頁的預設排序）；到頭時對應鈕 SHALL 停用，SHALL NOT 循環；目前項目不在序列中時整組 SHALL 缺席。快捷鍵 ⌥↑／⌥↓（非 macOS 為 Alt+↑／Alt+↓）SHALL 等效於 ‹ ›，Esc 與 ⌘[、⌘←（非 macOS 為 Alt+←；以實體按鍵判定，不受輸入法影響）SHALL 等效於返回鈕；這些快捷鍵於焦點在文字輸入（input、textarea、contenteditable）時 SHALL NOT 作用，且 SHALL NOT 攔截已被浮層（選單、對話框、提示）處理掉的按鍵。滑鼠側鍵「上一頁」SHALL 等效於返回鈕。觸控板兩指往返回方向（手指向右）的水平滑動 SHALL 等效於返回鈕：滑動期間主區左緣 SHALL 顯示隨滑動距離推出的「←」返回指示，達門檻時指示轉為實心；手勢停止時已達門檻 SHALL 關閉詳情頁回宿主頁，未達門檻或反向滑回時指示 SHALL 收回且不關頁；垂直為主的捲動 SHALL NOT 觸發；滑動期間整個畫面 SHALL NOT 隨手指水平平移（桌面關閉根層的水平彈性回彈）；手勢開始於仍可沿滑動方向捲動的水平捲動區塊（如寬表格、程式碼區塊；自然捲動關閉時手指向右是把區塊往右捲）時 SHALL 交給該區塊捲動、SHALL NOT 觸發返回；只裁切不捲動的區塊（如截斷的長名稱）不算捲動區塊。切換項目 SHALL 經與開啟相同的狀態層動作（互斥與浮層收掉規則同樣適用），切換後頁 SHALL 自頂端呈現；封存、刪除、退回或討論封存的確認框開著或確認在途時，切換與返回（含返回快捷鍵、滑鼠側鍵與觸控板滑動）SHALL NOT 作用——確認框屬於目前詳情頁，SHALL NOT 被連帶收掉。詳情頁開啟時經專案欄、應用程式選單、系統匣或連線失效橫幅的「重新登入」切換主區頁面 SHALL 先關閉詳情頁再呈現該頁。
 
 #### Scenario: 麵包屑三段與返回
 
@@ -3539,9 +3402,30 @@ updated: 2026-10-10T15:55:28+08:00
 - **WHEN** 使用者停在變更 x 的詳情頁，外部以 CLI 刪除 x 後看板刷新
 - **THEN** 詳情頁關閉、看板可見且不含 x；過程無錯誤彈窗
 
+#### Scenario: 返回鈕、返回快捷鍵與滑鼠側鍵回宿主頁
+
+- **WHEN** 使用者於規格頁搜尋「desk」後開啟 desktop-app 的規格詳情頁，點麵包屑左側的返回鈕；再開啟同一頁後按 ⌘[（非 macOS 為 Alt+←）；再開啟後按滑鼠側鍵「上一頁」
+- **THEN** 返回鈕的名稱為「返回規格」；三次皆關閉詳情頁回到規格頁，搜尋字串仍為「desk」
+
+#### Scenario: 觸控板滑動返回
+
+- **WHEN** 使用者於規格詳情頁以觸控板兩指向右滑動，滑動距離先未達門檻即放開，再滑一次超過門檻後放開
+- **THEN** 第一次左緣出現「←」指示後收回、詳情頁維持；第二次指示轉為實心，放開後詳情頁關閉、回到規格頁
+
+#### Scenario: 確認框開著時返回與切換不作用
+
+- **WHEN** 使用者於變更詳情頁點「封存」叫出確認框，尚未按確認時按 Alt+←、滑鼠側鍵「上一頁」、以觸控板兩指向右滑過門檻、再按 ⌥↓
+- **THEN** 確認框維持開著、詳情頁仍為同一個變更，左緣「←」指示未出現
+
+#### Scenario: 手冊頁開啟的規格詳情頁序列為全部規格
+
+- **WHEN** 專案有三份正式規格，使用者於手冊頁經出處開啟其中一份的規格詳情頁
+- **THEN** 麵包屑右端的 m 為 3，‹ › 依規格頁的預設排序切換，宿主維持手冊頁
+
+
 <!-- @trace
-source: desktop-detail-page
-updated: 2026-10-10T15:55:28+08:00
+source: desktop-readonly-detail-pages
+updated: 2026-10-10T19:39:25+08:00
 -->
 
 ---
@@ -3612,4 +3496,101 @@ updated: 2026-10-10T15:55:28+08:00
 <!-- @trace
 source: desktop-detail-page
 updated: 2026-10-10T15:55:28+08:00
+-->
+
+---
+### Requirement: 已封存項目以詳情頁檢視
+
+已封存頁的變更列與討論列 SHALL 以列式清單呈現，點擊列 SHALL 開啟唯讀的已封存詳情頁（宿主維持已封存頁），SHALL NOT 提供行內展開。已封存詳情頁 SHALL 與變更／討論詳情頁同骨架（標題列、出身列、「狀態」卡、內容卡標頭分頁）且唯讀——SHALL NOT 提供任務勾選、動詞執行或任何寫入操作；標頭 SHALL NOT 呈現進度條與動作區——封存是唯讀定格；開啟期間內容 SHALL 隨外部檔案變更反映；所請求的文件不存在時對應分頁 SHALL 顯示空狀態而非錯誤。
+
+封存變更的詳情頁 SHALL 至少含提案、設計、任務、規格分頁（內容來自封存目錄的實體文件），內容卡標頭右端提供「開啟 ▾」（對應 `openspec/changes/archive/<封存目錄名>/` 下的檔案）；任務分頁的勾選框不可點擊、無拖曳把手、無批次工具列、整列不回應點擊。標題列 SHALL 為變更名（等寬）緊跟複製鈕（複製含日期前綴的封存目錄名，複製後 SHALL 有已複製回饋）與審查／驗證結局籤；出身列 SHALL 依序呈現建立者（首字母圓標＋名字，完整識別收 hover 提示）、建立日期、「封存 YYYY-MM-DD」與「來自」＋來源討論籤（有來源討論時；點擊 SHALL 開啟該討論的已封存詳情頁，記錄以 live 優先、封存後備載入），恆定單行、溢出裁切，任一欄位資料缺席時該欄位 SHALL 缺席、其餘照常。「狀態」卡 SHALL 為三列：任務 n/m（無 tasks.md 時「—」）、品質關卡結局（皆無時「未經品質關卡」）、封存日期。
+
+封存討論的詳情頁 SHALL 以 slug 為題（等寬）緊跟複製 slug 鈕與「已封存」籤（kind 為 improve 時另帶改進籤），topic 為其下一行；出身列為建立者、建立日期與「封存 YYYY-MM-DD」，任一欄位資料缺席時該欄位 SHALL 缺席、其餘照常（清單資料不帶封存討論的封存日期時，「封存」欄缺席）。「狀態」卡 SHALL 含階段列（步驟列與討論詳情頁相同、現站為「已封存」）；promoted_to 非空時 SHALL 另有「衍生變更」列：每顆籤依子變更所在呈現三態——在封存清單中者為可點籤、副標為封存日期、點擊開啟該封存變更的已封存詳情頁；在活躍變更清單中者為可點籤、副標為其看板階段詞、點擊開啟該變更的詳情頁（宿主依「變更與討論詳情頁的宿主為看板」切回看板）；兩者皆無者為不可點籤、副標「無封存記錄」；順序依轉出順序；無衍生變更時該列缺席，封存變更的詳情頁 SHALL NOT 顯示該列。內容卡分頁 SHALL 為「結論」「討論過程」「背景」「衍生變更」；「開啟 ▾」SHALL 只有「複製內容」。
+
+#### Scenario: 點擊封存變更列開啟四分頁詳情頁
+
+- **WHEN** 使用者於已封存頁點擊一個含完整 artifacts 的封存變更列
+- **THEN** 主區換成唯讀的已封存詳情頁，顯示提案／設計／任務／規格分頁，各分頁呈現封存目錄內對應文件的內容，任務分頁的勾選框不可點擊、無把手與工具列；宿主維持已封存頁，清單無行內展開
+
+#### Scenario: 點擊封存討論列開啟唯讀詳情頁
+
+- **WHEN** 使用者於已封存頁討論節點擊一筆封存討論列
+- **THEN** 主區換成該討論的已封存詳情頁：標題列有「已封存」籤、狀態卡階段列現站為「已封存」、分頁為結論／討論過程／背景／衍生變更，無轉為變更、封存或任何寫入按鈕
+
+#### Scenario: 缺件文件顯示空狀態
+
+- **WHEN** 使用者開啟一個無 design.md 的封存變更詳情頁並切至設計分頁
+- **THEN** 分頁顯示空狀態文字，無錯誤彈窗，其餘分頁照常可用
+
+#### Scenario: 自封存變更詳情頁跳轉來源討論
+
+- **WHEN** 使用者開啟一個帶來源討論的封存變更詳情頁，點擊出身列的來源討論籤
+- **THEN** 該討論的已封存詳情頁取代顯示（記錄以 live 優先、封存後備載入），宿主維持已封存頁；無來源討論的封存變更詳情頁不顯示此籤
+
+#### Scenario: 封存變更詳情頁的標題列、出身列與狀態卡
+
+- **WHEN** 使用者開啟一筆建立者與建立日期俱在、20/21 任務、reviewStatus 為 reviewed 的封存變更詳情頁並點擊標題旁的複製鈕
+- **THEN** 剪貼簿寫入含日期前綴的封存目錄名並顯示已複製回饋；標題列帶「已審查」籤；出身列顯示建立者首字母圓標＋名字、建立日期與「封存 YYYY-MM-DD」；狀態卡三列為「20/21」、「已審查」籤、封存日期；無進度條與動作區
+
+#### Scenario: 出身列欄位缺席時其餘照常
+
+- **WHEN** 使用者開啟一筆建立日期不可得、建立者可得的封存變更詳情頁
+- **THEN** 出身列顯示建立者與封存日期，建立日期欄位缺席，無錯誤與空欄佔位
+
+#### Scenario: 封存討論詳情頁列出衍生變更並跳轉封存變更
+
+- **WHEN** 使用者開啟一筆 promoted_to 含兩個已封存子變更的封存討論詳情頁，點擊「衍生變更」列的第一顆籤
+- **THEN** 列有兩顆依轉出順序的籤、副標各為封存日期；點擊後該子變更的已封存詳情頁取代顯示，宿主頁面維持已封存頁
+
+#### Scenario: 衍生變更籤的三態
+
+- **WHEN** 使用者開啟一筆 promoted_to 含三個子變更的封存討論詳情頁——一個已封存、一個仍在看板進行中、一個已刪除
+- **THEN** 三顆籤依轉出順序呈現，各自的副標與可點性如下表；點擊活躍者開啟其詳情頁且宿主切回看板，點擊已刪除者無任何動作
+
+##### Example: 三態對照
+
+| 子變更所在 | 副標 | 可點 | 點擊結果 |
+| --- | --- | --- | --- |
+| 封存清單 | 封存日期（如 2026-09-02） | 是 | 開啟該封存變更的已封存詳情頁，宿主不切頁 |
+| 活躍變更清單 | 看板階段詞（如「進行中」） | 是 | 開啟該變更的詳情頁，宿主落回看板 |
+| 兩者皆無 | 無封存記錄 | 否 | 無 |
+
+#### Scenario: 無衍生變更時衍生列缺席
+
+- **WHEN** 使用者開啟一筆 promoted_to 為空的封存討論詳情頁
+- **THEN** 狀態卡只有階段列，無「衍生變更」列；封存變更詳情頁亦無該列
+
+#### Scenario: 已封存討論的文件動作只有複製內容
+
+- **WHEN** 使用者於封存討論詳情頁展開「開啟 ▾」
+- **THEN** 選單只有「複製內容」，選後剪貼簿為該記錄原文
+
+<!-- @trace
+source: desktop-readonly-detail-pages
+updated: 2026-10-10T19:39:25+08:00
+-->
+
+---
+### Requirement: 已封存詳情頁的工單分頁
+
+已封存變更詳情頁 SHALL 於「規格」分頁之後提供兩個條件式分頁：封存清單項 `reviewStatus` 為 `reviewedNotPassed` 時 SHALL 出現「審查」分頁，`verifyStatus` 為 `verifiedNotPassed` 時 SHALL 出現「驗證」分頁，審查在前；其他狀態（`none`、`reviewed`、`verified`）SHALL NOT 渲染對應分頁。分頁內容、載入三態、空態文案與工單資料形狀 SHALL 與「詳情頁的工單分頁」相同，資料來自封存目錄內的 `review.md`／`verify.md`（本機讀封存目錄；遠端以 `GET /archived/{datedName}/artifacts/review.md` 或 `verify.md` 取原文後解析）。分頁 SHALL 為唯讀。
+
+#### Scenario: 曾審查未通過的已封存詳情頁顯示審查分頁
+
+- **WHEN** 開啟 `reviewStatus: "reviewedNotPassed"`、`verifyStatus: "verified"` 的封存變更詳情頁
+- **THEN** 分頁列為提案／設計／任務／規格／審查，無「驗證」分頁；「審查」分頁以結構化方式呈現封存目錄內 review.md 的各輪，末輪展開
+
+#### Scenario: 蓋章封存的詳情頁無工單分頁
+
+- **WHEN** 開啟 `reviewStatus: "reviewed"`、`verifyStatus: "none"` 的封存變更詳情頁
+- **THEN** 分頁列維持提案／設計／任務／規格四個，未發出工單讀取請求
+
+#### Scenario: 遠端封存工單原文解析
+
+- **WHEN** 於 remote 資料源開啟 `verifiedNotPassed` 的封存變更詳情頁並切到「驗證」分頁，server 對 `GET /archived/{datedName}/artifacts/verify.md` 回傳工單原文
+- **THEN** 分頁呈現與本機相同形狀的結構化輪次（`rounds[].index`、`phase`、`patchHash`、`scope`、`findings[].severity`／`path`／`text`）
+
+<!-- @trace
+source: desktop-readonly-detail-pages
+updated: 2026-10-10T19:39:25+08:00
 -->

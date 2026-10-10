@@ -23,7 +23,7 @@ vi.mock("../components/TaskList", () => ({
 import { ChangeCard } from "../components/ChangeCard";
 import { ChangeDetailPage } from "../components/ChangeDetailPage";
 import { ArchivedList } from "../components/ArchivedList";
-import { ArchivedDrawer } from "../components/ArchivedDrawer";
+import { ArchivedDetailPage } from "../components/ArchivedDetailPage";
 import { ReviewArchiveDialog } from "../components/ReviewArchiveDialog";
 import type { ArchivedItem, ChangeItem } from "../adapter";
 
@@ -152,11 +152,9 @@ describe("已封存側審查結局標示", () => {
     }
   });
 
-  it("抽屜顯示「曾審查未通過」標示", () => {
+  it("已封存詳情頁顯示「曾審查未通過」標示", () => {
     render(
-      <ArchivedDrawer
-        open
-        onOpenChange={() => {}}
+      <ArchivedDetailPage
         target={{ kind: "change", datedName: "2026-07-06-carried" }}
         reviewStatus="reviewedNotPassed"
         loadDocument={async () => null}
@@ -164,7 +162,7 @@ describe("已封存側審查結局標示", () => {
         loadDiscussionDocument={async () => null}
       />,
     );
-    expect(screen.getByText(/曾審查未通過/)).toBeTruthy();
+    expect(document.querySelector("[data-review-outcome]")!.textContent).toContain("曾審查未通過");
   });
 });
 
@@ -225,15 +223,13 @@ describe("審查標示配色（四態各自可辨識，不落回灰階）", () =
     expect(screen.getByLabelText("曾審查未通過").className).toContain("text-destructive");
   });
 
-  it("已封存抽屜：已審查＝紫、曾審查未通過＝紅", () => {
+  it("已封存詳情頁：已審查＝紫、曾審查未通過＝紅", () => {
     for (const [reviewStatus, cls] of [
       ["reviewed", "text-stamp"],
       ["reviewedNotPassed", "text-destructive"],
     ] as const) {
       const { unmount } = render(
-        <ArchivedDrawer
-          open
-          onOpenChange={() => {}}
+        <ArchivedDetailPage
           target={{ kind: "change", datedName: "2026-07-06-x" }}
           reviewStatus={reviewStatus}
           loadDocument={async () => null}

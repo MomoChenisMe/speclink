@@ -1110,7 +1110,7 @@ describe("app store (Zustand)", () => {
     expect(store.getState().detailSpec).toBeNull();
     store.getState().openSpec("desktop-app");
     expect(store.getState().detailSpec).toBe("desktop-app");
-    store.getState().closeSpec();
+    store.getState().closeDetailPage();
     expect(store.getState().detailSpec).toBeNull();
   });
 
@@ -1121,7 +1121,7 @@ describe("app store (Zustand)", () => {
     expect(store.getState().detailArchived).toEqual({ kind: "change", datedName: "2026-07-04-x" });
     store.getState().openArchived({ kind: "discussion", slug: "old-topic" });
     expect(store.getState().detailArchived).toEqual({ kind: "discussion", slug: "old-topic" });
-    store.getState().closeArchived();
+    store.getState().closeDetailPage();
     expect(store.getState().detailArchived).toBeNull();
   });
 
@@ -1164,6 +1164,17 @@ describe("app store (Zustand)", () => {
     store.getState().setBoardView("settings");
     expect(store.getState().boardView).toBe("settings");
     expect(store.getState().detailDiscussion).toBeNull();
+  });
+
+  it("重新登入（openConnectionReauth）切到設定頁時同樣先關閉詳情頁、聚焦該連線", async () => {
+    // 連線失效橫幅在主區外，詳情頁開著時仍點得到——不關頁設定頁就被詳情頁蓋住。
+    const store = storeWith(fakeDataSource());
+    await store.getState().refresh();
+    store.getState().openSpec("desktop-app");
+    store.getState().openConnectionReauth("c1");
+    expect(store.getState().boardView).toBe("settings");
+    expect(store.getState().detailSpec).toBeNull();
+    expect(store.getState().reauthConnectionId).toBe("c1");
   });
 
   it("詳情頁互斥：取代變更詳情頁時 detailVerb 一併清空（比照 closeDetailPage）", async () => {

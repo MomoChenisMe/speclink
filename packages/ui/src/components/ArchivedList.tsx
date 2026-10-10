@@ -9,7 +9,7 @@ import { Badge } from "./ui/badge";
 import { PageHeader } from "./ui/page-header";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
-import type { ArchivedTarget } from "./ArchivedDrawer";
+import type { ArchivedTarget } from "./ArchivedDetailPage";
 import { ImproveStamp } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
 import { ListCard } from "./ListCard";
@@ -183,6 +183,8 @@ export interface ArchivedListProps {
   onChangesPageSizeChange?: (size: number) => void;
   discussionsPageSize?: number;
   onDiscussionsPageSizeChange?: (size: number) => void;
+  /** 回報兩節各自過濾後全部頁的順序（已封存詳情頁 ‹ › 的序列）；順序真的變了才回報。 */
+  onVisibleOrderChange?: (order: { changes: string[]; discussions: string[] }) => void;
 }
 
 /** 分頁標籤上的筆數徽章——沿用頁面計數 pill 樣式。 */
@@ -212,6 +214,7 @@ export function ArchivedList({
   onChangesPageSizeChange,
   discussionsPageSize,
   onDiscussionsPageSizeChange,
+  onVisibleOrderChange,
 }: ArchivedListProps) {
   const { t } = useI18n();
   const [section, setSection] = useState<Section>("changes");
@@ -240,6 +243,14 @@ export function ArchivedList({
   const filtered = sortedChanges.filter((a) => matchesQuery(query, a.name));
   const discussions = sortedDiscussions.filter((d) => matchesQuery(query, d.topic, d.slug));
   const showDiscussions = archivedDiscussions !== undefined;
+  // 呈現順序回報：以兩節序列內容為依賴，順序真的變了才通知宿主（換頁、切子頁籤不影響）。
+  const changeOrder = filtered.map((a) => a.datedName);
+  const discussionOrder = discussions.map((d) => d.slug);
+  const orderKey = JSON.stringify([changeOrder, discussionOrder]);
+  useEffect(() => {
+    onVisibleOrderChange?.({ changes: changeOrder, discussions: discussionOrder });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderKey]);
 
   // 兩節頁碼與每頁筆數互相獨立。
   const changes = usePaging(filtered, {

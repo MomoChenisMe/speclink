@@ -13,6 +13,16 @@ import { ListPager, usePaging } from "./ListPager";
 import { ListRow } from "./ListRow";
 import { SearchField } from "./SearchField";
 
+/** 規格頁的預設順序：最新在前（modifiedAt 降冪、缺席殿後、同值以名稱字母升冪決勝）。
+ * 宿主在規格頁不是宿主時（手冊頁開規格詳情頁）以它排 ‹ › 的序列。 */
+export function sortSpecs(specs: SpecItem[]): SpecItem[] {
+  return [...specs].sort((a, b) => {
+    if (a.modifiedAt && b.modifiedAt && a.modifiedAt !== b.modifiedAt) return a.modifiedAt < b.modifiedAt ? 1 : -1;
+    if (!!a.modifiedAt !== !!b.modifiedAt) return a.modifiedAt ? -1 : 1;
+    return a.id.localeCompare(b.id);
+  });
+}
+
 /** 規格列（spec「規格與封存卡片收合資訊」；design D3）：等寬名稱＋複製鈕、描述列為
  * Purpose 摘要一行截斷（佔位時改顯琥珀「Purpose 待補」警示）、meta 為需求數、溯源
  * 變更數（>0 才顯示）與相對修改時間。點整列開唯讀規格檢視，無行內展開。 */
@@ -79,6 +89,8 @@ export interface SpecListProps {
   /** 受控每頁筆數（design D7）：與 onPageSizeChange 一起給時以它為準；缺席時元件自持（預設 20）。 */
   pageSize?: number;
   onPageSizeChange?: (size: number) => void;
+  /** 回報過濾後全部頁的 capability 順序（規格詳情頁 ‹ › 的序列）；順序真的變了才回報。 */
+  onVisibleOrderChange?: (ids: string[]) => void;
 }
 
 /** 規格頁（spec「規格頁提供清單、搜尋與展開檢視」；design D3）：頁標題區（標題、說明、
@@ -95,6 +107,7 @@ export function SpecList({
   description,
   pageSize: controlledPageSize,
   onPageSizeChange,
+  onVisibleOrderChange,
 }: SpecListProps) {
   const { t } = useI18n();
   // 搜尋字串留元件內——規格頁無跨視圖保留需求（比對規則共用 matchesQuery）。
@@ -102,18 +115,15 @@ export function SpecList({
   // 內部捲動容器 ref——換頁後歸位（清單自己捲、頁面不捲）。
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const sorted = useMemo(
-    () =>
-      [...specs].sort((a, b) => {
-        // modifiedAt 降冪；缺席者一律殿後；同值（含皆缺席）以名稱字母升冪決勝。
-        if (a.modifiedAt && b.modifiedAt && a.modifiedAt !== b.modifiedAt)
-          return a.modifiedAt < b.modifiedAt ? 1 : -1;
-        if (!!a.modifiedAt !== !!b.modifiedAt) return a.modifiedAt ? -1 : 1;
-        return a.id.localeCompare(b.id);
-      }),
-    [specs],
-  );
+  const sorted = useMemo(() => sortSpecs(specs), [specs]);
   const filtered = sorted.filter((s) => matchesQuery(query, s.id));
+  // 呈現順序回報：以序列內容為依賴，順序真的變了才通知宿主（換頁不影響）。
+  const order = filtered.map((s) => s.id);
+  const orderKey = JSON.stringify(order);
+  useEffect(() => {
+    onVisibleOrderChange?.(order);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderKey]);
   const { pageItems, setPage, pager } = usePaging(filtered, {
     pageSize: controlledPageSize,
     onPageSizeChange,

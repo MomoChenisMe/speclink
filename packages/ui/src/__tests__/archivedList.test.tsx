@@ -250,6 +250,46 @@ describe("ArchivedList（子頁籤、排序與換頁）", () => {
       el.getAttribute("data-archived-discussion"),
     );
 
+  it("初次回報兩節全量順序、搜尋後回報各自過濾後順序且不受換頁影響（詳情頁 ‹ › 的序列）", () => {
+    // 21 筆封存變更（跨兩頁）＋2 筆封存討論；傳入順序刻意打亂，回報的是呈現順序。
+    const many = Array.from({ length: 21 }, (_, i) => mkChange(`2026-06-${String(i + 1).padStart(2, "0")}-c${i + 1}`));
+    const onVisibleOrderChange = vi.fn();
+    render(
+      <ArchivedList
+        archived={many}
+        query=""
+        onQuery={() => {}}
+        archivedDiscussions={[mkDisc("older", "2026-01-01"), mkDisc("newer", "2026-02-01")]}
+        onOpen={vi.fn()}
+        onVisibleOrderChange={onVisibleOrderChange}
+      />,
+    );
+    expect(onVisibleOrderChange).toHaveBeenLastCalledWith({
+      changes: [...many].reverse().map((a) => a.datedName),
+      discussions: ["newer", "older"],
+    });
+    const calls = onVisibleOrderChange.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
+    expect(onVisibleOrderChange.mock.calls.length).toBe(calls);
+  });
+
+  it("搜尋字串過濾後回報兩節各自的命中順序", () => {
+    const onVisibleOrderChange = vi.fn();
+    const props = {
+      archived: [mkChange("2026-06-01-alpha"), mkChange("2026-06-02-beta")],
+      onQuery: () => {},
+      archivedDiscussions: [mkDisc("alpha-talk", "2026-01-01"), mkDisc("other", "2026-01-02")],
+      onOpen: vi.fn(),
+      onVisibleOrderChange,
+    };
+    const { rerender } = render(<ArchivedList {...props} query="" />);
+    rerender(<ArchivedList {...props} query="alpha" />);
+    expect(onVisibleOrderChange).toHaveBeenLastCalledWith({
+      changes: ["2026-06-01-alpha"],
+      discussions: ["alpha-talk"],
+    });
+  });
+
   it("呈現「變更」「討論」兩分頁且預設顯示變更；討論列不在預設分頁出現", () => {
     renderList();
     const tabs = screen.getAllByRole("tab");

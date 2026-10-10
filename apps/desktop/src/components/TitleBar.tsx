@@ -48,10 +48,13 @@ export function LeftTitleBar({
 export function MainTitleBar({
   platform,
   crumbs,
+  leading,
   trailing,
 }: {
   platform: Platform;
   crumbs: Crumb[];
+  /** 麵包屑之前的槽（詳情頁的返回鈕）。 */
+  leading?: ReactNode;
   /** 麵包屑之後、Windows 視窗鈕之前的槽（詳情頁的 ‹ n／m ›）。 */
   trailing?: ReactNode;
 }) {
@@ -61,6 +64,7 @@ export function MainTitleBar({
       data-tauri-drag-region="deep"
       className="flex h-12 shrink-0 select-none items-center border-b border-border bg-background pl-5"
     >
+      {leading}
       <nav className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-muted-foreground">
         {crumbs.map((crumb, i) => {
           const last = i === crumbs.length - 1;

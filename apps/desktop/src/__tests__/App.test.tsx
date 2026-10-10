@@ -230,6 +230,8 @@ function renderApp(
 
 /** 殼（design D2）：專案欄是帶「專案導覽」標籤的 nav；設定入口是圖示列底部齒輪。 */
 const projectColumn = () => screen.getByRole("navigation", { name: "專案導覽" });
+const crumbText = () =>
+  (screen.getByTestId("main-titlebar").querySelector("nav")?.textContent ?? "").replace(/\s+/g, "");
 const settingsGear = () => screen.getByRole("button", { name: "設定" });
 /** 左側整欄（標題列＋圖示列＋專案欄）。 */
 const leftSide = () => screen.getByTestId("left-titlebar").parentElement as HTMLElement;
@@ -1225,26 +1227,38 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     expect(document.querySelector("main")!.className).toContain("p-5");
   });
 
-  it("規格頁點卡開唯讀規格抽屜，經 dataSource.getSpecDocument 載入正式規格全文", async () => {
-    // spec Scenario「選定 spec 以抽屜顯示其正式規格內容」：App 掛載 SpecDrawer 並接線
-    // store.detailSpec 與 dataSource.getSpecDocument（spec-archive-drawer design D2）。
+  it("規格頁點列開規格詳情頁：宿主為規格頁且 inert、麵包屑「專案 / 規格 / 名稱」、Esc 後規格頁搜尋字串不變", async () => {
+    // spec Scenario「選定 spec 以詳情頁顯示需求分段」的接線面：App 於頁層掛 SpecDetailPage，
+    // 經 dataSource.getSpecDocument 載入正式規格全文；清單無行內展開。
     const ds = fakeDataSource({
-      getSpecDocument: vi.fn().mockResolvedValue("# desktop-app Specification\n\n正典內文段落。"),
+      getSpecDocument: vi
+        .fn()
+        .mockResolvedValue("# desktop-app Specification\n\n## Purpose\n\n目的。\n\n### Requirement: 甲\n\n正典內文段落。\n"),
     });
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
-    const aside = projectColumn();
-    fireEvent.click(within(aside).getByRole("button", { name: "規格" }));
+    fireEvent.click(within(projectColumn()).getByRole("button", { name: "規格" }));
     await waitFor(() => screen.getByText("desktop-app"));
+    const search = screen.getByPlaceholderText("搜尋規格…");
+    fireEvent.change(search, { target: { value: "desk" } });
     expect(ds.getSpecDocument).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText("desktop-app"));
-    await waitFor(() => expect(screen.getByText("正典內文段落。")).toBeTruthy());
+    const layer = await screen.findByTestId("detail-page");
+    await waitFor(() => expect(within(layer).getByText("正典內文段落。")).toBeTruthy());
     expect(ds.getSpecDocument).toHaveBeenCalledWith("desktop-app");
-    // 內容呈現在抽屜、非行內展開。
-    expect(document.querySelector("[data-spec-drawer]")).toBeTruthy();
+    expect(layer.querySelector("[data-spec-detail]")).toBeTruthy();
+    const host = screen.getByTestId("host-page");
+    expect(host.hasAttribute("inert")).toBe(true);
+    expect(within(host).getByPlaceholderText("搜尋規格…")).toBeTruthy();
+    expect(crumbText()).toBe("proj-a/規格/desktop-app");
+    act(() => {
+      fireEvent.keyDown(window, { key: "Escape" });
+    });
+    await waitFor(() => expect(screen.queryByTestId("detail-page")).toBeNull());
+    expect((screen.getByPlaceholderText("搜尋規格…") as HTMLInputElement).value).toBe("desk");
   });
 
-  it("已封存頁點封存變更卡開四分頁唯讀抽屜（spec「已封存項目以抽屜檢視」）", async () => {
+  it("已封存頁點封存變更列開已封存詳情頁，宿主為已封存頁（spec「已封存項目以詳情頁檢視」）", async () => {
     const ds = fakeDataSource({
       listArchived: vi.fn().mockResolvedValue([
         {
@@ -1262,20 +1276,24 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     });
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
-    const aside = projectColumn();
-    fireEvent.click(within(aside).getByRole("button", { name: /已封存/ }));
+    const archivedNav = within(projectColumn()).getByRole("button", { name: /已封存/ });
+    fireEvent.click(archivedNav);
     await waitFor(() => screen.getByText("old"));
     expect(ds.getArchivedDocument).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText("old"));
-    await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
-    expect(document.querySelector("[data-archived-drawer]")).toBeTruthy();
-    expect(screen.getByRole("tab", { name: /提案/ })).toBeTruthy();
+    const layer = await screen.findByTestId("detail-page");
+    await waitFor(() => expect(within(layer).getByText("封存提案內文。")).toBeTruthy());
+    expect(layer.querySelector('[data-archived-detail="change"]')).toBeTruthy();
+    expect(within(layer).getByRole("tab", { name: /提案/ })).toBeTruthy();
     expect(ds.getArchivedDocument).toHaveBeenCalledWith("2026-07-04-old", "proposal.md");
+    expect(screen.getByTestId("host-page").hasAttribute("inert")).toBe(true);
+    expect(archivedNav.className).toContain("bg-primary");
+    expect(crumbText()).toBe("proj-a/已封存/old");
   });
 
-  it("封存變更抽屜點來源討論 chip，同一抽屜切換為該討論的唯讀檢視", async () => {
-    // spec Scenario「自封存變更抽屜跳轉來源討論」的接線面：fromDiscussions →
-    // chips（topic 解析）→ openArchived({ kind: "discussion" })。
+  it("封存變更詳情頁點來源討論籤，該討論的已封存詳情頁取代顯示、宿主維持已封存頁", async () => {
+    // spec Scenario「自封存變更詳情頁跳轉來源討論」的接線面：fromDiscussions →
+    // 出身列「來自」籤 → openArchived({ kind: "discussion" })。
     const ds = fakeDataSource({
       listArchived: vi.fn().mockResolvedValue([
         {
@@ -1302,19 +1320,22 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     });
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
-    const aside = projectColumn();
-    fireEvent.click(within(aside).getByRole("button", { name: /已封存/ }));
+    const archivedNav = within(projectColumn()).getByRole("button", { name: /已封存/ });
+    fireEvent.click(archivedNav);
     await waitFor(() => screen.getByText("old"));
     fireEvent.click(screen.getByText("old"));
-    await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
-    // chip 以 slug 直出（change-drawer-header-redesign；topic 降為提示）。
-    fireEvent.click(screen.getByRole("button", { name: /old-topic/ }));
-    await waitFor(() => expect(screen.getByText("封存背景內文。")).toBeTruthy());
+    const layer = await screen.findByTestId("detail-page");
+    await waitFor(() => expect(within(layer).getByText("封存提案內文。")).toBeTruthy());
+    fireEvent.click(within(layer).getByRole("button", { name: /old-topic/ }));
+    await waitFor(() => expect(screen.getByText(/收工/)).toBeTruthy());
     expect(ds.getDiscussionDocument).toHaveBeenCalledWith("old-topic");
-    expect(screen.getByText("討論過程")).toBeTruthy();
+    expect(document.querySelector('[data-archived-detail="discussion"]')).toBeTruthy();
+    expect(screen.getByText("Old topic")).toBeTruthy();
+    expect(archivedNav.className).toContain("bg-primary");
+    expect(crumbText()).toBe("proj-a/已封存/old-topic");
   });
 
-  it("已封存頁點封存討論卡開唯讀區段抽屜", async () => {
+  it("已封存頁點封存討論列開已封存討論詳情頁（階段列現站「已封存」）", async () => {
     const ds = fakeDataSource({
       listDiscussions: vi.fn().mockResolvedValue({
         active: [],
@@ -1330,17 +1351,16 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     });
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
-    const aside = projectColumn();
-    fireEvent.click(within(aside).getByRole("button", { name: /已封存/ }));
-    // 已封存頁為「變更／討論」子頁籤（specs-archive-pagination design D3）：
-    // 討論卡在「已封存的討論」子頁籤下。
+    fireEvent.click(within(projectColumn()).getByRole("button", { name: /已封存/ }));
+    // 已封存頁為「變更／討論」子頁籤：討論列在「已封存的討論」子頁籤下。
     fireEvent.mouseDown(await screen.findByRole("tab", { name: /已封存的討論/ }));
     await waitFor(() => screen.getByText("Old topic"));
     fireEvent.click(screen.getByText("Old topic"));
-    await waitFor(() => expect(screen.getByText("封存背景內文。")).toBeTruthy());
-    expect(document.querySelector("[data-archived-drawer]")).toBeTruthy();
+    const layer = await screen.findByTestId("detail-page");
+    await waitFor(() => expect(within(layer).getByText(/收工/)).toBeTruthy());
     expect(ds.getDiscussionDocument).toHaveBeenCalledWith("old-topic");
-    expect(screen.getByText("討論過程")).toBeTruthy();
+    expect(layer.querySelector('[data-status-stage] [aria-current="step"]')!.textContent).toBe("已封存");
+    expect(within(layer).getByRole("tab", { name: /討論過程/ })).toBeTruthy();
   });
 
   it("i18n 兩語系鍵集合相等，備忘鍵已自兩語系移除", () => {
@@ -1657,8 +1677,8 @@ describe("手冊頁接線（desktop-manual-page）", () => {
     expect(ds.listManualPages).not.toHaveBeenCalled();
   });
 
-  it("點手冊出處在手冊頁上開規格抽屜、不切頁", async () => {
-    // spec Scenario「點出處開啟規格抽屜」：共用規格頁的唯讀抽屜（SpecDrawer），側欄不切頁。
+  it("點手冊出處在手冊頁上開規格詳情頁：麵包屑「專案 / 手冊 / 名稱」、Esc 回手冊頁且不切頁", async () => {
+    // spec Scenario「點出處開啟規格詳情頁」：共用規格頁的同一個詳情頁，宿主維持手冊頁。
     const ds = fakeDataSource({
       listManualPages: vi.fn().mockResolvedValue(MANUAL_INDEX),
       getManualPage: vi
@@ -1684,13 +1704,20 @@ describe("手冊頁接線（desktop-manual-page）", () => {
     expect(within(sources).queryByRole("button", { name: "ghost-cap" })).toBeNull();
     expect(within(sources).queryByText("ghost-cap")).toBeNull();
     fireEvent.click(within(sources).getByRole("button", { name: "desktop-app" }));
-    await waitFor(() => expect(screen.getByText("正典內文段落。")).toBeTruthy());
-    // 不切頁：手冊項仍高亮、規格項未高亮，手冊內文仍在畫面，規格抽屜疊在其上。
+    const layer = await screen.findByTestId("detail-page");
+    await waitFor(() => expect(within(layer).getByText("正典內文段落。")).toBeTruthy());
+    expect(ds.getSpecDocument).toHaveBeenCalledWith("desktop-app");
+    // 不切頁：手冊項仍高亮、規格項未高亮，手冊頁留在宿主層。
     expect(manualNav.className).toContain("bg-primary");
     expect(specsNav.className).not.toContain("bg-primary");
+    expect(within(screen.getByTestId("host-page")).getByText("看板說明。")).toBeTruthy();
+    expect(crumbText()).toBe("proj-a/手冊/desktop-app");
+    act(() => {
+      fireEvent.keyDown(window, { key: "Escape" });
+    });
+    await waitFor(() => expect(screen.queryByTestId("detail-page")).toBeNull());
+    expect(manualNav.className).toContain("bg-primary");
     expect(screen.getByText("看板說明。")).toBeTruthy();
-    expect(document.querySelector("[data-spec-drawer]")).toBeTruthy();
-    expect(ds.getSpecDocument).toHaveBeenCalledWith("desktop-app");
   });
 
   it("手冊頁開著時 workspace-changed 觸發索引重取與目前頁內文重載", async () => {
@@ -1715,27 +1742,21 @@ describe("手冊頁接線（desktop-manual-page）", () => {
   });
 });
 
-// drawer-provenance-links：規格抽屜出身列的溯源籤→封存變更抽屜（底層不切頁）；封存討論抽屜
-// 衍生列三態（已封存→封存抽屜、活躍→詳情抽屜且落回看板、已刪除→不可點）的 App 接線面。
-describe("抽屜溯源籤接線（drawer-provenance-links）", () => {
+// 規格詳情頁的溯源列→已封存詳情頁（宿主不切頁）；封存討論詳情頁衍生變更列三態（已封存→
+// 已封存詳情頁、活躍→變更詳情頁且宿主落回看板、已刪除→不可點）的 App 接線面。
+describe("溯源與衍生變更接線（desktop-readonly-detail-pages）", () => {
   const DISCUSSION_DOC =
     "---\ntopic: Old topic\nslug: old-topic\nstatus: promoted\ncreated: 2026-06-30\n---\n\n# Discussion: Old topic\n\n## Context\n\n封存背景內文。\n\n## Rounds\n\n## Conclusion\n\n**Decision**: 收工\n";
-  const overflowList = () =>
-    waitFor(() => {
-      const el = document.querySelector("[data-source-overflow-list]") as HTMLElement | null;
-      expect(el).toBeTruthy();
-      return el!;
-    });
 
-  it("手冊頁開規格抽屜後點溯源籤：開該封存變更抽屜、規格抽屜關閉、底層仍留手冊頁", async () => {
-    // spec Scenario「點擊溯源籤開啟封存變更抽屜且底層不切頁」。
+  it("手冊頁開規格詳情頁後點溯源列：已封存詳情頁取代、宿主仍為手冊頁；Esc 回手冊頁", async () => {
+    // spec Scenario「點擊溯源列開啟已封存詳情頁且宿主不切頁」。
     const ds = fakeDataSource({
       listManualPages: vi.fn().mockResolvedValue(MANUAL_INDEX),
       getManualPage: vi.fn().mockResolvedValue("# 看板\n\n看板說明。\n\n**出處**：`desktop-app`"),
       getSpecDocument: vi
         .fn()
         .mockResolvedValue(
-          "# desktop-app Specification\n\n正典內文段落。\n\n<!-- @trace\nsource: old\nupdated: 2026-07-04\n-->\n",
+          "# desktop-app Specification\n\n### Requirement: 甲\n\n正典內文段落。\n\n<!-- @trace\nsource: old\nupdated: 2026-07-04\n-->\n",
         ),
       listArchived: vi.fn().mockResolvedValue([
         { datedName: "2026-07-04-old", date: "2026-07-04", name: "old", createdBy: null, fromDiscussions: [] },
@@ -1744,8 +1765,7 @@ describe("抽屜溯源籤接線（drawer-provenance-links）", () => {
     });
     renderApp(ds);
     await screen.findByText("desktop-shell-and-browser");
-    const aside = projectColumn();
-    const manualNav = within(aside).getByRole("button", { name: "手冊" });
+    const manualNav = within(projectColumn()).getByRole("button", { name: "手冊" });
     fireEvent.click(manualNav);
     await screen.findByText("看板說明。");
     fireEvent.click(document.querySelector('[data-manual-page="boards"]') as HTMLElement);
@@ -1755,25 +1775,31 @@ describe("抽屜溯源籤接線（drawer-provenance-links）", () => {
       return el;
     });
     fireEvent.click(within(sources).getByRole("button", { name: "desktop-app" }));
-    await waitFor(() => expect(screen.getByText("正典內文段落。")).toBeTruthy());
+    const layer = await screen.findByTestId("detail-page");
+    await waitFor(() => expect(within(layer).getByText("正典內文段落。")).toBeTruthy());
+    fireEvent.mouseDown(within(layer).getByRole("tab", { name: /溯源/ }));
     const row = await waitFor(() => {
-      const el = document.querySelector("[data-spec-drawer] [data-provenance-row]") as HTMLElement | null;
+      const el = layer.querySelector('[data-trace-row="old"]') as HTMLElement | null;
       expect(el).toBeTruthy();
       return el!;
     });
-    expect(row.textContent).toContain("來自");
-    fireEvent.click(within(row).getByRole("button", { name: /old/ }));
+    fireEvent.click(row);
     await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
     expect(ds.getArchivedDocument).toHaveBeenCalledWith("2026-07-04-old", "proposal.md");
-    expect(document.querySelector("[data-archived-drawer]")).toBeTruthy();
-    // detail 抽屜互斥：規格抽屜關閉；封存抽屜不切底層頁：手冊項仍高亮、看板欄不存在。
-    await waitFor(() => expect(document.querySelector("[data-spec-drawer]")).toBeNull());
+    // 詳情頁互斥：規格詳情頁關閉；宿主不切頁：手冊項仍高亮、看板欄不存在。
+    expect(document.querySelector("[data-spec-detail]")).toBeNull();
+    expect(document.querySelector('[data-archived-detail="change"]')).toBeTruthy();
     expect(manualNav.className).toContain("bg-primary");
     expect(document.querySelector('[data-column="ready"]')).toBeNull();
+    act(() => {
+      fireEvent.keyDown(window, { key: "Escape" });
+    });
+    await waitFor(() => expect(screen.queryByTestId("detail-page")).toBeNull());
+    expect(screen.getByText("看板說明。")).toBeTruthy();
   });
 
-  it("封存討論抽屜衍生列三態：首籤（已封存）開封存變更抽屜、浮層列出活躍者階段詞與已刪除者「無封存記錄」", async () => {
-    // spec Scenario「封存討論抽屜列出衍生變更並跳轉封存變更」「衍生變更籤的三態」。
+  it("封存討論詳情頁衍生變更列三態：已封存者副標封存日期、活躍者階段詞、已刪除者不可點；點已封存者開其已封存詳情頁", async () => {
+    // spec Scenario「封存討論詳情頁列出衍生變更並跳轉封存變更」「衍生變更籤的三態」。
     const ds = fakeDataSource({
       listChanges: vi.fn().mockResolvedValue(changeList([
         { name: "desktop-shell-and-browser", status: "in-progress", totalTasks: 30, completedTasks: 30 },
@@ -1800,34 +1826,26 @@ describe("抽屜溯源籤接線（drawer-provenance-links）", () => {
     });
     renderApp(ds);
     await screen.findByText("desktop-shell-and-browser");
-    const aside = projectColumn();
-    const archivedNav = within(aside).getByRole("button", { name: /已封存/ });
+    const archivedNav = within(projectColumn()).getByRole("button", { name: /已封存/ });
     fireEvent.click(archivedNav);
     fireEvent.mouseDown(await screen.findByRole("tab", { name: /已封存的討論/ }));
     await screen.findByText("Old topic");
     fireEvent.click(screen.getByText("Old topic"));
-    await waitFor(() => expect(screen.getByText("封存背景內文。")).toBeTruthy());
-    const row = document.querySelector("[data-archived-drawer] [data-promoted-row]") as HTMLElement | null;
-    expect(row).toBeTruthy();
-    expect(row!.textContent).toContain("衍生");
-    expect(within(row!).getByRole("button", { name: /arch-child/ })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /其餘 2 份/ }));
-    const popover = await overflowList();
-    const live = within(popover).getByRole("button", { name: /live-child/ });
-    expect(live.textContent).toContain("進行中");
-    expect(live.getAttribute("aria-disabled")).toBeNull();
-    const gone = within(popover).getByRole("button", { name: /gone-child/ });
-    expect(gone.getAttribute("aria-disabled")).toBe("true");
-    expect(gone.textContent).toContain("無封存記錄");
-    // 點首籤（已封存子變更）：同一封存抽屜切換為該變更；底層仍留已封存頁。
-    fireEvent.click(within(row!).getByRole("button", { name: /arch-child/ }));
+    const layer = await screen.findByTestId("detail-page");
+    await waitFor(() => expect(within(layer).getByText(/收工/)).toBeTruthy());
+    const chip = (name: string) => layer.querySelector(`[data-promoted-chip="${name}"]`) as HTMLElement;
+    expect(chip("arch-child").textContent).toContain("2026-09-02");
+    expect(chip("live-child").textContent).toContain("進行中");
+    expect(chip("gone-child").textContent).toContain("無封存記錄");
+    expect((within(chip("gone-child")).getByRole("button") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(within(chip("arch-child")).getByRole("button"));
     await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
     expect(ds.getArchivedDocument).toHaveBeenCalledWith("2026-09-02-arch-child", "proposal.md");
     expect(archivedNav.className).toContain("bg-primary");
     expect(document.querySelector('[data-column="ready"]')).toBeNull();
   });
 
-  it("封存討論抽屜點活躍子變更籤：開其詳情抽屜且底層落回看板", async () => {
+  it("封存討論詳情頁點活躍子變更籤：開其變更詳情頁且宿主落回看板", async () => {
     const ds = fakeDataSource({
       listChanges: vi.fn().mockResolvedValue(changeList([
         { name: "desktop-shell-and-browser", status: "in-progress", totalTasks: 30, completedTasks: 30 },
@@ -1850,15 +1868,17 @@ describe("抽屜溯源籤接線（drawer-provenance-links）", () => {
     fireEvent.mouseDown(await screen.findByRole("tab", { name: /已封存的討論/ }));
     await screen.findByText("Old topic");
     fireEvent.click(screen.getByText("Old topic"));
-    await waitFor(() => expect(screen.getByText("封存背景內文。")).toBeTruthy());
-    const row = document.querySelector("[data-archived-drawer] [data-promoted-row]") as HTMLElement;
-    fireEvent.click(within(row).getByRole("button", { name: /live-child/ }));
-    // 變更詳情抽屜開啟（載入其提案），封存抽屜關閉，底層落回看板。
+    const layer = await screen.findByTestId("detail-page");
+    await waitFor(() => expect(within(layer).getByText(/收工/)).toBeTruthy());
+    const chip = layer.querySelector('[data-promoted-chip="live-child"]') as HTMLElement;
+    fireEvent.click(within(chip).getByRole("button"));
+    // 變更詳情頁開啟（載入其提案），已封存詳情頁關閉，宿主落回看板。
     await waitFor(() => expect(ds.getDocument).toHaveBeenCalledWith("live-child", "proposal.md"));
-    await waitFor(() => expect(document.querySelector("[data-archived-drawer]")).toBeNull());
-    await waitFor(() => expect(document.querySelector('[data-column="ready"]')).toBeTruthy());
+    await waitFor(() => expect(document.querySelector("[data-archived-detail]")).toBeNull());
+    expect((pageSpy.change[pageSpy.change.length - 1]?.change as { name: string }).name).toBe("live-child");
     expect(changesNav.className).toContain("bg-primary");
     expect(archivedNav.className).not.toContain("bg-primary");
+    expect(screen.getByTestId("host-page").querySelector('[data-column="ready"]')).toBeTruthy();
   });
 });
 
@@ -2081,7 +2101,7 @@ describe("工單分頁接線（drawer-quality-ticket-tab）", () => {
     );
   });
 
-  it("reviewedNotPassed 的封存抽屜出現「審查」分頁，工單經 dataSource.getArchivedStationTicket 載入", async () => {
+  it("reviewedNotPassed 的已封存詳情頁出現「審查」分頁，工單經 dataSource.getArchivedStationTicket 載入", async () => {
     const ds = fakeDataSource({
       listArchived: vi.fn().mockResolvedValue([
         {
@@ -2102,8 +2122,7 @@ describe("工單分頁接線（drawer-quality-ticket-tab）", () => {
     });
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
-    const aside = projectColumn();
-    fireEvent.click(within(aside).getByRole("button", { name: /已封存/ }));
+    fireEvent.click(within(projectColumn()).getByRole("button", { name: /已封存/ }));
     await waitFor(() => screen.getByText("old"));
     fireEvent.click(screen.getByText("old"));
     await waitFor(() => screen.getByRole("tab", { name: /審查/ }));
@@ -2316,8 +2335,6 @@ describe("詳情頁層與導覽（desktop-detail-page）", () => {
     });
   const page = () => screen.queryByTestId("detail-page");
   const host = () => screen.getByTestId("host-page");
-  const crumbText = () =>
-    (screen.getByTestId("main-titlebar").querySelector("nav")?.textContent ?? "").replace(/\s+/g, "");
   const currentChange = () => (pageSpy.change[pageSpy.change.length - 1]?.change as { name: string } | null)?.name;
 
   it("開卡後頁層覆蓋主區、宿主頁 inert 且不可見；麵包屑三段、項目名等寬", async () => {
@@ -2433,6 +2450,35 @@ describe("詳情頁層與導覽（desktop-detail-page）", () => {
     expect(currentChange()).toBe("change-a");
   });
 
+  it("確認框開著（尚未按確認）時返回快捷鍵、側鍵、滑動與 ⌥↓ 都不作用", async () => {
+    // 確認框屬於目前詳情頁：關頁或換頁會連同確認框一起收掉。
+    renderApp(
+      fakeDataSource({
+        listChanges: vi.fn().mockResolvedValue(
+          changeList([
+            { name: "change-a", status: "in-progress", totalTasks: 3, completedTasks: 3 },
+            { name: "change-b", status: "in-progress", totalTasks: 3, completedTasks: 3 },
+          ]),
+        ),
+      }),
+    );
+    fireEvent.click(await screen.findByText("change-a"));
+    const layer = await screen.findByTestId("detail-page");
+    fireEvent.click(within(layer).getByRole("button", { name: "封存" }));
+    await screen.findByRole("alertdialog");
+    act(() => {
+      fireEvent.keyDown(window, { key: "ArrowLeft", altKey: true });
+      fireEvent.mouseUp(window, { button: 3 });
+      for (let i = 0; i < 4; i++) window.dispatchEvent(new WheelEvent("wheel", { deltaX: -50, bubbles: true }));
+      fireEvent.keyDown(window, { key: "ArrowDown", altKey: true });
+    });
+    expect(document.querySelector("[data-swipe-back]")!.getAttribute("data-progress")).toBe("0.00");
+    await new Promise((r) => setTimeout(r, 200));
+    expect(page()).toBeTruthy();
+    expect(currentChange()).toBe("change-a");
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+  });
+
   it("詳情頁開著時點專案欄「規格」：詳情頁關閉、主區換成規格頁", async () => {
     renderApp();
     fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
@@ -2440,6 +2486,88 @@ describe("詳情頁層與導覽（desktop-detail-page）", () => {
     fireEvent.click(screen.getByRole("button", { name: /^規格/ }));
     await waitFor(() => expect(page()).toBeNull());
     expect(crumbText()).toBe("proj-a/規格");
+    expect(host().hasAttribute("inert")).toBe(false);
+  });
+
+  it("返回鈕：只在詳情頁開啟時出現、名稱「返回規格」，點擊回規格頁且搜尋字串保留", async () => {
+    renderApp();
+    await screen.findByText("desktop-shell-and-browser");
+    fireEvent.click(screen.getByRole("button", { name: /^規格/ }));
+    await screen.findByText("desktop-app");
+    expect(screen.queryByRole("button", { name: /^返回/ })).toBeNull();
+    fireEvent.change(screen.getByPlaceholderText("搜尋規格…"), { target: { value: "desk" } });
+    fireEvent.click(screen.getByText("desktop-app"));
+    await screen.findByTestId("detail-page");
+    const back = within(screen.getByTestId("main-titlebar")).getByRole("button", { name: "返回規格" });
+    expect(back.getAttribute("title")).toBe("返回規格（Esc 或 Alt+←）");
+    fireEvent.click(back);
+    await waitFor(() => expect(page()).toBeNull());
+    expect((screen.getByPlaceholderText("搜尋規格…") as HTMLInputElement).value).toBe("desk");
+    expect(crumbText()).toBe("proj-a/規格");
+  });
+
+  it("Alt+←（非 macOS）關頁；⌘[ 在非 macOS 不作用；焦點在文字輸入時不作用", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+    await screen.findByTestId("detail-page");
+    act(() => {
+      fireEvent.keyDown(window, { key: "[", metaKey: true });
+    });
+    expect(page()).toBeTruthy();
+    fireEvent.keyDown(screen.getByPlaceholderText("搜尋看板卡片…"), { key: "ArrowLeft", altKey: true });
+    expect(page()).toBeTruthy();
+    act(() => {
+      fireEvent.keyDown(window, { key: "ArrowLeft", altKey: true });
+    });
+    await waitFor(() => expect(page()).toBeNull());
+  });
+
+  it("滑鼠側鍵「上一頁」（mouseup button 3）關頁；其他鍵不作用", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+    await screen.findByTestId("detail-page");
+    act(() => {
+      fireEvent.mouseUp(window, { button: 4 });
+    });
+    expect(page()).toBeTruthy();
+    act(() => {
+      fireEvent.mouseUp(window, { button: 3 });
+    });
+    await waitFor(() => expect(page()).toBeNull());
+  });
+
+  it("觸控板兩指向右滑過門檻：左緣「←」指示轉實心，手勢停止後關頁", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+    await screen.findByTestId("detail-page");
+    act(() => {
+      for (let i = 0; i < 4; i++) window.dispatchEvent(new WheelEvent("wheel", { deltaX: -50, bubbles: true }));
+    });
+    expect(document.querySelector("[data-swipe-back]")!.getAttribute("data-armed")).toBe("true");
+    await waitFor(() => expect(page()).toBeNull());
+  });
+
+  it("規格詳情頁與已封存詳情頁開著時點專案欄切頁：詳情頁先關閉再呈現該頁", async () => {
+    // spec「詳情頁的導覽與返回」：經專案欄切換主區頁面 SHALL 先關閉詳情頁——四種詳情頁一體適用。
+    renderApp(
+      fakeDataSource({
+        listArchived: vi.fn().mockResolvedValue([
+          { datedName: "2026-07-04-old", date: "2026-07-04", name: "old", createdBy: null, fromDiscussions: [] },
+        ]),
+      }),
+    );
+    await screen.findByText("desktop-shell-and-browser");
+    fireEvent.click(screen.getByRole("button", { name: /^規格/ }));
+    fireEvent.click(await screen.findByText("desktop-app"));
+    await screen.findByTestId("detail-page");
+    fireEvent.click(screen.getByRole("button", { name: /^已封存/ }));
+    await waitFor(() => expect(page()).toBeNull());
+    expect(crumbText()).toBe("proj-a/已封存");
+    fireEvent.click(await screen.findByText("old"));
+    await screen.findByTestId("detail-page");
+    fireEvent.click(screen.getByRole("button", { name: "手冊" }));
+    await waitFor(() => expect(page()).toBeNull());
+    expect(crumbText()).toBe("proj-a/手冊");
     expect(host().hasAttribute("inert")).toBe(false);
   });
 
@@ -2485,6 +2613,67 @@ describe("詳情頁層與導覽（desktop-detail-page）", () => {
     workspaceHandlers.forEach((h) => h());
     await waitFor(() => expect(page()).toBeNull());
     expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("規格頁宿主時 ‹ n／m › 為規格頁過濾後的順序，⌥↓ 切到下一份規格", async () => {
+    const ds = fakeDataSource({
+      listSpecs: vi.fn().mockResolvedValue([{ id: "beta" }, { id: "alpha" }, { id: "zeta" }]),
+      getSpecDocument: vi.fn(async (cap: string) => `# ${cap}\n\n### Requirement: R\n\n${cap} 內文。\n`),
+    });
+    renderApp(ds);
+    await screen.findByText("desktop-shell-and-browser");
+    fireEvent.click(screen.getByRole("button", { name: /^規格/ }));
+    await screen.findByText("zeta");
+    fireEvent.change(screen.getByPlaceholderText("搜尋規格…"), { target: { value: "a" } });
+    fireEvent.click(screen.getByText("beta"));
+    await screen.findByText("beta 內文。");
+    // 過濾後（名稱含 a）依名稱排序：alpha、beta、zeta。
+    expect(screen.getByText("2 / 3")).toBeTruthy();
+    act(() => {
+      fireEvent.keyDown(window, { key: "ArrowDown", altKey: true });
+    });
+    await screen.findByText("zeta 內文。");
+    expect(crumbText()).toBe("proj-a/規格/zeta");
+  });
+
+  it("手冊頁宿主時 ‹ n／m › 的 m 為全部規格數", async () => {
+    const ds = fakeDataSource({
+      listSpecs: vi.fn().mockResolvedValue([{ id: "zeta" }, { id: "desktop-app" }, { id: "alpha" }]),
+      listManualPages: vi.fn().mockResolvedValue(MANUAL_INDEX),
+      getManualPage: vi.fn().mockResolvedValue("# 看板\n\n看板說明。"),
+    });
+    renderApp(ds);
+    await screen.findByText("desktop-shell-and-browser");
+    fireEvent.click(screen.getByRole("button", { name: "手冊" }));
+    await screen.findByText("看板說明。");
+    fireEvent.click(document.querySelector('[data-manual-page="boards"]') as HTMLElement);
+    const sources = await waitFor(() => {
+      const el = document.querySelector("[data-manual-sources]") as HTMLElement;
+      expect(el).toBeTruthy();
+      return el;
+    });
+    fireEvent.click(within(sources).getByRole("button", { name: "desktop-app" }));
+    await screen.findByTestId("detail-page");
+    expect(screen.getByText("2 / 3")).toBeTruthy();
+  });
+
+  it("已封存頁宿主時 ‹ › 在已封存清單（最新在前）內切換", async () => {
+    const ds = fakeDataSource({
+      listArchived: vi.fn().mockResolvedValue([
+        { datedName: "2026-07-01-first", date: "2026-07-01", name: "first", createdBy: null, fromDiscussions: [] },
+        { datedName: "2026-07-02-second", date: "2026-07-02", name: "second", createdBy: null, fromDiscussions: [] },
+      ]),
+      getArchivedDocument: vi.fn(async (d: string, a: string) => (a === "proposal.md" ? `## Why\n\n${d} 提案。` : null)),
+    });
+    renderApp(ds);
+    await screen.findByText("desktop-shell-and-browser");
+    fireEvent.click(screen.getByRole("button", { name: /已封存/ }));
+    fireEvent.click(await screen.findByText("second"));
+    await screen.findByText("2026-07-02-second 提案。");
+    expect(screen.getByText("1 / 2")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "下一個" }));
+    await screen.findByText("2026-07-01-first 提案。");
+    expect(crumbText()).toBe("proj-a/已封存/first");
   });
 
   it("討論卡開頁：麵包屑項目名為 slug", async () => {

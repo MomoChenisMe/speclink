@@ -19,7 +19,7 @@ function render(ui: ReactElement, locale: "zh-TW" | "en" = "zh-TW") {
 import { DiscussionCard, DiscussionColumn } from "../components/DiscussionColumn";
 import { DiscussionDetailPage } from "../components/DiscussionDetailPage";
 import { ArchivedList } from "../components/ArchivedList";
-import { ArchivedDrawer } from "../components/ArchivedDrawer";
+import { ArchivedDetailPage } from "../components/ArchivedDetailPage";
 import type { DiscussionItem } from "../adapter";
 
 const IMPROVE_TW = "改進討論";
@@ -119,10 +119,8 @@ describe("已封存側的改進標示", () => {
   });
 });
 
-describe("已封存討論抽屜的改進標示", () => {
-  const archivedDrawerBase = {
-    open: true,
-    onOpenChange: vi.fn(),
+describe("已封存討論詳情頁的改進標示", () => {
+  const archivedPageBase = {
     loadDocument: vi.fn(async () => null),
     loadCapabilities: vi.fn(async () => []),
     loadDiscussionDocument: vi.fn(async () => null),
@@ -130,8 +128,8 @@ describe("已封存討論抽屜的改進標示", () => {
 
   it("discussionKind 為 improve 時顯示標示", () => {
     render(
-      <ArchivedDrawer
-        {...archivedDrawerBase}
+      <ArchivedDetailPage
+        {...archivedPageBase}
         target={{ kind: "discussion", slug: "improve-store-layer" }}
         discussionKind="improve"
       />,
@@ -143,8 +141,8 @@ describe("已封存討論抽屜的改進標示", () => {
 
   it("一般封存討論不顯示標示", () => {
     render(
-      <ArchivedDrawer
-        {...archivedDrawerBase}
+      <ArchivedDetailPage
+        {...archivedPageBase}
         target={{ kind: "discussion", slug: "board-search-bar" }}
       />,
     );

@@ -1,6 +1,7 @@
 import { useId, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 
+import { cn } from "../lib/utils";
 import { CopyButton, REVEAL_ON_HOVER } from "./CopyButton";
 
 export interface ListRowProps {
@@ -15,6 +16,8 @@ export interface ListRowProps {
   /** 右端 meta 槽（計數、徽章、相對時間），› 緊接其後。 */
   meta?: ReactNode;
   onClick: () => void;
+  /** 不可點的列（規格溯源的無封存記錄來源）：灰字、無 hover、無 ›，點擊與按鍵不觸發。 */
+  disabled?: boolean;
   /** 複製鈕之後的章（如改進小章）。 */
   children?: ReactNode;
   /** 呼叫端的 DOM 錨點（data-spec、data-archived…）。 */
@@ -34,12 +37,13 @@ export function ListRow({
   leading,
   meta,
   onClick,
+  disabled = false,
   children,
   ...dataAttrs
 }: ListRowProps) {
   const titleId = useId();
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.target !== e.currentTarget) return;
+    if (disabled || e.target !== e.currentTarget) return;
     if (e.key !== "Enter" && e.key !== " ") return;
     e.preventDefault();
     onClick();
@@ -48,10 +52,16 @@ export function ListRow({
     <div
       {...dataAttrs}
       role="button"
-      tabIndex={0}
+      tabIndex={disabled ? -1 : 0}
       aria-labelledby={titleId}
-      className="group flex cursor-pointer items-center gap-4 border-b border-border/70 px-4 py-3 outline-none last:border-b-0 hover:bg-foreground/[0.03] focus-visible:bg-foreground/[0.03] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-      onClick={onClick}
+      aria-disabled={disabled || undefined}
+      className={cn(
+        "group flex items-center gap-4 border-b border-border/70 px-4 py-3 outline-none last:border-b-0",
+        disabled
+          ? "cursor-default text-muted-foreground"
+          : "cursor-pointer hover:bg-foreground/[0.03] focus-visible:bg-foreground/[0.03] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+      )}
+      onClick={disabled ? undefined : onClick}
       onKeyDown={onKeyDown}
     >
       {leading !== undefined && (
@@ -74,7 +84,7 @@ export function ListRow({
       {meta !== undefined && (
         <span className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">{meta}</span>
       )}
-      <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
+      {!disabled && <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />}
     </div>
   );
 }

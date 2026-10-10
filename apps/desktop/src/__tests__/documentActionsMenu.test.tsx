@@ -135,6 +135,29 @@ describe("DocumentActionsMenu", () => {
     expect(view.container.innerHTML).toBe("");
   });
 
+  it("本機但目標不帶檔案（已封存討論）：只有「複製內容」、不查位置", async () => {
+    const u = user();
+    const cb = setup({ target: { doc: null, content: "# 封存討論原文" } });
+    await openMenu(u);
+    expect(itemNames()).toEqual(["複製內容"]);
+    expect(cb.locate).not.toHaveBeenCalled();
+    await u.click(screen.getByRole("menuitem", { name: "複製內容" }));
+    expect(cb.onCopyContent).toHaveBeenCalledWith("# 封存討論原文");
+  });
+
+  it("正式規格與封存變更的文件參照原樣交給宿主查位置", async () => {
+    const u = user();
+    const spec = { path: "/work/app/openspec/specs/auth/spec.md", relative: "openspec/specs/auth/spec.md" };
+    const cb = setup({ target: { doc: { spec: "auth" }, content: "# spec" }, locate: vi.fn().mockResolvedValue(spec) });
+    await openMenu(u);
+    await screen.findByText(spec.relative);
+    expect(cb.locate).toHaveBeenCalledWith({ spec: "auth" });
+    cb.view.unmount();
+    const archived = setup({ target: { doc: { archived: "2026-07-04-old", artifact: "design.md" }, content: "# d" } });
+    await openMenu(u);
+    expect(archived.locate).toHaveBeenCalledWith({ archived: "2026-07-04-old", artifact: "design.md" });
+  });
+
   it("分頁沒有對應檔案（target 為 null）時不渲染", () => {
     const { view } = setup({ target: null });
     expect(view.container.innerHTML).toBe("");

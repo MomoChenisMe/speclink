@@ -21,7 +21,7 @@ vi.mock("../components/TaskList", () => ({
 import { ChangeCard } from "../components/ChangeCard";
 import { ChangeDetailPage } from "../components/ChangeDetailPage";
 import { ArchivedList } from "../components/ArchivedList";
-import { ArchivedDrawer } from "../components/ArchivedDrawer";
+import { ArchivedDetailPage } from "../components/ArchivedDetailPage";
 import { ReviewArchiveDialog } from "../components/ReviewArchiveDialog";
 import type { ArchivedItem, ChangeItem } from "../adapter";
 
@@ -227,11 +227,9 @@ describe("已封存側驗證結局標示", () => {
     expect(screen.getByLabelText("曾驗證未通過").className).toContain("text-destructive");
   });
 
-  it("抽屜顯示「曾驗證未通過」標示", () => {
+  it("已封存詳情頁顯示「曾驗證未通過」標示", () => {
     render(
-      <ArchivedDrawer
-        open
-        onOpenChange={() => {}}
+      <ArchivedDetailPage
         target={{ kind: "change", datedName: "2026-08-06-carried" }}
         verifyStatus="verifiedNotPassed"
         loadDocument={async () => null}
