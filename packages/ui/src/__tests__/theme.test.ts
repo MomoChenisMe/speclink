@@ -236,6 +236,41 @@ describe("共用 semantic theme 抽取（既有）", () => {
     expect(css).not.toContain("0.008 260");
   });
 
+  // 外觀偏好（desktop-settings-mode design D4）：深色 token 由系統偏好與明示深色兩種觸發共用，
+  // 兩份宣告必須逐行相同——漂移即紅。
+  const darkBlockDeclarations = (css: string, selector: RegExp) => {
+    const match = selector.exec(css);
+    expect(match, String(selector)).not.toBeNull();
+    const bodyStart = match!.index + match![0].length;
+    return css
+      .slice(bodyStart, css.indexOf("}", bodyStart))
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("--"));
+  };
+
+  it("系統偏好區塊排除明示淺色、另有明示深色區塊", () => {
+    const css = themeCss();
+    expect(css).toMatch(/@media \(prefers-color-scheme: dark\)\s*\{\s*:root:not\(\[data-theme="light"\]\)\s*\{/);
+    expect(css).toMatch(/:root\[data-theme="dark"\]\s*\{/);
+  });
+
+  it("兩個深色區塊的宣告逐行相同", () => {
+    const css = themeCss();
+    const media = darkBlockDeclarations(css, /:root:not\(\[data-theme="light"\]\)\s*\{/);
+    const explicit = darkBlockDeclarations(css, /:root\[data-theme="dark"\]\s*\{/);
+    expect(media.length).toBeGreaterThan(0);
+    expect(explicit).toEqual(media);
+    for (const token of DARK_TOKENS) expect(media).toContain(token);
+  });
+
+  it("dark: 變體與深色 token 同一套觸發（系統深色且未明示淺色、或明示深色）", () => {
+    const variant = themeCss().match(/@custom-variant dark \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    expect(variant).toContain("@media (prefers-color-scheme: dark)");
+    expect(variant).toContain(':root:not([data-theme="light"]) *');
+    expect(variant).toContain(':root[data-theme="dark"] *');
+  });
+
   it("theme.css 保留 @theme inline 對 Tailwind utility 的映射", () => {
     const css = themeCss();
     expect(css).toContain("@theme inline");

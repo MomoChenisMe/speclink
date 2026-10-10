@@ -55,6 +55,21 @@ describe("LeftTitleBar", () => {
     expect(screen.getByRole("button", { name: "⋯" })).toBeTruthy();
   });
 
+  it("專案設定模式：左端「← 專案設定」返回鈕、右端等寬小字專案名（desktop-settings-mode D2）", () => {
+    const onBack = vi.fn();
+    render(
+      <LeftTitleBar
+        back={{ label: "專案設定", onClick: onBack }}
+        trailing={<span>speclink</span>}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "專案設定" }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+    const trailing = screen.getByText("speclink").parentElement as HTMLElement;
+    expect(trailing.className).toContain("font-mono");
+    expect(trailing.className).toContain("text-[11px]");
+  });
+
   it("下緣與主區頂列同一條細線，頂列橫貫整個視窗", () => {
     render(<LeftTitleBar />);
     const left = screen.getByTestId("left-titlebar");

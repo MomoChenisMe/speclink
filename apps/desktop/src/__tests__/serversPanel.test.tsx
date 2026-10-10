@@ -4,6 +4,7 @@
 // 狀態。credential 全程不出現在任何斷言面（TS 只見狀態與顯示名）。
 import { describe, it, expect, vi } from "vitest";
 import { render as rtlRender, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { I18nProvider } from "@speclink/ui";
 
@@ -112,8 +113,23 @@ function Harness({
       onRemove={s.removeConnection}
       onRefresh={s.refreshConnections}
       onOpenWorkspace={onOpenWorkspace}
+      // 伺服器頁的新增卡由頁標題「新增連線」展開；此處直接展開以走新增表單。
+      addOpen
     />
   );
+}
+
+/** 連線列：狀態籤「已登入」與身分顯示名（desktop-settings-mode design D7）。 */
+async function expectLoggedInAs(display: string) {
+  await waitFor(() => expect(screen.getByText(display)).toBeTruthy());
+  expect(screen.getByText("已登入")).toBeTruthy();
+}
+
+/** 連線列的「⋯」選單動作。 */
+async function rowMenu(item: string) {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  await user.click(screen.getByRole("button", { name: "更多動作" }));
+  await user.click(await screen.findByRole("menuitem", { name: item }));
 }
 
 function renderPanel(adapter: ConnectionsAdapter) {
@@ -144,7 +160,7 @@ describe("ServersPanel", () => {
     expect(screen.getByText("http://localhost:8080")).toBeTruthy();
 
     // 隨即登入成功：呈現已登入與身分顯示名。
-    await waitFor(() => expect(screen.getByText(`已登入 · ${DISPLAY}`)).toBeTruthy());
+    await expectLoggedInAs(DISPLAY);
   });
 
   it("探測不支援時就地現 PAT 輸入，有效 PAT 完成登入", async () => {
@@ -160,7 +176,7 @@ describe("ServersPanel", () => {
     fireEvent.change(patInput, { target: { value: "spk_pat_good" } });
     fireEvent.click(screen.getByRole("button", { name: "以 PAT 登入" }));
 
-    await waitFor(() => expect(screen.getByText(`已登入 · ${DISPLAY}`)).toBeTruthy());
+    await expectLoggedInAs(DISPLAY);
   });
 
   it("無效 PAT 拒絕並留在輸入面", async () => {
@@ -185,11 +201,11 @@ describe("ServersPanel", () => {
   it("登出後回未登入", async () => {
     renderPanel(fakeAdapter());
     addServer("http://localhost:8080", "本地");
-    await waitFor(() => expect(screen.getByText(`已登入 · ${DISPLAY}`)).toBeTruthy());
+    await expectLoggedInAs(DISPLAY);
 
     fireEvent.click(screen.getByRole("button", { name: "登出" }));
     await waitFor(() => expect(screen.getByText("未登入")).toBeTruthy());
-    expect(screen.queryByText(`已登入 · ${DISPLAY}`)).toBeNull();
+    expect(screen.queryByText(DISPLAY)).toBeNull();
   });
 
   it("瀏覽器拒絕授權呈現可讀狀態", async () => {
@@ -284,7 +300,7 @@ describe("ServersPanel", () => {
     addServer("http://localhost:8080", "本地");
     await waitFor(() => expect(screen.getByText("本地")).toBeTruthy());
 
-    fireEvent.click(screen.getByRole("button", { name: "移除" }));
+    await rowMenu("移除");
     await waitFor(() => expect(screen.queryByText("本地")).toBeNull());
     expect(screen.getByTestId("servers-empty")).toBeTruthy();
   });
@@ -315,24 +331,23 @@ describe("ServersPanel", () => {
     );
   }
 
-  function openWorkspaceChooser() {
-    fireEvent.click(screen.getByRole("button", { name: "開啟專案" }));
-  }
+  // 既有已登入條目的開啟專案在「⋯」選單；行動呼籲按鈕只給剛完成的登入。
+  const openWorkspaceChooser = () => rowMenu("開啟專案");
 
-  it("已登入條目開啟統一 chooser 並預選該 connection", () => {
+  it("已登入條目開啟統一 chooser 並預選該 connection", async () => {
     const open = vi.fn();
     renderLoggedInPanel(open);
 
-    openWorkspaceChooser();
+    await openWorkspaceChooser();
     expect(open).toHaveBeenCalledWith("conn_1");
     expect(screen.queryByPlaceholderText("project 或 project/repo")).toBeNull();
   });
 
-  it("不再呈現臨時 repo 文字輸入表單", () => {
+  it("不再呈現臨時 repo 文字輸入表單", async () => {
     const open = vi.fn();
     renderLoggedInPanel(open);
 
-    openWorkspaceChooser();
+    await openWorkspaceChooser();
     expect(screen.queryByTestId("workspace-form-http://localhost:8080")).toBeNull();
     expect(screen.queryByPlaceholderText("project 或 project/repo")).toBeNull();
   });

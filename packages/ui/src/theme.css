@@ -2,8 +2,8 @@
    色值的單一真相源：基底、狀態語意、蓋章、改進、生命週期 token 只在這裡寫值，
    淺色深色各一套；TS 常數表只保存「狀態→token class」對照，元件只寫 token class。
 
-   深色跟隨系統偏好（prefers-color-scheme）；若某宿主要手動切換主題，另加
-   class 層即可，勿在此更動預設值以免 Desktop 觀察 token 漂移。 */
+   深色預設跟隨系統偏好（prefers-color-scheme）；宿主可在根元素設 data-theme
+   明示淺色或深色（desktop 外觀偏好），勿在此更動預設值以免 Desktop 觀察 token 漂移。 */
 
 /* 進出動畫 utility（animate-in／animate-out、fade-*、slide-*）：ui/sheet、popover、
    tooltip 的 data-[state] class 依賴它；Tailwind v4 不再內建，缺了就是「抽屜無動畫」。 */
@@ -49,8 +49,24 @@
   --stage-ready: var(--status-success);
 }
 
+/* Tailwind 的 dark: 變體（Streamdown 程式碼區塊、字標切換）與深色 token 同一套觸發：系統偏好深色
+   且未明示淺色，或明示深色。內建的 dark: 只看 prefers-color-scheme，明示外觀時會與 token 反向。 */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
+  &:where(:root[data-theme="dark"] *) {
+    @slot;
+  }
+}
+
+/* 深色 token 兩份、宣告逐行相同（theme.test.ts 釘住）：系統偏好深色且未明示淺色時一份、
+   明示深色（data-theme="dark"，desktop 外觀偏好）時一份。light-dark() 要 macOS 14.5 的
+   WKWebView 才支援，故不用。 */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     /* 深色基底純中性，與淺色對稱（neutral-950／900／800） */
     --background: oklch(0.145 0 0);
     --foreground: oklch(0.945 0 0);
@@ -79,6 +95,36 @@
     --improve: oklch(67.3% 0.182 276.935);
     --stage-discussion: oklch(74% 0.238 322.16);
   }
+}
+
+:root[data-theme="dark"] {
+  /* 深色基底純中性，與淺色對稱（neutral-950／900／800） */
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.945 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.945 0 0);
+  /* 品牌淺青綠 #4bb9b3 換算（oklch(0.721 0.1 190.2)） */
+  --primary: oklch(0.72 0.1 190);
+  --primary-foreground: oklch(0.16 0.02 210);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.945 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.7 0 0);
+  --accent: oklch(0.3 0.045 192);
+  --accent-foreground: oklch(0.945 0 0);
+  --destructive: oklch(0.62 0.2 25);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.64 0.1 192);
+  --sidebar: oklch(0.185 0 0);
+  /* sky-400、emerald-400、amber-500、violet-400、indigo-400、fuchsia-400；
+     stage-proposed／in-progress／ready 經 var() 自動跟著深色值走 */
+  --status-progress: oklch(74.6% 0.16 232.661);
+  --status-success: oklch(76.5% 0.177 163.223);
+  --status-warning: oklch(76.9% 0.188 70.08);
+  --stamp: oklch(70.2% 0.183 293.541);
+  --improve: oklch(67.3% 0.182 276.935);
+  --stage-discussion: oklch(74% 0.238 322.16);
 }
 
 @theme inline {

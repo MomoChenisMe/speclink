@@ -9,6 +9,8 @@ export interface NavItemProps {
   active?: boolean;
   /** 右端計數徽章（如已封存數）；未給即不渲染。 */
   count?: number;
+  /** 標籤之後的標記槽（如設定分類項的解析失敗警示點）；不併入無障礙名稱時由呼叫端設 aria-hidden。 */
+  badge?: ReactNode;
   /** 設定時無障礙名稱不被徽章數字污染。 */
   ariaLabel?: string;
   onClick?: () => void;
@@ -25,6 +27,7 @@ export function NavItem({
   label,
   active,
   count,
+  badge,
   ariaLabel,
   onClick,
   asChild,
@@ -47,6 +50,7 @@ export function NavItem({
       {icon}
       {asChild && <Slottable>{children}</Slottable>}
       <span className="truncate">{label}</span>
+      {badge}
       {count !== undefined && (
         <span className="ml-auto inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1 text-[11px] tabular-nums text-muted-foreground">
           {count}

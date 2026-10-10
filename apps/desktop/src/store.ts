@@ -79,6 +79,7 @@ import {
   type CliPlatform,
 } from "./core/cliInstall";
 import type { CliInstallAdapter } from "./adapter/cliInstall";
+import type { ProjectSettingsSection, SettingsSection } from "./settingsCatalog";
 
 const FAILURE_TOAST_ID = "desktop-operation-failure";
 type FailureMessageKey =
@@ -128,6 +129,8 @@ function moveBetweenNeighbors<T>(
 
 /** 主頁面：變更看板（預設）、規格頁、手冊頁、已封存頁、專案設定或應用程式設定。 */
 export type BoardView = "board" | "specs" | "manual" | "archived" | "project-settings" | "settings";
+type SettingsView = "project-settings" | "settings";
+export const isSettingsView = (v: BoardView): v is SettingsView => v === "settings" || v === "project-settings";
 
 /** 逐連線登入互動狀態（desktop-connections）：patInput＝device flow 明確
  * 不支援（404/405），就地收 PAT（規格 PAT fallback）；awaitingApproval＝device
@@ -212,6 +215,30 @@ function readPageSizes(): PageSizes {
   return { specs: pick("specs"), archivedChanges: pick("archivedChanges"), archivedDiscussions: pick("archivedDiscussions") };
 }
 
+/** 更新頁「啟動時在背景檢查新版本」開關的記憶鍵（desktop-settings-mode design D6）：app 本機、
+ * 值為 "true"／"false"；只有 "false" 關閉——鍵缺席、壞值或 localStorage 不可用都維持預設開。 */
+export const UPDATER_AUTO_CHECK_STORAGE_KEY = "speclink.updater.autoCheck";
+
+function readUpdaterAutoCheck(): boolean {
+  try {
+    return localStorage.getItem(UPDATER_AUTO_CHECK_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+/** 新增遠端專案時預設使用的連線（desktop-settings-mode design D7）：app 本機、值為 connection id。
+ * 指向的連線不存在或未登入時由新增專案對話框忽略，這裡不驗證。 */
+export const DEFAULT_CONNECTION_STORAGE_KEY = "speclink.defaultConnection";
+
+function readDefaultConnectionId(): string | null {
+  try {
+    return localStorage.getItem(DEFAULT_CONNECTION_STORAGE_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
 export interface AppState {
   changes: ChangeItem[];
   /** 清單 payload 的頂層 planError（依賴成環訊息；null＝無成環或資料源不供）。 */
@@ -237,6 +264,12 @@ export interface AppState {
   manual: ManualIndex | null;
 
   boardView: BoardView;
+  /** 應用程式設定的所在分類（desktop-settings-mode design D1）：切回設定模式時沿用上次分類。 */
+  settingsSection: SettingsSection;
+  /** 專案設定的所在分類；遠端專案無 .speclink.yaml 頁，呈現端退回專案說明。 */
+  projectSettingsSection: ProjectSettingsSection;
+  /** 兩種設定模式的返回去處：進入設定前所在的頁面（兩種設定模式之間切換不改寫）。 */
+  settingsReturnView: Exclude<BoardView, SettingsView>;
   view: ListView;
   query: string;
   /** 看板搜尋字串——與已封存頁的 query 各自獨立；不持久化、不跨啟動保留（spec）。 */
@@ -283,6 +316,10 @@ export interface AppState {
    * （workspace-changed 沿用同一條路，不新增監看目標）；交錯回應以最新為準。 */
   refreshManual: () => Promise<void>;
   setBoardView: (v: BoardView) => void;
+  /** 離開設定模式，回到 settingsReturnView。 */
+  leaveSettings: () => void;
+  setSettingsSection: (section: SettingsSection) => void;
+  setProjectSettingsSection: (section: ProjectSettingsSection) => void;
   setView: (v: ListView) => void;
   setQuery: (q: string) => void;
   setBoardQuery: (q: string) => void;
@@ -458,9 +495,12 @@ export interface AppState {
   /** 設定頁軟體更新卡的聚焦旗標（圖示列更新鈕、toast「查看」、較新態「更新 Speclink」舉旗；
    * AppSettingsView 捲到卡後清回 false）。執行期狀態、不持久化。 */
   focusUpdater: boolean;
-  /** 進設定頁並聚焦軟體更新卡（desktop-notice-relocation design D2／D4）。 */
+  /** 進設定模式的更新頁並聚焦（desktop-settings-mode design D1／D6）。 */
   openSettingsUpdate: () => void;
   clearFocusUpdater: () => void;
+  /** 啟動時與回到前景的背景檢查開關（預設開、存 app 本機）：關閉時兩者都不發出，手動檢查照常。 */
+  updaterAutoCheck: boolean;
+  setUpdaterAutoCheck: (on: boolean) => void;
 
   // --- 安裝 CLI 指令（desktop-app「安裝 CLI 指令到 PATH」；design D5） ---
   /** CLI 佈署狀態視圖（null＝尚未探測或無 adapter；執行期狀態、不持久化）。 */
@@ -483,9 +523,12 @@ export interface AppState {
   connections: ConnectionView[];
   /** 逐連線互動狀態（keyed by origin；執行期狀態、不持久化）。 */
   connectionPhases: Record<string, ConnectionPhase>;
-  /** needs-reauth 導向伺服器簽時要聚焦的 connection id。 */
+  /** needs-reauth 導向伺服器頁時要聚焦的 connection id。 */
   reauthConnectionId: string | null;
   openConnectionReauth: (connectionId: string) => void;
+  /** 新增遠端專案時預設使用的連線（null＝不預選；存 app 本機）。 */
+  defaultConnectionId: string | null;
+  setDefaultConnectionId: (connectionId: string | null) => void;
   /** 重整連線清單。回傳讀取是否成功——失敗時清單保留現值，呼叫端據此區分
    * 「清單真的空」與「讀不到」（chooser 的最近開啟列靠它判定連線已移除）。 */
   refreshConnections: () => Promise<boolean>;
@@ -1211,6 +1254,9 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     refreshGen: 0,
     manual: null,
     boardView: "board",
+    settingsSection: "general",
+    settingsReturnView: "board",
+    projectSettingsSection: "context",
     view: "active",
     query: "",
     boardQuery: "",
@@ -1333,9 +1379,11 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     setBoardView(boardView) {
+      const from = get().boardView;
       // 切換主區頁面＝離開詳情頁：四種詳情頁都疊在宿主頁上，不關就會蓋住新頁。
       set({
         boardView,
+        ...(isSettingsView(boardView) && !isSettingsView(from) ? { settingsReturnView: from } : {}),
         reauthConnectionId: null,
         detailChange: null,
         detailDiscussion: null,
@@ -1344,6 +1392,18 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         detailVerb: null,
       });
       if (boardView === "manual") void get().refreshManual();
+    },
+
+    leaveSettings() {
+      get().setBoardView(get().settingsReturnView);
+    },
+
+    setSettingsSection(settingsSection) {
+      set({ settingsSection });
+    },
+
+    setProjectSettingsSection(projectSettingsSection) {
+      set({ projectSettingsSection });
     },
 
     setView(view) {
@@ -1856,6 +1916,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     updater: initialUpdaterState,
     async checkForUpdates(manual) {
       if (!updaterAdapter) return;
+      // 自動檢查關閉：背景檢查（啟動、前景重檢）不發出、節流時間戳不動；手動照常。
+      if (!manual && !get().updaterAutoCheck) return;
       const before = get().updater;
       const checking = reduceUpdater(before, { type: "checkStarted", manual });
       if (checking === before) return; // 下載中／待重啟不可重檢
@@ -1925,10 +1987,19 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     focusUpdater: false,
     openSettingsUpdate() {
       get().setBoardView("settings");
-      set({ focusUpdater: true });
+      set({ settingsSection: "updates", focusUpdater: true });
     },
     clearFocusUpdater() {
       set({ focusUpdater: false });
+    },
+    updaterAutoCheck: readUpdaterAutoCheck(),
+    setUpdaterAutoCheck(updaterAutoCheck) {
+      set({ updaterAutoCheck });
+      try {
+        localStorage.setItem(UPDATER_AUTO_CHECK_STORAGE_KEY, String(updaterAutoCheck));
+      } catch {
+        // 寫不進 app 本機只失去跨啟動記憶，本次執行期照常生效。
+      }
     },
 
     // --- 安裝 CLI 指令（desktop-app「安裝 CLI 指令到 PATH」；design D5） ---
@@ -2023,7 +2094,17 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     openConnectionReauth(connectionId) {
       // 經 setBoardView 切頁：連線失效橫幅在主區外、詳情頁開著時仍點得到，詳情頁要一併關閉。
       get().setBoardView("settings");
-      set({ reauthConnectionId: connectionId });
+      set({ settingsSection: "servers", reauthConnectionId: connectionId });
+    },
+    defaultConnectionId: readDefaultConnectionId(),
+    setDefaultConnectionId(defaultConnectionId) {
+      set({ defaultConnectionId });
+      try {
+        if (defaultConnectionId === null) localStorage.removeItem(DEFAULT_CONNECTION_STORAGE_KEY);
+        else localStorage.setItem(DEFAULT_CONNECTION_STORAGE_KEY, defaultConnectionId);
+      } catch {
+        // 寫不進 app 本機只失去跨啟動記憶，本次執行期照常生效。
+      }
     },
     async refreshConnections() {
       if (!connectionsAdapter) return false;

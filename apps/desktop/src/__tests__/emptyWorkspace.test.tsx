@@ -42,10 +42,11 @@ async function renderEmpty(over: Partial<EmptyWorkspaceProps> = {}) {
 describe("EmptyWorkspace", () => {
   it("字標、標題、含初始化提示的說明與底部 CLI 提示", async () => {
     await renderEmpty();
-    const wordmark = screen.getByAltText("Speclink");
+    // 字標深淺兩版以 dark: 切換（與深色 token 同一套觸發，明示外觀也跟得上）。
+    const [wordmark, dark] = screen.getAllByAltText("Speclink");
     expect(wordmark.className).toContain("h-10");
-    const dark = wordmark.parentElement?.querySelector("source") as HTMLSourceElement;
-    expect(dark.getAttribute("media")).toBe("(prefers-color-scheme: dark)");
+    expect(wordmark.className).toContain("dark:hidden");
+    expect(dark.getAttribute("src")).toContain("logo-horizontal-dark");
     expect(screen.getByRole("heading", { level: 2, name: "開啟一個專案開始" })).toBeTruthy();
     expect(screen.getByText(zh["app.emptyDesc"]).textContent).toContain("openspec/");
     expect(screen.getByText(zh["app.emptyCli"])).toBeTruthy();

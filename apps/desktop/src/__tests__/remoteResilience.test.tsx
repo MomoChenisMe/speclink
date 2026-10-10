@@ -441,4 +441,65 @@ describe("remote offline stale snapshot", () => {
     expect(document.querySelector(`[data-tab="${frontendKey}"]`)).toBeTruthy();
     expect(createSession).not.toHaveBeenCalled();
   });
+
+  it("session 回報 needs-reauth 後，從齒輪進伺服器頁也看得到該連線「登入過期」", async () => {
+    localStorage.setItem(
+      "speclink.projectTabs",
+      JSON.stringify({
+        version: 2,
+        tabs: [
+          {
+            locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
+            name: "Demo/Backend",
+          },
+        ],
+        activeKey: "remote:c1/demo/backend",
+      }),
+    );
+    const events = fakeEvents();
+    const invoke = vi.fn(async (command: string) => {
+      switch (command) {
+        case "remote_list_changes":
+          return { changes: [{ name: "backend-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }] };
+        case "remote_list_specs":
+          return { specs: [] };
+        case "remote_list_archived":
+          return { archived: [] };
+        case "remote_list_discussions":
+          return { active: [], archived: [] };
+        default:
+          return undefined;
+      }
+    }) as unknown as InvokeFn;
+    const openRemote = vi.fn(async () =>
+      createRemoteSession("c1", { ...INFO, repoKey: "backend", repoName: "Backend" }, undefined, {
+        invoke,
+        listen: events.listen,
+      }),
+    );
+    const connections = {
+      list: vi.fn(async () => [{ id: "c1", origin: "http://server.test", name: "Server", loggedIn: true }]),
+    } as unknown as ConnectionsAdapter;
+    render(
+      <App
+        createSession={vi.fn()}
+        openRemote={openRemote}
+        workspace={fakeWorkspace() as never}
+        connections={connections}
+      />,
+    );
+    await screen.findByText("backend-change");
+    act(() => {
+      events.emit("remote-connection-state", { connectionId: "c1", state: "needs-reauth", message: "登入已失效" });
+    });
+    await screen.findByTestId("remote-stale-banner");
+
+    fireEvent.click(
+      (document.querySelector("[data-project-rail]") as HTMLElement).querySelector('[aria-label="設定"]') as HTMLElement,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "伺服器" }));
+    const row = await screen.findByTestId("server-row-http://server.test");
+    expect(row.textContent).toContain("登入過期");
+    expect(row.textContent).toContain("重新登入");
+  });
 });

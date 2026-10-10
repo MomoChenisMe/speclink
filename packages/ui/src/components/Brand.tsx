@@ -21,12 +21,14 @@ export function BrandMark({ size = 26, className }: { size?: number; className?:
   );
 }
 
-/** 橫式鎖版字標：系統偏好深色時取深色版；高度由呼叫端給（例如 h-5）。 */
+/** 橫式鎖版字標：深色時取深色版；高度由呼叫端給（例如 h-5）。兩版各一張、以 dark: 切換——
+ *  dark: 與深色 token 同一套觸發（theme.css），明示外觀也跟得上；<picture media> 只看系統偏好。
+ *  隱藏的那張 display:none，不進無障礙樹。 */
 export function Wordmark({ className }: { className?: string }) {
   return (
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcSet={horizontalDark} />
-      <img src={horizontal} alt="Speclink" className={cn("w-auto", className)} />
-    </picture>
+    <>
+      <img src={horizontal} alt="Speclink" className={cn("w-auto dark:hidden", className)} />
+      <img src={horizontalDark} alt="Speclink" className={cn("hidden w-auto dark:block", className)} />
+    </>
   );
 }

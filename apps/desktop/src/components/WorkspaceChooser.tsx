@@ -13,12 +13,13 @@ import {
   useI18n,
 } from "@speclink/ui";
 
-import type {
-  ConnectionView,
-  ConnectionsAdapter,
-  ProjectScopeView,
-  ScopeRefView,
-  ScopesView,
+import {
+  defaultConnectionOf,
+  type ConnectionView,
+  type ConnectionsAdapter,
+  type ProjectScopeView,
+  type ScopeRefView,
+  type ScopesView,
 } from "../adapter/connections";
 import type { WorkspaceAdapter } from "../adapter/workspace";
 import type { RecentEntry } from "../recents";
@@ -76,6 +77,8 @@ export interface WorkspaceChooserProps {
   initialScope?: { projectKey: string; repoKey: string } | null;
   /** 既有 marker 缺工具選集：checkout 步驟預填此資料夾路徑並自動 inspect。 */
   initialCheckoutPath?: string | null;
+  /** 伺服器頁「預設」卡選定的連線：Server 步驟預選（存在且已登入才預選，仍可改選）。 */
+  defaultConnectionId?: string | null;
 }
 
 const STEP_NUMBER: Record<Step, number> = {
@@ -263,6 +266,7 @@ export function WorkspaceChooser({
   initialStep = null,
   initialScope = null,
   initialCheckoutPath = null,
+  defaultConnectionId = null,
 }: WorkspaceChooserProps) {
   const { t } = useI18n();
   const [step, setStep] = useState<Step>("source");
@@ -350,6 +354,9 @@ export function WorkspaceChooser({
     }
   }
 
+  /** 伺服器頁「預設」卡的連線：存在且已登入才預選，否則不預選。 */
+  const preferredConnection = () => defaultConnectionOf(connections, defaultConnectionId);
+
   useEffect(() => {
     if (!open) return;
     recent.reset();
@@ -375,7 +382,10 @@ export function WorkspaceChooser({
     } else if (selected) {
       void selectConnection(selected);
     } else {
-      setStep(initialStep ?? (initialConnectionId || initialServerUrl ? "server" : "source"));
+      const nextStep = initialStep ?? (initialConnectionId || initialServerUrl ? "server" : "source");
+      // 入口意圖（指定連線、marker 指向的伺服器）優先：此時預選預設連線會把專案綁到別台伺服器。
+      if (nextStep === "server" && !initialConnectionId && !initialServerUrl) setConnection(preferredConnection());
+      setStep(nextStep);
     }
     // 開啟時只消費當次入口意圖；連線清單更新不得把進行中的 chooser 重設。
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -782,7 +792,11 @@ export function WorkspaceChooser({
                 type="button"
                 size="sm"
                 disabled={source === null || busy || recent.busy}
-                onClick={() => (source === "local" ? void chooseLocal() : setStep("server"))}
+                onClick={() => {
+                  if (source === "local") return void chooseLocal();
+                  setConnection(preferredConnection());
+                  setStep("server");
+                }}
               >
                 {t(
                   source === "local"
@@ -791,6 +805,12 @@ export function WorkspaceChooser({
                       ? "chooser.next"
                       : "chooser.selectSource",
                 )}
+              </Button>
+            )}
+            {/* 預選的連線（伺服器頁「預設」卡）可直接前進；點其他列即改選並前進。 */}
+            {step === "server" && connection && (
+              <Button type="button" size="sm" disabled={busy} onClick={() => void selectConnection(connection)}>
+                {t("chooser.next")}
               </Button>
             )}
             {step === "scopes" && (

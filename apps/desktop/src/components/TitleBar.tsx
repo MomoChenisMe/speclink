@@ -2,8 +2,8 @@
 // 兩者整列可拖曳（deep：子樹皆可拖、按鈕等可點元素由 Tauri 自動排除）。
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Copy, Minus, Square, X } from "lucide-react";
-import { cn, useI18n } from "@speclink/ui";
+import { ArrowLeft, Copy, Minus, Square, X } from "lucide-react";
+import { Button, cn, useI18n } from "@speclink/ui";
 
 import type { Platform } from "../platform";
 
@@ -18,6 +18,8 @@ export function LeftTitleBar({
   title,
   path,
   menu,
+  back,
+  trailing,
 }: {
   /** 純文字標題（作用中專案名或「設定」）；零專案時不傳。 */
   title?: string;
@@ -25,6 +27,10 @@ export function LeftTitleBar({
   path?: string;
   /** 右端動作槽（專案動作選單的「⋯」）。 */
   menu?: ReactNode;
+  /** 取代標題的返回鈕（專案設定模式的「← 專案設定」；desktop-settings-mode design D2）。 */
+  back?: { label: string; onClick: () => void };
+  /** 右端等寬小字（專案設定模式的專案名）。 */
+  trailing?: ReactNode;
 }) {
   // 標題左緣對齊下方專案欄的導覽文字：圖示列 56＋專案欄內距 8＋導覽項內距 10＋
   // 圖示 16＋間距 8＝98px（macOS 紅綠燈落在其左側留白）。下緣細線與主區頂列
@@ -35,10 +41,23 @@ export function LeftTitleBar({
       data-tauri-drag-region="deep"
       className="flex h-12 shrink-0 select-none items-center gap-1 border-b border-border pl-[98px] pr-2"
     >
-      {title && (
-        <span title={path} className="min-w-0 flex-1 truncate text-sm font-medium">
-          {title}
-        </span>
+      {back ? (
+        // 返回鈕的箭頭對齊標題左緣：抵銷按鈕內距。
+        <Button type="button" variant="ghost" size="sm" className="-ml-2.5 shrink-0" onClick={back.onClick}>
+          <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
+          {back.label}
+        </Button>
+      ) : (
+        title && (
+          <span title={path} className="min-w-0 flex-1 truncate text-sm font-medium">
+            {title}
+          </span>
+        )
+      )}
+      {trailing && (
+        <div title={path} className="ml-auto min-w-0 truncate font-mono text-[11px] text-muted-foreground">
+          {trailing}
+        </div>
       )}
       {menu && <div className="ml-auto shrink-0">{menu}</div>}
     </div>

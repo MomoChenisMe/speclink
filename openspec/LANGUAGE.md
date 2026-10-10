@@ -64,13 +64,13 @@
 
 ### 專案說明
 
-- **definition**: `openspec/config.yaml` 的 `context` 欄位——注入 AI 指令的專案自由文字說明（設定頁的編輯區段名）。
+- **definition**: `openspec/config.yaml` 的 `context` 欄位——注入 AI 指令的專案自由文字說明（專案設定的分類名）。
 - **avoid**: context（使用者可見文案中）、背景（此概念上）
 - **why**: 「背景」已被討論記錄的 Context 區段佔用，同詞兩義會混淆；對齊 Spectra 用詞。2026-07-07 討論「config-context-與-rules-gui-編輯」定案。
 
 ### 產出規則
 
-- **definition**: `openspec/config.yaml` 的 `rules` 欄位——依 artifact 注入產出指令的規則清單（設定頁的編輯區段名）。
+- **definition**: `openspec/config.yaml` 的 `rules` 欄位——依 artifact 注入產出指令的規則清單（專案設定的分類名）。
 - **avoid**: rules（使用者可見文案中）、規則（單獨使用時）
 - **why**: 「產出」點明規則作用於 artifacts 的產出過程；對齊 Spectra 用詞。2026-07-07 討論「config-context-與-rules-gui-編輯」定案。
 
@@ -79,7 +79,7 @@
 - **definition**: `openspec/config.yaml` 的 `schema` 鍵概念——一個變更會產出哪些文件、什麼順序的定義（設定頁的檢視／切換／複製為專案版區段名）。
 - **avoid**: schema（使用者可見文案中）
 - **why**: 與「產出規則」「產出政策」同族，字面可推出「這個變更會產出哪些文件、什麼順序」；schema 僅留於技術 token（鍵名、CLI 指令、識別符如 spec-driven）。經使用者裁定用譯詞（desktop-schema-panel，2026-08-20）。
-- **明文例外**：設定頁的產出流程頁籤標籤得直出「Schema」——與本詞條刻意抵觸，經使用者裁定：頁籤列全是技術 token（config.yaml、.speclink.yaml、Workflow），唯一的中文標籤在列上反而突兀，沿「開發者工具中原生詞即最直觀」的既有裁定線（檔名頁籤、討論 slug、worktree 同線）。僅限此頁籤標籤；籤內與其他使用者可見文案仍用「產出流程」（desktop-schema-panel，2026-08-22）。
+- **明文例外（已退場）**：設定頁產出流程頁籤直出「Schema」的例外（desktop-schema-panel，2026-08-22）已隨設定分類欄取代頁籤而退場（desktop-settings-mode，2026-10-10）；分類名與頁標題皆為「產出流程」，不再有例外。
 
 ### 待收尾
 

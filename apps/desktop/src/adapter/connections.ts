@@ -16,6 +16,14 @@ export interface ConnectionView {
   loggedIn: boolean;
 }
 
+/** 伺服器頁「預設」卡的有效預設連線：存在且已登入才算，否則等同不預選（null）。 */
+export function defaultConnectionOf(
+  connections: readonly ConnectionView[],
+  defaultConnectionId: string | null | undefined,
+): ConnectionView | null {
+  return connections.find((entry) => entry.id === defaultConnectionId && entry.loggedIn) ?? null;
+}
+
 /** 等待授權面所需的授權資訊（design 決策二啟動段回傳）：裝置碼與驗證網址給
  * 使用者看、expiresIn 給倒數、interval 給排程；deviceCode 是單次觀測的把手。 */
 export interface DeviceAuthorization {

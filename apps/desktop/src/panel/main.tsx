@@ -6,7 +6,12 @@ import { createRoot } from "react-dom/client";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { I18nProvider } from "@speclink/ui";
+import {
+  I18nProvider,
+  applyThemePreference,
+  readThemePreference,
+  type ThemePreference,
+} from "@speclink/ui";
 
 import { TrayPanel } from "./TrayPanel";
 import { APP_MESSAGES } from "../i18n/messages";
@@ -18,6 +23,15 @@ import "../index.css";
 // vibrancy 材質從視窗底透出：文件背景必須透明（index.css 的 body 底色讓開）。
 document.documentElement.style.background = "transparent";
 document.body.style.background = "transparent";
+
+// 外觀偏好（desktop-settings-mode design D4）：啟動時套用，主視窗切換時經事件重套。原生視窗主題
+// 一併設成同一偏好——vibrancy 材質跟原生視窗外觀走，不同步就會淺色字疊在深色玻璃上。
+const applyPanelTheme = (pref: ThemePreference) => {
+  applyThemePreference(pref);
+  void getCurrentWindow().setTheme(pref).catch(() => {});
+};
+applyPanelTheme(readThemePreference());
+void listen<ThemePreference>("speclink:theme-changed", (e) => applyPanelTheme(e.payload));
 
 const PANEL_WIDTH = 320;
 const PANEL_MAX_HEIGHT = 640;

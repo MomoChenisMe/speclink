@@ -1,16 +1,17 @@
 // ProjectSettingsView（spec 需求「設定頁圖形化讀寫兩層設定」「設定頁編輯專案說明與產出規則」
-// 的前端面）：兩頁簽組織（config.yaml／.speclink.yaml）、
-// 專案說明與產出規則拆為獨立卡各持編輯態、解析失敗簽級警示。
+// 的前端面；desktop-settings-mode design D8）：依專案設定分類渲染四頁（專案說明、產出規則、
+// 產出流程、.speclink.yaml），各頁獨立編輯態、解析失敗頁頂說明。
 import { describe, it, expect, vi } from "vitest";
-import { render as rtlRender, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { act, render as rtlRender, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReactElement, ReactNode } from "react";
+import { useState, type ReactElement, type ReactNode } from "react";
 import { I18nProvider } from "@speclink/ui";
 
 import { ProjectSettingsView } from "../views/ProjectSettingsView";
 import { APP_MESSAGES } from "../i18n/messages";
 import type { SchemaEntry, SettingsSnapshot } from "../adapter/workspace";
 import type { WorkspaceSettingsProvider } from "../session";
+import type { ProjectSettingsSection } from "../settingsCatalog";
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider locale="zh-TW" messages={APP_MESSAGES}>
@@ -60,13 +61,37 @@ function fakeSettings(snap: SettingsSnapshot): WorkspaceSettingsProvider {
   } as unknown as WorkspaceSettingsProvider;
 }
 
-function renderView(snap: SettingsSnapshot) {
-  const ws = fakeSettings(snap);
-  render(
+/** 分類欄的替身：所在分類放在 state，goto 切頁（狀態與草稿跨頁保留）。 */
+const nav = { goto: (_section: ProjectSettingsSection) => {} };
+function Harness({
+  settings,
+  initial = "context",
+  onParseErrors,
+  onDirtyChange,
+}: {
+  settings: WorkspaceSettingsProvider;
+  initial?: ProjectSettingsSection;
+  onParseErrors?: (errors: { config: boolean; speclink: boolean }) => void;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
+  const [section, setSection] = useState<ProjectSettingsSection>(initial);
+  nav.goto = setSection;
+  return (
     <ProjectSettingsView
-      settings={ws}
-    />,
+      settings={settings}
+      section={section}
+      onParseErrors={onParseErrors}
+      onDirtyChange={onDirtyChange}
+    />
   );
+}
+function goto(section: ProjectSettingsSection) {
+  act(() => nav.goto(section));
+}
+
+function renderView(snap: SettingsSnapshot, initial: ProjectSettingsSection = "context") {
+  const ws = fakeSettings(snap);
+  render(<Harness settings={ws} initial={initial} />);
   return ws;
 }
 
@@ -87,33 +112,27 @@ function projectSnap(over: Partial<SettingsSnapshot["workflow"]> = {}) {
   });
 }
 
-/** 頂層頁簽切換（Radix TabsTrigger 以 mousedown 觸發）。 */
-function switchToTab(name: string) {
-  fireEvent.mouseDown(screen.getByRole("tab", { name }));
-}
-
 describe("ProjectSettingsView 載入", () => {
-  it("呈現兩檔現值：config.yaml 簽的政策欄位、.speclink.yaml 簽的 tools 勾選；未設定欄位呈預設狀態", async () => {
-    renderView(snapshot());
+  it("呈現兩檔現值：產出流程頁的政策欄位、.speclink.yaml 頁的 tools 開關；未設定欄位呈預設狀態", async () => {
+    renderView(snapshot(), "workflow");
     // 下拉是 Radix Select（非原生 select），現值讀 trigger 上顯示的文字。
     expect((await screen.findByLabelText("locale")).textContent).toContain("tw");
     // 未設定的 spec_locale 呈預設值狀態（空字串＝未設定）。
     expect(screen.getByLabelText("spec_locale").textContent).toContain("未設定");
-    expect(screen.getByLabelText("tdd").getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByLabelText("audit").getAttribute("aria-checked")).toBe("false");
-    switchToTab(".speclink.yaml");
+    // tdd／audit 為列右側開關（role="switch"）。
+    expect(screen.getByRole("switch", { name: "tdd" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("switch", { name: "audit" }).getAttribute("aria-checked")).toBe("false");
+    goto("speclink");
     expect(screen.getByLabelText("claude").getAttribute("aria-checked")).toBe("true");
     expect(screen.getByLabelText("codex").getAttribute("aria-checked")).toBe("false");
     expect(screen.getByLabelText("copilot").getAttribute("aria-checked")).toBe("false");
   });
 
   it("自訂工具描述子呈現為不可編輯項", async () => {
-    renderView(snapshot({ app: { tools: ["claude"], customTools: ["wad-harness"], parseError: null } }));
-    await screen.findByRole("tab", { name: ".speclink.yaml" });
-    switchToTab(".speclink.yaml");
+    renderView(snapshot({ app: { tools: ["claude"], customTools: ["wad-harness"], parseError: null } }), "speclink");
     const custom = await screen.findByText("wad-harness");
-    // 不可編輯：非表單輸入（無對應 checkbox）。
-    expect(screen.queryByLabelText("wad-harness")).toBeNull();
+    // 不可編輯：非表單輸入（無對應開關）。
+    expect(screen.queryByRole("switch", { name: "wad-harness" })).toBeNull();
     expect(custom).toBeTruthy();
   });
 });
@@ -122,7 +141,7 @@ describe("政策下拉未知值顯性呈現", () => {
   // spec 需求「設定頁政策下拉的未知值顯性呈現」（workflow-config-locale-validation）：
   // 選項集外的儲存值不得靜默空白，也不得於讀取時被改寫。
   it("儲存值不在選項集 → 下拉顯示原始值與無效標註、欄位下方浮出引導提示", async () => {
-    const ws = renderView(projectSnap({ locale: "繁體中文", specLocale: "zh-Hant" }));
+    const ws = renderView(projectSnap({ locale: "繁體中文", specLocale: "zh-Hant" }), "workflow");
     const locale = await screen.findByLabelText("locale");
     expect(locale.textContent).toContain("繁體中文");
     expect(locale.textContent).toContain("無效");
@@ -139,7 +158,7 @@ describe("政策下拉未知值顯性呈現", () => {
   });
 
   it("合法值與未設定 → 無任何無效標註或提示", async () => {
-    renderView(projectSnap({ locale: "tw", specLocale: null }));
+    renderView(projectSnap({ locale: "tw", specLocale: null }), "workflow");
     expect((await screen.findByLabelText("locale")).textContent).not.toContain("無效");
     expect(screen.getByLabelText("spec_locale").textContent).not.toContain("無效");
     expect(screen.queryByTestId("locale-invalid-hint")).toBeNull();
@@ -149,9 +168,7 @@ describe("政策下拉未知值顯性呈現", () => {
 
 describe("ProjectSettingsView 寫入", () => {
   it("tools 加選 codex 後儲存 → writeAppTools 收到完整選集", async () => {
-    const ws = renderView(snapshot());
-    await screen.findByRole("tab", { name: ".speclink.yaml" });
-    switchToTab(".speclink.yaml");
+    const ws = renderView(snapshot(), "speclink");
     fireEvent.click(await screen.findByLabelText("codex"));
     fireEvent.click(screen.getByTestId("save-app"));
     await waitFor(() => expect(ws.writeAppTools).toHaveBeenCalledWith(["claude", "codex"]));
@@ -159,16 +176,14 @@ describe("ProjectSettingsView 寫入", () => {
 
   it("tools 加選 copilot 後儲存 → writeAppTools 收到完整選集", async () => {
     // spec「設定頁圖形化讀寫兩層設定」：AI 工具卡多選含 copilot。
-    const ws = renderView(snapshot());
-    await screen.findByRole("tab", { name: ".speclink.yaml" });
-    switchToTab(".speclink.yaml");
+    const ws = renderView(snapshot(), "speclink");
     fireEvent.click(await screen.findByLabelText("copilot"));
     fireEvent.click(screen.getByTestId("save-app"));
     await waitFor(() => expect(ws.writeAppTools).toHaveBeenCalledWith(["claude", "copilot"]));
   });
 
   it("audit 切開後儲存 → writeWorkflowConfig 收到完整目標狀態（含讀入現值）", async () => {
-    const ws = renderView(snapshot());
+    const ws = renderView(snapshot(), "workflow");
     fireEvent.click(await screen.findByLabelText("audit"));
     fireEvent.click(screen.getByTestId("save-workflow"));
     await waitFor(() =>
@@ -183,7 +198,7 @@ describe("ProjectSettingsView 寫入", () => {
   });
 
   it("worktree 開關切開後儲存 → writeWorkflowConfig 收到實值（不再恆為 false）", async () => {
-    const ws = renderView(snapshot());
+    const ws = renderView(snapshot(), "workflow");
     fireEvent.click(await screen.findByLabelText("worktree"));
     fireEvent.click(screen.getByTestId("save-workflow"));
     await waitFor(() =>
@@ -198,13 +213,13 @@ describe("ProjectSettingsView 寫入", () => {
   });
 
   it("worktree 開關載入時反映 config 現值", async () => {
-    renderView(snapshot({ workflow: { worktree: true } } as Partial<SettingsSnapshot>));
+    renderView(snapshot({ workflow: { worktree: true } } as Partial<SettingsSnapshot>), "workflow");
     const box = (await screen.findByLabelText("worktree")) as HTMLElement;
     await waitFor(() => expect(box.getAttribute("data-state")).toBe("checked"));
   });
 
   it("關閉遇活躍 worktree → 擋下訊息浮出且開關回復開啟", async () => {
-    const ws = renderView(snapshot({ workflow: { worktree: true } } as Partial<SettingsSnapshot>));
+    const ws = renderView(snapshot({ workflow: { worktree: true } } as Partial<SettingsSnapshot>), "workflow");
     const blocked =
       "add-auth 正在 worktree（speclink/add-auth）中進行，請先執行 speclink-worktree-merge 收尾再操作。";
     (ws.writeWorkflowConfig as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error(blocked));
@@ -220,7 +235,7 @@ describe("ProjectSettingsView 寫入", () => {
   it("技能同步失敗（config 已寫入）→ 開關維持新值，再存不回寫舊值", async () => {
     // 同步失敗的半套狀態：config 為正典（新值已落檔）、技能足跡過期。畫面
     // 不得退回舊快照——否則下次儲存會靜默把政策寫回去（連技能一起收走）。
-    const ws = renderView(snapshot());
+    const ws = renderView(snapshot(), "workflow");
     (ws.writeWorkflowConfig as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
       new Error("workflow config written, but the skill footprint did not sync — run `speclink update` to rebuild"),
     );
@@ -263,7 +278,7 @@ describe("ProjectSettingsView 寫入", () => {
       revealSchema: vi.fn().mockRejectedValue(new Error("遠端工作區沒有本機檔案可顯示")),
       deleteSchema: vi.fn().mockRejectedValue(new Error("遠端工作區尚不支援刪除產出流程")),
     } as unknown as WorkspaceSettingsProvider;
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} initial="workflow" />);
 
     fireEvent.click(await screen.findByLabelText("audit"));
     fireEvent.click(screen.getByTestId("save-workflow"));
@@ -273,7 +288,7 @@ describe("ProjectSettingsView 寫入", () => {
   });
 
   it("locale 下拉改值後儲存 → 新值進完整目標狀態；設回未設定送 null", async () => {
-    const ws = renderView(snapshot());
+    const ws = renderView(snapshot(), "workflow");
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     await user.click(await screen.findByLabelText("locale"));
     await user.click(await screen.findByRole("option", { name: /未設定/ }));
@@ -290,7 +305,7 @@ describe("ProjectSettingsView 寫入", () => {
   });
 
   it("寫入失敗：顯示單行錯誤訊息", async () => {
-    const ws = renderView(snapshot());
+    const ws = renderView(snapshot(), "workflow");
     (ws.writeWorkflowConfig as ReturnType<typeof vi.fn>).mockRejectedValue(
       "openspec/config.yaml: write failed: denied",
     );
@@ -300,83 +315,154 @@ describe("ProjectSettingsView 寫入", () => {
   });
 });
 
-// ---- 兩頁簽組織（spec 需求「設定頁圖形化讀寫兩層設定」）----
+// ---- 分類頁組織（spec 需求「設定頁圖形化讀寫兩層設定」；desktop-settings-mode design D8）----
 
-describe("專案設定頁兩頁簽組織（spec Scenario「兩頁分工與預設簽」）", () => {
-  it("頁簽依序 config.yaml／.speclink.yaml，預設落在 config.yaml 簽（三卡＋mono 路徑註記）", async () => {
+describe("專案設定分類頁（spec Scenario「兩種設定模式與預設分類」）", () => {
+  it("專案說明頁標題下等寬註記檔案與鍵；產出流程頁依序為產出政策卡與產出流程卡；.speclink.yaml 頁有檔案列與 AI 工具卡", async () => {
     renderView(projectSnap());
-    await screen.findByTestId("context-card");
-    const tabs = screen.getAllByRole("tab").map((t) => t.textContent);
-    // desktop-schema-panel D4 改版：產出流程為第二簽（spec「產出流程自成頁籤」）。
-    expect(tabs).toEqual(["config.yaml", "Schema", ".speclink.yaml"]);
-    expect(screen.getByRole("tab", { name: "config.yaml" }).getAttribute("aria-selected")).toBe("true");
-    // config.yaml 簽卡片歸屬：專案說明、產出規則、產出政策。
-    expect(screen.getByTestId("context-card")).toBeTruthy();
-    expect(screen.getByTestId("rules-card")).toBeTruthy();
-    expect(screen.getByTestId("policy-card")).toBeTruthy();
-    // 簽首等寬字檔案路徑註記。
+    const page = await screen.findByTestId("context-page");
+    expect(within(page).getByRole("heading", { level: 2, name: "專案說明" })).toBeTruthy();
     const note = screen.getByTestId("file-note-config");
-    expect(note.textContent).toBe("openspec/config.yaml");
+    expect(note.textContent).toBe("openspec/config.yaml · context");
     expect(note.className).toContain("font-mono");
-    // 其他簽的卡片不在畫面上。
+    // 其他頁的內容不在畫面上。
+    expect(screen.queryByTestId("policy-card")).toBeNull();
     expect(screen.queryByLabelText("claude")).toBeNull();
-  });
 
-  it("切至 .speclink.yaml 簽見 AI 工具卡與等寬字檔案路徑註記", async () => {
-    renderView(projectSnap());
-    await screen.findByTestId("context-card");
-    switchToTab(".speclink.yaml");
-    expect(screen.getByText("AI 工具")).toBeTruthy();
+    goto("rules");
+    expect(screen.getByTestId("file-note-config").textContent).toBe("openspec/config.yaml · rules");
+
+    goto("workflow");
+    const regions = screen.getAllByRole("region").map((r) => r.getAttribute("aria-label"));
+    expect(regions).toEqual(["產出政策", "產出流程"]);
+    expect(screen.getByRole("heading", { level: 2, name: "產出流程" })).toBeTruthy();
+    // 專案說明頁與產出規則頁不含產出流程內容（spec「產出流程頁」）。
+    expect(screen.queryByTestId("context-page")).toBeNull();
+
+    goto("speclink");
+    expect(screen.getByRole("region", { name: "AI 工具" })).toBeTruthy();
     expect(screen.getByLabelText("claude").getAttribute("aria-checked")).toBe("true");
-    const note = screen.getByTestId("file-note-speclink");
-    expect(note.textContent).toBe(".speclink.yaml");
-    expect(note.className).toContain("font-mono");
-    expect(screen.queryByTestId("context-card")).toBeNull();
+    expect(screen.getByTestId("file-note-speclink").className).toContain("font-mono");
   });
 
-  it("config.yaml 解析失敗：頁簽帶警示點、簽首橫幅、簽內表單與編輯鈕停用", async () => {
-    renderView(
+  it(".speclink.yaml 頁的檔案列為等寬唯讀路徑", async () => {
+    renderView(projectSnap(), "speclink");
+    const row = await screen.findByRole("group", { name: "檔案" });
+    const path = within(row).getByTestId("speclink-file-path");
+    expect(path.textContent).toBe(".speclink.yaml");
+    expect(path.className).toContain("font-mono");
+    expect(within(row).queryByRole("textbox")).toBeNull();
+  });
+
+  it("tdd 以開關呈現，切換後存檔寫回 true", async () => {
+    const ws = renderView(snapshot({ workflow: { tdd: false } } as Partial<SettingsSnapshot>), "workflow");
+    const tdd = await screen.findByRole("switch", { name: "tdd" });
+    expect(tdd.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(tdd);
+    fireEvent.click(screen.getByTestId("save-workflow"));
+    await waitFor(() =>
+      expect(ws.writeWorkflowConfig).toHaveBeenCalledWith(expect.objectContaining({ tdd: true })),
+    );
+  });
+
+  it("config.yaml 解析失敗：回報分類欄警示、三頁浮出解析失敗說明（紅）、表單與編輯鈕停用", async () => {
+    const onParseErrors = vi.fn();
+    const ws = fakeSettings(
       projectSnap({ context: null, rules: {}, schemaArtifacts: [], parseError: "invalid yaml at line 3" }),
     );
-    const configTab = await screen.findByRole("tab", { name: "config.yaml" });
-    expect(within(configTab).getByTestId("tab-warning")).toBeTruthy();
-    // config.yaml 簽：橫幅浮出、政策表單與兩卡編輯鈕停用。
-    expect(await screen.findByText(/invalid yaml at line 3/)).toBeTruthy();
-    expect((screen.getByTestId("save-workflow") as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByLabelText("tdd") as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByTestId("context-edit") as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByTestId("rules-edit") as HTMLButtonElement).disabled).toBe(true);
-    // .speclink.yaml 簽無警示點。
-    expect(
-      within(screen.getByRole("tab", { name: ".speclink.yaml" })).queryByTestId("tab-warning"),
-    ).toBeNull();
-    // spec「錯誤態以紅呈現」：解析失敗是錯誤（表單因此停用），不是琥珀提醒；
-    // 頁簽警示點仍是琥珀——它只說「這裡有事」，嚴重度由簽內橫幅承載。
+    render(<Harness settings={ws} onParseErrors={onParseErrors} />);
+    await waitFor(() => expect(onParseErrors).toHaveBeenLastCalledWith({ config: true, speclink: false }));
+    // spec「錯誤態以紅呈現」：解析失敗是錯誤（表單因此停用），不是琥珀提醒。
     const banner = (await screen.findByText(/invalid yaml at line 3/)).closest("p") as HTMLElement;
     expect(banner.className).toContain("destructive");
     expect(banner.className).not.toContain("status-warning");
-    expect(within(configTab).getByTestId("tab-warning").className).toContain("status-warning");
+    expect((screen.getByTestId("context-edit") as HTMLButtonElement).disabled).toBe(true);
+    goto("rules");
+    expect(screen.getByText(/invalid yaml at line 3/)).toBeTruthy();
+    expect((screen.getByTestId("rules-edit") as HTMLButtonElement).disabled).toBe(true);
+    goto("workflow");
+    expect(screen.getByText(/invalid yaml at line 3/)).toBeTruthy();
+    expect((screen.getByTestId("save-workflow") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("tdd") as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it(".speclink.yaml 解析失敗：其頁簽帶警示點、AI 工具表單停用；config.yaml 簽表單照常可用", async () => {
-    renderView(snapshot({ app: { tools: [], customTools: [], parseError: "bad tools yaml" } }));
-    const spTab = await screen.findByRole("tab", { name: ".speclink.yaml" });
-    expect(within(spTab).getByTestId("tab-warning")).toBeTruthy();
-    // 預設簽（config.yaml）表單照常可用。
+  it("卸載時清掉回報：分類欄不沿用上一個專案的警示點，返回也不再問未存修改", async () => {
+    const onParseErrors = vi.fn();
+    const onDirtyChange = vi.fn();
+    const ws = fakeSettings(projectSnap({ parseError: "invalid yaml at line 3" }));
+    const { unmount } = render(<Harness settings={ws} onParseErrors={onParseErrors} onDirtyChange={onDirtyChange} />);
+    await waitFor(() => expect(onParseErrors).toHaveBeenLastCalledWith({ config: true, speclink: false }));
+    unmount();
+    expect(onParseErrors).toHaveBeenLastCalledWith({ config: false, speclink: false });
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it(".speclink.yaml 解析失敗：回報分類欄警示、AI 工具表單停用；產出流程頁表單照常可用", async () => {
+    const onParseErrors = vi.fn();
+    const ws = fakeSettings(snapshot({ app: { tools: [], customTools: [], parseError: "bad tools yaml" } }));
+    render(<Harness settings={ws} initial="workflow" onParseErrors={onParseErrors} />);
+    await waitFor(() => expect(onParseErrors).toHaveBeenLastCalledWith({ config: false, speclink: true }));
     expect((screen.getByTestId("save-workflow") as HTMLButtonElement).disabled).toBe(false);
-    switchToTab(".speclink.yaml");
+    goto("speclink");
     expect(await screen.findByText(/bad tools yaml/)).toBeTruthy();
     expect((screen.getByTestId("save-app") as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByLabelText("claude") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("claude") as HTMLButtonElement).disabled).toBe(true);
   });
 });
 
 // ---- 專案說明卡／產出規則卡（spec 需求「設定頁編輯專案說明與產出規則」；design D2）----
 
+// 未存修改回報（App 的返回動作據此先問要不要捨棄）：表單值對照檔案現值，
+// 文字卡只看編輯中的草稿；儲存成功即回到 false。
+describe("未存修改回報", () => {
+  const dirtyHarness = (initial: ProjectSettingsSection) => {
+    const onDirtyChange = vi.fn();
+    const ws = fakeSettings(projectSnap());
+    render(<Harness settings={ws} initial={initial} onDirtyChange={onDirtyChange} />);
+    return onDirtyChange;
+  };
+
+  it("改政策開關即 true，儲存成功後回 false", async () => {
+    const onDirtyChange = dirtyHarness("workflow");
+    await screen.findByTestId("save-workflow");
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    fireEvent.click(screen.getByLabelText("tdd"));
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+    fireEvent.click(screen.getByTestId("save-workflow"));
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+  });
+
+  it("勾選 AI 工具即 true，儲存成功後回 false", async () => {
+    const onDirtyChange = dirtyHarness("speclink");
+    fireEvent.click(await screen.findByLabelText("codex"));
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+    fireEvent.click(screen.getByTestId("save-app"));
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+  });
+
+  it("專案說明只開編輯為 false，改了草稿為 true，取消後回 false", async () => {
+    const onDirtyChange = dirtyHarness("context");
+    fireEvent.click(await screen.findByTestId("context-edit"));
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    fireEvent.change(screen.getByTestId("context-input"), { target: { value: "改過" } });
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+    fireEvent.click(screen.getByTestId("context-cancel"));
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+  });
+
+  it("產出規則改了草稿為 true", async () => {
+    const onDirtyChange = dirtyHarness("rules");
+    fireEvent.click(await screen.findByTestId("rules-edit"));
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    fireEvent.change(screen.getByTestId("rules-input-tasks"), { target: { value: "只留一條" } });
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+  });
+});
+
 describe("兩卡唯讀優先（spec Scenario「唯讀優先與各卡就地編輯」）", () => {
-  it("開啟 config.yaml 簽：專案說明卡唯讀 markdown 渲染、無文字區、按鈕列僅編輯；短文不收合", async () => {
+  it("開啟專案說明頁：唯讀 markdown 渲染、無文字區、頁標題右側僅編輯；短文不收合", async () => {
     renderView(projectSnap());
-    const card = await screen.findByTestId("context-card");
+    const card = await screen.findByTestId("context-page");
     expect(within(card).getByText("專案說明")).toBeTruthy();
     // markdown 渲染：# 標題成為 heading，而非 raw 文字區。
     expect(within(card).getByRole("heading", { name: "專案簡介" })).toBeTruthy();
@@ -392,7 +478,7 @@ describe("兩卡唯讀優先（spec Scenario「唯讀優先與各卡就地編輯
   it("超長專案說明收合並提供顯示更多，點擊展開", async () => {
     const longContext = Array.from({ length: 20 }, (_, i) => `第 ${i + 1} 行說明`).join("\n");
     renderView(projectSnap({ context: longContext }));
-    const card = await screen.findByTestId("context-card");
+    const card = await screen.findByTestId("context-page");
     const readonly = within(card).getByTestId("context-readonly");
     expect(readonly.className).toContain("overflow-hidden");
     const more = within(card).getByTestId("context-show-more");
@@ -404,16 +490,18 @@ describe("兩卡唯讀優先（spec Scenario「唯讀優先與各卡就地編輯
 
   it("未設定專案說明顯示空狀態提示", async () => {
     renderView(projectSnap({ context: null }));
-    const card = await screen.findByTestId("context-card");
+    const card = await screen.findByTestId("context-page");
     expect(within(card).getByText(/尚未設定專案說明/)).toBeTruthy();
     expect(within(card).queryByTestId("context-show-more")).toBeNull();
   });
 
   it("產出規則卡唯讀僅列有條目鍵，鍵名為小節標題、條目為清單", async () => {
-    renderView(projectSnap());
-    const card = await screen.findByTestId("rules-card");
-    expect(within(card).getByText("產出規則")).toBeTruthy();
+    renderView(projectSnap(), "rules");
+    const card = await screen.findByTestId("rules-page");
+    expect(within(card).getByRole("heading", { level: 2, name: "產出規則" })).toBeTruthy();
     expect(within(card).getByTestId("rules-readonly-proposal")).toBeTruthy();
+    // 鍵名等寬，旁附條數。
+    expect(within(card).getByTestId("rules-readonly-tasks").textContent).toContain("2 條");
     const tasks = within(card).getByTestId("rules-readonly-tasks");
     expect(within(tasks).getByText("先寫失敗測試")).toBeTruthy();
     expect(within(tasks).getByText("更新文件")).toBeTruthy();
@@ -427,7 +515,7 @@ describe("兩卡唯讀優先（spec Scenario「唯讀優先與各卡就地編輯
 describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與產出規則」；design D2）", () => {
   it("點編輯就地切換：按鈕列變取消/儲存，專案說明為 raw markdown 文字區", async () => {
     renderView(projectSnap());
-    const card = await screen.findByTestId("context-card");
+    const card = await screen.findByTestId("context-page");
     fireEvent.click(within(card).getByTestId("context-edit"));
     expect(within(card).queryByTestId("context-edit")).toBeNull();
     expect(within(card).getByTestId("context-cancel")).toBeTruthy();
@@ -439,13 +527,14 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
   // spec「表單控制項與按鈕以主題化元件呈現」Scenario「設定頁多行輸入主題化」
   it("專案說明與產出規則的多行輸入為主題化 Textarea 原語（data-slot 標記＋token 樣式）", async () => {
     renderView(projectSnap());
-    const ctxCard = await screen.findByTestId("context-card");
+    const ctxCard = await screen.findByTestId("context-page");
     fireEvent.click(within(ctxCard).getByTestId("context-edit"));
     const ctxInput = within(ctxCard).getByTestId("context-input");
     expect(ctxInput.getAttribute("data-slot")).toBe("textarea");
     expect(ctxInput.className).toContain("border-input");
     expect(ctxInput.className).toContain("focus-visible:ring");
-    const rulesCard = screen.getByTestId("rules-card");
+    goto("rules");
+    const rulesCard = screen.getByTestId("rules-page");
     fireEvent.click(within(rulesCard).getByTestId("rules-edit"));
     const rulesInput = within(rulesCard).getByTestId("rules-input-tasks");
     expect(rulesInput.getAttribute("data-slot")).toBe("textarea");
@@ -453,38 +542,40 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     expect(rulesInput.className).toContain("focus-visible:ring");
   });
 
-  it("一卡編輯中另一卡唯讀可用；各卡取消僅還原本卡且草稿重設", async () => {
+  it("一頁編輯中另一頁唯讀可用；各頁取消僅還原本頁且草稿重設（spec Scenario「唯讀優先與各頁獨立編輯」）", async () => {
     const ws = renderView(projectSnap());
-    const ctxCard = await screen.findByTestId("context-card");
-    const rulesCard = screen.getByTestId("rules-card");
-    fireEvent.click(within(ctxCard).getByTestId("context-edit"));
-    // 另一卡維持唯讀且編輯鈕仍可用。
-    expect(within(rulesCard).queryAllByRole("textbox")).toHaveLength(0);
-    const rulesEdit = within(rulesCard).getByTestId("rules-edit") as HTMLButtonElement;
+    const ctxPage = () => screen.getByTestId("context-page");
+    const rulesPage = () => screen.getByTestId("rules-page");
+    await screen.findByTestId("context-page");
+    fireEvent.click(within(ctxPage()).getByTestId("context-edit"));
+    fireEvent.change(within(ctxPage()).getByTestId("context-input"), { target: { value: "編輯中的說明" } });
+    // 切到產出規則頁：維持唯讀且編輯鈕仍可用。
+    goto("rules");
+    expect(within(rulesPage()).queryAllByRole("textbox")).toHaveLength(0);
+    const rulesEdit = within(rulesPage()).getByTestId("rules-edit") as HTMLButtonElement;
     expect(rulesEdit.disabled).toBe(false);
-    // 兩卡可同時各持編輯態。
+    // 兩頁可同時各持編輯態。
     fireEvent.click(rulesEdit);
-    expect(within(ctxCard).getByTestId("context-input")).toBeTruthy();
-    expect(within(rulesCard).getByTestId("rules-input-tasks")).toBeTruthy();
-    // 於兩卡各改草稿後取消產出規則卡：僅該卡還原，專案說明卡編輯態與草稿不受影響。
-    fireEvent.change(within(ctxCard).getByTestId("context-input"), { target: { value: "編輯中的說明" } });
-    fireEvent.change(within(rulesCard).getByTestId("rules-input-tasks"), { target: { value: "被放棄" } });
-    fireEvent.click(within(rulesCard).getByTestId("rules-cancel"));
-    expect(within(rulesCard).queryAllByRole("textbox")).toHaveLength(0);
-    expect((within(ctxCard).getByTestId("context-input") as HTMLTextAreaElement).value).toBe("編輯中的說明");
+    fireEvent.change(within(rulesPage()).getByTestId("rules-input-tasks"), { target: { value: "被放棄" } });
+    // 取消產出規則：僅該頁還原，專案說明頁編輯態與草稿不受影響。
+    fireEvent.click(within(rulesPage()).getByTestId("rules-cancel"));
+    expect(within(rulesPage()).queryAllByRole("textbox")).toHaveLength(0);
+    goto("context");
+    expect((within(ctxPage()).getByTestId("context-input") as HTMLTextAreaElement).value).toBe("編輯中的說明");
     expect(ws.writeWorkflowContext).not.toHaveBeenCalled();
     expect(ws.writeWorkflowRules).not.toHaveBeenCalled();
-    // 重進產出規則卡編輯：草稿為讀入值，非被放棄的修改。
-    fireEvent.click(within(rulesCard).getByTestId("rules-edit"));
-    expect((within(rulesCard).getByTestId("rules-input-tasks") as HTMLTextAreaElement).value).toBe(
+    // 重進產出規則編輯：草稿為讀入值，非被放棄的修改。
+    goto("rules");
+    fireEvent.click(within(rulesPage()).getByTestId("rules-edit"));
+    expect((within(rulesPage()).getByTestId("rules-input-tasks") as HTMLTextAreaElement).value).toBe(
       "先寫失敗測試\n更新文件",
     );
   });
 
   it("編輯態產出規則文字區恰為活躍 schema 固定鍵各一、值為條目換行串接、無自由鍵輸入", async () => {
     // spec Scenario「固定鍵分節不可自由輸入」。
-    renderView(projectSnap());
-    const card = await screen.findByTestId("rules-card");
+    renderView(projectSnap(), "rules");
+    const card = await screen.findByTestId("rules-page");
     fireEvent.click(within(card).getByTestId("rules-edit"));
     for (const id of ["proposal", "design", "specs", "tasks"]) {
       expect(within(card).getByTestId(`rules-input-${id}`)).toBeTruthy();
@@ -498,8 +589,8 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
 
   it("產出規則卡儲存：逐行 trim、空行滌除、行序即順序（spec Example 行對調）；僅寫 rules、context 逐字元不變", async () => {
     // spec Scenario「各卡儲存僅寫對應鍵」——僅存產出規則時不觸碰 context。
-    const ws = renderView(projectSnap());
-    const card = await screen.findByTestId("rules-card");
+    const ws = renderView(projectSnap(), "rules");
+    const card = await screen.findByTestId("rules-page");
     fireEvent.click(within(card).getByTestId("rules-edit"));
     fireEvent.change(within(card).getByTestId("rules-input-tasks"), {
       target: { value: "  更新文件  \n\n先寫失敗測試\n" },
@@ -516,8 +607,8 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
   });
 
   it("以保留字元開頭的條目原文進 payload（spec Example 保留字元條目自動加引號的前端面）", async () => {
-    const ws = renderView(projectSnap());
-    const card = await screen.findByTestId("rules-card");
+    const ws = renderView(projectSnap(), "rules");
+    const card = await screen.findByTestId("rules-page");
     fireEvent.click(within(card).getByTestId("rules-edit"));
     fireEvent.change(within(card).getByTestId("rules-input-tasks"), {
       target: { value: "先寫失敗測試\n更新文件\n@完成後執行全部測試" },
@@ -530,8 +621,8 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
   });
 
   it("清空某鍵文字區＝該鍵送空清單、其餘鍵保留（spec Example 鍵移除第二列）", async () => {
-    const ws = renderView(projectSnap());
-    const card = await screen.findByTestId("rules-card");
+    const ws = renderView(projectSnap(), "rules");
+    const card = await screen.findByTestId("rules-page");
     fireEvent.click(within(card).getByTestId("rules-edit"));
     fireEvent.change(within(card).getByTestId("rules-input-tasks"), { target: { value: "" } });
     fireEvent.click(within(card).getByTestId("rules-save"));
@@ -542,8 +633,8 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
   });
 
   it("全部鍵清空＝全空 payload（觸發後端移除 rules 鍵；spec Example 鍵移除第三列）", async () => {
-    const ws = renderView(projectSnap());
-    const card = await screen.findByTestId("rules-card");
+    const ws = renderView(projectSnap(), "rules");
+    const card = await screen.findByTestId("rules-page");
     fireEvent.click(within(card).getByTestId("rules-edit"));
     fireEvent.change(within(card).getByTestId("rules-input-tasks"), { target: { value: "" } });
     fireEvent.change(within(card).getByTestId("rules-input-proposal"), { target: { value: "  \n " } });
@@ -559,7 +650,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
 
   it("清空專案說明儲存 → 送空字串（鍵移除）；僅寫 context、產出規則不被觸碰（spec Example 鍵移除第一列）", async () => {
     const ws = renderView(projectSnap());
-    const card = await screen.findByTestId("context-card");
+    const card = await screen.findByTestId("context-page");
     fireEvent.click(within(card).getByTestId("context-edit"));
     fireEvent.change(within(card).getByTestId("context-input"), { target: { value: "" } });
     fireEvent.click(within(card).getByTestId("context-save"));
@@ -569,7 +660,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
 
   it("編輯專案說明並儲存：回唯讀渲染新內容；僅寫 context（spec Scenario 編輯專案說明並儲存）", async () => {
     const ws = renderView(projectSnap());
-    const card = await screen.findByTestId("context-card");
+    const card = await screen.findByTestId("context-page");
     fireEvent.click(within(card).getByTestId("context-edit"));
     fireEvent.change(within(card).getByTestId("context-input"), {
       target: { value: "# 新標題\n\n新的說明" },
@@ -585,7 +676,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
 
   it("取消放棄編輯：還原唯讀且不觸發寫入，重進編輯草稿已重設；產出規則卡全程不受影響（spec Scenario 取消放棄編輯）", async () => {
     const ws = renderView(projectSnap());
-    const card = await screen.findByTestId("context-card");
+    const card = await screen.findByTestId("context-page");
     fireEvent.click(within(card).getByTestId("context-edit"));
     fireEvent.change(within(card).getByTestId("context-input"), { target: { value: "被放棄的修改" } });
     fireEvent.click(within(card).getByTestId("context-cancel"));
@@ -593,11 +684,14 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     expect(within(card).getByTestId("context-edit")).toBeTruthy();
     expect(ws.writeWorkflowContext).not.toHaveBeenCalled();
     expect(ws.writeWorkflowRules).not.toHaveBeenCalled();
-    // 產出規則卡全程唯讀不受影響。
-    expect(within(screen.getByTestId("rules-card")).queryAllByRole("textbox")).toHaveLength(0);
+    // 產出規則頁全程唯讀不受影響。
+    goto("rules");
+    expect(within(screen.getByTestId("rules-page")).queryAllByRole("textbox")).toHaveLength(0);
     // 重進編輯：草稿為讀入值，非被放棄的修改。
-    fireEvent.click(within(card).getByTestId("context-edit"));
-    expect((within(card).getByTestId("context-input") as HTMLTextAreaElement).value).toBe(
+    goto("context");
+    const page = screen.getByTestId("context-page");
+    fireEvent.click(within(page).getByTestId("context-edit"));
+    expect((within(page).getByTestId("context-input") as HTMLTextAreaElement).value).toBe(
       "# 專案簡介\n\n這是一段說明",
     );
   });
@@ -607,7 +701,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     (ws.writeWorkflowContext as ReturnType<typeof vi.fn>).mockRejectedValue(
       "openspec/config.yaml: write failed: denied",
     );
-    const card = await screen.findByTestId("context-card");
+    const card = await screen.findByTestId("context-page");
     fireEvent.click(within(card).getByTestId("context-edit"));
     fireEvent.change(within(card).getByTestId("context-input"), { target: { value: "改到一半的內容" } });
     fireEvent.click(within(card).getByTestId("context-save"));
@@ -619,14 +713,15 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     );
   });
 
-  it("卡名採正典詞；編輯態說明載明一行一條規則、頭尾空白不保留，以及產出規則區塊內的註解不保留", async () => {
+  it("頁名採正典詞；編輯態說明載明一行一條規則、頭尾空白不保留，以及產出規則區塊內的註解不保留", async () => {
     renderView(projectSnap());
-    const ctxCard = await screen.findByTestId("context-card");
-    const rulesCard = screen.getByTestId("rules-card");
-    expect(within(ctxCard).getByText("專案說明")).toBeTruthy();
-    expect(within(rulesCard).getByText("產出規則")).toBeTruthy();
+    const ctxCard = await screen.findByTestId("context-page");
+    expect(within(ctxCard).getByRole("heading", { level: 2, name: "專案說明" })).toBeTruthy();
     fireEvent.click(within(ctxCard).getByTestId("context-edit"));
     expect(within(ctxCard).getByText(/清空儲存即移除該鍵/)).toBeTruthy();
+    goto("rules");
+    const rulesCard = screen.getByTestId("rules-page");
+    expect(within(rulesCard).getByRole("heading", { level: 2, name: "產出規則" })).toBeTruthy();
     fireEvent.click(within(rulesCard).getByTestId("rules-edit"));
     expect(within(rulesCard).getByText(/一行一條規則（頭尾空白不保留）/)).toBeTruthy();
     expect(within(rulesCard).getByText(/儲存只改動產出規則：產出規則區塊內的註解不會保留，config.yaml 的其他內容與註解會保留/)).toBeTruthy();
@@ -656,20 +751,12 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
     } as unknown as WorkspaceSettingsProvider;
   }
 
-  it("editor 僅見 Workflow 簽、mono revision，政策可存且成功後 revision 前進", async () => {
+  it("editor 於產出流程頁見 mono revision，政策可存且成功後 revision 前進（spec Scenario「遠端專案的專案設定分類」）", async () => {
     const snap = projectSnap({ revision: 41 } as Partial<SettingsSnapshot["workflow"]>);
     const ws = remoteSettings(snap, true);
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} initial="workflow" />);
 
-    const tab = await screen.findByRole("tab", { name: "Workflow" });
-    // remote 兩簽：Workflow＋產出流程（D4 改版）；.speclink.yaml 仍不出現。
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
-      "Workflow",
-      "Schema",
-    ]);
-    expect(tab.getAttribute("aria-selected")).toBe("true");
-    expect(screen.queryByRole("tab", { name: ".speclink.yaml" })).toBeNull();
-    const revision = screen.getByTestId("policy-revision");
+    const revision = await screen.findByTestId("policy-revision");
     expect(revision.textContent).toContain("41");
     expect(revision.className).toContain("font-mono");
 
@@ -691,28 +778,29 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
     // spec desktop-config「產出政策的 worktree 開關」Scenario「remote 工作區
     // 不顯示開關」：其餘政策欄位照常。
     const ws = remoteSettings(projectSnap({ revision: 7 } as Partial<SettingsSnapshot["workflow"]>));
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} initial="workflow" />);
 
-    await screen.findByRole("tab", { name: "Workflow" });
+    await screen.findByTestId("policy-card");
     expect(screen.queryByLabelText("worktree")).toBeNull();
     expect(screen.getByLabelText("tdd")).toBeTruthy();
     expect(screen.getByLabelText("audit")).toBeTruthy();
   });
 
-  it("reader 看得到三卡現值但全唯讀，存檔停用並附繁中角色說明", async () => {
+  it("reader 看得到三頁現值但全唯讀，存檔停用並附繁中角色說明", async () => {
     const ws = remoteSettings(
       projectSnap({ revision: 9 } as Partial<SettingsSnapshot["workflow"]>),
       false,
     );
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} />);
 
-    await screen.findByRole("tab", { name: "Workflow" });
-    expect(screen.getByTestId("context-card")).toBeTruthy();
-    expect(screen.getByTestId("rules-card")).toBeTruthy();
-    expect(screen.getByTestId("policy-card")).toBeTruthy();
+    await screen.findByTestId("context-page");
     expect(screen.getByTestId("policy-reader-note").textContent).toContain("你的角色為檢視者");
     expect((screen.getByTestId("context-edit") as HTMLButtonElement).disabled).toBe(true);
+    goto("rules");
+    expect(screen.getByTestId("policy-reader-note")).toBeTruthy();
     expect((screen.getByTestId("rules-edit") as HTMLButtonElement).disabled).toBe(true);
+    goto("workflow");
+    expect(screen.getByTestId("policy-reader-note")).toBeTruthy();
     expect((screen.getByLabelText("locale") as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText("tdd") as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByTestId("save-workflow") as HTMLButtonElement).disabled).toBe(true);
@@ -736,9 +824,9 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
       reason: "revision_conflict",
       status: 409,
     });
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} />);
 
-    const contextCard = await screen.findByTestId("context-card");
+    const contextCard = await screen.findByTestId("context-page");
     fireEvent.click(within(contextCard).getByTestId("context-edit"));
     fireEvent.change(within(contextCard).getByTestId("context-input"), {
       target: { value: "我的原始輸入\n保留換行" },
@@ -797,7 +885,7 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
       .mockRejectedValueOnce({ reason: "revision_conflict", status: 409, message: "conflict 41" })
       .mockRejectedValueOnce({ reason: "revision_conflict", status: 409, message: "conflict 42" })
       .mockResolvedValueOnce(44);
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} initial="workflow" />);
 
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     await user.click(await screen.findByLabelText("locale"));
@@ -837,9 +925,9 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
   });
 });
 
-// ---- 產出流程頁籤（desktop-schema-panel design D4 改版＋D5）----
+// ---- 產出流程頁（desktop-schema-panel design D4／D5；desktop-settings-mode design D8）----
 
-describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () => {
+describe("產出流程頁（spec「產出流程頁」）", () => {
   const BUILTIN_ENTRY: SchemaEntry = {
     name: "spec-driven",
     source: "package",
@@ -887,33 +975,29 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
     } as unknown as WorkspaceSettingsProvider;
   }
 
-  /** 切到產出流程頁籤（D4 改版：獨立頁籤，內容不再掛在 config.yaml 簽）。 */
+  /** 載入後切到產出流程頁。 */
   async function openSchemasTab() {
-    await screen.findByRole("tab", { name: "Schema" });
-    switchToTab("Schema");
+    await screen.findByTestId("context-page");
+    goto("workflow");
   }
 
-  it("local 頁簽依序 config.yaml／產出流程／.speclink.yaml，且 config.yaml 簽內無此節", async () => {
-    // spec Scenario「產出流程自成頁籤」。
+  it("產出流程自成一頁：專案說明頁與產出規則頁無此內容（spec Scenario「產出流程自成一頁」）", async () => {
     const ws = schemaSettings(projectSnap());
-    render(<ProjectSettingsView settings={ws} />);
-    await screen.findByTestId("context-card");
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
-      "config.yaml",
-      "Schema",
-      ".speclink.yaml",
-    ]);
-    // 預設簽（config.yaml）內不得再有產出流程內容。
+    render(<Harness settings={ws} />);
+    await screen.findByTestId("context-page");
     expect(screen.queryByTestId("schema-card")).toBeNull();
-    switchToTab("Schema");
+    goto("rules");
+    expect(screen.queryByTestId("schema-card")).toBeNull();
+    goto("workflow");
     expect(await screen.findByTestId("schema-card")).toBeTruthy();
+    expect(screen.getByTestId("policy-card")).toBeTruthy();
   });
 
   it("清單列出可解析項（名稱、來源層級、artifact 圖），點入唯讀詳情含全文且無編輯入口", async () => {
     // spec Scenario「清單列出可解析的 schema」＋「詳情唯讀呈現內容」＋
     // Example「清單一列的形狀」。
     const ws = schemaSettings(projectSnap());
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} />);
     await openSchemasTab();
     const card = await screen.findByTestId("schema-card");
     expect(card.textContent).toContain("產出流程");
@@ -942,7 +1026,7 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
     (ws.readSettings as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(first)
       .mockResolvedValue(after);
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} />);
     await openSchemasTab();
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const select = await screen.findByLabelText("使用中的產出流程");
@@ -950,9 +1034,9 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
     await user.click(select);
     await user.click(await screen.findByRole("option", { name: /my-flow/ }));
     await waitFor(() => expect(ws.writeWorkflowSchema).toHaveBeenCalledWith("my-flow"));
-    // 固定鍵隨新 schema 更新：切回 config.yaml 簽，產出規則編輯分節只剩 plan。
+    // 固定鍵隨新 schema 更新：切到產出規則頁，編輯分節只剩 plan。
     await waitFor(() => expect(screen.getByLabelText("使用中的產出流程").textContent).toContain("my-flow"));
-    switchToTab("config.yaml");
+    goto("rules");
     fireEvent.click(await screen.findByTestId("rules-edit"));
     await waitFor(() => expect(screen.getByTestId("rules-input-plan")).toBeTruthy());
     expect(screen.queryByTestId("rules-input-proposal")).toBeNull();
@@ -963,7 +1047,7 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
     (ws.writeWorkflowSchema as ReturnType<typeof vi.fn>).mockRejectedValue(
       "openspec/config.yaml: write failed: denied",
     );
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} />);
     await openSchemasTab();
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     await user.click(await screen.findByLabelText("使用中的產出流程"));
@@ -978,7 +1062,7 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
     (ws.readSchemas as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce([BUILTIN_ENTRY, CUSTOM_ENTRY])
       .mockResolvedValue([BUILTIN_ENTRY, forked, CUSTOM_ENTRY]);
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} />);
     await openSchemasTab();
     await screen.findByTestId("schema-item-spec-driven");
     fireEvent.click(screen.getByTestId("schema-fork-spec-driven"));
@@ -993,7 +1077,7 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
       rules: { plan: ["p1"], proposal: ["舊 schema 的規則"] },
     });
     const ws = schemaSettings(snap);
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} initial="rules" />);
     fireEvent.click(await screen.findByTestId("rules-edit"));
     await screen.findByTestId("rules-input-plan");
     fireEvent.click(screen.getByTestId("rules-save"));
@@ -1012,20 +1096,20 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
     (ws.readSettings as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(first)
       .mockResolvedValue(after);
-    render(<ProjectSettingsView settings={ws} />);
-    // config.yaml 簽：開專案說明編輯並輸入未存草稿。
+    render(<Harness settings={ws} />);
+    // 專案說明頁：開編輯並輸入未存草稿。
     fireEvent.click(await screen.findByTestId("context-edit"));
     fireEvent.change(screen.getByTestId("context-input"), {
       target: { value: "還沒存的草稿" },
     });
-    // 切到 Schema 簽做切換。
-    switchToTab("Schema");
+    // 切到產出流程頁做切換。
+    goto("workflow");
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     await user.click(await screen.findByLabelText("使用中的產出流程"));
     await user.click(await screen.findByRole("option", { name: /my-flow/ }));
     await waitFor(() => expect(ws.writeWorkflowSchema).toHaveBeenCalledWith("my-flow"));
-    // 切回 config.yaml 簽：編輯態仍開、草稿仍在。
-    switchToTab("config.yaml");
+    // 切回專案說明頁：編輯態仍開、草稿仍在。
+    goto("context");
     const input = (await screen.findByTestId("context-input")) as HTMLTextAreaElement;
     expect(input.value).toBe("還沒存的草稿");
   });
@@ -1041,7 +1125,7 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
       reason: "revision_conflict",
       message: "policy revision conflict",
     });
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} />);
     await openSchemasTab();
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     await user.click(await screen.findByLabelText("使用中的產出流程"));
@@ -1059,7 +1143,7 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
       rules: {},
     } as Partial<SettingsSnapshot["workflow"]>);
     const ws = schemaSettings(snap, [BUILTIN_ENTRY], { kind: "remote" });
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} />);
     await openSchemasTab();
     const trigger = await screen.findByLabelText("使用中的產出流程");
     expect(trigger.textContent).toContain("their-flow");
@@ -1070,7 +1154,7 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
     (ws.readSchemas as ReturnType<typeof vi.fn>).mockRejectedValue(
       "not a speclink project: /gone",
     );
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} />);
     await openSchemasTab();
     expect(await screen.findByText(/not a speclink project/)).toBeTruthy();
   });
@@ -1086,7 +1170,7 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
       path: "/home/userdir/schemas/dup",
     };
     const ws = schemaSettings(projectSnap(), [BUILTIN_ENTRY, dupProject, dupUser]);
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} />);
     await openSchemasTab();
     await waitFor(() => expect(screen.getAllByTestId("schema-item-dup")).toHaveLength(2));
     expect(screen.getAllByTestId("schema-fork-dup")).toHaveLength(1);
@@ -1106,7 +1190,7 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
     (ws.readSchemas as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce([BUILTIN_ENTRY, CUSTOM_ENTRY])
       .mockResolvedValue([BUILTIN_ENTRY, CUSTOM_ENTRY, created]);
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} />);
     await openSchemasTab();
     await screen.findByTestId("schema-item-spec-driven");
     fireEvent.change(screen.getByTestId("schema-create-name"), {
@@ -1120,7 +1204,7 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
   it("有磁碟路徑的項目帶開啟所在資料夾按鈕，內建項無（產出流程的編輯入口）", async () => {
     // spec Scenario「專案層項目開啟所在資料夾」＋「內建項無編輯入口」。
     const ws = schemaSettings(projectSnap());
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} />);
     await openSchemasTab();
     await screen.findByTestId("schema-item-my-flow");
     expect(screen.queryByTestId("schema-reveal-spec-driven")).toBeNull();
@@ -1136,7 +1220,7 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
     (ws.readSchemas as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce([BUILTIN_ENTRY, CUSTOM_ENTRY])
       .mockResolvedValue([BUILTIN_ENTRY]);
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} />);
     await openSchemasTab();
     await screen.findByTestId("schema-item-my-flow");
     expect(screen.queryByTestId("schema-delete-spec-driven")).toBeNull();
@@ -1149,7 +1233,7 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
   it("刪除確認對話框取消：零呼叫零變動", async () => {
     // spec Scenario「取消確認零變動」。
     const ws = schemaSettings(projectSnap());
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} />);
     await openSchemasTab();
     await screen.findByTestId("schema-item-my-flow");
     fireEvent.click(screen.getByTestId("schema-delete-my-flow"));
@@ -1163,7 +1247,7 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
     (ws.deleteSchema as ReturnType<typeof vi.fn>).mockRejectedValue(
       "'my-flow' 是使用中的產出流程（config.yaml 的 schema 鍵正指著它）——請先切換到其他項目再刪除",
     );
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} />);
     await openSchemasTab();
     await screen.findByTestId("schema-item-my-flow");
     fireEvent.click(screen.getByTestId("schema-delete-my-flow"));
@@ -1174,19 +1258,19 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
 
   it("fork／建立／刪除不重設產出規則的編輯態與草稿（review N1）", async () => {
     const ws = schemaSettings(projectSnap());
-    render(<ProjectSettingsView settings={ws} />);
-    // config.yaml 簽：開產出規則編輯並輸入未存草稿。
+    render(<Harness settings={ws} initial="rules" />);
+    // 產出規則頁：開編輯並輸入未存草稿。
     fireEvent.click(await screen.findByTestId("rules-edit"));
     fireEvent.change(screen.getByTestId("rules-input-proposal"), {
       target: { value: "還沒存的規則草稿" },
     });
-    // Schema 簽做 fork。
-    switchToTab("Schema");
+    // 產出流程頁做 fork。
+    goto("workflow");
     await screen.findByTestId("schema-item-spec-driven");
     fireEvent.click(screen.getByTestId("schema-fork-spec-driven"));
     await waitFor(() => expect(ws.forkSchema).toHaveBeenCalled());
     // 切回：編輯態仍開、草稿仍在。
-    switchToTab("config.yaml");
+    goto("rules");
     const input = (await screen.findByTestId("rules-input-proposal")) as HTMLTextAreaElement;
     expect(input.value).toBe("還沒存的規則草稿");
   });
@@ -1202,19 +1286,19 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
     (ws.readSettings as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(first)
       .mockResolvedValue(after);
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} initial="rules" />);
     // 開產出規則編輯並改草稿。
     fireEvent.click(await screen.findByTestId("rules-edit"));
     fireEvent.change(screen.getByTestId("rules-input-proposal"), {
       target: { value: "編輯中的提案規則" },
     });
-    // Schema 簽 fork → refreshSchemaFacts 換集（schemaArtifacts 變 ["plan"]）。
-    switchToTab("Schema");
+    // 產出流程頁 fork → refreshSchemaFacts 換集（schemaArtifacts 變 ["plan"]）。
+    goto("workflow");
     await screen.findByTestId("schema-item-spec-driven");
     fireEvent.click(screen.getByTestId("schema-fork-spec-driven"));
     await waitFor(() => expect(ws.forkSchema).toHaveBeenCalled());
     // 切回：編輯面仍是開編輯當下的分節與草稿（不是新鍵的空白 textarea）。
-    switchToTab("config.yaml");
+    goto("rules");
     const input = (await screen.findByTestId("rules-input-proposal")) as HTMLTextAreaElement;
     expect(input.value).toBe("編輯中的提案規則");
     expect(screen.queryByTestId("rules-input-plan")).toBeNull();
@@ -1232,7 +1316,7 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
     (ws.writeWorkflowSchema as ReturnType<typeof vi.fn>).mockRejectedValue(
       "openspec/config.yaml: write failed: denied",
     );
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} />);
     await openSchemasTab();
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     await user.click(await screen.findByLabelText("使用中的產出流程"));
@@ -1258,7 +1342,7 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
       path: "/home/userdir/schemas/dup",
     };
     const ws = schemaSettings(projectSnap(), [BUILTIN_ENTRY, brokenProject, dupUser]);
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} />);
     await openSchemasTab();
     await waitFor(() => expect(screen.getAllByTestId("schema-item-dup")).toHaveLength(2));
     expect(screen.queryAllByTestId("schema-fork-dup")).toHaveLength(0);
@@ -1270,7 +1354,7 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
     (ws.createSchema as ReturnType<typeof vi.fn>).mockRejectedValue(
       "Invalid schema name 'My Flow': must be lowercase kebab-case (e.g. my-flow)",
     );
-    render(<ProjectSettingsView settings={ws} />);
+    render(<Harness settings={ws} />);
     await openSchemasTab();
     fireEvent.change(await screen.findByTestId("schema-create-name"), {
       target: { value: "My Flow" },
@@ -1279,7 +1363,7 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
     expect(await screen.findByText(/kebab-case/)).toBeTruthy();
   });
 
-  it("remote：頁簽序 Workflow／產出流程、無 fork 與建立入口、下拉僅內建、非內建顯示遠端自訂尚不支援且不猜固定鍵", async () => {
+  it("remote：無 .speclink.yaml 頁、無 fork 與建立入口、下拉僅內建、非內建顯示遠端自訂尚不支援且不猜固定鍵", async () => {
     // spec Scenario「remote 模式無 fork 入口」「remote 模式無建立入口」「remote
     // 下拉僅內建」「remote 快照不讀本機 user 層」的前端面。
     const snap = projectSnap({
@@ -1290,16 +1374,13 @@ describe("產出流程頁籤（spec「設定頁的產出流程頁籤」）", () 
       rules: {},
     } as Partial<SettingsSnapshot["workflow"]>);
     const ws = schemaSettings(snap, [BUILTIN_ENTRY], { kind: "remote" });
-    render(<ProjectSettingsView settings={ws} />);
-    await screen.findByTestId("context-card");
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
-      "Workflow",
-      "Schema",
-    ]);
-    // 不猜固定鍵：Workflow 簽的產出規則卡無任何分節內容。
+    render(<Harness settings={ws} />);
+    await screen.findByTestId("context-page");
+    // 不猜固定鍵：產出規則頁無任何分節內容。
+    goto("rules");
     expect(screen.queryByTestId("rules-readonly-proposal")).toBeNull();
 
-    switchToTab("Schema");
+    goto("workflow");
     await screen.findByTestId("schema-card");
     expect(screen.queryByTestId("schema-fork-spec-driven")).toBeNull();
     expect(screen.queryByTestId("schema-create")).toBeNull();

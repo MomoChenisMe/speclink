@@ -2948,3 +2948,113 @@ describe("pageSizes（清單每頁筆數的跨啟動記憶）", () => {
     }
   });
 });
+
+// desktop-settings-mode design D1／D6／D7：設定模式的分類（記住上次所在分類）、更新頁的自動檢查
+// 開關（speclink.updater.autoCheck，預設開）與伺服器頁的預設連線（speclink.defaultConnection）。
+describe("設定模式的分類與偏好", () => {
+  it("預設落在一般與專案說明；setter 改分類，切回設定模式不重設", () => {
+    const store = storeWith(fakeDataSource());
+    expect(store.getState().settingsSection).toBe("general");
+    expect(store.getState().projectSettingsSection).toBe("context");
+    store.getState().setSettingsSection("cli");
+    store.getState().setProjectSettingsSection("workflow");
+    store.getState().setBoardView("board");
+    store.getState().setBoardView("settings");
+    expect(store.getState().settingsSection).toBe("cli");
+    store.getState().setBoardView("project-settings");
+    expect(store.getState().projectSettingsSection).toBe("workflow");
+  });
+
+  it("openSettingsUpdate 切到設定模式的更新頁並舉旗 focusUpdater", () => {
+    const store = storeWith(fakeDataSource());
+    store.getState().openSettingsUpdate();
+    expect(store.getState().boardView).toBe("settings");
+    expect(store.getState().settingsSection).toBe("updates");
+    expect(store.getState().focusUpdater).toBe(true);
+  });
+
+  it("openConnectionReauth 切到設定模式的伺服器頁並聚焦該連線", () => {
+    const store = storeWith(fakeDataSource());
+    store.getState().openConnectionReauth("c1");
+    expect(store.getState().boardView).toBe("settings");
+    expect(store.getState().settingsSection).toBe("servers");
+    expect(store.getState().reauthConnectionId).toBe("c1");
+  });
+
+  it("進入設定模式記下來處，兩種設定模式之間切換不改寫；leaveSettings 回到來處", () => {
+    const store = storeWith(fakeDataSource());
+    expect(store.getState().settingsReturnView).toBe("board");
+    store.getState().setBoardView("specs");
+    store.getState().setBoardView("project-settings");
+    expect(store.getState().settingsReturnView).toBe("specs");
+    store.getState().setBoardView("settings");
+    expect(store.getState().settingsReturnView).toBe("specs");
+    store.getState().leaveSettings();
+    expect(store.getState().boardView).toBe("specs");
+    // 其他入口（更新鈕、重新登入）同樣經 setBoardView，記下的是當時所在頁。
+    store.getState().setBoardView("manual");
+    store.getState().openSettingsUpdate();
+    store.getState().leaveSettings();
+    expect(store.getState().boardView).toBe("manual");
+  });
+
+  describe("updaterAutoCheck", () => {
+    const KEY = "speclink.updater.autoCheck";
+    const updaterStore = () => {
+      const check = vi.fn().mockResolvedValue(null);
+      const store = trackedAppStore({ createSession: vi.fn() as never, updater: { check, relaunch: vi.fn() } });
+      return { store, check };
+    };
+
+    it.each<[string | null, boolean]>([
+      [null, true],
+      ["false", false],
+      ["true", true],
+      ["0", true],
+    ])("鍵 %j 讀為 %s（壞值視為預設開）", (stored, expected) => {
+      if (stored !== null) localStorage.setItem(KEY, stored);
+      expect(updaterStore().store.getState().updaterAutoCheck).toBe(expected);
+    });
+
+    it("setUpdaterAutoCheck 寫回同一鍵", () => {
+      const { store } = updaterStore();
+      store.getState().setUpdaterAutoCheck(false);
+      expect(store.getState().updaterAutoCheck).toBe(false);
+      expect(localStorage.getItem(KEY)).toBe("false");
+      store.getState().setUpdaterAutoCheck(true);
+      expect(localStorage.getItem(KEY)).toBe("true");
+    });
+
+    it("關閉時背景檢查與前景重檢不呼叫端點，手動檢查照常", async () => {
+      localStorage.setItem(KEY, "false");
+      const { store, check } = updaterStore();
+      await store.getState().checkForUpdates(false);
+      await store.getState().recheckOnFocus(Date.now() + 2 * 60 * 60 * 1000);
+      expect(check).not.toHaveBeenCalled();
+      expect(store.getState().updater).toEqual({ phase: "idle" });
+      await store.getState().checkForUpdates(true);
+      expect(check).toHaveBeenCalledTimes(1);
+      expect(store.getState().updater).toEqual({ phase: "upToDate" });
+    });
+  });
+
+  describe("defaultConnectionId", () => {
+    const KEY = "speclink.defaultConnection";
+
+    it("無鍵為 null；有鍵讀回 connection id", () => {
+      expect(storeWith(fakeDataSource()).getState().defaultConnectionId).toBeNull();
+      localStorage.setItem(KEY, "c1");
+      expect(storeWith(fakeDataSource()).getState().defaultConnectionId).toBe("c1");
+    });
+
+    it("setDefaultConnectionId 寫入；設回 null 移除鍵", () => {
+      const store = storeWith(fakeDataSource());
+      store.getState().setDefaultConnectionId("c2");
+      expect(store.getState().defaultConnectionId).toBe("c2");
+      expect(localStorage.getItem(KEY)).toBe("c2");
+      store.getState().setDefaultConnectionId(null);
+      expect(store.getState().defaultConnectionId).toBeNull();
+      expect(localStorage.getItem(KEY)).toBeNull();
+    });
+  });
+});
