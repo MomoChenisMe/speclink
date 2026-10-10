@@ -1,9 +1,8 @@
 // 專案說明頁（desktop-settings-mode design D8；desktop-settings-editors design D2；spec「設定頁編輯
-// 專案說明與產出規則」）：唯讀為 markdown 渲染（超長收合、顯示更多）；編輯為 markdown 模式的
+// 專案說明與產出規則」）：唯讀為 markdown 渲染全文（自成一頁，不收合）；編輯為 markdown 模式的
 // CodeEditor，頁標題右側「編輯／預覽」切換＋取消＋儲存 ⌘S，預覽渲染草稿、編輯器維持掛載。
 import { useState } from "react";
 import {
-  Button,
   Card,
   Markdown,
   SettingsPageHeader,
@@ -11,7 +10,6 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-  cn,
   useI18n,
 } from "@speclink/ui";
 
@@ -93,21 +91,8 @@ export function ContextPage({ ps }: { ps: ProjectSettingsState }) {
           </TabsContent>
         </>
       ) : (
-        <Card className="flex flex-col gap-2 p-4">
-          <div data-testid="context-readonly" className={cn(ps.contextCollapsed && "max-h-52 overflow-hidden")}>
-            <Markdown content={ps.contextText || null} empty={t("settings.contextEmpty")} />
-          </div>
-          {ps.contextCollapsed && (
-            <Button
-              type="button"
-              variant="link"
-              data-testid="context-show-more"
-              className="h-auto self-start p-0 text-xs font-normal"
-              onClick={() => ps.setContextExpanded(true)}
-            >
-              {t("settings.showMore")}
-            </Button>
-          )}
+        <Card data-testid="context-readonly" className="p-4">
+          <Markdown content={ps.contextText || null} empty={t("settings.contextEmpty")} />
         </Card>
       )}
     </Tabs>

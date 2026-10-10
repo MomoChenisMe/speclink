@@ -251,7 +251,6 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "cliInstall.pathHintSuffix": "不在 PATH——請將它加入 shell 設定檔，例如：",
     "cliInstall.help": "把隨附的 speclink CLI 加入終端 PATH；CLI 隨桌面更新自動同版。",
     "settings.edit": "編輯",
-    "settings.showMore": "顯示更多",
     "settings.contextEmpty": "尚未設定專案說明——按編輯加入專案背景。",
     "settings.contextLabel": "專案說明",
     "settings.contextHelp":
@@ -734,7 +733,6 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "cliInstall.pathHintSuffix": "is not on PATH — add it to your shell profile, e.g.:",
     "cliInstall.help": "Puts the bundled speclink CLI on your terminal PATH; it stays in sync with desktop updates.",
     "settings.edit": "Edit",
-    "settings.showMore": "Show more",
     "settings.contextEmpty": "No project context yet — press Edit to add background.",
     "settings.contextLabel": "Project context",
     "settings.contextHelp":

@@ -28,7 +28,7 @@
 
 ### D2 專案說明頁
 
-- 唯讀：既有 markdown 渲染與收合。
+- 唯讀：既有 markdown 渲染，**拿掉收合**——專案說明自 `desktop-settings-mode` 起自成一頁，整頁只有這段內容，收合只會把它藏起來（收合是舊版「多張卡同頁」的遺留）；連帶移除 `isLongContext`、展開狀態與只剩此處使用的 `settings.showMore` 文案。
 - 點「編輯」：頁標題右側變為分段切換「編輯｜預覽」（`Tabs` 原語，`TabsList variant={null}` 以 className 縮成 h-7 膠囊底）＋ghost「取消」＋主要「儲存」（右側 `Kbd` ⌘S／Ctrl+S）；內容卡換成 `CodeEditor mode="markdown"`（autoFocus）；切「預覽」時卡內改以 `Markdown` 渲染草稿（空草稿顯示空態文案），切回「編輯」保留草稿與游標位置（編輯器維持掛載、以 `hidden` 切換）。
 - 儲存：草稿原字串寫入 context——不去頭尾空白、不改檔尾換行、不改縮排；core 既有序列化以 YAML 區塊字串保留換行（檔尾有換行用 `|`、無則 `|-`）。清空（全空白）仍視為移除鍵（既有語意）。
 - ⌘S 在編輯器內與頁內皆觸發儲存（編輯器 keymap 先攔；頁層 keydown 補焦點在編輯器外的情況）；儲存進行中 disabled。
