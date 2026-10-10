@@ -1,12 +1,17 @@
-// 產出規則頁（desktop-settings-mode design D8；spec「設定頁編輯專案說明與產出規則」）：頁標題右側
-// 編輯／取消／儲存；唯讀只列有條目的固定鍵（等寬鍵名＋條數），編輯為每個固定鍵一個文字區。
-import { Card, SettingsPageHeader, Textarea, useI18n } from "@speclink/ui";
+// 產出規則頁（desktop-settings-mode design D8；desktop-settings-editors design D3；spec「設定頁編輯
+// 專案說明與產出規則」）：頁標題右側編輯／取消／儲存 ⌘S；唯讀只列有條目的固定鍵（等寬鍵名＋條數），
+// 編輯為每個固定鍵一張小卡（等寬鍵名＋即時「N 條」＋純文字 CodeEditor）。
+import { FileText } from "lucide-react";
+import { Card, SettingsPageHeader, useI18n } from "@speclink/ui";
 
-import { CardEditControls, FieldHelp, PageAlerts, PageNote } from "./parts";
-import type { ProjectSettingsState } from "./useProjectSettings";
+import { CodeEditor } from "../../components/CodeEditor";
+import { CardEditControls, FieldHelp, PageAlerts, PageNote, useEditorSave } from "./parts";
+import { textToEntries, type ProjectSettingsState } from "./useProjectSettings";
 
 export function RulesPage({ ps }: { ps: ProjectSettingsState }) {
   const { t } = useI18n();
+  const { saving, save } = useEditorSave(ps.rulesEditing, ps.saveRules);
+  const countLabel = (n: number) => t("settings.rulesCount").replace("{count}", String(n));
   return (
     <div data-testid="rules-page" className="flex flex-col gap-6">
       <SettingsPageHeader
@@ -15,12 +20,12 @@ export function RulesPage({ ps }: { ps: ProjectSettingsState }) {
         actions={
           <CardEditControls
             editing={ps.rulesEditing}
-            disabled={ps.wfDisabled}
+            disabled={ps.wfDisabled || saving}
             msg={ps.rulesMsg}
             testPrefix="rules"
             onEdit={ps.beginRulesEdit}
             onCancel={() => ps.setRulesEditing(false)}
-            onSave={() => void ps.saveRules()}
+            onSave={() => void save()}
           />
         }
         note={<PageNote remote={ps.remoteNote} fileKey="openspec/config.yaml · rules" testId="file-note-config" />}
@@ -31,20 +36,27 @@ export function RulesPage({ ps }: { ps: ProjectSettingsState }) {
           <>
             {/* 編輯面以凍結鍵集渲染（review N4），不跟 snap 的固定鍵換集。 */}
             {ps.editingRuleKeys.map((id) => (
-              <div key={id} className="flex flex-col gap-1">
-                <label htmlFor={`rules-input-${id}`} className="font-mono text-sm font-medium">
-                  {id}
-                </label>
-                <Textarea
-                  id={`rules-input-${id}`}
-                  data-testid={`rules-input-${id}`}
+              <section key={id} data-testid={`rules-input-${id}`} aria-label={id} className="flex flex-col gap-2">
+                <div className="flex items-center gap-1.5 px-1 text-sm font-medium">
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="font-mono">{id}</span>
+                  <span
+                    data-testid={`rules-count-${id}`}
+                    className="inline-flex h-4 items-center rounded-full bg-muted px-1.5 text-[11px] font-normal tabular-nums text-muted-foreground"
+                  >
+                    {countLabel(textToEntries(ps.draftRules[id] ?? "").length)}
+                  </span>
+                </div>
+                <CodeEditor
                   value={ps.draftRules[id] ?? ""}
-                  disabled={ps.wfDisabled}
-                  rows={3}
-                  className="font-mono"
-                  onChange={(e) => ps.setDraftRules((prev) => ({ ...prev, [id]: e.target.value }))}
+                  onChange={(text) => ps.setDraftRules((prev) => ({ ...prev, [id]: text }))}
+                  mode="plain"
+                  readOnly={ps.wfDisabled}
+                  onSave={() => void save()}
+                  minLines={3}
+                  ariaLabel={id}
                 />
-              </div>
+              </section>
             ))}
             <FieldHelp>{t("settings.rulesHelp")}</FieldHelp>
           </>
@@ -58,7 +70,7 @@ export function RulesPage({ ps }: { ps: ProjectSettingsState }) {
                 <span className="flex items-baseline gap-2">
                   <span className="font-mono text-sm font-medium">{id}</span>
                   <span className="text-xs text-muted-foreground">
-                    {t("settings.rulesCount").replace("{count}", String(entries.length))}
+                    {countLabel(entries.length)}
                   </span>
                 </span>
                 <ul className="m-0 flex list-disc flex-col gap-0.5 pl-5 text-sm text-muted-foreground">

@@ -58,7 +58,7 @@ export function errorMessage(error: unknown): string {
 
 /** 行↔條目轉換（design D2）：一行一條規則——儲存時逐行修剪頭尾空白、空行滌除，行序即寫入順序。 */
 const entriesToText = (entries: string[]) => entries.join("\n");
-const textToEntries = (text: string) =>
+export const textToEntries = (text: string) =>
   text
     .split("\n")
     .map((line) => line.trim())

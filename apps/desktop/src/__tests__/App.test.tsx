@@ -14,6 +14,7 @@ import { RELEASE_NOTES } from "../release-notes/release-notes";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 import { STALE_PROBE } from "./helpers/assetFixtures";
 import { changeList, sharedBoardRequirement } from "./helpers/changeList";
+import { editorText, replaceEditorText } from "./helpers/codemirror";
 import { REMOTE_KEY, fakeRemoteDs, fakeRemoteSession } from "./helpers/remoteFixtures";
 import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
@@ -1231,9 +1232,9 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     fireEvent.click(within(projectColumn()).getByRole("button", { name: "規格" }));
     fireEvent.click(within(projectColumn()).getByRole("button", { name: "專案設定" }));
     fireEvent.click(await screen.findByTestId("context-edit"));
-    fireEvent.change(screen.getByTestId("context-input"), { target: { value: "新的說明" } });
+    replaceEditorText(screen.getByTestId("context-input"), "新的說明");
 
-    // 焦點已離開文字區：Esc 走返回，先跳確認框。
+    // 焦點已離開編輯器：Esc 走返回，先跳確認框。
     act(() => {
       fireEvent.keyDown(window, { key: "Escape" });
     });
@@ -1241,7 +1242,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     expect(within(confirm).getByText("要捨棄未儲存的修改嗎？")).toBeTruthy();
     fireEvent.click(within(confirm).getByRole("button", { name: "取消" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
-    expect((screen.getByTestId("context-input") as HTMLTextAreaElement).value).toBe("新的說明");
+    expect(editorText(screen.getByTestId("context-input"))).toBe("新的說明");
     expect(crumbText()).toBe("proj-a/專案設定/專案說明");
 
     // 返回鈕同樣先問；捨棄後回到進入前的規格頁。

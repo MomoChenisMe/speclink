@@ -1,5 +1,6 @@
 // 專案設定四頁共用的片段（desktop-settings-mode design D8）：欄位說明、未知值提示、解析失敗
-// 說明、頁標題右側的編輯／取消／儲存、remote revision 衝突對照卡與頁標題下的檔案鍵註記。
+// 說明、頁標題右側的編輯／取消／儲存與 ⌘S、remote revision 衝突對照卡與頁標題下的檔案鍵註記。
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import {
   Button,
@@ -7,12 +8,14 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  Kbd,
   SEMANTIC_SURFACE,
   SEMANTIC_TONE,
   cn,
   useI18n,
 } from "@speclink/ui";
 
+import { detectPlatform } from "../../platform";
 import type { PolicyConflict, ProjectSettingsState } from "./useProjectSettings";
 
 export function FieldHelp({ children }: { children: React.ReactNode }) {
@@ -41,12 +44,45 @@ export function ParseErrorBanner({ message }: { message: string }) {
   );
 }
 
-/** 頁標題右側的編輯／取消／儲存（專案說明頁與產出規則頁共用）。 */
+/** 編輯態的儲存（desktop-settings-editors design D2）：⌘S／Ctrl+S 由編輯器 keymap 先攔
+ * （已 preventDefault）；焦點在編輯器外時由這裡的視窗層補上。儲存進行中不重送。 */
+export function useEditorSave(editing: boolean, save: () => Promise<void>) {
+  const [saving, setSaving] = useState(false);
+  const busy = useRef(false);
+  const latest = useRef(save);
+  latest.current = save;
+  const run = useRef(async () => {
+    if (busy.current) return;
+    busy.current = true;
+    setSaving(true);
+    try {
+      await latest.current();
+    } finally {
+      busy.current = false;
+      setSaving(false);
+    }
+  }).current;
+  useEffect(() => {
+    if (!editing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || !(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "s") return;
+      e.preventDefault();
+      void run();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editing, run]);
+  return { saving, save: run };
+}
+
+/** 頁標題右側的編輯／取消／儲存（專案說明頁與產出規則頁共用）；`toggle` 放在取消之前
+ * （專案說明的「編輯／預覽」切換）。 */
 export function CardEditControls({
   editing,
   disabled,
   msg,
   testPrefix,
+  toggle,
   onEdit,
   onCancel,
   onSave,
@@ -56,6 +92,7 @@ export function CardEditControls({
   msg: string | null;
   /** data-testid 前綴（context／rules）。 */
   testPrefix: string;
+  toggle?: React.ReactNode;
   onEdit: () => void;
   onCancel: () => void;
   onSave: () => void;
@@ -66,9 +103,10 @@ export function CardEditControls({
       {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
       {editing ? (
         <>
+          {toggle}
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="sm"
             data-testid={`${testPrefix}-cancel`}
             disabled={disabled}
@@ -86,6 +124,7 @@ export function CardEditControls({
             onClick={onSave}
           >
             {t("settings.save")}
+            <Kbd className="text-current opacity-80">{detectPlatform() === "macos" ? "⌘S" : "Ctrl+S"}</Kbd>
           </Button>
         </>
       ) : (

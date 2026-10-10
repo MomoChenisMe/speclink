@@ -256,6 +256,12 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.contextLabel": "專案說明",
     "settings.contextHelp":
       "寫入 config.yaml 的 context 鍵——專案背景的自由文字，注入每次 artifact 產出指令；清空儲存即移除該鍵。",
+    "settings.editor.edit": "編輯",
+    "settings.editor.preview": "預覽",
+    "settings.editor.markdownMode": "markdown",
+    "settings.editor.plainMode": "純文字",
+    "settings.editor.wrap": "自動換行",
+    "settings.editor.cursor": "第 {line} 行，第 {col} 欄",
     "settings.rulesHelp":
       "依 artifact 分節，一行一條規則（頭尾空白不保留）、行序即指令注入順序；儲存只改動產出規則：產出規則區塊內的註解不會保留，config.yaml 的其他內容與註解會保留。",
     "settings.schemaCard": "產出流程",
@@ -733,6 +739,12 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.contextLabel": "Project context",
     "settings.contextHelp":
       "Written to the context key in config.yaml — free-form project background injected into every artifact instruction; save empty to remove the key.",
+    "settings.editor.edit": "Edit",
+    "settings.editor.preview": "Preview",
+    "settings.editor.markdownMode": "Markdown",
+    "settings.editor.plainMode": "Plain text",
+    "settings.editor.wrap": "Word wrap",
+    "settings.editor.cursor": "Ln {line}, Col {col}",
     "settings.rulesHelp":
       "One rule per line per artifact key (leading/trailing whitespace is trimmed); line order is the instruction injection order. Saving updates only these rules: comments under the rules key are not kept, and the rest of config.yaml, comments included, stays as is.",
     // en 語系裡 "schema" 是這個概念的原生詞（與頁籤標籤同一條裁定線），保留；
