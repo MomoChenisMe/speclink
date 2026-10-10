@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { afterPrompt, changeIn, focusFromHistory, focusFromTitle, speclinkCommand, titleOf, verbOf } from '../hooks/focus'
-import { buildBoard, discussionBody, isNoTicket, parseTasks, speclinkArgv, toTicket } from '../hooks/board'
+import { buildBoard, discussionBody, isNoTicket, parseTasks, proposedRows, speclinkArgv, toTicket } from '../hooks/board'
 import type { PlanJson } from '../hooks/board'
 import { cells } from '../hooks/register'
 import { commandHead, groupSkills, withArgument, withCommand } from '../hooks/skills'
@@ -264,6 +264,17 @@ test('面板資料：順序與階段取 plan，任務數取 list，已轉出的�
   ])
   expect(board.discussions.map(d => d.slug)).toEqual(['hold-auto-close', 'ship-it'])
   expect(board.next).toBe('add-auth')
+})
+
+test('輸入框 # 選單：只列提案中的 change，# 後面的字篩選名稱，不分大小寫', () => {
+  const changes = [...PLAN.changes, { name: 'Add-Search', wave: 2, stage: 'proposed' as const, blockedBy: [] }]
+
+  expect(proposedRows(changes, '#', '提案中')).toEqual([
+    { text: 'refactor-store', description: 'speclink · 提案中' },
+    { text: 'Add-Search', description: 'speclink · 提案中' },
+  ])
+  expect(proposedRows(changes, '#add', '提案中').map(r => r.text)).toEqual(['Add-Search'])
+  expect(proposedRows(changes, '#auth', '提案中')).toEqual([])
 })
 
 test('Windows 經 cmd.exe 執行 speclink，其他平台直接執行', () => {
