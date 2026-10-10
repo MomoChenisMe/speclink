@@ -47,6 +47,15 @@ export const buildBoard = (list: ListJson, plan: PlanJson, talk: DiscussJson) =>
   }
 }
 
+// 輸入框裡 `#` 開頭的字：列出提案中的 change，`#` 後面打的字用來篩選名稱（不分大小寫）。
+// 選了一列，那個字就換成 change 名稱。
+export const proposedRows = (changes: PlanJson['changes'], token: string, stage: string) => {
+  const typed = token.slice(1).toLowerCase()
+  return changes
+    .filter(c => c.stage === 'proposed' && c.name.toLowerCase().includes(typed))
+    .map(c => ({ text: c.name, description: `speclink · ${stage}` }))
+}
+
 // tasks.md 的 `## 標題` 分組與 `- [ ]`／`- [x]` 任務列；`[M]` 緊貼核取框的是手動任務。
 // 行尾的 `<!-- speclink-task:… -->` 是引擎的 ID，不顯示。
 export const parseTasks = (markdown: string): TaskGroup[] => {

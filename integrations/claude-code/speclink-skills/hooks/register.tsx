@@ -3,7 +3,7 @@ import type { EngineInterface, Register, RenderChildren } from 'claude-code'
 
 import type { Board, Detail, Focus, Lang, PanelChange, PanelDiscussion, PanelTab, PanelView, Quality, Skill, Ticket } from '../types'
 
-import { buildBoard, discussionBody, isNoTicket, parseTasks, speclinkArgv, toTicket } from './board'
+import { buildBoard, discussionBody, isNoTicket, parseTasks, proposedRows, speclinkArgv, toTicket } from './board'
 import type { DiscussJson, DiscussShowJson, ListJson, PlanJson, ShowJson, StatusJson, TicketJson } from './board'
 import { afterPrompt, changeIn, focusFromHistory, focusFromTitle, PLAIN_TITLE, speclinkCommand, titleOf } from './focus'
 import type { GroupId } from './groups'
@@ -28,6 +28,8 @@ let known: { names: string[]; worktrees: { name: string; path: string }[]; loade
 let staleTitle = false
 // 送出的技能指令換掉焦點之前的那一個；模型開始跑工具時清掉。這一輪在那之前就被 Esc 中斷，焦點回到它。
 let undo: Focus | null = null
+// 輸入框 `#` 選單用的 change 與階段（`speclink plan`）。每打一個字都會問一次，5 秒內用同一份。
+let planned: { changes: PlanJson['changes']; loadedAt: number } = { changes: [], loadedAt: 0 }
 
 // 用 `$` 的函式都留在這個檔：`$` 只能傳進同檔宣告的函式，不能跨 import。
 
@@ -59,6 +61,18 @@ const loadKnown = async ($: EngineInterface) => {
   } catch {
     known = { names: [], worktrees: [], loadedAt: Date.now() }
   }
+}
+
+// 讀不到時當作沒有 change，選單不出現。
+const loadPlanned = async ($: EngineInterface) => {
+  if (Date.now() - planned.loadedAt > 5_000) {
+    const changes = await speclinkJson<PlanJson>($, ['plan']).then(
+      p => p.changes,
+      () => [],
+    )
+    planned = { changes, loadedAt: Date.now() }
+  }
+  return planned.changes
 }
 
 // 還不知道焦點時（剛開 session、/resume 接回）：在某個 change 的 worktree 裡開的 session 就是那個
@@ -383,6 +397,14 @@ export const register: Register = (on, options) => {
 
     return title === null ? done : { ...done, sessionTitle: title }
   }).catch(($, e, next) => next(e))
+
+  // 輸入框打 `#`：下拉選單列出提案中的 change，選了就填入名稱，例如 `/speclink-apply #` 再選一個。
+  on('prompt.autocomplete', { token: /^#/ }, async ($, e, next) => {
+    const below = await next(e)
+    const t = TEXT[await read($, lang)]
+
+    return { suggestions: [...below.suggestions, ...proposedRows(await loadPlanned($), e.token, t.stages.proposed)] }
+  })
 
   on('command.run', { command: PANEL_COMMAND }, async $ => {
     const t = TEXT[await read($, lang)]
