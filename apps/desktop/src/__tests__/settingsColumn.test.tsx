@@ -26,13 +26,36 @@ describe("SettingsColumn", () => {
     render(<SettingsColumn section="updates" onSelect={onSelect} />);
     const nav = screen.getByRole("navigation", { name: "設定分類" });
     expect(within(nav).getByText("應用程式")).toBeTruthy();
-    expect(navItems(nav)).toEqual(["一般", "語言與外觀", "更新", "CLI", "伺服器"]);
+    expect(navItems(nav)).toEqual(["一般", "語言與外觀", "更新", "CLI", "伺服器", "關於 Speclink"]);
     expect(within(nav).getByRole("button", { name: "更新" }).getAttribute("aria-current")).toBe("page");
     fireEvent.click(within(nav).getByRole("button", { name: "伺服器" }));
     expect(onSelect).toHaveBeenCalledWith("servers");
   });
 
-  it("搜尋「外觀」只剩一般與語言與外觀；無命中顯示提示；清空後五項還原", () => {
+  it("「關於」群組在「應用程式」之後、唯一一項「關於 Speclink」；作用中與點擊回呼", () => {
+    const onSelect = vi.fn();
+    const { rerender } = render(<SettingsColumn section="general" onSelect={onSelect} />);
+    const nav = screen.getByRole("navigation", { name: "設定分類" });
+    const headers = [within(nav).getByText("應用程式"), within(nav).getByText("關於")];
+    expect(headers[0].compareDocumentPosition(headers[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const about = within(nav).getByRole("button", { name: "關於 Speclink" });
+    expect(headers[1].compareDocumentPosition(about) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(about);
+    expect(onSelect).toHaveBeenCalledWith("about");
+    rerender(<SettingsColumn section="about" onSelect={onSelect} />);
+    expect(within(nav).getByRole("button", { name: "關於 Speclink" }).getAttribute("aria-current")).toBe("page");
+  });
+
+  it("搜尋只命中關於頁時只剩「關於」群組；群組無命中時連標題一起隱藏", () => {
+    render(<SettingsColumn section="general" onSelect={() => {}} />);
+    const nav = screen.getByRole("navigation", { name: "設定分類" });
+    fireEvent.change(within(nav).getByPlaceholderText("搜尋設定"), { target: { value: "第三方" } });
+    expect(navItems(nav)).toEqual(["關於 Speclink"]);
+    expect(within(nav).queryByText("應用程式")).toBeNull();
+    expect(within(nav).getByText("關於")).toBeTruthy();
+  });
+
+  it("搜尋「外觀」只剩一般與語言與外觀；無命中顯示提示；清空後六項還原", () => {
     render(<SettingsColumn section="general" onSelect={() => {}} />);
     const nav = screen.getByRole("navigation", { name: "設定分類" });
     const search = within(nav).getByPlaceholderText("搜尋設定");
@@ -42,15 +65,15 @@ describe("SettingsColumn", () => {
     expect(within(nav).queryAllByRole("button")).toHaveLength(0);
     expect(within(nav).getByText("沒有符合的設定")).toBeTruthy();
     fireEvent.change(search, { target: { value: "" } });
-    expect(navItems(nav)).toHaveLength(5);
+    expect(navItems(nav)).toHaveLength(6);
   });
 
   it("比對大小寫不敏感（分類名與列標籤）", () => {
     render(<SettingsColumn section="general" onSelect={() => {}} />);
     const nav = screen.getByRole("navigation", { name: "設定分類" });
     fireEvent.change(within(nav).getByPlaceholderText("搜尋設定"), { target: { value: "cli" } });
-    // 一般頁有「speclink CLI」列、CLI 頁本身。
-    expect(navItems(nav)).toEqual(["一般", "CLI"]);
+    // 一般頁有「speclink CLI」列、CLI 頁本身；「關於 Speclink」的分類名含 spe-cli-nk 也命中。
+    expect(navItems(nav)).toEqual(["一般", "CLI", "關於 Speclink"]);
   });
 });
 

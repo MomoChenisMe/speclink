@@ -207,6 +207,7 @@ function renderApp(
     ws?: ReturnType<typeof fakeWorkspace>;
     settings?: ReturnType<typeof fakeSettings>;
     updater?: { check: Mock; relaunch: Mock };
+    loadAppInfo?: Mock;
   } = {},
 ) {
   localStorage.setItem(
@@ -227,6 +228,7 @@ function renderApp(
       createSession={makeSession(ds, settings)}
       workspace={ws as never}
       updater={over.updater as never}
+      loadAppInfo={over.loadAppInfo as never}
     />,
   );
   return { ds, ws, settings };
@@ -1184,7 +1186,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
 
     fireEvent.click(settingsGear());
     // 設定模式左側恆為圖示列加設定分類欄（零專案亦然；spec「零分頁仍可進入應用程式設定」）。
-    expect(within(settingsColumn()).getAllByRole("button")).toHaveLength(5);
+    expect(within(settingsColumn()).getAllByRole("button")).toHaveLength(6);
     expect(screen.queryByText("開啟一個專案開始")).toBeNull();
     expect(settingsGear().className).toContain("bg-primary");
     expect(leftSide().className).toContain("w-[256px]");
@@ -2511,6 +2513,41 @@ describe("macOS 原生選單接線（desktop-app「macOS 原生選單」）", ()
     expect(crumbText()).toBe("設定/CLI");
     act(() => menuDeps().dispatch("settings"));
     expect(crumbText()).toBe("設定/一般");
+  });
+
+  it("Scenario「選單關於直達頁」：dispatch(\"about\") 進設定模式的關於頁，分類欄關於為作用中、品牌卡帶版本列", async () => {
+    const loadAppInfo = vi.fn().mockResolvedValue({
+      appVersion: "0.8.0",
+      engineVersion: "0.8.0",
+      platform: "macOS",
+      arch: "arm64",
+      assetsVersion: "v1.44.0",
+    });
+    renderApp(fakeDataSource(), { loadAppInfo });
+    await screen.findByText("desktop-shell-and-browser");
+    act(() => menuDeps().dispatch("about"));
+    expect(crumbText()).toBe("設定/關於Speclink");
+    const column = screen.getByRole("navigation", { name: "設定分類" });
+    expect(within(column).getByRole("button", { name: "關於 Speclink" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("heading", { level: 2, name: "關於 Speclink" })).toBeTruthy();
+    const brand = screen.getByTestId("about-brand");
+    expect(await within(brand).findByText("0.8.0 · 引擎 0.8.0 · macOS arm64")).toBeTruthy();
+    expect(within(brand).getByText("一套 SDD Engine，支援 Local Repo 與 Remote Store")).toBeTruthy();
+    expect(loadAppInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it("Scenario「版本列的更新狀態與上次檢查」：關於頁檢查更新後狀態籤為已是最新、上次檢查為剛剛，更新頁同步", async () => {
+    const updater = { check: vi.fn().mockResolvedValue(null), relaunch: vi.fn() };
+    renderApp(fakeDataSource(), { updater });
+    await screen.findByText("desktop-shell-and-browser");
+    act(() => menuDeps().dispatch("about"));
+    const checkRow = screen.getByRole("group", { name: "檢查更新" });
+    fireEvent.click(within(checkRow).getByRole("button", { name: "檢查更新" }));
+    expect(await within(screen.getByTestId("about-brand")).findByText("已是最新")).toBeTruthy();
+    expect(within(screen.getByRole("group", { name: "檢查更新" })).getByText("上次檢查：剛剛")).toBeTruthy();
+    const column = screen.getByRole("navigation", { name: "設定分類" });
+    fireEvent.click(within(column).getByRole("button", { name: "更新" }));
+    expect(within(screen.getByRole("group", { name: "最新版本" })).getByText("已是最新")).toBeTruthy();
   });
 
   it("dispatch(\"github\")／dispatch(\"reportIssue\") 以 openUrl 開 repo 網址", async () => {

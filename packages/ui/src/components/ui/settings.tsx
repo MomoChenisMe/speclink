@@ -1,6 +1,7 @@
 // 設定頁的五個零件（desktop-settings-mode design D3）：應用程式設定與專案設定的每一頁都以
 // 頁標題、卡、列、列右側下拉排版；群組標題由分類欄群組與卡的小標共用。
 import { useId, type ReactNode } from "react";
+import { ExternalLink } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import { SEMANTIC_TONE } from "../../tone";
@@ -88,9 +89,22 @@ export function SettingsCard({
   );
 }
 
+type SettingsRowProps = {
+  /** 群組名取自標籤的文字內容；可放等寬版號之類的行內標記。 */
+  label: ReactNode;
+  description?: ReactNode;
+  warning?: boolean;
+  children?: ReactNode;
+} & (
+  | { control: ReactNode; htmlFor?: string; onClick?: never }
+  /** 外開連結列：整列是按鈕，右端固定外開圖示，不放控制項。 */
+  | { onClick: () => void; control?: never; htmlFor?: never }
+);
+
 /** 列：左 14px 標籤＋12px 灰字說明、右控制項；`warning` 時說明改警示色；`children` 渲染在
  *  列下方（展開的細節、行內錯誤）。以標籤為群組名，呼叫端可就列找控制項；給了 `htmlFor`
- *  時標籤只標註該控制項，不再兼作群組名（同一個名字不指向兩個元素）。 */
+ *  時標籤只標註該控制項，不再兼作群組名（同一個名字不指向兩個元素）。給 `onClick` 時是
+ *  外開連結列（desktop-about-page design D2）：整列可點、hover 灰底、右端外開圖示。 */
 export function SettingsRow({
   label,
   description,
@@ -98,16 +112,24 @@ export function SettingsRow({
   htmlFor,
   warning,
   children,
-}: {
-  /** 群組名取自標籤的文字內容；可放等寬版號之類的行內標記。 */
-  label: ReactNode;
-  description?: ReactNode;
-  control: ReactNode;
-  htmlFor?: string;
-  warning?: boolean;
-  children?: ReactNode;
-}) {
+  onClick,
+}: SettingsRowProps) {
   const labelId = useId();
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="grid w-full grid-cols-[1fr_auto] items-center gap-x-4 px-4 py-3 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+      >
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="text-sm">{label}</span>
+          {description && <span className="text-xs text-muted-foreground">{description}</span>}
+        </span>
+        <ExternalLink aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      </button>
+    );
+  }
   const Label = htmlFor ? "label" : "span";
   return (
     <div role="group" aria-labelledby={htmlFor ? undefined : labelId} className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2 px-4 py-3">

@@ -1,0 +1,114 @@
+{
+  "version": 2,
+  "change": "desktop-about-page",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 `crates/speclink-core/src/lib.rs` 加 `pub const VERSION: &str = env!(\"CARGO_PKG_VERSION\")`；`apps/desktop/core/src/project.rs` 加 `AppInfo` 與 `app_info(app_version)`（design D1：engine_version、platform、arch、assets_version）；`apps/desktop/src-tauri/src/lib.rs` 新增 `app_info` 命令並註冊；新增 `apps/desktop/src/adapter/appInfo.ts`（`loadAppInfo()`）；store 加 `appInfo` 與 `loadAppInfo()` 快取、`lastCheckedAt`（檢查完成時記錄）（spec「關於頁」）。驗證：`apps/desktop/core/src/project.rs` 單元測試——`app_info` 的 engine_version 等於 speclink-core 版本、assets_version 等於 ASSET_VERSION、camelCase 欄位；`cargo test -p speclink-desktop-core app_info`；`store.test.ts` 加「`loadAppInfo` 只呼叫 adapter 一次」「檢查完成後 `lastCheckedAt` 非 null」；`npm test -w apps/desktop -- store`。",
+      "files": [
+        "apps/desktop/core/src/project.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/main.tsx",
+        "apps/desktop/src/store.ts",
+        "apps/desktop/src/adapter/appInfo.ts"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 新增 `scripts/desktop/third-party-licenses.mjs`（design D3：讀 package-lock 的生產相依與 node_modules 授權、`cargo metadata` 非 workspace 套件；輸出 `apps/desktop/src/generated/third-party-licenses.json`，兩節依名稱排序；cargo 不可用時警告略過）；`apps/desktop/package.json` 的 `predev` 串接並新增 `prebuild`；`apps/desktop/.gitignore` 加 `src/generated/`（spec「關於頁」）。驗證：新增 `scripts/desktop/third-party-licenses.test.mjs`——以 fixture lock 與 fake metadata JSON 驗證只含生產相依、授權欄缺席為「未標示」、兩節排序、cargo 缺席時仍輸出 npm 節；`node --test scripts/desktop/third-party-licenses.test.mjs`；`npm run build -w apps/desktop` 後檔案存在。",
+      "files": [
+        "apps/desktop/package.json",
+        "scripts/desktop/third-party-licenses.mjs",
+        "scripts/desktop/third-party-licenses.test.mjs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 新增 `apps/desktop/src/views/settings/AboutPage.tsx`（design D2：品牌卡 `Wordmark` 40px＋版本列（`StatusPill` 更新狀態）＋描述；版本卡三列含複製版本資訊四行；連結卡三列整列可點 `openUrl` 失敗 toast；授權卡兩列）與 `apps/desktop/src/components/LicenseDialog.tsx`（LICENSE `?raw` 全文或第三方清單兩節，清單缺檔顯示「清單尚未產生」）；`SettingsRow` 加 `onClick` 可點變體（hover 灰底、右端外開圖示）；i18n 加 `about.*`（spec「關於頁」）。驗證：新增 `apps/desktop/src/__tests__/aboutPage.test.tsx`——版本列文字「0.8.0 · 引擎 1.44.0 · macOS arm64」與狀態籤、複製版本資訊寫入四行、連結三列呼叫 `openUrl` 對應網址且回報問題網址含版本、授權對話框顯示 LICENSE 文字、第三方對話框兩節排序與缺檔文案、上次檢查文字；`npm test -w apps/desktop -- aboutPage`。",
+      "files": [
+        "apps/desktop/src/i18n/messages.ts",
+        "packages/ui/src/__tests__/settingsParts.test.tsx",
+        "packages/ui/src/components/ui/settings.tsx",
+        "apps/desktop/src/__tests__/aboutPage.test.tsx",
+        "apps/desktop/src/components/LicenseDialog.tsx",
+        "apps/desktop/src/views/settings/AboutPage.tsx"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 `apps/desktop/src/settingsCatalog.ts` 加群組「關於」與 `about` 分類，`settingsSection` 型別加 `about`，`SettingsColumn` 渲染第二群組；`AppSettingsView` 掛 `AboutPage`；麵包屑「設定 / 關於 Speclink」；`App.tsx` 原生選單 `about` 改進關於頁；i18n 加 `settings.section.about`、`settings.group.about`（design D4；spec「關於頁」）。驗證：`settingsColumn.test.tsx` 加第二群組與作用中；`appMenu.test.ts`／`App.test.tsx` 加「about 動作後 `boardView` 為 settings 且 section 為 about、麵包屑為設定 / 關於 Speclink」；`npm test -w apps/desktop -- settingsColumn appMenu App`。",
+      "files": [
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/settingsColumn.test.tsx",
+        "apps/desktop/src/components/SettingsColumn.tsx",
+        "apps/desktop/src/settingsCatalog.ts",
+        "apps/desktop/src/views/AppSettingsView.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4JKYG6YAJ5GZ8MD54DJ2K2M",
+      "taskDesc": "1.1 `crates/speclink-core/src/lib.rs` 加 `pub const VERSION: &str = env!(\"CARGO_PKG_VERSION\")`；`apps/desktop/core/src/project.rs` 加 `AppInfo` 與 `app_info(app_version)`（design D1：engine_version、platform、arch、assets_version）；`apps/desktop/src-tauri/src/lib.rs` 新增 `app_info` 命令並註冊；新增 `apps/desktop/src/adapter/appInfo.ts`（`loadAppInfo()`）；store 加 `appInfo` 與 `loadAppInfo()` 快取、`lastCheckedAt`（檢查完成時記錄）（spec「關於頁」）。驗證：`apps/desktop/core/src/project.rs` 單元測試——`app_info` 的 engine_version 等於 speclink-core 版本、assets_version 等於 ASSET_VERSION、camelCase 欄位；`cargo test -p speclink-desktop-core app_info`；`store.test.ts` 加「`loadAppInfo` 只呼叫 adapter 一次」「檢查完成後 `lastCheckedAt` 非 null」；`npm test -w apps/desktop -- store`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d7ac6681dca6ab2ce879893ff9d68ad219d2110b",
+      "touchedFiles": [
+        "apps/desktop/core/src/project.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/main.tsx",
+        "apps/desktop/src/store.ts",
+        "apps/desktop/src/adapter/appInfo.ts"
+      ],
+      "recordedAt": "2026-10-10T15:34:34Z"
+    },
+    {
+      "taskId": "tsk_01M4JKYG6YF6BHRDKKA2J1V3R1",
+      "taskDesc": "1.2 新增 `scripts/desktop/third-party-licenses.mjs`（design D3：讀 package-lock 的生產相依與 node_modules 授權、`cargo metadata` 非 workspace 套件；輸出 `apps/desktop/src/generated/third-party-licenses.json`，兩節依名稱排序；cargo 不可用時警告略過）；`apps/desktop/package.json` 的 `predev` 串接並新增 `prebuild`；`apps/desktop/.gitignore` 加 `src/generated/`（spec「關於頁」）。驗證：新增 `scripts/desktop/third-party-licenses.test.mjs`——以 fixture lock 與 fake metadata JSON 驗證只含生產相依、授權欄缺席為「未標示」、兩節排序、cargo 缺席時仍輸出 npm 節；`node --test scripts/desktop/third-party-licenses.test.mjs`；`npm run build -w apps/desktop` 後檔案存在。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d7ac6681dca6ab2ce879893ff9d68ad219d2110b",
+      "touchedFiles": [
+        "apps/desktop/package.json",
+        "scripts/desktop/third-party-licenses.mjs",
+        "scripts/desktop/third-party-licenses.test.mjs"
+      ],
+      "recordedAt": "2026-10-10T15:37:06Z"
+    },
+    {
+      "taskId": "tsk_01M4JKYG6Y1K0JWFVXMEHH2FV2",
+      "taskDesc": "2.1 新增 `apps/desktop/src/views/settings/AboutPage.tsx`（design D2：品牌卡 `Wordmark` 40px＋版本列（`StatusPill` 更新狀態）＋描述；版本卡三列含複製版本資訊四行；連結卡三列整列可點 `openUrl` 失敗 toast；授權卡兩列）與 `apps/desktop/src/components/LicenseDialog.tsx`（LICENSE `?raw` 全文或第三方清單兩節，清單缺檔顯示「清單尚未產生」）；`SettingsRow` 加 `onClick` 可點變體（hover 灰底、右端外開圖示）；i18n 加 `about.*`（spec「關於頁」）。驗證：新增 `apps/desktop/src/__tests__/aboutPage.test.tsx`——版本列文字「0.8.0 · 引擎 1.44.0 · macOS arm64」與狀態籤、複製版本資訊寫入四行、連結三列呼叫 `openUrl` 對應網址且回報問題網址含版本、授權對話框顯示 LICENSE 文字、第三方對話框兩節排序與缺檔文案、上次檢查文字；`npm test -w apps/desktop -- aboutPage`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d7ac6681dca6ab2ce879893ff9d68ad219d2110b",
+      "touchedFiles": [
+        "apps/desktop/src/i18n/messages.ts",
+        "packages/ui/src/__tests__/settingsParts.test.tsx",
+        "packages/ui/src/components/ui/settings.tsx",
+        "apps/desktop/src/__tests__/aboutPage.test.tsx",
+        "apps/desktop/src/components/LicenseDialog.tsx",
+        "apps/desktop/src/views/settings/AboutPage.tsx"
+      ],
+      "recordedAt": "2026-10-10T15:41:58Z"
+    },
+    {
+      "taskId": "tsk_01M4JKYG6YTVZXFJYY06TXM7QV",
+      "taskDesc": "2.2 `apps/desktop/src/settingsCatalog.ts` 加群組「關於」與 `about` 分類，`settingsSection` 型別加 `about`，`SettingsColumn` 渲染第二群組；`AppSettingsView` 掛 `AboutPage`；麵包屑「設定 / 關於 Speclink」；`App.tsx` 原生選單 `about` 改進關於頁；i18n 加 `settings.section.about`、`settings.group.about`（design D4；spec「關於頁」）。驗證：`settingsColumn.test.tsx` 加第二群組與作用中；`appMenu.test.ts`／`App.test.tsx` 加「about 動作後 `boardView` 為 settings 且 section 為 about、麵包屑為設定 / 關於 Speclink」；`npm test -w apps/desktop -- settingsColumn appMenu App`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d7ac6681dca6ab2ce879893ff9d68ad219d2110b",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/settingsColumn.test.tsx",
+        "apps/desktop/src/components/SettingsColumn.tsx",
+        "apps/desktop/src/settingsCatalog.ts",
+        "apps/desktop/src/views/AppSettingsView.tsx"
+      ],
+      "recordedAt": "2026-10-10T15:44:37Z"
+    }
+  ]
+}

@@ -110,6 +110,18 @@ describe("SettingsRow", () => {
     expect(screen.getByLabelText("locale").id).toBe("cfg-x");
     expect(screen.getByText("展開內容")).toBeTruthy();
   });
+
+  it("onClick 變體：整列為按鈕（hover 灰底、右端外開圖示），點擊回呼", async () => {
+    const onClick = vi.fn();
+    const user = userEvent.setup();
+    render(<SettingsRow label="回報問題" description="開新 issue 並帶入版本資訊" onClick={onClick} />);
+    const row = screen.getByRole("button", { name: /回報問題/ });
+    expect(classes(row)).toEqual(expect.arrayContaining(["w-full", "text-left", "hover:bg-muted"]));
+    expect(row.querySelector("svg.lucide-external-link")).toBeTruthy();
+    expect(within(row).getByText("開新 issue 並帶入版本資訊")).toBeTruthy();
+    await user.click(row);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("SettingsChoice", () => {

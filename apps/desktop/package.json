@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "node ../../scripts/desktop/desktop-sidecar.mjs --profile debug",
+    "predev": "node ../../scripts/desktop/desktop-sidecar.mjs --profile debug && node ../../scripts/desktop/third-party-licenses.mjs",
     "dev": "vite",
+    "prebuild": "node ../../scripts/desktop/third-party-licenses.mjs",
     "build": "vite build",
     "test": "vitest run",
     "tauri": "tauri"

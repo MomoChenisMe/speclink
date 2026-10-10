@@ -12,6 +12,8 @@ openspec/.vector-search.db*
 # JS workspace (desktop app + shared UI + server web console)
 node_modules/
 apps/desktop/dist/
+# 第三方授權清單：predev／prebuild 由 scripts/desktop/third-party-licenses.mjs 重生（desktop-about-page D3）
+apps/desktop/src/generated/
 apps/desktop/src-tauri/gen/
 # Server Web Console 的 Vite 產物：不入版本控制，各 build path（dev／CI／Docker／
 # release）皆重建後由 speclink-server 內嵌（D5）。

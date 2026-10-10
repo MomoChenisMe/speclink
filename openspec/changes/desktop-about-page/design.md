@@ -19,7 +19,7 @@
 
 ### D1 版本資訊命令
 
-`apps/desktop/core/src/project.rs` 新增 `app_info(app_version: &str) -> AppInfo { app_version, engine_version, platform, arch, assets_version }`：engine_version 取 speclink-core 的 crate 版本（在 speclink-core 新增 `pub const VERSION: &str = env!("CARGO_PKG_VERSION")`）、platform／arch 取 `std::env::consts::{OS, ARCH}`、assets_version 取 `speclink_core::init::ASSET_VERSION`。Tauri 命令 `app_info` 以 `app.package_info().version` 帶入 app 版號、回 camelCase JSON。前端 `apps/desktop/src/adapter/appInfo.ts`：`loadAppInfo(): Promise<AppInfo>`；store 於首次進關於頁載入並快取 `appInfo`。平台顯示文字：macOS／Windows／Linux＋arch（arm64／x64）。
+`apps/desktop/core/src/project.rs` 新增 `app_info(app_version: &str) -> AppInfo { app_version, engine_version, platform, arch, assets_version }`：engine_version 取 speclink-core 的 crate 版本（speclink-core 既有的 `pub const VERSION: &str = env!("CARGO_PKG_VERSION")`）、platform／arch 取 `std::env::consts::{OS, ARCH}` 並在 desktop-core 轉成顯示文字、assets_version 取 `speclink_core::init::ASSET_VERSION`。Tauri 命令 `app_info` 以 `app.package_info().version` 帶入 app 版號、回 camelCase JSON。前端 `apps/desktop/src/adapter/appInfo.ts`：`loadAppInfo(): Promise<AppInfo>`；store 於首次進關於頁載入並快取 `appInfo`。平台顯示文字：macOS／Windows／Linux＋arch（arm64／x64，與 CLI `--version` 一致），其餘值原樣顯示。
 
 ### D2 關於頁
 
@@ -32,7 +32,7 @@
 
 ### D3 第三方授權清單
 
-`scripts/desktop/third-party-licenses.mjs`：讀 `package-lock.json` 取 `apps/desktop` 與 `packages/ui` 的生產相依（遞迴 `dependencies`，不含 dev），自各 `node_modules/<name>/package.json` 取 `license`；執行 `cargo metadata --format-version 1 --manifest-path apps/desktop/src-tauri/Cargo.toml` 取非 workspace 成員套件的 name／version／license；輸出 `apps/desktop/src/generated/third-party-licenses.json`（`{ npm: [...], cargo: [...] }`，各依名稱排序）。`apps/desktop/package.json` 的 `predev` 與新增 `prebuild` 串接此腳本；`apps/desktop/.gitignore` 加 `src/generated/`；測試檔以 fixture lock 與 fake metadata 驗證輸出形狀與排序，不碰真 cargo。缺檔時 `AboutPage` 以空清單呈現「清單尚未產生」。
+`scripts/desktop/third-party-licenses.mjs`：讀 `package-lock.json` 取 `apps/desktop` 與 `packages/ui` 的生產相依（遞迴 `dependencies`，不含 dev），授權取 lock 條目的 `license` 欄（npm 寫 lock 時照抄套件的 package.json，免讀 node_modules）；執行 `cargo metadata --format-version 1 --manifest-path apps/desktop/src-tauri/Cargo.toml` 取非 workspace 成員套件的 name／version／license；輸出 `apps/desktop/src/generated/third-party-licenses.json`（`{ npm: [...], cargo: [...] }`，各依名稱排序；授權缺席為 null，對話框以 UI 語言顯示「未標示」）。`apps/desktop/package.json` 的 `predev` 與新增 `prebuild` 串接此腳本；根 `.gitignore` 加 `apps/desktop/src/generated/`（與 `apps/desktop/dist/` 同處；`apps/desktop` 沒有自己的 .gitignore）；測試檔以 fixture lock 與 fake metadata 驗證輸出形狀與排序，不碰真 cargo。缺檔時 `AboutPage` 以空清單呈現「清單尚未產生」。
 
 ### D4 分類欄與選單
 
