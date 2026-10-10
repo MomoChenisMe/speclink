@@ -1,8 +1,9 @@
 // 應用程式設定（desktop-settings-mode design D5）：與任何專案無關；依設定分類欄的所在分類渲染
-// 一頁——一般、語言與外觀、更新、CLI、伺服器。
+// 一頁——一般、語言與外觀、更新、CLI、伺服器、關於（desktop-about-page design D4）。
 import type { Platform } from "../platform";
 import type { UpdaterState } from "../core/updater";
 import type { SettingsSection } from "../settingsCatalog";
+import { AboutPage, type AboutPageProps } from "./settings/AboutPage";
 import { AppearancePage, type InterfacePrefsProps } from "./settings/AppearancePage";
 import { CliPage, type CliInstallProps } from "./settings/CliPage";
 import { GeneralPage } from "./settings/GeneralPage";
@@ -45,6 +46,8 @@ export interface AppSettingsViewProps extends InterfacePrefsProps {
   updater?: AppSettingsUpdaterProps;
   /** 安裝 CLI 指令面（desktop-app「安裝 CLI 指令到 PATH」）；探測前或無殼層支援時不注入。 */
   cliInstall?: CliInstallProps;
+  /** 關於頁的版本資訊面（更新狀態沿用 updater）；未注入時關於頁不渲染。 */
+  about?: Omit<AboutPageProps, "updater" | "thirdPartyLicenses">;
 }
 
 export function AppSettingsView({
@@ -58,6 +61,7 @@ export function AppSettingsView({
   servers,
   updater,
   cliInstall,
+  about,
 }: AppSettingsViewProps) {
   const prefs = { localePref, onLocalePrefChange, themePref, onThemePrefChange };
   return (
@@ -75,6 +79,7 @@ export function AppSettingsView({
       {section === "updates" && <UpdatesPage updater={updater} />}
       {section === "cli" && <CliPage cliInstall={cliInstall} />}
       {section === "servers" && servers && <ServersPage {...servers} />}
+      {section === "about" && about && <AboutPage {...about} updater={updater} />}
     </div>
   );
 }

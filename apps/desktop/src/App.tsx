@@ -61,6 +61,7 @@ import { MigrationDialog } from "./components/MigrationDialog";
 import { RemoteConflictDialog } from "./components/RemoteConflictDialog";
 import { RemoteWorkspaceRecovery } from "./components/RemoteWorkspaceRecovery";
 import { AppSettingsView } from "./views/AppSettingsView";
+import { REPO_URL } from "./views/settings/AboutPage";
 import { AssetNoticeCard } from "./components/AssetNoticeCard";
 import { AssetNoticeDialog } from "./components/AssetNoticeDialog";
 import { UpdateRailButton } from "./components/UpdateRailButton";
@@ -70,6 +71,7 @@ import { readLastSeenVersion, whatsNewDecision, writeLastSeenVersion } from "./c
 import { RELEASE_NOTES, type ReleaseNotesEntry } from "./release-notes/release-notes";
 import type { CliInstallAdapter } from "./adapter/cliInstall";
 import { projectDirOf, type FsActionsAdapter } from "./adapter/fsActions";
+import type { AppInfo } from "./adapter/appInfo";
 import { ProjectSettingsView } from "./views/ProjectSettingsView";
 import type { ConnectionsAdapter } from "./adapter/connections";
 import type { WorkspaceAdapter } from "./adapter/workspace";
@@ -109,12 +111,12 @@ export interface AppProps {
   cliInstall?: CliInstallAdapter;
   /** 專案層檔案系統動作面（desktop-app「專案層檔案系統動作」）；未注入時選單動作不動作。 */
   fsActions?: FsActionsAdapter;
+  /** 關於頁的版本資訊來源（desktop-about-page design D1）；未注入時版本列顯示「—」。 */
+  loadAppInfo?: () => Promise<AppInfo>;
 }
 
 const DEFAULT_MIGRATION_ADAPTER = createMigrationAdapter();
 
-/** 說明選單的 GitHub 與回報問題目的地（能力檔的 opener 權限只放行這個前綴）。 */
-const REPO_URL = "https://github.com/MomoChenisMe/speclink";
 
 /** 關閉作用中專案（非 macOS 的 Ctrl+W 與原生選單「關閉專案」共用）。 */
 function closeActiveProject(store: ReturnType<typeof createAppStore>) {
@@ -219,6 +221,7 @@ export function App({
   updater,
   cliInstall,
   fsActions,
+  loadAppInfo,
 }: AppProps) {
   const [localePref, setLocalePrefState] = useState<LocalePreference>(() => readLocalePreference());
   // 切換即時生效並持久化（設定頁的 UI 語言三選接這裡）。
@@ -250,6 +253,7 @@ export function App({
         updater={updater}
         cliInstall={cliInstall}
         fsActions={fsActions}
+        loadAppInfo={loadAppInfo}
         localePref={localePref}
         onLocalePrefChange={setLocalePref}
         themePref={themePref}
@@ -279,6 +283,7 @@ function AppInner({
   updater,
   cliInstall,
   fsActions,
+  loadAppInfo,
   localePref,
   onLocalePrefChange,
   themePref,
@@ -295,8 +300,9 @@ function AppInner({
         updater,
         cliInstall,
         fsActions,
+        loadAppInfo,
       }),
-    [createSession, openRemote, workspace, connections, migration, updater, cliInstall, fsActions],
+    [createSession, openRemote, workspace, connections, migration, updater, cliInstall, fsActions, loadAppInfo],
   );
   const s = useStore();
   // 活躍 session（workspace-session 決策 6）：詳情／規格／封存抽屜的文件載入
@@ -665,9 +671,11 @@ function AppInner({
     const dispatch = (action: AppMenuAction) => {
       const st = useStore.getState();
       switch (action) {
-        // 原生選單各入口進設定模式的對應分類（desktop-settings-mode design D1）；
-        // 「關於」頁落地前先進一般頁。
+        // 原生選單各入口進設定模式的對應分類（desktop-settings-mode design D1；
+        // desktop-about-page design D4）。
         case "about":
+          st.setBoardView("settings");
+          return st.setSettingsSection("about");
         case "settings":
           st.setBoardView("settings");
           return st.setSettingsSection("general");
@@ -1203,6 +1211,7 @@ function AppInner({
                     ? { view: s.cliInstall, onInstall: () => void s.installCli() }
                     : undefined
                 }
+                about={{ appInfo: s.appInfo, onLoadAppInfo: s.loadAppInfo, lastCheckedAt: s.lastCheckedAt }}
               />
             ) : workspace !== undefined && s.tabs.length === 0 ? (
               // 零分頁（首次使用）：專案範圍頁面落入空狀態引導頁（取代空看板）；應用程式設定已於上方先行處理。

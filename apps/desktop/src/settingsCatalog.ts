@@ -3,6 +3,7 @@
 import {
   FileCog,
   FileText,
+  Info,
   Languages,
   ListChecks,
   RefreshCw,
@@ -14,10 +15,11 @@ import {
 } from "lucide-react";
 
 export interface AppSettingsCategory {
-  id: "general" | "appearance" | "updates" | "cli" | "servers";
+  id: "general" | "appearance" | "updates" | "cli" | "servers" | "about";
   labelKey: string;
   icon: LucideIcon;
-  group: "app";
+  /** app＝「應用程式」群組；about＝其後的「關於」群組（desktop-about-page design D4）。 */
+  group: "app" | "about";
   /** 該頁各列標籤的 i18n 鍵。 */
   rows: string[];
 }
@@ -89,6 +91,22 @@ export const APP_SETTINGS_CATEGORIES: AppSettingsCategory[] = [
       "servers.page.defaultForNew",
       "servers.page.deviceLogin",
       "servers.page.pat",
+    ],
+  },
+  {
+    id: "about",
+    labelKey: "settings.section.about",
+    icon: Info,
+    group: "about",
+    rows: [
+      "updater.check",
+      "releaseNotes.open",
+      "about.copyInfo",
+      "about.source",
+      "about.docs",
+      "about.report",
+      "about.license",
+      "about.thirdParty",
     ],
   },
 ];

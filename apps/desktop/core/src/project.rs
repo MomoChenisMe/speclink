@@ -163,6 +163,49 @@ pub fn update_assets_at(path: &Path) -> Result<serde_json::Value, String> {
     }))
 }
 
+/// 關於頁的版本資訊（desktop-about-page design D1）：一次回齊，前端不自行拼湊。
+/// 引擎版號＝speclink-core 的 crate 版本；技能檔版本＝`ASSET_VERSION`；平台與架構為
+/// 顯示文字（macOS／Windows／Linux、arm64／x64），複製版本資訊與回報問題網址照用。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppInfo {
+    pub app_version: String,
+    pub engine_version: String,
+    pub platform: String,
+    pub arch: String,
+    pub assets_version: String,
+}
+
+/// `app_version` 由 Tauri 殼帶入（`package_info().version`）。
+pub fn app_info(app_version: &str) -> AppInfo {
+    AppInfo {
+        app_version: app_version.to_string(),
+        engine_version: speclink_core::VERSION.to_string(),
+        platform: platform_label(std::env::consts::OS).to_string(),
+        arch: arch_label(std::env::consts::ARCH).to_string(),
+        assets_version: speclink_core::init::ASSET_VERSION.to_string(),
+    }
+}
+
+/// 作業系統的顯示文字；三大平台以外原樣回傳。
+fn platform_label(os: &str) -> &str {
+    match os {
+        "macos" => "macOS",
+        "windows" => "Windows",
+        "linux" => "Linux",
+        other => other,
+    }
+}
+
+/// 架構的顯示文字（與 CLI `--version` 的 arm64／x64 一致）；其餘原樣回傳。
+fn arch_label(arch: &str) -> &str {
+    match arch {
+        "aarch64" => "arm64",
+        "x86_64" => "x64",
+        other => other,
+    }
+}
+
 /// 引擎錯誤壓成單行（多行時取首行），符合 Err 單行訊息契約。
 fn single_line(msg: &str) -> String {
     msg.lines().next().unwrap_or(msg).to_string()
@@ -173,6 +216,36 @@ mod tests {
     use super::*;
     use crate::testfixture::FixtureRoot;
     use std::path::{Path, PathBuf};
+
+    // --- 關於頁的版本資訊（desktop-about-page design D1） ---
+
+    #[test]
+    fn app_info_reports_engine_and_assets_versions_from_speclink_core() {
+        let info = app_info("0.8.0");
+        assert_eq!(info.app_version, "0.8.0");
+        assert_eq!(info.engine_version, speclink_core::VERSION);
+        assert_eq!(info.assets_version, speclink_core::init::ASSET_VERSION);
+        assert_eq!(info.platform, platform_label(std::env::consts::OS));
+        assert_eq!(info.arch, arch_label(std::env::consts::ARCH));
+    }
+
+    #[test]
+    fn app_info_serializes_camel_case_fields() {
+        let value = serde_json::to_value(app_info("0.8.0")).unwrap();
+        let mut keys: Vec<&str> = value.as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["appVersion", "arch", "assetsVersion", "engineVersion", "platform"]);
+    }
+
+    #[test]
+    fn app_info_platform_and_arch_use_display_labels() {
+        for (os, label) in [("macos", "macOS"), ("windows", "Windows"), ("linux", "Linux"), ("freebsd", "freebsd")] {
+            assert_eq!(platform_label(os), label, "{os}");
+        }
+        for (arch, label) in [("aarch64", "arm64"), ("x86_64", "x64"), ("riscv64", "riscv64")] {
+            assert_eq!(arch_label(arch), label, "{arch}");
+        }
+    }
 
     // --- 技能檔探測與更新包裝（desktop-instruction-staleness-prompt 決策 4、5） ---
 

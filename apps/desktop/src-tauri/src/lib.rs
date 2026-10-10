@@ -16,6 +16,7 @@
 //! 維持同步的只有純記憶體或純視窗操作，不觸檔案系統、不 spawn 子進程：
 //!
 //! - `startup_dir`——讀行程環境（啟動時的工作目錄）
+//! - `app_info`——讀編譯期版本常數與平台（關於頁）
 //! - `connection_state`——讀記憶體中的 TokenManager 健康狀態
 //! - `remote_unwatch`——退訂事件中樞，只動記憶體中的訂閱表
 //! - `toggle_tray_panel`、`hide_tray_panel`、`quit_app`——純視窗／行程操作
@@ -38,6 +39,12 @@ use std::path::PathBuf;
 
 use serde_json::{json, Value};
 use tauri::{Emitter, Manager};
+
+/// 關於頁的版本資訊（desktop-about-page design D1）：app 版號由殼帶入，其餘由 desktop-core 回齊。
+#[tauri::command]
+fn app_info(app: tauri::AppHandle) -> speclink_desktop_core::project::AppInfo {
+    speclink_desktop_core::project::app_info(&app.package_info().version.to_string())
+}
 
 #[tauri::command]
 async fn cli_install_probe(app: tauri::AppHandle) -> Result<cli_install::CliInstallProbe, String> {
@@ -1904,6 +1911,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            app_info,
             cli_install_probe,
             cli_deploy,
             cli_zprofile_append,
