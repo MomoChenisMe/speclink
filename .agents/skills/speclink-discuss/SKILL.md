@@ -5,17 +5,25 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Have a focused discussion about a topic and reach a conclusion.
 
-**IMPORTANT: Discuss mode is for thinking, not implementing.** You may read files, search code, and investigate the codebase, but you must NEVER write code or implement features. If the user asks you to implement something, remind them to exit discuss mode first (e.g., start a change with `$speclink-propose`). You MAY create Speclink artifacts (proposals, designs, specs) if the user asks—that's capturing thinking, not implementing.
+**IMPORTANT: Discuss mode is for thinking, not implementing.** You may read files, search code, and investigate the codebase, but you must NEVER write code or implement features. If the user asks you to implement something, remind them to exit discuss mode first (e.g., start a change with `speclink-propose`). You MAY create Speclink artifacts (proposals, designs, specs) if the user asks—that's capturing thinking, not implementing.
 
 **This is a task-oriented discussion.** Every discussion has a topic, works toward a goal, and ends with a clear conclusion. Unlike open-ended exploration, discuss mode converges.
 
-**Input**: The argument after `$speclink-discuss` is the topic. Could be:
+**Input**: The argument after `speclink-discuss` is the topic. Could be:
 
 - A design question: "should we use WebSockets or SSE?"
 - A problem to solve: "the auth system is getting unwieldy"
@@ -30,7 +38,7 @@ Have a focused discussion about a topic and reach a conclusion.
 
 ## Recording the discussion (speclink)
 
-Unlike an ephemeral chat, **every speclink discussion is persisted to a document** (`openspec/discussions/<slug>.md`) so the conversation keeps its thread across turns and sessions, and so a later `$speclink-propose --from-discussion <slug>` can seed a proposal directly from it. Drive the record through the CLI — never hand-write the file.
+Unlike an ephemeral chat, **every speclink discussion is persisted to a document** (`openspec/discussions/<slug>.md`) so the conversation keeps its thread across turns and sessions, and so a later `speclink-propose --from-discussion <slug>` can seed a proposal directly from it. Drive the record through the CLI — never hand-write the file.
 
 The document has a fixed skeleton — like the proposal template, every discussion record has the same shape:
 
@@ -89,7 +97,7 @@ The in-flight delta hits go inside that related changes/specs sentence, in the f
 Source doc: <path>
 ```
 
-That line is the mechanical marker a later `$speclink-propose --from-discussion <slug>` looks for to know there is an underlying document to read. Three rules travel with it:
+That line is the mechanical marker a later `speclink-propose --from-discussion <slug>` looks for to know there is an underlying document to read. Three rules travel with it:
 
 - **Evidence cites the document by reference, not by transcription.** When a round's Evidence points at the document, name the section heading or quote a short phrase from it.
 - **The record stores the outcome of the discussion only.** It SHALL NOT embed the planning document in full — the document stays where it is, and the record holds the decision diff against it.
@@ -125,17 +133,17 @@ speclink discuss conclude <slug> --stdin <<'CONCLUSION_EOF'
 - ... — ... (option — why it lost, one per line)
 **Deferred**: none (or `- question — why not now`, one per line)
 **Capture to**: proposal | design | spec | tasks | LANGUAGE.md
-**Next**: $speclink-propose --from-discussion <slug>
+**Next**: speclink-propose --from-discussion <slug>
 CONCLUSION_EOF
 ```
 
 This flips the record's `status` to `concluded`. The step logic below (vocabulary load, the scout, the requirement-clarity judgement, interface depth check, convergence, conclusion capture) is unchanged — recording sits alongside it.
 
-**A concluded discussion hands off through propose**: `$speclink-propose --from-discussion <slug>` seeds the proposal from the recorded Decision and rounds and builds every artifact in one pass — the single next step once the conclusion is written.
+**A concluded discussion hands off through propose**: `speclink-propose --from-discussion <slug>` seeds the proposal from the recorded Decision and rounds and builds every artifact in one pass — the single next step once the conclusion is written.
 
 **Mid-discussion spin-out** — in a multi-requirement discussion, one item can be filed the moment it is settled; don't hold it hostage to the rest:
 
-1. **Promote now**: run `speclink discuss promote <slug> --name <change-name>` (`--name` is optional — the change name defaults to the slug) — the engine scaffolds the change, prefills the proposal's Why (from the conclusion when one exists, otherwise from the topic), and links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record). One discussion can fan out into several changes — spin out again and `promoted_to` accumulates each name; the discussion is archived automatically when the last of its changes is archived and its conclusion is written — an unconcluded record stays live for more rounds (a later `conclude` closes it once every spun-out change is archived). **When the conclusion stages several cuts to spin out from this same record** (cut A now, cut B once A lands, cut C after that), run `conclude` with `--hold` **once** — an ordinary spin-out never clears the flag, so the single call covers the whole series. The record stays live past its conclusion and past every middle cut's archive. The **last cut is spun out with `--last`** (`$speclink-propose --from-discussion <slug>` decides this from the conclusion's cut list and the record's `promoted_to`; on the raw verbs it is `speclink discuss promote <slug> --last`, `speclink new change <name> --from-discussion <slug> --last`, or `speclink discuss seal <slug> <change> --last`): that spin-out drops the flag in the same write, and when the last spun-out change is archived the record is co-archived automatically — there is nothing to close by hand. Besides `--last`, only a `conclude` without `--hold` or a manual `speclink discuss archive <slug>` releases the flag. Forgot `--last`? The record simply stays live (the board labels it "promoted · on hold"); run `speclink discuss archive <slug>` once to close the series. Without `--hold` the record is archived along with the last of its changes, and any later cut needs a new discussion. The remaining artifacts are still created via `$speclink-propose`.
+1. **Promote now**: run `speclink discuss promote <slug> --name <change-name>` (`--name` is optional — the change name defaults to the slug) — the engine scaffolds the change, prefills the proposal's Why (from the conclusion when one exists, otherwise from the topic), and links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record). One discussion can fan out into several changes — spin out again and `promoted_to` accumulates each name; the discussion is archived automatically when the last of its changes is archived and its conclusion is written — an unconcluded record stays live for more rounds (a later `conclude` closes it once every spun-out change is archived). **When the conclusion stages several cuts to spin out from this same record** (cut A now, cut B once A lands, cut C after that), run `conclude` with `--hold` **once** — an ordinary spin-out never clears the flag, so the single call covers the whole series. The record stays live past its conclusion and past every middle cut's archive. The **last cut is spun out with `--last`** (`speclink-propose --from-discussion <slug>` decides this from the conclusion's cut list and the record's `promoted_to`; on the raw verbs it is `speclink discuss promote <slug> --last`, `speclink new change <name> --from-discussion <slug> --last`, or `speclink discuss seal <slug> <change> --last`): that spin-out drops the flag in the same write, and when the last spun-out change is archived the record is co-archived automatically — there is nothing to close by hand. Besides `--last`, only a `conclude` without `--hold` or a manual `speclink discuss archive <slug>` releases the flag. Forgot `--last`? The record simply stays live (the board labels it "promoted · on hold"); run `speclink discuss archive <slug>` once to close the series. Without `--hold` the record is archived along with the last of its changes, and any later cut needs a new discussion. The remaining artifacts are still created via `speclink-propose`.
 2. **Keep discussing**: `add-round` continues as normal for the remaining items; promotion does not close the record.
 3. **Conclude as usual at the end**: the record keeps its `promoted` status, the conclusion is written in, and the engine flags the already-promoted changes as needing the conclusion re-reflected. When the conclusion is unrelated to a spun-out change, that flag needs a single confirmation — no rework.
 
@@ -149,7 +157,7 @@ Never require a conclusion before a mid-discussion promote, and never conclude t
 speclink discuss link <slug> <existing-change>
 ```
 
-`link` forges the change-side chain (`from_discussion` in the change metadata) without scaffolding anything, so drawer links and auto-archive engage — the discussion is archived automatically when the last linked change is archived and its conclusion is written. Unlike promote, `link` does NOT mark the discussion 已轉出 (`promoted`): that reflection is sealed by `$speclink-ingest`, which folds the decision into the change's artifacts and then runs `speclink discuss seal` — so the discussion flips to promoted only once its content has actually landed, never at link time. Then run `$speclink-ingest <existing-change>` to fold the decision in and seal. Without the link, a concluded-then-ingested discussion sits on the board forever with nothing to archive it.
+`link` forges the change-side chain (`from_discussion` in the change metadata) without scaffolding anything, so drawer links and auto-archive engage — the discussion is archived automatically when the last linked change is archived and its conclusion is written. Unlike promote, `link` does NOT mark the discussion 已轉出 (`promoted`): that reflection is sealed by `speclink-ingest`, which folds the decision into the change's artifacts and then runs `speclink discuss seal` — so the discussion flips to promoted only once its content has actually landed, never at link time. Then run `speclink-ingest <existing-change>` to fold the decision in and seal. Without the link, a concluded-then-ingested discussion sits on the board forever with nothing to archive it.
 
 **Lifecycle**: a discussion that concluded without spawning a change (an explicit "don't do this" is a valid outcome) should be closed out with:
 
@@ -468,7 +476,7 @@ Present the summary and say something like "I'll capture this to design.md unles
 When the discussion converges on building something:
 
 - First record the conclusion in the discussion document: `speclink discuss conclude <slug> --stdin` (see "Recording the discussion" above). This flips its status to `concluded`.
-- Then: "Ready to formalize this? `$speclink-propose --from-discussion <slug>`" — propose will seed the proposal from the recorded Decision and rounds.
+- Then: "Ready to formalize this? `speclink-propose --from-discussion <slug>`" — propose will seed the proposal from the recorded Decision and rounds.
 - Or capture the decision in existing artifacts and continue
 
 ---
@@ -489,7 +497,7 @@ When the discussion converges on building something:
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The conclusion warrants its own change → `$speclink-propose --from-discussion <slug>` — one pass from the recorded conclusion to a full artifact set
-- It belongs in a change that already exists → `speclink discuss link <slug> <change>`, then `$speclink-ingest <change>` to fold it in and seal
+- The conclusion warrants its own change → `speclink-propose --from-discussion <slug>` — one pass from the recorded conclusion to a full artifact set
+- It belongs in a change that already exists → `speclink discuss link <slug> <change>`, then `speclink-ingest <change>` to fold it in and seal
 - The conclusion is "don't do it" → conclude anyway, then `speclink discuss archive <slug>`
 - Nothing of substance was recorded → `speclink discuss discard <slug>`

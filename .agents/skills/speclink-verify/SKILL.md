@@ -5,13 +5,21 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Verify that an implementation matches the change artifacts (specs, tasks, design).
 
-**Input**: Optionally specify a change name after `$speclink-verify` (e.g., `$speclink-verify add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name after `speclink-verify` (e.g., `speclink-verify add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
@@ -53,7 +61,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
    **Not every code task is done (`codeRemaining > 0`) → mid-flight progress check-in.** Run the three dimensions as a conversation report only (steps 6–9 below, reading whatever artifacts and code you need). Do NOT run `speclink verify scope`, do NOT run `speclink verify add-round`, and do NOT stamp. The verify ticket records the verification of finished work — a check-in round landing in it would make "open ticket" stop meaning "the product's verification is unfinished" and would trip the archive gate for nothing. Report and STOP after step 9.
 
-   **The `$speclink-quality` timeline's closing stamp call, and the ticket's last round's must-fix set is empty** (`speclink verify show "<name>" --json` — `lastRound.findings` has no CRITICAL/WARNING entries; SUGGESTION-only counts as empty) → branch at the entry, do not walk the full flow: run `speclink verify scope "<name>" --json`. An empty movement patch (nothing moved since that round) → skip the checking pass entirely, run `speclink verify stamp "<name>" --agent codex` directly and report — do NOT record another empty round. A non-empty patch → continue from step 6 as a normal validation pass; on this call step 13's defer exception is off, so the cleared round stamps immediately. `needsInput` or a scope failure here follows step 5's disposals unchanged — never guess past them.
+   **The `speclink-quality` timeline's closing stamp call, and the ticket's last round's must-fix set is empty** (`speclink verify show "<name>" --json` — `lastRound.findings` has no CRITICAL/WARNING entries; SUGGESTION-only counts as empty) → branch at the entry, do not walk the full flow: run `speclink verify scope "<name>" --json`. An empty movement patch (nothing moved since that round) → skip the checking pass entirely, run `speclink verify stamp "<name>"` directly and report — do NOT record another empty round. A non-empty patch → continue from step 6 as a normal validation pass; on this call step 13's defer exception is off, so the cleared round stamps immediately. `needsInput` or a scope failure here follows step 5's disposals unchanged — never guess past them.
 
    **Every code task is done (`codeRemaining` is 0) → finished-work verification.** Continue to step 5. `[M]` manual tasks do not hold this back — they are work only the user can do by hand, and the stamp deliberately does not wait for it. When `remaining` is still above 0, name the open manual tasks in the report: the verification covers the code, and archive is what waits for the manual runs.
 
@@ -216,18 +224,18 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
     - **Bn is empty and no accepted must-fix findings remain** → stamp and report **passed clean** (leftover SUGGESTIONs stay recorded — list them in the report):
 
       ```bash
-      speclink verify stamp "<name>" --agent codex
+      speclink verify stamp "<name>"
       ```
 
       If the stamp refuses (e.g. tasks regressed meanwhile), report the reason and stop — the next session retries the stamp through step 5.
 
-      **Exception — inside the `$speclink-quality` timeline, before its closing stamp call**: when this station runs as a checking or re-validation step of `$speclink-quality`, do NOT stamp on a cleared round — neither a DISCOVERY round with no must-fix findings nor a VALIDATION round whose blocking set has just cleared. The round is already recorded (step 12); take the **stop without stamping** ending (the same exit as option 3 below: the verification ticket and its snapshot stay). The stamp lands at that skill's **closing stamp call**, which enters through step 4's closing-stamp branch — and on that call this exception is OFF: an untouched round whose must-fix set is empty stamps directly without a new round, a moved one clears its validation pass and stamps immediately. Called directly as a single station, a cleared round still stamps on the spot; this exception is only about the two-station ordering.
+      **Exception — inside the `speclink-quality` timeline, before its closing stamp call**: when this station runs as a checking or re-validation step of `speclink-quality`, do NOT stamp on a cleared round — neither a DISCOVERY round with no must-fix findings nor a VALIDATION round whose blocking set has just cleared. The round is already recorded (step 12); take the **stop without stamping** ending (the same exit as option 3 below: the verification ticket and its snapshot stay). The stamp lands at that skill's **closing stamp call**, which enters through step 4's closing-stamp branch — and on that call this exception is OFF: an untouched round whose must-fix set is empty stamps directly without a new round, a moved one clears its validation pass and stamps immediately. Called directly as a single station, a cleared round still stamps on the spot; this exception is only about the two-station ordering.
 
-    - **Bn is empty but accepted must-fix findings remain** → recommend the user explicitly stamp with reservations — `speclink verify stamp "<name>" --accept --agent codex` — and report **passed with reservations**. Never run `--accept` unprompted.
+    - **Bn is empty but accepted must-fix findings remain** → recommend the user explicitly stamp with reservations — `speclink verify stamp "<name>" --accept` — and report **passed with reservations**. Never run `--accept` unprompted.
 
     - **Bn is strictly smaller than Bn-1** (or this is the first round with must-fix findings) → use the **AskUserQuestion tool** (plain text + wait if unavailable) with three options, the recommended one first and labelled "(Recommended)": recommend option 1 — outstanding must-fix findings are what brought the loop here. SUGGESTION-only rounds never reach this menu: they stamp directly through the first bullet.
       1. **Fix and re-verify** — fixes happen HERE in the main thread, following the project's TDD discipline; the checking pass never edits files. Fix the must-fix list; discretionary items only when the user asks. A must-fix finding the user chooses not to fix is accepted and carried with the `(accepted)` token (step 12); unfixed SUGGESTIONs just carry forward (step 12). **Verification gate**: after the fixes, run the project's full build and test suite and get it green BEFORE looping back to step 5 — a fix-introduced regression must never flow into the next round. Step 5 then freezes the validation patch for the next round.
-      2. **Accept as-is and stamp** — `speclink verify stamp "<name>" --accept --agent codex` (stamps with reservations; the round's findings stay on record in the change history).
+      2. **Accept as-is and stamp** — `speclink verify stamp "<name>" --accept` (stamps with reservations; the round's findings stay on record in the change history).
       3. **Stop without stamping** — end the session; the ticket and its frozen snapshot stay for a later session or another verifier (`speclink verify show <name> --json` hands them the last round).
 
     - **Bn is not strictly smaller than Bn-1** (equal or larger) → the round is already recorded; report **failed** immediately: keep the ticket, do NOT stamp, do NOT start another round automatically. The user decides what happens next (more work outside this loop, `--accept`, or discard).
@@ -262,7 +270,7 @@ Use clear markdown with:
 
 **Guardrails**
 
-- `$speclink-verify` judges spec compliance; the review station judges craft — never issue craft verdicts here
+- `speclink-verify` judges spec compliance; the review station judges craft — never issue craft verdicts here
 - The mid-flight check-in never touches the ticket: no `verify scope`, no `verify add-round`, no stamp
 - Round 1 is the only discovery pass; validation rounds judge the original findings and the remediation patch's direct regressions — nothing else
 - The frozen patch from `speclink verify scope` is the code evidence; touched file lists and worktree state never substitute for it
@@ -279,6 +287,6 @@ Use clear markdown with:
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The verify stamp landed in the main checkout → `$speclink-archive <change-name>`
-- The verify stamp landed inside a worktree → commit the stamp's meta changes first, then `$speclink-worktree-merge <change-name>` (archive runs only from the main checkout)
+- The verify stamp landed in the main checkout → `speclink-archive <change-name>`
+- The verify stamp landed inside a worktree → commit the stamp's meta changes first, then `speclink-worktree-merge <change-name>` (archive runs only from the main checkout)
 - Findings were left unfixed on purpose → they stay in the ticket; say which ones before suggesting anything downstream

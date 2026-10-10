@@ -636,6 +636,48 @@ mod tests {
     }
 
     #[test]
+    fn copilot_tools_snapshot_and_shared_cleanup_keep_user_content() {
+        let fx = FixtureRoot::new("copilot-settings");
+        speclink_core::init::init(fx.root(), &[Tool::Codex, Tool::Copilot], true, "openspec")
+            .unwrap();
+        let before =
+            std::fs::read(fx.root().join(".agents/skills/speclink-propose/SKILL.md")).unwrap();
+        fx.write(".agents/skills/my-skill/SKILL.md", "keep");
+        write_tools_at(fx.root(), &["copilot".into()]).unwrap();
+        let snap = serde_json::to_value(read_settings_at(fx.root()).unwrap()).unwrap();
+        assert_eq!(snap["app"]["tools"], serde_json::json!(["copilot"]));
+        assert!(snap["app"]["customTools"].is_array());
+        assert_eq!(snap["app"]["parseError"], serde_json::Value::Null);
+        assert_eq!(
+            std::fs::read(fx.root().join(".agents/skills/speclink-propose/SKILL.md")).unwrap(),
+            before
+        );
+        write_tools_at(fx.root(), &["claude".into()]).unwrap();
+        assert!(!fx
+            .root()
+            .join(".agents/skills/speclink-propose/SKILL.md")
+            .exists());
+        assert_eq!(
+            std::fs::read_to_string(fx.root().join(".agents/skills/my-skill/SKILL.md")).unwrap(),
+            "keep"
+        );
+    }
+
+    #[test]
+    fn copilot_descriptor_conflict_does_not_change_configuration() {
+        let fx = FixtureRoot::new("copilot-descriptor");
+        let yaml = "tools:\n  - name: copilot\n    skills_dir: .copilot-skills\n    invocation: tool-call\n";
+        fx.write(".speclink.yaml", yaml);
+        let err = write_tools_at(fx.root(), &["copilot".into()]).unwrap_err();
+        assert!(err.contains("copilot-custom"));
+        assert_eq!(
+            std::fs::read_to_string(fx.root().join(".speclink.yaml")).unwrap(),
+            yaml
+        );
+        assert!(!fx.root().join(".agents").exists());
+    }
+
+    #[test]
     fn read_settings_parses_actual_values_and_flags_custom_descriptors() {
         let fx = FixtureRoot::new("settings-values");
         fx.write(
@@ -725,18 +767,20 @@ mod tests {
     // spec Example「政策欄位寫入效果」row 3。
     #[test]
     fn text_rewrite_adds_spec_locale_and_preserves_locale_and_rules_values() {
-        let original = "locale: tw\nrules:\n  proposal:\n    - keep\n";
-        let fields = WorkflowPolicyFields {
-            locale: Some("tw".into()),
-            spec_locale: Some("auto".into()),
-            ..Default::default()
-        };
-        let output = rewrite_workflow_fields_text(original, &fields).expect("rewrite");
-        let before = WorkflowConfig::from_text(Some(original)).expect("parse before");
-        let after = WorkflowConfig::from_text(Some(&output)).expect("parse after");
-        assert_eq!(after.spec_locale.as_deref(), Some("auto"));
-        assert_eq!(after.locale, before.locale);
-        assert_eq!(after.rules, before.rules);
+        for code in ["ja", "auto"] {
+            let original = "locale: tw\nrules:\n  proposal:\n    - keep\n";
+            let fields = WorkflowPolicyFields {
+                locale: Some("tw".into()),
+                spec_locale: Some(code.into()),
+                ..Default::default()
+            };
+            let output = rewrite_workflow_fields_text(original, &fields).expect("rewrite");
+            let before = WorkflowConfig::from_text(Some(original)).expect("parse before");
+            let after = WorkflowConfig::from_text(Some(&output)).expect("parse after");
+            assert_eq!(after.spec_locale.as_deref(), Some(code));
+            assert_eq!(after.locale, before.locale);
+            assert_eq!(after.rules, before.rules);
+        }
     }
 
     #[test]

@@ -155,9 +155,9 @@ describe("開啟專案 action 三態（design D3）", () => {
     });
     const store = makeStore(ds, ws);
     await store.getState().openProjectAt("C:\\proj\\fresh");
-    await store.getState().confirmInit(["claude", "codex"]);
+    await store.getState().confirmInit(["copilot"]);
     const s = store.getState();
-    expect(ws.initProject).toHaveBeenCalledWith("C:\\proj\\fresh", ["claude", "codex"]);
+    expect(ws.initProject).toHaveBeenCalledWith("C:\\proj\\fresh", ["copilot"]);
     expect(s.pendingInit).toBeNull();
     expect(s.activeKey).toBe("local:C:\\proj\\fresh");
     expect(keys(s.tabs)).toContain("local:C:\\proj\\fresh");

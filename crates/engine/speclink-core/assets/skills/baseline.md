@@ -11,6 +11,7 @@ Establish the baseline for an existing codebase: generate the initial canonical 
 ```bash
 speclink list --specs
 speclink workflow-config show --json
+speclink workflow-config languages --json
 ```
 
 - **No specs yet** → full baseline pass; continue below.
@@ -19,10 +20,12 @@ speclink workflow-config show --json
 The `workflow-config show --json` payload is the canonical workflow config for this workspace — the values `{{SPEC_DIR}}config.yaml` holds (the store's config document in remote mode), in the same shape either way. Environment overrides (`SPECLINK_*`) are NOT applied; that is the same reading the file itself gives. Read these fields from it:
 
 - `context` — the project context; carry it as background for the inventory and for every spec you write.
-- `specLocale` — the JSON name of `spec_locale`: the language for spec prose. `null` means English, `auto` means use the payload's `locale`, any other value is the locale code to write in. Structural markers and SHALL/MUST keywords stay in English regardless.
+- `specLocale` — the JSON name of `spec_locale`: the language for spec prose. `null` means the operating-system language of the machine running Speclink (Chinese → `tw`, Japanese → `ja`, other or unavailable languages → `en`), `auto` means use the payload's `locale` (also system language when `locale` is null), any other value is the locale code to write in. Structural markers and SHALL/MUST keywords stay in English regardless.
 - `rules.specs` — the project's specs rules, a list of strings (absent when the project sets none). They bind every spec you write in Step 4 — see the last rule there. When the list is absent or empty, nothing changes.
 
-If `speclink workflow-config show --json` exits non-zero (a config that does not parse fails closed; a remote store that is offline or rejects the credentials does the same), report the error and STOP — never fall back to reading `{{SPEC_DIR}}config.yaml` by hand, and never parse the YAML yourself.
+Use the `specLocale` code from `workflow-config languages --json` as the concrete prose language. This read-only query resolves the canonical language settings above with OS defaults, without `SPECLINK_*` overrides and without creating a change or writing config. In remote mode it returns the server's language, never the client's language. Do not infer it from the UI, conversation, or local shell language.
+
+If either workflow-config query exits non-zero (a config that does not parse fails closed; a remote store that is offline, rejects the credentials, or is too old to supply language metadata does the same), report the error and STOP — never fall back to reading `{{SPEC_DIR}}config.yaml` by hand, and never parse the YAML yourself or guess the server's language. An older server must be upgraded first.
 
 ## Step 2: Inventory the codebase
 

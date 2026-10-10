@@ -5,21 +5,29 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
-Scan the codebase for architectural improvements and turn the best ones into a recorded discussion. This is the mirror image of `$speclink-discuss`: there the user brings the topic, here the model brings the candidates. Everything downstream — rounds, conclusion, promote/link, archive — is the same discussion machinery.
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
+---
+
+Scan the codebase for architectural improvements and turn the best ones into a recorded discussion. This is the mirror image of `speclink-discuss`: there the user brings the topic, here the model brings the candidates. Everything downstream — rounds, conclusion, promote/link, archive — is the same discussion machinery.
 
 **IMPORTANT: This skill is user-initiated only.** Never trigger it on your own. Do not offer to "run improve" in the middle of another task, and do not start scanning because some code looked messy while you were doing something else. It runs when the user asks for it, and only then.
 
-**IMPORTANT: This skill never implements.** You read files, search code, run git, and record a discussion. You do NOT write application code, refactor anything, or fix what you find. Improvements reach the codebase through the normal route: conclusion → `$speclink-propose` (or `promote`) → `$speclink-apply`. If the user asks you to just fix one of the candidates, tell them to conclude the discussion first and start a change.
+**IMPORTANT: This skill never implements.** You read files, search code, run git, and record a discussion. You do NOT write application code, refactor anything, or fix what you find. Improvements reach the codebase through the normal route: conclusion → `speclink-propose` (or `promote`) → `speclink-apply`. If the user asks you to just fix one of the candidates, tell them to conclude the discussion first and start a change.
 
-**Input**: Optionally a direction after `$speclink-improve` — a module, subsystem, crate, or pain point ("the store layer", "everything around auth", "the CLI feels bloated"). When given, that direction IS the scope and Step 2's inference is skipped. When omitted, Step 2 infers the scope.
+**Input**: Optionally a direction after `speclink-improve` — a module, subsystem, crate, or pain point ("the store layer", "everything around auth", "the CLI feels bloated"). When given, that direction IS the scope and Step 2's inference is skipped. When omitted, Step 2 infers the scope.
 
 **Prerequisites**: This skill requires the `speclink` CLI and `git`. If any command fails with "command not found" or similar, report the error and STOP.
 
-**What counts as an improvement here**: structural deepening — making modules deeper, seams fewer and better placed, complexity concentrated instead of smeared. Behavioural correctness is NOT this skill's job: bugs belong to `$speclink-review`, spec compliance to `$speclink-verify`, security sharp edges to `$speclink-audit`.
+**What counts as an improvement here**: structural deepening — making modules deeper, seams fewer and better placed, complexity concentrated instead of smeared. Behavioural correctness is NOT this skill's job: bugs belong to `speclink-review`, spec compliance to `speclink-verify`, security sharp edges to `speclink-audit`.
 
 ---
 
@@ -60,7 +68,7 @@ Never blind-scan the whole repository. Candidates from unrelated corners are not
 
   **Weight recent churn more heavily.** The payoff of deepening is that future changes get easier, so the code that keeps changing is where that payoff lands.
 
-- **Local supplement**: cross-check the archived changes' touched records (`.evidence.json` under `openspec/changes/archive/<dated-name>/`, the same records `$speclink-commit` uses). Where a bare `git log` says "these files changed together", the touched records say *which intent* moved *which files* — a stronger signal for what belongs to one seam.
+- **Local supplement**: cross-check the archived changes' touched records (`.evidence.json` under `openspec/changes/archive/<dated-name>/`, the same records `speclink-commit` uses). Where a bare `git log` says "these files changed together", the touched records say *which intent* moved *which files* — a stronger signal for what belongs to one seam.
 - **When the hotspots are diffuse** — no clear focus, churn spread evenly — **widen the net** instead of forcing one. Take a larger area (a whole crate, a whole layer) and scan it as one scope rather than picking an arbitrary hot file.
 
 Announce the scope you settled on and why, in one or two sentences, before scanning.
@@ -147,11 +155,11 @@ speclink discuss conclude improve-<scope> --stdin <<'CONCLUSION_EOF'
 - ... — ... (each candidate that lost — why, one per line)
 **Deferred**: none (or `- question — why not now`, one per line)
 **Capture to**: proposal
-**Next**: $speclink-propose --from-discussion improve-<scope>
+**Next**: speclink-propose --from-discussion improve-<scope>
 CONCLUSION_EOF
 ```
 
-Then fan out: `speclink discuss promote <slug>` (or `$speclink-propose --from-discussion <slug>`) for a new change, or `speclink discuss link <slug> <existing-change>` when the improvement belongs to a change already in flight. One scan can fan out into several changes — the record accumulates each name and is archived automatically when the last of them is archived and its conclusion is written. **When the conclusion stages the work — cut A now, cut B once A lands** — run `conclude` with `--hold` once: the record stays live past every middle cut's archive. The last cut is spun out with `--last` (`$speclink-propose --from-discussion <slug>` decides this from the conclusion's cut list and the record's `promoted_to`), which drops the flag so the last archive co-archives the record automatically — nothing to close by hand. Besides `--last`, only a `conclude` without `--hold` or a manual `speclink discuss archive <slug>` releases it; forgot `--last`, and the record just stays live until you run `speclink discuss archive <slug>` once. Without `--hold` the record is archived with the last of its changes, and any later cut needs a new discussion.
+Then fan out: `speclink discuss promote <slug>` (or `speclink-propose --from-discussion <slug>`) for a new change, or `speclink discuss link <slug> <existing-change>` when the improvement belongs to a change already in flight. One scan can fan out into several changes — the record accumulates each name and is archived automatically when the last of them is archived and its conclusion is written. **When the conclusion stages the work — cut A now, cut B once A lands** — run `conclude` with `--hold` once: the record stays live past every middle cut's archive. The last cut is spun out with `--last` (`speclink-propose --from-discussion <slug>` decides this from the conclusion's cut list and the record's `promoted_to`), which drops the flag so the last archive co-archives the record automatically — nothing to close by hand. Besides `--last`, only a `conclude` without `--hold` or a manual `speclink discuss archive <slug>` releases it; forgot `--last`, and the record just stays live until you run `speclink discuss archive <slug>` once. Without `--hold` the record is archived with the last of its changes, and any later cut needs a new discussion.
 
 **When the user rejects every candidate, the scan still concluded something.** Write the conclusion — that nothing here is worth doing, and why each candidate lost — and archive the record:
 

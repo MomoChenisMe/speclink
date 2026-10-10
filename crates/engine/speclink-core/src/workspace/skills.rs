@@ -3,7 +3,7 @@
 use crate::config::{CustomTool, Invocation};
 use crate::init::ASSET_VERSION;
 
-/// The three render targets: built-in claude, built-in codex, or a custom descriptor.
+/// Built-in tools or a custom descriptor.
 /// Descriptors render the NEUTRAL body: no tool-specific slash prefix, no plan-mode
 /// references, verb wording decided by the descriptor's `invocation`.
 #[derive(Clone, Copy)]
@@ -12,12 +12,12 @@ pub enum RenderTarget<'a> {
     Custom(&'a CustomTool),
 }
 
-/// A tool target for generated skills. Speclink deliberately scopes the tool matrix to
-/// claude + codex.
+/// A tool target for generated skills. Codex and Copilot share their skills directory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tool {
     Claude,
     Codex,
+    Copilot,
 }
 
 impl Tool {
@@ -25,6 +25,7 @@ impl Tool {
         match s.trim().to_ascii_lowercase().as_str() {
             "claude" => Some(Tool::Claude),
             "codex" | "agents" => Some(Tool::Codex),
+            "copilot" => Some(Tool::Copilot),
             _ => None,
         }
     }
@@ -32,27 +33,28 @@ impl Tool {
         match self {
             Tool::Claude => "claude",
             Tool::Codex => "codex",
+            Tool::Copilot => "copilot",
         }
     }
     /// Directory (relative to project root) that holds generated skill files.
     pub fn skills_dir(&self) -> &'static str {
         match self {
             Tool::Claude => ".claude/skills",
-            Tool::Codex => ".agents/skills",
+            Tool::Codex | Tool::Copilot => ".agents/skills",
         }
     }
     /// Where the tool keeps plan-mode files ({{PLAN_DIR}}); empty when the tool has none.
     fn plan_dir(&self) -> &'static str {
         match self {
             Tool::Claude => "~/.claude/plans/",
-            Tool::Codex => "",
+            Tool::Codex | Tool::Copilot => "",
         }
     }
     /// The prefix that `/speclink:` becomes for this tool.
     fn slash_replacement(&self) -> &'static str {
         match self {
             Tool::Claude => "/speclink-",
-            Tool::Codex => "$speclink-",
+            Tool::Codex | Tool::Copilot => "speclink-",
         }
     }
 }
@@ -191,6 +193,8 @@ struct Substitutions<'a> {
     /// Some bodies carry literal claude-style skill references; neutrally they are
     /// plain skill names (`speclink-ingest`), never slash commands.
     neutralize_skill_refs: bool,
+    /// Shared built-ins record the actual executing agent, never the render target.
+    dynamic_agent: bool,
 }
 
 impl Substitutions<'_> {
@@ -202,6 +206,11 @@ impl Substitutions<'_> {
                 .join("\n")
         } else {
             body.to_string()
+        };
+        let body = if self.dynamic_agent {
+            body.replace(" --agent {{TOOL}}", "")
+        } else {
+            body
         };
         let rendered = body
             .replace("{{SPEC_DIR}}", &self.spec_dir_slash)
@@ -229,8 +238,9 @@ fn substitutions<'a>(target: RenderTarget<'a>, spec_dir: &str) -> Substitutions<
             plan_dir: tool.plan_dir(),
             tool_name: tool.name(),
             slash_replacement: tool.slash_replacement(),
-            drop_plan_mode_lines: false,
-            neutralize_skill_refs: false,
+            drop_plan_mode_lines: tool != Tool::Claude,
+            neutralize_skill_refs: tool != Tool::Claude,
+            dynamic_agent: tool != Tool::Claude,
         },
         RenderTarget::Custom(custom) => Substitutions {
             spec_dir_slash,
@@ -239,6 +249,7 @@ fn substitutions<'a>(target: RenderTarget<'a>, spec_dir: &str) -> Substitutions<
             slash_replacement: "speclink ",
             drop_plan_mode_lines: true,
             neutralize_skill_refs: true,
+            dynamic_agent: false,
         },
     }
 }
@@ -291,6 +302,19 @@ as argv.\n\n---\n\n"
     }
 }
 
+const SHARED_EXECUTION: &str = "## Shared execution\n\n\
+Codex and Copilot use the same skills. Names such as `speclink-propose` and \
+`speclink-apply` are skill entry points, not CLI subcommands; invoke them using \
+your agent's skill interface. Execute the documented `speclink <verb> [arguments]` \
+operations as shell commands. For interactive questions use your available \
+question tool; if none is available, ask the user directly and wait.\n\n\
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, \
+identify the agent actually running this skill: Codex appends `--agent codex`, \
+Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. \
+Do not infer the executing agent from the selected tools in `.speclink.yaml` \
+or from the directory that contains this skill. Command examples below omit the \
+flag so they work for either agent; append the actual agent when known.\n\n---\n\n";
+
 /// Render a complete SKILL.md (frontmatter + preamble + substituted body) for one target.
 /// The fork/agent and disallowedTools lines are Claude-only; descriptors get the neutral
 /// frontmatter plus an invocation preamble (frozen output shape).
@@ -321,6 +345,9 @@ pub fn render_skill_file_for(target: RenderTarget, skill: &Skill, spec_dir: &str
                 if let Some(preamble) = fork_context(skill.name) {
                     fm.push_str(&preamble);
                 }
+            }
+            if !claude {
+                fm.push_str(SHARED_EXECUTION);
             }
         }
         RenderTarget::Custom(custom) => fm.push_str(invocation_note(custom.invocation)),
@@ -355,6 +382,35 @@ mod tests {
             skills_dir: ".my-harness/skills".to_string(),
             instructions_file: None,
             invocation: Invocation::Cli,
+        }
+    }
+
+    #[test]
+    fn copilot_shared_render_uses_skill_names_and_actual_executor() {
+        for skill in registry().into_iter().filter(|s| s.for_codex) {
+            for spec_dir in ["openspec", "docs/specs"] {
+                let codex =
+                    render_skill_file_for(RenderTarget::Builtin(Tool::Codex), &skill, spec_dir);
+                let copilot =
+                    render_skill_file_for(RenderTarget::Builtin(Tool::Copilot), &skill, spec_dir);
+                assert_eq!(codex, copilot, "{}", skill.name);
+                for forbidden in ["$speclink-", "/speclink-", "{{", "Plan Mode", "plan mode"] {
+                    assert!(
+                        !codex.contains(forbidden),
+                        "{} contains {forbidden}",
+                        skill.name
+                    );
+                }
+                assert!(codex.contains("--agent codex") && codex.contains("--agent copilot"));
+                assert!(codex.contains("omit --agent"));
+                assert!(codex.contains("not CLI subcommands"));
+                assert!(codex.contains("ask the user directly and wait"));
+                if skill.name == "propose" {
+                    assert!(codex.contains("speclink-propose"));
+                    assert!(codex.contains("speclink new change \"<name>\"\n"));
+                    assert!(!codex.contains("speclink propose "));
+                }
+            }
         }
     }
 

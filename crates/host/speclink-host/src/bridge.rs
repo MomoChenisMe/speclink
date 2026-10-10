@@ -49,11 +49,16 @@ pub struct BridgeExecution {
 /// The Engine execution context the bridge runs under. Identity comes from the
 /// Host-resolved context; there is no local workspace or user schema directory
 /// in server mode (built-in schemas resolve without one), and env overrides do
-/// not apply — policy was already resolved at the Host boundary.
-fn engine_context(ctx: &SpeclinkExecutionContext) -> ExecutionContext {
+/// not apply — policy was already resolved at the Host boundary. The unset
+/// language defaults use this server's operating-system language.
+fn engine_context(ctx: &SpeclinkExecutionContext, system_locale: Option<String>) -> ExecutionContext {
     ExecutionContext {
         actor: ctx.actor.display().map(str::to_string),
         repo: Some(ctx.repo.as_str().to_string()),
+        env: speclink_core::config::EnvOverrides {
+            system_locale,
+            ..Default::default()
+        },
         ..Default::default()
     }
 }
@@ -70,7 +75,7 @@ pub fn execute(
     let scope = Scope::new(ctx.project.clone(), ctx.repo.clone());
     let view = BridgeStore::materialize(store, &scope).map_err(BridgeError::Store)?;
     let (outcome, events) =
-        engine_execute(&view, &engine_context(ctx), cmd).map_err(BridgeError::Command)?;
+        engine_execute(&view, &engine_context(ctx, sys_locale::get_locale()), cmd).map_err(BridgeError::Command)?;
     let staged = view.into_staged();
     if staged.is_empty() {
         // A query (or a no-op mutation): nothing to commit.
@@ -665,6 +670,54 @@ mod tests {
             uow.create(doc.clone(), *content);
         }
         store.commit(uow, Vec::new()).expect("commit seed data");
+    }
+
+    #[test]
+    fn remote_instructions_use_server_language_without_client_overrides_or_writes() {
+        use crate::context::{Actor, ActorSource, ExecutionMode, SpeclinkExecutionContext};
+        use crate::policy::EffectiveWorkflowPolicy;
+        use speclink_core::command::{execute, Command, CommandOutcome, InstructionsOutcome};
+        use speclink_core::config::{resolve_policy, EnvOverrides, WorkflowConfig};
+
+        for config in ["schema: spec-driven\n", "schema: spec-driven\nspec_locale: auto\n"] {
+            let store = MemoryStore::new();
+            let binding = local_default_binding();
+            let scope = Scope::new(binding.project.clone(), binding.repo.clone());
+            seeded(&store, &scope, &[
+                (DocumentId::WorkflowConfig, config),
+                (DocumentId::ChangeMeta { change: "demo".into() }, "schema: spec-driven\n"),
+            ]);
+            let client = EnvOverrides {
+                locale: Some("tw".into()), spec_locale: Some("tw".into()),
+                system_locale: Some("zh-TW".into()), ..Default::default()
+            };
+            let ctx = SpeclinkExecutionContext {
+                actor: Actor::Identified { display: "test".into(), source: ActorSource::Explicit },
+                project: binding.project, repo: binding.repo, mode: ExecutionMode::SharedStore,
+                policy: EffectiveWorkflowPolicy::new(resolve_policy(&client, &WorkflowConfig::default()), ""),
+            };
+            let server = super::engine_context(&ctx, Some("ja-JP".into()));
+            assert_eq!(server.env.locale, None, "client SPECLINK_LOCALE is not forwarded");
+            assert_eq!(server.env.spec_locale, None, "client SPECLINK_SPEC_LOCALE is not forwarded");
+            let before = store.snapshot(&scope).unwrap().revision();
+            let view = BridgeStore::materialize(&store, &scope).unwrap();
+            for artifact in ["proposal", "specs"] {
+                let (outcome, events) = execute(&view, &server, Command::Instructions {
+                    artifact: Some(artifact.into()), change: Some("demo".into()), schema: None,
+                }).unwrap();
+                let CommandOutcome::Instructions(InstructionsOutcome::Artifact(payload)) = outcome else {
+                    panic!("expected artifact instructions");
+                };
+                assert_eq!(payload.locale, "Japanese (日本語)");
+                if artifact == "specs" {
+                    assert!(payload.instruction.unwrap().contains("Resolved `spec_locale: ja`"));
+                }
+                assert!(events.is_empty());
+            }
+            assert_eq!(view.read_workflow_config().as_deref(), Some(config));
+            assert!(view.into_staged().is_empty());
+            assert_eq!(store.snapshot(&scope).unwrap().revision(), before);
+        }
     }
 
     const EVIDENCE: &str =

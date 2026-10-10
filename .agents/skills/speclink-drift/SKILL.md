@@ -5,13 +5,21 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Detect drift between a Speclink change and the current codebase state. Reports time dormancy, broken design anchors, task collisions with external commits, and a single recommended next command.
 
-**Input**: Optionally specify a change name (e.g., `/speclink-drift add-auth`). If omitted, infer from conversation context or auto-select if only one active change exists.
+**Input**: Optionally specify a change name (e.g., `speclink-drift add-auth`). If omitted, infer from conversation context or auto-select if only one active change exists.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
@@ -82,24 +90,24 @@ Detect drift between a Speclink change and the current codebase state. Reports t
 
 4. **Apply the recommendation interactively**
 
-   Use the **AskUserQuestion tool** to offer one decision based on `severity`. Use plain-language option labels (in the report language) while preserving the exact command in each option description. Do NOT auto-invoke `/speclink-apply`, `/speclink-ingest`, or `speclink archive`; always wait for the user's choice.
+   Use the **AskUserQuestion tool** to offer one decision based on `severity`. Use plain-language option labels (in the report language) while preserving the exact command in each option description. Do NOT auto-invoke `speclink-apply`, `speclink-ingest`, or `speclink archive`; always wait for the user's choice.
    - **Light** (score 0-3, drift is minor):
      - Recommended label: "Directly start work"
-       - Description: run `/speclink-apply <name>`
+       - Description: run `speclink-apply <name>`
      - Alternate label: "Pause for now"
        - Description: do nothing until the user reviews manually
    - **Medium** (score 4-8, refresh worth doing):
      - Recommended label: "Refresh the plan"
-       - Description: run `/speclink-ingest <name>` with the broken references and task collisions as context
+       - Description: run `speclink-ingest <name>` with the broken references and task collisions as context
      - Alternate label: "Directly start work"
-       - Description: run `/speclink-apply <name>` only if the user knows the reported changes are harmless
+       - Description: run `speclink-apply <name>` only if the user knows the reported changes are harmless
      - Alternate label: "Pause for now"
        - Description: do nothing until the user reviews manually
    - **Heavy** (score >8 or anchor decay >30%, design diverges from code):
      - Recommended label: "Archive and restart"
        - Description: run `<primary_recommendation>`
      - Alternate label: "Refresh the plan"
-       - Description: try `/speclink-ingest <name>` before restarting
+       - Description: try `speclink-ingest <name>` before restarting
      - Alternate label: "Pause for now"
        - Description: do nothing until the user reviews manually
 
@@ -107,7 +115,7 @@ Detect drift between a Speclink change and the current codebase state. Reports t
 
 **Passive Trigger**
 
-When `/speclink-apply` is invoked on a change whose `.openspec.yaml created` date is more than 5 days ago AND no commits have touched the change directory in the past 3 days, the apply skill SHOULD run drift analysis first and surface findings before tasks begin. The trigger is guidance only and MUST NOT block apply from proceeding.
+When `speclink-apply` is invoked on a change whose `.openspec.yaml created` date is more than 5 days ago AND no commits have touched the change directory in the past 3 days, the apply skill SHOULD run drift analysis first and surface findings before tasks begin. The trigger is guidance only and MUST NOT block apply from proceeding.
 
 (Threshold reasoning: AI-assisted commits are daily-cadence, not weekly. A change sitting ≥5 days with ≥3 days of no commits is almost always genuine stagnation rather than normal pacing.)
 
@@ -123,5 +131,5 @@ When `/speclink-apply` is invoked on a change whose `.openspec.yaml created` dat
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The delta's assumptions are stale → `$speclink-ingest <change-name>` to refresh the artifacts before any code is written
-- No meaningful drift → `$speclink-apply <change-name>` to pick the tasks back up
+- The delta's assumptions are stale → `speclink-ingest <change-name>` to refresh the artifacts before any code is written
+- No meaningful drift → `speclink-apply <change-name>` to pick the tasks back up

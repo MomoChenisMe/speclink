@@ -88,6 +88,50 @@ fn assert_matches_golden(name: &str, actual: &str) {
 // --- built-in targets: bit-level regression locks ---
 
 #[test]
+fn copilot_shared_selections_match_across_worktree_and_language_policies() {
+    for worktree in [false, true] {
+        for locale in [None, Some("tw"), Some("ja"), Some("en")] {
+            let mut baseline = None;
+            for (tag, tools) in [
+                ("codex", vec![Tool::Codex]),
+                ("copilot", vec![Tool::Copilot]),
+                ("both", vec![Tool::Codex, Tool::Copilot]),
+            ] {
+                let root = TempRoot::new(&format!(
+                    "shared-{tag}-{worktree}-{}",
+                    locale.unwrap_or("unset")
+                ));
+                init::init(&root.dir, &tools, false, "openspec").unwrap();
+                let policy = format!(
+                    "worktree: {worktree}\n{}",
+                    locale.map(|l| format!("locale: {l}\n")).unwrap_or_default()
+                );
+                std::fs::write(root.dir.join("openspec/config.yaml"), policy).unwrap();
+                init::update(&root.dir, false).unwrap();
+                let files = generated_files(&root.dir, ".agents/skills");
+                assert_eq!(
+                    files.iter().any(|(p, _)| p.contains("apply-with-worktree")),
+                    worktree
+                );
+                assert_eq!(
+                    files.iter().any(|(p, _)| p.contains("worktree-merge")),
+                    worktree
+                );
+                if let Some(expected) = &baseline {
+                    assert!(
+                        files == *expected,
+                        "shared output differs for {tag}, worktree={worktree}, locale={locale:?}"
+                    );
+                } else {
+                    baseline = Some(files);
+                }
+            }
+        }
+    }
+}
+
+
+#[test]
 fn claude_rendering_is_bit_identical_to_golden() {
     let root = TempRoot::new("claude");
     init::init(&root.dir, &[Tool::Claude], true, "openspec").unwrap();
@@ -1199,7 +1243,7 @@ fn apply_with_worktree_selects_and_guards_with_plan() {
 /// Same requirement, Scenario「內文含本體複查以主 checkout 為準指示」: inside the
 /// worktree the apply body's own plan step is only a re-check, the main checkout's
 /// verdict wins, and step 2 still captures the review baseline. The note lives in the
-/// worktree preamble alone — the plain apply skill renders nothing but its asset. That
+/// worktree preamble alone — plain apply adds only the shared execution note to its asset. That
 /// the apply asset itself stays byte-identical is locked by the golden snapshots.
 #[test]
 fn apply_with_worktree_treats_the_body_plan_as_a_recheck() {
@@ -1228,6 +1272,11 @@ fn apply_with_worktree_treats_the_body_plan_as_a_recheck() {
             .splitn(3, "---\n")
             .nth(2)
             .unwrap_or_else(|| panic!("{rel}: missing the frontmatter"));
+        let body = if rel.starts_with(".agents/") {
+            body.split_once("\n---\n").expect("shared execution preamble separator").1
+        } else {
+            body
+        };
         assert_eq!(
             normalize_eol(body).trim(),
             normalize_eol(&rendered_apply_body(&rel)).trim(),
@@ -1862,6 +1911,9 @@ fn baseline_skill_loads_workflow_config_and_applies_specs_rules() {
     for (rel, content) in skill_for_both_tools("baseline-rules", "baseline") {
         for needle in [
             "speclink workflow-config show --json",
+            "speclink workflow-config languages --json",
+            "server's language",
+            "STOP",
             "rules.specs",
             "MUST honour every entry",
             "none (no rules.specs configured)",

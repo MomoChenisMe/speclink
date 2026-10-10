@@ -5,17 +5,25 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Create a complete Speclink change proposal — from requirement to validated artifacts — in a single workflow.
 
-**Input**: The argument after `$speclink-propose` is the requirement description. Examples:
+**Input**: The argument after `speclink-propose` is the requirement description. Examples:
 
-- `$speclink-propose add dark mode`
-- `$speclink-propose fix the login page crash`
-- `$speclink-propose improve search performance`
+- `speclink-propose add dark mode`
+- `speclink-propose fix the login page crash`
+- `speclink-propose improve search performance`
 
 If no argument is provided, the workflow will extract requirements from conversation context or ask.
 
@@ -31,7 +39,7 @@ If no argument is provided, the workflow will extract requirements from conversa
 
    b. **Document supplied directly** (`--from-doc <path>`, speclink enhancement):
    - This is a skill-text convention modelled on `--from-discussion`, NOT an engine flag — it changes no CLI syntax and requires nothing new from the engine.
-   - When the user passes it, read that document and use it as the requirement source: its title or opening statement gives the requirement description, its content feeds Why, What Changes, Capabilities, and Impact. **No existing discussion is needed** — this is the path for building a proposal straight from a plan the user brought, without going through `$speclink-discuss` first.
+   - When the user passes it, read that document and use it as the requirement source: its title or opening statement gives the requirement description, its content feeds Why, What Changes, Capabilities, and Impact. **No existing discussion is needed** — this is the path for building a proposal straight from a plan the user brought, without going through `speclink-discuss` first.
    - The document is consumed, not grilled: itemized challenge of its claims belongs to `discuss`. Never edit the user's original document.
    - **Leave a provenance line.** A proposal built from `--from-doc` SHALL carry one line `Source doc: <path>` in its Why or Impact section, naming the document it came from — a `--from-discussion` proposal gets its origin recorded by the link, and this line is the `--from-doc` counterpart. Skill-text convention only; the engine records nothing for you.
    - `--from-doc` outranks (c) and (d): when it is present, do not go hunting for a discussion record or a plan file.
@@ -62,7 +70,6 @@ If no argument is provided, the workflow will extract requirements from conversa
    - If no discussion exists or the user declines → fall through to (d).
 
    d. **Plan file available**:
-   - Check if the conversation context mentions a plan file path (plan mode system messages include the path like `<name>.md`)
    - If found, check if the file exists at ``
    - If a plan file is found, use the **AskUserQuestion tool** to ask:
      - Option 1: Use the plan file
@@ -111,13 +118,13 @@ If no argument is provided, the workflow will extract requirements from conversa
 4. **Create the change directory**
 
    ```bash
-   speclink new change "<name>" --agent codex
+   speclink new change "<name>"
    ```
 
    When the proposal is sourced from a discussion document (path (c) in step 1), pass the link so the change records its origin and the discussion is marked `promoted` (it will be archived together with the change later):
 
    ```bash
-   speclink new change "<name>" --agent codex --from-discussion <slug>
+   speclink new change "<name>" --from-discussion <slug>
    ```
 
    **Is this the last cut the conclusion planned? Then add `--last`.** A discussion whose conclusion stages several cuts (cut A now, cut B once A lands, …) was concluded with `--hold`, and the engine has no way to tell the final cut from a middle one — you do. Before running the command, read the record's `## Conclusion` **Decision** for the list of planned cuts (刀一／刀二／…, cut A／cut B, or any similar enumeration) and the frontmatter's `promoted_to` for the cuts already spun out, then decide:
@@ -125,7 +132,7 @@ If no argument is provided, the workflow will extract requirements from conversa
    - The change you are creating is the **final cut the conclusion planned** → pass `--last`:
 
      ```bash
-     speclink new change "<name>" --agent codex --from-discussion <slug> --last
+     speclink new change "<name>" --from-discussion <slug> --last
      ```
 
    - You are **splitting one planned cut into several changes** at propose time → only the last piece of the split gets `--last`; every earlier piece is spun out without it.
@@ -285,7 +292,7 @@ If no argument is provided, the workflow will extract requirements from conversa
      - `instruction`: Schema-specific guidance
      - `outputPath`: Where to write the artifact
      - `dependencies`: Completed artifacts to read for context
-     - `locale`: The language to write the artifact in (e.g., "Japanese (日本語)"). If present, you MUST write the artifact content in this language. Spec files (specs/\*_/_.md) default to English instead — unless the project sets `spec_locale` in `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
+     - `locale`: The language to write the artifact in (e.g., "Japanese (日本語)"). If present, you MUST write the artifact content in this language. Spec files (specs/\*_/_.md) default to the operating-system language of the machine running Speclink — unless the project sets `spec_locale` in `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
    - Read each completed dependency for context via `speclink artifact cat <artifact-id> --change "<name>"` (never open artifact files by path — the documents may live in a remote store)
    - Generate the artifact content using `template` as the structure
    - **Mark manual tasks with `[M]`** (tasks artifact only): a task the agent cannot do itself — the user has to do it by hand, whether that is operating the product and accepting the result, creating an account on an external service, or placing a key — carries an `[M]` marker. Anything the agent can do itself, including code and automated tests, never carries it. The marker is what lets the quality stations judge "the code is finished" separately from "a human did their part": they run once every non-`[M]` task is checked, while archive still waits for all of them.
@@ -416,11 +423,10 @@ If no argument is provided, the workflow will extract requirements from conversa
     - List of artifacts created
     - Validation result
 
-    Inform the user that the change is ready and that running `$speclink-apply <change-name>` when ready will start implementation.
+    Inform the user that the change is ready and that running `speclink-apply <change-name>` when ready will start implementation.
 
-    If you are currently in Codex Plan Mode, also remind the user to switch the session to normal mode before running `$speclink-apply <change-name>`. This is only a reminder: do NOT try to use ExitPlanMode or EnterPlanMode, do NOT ask whether to switch modes, and do NOT invoke apply.
 
-    The propose workflow ENDS here. Do NOT invoke `$speclink-apply`. Do NOT call **AskUserQuestion** to ask whether to apply. This behavior is identical across Auto Mode, interactive mode, and any other agent mode.
+    The propose workflow ENDS here. Do NOT invoke `speclink-apply`. Do NOT call **AskUserQuestion** to ask whether to apply. This behavior is identical across Auto Mode, interactive mode, and any other agent mode.
 
     After the summary, run the **Pending-change landscape check** below before presenting Next steps.
 
@@ -443,7 +449,7 @@ If no argument is provided, the workflow will extract requirements from conversa
 - **NEVER** write application code or implement features during this workflow
 - **NEVER** skip the artifact workflow to write code directly
 - **NEVER** reinterpret requirements by ignoring the proposal file
-- **NEVER** invoke `$speclink-apply` — this workflow ends after artifact creation. The user decides when to start implementation
+- **NEVER** invoke `speclink-apply` — this workflow ends after artifact creation. The user decides when to start implementation
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
 ## Pending-change landscape check
@@ -462,7 +468,7 @@ Run this check after the summary, right before presenting the Next steps below.
    - The verb refuses because the move would cross a declared dependency → report the refusal and leave the order as it is.
    - Not small, or not urgent → run nothing.
 5. Run `speclink plan --json` (again, when step 4 moved the change) and present its result according to the project's effective worktree policy (`speclink workflow-config show --json` → `worktree`; a `SPECLINK_WORKTREE` env override wins):
-   - **Policy on** → list wave 1 (`waves[0].changes`) as "parallel-safe — run each change in its own session via `$speclink-apply-with-worktree` (the multi-session recipe)", then each later wave in order as "after the wave before it lands". A change's `blockedBy` names what it waits for.
+   - **Policy on** → list wave 1 (`waves[0].changes`) as "parallel-safe — run each change in its own session via `speclink-apply-with-worktree` (the multi-session recipe)", then each later wave in order as "after the wave before it lands". A change's `blockedBy` names what it waits for.
    - **Policy off** → one recommended order: the `changes` array in its given order, one at a time.
    - `next` is the first change that is ready to start; `skipped` lists changes whose metadata could not be parsed — name them so the user can repair them.
    - For each change whose `archiveAfter` is non-empty, add one line: 「封存時 <change> 要在 <archiveAfter 的名稱> 之後」 — an archive-order note only; it never delays a start.
@@ -472,6 +478,6 @@ Run this check after the summary, right before presenting the Next steps below.
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- Artifacts are complete → `$speclink-apply <change-name>` when the user is ready to implement (with two or more active changes pending, the landscape check above sets the order first)
-- Several independent changes will be implemented at once, and the project's worktree policy is on → `$speclink-apply-with-worktree <change-name>` (one git worktree per change)
-- The requirements turned out to be fuzzier than they looked → `$speclink-discuss` before implementing
+- Artifacts are complete → `speclink-apply <change-name>` when the user is ready to implement (with two or more active changes pending, the landscape check above sets the order first)
+- Several independent changes will be implemented at once, and the project's worktree policy is on → `speclink-apply-with-worktree <change-name>` (one git worktree per change)
+- The requirements turned out to be fuzzier than they looked → `speclink-discuss` before implementing

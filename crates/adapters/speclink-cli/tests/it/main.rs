@@ -2,6 +2,7 @@ mod archive_evidence_gate;
 mod archive_merge_gate;
 mod archive_readiness_gate;
 mod config_fail_closed;
+mod copilot_tools;
 mod discuss_conclude_auto_archive;
 mod discuss_content_guard;
 mod discuss_kind;

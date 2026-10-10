@@ -12,13 +12,13 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-struct TempEnv {
-    dir: PathBuf,
+pub(super) struct TempEnv {
+    pub(super) dir: PathBuf,
     home: PathBuf,
 }
 
 impl TempEnv {
-    fn new(tag: &str) -> TempEnv {
+    pub(super) fn new(tag: &str) -> TempEnv {
         let base = std::env::temp_dir().join(format!(
             "speclink-cli-inittools-{tag}-{}",
             std::process::id()
@@ -31,7 +31,7 @@ impl TempEnv {
         TempEnv { dir, home }
     }
 
-    fn run(&self, args: &[&str]) -> Output {
+    pub(super) fn run(&self, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_speclink"))
             .args(args)
             .current_dir(&self.dir)
@@ -56,7 +56,7 @@ impl TempEnv {
         serde_yaml::from_str(&text).expect(".speclink.yaml parses")
     }
 
-    fn builtins(&self) -> Vec<String> {
+    pub(super) fn builtins(&self) -> Vec<String> {
         self.app_yaml()
             .get("tools")
             .and_then(|t| t.as_sequence())
@@ -68,12 +68,12 @@ impl TempEnv {
             .unwrap_or_default()
     }
 
-    fn exists(&self, rel: &str) -> bool {
+    pub(super) fn exists(&self, rel: &str) -> bool {
         self.dir.join(rel.split('/').collect::<PathBuf>()).exists()
     }
 
     /// 目錄的完整內容快照（相對路徑與檔案位元組），供「零寫入」斷言比對。
-    fn snapshot(&self) -> Vec<(String, Vec<u8>)> {
+    pub(super) fn snapshot(&self) -> Vec<(String, Vec<u8>)> {
         fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, Vec<u8>)>) {
             let mut entries: Vec<_> = std::fs::read_dir(dir).unwrap().flatten().collect();
             entries.sort_by_key(|e| e.file_name());
@@ -101,6 +101,48 @@ impl Drop for TempEnv {
 }
 
 const URL: &str = "https://team.example.com/speclink/projects/foo";
+
+#[test]
+fn copilot_init_and_pipe_hint_preserve_cli_contracts() {
+    let env = TempEnv::new("copilot-init");
+    let before = env.snapshot();
+    let missing = env.run(&["init"]);
+    assert_rejected_with_zero_writes(&env, &missing, &before);
+    assert!(stderr_of(&missing).contains("copilot"));
+    let out = env.run(&["--no-color", "init", "--tools", "copilot"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr_of(&out));
+    assert_eq!(env.builtins(), ["copilot"]);
+    assert!(env.exists(".agents/skills/speclink-propose/SKILL.md"));
+    assert!(!env.exists(".github/skills") && !env.exists("AGENTS.md"));
+    assert!(!stdout_of(&out).contains('\x1b') && !stderr_of(&out).contains('\x1b'));
+    assert!(stdout_of(&out).contains("Generated files for: copilot"));
+}
+
+#[test]
+fn copilot_shared_commands_record_actual_agent_and_fail_for_missing_tickets() {
+    let env = TempEnv::new("copilot-agent");
+    assert!(env
+        .run(&["init", "--tools", "codex,copilot"])
+        .status
+        .success());
+    for agent in ["codex", "copilot"] {
+        let name = format!("{agent}-demo");
+        let out = env.run(&["new", "change", &name, "--agent", agent]);
+        assert_eq!(out.status.code(), Some(0), "{}", stderr_of(&out));
+        let meta = std::fs::read_to_string(
+            env.dir
+                .join(format!("openspec/changes/{name}/.openspec.yaml")),
+        )
+        .unwrap();
+        let meta: serde_yaml::Value = serde_yaml::from_str(&meta).unwrap();
+        assert_eq!(meta["created_with"].as_str(), Some(agent));
+    }
+    let out = env.run(&["review", "stamp", "missing-change", "--agent", "copilot"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(!out.stderr.is_empty());
+    assert!(!env.exists("openspec/changes/missing-change"));
+}
+
 
 fn stdout_of(out: &Output) -> String {
     String::from_utf8_lossy(&out.stdout).to_string()

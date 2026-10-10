@@ -78,6 +78,11 @@ enum WorkflowConfigCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Resolve canonical language settings with local/server OS defaults (no env overrides)
+    Languages {
+        #[arg(long)]
+        json: bool,
+    },
     #[command(about = SET_ABOUT.as_str())]
     Set {
         /// Policy key
@@ -246,18 +251,24 @@ struct WorkflowConfigEdit {
     summary: String,
 }
 /// dispatch 正規化後、兩臂共同消費的 workflow-config 執行計畫：`write` 為
-/// 解析完的寫入意圖與其 `--dry-run` 旗標（None＝show），`json` 只屬 show。
+/// 解析完的寫入意圖與其 `--dry-run` 旗標（None＝只讀），`languages` 區分語言查詢。
 struct WorkflowConfigPlan {
     write: Option<(WorkflowConfigWrite, bool)>,
     json: bool,
+    languages: bool,
 }
 /// workflow-config 的本機臂：執行計畫作用於 `<spec_dir>/config.yaml`。
 fn workflow_config_fs(plan: WorkflowConfigPlan) -> Result<()> {
-    let WorkflowConfigPlan { write, json } = plan;
+    let WorkflowConfigPlan { write, json, languages } = plan;
     let ws = require_workspace()?;
     let label = format!("{}/config.yaml", ws.spec_dir_name);
     let path = ws.spec_dir().join("config.yaml");
     let original = core::util::read_opt(&path).unwrap_or_default();
+    if languages {
+        let values = speclink_host::policy::workflow_languages(Some(&original))
+            .map_err(|e| anyhow::anyhow!("invalid {label}: {}", e.reason))?;
+        return print_workflow_languages(&values, json);
+    }
     let Some((write, dry_run)) = write else {
         return print_workflow_config(&original, &label, json);
     };
@@ -327,7 +338,7 @@ fn workflow_config_write(
     cmd: &WorkflowConfigCommands,
 ) -> Result<Option<(WorkflowConfigWrite, bool)>> {
     Ok(match cmd {
-        WorkflowConfigCommands::Show { .. } => None,
+        WorkflowConfigCommands::Show { .. } | WorkflowConfigCommands::Languages { .. } => None,
         WorkflowConfigCommands::Set { key, value, dry_run } => Some((
             WorkflowConfigWrite::Policy { key: key.clone(), value: value.clone() },
             *dry_run,
@@ -372,11 +383,11 @@ fn print_workflow_config(original: &str, label: &str, json: bool) -> Result<()> 
     println!();
     let locale = match cfg.locale.as_deref() {
         Some(v) => v.to_string(),
-        None => "unset (English)".to_string(),
+        None => "unset (system language)".to_string(),
     };
     let spec_locale = match cfg.spec_locale.as_deref() {
         Some(v) => v.to_string(),
-        None => "unset (specs in English)".to_string(),
+        None => "unset (system language)".to_string(),
     };
     println!("  {:<13}{locale}", "locale");
     println!("  {:<13}{spec_locale}", "spec_locale");
@@ -396,6 +407,18 @@ fn print_workflow_config(original: &str, label: &str, json: bool) -> Result<()> 
         .collect();
     let rules = if rules.is_empty() { "none".to_string() } else { rules.join(", ") };
     println!("  {:<13}{rules}", "rules");
+    Ok(())
+}
+
+fn print_workflow_languages(values: &speclink_protocol::query::WorkflowLanguages, json: bool) -> Result<()> {
+    if !core::config::LOCALE_CODES.contains(&values.spec_locale.as_str()) {
+        bail!("server returned unsupported specLocale '{}' — expected tw, ja, en", values.spec_locale);
+    }
+    if json {
+        return print_json(values);
+    }
+    println!("locale: {}", values.locale);
+    println!("spec_locale: {}", values.spec_locale);
     Ok(())
 }
 /// A toggle's canonical display: `false` is never stored, so "not set" and
@@ -645,8 +668,22 @@ fn remote_config_write_error(e: speclink_remote::RemoteError) -> anyhow::Error {
 /// 先於模式解析——凍結行為；雙臂宣告在尾端的 `dual`。
 pub(crate) fn cmd_workflow_config(a: WorkflowConfigArgs) -> Result<()> {
     let plan = WorkflowConfigPlan {
-        json: matches!(a.command, WorkflowConfigCommands::Show { json: true }),
+        json: matches!(a.command, WorkflowConfigCommands::Show { json: true } | WorkflowConfigCommands::Languages { json: true }),
+        languages: matches!(a.command, WorkflowConfigCommands::Languages { .. }),
         write: workflow_config_write(&a.command)?,
     };
-    dual(plan, workflow_config_fs, |ctx, p| remote_workflow_config(ctx, p.write, p.json))
+    dual(plan, workflow_config_fs, |ctx, p| {
+        if p.languages {
+            let response = ctx.client.config()?;
+            let wf = core::config::WorkflowConfig::from_text(response.content.as_deref())?;
+            core::config::validate_policy_locales(&core::config::WorkflowPolicyFields {
+                locale: wf.locale, spec_locale: wf.spec_locale, ..Default::default()
+            })?;
+            let values = response.languages.ok_or_else(|| anyhow::anyhow!(
+                "server does not provide workflow languages — upgrade the server; cannot infer its OS language from this client"
+            ))?;
+            return print_workflow_languages(&values, p.json);
+        }
+        remote_workflow_config(ctx, p.write, p.json)
+    })
 }

@@ -3,8 +3,8 @@ title: 平行實作與合回：worktree
 section: SDD 工作流
 order: 190
 keywords: [worktree, 平行實作, apply-with-worktree, worktree-merge, 合併]
-sources: [worktree-apply-skill, worktree-merge-skill, worktree-overlay, workflow-config]
-generated: 2026-09-17T16:05:41+08:00
+sources: ["worktree-apply-skill", "worktree-merge-skill", "worktree-overlay", "workflow-config#worktree 欄位寫入的技能同步與關閉擋下", "workspace-tools#worktree 技能的政策條件式生成", "change-plan#apply 技能以 plan 挑選與守門"]
+generated: 2026-10-10T08:24:25+08:00
 ---
 # 平行實作與合回：worktree
 
@@ -97,4 +97,4 @@ worktree 掛著時，桌面上對這個變更的動詞分兩級：
 > [!CAUTION]
 > 封存在主 checkout 執行。worktree-merge 收尾完成後，再回主 checkout 走 [封存](archive.md)。
 
-**出處**：`worktree-apply-skill`、`worktree-merge-skill`、`worktree-overlay`、`workflow-config`
+**出處**：`worktree-apply-skill`、`worktree-merge-skill`、`worktree-overlay`、`workflow-config`、`workspace-tools`、`change-plan`

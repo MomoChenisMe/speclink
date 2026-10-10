@@ -55,6 +55,33 @@ impl Drop for TempProject {
 
 const WAD_DESCRIPTOR: &str = "tools:\n  - name: wad-harness\n    skills_dir: .wad/skills\n    instructions_file: WAD.md\n    invocation: tool-call\n";
 
+#[test]
+fn copilot_descriptor_fails_before_writes_with_migration_choices() {
+    let yaml =
+        "tools:\n  - name: copilot\n    skills_dir: .copilot-skills\n    invocation: tool-call\n";
+    let p = TempProject::new("copilot-conflict", yaml);
+    p.write(".copilot-skills/speclink-apply/SKILL.md", "keep me\n");
+    let out = p.update();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(out.stdout.is_empty());
+    let error = stderr_line(&out);
+    for token in [
+        "name",
+        "copilot",
+        "copilot-custom",
+        "skills_dir",
+        "invocation",
+    ] {
+        assert!(error.contains(token), "{error}");
+    }
+    assert_eq!(p.read(".speclink.yaml"), yaml);
+    assert_eq!(
+        p.read(".copilot-skills/speclink-apply/SKILL.md"),
+        "keep me\n"
+    );
+    assert!(!p.exists(".speclink") && !p.exists(".agents"));
+}
+
 fn stderr_line(out: &Output) -> String {
     let err = String::from_utf8_lossy(&out.stderr).to_string();
     let lines: Vec<&str> = err.lines().filter(|l| !l.trim().is_empty()).collect();

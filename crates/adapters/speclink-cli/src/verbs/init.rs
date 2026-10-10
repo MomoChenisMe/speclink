@@ -16,7 +16,7 @@ use crate::remote_base::validate_or_defer;
 pub(crate) struct InitArgs {
     /// Project path (defaults to current directory)
     path: Option<String>,
-    /// AI tools to generate files for (e.g., claude, codex)
+    /// AI tools to generate files for (e.g., claude, codex, copilot)
     #[arg(long)]
     tools: Option<String>,
     /// Overwrite existing files
@@ -87,7 +87,7 @@ pub(crate) fn cmd_init(a: InitArgs) -> Result<()> {
 /// The single line every missing/empty selection ends on — it names the flag and all
 /// three valid values, so a failed non-interactive run is self-correcting.
 const TOOLS_HINT: &str =
-    "no AI tool selected — pass --tools claude, --tools codex, or --tools claude,codex";
+    "no AI tool selected — pass --tools claude, codex, copilot, or a comma-separated combination";
 /// Resolve init's built-in tool selection. An explicit `--tools` is validated and used
 /// as-is (no prompt). Without the flag an interactive terminal is asked question by
 /// question — prompts go to `out` (stderr in production) so stdout stays the machine
@@ -111,7 +111,7 @@ fn resolve_init_tools(
         None => bail!("{TOOLS_HINT}"),
     }
 }
-/// Ask for Claude and Codex in turn, repeating the pair until at least one is picked —
+/// Ask for each built-in tool in turn, repeating until at least one is picked —
 /// an empty selection is not an answer. Plain text only: nothing here is styled, so
 /// `--no-color` changes nothing about the prompts.
 fn prompt_for_tools(
@@ -121,7 +121,7 @@ fn prompt_for_tools(
     use core::skills::Tool;
     loop {
         let mut picked = Vec::new();
-        for (tool, label) in [(Tool::Claude, "Claude"), (Tool::Codex, "Codex")] {
+        for (tool, label) in [(Tool::Claude, "Claude"), (Tool::Codex, "Codex"), (Tool::Copilot, "Copilot")] {
             if ask_yes_no(input, out, label)? {
                 picked.push(tool);
             }
@@ -129,7 +129,7 @@ fn prompt_for_tools(
         if !picked.is_empty() {
             return Ok(picked);
         }
-        writeln!(out, "Pick at least one tool: claude, codex, or both.")?;
+        writeln!(out, "Pick at least one tool: claude, codex, or copilot.")?;
     }
 }
 /// One yes/no question. Unrecognized input re-asks the same question; EOF is a loud
@@ -252,6 +252,21 @@ mod init_tools_tests {
     }
 
     #[test]
+    fn copilot_interactive_selection_and_alias_are_distinct() {
+        let (got, prompts) = with_answers(None, true, "n\nn\ny\n");
+        assert_eq!(
+            got.unwrap().iter().map(Tool::name).collect::<Vec<_>>(),
+            ["copilot"]
+        );
+        assert!(prompts.contains("Copilot"));
+        let (got, _) = without_stdin(Some("agents,copilot,copilot"), false);
+        assert_eq!(
+            got.unwrap().iter().map(Tool::name).collect::<Vec<_>>(),
+            ["codex", "copilot"]
+        );
+    }
+
+    #[test]
     fn explicit_duplicates_collapse_to_one_entry() {
         let (got, _) = without_stdin(Some("codex, codex"), false);
         assert_eq!(got.expect("valid selection"), vec![Tool::Codex]);
@@ -284,26 +299,26 @@ mod init_tools_tests {
 
     #[test]
     fn interactive_yes_yes_selects_both() {
-        let (got, prompts) = with_answers(None, true, "y\ny\n");
+        let (got, prompts) = with_answers(None, true, "y\ny\nn\n");
         assert_eq!(got.expect("selection"), vec![Tool::Claude, Tool::Codex]);
         assert!(prompts.contains("Claude") && prompts.contains("Codex"), "{prompts}");
     }
 
     #[test]
     fn interactive_yes_no_selects_claude_only() {
-        let (got, _) = with_answers(None, true, "y\nn\n");
+        let (got, _) = with_answers(None, true, "y\nn\nn\n");
         assert_eq!(got.expect("selection"), vec![Tool::Claude]);
     }
 
     #[test]
     fn interactive_no_yes_selects_codex_only() {
-        let (got, _) = with_answers(None, true, "n\ny\n");
+        let (got, _) = with_answers(None, true, "n\ny\nn\n");
         assert_eq!(got.expect("selection"), vec![Tool::Codex]);
     }
 
     #[test]
     fn interactive_all_no_reasks_until_a_tool_is_picked() {
-        let (got, prompts) = with_answers(None, true, "n\nn\nn\ny\n");
+        let (got, prompts) = with_answers(None, true, "n\nn\nn\nn\ny\nn\n");
         assert_eq!(got.expect("selection"), vec![Tool::Codex]);
         assert!(
             prompts.matches("Claude").count() >= 2,
@@ -313,7 +328,7 @@ mod init_tools_tests {
 
     #[test]
     fn interactive_invalid_answer_reasks_the_same_question() {
-        let (got, prompts) = with_answers(None, true, "maybe\ny\nn\n");
+        let (got, prompts) = with_answers(None, true, "maybe\ny\nn\nn\n");
         assert_eq!(got.expect("selection"), vec![Tool::Claude]);
         assert!(
             prompts.matches("Claude").count() >= 2,
@@ -329,7 +344,7 @@ mod init_tools_tests {
 
     #[test]
     fn prompts_carry_no_ansi_escape() {
-        let (_, prompts) = with_answers(None, true, "y\nn\n");
+        let (_, prompts) = with_answers(None, true, "y\nn\nn\n");
         assert!(!prompts.contains('\x1b'), "prompt 不得含 ANSI: {prompts:?}");
     }
 }

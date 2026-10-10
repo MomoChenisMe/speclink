@@ -109,7 +109,7 @@ pub fn build_artifact(
 
     // Make the configured spec language bite without the agent having to read the config:
     // when spec_locale resolves to a non-English language, the specs instruction states it
-    // concretely. Unset (the default) leaves the payload byte-identical.
+    // concretely, including when that language comes from the system default.
     let mut instruction = artifact.instruction.clone();
     if artifact.id == "specs" {
         if let Some(lang) = policy.spec_locale.as_deref() {
@@ -122,7 +122,7 @@ flagged by the analyzer just like should/may/TBD — state requirements with SHA
                 ""
             };
             let note = format!(
-                "This project sets `spec_locale: {lang}` — write spec prose in {display}. \
+                "Resolved `spec_locale: {lang}` — write spec prose in {display}. \
 Structural markers (`## ADDED/MODIFIED/REMOVED/RENAMED Requirements`, `### Requirement:`, \
 `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) still stay in English.{cjk_note}"
             );

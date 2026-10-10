@@ -1,5 +1,129 @@
 use super::*;
 
+#[test]
+fn copilot_shared_plan_has_one_physical_target_and_two_reported_tools() {
+    let root = TempRoot::new("copilot-plan");
+    let plan = SyncPlan::resolve(
+        &root.dir,
+        ToolSelection::builtins_only(&[Tool::Codex, Tool::Copilot]),
+        "openspec",
+    );
+    assert_eq!(
+        plan.targets.len(),
+        1,
+        "shared directory must be written and guarded once"
+    );
+    let out = plan.apply(&root.dir).unwrap();
+    assert_eq!(out.updated, ["codex", "copilot"]);
+}
+
+#[test]
+fn copilot_shared_probe_reports_real_tools_and_unique_differences() {
+    let root = TempRoot::new("copilot-probe");
+    init(&root.dir, &[Tool::Codex, Tool::Copilot], false, "openspec").unwrap();
+    let path = ".agents/skills/speclink-propose/SKILL.md";
+    let content = root.read(path);
+    root.write(path, &content.replace(ASSET_VERSION, "v0.9.0"));
+    let probe = serde_json::to_value(probe_assets(&root.dir)).unwrap();
+    assert_eq!(probe["status"], "stale");
+    assert!(probe["currentVersion"].is_string());
+    let tools = probe["tools"].as_array().unwrap();
+    assert_eq!(tools.len(), 2);
+    for (tool, name) in tools.iter().zip(["codex", "copilot"]) {
+        assert_eq!(tool["tool"], name);
+        assert_eq!(tool["workspaceVersion"], "v0.9.0");
+        assert_eq!(tool["stale"], true);
+        assert_eq!(tool["newer"], false);
+        assert_eq!(tool["missing"], false);
+    }
+    assert_eq!(probe["differingFiles"], serde_json::json!([path]));
+    root.write(path, &content.replace('\n', "\r\n"));
+    assert_eq!(probe_assets(&root.dir).status, AssetStatus::Current);
+    assert!(probe_assets(&root.dir).differing_files.is_empty());
+    std::fs::remove_dir_all(root.at(".agents/skills")).unwrap();
+    let missing = probe_assets(&root.dir);
+    assert_eq!(missing.status, AssetStatus::Missing);
+    assert!(missing
+        .tools
+        .iter()
+        .all(|t| t.missing && t.workspace_version.is_none()));
+    let unique: std::collections::HashSet<_> = missing.differing_files.iter().collect();
+    assert_eq!(unique.len(), missing.differing_files.len());
+}
+
+#[test]
+fn copilot_shared_selection_transitions_preserve_user_skills_and_content() {
+    for (tag, from, to, keep) in [
+        (
+            "both-copilot",
+            vec![Tool::Codex, Tool::Copilot],
+            vec![Tool::Copilot],
+            true,
+        ),
+        (
+            "copilot-codex",
+            vec![Tool::Copilot],
+            vec![Tool::Codex],
+            true,
+        ),
+        (
+            "codex-both",
+            vec![Tool::Codex],
+            vec![Tool::Codex, Tool::Copilot],
+            true,
+        ),
+        (
+            "both-claude",
+            vec![Tool::Codex, Tool::Copilot],
+            vec![Tool::Claude],
+            false,
+        ),
+    ] {
+        let root = TempRoot::new(&format!("copilot-transition-{tag}"));
+        init(&root.dir, &from, false, "openspec").unwrap();
+        root.write(".agents/skills/my-skill/SKILL.md", "user content");
+        let before = root.read(".agents/skills/speclink-propose/SKILL.md");
+        reconcile_builtin_tools(&root.dir, &to).unwrap();
+        reconcile_builtin_tools(&root.dir, &to).unwrap();
+        assert_eq!(
+            root.exists(".agents/skills/speclink-propose/SKILL.md"),
+            keep
+        );
+        if keep {
+            assert_eq!(
+                root.read(".agents/skills/speclink-propose/SKILL.md"),
+                before
+            );
+        }
+        assert_eq!(
+            root.read(".agents/skills/my-skill/SKILL.md"),
+            "user content"
+        );
+    }
+}
+
+#[test]
+fn copilot_guard_cannot_be_bypassed_by_selection_or_entry_point() {
+    let root = TempRoot::new("copilot-guard");
+    init(&root.dir, &[Tool::Codex, Tool::Copilot], false, "openspec").unwrap();
+    crate::testkit::set_skill_version(&root.at(".agents/skills"), &ahead_of_current());
+    let yaml = root.read(".speclink.yaml");
+    let skill = root.read(".agents/skills/speclink-propose/SKILL.md");
+    assert!(update(&root.dir, false)
+        .unwrap_err()
+        .to_string()
+        .contains("--allow-downgrade"));
+    assert!(reconcile_builtin_tools(&root.dir, &[Tool::Copilot]).is_err());
+    assert!(adopt(&root.dir, &[Tool::Copilot]).is_err());
+    assert!(init(&root.dir, &[Tool::Copilot], true, "openspec").is_err());
+    assert_eq!(root.read(".speclink.yaml"), yaml);
+    assert_eq!(root.read(".agents/skills/speclink-propose/SKILL.md"), skill);
+    assert!(probe_assets(&root.dir).tools.iter().all(|t| t.newer));
+    update(&root.dir, true).unwrap();
+    assert_eq!(probe_assets(&root.dir).status, AssetStatus::Current);
+}
+
+
 /// Throwaway project root, removed on drop.
 struct TempRoot {
     dir: PathBuf,
@@ -109,7 +233,7 @@ fn instructions_file(tool: Tool) -> &'static str {
 fn user_text(tool: Tool) -> &'static str {
     match tool {
         Tool::Claude => CLAUDE_USER_TEXT,
-        Tool::Codex => CODEX_USER_TEXT,
+        Tool::Codex | Tool::Copilot => CODEX_USER_TEXT,
     }
 }
 
@@ -1468,7 +1592,7 @@ fn tool_selection_notes_an_unknown_builtin_name() {
     assert_eq!(
         sel.notes,
         vec![
-            "unknown tool 'cursor' in .speclink.yaml tools list (supported: claude, codex)"
+            "unknown tool 'cursor' in .speclink.yaml tools list (supported: claude, codex, copilot)"
                 .to_string()
         ]
     );
@@ -1569,7 +1693,7 @@ fn sync_plan_builds_one_target_per_selected_tool() {
     let plan =
         SyncPlan::resolve(&root.dir, ToolSelection::builtins_only(&[Tool::Codex]), "openspec");
     assert_eq!(plan.targets.len(), 1, "只選 codex 就只有一個 target");
-    assert_eq!(plan.targets[0].label, "codex");
+    assert_eq!(plan.targets[0].labels, ["codex"]);
     assert_eq!(plan.targets[0].skills_root, root.at(".agents/skills"));
     assert_eq!(plan.deselected_builtins, vec![Tool::Claude]);
 }
@@ -1582,7 +1706,7 @@ fn sync_plan_prunes_nothing_on_the_legacy_fallback() {
     let selection = ToolSelection::resolve(&root.dir, &app_config("tools: []\n"));
     let plan = SyncPlan::resolve(&root.dir, selection, "openspec");
     assert_eq!(plan.targets.len(), 1);
-    assert_eq!(plan.targets[0].label, "claude");
+    assert_eq!(plan.targets[0].labels, ["claude"]);
     assert!(plan.deselected_builtins.is_empty(), "沒有清單就沒有「下架」這回事");
 }
 
@@ -1596,8 +1720,8 @@ fn sync_plan_adds_a_target_for_each_descriptor() {
     );
     let plan = SyncPlan::resolve(&root.dir, selection, "openspec");
     assert_eq!(plan.targets.len(), 2);
-    assert_eq!(plan.targets[0].label, "claude");
-    assert_eq!(plan.targets[1].label, "wad-harness");
+    assert_eq!(plan.targets[0].labels, ["claude"]);
+    assert_eq!(plan.targets[1].labels, ["wad-harness"]);
     assert_eq!(plan.targets[1].skills_root, root.at(".wad/skills"));
     assert_eq!(plan.deselected_builtins, vec![Tool::Codex]);
 }

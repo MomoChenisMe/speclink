@@ -4,7 +4,7 @@ section: 附錄
 order: 900
 keywords: [來源, 矛盾, 限制, 編纂日期, 規格]
 sources: []
-generated: 2026-09-25T08:39:09+08:00
+generated: 2026-10-10T08:26:51+08:00
 ---
 
 # 本手冊的來源
@@ -13,7 +13,7 @@ generated: 2026-09-25T08:39:09+08:00
 
 本手冊全部內容只取材自 `openspec/specs/` 底下的正式規格。README、`docs/` 與原始碼都不是來源。規格沒寫的，手冊就不寫，或在該處標明「規格未載」。每一頁的最後一行列出它取材的能力名稱。
 
-正式規格共 86 個能力。其中 59 個是使用者會操作或看到的東西（畫面、指令、技能、輸出、檔案），已入冊。其餘 27 個是引擎內部（儲存、wire 契約、host 執行期、測試骨架、建置與發布管線、本 repo 自用的發版技能與更新日誌的資料契約），不入冊：
+正式規格共 89 個能力。其中 62 個是使用者會操作或看到的東西（畫面、指令、技能、輸出、檔案），已入冊。其餘 27 個是引擎內部（儲存、wire 契約、host 執行期、測試骨架、建置與發布管線、本 repo 自用的發版技能與更新日誌的資料契約），不入冊：
 
 `client-protocol`、`command-runtime`、`delivery-baseline`、`desktop-release`、`dev-harness`、`host-runtime`、`node-sdk`、`node-sdk-release`、`phase2-acceptance`、`phase3-acceptance`、`postgres-team-store`、`reference-server`、`release-notes`、`release-skill`、`remote-board-order`、`remote-workspace-data`、`server-context-api`、`server-drift-api`、`server-event-stream`、`server-read-api`、`server-verb-api`、`serverfs-team-store`、`sqlite-team-store`、`store-abstraction`、`teamstore-contract`、`ui-copy-vocabulary`、`workspace-session`。
 
@@ -32,26 +32,29 @@ generated: 2026-09-25T08:39:09+08:00
 
 以下是規格之間、或同一規格內新舊說法不一致的地方。內文一律採 `@trace updated` 日期較晚的說法，這裡照實記錄，不另行裁決。實際行為以產品為準。
 
-1. **政策解析層數**：`workflow-config` 的 Purpose 寫「四層解析：環境變數 ＞ .speclink.yaml 舊鍵 ＞ 正典檔 ＞ 內建預設」且舊鍵命中會出警告；同規格的需求「工作流政策的正典歸屬與三層解析順序」（2026-08-23）改為三層，.speclink.yaml 的同名鍵一律不生效、不出警告。內文採三層。
-2. **啟用資料夾是否產生 CLAUDE.md**：`desktop-config`「未啟用資料夾經確認後補齊啟用」（2026-07-31）寫啟用會產生 CLAUDE.md 的受管區塊；`workspace-tools`「工作區補齊入口」（2026-08-23）與 `desktop-config`「未初始化目錄經確認後自動初始化」（2026-08-23）都寫不產生 CLAUDE.md。內文採不產生。
-3. **綁定 checkout 後產生什麼**：`workspace-chooser`（2026-07-24）寫綁定後會生成 Skills 與 AGENTS.md／CLAUDE.md 的 Speclink 區塊；`workspace-tools`「built-in tools 權威收斂」（2026-08-23）寫只生成技能檔，並剝除指令檔裡遺留的 SPECLINK 區塊。內文採只生成技能檔。
-4. **指令檔過期怎麼判**：`desktop-app`「指令檔過期提示」（2026-08-06）以 CLAUDE.md 是否存在、SPECLINK 標記是否被移除來判；`workspace-tools`「技能檔過期探測」（最新 2026-09-07）改以 skills 目錄下有無 speclink- 技能檔、以及技能檔版號比對來判，自訂描述子也納入。內文採技能檔版號。
-5. **專案設定頁有幾個頁簽**：`desktop-config`「設定頁圖形化讀寫兩層設定」（2026-08-23）寫本地兩簽（config.yaml、.speclink.yaml）、remote 單一 Workflow 簽；同規格「設定頁的產出流程頁籤」（2026-08-22）與其後六條產出流程需求寫本地三簽（config.yaml → Schema → .speclink.yaml）、remote 兩簽（Workflow → Schema）。內文的頁簽列採兩簽版；產出流程的內容仍照 2026-08-22 那組需求列出，並註明日期。
-6. **唯讀角色叫什麼**：`server-policy-write`（2026-07-20）、`user-documentation`（2026-07-24）與 `desktop-config`（2026-08-23）寫 reader；`server-identity` 的一條 scenario（2026-07-28）寫 viewer。內文採 reader（最晚一次提到的是 2026-08-23）。
-7. **server 的官方發布物**：`server-release`「Server 交付物內嵌同版本 SPA 資產」（2026-07-25）寫 release binary 與「tag 觸發 server binary 與 Docker image 發布」；同規格「release 產物含 server 與部署文件」（2026-08-14）寫 server binary 不上傳 GitHub Release，官方通路只有 Docker 映像與 npm 套件。內文採後者。
-8. **討論結論後的路**：`user-documentation`「討論結論後的轉出與併入分流完整」（2026-07-17）把 `speclink discuss promote` 列為結論後四條路之一；`discuss-skill`「結論後交棒單推 propose 入口」（2026-08-27）與 `skill-routing` 交棒邊表（2026-09-01）寫結論後只建議 `/speclink-propose --from-discussion`，promote 留給中途轉出。內文採後者。
-9. **verify 是不是可呼叫的站**：`user-documentation`「Getting Started 僅使用已驗證入口」（2026-07-17）寫入門文件不要求呼叫未安裝的 `$speclink-verify`；同規格「工作流正典逐站列出技能與完成判準」（2026-09-01）與 `verify-skill`（2026-08-11）把 verify 列為正式站。內文採 verify 是可呼叫的站。
-10. **討論隨變更封存的條件**：`user-documentation`（2026-07-17）寫最後一個存活變更封存時討論一併封存；`discussion-docs`「討論以 link 動詞併入既有變更」（最新 2026-09-09）加了前提：討論的結論必須已寫入、記錄沒有 `hold: true`，且判定「無其他變更引用」時壞掉的狀態檔視為仍在引用。內文採有前提的版本。
-11. **使用者文件可否連到架構文件**：`user-documentation`「目標架構與目前狀態維持清楚邊界」（2026-07-17）要求 README 連到平台架構藍圖與路線圖；同規格「使用者面路線圖與內部交付順序分列」（2026-08-14）寫使用者文件不得引用那兩份維護者文件。與手冊內容無關，僅記錄。
-12. **點規格卡會發生什麼、溯源顯示在哪**：`desktop-app`「規格頁提供清單、搜尋與展開檢視」（2026-07-09）寫點卡片標題就地展開全文、下方帶一行來源變更；同規格「桌面 app 呈現 change 與 spec 的清單與內容」的原版（2026-07-11）寫點卡片開啟唯讀的規格詳情面板、清單不提供行內展開，其後的面板互斥（2026-07-17）與卡片收合（2026-08-11）需求也以面板為前提；同一條需求的最新版（2026-09-03）再把溯源變更改為標頭出身列的籤，內文底部不再有溯源文字行。內文採詳情面板與出身列的籤。
-13. **品質關卡狀態列顯示什麼**：`desktop-app`「詳情抽屜的審查資訊列」（2026-08-04）與「詳情抽屜的驗證資訊列」（2026-08-06）寫狀態列顯示狀態詞、蓋章時間與審查者／驗證者；同規格「變更詳情抽屜標頭的四層結構」（2026-08-07）寫日期與蓋章者收進指標停留提示、可視文字不直出日期與 email。內文採後者。
-14. **封存時未結工單的第一個選項叫什麼**：`desktop-app`「封存入口的未結工單三選項」（2026-08-02）描述為「前往完成蓋章」；同規格「變更與討論抽屜開啟時底層落回看板」（2026-08-11）稱同一個按鈕為「去蓋章」。內文以「去蓋章」為按鈕字面。
-15. **討論開場淺掃有幾段**：`discuss-skill`「事實與決策分診及逐節點查證」（2026-08-21）把開場偵察規定為「正式規格 → 程式碼」兩段漏斗；同規格「開場舊討論查核與第四類對照」（2026-09-05）改為「正式規格 → 舊討論查核 → 程式碼」三段，並在假設清單的三分對照之外加入第四類「舊討論已定案」。內文採三段與四類。
-16. **保留在途的討論，卡片與詳情面板有沒有封存動作**：`desktop-app`「討論抽屜檢視與轉出變更」（2026-08-04）寫已結論且未封存的討論，在討論卡與討論詳情面板都有封存動作；同規格「討論於看板第 0 欄兩級呈現」（2026-09-10）寫已轉出、已結論但保留在途的卡片不提供任何動詞按鈕，收尾由 CLI 的 `speclink discuss archive` 明示解除，對詳情面板沒有另作規定。內文採卡片沒有按鈕；詳情面板照舊寫規格所載。
-17. **propose 收尾盤點的母體與做法**：`skill-routing` 交棒邊表的 propose 列（2026-09-16T16:37:51+08:00）寫「提案中變更 ≥2 時先盤點執行順序，worktree 政策開啟時分可平行／須依序」；`propose-skill`「收尾盤點提案中變更的執行順序」（最新 2026-09-24T22:20:29+08:00）寫以「作用中變更」為母體、對本次建立的變更判定軟依賴並以 `speclink change depends` 落檔，再判定插隊、以 `speclink plan` 的波次呈現。後者時戳較晚，[提案](propose.md)的收尾一節照 `propose-skill` 寫。[工作流總覽](workflow-overview.md)的交棒邊表照 `skill-routing` 的摘要寫；該頁的來源沒有更新，本次沒有重寫，兩頁互相指路。
-18. **delta 重疊還算不算阻擋**：`change-plan` 的 Purpose 寫「以宣告依賴與 delta capability 重疊做拓樸修正，算出波次與每個 change 的阻擋清單」；同規格「執行順序的基底與拓樸修正」（2026-09-24T22:20:29+08:00）改為 delta 重疊不推後波次、不構成有向邊、不進阻擋清單，改以同名 requirement 重疊算封存順序，只有 `speclink plan --strict-overlap` 退回舊算法。Purpose 也沒有提到新的 `speclink change rank`。內文採需求段的說法。
-19. **拖排時被拖的卡缺順序鍵要不要整欄補章**：`board-card-order` 的 Purpose 寫「欄內出現缺 rank 的卡時整欄補章」；同規格「欄內存在缺 rank 卡時整欄補章」（2026-09-24T22:20:29+08:00）排除被拖的卡本身：只有它缺鍵時只寫它一檔。內文採需求段的說法。
-20. **前置要一次落檔還是逐一落檔**：`ingest-skill`「ingest 收尾重判本變更的軟依賴」（2026-09-24T22:20:29+08:00）要求每個前置各執行一次 `speclink change depends`，並規定這一段與 propose 收尾的同一段逐字一致；`propose-skill`「收尾盤點提案中變更的執行順序」（同一時戳、同一次封存）寫的是一次帶多個前置的指令，也沒有提到被拒時的處置。兩者時戳相同、出自同一次封存，無法依較晚者裁定。[提案](propose.md)照 `propose-skill` 寫，[續作與需求變更](drift-ingest.md)照 `ingest-skill` 寫，提案頁以附註指出差異。
+1. **政策解析層數**：`workflow-config` 的 Purpose 寫「四層解析：環境變數 ＞ .speclink.yaml 舊鍵 ＞ 正典檔 ＞ 內建預設」且舊鍵命中會出警告；同規格的需求「工作流政策的正典歸屬與三層解析順序」（最新 2026-10-10）改為三層，.speclink.yaml 的同名鍵一律不生效、不出警告。內文採三層。
+2. **綁定 checkout 後產生什麼**：`workspace-chooser`（2026-07-24）寫綁定後會生成 Skills 與 AGENTS.md／CLAUDE.md 的 Speclink 區塊；`workspace-tools`「built-in tools 權威收斂」（最新 2026-10-10）寫只生成技能檔，並剝除指令檔裡遺留的 SPECLINK 區塊。內文採只生成技能檔。
+3. **指令檔過期怎麼判**：`desktop-app`「指令檔過期提示」（2026-08-06）以 CLAUDE.md 是否存在、SPECLINK 標記是否被移除來判；`workspace-tools`「技能檔過期探測」（最新 2026-10-10）改以 skills 目錄下有無 speclink- 技能檔、以及技能檔版號比對來判，自訂描述子也納入。內文採技能檔版號。
+4. **專案設定頁有幾個頁簽**：`desktop-config`「設定頁圖形化讀寫兩層設定」（最新 2026-10-10）寫本地兩簽（config.yaml、.speclink.yaml）、remote 單一 Workflow 簽；同規格「設定頁的產出流程頁籤」（2026-08-22）與其後六條產出流程需求寫本地三簽（config.yaml → Schema → .speclink.yaml）、remote 兩簽（Workflow → Schema）。內文的頁簽列採兩簽版；產出流程的內容仍照 2026-08-22 那組需求列出，並註明日期。
+5. **唯讀角色叫什麼**：`server-policy-write`（2026-07-20）、`user-documentation`（2026-07-24）與 `desktop-config`（最新 2026-10-10）寫 reader；`server-identity` 的一條 scenario（2026-07-28）寫 viewer。內文採 reader（最晚一次提到的是 2026-10-10）。
+6. **server 的官方發布物**：`server-release`「Server 交付物內嵌同版本 SPA 資產」（2026-07-25）寫 release binary 與「tag 觸發 server binary 與 Docker image 發布」；同規格「release 產物含 server 與部署文件」（2026-08-14）寫 server binary 不上傳 GitHub Release，官方通路只有 Docker 映像與 npm 套件。內文採後者。
+7. **討論結論後的路**：`user-documentation`「討論結論後的轉出與併入分流完整」（2026-07-17）把 `speclink discuss promote` 列為結論後四條路之一；`discuss-skill`「結論後交棒單推 propose 入口」（2026-08-27）與 `skill-routing` 交棒邊表（2026-09-01）寫結論後只建議 `/speclink-propose --from-discussion`，promote 留給中途轉出。內文採後者。
+8. **verify 是不是可呼叫的站**：`user-documentation`「Getting Started 僅使用已驗證入口」（2026-07-17）寫入門文件不要求呼叫未安裝的 `$speclink-verify`；同規格「工作流正典逐站列出技能與完成判準」（2026-09-01）與 `verify-skill`（2026-08-11）把 verify 列為正式站。內文採 verify 是可呼叫的站。
+9. **討論隨變更封存的條件**：`user-documentation`（2026-07-17）寫最後一個存活變更封存時討論一併封存；`discussion-docs`「討論以 link 動詞併入既有變更」（最新 2026-09-09）加了前提：討論的結論必須已寫入、記錄沒有 `hold: true`，且判定「無其他變更引用」時壞掉的狀態檔視為仍在引用。內文採有前提的版本。
+10. **使用者文件可否連到架構文件**：`user-documentation`「目標架構與目前狀態維持清楚邊界」（2026-07-17）要求 README 連到平台架構藍圖與路線圖；同規格「使用者面路線圖與內部交付順序分列」（2026-08-14）寫使用者文件不得引用那兩份維護者文件。與手冊內容無關，僅記錄。
+11. **點規格卡會發生什麼、溯源顯示在哪**：`desktop-app`「規格頁提供清單、搜尋與展開檢視」（2026-07-09）寫點卡片標題就地展開全文、下方帶一行來源變更；同規格「桌面 app 呈現 change 與 spec 的清單與內容」的原版（2026-07-11）寫點卡片開啟唯讀的規格詳情面板、清單不提供行內展開，其後的面板互斥（2026-07-17）與卡片收合（2026-08-11）需求也以面板為前提；同一條需求的最新版（2026-09-03）再把溯源變更改為標頭出身列的籤，內文底部不再有溯源文字行。內文採詳情面板與出身列的籤。
+12. **品質關卡狀態列顯示什麼**：`desktop-app`「詳情抽屜的審查資訊列」（2026-08-04）與「詳情抽屜的驗證資訊列」（2026-08-06）寫狀態列顯示狀態詞、蓋章時間與審查者／驗證者；同規格「變更詳情抽屜標頭的四層結構」（2026-08-07）寫日期與蓋章者收進指標停留提示、可視文字不直出日期與 email。內文採後者。
+13. **封存時未結工單的第一個選項叫什麼**：`desktop-app`「封存入口的未結工單三選項」（2026-08-02）描述為「前往完成蓋章」；同規格「變更與討論抽屜開啟時底層落回看板」（2026-08-11）稱同一個按鈕為「去蓋章」。內文以「去蓋章」為按鈕字面。
+14. **討論開場淺掃有幾段**：`discuss-skill`「事實與決策分診及逐節點查證」（2026-08-21）把開場偵察規定為「正式規格 → 程式碼」兩段漏斗；同規格「開場舊討論查核與第四類對照」（2026-09-05）改為「正式規格 → 舊討論查核 → 程式碼」三段，並在假設清單的三分對照之外加入第四類「舊討論已定案」。內文採三段與四類。
+15. **保留在途的討論，卡片與詳情面板有沒有封存動作**：`desktop-app`「討論抽屜檢視與轉出變更」（2026-08-04）寫已結論且未封存的討論，在討論卡與討論詳情面板都有封存動作；同規格「討論於看板第 0 欄兩級呈現」（2026-09-10）寫已轉出、已結論但保留在途的卡片不提供任何動詞按鈕，收尾由 CLI 的 `speclink discuss archive` 明示解除，對詳情面板沒有另作規定。內文採卡片沒有按鈕；詳情面板照舊寫規格所載。
+16. **propose 收尾盤點的母體與做法**：`skill-routing` 交棒邊表的 propose 列（2026-09-16T16:37:51+08:00）寫「提案中變更 ≥2 時先盤點執行順序，worktree 政策開啟時分可平行／須依序」；`propose-skill`「收尾盤點提案中變更的執行順序」（最新 2026-09-24T22:20:29+08:00）寫以「作用中變更」為母體、對本次建立的變更判定軟依賴並以 `speclink change depends` 落檔，再判定插隊、以 `speclink plan` 的波次呈現。後者時戳較晚，[提案](propose.md)的收尾一節照 `propose-skill` 寫。[工作流總覽](workflow-overview.md)的交棒邊表照 `skill-routing` 的摘要寫；該頁的來源沒有更新，本次沒有重寫，兩頁互相指路。
+17. **delta 重疊還算不算阻擋**：`change-plan` 的 Purpose 寫「以宣告依賴與 delta capability 重疊做拓樸修正，算出波次與每個 change 的阻擋清單」；同規格「執行順序的基底與拓樸修正」（2026-09-24T22:20:29+08:00）改為 delta 重疊不推後波次、不構成有向邊、不進阻擋清單，改以同名 requirement 重疊算封存順序，只有 `speclink plan --strict-overlap` 退回舊算法。Purpose 也沒有提到新的 `speclink change rank`。內文採需求段的說法。
+18. **拖排時被拖的卡缺順序鍵要不要整欄補章**：`board-card-order` 的 Purpose 寫「欄內出現缺 rank 的卡時整欄補章」；同規格「欄內存在缺 rank 卡時整欄補章」（2026-09-24T22:20:29+08:00）排除被拖的卡本身：只有它缺鍵時只寫它一檔。內文採需求段的說法。
+19. **前置要一次落檔還是逐一落檔**：`ingest-skill`「ingest 收尾重判本變更的軟依賴」（2026-09-24T22:20:29+08:00）要求每個前置各執行一次 `speclink change depends`，並規定這一段與 propose 收尾的同一段逐字一致；`propose-skill`「收尾盤點提案中變更的執行順序」（同一時戳、同一次封存）寫的是一次帶多個前置的指令，也沒有提到被拒時的處置。兩者時戳相同、出自同一次封存，無法依較晚者裁定。[提案](propose.md)照 `propose-skill` 寫，[續作與需求變更](drift-ingest.md)照 `ingest-skill` 寫，提案頁以附註指出差異。
+
+20. **checkout 可選哪些 AI 工具**：`workspace-chooser` 的舊需求只列 Claude／Codex；`desktop-config`「checkout 工具選擇與共享技能驗收」與 `workspace-tools` 的工具選擇需求（2026-10-10）加入 Copilot。[專案分頁與設定頁](desktop-projects.md)採三個工具，Codex／Copilot 共用技能。
+21. **技能列的合併按鈕與封存收尾**：`claude-code-skill-bar` 載明 `archive+commit` 填入 `/speclink-archive + /speclink-commit`，但沒有規格更新時戳；`archive-skill`「封存完成後的收尾提交提醒」（2026-09-16）要求封存後用一般 Git commit，變更範圍的 commit 技能不適用。技能列頁照實寫按鈕字面，操作收尾依後者，未將合併按鈕當成封存後提交的保證。
+
 
 附註（規格自己宣告的例外，不是矛盾）：
 
@@ -70,8 +73,12 @@ generated: 2026-09-25T08:39:09+08:00
 - 錨定寫法有一個盲點：某能力新增一段需求時，沒有任何頁錨定到它，過期判定不會亮。2026-09-22 封存進 `desktop-app` 的兩段需求「詳情抽屜的工單分頁」與「已封存抽屜的工單分頁」就是這種情況，尚未入冊；補寫時以範圍提示重生[桌面上的品質關卡](desktop-quality.md)。
 - 規格裡的內部識別符（欄位名、型別名、旗標）不進手冊，改以白話描述效果。
 
+
+- 本次依 2026-10-10 封存的正式規格更新六頁：工作區工具、Baseline、工作流政策、專案設定、技能檔更新與 worktree。worktree 的操作內文維持，只把來源改為實際涵蓋的需求錨點並補齊引用，避免無關的語言政策更新再把它標為過期。新增三頁 Claude Code 介面操作；這是正式規格的轉寫，不表示本輪新增了 Claude 實機驗收。
+- 系統語系預設來自執行 Speclink 的主機，remote 採 server；App 介面語言與工作流產出語言獨立。CLI 保留舊 auto 的相容行為，App 的新選項只有未設定與三個明確語言。
+
 ## 編纂日期
 
-2026-09-25
+2026-10-10
 
 **出處**：本頁為說明頁，不直接取材自單一能力；各頁末行列出自己的出處。

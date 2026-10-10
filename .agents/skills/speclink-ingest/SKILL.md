@@ -5,8 +5,16 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Update an existing Speclink change — from a plan file or conversation context.
@@ -17,9 +25,9 @@ Update an existing Speclink change — from a plan file or conversation context.
 
 **Input**: Optionally specify a plan file path or name.
 
-- `$speclink-ingest agile-discovering-rocket.md`
-- `$speclink-ingest agile-discovering-rocket`
-- `$speclink-ingest` (use conversation context or auto-detect plan file)
+- `speclink-ingest agile-discovering-rocket.md`
+- `speclink-ingest agile-discovering-rocket`
+- `speclink-ingest` (use conversation context or auto-detect plan file)
 
 **Steps**
 
@@ -30,7 +38,6 @@ Update an existing Speclink change — from a plan file or conversation context.
    - If the file does NOT exist → report the error and **stop**
 
    b. **No argument, plan file detectable**:
-   - Check conversation context for plan file path (plan mode system messages include the path like `<name>.md`)
    - If found and the file exists → use the **AskUserQuestion tool** to ask:
      - Option 1: Use the plan file
      - Option 2: Use conversation context
@@ -92,7 +99,7 @@ Update an existing Speclink change — from a plan file or conversation context.
    Parse the JSON output to get the full list of changes.
    - If one change exists → use the **AskUserQuestion tool** to confirm updating it
    - If multiple changes exist → use the **AskUserQuestion tool** to let user pick which one to update
-   - If no changes at all → tell the user: "No active change found. Use `$speclink-propose` first to create one." and **stop**
+   - If no changes at all → tell the user: "No active change found. Use `speclink-propose` first to create one." and **stop**
 
 4. **Select the change**
 
@@ -108,7 +115,7 @@ Update an existing Speclink change — from a plan file or conversation context.
 
    Use the `template` from instructions as the output structure. Apply `context` and `rules` as constraints but do NOT copy them into the file.
 
-   The instructions JSON includes `locale` — the language to write artifacts in. If present, you MUST write the artifact content in that language. Spec files (specs/\*/\*.md) default to English instead — unless the project sets `spec_locale` in `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
+   The instructions JSON includes `locale` — the language to write artifacts in. If present, you MUST write the artifact content in that language. Spec files (specs/\*/\*.md) default to the operating-system language of the machine running Speclink — unless the project sets `spec_locale` in `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
 
    **Plan-to-Artifact Mapping** (when using a plan file):
 
@@ -259,7 +266,7 @@ Update an existing Speclink change — from a plan file or conversation context.
         - The verb refuses because the move would cross a declared dependency → report the refusal and leave the order as it is.
         - Not small, or not urgent → run nothing.
       - **In progress or ready** → do not run `change rank`: its place in the queue settled when work started. Re-judge `depends_on` only.
-   5. Never remove an existing `depends_on` entry here — dropping a prerequisite is the user's decision. Never run `$speclink-apply` yourself.
+   5. Never remove an existing `depends_on` entry here — dropping a prerequisite is the user's decision. Never run `speclink-apply` yourself.
 
 10. **Seal the reflection** (discussion-sourced ingests only)
 
@@ -279,13 +286,13 @@ Update an existing Speclink change — from a plan file or conversation context.
    - Artifacts created/updated
    - Validation result
 
-   Then state the suggestion from **Next steps** and STOP. Never invoke `$speclink-apply` yourself — starting implementation is the user's call, and this workflow is over once the summary is out.
+   Then state the suggestion from **Next steps** and STOP. Never invoke `speclink-apply` yourself — starting implementation is the user's call, and this workflow is over once the summary is out.
 
 **Guardrails**
 
 - **NEVER** modify the original plan file in ``
 - **NEVER** write application code — this skill only creates/updates Speclink artifacts
-- **NEVER** create new changes — ingest only updates existing changes. If no active change exists, direct user to `$speclink-propose`
+- **NEVER** create new changes — ingest only updates existing changes. If no active change exists, direct user to `speclink-propose`
 - When updating existing changes, **preserve all completed tasks** (`[x]`) — never revert progress
 - If the source content is too brief to fill all artifact sections, use the **AskUserQuestion tool** to get more details rather than inventing content
 - If `speclink` CLI is not available, report the error and stop
@@ -297,5 +304,5 @@ Update an existing Speclink change — from a plan file or conversation context.
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The artifacts are updated and validated → `$speclink-apply <change-name>` to resume implementation
+- The artifacts are updated and validated → `speclink-apply <change-name>` to resume implementation
 - A linked discussion fed this change → `speclink discuss seal <slug>` first (step 10), then the same suggestion applies

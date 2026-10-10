@@ -106,11 +106,39 @@ fn config_and_whoami_return_typed_dtos() {
 
     let config = client.config().expect("config");
     assert_eq!(config.schema, "spec-driven", "the default workflow schema");
+    let expected = speclink_host::policy::resolve_effective_policy(|_| None, None).unwrap();
+    let wire = serde_json::to_value(&config).unwrap();
+    assert_eq!(wire["languages"]["locale"], expected.resolved().locale);
+    assert_eq!(wire["languages"]["specLocale"], expected.resolved().spec_locale.as_deref().unwrap_or("en"));
+    assert_eq!(config.content, None, "effective language metadata does not write canonical config");
 
     let whoami = client.whoami().expect("whoami");
     assert_eq!(whoami.user.handle, user_id, "whoami reports the PAT owner's id");
     assert_eq!(whoami.user.name, common::SEED_DISPLAY);
     assert!(whoami.repos.iter().any(|r| r.name == "backend"), "whoami lists the repo");
+}
+
+#[test]
+fn config_with_unknown_language_stays_readable_without_language_metadata() {
+    for content in ["spec_locale: zh-Hant\n", "locale: zh-Hant\nspec_locale: auto\n"] {
+        let store = Arc::new(MemoryStore::new());
+        let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
+        let mut uow = store.begin_unit_of_work(&scope, CommandContext { command: "seed".into(), actor: "seed".into() }).unwrap();
+        uow.create(DocumentId::WorkflowConfig, content);
+        let revision = store.commit(uow, Vec::new()).unwrap();
+        let state = AppState {
+            events: common::detached_events(), store: store.clone(), identity: common::empty_identity(),
+            config: Arc::new(common::demo_config()),
+        };
+        common::seed_demo_registry(&*state.identity);
+        let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
+        let base = common::start(state);
+        let response = client(&base, &pat).config().expect("old values remain available for repair");
+        assert_eq!(response.content.as_deref(), Some(content));
+        assert_eq!(response.revision, revision.0);
+        assert!(response.languages.is_none(), "unknown values do not enter concrete language metadata");
+        assert_eq!(store.snapshot(&scope).unwrap().revision(), revision);
+    }
 }
 
 #[test]

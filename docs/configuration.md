@@ -39,7 +39,9 @@ Effective policy values are resolved through three layers; the first layer where
 |---|---|---|
 | 1 (highest) | `SPECLINK_LOCALE` / `SPECLINK_SPEC_LOCALE` / `SPECLINK_TDD` / `SPECLINK_AUDIT` / `SPECLINK_WORKTREE` | Boolean variables accept only `true` / `false` (case-insensitive). Any other value — `yes`, `1`, empty — is treated as **unset** and falls through to the next layer. |
 | 2 | `openspec/config.yaml` | The canonical home. |
-| 3 (lowest) | Built-in defaults | `locale` unset = English, `tdd` = false, `audit` = false. |
+| 3 (lowest) | Built-in defaults | `locale` and `spec_locale` unset = system language, `tdd` = false, `audit` = false. |
+
+Unset `locale` and `spec_locale` independently use the operating-system language of the machine running Speclink: Chinese maps to `tw`, Japanese to `ja`, and other or unavailable languages to `en`. Local mode uses the local machine; Remote mode uses the server executing the command. App UI language preferences do not participate. `spec_locale: auto` still follows the effective `locale`, and explicit language settings take precedence over the system language. Detection never writes the language back into the configuration.
 
 Policy keys (`locale`, `spec_locale`, `tdd`, `audit`, `worktree`) written into `.speclink.yaml` have no effect and print no warning — the file still parses, the keys are simply ignored. If you carry such keys, move them into `openspec/config.yaml` with the same values.
 
@@ -49,10 +51,13 @@ Policy keys (`locale`, `spec_locale`, `tdd`, `audit`, `worktree`) written into `
 
 | Subcommand | What it does |
 |---|---|
+| `languages [--json]` | Resolves the canonical language settings with the executing computer's OS default; environment overrides are not applied. JSON contains `locale` (display name) and `specLocale` (`tw`/`ja`/`en`). Remote mode returns the server's result through the existing config API; an older server without language metadata must be upgraded. This read-only query needs no change and writes no config. |
 | `show [--json]` | Prints the five policy fields, `context` (line count) and `rules` (entries per section). Shows the **canonical values** — environment variables are NOT applied (resolving effective values is `speclink instructions`' job). The `--json` payload is camelCase: `locale`, `specLocale`, `tdd`, `audit`, `worktree`, `context`, `rules`; unset fields are `null`, unset toggles are `false`. |
 | `set <key> <value>` | Writes one of `locale`, `spec_locale`, `tdd`, `audit`, `worktree`. Any other key exits non-zero; `tdd`, `audit`, and `worktree` accept only `true`/`false`. `locale` accepts only the codes `tw`/`ja`/`en` and `spec_locale` only `tw`/`ja`/`en`/`auto` (case-sensitive) — display names such as 「繁體中文」 are rejected with the accepted codes listed. Setting `false` (or a locale to an empty string) **removes the key**, keeping unset-means-default intact. |
 | `context --stdin` | Sets `context` to the full stdin text; whitespace-only input removes the key. |
 | `rules <artifact> --stdin` | Replaces that artifact's rule section wholesale (one entry per line, blank lines ignored); empty stdin removes the section. `artifact` must be an artifact id of the active schema — an unknown id exits non-zero. |
+
+The languages query rejects unknown stored language values and unsupported specLocale metadata before producing output. The original show view remains readable so legacy values can be repaired; the config API omits language metadata for such values while retaining the original document and revision.
 
 **Writing `worktree` does two things the other four keys do not.** It syncs the skill footprint: turning the policy on generates the two worktree skills, turning it off removes them, with the same scope as `speclink update`.
 
@@ -76,7 +81,15 @@ The built-in `speclink-config` skill sits on this verb. It composes `context` an
 
 ## Custom tool descriptors
 
-The `tools` list accepts built-in names (`claude`, `codex`) and custom descriptor objects for any other AI harness:
+Built-in tools are `claude`, `codex`, and `copilot` (`agents` remains an alias for `codex`). Initialize with `speclink init --tools copilot` or `speclink init --tools codex,copilot`. Desktop project settings, initialization/adoption dialogs, and local checkout selection also offer Copilot.
+
+Codex and Copilot CLI/VS Code share `.agents/skills/speclink-*/SKILL.md` and identical content. Keep either tool selected to retain one copy; deselect both, for example by selecting only Claude, to prune Speclink-managed skills while keeping user skills. Selections manage generated files, not whether agents can discover the shared directory. Claude still uses `.claude/skills/`; no `.github/skills/` or instruction file is generated.
+
+Shared content refers to skills by names such as `speclink-propose` and runs operations through real CLI verbs. Codex can use `$speclink-propose`; Copilot CLI/VS Code agent chat can use `/speclink-propose` or its skill picker. Skill names are not CLI subcommands. For change creation and review/verify stamps, the actual executing Codex appends `--agent codex`, Copilot appends `--agent copilot`; omit it when identity is unknown. Never infer identity from the selected tools.
+
+**Migrating a custom name:** `name: copilot` is now reserved; update refuses before any writes. Back up the configuration, then either rename it to `copilot-custom` while retaining its `skills_dir`/`invocation`, or manually replace the entire descriptor with the built-in string `copilot`. No automatic conversion occurs; successful synchronization cleans the old managed footprint.
+
+The `tools` list accepts built-in names (`claude`, `codex`, `copilot`) and custom descriptor objects for any other AI harness:
 
 ```yaml
 tools:
@@ -101,7 +114,7 @@ Descriptors share the full lifecycle of built-in tools:
 - **Sync** — `speclink update` regenerates everything for descriptors still on the list.
 - **Clean up** — remove the descriptor from `tools`. The next `speclink update` then deletes its `speclink-*` skill directories and drops any directory left empty. If the descriptor still names an `instructions_file`, any legacy `SPECLINK` block there is stripped too, and the file is deleted if nothing else remains in it. Drop `instructions_file` before the descriptor and the engine no longer knows where that file was — delete it by hand.
 
-Descriptor-generated content uses the **neutral rendering**: no `/speclink-` slash prefixes, no plan-mode references, and verb wording chosen by `invocation`. Built-in claude and codex output is unaffected.
+Descriptor-generated content uses the **neutral rendering**: no `/speclink-` slash prefixes, no plan-mode references, and verb wording chosen by `invocation`. Custom rendering and Claude content retain their existing behavior; Codex now uses the shared content described above.
 
 ## Reference: all keys
 

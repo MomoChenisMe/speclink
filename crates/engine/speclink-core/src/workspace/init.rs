@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// 產物層的唯一版號：技能檔 frontmatter 的 version 同源於此，也是過期探測與
 /// 降級守門的比對基準。僅在內嵌資產（assets/skills）的 render 內容變動時遞增——
 /// 與 app／CLI 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
-pub const ASSET_VERSION: &str = "v1.41.0";
+pub const ASSET_VERSION: &str = "v1.44.0";
 
 const APP_CONFIG_TEMPLATE: &str = "# Speclink application config
 # See: https://github.com/speclink-app/speclink
@@ -28,10 +28,10 @@ const WORKFLOW_CONFIG_TEMPLATE: &str = "schema: spec-driven
 # Workflow policy (optional)
 # Personal/CI overrides: SPECLINK_LOCALE, SPECLINK_SPEC_LOCALE, SPECLINK_TDD, SPECLINK_AUDIT, SPECLINK_WORKTREE
 #
-# Language for AI-generated artifacts (default: English)
+# Language for AI-generated artifacts (default: system language)
 # locale: tw
 #
-# Language for spec files (default: English; \"auto\" follows locale)
+# Language for spec files (default: system language; \"auto\" follows locale)
 # spec_locale: auto
 #
 # Workflow toggles (default: off)
@@ -207,7 +207,7 @@ impl ToolSelection {
                         }
                     }
                     None => sel.notes.push(format!(
-                        "unknown tool '{name}' in .speclink.yaml tools list (supported: claude, codex)"
+                        "unknown tool '{name}' in .speclink.yaml tools list (supported: claude, codex, copilot)"
                     )),
                 },
                 ToolEntry::Descriptor(d) => {
@@ -276,8 +276,8 @@ pub(crate) fn managed_skills(
 /// One tool's slice of a sync: where its skills live, and what should be there.
 #[derive(Debug)]
 pub(crate) struct SyncTarget {
-    /// The name that appears in [`UpdateOutcome`]'s lists and the CLI output.
-    pub(crate) label: String,
+    /// Selected tool names reported for this physical directory.
+    pub(crate) labels: Vec<String>,
     /// Project-root-relative skills directory, `/`-joined (`.claude/skills`,
     /// a descriptor's `skills_dir`) — the form the probe reports paths in.
     pub(crate) skills_dir: String,
@@ -299,7 +299,7 @@ pub(crate) struct SyncTarget {
 /// - `guard` has exactly one bypass, `update`'s explicit `--allow-downgrade`; every other
 ///   regeneration path calls it.
 pub(crate) struct SyncPlan {
-    /// Ordered claude, codex, then descriptors in list order.
+    /// Ordered claude, shared codex/copilot, then descriptors in list order.
     pub(crate) targets: Vec<SyncTarget>,
     /// Built-ins that are NOT selected and lose their footprint. Empty on the legacy
     /// fallback: without a tools list, nothing was ever "deselected".
@@ -314,11 +314,18 @@ impl SyncPlan {
     /// Build the plan. This is the ONE place a sync reads the worktree policy.
     pub(crate) fn resolve(root: &Path, selection: ToolSelection, spec_dir: &str) -> SyncPlan {
         let worktree_on = worktree_skills_enabled(root, spec_dir);
-        let mut targets = Vec::new();
-        for tool in [Tool::Claude, Tool::Codex] {
+        let mut targets: Vec<SyncTarget> = Vec::new();
+        for tool in [Tool::Claude, Tool::Codex, Tool::Copilot] {
             if selection.builtins.contains(&tool) {
+                if let Some(target) = targets
+                    .iter_mut()
+                    .find(|t| t.skills_dir == tool.skills_dir())
+                {
+                    target.labels.push(tool.name().to_string());
+                    continue;
+                }
                 targets.push(SyncTarget {
-                    label: tool.name().to_string(),
+                    labels: vec![tool.name().to_string()],
                     skills_dir: tool.skills_dir().to_string(),
                     skills_root: root.join(tool.skills_dir()),
                     files: managed_skills(
@@ -334,14 +341,10 @@ impl SyncPlan {
             // `skills_dir` 已在 `ToolDescriptor::validate` 正規化（削結尾分隔符、
             // 拒絕削完等於專案根或撞上內建目錄者），這裡直接信任欄位。
             targets.push(SyncTarget {
-                label: custom.name.clone(),
+                labels: vec![custom.name.clone()],
                 skills_dir: custom.skills_dir.clone(),
                 skills_root: root.join(&custom.skills_dir),
-                files: managed_skills(
-                    skills::RenderTarget::Custom(custom),
-                    worktree_on,
-                    spec_dir,
-                ),
+                files: managed_skills(skills::RenderTarget::Custom(custom), worktree_on, spec_dir),
             });
             if let Some(file) = custom.instructions_file.as_deref() {
                 custom_strip_targets.push((
@@ -358,7 +361,12 @@ impl SyncPlan {
         } else {
             [Tool::Claude, Tool::Codex]
                 .into_iter()
-                .filter(|t| !selection.builtins.contains(t))
+                .filter(|t| {
+                    !selection
+                        .builtins
+                        .iter()
+                        .any(|selected| selected.skills_dir() == t.skills_dir())
+                })
                 .collect()
         };
         SyncPlan {
@@ -384,9 +392,8 @@ impl SyncPlan {
         let mut differing = Vec::new();
         for target in &self.targets {
             for (dir, expected) in &target.files {
-                let actual =
-                    std::fs::read_to_string(target.skills_root.join(dir).join("SKILL.md"))
-                        .unwrap_or_default();
+                let actual = std::fs::read_to_string(target.skills_root.join(dir).join("SKILL.md"))
+                    .unwrap_or_default();
                 if eol_normalized(&actual) != eol_normalized(expected) {
                     differing.push(format!("{}/{dir}/SKILL.md", target.skills_dir));
                 }
@@ -456,7 +463,7 @@ impl SyncPlan {
             }
             let expected: Vec<String> = target.files.iter().map(|(dir, _)| dir.clone()).collect();
             prune_orphan_skills(&target.skills_root, &expected)?;
-            out.updated.push(target.label.clone());
+            out.updated.extend(target.labels.iter().cloned());
         }
 
         for tool in &self.deselected_builtins {
@@ -524,7 +531,7 @@ pub fn update(root: &Path, allow_downgrade: bool) -> Result<UpdateOutcome> {
 /// submitted again to converge (design: "失敗不開啟 Workspace並以可重試收斂取代跨檔回滾").
 pub fn reconcile_builtin_tools(root: &Path, tools: &[Tool]) -> Result<UpdateOutcome> {
     if tools.is_empty() {
-        bail!("no tools selected (supported: claude, codex)");
+        bail!("no tools selected (supported: claude, codex, copilot)");
     }
     let path = root.join(".speclink.yaml");
     let original = util::read_opt(&path).unwrap_or_default();
@@ -559,7 +566,7 @@ pub fn reconcile_builtin_tools(root: &Path, tools: &[Tool]) -> Result<UpdateOutc
 /// gitignored work directory would surface as untracked files in the user's repo.
 pub fn adopt(root: &Path, tools: &[Tool]) -> Result<UpdateOutcome> {
     if tools.is_empty() {
-        bail!("no tools selected (supported: claude, codex)");
+        bail!("no tools selected (supported: claude, codex, copilot)");
     }
     store_init(&root.join("openspec"), false)?;
     ensure_gitignore(&root.join(".gitignore"))?;
@@ -1000,7 +1007,10 @@ pub fn probe_assets(root: &Path) -> AssetProbe {
     let Ok(app) = crate::config::AppConfig::load(&root.join(".speclink.yaml")) else {
         return without_tools(AssetStatus::Unknown);
     };
-    let spec_dir = app.spec_dir.clone().unwrap_or_else(|| "openspec".to_string());
+    let spec_dir = app
+        .spec_dir
+        .clone()
+        .unwrap_or_else(|| "openspec".to_string());
     let selection = ToolSelection::resolve(root, &app);
     // 探測只讀 tools 清單宣告的工具：沒有清單就沒有受管工具可查（目錄偵測的回退
     // 是 update 的再生規則，不是探測的判定面）。
@@ -1012,30 +1022,25 @@ pub fn probe_assets(root: &Path) -> AssetProbe {
     let mut tools = Vec::new();
     for target in &plan.targets {
         let version = match probe_skills_dir(&target.skills_root) {
-            SkillsProbe::Absent => {
-                tools.push(ToolAssetState {
-                    tool: target.label.clone(),
-                    workspace_version: None,
-                    stale: false,
-                    newer: false,
-                    missing: true,
-                });
-                continue;
-            }
+            SkillsProbe::Absent => None,
             // 技能檔在但讀不出版號（IO、壞 frontmatter）＝無法判定；
             // 與「不存在」是不同的狀態。
             SkillsProbe::Unreadable => return without_tools(AssetStatus::Unknown),
-            SkillsProbe::Found(version) => version,
+            SkillsProbe::Found(version) => Some(version),
         };
         // 方向優先於相等判定：領先現版的版號是「較新」，不得再算成過期。
-        let newer = workspace_is_newer(&version, ASSET_VERSION);
-        tools.push(ToolAssetState {
-            tool: target.label.clone(),
-            stale: !newer && version != ASSET_VERSION,
-            newer,
-            missing: false,
-            workspace_version: Some(version),
-        });
+        let newer = version
+            .as_deref()
+            .is_some_and(|v| workspace_is_newer(v, ASSET_VERSION));
+        for label in &target.labels {
+            tools.push(ToolAssetState {
+                tool: label.clone(),
+                stale: !newer && version.as_deref().is_some_and(|v| v != ASSET_VERSION),
+                newer,
+                missing: version.is_none(),
+                workspace_version: version.clone(),
+            });
+        }
     }
 
     let status = if tools.iter().any(|t| t.newer) {
@@ -1064,12 +1069,12 @@ pub fn probe_assets(root: &Path) -> AssetProbe {
 fn instructions_path(tool: Tool) -> &'static str {
     match tool {
         Tool::Claude => "CLAUDE.md",
-        Tool::Codex => "AGENTS.md",
+        Tool::Codex | Tool::Copilot => "AGENTS.md",
     }
 }
 
 /// Validate a comma-separated `--tools` value into a tool list. Speclink deliberately scopes
-/// the supported tools to claude + codex.
+/// the supported tools to claude, codex and copilot.
 pub fn parse_tools(spec: &str) -> Result<Vec<Tool>> {
     parse_tool_names(&spec.split(',').collect::<Vec<&str>>())
 }
@@ -1090,7 +1095,7 @@ pub fn parse_tool_names<S: AsRef<str>>(names: &[S]) -> Result<Vec<Tool>> {
                     out.push(t);
                 }
             }
-            None => bail!("unknown tool: {name} (supported: claude, codex)"),
+            None => bail!("unknown tool: {name} (supported: claude, codex, copilot)"),
         }
     }
     Ok(out)

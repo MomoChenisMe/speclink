@@ -88,7 +88,7 @@ where
     Ok(Some(v.unwrap_or_default()))
 }
 
-/// One entry of the `tools:` list — a built-in tool name string (claude, codex) or a
+/// One entry of the `tools:` list — a built-in tool name string or a
 /// custom harness descriptor object.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
@@ -151,6 +151,9 @@ impl ToolDescriptor {
         }
         // "agents" is Tool::parse's alias for codex, so it is reserved alongside the
         // canonical built-in names.
+        if name == "copilot" {
+            return Err("tool descriptor: name 'copilot' conflicts with the built-in copilot; rename it to copilot-custom to retain skills_dir/invocation, or manually replace the descriptor with the built-in string copilot".to_string());
+        }
         if ["claude", "codex", "agents"].contains(&name) {
             return Err(format!(
                 "tool descriptor: name '{name}' conflicts with a built-in tool name (claude, codex)"
@@ -313,10 +316,10 @@ pub const LOCALE_CODES: [&str; 3] = ["tw", "ja", "en"];
 /// Codes accepted for `spec_locale`: the `locale` set plus `auto` (follow `locale`).
 pub const SPEC_LOCALE_CODES: [&str; 4] = ["tw", "ja", "en", "auto"];
 
-/// Validate the locale fields of a policy write. Write-side only: read paths stay
-/// lenient (`locale_display` echoes unknown codes verbatim), so pre-existing
-/// out-of-set values remain readable — they just can no longer be (re)written
-/// through official verbs. `None` (unset) is always valid.
+/// Validate fields at boundaries that require supported language codes: policy
+/// writes and the concrete languages query. Canonical reads stay lenient
+/// (`locale_display` echoes unknown codes verbatim), so old out-of-set values
+/// remain readable for repair. `None` (unset) is always valid.
 pub fn validate_policy_locales(fields: &WorkflowPolicyFields) -> anyhow::Result<()> {
     check_locale_code("locale", fields.locale.as_deref(), &LOCALE_CODES)?;
     check_locale_code("spec_locale", fields.spec_locale.as_deref(), &SPEC_LOCALE_CODES)
@@ -350,25 +353,28 @@ pub struct WorkflowConfig {
     pub rules: BTreeMap<String, Vec<String>>,
 }
 
-/// `SPECLINK_*` environment overrides — the top layer of the three-layer policy resolution
-/// (personal/CI overrides beat the canonical config).
+/// Host-injected policy inputs: `SPECLINK_*` overrides beat canonical config,
+/// while the OS language supplies the lowest-priority language default.
 #[derive(Debug, Clone, Default)]
 pub struct EnvOverrides {
     pub locale: Option<String>,
     pub spec_locale: Option<String>,
+    /// Operating-system language injected by the Host; used only when a language is unset.
+    pub system_locale: Option<String>,
     pub tdd: Option<bool>,
     pub audit: Option<bool>,
     pub worktree: Option<bool>,
 }
 
 impl EnvOverrides {
-    /// Read overrides through an injectable lookup — the only constructor:
+    /// Read overrides through an injectable lookup:
     /// the process-env read lives at the Host boundary (speclink-host), so
     /// the Engine's policy resolution runs on injected values only.
     pub fn from_lookup(get: impl Fn(&str) -> Option<String>) -> EnvOverrides {
         EnvOverrides {
             locale: get("SPECLINK_LOCALE").and_then(non_empty),
             spec_locale: get("SPECLINK_SPEC_LOCALE").and_then(non_empty),
+            system_locale: None,
             tdd: get("SPECLINK_TDD").as_deref().and_then(parse_env_bool),
             audit: get("SPECLINK_AUDIT").as_deref().and_then(parse_env_bool),
             worktree: get("SPECLINK_WORKTREE").as_deref().and_then(parse_env_bool),
@@ -400,7 +406,7 @@ fn parse_env_bool(v: &str) -> Option<bool> {
 }
 
 /// Effective workflow policy after the three-layer resolution:
-/// env var > `openspec/config.yaml` > built-in default.
+/// env var > `openspec/config.yaml` > system language / built-in toggle defaults.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedPolicy {
     /// Human-readable locale display name (e.g. "English"), see `locale_display`.
@@ -428,16 +434,32 @@ pub fn resolve_policy(env: &EnvOverrides, wf: &WorkflowConfig) -> ResolvedPolicy
 /// Layered locale code: first layer where the key is present wins (values pass
 /// through verbatim, see `locale_display`).
 fn locale_code<'a>(env: &'a EnvOverrides, wf: &'a WorkflowConfig) -> Option<&'a str> {
-    env.locale.as_deref().or(wf.locale.as_deref())
+    env.locale.as_deref().or(wf.locale.as_deref()).or(Some(system_locale_code(env)))
 }
 
-/// Layered spec-file language: unset / empty / "en" / "english" → `None` (specs default to
-/// English); `"auto"` follows the locale resolved through the same layers.
+/// Supported system languages use the existing policy codes; other or unavailable
+/// system languages fall back to English. OS detection stays at the Host boundary.
+fn system_locale_code(env: &EnvOverrides) -> &'static str {
+    let language = env.system_locale.as_deref().unwrap_or("").trim()
+        .split(['-', '_', '.', '@']).next().unwrap_or("");
+    if language.eq_ignore_ascii_case("zh") {
+        "tw"
+    } else if language.eq_ignore_ascii_case("ja") {
+        "ja"
+    } else {
+        "en"
+    }
+}
+
+/// Layered spec-file language: unset → system language; "en" / "english" → `None`;
+/// `"auto"` follows the resolved artifact locale.
 fn spec_locale_code(env: &EnvOverrides, wf: &WorkflowConfig) -> Option<String> {
     let code = env
         .spec_locale
         .as_deref()
-        .or(wf.spec_locale.as_deref())?
+        .or(wf.spec_locale.as_deref())
+        .filter(|code| !code.trim().is_empty())
+        .unwrap_or(system_locale_code(env))
         .trim()
         .to_string();
     let code = if code.eq_ignore_ascii_case("auto") {
@@ -458,9 +480,9 @@ pub fn resolve_locale(wf: &WorkflowConfig) -> String {
 }
 
 /// Resolve the spec-file language from the canonical `openspec/config.yaml` alone.
-/// Unset / empty / "en" / "english" → `None` (specs default to English); `"auto"` follows the
-/// project locale (again `None` when that resolves to English). Env-blind view —
-/// callers that honor `SPECLINK_*` use `resolve_policy` instead.
+/// Without an injected system language, unset / empty / "en" / "english" → `None`;
+/// `"auto"` follows the project locale. Callers honoring system language and
+/// `SPECLINK_*` overrides use `resolve_policy` instead.
 pub fn resolve_spec_locale(wf: &WorkflowConfig) -> Option<String> {
     spec_locale_code(&EnvOverrides::default(), wf)
 }

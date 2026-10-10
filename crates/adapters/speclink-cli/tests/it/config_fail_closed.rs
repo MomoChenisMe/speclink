@@ -106,7 +106,12 @@ fn missing_workflow_config_still_runs_with_defaults() {
     );
     let payload: serde_json::Value =
         serde_json::from_slice(&out.stdout).expect("stdout is JSON");
-    assert_eq!(payload["locale"].as_str().unwrap(), "English");
+    let env = speclink_core::config::EnvOverrides {
+        system_locale: speclink_host::policy::process_env_overrides().system_locale,
+        ..Default::default()
+    };
+    let policy = speclink_core::config::resolve_policy(&env, &Default::default());
+    assert_eq!(payload["locale"], policy.locale);
 }
 
 // --- broken .speclink.yaml: mode resolution fails closed, never fs mode ---

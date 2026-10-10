@@ -5,6 +5,16 @@ import { describe, it, expect } from "vitest";
 import { APP_MESSAGES } from "../i18n/messages";
 
 describe("APP_MESSAGES", () => {
+  it("兩語系都解釋 Copilot 與 Codex 共用技能及勾選的邊界", () => {
+    for (const [locale, marker] of [["zh-TW", "讀取"], ["en", "discover"]] as const) {
+      for (const key of ["settings.toolsHelp", "chooser.checkoutToolsHelp"] as const) {
+        const text = APP_MESSAGES[locale][key];
+        expect(text).toContain("Codex");
+        expect(text).toContain("Copilot");
+        expect(text).toContain(marker);
+      }
+    }
+  });
   it("keeps the zh-TW and en dictionaries key-equal", () => {
     const zh = Object.keys(APP_MESSAGES["zh-TW"]).sort();
     const en = Object.keys(APP_MESSAGES.en).sort();
