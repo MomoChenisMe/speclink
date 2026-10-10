@@ -297,9 +297,7 @@ export interface AppState {
   openDetail: (name: string) => void;
   openDiscussion: (slug: string) => void;
   openSpec: (capability: string) => void;
-  closeSpec: () => void;
   openArchived: (target: ArchivedTarget) => void;
-  closeArchived: () => void;
   /** 關閉詳情頁回宿主頁（Esc、麵包屑、‹ › 失效時共用）：一次清空四個詳情欄位與 detailVerb。 */
   closeDetailPage: () => void;
   requestArchive: (name: string) => void;
@@ -1335,8 +1333,16 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     setBoardView(boardView) {
-      // 切換主區頁面＝離開詳情頁：變更／討論詳情頁疊在宿主頁上，不關就會蓋住新頁。
-      set({ boardView, reauthConnectionId: null, detailChange: null, detailDiscussion: null, detailVerb: null });
+      // 切換主區頁面＝離開詳情頁：四種詳情頁都疊在宿主頁上，不關就會蓋住新頁。
+      set({
+        boardView,
+        reauthConnectionId: null,
+        detailChange: null,
+        detailDiscussion: null,
+        detailSpec: null,
+        detailArchived: null,
+        detailVerb: null,
+      });
       if (boardView === "manual") void get().refreshManual();
     },
 
@@ -1456,10 +1462,6 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       });
     },
 
-    closeSpec() {
-      set({ detailSpec: null });
-    },
-
     openArchived(target) {
       set({
         detailArchived: target,
@@ -1468,10 +1470,6 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         detailDiscussion: null,
         detailSpec: null,
       });
-    },
-
-    closeArchived() {
-      set({ detailArchived: null });
     },
 
     closeDetailPage() {
@@ -2023,7 +2021,9 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     connectionPhases: {},
     reauthConnectionId: null,
     openConnectionReauth(connectionId) {
-      set({ boardView: "settings", reauthConnectionId: connectionId });
+      // 經 setBoardView 切頁：連線失效橫幅在主區外、詳情頁開著時仍點得到，詳情頁要一併關閉。
+      get().setBoardView("settings");
+      set({ reauthConnectionId: connectionId });
     },
     async refreshConnections() {
       if (!connectionsAdapter) return false;

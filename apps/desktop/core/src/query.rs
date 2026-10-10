@@ -408,6 +408,34 @@ pub fn document_location_at(root: &Path, change: &str, artifact: &str) -> Option
     Some(DocumentLocation::within(&ctx.workspace.root, path))
 }
 
+/// 正式規格 spec.md 的磁碟位置（規格詳情頁「開啟 ▾」）——與 [`spec_document_at`] 同一個
+/// store，spec 目錄名取自專案設定。不檢查檔案存在；含路徑穿越的參數回 `None`。
+pub fn spec_location_at(root: &Path, capability: &str) -> Option<DocumentLocation> {
+    if !is_safe_path_param(capability) {
+        return None;
+    }
+    let ctx = init_core_context(root)?;
+    let path = ctx.store.layout().canonical_spec(capability);
+    Some(DocumentLocation::within(&ctx.workspace.root, path))
+}
+
+/// 已封存 change 的 artifact 磁碟位置（已封存詳情頁「開啟 ▾」）——與
+/// [`archived_document_at`] 同一個 store；`artifact` 為 output path，逐段接在封存目錄下。
+/// 不檢查檔案存在；含路徑穿越的參數回 `None`。
+pub fn archived_document_location_at(
+    root: &Path,
+    dated_name: &str,
+    artifact: &str,
+) -> Option<DocumentLocation> {
+    if !is_safe_path_param(dated_name) || !is_safe_path_param(artifact) {
+        return None;
+    }
+    let ctx = init_core_context(root)?;
+    let dir = ctx.store.layout().archived_change_dir(dated_name);
+    let path = artifact.split('/').fold(dir, |p, c| p.join(c));
+    Some(DocumentLocation::within(&ctx.workspace.root, path))
+}
+
 /// 讀取一個 capability 的正式規格 spec.md。無則 `None`。含路徑穿越的 `capability` 回傳 `None`。
 pub fn spec_document_at(root: &Path, capability: &str) -> Option<String> {
     if !is_safe_path_param(capability) {
@@ -1867,5 +1895,39 @@ mod tests {
         fx.add_change("demo", OLD_META);
         assert!(document_location_at(fx.root(), "../x", "proposal.md").is_none());
         assert!(document_location_at(fx.root(), "demo", "../../secret.md").is_none());
+    }
+
+    // --- 規格詳情頁與已封存詳情頁的文件定位（desktop-readonly-detail-pages design D7）---
+
+    #[test]
+    fn spec_location_resolves_the_canonical_spec_under_the_spec_dir() {
+        let fx = FixtureRoot::new("q-spec-loc");
+        let loc = spec_location_at(fx.root(), "auth").expect("location");
+        assert_eq!(loc.relative, "openspec/specs/auth/spec.md");
+        assert!(Path::new(&loc.path).ends_with("openspec/specs/auth/spec.md"), "{}", loc.path);
+    }
+
+    #[test]
+    fn archived_document_location_resolves_inside_the_dated_archive_dir() {
+        let fx = FixtureRoot::new("q-arch-loc");
+        let loc = archived_document_location_at(fx.root(), "2026-07-04-old", "proposal.md").expect("location");
+        assert_eq!(loc.relative, "openspec/changes/archive/2026-07-04-old/proposal.md");
+        let spec = archived_document_location_at(fx.root(), "2026-07-04-old", "specs/auth/spec.md").expect("spec");
+        assert_eq!(spec.relative, "openspec/changes/archive/2026-07-04-old/specs/auth/spec.md");
+    }
+
+    #[test]
+    fn spec_and_archived_locations_reject_path_traversal() {
+        let fx = FixtureRoot::new("q-ro-loc-bad");
+        assert!(spec_location_at(fx.root(), "../x").is_none());
+        assert!(archived_document_location_at(fx.root(), "../x", "proposal.md").is_none());
+        assert!(archived_document_location_at(fx.root(), "2026-07-04-old", "../../secret.md").is_none());
+    }
+
+    #[test]
+    fn spec_and_archived_locations_are_none_outside_a_project() {
+        let root = crate::testfixture::fresh_non_project_dir("q-ro-loc");
+        assert!(spec_location_at(&root, "auth").is_none());
+        assert!(archived_document_location_at(&root, "2026-07-04-old", "proposal.md").is_none());
     }
 }

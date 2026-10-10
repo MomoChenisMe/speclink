@@ -204,7 +204,7 @@ export { ListCard, type ListCardProps } from "./components/ListCard";
 export { PAGE_SIZE, PAGE_SIZE_OPTIONS } from "./components/ListPager";
 export { SearchField, type SearchFieldProps } from "./components/SearchField";
 export { ArchivedList, type ArchivedListProps } from "./components/ArchivedList";
-export { ArchivedDrawer, type ArchivedDrawerProps, type ArchivedTarget } from "./components/ArchivedDrawer";
+export { ArchivedDetailPage, type ArchivedDetailPageProps, type ArchivedTarget } from "./components/ArchivedDetailPage";
 export { ReviewArchiveDialog, type ReviewArchiveDialogProps } from "./components/ReviewArchiveDialog";
 export {
   REVIEW_ICON,
@@ -222,8 +222,14 @@ export {
 } from "./components/verifyStyle";
 
 // 規格頁
-export { SpecList, type SpecListProps } from "./components/SpecList";
-export { SpecDrawer, type SpecDrawerProps } from "./components/SpecDrawer";
+export { SpecList, sortSpecs, type SpecListProps } from "./components/SpecList";
+export { SpecDetailPage, type SpecDetailPageProps } from "./components/SpecDetailPage";
+export {
+  parseSpecSections,
+  type SpecRequirement,
+  type SpecScenario,
+  type SpecSections,
+} from "./specSections";
 
 // 手冊頁（desktop-manual-page）
 export { ManualPage, type ManualPageProps } from "./components/ManualPage";

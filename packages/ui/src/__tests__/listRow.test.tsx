@@ -21,6 +21,19 @@ function render(ui: ReactElement) {
 const row = () => document.querySelector("[data-row]") as HTMLElement;
 
 describe("ListRow（共用列）", () => {
+  it("disabled：aria-disabled、不可聚焦、無 ›，點擊與 Enter 都不觸發", () => {
+    const onClick = vi.fn();
+    render(<ListRow data-row="a" title="gone-change" description="無封存記錄" disabled onClick={onClick} />);
+    const el = row();
+    expect(el.getAttribute("aria-disabled")).toBe("true");
+    expect(el.getAttribute("tabindex")).toBe("-1");
+    expect(el.className).not.toContain("cursor-pointer");
+    expect(el.querySelector(".lucide-chevron-right")).toBeNull();
+    fireEvent.click(el);
+    fireEvent.keyDown(el, { key: "Enter" });
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
   it("渲染等寬標題、描述列、meta 槽、leading 槽與 › 收尾；整列可點且可聚焦", () => {
     const onClick = vi.fn();
     render(

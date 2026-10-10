@@ -219,6 +219,20 @@ describe("SpecList（最新在前與換頁）", () => {
     expect(screen.getByText("第 21–21 筆，共 21 筆")).toBeTruthy();
   });
 
+  it("初次回報全量順序、搜尋後回報過濾後順序且不受換頁影響（詳情頁 ‹ › 的序列）", () => {
+    const onVisibleOrderChange = vi.fn();
+    render(<SpecList specs={MANY} onOpen={vi.fn()} onVisibleOrderChange={onVisibleOrderChange} />);
+    // 全部頁的順序，不只第 1 頁的 20 筆。
+    expect(onVisibleOrderChange).toHaveBeenLastCalledWith(MANY.map((s) => s.id));
+    const calls = onVisibleOrderChange.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
+    expect(onVisibleOrderChange.mock.calls.length).toBe(calls);
+    fireEvent.change(screen.getByPlaceholderText("搜尋規格…"), { target: { value: "s1" } });
+    expect(onVisibleOrderChange).toHaveBeenLastCalledWith([
+      "s10", "s11", "s12", "s13", "s14", "s15", "s16", "s17", "s18", "s19",
+    ]);
+  });
+
   it("13 筆時工具列只有筆數範圍與每頁筆數：無頁碼鈕、無 ‹ ›、無跳頁輸入", () => {
     renderList(MANY.slice(0, 13));
     expect(cardOrder()).toHaveLength(13);

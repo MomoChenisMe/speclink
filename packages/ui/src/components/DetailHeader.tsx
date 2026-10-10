@@ -8,14 +8,20 @@ import { Card } from "./ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /** 詳情頁分頁對應的文件（design D4「開啟 ▾」）：change 的 artifact（輸出路徑，如
- * `proposal.md`、`specs/<capability>/spec.md`）或一筆討論記錄。磁碟位置由宿主解析
- * （worktree 副本、spec 目錄名、已封存討論的日期檔名），頁不拼路徑。 */
-export type DocumentRef = { change: string; artifact: string } | { discussion: string };
+ * `proposal.md`、`specs/<capability>/spec.md`）、一筆討論記錄、一份正式規格，或封存變更
+ * 的 artifact（dated name 定址）。磁碟位置由宿主解析（worktree 副本、spec 目錄名、已封存
+ * 討論的日期檔名），頁不拼路徑。 */
+export type DocumentRef =
+  | { change: string; artifact: string }
+  | { discussion: string }
+  | { spec: string }
+  | { archived: string; artifact: string };
 
 /** 「開啟 ▾」的對象：文件與該分頁已載入的原文（未載完為 null）。分頁不載原文時
- * （審查／驗證工單只載解析後的回合）`content` 缺席。 */
+ * （審查／驗證工單只載解析後的回合）`content` 缺席；`doc` 為 null＝沒有可定位的檔案
+ * （已封存討論），只能複製原文。 */
 export interface DocumentTarget {
-  doc: DocumentRef;
+  doc: DocumentRef | null;
   content?: string | null;
 }
 
@@ -49,6 +55,8 @@ export interface DetailHeaderProps {
   title: string;
   /** 標題旁複製鈕的無障礙標籤。 */
   copyLabel: string;
+  /** 複製鈕寫入的值；缺席＝標題本身（封存變更以變更名為題、複製含日期前綴的封存目錄名）。 */
+  copyValue?: string;
   /** 標題之後的章籤／狀態籤槽。 */
   badges?: ReactNode;
   /** 同列右端的動作區。 */
@@ -63,14 +71,22 @@ export interface DetailHeaderProps {
  * 詳情頁標頭骨架（design D6／D7）：標題列（標題＋複製＋章籤槽＋右端動作區）、
  * 選用的副標行、灰字出身列。標題列與出身列恆定單行——不折行、不撐寬頁面。
  */
-export function DetailHeader({ title, copyLabel, badges, actions, subtitle, provenance }: DetailHeaderProps) {
+export function DetailHeader({
+  title,
+  copyLabel,
+  copyValue,
+  badges,
+  actions,
+  subtitle,
+  provenance,
+}: DetailHeaderProps) {
   // 以原始槽位為 key：資料陸續抵達時前段由缺席變存在，後段不得因位移而重掛。
   const segments = (provenance ?? []).flatMap((node, slot) => (node ? [{ node, slot }] : []));
   return (
     <header className="flex min-w-0 flex-col gap-1.5">
       <div data-title-row className="flex min-w-0 items-center gap-2 whitespace-nowrap">
         <h1 className="min-w-0 truncate font-mono text-[22px] font-semibold leading-tight">{title}</h1>
-        <CopyButton value={title} label={copyLabel} />
+        <CopyButton value={copyValue ?? title} label={copyLabel} />
         {badges && <div className="flex shrink-0 items-center gap-1.5">{badges}</div>}
         {actions && <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">{actions}</div>}
       </div>

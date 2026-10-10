@@ -401,6 +401,33 @@ async fn discussion_location(
     .map_err(|e| format!("discussion_location worker failed: {e}"))
 }
 
+/// 正式規格的磁碟位置（規格詳情頁「開啟 ▾」）：與 `spec_document` 同一個 store。
+#[tauri::command]
+async fn spec_location(
+    root: PathBuf,
+    capability: String,
+) -> Result<Option<speclink_desktop_core::query::DocumentLocation>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::query::spec_location_at(&root, &capability)
+    })
+    .await
+    .map_err(|e| format!("spec_location worker failed: {e}"))
+}
+
+/// 已封存 change 的 artifact 磁碟位置（已封存詳情頁「開啟 ▾」）：與 `archived_document` 同一個 store。
+#[tauri::command]
+async fn archived_document_location(
+    root: PathBuf,
+    dated_name: String,
+    artifact: String,
+) -> Result<Option<speclink_desktop_core::query::DocumentLocation>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::query::archived_document_location_at(&root, &dated_name, &artifact)
+    })
+    .await
+    .map_err(|e| format!("archived_document_location worker failed: {e}"))
+}
+
 #[tauri::command]
 async fn list_discussions(root: PathBuf) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -1933,6 +1960,8 @@ pub fn run() {
             open_path,
             document_location,
             discussion_location,
+            spec_location,
+            archived_document_location,
             fs_actions::open_in_terminal,
             fs_actions::open_in_editor,
             delete_schema,

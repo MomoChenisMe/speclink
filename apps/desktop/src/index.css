@@ -7,6 +7,13 @@
 /* 共用元件庫在 node_modules（Tailwind 預設不掃），明確納入其 class 來源。 */
 @source "../../../packages/ui/src";
 
+/* 觸控板水平滑動時 WebKit 對整頁做彈性回彈（整個畫面跟著手指平移）。桌面的返回手勢由
+   SwipeBack 接手，根層關掉水平回彈；只放桌面——瀏覽器裡的 server-web 要保留瀏覽器自己的滑動返回。 */
+html,
+body {
+  overscroll-behavior-x: none;
+}
+
 /* markdown 排版由 Streamdown 承擔（清單、表格容器、程式碼框）；.markdown 為薄覆寫掛鉤，
    只留基準字級與行高、teal code chip、刪除線灰字與 GFM 任務清單。 */
 .markdown {
@@ -18,6 +25,11 @@
   font-family: "Cascadia Code", "Consolas", ui-monospace, monospace;
   font-size: 0.86em; padding: 0.12em 0.4em; border-radius: 5px;
   background: color-mix(in oklch, var(--primary) 14%, transparent);
+}
+/* 規格需求文的 SHALL／MUST 關鍵字（rehypeSpecKeywords）：等寬灰底，與 teal code chip 區分。 */
+.markdown code.spec-kw {
+  background: var(--muted);
+  color: var(--muted-foreground);
 }
 .markdown del { color: var(--muted-foreground); }
 /* GFM 任務清單 checkbox（懸掛縮排對齊、完成項刪除線）；Streamdown 的清單符號在行內，
