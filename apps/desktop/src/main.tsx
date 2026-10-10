@@ -21,7 +21,9 @@ import "@fontsource-variable/noto-sans-tc";
 import "./index.css";
 
 const root = document.getElementById("root");
-if (root) {
+async function start() {
+  if (!root) return;
+  const portable = await invoke<boolean>("portable_mode");
   createRoot(root).render(
     <StrictMode>
       <App
@@ -38,9 +40,13 @@ if (root) {
         }}
         workspace={createWorkspaceAdapter()}
         connections={createConnectionsAdapter()}
-        updater={tauriUpdaterAdapter()}
+        updater={portable ? undefined : tauriUpdaterAdapter()}
         cliInstall={tauriCliInstallAdapter()}
       />
     </StrictMode>,
   );
 }
+
+void start().catch((error: unknown) => {
+  if (root) root.textContent = `Speclink startup failed: ${String(error)}`;
+});

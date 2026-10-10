@@ -11,7 +11,6 @@ use speclink_protocol::query as protocol_query;
 use speclink_remote::auth as remote_auth;
 use speclink_remote::client::Client as RemoteClient;
 use speclink_remote::credentials as remote_credentials;
-use speclink_remote::credentials::CredentialStore as _;
 use speclink_remote::login as remote_login;
 use std::io::IsTerminal;
 use std::process::Stdio;
@@ -106,6 +105,9 @@ pub(crate) fn cmd_auth(a: AuthArgs) -> Result<()> {
     let origin = remote_auth::origin_of(&conn.url);
     match a.command {
         AuthCommands::Login { token_stdin, pat } => {
+            if speclink_host::portable::data_dir().is_some() {
+                bail!("Portable mode does not save logins. Set SPECLINK_TOKEN for this CLI session, or sign in within the desktop app.");
+            }
             if token_stdin || pat {
                 return login_with_pat(&conn, &origin, token_stdin);
             }
@@ -203,7 +205,7 @@ impl remote_login::DeviceLoginIo for CliDeviceIo {
     }
 }
 fn login_with_device(conn: &core::workspace::RemoteConnection, origin: &str) -> Result<()> {
-    let store = remote_credentials::KeyringCredentialStore;
+    let store = remote_credentials::client_store();
     // Probe before starting: approving in a browser only to discover there is
     // nowhere to keep the credential wastes the user's time.
     if store.get(origin, remote_credentials::CredentialKind::Refresh).is_err() {
@@ -214,7 +216,7 @@ fn login_with_device(conn: &core::workspace::RemoteConnection, origin: &str) -> 
 
     let outcome = remote_login::device_login(
         origin,
-        &store,
+        store,
         &remote_auth::speclink_config_dir(),
         &CliDeviceIo,
     )
@@ -245,7 +247,7 @@ fn login_with_device(conn: &core::workspace::RemoteConnection, origin: &str) -> 
 /// both. The server-side PAT is left alone: it is a separate credential the
 /// user manages, possibly in use from another machine.
 fn cmd_auth_logout(origin: &str) -> Result<()> {
-    let store = remote_credentials::KeyringCredentialStore;
+    let store = remote_credentials::client_store();
     let dir = remote_auth::speclink_config_dir();
     let refresh = store
         .get(origin, remote_credentials::CredentialKind::Refresh)
@@ -270,7 +272,7 @@ fn cmd_auth_logout(origin: &str) -> Result<()> {
             );
         }
     }
-    remote_login::clear_all_local_credentials(origin, &store);
+    remote_login::clear_all_local_credentials(origin, store);
     remote_auth::remove_token_at(&dir, origin)?;
     println!("{} Logged out of {origin}", color::green("✓"));
     Ok(())

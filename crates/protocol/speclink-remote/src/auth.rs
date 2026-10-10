@@ -9,6 +9,8 @@
 //! → keyring PAT → credentials file. A layer that cannot answer falls through
 //! silently; that is what keeps a headless CI box (no keyring at all) working
 //! exactly as it did before the keyring layers existed.
+//! Windows portable mode uses only process credentials or SPECLINK_TOKEN;
+//! neither the machine keyring nor the credentials file is read for login.
 
 use crate::credentials::{CredentialKind, CredentialStore};
 use std::collections::BTreeMap;
@@ -56,6 +58,8 @@ fn read_map(path: &Path) -> BTreeMap<String, String> {
 /// creating the file with owner-only permissions (Unix 0600; Windows relies
 /// on the user-profile directory ACL). Other origins in the file survive.
 pub fn save_token_at(dir: &Path, origin: &str, token: &str) -> anyhow::Result<PathBuf> {
+    anyhow::ensure!(speclink_host::portable::data_dir().is_none(),
+        "Portable mode does not save login tokens. Set SPECLINK_TOKEN for this CLI session instead.");
     std::fs::create_dir_all(dir)?;
     let path = credentials_path_in(dir);
     let mut map = read_map(&path);
@@ -87,6 +91,9 @@ pub fn save_token_at(dir: &Path, origin: &str, token: &str) -> anyhow::Result<Pa
 /// Read the token stored for `origin`, if any. A missing file or missing
 /// entry is simply `None` (treated as "not logged in").
 pub fn load_token_at(dir: &Path, origin: &str) -> Option<String> {
+    if speclink_host::portable::data_dir().is_some() {
+        return None;
+    }
     read_map(&credentials_path_in(dir)).remove(origin)
 }
 
@@ -290,7 +297,7 @@ where
     with_credential(
         &speclink_config_dir(),
         origin,
-        &crate::credentials::KeyringCredentialStore,
+        crate::credentials::client_store(),
         std::env::var("SPECLINK_TOKEN").ok(),
         attempt,
     )
@@ -304,7 +311,7 @@ pub fn resolve_credential(
     resolve_credential_at(
         &speclink_config_dir(),
         origin,
-        &crate::credentials::KeyringCredentialStore,
+        crate::credentials::client_store(),
         std::env::var("SPECLINK_TOKEN").ok(),
     )
 }
