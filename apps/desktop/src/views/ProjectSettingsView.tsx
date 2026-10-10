@@ -44,7 +44,7 @@ import type { WorkspaceSettingsProvider } from "../session";
 /** locale／spec_locale 的「未設定」在 config 裡是空字串，Radix Select 的 item 不接受空字串。 */
 const LOCALE_UNSET = "__unset__";
 
-/** 官方合法語系代碼（引擎 LOCALE_CODES／SPEC_LOCALE_CODES 的前端鏡像）。 */
+/** 可讀的合法語系代碼；auto 僅保留舊設定相容，不提供新選項。 */
 const LOCALE_OPTIONS: readonly string[] = ["tw", "ja", "en"];
 const SPEC_LOCALE_OPTIONS: readonly string[] = ["auto", "tw", "ja", "en"];
 
@@ -932,7 +932,9 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
                   onValueChange={(v) => setSpecLocale(v === LOCALE_UNSET ? "" : v)}
                 >
                   <SelectTrigger id="cfg-spec-locale">
-                    <SelectValue />
+                    <SelectValue>
+                      {specLocale === "auto" ? t("settings.specLocaleLegacy") : undefined}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {specLocale !== "" && !SPEC_LOCALE_OPTIONS.includes(specLocale) && (
@@ -942,7 +944,6 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
                       </SelectItem>
                     )}
                     <SelectItem value={LOCALE_UNSET}>{t("settings.localeUnset")}</SelectItem>
-                    <SelectItem value="auto">auto</SelectItem>
                     <SelectItem value="tw">tw（繁體中文）</SelectItem>
                     <SelectItem value="ja">ja（日本語）</SelectItem>
                     <SelectItem value="en">en（English）</SelectItem>
@@ -1266,7 +1267,7 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
             <CardContent className="gap-2.5">
               <div className="flex flex-col gap-1.5">
                 <div className="flex gap-4">
-                  {["claude", "codex"].map((tool) => (
+                  {["claude", "codex", "copilot"].map((tool) => (
                     <label key={tool} htmlFor={`tool-${tool}`} className="flex items-center gap-1.5 text-sm">
                       <Checkbox
                         id={`tool-${tool}`}

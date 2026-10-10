@@ -43,7 +43,9 @@ Speclink 的設定分散在兩個檔案與一個目錄，各自有明確的歸�
 |---|---|---|
 | 1（最高） | `SPECLINK_LOCALE`／`SPECLINK_SPEC_LOCALE`／`SPECLINK_TDD`／`SPECLINK_AUDIT`／`SPECLINK_WORKTREE` | 布林變數僅接受 `true`／`false`（不分大小寫）；其他值——`yes`、`1`、空字串——視為**未設定**，落到下一層。 |
 | 2 | `openspec/config.yaml` | 正典歸屬。 |
-| 3（最低） | 內建預設 | `locale` 未設定＝English、`tdd`＝false、`audit`＝false、`worktree`＝false。 |
+| 3（最低） | 內建預設 | `locale` 與 `spec_locale` 未設定＝系統語系、`tdd`＝false、`audit`＝false、`worktree`＝false。 |
+
+未設定的 `locale` 與 `spec_locale` 各自採用執行 Speclink 的電腦／作業系統語言：中文對應 `tw`、日文對應 `ja`，其他語言或讀取失敗時使用 `en`。本地模式由本機判定，Remote 模式由執行指令的 server 判定；與 App 的介面語言偏好無關。`spec_locale: auto` 維持跟隨有效 `locale`，明確設定的語言優先於系統語系。系統語系只參與判定，不會寫回設定檔。
 
 政策鍵（`locale`、`spec_locale`、`tdd`、`audit`、`worktree`）寫在 `.speclink.yaml` 裡一律不生效、也不產生警告——檔案照常解析，這些鍵單純被忽略。若你的檔案帶有這些鍵，把它們以相同的值搬進 `openspec/config.yaml` 即可。
 
@@ -53,10 +55,13 @@ Speclink 的設定分散在兩個檔案與一個目錄，各自有明確的歸�
 
 | 子指令 | 作用 |
 |---|---|
+| `languages [--json]` | 將正典語言設定搭配執行電腦的作業系統預設解析，不套用環境覆寫。JSON 含 `locale`（顯示名稱）與 `specLocale`（`tw`／`ja`／`en`）。遠端經既有設定 API 取得 Server 結果；舊 Server 未提供語言資料時須先升級。只讀查詢，不需要變更，也不寫入設定。 |
 | `show [--json]` | 顯示政策五欄、`context`（行數）與 `rules`（各節條數）。顯示**正典值**——不套用環境變數覆寫（有效值的三層解析屬 `speclink instructions` 的職責）。`--json` payload 欄位為 camelCase：`locale`、`specLocale`、`tdd`、`audit`、`worktree`、`context`、`rules`；未設定的欄位為 `null`，未設定的布林為 `false`。 |
 | `set <key> <value>` | 寫入 `locale`、`spec_locale`、`tdd`、`audit`、`worktree` 之一。其他鍵以非 0 exit code 拒絕；`tdd`／`audit`／`worktree` 僅接受 `true`／`false`；`locale` 僅接受代碼 `tw`／`ja`／`en`、`spec_locale` 僅接受 `tw`／`ja`／`en`／`auto`（大小寫敏感）——顯示名稱（如「繁體中文」）會被拒絕並列出合法代碼。設為 `false`（或 locale 設為空字串）＝**移除該鍵**，維持「未設定＝預設」語意。 |
 | `context --stdin` | 以 stdin 全文設定 `context`；內容僅空白時移除該鍵。 |
 | `rules <artifact> --stdin` | 整節代換該 artifact 的規則（一行一條、空行忽略）；stdin 為空時移除該節。`artifact` 限目前 schema 的 artifact id，未知 id 以非 0 exit code 拒絕。 |
+
+languages 查詢會在輸出前拒絕未知的儲存語言值與不合法的 specLocale 回應。原 show 仍可讀取舊值以供修復；這些值的 config API 回應只省略語言資料，原文件及 revision 維持。
 
 **`worktree` 的寫入比其他四個鍵多兩件事。** 它會連動技能足跡：開啟時生成兩個 worktree 技能，關閉時清掉，範圍等同 `speclink update`。
 
@@ -84,7 +89,15 @@ cat CONTEXT.md | speclink workflow-config context --stdin
 
 ## 自訂工具描述子
 
-`tools` 清單除內建名（`claude`、`codex`）外，也接受描述子物件，用於任何其他 AI harness：
+內建工具是 `claude`、`codex`、`copilot`（`agents` 仍是 `codex` 的別名）。CLI 初始化可用 `speclink init --tools copilot` 或 `speclink init --tools codex,copilot`；桌面專案設定、初始化／啟用對話框及本機 checkout 選擇也提供 Copilot。
+
+Codex 與 Copilot CLI／VS Code 共用 `.agents/skills/speclink-*/SKILL.md` 及相同本文。任一工具仍勾選就保留一份；兩者都取消，例如改為只選 Claude，才清理 Speclink 受管技能，保留使用者自有技能。勾選管理生成物，不控制代理是否能讀到共享目錄。Claude 仍使用 `.claude/skills/`；不生成 `.github/skills/` 或任何指令檔。
+
+共享本文以 `speclink-propose` 等名稱引用技能，並使用真正的 CLI 動詞執行操作。Codex 可用 `$speclink-propose`；Copilot CLI／VS Code agent chat 可用 `/speclink-propose` 或其技能選單。技能名稱不是 CLI 子指令。建立變更與 review／verify 蓋章時，實際執行的 Codex 加 `--agent codex`，Copilot 加 `--agent copilot`；無法確認則省略，不由 tools 勾選推斷。
+
+**舊自訂名稱遷移：** `name: copilot` 現在是保留名，更新在任何寫入前拒絕。先備份設定，再選擇將名稱改成 `copilot-custom` 並保留原 `skills_dir`／`invocation`，或手動將整個描述子改成內建字串 `copilot`。不會自動轉換；成功同步才按舊足跡清理原受管產物。
+
+`tools` 清單除內建名（`claude`、`codex`、`copilot`）外，也接受描述子物件，用於任何其他 AI harness：
 
 ```yaml
 tools:
@@ -109,7 +122,7 @@ tools:
 - **同步**——`speclink update` 對仍在清單上的描述子全部重新生成。
 - **清理**——把描述子從 `tools` 移除。下一次 `speclink update` 會刪除它的 `speclink-*` 技能目錄，並一併移除因此變空的目錄。描述子若仍寫著 `instructions_file`，該檔的遺留 `SPECLINK` 區塊也會被剝除；剝除後全空的話整檔刪除。先拿掉 `instructions_file` 才移除描述子的話，引擎就不知道那個檔案在哪——請自行手動刪除。
 
-描述子生成的內容採用**中性渲染**：沒有 `/speclink-` slash 前綴，沒有 plan mode 參照，動詞措辭由 `invocation` 決定。內建 claude 與 codex 的輸出完全不受影響。
+描述子生成的內容採用**中性渲染**：沒有 `/speclink-` slash 前綴，沒有 plan mode 參照，動詞措辭由 `invocation` 決定。自訂描述子的渲染方式與 Claude 本文保持原有行為；Codex 現在改用上述共享本文。
 
 ## 參考：全部鍵值
 

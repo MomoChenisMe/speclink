@@ -93,12 +93,33 @@ function switchToTab(name: string) {
 }
 
 describe("ProjectSettingsView 載入", () => {
+  it("Copilot 保存真實選集，取消 Codex 不取消 Copilot", async () => {
+    const ws = renderView(snapshot({ app: { tools: ["codex", "copilot"], customTools: [], parseError: null } }));
+    await screen.findByLabelText("locale");
+    switchToTab(".speclink.yaml");
+    expect(screen.getByLabelText("copilot").getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByLabelText("codex"));
+    fireEvent.click(screen.getByRole("button", { name: "儲存" }));
+    await waitFor(() => expect(ws.writeAppTools).toHaveBeenCalledWith(["copilot"]));
+  });
+
+  it("Copilot 描述子衝突保留勾選與遷移訊息", async () => {
+    const ws = fakeSettings(snapshot({ app: { tools: ["codex"], customTools: ["copilot"], parseError: null } }));
+    vi.mocked(ws.writeAppTools).mockRejectedValue(new Error("name copilot conflicts: rename copilot-custom"));
+    render(<ProjectSettingsView settings={ws} />);
+    await screen.findByLabelText("locale");
+    switchToTab(".speclink.yaml");
+    fireEvent.click(screen.getByLabelText("copilot"));
+    fireEvent.click(screen.getByRole("button", { name: "儲存" }));
+    await screen.findByText(/rename copilot-custom/);
+    expect(screen.getByLabelText("copilot").getAttribute("aria-checked")).toBe("true");
+  });
   it("呈現兩檔現值：config.yaml 簽的政策欄位、.speclink.yaml 簽的 tools 勾選；未設定欄位呈預設狀態", async () => {
     renderView(snapshot());
     // 下拉是 Radix Select（非原生 select），現值讀 trigger 上顯示的文字。
     expect((await screen.findByLabelText("locale")).textContent).toContain("tw");
     // 未設定的 spec_locale 呈預設值狀態（空字串＝未設定）。
-    expect(screen.getByLabelText("spec_locale").textContent).toContain("未設定");
+    expect(screen.getByLabelText("spec_locale").textContent).toContain("未設定（系統語系）");
     expect(screen.getByLabelText("tdd").getAttribute("aria-checked")).toBe("true");
     expect(screen.getByLabelText("audit").getAttribute("aria-checked")).toBe("false");
     switchToTab(".speclink.yaml");
@@ -132,7 +153,9 @@ describe("政策下拉未知值顯性呈現", () => {
     for (const code of ["tw", "ja", "en"]) {
       expect(localeHint.textContent).toContain(code);
     }
-    expect(screen.getByTestId("spec-locale-invalid-hint").textContent).toContain("auto");
+    for (const code of ["tw", "ja", "en"]) {
+      expect(screen.getByTestId("spec-locale-invalid-hint").textContent).toContain(code);
+    }
     // 讀取不改寫：未按儲存前不得有任何寫入。
     expect(ws.writeWorkflowConfig).not.toHaveBeenCalled();
   });
@@ -147,6 +170,23 @@ describe("政策下拉未知值顯性呈現", () => {
 });
 
 describe("ProjectSettingsView 寫入", () => {
+  it("舊 auto 設定可讀；選單僅有系統語系與明確語言，改選未設定後送 null", async () => {
+    const ws = renderView(projectSnap({ locale: "tw", specLocale: "auto" }));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const field = await screen.findByLabelText("spec_locale");
+    expect(field.textContent).toContain("跟隨 locale（舊設定）");
+    expect(ws.writeWorkflowConfig).not.toHaveBeenCalled();
+    await user.click(field);
+    expect(screen.getAllByRole("option").map((item) => item.textContent)).toEqual([
+      "未設定（系統語系）", "tw（繁體中文）", "ja（日本語）", "en（English）",
+    ]);
+    await user.click(screen.getByRole("option", { name: /未設定/ }));
+    fireEvent.click(screen.getByTestId("save-workflow"));
+    await waitFor(() => expect(ws.writeWorkflowConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ locale: "tw", specLocale: null }),
+    ));
+  });
+
   it("tools 加選 codex 後儲存 → writeAppTools 收到完整選集", async () => {
     const ws = renderView(snapshot());
     await screen.findByRole("tab", { name: ".speclink.yaml" });

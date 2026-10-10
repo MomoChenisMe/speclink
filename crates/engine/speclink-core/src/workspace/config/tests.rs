@@ -12,6 +12,33 @@ fn set_schema_refuses_an_unparseable_document() {
 }
 use super::*;
 
+#[test]
+fn copilot_builtin_and_agents_alias_keep_their_identity() {
+    assert_eq!(Tool::parse("copilot").map(|t| t.name()), Some("copilot"));
+    assert_eq!(Tool::parse("agents"), Tool::parse("codex"));
+}
+
+#[test]
+fn copilot_descriptor_is_reserved_with_manual_migration_guidance() {
+    let config = app(
+        "tools:\n  - name: copilot\n    skills_dir: .copilot-skills\n    invocation: tool-call\n",
+    );
+    let ToolEntry::Descriptor(descriptor) = &config.tools[0] else {
+        panic!("descriptor")
+    };
+    let error = descriptor.validate().expect_err("copilot is a builtin");
+    for token in [
+        "name",
+        "copilot",
+        "copilot-custom",
+        "skills_dir",
+        "invocation",
+    ] {
+        assert!(error.contains(token), "{error}");
+    }
+}
+
+
 fn app(yaml: &str) -> AppConfig {
     serde_yaml::from_str(yaml).expect("app yaml")
 }
@@ -95,6 +122,48 @@ fn spec_locale_auto_follows_resolved_locale() {
         &wf("locale: ja\nspec_locale: auto"),
     );
     assert_eq!(p.spec_locale.as_deref(), Some("tw"));
+}
+
+#[test]
+fn unset_languages_use_the_injected_system_locale() {
+    for (system, locale, spec_locale) in [
+        ("zh-TW", "Traditional Chinese (繁體中文)", Some("tw")),
+        ("zh_Hant_TW.UTF-8", "Traditional Chinese (繁體中文)", Some("tw")),
+        ("ja-JP", "Japanese (日本語)", Some("ja")),
+        ("en-US", "English", None),
+        ("de-DE", "English", None),
+        ("C", "English", None),
+    ] {
+        let env = EnvOverrides { system_locale: Some(system.into()), ..Default::default() };
+        let p = resolve_policy(&env, &wf("{}"));
+        assert_eq!(p.locale, locale, "system locale {system}");
+        assert_eq!(p.spec_locale.as_deref(), spec_locale, "system locale {system}");
+    }
+}
+
+#[test]
+fn unset_spec_language_uses_system_independently_of_artifact_language() {
+    let env = EnvOverrides { system_locale: Some("zh-TW".into()), ..Default::default() };
+    let p = resolve_policy(&env, &wf("locale: ja"));
+    assert_eq!(p.locale, "Japanese (日本語)");
+    assert_eq!(p.spec_locale.as_deref(), Some("tw"));
+    let p = resolve_policy(&env, &wf("locale: ja\nspec_locale: auto"));
+    assert_eq!(p.spec_locale.as_deref(), Some("ja"));
+    let p = resolve_policy(&env, &wf("spec_locale: auto"));
+    assert_eq!(p.spec_locale.as_deref(), Some("tw"));
+}
+
+#[test]
+fn explicit_languages_override_system_defaults() {
+    let mut env = EnvOverrides { system_locale: Some("zh-TW".into()), ..Default::default() };
+    let p = resolve_policy(&env, &wf("locale: en\nspec_locale: en"));
+    assert_eq!(p.locale, "English");
+    assert_eq!(p.spec_locale, None);
+    env.locale = Some("ja".into());
+    env.spec_locale = Some("ja".into());
+    let p = resolve_policy(&env, &wf("locale: en\nspec_locale: en"));
+    assert_eq!(p.locale, "Japanese (日本語)");
+    assert_eq!(p.spec_locale.as_deref(), Some("ja"));
 }
 
 // --- tdd: env > config.yaml > default ---
@@ -695,18 +764,20 @@ fn workflow_update_matches_spec_example_table() {
     // tdd: true | tdd 切關閉 | tdd 鍵被移除（預設即 false）——唯一鍵移除後輸出為空文件
     let out = update_workflow_config_text("tdd: true\n", &WorkflowPolicyFields::default(), &ContextEdit::Keep, None).unwrap();
     assert_eq!(WorkflowConfig::from_text(Some(&out)).expect("output parses").tdd, None, "got: {out}");
-    // locale: tw、含 rules | spec_locale 選 auto | 新增 spec_locale: auto，locale 與 rules 原樣保留
-    let doc = "locale: tw\nrules:\n  proposal:\n    - keep\n";
-    let fields = WorkflowPolicyFields {
-        locale: Some("tw".into()),
-        spec_locale: Some("auto".into()),
-        ..Default::default()
-    };
-    let out = update_workflow_config_text(doc, &fields, &ContextEdit::Keep, None).unwrap();
-    let w = WorkflowConfig::from_text(Some(&out)).expect("output parses");
-    assert_eq!(w.spec_locale.as_deref(), Some("auto"));
-    assert_eq!(w.locale.as_deref(), Some("tw"));
-    assert_eq!(w.rules, wf(doc).rules);
+    // spec Example 第三列為 ja；保留 legacy auto 的 writer 回歸。
+    for code in ["ja", "auto"] {
+        let doc = "locale: tw\nrules:\n  proposal:\n    - keep\n";
+        let fields = WorkflowPolicyFields {
+            locale: Some("tw".into()),
+            spec_locale: Some(code.into()),
+            ..Default::default()
+        };
+        let out = update_workflow_config_text(doc, &fields, &ContextEdit::Keep, None).unwrap();
+        let w = WorkflowConfig::from_text(Some(&out)).expect("output parses");
+        assert_eq!(w.spec_locale.as_deref(), Some(code));
+        assert_eq!(w.locale.as_deref(), Some("tw"));
+        assert_eq!(w.rules, wf(doc).rules);
+    }
 }
 
 // --- policy locale 值域驗證（workflow-config-locale-validation，design D1／D3）---

@@ -829,6 +829,92 @@ fn config_response() -> String {
 }
 
 #[test]
+fn languages_resolves_without_a_change_or_config_write() {
+    for (i, yaml) in ["schema: spec-driven\n", "spec_locale: auto\n", "locale: tw\nspec_locale: ja\n"].iter().enumerate() {
+        let p = TempProject::new(&format!("languages-{i}"), yaml);
+        let before = p.config_bytes();
+        let out = p.run_env(&["workflow-config", "languages", "--json"], &[("SPECLINK_LOCALE", "en"), ("SPECLINK_SPEC_LOCALE", "en")]);
+        assert!(out.status.success(), "{}", stderr_of(&out));
+        let expected = speclink_host::policy::resolve_effective_policy(|_| None, Some(yaml)).unwrap();
+        assert_eq!(json_of(&out)["locale"], expected.resolved().locale);
+        assert_eq!(json_of(&out)["specLocale"], expected.resolved().spec_locale.as_deref().unwrap_or("en"));
+        assert_eq!(p.config_bytes(), before);
+        assert!(!p.dir.join("openspec/changes").exists());
+    }
+    let p = TempProject::new("languages-bad", BAD_YAML);
+    let out = p.run(&["workflow-config", "languages", "--json"]);
+    assert!(!out.status.success());
+    assert!(out.stdout.is_empty());
+}
+
+#[test]
+fn remote_languages_uses_the_server_response_and_never_client_overrides() {
+    for (i, yaml) in ["schema: spec-driven\n", "spec_locale: auto\n"].iter().enumerate() {
+        let body = serde_json::json!({"schema":"spec-driven", "content":yaml, "revision":7,
+            "languages":{"locale":"Japanese (日本語)", "specLocale":"ja"}}).to_string();
+        let mock = mock_server(vec![("GET", "/config", 200, body)]);
+        let p = RemoteProject::new(&format!("languages-{i}"), &mock.base);
+        let out = p.cmd(&["workflow-config", "languages", "--json"])
+            .env("SPECLINK_LOCALE", "tw").env("SPECLINK_SPEC_LOCALE", "tw").env("LANG", "zh_TW.UTF-8")
+            .output().unwrap();
+        assert!(out.status.success(), "{}", stderr_of(&out));
+        assert_eq!(json_of(&out), serde_json::json!({"locale":"Japanese (日本語)","specLocale":"ja"}));
+        assert!(mock.none("PUT", "/config"));
+        assert!(!p.dir.join("openspec").exists());
+    }
+}
+
+#[test]
+fn remote_languages_missing_on_an_old_server_fails_without_guessing() {
+    let mock = mock_server(vec![("GET", "/config", 200, config_response())]);
+    let p = RemoteProject::new("languages-old-server", &mock.base);
+    let out = p.run(&["workflow-config", "languages", "--json"]);
+    assert!(!out.status.success());
+    assert!(out.stdout.is_empty());
+    assert!(stderr_of(&out).contains("upgrade"), "{}", stderr_of(&out));
+}
+
+#[test]
+fn languages_rejects_unknown_values_but_show_keeps_them_readable() {
+    for (i, yaml) in ["spec_locale: zh-Hant\n", "locale: zh-Hant\nspec_locale: auto\n", "locale: JA\nspec_locale: ja\n"].iter().enumerate() {
+        let p = TempProject::new(&format!("languages-unknown-{i}"), yaml);
+        let before = p.config_bytes();
+        for args in [vec!["workflow-config", "languages", "--json"], vec!["workflow-config", "languages", "--no-color"]] {
+            let out = p.run(&args);
+            assert!(!out.status.success(), "unknown language must be rejected");
+            assert!(out.stdout.is_empty());
+            assert!(stderr_of(&out).contains("must be one of"), "{}", stderr_of(&out));
+        }
+        let shown = json_of(&p.run(&["workflow-config", "show", "--json"]));
+        assert_eq!(shown["specLocale"], if i == 0 { "zh-Hant" } else if i == 1 { "auto" } else { "ja" });
+        assert_eq!(p.config_bytes(), before);
+
+        let body = serde_json::json!({"schema":"spec-driven","content":yaml,"revision":7}).to_string();
+        let mock = mock_server(vec![("GET", "/config", 200, body)]);
+        let remote = RemoteProject::new(&format!("languages-unknown-{i}"), &mock.base);
+        let out = remote.run(&["workflow-config", "languages", "--json"]);
+        assert!(!out.status.success());
+        assert!(out.stdout.is_empty());
+        assert!(stderr_of(&out).contains("must be one of"), "{}", stderr_of(&out));
+        assert_eq!(json_of(&remote.run(&["workflow-config", "show", "--json"])), shown);
+        assert!(mock.none("PUT", "/config"));
+    }
+}
+
+#[test]
+fn remote_languages_rejects_unsupported_metadata_even_with_valid_canonical_config() {
+    let body = serde_json::json!({"schema":"spec-driven","content":"schema: spec-driven\n","revision":7,
+        "languages":{"locale":"English","specLocale":"zh-Hant"}}).to_string();
+    let mock = mock_server(vec![("GET", "/config", 200, body)]);
+    let remote = RemoteProject::new("languages-invalid-metadata", &mock.base);
+    let out = remote.run(&["workflow-config", "languages", "--json"]);
+    assert!(!out.status.success());
+    assert!(out.stdout.is_empty());
+    assert!(stderr_of(&out).contains("specLocale"));
+    assert!(mock.none("PUT", "/config"));
+}
+
+#[test]
 fn remote_show_json_has_the_same_shape_as_fs() {
     // Spec scenario remote 模式輸出形狀一致.
     let mock = mock_server(vec![("GET", "/config", 200, config_response())]);

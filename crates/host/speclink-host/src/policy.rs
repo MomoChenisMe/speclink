@@ -48,7 +48,10 @@ pub fn resolve_effective_policy(
     workflow_document: Option<&str>,
 ) -> Result<EffectiveWorkflowPolicy, ConfigError> {
     let wf = WorkflowConfig::from_text(workflow_document)?;
-    let env = EnvOverrides::from_lookup(env_lookup);
+    let env = EnvOverrides {
+        system_locale: sys_locale::get_locale(),
+        ..EnvOverrides::from_lookup(env_lookup)
+    };
     let resolved = resolve_policy(&env, &wf);
     Ok(EffectiveWorkflowPolicy::new(
         resolved,
@@ -56,16 +59,44 @@ pub fn resolve_effective_policy(
     ))
 }
 
-/// The Host boundary's process-env read: the SPECLINK_* override layer as
-/// one injected value set. The only place the policy env layer touches the
-/// process environment.
+/// Read process overrides and the OS language at the Host boundary, then
+/// inject both into the Engine without persisting the detected language.
 pub fn process_env_overrides() -> EnvOverrides {
-    EnvOverrides::from_lookup(|key| std::env::var(key).ok())
+    let mut env = EnvOverrides::from_lookup(|key| std::env::var(key).ok());
+    env.system_locale = sys_locale::get_locale();
+    env
+}
+
+/// The canonical language choice for baseline, with OS defaults but without
+/// SPECLINK_* overrides. The server and local CLI expose the same read view.
+pub fn workflow_languages(
+    workflow_document: Option<&str>,
+) -> Result<speclink_protocol::query::WorkflowLanguages, ConfigError> {
+    let wf = WorkflowConfig::from_text(workflow_document)?;
+    speclink_core::config::validate_policy_locales(&speclink_core::config::WorkflowPolicyFields {
+        locale: wf.locale.clone(), spec_locale: wf.spec_locale.clone(), ..Default::default()
+    }).map_err(|error| ConfigError { file: "config.yaml".into(), reason: error.to_string() })?;
+    let policy = resolve_policy(&EnvOverrides {
+        system_locale: sys_locale::get_locale(), ..Default::default()
+    }, &wf);
+    Ok(speclink_protocol::query::WorkflowLanguages {
+        locale: policy.locale,
+        spec_locale: policy.spec_locale.unwrap_or_else(|| "en".into()),
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workflow_languages_rejects_unknown_canonical_language_values() {
+        for yaml in ["spec_locale: zh-Hant\n", "locale: zh-Hant\nspec_locale: auto\n", "locale: JA\nspec_locale: ja\n"] {
+            let error = workflow_languages(Some(yaml)).expect_err("unknown language is not a concrete supported code");
+            assert!(error.reason.contains("must be one of"));
+            assert!(WorkflowConfig::from_text(Some(yaml)).is_ok(), "canonical reads remain lenient");
+        }
+    }
 
     // --- Engine 規格面不讀 process env：政策 env 層由 host 注入 ---
 

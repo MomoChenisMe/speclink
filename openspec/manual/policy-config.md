@@ -3,8 +3,8 @@ title: 工作流政策與設定
 section: SDD 工作流
 order: 210
 keywords: [config.yaml, 政策, locale, tdd, audit, 專案說明, 產出規則]
-sources: [workflow-config, config-skill]
-generated: 2026-09-02
+sources: ["workflow-config#init 範本的政策寫入位置", "workflow-config#workflow-config show 動詞", "workflow-config#workflow-config set 政策欄位寫入", "workflow-config#workflow-config context 與 rules 寫入", "workflow-config#worktree 欄位寫入的技能同步與關閉擋下", "workflow-config#工作流政策的正典歸屬與三層解析順序", "workflow-config#語言預設的技能說明", "workflow-config#workflow-config languages 只讀查詢", "config-skill#技能規定固定輸入來源與四條內容判準", "config-skill#技能規定 diff 先行與收斂驗收", "config-skill#技能規定政策語系欄位寫入代碼", "config-skill#技能規定任務驗證測試範圍的第五問"]
+generated: 2026-10-10T08:24:25+08:00
 ---
 # 工作流政策與設定
 
@@ -14,8 +14,8 @@ generated: 2026-09-02
 
 | 欄位 | 合法值 | 未設定時 |
 | --- | --- | --- |
-| locale | tw、ja、en | English |
-| spec_locale | tw、ja、en、auto | 未設定 |
+| locale（產物語言） | tw、ja、en | 作業系統語言 |
+| spec_locale（規格語言） | tw、ja、en；後端保留舊 auto | 作業系統語言 |
 | tdd | true、false | false |
 | audit | true、false | false |
 | worktree | true、false | false |
@@ -30,7 +30,11 @@ generated: 2026-09-02
 
 1. 環境變數：SPECLINK_LOCALE、SPECLINK_SPEC_LOCALE、SPECLINK_TDD、SPECLINK_AUDIT、SPECLINK_WORKTREE。
 2. `openspec/config.yaml` 的值。
-3. 內建預設。
+3. 預設：兩個未設定的語言各自採作業系統語言，三個開關預設關閉。
+
+locale 決定提案、設計等產物的語言；spec_locale 決定規格散文的語言。兩者未設定時各自採系統語言：中文對應繁體中文（tw），日文對應日文（ja），其他語言或無法取得時使用英文（en）。例如系統是日文，locale 明確設 tw 而 spec_locale 未設定時，產物使用繁中，規格仍使用日文。明確設定 en 會覆蓋非英文的系統預設。
+
+本地使用執行 CLI／Host 的電腦語言；remote 使用執行命令的 server 語言，不採 client 的語言或本機覆寫。App 介面語言偏好不影響工作流語言。偵測值只用於執行，不寫回設定檔。舊 spec_locale:auto 仍跟隨有效的 locale；App 不再提供 auto 作為新選項。
 
 布林環境變數只接受 true 或 false。其他值視為未設定，落到下一層，不報錯。`.speclink.yaml` 裡的同名鍵一律不生效，也不會有警告。
 
@@ -43,7 +47,17 @@ generated: 2026-09-02
 speclink workflow-config show
 ```
 
-顯示 config.yaml 裡的正典內容：五個政策欄位（未設定的會標示未設定與其預設語意）、專案說明的有無與行數、各產出規則節的條數。它顯示的是檔案裡的值，不套用環境變數覆寫。remote 模式下讀的是 server 上的設定，輸出形狀相同。
+顯示 config.yaml 裡的正典內容：五個政策欄位（未設定的會標示未設定與其預設語意）、專案說明的有無與行數、各產出規則節的條數。它顯示的是檔案裡的值，不套用環境變數覆寫。兩個未設定的語言標示為 unset (system language)，不把偵測結果當成已儲存的設定。remote 模式下讀的是 server 上的設定，輸出形狀相同。
+
+## 查實際語言：workflow-config languages
+
+```bash
+speclink workflow-config languages
+```
+
+這個只讀查詢用已儲存的語言設定與作業系統預設，回報具體的產物與規格語言。它不套用個人的環境變數覆寫，不需要先建立變更，也不修改設定。remote 的結果由 server 決定。
+
+設定裡有未知語言值時，查詢會指出合法代碼並停止；仍可用 show 或 App 設定頁讀取原值、修正後再查。舊 server 沒有提供語言資料時，查詢要求升級 server，不會用 client 語言猜測。離線、認證失效或設定檔無法解析時也會失敗。
 
 ## 寫政策：workflow-config set
 

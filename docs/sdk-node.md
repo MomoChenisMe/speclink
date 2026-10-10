@@ -291,13 +291,14 @@ const { skills } = require('@speclink/engine')
 
 skills.list() // [{ name: 'propose', description: '…' }, …]
 
-// The render matrix: target (claude|codex|neutral) × invocation (cli|tool-call)
+// The render matrix: target (claude|codex|copilot|neutral) × invocation (cli|tool-call)
 const skillMd = skills.render('propose', {
   target: 'neutral',
   invocation: 'tool-call',
 })
 ```
 
+- `target: 'copilot'` and `'codex'` return identical content for the same skill/`specDir`, matching CLI-generated `.agents/skills/` files for Copilot CLI and VS Code. This adds no SDK tool layer. Content names skills and executes shell verbs; the actual Codex/Copilot appends its own `--agent` when creating changes or stamping, or omits it when unknown. See [tool configuration](configuration.md#custom-tool-descriptors) for generation, deselection, and migration of old custom `copilot` descriptors.
 - `target: 'neutral'` renders for a custom harness: no `/speclink-` slash
   prefix, no plan-mode references; `toolName` (default `"speclink"`)
   substitutes `{{TOOL}}`.

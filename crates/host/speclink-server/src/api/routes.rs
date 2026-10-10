@@ -637,6 +637,9 @@ pub async fn config(State(state): State<AppState>, binding: Binding) -> Result<R
         Ok((
             ConfigResponse {
                 schema,
+                // YAML already parsed above. Unknown legacy language values
+                // stay readable for repair, but cannot supply concrete codes.
+                languages: speclink_host::policy::workflow_languages(content.as_deref()).ok(),
                 content,
                 revision,
             },

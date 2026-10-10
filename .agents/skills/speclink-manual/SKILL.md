@@ -5,13 +5,21 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Generate a human-readable operating manual from the canonical specs, or walk the user through the system in conversation. The manual is a wiki-style set of Markdown pages under `openspec/manual/`, written for someone who joined today and only wants to know how to operate the system.
 
-**Input**: Optional arguments after `$speclink-manual`. They pick the mode:
+**Input**: Optional arguments after `speclink-manual`. They pick the mode:
 
 | Arguments | Mode |
 | --- | --- |
@@ -32,7 +40,7 @@ Generate a human-readable operating manual from the canonical specs, or walk the
 Read `.speclink.yaml` at the workspace root. No file, or a file without a `remote` section, means a local project — continue with Step 1. A `remote` section means the project is bound to a remote store and generation is not supported yet: the pages would land in this local checkout only and never reach the store. Print
 
 ```
-remote 模式尚不支援手冊生成（導覽模式不受此限：$speclink-manual 導覽）
+remote 模式尚不支援手冊生成（導覽模式不受此限：speclink-manual 導覽）
 ```
 
 and STOP. Zero files are written. Tour mode is unaffected by this check.
@@ -195,7 +203,7 @@ Tour mode writes NOTHING — no manual pages, no notes, no scratch files. It is 
 2. **No manual**: say so — `尚無手冊，改以規格直接導覽` — then tour from the specs: `speclink list --specs` for the map, `speclink show <capability> --item-type spec` for each station, sources cited by capability name.
 3. **Remote-bound project**: tour mode proceeds as usual, from an existing manual or from the specs.
 
-When the tour ends you may suggest running generation mode (`$speclink-manual`) to produce the manual — a suggestion only. NEVER invoke another skill from here.
+When the tour ends you may suggest running generation mode (`speclink-manual`) to produce the manual — a suggestion only. NEVER invoke another skill from here.
 
 ---
 

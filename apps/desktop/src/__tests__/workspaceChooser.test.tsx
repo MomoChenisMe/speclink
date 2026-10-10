@@ -231,7 +231,7 @@ describe("WorkspaceChooser", () => {
   it("folder mode：inspect 預選既有工具，開啟時先 bind 後 openRemote", async () => {
     const inspect = vi
       .fn()
-      .mockResolvedValue({ root: "/work/desktop", tools: ["codex"] });
+      .mockResolvedValue({ root: "/work/desktop", tools: ["copilot"] });
     const bind = vi.fn().mockResolvedValue("/work/desktop");
     const adapter = fakeConnections({ inspectCheckout: inspect, bindCheckout: bind });
     const workspace = fakeWorkspace({ pickFolder: vi.fn().mockResolvedValue("/work/desktop") });
@@ -241,9 +241,9 @@ describe("WorkspaceChooser", () => {
     await chooseDesktopRepo();
     await reachCheckoutFolder();
 
-    // inspect 回傳 codex → codex 勾選、claude 未勾。
+    // inspect 回傳 copilot → copilot 勾選、claude 未勾。
     expect(
-      (screen.getByRole("checkbox", { name: /codex/i }) as HTMLInputElement).getAttribute(
+      (screen.getByRole("checkbox", { name: /copilot/i }) as HTMLInputElement).getAttribute(
         "aria-checked",
       ),
     ).toBe("true");
@@ -261,7 +261,7 @@ describe("WorkspaceChooser", () => {
         "https://spec.example.test",
         "speclink",
         "desktop",
-        ["codex"],
+        ["copilot"],
       ),
     );
     await waitFor(() =>

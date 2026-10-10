@@ -12,6 +12,8 @@
 
 Agent 指令有兩種呼叫字面：Claude 用 `/speclink-*`，Codex 用 `$speclink-*`。Codex 的 `$` 是技能的明確呼叫寫法；打 `/skills` 也能從清單裡挑到同一個技能，兩種都走得通。
 
+Copilot CLI 與 VS Code agent chat 也可用 `/speclink-propose` 等技能入口或技能選單；下面的 Claude slash 技能名稱也可用於 Copilot。Codex／Copilot 共用 `.agents/skills/` 的中性本文，技能入口不等於 CLI 子指令。建立變更或 review／verify 蓋章時，依實際代理追加 `--agent codex`／`--agent copilot`，無法確認則省略。
+
 下面兩種字面都會列出，擇一即可。標成 shell 的區塊則是直接執行 CLI。技能、CLI 與 Host 三層各自負責什麼，見工作流文件的[呼叫層級](workflow.zh-TW.md#call-layers--呼叫層級)。
 
 ## 1. Install / 安裝
@@ -53,6 +55,8 @@ speclink init --tools claude,codex
 ✓ Initialized at /path/to/your-repo/openspec
 Generated files for: claude, codex
 ```
+
+只用 Copilot 時改用 `speclink init --tools copilot`，共選則用 `speclink init --tools codex,copilot`。任一共享工具仍勾選就保留技能，兩者都取消才清理受管檔；自有技能保留。舊 `name: copilot` 自訂描述子須先改名為 `copilot-custom` 保留原設定，或手動改成內建字串，詳見[工具設定](configuration.zh-TW.md#自訂工具描述子)。
 
 這會建立 `openspec/` 與 `.speclink.yaml`，為選定的 Host 產生技能檔（`.claude/skills/`、`.agents/skills/`），並把 `.speclink/` 加進 `.gitignore`。不會寫任何指令檔——`CLAUDE.md`、`AGENTS.md` 是你自己的檔案，流程路由由技能自身的 description 承載。`.speclink/` 本身不在這一步建立，之後有本機工作資料要落時才會出現。
 

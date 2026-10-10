@@ -5,13 +5,21 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Implement tasks from a Speclink change.
 
-**Input**: Optionally specify a change name (e.g., `$speclink-apply add-auth`). If omitted, check if it can be inferred from conversation context — inference only decides whether a name is given; the selection itself always goes through `speclink plan` in step 1.
+**Input**: Optionally specify a change name (e.g., `speclink-apply add-auth`). If omitted, check if it can be inferred from conversation context — inference only decides whether a name is given; the selection itself always goes through `speclink plan` in step 1.
 
 **Task tracking is file-based only.** The tasks file's markdown checkboxes (`- [ ]` / `- [x]`) are the single source of truth for progress. Do NOT use any external task management system, built-in task tracker, or todo tool. When a task is done, edit the checkbox in the tasks file — that is the only way to record progress.
 
@@ -35,7 +43,7 @@ Implement tasks from a Speclink change.
 
    Never auto-select a change just because only one exists, and never bypass the plan because the user mentioned a change in conversation — the plan decides whether it may start.
 
-   Always announce: "Using change: <name>" and how to override (e.g., `$speclink-apply <other>`).
+   Always announce: "Using change: <name>" and how to override (e.g., `speclink-apply <other>`).
 
 2. **Check status to understand the schema**
 
@@ -71,7 +79,7 @@ Implement tasks from a Speclink change.
    - Dynamic instruction based on current state
 
    **Handle states:**
-   - If `state: "blocked"` (missing artifacts): show message, suggest using `$speclink-propose` to create the change artifacts first
+   - If `state: "blocked"` (missing artifacts): show message, suggest using `speclink-propose` to create the change artifacts first
    - If `state: "all_done"`: congratulate, suggest archive
    - Otherwise: proceed to implementation
 
@@ -127,7 +135,7 @@ Detect dormancy from `.openspec.yaml` `created` and `git log -1 --format=%at -- 
 
 - **Both conditions met**: run `speclink drift <change-name>`, display the report, then use the **AskUserQuestion tool**:
   - **Continue with apply** — proceed to tasks (recommended for Light drift)
-  - **Refresh first** — pause apply, run `/speclink-ingest <change-name>` to update artifacts, then resume
+  - **Refresh first** — pause apply, run `speclink-ingest <change-name>` to update artifacts, then resume
   - **Stop** — end the workflow
 - **Either condition not met**: silently continue, no output.
 
@@ -196,7 +204,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
    - **Verify before marking done** — re-read the task description from the tasks file AND the relevant Implementation Contract content from design.md. For each requirement stated in the task description and each contract item that covers this task's scope, confirm it is addressed by your changes. Confirm the verification target named by the task (test name, CLI invocation, analyzer check, or manual assertion) actually passes. If any contract item, task requirement, or verification target is missing or failing, implement/fix it now. Do not mark the task complete until every part of the description is covered and the contract for this task is satisfied.
    - Mark task complete by running: `speclink task done --change "<name>" <task-id>`
      This command marks the checkbox in tasks.md AND records which files were modified for this task.
-   - **Never check off an `[M]` task.** A task whose description carries the `[M]` prefix is manual work the user performs by hand — not only manual testing, but anything you cannot do yourself: accepting a result by operating the product, creating an account on an external service, placing a key. You cannot observe the outcome, so you cannot attest to it. Skip it and move on — unless a code task depends on it, which is the next point's blocked case. Once every non-`[M]` task is checked, apply is finished: report completion, name the `[M]` tasks left for the user, and say that the quality stations (`$speclink-review`, `$speclink-verify`, or `$speclink-quality` for both) can run now while archive waits for the manual runs.
+   - **Never check off an `[M]` task.** A task whose description carries the `[M]` prefix is manual work the user performs by hand — not only manual testing, but anything you cannot do yourself: accepting a result by operating the product, creating an account on an external service, placing a key. You cannot observe the outcome, so you cannot attest to it. Skip it and move on — unless a code task depends on it, which is the next point's blocked case. Once every non-`[M]` task is checked, apply is finished: report completion, name the `[M]` tasks left for the user, and say that the quality stations (`speclink-review`, `speclink-verify`, or `speclink-quality` for both) can run now while archive waits for the manual runs.
    - **A code task blocked by an open `[M]` task stops you.** Some manual tasks come first, not last — the external account has to exist before the code that calls it can be written. When implementing a code task requires an unchecked `[M]` task to be done, stop and ask the user to complete that manual task. Never check it off on their behalf, and never work around it.
    - If a task was checked by mistake or its implementation is rolled back, run: `speclink task undone --change "<name>" <task-id>`
      Do NOT edit tasks.md directly to uncheck a task.
@@ -291,10 +299,10 @@ Working on task 4/7: <task description>
 - [x] Task 2
 ...
 
-All tasks complete! Quality stations are optional: `$speclink-review` ∥ `$speclink-verify`, or `$speclink-quality`.
-Skipping them is fine — archive directly with `$speclink-archive`, or do archive + commit
-in one step via `$speclink-commit` ("Archive first, then commit together").
-(Inside a linked worktree: do not archive — commit there and hand off to `$speclink-worktree-merge`.)
+All tasks complete! Quality stations are optional: `speclink-review` ∥ `speclink-verify`, or `speclink-quality`.
+Skipping them is fine — archive directly with `speclink-archive`, or do archive + commit
+in one step via `speclink-commit` ("Archive first, then commit together").
+(Inside a linked worktree: do not archive — commit there and hand off to `speclink-worktree-merge`.)
 ```
 
 **Output On Pause (Issue Encountered)**
@@ -341,7 +349,7 @@ This skill supports the "actions on a change" model:
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- Every non-`[M]` task is checked → the quality stations are optional and the user's call: `$speclink-review` (craft quality) ∥ `$speclink-verify` (spec compliance), or `$speclink-quality` to run both in order; each station hands off to archive when its stamp lands
-- Skipping the quality stations is equally valid → go straight to `$speclink-archive <change-name>`, or take the one-step path: `$speclink-commit <change-name>` and pick its "Archive first, then commit together" option
+- Every non-`[M]` task is checked → the quality stations are optional and the user's call: `speclink-review` (craft quality) ∥ `speclink-verify` (spec compliance), or `speclink-quality` to run both in order; each station hands off to archive when its stamp lands
+- Skipping the quality stations is equally valid → go straight to `speclink-archive <change-name>`, or take the one-step path: `speclink-commit <change-name>` and pick its "Archive first, then commit together" option
 - Only `[M]` tasks remain → the quality stations can still run now, but archiving waits until the user has done the manual work by hand
-- Requirements changed mid-work → `$speclink-ingest <change-name>`, then come back to apply
+- Requirements changed mid-work → `speclink-ingest <change-name>`, then come back to apply

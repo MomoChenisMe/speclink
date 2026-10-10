@@ -5,17 +5,25 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Archive a completed change.
 
-**Input**: Optionally specify a change name after `$speclink-archive` (e.g., `$speclink-archive add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name after `speclink-archive` (e.g., `speclink-archive add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
-**Where to run it**: archiving runs in the **main checkout**. Inside a linked worktree on a `speclink/` branch the engine refuses the archive outright — the unarchive backup would land in the worktree's gitignored `.speclink/snapshots/` and vanish with the worktree, and deltas would merge onto the branch point's stale canon. If you are in a worktree, wrap it up with the `$speclink-worktree-merge` skill first, then archive from the main checkout.
+**Where to run it**: archiving runs in the **main checkout**. Inside a linked worktree on a `speclink/` branch the engine refuses the archive outright — the unarchive backup would land in the worktree's gitignored `.speclink/snapshots/` and vanish with the worktree, and deltas would merge onto the branch point's stale canon. If you are in a worktree, wrap it up with the `speclink-worktree-merge` skill first, then archive from the main checkout.
 
 **Steps**
 
@@ -62,7 +70,7 @@ Archive a completed change.
 
    - `archiveAfter` is non-empty:
 
-     > plan 建議先封存 <archiveAfter 的名稱>；它們封存後，重讀本 change 對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `$speclink-ingest`）再封存 <name>。重疊的 requirement：<requirementOverlap 裡對應那些 change 的 capability › requirement>。
+     > plan 建議先封存 <archiveAfter 的名稱>；它們封存後，重讀本 change 對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `speclink-ingest`）再封存 <name>。重疊的 requirement：<requirementOverlap 裡對應那些 change 的 capability › requirement>。
 
    - `requirementOverlap` holds an entry whose `conflict` is true:
 
@@ -117,7 +125,7 @@ Archive a completed change.
      - merge the omitted canonical content into each MODIFIED requirement so it reads as the complete final state, or declare the drop with `<!-- REMOVED-SCENARIO: … -->`
      - drop or retarget each pre-existing ADDED requirement (a requirement the canon already carries is edited via MODIFIED, not re-added)
      - do NOT edit the main specs — only the delta files change
-   - "Refresh from the codebase": run `/speclink-drift <name>` to see what moved, then `/speclink-ingest <name>` to update the delta — the route the refusal message itself points at
+   - "Refresh from the codebase": run `speclink-drift <name>` to see what moved, then `speclink-ingest <name>` to update the delta — the route the refusal message itself points at
    - "Cancel"
 
    After fixing, show a brief diff summary of the rewritten delta files, then continue.
@@ -147,7 +155,7 @@ Archive a completed change.
 
    **If the merge gate refuses**, the error lists every offending operation
    (capability / operation / requirement / reason) at once. Fix them in one round on the
-   delta files — `speclink drift <name>` shows what moved, `/speclink-ingest <name>`
+   delta files — `speclink drift <name>` shows what moved, `speclink-ingest <name>`
    updates the delta — then re-run the archive. `--no-validate` does not unlock the gate;
    `--skip-specs` skips spec application entirely.
 
@@ -164,7 +172,7 @@ Archive a completed change.
    It is a note, not a refusal — nothing to waive, no flag to pass, exit code unchanged. A
    spec-only or docs-only change earns no code evidence by construction, so the note is
    expected there. Anywhere else, read it as a prompt to check whether the work actually
-   went through `/speclink-apply` before archiving.
+   went through `speclink-apply` before archiving.
 
 6. **Display summary**
 
@@ -301,38 +309,38 @@ up, nothing to delete.
 ## After the archive
 
 Every archive — whichever path led here: straight from apply, after a review or verify
-stamp, after `$speclink-quality`, or following `$speclink-worktree-merge` — leaves
+stamp, after `speclink-quality`, or following `speclink-worktree-merge` — leaves
 uncommitted working-tree changes: the deltas merged into the canonical specs and the
 change directory moved into the archive. Close by reminding the user to commit them
-with a plain git commit — the change-scoped `$speclink-commit` flow does not apply
+with a plain git commit — the change-scoped `speclink-commit` flow does not apply
 after the archive (its file selection reads the change directory that has just moved).
 This is a reminder only — never run the commit yourself.
 
 When the workspace has a `openspec/manual/` directory, add one more line to that
-reminder: the manual may be stale now, and `$speclink-manual` will report which pages
+reminder: the manual may be stale now, and `speclink-manual` will report which pages
 this archive's spec changes outdated. The condition is the directory's existence only —
 do not work out which specs this archive touched, and do not judge whether the manual
 is actually stale; that is the manual skill's report. This too is a reminder only —
-never run `$speclink-manual` yourself.
+never run `speclink-manual` yourself.
 
 When the plan order hint noted changes that list `<name>` in their `archiveAfter`, add
 one more line:
 
-> <那些 change 的名稱> 要在 <name> 之後封存，並動到同名的 requirement：先重讀它們對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `$speclink-ingest`），再封存它們。
+> <那些 change 的名稱> 要在 <name> 之後封存，並動到同名的 requirement：先重讀它們對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `speclink-ingest`），再封存它們。
 
 This too is a reminder only — never run the ingest yourself.
 
 Then run `speclink plan --json` and hand the user the next change to start. When `next`
 is non-null, add one more line:
 
-> plan 的下一個可開工：<next>，執行 `$speclink-apply <next>`。
+> plan 的下一個可開工：<next>，執行 `speclink-apply <next>`。
 
 When the effective worktree policy is on (`speclink workflow-config show --json` →
 `worktree`; a `SPECLINK_WORKTREE` env override wins) and `changes` holds two or more
 entries with `wave` 1 and `stage` `proposed` (wave 1 waits on nothing, so their
 `blockedBy` is empty), also list them as parallel-safe:
 
-> 第 1 波可並行：<name-a>、<name-b>，各開一個 session 走 `$speclink-apply-with-worktree <name>`。
+> 第 1 波可並行：<name-a>、<name-b>，各開一個 session 走 `speclink-apply-with-worktree <name>`。
 
 Policy off, or only one such change → name `next` alone. A null `next`, or a `plan`
 failure (a dependency cycle) → say nothing about ordering. This too is a reminder only —

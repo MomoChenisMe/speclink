@@ -5,13 +5,21 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
-Review a change's implementation for craft quality: two parallel read-only axes — **Standards** (repo conventions + a fixed code-smell baseline) and **Correctness** (bug hunting) — run ONCE against a frozen change patch, then validated round by round to a review ticket, closed by a stamp. Round 1 is the only discovery pass; every later round only validates remediation. Spec compliance is NOT this skill's job — that is `$speclink-verify`; the two quality stations run independently and either, both, or neither may be used per change.
+## Shared execution
 
-**Input**: Optionally specify a change name after `$speclink-review` (e.g., `$speclink-review add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
+---
+
+Review a change's implementation for craft quality: two parallel read-only axes — **Standards** (repo conventions + a fixed code-smell baseline) and **Correctness** (bug hunting) — run ONCE against a frozen change patch, then validated round by round to a review ticket, closed by a stamp. Round 1 is the only discovery pass; every later round only validates remediation. Spec compliance is NOT this skill's job — that is `speclink-verify`; the two quality stations run independently and either, both, or neither may be used per change.
+
+**Input**: Optionally specify a change name after `speclink-review` (e.g., `speclink-review add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
@@ -31,7 +39,7 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    speclink instructions apply --change "<name>" --json
    ```
 
-   Read `progress`. If `codeRemaining > 0`, STOP and explain: the review station requires every code task complete before reviewing — finish `$speclink-apply` first. Do NOT spawn sub-agents and do NOT write the ticket.
+   Read `progress`. If `codeRemaining > 0`, STOP and explain: the review station requires every code task complete before reviewing — finish `speclink-apply` first. Do NOT spawn sub-agents and do NOT write the ticket.
 
    `[M]` manual tasks are deliberately excluded from `codeRemaining`: they are work only the user can do by hand, and reviewing before them is the point — a review that changes code would void a manual run done earlier. When `codeRemaining` is 0 but `remaining` is not, continue with the review and tell the user in the result presentation which manual tasks are still open, plus the sequence that follows: the stamp can land now, the manual tasks are checked off afterwards, and archive is what waits for them.
 
@@ -44,8 +52,8 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    ```
 
    - **Ticket exists and the last round's must-fix set is empty** (`lastRound.findings` has no CRITICAL/WARNING entries; SUGGESTION-only counts as empty) → how the cleared round got there decides the path:
-     - **A refused stamp left it behind** (an external gate turned the stamp away) → do NOT re-review: once the gate recovers, retry the stamp directly — `speclink review stamp "<name>" --agent codex` — and report the outcome. No new discovery, no new validation.
-     - **The `$speclink-quality` timeline left it unstamped on purpose** → do NOT stamp blindly. Only the timeline's **closing stamp call** may stamp here; any earlier call in that timeline (a re-validation step) must leave without stamping, whatever the scope says. Resolve `speclink review scope "<name>" --json` first:
+     - **A refused stamp left it behind** (an external gate turned the stamp away) → do NOT re-review: once the gate recovers, retry the stamp directly — `speclink review stamp "<name>"` — and report the outcome. No new discovery, no new validation.
+     - **The `speclink-quality` timeline left it unstamped on purpose** → do NOT stamp blindly. Only the timeline's **closing stamp call** may stamp here; any earlier call in that timeline (a re-validation step) must leave without stamping, whatever the scope says. Resolve `speclink review scope "<name>" --json` first:
        - **This IS the closing stamp call** → an empty validation patch (nothing moved since the cleared round) means retry the stamp directly as above. A non-empty patch means the movement gets validated first: continue from step 4 with this frozen patch and let step 9 close the round — on this call step 9's defer exception is off, so a cleared round stamps in this same call.
        - **This is NOT the closing stamp call** → an empty patch means there is nothing new to judge: report that and end without stamping, ticket untouched. A non-empty patch goes through step 4 as a normal validation pass, and step 9's defer exception keeps the stamp for later.
    - **Otherwise** (no ticket, or the last round carries must-fix findings) → resolve the frozen scope:
@@ -62,7 +70,7 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    Read `contextFiles` (proposal, design, specs, tasks). They tell the reviewers what the code intends — pass the relevant intent into both briefs. Two hard rules:
 
-   - Do NOT issue spec-compliance verdicts here — that is `$speclink-verify`'s dimension.
+   - Do NOT issue spec-compliance verdicts here — that is `speclink-verify`'s dimension.
    - When artifacts are thin, judge only from the code and tests. Never invent requirements.
 
    **Remote mode**: when the workspace is connected to a remote store, `contextFiles` points into the read-only Context Projection (`.speclink/context/`). Read it freely, but NEVER edit projection files; spec changes go through speclink verbs.
@@ -153,18 +161,18 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    - **Bn is empty and no accepted must-fix findings remain** → stamp and report **passed clean** (leftover SUGGESTIONs stay recorded — list them in the report):
 
      ```bash
-     speclink review stamp "<name>" --agent codex
+     speclink review stamp "<name>"
      ```
 
      If the stamp refuses (e.g. tasks regressed meanwhile), report the reason and stop — the next session retries the stamp through step 3.
 
-     **Exception — inside the `$speclink-quality` timeline, before its closing stamp call**: when this station runs as a checking or re-validation step of `$speclink-quality`, do NOT stamp on a cleared round — neither a DISCOVERY round with no must-fix findings nor a VALIDATION round whose blocking set has just cleared. The round is already recorded (step 8); take the **stop without stamping** ending (the same exit as option 3 below: the ticket and its frozen snapshot stay). The stamp lands at that skill's **closing stamp call**, after every fix from both stations has been validated — that call re-enters through step 3's clean-ticket branch, and on it this exception is OFF: a cleared round stamps immediately. Called directly as a single station, a cleared round still stamps on the spot; this exception is only about the two-station ordering.
+     **Exception — inside the `speclink-quality` timeline, before its closing stamp call**: when this station runs as a checking or re-validation step of `speclink-quality`, do NOT stamp on a cleared round — neither a DISCOVERY round with no must-fix findings nor a VALIDATION round whose blocking set has just cleared. The round is already recorded (step 8); take the **stop without stamping** ending (the same exit as option 3 below: the ticket and its frozen snapshot stay). The stamp lands at that skill's **closing stamp call**, after every fix from both stations has been validated — that call re-enters through step 3's clean-ticket branch, and on it this exception is OFF: a cleared round stamps immediately. Called directly as a single station, a cleared round still stamps on the spot; this exception is only about the two-station ordering.
 
-   - **Bn is empty but accepted must-fix findings remain** → recommend the user explicitly stamp with reservations — `speclink review stamp "<name>" --accept --agent codex` — and report **passed with reservations**. Never run `--accept` unprompted.
+   - **Bn is empty but accepted must-fix findings remain** → recommend the user explicitly stamp with reservations — `speclink review stamp "<name>" --accept` — and report **passed with reservations**. Never run `--accept` unprompted.
 
    - **Bn is strictly smaller than Bn-1** (or this is the first round with must-fix findings) → use the **AskUserQuestion tool** (plain text + wait if unavailable) with three options, the recommended one first and labelled "(Recommended)": recommend option 1 — outstanding must-fix findings are what brought the loop here. SUGGESTION-only rounds never reach this menu: they stamp directly through the first bullet.
      1. **Fix and re-validate** — fixes happen HERE in the main thread, following the project's TDD discipline; sub-agents never edit. Fix the must-fix list; discretionary items only when the user asks. A must-fix finding the user chooses not to fix is accepted and carried with the `(accepted)` token (step 8); unfixed SUGGESTIONs just carry forward (step 8). **Verification gate**: after the fixes, run the project's full build and test suite and get it green BEFORE looping back to step 3 — a fix-introduced regression must never flow into the next round. Step 3 then freezes the validation patch for the next round.
-     2. **Accept as-is and stamp** — `speclink review stamp "<name>" --accept --agent codex` (stamps with reservations; the round's findings stay on record in the change history).
+     2. **Accept as-is and stamp** — `speclink review stamp "<name>" --accept` (stamps with reservations; the round's findings stay on record in the change history).
      3. **Stop without stamping** — end the session; the ticket and its frozen snapshot stay for a later session or another reviewer (`speclink review show <name> --json` hands them the last round).
 
    - **Bn is not strictly smaller than Bn-1** (equal or larger) → the round is already recorded; report **failed** immediately: keep the ticket, do NOT stamp, do NOT start another round automatically. The user decides what happens next (more work outside this loop, `--accept`, or discard).
@@ -173,7 +181,7 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
 **Guardrails**
 
-- The review station judges craft; `$speclink-verify` judges spec compliance — never issue compliance verdicts here
+- The review station judges craft; `speclink-verify` judges spec compliance — never issue compliance verdicts here
 - Round 1 is the only discovery pass; validation rounds judge the original findings and the remediation patch's direct regressions — nothing else
 - The frozen patch from `speclink review scope` is the review surface; touched file lists and worktree state never substitute for it
 - needsInput and scope failures wait for an explicit disposal (trusted `--base`, hash-pinned selection, isolated worktree, or discard) — never guess past them
@@ -189,6 +197,6 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The review stamp landed in the main checkout → `$speclink-archive <change-name>`
-- The review stamp landed inside a worktree → commit the stamp's meta changes first, then `$speclink-worktree-merge <change-name>` (archive runs only from the main checkout)
+- The review stamp landed in the main checkout → `speclink-archive <change-name>`
+- The review stamp landed inside a worktree → commit the stamp's meta changes first, then `speclink-worktree-merge <change-name>` (archive runs only from the main checkout)
 - Findings were left unfixed on purpose → they stay in the ticket; say which ones before suggesting anything downstream

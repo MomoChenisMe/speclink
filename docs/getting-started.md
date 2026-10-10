@@ -14,6 +14,8 @@ This example assumes the requirement is already clear: "add CSV export". If you 
 
 Agent commands come in two invocation literals: `/speclink-*` in Claude and `$speclink-*` in Codex. In Codex the `$` prefix invokes a skill explicitly. You can also type `/skills` and pick the same skill from the list. Both routes work.
 
+Copilot CLI and VS Code agent chat also offer skill entry points such as `/speclink-propose` or a skill picker; the Claude slash skill names below also work for Copilot. Codex/Copilot share neutral content under `.agents/skills/`. Skill entry points are not CLI subcommands. When creating a change or stamping review/verify, append `--agent codex`/`--agent copilot` for the actual executing agent, or omit it when unknown.
+
 Both literals are listed below; pick one. Blocks marked as shell run the CLI directly. For what the skill, CLI, and Host layers each own, see [Call layers](workflow.md#call-layers--呼叫層級) in the workflow document.
 
 ## 1. Install / 安裝
@@ -53,6 +55,8 @@ speclink init --tools claude,codex
 ✓ Initialized at /path/to/your-repo/openspec
 Generated files for: claude, codex
 ```
+
+For Copilot alone use `speclink init --tools copilot`; for both use `speclink init --tools codex,copilot`. Shared skills remain while either tool is selected and are pruned only when both are deselected; user skills survive. An old custom `name: copilot` descriptor must first be renamed to `copilot-custom` with its original settings, or manually replaced by the built-in string. See [tool configuration](configuration.md#custom-tool-descriptors).
 
 This creates `openspec/` and `.speclink.yaml`, generates the skill files for the Hosts you selected (`.claude/skills/`, `.agents/skills/`), and adds `.speclink/` to `.gitignore`. No instruction file is written — `CLAUDE.md` and `AGENTS.md` are yours, and workflow routing rides the skills' own descriptions. It does not create `.speclink/` itself; that directory appears later, when there is local working data to store.
 

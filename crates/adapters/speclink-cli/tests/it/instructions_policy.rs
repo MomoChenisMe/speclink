@@ -94,6 +94,26 @@ fn toggles_off_leave_the_instruction_untouched() {
 }
 
 #[test]
+fn unset_languages_reach_instructions_without_being_written_to_config() {
+    let config = "schema: spec-driven\n";
+    let p = TempProject::new("system-language", "tools:\n  - codex\n", config);
+    let env = speclink_core::config::EnvOverrides {
+        system_locale: speclink_host::policy::process_env_overrides().system_locale,
+        ..Default::default()
+    };
+    let policy = speclink_core::config::resolve_policy(&env, &Default::default());
+    let proposal = json_payload(&p.instructions("proposal", &[]));
+    assert_eq!(proposal["locale"], policy.locale);
+    let specs = json_payload(&p.instructions("specs", &[]));
+    if let Some(language) = policy.spec_locale {
+        assert!(instruction_text(&specs).contains(&format!("spec_locale: {language}")));
+    } else {
+        assert!(!instruction_text(&specs).contains("Resolved `spec_locale:"));
+    }
+    assert_eq!(std::fs::read_to_string(p.dir.join("openspec/config.yaml")).unwrap(), config);
+}
+
+#[test]
 fn app_policy_keys_are_inert_and_warning_free() {
     // Spec scenario .speclink.yaml 政策鍵一律不生效: app locale tw + tdd true vs
     // config.yaml locale ja (tdd unset) → canonical/default values, silent stderr.

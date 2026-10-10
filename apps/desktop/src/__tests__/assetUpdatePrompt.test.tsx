@@ -7,6 +7,7 @@ import type { ReactElement, ReactNode } from "react";
 import { I18nProvider, SEMANTIC_TONE } from "@speclink/ui";
 
 import { AssetUpdatePrompt } from "../components/AssetUpdatePrompt";
+import { assetPrompt } from "../assetPrompt";
 import { APP_MESSAGES } from "../i18n/messages";
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
@@ -28,6 +29,18 @@ const MISSING = { kind: "missing" as const, fileCount: 12, version: "v1.3.0" };
 const NEWER = { kind: "newer" as const, fileCount: 2, version: "v1.3.0" };
 
 describe("AssetUpdatePrompt", () => {
+  it("Codex／Copilot 共選依共享差異檔數更新一次", () => {
+    const h = handlers();
+    const prompt = assetPrompt({
+      status: "stale", currentVersion: "v1.42.0",
+      tools: ["codex", "copilot"].map((tool) => ({ tool, workspaceVersion: "v0.9.0", stale: true, newer: false, missing: false })),
+      differingFiles: [".agents/skills/speclink-propose/SKILL.md"],
+    }, "/fixture", {});
+    expect(prompt?.fileCount).toBe(1);
+    render(<AssetUpdatePrompt prompt={prompt} error={null} busy={false} {...h} />);
+    fireEvent.click(screen.getByRole("button", { name: "更新" }));
+    expect(h.onApply).toHaveBeenCalledTimes(1);
+  });
   it("過期態：顯示將被改寫的檔案數，主動作為「更新」", () => {
     const h = handlers();
     render(<AssetUpdatePrompt prompt={STALE} error={null} busy={false} {...h} />);

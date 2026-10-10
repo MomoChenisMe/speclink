@@ -4,7 +4,7 @@ section: 開始使用
 order: 10
 keywords: [首頁, 入門, 角色, 導覽, SDD, 手冊]
 sources: []
-generated: 2026-09-25T08:39:09+08:00
+generated: 2026-10-10T08:25:58+08:00
 ---
 
 # Speclink 操作手冊
@@ -37,6 +37,12 @@ Speclink 是一套 SDD（規格驅動開發，Spec-Driven Development）引擎�
 - 交付前的把關：[品質關卡總覽](quality-stations.md)、[審查站](review.md)、[驗證站](verify.md)、[封存](archive.md)
 - 好幾個變更同時做：先看[執行順序：plan 與依賴](plan.md)，再走[平行實作與合回](worktree.md)
 - 工具：[提交單一變更的檔案](commit.md)、[溯源](trace.md)、[工作流政策與設定](policy-config.md)、[產出流程 schema 管理](schemas.md)、[操作手冊：生成與導覽](manual.md)
+
+### 使用 Claude Code 的開發者
+
+- [選擇技能](claude-skill-bar.md)：點技能填入指令，再自行送出。
+- [目前工作與對話標題](claude-session-focus.md)：辨認正在執行的步驟與變更。
+- [查看進度與工單](claude-workflow-panel.md)：在對話旁查看看板、討論與品質發現。
 
 ### 產品負責人／PM（看進度、不碰 checkout）
 

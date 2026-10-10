@@ -3,8 +3,8 @@ title: 專案分頁、新增工作區與設定頁
 section: 桌面 app
 order: 340
 keywords: [專案分頁, 開啟專案, 新增 Workspace, 最近開啟, 設定頁, config.yaml, 介面語言]
-sources: [desktop-config, workspace-chooser]
-generated: 2026-09-05
+sources: ["desktop-config", "workspace-chooser", "workspace-tools#built-in tools 權威收斂", "workspace-tools#tools 自訂描述子的接受與驗證", "workflow-config#工作流政策的正典歸屬與三層解析順序"]
+generated: 2026-10-10T08:24:25+08:00
 ---
 
 # 專案分頁、新增工作區與設定頁
@@ -32,16 +32,13 @@ generated: 2026-09-05
 | 有 openspec/ 但沒有 `.speclink.yaml` | 顯示啟用確認對話框 |
 | 往上找不到任何 speclink 專案 | 顯示初始化確認對話框 |
 
-兩種確認對話框都有 AI 工具多選（claude／codex），預設勾選 claude。你按確認之前，app 不會在資料夾寫入任何東西。你取消，資料夾內容維持原樣。
+兩種確認對話框都有 AI 工具多選（claude／codex／copilot），預設勾選 claude。你按確認之前，app 不會在資料夾寫入任何東西。你取消，資料夾內容維持原樣。
 
-**初始化**（全新資料夾）：確認後 app 做的事等同於 `speclink init`。它建立 openspec/ 骨架（specs/、changes/archive/、config.yaml）、在專案根寫 `.speclink.yaml` 記錄你選的工具、為每個工具生成技能檔。它不會產生 CLAUDE.md 或 AGENTS.md。接著切到該專案，看板是空的。
+**初始化**（全新資料夾）：確認後 app 做的事等同於 `speclink init`。它建立 openspec/ 骨架（specs/、changes/archive/、config.yaml）、在專案根寫 `.speclink.yaml` 記錄你選的工具、為選取工具生成技能檔；Codex／Copilot 共用一套 `.agents/skills/`。它不會產生 CLAUDE.md、AGENTS.md 或 Copilot 指令檔。接著切到該專案，看板是空的。
 
 **啟用**（已有 openspec/ 的資料夾，例如從別處搬來的專案）：確認後 app 只補缺的東西：openspec/ 缺的骨架、專案根的 `.speclink.yaml`、你選的工具的技能檔。既有的 openspec/ 內容一個位元都不動，包含你自訂過的 config.yaml。判定與寫入都以往上找到的專案根為準，不是你點的子目錄。
 
 初始化或啟用失敗時，app 顯示一行錯誤訊息，不切換專案。
-
-> [!NOTE]
-> 啟用流程的規格較舊的一版寫「會產生 CLAUDE.md 的受管區塊」。較新的工作區補齊規格寫不產生 CLAUDE.md。本頁採較新版本。詳見 [本手冊的來源](about.md)。
 
 ### 最近開啟
 
@@ -106,7 +103,7 @@ remote 分頁（連到 server 的工作區）在滑鼠停留時顯示已連接�
 - 沒有標記時，資料夾必須是 Git repository。不是就拒絕。
 - `.speclink.yaml` 壞掉無法解析時，app 顯示解析錯誤，不改資料夾、不開分頁。
 
-檢查通過後，畫面顯示資料夾路徑與 Claude／Codex 勾選框。既有 `.speclink.yaml` 有記錄工具時以它為預選。沒記錄時只依資料夾裡實際存在的工具痕跡預選，不會自動幫你勾 Claude。至少勾一個工具、路徑也齊備之前，「開啟 Workspace」按鈕維持停用。
+檢查通過後，畫面顯示資料夾路徑與 Claude／Codex／Copilot 勾選框。既有 `.speclink.yaml` 有記錄工具時以它為預選。沒記錄時只依資料夾裡實際存在的工具痕跡預選，不會自動幫你勾 Claude。至少勾一個工具、路徑也齊備之前，「開啟 Workspace」按鈕維持停用。
 
 按下「開啟 Workspace」後 app 才寫入：把工具選集寫進 `.speclink.yaml`、為選到的工具生成或更新技能檔、清掉沒選的工具的 Speclink 產物。沒有標記的資料夾會補上與 CLI remote 連接同構的 remote 區段。你自己在 `.speclink.yaml` 寫的其他設定與自訂工具都保留。同步全部成功後才開始連線。同步失敗時選擇器停在原地，保留路徑與選集讓你重試，不會開分頁。
 
@@ -118,7 +115,7 @@ remote 分頁（連到 server 的工作區）在滑鼠停留時顯示已連接�
 你用「本機資料夾」開到一個帶 remote 標記的資料夾時，app 依狀況分流：
 
 - 對應的 server 已登入，且 `.speclink.yaml` 有至少一個有效的內建工具：先同步技能檔，成功後直接連線開 remote 分頁，不經過選擇器。同步失敗就顯示帶路徑與失敗階段的錯誤，不開分頁。
-- 對應的 server 已登入，但沒有有效的工具選集：導向選擇器的 checkout 步驟。server、Project／Repo 與路徑已預填，你要親自勾 Claude／Codex。
+- 對應的 server 已登入，但沒有有效的工具選集：導向選擇器的 checkout 步驟。server、Project／Repo 與路徑已預填，你要親自勾 Claude／Codex／Copilot。
 - 沒有對應的連線或未登入：導向選擇器的 server 步驟，server 位址已預填。
 
 資料夾同時有本機 openspec/ 與 remote 標記時，app 停下來要你選。三個出口都不會靜默覆蓋：
@@ -136,17 +133,17 @@ remote 分頁（連到 server 的工作區）在滑鼠停留時顯示已連接�
 頁簽依序為 config.yaml、.speclink.yaml，預設落在 config.yaml。config.yaml 與 .speclink.yaml 簽首用等寬字標出對應的檔案路徑。
 
 > [!NOTE]
-> 規格對頁簽數目有兩種說法。較新的需求（2026-08-23）寫專案設定頁只有 config.yaml 與 .speclink.yaml 兩簽。較早的一組需求（2026-08-22）寫有獨立的「Schema」頁簽，順序為 config.yaml → Schema → .speclink.yaml，且 config.yaml 簽內不放產出流程。本頁的頁簽列依較新者；產出流程的內容仍照那組需求列在下方。實際畫面以產品為準。詳見 [本手冊的來源](about.md)。
+> 規格對頁簽數目有兩種說法。較新的需求（2026-10-10）寫專案設定頁只有 config.yaml 與 .speclink.yaml 兩簽。較早的一組需求（2026-08-22）寫有獨立的「Schema」頁簽，順序為 config.yaml → Schema → .speclink.yaml，且 config.yaml 簽內不放產出流程。本頁的頁簽列依較新者；產出流程的內容仍照那組需求列在下方。實際畫面以產品為準。詳見 [本手冊的來源](about.md)。
 
 **config.yaml 簽**有三張卡：
 
 - 「專案說明」卡：唯讀時以 markdown 呈現，太長會收合並提供顯示更多。沒設定時顯示空狀態提示。按右上的編輯鈕，這張卡就地變成多行文字區，按鈕列變成取消與儲存。儲存只寫專案說明。清空後儲存會把這個欄位整個移除。
 - 「產出規則」卡：唯讀時只列出有內容的產物分節，分節名為小節標題、規則為清單。編輯時依目前的產出流程固定分節（spec-driven 是 proposal、design、specs、tasks 四節），每節一個文字區。一行就是一條規則，行的順序就是寫入與注入的順序。不能自己新增分節。儲存時每行去頭尾空白、空行不寫入。某節清空就移除該節，全部清空就移除整個產出規則。以特殊字元開頭的規則（例如 @ 或反引號）會自動加引號，存回去仍逐字還原。
-- 「產出政策」卡：locale 與 spec_locale 是下拉，tdd 與 audit 是開關。另有 worktree 開關，文案直接寫「worktree」。這些欄位的意義見 [工作流政策與設定](policy-config.md)。
+- 「產出政策」卡：locale 與 spec_locale 是下拉，tdd 與 audit 是開關。另有 worktree 開關，文案直接寫「worktree」。兩個語言下拉都只有「未設定（系統語系）」、tw、ja、en 四個可選項，不提供 auto。未設定時各自依系統語系產出；詳見 [工作流政策與設定](policy-config.md)。
 
 兩張編輯卡各自獨立：一張進入編輯不影響另一張。取消會還原那張卡，不寫檔。
 
-儲存的規則：只代換你動到的鍵，其他鍵原樣保留。把政策欄位設回預設值時會移除那個鍵，而不是寫明值。改工具清單後 app 會同步技能檔：新選的生成、取消的清理。改 worktree 開關存檔後也會同步技能檔。
+儲存的規則：只代換你動到的鍵，其他鍵原樣保留。把政策欄位設回預設值時會移除那個鍵，而不是寫明值。改工具清單後 app 會同步技能檔：新選的生成、停用的清理。Codex 或 Copilot 任一仍勾選時，共享技能保留；兩者都取消才清理其中的 Speclink 技能，使用者自建的 my-skill 等技能保留。重載後只勾實際儲存的工具。改 worktree 開關存檔後也會同步技能檔。
 
 worktree 開關由開改關時，如果還有活躍的 linked worktree，app 拒絕寫入並浮出擋下訊息。訊息列出每個 worktree 的變更名、分支與路徑，提示先執行 worktree-merge 收尾。設定不變、開關回到開啟。見 [平行實作與合回：worktree](worktree.md)。
 
@@ -158,11 +155,11 @@ worktree 開關由開改關時，如果還有活躍的 linked worktree，app 拒
 - 開啟所在資料夾：對專案層與使用者層的流程，在系統檔案管理器顯示它的目錄。內建流程沒有這個動作。內容編輯交給外部編輯器。
 - 刪除：只對專案層的流程。按下先出確認對話框，取消零變動。確認後整個目錄移除。config.yaml 正在使用的流程拒刪，錯誤浮出、磁碟不變。
 
-**.speclink.yaml 簽**有「AI 工具」卡：內建工具 claude／codex 多選，自訂工具原樣列出、不可編輯。
+**.speclink.yaml 簽**有「AI 工具」卡：內建工具 claude／codex／copilot 多選，自訂工具原樣列出、不可編輯。勾選管理技能生成與保留，不保證阻止其他代理發現共享目錄。既有自訂描述子名為 copilot 時，儲存會顯示名稱衝突與人工遷移說明；原設定與技能不動，勾選輸入保留供修正。遷移方式見 [建立工作區與指令檔](init-workspace.md)。
 
 ### 專案設定頁（remote 工作區）
 
-作用中分頁是 remote 工作區時，較新的需求（2026-08-23）寫專案設定頁只有單一 Workflow 簽；較早的產出流程需求（2026-08-22）寫頁簽依序為 Workflow、Schema。Workflow 簽有與 config.yaml 簽同形的專案說明、產出規則、產出政策三卡。內容來自 server 上的政策文件，簽首用等寬字顯示政策版次。沒有 worktree 開關。
+作用中分頁是 remote 工作區時，較新的需求（2026-10-10）寫專案設定頁只有單一 Workflow 簽；較早的產出流程需求（2026-08-22）寫頁簽依序為 Workflow、Schema。Workflow 簽有與 config.yaml 簽同形的專案說明、產出規則、產出政策三卡。內容來自 server 上的政策文件，簽首用等寬字顯示政策版次。沒有 worktree 開關，也沒有 server 的 AI 工具選項。工具勾選屬於本機 checkout；沒有 checkout 的 remote 工作區不提供技能安裝。
 
 儲存時 app 帶著你讀到的版次送出。別人先一步改過時，你會收到版次衝突：你的輸入原樣保留，畫面浮出逐欄位對照（server 現值｜我的輸入）。只有兩個出口：「以 server 版重載」與「檢視後以最新 revision 重新提交」。沒有強制覆寫。
 
@@ -184,6 +181,8 @@ Schema 簽在 remote 只列內建流程，切換下拉也只有內建可選。co
 
 ## 下拉遇到看不懂的值
 
-locale 或 spec_locale 的儲存值不在合法選項內時（例如有人手改成「繁體中文」），下拉直接顯示那個原始值，帶無效標註與警示樣式。欄位下方出現提示文字，引導你改選合法代碼。app 不會自動清空或改寫它。你改選合法代碼並儲存後，值被覆蓋、提示消失。合法代碼：locale 為 tw、ja、en；spec_locale 為 tw、ja、en、auto。
+locale 或 spec_locale 的儲存值不在合法選項內時（例如有人手改成「繁體中文」），下拉直接顯示那個原始值，帶無效標註與警示樣式。欄位下方出現提示文字，引導你改選合法代碼。app 不會自動清空或改寫它。你改選合法代碼並儲存後，值被覆蓋、提示消失。兩個下拉都可改選未設定、tw、ja、en。
 
-**出處**：`desktop-config`、`workspace-chooser`
+如果讀到舊 spec_locale:auto，下拉顯示「跟隨 locale（舊設定）」，不標為無效，不自動改寫；展開選單仍只有上述四項。你未更動它而儲存其他設定時，舊值保留。改選「未設定（系統語系）」並儲存後才移除該鍵，回到系統語系預設。本地與 remote 相同，remote 仍檢查政策版次。
+
+**出處**：`desktop-config`、`workspace-chooser`、`workspace-tools`、`workflow-config`

@@ -5,15 +5,23 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Establish the baseline for an existing codebase: generate the initial canonical specs from current behavior, so later changes have a spec baseline to build on.
 
-**IMPORTANT: The baseline documents what the system does TODAY — not what it should do.** Specs written here describe observed behavior with evidence. Aspirations, fixes, and improvements belong in a change (`$speclink-propose`) AFTER the baseline is written. Because nothing is changing, baseline writes directly to `openspec/specs/` — no change folder is involved.
+**IMPORTANT: The baseline documents what the system does TODAY — not what it should do.** Specs written here describe observed behavior with evidence. Aspirations, fixes, and improvements belong in a change (`speclink-propose`) AFTER the baseline is written. Because nothing is changing, baseline writes directly to `openspec/specs/` — no change folder is involved.
 
-**Input**: Optionally a scope hint after `$speclink-baseline` (e.g., "auth and billing only"). If omitted, baseline the whole codebase.
+**Input**: Optionally a scope hint after `speclink-baseline` (e.g., "auth and billing only"). If omitted, baseline the whole codebase.
 
 ---
 
@@ -22,6 +30,7 @@ Establish the baseline for an existing codebase: generate the initial canonical 
 ```bash
 speclink list --specs
 speclink workflow-config show --json
+speclink workflow-config languages --json
 ```
 
 - **No specs yet** → full baseline pass; continue below.
@@ -30,10 +39,12 @@ speclink workflow-config show --json
 The `workflow-config show --json` payload is the canonical workflow config for this workspace — the values `openspec/config.yaml` holds (the store's config document in remote mode), in the same shape either way. Environment overrides (`SPECLINK_*`) are NOT applied; that is the same reading the file itself gives. Read these fields from it:
 
 - `context` — the project context; carry it as background for the inventory and for every spec you write.
-- `specLocale` — the JSON name of `spec_locale`: the language for spec prose. `null` means English, `auto` means use the payload's `locale`, any other value is the locale code to write in. Structural markers and SHALL/MUST keywords stay in English regardless.
+- `specLocale` — the JSON name of `spec_locale`: the language for spec prose. `null` means the operating-system language of the machine running Speclink (Chinese → `tw`, Japanese → `ja`, other or unavailable languages → `en`), `auto` means use the payload's `locale` (also system language when `locale` is null), any other value is the locale code to write in. Structural markers and SHALL/MUST keywords stay in English regardless.
 - `rules.specs` — the project's specs rules, a list of strings (absent when the project sets none). They bind every spec you write in Step 4 — see the last rule there. When the list is absent or empty, nothing changes.
 
-If `speclink workflow-config show --json` exits non-zero (a config that does not parse fails closed; a remote store that is offline or rejects the credentials does the same), report the error and STOP — never fall back to reading `openspec/config.yaml` by hand, and never parse the YAML yourself.
+Use the `specLocale` code from `workflow-config languages --json` as the concrete prose language. This read-only query resolves the canonical language settings above with OS defaults, without `SPECLINK_*` overrides and without creating a change or writing config. In remote mode it returns the server's language, never the client's language. Do not infer it from the UI, conversation, or local shell language.
+
+If either workflow-config query exits non-zero (a config that does not parse fails closed; a remote store that is offline, rejects the credentials, or is too old to supply language metadata does the same), report the error and STOP — never fall back to reading `openspec/config.yaml` by hand, and never parse the YAML yourself or guess the server's language. An older server must be upgraded first.
 
 ## Step 2: Inventory the codebase
 
@@ -117,5 +128,5 @@ Fix structural findings, then report: capabilities created (with requirement/sce
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The requirements for the next piece of work are clear → `$speclink-propose <idea>`
-- They are still fuzzy or worth debating → `$speclink-discuss <topic>`
+- The requirements for the next piece of work are clear → `speclink-propose <idea>`
+- They are still fuzzy or worth debating → `speclink-discuss <topic>`

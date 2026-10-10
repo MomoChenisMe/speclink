@@ -538,6 +538,10 @@ describe("App (kanban primary + rich detail)", () => {
     const dialog = claude.closest('[role="alertdialog"]') as HTMLElement;
     expect(dialog).toBeTruthy();
     const codex = within(dialog).getByRole("checkbox", { name: "codex" });
+    const copilot = within(dialog).getByRole("checkbox", { name: "copilot" });
+    expect(copilot.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(copilot);
+    expect(copilot.getAttribute("aria-checked")).toBe("true");
     // 主題化原語（button 元素）而非原生 input。
     expect(claude.tagName).not.toBe("INPUT");
     // 預設勾選狀態與替換前相同：claude 勾、codex 未勾。
@@ -576,9 +580,11 @@ describe("App (kanban primary + rich detail)", () => {
     expect(claude.getAttribute("aria-checked")).toBe("true");
     const codex = within(dialog).getByRole("checkbox", { name: "codex" });
     expect(codex.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(claude);
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "copilot" }));
     // 確認 → 以所選工具呼叫 adopt（而非 init）。
     fireEvent.click(within(dialog).getByRole("button", { name: "啟用" }));
-    await waitFor(() => expect(ws.adoptProject).toHaveBeenCalledWith("D:/migrated", ["claude"]));
+    await waitFor(() => expect(ws.adoptProject).toHaveBeenCalledWith("D:/migrated", ["copilot"]));
     expect(ws.initProject).not.toHaveBeenCalled();
   });
 

@@ -781,7 +781,7 @@ export function WorkspaceChooser({
               <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
                 <span className="text-sm font-medium">{t("chooser.checkoutTools")}</span>
                 <div className="flex gap-4">
-                  {["claude", "codex"].map((tool) => (
+                  {["claude", "codex", "copilot"].map((tool) => (
                     <label
                       key={tool}
                       htmlFor={`checkout-tool-${tool}`}

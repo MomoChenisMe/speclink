@@ -581,7 +581,8 @@ fn run_chain(recovery: Recovery) {
     // 反映 → 改回 → 恢復。寫入走第二條 store 連線（決策 2——今日無 CLI/wire 寫入面）。
     step(&scene, 4, "policy：config 變化可觀察於 instructions", || {
         let before = apply_locale(&project, &pat);
-        assert_eq!(before, "English", "no locale policy renders the default");
+        let system_default = speclink_host::policy::workflow_languages(None).unwrap();
+        assert_eq!(before, system_default.locale, "unset language uses the server OS default (the test server runs on this machine)");
         write_workflow_config(&db, "schema: spec-driven\nlocale: ja\n");
         assert_eq!(
             apply_locale(&project, &pat),

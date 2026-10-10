@@ -6,13 +6,21 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Implement tasks from a Speclink change.
 
-**Input**: Optionally specify a change name (e.g., `$speclink-apply add-auth`). If omitted, check if it can be inferred from conversation context — inference only decides whether a name is given; the selection itself always goes through `speclink plan` in step 1.
+**Input**: Optionally specify a change name (e.g., `speclink-apply add-auth`). If omitted, check if it can be inferred from conversation context — inference only decides whether a name is given; the selection itself always goes through `speclink plan` in step 1.
 
 **Task tracking is file-based only.** The tasks file's markdown checkboxes (`- [ ]` / `- [x]`) are the single source of truth for progress. Do NOT use any external task management system, built-in task tracker, or todo tool. When a task is done, edit the checkbox in the tasks file — that is the only way to record progress.
 
@@ -36,7 +44,7 @@ Implement tasks from a Speclink change.
 
    Never auto-select a change just because only one exists, and never bypass the plan because the user mentioned a change in conversation — the plan decides whether it may start.
 
-   Always announce: "Using change: <name>" and how to override (e.g., `$speclink-apply <other>`).
+   Always announce: "Using change: <name>" and how to override (e.g., `speclink-apply <other>`).
 
 2. **Check status to understand the schema**
 
@@ -72,7 +80,7 @@ Implement tasks from a Speclink change.
    - Dynamic instruction based on current state
 
    **Handle states:**
-   - If `state: "blocked"` (missing artifacts): show message, suggest using `$speclink-propose` to create the change artifacts first
+   - If `state: "blocked"` (missing artifacts): show message, suggest using `speclink-propose` to create the change artifacts first
    - If `state: "all_done"`: congratulate, suggest archive
    - Otherwise: proceed to implementation
 
@@ -128,7 +136,7 @@ Detect dormancy from `.openspec.yaml` `created` and `git log -1 --format=%at -- 
 
 - **Both conditions met**: run `speclink drift <change-name>`, display the report, then use the **AskUserQuestion tool**:
   - **Continue with apply** — proceed to tasks (recommended for Light drift)
-  - **Refresh first** — pause apply, run `/speclink-ingest <change-name>` to update artifacts, then resume
+  - **Refresh first** — pause apply, run `speclink-ingest <change-name>` to update artifacts, then resume
   - **Stop** — end the workflow
 - **Either condition not met**: silently continue, no output.
 
@@ -197,7 +205,7 @@ If there is no AskUserQuestion tool available, present options as plain text and
    - **Verify before marking done** — re-read the task description from the tasks file AND the relevant Implementation Contract content from design.md. For each requirement stated in the task description and each contract item that covers this task's scope, confirm it is addressed by your changes. Confirm the verification target named by the task (test name, CLI invocation, analyzer check, or manual assertion) actually passes. If any contract item, task requirement, or verification target is missing or failing, implement/fix it now. Do not mark the task complete until every part of the description is covered and the contract for this task is satisfied.
    - Mark task complete by running: `speclink task done --change "<name>" <task-id>`
      This command marks the checkbox in tasks.md AND records which files were modified for this task.
-   - **Never check off an `[M]` task.** A task whose description carries the `[M]` prefix is manual work the user performs by hand — not only manual testing, but anything you cannot do yourself: accepting a result by operating the product, creating an account on an external service, placing a key. You cannot observe the outcome, so you cannot attest to it. Skip it and move on — unless a code task depends on it, which is the next point's blocked case. Once every non-`[M]` task is checked, apply is finished: report completion, name the `[M]` tasks left for the user, and say that the quality stations (`$speclink-review`, `$speclink-verify`, or `$speclink-quality` for both) can run now while archive waits for the manual runs.
+   - **Never check off an `[M]` task.** A task whose description carries the `[M]` prefix is manual work the user performs by hand — not only manual testing, but anything you cannot do yourself: accepting a result by operating the product, creating an account on an external service, placing a key. You cannot observe the outcome, so you cannot attest to it. Skip it and move on — unless a code task depends on it, which is the next point's blocked case. Once every non-`[M]` task is checked, apply is finished: report completion, name the `[M]` tasks left for the user, and say that the quality stations (`speclink-review`, `speclink-verify`, or `speclink-quality` for both) can run now while archive waits for the manual runs.
    - **A code task blocked by an open `[M]` task stops you.** Some manual tasks come first, not last — the external account has to exist before the code that calls it can be written. When implementing a code task requires an unchecked `[M]` task to be done, stop and ask the user to complete that manual task. Never check it off on their behalf, and never work around it.
    - If a task was checked by mistake or its implementation is rolled back, run: `speclink task undone --change "<name>" <task-id>`
      Do NOT edit tasks.md directly to uncheck a task.
@@ -292,10 +300,10 @@ Working on task 4/7: <task description>
 - [x] Task 2
 ...
 
-All tasks complete! Quality stations are optional: `$speclink-review` ∥ `$speclink-verify`, or `$speclink-quality`.
-Skipping them is fine — archive directly with `$speclink-archive`, or do archive + commit
-in one step via `$speclink-commit` ("Archive first, then commit together").
-(Inside a linked worktree: do not archive — commit there and hand off to `$speclink-worktree-merge`.)
+All tasks complete! Quality stations are optional: `speclink-review` ∥ `speclink-verify`, or `speclink-quality`.
+Skipping them is fine — archive directly with `speclink-archive`, or do archive + commit
+in one step via `speclink-commit` ("Archive first, then commit together").
+(Inside a linked worktree: do not archive — commit there and hand off to `speclink-worktree-merge`.)
 ```
 
 **Output On Pause (Issue Encountered)**
@@ -342,10 +350,10 @@ This skill supports the "actions on a change" model:
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- Every non-`[M]` task is checked → the quality stations are optional and the user's call: `$speclink-review` (craft quality) ∥ `$speclink-verify` (spec compliance), or `$speclink-quality` to run both in order; each station hands off to archive when its stamp lands
-- Skipping the quality stations is equally valid → go straight to `$speclink-archive <change-name>`, or take the one-step path: `$speclink-commit <change-name>` and pick its "Archive first, then commit together" option
+- Every non-`[M]` task is checked → the quality stations are optional and the user's call: `speclink-review` (craft quality) ∥ `speclink-verify` (spec compliance), or `speclink-quality` to run both in order; each station hands off to archive when its stamp lands
+- Skipping the quality stations is equally valid → go straight to `speclink-archive <change-name>`, or take the one-step path: `speclink-commit <change-name>` and pick its "Archive first, then commit together" option
 - Only `[M]` tasks remain → the quality stations can still run now, but archiving waits until the user has done the manual work by hand
-- Requirements changed mid-work → `$speclink-ingest <change-name>`, then come back to apply
+- Requirements changed mid-work → `speclink-ingest <change-name>`, then come back to apply
 
 === .agents/skills/speclink-archive/SKILL.md ===
 ---
@@ -355,17 +363,25 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Archive a completed change.
 
-**Input**: Optionally specify a change name after `$speclink-archive` (e.g., `$speclink-archive add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name after `speclink-archive` (e.g., `speclink-archive add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
-**Where to run it**: archiving runs in the **main checkout**. Inside a linked worktree on a `speclink/` branch the engine refuses the archive outright — the unarchive backup would land in the worktree's gitignored `.speclink/snapshots/` and vanish with the worktree, and deltas would merge onto the branch point's stale canon. If you are in a worktree, wrap it up with the `$speclink-worktree-merge` skill first, then archive from the main checkout.
+**Where to run it**: archiving runs in the **main checkout**. Inside a linked worktree on a `speclink/` branch the engine refuses the archive outright — the unarchive backup would land in the worktree's gitignored `.speclink/snapshots/` and vanish with the worktree, and deltas would merge onto the branch point's stale canon. If you are in a worktree, wrap it up with the `speclink-worktree-merge` skill first, then archive from the main checkout.
 
 **Steps**
 
@@ -412,7 +428,7 @@ Archive a completed change.
 
    - `archiveAfter` is non-empty:
 
-     > plan 建議先封存 <archiveAfter 的名稱>；它們封存後，重讀本 change 對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `$speclink-ingest`）再封存 <name>。重疊的 requirement：<requirementOverlap 裡對應那些 change 的 capability › requirement>。
+     > plan 建議先封存 <archiveAfter 的名稱>；它們封存後，重讀本 change 對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `speclink-ingest`）再封存 <name>。重疊的 requirement：<requirementOverlap 裡對應那些 change 的 capability › requirement>。
 
    - `requirementOverlap` holds an entry whose `conflict` is true:
 
@@ -467,7 +483,7 @@ Archive a completed change.
      - merge the omitted canonical content into each MODIFIED requirement so it reads as the complete final state, or declare the drop with `<!-- REMOVED-SCENARIO: … -->`
      - drop or retarget each pre-existing ADDED requirement (a requirement the canon already carries is edited via MODIFIED, not re-added)
      - do NOT edit the main specs — only the delta files change
-   - "Refresh from the codebase": run `/speclink-drift <name>` to see what moved, then `/speclink-ingest <name>` to update the delta — the route the refusal message itself points at
+   - "Refresh from the codebase": run `speclink-drift <name>` to see what moved, then `speclink-ingest <name>` to update the delta — the route the refusal message itself points at
    - "Cancel"
 
    After fixing, show a brief diff summary of the rewritten delta files, then continue.
@@ -497,7 +513,7 @@ Archive a completed change.
 
    **If the merge gate refuses**, the error lists every offending operation
    (capability / operation / requirement / reason) at once. Fix them in one round on the
-   delta files — `speclink drift <name>` shows what moved, `/speclink-ingest <name>`
+   delta files — `speclink drift <name>` shows what moved, `speclink-ingest <name>`
    updates the delta — then re-run the archive. `--no-validate` does not unlock the gate;
    `--skip-specs` skips spec application entirely.
 
@@ -514,7 +530,7 @@ Archive a completed change.
    It is a note, not a refusal — nothing to waive, no flag to pass, exit code unchanged. A
    spec-only or docs-only change earns no code evidence by construction, so the note is
    expected there. Anywhere else, read it as a prompt to check whether the work actually
-   went through `/speclink-apply` before archiving.
+   went through `speclink-apply` before archiving.
 
 6. **Display summary**
 
@@ -651,38 +667,38 @@ up, nothing to delete.
 ## After the archive
 
 Every archive — whichever path led here: straight from apply, after a review or verify
-stamp, after `$speclink-quality`, or following `$speclink-worktree-merge` — leaves
+stamp, after `speclink-quality`, or following `speclink-worktree-merge` — leaves
 uncommitted working-tree changes: the deltas merged into the canonical specs and the
 change directory moved into the archive. Close by reminding the user to commit them
-with a plain git commit — the change-scoped `$speclink-commit` flow does not apply
+with a plain git commit — the change-scoped `speclink-commit` flow does not apply
 after the archive (its file selection reads the change directory that has just moved).
 This is a reminder only — never run the commit yourself.
 
 When the workspace has a `openspec/manual/` directory, add one more line to that
-reminder: the manual may be stale now, and `$speclink-manual` will report which pages
+reminder: the manual may be stale now, and `speclink-manual` will report which pages
 this archive's spec changes outdated. The condition is the directory's existence only —
 do not work out which specs this archive touched, and do not judge whether the manual
 is actually stale; that is the manual skill's report. This too is a reminder only —
-never run `$speclink-manual` yourself.
+never run `speclink-manual` yourself.
 
 When the plan order hint noted changes that list `<name>` in their `archiveAfter`, add
 one more line:
 
-> <那些 change 的名稱> 要在 <name> 之後封存，並動到同名的 requirement：先重讀它們對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `$speclink-ingest`），再封存它們。
+> <那些 change 的名稱> 要在 <name> 之後封存，並動到同名的 requirement：先重讀它們對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `speclink-ingest`），再封存它們。
 
 This too is a reminder only — never run the ingest yourself.
 
 Then run `speclink plan --json` and hand the user the next change to start. When `next`
 is non-null, add one more line:
 
-> plan 的下一個可開工：<next>，執行 `$speclink-apply <next>`。
+> plan 的下一個可開工：<next>，執行 `speclink-apply <next>`。
 
 When the effective worktree policy is on (`speclink workflow-config show --json` →
 `worktree`; a `SPECLINK_WORKTREE` env override wins) and `changes` holds two or more
 entries with `wave` 1 and `stage` `proposed` (wave 1 waits on nothing, so their
 `blockedBy` is empty), also list them as parallel-safe:
 
-> 第 1 波可並行：<name-a>、<name-b>，各開一個 session 走 `$speclink-apply-with-worktree <name>`。
+> 第 1 波可並行：<name-a>、<name-b>，各開一個 session 走 `speclink-apply-with-worktree <name>`。
 
 Policy off, or only one such change → name `next` alone. A null `next`, or a `plan`
 failure (a dependency cycle) → say nothing about ordering. This too is a reminder only —
@@ -696,8 +712,16 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Audit changed code for security sharp edges — API design traps, dangerous defaults, and interfaces that make it easy to do the wrong thing.
@@ -710,8 +734,8 @@ Good APIs don't require developers to "be careful" to stay secure. If the correc
 
 This skill operates in two modes depending on how it's invoked:
 
-- **Standalone** (`$speclink-audit`): Full 3-agent parallel analysis on current git diff. See [Standalone Mode](#standalone-mode).
-- **Discipline** (via `$speclink-apply` when `audit: true`): Condensed checklist applied during implementation. See [Discipline Mode](#discipline-mode).
+- **Standalone** (`speclink-audit`): Full 3-agent parallel analysis on current git diff. See [Standalone Mode](#standalone-mode).
+- **Discipline** (via `speclink-apply` when `audit: true`): Condensed checklist applied during implementation. See [Discipline Mode](#discipline-mode).
 
 Both modes share the same [Core Framework](#core-framework).
 
@@ -719,7 +743,7 @@ Both modes share the same [Core Framework](#core-framework).
 
 ## Standalone Mode
 
-When invoked directly as `$speclink-audit`:
+When invoked directly as `speclink-audit`:
 
 ### Phase 1: Gather Changes
 
@@ -781,7 +805,7 @@ End with a brief summary of what was fixed (or confirm the code is clean).
 
 ## Discipline Mode
 
-When referenced by `$speclink-apply` (via `speclink instructions --skill audit`), do NOT launch the 3-agent workflow above. Instead, apply this condensed checklist continuously during implementation.
+When referenced by `speclink-apply` (via `speclink instructions --skill audit`), do NOT launch the 3-agent workflow above. Instead, apply this condensed checklist continuously during implementation.
 
 ### Quick 3-Role Check
 
@@ -932,15 +956,23 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Establish the baseline for an existing codebase: generate the initial canonical specs from current behavior, so later changes have a spec baseline to build on.
 
-**IMPORTANT: The baseline documents what the system does TODAY — not what it should do.** Specs written here describe observed behavior with evidence. Aspirations, fixes, and improvements belong in a change (`$speclink-propose`) AFTER the baseline is written. Because nothing is changing, baseline writes directly to `openspec/specs/` — no change folder is involved.
+**IMPORTANT: The baseline documents what the system does TODAY — not what it should do.** Specs written here describe observed behavior with evidence. Aspirations, fixes, and improvements belong in a change (`speclink-propose`) AFTER the baseline is written. Because nothing is changing, baseline writes directly to `openspec/specs/` — no change folder is involved.
 
-**Input**: Optionally a scope hint after `$speclink-baseline` (e.g., "auth and billing only"). If omitted, baseline the whole codebase.
+**Input**: Optionally a scope hint after `speclink-baseline` (e.g., "auth and billing only"). If omitted, baseline the whole codebase.
 
 ---
 
@@ -949,6 +981,7 @@ Establish the baseline for an existing codebase: generate the initial canonical 
 ```bash
 speclink list --specs
 speclink workflow-config show --json
+speclink workflow-config languages --json
 ```
 
 - **No specs yet** → full baseline pass; continue below.
@@ -957,10 +990,12 @@ speclink workflow-config show --json
 The `workflow-config show --json` payload is the canonical workflow config for this workspace — the values `openspec/config.yaml` holds (the store's config document in remote mode), in the same shape either way. Environment overrides (`SPECLINK_*`) are NOT applied; that is the same reading the file itself gives. Read these fields from it:
 
 - `context` — the project context; carry it as background for the inventory and for every spec you write.
-- `specLocale` — the JSON name of `spec_locale`: the language for spec prose. `null` means English, `auto` means use the payload's `locale`, any other value is the locale code to write in. Structural markers and SHALL/MUST keywords stay in English regardless.
+- `specLocale` — the JSON name of `spec_locale`: the language for spec prose. `null` means the operating-system language of the machine running Speclink (Chinese → `tw`, Japanese → `ja`, other or unavailable languages → `en`), `auto` means use the payload's `locale` (also system language when `locale` is null), any other value is the locale code to write in. Structural markers and SHALL/MUST keywords stay in English regardless.
 - `rules.specs` — the project's specs rules, a list of strings (absent when the project sets none). They bind every spec you write in Step 4 — see the last rule there. When the list is absent or empty, nothing changes.
 
-If `speclink workflow-config show --json` exits non-zero (a config that does not parse fails closed; a remote store that is offline or rejects the credentials does the same), report the error and STOP — never fall back to reading `openspec/config.yaml` by hand, and never parse the YAML yourself.
+Use the `specLocale` code from `workflow-config languages --json` as the concrete prose language. This read-only query resolves the canonical language settings above with OS defaults, without `SPECLINK_*` overrides and without creating a change or writing config. In remote mode it returns the server's language, never the client's language. Do not infer it from the UI, conversation, or local shell language.
+
+If either workflow-config query exits non-zero (a config that does not parse fails closed; a remote store that is offline, rejects the credentials, or is too old to supply language metadata does the same), report the error and STOP — never fall back to reading `openspec/config.yaml` by hand, and never parse the YAML yourself or guess the server's language. An older server must be upgraded first.
 
 ## Step 2: Inventory the codebase
 
@@ -1044,8 +1079,8 @@ Fix structural findings, then report: capabilities created (with requirement/sce
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The requirements for the next piece of work are clear → `$speclink-propose <idea>`
-- They are still fuzzy or worth debating → `$speclink-discuss <topic>`
+- The requirements for the next piece of work are clear → `speclink-propose <idea>`
+- They are still fuzzy or worth debating → `speclink-discuss <topic>`
 
 === .agents/skills/speclink-commit/SKILL.md ===
 ---
@@ -1055,15 +1090,23 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Commit files related to a specific Speclink change.
 
 This is a **utility skill** (not a workflow step). It reads source file tracking data and artifact changes to stage and commit only the files belonging to one change — useful when multiple changes are in progress simultaneously.
 
-**Input**: Optionally specify a change name after `$speclink-commit` (e.g., `$speclink-commit add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name after `speclink-commit` (e.g., `speclink-commit add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Prerequisites**: This skill requires `git`. Run `git --version`. If git is not available (command not found or similar error), inform the user to install git and STOP.
 
@@ -1212,7 +1255,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
       - If every delta is complete final-state and no ADDED requirement pre-exists: skip to 7a-ii-b.
       - Otherwise use the **AskUserQuestion tool** to ask: "Delta specs would be refused by the archive merge gate. Fix them before archiving?"
         - **Yes**: rewrite the delta files in place — merge the omitted canonical content into MODIFIED requirements (or declare deliberate drops with `<!-- REMOVED-SCENARIO: … -->`), drop or retarget pre-existing ADDED requirements — then proceed. Do NOT edit main specs.
-        - **No**: skip the archive (commit without it) and route the delta repair through `speclink drift <name>` → `/speclink-ingest <name>` — archiving as-is would exit non-zero
+        - **No**: skip the archive (commit without it) and route the delta repair through `speclink drift <name>` → `speclink-ingest <name>` — archiving as-is would exit non-zero
 
       If **AskUserQuestion tool** is not available, ask the same question as plain text and wait for the user's response.
 
@@ -1222,7 +1265,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     - `archiveAfter` is non-empty:
 
-      > plan 建議先封存 <archiveAfter 的名稱>；它們封存後，重讀本 change 對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `$speclink-ingest`）再封存 <name>。重疊的 requirement：<requirementOverlap 裡對應那些 change 的 capability › requirement>。
+      > plan 建議先封存 <archiveAfter 的名稱>；它們封存後，重讀本 change 對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `speclink-ingest`）再封存 <name>。重疊的 requirement：<requirementOverlap 裡對應那些 change 的 capability › requirement>。
 
     - `requirementOverlap` holds an entry whose `conflict` is true:
 
@@ -1286,19 +1329,19 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     6. Close the sub-flow with the reminders below. Print them once, wherever the flow ends: after the step 10 result, or right where the user stops at the re-confirmation above — the archive has already run either way, and after a stop its file moves are still uncommitted, so also remind the user to commit them with a plain git commit:
 
-       - When the workspace has a `openspec/manual/` directory, add one line: the manual may be stale now, and `$speclink-manual` will report which pages this archive's spec changes outdated. The condition is the directory's existence only — do not work out which specs this archive touched, and do not judge whether the manual is actually stale; that is the manual skill's report. This is a reminder only — never run `$speclink-manual` yourself.
+       - When the workspace has a `openspec/manual/` directory, add one line: the manual may be stale now, and `speclink-manual` will report which pages this archive's spec changes outdated. The condition is the directory's existence only — do not work out which specs this archive touched, and do not judge whether the manual is actually stale; that is the manual skill's report. This is a reminder only — never run `speclink-manual` yourself.
        - When the plan order hint noted changes that list `<name>` in their `archiveAfter`, add one more line:
 
-         > <那些 change 的名稱> 要在 <name> 之後封存，並動到同名的 requirement：先重讀它們對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `$speclink-ingest`），再封存它們。
+         > <那些 change 的名稱> 要在 <name> 之後封存，並動到同名的 requirement：先重讀它們對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `speclink-ingest`），再封存它們。
 
          This too is a reminder only — never run the ingest yourself.
        - Run `speclink plan --json` and hand the user the next change to start. When `next` is non-null, add one more line:
 
-         > plan 的下一個可開工：<next>，執行 `$speclink-apply <next>`。
+         > plan 的下一個可開工：<next>，執行 `speclink-apply <next>`。
 
          When the effective worktree policy is on (`speclink workflow-config show --json` → `worktree`; a `SPECLINK_WORKTREE` env override wins) and `changes` holds two or more entries with `wave` 1 and `stage` `proposed` (wave 1 waits on nothing, so their `blockedBy` is empty), also list them as parallel-safe:
 
-         > 第 1 波可並行：<name-a>、<name-b>，各開一個 session 走 `$speclink-apply-with-worktree <name>`。
+         > 第 1 波可並行：<name-a>、<name-b>，各開一個 session 走 `speclink-apply-with-worktree <name>`。
 
          Policy off, or only one such change → name `next` alone. A null `next`, or a `plan` failure (a dependency cycle) → say nothing about ordering. This too is a reminder only — never run apply yourself.
 
@@ -1366,13 +1409,21 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Compose the workflow config's `context` and `rules` from what the codebase structurally declares, then land them through a diff the user approves.
 
-**Input**: Optionally a scope hint after `$speclink-config` (e.g. "rules only", "refresh the context"). If omitted, work the whole document.
+**Input**: Optionally a scope hint after `speclink-config` (e.g. "rules only", "refresh the context"). If omitted, work the whole document.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
@@ -1447,8 +1498,8 @@ With a scope hint, criteria 1–3 are re-judged only over the artifacts in scope
 
 The four policy fields are the user's decision. Ask each one explicitly, one at a time, with the **AskUserQuestion tool** (or as plain text if unavailable), showing the current value from Step 1:
 
-- `locale` — the language for generated prose
-- `spec_locale` — the language for spec files (unset = English, `auto` = follow `locale`)
+- `locale` — the language for generated prose (unset = system language)
+- `spec_locale` — the language for spec files (unset = system language, `auto` = follow `locale`)
 - `tdd` — whether apply enforces test-first discipline
 - `audit` — whether apply enforces sharp-edges discipline
 
@@ -1511,17 +1562,25 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Have a focused discussion about a topic and reach a conclusion.
 
-**IMPORTANT: Discuss mode is for thinking, not implementing.** You may read files, search code, and investigate the codebase, but you must NEVER write code or implement features. If the user asks you to implement something, remind them to exit discuss mode first (e.g., start a change with `$speclink-propose`). You MAY create Speclink artifacts (proposals, designs, specs) if the user asks—that's capturing thinking, not implementing.
+**IMPORTANT: Discuss mode is for thinking, not implementing.** You may read files, search code, and investigate the codebase, but you must NEVER write code or implement features. If the user asks you to implement something, remind them to exit discuss mode first (e.g., start a change with `speclink-propose`). You MAY create Speclink artifacts (proposals, designs, specs) if the user asks—that's capturing thinking, not implementing.
 
 **This is a task-oriented discussion.** Every discussion has a topic, works toward a goal, and ends with a clear conclusion. Unlike open-ended exploration, discuss mode converges.
 
-**Input**: The argument after `$speclink-discuss` is the topic. Could be:
+**Input**: The argument after `speclink-discuss` is the topic. Could be:
 
 - A design question: "should we use WebSockets or SSE?"
 - A problem to solve: "the auth system is getting unwieldy"
@@ -1536,7 +1595,7 @@ Have a focused discussion about a topic and reach a conclusion.
 
 ## Recording the discussion (speclink)
 
-Unlike an ephemeral chat, **every speclink discussion is persisted to a document** (`openspec/discussions/<slug>.md`) so the conversation keeps its thread across turns and sessions, and so a later `$speclink-propose --from-discussion <slug>` can seed a proposal directly from it. Drive the record through the CLI — never hand-write the file.
+Unlike an ephemeral chat, **every speclink discussion is persisted to a document** (`openspec/discussions/<slug>.md`) so the conversation keeps its thread across turns and sessions, and so a later `speclink-propose --from-discussion <slug>` can seed a proposal directly from it. Drive the record through the CLI — never hand-write the file.
 
 The document has a fixed skeleton — like the proposal template, every discussion record has the same shape:
 
@@ -1595,7 +1654,7 @@ The in-flight delta hits go inside that related changes/specs sentence, in the f
 Source doc: <path>
 ```
 
-That line is the mechanical marker a later `$speclink-propose --from-discussion <slug>` looks for to know there is an underlying document to read. Three rules travel with it:
+That line is the mechanical marker a later `speclink-propose --from-discussion <slug>` looks for to know there is an underlying document to read. Three rules travel with it:
 
 - **Evidence cites the document by reference, not by transcription.** When a round's Evidence points at the document, name the section heading or quote a short phrase from it.
 - **The record stores the outcome of the discussion only.** It SHALL NOT embed the planning document in full — the document stays where it is, and the record holds the decision diff against it.
@@ -1631,17 +1690,17 @@ speclink discuss conclude <slug> --stdin <<'CONCLUSION_EOF'
 - ... — ... (option — why it lost, one per line)
 **Deferred**: none (or `- question — why not now`, one per line)
 **Capture to**: proposal | design | spec | tasks | LANGUAGE.md
-**Next**: $speclink-propose --from-discussion <slug>
+**Next**: speclink-propose --from-discussion <slug>
 CONCLUSION_EOF
 ```
 
 This flips the record's `status` to `concluded`. The step logic below (vocabulary load, the scout, the requirement-clarity judgement, interface depth check, convergence, conclusion capture) is unchanged — recording sits alongside it.
 
-**A concluded discussion hands off through propose**: `$speclink-propose --from-discussion <slug>` seeds the proposal from the recorded Decision and rounds and builds every artifact in one pass — the single next step once the conclusion is written.
+**A concluded discussion hands off through propose**: `speclink-propose --from-discussion <slug>` seeds the proposal from the recorded Decision and rounds and builds every artifact in one pass — the single next step once the conclusion is written.
 
 **Mid-discussion spin-out** — in a multi-requirement discussion, one item can be filed the moment it is settled; don't hold it hostage to the rest:
 
-1. **Promote now**: run `speclink discuss promote <slug> --name <change-name>` (`--name` is optional — the change name defaults to the slug) — the engine scaffolds the change, prefills the proposal's Why (from the conclusion when one exists, otherwise from the topic), and links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record). One discussion can fan out into several changes — spin out again and `promoted_to` accumulates each name; the discussion is archived automatically when the last of its changes is archived and its conclusion is written — an unconcluded record stays live for more rounds (a later `conclude` closes it once every spun-out change is archived). **When the conclusion stages several cuts to spin out from this same record** (cut A now, cut B once A lands, cut C after that), run `conclude` with `--hold` **once** — an ordinary spin-out never clears the flag, so the single call covers the whole series. The record stays live past its conclusion and past every middle cut's archive. The **last cut is spun out with `--last`** (`$speclink-propose --from-discussion <slug>` decides this from the conclusion's cut list and the record's `promoted_to`; on the raw verbs it is `speclink discuss promote <slug> --last`, `speclink new change <name> --from-discussion <slug> --last`, or `speclink discuss seal <slug> <change> --last`): that spin-out drops the flag in the same write, and when the last spun-out change is archived the record is co-archived automatically — there is nothing to close by hand. Besides `--last`, only a `conclude` without `--hold` or a manual `speclink discuss archive <slug>` releases the flag. Forgot `--last`? The record simply stays live (the board labels it "promoted · on hold"); run `speclink discuss archive <slug>` once to close the series. Without `--hold` the record is archived along with the last of its changes, and any later cut needs a new discussion. The remaining artifacts are still created via `$speclink-propose`.
+1. **Promote now**: run `speclink discuss promote <slug> --name <change-name>` (`--name` is optional — the change name defaults to the slug) — the engine scaffolds the change, prefills the proposal's Why (from the conclusion when one exists, otherwise from the topic), and links both sides (`from_discussion` in the change metadata, `status: promoted` + `promoted_to` in the record). One discussion can fan out into several changes — spin out again and `promoted_to` accumulates each name; the discussion is archived automatically when the last of its changes is archived and its conclusion is written — an unconcluded record stays live for more rounds (a later `conclude` closes it once every spun-out change is archived). **When the conclusion stages several cuts to spin out from this same record** (cut A now, cut B once A lands, cut C after that), run `conclude` with `--hold` **once** — an ordinary spin-out never clears the flag, so the single call covers the whole series. The record stays live past its conclusion and past every middle cut's archive. The **last cut is spun out with `--last`** (`speclink-propose --from-discussion <slug>` decides this from the conclusion's cut list and the record's `promoted_to`; on the raw verbs it is `speclink discuss promote <slug> --last`, `speclink new change <name> --from-discussion <slug> --last`, or `speclink discuss seal <slug> <change> --last`): that spin-out drops the flag in the same write, and when the last spun-out change is archived the record is co-archived automatically — there is nothing to close by hand. Besides `--last`, only a `conclude` without `--hold` or a manual `speclink discuss archive <slug>` releases the flag. Forgot `--last`? The record simply stays live (the board labels it "promoted · on hold"); run `speclink discuss archive <slug>` once to close the series. Without `--hold` the record is archived along with the last of its changes, and any later cut needs a new discussion. The remaining artifacts are still created via `speclink-propose`.
 2. **Keep discussing**: `add-round` continues as normal for the remaining items; promotion does not close the record.
 3. **Conclude as usual at the end**: the record keeps its `promoted` status, the conclusion is written in, and the engine flags the already-promoted changes as needing the conclusion re-reflected. When the conclusion is unrelated to a spun-out change, that flag needs a single confirmation — no rework.
 
@@ -1655,7 +1714,7 @@ Never require a conclusion before a mid-discussion promote, and never conclude t
 speclink discuss link <slug> <existing-change>
 ```
 
-`link` forges the change-side chain (`from_discussion` in the change metadata) without scaffolding anything, so drawer links and auto-archive engage — the discussion is archived automatically when the last linked change is archived and its conclusion is written. Unlike promote, `link` does NOT mark the discussion 已轉出 (`promoted`): that reflection is sealed by `$speclink-ingest`, which folds the decision into the change's artifacts and then runs `speclink discuss seal` — so the discussion flips to promoted only once its content has actually landed, never at link time. Then run `$speclink-ingest <existing-change>` to fold the decision in and seal. Without the link, a concluded-then-ingested discussion sits on the board forever with nothing to archive it.
+`link` forges the change-side chain (`from_discussion` in the change metadata) without scaffolding anything, so drawer links and auto-archive engage — the discussion is archived automatically when the last linked change is archived and its conclusion is written. Unlike promote, `link` does NOT mark the discussion 已轉出 (`promoted`): that reflection is sealed by `speclink-ingest`, which folds the decision into the change's artifacts and then runs `speclink discuss seal` — so the discussion flips to promoted only once its content has actually landed, never at link time. Then run `speclink-ingest <existing-change>` to fold the decision in and seal. Without the link, a concluded-then-ingested discussion sits on the board forever with nothing to archive it.
 
 **Lifecycle**: a discussion that concluded without spawning a change (an explicit "don't do this" is a valid outcome) should be closed out with:
 
@@ -1974,7 +2033,7 @@ Present the summary and say something like "I'll capture this to design.md unles
 When the discussion converges on building something:
 
 - First record the conclusion in the discussion document: `speclink discuss conclude <slug> --stdin` (see "Recording the discussion" above). This flips its status to `concluded`.
-- Then: "Ready to formalize this? `$speclink-propose --from-discussion <slug>`" — propose will seed the proposal from the recorded Decision and rounds.
+- Then: "Ready to formalize this? `speclink-propose --from-discussion <slug>`" — propose will seed the proposal from the recorded Decision and rounds.
 - Or capture the decision in existing artifacts and continue
 
 ---
@@ -1995,8 +2054,8 @@ When the discussion converges on building something:
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The conclusion warrants its own change → `$speclink-propose --from-discussion <slug>` — one pass from the recorded conclusion to a full artifact set
-- It belongs in a change that already exists → `speclink discuss link <slug> <change>`, then `$speclink-ingest <change>` to fold it in and seal
+- The conclusion warrants its own change → `speclink-propose --from-discussion <slug>` — one pass from the recorded conclusion to a full artifact set
+- It belongs in a change that already exists → `speclink discuss link <slug> <change>`, then `speclink-ingest <change>` to fold it in and seal
 - The conclusion is "don't do it" → conclude anyway, then `speclink discuss archive <slug>`
 - Nothing of substance was recorded → `speclink discuss discard <slug>`
 
@@ -2008,13 +2067,21 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Detect drift between a Speclink change and the current codebase state. Reports time dormancy, broken design anchors, task collisions with external commits, and a single recommended next command.
 
-**Input**: Optionally specify a change name (e.g., `/speclink-drift add-auth`). If omitted, infer from conversation context or auto-select if only one active change exists.
+**Input**: Optionally specify a change name (e.g., `speclink-drift add-auth`). If omitted, infer from conversation context or auto-select if only one active change exists.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
@@ -2085,24 +2152,24 @@ Detect drift between a Speclink change and the current codebase state. Reports t
 
 4. **Apply the recommendation interactively**
 
-   Use the **AskUserQuestion tool** to offer one decision based on `severity`. Use plain-language option labels (in the report language) while preserving the exact command in each option description. Do NOT auto-invoke `/speclink-apply`, `/speclink-ingest`, or `speclink archive`; always wait for the user's choice.
+   Use the **AskUserQuestion tool** to offer one decision based on `severity`. Use plain-language option labels (in the report language) while preserving the exact command in each option description. Do NOT auto-invoke `speclink-apply`, `speclink-ingest`, or `speclink archive`; always wait for the user's choice.
    - **Light** (score 0-3, drift is minor):
      - Recommended label: "Directly start work"
-       - Description: run `/speclink-apply <name>`
+       - Description: run `speclink-apply <name>`
      - Alternate label: "Pause for now"
        - Description: do nothing until the user reviews manually
    - **Medium** (score 4-8, refresh worth doing):
      - Recommended label: "Refresh the plan"
-       - Description: run `/speclink-ingest <name>` with the broken references and task collisions as context
+       - Description: run `speclink-ingest <name>` with the broken references and task collisions as context
      - Alternate label: "Directly start work"
-       - Description: run `/speclink-apply <name>` only if the user knows the reported changes are harmless
+       - Description: run `speclink-apply <name>` only if the user knows the reported changes are harmless
      - Alternate label: "Pause for now"
        - Description: do nothing until the user reviews manually
    - **Heavy** (score >8 or anchor decay >30%, design diverges from code):
      - Recommended label: "Archive and restart"
        - Description: run `<primary_recommendation>`
      - Alternate label: "Refresh the plan"
-       - Description: try `/speclink-ingest <name>` before restarting
+       - Description: try `speclink-ingest <name>` before restarting
      - Alternate label: "Pause for now"
        - Description: do nothing until the user reviews manually
 
@@ -2110,7 +2177,7 @@ Detect drift between a Speclink change and the current codebase state. Reports t
 
 **Passive Trigger**
 
-When `/speclink-apply` is invoked on a change whose `.openspec.yaml created` date is more than 5 days ago AND no commits have touched the change directory in the past 3 days, the apply skill SHOULD run drift analysis first and surface findings before tasks begin. The trigger is guidance only and MUST NOT block apply from proceeding.
+When `speclink-apply` is invoked on a change whose `.openspec.yaml created` date is more than 5 days ago AND no commits have touched the change directory in the past 3 days, the apply skill SHOULD run drift analysis first and surface findings before tasks begin. The trigger is guidance only and MUST NOT block apply from proceeding.
 
 (Threshold reasoning: AI-assisted commits are daily-cadence, not weekly. A change sitting ≥5 days with ≥3 days of no commits is almost always genuine stagnation rather than normal pacing.)
 
@@ -2126,8 +2193,8 @@ When `/speclink-apply` is invoked on a change whose `.openspec.yaml created` dat
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The delta's assumptions are stale → `$speclink-ingest <change-name>` to refresh the artifacts before any code is written
-- No meaningful drift → `$speclink-apply <change-name>` to pick the tasks back up
+- The delta's assumptions are stale → `speclink-ingest <change-name>` to refresh the artifacts before any code is written
+- No meaningful drift → `speclink-apply <change-name>` to pick the tasks back up
 
 === .agents/skills/speclink-improve/SKILL.md ===
 ---
@@ -2137,21 +2204,29 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
-Scan the codebase for architectural improvements and turn the best ones into a recorded discussion. This is the mirror image of `$speclink-discuss`: there the user brings the topic, here the model brings the candidates. Everything downstream — rounds, conclusion, promote/link, archive — is the same discussion machinery.
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
+---
+
+Scan the codebase for architectural improvements and turn the best ones into a recorded discussion. This is the mirror image of `speclink-discuss`: there the user brings the topic, here the model brings the candidates. Everything downstream — rounds, conclusion, promote/link, archive — is the same discussion machinery.
 
 **IMPORTANT: This skill is user-initiated only.** Never trigger it on your own. Do not offer to "run improve" in the middle of another task, and do not start scanning because some code looked messy while you were doing something else. It runs when the user asks for it, and only then.
 
-**IMPORTANT: This skill never implements.** You read files, search code, run git, and record a discussion. You do NOT write application code, refactor anything, or fix what you find. Improvements reach the codebase through the normal route: conclusion → `$speclink-propose` (or `promote`) → `$speclink-apply`. If the user asks you to just fix one of the candidates, tell them to conclude the discussion first and start a change.
+**IMPORTANT: This skill never implements.** You read files, search code, run git, and record a discussion. You do NOT write application code, refactor anything, or fix what you find. Improvements reach the codebase through the normal route: conclusion → `speclink-propose` (or `promote`) → `speclink-apply`. If the user asks you to just fix one of the candidates, tell them to conclude the discussion first and start a change.
 
-**Input**: Optionally a direction after `$speclink-improve` — a module, subsystem, crate, or pain point ("the store layer", "everything around auth", "the CLI feels bloated"). When given, that direction IS the scope and Step 2's inference is skipped. When omitted, Step 2 infers the scope.
+**Input**: Optionally a direction after `speclink-improve` — a module, subsystem, crate, or pain point ("the store layer", "everything around auth", "the CLI feels bloated"). When given, that direction IS the scope and Step 2's inference is skipped. When omitted, Step 2 infers the scope.
 
 **Prerequisites**: This skill requires the `speclink` CLI and `git`. If any command fails with "command not found" or similar, report the error and STOP.
 
-**What counts as an improvement here**: structural deepening — making modules deeper, seams fewer and better placed, complexity concentrated instead of smeared. Behavioural correctness is NOT this skill's job: bugs belong to `$speclink-review`, spec compliance to `$speclink-verify`, security sharp edges to `$speclink-audit`.
+**What counts as an improvement here**: structural deepening — making modules deeper, seams fewer and better placed, complexity concentrated instead of smeared. Behavioural correctness is NOT this skill's job: bugs belong to `speclink-review`, spec compliance to `speclink-verify`, security sharp edges to `speclink-audit`.
 
 ---
 
@@ -2192,7 +2267,7 @@ Never blind-scan the whole repository. Candidates from unrelated corners are not
 
   **Weight recent churn more heavily.** The payoff of deepening is that future changes get easier, so the code that keeps changing is where that payoff lands.
 
-- **Local supplement**: cross-check the archived changes' touched records (`.evidence.json` under `openspec/changes/archive/<dated-name>/`, the same records `$speclink-commit` uses). Where a bare `git log` says "these files changed together", the touched records say *which intent* moved *which files* — a stronger signal for what belongs to one seam.
+- **Local supplement**: cross-check the archived changes' touched records (`.evidence.json` under `openspec/changes/archive/<dated-name>/`, the same records `speclink-commit` uses). Where a bare `git log` says "these files changed together", the touched records say *which intent* moved *which files* — a stronger signal for what belongs to one seam.
 - **When the hotspots are diffuse** — no clear focus, churn spread evenly — **widen the net** instead of forcing one. Take a larger area (a whole crate, a whole layer) and scan it as one scope rather than picking an arbitrary hot file.
 
 Announce the scope you settled on and why, in one or two sentences, before scanning.
@@ -2279,11 +2354,11 @@ speclink discuss conclude improve-<scope> --stdin <<'CONCLUSION_EOF'
 - ... — ... (each candidate that lost — why, one per line)
 **Deferred**: none (or `- question — why not now`, one per line)
 **Capture to**: proposal
-**Next**: $speclink-propose --from-discussion improve-<scope>
+**Next**: speclink-propose --from-discussion improve-<scope>
 CONCLUSION_EOF
 ```
 
-Then fan out: `speclink discuss promote <slug>` (or `$speclink-propose --from-discussion <slug>`) for a new change, or `speclink discuss link <slug> <existing-change>` when the improvement belongs to a change already in flight. One scan can fan out into several changes — the record accumulates each name and is archived automatically when the last of them is archived and its conclusion is written. **When the conclusion stages the work — cut A now, cut B once A lands** — run `conclude` with `--hold` once: the record stays live past every middle cut's archive. The last cut is spun out with `--last` (`$speclink-propose --from-discussion <slug>` decides this from the conclusion's cut list and the record's `promoted_to`), which drops the flag so the last archive co-archives the record automatically — nothing to close by hand. Besides `--last`, only a `conclude` without `--hold` or a manual `speclink discuss archive <slug>` releases it; forgot `--last`, and the record just stays live until you run `speclink discuss archive <slug>` once. Without `--hold` the record is archived with the last of its changes, and any later cut needs a new discussion.
+Then fan out: `speclink discuss promote <slug>` (or `speclink-propose --from-discussion <slug>`) for a new change, or `speclink discuss link <slug> <existing-change>` when the improvement belongs to a change already in flight. One scan can fan out into several changes — the record accumulates each name and is archived automatically when the last of them is archived and its conclusion is written. **When the conclusion stages the work — cut A now, cut B once A lands** — run `conclude` with `--hold` once: the record stays live past every middle cut's archive. The last cut is spun out with `--last` (`speclink-propose --from-discussion <slug>` decides this from the conclusion's cut list and the record's `promoted_to`), which drops the flag so the last archive co-archives the record automatically — nothing to close by hand. Besides `--last`, only a `conclude` without `--hold` or a manual `speclink discuss archive <slug>` releases it; forgot `--last`, and the record just stays live until you run `speclink discuss archive <slug>` once. Without `--hold` the record is archived with the last of its changes, and any later cut needs a new discussion.
 
 **When the user rejects every candidate, the scan still concluded something.** Write the conclusion — that nothing here is worth doing, and why each candidate lost — and archive the record:
 
@@ -2327,8 +2402,16 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Update an existing Speclink change — from a plan file or conversation context.
@@ -2339,9 +2422,9 @@ Update an existing Speclink change — from a plan file or conversation context.
 
 **Input**: Optionally specify a plan file path or name.
 
-- `$speclink-ingest agile-discovering-rocket.md`
-- `$speclink-ingest agile-discovering-rocket`
-- `$speclink-ingest` (use conversation context or auto-detect plan file)
+- `speclink-ingest agile-discovering-rocket.md`
+- `speclink-ingest agile-discovering-rocket`
+- `speclink-ingest` (use conversation context or auto-detect plan file)
 
 **Steps**
 
@@ -2352,7 +2435,6 @@ Update an existing Speclink change — from a plan file or conversation context.
    - If the file does NOT exist → report the error and **stop**
 
    b. **No argument, plan file detectable**:
-   - Check conversation context for plan file path (plan mode system messages include the path like `<name>.md`)
    - If found and the file exists → use the **AskUserQuestion tool** to ask:
      - Option 1: Use the plan file
      - Option 2: Use conversation context
@@ -2414,7 +2496,7 @@ Update an existing Speclink change — from a plan file or conversation context.
    Parse the JSON output to get the full list of changes.
    - If one change exists → use the **AskUserQuestion tool** to confirm updating it
    - If multiple changes exist → use the **AskUserQuestion tool** to let user pick which one to update
-   - If no changes at all → tell the user: "No active change found. Use `$speclink-propose` first to create one." and **stop**
+   - If no changes at all → tell the user: "No active change found. Use `speclink-propose` first to create one." and **stop**
 
 4. **Select the change**
 
@@ -2430,7 +2512,7 @@ Update an existing Speclink change — from a plan file or conversation context.
 
    Use the `template` from instructions as the output structure. Apply `context` and `rules` as constraints but do NOT copy them into the file.
 
-   The instructions JSON includes `locale` — the language to write artifacts in. If present, you MUST write the artifact content in that language. Spec files (specs/\*/\*.md) default to English instead — unless the project sets `spec_locale` in `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
+   The instructions JSON includes `locale` — the language to write artifacts in. If present, you MUST write the artifact content in that language. Spec files (specs/\*/\*.md) default to the operating-system language of the machine running Speclink — unless the project sets `spec_locale` in `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
 
    **Plan-to-Artifact Mapping** (when using a plan file):
 
@@ -2581,7 +2663,7 @@ Update an existing Speclink change — from a plan file or conversation context.
         - The verb refuses because the move would cross a declared dependency → report the refusal and leave the order as it is.
         - Not small, or not urgent → run nothing.
       - **In progress or ready** → do not run `change rank`: its place in the queue settled when work started. Re-judge `depends_on` only.
-   5. Never remove an existing `depends_on` entry here — dropping a prerequisite is the user's decision. Never run `$speclink-apply` yourself.
+   5. Never remove an existing `depends_on` entry here — dropping a prerequisite is the user's decision. Never run `speclink-apply` yourself.
 
 10. **Seal the reflection** (discussion-sourced ingests only)
 
@@ -2601,13 +2683,13 @@ Update an existing Speclink change — from a plan file or conversation context.
    - Artifacts created/updated
    - Validation result
 
-   Then state the suggestion from **Next steps** and STOP. Never invoke `$speclink-apply` yourself — starting implementation is the user's call, and this workflow is over once the summary is out.
+   Then state the suggestion from **Next steps** and STOP. Never invoke `speclink-apply` yourself — starting implementation is the user's call, and this workflow is over once the summary is out.
 
 **Guardrails**
 
 - **NEVER** modify the original plan file in ``
 - **NEVER** write application code — this skill only creates/updates Speclink artifacts
-- **NEVER** create new changes — ingest only updates existing changes. If no active change exists, direct user to `$speclink-propose`
+- **NEVER** create new changes — ingest only updates existing changes. If no active change exists, direct user to `speclink-propose`
 - When updating existing changes, **preserve all completed tasks** (`[x]`) — never revert progress
 - If the source content is too brief to fill all artifact sections, use the **AskUserQuestion tool** to get more details rather than inventing content
 - If `speclink` CLI is not available, report the error and stop
@@ -2619,7 +2701,7 @@ Update an existing Speclink change — from a plan file or conversation context.
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The artifacts are updated and validated → `$speclink-apply <change-name>` to resume implementation
+- The artifacts are updated and validated → `speclink-apply <change-name>` to resume implementation
 - A linked discussion fed this change → `speclink discuss seal <slug>` first (step 10), then the same suggestion applies
 
 === .agents/skills/speclink-manual/SKILL.md ===
@@ -2630,13 +2712,21 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Generate a human-readable operating manual from the canonical specs, or walk the user through the system in conversation. The manual is a wiki-style set of Markdown pages under `openspec/manual/`, written for someone who joined today and only wants to know how to operate the system.
 
-**Input**: Optional arguments after `$speclink-manual`. They pick the mode:
+**Input**: Optional arguments after `speclink-manual`. They pick the mode:
 
 | Arguments | Mode |
 | --- | --- |
@@ -2657,7 +2747,7 @@ Generate a human-readable operating manual from the canonical specs, or walk the
 Read `.speclink.yaml` at the workspace root. No file, or a file without a `remote` section, means a local project — continue with Step 1. A `remote` section means the project is bound to a remote store and generation is not supported yet: the pages would land in this local checkout only and never reach the store. Print
 
 ```
-remote 模式尚不支援手冊生成（導覽模式不受此限：$speclink-manual 導覽）
+remote 模式尚不支援手冊生成（導覽模式不受此限：speclink-manual 導覽）
 ```
 
 and STOP. Zero files are written. Tour mode is unaffected by this check.
@@ -2820,7 +2910,7 @@ Tour mode writes NOTHING — no manual pages, no notes, no scratch files. It is 
 2. **No manual**: say so — `尚無手冊，改以規格直接導覽` — then tour from the specs: `speclink list --specs` for the map, `speclink show <capability> --item-type spec` for each station, sources cited by capability name.
 3. **Remote-bound project**: tour mode proceeds as usual, from an existing manual or from the specs.
 
-When the tour ends you may suggest running generation mode (`$speclink-manual`) to produce the manual — a suggestion only. NEVER invoke another skill from here.
+When the tour ends you may suggest running generation mode (`speclink-manual`) to produce the manual — a suggestion only. NEVER invoke another skill from here.
 
 ---
 
@@ -2841,17 +2931,25 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Create a complete Speclink change proposal — from requirement to validated artifacts — in a single workflow.
 
-**Input**: The argument after `$speclink-propose` is the requirement description. Examples:
+**Input**: The argument after `speclink-propose` is the requirement description. Examples:
 
-- `$speclink-propose add dark mode`
-- `$speclink-propose fix the login page crash`
-- `$speclink-propose improve search performance`
+- `speclink-propose add dark mode`
+- `speclink-propose fix the login page crash`
+- `speclink-propose improve search performance`
 
 If no argument is provided, the workflow will extract requirements from conversation context or ask.
 
@@ -2867,7 +2965,7 @@ If no argument is provided, the workflow will extract requirements from conversa
 
    b. **Document supplied directly** (`--from-doc <path>`, speclink enhancement):
    - This is a skill-text convention modelled on `--from-discussion`, NOT an engine flag — it changes no CLI syntax and requires nothing new from the engine.
-   - When the user passes it, read that document and use it as the requirement source: its title or opening statement gives the requirement description, its content feeds Why, What Changes, Capabilities, and Impact. **No existing discussion is needed** — this is the path for building a proposal straight from a plan the user brought, without going through `$speclink-discuss` first.
+   - When the user passes it, read that document and use it as the requirement source: its title or opening statement gives the requirement description, its content feeds Why, What Changes, Capabilities, and Impact. **No existing discussion is needed** — this is the path for building a proposal straight from a plan the user brought, without going through `speclink-discuss` first.
    - The document is consumed, not grilled: itemized challenge of its claims belongs to `discuss`. Never edit the user's original document.
    - **Leave a provenance line.** A proposal built from `--from-doc` SHALL carry one line `Source doc: <path>` in its Why or Impact section, naming the document it came from — a `--from-discussion` proposal gets its origin recorded by the link, and this line is the `--from-doc` counterpart. Skill-text convention only; the engine records nothing for you.
    - `--from-doc` outranks (c) and (d): when it is present, do not go hunting for a discussion record or a plan file.
@@ -2898,7 +2996,6 @@ If no argument is provided, the workflow will extract requirements from conversa
    - If no discussion exists or the user declines → fall through to (d).
 
    d. **Plan file available**:
-   - Check if the conversation context mentions a plan file path (plan mode system messages include the path like `<name>.md`)
    - If found, check if the file exists at ``
    - If a plan file is found, use the **AskUserQuestion tool** to ask:
      - Option 1: Use the plan file
@@ -2947,13 +3044,13 @@ If no argument is provided, the workflow will extract requirements from conversa
 4. **Create the change directory**
 
    ```bash
-   speclink new change "<name>" --agent codex
+   speclink new change "<name>"
    ```
 
    When the proposal is sourced from a discussion document (path (c) in step 1), pass the link so the change records its origin and the discussion is marked `promoted` (it will be archived together with the change later):
 
    ```bash
-   speclink new change "<name>" --agent codex --from-discussion <slug>
+   speclink new change "<name>" --from-discussion <slug>
    ```
 
    **Is this the last cut the conclusion planned? Then add `--last`.** A discussion whose conclusion stages several cuts (cut A now, cut B once A lands, …) was concluded with `--hold`, and the engine has no way to tell the final cut from a middle one — you do. Before running the command, read the record's `## Conclusion` **Decision** for the list of planned cuts (刀一／刀二／…, cut A／cut B, or any similar enumeration) and the frontmatter's `promoted_to` for the cuts already spun out, then decide:
@@ -2961,7 +3058,7 @@ If no argument is provided, the workflow will extract requirements from conversa
    - The change you are creating is the **final cut the conclusion planned** → pass `--last`:
 
      ```bash
-     speclink new change "<name>" --agent codex --from-discussion <slug> --last
+     speclink new change "<name>" --from-discussion <slug> --last
      ```
 
    - You are **splitting one planned cut into several changes** at propose time → only the last piece of the split gets `--last`; every earlier piece is spun out without it.
@@ -3121,7 +3218,7 @@ If no argument is provided, the workflow will extract requirements from conversa
      - `instruction`: Schema-specific guidance
      - `outputPath`: Where to write the artifact
      - `dependencies`: Completed artifacts to read for context
-     - `locale`: The language to write the artifact in (e.g., "Japanese (日本語)"). If present, you MUST write the artifact content in this language. Spec files (specs/\*_/_.md) default to English instead — unless the project sets `spec_locale` in `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
+     - `locale`: The language to write the artifact in (e.g., "Japanese (日本語)"). If present, you MUST write the artifact content in this language. Spec files (specs/\*_/_.md) default to the operating-system language of the machine running Speclink — unless the project sets `spec_locale` in `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
    - Read each completed dependency for context via `speclink artifact cat <artifact-id> --change "<name>"` (never open artifact files by path — the documents may live in a remote store)
    - Generate the artifact content using `template` as the structure
    - **Mark manual tasks with `[M]`** (tasks artifact only): a task the agent cannot do itself — the user has to do it by hand, whether that is operating the product and accepting the result, creating an account on an external service, or placing a key — carries an `[M]` marker. Anything the agent can do itself, including code and automated tests, never carries it. The marker is what lets the quality stations judge "the code is finished" separately from "a human did their part": they run once every non-`[M]` task is checked, while archive still waits for all of them.
@@ -3252,11 +3349,10 @@ If no argument is provided, the workflow will extract requirements from conversa
     - List of artifacts created
     - Validation result
 
-    Inform the user that the change is ready and that running `$speclink-apply <change-name>` when ready will start implementation.
+    Inform the user that the change is ready and that running `speclink-apply <change-name>` when ready will start implementation.
 
-    If you are currently in Codex Plan Mode, also remind the user to switch the session to normal mode before running `$speclink-apply <change-name>`. This is only a reminder: do NOT try to use ExitPlanMode or EnterPlanMode, do NOT ask whether to switch modes, and do NOT invoke apply.
 
-    The propose workflow ENDS here. Do NOT invoke `$speclink-apply`. Do NOT call **AskUserQuestion** to ask whether to apply. This behavior is identical across Auto Mode, interactive mode, and any other agent mode.
+    The propose workflow ENDS here. Do NOT invoke `speclink-apply`. Do NOT call **AskUserQuestion** to ask whether to apply. This behavior is identical across Auto Mode, interactive mode, and any other agent mode.
 
     After the summary, run the **Pending-change landscape check** below before presenting Next steps.
 
@@ -3279,7 +3375,7 @@ If no argument is provided, the workflow will extract requirements from conversa
 - **NEVER** write application code or implement features during this workflow
 - **NEVER** skip the artifact workflow to write code directly
 - **NEVER** reinterpret requirements by ignoring the proposal file
-- **NEVER** invoke `$speclink-apply` — this workflow ends after artifact creation. The user decides when to start implementation
+- **NEVER** invoke `speclink-apply` — this workflow ends after artifact creation. The user decides when to start implementation
 - If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
 
 ## Pending-change landscape check
@@ -3298,7 +3394,7 @@ Run this check after the summary, right before presenting the Next steps below.
    - The verb refuses because the move would cross a declared dependency → report the refusal and leave the order as it is.
    - Not small, or not urgent → run nothing.
 5. Run `speclink plan --json` (again, when step 4 moved the change) and present its result according to the project's effective worktree policy (`speclink workflow-config show --json` → `worktree`; a `SPECLINK_WORKTREE` env override wins):
-   - **Policy on** → list wave 1 (`waves[0].changes`) as "parallel-safe — run each change in its own session via `$speclink-apply-with-worktree` (the multi-session recipe)", then each later wave in order as "after the wave before it lands". A change's `blockedBy` names what it waits for.
+   - **Policy on** → list wave 1 (`waves[0].changes`) as "parallel-safe — run each change in its own session via `speclink-apply-with-worktree` (the multi-session recipe)", then each later wave in order as "after the wave before it lands". A change's `blockedBy` names what it waits for.
    - **Policy off** → one recommended order: the `changes` array in its given order, one at a time.
    - `next` is the first change that is ready to start; `skipped` lists changes whose metadata could not be parsed — name them so the user can repair them.
    - For each change whose `archiveAfter` is non-empty, add one line: 「封存時 <change> 要在 <archiveAfter 的名稱> 之後」 — an archive-order note only; it never delays a start.
@@ -3308,9 +3404,9 @@ Run this check after the summary, right before presenting the Next steps below.
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- Artifacts are complete → `$speclink-apply <change-name>` when the user is ready to implement (with two or more active changes pending, the landscape check above sets the order first)
-- Several independent changes will be implemented at once, and the project's worktree policy is on → `$speclink-apply-with-worktree <change-name>` (one git worktree per change)
-- The requirements turned out to be fuzzier than they looked → `$speclink-discuss` before implementing
+- Artifacts are complete → `speclink-apply <change-name>` when the user is ready to implement (with two or more active changes pending, the landscape check above sets the order first)
+- Several independent changes will be implemented at once, and the project's worktree policy is on → `speclink-apply-with-worktree <change-name>` (one git worktree per change)
+- The requirements turned out to be fuzzier than they looked → `speclink-discuss` before implementing
 
 === .agents/skills/speclink-quality/SKILL.md ===
 ---
@@ -3320,19 +3416,27 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
-Run both quality stations over one change as a single pass that pauses after every round: `$speclink-review` and `$speclink-verify` each do their checking WITHOUT stamping, then this skill reports both stations' findings together and STOPS for the user's call on what to fix, when to stamp, and whether to archive. Nothing is fixed, stamped or archived without their answer. Use this when both stations are known up front to be in play. Running only one station does NOT go through this skill — call that station directly and let it keep its own stamp-when-clean default.
+## Shared execution
 
-**Input**: Optionally specify a change name after `$speclink-quality` (e.g., `$speclink-quality add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous, resolve it BEFORE step 1: run `speclink list --json` and prompt with the available changes (the AskUserQuestion tool, or plain text + wait if unavailable), then pass the same name to every station call.
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
+---
+
+Run both quality stations over one change as a single pass that pauses after every round: `speclink-review` and `speclink-verify` each do their checking WITHOUT stamping, then this skill reports both stations' findings together and STOPS for the user's call on what to fix, when to stamp, and whether to archive. Nothing is fixed, stamped or archived without their answer. Use this when both stations are known up front to be in play. Running only one station does NOT go through this skill — call that station directly and let it keep its own stamp-when-clean default.
+
+**Input**: Optionally specify a change name after `speclink-quality` (e.g., `speclink-quality add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous, resolve it BEFORE step 1: run `speclink list --json` and prompt with the available changes (the AskUserQuestion tool, or plain text + wait if unavailable), then pass the same name to every station call.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
 **What this skill owns**
 
-The ORDER of the two stations and the pause that ends every round, and nothing else. What each station checks, how it freezes its scope, how it records its ticket, how it triages findings and what its stamp means all belong to `$speclink-review` and `$speclink-verify` — this document never restates them, and when it appears to disagree with a station's own instructions, the station wins. Follow each station's skill as written; this skill only decides when each one runs, which of its exits to take, and when to hand the decision back to the user.
+The ORDER of the two stations and the pause that ends every round, and nothing else. What each station checks, how it freezes its scope, how it records its ticket, how it triages findings and what its stamp means all belong to `speclink-review` and `speclink-verify` — this document never restates them, and when it appears to disagree with a station's own instructions, the station wins. Follow each station's skill as written; this skill only decides when each one runs, which of its exits to take, and when to hand the decision back to the user.
 
 **Why the order matters**
 
@@ -3348,11 +3452,11 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 1. **Review check, no stamp**
 
-   Run `$speclink-review` for the change. At its closing question, take the **stop without stamping** exit — the ticket and its frozen snapshot stay for the rounds that follow. A clean pass takes the same exit; the station's own quality-timeline exception covers it.
+   Run `speclink-review` for the change. At its closing question, take the **stop without stamping** exit — the ticket and its frozen snapshot stay for the rounds that follow. A clean pass takes the same exit; the station's own quality-timeline exception covers it.
 
 2. **Verify check, no stamp**
 
-   Run `$speclink-verify` for the same change and take the same **stop without stamping** exit, clean pass included.
+   Run `speclink-verify` for the same change and take the same **stop without stamping** exit, clean pass included.
 
 3. **Stop and ask — the round's pause**
 
@@ -3375,7 +3479,7 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 5. **Another round, still no stamp**
 
-   Run `$speclink-review` again, then `$speclink-verify` again, each taking the **stop without stamping** exit as before. Their validation passes cover every fix made since their frozen points — including the ones the other station's findings asked for. Then go back to step 3: the round ends in the same pause whatever it found. A clean round pauses too — report that both stations are green and let the user decide whether to close out.
+   Run `speclink-review` again, then `speclink-verify` again, each taking the **stop without stamping** exit as before. Their validation passes cover every fix made since their frozen points — including the ones the other station's findings asked for. Then go back to step 3: the round ends in the same pause whatever it found. A clean round pauses too — report that both stations are green and let the user decide whether to close out.
 
 6. **Closing stamps, back to back**
 
@@ -3383,7 +3487,7 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 7. **Archive — a recommendation**
 
-   Both stamps are green: recommend `$speclink-archive` and leave the run to the user. When the change still carries unchecked `[M]` manual tasks, the recommendation MUST say so: the manual work has to be completed and those tasks checked off before archive will let the change through.
+   Both stamps are green: recommend `speclink-archive` and leave the run to the user. When the change still carries unchecked `[M]` manual tasks, the recommendation MUST say so: the manual work has to be completed and those tasks checked off before archive will let the change through.
 
 **Edge cases**
 
@@ -3403,8 +3507,8 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- Both stamps landed and the work is in the main checkout → `$speclink-archive <change-name>`
-- Both stamps landed inside a worktree → `$speclink-worktree-merge <change-name>` first; archive runs only from the main checkout
+- Both stamps landed and the work is in the main checkout → `speclink-archive <change-name>`
+- Both stamps landed inside a worktree → `speclink-worktree-merge <change-name>` first; archive runs only from the main checkout
 - The round ended without stamping → nothing downstream is suggested; the round's pause is where this skill stops
 
 === .agents/skills/speclink-review/SKILL.md ===
@@ -3415,13 +3519,21 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
 ---
 
-Review a change's implementation for craft quality: two parallel read-only axes — **Standards** (repo conventions + a fixed code-smell baseline) and **Correctness** (bug hunting) — run ONCE against a frozen change patch, then validated round by round to a review ticket, closed by a stamp. Round 1 is the only discovery pass; every later round only validates remediation. Spec compliance is NOT this skill's job — that is `$speclink-verify`; the two quality stations run independently and either, both, or neither may be used per change.
+## Shared execution
 
-**Input**: Optionally specify a change name after `$speclink-review` (e.g., `$speclink-review add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
+---
+
+Review a change's implementation for craft quality: two parallel read-only axes — **Standards** (repo conventions + a fixed code-smell baseline) and **Correctness** (bug hunting) — run ONCE against a frozen change patch, then validated round by round to a review ticket, closed by a stamp. Round 1 is the only discovery pass; every later round only validates remediation. Spec compliance is NOT this skill's job — that is `speclink-verify`; the two quality stations run independently and either, both, or neither may be used per change.
+
+**Input**: Optionally specify a change name after `speclink-review` (e.g., `speclink-review add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
@@ -3441,7 +3553,7 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    speclink instructions apply --change "<name>" --json
    ```
 
-   Read `progress`. If `codeRemaining > 0`, STOP and explain: the review station requires every code task complete before reviewing — finish `$speclink-apply` first. Do NOT spawn sub-agents and do NOT write the ticket.
+   Read `progress`. If `codeRemaining > 0`, STOP and explain: the review station requires every code task complete before reviewing — finish `speclink-apply` first. Do NOT spawn sub-agents and do NOT write the ticket.
 
    `[M]` manual tasks are deliberately excluded from `codeRemaining`: they are work only the user can do by hand, and reviewing before them is the point — a review that changes code would void a manual run done earlier. When `codeRemaining` is 0 but `remaining` is not, continue with the review and tell the user in the result presentation which manual tasks are still open, plus the sequence that follows: the stamp can land now, the manual tasks are checked off afterwards, and archive is what waits for them.
 
@@ -3454,8 +3566,8 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    ```
 
    - **Ticket exists and the last round's must-fix set is empty** (`lastRound.findings` has no CRITICAL/WARNING entries; SUGGESTION-only counts as empty) → how the cleared round got there decides the path:
-     - **A refused stamp left it behind** (an external gate turned the stamp away) → do NOT re-review: once the gate recovers, retry the stamp directly — `speclink review stamp "<name>" --agent codex` — and report the outcome. No new discovery, no new validation.
-     - **The `$speclink-quality` timeline left it unstamped on purpose** → do NOT stamp blindly. Only the timeline's **closing stamp call** may stamp here; any earlier call in that timeline (a re-validation step) must leave without stamping, whatever the scope says. Resolve `speclink review scope "<name>" --json` first:
+     - **A refused stamp left it behind** (an external gate turned the stamp away) → do NOT re-review: once the gate recovers, retry the stamp directly — `speclink review stamp "<name>"` — and report the outcome. No new discovery, no new validation.
+     - **The `speclink-quality` timeline left it unstamped on purpose** → do NOT stamp blindly. Only the timeline's **closing stamp call** may stamp here; any earlier call in that timeline (a re-validation step) must leave without stamping, whatever the scope says. Resolve `speclink review scope "<name>" --json` first:
        - **This IS the closing stamp call** → an empty validation patch (nothing moved since the cleared round) means retry the stamp directly as above. A non-empty patch means the movement gets validated first: continue from step 4 with this frozen patch and let step 9 close the round — on this call step 9's defer exception is off, so a cleared round stamps in this same call.
        - **This is NOT the closing stamp call** → an empty patch means there is nothing new to judge: report that and end without stamping, ticket untouched. A non-empty patch goes through step 4 as a normal validation pass, and step 9's defer exception keeps the stamp for later.
    - **Otherwise** (no ticket, or the last round carries must-fix findings) → resolve the frozen scope:
@@ -3472,7 +3584,7 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    Read `contextFiles` (proposal, design, specs, tasks). They tell the reviewers what the code intends — pass the relevant intent into both briefs. Two hard rules:
 
-   - Do NOT issue spec-compliance verdicts here — that is `$speclink-verify`'s dimension.
+   - Do NOT issue spec-compliance verdicts here — that is `speclink-verify`'s dimension.
    - When artifacts are thin, judge only from the code and tests. Never invent requirements.
 
    **Remote mode**: when the workspace is connected to a remote store, `contextFiles` points into the read-only Context Projection (`.speclink/context/`). Read it freely, but NEVER edit projection files; spec changes go through speclink verbs.
@@ -3563,18 +3675,18 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    - **Bn is empty and no accepted must-fix findings remain** → stamp and report **passed clean** (leftover SUGGESTIONs stay recorded — list them in the report):
 
      ```bash
-     speclink review stamp "<name>" --agent codex
+     speclink review stamp "<name>"
      ```
 
      If the stamp refuses (e.g. tasks regressed meanwhile), report the reason and stop — the next session retries the stamp through step 3.
 
-     **Exception — inside the `$speclink-quality` timeline, before its closing stamp call**: when this station runs as a checking or re-validation step of `$speclink-quality`, do NOT stamp on a cleared round — neither a DISCOVERY round with no must-fix findings nor a VALIDATION round whose blocking set has just cleared. The round is already recorded (step 8); take the **stop without stamping** ending (the same exit as option 3 below: the ticket and its frozen snapshot stay). The stamp lands at that skill's **closing stamp call**, after every fix from both stations has been validated — that call re-enters through step 3's clean-ticket branch, and on it this exception is OFF: a cleared round stamps immediately. Called directly as a single station, a cleared round still stamps on the spot; this exception is only about the two-station ordering.
+     **Exception — inside the `speclink-quality` timeline, before its closing stamp call**: when this station runs as a checking or re-validation step of `speclink-quality`, do NOT stamp on a cleared round — neither a DISCOVERY round with no must-fix findings nor a VALIDATION round whose blocking set has just cleared. The round is already recorded (step 8); take the **stop without stamping** ending (the same exit as option 3 below: the ticket and its frozen snapshot stay). The stamp lands at that skill's **closing stamp call**, after every fix from both stations has been validated — that call re-enters through step 3's clean-ticket branch, and on it this exception is OFF: a cleared round stamps immediately. Called directly as a single station, a cleared round still stamps on the spot; this exception is only about the two-station ordering.
 
-   - **Bn is empty but accepted must-fix findings remain** → recommend the user explicitly stamp with reservations — `speclink review stamp "<name>" --accept --agent codex` — and report **passed with reservations**. Never run `--accept` unprompted.
+   - **Bn is empty but accepted must-fix findings remain** → recommend the user explicitly stamp with reservations — `speclink review stamp "<name>" --accept` — and report **passed with reservations**. Never run `--accept` unprompted.
 
    - **Bn is strictly smaller than Bn-1** (or this is the first round with must-fix findings) → use the **AskUserQuestion tool** (plain text + wait if unavailable) with three options, the recommended one first and labelled "(Recommended)": recommend option 1 — outstanding must-fix findings are what brought the loop here. SUGGESTION-only rounds never reach this menu: they stamp directly through the first bullet.
      1. **Fix and re-validate** — fixes happen HERE in the main thread, following the project's TDD discipline; sub-agents never edit. Fix the must-fix list; discretionary items only when the user asks. A must-fix finding the user chooses not to fix is accepted and carried with the `(accepted)` token (step 8); unfixed SUGGESTIONs just carry forward (step 8). **Verification gate**: after the fixes, run the project's full build and test suite and get it green BEFORE looping back to step 3 — a fix-introduced regression must never flow into the next round. Step 3 then freezes the validation patch for the next round.
-     2. **Accept as-is and stamp** — `speclink review stamp "<name>" --accept --agent codex` (stamps with reservations; the round's findings stay on record in the change history).
+     2. **Accept as-is and stamp** — `speclink review stamp "<name>" --accept` (stamps with reservations; the round's findings stay on record in the change history).
      3. **Stop without stamping** — end the session; the ticket and its frozen snapshot stay for a later session or another reviewer (`speclink review show <name> --json` hands them the last round).
 
    - **Bn is not strictly smaller than Bn-1** (equal or larger) → the round is already recorded; report **failed** immediately: keep the ticket, do NOT stamp, do NOT start another round automatically. The user decides what happens next (more work outside this loop, `--accept`, or discard).
@@ -3583,7 +3695,7 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
 **Guardrails**
 
-- The review station judges craft; `$speclink-verify` judges spec compliance — never issue compliance verdicts here
+- The review station judges craft; `speclink-verify` judges spec compliance — never issue compliance verdicts here
 - Round 1 is the only discovery pass; validation rounds judge the original findings and the remediation patch's direct regressions — nothing else
 - The frozen patch from `speclink review scope` is the review surface; touched file lists and worktree state never substitute for it
 - needsInput and scope failures wait for an explicit disposal (trusted `--base`, hash-pinned selection, isolated worktree, or discard) — never guess past them
@@ -3599,8 +3711,8 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The review stamp landed in the main checkout → `$speclink-archive <change-name>`
-- The review stamp landed inside a worktree → commit the stamp's meta changes first, then `$speclink-worktree-merge <change-name>` (archive runs only from the main checkout)
+- The review stamp landed in the main checkout → `speclink-archive <change-name>`
+- The review stamp landed inside a worktree → commit the stamp's meta changes first, then `speclink-worktree-merge <change-name>` (archive runs only from the main checkout)
 - Findings were left unfixed on purpose → they stay in the ticket; say which ones before suggesting anything downstream
 
 === .agents/skills/speclink-trace/SKILL.md ===
@@ -3611,13 +3723,21 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Answer "how did this come to be / why is it designed this way" for a feature: map the question to a capability, walk its provenance chain (archived changes → source discussions → evidence → live code), and reply with one sourced narrative.
 
-**Input**: A natural-language question after `$speclink-trace` (e.g., `$speclink-trace why does archiving stamp @trace blocks?`). The question names or implies one feature or behavior.
+**Input**: A natural-language question after `speclink-trace` (e.g., `speclink-trace why does archiving stamp @trace blocks?`). The question names or implies one feature or behavior.
 
 **Prerequisites**: This skill requires the `speclink` CLI and `git`. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
@@ -3695,13 +3815,21 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Verify that an implementation matches the change artifacts (specs, tasks, design).
 
-**Input**: Optionally specify a change name after `$speclink-verify` (e.g., `$speclink-verify add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name after `speclink-verify` (e.g., `speclink-verify add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
@@ -3743,7 +3871,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
    **Not every code task is done (`codeRemaining > 0`) → mid-flight progress check-in.** Run the three dimensions as a conversation report only (steps 6–9 below, reading whatever artifacts and code you need). Do NOT run `speclink verify scope`, do NOT run `speclink verify add-round`, and do NOT stamp. The verify ticket records the verification of finished work — a check-in round landing in it would make "open ticket" stop meaning "the product's verification is unfinished" and would trip the archive gate for nothing. Report and STOP after step 9.
 
-   **The `$speclink-quality` timeline's closing stamp call, and the ticket's last round's must-fix set is empty** (`speclink verify show "<name>" --json` — `lastRound.findings` has no CRITICAL/WARNING entries; SUGGESTION-only counts as empty) → branch at the entry, do not walk the full flow: run `speclink verify scope "<name>" --json`. An empty movement patch (nothing moved since that round) → skip the checking pass entirely, run `speclink verify stamp "<name>" --agent codex` directly and report — do NOT record another empty round. A non-empty patch → continue from step 6 as a normal validation pass; on this call step 13's defer exception is off, so the cleared round stamps immediately. `needsInput` or a scope failure here follows step 5's disposals unchanged — never guess past them.
+   **The `speclink-quality` timeline's closing stamp call, and the ticket's last round's must-fix set is empty** (`speclink verify show "<name>" --json` — `lastRound.findings` has no CRITICAL/WARNING entries; SUGGESTION-only counts as empty) → branch at the entry, do not walk the full flow: run `speclink verify scope "<name>" --json`. An empty movement patch (nothing moved since that round) → skip the checking pass entirely, run `speclink verify stamp "<name>"` directly and report — do NOT record another empty round. A non-empty patch → continue from step 6 as a normal validation pass; on this call step 13's defer exception is off, so the cleared round stamps immediately. `needsInput` or a scope failure here follows step 5's disposals unchanged — never guess past them.
 
    **Every code task is done (`codeRemaining` is 0) → finished-work verification.** Continue to step 5. `[M]` manual tasks do not hold this back — they are work only the user can do by hand, and the stamp deliberately does not wait for it. When `remaining` is still above 0, name the open manual tasks in the report: the verification covers the code, and archive is what waits for the manual runs.
 
@@ -3906,18 +4034,18 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
     - **Bn is empty and no accepted must-fix findings remain** → stamp and report **passed clean** (leftover SUGGESTIONs stay recorded — list them in the report):
 
       ```bash
-      speclink verify stamp "<name>" --agent codex
+      speclink verify stamp "<name>"
       ```
 
       If the stamp refuses (e.g. tasks regressed meanwhile), report the reason and stop — the next session retries the stamp through step 5.
 
-      **Exception — inside the `$speclink-quality` timeline, before its closing stamp call**: when this station runs as a checking or re-validation step of `$speclink-quality`, do NOT stamp on a cleared round — neither a DISCOVERY round with no must-fix findings nor a VALIDATION round whose blocking set has just cleared. The round is already recorded (step 12); take the **stop without stamping** ending (the same exit as option 3 below: the verification ticket and its snapshot stay). The stamp lands at that skill's **closing stamp call**, which enters through step 4's closing-stamp branch — and on that call this exception is OFF: an untouched round whose must-fix set is empty stamps directly without a new round, a moved one clears its validation pass and stamps immediately. Called directly as a single station, a cleared round still stamps on the spot; this exception is only about the two-station ordering.
+      **Exception — inside the `speclink-quality` timeline, before its closing stamp call**: when this station runs as a checking or re-validation step of `speclink-quality`, do NOT stamp on a cleared round — neither a DISCOVERY round with no must-fix findings nor a VALIDATION round whose blocking set has just cleared. The round is already recorded (step 12); take the **stop without stamping** ending (the same exit as option 3 below: the verification ticket and its snapshot stay). The stamp lands at that skill's **closing stamp call**, which enters through step 4's closing-stamp branch — and on that call this exception is OFF: an untouched round whose must-fix set is empty stamps directly without a new round, a moved one clears its validation pass and stamps immediately. Called directly as a single station, a cleared round still stamps on the spot; this exception is only about the two-station ordering.
 
-    - **Bn is empty but accepted must-fix findings remain** → recommend the user explicitly stamp with reservations — `speclink verify stamp "<name>" --accept --agent codex` — and report **passed with reservations**. Never run `--accept` unprompted.
+    - **Bn is empty but accepted must-fix findings remain** → recommend the user explicitly stamp with reservations — `speclink verify stamp "<name>" --accept` — and report **passed with reservations**. Never run `--accept` unprompted.
 
     - **Bn is strictly smaller than Bn-1** (or this is the first round with must-fix findings) → use the **AskUserQuestion tool** (plain text + wait if unavailable) with three options, the recommended one first and labelled "(Recommended)": recommend option 1 — outstanding must-fix findings are what brought the loop here. SUGGESTION-only rounds never reach this menu: they stamp directly through the first bullet.
       1. **Fix and re-verify** — fixes happen HERE in the main thread, following the project's TDD discipline; the checking pass never edits files. Fix the must-fix list; discretionary items only when the user asks. A must-fix finding the user chooses not to fix is accepted and carried with the `(accepted)` token (step 12); unfixed SUGGESTIONs just carry forward (step 12). **Verification gate**: after the fixes, run the project's full build and test suite and get it green BEFORE looping back to step 5 — a fix-introduced regression must never flow into the next round. Step 5 then freezes the validation patch for the next round.
-      2. **Accept as-is and stamp** — `speclink verify stamp "<name>" --accept --agent codex` (stamps with reservations; the round's findings stay on record in the change history).
+      2. **Accept as-is and stamp** — `speclink verify stamp "<name>" --accept` (stamps with reservations; the round's findings stay on record in the change history).
       3. **Stop without stamping** — end the session; the ticket and its frozen snapshot stay for a later session or another verifier (`speclink verify show <name> --json` hands them the last round).
 
     - **Bn is not strictly smaller than Bn-1** (equal or larger) → the round is already recorded; report **failed** immediately: keep the ticket, do NOT stamp, do NOT start another round automatically. The user decides what happens next (more work outside this loop, `--accept`, or discard).
@@ -3952,7 +4080,7 @@ Use clear markdown with:
 
 **Guardrails**
 
-- `$speclink-verify` judges spec compliance; the review station judges craft — never issue craft verdicts here
+- `speclink-verify` judges spec compliance; the review station judges craft — never issue craft verdicts here
 - The mid-flight check-in never touches the ticket: no `verify scope`, no `verify add-round`, no stamp
 - Round 1 is the only discovery pass; validation rounds judge the original findings and the remediation patch's direct regressions — nothing else
 - The frozen patch from `speclink verify scope` is the code evidence; touched file lists and worktree state never substitute for it
@@ -3969,6 +4097,6 @@ Use clear markdown with:
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The verify stamp landed in the main checkout → `$speclink-archive <change-name>`
-- The verify stamp landed inside a worktree → commit the stamp's meta changes first, then `$speclink-worktree-merge <change-name>` (archive runs only from the main checkout)
+- The verify stamp landed in the main checkout → `speclink-archive <change-name>`
+- The verify stamp landed inside a worktree → commit the stamp's meta changes first, then `speclink-worktree-merge <change-name>` (archive runs only from the main checkout)
 - Findings were left unfixed on purpose → they stay in the ticket; say which ones before suggesting anything downstream

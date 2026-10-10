@@ -149,7 +149,7 @@ artifacts:
     Examples are optional — the analyzer will suggest adding them for abstract scenarios
     but will not block specs without examples.
 
-    Spec file language: English by default. If the project sets `spec_locale` in `openspec/config.yaml`,
+    Spec file language: the operating-system language of the machine running Speclink by default. If the project sets `spec_locale` in `openspec/config.yaml`,
     write spec prose in that language instead — `spec_locale: auto`
     follows the project `locale`. Regardless of language, structural markers
     (`## ADDED/MODIFIED/REMOVED/RENAMED Requirements`, `### Requirement:`, `#### Scenario:`,

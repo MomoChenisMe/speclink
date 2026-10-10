@@ -5,15 +5,23 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Merge a finished Speclink worktree branch back into the main branch, then clean up.
 
-This is the wrap-up half of `$speclink-apply-with-worktree`. That skill stops right after committing inside the worktree; this one takes it from there. It is **human-triggered**: merging is a decision, and a conflict is the user's call.
+This is the wrap-up half of `speclink-apply-with-worktree`. That skill stops right after committing inside the worktree; this one takes it from there. It is **human-triggered**: merging is a decision, and a conflict is the user's call.
 
-**Input**: Optionally specify a change name (e.g., `$speclink-worktree-merge add-auth`). If omitted, run `git worktree list --porcelain` and offer the `speclink/*` branches found. If more than one is a candidate you MUST ask which one — never guess.
+**Input**: Optionally specify a change name (e.g., `speclink-worktree-merge add-auth`). If omitted, run `git worktree list --porcelain` and offer the `speclink/*` branches found. If more than one is a candidate you MUST ask which one — never guess.
 
 **Prerequisites**: This skill requires `git`. Run `git --version`. If git is not available, report it and STOP. Every step below is driven from the **main checkout**; the steps that act on the worktree — its status check and the rebase — reach it with `git -C <worktree-path>` rather than moving you there.
 
@@ -53,7 +61,7 @@ This is the wrap-up half of `$speclink-apply-with-worktree`. That skill stops ri
    ```
 
    - **Main tree not clean** (any uncommitted change) — STOP. List the dirty files and tell the user to commit or stash them first. Do **NOT** stash on their behalf. Do **NOT** commit their unrelated work for them.
-   - **Worktree not fully committed** (any uncommitted change) — STOP. List the dirty files and tell the user the change's work must be committed inside the worktree first (`$speclink-apply-with-worktree` does this at its wrap-up). Do **NOT** commit on their behalf.
+   - **Worktree not fully committed** (any uncommitted change) — STOP. List the dirty files and tell the user the change's work must be committed inside the worktree first (`speclink-apply-with-worktree` does this at its wrap-up). Do **NOT** commit on their behalf.
 
    Only when all three hold, continue.
 
@@ -118,9 +126,9 @@ This is the wrap-up half of `$speclink-apply-with-worktree`. That skill stops ri
 
    Tell the user the wrap-up is done: the branch is merged, the worktree is removed, and the branch is deleted. Then point at what comes next in canonical order — the quality stations belong inside the worktree, so by this point they are either done or deliberately skipped, and the next step is archiving from the main checkout:
 
-   > 這個 change 已合併回主分支。品質關卡建議在 worktree 內就跑完；跑過或使用者決定略過的話，下一步是在主 checkout `$speclink-archive` 封存。
+   > 這個 change 已合併回主分支。品質關卡建議在 worktree 內就跑完；跑過或使用者決定略過的話，下一步是在主 checkout `speclink-archive` 封存。
    >
-   > 還沒跑品質關卡的話，仍可在主 checkout 補跑 `$speclink-review`、`$speclink-verify`，或 `$speclink-quality`（兩站合跑）—— 但那是降級路徑：主 checkout 沒有 Apply baseline，審查凍結面會退回較粗的判定。
+   > 還沒跑品質關卡的話，仍可在主 checkout 補跑 `speclink-review`、`speclink-verify`，或 `speclink-quality`（兩站合跑）—— 但那是降級路徑：主 checkout 沒有 Apply baseline，審查凍結面會退回較粗的判定。
 
 **Output On Success**
 
@@ -133,7 +141,7 @@ This is the wrap-up half of `$speclink-apply-with-worktree`. That skill stops ri
 **Worktree:** <path> (removed)
 **Branch deleted:** ✓
 
-接下來：主 checkout 封存 $speclink-archive（品質關卡建議已在 worktree 內完成；未跑則主 checkout 補跑屬降級路徑）
+接下來：主 checkout 封存 speclink-archive（品質關卡建議已在 worktree 內完成；未跑則主 checkout 補跑屬降級路徑）
 ```
 
 **Output On Stop**
@@ -163,5 +171,5 @@ This is the wrap-up half of `$speclink-apply-with-worktree`. That skill stops ri
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The branch is merged, the worktree is removed and the branch is deleted → `$speclink-archive <change-name>` **from the main checkout** — archiving inside a linked worktree is refused by the engine
+- The branch is merged, the worktree is removed and the branch is deleted → `speclink-archive <change-name>` **from the main checkout** — archiving inside a linked worktree is refused by the engine
 - The quality stations were never run → they need the worktree's Apply baseline, which is gone after the merge; say so plainly instead of suggesting them here

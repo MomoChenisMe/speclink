@@ -199,13 +199,14 @@ const { skills } = require('@speclink/engine')
 
 skills.list() // [{ name: 'propose', description: '…' }, …]
 
-// 渲染矩陣：target（claude|codex|neutral）× invocation（cli|tool-call）
+// 渲染矩陣：target（claude|codex|copilot|neutral）× invocation（cli|tool-call）
 const skillMd = skills.render('propose', {
   target: 'neutral',
   invocation: 'tool-call',
 })
 ```
 
+- `target: 'copilot'` 與 `'codex'` 對相同技能／`specDir` 回傳完全相同本文，符合 CLI 生成的 `.agents/skills/`；適用 Copilot CLI 與 VS Code，不新增 SDK 工具層。本文引用技能名稱，執行 shell 動詞；實際 Codex／Copilot 建立變更與蓋章時追加自身的 `--agent`，未知則省略。生成與停用規則、舊自訂 `copilot` 遷移見[工具設定](configuration.zh-TW.md#自訂工具描述子)。
 - `target: 'neutral'` 為自訂 harness 渲染：沒有 `/speclink-` 斜線前綴、沒有 plan-mode 措辭；`toolName`（預設 `"speclink"`）代入 `{{TOOL}}`。
 - `invocation: 'tool-call'` 把動詞表述為「以 argv 陣列呼叫 speclink 工具」——對應以 `dispatch` 為後端的 tool；`'cli'` 則表述為 shell 指令。
 - 把 `skills.render(...)` 的檔案餵給 agent（例如寫到一個目錄後以 `skillDirectories` 傳入）。路由就在這些檔案裡：每個技能的 `description` 說明何時該用它，結尾的 **Next steps** 段說明跑完之後建議做什麼——不需要、也不再生成任何獨立的 instructions 區塊。

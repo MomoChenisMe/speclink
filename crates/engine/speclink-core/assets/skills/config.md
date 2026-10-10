@@ -75,8 +75,8 @@ With a scope hint, criteria 1–3 are re-judged only over the artifacts in scope
 
 The four policy fields are the user's decision. Ask each one explicitly, one at a time, with the **AskUserQuestion tool** (or as plain text if unavailable), showing the current value from Step 1:
 
-- `locale` — the language for generated prose
-- `spec_locale` — the language for spec files (unset = English, `auto` = follow `locale`)
+- `locale` — the language for generated prose (unset = system language)
+- `spec_locale` — the language for spec files (unset = system language, `auto` = follow `locale`)
 - `tdd` — whether apply enforces test-first discipline
 - `audit` — whether apply enforces sharp-edges discipline
 

@@ -1034,7 +1034,7 @@ function AppInner({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="flex gap-4">
-            {["claude", "codex"].map((tool) => (
+            {["claude", "codex", "copilot"].map((tool) => (
               <label key={tool} className="flex items-center gap-1.5 text-sm">
                 <Checkbox
                   checked={initTools.includes(tool)}
@@ -1069,7 +1069,7 @@ function AppInner({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="flex gap-4">
-            {["claude", "codex"].map((tool) => (
+            {["claude", "codex", "copilot"].map((tool) => (
               <label key={tool} className="flex items-center gap-1.5 text-sm">
                 <Checkbox
                   checked={adoptTools.includes(tool)}

@@ -518,6 +518,17 @@ pub struct ConfigResponse {
     pub content: Option<String>,
     #[serde(default)]
     pub revision: u64,
+    /// Canonical language settings resolved with the server's OS default,
+    /// independently of client environment overrides. Older servers omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub languages: Option<WorkflowLanguages>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowLanguages {
+    pub locale: String,
+    pub spec_locale: String,
 }
 
 /// `PUT /config` request — a full workflow policy document guarded by the
@@ -1029,6 +1040,12 @@ mod tests {
         assert_eq!(config.schema, "spec-driven");
         assert_eq!(config.content, None, "older servers omit policy content");
         assert_eq!(config.revision, 0, "older servers omit policy revision");
+
+        let current: ConfigResponse = serde_json::from_value(serde_json::json!({
+            "schema":"spec-driven", "content":null, "revision":7,
+            "languages":{"locale":"Japanese (日本語)", "specLocale":"ja"}
+        })).unwrap();
+        assert_eq!(serde_json::to_value(current).unwrap()["languages"]["specLocale"], "ja");
 
         let put: PutConfigRequest = serde_json::from_str(
             r#"{"content":"schema: spec-driven\n","expectedRevision":7}"#,

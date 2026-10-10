@@ -3,8 +3,8 @@ title: 自動更新、安裝 CLI 與指令檔過期
 section: 桌面 app
 order: 350
 keywords: [檢查更新, 回到前景, 更新日誌, 安裝 CLI, PATH, 指令檔過期, 技能檔, speclink update]
-sources: ["desktop-app#桌面自動更新", "desktop-app#更新日誌彈窗", "desktop-app#安裝 CLI 指令到 PATH", "desktop-app#指令檔過期提示", "desktop-app#指令檔過期提示捲動釘選", "workspace-tools#技能檔過期探測", "workspace-tools#受管檔再生的降級守門", "workspace-tools#引擎版號查詢面", "workspace-tools#產物層版本戳同源", "workspace-tools#內嵌資產版本鎖定紀律", "workspace-tools#update 清除孤兒技能目錄"]
-generated: 2026-09-17T16:05:41+08:00
+sources: ["desktop-app#桌面自動更新", "desktop-app#更新日誌彈窗", "desktop-app#安裝 CLI 指令到 PATH", "desktop-app#指令檔過期提示", "desktop-app#指令檔過期提示捲動釘選", "workspace-tools#技能檔過期探測", "workspace-tools#受管檔再生的降級守門", "workspace-tools#引擎版號查詢面", "workspace-tools#產物層版本戳同源", "workspace-tools#內嵌資產版本鎖定紀律", "workspace-tools#update 清除孤兒技能目錄", "workspace-tools#共享受管目錄的更新守門"]
+generated: 2026-10-10T08:26:51+08:00
 ---
 
 # 自動更新、安裝 CLI 與指令檔過期
@@ -88,7 +88,7 @@ PATH 的處理：
 
 app 在本地專案分頁成為作用中時探測一次。更新動作完成後，以及專案檔案有外部變動時，再探測一次。remote 工作區分頁不探測、不提示。探測只讀不寫。
 
-探測比對 `.speclink.yaml` 列出的每個工具：內建的 Claude 與 Codex，以及通過驗證的自訂描述子（描述子的技能檔路徑以它自己的 skills 目錄起頭）。沒通過驗證的描述子不參與探測，也不會讓結果變成無法判定；它的錯誤由更新動作報出。結果是五種之一：
+探測比對 `.speclink.yaml` 列出的每個工具：內建的 Claude、Codex 與 Copilot，以及通過驗證的自訂描述子（描述子的技能檔路徑以它自己的 skills 目錄起頭）。沒通過驗證的描述子不參與探測，也不會讓結果變成無法判定；它的錯誤由更新動作報出。結果是五種之一：
 
 | 結果 | 意思 |
 | --- | --- |
@@ -97,6 +97,8 @@ app 在本地專案分頁成為作用中時探測一次。更新動作完成後�
 | 較新 | 某個工具的技能版號新於引擎現版，也就是專案檔案領先 app |
 | 現版 | 全部一致 |
 | 無法判定 | `.speclink.yaml` 解析失敗，或技能檔存在但讀不了 |
+
+Codex 與 Copilot 共用 `.agents/skills/`，共選時各自有一筆工具狀態，但版本與判定一致，待更新清單中的每個共享檔案只列一次。只勾 Copilot 或同時勾兩者，都不會繞過較新版本的降級守門。
 
 有多個工具時以「較新 > 缺失 > 過期 > 現版」取最嚴重的一個回報。現版與無法判定都不提示。無法判定不會被當成現版，也不會記入略過。
 

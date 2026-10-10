@@ -39,6 +39,27 @@ describe('skills.list', () => {
 })
 
 describe('skills.render — render matrix', () => {
+  it('copilot and codex share every skill and match CLI output', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'speclink-node-copilot-'))
+    try {
+      execFileSync(cliBin, ['init', '.', '--tools', 'copilot'], { cwd: fixture })
+      for (const { name } of skills.list()) {
+        const copilot = skills.render(name, { target: 'copilot' })
+        expect(copilot).toBe(skills.render(name, { target: 'codex' }))
+        expect(copilot).not.toContain('$speclink-')
+        expect(copilot).not.toContain('{{')
+        const path = join(fixture, '.agents/skills', `speclink-${name}`, 'SKILL.md')
+        if (existsSync(path)) expect(normalize(copilot)).toBe(normalize(readFileSync(path, 'utf8')))
+      }
+    } finally {
+      rmSync(fixture, { recursive: true, force: true })
+    }
+  })
+
+  it('unknown targets list copilot and unknown skills still fail', () => {
+    expect(() => skills.render('propose', { target: 'vscode' as never })).toThrow(/claude.*codex.*copilot.*neutral/)
+    expect(() => skills.render('no-such-skill', { target: 'copilot' })).toThrow(/Unknown skill/)
+  })
   it('neutral × tool-call speaks tool-call wording without local prefixes/paths', () => {
     const s = skills.render('propose', {
       target: 'neutral',

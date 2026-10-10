@@ -5,13 +5,21 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Compose the workflow config's `context` and `rules` from what the codebase structurally declares, then land them through a diff the user approves.
 
-**Input**: Optionally a scope hint after `$speclink-config` (e.g. "rules only", "refresh the context"). If omitted, work the whole document.
+**Input**: Optionally a scope hint after `speclink-config` (e.g. "rules only", "refresh the context"). If omitted, work the whole document.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
@@ -86,8 +94,8 @@ With a scope hint, criteria 1–3 are re-judged only over the artifacts in scope
 
 The four policy fields are the user's decision. Ask each one explicitly, one at a time, with the **AskUserQuestion tool** (or as plain text if unavailable), showing the current value from Step 1:
 
-- `locale` — the language for generated prose
-- `spec_locale` — the language for spec files (unset = English, `auto` = follow `locale`)
+- `locale` — the language for generated prose (unset = system language)
+- `spec_locale` — the language for spec files (unset = system language, `auto` = follow `locale`)
 - `tdd` — whether apply enforces test-first discipline
 - `audit` — whether apply enforces sharp-edges discipline
 

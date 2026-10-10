@@ -5,13 +5,21 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.41.0"
+  version: "v1.44.0"
   generatedBy: "Speclink"
+---
+
+## Shared execution
+
+Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
+
+When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
+
 ---
 
 Answer "how did this come to be / why is it designed this way" for a feature: map the question to a capability, walk its provenance chain (archived changes → source discussions → evidence → live code), and reply with one sourced narrative.
 
-**Input**: A natural-language question after `$speclink-trace` (e.g., `$speclink-trace why does archiving stamp @trace blocks?`). The question names or implies one feature or behavior.
+**Input**: A natural-language question after `speclink-trace` (e.g., `speclink-trace why does archiving stamp @trace blocks?`). The question names or implies one feature or behavior.
 
 **Prerequisites**: This skill requires the `speclink` CLI and `git`. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
