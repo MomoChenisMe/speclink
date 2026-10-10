@@ -571,7 +571,7 @@ describe("initTray 接線（選單）", () => {
     expect(bag.openProjectAt).not.toHaveBeenCalled();
   });
 
-  it("變更子選單「開啟此變更」開主視窗並開啟該變更詳情", async () => {
+  it("變更子選單「開啟此變更」開主視窗並開啟該變更的詳情頁（store openDetail，宿主落回看板）", async () => {
     const bag = makeStore();
     await initTray(bag.store, { isMacOS: true });
     // alpha 為進行中，是子選單（有 items）
@@ -712,7 +712,7 @@ describe("initTray 接線（選單）", () => {
     // 首行為 topic 描述（disabled、不可選取）
     expect(disc.items[0].text).toBe("t1");
     expect(disc.items[0].enabled).toBe(false);
-    // 開啟此討論 → 主視窗＋openDiscussion
+    // 開啟此討論 → 主視窗＋openDiscussion（開啟該討論的詳情頁）
     expect(disc.items[1].text).toBe("開啟此討論");
     disc.items[1].action();
     // openMainWindow 為 async（hide_tray_panel → unminimize → show → setFocus）：沖洗微任務後再斷言
@@ -892,7 +892,7 @@ describe("initTray 接線（選單）", () => {
       "tray-snapshot",
       expect.objectContaining({ activeKey: "local:/proj/two" }),
     );
-    // 動作回流：open-change 開主視窗並開啟該變更詳情
+    // 動作回流：open-change 開主視窗並開啟該變更的詳情頁
     const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
     (actionCall[1] as (e: AnyItem) => void)({ payload: { kind: "open-change", id: "alpha" } });
     // openMainWindow 為 async（hide_tray_panel → unminimize → show → setFocus）：沖洗微任務後再斷言

@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { BadgeAlert, BadgeCheck, BadgeX, Stamp } from "lucide-react";
 
 import { SEMANTIC_TONE } from "../tone";
+import type { StatusPillTone } from "./ui/status-pill";
 
 /* 審查標示配色（spec desktop-app「看板卡片的審查標示」「詳情抽屜的審查資訊列」
    「已封存側的審查標示」共用）：四態各給可辨識的色，不落回灰階。
@@ -16,6 +17,15 @@ export const REVIEW_TONE = {
   reviewedStale: SEMANTIC_TONE.warning,
   reviewedNotPassed: SEMANTIC_TONE.danger,
 } as const;
+
+/** 審查狀態 → 狀態籤 tone（design D5）：與 `REVIEW_TONE` 同一組語意——已審查＝蓋章、
+   審查中＝進行中、其後有變動＝警示、未通過＝危險；詳情頁的章籤用。 */
+export const REVIEW_PILL_TONE = {
+  inReview: "progress",
+  reviewed: "stamp",
+  reviewedStale: "warning",
+  reviewedNotPassed: "destructive",
+} as const satisfies Record<keyof typeof REVIEW_TONE, StatusPillTone>;
 
 /** 審查狀態 → i18n 詞條 key（active 四態與 archived 三態同一張表）：狀態詞在
    卡片、詳情抽屜與已封存兩處各出現一次，對照只此一份。`none` 與缺席不入表

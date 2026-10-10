@@ -406,7 +406,7 @@ describe("已封存抽屜文件三態", () => {
 });
 
 // 三態的 undefined 是「還在載」，不是「載不到」。capability 載入失敗時若停在
-// undefined，規格分頁會永久掛骨架（與 RichDetailDrawer 同一收斂）。
+// undefined，規格分頁會永久掛骨架（與 ChangeDetailPage 同一收斂）。
 describe("已封存抽屜規格分頁載入失敗的收斂", () => {
   it("loadCapabilities 失敗 → 收斂為空態文案，不永久掛骨架", async () => {
     render(

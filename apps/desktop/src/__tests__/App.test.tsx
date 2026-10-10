@@ -52,29 +52,42 @@ vi.mock("../appMenu", async (importOriginal) => ({
   },
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn().mockResolvedValue(undefined) }));
+
+// 系統匣（tray-status-menu）：jsdom 載不了原生圖示，initTray 原本就會失敗而靜默降級。
+// 這裡改為捕捉 App 交給系統匣的 store，測試以它呼叫系統匣「開啟此變更」所走的同一個動作。
+const { traySpy } = vi.hoisted(() => ({
+  traySpy: { store: null as null | { getState: () => { openDetail: (name: string) => void } } },
+}));
+vi.mock("../tray", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../tray")>()),
+  initTray: (store: NonNullable<typeof traySpy.store>) => {
+    traySpy.store = store;
+    return Promise.resolve({ dispose: () => {} });
+  },
+}));
 // 選單「關閉專案」只在主視窗為焦點時動作：jsdom 無 Tauri 視窗，以可控的焦點狀態模擬。
 vi.mock("@tauri-apps/api/window", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tauri-apps/api/window")>()),
   getCurrentWindow: () => windowSpy,
 }));
 
-// 兩個抽屜的 pass-through spy：捕捉 props（驗證刷新世代下發）後照常渲染原元件；
+// 兩種詳情頁的 pass-through spy：捕捉 props（驗證刷新世代下發）後照常渲染原元件；
 // Toaster 以 marker 驗證由 App 根層掛載，行為整合由 packages/ui 測試承載。
-const { drawerSpy, toasterSpy } = vi.hoisted(() => ({
-  drawerSpy: { rich: [] as Array<Record<string, unknown>>, disc: [] as Array<Record<string, unknown>> },
+const { pageSpy, toasterSpy } = vi.hoisted(() => ({
+  pageSpy: { change: [] as Array<Record<string, unknown>>, disc: [] as Array<Record<string, unknown>> },
   toasterSpy: vi.fn(),
 }));
 vi.mock("@speclink/ui", async (importOriginal) => {
   const mod = await importOriginal<typeof import("@speclink/ui")>();
   return {
     ...mod,
-    RichDetailDrawer: (props: never) => {
-      drawerSpy.rich.push(props);
-      return <mod.RichDetailDrawer {...(props as object) as Parameters<typeof mod.RichDetailDrawer>[0]} />;
+    ChangeDetailPage: (props: never) => {
+      pageSpy.change.push(props);
+      return <mod.ChangeDetailPage {...(props as object) as Parameters<typeof mod.ChangeDetailPage>[0]} />;
     },
-    DiscussionDrawer: (props: never) => {
-      drawerSpy.disc.push(props);
-      return <mod.DiscussionDrawer {...(props as object) as Parameters<typeof mod.DiscussionDrawer>[0]} />;
+    DiscussionDetailPage: (props: never) => {
+      pageSpy.disc.push(props);
+      return <mod.DiscussionDetailPage {...(props as object) as Parameters<typeof mod.DiscussionDetailPage>[0]} />;
     },
     Toaster: () => {
       toasterSpy();
@@ -85,8 +98,8 @@ vi.mock("@speclink/ui", async (importOriginal) => {
 
 beforeEach(() => {
   workspaceHandlers.length = 0;
-  drawerSpy.rich.length = 0;
-  drawerSpy.disc.length = 0;
+  pageSpy.change.length = 0;
+  pageSpy.disc.length = 0;
   toasterSpy.mockClear();
   appMenuSpy.deps.length = 0;
   appMenuSpy.cancel.mockClear();
@@ -415,8 +428,8 @@ describe("App (kanban primary + rich detail)", () => {
     expect(within(depends).getByRole("combobox", { name: "新增前置" })).toBeTruthy();
   });
 
-  it("delete flow: drawer delete → confirm dialog → deleteChange called", async () => {
-    // 階段守門後刪除鈕僅提案中可按（archive-readiness-gating）——改用提案中 fixture。
+  it("delete flow: 詳情頁「⋯」刪除 → confirm dialog → deleteChange called", async () => {
+    // 階段守門後刪除項僅提案中可選（archive-readiness-gating）——改用提案中 fixture。
     const ds = fakeDataSource({
       listChanges: vi.fn().mockResolvedValue(changeList([
         { name: "desktop-shell-and-browser", status: "in-progress", totalTasks: 30, completedTasks: 0 },
@@ -425,8 +438,10 @@ describe("App (kanban primary + rich detail)", () => {
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     fireEvent.click(screen.getByText("desktop-shell-and-browser"));
-    await waitFor(() => screen.getByRole("button", { name: /刪除/ }));
-    fireEvent.click(screen.getByRole("button", { name: /刪除/ }));
+    const page = await screen.findByTestId("detail-page");
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(within(page).getByRole("button", { name: "更多動作" }));
+    await user.click(await screen.findByRole("menuitem", { name: /刪除/ }));
     // 確認對話框
     await waitFor(() => screen.getByText("刪除變更？"));
     fireEvent.click(screen.getByRole("button", { name: "刪除" }));
@@ -482,7 +497,7 @@ describe("App (kanban primary + rich detail)", () => {
     );
   });
 
-  it("封存失敗時確認框關閉不會連帶關閉詳情抽屜", async () => {
+  it("封存失敗時詳情頁維持開啟；確認在途時 Esc 不關頁", async () => {
     let rejectArchive!: (reason: unknown) => void;
     const ds = fakeDataSource({
       runVerb: vi.fn().mockImplementation(
@@ -493,36 +508,53 @@ describe("App (kanban primary + rich detail)", () => {
     });
     renderApp(ds);
     fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
-    const drawer = await screen.findByRole("dialog");
-    fireEvent.click(within(drawer).getByRole("button", { name: "封存" }));
+    const page = await screen.findByTestId("detail-page");
+    fireEvent.click(within(page).getByRole("button", { name: "封存" }));
     const confirm = await screen.findByRole("alertdialog");
     fireEvent.click(within(confirm).getByRole("button", { name: "封存" }));
     await waitFor(() => expect(ds.runVerb).toHaveBeenCalledWith("archive", "desktop-shell-and-browser"));
-    // 原生 WebView 中 AlertDialog 收合會讓底下的 Sheet 收到 false；操作尚在途時須忽略。
+    // 確認在途：確認框收合的 Esc 尾巴不得關頁，成功／失敗由 store 決定。
     act(() => {
-      (drawerSpy.rich[drawerSpy.rich.length - 1].onOpenChange as (open: boolean) => void)(false);
+      fireEvent.keyDown(window, { key: "Escape" });
     });
-    const stayedOpen = drawerSpy.rich[drawerSpy.rich.length - 1].open;
+    expect(screen.getByTestId("detail-page")).toBeTruthy();
     await act(async () => {
       rejectArchive(new Error("archive prerequisites missing"));
     });
-    expect(stayedOpen).toBe(true);
-    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(screen.getByTestId("detail-page")).toBeTruthy();
   });
 
-  it("passes an increasing refreshGen generation to both drawers", async () => {
+  it("passes an increasing refreshGen generation to the open detail pages", async () => {
     // design D1：世代自 store 經 props 下發，內容元件據此重載（重載行為由 packages/ui 測試承載）。
-    renderApp();
+    renderApp(
+      fakeDataSource({
+        listDiscussions: vi.fn().mockResolvedValue({
+          active: [
+            { slug: "topic-a", topic: "Topic A", status: "open", rounds: 1, created: "2026-07-17", promotedTo: [] },
+          ],
+          archived: [],
+        }),
+      }),
+    );
     await waitFor(() => expect(workspaceHandlers.length).toBeGreaterThan(0));
-    await waitFor(() => expect(drawerSpy.rich.length).toBeGreaterThan(0));
-    await waitFor(() => expect(drawerSpy.disc.length).toBeGreaterThan(0));
-    const before = drawerSpy.rich[drawerSpy.rich.length - 1].refreshGen;
+    fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+    await waitFor(() => expect(pageSpy.change.length).toBeGreaterThan(0));
+    const before = pageSpy.change[pageSpy.change.length - 1].refreshGen as number;
     expect(typeof before).toBe("number");
     workspaceHandlers.forEach((h) => h());
-    await waitFor(() => {
-      expect(drawerSpy.rich[drawerSpy.rich.length - 1].refreshGen as number).toBeGreaterThan(before as number);
-      expect(drawerSpy.disc[drawerSpy.disc.length - 1].refreshGen as number).toBeGreaterThan(before as number);
+    await waitFor(() =>
+      expect(pageSpy.change[pageSpy.change.length - 1].refreshGen as number).toBeGreaterThan(before),
+    );
+    act(() => {
+      fireEvent.keyDown(window, { key: "Escape" });
     });
+    fireEvent.click(await screen.findByText("Topic A"));
+    await waitFor(() => expect(pageSpy.disc.length).toBeGreaterThan(0));
+    const discBefore = pageSpy.disc[pageSpy.disc.length - 1].refreshGen as number;
+    workspaceHandlers.forEach((h) => h());
+    await waitFor(() =>
+      expect(pageSpy.disc[pageSpy.disc.length - 1].refreshGen as number).toBeGreaterThan(discBefore),
+    );
   });
 
   it("workspace-changed event triggers a full refresh (external writers reflected)", async () => {
@@ -792,7 +824,7 @@ describe("board search wiring（看板搜尋接線）", () => {
     await screen.findByText("desktop-shell-and-browser");
     const heading = screen.getByRole("heading", { level: 2, name: "變更" });
     const header = heading.closest("[data-page-header]") as HTMLElement;
-    expect(header.textContent).toContain("依生命週期分欄；拖曳卡片調整順序，點卡片開詳情。");
+    expect(header.textContent).toContain("依生命週期分欄；拖曳卡片調整順序，點卡片開詳情頁。");
     expect(within(header).getByPlaceholderText("搜尋看板卡片…")).toBeTruthy();
   });
 
@@ -1376,7 +1408,7 @@ describe("main content scroll containment（主內容區捲動約束）", () => 
     expect(main().querySelector(".sticky")).toBeNull();
   });
 
-  it("點提示卡開確認框；開啟變更抽屜時確認框關閉（可取消浮層互斥）", async () => {
+  it("點提示卡開確認框；開啟變更詳情頁時確認框關閉（可取消浮層互斥）", async () => {
     renderApp(fakeDataSource(), { ws: staleWorkspace() });
     await screen.findByText("desktop-shell-and-browser");
     fireEvent.click(await screen.findByTestId("asset-notice-card"));
@@ -1385,9 +1417,8 @@ describe("main content scroll containment（主內容區捲動約束）", () => 
     // 看板卡片走 store openDetail；fireEvent 不送 pointerdown，不會誤走對話框的點外關閉。
     fireEvent.click(screen.getByText("desktop-shell-and-browser"));
     await waitFor(() => expect(screen.queryByTestId("asset-notice-dialog")).toBeNull());
-    expect(drawerSpy.rich[drawerSpy.rich.length - 1].open).toBe(true);
-    // 被抽屜頂掉等同「稍後」：提示卡仍在（抽屜開啟時 Radix 把其餘區域標為 aria-hidden，
-    // 角色查詢找不到專案欄，改以 testid 斷言存在）。
+    expect(screen.getByTestId("detail-page")).toBeTruthy();
+    // 被詳情頁頂掉等同「稍後」：提示卡仍在專案欄。
     expect(screen.getByTestId("asset-notice-card")).toBeTruthy();
   });
 
@@ -1943,7 +1974,7 @@ describe("更新日誌彈窗接線（desktop-app「更新日誌彈窗」）", ()
     expect(localStorage.getItem(KEY)).toBe(TOP);
   });
 
-  it("抽屜開啟時更新日誌關閉且不記為已看過（規格「detail 抽屜互斥」）", async () => {
+  it("開啟詳情頁時更新日誌關閉且不記為已看過（規格「詳情頁互斥」）", async () => {
     localStorage.setItem(KEY, "0.1.0");
     seedProjectTab();
     renderWithUpdater();
@@ -1953,11 +1984,11 @@ describe("更新日誌彈窗接線（desktop-app「更新日誌彈窗」）", ()
     fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
 
     await waitFor(() => expect(screen.queryByTestId("release-notes-dialog")).toBeNull());
-    expect(drawerSpy.rich[drawerSpy.rich.length - 1].open).toBe(true);
+    expect(screen.getByTestId("detail-page")).toBeTruthy();
     expect(localStorage.getItem(KEY)).toBe("0.1.0");
   });
 
-  it("whatsNew 開啟中開啟討論：對話框關閉、討論抽屜開啟且不記為已看過", async () => {
+  it("whatsNew 開啟中開啟討論：對話框關閉、討論詳情頁開啟且不記為已看過", async () => {
     // 規格 Example「更新日誌（whatsNew）｜開啟討論」。
     localStorage.setItem(KEY, "0.1.0");
     seedProjectTab();
@@ -1976,11 +2007,12 @@ describe("更新日誌彈窗接線（desktop-app「更新日誌彈窗」）", ()
     fireEvent.click(await screen.findByText("Topic A"));
 
     await waitFor(() => expect(screen.queryByTestId("release-notes-dialog")).toBeNull());
-    expect(drawerSpy.disc[drawerSpy.disc.length - 1].open).toBe(true);
+    expect(pageSpy.disc[pageSpy.disc.length - 1]?.discussion).toMatchObject({ slug: "topic-a" });
+    expect(screen.getByTestId("detail-page")).toBeTruthy();
     expect(localStorage.getItem(KEY)).toBe("0.1.0");
   });
 
-  it("抽屜已開著時 whatsNew 才彈出：換開另一個 change 仍收掉更新日誌", async () => {
+  it("詳情頁已開著時 whatsNew 才彈出：以 › 換開另一個 change 仍收掉更新日誌", async () => {
     localStorage.setItem(KEY, "0.1.0");
     seedProjectTab();
     let resolveVersion!: (version: string) => void;
@@ -1996,14 +2028,15 @@ describe("更新日誌彈窗接線（desktop-app「更新日誌彈窗」）", ()
       }),
     );
     fireEvent.click(await screen.findByText("change-a"));
-    await waitFor(() => expect(drawerSpy.rich[drawerSpy.rich.length - 1].open).toBe(true));
+    await screen.findByTestId("detail-page");
     await act(async () => resolveVersion(TOP));
     await screen.findByTestId("release-notes-dialog");
 
-    fireEvent.click(screen.getByText("change-b"));
+    // 對話框開啟時其餘區域被標為 aria-hidden，角色查詢需含隱藏節點。
+    fireEvent.click(screen.getByRole("button", { name: "下一個", hidden: true }));
 
     await waitFor(() => expect(screen.queryByTestId("release-notes-dialog")).toBeNull());
-    expect((drawerSpy.rich[drawerSpy.rich.length - 1].change as { name: string }).name).toBe("change-b");
+    expect((pageSpy.change[pageSpy.change.length - 1]?.change as { name: string }).name).toBe("change-b");
     expect(localStorage.getItem(KEY)).toBe("0.1.0");
   });
 });
@@ -2266,4 +2299,208 @@ describe("非 macOS 快捷鍵卡與 keydown 一致", () => {
       }
     },
   );
+});
+
+// spec desktop-app「詳情頁的導覽與返回」「變更與討論詳情頁的宿主為看板」「詳情頁與浮層的
+// 進出動畫」（design D1／D2／D9）：頁層覆蓋主區、宿主頁保持掛載但 inert；麵包屑三段、
+// ‹ n／m › 與 Esc／⌥↑／⌥↓。
+describe("詳情頁層與導覽（desktop-detail-page）", () => {
+  const twoChanges = () =>
+    fakeDataSource({
+      listChanges: vi.fn().mockResolvedValue(
+        changeList([
+          { name: "change-a", status: "in-progress", totalTasks: 3, completedTasks: 0 },
+          { name: "change-b", status: "in-progress", totalTasks: 3, completedTasks: 0 },
+        ]),
+      ),
+    });
+  const page = () => screen.queryByTestId("detail-page");
+  const host = () => screen.getByTestId("host-page");
+  const crumbText = () =>
+    (screen.getByTestId("main-titlebar").querySelector("nav")?.textContent ?? "").replace(/\s+/g, "");
+  const currentChange = () => (pageSpy.change[pageSpy.change.length - 1]?.change as { name: string } | null)?.name;
+
+  it("開卡後頁層覆蓋主區、宿主頁 inert 且不可見；麵包屑三段、項目名等寬", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+    const layer = await screen.findByTestId("detail-page");
+    expect(layer.className).toContain("absolute");
+    expect(layer.className).toContain("inset-0");
+    expect(layer.className).toContain("motion-reduce:animate-none");
+    expect(host().hasAttribute("inert")).toBe(true);
+    expect(host().getAttribute("aria-hidden")).toBe("true");
+    expect(host().className).toContain("invisible");
+    expect(crumbText()).toBe("proj-a/變更/desktop-shell-and-browser");
+    const item = within(screen.getByTestId("main-titlebar")).getByText("desktop-shell-and-browser");
+    expect(item.className).toContain("font-mono");
+    expect(item.tagName).not.toBe("BUTTON");
+  });
+
+  it("Esc 關頁回看板，搜尋字串原樣保留；宿主頁恢復可互動", async () => {
+    renderApp();
+    const search = await screen.findByPlaceholderText("搜尋看板卡片…");
+    // 以全名搜尋：命中高亮整段包住，卡片名稱仍是單一元素。
+    fireEvent.change(search, { target: { value: "desktop-shell-and-browser" } });
+    fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+    await screen.findByTestId("detail-page");
+    act(() => {
+      fireEvent.keyDown(window, { key: "Escape" });
+    });
+    await waitFor(() => expect(page()).toBeNull());
+    expect(host().hasAttribute("inert")).toBe(false);
+    expect((screen.getByPlaceholderText("搜尋看板卡片…") as HTMLInputElement).value).toBe(
+      "desktop-shell-and-browser",
+    );
+    expect(crumbText()).toBe("proj-a/變更");
+  });
+
+  it("Esc 先給浮層：選單開著時第一次 Esc 只關選單，第二次才關頁", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+    const layer = await screen.findByTestId("detail-page");
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(within(layer).getByRole("button", { name: "更多動作" }));
+    await screen.findByRole("menu");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(page()).toBeTruthy();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(page()).toBeNull());
+  });
+
+  it("⌥↓ 依看板順序切到下一張卡、到頭不循環；‹ n／m › 同步", async () => {
+    renderApp(twoChanges());
+    fireEvent.click(await screen.findByText("change-a"));
+    await screen.findByTestId("detail-page");
+    expect(screen.getByText("1 / 2")).toBeTruthy();
+    act(() => {
+      fireEvent.keyDown(window, { key: "ArrowDown", altKey: true });
+    });
+    await waitFor(() => expect(currentChange()).toBe("change-b"));
+    expect(screen.getByText("2 / 2")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "下一個" }) as HTMLButtonElement).disabled).toBe(true);
+    act(() => {
+      fireEvent.keyDown(window, { key: "ArrowDown", altKey: true });
+    });
+    expect(currentChange()).toBe("change-b");
+    fireEvent.click(screen.getByRole("button", { name: "上一個" }));
+    await waitFor(() => expect(currentChange()).toBe("change-a"));
+  });
+
+  it("焦點在文字輸入時 ⌥↓ 與 Esc 都不作用", async () => {
+    renderApp(twoChanges());
+    fireEvent.click(await screen.findByText("change-a"));
+    await screen.findByTestId("detail-page");
+    const input = screen.getByPlaceholderText("搜尋看板卡片…");
+    fireEvent.keyDown(input, { key: "ArrowDown", altKey: true });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(currentChange()).toBe("change-a");
+    expect(page()).toBeTruthy();
+  });
+
+  it("切換項目時頁層捲回頂端，不沿用上一項的捲動位置", async () => {
+    renderApp(twoChanges());
+    fireEvent.click(await screen.findByText("change-a"));
+    const layer = await screen.findByTestId("detail-page");
+    layer.scrollTop = 300;
+    act(() => {
+      fireEvent.keyDown(window, { key: "ArrowDown", altKey: true });
+    });
+    await waitFor(() => expect(currentChange()).toBe("change-b"));
+    expect(screen.getByTestId("detail-page").scrollTop).toBe(0);
+  });
+
+  it("封存確認在途時 ⌥↓ 不切換（成功後的關頁不得關掉切過去的新頁）", async () => {
+    const ds = fakeDataSource({
+      listChanges: vi.fn().mockResolvedValue(
+        changeList([
+          { name: "change-a", status: "in-progress", totalTasks: 3, completedTasks: 3 },
+          { name: "change-b", status: "in-progress", totalTasks: 3, completedTasks: 3 },
+        ]),
+      ),
+      runVerb: vi.fn(() => new Promise<never>(() => {})),
+    });
+    renderApp(ds);
+    fireEvent.click(await screen.findByText("change-a"));
+    const layer = await screen.findByTestId("detail-page");
+    fireEvent.click(within(layer).getByRole("button", { name: "封存" }));
+    const confirm = await screen.findByRole("alertdialog");
+    fireEvent.click(within(confirm).getByRole("button", { name: "封存" }));
+    await waitFor(() => expect(ds.runVerb).toHaveBeenCalledWith("archive", "change-a"));
+    act(() => {
+      fireEvent.keyDown(window, { key: "ArrowDown", altKey: true });
+    });
+    expect(currentChange()).toBe("change-a");
+  });
+
+  it("詳情頁開著時點專案欄「規格」：詳情頁關閉、主區換成規格頁", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+    await screen.findByTestId("detail-page");
+    fireEvent.click(screen.getByRole("button", { name: /^規格/ }));
+    await waitFor(() => expect(page()).toBeNull());
+    expect(crumbText()).toBe("proj-a/規格");
+    expect(host().hasAttribute("inert")).toBe(false);
+  });
+
+  it("麵包屑「變更」點擊關頁、看板可見", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+    await screen.findByTestId("detail-page");
+    fireEvent.click(within(screen.getByTestId("main-titlebar")).getByRole("button", { name: "變更" }));
+    await waitFor(() => expect(page()).toBeNull());
+    expect(document.querySelector('[data-column="ready"]')).toBeTruthy();
+  });
+
+  it("系統匣「開啟此變更」自已封存頁開啟：宿主切回看板、落到詳情頁", async () => {
+    renderApp();
+    await screen.findByText("desktop-shell-and-browser");
+    fireEvent.click(screen.getByRole("button", { name: /已封存/ }));
+    await waitFor(() => expect(document.querySelector('[data-column="ready"]')).toBeNull());
+    await waitFor(() => expect(traySpy.store).not.toBeNull());
+    act(() => traySpy.store!.getState().openDetail("desktop-shell-and-browser"));
+    await screen.findByTestId("detail-page");
+    expect(document.querySelector('[data-column="ready"]')).toBeTruthy();
+  });
+
+  it("封存成功後詳情頁關閉", async () => {
+    const ds = fakeDataSource();
+    renderApp(ds);
+    fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+    const layer = await screen.findByTestId("detail-page");
+    fireEvent.click(within(layer).getByRole("button", { name: "封存" }));
+    const confirm = await screen.findByRole("alertdialog");
+    fireEvent.click(within(confirm).getByRole("button", { name: "封存" }));
+    await waitFor(() => expect(ds.runVerb).toHaveBeenCalledWith("archive", "desktop-shell-and-browser"));
+    await waitFor(() => expect(page()).toBeNull());
+  });
+
+  it("目前變更被外部刪除：刷新後詳情頁關閉、無錯誤彈窗", async () => {
+    const ds = fakeDataSource();
+    renderApp(ds);
+    fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+    await screen.findByTestId("detail-page");
+    await waitFor(() => expect(workspaceHandlers.length).toBeGreaterThan(0));
+    (ds.listChanges as Mock).mockResolvedValue(changeList([]));
+    workspaceHandlers.forEach((h) => h());
+    await waitFor(() => expect(page()).toBeNull());
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("討論卡開頁：麵包屑項目名為 slug", async () => {
+    renderApp(
+      fakeDataSource({
+        listDiscussions: vi.fn().mockResolvedValue({
+          active: [
+            { slug: "topic-a", topic: "Topic A", status: "open", rounds: 1, created: "2026-07-17", promotedTo: [] },
+          ],
+          archived: [],
+        }),
+      }),
+    );
+    fireEvent.click(await screen.findByText("Topic A"));
+    await screen.findByTestId("detail-page");
+    expect(crumbText()).toBe("proj-a/變更/topic-a");
+    expect(screen.getByText("1 / 1")).toBeTruthy();
+  });
 });

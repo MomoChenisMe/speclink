@@ -1,19 +1,28 @@
-import { useEffect, useRef, useState } from "react";
-import { Archive, ArrowUpRight, FileText, Flag, MessagesSquare, Rocket } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Archive, ArrowUpRight, Check, Circle, FileText, Flag, MessagesSquare, Rocket } from "lucide-react";
 
 import type { ArchivedItem, ChangeItem, DiscussionItem } from "../adapter";
 import { useI18n } from "../i18n";
-import { useLingering } from "../lib/useLingering";
+import { changeStage, type Stage } from "../stage";
 import { Button } from "./ui/button";
+import { StatusPill, type StatusPillTone } from "./ui/status-pill";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
-import { Markdown, READING_COLUMN_CLS } from "./Markdown";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { Markdown } from "./Markdown";
 import { DocSkeleton } from "./skeletons";
 import { LABEL_CLS } from "./SectionedDoc";
-import { discussionChipStage } from "./DiscussionColumn";
+import { discussionChipStage, isCollapsedPromoted } from "./DiscussionColumn";
+import {
+  DetailContentCard,
+  DetailHeader,
+  DetailPageFrame,
+  IdentityName,
+  StatusCard,
+  StatusRow,
+  type DocumentTarget,
+} from "./DetailHeader";
 import { ImproveChip } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
-import { CopyButton } from "./CopyButton";
 
 /** 討論記錄的三個標準區段。 */
 export interface DiscussionSections {
@@ -169,7 +178,7 @@ const ROUND_LABEL_KEYS: Record<RoundLabel, string> = {
 /**
  * 討論輪卡片檢視（spec「討論輪以卡片呈現」）：scaffold 記錄逐輪成卡——卡頭輪次
  * 徽章＋mode chip＋日期、卡身欄位標籤區塊；非標準格式整篇單一 markdown 檢視退回。
- * DiscussionDrawer 討論過程分頁與 ArchivedList 討論檢視共用。
+ * DiscussionDetailPage 討論過程分頁與 ArchivedList 討論檢視共用。
  */
 export function RoundsView({ text, empty }: { text: string; empty?: string }) {
   const { t } = useI18n();
@@ -235,7 +244,7 @@ const CONCLUSION_LABEL_KEYS: Record<ConclusionLabel, string> = {
 /**
  * 討論結論欄位檢視（spec「討論結論以欄位標籤呈現」）：conclude scaffold 六欄位
  * 拆標籤區塊；無任何白名單欄位（手寫自由格式）整篇單一 markdown 檢視退回。
- * DiscussionDrawer 結論分頁與 ArchivedList 結論區共用。
+ * DiscussionDetailPage 結論分頁與 ArchivedList 結論區共用。
  */
 export function ConclusionView({ text, empty }: { text: string; empty?: string }) {
   const { t } = useI18n();
@@ -259,43 +268,60 @@ export function ConclusionView({ text, empty }: { text: string; empty?: string }
   );
 }
 
-export interface DiscussionDrawerProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+export interface DiscussionDetailPageProps {
   discussion: DiscussionItem | null;
   /** 刷新世代——遞增即重載討論記錄內容（未傳＝0，行為等同僅開啟時載入）。 */
   refreshGen?: number;
   /** 記錄全文載入（slug 定址）。 */
   loadDocument: (slug: string) => Promise<string | null>;
-  /** active change 清單（衍生變更分頁現況派生）。 */
+  /** active change 清單（衍生變更現況派生）。 */
   changes: ChangeItem[];
-  /** 已封存 change 清單（衍生變更分頁已封存態派生）。 */
+  /** 已封存 change 清單（衍生變更已封存態派生）。 */
   archivedChanges: ArchivedItem[];
-  /** 衍生變更分頁「開啟卡片」跳轉。 */
+  /** 衍生變更籤與分頁的跳轉（開該變更的詳情頁）。 */
   onOpenChangeCard?: (name: string) => void;
-  /** concluded 討論的封存動詞——與討論卡同一確認流程(宿主接確認對話框)。
-   * 未提供時不渲染(宿主以此表達「已封存」或 capability 缺口)。 */
+  /** 封存動詞——與討論卡同一確認流程（宿主接確認對話框）。未提供時不渲染（宿主以此表達
+   * 「已封存」或 capability 缺口）。 */
   onArchiveDiscussion?: (slug: string) => void;
+  /** 內容卡標頭右端的文件動作（design D4「開啟 ▾」）：各分頁皆為討論記錄檔，原文未載完為 null。 */
+  renderDocumentActions?: (target: DocumentTarget | null) => ReactNode;
 }
 
+/** 標題列狀態籤（design D7）：判準與看板討論卡一致——尚無結論的已轉出、保留中的已轉出
+ * 同為警示色；其餘已轉出與已結論為主色；討論中為中性。 */
+function statusPill(d: DiscussionItem): { labelKey: string; tone: StatusPillTone } {
+  if (d.status === "promoted") {
+    if (d.concluded === false) return { labelKey: "discussion.statusPromotedUnconcluded", tone: "warning" };
+    if (!isCollapsedPromoted(d)) return { labelKey: "discussion.statusPromotedHeld", tone: "warning" };
+    return { labelKey: "ddrawer.stationPromoted", tone: "primary" };
+  }
+  if (d.status === "concluded") return { labelKey: "discussion.statusConcluded", tone: "primary" };
+  return { labelKey: "discussion.statusOpen", tone: "neutral" };
+}
+
+/** 衍生變更的階段籤 tone：作用中依看板欄色相、已封存中性、已刪除警示（加刪除線）。 */
+const STAGE_PILL_TONE: Record<Stage, StatusPillTone> = {
+  proposed: "primary",
+  "in-progress": "progress",
+  ready: "success",
+};
+
 /**
- * 討論抽屜：結論／討論過程／背景／衍生變更四分頁（結論非空時預設開結論），
- * 標題下方生命週期階梯標示現站（design D3）；衍生變更分頁唯讀——列各子變更
- * 現況與跳轉，無轉出動作（promote 已自 GUI 撤除，轉出改由 CLI／agent）。
- * 記錄格式非預期時整篇單一檢視退回。GUI 不提供 conclude 等寫入。
+ * 討論詳情頁（design D7）：標題列（slug＋複製＋狀態籤＋改進籤、右端封存）、topic、
+ * 出身列；「狀態」卡（階段步驟列、保留在途、衍生變更籤）；內容卡分頁 結論／討論過程 N／
+ * 背景／衍生變更 N（結論非空時預設開結論）。衍生變更唯讀——無轉出動作（promote 已自
+ * GUI 撤除，轉出改由 CLI／agent）。記錄格式非預期時整篇單一檢視退回。
  */
-export function DiscussionDrawer({
-  open,
-  onOpenChange,
-  discussion: discussionProp,
+export function DiscussionDetailPage({
+  discussion,
   refreshGen,
   loadDocument,
   changes,
   archivedChanges,
   onOpenChangeCard,
   onArchiveDiscussion,
-}: DiscussionDrawerProps) {
-  const discussion = useLingering(discussionProp);
+  renderDocumentActions,
+}: DiscussionDetailPageProps) {
   const { t } = useI18n();
   const [doc, setDoc] = useState<string | null | undefined>();
   const slug = discussion?.slug ?? null;
@@ -321,47 +347,56 @@ export function DiscussionDrawer({
 
   // 開啟／換討論：清空後載入。
   useEffect(() => {
-    if (!open || !slug) return;
+    if (!slug) return;
     loadRecord(gen, slug, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, slug]);
+  }, [slug]);
 
   // 外部世代重載（add-round／conclude／轉出後）：不清空、回應到達後就地替換，分頁選擇不重置。
   useEffect(() => {
-    if (!open || !slug) return;
+    if (!slug) return;
     if (gen <= loadedGen.current) return;
     loadRecord(gen, slug, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, slug, gen]);
+  }, [slug, gen]);
 
   if (!discussion) return null;
 
   const sections = doc ? splitDiscussionSections(doc) : null;
+  const pill = statusPill(discussion);
+  const hold = discussion.hold === true;
+
+  const childStage = (name: string): { label: string; tone: StatusPillTone; alive: boolean } => {
+    const active = changes.find((c) => c.name === name);
+    const label = t(discussionChipStage(name, changes, archivedChanges));
+    if (active) return { label, tone: STAGE_PILL_TONE[changeStage(active)], alive: true };
+    if (archivedChanges.some((a) => a.name === name)) return { label, tone: "neutral", alive: false };
+    return { label, tone: "destructive", alive: false };
+  };
 
   const promotePane = (
     <div className="flex h-full flex-col gap-2">
       {discussion.promotedTo.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4">{t("ddrawer.notPromoted")}</p>
+        <p className="py-4 text-sm text-muted-foreground">{t("ddrawer.notPromoted")}</p>
       ) : (
         <div className="flex flex-col gap-1.5">
           {discussion.promotedTo.map((name) => {
-            const stage = t(discussionChipStage(name, changes, archivedChanges));
-            const alive = changes.some((c) => c.name === name);
+            const stage = childStage(name);
             return (
               <div
                 key={name}
                 data-promoted-row={name}
                 className="flex items-center gap-2 rounded-md border border-border/60 px-2.5 py-1.5"
               >
-                <span className="text-sm font-medium min-w-0 flex-1 truncate">{name}</span>
-                <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                  {stage}
-                </span>
-                {alive && (
+                <span className="min-w-0 flex-1 truncate font-mono text-sm font-medium">{name}</span>
+                <StatusPill tone={stage.tone} className={stage.tone === "destructive" ? "line-through" : undefined}>
+                  {stage.label}
+                </StatusPill>
+                {stage.alive && (
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-6 gap-1 px-2 text-xs shrink-0"
+                    className="h-6 shrink-0 gap-1 px-2 text-xs"
                     onClick={() => onOpenChangeCard?.(name)}
                   >
                     <ArrowUpRight className="h-3 w-3" /> {t("ddrawer.openCard")}
@@ -380,86 +415,129 @@ export function DiscussionDrawer({
     !!sections && sections.conclusion.replace(/<!--[\s\S]*?-->/g, "").trim().length > 0;
   const defaultTab = conclusionHasContent ? "conclusion" : "context";
 
-  // 生命週期階梯：現站由 status 決定，封存不入階梯（封存後只在已封存頁）。
+  // 階段步驟列：現站由 status 派生；「已封存」站保留給已封存討論頁共用本元件。
   const stationIndex = discussion.status === "promoted" ? 2 : discussion.status === "concluded" ? 1 : 0;
   const stations = [
     t("discussion.statusOpen"),
     t("discussion.statusConcluded"),
     t("ddrawer.stationPromoted"),
+    t("ddetail.stationArchived"),
   ];
 
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-[max(720px,42vw)] max-w-[95vw]">
-        <SheetHeader>
-          {/* slug（檔名）為題＋複製鈕——與變更抽屜「名稱＋複製鈕」對稱（design D4，
-              LANGUAGE.md 受控例外擴充）；topic 降為副標。 */}
-          <div className="flex items-center gap-2 pr-14">
-            <SheetTitle className="truncate font-mono">{discussion.slug}</SheetTitle>
-            <CopyButton value={discussion.slug} label={t("discussion.copySlug")} />
-          </div>
-          <div className="text-sm leading-snug text-foreground/80">{discussion.topic}</div>
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            {/* 改進標示（spec「討論抽屜的改進標示」）：與卡片小章同一詞條，
-                抽屜有空間故以章籤直出狀態詞。 */}
-            {isImproveKind(discussion.kind) && <ImproveChip />}
-            <span className="tabular-nums">{t("common.rounds").replace("{n}", String(discussion.rounds))}</span>
-            {discussion.created && <span>{discussion.created}</span>}
-            {discussion.createdBy && (
-              <span className="inline-flex items-center gap-1">
-                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-muted text-[9px] font-bold text-muted-foreground">
-                  {discussion.createdBy.charAt(0).toUpperCase()}
-                </span>
-                {discussion.createdBy}
-              </span>
-            )}
-          </div>
-          {/* 生命週期階梯：狀態模型可見，免使用者腦補（design D3）。 */}
-          <div className="flex items-center gap-1.5 text-xs">
-            {stations.map((label, i) => (
-              <span key={label} className="flex items-center gap-1.5">
-                {i > 0 && <span className="text-muted-foreground/50">→</span>}
-                <span
-                  aria-current={i === stationIndex ? "step" : undefined}
-                  className={
-                    i === stationIndex
-                      ? "inline-flex items-center gap-1 rounded-full bg-primary/12 px-2 py-0.5 font-semibold text-primary"
-                      : i < stationIndex
-                        ? "inline-flex items-center gap-1 text-muted-foreground"
-                        : "inline-flex items-center gap-1 text-muted-foreground/50"
-                  }
-                >
-                  <span aria-hidden="true">{i < stationIndex ? "✓" : i === stationIndex ? "●" : "○"}</span>
-                  <span>{label}</span>
-                </span>
-              </span>
-            ))}
-          </div>
-          {/* 封存動詞(spec 抽屜內封存場景):concluded 且未封存才可及,與討論卡
-              走同一確認流程——按鈕只發出請求,確認對話框在宿主。 */}
-          {discussion.status === "concluded" && onArchiveDiscussion && (
-            <div className="pt-1">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1"
-                onClick={() => onArchiveDiscussion(discussion.slug)}
-              >
+  // 封存動詞：concluded 才可及；保留在途（hold）時停用並說明最後一刀轉出後自動封存。
+  const archiveAction =
+    onArchiveDiscussion && (discussion.status === "concluded" || hold) ? (
+      hold ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex" tabIndex={0}>
+              <Button variant="outline" size="sm" disabled title={t("ddetail.holdHint")}>
                 <Archive className="h-3.5 w-3.5" /> {t("common.archive")}
               </Button>
-            </div>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{t("ddetail.holdHint")}</TooltipContent>
+        </Tooltip>
+      ) : (
+        <Button variant="outline" size="sm" onClick={() => onArchiveDiscussion(discussion.slug)}>
+          <Archive className="h-3.5 w-3.5" /> {t("common.archive")}
+        </Button>
+      )
+    ) : undefined;
+
+  const tabsActions = renderDocumentActions?.({ doc: { discussion: discussion.slug }, content: doc ?? null });
+  const promoteCount = discussion.promotedTo.length;
+
+  return (
+    <TooltipProvider>
+      <DetailPageFrame data-discussion-detail>
+        {/* slug（檔名）為題＋複製鈕——與變更詳情頁「名稱＋複製鈕」對稱（LANGUAGE.md 受控例外）；
+            topic 為標題下方一行。 */}
+        <DetailHeader
+          title={discussion.slug}
+          copyLabel={t("discussion.copySlug")}
+          badges={
+            <>
+              <StatusPill data-discussion-status tone={pill.tone}>
+                {t(pill.labelKey)}
+              </StatusPill>
+              {/* 改進標示（spec「討論詳情頁的改進標示」）：與卡片小章同一詞條。 */}
+              {isImproveKind(discussion.kind) && <ImproveChip />}
+            </>
+          }
+          actions={archiveAction}
+          subtitle={discussion.topic}
+          provenance={[
+            discussion.createdBy && <IdentityName identity={discussion.createdBy} />,
+            <span className="shrink-0 tabular-nums">
+              {t("common.rounds").replace("{n}", String(discussion.rounds))}
+            </span>,
+            discussion.created && <span className="shrink-0">{discussion.created}</span>,
+          ]}
+        />
+
+        <StatusCard>
+          <StatusRow mark="stage" label={t("ddetail.stageLabel")} wrap>
+            {stations.map((label, i) => (
+              <span key={label} className="flex items-center gap-1.5 text-xs">
+                {i > 0 && <span className="text-muted-foreground/50">→</span>}
+                {i === stationIndex ? (
+                  <StatusPill tone="primary" aria-current="step">
+                    {label}
+                  </StatusPill>
+                ) : i < stationIndex ? (
+                  <span className="inline-flex items-center gap-1 text-muted-foreground">
+                    <Check aria-hidden="true" className="h-3 w-3" />
+                    {label}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-muted-foreground/50">
+                    <Circle aria-hidden="true" className="h-2.5 w-2.5" />
+                    {label}
+                  </span>
+                )}
+              </span>
+            ))}
+          </StatusRow>
+          {hold && (
+            <StatusRow mark="hold" label={t("ddetail.holdLabel")} wrap>
+              <span className="text-muted-foreground">{t("ddetail.holdHint")}</span>
+            </StatusRow>
           )}
-        </SheetHeader>
+          {promoteCount > 0 && (
+            <StatusRow mark="promoted" label={t("ddetail.promotedLabel")} wrap>
+              {discussion.promotedTo.map((name) => {
+                const stage = childStage(name);
+                return (
+                  <span key={name} data-promoted-chip={name} className="inline-flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={!stage.alive}
+                      className="h-auto rounded-full bg-muted px-2 py-0.5 font-mono text-xs font-medium hover:bg-accent"
+                      onClick={() => onOpenChangeCard?.(name)}
+                    >
+                      {name}
+                    </Button>
+                    <StatusPill
+                      tone={stage.tone}
+                      className={stage.tone === "destructive" ? "line-through" : undefined}
+                    >
+                      {stage.label}
+                    </StatusPill>
+                  </span>
+                );
+              })}
+            </StatusRow>
+          )}
+        </StatusCard>
 
         {sections ? (
-          // key 區分分頁組與預設分頁——否則自載入中 fallback 切換過來時，Radix
-          // Tabs 的未受控 state 停留在不存在的分頁值，內容全數隱藏。
-          <Tabs
-            key={`sections-${defaultTab}`}
-            defaultValue={defaultTab}
-            className="flex-1 min-h-0 flex flex-col"
-          >
-            <TabsList>
+          // key 區分分頁組與預設分頁——否則自載入中 fallback 切換過來時，Radix Tabs 的
+          // 未受控 state 停留在不存在的分頁值，內容全數隱藏。
+          <Tabs key={`sections-${defaultTab}`} defaultValue={defaultTab}>
+            <TabsList variant="card" actions={tabsActions}>
               <TabsTrigger value="conclusion">
                 <Flag className="h-3.5 w-3.5" /> {t("ddrawer.tabConclusion")}
               </TabsTrigger>
@@ -470,46 +548,43 @@ export function DiscussionDrawer({
                 <FileText className="h-3.5 w-3.5" /> {t("ddrawer.tabContext")}
               </TabsTrigger>
               <TabsTrigger value="promote">
-                <Rocket className="h-3.5 w-3.5" /> {t("ddrawer.tabPromote")}
+                <Rocket className="h-3.5 w-3.5" /> {t("ddrawer.tabPromote")} {promoteCount}
               </TabsTrigger>
             </TabsList>
-            <div className="flex-1 overflow-y-auto pt-3">
-              {/* 共用置中容器包住分頁全部內容——輪卡片與內文同欄（design D4）。 */}
-              <div data-reading-column className={READING_COLUMN_CLS}>
-                <TabsContent value="conclusion"><ConclusionView text={sections.conclusion} empty={t("ddrawer.noConclusion")} /></TabsContent>
-                <TabsContent value="rounds"><RoundsView text={sections.rounds} empty={t("ddrawer.noRounds")} /></TabsContent>
-                <TabsContent value="context"><Markdown content={sections.context} empty={t("ddrawer.noContext")} /></TabsContent>
-                <TabsContent value="promote">{promotePane}</TabsContent>
-              </div>
-            </div>
+            <DetailContentCard>
+              <TabsContent value="conclusion">
+                <ConclusionView text={sections.conclusion} empty={t("ddrawer.noConclusion")} />
+              </TabsContent>
+              <TabsContent value="rounds">
+                <RoundsView text={sections.rounds} empty={t("ddrawer.noRounds")} />
+              </TabsContent>
+              <TabsContent value="context">
+                <Markdown content={sections.context} empty={t("ddrawer.noContext")} />
+              </TabsContent>
+              <TabsContent value="promote">{promotePane}</TabsContent>
+            </DetailContentCard>
           </Tabs>
         ) : (
-          <Tabs key="fallback" defaultValue="record" className="flex-1 min-h-0 flex flex-col">
-            <TabsList>
+          <Tabs key="fallback" defaultValue="record">
+            <TabsList variant="card" actions={tabsActions}>
               <TabsTrigger value="record">
                 <FileText className="h-3.5 w-3.5" /> {t("ddrawer.tabRecord")}
               </TabsTrigger>
               <TabsTrigger value="promote">
-                <Rocket className="h-3.5 w-3.5" /> {t("ddrawer.tabPromote")}
+                <Rocket className="h-3.5 w-3.5" /> {t("ddrawer.tabPromote")} {promoteCount}
               </TabsTrigger>
             </TabsList>
-            <div className="flex-1 overflow-y-auto pt-3">
-              {/* 區段缺失或格式非預期：整篇以單一檢視退回（不報錯）。 */}
-              <div data-reading-column className={READING_COLUMN_CLS}>
-                {/* 載入中畫骨架；空態文案只在載入完成後出（spec「抽屜文件載入以 skeleton 呈現」）。 */}
-                <TabsContent value="record">
-                  {doc === undefined ? (
-                    <DocSkeleton />
-                  ) : (
-                    <Markdown content={doc} empty={t("common.noContent")} />
-                  )}
-                </TabsContent>
-                <TabsContent value="promote">{promotePane}</TabsContent>
-              </div>
-            </div>
+            {/* 區段缺失或格式非預期：整篇以單一檢視退回（不報錯）。 */}
+            <DetailContentCard>
+              {/* 載入中畫骨架；空態文案只在載入完成後出。 */}
+              <TabsContent value="record">
+                {doc === undefined ? <DocSkeleton /> : <Markdown content={doc} empty={t("common.noContent")} />}
+              </TabsContent>
+              <TabsContent value="promote">{promotePane}</TabsContent>
+            </DetailContentCard>
           </Tabs>
         )}
-      </SheetContent>
-    </Sheet>
+      </DetailPageFrame>
+    </TooltipProvider>
   );
 }

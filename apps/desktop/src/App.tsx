@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -11,8 +11,8 @@ import {
   SpecList,
   SpecDrawer,
   ManualPage,
-  RichDetailDrawer,
-  DiscussionDrawer,
+  ChangeDetailPage,
+  DiscussionDetailPage,
   RevertBlockedDialog,
   ReviewArchiveDialog,
   Button,
@@ -29,6 +29,7 @@ import {
   useI18n,
   siblingChangesOf,
   discussionChipStage,
+  type DocumentTarget,
   type Verb,
 } from "@speclink/ui";
 
@@ -41,6 +42,8 @@ import { ProjectColumn } from "./components/ProjectColumn";
 import { EmptyWorkspace } from "./components/EmptyWorkspace";
 import { ProjectActionItems, type ProjectActions } from "./components/ProjectActionsMenu";
 import { LeftTitleBar, MainTitleBar, type Crumb } from "./components/TitleBar";
+import { DetailNav } from "./components/DetailNav";
+import { DocumentActionsMenu } from "./components/DocumentActionsMenu";
 import { detectPlatform } from "./platform";
 import { WorkspaceChooser } from "./components/WorkspaceChooser";
 import { visibleRecents } from "./recents";
@@ -56,7 +59,7 @@ import { ReleaseNotesDialog } from "./components/ReleaseNotesDialog";
 import { readLastSeenVersion, whatsNewDecision, writeLastSeenVersion } from "./core/whatsNew";
 import { RELEASE_NOTES, type ReleaseNotesEntry } from "./release-notes/release-notes";
 import type { CliInstallAdapter } from "./adapter/cliInstall";
-import type { FsActionsAdapter } from "./adapter/fsActions";
+import { projectDirOf, type FsActionsAdapter } from "./adapter/fsActions";
 import { ProjectSettingsView } from "./views/ProjectSettingsView";
 import type { ConnectionsAdapter } from "./adapter/connections";
 import type { WorkspaceAdapter } from "./adapter/workspace";
@@ -332,9 +335,8 @@ function AppInner({
   // 的整批 refresh（避免拖曳中卡片重排打斷手勢），放開後補跑一次。
   const boardDragActive = useRef(false);
   const pendingRefresh = useRef(false);
-  // Radix AlertDialog 從 Sheet 的 portal 開關時，原生 WebView 可能讓底下 Sheet
-  // 短暫收到 onOpenChange(false)。確認中的成功／失敗應由 store 決定是否關抽屜，
-  // 不讓這個 portal 生命週期誤清 detailChange。
+  // 詳情頁內的確認（封存、刪除、退回）在途時，成功／失敗由 store 決定是否關頁——
+  // 這段期間 Esc 不關頁，免得確認框收合的 Esc 尾巴誤清 detailChange。
   const detailConfirmInFlight = useRef(false);
   const handleBoardDragActive = (active: boolean) => {
     boardDragActive.current = active;
@@ -437,11 +439,63 @@ function AppInner({
   }, [useStore]);
 
   const platform = useMemo(() => detectPlatform(), []);
+  // 詳情頁序列（design D2）：看板回報的呈現順序（含搜尋與篩選），‹ › 與 ⌥↑／⌥↓ 共用。
+  const [visibleOrder, setVisibleOrder] = useState<{ changes: string[]; discussions: string[] }>({
+    changes: [],
+    discussions: [],
+  });
+  const pageOpen = s.detailChange !== null || s.detailDiscussion !== null;
+  const detailSequence = s.detailChange
+    ? visibleOrder.changes
+    : s.detailDiscussion
+      ? visibleOrder.discussions
+      : [];
+  const detailCurrent = s.detailChange?.name ?? s.detailDiscussion?.slug ?? null;
+  const detailIndex = detailCurrent === null ? -1 : detailSequence.indexOf(detailCurrent);
+  /** 在序列內切換：越界不動、不循環；經與開啟相同的狀態層動作（互斥與浮層規則同樣適用）。 */
+  const stepDetail = (delta: -1 | 1) => {
+    // 確認（封存、刪除、退回）在途時不切換：成功後 store 關掉的是「目前」詳情頁，切過去的新頁會被誤關。
+    if (detailConfirmInFlight.current) return;
+    const next = detailIndex < 0 ? undefined : detailSequence[detailIndex + delta];
+    if (next === undefined) return;
+    if (s.detailChange) s.openDetail(next);
+    else s.openDiscussion(next);
+  };
+  // 切換項目時頁層捲回頂端：捲動容器不重掛，否則沿用上一項的捲動位置。
+  const detailLayerRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (detailLayerRef.current) detailLayerRef.current.scrollTop = 0;
+  }, [detailCurrent]);
+  // window keydown 處理器只掛一次：以 ref 讀最新的序列與切換動作。
+  const stepDetailRef = useRef(stepDetail);
+  stepDetailRef.current = stepDetail;
+  const handleDetailKey = (e: KeyboardEvent): boolean => {
+    const st = useStore.getState();
+    if (e.defaultPrevented || (st.detailChange === null && st.detailDiscussion === null)) return false;
+    const target = e.target as HTMLElement | null;
+    if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+      return false;
+    }
+    if (e.key === "Escape" && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      e.preventDefault();
+      if (!detailConfirmInFlight.current) st.closeDetailPage();
+      return true;
+    }
+    if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      e.preventDefault();
+      stepDetailRef.current(e.key === "ArrowUp" ? -1 : 1);
+      return true;
+    }
+    return false;
+  };
   // 鍵盤切換分頁：Ctrl+Tab 循環、Ctrl+1..9 直達（spec「專案分頁列存於 app 本機」）；
   // 專案動作選單標示的 ⌘R／Ctrl+R 重新整理、Ctrl+W 關閉專案（spec「專案層檔案系統動作」）。
   // macOS 的 ⌘W 先被系統預設選單攔走（關閉視窗），由原生選單承接，這裡不接。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // 詳情頁快捷鍵（spec「詳情頁的導覽與返回」）：Esc 關頁、⌥↑／⌥↓ 切上一個／下一個。
+      // 浮層已處理（defaultPrevented）或焦點在文字輸入時不作用。
+      if (handleDetailKey(e)) return;
       const key = e.key.toLowerCase();
       if (key === "r" && (platform === "macos" ? e.metaKey : e.ctrlKey)) {
         e.preventDefault();
@@ -617,15 +671,43 @@ function AppInner({
     manual: "app.navManual",
     "project-settings": "app.navProjectSettings",
   };
+  // 詳情頁開啟時三段（spec「詳情頁的導覽與返回」）：專案名與頁名點擊關頁回宿主，
+  // 項目名等寬不可點。
   const crumbs: Crumb[] =
     s.boardView === "settings"
       ? [{ label: t("app.settingsTitle") }]
-      : projectTab
+      : projectTab && pageOpen && detailCurrent !== null
         ? [
-            { label: projectTab.name, onClick: () => s.setBoardView("board") },
-            { label: t(PAGE_LABEL_KEY[s.boardView]) },
+            {
+              label: projectTab.name,
+              onClick: () => {
+                s.closeDetailPage();
+                s.setBoardView("board");
+              },
+            },
+            { label: t(PAGE_LABEL_KEY[s.boardView]), onClick: s.closeDetailPage },
+            { label: detailCurrent, mono: true },
           ]
-        : [];
+        : projectTab
+          ? [
+              { label: projectTab.name, onClick: () => s.setBoardView("board") },
+              { label: t(PAGE_LABEL_KEY[s.boardView]) },
+            ]
+          : [];
+  // 「開啟 ▾」（design D4）：頁回報文件，位置由 core 解析；本機目錄缺席（remote 無 checkout）時只剩複製內容。
+  const hasLocalDir = activeTab ? projectDirOf(activeTab.locator) !== null : false;
+  const renderDocumentActions = (target: DocumentTarget | null) => (
+    <DocumentActionsMenu
+      target={target}
+      local={hasLocalDir}
+      platform={platform}
+      locate={s.locateDocument}
+      onOpenDefault={(location) => void s.openDocumentDefault(location)}
+      onReveal={(location) => void s.revealDocument(location)}
+      onCopyPath={(location) => void s.copyDocumentPath(location)}
+      onCopyContent={(text) => void s.copyDocumentContent(text)}
+    />
+  );
   const projectActions: ProjectActions = {
     reveal: (key) => void s.revealProject(key),
     openTerminal: (key) => void s.openProjectInTerminal(key),
@@ -635,6 +717,111 @@ function AppInner({
     refresh: (key) => (key === s.activeKey ? void s.refresh() : void s.activateTab(key)),
     close: s.closeTab,
   };
+
+  // 變更詳情頁（design D6）：props 自原抽屜接線搬移，另接「開啟 ▾」。
+  const changeDetailPage = (
+    <ChangeDetailPage
+      change={s.detailChange}
+      refreshGen={s.refreshGen}
+      loadDocument={(change, artifact) => dataSource?.getDocument(change, artifact) ?? Promise.resolve(null)}
+      loadStationTicket={(change, station) =>
+        dataSource?.getStationTicket(change, station) ?? Promise.resolve(null)
+      }
+      // changeCapabilities/changeMeta 於 remote 亦直達（status payload 映射，
+      // remote-read-parity）；capability 為假時仍以空集呈現——同一條停用法則，
+      // 不偽造、也不讓詳情頁載入失敗。
+      loadCapabilities={(change) =>
+        caps && !caps.changeCapabilities
+          ? Promise.resolve([])
+          : (dataSource?.changeCapabilities(change) ?? Promise.resolve([]))
+      }
+      loadMeta={(change) =>
+        caps && !caps.changeMeta
+          ? Promise.resolve(null)
+          : (dataSource?.changeMeta(change) ?? Promise.resolve(null))
+      }
+      onRunVerb={onRunVerb}
+      detailVerb={s.detailVerb}
+      onClearVerb={s.clearDetailVerb}
+      onDelete={s.requestDelete}
+      // 認領是 RemoteOnly：後端沒有這個方法（本地）就整段不接線，詳情頁因此
+      // 連停用的入口都不長出來。
+      onClaim={dataSource?.claim ? s.claimChange : undefined}
+      onRevert={s.requestRevert}
+      // 排程分頁：同波夥伴自清單派生；前置編輯只在 capability 為真時接線（remote 的
+      // reader 為假，分頁唯讀）；資料源提供候選名冊時以它為準（worktree 映射時為副本）。
+      changes={s.changes}
+      onSetDepends={
+        caps && !caps.setDepends
+          ? undefined
+          : (change, on, remove) => void s.setDepends(change, on, remove)
+      }
+      loadDependsCandidates={
+        dataSource?.dependsCandidates
+          ? (change) => dataSource.dependsCandidates!(change)
+          : undefined
+      }
+      unavailable={
+        caps && {
+          analyze:
+            caps.validate && caps.analyze ? undefined : t("remote.analyzeUnavailable"),
+          archive: caps.archive ? undefined : writeDisabledReason,
+          delete: caps.deleteChange ? undefined : writeDisabledReason,
+          tasks: caps.setTaskDone && caps.setAllTasks ? undefined : writeDisabledReason,
+          claim: caps.claim ? undefined : writeDisabledReason,
+        }
+      }
+      onToggleTask={
+        caps && !caps.setTaskDone
+          ? undefined
+          : async (change, task, done) => {
+              await dataSource?.setTaskDone(change, task, done);
+              await s.refresh();
+            }
+      }
+      onMoveTask={
+        caps && !caps.moveTask
+          ? undefined
+          : async (change, from, to, before) => {
+              await dataSource?.moveTask(change, from, to, before);
+              await s.refresh();
+            }
+      }
+      onSetAllTasks={
+        caps && !caps.setAllTasks
+          ? undefined
+          : async (change, done) => {
+              await dataSource?.setAllTasks(change, done);
+              await s.refresh();
+            }
+      }
+      sourceDiscussions={sourceDiscussions}
+      siblingChanges={siblingChanges}
+      onOpenDiscussion={s.openDiscussion}
+      onOpenSibling={s.openDetail}
+      renderDocumentActions={renderDocumentActions}
+    />
+  );
+  // 討論詳情頁（design D7）。
+  const discussionDetailPage = (
+    <DiscussionDetailPage
+      discussion={s.detailDiscussion}
+      refreshGen={s.refreshGen}
+      loadDocument={(slug) => dataSource?.getDiscussionDocument(slug) ?? Promise.resolve(null)}
+      changes={s.changes}
+      archivedChanges={s.archived}
+      onOpenChangeCard={s.openDetail}
+      onArchiveDiscussion={
+        // 已封存的討論(自來源討論 chip 開啟)與 capability 缺口不提供封存;
+        // 其餘走與討論卡同一確認流程。
+        (caps && !caps.archiveDiscussion) ||
+        s.discussions.archived.some((d) => d.slug === s.detailDiscussion?.slug)
+          ? undefined
+          : s.requestArchiveDiscussion
+      }
+      renderDocumentActions={renderDocumentActions}
+    />
+  );
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -714,7 +901,15 @@ function AppInner({
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <MainTitleBar platform={platform} crumbs={crumbs} />
+        <MainTitleBar
+          platform={platform}
+          crumbs={crumbs}
+          trailing={
+            pageOpen ? (
+              <DetailNav index={detailIndex} total={detailSequence.length} onStep={stepDetail} />
+            ) : undefined
+          }
+        />
 
           {stale && connectionState && (
             <div
@@ -760,13 +955,21 @@ function AppInner({
               （h-full min-h-0）填滿主區；技能檔提示住在專案欄，主區不為它扣高度 */}
           <main
             className={cn(
-              "flex flex-1 flex-col",
+              "relative flex flex-1 flex-col",
               s.boardView === "manual" ? "p-0" : "p-5",
               s.boardView === "settings" || s.boardView === "project-settings"
                 ? "overflow-y-auto"
                 : "overflow-hidden",
             )}
           >
+            {/* 宿主頁（design D1）：詳情頁開啟期間保持掛載但不可見、不可互動——捲動位置、
+                搜尋字串與篩選原樣保留，關頁後即回到開頁前的樣子。 */}
+            <div
+              data-testid="host-page"
+              inert={pageOpen || undefined}
+              aria-hidden={pageOpen || undefined}
+              className={cn("flex min-h-0 flex-1 flex-col", pageOpen && "invisible")}
+            >
             {s.boardView === "settings" ? (
               <AppSettingsView
                 platform={platform}
@@ -867,6 +1070,7 @@ function AppInner({
                 }
                 planError={s.planError}
                 onDragActiveChange={handleBoardDragActive}
+                onVisibleOrderChange={setVisibleOrder}
                 promotedExpanded={s.promotedExpanded}
                 onPromotedExpandedChange={s.setPromotedExpanded}
                 // 骨架的前提是「首訪的載入正在進行」：探測中（pendingTabKey）或整批
@@ -892,92 +1096,19 @@ function AppInner({
                 onDiscussionsPageSizeChange={(size) => s.setPageSize("archivedDiscussions", size)}
               />
             )}
+            </div>
+            {/* 詳情頁層（design D1／D9）：覆蓋主區，150ms 淡入＋4px 位移；關閉直接移除。 */}
+            {pageOpen && (
+              <div
+                ref={detailLayerRef}
+                data-testid="detail-page"
+                className="absolute inset-0 overflow-x-hidden overflow-y-auto bg-background animate-in fade-in slide-in-from-bottom-1 duration-150 ease-out motion-reduce:animate-none"
+              >
+                {s.detailChange ? changeDetailPage : discussionDetailPage}
+              </div>
+            )}
           </main>
       </div>
-
-      {/* 富詳情抽屜（含互動任務） */}
-      <RichDetailDrawer
-        open={s.detailChange !== null}
-        onOpenChange={(o) => !o && !detailConfirmInFlight.current && s.closeDetail()}
-        change={s.detailChange}
-        refreshGen={s.refreshGen}
-        loadDocument={(change, artifact) => dataSource?.getDocument(change, artifact) ?? Promise.resolve(null)}
-        loadStationTicket={(change, station) =>
-          dataSource?.getStationTicket(change, station) ?? Promise.resolve(null)
-        }
-        // changeCapabilities/changeMeta 於 remote 亦直達（status payload 映射，
-        // remote-read-parity）；capability 為假時仍以空集呈現——同一條停用法則，
-        // 不偽造、也不讓抽屜載入失敗。
-        loadCapabilities={(change) =>
-          caps && !caps.changeCapabilities
-            ? Promise.resolve([])
-            : (dataSource?.changeCapabilities(change) ?? Promise.resolve([]))
-        }
-        loadMeta={(change) =>
-          caps && !caps.changeMeta
-            ? Promise.resolve(null)
-            : (dataSource?.changeMeta(change) ?? Promise.resolve(null))
-        }
-        onRunVerb={onRunVerb}
-        drawerVerb={s.drawerVerb}
-        onClearVerb={s.clearDrawerVerb}
-        onDelete={s.requestDelete}
-        // 認領是 RemoteOnly：後端沒有這個方法（本地）就整段不接線，抽屜因此
-        // 連停用的入口都不長出來。
-        onClaim={dataSource?.claim ? s.claimChange : undefined}
-        onRevert={s.requestRevert}
-        // 排程分頁：同波夥伴自清單派生；前置編輯只在 capability 為真時接線（remote 的
-        // reader 為假，分頁唯讀）；資料源提供候選名冊時以它為準（worktree 映射時為副本）。
-        changes={s.changes}
-        onSetDepends={
-          caps && !caps.setDepends
-            ? undefined
-            : (change, on, remove) => void s.setDepends(change, on, remove)
-        }
-        loadDependsCandidates={
-          dataSource?.dependsCandidates
-            ? (change) => dataSource.dependsCandidates!(change)
-            : undefined
-        }
-        unavailable={
-          caps && {
-            analyze:
-              caps.validate && caps.analyze ? undefined : t("remote.analyzeUnavailable"),
-            archive: caps.archive ? undefined : writeDisabledReason,
-            delete: caps.deleteChange ? undefined : writeDisabledReason,
-            tasks: caps.setTaskDone && caps.setAllTasks ? undefined : writeDisabledReason,
-            claim: caps.claim ? undefined : writeDisabledReason,
-          }
-        }
-        onToggleTask={
-          caps && !caps.setTaskDone
-            ? undefined
-            : async (change, task, done) => {
-                await dataSource?.setTaskDone(change, task, done);
-                await s.refresh();
-              }
-        }
-        onMoveTask={
-          caps && !caps.moveTask
-            ? undefined
-            : async (change, from, to, before) => {
-                await dataSource?.moveTask(change, from, to, before);
-                await s.refresh();
-              }
-        }
-        onSetAllTasks={
-          caps && !caps.setAllTasks
-            ? undefined
-            : async (change, done) => {
-                await dataSource?.setAllTasks(change, done);
-                await s.refresh();
-              }
-        }
-        sourceDiscussions={sourceDiscussions}
-        siblingChanges={siblingChanges}
-        onOpenDiscussion={s.openDiscussion}
-        onOpenSibling={s.openDetail}
-      />
 
       {/* 唯讀規格抽屜（spec-archive-drawer design D1/D2） */}
       <SpecDrawer
@@ -1024,26 +1155,6 @@ function AppInner({
             : undefined
         }
         {...archivedProvenance}
-      />
-
-      {/* 討論抽屜（結論/討論過程/背景/衍生變更） */}
-      <DiscussionDrawer
-        open={s.detailDiscussion !== null}
-        onOpenChange={(o) => !o && s.closeDiscussion()}
-        discussion={s.detailDiscussion}
-        refreshGen={s.refreshGen}
-        loadDocument={(slug) => dataSource?.getDiscussionDocument(slug) ?? Promise.resolve(null)}
-        changes={s.changes}
-        archivedChanges={s.archived}
-        onOpenChangeCard={s.openDetail}
-        onArchiveDiscussion={
-          // 已封存的討論(自來源討論 chip 開啟)與 capability 缺口不提供封存;
-          // 其餘走與討論卡同一確認流程。
-          (caps && !caps.archiveDiscussion) ||
-          s.discussions.archived.some((d) => d.slug === s.detailDiscussion?.slug)
-            ? undefined
-            : s.requestArchiveDiscussion
-        }
       />
 
       {workspace && (

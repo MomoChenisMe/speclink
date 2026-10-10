@@ -3,22 +3,41 @@
 // store 只依賴此介面，測試以假 adapter 注入。
 import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import type { DocumentRef } from "@speclink/ui";
 
 import type { WorkspaceLocator } from "../session";
 
+/** 文件在磁碟上的位置（core 回報）：絕對路徑，與相對所在 checkout 根的路徑（正斜線；
+ * 「開啟 ▾」首列與失敗 toast 的主詞）。 */
+export interface DocumentLocation {
+  path: string;
+  relative: string;
+}
+
 export interface FsActionsAdapter {
   reveal: (path: string) => Promise<void>;
+  /** 以系統預設 App 開啟文件（只收 .md，其餘回 fs.notDocument）。 */
+  openDefault: (path: string) => Promise<void>;
   openTerminal: (path: string) => Promise<void>;
   openEditor: (path: string) => Promise<void>;
-  copyPath: (path: string) => Promise<void>;
+  /** 寫入剪貼簿（路徑或文件原文）。 */
+  copyText: (text: string) => Promise<void>;
+  /** 詳情頁文件的磁碟位置：core 以讀文件同一套解析（worktree 副本、spec 目錄名、已封存
+   * 討論的日期檔名）；找不到為 null。 */
+  locate: (root: string, doc: DocumentRef) => Promise<DocumentLocation | null>;
 }
 
 export function tauriFsActionsAdapter(): FsActionsAdapter {
   return {
     reveal: (path) => invoke<void>("reveal_in_folder", { path }),
+    openDefault: (path) => invoke<void>("open_path", { path }),
     openTerminal: (path) => invoke<void>("open_in_terminal", { path }),
     openEditor: (path) => invoke<void>("open_in_editor", { path }),
-    copyPath: (path) => writeText(path),
+    copyText: (text) => writeText(text),
+    locate: (root, doc) =>
+      "discussion" in doc
+        ? invoke<DocumentLocation | null>("discussion_location", { root, slug: doc.discussion })
+        : invoke<DocumentLocation | null>("document_location", { root, change: doc.change, artifact: doc.artifact }),
   };
 }
 

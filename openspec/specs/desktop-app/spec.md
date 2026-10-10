@@ -155,7 +155,7 @@ updated: 2026-09-03
 
 桌面 app SHALL 讓使用者對選定 change 執行 status、validate、analyze、archive，並對專案執行 list、show，全部經內嵌 core 執行。動詞的可觀察結果（成功資料、失敗訊息與失敗語意）SHALL 與對應 CLI 指令一致；失敗時 app SHALL 於 UI 呈現 core 的錯誤訊息，SHALL NOT 靜默吞掉失敗。
 
-詳情抽屜的動作列 SHALL 以單一「分析」按鈕同時觸發 validate 與 analyze，SHALL NOT 提供獨立的「驗證」按鈕；結果呈現於該 change 詳情抽屜內的分析面板。分析面板 SHALL 依序呈現：
+詳情頁的動作區 SHALL 以單一「分析」按鈕同時觸發 validate 與 analyze，SHALL NOT 提供獨立的「驗證」按鈕；結果呈現於該 change 詳情頁內、「狀態」卡之下的分析結果卡（分析面板）。分析面板 SHALL 依序呈現：
 
 - 結構驗證列：validate 通過時呈單列通過標示（成功語意配色）；失敗時呈錯誤數並逐條列出錯誤訊息（與 speclink validate 的輸出一致）。
 - 維度摘要卡：Coverage、Consistency、Ambiguity、Gaps 四維度各一張摘要卡，維度名以繁體中文呈現（覆蓋度、一致性、模糊度、缺漏），卡上顯示該維度發現數——零發現呈「無問題」（成功語意配色）、非零呈「N 個問題」（警示語意配色）。
@@ -165,8 +165,8 @@ updated: 2026-09-03
 
 #### Scenario: 分析一鍵呈現驗證列與四維度發現卡
 
-- **WHEN** 使用者於某 change 的詳情抽屜點按「分析」
-- **THEN** 抽屜內展開分析面板：頂部結構驗證列（通過或錯誤數）、四張繁體中文維度摘要卡（各帶發現數）、逐條發現卡（嚴重度徽章、來源檔、摘要、建議行），內容對應 speclink validate 與 speclink analyze 的 --json 輸出
+- **WHEN** 使用者於某 change 的詳情頁點按「分析」
+- **THEN** 頁內展開分析面板：頂部結構驗證列（通過或錯誤數）、四張繁體中文維度摘要卡（各帶發現數）、逐條發現卡（嚴重度徽章、來源檔、摘要、建議行），內容對應 speclink validate 與 speclink analyze 的 --json 輸出
 
 ##### Example: 維度摘要卡的呈現
 
@@ -196,24 +196,8 @@ updated: 2026-09-03
 
 
 <!-- @trace
-source: desktop-failure-toast
-updated: 2026-07-17
-code:
-  - apps/desktop/package.json
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/workspace.test.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - package-lock.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/sonner.test.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/ui/sonner.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
@@ -394,27 +378,27 @@ code:
 ---
 ### Requirement: 外部變更即時反映
 
-桌面 app SHALL 監看目前專案的 openspec/ 目錄樹：app 之外的寫者（CLI、agent、手動編輯器）修改其下任何文件後，看板、詳情抽屜、討論抽屜與已封存頁 SHALL 在短時間內（秒級）自動更新呈現；已開啟檢視中「已載入的內容」——任務清單勾選狀態、proposal／design／specs 文件原文、meta 開工歸屬、討論記錄各分頁——SHALL 重載至磁碟現況，SHALL NOT 要求重啟、重開抽屜或任何 app 內操作。使用者互動進行中（任務勾選寫回、拖曳排序）時外部觸發的內容重載 SHALL 讓路，互動結束後 SHALL 補一次重載至磁碟現況——SHALL NOT 打斷或蓋掉進行中的操作；重載回應交錯時 SHALL 以最新一次為準，較舊回應 SHALL NOT 覆蓋較新內容。app 內操作（勾任務、拖曳、動詞）後 SHALL 重載受影響的已載入內容——含任務清單與 meta。監看不可用時（如檔案系統權限）app SHALL 照常提供其餘功能——僅失去自動刷新，SHALL NOT 崩潰或反覆彈出錯誤。
+桌面 app SHALL 監看目前專案的 openspec/ 目錄樹：app 之外的寫者（CLI、agent、手動編輯器）修改其下任何文件後，看板、詳情頁、討論詳情頁與已封存頁 SHALL 在短時間內（秒級）自動更新呈現；已開啟檢視中「已載入的內容」——任務清單勾選狀態、proposal／design／specs 文件原文、meta 開工歸屬、討論記錄各分頁——SHALL 重載至磁碟現況，SHALL NOT 要求重啟、重開詳情頁或任何 app 內操作。使用者互動進行中（任務勾選寫回、拖曳排序）時外部觸發的內容重載 SHALL 讓路，互動結束後 SHALL 補一次重載至磁碟現況——SHALL NOT 打斷或蓋掉進行中的操作；重載回應交錯時 SHALL 以最新一次為準，較舊回應 SHALL NOT 覆蓋較新內容。app 內操作（勾任務、拖曳、動詞）後 SHALL 重載受影響的已載入內容——含任務清單與 meta。監看不可用時（如檔案系統權限）app SHALL 照常提供其餘功能——僅失去自動刷新，SHALL NOT 崩潰或反覆彈出錯誤。
 
 #### Scenario: 外部勾選任務後看板自動更新
 
 - **WHEN** 桌面 app 執行中，於外部終端執行 speclink task done 勾掉某 change 的一項任務
-- **THEN** 數秒內該 change 的看板卡片任務數與進度條更新；抽屜若開啟，標頭計數與任務清單中該項的核取方塊皆同步至磁碟狀態，全程無任何 app 內操作
+- **THEN** 數秒內該 change 的看板卡片任務數與進度條更新；詳情頁若開啟，標頭計數與任務清單中該項的核取方塊皆同步至磁碟狀態，全程無任何 app 內操作
 
-#### Scenario: 外部蓋開工章後抽屜出現開工歸屬
+#### Scenario: 外部蓋開工章後詳情頁出現開工歸屬
 
-- **WHEN** 某 change 的詳情抽屜開啟中，於外部終端執行 speclink in-progress add 該 change
-- **THEN** 數秒內抽屜出現開工者與開工日，無需重開抽屜
+- **WHEN** 某 change 的詳情頁開啟中，於外部終端執行 speclink in-progress add 該 change
+- **THEN** 數秒內詳情頁出現開工者與開工日，無需重開詳情頁
 
-#### Scenario: 外部推進討論後抽屜內容更新
+#### Scenario: 外部推進討論後頁內容更新
 
-- **WHEN** 某討論的抽屜開啟中，於外部終端執行 speclink discuss add-round 該討論
-- **THEN** 數秒內抽屜的回合分頁出現新回合內容，標頭回合數與其一致
+- **WHEN** 某討論的詳情頁開啟中，於外部終端執行 speclink discuss add-round 該討論
+- **THEN** 數秒內詳情頁的回合分頁出現新回合內容，標頭回合數與其一致
 
 #### Scenario: 互動進行中外部重載讓路
 
 - **WHEN** 使用者正在拖曳某 change 的任務（尚未放開），外部寫者同時修改該 change 的文件
-- **THEN** 拖曳互動不被打斷、拖曳視覺不重置；放開完成後數秒內，抽屜內容重載至磁碟現況
+- **THEN** 拖曳互動不被打斷、拖曳視覺不重置；放開完成後數秒內，頁內容重載至磁碟現況
 
 #### Scenario: 外部新增與歸檔反映到清單
 
@@ -428,27 +412,14 @@ code:
 
 
 <!-- @trace
-source: drawer-live-reload
-updated: 2026-07-07
-code:
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/store.ts
-  - packages/ui/src/__tests__/changeListItem.test.tsx
-  - packages/ui/src/__tests__/discussionDrawer.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/components/ChangeList.tsx
-  - packages/ui/src/components/ChangeListItem.tsx
-  - packages/ui/src/components/DiscussionDrawer.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/TaskList.tsx
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
 ### Requirement: 看板欄位由生命週期標記驅動
 
-看板欄位 SHALL 依下列優先序判定：任務全完成（總數大於 0 且完成數等於總數）＝已就緒；meta 含 started_at 或任務完成數大於 0＝進行中；其餘＝提案中。剛完成 propose（有任務、全未勾、未標記開工）的 change SHALL 顯示於提案中欄。詳情抽屜 SHALL 於 meta 含 started_at 時顯示開工者與開工日（started_by、started_at）；meta 無 started_at 時 SHALL NOT 顯示開工資訊——即使該 change 因任務進度列於進行中欄（派生管顯示，歸屬缺席維持缺席）。此判定 SHALL 對 fs 與 remote 資料來源一致：remote 清單 payload 的 startedAt SHALL 進入看板與系統匣的欄位推導，SHALL NOT 以任務完成數替代開工判定（完成數大於 0 的 fallback 保留，涵蓋繞過工具的寫入路徑）。
+看板欄位 SHALL 依下列優先序判定：任務全完成（總數大於 0 且完成數等於總數）＝已就緒；meta 含 started_at 或任務完成數大於 0＝進行中；其餘＝提案中。剛完成 propose（有任務、全未勾、未標記開工）的 change SHALL 顯示於提案中欄。詳情頁 SHALL 於 meta 含 started_at 時顯示開工者與開工日（started_by、started_at）；meta 無 started_at 時 SHALL NOT 顯示開工資訊——即使該 change 因任務進度列於進行中欄（派生管顯示，歸屬缺席維持缺席）。此判定 SHALL 對 fs 與 remote 資料來源一致：remote 清單 payload 的 startedAt SHALL 進入看板與系統匣的欄位推導，SHALL NOT 以任務完成數替代開工判定（完成數大於 0 的 fallback 保留，涵蓋繞過工具的寫入路徑）。
 
 #### Scenario: 未開工的 change 留在提案中
 
@@ -458,12 +429,12 @@ code:
 #### Scenario: 標記開工後移入進行中
 
 - **WHEN** 對上述 change 執行 speclink in-progress add 後看板更新
-- **THEN** 該卡片移至「進行中」欄，抽屜標頭顯示開工者與開工日
+- **THEN** 該卡片移至「進行中」欄，詳情頁標頭顯示開工者與開工日
 
 #### Scenario: 無章而有任務進度列於進行中
 
 - **WHEN** 某 change 的 meta 無 started_at，其 tasks.md 經任意途徑（如編輯器直接修改後 git pull 或本機儲存）成為 3/28 已勾，看板刷新
-- **THEN** 該卡片顯示於「進行中」欄，詳情抽屜不顯示開工者與開工日
+- **THEN** 該卡片顯示於「進行中」欄，詳情頁不顯示開工者與開工日
 
 #### Scenario: remote 已開工零進度列於進行中
 
@@ -476,7 +447,7 @@ code:
 | --------------- | -------- | ------ |
 | 無 | 0 任務 | 提案中 |
 | 無 | 0/28 | 提案中 |
-| 無 | 3/28 | 進行中（抽屜無開工資訊） |
+| 無 | 3/28 | 進行中（詳情頁無開工資訊） |
 | 有 | 0/28 | 進行中 |
 | 有 | 13/28 | 進行中 |
 | 無 | 28/28 | 已就緒（全完成優先） |
@@ -484,36 +455,14 @@ code:
 
 
 <!-- @trace
-source: remote-cli-parity
-updated: 2026-07-31
-code:
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src-tauri/tests/remote_data.rs
-  - apps/desktop/src/__tests__/remoteDataSource.test.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/discuss_slug.rs
-  - crates/speclink-cli/tests/remote_verb_parity.rs
-  - crates/speclink-cli/tests/remote_write_path.rs
-  - crates/speclink-protocol/src/command.rs
-  - crates/speclink-protocol/src/query.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/tests/typed_client.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/backup_e2e.rs
-  - crates/speclink-server/tests/discussion_routes.rs
-  - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/query_routes.rs
-  - crates/speclink-server/tests/verb_api.rs
-  - docs/verb-contract.md
-  - docs/verb-contract.zh-TW.md
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
 ### Requirement: 任務清單拖放排序與自動重編號
 
-詳情抽屜任務分頁的每個任務列 SHALL 於列首提供拖曳把手，使用者拖曳把手放開後 SHALL 一次到位完成排序並回寫 tasks.md——僅 checkbox 行被搬移，群組標題與其他行 SHALL NOT 被搬動。寫回時 SHALL 重寫受影響任務的編號前綴：文字以「數字.數字」＋空白開頭、且位於帶「數字.」前綴標題之群組下的任務行，其前綴 SHALL 重寫為「群組編號.組內序」；不符該樣式的任務行與所有非 checkbox 行 SHALL 逐字元保留。拖曳 SHALL 僅由把手觸發——點擊核取方塊或任務文字 SHALL NOT 啟動拖曳。群組標題 SHALL 參與拖曳中的讓位序列——被越過任務的讓位視覺 SHALL NOT 穿越其群組標題（群組歸屬在拖曳預覽中保持可讀）；群組標題為「組界槽」落點——把手放開於群組標題上時：來自標題上方的任務 SHALL 成為該群組的第一個任務；來自標題下方的任務 SHALL 移到標題之前、成為上一群組的末任務（雙向皆重編號；標題該側無任務可錨定時不提供落點）。逐格上下移動按鈕 SHALL NOT 再提供。封存唯讀檢視 SHALL NOT 渲染把手。
+詳情頁任務分頁的每個任務列 SHALL 於列首提供拖曳把手，使用者拖曳把手放開後 SHALL 一次到位完成排序並回寫 tasks.md——僅 checkbox 行被搬移，群組標題與其他行 SHALL NOT 被搬動。寫回時 SHALL 重寫受影響任務的編號前綴：文字以「數字.數字」＋空白開頭、且位於帶「數字.」前綴標題之群組下的任務行，其前綴 SHALL 重寫為「群組編號.組內序」；不符該樣式的任務行與所有非 checkbox 行 SHALL 逐字元保留。拖曳 SHALL 僅由把手觸發——點擊核取方塊或任務文字 SHALL NOT 啟動拖曳。群組標題 SHALL 參與拖曳中的讓位序列——被越過任務的讓位視覺 SHALL NOT 穿越其群組標題（群組歸屬在拖曳預覽中保持可讀）；群組標題為「組界槽」落點——把手放開於群組標題上時：來自標題上方的任務 SHALL 成為該群組的第一個任務；來自標題下方的任務 SHALL 移到標題之前、成為上一群組的末任務（雙向皆重編號；標題該側無任務可錨定時不提供落點）。逐格上下移動按鈕 SHALL NOT 再提供。封存唯讀檢視 SHALL NOT 渲染把手。
 
 #### Scenario: 組內拖放後編號重寫
 
@@ -577,53 +526,10 @@ code:
 - **WHEN** 使用者展開已封存變更的任務分頁
 - **THEN** 任務列無拖曳把手、無法拖動，核取方塊維持不可點擊
 
+
 <!-- @trace
-source: desktop-task-drag-reorder
-updated: 2026-07-06
-code:
-  - .spectra.yaml
-  - AGENTS.md
-  - CLAUDE.md
-  - Cargo.lock
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/lib.rs
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/testfixture.rs
-  - apps/desktop/core/src/verbs.rs
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/watch.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-core/Cargo.toml
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/inprogress.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/store.rs
-  - crates/speclink-core/src/teststore.rs
-  - crates/speclink-core/tests/no_direct_fs.rs
-  - crates/speclink-fs/src/lib.rs
-  - crates/speclink-fs/tests/store_fs.rs
-  - crates/speclink-node/src/store_bridge.rs
-  - package-lock.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/stage.test.ts
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/stage.ts
-  - packages/ui/src/tasks.ts
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
@@ -659,7 +565,7 @@ code:
 
 看板 SHALL 於最左新增「討論」欄，欄內分上下兩區同屏呈現：上區為討論中（active）全卡清單，下區為欄底的「已轉出」常駐收合列；SHALL NOT 以互斥檢視切換兩者。分區判準 SHALL 為「引擎會自動收走的討論才收合」：已轉出（promoted）、已有結論（concluded 為 true）且未保留（hold 非 true）的討論收進欄底收合列；已轉出但尚無結論（concluded 為 false）的討論 SHALL 留在上區為全尺寸卡；已轉出、已有結論但保留在途（hold 為 true）的討論 SHALL 同樣留在上區為全尺寸卡。討論清單資料的 concluded 欄位缺席（向後相容路徑）時 SHALL 退回既有判準——promoted 一律收進收合列，SHALL NOT 把缺席當成尚無結論；hold 欄位缺席時 SHALL 視同未保留，SHALL NOT 把缺席當成保留。看板拖排落點清單 SHALL 與上區卡集共用同一判準（上區卡集與可拖集恆等）。
 
-討論中區 SHALL 顯示 status 為 open 或 concluded 的討論、已轉出但尚無結論的討論、以及已轉出且保留在途的討論為全尺寸卡——卡 SHALL 以 slug（檔名）為標題（等寬字型）、topic 為卡身描述；複製 slug 鈕 SHALL 行內尾隨於標題最後一個字元後（版面規則見「看板卡片統一解剖學」）；建立者（createdBy，缺席時省略）SHALL 以頭像圓點呈現且 hover 顯示全名；輪數與建立時間 SHALL 並排於卡底 meta 列，狀態 chip 保留；已轉出但尚無結論的卡 SHALL 帶「已轉出・尚無結論」狀態標；已轉出且保留在途的卡 SHALL 帶「已轉出・保留中」狀態標（英文介面為「Promoted · on hold」），與「已轉出・尚無結論」同為 warning 語意色；promoted 且 concluded 為 false 的卡不論 hold 值 SHALL 標「已轉出・尚無結論」。open 卡為唯讀，concluded 卡 SHALL 提供「封存」動詞（「轉為變更」動詞已自 GUI 撤除，轉出改由 CLI 或 agent）；已轉出但尚無結論的卡與已轉出且保留在途的卡 SHALL NOT 提供任何動詞按鈕（前者結論未寫；後者的收尾由使用者以 CLI 的 discuss archive 明示解除）。上區全卡 SHALL NOT 列出衍生變更清單（衍生進度於討論詳情面板檢視）。
+討論中區 SHALL 顯示 status 為 open 或 concluded 的討論、已轉出但尚無結論的討論、以及已轉出且保留在途的討論為全尺寸卡——卡 SHALL 以 slug（檔名）為標題（等寬字型）、topic 為卡身描述；複製 slug 鈕 SHALL 行內尾隨於標題最後一個字元後（版面規則見「看板卡片統一解剖學」）；建立者（createdBy，缺席時省略）SHALL 以頭像圓點呈現且 hover 顯示全名；輪數與建立時間 SHALL 並排於卡底 meta 列，狀態 chip 保留；已轉出但尚無結論的卡 SHALL 帶「已轉出・尚無結論」狀態標；已轉出且保留在途的卡 SHALL 帶「已轉出・保留中」狀態標（英文介面為「Promoted · on hold」），與「已轉出・尚無結論」同為 warning 語意色；promoted 且 concluded 為 false 的卡不論 hold 值 SHALL 標「已轉出・尚無結論」。open 卡為唯讀，concluded 卡 SHALL 提供「封存」動詞（「轉為變更」動詞已自 GUI 撤除，轉出改由 CLI 或 agent）；已轉出但尚無結論的卡與已轉出且保留在途的卡 SHALL NOT 提供任何動詞按鈕（前者結論未寫；後者的收尾由使用者以 CLI 的 discuss archive 明示解除）。上區全卡 SHALL NOT 列出衍生變更清單（衍生進度於討論詳情頁檢視）。
 
 當存在至少一筆已有結論且未保留的 promoted 討論時，欄底 SHALL 呈現「已轉出 N ›」收合列（白底、上緣細線、右端 › 於展開時旋轉；N 為已有結論且未保留的 promoted 計數，預設收合）；點按 SHALL 就地展開 promoted 細列清單（白底細框列），再點按即收合；桌面 app SHALL 把展開狀態存於 app 本機並跨啟動保留，SHALL NOT 寫入任何專案目錄。無任何已有結論且未保留的 promoted 討論時收合列 SHALL 缺席。
 
@@ -695,7 +601,7 @@ slug 為題與複製鈕（討論全卡標題、promoted 細列首行）屬 opens
 #### Scenario: 複製討論 slug
 
 - **WHEN** 點討論全卡或已轉出細列的複製鈕
-- **THEN** 該討論的 slug 寫入剪貼簿並短暫顯示已複製回饋，且不開啟討論抽屜
+- **THEN** 該討論的 slug 寫入剪貼簿並短暫顯示已複製回饋，且不開啟討論詳情頁
 
 #### Scenario: 欄底收合列就地展開與收合
 
@@ -734,49 +640,8 @@ slug 為題與複製鈕（討論全卡標題、promoted 細列首行）屬 opens
 
 
 <!-- @trace
-source: desktop-board-reskin
-updated: 2026-10-09T18:18:49+08:00
--->
-
----
-### Requirement: 討論抽屜檢視與轉出變更
-
-點擊討論卡或細列 SHALL 開啟討論抽屜。抽屜標題 SHALL 以討論 slug 為題(等寬字型)且帶複製 slug 鈕,topic SHALL 為標題下方副標(slug 為題屬 openspec/LANGUAGE.md 明載的受控例外)。標題區下方 SHALL 呈現生命週期階梯「討論中 → 已結論 → 轉出變更」且現站可辨識。分頁 SHALL 依序為:結論、討論過程 N、背景、衍生變更——前三者呈現記錄文件對應區段(區段缺失或格式非預期時 SHALL 整篇以單一檢視退回而非報錯);記錄切分成功且結論區段非空時 SHALL 預設開啟「結論」分頁,結論為空時預設「背景」。衍生變更分頁 SHALL 列出各子變更現況與跳轉,且 SHALL 為唯讀——SHALL NOT 提供「轉為變更」或「再轉出一個變更」動作。concluded 且未封存討論的封存動詞 SHALL 於討論卡與討論抽屜皆可及,兩處 SHALL 走同一確認流程,經確認後將討論移入封存;非 concluded 或已封存的討論,抽屜 SHALL NOT 呈現封存動詞。GUI SHALL NOT 提供 conclude、add-round、new、discard、轉為變更(promote)——討論的推進、結論撰寫與轉出變更屬 agent 與 CLI。來自討論的變更卡 SHALL 帶討論徽章,其詳情抽屜 SHALL 顯示來源討論與同源變更清單並可互跳。
-
-#### Scenario: 抽屜標題以 slug 為題且可複製
-
-- **WHEN** 使用者開啟任一討論的抽屜並點按標題旁的複製鈕
-- **THEN** 抽屜標題呈現該討論的 slug(等寬字型)、其下副標呈現 topic;slug 寫入剪貼簿並短暫顯示已複製回饋
-
-#### Scenario: 有結論的討論預設開啟結論分頁
-
-- **WHEN** 使用者開啟一筆已結論(結論區段非空)討論的抽屜
-- **THEN** 抽屜顯示分頁 結論/討論過程 N/背景/衍生變更,且預設呈現結論內容;階梯顯示「已結論」為現站
-
-#### Scenario: 衍生變更分頁唯讀且無轉出動作
-
-- **WHEN** 使用者開啟一筆已結論或已轉出討論的抽屜衍生變更分頁
-- **THEN** 分頁列出各子變更現況與跳轉按鈕,但不呈現「轉為變更」或「再轉出一個變更」按鈕
-
-#### Scenario: GUI 不提供轉出等寫入動詞
-
-- **WHEN** 使用者檢視任一討論抽屜或討論卡
-- **THEN** 介面不提供 conclude、add-round、轉為變更等寫入動作,轉出變更改由 CLI 或 agent 執行
-
-#### Scenario: 同源 change 互跳
-
-- **WHEN** 使用者開啟一個 from_discussion 非空的變更詳情抽屜
-- **THEN** 抽屜顯示來源討論的 slug 籤(topic 於提示呈現)與同源變更清單,點擊同源項可開啟該變更的詳情
-
-#### Scenario: 抽屜內封存 concluded 討論
-
-- **WHEN** 使用者開啟一筆已結論、未封存討論的抽屜,點抽屜的封存動作並於確認對話框確認
-- **THEN** 該討論移入封存:自討論欄消失、出現於已封存頁討論節,與自討論卡封存的效果一致
-
-
-<!-- @trace
-source: change-drawer-header-redesign
-updated: 2026-08-04
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
@@ -813,7 +678,7 @@ updated: 2026-10-09T22:35:44+08:00
 #### Scenario: 勾選首任務蓋章並移欄
 
 - **WHEN** 使用者於看板勾選某 meta 無 started_* 的 change 的第一項任務
-- **THEN** tasks.md 該任務成 [x]，.openspec.yaml 新增 started_at（git 身分可得時含 started_by），看板刷新後卡片移入「進行中」欄且抽屜顯示開工列
+- **THEN** tasks.md 該任務成 [x]，.openspec.yaml 新增 started_at（git 身分可得時含 started_by），看板刷新後卡片移入「進行中」欄且詳情頁顯示開工列
 
 #### Scenario: 取消勾選不動 meta 與 touched
 
@@ -825,21 +690,10 @@ updated: 2026-10-09T22:35:44+08:00
 - **WHEN** 使用者拖曳任務改變順序（含跨群組重編號）
 - **THEN** 僅 tasks.md 變動；.openspec.yaml 與 touched 記錄逐字元不變
 
+
 <!-- @trace
-source: task-done-implies-started
-updated: 2026-07-07
-code:
-  - Cargo.lock
-  - apps/desktop/core/src/manage.rs
-  - crates/speclink-cli/Cargo.toml
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/tests/task_done_stamps.rs
-  - crates/speclink-core/src/tasks.rs
-  - crates/speclink-core/src/teststore.rs
-  - crates/speclink-core/tests/no_direct_fs.rs
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/__tests__/stage.test.ts
-  - packages/ui/src/stage.ts
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
@@ -919,19 +773,17 @@ code:
 #### Scenario: 過濾狀態下卡片互動不受影響
 
 - **WHEN** 過濾狀態下使用者點擊卡片、或拖曳已就緒的變更卡至封存落點
-- **THEN** 詳情抽屜正常開啟、封存流程正常觸發，行為與未過濾時一致
+- **THEN** 詳情頁正常開啟、封存流程正常觸發，行為與未過濾時一致
 
 #### Scenario: 搜尋字串與篩選不跨啟動保留且與已封存頁獨立
 
 - **WHEN** 使用者於看板輸入字串並啟用任一篩選 chip 後切至已封存頁，再重啟 app
 - **THEN** 已封存頁的搜尋輸入不含看板字串；重啟後看板為未過濾狀態、搜尋輸入為空、無啟用中的篩選 chip
 
----
-
 
 <!-- @trace
-source: desktop-board-reskin
-updated: 2026-10-09T18:18:49+08:00
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
@@ -1036,7 +888,7 @@ code:
 ---
 ### Requirement: markdown 內容保留文件結構呈現
 
-桌面 app 渲染 markdown 內容（變更抽屜的提案／設計／規格分頁、討論抽屜各分頁、已封存檢視）SHALL 保留來源的文件結構：無序清單 SHALL 顯示列表符號、有序清單 SHALL 顯示編號、段落之間 SHALL 有可辨識的垂直間距、來源中的單一換行 SHALL 呈現為換行。內容基準字級 SHALL 為 16px，任務分頁的任務文字 SHALL 同為 16px。排版與內容色彩 SHALL 於淺色與深色主題（跟隨系統偏好）一致生效。
+桌面 app 渲染 markdown 內容（變更詳情頁的提案／設計／規格分頁、討論詳情頁各分頁、已封存檢視）SHALL 保留來源的文件結構：無序清單 SHALL 顯示列表符號、有序清單 SHALL 顯示編號、段落之間 SHALL 有可辨識的垂直間距、來源中的單一換行 SHALL 呈現為換行。內容基準字級 SHALL 為 16px，任務分頁的任務文字 SHALL 同為 16px。排版與內容色彩 SHALL 於淺色與深色主題（跟隨系統偏好）一致生效。
 
 #### Scenario: 清單顯示列表符號與編號
 
@@ -1050,7 +902,7 @@ code:
 
 #### Scenario: 內容基準字級為 16px
 
-- **WHEN** 檢視變更抽屜的提案分頁與任務分頁
+- **WHEN** 檢視變更詳情頁的提案分頁與任務分頁
 - **THEN** markdown 內文與任務清單文字的計算字級皆為 16px
 
 #### Scenario: 深色主題下排版一致
@@ -1058,19 +910,10 @@ code:
 - **WHEN** 系統偏好為深色時檢視同一份文件
 - **THEN** 列表符號、段落間距、字級與淺色主題一致，內容色彩取自深色 token 且可讀
 
+
 <!-- @trace
-source: desktop-reading-experience
-updated: 2026-07-08
-code:
-  - apps/desktop/package.json
-  - apps/desktop/src/index.css
-  - apps/desktop/src/main.tsx
-  - package-lock.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/components.test.tsx
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/components/Markdown.tsx
-  - packages/ui/src/components/TaskList.tsx
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
@@ -1080,7 +923,7 @@ code:
 
 #### Scenario: 討論記錄的 scaffold 註解不顯示
 
-- **WHEN** 開啟討論抽屜的討論過程分頁，其來源在 Rounds 區段含 CLI scaffold 產生的 HTML 註解行
+- **WHEN** 開啟討論詳情頁的討論過程分頁，其來源在 Rounds 區段含 CLI scaffold 產生的 HTML 註解行
 - **THEN** 渲染結果不含該註解的任何文字，openspec/ 下的討論記錄檔案內容位元不變
 
 #### Scenario: 程式碼區塊內的 HTML 原文照常顯示
@@ -1088,30 +931,21 @@ code:
 - **WHEN** 檢視在 code fence 內含 HTML 標籤範例的文件
 - **THEN** code fence 內容以原文完整顯示（過濾僅及於 code fence 之外的 raw HTML）
 
+
 <!-- @trace
-source: desktop-reading-experience
-updated: 2026-07-08
-code:
-  - apps/desktop/package.json
-  - apps/desktop/src/index.css
-  - apps/desktop/src/main.tsx
-  - package-lock.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/components.test.tsx
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/components/Markdown.tsx
-  - packages/ui/src/components/TaskList.tsx
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
 ### Requirement: 任務分頁提供批次操作工具列
 
-變更抽屜的任務分頁 SHALL 於任務清單頂部提供工具列：「全部已完成」SHALL 將該變更全部任務標為完成並以單次檔案寫入回寫 tasks.md；「重置任務」SHALL 將全部任務取消勾選並以單次檔案寫入回寫；「下一個未完成」SHALL 使第一個未完成任務捲入可視範圍並短暫高亮，n 快捷鍵 SHALL 等效。批次完成的開工章語意 SHALL 與逐一勾選一致——未開工變更首次完成任務時蓋開工章；重置 SHALL NOT 蓋開工章、SHALL NOT 記錄 touched。目標狀態已達成時重跑 SHALL 為冪等成功且不改檔。全部任務已完成時「全部已完成」與「下一個未完成」SHALL 呈現不可用；唯讀封存檢視 SHALL NOT 顯示工具列。
+變更詳情頁的任務分頁 SHALL 於任務清單頂部提供工具列：「全部已完成」SHALL 將該變更全部任務標為完成並以單次檔案寫入回寫 tasks.md；「重置任務」SHALL 將全部任務取消勾選並以單次檔案寫入回寫；「下一個未完成」SHALL 使第一個未完成任務捲入可視範圍並短暫高亮，n 快捷鍵 SHALL 等效。批次完成的開工章語意 SHALL 與逐一勾選一致——未開工變更首次完成任務時蓋開工章；重置 SHALL NOT 蓋開工章、SHALL NOT 記錄 touched。目標狀態已達成時重跑 SHALL 為冪等成功且不改檔。全部任務已完成時「全部已完成」與「下一個未完成」SHALL 呈現不可用；唯讀封存檢視 SHALL NOT 顯示工具列。
 
 #### Scenario: 全部已完成單次寫回
 
 - **WHEN** 對含未完成任務的變更按「全部已完成」
-- **THEN** tasks.md 全部任務標為完成且僅發生單次檔案寫入，抽屜進度顯示 100%
+- **THEN** tasks.md 全部任務標為完成且僅發生單次檔案寫入，詳情頁進度顯示 100%
 
 ##### Example: 批次完成的進度變化
 
@@ -1140,32 +974,10 @@ code:
 - **WHEN** 於已封存頁展開封存變更的任務檢視
 - **THEN** 不顯示批次操作工具列，checkbox 維持唯讀
 
+
 <!-- @trace
-source: desktop-task-interactions
-updated: 2026-07-08
-code:
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - docs/assets/speclink-logo-concept.png
-  - docs/assets/speclink-logo-horizontal.png
-  - docs/assets/speclink-logo-lockup.png
-  - docs/assets/speclink-logo-mark-redesign.png
-  - docs/assets/speclink-logo-mark.png
-  - docs/assets/speclink-logo-selected-lockup.png
-  - docs/assets/speclink-logo-selected-mark.png
-  - docs/assets/speclink-logo-system-sheet.png
-  - docs/assets/speclink-logo-vertical.png
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/tasks.ts
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
@@ -1243,31 +1055,13 @@ code:
 
 #### Scenario: 按鈕 focus 可視環一致
 
-- **WHEN** 以 Tab 鍵依序聚焦任務工具列、詳情抽屜動作列與側欄導覽的按鈕
+- **WHEN** 以 Tab 鍵依序聚焦任務工具列、詳情頁動作列與側欄導覽的按鈕
 - **THEN** 每個按鈕顯示一致的 focus 可視環，無障礙名稱與點擊行為與替換前相同
 
+
 <!-- @trace
-source: desktop-shadcn-controls
-updated: 2026-07-08
-code:
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/settingsView.test.tsx
-  - apps/desktop/src/components/ProjectTabs.tsx
-  - apps/desktop/src/views/SettingsView.tsx
-  - package-lock.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/DiscussionColumn.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/components/ui/checkbox.tsx
-  - packages/ui/src/components/ui/textarea.tsx
-  - packages/ui/src/index.ts
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
@@ -1319,7 +1113,7 @@ code:
 ---
 ### Requirement: 討論輪以卡片呈現
 
-桌面 app 的討論過程呈現（討論抽屜的討論過程分頁、已封存討論檢視的討論過程分頁）SHALL 將符合 scaffold 格式（輪標題形如「### Round N — <mode> (<date>)」）的記錄逐輪呈現為獨立卡片：卡頭 SHALL 顯示輪次、mode 與日期；卡身 SHALL 將行首的 Focus／Position／Ruled out／Open 粗體前綴呈現為欄位標籤區塊，前綴原文 SHALL NOT 出現在欄位內文；一個欄位 SHALL 涵蓋其標籤行起至下一個標籤行（或輪結尾）的全部內容。來源缺席的欄位 SHALL NOT 渲染空標籤；mode 值 SHALL 按來源字串透傳呈現（不設白名單）。任一輪標題不符 scaffold 格式時 SHALL 整篇以單一 markdown 檢視退回，不報錯。渲染 SHALL NOT 修改任何來源檔案。
+桌面 app 的討論過程呈現（討論詳情頁的討論過程分頁、已封存討論檢視的討論過程分頁）SHALL 將符合 scaffold 格式（輪標題形如「### Round N — <mode> (<date>)」）的記錄逐輪呈現為獨立卡片：卡頭 SHALL 顯示輪次、mode 與日期；卡身 SHALL 將行首的 Focus／Position／Ruled out／Open 粗體前綴呈現為欄位標籤區塊，前綴原文 SHALL NOT 出現在欄位內文；一個欄位 SHALL 涵蓋其標籤行起至下一個標籤行（或輪結尾）的全部內容。來源缺席的欄位 SHALL NOT 渲染空標籤；mode 值 SHALL 按來源字串透傳呈現（不設白名單）。任一輪標題不符 scaffold 格式時 SHALL 整篇以單一 markdown 檢視退回，不報錯。渲染 SHALL NOT 修改任何來源檔案。
 
 #### Scenario: 標準記錄逐輪成卡
 
@@ -1347,36 +1141,16 @@ code:
 - **WHEN** 記錄的 Rounds 區段含不符 scaffold 格式的輪標題（手寫或 pre-scaffold 記錄）
 - **THEN** 討論過程分頁整篇以單一 markdown 檢視呈現，無卡片、無錯誤訊息，來源檔案位元不變
 
+
 <!-- @trace
-source: drawer-document-readability
-updated: 2026-07-08
-code:
-  - crates/speclink-core/assets/skills/discuss.md
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/components.test.tsx
-  - packages/ui/src/__tests__/delta.test.ts
-  - packages/ui/src/__tests__/discussionDrawer.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/DeltaBadges.tsx
-  - packages/ui/src/components/DiscussionDrawer.tsx
-  - packages/ui/src/components/Markdown.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/SectionedDoc.tsx
-  - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/delta.ts
-  - packages/ui/src/i18n.tsx
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
 ### Requirement: 討論結論以欄位標籤呈現
 
-桌面 app 的討論結論呈現（討論抽屜的結論分頁、已封存討論檢視的結論區）SHALL 將行首的 Decision／Rationale／Rejected alternatives／Deferred／Capture to／Next 粗體前綴呈現為欄位標籤區塊（標籤依語系呈現，zh-TW 為決定／理由／否決替代案／擱置／記錄去向／下一步），前綴原文 SHALL NOT 出現在欄位內文；一個欄位 SHALL 涵蓋其標籤行起至下一個標籤行（或結論結尾）的全部內容。來源缺席的欄位 SHALL NOT 渲染空標籤；非六詞白名單的粗體前綴行 SHALL 按一般內文歸屬當前欄位。結論不含任何白名單欄位時 SHALL 整篇以單一 markdown 檢視退回，不報錯。渲染 SHALL NOT 修改任何來源檔案。
+桌面 app 的討論結論呈現（討論詳情頁的結論分頁、已封存討論檢視的結論區）SHALL 將行首的 Decision／Rationale／Rejected alternatives／Deferred／Capture to／Next 粗體前綴呈現為欄位標籤區塊（標籤依語系呈現，zh-TW 為決定／理由／否決替代案／擱置／記錄去向／下一步），前綴原文 SHALL NOT 出現在欄位內文；一個欄位 SHALL 涵蓋其標籤行起至下一個標籤行（或結論結尾）的全部內容。來源缺席的欄位 SHALL NOT 渲染空標籤；非六詞白名單的粗體前綴行 SHALL 按一般內文歸屬當前欄位。結論不含任何白名單欄位時 SHALL 整篇以單一 markdown 檢視退回，不報錯。渲染 SHALL NOT 修改任何來源檔案。
 
 #### Scenario: 標準結論欄位成標籤區塊
 
@@ -1393,75 +1167,37 @@ code:
 - **WHEN** 結論來源為手寫自由段落、不含任何白名單粗體前綴行
 - **THEN** 結論分頁整篇以單一 markdown 檢視呈現，無標籤區塊、無錯誤訊息，來源檔案位元不變
 
+
 <!-- @trace
-source: drawer-document-readability
-updated: 2026-07-08
-code:
-  - crates/speclink-core/assets/skills/discuss.md
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/components.test.tsx
-  - packages/ui/src/__tests__/delta.test.ts
-  - packages/ui/src/__tests__/discussionDrawer.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/DeltaBadges.tsx
-  - packages/ui/src/components/DiscussionDrawer.tsx
-  - packages/ui/src/components/Markdown.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/SectionedDoc.tsx
-  - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/delta.ts
-  - packages/ui/src/i18n.tsx
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
 ### Requirement: markdown 文件內容行寬有上限
 
-桌面 app 經共用 markdown 渲染呈現的文件內容（變更抽屜的提案／設計／規格分頁、討論抽屜各分頁、規格抽屜、封存抽屜）SHALL 有固定行寬上限；抽屜寬度改變（含全螢幕）時內文行寬 SHALL NOT 隨之增長；容器寬於行寬上限時內容欄 SHALL 水平置中、留白均分兩側。同一抽屜分頁內的區段標籤、討論輪卡片與任務清單 SHALL 與內文同欄對齊。超過行寬的表格 SHALL 於容器內橫向捲動，版面 SHALL NOT 橫向溢出。
+桌面 app 經共用 markdown 渲染呈現的文件內容（變更詳情頁的提案／設計／規格分頁、討論詳情頁各分頁、規格詳情頁、已封存詳情頁）SHALL 有固定行寬上限；主區寬度改變時內文行寬 SHALL NOT 隨之增長；容器寬於行寬上限時內容欄 SHALL 水平置中、留白均分兩側。同一分頁內的區段標籤、討論輪卡片與任務清單 SHALL 與內文同欄對齊。超過行寬的表格 SHALL 於容器內橫向捲動，版面 SHALL NOT 橫向溢出。
 
-#### Scenario: 全螢幕下行寬不增長且內容欄置中
+#### Scenario: 主區加寬時行寬不增長且內容欄置中
 
-- **WHEN** 變更抽屜切換至全螢幕（96vw）檢視提案分頁
+- **WHEN** 視窗拉寬至 1600px 檢視變更詳情頁的提案分頁
 - **THEN** 內文行寬維持固定上限，內容欄水平置中、左右留白均分，區段標籤與內文同欄對齊
 
 #### Scenario: 寬表格於容器內橫捲
 
 - **WHEN** 檢視含超過行寬上限的寬表格的文件
-- **THEN** 表格於容器內橫向捲動，抽屜版面不橫向溢出
+- **THEN** 表格於容器內橫向捲動，頁版面不橫向溢出
 
 
 <!-- @trace
-source: specs-archive-pagination
-updated: 2026-07-12
-code:
-  - packages/ui/src/__tests__/archivedDrawer.test.tsx
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/components.test.tsx
-  - packages/ui/src/__tests__/discussionDrawer.test.tsx
-  - packages/ui/src/__tests__/listPager.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/specDrawer.test.tsx
-  - packages/ui/src/__tests__/specList.test.tsx
-  - packages/ui/src/components/ArchivedDrawer.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/DiscussionDrawer.tsx
-  - packages/ui/src/components/ListPager.tsx
-  - packages/ui/src/components/Markdown.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/SpecDrawer.tsx
-  - packages/ui/src/components/SpecList.tsx
-  - packages/ui/src/i18n.tsx
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
 ### Requirement: 規格分頁 delta 區段以色標呈現
 
-變更抽屜規格分頁與已封存變更檢視的規格分頁 SHALL 將 delta spec 的區段標題（ADDED／MODIFIED／REMOVED／RENAMED Requirements）呈現為色標區段標頭，原始區段標題行 SHALL NOT 以標題文字直出；區段內的 requirement 與 scenario 內文 SHALL 照 prose 排版呈現。不含 delta 區段標題的規格文件 SHALL 整篇照常渲染。色標配色 SHALL 與 delta 計數徽章（DeltaBadges）一致。
+變更詳情頁規格分頁與已封存變更檢視的規格分頁 SHALL 將 delta spec 的區段標題（ADDED／MODIFIED／REMOVED／RENAMED Requirements）呈現為色標區段標頭，原始區段標題行 SHALL NOT 以標題文字直出；區段內的 requirement 與 scenario 內文 SHALL 照 prose 排版呈現。不含 delta 區段標題的規格文件 SHALL 整篇照常渲染。色標配色 SHALL 與 delta 計數徽章（DeltaBadges）一致。
 
 #### Scenario: delta 區段呈現色標標頭
 
@@ -1482,36 +1218,16 @@ code:
 - **WHEN** 檢視不含任何 delta 區段標題的規格文件
 - **THEN** 內容整篇照現行 markdown 渲染呈現，無色標標頭
 
+
 <!-- @trace
-source: drawer-document-readability
-updated: 2026-07-08
-code:
-  - crates/speclink-core/assets/skills/discuss.md
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/components.test.tsx
-  - packages/ui/src/__tests__/delta.test.ts
-  - packages/ui/src/__tests__/discussionDrawer.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/DeltaBadges.tsx
-  - packages/ui/src/components/DiscussionDrawer.tsx
-  - packages/ui/src/components/Markdown.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/SectionedDoc.tsx
-  - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/delta.ts
-  - packages/ui/src/i18n.tsx
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
 ### Requirement: 提案與設計章節以中文標籤呈現
 
-變更抽屜與已封存檢視的提案／設計分頁 SHALL 將已知模板章節標題（提案側 Why／What Changes／Non-Goals／Capabilities／New Capabilities／Modified Capabilities／Impact／Problem／Root Cause／Proposed Solution／Success Criteria／Summary／Motivation／Alternatives Considered；設計側 Context／Goals / Non-Goals／Decisions／Implementation Contract／Risks / Trade-offs／Migration Plan／Open Questions）呈現為中文標籤區塊，英文模板標題 SHALL NOT 以標題文字直出；標籤款式 SHALL 為粗體大標題——計算字級 SHALL 大於內文基準字級（16px），且 SHALL 與討論側欄位標籤（輪的焦點／立場、結論的決定／理由）及規格分頁色標區段標頭同款式（色標標頭保留各 delta 色彩）。白名單以外的章節標題 SHALL 連同內文照 prose 排版呈現。整份文件無任何白名單章節時 SHALL 整篇以單一 markdown 檢視退回，不報錯。渲染 SHALL NOT 修改任何來源檔案。
+變更詳情頁與已封存檢視的提案／設計分頁 SHALL 將已知模板章節標題（提案側 Why／What Changes／Non-Goals／Capabilities／New Capabilities／Modified Capabilities／Impact／Problem／Root Cause／Proposed Solution／Success Criteria／Summary／Motivation／Alternatives Considered；設計側 Context／Goals / Non-Goals／Decisions／Implementation Contract／Risks / Trade-offs／Migration Plan／Open Questions）呈現為中文標籤區塊，英文模板標題 SHALL NOT 以標題文字直出；標籤款式 SHALL 為粗體大標題——計算字級 SHALL 大於內文基準字級（16px），且 SHALL 與討論側欄位標籤（輪的焦點／立場、結論的決定／理由）及規格分頁色標區段標頭同款式（色標標頭保留各 delta 色彩）。白名單以外的章節標題 SHALL 連同內文照 prose 排版呈現。整份文件無任何白名單章節時 SHALL 整篇以單一 markdown 檢視退回，不報錯。渲染 SHALL NOT 修改任何來源檔案。
 
 #### Scenario: 提案模板章節成中文標籤
 
@@ -1531,7 +1247,7 @@ code:
 
 #### Scenario: 標籤為大標題且字級大於內文
 
-- **WHEN** 檢視提案分頁的章節標籤與討論抽屜結論分頁的欄位標籤
+- **WHEN** 檢視提案分頁的章節標籤與討論詳情頁結論分頁的欄位標籤
 - **THEN** 兩者款式一致，皆為粗體且計算字級大於內文的 16px
 
 #### Scenario: 白名單外章節照排
@@ -1544,36 +1260,16 @@ code:
 - **WHEN** 檢視手寫自由格式（無任何模板章節標題）的提案文件
 - **THEN** 內容整篇照現行 markdown 渲染呈現，無標籤區塊、無錯誤訊息
 
+
 <!-- @trace
-source: drawer-section-labels
-updated: 2026-07-08
-code:
-  - crates/speclink-core/assets/skills/discuss.md
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/components.test.tsx
-  - packages/ui/src/__tests__/delta.test.ts
-  - packages/ui/src/__tests__/discussionDrawer.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/DeltaBadges.tsx
-  - packages/ui/src/components/DiscussionDrawer.tsx
-  - packages/ui/src/components/Markdown.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/SectionedDoc.tsx
-  - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/delta.ts
-  - packages/ui/src/i18n.tsx
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
 ### Requirement: 任務群組標題與章節標籤同款式
 
-變更抽屜任務分頁的群組標題 SHALL 以標籤家族的次級款式呈現——粗體、計算字級與內文基準（16px）一致，與 Capabilities 次級標籤同款、與章節主標題同族但小一級；群組標題文字 SHALL 照來源呈現（不翻譯、不改寫）；任務勾選、拖曳排序與工具列行為 SHALL 不受款式變更影響。
+變更詳情頁任務分頁的群組標題 SHALL 以標籤家族的次級款式呈現——粗體、計算字級與內文基準（16px）一致，與 Capabilities 次級標籤同款、與章節主標題同族但小一級；群組標題文字 SHALL 照來源呈現（不翻譯、不改寫）；任務勾選、拖曳排序與工具列行為 SHALL 不受款式變更影響。
 
 #### Scenario: 群組標題款式一致
 
@@ -1585,30 +1281,10 @@ code:
 - **WHEN** 在款式調整後的任務分頁勾選任務並拖曳排序
 - **THEN** 勾選與排序行為與調整前一致，寫回結果正確
 
+
 <!-- @trace
-source: drawer-section-labels
-updated: 2026-07-08
-code:
-  - crates/speclink-core/assets/skills/discuss.md
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/components.test.tsx
-  - packages/ui/src/__tests__/delta.test.ts
-  - packages/ui/src/__tests__/discussionDrawer.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/DeltaBadges.tsx
-  - packages/ui/src/components/DiscussionDrawer.tsx
-  - packages/ui/src/components/Markdown.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/SectionedDoc.tsx
-  - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/delta.ts
-  - packages/ui/src/i18n.tsx
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
@@ -1671,22 +1347,22 @@ updated: 2026-10-09T22:35:44+08:00
 ---
 ### Requirement: 變更的來源討論多值呈現
 
-變更連結多份討論時(meta 的 from_discussion 為逗號清單),變更卡 SHALL 維持單一討論徽章、以清單第一個(出身)討論為代表,徽章提示 SHALL 列出全部來源討論;變更詳情抽屜的來源討論籤 SHALL 固定顯示清單第一個(出身)討論,其餘 SHALL 收進「+N」數字籤(N 為未直接顯示的數量),點擊 +N SHALL 開啟浮層列出其餘全部來源討論——浮層項 SHALL 呈現該討論的 slug 與 topic,點擊任一項 SHALL 開啟該討論的抽屜;全部來源討論 SHALL 經直接顯示的籤或浮層可及並可互跳。同源變更清單 SHALL 以「雙方來源討論集合交集非空」判定收錄,其呈現 SHALL 比照來源討論籤(顯示第一顆,其餘收「+N」浮層,點擊浮層項開啟該變更的詳情)。僅一份來源討論的變更 SHALL NOT 出現來源討論的「+N」籤。
+變更連結多份討論時(meta 的 from_discussion 為逗號清單),變更卡 SHALL 維持單一討論徽章、以清單第一個(出身)討論為代表,徽章提示 SHALL 列出全部來源討論;變更詳情頁的來源討論籤 SHALL 固定顯示清單第一個(出身)討論,其餘 SHALL 收進「+N」數字籤(N 為未直接顯示的數量),點擊 +N SHALL 開啟浮層列出其餘全部來源討論——浮層項 SHALL 呈現該討論的 slug 與 topic,點擊任一項 SHALL 開啟該討論的詳情頁;全部來源討論 SHALL 經直接顯示的籤或浮層可及並可互跳。同源變更清單 SHALL 以「雙方來源討論集合交集非空」判定收錄,其呈現 SHALL 比照來源討論籤(顯示第一顆,其餘收「+N」浮層,點擊浮層項開啟該變更的詳情)。僅一份來源討論的變更 SHALL NOT 出現來源討論的「+N」籤。
 
 #### Scenario: 多來源徽章以出身討論為代表
 
 - **WHEN** 看板呈現來源討論清單為兩份(出身在前)的變更卡
 - **THEN** 卡片帶單一討論徽章、代表清單第一份(出身)討論,徽章提示列出全部兩份來源討論
 
-#### Scenario: 詳情抽屜列出全部來源討論
+#### Scenario: 詳情頁列出全部來源討論
 
-- **WHEN** 開啟該變更的詳情抽屜
-- **THEN** 來源討論區直接顯示出身討論籤與「+N」籤;點擊 +N 開啟浮層,列出其餘來源討論(各項含 slug 與 topic),點擊任一項開啟該討論的抽屜
+- **WHEN** 開啟該變更的詳情頁
+- **THEN** 來源討論區直接顯示出身討論籤與「+N」籤;點擊 +N 開啟浮層,列出其餘來源討論(各項含 slug 與 topic),點擊任一項開啟該討論的詳情頁
 
 #### Scenario: 同源以來源討論交集判定
 
 - **WHEN** 變更 A 的來源討論清單為 d1, d2、變更 B 的來源討論清單僅含 d2
-- **THEN** A 與 B 互為同源變更,出現在彼此詳情抽屜的同源變更清單
+- **THEN** A 與 B 互為同源變更,出現在彼此詳情頁的同源變更清單
 
 ##### Example: 交集判定表
 
@@ -1699,13 +1375,13 @@ updated: 2026-10-09T22:35:44+08:00
 
 #### Scenario: 單一來源無溢出籤
 
-- **WHEN** 看板呈現僅一份來源討論的變更卡並開啟其詳情抽屜
-- **THEN** 卡片維持單一討論徽章;抽屜來源討論區僅顯示該討論的籤,無「+N」籤
+- **WHEN** 看板呈現僅一份來源討論的變更卡並開啟其詳情頁
+- **THEN** 卡片維持單一討論徽章;詳情頁來源討論區僅顯示該討論的籤,無「+N」籤
 
 
 <!-- @trace
-source: change-drawer-header-redesign
-updated: 2026-08-04
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
@@ -1841,7 +1517,7 @@ code:
 #### Scenario: 變更卡三列骨架
 
 - **WHEN** 看板載入一個 proposal Why 首句非空、createdBy 存在、任務 5/21 的變更
-- **THEN** 變更卡識別列以等寬字型顯示名稱且複製鈕緊跟名稱文字後（hover 顯現、點擊寫入名稱至剪貼簿且不開詳情抽屜）、右端呈建立者圓點；描述列一行截斷顯示 Why 首句；meta 列顯示進度條與 5/21；卡上無狀態 chip
+- **THEN** 變更卡識別列以等寬字型顯示名稱且複製鈕緊跟名稱文字後（hover 顯現、點擊寫入名稱至剪貼簿且不開詳情頁）、右端呈建立者圓點；描述列一行截斷顯示 Why 首句；meta 列顯示進度條與 5/21；卡上無狀態 chip
 
 #### Scenario: 變更卡無 Why 內容時描述列缺席
 
@@ -1865,8 +1541,8 @@ code:
 
 
 <!-- @trace
-source: desktop-ui-stamp-and-overflow-polish
-updated: 2026-08-07
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
@@ -2040,91 +1716,22 @@ updated: 2026-10-09T22:35:44+08:00
 -->
 
 ---
-### Requirement: detail 抽屜互斥
-
-桌面 app SHALL 保證同時僅一個 detail 抽屜（變更詳情、規格、封存、討論）開啟：任一 detail 抽屜開啟中，自任何入口（看板卡片、規格清單、封存頁、系統匣選單與面板、抽屜內跳轉）開啟另一種 detail 抽屜時，先開者 SHALL 關閉、由後開者取代顯示，SHALL NOT 疊加顯示、SHALL NOT 拒開。此互斥 SHALL 由狀態層的開啟動作保證——每個開啟動作於設定自身選定狀態時同時清除其他抽屜的選定狀態；SHALL NOT 依賴各呼叫端入口自行先關再開。
-
-變更詳情與討論抽屜的開啟動作 SHALL 同時收掉可取消浮層：新增 Workspace 對話框、初始化確認框、啟用確認框、封存確認框（含品質站工單三選項框）、封存討論確認框、刪除確認框、退回提案中確認框、退回被擋說明框、更新日誌對話框。收掉的語意 SHALL 與使用者按該浮層的「取消」或「關閉」相同——SHALL NOT 送出任何未確認的動作；更新日誌於 whatsNew 模式被收掉時 SHALL NOT 記為已看過。此保證 SHALL 同樣由狀態層的開啟動作承擔，自任何入口開啟結果 SHALL 一致。
-
-不可取消浮層（遷移對話框、遠端衝突對話框）開啟中，變更詳情與討論抽屜的開啟動作 SHALL NOT 改變任何狀態：浮層維持、抽屜不開、底層頁面不切換；自系統匣觸發時主視窗 SHALL 仍顯示到前景。規格抽屜與已封存抽屜的開啟動作 SHALL NOT 受本段約束（其宿主頁為規格頁與已封存頁）。
-
-#### Scenario: 討論抽屜開啟中自系統匣開啟變更詳情
-
-- **WHEN** 討論抽屜開啟中，使用者自系統匣開啟某 change 的詳情抽屜
-- **THEN** 討論抽屜關閉，僅變更詳情抽屜可見
-
-#### Scenario: 任兩種 detail 抽屜交錯開啟
-
-- **WHEN** 任一 detail 抽屜開啟中，使用者自任何入口開啟另一種 detail 抽屜
-- **THEN** 先開者關閉、後開者顯示，同時僅一個 detail 抽屜可見
-
-##### Example: 四種抽屜互斥狀態轉移
-
-| 開啟中的抽屜 | 開啟動作         | 結果                       |
-| ------------ | ---------------- | -------------------------- |
-| 討論         | 開啟變更詳情     | 討論關閉，僅變更詳情可見   |
-| 變更詳情     | 開啟規格         | 變更詳情關閉，僅規格可見   |
-| 規格         | 開啟封存         | 規格關閉，僅封存可見       |
-| 封存         | 開啟討論         | 封存關閉，僅討論可見       |
-
-#### Scenario: 新增 Workspace 對話框開啟中自系統匣開啟變更詳情
-
-- **WHEN** 新增 Workspace 對話框開啟中，使用者自系統匣面板或原生選單選「開啟此變更」
-- **THEN** 對話框關閉（未開啟任何專案）、變更詳情抽屜開啟、底層為看板，畫面只有一個浮層
-
-#### Scenario: 可取消確認框開啟中開啟討論抽屜
-
-- **WHEN** 初始化確認、啟用確認、封存確認（含工單三選項框）、封存討論確認、刪除確認、退回提案中確認或退回被擋說明任一開啟中，使用者自任何入口開啟某討論
-- **THEN** 該確認框關閉且未送出任何動作，討論抽屜開啟
-
-##### Example: 可取消浮層與開啟動作的狀態轉移
-
-| 開啟中的浮層 | 開啟動作     | 結果                                   |
-| ------------ | ------------ | -------------------------------------- |
-| 新增 Workspace | 開啟變更詳情 | 對話框關閉、抽屜開啟、無專案被開啟     |
-| 封存確認     | 開啟討論     | 確認框關閉、抽屜開啟、無封存發生       |
-| 工單三選項框 | 開啟變更詳情 | 三選項框關閉、抽屜開啟、工單維持未結   |
-| 刪除確認（change A） | 開啟討論 | 確認框關閉、抽屜開啟、change A 未被刪除 |
-| 更新日誌（whatsNew） | 開啟討論 | 對話框關閉、抽屜開啟、下次啟動仍彈出 |
-
-#### Scenario: 更新日誌對話框開啟中自系統匣開啟變更詳情
-
-- **WHEN** 更新日誌對話框開啟中，使用者自系統匣開啟某 change 的詳情抽屜
-- **THEN** 更新日誌對話框關閉、變更詳情抽屜開啟；whatsNew 模式下 SHALL NOT 記為已看過
-
-#### Scenario: 遷移進行中自系統匣開啟變更詳情
-
-- **WHEN** 遷移對話框開啟中，使用者自系統匣面板選「開啟此變更」
-- **THEN** 主視窗顯示到前景、遷移對話框維持、變更詳情抽屜不開、底層頁面不變
-
-#### Scenario: 遠端衝突對話框開啟中開啟討論
-
-- **WHEN** 遠端衝突對話框開啟中，使用者自任何入口開啟某討論
-- **THEN** 衝突對話框維持、討論抽屜不開、任何狀態不變
-
-
-<!-- @trace
-source: fix-drawer-open-dismisses-overlays
-updated: 2026-10-08T17:43:52+08:00
--->
-
----
 ### Requirement: 看板全域操作成功靜默、失敗以 toast 浮層呈現
 
 桌面 app 的看板全域操作——刪除變更、封存變更、封存討論、拖排卡片、開啟專案、初始化專案——成功時 SHALL NOT 呈現任何文字結果訊息；操作結果由畫面自身表達（卡片自看板消失、側欄「已封存」計數遞增、卡片位於新位置、切換至該專案）。視窗頂欄 SHALL NOT 呈現任何操作結果文字。
 
-上述任一操作失敗時，app SHALL 以 toast 浮層呈現失敗訊息。訊息 SHALL 包含操作對象的主詞與 core 回報的原始錯誤內容，SHALL NOT 吞掉或改寫該錯誤內容。toast SHALL 疊於詳情抽屜與確認對話框的遮罩之上——抽屜或確認框開啟中發生失敗時，toast SHALL 完整可見且不被遮蔽。toast SHALL 於固定時距後自動消失，並 SHALL 提供關閉鈕供提前關閉。同時 SHALL 僅呈現一則 toast；新訊息 SHALL 取代前一則並重置其自動消失時距。
+上述任一操作失敗時，app SHALL 以 toast 浮層呈現失敗訊息。訊息 SHALL 包含操作對象的主詞與 core 回報的原始錯誤內容，SHALL NOT 吞掉或改寫該錯誤內容。toast SHALL 疊於詳情頁與確認對話框之上——詳情頁或確認框開啟中發生失敗時，toast SHALL 完整可見且不被遮蔽。toast SHALL 於固定時距後自動消失，並 SHALL 提供關閉鈕供提前關閉。同時 SHALL 僅呈現一則 toast；新訊息 SHALL 取代前一則並重置其自動消失時距。
 
 toast 的表面、前景、邊框、圓角、陰影與字體 SHALL 沿用桌面 app 的既有語意設計 tokens。失敗 toast SHALL 保持中性 card 表面與可讀前景，並以 destructive token 強調錯誤圖示與邊框；SHALL NOT 使用獨立於主介面的內建明暗色票或另建 raw 色票。作業系統切換淺色或深色模式時，toast SHALL 由同一組語意 tokens 取得該模式的對應值。
 
 失敗後看板 SHALL 刷新回磁碟現況，SHALL NOT 保留未落檔的假象順序或狀態。
 
-封存變更成功時 SHALL 關閉詳情抽屜。成功之所以能靜默，前提是畫面可見地表達了結果；詳情抽屜開啟時遮蔽看板，該前提即不成立。
+封存變更成功時 SHALL 關閉詳情頁回看板。成功之所以能靜默，前提是畫面可見地表達了結果；詳情頁開啟時看板不可見，該前提即不成立。
 
-#### Scenario: 抽屜開啟中封存失敗仍完整可見
+#### Scenario: 詳情頁開啟中封存失敗仍完整可見
 
-- **WHEN** 使用者於某 change 的詳情抽屜點按「封存」，而封存因前置未滿足失敗
-- **THEN** toast 疊於抽屜遮罩之上完整呈現，內容含該 change 名稱與 core 回報的錯誤訊息；詳情抽屜維持開啟
+- **WHEN** 使用者於某 change 的詳情頁點按「封存」，而封存因前置未滿足失敗
+- **THEN** toast 疊於詳情頁之上完整呈現，內容含該 change 名稱與 core 回報的錯誤訊息；詳情頁維持開啟
 
 #### Scenario: 失敗 toast 沿用主介面語意色彩
 
@@ -2139,12 +1746,12 @@ toast 的表面、前景、邊框、圓角、陰影與字體 SHALL 沿用桌面 
 #### Scenario: 刪除成功不呈現任何文字訊息
 
 - **WHEN** 使用者確認刪除某變更且刪除成功
-- **THEN** 該卡片自看板消失、詳情抽屜關閉；視窗頂欄與 toast 皆無任何文字訊息
+- **THEN** 該卡片自看板消失、詳情頁關閉；視窗頂欄與 toast 皆無任何文字訊息
 
-#### Scenario: 封存成功關閉詳情抽屜且不呈現文字訊息
+#### Scenario: 封存成功關閉詳情頁且不呈現文字訊息
 
-- **WHEN** 使用者於某 change 的詳情抽屜點按「封存」且封存成功
-- **THEN** 詳情抽屜關閉、卡片自看板消失、側欄「已封存」計數遞增；無任何文字訊息
+- **WHEN** 使用者於某 change 的詳情頁點按「封存」且封存成功
+- **THEN** 詳情頁關閉、卡片自看板消失、側欄「已封存」計數遞增；無任何文字訊息
 
 #### Scenario: toast 自動消失且可提前關閉
 
@@ -2165,61 +1772,17 @@ toast 的表面、前景、邊框、圓角、陰影與字體 SHALL 沿用桌面 
 
 | 操作 | 成功 | 失敗 |
 | ---- | ---- | ---- |
-| 刪除變更 | 靜默：卡片消失、抽屜關閉 | toast：`<變更名稱> · 刪除失敗 ✗ <core 錯誤>` |
-| 封存變更 | 靜默：卡片消失、「已封存」計數遞增、抽屜關閉 | toast：`<變更名稱> · 封存失敗 ✗ <core 錯誤>` |
-| 封存討論 | 靜默：卡片消失、抽屜關閉 | toast：`<討論 slug> · 討論封存失敗 ✗ <core 錯誤>` |
+| 刪除變更 | 靜默：卡片消失、詳情頁關閉 | toast：`<變更名稱> · 刪除失敗 ✗ <core 錯誤>` |
+| 封存變更 | 靜默：卡片消失、「已封存」計數遞增、詳情頁關閉 | toast：`<變更名稱> · 封存失敗 ✗ <core 錯誤>` |
+| 封存討論 | 靜默：卡片消失、詳情頁關閉 | toast：`<討論 slug> · 討論封存失敗 ✗ <core 錯誤>` |
 | 拖排卡片 | 靜默：卡片位於新位置 | toast：`<卡片識別> · 排序寫回失敗 ✗ <core 錯誤>` |
 | 開啟專案 | 靜默：切換至該專案 | toast：`<選定路徑> · 開啟專案失敗 ✗ <core 錯誤>` |
 | 初始化專案 | 靜默：進入該專案 | toast：`<選定目錄> · 初始化失敗 ✗ <core 錯誤>` |
 
 
 <!-- @trace
-source: desktop-toast-theme-alignment
-updated: 2026-07-19
-code:
-  - packages/ui/src/__tests__/sonner.test.tsx
-  - packages/ui/src/components/ui/sonner.tsx
--->
-
----
-### Requirement: 抽屜標頭標記受寬度約束且抽屜不產生水平捲軸
-
-變更詳情抽屜與已封存抽屜的標頭中,來源討論標記 SHALL 以討論 slug 直出(等寬字型),topic SHALL NOT 於標記面直出。標記 SHALL 設寬度上限:slug 超出上限時 SHALL 以截斷呈現,SHALL NOT 使標記寬度超出抽屜內容區。標記 SHALL 以主題化提示呈現完整 slug 與 topic,使用者 SHALL 能取得未截斷的原始內容。多份來源討論 SHALL NOT 各自換行——僅第一份直接顯示,其餘收進「+N」數字籤與其浮層(呈現規則見「變更的來源討論多值呈現」)。抽屜面板 SHALL NOT 於水平方向產生捲軸——不論標頭標記、動作列或內文包含多長的單一元素,抽屜的標頭、動作列與內文 SHALL 維持在可視寬度內。此約束 SHALL 同時套用於變更詳情抽屜與已封存抽屜,SHALL NOT 只在其中一處成立。
-
-來源討論標記的資料來源、數量、排序,以及點擊(標記或浮層項)後開啟對應討論的行為 SHALL 維持不變。
-
-#### Scenario: 長討論 topic 不撐寬抽屜
-
-- **WHEN** 使用者開啟一個來源討論的 topic 長度遠超過抽屜寬度的變更,其詳情抽屜
-- **THEN** 該來源討論標記顯示 slug 而非 topic,寬度不超出抽屜內容區,抽屜沒有水平捲軸,標頭、動作列與內文皆維持在可視寬度內
-
-#### Scenario: 截斷後仍可取得完整 topic
-
-- **WHEN** 使用者將指標停留在來源討論標記上
-- **THEN** 主題化提示呈現該討論完整的 slug 與 topic 文字
-
-#### Scenario: 已封存抽屜適用同一約束
-
-- **WHEN** 使用者於已封存頁開啟同一個變更的抽屜
-- **THEN** 來源討論標記同樣以 slug 直出、多份時溢出收「+N」籤,抽屜沒有水平捲軸
-
-#### Scenario: 超長 slug 截斷呈現
-
-- **WHEN** 使用者開啟來源討論 slug 長於標記寬度上限的變更,其詳情抽屜
-- **THEN** 該標記以截斷呈現且寬度不超出上限,提示保有完整 slug 與 topic;點擊標記開啟對應討論的抽屜
-
-##### Example: 標記呈現與抽屜捲軸
-
-| 情境                 | 標記面呈現                  | 提示           | 抽屜水平捲軸 |
-| -------------------- | --------------------------- | -------------- | ------------ |
-| slug 短於寬度上限    | slug 完整                   | slug 與 topic  | 無           |
-| slug 超過寬度上限    | slug 截斷                   | slug 與 topic  | 無           |
-| 多份來源討論         | 首份 slug+「+N」籤,單行     | 各籤 slug 與 topic | 無       |
-
-
-<!-- @trace
-source: change-drawer-header-redesign
-updated: 2026-08-04
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
@@ -2349,17 +1912,17 @@ updated: 2026-09-14T21:53:29+08:00
 ---
 ### Requirement: 進行中變更可自看板退回提案中
 
-派生階段為進行中的變更,其看板卡片與詳情抽屜 SHALL 呈現「退回提案中」動作(樣式沿討論卡封存按鈕的動作呈現);非進行中的變更 SHALL NOT 呈現此動作。點擊 SHALL 先經確認,確認後直接呼叫引擎的退回動詞——UI SHALL NOT 預判守門條件(守門僅由引擎裁決一次)。退回成功後 SHALL NOT 手動搬移卡片:重載後開工戳記為空、已勾任務為 0,卡片依階段派生自然回到提案中欄。引擎守門拒絕時 SHALL 開啟守門對話框,列出引擎回傳的證據(已勾任務數與 touched 記錄的檔案清單)與出路說明——已勾任務可於任務分頁取消後重試,touched 需請 agent 判斷;GUI SHALL NOT 提供清理 touched 或批次取消勾選的機械出路。本地與 remote 資料模式下,動作的出現條件、確認流程、成功效果與守門對話框行為 SHALL 一致。跨欄拖曳 SHALL 維持不改變變更階段的既有行為。
+派生階段為進行中的變更,其看板卡片與詳情頁 SHALL 呈現「退回提案中」動作(樣式沿討論卡封存按鈕的動作呈現);非進行中的變更 SHALL NOT 呈現此動作。點擊 SHALL 先經確認,確認後直接呼叫引擎的退回動詞——UI SHALL NOT 預判守門條件(守門僅由引擎裁決一次)。退回成功後 SHALL NOT 手動搬移卡片:重載後開工戳記為空、已勾任務為 0,卡片依階段派生自然回到提案中欄。引擎守門拒絕時 SHALL 開啟守門對話框,列出引擎回傳的證據(已勾任務數與 touched 記錄的檔案清單)與出路說明——已勾任務可於任務分頁取消後重試,touched 需請 agent 判斷;GUI SHALL NOT 提供清理 touched 或批次取消勾選的機械出路。本地與 remote 資料模式下,動作的出現條件、確認流程、成功效果與守門對話框行為 SHALL 一致。跨欄拖曳 SHALL 維持不改變變更階段的既有行為。
 
 #### Scenario: 退回動作僅於進行中變更出現
 
-- **WHEN** 使用者檢視看板上一張提案中的變更卡與一張進行中的變更卡(含各自的詳情抽屜)
-- **THEN** 僅進行中的卡片與其抽屜呈現「退回提案中」動作,提案中的卡片與抽屜皆不呈現
+- **WHEN** 使用者檢視看板上一張提案中的變更卡與一張進行中的變更卡(含各自的詳情頁)
+- **THEN** 僅進行中的卡片與其詳情頁呈現「退回提案中」動作,提案中的卡片與詳情頁皆不呈現
 
 #### Scenario: 零痕跡變更確認後退回提案中欄
 
 - **WHEN** 使用者對一張零工作痕跡(無已勾任務、無 touched 記錄)的進行中變更卡點「退回提案中」並於確認對話框確認
-- **THEN** 退回成功,卡片自進行中欄消失並出現於提案中欄,詳情抽屜的開工歸屬顯示清空
+- **THEN** 退回成功,卡片自進行中欄消失並出現於提案中欄,詳情頁的開工歸屬顯示清空
 
 #### Scenario: 有工作痕跡時顯示守門對話框
 
@@ -2371,106 +1934,10 @@ updated: 2026-09-14T21:53:29+08:00
 - **WHEN** 使用者於 remote 資料模式對零痕跡的進行中變更執行同一退回操作
 - **THEN** 動作出現條件、確認流程、成功後卡片回提案中欄、守門對話框行為皆與本地模式一致
 
-<!-- @trace
-source: revert-in-progress-to-proposed
-updated: 2026-07-31
-code:
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src-tauri/tests/remote_data.rs
-  - apps/desktop/src-tauri/tests/remote_runtime.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/remoteDataSource.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/adapter/remoteDataSource.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/in_progress_remove.rs
-  - crates/speclink-cli/tests/remote_write_path.rs
-  - crates/speclink-core/assets/skills/apply.md
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/inprogress.rs
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-host/src/bridge.rs
-  - crates/speclink-host/src/commit.rs
-  - crates/speclink-protocol/src/command.rs
-  - crates/speclink-protocol/src/error.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/src/device.rs
-  - crates/speclink-remote/src/events.rs
-  - crates/speclink-remote/src/lib.rs
-  - crates/speclink-remote/tests/reauth_retry.rs
-  - crates/speclink-remote/tests/typed_client.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/error.rs
-  - crates/speclink-server/src/events.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/verb_api.rs
-  - packages/ui/src/__tests__/discussionColumn.test.tsx
-  - packages/ui/src/__tests__/discussionDrawer.test.tsx
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/__tests__/revertBlockedDialog.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/DiscussionColumn.tsx
-  - packages/ui/src/components/DiscussionDrawer.tsx
-  - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/components/RevertBlockedDialog.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
--->
-
----
-### Requirement: 詳情抽屜的封存與刪除依階段守門
-
-詳情抽屜的封存鈕 SHALL 僅於該 change 派生階段為已就緒時可按;非已就緒時 SHALL 呈現 disabled 並以 tooltip 說明原因(載明任務進度與「完成後才能封存」的出路)。刪除鈕 SHALL 僅於派生階段為提案中時可按;非提案中時 SHALL 呈現 disabled 並以 tooltip 說明原因(載明已有開工痕跡與「先退回提案中」的出路)。remote session 下對應能力缺失時,能力缺失原因 SHALL 優先於階段原因呈現。守門為呈現層過濾:可按期間階段已於外部改變(併發寫入)時,引擎拒絕 SHALL 為最終裁決,依既有失敗 toast 語意呈現。桌面 SHALL NOT 提供任何略過守門的強制通道。
-
-#### Scenario: 非已就緒的封存鈕停用附原因
-
-- **WHEN** 使用者開啟提案中(0/11)與進行中(5/19)change 的詳情抽屜
-- **THEN** 兩者封存鈕皆 disabled,tooltip 各載明任務進度與完成後才能封存;已就緒 change 的封存鈕照常可按並走既有確認流程
-
-#### Scenario: 非提案中的刪除鈕停用附原因
-
-- **WHEN** 使用者開啟進行中 change 的詳情抽屜
-- **THEN** 刪除鈕 disabled,tooltip 載明已有開工痕跡並指向先退回提案中;提案中 change 的刪除鈕照常可按
-
-#### Scenario: 併發階段變化由引擎拒絕保底
-
-- **WHEN** 封存鈕可按期間另一 session 於 tasks.md 取消勾選一個任務,使用者隨後確認封存
-- **THEN** 引擎拒絕封存,app 依既有失敗 toast 語意呈現拒絕訊息,change 仍在看板
 
 <!-- @trace
-source: archive-readiness-gating
-updated: 2026-07-31
-code:
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/src-tauri/tests/remote_data.rs
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/helpers/remoteFixtures.ts
-  - apps/desktop/src/__tests__/remoteDataSource.test.ts
-  - apps/desktop/src/__tests__/remoteResilience.test.tsx
-  - apps/desktop/src/adapter/remoteDataSource.ts
-  - crates/speclink-cli/tests/archive_readiness_gate.rs
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/boardDnd.ts
-  - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/i18n.tsx
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
@@ -2679,27 +2146,6 @@ code:
 -->
 
 ---
-### Requirement: 詳情抽屜的審查資訊列
-
-change 詳情抽屜 SHALL 於審查狀態非 `none` 時,在狀態列(與進度條同列)顯示審查資訊:狀態詞、蓋章時間與審查者(`inReview` 時僅顯示狀態詞)。狀態為 `none` 時 SHALL 不渲染審查資訊,狀態列僅呈現進度條與完成百分比。
-
-#### Scenario: 已審查抽屜
-
-- **WHEN** 開啟 `reviewStatus: "reviewed"` 的 change 抽屜
-- **THEN** 狀態列於進度條同列顯示「已審查」與 reviewedAt/reviewedBy 內容
-
-#### Scenario: 審查中抽屜
-
-- **WHEN** 開啟 `reviewStatus: "inReview"` 的 change 抽屜
-- **THEN** 狀態列顯示「審查中」,無時間與審查者
-
-
-<!-- @trace
-source: change-drawer-header-redesign
-updated: 2026-08-04
--->
-
----
 ### Requirement: 已封存側的審查標示
 
 已封存頁的清單與抽屜 SHALL 依封存時的審查結局標示：帶章者顯示「已審查」；帶化石工單而無章者顯示「曾審查未通過」；皆無者無標示。
@@ -2780,7 +2226,7 @@ code:
 ---
 ### Requirement: 封存入口的未結工單三選項
 
-desktop 的封存入口（卡片封存鈕、抽屜封存動作、拖曳封存）SHALL 於目標 change 為 `inReview` 時彈出三選項對話框：前往完成蓋章（導引執行審查收尾）、放棄審查（等同 review discard 後封存）、照樣帶走（等同 `--carry-review` 封存，並說明將永久顯示「曾審查未通過」）。非 `inReview` 的封存行為 SHALL 維持現行不變。
+desktop 的封存入口（卡片封存鈕、詳情頁封存動作、拖曳封存）SHALL 於目標 change 為 `inReview` 時彈出三選項對話框：前往完成蓋章（導引執行審查收尾）、放棄審查（等同 review discard 後封存）、照樣帶走（等同 `--carry-review` 封存，並說明將永久顯示「曾審查未通過」）。非 `inReview` 的封存行為 SHALL 維持現行不變。
 
 #### Scenario: 封存審查中的 change
 
@@ -2792,113 +2238,20 @@ desktop 的封存入口（卡片封存鈕、抽屜封存動作、拖曳封存）
 - **WHEN** 於對話框選擇「照樣帶走」
 - **THEN** change 封存成功且已封存側顯示「曾審查未通過」
 
-<!-- @trace
-source: code-review-stage
-updated: 2026-08-02
-code:
-  - AGENTS.md
-  - CLAUDE.md
-  - README.en.md
-  - README.md
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/verbs.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/review_verbs.rs
-  - crates/speclink-core/assets/skills/review.md
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/inprogress.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/review.rs
-  - crates/speclink-core/src/skills.rs
-  - crates/speclink-core/src/store.rs
-  - crates/speclink-core/src/teststore.rs
-  - crates/speclink-core/src/util.rs
-  - crates/speclink-core/tests/golden/assets.lock
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-core/tests/golden/remote-claude.marker.md
-  - crates/speclink-core/tests/render_golden.rs
-  - crates/speclink-fs/src/lib.rs
-  - crates/speclink-host/src/bridge.rs
-  - crates/speclink-host/src/commit.rs
-  - crates/speclink-node/src/store_bridge.rs
-  - crates/speclink-protocol/src/command.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/tests/client_errors.rs
-  - crates/speclink-remote/tests/typed_client.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/read_api.rs
-  - crates/speclink-server/tests/review_api.rs
-  - packages/ui/src/__tests__/reviewBadge.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedDrawer.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/ReviewArchiveDialog.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/reviewStyle.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
--->
-
----
-### Requirement: 變更詳情抽屜標頭的四層結構
-
-變更詳情抽屜的標頭 SHALL 由上而下為四層固定結構:標題列(變更名+複製名稱鈕)、狀態列、出身列、動作列。狀態列 SHALL 呈現進度條與完成百分比;審查或驗證狀態非 `none` 時,同列 SHALL 呈現對應站章籤(圖示+狀態詞,審查章在前、驗證章在後,i18n 沿用既有詞條);蓋章日期與蓋章者完整識別(含 email)SHALL 收進主題化提示,狀態列可視文字 SHALL NOT 直出 email 與日期。狀態列於任何資料組合下 SHALL 維持單行,SHALL NOT 溢出抽屜可視區、SHALL NOT 撐寬抽屜。標頭 SHALL NOT 顯示任務計數字樣——任務數由任務分頁徽章與進度條承載。出身列 SHALL 為單行,依序呈現:建立者頭像+名字、產生工具、建立相對時間、開工日期(有開工戳記時)、「來自」與來源討論籤(有來源討論時)、「同源」與同源變更籤(有同源變更時);缺席的資訊段 SHALL 整段缺席而非留白。建立者與開工者的完整識別(含 email)SHALL 收進主題化提示,標頭可視文字 SHALL NOT 直出 email。出身列於任何資料組合下 SHALL 維持單行,SHALL NOT 折行,SHALL NOT 撐寬抽屜。
-
-#### Scenario: 四層結構與任務計數缺席
-
-- **WHEN** 使用者開啟任一變更的詳情抽屜
-- **THEN** 標頭由上而下依序為標題列、狀態列、出身列、動作列;標頭可視文字不含任務計數字樣,任務分頁徽章與進度條仍呈現任務進度
-
-#### Scenario: 狀態列章籤與提示
-
-- **WHEN** 使用者開啟 reviewStatus 為 reviewed 且 verifyStatus 為 verified、兩站蓋章者皆含 email 的變更詳情抽屜
-- **THEN** 狀態列顯示進度條、完成百分比與「已審查」「已驗證」兩枚章籤;將指標停留於章籤時,主題化提示顯示該站蓋章日期與含 email 的完整識別;狀態列維持單行、不溢出抽屜可視區,抽屜無水平捲軸
-
-#### Scenario: email 收進提示
-
-- **WHEN** 使用者開啟 created_by 含 email 的變更詳情抽屜,並將指標停留於建立者名字
-- **THEN** 標頭可視文字僅顯示頭像與名字,主題化提示呈現含 email 的完整識別;開工者的完整識別亦僅於提示呈現
-
-#### Scenario: 出身列恆定單行
-
-- **WHEN** 使用者開啟一個有 4 份來源討論、有開工戳記且有同源變更的變更詳情抽屜
-- **THEN** 出身列維持單行——直接顯示出身討論籤與「+N」籤,不折行,抽屜無水平捲軸
-
 
 <!-- @trace
-source: desktop-ui-stamp-and-overflow-polish
-updated: 2026-08-07
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
 ### Requirement: 品質站蓋章配色與主色分離
 
-品質站狀態標示的配色 SHALL 與主題主色分離:「已審查」蓋章 SHALL 以紫色系呈現,SHALL NOT 引用主題主色 token;「審查中」「已審查·其後有變動」「曾審查未通過」三態維持藍/琥珀/紅系不變。紫色系 SHALL 為品質站蓋章專屬——品質站標示以外的介面元素 SHALL NOT 使用紫色系。此約束 SHALL 套用於呈現審查標示的全部表面——「已審查」蓋章出現於看板卡片、變更詳情抽屜、已封存清單、已封存抽屜四處;封存對話框共用同一份配色對照,但僅取用「曾審查未通過」,不呈現已審查蓋章。各表面 SHALL 引用同一份配色對照,SHALL NOT 各自定義。
+品質站狀態標示的配色 SHALL 與主題主色分離:「已審查」蓋章 SHALL 以紫色系呈現,SHALL NOT 引用主題主色 token;「審查中」「已審查·其後有變動」「曾審查未通過」三態維持藍/琥珀/紅系不變。紫色系 SHALL 為品質站蓋章專屬——品質站標示以外的介面元素 SHALL NOT 使用紫色系。此約束 SHALL 套用於呈現審查標示的全部表面——「已審查」蓋章出現於看板卡片、變更詳情頁、已封存清單、已封存詳情頁四處;封存對話框共用同一份配色對照,但僅取用「曾審查未通過」,不呈現已審查蓋章。各表面 SHALL 引用同一份配色對照,SHALL NOT 各自定義。
 
 #### Scenario: 已審查蓋章與主色可區辨
 
-- **WHEN** 使用者開啟 reviewStatus 為 reviewed 的變更卡片與其詳情抽屜
+- **WHEN** 使用者開啟 reviewStatus 為 reviewed 的變更卡片與其詳情頁
 - **THEN** 「已審查」蓋章以紫色系呈現,與同視野的主色元素(進度條、分頁、連結籤)可區辨;深淺主題下皆然
 
 #### Scenario: 其餘三態配色不變
@@ -2908,12 +2261,13 @@ updated: 2026-08-07
 
 #### Scenario: 紫色系為蓋章專屬
 
-- **WHEN** 使用者檢視看板、抽屜與已封存各表面
+- **WHEN** 使用者檢視看板、詳情頁與已封存各表面
 - **THEN** 紫色系僅出現於品質站蓋章,不出現在其他介面元素
 
+
 <!-- @trace
-source: review-stamp-violet
-updated: 2026-08-05
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
@@ -2938,7 +2292,7 @@ updated: 2026-08-05
 #### Scenario: worktree 標示以藍呈現
 
 - **WHEN** 看板卡片的 change 有活躍 worktree 映射
-- **THEN** 該卡片的 worktree 圖示以藍系(進行中語意)呈現,非主色;變更抽屜的分支與路徑維持中性
+- **THEN** 該卡片的 worktree 圖示以藍系(進行中語意)呈現,非主色;變更詳情頁的分支與路徑維持中性
 
 #### Scenario: 成功以綠呈現
 
@@ -2982,8 +2336,8 @@ updated: 2026-08-05
 
 
 <!-- @trace
-source: desktop-design-foundation
-updated: 2026-10-08T22:16:52+08:00
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
@@ -3005,21 +2359,6 @@ change 卡片 SHALL 依驗證狀態渲染第二顆行內小章，與審查章並
 
 - **WHEN** 協定資料為 `reviewStatus: "none"` 且 `verifyStatus: "verifiedStale"`
 - **THEN** 卡片僅顯示降級樣式的驗證章，tooltip 為「已驗證·其後有變動」（tw）
-
-<!-- @trace
-source: verify-station-parity
-updated: 2026-08-06
--->
-
----
-### Requirement: 詳情抽屜的驗證資訊列
-
-change 詳情抽屜 SHALL 於驗證狀態非 `none` 時顯示驗證資訊列（狀態詞、蓋章時間與驗證者；`inVerify` 僅狀態詞），與審查資訊列同構並列；狀態為 `none` 時不渲染。
-
-#### Scenario: 已驗證抽屜
-
-- **WHEN** 開啟 `verifyStatus: "verified"` 的 change 抽屜
-- **THEN** 驗證資訊列顯示「已驗證」與 verifiedAt／verifiedBy 內容
 
 <!-- @trace
 source: verify-station-parity
@@ -3071,14 +2410,15 @@ updated: 2026-08-06
 - **WHEN** 使用者將指標停留於看板卡片的審查章達 300ms
 - **THEN** 主題化提示顯示狀態詞（tw 為正典詞「已審查」等）
 
-#### Scenario: 詳情抽屜與卡片同一延遲
+#### Scenario: 詳情頁與卡片同一延遲
 
-- **WHEN** 使用者分別將指標停留於變更詳情抽屜的章籤與看板卡片的章
+- **WHEN** 使用者分別將指標停留於變更詳情頁的章籤與看板卡片的章
 - **THEN** 兩處提示皆於停留達 300ms 時顯示，無任一處立即顯示或採用其他延遲值
 
+
 <!-- @trace
-source: desktop-ui-stamp-and-overflow-polish
-updated: 2026-08-07
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
@@ -3138,26 +2478,6 @@ updated: 2026-08-07
 -->
 
 ---
-### Requirement: 討論抽屜的改進標示
-
-討論抽屜 SHALL 於 kind 為 improve 時顯示改進標示,文案與卡片 tooltip 使用同一 i18n 詞條;一般討論的抽屜 SHALL NOT 顯示該標示。
-
-#### Scenario: 改進討論抽屜
-
-- **WHEN** 開啟 kind 為 improve 的討論抽屜(語言 tw)
-- **THEN** 抽屜顯示「改進討論」標示
-
-#### Scenario: 一般討論抽屜無標示
-
-- **WHEN** 開啟無 kind 欄位的討論抽屜
-- **THEN** 抽屜不顯示改進標示,與本變更引入前的渲染一致
-
-<!-- @trace
-source: add-improve-flow
-updated: 2026-08-07
--->
-
----
 ### Requirement: 觸及檔案系統的 command 不佔用主執行緒
 
 桌面 app 中凡會觸及檔案系統或 spawn 子進程（git 等）的 Tauri command SHALL 以 async 形式將工作委派至背景執行緒（spawn_blocking）執行；主執行緒 SHALL NOT 執行任何檔案 IO 或子進程等待。純記憶體讀取與純視窗操作的 command（如行程環境讀取、連線健康狀態、系統匣面板開閉、結束 app）不受此限。command 的對外契約（名稱、參數、回傳資料形狀）SHALL 與同步時代完全一致。
@@ -3174,31 +2494,6 @@ updated: 2026-08-07
 
 <!-- @trace
 source: desktop-async-commands
-updated: 2026-08-11
--->
-
----
-### Requirement: 變更與討論抽屜開啟時底層落回看板
-
-變更詳情抽屜與討論抽屜的開啟動作 SHALL 於設定抽屜選定狀態的同一次狀態更新內，把底層頁面切回看板——不論開啟入口（看板卡片、系統匣選單與面板、抽屜內跳轉、封存前確認對話框的「去蓋章」）與開啟當下所在頁面（規格頁、已封存頁、專案設定頁、應用程式設定頁）。此歸位 SHALL 由狀態層的開啟動作保證，SHALL NOT 依賴各呼叫端入口自行切頁。規格抽屜與封存抽屜 SHALL NOT 在此列——其宿主頁面即規格頁與已封存頁，開啟時底層頁面 SHALL 維持不變。
-
-#### Scenario: 已封存頁自系統匣開啟變更詳情
-
-- **WHEN** 使用者身處已封存頁，自系統匣點擊某活躍 change 的「開啟此變更」
-- **THEN** 主視窗前置、底層頁面切回看板、該 change 的詳情抽屜開啟——關閉抽屜後所見為看板而非已封存頁
-
-#### Scenario: 規格頁開啟討論抽屜落回看板
-
-- **WHEN** 使用者身處規格頁，經任一入口開啟某活躍討論的討論抽屜
-- **THEN** 底層頁面切回看板、討論抽屜開啟
-
-#### Scenario: 已封存頁開啟封存抽屜不切頁
-
-- **WHEN** 使用者於已封存頁點擊一筆封存變更卡
-- **THEN** 封存抽屜開啟，底層頁面維持已封存頁
-
-<!-- @trace
-source: desktop-archived-parity
 updated: 2026-08-11
 -->
 
@@ -3247,31 +2542,6 @@ updated: 2026-10-09T12:33:58+08:00
 
 - **WHEN** 切換至先前造訪過的 workspace
 - **THEN** 立即顯示上次快照的資料，全程無 skeleton，重載完成後畫面靜默更新
-
-<!-- @trace
-source: desktop-loading-skeleton-ux
-updated: 2026-08-12
--->
-
----
-### Requirement: 抽屜文件載入以 skeleton 呈現
-
-詳情抽屜（變更、規格、討論、已封存）的各文件分頁 SHALL 統一區分文件三態：載入中 SHALL 渲染文件 skeleton（標題條與數行內文條），載入完成且檔案不存在才 SHALL 顯示該分頁的空態文案，載入完成且有內容 SHALL 渲染內容。任何文件分頁 SHALL NOT 於載入中顯示「無文件」類空態文案。
-
-#### Scenario: 文件載入中顯示骨架
-
-- **WHEN** 開啟抽屜的任一文件分頁且文件內容尚未抵達
-- **THEN** 該分頁顯示文件 skeleton，不顯示任何空態文案
-
-#### Scenario: 載入完成檔案不存在
-
-- **WHEN** 文件載入完成且該檔案不存在
-- **THEN** skeleton 消失，顯示該分頁既有的空態文案
-
-#### Scenario: 載入完成有內容
-
-- **WHEN** 文件載入完成且有內容
-- **THEN** skeleton 消失，內容以既有渲染路徑呈現
 
 <!-- @trace
 source: desktop-loading-skeleton-ux
@@ -3376,26 +2646,6 @@ change 卡片 SHALL 於「寫碼任務全完成且尚有未勾 `[M]` 任務」(c
 <!-- @trace
 source: manual-marker-scope-beyond-tests
 updated: 2026-08-14
--->
-
----
-### Requirement: 抽屜與浮層的開關動畫
-
-桌面 app 的抽屜（變更詳情、規格、已封存、討論）開啟時 SHALL 自右側滑入、遮罩淡入；關閉時 SHALL 反向滑出、遮罩淡出，動畫結束後才移除節點。浮層（popover、tooltip）SHALL 沿用同一套進出動畫工具。使用者系統偏好 prefers-reduced-motion 時，上述動畫 SHALL 停用，抽屜與浮層立即出現與消失。動畫 SHALL NOT 改變抽屜的焦點、關閉與內容行為。
-
-#### Scenario: 抽屜滑入與滑出
-
-- **WHEN** 使用者在任一頁開啟變更詳情、規格、已封存或討論抽屜，再關閉它
-- **THEN** 抽屜自右側滑入、遮罩淡入；關閉時滑出、遮罩淡出，動畫結束後節點移除
-
-#### Scenario: 減少動態偏好下無動畫
-
-- **WHEN** 系統設定 prefers-reduced-motion 後開啟任一抽屜
-- **THEN** 抽屜立即出現、無滑入動畫；關閉亦立即消失
-
-<!-- @trace
-source: desktop-manual-page
-updated: 2026-09-02
 -->
 
 ---
@@ -3520,125 +2770,6 @@ updated: 2026-09-16T14:57:15+08:00
 <!-- @trace
 source: add-change-plan-remote
 updated: 2026-09-17T15:34:04+08:00
--->
-
----
-### Requirement: 詳情抽屜的排程分頁
-
-change 詳情抽屜 SHALL 於「規格」分頁之後提供「排程」分頁（tw 標籤「排程」、en「Plan」）。清單項帶 `wave` 時分頁 SHALL 依序呈現四張卡片（與審查／驗證分頁同一種邊框卡片：標題列與內容區以分隔線分格），data-plan-section 依序為 wave、depends、overlaps、archive：波次卡（「第 N 波」＋同波其他變更名稱清單，無其他時顯示「本波只有這個變更」）；前置卡（標題列右側 SHALL 有狀態徽章——`blockedBy` 空時「可以開工」、非空時「等 N 項」且 title 列出前置名；內容為 dependsOn 每項一列，資料源 capability `setDepends` 為 true 時每列附移除鈕、底部附下拉選單列出候選變更供新增，選擇即寫入；空時「尚無前置」；`blockedBy` 含 `dependsOn` 以外的名稱（舊 server 以目錄級重疊判定阻擋）時 SHALL 另以一列唯讀列出這些名稱（tw「另需等待（server 依重疊判定）：」，不附移除鈕），讓徽章數字對得上卡片內容）；重疊卡（`requirementOverlap` 每項一列：對方變更名、`capability › requirement` 文字、雙方操作各一枚小標籤（用詞與配色同規格分頁的 delta 區段，如 MODIFIED 顯示「修改」；title 為該操作所屬的變更名），`conflict` 為 true 時加「同名衝突」標籤；空時「無重疊」；SHALL NOT 顯示目錄級 `overlaps`）；封存順序卡（`archiveAfter` 每項變更名，下方一句「先封存它們，再對照正式規格重寫同名 requirement 後封存本變更」；其中有變更也把本變更列入它的 `archiveAfter`（互相等待）時 SHALL 另加一句警示（tw「與 {names} 互相等待：兩邊都要先等對方封存，須調整拆分」）；`requirementOverlap` 有 `conflict` 為 true 的列時 SHALL 加一句同名衝突警示（tw「與 {names} 同名衝突：先改掉其中一邊，較晚封存的一方才不會被拒」）；`archiveAfter` 為空且無同名衝突時「可直接封存」）。分頁 SHALL NOT 渲染獨立的「阻擋」段。新增候選 SHALL 為該變更所在名冊中的其他作用中變更、扣除已宣告的前置：資料源提供名冊查詢時（local）SHALL 以查詢結果為準——該變更有 worktree 映射時名冊為其 worktree 副本、無映射時為主 checkout，與前置寫入作用的 store 相同；名冊查詢未完成時 SHALL NOT 渲染新增下拉；資料源未提供名冊查詢（remote，scope 只有一份名冊）或首次查詢（開啟抽屜、切換變更）失敗時 SHALL 自作用中變更清單派生；看板刷新後的重新查詢失敗時 SHALL 沿用前一次的查詢結果。新增或移除前置 SHALL 經資料源 `setDepends` 寫回該變更 meta 的 depends_on，成功後看板與分頁刷新；引擎拒絕（自依賴、不存在、已封存、成環）時 SHALL 以單行錯誤呈現引擎訊息、畫面不變。capability 為 false 時 SHALL NOT 渲染移除鈕與下拉選單。清單項缺 `wave` 且缺 `dependsOn`（remote 清單未取得 plan：舊 server、依賴成環或請求失敗）時分頁 SHALL 只顯示一句說明（tw「此模式尚未提供排程資訊」），不渲染四卡；缺 `wave` 但帶 `dependsOn`（local plan 成環）時 SHALL 顯示一句說明（tw「依賴成環，先移除一條前置才有排程資訊」）並只渲染前置卡（無狀態徽章；`dependsOn` 為空時照樣顯示「尚無前置」；capability 為 true 時附移除鈕、SHALL NOT 渲染新增下拉），讓使用者解環。`requirementOverlap` 與 `archiveAfter` 缺席但 `wave` 存在（舊 server）時重疊卡與封存順序卡 SHALL 顯示各自的空態文案。判定 SHALL 收斂於 packages/ui 階段派生模組的 planWave／planBlockedBy／planRequirementOverlap／planArchiveAfter 單一入口。
-
-#### Scenario: 排程分頁四段
-
-- **WHEN** 開啟 wave=2、dependsOn=["add-a"]、blockedBy=["add-a"]、requirementOverlap=[{change:"add-b",capability:"desktop-app",requirement:"看板與任務",ownOperation:"MODIFIED",otherOperation:"MODIFIED",conflict:false}]、archiveAfter=["add-b"] 的變更抽屜並切到排程分頁
-- **THEN** 依序顯示波次卡「第 2 波」、前置卡（徽章「等 1 項」、前置列 add-a 附移除鈕、新增下拉）、重疊卡一列（add-b、`desktop-app › 看板與任務`、兩枚「修改」標籤）、封存順序卡（add-b 與提示句），頁面無 data-plan-section="blocked"
-
-#### Scenario: 新增前置寫回
-
-- **WHEN** 於排程分頁的下拉選單選擇 add-c
-- **THEN** 該變更 .openspec.yaml 的 depends_on 含 add-c，分頁前置卡出現 add-c，看板順序刷新
-
-#### Scenario: 引擎拒絕新增
-
-- **WHEN** 於排程分頁選擇會成環的變更
-- **THEN** 顯示引擎的成環單行錯誤，前置卡不變，meta 檔不變
-
-#### Scenario: 成環時可移除前置
-
-- **WHEN** 清單 planError 非 null，開啟 dependsOn=["add-a"]（無 wave）的變更抽屜並切到排程分頁
-- **THEN** 顯示「依賴成環，先移除一條前置才有排程資訊」與前置卡的 add-a 列（附移除鈕），無狀態徽章、無新增下拉、無波次／重疊／封存順序卡；按移除鈕即寫回
-
-#### Scenario: remote 分頁唯讀
-
-- **WHEN** 於 capability setDepends 為 false 的資料源開啟抽屜排程分頁
-- **THEN** 不出現移除鈕與下拉選單，四卡照常顯示
-
-#### Scenario: worktree 映射時候選來自副本名冊
-
-- **WHEN** 主 checkout 且 worktree 政策開啟，add-dark-mode 已映射到 worktree，add-auth 在分支前建立、add-late 在分支後才於主 checkout 建立，開啟 add-dark-mode 的排程分頁
-- **THEN** 新增下拉選單含 add-auth、不含 add-late，看板清單仍列出 add-late
-
-#### Scenario: 重新查詢名冊失敗沿用前次結果
-
-- **WHEN** 排程分頁已以名冊 add-a、add-b 呈現候選（作用中變更清單另有 add-d，add-a 已是前置），看板刷新後名冊查詢失敗
-- **THEN** 新增下拉的候選仍只有 add-b，不出現 add-d
-
-#### Scenario: 可開工徽章與同名衝突標籤
-
-- **WHEN** 開啟 wave=1、blockedBy=[]、requirementOverlap=[{change:"add-x",capability:"auth",requirement:"登入",ownOperation:"ADDED",otherOperation:"ADDED",conflict:true}]、archiveAfter=[] 的變更抽屜並切到排程分頁
-- **THEN** 前置卡徽章為「可以開工」，重疊卡的 add-x 列帶「同名衝突」標籤與兩枚「新增」標籤，封存順序卡顯示「與 add-x 同名衝突：先改掉其中一邊，較晚封存的一方才不會被拒」且不顯示「可直接封存」
-
-#### Scenario: 舊 server 缺新欄位的空態
-
-- **WHEN** remote 清單項帶 wave 與 blockedBy 但無 requirementOverlap 與 archiveAfter
-- **THEN** 重疊卡顯示「無重疊」、封存順序卡顯示「可直接封存」，其餘兩卡照常
-
-#### Scenario: 舊 server 的重疊阻擋列在前置卡
-
-- **WHEN** remote 清單項 wave=2、dependsOn=[]、blockedBy=["add-a"]（舊 server 把先配置、共用 capability 的 add-a 算進阻擋），無 requirementOverlap 與 archiveAfter
-- **THEN** 前置卡徽章「等 1 項」、內容「尚無前置」與一列「另需等待（server 依重疊判定）：add-a」，該列無移除鈕；本機與新 server 的 blockedBy 只含宣告前置，不出現這一列
-
-#### Scenario: 互相等待時封存卡警示
-
-- **WHEN** add-a 的 archiveAfter=["add-b"]、add-b 的 archiveAfter=["add-a"]，開啟 add-a 的排程分頁
-- **THEN** 封存順序卡列 add-b 與提示句，另顯示「與 add-b 互相等待：兩邊都要先等對方封存，須調整拆分」；單向的 archiveAfter 不出現這句警示
-
-#### Scenario: 成環時環外變更的前置卡空態
-
-- **WHEN** 清單 planError 非 null，開啟 dependsOn=[]（無 wave）的環外變更抽屜並切到排程分頁
-- **THEN** 顯示「依賴成環，先移除一條前置才有排程資訊」與前置卡「尚無前置」，無狀態徽章、無新增下拉
-
-
-<!-- @trace
-source: plan-requirement-overlap-desktop
-updated: 2026-09-25T08:29:21+08:00
--->
-
----
-### Requirement: 詳情抽屜的工單分頁
-
-change 詳情抽屜 SHALL 於「排程」分頁之後提供兩個條件式分頁：清單項 `reviewStatus` 為 `inReview` 時 SHALL 出現「審查」分頁（tw「審查」、en「Review」），`verifyStatus` 為 `inVerify` 時 SHALL 出現「驗證」分頁（tw「驗證」、en「Verify」），審查分頁在前；兩者皆非時 SHALL NOT 渲染這兩個分頁，分頁列維持提案／設計／任務／規格／排程。分頁內容 SHALL 為該站工單的結構化呈現：段標題含站名、「第 N 輪」（N 為末輪序號）、末輪階段詞與末輪三級計數（CRITICAL／WARNING／SUGGESTION 各自的條數，標籤維持英文）；輪次依序號升序逐輪可收合，末輪預設展開、其餘預設收合；每輪標題含「第 N 輪」、階段詞（`phase` 為 `discovery` 顯示 tw「首輪」en「First pass」、`validation` 顯示 tw「複驗」en「Re-check」、`null` 不顯示階段詞）、「範圍 N 檔」（展開後列出 scope 路徑，原樣顯示、不做平台轉換）與 findings 條數；每條 finding 一列，含嚴重度色章（CRITICAL 紅、WARNING 琥珀、SUGGESTION 灰）、路徑（等寬字）與描述原文（不翻譯、不截斷）；描述以結構 token `(accepted)` 結尾時 SHALL 去掉 token 並附「已接受」籤，token 出現於行中時 SHALL 原樣顯示；零 findings 的輪 SHALL 顯示「本輪無發現」。工單 SHALL 於分頁出現時載入，並隨外部檔案變更重新載入；載入三態依「抽屜文件載入以 skeleton 呈現」；載入完成而無工單（不存在、遠端 404、讀取或解析失敗）時 SHALL 顯示分頁空態「工單尚未抵達或已被刪除」而非錯誤。工單資料 SHALL 為 `{ rounds: [{ index, phase, patchHash, scope, findings: [{ severity, path, text }] }] }`，欄位名與型別與 CLI `speclink review show --json` 的 `rounds` 相同；本機（含 worktree 覆蓋層）與遠端、活變更與已封存 SHALL 回同一形狀。遠端活變更 SHALL 以 `GET /changes/{name}/review`／`verify` 取得結構化輪次，SHALL NOT 放寬 `artifact cat` 的 artifact 名白名單。看板刷新後對應狀態翻為非進行中時，該分頁 SHALL 消失；使用者正停在該分頁時 SHALL 切回「提案」分頁。分頁 SHALL 為唯讀，SHALL NOT 提供蓋章、放棄或追加輪的操作。
-
-#### Scenario: 審查工單分頁出現並結構化呈現
-
-- **WHEN** 開啟 `reviewStatus: "inReview"`、`verifyStatus: "none"` 的變更抽屜，工單含 Round 1（`phase: "discovery"`，scope 3 檔，findings 兩條 WARNING）與 Round 2（`phase: "validation"`，scope 3 檔，findings 一條 WARNING 描述結尾 `(accepted)`、一條 SUGGESTION）
-- **THEN** 分頁列為提案／設計／任務／規格／排程／審查，無「驗證」分頁；切到「審查」分頁後段標題顯示「審查 · 第 2 輪（複驗）CRITICAL 0 · WARNING 1 · SUGGESTION 1」；第 2 輪展開列兩條 finding，WARNING 那條附「已接受」籤且描述不含 `(accepted)`；第 1 輪收合、標題顯示「第 1 輪 · 首輪 · 範圍 3 檔 · 2 條」
-
-##### Example: 階段詞與 accepted token
-
-| round.phase | 顯示階段詞（tw） | finding.text | 顯示描述 | 已接受籤 |
-| ----------- | ---------------- | ------------ | -------- | -------- |
-| discovery | 首輪 | Correctness: 未處理空清單 | Correctness: 未處理空清單 | 無 |
-| validation | 複驗 | Standards: 命名不一致 (accepted) | Standards: 命名不一致 | 有 |
-| null | （不顯示） | Standards: (accepted) 語意不清 | Standards: (accepted) 語意不清 | 無 |
-
-#### Scenario: 兩站皆進行中出現兩個分頁
-
-- **WHEN** 開啟 `reviewStatus: "inReview"` 且 `verifyStatus: "inVerify"` 的變更抽屜
-- **THEN** 分頁列於「排程」後依序為「審查」「驗證」，各自載入對應站的工單，兩分頁內容互不混入
-
-#### Scenario: 無工單時分頁缺席
-
-- **WHEN** 開啟 `reviewStatus: "reviewed"`、`verifyStatus: "none"` 的變更抽屜
-- **THEN** 分頁列維持提案／設計／任務／規格／排程五個，無「審查」與「驗證」分頁，且未發出工單讀取請求
-
-#### Scenario: 工單被刪時分頁退場
-
-- **WHEN** 使用者停在 `inReview` 變更的「審查」分頁，其後工單被蓋章刪除、看板刷新後該變更 `reviewStatus` 翻為 `reviewed`
-- **THEN** 「審查」分頁自分頁列消失，抽屜切回「提案」分頁，狀態列章籤改為「已審查」
-
-#### Scenario: 遠端工單 404 顯示空態
-
-- **WHEN** 於 remote 資料源開啟 `inReview` 變更抽屜並切到「審查」分頁，server 對 `GET /changes/{name}/review` 回 404
-- **THEN** 分頁仍在，skeleton 消失後顯示「工單尚未抵達或已被刪除」，無錯誤彈窗
-
-#### Scenario: 工單追加輪後分頁更新
-
-- **WHEN** 「審查」分頁開啟中，外部以 `speclink review add-round` 追加 Round 3
-- **THEN** 檔案變更觸發重新載入，段標題改為「第 3 輪」，第 3 輪展開、第 2 輪與第 1 輪收合
-
-<!-- @trace
-source: drawer-quality-ticket-tab
-updated: 2026-09-22T15:13:01+08:00
 -->
 
 ---
@@ -3929,4 +3060,556 @@ updated: 2026-10-09T21:29:17+08:00
 <!-- @trace
 source: desktop-native-menu
 updated: 2026-10-09T21:29:17+08:00
+-->
+
+---
+### Requirement: 詳情頁互斥
+
+桌面 app SHALL 保證同時僅一個詳情頁（變更詳情、規格、已封存、討論）開啟：任一詳情頁開啟中，自任何入口（看板卡片、規格清單、已封存頁、系統匣選單與面板、頁內跳轉、‹ › 切換）開啟另一個詳情頁時，先開者 SHALL 關閉、由後開者取代顯示，SHALL NOT 疊加顯示、SHALL NOT 拒開。此互斥 SHALL 由狀態層的開啟動作保證——每個開啟動作於設定自身選定狀態時同時清除其他詳情頁的選定狀態；SHALL NOT 依賴各呼叫端入口自行先關再開。
+
+變更詳情頁與討論詳情頁的開啟動作 SHALL 同時收掉可取消浮層：新增專案對話框、初始化確認框、啟用確認框、封存確認框（含品質關卡工單三選項框）、封存討論確認框、刪除確認框、退回提案中確認框、退回被擋說明框、更新日誌對話框、技能檔提示確認框。收掉的語意 SHALL 與使用者按該浮層的「取消」或「關閉」相同——SHALL NOT 送出任何未確認的動作；更新日誌於 whatsNew 模式被收掉時 SHALL NOT 記為已看過。此保證 SHALL 同樣由狀態層的開啟動作承擔，自任何入口開啟結果 SHALL 一致。
+
+不可取消浮層（遷移對話框、遠端衝突對話框）開啟中，變更詳情頁與討論詳情頁的開啟動作 SHALL NOT 改變任何狀態：浮層維持、頁不開、宿主頁面不切換；自系統匣觸發時主視窗 SHALL 仍顯示到前景。規格詳情頁與已封存詳情頁的開啟動作 SHALL NOT 受本段約束（其宿主頁為規格頁與已封存頁）。
+
+#### Scenario: 討論詳情頁開啟中自系統匣開啟變更詳情
+
+- **WHEN** 討論詳情頁開啟中，使用者自系統匣開啟某 change 的詳情頁
+- **THEN** 討論詳情頁關閉，僅變更詳情頁可見
+
+#### Scenario: 任兩種詳情頁交錯開啟
+
+- **WHEN** 任一詳情頁開啟中，使用者自任何入口開啟另一種詳情頁
+- **THEN** 先開者關閉、後開者顯示，同時僅一個詳情頁可見
+
+##### Example: 四種詳情頁互斥狀態轉移
+
+| 開啟中的詳情頁 | 開啟動作         | 結果                       |
+| -------------- | ---------------- | -------------------------- |
+| 討論           | 開啟變更詳情     | 討論關閉，僅變更詳情可見   |
+| 變更詳情       | 開啟規格         | 變更詳情關閉，僅規格可見   |
+| 規格           | 開啟已封存       | 規格關閉，僅已封存可見     |
+| 已封存         | 開啟討論         | 已封存關閉，僅討論可見     |
+
+#### Scenario: 新增專案對話框開啟中自系統匣開啟變更詳情
+
+- **WHEN** 新增專案對話框開啟中，使用者自系統匣面板或原生選單選「開啟此變更」
+- **THEN** 對話框關閉（未開啟任何專案）、變更詳情頁開啟、宿主為看板，畫面沒有任何浮層
+
+#### Scenario: 可取消確認框開啟中開啟討論詳情頁
+
+- **WHEN** 初始化確認、啟用確認、封存確認（含工單三選項框）、封存討論確認、刪除確認、退回提案中確認、退回被擋說明或技能檔提示確認任一開啟中，使用者自任何入口開啟某討論
+- **THEN** 該確認框關閉且未送出任何動作，討論詳情頁開啟
+
+##### Example: 可取消浮層與開啟動作的狀態轉移
+
+| 開啟中的浮層 | 開啟動作     | 結果                                   |
+| ------------ | ------------ | -------------------------------------- |
+| 新增專案     | 開啟變更詳情 | 對話框關閉、詳情頁開啟、無專案被開啟   |
+| 封存確認     | 開啟討論     | 確認框關閉、詳情頁開啟、無封存發生     |
+| 工單三選項框 | 開啟變更詳情 | 三選項框關閉、詳情頁開啟、工單維持未結 |
+| 刪除確認（change A） | 開啟討論 | 確認框關閉、詳情頁開啟、change A 未被刪除 |
+| 更新日誌（whatsNew） | 開啟討論 | 對話框關閉、詳情頁開啟、下次啟動仍彈出 |
+| 技能檔提示確認 | 開啟變更詳情 | 確認框關閉、詳情頁開啟、技能檔未改寫 |
+
+#### Scenario: 更新日誌對話框開啟中自系統匣開啟變更詳情
+
+- **WHEN** 更新日誌對話框開啟中，使用者自系統匣開啟某 change 的詳情頁
+- **THEN** 更新日誌對話框關閉、變更詳情頁開啟；whatsNew 模式下 SHALL NOT 記為已看過
+
+#### Scenario: 遷移進行中自系統匣開啟變更詳情
+
+- **WHEN** 遷移對話框開啟中，使用者自系統匣面板選「開啟此變更」
+- **THEN** 主視窗顯示到前景、遷移對話框維持、變更詳情頁不開、宿主頁面不變
+
+#### Scenario: 遠端衝突對話框開啟中開啟討論
+
+- **WHEN** 遠端衝突對話框開啟中，使用者自任何入口開啟某討論
+- **THEN** 衝突對話框維持、討論詳情頁不開、任何狀態不變
+
+<!-- @trace
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
+-->
+
+---
+### Requirement: 討論詳情頁檢視與轉出變更
+
+點擊討論卡或細列 SHALL 開啟討論詳情頁。頁標題 SHALL 以討論 slug 為題（等寬字型）、緊跟複製 slug 鈕與狀態籤（討論中／已結論／已轉出／已轉出・尚無結論／已轉出・保留中，判準與看板討論卡一致），topic SHALL 為標題下方的一行文字（slug 為題屬 openspec/LANGUAGE.md 明載的受控例外）；出身列 SHALL 依序呈現建立者頭像＋名字、「N 輪」與建立日，缺席的段整段缺席。標題列右端 SHALL 為動作區：concluded 且未封存的討論、以及已轉出且保留在途（hold 為 true）的討論呈現「封存」動作；保留在途時「封存」SHALL 停用並以提示說明結論保留在途、最後一刀轉出後自動封存；其餘（討論中、已轉出且未保留、已封存）的討論 SHALL NOT 呈現封存動作。
+
+標題區之下 SHALL 為「狀態」卡：「階段」列為步驟列「討論中 → 已結論 → 已轉出 → 已封存」且現站可辨識（promoted 為已轉出、concluded 為已結論、其餘為討論中；已封存站保留給已封存討論頁）；hold 為 true 時 SHALL 另有「保留在途」列呈現說明；promoted_to 非空時 SHALL 另有「衍生變更」列，每個子變更一顆可點等寬籤並附階段籤（階段派生與配色同「討論於看板第 0 欄兩級呈現」的 chip 矩陣），點籤 SHALL 開啟該變更的詳情頁；無衍生變更時該列缺席。
+
+分頁 SHALL 為內容卡的標頭，依序為：結論、討論過程 N、背景、衍生變更 N——前三者呈現記錄文件對應區段（區段缺失或格式非預期時 SHALL 整篇以單一檢視退回而非報錯）；記錄切分成功且結論區段非空時 SHALL 預設開啟「結論」分頁，結論為空時預設「背景」。衍生變更分頁 SHALL 列出各子變更現況與跳轉，且 SHALL 為唯讀——SHALL NOT 提供「轉為變更」或「再轉出一個變更」動作。concluded 且未封存討論的封存動詞 SHALL 於討論卡與討論詳情頁皆可及，兩處 SHALL 走同一確認流程，經確認後將討論移入封存。GUI SHALL NOT 提供 conclude、add-round、new、discard、轉為變更（promote）——討論的推進、結論撰寫與轉出變更屬 agent 與 CLI。來自討論的變更卡 SHALL 帶討論徽章，其詳情頁 SHALL 顯示來源討論與同源變更清單並可互跳。
+
+#### Scenario: 頁標題以 slug 為題且可複製
+
+- **WHEN** 使用者開啟任一討論的詳情頁並點按標題旁的複製鈕
+- **THEN** 頁標題呈現該討論的 slug（等寬字型）、其下一行呈現 topic；slug 寫入剪貼簿並短暫顯示已複製回饋
+
+#### Scenario: 有結論的討論預設開啟結論分頁
+
+- **WHEN** 使用者開啟一筆已結論（結論區段非空）討論的詳情頁
+- **THEN** 內容卡標頭顯示分頁 結論／討論過程 N／背景／衍生變更，且預設呈現結論內容；狀態卡的階段列以「已結論」為現站
+
+#### Scenario: 狀態卡的保留與衍生列
+
+- **WHEN** 使用者開啟一筆已轉出、已有結論、hold 為 true、promoted_to 含一個已封存與一個進行中子變更的討論詳情頁
+- **THEN** 標題列狀態籤為「已轉出・保留中」；階段列現站為「已轉出」；「保留在途」列呈現說明；「衍生變更」列兩顆籤分別附「已封存」與「進行中」階段籤，點進行中那顆開啟該變更的詳情頁；「封存」動作停用並有提示
+
+#### Scenario: 衍生變更分頁唯讀且無轉出動作
+
+- **WHEN** 使用者開啟一筆已結論或已轉出討論的衍生變更分頁
+- **THEN** 分頁列出各子變更現況與跳轉按鈕，但不呈現「轉為變更」或「再轉出一個變更」按鈕
+
+#### Scenario: GUI 不提供轉出等寫入動詞
+
+- **WHEN** 使用者檢視任一討論詳情頁或討論卡
+- **THEN** 介面不提供 conclude、add-round、轉為變更等寫入動作，轉出變更改由 CLI 或 agent 執行
+
+#### Scenario: 同源 change 互跳
+
+- **WHEN** 使用者開啟一個 from_discussion 非空的變更詳情頁
+- **THEN** 出身列顯示來源討論的 slug 籤（topic 於提示呈現）與同源變更籤，點擊同源籤開啟該變更的詳情頁
+
+#### Scenario: 頁內封存 concluded 討論
+
+- **WHEN** 使用者開啟一筆已結論、未封存且無 hold 討論的詳情頁，點「封存」並於確認對話框確認
+- **THEN** 該討論移入封存：自討論欄消失、出現於已封存頁討論節，與自討論卡封存的效果一致；詳情頁關閉回看板
+
+<!-- @trace
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
+-->
+
+---
+### Requirement: 詳情頁標頭標記受寬度約束且頁不產生水平捲軸
+
+變更詳情頁與已封存詳情頁的標頭中,來源討論標記 SHALL 以討論 slug 直出(等寬字型),topic SHALL NOT 於標記面直出。標記 SHALL 設寬度上限:slug 超出上限時 SHALL 以截斷呈現,SHALL NOT 使標記寬度超出頁內容區。標記 SHALL 以主題化提示呈現完整 slug 與 topic,使用者 SHALL 能取得未截斷的原始內容。多份來源討論 SHALL NOT 各自換行——僅第一份直接顯示,其餘收進「+N」數字籤與其浮層(呈現規則見「變更的來源討論多值呈現」)。詳情頁 SHALL NOT 於水平方向產生捲軸——不論標頭標記、動作列或內文包含多長的單一元素,詳情頁的標頭、動作列與內文 SHALL 維持在可視寬度內。此約束 SHALL 同時套用於變更詳情頁與已封存詳情頁,SHALL NOT 只在其中一處成立。
+
+來源討論標記的資料來源、數量、排序,以及點擊(標記或浮層項)後開啟對應討論的行為 SHALL 維持不變。
+
+#### Scenario: 長討論 topic 不撐寬詳情頁
+
+- **WHEN** 使用者開啟一個來源討論的 topic 長度遠超過詳情頁寬度的變更,其詳情頁
+- **THEN** 該來源討論標記顯示 slug 而非 topic,寬度不超出頁內容區,詳情頁沒有水平捲軸,標頭、動作列與內文皆維持在可視寬度內
+
+#### Scenario: 截斷後仍可取得完整 topic
+
+- **WHEN** 使用者將指標停留在來源討論標記上
+- **THEN** 主題化提示呈現該討論完整的 slug 與 topic 文字
+
+#### Scenario: 已封存詳情頁適用同一約束
+
+- **WHEN** 使用者於已封存頁開啟同一個變更的詳情頁
+- **THEN** 來源討論標記同樣以 slug 直出、多份時溢出收「+N」籤,詳情頁沒有水平捲軸
+
+#### Scenario: 超長 slug 截斷呈現
+
+- **WHEN** 使用者開啟來源討論 slug 長於標記寬度上限的變更,其詳情頁
+- **THEN** 該標記以截斷呈現且寬度不超出上限,提示保有完整 slug 與 topic;點擊標記開啟對應討論的詳情頁
+
+##### Example: 標記呈現與詳情頁捲軸
+
+| 情境                 | 標記面呈現                  | 提示           | 詳情頁水平捲軸 |
+| -------------------- | --------------------------- | -------------- | ------------ |
+| slug 短於寬度上限    | slug 完整                   | slug 與 topic  | 無           |
+| slug 超過寬度上限    | slug 截斷                   | slug 與 topic  | 無           |
+| 多份來源討論         | 首份 slug+「+N」籤,單行     | 各籤 slug 與 topic | 無       |
+
+<!-- @trace
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
+-->
+
+---
+### Requirement: 詳情頁的封存與刪除依階段守門
+
+變更詳情頁「⋯」選單的「封存」項 SHALL 僅於該 change 派生階段為已就緒時可選；非已就緒時 SHALL 呈現停用並於項目下方以灰字說明原因（載明任務進度與「完成後才能封存」的出路）。已就緒時標題列另 SHALL 呈現「封存」主要鈕，與選單項同一守門。「刪除」項 SHALL 置於選單底部、以警示色呈現，僅於派生階段為提案中時可選；非提案中時 SHALL 呈現停用並說明原因（載明已有開工痕跡與「先退回提案中」的出路）。remote session 下對應能力缺失時，能力缺失原因 SHALL 優先於階段原因呈現。守門為呈現層過濾：可按期間階段已於外部改變（併發寫入）時，引擎拒絕 SHALL 為最終裁決，依既有失敗 toast 語意呈現。桌面 SHALL NOT 提供任何略過守門的強制通道。
+
+#### Scenario: 非已就緒的封存項停用附原因
+
+- **WHEN** 使用者開啟提案中（0/11）與進行中（5/19）change 的詳情頁並展開「⋯」選單
+- **THEN** 兩者「封存」項皆停用，項目下方各載明任務進度與完成後才能封存；標題列無「封存」主要鈕。已就緒 change 的「封存」項與標題列主要鈕照常可按並走既有確認流程
+
+#### Scenario: 非提案中的刪除項停用附原因
+
+- **WHEN** 使用者開啟進行中 change 的詳情頁並展開「⋯」選單
+- **THEN** 「刪除」項停用，項目下方載明已有開工痕跡並指向先退回提案中；提案中 change 的「刪除」項照常可按
+
+#### Scenario: 併發階段變化由引擎拒絕保底
+
+- **WHEN** 封存可按期間另一 session 於 tasks.md 取消勾選一個任務，使用者隨後確認封存
+- **THEN** 引擎拒絕封存，app 依既有失敗 toast 語意呈現拒絕訊息，change 仍在看板、詳情頁維持開啟
+
+<!-- @trace
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
+-->
+
+---
+### Requirement: 變更詳情頁的標頭與狀態卡
+
+變更詳情頁的內容欄 SHALL 置中、寬 768px，由上而下為：標題列、出身列、「狀態」卡、分析結果卡（有分析結果時）、內容卡（分頁列為其標頭）。標題列 SHALL 為 22px 等寬變更名（單行截斷）緊跟複製名稱鈕與章籤，同列右端為動作區：「分析」、依派生階段的鈕（進行中「退回提案中」、已就緒「封存」、remote 可認領時「認領」）與「⋯」選單。審查或驗證狀態非 `none` 時 SHALL 以狀態籤呈現章籤（審查在前、驗證在後，圖示＋狀態詞，i18n 沿用既有詞條）；蓋章日期與蓋章者完整識別（含 email）SHALL 收進主題化提示，可視文字 SHALL NOT 直出 email 與日期；狀態為 `none` 時不渲染章籤。標題列與出身列 SHALL NOT 顯示任務計數——任務進度由狀態卡與任務分頁徽章承載。
+
+出身列 SHALL 為單行灰字，依序呈現：建立者頭像＋名字、產生工具、建立相對時間、「開工 YYYY-MM-DD」（有開工戳記時）、「來自」與來源討論籤（有來源討論時）、「同源」與同源變更籤（有同源變更時）；缺席的資訊段 SHALL 整段缺席而非留白。建立者與開工者的完整識別（含 email）SHALL 收進主題化提示，可視文字 SHALL NOT 直出 email。標題列與出身列於任何資料組合下 SHALL 維持單行，SHALL NOT 折行、SHALL NOT 使頁出現水平捲軸。
+
+「狀態」卡 SHALL 為三列細線分隔、左標籤右內容：「任務進度」列呈現進度條與 `n/m · p%`；「品質關卡」列呈現各站章籤各帶蓋章日期（`inReview`／`inVerify` 僅狀態詞；兩站皆 `none` 時灰字「尚未經過品質關卡」）；「排程」列於清單項帶 `wave` 時呈現「第 N 波」與前置說明（`blockedBy` 空為「可以開工」、非空為「等 N 項」），缺 `wave` 時沿用排程分頁的說明詞條。
+
+#### Scenario: 標頭結構與任務計數位置
+
+- **WHEN** 使用者開啟任一變更的詳情頁
+- **THEN** 內容欄由上而下為標題列、出身列、「狀態」卡、內容卡；標題列與出身列可視文字不含任務計數，狀態卡「任務進度」列與任務分頁徽章呈現任務進度
+
+#### Scenario: 章籤與品質關卡列
+
+- **WHEN** 使用者開啟 reviewStatus 為 reviewed 且 verifyStatus 為 verified、兩站蓋章者皆含 email 的變更詳情頁
+- **THEN** 標題列顯示「已審查」「已驗證」兩枚章籤；狀態卡「品質關卡」列顯示兩枚章籤各帶蓋章日期；將指標停留於標題列章籤時，主題化提示顯示該站蓋章日期與含 email 的完整識別；標題列維持單行、頁無水平捲軸
+
+#### Scenario: 品質關卡列的空態與進行中
+
+- **WHEN** 使用者分別開啟 reviewStatus 與 verifyStatus 皆為 none、以及 reviewStatus 為 inReview 的變更詳情頁
+- **THEN** 前者標題列無章籤、「品質關卡」列顯示「尚未經過品質關卡」；後者標題列與「品質關卡」列顯示「審查中」且無日期
+
+#### Scenario: 排程列
+
+- **WHEN** 使用者開啟 wave=2、blockedBy=["add-a"] 的變更詳情頁
+- **THEN** 「排程」列顯示「第 2 波」與「等 1 項」；wave 缺席的變更改顯排程分頁的說明詞條
+
+#### Scenario: email 收進提示
+
+- **WHEN** 使用者開啟 created_by 含 email 的變更詳情頁，並將指標停留於建立者名字
+- **THEN** 出身列可視文字僅顯示頭像與名字，主題化提示呈現含 email 的完整識別；開工者的完整識別亦僅於提示呈現
+
+#### Scenario: 出身列恆定單行
+
+- **WHEN** 使用者開啟一個有 4 份來源討論、有開工戳記且有同源變更的變更詳情頁
+- **THEN** 出身列維持單行——直接顯示出身討論籤與「+N」籤，不折行，頁無水平捲軸
+
+<!-- @trace
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
+-->
+
+---
+### Requirement: 討論詳情頁的改進標示
+
+討論詳情頁 SHALL 於 kind 為 improve 時顯示改進標示,文案與卡片 tooltip 使用同一 i18n 詞條;一般討論的詳情頁 SHALL NOT 顯示該標示。
+
+#### Scenario: 改進討論詳情頁
+
+- **WHEN** 開啟 kind 為 improve 的討論詳情頁(語言 tw)
+- **THEN** 詳情頁顯示「改進討論」標示
+
+#### Scenario: 一般討論詳情頁無標示
+
+- **WHEN** 開啟無 kind 欄位的討論詳情頁
+- **THEN** 詳情頁不顯示改進標示,與本變更引入前的渲染一致
+
+<!-- @trace
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
+-->
+
+---
+### Requirement: 變更與討論詳情頁的宿主為看板
+
+變更詳情頁與討論詳情頁的開啟動作 SHALL 於設定選定狀態的同一次狀態更新內，把宿主頁切回看板——不論開啟入口（看板卡片、系統匣選單與面板、頁內跳轉、封存前確認對話框的「去蓋章」）與開啟當下所在頁面（規格頁、已封存頁、專案設定頁、應用程式設定頁）。此歸位 SHALL 由狀態層的開啟動作保證，SHALL NOT 依賴各呼叫端入口自行切頁。規格詳情頁與已封存詳情頁 SHALL NOT 在此列——其宿主為開啟當下所在的規格頁、已封存頁或手冊頁，開啟時宿主頁面 SHALL 維持不變。
+
+詳情頁開啟期間宿主頁 SHALL 保持掛載但不可見、不可互動（鍵盤與指標皆不可達）；關閉詳情頁後宿主頁 SHALL 以開啟前的捲動位置、搜尋字串與篩選狀態呈現，SHALL NOT 重新載入或重置。
+
+#### Scenario: 已封存頁自系統匣開啟變更詳情
+
+- **WHEN** 使用者身處已封存頁，自系統匣點擊某活躍 change 的「開啟此變更」
+- **THEN** 主視窗前置、宿主頁切回看板、該 change 的詳情頁開啟——關閉詳情頁後所見為看板而非已封存頁
+
+#### Scenario: 規格頁開啟討論詳情頁落回看板
+
+- **WHEN** 使用者身處規格頁，經任一入口開啟某活躍討論的詳情頁
+- **THEN** 宿主頁切回看板、討論詳情頁開啟
+
+#### Scenario: 已封存頁開啟已封存詳情頁不切頁
+
+- **WHEN** 使用者於已封存頁點擊一筆封存變更列
+- **THEN** 已封存詳情頁開啟，宿主頁面維持已封存頁
+
+#### Scenario: 關閉詳情頁後看板狀態保留
+
+- **WHEN** 使用者於看板輸入搜尋字串、啟用一個篩選並把「進行中」欄捲到底，點一張卡開詳情頁，再按 Esc
+- **THEN** 看板重新可見且搜尋字串、篩選與該欄捲動位置與開頁前相同；詳情頁開啟期間看板不可見且無法以 Tab 鍵聚焦
+
+<!-- @trace
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
+-->
+
+---
+### Requirement: 詳情頁文件載入以 skeleton 呈現
+
+詳情頁（變更、規格、討論、已封存）的各文件分頁 SHALL 統一區分文件三態：載入中 SHALL 渲染文件 skeleton（標題條與數行內文條），載入完成且檔案不存在才 SHALL 顯示該分頁的空態文案，載入完成且有內容 SHALL 渲染內容。任何文件分頁 SHALL NOT 於載入中顯示「無文件」類空態文案。
+
+#### Scenario: 文件載入中顯示骨架
+
+- **WHEN** 開啟詳情頁的任一文件分頁且文件內容尚未抵達
+- **THEN** 該分頁顯示文件 skeleton，不顯示任何空態文案
+
+#### Scenario: 載入完成檔案不存在
+
+- **WHEN** 文件載入完成且該檔案不存在
+- **THEN** skeleton 消失，顯示該分頁既有的空態文案
+
+#### Scenario: 載入完成有內容
+
+- **WHEN** 文件載入完成且有內容
+- **THEN** skeleton 消失，內容以既有渲染路徑呈現
+
+<!-- @trace
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
+-->
+
+---
+### Requirement: 詳情頁與浮層的進出動畫
+
+桌面 app 的詳情頁（變更、討論、規格、已封存）開啟時 SHALL 以 150ms 淡入並自下方 4px 位移到位；關閉時 SHALL 直接移除節點，無退場動畫。浮層（popover、tooltip、對話框、選單）SHALL 沿用元件庫既有的進出動畫。使用者系統偏好 prefers-reduced-motion 時，上述動畫 SHALL 停用，詳情頁與浮層立即出現與消失。動畫 SHALL NOT 改變詳情頁的焦點、關閉與內容行為。
+
+#### Scenario: 詳情頁進場
+
+- **WHEN** 使用者在看板開啟變更詳情頁，再按 Esc 關閉
+- **THEN** 詳情頁淡入並自下方微位移到位；關閉時立即消失、看板立即可見
+
+#### Scenario: 減少動態偏好下無動畫
+
+- **WHEN** 系統設定 prefers-reduced-motion 後開啟任一詳情頁
+- **THEN** 詳情頁立即出現、無淡入與位移；浮層亦立即出現與消失
+
+<!-- @trace
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
+-->
+
+---
+### Requirement: 詳情頁的排程分頁
+
+change 詳情頁 SHALL 於「規格」分頁之後提供「排程」分頁（tw 標籤「排程」、en「Plan」）。清單項帶 `wave` 時分頁 SHALL 依序呈現四張卡片（與審查／驗證分頁同一種邊框卡片：標題列與內容區以分隔線分格），data-plan-section 依序為 wave、depends、overlaps、archive：波次卡（「第 N 波」＋同波其他變更名稱清單，無其他時顯示「本波只有這個變更」）；前置卡（標題列右側 SHALL 有狀態徽章——`blockedBy` 空時「可以開工」、非空時「等 N 項」且 title 列出前置名；內容為 dependsOn 每項一列，資料源 capability `setDepends` 為 true 時每列附移除鈕、底部附下拉選單列出候選變更供新增，選擇即寫入；空時「尚無前置」；`blockedBy` 含 `dependsOn` 以外的名稱（舊 server 以目錄級重疊判定阻擋）時 SHALL 另以一列唯讀列出這些名稱（tw「另需等待（server 依重疊判定）：」，不附移除鈕），讓徽章數字對得上卡片內容）；重疊卡（`requirementOverlap` 每項一列：對方變更名、`capability › requirement` 文字、雙方操作各一枚小標籤（用詞與配色同規格分頁的 delta 區段，如 MODIFIED 顯示「修改」；title 為該操作所屬的變更名），`conflict` 為 true 時加「同名衝突」標籤；空時「無重疊」；SHALL NOT 顯示目錄級 `overlaps`）；封存順序卡（`archiveAfter` 每項變更名，下方一句「先封存它們，再對照正式規格重寫同名 requirement 後封存本變更」；其中有變更也把本變更列入它的 `archiveAfter`（互相等待）時 SHALL 另加一句警示（tw「與 {names} 互相等待：兩邊都要先等對方封存，須調整拆分」）；`requirementOverlap` 有 `conflict` 為 true 的列時 SHALL 加一句同名衝突警示（tw「與 {names} 同名衝突：先改掉其中一邊，較晚封存的一方才不會被拒」）；`archiveAfter` 為空且無同名衝突時「可直接封存」）。分頁 SHALL NOT 渲染獨立的「阻擋」段。新增候選 SHALL 為該變更所在名冊中的其他作用中變更、扣除已宣告的前置：資料源提供名冊查詢時（local）SHALL 以查詢結果為準——該變更有 worktree 映射時名冊為其 worktree 副本、無映射時為主 checkout，與前置寫入作用的 store 相同；名冊查詢未完成時 SHALL NOT 渲染新增下拉；資料源未提供名冊查詢（remote，scope 只有一份名冊）或首次查詢（開啟詳情頁、切換變更）失敗時 SHALL 自作用中變更清單派生；看板刷新後的重新查詢失敗時 SHALL 沿用前一次的查詢結果。新增或移除前置 SHALL 經資料源 `setDepends` 寫回該變更 meta 的 depends_on，成功後看板與分頁刷新；引擎拒絕（自依賴、不存在、已封存、成環）時 SHALL 以單行錯誤呈現引擎訊息、畫面不變。capability 為 false 時 SHALL NOT 渲染移除鈕與下拉選單。清單項缺 `wave` 且缺 `dependsOn`（remote 清單未取得 plan：舊 server、依賴成環或請求失敗）時分頁 SHALL 只顯示一句說明（tw「此模式尚未提供排程資訊」），不渲染四卡；缺 `wave` 但帶 `dependsOn`（local plan 成環）時 SHALL 顯示一句說明（tw「依賴成環，先移除一條前置才有排程資訊」）並只渲染前置卡（無狀態徽章；`dependsOn` 為空時照樣顯示「尚無前置」；capability 為 true 時附移除鈕、SHALL NOT 渲染新增下拉），讓使用者解環。`requirementOverlap` 與 `archiveAfter` 缺席但 `wave` 存在（舊 server）時重疊卡與封存順序卡 SHALL 顯示各自的空態文案。判定 SHALL 收斂於 packages/ui 階段派生模組的 planWave／planBlockedBy／planRequirementOverlap／planArchiveAfter 單一入口。
+
+#### Scenario: 排程分頁四段
+
+- **WHEN** 開啟 wave=2、dependsOn=["add-a"]、blockedBy=["add-a"]、requirementOverlap=[{change:"add-b",capability:"desktop-app",requirement:"看板與任務",ownOperation:"MODIFIED",otherOperation:"MODIFIED",conflict:false}]、archiveAfter=["add-b"] 的變更詳情頁並切到排程分頁
+- **THEN** 依序顯示波次卡「第 2 波」、前置卡（徽章「等 1 項」、前置列 add-a 附移除鈕、新增下拉）、重疊卡一列（add-b、`desktop-app › 看板與任務`、兩枚「修改」標籤）、封存順序卡（add-b 與提示句），頁面無 data-plan-section="blocked"
+
+#### Scenario: 新增前置寫回
+
+- **WHEN** 於排程分頁的下拉選單選擇 add-c
+- **THEN** 該變更 .openspec.yaml 的 depends_on 含 add-c，分頁前置卡出現 add-c，看板順序刷新
+
+#### Scenario: 引擎拒絕新增
+
+- **WHEN** 於排程分頁選擇會成環的變更
+- **THEN** 顯示引擎的成環單行錯誤，前置卡不變，meta 檔不變
+
+#### Scenario: 成環時可移除前置
+
+- **WHEN** 清單 planError 非 null，開啟 dependsOn=["add-a"]（無 wave）的變更詳情頁並切到排程分頁
+- **THEN** 顯示「依賴成環，先移除一條前置才有排程資訊」與前置卡的 add-a 列（附移除鈕），無狀態徽章、無新增下拉、無波次／重疊／封存順序卡；按移除鈕即寫回
+
+#### Scenario: remote 分頁唯讀
+
+- **WHEN** 於 capability setDepends 為 false 的資料源開啟詳情頁排程分頁
+- **THEN** 不出現移除鈕與下拉選單，四卡照常顯示
+
+#### Scenario: worktree 映射時候選來自副本名冊
+
+- **WHEN** 主 checkout 且 worktree 政策開啟，add-dark-mode 已映射到 worktree，add-auth 在分支前建立、add-late 在分支後才於主 checkout 建立，開啟 add-dark-mode 的排程分頁
+- **THEN** 新增下拉選單含 add-auth、不含 add-late，看板清單仍列出 add-late
+
+#### Scenario: 重新查詢名冊失敗沿用前次結果
+
+- **WHEN** 排程分頁已以名冊 add-a、add-b 呈現候選（作用中變更清單另有 add-d，add-a 已是前置），看板刷新後名冊查詢失敗
+- **THEN** 新增下拉的候選仍只有 add-b，不出現 add-d
+
+#### Scenario: 可開工徽章與同名衝突標籤
+
+- **WHEN** 開啟 wave=1、blockedBy=[]、requirementOverlap=[{change:"add-x",capability:"auth",requirement:"登入",ownOperation:"ADDED",otherOperation:"ADDED",conflict:true}]、archiveAfter=[] 的變更詳情頁並切到排程分頁
+- **THEN** 前置卡徽章為「可以開工」，重疊卡的 add-x 列帶「同名衝突」標籤與兩枚「新增」標籤，封存順序卡顯示「與 add-x 同名衝突：先改掉其中一邊，較晚封存的一方才不會被拒」且不顯示「可直接封存」
+
+#### Scenario: 舊 server 缺新欄位的空態
+
+- **WHEN** remote 清單項帶 wave 與 blockedBy 但無 requirementOverlap 與 archiveAfter
+- **THEN** 重疊卡顯示「無重疊」、封存順序卡顯示「可直接封存」，其餘兩卡照常
+
+#### Scenario: 舊 server 的重疊阻擋列在前置卡
+
+- **WHEN** remote 清單項 wave=2、dependsOn=[]、blockedBy=["add-a"]（舊 server 把先配置、共用 capability 的 add-a 算進阻擋），無 requirementOverlap 與 archiveAfter
+- **THEN** 前置卡徽章「等 1 項」、內容「尚無前置」與一列「另需等待（server 依重疊判定）：add-a」，該列無移除鈕；本機與新 server 的 blockedBy 只含宣告前置，不出現這一列
+
+#### Scenario: 互相等待時封存卡警示
+
+- **WHEN** add-a 的 archiveAfter=["add-b"]、add-b 的 archiveAfter=["add-a"]，開啟 add-a 的排程分頁
+- **THEN** 封存順序卡列 add-b 與提示句，另顯示「與 add-b 互相等待：兩邊都要先等對方封存，須調整拆分」；單向的 archiveAfter 不出現這句警示
+
+#### Scenario: 成環時環外變更的前置卡空態
+
+- **WHEN** 清單 planError 非 null，開啟 dependsOn=[]（無 wave）的環外變更詳情頁並切到排程分頁
+- **THEN** 顯示「依賴成環，先移除一條前置才有排程資訊」與前置卡「尚無前置」，無狀態徽章、無新增下拉
+
+<!-- @trace
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
+-->
+
+---
+### Requirement: 詳情頁的工單分頁
+
+change 詳情頁 SHALL 於「排程」分頁之後提供兩個條件式分頁：清單項 `reviewStatus` 為 `inReview` 時 SHALL 出現「審查」分頁（tw「審查」、en「Review」），`verifyStatus` 為 `inVerify` 時 SHALL 出現「驗證」分頁（tw「驗證」、en「Verify」），審查分頁在前；兩者皆非時 SHALL NOT 渲染這兩個分頁，分頁列維持提案／設計／任務／規格／排程。分頁內容 SHALL 為該站工單的結構化呈現：段標題含站名、「第 N 輪」（N 為末輪序號）、末輪階段詞與末輪三級計數（CRITICAL／WARNING／SUGGESTION 各自的條數，標籤維持英文）；輪次依序號升序逐輪可收合，末輪預設展開、其餘預設收合；每輪標題含「第 N 輪」、階段詞（`phase` 為 `discovery` 顯示 tw「首輪」en「First pass」、`validation` 顯示 tw「複驗」en「Re-check」、`null` 不顯示階段詞）、「範圍 N 檔」（展開後列出 scope 路徑，原樣顯示、不做平台轉換）與 findings 條數；每條 finding 一列，含嚴重度色章（CRITICAL 紅、WARNING 琥珀、SUGGESTION 灰）、路徑（等寬字）與描述原文（不翻譯、不截斷）；描述以結構 token `(accepted)` 結尾時 SHALL 去掉 token 並附「已接受」籤，token 出現於行中時 SHALL 原樣顯示；零 findings 的輪 SHALL 顯示「本輪無發現」。工單 SHALL 於分頁出現時載入，並隨外部檔案變更重新載入；載入三態依「詳情頁文件載入以 skeleton 呈現」；載入完成而無工單（不存在、遠端 404、讀取或解析失敗）時 SHALL 顯示分頁空態「工單尚未抵達或已被刪除」而非錯誤。工單資料 SHALL 為 `{ rounds: [{ index, phase, patchHash, scope, findings: [{ severity, path, text }] }] }`，欄位名與型別與 CLI `speclink review show --json` 的 `rounds` 相同；本機（含 worktree 覆蓋層）與遠端、活變更與已封存 SHALL 回同一形狀。遠端活變更 SHALL 以 `GET /changes/{name}/review`／`verify` 取得結構化輪次，SHALL NOT 放寬 `artifact cat` 的 artifact 名白名單。看板刷新後對應狀態翻為非進行中時，該分頁 SHALL 消失；使用者正停在該分頁時 SHALL 切回「提案」分頁。分頁 SHALL 為唯讀，SHALL NOT 提供蓋章、放棄或追加輪的操作。
+
+#### Scenario: 審查工單分頁出現並結構化呈現
+
+- **WHEN** 開啟 `reviewStatus: "inReview"`、`verifyStatus: "none"` 的變更詳情頁，工單含 Round 1（`phase: "discovery"`，scope 3 檔，findings 兩條 WARNING）與 Round 2（`phase: "validation"`，scope 3 檔，findings 一條 WARNING 描述結尾 `(accepted)`、一條 SUGGESTION）
+- **THEN** 分頁列為提案／設計／任務／規格／排程／審查，無「驗證」分頁；切到「審查」分頁後段標題顯示「審查 · 第 2 輪（複驗）CRITICAL 0 · WARNING 1 · SUGGESTION 1」；第 2 輪展開列兩條 finding，WARNING 那條附「已接受」籤且描述不含 `(accepted)`；第 1 輪收合、標題顯示「第 1 輪 · 首輪 · 範圍 3 檔 · 2 條」
+
+##### Example: 階段詞與 accepted token
+
+| round.phase | 顯示階段詞（tw） | finding.text | 顯示描述 | 已接受籤 |
+| ----------- | ---------------- | ------------ | -------- | -------- |
+| discovery | 首輪 | Correctness: 未處理空清單 | Correctness: 未處理空清單 | 無 |
+| validation | 複驗 | Standards: 命名不一致 (accepted) | Standards: 命名不一致 | 有 |
+| null | （不顯示） | Standards: (accepted) 語意不清 | Standards: (accepted) 語意不清 | 無 |
+
+#### Scenario: 兩站皆進行中出現兩個分頁
+
+- **WHEN** 開啟 `reviewStatus: "inReview"` 且 `verifyStatus: "inVerify"` 的變更詳情頁
+- **THEN** 分頁列於「排程」後依序為「審查」「驗證」，各自載入對應站的工單，兩分頁內容互不混入
+
+#### Scenario: 無工單時分頁缺席
+
+- **WHEN** 開啟 `reviewStatus: "reviewed"`、`verifyStatus: "none"` 的變更詳情頁
+- **THEN** 分頁列維持提案／設計／任務／規格／排程五個，無「審查」與「驗證」分頁，且未發出工單讀取請求
+
+#### Scenario: 工單被刪時分頁退場
+
+- **WHEN** 使用者停在 `inReview` 變更的「審查」分頁，其後工單被蓋章刪除、看板刷新後該變更 `reviewStatus` 翻為 `reviewed`
+- **THEN** 「審查」分頁自分頁列消失，詳情頁切回「提案」分頁，狀態列章籤改為「已審查」
+
+#### Scenario: 遠端工單 404 顯示空態
+
+- **WHEN** 於 remote 資料源開啟 `inReview` 變更詳情頁並切到「審查」分頁，server 對 `GET /changes/{name}/review` 回 404
+- **THEN** 分頁仍在，skeleton 消失後顯示「工單尚未抵達或已被刪除」，無錯誤彈窗
+
+#### Scenario: 工單追加輪後分頁更新
+
+- **WHEN** 「審查」分頁開啟中，外部以 `speclink review add-round` 追加 Round 3
+- **THEN** 檔案變更觸發重新載入，段標題改為「第 3 輪」，第 3 輪展開、第 2 輪與第 1 輪收合
+
+<!-- @trace
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
+-->
+
+---
+### Requirement: 詳情頁的導覽與返回
+
+詳情頁開啟時主區頂列的麵包屑 SHALL 為「專案名 / 頁名 / 項目名」三段：專案名與頁名 SHALL 可點、點擊 SHALL 關閉詳情頁回宿主頁；項目名 SHALL 以等寬字型呈現且不可點。麵包屑右端 SHALL 呈現 ‹ n／m ›：m 為宿主清單目前呈現順序的項目數、n 為目前項目的序位，順序 SHALL 為宿主清單的呈現順序含搜尋與篩選——看板的變更依欄序（提案中、進行中、已就緒）再依欄內順序，看板的討論為上區全卡依序、其後接欄底「已轉出」細列；到頭時對應鈕 SHALL 停用，SHALL NOT 循環；目前項目不在序列中時整組 SHALL 缺席。快捷鍵 ⌥↑／⌥↓（非 macOS 為 Alt+↑／Alt+↓）SHALL 等效於 ‹ ›，Esc SHALL 關閉詳情頁；三者於焦點在文字輸入（input、textarea、contenteditable）時 SHALL NOT 作用，且 SHALL NOT 攔截已被浮層（選單、對話框、提示）處理掉的 Esc。切換項目 SHALL 經與開啟相同的狀態層動作（互斥與浮層收掉規則同樣適用），切換後頁 SHALL 自頂端呈現；封存、刪除或退回的確認在途時切換 SHALL NOT 作用。詳情頁開啟時經專案欄、應用程式選單或系統匣切換主區頁面 SHALL 先關閉詳情頁再呈現該頁。
+
+#### Scenario: 麵包屑三段與返回
+
+- **WHEN** 使用者於專案 speclink 的看板點開變更 add-auth 的詳情頁，再點麵包屑的「變更」
+- **THEN** 開頁時麵包屑為「speclink / 變更 / add-auth」且 add-auth 為等寬不可點；點「變更」後詳情頁關閉、看板可見
+
+#### Scenario: ‹ › 依看板順序含過濾
+
+- **WHEN** 看板搜尋後提案中欄剩 a、b，進行中欄剩 c，使用者開啟 b 的詳情頁
+- **THEN** 麵包屑右端顯示「2 / 3」；按 › 切到 c、顯示「3 / 3」且 › 停用；按 ‹ 兩次回到 a 且 ‹ 停用
+
+#### Scenario: 快捷鍵與焦點在輸入時不作用
+
+- **WHEN** 使用者於變更詳情頁按 ⌥↓、再把焦點放進排程分頁的下拉輸入後按 ⌥↓ 與 Esc
+- **THEN** 第一次 ⌥↓ 切到下一個變更；焦點在輸入時 ⌥↓ 與 Esc 皆不切換、不關頁
+
+#### Scenario: Esc 先給浮層
+
+- **WHEN** 使用者於詳情頁開啟「⋯」選單後按 Esc，再按一次 Esc
+- **THEN** 第一次 Esc 只關閉選單、詳情頁維持；第二次 Esc 關閉詳情頁
+
+#### Scenario: 切換主區頁面關閉詳情頁
+
+- **WHEN** 使用者停在變更 add-auth 的詳情頁，點專案欄的「規格」
+- **THEN** 詳情頁關閉、主區為規格頁，麵包屑為「專案名 / 規格」
+
+#### Scenario: 目前項目被外部刪除
+
+- **WHEN** 使用者停在變更 x 的詳情頁，外部以 CLI 刪除 x 後看板刷新
+- **THEN** 詳情頁關閉、看板可見且不含 x；過程無錯誤彈窗
+
+<!-- @trace
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
+-->
+
+---
+### Requirement: 詳情頁的文件動作
+
+變更詳情頁與討論詳情頁的內容卡標頭右端 SHALL 提供「開啟 ▾」選單，對目前分頁對應的檔案提供：以預設 App 開啟、在 Finder 顯示（標籤隨平台：Finder／檔案總管／檔案管理員）、複製路徑；選單首列 SHALL 以等寬灰字顯示該檔案相對所在 checkout 根的路徑。分頁與檔案的對應 SHALL 為：提案 `openspec/changes/<name>/proposal.md`、設計 `design.md`、任務 `tasks.md`、規格 `specs/<capability>/spec.md`（目前選定的 capability）、審查 `review.md`、驗證 `verify.md`；討論各分頁皆為該討論的記錄檔。檔案的實際位置 SHALL 與詳情頁讀取內容的位置相同：綁定 worktree 的變更指向 worktree 副本、spec 目錄名依專案設定、已封存的討論指向 `openspec/discussions/archive/<封存日>-<slug>.md`。沒有對應檔案的分頁（排程）SHALL NOT 顯示選單。remote 專案無本機 checkout 時選單 SHALL 只有「複製內容」（該分頁已載入的文件原文；未載完時項目停用）且首列路徑缺席；工單分頁（審查、驗證）不載原文，此時 SHALL NOT 顯示選單。「以預設 App 開啟」SHALL 只開啟 markdown 文件：傳入的檔名與符號連結的實際指向皆須為 markdown。動作失敗時 SHALL 以既有失敗 toast 語意呈現錯誤，SHALL NOT 彈出錯誤視窗。
+
+#### Scenario: 提案分頁的開啟選單
+
+- **WHEN** 使用者於本機專案 /work/app 的變更 add-auth 詳情頁提案分頁展開「開啟 ▾」並選「複製路徑」
+- **THEN** 選單首列為 `openspec/changes/add-auth/proposal.md`，其後三項為以預設 App 開啟、在 Finder 顯示（macOS）、複製路徑；剪貼簿寫入 `/work/app/openspec/changes/add-auth/proposal.md`
+
+#### Scenario: worktree 中的變更指向 worktree 副本
+
+- **WHEN** 變更 add-auth 綁定 worktree /work/app-wt/add-auth，使用者於其詳情頁任務分頁展開「開啟 ▾」並選「在 Finder 顯示」
+- **THEN** 選單首列為 `openspec/changes/add-auth/tasks.md`，Finder 顯示 `/work/app-wt/add-auth/openspec/changes/add-auth/tasks.md`（詳情頁所讀的那一份）
+
+#### Scenario: 已封存討論指向封存檔
+
+- **WHEN** 使用者自變更詳情頁的來源討論籤開啟已封存的討論 old-topic（封存檔為 `openspec/discussions/archive/2026-01-03-old-topic.md`）並展開「開啟 ▾」
+- **THEN** 選單首列為 `openspec/discussions/archive/2026-01-03-old-topic.md`，複製路徑得到該封存檔的絕對路徑
+
+#### Scenario: 排程分頁無選單
+
+- **WHEN** 使用者切到排程分頁
+- **THEN** 內容卡標頭右端不顯示「開啟 ▾」
+
+#### Scenario: remote 只剩複製內容
+
+- **WHEN** 使用者於無本機 checkout 的 remote 專案開啟討論詳情頁並展開「開啟 ▾」
+- **THEN** 選單只有「複製內容」且無路徑首列；選後剪貼簿為該討論記錄的原文
+
+#### Scenario: 在 Finder 顯示失敗以 toast 呈現
+
+- **WHEN** 使用者選「在 Finder 顯示」而該檔案已被外部刪除
+- **THEN** 以失敗 toast 呈現 opener 回報的錯誤，詳情頁維持開啟，無錯誤視窗
+
+<!-- @trace
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
+-->
+
+---
+### Requirement: 任務列整列可點
+
+變更詳情頁任務分頁的每個任務列 SHALL 整列為其勾選框的 label：點擊列上任一處（勾選框、編號、文字、空白）SHALL 切換該任務的完成狀態並依既有語意寫回；拖曳把手 SHALL NOT 觸發切換；拖選列上文字後放開 SHALL NOT 觸發切換（直接點勾選框不受此限）；雙擊選字時兩下點擊 SHALL 互相抵銷、勾選狀態不變。唯讀檢視（已封存）與批次操作或拖排寫回進行中的列 SHALL NOT 回應點擊；單一任務的勾選寫回不鎖列（勾選後立即取消不遺失）。勾選框 SHALL 保留 checkbox 角色、「任務 N」標籤與空白鍵切換；拖曳仍 SHALL 僅由把手啟動，拖曳進行中按 Esc SHALL 只取消拖曳、SHALL NOT 關閉詳情頁。有寫入能力時工具列 SHALL 附一行灰字提示「點整列即可勾選；拖曳把手改順序」；無拖排能力（不顯示把手）時提示 SHALL 為「點整列即可勾選」。
+
+#### Scenario: 點任務文字切換
+
+- **WHEN** 使用者點某未完成任務列的文字部分
+- **THEN** 該任務切換為完成並寫回 tasks.md，效果與點勾選框相同
+
+#### Scenario: 點把手不切換
+
+- **WHEN** 使用者點某任務列的拖曳把手
+- **THEN** 勾選狀態不變
+
+#### Scenario: 選取任務文字不切換
+
+- **WHEN** 使用者在某任務列的文字上拖選一段文字後放開
+- **THEN** 勾選狀態不變、不發出寫回，選取的文字可複製
+
+#### Scenario: 唯讀與批次寫回中不回應
+
+- **WHEN** 使用者於已封存變更的任務分頁點任務列，或於「全部已完成」等批次操作、拖排的寫回尚未完成時點任務列
+- **THEN** 勾選狀態不變、不發出寫回
+
+<!-- @trace
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->

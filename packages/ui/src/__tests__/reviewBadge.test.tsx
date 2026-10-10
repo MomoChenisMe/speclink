@@ -21,7 +21,7 @@ vi.mock("../components/TaskList", () => ({
 }));
 
 import { ChangeCard } from "../components/ChangeCard";
-import { RichDetailDrawer } from "../components/RichDetailDrawer";
+import { ChangeDetailPage } from "../components/ChangeDetailPage";
 import { ArchivedList } from "../components/ArchivedList";
 import { ArchivedDrawer } from "../components/ArchivedDrawer";
 import { ReviewArchiveDialog } from "../components/ReviewArchiveDialog";
@@ -31,11 +31,9 @@ const base: ChangeItem = { name: "c", status: "in-progress", totalTasks: 2, comp
 
 const REVIEW_LABELS = ["審查中", "已審查", "已審查·其後有變動"];
 
-/** RichDetailDrawer 的最小 props（審查資訊列以外的相依一律給空替身）。 */
+/** ChangeDetailPage 的最小 props（審查資訊列以外的相依一律給空替身）。 */
 function drawerProps(change: ChangeItem) {
   return {
-    open: true,
-    onOpenChange: vi.fn(),
     change,
     loadDocument: vi.fn(async () => "# doc"),
     loadCapabilities: vi.fn(async () => [] as string[]),
@@ -81,12 +79,12 @@ describe("ChangeCard 審查章（四態）", () => {
   });
 });
 
-describe("RichDetailDrawer 審查資訊列", () => {
+describe("ChangeDetailPage 審查章籤", () => {
   it("reviewed 章籤可視僅狀態詞——蓋章時間與審查者收進提示", () => {
     // 狀態列改章籤（spec「變更詳情抽屜標頭的四層結構」）：日期與含 email 的完整
-    // 識別不再直出，收進主題化提示（提示內容由 richDrawer.test.tsx 驗）。
+    // 識別不再直出，收進主題化提示（提示內容由 changeDetailPage.test.tsx 驗）。
     render(
-      <RichDetailDrawer
+      <ChangeDetailPage
         {...(drawerProps({
           ...base,
           reviewStatus: "reviewed",
@@ -103,7 +101,7 @@ describe("RichDetailDrawer 審查資訊列", () => {
   });
 
   it("inReview 僅顯示狀態詞，無時間與審查者", () => {
-    render(<RichDetailDrawer {...(drawerProps({ ...base, reviewStatus: "inReview" }) as never)} />);
+    render(<ChangeDetailPage {...(drawerProps({ ...base, reviewStatus: "inReview" }) as never)} />);
     const row = document.querySelector("[data-review-row]") as HTMLElement;
     expect(row).toBeTruthy();
     expect(within(row).getByText(/審查中/)).toBeTruthy();
@@ -111,7 +109,7 @@ describe("RichDetailDrawer 審查資訊列", () => {
   });
 
   it("none 不渲染資訊列", () => {
-    render(<RichDetailDrawer {...(drawerProps({ ...base, reviewStatus: "none" }) as never)} />);
+    render(<ChangeDetailPage {...(drawerProps({ ...base, reviewStatus: "none" }) as never)} />);
     expect(document.querySelector("[data-review-row]")).toBeNull();
   });
 });
@@ -204,7 +202,7 @@ describe("審查標示配色（四態各自可辨識，不落回灰階）", () =
     ];
     for (const [reviewStatus, cls] of tones) {
       const { unmount } = render(
-        <RichDetailDrawer {...(drawerProps({ ...base, reviewStatus }) as never)} />,
+        <ChangeDetailPage {...(drawerProps({ ...base, reviewStatus }) as never)} />,
       );
       const tone = document.querySelector("[data-review-row] [data-review-tone]") as HTMLElement;
       expect(tone).toBeTruthy();

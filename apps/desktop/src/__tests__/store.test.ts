@@ -396,7 +396,7 @@ describe("app store (Zustand)", () => {
         pendingArchive: null,
         pendingDelete: null,
         pendingArchiveDiscussion: null,
-        drawerVerb: null,
+        detailVerb: null,
       });
 
       pendingSearch.resolve([
@@ -656,7 +656,7 @@ describe("app store (Zustand)", () => {
     await store.getState().runVerb("analyze", "desktop-shell-and-browser");
     expect(runVerb).toHaveBeenCalledWith("validate", "desktop-shell-and-browser");
     expect(runVerb).toHaveBeenCalledWith("analyze", "desktop-shell-and-browser");
-    expect(store.getState().drawerVerb).toMatchObject({
+    expect(store.getState().detailVerb).toMatchObject({
       change: "desktop-shell-and-browser",
       validate: { valid: true },
       analyze: { findings: [{ dimension: "Ambiguity" }] },
@@ -670,23 +670,23 @@ describe("app store (Zustand)", () => {
     const ds = fakeDataSource({ runVerb: vi.fn().mockRejectedValue(new Error("parse boom")) });
     const store = storeWith(ds);
     await store.getState().runVerb("analyze", "desktop-shell-and-browser");
-    expect(store.getState().drawerVerb?.change).toBe("desktop-shell-and-browser");
-    expect(store.getState().drawerVerb?.error).toContain("parse boom");
+    expect(store.getState().detailVerb?.change).toBe("desktop-shell-and-browser");
+    expect(store.getState().detailVerb?.error).toContain("parse boom");
   });
 
-  it("clearDrawerVerb closes the analysis result; switching change still clears it", async () => {
-    // design D2：分析面板可關閉——clearDrawerVerb 收合；既有「換 change 清空」不回歸。
+  it("clearDetailVerb closes the analysis result; switching change still clears it", async () => {
+    // design D2：分析面板可關閉——clearDetailVerb 收合；既有「換 change 清空」不回歸。
     const ds = fakeDataSource();
     const store = storeWith(ds);
     await store.getState().refresh();
     await store.getState().runVerb("analyze", "desktop-shell-and-browser");
-    expect(store.getState().drawerVerb).not.toBeNull();
-    store.getState().clearDrawerVerb();
-    expect(store.getState().drawerVerb).toBeNull();
+    expect(store.getState().detailVerb).not.toBeNull();
+    store.getState().clearDetailVerb();
+    expect(store.getState().detailVerb).toBeNull();
     // 換 change 清空行為保留
     await store.getState().runVerb("analyze", "desktop-shell-and-browser");
     store.getState().openDetail("desktop-shell-and-browser");
-    expect(store.getState().drawerVerb).toBeNull();
+    expect(store.getState().detailVerb).toBeNull();
   });
 
   it("runVerb archive 成功維持靜默", async () => {
@@ -694,7 +694,7 @@ describe("app store (Zustand)", () => {
     const store = storeWith(ds);
     await store.getState().runVerb("archive", "desktop-shell-and-browser");
     expect(toastError).not.toHaveBeenCalled();
-    expect(store.getState().drawerVerb).toBeNull();
+    expect(store.getState().detailVerb).toBeNull();
     expect(ds.listChanges).toHaveBeenCalled();
   });
 
@@ -1150,18 +1150,60 @@ describe("app store (Zustand)", () => {
     expect(store.getState().detailArchived).toBeNull();
   });
 
-  it("detail 抽屜互斥：取代變更詳情抽屜時 drawerVerb 一併清空（比照 closeDetail）", async () => {
+  it("切換主區頁面先關閉變更／討論詳情頁（連同分析結果）", async () => {
+    const store = storeWith(withTopicA());
+    await store.getState().refresh();
+    store.getState().openDetail("desktop-shell-and-browser");
+    store.setState({ detailVerb: { change: "desktop-shell-and-browser" } as never });
+    store.getState().setBoardView("specs");
+    expect(store.getState().boardView).toBe("specs");
+    expect(store.getState().detailChange).toBeNull();
+    expect(store.getState().detailVerb).toBeNull();
+
+    store.getState().openDiscussion("topic-a");
+    store.getState().setBoardView("settings");
+    expect(store.getState().boardView).toBe("settings");
+    expect(store.getState().detailDiscussion).toBeNull();
+  });
+
+  it("詳情頁互斥：取代變更詳情頁時 detailVerb 一併清空（比照 closeDetailPage）", async () => {
     const store = storeWith(fakeDataSource());
     await store.getState().refresh();
     store.getState().openDetail("desktop-shell-and-browser");
     await store.getState().runVerb("analyze", "desktop-shell-and-browser");
-    expect(store.getState().drawerVerb).not.toBeNull();
+    expect(store.getState().detailVerb).not.toBeNull();
     store.getState().openSpec("desktop-app");
     expect(store.getState().detailChange).toBeNull();
-    expect(store.getState().drawerVerb).toBeNull();
+    expect(store.getState().detailVerb).toBeNull();
   });
 
-  it("openDetail 於已封存頁把底層頁面切回看板（規格「變更與討論抽屜開啟時底層落回看板」）", async () => {
+  it("closeDetailPage 一次清空四個詳情欄位與 detailVerb（Esc、麵包屑共用）", async () => {
+    const store = storeWith(fakeDataSource());
+    await store.getState().refresh();
+    store.getState().openDetail("desktop-shell-and-browser");
+    await store.getState().runVerb("analyze", "desktop-shell-and-browser");
+    // 四個欄位互斥，平常只有一個非 null；直接灌入全部非 null 以驗一次清空。
+    store.setState({
+      detailDiscussion: store.getState().discussions.active[0] ?? null,
+      detailSpec: "desktop-app",
+      detailArchived: { kind: "change", datedName: "2026-07-04-x" },
+    });
+    expect(store.getState().detailChange).not.toBeNull();
+    expect(store.getState().detailVerb).not.toBeNull();
+    store.getState().closeDetailPage();
+    const st = store.getState();
+    expect([st.detailChange, st.detailDiscussion, st.detailSpec, st.detailArchived, st.detailVerb]).toEqual([
+      null,
+      null,
+      null,
+      null,
+      null,
+    ]);
+    // 宿主頁不變：關頁只拿掉頁層。
+    expect(st.boardView).toBe("board");
+  });
+
+  it("openDetail 於已封存頁把底層頁面切回看板（規格「變更與討論詳情頁的宿主為看板」）", async () => {
     const store = storeWith(fakeDataSource());
     await store.getState().refresh();
     store.getState().setBoardView("archived");
@@ -2591,9 +2633,11 @@ describe("專案層檔案系統動作", () => {
   function fakeFsActions(): { [K in keyof FsActionsAdapter]: ReturnType<typeof vi.fn> } {
     return {
       reveal: vi.fn().mockResolvedValue(undefined),
+      openDefault: vi.fn().mockResolvedValue(undefined),
       openTerminal: vi.fn().mockResolvedValue(undefined),
       openEditor: vi.fn().mockResolvedValue(undefined),
-      copyPath: vi.fn().mockResolvedValue(undefined),
+      copyText: vi.fn().mockResolvedValue(undefined),
+      locate: vi.fn().mockResolvedValue(null),
     };
   }
 
@@ -2634,7 +2678,7 @@ describe("專案層檔案系統動作", () => {
     expect(fsActions.reveal).toHaveBeenCalledWith("/work/alpha");
     expect(fsActions.openTerminal).toHaveBeenCalledWith("/work/alpha");
     expect(fsActions.openEditor).toHaveBeenCalledWith("/work/web");
-    expect(fsActions.copyPath).toHaveBeenCalledWith("/work/alpha");
+    expect(fsActions.copyText).toHaveBeenCalledWith("/work/alpha");
     expect(toastError).not.toHaveBeenCalled();
   });
 
@@ -2666,7 +2710,7 @@ describe("專案層檔案系統動作", () => {
   it("非 i18n 鍵的錯誤原樣顯示（如 opener 的路徑不存在）", async () => {
     const fsActions = fakeFsActions();
     fsActions.reveal.mockRejectedValue("No such file or directory (os error 2)");
-    fsActions.copyPath.mockRejectedValue(new Error("clipboard denied"));
+    fsActions.copyText.mockRejectedValue(new Error("clipboard denied"));
     const { store } = storeWithTabs(fsActions);
     await store.getState().revealProject("local:/work/alpha");
     await store.getState().copyProjectPath("local:/work/alpha");
@@ -2685,6 +2729,106 @@ describe("專案層檔案系統動作", () => {
     await store.getState().copyProjectPath(key);
     for (const action of Object.values(fsActions)) expect(action).not.toHaveBeenCalled();
     expect(toastError).not.toHaveBeenCalled();
+  });
+});
+
+// desktop-app「詳情頁的文件動作」（design D4）：磁碟位置由 core 以讀文件同一套解析回報
+// （worktree 副本、spec 目錄名、已封存討論）；失敗以單槽失敗 toast 呈現、主詞為相對路徑；
+// remote 無 checkout 不查位置、只剩複製內容。
+describe("詳情頁文件動作", () => {
+  const DOC = { change: "add-auth", artifact: "proposal.md" };
+  const LOC = {
+    path: "/work/app-wt/add-auth/openspec/changes/add-auth/proposal.md",
+    relative: "openspec/changes/add-auth/proposal.md",
+  };
+
+  function fakeFsActions(): { [K in keyof FsActionsAdapter]: ReturnType<typeof vi.fn> } {
+    return {
+      reveal: vi.fn().mockResolvedValue(undefined),
+      openDefault: vi.fn().mockResolvedValue(undefined),
+      openTerminal: vi.fn().mockResolvedValue(undefined),
+      openEditor: vi.fn().mockResolvedValue(undefined),
+      copyText: vi.fn().mockResolvedValue(undefined),
+      locate: vi.fn().mockResolvedValue(LOC),
+    };
+  }
+
+  function storeActive(activeKey: string, fsActions = fakeFsActions()) {
+    const store = trackedAppStore({
+      createSession: (root, name) => fakeSession(fakeDataSource(), root, name),
+      fsActions: fsActions as unknown as FsActionsAdapter,
+    });
+    store.setState({
+      tabs: [
+        { locator: { kind: "local", root: "/work/app" }, name: "app" },
+        {
+          locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "api" },
+          name: "Demo/api",
+        },
+      ],
+      activeKey,
+    });
+    return { store, fsActions };
+  }
+
+  beforeEach(() => {
+    toastError.mockReset();
+  });
+
+  it("locateDocument 以活躍專案的本機目錄向 core 查位置", async () => {
+    const { store, fsActions } = storeActive("local:/work/app");
+    expect(await store.getState().locateDocument(DOC)).toEqual(LOC);
+    expect(fsActions.locate).toHaveBeenCalledWith("/work/app", DOC);
+  });
+
+  it("三個動作作用於 core 回報的絕對路徑（worktree 副本），成功靜默", async () => {
+    const { store, fsActions } = storeActive("local:/work/app");
+    await store.getState().openDocumentDefault(LOC);
+    await store.getState().revealDocument(LOC);
+    await store.getState().copyDocumentPath(LOC);
+    expect(fsActions.openDefault).toHaveBeenCalledWith(LOC.path);
+    expect(fsActions.reveal).toHaveBeenCalledWith(LOC.path);
+    expect(fsActions.copyText).toHaveBeenCalledWith(LOC.path);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("revealDocument 失敗發失敗 toast 且主詞為相對路徑", async () => {
+    const fsActions = fakeFsActions();
+    fsActions.reveal.mockRejectedValue("No such file or directory (os error 2)");
+    const { store } = storeActive("local:/work/app", fsActions);
+    await store.getState().revealDocument(LOC);
+    expect(toastError).toHaveBeenCalledTimes(1);
+    const [message, options] = toastError.mock.calls[0] as [string, { id?: string }];
+    expect(message.startsWith(`${LOC.relative} · `)).toBe(true);
+    expect(message).toContain("No such file or directory (os error 2)");
+    expect(options?.id).toBe("desktop-operation-failure");
+  });
+
+  it("core 查不到或回報錯誤時 locateDocument 為 null、不拋", async () => {
+    const fsActions = fakeFsActions();
+    fsActions.locate.mockResolvedValueOnce(null).mockRejectedValueOnce("boom");
+    const { store } = storeActive("local:/work/app", fsActions);
+    expect(await store.getState().locateDocument({ discussion: "gone" })).toBeNull();
+    expect(await store.getState().locateDocument(DOC)).toBeNull();
+  });
+
+  it("remote 無 checkout：不查位置；copyDocumentContent 寫入原文", async () => {
+    const { store, fsActions } = storeActive("remote:c1/demo/api");
+    expect(await store.getState().locateDocument(DOC)).toBeNull();
+    expect(fsActions.locate).not.toHaveBeenCalled();
+    await store.getState().copyDocumentContent("# 討論原文");
+    expect(fsActions.copyText).toHaveBeenCalledWith("# 討論原文");
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("copyDocumentContent 失敗與其他文件動作同樣以失敗 toast 呈現", async () => {
+    const fsActions = fakeFsActions();
+    fsActions.copyText.mockRejectedValue(new Error("clipboard denied"));
+    const { store } = storeActive("remote:c1/demo/api", fsActions);
+    await store.getState().copyDocumentContent("# 原文");
+    const [message, options] = toastError.mock.calls[0] as [string, { id?: string }];
+    expect(message).toBe("複製內容 · 檔案動作失敗 ✗ Error: clipboard denied");
+    expect(options?.id).toBe("desktop-operation-failure");
   });
 });
 

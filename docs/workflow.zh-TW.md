@@ -89,9 +89,9 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 - **下一步**：見[討論結論怎麼走](#discussion-outcomes)。
 - **出狀況**：已經談出內容的討論，寫結論後封存。什麼都還沒談出來，才用 `speclink discuss discard` 刪掉。
 
-在桌面 app 的看板點一則討論，會開啟它的詳情面板，結論、討論過程、背景與衍生變更各占一個分頁。
+在桌面 app 的看板點一則討論，會開啟它的詳情頁，結論、討論過程、背景與衍生變更各占一個分頁。
 
-![討論的詳情面板，顯示結論以及討論過程、背景、衍生變更分頁](assets/screenshots/desktop-discussion.png)
+![討論的詳情頁，顯示結論以及討論過程、背景、衍生變更分頁](assets/screenshots/desktop-discussion.png)
 
 ### <a id="improve"></a>improve：找改進點
 
@@ -133,9 +133,9 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
   - 誤開工而且還沒動任何東西：`speclink in-progress remove <名稱>`，退回提案中。
   - 不做了：`speclink discard <名稱>`，開工後要加 `--force`。
 
-實作期間，變更的詳情面板最好用：提案、設計、任務與規格分頁對應同一組文件，任務分頁的進度就是 `speclink task done` 的結果。
+實作期間，變更的詳情頁最好用：提案、設計、任務與規格分頁對應同一組文件，任務分頁的進度就是 `speclink task done` 的結果。
 
-![變更的詳情面板，顯示提案內容以及任務、規格分頁](assets/screenshots/desktop-change-drawer.png)
+![變更的詳情頁，顯示提案內容以及任務、規格分頁](assets/screenshots/desktop-change-drawer.png)
 
 ### <a id="ingest"></a>ingest：更新需求
 
@@ -344,7 +344,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
   - `speclink plan [--json]`
   - 宣告依賴：`speclink change depends <變更> --on <前置變更>`（加 `--remove` 取消）
   - 調整同一欄裡的順序：`speclink change rank <變更> --before <另一個變更>`（或 `--after`；只限本地）
-- **下一步**：從 `next` 指出的變更開工。桌面詳情面板的「排程」分頁顯示同一份資訊。
+- **下一步**：從 `next` 指出的變更開工。桌面詳情頁的「排程」分頁顯示同一份資訊。
 
 ## <a id="discussion-outcomes"></a>討論結論怎麼走
 

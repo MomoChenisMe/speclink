@@ -82,7 +82,7 @@ function splitDocSections(text: string): DocSection[] {
 /**
  * 模板文件的章節標籤檢視（spec「提案與設計章節以中文標籤呈現」）：已知模板章節
  * 渲染為與討論側結論欄位同款的標籤區塊，英文模板標題不直出；未知章節照 prose 排；
- * 整份無白名單命中時整篇單一 markdown 檢視退回。RichDetailDrawer 與 ArchivedList
+ * 整份無白名單命中時整篇單一 markdown 檢視退回。ChangeDetailPage 與 ArchivedList
  * 的提案／設計分頁共用。
  */
 export function SectionedDoc({ content, empty }: { content: string | null; empty?: string }) {

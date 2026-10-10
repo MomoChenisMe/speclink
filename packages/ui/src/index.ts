@@ -26,6 +26,7 @@ export {
   CardFooter,
 } from "./components/ui/card";
 export { Badge, badgeVariants, type BadgeProps } from "./components/ui/badge";
+export { StatusPill, type StatusPillTone } from "./components/ui/status-pill";
 export {
   Table,
   TableHeader,
@@ -127,11 +128,11 @@ export {
   type DiscussionColumnProps,
 } from "./components/DiscussionColumn";
 export {
-  DiscussionDrawer,
+  DiscussionDetailPage,
   splitDiscussionSections,
-  type DiscussionDrawerProps,
+  type DiscussionDetailPageProps,
   type DiscussionSections,
-} from "./components/DiscussionDrawer";
+} from "./components/DiscussionDetailPage";
 
 // 清單 + 分頁 + 富文本
 export { Markdown, type MarkdownProps } from "./components/Markdown";
@@ -179,7 +180,15 @@ export {
 // 富詳情
 export type { ChangeMetaInfo } from "./adapter";
 export { specDeltaCounts, sumDeltaCounts, formatDeltaCounts, type DeltaCounts } from "./delta";
-export { RichDetailDrawer, type RichDetailDrawerProps } from "./components/RichDetailDrawer";
+export { ChangeDetailPage, type ChangeDetailPageProps } from "./components/ChangeDetailPage";
+export {
+  DetailHeader,
+  IdentityName,
+  displayName,
+  type DetailHeaderProps,
+  type DocumentRef,
+  type DocumentTarget,
+} from "./components/DetailHeader";
 
 // 互動任務、彩色 delta、封存頁
 export { parseTaskDoc, type TaskDocItem } from "./tasks";
@@ -197,8 +206,20 @@ export { SearchField, type SearchFieldProps } from "./components/SearchField";
 export { ArchivedList, type ArchivedListProps } from "./components/ArchivedList";
 export { ArchivedDrawer, type ArchivedDrawerProps, type ArchivedTarget } from "./components/ArchivedDrawer";
 export { ReviewArchiveDialog, type ReviewArchiveDialogProps } from "./components/ReviewArchiveDialog";
-export { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE, type ReviewBadgeStatus } from "./components/reviewStyle";
-export { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE, type VerifyBadgeStatus } from "./components/verifyStyle";
+export {
+  REVIEW_ICON,
+  REVIEW_LABEL_KEY,
+  REVIEW_PILL_TONE,
+  REVIEW_TONE,
+  type ReviewBadgeStatus,
+} from "./components/reviewStyle";
+export {
+  VERIFY_ICON,
+  VERIFY_LABEL_KEY,
+  VERIFY_PILL_TONE,
+  VERIFY_TONE,
+  type VerifyBadgeStatus,
+} from "./components/verifyStyle";
 
 // 規格頁
 export { SpecList, type SpecListProps } from "./components/SpecList";

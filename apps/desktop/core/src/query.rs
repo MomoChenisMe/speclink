@@ -381,6 +381,33 @@ pub fn document_at(root: &Path, change: &str, artifact: &str) -> Option<String> 
     ctx.store.read_artifact(change, artifact)
 }
 
+/// 一份文件在磁碟上的位置（詳情頁「開啟 ▾」，desktop-detail-page design D4）：絕對路徑，
+/// 與相對所在 checkout 根的路徑（正斜線；選單首列與失敗 toast 的主詞）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct DocumentLocation {
+    pub path: String,
+    pub relative: String,
+}
+
+impl DocumentLocation {
+    pub(crate) fn within(root: &Path, path: PathBuf) -> DocumentLocation {
+        let relative = speclink_core::util::to_slash(path.strip_prefix(root).unwrap_or(&path));
+        DocumentLocation { path: path.to_string_lossy().into_owned(), relative }
+    }
+}
+
+/// change artifact 的磁碟位置——與 [`document_at`] 同一套解析：綁 worktree 時為 worktree
+/// 副本、spec 目錄名取自專案設定。不檢查檔案存在（缺檔由 opener 回報）；含路徑穿越的
+/// 參數回 `None`。
+pub fn document_location_at(root: &Path, change: &str, artifact: &str) -> Option<DocumentLocation> {
+    if !is_safe_path_param(change) || !is_safe_path_param(artifact) {
+        return None;
+    }
+    let ctx = crate::context_for_change(root, change)?;
+    let path = ctx.store.layout().artifact_path(change, artifact);
+    Some(DocumentLocation::within(&ctx.workspace.root, path))
+}
+
 /// 讀取一個 capability 的正式規格 spec.md。無則 `None`。含路徑穿越的 `capability` 回傳 `None`。
 pub fn spec_document_at(root: &Path, capability: &str) -> Option<String> {
     if !is_safe_path_param(capability) {
@@ -1808,5 +1835,37 @@ mod tests {
         assert!(status_at(&root, "anything").is_err());
         assert!(document_at(&root, "anything", "proposal").is_none());
         assert!(station_ticket_at(&root, "anything", "review").is_none());
+    }
+
+    // --- 詳情頁「開啟 ▾」的文件定位（desktop-detail-page design D4）---
+
+    #[test]
+    fn document_location_resolves_like_the_reader_in_the_main_checkout() {
+        let fx = FixtureRoot::new("q-doc-loc");
+        fx.add_change("demo", OLD_META);
+        let loc = document_location_at(fx.root(), "demo", "proposal.md").expect("location");
+        assert_eq!(loc.relative, "openspec/changes/demo/proposal.md");
+        assert!(Path::new(&loc.path).ends_with("openspec/changes/demo/proposal.md"), "{}", loc.path);
+        let spec = document_location_at(fx.root(), "demo", "specs/auth/spec.md").expect("spec location");
+        assert_eq!(spec.relative, "openspec/changes/demo/specs/auth/spec.md");
+    }
+
+    #[test]
+    fn document_location_points_into_the_worktree_copy_for_a_mapped_change() {
+        // 讀文件走 context_for_change（worktree 副本）；開啟／顯示／複製路徑必須指向同一份。
+        let fx = FixtureRoot::new("q-doc-loc-wt");
+        fx.add_change("add-auth", OLD_META);
+        let wt = fx.attach_worktree("add-auth");
+        let loc = document_location_at(fx.root(), "add-auth", "tasks.md").expect("location");
+        assert_eq!(loc.relative, "openspec/changes/add-auth/tasks.md");
+        assert!(Path::new(&loc.path).starts_with(wt.path()), "{} 應在 {}", loc.path, wt.path().display());
+    }
+
+    #[test]
+    fn document_location_rejects_path_traversal() {
+        let fx = FixtureRoot::new("q-doc-loc-bad");
+        fx.add_change("demo", OLD_META);
+        assert!(document_location_at(fx.root(), "../x", "proposal.md").is_none());
+        assert!(document_location_at(fx.root(), "demo", "../../secret.md").is_none());
     }
 }

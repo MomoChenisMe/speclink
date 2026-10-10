@@ -17,7 +17,7 @@ function render(ui: ReactElement, locale: "zh-TW" | "en" = "zh-TW") {
 }
 
 import { DiscussionCard, DiscussionColumn } from "../components/DiscussionColumn";
-import { DiscussionDrawer } from "../components/DiscussionDrawer";
+import { DiscussionDetailPage } from "../components/DiscussionDetailPage";
 import { ArchivedList } from "../components/ArchivedList";
 import { ArchivedDrawer } from "../components/ArchivedDrawer";
 import type { DiscussionItem } from "../adapter";
@@ -43,11 +43,9 @@ const improve: DiscussionItem = {
   promotedTo: [],
 };
 
-/** DiscussionDrawer 的最小 props（標示以外的相依一律給空替身）。 */
-function drawerProps(discussion: DiscussionItem) {
+/** DiscussionDetailPage 的最小 props（標示以外的相依一律給空替身）。 */
+function pageProps(discussion: DiscussionItem) {
   return {
-    open: true,
-    onOpenChange: vi.fn(),
     discussion,
     changes: [],
     archivedChanges: [],
@@ -154,21 +152,21 @@ describe("已封存討論抽屜的改進標示", () => {
   });
 });
 
-describe("討論抽屜的改進標示", () => {
+describe("討論詳情頁的改進標示", () => {
   it("kind 為 improve 時顯示標示", () => {
-    render(<DiscussionDrawer {...(drawerProps(improve) as never)} />);
+    render(<DiscussionDetailPage {...(pageProps(improve) as never)} />);
     const badge = document.querySelector("[data-discussion-kind]") as HTMLElement;
     expect(badge).toBeTruthy();
     expect(badge.textContent).toContain(IMPROVE_TW);
   });
 
-  it("一般討論的抽屜不顯示標示", () => {
-    render(<DiscussionDrawer {...(drawerProps(plain) as never)} />);
+  it("一般討論的詳情頁不顯示標示", () => {
+    render(<DiscussionDetailPage {...(pageProps(plain) as never)} />);
     expect(document.querySelector("[data-discussion-kind]")).toBeNull();
   });
 
-  it("en 介面的抽屜標示使用英文詞條", () => {
-    render(<DiscussionDrawer {...(drawerProps(improve) as never)} />, "en");
+  it("en 介面的詳情頁標示使用英文詞條", () => {
+    render(<DiscussionDetailPage {...(pageProps(improve) as never)} />, "en");
     const badge = document.querySelector("[data-discussion-kind]") as HTMLElement;
     expect(badge.textContent).toContain(IMPROVE_EN);
   });

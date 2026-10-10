@@ -51,7 +51,7 @@ export function DeltaBadges({ counts }: { counts: DeltaCounts }) {
  * delta spec 的色標區段檢視（spec「規格分頁 delta 區段以色標呈現」）：
  * `## <OP> Requirements` 機器標題不直出，改為色標區段標頭（配色同 DELTA_COLORS）；
  * 區段內文交給共用 Markdown 照排。無 delta 標題的文件整篇照常渲染。
- * RichDetailDrawer 規格分頁與 ArchivedList 規格分頁共用。
+ * ChangeDetailPage 規格分頁與 ArchivedList 規格分頁共用。
  */
 export function DeltaSpecView({ markdown }: { markdown: string | null }) {
   const { t } = useI18n();

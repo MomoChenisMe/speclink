@@ -19,7 +19,7 @@ vi.mock("../components/TaskList", () => ({
 }));
 
 import { ChangeCard } from "../components/ChangeCard";
-import { RichDetailDrawer } from "../components/RichDetailDrawer";
+import { ChangeDetailPage } from "../components/ChangeDetailPage";
 import { ArchivedList } from "../components/ArchivedList";
 import { ArchivedDrawer } from "../components/ArchivedDrawer";
 import { ReviewArchiveDialog } from "../components/ReviewArchiveDialog";
@@ -30,8 +30,6 @@ const VERIFY_LABELS = ["驗證中", "已驗證", "已驗證·其後有變動"];
 
 function drawerProps(change: ChangeItem) {
   return {
-    open: true,
-    onOpenChange: vi.fn(),
     change,
     loadDocument: vi.fn(async () => "# doc"),
     loadCapabilities: vi.fn(async () => [] as string[]),
@@ -134,12 +132,12 @@ describe("兩站同狀態同色、異形可辨（design D5）", () => {
   });
 });
 
-describe("RichDetailDrawer 驗證資訊列", () => {
+describe("ChangeDetailPage 驗證章籤", () => {
   it("verified 章籤可視僅狀態詞——蓋章時間與驗證者收進提示", () => {
     // spec Scenario「已驗證抽屜」＋「狀態列章籤與提示」：日期與含 email 的完整
-    // 識別不再直出（提示內容由 richDrawer.test.tsx 驗）。
+    // 識別不再直出（提示內容由 changeDetailPage.test.tsx 驗）。
     render(
-      <RichDetailDrawer
+      <ChangeDetailPage
         {...(drawerProps({
           ...base,
           verifyStatus: "verified",
@@ -156,7 +154,7 @@ describe("RichDetailDrawer 驗證資訊列", () => {
   });
 
   it("inVerify 僅顯示狀態詞，無時間與驗證者", () => {
-    render(<RichDetailDrawer {...(drawerProps({ ...base, verifyStatus: "inVerify" }) as never)} />);
+    render(<ChangeDetailPage {...(drawerProps({ ...base, verifyStatus: "inVerify" }) as never)} />);
     const row = document.querySelector("[data-verify-row]") as HTMLElement;
     expect(row).toBeTruthy();
     expect(within(row).getByText(/驗證中/)).toBeTruthy();
@@ -164,13 +162,13 @@ describe("RichDetailDrawer 驗證資訊列", () => {
   });
 
   it("none 不渲染資訊列", () => {
-    render(<RichDetailDrawer {...(drawerProps({ ...base, verifyStatus: "none" }) as never)} />);
+    render(<ChangeDetailPage {...(drawerProps({ ...base, verifyStatus: "none" }) as never)} />);
     expect(document.querySelector("[data-verify-row]")).toBeNull();
   });
 
   it("兩站資訊列同構並列", () => {
     render(
-      <RichDetailDrawer
+      <ChangeDetailPage
         {...(drawerProps({
           ...base,
           reviewStatus: "reviewed",

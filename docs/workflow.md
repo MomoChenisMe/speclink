@@ -89,9 +89,9 @@ Talk through a decision round by round, and keep a conclusion with its sources.
 - **Next**: See [Discussion outcomes](#discussion-outcomes).
 - **If something goes wrong**: If a discussion has content, write a conclusion and archive it. Use `speclink discuss discard` only when the discussion has no content yet.
 
-On the board in the desktop app, click a discussion to open its detail panel. The Conclusion, Rounds, Context, and Promoted changes tabs each show one part of the discussion.
+On the board in the desktop app, click a discussion to open its detail page. The Conclusion, Rounds, Context, and Promoted changes tabs each show one part of the discussion.
 
-![The detail panel of a discussion, with the conclusion and the Rounds, Context, and Promoted changes tabs](assets/screenshots/desktop-discussion.png)
+![The detail page of a discussion, with the conclusion and the Rounds, Context, and Promoted changes tabs](assets/screenshots/desktop-discussion.png)
 
 ### <a id="improve"></a>improve: find improvements
 
@@ -133,9 +133,9 @@ Do the tasks in the task list, and check each task when it is done.
   - You started the change by mistake and changed nothing: `speclink in-progress remove <name>` moves it back to Proposed.
   - You do not want the change: `speclink discard <name>`. After the work starts, add `--force`.
 
-During the work, the detail panel of the change is the best view. The Proposal, Design, Tasks, and Specs tabs show the same documents. The progress in the Tasks tab is the result of `speclink task done`.
+During the work, the detail page of the change is the best view. The Proposal, Design, Tasks, and Specs tabs show the same documents. The progress in the Tasks tab is the result of `speclink task done`.
 
-![The detail panel of a change, with the proposal and the Tasks and Specs tabs](assets/screenshots/desktop-change-drawer.png)
+![The detail page of a change, with the proposal and the Tasks and Specs tabs](assets/screenshots/desktop-change-drawer.png)
 
 ### <a id="ingest"></a>ingest: update the requirement
 
@@ -344,7 +344,7 @@ Put all open changes in an execution order.
   - `speclink plan [--json]`
   - Declare a dependency: `speclink change depends <change> --on <prerequisite>` (add `--remove` to drop it)
   - Change the order in one column: `speclink change rank <change> --before <other-change>` (or `--after`; local only)
-- **Next**: Start the change that `next` names. The Schedule tab in the desktop detail panel shows the same data.
+- **Next**: Start the change that `next` names. The Schedule tab in the desktop detail page shows the same data.
 
 ## <a id="discussion-outcomes"></a>Discussion outcomes
 

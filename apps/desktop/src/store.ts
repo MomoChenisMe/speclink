@@ -9,6 +9,7 @@ import type {
   ArchivedItem,
   DiscussionItem,
   DiscussionLists,
+  DocumentRef,
   ListView,
   ManualIndex,
   SearchHit,
@@ -58,7 +59,7 @@ import {
   type AssetPromptState,
 } from "./assetPrompt";
 import { detectMacOS, type TrayStyle } from "./tray";
-import { projectDirOf, type FsActionsAdapter } from "./adapter/fsActions";
+import { projectDirOf, type DocumentLocation, type FsActionsAdapter } from "./adapter/fsActions";
 import {
   focusRecheckAllowed,
   focusRecheckDue,
@@ -96,7 +97,8 @@ type FailureMessageKey =
   | "store.setDependsFailed"
   | "store.openProjectFailed"
   | "store.initFailed"
-  | "store.adoptFailed";
+  | "store.adoptFailed"
+  | "store.documentActionFailed";
 
 /** error 缺席時不輸出尾綴——訊息本身已完整，且錯誤細節不得夾帶工程詞給使用者。 */
 function showFailureToast(subject: string, messageKey: FailureMessageKey, error?: unknown): void {
@@ -270,8 +272,8 @@ export interface AppState {
   revertBlocked: RevertBlockedInfo | null;
   /** 待確認的討論歸檔（slug）。 */
   pendingArchiveDiscussion: string | null;
-  /** 詳情抽屜內呈現的 validate／analyze 結構化結果（keyed by change）；null=無。 */
-  drawerVerb: VerbDrawerResult | null;
+  /** 變更詳情頁內呈現的 validate／analyze 結構化結果（keyed by change）；null=無。 */
+  detailVerb: VerbDrawerResult | null;
 
   refresh: () => Promise<void>;
   /** 監看重掛（事件驅動）：workspace-changed 後重解析監看目標——worktree 增減
@@ -293,13 +295,13 @@ export interface AppState {
   disposeSearch: () => void;
   toggleExpand: (name: string) => void;
   openDetail: (name: string) => void;
-  closeDetail: () => void;
   openDiscussion: (slug: string) => void;
-  closeDiscussion: () => void;
   openSpec: (capability: string) => void;
   closeSpec: () => void;
   openArchived: (target: ArchivedTarget) => void;
   closeArchived: () => void;
+  /** 關閉詳情頁回宿主頁（Esc、麵包屑、‹ › 失效時共用）：一次清空四個詳情欄位與 detailVerb。 */
+  closeDetailPage: () => void;
   requestArchive: (name: string) => void;
   confirmArchive: () => Promise<void>;
   cancelArchive: () => void;
@@ -322,8 +324,8 @@ export interface AppState {
   confirmArchiveDiscussion: () => Promise<void>;
   cancelArchiveDiscussion: () => void;
   runVerb: (verb: Verb, change: string) => Promise<void>;
-  /** 收合詳情抽屜的分析結果（design D2：再按分析或面板關閉鈕）。 */
-  clearDrawerVerb: () => void;
+  /** 收合變更詳情頁的分析結果（再按分析或面板關閉鈕）。 */
+  clearDetailVerb: () => void;
   /** 看板拖排寫回：把卡片排到兩鄰居之間（null＝欄頂／欄底）；失敗以 toast 呈現。 */
   reorderCard: (kind: CardKind, id: string, prevId: string | null, nextId: string | null) => Promise<void>;
   /** 排程分頁的前置新增／移除：寫回後刷新看板；引擎拒絕以 toast 呈現其訊息。 */
@@ -402,6 +404,16 @@ export interface AppState {
   openProjectInTerminal: (key: string) => Promise<void>;
   openProjectInEditor: (key: string) => Promise<void>;
   copyProjectPath: (key: string) => Promise<void>;
+  /** 詳情頁「開啟 ▾」的文件定位（design D4）：活躍專案有本機目錄時由 core 解析磁碟位置
+   * （與讀文件同一套：worktree 副本、spec 目錄名、已封存討論）；remote 無 checkout、
+   * 查不到或 core 回報錯誤時為 null。 */
+  locateDocument: (doc: DocumentRef) => Promise<DocumentLocation | null>;
+  /** 對已定位文件的動作：成功靜默、失敗以失敗 toast 呈現（主詞為相對路徑）。 */
+  openDocumentDefault: (location: DocumentLocation) => Promise<void>;
+  revealDocument: (location: DocumentLocation) => Promise<void>;
+  copyDocumentPath: (location: DocumentLocation) => Promise<void>;
+  /** 把分頁已載入的文件原文寫入剪貼簿（remote 無 checkout 時唯一的文件動作）；失敗同上。 */
+  copyDocumentContent: (text: string) => Promise<void>;
   confirmInit: (tools: string[]) => Promise<void>;
   cancelInit: () => void;
   confirmAdopt: (tools: string[]) => Promise<void>;
@@ -628,16 +640,31 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     fsActions: fsActionsAdapter,
   } = deps;
   return create<AppState>((set, get) => {
-    /** 對分頁的本機目錄執行檔案系統動作；remote 無 checkout 時沒有本機目錄、不動作。 */
-    const runOnProjectDir = async (key: string, action: keyof FsActionsAdapter) => {
+    /** 分頁的本機目錄：local 為專案根、remote 為 checkout；remote 無 checkout 時為 null。 */
+    const localDirOf = (key: string | null): string | null => {
       const tab = get().tabs.find((entry) => locatorKey(entry.locator) === key);
-      const dir = tab ? projectDirOf(tab.locator) : null;
+      return tab ? projectDirOf(tab.locator) : null;
+    };
+    /** 對分頁的本機目錄執行檔案系統動作；remote 無 checkout 時沒有本機目錄、不動作。 */
+    const runOnProjectDir = async (
+      key: string,
+      action: "reveal" | "openTerminal" | "openEditor" | "copyText",
+    ) => {
+      const dir = localDirOf(key);
       if (!fsActionsAdapter || dir === null) return;
       try {
         await fsActionsAdapter[action](dir);
       } catch (e) {
         // appT 對未知鍵回原字串：i18n 鍵（fs.noEditor）查表、opener 原文照舊。
         toast.error(appT(String(e)));
+      }
+    };
+    /** 文件動作的單槽失敗 toast：i18n 鍵（fs.notDocument）查表、opener 原文照舊。 */
+    const runOnDocument = async (subject: string, run: () => Promise<void>) => {
+      try {
+        await run();
+      } catch (e) {
+        showFailureToast(subject, "store.documentActionFailed", appT(String(e)));
       }
     };
     // 全文查詢的去抖與 latest-wins 狀態（design D6）——閉包層、不進 store state。
@@ -699,7 +726,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         pendingRevert: null,
         revertBlocked: null,
         pendingArchiveDiscussion: null,
-        drawerVerb: null,
+        detailVerb: null,
         manual: null,
       };
     }
@@ -1202,7 +1229,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     pendingRevert: null,
     revertBlocked: null,
     pendingArchiveDiscussion: null,
-    drawerVerb: null,
+    detailVerb: null,
 
     async refresh() {
       const sourceKey = get().activeKey;
@@ -1308,7 +1335,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     setBoardView(boardView) {
-      set({ boardView, reauthConnectionId: null });
+      // 切換主區頁面＝離開詳情頁：變更／討論詳情頁疊在宿主頁上，不關就會蓋住新頁。
+      set({ boardView, reauthConnectionId: null, detailChange: null, detailDiscussion: null, detailVerb: null });
       if (boardView === "manual") void get().refreshManual();
     },
 
@@ -1376,31 +1404,27 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       set({ expandedName: get().expandedName === name ? null : name });
     },
 
-    // detail 抽屜互斥（drawer-exclusivity）：每個 open* 清除其他三個 detail 欄位，
-    // 後開者取代先開者；互斥由此層保證，呼叫端入口不需自行先關再開。
-    // 落頁歸位（desktop-archived-parity D1）：變更詳情與討論抽屜的宿主頁面是看板，
-    // 開啟時同一次 set 內把底層切回看板，一個落點涵蓋全部入口（系統匣、抽屜內
-    // 跳轉、封存前「去蓋章」）；openSpec／openArchived 不在此列——其宿主頁面
-    // 本就是規格頁與已封存頁。兩者同時收掉可取消浮層（cancelableOverlaysCleared）；
-    // 不可取消浮層開啟中則不改任何狀態（系統匣仍會把主視窗帶到前景）。
+    // 詳情頁互斥（spec「詳情頁互斥」）：每個 open* 清除其他三個 detail 欄位，後開者
+    // 取代先開者；互斥由此層保證，呼叫端入口（含 ‹ › 切換）不需自行先關再開。
+    // 宿主歸位（spec「變更與討論詳情頁的宿主為看板」）：變更與討論詳情頁疊在看板上，
+    // 開啟時同一次 set 內把宿主切回看板，一個落點涵蓋全部入口（系統匣、頁內跳轉、
+    // 封存前「去蓋章」）；openSpec／openArchived 不在此列——其宿主本就是規格頁與
+    // 已封存頁。兩者同時收掉可取消浮層（cancelableOverlaysCleared）；不可取消浮層
+    // 開啟中則不改任何狀態（系統匣仍會把主視窗帶到前景）。
     openDetail(name) {
       if (uncancelableOverlayOpen(get())) return;
       const c = get().changes.find((x) => x.name === name);
-      // 換 change 清掉上一個 change 的動詞結果（drawerVerb keyed by change）。
+      // 換 change 清掉上一個 change 的動詞結果（detailVerb keyed by change）。
       if (c)
         set({
           detailChange: c,
           boardView: "board",
-          drawerVerb: null,
+          detailVerb: null,
           detailDiscussion: null,
           detailSpec: null,
           detailArchived: null,
           ...cancelableOverlaysCleared(),
         });
-    },
-
-    closeDetail() {
-      set({ detailChange: null, drawerVerb: null });
     },
 
     openDiscussion(slug) {
@@ -1409,28 +1433,24 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const d =
         lists.active.find((x) => x.slug === slug) ??
         lists.archived.find((x) => x.slug === slug);
-      // 取代變更詳情抽屜時 drawerVerb 一併清空（比照 closeDetail）。
+      // 取代變更詳情頁時 detailVerb 一併清空（比照 closeDetailPage）。
       if (d)
         set({
           detailDiscussion: d,
           boardView: "board",
           detailChange: null,
-          drawerVerb: null,
+          detailVerb: null,
           detailSpec: null,
           detailArchived: null,
           ...cancelableOverlaysCleared(),
         });
     },
 
-    closeDiscussion() {
-      set({ detailDiscussion: null });
-    },
-
     openSpec(capability) {
       set({
         detailSpec: capability,
         detailChange: null,
-        drawerVerb: null,
+        detailVerb: null,
         detailDiscussion: null,
         detailArchived: null,
       });
@@ -1444,7 +1464,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       set({
         detailArchived: target,
         detailChange: null,
-        drawerVerb: null,
+        detailVerb: null,
         detailDiscussion: null,
         detailSpec: null,
       });
@@ -1452,6 +1472,16 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     closeArchived() {
       set({ detailArchived: null });
+    },
+
+    closeDetailPage() {
+      set({
+        detailChange: null,
+        detailDiscussion: null,
+        detailSpec: null,
+        detailArchived: null,
+        detailVerb: null,
+      });
     },
 
     requestArchive(name) {
@@ -1624,20 +1654,20 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         ]);
         const o = (v ?? {}) as { valid?: boolean; errors?: string[] };
         set({
-          drawerVerb: {
+          detailVerb: {
             change,
             validate: { valid: !!o.valid, errors: o.errors ?? [] },
             analyze: a as AnalyzeReport,
           },
         });
       } catch (e) {
-        set({ drawerVerb: { change, error: String(e) } });
+        set({ detailVerb: { change, error: String(e) } });
       }
       await get().refresh();
     },
 
-    clearDrawerVerb() {
-      set({ drawerVerb: null });
+    clearDetailVerb() {
+      set({ detailVerb: null });
     },
 
     async reorderCard(kind, id, prevId, nextId) {
@@ -2311,7 +2341,24 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     revealProject: (key) => runOnProjectDir(key, "reveal"),
     openProjectInTerminal: (key) => runOnProjectDir(key, "openTerminal"),
     openProjectInEditor: (key) => runOnProjectDir(key, "openEditor"),
-    copyProjectPath: (key) => runOnProjectDir(key, "copyPath"),
+    copyProjectPath: (key) => runOnProjectDir(key, "copyText"),
+    async locateDocument(doc) {
+      const dir = localDirOf(get().activeKey);
+      if (!fsActionsAdapter || dir === null) return null;
+      try {
+        return await fsActionsAdapter.locate(dir, doc);
+      } catch {
+        return null;
+      }
+    },
+    openDocumentDefault: (location) =>
+      runOnDocument(location.relative, async () => fsActionsAdapter?.openDefault(location.path)),
+    revealDocument: (location) =>
+      runOnDocument(location.relative, async () => fsActionsAdapter?.reveal(location.path)),
+    copyDocumentPath: (location) =>
+      runOnDocument(location.relative, async () => fsActionsAdapter?.copyText(location.path)),
+    copyDocumentContent: (text) =>
+      runOnDocument(appT("detail.copyContent"), async () => fsActionsAdapter?.copyText(text)),
 
     closeTab(key) {
       bumpRemoteOpenGeneration(key);

@@ -6,14 +6,14 @@ import { useI18n } from "../i18n";
 import { useLingering } from "../lib/useLingering";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { TooltipProvider } from "./ui/tooltip";
 import { SourceChipRow, type SourceLinkItem } from "./SourceDiscussionChip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { DeltaSpecView } from "./DeltaBadges";
-import { ConclusionView, RoundsView, splitDiscussionSections } from "./DiscussionDrawer";
+import { ConclusionView, RoundsView, splitDiscussionSections } from "./DiscussionDetailPage";
 import { Markdown, READING_COLUMN_CLS } from "./Markdown";
 import { DocSkeleton } from "./skeletons";
-import { displayName } from "./RichDetailDrawer";
+import { IdentityName } from "./DetailHeader";
 import { LABEL_CLS, SectionedDoc } from "./SectionedDoc";
 import { TaskList } from "./TaskList";
 import { ImproveChip } from "./ImproveStamp";
@@ -227,19 +227,7 @@ export function ArchivedDrawer({
                 data-provenance-row
                 className="flex min-w-0 items-center gap-2 whitespace-nowrap overflow-hidden text-xs text-muted-foreground"
               >
-                {createdBy && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-flex shrink-0 items-center gap-1">
-                        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-muted text-muted-foreground text-[9px] font-bold">
-                          {createdBy.charAt(0).toUpperCase()}
-                        </span>
-                        {displayName(createdBy)}
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>{createdBy}</TooltipContent>
-                  </Tooltip>
-                )}
+                {createdBy && <IdentityName identity={createdBy} />}
                 {created && (
                   <span className="shrink-0">
                     {t("archived.createdOn").replace("{date}", created)}
