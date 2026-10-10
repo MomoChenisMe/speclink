@@ -64,8 +64,6 @@ export const textToEntries = (text: string) =>
     .map((line) => line.trim())
     .filter((line) => line !== "");
 
-/** 收合門檻（design D3）：唯讀 markdown 超長截斷——渲染高度無法在 jsdom 量測，以原文規模判定。 */
-const isLongContext = (text: string) => text.split("\n").length > 12 || text.length > 1200;
 
 
 export function useProjectSettings(settings: WorkspaceSettingsProvider) {
@@ -92,7 +90,6 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
    * 也以此鍵集送草稿，新固定鍵的既有規則走非凍結鍵兜底原樣保留。 */
   const [editingRuleKeys, setEditingRuleKeys] = useState<string[]>([]);
   const [rulesMsg, setRulesMsg] = useState<string | null>(null);
-  const [contextExpanded, setContextExpanded] = useState(false);
   const [appMsg, setAppMsg] = useState<string | null>(null);
   const [wfMsg, setWfMsg] = useState<string | null>(null);
   const [conflict, setConflict] = useState<PolicyConflict | null>(null);
@@ -129,7 +126,6 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     );
     setCtxEditing(false);
     setRulesEditing(false);
-    setContextExpanded(false);
   };
 
   useEffect(() => {
@@ -340,7 +336,6 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       const next = await settings.writeWorkflowContext(draftContext);
       adoptRevision(next);
       setContextText(draftContext);
-      setContextExpanded(false);
       setCtxEditing(false);
       setCtxMsg(t("settings.saved"));
     } catch (e) {
@@ -505,7 +500,6 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       } else if (pending.kind === "context") {
         next = await settings.writeWorkflowContext(pending.context);
         setContextText(pending.context);
-        setContextExpanded(false);
         setCtxEditing(false);
         setCtxMsg(t("settings.saved"));
       } else if (pending.kind === "schema") {
@@ -550,7 +544,6 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     ? { revision: snap.workflow.revision ?? null, reader: !settings.policyWrite }
     : null;
 
-  const contextCollapsed = !ctxEditing && !contextExpanded && isLongContext(contextText);
   const populatedRuleKeys = snap.workflow.schemaArtifacts.filter((id) => (rules[id] ?? []).length > 0);
   // 下拉選項：壞項不可選；同名跨層去重（解析語意本就取第一命中）。
   const selectableSchemaNames = Array.from(
@@ -564,7 +557,6 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     locale, setLocale, specLocale, setSpecLocale, tdd, setTdd, audit, setAudit, worktree, setWorktree,
     saveWorkflow, wfMsg,
     contextText, ctxEditing, setCtxEditing, draftContext, setDraftContext, ctxMsg, beginCtxEdit, saveContext,
-    contextCollapsed, setContextExpanded,
     rules, rulesEditing, setRulesEditing, draftRules, setDraftRules, editingRuleKeys, rulesMsg,
     beginRulesEdit, saveRules, populatedRuleKeys,
     conflict, reloadServerVersion, retryConflict,

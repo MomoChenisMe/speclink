@@ -461,7 +461,7 @@ describe("未存修改回報", () => {
 });
 
 describe("兩卡唯讀優先（spec Scenario「唯讀優先與各卡就地編輯」）", () => {
-  it("開啟專案說明頁：唯讀 markdown 渲染、無文字區、頁標題右側僅編輯；短文不收合", async () => {
+  it("開啟專案說明頁：唯讀 markdown 渲染、無文字區、頁標題右側僅編輯", async () => {
     renderView(projectSnap());
     const card = await screen.findByTestId("context-page");
     expect(within(card).getByText("專案說明")).toBeTruthy();
@@ -472,28 +472,21 @@ describe("兩卡唯讀優先（spec Scenario「唯讀優先與各卡就地編輯
     expect(within(card).getByTestId("context-edit")).toBeTruthy();
     expect(within(card).queryByTestId("context-save")).toBeNull();
     expect(within(card).queryByTestId("context-cancel")).toBeNull();
-    // 短文不收合：無顯示更多。
-    expect(within(card).queryByTestId("context-show-more")).toBeNull();
   });
 
-  it("超長專案說明收合並提供顯示更多，點擊展開", async () => {
-    const longContext = Array.from({ length: 20 }, (_, i) => `第 ${i + 1} 行說明`).join("\n");
+  it("超長專案說明呈現全文、無顯示更多（專案說明自成一頁，不收合）", async () => {
+    const longContext = Array.from({ length: 20 }, (_, i) => `第 ${i + 1} 段說明`).join("\n\n");
     renderView(projectSnap({ context: longContext }));
     const card = await screen.findByTestId("context-page");
-    const readonly = within(card).getByTestId("context-readonly");
-    expect(readonly.className).toContain("overflow-hidden");
-    const more = within(card).getByTestId("context-show-more");
-    expect(more.textContent).toContain("顯示更多");
-    fireEvent.click(more);
-    expect(within(card).queryByTestId("context-show-more")).toBeNull();
-    expect(within(card).getByTestId("context-readonly").className).not.toContain("overflow-hidden");
+    expect(within(card).getByText("第 20 段說明")).toBeTruthy();
+    expect(within(card).queryByText("顯示更多")).toBeNull();
+    expect(card.querySelector(".overflow-hidden")).toBeNull();
   });
 
   it("未設定專案說明顯示空狀態提示", async () => {
     renderView(projectSnap({ context: null }));
     const card = await screen.findByTestId("context-page");
     expect(within(card).getByText(/尚未設定專案說明/)).toBeTruthy();
-    expect(within(card).queryByTestId("context-show-more")).toBeNull();
   });
 
   it("產出規則卡唯讀僅列有條目鍵，鍵名為小節標題、條目為清單", async () => {
