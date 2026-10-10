@@ -34,6 +34,6 @@
 
 - Affected specs: desktop-config（設定頁編輯專案說明與產出規則 MODIFIED）、desktop-app（表單控制項與按鈕以主題化元件呈現 MODIFIED）
 - Affected code:
-  - New: `apps/desktop/src/components/CodeEditor.tsx`、`apps/desktop/src/__tests__/codeEditor.test.tsx`
-  - Modified: `apps/desktop/package.json`、`package-lock.json`、`apps/desktop/src/views/project-settings/ContextPage.tsx`、`apps/desktop/src/views/project-settings/RulesPage.tsx`、`apps/desktop/src/views/project-settings/useProjectSettings.ts`、`apps/desktop/src/index.css`、`apps/desktop/src/i18n/messages.ts`、`apps/desktop/src/__tests__/projectSettingsView.test.tsx`
+  - New: `apps/desktop/src/components/CodeEditor.tsx`、`apps/desktop/src/__tests__/codeEditor.test.tsx`、`apps/desktop/src/__tests__/helpers/codemirror.ts`
+  - Modified: `apps/desktop/package.json`、`package-lock.json`、`apps/desktop/src/views/project-settings/ContextPage.tsx`、`apps/desktop/src/views/project-settings/RulesPage.tsx`、`apps/desktop/src/views/project-settings/useProjectSettings.ts`、`apps/desktop/src/views/project-settings/parts.tsx`、`apps/desktop/src/i18n/messages.ts`、`apps/desktop/src/__tests__/projectSettingsView.test.tsx`、`apps/desktop/src/__tests__/App.test.tsx`
   - Removed: （無）
