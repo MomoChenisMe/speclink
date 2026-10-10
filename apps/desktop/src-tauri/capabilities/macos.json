@@ -8,6 +8,7 @@
     "core:default",
     "positioner:default",
     "clipboard-manager:allow-write-text",
-    "core:window:allow-set-size"
+    "core:window:allow-set-size",
+    "core:window:allow-set-theme"
   ]
 }

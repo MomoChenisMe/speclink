@@ -1,6 +1,6 @@
 // 「有新版本」圖示鈕（desktop-app spec「桌面自動更新」；desktop-notice-relocation design D2）：
 // 圖示列齒輪上方的狀態鈕——待同意＝下載箭頭＋琥珀點、下載中＝轉圈、待重啟＝重啟箭頭＋琥珀點、
-// 失敗＝紅色警示；其他狀態不出現。提示文字帶目標版本與「到設定 › 軟體更新」；點擊進設定頁。
+// 失敗＝紅色警示；其他狀態不出現。提示文字帶目標版本與「到設定 › 更新」；點擊進設定的更新頁。
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
@@ -25,11 +25,11 @@ const dot = () => button().querySelector("[data-update-dot]");
 const icon = () => button().querySelector("svg") as SVGElement;
 
 describe("UpdateRailButton", () => {
-  it("待同意：下載箭頭＋右上琥珀點；aria-label 含版號與「到設定 › 軟體更新」", () => {
+  it("待同意：下載箭頭＋右上琥珀點；aria-label 含版號與「到設定 › 更新」", () => {
     render(<UpdateRailButton state={{ phase: "available", version: "0.5.1" }} onClick={vi.fn()} />);
     expect(icon().classList.contains("lucide-download")).toBe(true);
     expect(dot()?.className).toContain("bg-status-warning");
-    expect(button().getAttribute("aria-label")).toBe("有新版本 0.5.1 — 到設定 › 軟體更新");
+    expect(button().getAttribute("aria-label")).toBe("有新版本 0.5.1 — 到設定 › 更新");
   });
 
   it("下載中：轉圈、無點", () => {
@@ -52,7 +52,7 @@ describe("UpdateRailButton", () => {
     expect(icon().classList.contains("lucide-triangle-alert")).toBe(true);
     expect(icon().getAttribute("class")).toContain("text-destructive");
     expect(dot()).toBeNull();
-    expect(button().getAttribute("aria-label")).toBe("更新失敗 — 到設定查看");
+    expect(button().getAttribute("aria-label")).toBe("更新失敗 — 到設定 › 更新查看");
   });
 
   it.each<[string, UpdaterState]>([

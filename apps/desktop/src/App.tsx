@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { CloudOff, MoreHorizontal } from "lucide-react";
@@ -24,6 +25,10 @@ import {
   DropdownMenuTrigger,
   I18nProvider,
   SEMANTIC_SURFACE,
+  applyThemePreference,
+  readThemePreference,
+  writeThemePreference,
+  type ThemePreference,
   SEMANTIC_TONE,
   Toaster,
   cn,
@@ -34,12 +39,15 @@ import {
   type Verb,
 } from "@speclink/ui";
 
-import { createAppStore, openTicketStation, selectAssetPrompt, type AppState } from "./store";
+import { createAppStore, isSettingsView, openTicketStation, selectAssetPrompt, type AppState } from "./store";
 import { locatorKey, type WorkspaceSession } from "./session";
 import { initTray, type TrayController } from "./tray";
 import { installAppMenu, type AppMenuAction } from "./appMenu";
 import { ProjectRail, tabPathHint } from "./components/ProjectRail";
 import { ProjectColumn } from "./components/ProjectColumn";
+import { SettingsColumn } from "./components/SettingsColumn";
+import { ProjectSettingsColumn } from "./components/ProjectSettingsColumn";
+import { APP_SETTINGS_CATEGORIES, PROJECT_SETTINGS_CATEGORIES } from "./settingsCatalog";
 import { EmptyWorkspace } from "./components/EmptyWorkspace";
 import { ProjectActionItems, type ProjectActions } from "./components/ProjectActionsMenu";
 import { LeftTitleBar, MainTitleBar, type Crumb } from "./components/TitleBar";
@@ -119,6 +127,16 @@ function detailPageOpen(
   st: Pick<AppState, "detailChange" | "detailDiscussion" | "detailSpec" | "detailArchived">,
 ): boolean {
   return st.detailChange !== null || st.detailDiscussion !== null || st.detailSpec !== null || st.detailArchived !== null;
+}
+
+/** 處在兩種設定模式之一（專案設定模式要有專案；零分頁時專案設定落在空狀態，不算）。 */
+function inSettingsMode(st: Pick<AppState, "boardView" | "tabs">): boolean {
+  return st.boardView === "settings" || (st.boardView === "project-settings" && st.tabs.length > 0);
+}
+
+/** 有對話框開著（Radix 只在開啟時掛載內容）：返回屬於底下的頁面，不得連帶收掉對話框。 */
+function dialogOpen(): boolean {
+  return document.querySelector('[role="dialog"], [role="alertdialog"]') !== null;
 }
 
 /** 有確認框（封存、退回、刪除、討論封存）待確認：確認框屬於目前詳情頁，返回與切換都不作用。 */
@@ -212,6 +230,15 @@ export function App({
     localePref,
     typeof navigator !== "undefined" ? navigator.language : undefined,
   );
+  // 外觀偏好（desktop-settings-mode design D4）：啟動套用在 index.html 的開機腳本；切換時寫入、套用並通知
+  // 系統匣面板 webview 重套（非 Tauri 環境靜默）。
+  const [themePref, setThemePrefState] = useState<ThemePreference>(() => readThemePreference());
+  const setThemePref = (pref: ThemePreference) => {
+    writeThemePreference(pref);
+    applyThemePreference(pref);
+    setThemePrefState(pref);
+    void emit("speclink:theme-changed", pref).catch(() => {});
+  };
   return (
     <I18nProvider locale={uiLocale} messages={APP_MESSAGES}>
       <AppInner
@@ -225,6 +252,8 @@ export function App({
         fsActions={fsActions}
         localePref={localePref}
         onLocalePrefChange={setLocalePref}
+        themePref={themePref}
+        onThemePrefChange={setThemePref}
       />
       <Toaster />
     </I18nProvider>
@@ -235,6 +264,9 @@ interface AppInnerProps extends AppProps {
   /** UI 語言偏好現值（null＝跟隨系統）；設定頁三選用。 */
   localePref: LocalePreference;
   onLocalePrefChange: (pref: LocalePreference) => void;
+  /** 外觀偏好現值（null＝跟隨系統）；設定頁外觀列用。 */
+  themePref: ThemePreference;
+  onThemePrefChange: (pref: ThemePreference) => void;
 }
 
 /** 桌面主畫面：生命週期看板（主視圖）＋已封存獨立頁＋設定頁＋富詳情抽屜。 */
@@ -249,6 +281,8 @@ function AppInner({
   fsActions,
   localePref,
   onLocalePrefChange,
+  themePref,
+  onThemePrefChange,
 }: AppInnerProps) {
   const useStore = useMemo(
     () =>
@@ -315,8 +349,14 @@ function AppInner({
     onRemove: s.removeConnection,
     onRefresh: s.refreshConnections,
     focusConnectionId: s.reauthConnectionId,
+    // 開著的 remote session 回報需重新登入的連線：伺服器頁列為登入過期。
+    expiredConnectionIds: Object.values(s.sessions).flatMap((session) =>
+      session.connectionState?.state === "needs-reauth" ? [session.connectionState.connectionId] : [],
+    ),
     onOpenWorkspace:
       openRemote && ((id: string) => s.openWorkspaceChooser({ initialConnectionId: id })),
+    defaultConnectionId: s.defaultConnectionId,
+    onDefaultConnectionChange: s.setDefaultConnectionId,
   };
   // 設定頁軟體更新卡的常駐現版號（updater 注入時啟動取一次；非 Tauri 環境靜默）。
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
@@ -516,10 +556,26 @@ function AppInner({
     if (!detail || detailIndex < 0 || next === undefined || detailActionsBlocked()) return;
     detail.open(next);
   };
-  // 返回鈕以外的返回途徑（Esc、返回快捷鍵、滑鼠側鍵、觸控板滑動）共用的關頁動作。
-  const backFromDetail = () => {
-    if (!detailActionsBlocked()) useStore.getState().closeDetailPage();
+  // 專案設定的未存修改（ProjectSettingsView 回報）：離開前先問要不要捨棄。
+  const projectSettingsDirty = useRef(false);
+  const onProjectSettingsDirty = useCallback((dirty: boolean) => {
+    projectSettingsDirty.current = dirty;
+  }, []);
+  const [discardPrompt, setDiscardPrompt] = useState(false);
+  // 全系統唯一的返回：返回鈕、Esc、⌘[（非 macOS 為 Alt+←）、滑鼠側鍵、觸控板滑動都經此決定
+  // 去處——詳情頁開著時關頁回宿主頁（確認框待確認或確認在途時不作用）；設定與專案設定模式
+  // 回到進入前的頁面（專案設定有未存修改時先問）；其餘頁面沒有返回（null）。
+  const backTarget = (st: AppState): (() => void) | null => {
+    if (detailPageOpen(st)) return detailActionsBlocked() ? null : st.closeDetailPage;
+    if (!inSettingsMode(st)) return null;
+    return st.boardView === "project-settings" && projectSettingsDirty.current
+      ? () => setDiscardPrompt(true)
+      : st.leaveSettings;
   };
+  // 觸發當下才看有沒有對話框開著（渲染時讀到的 DOM 還是上一刻，不能拿來決定滑動開關）。
+  const resolveBack = (st: AppState) => (dialogOpen() ? null : backTarget(st));
+  // 以呼叫當下的狀態決定去處（事件處理器與手勢結束時的狀態可能已不同於渲染時）。
+  const goBack = () => resolveBack(useStore.getState())?.();
   // 切換項目時頁層捲回頂端：捲動容器不重掛，否則沿用上一項的捲動位置。
   const detailLayerRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -528,21 +584,22 @@ function AppInner({
   // window keydown 處理器只掛一次：以 ref 讀最新的序列與切換動作。
   const stepDetailRef = useRef(stepDetail);
   stepDetailRef.current = stepDetail;
-  const handleDetailKey = (e: KeyboardEvent): boolean => {
+  const handleNavKey = (e: KeyboardEvent): boolean => {
     const st = useStore.getState();
-    if (e.defaultPrevented || !detailPageOpen(st)) return false;
+    if (e.defaultPrevented) return false;
     const target = e.target as HTMLElement | null;
     if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
       return false;
     }
     // 返回（design D8）：Esc 與 ⌘[、⌘←（非 macOS 為 Alt+←）等效於返回鈕。
     const escape = e.key === "Escape" && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
-    if (escape || isBackShortcut(e, platform)) {
+    const back = escape || isBackShortcut(e, platform) ? resolveBack(st) : null;
+    if (back) {
       e.preventDefault();
-      backFromDetail();
+      back();
       return true;
     }
-    if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+    if (detailPageOpen(st) && e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       e.preventDefault();
       stepDetailRef.current(e.key === "ArrowUp" ? -1 : 1);
       return true;
@@ -554,9 +611,9 @@ function AppInner({
   // macOS 的 ⌘W 先被系統預設選單攔走（關閉視窗），由原生選單承接，這裡不接。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // 詳情頁快捷鍵（spec「詳情頁的導覽與返回」）：Esc 關頁、⌥↑／⌥↓ 切上一個／下一個。
+      // 返回快捷鍵（Esc、⌘[／Alt+←）與詳情頁的 ⌥↑／⌥↓ 切上一個／下一個（spec「詳情頁的導覽與返回」）。
       // 浮層已處理（defaultPrevented）或焦點在文字輸入時不作用。
-      if (handleDetailKey(e)) return;
+      if (handleNavKey(e)) return;
       const key = e.key.toLowerCase();
       if (key === "r" && (platform === "macos" ? e.metaKey : e.ctrlKey)) {
         e.preventDefault();
@@ -581,9 +638,10 @@ function AppInner({
   // 滑鼠側鍵「上一頁」（button 3）：WebView 是否送出此事件依平台而異，以真機驗收為準。
   useEffect(() => {
     const onMouseUp = (e: MouseEvent) => {
-      if (e.button !== 3 || !detailPageOpen(useStore.getState())) return;
+      const back = e.button === 3 ? resolveBack(useStore.getState()) : null;
+      if (!back) return;
       e.preventDefault();
-      backFromDetail();
+      back();
     };
     window.addEventListener("mouseup", onMouseUp);
     return () => window.removeEventListener("mouseup", onMouseUp);
@@ -607,14 +665,19 @@ function AppInner({
     const dispatch = (action: AppMenuAction) => {
       const st = useStore.getState();
       switch (action) {
-        // 「關於」頁落地前（cut 4）先進應用程式設定頁。
+        // 原生選單各入口進設定模式的對應分類（desktop-settings-mode design D1）；
+        // 「關於」頁落地前先進一般頁。
         case "about":
         case "settings":
-        case "installCli":
-          return st.setBoardView("settings");
-        case "checkUpdates":
-          // 手動檢查的進度與結果呈現在設定頁的軟體更新卡。
           st.setBoardView("settings");
+          return st.setSettingsSection("general");
+        case "installCli":
+          st.setBoardView("settings");
+          return st.setSettingsSection("cli");
+        case "checkUpdates":
+          // 手動檢查的進度與結果呈現在更新頁的「最新版本」列。
+          st.setBoardView("settings");
+          st.setSettingsSection("updates");
           return void st.checkForUpdates(true);
         case "openProject":
           return st.openWorkspaceChooser();
@@ -724,6 +787,15 @@ function AppInner({
   // 殼（design D2）：標題列文字與麵包屑依模式——設定、有作用中專案、零專案（留白）。
   // projectTab＝標題列要呈現的專案（設定模式時沒有）。
   const projectTab = s.boardView === "settings" ? undefined : activeTab;
+  // 設定模式（desktop-settings-mode design D1／D2）：遠端專案沒有 .speclink.yaml 頁，記住的分類
+  // 落在那頁時退回專案說明。
+  const remoteProject = activeTab?.locator.kind === "remote";
+  const projectSettingsSection =
+    remoteProject && s.projectSettingsSection === "speclink" ? "context" : s.projectSettingsSection;
+  const settingsMode = s.boardView === "settings";
+  const projectSettingsMode = inSettingsMode(s) && !settingsMode;
+  // 專案設定分類欄的解析失敗警示點：由專案設定頁讀到設定快照後回報。
+  const [projectParseErrors, setProjectParseErrors] = useState({ config: false, speclink: false });
   const connectionNames = Object.fromEntries(s.connections.map((c) => [c.id, c.name]));
   const PAGE_LABEL_KEY: Record<Exclude<typeof s.boardView, "settings">, string> = {
     board: "app.navChanges",
@@ -736,7 +808,16 @@ function AppInner({
   // 項目名等寬不可點。
   const crumbs: Crumb[] =
     s.boardView === "settings"
-      ? [{ label: t("app.settingsTitle") }]
+      ? [
+          { label: t("app.settingsTitle"), onClick: () => s.setSettingsSection("general") },
+          { label: t(APP_SETTINGS_CATEGORIES.find((c) => c.id === s.settingsSection)!.labelKey) },
+        ]
+      : projectTab && s.boardView === "project-settings"
+        ? [
+            { label: projectTab.name, onClick: () => s.setBoardView("board") },
+            { label: t("app.navProjectSettings"), onClick: () => s.setProjectSettingsSection("context") },
+            { label: t(PROJECT_SETTINGS_CATEGORIES.find((c) => c.id === projectSettingsSection)!.labelKey) },
+          ]
       : projectTab && detail
         ? [
             {
@@ -925,21 +1006,22 @@ function AppInner({
       <div
         className={cn(
           "flex shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar",
-          s.tabs.length > 0 ? "w-[256px]" : "w-14",
+          settingsMode || s.tabs.length > 0 ? "w-[256px]" : "w-14",
         )}
       >
-        {/* 零專案時 56px 放不下文字（macOS 紅綠燈也佔住這段），「設定」只在麵包屑 */}
+        {/* 零專案且非設定模式時 56px 放不下文字（macOS 紅綠燈也佔住這段），標題列留白；
+            設定模式左端為「← 設定」，專案設定模式左端為「← 專案設定」、右端為等寬專案名 */}
         <LeftTitleBar
-          title={
-            s.boardView === "settings"
-              ? s.tabs.length > 0
-                ? t("app.settingsTitle")
-                : undefined
-              : projectTab?.name
-          }
+          title={projectTab?.name}
           path={projectTab && tabPathHint(projectTab, connectionNames, t)}
+          back={
+            settingsMode || projectSettingsMode
+              ? { label: t(settingsMode ? "app.settingsTitle" : "app.navProjectSettings"), onClick: goBack }
+              : undefined
+          }
+          trailing={projectSettingsMode ? projectTab?.name : undefined}
           menu={
-            projectTab ? (
+            projectTab && !projectSettingsMode ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -983,20 +1065,37 @@ function AppInner({
               updater && <UpdateRailButton state={s.updater} onClick={s.openSettingsUpdate} />
             }
           />
-          {s.tabs.length > 0 && (
-            <ProjectColumn
-              boardView={s.boardView}
-              archivedCount={s.archived.length}
-              onNavigate={s.setBoardView}
+          {settingsMode ? (
+            <SettingsColumn section={s.settingsSection} onSelect={s.setSettingsSection} />
+          ) : projectSettingsMode ? (
+            <ProjectSettingsColumn
+              section={projectSettingsSection}
+              remote={remoteProject}
+              configParseError={projectParseErrors.config}
+              speclinkParseError={projectParseErrors.speclink}
+              onSelect={s.setProjectSettingsSection}
               notice={
                 <AssetNoticeCard prompt={assetPromptNow} onOpen={() => setAssetDialogOpen(true)} />
               }
             />
+          ) : (
+            s.tabs.length > 0 && (
+              <ProjectColumn
+                boardView={s.boardView}
+                archivedCount={s.archived.length}
+                onNavigate={s.setBoardView}
+                notice={
+                  <AssetNoticeCard prompt={assetPromptNow} onOpen={() => setAssetDialogOpen(true)} />
+                }
+              />
+            )
           )}
         </div>
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* relative＋overflow-hidden：滑動返回指示定位在主區欄、裁掉左緣外那段；設定頁的 main
+          會捲動，指示不能放在 main 裡 */}
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <MainTitleBar
           platform={platform}
           crumbs={crumbs}
@@ -1005,7 +1104,7 @@ function AppInner({
               <DetailBack
                 page={t(PAGE_LABEL_KEY[s.boardView])}
                 keys={platform === "macos" ? "⌘[" : "Alt+←"}
-                onBack={s.closeDetailPage}
+                onBack={goBack}
               />
             ) : undefined
           }
@@ -1061,10 +1160,9 @@ function AppInner({
           <main
             className={cn(
               "relative flex flex-1 flex-col",
-              s.boardView === "manual" ? "p-0" : "p-5",
-              s.boardView === "settings" || s.boardView === "project-settings"
-                ? "overflow-y-auto"
-                : "overflow-hidden",
+              // 設定頁各頁自帶內距（desktop-settings-mode design D5）。
+              s.boardView === "manual" || isSettingsView(s.boardView) ? "p-0" : "p-5",
+              isSettingsView(s.boardView) ? "overflow-y-auto" : "overflow-hidden",
             )}
           >
             {/* 宿主頁（design D1）：詳情頁開啟期間保持掛載但不可見、不可互動——捲動位置、
@@ -1077,12 +1175,14 @@ function AppInner({
             >
             {s.boardView === "settings" ? (
               <AppSettingsView
+                section={s.settingsSection}
                 platform={platform}
                 localePref={localePref}
                 onLocalePrefChange={onLocalePrefChange}
+                themePref={themePref}
+                onThemePrefChange={onThemePrefChange}
                 trayPanelError={s.trayPanelError}
                 servers={servers}
-                focusConnectionId={s.reauthConnectionId}
                 updater={
                   updater && {
                     state: s.updater,
@@ -1094,6 +1194,8 @@ function AppInner({
                     onRelaunch: () => void s.relaunchToUpdate(),
                     focus: s.focusUpdater,
                     onFocusHandled: s.clearFocusUpdater,
+                    autoCheck: s.updaterAutoCheck,
+                    onAutoCheckChange: s.setUpdaterAutoCheck,
                   }
                 }
                 cliInstall={
@@ -1126,7 +1228,12 @@ function AppInner({
                 onRemove={() => s.closeTab(locatorKey(activeRecoveryTab.locator))}
               />
             ) : s.boardView === "project-settings" && activeSession !== undefined ? (
-              <ProjectSettingsView settings={activeSession.settings} />
+              <ProjectSettingsView
+                settings={activeSession.settings}
+                section={projectSettingsSection}
+                onParseErrors={setProjectParseErrors}
+                onDirtyChange={onProjectSettingsDirty}
+              />
             ) : s.boardView === "manual" ? (
               <ManualPage
                 index={s.manual}
@@ -1227,9 +1334,9 @@ function AppInner({
                 }
               </div>
             )}
-            {/* 觸控板滑動返回（design D8）：左緣「←」指示，過門檻放開即回宿主頁。 */}
-            <SwipeBack enabled={pageOpen && !confirmPending(s)} onBack={backFromDetail} />
           </main>
+          {/* 觸控板滑動返回（design D8）：左緣「←」指示，過門檻放開即返回（去處同返回鈕）。 */}
+          <SwipeBack enabled={backTarget(s) !== null} onBack={goBack} />
       </div>
 
       {workspace && (
@@ -1254,6 +1361,7 @@ function AppInner({
           initialStep={s.workspaceChooser?.initialStep}
           initialScope={s.workspaceChooser?.initialScope}
           initialCheckoutPath={s.workspaceChooser?.initialCheckoutPath}
+          defaultConnectionId={s.defaultConnectionId}
         />
       )}
 
@@ -1307,6 +1415,18 @@ function AppInner({
       />
 
       {/* 初始化確認（寫入型確認框：Radix 預設焦點落在取消） */}
+      <ConfirmDialog
+        open={discardPrompt}
+        onOpenChange={setDiscardPrompt}
+        title={t("settings.discardTitle")}
+        description={t("settings.discardHint")}
+        confirmLabel={t("settings.discard")}
+        destructive
+        onConfirm={() => {
+          setDiscardPrompt(false);
+          useStore.getState().leaveSettings();
+        }}
+      />
       <ConfirmDialog
         open={s.pendingInit !== null}
         onOpenChange={(o) => !o && s.cancelInit()}

@@ -1,0 +1,113 @@
+// 設定分類目錄（desktop-settings-mode design D1）：應用程式設定與專案設定兩種分類欄的單一來源。
+// 應用程式分類帶各頁列標籤的 i18n 鍵——分類欄搜尋以分類名與這些列標籤做大小寫不敏感比對。
+import {
+  FileCog,
+  FileText,
+  Languages,
+  ListChecks,
+  RefreshCw,
+  Server,
+  Settings2,
+  SquareTerminal,
+  Workflow,
+  type LucideIcon,
+} from "lucide-react";
+
+export interface AppSettingsCategory {
+  id: "general" | "appearance" | "updates" | "cli" | "servers";
+  labelKey: string;
+  icon: LucideIcon;
+  group: "app";
+  /** 該頁各列標籤的 i18n 鍵。 */
+  rows: string[];
+}
+
+export interface ProjectSettingsCategory {
+  id: "context" | "rules" | "workflow" | "speclink";
+  labelKey: string;
+  icon: LucideIcon;
+  /** config＝openspec/config.yaml 組；project＝「專案」組（.speclink.yaml）。 */
+  group: "config" | "project";
+  /** 遠端專案是否呈現（.speclink.yaml 屬本機 checkout，遠端無此分類）。 */
+  remote: boolean;
+}
+
+export type SettingsSection = AppSettingsCategory["id"];
+export type ProjectSettingsSection = ProjectSettingsCategory["id"];
+
+export const APP_SETTINGS_CATEGORIES: AppSettingsCategory[] = [
+  {
+    id: "general",
+    labelKey: "settings.section.general",
+    icon: Settings2,
+    group: "app",
+    rows: [
+      "settings.displayLanguage",
+      "settings.appearance",
+      "updater.currentVersion",
+      "updater.check",
+      "releaseNotes.open",
+      "cliInstall.rowLabel",
+      "settings.shortcutsTitle",
+    ],
+  },
+  {
+    id: "appearance",
+    labelKey: "settings.section.appearance",
+    icon: Languages,
+    group: "app",
+    rows: ["settings.displayLanguage", "settings.appearance"],
+  },
+  {
+    id: "updates",
+    labelKey: "settings.section.updates",
+    icon: RefreshCw,
+    group: "app",
+    rows: [
+      "updater.check",
+      "updater.currentVersion",
+      "updater.page.latest",
+      "releaseNotes.open",
+      "updater.page.autoCheck",
+    ],
+  },
+  {
+    id: "cli",
+    labelKey: "settings.section.cli",
+    icon: SquareTerminal,
+    group: "app",
+    rows: ["cliInstall.rowLabel", "cli.page.deployDir"],
+  },
+  {
+    id: "servers",
+    labelKey: "settings.section.servers",
+    icon: Server,
+    group: "app",
+    rows: [
+      "servers.page.addConnection",
+      "servers.page.connectionsCard",
+      "servers.page.defaultForNew",
+      "servers.page.deviceLogin",
+      "servers.page.pat",
+    ],
+  },
+];
+
+export const PROJECT_SETTINGS_CATEGORIES: ProjectSettingsCategory[] = [
+  { id: "context", labelKey: "settings.projectSection.context", icon: FileText, group: "config", remote: true },
+  { id: "rules", labelKey: "settings.projectSection.rules", icon: ListChecks, group: "config", remote: true },
+  { id: "workflow", labelKey: "settings.projectSection.workflow", icon: Workflow, group: "config", remote: true },
+  { id: "speclink", labelKey: "settings.projectSection.speclink", icon: FileCog, group: "project", remote: false },
+];
+
+/** 分類欄搜尋：分類名或任一列標籤含查詢字串（大小寫不敏感）；空查詢全數保留。 */
+export function matchAppSettings(
+  query: string,
+  t: (key: string) => string,
+): AppSettingsCategory[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return APP_SETTINGS_CATEGORIES;
+  return APP_SETTINGS_CATEGORIES.filter((category) =>
+    [category.labelKey, ...category.rows].some((key) => t(key).toLowerCase().includes(q)),
+  );
+}

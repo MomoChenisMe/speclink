@@ -1,0 +1,290 @@
+{
+  "version": 2,
+  "change": "desktop-settings-mode",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 `packages/ui/package.json` 加 `@radix-ui/react-switch`；新增 `packages/ui/src/components/ui/switch.tsx`（design D3：軌 h-5 w-9、thumb 16px、開 `bg-primary` 關 `bg-input`、focus 環沿 Button）與 `packages/ui/src/components/ui/settings.tsx`（`SettingsPageHeader`、`SettingsCard`、`SettingsRow`、`SettingsChoice`、`SettingsGroupHeader`，尺寸與結構依 D3）；`packages/ui/src/index.ts` 匯出六者。驗證：新增 `packages/ui/src/__tests__/switch.test.tsx`（role switch、aria-checked 切換、disabled 不觸發、鍵盤空白鍵切換）與 `packages/ui/src/__tests__/settingsParts.test.tsx`（PageHeader 標題／說明／動作／note 渲染；Card 小標與計數；Row 的 label／description／control 與 warning 樣式；Choice 以 aria-label 可選並回呼；GroupHeader 圖示與計數）；`npm test -w packages/ui -- switch settingsParts`；`npm test -w packages/ui -- theme` 無原生色階。",
+      "files": [
+        "package-lock.json",
+        "packages/ui/package.json",
+        "packages/ui/src/index.ts",
+        "packages/ui/src/__tests__/settingsParts.test.tsx",
+        "packages/ui/src/__tests__/switch.test.tsx",
+        "packages/ui/src/components/ui/settings.tsx",
+        "packages/ui/src/components/ui/switch.tsx"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 新增 `packages/ui/src/theme.ts`（design D4：`ThemePreference`、`readThemePreference`／`writeThemePreference`（鍵 `speclink.theme`）、`applyThemePreference`）並匯出；`packages/ui/src/theme.css` 深色 token 改為 `@media (prefers-color-scheme: dark) { :root:not([data-theme=\"light\"]) {…} }` 與 `:root[data-theme=\"dark\"] {…}` 兩份；`apps/desktop/src/main.tsx` 與 `apps/desktop/src/panel/main.tsx` 啟動時套用；App 持 `themePref` state，切換時寫入、套用並 `emit(\"speclink:theme-changed\")`，面板監聽後重套（spec「外觀偏好」）。驗證：新增 `packages/ui/src/__tests__/themePreference.test.ts`——讀寫三態、壞值視為 null、apply 設／移除 `data-theme`；`packages/ui/src/__tests__/theme.test.ts` 加「兩個深色區塊宣告逐行相同」「含 `data-theme` 兩個選擇器」，既有系統偏好查詢案通過；`npm test -w packages/ui -- themePreference theme`。",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/main.tsx",
+        "apps/desktop/src/panel/main.tsx",
+        "packages/ui/src/__tests__/theme.test.ts",
+        "packages/ui/src/theme.css",
+        "packages/ui/src/__tests__/themePreference.test.ts",
+        "packages/ui/src/theme.ts"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 `apps/desktop/src/store.ts` 加 `settingsSection`／`projectSettingsSection` 與 setter、`updaterAutoCheck`（鍵 `speclink.updater.autoCheck`，預設 true；為 false 時 `checkForUpdates(false)` 與前景重檢直接 return）、`defaultConnectionId`（鍵 `speclink.defaultConnection`）與 setter；`openSettingsUpdate` 改切 section updates、`openConnectionReauth` 切 section servers；新增 `apps/desktop/src/settingsCatalog.ts`（design D1：應用程式五分類與專案設定四分類、rows 標籤鍵、remote 旗標）（spec「側欄導覽結構」「桌面自動更新」「伺服器管理最小面」）。驛證：`apps/desktop/src/__tests__/store.test.ts` 新增——`openSettingsUpdate` 設 settings＋updates＋focusUpdater、`openConnectionReauth` 設 servers、`updaterAutoCheck` 為 false 時背景檢查不呼叫 adapter 而手動檢查呼叫、`defaultConnectionId` 讀寫；`npm test -w apps/desktop -- store`。",
+      "files": [
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/store.ts",
+        "apps/desktop/src/settingsCatalog.ts"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 新增 `apps/desktop/src/components/SettingsColumn.tsx`（design D2：`SearchField`＋「應用程式」群組五個 `NavItem`、搜尋過濾分類名與 rows、無命中文案）與 `apps/desktop/src/components/ProjectSettingsColumn.tsx`（兩群組、remote 無第二組、解析失敗警示點經 `NavItem` 的 `badge` 槽）；`NavItem` 加 `badge?: ReactNode` 槽（`packages/ui/src/components/NavItem.tsx`）；`apps/desktop/src/components/TitleBar.tsx` 的 `LeftTitleBar` 加 `back`／`trailing`；`apps/desktop/src/App.tsx` 依 `boardView` 渲染三種左欄（專案欄／設定分類欄／專案設定分類欄）、設定模式左側恆 256px（零專案亦然）、左側標題列「← 專案設定」＋等寬專案名、麵包屑「設定 / 分類」與「專案名 / 專案設定 / 分類」；i18n 加 `settings.section.*`、`settings.group.*`、`settings.searchPlaceholder`、`settings.noMatch`、`settings.backToProject`、`settings.projectSection.*`（spec「側欄導覽結構」）。驗證：新增 `apps/desktop/src/__tests__/settingsColumn.test.tsx`——五項渲染與作用中、搜尋「外觀」只剩兩項、無命中文案、專案設定欄 remote 無 .speclink.yaml、解析失敗帶警示點；`titleBar.test.tsx` 加 back 鈕與 trailing；`App.test.tsx` 加零專案點齒輪左側含分類欄、專案設定模式的麵包屑三段與返回回看板；`npm test -w apps/desktop -- settingsColumn titleBar App`。",
+      "files": [
+        "apps/desktop/src/__tests__/titleBar.test.tsx",
+        "apps/desktop/src/components/TitleBar.tsx",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/views/ProjectSettingsView.tsx",
+        "packages/ui/src/components/NavItem.tsx",
+        "apps/desktop/src/__tests__/settingsColumn.test.tsx",
+        "apps/desktop/src/components/ProjectSettingsColumn.tsx",
+        "apps/desktop/src/components/SettingsColumn.tsx"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 新增 `apps/desktop/src/views/settings/GeneralPage.tsx`、`AppearancePage.tsx`、`CliPage.tsx`（design D5：介面語言卡的 `LocaleRow`／`ThemeRow` 共用、軟體更新卡三列、CLI 指令卡、鍵盤快捷鍵卡改列式；CLI 頁含佈署位置列）；`apps/desktop/src/views/AppSettingsView.tsx` 改為依 `settingsSection` 渲染各頁並把 `trayPanelError` 放一般頁底；`settings.localTabNote` 改頁語意、刪除 `settings.localTabLabel`／`settings.serversTabLabel`；加 `settings.appearance`、`settings.theme.*`、`settings.pageNote`、`cli.page.deployDir`（spec「設定頁圖形化讀寫兩層設定」「UI 介面語言支援 zh-TW 與 en」「外觀偏好」「安裝 CLI 指令到 PATH」「設定頁的鍵盤快捷鍵卡」「指令檔過期提示」）。驗證：`apps/desktop/src/__tests__/appSettingsView.test.tsx` 既有案例改以 `settingsSection` 進頁並通過，新增——一般頁四卡順序與「僅存於此裝置」註記、外觀列三選呼叫 `onThemePrefChange`、語言與外觀頁兩列、CLI 頁佈署位置列、快捷鍵卡仍在一般頁最後；`npm test -w apps/desktop -- appSettingsView`。",
+      "files": [
+        "apps/desktop/src/__tests__/appSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/updateInstallRow.test.tsx",
+        "apps/desktop/src/components/UpdateInstallRow.tsx",
+        "apps/desktop/src/views/AppSettingsView.tsx",
+        "apps/desktop/src/__tests__/updatesPage.test.tsx",
+        "apps/desktop/src/views/settings/AppearancePage.tsx",
+        "apps/desktop/src/views/settings/CliPage.tsx",
+        "apps/desktop/src/views/settings/GeneralPage.tsx",
+        "apps/desktop/src/views/settings/UpdatesPage.tsx"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.3 新增 `apps/desktop/src/views/settings/ServersPage.tsx` 並把 `apps/desktop/src/components/ServersPanel.tsx` 重排為三卡（design D7：新增連線鈕展開新增卡、連線卡列與狀態 `StatusPill`、登出／登入／重新登入＋「⋯」選單、預設卡 `SettingsChoice`、登入方式卡兩列；reauth 聚焦與剛登入聚焦開啟專案鈕的既有行為保留）；`apps/desktop/src/components/WorkspaceChooser.tsx` 加 `defaultConnectionId` 並於 Server 步驤預選（存在且已登入才預選）；App 接線 `defaultConnectionId`；i18n 加 `servers.page.*`（spec「伺服器管理最小面」「device login 預設與 PAT fallback」）。驗證：`apps/desktop/src/__tests__/serversPanel.test.tsx` 既有登入／登出／移除／聚焦案例通過，新增 `apps/desktop/src/__tests__/serversPage.test.tsx`——新增連線鈕展開與送出後收起、兩個連線的狀態籤與右側動作、「⋯」含開啟專案與移除、預設下拉只列已登入連線並回呼；`workspaceChooser.test.tsx` 加「`defaultConnectionId` 指向已登入連線時 Server 步驟預選、指向已登出者不預選」；`npm test -w apps/desktop -- serversPanel serversPage workspaceChooser`。",
+      "files": [
+        "apps/desktop/src/__tests__/serversPanel.test.tsx",
+        "apps/desktop/src/__tests__/workspaceChooser.test.tsx",
+        "apps/desktop/src/components/ServersPanel.tsx",
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "apps/desktop/src/__tests__/serversPage.test.tsx",
+        "apps/desktop/src/views/settings/ServersPage.tsx"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.1 把 `apps/desktop/src/views/ProjectSettingsView.tsx` 的 state、載入、儲存、衝突對照、schema 操作抽成 `apps/desktop/src/views/project-settings/useProjectSettings.ts`（邏輯不變），新增 `ContextPage.tsx`、`RulesPage.tsx`、`WorkflowPage.tsx`、`SpeclinkPage.tsx`（design D8：頁標題右側編輯控制、等寬檔案鍵註記或 policy revision、產出政策卡五列（下拉與 `Switch`）＋產出流程卡、.speclink.yaml 的檔案列與 AI 工具列開關），`ProjectSettingsView` 改為依 `projectSettingsSection` 渲染並把 remote 衝突卡與 `ParseErrorBanner` 放各頁頂；刪除 `settings.schemaTab`、`remote.workflowTab`（spec「設定頁圖形化讀寫兩層設定」「設定頁編輯專案說明與產出規則」「產出流程頁」「設定頁政策下拉的未知值顯性呈現」「產出政策的 worktree 開關」「產出流程的切換寫入」「產出流程的客製 fork」「產出流程的建立」「產出流程的編輯入口」「產出流程的刪除」「remote 模式的內建限縮與誤解析修正」）。驗證：`apps/desktop/src/__tests__/projectSettingsView.test.tsx` 既有案例改以 `projectSettingsSection` 進頁並全部通過（含 remote 衝突、reader 唯讀、未知 locale、worktree 開關、schema 切換／fork／建立／刪除、tools 同步），新增——產出流程頁含產出政策卡與產出流程卡、.speclink.yaml 頁檔案列為等寬路徑、tdd 以 `role=\"switch\"` 呈現並寫回 true；`npm test -w apps/desktop -- projectSettingsView`。",
+      "files": [
+        "apps/desktop/src/__tests__/messages.test.ts",
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "apps/desktop/src/views/project-settings/ContextPage.tsx",
+        "apps/desktop/src/views/project-settings/RulesPage.tsx",
+        "apps/desktop/src/views/project-settings/SpeclinkPage.tsx",
+        "apps/desktop/src/views/project-settings/WorkflowPage.tsx",
+        "apps/desktop/src/views/project-settings/parts.tsx",
+        "apps/desktop/src/views/project-settings/useProjectSettings.ts"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 新增 `packages/ui/src/theme.ts`（design D4：`ThemePreference`、`readThemePreference`／`writeThemePreference`（鍵 `speclink.theme`）、`applyThemePreference`）並匯出；`packages/ui/src/theme.css` 深色 token 改為 `@media (prefers-color-scheme: dark) { :root:not([data-theme=\"light\"]) {…} }` 與 `:root[data-theme=\"dark\"] {…}` 兩份；`apps/desktop/src/main.tsx` 與 `apps/desktop/src/panel/main.tsx` 啟動時套用；App 持 `themePref` state，切換時寫入、套用並 `emit(\"speclink:theme-changed\")`，面板監聽後重套（spec「外觀偏好」）。驗證：新增 `packages/ui/src/__tests__/themePreference.test.ts`——讀寫三態、壞值視為 null、apply 設／移除 `data-theme`；`packages/ui/src/__tests__/theme.test.ts` 加「兩個深色區塊宣告逐行相同」「含 `data-theme` 兩個選擇器」，既有系統偏好查詢案通過；`npm test -w packages/ui -- themePreference theme`。",
+      "files": [
+        "apps/desktop/src/__tests__/emptyWorkspace.test.tsx",
+        "apps/server-web/src/__tests__/admin-console-shell.test.tsx",
+        "packages/ui/src/__tests__/brand.test.tsx",
+        "packages/ui/src/components/Brand.tsx"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.3 全部對齊：`./target/debug/speclink validate desktop-settings-mode` 通過；`npm test -w packages/ui`、`npm test -w apps/desktop` 全綠；`npm run build -w apps/desktop` 與 `npm run build -w apps/server-web` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。本任務同時落實 spec 以 REMOVED 退場的「設定頁的產出流程頁籤」——其行為由「產出流程頁」承接。",
+      "files": [
+        "apps/desktop/src/__tests__/updateRailButton.test.tsx",
+        "apps/desktop/src/components/ProjectColumn.tsx"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.3 全部對齊：`./target/debug/speclink validate desktop-settings-mode` 通過；`npm test -w packages/ui`、`npm test -w apps/desktop` 全綠；`npm run build -w apps/desktop` 與 `npm run build -w apps/server-web` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。本任務同時落實 spec 以 REMOVED 退場的「設定頁的產出流程頁籤」——其行為由「產出流程頁」承接。",
+      "files": [
+        "apps/desktop/index.html",
+        "apps/desktop/src-tauri/capabilities/macos.json",
+        "apps/desktop/src/__tests__/remoteResilience.test.tsx",
+        "apps/desktop/src/adapter/connections.ts",
+        "packages/ui/src/components/ui/status-pill.tsx",
+        "apps/desktop/src/__tests__/themeBoot.test.ts"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4JKYG2KKJFXC3M2PEA7HKZ3",
+      "taskDesc": "1.1 `packages/ui/package.json` 加 `@radix-ui/react-switch`；新增 `packages/ui/src/components/ui/switch.tsx`（design D3：軌 h-5 w-9、thumb 16px、開 `bg-primary` 關 `bg-input`、focus 環沿 Button）與 `packages/ui/src/components/ui/settings.tsx`（`SettingsPageHeader`、`SettingsCard`、`SettingsRow`、`SettingsChoice`、`SettingsGroupHeader`，尺寸與結構依 D3）；`packages/ui/src/index.ts` 匯出六者。驗證：新增 `packages/ui/src/__tests__/switch.test.tsx`（role switch、aria-checked 切換、disabled 不觸發、鍵盤空白鍵切換）與 `packages/ui/src/__tests__/settingsParts.test.tsx`（PageHeader 標題／說明／動作／note 渲染；Card 小標與計數；Row 的 label／description／control 與 warning 樣式；Choice 以 aria-label 可選並回呼；GroupHeader 圖示與計數）；`npm test -w packages/ui -- switch settingsParts`；`npm test -w packages/ui -- theme` 無原生色階。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "46e8a0654d79fc46732378e724bb88ead91e7011",
+      "touchedFiles": [
+        "package-lock.json",
+        "packages/ui/package.json",
+        "packages/ui/src/index.ts",
+        "packages/ui/src/__tests__/settingsParts.test.tsx",
+        "packages/ui/src/__tests__/switch.test.tsx",
+        "packages/ui/src/components/ui/settings.tsx",
+        "packages/ui/src/components/ui/switch.tsx"
+      ],
+      "recordedAt": "2026-10-10T12:12:51Z"
+    },
+    {
+      "taskId": "tsk_01M4JKYG2KVZA779QX6VCS1FCK",
+      "taskDesc": "1.2 新增 `packages/ui/src/theme.ts`（design D4：`ThemePreference`、`readThemePreference`／`writeThemePreference`（鍵 `speclink.theme`）、`applyThemePreference`）並匯出；`packages/ui/src/theme.css` 深色 token 改為 `@media (prefers-color-scheme: dark) { :root:not([data-theme=\"light\"]) {…} }` 與 `:root[data-theme=\"dark\"] {…}` 兩份；`apps/desktop/src/main.tsx` 與 `apps/desktop/src/panel/main.tsx` 啟動時套用；App 持 `themePref` state，切換時寫入、套用並 `emit(\"speclink:theme-changed\")`，面板監聽後重套（spec「外觀偏好」）。驗證：新增 `packages/ui/src/__tests__/themePreference.test.ts`——讀寫三態、壞值視為 null、apply 設／移除 `data-theme`；`packages/ui/src/__tests__/theme.test.ts` 加「兩個深色區塊宣告逐行相同」「含 `data-theme` 兩個選擇器」，既有系統偏好查詢案通過；`npm test -w packages/ui -- themePreference theme`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "46e8a0654d79fc46732378e724bb88ead91e7011",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/main.tsx",
+        "apps/desktop/src/panel/main.tsx",
+        "packages/ui/src/__tests__/theme.test.ts",
+        "packages/ui/src/theme.css",
+        "packages/ui/src/__tests__/themePreference.test.ts",
+        "packages/ui/src/theme.ts"
+      ],
+      "recordedAt": "2026-10-10T12:15:45Z"
+    },
+    {
+      "taskId": "tsk_01M4JKYG2K04Y5ZVENSTQ9X0RT",
+      "taskDesc": "2.1 `apps/desktop/src/store.ts` 加 `settingsSection`／`projectSettingsSection` 與 setter、`updaterAutoCheck`（鍵 `speclink.updater.autoCheck`，預設 true；為 false 時 `checkForUpdates(false)` 與前景重檢直接 return）、`defaultConnectionId`（鍵 `speclink.defaultConnection`）與 setter；`openSettingsUpdate` 改切 section updates、`openConnectionReauth` 切 section servers；新增 `apps/desktop/src/settingsCatalog.ts`（design D1：應用程式五分類與專案設定四分類、rows 標籤鍵、remote 旗標）（spec「側欄導覽結構」「桌面自動更新」「伺服器管理最小面」）。驛證：`apps/desktop/src/__tests__/store.test.ts` 新增——`openSettingsUpdate` 設 settings＋updates＋focusUpdater、`openConnectionReauth` 設 servers、`updaterAutoCheck` 為 false 時背景檢查不呼叫 adapter 而手動檢查呼叫、`defaultConnectionId` 讀寫；`npm test -w apps/desktop -- store`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "46e8a0654d79fc46732378e724bb88ead91e7011",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/store.ts",
+        "apps/desktop/src/settingsCatalog.ts"
+      ],
+      "recordedAt": "2026-10-10T12:18:00Z"
+    },
+    {
+      "taskId": "tsk_01M4JKYG2K2G7W6HFVM4NXN0PP",
+      "taskDesc": "2.2 新增 `apps/desktop/src/components/SettingsColumn.tsx`（design D2：`SearchField`＋「應用程式」群組五個 `NavItem`、搜尋過濾分類名與 rows、無命中文案）與 `apps/desktop/src/components/ProjectSettingsColumn.tsx`（兩群組、remote 無第二組、解析失敗警示點經 `NavItem` 的 `badge` 槽）；`NavItem` 加 `badge?: ReactNode` 槽（`packages/ui/src/components/NavItem.tsx`）；`apps/desktop/src/components/TitleBar.tsx` 的 `LeftTitleBar` 加 `back`／`trailing`；`apps/desktop/src/App.tsx` 依 `boardView` 渲染三種左欄（專案欄／設定分類欄／專案設定分類欄）、設定模式左側恆 256px（零專案亦然）、左側標題列「← 專案設定」＋等寬專案名、麵包屑「設定 / 分類」與「專案名 / 專案設定 / 分類」；i18n 加 `settings.section.*`、`settings.group.*`、`settings.searchPlaceholder`、`settings.noMatch`、`settings.backToProject`、`settings.projectSection.*`（spec「側欄導覽結構」）。驗證：新增 `apps/desktop/src/__tests__/settingsColumn.test.tsx`——五項渲染與作用中、搜尋「外觀」只剩兩項、無命中文案、專案設定欄 remote 無 .speclink.yaml、解析失敗帶警示點；`titleBar.test.tsx` 加 back 鈕與 trailing；`App.test.tsx` 加零專案點齒輪左側含分類欄、專案設定模式的麵包屑三段與返回回看板；`npm test -w apps/desktop -- settingsColumn titleBar App`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "46e8a0654d79fc46732378e724bb88ead91e7011",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/titleBar.test.tsx",
+        "apps/desktop/src/components/TitleBar.tsx",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/views/ProjectSettingsView.tsx",
+        "packages/ui/src/components/NavItem.tsx",
+        "apps/desktop/src/__tests__/settingsColumn.test.tsx",
+        "apps/desktop/src/components/ProjectSettingsColumn.tsx",
+        "apps/desktop/src/components/SettingsColumn.tsx"
+      ],
+      "recordedAt": "2026-10-10T12:23:07Z"
+    },
+    {
+      "taskId": "tsk_01M4JKYG2K2EY4DZPTKZ8Q38FE",
+      "taskDesc": "3.1 新增 `apps/desktop/src/views/settings/GeneralPage.tsx`、`AppearancePage.tsx`、`CliPage.tsx`（design D5：介面語言卡的 `LocaleRow`／`ThemeRow` 共用、軟體更新卡三列、CLI 指令卡、鍵盤快捷鍵卡改列式；CLI 頁含佈署位置列）；`apps/desktop/src/views/AppSettingsView.tsx` 改為依 `settingsSection` 渲染各頁並把 `trayPanelError` 放一般頁底；`settings.localTabNote` 改頁語意、刪除 `settings.localTabLabel`／`settings.serversTabLabel`；加 `settings.appearance`、`settings.theme.*`、`settings.pageNote`、`cli.page.deployDir`（spec「設定頁圖形化讀寫兩層設定」「UI 介面語言支援 zh-TW 與 en」「外觀偏好」「安裝 CLI 指令到 PATH」「設定頁的鍵盤快捷鍵卡」「指令檔過期提示」）。驗證：`apps/desktop/src/__tests__/appSettingsView.test.tsx` 既有案例改以 `settingsSection` 進頁並通過，新增——一般頁四卡順序與「僅存於此裝置」註記、外觀列三選呼叫 `onThemePrefChange`、語言與外觀頁兩列、CLI 頁佈署位置列、快捷鍵卡仍在一般頁最後；`npm test -w apps/desktop -- appSettingsView`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "46e8a0654d79fc46732378e724bb88ead91e7011",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/appSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/updateInstallRow.test.tsx",
+        "apps/desktop/src/components/UpdateInstallRow.tsx",
+        "apps/desktop/src/views/AppSettingsView.tsx",
+        "apps/desktop/src/__tests__/updatesPage.test.tsx",
+        "apps/desktop/src/views/settings/AppearancePage.tsx",
+        "apps/desktop/src/views/settings/CliPage.tsx",
+        "apps/desktop/src/views/settings/GeneralPage.tsx",
+        "apps/desktop/src/views/settings/UpdatesPage.tsx"
+      ],
+      "recordedAt": "2026-10-10T12:29:32Z"
+    },
+    {
+      "taskId": "tsk_01M4JKYG2KH87PC9W2BQR2ZXDV",
+      "taskDesc": "3.3 新增 `apps/desktop/src/views/settings/ServersPage.tsx` 並把 `apps/desktop/src/components/ServersPanel.tsx` 重排為三卡（design D7：新增連線鈕展開新增卡、連線卡列與狀態 `StatusPill`、登出／登入／重新登入＋「⋯」選單、預設卡 `SettingsChoice`、登入方式卡兩列；reauth 聚焦與剛登入聚焦開啟專案鈕的既有行為保留）；`apps/desktop/src/components/WorkspaceChooser.tsx` 加 `defaultConnectionId` 並於 Server 步驤預選（存在且已登入才預選）；App 接線 `defaultConnectionId`；i18n 加 `servers.page.*`（spec「伺服器管理最小面」「device login 預設與 PAT fallback」）。驗證：`apps/desktop/src/__tests__/serversPanel.test.tsx` 既有登入／登出／移除／聚焦案例通過，新增 `apps/desktop/src/__tests__/serversPage.test.tsx`——新增連線鈕展開與送出後收起、兩個連線的狀態籤與右側動作、「⋯」含開啟專案與移除、預設下拉只列已登入連線並回呼；`workspaceChooser.test.tsx` 加「`defaultConnectionId` 指向已登入連線時 Server 步驟預選、指向已登出者不預選」；`npm test -w apps/desktop -- serversPanel serversPage workspaceChooser`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "46e8a0654d79fc46732378e724bb88ead91e7011",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/serversPanel.test.tsx",
+        "apps/desktop/src/__tests__/workspaceChooser.test.tsx",
+        "apps/desktop/src/components/ServersPanel.tsx",
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "apps/desktop/src/__tests__/serversPage.test.tsx",
+        "apps/desktop/src/views/settings/ServersPage.tsx"
+      ],
+      "recordedAt": "2026-10-10T12:33:34Z"
+    },
+    {
+      "taskId": "tsk_01M4JKYG2KSYBXB7952FCKZ0TE",
+      "taskDesc": "4.1 把 `apps/desktop/src/views/ProjectSettingsView.tsx` 的 state、載入、儲存、衝突對照、schema 操作抽成 `apps/desktop/src/views/project-settings/useProjectSettings.ts`（邏輯不變），新增 `ContextPage.tsx`、`RulesPage.tsx`、`WorkflowPage.tsx`、`SpeclinkPage.tsx`（design D8：頁標題右側編輯控制、等寬檔案鍵註記或 policy revision、產出政策卡五列（下拉與 `Switch`）＋產出流程卡、.speclink.yaml 的檔案列與 AI 工具列開關），`ProjectSettingsView` 改為依 `projectSettingsSection` 渲染並把 remote 衝突卡與 `ParseErrorBanner` 放各頁頂；刪除 `settings.schemaTab`、`remote.workflowTab`（spec「設定頁圖形化讀寫兩層設定」「設定頁編輯專案說明與產出規則」「產出流程頁」「設定頁政策下拉的未知值顯性呈現」「產出政策的 worktree 開關」「產出流程的切換寫入」「產出流程的客製 fork」「產出流程的建立」「產出流程的編輯入口」「產出流程的刪除」「remote 模式的內建限縮與誤解析修正」）。驗證：`apps/desktop/src/__tests__/projectSettingsView.test.tsx` 既有案例改以 `projectSettingsSection` 進頁並全部通過（含 remote 衝突、reader 唯讀、未知 locale、worktree 開關、schema 切換／fork／建立／刪除、tools 同步），新增——產出流程頁含產出政策卡與產出流程卡、.speclink.yaml 頁檔案列為等寬路徑、tdd 以 `role=\"switch\"` 呈現並寫回 true；`npm test -w apps/desktop -- projectSettingsView`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "46e8a0654d79fc46732378e724bb88ead91e7011",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/messages.test.ts",
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "apps/desktop/src/views/project-settings/ContextPage.tsx",
+        "apps/desktop/src/views/project-settings/RulesPage.tsx",
+        "apps/desktop/src/views/project-settings/SpeclinkPage.tsx",
+        "apps/desktop/src/views/project-settings/WorkflowPage.tsx",
+        "apps/desktop/src/views/project-settings/parts.tsx",
+        "apps/desktop/src/views/project-settings/useProjectSettings.ts"
+      ],
+      "recordedAt": "2026-10-10T12:45:16Z"
+    },
+    {
+      "taskId": "tsk_01M4JKYG2KVZA779QX6VCS1FCK",
+      "taskDesc": "1.2 新增 `packages/ui/src/theme.ts`（design D4：`ThemePreference`、`readThemePreference`／`writeThemePreference`（鍵 `speclink.theme`）、`applyThemePreference`）並匯出；`packages/ui/src/theme.css` 深色 token 改為 `@media (prefers-color-scheme: dark) { :root:not([data-theme=\"light\"]) {…} }` 與 `:root[data-theme=\"dark\"] {…}` 兩份；`apps/desktop/src/main.tsx` 與 `apps/desktop/src/panel/main.tsx` 啟動時套用；App 持 `themePref` state，切換時寫入、套用並 `emit(\"speclink:theme-changed\")`，面板監聽後重套（spec「外觀偏好」）。驗證：新增 `packages/ui/src/__tests__/themePreference.test.ts`——讀寫三態、壞值視為 null、apply 設／移除 `data-theme`；`packages/ui/src/__tests__/theme.test.ts` 加「兩個深色區塊宣告逐行相同」「含 `data-theme` 兩個選擇器」，既有系統偏好查詢案通過；`npm test -w packages/ui -- themePreference theme`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "46e8a0654d79fc46732378e724bb88ead91e7011",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/emptyWorkspace.test.tsx",
+        "apps/server-web/src/__tests__/admin-console-shell.test.tsx",
+        "packages/ui/src/__tests__/brand.test.tsx",
+        "packages/ui/src/components/Brand.tsx"
+      ],
+      "recordedAt": "2026-10-10T13:08:04Z"
+    },
+    {
+      "taskId": "tsk_01M4JKYG2KPEVHDP463NTYM5Q6",
+      "taskDesc": "5.3 全部對齊：`./target/debug/speclink validate desktop-settings-mode` 通過；`npm test -w packages/ui`、`npm test -w apps/desktop` 全綠；`npm run build -w apps/desktop` 與 `npm run build -w apps/server-web` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。本任務同時落實 spec 以 REMOVED 退場的「設定頁的產出流程頁籤」——其行為由「產出流程頁」承接。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "46e8a0654d79fc46732378e724bb88ead91e7011",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/updateRailButton.test.tsx",
+        "apps/desktop/src/components/ProjectColumn.tsx"
+      ],
+      "recordedAt": "2026-10-10T13:11:26Z"
+    },
+    {
+      "taskId": "tsk_01M4JKYG2KPEVHDP463NTYM5Q6",
+      "taskDesc": "5.3 全部對齊：`./target/debug/speclink validate desktop-settings-mode` 通過；`npm test -w packages/ui`、`npm test -w apps/desktop` 全綠；`npm run build -w apps/desktop` 與 `npm run build -w apps/server-web` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。本任務同時落實 spec 以 REMOVED 退場的「設定頁的產出流程頁籤」——其行為由「產出流程頁」承接。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "46e8a0654d79fc46732378e724bb88ead91e7011",
+      "touchedFiles": [
+        "apps/desktop/index.html",
+        "apps/desktop/src-tauri/capabilities/macos.json",
+        "apps/desktop/src/__tests__/remoteResilience.test.tsx",
+        "apps/desktop/src/adapter/connections.ts",
+        "packages/ui/src/components/ui/status-pill.tsx",
+        "apps/desktop/src/__tests__/themeBoot.test.ts"
+      ],
+      "recordedAt": "2026-10-10T14:39:02Z"
+    }
+  ]
+}

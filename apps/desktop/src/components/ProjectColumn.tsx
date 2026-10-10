@@ -1,5 +1,5 @@
-// 專案欄（design D4）：每專案的四頁＋底部專案設定；點擊即切頁（無 toggle），
-// 設定模式下全部非作用中（作用中的是圖示列齒輪）。底部的 notice 槽放技能檔提示卡
+// 專案欄（design D4）：每專案的四頁＋底部專案設定；點擊即切頁（無 toggle）。設定模式與
+// 專案設定模式下由分類欄取代（desktop-settings-mode design D2）。底部的 notice 槽放技能檔提示卡
 // （desktop-notice-relocation design D1）：提示是這個專案的事，住在專案欄、不佔主區。
 import type { ReactNode } from "react";
 import { Archive, BookOpen, FileText, GitBranch, SlidersHorizontal } from "lucide-react";

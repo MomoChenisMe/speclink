@@ -32,14 +32,16 @@ describe("BrandMark", () => {
 });
 
 describe("Wordmark", () => {
-  it("橫式鎖版 img（alt=Speclink）＋深色偏好的 source，className 套到 img", () => {
-    const { container } = render(<Wordmark className="h-5" />);
-    const img = screen.getByAltText("Speclink") as HTMLImageElement;
-    expect(img.tagName).toBe("IMG");
-    expect(img.className).toContain("h-5");
-    expect(img.getAttribute("src")).toContain("logo-horizontal");
-    const source = container.querySelector("picture > source") as HTMLSourceElement;
-    expect(source.getAttribute("media")).toBe("(prefers-color-scheme: dark)");
-    expect(source.getAttribute("srcset")).toContain("logo-horizontal-dark");
+  // 深淺兩版各一張 img、以 dark: 變體切換（desktop-settings-mode：dark: 與深色 token 同一套觸發，
+  // 明示外觀也跟得上）；隱藏的那張不進無障礙樹，同時只有一個「Speclink」。
+  it("淺色版與深色版兩張 img（alt=Speclink），以 dark: 切換顯示，className 套到兩張", () => {
+    render(<Wordmark className="h-5" />);
+    const [light, dark] = screen.getAllByAltText("Speclink") as HTMLImageElement[];
+    expect(light.getAttribute("src")).toContain("logo-horizontal");
+    expect(light.getAttribute("src")).not.toContain("logo-horizontal-dark");
+    expect(light.className).toContain("dark:hidden");
+    expect(dark.getAttribute("src")).toContain("logo-horizontal-dark");
+    expect(dark.className.split(/\s+/)).toEqual(expect.arrayContaining(["hidden", "dark:block"]));
+    for (const img of [light, dark]) expect(img.className).toContain("h-5");
   });
 });

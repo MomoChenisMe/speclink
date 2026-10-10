@@ -99,7 +99,8 @@ describe("依角色裁切的主控台殼", () => {
   it("header 呈現共用元件庫的橫式鎖版字標（spec「品牌資產只有一處」）", async () => {
     renderAt("/admin", makeClient());
     const banner = await screen.findByRole("banner");
-    const lockup = within(banner).getByAltText("Speclink") as HTMLImageElement;
+    // 深淺兩版各一張、以 dark: 切換；第一張是淺色版。
+    const lockup = within(banner).getAllByAltText("Speclink")[0] as HTMLImageElement;
     expect(lockup.getAttribute("src")).toContain("logo-horizontal");
     expect(lockup.className).toContain("h-5");
   });

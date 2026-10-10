@@ -13,6 +13,13 @@ export {
   resolveUiLocale,
   type LocalePreference,
 } from "./locale";
+export {
+  readThemePreference,
+  writeThemePreference,
+  THEME_STORAGE_KEY,
+  applyThemePreference,
+  type ThemePreference,
+} from "./theme";
 
 // shadcn/ui 設計系統原語（跨桌面/web 共用）
 export { cn } from "./lib/utils";
@@ -26,7 +33,7 @@ export {
   CardFooter,
 } from "./components/ui/card";
 export { Badge, badgeVariants, type BadgeProps } from "./components/ui/badge";
-export { StatusPill, type StatusPillTone } from "./components/ui/status-pill";
+export { StatusPill, type StatusPillLabel, type StatusPillTone } from "./components/ui/status-pill";
 export {
   Table,
   TableHeader,
@@ -149,6 +156,15 @@ export {
   SelectItem,
 } from "./components/ui/select";
 export { Checkbox, type CheckboxProps } from "./components/ui/checkbox";
+export { Switch, type SwitchProps } from "./components/ui/switch";
+export {
+  SettingsPageHeader,
+  SettingsCard,
+  SettingsRow,
+  SettingsChoice,
+  SettingsGroupHeader,
+  type SettingsChoiceOption,
+} from "./components/ui/settings";
 export {
   DropdownMenu,
   DropdownMenuTrigger,

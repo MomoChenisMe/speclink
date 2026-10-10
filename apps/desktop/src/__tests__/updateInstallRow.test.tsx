@@ -1,10 +1,10 @@
-// 軟體更新卡的「下載與安裝」列（desktop-app spec「桌面自動更新」；desktop-notice-relocation
-// design D3）：待同意＝目標版本＋「下載」、下載中＝不確定進度列＋「取消」、待重啟＝「更新已就緒」
+// 更新頁「下載與安裝」卡的列（desktop-app spec「桌面自動更新」；desktop-settings-mode
+// design D6）：待同意＝目標版本＋「下載」、下載中＝不確定進度列＋「取消」、待重啟＝「更新已就緒」
 // ＋「安裝並重新啟動」、失敗＝錯誤＋「重試」；其他狀態不出現。原 updateBanner.test.tsx 的案例搬到這裡。
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
-import { I18nProvider, SEMANTIC_TONE } from "@speclink/ui";
+import { I18nProvider } from "@speclink/ui";
 
 import { UpdateInstallRow, type UpdateInstallRowProps } from "../components/UpdateInstallRow";
 import type { UpdaterState } from "../core/updater";
@@ -29,8 +29,9 @@ describe("UpdateInstallRow", () => {
   it("待同意：顯示目標版本與「下載」；同意才回呼下載、不觸發重啟", () => {
     const p = props({ phase: "available", version: "0.2.0" });
     render(<UpdateInstallRow {...p} />);
-    expect(row().textContent).toContain("0.2.0");
-    expect(screen.getByText(/有新版本/).className).toContain(SEMANTIC_TONE.inProgress);
+    // 更新頁「下載與安裝」卡的列（desktop-settings-mode design D6）：標題 Speclink 目標版本。
+    expect(screen.getByRole("group", { name: "Speclink 0.2.0" })).toBeTruthy();
+    expect(row().textContent).toContain("安裝後會重新啟動");
     expect(screen.queryByRole("progressbar")).toBeNull();
     fireEvent.click(button("下載"));
     expect(p.onAccept).toHaveBeenCalledTimes(1);

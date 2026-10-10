@@ -21,6 +21,21 @@ describe("APP_MESSAGES", () => {
     expect(menuKeys("zh-TW")).toEqual(menuKeys("en"));
   });
 
+  it("設定模式改版後沒人用的舊鍵已自兩語系移除", () => {
+    for (const key of [
+      "servers.title",
+      "settings.rulesLabel",
+      "settings.backToProject",
+      "updater.checking",
+      "updater.upToDate",
+      "updater.checkFailed",
+      "updater.available",
+    ]) {
+      expect(APP_MESSAGES["zh-TW"]).not.toHaveProperty([key]);
+      expect(APP_MESSAGES.en).not.toHaveProperty([key]);
+    }
+  });
+
   it("側欄手冊項的文案鍵存在於兩語系（LANGUAGE.md 用語「手冊」）", () => {
     expect(APP_MESSAGES["zh-TW"]["app.navManual"]).toBe("手冊");
     expect(APP_MESSAGES.en["app.navManual"]).toBe("Manual");
@@ -33,9 +48,8 @@ describe("APP_MESSAGES", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("zh-TW 文案不得含工程詞 schema——LANGUAGE.md 正典詞是「產出流程」（頁籤標籤 settings.schemaTab 為明文例外）", () => {
+  it("zh-TW 文案不得含工程詞 schema——LANGUAGE.md 正典詞是「產出流程」（原頁籤標籤例外已隨分類欄退場）", () => {
     const offenders = Object.entries(APP_MESSAGES["zh-TW"])
-      .filter(([key]) => key !== "settings.schemaTab")
       .filter(([, value]) => /\bschemas?\b/i.test(value))
       .map(([key]) => key);
     expect(offenders).toEqual([]);

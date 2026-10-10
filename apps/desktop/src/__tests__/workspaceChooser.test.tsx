@@ -94,6 +94,8 @@ async function renderChooser({
   initialScope,
   initialCheckoutPath,
   initialStep,
+  initialServerUrl,
+  defaultConnectionId,
 }: {
   adapter?: ConnectionsAdapter;
   workspace?: WorkspaceAdapter;
@@ -109,6 +111,8 @@ async function renderChooser({
   initialScope?: { projectKey: string; repoKey: string };
   initialCheckoutPath?: string;
   initialStep?: "server";
+  initialServerUrl?: string;
+  defaultConnectionId?: string;
 } = {}) {
   const onOpenChange = vi.fn();
   render(
@@ -132,6 +136,8 @@ async function renderChooser({
       initialScope={initialScope}
       initialCheckoutPath={initialCheckoutPath}
       initialStep={initialStep}
+      initialServerUrl={initialServerUrl}
+      defaultConnectionId={defaultConnectionId}
     />,
     { wrapper: zhWrapper },
   );
@@ -965,5 +971,39 @@ describe("連線清單載入結果決定錯誤態（review 第 2 輪 WARNING）"
     expect(screen.queryByText(/^Error: /)).toBeNull();
     expect(adapter.inspectCheckout).not.toHaveBeenCalled();
     expect(onOpenRemote).not.toHaveBeenCalled();
+  });
+});
+
+// 伺服器頁「預設」卡（desktop-settings-mode design D7；spec「預設連線於新增專案預選」）。
+describe("新增遠端專案時預設使用的連線", () => {
+  const OTHER: ConnectionView = { ...CONNECTION, id: "conn_2", origin: "https://b.example.test", name: "備援 Server" };
+
+  it("指向已登入連線時 Server 步驟預選該列（仍可改選）、不自動前進", async () => {
+    await renderChooser({ connections: [CONNECTION, OTHER], defaultConnectionId: "conn_2" });
+    chooseSource("server");
+    expect(screen.getByRole("radio", { name: /備援 Server/ }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("radio", { name: /團隊 Server/ }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByRole("radio", { name: /Desktop/ })).toBeNull();
+  });
+
+  it("帶入口意圖（marker 指向的伺服器、未登入的連線）開啟時不預選預設連線", async () => {
+    // remote marker 指向尚未登入的伺服器：預選預設連線會讓「下一步」把資料夾綁到錯的伺服器。
+    await renderChooser({
+      connections: [CONNECTION, OTHER],
+      defaultConnectionId: "conn_2",
+      initialServerUrl: "https://marker.example.test",
+    });
+    expect(screen.getByRole("radio", { name: /備援 Server/ }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByRole("button", { name: "下一步" })).toBeNull();
+  });
+
+  it("指向已登出或不存在的連線時不預選", async () => {
+    await renderChooser({
+      connections: [CONNECTION, { ...OTHER, loggedIn: false }],
+      defaultConnectionId: "conn_2",
+    });
+    chooseSource("server");
+    expect(screen.getByRole("radio", { name: /團隊 Server/ }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByRole("radio", { name: /備援 Server/ })).toBeNull();
   });
 });

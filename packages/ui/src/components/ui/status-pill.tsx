@@ -13,6 +13,12 @@ export type StatusPillTone =
   | "stamp"
   | "improve";
 
+/** 以 i18n 鍵描述的狀態籤內容：狀態對照函式回傳它，呈現端以 t(key) 填進 StatusPill。 */
+export interface StatusPillLabel {
+  key: string;
+  tone: StatusPillTone;
+}
+
 /* tone → token class：12% 淡底＋本色字。色值只在 theme.css，這裡只對照 token。 */
 const TONE_CLASS: Record<StatusPillTone, string> = {
   neutral: "bg-muted text-muted-foreground",
