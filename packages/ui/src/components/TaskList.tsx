@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -53,28 +53,31 @@ type TaskItem = Extract<TaskDocItem, { kind: "task" }>;
 /** 任務列內容（checkbox＋文字）——一般列與 DragOverlay 共用。 */
 function TaskRowBody({
   item,
-  readOnly,
+  checkboxId,
+  disabled,
   onToggle,
 }: {
   item: TaskItem;
-  readOnly?: boolean;
+  checkboxId?: string;
+  disabled?: boolean;
   onToggle?: (ordinal: number, done: boolean, stableId?: string) => void;
 }) {
   const { t } = useI18n();
   return (
     <>
       <Checkbox
+        id={checkboxId}
         aria-label={t("tasks.checkbox").replace("{n}", String(item.ordinal))}
         className="mt-1"
         checked={item.done}
-        disabled={readOnly}
+        disabled={disabled}
         onCheckedChange={(v) => onToggle?.(item.ordinal, v === true, item.stableId)}
       />
       {/* 描述欄（spec desktop-app「任務列的手動任務徽章」；design D4）：徽章與
           描述縱向堆疊，徽章獨佔描述正上方那一行、左緣與描述切齊——讀者視線的
           起點就在這條左緣，行尾右對齊的版本實測讀不出來。無徽章時容器只有描述
           一個子元素，不留空行，編號起始欄與無徽章列同位。 */}
-      <div className="flex flex-1 flex-col gap-1">
+      <span className="flex flex-1 flex-col gap-1">
         {item.manual && (
           <span
             aria-label={t("tasks.manual")}
@@ -93,8 +96,61 @@ function TaskRowBody({
         >
           {item.text}
         </span>
-      </div>
+      </span>
     </>
+  );
+}
+
+/** 任務列外框共用樣式。 */
+const ROW_CLS = "group/task flex items-start gap-2 py-1 pl-1 rounded-md";
+
+/** 整列為勾選框的 label（design D8）：可寫時 htmlFor 指向勾選框、游標為手指；唯讀與
+ * 批次寫回中（busy）不帶 htmlFor、游標預設，勾選框同時停用——隱式關聯也不會觸發。 */
+function rowLabelProps(checkboxId: string, interactive: boolean) {
+  return {
+    htmlFor: interactive ? checkboxId : undefined,
+    className: interactive ? "cursor-pointer" : "cursor-default",
+    onClick: ignoreClickAfterSelecting,
+  };
+}
+
+/** 拖選文字後放開，click 仍會經 label 轉送到勾選框——頁面有選取文字時不轉送，選字不等於
+ * 勾選。雙擊選字的第二下照常放行：第一下按下時尚無選取、已切換一次，兩下互相抵銷。
+ * 直接點在勾選框上照常切換。 */
+function ignoreClickAfterSelecting(e: MouseEvent<HTMLLabelElement>) {
+  if (e.detail >= 2) return;
+  if (e.target instanceof Element && e.target.closest('[role="checkbox"]')) return;
+  if (window.getSelection()?.toString()) e.preventDefault();
+}
+
+/** 不可拖排的任務列（唯讀或拖排停用）：保留高亮與定位捲動。 */
+function PlainTaskRow({
+  item,
+  interactive,
+  onToggle,
+  highlight,
+  rowRef,
+}: {
+  item: TaskItem;
+  interactive: boolean;
+  onToggle?: (ordinal: number, done: boolean, stableId?: string) => void;
+  highlight?: boolean;
+  rowRef?: (el: HTMLElement | null) => void;
+}) {
+  const checkboxId = useId();
+  const label = rowLabelProps(checkboxId, interactive);
+  return (
+    <label
+      ref={rowRef}
+      htmlFor={label.htmlFor}
+      onClick={label.onClick}
+      data-highlight={highlight ? "true" : "false"}
+      className={`${ROW_CLS} ${label.className} transition-colors hover:bg-muted/50 ${
+        highlight ? "bg-accent ring-1 ring-primary/40" : ""
+      }`}
+    >
+      <TaskRowBody item={item} checkboxId={checkboxId} disabled={!interactive} onToggle={onToggle} />
+    </label>
   );
 }
 
@@ -113,33 +169,39 @@ function SortableGroupHeading({ id, text }: { id: string; text: string }) {
   );
 }
 
-/** 可拖曳任務列：拖曳監聽只綁 ⠿ 把手——點擊核取方塊與文字不經過拖曳。 */
+/** 可拖曳任務列：拖曳監聽只綁 ⠿ 把手——點擊核取方塊與文字不經過拖曳；點把手不切換勾選。 */
 function SortableTaskRow({
   item,
+  interactive,
   onToggle,
   highlight,
   rowRef,
 }: {
   item: TaskItem;
+  interactive: boolean;
   onToggle?: (ordinal: number, done: boolean, stableId?: string) => void;
   /** 「下一個未完成」的短暫高亮標記。 */
   highlight?: boolean;
   /** 列元素回報（定位捲動用）。 */
-  rowRef?: (el: HTMLDivElement | null) => void;
+  rowRef?: (el: HTMLElement | null) => void;
 }) {
   const { t } = useI18n();
+  const checkboxId = useId();
+  const label = rowLabelProps(checkboxId, interactive);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.ordinal,
   });
   return (
-    <div
+    <label
       ref={(el) => {
         setNodeRef(el);
         rowRef?.(el);
       }}
+      htmlFor={label.htmlFor}
+      onClick={label.onClick}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       data-highlight={highlight ? "true" : "false"}
-      className={`group/task flex items-start gap-2 py-1 pl-1 rounded-md transition-colors hover:bg-muted/50 ${
+      className={`${ROW_CLS} ${label.className} transition-colors hover:bg-muted/50 ${
         isDragging ? "opacity-40" : ""
       } ${highlight ? "bg-accent ring-1 ring-primary/40" : ""}`}
     >
@@ -151,11 +213,16 @@ function SortableTaskRow({
         className="mt-1 h-4 w-4 shrink-0 cursor-grab touch-none text-muted-foreground/50 hover:text-foreground"
         {...attributes}
         {...listeners}
+        // 把手在 label 內：點擊不得冒到列上觸發勾選。
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
       >
         <GripVertical className="h-3.5 w-3.5" />
       </Button>
-      <TaskRowBody item={item} onToggle={onToggle} />
-    </div>
+      <TaskRowBody item={item} checkboxId={checkboxId} disabled={!interactive} onToggle={onToggle} />
+    </label>
   );
 }
 
@@ -169,7 +236,7 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
   // 「下一個未完成」的短暫高亮（ordinal）；列元素表供定位捲動。
   const [highlightOrdinal, setHighlightOrdinal] = useState<number | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const rowRefs = useRef(new Map<number, HTMLDivElement>());
+  const rowRefs = useRef(new Map<number, HTMLElement>());
   // PointerSensor distance 8：位移門檻內的按放是點擊，不啟動拖曳（看板同款教訓）。
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -201,6 +268,17 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // 拖曳進行中按 Esc 只取消拖曳：PointerSensor 不標記已處理，Esc 會冒到詳情頁的關頁快捷鍵。
+  // 捕獲階段先標記，宿主的 window 監聽見 defaultPrevented 即讓路。
+  useEffect(() => {
+    if (activeOrdinal === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [activeOrdinal]);
+
   // 高亮計時器卸載清理。
   useEffect(
     () => () => {
@@ -217,6 +295,13 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
   // 一併不上——絕不渲染點了沒事的假 affordance。
   const sortable = !readOnly && onReorder !== undefined;
 
+  // 列可回應點擊＝非唯讀且不在批次寫回中（busy）。
+  const interactive = !readOnly && !busy;
+  const rowRef = (ordinal: number) => (el: HTMLElement | null) => {
+    if (el) rowRefs.current.set(ordinal, el);
+    else rowRefs.current.delete(ordinal);
+  };
+
   const rows = items.map((item, i) =>
     item.kind === "group" ? (
       !sortable ? (
@@ -226,38 +311,24 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
       ) : (
         <SortableGroupHeading key={`g-${i}`} id={`g-${i}`} text={item.text} />
       )
-    ) : readOnly ? (
-      <div
-        key={`t-${taskKey(item)}`}
-        className="group/task flex items-start gap-2 py-1 pl-1 rounded-md hover:bg-muted/50"
-      >
-        <TaskRowBody item={item} readOnly onToggle={onToggle} />
-      </div>
     ) : !sortable ? (
-      // 互動但無拖排：無把手，保留高亮與定位捲動（「下一個未完成」照常）。
-      <div
+      // 唯讀或無拖排：無把手；互動時保留高亮與定位捲動（「下一個未完成」照常）。
+      <PlainTaskRow
         key={`t-${taskKey(item)}`}
-        ref={(el) => {
-          if (el) rowRefs.current.set(item.ordinal, el);
-          else rowRefs.current.delete(item.ordinal);
-        }}
-        data-highlight={highlightOrdinal === item.ordinal ? "true" : "false"}
-        className={`group/task flex items-start gap-2 py-1 pl-1 rounded-md transition-colors hover:bg-muted/50 ${
-          highlightOrdinal === item.ordinal ? "bg-accent ring-1 ring-primary/40" : ""
-        }`}
-      >
-        <TaskRowBody item={item} onToggle={onToggle} />
-      </div>
+        item={item}
+        interactive={interactive}
+        onToggle={onToggle}
+        highlight={highlightOrdinal === item.ordinal}
+        rowRef={readOnly ? undefined : rowRef(item.ordinal)}
+      />
     ) : (
       <SortableTaskRow
         key={`t-${taskKey(item)}`}
         item={item}
+        interactive={interactive}
         onToggle={onToggle}
         highlight={highlightOrdinal === item.ordinal}
-        rowRef={(el) => {
-          if (el) rowRefs.current.set(item.ordinal, el);
-          else rowRefs.current.delete(item.ordinal);
-        }}
+        rowRef={rowRef(item.ordinal)}
       />
     ),
   );
@@ -291,6 +362,8 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
   /* 批次操作工具列（spec「任務分頁提供批次操作工具列」）：全部已完成／下一個
      未完成（n）／重置任務；全完成時前兩鍵不可用，批次寫回期間整列 disabled。 */
   const toolbar = (
+    <>
+    <p className="mb-1.5 text-xs text-muted-foreground">{t(sortable ? "detail.tasksHint" : "detail.tasksHintToggle")}</p>
     <div className="mb-2 flex items-center gap-1 rounded-md border border-border px-2 py-1.5">
       <Button
         type="button"
@@ -327,6 +400,7 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
         <RotateCcw className="h-3.5 w-3.5" /> {t("tasks.resetAll")}
       </Button>
     </div>
+    </>
   );
 
   // 拖排停用（capability 缺口）：工具列與勾選照常、不掛 DndContext。

@@ -82,6 +82,35 @@ describe("MainTitleBar", () => {
     expect(screen.getByText("規格").className).not.toContain("text-foreground");
   });
 
+  it("trailing 槽渲染在麵包屑右側、視窗鈕之前", () => {
+    mockWindow(false);
+    render(
+      <MainTitleBar
+        platform="windows"
+        crumbs={[{ label: "speclink" }, { label: "變更" }, { label: "add-auth" }]}
+        trailing={<span data-testid="trail">‹ 1 / 2 ›</span>}
+      />,
+    );
+    const bar = screen.getByTestId("main-titlebar");
+    const nav = bar.querySelector("nav")!;
+    const trail = screen.getByTestId("trail");
+    const close = screen.getByRole("button", { name: "關閉視窗" });
+    expect(nav.compareDocumentPosition(trail) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(trail.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(nav.contains(trail)).toBe(false);
+  });
+
+  it("mono 段以等寬字型呈現（詳情頁的項目名）", () => {
+    render(
+      <MainTitleBar
+        platform="macos"
+        crumbs={[{ label: "speclink" }, { label: "變更" }, { label: "add-auth", mono: true }]}
+      />,
+    );
+    expect(screen.getByText("add-auth").className).toContain("font-mono");
+    expect(screen.getByText("變更").className).not.toContain("font-mono");
+  });
+
   it("macOS 與 Linux 無自繪視窗鈕", () => {
     const { unmount } = render(<MainTitleBar platform="macos" crumbs={[{ label: "A" }]} />);
     expect(screen.queryByRole("button", { name: "縮到最小" })).toBeNull();

@@ -10,7 +10,7 @@ use speclink_core::discuss::{self, DiscussionInfo};
 use speclink_core::store::Store;
 
 use crate::init_core_context;
-use crate::query::is_safe_path_param;
+use crate::query::{is_safe_path_param, DocumentLocation};
 use crate::verbs::open;
 
 fn entry(info: &DiscussionInfo) -> Value {
@@ -74,6 +74,17 @@ pub fn discussion_document_at(root: &Path, slug: &str) -> Option<String> {
     }
     let ctx = init_core_context(root)?;
     discuss::show_discussion(&ctx.store, slug)
+}
+
+/// 討論記錄的磁碟位置——與 [`discussion_document_at`] 同一套解析（live 優先、封存為
+/// 後備，封存檔名帶日期前綴）。不存在或 slug 含路徑穿越回 `None`。
+pub fn discussion_location_at(root: &Path, slug: &str) -> Option<DocumentLocation> {
+    if !is_safe_path_param(slug) {
+        return None;
+    }
+    let ctx = init_core_context(root)?;
+    let doc = ctx.store.read_discussion(slug)?;
+    Some(DocumentLocation::within(&ctx.workspace.root, doc.path))
 }
 
 /// 促轉討論為新 change（可選 change 名，省略時由 slug 衍生）。成功回
@@ -414,5 +425,19 @@ mod tests {
         }
         // 防護不誤傷合法 slug：正常促轉仍可用。
         assert!(super::promote_discussion_at(fx.root(), "alpha-search", None).is_ok());
+    }
+
+    // --- 詳情頁「開啟 ▾」的討論定位（desktop-detail-page design D4）---
+
+    #[test]
+    fn discussion_location_prefers_live_and_falls_back_to_the_archived_file() {
+        let fx = fx_with_discussions("d-loc");
+        let live = super::discussion_location_at(fx.root(), "alpha-search").expect("live");
+        assert_eq!(live.relative, "openspec/discussions/alpha-search.md");
+        let archived = super::discussion_location_at(fx.root(), "old-topic").expect("archived");
+        assert_eq!(archived.relative, "openspec/discussions/archive/2026-01-03-old-topic.md");
+        assert!(std::path::Path::new(&archived.path).ends_with("openspec/discussions/archive/2026-01-03-old-topic.md"));
+        assert!(super::discussion_location_at(fx.root(), "no-such-slug").is_none());
+        assert!(super::discussion_location_at(fx.root(), "../alpha-search").is_none());
     }
 }

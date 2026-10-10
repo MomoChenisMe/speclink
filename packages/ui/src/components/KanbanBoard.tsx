@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -119,6 +119,10 @@ interface KanbanBoardBaseProps {
    * 缺席＝搜尋列照舊單獨一列。 */
   title?: string;
   description?: string;
+  /** 看板目前呈現順序（含搜尋與篩選；design D2）——詳情頁 ‹ n／m › 與 ⌥↑／⌥↓ 的序列。
+   * 變更依欄序（提案中 → 進行中 → 已就緒）再依欄內順序；討論為上區全卡依序、其後接
+   * 欄底「已轉出」細列（不論收合）。順序改變時才回報。 */
+  onVisibleOrderChange?: (order: { changes: string[]; discussions: string[] }) => void;
 }
 
 /** 另含討論欄底「已轉出」收合列的展開狀態（design D2）：同名透傳 DiscussionColumn——
@@ -218,6 +222,7 @@ export function KanbanBoard({
   loadFailed,
   title,
   description,
+  onVisibleOrderChange,
   ...promotedExpansion
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -281,6 +286,20 @@ export function KanbanBoard({
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: DRAG_ACTIVATION_DISTANCE } }),
   );
+
+  // 呈現順序回報（design D2）：以序列內容為依賴，順序真的變了才通知宿主。
+  const changeOrder = STAGES.flatMap((stage) => byStage[stage].map((c) => c.name));
+  const discussionOrder = visibleDiscussions
+    ? [
+        ...visibleDiscussions.filter((d) => !isCollapsedPromoted(d)),
+        ...visibleDiscussions.filter(isCollapsedPromoted),
+      ].map((d) => d.slug)
+    : [];
+  const orderKey = JSON.stringify([changeOrder, discussionOrder]);
+  useEffect(() => {
+    onVisibleOrderChange?.({ changes: changeOrder, discussions: discussionOrder });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderKey]);
 
   // 落點解析輸入：每欄「可見」卡的識別碼（視覺序）——搜尋過濾中拖排沿同一語意
   //（spec：新鍵介於可見前後鄰居之間）。討論欄只有全卡參與（promoted 收合列不拖）。

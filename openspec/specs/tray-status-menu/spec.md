@@ -101,11 +101,11 @@ code:
 
 ---
 ### Requirement: 變更子選單動作
-每張變更 SHALL 呈現為子選單，其中 SHALL 依序含「開啟此變更」與「複製名稱」動作。選取「開啟此變更」SHALL 顯示主視窗並取得焦點、且開啟該變更的詳情。選取「複製名稱」SHALL 將該變更的 name（純文字，不含進度條字元與任務數）寫入系統剪貼簿，且主視窗隱藏或無焦點時 SHALL 仍寫入成功；剪貼簿寫入失敗時 SHALL NOT 彈出錯誤視窗、SHALL NOT 中斷選單操作。
+每張變更 SHALL 呈現為子選單，其中 SHALL 依序含「開啟此變更」與「複製名稱」動作。選取「開啟此變更」SHALL 顯示主視窗並取得焦點、且開啟該變更的詳情頁（主區切至看板並換成該頁，互斥與浮層收掉規則依 desktop-app「詳情頁互斥」）。選取「複製名稱」SHALL 將該變更的 name（純文字，不含進度條字元與任務數）寫入系統剪貼簿，且主視窗隱藏或無焦點時 SHALL 仍寫入成功；剪貼簿寫入失敗時 SHALL NOT 彈出錯誤視窗、SHALL NOT 中斷選單操作。
 
 #### Scenario: 開啟某變更詳情
 - **WHEN** 使用者展開某變更子選單並選取「開啟此變更」
-- **THEN** 主視窗顯示於前景並取得焦點，且開啟該變更的詳情
+- **THEN** 主視窗顯示於前景並取得焦點，主區為該變更的詳情頁
 
 #### Scenario: 複製變更名稱
 - **WHEN** 使用者展開某變更子選單並選取「複製名稱」
@@ -122,46 +122,14 @@ code:
 
 
 <!-- @trace
-source: tray-copy-and-panel-mode
-updated: 2026-07-16
-code:
-  - .dockerignore
-  - .github/workflows/ci.yml
-  - .github/workflows/release.yml
-  - Cargo.lock
-  - apps/desktop/package.json
-  - apps/desktop/panel.html
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/capabilities/default.json
-  - apps/desktop/src-tauri/capabilities/macos.json
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/panel.rs
-  - apps/desktop/src-tauri/tauri.conf.json
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/settingsView.test.tsx
-  - apps/desktop/src/__tests__/tray.test.ts
-  - apps/desktop/src/__tests__/trayPanel.test.tsx
-  - apps/desktop/src/__tests__/trayStyle.test.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/panel/TrayPanel.tsx
-  - apps/desktop/src/panel/main.tsx
-  - apps/desktop/src/store.ts
-  - apps/desktop/src/tray.ts
-  - apps/desktop/src/trayStyle.ts
-  - apps/desktop/src/views/SettingsView.tsx
-  - apps/desktop/vite.config.ts
-  - crates/speclink-server/Dockerfile
-  - deploy/.env.example
-  - deploy/docker-compose.postgres.yml
-  - deploy/docker-compose.yml
-  - docs/server-deployment.zh-TW.md
-  - package-lock.json
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
 ### Requirement: 討論列表
 
-選單討論區 SHALL 分兩個分區呈現 active 討論：「討論」分區列引擎不會自動收走的討論——含討論中（尚未轉出變更）、已轉出但尚無結論（promoted 且 concluded 為 false）、以及已轉出且已有結論但保留在途（promoted 且 concluded 為 true 且 hold 為 true）者；其後「已轉出」分區列已轉出且已有結論且未保留（promoted 且 concluded 為 true 且 hold 非 true）的討論，無此類討論時 SHALL NOT 顯示該分區。分區判準 SHALL 由快照導出的單一布林承載，面板與原生選單 SHALL NOT 各自計算。討論清單資料的 concluded 欄位缺席（向後相容路徑）時 SHALL 退回既有判準——promoted 一律列於「已轉出」分區；hold 欄位缺席時 SHALL 視同未保留、SHALL NOT 把缺席當成 true。兩分區的每則討論 SHALL 呈現為子選單：父項標籤 SHALL 為該討論的 slug（識別錨點直出）；子選單 SHALL 依序含 topic 描述行（disabled、不可選取）、「開啟此討論」、「複製 slug」；保留在途的討論 SHALL NOT 帶額外標籤。選取「開啟此討論」SHALL 顯示主視窗並取得焦點、且開啟該討論。選取「複製 slug」SHALL 將該討論的 slug 寫入系統剪貼簿，主視窗隱藏或無焦點時 SHALL 仍寫入成功。無討論中討論時「討論」分區 SHALL 顯示「討論 0」。
+選單討論區 SHALL 分兩個分區呈現 active 討論：「討論」分區列引擎不會自動收走的討論——含討論中（尚未轉出變更）、已轉出但尚無結論（promoted 且 concluded 為 false）、以及已轉出且已有結論但保留在途（promoted 且 concluded 為 true 且 hold 為 true）者；其後「已轉出」分區列已轉出且已有結論且未保留（promoted 且 concluded 為 true 且 hold 非 true）的討論，無此類討論時 SHALL NOT 顯示該分區。分區判準 SHALL 由快照導出的單一布林承載，面板與原生選單 SHALL NOT 各自計算。討論清單資料的 concluded 欄位缺席（向後相容路徑）時 SHALL 退回既有判準——promoted 一律列於「已轉出」分區；hold 欄位缺席時 SHALL 視同未保留、SHALL NOT 把缺席當成 true。兩分區的每則討論 SHALL 呈現為子選單：父項標籤 SHALL 為該討論的 slug（識別錨點直出）；子選單 SHALL 依序含 topic 描述行（disabled、不可選取）、「開啟此討論」、「複製 slug」；保留在途的討論 SHALL NOT 帶額外標籤。選取「開啟此討論」SHALL 顯示主視窗並取得焦點、且開啟該討論的詳情頁（主區切至看板並換成該頁）。選取「複製 slug」SHALL 將該討論的 slug 寫入系統剪貼簿，主視窗隱藏或無焦點時 SHALL 仍寫入成功。無討論中討論時「討論」分區 SHALL 顯示「討論 0」。
 
 #### Scenario: 討論以 slug 為題、topic 為描述
 
@@ -171,7 +139,7 @@ code:
 #### Scenario: 開啟某討論
 
 - **WHEN** 使用者展開某討論子選單並選取「開啟此討論」
-- **THEN** 主視窗顯示於前景並取得焦點，且開啟該討論
+- **THEN** 主視窗顯示於前景並取得焦點，主區為該討論的詳情頁
 
 #### Scenario: 複製討論 slug
 
@@ -205,8 +173,8 @@ code:
 
 
 <!-- @trace
-source: discussion-hold-until-release
-updated: 2026-09-10T17:15:24+08:00
+source: desktop-detail-page
+updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---

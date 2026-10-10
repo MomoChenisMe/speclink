@@ -430,7 +430,7 @@ Optional:
 
 Always present: `changeName`, `schemaName`, `isComplete`, `applyRequires`, and `artifacts`. Each artifact has `id`, `outputPath`, and `status`, plus `missingDeps` when it is blocked.
 
-Eight optional fields: `created`, `fromDiscussions`, `deltaCapabilities`, `createdBy`, `createdWith`, `startedAt`, `startedBy`, and `claimedBy`. `created` appears only when the metadata holds both the schema and the creation date. CLI `show` in remote mode and the detail panel of the desktop app use these fields.
+Eight optional fields: `created`, `fromDiscussions`, `deltaCapabilities`, `createdBy`, `createdWith`, `startedAt`, `startedBy`, and `claimedBy`. `created` appears only when the metadata holds both the schema and the creation date. CLI `show` in remote mode and the detail page of the desktop app use these fields.
 
 ```json
 { "changeName": "add-login", "schemaName": "spec-driven", "isComplete": false, "applyRequires": ["tasks"], "artifacts": [{ "id": "tasks", "outputPath": "tasks.md", "status": "done" }], "created": "2026-10-07", "createdBy": "Demo <demo@example.com>", "createdWith": "claude", "startedAt": "2026-10-07", "startedBy": "Demo <demo@example.com>" }

@@ -10,6 +10,8 @@ import type { Platform } from "../platform";
 export interface Crumb {
   label: string;
   onClick?: () => void;
+  /** 等寬字型（詳情頁的項目名：變更名或討論 slug）。 */
+  mono?: boolean;
 }
 
 export function LeftTitleBar({
@@ -43,7 +45,16 @@ export function LeftTitleBar({
   );
 }
 
-export function MainTitleBar({ platform, crumbs }: { platform: Platform; crumbs: Crumb[] }) {
+export function MainTitleBar({
+  platform,
+  crumbs,
+  trailing,
+}: {
+  platform: Platform;
+  crumbs: Crumb[];
+  /** 麵包屑之後、Windows 視窗鈕之前的槽（詳情頁的 ‹ n／m ›）。 */
+  trailing?: ReactNode;
+}) {
   return (
     <div
       data-testid="main-titlebar"
@@ -53,7 +64,7 @@ export function MainTitleBar({ platform, crumbs }: { platform: Platform; crumbs:
       <nav className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-muted-foreground">
         {crumbs.map((crumb, i) => {
           const last = i === crumbs.length - 1;
-          const cls = cn("truncate", last && "text-foreground");
+          const cls = cn("truncate", last && "text-foreground", crumb.mono && "font-mono");
           return (
             <Fragment key={i}>
               {i > 0 && <span className="opacity-50">/</span>}
@@ -72,6 +83,7 @@ export function MainTitleBar({ platform, crumbs }: { platform: Platform; crumbs:
           );
         })}
       </nav>
+      {trailing}
       {platform === "windows" && <WindowControls />}
     </div>
   );

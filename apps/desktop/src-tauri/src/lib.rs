@@ -374,6 +374,33 @@ async fn archived_station_ticket(
     .map_err(|e| format!("archived_station_ticket worker failed: {e}"))
 }
 
+/// change artifact 的磁碟位置（詳情頁「開啟 ▾」）：與 `document` 同一套解析（worktree 副本）。
+#[tauri::command]
+async fn document_location(
+    root: PathBuf,
+    change: String,
+    artifact: String,
+) -> Result<Option<speclink_desktop_core::query::DocumentLocation>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::query::document_location_at(&root, &change, &artifact)
+    })
+    .await
+    .map_err(|e| format!("document_location worker failed: {e}"))
+}
+
+/// 討論記錄的磁碟位置（詳情頁「開啟 ▾」）：與 `discussion_document` 同一套解析（封存後備）。
+#[tauri::command]
+async fn discussion_location(
+    root: PathBuf,
+    slug: String,
+) -> Result<Option<speclink_desktop_core::query::DocumentLocation>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::discussions::discussion_location_at(&root, &slug)
+    })
+    .await
+    .map_err(|e| format!("discussion_location worker failed: {e}"))
+}
+
 #[tauri::command]
 async fn list_discussions(root: PathBuf) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -654,6 +681,18 @@ async fn delete_schema(root: PathBuf, name: String) -> Result<(), String> {
 async fn reveal_in_folder(app: tauri::AppHandle, path: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
     app.opener().reveal_item_in_dir(&path).map_err(|e| e.to_string())
+}
+
+/// 以系統預設 App 開啟詳情頁目前分頁的文件（design D4「開啟 ▾」）：與
+/// `reveal_in_folder` 同一條 opener 路徑；只收實際目標為 `.md` 的檔案，其餘拒絕
+/// （見 `check_default_open`）。
+#[tauri::command]
+async fn open_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    speclink_desktop_core::fs_actions::check_default_open(&path)?;
+    app.opener()
+        .open_path(&path, None::<&str>)
+        .map_err(|e| e.to_string())
 }
 
 /// 寫入 config.yaml 的「專案說明」與「產出規則」。`context: None`＝不動、
@@ -1891,6 +1930,9 @@ pub fn run() {
             fork_schema,
             init_schema,
             reveal_in_folder,
+            open_path,
+            document_location,
+            discussion_location,
             fs_actions::open_in_terminal,
             fs_actions::open_in_editor,
             delete_schema,

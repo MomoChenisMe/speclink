@@ -66,7 +66,7 @@ function resolveTraceItems(
 /** 唯讀規格抽屜（spec「桌面 app 呈現 change 與 spec 的清單與內容」）：標頭為標題列
  * （capability 名＋複製名稱鈕）與出身列（「來自」＋溯源變更籤），內文為正式規格 spec.md 全文。
  * 寬度與全螢幕切換與變更詳情抽屜同款；開啟／換目標清空全量載入、世代重載不清空
- * 且 latest-wins 防交錯（design D3，與 RichDetailDrawer 的 loadAll 模式同款）。 */
+ * 且 latest-wins 防交錯（design D3，與 ChangeDetailPage 的 loadAll 模式同款）。 */
 export function SpecDrawer({
   open,
   onOpenChange,

@@ -35,7 +35,7 @@ export interface ChangeCardProps {
   hit?: SearchHit;
 }
 
-/** 看板卡片（極簡）：名稱＋複製鈕＋進度。點卡片開詳情；動作歸詳情抽屜，僅 ready 卡有封存。 */
+/** 看板卡片（極簡）：名稱＋複製鈕＋進度。點卡片開詳情頁；動作歸詳情頁，僅 ready 卡有封存。 */
 export function ChangeCard({
   change,
   onOpen,

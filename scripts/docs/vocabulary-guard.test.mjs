@@ -85,7 +85,7 @@ test('詞彙守門：使用者可見文案面不出現 LANGUAGE.md 的 avoid 詞
 });
 
 test('守門詞取自 LANGUAGE.md 的 avoid 欄，含本次收斂的兩個舊詞', () => {
-  assert.ok(TERMS.includes('抽屜'), '「詳情面板」詞條的 avoid 未被解析出來');
+  assert.ok(TERMS.includes('抽屜'), '「詳情頁」詞條的 avoid 未被解析出來');
   assert.ok(TERMS.includes('品質站'), '「品質關卡」詞條的 avoid 未被解析出來');
 });
 

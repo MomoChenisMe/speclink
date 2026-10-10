@@ -1056,3 +1056,74 @@ describe("看板首訪載入失敗終態", () => {
     expect(within(column("ready")).getByText("ready-z")).toBeTruthy();
   });
 });
+
+// spec「詳情頁的導覽與返回」（design D2）：看板回報目前呈現順序（含搜尋與篩選），
+// 供詳情頁 ‹ n／m › 與 ⌥↑／⌥↓ 切換——變更依欄序再欄內序；討論為上區全卡依序、
+// 其後接欄底「已轉出」細列（不論收合）。
+describe("KanbanBoard 呈現順序回報", () => {
+  const orderDiscussions: DiscussionLists = {
+    active: [
+      { slug: "promoted-done", topic: "已轉出", status: "promoted", rounds: 3, created: "2026-07-01", promotedTo: ["x"], concluded: true },
+      { slug: "talk-a", topic: "A", status: "open", rounds: 1, created: "2026-07-02", promotedTo: [] },
+      { slug: "talk-b", topic: "B", status: "concluded", rounds: 2, created: "2026-07-03", promotedTo: [] },
+    ],
+    archived: [],
+  };
+
+  it("初次渲染回報三欄順序與討論順序（上區卡後接已轉出細列）", () => {
+    const onVisibleOrderChange = vi.fn();
+    render(
+      <KanbanBoard changes={changes} discussions={orderDiscussions} onVisibleOrderChange={onVisibleOrderChange} />,
+    );
+    expect(onVisibleOrderChange).toHaveBeenLastCalledWith({
+      changes: ["proposing-x", "working-y", "progressed-w", "ready-z"],
+      discussions: ["talk-a", "talk-b", "promoted-done"],
+    });
+  });
+
+  it("輸入搜尋後回報過濾後順序；順序不變時不重複回報", () => {
+    const onVisibleOrderChange = vi.fn();
+    const { rerender } = render(
+      <KanbanBoard
+        changes={changes}
+        discussions={orderDiscussions}
+        query=""
+        onQuery={vi.fn()}
+        onVisibleOrderChange={onVisibleOrderChange}
+      />,
+    );
+    const calls = onVisibleOrderChange.mock.calls.length;
+    rerender(
+      <KanbanBoard
+        changes={changes}
+        discussions={orderDiscussions}
+        query=""
+        onQuery={vi.fn()}
+        onVisibleOrderChange={onVisibleOrderChange}
+      />,
+    );
+    expect(onVisibleOrderChange.mock.calls.length).toBe(calls);
+    rerender(
+      <KanbanBoard
+        changes={changes}
+        discussions={orderDiscussions}
+        query="ing"
+        onQuery={vi.fn()}
+        onVisibleOrderChange={onVisibleOrderChange}
+      />,
+    );
+    expect(onVisibleOrderChange).toHaveBeenLastCalledWith({
+      changes: ["proposing-x", "working-y"],
+      discussions: [],
+    });
+  });
+
+  it("未傳 discussions 時討論序列為空陣列", () => {
+    const onVisibleOrderChange = vi.fn();
+    render(<KanbanBoard changes={changes} onVisibleOrderChange={onVisibleOrderChange} />);
+    expect(onVisibleOrderChange).toHaveBeenLastCalledWith({
+      changes: ["proposing-x", "working-y", "progressed-w", "ready-z"],
+      discussions: [],
+    });
+  });
+});

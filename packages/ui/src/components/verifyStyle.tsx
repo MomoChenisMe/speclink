@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { Shield, ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
 
-import { REVIEW_TONE } from "./reviewStyle";
+import { REVIEW_PILL_TONE, REVIEW_TONE } from "./reviewStyle";
 
 /* 驗證標示配色（spec desktop-app「看板卡片的驗證標示」「詳情抽屜的驗證資訊列」
    「已封存側的驗證標示」共用；design D5）：色承載狀態、圖示形狀承載站別。
@@ -12,6 +12,14 @@ export const VERIFY_TONE = {
   verified: REVIEW_TONE.reviewed,
   verifiedStale: REVIEW_TONE.reviewedStale,
   verifiedNotPassed: REVIEW_TONE.reviewedNotPassed,
+} as const;
+
+/** 驗證狀態 → 狀態籤 tone：直接引用審查站同值，兩站語意不分岔。 */
+export const VERIFY_PILL_TONE = {
+  inVerify: REVIEW_PILL_TONE.inReview,
+  verified: REVIEW_PILL_TONE.reviewed,
+  verifiedStale: REVIEW_PILL_TONE.reviewedStale,
+  verifiedNotPassed: REVIEW_PILL_TONE.reviewedNotPassed,
 } as const;
 
 /** 驗證狀態 → i18n 詞條 key（active 四態與 archived 三態同一張表）。`none` 與

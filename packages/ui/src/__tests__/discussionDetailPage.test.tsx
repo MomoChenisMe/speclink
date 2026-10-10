@@ -14,13 +14,14 @@ function render(ui: ReactElement) {
   return rtlRender(ui, { wrapper: zhWrapper });
 }
 
-import { DiscussionDrawer, splitDiscussionSections, splitRounds } from "../components/DiscussionDrawer";
+import { DiscussionDetailPage, splitDiscussionSections, splitRounds } from "../components/DiscussionDetailPage";
+import type { DocumentTarget } from "../components/DetailHeader";
 import { LABEL_CLS } from "../components/SectionedDoc";
 import { ChangeCard } from "../components/ChangeCard";
-import { RichDetailDrawer } from "../components/RichDetailDrawer";
+import { ChangeDetailPage } from "../components/ChangeDetailPage";
 import type { ChangeItem, ArchivedItem, DiscussionItem } from "../adapter";
 
-// spec 需求「討論抽屜檢視與 GUI 促轉」的 jsdom 可驗部分。
+// spec 需求「討論詳情頁檢視與轉出變更」的 jsdom 可驗部分。
 
 const DOC = `---
 topic: Alpha search
@@ -68,8 +69,6 @@ const archivedChanges: ArchivedItem[] = [];
 
 function makeProps(over: Record<string, unknown> = {}) {
   return {
-    open: true,
-    onOpenChange: vi.fn(),
     discussion: concludedD,
     loadDocument: vi.fn(async () => DOC),
     changes,
@@ -143,7 +142,7 @@ describe("結構標題白名單跨語言對齊（引擎 ↔ UI）", () => {
       readFileSync(resolve(REPO_ROOT, "crates/engine/speclink-core/src/lifecycle/discuss.rs"), "utf8"),
     );
     const ts = extract(
-      readFileSync(resolve(REPO_ROOT, "packages/ui/src/components/DiscussionDrawer.tsx"), "utf8"),
+      readFileSync(resolve(REPO_ROOT, "packages/ui/src/components/DiscussionDetailPage.tsx"), "utf8"),
     );
     expect(ts).toEqual(rust);
     expect(rust).toEqual(["## Context", "## Rounds", "## Conclusion"]);
@@ -159,7 +158,7 @@ describe("結構標題白名單跨語言對齊（引擎 ↔ UI）", () => {
       "utf8",
     );
     const tsSrc = readFileSync(
-      resolve(REPO_ROOT, "packages/ui/src/components/DiscussionDrawer.tsx"),
+      resolve(REPO_ROOT, "packages/ui/src/components/DiscussionDetailPage.tsx"),
       "utf8",
     );
     for (const literal of ["## Round ", "### Round ", "```", "~~~", " — "]) {
@@ -275,7 +274,7 @@ ${ROUNDS_TEXT}
 describe("輪卡片渲染（討論輪以卡片呈現）", () => {
   async function openRoundsTab(doc: string) {
     const props = makeProps({ loadDocument: vi.fn(async () => doc) });
-    const result = render(<DiscussionDrawer {...(props as never)} />);
+    const result = render(<DiscussionDetailPage {...(props as never)} />);
     await waitFor(() => screen.getByRole("tab", { name: /討論過程/ }));
     fireEvent.mouseDown(screen.getByRole("tab", { name: /討論過程/ }));
     return result;
@@ -342,7 +341,7 @@ const FULL_CONCLUSION = [
 describe("結論欄位標籤化（討論結論以欄位標籤呈現）", () => {
   it("scaffold 結論六欄位成標籤區塊，粗體前綴原文不出現", async () => {
     const props = makeProps({ loadDocument: vi.fn(async () => docWithConclusion(FULL_CONCLUSION)) });
-    render(<DiscussionDrawer {...(props as never)} />);
+    render(<DiscussionDetailPage {...(props as never)} />);
     // 結論非空 → 預設分頁即結論。
     await waitFor(() => expect(screen.getByText("拍板做 A")).toBeTruthy());
     for (const label of ["決定", "理由", "否決替代案", "擱置", "記錄去向", "下一步"]) {
@@ -355,7 +354,7 @@ describe("結論欄位標籤化（討論結論以欄位標籤呈現）", () => {
   it("缺席欄位不渲染空標籤", async () => {
     const doc = docWithConclusion("**Decision**: 只有決定\n**Rationale**: 與理由");
     const props = makeProps({ loadDocument: vi.fn(async () => doc) });
-    render(<DiscussionDrawer {...(props as never)} />);
+    render(<DiscussionDetailPage {...(props as never)} />);
     await waitFor(() => expect(screen.getByText("只有決定")).toBeTruthy());
     expect(screen.getByText("決定")).toBeTruthy();
     expect(screen.getByText("理由")).toBeTruthy();
@@ -366,7 +365,7 @@ describe("結論欄位標籤化（討論結論以欄位標籤呈現）", () => {
   // spec「標籤為大標題且字級大於內文」：輪／結論欄位標籤與章節標籤同一款式常數（design D6）。
   it("輪與結論欄位標籤為粗體大標題款式（與章節標籤同源）", async () => {
     const props = makeProps({ loadDocument: vi.fn(async () => docWithConclusion(FULL_CONCLUSION)) });
-    render(<DiscussionDrawer {...(props as never)} />);
+    render(<DiscussionDetailPage {...(props as never)} />);
     await waitFor(() => expect(screen.getByText("決定")).toBeTruthy());
     const conclusionLabel = screen.getByText("決定");
     for (const cls of LABEL_CLS.split(" ")) expect(conclusionLabel.className).toContain(cls);
@@ -382,7 +381,7 @@ describe("結論欄位標籤化（討論結論以欄位標籤呈現）", () => {
     const props = makeProps({
       loadDocument: vi.fn(async () => docWithConclusion("就這樣定了，大家都同意這個方向。")),
     });
-    render(<DiscussionDrawer {...(props as never)} />);
+    render(<DiscussionDetailPage {...(props as never)} />);
     await waitFor(() => expect(screen.getByText(/就這樣定了/)).toBeTruthy());
     expect(screen.queryByText("決定")).toBeNull();
   });
@@ -412,9 +411,9 @@ created: 2026-07-01
 <!-- Written by speclink discuss conclude -->
 `;
 
-describe("DiscussionDrawer", () => {
+describe("DiscussionDetailPage", () => {
   it("分頁依序為 結論/討論過程 N/背景/衍生變更，結論非空時預設呈現結論", async () => {
-    render(<DiscussionDrawer {...(makeProps() as never)} />);
+    render(<DiscussionDetailPage {...(makeProps() as never)} />);
     // 預設分頁＝結論（讀者第一想看的），無需切換即可見。
     await waitFor(() => expect(screen.getByText(/建置 alpha 搜尋/)).toBeTruthy());
     const tabs = screen.getAllByRole("tab").map((t) => t.textContent ?? "");
@@ -433,7 +432,7 @@ describe("DiscussionDrawer", () => {
 
   it("建立者圓標為中性，不佔用主色（五處頭像同款）", async () => {
     const withAuthor = { ...concludedD, createdBy: "Momo Chen" };
-    render(<DiscussionDrawer {...(makeProps({ discussion: withAuthor }) as never)} />);
+    render(<DiscussionDetailPage {...(makeProps({ discussion: withAuthor }) as never)} />);
     const avatar = await waitFor(() => {
       const el = Array.from(document.querySelectorAll("span")).find(
         (s) => s.textContent === "M" && s.className.includes("rounded-full"),
@@ -447,48 +446,52 @@ describe("DiscussionDrawer", () => {
 
   it("結論為空（僅鷹架註解）時預設呈現背景", async () => {
     const props = makeProps({ discussion: openD, loadDocument: vi.fn(async () => OPEN_DOC) });
-    render(<DiscussionDrawer {...(props as never)} />);
+    render(<DiscussionDetailPage {...(props as never)} />);
     await waitFor(() => expect(screen.getByText(/開放討論的背景內容/)).toBeTruthy());
   });
 
-  it("生命週期階梯：三站可見且現站可辨", async () => {
+  it("狀態卡階段列：四站可見且現站可辨（已封存站保留給已封存討論頁）", async () => {
+    const stageRow = () => document.querySelector("[data-status-stage]") as HTMLElement;
     // concluded → 現站「已結論」。
-    const { unmount } = render(<DiscussionDrawer {...(makeProps() as never)} />);
-    await waitFor(() => screen.getByText("討論中"));
-    expect(screen.getByText("已結論")).toBeTruthy();
-    expect(screen.getByText("轉出變更")).toBeTruthy();
-    expect(screen.getByText("已結論").closest("[aria-current]")).toBeTruthy();
-    expect(screen.getByText("討論中").closest("[aria-current]")).toBeNull();
+    const { unmount } = render(<DiscussionDetailPage {...(makeProps() as never)} />);
+    await waitFor(() => expect(stageRow()).toBeTruthy());
+    const row = stageRow();
+    for (const label of ["討論中", "已結論", "已轉出", "已封存"]) expect(within(row).getByText(label)).toBeTruthy();
+    expect(within(row).getByText("已結論").closest("[aria-current]")).toBeTruthy();
+    expect(within(row).getByText("討論中").closest("[aria-current]")).toBeNull();
     unmount();
-    // promoted → 現站「轉出變更」。
-    render(<DiscussionDrawer {...(makeProps({ discussion: promotedD }) as never)} />);
-    await waitFor(() => screen.getByText("轉出變更"));
-    expect(screen.getByText("轉出變更").closest("[aria-current]")).toBeTruthy();
+    // promoted → 現站「已轉出」。
+    render(<DiscussionDetailPage {...(makeProps({ discussion: promotedD }) as never)} />);
+    await waitFor(() => expect(stageRow()).toBeTruthy());
+    expect(within(stageRow()).getByText("已轉出").closest("[aria-current]")).toBeTruthy();
+    expect(within(stageRow()).getByText("已封存").closest("[aria-current]")).toBeNull();
   });
 
   it("非預期格式整篇以單一檢視退回（無背景分頁、全文可見）", async () => {
     const props = makeProps({
       loadDocument: vi.fn(async () => "手寫的自由格式記錄，沒有標準區段。"),
     });
-    render(<DiscussionDrawer {...(props as never)} />);
+    render(<DiscussionDetailPage {...(props as never)} />);
     await waitFor(() => expect(screen.getByText(/自由格式記錄/)).toBeTruthy());
     expect(screen.queryByRole("tab", { name: /背景/ })).toBeNull();
   });
 
   it("衍生變更分頁列出子變更現況；存活者可跳轉、已刪除者不可", async () => {
     const props = makeProps({ discussion: promotedD });
-    render(<DiscussionDrawer {...(props as never)} />);
+    render(<DiscussionDetailPage {...(props as never)} />);
     // 先等文件載入落定（section 分頁組掛上、背景分頁出現）再切衍生變更：否則
     // loadDocument resolve 會把 fallback 分頁組換成 sections 分頁組（key 變、重新
     // mount），選中分頁重置回預設，衍生變更面板被隱藏、cut-a 從 DOM 消失。與本檔
     // 其他分頁測試一致的等待。
     await screen.findByRole("tab", { name: /背景/ });
     fireEvent.mouseDown(screen.getByRole("tab", { name: /衍生變更/ }));
-    const rowA = screen.getByText("cut-a").closest("[data-promoted-row]") as HTMLElement;
+    // 狀態卡的衍生變更籤也列同名——分頁內的列以分頁面板為範圍。
+    const panel = screen.getByRole("tabpanel");
+    const rowA = within(panel).getByText("cut-a").closest("[data-promoted-row]") as HTMLElement;
     expect(within(rowA).getByText("提案中")).toBeTruthy();
     fireEvent.click(within(rowA).getByRole("button", { name: /開啟卡片/ }));
     expect(props.onOpenChangeCard).toHaveBeenCalledWith("cut-a");
-    const rowGone = screen.getByText("cut-gone").closest("[data-promoted-row]") as HTMLElement;
+    const rowGone = within(panel).getByText("cut-gone").closest("[data-promoted-row]") as HTMLElement;
     expect(within(rowGone).getByText("已刪除")).toBeTruthy();
     expect(within(rowGone).queryByRole("button", { name: /開啟卡片/ })).toBeNull();
   });
@@ -496,7 +499,7 @@ describe("DiscussionDrawer", () => {
   it("衍生變更分頁唯讀：concluded／promoted 皆無「轉為變更／再轉出一個變更」動作（D3）", async () => {
     // promote 已自 GUI 撤除——衍生變更分頁只列子變更與跳轉，無任何轉出鈕。
     // 各實例先等初始載入落地（標準格式解析出「背景」分頁），避免 act 警告。
-    const { unmount } = render(<DiscussionDrawer {...(makeProps() as never)} />);
+    const { unmount } = render(<DiscussionDetailPage {...(makeProps() as never)} />);
     await screen.findByRole("tab", { name: /背景/ });
     fireEvent.mouseDown(screen.getByRole("tab", { name: /衍生變更/ }));
     expect(screen.queryByRole("button", { name: /轉為變更/ })).toBeNull();
@@ -504,7 +507,7 @@ describe("DiscussionDrawer", () => {
     unmount();
 
     const { unmount: unmount2 } = render(
-      <DiscussionDrawer {...(makeProps({ discussion: promotedD }) as never)} />,
+      <DiscussionDetailPage {...(makeProps({ discussion: promotedD }) as never)} />,
     );
     await screen.findByRole("tab", { name: /背景/ });
     fireEvent.mouseDown(screen.getByRole("tab", { name: /衍生變更/ }));
@@ -513,7 +516,7 @@ describe("DiscussionDrawer", () => {
     unmount2();
 
     const props3 = makeProps({ discussion: openD, loadDocument: vi.fn(async () => OPEN_DOC) });
-    render(<DiscussionDrawer {...(props3 as never)} />);
+    render(<DiscussionDetailPage {...(props3 as never)} />);
     await screen.findByRole("tab", { name: /背景/ });
     fireEvent.mouseDown(screen.getByRole("tab", { name: /衍生變更/ }));
     expect(screen.queryByRole("button", { name: /轉為變更/ })).toBeNull();
@@ -551,7 +554,7 @@ describe("change 側同源連結", () => {
     expect(screen.getByLabelText("來自討論").getAttribute("title")).toBeNull();
   });
 
-  it("change 抽屜列出全部來源討論與同源清單並可互跳", async () => {
+  it("change 詳情頁列出全部來源討論與同源清單並可互跳", async () => {
     const onOpenDiscussion = vi.fn();
     const onOpenSibling = vi.fn();
     const change: ChangeItem = {
@@ -562,9 +565,7 @@ describe("change 側同源連結", () => {
       fromDiscussions: ["alpha-search", "beta-cache"],
     };
     render(
-      <RichDetailDrawer
-        open
-        onOpenChange={vi.fn()}
+      <ChangeDetailPage
         change={change}
         loadDocument={vi.fn(async () => "# doc")}
         loadCapabilities={vi.fn(async () => [])}
@@ -595,10 +596,10 @@ describe("change 側同源連結", () => {
   });
 });
 
-describe("DiscussionDrawer 世代重載（spec：外部推進討論後抽屜內容更新）", () => {
+describe("DiscussionDetailPage 世代重載（spec：外部推進討論後頁內容更新）", () => {
   it("refreshGen 遞增時重載記錄，回合分頁呈現新回合且分頁選擇不重置", async () => {
     const props = makeProps();
-    const { rerender } = render(<DiscussionDrawer {...(props as never)} refreshGen={0} />);
+    const { rerender } = render(<DiscussionDetailPage {...(props as never)} refreshGen={0} />);
     await waitFor(() => screen.getByRole("tab", { name: /討論過程/ }));
     fireEvent.mouseDown(screen.getByRole("tab", { name: /討論過程/ }));
     await waitFor(() => expect(screen.getByText(/範圍界定/)).toBeTruthy());
@@ -610,21 +611,21 @@ describe("DiscussionDrawer 世代重載（spec：外部推進討論後抽屜內�
       "### Round 2 — assumptions (2026-07-02)\n\n**Focus**: 第二輪新內容\n\n## Conclusion",
     );
     (props.loadDocument as ReturnType<typeof vi.fn>).mockResolvedValue(DOC2);
-    rerender(<DiscussionDrawer {...(props as never)} refreshGen={1} />);
+    rerender(<DiscussionDetailPage {...(props as never)} refreshGen={1} />);
     await waitFor(() => expect(calls()).toBeGreaterThan(c0));
     await waitFor(() => expect(screen.getByText(/第二輪新內容/)).toBeTruthy());
-    // 舊回合仍在、分頁停留在討論過程——重載為就地替換，非重開抽屜。
+    // 舊回合仍在、分頁停留在討論過程——重載為就地替換，非重開頁。
     expect(screen.getByText(/範圍界定/)).toBeTruthy();
   });
 });
 
-// spec 需求「討論抽屜檢視與轉出變更」：抽屜標題以 slug 為題（等寬）＋複製鈕、
-// topic 降為副標（design D4，LANGUAGE.md 受控例外擴充）。
-describe("DiscussionDrawer 標題 slug 化（design D4）", () => {
+// spec 需求「討論詳情頁檢視與轉出變更」：頁標題以 slug 為題（等寬）＋複製鈕、
+// topic 為標題下方一行（LANGUAGE.md 受控例外）。
+describe("DiscussionDetailPage 標題 slug 化（design D4）", () => {
   it("標題呈 slug（等寬字型）、topic 降為副標、複製鈕寫入剪貼簿", async () => {
     const writeText = vi.fn();
     Object.assign(navigator, { clipboard: { writeText } });
-    render(<DiscussionDrawer {...(makeProps() as never)} />);
+    render(<DiscussionDetailPage {...(makeProps() as never)} />);
     await screen.findByRole("tab", { name: /背景/ });
     const title = screen.getByText("alpha-search");
     expect(title.className).toContain("font-mono");
@@ -636,18 +637,20 @@ describe("DiscussionDrawer 標題 slug 化（design D4）", () => {
   });
 });
 
-// spec 需求「markdown 文件內容行寬有上限」（design D4）：討論抽屜分頁內容的捲動
-// 容器內存在共用置中容器，討論輪卡片與內文同欄對齊置中。
-describe("討論抽屜閱讀欄置中", () => {
-  it("捲動容器內有置中容器（w-full＋max-w-[96ch]＋mx-auto）且輪卡片在欄內", async () => {
-    const { baseElement } = render(<DiscussionDrawer {...(makeProps() as never)} />);
+// spec 需求「markdown 文件內容行寬有上限」（design D4）：討論詳情頁內容卡內存在
+// 共用置中容器，討論輪卡片與內文同欄對齊置中；頁內容欄 768px 置中。
+describe("討論詳情頁閱讀欄置中", () => {
+  it("內容卡內有置中容器（w-full＋max-w-[96ch]＋mx-auto）且輪卡片在欄內", async () => {
+    const { baseElement } = render(<DiscussionDetailPage {...(makeProps() as never)} />);
     await screen.findByRole("tab", { name: /討論過程/ });
     const col = baseElement.querySelector("[data-reading-column]") as HTMLElement;
     expect(col).toBeTruthy();
     expect(col.className).toContain("w-full");
     expect(col.className).toContain("max-w-[96ch]");
     expect(col.className).toContain("mx-auto");
-    expect(col.parentElement?.className).toContain("overflow-y-auto");
+    const page = baseElement.querySelector("[data-discussion-detail]") as HTMLElement;
+    expect(page.className).toContain("max-w-[768px]");
+    expect(page.contains(col)).toBe(true);
     // 結論分頁（預設）內文在欄內。
     expect(within(col).getByText("建置 alpha 搜尋")).toBeTruthy();
     // 討論過程分頁：輪卡片同欄。
@@ -656,12 +659,12 @@ describe("討論抽屜閱讀欄置中", () => {
   });
 });
 
-// spec「討論抽屜檢視與轉出變更」抽屜內封存場景:concluded 且未封存(宿主提供
+// spec「討論詳情頁檢視與轉出變更」頁內封存場景:concluded 且未封存(宿主提供
 // handler)才出現;走與討論卡同一 onArchiveDiscussion 呼叫(確認流程在宿主)。
-describe("抽屜內封存動詞", () => {
+describe("頁內封存動詞", () => {
   it("concluded 討論顯示封存動作,點擊觸發 onArchiveDiscussion", async () => {
     const onArchiveDiscussion = vi.fn();
-    render(<DiscussionDrawer {...(makeProps({ onArchiveDiscussion }) as never)} />);
+    render(<DiscussionDetailPage {...(makeProps({ onArchiveDiscussion }) as never)} />);
     const btn = await screen.findByRole("button", { name: /封存/ });
     fireEvent.click(btn);
     expect(onArchiveDiscussion).toHaveBeenCalledWith("alpha-search");
@@ -669,7 +672,7 @@ describe("抽屜內封存動詞", () => {
 
   it("非 concluded(open/promoted)不顯示封存動作", async () => {
     render(
-      <DiscussionDrawer
+      <DiscussionDetailPage
         {...(makeProps({ discussion: openD, onArchiveDiscussion: vi.fn() }) as never)}
       />,
     );
@@ -677,7 +680,7 @@ describe("抽屜內封存動詞", () => {
     expect(screen.queryByRole("button", { name: /封存/ })).toBeNull();
 
     render(
-      <DiscussionDrawer
+      <DiscussionDetailPage
         {...(makeProps({ discussion: promotedD, onArchiveDiscussion: vi.fn() }) as never)}
       />,
     );
@@ -685,17 +688,17 @@ describe("抽屜內封存動詞", () => {
   });
 
   it("已封存(宿主不提供 handler)不顯示封存動作", async () => {
-    render(<DiscussionDrawer {...(makeProps() as never)} />);
+    render(<DiscussionDetailPage {...(makeProps() as never)} />);
     await screen.findByText("Alpha search");
     expect(screen.queryByRole("button", { name: /封存/ })).toBeNull();
   });
 });
 
-// spec「抽屜文件載入以 skeleton 呈現」（design D3）：討論抽屜載入中畫骨架。
-describe("討論抽屜文件三態", () => {
+// spec「詳情頁文件載入以 skeleton 呈現」：討論詳情頁載入中畫骨架。
+describe("討論詳情頁文件三態", () => {
   it("載入中 → 文件骨架，不出空態文案", async () => {
     render(
-      <DiscussionDrawer
+      <DiscussionDetailPage
         {...(makeProps({ loadDocument: vi.fn(() => new Promise<never>(() => {})) }) as never)}
       />,
     );
@@ -704,18 +707,98 @@ describe("討論抽屜文件三態", () => {
   });
 
   it("載入完成且記錄不存在 → 空態文案，無骨架", async () => {
-    render(<DiscussionDrawer {...(makeProps({ loadDocument: vi.fn(async () => null) }) as never)} />);
+    render(<DiscussionDetailPage {...(makeProps({ loadDocument: vi.fn(async () => null) }) as never)} />);
     await waitFor(() => expect(screen.getByText("（無內容）")).toBeTruthy());
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
 
   it("首載失敗 → 落到空態文案，不停在骨架", async () => {
     render(
-      <DiscussionDrawer
+      <DiscussionDetailPage
         {...(makeProps({ loadDocument: vi.fn().mockRejectedValue(new Error("offline")) }) as never)}
       />,
     );
     await waitFor(() => expect(screen.getByText("（無內容）")).toBeTruthy());
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+});
+
+// spec「討論詳情頁檢視與轉出變更」Scenario「狀態卡的保留與衍生列」（design D7）：
+// 標題列狀態籤、階段列現站、保留在途列與衍生變更籤列。
+describe("討論詳情頁狀態卡的保留與衍生列", () => {
+  const heldD: DiscussionItem = {
+    ...concludedD,
+    status: "promoted",
+    concluded: true,
+    hold: true,
+    promotedTo: ["cut-old", "cut-b"],
+  };
+  const liveChanges: ChangeItem[] = [
+    { name: "cut-b", status: "in-progress", totalTasks: 10, completedTasks: 3 },
+  ];
+  const archived: ArchivedItem[] = [{ datedName: "2026-07-20-cut-old", date: "2026-07-20", name: "cut-old" }];
+  const row = (mark: string) => document.querySelector(`[data-status-${mark}]`) as HTMLElement | null;
+
+  it("promoted＋hold＋兩項衍生：保留中狀態籤、現站已轉出、保留列、兩顆籤帶階段、點進行中籤跳轉、封存停用", async () => {
+    const onOpenChangeCard = vi.fn();
+    const onArchiveDiscussion = vi.fn();
+    render(
+      <DiscussionDetailPage
+        {...(makeProps({
+          discussion: heldD,
+          changes: liveChanges,
+          archivedChanges: archived,
+          onOpenChangeCard,
+          onArchiveDiscussion,
+        }) as never)}
+      />,
+    );
+    await screen.findByRole("tab", { name: /背景/ });
+    const status = document.querySelector("[data-discussion-status]") as HTMLElement;
+    expect(status.textContent).toBe("已轉出・保留中");
+    expect(status.className).toContain("text-status-warning");
+    expect(within(row("stage")!).getByText("已轉出").closest("[aria-current]")).toBeTruthy();
+    expect(row("hold")!.textContent).toContain("結論保留在途；最後一刀轉出後自動封存");
+    const old = document.querySelector('[data-promoted-chip="cut-old"]') as HTMLElement;
+    const live = document.querySelector('[data-promoted-chip="cut-b"]') as HTMLElement;
+    expect(row("promoted")!.contains(old) && row("promoted")!.contains(live)).toBe(true);
+    expect(within(old).getByText("已封存")).toBeTruthy();
+    expect(within(live).getByText("進行中")).toBeTruthy();
+    fireEvent.click(within(live).getByRole("button", { name: "cut-b" }));
+    expect(onOpenChangeCard).toHaveBeenCalledWith("cut-b");
+    expect((within(old).getByRole("button", { name: "cut-old" }) as HTMLButtonElement).disabled).toBe(true);
+    const archive = screen.getByRole("button", { name: /封存/ }) as HTMLButtonElement;
+    expect(archive.disabled).toBe(true);
+    fireEvent.click(archive);
+    expect(onArchiveDiscussion).not.toHaveBeenCalled();
+  });
+
+  it("無 hold 無 promoted_to 時保留列與衍生列缺席", async () => {
+    render(<DiscussionDetailPage {...(makeProps() as never)} />);
+    await screen.findByRole("tab", { name: /背景/ });
+    expect(row("stage")).toBeTruthy();
+    expect(row("hold")).toBeNull();
+    expect(row("promoted")).toBeNull();
+  });
+
+  it("分頁標頭：討論過程 N 與衍生變更 N 帶計數", async () => {
+    render(<DiscussionDetailPage {...(makeProps({ discussion: promotedD }) as never)} />);
+    await screen.findByRole("tab", { name: /背景/ });
+    expect(screen.getByRole("tab", { name: /討論過程/ }).textContent).toContain("1");
+    expect(screen.getByRole("tab", { name: /衍生變更/ }).textContent).toContain("2");
+  });
+});
+
+// spec「詳情頁的文件動作」：討論各分頁皆為討論記錄檔（磁碟位置——含已封存的日期檔名——由宿主解析）。
+describe("討論詳情頁的文件動作槽", () => {
+  it("回報討論 slug 與記錄原文，渲染在分頁列右端", async () => {
+    const renderDocumentActions = vi.fn((target: DocumentTarget | null) =>
+      target ? <button type="button">開啟記錄</button> : null,
+    );
+    render(<DiscussionDetailPage {...(makeProps({ renderDocumentActions }) as never)} />);
+    await screen.findByRole("tab", { name: /背景/ });
+    expect(renderDocumentActions).toHaveBeenLastCalledWith({ doc: { discussion: "alpha-search" }, content: DOC });
+    const tabsRow = screen.getAllByRole("tablist")[0].parentElement!;
+    expect(within(tabsRow).getByRole("button", { name: "開啟記錄" })).toBeTruthy();
   });
 });

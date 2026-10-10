@@ -79,6 +79,22 @@ pub fn editor_candidates(platform: Platform, path: &str) -> Vec<Spawn> {
     programs.into_iter().map(|program| spawn(program, &[path])).collect()
 }
 
+/// 「以預設 App 開啟」只收 markdown 文件：詳情頁的文件動作只會傳 openspec 下的
+/// `.md`，其餘（.app、.command、目錄）交給預設 App 等於執行任意程式，一律拒絕。
+/// 傳入的名稱與解析符號連結後的實際目標都要是 `.md`——名為 `proposal.md`、實際指向
+/// 可執行檔的連結不得混過；殼層依傳入名稱的副檔名選程式，名為 `x.bat`、指向 `.md` 的
+/// 連結同樣拒絕。解析結果只用來檢查：Windows 的解析結果帶 `\\?\` 前綴，殼層與不少預設
+/// App 不認，開啟時仍傳原路徑。拒絕時錯誤字串為 i18n 鍵 `fs.notDocument`，缺檔為 OS 原文。
+pub fn check_default_open(path: &str) -> Result<(), String> {
+    let is_markdown = |p: &Path| p.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("md"));
+    let target = std::fs::canonicalize(path).map_err(|e| e.to_string())?;
+    if is_markdown(Path::new(path)) && target.is_file() && is_markdown(&target) {
+        Ok(())
+    } else {
+        Err("fs.notDocument".to_string())
+    }
+}
+
 /// 啟動後在這段時間內以非零碼退出的候選視同失敗（如終端機不認得工作目錄參數）。
 const EARLY_EXIT_WINDOW: Duration = Duration::from_millis(500);
 
@@ -141,6 +157,37 @@ mod tests {
                     .collect()
             })
             .collect()
+    }
+
+    #[test]
+    fn default_app_open_only_accepts_existing_markdown_files() {
+        let dir = std::env::temp_dir().join(format!("speclink-dtcore-default-open-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("folder.md")).unwrap();
+        std::fs::write(dir.join("proposal.md"), "# p").unwrap();
+        std::fs::write(dir.join("DESIGN.MD"), "# d").unwrap();
+        std::fs::write(dir.join("run.command"), "echo hi").unwrap();
+        std::fs::write(dir.join("x.md.sh"), "echo hi").unwrap();
+        let at = |name: &str| dir.join(name).to_string_lossy().into_owned();
+
+        for ok in ["proposal.md", "DESIGN.MD"] {
+            assert_eq!(check_default_open(&at(ok)), Ok(()), "{ok}");
+        }
+        for bad in ["run.command", "x.md.sh", "folder.md"] {
+            assert_eq!(check_default_open(&at(bad)), Err("fs.notDocument".to_string()), "{bad}");
+        }
+        assert!(check_default_open(&at("missing.md")).is_err(), "缺檔回 OS 錯誤");
+        assert!(check_default_open("").is_err());
+        #[cfg(unix)]
+        {
+            // 名為 .md 的符號連結指向可執行檔：解析連結後再判，不得混過副檔名檢查。
+            std::os::unix::fs::symlink(dir.join("run.command"), dir.join("tasks.md")).unwrap();
+            assert_eq!(check_default_open(&at("tasks.md")), Err("fs.notDocument".to_string()));
+            // 反過來：名稱不是 .md 的連結指向 .md——殼層依傳入名稱的副檔名選程式，同樣拒絕。
+            std::os::unix::fs::symlink(dir.join("proposal.md"), dir.join("open.command")).unwrap();
+            assert_eq!(check_default_open(&at("open.command")), Err("fs.notDocument".to_string()));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

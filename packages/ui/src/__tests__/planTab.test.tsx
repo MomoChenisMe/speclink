@@ -1,4 +1,4 @@
-// 詳情抽屜的排程分頁（spec desktop-app「詳情抽屜的排程分頁」；plan-requirement-overlap-desktop
+// 詳情頁的排程分頁（spec desktop-app「詳情頁的排程分頁」；plan-requirement-overlap-desktop
 // design「排程分頁卡片化，阻擋併入前置卡的狀態徽章」）：四張邊框卡片（波次、前置、重疊、
 // 封存順序）、前置卡的狀態徽章、前置的新增與移除經 onSetDepends、無 onSetDepends
 // （capability 假）時不長編輯控制項、缺 wave 時只剩一句說明。
@@ -8,7 +8,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
-import { RichDetailDrawer, type RichDetailDrawerProps } from "../components/RichDetailDrawer";
+import { ChangeDetailPage, type ChangeDetailPageProps } from "../components/ChangeDetailPage";
 import type { ChangeItem, DeltaOperation } from "../adapter";
 import { DELTA_COLORS } from "../components/DeltaBadges";
 
@@ -71,10 +71,8 @@ const changes: ChangeItem[] = [
   { name: "add-d", ...base, wave: 3, blockedBy: ["add-c"], dependsOn: ["add-c"], overlaps: [], requirementOverlap: [], archiveAfter: [] },
 ];
 
-function makeProps(over: Partial<RichDetailDrawerProps> = {}): RichDetailDrawerProps {
+function makeProps(over: Partial<ChangeDetailPageProps> = {}): ChangeDetailPageProps {
   return {
-    open: true,
-    onOpenChange: vi.fn(),
     change: changes[2],
     changes,
     loadDocument: vi.fn(async () => "# doc"),
@@ -85,8 +83,8 @@ function makeProps(over: Partial<RichDetailDrawerProps> = {}): RichDetailDrawerP
   };
 }
 
-async function openPlanTab(props: RichDetailDrawerProps) {
-  render(<RichDetailDrawer {...props} />);
+async function openPlanTab(props: ChangeDetailPageProps) {
+  render(<ChangeDetailPage {...props} />);
   await waitFor(() => screen.getByRole("tab", { name: /排程/ }));
   fireEvent.mouseDown(screen.getByRole("tab", { name: /排程/ }));
   await waitFor(() => screen.getByRole("tabpanel"));
@@ -340,10 +338,10 @@ describe("排程分頁", () => {
       .mockResolvedValueOnce(["add-a", "add-b"])
       .mockRejectedValue(new Error("boom"));
     const props = makeProps({ loadDependsCandidates, refreshGen: 0 });
-    const { rerender } = render(<RichDetailDrawer {...props} />);
+    const { rerender } = render(<ChangeDetailPage {...props} />);
     fireEvent.mouseDown(await screen.findByRole("tab", { name: /排程/ }));
     await screen.findByRole("combobox", { name: "新增前置" });
-    rerender(<RichDetailDrawer {...props} refreshGen={1} />);
+    rerender(<ChangeDetailPage {...props} refreshGen={1} />);
     await waitFor(() => expect(loadDependsCandidates).toHaveBeenCalledTimes(2));
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -386,8 +384,8 @@ describe("排程分頁", () => {
     const cyc: ChangeItem = { name: "add-c", ...base, dependsOn: ["add-a"] };
     const props = makeProps({ change: cyc, changes: [cyc, { name: "add-a", ...base, dependsOn: ["add-c"] }] });
     await openPlanTab(props);
-    expect(screen.getByText("依賴成環，先移除一條前置才有排程資訊")).toBeTruthy();
-    expect(screen.queryByText("此模式尚未提供排程資訊")).toBeNull();
+    expect(within(screen.getByRole("tabpanel")).getByText("依賴成環，先移除一條前置才有排程資訊")).toBeTruthy();
+    expect(within(screen.getByRole("tabpanel")).queryByText("此模式尚未提供排程資訊")).toBeNull();
     const depends = section("depends");
     expect(within(depends).getByText("add-a")).toBeTruthy();
     fireEvent.click(within(depends).getByRole("button", { name: "移除前置 add-a" }));
@@ -403,7 +401,7 @@ describe("排程分頁", () => {
     // local 任一處成環，環外每個有效項都帶 dependsOn: []（query.rs 以 meta 宣告原文填）。
     const outside: ChangeItem = { name: "add-e", ...base, dependsOn: [] };
     await openPlanTab(makeProps({ change: outside, changes: [outside] }));
-    expect(screen.getByText("依賴成環，先移除一條前置才有排程資訊")).toBeTruthy();
+    expect(within(screen.getByRole("tabpanel")).getByText("依賴成環，先移除一條前置才有排程資訊")).toBeTruthy();
     expect(within(section("depends")).getByText("尚無前置")).toBeTruthy();
     expect(within(section("depends")).queryByRole("button", { name: /移除前置/ })).toBeNull();
   });
@@ -420,7 +418,7 @@ describe("排程分頁", () => {
     const bare: ChangeItem = { name: "add-c", ...base };
     const props = makeProps({ change: bare, changes: [bare] });
     await openPlanTab(props);
-    expect(screen.getByText("此模式尚未提供排程資訊")).toBeTruthy();
+    expect(within(screen.getByRole("tabpanel")).getByText("此模式尚未提供排程資訊")).toBeTruthy();
     expect(document.querySelector("[data-plan-section]")).toBeNull();
     expect(screen.queryByRole("combobox", { name: "新增前置" })).toBeNull();
   });

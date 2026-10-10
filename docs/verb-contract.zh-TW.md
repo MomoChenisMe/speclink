@@ -430,7 +430,7 @@ If-Match: 2
 
 必定出現：`changeName`、`schemaName`、`isComplete`、`applyRequires`、`artifacts`（每項 `id`、`outputPath`、`status`，被擋住時多 `missingDeps`）。
 
-八個選填欄位：`created`（只有 metadata 同時記了 schema 與建立日期時才出現）、`fromDiscussions`、`deltaCapabilities`、`createdBy`、`createdWith`、`startedAt`、`startedBy`、`claimedBy`。CLI 遠端模式的 `show` 與桌面 app 的詳情面板都靠這些欄位。
+八個選填欄位：`created`（只有 metadata 同時記了 schema 與建立日期時才出現）、`fromDiscussions`、`deltaCapabilities`、`createdBy`、`createdWith`、`startedAt`、`startedBy`、`claimedBy`。CLI 遠端模式的 `show` 與桌面 app 的詳情頁都靠這些欄位。
 
 ```json
 { "changeName": "add-login", "schemaName": "spec-driven", "isComplete": false, "applyRequires": ["tasks"], "artifacts": [{ "id": "tasks", "outputPath": "tasks.md", "status": "done" }], "created": "2026-10-07", "createdBy": "Demo <demo@example.com>", "createdWith": "claude", "startedAt": "2026-10-07", "startedBy": "Demo <demo@example.com>" }

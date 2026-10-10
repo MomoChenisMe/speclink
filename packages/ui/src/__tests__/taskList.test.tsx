@@ -279,6 +279,130 @@ describe("TaskList 勾選框主題化", () => {
   });
 });
 
+// spec「任務列整列可點」（design D8）：整列為勾選框的 label；把手不切換；唯讀與
+// 批次寫回中（busy）不回應；拖曳仍只由把手啟動。
+describe("TaskList 整列可點", () => {
+  const rowOf = (text: string) => screen.getByText(text).closest("label") as HTMLLabelElement;
+
+  it.each([
+    ["可拖排", true],
+    ["無拖排", false],
+  ])("%s：點任務文字呼叫 onToggle 一次，效果與點勾選框相同", (_label, sortable) => {
+    const onToggle = vi.fn();
+    render(<TaskList markdown={MD} onToggle={onToggle} onReorder={sortable ? vi.fn() : undefined} />);
+    const row = rowOf("1.1 first");
+    expect(row).toBeTruthy();
+    const checkbox = screen.getByRole("checkbox", { name: "任務 1" });
+    expect(row.htmlFor).toBe(checkbox.id);
+    expect(row.className).toContain("cursor-pointer");
+    fireEvent.click(screen.getByText("1.1 first"));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(onToggle).toHaveBeenCalledWith(1, true, undefined);
+  });
+
+  it("點拖曳把手不切換", () => {
+    const onToggle = vi.fn();
+    render(<TaskList markdown={MD} onToggle={onToggle} onReorder={vi.fn()} />);
+    const handle = screen.getByLabelText("拖曳任務 1");
+    fireEvent.pointerDown(handle);
+    fireEvent.click(handle);
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("唯讀列點擊不切換，label 無 htmlFor 且游標預設", () => {
+    const onToggle = vi.fn();
+    render(<TaskList markdown={MD} readOnly onToggle={onToggle} />);
+    const row = rowOf("1.1 first");
+    expect(row.htmlFor).toBe("");
+    expect(row.className).toContain("cursor-default");
+    fireEvent.click(screen.getByText("1.1 first"));
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["可拖排", true],
+    ["無拖排", false],
+  ])("%s：批次寫回中（busy）點列不切換", (_label, sortable) => {
+    const onToggle = vi.fn();
+    render(
+      <TaskList markdown={MD} busy onToggle={onToggle} onReorder={sortable ? vi.fn() : undefined} />,
+    );
+    const row = rowOf("1.1 first");
+    expect(row.htmlFor).toBe("");
+    expect(row.className).toContain("cursor-default");
+    fireEvent.click(screen.getByText("1.1 first"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "任務 1" }));
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("拖曳仍只由把手啟動：sortable 屬性只在把手上，列本身沒有", () => {
+    render(<TaskList markdown={MD} onToggle={vi.fn()} onReorder={vi.fn()} />);
+    const row = rowOf("1.1 first");
+    expect(row.getAttribute("aria-roledescription")).toBeNull();
+    expect(screen.getByLabelText("拖曳任務 1").getAttribute("aria-roledescription")).toBe("sortable");
+  });
+
+  it("有寫入能力時工具列附灰字提示；沒有把手時不提把手；唯讀時沒有", () => {
+    const { unmount } = render(
+      <TaskList markdown={MD} onToggle={vi.fn()} onReorder={vi.fn()} onSetAll={vi.fn()} />,
+    );
+    const hint = screen.getByText("點整列即可勾選；拖曳把手改順序");
+    expect(hint.className).toContain("text-muted-foreground");
+    expect(hint.className).toContain("text-xs");
+    unmount();
+    const plain = render(<TaskList markdown={MD} onToggle={vi.fn()} onSetAll={vi.fn()} />);
+    expect(screen.getByText("點整列即可勾選")).toBeTruthy();
+    expect(screen.queryByText(/拖曳把手/)).toBeNull();
+    plain.unmount();
+    render(<TaskList markdown={MD} readOnly />);
+    expect(screen.queryByText(/點整列即可勾選/)).toBeNull();
+  });
+
+  it.each([
+    ["可拖排", true],
+    ["無拖排", false],
+  ])("%s：拖選文字後的 click 不切換；直接點勾選框不受影響", (_label, sortable) => {
+    const onToggle = vi.fn();
+    render(<TaskList markdown={MD} onToggle={onToggle} onReorder={sortable ? vi.fn() : undefined} />);
+    const selection = vi.spyOn(window, "getSelection").mockReturnValue({ toString: () => "first" } as Selection);
+    fireEvent.click(screen.getByText("1.1 first"));
+    expect(onToggle).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("checkbox", { name: "任務 1" }));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    selection.mockRestore();
+  });
+
+  it("雙擊任務文字選字：兩下點擊互相抵銷，勾選狀態不變", () => {
+    const onToggle = vi.fn();
+    const reorder = vi.fn();
+    const { rerender } = render(<TaskList markdown={MD} onToggle={onToggle} onReorder={reorder} />);
+    fireEvent.click(screen.getByText("1.1 first"), { detail: 1 });
+    // 宿主樂觀改寫 tasks.md；第二下按下時瀏覽器已選取該字。
+    rerender(<TaskList markdown={MD.replace("- [ ] 1.1", "- [x] 1.1")} onToggle={onToggle} onReorder={reorder} />);
+    const text = screen.getByText("1.1 first");
+    const selection = vi.spyOn(window, "getSelection").mockReturnValue({ toString: () => "first" } as Selection);
+    fireEvent.click(text, { detail: 2 });
+    selection.mockRestore();
+    expect(onToggle.mock.calls).toEqual([
+      [1, true, undefined],
+      [1, false, undefined],
+    ]);
+  });
+
+  it("拖曳進行中按 Esc 標為已處理：只取消拖曳，不讓詳情頁的 Esc 關頁", () => {
+    const onDragActiveChange = vi.fn();
+    render(
+      <TaskList markdown={MD} onToggle={vi.fn()} onReorder={vi.fn()} onDragActiveChange={onDragActiveChange} />,
+    );
+    expect(fireEvent.keyDown(window, { key: "Escape" })).toBe(true);
+    const handle = screen.getByLabelText("拖曳任務 1");
+    handle.focus();
+    fireEvent.keyDown(handle, { code: "Space", key: " " });
+    expect(onDragActiveChange).toHaveBeenLastCalledWith(true);
+    expect(fireEvent.keyDown(window, { key: "Escape" })).toBe(false);
+  });
+});
+
 // spec「任務分頁提供批次操作工具列」（desktop-task-interactions）
 describe("TaskList 工具列", () => {
   it("renders the three batch actions and fires onSetAll", () => {

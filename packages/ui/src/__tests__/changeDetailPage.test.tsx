@@ -13,11 +13,12 @@ function render(ui: ReactElement) {
   return rtlRender(ui, { wrapper: zhWrapper });
 }
 
-import { RichDetailDrawer } from "../components/RichDetailDrawer";
+import { ChangeDetailPage } from "../components/ChangeDetailPage";
+import type { DocumentTarget } from "../components/DetailHeader";
 import { DELTA_COLORS } from "../components/DeltaBadges";
 import type { ChangeItem } from "../adapter";
 
-// 攔截 TaskList props 以驗證抽屜→拖放回呼的接線（jsdom 無法真拖）。
+// 攔截 TaskList props 以驗證詳情頁→拖放回呼的接線（jsdom 無法真拖）。
 const { taskListProps } = vi.hoisted(() => ({
   taskListProps: [] as Array<Record<string, unknown>>,
 }));
@@ -39,8 +40,6 @@ const SPEC_MD = "## ADDED Requirements\n\n### Requirement: a\nb\n\n### Requireme
 
 function makeProps(over: Record<string, unknown> = {}) {
   return {
-    open: true,
-    onOpenChange: vi.fn(),
     change,
     loadDocument: vi.fn(async (_c: string, artifact: string) =>
       artifact.startsWith("specs/") ? SPEC_MD : `# doc for ${artifact}`,
@@ -53,6 +52,17 @@ function makeProps(over: Record<string, unknown> = {}) {
   };
 }
 
+/** 展開標題列右端的「⋯」選單（封存／刪除兩項）。 */
+async function openMoreMenu() {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  await user.click(screen.getByRole("button", { name: "更多動作" }));
+  await screen.findByRole("menu");
+  return user;
+}
+
+/** 「⋯」選單項的停用原因（項目下方灰字）。 */
+const menuReason = (item: HTMLElement) => item.querySelector("[data-menu-reason]")?.textContent ?? "";
+
 // spec 需求「規格分頁 delta 區段以色標呈現」的渲染面（design D4 色標區段、配色對齊 DeltaBadges）。
 describe("規格分頁 delta 區段色標", () => {
   const DELTA_MD =
@@ -64,7 +74,7 @@ describe("規格分頁 delta 區段色標", () => {
         artifact.startsWith("specs/") ? specMd : `# doc for ${artifact}`,
       ),
     });
-    const result = render(<RichDetailDrawer {...(props as never)} />);
+    const result = render(<ChangeDetailPage {...(props as never)} />);
     await waitFor(() => screen.getByRole("tab", { name: /規格/ }));
     fireEvent.mouseDown(screen.getByRole("tab", { name: /規格/ }));
     return result;
@@ -117,7 +127,7 @@ describe("提案／設計分頁章節標籤", () => {
         artifact === "proposal.md" ? "## Why\n\n動機內文。\n\n## What Changes\n\n- 變更項\n" : SPEC_MD,
       ),
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await waitFor(() => expect(screen.getByText("動機內文。")).toBeTruthy());
     expect(screen.getByText("為什麼")).toBeTruthy();
     expect(screen.getByText("變更內容")).toBeTruthy();
@@ -134,7 +144,7 @@ describe("提案分頁載入中／不存在分流", () => {
       loadDocument: vi.fn(async () => null),
       loadCapabilities: vi.fn(async () => []),
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await waitFor(() => expect(screen.getByText("（此 change 尚無提案內容）")).toBeTruthy());
     expect(screen.queryByText("載入中…")).toBeNull();
   });
@@ -147,15 +157,15 @@ describe("提案分頁載入中／不存在分流", () => {
       loadCapabilities: vi.fn(async () => []),
       loadMeta: vi.fn(() => new Promise<never>(() => {})),
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeTruthy());
     expect(screen.queryByText("（此 change 尚無提案內容）")).toBeNull();
   });
 });
 
-describe("RichDetailDrawer", () => {
+describe("ChangeDetailPage", () => {
   it("renders metadata row (author, agent, task count) and progress", async () => {
-    render(<RichDetailDrawer {...(makeProps() as never)} />);
+    render(<ChangeDetailPage {...(makeProps() as never)} />);
     await waitFor(() => expect(screen.getByText("MomoChen")).toBeTruthy());
     expect(screen.getByText(/claude/)).toBeTruthy();
     expect(screen.getAllByText(/30\/30/).length).toBeGreaterThan(0);
@@ -164,20 +174,20 @@ describe("RichDetailDrawer", () => {
   it("標頭複製名稱鈕寫入變更名，成功以 status 宣告「已複製」（共用 CopyButton）", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    render(<RichDetailDrawer {...(makeProps() as never)} />);
+    render(<ChangeDetailPage {...(makeProps() as never)} />);
     fireEvent.click(screen.getByRole("button", { name: "複製名稱" }));
     expect(writeText).toHaveBeenCalledWith("desktop-shell-and-browser");
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("已複製"));
   });
 
   it("shows spec delta counts on the specs tab", async () => {
-    render(<RichDetailDrawer {...(makeProps() as never)} />);
+    render(<ChangeDetailPage {...(makeProps() as never)} />);
     await waitFor(() => expect(screen.getByText(/\+2/)).toBeTruthy());
   });
 
   it("forwards a drag-reorder drop to onMoveTask; reload rides the refreshGen bump", async () => {
     const props = makeProps({ onMoveTask: vi.fn().mockResolvedValue(undefined) });
-    const { rerender } = render(<RichDetailDrawer {...(props as never)} refreshGen={0} />);
+    const { rerender } = render(<ChangeDetailPage {...(props as never)} refreshGen={0} />);
     // TaskList 掛在任務分頁下——先切分頁（Radix TabsTrigger 以 mousedown 觸發）。
     await waitFor(() => screen.getByRole("tab", { name: /任務/ }));
     fireEvent.mouseDown(screen.getByRole("tab", { name: /任務/ }));
@@ -202,7 +212,7 @@ describe("RichDetailDrawer", () => {
     );
     // design D2：獨立局部重讀已移除——重載由宿主 refresh 後的世代遞增驅動。
     expect(tasksReads()).toBe(before);
-    rerender(<RichDetailDrawer {...(props as never)} refreshGen={1} />);
+    rerender(<ChangeDetailPage {...(props as never)} refreshGen={1} />);
     await waitFor(() => expect(tasksReads()).toBeGreaterThan(before));
     // 標題落點（design D7 moveTask 側別）：before=true 轉發至第四參數。
     await act(async () => {
@@ -218,7 +228,7 @@ describe("RichDetailDrawer", () => {
 
   it("reloads documents and meta in place when refreshGen advances (external change)", async () => {
     const props = makeProps();
-    const { rerender } = render(<RichDetailDrawer {...(props as never)} refreshGen={0} />);
+    const { rerender } = render(<ChangeDetailPage {...(props as never)} refreshGen={0} />);
     await waitFor(() => expect(screen.getByText("MomoChen")).toBeTruthy());
     expect(screen.queryByText(/開工/)).toBeNull();
     const docCalls = () => (props.loadDocument as Mock).mock.calls.length;
@@ -233,10 +243,10 @@ describe("RichDetailDrawer", () => {
       startedAt: "2026-07-07",
       startedBy: "Worker <w@example.com>",
     });
-    rerender(<RichDetailDrawer {...(props as never)} refreshGen={1} />);
+    rerender(<ChangeDetailPage {...(props as never)} refreshGen={1} />);
     await waitFor(() => expect(docCalls()).toBeGreaterThan(d0));
     await waitFor(() => expect(metaCalls()).toBeGreaterThan(m0));
-    await waitFor(() => expect(screen.getByText(/2026-07-07 開工/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/開工 2026-07-07/)).toBeTruthy());
   });
 
   it("defers the refreshGen reload while a task interaction is in flight, catches up after", async () => {
@@ -245,7 +255,7 @@ describe("RichDetailDrawer", () => {
       release = r;
     });
     const props = makeProps({ onToggleTask: vi.fn(() => gate) });
-    const { rerender } = render(<RichDetailDrawer {...(props as never)} refreshGen={0} />);
+    const { rerender } = render(<ChangeDetailPage {...(props as never)} refreshGen={0} />);
     await waitFor(() => screen.getByRole("tab", { name: /任務/ }));
     fireEvent.mouseDown(screen.getByRole("tab", { name: /任務/ }));
     await waitFor(() => expect(taskListProps.length).toBeGreaterThan(0));
@@ -256,7 +266,7 @@ describe("RichDetailDrawer", () => {
       (props.loadDocument as Mock).mock.calls.filter((c) => c[1] === "tasks.md").length;
     const before = tasksReads();
     act(() => latest.onToggle!(1, true)); // 互動進行中（onToggleTask 未 resolve）
-    rerender(<RichDetailDrawer {...(props as never)} refreshGen={1} />);
+    rerender(<ChangeDetailPage {...(props as never)} refreshGen={1} />);
     await new Promise((r) => setTimeout(r, 25));
     // 讓路：互動未結束前外部世代不觸發重載，不打斷進行中操作。
     expect(tasksReads()).toBe(before);
@@ -267,7 +277,7 @@ describe("RichDetailDrawer", () => {
   it("defers the refreshGen reload while a drag gesture is active, catches up after drop", async () => {
     // spec：讓路涵蓋「拖曳排序進行中」（按住～放開），不只放開後的寫回等待。
     const props = makeProps();
-    const { rerender } = render(<RichDetailDrawer {...(props as never)} refreshGen={0} />);
+    const { rerender } = render(<ChangeDetailPage {...(props as never)} refreshGen={0} />);
     await waitFor(() => screen.getByRole("tab", { name: /任務/ }));
     fireEvent.mouseDown(screen.getByRole("tab", { name: /任務/ }));
     await waitFor(() => expect(taskListProps.length).toBeGreaterThan(0));
@@ -279,7 +289,7 @@ describe("RichDetailDrawer", () => {
       (props.loadDocument as Mock).mock.calls.filter((c) => c[1] === "tasks.md").length;
     const before = tasksReads();
     act(() => latest.onDragActiveChange!(true)); // 拖曳手勢開始（尚未放開）
-    rerender(<RichDetailDrawer {...(props as never)} refreshGen={1} />);
+    rerender(<ChangeDetailPage {...(props as never)} refreshGen={1} />);
     await new Promise((r) => setTimeout(r, 25));
     expect(tasksReads()).toBe(before); // 拖曳中外部世代不重載
     act(() => latest.onDragActiveChange!(false)); // 放開
@@ -294,9 +304,9 @@ describe("RichDetailDrawer", () => {
         return artifact.startsWith("specs/") ? SPEC_MD : `# doc for ${artifact}`;
       }),
     });
-    const { rerender } = render(<RichDetailDrawer {...(props as never)} refreshGen={0} />);
+    const { rerender } = render(<ChangeDetailPage {...(props as never)} refreshGen={0} />);
     await waitFor(() => expect(pendingProposal.length).toBe(1)); // 初載請求（gen 0）
-    rerender(<RichDetailDrawer {...(props as never)} refreshGen={1} />);
+    rerender(<ChangeDetailPage {...(props as never)} refreshGen={1} />);
     await waitFor(() => expect(pendingProposal.length).toBe(2)); // 世代重載請求（gen 1）
     pendingProposal[1]("# proposal v2"); // 新世代回應先到
     await waitFor(() => expect(screen.getByText(/proposal v2/)).toBeTruthy());
@@ -308,7 +318,7 @@ describe("RichDetailDrawer", () => {
 
   it("toggle completion updates tasks and meta together via the refreshGen path only", async () => {
     const props = makeProps({ onToggleTask: vi.fn().mockResolvedValue(undefined) });
-    const { rerender } = render(<RichDetailDrawer {...(props as never)} refreshGen={0} />);
+    const { rerender } = render(<ChangeDetailPage {...(props as never)} refreshGen={0} />);
     await waitFor(() => screen.getByRole("tab", { name: /任務/ }));
     fireEvent.mouseDown(screen.getByRole("tab", { name: /任務/ }));
     await waitFor(() => expect(taskListProps.length).toBeGreaterThan(0));
@@ -326,7 +336,7 @@ describe("RichDetailDrawer", () => {
     // 獨立局部重讀路徑已移除（design D2 單一資料流）。
     expect(tasksReads()).toBe(t0);
     // 宿主 onToggleTask 內 refresh → 世代遞增（此處由測試模擬）→ tasks 與 meta 一併重載。
-    rerender(<RichDetailDrawer {...(props as never)} refreshGen={1} />);
+    rerender(<ChangeDetailPage {...(props as never)} refreshGen={1} />);
     await waitFor(() => expect(tasksReads()).toBeGreaterThan(t0));
     await waitFor(() => expect(metaCalls()).toBeGreaterThan(m0));
   });
@@ -365,11 +375,11 @@ describe("RichDetailDrawer", () => {
         );
       });
       const props = makeProps({ loadDocument, onToggleTask: vi.fn().mockResolvedValue(undefined) });
-      const { rerender } = render(<RichDetailDrawer {...(props as never)} refreshGen={0} />);
+      const { rerender } = render(<ChangeDetailPage {...(props as never)} refreshGen={0} />);
       await openTasksTab();
       // 外部世代重載：tasks.md 載入懸掛（在途回應）。
       hangTasks = true;
-      rerender(<RichDetailDrawer {...(props as never)} refreshGen={1} />);
+      rerender(<ChangeDetailPage {...(props as never)} refreshGen={1} />);
       await waitFor(() => expect(pending.length).toBe(1));
       // 在途期間樂觀勾選任務 1。
       act(() => latestTL().onToggle!(1, true));
@@ -385,7 +395,7 @@ describe("RichDetailDrawer", () => {
     it("optimistically flips the checkbox before the write resolves", async () => {
       const gate = new Promise<void>(() => {}); // 永不 resolve＝寫回進行中
       const props = makeProps({ loadDocument: tasksLoader(), onToggleTask: vi.fn(() => gate) });
-      render(<RichDetailDrawer {...(props as never)} refreshGen={0} />);
+      render(<ChangeDetailPage {...(props as never)} refreshGen={0} />);
       await openTasksTab();
       act(() => latestTL().onToggle!(1, true));
       await waitFor(() => expect(latestTL().markdown).toContain("- [x] 1.1 a"));
@@ -397,7 +407,7 @@ describe("RichDetailDrawer", () => {
         loadDocument: tasksLoader(),
         onToggleTask: vi.fn().mockRejectedValue(new Error("disk full")),
       });
-      render(<RichDetailDrawer {...(props as never)} refreshGen={0} />);
+      render(<ChangeDetailPage {...(props as never)} refreshGen={0} />);
       await openTasksTab();
       act(() => latestTL().onToggle!(1, true));
       await waitFor(() => expect(screen.getByText(/寫回失敗/)).toBeTruthy());
@@ -411,7 +421,7 @@ describe("RichDetailDrawer", () => {
         loadDocument: tasksLoader(),
         onToggleTask: vi.fn(() => new Promise<void>((r) => releases.push(r))),
       });
-      render(<RichDetailDrawer {...(props as never)} refreshGen={0} />);
+      render(<ChangeDetailPage {...(props as never)} refreshGen={0} />);
       await openTasksTab();
       act(() => latestTL().onToggle!(1, true));
       await waitFor(() => expect(latestTL().markdown).toContain("- [x] 1.1 a"));
@@ -436,32 +446,33 @@ describe("RichDetailDrawer", () => {
         startedWith: "claude",
       })),
     });
-    render(<RichDetailDrawer {...(props as never)} />);
-    await waitFor(() => expect(screen.getByText(/2026-07-06 開工/)).toBeTruthy());
+    render(<ChangeDetailPage {...(props as never)} />);
+    await waitFor(() => expect(screen.getByText(/開工 2026-07-06/)).toBeTruthy());
     expect(screen.queryByText(/w@example\.com/)).toBeNull();
   });
 
   it("hides the started row when the change has not been started", async () => {
-    render(<RichDetailDrawer {...(makeProps() as never)} />);
+    render(<ChangeDetailPage {...(makeProps() as never)} />);
     await waitFor(() => expect(screen.getByText("MomoChen")).toBeTruthy());
     expect(screen.queryByText(/開工/)).toBeNull();
   });
 
-  it("fires onDelete when the delete action is clicked", async () => {
-    // 階段守門後刪除鈕僅提案中可按（archive-readiness-gating）——改用提案中 fixture。
+  it("fires onDelete when the delete item of the ⋯ menu is chosen", async () => {
+    // 階段守門後刪除項僅提案中可選（archive-readiness-gating）——改用提案中 fixture。
     const props = makeProps({
       change: { name: "desktop-shell-and-browser", status: "in-progress", totalTasks: 30, completedTasks: 0 },
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     // 先等初始 async 載入落地（loadMeta 的 MomoChen 為完成標記），避免 act 警告。
     await screen.findByText("MomoChen");
-    fireEvent.click(screen.getByRole("button", { name: /刪除/ }));
+    const user = await openMoreMenu();
+    await user.click(screen.getByRole("menuitem", { name: /刪除/ }));
     expect(props.onDelete).toHaveBeenCalledWith("desktop-shell-and-browser");
   });
 
   it("fires onRunVerb for analyze / archive actions", async () => {
     const props = makeProps();
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByText("MomoChen");
     fireEvent.click(screen.getByRole("button", { name: /分析/ }));
     expect(props.onRunVerb).toHaveBeenCalledWith("analyze", "desktop-shell-and-browser");
@@ -470,8 +481,7 @@ describe("RichDetailDrawer", () => {
   });
 
   it("unavailable 停用分析與刪除並附繁中說明；封存照常（remote capability 缺口）", async () => {
-    // Radix Sheet 會在 jsdom body 設 pointer-events:none；停用這項環境檢查，
-    // 仍以實際 pointer enter/leave 驗證 tooltip trigger。
+    // 以實際 pointer enter/leave 驗證 tooltip trigger。
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const props = makeProps({
       unavailable: {
@@ -479,7 +489,7 @@ describe("RichDetailDrawer", () => {
         delete: "此 server 尚未提供刪除變更——功能已停用",
       },
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByText("MomoChen");
     const analyze = screen.getByRole("button", { name: /分析/ }) as HTMLButtonElement;
     expect(analyze.disabled).toBe(true);
@@ -488,28 +498,18 @@ describe("RichDetailDrawer", () => {
     await user.hover(analyzeTrigger);
     await waitFor(() => expect(analyzeTrigger.getAttribute("data-state")).toContain("open"));
     expect(document.querySelector("[data-radix-popper-content-wrapper]")?.textContent).toContain("validate/analyze");
-    const del = screen.getByRole("button", { name: /刪除/ }) as HTMLButtonElement;
-    expect(del.disabled).toBe(true);
-    expect(del.title).toContain("刪除變更");
-    // archive 是直達端點——照常可點。
+    // archive 是直達端點——已就緒時標題列主要鈕照常可點。
     fireEvent.click(screen.getByRole("button", { name: /封存/ }));
     expect(props.onRunVerb).toHaveBeenCalledWith("archive", "desktop-shell-and-browser");
-  });
-
-  it("delete unavailable 的繁中說明會顯示為可見 tooltip", async () => {
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
-    render(<RichDetailDrawer {...(makeProps({ unavailable: { delete: "此 server 尚未提供刪除變更——功能已停用" } }) as never)} />);
-    await screen.findByText("MomoChen");
-    const del = screen.getByRole("button", { name: /刪除/ }) as HTMLButtonElement;
-    const deleteTrigger = del.parentElement!;
-    await user.hover(deleteTrigger);
-    await waitFor(() => expect(deleteTrigger.getAttribute("data-state")).toContain("open"));
-    expect(document.querySelector("[data-radix-popper-content-wrapper]")?.textContent).toContain("刪除變更");
+    await openMoreMenu();
+    const del = screen.getByRole("menuitem", { name: /刪除/ });
+    expect(del.getAttribute("aria-disabled")).toBe("true");
+    expect(menuReason(del)).toContain("刪除變更");
   });
 
   it("未認領的 change 呈現認領操作，點擊回呼帶 change 名（remote-claim-ownership D4）", async () => {
     const props = makeProps({ onClaim: vi.fn() });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByText("MomoChen");
     fireEvent.click(screen.getByRole("button", { name: /認領/ }));
     expect(props.onClaim).toHaveBeenCalledWith("desktop-shell-and-browser");
@@ -520,14 +520,14 @@ describe("RichDetailDrawer", () => {
       change: { ...change, claimedBy: "Alice <a@example.com>" },
       onClaim: vi.fn(),
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByText("MomoChen");
     expect(screen.getByText(/Alice/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /認領/ })).toBeNull();
   });
 
   it("onClaim 缺席時不渲染認領操作（本地分頁無認領面）", async () => {
-    render(<RichDetailDrawer {...(makeProps() as never)} />);
+    render(<ChangeDetailPage {...(makeProps() as never)} />);
     await screen.findByText("MomoChen");
     expect(screen.queryByRole("button", { name: /認領/ })).toBeNull();
   });
@@ -537,7 +537,7 @@ describe("RichDetailDrawer", () => {
       onClaim: vi.fn(),
       unavailable: { claim: "此帳號為唯讀成員，無法認領變更" },
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByText("MomoChen");
     const claim = screen.getByRole("button", { name: /認領/ }) as HTMLButtonElement;
     expect(claim.disabled).toBe(true);
@@ -549,7 +549,7 @@ describe("RichDetailDrawer", () => {
   it("onMoveTask 缺席時 TaskList 收到 onReorder undefined（把手整段停用）", async () => {
     taskListProps.length = 0;
     const props = makeProps({ onToggleTask: vi.fn(), onSetAllTasks: vi.fn() });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByText("MomoChen");
     fireEvent.mouseDown(screen.getByRole("tab", { name: /任務/ }));
     await waitFor(() => expect(taskListProps.length).toBeGreaterThan(0));
@@ -560,10 +560,10 @@ describe("RichDetailDrawer", () => {
   });
 });
 
-// spec 需求「詳情抽屜的封存與刪除依階段守門」（archive-readiness-gating D4）：
-// 封存鈕僅已就緒可按、刪除鈕僅提案中可按，非法階段 disabled 並經
-// UnavailableAction 呈現原因；unavailable（remote 能力缺失）原因優先於階段原因。
-describe("抽屜封存/刪除的階段守門", () => {
+// spec 需求「詳情頁的封存與刪除依階段守門」（archive-readiness-gating D4）：
+// 「⋯」選單的封存項僅已就緒可選、刪除項僅提案中可選，停用時項目下方灰字說明原因；
+// 已就緒時標題列另有「封存」主要鈕；unavailable（remote 能力缺失）原因優先於階段原因。
+describe("詳情頁封存/刪除的階段守門", () => {
   const proposed: ChangeItem = { name: "prop-c", status: "in-progress", totalTasks: 11, completedTasks: 0 };
   const inProgress: ChangeItem = {
     name: "wip-c",
@@ -574,53 +574,58 @@ describe("抽屜封存/刪除的階段守門", () => {
   };
   const ready: ChangeItem = { name: "ready-c", status: "done", totalTasks: 30, completedTasks: 30 };
 
-  it("非已就緒的封存鈕停用附任務進度與出路；已就緒照常可按", async () => {
-    // spec scenario：提案中(0/11)與進行中(5/19)皆 disabled，tooltip 載明進度。
-    const p1 = makeProps({ change: proposed });
-    const r1 = render(<RichDetailDrawer {...(p1 as never)} />);
-    await screen.findByText("MomoChen");
-    const btn1 = screen.getByRole("button", { name: /封存/ }) as HTMLButtonElement;
-    expect(btn1.disabled).toBe(true);
-    expect(btn1.title).toContain("0/11");
-    expect(btn1.title).toContain("完成後才能封存");
-    r1.unmount();
-    const p2 = makeProps({ change: inProgress });
-    const r2 = render(<RichDetailDrawer {...(p2 as never)} />);
-    await screen.findByText("MomoChen");
-    const btn2 = screen.getByRole("button", { name: /封存/ }) as HTMLButtonElement;
-    expect(btn2.disabled).toBe(true);
-    expect(btn2.title).toContain("5/19");
-    r2.unmount();
+  it("非已就緒的封存項停用附任務進度與出路、標題列無封存鈕；已就緒時選單項與主要鈕照常可按", async () => {
+    // spec scenario：提案中(0/11)與進行中(5/19)皆停用，項目下方載明進度。
+    for (const [c, progress] of [
+      [proposed, "0/11"],
+      [inProgress, "5/19"],
+    ] as const) {
+      const r = render(<ChangeDetailPage {...(makeProps({ change: c }) as never)} />);
+      await screen.findByText("MomoChen");
+      expect(screen.queryByRole("button", { name: /^封存$/ })).toBeNull();
+      await openMoreMenu();
+      const item = screen.getByRole("menuitem", { name: /封存/ });
+      expect(item.getAttribute("aria-disabled")).toBe("true");
+      expect(menuReason(item)).toContain(progress);
+      expect(menuReason(item)).toContain("完成後才能封存");
+      r.unmount();
+    }
     const p3 = makeProps({ change: ready });
-    render(<RichDetailDrawer {...(p3 as never)} />);
+    render(<ChangeDetailPage {...(p3 as never)} />);
     await screen.findByText("MomoChen");
-    const btn3 = screen.getByRole("button", { name: /封存/ }) as HTMLButtonElement;
-    expect(btn3.disabled).toBe(false);
-    fireEvent.click(btn3);
+    const primary = screen.getByRole("button", { name: /^封存$/ }) as HTMLButtonElement;
+    expect(primary.disabled).toBe(false);
+    fireEvent.click(primary);
     expect(p3.onRunVerb).toHaveBeenCalledWith("archive", "ready-c");
+    const user = await openMoreMenu();
+    const item = screen.getByRole("menuitem", { name: /封存/ });
+    expect(item.getAttribute("aria-disabled")).toBeNull();
+    expect(menuReason(item)).toBe("");
+    await user.click(item);
+    expect(p3.onRunVerb).toHaveBeenCalledTimes(2);
   });
 
-  it("非提案中的刪除鈕停用附開工痕跡與退回出路；提案中照常可按", async () => {
-    const p1 = makeProps({ change: inProgress });
-    const r1 = render(<RichDetailDrawer {...(p1 as never)} />);
-    await screen.findByText("MomoChen");
-    const del1 = screen.getByRole("button", { name: /刪除/ }) as HTMLButtonElement;
-    expect(del1.disabled).toBe(true);
-    expect(del1.title).toContain("開工痕跡");
-    expect(del1.title).toContain("退回提案中");
-    r1.unmount();
-    // 已就緒（全完成＝有痕跡）同樣 disabled。
-    const p2 = makeProps({ change: ready });
-    const r2 = render(<RichDetailDrawer {...(p2 as never)} />);
-    await screen.findByText("MomoChen");
-    expect((screen.getByRole("button", { name: /刪除/ }) as HTMLButtonElement).disabled).toBe(true);
-    r2.unmount();
+  it("非提案中的刪除項停用附開工痕跡與退回出路；提案中照常可選；刪除項置底且為警示色", async () => {
+    for (const c of [inProgress, ready]) {
+      const r = render(<ChangeDetailPage {...(makeProps({ change: c }) as never)} />);
+      await screen.findByText("MomoChen");
+      await openMoreMenu();
+      const del = screen.getByRole("menuitem", { name: /刪除/ });
+      expect(del.getAttribute("aria-disabled")).toBe("true");
+      expect(menuReason(del)).toContain("開工痕跡");
+      expect(menuReason(del)).toContain("退回提案中");
+      r.unmount();
+    }
     const p3 = makeProps({ change: proposed });
-    render(<RichDetailDrawer {...(p3 as never)} />);
+    render(<ChangeDetailPage {...(p3 as never)} />);
     await screen.findByText("MomoChen");
-    const del3 = screen.getByRole("button", { name: /刪除/ }) as HTMLButtonElement;
-    expect(del3.disabled).toBe(false);
-    fireEvent.click(del3);
+    const user = await openMoreMenu();
+    const items = screen.getAllByRole("menuitem");
+    const del = items.at(-1)!;
+    expect(del.textContent).toContain("刪除");
+    expect(del.className).toContain("text-destructive");
+    expect(screen.getByRole("menu").querySelector('[role="separator"]')).toBeTruthy();
+    await user.click(del);
     expect(p3.onDelete).toHaveBeenCalledWith("prop-c");
   });
 
@@ -632,22 +637,23 @@ describe("抽屜封存/刪除的階段守門", () => {
         delete: "此 server 尚未提供刪除變更——功能已停用",
       },
     });
-    render(<RichDetailDrawer {...(p as never)} />);
+    render(<ChangeDetailPage {...(p as never)} />);
     await screen.findByText("MomoChen");
-    const arch = screen.getByRole("button", { name: /封存/ }) as HTMLButtonElement;
-    expect(arch.disabled).toBe(true);
-    expect(arch.title).toContain("server");
-    expect(arch.title).not.toContain("5/19");
-    const del = screen.getByRole("button", { name: /刪除/ }) as HTMLButtonElement;
-    expect(del.disabled).toBe(true);
-    expect(del.title).toContain("server");
-    expect(del.title).not.toContain("開工痕跡");
+    await openMoreMenu();
+    const arch = screen.getByRole("menuitem", { name: /封存/ });
+    expect(arch.getAttribute("aria-disabled")).toBe("true");
+    expect(menuReason(arch)).toContain("server");
+    expect(menuReason(arch)).not.toContain("5/19");
+    const del = screen.getByRole("menuitem", { name: /刪除/ });
+    expect(del.getAttribute("aria-disabled")).toBe("true");
+    expect(menuReason(del)).toContain("server");
+    expect(menuReason(del)).not.toContain("開工痕跡");
   });
 });
 
-// spec 需求「桌面 app 提供動詞操作面」：「分析」一鍵雙動詞的合併結果於抽屜內、
-// 動作列近處呈現（design D1）；動作列不再提供獨立驗證鈕。
-describe("抽屜內分析結果呈現", () => {
+// spec 需求「桌面 app 提供動詞操作面」：「分析」一鍵雙動詞的合併結果於詳情頁內、
+// 「狀態」卡之下的分析結果卡呈現；動作區不提供獨立驗證鈕。
+describe("詳情頁內分析結果呈現", () => {
   const region = () => document.querySelector("[data-verb-result]") as HTMLElement | null;
   const report = {
     change_id: "x",
@@ -659,24 +665,45 @@ describe("抽屜內分析結果呈現", () => {
     artifacts_missing: [],
   };
 
-  it("動作列不提供獨立驗證鈕，僅分析／封存／刪除", async () => {
-    render(<RichDetailDrawer {...(makeProps() as never)} />);
+  it("動作區不提供獨立驗證鈕：分析＋依階段鈕＋「⋯」（封存／刪除）", async () => {
+    render(<ChangeDetailPage {...(makeProps() as never)} />);
     await screen.findByText("MomoChen");
     expect(screen.queryByRole("button", { name: "驗證" })).toBeNull();
     expect(screen.getByRole("button", { name: /分析/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /封存/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /刪除/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^封存$/ })).toBeTruthy();
+    await openMoreMenu();
+    expect(screen.getAllByRole("menuitem").map((el) => el.querySelector("[data-menu-label]")?.textContent)).toEqual([
+      "封存",
+      "刪除",
+    ]);
   });
 
-  it("合併結果呈現結構驗證列、繁中維度摘要卡與發現卡", async () => {
+  it("分析結果卡渲染於狀態卡之下、內容卡之上", async () => {
     const props = makeProps({
-      drawerVerb: {
+      detailVerb: {
         change: "desktop-shell-and-browser",
         validate: { valid: true, errors: [] },
         analyze: report,
       },
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
+    await screen.findByText("MomoChen");
+    const status = document.querySelector("[data-status-card]")!;
+    const result = region()!;
+    const tabs = screen.getAllByRole("tablist")[0];
+    expect(status.compareDocumentPosition(result) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(result.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("合併結果呈現結構驗證列、繁中維度摘要卡與發現卡", async () => {
+    const props = makeProps({
+      detailVerb: {
+        change: "desktop-shell-and-browser",
+        validate: { valid: true, errors: [] },
+        analyze: report,
+      },
+    });
+    render(<ChangeDetailPage {...(props as never)} />);
     // 先等初始 async 載入落地（loadMeta 的 MomoChen 為完成標記），避免 act 警告。
     await screen.findByText("MomoChen");
     const r = region();
@@ -688,13 +715,13 @@ describe("抽屜內分析結果呈現", () => {
 
   it("結構驗證失敗於面板逐條呈現錯誤", async () => {
     const props = makeProps({
-      drawerVerb: {
+      detailVerb: {
         change: "desktop-shell-and-browser",
         validate: { valid: false, errors: ["tasks.md: missing", "second error"] },
         analyze: report,
       },
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByText("MomoChen");
     const r = region();
     expect(within(r!).getByText(/結構驗證 2 個錯誤/)).toBeTruthy();
@@ -704,18 +731,18 @@ describe("抽屜內分析結果呈現", () => {
 
   it("執行失敗呈現 core 的單行錯誤", async () => {
     const props = makeProps({
-      drawerVerb: { change: "desktop-shell-and-browser", error: "parse boom" },
+      detailVerb: { change: "desktop-shell-and-browser", error: "parse boom" },
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByText("MomoChen");
     expect(within(region()!).getByText(/parse boom/)).toBeTruthy();
   });
 
   it("動詞結果屬於別的 change 時不呈現", async () => {
     const props = makeProps({
-      drawerVerb: { change: "some-other-change", validate: { valid: true, errors: [] } },
+      detailVerb: { change: "some-other-change", validate: { valid: true, errors: [] } },
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByText("MomoChen");
     expect(region()).toBeNull();
   });
@@ -723,14 +750,14 @@ describe("抽屜內分析結果呈現", () => {
   // design D2：分析鈕為切換——結果開啟時再點收合（onClearVerb）、不重跑動詞。
   it("結果開啟時分析鈕 aria-pressed，再點呼叫 onClearVerb 而非重跑", async () => {
     const props = makeProps({
-      drawerVerb: {
+      detailVerb: {
         change: "desktop-shell-and-browser",
         validate: { valid: true, errors: [] },
         analyze: report,
       },
       onClearVerb: vi.fn(),
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByText("MomoChen");
     const btn = screen.getByRole("button", { name: "分析" });
     expect(btn.getAttribute("aria-pressed")).toBe("true");
@@ -741,7 +768,7 @@ describe("抽屜內分析結果呈現", () => {
 
   it("結果未開啟時分析鈕 aria-pressed=false，點按執行動詞", async () => {
     const props = makeProps({ onClearVerb: vi.fn() });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByText("MomoChen");
     const btn = screen.getByRole("button", { name: "分析" });
     expect(btn.getAttribute("aria-pressed")).toBe("false");
@@ -752,35 +779,37 @@ describe("抽屜內分析結果呈現", () => {
 
   it("面板關閉鈕呼叫 onClearVerb 收合", async () => {
     const props = makeProps({
-      drawerVerb: {
+      detailVerb: {
         change: "desktop-shell-and-browser",
         validate: { valid: true, errors: [] },
         analyze: report,
       },
       onClearVerb: vi.fn(),
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByText("MomoChen");
     fireEvent.click(screen.getByRole("button", { name: "關閉分析結果" }));
     expect(props.onClearVerb).toHaveBeenCalledTimes(1);
   });
 });
 
-// spec 需求「markdown 文件內容行寬有上限」（design D4）：抽屜分頁內容的捲動容器
-// 內存在共用置中容器（行寬上限＋水平置中），包住分頁全部內容——SectionedDoc
-// 區段標籤、任務清單與內文同欄對齊置中。
-describe("變更抽屜閱讀欄置中", () => {
-  it("捲動容器內有置中容器（w-full＋max-w-[96ch]＋mx-auto）且包住分頁內容", async () => {
+// spec 需求「markdown 文件內容行寬有上限」（design D4）：內容卡內存在共用置中容器
+// （行寬上限＋水平置中），包住分頁全部內容——SectionedDoc 區段標籤、任務清單與
+// 內文同欄對齊置中；內容欄本身置中、寬 768px。
+describe("變更詳情頁閱讀欄置中", () => {
+  it("內容卡內有置中容器（w-full＋max-w-[96ch]＋mx-auto）且包住分頁內容；頁內容欄 768px 置中", async () => {
     const props = makeProps();
-    const { baseElement } = render(<RichDetailDrawer {...(props as never)} />);
+    const { baseElement } = render(<ChangeDetailPage {...(props as never)} />);
     await waitFor(() => expect(screen.getByText(/doc for proposal.md/)).toBeTruthy());
     const col = baseElement.querySelector("[data-reading-column]") as HTMLElement;
     expect(col).toBeTruthy();
     expect(col.className).toContain("w-full");
     expect(col.className).toContain("max-w-[96ch]");
     expect(col.className).toContain("mx-auto");
-    // 位於分頁內容的捲動容器內側。
-    expect(col.parentElement?.className).toContain("overflow-y-auto");
+    const page = baseElement.querySelector("[data-change-detail]") as HTMLElement;
+    expect(page.className).toContain("max-w-[768px]");
+    expect(page.className).toContain("mx-auto");
+    expect(page.contains(col)).toBe(true);
     // 包住分頁全部內容：提案分頁內文在欄內。
     expect(within(col).getByText(/doc for proposal.md/)).toBeTruthy();
     // 任務分頁：任務清單同欄（TaskList stub 在欄內）。
@@ -801,7 +830,7 @@ describe("變更抽屜來源討論標記（slug 直出）", () => {
       sourceDiscussions: [{ slug: "web-service-navigation-redesign", topic: LONG_TOPIC }],
       onOpenDiscussion: vi.fn(),
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     const label = await waitFor(() => {
       const el = document.querySelector("[data-source-discussion-label]") as HTMLElement | null;
       expect(el).toBeTruthy();
@@ -822,7 +851,7 @@ describe("變更抽屜來源討論標記（slug 直出）", () => {
       sourceDiscussions: [{ slug: "alpha-ux", topic: "Alpha UX 討論" }],
       onOpenDiscussion: vi.fn(),
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     const chip = await screen.findByRole("button", { name: /alpha-ux/ });
     await user.hover(chip);
     await waitFor(() => {
@@ -832,18 +861,19 @@ describe("變更抽屜來源討論標記（slug 直出）", () => {
     });
   });
 
-  it("抽屜面板關閉水平捲動（垂直自動捲動不連帶開啟水平）", async () => {
+  it("頁內容欄可壓縮（min-w-0），出身列溢出裁切兜底——頁不產生水平捲軸", async () => {
     const props = makeProps({
       sourceDiscussions: [{ slug: "web-service-navigation-redesign", topic: LONG_TOPIC }],
     });
-    const { baseElement } = render(<RichDetailDrawer {...(props as never)} />);
+    const { baseElement } = render(<ChangeDetailPage {...(props as never)} />);
     await waitFor(() =>
       expect(document.querySelector("[data-source-discussion-label]")).toBeTruthy(),
     );
-    const panel = baseElement.querySelector('[role="dialog"]') as HTMLElement;
-    expect(panel).toBeTruthy();
-    expect(panel.className).toContain("overflow-y-auto");
-    expect(panel.className).toContain("overflow-x-hidden");
+    const page = baseElement.querySelector("[data-change-detail]") as HTMLElement;
+    expect(page.className).toContain("min-w-0");
+    const row = baseElement.querySelector("[data-provenance-row]") as HTMLElement;
+    expect(row.className).toContain("overflow-hidden");
+    expect(row.className).toContain("min-w-0");
   });
 
   it("點擊籤開啟對應討論", async () => {
@@ -852,7 +882,7 @@ describe("變更抽屜來源討論標記（slug 直出）", () => {
       sourceDiscussions: [{ slug: "alpha-ux", topic: "Alpha UX 討論" }],
       onOpenDiscussion,
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     const chip = await screen.findByRole("button", { name: /alpha-ux/ });
     fireEvent.click(chip);
     expect(onOpenDiscussion).toHaveBeenCalledWith("alpha-ux");
@@ -872,7 +902,7 @@ describe("來源討論多值呈現（+N 浮層）", () => {
 
   it("四筆來源討論：僅出身籤直出，+3 籤呈現溢出數，其餘 slug 不直出", async () => {
     const props = makeProps({ sourceDiscussions: FOUR, onOpenDiscussion: vi.fn() });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByRole("button", { name: /code-review-stage/ });
     const overflow = screen.getByRole("button", { name: /其餘 3 份/ });
     expect(overflow.getAttribute("data-source-overflow")).not.toBeNull();
@@ -886,7 +916,7 @@ describe("來源討論多值呈現（+N 浮層）", () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const onOpenDiscussion = vi.fn();
     const props = makeProps({ sourceDiscussions: FOUR, onOpenDiscussion });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByRole("button", { name: /code-review-stage/ });
     await user.click(screen.getByRole("button", { name: /其餘 3 份/ }));
     const popover = await waitFor(() => {
@@ -910,7 +940,7 @@ describe("來源討論多值呈現（+N 浮層）", () => {
     const props = makeProps({
       sourceDiscussions: [{ slug: "alpha-ux", topic: "Alpha UX 討論" }],
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByRole("button", { name: /alpha-ux/ });
     expect(document.querySelector("[data-source-overflow]")).toBeNull();
   });
@@ -923,7 +953,7 @@ describe("來源討論多值呈現（+N 浮層）", () => {
       siblingChanges: ["sib-one", "sib-two", "sib-three"],
       onOpenSibling,
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByRole("button", { name: /sib-one/ });
     expect(screen.queryByRole("button", { name: /sib-two/ })).toBeNull();
     await user.click(screen.getByRole("button", { name: /其餘 2 份/ }));
@@ -937,38 +967,89 @@ describe("來源討論多值呈現（+N 浮層）", () => {
   });
 });
 
-// spec 需求「變更詳情抽屜標頭的四層結構」與「詳情抽屜的審查資訊列」（change-drawer-
-// header-redesign）：標題列／狀態列（進度＋審查章）／出身列（單行）／動作列。
-describe("標頭四層結構", () => {
-  it("標頭可視文字無任務計數字樣（任務數由分頁徽章與進度條承載）", async () => {
-    render(<RichDetailDrawer {...(makeProps() as never)} />);
+// spec 需求「變更詳情頁的標頭與狀態卡」：標題列（名稱＋複製＋章籤＋動作區）／
+// 出身列（單行）／「狀態」卡三列（任務進度、品質關卡、排程）。
+describe("標頭與狀態卡", () => {
+  const titleRow = () => document.querySelector("[data-title-row]") as HTMLElement;
+  const statusRow = (name: "tasks" | "quality" | "plan") =>
+    document.querySelector(`[data-status-${name}]`) as HTMLElement;
+  const flat = (el: Element | null) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+
+  it("內容欄由上而下為標題列、出身列、狀態卡、內容卡；標題列與出身列無任務計數", async () => {
+    render(<ChangeDetailPage {...(makeProps() as never)} />);
     await screen.findByText("MomoChen");
-    expect(screen.queryByText(/30\/30 任務/)).toBeNull();
-    // 分頁徽章仍呈現計數。
-    expect(screen.getAllByText(/30\/30/).length).toBeGreaterThan(0);
+    const order = [
+      titleRow(),
+      document.querySelector("[data-provenance-row]")!,
+      document.querySelector("[data-status-card]")!,
+      screen.getAllByRole("tablist")[0],
+    ];
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    expect(flat(titleRow())).not.toMatch(/30\/30/);
+    expect(flat(document.querySelector("[data-provenance-row]"))).not.toMatch(/30\/30/);
+    // 任務進度由狀態卡與分頁徽章承載。
+    expect(flat(statusRow("tasks"))).toContain("30/30 · 100%");
+    expect(screen.getByRole("tab", { name: /任務/ }).textContent).toContain("30/30");
   });
 
-  it("審查資訊列與進度條同在狀態列", async () => {
-    const reviewed: ChangeItem = {
+  it("狀態卡三列：任務進度 16/17 · 94%、品質關卡兩枚帶日期章籤、排程第 2 波等 1 項", async () => {
+    const c: ChangeItem = {
       ...change,
+      totalTasks: 17,
+      completedTasks: 16,
       reviewStatus: "reviewed",
       reviewedAt: "2026-08-04",
-      reviewedBy: "MomoChen",
+      reviewedBy: "MomoChen <momochenisme@gmail.com>",
+      verifyStatus: "verified",
+      verifiedAt: "2026-08-06",
+      verifiedBy: "MomoChen <momochenisme@gmail.com>",
+      wave: 2,
+      blockedBy: ["add-a"],
     };
-    const { baseElement } = render(
-      <RichDetailDrawer {...(makeProps({ change: reviewed }) as never)} />,
-    );
+    render(<ChangeDetailPage {...(makeProps({ change: c }) as never)} />);
     await screen.findByText("MomoChen");
-    const statusRow = baseElement.querySelector("[data-status-row]") as HTMLElement;
-    expect(statusRow).toBeTruthy();
-    // 進度軌與審查資訊同一容器。
-    expect(statusRow.querySelector("[data-progress-track]")).toBeTruthy();
-    expect(statusRow.querySelector("[data-review-row]")).toBeTruthy();
+    expect(within(statusRow("tasks")).getByText("任務進度")).toBeTruthy();
+    expect(flat(statusRow("tasks"))).toContain("16/17 · 94%");
+    expect(statusRow("tasks").querySelector("[data-progress-track]")).toBeTruthy();
+    const quality = flat(statusRow("quality"));
+    expect(quality).toContain("品質關卡");
+    expect(quality).toContain("已審查");
+    expect(quality).toContain("2026-08-04");
+    expect(quality).toContain("已驗證");
+    expect(quality).toContain("2026-08-06");
+    expect(quality.indexOf("已審查")).toBeLessThan(quality.indexOf("已驗證"));
+    expect(quality).not.toContain("momochenisme@gmail.com");
+    const plan = flat(statusRow("plan"));
+    expect(plan).toContain("排程");
+    expect(plan).toContain("第 2 波");
+    expect(plan).toContain("等 1 項");
   });
 
-  // spec「變更詳情抽屜標頭的四層結構」Scenario「狀態列章籤與提示」：兩站改章籤，
-  // 蓋章日期與含 email 完整識別收進提示（與出身列同構），狀態列恆定單行不被裁切。
-  it("狀態列兩站章籤：可視僅狀態詞，日期與完整識別在提示內", async () => {
+  it("兩站皆 none：標題列無章籤、品質關卡列顯示「尚未經過品質關卡」；可以開工與缺 wave 的說明詞條", async () => {
+    const r = render(
+      <ChangeDetailPage {...(makeProps({ change: { ...change, wave: 1, blockedBy: [] } }) as never)} />,
+    );
+    await screen.findByText("MomoChen");
+    expect(titleRow().querySelector("[data-review-row]")).toBeNull();
+    expect(titleRow().querySelector("[data-verify-row]")).toBeNull();
+    expect(flat(statusRow("quality"))).toContain("尚未經過品質關卡");
+    expect(flat(statusRow("plan"))).toContain("可以開工");
+    r.unmount();
+    // wave 缺席：沿用排程分頁的說明詞條（remote 無 plan／成環兩種）。
+    const r2 = render(<ChangeDetailPage {...(makeProps() as never)} />);
+    await screen.findByText("MomoChen");
+    expect(flat(statusRow("plan"))).toContain("此模式尚未提供排程資訊");
+    r2.unmount();
+    render(<ChangeDetailPage {...(makeProps({ change: { ...change, dependsOn: ["add-a"] } }) as never)} />);
+    await screen.findByText("MomoChen");
+    expect(flat(statusRow("plan"))).toContain("依賴成環");
+  });
+
+  // spec Scenario「章籤與品質關卡列」：標題列兩枚章籤，蓋章日期與含 email 完整識別
+  // 收進提示，標題列恆定單行。
+  it("標題列兩站章籤：可視僅狀態詞，日期與完整識別在提示內", async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const stamped: ChangeItem = {
       ...change,
@@ -979,27 +1060,20 @@ describe("標頭四層結構", () => {
       verifiedAt: "2026-08-06",
       verifiedBy: "MomoChen <momochenisme@gmail.com>",
     };
-    const { baseElement } = render(
-      <RichDetailDrawer {...(makeProps({ change: stamped }) as never)} />,
-    );
+    render(<ChangeDetailPage {...(makeProps({ change: stamped }) as never)} />);
     await screen.findByText("MomoChen");
-    const statusRow = baseElement.querySelector("[data-status-row]") as HTMLElement;
-
-    // 兩枚章籤（圖示＋狀態詞），審查在前、驗證在後。
-    const text = statusRow.textContent ?? "";
+    const row = titleRow();
+    const text = row.textContent ?? "";
     expect(text).toContain("已審查");
     expect(text).toContain("已驗證");
     expect(text.indexOf("已審查")).toBeLessThan(text.indexOf("已驗證"));
-    // 可視文字不直出 email 與蓋章日期。
     expect(text).not.toContain("momochenisme@gmail.com");
     expect(text).not.toContain("2026-08-04");
     expect(text).not.toContain("2026-08-06");
-    // 恆定單行：可壓縮、不折行、溢出裁切兜底（不撐寬抽屜）。
-    expect(statusRow.className).toContain("min-w-0");
-    expect(statusRow.className).toContain("whitespace-nowrap");
-    expect(statusRow.className).toContain("overflow-hidden");
+    expect(row.className).toContain("min-w-0");
+    expect(row.className).toContain("whitespace-nowrap");
 
-    await user.hover(within(statusRow).getByText("已審查"));
+    await user.hover(within(row).getByText("已審查"));
     await waitFor(() => {
       const tip = document.querySelector("[data-radix-popper-content-wrapper]");
       expect(tip?.textContent).toContain("2026-08-04");
@@ -1018,12 +1092,9 @@ describe("標頭四層結構", () => {
       verifiedAt: "2026-08-06",
       verifiedBy: "Reviewer Two <two@example.com>",
     };
-    const { baseElement } = render(
-      <RichDetailDrawer {...(makeProps({ change: stamped }) as never)} />,
-    );
+    render(<ChangeDetailPage {...(makeProps({ change: stamped }) as never)} />);
     await screen.findByText("MomoChen");
-    const statusRow = baseElement.querySelector("[data-status-row]") as HTMLElement;
-    await user.hover(within(statusRow).getByText("已驗證"));
+    await user.hover(within(titleRow()).getByText("已驗證"));
     await waitFor(() => {
       const tip = document.querySelector("[data-radix-popper-content-wrapper]");
       expect(tip?.textContent).toContain("2026-08-06");
@@ -1031,19 +1102,39 @@ describe("標頭四層結構", () => {
     });
   });
 
-  it("進行中兩站（inReview／inVerify）僅狀態詞、無日期提示成分", async () => {
+  it("進行中兩站（inReview／inVerify）：標題列與品質關卡列僅狀態詞、無日期", async () => {
     const running: ChangeItem = {
       ...change,
       reviewStatus: "inReview",
       verifyStatus: "inVerify",
     };
-    const { baseElement } = render(
-      <RichDetailDrawer {...(makeProps({ change: running }) as never)} />,
+    render(<ChangeDetailPage {...(makeProps({ change: running }) as never)} />);
+    await screen.findByText("MomoChen");
+    for (const el of [titleRow(), statusRow("quality")]) {
+      expect(el.textContent).toContain("審查中");
+      expect(el.textContent).toContain("驗證中");
+      expect(el.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    }
+  });
+
+  it("已就緒時標題列有「封存」主要鈕；進行中為「退回提案中」", async () => {
+    const r = render(<ChangeDetailPage {...(makeProps({ onRevert: vi.fn() }) as never)} />);
+    await screen.findByText("MomoChen");
+    const archive = within(titleRow()).getByRole("button", { name: /^封存$/ });
+    expect(archive.className).toContain("bg-primary");
+    expect(within(titleRow()).queryByRole("button", { name: /退回提案中/ })).toBeNull();
+    r.unmount();
+    render(
+      <ChangeDetailPage
+        {...(makeProps({
+          change: { ...change, completedTasks: 3, startedAt: "2026-07-30" },
+          onRevert: vi.fn(),
+        }) as never)}
+      />,
     );
     await screen.findByText("MomoChen");
-    const statusRow = baseElement.querySelector("[data-status-row]") as HTMLElement;
-    expect(statusRow.textContent).toContain("審查中");
-    expect(statusRow.textContent).toContain("驗證中");
+    expect(within(titleRow()).getByRole("button", { name: /退回提案中/ })).toBeTruthy();
+    expect(within(titleRow()).queryByRole("button", { name: /^封存$/ })).toBeNull();
   });
 
   it("建立者 email 不直出，僅顯名字；提示保完整識別", async () => {
@@ -1055,7 +1146,7 @@ describe("標頭四層結構", () => {
         createdWith: "claude",
       })),
     });
-    render(<RichDetailDrawer {...(props as never)} />);
+    render(<ChangeDetailPage {...(props as never)} />);
     const name = await screen.findByText("MomoChen");
     expect(screen.queryByText(/momochenisme@gmail\.com/)).toBeNull();
     // 首字母圓標為靜態 metadata：走中性（五處頭像同款）。
@@ -1078,7 +1169,7 @@ describe("標頭四層結構", () => {
       worktree: { branch: "speclink/demo", path: "/work/speclink.worktrees/demo" },
     };
     const { baseElement, unmount } = render(
-      <RichDetailDrawer {...(makeProps({ change: wtChange }) as never)} />,
+      <ChangeDetailPage {...(makeProps({ change: wtChange }) as never)} />,
     );
     await screen.findByText("MomoChen");
     const row = baseElement.querySelector("[data-provenance-row]") as HTMLElement;
@@ -1091,7 +1182,7 @@ describe("標頭四層結構", () => {
     expect(branch.className).not.toContain("status-progress");
     unmount();
 
-    const plain = render(<RichDetailDrawer {...(makeProps() as never)} />);
+    const plain = render(<ChangeDetailPage {...(makeProps() as never)} />);
     await screen.findByText("MomoChen");
     const plainRow = plain.baseElement.querySelector("[data-provenance-row]") as HTMLElement;
     expect(within(plainRow).queryByText(/speclink\//)).toBeNull();
@@ -1114,7 +1205,7 @@ describe("標頭四層結構", () => {
       ],
       siblingChanges: ["sib-one", "sib-two"],
     });
-    const { baseElement } = render(<RichDetailDrawer {...(props as never)} />);
+    const { baseElement } = render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByText("MomoChen");
     const row = baseElement.querySelector("[data-provenance-row]") as HTMLElement;
     expect(row).toBeTruthy();
@@ -1124,14 +1215,14 @@ describe("標頭四層結構", () => {
     expect(row.className).toContain("whitespace-nowrap");
     // 出身資訊全在此列：建立者、開工、來自首籤、同源首籤與各自 +N。
     expect(within(row).getByText("MomoChen")).toBeTruthy();
-    expect(within(row).getByText(/2026-08-03 開工/)).toBeTruthy();
+    expect(within(row).getByText(/開工 2026-08-03/)).toBeTruthy();
     expect(within(row).getByRole("button", { name: /code-review-stage/ })).toBeTruthy();
     expect(within(row).getByRole("button", { name: /sib-one/ })).toBeTruthy();
   });
 });
 
 // spec「進行中變更可自看板退回提案中」的抽屜半邊:退回動作僅於派生進行中出現。
-describe("退回提案中動作(抽屜動作列)", () => {
+describe("退回提案中動作(標題列動作區)", () => {
   it("派生進行中的變更顯示退回動作,點擊觸發 onRevert", async () => {
     const onRevert = vi.fn();
     const inProgress: ChangeItem = {
@@ -1141,7 +1232,7 @@ describe("退回提案中動作(抽屜動作列)", () => {
       completedTasks: 0,
       startedAt: "2026-07-30",
     };
-    render(<RichDetailDrawer {...(makeProps({ change: inProgress, onRevert }) as never)} />);
+    render(<ChangeDetailPage {...(makeProps({ change: inProgress, onRevert }) as never)} />);
     const btn = await screen.findByRole("button", { name: /退回提案中/ });
     fireEvent.click(btn);
     expect(onRevert).toHaveBeenCalledWith("oops-started");
@@ -1154,15 +1245,15 @@ describe("退回提案中動作(抽屜動作列)", () => {
       totalTasks: 10,
       completedTasks: 0,
     };
-    render(<RichDetailDrawer {...(makeProps({ change: proposed, onRevert: vi.fn() }) as never)} />);
-    await screen.findByRole("button", { name: /刪除/ });
+    render(<ChangeDetailPage {...(makeProps({ change: proposed, onRevert: vi.fn() }) as never)} />);
+    await screen.findByText("MomoChen");
     expect(screen.queryByRole("button", { name: /退回提案中/ })).toBeNull();
   });
 
   it("已就緒(全完成)的變更不顯示退回動作", async () => {
     // 既有 fixture change 為 30/30 全完成——派生已就緒。
-    render(<RichDetailDrawer {...(makeProps({ onRevert: vi.fn() }) as never)} />);
-    await screen.findByRole("button", { name: /刪除/ });
+    render(<ChangeDetailPage {...(makeProps({ onRevert: vi.fn() }) as never)} />);
+    await screen.findByText("MomoChen");
     expect(screen.queryByRole("button", { name: /退回提案中/ })).toBeNull();
   });
 });
@@ -1180,7 +1271,7 @@ describe("變更抽屜文件三態", () => {
 
   it("載入中 → 四個分頁皆為文件骨架，且無任何空態文案", async () => {
     render(
-      <RichDetailDrawer
+      <ChangeDetailPage
         {...(makeProps({
           loadDocument: vi.fn(pending),
           loadCapabilities: vi.fn(pending),
@@ -1203,7 +1294,7 @@ describe("變更抽屜文件三態", () => {
 
   it("載入完成且檔案不存在 → 各分頁顯示既有空態文案，無骨架", async () => {
     render(
-      <RichDetailDrawer
+      <ChangeDetailPage
         {...(makeProps({
           loadDocument: vi.fn(async () => null),
           loadCapabilities: vi.fn(async () => []),
@@ -1221,7 +1312,7 @@ describe("變更抽屜文件三態", () => {
   });
 
   it("載入完成且有內容 → 顯示內容，無骨架", async () => {
-    render(<RichDetailDrawer {...(makeProps() as never)} />);
+    render(<ChangeDetailPage {...(makeProps() as never)} />);
     await screen.findByText(/doc for proposal.md/);
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
@@ -1232,7 +1323,7 @@ describe("變更抽屜文件三態", () => {
 describe("規格分頁載入失敗的收斂", () => {
   it("loadCapabilities 失敗 → 收斂為空態文案，不永久掛骨架", async () => {
     render(
-      <RichDetailDrawer
+      <ChangeDetailPage
         {...(makeProps({ loadCapabilities: vi.fn(async () => Promise.reject("讀不到")) }) as never)}
       />,
     );
@@ -1244,7 +1335,7 @@ describe("規格分頁載入失敗的收斂", () => {
 
   it("文件首載失敗 → 落到既有空態文案，不停在骨架", async () => {
     render(
-      <RichDetailDrawer
+      <ChangeDetailPage
         {...(makeProps({ loadDocument: vi.fn().mockRejectedValue(new Error("offline")) }) as never)}
       />,
     );
@@ -1259,13 +1350,13 @@ describe("規格分頁載入失敗的收斂", () => {
       return ["desktop-app"];
     });
     const props = makeProps({ loadCapabilities });
-    const { rerender } = render(<RichDetailDrawer {...(props as never)} refreshGen={0} />);
+    const { rerender } = render(<ChangeDetailPage {...(props as never)} refreshGen={0} />);
     await waitFor(() => screen.getByRole("tab", { name: /規格/ }));
     fireEvent.mouseDown(screen.getByRole("tab", { name: /規格/ }));
     await waitFor(() => expect(screen.getByText(/Requirement: a/)).toBeTruthy());
 
     fail = true;
-    rerender(<RichDetailDrawer {...(props as never)} refreshGen={1} />);
+    rerender(<ChangeDetailPage {...(props as never)} refreshGen={1} />);
     await new Promise((r) => setTimeout(r, 25));
     // 抽屜開著時一次短暫失敗不得把已載好的內容抹成「無 delta 規格」。
     expect(screen.getByText(/Requirement: a/)).toBeTruthy();
@@ -1332,7 +1423,7 @@ describe("詳情抽屜的工單分頁", () => {
   it("inReview → 「審查」分頁排在排程之後，工單以 (x, review) 載入並結構化呈現", async () => {
     const loadStationTicket = vi.fn(async () => REVIEW_TICKET);
     render(
-      <RichDetailDrawer
+      <ChangeDetailPage
         {...(makeProps({ change: x({ reviewStatus: "inReview", verifyStatus: "none" }), loadStationTicket }) as never)}
       />,
     );
@@ -1365,7 +1456,7 @@ describe("詳情抽屜的工單分頁", () => {
       station === "review" ? REVIEW_TICKET : VERIFY_TICKET,
     );
     render(
-      <RichDetailDrawer
+      <ChangeDetailPage
         {...(makeProps({ change: x({ reviewStatus: "inReview", verifyStatus: "inVerify" }), loadStationTicket }) as never)}
       />,
     );
@@ -1391,7 +1482,7 @@ describe("詳情抽屜的工單分頁", () => {
   it("reviewed／none → 兩分頁缺席，載入器未被呼叫", async () => {
     const loadStationTicket = vi.fn(async () => REVIEW_TICKET);
     render(
-      <RichDetailDrawer
+      <ChangeDetailPage
         {...(makeProps({ change: x({ reviewStatus: "reviewed", verifyStatus: "none" }), loadStationTicket }) as never)}
       />,
     );
@@ -1406,13 +1497,13 @@ describe("詳情抽屜的工單分頁", () => {
   it("停在「審查」分頁時狀態翻為 reviewed → 分頁消失、退回「提案」", async () => {
     const loadStationTicket = vi.fn(async () => REVIEW_TICKET);
     const props = makeProps({ change: x({ reviewStatus: "inReview", verifyStatus: "none" }), loadStationTicket });
-    const { rerender } = render(<RichDetailDrawer {...(props as never)} />);
+    const { rerender } = render(<ChangeDetailPage {...(props as never)} />);
     await openTab(/審查/);
     await waitFor(() => expect(headerText()).toMatch(/^審查/));
     expect(screen.getByRole("tab", { name: /審查/ }).getAttribute("data-state")).toBe("active");
 
     rerender(
-      <RichDetailDrawer
+      <ChangeDetailPage
         {...(props as never)}
         change={x({ reviewStatus: "reviewed", verifyStatus: "none", reviewedAt: "2026-09-22", reviewedBy: "Rev <r@example.com>" })}
       />,
@@ -1427,13 +1518,13 @@ describe("詳情抽屜的工單分頁", () => {
     let current = VERIFY_TICKET;
     const loadStationTicket = vi.fn(async () => current);
     const props = makeProps({ change: x({ reviewStatus: "inReview", verifyStatus: "none" }), loadStationTicket });
-    const { rerender } = render(<RichDetailDrawer {...(props as never)} />);
+    const { rerender } = render(<ChangeDetailPage {...(props as never)} />);
     await openTab(/審查/);
     await waitFor(() => expect(headerText()).toMatch(/^審查 · 第 1 輪/));
     expect(loadStationTicket).toHaveBeenCalledTimes(1);
 
     current = REVIEW_TICKET;
-    rerender(<RichDetailDrawer {...(props as never)} refreshGen={1} />);
+    rerender(<ChangeDetailPage {...(props as never)} refreshGen={1} />);
     await waitFor(() => expect(loadStationTicket).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(headerText()).toMatch(/^審查 · 第 2 輪/));
     // spec Scenario「工單追加輪後分頁更新」THEN：新末輪展開、舊輪收合。
@@ -1455,17 +1546,17 @@ describe("詳情抽屜的工單分頁", () => {
         : new Promise<never>(() => {}),
     );
     const props = makeProps({ change: x({ reviewStatus: "inReview", verifyStatus: "none" }), loadStationTicket });
-    const { rerender } = render(<RichDetailDrawer {...(props as never)} />);
+    const { rerender } = render(<ChangeDetailPage {...(props as never)} />);
     await waitFor(() => expect(loadStationTicket).toHaveBeenCalledWith("x", "review"));
 
     // 切到沒有工單的 y，x 的回應才到——必須被丟棄。
-    rerender(<RichDetailDrawer {...(props as never)} change={x({ name: "y", reviewStatus: "none" })} />);
+    rerender(<ChangeDetailPage {...(props as never)} change={x({ name: "y", reviewStatus: "none" })} />);
     await waitFor(() => expect(screen.queryByRole("tab", { name: /審查/ })).toBeNull());
     settleX(REVIEW_TICKET);
     await screen.findByText(/doc for proposal.md/);
 
     // y 進入 inReview：載入在途，分頁該是骨架，不得先閃出 x 的工單。
-    rerender(<RichDetailDrawer {...(props as never)} change={x({ name: "y", reviewStatus: "inReview" })} />);
+    rerender(<ChangeDetailPage {...(props as never)} change={x({ name: "y", reviewStatus: "inReview" })} />);
     await openTab(/審查/);
     await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeTruthy());
     expect(document.querySelector("[data-ticket-header]")).toBeNull();
@@ -1474,7 +1565,7 @@ describe("詳情抽屜的工單分頁", () => {
   it("載入中 → 骨架；載入器 reject 或回 null → 「工單尚未抵達或已被刪除」，非錯誤", async () => {
     const pending = () => new Promise<never>(() => {});
     const first = render(
-      <RichDetailDrawer
+      <ChangeDetailPage
         {...(makeProps({ change: x({ reviewStatus: "inReview" }), loadStationTicket: vi.fn(pending) }) as never)}
       />,
     );
@@ -1484,7 +1575,7 @@ describe("詳情抽屜的工單分頁", () => {
     first.unmount();
 
     const second = render(
-      <RichDetailDrawer
+      <ChangeDetailPage
         {...(makeProps({
           change: x({ reviewStatus: "inReview" }),
           loadStationTicket: vi.fn(async () => Promise.reject(new Error("offline"))),
@@ -1497,11 +1588,78 @@ describe("詳情抽屜的工單分頁", () => {
     second.unmount();
 
     render(
-      <RichDetailDrawer
+      <ChangeDetailPage
         {...(makeProps({ change: x({ reviewStatus: "inReview" }), loadStationTicket: vi.fn(async () => null) }) as never)}
       />,
     );
     await openTab(/審查/);
     await screen.findByText("工單尚未抵達或已被刪除");
+  });
+});
+
+// spec 需求「詳情頁的文件動作」：內容卡標頭右端由宿主渲染「開啟 ▾」，頁依作用中分頁
+// 回報作用中分頁對應的文件（change＋artifact）與已載入原文；排程分頁沒有檔案（null）；
+// 工單分頁只載解析後的回合、不帶原文。磁碟位置由宿主解析，頁不拼路徑。
+describe("詳情頁的文件動作槽", () => {
+  async function openTab(name: RegExp) {
+    await waitFor(() => screen.getByRole("tab", { name }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name }));
+  }
+  const lastCall = (fn: Mock) => (fn.mock.calls.at(-1) as [DocumentTarget | null])[0];
+  const NAME = "desktop-shell-and-browser";
+  const doc = (artifact: string) => ({ change: NAME, artifact });
+
+  it("各分頁回報對應文件；排程分頁回報 null；回傳節點渲染在分頁列右端", async () => {
+    const renderDocumentActions = vi.fn((target: DocumentTarget | null) =>
+      target && "change" in target.doc ? <button type="button">開啟 {target.doc.artifact}</button> : null,
+    );
+    render(
+      <ChangeDetailPage
+        {...(makeProps({
+          change: { ...change, reviewStatus: "inReview", verifyStatus: "inVerify" },
+          renderDocumentActions,
+          loadStationTicket: vi.fn(async () => null),
+        }) as never)}
+      />,
+    );
+    await waitFor(() =>
+      expect(lastCall(renderDocumentActions)).toEqual({ doc: doc("proposal.md"), content: "# doc for proposal.md" }),
+    );
+    const tabsRow = screen.getAllByRole("tablist")[0].parentElement!;
+    expect(within(tabsRow).getByRole("button", { name: "開啟 proposal.md" })).toBeTruthy();
+
+    await openTab(/設計/);
+    expect(lastCall(renderDocumentActions)).toEqual({ doc: doc("design.md"), content: "# doc for design.md" });
+    await openTab(/任務/);
+    expect(lastCall(renderDocumentActions)?.doc).toEqual(doc("tasks.md"));
+    await openTab(/規格/);
+    expect(lastCall(renderDocumentActions)).toEqual({ doc: doc("specs/desktop-app/spec.md"), content: SPEC_MD });
+    await openTab(/排程/);
+    expect(lastCall(renderDocumentActions)).toBeNull();
+    expect(within(tabsRow).queryByRole("button", { name: /^開啟 / })).toBeNull();
+    await openTab(/審查/);
+    expect(lastCall(renderDocumentActions)).toEqual({ doc: doc("review.md") });
+    await openTab(/驗證/);
+    expect(lastCall(renderDocumentActions)).toEqual({ doc: doc("verify.md") });
+  });
+
+  it("文件載入中回報的原文為 null", async () => {
+    const renderDocumentActions = vi.fn(() => null);
+    render(
+      <ChangeDetailPage
+        {...(makeProps({
+          loadDocument: vi.fn(() => new Promise<never>(() => {})),
+          renderDocumentActions,
+        }) as never)}
+      />,
+    );
+    await waitFor(() => expect(renderDocumentActions).toHaveBeenCalled());
+    expect(lastCall(renderDocumentActions as unknown as Mock)).toEqual({ doc: doc("proposal.md"), content: null });
+  });
+
+  it("頁內無全螢幕切換鈕", async () => {
+    render(<ChangeDetailPage {...(makeProps() as never)} />);
+    await screen.findByText("MomoChen");
+    expect(screen.queryByRole("button", { name: /全螢幕|還原大小/ })).toBeNull();
   });
 });

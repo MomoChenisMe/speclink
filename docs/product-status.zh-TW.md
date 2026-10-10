@@ -40,7 +40,7 @@
 | 示範資料（`demo`） | 可用 | 不適用 | 只限本地；遠端模式直接拒絕，不送出請求。 |
 | Agent 讀取背景資料 | 可用 | 可用 | 本地直接讀 repo；遠端讀唯讀的 `.speclink/context/`。 |
 | 任務的 touched-file 證據 | 可用 | 可用 | 本地寫進 `.evidence.json`；遠端存進 Store，可經 `GET /changes/{name}/evidence` 讀回。 |
-| 桌面看板與詳情面板 | 可用 | 部分可用 | 遠端看板在桌面上勾任務時，不回報 touched files。 |
+| 桌面看板與詳情頁 | 可用 | 部分可用 | 遠端看板在桌面上勾任務時，不回報 touched files。 |
 | 帳號、存取金鑰與 membership | 不適用 | 可用 | 本地不需要帳號。 |
 | 備份還原 | 由 Git 負責 | 可用 | 遠端備份目前要停機進行。 |
 | 離線工作 | 可用 | 需連線 | 遠端斷線時只能讀，寫入會被拒絕。 |
@@ -52,7 +52,7 @@
 | Local Repo CLI | 可用 | `speclink init`、`list`、`show`、`status`、`validate`、`analyze`、`drift`、`archive`、`discuss` 等 | [CLI 入口](../crates/adapters/speclink-cli/src/main.rs)<br>[CLI 整合測試](../crates/adapters/speclink-cli/tests/it/doc_verbs.rs) | 不需要 server。旗標以各子指令的 `--help` 為準。 | 2026-10-07 |
 | Agent 技能 | 可用 | Claude 與 GitHub Copilot `/speclink-*`、Codex `$speclink-*` | [生成的 apply 技能](../.agents/skills/speclink-apply/SKILL.md)<br>[生成的 manual 技能](../.claude/skills/speclink-manual/SKILL.md)<br>[自訂工具描述子測試](../crates/adapters/speclink-cli/tests/it/tools_descriptor.rs)<br>[Copilot 技能快照](../crates/engine/speclink-core/tests/golden/copilot.snapshot.md) | `analyze` 技能只有 Claude 有，Codex 與 GitHub Copilot 直接用 CLI。技能數量：`worktree` 政策關閉時 Claude 17 個、Codex 與 GitHub Copilot 各 16 個；開啟時各多 2 個。其他 AI 工具可用自訂工具描述子產生技能。 | 2026-10-08 |
 | 品質關卡 | 可用 | `/speclink-review`、`/speclink-verify`、`/speclink-quality`；CLI `speclink review`、`speclink verify` | [關卡的蓋章與工單規則](../crates/engine/speclink-core/src/quality/station.rs)<br>[review 動詞測試](../crates/adapters/speclink-cli/tests/it/review_verbs.rs) | SUGGESTION 不擋章。蓋章後範圍內的檔案再被改，章會降級為「其後有變動」。 | 2026-10-07 |
-| 執行順序 | 可用 | `speclink plan`、`speclink change depends`、`speclink change rank`；桌面詳情面板的「排程」分頁 | [plan 動詞測試](../crates/adapters/speclink-cli/tests/it/plan_verbs.rs)<br>[server 的 plan API 測試](../crates/host/speclink-server/tests/it/api/plan_api.rs) | `change rank` 與 `plan --strict-overlap` 只限本地。 | 2026-10-07 |
+| 執行順序 | 可用 | `speclink plan`、`speclink change depends`、`speclink change rank`；桌面詳情頁的「排程」分頁 | [plan 動詞測試](../crates/adapters/speclink-cli/tests/it/plan_verbs.rs)<br>[server 的 plan API 測試](../crates/host/speclink-server/tests/it/api/plan_api.rs) | `change rank` 與 `plan --strict-overlap` 只限本地。 | 2026-10-07 |
 | 手冊與溯源 | 可用 | `/speclink-manual`、桌面「手冊」頁；`speclink trace`、`/speclink-trace` | [手冊頁測試](../packages/ui/src/__tests__/manualPage.test.tsx)<br>[trace 測試](../crates/adapters/speclink-cli/tests/it/trace.rs) | 遠端專案還不能生成手冊（導覽可以）。`trace` 只限本地。 | 2026-10-07 |
 | Local 桌面 app | 可用 | 看板、規格、討論、已封存、手冊、設定與系統匣 | [Desktop scripts](../apps/desktop/package.json)<br>[Desktop UI 測試](../apps/desktop/src/__tests__/App.test.tsx)<br>[自動更新測試](../apps/desktop/src/__tests__/updater.test.ts) | 遠端 workspace 的狀態另列在下面。 | 2026-10-07 |
 | 安裝通路 | 可用 | 桌面安裝檔（macOS universal dmg、Windows 安裝器、Linux AppImage）；CLI 的 npm、安裝腳本、Homebrew；server 的 npx 與 Docker | [npm 啟動器測試](../scripts/npm/npm-cli-launcher.test.mjs)<br>[安裝腳本測試](../scripts/install.test.mjs)<br>[Homebrew formula 產生器](../scripts/release/homebrew-formula.mjs) | Windows 安裝檔沒有程式碼簽章，第一次執行要放行 SmartScreen。 | 2026-10-07 |
@@ -67,7 +67,7 @@
 | Remote CLI 與唯讀投影 | 可用 | `speclink link`、`auth`、`artifact`；唯讀的 `.speclink/context/` | [Remote CLI 測試](../crates/adapters/speclink-cli/tests/it/remote_read_path.rs)<br>[投影實作](../crates/host/speclink-host/src/projection.rs) | — | 2026-10-07 |
 | 遠端任務證據 | 可用 | 遠端的 `speclink task done` 把 touched files 存進 Store | [證據實作](../crates/engine/speclink-core/src/lifecycle/tasks.rs)<br>[遠端證據端到端測試](../crates/host/speclink-server/tests/it/phase2_chain.rs) | 桌面遠端看板勾任務時不送 touched files。 | 2026-10-07 |
 | 桌面 Server 連線 | 可用 | 設定裡的 Server 清單、device 登入、存取金鑰、登出與 OS Keychain | [連線流程](../apps/desktop/src-tauri/src/connections.rs)<br>[Servers 面板測試](../apps/desktop/src/__tests__/serversPanel.test.tsx) | — | 2026-10-07 |
-| 桌面遠端專案 | 部分可用 | 「新增專案」對話框的遠端開啟：只看規格，或綁本機 checkout；詳情面板可認領 | [新增專案對話框](../apps/desktop/src/components/WorkspaceChooser.tsx)<br>[遠端開啟測試](../apps/desktop/src/__tests__/remoteOpen.test.ts) | 可瀏覽、勾任務、讀寫 artifact。缺口：勾任務不回報 touched files；認領沒有釋放或接手的動詞。 | 2026-10-07 |
+| 桌面遠端專案 | 部分可用 | 「新增專案」對話框的遠端開啟：只看規格，或綁本機 checkout；詳情頁可認領 | [新增專案對話框](../apps/desktop/src/components/WorkspaceChooser.tsx)<br>[遠端開啟測試](../apps/desktop/src/__tests__/remoteOpen.test.ts) | 可瀏覽、勾任務、讀寫 artifact。缺口：勾任務不回報 touched files；認領沒有釋放或接手的動詞。 | 2026-10-07 |
 | Claude Code 外掛（`speclink-skills`） | 部分可用 | `/plugin install speclink-skills --marketplace MomoChenisMe/speclink` | [外掛測試](../integrations/claude-code/speclink-skills/tests/register.test.tsx)<br>[技能分組測試](../scripts/claude-code/skill-groups.test.mjs) | 建立在 Claude Code 的 early-access 外掛介面上，Claude Code 改版時可能要跟著更新。Windows 尚未實機測試。 | 2026-10-07 |
 | MCP 與 Agent 工具套件 | 規劃中 | 沒有入口 | [方向與下一步](roadmap.zh-TW.md) | 見路線圖的「Agent 工具整合」。 | 2026-10-07 |
 | SSO、runtime plugin 與多節點 | 規劃中 | 沒有入口 | [方向與下一步](roadmap.zh-TW.md) | 見路線圖的「系統整合」。 | 2026-10-07 |

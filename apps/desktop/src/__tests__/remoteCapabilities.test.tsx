@@ -3,6 +3,7 @@
 // 拖排/validate/analyze/刪除附繁中說明；本地分頁全功能不變（迴歸斷言）。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { App } from "../App";
 import {
@@ -104,6 +105,22 @@ function renderLocalApp(ds: SpeclinkDataSource) {
   );
 }
 
+/** 展開詳情頁的「⋯」選單，回傳「刪除」項。 */
+async function openDeleteItem(): Promise<HTMLElement> {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  await user.click(within(screen.getByTestId("detail-page")).getByRole("button", { name: "更多動作" }));
+  return screen.findByRole("menuitem", { name: /刪除/ });
+}
+
+/** 收起「⋯」選單（Esc 先給選單，詳情頁維持開啟）。 */
+async function closeMenu() {
+  await userEvent.setup({ pointerEventsCheck: 0 }).keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+}
+
+/** 「⋯」選單項的停用原因（項目下方灰字）。 */
+const menuReason = (item: HTMLElement) => item.querySelector("[data-menu-reason]")?.textContent ?? "";
+
 describe("remote 分頁的 capability 停用", () => {
   it("reader 看板不渲染拖排把手並顯示繁中角色說明", async () => {
     renderRemoteApp(fakeRemoteDs());
@@ -144,18 +161,19 @@ describe("remote 分頁的 capability 停用", () => {
     expect(ds.getSpecDocument).toHaveBeenCalledWith("auth");
   });
 
-  it("詳情抽屜的分析與刪除停用附繁中說明、封存照常可用", async () => {
+  it("詳情頁的分析與刪除停用附繁中說明、封存照常可用", async () => {
     renderRemoteApp(fakeRemoteDs());
     await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
     fireEvent.click(screen.getByText("remote-change"));
     const analyze = (await screen.findByRole("button", { name: /分析/ })) as HTMLButtonElement;
     expect(analyze.disabled).toBe(true);
     expect(analyze.title).toContain("validate/analyze");
-    const del = screen.getByRole("button", { name: /刪除/ }) as HTMLButtonElement;
-    expect(del.disabled).toBe(true);
-    expect(del.title).toBe(ROLE);
-    const archive = screen.getByRole("button", { name: /封存/ }) as HTMLButtonElement;
+    const archive = within(screen.getByTestId("detail-page")).getByRole("button", { name: "封存" }) as HTMLButtonElement;
     expect(archive.disabled).toBe(false);
+    // 刪除在「⋯」選單：停用時項目下方灰字為能力缺口原因。
+    const del = await openDeleteItem();
+    expect(del.getAttribute("aria-disabled")).toBe("true");
+    expect(menuReason(del)).toBe(ROLE);
   });
 
   it("詳情抽屜的詮釋資料與 capability 清單直達、不再呈現停用說明", async () => {
@@ -261,29 +279,37 @@ describe("reader 的停用說明依連線狀態（server-reader-write-guard D5�
 
     fireEvent.click(screen.getByText("remote-change"));
     const archive = (await screen.findByRole("button", { name: "封存" })) as HTMLButtonElement;
-    const del = screen.getByRole("button", { name: /刪除/ }) as HTMLButtonElement;
     const claim = screen.getByRole("button", { name: /認領/ }) as HTMLButtonElement;
-    for (const button of [archive, del, claim]) {
+    for (const button of [archive, claim]) {
       expect(button.disabled).toBe(true);
       expect(button.title).toBe(ROLE);
     }
+    const deleteReason = async () => {
+      const item = await openDeleteItem();
+      expect(item.getAttribute("aria-disabled")).toBe("true");
+      const reason = menuReason(item);
+      await closeMenu();
+      return reason;
+    };
+    expect(await deleteReason()).toBe(ROLE);
     fireEvent.mouseDown(screen.getByRole("tab", { name: /任務/ }));
     expect(await screen.findByTestId("tasks-unavailable")).toHaveProperty("textContent", ROLE);
 
     await waitFor(() => expect(pushState).toBeDefined());
     act(() => pushState!({ connectionId: "c1", state: "offline", message: null }));
     await waitFor(() => expect(archive.title).toBe(OFFLINE));
-    expect(del.title).toBe(OFFLINE);
     expect(claim.title).toBe(OFFLINE);
+    expect(await deleteReason()).toBe(OFFLINE);
     expect(screen.getByTestId("tasks-unavailable").textContent).toBe(OFFLINE);
     expect(screen.queryByText(ROLE)).toBeNull();
 
     act(() => pushState!({ connectionId: "c1", state: "online", message: null }));
     await waitFor(() => expect(archive.title).toBe(ROLE));
-    for (const button of [archive, del, claim]) {
+    for (const button of [archive, claim]) {
       expect(button.disabled).toBe(true);
       expect(button.title).toBe(ROLE);
     }
+    expect(await deleteReason()).toBe(ROLE);
     expect(screen.getByTestId("tasks-unavailable").textContent).toBe(ROLE);
   });
 
@@ -332,7 +358,10 @@ describe("排程分頁的前置編輯依 role（add-change-plan-remote D7）", (
     await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
     fireEvent.click(screen.getByText("remote-change"));
     fireEvent.mouseDown(await screen.findByRole("tab", { name: /排程/ }));
-    await screen.findByText("第 2 波");
+    // 狀態卡的排程列也寫「第 2 波」——以排程分頁的波次卡為準。
+    await waitFor(() =>
+      expect(document.querySelector('[data-plan-section="wave"]')?.textContent).toContain("第 2 波"),
+    );
   }
 
   it("editor 可在排程分頁新增與移除前置，寫入走資料源 setDepends", async () => {
@@ -414,9 +443,11 @@ describe("本地分頁不受影響（迴歸）", () => {
     fireEvent.click(screen.getByText("local-change"));
     const analyze = (await screen.findByRole("button", { name: /分析/ })) as HTMLButtonElement;
     expect(analyze.disabled).toBe(false);
-    const del = screen.getByRole("button", { name: /刪除/ }) as HTMLButtonElement;
-    expect(del.disabled).toBe(false);
     // claim 是 RemoteOnly 動詞——本地分頁連停用的入口都不長出來。
+    expect(screen.queryByRole("button", { name: /認領/ })).toBeNull();
+    const del = await openDeleteItem();
+    expect(del.getAttribute("aria-disabled")).toBeNull();
+    expect(menuReason(del)).toBe("");
     expect(screen.queryByRole("button", { name: /認領/ })).toBeNull();
     // 本地照常打 listArchived（capability 全真）。
     expect(ds.listArchived).toHaveBeenCalled();
