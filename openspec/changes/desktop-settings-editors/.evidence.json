@@ -37,6 +37,21 @@
       "files": [
         "apps/desktop/src/__tests__/App.test.tsx"
       ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.2 全部對齊：`./target/debug/speclink validate desktop-settings-editors` 通過；`npm test -w apps/desktop` 全綠；`npm run build -w apps/desktop` 通過（bundle 含 CodeMirror 不含內建配色 CSS）；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
+      "files": [
+        "apps/desktop/src/__tests__/platform.test.ts",
+        "apps/desktop/src/components/ProjectActionsMenu.tsx",
+        "apps/desktop/src/platform.ts",
+        "apps/desktop/vitest.setup.ts",
+        "crates/engine/speclink-core/src/workspace/config/tests.rs",
+        "packages/ui/src/__tests__/menus.test.tsx",
+        "packages/ui/src/__tests__/ui.test.tsx",
+        "packages/ui/src/components/ui/kbd.tsx",
+        "packages/ui/src/components/ui/tabs.tsx"
+      ]
     }
   ],
   "entries": [
@@ -91,6 +106,25 @@
         "apps/desktop/src/__tests__/App.test.tsx"
       ],
       "recordedAt": "2026-10-10T15:47:06Z"
+    },
+    {
+      "taskId": "tsk_01M4JKYGAJTV9AFZ8HGRYK23M4",
+      "taskDesc": "3.2 全部對齊：`./target/debug/speclink validate desktop-settings-editors` 通過；`npm test -w apps/desktop` 全綠；`npm run build -w apps/desktop` 通過（bundle 含 CodeMirror 不含內建配色 CSS）；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "da3b947bb5e3f46f968f234b3bb0abb141134d20",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/platform.test.ts",
+        "apps/desktop/src/components/ProjectActionsMenu.tsx",
+        "apps/desktop/src/platform.ts",
+        "apps/desktop/vitest.setup.ts",
+        "crates/engine/speclink-core/src/workspace/config/tests.rs",
+        "packages/ui/src/__tests__/menus.test.tsx",
+        "packages/ui/src/__tests__/ui.test.tsx",
+        "packages/ui/src/components/ui/kbd.tsx",
+        "packages/ui/src/components/ui/tabs.tsx"
+      ],
+      "recordedAt": "2026-10-11T02:34:25Z"
     }
   ]
 }

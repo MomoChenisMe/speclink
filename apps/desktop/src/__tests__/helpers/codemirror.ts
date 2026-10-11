@@ -1,12 +1,7 @@
-// CodeMirror 在 jsdom 的測試輔助（desktop-settings-editors design D1）：jsdom 沒有 Range 的
-// 版面量測，CodeMirror 掛載時會直接呼叫——補回空量測；另提供讀寫與快捷鍵的操作。
+// CodeMirror 的測試輔助（desktop-settings-editors design D1）：讀寫編輯器內容與按快捷鍵。
+// jsdom 缺的 Range 量測補在 vitest.setup.ts。
 import { act, fireEvent } from "@testing-library/react";
 import { EditorView } from "@codemirror/view";
-
-const emptyRect = () => new DOMRect(0, 0, 0, 0);
-const emptyRects = () => Object.assign([], { item: () => null }) as unknown as DOMRectList;
-if (!Range.prototype.getClientRects) Range.prototype.getClientRects = emptyRects;
-if (!Range.prototype.getBoundingClientRect) Range.prototype.getBoundingClientRect = emptyRect;
 
 /** container 內第一個（或唯一的）編輯器。 */
 export function editorView(container: HTMLElement): EditorView {
@@ -18,22 +13,12 @@ export function editorView(container: HTMLElement): EditorView {
 
 export const editorText = (container: HTMLElement) => editorView(container).state.doc.toString();
 
-/** 在文件尾端輸入（使用者輸入事件）。 */
-export function typeInEditor(container: HTMLElement, text: string) {
+/** 使用者輸入事件：預設整份換成 text；`append` 時接在文件尾端。 */
+export function typeInEditor(container: HTMLElement, text: string, { append = false } = {}) {
   const view = editorView(container);
+  const to = view.state.doc.length;
   act(() =>
-    view.dispatch({ changes: { from: view.state.doc.length, insert: text }, userEvent: "input.type" }),
-  );
-}
-
-/** 整份換成 text（使用者輸入事件）。 */
-export function replaceEditorText(container: HTMLElement, text: string) {
-  const view = editorView(container);
-  act(() =>
-    view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: text },
-      userEvent: "input.type",
-    }),
+    view.dispatch({ changes: { from: append ? to : 0, to, insert: text }, userEvent: "input.type" }),
   );
 }
 

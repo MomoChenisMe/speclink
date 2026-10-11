@@ -11,3 +11,6 @@ export function detectPlatform(ua?: string): Platform {
   if (/Windows/i.test(source)) return "windows";
   return "linux";
 }
+
+/** 快捷鍵標籤的修飾鍵：macOS 為 ⌘，其餘為 Ctrl+（選單與按鈕的快捷鍵提示共用）。 */
+export const modKey = (platform: Platform) => (platform === "macos" ? "⌘" : "Ctrl+");

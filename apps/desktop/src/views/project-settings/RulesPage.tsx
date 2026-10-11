@@ -5,12 +5,13 @@ import { FileText } from "lucide-react";
 import { Card, SettingsPageHeader, useI18n } from "@speclink/ui";
 
 import { CodeEditor } from "../../components/CodeEditor";
-import { CardEditControls, FieldHelp, PageAlerts, PageNote, useEditorSave } from "./parts";
+import { CardEditControls, FieldHelp, PageAlerts, PageNote, useSaveShortcut } from "./parts";
 import { textToEntries, type ProjectSettingsState } from "./useProjectSettings";
 
 export function RulesPage({ ps }: { ps: ProjectSettingsState }) {
   const { t } = useI18n();
-  const { saving, save } = useEditorSave(ps.rulesEditing, ps.saveRules);
+  const save = () => void ps.saveRules();
+  useSaveShortcut(ps.rulesEditing, save);
   const countLabel = (n: number) => t("settings.rulesCount").replace("{count}", String(n));
   return (
     <div data-testid="rules-page" className="flex flex-col gap-6">
@@ -20,12 +21,12 @@ export function RulesPage({ ps }: { ps: ProjectSettingsState }) {
         actions={
           <CardEditControls
             editing={ps.rulesEditing}
-            disabled={ps.wfDisabled || saving}
+            disabled={ps.wfDisabled || ps.rulesSaving}
             msg={ps.rulesMsg}
             testPrefix="rules"
             onEdit={ps.beginRulesEdit}
             onCancel={() => ps.setRulesEditing(false)}
-            onSave={() => void save()}
+            onSave={save}
           />
         }
         note={<PageNote remote={ps.remoteNote} fileKey="openspec/config.yaml · rules" testId="file-note-config" />}
@@ -51,8 +52,8 @@ export function RulesPage({ ps }: { ps: ProjectSettingsState }) {
                   value={ps.draftRules[id] ?? ""}
                   onChange={(text) => ps.setDraftRules((prev) => ({ ...prev, [id]: text }))}
                   mode="plain"
-                  readOnly={ps.wfDisabled}
-                  onSave={() => void save()}
+                  readOnly={ps.wfDisabled || ps.rulesSaving}
+                  onSave={save}
                   minLines={3}
                   ariaLabel={id}
                 />

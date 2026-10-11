@@ -14,7 +14,7 @@ import { RELEASE_NOTES } from "../release-notes/release-notes";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 import { STALE_PROBE } from "./helpers/assetFixtures";
 import { changeList, sharedBoardRequirement } from "./helpers/changeList";
-import { editorText, replaceEditorText } from "./helpers/codemirror";
+import { editorText, typeInEditor } from "./helpers/codemirror";
 import { REMOTE_KEY, fakeRemoteDs, fakeRemoteSession } from "./helpers/remoteFixtures";
 import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
@@ -1232,7 +1232,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     fireEvent.click(within(projectColumn()).getByRole("button", { name: "規格" }));
     fireEvent.click(within(projectColumn()).getByRole("button", { name: "專案設定" }));
     fireEvent.click(await screen.findByTestId("context-edit"));
-    replaceEditorText(screen.getByTestId("context-input"), "新的說明");
+    typeInEditor(screen.getByTestId("context-input"), "新的說明");
 
     // 焦點已離開編輯器：Esc 走返回，先跳確認框。
     act(() => {

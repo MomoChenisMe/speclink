@@ -1,6 +1,6 @@
 // 專案設定四頁共用的片段（desktop-settings-mode design D8）：欄位說明、未知值提示、解析失敗
 // 說明、頁標題右側的編輯／取消／儲存與 ⌘S、remote revision 衝突對照卡與頁標題下的檔案鍵註記。
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { AlertTriangle } from "lucide-react";
 import {
   Button,
@@ -15,8 +15,10 @@ import {
   useI18n,
 } from "@speclink/ui";
 
-import { detectPlatform } from "../../platform";
+import { detectPlatform, modKey } from "../../platform";
 import type { PolicyConflict, ProjectSettingsState } from "./useProjectSettings";
+
+const SAVE_KEY = `${modKey(detectPlatform())}S`;
 
 export function FieldHelp({ children }: { children: React.ReactNode }) {
   return <p className="text-xs text-muted-foreground m-0">{children}</p>;
@@ -44,35 +46,22 @@ export function ParseErrorBanner({ message }: { message: string }) {
   );
 }
 
-/** 編輯態的儲存（desktop-settings-editors design D2）：⌘S／Ctrl+S 由編輯器 keymap 先攔
- * （已 preventDefault）；焦點在編輯器外時由這裡的視窗層補上。儲存進行中不重送。 */
-export function useEditorSave(editing: boolean, save: () => Promise<void>) {
-  const [saving, setSaving] = useState(false);
-  const busy = useRef(false);
-  const latest = useRef(save);
-  latest.current = save;
-  const run = useRef(async () => {
-    if (busy.current) return;
-    busy.current = true;
-    setSaving(true);
-    try {
-      await latest.current();
-    } finally {
-      busy.current = false;
-      setSaving(false);
-    }
-  }).current;
+/** 編輯態的 ⌘S／Ctrl+S（desktop-settings-editors design D2）：編輯器 keymap 先攔（已
+ * preventDefault）；焦點在編輯器外、或編輯器唯讀時由這裡的視窗層補上。是否真的送出由
+ * `onSave`（useProjectSettings 的寫入守門）決定。 */
+export function useSaveShortcut(editing: boolean, onSave: () => void) {
+  const latest = useRef(onSave);
+  latest.current = onSave;
   useEffect(() => {
     if (!editing) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || !(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "s") return;
       e.preventDefault();
-      void run();
+      latest.current();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editing, run]);
-  return { saving, save: run };
+  }, [editing]);
 }
 
 /** 頁標題右側的編輯／取消／儲存（專案說明頁與產出規則頁共用）；`toggle` 放在取消之前
@@ -124,7 +113,7 @@ export function CardEditControls({
             onClick={onSave}
           >
             {t("settings.save")}
-            <Kbd className="text-current opacity-80">{detectPlatform() === "macos" ? "⌘S" : "Ctrl+S"}</Kbd>
+            <Kbd variant="inherit">{SAVE_KEY}</Kbd>
           </Button>
         </>
       ) : (

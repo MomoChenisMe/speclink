@@ -12,7 +12,7 @@ import { APP_MESSAGES } from "../i18n/messages";
 import type { SchemaEntry, SettingsSnapshot } from "../adapter/workspace";
 import type { WorkspaceSettingsProvider } from "../session";
 import type { ProjectSettingsSection } from "../settingsCatalog";
-import { editorText, editorView, pressSave, replaceEditorText } from "./helpers/codemirror";
+import { editorText, editorView, pressSave, typeInEditor } from "./helpers/codemirror";
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider locale="zh-TW" messages={APP_MESSAGES}>
@@ -445,7 +445,7 @@ describe("未存修改回報", () => {
     const onDirtyChange = dirtyHarness("context");
     fireEvent.click(await screen.findByTestId("context-edit"));
     expect(onDirtyChange).toHaveBeenLastCalledWith(false);
-    replaceEditorText(screen.getByTestId("context-input"), "改過");
+    typeInEditor(screen.getByTestId("context-input"), "改過");
     await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
     fireEvent.click(screen.getByTestId("context-cancel"));
     await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
@@ -455,7 +455,7 @@ describe("未存修改回報", () => {
     const onDirtyChange = dirtyHarness("rules");
     fireEvent.click(await screen.findByTestId("rules-edit"));
     expect(onDirtyChange).toHaveBeenLastCalledWith(false);
-    replaceEditorText(screen.getByTestId("rules-input-tasks"), "只留一條");
+    typeInEditor(screen.getByTestId("rules-input-tasks"), "只留一條");
     await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
   });
 });
@@ -513,7 +513,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     fireEvent.click(within(card).getByTestId("context-edit"));
     expect(within(card).queryByTestId("context-edit")).toBeNull();
     expect(within(card).getByTestId("context-cancel")).toBeTruthy();
-    expect(within(card).getByTestId("context-save").textContent).toMatch(/⌘S|Ctrl\+S/);
+    expect(within(within(card).getByTestId("context-save")).getByText("Ctrl+S")).toBeTruthy();
     expect(within(card).getByRole("tab", { name: "編輯" }).getAttribute("aria-selected")).toBe("true");
     expect(within(card).getByRole("tab", { name: "預覽" })).toBeTruthy();
     const input = within(card).getByTestId("context-input");
@@ -528,7 +528,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     const card = await screen.findByTestId("context-page");
     fireEvent.click(within(card).getByTestId("context-edit"));
     const input = within(card).getByTestId("context-input");
-    replaceEditorText(input, "# 草稿標題\n- 第一項\n- 第二項");
+    typeInEditor(input, "# 草稿標題\n- 第一項\n- 第二項");
     const view = editorView(input);
     act(() => view.dispatch({ selection: { anchor: 4 } }));
     const user = userEvent.setup();
@@ -549,7 +549,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     const card = await screen.findByTestId("context-page");
     fireEvent.click(within(card).getByTestId("context-edit"));
     const draft = "# 規範\n\n- 第一層\n  - 第二層\n    - 第三層\n";
-    replaceEditorText(within(card).getByTestId("context-input"), draft);
+    typeInEditor(within(card).getByTestId("context-input"), draft);
     pressSave(within(card).getByTestId("context-input"));
     await waitFor(() => expect(ws.writeWorkflowContext).toHaveBeenCalledWith(draft));
     expect(ws.writeWorkflowContext).toHaveBeenCalledTimes(1);
@@ -560,7 +560,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     const ws = renderView(projectSnap());
     const card = await screen.findByTestId("context-page");
     fireEvent.click(within(card).getByTestId("context-edit"));
-    replaceEditorText(within(card).getByTestId("context-input"), "預覽中儲存");
+    typeInEditor(within(card).getByTestId("context-input"), "預覽中儲存");
     await userEvent.setup().click(within(card).getByRole("tab", { name: "預覽" }));
     fireEvent.keyDown(document.body, { key: "s", ctrlKey: true });
     await waitFor(() => expect(ws.writeWorkflowContext).toHaveBeenCalledWith("預覽中儲存"));
@@ -576,8 +576,36 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     await waitFor(() =>
       expect((within(card).getByTestId("context-save") as HTMLButtonElement).disabled).toBe(true),
     );
+    expect(editorView(within(card).getByTestId("context-input")).state.readOnly).toBe(true);
     pressSave(within(card).getByTestId("context-input"));
     expect(ws.writeWorkflowContext).toHaveBeenCalledTimes(1);
+  });
+
+  it("儲存中切到別頁再切回，⌘S 與儲存鈕都不重送（寫入中狀態跨頁保留）", async () => {
+    const ws = renderView(projectSnap());
+    (ws.writeWorkflowContext as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    const card = await screen.findByTestId("context-page");
+    fireEvent.click(within(card).getByTestId("context-edit"));
+    fireEvent.click(within(card).getByTestId("context-save"));
+    goto("rules");
+    goto("context");
+    pressSave(screen.getByTestId("context-input"));
+    fireEvent.click(screen.getByTestId("context-save"));
+    expect(ws.writeWorkflowContext).toHaveBeenCalledTimes(1);
+  });
+
+  it("產出規則儲存中編輯器唯讀、儲存鈕停用，再按 ⌘S 不重送", async () => {
+    const ws = renderView(projectSnap(), "rules");
+    (ws.writeWorkflowRules as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    const card = await screen.findByTestId("rules-page");
+    fireEvent.click(within(card).getByTestId("rules-edit"));
+    pressSave(within(card).getByTestId("rules-input-tasks"));
+    await waitFor(() =>
+      expect((within(card).getByTestId("rules-save") as HTMLButtonElement).disabled).toBe(true),
+    );
+    expect(editorView(within(card).getByTestId("rules-input-tasks")).state.readOnly).toBe(true);
+    pressSave(within(card).getByTestId("rules-input-tasks"));
+    expect(ws.writeWorkflowRules).toHaveBeenCalledTimes(1);
   });
 
   // spec「表單控制項與按鈕以主題化元件呈現」Scenario「設定頁編輯器主題化」
@@ -606,7 +634,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     const rulesPage = () => screen.getByTestId("rules-page");
     await screen.findByTestId("context-page");
     fireEvent.click(within(ctxPage()).getByTestId("context-edit"));
-    replaceEditorText(within(ctxPage()).getByTestId("context-input"), "編輯中的說明");
+    typeInEditor(within(ctxPage()).getByTestId("context-input"), "編輯中的說明");
     // 切到產出規則頁：維持唯讀且編輯鈕仍可用。
     goto("rules");
     expect(within(rulesPage()).queryAllByRole("textbox")).toHaveLength(0);
@@ -614,7 +642,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     expect(rulesEdit.disabled).toBe(false);
     // 兩頁可同時各持編輯態。
     fireEvent.click(rulesEdit);
-    replaceEditorText(within(rulesPage()).getByTestId("rules-input-tasks"), "被放棄");
+    typeInEditor(within(rulesPage()).getByTestId("rules-input-tasks"), "被放棄");
     // 取消產出規則：僅該頁還原，專案說明頁編輯態與草稿不受影響。
     fireEvent.click(within(rulesPage()).getByTestId("rules-cancel"));
     expect(within(rulesPage()).queryAllByRole("textbox")).toHaveLength(0);
@@ -656,7 +684,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
       expect(within(section).getByTestId(`rules-count-${id}`).textContent).toBe(count);
       expect(section.querySelector(".cm-editor")).not.toBeNull();
     }
-    expect(within(card).getByTestId("rules-save").textContent).toMatch(/⌘S|Ctrl\+S/);
+    expect(within(within(card).getByTestId("rules-save")).getByText("Ctrl+S")).toBeTruthy();
   });
 
   it("產出規則條數即時計數，空行不計；⌘S 寫回恰為三條（spec Scenario「產出規則條數即時計數」）", async () => {
@@ -664,9 +692,9 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     const card = await screen.findByTestId("rules-page");
     fireEvent.click(within(card).getByTestId("rules-edit"));
     const tasks = within(card).getByTestId("rules-input-tasks");
-    replaceEditorText(tasks, "先寫失敗測試\n\n更新文件");
+    typeInEditor(tasks, "先寫失敗測試\n\n更新文件");
     expect(within(card).getByTestId("rules-count-tasks").textContent).toBe("2 條");
-    replaceEditorText(tasks, "先寫失敗測試\n\n更新文件\n補上文件連結");
+    typeInEditor(tasks, "先寫失敗測試\n\n更新文件\n補上文件連結");
     expect(within(card).getByTestId("rules-count-tasks").textContent).toBe("3 條");
     pressSave(tasks);
     await waitFor(() => expect(ws.writeWorkflowRules).toHaveBeenCalled());
@@ -682,7 +710,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     const ws = renderView(projectSnap(), "rules");
     const card = await screen.findByTestId("rules-page");
     fireEvent.click(within(card).getByTestId("rules-edit"));
-    replaceEditorText(within(card).getByTestId("rules-input-tasks"), "  更新文件  \n\n先寫失敗測試\n");
+    typeInEditor(within(card).getByTestId("rules-input-tasks"), "  更新文件  \n\n先寫失敗測試\n");
     fireEvent.click(within(card).getByTestId("rules-save"));
     await waitFor(() => expect(ws.writeWorkflowRules).toHaveBeenCalled());
     expect((ws.writeWorkflowRules as ReturnType<typeof vi.fn>).mock.calls[0][0]).toEqual([
@@ -698,7 +726,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     const ws = renderView(projectSnap(), "rules");
     const card = await screen.findByTestId("rules-page");
     fireEvent.click(within(card).getByTestId("rules-edit"));
-    replaceEditorText(within(card).getByTestId("rules-input-tasks"), "先寫失敗測試\n更新文件\n@完成後執行全部測試");
+    typeInEditor(within(card).getByTestId("rules-input-tasks"), "先寫失敗測試\n更新文件\n@完成後執行全部測試");
     fireEvent.click(within(card).getByTestId("rules-save"));
     await waitFor(() => expect(ws.writeWorkflowRules).toHaveBeenCalled());
     const payload = (ws.writeWorkflowRules as ReturnType<typeof vi.fn>).mock.calls[0][0];
@@ -710,7 +738,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     const ws = renderView(projectSnap(), "rules");
     const card = await screen.findByTestId("rules-page");
     fireEvent.click(within(card).getByTestId("rules-edit"));
-    replaceEditorText(within(card).getByTestId("rules-input-tasks"), "");
+    typeInEditor(within(card).getByTestId("rules-input-tasks"), "");
     fireEvent.click(within(card).getByTestId("rules-save"));
     await waitFor(() => expect(ws.writeWorkflowRules).toHaveBeenCalled());
     const payload = (ws.writeWorkflowRules as ReturnType<typeof vi.fn>).mock.calls[0][0];
@@ -722,8 +750,8 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     const ws = renderView(projectSnap(), "rules");
     const card = await screen.findByTestId("rules-page");
     fireEvent.click(within(card).getByTestId("rules-edit"));
-    replaceEditorText(within(card).getByTestId("rules-input-tasks"), "");
-    replaceEditorText(within(card).getByTestId("rules-input-proposal"), "  \n ");
+    typeInEditor(within(card).getByTestId("rules-input-tasks"), "");
+    typeInEditor(within(card).getByTestId("rules-input-proposal"), "  \n ");
     fireEvent.click(within(card).getByTestId("rules-save"));
     await waitFor(() => expect(ws.writeWorkflowRules).toHaveBeenCalled());
     expect((ws.writeWorkflowRules as ReturnType<typeof vi.fn>).mock.calls[0][0]).toEqual([
@@ -738,7 +766,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     const ws = renderView(projectSnap());
     const card = await screen.findByTestId("context-page");
     fireEvent.click(within(card).getByTestId("context-edit"));
-    replaceEditorText(within(card).getByTestId("context-input"), "");
+    typeInEditor(within(card).getByTestId("context-input"), "");
     fireEvent.click(within(card).getByTestId("context-save"));
     await waitFor(() => expect(ws.writeWorkflowContext).toHaveBeenCalledWith(""));
     expect(ws.writeWorkflowRules).not.toHaveBeenCalled();
@@ -748,7 +776,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     const ws = renderView(projectSnap());
     const card = await screen.findByTestId("context-page");
     fireEvent.click(within(card).getByTestId("context-edit"));
-    replaceEditorText(within(card).getByTestId("context-input"), "# 新標題\n\n新的說明");
+    typeInEditor(within(card).getByTestId("context-input"), "# 新標題\n\n新的說明");
     fireEvent.click(within(card).getByTestId("context-save"));
     await waitFor(() => expect(ws.writeWorkflowContext).toHaveBeenCalledWith("# 新標題\n\n新的說明"));
     expect(ws.writeWorkflowRules).not.toHaveBeenCalled();
@@ -762,7 +790,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     const ws = renderView(projectSnap());
     const card = await screen.findByTestId("context-page");
     fireEvent.click(within(card).getByTestId("context-edit"));
-    replaceEditorText(within(card).getByTestId("context-input"), "被放棄的修改");
+    typeInEditor(within(card).getByTestId("context-input"), "被放棄的修改");
     fireEvent.click(within(card).getByTestId("context-cancel"));
     // 還原唯讀呈現、零寫入。
     expect(within(card).getByTestId("context-edit")).toBeTruthy();
@@ -787,7 +815,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
     );
     const card = await screen.findByTestId("context-page");
     fireEvent.click(within(card).getByTestId("context-edit"));
-    replaceEditorText(within(card).getByTestId("context-input"), "改到一半的內容");
+    typeInEditor(within(card).getByTestId("context-input"), "改到一半的內容");
     fireEvent.click(within(card).getByTestId("context-save"));
     expect(await within(card).findByText(/write failed/)).toBeTruthy();
     // 仍在編輯態、輸入未遺失。
@@ -912,7 +940,7 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
 
     const contextCard = await screen.findByTestId("context-page");
     fireEvent.click(within(contextCard).getByTestId("context-edit"));
-    replaceEditorText(within(contextCard).getByTestId("context-input"), "我的原始輸入\n保留換行");
+    typeInEditor(within(contextCard).getByTestId("context-input"), "我的原始輸入\n保留換行");
     fireEvent.click(within(contextCard).getByTestId("context-save"));
 
     const panel = await screen.findByTestId("policy-conflict-panel");
@@ -943,6 +971,33 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
     await waitFor(() => expect(screen.queryByTestId("policy-conflict-panel")).toBeNull());
     expect(screen.getByTestId("context-readonly").textContent).toContain("server 較新的說明");
     expect(screen.getByTestId("policy-revision").textContent).toContain("42");
+    expect(ws.writeWorkflowContext).toHaveBeenCalledTimes(1);
+  });
+
+  it("衝突對照卡開著時 ⌘S 不寫入、編輯器轉唯讀（不繞過對照卡蓋掉 server 版）", async () => {
+    const initial = projectSnap({ revision: 41 } as Partial<SettingsSnapshot["workflow"]>);
+    const latest = projectSnap({ revision: 42, context: "server 較新的說明" } as Partial<SettingsSnapshot["workflow"]>);
+    const ws = remoteSettings(initial, true);
+    (ws.readSettings as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(latest);
+    (ws.writeWorkflowContext as ReturnType<typeof vi.fn>).mockRejectedValueOnce({
+      message: "policy revision conflict",
+      reason: "revision_conflict",
+      status: 409,
+    });
+    render(<Harness settings={ws} />);
+    const page = await screen.findByTestId("context-page");
+    fireEvent.click(within(page).getByTestId("context-edit"));
+    const input = within(page).getByTestId("context-input");
+    typeInEditor(input, "我的輸入");
+    pressSave(input);
+    await screen.findByTestId("policy-conflict-panel");
+    expect(editorView(input).state.readOnly).toBe(true);
+    pressSave(input);
+    fireEvent.keyDown(document.body, { key: "s", ctrlKey: true });
+    await act(async () => {});
     expect(ws.writeWorkflowContext).toHaveBeenCalledTimes(1);
   });
 
@@ -1181,7 +1236,7 @@ describe("產出流程頁（spec「產出流程頁」）", () => {
     render(<Harness settings={ws} />);
     // 專案說明頁：開編輯並輸入未存草稿。
     fireEvent.click(await screen.findByTestId("context-edit"));
-    replaceEditorText(screen.getByTestId("context-input"), "還沒存的草稿");
+    typeInEditor(screen.getByTestId("context-input"), "還沒存的草稿");
     // 切到產出流程頁做切換。
     goto("workflow");
     const user = userEvent.setup({ pointerEventsCheck: 0 });
@@ -1340,7 +1395,7 @@ describe("產出流程頁（spec「產出流程頁」）", () => {
     render(<Harness settings={ws} initial="rules" />);
     // 產出規則頁：開編輯並輸入未存草稿。
     fireEvent.click(await screen.findByTestId("rules-edit"));
-    replaceEditorText(screen.getByTestId("rules-input-proposal"), "還沒存的規則草稿");
+    typeInEditor(screen.getByTestId("rules-input-proposal"), "還沒存的規則草稿");
     // 產出流程頁做 fork。
     goto("workflow");
     await screen.findByTestId("schema-item-spec-driven");
@@ -1365,7 +1420,7 @@ describe("產出流程頁（spec「產出流程頁」）", () => {
     render(<Harness settings={ws} initial="rules" />);
     // 開產出規則編輯並改草稿。
     fireEvent.click(await screen.findByTestId("rules-edit"));
-    replaceEditorText(screen.getByTestId("rules-input-proposal"), "編輯中的提案規則");
+    typeInEditor(screen.getByTestId("rules-input-proposal"), "編輯中的提案規則");
     // 產出流程頁 fork → refreshSchemaFacts 換集（schemaArtifacts 變 ["plan"]）。
     goto("workflow");
     await screen.findByTestId("schema-item-spec-driven");

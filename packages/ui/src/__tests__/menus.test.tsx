@@ -99,4 +99,11 @@ describe("Kbd", () => {
       expect.arrayContaining(["font-mono", "text-[11px]", "text-muted-foreground"]),
     );
   });
+
+  it("variant=inherit 跟隨所在元素的字色（放在按鈕內）", () => {
+    render(<Kbd variant="inherit">Ctrl+S</Kbd>);
+    const cls = classes(screen.getByText("Ctrl+S"));
+    expect(cls).toEqual(expect.arrayContaining(["font-mono", "text-[11px]", "opacity-80"]));
+    expect(cls).not.toContain("text-muted-foreground");
+  });
 });

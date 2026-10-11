@@ -1,8 +1,8 @@
 // 程式碼編輯器（desktop-settings-editors design D1）：包 CodeMirror 6——markdown／純文字兩模式、
 // 行號、自動換行、Mod-s 儲存與底部狀態列；配色只取設計 token，蓋掉套件基底主題的每個顏色
 // （spec「表單控制項與按鈕以主題化元件呈現」）。
-import { useEffect, useRef, useState } from "react";
-import { Annotation, Compartment, EditorState, type Extension } from "@codemirror/state";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Annotation, Compartment, EditorState } from "@codemirror/state";
 import {
   EditorView,
   highlightActiveLine,
@@ -58,11 +58,6 @@ const markdownHighlight = HighlightStyle.define([
 /** 外部 value 同步的 transaction 標記：這類變動不回送 onChange。 */
 const syncFromProps = Annotation.define<boolean>();
 
-const editability = (readOnly: boolean): Extension => [
-  EditorState.readOnly.of(readOnly),
-  EditorView.editable.of(!readOnly),
-];
-
 const cursorOf = (state: EditorState) => {
   const head = state.selection.main.head;
   const line = state.doc.lineAt(head);
@@ -82,7 +77,9 @@ export function CodeEditor({
   const { t } = useI18n();
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
-  const editable = useRef(new Compartment()).current;
+  // 唯讀只設 EditorState.readOnly：輸入被忽略，但內容區仍可聚焦——關掉 editable 會讓
+  // WebView 把焦點移走，儲存失敗恢復可編輯後焦點也回不來。
+  const readOnlyMode = useRef(new Compartment()).current;
   // 編輯器只建一次，擴充內的回呼經 ref 取最新 props。
   const latest = useRef({ onChange, onSave });
   latest.current = { onChange, onSave };
@@ -102,8 +99,9 @@ export function CodeEditor({
           keymap.of([
             {
               key: "Mod-s",
-              run: () => {
-                if (!latest.current.onSave) return false;
+              // 唯讀時不攔：事件交給頁層，由它決定是否儲存。
+              run: (view) => {
+                if (!latest.current.onSave || view.state.readOnly) return false;
                 latest.current.onSave();
                 return true;
               },
@@ -112,7 +110,7 @@ export function CodeEditor({
             ...historyKeymap,
             indentWithTab,
           ]),
-          editable.of(editability(readOnly)),
+          readOnlyMode.of(EditorState.readOnly.of(readOnly)),
           EditorView.contentAttributes.of({
             "aria-label": ariaLabel,
             ...(minLines ? { style: `min-height: ${minLines * LINE_HEIGHT}em` } : {}),
@@ -138,7 +136,8 @@ export function CodeEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
+  // layout effect：commit 後立刻同步，不留讓新按鍵插進來、再被舊 value 蓋掉的空檔。
+  useLayoutEffect(() => {
     const current = view.current;
     if (!current || current.state.doc.toString() === value) return;
     current.dispatch({
@@ -149,8 +148,8 @@ export function CodeEditor({
   }, [value]);
 
   useEffect(() => {
-    view.current?.dispatch({ effects: editable.reconfigure(editability(readOnly)) });
-  }, [readOnly, editable]);
+    view.current?.dispatch({ effects: readOnlyMode.reconfigure(EditorState.readOnly.of(readOnly)) });
+  }, [readOnly, readOnlyMode]);
 
   return (
     <div
