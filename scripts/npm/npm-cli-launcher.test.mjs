@@ -52,7 +52,9 @@ test('os/cpu 對映到五個平台子套件，之外的平台回 null', () => {
 function sandbox(t, { withPlatformPackage = true, platform = process.platform, arch = process.arch, exitCode = 0, signal = null } = {}) {
   // realpath：macOS 的 os.tmpdir() 經 /var → /private/var symlink，require.resolve 回的是真實路徑。
   const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'speclink-cli-npm-')));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  // maxRetries：Windows 上剛複製出來、剛執行完的假 speclink.exe 會短暫被占用（防毒掃描），
+  // 立刻刪會 EBUSY；rmSync 遇 EBUSY／EPERM 會依 retryDelay 重試。
+  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const mainDir = path.join(dir, 'node_modules/@speclink/cli');
   mkdirSync(path.join(mainDir, 'bin'), { recursive: true });
   for (const file of ['package.json', 'bin/speclink', 'postinstall.mjs', 'platform.mjs']) {
