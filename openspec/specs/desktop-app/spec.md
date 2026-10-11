@@ -1072,7 +1072,7 @@ code:
 ---
 ### Requirement: 表單控制項與按鈕以主題化元件呈現
 
-桌面 app 的互動控制項 SHALL 以元件庫的主題化原語呈現：勾選控制項（任務分頁勾選框、初始化對話框的工具多選）SHALL 呈現主題化外觀——未勾選為主題邊框空框、勾選為主色底加勾選圖示，SHALL NOT 呈現作業系統原生控制項外觀；多行文字輸入（設定頁）SHALL 取用設計 token 的邊框、底色與 focus 樣式；動作按鈕 SHALL 統一取用元件庫按鈕變體，鍵盤聚焦時 SHALL 顯示一致的 focus 可視環、disabled 態呈現一致。上述控制項於淺色與深色主題 SHALL 一致取自設計 token。替換 SHALL NOT 改變控制項的行為與無障礙語意：勾選框 SHALL 保留 checkbox 角色、既有標籤與空白鍵切換；按鈕 SHALL 保留既有無障礙名稱、回呼與 disabled 條件；唯讀封存檢視的勾選框 SHALL 維持不可互動。
+桌面 app 的互動控制項 SHALL 以元件庫的主題化原語呈現：勾選控制項（任務分頁勾選框、初始化對話框的工具多選）SHALL 呈現主題化外觀——未勾選為主題邊框空框、勾選為主色底加勾選圖示，SHALL NOT 呈現作業系統原生控制項外觀；多行文字輸入與程式碼編輯器（專案設定的專案說明與產出規則編輯區）SHALL 取用設計 token 的邊框、底色、游標行、語法上色與 focus 樣式，SHALL NOT 使用編輯器套件的內建配色；動作按鈕 SHALL 統一取用元件庫按鈕變體，鍵盤聚焦時 SHALL 顯示一致的 focus 可視環、disabled 態呈現一致。上述控制項於淺色與深色主題 SHALL 一致取自設計 token。替換 SHALL NOT 改變控制項的行為與無障礙語意：勾選框 SHALL 保留 checkbox 角色、既有標籤與空白鍵切換；按鈕 SHALL 保留既有無障礙名稱、回呼與 disabled 條件；唯讀封存檢視的勾選框 SHALL 維持不可互動。
 
 #### Scenario: 任務勾選框主題化外觀
 
@@ -1089,10 +1089,10 @@ code:
 - **WHEN** 開啟初始化確認對話框
 - **THEN** claude 與 codex 選項以主題化勾選框呈現且可獨立勾選，預設勾選狀態與替換前相同
 
-#### Scenario: 設定頁多行輸入主題化
+#### Scenario: 設定頁編輯器主題化
 
-- **WHEN** 於深色主題開啟設定頁的專案說明或產出規則編輯區
-- **THEN** 多行輸入的邊框、底色與 focus 樣式取自設計 token，輸入與儲存行為與替換前相同
+- **WHEN** 於深色主題進入專案說明或產出規則的編輯
+- **THEN** 編輯器的邊框、底色、游標行、標題與行內 code 上色與 focus 樣式取自設計 token（深色下為深色值），輸入與儲存行為與替換前相同
 
 #### Scenario: 按鈕 focus 可視環一致
 
@@ -1101,8 +1101,8 @@ code:
 
 
 <!-- @trace
-source: desktop-detail-page
-updated: 2026-10-10T15:55:28+08:00
+source: desktop-settings-editors
+updated: 2026-10-11T21:42:42+08:00
 -->
 
 ---

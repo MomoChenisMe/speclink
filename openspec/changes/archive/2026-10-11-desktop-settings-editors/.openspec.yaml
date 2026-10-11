@@ -1,0 +1,104 @@
+schema: spec-driven
+created: 2026-10-10
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: desktop-ui-redesign
+depends_on: desktop-settings-mode
+started_at: 2026-10-10
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-11
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 6
+reviewed_scope:
+  - path: apps/desktop/package.json
+    hash: b07845097a9bcfc4f750412f5ff15bb76191fecc8dd332e316ffb6b527e5f1b8
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 3b3c211d5e2894f22220609f010ea1908d09c739892183170c5d6a8cbc52f831
+  - path: apps/desktop/src/__tests__/codeEditor.test.tsx
+    hash: 823c670acf4672503af0c06ddf114112ff8e1ffe60edef66ae3fe46e4f521708
+  - path: apps/desktop/src/__tests__/helpers/codemirror.ts
+    hash: 0287ff50969df746394c36a8ab04324b85466009b3dec515221fcc6ee48717c9
+  - path: apps/desktop/src/__tests__/platform.test.ts
+    hash: e6f706bb65cd7f74e42c28fa67c7238ac18b1dc27fa0eca589c5b260675377e5
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: a9fbd2fd45869ed9201619e28bbabb72f0a8341c3770f1e8892994c689dbaad7
+  - path: apps/desktop/src/components/CodeEditor.tsx
+    hash: 699cedbc8ed79229bc83deae903d3287ba8f63099903fa1b5a9b36b7450b5e4a
+  - path: apps/desktop/src/components/ProjectActionsMenu.tsx
+    hash: 0a13e6017871e379478a44bd48f281c5bf923cd7d1fa43cede4414269932feac
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: fc870f6e8e91fca9805ec90a77be09aae93660ab79fb6b8c9a035a5af9066a18
+  - path: apps/desktop/src/platform.ts
+    hash: 3aa2bd54b8afa176160423efd4190d0ea0eec8e38aadaf56312ca0ef12bbf3be
+  - path: apps/desktop/src/views/project-settings/ContextPage.tsx
+    hash: a4aef0b3d9c695f93fabdd65d8fec535a79834dc8bfd94d7074a0f0b94c13e38
+  - path: apps/desktop/src/views/project-settings/RulesPage.tsx
+    hash: efa662ba5bfbd7c7273c5f156257229910590d0e2c3d8bb13f5b6fc425aaba09
+  - path: apps/desktop/src/views/project-settings/parts.tsx
+    hash: eedcb8be39c97d282b210cd663aa214ec33c1eb68d00435c3fd8db7a892e418b
+  - path: apps/desktop/src/views/project-settings/useProjectSettings.ts
+    hash: dd3c541e475c5fbe2d3be33cf711418cb7bb7ec7cbe686ae61aff2d807037b0a
+  - path: apps/desktop/vitest.setup.ts
+    hash: e7d99ac6c1ee39e6b556a141c258f706eec0af1b6f06f917f7e9f13bc54b6cb0
+  - path: crates/engine/speclink-core/src/workspace/config/tests.rs
+    hash: 63cac35beff3b9939b30a15bbb2576feca4e0f77a41aa501ff129808eca41044
+  - path: package-lock.json
+    hash: 6fb8db39c9f6ce36b835c84a47e607932b802dd5b5d660aab658ef724b3a3d25
+  - path: packages/ui/src/__tests__/menus.test.tsx
+    hash: 30516fc8507f6240d4c861307ab3d1873d90ff27a6f3f5bc6e6255727f2a86eb
+  - path: packages/ui/src/__tests__/ui.test.tsx
+    hash: 54c21f449410356b3ff5e3c720962f2721eecd7c961afbf49f94214b8712f40d
+  - path: packages/ui/src/components/ui/kbd.tsx
+    hash: 3732f7a6bc011a367294887b5d48f7bc2de4ea2f46f5df60960a60ed4d93016c
+  - path: packages/ui/src/components/ui/tabs.tsx
+    hash: 24efceb0f373516cfcb1dea9a454c160dd47630f2f1ed9209babd2f99f4d3f0f
+verified_at: 2026-10-11
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 6
+verified_scope:
+  - path: apps/desktop/package.json
+    hash: b07845097a9bcfc4f750412f5ff15bb76191fecc8dd332e316ffb6b527e5f1b8
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 3b3c211d5e2894f22220609f010ea1908d09c739892183170c5d6a8cbc52f831
+  - path: apps/desktop/src/__tests__/codeEditor.test.tsx
+    hash: 823c670acf4672503af0c06ddf114112ff8e1ffe60edef66ae3fe46e4f521708
+  - path: apps/desktop/src/__tests__/helpers/codemirror.ts
+    hash: 0287ff50969df746394c36a8ab04324b85466009b3dec515221fcc6ee48717c9
+  - path: apps/desktop/src/__tests__/platform.test.ts
+    hash: e6f706bb65cd7f74e42c28fa67c7238ac18b1dc27fa0eca589c5b260675377e5
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: a9fbd2fd45869ed9201619e28bbabb72f0a8341c3770f1e8892994c689dbaad7
+  - path: apps/desktop/src/components/CodeEditor.tsx
+    hash: 699cedbc8ed79229bc83deae903d3287ba8f63099903fa1b5a9b36b7450b5e4a
+  - path: apps/desktop/src/components/ProjectActionsMenu.tsx
+    hash: 0a13e6017871e379478a44bd48f281c5bf923cd7d1fa43cede4414269932feac
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: fc870f6e8e91fca9805ec90a77be09aae93660ab79fb6b8c9a035a5af9066a18
+  - path: apps/desktop/src/platform.ts
+    hash: 3aa2bd54b8afa176160423efd4190d0ea0eec8e38aadaf56312ca0ef12bbf3be
+  - path: apps/desktop/src/views/project-settings/ContextPage.tsx
+    hash: a4aef0b3d9c695f93fabdd65d8fec535a79834dc8bfd94d7074a0f0b94c13e38
+  - path: apps/desktop/src/views/project-settings/RulesPage.tsx
+    hash: efa662ba5bfbd7c7273c5f156257229910590d0e2c3d8bb13f5b6fc425aaba09
+  - path: apps/desktop/src/views/project-settings/parts.tsx
+    hash: eedcb8be39c97d282b210cd663aa214ec33c1eb68d00435c3fd8db7a892e418b
+  - path: apps/desktop/src/views/project-settings/useProjectSettings.ts
+    hash: dd3c541e475c5fbe2d3be33cf711418cb7bb7ec7cbe686ae61aff2d807037b0a
+  - path: apps/desktop/vitest.setup.ts
+    hash: e7d99ac6c1ee39e6b556a141c258f706eec0af1b6f06f917f7e9f13bc54b6cb0
+  - path: crates/engine/speclink-core/src/workspace/config/tests.rs
+    hash: 63cac35beff3b9939b30a15bbb2576feca4e0f77a41aa501ff129808eca41044
+  - path: package-lock.json
+    hash: 6fb8db39c9f6ce36b835c84a47e607932b802dd5b5d660aab658ef724b3a3d25
+  - path: packages/ui/src/__tests__/menus.test.tsx
+    hash: 30516fc8507f6240d4c861307ab3d1873d90ff27a6f3f5bc6e6255727f2a86eb
+  - path: packages/ui/src/__tests__/ui.test.tsx
+    hash: 54c21f449410356b3ff5e3c720962f2721eecd7c961afbf49f94214b8712f40d
+  - path: packages/ui/src/components/ui/kbd.tsx
+    hash: 3732f7a6bc011a367294887b5d48f7bc2de4ea2f46f5df60960a60ed4d93016c
+  - path: packages/ui/src/components/ui/tabs.tsx
+    hash: 24efceb0f373516cfcb1dea9a454c160dd47630f2f1ed9209babd2f99f4d3f0f
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-11
