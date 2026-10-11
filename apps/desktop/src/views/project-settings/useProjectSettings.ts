@@ -1,7 +1,7 @@
 // 專案設定的狀態與動作（desktop-settings-mode design D8）：自 ProjectSettingsView 原樣搬出——
 // 兩層設定的載入、儲存、remote revision 衝突對照與產出流程的切換／fork／建立／刪除，邏輯不變；
 // 四個分類頁共用同一份狀態，切頁不重載、各頁的編輯態與草稿跨頁保留。
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@speclink/ui";
 
 import type { SchemaEntry, SettingsSnapshot, WorkflowFields } from "../../adapter/workspace";
@@ -90,9 +90,20 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
    * 也以此鍵集送草稿，新固定鍵的既有規則走非凍結鍵兜底原樣保留。 */
   const [editingRuleKeys, setEditingRuleKeys] = useState<string[]>([]);
   const [rulesMsg, setRulesMsg] = useState<string | null>(null);
+  // 寫入中（desktop-settings-editors design D2）：state 驅動按鈕停用與編輯器唯讀，ref 擋同一輪
+  // 事件內的重送；放在四頁共用的狀態裡，儲存中切頁再切回也不重送。
+  const [ctxSaving, setCtxSaving] = useState(false);
+  const [rulesSaving, setRulesSaving] = useState(false);
+  const writing = useRef({ context: false, rules: false });
   const [appMsg, setAppMsg] = useState<string | null>(null);
   const [wfMsg, setWfMsg] = useState<string | null>(null);
-  const [conflict, setConflict] = useState<PolicyConflict | null>(null);
+  const [conflict, setConflictState] = useState<PolicyConflict | null>(null);
+  /** 衝突狀態的同步鏡像：409 設下衝突到下一次 render 之間，寫入守門也要看得到它。 */
+  const conflictOpen = useRef(false);
+  const setConflict = (next: PolicyConflict | null) => {
+    conflictOpen.current = next !== null;
+    setConflictState(next);
+  };
   // 產出流程頁籤（desktop-schema-panel design D4/D5）：清單快照、展開中的項、
   // 建立表單草稿與表單訊息。
   const [schemas, setSchemas] = useState<SchemaEntry[]>([]);
@@ -330,7 +341,26 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     setCtxEditing(true);
   };
 
-  const saveContext = async () => {
+  /** 按鈕、編輯器內 ⌘S 與頁層 ⌘S 共用的寫入守門：停用時（解析失敗、檢視者、衝突對照中）
+   * 不送——衝突對照中 adapter 已採用最新 revision，再送會繞過對照卡蓋掉 server 版；
+   * 同一份寫入進行中也不重送。 */
+  const guardWrite = async (
+    kind: "context" | "rules",
+    setSaving: (saving: boolean) => void,
+    write: () => Promise<void>,
+  ) => {
+    if (wfDisabled || conflictOpen.current || writing.current[kind]) return;
+    writing.current[kind] = true;
+    setSaving(true);
+    try {
+      await write();
+    } finally {
+      writing.current[kind] = false;
+      setSaving(false);
+    }
+  };
+
+  const saveContext = () => guardWrite("context", setCtxSaving, async () => {
     // 僅寫 context 鍵（清空＝移除鍵）；產出規則卡對應的 rules 鍵不觸碰。
     try {
       const next = await settings.writeWorkflowContext(draftContext);
@@ -343,7 +373,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       if (await handleWriteError(e, { kind: "context", context: draftContext })) setCtxMsg(null);
       else setCtxMsg(errorMessage(e));
     }
-  };
+  });
 
   const beginRulesEdit = () => {
     // 凍結編輯面鍵集（review N4）：編輯期間固定鍵換集不影響編輯中的分節。
@@ -357,7 +387,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     setRulesEditing(true);
   };
 
-  const saveRules = async () => {
+  const saveRules = () => guardWrite("rules", setRulesSaving, async () => {
     // 整份代換 payload：全部固定鍵依 schemaArtifacts 順序送出（空節＝移除鍵、全空＝移除 rules 鍵）；
     // 僅寫 rules 鍵，context 逐字元不變（不經寫入路徑）。
     // 以凍結鍵集送出草稿（review N4）：編輯中固定鍵換集時，草稿仍對應開編輯
@@ -381,7 +411,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       if (await handleWriteError(e, { kind: "rules", rules: nextRules })) setRulesMsg(null);
       else setRulesMsg(errorMessage(e));
     }
-  };
+  });
 
   /** 產出流程來源層級的顯示詞（package／project／user → 內建／專案／使用者）。 */
   const SCHEMA_SOURCE_LABEL_KEY = {
@@ -556,9 +586,9 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     tools, toggleTool, saveApp, appMsg,
     locale, setLocale, specLocale, setSpecLocale, tdd, setTdd, audit, setAudit, worktree, setWorktree,
     saveWorkflow, wfMsg,
-    contextText, ctxEditing, setCtxEditing, draftContext, setDraftContext, ctxMsg, beginCtxEdit, saveContext,
+    contextText, ctxEditing, setCtxEditing, draftContext, setDraftContext, ctxMsg, beginCtxEdit, saveContext, ctxSaving,
     rules, rulesEditing, setRulesEditing, draftRules, setDraftRules, editingRuleKeys, rulesMsg,
-    beginRulesEdit, saveRules, populatedRuleKeys,
+    beginRulesEdit, saveRules, rulesSaving, populatedRuleKeys,
     conflict, reloadServerVersion, retryConflict,
     schemas, expandedSchema, setExpandedSchema, schemaMsg, setSchemaMsg, createName, setCreateName,
     pendingDeleteSchema, setPendingDeleteSchema, schemaSourceLabel, isResolutionHit, switchSchema,

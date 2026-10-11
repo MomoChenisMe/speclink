@@ -14,18 +14,16 @@ import {
 } from "@speclink/ui";
 
 import { CodeEditor } from "../../components/CodeEditor";
-import { CardEditControls, FieldHelp, PageAlerts, PageNote, useEditorSave } from "./parts";
+import { CardEditControls, FieldHelp, PageAlerts, PageNote, useSaveShortcut } from "./parts";
 import type { ProjectSettingsState } from "./useProjectSettings";
 
 type EditView = "edit" | "preview";
 
-const TOGGLE_TRIGGER =
-  "h-6 rounded-md border-0 mb-0 px-3 text-xs data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm";
-
 export function ContextPage({ ps }: { ps: ProjectSettingsState }) {
   const { t } = useI18n();
   const [view, setView] = useState<EditView>("edit");
-  const { saving, save } = useEditorSave(ps.ctxEditing, ps.saveContext);
+  const save = () => void ps.saveContext();
+  useSaveShortcut(ps.ctxEditing, save);
   return (
     <Tabs
       data-testid="context-page"
@@ -39,17 +37,13 @@ export function ContextPage({ ps }: { ps: ProjectSettingsState }) {
         actions={
           <CardEditControls
             editing={ps.ctxEditing}
-            disabled={ps.wfDisabled || saving}
+            disabled={ps.wfDisabled || ps.ctxSaving}
             msg={ps.ctxMsg}
             testPrefix="context"
             toggle={
-              <TabsList variant={null} className="h-7 w-auto rounded-lg bg-muted p-0.5">
-                <TabsTrigger value="edit" className={TOGGLE_TRIGGER}>
-                  {t("settings.editor.edit")}
-                </TabsTrigger>
-                <TabsTrigger value="preview" className={TOGGLE_TRIGGER}>
-                  {t("settings.editor.preview")}
-                </TabsTrigger>
+              <TabsList variant="segmented">
+                <TabsTrigger value="edit">{t("settings.editor.edit")}</TabsTrigger>
+                <TabsTrigger value="preview">{t("settings.editor.preview")}</TabsTrigger>
               </TabsList>
             }
             onEdit={() => {
@@ -57,7 +51,7 @@ export function ContextPage({ ps }: { ps: ProjectSettingsState }) {
               ps.beginCtxEdit();
             }}
             onCancel={() => ps.setCtxEditing(false)}
-            onSave={() => void save()}
+            onSave={save}
           />
         }
         note={<PageNote remote={ps.remoteNote} fileKey="openspec/config.yaml · context" testId="file-note-config" />}
@@ -76,8 +70,8 @@ export function ContextPage({ ps }: { ps: ProjectSettingsState }) {
               value={ps.draftContext}
               onChange={ps.setDraftContext}
               mode="markdown"
-              readOnly={ps.wfDisabled}
-              onSave={() => void save()}
+              readOnly={ps.wfDisabled || ps.ctxSaving}
+              onSave={save}
               minLines={12}
               ariaLabel={t("settings.projectSection.context")}
               autoFocus

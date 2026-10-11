@@ -20,18 +20,18 @@
 
 `apps/desktop/package.json` 加 `@codemirror/state`、`@codemirror/view`、`@codemirror/language`、`@codemirror/commands`、`@codemirror/lang-markdown`、`@lezer/highlight`。`apps/desktop/src/components/CodeEditor.tsx`：
 
-- props `{ value, onChange, mode: "markdown" | "plain", readOnly?, onSave?, minLines?, ariaLabel, autoFocus? }`；以 `EditorView` 掛在 `div` 上，`value` 外部變動時以 transaction 整份替換（游標盡量保留）；`onChange` 於文件變動時回傳 `state.doc.toString()`。
-- 擴充：`lineNumbers()`、`EditorView.lineWrapping`、`history()`、`keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab, { key: "Mod-s", run: () => { onSave?.(); return true } }])`、markdown 模式加 `markdownLanguage` 與 `syntaxHighlighting(HighlightStyle)`（不用 `markdown()`：它預設嵌入 HTML／CSS／JavaScript 語言與自動完成，主程式包多約 190KB；代價是 Enter 不續寫清單符號、行內 HTML 不上色）（標題粗體＋`text-foreground`、行內 code 等寬＋`bg-muted`、連結 `text-primary`、強調粗體）；`EditorView.theme` 只用 CSS 變數（`var(--card)`、`var(--border)`、`var(--muted)`、`var(--primary)`、`var(--muted-foreground)`），不寫色階；焦點環沿 `--ring`。
+- props `{ value, onChange, mode: "markdown" | "plain", readOnly?, onSave?, minLines?, ariaLabel, autoFocus? }`（`readOnly` 只設 `EditorState.readOnly`：輸入被忽略、標上 `aria-readonly`，內容區仍可聚焦——不關 `EditorView.editable`，免得 WebView 把焦點移走、儲存失敗後回不來）；以 `EditorView` 掛在 `div` 上，`value` 外部變動時以 transaction 整份替換（游標盡量保留；在 layout effect 同步，不留讓新按鍵插進來再被舊 value 蓋掉的空檔）；`onChange` 於文件變動時回傳 `state.doc.toString()`。
+- 擴充：`lineNumbers()`、`highlightActiveLine()`／`highlightActiveLineGutter()`（游標行上色）、`EditorView.lineWrapping`、`history()`、`keymap.of([{ key: "Mod-s", run }, ...defaultKeymap, ...historyKeymap, indentWithTab])`（`run` 在沒有 `onSave` 或編輯器唯讀時回 false、不攔事件，交給頁層）、markdown 模式加 `markdownLanguage` 與 `syntaxHighlighting(HighlightStyle)`（不用 `markdown()`：它預設嵌入 HTML／CSS／JavaScript 語言與自動完成，主程式包多約 190KB；代價是 Enter 不續寫清單符號、行內 HTML 不上色）（標題粗體＋`text-foreground`、行內 code 等寬＋`bg-muted`、連結 `text-primary`、強調粗體）；`EditorView.theme` 只用 CSS 變數（`var(--foreground)`、`var(--border)`、`var(--muted)`、`var(--muted-foreground)`、`var(--primary)`（游標行以 `color-mix` 調淡）、`var(--destructive)`（特殊字元）；外殼底色 `bg-card`），不寫色階；焦點環沿 `--ring`。
 - 底部狀態列（元件外殼渲染）：`markdown · 自動換行` 或 `純文字 · 自動換行`，右端「第 N 行，第 M 欄」隨游標更新。
 - 整體包在 `rounded-xl border border-border bg-card`；最小高度 `minLines` 行。
-- 測試環境：jsdom 無 `getClientRects`／`measureText`，測試掛 CodeMirror 需 polyfill `Range.prototype.getClientRects` 與 `document.createRange().getBoundingClientRect`；放在 `apps/desktop/src/__tests__/helpers/codemirror.ts`。
+- 測試環境：jsdom 無 Range 的版面量測，掛 CodeMirror 需補 `Range.prototype.getClientRects` 與 `getBoundingClientRect`，與其他 jsdom 缺口一起放 `apps/desktop/vitest.setup.ts`；讀寫編輯器與按 Mod-s 的輔助放 `apps/desktop/src/__tests__/helpers/codemirror.ts`。
 
 ### D2 專案說明頁
 
 - 唯讀：既有 markdown 渲染，**拿掉收合**——專案說明自 `desktop-settings-mode` 起自成一頁，整頁只有這段內容，收合只會把它藏起來（收合是舊版「多張卡同頁」的遺留）；連帶移除 `isLongContext`、展開狀態與只剩此處使用的 `settings.showMore` 文案。
-- 點「編輯」：頁標題右側變為分段切換「編輯｜預覽」（`Tabs` 原語，`TabsList variant={null}` 以 className 縮成 h-7 膠囊底）＋ghost「取消」＋主要「儲存」（右側 `Kbd` ⌘S／Ctrl+S）；內容卡換成 `CodeEditor mode="markdown"`（autoFocus）；切「預覽」時卡內改以 `Markdown` 渲染草稿（空草稿顯示空態文案），切回「編輯」保留草稿與游標位置（編輯器維持掛載、以 `hidden` 切換）。
+- 點「編輯」：頁標題右側變為分段切換「編輯｜預覽」（`packages/ui` 的 `TabsList` 新增 `segmented` 變體：h-7 膠囊底、作用中分頁卡片底加陰影；呼叫端只指定變體，不以 className 覆蓋）＋ghost「取消」＋主要「儲存」（右側 `Kbd variant="inherit"` 跟隨按鈕字色，標籤以共用的 `modKey(platform)` 組出 ⌘S／Ctrl+S）；內容卡換成 `CodeEditor mode="markdown"`（autoFocus）；切「預覽」時卡內改以 `Markdown` 渲染草稿（空草稿顯示空態文案），切回「編輯」保留草稿與游標位置（編輯器維持掛載、以 `hidden` 切換）。
 - 儲存：草稿原字串寫入 context——不去頭尾空白、不改檔尾換行、不改縮排；core 既有序列化以 YAML 區塊字串保留換行（檔尾有換行用 `|`、無則 `|-`）。清空（全空白）仍視為移除鍵（既有語意）。
-- ⌘S 在編輯器內與頁內皆觸發儲存（編輯器 keymap 先攔；頁層 keydown 補焦點在編輯器外的情況）；儲存進行中 disabled。
+- ⌘S 在編輯器內與頁內皆觸發儲存（編輯器 keymap 先攔；頁層 `useSaveShortcut` 補焦點在編輯器外或編輯器唯讀的情況）。是否真的送出由 `useProjectSettings` 的寫入守門決定：停用（解析失敗、檢視者、衝突對照中——此時 adapter 已採用最新 revision，再送會繞過對照卡）或同一份寫入進行中都不送（衝突狀態另有同步的 ref 鏡像，409 設下衝突到下一次 render 之間也擋得住）；寫入中旗標在四頁共用狀態裡，儲存中切頁再切回也不重送。儲存進行中按鈕停用、編輯器唯讀（避免存檔後才打的字在編輯器關閉時遺失）。
 - 取消：捨棄草稿、回唯讀。
 
 ### D3 產出規則頁

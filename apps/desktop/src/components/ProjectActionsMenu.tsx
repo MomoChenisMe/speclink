@@ -13,7 +13,7 @@ import {
 } from "@speclink/ui";
 
 import { projectDirOf } from "../adapter/fsActions";
-import type { Platform } from "../platform";
+import { modKey, type Platform } from "../platform";
 import { locatorKey } from "../session";
 import type { ProjectTab } from "../tabs";
 
@@ -60,7 +60,7 @@ export function ProjectActionItems({
     );
   }
   const dir = projectDirOf(tab.locator);
-  const mod = platform === "macos" ? "⌘" : "Ctrl+";
+  const mod = modKey(platform);
   return (
     <>
       {dir && (

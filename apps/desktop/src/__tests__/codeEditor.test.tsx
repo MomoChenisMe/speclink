@@ -44,7 +44,7 @@ describe("CodeEditor", () => {
 
   it("輸入後 onChange 收到全文", () => {
     const { host, onChange } = mount();
-    typeInEditor(host, "\n加一行");
+    typeInEditor(host, "\n加一行", { append: true });
     expect(onChange).toHaveBeenLastCalledWith("# 標題\n\n第二段\n加一行");
   });
 
@@ -66,11 +66,19 @@ describe("CodeEditor", () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
-  it("readOnly 不可輸入", () => {
+  it("readOnly 時 Mod-s 不呼叫 onSave，也不攔下事件（交給頁層處理）", () => {
+    const { host, onSave } = mount({ readOnly: true });
+    const event = pressSave(host);
+    expect(onSave).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("readOnly 不可輸入，但內容區仍可聚焦（焦點不被移走）", () => {
     const { host } = mount({ readOnly: true });
     const view = editorView(host);
     expect(view.state.readOnly).toBe(true);
-    expect(view.contentDOM.getAttribute("contenteditable")).toBe("false");
+    expect(view.contentDOM.getAttribute("aria-readonly")).toBe("true");
+    expect(view.contentDOM.getAttribute("contenteditable")).toBe("true");
   });
 
   it("狀態列顯示模式、自動換行與游標行欄", () => {

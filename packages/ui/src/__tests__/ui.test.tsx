@@ -161,7 +161,7 @@ describe("原語扁平化：button／card／badge／tabs", () => {
     expect(cls).toContain("text-[11px]");
   });
 
-  const renderTabs = (variant?: "underline" | "card") =>
+  const renderTabs = (variant?: "underline" | "card" | "segmented") =>
     render(
       <Tabs defaultValue="a">
         <TabsList variant={variant} actions={<button>開啟</button>}>
@@ -205,6 +205,20 @@ describe("原語扁平化：button／card／badge／tabs", () => {
     renderTabs("card");
     const bar = classes(screen.getByRole("tablist").parentElement!);
     expect(bar).toEqual(expect.arrayContaining(["rounded-t-2xl", "bg-card", "border", "px-2"]));
+  });
+
+  it("variant=segmented 為膠囊切換：列為灰底圓角、作用中分頁為卡片底加陰影、沒有底線", () => {
+    renderTabs("segmented");
+    const bar = classes(screen.getByRole("tablist").parentElement!);
+    expect(bar).toEqual(expect.arrayContaining(["w-auto", "h-7", "rounded-lg", "bg-muted"]));
+    expect(bar).not.toContain("w-full");
+    expect(bar).not.toContain("border-b");
+    const active = classes(screen.getByRole("tab", { name: "甲" }));
+    expect(active).toEqual(
+      expect.arrayContaining(["h-6", "rounded-md", "data-[state=active]:bg-card", "data-[state=active]:shadow-sm"]),
+    );
+    expect(active).not.toContain("border-b-2");
+    expect(active).not.toContain("data-[state=active]:text-primary");
   });
 });
 

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { detectPlatform } from "../platform";
+import { detectPlatform, modKey } from "../platform";
 import { detectMacOS } from "../tray";
 
 const MAC_UA =
@@ -36,5 +36,13 @@ describe("detectPlatform（design D1）", () => {
     vi.stubGlobal("navigator", { userAgent: MAC_UA });
     expect(detectPlatform()).toBe("macos");
     expect(detectMacOS()).toBe(true);
+  });
+});
+
+describe("modKey：快捷鍵標籤的修飾鍵", () => {
+  it("macOS 為 ⌘，Windows／Linux 為 Ctrl+", () => {
+    expect(modKey("macos")).toBe("⌘");
+    expect(modKey("windows")).toBe("Ctrl+");
+    expect(modKey("linux")).toBe("Ctrl+");
   });
 });

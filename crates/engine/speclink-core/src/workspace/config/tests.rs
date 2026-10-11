@@ -891,6 +891,22 @@ fn workflow_update_context_set_round_trips_value_verbatim() {
 }
 
 #[test]
+fn workflow_update_context_keeps_nested_indent_and_trailing_newline_verbatim() {
+    // spec Scenario 編輯專案說明並儲存：兩層縮排的清單與檔尾換行逐字元保留（有無檔尾換行皆然）。
+    for text in [
+        "# 規範\n\n- 第一層\n  - 第二層\n    - 第三層\n",
+        "# 規範\n\n- 第一層\n  - 第二層\n    - 第三層",
+    ] {
+        let out = rewrite(WF_DOC, &ContextEdit::Set(text.into()), None).expect("rewrite ok");
+        assert_eq!(
+            wf(&out).context.as_deref(),
+            Some(text),
+            "round trip of {text:?}, got: {out}"
+        );
+    }
+}
+
+#[test]
 fn workflow_update_context_three_states() {
     // 三態：Keep 不動、Set 設值、Remove 移除鍵。
     let out = rewrite(WF_DOC, &ContextEdit::Keep, None).expect("rewrite ok");
