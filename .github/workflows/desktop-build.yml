@@ -73,6 +73,10 @@ jobs:
       - name: Build desktop frontend
         run: npm run build -w apps/desktop
 
+      - name: Use static Windows C runtime for desktop and CLI
+        if: runner.os == 'Windows'
+        run: echo 'CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS=-C target-feature=+crt-static' >> "$GITHUB_ENV"
+
       - name: Build same-source CLI sidecar
         run: node scripts/desktop/desktop-sidecar.mjs --target ${{ matrix.target }}
 
@@ -106,5 +110,48 @@ jobs:
         with:
           name: desktop-${{ matrix.target }}
           path: ${{ matrix.installer }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Package and check Windows portable ZIP
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          node scripts/desktop/windows-portable.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Portable staging failed' }
+          $version = (Get-Content apps/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $folder = "target/x86_64-pc-windows-msvc/release/bundle/portable/Speclink_${version}_x64-portable"
+          Compress-Archive -Path $folder -DestinationPath "$folder.zip" -Force
+          $check = Join-Path $env:RUNNER_TEMP ([guid]::NewGuid().ToString())
+          Expand-Archive -Path "$folder.zip" -DestinationPath $check
+          $extracted = Join-Path $check "Speclink_${version}_x64-portable"
+          if (!(Test-Path "$extracted/speclink-desktop.exe")) { throw 'Desktop executable missing' }
+          & "$extracted/speclink.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw 'Extracted portable CLI failed' }
+          $config = & "$extracted/speclink.exe" config path
+          if ($LASTEXITCODE -ne 0) { throw 'Portable config lookup failed' }
+          $expected = Join-Path $extracted 'data/speclink/config.yaml'
+          if ([IO.Path]::GetFullPath($config.Trim()) -ne [IO.Path]::GetFullPath($expected)) {
+            throw 'Portable CLI is using a machine config directory'
+          }
+          & "$extracted/speclink.exe" config set locale English
+          if ($LASTEXITCODE -ne 0 -or !(Test-Path $expected)) { throw 'Portable config write failed' }
+          $moved = Join-Path $check 'moved-portable'
+          Move-Item -Path $extracted -Destination $moved
+          $config = & "$moved/speclink.exe" config path
+          if ($LASTEXITCODE -ne 0) { throw 'Moved portable config lookup failed' }
+          $expected = Join-Path $moved 'data/speclink/config.yaml'
+          if ([IO.Path]::GetFullPath($config.Trim()) -ne [IO.Path]::GetFullPath($expected)) {
+            throw 'Portable config did not follow the relocated EXE'
+          }
+          $locale = & "$moved/speclink.exe" config get locale
+          if ($LASTEXITCODE -ne 0 -or $locale.Trim() -ne 'English') { throw 'Moved portable config lost' }
+
+      - name: Upload Windows portable ZIP
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-x86_64-pc-windows-msvc-portable
+          path: target/x86_64-pc-windows-msvc/release/bundle/portable/*.zip
           if-no-files-found: error
           retention-days: 14

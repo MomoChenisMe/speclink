@@ -26,6 +26,7 @@
 pub mod cli_install;
 pub mod connections;
 pub mod event_manager;
+mod portable;
 pub mod remote;
 pub mod tray;
 mod watch;
@@ -677,17 +678,20 @@ async fn write_workflow_content(
 
 /// 連線 registry 檔位置：appConfigDir 下 connections.json（design 決策 4）。
 fn connections_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    if let Some(data) = speclink_host::portable::data_dir() {
+        return Ok(connections::registry_path(&data.join("desktop")));
+    }
     app.path()
         .app_config_dir()
         .map(|dir| connections::registry_path(&dir))
         .map_err(|e| format!("無法取得 app 設定目錄：{e}"))
 }
 
-/// 連線層狀態：credential 出入口（生產＝OS Keychain）與 per-origin 的
+/// 連線層狀態：credential 出入口（安裝版＝OS Keychain，portable＝記憶體）與 per-origin 的
 /// TokenManager（access token 記憶體持有——短效、絕不落盤、絕不過境 TS，
 /// 決策 2；換發與 401 語意見 remote 模組）。
 struct ConnectionsState {
-    credentials: Box<dyn speclink_remote::credentials::CredentialStore>,
+    credentials: &'static dyn speclink_remote::credentials::CredentialStore,
     managers:
         std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<remote::TokenManager>>>,
     state_observer: std::sync::Arc<dyn Fn(remote::ConnectionStateEvent) + Send + Sync>,
@@ -821,7 +825,7 @@ async fn connection_remove(app: tauri::AppHandle, id: String) -> Result<(), Stri
         .inner()
         .clone();
     tauri::async_runtime::spawn_blocking(move || {
-        if let Some(origin) = connections::remove_connection(&path, &id, &*state.credentials)? {
+        if let Some(origin) = connections::remove_connection(&path, &id, state.credentials)? {
             state.managers.lock().expect("manager lock").remove(&origin);
         }
         Ok(())
@@ -849,7 +853,7 @@ async fn device_login_start(app: tauri::AppHandle, origin: String) -> Result<Val
                 .open_url(url.to_string(), None::<String>)
                 .map_err(|e| format!("無法開啟系統瀏覽器：{e}"))
         };
-        match connections::device_login_start(&origin, &*state.credentials, &path, &opener)? {
+        match connections::device_login_start(&origin, state.credentials, &path, &opener)? {
             connections::DeviceLoginStart::LoggedIn {
                 display,
                 access_token,
@@ -884,7 +888,7 @@ async fn device_login_observe(
         .inner()
         .clone();
     tauri::async_runtime::spawn_blocking(move || {
-        match connections::device_login_observe(&origin, &device_code, &*state.credentials, &path)?
+        match connections::device_login_observe(&origin, &device_code, state.credentials, &path)?
         {
             connections::DeviceLoginObservation::LoggedIn {
                 display,
@@ -917,7 +921,7 @@ async fn pat_login(app: tauri::AppHandle, origin: String, pat: String) -> Result
         .inner()
         .clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let display = connections::pat_login(&origin, &pat, &*state.credentials, &path)?;
+        let display = connections::pat_login(&origin, &pat, state.credentials, &path)?;
         state.manager_for(&origin).adopt_access_token(&pat);
         Ok(serde_json::json!({ "status": "loggedIn", "display": display }))
     })
@@ -943,7 +947,7 @@ async fn connection_logout(app: tauri::AppHandle, origin: String) -> Result<Valu
         .inner()
         .clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let outcome = connections::logout(&origin, &*state.credentials, &path)?;
+        let outcome = connections::logout(&origin, state.credentials, &path)?;
         state.managers.lock().expect("manager lock").remove(&origin);
         Ok(serde_json::json!({
             "revokedOnServer": outcome.revoked_on_server,
@@ -989,7 +993,7 @@ where
     tauri::async_runtime::spawn_blocking(move || {
         let manager = state.manager_for_connection(&connection_id, &origin);
         let workspace = remote::RemoteWorkspace::at(&origin, &project, &repo, &manager);
-        call(&workspace, &*state.credentials)
+        call(&workspace, state.credentials)
     })
     .await
     .map_err(|e| format!("remote worker failed: {e}"))?
@@ -1022,7 +1026,7 @@ where
     tauri::async_runtime::spawn_blocking(move || {
         let manager = state.manager_for_connection(&connection_id, &origin);
         let workspace = remote::RemoteWorkspace::at(&origin, &project, &repo, &manager);
-        call(&workspace, &*state.credentials)
+        call(&workspace, state.credentials)
     })
     .await
     .map_err(|error| {
@@ -1047,7 +1051,7 @@ async fn remote_open(
         .clone();
     tauri::async_runtime::spawn_blocking(move || {
         let manager = state.manager_for_connection(&connection_id, &origin);
-        let (_, info) = remote::open_workspace(&origin, &target, &manager, &*state.credentials)
+        let (_, info) = remote::open_workspace(&origin, &target, &manager, state.credentials)
             .map_err(remote::RemoteOpenFailure::from)?;
         serde_json::to_value(&info)
             .map_err(|error| remote::RemoteOpenFailure::unknown(error.to_string()))
@@ -1161,7 +1165,7 @@ async fn remote_scopes(app: tauri::AppHandle, connection_id: String) -> Result<V
         .clone();
     tauri::async_runtime::spawn_blocking(move || {
         let manager = state.manager_for_connection(&connection_id, &origin);
-        let scopes = remote::list_scopes(&origin, &manager, &*state.credentials)
+        let scopes = remote::list_scopes(&origin, &manager, state.credentials)
             .map_err(|error| error.message)?;
         serde_json::to_value(scopes).map_err(|error| error.to_string())
     })
@@ -1192,7 +1196,7 @@ async fn migrate_workspace(
             &project,
             &repo,
             &manager,
-            &*state.credentials,
+            state.credentials,
         )?;
         serde_json::to_value(result).map_err(|error| error.to_string())
     })
@@ -1736,12 +1740,12 @@ async fn remote_watch(
         events.register(
             &key,
             move |last| {
-                sub_manager.execute(&*sub_state.credentials, |token| {
+                sub_manager.execute(sub_state.credentials, |token| {
                     speclink_remote::events::subscribe(&sub_base, token, Some(&sub_repo), last)
                 })
             },
             move || {
-                manager.execute(&*state.credentials, |token| {
+                manager.execute(state.credentials, |token| {
                     speclink_remote::events::sync_state(&base, token, Some(&etag_repo))
                 })
             },
@@ -1794,14 +1798,26 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+#[tauri::command]
+fn portable_mode() -> bool {
+    speclink_host::portable::data_dir().is_some()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let data = speclink_host::portable::data_dir();
+    let mut context = tauri::generate_context!();
+    let windows = portable::windows(context.config_mut(), data);
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
+    let builder = if data.is_none() {
+        builder.plugin(tauri_plugin_updater::Builder::new().build())
+    } else {
+        builder
+    };
     // 面板樣式相依僅 macOS 註冊（design D6）：positioner 供 tray 相對定位、
     // nspanel 供不搶焦點的 NSPanel 容器。
     #[cfg(target_os = "macos")]
@@ -1809,7 +1825,7 @@ pub fn run() {
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_nspanel::init());
     builder
-        .setup(|app| {
+        .setup(move |app| {
             // 監看槽位（決策 5）：啟動僅註冊空槽——前端還原分頁後以
             // watch_workspace 顯式掛上活躍專案（監看與資料載入同由前端
             // session 驅動；建立失敗僅記錄，app 照常、只失去自動刷新）。
@@ -1817,10 +1833,10 @@ pub fn run() {
                 tickets: std::sync::atomic::AtomicU64::new(0),
                 slot: std::sync::Mutex::new(watch::WatchSlot::new()),
             });
-            // 連線層：credential 生產出入口＝OS Keychain；access token 記憶體持有。
+            // 安裝版共用 OS Keychain；portable 憑證只在本次行程保留。
             let state_emitter = app.handle().clone();
             app.manage(std::sync::Arc::new(ConnectionsState {
-                credentials: Box::new(speclink_remote::credentials::KeyringCredentialStore),
+                credentials: speclink_remote::credentials::client_store(),
                 managers: std::sync::Mutex::new(std::collections::HashMap::new()),
                 state_observer: std::sync::Arc::new(move |event| {
                     let _ = state_emitter.emit(remote::REMOTE_CONNECTION_STATE_EVENT, event);
@@ -1834,9 +1850,26 @@ pub fn run() {
                     let _ = emitter.emit("remote-workspace-changed", key);
                 },
             )));
+            if let Some(data) = data {
+                if let Err(error) = portable::prepare(data) {
+                    use tauri_plugin_dialog::DialogExt;
+                    let handle = app.handle().clone();
+                    app.dialog()
+                        .message(format!("Cannot write portable data: {}\n{error}", data.display()))
+                        .kind(tauri_plugin_dialog::MessageDialogKind::Error)
+                        .show(move |_| handle.exit(1));
+                    return Ok(());
+                }
+                for window in windows {
+                    tauri::WebviewWindowBuilder::from_config(app, &window)?
+                        .data_directory(data.join("webview").join(&window.label))
+                        .build()?;
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            portable_mode,
             cli_install_probe,
             cli_deploy,
             cli_zprofile_append,
@@ -1941,6 +1974,6 @@ pub fn run() {
             hide_tray_panel,
             quit_app
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running Speclink desktop app");
 }

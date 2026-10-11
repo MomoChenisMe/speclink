@@ -70,8 +70,12 @@ pub fn resolve_store_mode(ws: &Workspace) -> anyhow::Result<ModeResolution> {
 /// `~/Library/Application Support`, Linux `$XDG_CONFIG_HOME`|`~/.config`.
 /// A Host-boundary lookup: the Engine receives the resolved directory and
 /// never reads these variables itself.
+/// Windows portable packages instead use `<exe directory>/data/speclink`.
 pub fn global_config_dir() -> std::path::PathBuf {
     use std::path::PathBuf;
+    if let Some(data) = crate::portable::data_dir() {
+        return data.join("speclink");
+    }
     let base = if cfg!(windows) {
         std::env::var("USERPROFILE")
             .map(|h| PathBuf::from(h).join("AppData").join("Roaming"))

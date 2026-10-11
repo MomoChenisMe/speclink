@@ -93,6 +93,21 @@ impl CredentialStore for MemoryCredentialStore {
 /// `<kind>:<origin>`.
 pub struct KeyringCredentialStore;
 
+/// Portable clients never touch the machine keyring; their credentials live
+/// only in this process. Installed clients retain the shared OS keyring.
+pub fn client_store() -> &'static dyn CredentialStore {
+    store_for_mode(speclink_host::portable::data_dir().is_some())
+}
+
+fn store_for_mode(portable: bool) -> &'static dyn CredentialStore {
+    static SESSION: std::sync::OnceLock<MemoryCredentialStore> = std::sync::OnceLock::new();
+    if portable {
+        SESSION.get_or_init(MemoryCredentialStore::new)
+    } else {
+        &KeyringCredentialStore
+    }
+}
+
 fn entry(origin: &str, kind: CredentialKind) -> Result<keyring::Entry, String> {
     keyring::Entry::new(SERVICE, &format!("{}:{origin}", kind.slug()))
         .map_err(|e| format!("無法存取系統 Keychain：{e}"))
@@ -123,6 +138,16 @@ impl CredentialStore for KeyringCredentialStore {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn portable_store_keeps_credentials_within_the_process() {
+        use super::*;
+        let origin = "https://portable-test.invalid";
+        store_for_mode(true).set(origin, CredentialKind::Refresh, "session-only").unwrap();
+        assert_eq!(store_for_mode(true).get(origin, CredentialKind::Refresh).unwrap(), Some("session-only".into()));
+        store_for_mode(true).delete(origin, CredentialKind::Refresh).unwrap();
+        assert_eq!(store_for_mode(true).get(origin, CredentialKind::Refresh).unwrap(), None);
+    }
+
     use super::*;
 
     #[test]
