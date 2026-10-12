@@ -96,6 +96,26 @@ describe("DocTiles 數字磚", () => {
   });
 });
 
+// spec「markdown 內容保留文件結構呈現」「markdown 文件內容行寬有上限」（design D10）：閱讀卡內文 15px／1.75，
+// 行寬以卡欄為上限（不再套 96ch）。index.css 的 .markdown 基準字級不在 cascade layer、會壓過 Tailwind
+// utilities 層的規則，所以 .markdown 的字級與行高覆蓋要帶 important（`!`）；jsdom 不算樣式，只斷言 class token。
+describe("DocBody 字級與行寬", () => {
+  it("內文 15px、行高 1.75，以 important 覆蓋 .markdown 字級，不帶 96ch 上限", () => {
+    const { container } = render(<DocBody>內文</DocBody>, { wrapper });
+    const cls = (container.querySelector("[data-doc-body]") as HTMLElement).className.split(" ");
+    for (const token of [
+      "text-[15px]",
+      "leading-[1.75]",
+      "[&_.markdown]:text-[15px]!",
+      "[&_.markdown]:leading-[1.75]!",
+      "[&_.markdown]:max-w-none",
+    ]) {
+      expect(cls).toContain(token);
+    }
+    expect(cls.join(" ")).not.toContain("max-w-[96ch]");
+  });
+});
+
 describe("DetailActions 標題列插槽", () => {
   it("無 provider 時原地渲染", () => {
     render(

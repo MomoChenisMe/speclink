@@ -140,7 +140,7 @@ export function ChangeCard({
             <TooltipTrigger asChild>
               <span
                 aria-label={t("card.awaitingManual")}
-                className={`shrink-0 ${SEMANTIC_TONE.inProgress}`}
+                className={`shrink-0 ${SEMANTIC_TONE.manual}`}
               >
                 <Hand className="h-3.5 w-3.5" />
               </span>

@@ -227,7 +227,39 @@ export {
 // 互動任務、彩色 delta、封存頁
 export { parseTaskDoc, type TaskDocItem } from "./tasks";
 export { TaskList, type TaskListProps } from "./components/TaskList";
-export { DeltaBadges } from "./components/DeltaBadges";
+export { DeltaBadges, CapabilityHeader } from "./components/DeltaBadges";
+// 變更文件渲染器（desktop-change-doc-views）：提案、設計、需求段、排程與閱讀卡標題區的推導。
+export { ProposalDoc, type ProposalDocProps } from "./components/ProposalDoc";
+export { DesignDoc, type DesignDocProps, type DecisionJump } from "./components/DesignDoc";
+export { PlanDoc } from "./components/PlanDoc";
+export { RequirementBlock, type RequirementBlockProps, type RequirementDelta } from "./components/RequirementBlock";
+export { changeDocSummary, type ChangeDocData } from "./components/changeDocSummary";
+export {
+  splitH2Sections,
+  parseListItems,
+  listItemsOf,
+  splitAlternative,
+  parseImpact,
+  parseCapabilities,
+  parseGoalsNonGoals,
+  parseDecisions,
+  parseContractRows,
+  splitRisk,
+  splitTaskText,
+  newCapabilities,
+  removedScenarios,
+  splitScenarioSteps,
+  findingAxis,
+  proposalShape,
+  type H2Section,
+  type SplitDoc,
+  type ListItem,
+  type ListBlock,
+  type ImpactData,
+  type CapabilityRow,
+  type DecisionData,
+  type TaskTextParts,
+} from "./docModel";
 export { CopyButton, type CopyButtonProps } from "./components/CopyButton";
 export { EmptyState, type EmptyStateProps } from "./components/EmptyState";
 export { SectionHeader, type SectionHeaderProps } from "./components/SectionHeader";

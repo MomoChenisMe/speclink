@@ -21,7 +21,7 @@ import {
   splitRounds,
 } from "../components/DiscussionDetailPage";
 import type { DocumentTarget } from "../components/DetailHeader";
-import { LABEL_CLS } from "../components/SectionedDoc";
+import { LABEL_CLS } from "../components/DocParts";
 import { ChangeCard } from "../components/ChangeCard";
 import { ChangeDetailPage } from "../components/ChangeDetailPage";
 import type { ChangeItem, ArchivedItem, DiscussionItem } from "../adapter";
@@ -647,14 +647,14 @@ describe("DiscussionDetailPage 標題 slug 化（design D4）", () => {
 // spec 需求「markdown 文件內容行寬有上限」（design D4）與「詳情頁的文件樹、閱讀卡與本頁目錄」：
 // 閱讀卡內文為共用置中容器，討論輪卡片與內文同欄對齊置中；閱讀區內容欄 768px 置中。
 describe("討論詳情頁閱讀欄置中", () => {
-  it("閱讀卡內文為置中容器（w-full＋max-w-[96ch]＋mx-auto）且輪卡片在欄內", async () => {
+  // spec「markdown 文件內容行寬有上限」（desktop-change-doc-views design D10）：閱讀卡內以 768px 卡欄為上限，不再另套 96ch。
+  it("閱讀卡內文撐滿卡欄（w-full、無 96ch）且輪卡片在欄內", async () => {
     const { baseElement } = render(<DiscussionDetailPage {...(makeProps() as never)} />);
     await screen.findByRole("tab", { name: /討論過程/ });
     const col = baseElement.querySelector("[data-doc-body]") as HTMLElement;
     expect(col).toBeTruthy();
     expect(col.className).toContain("w-full");
-    expect(col.className).toContain("max-w-[96ch]");
-    expect(col.className).toContain("mx-auto");
+    expect(col.className).not.toContain("max-w-[96ch]");
     const page = baseElement.querySelector("[data-discussion-detail]") as HTMLElement;
     const frame = page.querySelector("[data-detail-reading]")!.firstElementChild as HTMLElement;
     expect(frame.className).toContain("max-w-[768px]");

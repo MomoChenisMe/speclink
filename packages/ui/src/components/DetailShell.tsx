@@ -13,7 +13,6 @@ import { useI18n } from "../i18n";
 import { CopyButton } from "./CopyButton";
 import { DotSeparated } from "./DetailHeader";
 import { ManualToc } from "./ManualToc";
-import { READING_COLUMN_CLS } from "./Markdown";
 
 /** 文件 → 閱讀卡標題（與文件節點同一詞條）：變更、討論與已封存三頁共用。 */
 export const DOC_TITLE_KEYS: Record<string, string> = {
@@ -187,7 +186,11 @@ export function DocHeader({ title, badges, actions, provenance }: DocHeaderProps
     <header data-doc-header className="flex min-w-0 flex-col gap-1.5">
       <div className="flex min-w-0 items-center gap-2">
         <h2 className="min-w-0 truncate text-2xl font-normal leading-tight">{title}</h2>
-        {badges && <div className="flex shrink-0 items-center gap-1.5">{badges}</div>}
+        {badges && (
+          <div data-doc-badges className="flex shrink-0 items-center gap-1.5">
+            {badges}
+          </div>
+        )}
         {actions && <div className="ml-auto flex shrink-0 items-center">{actions}</div>}
       </div>
       {(provenance ?? []).some(Boolean) && (
@@ -199,8 +202,21 @@ export function DocHeader({ title, badges, actions, provenance }: DocHeaderProps
   );
 }
 
+/** 一格數字磚：值與標籤。 */
+export interface DocTile {
+  value: ReactNode;
+  label: string;
+}
+
+/** 閱讀卡標題區的推導結果：籤槽、數字磚、提示框（缺席時為空）。 */
+export interface DocSummary {
+  badges: ReactNode;
+  tiles: DocTile[];
+  callout: ReactNode;
+}
+
 /** 數字磚：閱讀卡標題下由文件結構推出的計數格，最多四格；空陣列整列缺席。 */
-export function DocTiles({ tiles }: { tiles: { value: ReactNode; label: string }[] }) {
+export function DocTiles({ tiles }: { tiles: DocTile[] }) {
   if (tiles.length === 0) return null;
   return (
     <div data-doc-tiles className="grid grid-cols-4 gap-2.5">
@@ -214,9 +230,15 @@ export function DocTiles({ tiles }: { tiles: { value: ReactNode; label: string }
   );
 }
 
-/** 閱讀卡內文：包住各文件渲染器的輸出，本頁目錄自它推導錨點。 */
+/** 閱讀卡內文：包住各文件渲染器的輸出，本頁目錄自它推導錨點。內文 15px／行高 1.75，行寬以卡欄
+ * （768px 扣內距）為上限（design D10；規格詳情頁與手冊頁不經這裡）。index.css 的 `.markdown` 基準字級
+ * 不在 cascade layer、一般宣告就壓過 Tailwind utilities 層，字級與行高的覆蓋因此帶 important（`!`）；
+ * Markdown 自帶的 96ch 同在 utilities 層，後代選擇器的特異性就夠。 */
+const DOC_BODY_CLS =
+  "w-full text-[15px] leading-[1.75] [&_.markdown]:max-w-none [&_.markdown]:text-[15px]! [&_.markdown]:leading-[1.75]!";
+
 export const DocBody = forwardRef<HTMLDivElement, { children: ReactNode }>(({ children }, ref) => (
-  <div ref={ref} data-doc-body className={READING_COLUMN_CLS}>
+  <div ref={ref} data-doc-body className={DOC_BODY_CLS}>
     {children}
   </div>
 ));

@@ -52,6 +52,10 @@ function makeProps(over: Record<string, unknown> = {}) {
   };
 }
 
+/** 規格文件裡需求段的標題（delta 檢視的需求段標題為 h3）。 */
+const requirementTitles = (root: HTMLElement) =>
+  Array.from(root.querySelectorAll("[data-requirement] h3")).map((h) => h.textContent);
+
 /** 展開標題列右端的「⋯」選單（封存／刪除兩項）。 */
 async function openMoreMenu() {
   const user = userEvent.setup({ pointerEventsCheck: 0 });
@@ -91,9 +95,9 @@ describe("規格分頁 delta 區段色標", () => {
     expect(within(modified).getByText("修改")).toBeTruthy();
     expect(added.className).toContain(DELTA_COLORS.added);
     expect(modified.className).toContain(DELTA_COLORS.modified);
-    // spec「標籤為大標題且字級大於內文」：色標標頭同大標題款、保留各色（design D6）。
-    expect(added.className).toContain("text-xl");
-    expect(added.className).toContain("font-bold");
+    // spec「章節標題為 16px 粗體」：色標標頭與章節標題同款、保留各色（desktop-change-doc-views design D6）。
+    expect(added.className).toContain("text-base");
+    expect(added.className).toContain("font-semibold");
     expect(added.className).not.toContain("text-xs");
     // Example「四種 delta 區段的色標對應」其餘兩列：移除紅、更名藍。
     const removed = baseElement.querySelector('[data-delta-section="removed"]') as HTMLElement;
@@ -107,9 +111,9 @@ describe("規格分頁 delta 區段色標", () => {
     // 原始機器標題不以標題文字直出。
     expect(screen.queryByText(/ADDED Requirements/)).toBeNull();
     expect(screen.queryByText(/MODIFIED Requirements/)).toBeNull();
-    // requirement 內文照 prose 排版呈現。
-    expect(screen.getByText(/Requirement: a/)).toBeTruthy();
-    expect(screen.getByText(/Requirement: c/)).toBeTruthy();
+    // ADDED／MODIFIED 的需求成需求段；REMOVED／RENAMED 照 prose。
+    expect(requirementTitles(baseElement)).toEqual(["a", "c"]);
+    expect(screen.getByText(/Requirement: e/)).toBeTruthy();
   });
 
   it("無 delta 標記的規格整篇照常渲染（無色標標頭）", async () => {
@@ -800,15 +804,15 @@ describe("詳情頁內分析結果呈現", () => {
 // spec 需求「markdown 文件內容行寬有上限」（design D4）與「詳情頁的文件樹、閱讀卡與本頁目錄」：
 // 閱讀卡內文為共用置中容器（行寬上限＋水平置中），包住文件全部內容；閱讀區內容欄置中、寬 768px。
 describe("變更詳情頁閱讀欄置中", () => {
-  it("閱讀卡內文為置中容器（w-full＋max-w-[96ch]＋mx-auto）且包住文件內容；閱讀區內容欄 768px 置中", async () => {
+  // spec「markdown 文件內容行寬有上限」（desktop-change-doc-views design D10）：閱讀卡內以 768px 卡欄為上限，不再另套 96ch。
+  it("閱讀卡內文撐滿卡欄（w-full、無 96ch）且包住文件內容；閱讀區內容欄 768px 置中", async () => {
     const props = makeProps();
     const { baseElement } = render(<ChangeDetailPage {...(props as never)} />);
     await waitFor(() => expect(screen.getByText(/doc for proposal.md/)).toBeTruthy());
     const col = baseElement.querySelector("[data-doc-body]") as HTMLElement;
     expect(col).toBeTruthy();
     expect(col.className).toContain("w-full");
-    expect(col.className).toContain("max-w-[96ch]");
-    expect(col.className).toContain("mx-auto");
+    expect(col.className).not.toContain("max-w-[96ch]");
     const reading = baseElement.querySelector("[data-detail-reading]") as HTMLElement;
     const frame = reading.firstElementChild as HTMLElement;
     expect(frame.className).toContain("max-w-[768px]");
@@ -1384,13 +1388,13 @@ describe("規格分頁載入失敗的收斂", () => {
     const { rerender } = render(<ChangeDetailPage {...(props as never)} refreshGen={0} />);
     await waitFor(() => screen.getByRole("tab", { name: /規格/ }));
     fireEvent.mouseDown(screen.getByRole("tab", { name: /規格/ }));
-    await waitFor(() => expect(screen.getByText(/Requirement: a/)).toBeTruthy());
+    await waitFor(() => expect(requirementTitles(document.body)).toContain("a"));
 
     fail = true;
     rerender(<ChangeDetailPage {...(props as never)} refreshGen={1} />);
     await new Promise((r) => setTimeout(r, 25));
     // 抽屜開著時一次短暫失敗不得把已載好的內容抹成「無 delta 規格」。
-    expect(screen.getByText(/Requirement: a/)).toBeTruthy();
+    expect(requirementTitles(document.body)).toContain("a");
     expect(screen.queryByText("（此 change 無 delta 規格）")).toBeNull();
   });
 });
@@ -1444,8 +1448,15 @@ describe("詳情抽屜的工單分頁", () => {
     ...over,
   });
   const tabNames = () => screen.getAllByRole("tab").map((el) => (el.textContent ?? "").replace(/\s+/g, " ").trim());
-  const headerText = () =>
-    (document.querySelector("[data-ticket-header]")?.textContent ?? "").replace(/\s+/g, " ").trim();
+  // 段標題列已撤（desktop-change-doc-views design D8）：站名在閱讀卡標題、輪數與階段詞在籤槽、計數在數字磚。
+  const flat = (el: Element | null) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+  const docHead = () => ({
+    title: flat(document.querySelector("[data-doc-header] h2")),
+    badges: flat(document.querySelector("[data-doc-badges]")),
+    tiles: Array.from(document.querySelectorAll("[data-doc-tile]")).map(
+      (tile) => `${flat(tile.lastElementChild)} ${flat(tile.firstElementChild)}`,
+    ),
+  });
   async function openTab(name: RegExp) {
     await waitFor(() => screen.getByRole("tab", { name }));
     fireEvent.mouseDown(screen.getByRole("tab", { name }));
@@ -1469,8 +1480,14 @@ describe("詳情抽屜的工單分頁", () => {
 
     await openTab(/審查/);
     await waitFor(() =>
-      expect(headerText()).toBe("審查 · 第 2 輪（複驗）CRITICAL 0 · WARNING 1 · SUGGESTION 1"),
+      expect(docHead()).toEqual({
+        title: "審查",
+        badges: "第 2 輪複驗",
+        tiles: ["輪 2", "CRITICAL（末輪） 0", "WARNING（末輪） 1", "SUGGESTION（末輪） 1"],
+      }),
     );
+    // 末輪仍有 WARNING：不出「可以蓋章」提示框。
+    expect(document.querySelector("[data-doc-callout]")).toBeNull();
     const r2 = document.querySelector('[data-ticket-round="2"]') as HTMLElement;
     expect(r2.querySelectorAll("[data-ticket-finding]")).toHaveLength(2);
     expect(within(r2).getByText("已接受")).toBeTruthy();
@@ -1520,11 +1537,15 @@ describe("詳情抽屜的工單分頁", () => {
 
     await openTab(/驗證/);
     await waitFor(() =>
-      expect(headerText()).toBe("驗證 · 第 1 輪（首輪）CRITICAL 1 · WARNING 0 · SUGGESTION 0"),
+      expect(docHead()).toEqual({
+        title: "驗證",
+        badges: "第 1 輪首輪",
+        tiles: ["輪 1", "CRITICAL（末輪） 1", "WARNING（末輪） 0", "SUGGESTION（末輪） 0"],
+      }),
     );
-    expect(document.querySelectorAll("[data-ticket-header]")).toHaveLength(1);
+    expect(document.querySelectorAll("[data-ticket-view]")).toHaveLength(1);
     await openTab(/審查/);
-    await waitFor(() => expect(headerText()).toMatch(/^審查 · 第 2 輪/));
+    await waitFor(() => expect(docHead()).toMatchObject({ title: "審查", badges: "第 2 輪複驗" }));
   });
 
   it("reviewed／none → 兩分頁缺席，載入器未被呼叫", async () => {
@@ -1547,7 +1568,7 @@ describe("詳情抽屜的工單分頁", () => {
     const props = makeProps({ change: x({ reviewStatus: "inReview", verifyStatus: "none" }), loadStationTicket });
     const { rerender } = render(<ChangeDetailPage {...(props as never)} />);
     await openTab(/審查/);
-    await waitFor(() => expect(headerText()).toMatch(/^審查/));
+    await waitFor(() => expect(docHead()).toMatchObject({ title: "審查", badges: "第 2 輪複驗" }));
     expect(screen.getByRole("tab", { name: /審查/ }).getAttribute("data-state")).toBe("active");
 
     rerender(
@@ -1559,7 +1580,7 @@ describe("詳情抽屜的工單分頁", () => {
     await waitFor(() => expect(screen.queryByRole("tab", { name: /審查/ })).toBeNull());
     expect(screen.getByRole("tab", { name: /提案/ }).getAttribute("data-state")).toBe("active");
     await screen.findByText(/doc for proposal.md/);
-    expect(document.querySelector("[data-ticket-header]")).toBeNull();
+    expect(document.querySelector("[data-ticket-view]")).toBeNull();
   });
 
   it("refreshGen 遞增 → 工單重載（追加輪後段標題更新）", async () => {
@@ -1568,13 +1589,13 @@ describe("詳情抽屜的工單分頁", () => {
     const props = makeProps({ change: x({ reviewStatus: "inReview", verifyStatus: "none" }), loadStationTicket });
     const { rerender } = render(<ChangeDetailPage {...(props as never)} />);
     await openTab(/審查/);
-    await waitFor(() => expect(headerText()).toMatch(/^審查 · 第 1 輪/));
+    await waitFor(() => expect(docHead().badges).toMatch(/^第 1 輪/));
     expect(loadStationTicket).toHaveBeenCalledTimes(1);
 
     current = REVIEW_TICKET;
     rerender(<ChangeDetailPage {...(props as never)} refreshGen={1} />);
     await waitFor(() => expect(loadStationTicket).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(headerText()).toMatch(/^審查 · 第 2 輪/));
+    await waitFor(() => expect(docHead()).toMatchObject({ badges: "第 2 輪複驗", tiles: expect.arrayContaining(["輪 2"]) }));
     // spec Scenario「工單追加輪後分頁更新」THEN：新末輪展開、舊輪收合。
     const expanded = (index: number) =>
       document
@@ -1607,7 +1628,7 @@ describe("詳情抽屜的工單分頁", () => {
     rerender(<ChangeDetailPage {...(props as never)} change={x({ name: "y", reviewStatus: "inReview" })} />);
     await openTab(/審查/);
     await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeTruthy());
-    expect(document.querySelector("[data-ticket-header]")).toBeNull();
+    expect(document.querySelector("[data-ticket-view]")).toBeNull();
   });
 
   it("載入中 → 骨架；載入器 reject 或回 null → 「工單尚未抵達或已被刪除」，非錯誤", async () => {
@@ -1855,6 +1876,239 @@ describe("本頁目錄錨點", () => {
     fireEvent.mouseDown(screen.getByRole("tab", { name: /排程/ }));
     const titles = Array.from(document.querySelectorAll("[data-plan-card-header] [data-doc-heading]"));
     expect(titles).toHaveLength(4);
+  });
+});
+
+// spec「提案與設計章節以中文標籤呈現」「任務群組標題與章節標籤同款式」「規格分頁 delta 區段以色標呈現」
+// 的閱讀卡籤槽、數字磚、提示框與跨文件跳轉（desktop-change-doc-views design D9）。
+describe("變更文件的籤、數字磚、提示框與跳轉", () => {
+  const flat = (el: Element | null) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+  const badges = () => flat(document.querySelector("[data-doc-badges]"));
+  const tiles = () =>
+    Array.from(document.querySelectorAll("[data-doc-tile]")).map((t) => `${flat(t.lastElementChild)} ${flat(t.firstElementChild)}`);
+  const REFACTOR = [
+    "## Summary",
+    "",
+    "一句話。",
+    "",
+    "## Motivation",
+    "",
+    "- 動機",
+    "",
+    "## Proposed Solution",
+    "",
+    ...[1, 2, 3, 4, 5, 6].map((n) => `${n}. 步驟 ${n}`),
+    "",
+    "## Non-Goals",
+    "",
+    ...[1, 2, 3, 4, 5].map((n) => `- 非目標 ${n}`),
+    "",
+    "## Alternatives Considered",
+    "",
+    ...[1, 2, 3, 4].map((n) => `- 方案 ${n}——理由 ${n}`),
+    "",
+    "## Capabilities",
+    "",
+    "### New Capabilities",
+    "",
+    "(none)",
+    "",
+    "### Modified Capabilities",
+    "",
+    "- `desktop-app`: 改版",
+    "",
+    "## Impact",
+    "",
+    "- Affected specs: desktop-app",
+    "- Affected code:",
+    "  - New: a.ts、b.ts",
+    "  - Modified: c.ts、d.ts、e.ts、f.ts",
+    "  - Removed: (none)",
+  ].join("\n");
+  const DESKTOP_DELTA = [
+    "## MODIFIED Requirements",
+    "",
+    ...["甲", "乙", "丙"].flatMap((n) => [`### Requirement: ${n}`, "", `${n}需求文。`, ""]),
+    "<!-- REMOVED-SCENARIO: 舊情境 -->",
+  ].join("\n");
+  const DESIGN = "## Decisions\n\n### D1 一\n\n- a\n\n### D3 三\n\n- c\n";
+  const TASKS = [
+    "## 1. 甲",
+    "",
+    "- [x] 1.1 a",
+    "- [x] 1.2 b",
+    "- [x] 1.3 c",
+    "",
+    "## 2. 乙",
+    "",
+    "- [x] 2.1 d",
+    "- [x] 2.2 e",
+    "- [x] 2.3 f",
+    "",
+    "## 3. 丙",
+    "",
+    "- [x] 3.1 g",
+    "- [ ] [M] 3.2 手動驗收 `dev:desktop` 畫面",
+    "- [ ] 3.3 h",
+  ].join("\n");
+  const docs: Record<string, string> = {
+    "proposal.md": REFACTOR,
+    "design.md": DESIGN,
+    "tasks.md": TASKS,
+    "specs/desktop-app/spec.md": DESKTOP_DELTA,
+  };
+  const props = (over: Record<string, unknown> = {}) =>
+    makeProps({
+      loadDocument: vi.fn(async (_c: string, artifact: string) => docs[artifact] ?? null),
+      ...over,
+    });
+
+  it("提案文件：籤槽為模板形狀、四格磚依序、能力段之下的改寫提示框", async () => {
+    render(<ChangeDetailPage {...(props() as never)} />);
+    await waitFor(() => expect(badges()).toBe("Refactor"));
+    expect(tiles()).toEqual(["解法步驟 6", "非目標 5", "能力 1", "影響的檔案 6"]);
+    await waitFor(() =>
+      expect(flat(document.querySelector('[data-section="sections.capabilities"] [data-doc-callout]'))).toContain(
+        "desktop-app 有 3 條需求被改寫，其中 1 個 scenario 以 REMOVED-SCENARIO 宣告",
+      ),
+    );
+  });
+
+  it("點提案能力籤後規格節點作用中，「開啟 ▾」指向該能力的 delta 規格", async () => {
+    const renderDocumentActions = vi.fn((_target: DocumentTarget | null) => null);
+    render(<ChangeDetailPage {...(props({ renderDocumentActions }) as never)} />);
+    const chip = await waitFor(() => {
+      const el = document.querySelector('[data-section="sections.capabilities"] button[data-capability-chip]');
+      expect(el).toBeTruthy();
+      return el as HTMLElement;
+    });
+    fireEvent.click(chip);
+    await waitFor(() => expect(screen.getByRole("tab", { name: /規格/ }).getAttribute("data-state")).toBe("active"));
+    const target = renderDocumentActions.mock.calls.at(-1)![0];
+    expect(target?.doc).toEqual({ change: change.name, artifact: "specs/desktop-app/spec.md" });
+  });
+
+  it("點任務的 D3 籤後設計節點作用中且 D3 決策卡展開", async () => {
+    render(<ChangeDetailPage {...(props() as never)} />);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /任務/ }));
+    await waitFor(() => expect(taskListProps.at(-1)?.onJumpDecision).toBeTypeOf("function"));
+    act(() => (taskListProps.at(-1)!.onJumpDecision as (id: string) => void)("D3"));
+    await waitFor(() => expect(screen.getByRole("tab", { name: /設計/ }).getAttribute("data-state")).toBe("active"));
+    await waitFor(() =>
+      expect(document.querySelector('[data-decision="D3"] button')?.getAttribute("aria-expanded")).toBe("true"),
+    );
+    expect(document.querySelector('[data-decision="D1"] button')?.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("任務文件：數字磚 9／7／1／3 與手動提示框列出 3.2；全部勾選後籤槽為「全部完成」", async () => {
+    const first = render(<ChangeDetailPage {...(props() as never)} />);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /任務/ }));
+    await waitFor(() => expect(tiles()).toEqual(["任務 9", "已完成 7", "手動 1", "群組 3"]));
+    expect(badges()).toBe("7/9");
+    const callout = document.querySelector("[data-doc-callout]")!;
+    expect(flat(callout)).toContain("1 個手動任務");
+    // spec「介面狀態語意色分層」：手動任務提示框取暖黃手動色（design D14）。
+    expect(callout.firstElementChild!.className).toContain("bg-status-manual/10");
+    const manualRow = callout.querySelector("[data-manual-task]") as HTMLElement;
+    expect(flat(manualRow)).toContain("3.2手動驗收 dev:desktop 畫面");
+    // 標題的行內程式碼為等寬籤（不直出反引號）。
+    expect(manualRow.querySelector("code")?.textContent).toBe("dev:desktop");
+    expect(flat(manualRow)).not.toContain("`");
+    // 「前往」：TaskList 收到第 8 個任務（3.2）的定位請求。
+    fireEvent.click(within(manualRow).getByRole("button", { name: "前往" }));
+    await waitFor(() => expect((taskListProps.at(-1)?.locate as { ordinal: number } | null)?.ordinal).toBe(8));
+    first.unmount();
+
+    docs["tasks.md"] = TASKS.replace(/- \[ \]/g, "- [x]");
+    try {
+      render(<ChangeDetailPage {...(props() as never)} />);
+      fireEvent.mouseDown(await screen.findByRole("tab", { name: /任務/ }));
+      await waitFor(() => expect(badges()).toBe("全部完成"));
+    } finally {
+      docs["tasks.md"] = TASKS;
+    }
+  });
+
+  it("規格文件：籤槽為各操作計數、數字磚 2／5／2／「1 ／ 0」", async () => {
+    const twoCaps = [
+      "## MODIFIED Requirements",
+      "",
+      ...[1, 2, 3, 4, 5].flatMap((n) => [`### Requirement: 改 ${n}`, "", "內文。", ""]),
+      "<!-- REMOVED-SCENARIO: 舊一 -->",
+      "<!-- REMOVED-SCENARIO: 舊二 -->",
+    ].join("\n");
+    const added = "## ADDED Requirements\n\n### Requirement: 新\n\n內文。\n";
+    render(
+      <ChangeDetailPage
+        {...(props({
+          loadCapabilities: vi.fn(async () => ["desktop-app", "client-protocol"]),
+          loadDocument: vi.fn(async (_c: string, artifact: string) =>
+            artifact === "specs/desktop-app/spec.md" ? twoCaps : artifact === "specs/client-protocol/spec.md" ? added : "# doc",
+          ),
+        }) as never)}
+      />,
+    );
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /規格/ }));
+    await waitFor(() => expect(tiles()).toEqual(["觸及的能力 2", "修改的需求 5", "移除的 scenario 2", "新增／更名 1 ／ 0"]));
+    expect(Array.from(document.querySelectorAll("[data-doc-badges] [data-delta-count]")).map((b) => flat(b))).toEqual([
+      "修改 5",
+      "新增 1",
+    ]);
+  });
+
+  it("設計文件：數字磚依序為決策、目標／非目標、風險與取捨、開放問題（「無」算 0）", async () => {
+    const design = [
+      "## Goals / Non-Goals",
+      "",
+      "**Goals:**",
+      "",
+      ...["一", "二", "三", "四", "五"].map((n) => `- 目標${n}`),
+      "",
+      "**Non-Goals:**",
+      "",
+      ...["一", "二", "三"].map((n) => `- 非目標${n}`),
+      "",
+      "## Decisions",
+      "",
+      ...["面板底與卡片層", "二", "三", "四", "五", "六"].flatMap((title, i) => [`### D${i + 1} ${title}`, "", "- 點", ""]),
+      "## Risks / Trade-offs",
+      "",
+      ...["一", "二", "三", "四"].map((n) => `- [風險${n}] → 對策`),
+      "",
+      "## Open Questions",
+      "",
+      "無",
+    ].join("\n");
+    const loadDocument = vi.fn(async (_c: string, artifact: string) => (artifact === "design.md" ? design : (docs[artifact] ?? null)));
+    render(<ChangeDetailPage {...(props({ loadDocument }) as never)} />);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /設計/ }));
+    await waitFor(() => expect(tiles()).toEqual(["決策 6", "目標／非目標 5 ／ 3", "風險與取捨 4", "開放問題 0"]));
+    expect(document.querySelectorAll("[data-risk]")).toHaveLength(4);
+  });
+
+  it("提案列為新能力的規格段不出「看正式規格」（封存前沒有正式規格），修改的能力照常", async () => {
+    const proposal = "## Capabilities\n\n### New Capabilities\n\n- `doc-views`: 新能力\n\n### Modified Capabilities\n\n- `desktop-app`: 改版\n";
+    const loadDocument = vi.fn(async (_c: string, artifact: string) =>
+      artifact === "proposal.md"
+        ? proposal
+        : artifact === "specs/doc-views/spec.md"
+          ? "## ADDED Requirements\n\n### Requirement: 新\n\n內文。\n"
+          : (docs[artifact] ?? null),
+    );
+    const loadCapabilities = vi.fn().mockResolvedValue(["desktop-app", "doc-views"]);
+    render(<ChangeDetailPage {...(props({ loadDocument, loadCapabilities, onOpenSpec: vi.fn() }) as never)} />);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /規格/ }));
+    await waitFor(() => expect(document.querySelector('[data-spec-cap="doc-views"]')).toBeTruthy());
+    expect(document.querySelector('[data-spec-cap="doc-views"]')!.textContent).not.toContain("看正式規格");
+    expect(within(document.querySelector('[data-spec-cap="desktop-app"]') as HTMLElement).getByRole("button", { name: "看正式規格" })).toBeTruthy();
+  });
+
+  it("規格文件能力頭的「看正式規格」交宿主開規格詳情頁", async () => {
+    const onOpenSpec = vi.fn();
+    render(<ChangeDetailPage {...(props({ onOpenSpec }) as never)} />);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /規格/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "看正式規格" }));
+    expect(onOpenSpec).toHaveBeenCalledWith("desktop-app");
   });
 });
 

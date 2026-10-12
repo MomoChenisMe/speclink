@@ -7,10 +7,11 @@ import { render as rtlRender, screen, waitFor, fireEvent, within, cleanup, act }
 import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 
-import { I18nProvider } from "../i18n";
+import { I18nProvider, MESSAGES } from "../i18n";
 import { ChangeDetailPage, type ChangeDetailPageProps } from "../components/ChangeDetailPage";
 import type { ChangeItem, DeltaOperation } from "../adapter";
 import { DELTA_COLORS } from "../components/DeltaBadges";
+import { planSummary } from "../components/PlanDoc";
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider locale="zh-TW">{children}</I18nProvider>
@@ -421,5 +422,88 @@ describe("排程分頁", () => {
     expect(within(screen.getByRole("tabpanel")).getByText("此模式尚未提供排程資訊")).toBeTruthy();
     expect(document.querySelector("[data-plan-section]")).toBeNull();
     expect(screen.queryByRole("combobox", { name: "新增前置" })).toBeNull();
+  });
+});
+
+// spec「詳情頁的排程分頁」的籤槽、數字磚與兩態提示框（desktop-change-doc-views design D7）。
+describe("排程文件的籤、數字磚與提示框", () => {
+  const t = (key: string) => MESSAGES["zh-TW"][key] ?? key;
+  const show = (node: ReactNode) => render(<>{node}</>).container;
+  const empty: ChangeItem = {
+    name: "add-z",
+    ...base,
+    wave: 1,
+    blockedBy: [],
+    dependsOn: [],
+    overlaps: [],
+    requirementOverlap: [],
+    archiveAfter: [],
+  };
+
+  it("排程分頁四段的資料：籤「等 1 項」、磚 2／1／1／1、warning 標題「等 1 項前置，封存前要等 1 個變更」並列出名稱", () => {
+    const summary = planSummary(changes[2], t);
+    expect(show(summary.badges).textContent).toBe("等 1 項");
+    expect(summary.tiles.map((x) => [x.label, x.value])).toEqual([
+      ["波次", 2],
+      ["宣告的前置", 1],
+      ["同名需求重疊", 1],
+      ["封存前要等", 1],
+    ]);
+    cleanup();
+    const callout = show(summary.callout);
+    expect(callout.querySelector(".markdown-alert-title")!.textContent).toBe("等 1 項前置，封存前要等 1 個變更");
+    expect(callout.firstElementChild!.className).toContain("bg-status-warning/10");
+    expect(callout.textContent).toContain("add-a");
+    expect(callout.textContent).toContain("add-b");
+    expect(callout.textContent).toContain("排程會在看板刷新時重算。");
+  });
+
+  it("全空資料：籤「可以開工」、tip 標題「可以開工，也可直接封存」", () => {
+    const summary = planSummary(empty, t);
+    expect(show(summary.badges).textContent).toBe("可以開工");
+    expect(summary.tiles.map((x) => x.value)).toEqual([1, 0, 0, 0]);
+    cleanup();
+    const callout = show(summary.callout);
+    expect(callout.querySelector(".markdown-alert-title")!.textContent).toBe("可以開工，也可直接封存");
+    expect(callout.firstElementChild!.className).toContain("bg-status-success/10");
+  });
+
+  // Example「提示框標題的兩個子句」。
+  it.each([
+    [[], [], false, "可以開工，也可直接封存", "success"],
+    [["add-a"], [], false, "等 1 項前置，可直接封存", "warning"],
+    [[], ["add-b"], false, "可以開工，封存前要等 1 個變更", "warning"],
+    [["add-a"], ["add-b"], false, "等 1 項前置，封存前要等 1 個變更", "warning"],
+    [[], [], true, "可以開工，有同名衝突要先改", "warning"],
+  ])("blockedBy %j、archiveAfter %j、衝突 %s → %s", (blockedBy, archiveAfter, conflict, title, tone) => {
+    const item: ChangeItem = {
+      ...empty,
+      blockedBy,
+      dependsOn: blockedBy,
+      archiveAfter,
+      requirementOverlap: conflict ? clash.requirementOverlap : [],
+    };
+    const callout = show(planSummary(item, t).callout);
+    expect(callout.querySelector(".markdown-alert-title")!.textContent).toBe(title);
+    expect(callout.firstElementChild!.className).toContain(`bg-status-${tone}/10`);
+  });
+
+  it("缺 wave 時籤、磚與提示框皆空；頁上無 data-doc-tiles 與 data-doc-callout", async () => {
+    const bare: ChangeItem = { name: "add-c", ...base };
+    expect(planSummary(bare, t)).toEqual({ badges: null, tiles: [], callout: null });
+    await openPlanTab(makeProps({ change: bare, changes: [bare] }));
+    expect(document.querySelector("[data-doc-tiles]")).toBeNull();
+    expect(document.querySelector("[data-doc-callout]")).toBeNull();
+  });
+
+  it("四張卡頭為 16px 粗體標題並進本頁目錄；重疊卡與封存順序卡右端附筆數籤", async () => {
+    await openPlanTab(makeProps());
+    for (const name of ["wave", "depends", "overlaps", "archive"]) {
+      const heading = header(name).querySelector("h3[data-doc-heading]") as HTMLElement;
+      expect(heading.className).toContain("text-base");
+      expect(heading.className).toContain("font-semibold");
+    }
+    expect(header("overlaps").lastElementChild!.textContent).toBe("1");
+    expect(header("archive").lastElementChild!.textContent).toBe("1");
   });
 });

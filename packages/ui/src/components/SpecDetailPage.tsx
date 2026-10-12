@@ -3,7 +3,7 @@ import { FileText, History } from "lucide-react";
 
 import type { ArchivedItem } from "../adapter";
 import { useI18n } from "../i18n";
-import { parseSpecSections, type SpecRequirement } from "../specSections";
+import { parseSpecSections } from "../specSections";
 import { parseTraceSources } from "../trace";
 import { settle, useGenerationLoad } from "../lib/useGenerationLoad";
 import { Badge } from "./ui/badge";
@@ -12,6 +12,7 @@ import { DetailContentCard, DetailHeader, DetailPageFrame, type DocumentTarget }
 import { ListRow } from "./ListRow";
 import { ManualToc } from "./ManualToc";
 import { Markdown } from "./Markdown";
+import { RequirementBlock } from "./RequirementBlock";
 import { SearchField } from "./SearchField";
 import { DocSkeleton } from "./skeletons";
 
@@ -32,9 +33,6 @@ export interface SpecDetailPageProps {
 
 type Doc = string | null | undefined;
 
-/** 「Requirement」小標：與需求文的 SHALL／MUST 關鍵字同款等寬灰底。 */
-const KW_LABEL_CLS = "shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground";
-
 /** 封存清單以變更名索引（同名取清單中的第一筆）。 */
 function archivedByName(archived: ArchivedItem[]): Map<string, ArchivedItem> {
   const byName = new Map<string, ArchivedItem>();
@@ -54,60 +52,33 @@ function traceItems(doc: Doc, byName: Map<string, ArchivedItem>) {
   return [...hits, ...items.filter((i) => !i.archived)];
 }
 
-/** 一條需求段：「Requirement」小標＋h2 標題＋右端來源錨點、需求文、左線縮排的 Scenario。 */
-function RequirementSection({
-  req,
+/** 需求段標題列右端的來源錨點：封存清單命中時可點開該封存變更。 */
+function TraceAnchor({
+  trace,
   byName,
   onOpenArchivedChange,
 }: {
-  req: SpecRequirement;
+  trace: { source: string; updated: string | null } | null;
   byName: Map<string, ArchivedItem>;
   onOpenArchivedChange?: (datedName: string) => void;
 }) {
   const { t } = useI18n();
-  const hit = req.trace ? byName.get(req.trace.source) : undefined;
-  const anchor = req.trace
-    ? [`${t("sdrawer.fromChanges")} ${req.trace.source}`, req.trace.updated].filter(Boolean).join(" · ")
-    : null;
-  return (
-    <section data-requirement className="border-t border-border/70 pt-4">
-      <div className="flex min-w-0 items-start gap-2">
-        <span data-requirement-label className={KW_LABEL_CLS}>
-          {t("sdetail.requirementLabel")}
-        </span>
-        <h2 data-spec-heading className="min-w-0 flex-1 text-[15px] font-semibold leading-snug">
-          {req.title}
-        </h2>
-        {anchor &&
-          (hit ? (
-            <button
-              type="button"
-              data-trace-anchor
-              className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground hover:underline"
-              onClick={() => onOpenArchivedChange?.(hit.datedName)}
-            >
-              {anchor}
-            </button>
-          ) : (
-            <span data-trace-anchor className="shrink-0 text-[11px] text-muted-foreground">
-              {anchor}
-            </span>
-          ))}
-      </div>
-      {req.body && (
-        <div className="mt-2">
-          <Markdown content={req.body} specKeywords />
-        </div>
-      )}
-      {req.scenarios.map((s, i) => (
-        <div key={i} data-scenario className="mt-2.5 border-l-2 border-border pl-4">
-          <div className="mb-1 text-xs font-semibold text-muted-foreground">
-            {t("sdetail.scenarioLabel").replace("{title}", s.title)}
-          </div>
-          <Markdown content={s.body} specKeywords />
-        </div>
-      ))}
-    </section>
+  if (!trace) return null;
+  const hit = byName.get(trace.source);
+  const anchor = [`${t("sdrawer.fromChanges")} ${trace.source}`, trace.updated].filter(Boolean).join(" · ");
+  return hit ? (
+    <button
+      type="button"
+      data-trace-anchor
+      className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+      onClick={() => onOpenArchivedChange?.(hit.datedName)}
+    >
+      {anchor}
+    </button>
+  ) : (
+    <span data-trace-anchor className="shrink-0 text-[11px] text-muted-foreground">
+      {anchor}
+    </span>
   );
 }
 
@@ -256,11 +227,12 @@ function SpecDetailView({
                     <p className="py-2 text-sm text-muted-foreground">{t("sdetail.noMatch")}</p>
                   ) : (
                     visible.map((r, i) => (
-                      <RequirementSection
+                      <RequirementBlock
                         key={`${i}:${r.title}`}
                         req={r}
-                        byName={byName}
-                        onOpenArchivedChange={onOpenArchivedChange}
+                        anchor={
+                          <TraceAnchor trace={r.trace} byName={byName} onOpenArchivedChange={onOpenArchivedChange} />
+                        }
                       />
                     ))
                   )}

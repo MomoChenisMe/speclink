@@ -35,10 +35,12 @@
   --ring: oklch(0.62 0.1 192);
   /* 專案欄底（neutral-50） */
   --sidebar: oklch(0.985 0 0);
-  /* 狀態語意：進行中 sky-600、成功 emerald-600、警示 amber-600；錯誤沿用 --destructive */
+  /* 狀態語意：進行中 sky-600、成功 emerald-600、警示 amber-600；錯誤沿用 --destructive；
+     待手動為暖黃（便利貼黃，與警示琥珀相差約 30 度色相） */
   --status-progress: oklch(58.8% 0.158 241.966);
   --status-success: oklch(59.6% 0.145 163.225);
   --status-warning: oklch(66.6% 0.179 58.318);
+  --status-manual: oklch(60% 0.13 92);
   /* 品質站蓋章專屬 violet-600、改進標示 indigo-600 */
   --stamp: oklch(54.1% 0.281 293.009);
   --improve: oklch(51.1% 0.262 276.966);
@@ -91,6 +93,7 @@
     --status-progress: oklch(74.6% 0.16 232.661);
     --status-success: oklch(76.5% 0.177 163.223);
     --status-warning: oklch(76.9% 0.188 70.08);
+    --status-manual: oklch(84% 0.15 96);
     --stamp: oklch(70.2% 0.183 293.541);
     --improve: oklch(67.3% 0.182 276.935);
     --stage-discussion: oklch(74% 0.238 322.16);
@@ -122,6 +125,7 @@
   --status-progress: oklch(74.6% 0.16 232.661);
   --status-success: oklch(76.5% 0.177 163.223);
   --status-warning: oklch(76.9% 0.188 70.08);
+  --status-manual: oklch(84% 0.15 96);
   --stamp: oklch(70.2% 0.183 293.541);
   --improve: oklch(67.3% 0.182 276.935);
   --stage-discussion: oklch(74% 0.238 322.16);
@@ -148,6 +152,7 @@
   --color-status-progress: var(--status-progress);
   --color-status-success: var(--status-success);
   --color-status-warning: var(--status-warning);
+  --color-status-manual: var(--status-manual);
   --color-stamp: var(--stamp);
   --color-improve: var(--improve);
   --color-stage-discussion: var(--stage-discussion);

@@ -10,6 +10,7 @@ import {
 import { code } from "@streamdown/code";
 
 import { useI18n } from "../i18n";
+import { cn } from "../lib/utils";
 import { rehypeSpecKeywords } from "../specSections";
 import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
 import { CALLOUT_BOX_CLS, CALLOUT_TITLE_CLS, CALLOUT_TONE, type CalloutTone } from "./ui/callout";
@@ -26,6 +27,8 @@ export interface MarkdownProps {
   empty?: string;
   /** 以等寬灰底標示 SHALL／MUST 關鍵字（規格詳情頁的需求文與 Scenario）。 */
   specKeywords?: boolean;
+  /** 合進外層 `.markdown` 容器（如列內行內排版的 `[&_p]:my-0`）；與預設衝突的 class 以後者為準。 */
+  className?: string;
 }
 
 /** GitHub Alert 四型（desktop-manual-page spec「Markdown 的 GitHub Alert 提示框」）
@@ -158,7 +161,7 @@ function remarkGithubAlerts(labels: Record<AlertType, string>) {
  * 行寬上限 96ch（≈48 全形字 @16px）——抽屜全螢幕時行寬不隨之增長（spec
  * 「markdown 文件內容行寬有上限」）；寬表格由 Streamdown 的表格容器橫捲。
  * GitHub Alert（`> [!NOTE]` 等四型）恆開、對所有 Markdown 檢視生效。 */
-export function Markdown({ content, empty, specKeywords = false }: MarkdownProps) {
+export function Markdown({ content, empty, specKeywords = false, className }: MarkdownProps) {
   const { t } = useI18n();
   // Streamdown 的區塊 memo 逐一比對屬性物件是否同一個：固定設定放模組層，隨語系變動的用 useMemo。
   const remarkPlugins = useMemo(
@@ -183,7 +186,7 @@ export function Markdown({ content, empty, specKeywords = false }: MarkdownProps
     return <div className="text-muted-foreground text-sm py-6">{empty ?? t("common.noContent")}</div>;
   }
   return (
-    <div className="markdown max-w-[96ch]">
+    <div className={cn("markdown max-w-[96ch]", className)}>
       <Streamdown
         mode="static"
         remarkPlugins={remarkPlugins}
