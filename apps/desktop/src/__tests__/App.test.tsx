@@ -1999,6 +1999,10 @@ describe("手冊頁接線（desktop-manual-page）", () => {
     fireEvent.click(within(projectColumn()).getByRole("button", { name: "手冊" }));
     await screen.findByText("系統匣內文。");
     const header = document.querySelector("[data-manual-card] [data-doc-header]") as HTMLElement;
+    // 出處行首段是 core 解析的同一相對路徑。
+    await waitFor(() =>
+      expect(header.querySelector("[data-doc-provenance]")!.textContent).toContain("openspec/manual/tray.md"),
+    );
     const u = userEvent.setup({ pointerEventsCheck: 0 });
     await u.click(within(header).getByRole("button", { name: /開啟/ }));
     // 出處行也有同一路徑：首列只在選單內找。
@@ -2022,7 +2026,18 @@ describe("手冊頁接線（desktop-manual-page）", () => {
         .fn()
         .mockResolvedValue("# desktop-app Specification\n\n## Purpose\n\n目的。\n\n### Requirement: 甲\n\n正典內文段落。\n"),
     });
-    renderApp(ds);
+    // 專案改過 spec 目錄名：出處行照 core 解析的實際相對路徑顯示。
+    const fsActions: FsActionsAdapter = {
+      reveal: vi.fn().mockResolvedValue(undefined),
+      openDefault: vi.fn().mockResolvedValue(undefined),
+      openTerminal: vi.fn().mockResolvedValue(undefined),
+      openEditor: vi.fn().mockResolvedValue(undefined),
+      copyText: vi.fn().mockResolvedValue(undefined),
+      locate: vi
+        .fn()
+        .mockResolvedValue({ path: "/work/app/docs/specs/specs/desktop-app/spec.md", relative: "docs/specs/specs/desktop-app/spec.md" }),
+    };
+    renderApp(ds, { fsActions });
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     fireEvent.click(within(projectColumn()).getByRole("button", { name: "規格" }));
     fireEvent.click(await screen.findByText("desktop-app"));
@@ -2035,6 +2050,10 @@ describe("手冊頁接線（desktop-manual-page）", () => {
     expect(nodes).toEqual([expect.stringContaining("規格"), expect.stringContaining("溯源")]);
     expect(within(tree).getByRole("tablist").getAttribute("aria-orientation")).toBe("vertical");
     expect(shell.querySelector("[data-detail-toc]")).toBeTruthy();
+    await waitFor(() =>
+      expect(shell.querySelector("[data-doc-provenance]")!.textContent).toContain("docs/specs/specs/desktop-app/spec.md"),
+    );
+    expect(fsActions.locate).toHaveBeenCalledWith("A", { spec: "desktop-app" });
   });
 
   it("手冊頁開著時 workspace-changed 觸發索引重取與目前頁內文重載", async () => {

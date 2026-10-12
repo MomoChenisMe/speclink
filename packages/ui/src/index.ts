@@ -284,14 +284,11 @@ export {
 export { SpecList, sortSpecs, type SpecListProps } from "./components/SpecList";
 export { SpecDetailPage, type SpecDetailPageProps } from "./components/SpecDetailPage";
 export {
-  PURPOSE_TBD_PREFIX,
   parseSpecSections,
   type SpecRequirement,
   type SpecScenario,
   type SpecSections,
 } from "./specSections";
-export { specStats, specTiles, traceTiles } from "./specSummary";
 
 // 手冊頁（desktop-manual-page）
 export { ManualPage, type ManualPageProps } from "./components/ManualPage";
-export { countHeadings } from "./manualDoc";

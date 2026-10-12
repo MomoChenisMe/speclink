@@ -6,8 +6,8 @@ import { useI18n } from "../i18n";
 import { cn } from "../lib/utils";
 import { countHeadings, manualLinkSlug, splitLeadingHeading, stripSourcesLine } from "../manualDoc";
 import { parseSpecSections } from "../specSections";
-import { specStats, type TracePoint } from "../specSummary";
-import type { DocumentTarget } from "./DetailHeader";
+import { calendarDay, traceSpan, type TracePoint } from "../specSummary";
+import type { DocumentRef, DocumentTarget } from "./DetailHeader";
 import { DocBody, DocHeader, DocTiles, type DocTile } from "./DetailShell";
 import { InlineMarks } from "./DocParts";
 import { ManualToc } from "./ManualToc";
@@ -41,6 +41,8 @@ export interface ManualPageProps {
   refreshGen?: number;
   /** 閱讀卡標題列右端的文件動作（「開啟 ▾」，對應 `openspec/manual/<slug>.md`）；未傳時缺席。 */
   renderDocumentActions?: (target: DocumentTarget | null) => ReactNode;
+  /** 頁檔的實際相對路徑（宿主向 core 查詢，跟著專案的 spec 目錄名走）：出處行首段；缺席或查無時該段缺席。 */
+  locateDocument?: (doc: DocumentRef) => Promise<{ relative: string } | null>;
   /** 讀一份正式規格全文：過期提示框取各出處規格的最近 @trace；缺席或失敗時該行退回不帶日期的句子。 */
   loadSpec?: (capability: string) => Promise<string | null>;
 }
@@ -135,6 +137,7 @@ export function ManualPage({
   capabilities,
   refreshGen,
   renderDocumentActions,
+  locateDocument,
   loadSpec,
 }: ManualPageProps) {
   const { t } = useI18n();
@@ -142,6 +145,7 @@ export function ManualPage({
   const [selected, setSelected] = useState<string | null>(null);
   const [doc, setDoc] = useState<LoadedDoc | null>(null);
   const [staleSources, setStaleSources] = useState<StaleSources | null>(null);
+  const [location, setLocation] = useState<{ slug: string; relative: string } | null>(null);
   // 內文與過期提示框載入的 latest-wins 序號；載入函式以 ref 持有，宿主每次渲染換 lambda 不重載。
   const seq = useRef(0);
   const staleSeq = useRef(0);
@@ -149,6 +153,8 @@ export function ManualPage({
   loadPageRef.current = loadPage;
   const loadSpecRef = useRef(loadSpec);
   loadSpecRef.current = loadSpec;
+  const locateRef = useRef(locateDocument);
+  locateRef.current = locateDocument;
 
   const pages = index?.present ? index.pages : [];
   // 目前頁由索引現況推導：選定頁消失（外部刪除、索引重載）即回首頁。
@@ -179,17 +185,43 @@ export function ManualPage({
     );
   }, [currentSlug, refreshGen]);
 
+  // 出處行首段的頁檔路徑：換頁向 core 查一次（頁檔位置不隨內文重載而變）；換頁或卸載作廢在途回應。
+  // 索引清空（切換 workspace）時丟掉舊路徑：新專案的同名頁在自己的位置查到前不得沿用。
+  useEffect(() => {
+    const locate = locateRef.current;
+    if (!currentSlug || !locate) {
+      setLocation(null);
+      return;
+    }
+    let live = true;
+    void locate({ manual: currentSlug }).then(
+      (found) => {
+        if (live) setLocation(found && { slug: currentSlug, relative: found.relative });
+      },
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [currentSlug]);
+
   // 過期提示框（design D6）：只在索引判為過期時讀各出處規格全文，取其最近 @trace；換頁作廢、
-  // latest-wins。過期與否只看索引的 stale，不在這裡重判。
+  // latest-wins。過期與否只看索引的 stale，不在這裡重判。sourceNames 每次渲染都是新陣列，
+  // effect 依賴改用換行相接的字串（capability 名為 kebab-case、不含換行），內容不變就不重讀。
   const staleSlug = current?.stale ? current.slug : null;
   const staleCaps = current?.stale ? sourceNames.join("\n") : "";
   useEffect(() => {
     const mine = ++staleSeq.current;
     const load = loadSpecRef.current;
-    if (!staleSlug || !load) return;
+    if (!staleSlug || !load) {
+      // 離開過期頁或索引清空（切換 workspace）：丟掉上一份出處日期——新專案的同名過期頁
+      // 在自己的規格讀完前不得沿用。
+      setStaleSources(null);
+      return;
+    }
     const read = (cap: string) =>
       load(cap).then(
-        (md) => [cap, md ? specStats(parseSpecSections(md), []).latest : null] as const,
+        (md) => [cap, md ? traceSpan(parseSpecSections(md)).latest : null] as const,
         () => [cap, null] as const,
       );
     void Promise.all(staleCaps.split("\n").filter(Boolean).map(read)).then((entries) => {
@@ -267,7 +299,7 @@ export function ManualPage({
                 {latest
                   ? t("manual.staleCalloutSource")
                       .replace("{cap}", cap)
-                      .replace("{date}", latest.updated.slice(0, 10))
+                      .replace("{date}", calendarDay(latest.updated))
                       .replace("{change}", latest.source)
                   : t("manual.staleCalloutSourceUnknown").replace("{cap}", cap)}
               </li>
@@ -328,7 +360,7 @@ export function ManualPage({
                 }
                 actions={renderDocumentActions?.({ doc: { manual: current.slug }, content: loaded?.body ?? null })}
                 provenance={[
-                  <span className="font-mono">{`openspec/manual/${current.slug}.md`}</span>,
+                  location?.slug === current.slug && <span className="font-mono">{location.relative}</span>,
                   current.generated && (
                     <span data-manual-generated>{t("manual.generatedAt").replace("{generated}", current.generated)}</span>
                   ),

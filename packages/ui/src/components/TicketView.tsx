@@ -193,14 +193,14 @@ function RoundBlock({ round, defaultOpen }: { round: TicketRound; defaultOpen: b
     t("ticket.findings").replace("{n}", String(round.findings.length)),
   ].filter(Boolean);
   return (
-    <li data-ticket-round={round.index} className="rounded-md border border-border/60 bg-muted/20">
+    <li data-ticket-round={round.index} className="overflow-hidden rounded-md border border-border/60 bg-muted/20">
       <button
         type="button"
         data-ticket-round-header
         data-ticket-round-toggle
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-left"
+        className="flex w-full cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-left transition-colors hover:bg-foreground/5"
       >
         {open ? (
           <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />

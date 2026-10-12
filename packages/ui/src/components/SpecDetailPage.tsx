@@ -1,11 +1,11 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FileText, History } from "lucide-react";
 
 import type { ArchivedItem } from "../adapter";
 import { useI18n } from "../i18n";
 import { cn } from "../lib/utils";
 import { parseSpecSections } from "../specSections";
-import { specStats, specTiles, traceTiles } from "../specSummary";
+import { calendarDay, specStats, specTiles, traceTiles } from "../specSummary";
 import { parseTraceSources } from "../trace";
 import { settle, useGenerationLoad } from "../lib/useGenerationLoad";
 import { Badge, badgeVariants } from "./ui/badge";
@@ -13,7 +13,7 @@ import { Callout } from "./ui/callout";
 import { Card } from "./ui/card";
 import { StatusPill } from "./ui/status-pill";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { StatusRow, type DocumentTarget } from "./DetailHeader";
+import { StatusRow, type DocumentRef, type DocumentTarget } from "./DetailHeader";
 import { DetailIdentity, DetailShell, DetailStatus, DetailTreeLabel, DocBody, DocHeader, DocTiles } from "./DetailShell";
 import { InlineMarks, Lead, SECTION_HEADING_CLS } from "./DocParts";
 import { ListRow } from "./ListRow";
@@ -35,6 +35,9 @@ export interface SpecDetailPageProps {
   onOpenArchivedChange?: (datedName: string) => void;
   /** 「規格」閱讀卡標題列右端的文件動作（「開啟 ▾」，對應 spec.md）；溯源文件不對應檔案、不放。 */
   renderDocumentActions?: (target: DocumentTarget | null) => ReactNode;
+  /** spec.md 的實際相對路徑（宿主向 core 查詢，跟著專案的 spec 目錄名走）：出處行首段與 Purpose 待補
+   * 提示框引用它；缺席或查無時出處行不列路徑、提示框改用不帶路徑的說法。 */
+  locateDocument?: (doc: DocumentRef) => Promise<{ relative: string } | null>;
 }
 
 type Doc = string | null | undefined;
@@ -100,9 +103,6 @@ export function SpecDetailPage(props: SpecDetailPageProps) {
   return <SpecDetailView key={props.capability} {...props} capability={props.capability} />;
 }
 
-/** 數字磚與出處行的日期只取日曆日。 */
-const calendarDay = (updated: string) => updated.slice(0, 10);
-
 function SpecDetailView({
   capability,
   refreshGen,
@@ -110,11 +110,15 @@ function SpecDetailView({
   archivedChanges,
   onOpenArchivedChange,
   renderDocumentActions,
+  locateDocument,
 }: SpecDetailPageProps & { capability: string }) {
   const { t } = useI18n();
   const [doc, setDoc] = useState<Doc>();
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState("spec");
+  const [docPath, setDocPath] = useState<string | null>(null);
+  // 需求段每次展開／收合都遞增：進 tocKey 讓右欄目錄重掃，展開後才渲染的內文子標題補進目錄。
+  const [toggles, setToggles] = useState(0);
   const bodyRef = useRef<HTMLDivElement>(null);
 
   // 開啟全量載入；外部世代重載不清空、回應到達後單次替換（不重置捲動與搜尋）。
@@ -130,10 +134,9 @@ function SpecDetailView({
   const sections = doc ? parseSpecSections(doc) : null;
   const byName = archivedByName(archivedChanges ?? []);
   const sources = traceItems(doc, byName);
-  const stats = specStats(sections, sources);
+  const stats = specStats(sections, sources.length);
   const needle = query.trim().toLowerCase();
   const visible = (sections?.requirements ?? []).filter((r) => r.title.toLowerCase().includes(needle));
-  const docPath = `openspec/specs/${capability}/spec.md`;
   const updatedLine =
     stats.latest &&
     t("sdetail.metaUpdated").replace("{date}", calendarDay(stats.latest.updated)).replace("{change}", stats.latest.source);
@@ -144,6 +147,22 @@ function SpecDetailView({
       </Badge>
     );
   const showTrace = () => setTab("trace");
+
+  // 換目標以 key 重掛，掛載時向 core 查一次 spec.md 的位置；卸載作廢在途回應。
+  const locateRef = useRef(locateDocument);
+  locateRef.current = locateDocument;
+  useEffect(() => {
+    let live = true;
+    void locateRef.current?.({ spec: capability }).then(
+      (found) => {
+        if (live && found) setDocPath(found.relative);
+      },
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [capability]);
 
   const tree = (
     <>
@@ -238,7 +257,9 @@ function SpecDetailView({
       {stats.purposeTbd && (
         <Callout data-callout="purpose-tbd" tone="warning" title={t("specs.purposeTbd")} className="my-0">
           <p className="text-sm">
-            <InlineMarks text={t("sdetail.purposeTbdBody").replace("{path}", docPath)} />
+            <InlineMarks
+              text={docPath ? t("sdetail.purposeTbdBody").replace("{path}", docPath) : t("sdetail.purposeTbdBodyNoPath")}
+            />
           </p>
         </Callout>
       )}
@@ -262,7 +283,7 @@ function SpecDetailView({
         data-spec-detail
         tree={tree}
         activeDoc={tab}
-        tocKey={`${tab}\u0000${doc ?? ""}\u0000${needle}`}
+        tocKey={`${tab}\u0000${doc ?? ""}\u0000${needle}\u0000${toggles}`}
         bodyRef={bodyRef}
       >
         <TabsContent value="spec">
@@ -276,7 +297,7 @@ function SpecDetailView({
                   {renderDocumentActions?.({ doc: { spec: capability }, content: doc ?? null })}
                 </div>
               }
-              provenance={[<span className="font-mono">{docPath}</span>, t("sdetail.canonical"), updatedLine]}
+              provenance={[docPath && <span className="font-mono">{docPath}</span>, t("sdetail.canonical"), updatedLine]}
             />
             <DocTiles tiles={specTiles(stats, t)} />
             {callouts}
@@ -311,7 +332,7 @@ function SpecDetailView({
                       <RequirementBlock
                         key={`${i}:${r.title}`}
                         req={r}
-                        collapse={{ defaultOpen: i === 0 }}
+                        collapse={{ defaultOpen: i === 0, onToggle: () => setToggles((n) => n + 1) }}
                         anchor={
                           <TraceAnchor trace={r.trace} byName={byName} onOpenArchivedChange={onOpenArchivedChange} />
                         }
