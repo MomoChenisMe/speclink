@@ -1186,7 +1186,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
 
     fireEvent.click(settingsGear());
     // 設定模式左側恆為圖示列加設定分類欄（零專案亦然；spec「零分頁仍可進入應用程式設定」）。
-    expect(within(settingsColumn()).getAllByRole("button")).toHaveLength(6);
+    expect(within(settingsColumn()).getAllByRole("button")).toHaveLength(5);
     expect(screen.queryByText("開啟一個專案開始")).toBeNull();
     expect(settingsGear().className).toContain("bg-primary");
     expect(leftSide().className).toContain("w-[256px]");
@@ -1710,7 +1710,7 @@ describe("main content scroll containment（主內容區捲動約束）", () => 
 });
 
 describe("側欄無常駐版號（desktop-app 規格「側欄導覽結構」）", () => {
-  it("注入 updater 面時側欄任何位置仍無版號文字；app 版號唯一住所為設定頁軟體更新卡", async () => {
+  it("注入 updater 面時側欄任何位置仍無版號文字；app 版號在設定的更新頁版本卡", async () => {
     const ws = fakeWorkspace();
     ws.openProject = vi.fn().mockResolvedValue({ status: "project", root: "A", name: "proj-a" });
     render(
@@ -1724,8 +1724,10 @@ describe("側欄無常駐版號（desktop-app 規格「側欄導覽結構」）"
     await waitFor(() => expect(settingsGear()).toBeTruthy());
     expect(aside.textContent).not.toContain("v0.1.0");
 
-    // 一般頁軟體更新卡仍顯示目前版本。
+    // 更新頁版本卡顯示目前版本（一般頁不再重複）。
     fireEvent.click(settingsGear());
+    expect(screen.queryByRole("group", { name: "目前版本" })).toBeNull();
+    fireEvent.click(within(settingsColumn()).getByRole("button", { name: "更新" }));
     await waitFor(() =>
       expect(within(screen.getByRole("group", { name: "目前版本" })).getByText("0.1.0")).toBeTruthy(),
     );
@@ -2217,14 +2219,15 @@ describe("更新日誌彈窗接線（desktop-app「更新日誌彈窗」）", ()
     expect(localStorage.getItem(KEY)).toBeNull();
   });
 
-  it("設定頁「更新日誌」開瀏覽模式，關閉後已看過記錄不變", async () => {
+  it("更新頁「全部更新日誌」開瀏覽模式，關閉後已看過記錄不變", async () => {
     localStorage.setItem(KEY, TOP);
     renderWithUpdater();
     const aside = (await screen.findByTestId("left-titlebar")).parentElement as HTMLElement;
     await waitFor(() => expect(settingsGear()).toBeTruthy());
     fireEvent.click(settingsGear());
-    const notesRow = await screen.findByRole("group", { name: "更新日誌" });
-    fireEvent.click(within(notesRow).getByRole("button", { name: "檢視" }));
+    fireEvent.click(within(settingsColumn()).getByRole("button", { name: "更新" }));
+    const notesCard = await screen.findByRole("region", { name: "更新日誌" });
+    fireEvent.click(within(notesCard).getByRole("button", { name: "全部更新日誌" }));
     const dialog = await screen.findByTestId("release-notes-dialog");
     expect(within(dialog).getByText("更新日誌")).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "關閉" }));
@@ -2518,10 +2521,9 @@ describe("macOS 原生選單接線（desktop-app「macOS 原生選單」）", ()
   it("Scenario「選單關於直達頁」：dispatch(\"about\") 進設定模式的關於頁，分類欄關於為作用中、品牌卡帶版本列", async () => {
     const loadAppInfo = vi.fn().mockResolvedValue({
       appVersion: "0.8.0",
-      engineVersion: "0.8.0",
+      engineVersion: "v1.44.0",
       platform: "macOS",
       arch: "arm64",
-      assetsVersion: "v1.44.0",
     });
     renderApp(fakeDataSource(), { loadAppInfo });
     await screen.findByText("desktop-shell-and-browser");
@@ -2531,22 +2533,22 @@ describe("macOS 原生選單接線（desktop-app「macOS 原生選單」）", ()
     expect(within(column).getByRole("button", { name: "關於 Speclink" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("heading", { level: 2, name: "關於 Speclink" })).toBeTruthy();
     const brand = screen.getByTestId("about-brand");
-    expect(await within(brand).findByText("0.8.0 · 引擎 0.8.0 · macOS arm64")).toBeTruthy();
+    expect(await within(brand).findByText("0.8.0 · 引擎 v1.44.0 · macOS arm64")).toBeTruthy();
     expect(within(brand).getByText("一套 SDD Engine，支援 Local Repo 與 Remote Store")).toBeTruthy();
     expect(loadAppInfo).toHaveBeenCalledTimes(1);
   });
 
-  it("Scenario「版本列的更新狀態與上次檢查」：關於頁檢查更新後狀態籤為已是最新、上次檢查為剛剛，更新頁同步", async () => {
+  it("Scenario「版本列狀態籤與更新頁同步並可點入」：更新頁檢查後切到關於頁，狀態籤為已是最新，點籤進更新頁", async () => {
     const updater = { check: vi.fn().mockResolvedValue(null), relaunch: vi.fn() };
     renderApp(fakeDataSource(), { updater });
     await screen.findByText("desktop-shell-and-browser");
-    act(() => menuDeps().dispatch("about"));
-    const checkRow = screen.getByRole("group", { name: "檢查更新" });
-    fireEvent.click(within(checkRow).getByRole("button", { name: "檢查更新" }));
-    expect(await within(screen.getByTestId("about-brand")).findByText("已是最新")).toBeTruthy();
-    expect(within(screen.getByRole("group", { name: "檢查更新" })).getByText("上次檢查：剛剛")).toBeTruthy();
+    act(() => menuDeps().dispatch("checkUpdates"));
+    expect(await within(screen.getByRole("group", { name: "最新版本" })).findByText("已是最新")).toBeTruthy();
     const column = screen.getByRole("navigation", { name: "設定分類" });
-    fireEvent.click(within(column).getByRole("button", { name: "更新" }));
+    fireEvent.click(within(column).getByRole("button", { name: "關於 Speclink" }));
+    expect(screen.queryByRole("group", { name: "檢查更新" })).toBeNull();
+    fireEvent.click(within(screen.getByTestId("about-brand")).getByRole("button", { name: "更新狀態：已是最新" }));
+    expect(crumbText()).toBe("設定/更新");
     expect(within(screen.getByRole("group", { name: "最新版本" })).getByText("已是最新")).toBeTruthy();
   });
 

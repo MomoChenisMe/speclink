@@ -4,7 +4,6 @@ import {
   FileCog,
   FileText,
   Info,
-  Languages,
   ListChecks,
   RefreshCw,
   Server,
@@ -15,7 +14,7 @@ import {
 } from "lucide-react";
 
 export interface AppSettingsCategory {
-  id: "general" | "appearance" | "updates" | "cli" | "servers" | "about";
+  id: "general" | "updates" | "cli" | "servers" | "about";
   labelKey: string;
   icon: LucideIcon;
   /** app＝「應用程式」群組；about＝其後的「關於」群組（desktop-about-page design D4）。 */
@@ -43,22 +42,7 @@ export const APP_SETTINGS_CATEGORIES: AppSettingsCategory[] = [
     labelKey: "settings.section.general",
     icon: Settings2,
     group: "app",
-    rows: [
-      "settings.displayLanguage",
-      "settings.appearance",
-      "updater.currentVersion",
-      "updater.check",
-      "releaseNotes.open",
-      "cliInstall.rowLabel",
-      "settings.shortcutsTitle",
-    ],
-  },
-  {
-    id: "appearance",
-    labelKey: "settings.section.appearance",
-    icon: Languages,
-    group: "app",
-    rows: ["settings.displayLanguage", "settings.appearance"],
+    rows: ["settings.displayLanguage", "settings.appearance", "settings.shortcutsTitle"],
   },
   {
     id: "updates",
@@ -99,8 +83,6 @@ export const APP_SETTINGS_CATEGORIES: AppSettingsCategory[] = [
     icon: Info,
     group: "about",
     rows: [
-      "updater.check",
-      "releaseNotes.open",
       "about.copyInfo",
       "about.source",
       "about.docs",

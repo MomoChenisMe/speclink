@@ -164,7 +164,7 @@ pub fn update_assets_at(path: &Path) -> Result<serde_json::Value, String> {
 }
 
 /// 關於頁的版本資訊（desktop-about-page design D1）：一次回齊，前端不自行拼湊。
-/// 引擎版號＝speclink-core 的 crate 版本；技能檔版本＝`ASSET_VERSION`；平台與架構為
+/// 引擎版號＝`ASSET_VERSION`（與 CLI `--version` 的 engine 同一個值）；平台與架構為
 /// 顯示文字（macOS／Windows／Linux、arm64／x64），複製版本資訊與回報問題網址照用。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -173,17 +173,15 @@ pub struct AppInfo {
     pub engine_version: String,
     pub platform: String,
     pub arch: String,
-    pub assets_version: String,
 }
 
 /// `app_version` 由 Tauri 殼帶入（`package_info().version`）。
 pub fn app_info(app_version: &str) -> AppInfo {
     AppInfo {
         app_version: app_version.to_string(),
-        engine_version: speclink_core::VERSION.to_string(),
+        engine_version: speclink_core::init::ASSET_VERSION.to_string(),
         platform: platform_label(std::env::consts::OS).to_string(),
         arch: arch_label(std::env::consts::ARCH).to_string(),
-        assets_version: speclink_core::init::ASSET_VERSION.to_string(),
     }
 }
 
@@ -220,11 +218,11 @@ mod tests {
     // --- 關於頁的版本資訊（desktop-about-page design D1） ---
 
     #[test]
-    fn app_info_reports_engine_and_assets_versions_from_speclink_core() {
+    fn app_info_engine_version_matches_cli_engine() {
+        // 與 CLI `--version` 的「engine vX.Y.Z」同一個值。
         let info = app_info("0.8.0");
         assert_eq!(info.app_version, "0.8.0");
-        assert_eq!(info.engine_version, speclink_core::VERSION);
-        assert_eq!(info.assets_version, speclink_core::init::ASSET_VERSION);
+        assert_eq!(info.engine_version, speclink_core::init::ASSET_VERSION);
         assert_eq!(info.platform, platform_label(std::env::consts::OS));
         assert_eq!(info.arch, arch_label(std::env::consts::ARCH));
     }
@@ -234,7 +232,7 @@ mod tests {
         let value = serde_json::to_value(app_info("0.8.0")).unwrap();
         let mut keys: Vec<&str> = value.as_object().unwrap().keys().map(String::as_str).collect();
         keys.sort_unstable();
-        assert_eq!(keys, ["appVersion", "arch", "assetsVersion", "engineVersion", "platform"]);
+        assert_eq!(keys, ["appVersion", "arch", "engineVersion", "platform"]);
     }
 
     #[test]

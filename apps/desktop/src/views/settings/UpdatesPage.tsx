@@ -18,7 +18,7 @@ import { updateNeedsAttention, type UpdaterState } from "../../core/updater";
 import { RELEASE_NOTES } from "../../release-notes/release-notes";
 import type { AppSettingsUpdaterProps } from "../AppSettingsView";
 
-/** 「最新版本」列：等寬版號（無則「—」或不顯示）＋狀態籤；一般頁檢查更新列的行內結果共用。 */
+/** 「最新版本」列：等寬版號（無則「—」或不顯示）＋狀態籤；關於頁版本列的狀態籤共用。 */
 export function latestOf(state: UpdaterState, currentVersion: string | null | undefined): {
   version: string | null;
   pill: StatusPillLabel;
@@ -41,8 +41,8 @@ export function latestOf(state: UpdaterState, currentVersion: string | null | un
   }
 }
 
-/** 等寬版號（更新頁與一般頁共用）。 */
-export const VersionText = ({ children }: { children: string }) => (
+/** 等寬版號。 */
+const VersionText = ({ children }: { children: string }) => (
   <span className="font-mono text-[13px]">{children}</span>
 );
 
@@ -141,14 +141,14 @@ export function UpdatesPage({ updater }: { updater?: AppSettingsUpdaterProps }) 
               </span>
             }
             control={
-              <Button type="button" variant="ghost" size="sm" onClick={updater.onShowReleaseNotes}>
+              <Button type="button" variant="ghost" size="sm" onClick={() => updater.onShowReleaseNotes(entry.version)}>
                 {t("updater.page.viewNotes")}
               </Button>
             }
           />
         ))}
         <div className="flex justify-end px-4 py-2">
-          <Button type="button" variant="ghost" size="sm" onClick={updater.onShowReleaseNotes}>
+          <Button type="button" variant="ghost" size="sm" onClick={() => updater.onShowReleaseNotes()}>
             {t("updater.page.allNotes")}
           </Button>
         </div>

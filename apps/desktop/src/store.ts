@@ -482,8 +482,6 @@ export interface AppState {
   updater: UpdaterState;
   /** 檢查更新（manual＝手動入口）：自動失敗靜默、手動失敗浮出無法檢查。 */
   checkForUpdates: (manual: boolean) => Promise<void>;
-  /** 上次檢查更新完成（取得結果）的時刻，手動與背景皆計；無法檢查不覆寫。關於頁「檢查更新」列用。 */
-  lastCheckedAt: number | null;
   /** 關於頁的版本資訊（desktop-about-page design D1）；null＝尚未取得或取得失敗。 */
   appInfo: AppInfo | null;
   /** 首次進關於頁時取得並快取：已取得或取得中不重取；失敗維持 null，下次進頁再取。 */
@@ -724,8 +722,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     // check 找到的待套用更新（承載 plugin 的下載句柄）——閉包層、不進 store state。
     let pendingUpdate: PendingUpdate | null = null;
     // 上次真正進入檢查中的時刻（前景重檢的節流依據；design D2）——閉包層、不持久化。
-    // 與 state 的 lastCheckedAt（檢查完成時刻）不同。
-    let lastCheckStartedAt: number | null = null;
+    let lastCheckedAt: number | null = null;
     // 關於頁版本資訊的取得中 promise：併發進頁只發一次。
     let appInfoInFlight: Promise<void> | null = null;
     // 已以 toast 提示過的目標版本（desktop-notice-relocation design D4：同一版本於 app 執行期間
@@ -1927,7 +1924,6 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     // --- 自動更新（desktop-app「桌面自動更新」；design D6） ---
     updater: initialUpdaterState,
-    lastCheckedAt: null,
     appInfo: null,
     loadAppInfo() {
       if (!fetchAppInfo || get().appInfo) return Promise.resolve();
@@ -1946,7 +1942,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const before = get().updater;
       const checking = reduceUpdater(before, { type: "checkStarted", manual });
       if (checking === before) return; // 下載中／待重啟不可重檢
-      lastCheckStartedAt = Date.now();
+      lastCheckedAt = Date.now();
       set({ updater: checking });
       try {
         const update = await updaterAdapter.check();
@@ -1956,7 +1952,6 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
             get().updater,
             update ? { type: "updateFound", version: update.version } : { type: "noUpdate" },
           ),
-          lastCheckedAt: Date.now(),
         });
         // 背景檢查（啟動或前景重檢）發現新版本：toast 一次，「查看」進設定頁軟體更新卡；手動
         // 檢查的結果在卡內行內呈現、不發；同版本第二次不再發（spec「背景檢查的 toast 只發一次」）。
@@ -1976,7 +1971,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       // now 供測試注入，未給取現在時刻（design D2）；狀態守門讓待同意的提示與
       // 安裝失敗的錯誤留到使用者處置，不被自動重檢清掉。
       if (!focusRecheckAllowed(get().updater)) return;
-      if (!focusRecheckDue(lastCheckStartedAt, now ?? Date.now())) return;
+      if (!focusRecheckDue(lastCheckedAt, now ?? Date.now())) return;
       await get().checkForUpdates(false);
     },
     async acceptUpdate() {

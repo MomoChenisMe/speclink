@@ -1,7 +1,9 @@
 // 更新日誌對話框（desktop-app spec「更新日誌彈窗」）：同一個對話框兩種模式——
 // whatsNew（版號變更後首次啟動自動彈出，標題「X.Y.Z 更新內容」、主鈕「知道了」）與
 // browse（設定頁按鈕開啟，標題「更新日誌」、列出全部條目、主鈕「關閉」）。看過即止的
-// 記錄由 App 層在 onOpenChange 決定，這裡只呈現（MigrationDialog 先例）。
+// 記錄由 App 層在 onOpenChange 決定，這裡只呈現（MigrationDialog 先例）。browse 模式可帶
+// focusVersion：開啟後把該版捲到捲動區頂端（desktop-about-page design D8）。
+import { useCallback } from "react";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -17,11 +19,25 @@ export interface ReleaseNotesDialogProps {
   open: boolean;
   mode: "whatsNew" | "browse";
   entries: ReleaseNotesEntry[];
+  /** browse 模式開啟後捲到的版號（更新頁舊版本列的「檢視」）；不帶或不在清單內時自頂端呈現。 */
+  focusVersion?: string;
   onOpenChange: (open: boolean) => void;
 }
 
-export function ReleaseNotesDialog({ open, mode, entries, onOpenChange }: ReleaseNotesDialogProps) {
+export function ReleaseNotesDialog({ open, mode, entries, focusVersion, onOpenChange }: ReleaseNotesDialogProps) {
   const { t } = useI18n();
+  // callback ref：Radix 的 Portal 在開啟後下一輪才掛上內容，effect 那時還拿不到節點；捲動區
+  // 掛上（每次開啟）時才找該版並捲到頂端。
+  const listRef = useCallback(
+    (list: HTMLDivElement | null) => {
+      if (!list || !focusVersion) return;
+      const target = Array.from(list.querySelectorAll<HTMLElement>("[data-version]")).find(
+        (section) => section.dataset.version === focusVersion,
+      );
+      target?.scrollIntoView({ block: "start" });
+    },
+    [focusVersion],
+  );
   const title =
     mode === "whatsNew"
       ? t("releaseNotes.whatsNewTitle").replace("{version}", entries[0].version)
@@ -39,14 +55,14 @@ export function ReleaseNotesDialog({ open, mode, entries, onOpenChange }: Releas
           <AlertDialogTitle>{title}</AlertDialogTitle>
         </AlertDialogHeader>
 
-        <div className="flex max-h-[60vh] flex-col gap-5 overflow-y-auto pr-1">
+        <div ref={listRef} className="flex max-h-[60vh] flex-col gap-5 overflow-y-auto pr-1">
           {entries.length === 0 ? (
             <p className="m-0 rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
               {t("releaseNotes.empty")}
             </p>
           ) : (
             entries.map((entry) => (
-              <section key={entry.version} className="flex flex-col gap-3">
+              <section key={entry.version} data-version={entry.version} className="flex flex-col gap-3">
                 <h3 className="m-0 text-sm font-semibold">
                   {entry.version}（{entry.date}）
                 </h3>

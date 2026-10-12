@@ -1,12 +1,11 @@
 // 關於頁（desktop-about-page design D2；spec「關於頁」）。
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render as rtlRender, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 import { I18nProvider } from "@speclink/ui";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import { AboutPage, type AboutPageProps } from "../views/settings/AboutPage";
-import type { AppSettingsUpdaterProps } from "../views/AppSettingsView";
 import type { UpdaterState } from "../core/updater";
 import { APP_MESSAGES } from "../i18n/messages";
 
@@ -23,34 +22,18 @@ const render = (ui: ReactElement) => rtlRender(ui, { wrapper: zhWrapper });
 
 const INFO = {
   appVersion: "0.8.0",
-  engineVersion: "1.44.0",
+  engineVersion: "v1.44.0",
   platform: "macOS",
   arch: "arm64",
-  assetsVersion: "v1.44.0",
 };
-const FOUR_LINES = "Speclink 0.8.0\nEngine 1.44.0\nPlatform macOS arm64\nSkills v1.44.0";
-
-function updaterProps(state: UpdaterState, over: Partial<AppSettingsUpdaterProps> = {}): AppSettingsUpdaterProps {
-  return {
-    state,
-    currentVersion: "0.8.0",
-    onCheck: vi.fn(),
-    onShowReleaseNotes: vi.fn(),
-    onAccept: vi.fn(),
-    onCancel: vi.fn(),
-    onRelaunch: vi.fn(),
-    autoCheck: true,
-    onAutoCheckChange: vi.fn(),
-    ...over,
-  };
-}
+const THREE_LINES = "Speclink 0.8.0\nEngine v1.44.0\nPlatform macOS arm64";
 
 function aboutProps(over: Partial<AboutPageProps> = {}): AboutPageProps {
   return {
     appInfo: INFO,
     onLoadAppInfo: vi.fn(),
-    lastCheckedAt: null,
-    updater: updaterProps({ phase: "idle" }),
+    updaterState: { phase: "idle" },
+    onOpenUpdates: vi.fn(),
     thirdPartyLicenses: null,
     ...over,
   };
@@ -63,7 +46,6 @@ beforeEach(() => {
   vi.mocked(openUrl).mockClear().mockResolvedValue(undefined);
   toastError.mockClear();
 });
-afterEach(() => vi.useRealTimers());
 
 describe("AboutPage", () => {
   it("頁標題與說明；進頁即要求載入版本資訊", () => {
@@ -74,11 +56,11 @@ describe("AboutPage", () => {
     expect(onLoadAppInfo).toHaveBeenCalledTimes(1);
   });
 
-  it("品牌卡：鎖版、版本列「0.8.0 · 引擎 1.44.0 · macOS arm64」與狀態籤、產品描述，無裸標記", () => {
-    render(<AboutPage {...aboutProps({ updater: updaterProps({ phase: "upToDate" }) })} />);
+  it("品牌卡：鎖版、版本列「0.8.0 · 引擎 v1.44.0 · macOS arm64」與狀態籤、產品描述，無裸標記", () => {
+    render(<AboutPage {...aboutProps({ updaterState: { phase: "upToDate" } })} />);
     const card = brandCard();
     expect(within(card).getAllByRole("img", { name: "Speclink" })[0].className).toContain("h-10");
-    expect(within(card).getByText("0.8.0 · 引擎 1.44.0 · macOS arm64")).toBeTruthy();
+    expect(within(card).getByText("0.8.0 · 引擎 v1.44.0 · macOS arm64")).toBeTruthy();
     expect(within(card).getByText("已是最新")).toBeTruthy();
     expect(within(card).getByText("一套 SDD Engine，支援 Local Repo 與 Remote Store")).toBeTruthy();
     expect(card.querySelector("[role=img] svg")).toBeNull();
@@ -90,56 +72,45 @@ describe("AboutPage", () => {
     ["有新版本", { phase: "available", version: "0.9.0" }, "有新版本"],
     ["無法檢查", { phase: "checkFailed" }, "無法檢查"],
   ])("版本列狀態籤：%s", (_name, state, pill) => {
-    render(<AboutPage {...aboutProps({ updater: updaterProps(state) })} />);
+    render(<AboutPage {...aboutProps({ updaterState: state })} />);
     expect(within(brandCard()).getByText(pill)).toBeTruthy();
+  });
+
+  it("狀態籤是按鈕：點擊進更新頁（呼叫 onOpenUpdates 一次）；未注入更新狀態時不顯示", () => {
+    const onOpenUpdates = vi.fn();
+    const { rerender } = render(<AboutPage {...aboutProps({ updaterState: { phase: "upToDate" }, onOpenUpdates })} />);
+    fireEvent.click(within(brandCard()).getByRole("button", { name: "更新狀態：已是最新" }));
+    expect(onOpenUpdates).toHaveBeenCalledTimes(1);
+    rerender(<AboutPage {...aboutProps({ updaterState: undefined })} />);
+    expect(within(brandCard()).queryByRole("button", { name: /更新狀態/ })).toBeNull();
+  });
+
+  it("頁內沒有版本卡、檢查更新列與更新日誌列", () => {
+    render(<AboutPage {...aboutProps()} />);
+    expect(screen.queryByRole("region", { name: "版本" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "檢查更新" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "更新日誌" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "檢查更新" })).toBeNull();
   });
 
   it("版本資訊尚未取得時版本列為「—」、複製鈕缺席", () => {
     render(<AboutPage {...aboutProps({ appInfo: null })} />);
     expect(within(brandCard()).getByText("—")).toBeTruthy();
-    expect(within(row("複製版本資訊")).queryByRole("button")).toBeNull();
+    expect(within(brandCard()).queryByRole("button", { name: "複製版本資訊" })).toBeNull();
   });
 
-  it("檢查更新列：說明為上次檢查的相對時間（從未檢查為尚未檢查），鈕觸發手動檢查", () => {
-    vi.useFakeTimers({ now: new Date("2026-10-10T12:00:00Z") });
-    const onCheck = vi.fn();
-    const { rerender } = render(<AboutPage {...aboutProps({ updater: updaterProps({ phase: "idle" }, { onCheck }) })} />);
-    expect(within(row("檢查更新")).getByText("尚未檢查")).toBeTruthy();
-    fireEvent.click(within(row("檢查更新")).getByRole("button", { name: "檢查更新" }));
-    expect(onCheck).toHaveBeenCalledTimes(1);
-
-    const now = Date.now();
-    rerender(<AboutPage {...aboutProps({ lastCheckedAt: now, updater: updaterProps({ phase: "upToDate" }) })} />);
-    expect(within(row("檢查更新")).getByText("上次檢查：剛剛")).toBeTruthy();
-    rerender(<AboutPage {...aboutProps({ lastCheckedAt: now - 5 * 60_000 })} />);
-    expect(within(row("檢查更新")).getByText("上次檢查：5 分鐘前")).toBeTruthy();
-    rerender(<AboutPage {...aboutProps({ lastCheckedAt: now - 3 * 3_600_000 })} />);
-    expect(within(row("檢查更新")).getByText("上次檢查：3 小時前")).toBeTruthy();
-    rerender(<AboutPage {...aboutProps({ lastCheckedAt: now - 2 * 86_400_000 })} />);
-    expect(within(row("檢查更新")).getByText("上次檢查：2 天前")).toBeTruthy();
-  });
-
-  it("檢查中時檢查更新鈕停用；更新日誌「檢視」開瀏覽模式", () => {
-    const onShowReleaseNotes = vi.fn();
-    render(<AboutPage {...aboutProps({ updater: updaterProps({ phase: "checking", manual: true }, { onShowReleaseNotes }) })} />);
-    const check = within(row("檢查更新")).getByRole("button", { name: "檢查更新" }) as HTMLButtonElement;
-    expect(check.disabled).toBe(true);
-    fireEvent.click(within(row("更新日誌")).getByRole("button", { name: "檢視" }));
-    expect(onShowReleaseNotes).toHaveBeenCalledTimes(1);
-  });
-
-  it("Scenario「複製版本資訊」：寫入四行到剪貼簿並短暫顯示已複製", async () => {
+  it("Scenario「複製版本資訊」：品牌卡版本列旁的鈕寫入三行到剪貼簿並短暫顯示已複製", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     render(<AboutPage {...aboutProps()} />);
-    const copy = within(row("複製版本資訊")).getByRole("button", { name: "複製版本資訊" });
+    const copy = within(brandCard()).getByRole("button", { name: "複製版本資訊" });
     expect(copy.textContent).toBe("複製");
     fireEvent.click(copy);
-    expect(writeText).toHaveBeenCalledWith(FOUR_LINES);
+    expect(writeText).toHaveBeenCalledWith(THREE_LINES);
     await waitFor(() => expect(copy.textContent).toBe("已複製"));
   });
 
-  it("連結卡三列整列可點：原始碼、說明文件、回報問題（網址含版本四行）", () => {
+  it("連結卡三列整列可點：原始碼、說明文件、回報問題（網址含版本三行）", () => {
     render(<AboutPage {...aboutProps()} />);
     const links = screen.getByRole("region", { name: "連結" });
     const source = within(links).getByRole("button", { name: /原始碼/ });
@@ -150,7 +121,7 @@ describe("AboutPage", () => {
     expect(vi.mocked(openUrl).mock.calls).toEqual([
       ["https://github.com/MomoChenisMe/speclink"],
       ["https://github.com/MomoChenisMe/speclink/tree/main/docs"],
-      [`https://github.com/MomoChenisMe/speclink/issues/new?body=${encodeURIComponent(FOUR_LINES)}`],
+      [`https://github.com/MomoChenisMe/speclink/issues/new?body=${encodeURIComponent(THREE_LINES)}`],
     ]);
   });
 

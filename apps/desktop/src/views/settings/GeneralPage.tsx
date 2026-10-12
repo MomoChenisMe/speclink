@@ -1,37 +1,87 @@
-// 一般頁（desktop-settings-mode design D5）：介面語言、軟體更新、CLI 指令、鍵盤快捷鍵四卡；
-// 軟體更新卡只有目前版本、檢查更新（含行內結果）與更新日誌三列，下載與安裝在更新頁。
+// 一般頁（desktop-settings-mode design D5；desktop-about-page design D7）：「語言與外觀」卡（顯示
+// 語言列、外觀列）與「鍵盤快捷鍵」卡。更新、CLI 與版本資訊各在自己的分類頁，這裡不重複。
 import { AlertTriangle } from "lucide-react";
 import {
-  Button,
   Kbd,
   SEMANTIC_TONE,
   SettingsCard,
+  SettingsChoice,
   SettingsPageHeader,
   SettingsRow,
-  StatusPill,
   useI18n,
+  type ThemePreference,
 } from "@speclink/ui";
 
 import { buildShortcutList } from "../../appMenu";
+import type { LocalePreference } from "../../i18n/locale";
 import type { Platform } from "../../platform";
-import type { UpdaterState } from "../../core/updater";
-import type { AppSettingsUpdaterProps } from "../AppSettingsView";
-import { LocaleRow, ThemeRow, type InterfacePrefsProps } from "./AppearancePage";
-import { CliInstallRow, type CliInstallProps } from "./CliPage";
-import { VersionText, latestOf } from "./UpdatesPage";
 
-/** 檢查更新列的行內結果：與更新頁「最新版本」列同一組狀態籤（發現新版帶等寬版號）；閒置與
- * 安裝失敗不顯示——安裝失敗在圖示列更新鈕與更新頁處置。 */
-function UpdaterInlineStatus({ state }: { state: UpdaterState }) {
+/** 「跟隨系統」在偏好裡是 null，Radix Select 的值不接受空值：以哨兵值往返。 */
+const FOLLOW_SYSTEM = "system";
+
+function LocaleRow({
+  localePref,
+  onLocalePrefChange,
+}: {
+  localePref: LocalePreference;
+  onLocalePrefChange: (pref: LocalePreference) => void;
+}) {
   const { t } = useI18n();
-  if (state.phase === "idle" || state.phase === "error") return null;
-  const latest = latestOf(state, null);
+  const label = t("settings.displayLanguage");
   return (
-    <>
-      {latest.version && <VersionText>{latest.version}</VersionText>}
-      <StatusPill tone={latest.pill.tone}>{t(latest.pill.key)}</StatusPill>
-    </>
+    <SettingsRow
+      label={label}
+      description={t("settings.uiLocaleHelp")}
+      control={
+        <SettingsChoice
+          ariaLabel={label}
+          value={localePref ?? FOLLOW_SYSTEM}
+          options={[
+            { value: FOLLOW_SYSTEM, label: t("settings.followSystem") },
+            { value: "zh-TW", label: "繁體中文" },
+            { value: "en", label: "English" },
+          ]}
+          onChange={(v) => onLocalePrefChange(v === "zh-TW" || v === "en" ? v : null)}
+        />
+      }
+    />
   );
+}
+
+function ThemeRow({
+  themePref,
+  onThemePrefChange,
+}: {
+  themePref: ThemePreference;
+  onThemePrefChange: (pref: ThemePreference) => void;
+}) {
+  const { t } = useI18n();
+  const label = t("settings.appearance");
+  return (
+    <SettingsRow
+      label={label}
+      description={t("settings.appearanceHelp")}
+      control={
+        <SettingsChoice
+          ariaLabel={label}
+          value={themePref ?? FOLLOW_SYSTEM}
+          options={[
+            { value: FOLLOW_SYSTEM, label: t("settings.followSystem") },
+            { value: "light", label: t("settings.theme.light") },
+            { value: "dark", label: t("settings.theme.dark") },
+          ]}
+          onChange={(v) => onThemePrefChange(v === "light" || v === "dark" ? v : null)}
+        />
+      }
+    />
+  );
+}
+
+export interface InterfacePrefsProps {
+  localePref: LocalePreference;
+  onLocalePrefChange: (pref: LocalePreference) => void;
+  themePref: ThemePreference;
+  onThemePrefChange: (pref: ThemePreference) => void;
 }
 
 function TrayPanelError({ message }: { message: string }) {
@@ -48,8 +98,6 @@ function TrayPanelError({ message }: { message: string }) {
 
 export interface GeneralPageProps extends InterfacePrefsProps {
   platform: Platform;
-  updater?: AppSettingsUpdaterProps;
-  cliInstall?: CliInstallProps;
   trayPanelError?: string | null;
 }
 
@@ -59,57 +107,16 @@ export function GeneralPage({
   onLocalePrefChange,
   themePref,
   onThemePrefChange,
-  updater,
-  cliInstall,
   trayPanelError,
 }: GeneralPageProps) {
   const { t } = useI18n();
   return (
     <>
       <SettingsPageHeader title={t("settings.section.general")} note={t("settings.pageNote")} />
-      <SettingsCard title={t("settings.uiLocaleLabel")}>
+      <SettingsCard title={t("settings.interfaceCard")}>
         <LocaleRow localePref={localePref} onLocalePrefChange={onLocalePrefChange} />
         <ThemeRow themePref={themePref} onThemePrefChange={onThemePrefChange} />
       </SettingsCard>
-      {updater && (
-        <SettingsCard title={t("updater.cardTitle")}>
-          <SettingsRow
-            label={t("updater.currentVersion")}
-            control={<VersionText>{updater.currentVersion ?? "—"}</VersionText>}
-          />
-          <SettingsRow
-            label={t("updater.check")}
-            description={t("updater.help")}
-            control={
-              <>
-                <UpdaterInlineStatus state={updater.state} />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={updater.state.phase === "checking"}
-                  onClick={updater.onCheck}
-                >
-                  {t("updater.check")}
-                </Button>
-              </>
-            }
-          />
-          <SettingsRow
-            label={t("releaseNotes.open")}
-            control={
-              <Button type="button" variant="outline" size="sm" onClick={updater.onShowReleaseNotes}>
-                {t("updater.page.viewNotes")}
-              </Button>
-            }
-          />
-        </SettingsCard>
-      )}
-      {cliInstall && (
-        <SettingsCard title={t("cliInstall.cardTitle")}>
-          <CliInstallRow {...cliInstall} />
-        </SettingsCard>
-      )}
       <SettingsCard title={t("settings.shortcutsTitle")}>
         {buildShortcutList({ t, platform }).map((row) => (
           <SettingsRow key={row.id} label={row.text} control={<Kbd>{row.keys}</Kbd>} />

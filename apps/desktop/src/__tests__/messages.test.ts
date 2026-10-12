@@ -30,6 +30,11 @@ describe("APP_MESSAGES", () => {
       "updater.upToDate",
       "updater.checkFailed",
       "updater.available",
+      // desktop-about-page design D7：一般頁收斂後沒人用的鍵。
+      "settings.section.appearance",
+      "settings.uiLocaleLabel",
+      "updater.cardTitle",
+      "updater.help",
     ]) {
       expect(APP_MESSAGES["zh-TW"]).not.toHaveProperty([key]);
       expect(APP_MESSAGES.en).not.toHaveProperty([key]);

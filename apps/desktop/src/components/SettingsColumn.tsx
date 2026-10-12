@@ -26,15 +26,14 @@ export function SettingsColumn({
       <div className="pb-2">
         <SearchField value={query} onChange={setQuery} placeholder={t("settings.searchPlaceholder")} />
       </div>
-      {GROUPS.map((group, index) => {
-        const items = categories.filter((category) => category.group === group.id);
-        if (items.length === 0) return null;
-        return (
+      {GROUPS.map((group) => ({ ...group, items: categories.filter((category) => category.group === group.id) }))
+        .filter((group) => group.items.length > 0)
+        .map((group, index) => (
           <div key={group.id} className="flex flex-col gap-0.5">
             <div className={index === 0 ? "pb-1" : "pb-1 pt-3"}>
               <SettingsGroupHeader label={t(group.labelKey)} />
             </div>
-            {items.map(({ id, labelKey, icon: Icon }) => (
+            {group.items.map(({ id, labelKey, icon: Icon }) => (
               <NavItem
                 key={id}
                 icon={<Icon />}
@@ -44,8 +43,7 @@ export function SettingsColumn({
               />
             ))}
           </div>
-        );
-      })}
+        ))}
       {categories.length === 0 && (
         <p className="m-0 px-2.5 py-1.5 text-xs text-muted-foreground">{t("settings.noMatch")}</p>
       )}
