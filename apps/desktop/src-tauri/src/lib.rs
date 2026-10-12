@@ -421,6 +421,19 @@ async fn spec_location(
     .map_err(|e| format!("spec_location worker failed: {e}"))
 }
 
+/// 手冊頁的磁碟位置（手冊頁「開啟 ▾」）：與 `get_manual_page` 同一條 slug 守門與路徑解析。
+#[tauri::command]
+async fn manual_location(
+    root: PathBuf,
+    slug: String,
+) -> Result<Option<speclink_desktop_core::query::DocumentLocation>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::manual::manual_location_at(&root, &slug)
+    })
+    .await
+    .map_err(|e| format!("manual_location worker failed: {e}"))
+}
+
 /// 已封存 change 的 artifact 磁碟位置（已封存詳情頁「開啟 ▾」）：與 `archived_document` 同一個 store。
 #[tauri::command]
 async fn archived_document_location(
@@ -1969,6 +1982,7 @@ pub fn run() {
             document_location,
             discussion_location,
             spec_location,
+            manual_location,
             archived_document_location,
             fs_actions::open_in_terminal,
             fs_actions::open_in_editor,

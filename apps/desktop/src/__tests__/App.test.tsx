@@ -12,6 +12,7 @@ import { APP_MESSAGES } from "../i18n/messages";
 import { detectPlatform } from "../platform";
 import { RELEASE_NOTES } from "../release-notes/release-notes";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
+import type { FsActionsAdapter } from "../adapter/fsActions";
 import { STALE_PROBE } from "./helpers/assetFixtures";
 import { changeList, sharedBoardRequirement } from "./helpers/changeList";
 import { editorText, typeInEditor } from "./helpers/codemirror";
@@ -208,6 +209,7 @@ function renderApp(
     settings?: ReturnType<typeof fakeSettings>;
     updater?: { check: Mock; relaunch: Mock };
     loadAppInfo?: Mock;
+    fsActions?: FsActionsAdapter;
   } = {},
 ) {
   localStorage.setItem(
@@ -229,6 +231,7 @@ function renderApp(
       workspace={ws as never}
       updater={over.updater as never}
       loadAppInfo={over.loadAppInfo as never}
+      fsActions={over.fsActions}
     />,
   );
   return { ds, ws, settings };
@@ -1885,7 +1888,7 @@ describe("手冊頁接線（desktop-manual-page）", () => {
     fireEvent.click(manualNav);
     await screen.findByText("歡迎使用。");
     expect(screen.getByPlaceholderText("搜尋手冊…")).toBeTruthy();
-    expect(document.querySelector('[data-manual-page="boards"]')?.textContent).toContain("可能過期");
+    expect(document.querySelector('[data-manual-page="boards"] [data-manual-stale]')?.textContent).toBe("過期");
     expect(document.querySelector('[data-column="ready"]')).toBeNull();
     expect(manualNav.className).toContain("bg-primary");
     expect(changesNav.className).not.toContain("bg-primary");
@@ -1959,6 +1962,79 @@ describe("手冊頁接線（desktop-manual-page）", () => {
     await waitFor(() => expect(screen.queryByTestId("detail-page")).toBeNull());
     expect(manualNav.className).toContain("bg-primary");
     expect(screen.getByText("看板說明。")).toBeTruthy();
+  });
+
+  it("手冊頁閱讀卡標題列有「開啟 ▾」，展開後首列為 openspec/manual/tray.md，選「複製路徑」寫入絕對路徑；過期提示框讀出處規格", async () => {
+    // spec desktop-app Scenario「手冊頁的開啟選單」＋desktop-manual-page「來源更新後標示可能過期」的 App 半邊。
+    const tray = {
+      slug: "tray",
+      title: "系統匣選單",
+      section: "桌面 app",
+      order: 10,
+      keywords: [],
+      sources: ["tray-status-menu"],
+      generated: "2026-09-17T16:05:41+08:00",
+      stale: true,
+    };
+    const ds = fakeDataSource({
+      listManualPages: vi.fn().mockResolvedValue({ ...MANUAL_INDEX, pages: [tray] }),
+      getManualPage: vi.fn().mockResolvedValue("# 系統匣選單\n\n系統匣內文。"),
+      getSpecDocument: vi
+        .fn()
+        .mockResolvedValue(
+          "# tray-status-menu Specification\n\n## Purpose\n\np\n\n### Requirement: 甲\n\n內文。\n\n<!-- @trace\nsource: tray-panel-restyle\nupdated: 2026-10-12T16:18:33+08:00\n-->\n",
+        ),
+    });
+    const location = { path: "/work/app/openspec/manual/tray.md", relative: "openspec/manual/tray.md" };
+    const fsActions: FsActionsAdapter = {
+      reveal: vi.fn().mockResolvedValue(undefined),
+      openDefault: vi.fn().mockResolvedValue(undefined),
+      openTerminal: vi.fn().mockResolvedValue(undefined),
+      openEditor: vi.fn().mockResolvedValue(undefined),
+      copyText: vi.fn().mockResolvedValue(undefined),
+      locate: vi.fn().mockResolvedValue(location),
+    };
+    renderApp(ds, { fsActions });
+    await screen.findByText("desktop-shell-and-browser");
+    fireEvent.click(within(projectColumn()).getByRole("button", { name: "手冊" }));
+    await screen.findByText("系統匣內文。");
+    const header = document.querySelector("[data-manual-card] [data-doc-header]") as HTMLElement;
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    await u.click(within(header).getByRole("button", { name: /開啟/ }));
+    // 出處行也有同一路徑：首列只在選單內找。
+    const menu = await screen.findByRole("menu");
+    expect(await within(menu).findByText("openspec/manual/tray.md")).toBeTruthy();
+    expect(fsActions.locate).toHaveBeenCalledWith("A", { manual: "tray" });
+    await u.click(screen.getByRole("menuitem", { name: "複製路徑" }));
+    await waitFor(() => expect(fsActions.copyText).toHaveBeenCalledWith("/work/app/openspec/manual/tray.md"));
+    // 過期提示框經 dataSource.getSpecDocument 讀出處規格的最近 @trace。
+    await waitFor(() =>
+      expect(document.querySelector('[data-callout="stale"]')?.textContent).toContain(
+        "出處 tray-status-menu 於 2026-10-12 由變更 tray-panel-restyle 更新",
+      ),
+    );
+    expect(ds.getSpecDocument).toHaveBeenCalledWith("tray-status-menu");
+  });
+
+  it("規格頁點列開規格詳情頁後主區為三欄骨架（左欄文件節點規格／溯源、右欄本頁目錄容器）", async () => {
+    const ds = fakeDataSource({
+      getSpecDocument: vi
+        .fn()
+        .mockResolvedValue("# desktop-app Specification\n\n## Purpose\n\n目的。\n\n### Requirement: 甲\n\n正典內文段落。\n"),
+    });
+    renderApp(ds);
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    fireEvent.click(within(projectColumn()).getByRole("button", { name: "規格" }));
+    fireEvent.click(await screen.findByText("desktop-app"));
+    const layer = await screen.findByTestId("detail-page");
+    await waitFor(() => expect(within(layer).getByText("正典內文段落。")).toBeTruthy());
+    const shell = layer.querySelector("[data-spec-detail][data-detail-shell]") as HTMLElement;
+    expect(shell).toBeTruthy();
+    const tree = shell.querySelector("[data-detail-tree]") as HTMLElement;
+    const nodes = within(tree).getAllByRole("tab").map((tab) => tab.textContent);
+    expect(nodes).toEqual([expect.stringContaining("規格"), expect.stringContaining("溯源")]);
+    expect(within(tree).getByRole("tablist").getAttribute("aria-orientation")).toBe("vertical");
+    expect(shell.querySelector("[data-detail-toc]")).toBeTruthy();
   });
 
   it("手冊頁開著時 workspace-changed 觸發索引重取與目前頁內文重載", async () => {

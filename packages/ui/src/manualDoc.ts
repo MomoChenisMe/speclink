@@ -1,4 +1,5 @@
 import type { ManualPageItem } from "./adapter";
+import { fenceFlags } from "./specSections";
 
 /** 側欄樹的一個分區：標籤與其下依閱讀序排列的頁。 */
 export interface Section {
@@ -41,6 +42,22 @@ export function splitLeadingHeading(body: string): { body: string; heading: stri
   const match = first < lines.length ? /^#\s+(.+?)\s*#*\s*$/.exec(lines[first]) : null;
   if (!match) return { body, heading: null };
   return { body: lines.slice(first + 1).join("\n"), heading: match[1] };
+}
+
+// ATX 標題行：前導最多三格空白、二或三個井號，其後為空白或行尾（`##沒有空白` 不是標題）。
+const ATX_H2_H3_RE = /^ {0,3}(#{2,3})(?:[ \t]|$)/;
+
+/** 數字磚「章節」「小節」：圍欄外的 ATX h2／h3 行數（setext 不算）。 */
+export function countHeadings(md: string): { h2: number; h3: number } {
+  const lines = md.split(/\r?\n/);
+  const inFence = fenceFlags(lines);
+  const counts = { h2: 0, h3: 0 };
+  lines.forEach((line, i) => {
+    const level = inFence[i] ? undefined : ATX_H2_H3_RE.exec(line)?.[1].length;
+    if (level === 2) counts.h2++;
+    else if (level === 3) counts.h3++;
+  });
+  return counts;
 }
 
 // 跨頁連結（manual-pages 契約「內文慣例」：相對檔名 `[認識畫面](layout.md)`，可帶錨點）。

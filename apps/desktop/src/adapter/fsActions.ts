@@ -22,8 +22,8 @@ export interface FsActionsAdapter {
   openEditor: (path: string) => Promise<void>;
   /** 寫入剪貼簿（路徑或文件原文）。 */
   copyText: (text: string) => Promise<void>;
-  /** 詳情頁文件的磁碟位置：core 以讀文件同一套解析（worktree 副本、spec 目錄名、已封存
-   * 討論的日期檔名、封存目錄）；找不到為 null。 */
+  /** 詳情頁與手冊頁文件的磁碟位置：core 以讀文件同一套解析（worktree 副本、spec 目錄名、
+   * 已封存討論的日期檔名、封存目錄）；找不到為 null。 */
   locate: (root: string, doc: DocumentRef) => Promise<DocumentLocation | null>;
 }
 
@@ -37,6 +37,7 @@ export function tauriFsActionsAdapter(): FsActionsAdapter {
     locate: (root, doc) => {
       if ("discussion" in doc) return invoke<DocumentLocation | null>("discussion_location", { root, slug: doc.discussion });
       if ("spec" in doc) return invoke<DocumentLocation | null>("spec_location", { root, capability: doc.spec });
+      if ("manual" in doc) return invoke<DocumentLocation | null>("manual_location", { root, slug: doc.manual });
       if ("archived" in doc) {
         return invoke<DocumentLocation | null>("archived_document_location", {
           root,

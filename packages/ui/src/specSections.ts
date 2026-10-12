@@ -26,6 +26,10 @@ export interface SpecSections {
   appendix: string;
 }
 
+/** 封存流程寫進新規格 Purpose 的佔位前綴；與引擎 `lifecycle::model::PURPOSE_TBD_PREFIX` 逐字一致
+ *（specSections.test.ts 讀原始檔對齊）。 */
+export const PURPOSE_TBD_PREFIX = "TBD - created by archiving";
+
 const REQUIREMENT_RE = /^### Requirement:\s*(.*?)\s*$/;
 const SCENARIO_RE = /^#### Scenario:\s*(.*?)\s*$/;
 const DATE_RE = /\d{4}-\d{2}-\d{2}/;

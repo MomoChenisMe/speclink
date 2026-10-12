@@ -49,7 +49,7 @@
 
 ### D3 RequirementBlock 的收合模式（非 delta）
 
-`RequirementBlockProps` 新增 `collapse?: { defaultOpen: boolean }`。非 delta 畫法下：標題元素改為 `h2[data-doc-heading]`（`SECTION_HEADING_CLS` 16px 粗體；`data-spec-heading` 退場，規格詳情頁的本頁目錄改走 `DetailShell` 的錨點）；有 `collapse` 時標題列成為 `button[aria-expanded]`（「Requirement」小標、標題、右端 `anchor`；收合時另顯示 Scenario 數籤 `doc.scenarioCount`），展開後為既有的需求文（SHALL 關鍵字等寬灰底）與 Scenario 左線區塊（不做 WHEN／THEN 兩欄、不做「還有 N」收合——規格詳情頁沿用原畫法）；無 `collapse` 時與現在相同（恆展開、無按鈕）。delta 畫法不變。`anchor` 放在 button 內時 `TraceAnchor` 的可點版本以 `stopPropagation` 避免同時切換收合。
+`RequirementBlockProps` 新增 `collapse?: { defaultOpen: boolean }`。非 delta 畫法下：標題元素改為 `h2[data-doc-heading]`（`SECTION_HEADING_CLS` 16px 粗體；`data-spec-heading` 退場，規格詳情頁的本頁目錄改走 `DetailShell` 的錨點）；有 `collapse` 時標題列的「Requirement」小標與標題包成 `button[aria-expanded]`（收合時另顯示 Scenario 數籤 `doc.scenarioCount`），右端 `anchor` 在 button 之外、同一列，展開後為既有的需求文（SHALL 關鍵字等寬灰底）與 Scenario 左線區塊（不做 WHEN／THEN 兩欄、不做「還有 N」收合——規格詳情頁沿用原畫法）；無 `collapse` 時與現在相同（恆展開、無按鈕）。delta 畫法不變。`anchor` 不放進 button（button 內不得再有 button），點可點的 `TraceAnchor` 因此不會切換收合。
 
 ### D4 數字磚、提示框與溯源磚的推導：specSummary.ts
 

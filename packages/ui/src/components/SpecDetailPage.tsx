@@ -3,14 +3,20 @@ import { FileText, History } from "lucide-react";
 
 import type { ArchivedItem } from "../adapter";
 import { useI18n } from "../i18n";
+import { cn } from "../lib/utils";
 import { parseSpecSections } from "../specSections";
+import { specStats, specTiles, traceTiles } from "../specSummary";
 import { parseTraceSources } from "../trace";
 import { settle, useGenerationLoad } from "../lib/useGenerationLoad";
-import { Badge } from "./ui/badge";
+import { Badge, badgeVariants } from "./ui/badge";
+import { Callout } from "./ui/callout";
+import { Card } from "./ui/card";
+import { StatusPill } from "./ui/status-pill";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { DetailContentCard, DetailHeader, DetailPageFrame, type DocumentTarget } from "./DetailHeader";
+import { StatusRow, type DocumentTarget } from "./DetailHeader";
+import { DetailIdentity, DetailShell, DetailStatus, DetailTreeLabel, DocBody, DocHeader, DocTiles } from "./DetailShell";
+import { InlineMarks, Lead, SECTION_HEADING_CLS } from "./DocParts";
 import { ListRow } from "./ListRow";
-import { ManualToc } from "./ManualToc";
 import { Markdown } from "./Markdown";
 import { RequirementBlock } from "./RequirementBlock";
 import { SearchField } from "./SearchField";
@@ -27,7 +33,7 @@ export interface SpecDetailPageProps {
   archivedChanges?: ArchivedItem[];
   /** 點可點的溯源列或需求錨點：宿主開啟該封存變更的已封存詳情頁（帶 datedName）。 */
   onOpenArchivedChange?: (datedName: string) => void;
-  /** 內容卡標頭右端的文件動作（「開啟 ▾」）：兩個分頁都對應同一份 spec.md。 */
+  /** 「規格」閱讀卡標題列右端的文件動作（「開啟 ▾」，對應 spec.md）；溯源文件不對應檔案、不放。 */
   renderDocumentActions?: (target: DocumentTarget | null) => ReactNode;
 }
 
@@ -83,15 +89,19 @@ function TraceAnchor({
 }
 
 /**
- * 規格詳情頁（spec「桌面 app 呈現 change 與 spec 的清單與內容」；design D2）：標題列（capability
- * ＋複製、右端搜尋需求）與 meta 列；內容卡分頁「規格 N」（Purpose 與逐條需求段）與「溯源 M」
- * （來源變更列）。頁寬 ≥1200px 時 768px 內容欄左側空白處以 sticky 列出需求目錄。換目標以 key
- * 重掛（清空全量載入、搜尋字串與分頁回到初始），世代重載不清空且 latest-wins。
+ * 規格詳情頁（spec「桌面 app 呈現 change 與 spec 的清單與內容」；desktop-spec-manual-pages design
+ * D1–D5）：詳情頁三欄骨架——左欄身分區、「文件」節點規格／溯源與「狀態」三列；「規格」閱讀卡為
+ * 標題區（需求數籤、搜尋需求、「開啟 ▾」、出處行）、數字磚、提示框、Purpose 引言段與需求段（命中的
+ * 第一條展開、其餘收合）；「溯源」閱讀卡為出處行、數字磚與來源變更列；右欄本頁目錄自渲染後的 DOM
+ * 推導。換目標以 key 重掛（清空全量載入、搜尋字串與文件回到初始），世代重載不清空且 latest-wins。
  */
 export function SpecDetailPage(props: SpecDetailPageProps) {
   if (!props.capability) return null;
   return <SpecDetailView key={props.capability} {...props} capability={props.capability} />;
 }
+
+/** 數字磚與出處行的日期只取日曆日。 */
+const calendarDay = (updated: string) => updated.slice(0, 10);
 
 function SpecDetailView({
   capability,
@@ -120,102 +130,172 @@ function SpecDetailView({
   const sections = doc ? parseSpecSections(doc) : null;
   const byName = archivedByName(archivedChanges ?? []);
   const sources = traceItems(doc, byName);
-  // 最近更新：各需求段尾 @trace 中最大的 updated 與其 source。
-  let latest: { source: string; updated: string } | null = null;
-  for (const r of sections?.requirements ?? []) {
-    const u = r.trace?.updated;
-    if (u && (!latest || u > latest.updated)) latest = { source: r.trace!.source, updated: u };
-  }
+  const stats = specStats(sections, sources);
   const needle = query.trim().toLowerCase();
   const visible = (sections?.requirements ?? []).filter((r) => r.title.toLowerCase().includes(needle));
+  const docPath = `openspec/specs/${capability}/spec.md`;
+  const updatedLine =
+    stats.latest &&
+    t("sdetail.metaUpdated").replace("{date}", calendarDay(stats.latest.updated)).replace("{change}", stats.latest.source);
+  const count = (n: number) =>
+    loaded && (
+      <Badge variant="secondary" className="tabular-nums">
+        {n}
+      </Badge>
+    );
+  const showTrace = () => setTab("trace");
+
+  const tree = (
+    <>
+      <DetailIdentity
+        title={capability}
+        copyLabel={t("common.copyName")}
+        badges={<StatusPill tone="neutral">{t("sdetail.canonical")}</StatusPill>}
+        provenance={[
+          sections && (
+            <span className="shrink-0">{t("sdetail.metaRequirements").replace("{n}", String(stats.requirements))}</span>
+          ),
+          sections && (
+            <span className="shrink-0">{t("sdetail.metaScenarios").replace("{n}", String(stats.scenarios))}</span>
+          ),
+          stats.latest && (
+            <span className="truncate">{`${t("sdetail.stateUpdated")} ${calendarDay(stats.latest.updated)}`}</span>
+          ),
+        ]}
+        relations={
+          sources.length > 0
+            ? [
+                {
+                  mark: "trace",
+                  label: t("sdetail.relationTrace"),
+                  children: (
+                    <>
+                      <button
+                        type="button"
+                        className={cn(badgeVariants({ variant: "outline" }), "min-w-0 max-w-full cursor-pointer font-mono hover:bg-muted")}
+                        onClick={showTrace}
+                      >
+                        <span className="truncate">{sources[0].name}</span>
+                      </button>
+                      {sources.length > 1 && (
+                        <button
+                          type="button"
+                          className={cn(badgeVariants({ variant: "secondary" }), "cursor-pointer tabular-nums hover:bg-muted/70")}
+                          onClick={showTrace}
+                        >
+                          {`+${sources.length - 1}`}
+                        </button>
+                      )}
+                    </>
+                  ),
+                },
+              ]
+            : []
+        }
+      />
+
+      <DetailTreeLabel>{t("detail.tree")}</DetailTreeLabel>
+      <TabsList variant="tree" aria-label={t("detail.tree")}>
+        <TabsTrigger value="spec">
+          <FileText className="h-3.5 w-3.5" /> {t("sdetail.tabSpec")}
+          {loaded && (
+            <Badge variant="secondary" className="ml-auto">
+              {stats.requirements}
+            </Badge>
+          )}
+        </TabsTrigger>
+        <TabsTrigger value="trace">
+          <History className="h-3.5 w-3.5" /> {t("sdetail.tabTrace")}
+          {loaded && (
+            <Badge variant="secondary" className="ml-auto">
+              {sources.length}
+            </Badge>
+          )}
+        </TabsTrigger>
+      </TabsList>
+
+      <DetailTreeLabel>{t("detail.status")}</DetailTreeLabel>
+      <DetailStatus>
+        <StatusRow mark="requirements" label={t("sdetail.stateRequirements")}>
+          {loaded && <span className="font-mono text-[11px] tabular-nums">{stats.requirements}</span>}
+        </StatusRow>
+        <StatusRow mark="sources" label={t("sdetail.stateSources")}>
+          {loaded && <span className="font-mono text-[11px] tabular-nums">{sources.length}</span>}
+        </StatusRow>
+        {stats.latest && (
+          <StatusRow mark="updated" label={t("sdetail.stateUpdated")}>
+            <span className="font-mono text-[11px] tabular-nums">{calendarDay(stats.latest.updated)}</span>
+            <span className="truncate text-muted-foreground">{stats.latest.source}</span>
+          </StatusRow>
+        )}
+      </DetailStatus>
+    </>
+  );
+
+  // 提示框只放推得出的事實（design D4）：Purpose 待補在前、缺來源變更的需求在後；兩者皆無時缺席。
+  const callouts = (stats.purposeTbd || stats.untraced.length > 0) && (
+    <div data-doc-callout className="flex flex-col gap-2.5">
+      {stats.purposeTbd && (
+        <Callout data-callout="purpose-tbd" tone="warning" title={t("specs.purposeTbd")} className="my-0">
+          <p className="text-sm">
+            <InlineMarks text={t("sdetail.purposeTbdBody").replace("{path}", docPath)} />
+          </p>
+        </Callout>
+      )}
+      {stats.untraced.length > 0 && (
+        <Callout
+          data-callout="untraced"
+          tone="note"
+          title={t("sdetail.untraced").replace("{n}", String(stats.untraced.length))}
+          className="my-0"
+        >
+          <p className="text-sm">{stats.untraced.join("、")}</p>
+          <p className="text-sm text-muted-foreground">{t("sdetail.untracedBody")}</p>
+        </Callout>
+      )}
+    </div>
+  );
 
   return (
-    <div data-spec-detail className="@container relative w-full">
-      {/* 需求目錄（design D2）：量的是頁寬——768px 內容欄左側空白處，sticky 隨頁層捲動高亮。 */}
-      {tab === "spec" && sections && (
-        <div
-          data-spec-toc
-          className="absolute inset-y-0 left-0 hidden w-[calc((100%_-_768px)_/_2)] @min-[1200px]:block"
-        >
-          <div className="sticky top-0 flex max-h-[calc(100vh_-_3rem)] justify-end">
-            <ManualToc
-              bodyRef={bodyRef}
-              markdownBody={`${doc}\u0000${needle}`}
-              headings="[data-spec-heading]"
-              className="flex border-l-0 border-r pl-5 pr-3"
+    <Tabs value={tab} onValueChange={setTab} orientation="vertical" activationMode="manual" className="h-full">
+      <DetailShell
+        data-spec-detail
+        tree={tree}
+        activeDoc={tab}
+        tocKey={`${tab}\u0000${doc ?? ""}\u0000${needle}`}
+        bodyRef={bodyRef}
+      >
+        <TabsContent value="spec">
+          <Card className="flex flex-col gap-5 p-6">
+            <DocHeader
+              title={t("sdetail.tabSpec")}
+              badges={count(stats.requirements)}
+              actions={
+                <div className="flex items-center gap-1.5">
+                  <SearchField value={query} onChange={setQuery} placeholder={t("sdetail.searchRequirements")} />
+                  {renderDocumentActions?.({ doc: { spec: capability }, content: doc ?? null })}
+                </div>
+              }
+              provenance={[<span className="font-mono">{docPath}</span>, t("sdetail.canonical"), updatedLine]}
             />
-          </div>
-        </div>
-      )}
-      <DetailPageFrame>
-        <DetailHeader
-          title={capability}
-          copyLabel={t("common.copyName")}
-          actions={
-            <SearchField
-              value={query}
-              onChange={setQuery}
-              placeholder={t("sdetail.searchRequirements")}
-            />
-          }
-          provenance={[
-            sections && (
-              <span className="shrink-0">
-                {t("sdetail.metaRequirements").replace("{n}", String(sections.requirements.length))}
-              </span>
-            ),
-            sources.length > 0 && (
-              <span className="shrink-0">{t("sdetail.metaSources").replace("{n}", String(sources.length))}</span>
-            ),
-            latest && (
-              <span className="truncate">
-                {t("sdetail.metaUpdated").replace("{date}", latest.updated).replace("{change}", latest.source)}
-              </span>
-            ),
-          ]}
-        />
-
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList
-            variant="card"
-            actions={renderDocumentActions?.({ doc: { spec: capability }, content: doc ?? null })}
-          >
-            <TabsTrigger value="spec">
-              <FileText className="h-3.5 w-3.5" /> {t("sdetail.tabSpec")}
-              {loaded && (
-                <Badge variant="secondary" className="ml-1">
-                  {sections?.requirements.length ?? 0}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="trace">
-              <History className="h-3.5 w-3.5" /> {t("sdetail.tabTrace")}
-              {loaded && (
-                <Badge variant="secondary" className="ml-1">
-                  {sources.length}
-                </Badge>
-              )}
-            </TabsTrigger>
-          </TabsList>
-          <DetailContentCard>
-            {/* 載入中畫骨架；空態文案只在載入完成後出（spec「詳情頁文件載入以 skeleton 呈現」）。 */}
-            <TabsContent value="spec">
+            <DocTiles tiles={specTiles(stats, t)} />
+            {callouts}
+            {/* 沒有需求標題（或文件缺席）時整篇單一 markdown 檢視退回：不接 bodyRef，本頁目錄無錨點。 */}
+            <DocBody ref={sections ? bodyRef : undefined}>
+              {/* 載入中畫骨架；空態文案只在載入完成後出（spec「詳情頁文件載入以 skeleton 呈現」）。 */}
               {!loaded ? (
                 <DocSkeleton />
               ) : !sections ? (
-                // 沒有需求標題（或文件缺席）：整篇單一 markdown 檢視退回，無目錄。
                 <Markdown content={doc} empty={t("common.noContent")} />
               ) : (
-                <div
-                  ref={bodyRef}
-                  data-spec-body
-                  className="flex flex-col gap-6 [&_.markdown]:text-[15px] [&_.markdown]:leading-[1.75]"
-                >
-                  <section data-purpose>
-                    <h2 data-spec-heading className="mb-2 text-base font-semibold">
+                <div className="flex flex-col gap-6">
+                  <section data-purpose className="flex flex-col gap-2.5">
+                    <h2 data-doc-heading className={SECTION_HEADING_CLS}>
                       Purpose
                     </h2>
-                    <Markdown content={sections.purpose} />
+                    <Lead>
+                      <Markdown content={sections.purpose} />
+                    </Lead>
                   </section>
                   {/* 需求段之外的內容（引言、其他 `## ` 區段）照原文呈現，不丟。 */}
                   {sections.intro && (
@@ -226,10 +306,12 @@ function SpecDetailView({
                   {visible.length === 0 ? (
                     <p className="py-2 text-sm text-muted-foreground">{t("sdetail.noMatch")}</p>
                   ) : (
+                    // 收合規則依命中序：搜尋過濾後第一條命中展開（key 含命中序，序一變即重掛回預設）。
                     visible.map((r, i) => (
                       <RequirementBlock
                         key={`${i}:${r.title}`}
                         req={r}
+                        collapse={{ defaultOpen: i === 0 }}
                         anchor={
                           <TraceAnchor trace={r.trace} byName={byName} onOpenArchivedChange={onOpenArchivedChange} />
                         }
@@ -243,8 +325,19 @@ function SpecDetailView({
                   )}
                 </div>
               )}
-            </TabsContent>
-            <TabsContent value="trace">
+            </DocBody>
+          </Card>
+        </TabsContent>
+        <TabsContent value="trace">
+          <Card className="flex flex-col gap-5 p-6">
+            {/* 推導文件不對應檔案：無「開啟 ▾」。 */}
+            <DocHeader
+              title={t("sdetail.tabTrace")}
+              badges={count(sources.length)}
+              provenance={[t("sdetail.traceDerived"), t("sdetail.traceOrder")]}
+            />
+            <DocTiles tiles={traceTiles(stats, t)} />
+            <DocBody>
               {!loaded ? (
                 <DocSkeleton />
               ) : sources.length === 0 ? (
@@ -261,10 +354,10 @@ function SpecDetailView({
                   />
                 ))
               )}
-            </TabsContent>
-          </DetailContentCard>
-        </Tabs>
-      </DetailPageFrame>
-    </div>
+            </DocBody>
+          </Card>
+        </TabsContent>
+      </DetailShell>
+    </Tabs>
   );
 }

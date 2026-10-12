@@ -18,9 +18,9 @@ export interface ManualTreeProps {
 }
 
 /** 手冊頁左欄（spec「手冊頁的側欄樹與閱讀序」「手冊頁的搜尋列」「可能過期與未入冊的
- * 標示」；design D5：240px 淡灰底、列為 NavItem 風格）：搜尋列以大小寫不敏感比對 title
- * 與 keywords、命中頁依分區分組列出（stale 者附「可能過期」）、底部在有未入冊規格時
- * 顯示計數提示。 */
+ * 標示」；design D5：240px 淡灰底；desktop-spec-manual-pages design D7：頁列與詳情頁文件樹的
+ * 節點同款）：搜尋列以大小寫不敏感比對 title 與 keywords、命中頁依分區分組列出（stale 者列尾
+ * 帶「過期」籤）、底部在有未入冊規格時顯示計數提示。 */
 export function ManualTree({ pages, currentSlug, query, onQuery, onSelect, uncoveredCount }: ManualTreeProps) {
   const { t } = useI18n();
   const visibleSections = groupSections(
@@ -56,15 +56,18 @@ export function ManualTree({ pages, currentSlug, query, onQuery, onSelect, uncov
                         data-manual-page={p.slug}
                         aria-current={active ? "page" : undefined}
                         className={cn(
-                          "flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[13px] transition-colors",
+                          "flex h-[30px] w-full items-center gap-2 rounded-lg px-2.5 text-left text-[13px] transition-colors",
                           active ? "bg-primary/12 font-medium text-primary" : "text-foreground hover:bg-foreground/5",
                         )}
                         onClick={() => onSelect(p.slug)}
                       >
                         <span className="min-w-0 flex-1 truncate">{p.title}</span>
                         {p.stale && (
-                          <span data-manual-stale className={`shrink-0 text-[10px] font-medium ${SEMANTIC_TONE.warning}`}>
-                            {t("manual.stale")}
+                          <span
+                            data-manual-stale
+                            className={`shrink-0 rounded-full px-1.5 text-[10px] font-medium ${SEMANTIC_SURFACE.warning} ${SEMANTIC_TONE.warning}`}
+                          >
+                            {t("manual.staleShort")}
                           </span>
                         )}
                       </button>

@@ -199,14 +199,7 @@ export {
 export type { ChangeMetaInfo } from "./adapter";
 export { specDeltaCounts, sumDeltaCounts, formatDeltaCounts, type DeltaCounts } from "./delta";
 export { ChangeDetailPage, type ChangeDetailPageProps } from "./components/ChangeDetailPage";
-export {
-  DetailHeader,
-  IdentityName,
-  displayName,
-  type DetailHeaderProps,
-  type DocumentRef,
-  type DocumentTarget,
-} from "./components/DetailHeader";
+export { IdentityName, displayName, type DocumentRef, type DocumentTarget } from "./components/DetailHeader";
 export {
   DetailShell,
   DetailIdentity,
@@ -291,11 +284,14 @@ export {
 export { SpecList, sortSpecs, type SpecListProps } from "./components/SpecList";
 export { SpecDetailPage, type SpecDetailPageProps } from "./components/SpecDetailPage";
 export {
+  PURPOSE_TBD_PREFIX,
   parseSpecSections,
   type SpecRequirement,
   type SpecScenario,
   type SpecSections,
 } from "./specSections";
+export { specStats, specTiles, traceTiles } from "./specSummary";
 
 // 手冊頁（desktop-manual-page）
 export { ManualPage, type ManualPageProps } from "./components/ManualPage";
+export { countHeadings } from "./manualDoc";

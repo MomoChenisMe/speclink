@@ -15,12 +15,6 @@ import { rehypeSpecKeywords } from "../specSections";
 import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
 import { CALLOUT_BOX_CLS, CALLOUT_TITLE_CLS, CALLOUT_TONE, type CalloutTone } from "./ui/callout";
 
-/** 共用閱讀欄置中容器（design D4，spec「markdown 文件內容行寬有上限」）：
- * 寬度撐滿、max-width 與 Markdown 行寬上限同值、水平 margin auto——容器寬於
- * 行寬上限時（含全螢幕）留白均分兩側。套在各抽屜分頁內容的捲動容器內側，
- * 包住整個分頁內容（區段標籤、輪卡片、任務清單與內文同欄對齊置中）。 */
-export const READING_COLUMN_CLS = "w-full max-w-[96ch] mx-auto";
-
 export interface MarkdownProps {
   content: string | null;
   /** 空狀態文案；省略時用 i18n 預設「（無內容）」。 */

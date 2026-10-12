@@ -8,6 +8,8 @@ import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
 import { ManualPage } from "../components/ManualPage";
+import { countHeadings } from "../manualDoc";
+import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
 import type { ManualIndex, ManualPageItem } from "../adapter";
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
@@ -102,6 +104,10 @@ const rows = () =>
   Array.from(tree().querySelectorAll("[data-manual-page]")).map((r) => r.getAttribute("data-manual-page"));
 const row = (slug: string) => tree().querySelector(`[data-manual-page="${slug}"]`) as HTMLElement;
 const content = () => document.querySelector("[data-manual-content]") as HTMLElement;
+const docHeader = () => content().querySelector("[data-doc-header]") as HTMLElement;
+const docProvenance = () => content().querySelector("[data-doc-provenance]") as HTMLElement | null;
+const tiles = () => Array.from(content().querySelectorAll<HTMLElement>("[data-doc-tile]")).map((el) => el.textContent);
+const staleCallout = () => content().querySelector('[data-callout="stale"]') as HTMLElement | null;
 const prevButton = () => screen.queryByRole("button", { name: "上一頁" });
 const nextButton = () => screen.queryByRole("button", { name: "下一頁" });
 /** 上一頁／下一頁按鈕標的 slug（data hook）；缺席＝無該方向的頁。 */
@@ -337,12 +343,15 @@ describe("ManualPage 搜尋列", () => {
 });
 
 describe("ManualPage 過期與未入冊標示", () => {
-  it("stale 頁列帶「可能過期」標記，其他頁無", async () => {
+  it("stale 頁列尾為警示色面的「過期」籤，其他頁無", async () => {
     // spec Scenario「來源更新後標示可能過期」。
     renderManual();
     await screen.findByText("歡迎。");
-    const marker = row("first-login").querySelector("[data-manual-stale]");
-    expect(marker?.textContent).toBe("可能過期");
+    const marker = row("first-login").querySelector("[data-manual-stale]") as HTMLElement;
+    expect(marker.textContent).toBe("過期");
+    expect(marker.className).toContain("rounded-full");
+    expect(marker.className).toContain(SEMANTIC_SURFACE.warning);
+    expect(marker.className).toContain(SEMANTIC_TONE.warning);
     expect(row("index").querySelector("[data-manual-stale]")).toBeNull();
   });
 
@@ -441,15 +450,17 @@ describe("ManualPage 內頁渲染與出處", () => {
     expect(readingCard.contains(body.querySelector(".markdown")!)).toBe(true);
   });
 
-  it("頁首標題與頁尾出處／上下頁固定在內文捲動區外；內文不重複 H1、無 H1 時退回索引 title", async () => {
+  it("標題在閱讀卡標題區、捲動區外無頁首、底列固定、內文不重複 H1、無 H1 時退回索引 title", async () => {
     renderManual();
     await screen.findByText("歡迎。");
-    const header = content().querySelector("[data-manual-header]") as HTMLElement;
     const body = content().querySelector("[data-manual-body]") as HTMLElement;
+    const card = body.querySelector("[data-manual-card]") as HTMLElement;
     const footer = content().querySelector("[data-manual-footer]") as HTMLElement;
-    expect(within(header).getByRole("heading", { level: 1 }).textContent).toBe("手冊");
-    expect(body.querySelector("h1")).toBeNull();
-    expect(body.contains(header)).toBe(false);
+    expect(card.contains(docHeader())).toBe(true);
+    expect(within(docHeader()).getByRole("heading", { level: 2 }).textContent).toBe("手冊");
+    expect(content().querySelector("h1")).toBeNull();
+    // 捲動區外只剩固定底列：沒有頁首。
+    expect(Array.from(body.parentElement!.children)).toEqual([body, footer]);
     expect(body.contains(footer)).toBe(false);
     expect(footer.contains(nextButton()!)).toBe(true);
     fireEvent.click(row("first-login"));
@@ -457,7 +468,7 @@ describe("ManualPage 內頁渲染與出處", () => {
     expect(footer.contains(document.querySelector("[data-manual-sources]")!)).toBe(true);
     fireEvent.click(row("orphan"));
     await screen.findByText("沒有欄位的頁");
-    expect(within(header).getByRole("heading", { level: 1 }).textContent).toBe("orphan");
+    expect(within(docHeader()).getByRole("heading", { level: 2 }).textContent).toBe("orphan");
   });
 
   it("右側錨點列列出內文 h2／h3、首項為目前段；點擊捲至該標題；無標題時錨點列缺席", async () => {
@@ -614,32 +625,38 @@ describe("ManualPage 空狀態", () => {
 // 三欄寬度（240／768 置中／200）、頁首 24px 標題與產生時間行、白底上緣細線的固定底列
 // 對齊 768px、出處籤與帶目標頁標題的上一頁／下一頁框線鈕。
 describe("ManualPage 三欄版面與固定底列", () => {
-  it("目錄樹容器為 240px 淡灰底；列為 NavItem 風格（作用中主色淡底）", async () => {
+  it("目錄樹容器為 240px 淡灰底；頁列與文件樹節點同款（30px、圓角、hover 淡底、作用中主色淡底與主色字）", async () => {
     renderManual();
     await screen.findByText("歡迎。");
     const aside = tree().closest("aside") as HTMLElement;
     expect(aside.className).toContain("w-60");
     expect(aside.className).toContain("bg-sidebar");
+    for (const slug of ["index", "first-login"]) {
+      expect(row(slug).className).toContain("h-[30px]");
+      expect(row(slug).className).toContain("rounded-lg");
+    }
     expect(row("index").className).toContain("bg-primary/12");
-    expect(row("index").className).toContain("rounded-lg");
+    expect(row("index").className).toContain("text-primary");
+    expect(row("index").getAttribute("aria-current")).toBe("page");
     expect(row("first-login").className).not.toContain("bg-primary/12");
+    expect(row("first-login").className).toContain("hover:bg-foreground/5");
     // 樹的搜尋框為全圓。
     expect(screen.getByPlaceholderText("搜尋手冊…").className).toContain("rounded-full");
   });
 
-  it("頁首為 24px 一般字重標題＋灰字「產生於 {generated}」；generated 缺席時該行缺席", async () => {
+  it("閱讀卡標題為 24px 一般字重；出處行為灰字路徑與「產生於 {generated}」；generated 缺席時該段缺席", async () => {
     renderManual();
     await screen.findByText("歡迎。");
-    const header = content().querySelector("[data-manual-header]") as HTMLElement;
-    const h1 = within(header).getByRole("heading", { level: 1 });
-    expect(h1.className).toContain("text-2xl");
-    expect(h1.className).toContain("font-normal");
-    expect(header.textContent).toContain("產生於 2026-09-01");
-    expect(header.querySelector("[data-manual-generated]")!.className).toContain("text-muted-foreground");
+    const title = within(docHeader()).getByRole("heading", { level: 2 });
+    expect(title.className).toContain("text-2xl");
+    expect(title.className).toContain("font-normal");
+    expect(docProvenance()!.className).toContain("text-muted-foreground");
+    expect(docProvenance()!.textContent).toBe("openspec/manual/index.md·產生於 2026-09-01");
+    expect(docProvenance()!.querySelector("[data-manual-generated]")).toBeTruthy();
     fireEvent.click(row("about"));
     await screen.findByText("取材範圍。");
-    expect(header.textContent).not.toContain("產生於");
-    expect(header.querySelector("[data-manual-generated]")).toBeNull();
+    expect(docProvenance()!.textContent).toBe("openspec/manual/about.md");
+    expect(content().querySelector("[data-manual-generated]")).toBeNull();
   });
 
   it("底列固定：白底、上緣細線、內容對齊 768px；左出處籤為框線籤、右為帶小字標籤與目標頁標題的框線鈕", async () => {
@@ -669,5 +686,195 @@ describe("ManualPage 三欄版面與固定底列", () => {
     expect(next.textContent).toContain("認識畫面");
     expect(prevTarget()).toBe("index");
     expect(nextTarget()).toBe("editor");
+  });
+});
+
+describe("countHeadings", () => {
+  it("只數圍欄外的 ATX h2／h3", () => {
+    const md = [
+      "# 頁標題",
+      "## 原生選單",
+      "### 變更列",
+      "#### 更深一層",
+      "  ### 縮排三格內仍是標題",
+      "##沒有空白不是標題",
+      "```md",
+      "## 圍欄內",
+      "### 圍欄內",
+      "```",
+      "Setext 標題",
+      "---",
+      "## 分區太長時 ##",
+      "###",
+    ].join("\n");
+    expect(countHeadings(md)).toEqual({ h2: 2, h3: 3 });
+  });
+
+  it("空內文為 0", () => {
+    expect(countHeadings("")).toEqual({ h2: 0, h3: 0 });
+  });
+});
+
+/** 〈系統匣選單〉（Scenario「閱讀卡標題區、出處行與數字磚」）：3 個 h2、11 個 h3、7 個關鍵字、1 個出處。 */
+const TRAY_PAGE = page({
+  slug: "tray",
+  title: "系統匣選單",
+  section: "桌面 app",
+  order: 360,
+  keywords: ["系統匣", "選單列", "面板", "進度", "複製名稱", "複製 slug", "保留在途"],
+  sources: ["tray-status-menu"],
+  generated: "2026-09-17T16:05:41+08:00",
+});
+const TRAY_BODY = [
+  "# 系統匣選單",
+  "開頭。",
+  "## 原生選單（Windows、Linux）",
+  ...["變更列", "討論列", "專案切換", "動作區"].map((h) => `### ${h}`),
+  "## 面板（macOS）",
+  ...["專案分頁條", "內容區", "品質關卡章", "remote 專案", "載入中", "滑鼠操作", "建立失敗"].map((h) => `### ${h}`),
+  "```md",
+  "## 圍欄內不算",
+  "```",
+  "## 分區太長時",
+  "**出處**：`tray-status-menu`",
+].join("\n\n");
+
+/** 規格 x：最近的 @trace 為 2026-09-05（change-x），另一條較舊。 */
+const X_SPEC = [
+  "# x Specification",
+  "## Purpose",
+  "x。",
+  "## Requirements",
+  "### Requirement: 甲",
+  "甲 SHALL 做事。",
+  "<!-- @trace\nsource: change-old\nupdated: 2026-08-01\n-->",
+  "### Requirement: 乙",
+  "乙 SHALL 做事。",
+  "<!-- @trace\nsource: change-x\nupdated: 2026-09-05T10:00:00+08:00\n-->",
+].join("\n\n");
+
+const STALE_INDEX: ManualIndex = {
+  present: true,
+  reason: null,
+  pages: [
+    page({ slug: "stale-page", title: "過期頁", section: "開始使用", order: 10, sources: ["x"], generated: "2026-09-01", stale: true }),
+    page({ slug: "fresh", title: "新鮮頁", section: "開始使用", order: 20, sources: ["y"], generated: "2026-09-01" }),
+  ],
+  uncoveredNew: [],
+  malformed: [],
+};
+const STALE_BODIES = { "stale-page": async () => "# 過期頁\n\n過期內文。", fresh: async () => "# 新鮮頁\n\n新鮮內文。" };
+
+describe("ManualPage 閱讀卡標題區、出處行、數字磚與提示框", () => {
+  it("〈系統匣選單〉資料：分區籤、出處行三段、四格磚 3／11／7／1", async () => {
+    const { onOpenSpec } = renderManual(
+      { index: { ...INDEX, pages: [TRAY_PAGE] }, capabilities: ["tray-status-menu"] },
+      loader({ tray: async () => TRAY_BODY }),
+    );
+    await screen.findByText("開頭。");
+    expect(within(docHeader()).getByRole("heading", { level: 2 }).textContent).toBe("系統匣選單");
+    expect(docHeader().querySelector("[data-doc-badges]")!.textContent).toBe("桌面 app");
+    expect(content().querySelector("[data-manual-stale-pill]")).toBeNull();
+    expect(docProvenance()!.textContent).toBe("openspec/manual/tray.md·產生於 2026-09-17T16:05:41+08:00·出處tray-status-menu");
+    fireEvent.click(within(docProvenance()!).getByRole("button", { name: "tray-status-menu" }));
+    expect(onOpenSpec).toHaveBeenCalledWith("tray-status-menu");
+    expect(tiles()).toEqual(["3章節", "11小節", "7關鍵字", "1出處規格"]);
+    expect(staleCallout()).toBeNull();
+  });
+
+  it("缺 section 的頁分區籤為「其他」", async () => {
+    renderManual();
+    await screen.findByText("歡迎。");
+    fireEvent.click(row("orphan"));
+    await screen.findByText("沒有欄位的頁");
+    expect(docHeader().querySelector("[data-doc-badges]")!.textContent).toBe("其他");
+  });
+
+  it("stale 頁：籤槽「可能過期」籤、提示框列出出處的最近 @trace 與「本頁產生於」；非 stale 頁無籤無提示框", async () => {
+    const loadSpec = vi.fn(async (cap: string) => (cap === "x" ? X_SPEC : null));
+    renderManual({ index: STALE_INDEX, capabilities: ["x", "y"], loadSpec }, loader(STALE_BODIES));
+    await screen.findByText("過期內文。");
+    expect(docHeader().querySelector("[data-manual-stale-pill]")!.textContent).toBe("可能過期");
+    await waitFor(() => expect(staleCallout()!.textContent).toContain("出處 x 於 2026-09-05 由變更 change-x 更新"));
+    expect(loadSpec).toHaveBeenCalledWith("x");
+    expect(staleCallout()!.textContent).toContain("本頁產生於 2026-09-01");
+    expect(staleCallout()!.textContent).toContain("/speclink-manual");
+    // 提示框在數字磚與內文之間。
+    const slot = content().querySelector("[data-doc-callout]") as HTMLElement;
+    expect(slot.contains(staleCallout())).toBe(true);
+    const order = [content().querySelector("[data-doc-tiles]")!, slot, content().querySelector("[data-doc-body]")!];
+    expect(order[0].compareDocumentPosition(order[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(order[1].compareDocumentPosition(order[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(row("fresh"));
+    await screen.findByText("新鮮內文。");
+    expect(content().querySelector("[data-manual-stale-pill]")).toBeNull();
+    expect(staleCallout()).toBeNull();
+    expect(loadSpec).not.toHaveBeenCalledWith("y");
+  });
+
+  it("loadSpec reject 或規格無 @trace 時該行為「在本頁產生後更新過」，籤照常", async () => {
+    const loadSpec = vi.fn(() => Promise.reject(new Error("io")));
+    renderManual({ index: STALE_INDEX, capabilities: ["x"], loadSpec }, loader(STALE_BODIES));
+    await screen.findByText("過期內文。");
+    await waitFor(() => expect(staleCallout()!.textContent).toContain("出處 x 在本頁產生後更新過"));
+    expect(docHeader().querySelector("[data-manual-stale-pill]")).toBeTruthy();
+  });
+
+  it("換頁作廢在途的規格讀取：晚到的舊回應不覆蓋最新一次", async () => {
+    const reads = [deferred<string | null>(), deferred<string | null>()];
+    let call = 0;
+    const loadSpec = vi.fn(() => reads[call++].promise);
+    renderManual({ index: STALE_INDEX, capabilities: ["x", "y"], loadSpec }, loader(STALE_BODIES));
+    await screen.findByText("過期內文。");
+    // 過期頁 → 新鮮頁 → 過期頁：第一次讀取在途時就換頁。
+    fireEvent.click(row("fresh"));
+    await screen.findByText("新鮮內文。");
+    fireEvent.click(row("stale-page"));
+    await screen.findByText("過期內文。");
+    await waitFor(() => expect(loadSpec).toHaveBeenCalledTimes(2));
+    reads[1].resolve(X_SPEC);
+    await waitFor(() => expect(staleCallout()!.textContent).toContain("由變更 change-x 更新"));
+    reads[0].resolve(X_SPEC.replace("source: change-x", "source: change-late").replace("2026-09-05T10:00:00+08:00", "2026-12-01"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(staleCallout()!.textContent).toContain("由變更 change-x 更新");
+    expect(staleCallout()!.textContent).not.toContain("change-late");
+  });
+
+  it("renderDocumentActions 收到 { manual: slug } 與已載入原文並渲染在標題列；未傳時無動作", async () => {
+    const renderDocumentActions = vi.fn(() => <button type="button">開啟 ▾</button>);
+    const view = renderManual({ renderDocumentActions });
+    await screen.findByText("歡迎。");
+    expect(renderDocumentActions).toHaveBeenLastCalledWith({ doc: { manual: "index" }, content: BODIES.index });
+    expect(within(docHeader()).getByRole("button", { name: "開啟 ▾" })).toBeTruthy();
+    view.unmount();
+    renderManual();
+    await screen.findByText("歡迎。");
+    expect(within(docHeader()).queryByRole("button", { name: "開啟 ▾" })).toBeNull();
+  });
+
+  it("載入失敗時無磚無提示框，籤照常", async () => {
+    const loadSpec = vi.fn(async () => X_SPEC);
+    renderManual(
+      { index: STALE_INDEX, capabilities: ["x"], loadSpec },
+      loader({ "stale-page": () => Promise.reject(new Error("io")) }),
+    );
+    await screen.findByText("內文載入失敗");
+    expect(content().querySelector("[data-doc-tiles]")).toBeNull();
+    expect(staleCallout()).toBeNull();
+    expect(docHeader().querySelector("[data-manual-stale-pill]")).toBeTruthy();
+  });
+
+  it("DocBody 容器 class 含 15px 與 h2／h3 覆蓋", async () => {
+    renderManual();
+    await screen.findByText("歡迎。");
+    const body = content().querySelector("[data-manual-card] [data-doc-body]") as HTMLElement;
+    expect(body.className).toContain("text-[15px]");
+    expect(body.className).toContain("leading-[1.75]");
+    const wrapper = body.parentElement as HTMLElement;
+    expect(wrapper.className).toContain("[&_.markdown_h2]:text-base");
+    expect(wrapper.className).toContain("[&_.markdown_h2]:font-semibold");
+    expect(wrapper.className).toContain("[&_.markdown_h3]:text-sm");
+    expect(wrapper.className).toContain("[&_.markdown_h3]:font-semibold");
+    expect(body.textContent).toContain("歡迎。");
   });
 });
