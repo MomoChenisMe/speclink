@@ -1,5 +1,4 @@
 import {
-  useCallback,
   useEffect,
   useRef,
   useState,
@@ -21,13 +20,11 @@ import {
   Sparkles,
   Trash2,
   Undo2,
-  X,
 } from "lucide-react";
 
 import type {
   ChangeItem,
   ChangeMetaInfo,
-  DeltaOperation,
   StationTicket,
   TicketStation,
   Verb,
@@ -36,13 +33,12 @@ import type {
 import { specDeltaCounts, sumDeltaCounts } from "../delta";
 import {
   changeStage,
-  planArchiveAfter,
   planBlockedBy,
   planBlockedLabel,
-  planRequirementOverlap,
   planWave,
   planWaveLabel,
 } from "../stage";
+import { newCapabilities } from "../docModel";
 import { useI18n } from "../i18n";
 import { relativeDays } from "../time";
 import { Badge } from "./ui/badge";
@@ -57,15 +53,19 @@ import {
 } from "./ui/dropdown-menu";
 import { StatusPill, type StatusPillTone } from "./ui/status-pill";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { SourceChipRow } from "./SourceDiscussionChip";
-import { SectionedDoc } from "./SectionedDoc";
+import { changeDocSummary } from "./changeDocSummary";
+import { DesignDoc } from "./DesignDoc";
+import type { PathReveal } from "./DocParts";
+import { ProposalDoc } from "./ProposalDoc";
 import { DocSkeleton } from "./skeletons";
+import { PlanDoc } from "./PlanDoc";
 import { TaskList } from "./TaskList";
-import { DELTA_COLORS, DELTA_LABEL_KEYS, DeltaBadges, DeltaSpecView } from "./DeltaBadges";
+import { DeltaBadges, DeltaCapSection } from "./DeltaBadges";
 import { AnalyzePanel } from "./AnalyzePanel";
 import { TicketTabBody, useStationTickets } from "./TicketView";
+import { useDocNav } from "./useDocNav";
 import {
   IdentityName,
   STAGE_PILL_TONE,
@@ -152,6 +152,10 @@ export interface ChangeDetailPageProps {
   /** 內容卡標頭右端的文件動作（design D4「開啟 ▾」）：頁依作用中分頁回報對應的文件與
    * 已載入原文；沒有對應檔案的分頁（排程）為 null。 */
   renderDocumentActions?: (target: DocumentTarget | null) => ReactNode;
+  /** 開該能力的規格詳情頁（規格文件能力頭的「看正式規格」）；未提供時不渲染該鈕。 */
+  onOpenSpec?: (capability: string) => void;
+  /** 提案影響段路徑籤的本機路徑動作（文案依平台）；未提供（無本機目錄）時只有複製鈕。 */
+  pathReveal?: PathReveal;
 }
 
 type Doc = string | null | undefined;
@@ -249,255 +253,6 @@ function documentTarget(
 }
 
 /**
- * 規格文件的一個 capability 段。`jump` 指到它時捲到段首並回報清除：捲動放在段自己的 effect，
- * 因為 Radix 的 TabsContent 在切換後的下一輪 render 才掛上內文，頁層 effect 那時還找不到段。
- */
-function SpecCapSection({
-  cap,
-  doc,
-  jump,
-  onJumped,
-}: {
-  cap: string;
-  doc: string | null;
-  jump: { cap: string } | null;
-  onJumped: () => void;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (jump?.cap !== cap) return;
-    ref.current?.scrollIntoView?.({ block: "start" });
-    onJumped();
-  }, [jump, cap, onJumped]);
-  return (
-    <div ref={ref} data-spec-cap={cap} className="mb-4">
-      <div className="mb-1 flex items-center gap-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-        {cap} <DeltaBadges counts={specDeltaCounts(doc)} />
-      </div>
-      {/* 逐項空態（capability 有列出、其 spec.md 為空）不套整體性文案。 */}
-      <DeltaSpecView markdown={doc} />
-    </div>
-  );
-}
-
-/** 排程分頁內的名稱籤（同波夥伴、前置、重疊、封存順序共用）。 */
-function PlanName({ name }: { name: string }) {
-  return <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{name}</span>;
-}
-
-/** 重疊卡的 delta 操作小標籤：用詞與配色和規格分頁的 delta 區段同源；title 標出屬於哪一方。 */
-function OpTag({ op, owner }: { op: DeltaOperation; owner: string }) {
-  const { t } = useI18n();
-  const key = op.toLowerCase() as Lowercase<DeltaOperation>;
-  return (
-    <span title={owner} className={`rounded border border-border/60 px-1 py-0.5 text-[10px] ${DELTA_COLORS[key]}`}>
-      {t(DELTA_LABEL_KEYS[key])}
-    </span>
-  );
-}
-
-/** 排程分頁的一張卡片：外觀沿工單分頁的邊框卡片，標題列（右側可放徽章）與內容區以分隔線分格。 */
-function PlanCard({
-  section,
-  title,
-  badge,
-  children,
-}: {
-  section: "wave" | "depends" | "overlaps" | "archive";
-  title: string;
-  badge?: ReactElement;
-  children: ReactNode;
-}) {
-  return (
-    <section data-plan-section={section} className="rounded-md border border-border/60 bg-muted/20">
-      <div
-        data-plan-card-header
-        className="flex items-center justify-between px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-      >
-        <span data-doc-heading>{title}</span>
-        {badge}
-      </div>
-      <div data-plan-card-body className="border-t border-border/60 px-2 py-1.5 text-sm">
-        {children}
-      </div>
-    </section>
-  );
-}
-
-/**
- * 排程分頁（spec desktop-app「詳情頁的排程分頁」）：波次（同波夥伴）、前置（可增減，
- * 標題列的狀態徽章取代獨立的阻擋段）、重疊（唯讀）、封存順序四張卡片。清單項缺 wave
- * 時：remote 摘要（亦缺 dependsOn）只剩一句說明；plan 成環（payload 仍帶 dependsOn
- * 原文）另渲染前置卡（無徽章）、只能移除——解環的出口。判定沿 stage.ts 的 planWave／
- * planBlockedBy／planRequirementOverlap／planArchiveAfter 單一入口。
- */
-function PlanTab({
-  change,
-  changes,
-  roster,
-  onSetDepends,
-}: {
-  change: ChangeItem;
-  changes: ChangeItem[];
-  /** 候選名冊：陣列＝查詢結果、null＝自清單派生、undefined＝查詢中（不給候選）。 */
-  roster: string[] | null | undefined;
-  onSetDepends?: (change: string, on: string[], remove: boolean) => void;
-}) {
-  const { t } = useI18n();
-  const wave = planWave(change);
-  const dependsOn = change.dependsOn ?? [];
-  // 前置卡內文（成環與一般兩個分支共用）：宣告的前置每項一列，空時「尚無前置」。
-  const dependsBody = (
-    <>
-      {dependsOn.length === 0 && <div className="text-muted-foreground">{t("plan.noDepends")}</div>}
-      <ul className="flex flex-col gap-1">
-        {dependsOn.map((n) => (
-          <li key={n} className="flex items-center gap-2">
-            <PlanName name={n} />
-            {onSetDepends && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                aria-label={t("plan.remove").replace("{name}", n)}
-                onClick={() => onSetDepends(change.name, [n], true)}
-              >
-                <X className="h-3.5 w-3.5" />
-              </Button>
-            )}
-          </li>
-        ))}
-      </ul>
-    </>
-  );
-  if (wave === null) {
-    return (
-      <div className="flex flex-col gap-3 text-sm">
-        <div className="text-muted-foreground py-6">{t(change.dependsOn ? "plan.cycle" : "plan.unavailable")}</div>
-        {change.dependsOn && (
-          <PlanCard section="depends" title={t("plan.depends")}>
-            {dependsBody}
-          </PlanCard>
-        )}
-      </div>
-    );
-  }
-  const requirementOverlaps = planRequirementOverlap(change);
-  const archiveAfter = planArchiveAfter(change);
-  const blockedBy = planBlockedBy(change);
-  // 舊 server 的 blockedBy 另含先配置、共用 capability 的變更（本機與新 server 只含宣告
-  // 前置）：列出 dependsOn 以外的名稱，徽章的數字才對得上卡片內容。
-  const undeclaredWaits = blockedBy.filter((n) => !dependsOn.includes(n));
-  const others = changes.filter((c) => c.name !== change.name);
-  const mates = others.filter((c) => planWave(c) === wave).map((c) => c.name);
-  // 新增候選：該變更所在名冊的其他作用中變更（add-change-plan-remote D9；未提供名冊時
-  // 自清單派生），扣掉自己與已宣告的前置（成環留給引擎拒絕）。
-  const pool = roster === undefined ? [] : (roster ?? others.map((c) => c.name));
-  const candidates = pool.filter((n) => n !== change.name && !dependsOn.includes(n));
-  // 封存卡的兩種警示：同名衝突（雙方都帶進或都拿走，先後救不了）與互相等待（雙方互列
-  // archiveAfter，封存互卡）——兩者引擎都不會讓任一方「可直接封存」。
-  const conflictWith = [...new Set(requirementOverlaps.filter((o) => o.conflict).map((o) => o.change))];
-  const mutualWaits = archiveAfter.filter((n) =>
-    others.some((c) => c.name === n && planArchiveAfter(c).includes(change.name)),
-  );
-  const names = (list: string[]) => list.join(t("common.listSeparator"));
-  // 徽章是狀態不是標題：不繼承標題列的全大寫與字距。
-  const statusBadge =
-    blockedBy.length === 0 ? (
-      <Badge variant="secondary" className="normal-case tracking-normal">
-        {t("plan.canStart")}
-      </Badge>
-    ) : (
-      <Badge variant="outline" className="normal-case tracking-normal" title={planBlockedLabel(blockedBy, t)}>
-        {t("plan.blockedCount").replace("{n}", String(blockedBy.length))}
-      </Badge>
-    );
-  return (
-    <div className="flex flex-col gap-3 text-sm">
-      <PlanCard section="wave" title={t("plan.waveLabel")}>
-        <div className="font-medium">{planWaveLabel(wave, t)}</div>
-        {mates.length === 0 ? (
-          <div className="text-muted-foreground">{t("plan.onlyOne")}</div>
-        ) : (
-          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <span className="text-muted-foreground">{t("plan.waveMates")}</span>
-            {mates.map((n) => (
-              <PlanName key={n} name={n} />
-            ))}
-          </div>
-        )}
-      </PlanCard>
-      <PlanCard section="depends" title={t("plan.depends")} badge={statusBadge}>
-        {dependsBody}
-        {undeclaredWaits.length > 0 && (
-          <div data-plan-undeclared-waits className="mt-1 flex flex-wrap items-center gap-1.5">
-            <span className="text-muted-foreground">{t("plan.undeclaredWaits")}</span>
-            {undeclaredWaits.map((n) => (
-              <PlanName key={n} name={n} />
-            ))}
-          </div>
-        )}
-        {onSetDepends && candidates.length > 0 && (
-          // 只當挑選器用：value 固定為空，選擇即寫入、trigger 回到提示文字。
-          <Select value="" onValueChange={(name) => onSetDepends(change.name, [name], false)}>
-            <SelectTrigger aria-label={t("plan.add")} className="mt-2 w-full">
-              <SelectValue placeholder={t("plan.add")} />
-            </SelectTrigger>
-            <SelectContent>
-              {candidates.map((n) => (
-                <SelectItem key={n} value={n}>
-                  {n}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      </PlanCard>
-      <PlanCard section="overlaps" title={t("plan.overlaps")}>
-        {requirementOverlaps.length === 0 && <div className="text-muted-foreground">{t("plan.noOverlaps")}</div>}
-        <ul className="flex flex-col gap-1">
-          {requirementOverlaps.map((o) => (
-            <li key={`${o.change}/${o.capability}/${o.requirement}`} className="flex flex-wrap items-center gap-1.5">
-              <PlanName name={o.change} />
-              <span className="text-xs">{`${o.capability} › ${o.requirement}`}</span>
-              {/* 雙方操作：本變更在前、對方在後。 */}
-              <OpTag op={o.ownOperation} owner={change.name} />
-              <OpTag op={o.otherOperation} owner={o.change} />
-              {o.conflict && (
-                <span className="rounded border border-destructive/60 px-1 py-0.5 text-[10px] text-destructive">
-                  {t("plan.conflict")}
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-      </PlanCard>
-      <PlanCard section="archive" title={t("plan.archiveAfter")}>
-        {archiveAfter.length === 0 && conflictWith.length === 0 && (
-          <div className="text-muted-foreground">{t("plan.noArchiveAfter")}</div>
-        )}
-        {archiveAfter.length > 0 && (
-          <>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {archiveAfter.map((n) => (
-                <PlanName key={n} name={n} />
-              ))}
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">{t("plan.archiveHint")}</p>
-          </>
-        )}
-        {mutualWaits.length > 0 && (
-          <p className="mt-1 text-xs text-destructive">{t("plan.archiveDeadlock").replace("{names}", names(mutualWaits))}</p>
-        )}
-        {conflictWith.length > 0 && (
-          <p className="mt-1 text-xs text-destructive">{t("plan.archiveConflict").replace("{names}", names(conflictWith))}</p>
-        )}
-      </PlanCard>
-    </div>
-  );
-}
-
-/**
  * 變更詳情頁（design D5；spec「詳情頁的文件樹、閱讀卡與本頁目錄」）：三欄骨架——左欄身分區
  * （名稱、籤、出身、來自／同源／規格列）、「文件」節點（提案／設計／互動任務／彩色規格／排程／
  * 條件式工單）、「狀態」列；中欄分析結果卡（有結果時）與閱讀卡；右欄本頁目錄。變更層動作經
@@ -528,6 +283,8 @@ export function ChangeDetailPage({
   loadDependsCandidates,
   unavailable,
   renderDocumentActions,
+  onOpenSpec,
+  pathReveal,
 }: ChangeDetailPageProps) {
   const { t } = useI18n();
   const [meta, setMeta] = useState<ChangeMetaInfo | null>(null);
@@ -540,11 +297,8 @@ export function ChangeDetailPage({
   const [specDocs, setSpecDocs] = useState<Record<string, string | null> | undefined>();
   // 受控分頁：工單分頁退場時要能把當前分頁切回「提案」（design D3）。
   const [tab, setTab] = useState("proposal");
-  // 規格列能力籤選定的 capability：「開啟 ▾」指向它。
-  const [specCap, setSpecCap] = useState<string | null>(null);
-  // 能力籤的捲動請求：每點一次換一個物件，該規格段捲到後即清——自文件樹切回規格文件時自頂端呈現。
-  const [specJump, setSpecJump] = useState<{ cap: string } | null>(null);
-  const clearSpecJump = useCallback(() => setSpecJump(null), []);
+  // 能力籤→規格段、D 籤→決策卡、「前往」→任務列的跳轉請求（與已封存頁同一套）。
+  const nav = useDocNav(setTab);
   const bodyRef = useRef<HTMLDivElement>(null);
   // 批次操作／拖放寫回進行中——鎖工具列與清單（design D4 例外）。單發勾選不設此旗標。
   const [taskBusy, setTaskBusy] = useState(false);
@@ -630,8 +384,7 @@ export function ChangeDetailPage({
   // 開啟／換 change 從「提案」起。
   useEffect(() => {
     setTab("proposal");
-    setSpecCap(null);
-    setSpecJump(null);
+    nav.reset();
   }, [name]);
   // 停在工單分頁而該站翻為非進行中（工單已蓋章或放棄刪除）：分頁消失，退回「提案」。
   useEffect(() => {
@@ -740,16 +493,28 @@ export function ChangeDetailPage({
   const wave = planWave(change);
   const blockedBy = planBlockedBy(change);
 
-  const docTarget = documentTarget(change.name, tab, { proposal, design, tasks: tasksMd }, specDocs, specCap);
+  const docTarget = documentTarget(change.name, tab, { proposal, design, tasks: tasksMd }, specDocs, nav.specCap);
   const docPath = documentArtifact(docTarget);
   // 排程沒有檔案，內容即變更的排程欄位。
   const tocKey = changeDocTocKey(tab, { content: tab === "plan" ? change : docTarget?.content, specs: specDocs, tickets });
   const specCaps = Object.keys(specDocs ?? {});
-  const openSpec = (cap: string) => {
-    setSpecCap(cap);
-    setSpecJump({ cap });
-    setTab("specs");
-  };
+  // 提案列為新能力的能力在封存前沒有正式規格：其規格段不給「看正式規格」。
+  const newCaps = proposal ? newCapabilities(proposal) : [];
+  // 閱讀卡標題區的籤槽、數字磚與提示框（design D9）：提案的提示框接在能力段尾，其餘在磚與內文之間。
+  const summary = changeDocSummary(
+    tab,
+    {
+      proposal,
+      design,
+      tasksMd,
+      specDocs,
+      change,
+      tickets,
+      onLocateTask: nav.locateTask,
+    },
+    t,
+  );
+  const calloutSlot = summary.callout && <div data-doc-callout>{summary.callout}</div>;
   // 工單節點的徽章：末輪序號（載入完成且有輪次時）。
   const lastRound = (station: TicketStation) => {
     const rounds = tickets[station]?.rounds ?? [];
@@ -857,7 +622,7 @@ export function ChangeDetailPage({
       mark: "specs",
       label: t("detail.relSpecs"),
       children: specCaps.map((cap) => (
-        <button key={cap} type="button" className="min-w-0 max-w-full" onClick={() => openSpec(cap)}>
+        <button key={cap} type="button" className="min-w-0 max-w-full" onClick={() => nav.openSpec(cap)}>
           <Badge variant="outline" className="block max-w-full truncate font-mono hover:bg-accent">
             {cap}
           </Badge>
@@ -1048,13 +813,14 @@ export function ChangeDetailPage({
           <Card className="flex flex-col gap-5 p-6">
             <DocHeader
               title={t(DOC_TITLE_KEYS[tab])}
+              badges={summary.badges}
               actions={renderDocumentActions?.(docTarget)}
               provenance={[
                 tab === "plan" ? t("plan.derivedFrom") : docPath && <span className="font-mono">{docPath}</span>,
               ]}
             />
-            {/* 數字磚與提示框的容器：本刀不放內容（cut 2／3 由文件結構推導）。 */}
-            <DocTiles tiles={[]} />
+            <DocTiles tiles={summary.tiles} />
+            {tab !== "proposal" && calloutSlot}
             <DocBody ref={bodyRef}>
               {/* undefined＝載入在途、null＝文件不存在（空殼 change）——載入中畫骨架，
                   空態文案只在載入完成後出。 */}
@@ -1062,14 +828,21 @@ export function ChangeDetailPage({
                 {proposal === undefined ? (
                   <DocSkeleton />
                 ) : (
-                  <SectionedDoc content={proposal} empty={t("list.noProposalDoc")} />
+                  <ProposalDoc
+                    content={proposal}
+                    empty={t("list.noProposalDoc")}
+                    deltaCaps={specCaps}
+                    onOpenCapability={nav.openSpec}
+                    pathReveal={pathReveal}
+                    afterCapabilities={tab === "proposal" ? calloutSlot : null}
+                  />
                 )}
               </TabsContent>
               <TabsContent value="design">
                 {design === undefined ? (
                   <DocSkeleton />
                 ) : (
-                  <SectionedDoc content={design} empty={t("list.noDesignDoc")} />
+                  <DesignDoc content={design} empty={t("list.noDesignDoc")} jump={nav.designJump} onJumped={nav.clearDesignJump} />
                 )}
               </TabsContent>
               <TabsContent value="tasks">
@@ -1097,6 +870,9 @@ export function ChangeDetailPage({
                       onMoveTask ? (from, to, before) => void handleReorder(from, to, before) : undefined
                     }
                     onSetAll={(done) => void handleSetAll(done)}
+                    onJumpDecision={nav.jumpDecision}
+                    locate={nav.taskLocate}
+                    onLocated={nav.clearTaskLocate}
                   />
                 )}
               </TabsContent>
@@ -1107,12 +883,19 @@ export function ChangeDetailPage({
                   <div className="py-6 text-sm text-muted-foreground">{t("list.noDeltaSpecs")}</div>
                 ) : (
                   Object.entries(specDocs).map(([cap, doc]) => (
-                    <SpecCapSection key={cap} cap={cap} doc={doc} jump={specJump} onJumped={clearSpecJump} />
+                    <DeltaCapSection
+                      key={cap}
+                      cap={cap}
+                      doc={doc}
+                      jump={nav.specJump}
+                      onJumped={nav.clearSpecJump}
+                      onOpenSpec={newCaps.includes(cap) ? undefined : onOpenSpec}
+                    />
                   ))
                 )}
               </TabsContent>
               <TabsContent value="plan">
-                <PlanTab change={change} changes={changes ?? []} roster={roster} onSetDepends={onSetDepends} />
+                <PlanDoc change={change} changes={changes ?? []} roster={roster} onSetDepends={onSetDepends} />
               </TabsContent>
               {inReview && (
                 <TabsContent value="review">

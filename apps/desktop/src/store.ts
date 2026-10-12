@@ -450,6 +450,9 @@ export interface AppState {
   copyDocumentPath: (location: DocumentLocation) => Promise<void>;
   /** 把分頁已載入的文件原文寫入剪貼簿（remote 無 checkout 時唯一的文件動作）；失敗同上。 */
   copyDocumentContent: (text: string) => Promise<void>;
+  /** 在檔案管理員顯示活躍專案內的相對路徑（提案影響段的路徑籤）：沒有本機目錄時不動作；
+   * 失敗以失敗 toast 呈現（主詞為相對路徑）。 */
+  revealProjectPath: (relative: string) => Promise<void>;
   confirmInit: (tools: string[]) => Promise<void>;
   cancelInit: () => void;
   confirmAdopt: (tools: string[]) => Promise<void>;
@@ -2461,6 +2464,12 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       runOnDocument(location.relative, async () => fsActionsAdapter?.copyText(location.path)),
     copyDocumentContent: (text) =>
       runOnDocument(appT("detail.copyContent"), async () => fsActionsAdapter?.copyText(text)),
+    async revealProjectPath(relative) {
+      const dir = localDirOf(get().activeKey);
+      if (!fsActionsAdapter || dir === null) return;
+      // 相對路徑為正斜線；Windows 的 reveal 接受混合分隔符（Rust std::path 吸收）。
+      await runOnDocument(relative, async () => fsActionsAdapter.reveal(`${dir}/${relative}`));
+    },
 
     closeTab(key) {
       bumpRemoteOpenGeneration(key);

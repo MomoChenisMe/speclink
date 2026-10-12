@@ -7,6 +7,7 @@ import type { ReactElement, ReactNode } from "react";
 import { I18nProvider } from "../i18n";
 import { ChangeCard } from "../components/ChangeCard";
 import type { ChangeItem } from "../adapter";
+import { SEMANTIC_TONE } from "../tone";
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider locale="zh-TW">{children}</I18nProvider>
@@ -68,6 +69,14 @@ describe("ChangeCard 待手動章", () => {
       />,
     );
     expect(screen.queryByLabelText("待手動")).toBeNull();
+  });
+
+  // spec「介面狀態語意色分層」Scenario「待手動以暖黃呈現」（desktop-change-doc-views design D14）。
+  it("待手動章取手動色、非進行中藍", () => {
+    render(<ChangeCard change={card(1, 0)} />);
+    const badge = screen.getByLabelText("待手動");
+    expect(badge.className).toContain(SEMANTIC_TONE.manual);
+    expect(badge.className).not.toContain(SEMANTIC_TONE.inProgress);
   });
 
   it("tooltip 載明剩餘項數（沿審查標示家族：無原生 title）", () => {

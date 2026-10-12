@@ -2815,6 +2815,25 @@ describe("詳情頁文件動作", () => {
     expect(options?.id).toBe("desktop-operation-failure");
   });
 
+  // desktop-change-doc-views design D11：提案影響段路徑籤的「在檔案管理員顯示」。
+  it("revealProjectPath 以專案目錄拼出路徑交 reveal；失敗發失敗 toast、主詞為相對路徑", async () => {
+    const fsActions = fakeFsActions();
+    const { store } = storeActive("local:/work/app", fsActions);
+    await store.getState().revealProjectPath("packages/ui/src/docModel.ts");
+    expect(fsActions.reveal).toHaveBeenCalledWith("/work/app/packages/ui/src/docModel.ts");
+    expect(toastError).not.toHaveBeenCalled();
+    fsActions.reveal.mockRejectedValueOnce("No such file or directory (os error 2)");
+    await store.getState().revealProjectPath("gone.ts");
+    expect((toastError.mock.calls[0] as [string])[0].startsWith("gone.ts · ")).toBe(true);
+  });
+
+  it("revealProjectPath 在 remote 無 checkout 時不動作", async () => {
+    const { store, fsActions } = storeActive("remote:c1/demo/api");
+    await store.getState().revealProjectPath("a.ts");
+    expect(fsActions.reveal).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
   it("core 查不到或回報錯誤時 locateDocument 為 null、不拋", async () => {
     const fsActions = fakeFsActions();
     fsActions.locate.mockResolvedValueOnce(null).mockRejectedValueOnce("boom");

@@ -34,8 +34,9 @@ const DATE_RE = /\d{4}-\d{2}-\d{2}/;
 const FENCE_RE = /^\s*(`{3,}|~{3,})(.*)$/;
 
 /** 逐行標記是否位於 fenced code block（圍欄行自身視為圍欄內）。收尾圍欄須與開頭同字元、
- * 不短於開頭且其後只有空白——較短或另一種字元的圍欄行是內容（巢狀圍欄）。 */
-function fenceFlags(lines: string[]): boolean[] {
+ * 不短於開頭且其後只有空白——較短或另一種字元的圍欄行是內容（巢狀圍欄）。docModel 的
+ * 章節與列點解析共用。 */
+export function fenceFlags(lines: string[]): boolean[] {
   let open: string | null = null;
   return lines.map((l) => {
     const m = FENCE_RE.exec(l);

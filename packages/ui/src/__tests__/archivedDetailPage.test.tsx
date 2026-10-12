@@ -175,14 +175,14 @@ describe("ArchivedDetailPage（封存變更）", () => {
     render(<ArchivedDetailPage {...(makeProps() as never)} />);
     await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
     fireEvent.mouseDown(screen.getByRole("tab", { name: /任務/ }));
-    await waitFor(() => expect(screen.getByText("1.1 done-task")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("done-task")).toBeTruthy());
     const boxes = screen.getAllByRole("checkbox");
     expect(boxes).toHaveLength(2);
     for (const box of boxes) expect((box as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByText("全部已完成")).toBeNull();
     expect(screen.queryByText("重置任務")).toBeNull();
     expect(document.querySelector(".lucide-grip-vertical")).toBeNull();
-    fireEvent.click(screen.getByText("1.2 open-task"));
+    fireEvent.click(screen.getByText("open-task"));
     expect((boxes[1] as HTMLButtonElement).getAttribute("data-state")).toBe("unchecked");
   });
 
@@ -415,6 +415,54 @@ describe("已封存詳情頁文件三態", () => {
   });
 });
 
+// desktop-change-doc-views design D9：已封存變更共用同一批渲染器與推導（唯讀、無排程）。
+describe("已封存變更的文件渲染器", () => {
+  const flat = (el: Element | null) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+  const docs: Record<string, string> = {
+    "proposal.md": "## Why\n\n- 動機\n\n## What Changes\n\n- 第一步\n- 第二步\n\n## Non-Goals\n\n- 不做\n",
+    "tasks.md": "## 1. 甲\n\n- [x] 1.1 已做（design D2）：內文；驗證：npm test\n- [ ] 1.2 未做\n- [ ] [M] 1.3 手動看畫面\n",
+    "specs/cap-x/spec.md": SPEC_DELTA,
+  };
+  const props = () => makeProps({ loadDocument: vi.fn(async (_d: string, artifact: string) => docs[artifact] ?? null) });
+
+  it("提案文件有籤與數字磚；任務卡勾選框 disabled 而展開鈕可用", async () => {
+    render(<ArchivedDetailPage {...(props() as never)} />);
+    await waitFor(() => expect(flat(document.querySelector("[data-doc-badges]"))).toBe("Feature"));
+    expect(Array.from(document.querySelectorAll("[data-doc-tile]")).map((t) => flat(t))).toEqual(["2解法步驟", "1非目標"]);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /任務/ }));
+    const expand = await screen.findByRole("button", { name: "展開任務 1" });
+    for (const box of screen.getAllByRole("checkbox")) expect((box as HTMLButtonElement).disabled).toBe(true);
+    expect((expand as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(expand);
+    expect(screen.getByText("npm test")).toBeTruthy();
+    expect(flat(document.querySelector("[data-doc-badges]"))).toBe("1/3");
+  });
+
+  it("手動提示框的「前往」使該任務列高亮（唯讀照常）", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    render(<ArchivedDetailPage {...(props() as never)} />);
+    await screen.findByText("動機");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /任務/ }));
+    const go = await screen.findByRole("button", { name: "前往" });
+    fireEvent.click(go);
+    await waitFor(() =>
+      expect(document.querySelector("[data-task-manual]")?.getAttribute("data-highlight")).toBe("true"),
+    );
+  });
+
+  it("任務的 D 籤切到設計文件；規格文件能力頭有「看正式規格」", async () => {
+    const onOpenSpec = vi.fn();
+    render(<ArchivedDetailPage {...(makeProps({ ...props(), onOpenSpec }) as never)} />);
+    await screen.findByText("動機");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /任務/ }));
+    fireEvent.click((await waitFor(() => document.querySelector('[data-task-decision="D2"]'))) as HTMLElement);
+    await waitFor(() => expect(screen.getByRole("tab", { name: /設計/ }).getAttribute("data-state")).toBe("active"));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /規格/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "看正式規格" }));
+    expect(onOpenSpec).toHaveBeenCalledWith("cap-x");
+  });
+});
+
 // spec「已封存詳情頁的工單分頁」：reviewedNotPassed／verifiedNotPassed 於「規格」之後出現對應
 // 分頁（審查在前），以 (datedName, station) 載入化石工單；reviewed／verified／none 不出分頁、不發請求。
 describe("已封存詳情頁的工單分頁", () => {
@@ -437,8 +485,11 @@ describe("已封存詳情頁的工單分頁", () => {
       },
     ],
   };
-  const headerText = () =>
-    (document.querySelector("[data-ticket-header]")?.textContent ?? "").replace(/\s+/g, " ").trim();
+  // 段標題列已撤（desktop-change-doc-views design D8）：輪數與階段詞在籤槽、計數在數字磚。
+  const flat = (el: Element | null) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+  const badges = () => flat(document.querySelector("[data-doc-badges]"));
+  const tiles = () =>
+    Array.from(document.querySelectorAll("[data-doc-tile]")).map((t) => `${flat(t.lastElementChild)} ${flat(t.firstElementChild)}`);
 
   it("reviewedNotPassed → 「審查」分頁排在規格之後，以 (datedName, review) 載入並呈現末輪", async () => {
     const loadStationTicket = vi.fn(async () => TICKET);
@@ -455,7 +506,8 @@ describe("已封存詳情頁的工單分頁", () => {
     expect(screen.queryByRole("tab", { name: /驗證/ })).toBeNull();
     await waitFor(() => expect(loadStationTicket).toHaveBeenCalledWith("2026-07-04-old-change", "review"));
     fireEvent.mouseDown(screen.getByRole("tab", { name: /審查/ }));
-    await waitFor(() => expect(headerText()).toBe("審查 · 第 2 輪（複驗）CRITICAL 1 · WARNING 0 · SUGGESTION 0"));
+    await waitFor(() => expect(badges()).toBe("第 2 輪複驗"));
+    expect(tiles()).toEqual(["輪 2", "CRITICAL（末輪） 1", "WARNING（末輪） 0", "SUGGESTION（末輪） 0"]);
     const r2 = document.querySelector('[data-ticket-round="2"]') as HTMLElement;
     expect(r2.querySelector("[data-ticket-round-toggle]")?.getAttribute("aria-expanded")).toBe("true");
   });
@@ -471,7 +523,7 @@ describe("已封存詳情頁的工單分頁", () => {
     expect(screen.queryByRole("tab", { name: /審查/ })).toBeNull();
     await waitFor(() => expect(loadStationTicket).toHaveBeenCalledWith("2026-07-04-old-change", "verify"));
     fireEvent.mouseDown(screen.getByRole("tab", { name: /驗證/ }));
-    await waitFor(() => expect(headerText()).toMatch(/^驗證 · 第 2 輪（複驗）/));
+    await waitFor(() => expect(badges()).toBe("第 2 輪複驗"));
   });
 
   it("兩站皆帶走 → 「審查」「驗證」依序；reviewed／none → 皆缺席且未發請求", async () => {

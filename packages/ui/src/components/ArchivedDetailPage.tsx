@@ -10,7 +10,10 @@ import { Card } from "./ui/card";
 import { StatusPill } from "./ui/status-pill";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { TooltipProvider } from "./ui/tooltip";
-import { DeltaSpecView } from "./DeltaBadges";
+import { changeDocSummary } from "./changeDocSummary";
+import { DeltaCapSection } from "./DeltaBadges";
+import { DesignDoc } from "./DesignDoc";
+import type { PathReveal } from "./DocParts";
 import {
   ConclusionView,
   discussionDoc,
@@ -37,11 +40,12 @@ import { ImproveChip } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
 import { Markdown } from "./Markdown";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_PILL_TONE } from "./reviewStyle";
-import { SectionedDoc } from "./SectionedDoc";
+import { ProposalDoc } from "./ProposalDoc";
 import { DocSkeleton } from "./skeletons";
 import { SourceChipRow, type SourceLinkItem } from "./SourceDiscussionChip";
 import { TaskList } from "./TaskList";
 import { TicketTabBody, useStationTickets } from "./TicketView";
+import { useDocNav } from "./useDocNav";
 import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_PILL_TONE } from "./verifyStyle";
 
 /** 頁目標（discriminated target 兩型同檔）：封存變更或封存討論。 */
@@ -87,6 +91,10 @@ export interface ArchivedDetailPageProps {
   archivedDate?: string;
   /** 內容卡標頭右端的文件動作（「開啟 ▾」）。 */
   renderDocumentActions?: (target: DocumentTarget | null) => ReactNode;
+  /** 開該能力的規格詳情頁（規格文件能力頭的「看正式規格」）；未提供時不渲染該鈕。 */
+  onOpenSpec?: (capability: string) => void;
+  /** 提案影響段路徑籤的本機路徑動作（文案依平台）；未提供時只有複製鈕。 */
+  pathReveal?: PathReveal;
 }
 
 type Doc = string | null | undefined;
@@ -131,6 +139,8 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
   // undefined＝capability 清單與其規格文件尚未載完（與「無規格差異」的空物件分流）。
   const [specDocs, setSpecDocs] = useState<Record<string, string | null> | undefined>();
   const [tab, setTab] = useState("proposal");
+  // 能力籤→規格段、D 籤→決策卡、「前往」→任務列的跳轉請求（與變更詳情頁同一套；換變更時以 key 重掛）。
+  const nav = useDocNav(setTab);
   const bodyRef = useRef<HTMLDivElement>(null);
   const gen = props.refreshGen ?? 0;
 
@@ -179,10 +189,11 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
 
   const tasks = parseTasks(tasksMd);
   const specCaps = Object.keys(specDocs ?? {});
+  const shownCap = nav.specCap && specCaps.includes(nav.specCap) ? nav.specCap : specCaps[0];
   const docTarget: DocumentTarget | null =
     tab === "specs"
-      ? specCaps.length > 0
-        ? { doc: { archived: datedName, artifact: `specs/${specCaps[0]}/spec.md` }, content: specDocs![specCaps[0]] }
+      ? shownCap
+        ? { doc: { archived: datedName, artifact: `specs/${shownCap}/spec.md` }, content: specDocs![shownCap] }
         : null
       : tab === "review" || tab === "verify"
         ? { doc: { archived: datedName, artifact: TAB_FILES[tab] } }
@@ -193,6 +204,22 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
 
   const docPath = documentArtifact(docTarget);
   const tocKey = changeDocTocKey(tab, { content: docTarget?.content, specs: specDocs, tickets });
+  // 閱讀卡標題區（design D9）：唯讀、無排程；化石工單不給「可以蓋章」提示框。
+  const summary = changeDocSummary(
+    tab,
+    {
+      proposal,
+      design,
+      tasksMd,
+      specDocs,
+      change: null,
+      tickets,
+      readOnly: true,
+      onLocateTask: nav.locateTask,
+    },
+    t,
+  );
+  const calloutSlot = summary.callout && <div data-doc-callout>{summary.callout}</div>;
 
   const tree = (
     <>
@@ -284,22 +311,48 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
           <Card className="flex flex-col gap-5 p-6">
             <DocHeader
               title={t(DOC_TITLE_KEYS[tab])}
+              badges={summary.badges}
               actions={props.renderDocumentActions?.(docTarget)}
               provenance={[docPath && <span className="font-mono">{docPath}</span>]}
             />
-            {/* 數字磚與提示框的容器：本刀不放內容（cut 2／3 由文件結構推導）。 */}
-            <DocTiles tiles={[]} />
+            <DocTiles tiles={summary.tiles} />
+            {tab !== "proposal" && calloutSlot}
             <DocBody ref={bodyRef}>
               {/* 各文件三態：載入中畫骨架，空態文案只在載入完成後出。 */}
               <TabsContent value="proposal">
-                {proposal === undefined ? <DocSkeleton /> : <SectionedDoc content={proposal} empty={t("archived.noProposal")} />}
+                {proposal === undefined ? (
+                  <DocSkeleton />
+                ) : (
+                  <ProposalDoc
+                    content={proposal}
+                    empty={t("archived.noProposal")}
+                    deltaCaps={specCaps}
+                    onOpenCapability={nav.openSpec}
+                    pathReveal={props.pathReveal}
+                    afterCapabilities={tab === "proposal" ? calloutSlot : null}
+                  />
+                )}
               </TabsContent>
               <TabsContent value="design">
-                {design === undefined ? <DocSkeleton /> : <SectionedDoc content={design} empty={t("archived.noDesign")} />}
+                {design === undefined ? (
+                  <DocSkeleton />
+                ) : (
+                  <DesignDoc content={design} empty={t("archived.noDesign")} jump={nav.designJump} onJumped={nav.clearDesignJump} />
+                )}
               </TabsContent>
               <TabsContent value="tasks">
-                {/* 唯讀：不接任何回呼——核取方塊 disabled、無把手、無批次工具列、整列不回應。 */}
-                {tasksMd === undefined ? <DocSkeleton /> : <TaskList markdown={tasksMd} readOnly />}
+                {/* 唯讀：勾選回呼不接——核取方塊 disabled、無把手、無批次工具列、整列不回應；展開與 D 籤照常。 */}
+                {tasksMd === undefined ? (
+                  <DocSkeleton />
+                ) : (
+                  <TaskList
+                    markdown={tasksMd}
+                    readOnly
+                    onJumpDecision={nav.jumpDecision}
+                    locate={nav.taskLocate}
+                    onLocated={nav.clearTaskLocate}
+                  />
+                )}
               </TabsContent>
               <TabsContent value="specs">
                 {specDocs === undefined ? (
@@ -308,10 +361,14 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
                   <div className="py-6 text-sm text-muted-foreground">{t("archived.noSpecs")}</div>
                 ) : (
                   Object.entries(specDocs).map(([cap, doc]) => (
-                    <div key={cap} className="mb-4">
-                      <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{cap}</div>
-                      <DeltaSpecView markdown={doc} />
-                    </div>
+                    <DeltaCapSection
+                      key={cap}
+                      cap={cap}
+                      doc={doc}
+                      jump={nav.specJump}
+                      onJumped={nav.clearSpecJump}
+                      onOpenSpec={props.onOpenSpec}
+                    />
                   ))
                 )}
               </TabsContent>

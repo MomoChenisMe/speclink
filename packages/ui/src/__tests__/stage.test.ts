@@ -86,12 +86,15 @@ describe("語意色對照表只含 token class", () => {
       success: "text-status-success",
       warning: "text-status-warning",
       danger: "text-destructive",
+      // 待手動為暖黃（desktop-change-doc-views design D14；spec「介面狀態語意色分層」）。
+      manual: "text-status-manual",
     });
     expect(SEMANTIC_SURFACE).toEqual({
       inProgress: "border-status-progress/40 bg-status-progress/10",
       success: "border-status-success/40 bg-status-success/10",
       warning: "border-status-warning/40 bg-status-warning/10",
       danger: "border-destructive/40 bg-destructive/10",
+      manual: "border-status-manual/40 bg-status-manual/10",
     });
   });
 

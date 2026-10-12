@@ -846,6 +846,10 @@ function AppInner({
           : [];
   // 「開啟 ▾」（design D4）：頁回報文件，位置由 core 解析；本機目錄缺席（remote 無 checkout）時只剩複製內容。
   const hasLocalDir = activeTab ? projectDirOf(activeTab.locator) !== null : false;
+  // 提案影響段路徑籤的顯示鈕：文案與「開啟 ▾」選單同一組平台詞條（macOS「在 Finder 顯示」）。
+  const pathReveal = hasLocalDir
+    ? { label: t(`fs.revealIn.${platform}`), reveal: (path: string) => void s.revealProjectPath(path) }
+    : undefined;
   const renderDocumentActions = (target: DocumentTarget | null) => (
     <DocumentActionsMenu
       target={target}
@@ -950,6 +954,9 @@ function AppInner({
       onOpenDiscussion={s.openDiscussion}
       onOpenSibling={s.openDetail}
       renderDocumentActions={renderDocumentActions}
+      onOpenSpec={s.openSpec}
+      // 路徑籤的顯示鈕只在有本機目錄時接（remote 無 checkout 時只有複製鈕）。
+      pathReveal={pathReveal}
     />
   );
   // 討論詳情頁（design D7）。
@@ -1004,6 +1011,8 @@ function AppInner({
       discussionTopic={archivedDiscussion?.topic}
       {...archivedProvenance}
       renderDocumentActions={renderDocumentActions}
+      onOpenSpec={s.openSpec}
+      pathReveal={pathReveal}
     />
   );
 

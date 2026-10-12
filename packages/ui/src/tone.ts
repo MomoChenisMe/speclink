@@ -8,12 +8,13 @@
  * 沿用 destructive token，不另設 status-danger。
  */
 
-/** 狀態文字／圖示色：進行中＝藍、成功＝綠、警示＝琥珀、錯誤與危險＝紅。 */
+/** 狀態文字／圖示色：進行中＝藍、成功＝綠、警示＝琥珀、錯誤與危險＝紅、待手動＝暖黃。 */
 export const SEMANTIC_TONE = {
   inProgress: "text-status-progress",
   success: "text-status-success",
   warning: "text-status-warning",
   danger: "text-destructive",
+  manual: "text-status-manual",
 } as const;
 
 /** 同語意的面色（border＋淡底）：供橫幅、狀態卡與政策衝突面等有底色的區塊用。 */
@@ -22,6 +23,7 @@ export const SEMANTIC_SURFACE = {
   success: "border-status-success/40 bg-status-success/10",
   warning: "border-status-warning/40 bg-status-warning/10",
   danger: "border-destructive/40 bg-destructive/10",
+  manual: "border-status-manual/40 bg-status-manual/10",
 } as const;
 
 /** 語意色鍵集——`SEMANTIC_TONE` 與 `SEMANTIC_SURFACE` 的共同鍵。 */

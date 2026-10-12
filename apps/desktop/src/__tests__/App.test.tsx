@@ -2337,11 +2337,13 @@ describe("工單分頁接線（drawer-quality-ticket-tab）", () => {
     await waitFor(() => screen.getByRole("tab", { name: /審查/ }));
     await waitFor(() => expect(ds.getStationTicket).toHaveBeenCalledWith("desktop-shell-and-browser", "review"));
     fireEvent.mouseDown(screen.getByRole("tab", { name: /審查/ }));
+    // 段標題列已撤（desktop-change-doc-views design D8）：輪數與階段詞在閱讀卡籤槽、計數在數字磚。
     await waitFor(() =>
-      expect((document.querySelector("[data-ticket-header]")?.textContent ?? "").replace(/\s+/g, " ")).toBe(
-        "審查 · 第 1 輪（首輪）CRITICAL 0 · WARNING 1 · SUGGESTION 0",
-      ),
+      expect((document.querySelector("[data-doc-badges]")?.textContent ?? "").replace(/\s+/g, " ")).toBe("第 1 輪首輪"),
     );
+    expect(
+      Array.from(document.querySelectorAll("[data-doc-tile]")).map((tile) => tile.textContent?.replace(/\s+/g, "")),
+    ).toEqual(["1輪", "0CRITICAL（末輪）", "1WARNING（末輪）", "0SUGGESTION（末輪）"]);
   });
 
   it("reviewedNotPassed 的已封存詳情頁出現「審查」分頁，工單經 dataSource.getArchivedStationTicket 載入", async () => {
@@ -2371,7 +2373,7 @@ describe("工單分頁接線（drawer-quality-ticket-tab）", () => {
     await waitFor(() => screen.getByRole("tab", { name: /審查/ }));
     await waitFor(() => expect(ds.getArchivedStationTicket).toHaveBeenCalledWith("2026-07-04-old", "review"));
     fireEvent.mouseDown(screen.getByRole("tab", { name: /審查/ }));
-    await waitFor(() => expect(document.querySelector("[data-ticket-header]")).toBeTruthy());
+    await waitFor(() => expect(document.querySelector("[data-ticket-view]")).toBeTruthy());
   });
 });
 
@@ -3074,5 +3076,70 @@ describe("詳情頁層與導覽（desktop-detail-page）", () => {
     await screen.findByTestId("detail-page");
     expect(crumbText()).toBe("proj-a/變更/topic-a");
     expect(screen.getByText("1 / 1")).toBeTruthy();
+  });
+
+  // desktop-change-doc-views design D11：提案能力籤切到規格文件；規格文件能力頭的「看正式規格」開規格詳情頁。
+  const docViewsSource = () =>
+    fakeDataSource({
+      getDocument: vi.fn(async (_c: string, artifact: string) =>
+        artifact === "proposal.md"
+          ? "## Why\n\n- 動機\n\n## Capabilities\n\n### Modified Capabilities\n\n- `desktop-app`: 改版\n"
+          : artifact === "specs/desktop-app/spec.md"
+            ? "## MODIFIED Requirements\n\n### Requirement: 看板\n\n內文。\n"
+            : "# doc",
+      ),
+      getSpecDocument: vi.fn().mockResolvedValue("# desktop-app Specification\n\n正典內文段落。"),
+    });
+
+  it("點提案「能力」段的能力籤：左欄「規格」節點作用中", async () => {
+    renderApp(docViewsSource());
+    fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+    const layer = await screen.findByTestId("detail-page");
+    const chip = await waitFor(() => {
+      const el = layer.querySelector('[data-section="sections.capabilities"] button[data-capability-chip]');
+      expect(el).toBeTruthy();
+      return el as HTMLElement;
+    });
+    fireEvent.click(chip);
+    await waitFor(() =>
+      expect(within(layer).getByRole("tab", { name: /規格/ }).getAttribute("data-state")).toBe("active"),
+    );
+    expect(layer.querySelector('[data-spec-cap="desktop-app"] [data-capability-header]')).toBeTruthy();
+  });
+
+  it("macOS：提案影響段路徑籤的顯示鈕為「在 Finder 顯示」", async () => {
+    const ua = vi
+      .spyOn(navigator, "userAgent", "get")
+      .mockReturnValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15");
+    try {
+      renderApp(
+        fakeDataSource({
+          getDocument: vi.fn(async (_c: string, artifact: string) =>
+            artifact === "proposal.md"
+              ? "## Impact\n\n- Affected code:\n  - New: a/new.ts\n  - Modified: (none)\n  - Removed: (none)\n"
+              : "# doc",
+          ),
+        }),
+      );
+      fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+      const layer = await screen.findByTestId("detail-page");
+      expect(await within(layer).findByRole("button", { name: "在 Finder 顯示" })).toBeTruthy();
+      expect(within(layer).queryByRole("button", { name: "在檔案管理員顯示" })).toBeNull();
+    } finally {
+      ua.mockRestore();
+    }
+  });
+
+  it("點規格文件能力頭的「看正式規格」：主區換成該能力的規格詳情頁", async () => {
+    const ds = docViewsSource();
+    renderApp(ds);
+    fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+    const layer = await screen.findByTestId("detail-page");
+    fireEvent.mouseDown(await within(layer).findByRole("tab", { name: /規格/ }));
+    fireEvent.click(await within(layer).findByRole("button", { name: "看正式規格" }));
+    await waitFor(() => expect(within(screen.getByTestId("detail-page")).getByText("正典內文段落。")).toBeTruthy());
+    expect(ds.getSpecDocument).toHaveBeenCalledWith("desktop-app");
+    // 宿主仍是看板（openSpec 不切宿主頁）：麵包屑為「專案 / 變更 / 能力名」，Esc 回看板。
+    expect(crumbText()).toBe("proj-a/變更/desktop-app");
   });
 });

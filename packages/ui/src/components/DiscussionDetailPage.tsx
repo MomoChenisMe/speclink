@@ -12,7 +12,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { Markdown } from "./Markdown";
 import { DocSkeleton } from "./skeletons";
-import { LABEL_CLS } from "./SectionedDoc";
+import { LABEL_CLS } from "./DocParts";
 import { discussionChipStage, isCollapsedPromoted } from "./DiscussionColumn";
 import { IdentityName, STAGE_PILL_TONE, StatusRow, type DocumentTarget } from "./DetailHeader";
 import {
