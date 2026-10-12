@@ -1,12 +1,11 @@
 // 應用程式設定（desktop-settings-mode design D5）：與任何專案無關；依設定分類欄的所在分類渲染
-// 一頁——一般、語言與外觀、更新、CLI、伺服器、關於（desktop-about-page design D4）。
+// 一頁——一般、更新、CLI、伺服器、關於（desktop-about-page design D4／D7）。
 import type { Platform } from "../platform";
 import type { UpdaterState } from "../core/updater";
 import type { SettingsSection } from "../settingsCatalog";
 import { AboutPage, type AboutPageProps } from "./settings/AboutPage";
-import { AppearancePage, type InterfacePrefsProps } from "./settings/AppearancePage";
 import { CliPage, type CliInstallProps } from "./settings/CliPage";
-import { GeneralPage } from "./settings/GeneralPage";
+import { GeneralPage, type InterfacePrefsProps } from "./settings/GeneralPage";
 import { ServersPage, type ServersPageProps } from "./settings/ServersPage";
 import { UpdatesPage } from "./settings/UpdatesPage";
 
@@ -15,8 +14,8 @@ import { UpdatesPage } from "./settings/UpdatesPage";
 export interface AppSettingsUpdaterProps {
   state: UpdaterState;
   onCheck: () => void;
-  /** 開啟更新日誌對話框的瀏覽模式（desktop-app「更新日誌彈窗」）。 */
-  onShowReleaseNotes: () => void;
+  /** 開啟更新日誌對話框的瀏覽模式（desktop-app「更新日誌彈窗」）；帶版號時開啟後捲到該版。 */
+  onShowReleaseNotes: (version?: string) => void;
   currentVersion?: string | null;
   /** 使用者同意：下載並套用。 */
   onAccept: () => void;
@@ -47,7 +46,7 @@ export interface AppSettingsViewProps extends InterfacePrefsProps {
   /** 安裝 CLI 指令面（desktop-app「安裝 CLI 指令到 PATH」）；探測前或無殼層支援時不注入。 */
   cliInstall?: CliInstallProps;
   /** 關於頁的版本資訊面（更新狀態沿用 updater）；未注入時關於頁不渲染。 */
-  about?: Omit<AboutPageProps, "updater" | "thirdPartyLicenses">;
+  about?: Omit<AboutPageProps, "updaterState" | "thirdPartyLicenses">;
 }
 
 export function AppSettingsView({
@@ -67,19 +66,12 @@ export function AppSettingsView({
   return (
     <div className="mx-auto flex w-full max-w-[768px] flex-col gap-6 px-6 pb-10 pt-7">
       {section === "general" && (
-        <GeneralPage
-          {...prefs}
-          platform={platform}
-          updater={updater}
-          cliInstall={cliInstall}
-          trayPanelError={trayPanelError}
-        />
+        <GeneralPage {...prefs} platform={platform} trayPanelError={trayPanelError} />
       )}
-      {section === "appearance" && <AppearancePage {...prefs} />}
       {section === "updates" && <UpdatesPage updater={updater} />}
       {section === "cli" && <CliPage cliInstall={cliInstall} />}
       {section === "servers" && servers && <ServersPage {...servers} />}
-      {section === "about" && about && <AboutPage {...about} updater={updater} />}
+      {section === "about" && about && <AboutPage {...about} updaterState={updater?.state} />}
     </div>
   );
 }

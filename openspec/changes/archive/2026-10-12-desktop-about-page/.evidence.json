@@ -46,6 +46,27 @@
         "apps/desktop/src/settingsCatalog.ts",
         "apps/desktop/src/views/AppSettingsView.tsx"
       ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.2 一般頁收斂（design D7；spec「設定頁圖形化讀寫兩層設定」「側欄導覽結構」「UI 介面語言支援 zh-TW 與 en」「外觀偏好」「安裝 CLI 指令到 PATH」「桌面自動更新」）：`apps/desktop/src/settingsCatalog.ts` 刪除 `appearance` 分類並改寫一般頁 `rows`；刪除 `apps/desktop/src/views/settings/AppearancePage.tsx`，`LocaleRow`／`ThemeRow`／`InterfacePrefsProps` 移入 `apps/desktop/src/views/settings/GeneralPage.tsx`；`GeneralPage` 只渲染「語言與外觀」卡（標題鍵 `settings.interfaceCard`，值改「語言與外觀」／「Language & Appearance」）、「鍵盤快捷鍵」卡與系統匣面板錯誤列，去掉 `updater`、`cliInstall` props；`AppSettingsView` 去掉 appearance 分支與傳給一般頁的兩面；`messages.ts` 移除 `settings.section.appearance`、`settings.uiLocaleLabel`、`updater.cardTitle`、`updater.help`。驗證：`apps/desktop/src/__tests__/settingsColumn.test.tsx` 改為五項（一般、更新、CLI、伺服器、關於 Speclink）、搜尋「外觀」只剩一般且「關於」群組標題隱藏；`apps/desktop/src/__tests__/appSettingsView.test.tsx` 的一般頁只見「語言與外觀」「鍵盤快捷鍵」兩卡、無「軟體更新」「CLI 指令」卡，原 appearance 分支的測試改在一般頁操作；`apps/desktop/src/__tests__/messages.test.ts` 的舊鍵清單加入四個移除的鍵；`apps/desktop/src/__tests__/App.test.tsx` 既有斷言改為分類欄五項；`npm test -w apps/desktop -- settingsColumn appSettingsView messages App`。",
+      "files": [
+        "apps/desktop/src/__tests__/appSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/messages.test.ts",
+        "apps/desktop/src/views/settings/AppearancePage.tsx",
+        "apps/desktop/src/views/settings/CliPage.tsx",
+        "apps/desktop/src/views/settings/GeneralPage.tsx",
+        "apps/desktop/src/views/settings/UpdatesPage.tsx"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.3 更新日誌檢視單一版本（design D8；spec「更新日誌彈窗」）：`apps/desktop/src/components/ReleaseNotesDialog.tsx` 的 browse 模式加選配 `focusVersion`，條目 `<section>` 帶 `data-version`，開啟後對該版 section 呼叫一次 `scrollIntoView({ block: \"start\" })`，找不到該版時不捲動；`AppSettingsUpdaterProps.onShowReleaseNotes` 改為 `(version?: string) => void`；`apps/desktop/src/views/settings/UpdatesPage.tsx` 舊版本列「檢視」帶該列版號、「全部更新日誌」不帶；`App.tsx` 的 releaseNotes 狀態 browse 分支帶 `focusVersion`。驗證：`apps/desktop/src/__tests__/releaseNotesDialog.test.tsx` 加「browse 帶 focusVersion 時對該版 section 呼叫 scrollIntoView 一次」「不帶或版號不存在時不呼叫」；`apps/desktop/src/__tests__/updatesPage.test.tsx` 加「舊版本列的檢視以該版號回呼、全部更新日誌不帶版號」；`npm test -w apps/desktop -- releaseNotesDialog updatesPage`。",
+      "files": [
+        "apps/desktop/src/__tests__/releaseNotesDialog.test.tsx",
+        "apps/desktop/src/__tests__/updatesPage.test.tsx",
+        "apps/desktop/src/components/ReleaseNotesDialog.tsx"
+      ]
     }
   ],
   "entries": [
@@ -109,6 +130,35 @@
         "apps/desktop/src/views/AppSettingsView.tsx"
       ],
       "recordedAt": "2026-10-10T15:44:37Z"
+    },
+    {
+      "taskId": "tsk_01M4NMVXHBY1RC6XE6YR8V0DDE",
+      "taskDesc": "4.2 一般頁收斂（design D7；spec「設定頁圖形化讀寫兩層設定」「側欄導覽結構」「UI 介面語言支援 zh-TW 與 en」「外觀偏好」「安裝 CLI 指令到 PATH」「桌面自動更新」）：`apps/desktop/src/settingsCatalog.ts` 刪除 `appearance` 分類並改寫一般頁 `rows`；刪除 `apps/desktop/src/views/settings/AppearancePage.tsx`，`LocaleRow`／`ThemeRow`／`InterfacePrefsProps` 移入 `apps/desktop/src/views/settings/GeneralPage.tsx`；`GeneralPage` 只渲染「語言與外觀」卡（標題鍵 `settings.interfaceCard`，值改「語言與外觀」／「Language & Appearance」）、「鍵盤快捷鍵」卡與系統匣面板錯誤列，去掉 `updater`、`cliInstall` props；`AppSettingsView` 去掉 appearance 分支與傳給一般頁的兩面；`messages.ts` 移除 `settings.section.appearance`、`settings.uiLocaleLabel`、`updater.cardTitle`、`updater.help`。驗證：`apps/desktop/src/__tests__/settingsColumn.test.tsx` 改為五項（一般、更新、CLI、伺服器、關於 Speclink）、搜尋「外觀」只剩一般且「關於」群組標題隱藏；`apps/desktop/src/__tests__/appSettingsView.test.tsx` 的一般頁只見「語言與外觀」「鍵盤快捷鍵」兩卡、無「軟體更新」「CLI 指令」卡，原 appearance 分支的測試改在一般頁操作；`apps/desktop/src/__tests__/messages.test.ts` 的舊鍵清單加入四個移除的鍵；`apps/desktop/src/__tests__/App.test.tsx` 既有斷言改為分類欄五項；`npm test -w apps/desktop -- settingsColumn appSettingsView messages App`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b3b7661aa1e19b180ecbd6281d7b6b40b443ebf9",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/appSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/messages.test.ts",
+        "apps/desktop/src/views/settings/AppearancePage.tsx",
+        "apps/desktop/src/views/settings/CliPage.tsx",
+        "apps/desktop/src/views/settings/GeneralPage.tsx",
+        "apps/desktop/src/views/settings/UpdatesPage.tsx"
+      ],
+      "recordedAt": "2026-10-11T14:26:31Z"
+    },
+    {
+      "taskId": "tsk_01M4NMVXHE2XK2N7ZNFFAN44P8",
+      "taskDesc": "4.3 更新日誌檢視單一版本（design D8；spec「更新日誌彈窗」）：`apps/desktop/src/components/ReleaseNotesDialog.tsx` 的 browse 模式加選配 `focusVersion`，條目 `<section>` 帶 `data-version`，開啟後對該版 section 呼叫一次 `scrollIntoView({ block: \"start\" })`，找不到該版時不捲動；`AppSettingsUpdaterProps.onShowReleaseNotes` 改為 `(version?: string) => void`；`apps/desktop/src/views/settings/UpdatesPage.tsx` 舊版本列「檢視」帶該列版號、「全部更新日誌」不帶；`App.tsx` 的 releaseNotes 狀態 browse 分支帶 `focusVersion`。驗證：`apps/desktop/src/__tests__/releaseNotesDialog.test.tsx` 加「browse 帶 focusVersion 時對該版 section 呼叫 scrollIntoView 一次」「不帶或版號不存在時不呼叫」；`apps/desktop/src/__tests__/updatesPage.test.tsx` 加「舊版本列的檢視以該版號回呼、全部更新日誌不帶版號」；`npm test -w apps/desktop -- releaseNotesDialog updatesPage`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b3b7661aa1e19b180ecbd6281d7b6b40b443ebf9",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/releaseNotesDialog.test.tsx",
+        "apps/desktop/src/__tests__/updatesPage.test.tsx",
+        "apps/desktop/src/components/ReleaseNotesDialog.tsx"
+      ],
+      "recordedAt": "2026-10-11T14:28:12Z"
     }
   ]
 }

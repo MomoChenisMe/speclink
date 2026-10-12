@@ -100,9 +100,10 @@ describe("UpdatesPage", () => {
     }
     const views = within(card).getAllByRole("button", { name: "檢視" });
     expect(views).toHaveLength(older.length);
+    // 舊版本列的「檢視」帶該列版號（開啟後捲到該版）；「全部更新日誌」不帶版號（自頂端呈現）。
     fireEvent.click(views[0]);
     fireEvent.click(within(card).getByRole("button", { name: "全部更新日誌" }));
-    expect(onShowReleaseNotes).toHaveBeenCalledTimes(2);
+    expect(onShowReleaseNotes.mock.calls).toEqual([[older[0].version], []]);
   });
 
   it("自動檢查卡：開關反映偏好、切換回呼 onAutoCheckChange", () => {

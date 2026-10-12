@@ -31,7 +31,7 @@ const zhWrapper = ({ children }: { children: ReactNode }) => (
   </I18nProvider>
 );
 
-function renderDialog(props: { mode: "whatsNew" | "browse"; entries: ReleaseNotesEntry[] }) {
+function renderDialog(props: { mode: "whatsNew" | "browse"; entries: ReleaseNotesEntry[]; focusVersion?: string }) {
   const onOpenChange = vi.fn();
   render(<ReleaseNotesDialog open {...props} onOpenChange={onOpenChange} />, {
     wrapper: zhWrapper,
@@ -64,6 +64,33 @@ describe("ReleaseNotesDialog", () => {
     }
     fireEvent.click(within(dialog).getByRole("button", { name: "關閉" }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("browse 帶 focusVersion：開啟後把該版小標所在的條目捲到頂端一次（desktop-about-page design D8）", () => {
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    try {
+      const { dialog } = renderDialog({ mode: "browse", entries: ENTRIES, focusVersion: "0.3.0" });
+      expect(scroll).toHaveBeenCalledTimes(1);
+      expect(scroll).toHaveBeenCalledWith({ block: "start" });
+      const target = scroll.mock.contexts[0] as HTMLElement;
+      expect(dialog.contains(target)).toBe(true);
+      expect(target.getAttribute("data-version")).toBe("0.3.0");
+    } finally {
+      scroll.mockRestore();
+    }
+  });
+
+  it.each<[string, string | undefined]>([
+    ["不帶 focusVersion", undefined],
+    ["focusVersion 不在清單內", "0.0.1"],
+  ])("browse %s 時不捲動", (_name, focusVersion) => {
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    try {
+      renderDialog({ mode: "browse", entries: ENTRIES, focusVersion });
+      expect(scroll).not.toHaveBeenCalled();
+    } finally {
+      scroll.mockRestore();
+    }
   });
 
   it("entries 為空時顯示 releaseNotes.empty 文案", () => {

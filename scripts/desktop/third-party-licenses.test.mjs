@@ -32,14 +32,47 @@ const LOCK = {
   },
 };
 
+const crate = (name, version, license, source = 'registry+https://github.com/rust-lang/crates.io-index') => ({
+  id: `${source}#${name}@${version}`,
+  name,
+  version,
+  license,
+});
+const member = (name) => crate(name, '0.8.0', 'MIT', `path+file:///repo/${name}`);
+const DESKTOP = member('speclink-desktop');
+const CLI = member('speclink-cli');
+const CORE = member('speclink-core');
+const SERVER = member('speclink-server');
+const SERDE = crate('serde', '1.0.200', 'MIT OR Apache-2.0');
+const ANYHOW = crate('anyhow', '1.0.80', 'MIT OR Apache-2.0');
+const WEIRD = crate('weird', '0.1.0', null);
+const POSTGRES = crate('tokio-postgres', '0.7.0', 'MIT OR Apache-2.0');
+const INSTA = crate('insta', '1.40.0', 'Apache-2.0');
+const CC = crate('cc', '1.1.0', 'MIT OR Apache-2.0');
+const NORMAL = [{ kind: null, target: null }];
+const dep = (pkg, dep_kinds = NORMAL) => ({ name: pkg.name, pkg: pkg.id, dep_kinds });
+
+/** desktop 與 cli 為根：經 core 遞迴到 weird；server 自己的 tokio-postgres、desktop 的 dev／build 相依不列入。 */
 const METADATA = {
-  workspace_members: ['path+file:///repo/crates/core#speclink-core@0.8.0'],
-  packages: [
-    { id: 'registry+https://github.com/rust-lang/crates.io-index#serde@1.0.200', name: 'serde', version: '1.0.200', license: 'MIT OR Apache-2.0' },
-    { id: 'path+file:///repo/crates/core#speclink-core@0.8.0', name: 'speclink-core', version: '0.8.0', license: 'MIT' },
-    { id: 'registry+https://github.com/rust-lang/crates.io-index#anyhow@1.0.80', name: 'anyhow', version: '1.0.80', license: 'MIT OR Apache-2.0' },
-    { id: 'registry+https://github.com/rust-lang/crates.io-index#weird@0.1.0', name: 'weird', version: '0.1.0', license: null },
-  ],
+  workspace_members: [DESKTOP.id, CLI.id, CORE.id, SERVER.id],
+  packages: [SERDE, DESKTOP, CLI, CORE, SERVER, ANYHOW, WEIRD, POSTGRES, INSTA, CC],
+  resolve: {
+    nodes: [
+      {
+        id: DESKTOP.id,
+        deps: [dep(CORE), dep(SERDE), dep(INSTA, [{ kind: 'dev', target: null }]), dep(CC, [{ kind: 'build', target: null }])],
+      },
+      { id: CLI.id, deps: [dep(CORE), dep(ANYHOW)] },
+      { id: CORE.id, deps: [dep(WEIRD), dep(SERDE)] },
+      { id: SERVER.id, deps: [dep(CORE), dep(POSTGRES)] },
+      { id: SERDE.id, deps: [] },
+      { id: ANYHOW.id, deps: [] },
+      { id: WEIRD.id, deps: [] },
+      { id: POSTGRES.id, deps: [] },
+      { id: INSTA.id, deps: [] },
+      { id: CC.id, deps: [] },
+    ],
+  },
 };
 
 test('npm 節只含兩個工作區的生產相依（遞迴），不含 dev 相依與工作區本身', () => {
@@ -60,7 +93,7 @@ test('授權欄缺席時為 null（UI 顯示為「未標示」）', () => {
   assert.equal(cargoLicenses(METADATA).find((entry) => entry.name === 'weird').license, null);
 });
 
-test('cargo 節排除 workspace 成員並依名稱排序', () => {
+test('cargo 節只含桌面 app 與 CLI 的正式相依（遞迴穿過 workspace 成員），不含成員本身、dev／build 相依與其他成員的相依，依名稱排序', () => {
   assert.deepEqual(cargoLicenses(METADATA), [
     { name: 'anyhow', version: '1.0.80', license: 'MIT OR Apache-2.0' },
     { name: 'serde', version: '1.0.200', license: 'MIT OR Apache-2.0' },
@@ -85,7 +118,12 @@ test('cargo 無法執行或非零結束時 readCargoMetadata 回 null 並警告'
   assert.match(warnings[0], /cargo/);
 });
 
-test('cargo 成功時 readCargoMetadata 解析 stdout 的 JSON', () => {
-  const ok = () => ({ status: 0, stdout: JSON.stringify(METADATA) });
+test('cargo 成功時 readCargoMetadata 解析 stdout 的 JSON；帶 --locked，不改寫過期的 Cargo.lock', () => {
+  let args;
+  const ok = (_command, spawnArgs) => {
+    args = spawnArgs;
+    return { status: 0, stdout: JSON.stringify(METADATA) };
+  };
   assert.deepEqual(readCargoMetadata({ spawn: ok, warn: () => assert.fail('不應警告') }), METADATA);
+  assert.ok(args.includes('--locked'), args.join(' '));
 });

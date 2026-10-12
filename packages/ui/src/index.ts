@@ -161,6 +161,7 @@ export {
   SettingsPageHeader,
   SettingsCard,
   SettingsRow,
+  SettingsLinkRow,
   SettingsChoice,
   SettingsGroupHeader,
   type SettingsChoiceOption,

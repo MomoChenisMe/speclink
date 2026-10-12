@@ -4,7 +4,8 @@
 // 用法：node scripts/desktop/third-party-licenses.mjs
 //   npm 節：package-lock.json 中 apps/desktop 與 packages/ui 的生產相依（遞迴，不含 dev），
 //     授權取 lock 條目的 license 欄（npm 寫入 lock 時照抄套件的 package.json）
-//   cargo 節：cargo metadata 中非 workspace 成員的套件；cargo 無法執行時警告並輸出空節
+//   cargo 節：cargo metadata 相依圖中 speclink-desktop 與 speclink-cli 的正式相依（遞迴，不含 dev 與
+//     build 相依），workspace 成員只穿過、不列入；cargo 無法執行或 Cargo.lock 過期時警告並輸出空節
 // 產出：apps/desktop/src/generated/third-party-licenses.json（{ npm, cargo }，各依名稱排序；
 //   授權缺席為 null，由 UI 以介面語言顯示「未標示」）
 import { spawnSync } from 'node:child_process';
@@ -16,6 +17,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
 /** 打包進桌面 app 的兩個工作區。 */
 const WORKSPACES = ['apps/desktop', 'packages/ui'];
+
+/** 桌面 app 與隨附 CLI 的 crate。 */
+const CARGO_ROOTS = ['speclink-desktop', 'speclink-cli'];
 
 const byNameThenVersion = (a, b) =>
   a.name.localeCompare(b.name) || a.version.localeCompare(b.version, undefined, { numeric: true });
@@ -55,12 +59,26 @@ export function npmLicenses(lock) {
   return [...entries.values()].sort(byNameThenVersion);
 }
 
-/** cargo metadata 中非 workspace 成員的套件。 */
+/** 相依圖中兩個根 crate 的正式相依（遞迴走 resolve.nodes），workspace 成員只穿過、不列入。 */
 export function cargoLicenses(metadata) {
   const members = new Set(metadata.workspace_members);
-  return metadata.packages
-    .filter((pkg) => !members.has(pkg.id))
-    .map(({ name, version, license }) => ({ name, version, license: license ?? null }))
+  const packages = new Map(metadata.packages.map((pkg) => [pkg.id, pkg]));
+  const nodes = new Map(metadata.resolve.nodes.map((node) => [node.id, node]));
+  const seen = new Set();
+  const visit = (id) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    for (const dep of nodes.get(id).deps) {
+      if (dep.dep_kinds.some(({ kind }) => kind === null)) visit(dep.pkg);
+    }
+  };
+  for (const id of members) if (CARGO_ROOTS.includes(packages.get(id).name)) visit(id);
+  return [...seen]
+    .filter((id) => !members.has(id))
+    .map((id) => {
+      const { name, version, license } = packages.get(id);
+      return { name, version, license: license ?? null };
+    })
     .sort(byNameThenVersion);
 }
 
@@ -68,10 +86,12 @@ export function buildLicenseList({ lock, metadata }) {
   return { npm: npmLicenses(lock), cargo: metadata ? cargoLicenses(metadata) : [] };
 }
 
-/** 執行 cargo metadata；無法執行或非零結束時警告並回 null（建置不因此失敗）。 */
+/** 執行 cargo metadata；無法執行或非零結束時警告並回 null（建置不因此失敗）。帶 `--locked`：
+ *  Cargo.lock 過期時失敗而不改寫它，後續 `cargo test --locked` 的鎖檔守門才有效。 */
 export function readCargoMetadata({ spawn = spawnSync, warn = console.warn } = {}) {
   const args = [
     'metadata',
+    '--locked',
     '--format-version',
     '1',
     '--manifest-path',

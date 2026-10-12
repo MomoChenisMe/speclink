@@ -1,5 +1,5 @@
-// 應用程式設定（desktop-settings-mode design D5）：依所在分類渲染一頁——一般、語言與外觀、CLI
-// 於此檔；更新頁與伺服器頁各有自己的測試檔。
+// 應用程式設定（desktop-settings-mode design D5；desktop-about-page design D7）：依所在分類渲染
+// 一頁——一般、CLI 於此檔；更新頁、伺服器頁與關於頁各有自己的測試檔。
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render as rtlRender, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -68,17 +68,24 @@ const cardTitles = () => screen.getAllByRole("region").map((r) => r.getAttribute
 const row = (label: string) => screen.getByRole("group", { name: label });
 
 describe("一般頁", () => {
-  it("頁標題「一般」、「僅存於此裝置」註記；四卡依序為介面語言、軟體更新、CLI 指令、鍵盤快捷鍵", () => {
-    render(view({ updater: updaterProps({ phase: "idle" }), cliInstall: { view: cliView(), onInstall: vi.fn() } }));
+  it("頁標題「一般」、「僅存於此裝置」註記；只有語言與外觀、鍵盤快捷鍵兩卡，語言與外觀卡兩列依序為顯示語言與外觀", () => {
+    render(view());
     expect(screen.getByRole("heading", { level: 2, name: "一般" })).toBeTruthy();
     expect(screen.getByText("此頁內容僅存於此裝置，不寫入版本庫")).toBeTruthy();
-    expect(cardTitles()).toEqual(["介面語言", "軟體更新", "CLI 指令", "鍵盤快捷鍵"]);
+    expect(cardTitles()).toEqual(["語言與外觀", "鍵盤快捷鍵"]);
+    const card = screen.getByRole("region", { name: "語言與外觀" });
+    expect(within(card).getAllByRole("group").map((g) => g.querySelector("span, label")?.textContent)).toEqual([
+      "顯示語言",
+      "外觀",
+    ]);
   });
 
-  it("未注入 updater、cliInstall 時只剩介面語言與鍵盤快捷鍵兩卡", () => {
-    render(view());
-    expect(cardTitles()).toEqual(["介面語言", "鍵盤快捷鍵"]);
-    expect(screen.queryByRole("button", { name: "檢視" })).toBeNull();
+  it("注入更新與 CLI 面時一般頁也不重複其他分類頁的列（目前版本、檢查更新、更新日誌、speclink CLI）", () => {
+    render(view({ updater: updaterProps({ phase: "upToDate" }), cliInstall: { view: cliView(), onInstall: vi.fn() } }));
+    expect(cardTitles()).toEqual(["語言與外觀", "鍵盤快捷鍵"]);
+    for (const label of ["目前版本", "檢查更新", "更新日誌", "speclink CLI"]) {
+      expect(screen.queryByRole("group", { name: label })).toBeNull();
+    }
   });
 
   it("顯示語言列三選回呼本機偏好（跟隨系統＝null）", async () => {
@@ -113,51 +120,10 @@ describe("一般頁", () => {
   });
 });
 
-describe("一般頁的軟體更新卡", () => {
-  const card = () => screen.getByRole("region", { name: "軟體更新" });
-
-  it("三列：目前版本（等寬）、檢查更新、更新日誌；無下載與安裝控制", () => {
-    render(view({ updater: updaterProps({ phase: "available", version: "0.2.0" }, { currentVersion: "0.1.0" }) }));
-    expect(within(card()).getAllByRole("group")).toHaveLength(3);
-    expect(within(row("目前版本")).getByText("0.1.0").className).toContain("font-mono");
-    expect(within(card()).queryByRole("button", { name: "下載" })).toBeNull();
-    expect(screen.queryByTestId("update-install-row")).toBeNull();
-  });
-
-  it("檢查更新回呼 onCheck；檢查中停用", () => {
-    const onCheck = vi.fn();
-    const { rerender } = render(view({ updater: updaterProps({ phase: "idle" }, { onCheck }) }));
-    fireEvent.click(within(card()).getByRole("button", { name: "檢查更新" }));
-    expect(onCheck).toHaveBeenCalledTimes(1);
-    rerender(view({ updater: updaterProps({ phase: "checking", manual: true }) }));
-    expect((within(card()).getByRole("button", { name: "檢查更新" }) as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  it("行內結果與更新頁「最新版本」列同一組狀態籤：已是最新（綠）、無法檢查（紅）、有新版本（帶等寬版號）；閒置不顯示", () => {
-    const { rerender } = render(view({ updater: updaterProps({ phase: "upToDate" }, { currentVersion: "0.1.0" }) }));
-    const checkRow = () => row("檢查更新");
-    expect(within(checkRow()).getByText("已是最新").className).toContain("bg-status-success/12");
-    rerender(view({ updater: updaterProps({ phase: "checkFailed" }) }));
-    expect(within(checkRow()).getByText("無法檢查").className).toContain("bg-destructive/12");
-    rerender(view({ updater: updaterProps({ phase: "available", version: "0.2.0" }) }));
-    expect(within(checkRow()).getByText("有新版本").className).toContain("bg-status-warning/12");
-    expect(within(checkRow()).getByText("0.2.0").className).toContain("font-mono");
-    rerender(view({ updater: updaterProps({ phase: "idle" }) }));
-    expect(within(checkRow()).queryByText("尚未檢查")).toBeNull();
-  });
-
-  it("更新日誌列的「檢視」回呼 onShowReleaseNotes", () => {
-    const onShowReleaseNotes = vi.fn();
-    render(view({ updater: updaterProps({ phase: "idle" }, { onShowReleaseNotes }) }));
-    fireEvent.click(within(row("更新日誌")).getByRole("button", { name: "檢視" }));
-    expect(onShowReleaseNotes).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("一般頁的 CLI 指令卡", () => {
+describe("CLI 頁的 CLI 指令卡", () => {
   const card = () => screen.getByRole("region", { name: "CLI 指令" });
   const withCli = (over: Partial<CliInstallView>, onInstall = vi.fn(), platform: ViewProps["platform"] = "macos") =>
-    view({ platform, cliInstall: { view: cliView(over), onInstall } });
+    view({ section: "cli", platform, cliInstall: { view: cliView(over), onInstall } });
 
   it("未安裝且可佈署：列「speclink CLI」顯示未安裝與安裝鈕，點擊回呼 onInstall", () => {
     const onInstall = vi.fn();
@@ -240,23 +206,6 @@ describe("一般頁的鍵盤快捷鍵卡（desktop-native-menu design D5）", ()
     render(view({ platform: "windows" }));
     expect(within(card()).getAllByRole("group")).toHaveLength(5);
     expect(card().textContent).not.toContain("⌘");
-  });
-});
-
-describe("語言與外觀頁", () => {
-  it("卡「介面」兩列：顯示語言與外觀；與一般頁同一組控制項", async () => {
-    const onThemePrefChange = vi.fn();
-    const user = userEvent.setup();
-    render(view({ section: "appearance", onThemePrefChange }));
-    expect(screen.getByRole("heading", { level: 2, name: "語言與外觀" })).toBeTruthy();
-    const card = screen.getByRole("region", { name: "介面" });
-    expect(within(card).getAllByRole("group").map((g) => g.querySelector("span, label")?.textContent)).toEqual([
-      "顯示語言",
-      "外觀",
-    ]);
-    await user.click(within(card).getByRole("combobox", { name: "外觀" }));
-    await user.click(await screen.findByRole("option", { name: "深色" }));
-    expect(onThemePrefChange).toHaveBeenCalledWith("dark");
   });
 });
 

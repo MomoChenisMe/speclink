@@ -2,9 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { CloudOff, MoreHorizontal } from "lucide-react";
-import { toast } from "sonner";
 import {
   KanbanBoard,
   ArchivedList,
@@ -61,7 +59,7 @@ import { MigrationDialog } from "./components/MigrationDialog";
 import { RemoteConflictDialog } from "./components/RemoteConflictDialog";
 import { RemoteWorkspaceRecovery } from "./components/RemoteWorkspaceRecovery";
 import { AppSettingsView } from "./views/AppSettingsView";
-import { REPO_URL } from "./views/settings/AboutPage";
+import { ISSUE_URL, REPO_URL, openExternal } from "./views/settings/AboutPage";
 import { AssetNoticeCard } from "./components/AssetNoticeCard";
 import { AssetNoticeDialog } from "./components/AssetNoticeDialog";
 import { UpdateRailButton } from "./components/UpdateRailButton";
@@ -369,7 +367,7 @@ function AppInner({
   // 更新日誌對話框（desktop-app「更新日誌彈窗」）：純 UI 開關，不進 store。whatsNew＝
   // 版號變更後首次啟動自動彈出（關閉即記下現版號）；browse＝設定頁按鈕（關閉不寫記錄）。
   const [releaseNotes, setReleaseNotes] = useState<
-    { mode: "whatsNew"; entries: ReleaseNotesEntry[] } | { mode: "browse" } | null
+    { mode: "whatsNew"; entries: ReleaseNotesEntry[] } | { mode: "browse"; focusVersion?: string } | null
   >(null);
   useEffect(() => {
     if (updater) {
@@ -665,9 +663,6 @@ function AppInner({
     window.dispatchEvent(new CustomEvent("speclink:focus-search"));
   }, [s.boardView]);
   useEffect(() => {
-    const openExternal = (url: string) => {
-      openUrl(url).catch((e) => toast.error(String(e)));
-    };
     const dispatch = (action: AppMenuAction) => {
       const st = useStore.getState();
       switch (action) {
@@ -722,7 +717,7 @@ function AppInner({
         case "github":
           return openExternal(REPO_URL);
         case "reportIssue":
-          return openExternal(`${REPO_URL}/issues/new`);
+          return openExternal(ISSUE_URL);
       }
     };
     return installAppMenu({ isMacOS: platform === "macos", t, hasProject, dispatch });
@@ -1196,7 +1191,7 @@ function AppInner({
                     state: s.updater,
                     currentVersion,
                     onCheck: () => void s.checkForUpdates(true),
-                    onShowReleaseNotes: () => setReleaseNotes({ mode: "browse" }),
+                    onShowReleaseNotes: (focusVersion) => setReleaseNotes({ mode: "browse", focusVersion }),
                     onAccept: () => void s.acceptUpdate(),
                     onCancel: s.dismissUpdate,
                     onRelaunch: () => void s.relaunchToUpdate(),
@@ -1211,7 +1206,7 @@ function AppInner({
                     ? { view: s.cliInstall, onInstall: () => void s.installCli() }
                     : undefined
                 }
-                about={{ appInfo: s.appInfo, onLoadAppInfo: s.loadAppInfo, lastCheckedAt: s.lastCheckedAt }}
+                about={{ appInfo: s.appInfo, onLoadAppInfo: s.loadAppInfo, onOpenUpdates: s.openSettingsUpdate }}
               />
             ) : workspace !== undefined && s.tabs.length === 0 ? (
               // 零分頁（首次使用）：專案範圍頁面落入空狀態引導頁（取代空看板）；應用程式設定已於上方先行處理。
@@ -1406,6 +1401,7 @@ function AppInner({
           open={releaseNotes !== null}
           mode={releaseNotes?.mode ?? "browse"}
           entries={releaseNotes?.mode === "whatsNew" ? releaseNotes.entries : RELEASE_NOTES}
+          focusVersion={releaseNotes?.mode === "browse" ? releaseNotes.focusVersion : undefined}
           onOpenChange={(isOpen) => {
             if (isOpen) return;
             // 先關再寫：寫入失敗不能把 modal 卡在畫面上。

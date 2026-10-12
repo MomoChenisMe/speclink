@@ -3059,14 +3059,13 @@ describe("設定模式的分類與偏好", () => {
   });
 });
 
-// desktop-about-page design D1／D2：關於頁的版本資訊（一次取得並快取）與「檢查更新」列的上次檢查時刻。
-describe("關於頁的版本資訊與上次檢查", () => {
+// desktop-about-page design D1：關於頁的版本資訊（一次取得並快取）。
+describe("關於頁的版本資訊", () => {
   const INFO = {
     appVersion: "0.8.0",
-    engineVersion: "1.44.0",
+    engineVersion: "v1.44.0",
     platform: "macOS",
     arch: "arm64",
-    assetsVersion: "v1.44.0",
   };
 
   it("loadAppInfo 只呼叫 adapter 一次：併發與再次進頁都沿用快取", async () => {
@@ -3087,17 +3086,5 @@ describe("關於頁的版本資訊與上次檢查", () => {
     await store.getState().loadAppInfo();
     expect(loadAppInfo).toHaveBeenCalledTimes(2);
     expect(store.getState().appInfo).toEqual(INFO);
-  });
-
-  it("檢查完成後 lastCheckedAt 非 null；無法檢查不覆寫上次成功的時刻", async () => {
-    const check = vi.fn().mockResolvedValueOnce(null).mockRejectedValueOnce(new Error("offline"));
-    const store = trackedAppStore({ createSession: vi.fn() as never, updater: { check, relaunch: vi.fn() } });
-    expect(store.getState().lastCheckedAt).toBeNull();
-    await store.getState().checkForUpdates(true);
-    expect(store.getState().lastCheckedAt).not.toBeNull();
-    store.setState({ lastCheckedAt: 1 });
-    await store.getState().checkForUpdates(true);
-    expect(store.getState().updater.phase).toBe("checkFailed");
-    expect(store.getState().lastCheckedAt).toBe(1);
   });
 });

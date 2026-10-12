@@ -1,5 +1,5 @@
-// CLI 頁（desktop-settings-mode design D5；spec「安裝 CLI 指令到 PATH」）。「speclink CLI」列由
-// 一般頁的「CLI 指令」卡共用：狀態文字＋安裝／重新安裝鈕，說明為佈署方式，PATH 提示與錯誤在列下。
+// CLI 頁（desktop-settings-mode design D5；spec「安裝 CLI 指令到 PATH」）。「speclink CLI」列：
+// 狀態文字＋安裝／重新安裝鈕，說明為佈署方式，PATH 提示與錯誤在列下。
 import { AlertTriangle } from "lucide-react";
 import {
   Button,
@@ -45,7 +45,7 @@ function cliDescriptionKey(view: CliInstallView): string | null {
   return view.canDeploy ? "cliInstall.help" : null;
 }
 
-export function CliInstallRow({ view, onInstall }: CliInstallProps) {
+function CliInstallRow({ view, onInstall }: CliInstallProps) {
   const { t } = useI18n();
   const descriptionKey = cliDescriptionKey(view);
   const pathHint = view.pathHint && view.deployDir;
