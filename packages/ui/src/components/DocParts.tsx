@@ -12,8 +12,6 @@ import { Markdown } from "./Markdown";
 
 /** 章節標題款式（16px 粗體）：提案／設計章節、任務群組卡頭、delta 需求標題、排程卡頭、工單輪卡頭同源。 */
 export const SECTION_HEADING_CLS = "text-base font-semibold";
-/** 標籤家族的粗體大標題：討論側的輪／結論欄位標籤（cut 3 再退場）。 */
-export const LABEL_CLS = "text-xl font-bold";
 /** 次級標籤（Capabilities 內的新增／修改能力、Goals 兩欄小標）。 */
 export const SUB_LABEL_CLS = "text-sm font-semibold";
 
@@ -110,22 +108,40 @@ export function NumberedSteps({ items }: { items: string[] }) {
   );
 }
 
-/** 替代方案列：方案一行、落敗理由灰字一行；理由為 null 時只有方案。 */
-export function OptionReasonRows({ items }: { items: { option: string; reason: string | null }[] }) {
+/** 替代方案列：方案一行、落敗理由灰字一行；理由為 null 時只有方案。`icon` 放在列首（擱置的時鐘）。 */
+export function OptionReasonRows({
+  items,
+  icon,
+}: {
+  items: { option: string; reason: string | null }[];
+  icon?: ReactNode;
+}) {
+  const lines = (it: { option: string; reason: string | null }) => (
+    <>
+      <div data-alternative-option className="font-medium">
+        <Markdown content={it.option} className={ROW_MD_CLS} />
+      </div>
+      {it.reason && (
+        <div data-alternative-reason className="text-muted-foreground">
+          <Markdown content={it.reason} className={ROW_MD_CLS} />
+        </div>
+      )}
+    </>
+  );
   return (
     <ul className="divide-y divide-border/70">
-      {items.map((it, i) => (
-        <li key={i} data-alternative className="flex flex-col gap-1 py-2 first:pt-0 last:pb-0">
-          <div data-alternative-option className="font-medium">
-            <Markdown content={it.option} className={ROW_MD_CLS} />
-          </div>
-          {it.reason && (
-            <div data-alternative-reason className="text-muted-foreground">
-              <Markdown content={it.reason} className={ROW_MD_CLS} />
-            </div>
-          )}
-        </li>
-      ))}
+      {items.map((it, i) =>
+        icon ? (
+          <li key={i} data-alternative className="flex items-start gap-2.5 py-2 first:pt-0 last:pb-0">
+            <span className="mt-1 shrink-0 text-muted-foreground">{icon}</span>
+            <div className="flex min-w-0 flex-1 flex-col gap-1">{lines(it)}</div>
+          </li>
+        ) : (
+          <li key={i} data-alternative className="flex flex-col gap-1 py-2 first:pt-0 last:pb-0">
+            {lines(it)}
+          </li>
+        ),
+      )}
     </ul>
   );
 }

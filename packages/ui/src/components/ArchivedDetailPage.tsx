@@ -1,7 +1,7 @@
 import { useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { Code2, FileText, Flag, ListChecks, MessagesSquare, PenTool, Rocket } from "lucide-react";
 
-import type { ArchivedItem, StationTicket, TicketStation } from "../adapter";
+import type { ArchivedItem, ChangeItem, StationTicket, TicketStation } from "../adapter";
 import { useI18n } from "../i18n";
 import { parseTasks } from "../tasks";
 import { settle, useGenerationLoad } from "../lib/useGenerationLoad";
@@ -14,16 +14,8 @@ import { changeDocSummary } from "./changeDocSummary";
 import { DeltaCapSection } from "./DeltaBadges";
 import { DesignDoc } from "./DesignDoc";
 import type { PathReveal } from "./DocParts";
-import {
-  ConclusionView,
-  discussionDoc,
-  DiscussionStageRow,
-  PromotedChangeChip,
-  PromotedChangeRow,
-  RoundsView,
-  splitDiscussionSections,
-  splitRounds,
-} from "./DiscussionDetailPage";
+import { discussionDoc, DiscussionDocs, DiscussionStageRow, PromotedChangeChip } from "./DiscussionDetailPage";
+import { discussionDocData, discussionDocProvenance, discussionDocSummary } from "./discussionDocSummary";
 import { IdentityName, StatusRow, documentArtifact, type DocumentTarget } from "./DetailHeader";
 import {
   DOC_TITLE_KEYS,
@@ -38,9 +30,9 @@ import {
 } from "./DetailShell";
 import { ImproveChip } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
-import { Markdown } from "./Markdown";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_PILL_TONE } from "./reviewStyle";
 import { ProposalDoc } from "./ProposalDoc";
+import { promotedRows, promotedRowsFromLinks } from "./PromotedDoc";
 import { DocSkeleton } from "./skeletons";
 import { SourceChipRow, type SourceLinkItem } from "./SourceDiscussionChip";
 import { TaskList } from "./TaskList";
@@ -95,6 +87,12 @@ export interface ArchivedDetailPageProps {
   onOpenSpec?: (capability: string) => void;
   /** 提案影響段路徑籤的本機路徑動作（文案依平台）；未提供時只有複製鈕。 */
   pathReveal?: PathReveal;
+  /** 作用中與已封存變更清單：兩份都有時封存討論的衍生列帶任務進度、兩站章與日期，否則退回 `promotedChanges`。 */
+  changes?: ChangeItem[];
+  archivedChanges?: ArchivedItem[];
+  /** 正式規格名與全部討論 slug：封存討論背景的名稱籤。 */
+  specNames?: string[];
+  discussionSlugs?: string[];
 }
 
 type Doc = string | null | undefined;
@@ -406,13 +404,45 @@ function ArchivedDiscussionView({ slug, ...props }: ArchivedDetailPageProps & { 
       .catch(settle(setDoc, null, isLatest));
   });
 
-  const sections = doc ? splitDiscussionSections(doc) : null;
   const promoted = props.promotedChanges ?? [];
-  const roundCount = sections ? (splitRounds(sections.rounds)?.length ?? null) : null;
+  const { changes, archivedChanges, onOpenPromotedChange } = props;
+  // 衍生列：兩份清單都有時與討論詳情頁同一套推導（開啟都委派宿主，宿主依所在開頁），否則退回宿主派生的三態。
+  const rows =
+    changes && archivedChanges
+      ? promotedRows(
+          promoted.map((item) => item.slug),
+          changes,
+          archivedChanges,
+          t,
+          onOpenPromotedChange,
+          onOpenPromotedChange &&
+            ((datedName) => onOpenPromotedChange(archivedChanges.find((a) => a.datedName === datedName)!.name)),
+        )
+      : promotedRowsFromLinks(promoted, onOpenPromotedChange);
+  const names = {
+    specs: props.specNames ?? [],
+    active: (changes ?? []).map((c) => c.name),
+    archived: (archivedChanges ?? []).map((a) => a.name),
+    discussions: props.discussionSlugs ?? [],
+    self: slug,
+  };
+  // 已封存：沒有記錄路徑段、不出「只差最後一刀」。
+  const data = discussionDocData({
+    text: doc,
+    status: "archived",
+    hold: false,
+    created: props.created ?? null,
+    recordPath: null,
+    rows,
+    names,
+  });
+  const { sections } = data;
+  const roundCount = data.rounds?.length ?? null;
   // 衍生列與衍生籤共用：不可點（已刪除）者無開啟動作。
   const openPromoted = (item: SourceLinkItem) =>
     item.disabled ? undefined : () => props.onOpenPromotedChange?.(item.slug);
   const tab = discussionDoc(picked, sections);
+  const summary = discussionDocSummary(tab, data, t);
 
   const tree = (
     <>
@@ -495,44 +525,35 @@ function ArchivedDiscussionView({ slug, ...props }: ArchivedDetailPageProps & { 
             <DocHeader
               title={t(DOC_TITLE_KEYS[tab])}
               actions={props.renderDocumentActions?.({ doc: null, content: doc ?? null })}
+              provenance={discussionDocProvenance(tab, data, t)}
             />
-            {/* 數字磚與提示框的容器：本刀不放內容（cut 2／3 由文件結構推導）。 */}
-            <DocTiles tiles={[]} />
+            <DocTiles tiles={summary.tiles} />
+            {summary.callout && <div data-doc-callout>{summary.callout}</div>}
             <DocBody ref={bodyRef}>
-              {sections ? (
-                <>
-                  <TabsContent value="conclusion">
-                    <ConclusionView text={sections.conclusion} empty={t("archived.noConclusion")} />
-                  </TabsContent>
-                  <TabsContent value="rounds">
-                    <RoundsView text={sections.rounds} empty={t("archived.noRounds")} />
-                  </TabsContent>
-                  <TabsContent value="context">
-                    <Markdown content={sections.context} empty={t("archived.noContext")} />
-                  </TabsContent>
-                </>
-              ) : (
-                // 區段缺失或格式非預期：整篇單一檢視退回（不報錯）；載入中畫骨架。
-                <TabsContent value="record">
-                  {doc === undefined ? <DocSkeleton /> : <Markdown content={doc} empty={t("common.noContent")} />}
-                </TabsContent>
-              )}
-              <TabsContent value="promote">
-                {promoted.length === 0 ? (
-                  <p className="py-4 text-sm text-muted-foreground">{t("ddrawer.notPromoted")}</p>
-                ) : (
-                  <div className="flex flex-col gap-1.5">
-                    {promoted.map((item) => (
-                      <PromotedChangeRow
-                        key={item.slug}
-                        name={item.slug}
-                        badge={<StatusPill tone="neutral">{item.topic}</StatusPill>}
-                        onOpen={openPromoted(item)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
+              <DiscussionDocs
+                doc={doc}
+                data={data}
+                context={{
+                  slug,
+                  created: props.created,
+                  createdBy: props.createdBy,
+                  kind: props.discussionKind,
+                  recordPath: null,
+                  specNames: names.specs,
+                  activeNames: names.active,
+                  archivedNames: names.archived,
+                  discussionSlugs: names.discussions,
+                  onOpenSpec: props.onOpenSpec,
+                  onOpenChange: onOpenPromotedChange,
+                  onOpenArchivedChange: onOpenPromotedChange,
+                  onOpenDiscussion: props.onOpenDiscussion,
+                }}
+                empty={{
+                  conclusion: t("archived.noConclusion"),
+                  rounds: t("archived.noRounds"),
+                  context: t("archived.noContext"),
+                }}
+              />
             </DocBody>
           </Card>
         </DetailShell>

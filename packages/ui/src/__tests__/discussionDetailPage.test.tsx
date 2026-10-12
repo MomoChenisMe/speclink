@@ -1,10 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { render as rtlRender, screen, waitFor, fireEvent, within } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
 import type { ReactElement, ReactNode } from "react";
 
-import { I18nProvider } from "../i18n";
+import { I18nProvider, MESSAGES, useI18n } from "../i18n";
 
 // 既有中文斷言包 I18nProvider locale zh-TW 後照舊斷言（i18n 抽 key 的回歸保護）。
 const zhWrapper = ({ children }: { children: ReactNode }) => (
@@ -14,17 +12,20 @@ function render(ui: ReactElement) {
   return rtlRender(ui, { wrapper: zhWrapper });
 }
 
-import {
-  DiscussionDetailPage,
-  countPriorDiscussions,
-  splitDiscussionSections,
-  splitRounds,
-} from "../components/DiscussionDetailPage";
+import { DiscussionDetailPage } from "../components/DiscussionDetailPage";
 import type { DocumentTarget } from "../components/DetailHeader";
-import { LABEL_CLS } from "../components/DocParts";
+import { SECTION_HEADING_CLS } from "../components/DocParts";
 import { ChangeCard } from "../components/ChangeCard";
 import { ChangeDetailPage } from "../components/ChangeDetailPage";
 import type { ChangeItem, ArchivedItem, DiscussionItem } from "../adapter";
+import { DocHeader, DocTiles } from "../components/DetailShell";
+import {
+  discussionDocData,
+  discussionDocProvenance,
+  discussionDocSummary,
+  type DiscussionDocData,
+} from "../components/discussionDocSummary";
+import { promotedRows, type PromotedRow } from "../components/PromotedDoc";
 
 // spec 需求「討論詳情頁檢視與轉出變更」的 jsdom 可驗部分。
 
@@ -83,96 +84,6 @@ function makeProps(over: Record<string, unknown> = {}) {
   };
 }
 
-describe("splitDiscussionSections（區段切分）", () => {
-  it("切出脈絡/回合/結論三區段", () => {
-    const s = splitDiscussionSections(DOC);
-    expect(s).not.toBeNull();
-    expect(s!.context).toContain("框架脈絡內容");
-    expect(s!.rounds).toContain("範圍界定");
-    expect(s!.conclusion).toContain("建置 alpha 搜尋");
-  });
-
-  it("非預期格式（缺區段）回 null → 整篇退回", () => {
-    expect(splitDiscussionSections("手寫的自由格式記錄，沒有標準區段。")).toBeNull();
-    expect(splitDiscussionSections("## Context\n\n只有脈絡。\n")).toBeNull();
-  });
-
-  it("輪內文含「## 」開頭行時 rounds 區段完整涵蓋至結構 Conclusion、內文不遺失", () => {
-    // spec「區段切分不被輪內文截斷」：與引擎同一結構標題白名單。
-    const doc = DOC.replace(
-      "**Focus**: 範圍界定",
-      "**Focus**: 範圍界定\n\n## 背景\n首輪本文",
-    );
-    const s = splitDiscussionSections(doc);
-    expect(s).not.toBeNull();
-    expect(s!.rounds).toContain("## 背景");
-    expect(s!.rounds).toContain("首輪本文");
-    expect(s!.conclusion).toContain("建置 alpha 搜尋");
-  });
-
-  it("圍欄內的結構標題行不切斷區段、不誤當區段起點", () => {
-    // 與引擎同規則：fenced code block 內的行不是結構。
-    const doc = DOC.replace(
-      "**Focus**: 範圍界定",
-      "**Focus**: 範圍界定\n\n```\n## Conclusion\n```",
-    );
-    const s = splitDiscussionSections(doc);
-    expect(s).not.toBeNull();
-    expect(s!.rounds).toContain("```\n## Conclusion\n```");
-    expect(s!.conclusion).toContain("建置 alpha 搜尋");
-    expect(s!.conclusion).not.toContain("```");
-  });
-
-  it("結論區段不吞其後的 pre-scaffold「## Round 」區段", () => {
-    // 與引擎同規則：未跳脫的「## Round 」前綴行是區段邊界（pre-scaffold 容忍）。
-    const doc = `${DOC}\n## Round 2 — explore (2026-07-02)\n\n次輪本文\n`;
-    const s = splitDiscussionSections(doc);
-    expect(s).not.toBeNull();
-    expect(s!.conclusion).toContain("建置 alpha 搜尋");
-    expect(s!.conclusion).not.toContain("次輪本文");
-  });
-});
-
-describe("結構標題白名單跨語言對齊（引擎 ↔ UI）", () => {
-  it("Rust 與 TS 的 STRUCTURAL_HEADERS 逐值一致", () => {
-    // 兩份白名單只靠註解互指不夠——讀原始檔逐值比對（同 tooltipDelay.test.tsx
-    // 的檔案系統斷言慣例；repo root 由測試檔路徑推出）。
-    const REPO_ROOT = resolve(dirname(expect.getState().testPath ?? ""), "../../../..");
-    const extract = (source: string): string[] => {
-      const m = /const STRUCTURAL_HEADERS[^=]*=[^[]*\[([^\]]+)\]/.exec(source);
-      expect(m).not.toBeNull();
-      return [...m![1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
-    };
-    const rust = extract(
-      readFileSync(resolve(REPO_ROOT, "crates/engine/speclink-core/src/lifecycle/discuss.rs"), "utf8"),
-    );
-    const ts = extract(
-      readFileSync(resolve(REPO_ROOT, "packages/ui/src/components/DiscussionDetailPage.tsx"), "utf8"),
-    );
-    expect(ts).toEqual(rust);
-    expect(rust).toEqual(["## Context", "## Rounds", "## Conclusion"]);
-  });
-
-  it("圍欄、輪標題與 pre-scaffold 邊界的字面規則兩邊同在", () => {
-    // 絆線測試：三條跨語言規則（圍欄定界符、輪標題前綴與 em-dash 分隔、
-    // pre-scaffold 邊界前綴）的字面值必須同時存在於兩份原始檔——
-    // 任一側改了定界符或前綴，這裡就斷。
-    const REPO_ROOT = resolve(dirname(expect.getState().testPath ?? ""), "../../../..");
-    const rustSrc = readFileSync(
-      resolve(REPO_ROOT, "crates/engine/speclink-core/src/lifecycle/discuss.rs"),
-      "utf8",
-    );
-    const tsSrc = readFileSync(
-      resolve(REPO_ROOT, "packages/ui/src/components/DiscussionDetailPage.tsx"),
-      "utf8",
-    );
-    for (const literal of ["## Round ", "### Round ", "```", "~~~", " — "]) {
-      expect(rustSrc, `Rust 缺 ${JSON.stringify(literal)}`).toContain(literal);
-      expect(tsSrc, `TS 缺 ${JSON.stringify(literal)}`).toContain(literal);
-    }
-  });
-});
-
 // spec 需求「討論輪以卡片呈現」的輪切分（design D1/D2）。
 const ROUNDS_TEXT = `
 <!-- \`### Round N — <mode> (<date>)\` entries are appended here by the CLI. -->
@@ -193,67 +104,6 @@ const ROUNDS_TEXT = `
 **Ruled out**: 淘汰項
 **Open**: 無
 `;
-
-describe("splitRounds（輪切分，design D1 行掃描解析 scaffold）", () => {
-  it("scaffold 記錄解析出輪陣列：輪次、mode、日期、欄位對應", () => {
-    const rounds = splitRounds(ROUNDS_TEXT);
-    expect(rounds).not.toBeNull();
-    expect(rounds!.length).toBe(2);
-    expect(rounds![0].round).toBe(1);
-    expect(rounds![0].mode).toBe("assumptions");
-    expect(rounds![0].date).toBe("2026-07-08");
-    expect(rounds![1].round).toBe(2);
-    expect(rounds![1].mode).toBe("interview");
-    expect(rounds![1].date).toBe("2026-07-09");
-    expect(rounds![0].fields.Focus).toBe("第一輪焦點");
-  });
-
-  it("Position 標籤行後的列點多行歸屬 Position 欄位", () => {
-    const rounds = splitRounds(ROUNDS_TEXT)!;
-    expect(rounds[0].fields.Position).toContain("總綰一句");
-    expect(rounds[0].fields.Position).toContain("- 列點甲");
-    expect(rounds[0].fields.Position).toContain("- 列點乙");
-    expect(rounds[0].fields.Open).toBe("未解之一");
-  });
-
-  it("來源缺 Ruled out 時欄位對應無該鍵", () => {
-    const rounds = splitRounds(ROUNDS_TEXT)!;
-    expect(rounds[0].fields["Ruled out"]).toBeUndefined();
-    expect(rounds[1].fields["Ruled out"]).toBe("淘汰項");
-  });
-
-  it("非四詞白名單的粗體前綴行按內文歸屬當前欄位（design D2）", () => {
-    const rounds = splitRounds(ROUNDS_TEXT)!;
-    expect(Object.keys(rounds[1].fields)).not.toContain("Note");
-    expect(rounds[1].fields.Position).toContain("**Note**: 這行不是欄位");
-  });
-
-  it("圍欄內的 ### 行不觸發輪切分或整篇退回", () => {
-    // 與引擎同規則：fenced code block 內的行歸當前輪內文，不是輪標題。
-    const text =
-      "\n### Round 1 — assumptions (2026-07-08)\n\n**Focus**: 焦點\n\n```\n### 附註\n### Round 9 — fake (2026-01-01)\n```\n";
-    const rounds = splitRounds(text);
-    expect(rounds).not.toBeNull();
-    expect(rounds!.length).toBe(1);
-    expect(rounds![0].fields.Focus).toContain(
-      "```\n### 附註\n### Round 9 — fake (2026-01-01)\n```",
-    );
-  });
-
-  it("任一輪標題不符 scaffold 格式時回 null（整篇退回）", () => {
-    expect(splitRounds("### Round 1 — assumptions\n\n**Focus**: 缺日期括號\n")).toBeNull();
-    expect(
-      splitRounds("### Round 1 — assumptions (2026-07-08)\n\n**Focus**: 好輪\n\n### 附註\n\n手寫段落\n"),
-    ).toBeNull();
-    expect(splitRounds("手寫的自由格式輪記錄，沒有輪標題。")).toBeNull();
-  });
-
-  it("零輪（僅 scaffold 註解與空行）回空陣列", () => {
-    expect(
-      splitRounds("\n<!-- \\`### Round N — <mode> (<date>)\\` entries are appended here by the CLI. -->\n\n"),
-    ).toEqual([]);
-  });
-});
 
 // spec 需求「討論輪以卡片呈現」的渲染面（design D1/D2 輪卡片＋欄位標籤區塊）。
 const CARDS_DOC = `---
@@ -300,11 +150,11 @@ describe("輪卡片渲染（討論輪以卡片呈現）", () => {
     expect(roundChip.className).not.toContain("primary");
   });
 
-  it("欄位以標籤區塊呈現，「**Focus**:」粗體前綴原文不出現", async () => {
+  it("卡頭含焦點、欄位以標籤呈現，「**Focus**:」粗體前綴原文不出現", async () => {
     const { baseElement } = await openRoundsTab(CARDS_DOC);
     await waitFor(() => screen.getByText("第一輪焦點"));
     const card1 = baseElement.querySelector('[data-round="1"]') as HTMLElement;
-    expect(within(card1).getByText("焦點")).toBeTruthy();
+    expect(card1.querySelector("button[aria-expanded]")!.textContent).toContain("第一輪焦點");
     expect(within(card1).getByText("立場")).toBeTruthy();
     expect(within(card1).getByText("未解")).toBeTruthy();
     // 舊行為把 **Focus**: 渲染成粗體 Focus 文字；卡片模式下英文前綴不再出現。
@@ -369,19 +219,33 @@ describe("結論欄位標籤化（討論結論以欄位標籤呈現）", () => {
     expect(screen.queryByText("下一步")).toBeNull();
   });
 
-  // spec「標籤為大標題且字級大於內文」：輪／結論欄位標籤與章節標籤同一款式常數（design D6）。
-  it("輪與結論欄位標籤為粗體大標題款式（與章節標籤同源）", async () => {
+  // 段落標籤從 20px 粗體大標改為 16px 章節標題（detail-content-redesign 結論）。
+  it("結論欄位的區段標題為 16px 粗體章節標題", async () => {
     const props = makeProps({ loadDocument: vi.fn(async () => docWithConclusion(FULL_CONCLUSION)) });
     render(<DiscussionDetailPage {...(props as never)} />);
     await waitFor(() => expect(body().getByText("決定")).toBeTruthy());
     const conclusionLabel = body().getByText("決定");
-    for (const cls of LABEL_CLS.split(" ")) expect(conclusionLabel.className).toContain(cls);
-    expect(conclusionLabel.className).not.toContain("text-xs");
-    fireEvent.mouseDown(screen.getByRole("tab", { name: /討論過程/ }));
-    await waitFor(() => expect(body().getByText("焦點")).toBeTruthy());
-    const roundLabel = body().getByText("焦點");
-    for (const cls of LABEL_CLS.split(" ")) expect(roundLabel.className).toContain(cls);
-    expect(roundLabel.className).not.toContain("uppercase");
+    for (const cls of SECTION_HEADING_CLS.split(" ")) expect(conclusionLabel.className).toContain(cls);
+    expect(conclusionLabel.className).not.toContain("text-xl");
+  });
+
+  it("結論的分刀卡變更籤點擊開啟已封存詳情頁（onOpenArchivedChange 收到 datedName）", async () => {
+    const onOpenArchivedChange = vi.fn();
+    const props = makeProps({
+      discussion: { ...concludedD, status: "promoted", promotedTo: ["cut-old"] },
+      archivedChanges: [{ datedName: "2026-07-20-cut-old", date: "2026-07-20", name: "cut-old" }],
+      onOpenArchivedChange,
+      loadDocument: vi.fn(async () => docWithConclusion("**Decision**: 一刀\n- **cut 1 `cut-old`**: 骨架")),
+    });
+    render(<DiscussionDetailPage {...(props as never)} />);
+    const card = await waitFor(() => {
+      const el = document.querySelector('[data-cut="cut 1"]') as HTMLElement | null;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    expect(within(card).getByText("已封存")).toBeTruthy();
+    fireEvent.click(within(card).getByRole("button", { name: "cut-old" }));
+    expect(onOpenArchivedChange).toHaveBeenCalledWith("2026-07-20-cut-old");
   });
 
   it("自由格式結論整篇以單一 markdown 檢視退回", async () => {
@@ -843,17 +707,6 @@ describe("討論詳情頁的關聯列與標題列動作", () => {
     expect(within(related).getByRole("button").textContent).toBe("先前討論 2");
   });
 
-  it.each([
-    ["Prior discussions: none", null],
-    ["Prior discussions: None.", null],
-    ["Prior discussions: none — 首次討論這個主題", null],
-    ["Prior discussions: NONE（尚無）", null],
-    ["Prior discussions: none-legacy-topic", 1],
-    ["Prior discussions: alpha-one, beta-two", 2],
-  ])("countPriorDiscussions(%s) → %s：none 開頭的變體寫法都算沒有先前討論", (line, expected) => {
-    expect(countPriorDiscussions(`框架脈絡。\n\n${line}`)).toBe(expected);
-  });
-
   it("Prior discussions 為 none 或缺行時無關聯列", async () => {
     const r = render(
       <DiscussionDetailPage
@@ -868,11 +721,45 @@ describe("討論詳情頁的關聯列與標題列動作", () => {
     expect(document.querySelector("[data-relation-related]")).toBeNull();
   });
 
-  it("閱讀卡沒有出處行（討論文件的出處不在本刀）", async () => {
-    render(<DiscussionDetailPage {...(makeProps() as never)} />);
+  it("閱讀卡出處行依文件切換", async () => {
+    render(<DiscussionDetailPage {...(makeProps({ discussion: promotedD }) as never)} />);
     await screen.findByRole("tab", { name: /背景/ });
-    expect(document.querySelector("[data-doc-header]")).toBeTruthy();
-    expect(document.querySelector("[data-doc-provenance]")).toBeNull();
+    const provenance = () => document.querySelector("[data-doc-header] [data-doc-provenance]")?.textContent;
+    expect(provenance()).toBe("openspec/discussions/alpha-search.md·1 輪之後寫入");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /討論過程/ }));
+    expect(provenance()).toBe("2026-07-01·assumptions 1 輪");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /背景/ }));
+    expect(provenance()).toBe("記錄建立時寫入一次·2026-07-01");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /衍生變更/ }));
+    expect(provenance()).toBe("依轉出順序");
+  });
+
+  it("背景的規格籤呼叫 onOpenSpec、討論籤呼叫 onOpenDiscussion", async () => {
+    const onOpenSpec = vi.fn();
+    const onOpenDiscussion = vi.fn();
+    const doc = DOC.replace("框架脈絡內容。", "框架脈絡提到 desktop-app 與 beta-talk，也提到自己 alpha-search。");
+    render(
+      <DiscussionDetailPage
+        {...(makeProps({
+          loadDocument: vi.fn(async () => doc),
+          specNames: ["desktop-app"],
+          discussionSlugs: ["alpha-search", "beta-talk"],
+          onOpenSpec,
+          onOpenDiscussion,
+        }) as never)}
+      />,
+    );
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /背景/ }));
+    const chip = await waitFor(() => {
+      const el = document.querySelector('[data-name-chip="spec:desktop-app"]') as HTMLElement | null;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    fireEvent.click(chip);
+    expect(onOpenSpec).toHaveBeenCalledWith("desktop-app");
+    fireEvent.click(document.querySelector('[data-name-chip="discussion:beta-talk"]')!);
+    expect(onOpenDiscussion).toHaveBeenCalledWith("beta-talk");
+    expect(document.querySelector('[data-name-chip="discussion:alpha-search"]')).toBeNull();
   });
 
   it("換討論時即使同為結論文件，閱讀區也捲回頂端", async () => {
@@ -895,3 +782,244 @@ describe("討論詳情頁的關聯列與標題列動作", () => {
   });
 });
 
+
+// spec「討論結論以欄位標籤呈現」「討論輪以卡片呈現」「討論詳情頁檢視與轉出變更」的數字磚、出處行與提示框
+// （desktop-discussion-doc-views design D6）：推導入口的輸出直接畫進閱讀卡的標題區零件。
+describe("數字磚、出處行與提示框", () => {
+  const NAMES = { specs: [], active: [], archived: [], discussions: [] };
+  const roundsOf = (modes: string[], dates: string[], lastOpen = "無：寫入結論") =>
+    modes
+      .map(
+        (mode, i) =>
+          `### Round ${i + 1} — ${mode} (${dates[i]})\n\n**Focus**: 第 ${i + 1} 輪\n**Position**: 立場${
+            i === modes.length - 1 ? `\n**Open**: ${lastOpen}` : ""
+          }`,
+      )
+      .join("\n\n");
+  const record = (rounds: string, conclusion: string, context = "背景。") =>
+    `# Discussion\n\n## Context\n\n${context}\n\n## Rounds\n\n${rounds}\n\n## Conclusion\n\n${conclusion}\n`;
+
+  function Harness({ tab, data }: { tab: string; data: DiscussionDocData }) {
+    const { t } = useI18n();
+    const summary = discussionDocSummary(tab, data, t);
+    return (
+      <>
+        <DocHeader title="文件" provenance={discussionDocProvenance(tab, data, t)} />
+        <DocTiles tiles={summary.tiles} />
+        {summary.callout && <div data-doc-callout>{summary.callout}</div>}
+      </>
+    );
+  }
+  const tiles = () =>
+    Array.from(document.querySelectorAll("[data-doc-tile]")).map((tile) =>
+      Array.from(tile.children).map((c) => c.textContent),
+    );
+  const provenance = () => document.querySelector("[data-doc-provenance]")?.textContent ?? null;
+  const callout = () => document.querySelector("[data-doc-callout]") as HTMLElement | null;
+
+  it("討論過程的數字磚、出處行與已收斂提示框", () => {
+    const modes = Array.from({ length: 20 }, (_, i) => (i % 2 === 0 ? "assumptions" : "interview"));
+    const data = discussionDocData({
+      text: record(roundsOf(modes, Array(20).fill("2026-10-08")), "**Decision**: 定案"),
+      status: "concluded",
+      hold: false,
+      created: "2026-10-08",
+      recordPath: "openspec/discussions/demo.md",
+      rows: [],
+      names: NAMES,
+    });
+    render(<Harness tab="rounds" data={data} />);
+    expect(tiles()).toEqual([
+      ["20", "輪"],
+      ["1", "天"],
+      ["10", "assumptions"],
+      ["10", "interview"],
+    ]);
+    expect(provenance()).toBe("2026-10-08·assumptions 10 輪·interview 10 輪");
+    expect(callout()!.textContent).toContain("討論已收斂");
+    expect(callout()!.textContent).toContain("第 20 輪之後寫入結論");
+    expect(callout()!.textContent).toContain("最後一輪待決：無");
+  });
+
+  it("結論文件的數字磚與出處行", () => {
+    const decision = [
+      "**Decision**: 一句定論。",
+      ...Array.from({ length: 20 }, (_, i) => `- 細節 ${i}`),
+      ...[1, 2, 3].map((n) => `- **cut ${n} \`chg-${n}\`**: 第 ${n} 刀`),
+      "**Rejected alternatives**:",
+      ...Array.from({ length: 11 }, (_, i) => `- 方案 ${i} — 理由`),
+      "**Deferred**:",
+      ...Array.from({ length: 4 }, (_, i) => `- 擱置 ${i}`),
+    ].join("\n");
+    const data = discussionDocData({
+      text: record(roundsOf(Array(11).fill("interview"), Array(11).fill("2026-10-12")), decision),
+      status: "concluded",
+      hold: false,
+      created: "2026-10-12",
+      recordPath: "openspec/discussions/demo.md",
+      rows: [],
+      names: NAMES,
+    });
+    render(<Harness tab="conclusion" data={data} />);
+    expect(provenance()).toBe("openspec/discussions/demo.md·11 輪之後寫入");
+    expect(tiles()).toEqual([
+      ["20", "定案細節"],
+      ["3", "分刀 · 3 個變更"],
+      ["11", "否決的替代方案"],
+      ["4", "擱置"],
+    ]);
+    expect(callout()).toBeNull();
+  });
+
+  it("背景的數字磚、出處行與「沒有 grill 階段」提示框", () => {
+    const context = [
+      "提到 desktop-app、tray-status-menu、add-copilot-tool 與 tray-panel-card-design。",
+      "",
+      "Related specs: desktop-app（79 條）、tray-status-menu",
+      "Prior discussions: card-drawer-header-colors, admin-console-redesign",
+      "Source doc: none",
+    ].join("\n");
+    const data = discussionDocData({
+      text: record(roundsOf(["assumptions", "interview"], ["2026-10-08", "2026-10-08"]), "", context),
+      status: "open",
+      hold: false,
+      created: "2026-10-08",
+      recordPath: "openspec/discussions/demo.md",
+      rows: [],
+      names: {
+        specs: ["desktop-app", "tray-status-menu"],
+        active: ["add-copilot-tool"],
+        archived: ["tray-panel-card-design"],
+        discussions: ["card-drawer-header-colors", "admin-console-redesign"],
+      },
+    });
+    render(<Harness tab="context" data={data} />);
+    expect(tiles()).toEqual([
+      ["2", "命中的正式規格"],
+      ["1", "在途變更"],
+      ["1", "相關已封存變更"],
+      ["2", "先前討論"],
+    ]);
+    expect(provenance()).toBe("記錄建立時寫入一次·2026-10-08");
+    expect(callout()!.textContent).toContain("沒有 grill 階段");
+    expect(callout()!.textContent).toContain("首輪直接列假設");
+  });
+
+  it("背景無關聯時數字磚整列缺席；首輪不是 assumptions 時無提示框", () => {
+    const data = discussionDocData({
+      text: record(roundsOf(["interview"], ["2026-10-08"]), "", "兩段純散文。\n\n第二段。"),
+      status: "open",
+      hold: false,
+      created: null,
+      recordPath: null,
+      rows: [],
+      names: NAMES,
+    });
+    render(<Harness tab="context" data={data} />);
+    expect(document.querySelector("[data-doc-tiles]")).toBeNull();
+    expect(callout()).toBeNull();
+    expect(provenance()).toBe("記錄建立時寫入一次");
+  });
+
+  describe("衍生變更", () => {
+    const t = (key: string) => MESSAGES["zh-TW"][key] ?? key;
+    const live = (name: string, done: number, total: number): ChangeItem => ({
+      name,
+      status: "ready",
+      totalTasks: total,
+      completedTasks: done,
+    });
+    const gone = (name: string, n: number): ArchivedItem => ({
+      datedName: `2026-10-0${n}-${name}`,
+      date: `2026-10-0${n}`,
+      name,
+      tasksDone: n,
+      tasksTotal: n,
+    });
+    const docData = (rows: PromotedRow[], over: Partial<{ status: string; hold: boolean; cuts: boolean }> = {}) =>
+      discussionDocData({
+        text: record(
+          roundsOf(["interview"], ["2026-10-08"]),
+          over.cuts ? "**Decision**: 定案\n- **cut 1 `a-one`**: 一" : "**Decision**: 定案",
+        ),
+        status: over.status ?? "promoted",
+        hold: over.hold ?? false,
+        created: "2026-10-08",
+        recordPath: null,
+        rows,
+        names: NAMES,
+      });
+
+    it("只差最後一刀提示框：已轉出、hold 為 false、恰一個作用中子變更", () => {
+      const rows = promotedRows(
+        ["a-one", "b-two", "tray-panel-restyle"],
+        [live("tray-panel-restyle", 9, 9)],
+        [gone("a-one", 3), gone("b-two", 4)],
+        t,
+      );
+      render(<Harness tab="promote" data={docData(rows, { cuts: true })} />);
+      expect(tiles()).toEqual([
+        ["3", "變更"],
+        ["2", "已封存"],
+        ["1", "作用中"],
+        ["16 / 16", "任務"],
+      ]);
+      expect(provenance()).toBe("依結論的分刀分組");
+      expect(callout()!.textContent).toContain("只差最後一刀");
+      expect(callout()!.textContent).toContain("tray-panel-restyle（已就緒）");
+    });
+
+    it("hold 為 true、或作用中子變更有兩個時無此提示框；讀不到分刀時出處行為依轉出順序", () => {
+      const one = promotedRows(["a-one", "tray-panel-restyle"], [live("tray-panel-restyle", 1, 2)], [gone("a-one", 3)], t);
+      const { unmount } = render(<Harness tab="promote" data={docData(one, { hold: true })} />);
+      expect(callout()).toBeNull();
+      expect(provenance()).toBe("依轉出順序");
+      unmount();
+      const two = promotedRows(["x-one", "y-two"], [live("x-one", 1, 2), live("y-two", 0, 3)], [], t);
+      render(<Harness tab="promote" data={docData(two)} />);
+      expect(callout()).toBeNull();
+    });
+
+    it("結論未寫入時無「討論已收斂」提示框；衍生變更為空時無數字磚與出處行", () => {
+      const { unmount } = render(<Harness tab="rounds" data={docData([], { status: "open" })} />);
+      expect(callout()!.textContent).toContain("討論已收斂");
+      unmount();
+      const open = discussionDocData({
+        text: record(roundsOf(["interview", "interview", "interview"], ["2026-10-08", "2026-10-09", "2026-10-10"]), "<!-- scaffold -->"),
+        status: "open",
+        hold: false,
+        created: null,
+        recordPath: null,
+        rows: [],
+        names: NAMES,
+      });
+      const r = render(<Harness tab="rounds" data={open} />);
+      expect(callout()).toBeNull();
+      expect(tiles()[0]).toEqual(["3", "輪"]);
+      expect(provenance()).toBe("2026-10-08 – 2026-10-10·interview 3 輪");
+      r.unmount();
+      render(<Harness tab="promote" data={open} />);
+      expect(document.querySelector("[data-doc-tiles]")).toBeNull();
+      expect(provenance()).toBeNull();
+    });
+  });
+
+  it("記錄切分失敗時三者皆空", () => {
+    const data = discussionDocData({
+      text: "手寫的自由格式記錄。",
+      status: "open",
+      hold: false,
+      created: "2026-10-08",
+      recordPath: "openspec/discussions/demo.md",
+      rows: [],
+      names: NAMES,
+    });
+    for (const tab of ["conclusion", "rounds", "context", "record"]) {
+      const { unmount } = render(<Harness tab={tab} data={data} />);
+      expect(document.querySelector("[data-doc-tiles]")).toBeNull();
+      expect(provenance()).toBeNull();
+      expect(callout()).toBeNull();
+      unmount();
+    }
+  });
+});

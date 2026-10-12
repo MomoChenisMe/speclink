@@ -10,6 +10,7 @@ import {
 import { code } from "@streamdown/code";
 
 import { useI18n } from "../i18n";
+import { nameSpans } from "../discussionModel";
 import { cn } from "../lib/utils";
 import { rehypeSpecKeywords } from "../specSections";
 import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
@@ -23,6 +24,15 @@ export interface MarkdownProps {
   specKeywords?: boolean;
   /** 合進外層 `.markdown` 容器（如列內行內排版的 `[&_p]:my-0`）；與預設衝突的 class 以後者為準。 */
   className?: string;
+  /** 文中名稱籤（討論背景）：與名單完全相同的字詞換成 `span.name-chip[data-name-chip="<kind>:<name>"]`；
+   * 款式與點擊由呼叫端容器負責。缺席或空陣列時管線不變。 */
+  nameChips?: NameChip[];
+}
+
+/** 一顆名稱籤的來源：種類（spec／change／archived／discussion 等，呼叫端自訂）與名稱。 */
+export interface NameChip {
+  kind: string;
+  name: string;
 }
 
 /** GitHub Alert 四型（desktop-manual-page spec「Markdown 的 GitHub Alert 提示框」）
@@ -74,6 +84,52 @@ const REHYPE_PLUGINS: Pluggable[] = [
 ];
 // 關鍵字外掛接在 sanitize 之後：它產生的 spec-kw class 不經放行清單。
 const SPEC_REHYPE_PLUGINS: Pluggable[] = [...REHYPE_PLUGINS, rehypeSpecKeywords as Pluggable];
+
+/** 最小 hast 節點視圖。 */
+interface HastNode {
+  type: string;
+  value?: string;
+  tagName?: string;
+  properties?: Record<string, unknown>;
+  children?: HastNode[];
+}
+
+/** 名稱籤外掛（design D10）：接在 sanitize 之後，產生的 class 與 data 屬性不經放行清單（與 rehypeSpecKeywords
+ * 同一路）。名單以選項物件傳入——Streamdown 以「外掛函式名＋選項 JSON」快取 processor，閉包式外掛會讓不同
+ * 文件共用同一份。行內 code、程式碼區塊與連結內不處理；命中規則與 matchNames 同一條邊界、長名優先。 */
+function rehypeNameChips({ names }: { names: NameChip[] }) {
+  const kindOf = new Map<string, string>();
+  for (const chip of names) if (!kindOf.has(chip.name)) kindOf.set(chip.name, chip.kind);
+  const list = [...kindOf.keys()];
+  const split = (value: string): HastNode[] | null => {
+    const spans = nameSpans(value, list);
+    if (spans.length === 0) return null;
+    const out: HastNode[] = [];
+    let last = 0;
+    for (const { name, start, end } of spans) {
+      if (start > last) out.push({ type: "text", value: value.slice(last, start) });
+      out.push({
+        type: "element",
+        tagName: "span",
+        properties: { className: ["name-chip"], dataNameChip: `${kindOf.get(name)}:${name}`, role: "button", tabIndex: 0 },
+        children: [{ type: "text", value: name }],
+      });
+      last = end;
+    }
+    if (last < value.length) out.push({ type: "text", value: value.slice(last) });
+    return out;
+  };
+  const walk = (node: HastNode) => {
+    if (!node.children) return;
+    if (node.type === "element" && (node.tagName === "code" || node.tagName === "pre" || node.tagName === "a")) return;
+    node.children = node.children.flatMap((child) => {
+      if (child.type === "text" && child.value) return split(child.value) ?? [child];
+      walk(child);
+      return [child];
+    });
+  };
+  return walk;
+}
 
 const PLUGINS: StreamdownProps["plugins"] = { code };
 const CONTROLS: StreamdownProps["controls"] = { code: { copy: true, download: false }, table: false, mermaid: false };
@@ -155,7 +211,7 @@ function remarkGithubAlerts(labels: Record<AlertType, string>) {
  * 行寬上限 96ch（≈48 全形字 @16px）——抽屜全螢幕時行寬不隨之增長（spec
  * 「markdown 文件內容行寬有上限」）；寬表格由 Streamdown 的表格容器橫捲。
  * GitHub Alert（`> [!NOTE]` 等四型）恆開、對所有 Markdown 檢視生效。 */
-export function Markdown({ content, empty, specKeywords = false, className }: MarkdownProps) {
+export function Markdown({ content, empty, specKeywords = false, className, nameChips }: MarkdownProps) {
   const { t } = useI18n();
   // Streamdown 的區塊 memo 逐一比對屬性物件是否同一個：固定設定放模組層，隨語系變動的用 useMemo。
   const remarkPlugins = useMemo(
@@ -176,6 +232,13 @@ export function Markdown({ content, empty, specKeywords = false, className }: Ma
     [t],
   );
   const translations = useMemo(() => ({ copyCode: t("markdown.copyCode"), copied: t("markdown.copied") }), [t]);
+  // 名單以內容為鍵：呼叫端每次渲染給新陣列時不重建管線。
+  const chipKey = JSON.stringify(nameChips ?? []);
+  const rehypePlugins = useMemo(() => {
+    const base = specKeywords ? SPEC_REHYPE_PLUGINS : REHYPE_PLUGINS;
+    const names = JSON.parse(chipKey) as NameChip[];
+    return names.length > 0 ? [...base, [rehypeNameChips, { names }] as Pluggable] : base;
+  }, [specKeywords, chipKey]);
   if (!content || !content.trim()) {
     return <div className="text-muted-foreground text-sm py-6">{empty ?? t("common.noContent")}</div>;
   }
@@ -184,7 +247,7 @@ export function Markdown({ content, empty, specKeywords = false, className }: Ma
       <Streamdown
         mode="static"
         remarkPlugins={remarkPlugins}
-        rehypePlugins={specKeywords ? SPEC_REHYPE_PLUGINS : REHYPE_PLUGINS}
+        rehypePlugins={rehypePlugins}
         plugins={PLUGINS}
         controls={CONTROLS}
         translations={translations}

@@ -779,6 +779,9 @@ function AppInner({
           return { slug: name, topic: t("rdrawer.noArchiveRecord"), disabled: true };
         },
       );
+  // 討論文件的名稱籤（desktop-discussion-doc-views design D8）：正式規格名與全部討論 slug。
+  const specNames = s.specs.map((x) => x.id);
+  const discussionSlugs = allDiscussions.map((d) => d.slug);
   // 點衍生籤：已封存→封存抽屜（底層不切頁）；活躍→詳情抽屜（openDetail 依正典落回看板）。
   const openPromotedChange = (name: string) => {
     const archivedHit = s.archived.find((a) => a.name === name);
@@ -970,6 +973,11 @@ function AppInner({
       changes={s.changes}
       archivedChanges={s.archived}
       onOpenChangeCard={s.openDetail}
+      onOpenArchivedChange={(datedName) => s.openArchived({ kind: "change", datedName })}
+      specNames={specNames}
+      discussionSlugs={discussionSlugs}
+      onOpenSpec={s.openSpec}
+      onOpenDiscussion={s.openDiscussion}
       onArchiveDiscussion={
         // 已封存的討論(自來源討論 chip 開啟)與 capability 缺口不提供封存;
         // 其餘走與討論卡同一確認流程。
@@ -1016,6 +1024,10 @@ function AppInner({
       renderDocumentActions={renderDocumentActions}
       onOpenSpec={s.openSpec}
       pathReveal={pathReveal}
+      changes={s.changes}
+      archivedChanges={s.archived}
+      specNames={specNames}
+      discussionSlugs={discussionSlugs}
     />
   );
 

@@ -1,0 +1,212 @@
+{
+  "version": 2,
+  "change": "desktop-discussion-doc-views",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫紅燈：新增 `packages/ui/src/__tests__/discussionModel.test.ts`（design D1），以 spec「討論結論以欄位標籤呈現」的 Example 表「分刀列的解析」與 detail-content-redesign、desktop-ui-redesign 兩份真實結論當案例——`parseConclusion`（六欄位與零欄位回 null）、`splitVerdict`（定論句＋列點、首段即列點時定論句為空）、`parseCuts`（`cut 1`／`cut 3a`／`刀三`／反引號多名／非分刀粗體留在 rest）、`splitRows`（列點優先、「；」切段、反引號與括號內的「；」不切）、`openItems`（「無」「None」起頭）、`roundStats`（mode 首次出現序、天數、首末日）、`parseContextMeta`（四行剝離、括號備註去除、`add-copilot-tool: desktop-config` 取冒號前、`none` 為空陣列、`Source doc: none` 為空字串）、`splitLead`、`matchNames`（邊界、長名優先、反引號與圍欄內不算、去重保序）、`commandChips`；既有 `splitDiscussionSections`／`splitRounds`／`countPriorDiscussions` 題目自 `packages/ui/src/__tests__/discussionDetailPage.test.tsx` 搬來、匯入路徑改 `../discussionModel`。驗證：`npm test -w packages/ui -- discussionModel` 以「模組不存在」失敗。",
+      "files": [
+        "packages/ui/src/__tests__/discussionDetailPage.test.tsx",
+        "packages/ui/src/__tests__/discussionModel.test.ts"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 新增 `packages/ui/src/discussionModel.ts`（design D1）讓 1.1 轉綠：既有四支解析自 `packages/ui/src/components/DiscussionDetailPage.tsx` 搬入並連同型別與白名單常數匯出，新增 D1 列出的全部純函式；形狀不符一律回 null、空陣列或整條當一般列，不拋錯。驗證：`npm test -w packages/ui -- discussionModel discussionDetailPage` 全綠。",
+      "files": [
+        "packages/ui/src/components/ArchivedDetailPage.tsx",
+        "packages/ui/src/components/DiscussionDetailPage.tsx",
+        "packages/ui/src/index.ts",
+        "packages/ui/src/discussionModel.ts"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 `packages/ui/src/components/Markdown.tsx` 新增 `nameChips?: { kind: string; name: string }[]`（design D10）：有值時在 sanitize 之後以 `[rehypeNameChips, { names }]` 選項形式接外掛，文字節點（略過 `code`／`pre`／`a`）中以 D1 同一條邊界規則命中的名稱換成 `span.name-chip[data-name-chip=\"<kind>:<name>\"]`；缺席時管線不變。驗證：`packages/ui/src/__tests__/markdown.test.tsx` 新增三題——「內文提到 desktop-app 與 add-copilot-tool，傳入兩顆籤後各成一個 `[data-name-chip]` 且文字不變」「反引號內與 `desktop-app-x` 這類前綴不命中」「不傳 `nameChips` 時輸出 HTML 與傳空陣列相同」；既有 markdown 題目不改全綠；`npm test -w packages/ui -- markdown`。",
+      "files": [
+        "packages/ui/src/components/Markdown.tsx",
+        "packages/ui/src/__tests__/markdown.test.tsx"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "3.1 新增 `packages/ui/src/components/ConclusionDoc.tsx`（design D2；spec「討論結論以欄位標籤呈現」）：六欄位各一個 `DocSection`（16px 粗體標題、本頁目錄錨點）、決定的 `[data-verdict]` 主句與前 4 條細節＋`MoreToggle`「展開其餘 N 項定案細節」、分刀 `[data-cut]` 卡（識別籤、範圍句、變更數、`stageOf` 給階段籤與可點、子項細線列）、否決與擱置的 `OptionReasonRows`（新增可選 `icon`，擱置帶 `Clock`）、記錄去向籤（`specNames` 命中可點）、下一步的 `[data-command-chip]` 等寬籤＋`CopyButton`；零欄位整篇 Markdown。驗證：新增 `packages/ui/src/__tests__/conclusionDoc.test.tsx`——「27 條細節含 7 條分刀：細線列 4 條、鈕文字『展開其餘 16 項定案細節』、點後 20 條、計數 20」「三張分刀卡的識別籤與範圍句、前兩張變更籤帶階段籤且點擊呼叫 stageOf 回的 onOpen、第三張不可點」「否決 14 列方案／理由、擱置其中一列無理由行且每列有時鐘圖示」「記錄去向 desktop-app 籤呼叫 onOpenSpec、proposal 籤不可點；下一步指令籤複製後剪貼簿為指令原文」「`[data-doc-heading]` 依序為決定、分刀、理由、否決替代案、擱置、記錄去向、下一步」「自由格式整篇 Markdown、無 data-section」；`npm test -w packages/ui -- conclusionDoc`。",
+      "files": [
+        "packages/ui/src/components/DocParts.tsx",
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/__tests__/conclusionDoc.test.tsx",
+        "packages/ui/src/components/ConclusionDoc.tsx"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.2 新增 `packages/ui/src/components/RoundsDoc.tsx`（design D3；spec「討論輪以卡片呈現」）：`[data-round-timeline]` 時間軸、每輪 `[data-round]` 節點色點依 mode（assumptions `bg-primary`、interview `bg-stage-discussion`、其他中性）、卡頭 `button[aria-expanded]`（輪次籤 `data-doc-heading`、焦點 h3、mode 籤、日期）、立場 `[data-position-verdict]`＋細線列、否決 `[data-ruled-out]` × 列、待決 `[data-open-item]` 琥珀籤或 `[data-open-none]`；首末輪預設展開；非 scaffold 整篇 Markdown、零輪空態。驗證：新增 `packages/ui/src/__tests__/roundsDoc.test.tsx`——「四輪：第 1 與第 4 輪 aria-expanded 為 true、第 2 與第 3 輪 false，卡頭含 Round N、焦點、mode、日期」「立場定論句與 3 條細線列、粗體前綴原文不出現」「否決兩列帶 × 圖示、待決兩顆籤、末輪『無——寫結論』為 data-open-none」「點第 2 輪卡頭展開、再點收合、第 1 輪不受影響」「缺 Ruled out 時無否決欄位」「非標準輪標題整篇 Markdown、無時間軸」「色點：assumptions 帶 bg-primary、interview 帶 bg-stage-discussion」；`npm test -w packages/ui -- roundsDoc`。",
+      "files": [
+        "packages/ui/src/__tests__/roundsDoc.test.tsx",
+        "packages/ui/src/components/RoundsDoc.tsx"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.3 新增 `packages/ui/src/components/ContextDoc.tsx`（design D4；spec「討論詳情頁檢視與轉出變更」背景段）：剝離四行收尾行、`Lead` 引言、帶 `nameChips` 的 Markdown 與容器點擊分派（`closest(\"[data-name-chip]\")`，依 kind 呼叫 onOpenSpec／onOpenChange／onOpenArchivedChange／onOpenDiscussion）、「關聯」鍵值籤列（聯集規則、空列缺席、來源文件 none 為「無」）、「記錄」列（建立、種類、檔案＋`CopyButton`；`recordPath` 缺席列缺席）；三個 `DocSection` 標題為本頁目錄錨點。驗證：新增 `packages/ui/src/__tests__/contextDoc.test.tsx`——以 spec Scenario「背景文件的引言、關聯與記錄列」的資料斷言引言為灰底段、四顆內文籤、收尾四行不在內文、關聯五列的籤名、記錄三列文字、點 desktop-app 籤呼叫 onOpenSpec、點 add-copilot-tool 籤呼叫 onOpenChange；「無收尾行且零命中時無關聯段、無籤」「kind improve 時種類為改進討論；無 recordPath 時無檔案列」「空內文顯示空態文案」；`npm test -w packages/ui -- contextDoc`。",
+      "files": [
+        "packages/ui/src/__tests__/contextDoc.test.tsx",
+        "packages/ui/src/components/ContextDoc.tsx"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.4 新增 `packages/ui/src/components/PromotedDoc.tsx`（design D5；spec「討論詳情頁檢視與轉出變更」衍生變更段）：匯出 `promotedRows`（作用中／已封存／已刪除三態的 `PromotedRow` 推導，含任務、兩站章、日期與開啟回呼）與 `PromotedDoc`（依 `cuts` 分組 `[data-cut-group]` 組頭 `h3[data-doc-heading]`、不屬任何刀的列接在最後、`cuts` 空時平面清單；每列 `[data-promoted-row]` 的階段籤、等寬名、進度條 n/m、`[data-stamp]` 審／驗籤、日期、開啟鈕）；`PromotedChangeRow` 自 `DiscussionDetailPage.tsx` 刪除。驗證：新增 `packages/ui/src/__tests__/promotedDoc.test.tsx`——以 spec Example「列的欄位來源」五列逐一斷言階段籤文字、任務 n/m 有無、兩章有無、日期有無、開啟鈕有無與呼叫；「7 刀分組：組頭數 7、cut 2 組內 3 列、組頭為 data-doc-heading、不在任何刀的列接在最後無組頭」「cuts 空時無組頭、依傳入序」「rows 空時空態文案」；`npm test -w packages/ui -- promotedDoc`。",
+      "files": [
+        "packages/ui/src/__tests__/promotedDoc.test.tsx",
+        "packages/ui/src/components/PromotedDoc.tsx"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.1 新增 `packages/ui/src/components/discussionDocSummary.tsx`（design D6）：`discussionDocSummary(tab, data, t)` 回四份文件的籤槽（皆空）、數字磚與提示框（討論過程「討論已收斂」tip、背景「沒有 grill 階段」note、衍生變更「只差最後一刀」tip），`discussionDocProvenance(tab, data, t)` 回出處行；記錄未載入或切分失敗時全空。驗證：`packages/ui/src/__tests__/discussionDetailPage.test.tsx` 新增群組「數字磚、出處行與提示框」——以 spec Scenario「討論過程的數字磚、出處行與已收斂提示框」「結論文件的數字磚與出處行」「只差最後一刀提示框」「結論未寫入時無提示框」的資料各一題，斷言 `[data-doc-tile]` 值與標籤序、`[data-doc-provenance]` 文字、`[data-doc-callout]` 標題與內文有無；`npm test -w packages/ui -- discussionDetailPage`。",
+      "files": [
+        "packages/ui/src/components/discussionDocSummary.tsx"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.2 `packages/ui/src/components/DiscussionDetailPage.tsx` 改掛四個渲染器（design D7；spec「討論結論以欄位標籤呈現」「討論輪以卡片呈現」「討論詳情頁檢視與轉出變更」「詳情頁的文件樹、閱讀卡與本頁目錄」）：刪 `RoundsView`／`ConclusionView`／搬走的解析，新增 props `specNames`、`discussionSlugs`、`onOpenSpec`、`onOpenDiscussion`、`onOpenArchivedChange`，頁內推導 rounds／conclusion／cuts／rows，`DocHeader provenance`、`DocTiles`、`[data-doc-callout]` 槽（磚與內文之間）與四個 `TabsContent` 接線；格式非預期時「記錄」整篇 Markdown、衍生變更仍走 `PromotedDoc`。驗證：`discussionDetailPage.test.tsx` 既有「輪卡片渲染」「結論欄位標籤化」群組改為對新渲染器的斷言（卡頭含焦點、區段標題 16px、`LABEL_CLS` 款式題刪除），既有 DiscussionDetailPage 群組題目不改全綠；新增「結論的分刀卡變更籤點擊開啟已封存詳情頁（onOpenArchivedChange 收到 datedName）」「背景的規格籤呼叫 onOpenSpec、討論籤呼叫 onOpenDiscussion」「閱讀卡出處行依文件切換」三題；`npm test -w packages/ui -- discussionDetailPage`。",
+      "files": [
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "4.4 宿主接線（design D8）：`apps/desktop/src/App.tsx` 的 `DiscussionDetailPage` 加 `specNames`、`discussionSlugs`、`onOpenSpec`、`onOpenDiscussion`、`onOpenArchivedChange`，`ArchivedDetailPage` 加 `changes`、`archivedChanges`、`specNames`、`discussionSlugs`。驗證：`apps/desktop/src/__tests__/App.test.tsx` 於「討論詳情頁」相關群組新增兩題——開討論詳情頁後點背景內文的規格籤，主區為該規格的規格詳情頁、麵包屑末段為該規格名（宿主仍為看板）；開已封存討論頁後衍生變更列呈現任務進度 n/m 與開啟鈕，點鈕開啟該封存變更的已封存詳情頁且宿主維持已封存頁；既有討論與已封存題目不改全綠；`npm test -w apps/desktop -- App`。",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4QMA6K2NQJP3R2R66CCHRF0",
+      "taskDesc": "1.1 先寫紅燈：新增 `packages/ui/src/__tests__/discussionModel.test.ts`（design D1），以 spec「討論結論以欄位標籤呈現」的 Example 表「分刀列的解析」與 detail-content-redesign、desktop-ui-redesign 兩份真實結論當案例——`parseConclusion`（六欄位與零欄位回 null）、`splitVerdict`（定論句＋列點、首段即列點時定論句為空）、`parseCuts`（`cut 1`／`cut 3a`／`刀三`／反引號多名／非分刀粗體留在 rest）、`splitRows`（列點優先、「；」切段、反引號與括號內的「；」不切）、`openItems`（「無」「None」起頭）、`roundStats`（mode 首次出現序、天數、首末日）、`parseContextMeta`（四行剝離、括號備註去除、`add-copilot-tool: desktop-config` 取冒號前、`none` 為空陣列、`Source doc: none` 為空字串）、`splitLead`、`matchNames`（邊界、長名優先、反引號與圍欄內不算、去重保序）、`commandChips`；既有 `splitDiscussionSections`／`splitRounds`／`countPriorDiscussions` 題目自 `packages/ui/src/__tests__/discussionDetailPage.test.tsx` 搬來、匯入路徑改 `../discussionModel`。驗證：`npm test -w packages/ui -- discussionModel` 以「模組不存在」失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cd10bf9327985fde448ad1af43b6fa1a61d26627",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/discussionDetailPage.test.tsx",
+        "packages/ui/src/__tests__/discussionModel.test.ts"
+      ],
+      "recordedAt": "2026-10-12T12:05:36Z"
+    },
+    {
+      "taskId": "tsk_01M4QMA6K2PEBF9W7JC48CK0CQ",
+      "taskDesc": "1.2 新增 `packages/ui/src/discussionModel.ts`（design D1）讓 1.1 轉綠：既有四支解析自 `packages/ui/src/components/DiscussionDetailPage.tsx` 搬入並連同型別與白名單常數匯出，新增 D1 列出的全部純函式；形狀不符一律回 null、空陣列或整條當一般列，不拋錯。驗證：`npm test -w packages/ui -- discussionModel discussionDetailPage` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cd10bf9327985fde448ad1af43b6fa1a61d26627",
+      "touchedFiles": [
+        "packages/ui/src/components/ArchivedDetailPage.tsx",
+        "packages/ui/src/components/DiscussionDetailPage.tsx",
+        "packages/ui/src/index.ts",
+        "packages/ui/src/discussionModel.ts"
+      ],
+      "recordedAt": "2026-10-12T12:07:59Z"
+    },
+    {
+      "taskId": "tsk_01M4QMA6K2Y7KBHMM91CC2CRCF",
+      "taskDesc": "2.1 `packages/ui/src/components/Markdown.tsx` 新增 `nameChips?: { kind: string; name: string }[]`（design D10）：有值時在 sanitize 之後以 `[rehypeNameChips, { names }]` 選項形式接外掛，文字節點（略過 `code`／`pre`／`a`）中以 D1 同一條邊界規則命中的名稱換成 `span.name-chip[data-name-chip=\"<kind>:<name>\"]`；缺席時管線不變。驗證：`packages/ui/src/__tests__/markdown.test.tsx` 新增三題——「內文提到 desktop-app 與 add-copilot-tool，傳入兩顆籤後各成一個 `[data-name-chip]` 且文字不變」「反引號內與 `desktop-app-x` 這類前綴不命中」「不傳 `nameChips` 時輸出 HTML 與傳空陣列相同」；既有 markdown 題目不改全綠；`npm test -w packages/ui -- markdown`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cd10bf9327985fde448ad1af43b6fa1a61d26627",
+      "touchedFiles": [
+        "packages/ui/src/components/Markdown.tsx",
+        "packages/ui/src/__tests__/markdown.test.tsx"
+      ],
+      "recordedAt": "2026-10-12T12:08:51Z"
+    },
+    {
+      "taskId": "tsk_01M4QMA6K2NZ29JFR4ZYYEKGV0",
+      "taskDesc": "3.1 新增 `packages/ui/src/components/ConclusionDoc.tsx`（design D2；spec「討論結論以欄位標籤呈現」）：六欄位各一個 `DocSection`（16px 粗體標題、本頁目錄錨點）、決定的 `[data-verdict]` 主句與前 4 條細節＋`MoreToggle`「展開其餘 N 項定案細節」、分刀 `[data-cut]` 卡（識別籤、範圍句、變更數、`stageOf` 給階段籤與可點、子項細線列）、否決與擱置的 `OptionReasonRows`（新增可選 `icon`，擱置帶 `Clock`）、記錄去向籤（`specNames` 命中可點）、下一步的 `[data-command-chip]` 等寬籤＋`CopyButton`；零欄位整篇 Markdown。驗證：新增 `packages/ui/src/__tests__/conclusionDoc.test.tsx`——「27 條細節含 7 條分刀：細線列 4 條、鈕文字『展開其餘 16 項定案細節』、點後 20 條、計數 20」「三張分刀卡的識別籤與範圍句、前兩張變更籤帶階段籤且點擊呼叫 stageOf 回的 onOpen、第三張不可點」「否決 14 列方案／理由、擱置其中一列無理由行且每列有時鐘圖示」「記錄去向 desktop-app 籤呼叫 onOpenSpec、proposal 籤不可點；下一步指令籤複製後剪貼簿為指令原文」「`[data-doc-heading]` 依序為決定、分刀、理由、否決替代案、擱置、記錄去向、下一步」「自由格式整篇 Markdown、無 data-section」；`npm test -w packages/ui -- conclusionDoc`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cd10bf9327985fde448ad1af43b6fa1a61d26627",
+      "touchedFiles": [
+        "packages/ui/src/components/DocParts.tsx",
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/__tests__/conclusionDoc.test.tsx",
+        "packages/ui/src/components/ConclusionDoc.tsx"
+      ],
+      "recordedAt": "2026-10-12T12:12:21Z"
+    },
+    {
+      "taskId": "tsk_01M4QMA6K2V4SCQW13PJQV05B2",
+      "taskDesc": "3.2 新增 `packages/ui/src/components/RoundsDoc.tsx`（design D3；spec「討論輪以卡片呈現」）：`[data-round-timeline]` 時間軸、每輪 `[data-round]` 節點色點依 mode（assumptions `bg-primary`、interview `bg-stage-discussion`、其他中性）、卡頭 `button[aria-expanded]`（輪次籤 `data-doc-heading`、焦點 h3、mode 籤、日期）、立場 `[data-position-verdict]`＋細線列、否決 `[data-ruled-out]` × 列、待決 `[data-open-item]` 琥珀籤或 `[data-open-none]`；首末輪預設展開；非 scaffold 整篇 Markdown、零輪空態。驗證：新增 `packages/ui/src/__tests__/roundsDoc.test.tsx`——「四輪：第 1 與第 4 輪 aria-expanded 為 true、第 2 與第 3 輪 false，卡頭含 Round N、焦點、mode、日期」「立場定論句與 3 條細線列、粗體前綴原文不出現」「否決兩列帶 × 圖示、待決兩顆籤、末輪『無——寫結論』為 data-open-none」「點第 2 輪卡頭展開、再點收合、第 1 輪不受影響」「缺 Ruled out 時無否決欄位」「非標準輪標題整篇 Markdown、無時間軸」「色點：assumptions 帶 bg-primary、interview 帶 bg-stage-discussion」；`npm test -w packages/ui -- roundsDoc`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cd10bf9327985fde448ad1af43b6fa1a61d26627",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/roundsDoc.test.tsx",
+        "packages/ui/src/components/RoundsDoc.tsx"
+      ],
+      "recordedAt": "2026-10-12T12:14:08Z"
+    },
+    {
+      "taskId": "tsk_01M4QMA6K2KJAQNFV7VSJ2T6E9",
+      "taskDesc": "3.3 新增 `packages/ui/src/components/ContextDoc.tsx`（design D4；spec「討論詳情頁檢視與轉出變更」背景段）：剝離四行收尾行、`Lead` 引言、帶 `nameChips` 的 Markdown 與容器點擊分派（`closest(\"[data-name-chip]\")`，依 kind 呼叫 onOpenSpec／onOpenChange／onOpenArchivedChange／onOpenDiscussion）、「關聯」鍵值籤列（聯集規則、空列缺席、來源文件 none 為「無」）、「記錄」列（建立、種類、檔案＋`CopyButton`；`recordPath` 缺席列缺席）；三個 `DocSection` 標題為本頁目錄錨點。驗證：新增 `packages/ui/src/__tests__/contextDoc.test.tsx`——以 spec Scenario「背景文件的引言、關聯與記錄列」的資料斷言引言為灰底段、四顆內文籤、收尾四行不在內文、關聯五列的籤名、記錄三列文字、點 desktop-app 籤呼叫 onOpenSpec、點 add-copilot-tool 籤呼叫 onOpenChange；「無收尾行且零命中時無關聯段、無籤」「kind improve 時種類為改進討論；無 recordPath 時無檔案列」「空內文顯示空態文案」；`npm test -w packages/ui -- contextDoc`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cd10bf9327985fde448ad1af43b6fa1a61d26627",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/contextDoc.test.tsx",
+        "packages/ui/src/components/ContextDoc.tsx"
+      ],
+      "recordedAt": "2026-10-12T12:16:20Z"
+    },
+    {
+      "taskId": "tsk_01M4QMA6K26NDV79YK11KYSSQZ",
+      "taskDesc": "3.4 新增 `packages/ui/src/components/PromotedDoc.tsx`（design D5；spec「討論詳情頁檢視與轉出變更」衍生變更段）：匯出 `promotedRows`（作用中／已封存／已刪除三態的 `PromotedRow` 推導，含任務、兩站章、日期與開啟回呼）與 `PromotedDoc`（依 `cuts` 分組 `[data-cut-group]` 組頭 `h3[data-doc-heading]`、不屬任何刀的列接在最後、`cuts` 空時平面清單；每列 `[data-promoted-row]` 的階段籤、等寬名、進度條 n/m、`[data-stamp]` 審／驗籤、日期、開啟鈕）；`PromotedChangeRow` 自 `DiscussionDetailPage.tsx` 刪除。驗證：新增 `packages/ui/src/__tests__/promotedDoc.test.tsx`——以 spec Example「列的欄位來源」五列逐一斷言階段籤文字、任務 n/m 有無、兩章有無、日期有無、開啟鈕有無與呼叫；「7 刀分組：組頭數 7、cut 2 組內 3 列、組頭為 data-doc-heading、不在任何刀的列接在最後無組頭」「cuts 空時無組頭、依傳入序」「rows 空時空態文案」；`npm test -w packages/ui -- promotedDoc`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cd10bf9327985fde448ad1af43b6fa1a61d26627",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/promotedDoc.test.tsx",
+        "packages/ui/src/components/PromotedDoc.tsx"
+      ],
+      "recordedAt": "2026-10-12T12:19:43Z"
+    },
+    {
+      "taskId": "tsk_01M4QMA6K2FMHG5HSQC8N1YB2P",
+      "taskDesc": "4.1 新增 `packages/ui/src/components/discussionDocSummary.tsx`（design D6）：`discussionDocSummary(tab, data, t)` 回四份文件的籤槽（皆空）、數字磚與提示框（討論過程「討論已收斂」tip、背景「沒有 grill 階段」note、衍生變更「只差最後一刀」tip），`discussionDocProvenance(tab, data, t)` 回出處行；記錄未載入或切分失敗時全空。驗證：`packages/ui/src/__tests__/discussionDetailPage.test.tsx` 新增群組「數字磚、出處行與提示框」——以 spec Scenario「討論過程的數字磚、出處行與已收斂提示框」「結論文件的數字磚與出處行」「只差最後一刀提示框」「結論未寫入時無提示框」的資料各一題，斷言 `[data-doc-tile]` 值與標籤序、`[data-doc-provenance]` 文字、`[data-doc-callout]` 標題與內文有無；`npm test -w packages/ui -- discussionDetailPage`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cd10bf9327985fde448ad1af43b6fa1a61d26627",
+      "touchedFiles": [
+        "packages/ui/src/components/discussionDocSummary.tsx"
+      ],
+      "recordedAt": "2026-10-12T12:21:46Z"
+    },
+    {
+      "taskId": "tsk_01M4QMA6K2SW3Q7Y58FVK7V9G5",
+      "taskDesc": "4.2 `packages/ui/src/components/DiscussionDetailPage.tsx` 改掛四個渲染器（design D7；spec「討論結論以欄位標籤呈現」「討論輪以卡片呈現」「討論詳情頁檢視與轉出變更」「詳情頁的文件樹、閱讀卡與本頁目錄」）：刪 `RoundsView`／`ConclusionView`／搬走的解析，新增 props `specNames`、`discussionSlugs`、`onOpenSpec`、`onOpenDiscussion`、`onOpenArchivedChange`，頁內推導 rounds／conclusion／cuts／rows，`DocHeader provenance`、`DocTiles`、`[data-doc-callout]` 槽（磚與內文之間）與四個 `TabsContent` 接線；格式非預期時「記錄」整篇 Markdown、衍生變更仍走 `PromotedDoc`。驗證：`discussionDetailPage.test.tsx` 既有「輪卡片渲染」「結論欄位標籤化」群組改為對新渲染器的斷言（卡頭含焦點、區段標題 16px、`LABEL_CLS` 款式題刪除），既有 DiscussionDetailPage 群組題目不改全綠；新增「結論的分刀卡變更籤點擊開啟已封存詳情頁（onOpenArchivedChange 收到 datedName）」「背景的規格籤呼叫 onOpenSpec、討論籤呼叫 onOpenDiscussion」「閱讀卡出處行依文件切換」三題；`npm test -w packages/ui -- discussionDetailPage`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cd10bf9327985fde448ad1af43b6fa1a61d26627",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx"
+      ],
+      "recordedAt": "2026-10-12T12:24:45Z"
+    },
+    {
+      "taskId": "tsk_01M4QMA6K21HTFGDS0EM1SNEF4",
+      "taskDesc": "4.4 宿主接線（design D8）：`apps/desktop/src/App.tsx` 的 `DiscussionDetailPage` 加 `specNames`、`discussionSlugs`、`onOpenSpec`、`onOpenDiscussion`、`onOpenArchivedChange`，`ArchivedDetailPage` 加 `changes`、`archivedChanges`、`specNames`、`discussionSlugs`。驗證：`apps/desktop/src/__tests__/App.test.tsx` 於「討論詳情頁」相關群組新增兩題——開討論詳情頁後點背景內文的規格籤，主區為該規格的規格詳情頁、麵包屑末段為該規格名（宿主仍為看板）；開已封存討論頁後衍生變更列呈現任務進度 n/m 與開啟鈕，點鈕開啟該封存變更的已封存詳情頁且宿主維持已封存頁；既有討論與已封存題目不改全綠；`npm test -w apps/desktop -- App`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cd10bf9327985fde448ad1af43b6fa1a61d26627",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx"
+      ],
+      "recordedAt": "2026-10-12T12:27:07Z"
+    }
+  ]
+}

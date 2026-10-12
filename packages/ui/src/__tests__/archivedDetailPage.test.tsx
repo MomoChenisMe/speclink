@@ -258,7 +258,7 @@ describe("已封存詳情頁的唯讀骨架", () => {
     expect(within(identity()).getByText("已封存")).toBeTruthy();
   });
 
-  it("閱讀卡出處行：封存變更為相對變更目錄的路徑，封存討論沒有出處行", async () => {
+  it("閱讀卡出處行：封存變更為相對變更目錄的路徑，封存討論的結論出處行為「N 輪之後寫入」且無路徑段", async () => {
     const { unmount } = render(<ArchivedDetailPage {...(makeProps() as never)} />);
     await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
     expect(document.querySelector("[data-doc-header] [data-doc-provenance]")!.textContent).toBe("proposal.md");
@@ -267,8 +267,7 @@ describe("已封存詳情頁的唯讀骨架", () => {
     unmount();
     render(<ArchivedDetailPage {...(discussionProps() as never)} />);
     await waitFor(() => expect(screen.getByText(/就這麼辦/)).toBeTruthy());
-    expect(document.querySelector("[data-doc-header]")).toBeTruthy();
-    expect(document.querySelector("[data-doc-provenance]")).toBeNull();
+    expect(document.querySelector("[data-doc-header] [data-doc-provenance]")!.textContent).toBe("1 輪之後寫入");
   });
 });
 
@@ -343,6 +342,79 @@ describe("ArchivedDetailPage（封存討論）", () => {
     render(<ArchivedDetailPage {...(makeProps({ promotedChanges: [{ slug: "x", topic: "y" }] }) as never)} />);
     await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
     expect(statusRow("promoted")).toBeNull();
+  });
+
+  const LINKS = [
+    { slug: "child-a", topic: "2026-09-02" },
+    { slug: "child-b", topic: "進行中" },
+    { slug: "child-c", topic: "無封存記錄", disabled: true },
+  ];
+  const LISTS = {
+    changes: [
+      {
+        name: "child-b",
+        status: "in-progress",
+        totalTasks: 4,
+        completedTasks: 2,
+        reviewStatus: "reviewed",
+        reviewedAt: "2026-09-05T10:00:00+08:00",
+      },
+    ],
+    archivedChanges: [
+      {
+        datedName: "2026-09-02-child-a",
+        date: "2026-09-02",
+        name: "child-a",
+        tasksDone: 5,
+        tasksTotal: 5,
+        reviewStatus: "reviewed",
+        verifyStatus: "verified",
+      },
+    ],
+  };
+  const promotedRow = (name: string) => document.querySelector(`[data-promoted-row="${name}"]`) as HTMLElement;
+  const stamps = (name: string) => Array.from(promotedRow(name).querySelectorAll("[data-stamp]")).map((s) => s.textContent);
+
+  it("傳入兩份清單時衍生列有任務進度與兩章、未傳時退回副標三態", async () => {
+    const onOpenPromotedChange = vi.fn();
+    const { unmount } = render(
+      <ArchivedDetailPage {...(discussionProps({ promotedChanges: LINKS, onOpenPromotedChange, ...LISTS }) as never)} />,
+    );
+    await waitFor(() => expect(screen.getByText(/就這麼辦/)).toBeTruthy());
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /衍生變更/ }));
+    expect(promotedRow("child-a").textContent).toContain("5/5");
+    expect(promotedRow("child-a").textContent).toContain("2026-09-02");
+    expect(stamps("child-a")).toEqual(["審", "驗"]);
+    expect(promotedRow("child-b").textContent).toContain("2/4");
+    expect(stamps("child-b")).toEqual(["審"]);
+    expect(promotedRow("child-c").textContent).toContain("已刪除");
+    expect(promotedRow("child-c").querySelector("button")).toBeNull();
+    fireEvent.click(within(promotedRow("child-a")).getByRole("button", { name: "開啟卡片" }));
+    expect(onOpenPromotedChange).toHaveBeenCalledWith("child-a");
+    fireEvent.click(within(promotedRow("child-b")).getByRole("button", { name: "開啟卡片" }));
+    expect(onOpenPromotedChange).toHaveBeenCalledWith("child-b");
+    unmount();
+
+    render(<ArchivedDetailPage {...(discussionProps({ promotedChanges: LINKS, onOpenPromotedChange }) as never)} />);
+    await waitFor(() => expect(screen.getByText(/就這麼辦/)).toBeTruthy());
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /衍生變更/ }));
+    expect(promotedRow("child-a").textContent).toContain("2026-09-02");
+    expect(promotedRow("child-a").textContent).not.toMatch(/\d+\/\d+/);
+    expect(promotedRow("child-b").textContent).toContain("進行中");
+    expect(promotedRow("child-c").querySelector("button")).toBeNull();
+  });
+
+  it("封存討論的背景無檔案列、衍生變更無「只差最後一刀」提示框", async () => {
+    render(
+      <ArchivedDetailPage {...(discussionProps({ promotedChanges: LINKS, onOpenPromotedChange: vi.fn(), ...LISTS }) as never)} />,
+    );
+    await waitFor(() => expect(screen.getByText(/就這麼辦/)).toBeTruthy());
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /衍生變更/ }));
+    expect(document.querySelector("[data-doc-tiles]")).toBeTruthy();
+    expect(document.querySelector("[data-doc-callout]")).toBeNull();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /背景/ }));
+    expect(document.querySelector('[data-context-row="kind"]')).toBeTruthy();
+    expect(document.querySelector('[data-context-row="file"]')).toBeNull();
   });
 
   it("「開啟 ▾」收到不帶檔案的目標（只能複製內容）", async () => {

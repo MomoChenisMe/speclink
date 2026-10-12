@@ -135,12 +135,7 @@ export {
   discussionChipStage,
   type DiscussionColumnProps,
 } from "./components/DiscussionColumn";
-export {
-  DiscussionDetailPage,
-  splitDiscussionSections,
-  type DiscussionDetailPageProps,
-  type DiscussionSections,
-} from "./components/DiscussionDetailPage";
+export { DiscussionDetailPage, type DiscussionDetailPageProps } from "./components/DiscussionDetailPage";
 
 // 清單 + 分頁 + 富文本
 export { Markdown, type MarkdownProps } from "./components/Markdown";
@@ -253,6 +248,48 @@ export {
   type DecisionData,
   type TaskTextParts,
 } from "./docModel";
+// 討論文件渲染器（desktop-discussion-doc-views）：結論、討論過程、背景、衍生變更與閱讀卡標題區的推導。
+export { ConclusionDoc, type ConclusionDocProps, type CutStage } from "./components/ConclusionDoc";
+export { RoundsDoc } from "./components/RoundsDoc";
+export { ContextDoc, type ContextDocProps } from "./components/ContextDoc";
+export { PromotedDoc, promotedRows, type PromotedRow } from "./components/PromotedDoc";
+export {
+  discussionDocSummary,
+  discussionDocProvenance,
+  discussionDocData,
+  type DiscussionDocData,
+} from "./components/discussionDocSummary";
+export {
+  splitDiscussionSections,
+  splitRounds,
+  splitLabeledFields,
+  countPriorDiscussions,
+  parseConclusion,
+  splitVerdict,
+  parseCuts,
+  splitOption,
+  splitRows,
+  captureTargets,
+  openItems,
+  roundStats,
+  parseContextMeta,
+  contextRelations,
+  splitLead,
+  nameSpans,
+  matchNames,
+  commandChips,
+  ROUND_LABELS,
+  CONCLUSION_LABELS,
+  type DiscussionSections,
+  type DiscussionRound,
+  type RoundLabel,
+  type ConclusionLabel,
+  type LabeledFields,
+  type CutCard,
+  type ContextMeta,
+  type ContextNames,
+  type ContextRelations,
+} from "./discussionModel";
 export { CopyButton, type CopyButtonProps } from "./components/CopyButton";
 export { EmptyState, type EmptyStateProps } from "./components/EmptyState";
 export { SectionHeader, type SectionHeaderProps } from "./components/SectionHeader";
