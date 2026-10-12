@@ -24,9 +24,11 @@ export interface RequirementDelta {
 
 export interface RequirementBlockProps {
   req: SpecRequirement;
-  /** 標題列右端（規格詳情頁的溯源錨點）。 */
+  /** 標題列右端（規格詳情頁的溯源錨點）；放在收合鈕之外，點它不切換收合。 */
   anchor?: ReactNode;
   delta?: RequirementDelta;
+  /** 非 delta 畫法的收合模式（規格詳情頁）；缺席＝恆展開、無收合鈕。 */
+  collapse?: { defaultOpen: boolean };
 }
 
 /** 超過這個數量的需求文段落與 Scenario 先收起來。 */
@@ -46,39 +48,62 @@ function paragraphs(md: string): string[] {
 
 /**
  * 一條需求段（design D6）：「Requirement」小標＋標題＋右端錨點、需求文、左線縮排的 Scenario。
- * 規格詳情頁照原畫法；delta 檢視另加操作色左色條、REMOVED-SCENARIO 提示框、WHEN／THEN 兩欄、
- * 超過三段需求文與三個 Scenario 時收合，且整段可收合為一列（標題常駐，本頁目錄錨點不變）。
+ * 規格詳情頁照原畫法，帶 `collapse` 時整段可收合為一列（desktop-spec-manual-pages design D3）；
+ * delta 檢視另加操作色左色條、REMOVED-SCENARIO 提示框、WHEN／THEN 兩欄、超過三段需求文與三個
+ * Scenario 時收合，且整段可收合為一列。兩種畫法的標題常駐、皆為本頁目錄錨點。
  */
-export function RequirementBlock({ req, anchor, delta }: RequirementBlockProps) {
+export function RequirementBlock({ req, anchor, delta, collapse }: RequirementBlockProps) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(delta?.defaultOpen ?? true);
+  const [open, setOpen] = useState(delta?.defaultOpen ?? collapse?.defaultOpen ?? true);
   const [allParagraphs, setAllParagraphs] = useState(false);
   const [allScenarios, setAllScenarios] = useState(false);
   if (!delta) {
+    const head = (
+      <>
+        <span data-requirement-label className={`mt-0.5 ${KW_LABEL_CLS}`}>
+          {t("sdetail.requirementLabel")}
+        </span>
+        <h2 data-doc-heading className={`min-w-0 flex-1 ${SECTION_HEADING_CLS}`}>
+          {req.title}
+        </h2>
+      </>
+    );
     return (
       <section data-requirement className="border-t border-border/70 pt-4">
         <div className="flex min-w-0 items-start gap-2">
-          <span data-requirement-label className={KW_LABEL_CLS}>
-            {t("sdetail.requirementLabel")}
-          </span>
-          <h2 data-spec-heading className="min-w-0 flex-1 text-[15px] font-semibold leading-snug">
-            {req.title}
-          </h2>
+          {collapse ? (
+            <button
+              type="button"
+              aria-expanded={open}
+              onClick={() => setOpen((v) => !v)}
+              className="flex min-w-0 flex-1 items-start gap-2 text-left"
+            >
+              {head}
+              {!open && (
+                <Badge variant="secondary" className="shrink-0">
+                  {t("doc.scenarioCount").replace("{n}", String(req.scenarios.length))}
+                </Badge>
+              )}
+            </button>
+          ) : (
+            head
+          )}
           {anchor}
         </div>
-        {req.body && (
+        {open && req.body && (
           <div className="mt-2">
             <Markdown content={req.body} specKeywords />
           </div>
         )}
-        {req.scenarios.map((s, i) => (
-          <div key={i} data-scenario className="mt-2.5 border-l-2 border-border pl-4">
-            <div className="mb-1 text-xs font-semibold text-muted-foreground">
-              {t("sdetail.scenarioLabel").replace("{title}", s.title)}
+        {open &&
+          req.scenarios.map((s, i) => (
+            <div key={i} data-scenario className="mt-2.5 border-l-2 border-border pl-4">
+              <div className="mb-1 text-xs font-semibold text-muted-foreground">
+                {t("sdetail.scenarioLabel").replace("{title}", s.title)}
+              </div>
+              <Markdown content={s.body} specKeywords />
             </div>
-            <Markdown content={s.body} specKeywords />
-          </div>
-        ))}
+          ))}
       </section>
     );
   }

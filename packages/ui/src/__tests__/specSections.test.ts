@@ -1,8 +1,10 @@
 // design D1：正式規格 spec.md 依 `### Requirement:` 切段（Purpose、body、scenarios、段尾 @trace），
 // 與 SHALL／MUST 關鍵字的 rehype 標示外掛。
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
-import { parseSpecSections, rehypeSpecKeywords } from "../specSections";
+import { PURPOSE_TBD_PREFIX, parseSpecSections, rehypeSpecKeywords } from "../specSections";
 
 /** 比照 archive.rs trace_block 排版的 @trace 註解。 */
 function trace(source: string, updated: string): string {
@@ -234,5 +236,17 @@ describe("rehypeSpecKeywords", () => {
     rehypeSpecKeywords()(el("root", [p, block]));
     expect(inline.children).toEqual([text("SHALL")]);
     expect(block.children![0].children).toEqual([text("MUST")]);
+  });
+});
+
+describe("Purpose 佔位前綴跨語言對齊（引擎 ↔ UI）", () => {
+  it("PURPOSE_TBD_PREFIX 與 lifecycle/model.rs 的同名常數逐字一致", () => {
+    // 規格詳情頁的「Purpose 待補」提示框與引擎的 purposeTbd 同一前綴——讀原始檔逐字比對
+    //（同 discussionDetailPage.test.tsx 的 STRUCTURAL_HEADERS 對齊題；repo root 由測試檔路徑推出）。
+    const REPO_ROOT = resolve(dirname(expect.getState().testPath ?? ""), "../../../..");
+    const source = readFileSync(resolve(REPO_ROOT, "crates/engine/speclink-core/src/lifecycle/model.rs"), "utf8");
+    const m = /pub const PURPOSE_TBD_PREFIX: &str = "([^"]*)";/.exec(source);
+    expect(m).not.toBeNull();
+    expect(PURPOSE_TBD_PREFIX).toBe(m![1]);
   });
 });

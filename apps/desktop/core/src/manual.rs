@@ -8,7 +8,7 @@
 //! 不報錯、不改檔。
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use chrono::{DateTime, FixedOffset, NaiveDate};
@@ -17,8 +17,8 @@ use serde_json::{json, Value};
 use speclink_core::archive::parse_canonical;
 use speclink_core::store::Store;
 
-use crate::init_core_context;
-use crate::query::is_safe_path_param;
+use crate::query::{is_safe_path_param, DocumentLocation};
+use crate::{init_core_context, ProjectContext};
 
 /// 一頁 frontmatter 解析後的索引資料；缺欄位以 `None`／空陣列表示。
 struct Page {
@@ -255,20 +255,34 @@ pub fn list_manual_pages_at(root: &Path) -> Value {
     })
 }
 
-/// 對應 Tauri command `get_manual_page`：去掉 frontmatter 的內文；frontmatter 壞掉
-/// 的頁回全文；頁不存在（或 slug 不安全）回 `None`。
-pub fn manual_page_at(root: &Path, slug: &str) -> Option<String> {
-    // slug 是單一檔名段：拒絕路徑分隔與 `..`（與其他 document 讀取同一守門）。
+/// 一頁手冊的檔案位置與所屬專案：讀內文與「開啟 ▾」定位共用。slug 是單一檔名段——拒絕
+/// 路徑分隔與 `..`（與其他 document 讀取同一守門）；`manual/` 跟 spec 目錄名走。
+fn manual_file(root: &Path, slug: &str) -> Option<(ProjectContext, PathBuf)> {
     if !is_safe_path_param(slug) || slug.contains(['/', '\\']) {
         return None;
     }
     let ctx = init_core_context(root)?;
     let path = ctx.workspace.spec_dir().join("manual").join(format!("{slug}.md"));
+    Some((ctx, path))
+}
+
+/// 對應 Tauri command `get_manual_page`：去掉 frontmatter 的內文；frontmatter 壞掉
+/// 的頁回全文；頁不存在（或 slug 不安全）回 `None`。
+pub fn manual_page_at(root: &Path, slug: &str) -> Option<String> {
+    let (_, path) = manual_file(root, slug)?;
     let text = std::fs::read_to_string(path).ok()?;
     Some(match split_frontmatter(&text) {
         Some((yaml, body)) if parse_frontmatter_yaml(yaml).is_some() => body.to_string(),
         _ => text,
     })
+}
+
+/// 對應 Tauri command `manual_location`（手冊頁「開啟 ▾」，desktop-spec-manual-pages design D8）：
+/// 與 [`manual_page_at`] 同一條守門與路徑解析。不檢查檔案存在（缺檔由 opener 回報）；slug 不安全
+/// 或不在專案內回 `None`。
+pub fn manual_location_at(root: &Path, slug: &str) -> Option<DocumentLocation> {
+    let (ctx, path) = manual_file(root, slug)?;
+    Some(DocumentLocation::within(&ctx.workspace.root, path))
 }
 
 /// 切出 frontmatter：首行為 `---`、到下一個 `---` 行為止（皆容忍 `\r`）。回傳
@@ -443,6 +457,26 @@ mod tests {
             .iter()
             .find(|p| p["slug"] == slug)
             .unwrap_or_else(|| panic!("page {slug} listed"))
+    }
+
+    #[test]
+    fn manual_location_resolves_under_the_manual_dir_and_refuses_escapes() {
+        // 手冊頁「開啟 ▾」（desktop-spec-manual-pages design D8）：spec 目錄下 manual/<slug>.md，
+        // 不檢查檔案存在；slug 守門與 manual_page_at 同一條。
+        let fx = FixtureRoot::new("manual-loc");
+        let loc = manual_location_at(fx.root(), "tray").expect("location");
+        assert_eq!(loc.relative, "openspec/manual/tray.md");
+        let abs = Path::new(&loc.path);
+        assert!(abs.starts_with(fx.root()), "{} 應在 {}", loc.path, fx.root().display());
+        assert!(abs.ends_with("openspec/manual/tray.md"), "{}", loc.path);
+        assert!(manual_location_at(fx.root(), "../x").is_none());
+        assert!(manual_location_at(fx.root(), "a/b").is_none());
+        assert!(manual_location_at(fx.root(), "a\\b").is_none());
+        // spec 目錄名改設定時跟著走。
+        let custom = FixtureRoot::new("manual-loc-custom");
+        custom.write(".speclink.yaml", "spec_dir: docs/specs\n");
+        let loc = manual_location_at(custom.root(), "tray").expect("custom location");
+        assert_eq!(loc.relative, "docs/specs/manual/tray.md");
     }
 
     #[test]

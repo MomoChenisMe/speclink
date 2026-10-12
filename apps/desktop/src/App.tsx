@@ -1262,6 +1262,8 @@ function AppInner({
                 onOpenSpec={s.openSpec}
                 capabilities={s.specs.map((spec) => spec.id)}
                 refreshGen={s.refreshGen}
+                renderDocumentActions={renderDocumentActions}
+                loadSpec={(capability) => dataSource?.getSpecDocument(capability) ?? Promise.resolve(null)}
               />
             ) : s.boardView === "specs" ? (
               <SpecList
