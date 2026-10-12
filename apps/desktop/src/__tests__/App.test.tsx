@@ -2216,6 +2216,77 @@ describe("溯源與衍生變更接線（desktop-readonly-detail-pages）", () =>
     expect(archivedNav.className).not.toContain("bg-primary");
     expect(screen.getByTestId("host-page").querySelector('[data-column="ready"]')).toBeTruthy();
   });
+
+  // desktop-discussion-doc-views design D8：宿主把規格名、討論 slug 與開頁動作接進討論詳情頁。
+  it("開討論詳情頁後點背景內文的規格籤：主區為該規格的規格詳情頁、麵包屑末段為該規格名", async () => {
+    const ds = fakeDataSource({
+      listDiscussions: vi.fn().mockResolvedValue({
+        active: [
+          { slug: "topic-a", topic: "Topic A", status: "concluded", rounds: 1, created: "2026-07-17", promotedTo: [] },
+        ],
+        archived: [],
+      }),
+      getDiscussionDocument: vi
+        .fn()
+        .mockResolvedValue(DISCUSSION_DOC.replace("封存背景內文。", "背景提到 desktop-app 的需求。")),
+      getSpecDocument: vi.fn().mockResolvedValue("# desktop-app Specification\n\n### Requirement: 甲\n\n正典內文段落。"),
+    });
+    renderApp(ds);
+    fireEvent.click(await screen.findByText("Topic A"));
+    const layer = await screen.findByTestId("detail-page");
+    fireEvent.mouseDown(await within(layer).findByRole("tab", { name: /背景/ }));
+    const chip = await waitFor(() => {
+      const el = layer.querySelector('[data-name-chip="spec:desktop-app"]') as HTMLElement | null;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    fireEvent.click(chip);
+    await waitFor(() => expect(screen.getByText("正典內文段落。")).toBeTruthy());
+    expect(ds.getSpecDocument).toHaveBeenCalledWith("desktop-app");
+    expect(document.querySelector("[data-discussion-detail]")).toBeNull();
+    expect(document.querySelector("[data-spec-detail]")).toBeTruthy();
+    expect(crumbText()).toBe("proj-a/變更/desktop-app");
+  });
+
+  it("開已封存討論頁後衍生變更列呈現任務進度 n/m 與開啟鈕，點鈕開啟該封存變更的已封存詳情頁且宿主維持已封存頁", async () => {
+    const ds = fakeDataSource({
+      listArchived: vi.fn().mockResolvedValue([
+        {
+          datedName: "2026-09-02-arch-child",
+          date: "2026-09-02",
+          name: "arch-child",
+          createdBy: null,
+          fromDiscussions: ["old-topic"],
+          tasksDone: 5,
+          tasksTotal: 5,
+        },
+      ]),
+      listDiscussions: vi.fn().mockResolvedValue({
+        active: [],
+        archived: [
+          { slug: "old-topic", topic: "Old topic", status: "promoted", rounds: 1, created: "2026-06-30", promotedTo: ["arch-child"] },
+        ],
+      }),
+      getArchivedDocument: vi.fn().mockResolvedValue("## Why\n\n封存提案內文。"),
+      getDiscussionDocument: vi.fn().mockResolvedValue(DISCUSSION_DOC),
+    });
+    renderApp(ds);
+    await screen.findByText("desktop-shell-and-browser");
+    const archivedNav = within(projectColumn()).getByRole("button", { name: /已封存/ });
+    fireEvent.click(archivedNav);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /已封存的討論/ }));
+    fireEvent.click(await screen.findByText("Old topic"));
+    const layer = await screen.findByTestId("detail-page");
+    await waitFor(() => expect(within(layer).getByText(/收工/)).toBeTruthy());
+    fireEvent.mouseDown(within(layer).getByRole("tab", { name: /衍生變更/ }));
+    const row = layer.querySelector('[data-promoted-row="arch-child"]') as HTMLElement;
+    expect(row.textContent).toContain("5/5");
+    fireEvent.click(within(row).getByRole("button", { name: "開啟卡片" }));
+    await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
+    expect(ds.getArchivedDocument).toHaveBeenCalledWith("2026-09-02-arch-child", "proposal.md");
+    expect(document.querySelector('[data-archived-detail="change"]')).toBeTruthy();
+    expect(archivedNav.className).toContain("bg-primary");
+  });
 });
 
 // 更新日誌彈窗的 App 層接線（desktop-app 規格「更新日誌彈窗」）：把純判定、對話框與
