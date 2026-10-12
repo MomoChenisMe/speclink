@@ -19,8 +19,6 @@ export interface CopyButtonProps {
   onCopy?: (value: string) => void | Promise<void>;
   /** 退出 tab 順序用（系統匣面板）。 */
   tabIndex?: number;
-  /** 放在 hover 時整列主色反白的列裡（系統匣面板）：hover 時圖示改用主色前景色。 */
-  inverted?: boolean;
   className?: string;
 }
 
@@ -29,7 +27,7 @@ export interface CopyButtonProps {
  * 的開啟）；寫入成功後呈主色勾號 1.5 秒並以 status 宣告，失敗靜默、不呈勾號。成功期間
  * 帶 `data-copied`，hover 才顯現的呼叫端以 `data-[copied]:opacity-100` 保持可見。
  */
-export function CopyButton({ value, label, size = "icon", onCopy, tabIndex, inverted, className }: CopyButtonProps) {
+export function CopyButton({ value, label, size = "icon", onCopy, tabIndex, className }: CopyButtonProps) {
   const { t } = useI18n();
   const [copied, markCopied] = useCopied();
   const copy = (e: React.MouseEvent) => {
@@ -58,7 +56,6 @@ export function CopyButton({ value, label, size = "icon", onCopy, tabIndex, inve
           "shrink-0",
           size === "sm" ? "gap-1.5" : "h-5 w-5",
           copied && "text-primary",
-          inverted && "group-hover:text-primary-foreground",
           className,
         )}
         onClick={copy}

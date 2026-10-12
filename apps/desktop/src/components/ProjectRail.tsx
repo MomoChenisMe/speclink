@@ -31,6 +31,7 @@ import {
   type RemoteWorkspaceStatus,
 } from "../session";
 import { ProjectActionItems, type ProjectActions } from "./ProjectActionsMenu";
+import { ADD_TILE, PROJECT_TILE_ACTIVE, PROJECT_TILE_IDLE, RAIL_SQUARE, projectInitial } from "./projectTile";
 
 export interface ProjectRailProps {
   tabs: ProjectTab[];
@@ -69,10 +70,6 @@ export function tabPathHint(
   const connection = connectionNames[locator.connectionId] ?? locator.connectionId;
   return `${connection} · ${locator.projectId}/${locator.repoId}`;
 }
-
-/** 圖示列方塊的尺寸樣式（專案方塊、「＋」、齒輪與更新鈕共用）。 */
-export const RAIL_SQUARE =
-  "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[13px] font-medium";
 
 export function ProjectRail({
   tabs,
@@ -160,9 +157,7 @@ export function ProjectRail({
                 className={cn(
                   RAIL_SQUARE,
                   "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  active
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-muted/70",
+                  active ? PROJECT_TILE_ACTIVE : cn(PROJECT_TILE_IDLE, "hover:bg-muted/70"),
                 )}
                 onClick={() => {
                   if (!active && !localError) onActivate?.(key);
@@ -187,7 +182,7 @@ export function ProjectRail({
                     className={cn("h-4 w-4 animate-spin motion-reduce:animate-none", SEMANTIC_TONE.inProgress)}
                   />
                 ) : (
-                  Array.from(tab.name.trim())[0]?.toUpperCase()
+                  projectInitial(tab.name)
                 )}
                 {dot && (
                   <span
@@ -249,7 +244,8 @@ export function ProjectRail({
           aria-label={t("app.newProject")}
           className={cn(
             RAIL_SQUARE,
-            "mt-2 border border-dashed border-border bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
+            ADD_TILE,
+            "mt-2 hover:bg-muted hover:text-foreground",
           )}
           onClick={onOpen}
         >
