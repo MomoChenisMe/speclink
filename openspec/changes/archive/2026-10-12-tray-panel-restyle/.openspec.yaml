@@ -1,0 +1,55 @@
+schema: spec-driven
+created: 2026-10-11
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: desktop-ui-redesign
+started_at: 2026-10-12
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-12
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 9
+reviewed_scope:
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: 5186c25c078abfdb563e6407c40d807bdd4e6b28404d953ede85748e97e9bf87
+  - path: apps/desktop/src/__tests__/updateRailButton.test.tsx
+    hash: 975a8978aecedb09a392489a6f69178fca32f439f5d1ce654c0e259a15bda121
+  - path: apps/desktop/src/components/ProjectRail.tsx
+    hash: c8054876530a0e61d2459d29342bb5e6fea46156888d6a824ff12634d3f2f553
+  - path: apps/desktop/src/components/UpdateRailButton.tsx
+    hash: c4bf881d6990395a7b00f72183c871373aad795adb5351e9d92c4994a0a51978
+  - path: apps/desktop/src/components/projectTile.ts
+    hash: 85755b34ad54515efa3846c661da583024497c8df5d52544309a6d8ef8ef4eb8
+  - path: apps/desktop/src/panel/TrayPanel.tsx
+    hash: cdb8c6ace9a225664ba5e629166e71e8533fbdefa703399a51c2ddced3a131a8
+  - path: apps/desktop/src/panel/promotedExpanded.ts
+    hash: 5290e505755088495492ad9465004541d30d107528700930781cf10bb1cdaa0e
+  - path: packages/ui/src/__tests__/copyButton.test.tsx
+    hash: 68cef11ab18863229076880d8391a47350b72236d50beb0f87e599198527e490
+  - path: packages/ui/src/components/CopyButton.tsx
+    hash: bae820bddb3809b399a4461a4cc960539e6535e10b1ae628b61582b903dcd55d
+verified_at: 2026-10-12
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 9
+verified_scope:
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: 5186c25c078abfdb563e6407c40d807bdd4e6b28404d953ede85748e97e9bf87
+  - path: apps/desktop/src/__tests__/updateRailButton.test.tsx
+    hash: 975a8978aecedb09a392489a6f69178fca32f439f5d1ce654c0e259a15bda121
+  - path: apps/desktop/src/components/ProjectRail.tsx
+    hash: c8054876530a0e61d2459d29342bb5e6fea46156888d6a824ff12634d3f2f553
+  - path: apps/desktop/src/components/UpdateRailButton.tsx
+    hash: c4bf881d6990395a7b00f72183c871373aad795adb5351e9d92c4994a0a51978
+  - path: apps/desktop/src/components/projectTile.ts
+    hash: 85755b34ad54515efa3846c661da583024497c8df5d52544309a6d8ef8ef4eb8
+  - path: apps/desktop/src/panel/TrayPanel.tsx
+    hash: cdb8c6ace9a225664ba5e629166e71e8533fbdefa703399a51c2ddced3a131a8
+  - path: apps/desktop/src/panel/promotedExpanded.ts
+    hash: 5290e505755088495492ad9465004541d30d107528700930781cf10bb1cdaa0e
+  - path: packages/ui/src/__tests__/copyButton.test.tsx
+    hash: 68cef11ab18863229076880d8391a47350b72236d50beb0f87e599198527e490
+  - path: packages/ui/src/components/CopyButton.tsx
+    hash: bae820bddb3809b399a4461a4cc960539e6535e10b1ae628b61582b903dcd55d
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-12

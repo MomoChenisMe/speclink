@@ -129,7 +129,7 @@ updated: 2026-10-10T15:55:28+08:00
 ---
 ### Requirement: 討論列表
 
-選單討論區 SHALL 分兩個分區呈現 active 討論：「討論」分區列引擎不會自動收走的討論——含討論中（尚未轉出變更）、已轉出但尚無結論（promoted 且 concluded 為 false）、以及已轉出且已有結論但保留在途（promoted 且 concluded 為 true 且 hold 為 true）者；其後「已轉出」分區列已轉出且已有結論且未保留（promoted 且 concluded 為 true 且 hold 非 true）的討論，無此類討論時 SHALL NOT 顯示該分區。分區判準 SHALL 由快照導出的單一布林承載，面板與原生選單 SHALL NOT 各自計算。討論清單資料的 concluded 欄位缺席（向後相容路徑）時 SHALL 退回既有判準——promoted 一律列於「已轉出」分區；hold 欄位缺席時 SHALL 視同未保留、SHALL NOT 把缺席當成 true。兩分區的每則討論 SHALL 呈現為子選單：父項標籤 SHALL 為該討論的 slug（識別錨點直出）；子選單 SHALL 依序含 topic 描述行（disabled、不可選取）、「開啟此討論」、「複製 slug」；保留在途的討論 SHALL NOT 帶額外標籤。選取「開啟此討論」SHALL 顯示主視窗並取得焦點、且開啟該討論的詳情頁（主區切至看板並換成該頁）。選取「複製 slug」SHALL 將該討論的 slug 寫入系統剪貼簿，主視窗隱藏或無焦點時 SHALL 仍寫入成功。無討論中討論時「討論」分區 SHALL 顯示「討論 0」。
+選單討論區 SHALL 分兩個分區呈現 active 討論：「討論」分區列引擎不會自動收走的討論——含討論中（尚未轉出變更）、已轉出但尚無結論（promoted 且 concluded 為 false）、以及已轉出且已有結論但保留在途（promoted 且 concluded 為 true 且 hold 為 true）者；其後「已轉出」分區列已轉出且已有結論且未保留（promoted 且 concluded 為 true 且 hold 非 true）的討論，無此類討論時 SHALL NOT 顯示該分區。分區判準 SHALL 由快照導出的單一布林承載，面板與原生選單 SHALL NOT 各自計算。macOS 面板 SHALL NOT 另立「已轉出」分區：已轉出討論 SHALL 收於「討論」卡底部的「已轉出 N ›」收合列（N＝已轉出筆數，中性配色），預設收合；點按 SHALL 就地在收合列上方展開已轉出討論列（與討論中列同構、同受「分區溢出摺疊」約束），再點收合；展開狀態 SHALL 存於 app 本機（與看板討論欄的記憶分開存），跨面板開閉與 app 重啟保留；記憶缺席或壞值 SHALL 視為收合。零筆已轉出時 SHALL NOT 呈現收合列；討論中為零而已轉出非零時 SHALL 呈現「討論 0」標頭與收合列。討論清單資料的 concluded 欄位缺席（向後相容路徑）時 SHALL 退回既有判準——promoted 一律列於「已轉出」分區；hold 欄位缺席時 SHALL 視同未保留、SHALL NOT 把缺席當成 true。兩分區的每則討論 SHALL 呈現為子選單：父項標籤 SHALL 為該討論的 slug（識別錨點直出）；子選單 SHALL 依序含 topic 描述行（disabled、不可選取）、「開啟此討論」、「複製 slug」；保留在途的討論 SHALL NOT 帶額外標籤。選取「開啟此討論」SHALL 顯示主視窗並取得焦點、且開啟該討論的詳情頁（主區切至看板並換成該頁）。選取「複製 slug」SHALL 將該討論的 slug 寫入系統剪貼簿，主視窗隱藏或無焦點時 SHALL 仍寫入成功。無討論中討論時「討論」分區 SHALL 顯示「討論 0」。
 
 #### Scenario: 討論以 slug 為題、topic 為描述
 
@@ -149,12 +149,12 @@ updated: 2026-10-10T15:55:28+08:00
 #### Scenario: 已轉出討論列於已轉出分區
 
 - **WHEN** 存在討論中的討論與已轉出且已有結論且無 hold 的討論各一
-- **THEN** 討論中的討論列於「討論」分區、已轉出且已有結論且無 hold 的列於「已轉出」分區，兩者子選單結構相同（topic 描述行、開啟此討論、複製 slug）
+- **THEN** 討論中的討論列於「討論」分區、已轉出且已有結論且無 hold 的列於「已轉出」分區（原生選單）或「討論」卡底部「已轉出 1」收合列展開後的列（面板），兩者子選單／列結構相同（topic 描述行、開啟此討論、複製 slug）
 
 #### Scenario: 已轉出但尚無結論的討論列於討論分區
 
 - **WHEN** 存在一筆已轉出但尚無結論（promoted 且 concluded 為 false）的討論
-- **THEN** 該討論列於「討論」分區而非「已轉出」分區；若無其他已轉出且已有結論的討論，選單不出現「已轉出」分區標題
+- **THEN** 該討論列於「討論」分區而非「已轉出」分區；若無其他已轉出且已有結論的討論，原生選單不出現「已轉出」分區標題、面板不出現「已轉出」收合列
 
 #### Scenario: 保留中的已轉出討論列於討論分區
 
@@ -164,7 +164,17 @@ updated: 2026-10-10T15:55:28+08:00
 #### Scenario: 無已轉出討論時不顯示該分區
 
 - **WHEN** 目前沒有任何已轉出且已有結論且無 hold 的討論
-- **THEN** 選單不出現「已轉出」分區標題
+- **THEN** 原生選單不出現「已轉出」分區標題，面板討論卡底部不出現「已轉出」收合列
+
+#### Scenario: 面板的已轉出收合列預設收合並記憶展開
+
+- **WHEN** macOS 面板開啟，作用中專案有 2 則討論中討論與 3 則已轉出討論，使用者首次點按討論卡底部的「已轉出 3」列，之後關閉面板再重新開啟
+- **THEN** 首次開啟時討論卡只列 2 則討論中討論、底部為收合的「已轉出 3 ›」列；點按後 3 則已轉出討論就地展開於該列上方、箭頭轉向；重新開啟面板後仍為展開狀態，app 重啟後亦然
+
+#### Scenario: 面板已轉出展開區受溢出摺疊約束
+
+- **WHEN** 已轉出討論有 7 則且收合列已展開
+- **THEN** 展開區直列前 5 則、尾端為「還有 2 個…」可展開列，與其他分區同規則
 
 #### Scenario: 無討論時顯示零
 
@@ -173,8 +183,8 @@ updated: 2026-10-10T15:55:28+08:00
 
 
 <!-- @trace
-source: desktop-detail-page
-updated: 2026-10-10T15:55:28+08:00
+source: tray-panel-restyle
+updated: 2026-10-12T10:39:02+08:00
 -->
 
 ---
@@ -281,19 +291,19 @@ code:
 ---
 ### Requirement: 面板樣式（macOS）
 
-於 macOS，點擊系統匣圖示 SHALL NOT 顯示原生下拉選單，而 SHALL 於圖示下方彈出貼齊圖示的面板視窗，再次點擊 SHALL 收合——無需任何偏好設定。點擊 SHALL 不分滑鼠按鍵：主鍵（左鍵）與次要鍵（右鍵）點擊圖示 SHALL 完全等價，皆為開閉面板。面板內容 SHALL 與原生選單同源（同一前端 store 投影：專案與復原狀態、生命週期分區的變更與進度、討論——討論比照原生選單分「討論」與「已轉出」兩分區），SHALL NOT 為面板另建第二條資料查詢路徑或狀態機。
+於 macOS，點擊系統匣圖示 SHALL NOT 顯示原生下拉選單，而 SHALL 於圖示下方彈出貼齊圖示的面板視窗，再次點擊 SHALL 收合——無需任何偏好設定。點擊 SHALL 不分滑鼠按鍵：主鍵（左鍵）與次要鍵（右鍵）點擊圖示 SHALL 完全等價，皆為開閉面板。面板內容 SHALL 與原生選單同源（同一前端 store 投影：專案與復原狀態、生命週期分區的變更與進度、討論——「討論」與「已轉出」的分流判準與原生選單同源，面板的已轉出收於討論卡的收合列，依「討論列表」需求），SHALL NOT 為面板另建第二條資料查詢路徑或狀態機。
 
-面板底 SHALL 於毛玻璃之上、內容之下鋪一層主題背景色的半透明補光層（隨系統深淺色模式切換）：深色背景下面板亮度 SHALL 錨定主題背景色、SHALL NOT 明顯偏暗；淺色背景下毛玻璃 SHALL 仍可辨（背後內容輪廓經模糊可見）。
+面板底 SHALL 於毛玻璃之上、內容之下鋪一層側欄面色（--sidebar token）約九成不透明的補光層（隨淺色／深色主題切換），SHALL NOT 再疊主色漸層：深色背景下面板亮度 SHALL 錨定側欄面色、SHALL NOT 明顯偏暗；毛玻璃自餘下透明度透出，SHALL NOT 以全不透明底完全遮蔽。面板內容 SHALL 分成三類白底（--card token）細框 12px 圓角卡疊於補光層上：專案 tab 條一張、中段每個分區各一張（復原卡與 stale 狀態列亦為卡）、動作區塊一張；卡與卡之間以間距分隔，SHALL NOT 以分割線分隔區塊。
 
-專案區 SHALL 呈現為橫向 tab 條：每個 tab SHALL 顯示專案名首字母的圓角方塊 avatar 與專案名；remote tab SHALL 另以圖示與文字可辨識 ready、restoring、offline、needs-reauth 或 error，SHALL NOT 只用顏色表意。作用中 ready 專案的 tab SHALL 以實心主色底＋反白文字標示；作用中 restoring／error 專案 SHALL 維持同等清楚的 selected 狀態且不呈 disabled 外觀。tab 總寬超出面板時 SHALL 可橫向捲動且 SHALL NOT 顯示捲軸。
+專案區 SHALL 呈現為橫向 tab 條（一張卡）：每個 tab SHALL 顯示專案名首字母的圓角方塊與其下的專案名；方塊的尺寸、圓角與配色 SHALL 與主視窗圖示列的專案方塊同形（取同一份樣式常數）——作用中專案為實心主色底＋反白字，其餘為灰底；remote tab SHALL 另以方塊內圖示與其下狀態文字可辨識 ready、restoring、offline、needs-reauth 或 error，SHALL NOT 只用顏色表意。作用中的 restoring／error 專案 SHALL 與 ready 同以實心主色方塊標示選取、不呈 disabled 外觀，狀態由狀態文字的語意色承載。tab 的 hover SHALL 為半透明前景色灰底，SHALL NOT 以主色實心反白。tab 總寬超出面板時 SHALL 可橫向捲動且 SHALL NOT 顯示捲軸。
 
 點擊 tab SHALL 原地切換作用中專案，SHALL NOT 喚起主視窗、SHALL NOT 收合面板；切換 SHALL 以分頁的 locator key 為把手（與「選單專案切換」需求同語意），local 與 remote 專案 tab 一視同仁，SHALL NOT 因分頁無本機路徑而靜默無反應。active remote tab 尚無 session且為 restoring／error 時，面板 SHALL 以一張精簡復原卡取代討論與生命週期分區；復原卡 SHALL 顯示 workspace、server、繁中狀態摘要及重新連線或重新登入、在 Speclink 中查看詳情／設定的動作，SHALL NOT 顯示上一個 workspace 的資料。直接重新連線 SHALL 由面板動作回流主視窗 store、面板保持開啟且 SHALL NOT 喚起主視窗；使用者明確選取詳情、設定或重新登入 SHALL 顯示主視窗並取得焦點。active remote session 為 offline 時，面板 SHALL 顯示 stale 狀態列並保留最後成功的變更與討論內容，等待既有 worker 自動收斂。
 
-tab 條尾端 SHALL 有「加入專案」動作項：點擊 SHALL 先顯示主視窗（含切換至其所在桌面——確保後續對話框於使用者眼前可見）再開啟資料夾選擇器（與主視窗「開啟專案」同語意）——選定即以分頁加入該專案並成為作用中專案，取消則無任何變化。資料夾選擇器等系統原生對話框 SHALL 跟隨系統語言呈現（app SHALL 宣告繁體中文在地化，不得固定英文介面）。
+tab 條尾端 SHALL 有「加入專案」動作項（虛線框方塊＋文字，與圖示列的「＋」同形）：點擊 SHALL 先顯示主視窗（含切換至其所在桌面——確保後續對話框於使用者眼前可見）再開啟資料夾選擇器（與主視窗「開啟專案」同語意）——選定即以分頁加入該專案並成為作用中專案，取消則無任何變化。資料夾選擇器等系統原生對話框 SHALL 跟隨系統語言呈現（app SHALL 宣告繁體中文在地化，不得固定英文介面）。
 
-active workspace 為 ready 或已有 session 的 offline 時，面板內容 SHALL 依區塊排列：專案 tab 條之下依序為討論區塊（「討論」分區常駐呈現，其後「已轉出」分區有料才現）、生命週期區塊（提案中→進行中→已就緒）、動作區塊（「開啟 Speclink」「專案設定」「設定」「結束」）。面板 SHALL 為三段式版面：專案 tab 條為固定頁首、動作區塊為固定頁尾，兩者 SHALL 常駐可見、SHALL NOT 隨內容捲動；頁首與頁尾之間的內容區塊（討論、生命週期，或復原卡／stale 狀態列）同屬可捲中段。專案 tab 條與討論區塊之間、討論區塊與生命週期區塊之間、生命週期區塊與動作區塊之間 SHALL 各有一條分割線（共三條）；tab 條之下與動作區塊之上的兩條 SHALL 分別隨頁首、頁尾常駐，討論區塊與生命週期區塊之間的一條 SHALL 隨中段內容捲動；區塊內部（分區卡之間）SHALL NOT 出現分割線。此區塊順序為面板刻意設計；原生選單的區段順序仍依「系統匣圖示與原生選單」需求（生命週期分區在前、討論區在後），不受本段影響。無 session 的 restoring／error 狀態 SHALL 以「tab 條、分割線、復原卡、分割線、動作區塊」排列，不渲染討論與生命週期空卡——復原卡同屬可捲中段，頁首頁尾結構不因此分支。
+active workspace 為 ready 或已有 session 的 offline 時，面板內容 SHALL 依區塊排列：專案 tab 條卡之下依序為討論卡（「討論」分區常駐呈現；已轉出討論收於卡底的收合列、有料才現，依「討論列表」需求）、生命週期卡（提案中→進行中→已就緒）、動作區塊卡（「開啟 Speclink」「專案設定」「設定」「結束」）。面板 SHALL 為三段式版面：專案 tab 條卡為固定頁首、動作區塊卡為固定頁尾，兩者 SHALL 常駐可見、SHALL NOT 隨內容捲動；頁首與頁尾之間的內容卡（討論、生命週期，或復原卡／stale 狀態列）同屬可捲中段。區塊之間與卡之間 SHALL 只以間距分隔，SHALL NOT 出現分割線。此區塊順序為面板刻意設計；原生選單的區段順序仍依「系統匣圖示與原生選單」需求（生命週期分區在前、討論區在後），不受本段影響。無 session 的 restoring／error 狀態 SHALL 以「tab 條卡、復原卡、動作區塊卡」排列，不渲染討論與生命週期空卡——復原卡同屬可捲中段，頁首頁尾結構不因此分支。
 
-生命週期分區與討論分區 SHALL 各自以半透明圓角卡片容器呈現（面板毛玻璃底 SHALL 可透出），分區標題 SHALL 含主色上色的分區圖示，並 SHALL 顯示該分區的項目計數（徽章樣式與看板欄計數同語彙）。生命週期三個階段分區（提案中／進行中／已就緒）SHALL 常駐呈現：零筆階段 SHALL 以「分區標題＋計數 0」的空狀態卡呈現，SHALL NOT 因該階段無變更而整卡消失；全無變更時 SHALL NOT 顯示佔位卡（原「尚無進行中變更」），而以三張計數 0 的分區卡呈現，分區順序固定為提案中→進行中→已就緒。「已轉出」分區 SHALL 維持有料才現——零筆時 SHALL NOT 呈現（與「討論列表」需求一致）。空狀態卡（討論零筆、生命週期零筆階段）SHALL 維持最小高度、內容垂直置中，不得塌陷成細條。有任務的變更列，其進度條填色 SHALL 依階段套用與看板同源的主色深淺階梯（提案中最淺、進行中次之、已就緒最深）。
+生命週期分區與討論分區 SHALL 各自以白底細框 12px 圓角卡呈現，分區標題為 12px 粗體、含所屬色相的分區圖示，並 SHALL 顯示該分區的項目計數（徽章樣式與看板欄計數同語彙）；標題之下有內容（列、骨架、失敗提示或收合列）時 SHALL 有一條細線。卡內的列（變更列、討論列、溢出列、動作列、收合列）SHALL 以細線分隔、整列 hover 為半透明前景色灰底，SHALL NOT 以主色實心反白；列內的站章、波次數字、複製鈕與進度條在 hover 期間 SHALL 維持本色。生命週期三個階段分區（提案中／進行中／已就緒）SHALL 常駐呈現：零筆階段 SHALL 以「分區標題＋計數 0」的空狀態卡呈現，SHALL NOT 因該階段無變更而整卡消失；全無變更時 SHALL NOT 顯示佔位卡（原「尚無進行中變更」），而以三張計數 0 的分區卡呈現，分區順序固定為提案中→進行中→已就緒。已轉出討論的收合列 SHALL 維持有料才現——零筆時 SHALL NOT 呈現（與「討論列表」需求一致）。空狀態卡（討論零筆、生命週期零筆階段）SHALL 維持最小高度、內容垂直置中，不得塌陷成細條。有任務的變更列，其進度條填色 SHALL 依階段套用與看板同源的階段色相（提案中、進行中、已就緒各一色，與看板欄位同色）。
 
 變更與討論列 SHALL 於列尾常駐複製鈕（複製內容與原生選單的複製動作一致：變更為 name、討論為 slug）；複製鈕點擊後 SHALL 短暫顯示成功回饋（勾號圖示，與看板複製鈕同模式）後自行復原。點擊變更或討論列本體 SHALL 顯示主視窗並開啟對應詳情。
 
@@ -309,10 +319,10 @@ active workspace 為 ready 或已有 session 的 offline 時，面板內容 SHAL
 - **WHEN** 使用者於 macOS 以滑鼠次要鍵（右鍵）點擊系統匣圖示
 - **THEN** 面板於圖示下方彈出且貼齊位置與左鍵點擊一致；面板已開啟時再以右鍵點擊圖示則面板收合——與左鍵行為完全相同
 
-#### Scenario: ready workspace 的區塊順序與分割線
+#### Scenario: ready workspace 的區塊順序與卡片
 
 - **WHEN** 面板開啟，作用中 ready 專案存在討論中討論、已轉出討論與各階段變更
-- **THEN** 由上而下依序為：專案 tab 條、分割線、「討論」分區、「已轉出」分區、分割線、「提案中」「進行中」「已就緒」分區、分割線、「開啟 Speclink」「專案設定」「設定」「結束」；分割線恰為三條且僅出現於區塊之間、分區卡之間無分割線
+- **THEN** 由上而下依序為：專案 tab 條卡、「討論」卡（底部帶「已轉出 N ›」收合列）、「提案中」「進行中」「已就緒」三張卡、動作區塊卡（「開啟 Speclink」「專案設定」「設定」「結束」四列）；每張卡為白底細框 12px 圓角，卡與卡之間只有間距、無任何分割線
 
 #### Scenario: 內容超限時頁首頁尾常駐僅中段捲動
 
@@ -322,17 +332,17 @@ active workspace 為 ready 或已有 session 的 offline 時，面板內容 SHAL
 #### Scenario: 深色背景下面板亮度不明顯下沉
 
 - **WHEN** 系統為淺色模式，面板於深色背景（如全螢幕深色 IDE）之上開啟
-- **THEN** 面板底色錨定主題背景色、亮度未明顯偏暗，毛玻璃仍可辨背後內容輪廓
+- **THEN** 面板底色錨定側欄面色（約九成不透明）、亮度未明顯偏暗，白底分區卡浮於其上，毛玻璃自餘下透明度透出
 
 #### Scenario: 點擊專案 tab 原地切換
 
 - **WHEN** 面板開啟且有兩個以上 ready 專案分頁，使用者點擊非作用中專案的 tab
-- **THEN** 該 tab 轉為實心主色的作用中標示，面板下方的變更與討論內容切換為該專案，主視窗未被喚起、面板保持開啟
+- **THEN** 該 tab 的首字母方塊轉為實心主色（與圖示列作用中方塊同形），面板下方的變更與討論內容切換為該專案，主視窗未被喚起、面板保持開啟
 
 #### Scenario: 點擊 remote 專案 tab 原地切換
 
 - **WHEN** 面板開啟且分頁中含一個非作用中的 ready remote 專案，使用者點擊該 remote 專案的 tab
-- **THEN** 該 tab 轉為作用中標示，面板下方的變更與討論內容切換為該 remote 專案，主視窗未被喚起、面板保持開啟
+- **THEN** 該 tab 的方塊轉為實心主色作用中標示，面板下方的變更與討論內容切換為該 remote 專案，主視窗未被喚起、面板保持開啟
 
 #### Scenario: remote handshake 失敗顯示復原卡
 
@@ -364,6 +374,16 @@ active workspace 為 ready 或已有 session 的 offline 時，面板內容 SHAL
 - **WHEN** ready workspace 的面板列出提案中 1 筆變更、討論 0 筆
 - **THEN** 「提案中」分區標題帶計數徽章 1；討論空狀態卡顯示計數 0 且維持最小高度、內容垂直置中
 
+#### Scenario: 分區卡與列的外觀
+
+- **WHEN** ready workspace 的面板列出一個有三筆以上項目的分區
+- **THEN** 該分區為白底細框 12px 圓角卡；標題為 12px 粗體＋色相圖示＋計數徽章、其下一條細線；列之間以細線分隔；指標停在任一列上時整列呈半透明前景色灰底，列內站章、複製鈕與進度條顏色不變，未出現主色實心反白
+
+#### Scenario: 專案 tab 方塊與圖示列同形
+
+- **WHEN** 同一專案同時顯示於主視窗圖示列與面板 tab 條
+- **THEN** 兩處的首字母方塊尺寸、圓角與配色相同（作用中實心主色白字、其餘灰底），面板 tab 的專案名列於方塊之下；tab 條尾端「加入專案」為虛線框方塊＋文字
+
 #### Scenario: 全無變更時三個生命週期分區常駐
 
 - **WHEN** 作用中 ready 專案沒有任何變更，使用者於 macOS 開啟面板
@@ -374,10 +394,10 @@ active workspace 為 ready 或已有 session 的 offline 時，面板內容 SHAL
 - **WHEN** 作用中 ready 專案僅有 1 個進行中變更，無提案中與已就緒變更
 - **THEN** 「進行中」分區卡帶計數徽章 1 並列出該變更；「提案中」與「已就緒」分區卡仍呈現且各帶計數徽章 0，三張分區卡依提案中→進行中→已就緒順序排列
 
-#### Scenario: 進度條依階段深淺
+#### Scenario: 進度條依階段色相
 
 - **WHEN** ready workspace 的面板同時列出提案中與進行中各一個有任務的變更
-- **THEN** 兩列進度條填色同為主色但深淺不同——提案中較淺、進行中較深，與看板欄位的階段配色同階梯
+- **THEN** 兩列進度條填色分別為提案中與進行中的階段色、彼此不同，與看板欄位的階段配色同源
 
 #### Scenario: 開啟面板無預設焦點
 
@@ -406,16 +426,8 @@ active workspace 為 ready 或已有 session 的 offline 時，面板內容 SHAL
 
 
 <!-- @trace
-source: tray-panel-scroll-and-vibrancy
-updated: 2026-07-31
-code:
-  - apps/desktop/panel.html
-  - apps/desktop/src/__tests__/tray.test.ts
-  - apps/desktop/src/__tests__/trayPanel.test.tsx
-  - apps/desktop/src/panel/TrayPanel.tsx
-  - apps/desktop/src/panel/main.tsx
-  - apps/desktop/src/tray.ts
-  - apps/desktop/vitest.setup.ts
+source: tray-panel-restyle
+updated: 2026-10-12T10:39:02+08:00
 -->
 
 ---
@@ -477,17 +489,17 @@ code:
 ---
 ### Requirement: 面板變更列的品質站章
 
-macOS 面板的變更列 SHALL 依協定的審查與驗證狀態，於名稱與任務數之間並排渲染行內站章，順序固定（審查章在前、驗證章在後）：`none` 無章；`inReview`／`inVerify` 顯示進行中章；`reviewed`／`verified` 顯示已蓋章章；`reviewedStale`／`verifiedStale` 顯示降級樣式章。各章的圖示、色調與 tooltip 詞條 SHALL 與看板卡片的對應章共用同一組樣式與 i18n 詞條，SHALL NOT 另建第二份對照。變更列 hover 反白（主色底）期間，站章 SHALL 隨列改以前景色呈現，與同列名稱、任務數與進度條的 hover 處理一致；hover 期間站別由圖示形狀承辨，指標離開後 SHALL 回復共用色調。變更列 SHALL NOT 渲染看板卡片的其他行內符號（建立者頭像、來源討論標記、restale 標記、metaError 標記）。原生選單（非 macOS 平台，及 macOS 面板建立失敗的後備）的變更列標籤 SHALL 維持既有「名稱＋文字進度條＋任務數」組成、SHALL NOT 加入站章。
+macOS 面板的變更列 SHALL 依協定的審查與驗證狀態，於名稱與任務數之間並排渲染行內站章，順序固定（審查章在前、驗證章在後）：`none` 無章；`inReview`／`inVerify` 顯示進行中章；`reviewed`／`verified` 顯示已蓋章章；`reviewedStale`／`verifiedStale` 顯示降級樣式章。各章的圖示、色調與 tooltip 詞條 SHALL 與看板卡片的對應章共用同一組樣式與 i18n 詞條，SHALL NOT 另建第二份對照。變更列 hover（半透明前景色灰底）期間，站章 SHALL 維持共用色調、SHALL NOT 改色——列不以主色實心反白，章的對比不受 hover 影響。變更列 SHALL NOT 渲染看板卡片的其他行內符號（建立者頭像、來源討論標記、restale 標記、metaError 標記）。原生選單（非 macOS 平台，及 macOS 面板建立失敗的後備）的變更列標籤 SHALL 維持既有「名稱＋文字進度條＋任務數」組成、SHALL NOT 加入站章。
 
 #### Scenario: 面板兩章並排
 
 - **WHEN** 面板開啟且某變更的協定資料為 `reviewStatus: "reviewed"` 且 `verifyStatus: "verified"`
 - **THEN** 該變更列於名稱與任務數之間依序顯示審查章與驗證章，tooltip 分別為「已審查」與「已驗證」（tw）
 
-#### Scenario: hover 反白時章隨列改前景色
+#### Scenario: hover 灰底時章色調不變
 
-- **WHEN** 指標停留於帶兩站章的變更列，列反白為主色底
-- **THEN** 兩站章與同列的名稱、任務數同以前景色呈現，站別由圖示形狀可辨；指標離開後章回復與看板卡片共用的色調
+- **WHEN** 指標停留於帶兩站章的變更列，列呈半透明前景色灰底
+- **THEN** 兩站章維持與看板卡片共用的色調、未改色，站別由圖示與色調同時可辨
 
 #### Scenario: 僅驗證章
 
@@ -506,8 +518,8 @@ macOS 面板的變更列 SHALL 依協定的審查與驗證狀態，於名稱與�
 
 
 <!-- @trace
-source: desktop-ui-stamp-and-overflow-polish
-updated: 2026-08-07
+source: tray-panel-restyle
+updated: 2026-10-12T10:39:02+08:00
 -->
 
 ---
@@ -578,7 +590,7 @@ updated: 2026-08-12
 ---
 ### Requirement: 變更列的波次標示與順序同源
 
-系統匣的變更列順序 SHALL 與看板同一份清單 payload 的順序一致（即 plan 配置順序投影到各階段），SHALL NOT 另行排序。macOS 面板的變更列 SHALL 於清單項帶 `wave` 時在名稱之前渲染波次數字（與看板卡片波次章共用同一 i18n tooltip 詞條「第 N 波」）；`blockedBy` 非空的列 SHALL 整列降透明度且 tooltip 列出前置名稱；hover 反白期間數字 SHALL 隨列改以前景色。原生選單（非 macOS 平台，及 macOS 面板建立失敗的後備）的變更列標籤 SHALL 於 `wave` 存在時前綴「N· 」，SHALL NOT 做變淡或 tooltip。清單項缺 `wave`（remote 或 plan 成環）時面板與原生選單的列 SHALL 與本需求引入前一致。
+系統匣的變更列順序 SHALL 與看板同一份清單 payload 的順序一致（即 plan 配置順序投影到各階段），SHALL NOT 另行排序。macOS 面板的變更列 SHALL 於清單項帶 `wave` 時在名稱之前渲染波次數字（與看板卡片波次章共用同一 i18n tooltip 詞條「第 N 波」）；`blockedBy` 非空的列 SHALL 整列降透明度且 tooltip 列出前置名稱；列 hover（半透明前景色灰底）期間數字 SHALL 維持主色、SHALL NOT 改色。原生選單（非 macOS 平台，及 macOS 面板建立失敗的後備）的變更列標籤 SHALL 於 `wave` 存在時前綴「N· 」，SHALL NOT 做變淡或 tooltip。清單項缺 `wave`（remote 或 plan 成環）時面板與原生選單的列 SHALL 與本需求引入前一致。
 
 #### Scenario: 面板列首波次與被擋變淡
 
@@ -595,9 +607,10 @@ updated: 2026-08-12
 - **WHEN** remote 專案的面板開啟（清單項無 wave）
 - **THEN** 變更列無波次數字、不變淡，與本需求引入前一致
 
+
 <!-- @trace
-source: add-change-plan-desktop
-updated: 2026-09-16T14:57:15+08:00
+source: tray-panel-restyle
+updated: 2026-10-12T10:39:02+08:00
 -->
 
 ---
@@ -607,14 +620,14 @@ updated: 2026-09-16T14:57:15+08:00
 
 交接 SHALL 先收合面板再顯示主視窗；面板已因失焦先行收合時，交接 SHALL 仍成功、SHALL NOT 重新打開面板。既有「面板不搶焦點且失焦自動收合」與 Cmd-Tab 回前景的行為 SHALL 維持不變。
 
-#### Scenario: 自面板點變更列回前景後抽屜內 hover 正常
+#### Scenario: 自面板點變更列回前景後詳情頁內 hover 正常
 
-- **WHEN** 主視窗在背景至少 5 秒，使用者點擊系統匣圖示開啟面板、點擊其中一個變更列，主視窗顯示到前景並開啟該變更的詳情抽屜
-- **THEN** 滑鼠移到抽屜內的按鈕上，該按鈕顯示 hover 樣式、游標樣式隨元素改變
+- **WHEN** 主視窗在背景至少 5 秒，使用者點擊系統匣圖示開啟面板、點擊其中一個變更列，主視窗顯示到前景並開啟該變更的詳情頁
+- **THEN** 滑鼠移到詳情頁內的按鈕上，該按鈕顯示 hover 樣式、游標樣式隨元素改變
 
-#### Scenario: 關閉抽屜後看板卡片 hover 與 tooltip 正常
+#### Scenario: 關閉詳情頁後看板卡片 hover 與 tooltip 正常
 
-- **WHEN** 承上一情境，使用者點擊抽屜灰底關閉抽屜，滑鼠移到看板任一卡片上
+- **WHEN** 承上一情境，使用者按 Esc 或點麵包屑回到看板，滑鼠移到看板任一卡片上
 - **THEN** 卡片顯示 hover 樣式，卡片上具 tooltip 的元素顯示 tooltip
 
 #### Scenario: 自面板「開啟 Speclink」與討論列回前景同樣正常
@@ -632,7 +645,8 @@ updated: 2026-09-16T14:57:15+08:00
 - **WHEN** 使用者未經面板、以 Cmd-Tab 將主視窗切回前景
 - **THEN** 主視窗取得焦點且滑鼠互動完整，與本需求加入前相同
 
+
 <!-- @trace
-source: fix-desktop-hover-after-tray-panel
-updated: 2026-09-16T21:49:06+08:00
+source: tray-panel-restyle
+updated: 2026-10-12T10:39:02+08:00
 -->
