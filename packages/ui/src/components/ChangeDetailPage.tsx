@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -66,15 +67,26 @@ import { DELTA_COLORS, DELTA_LABEL_KEYS, DeltaBadges, DeltaSpecView } from "./De
 import { AnalyzePanel } from "./AnalyzePanel";
 import { TicketTabBody, useStationTickets } from "./TicketView";
 import {
-  DetailContentCard,
-  DetailHeader,
-  DetailPageFrame,
   IdentityName,
-  StatusCard,
+  STAGE_PILL_TONE,
   StatusRow,
   displayName,
+  documentArtifact,
   type DocumentTarget,
 } from "./DetailHeader";
+import {
+  DOC_TITLE_KEYS,
+  DetailActions,
+  DetailIdentity,
+  DetailShell,
+  DetailStatus,
+  DetailTreeLabel,
+  DocBody,
+  DocHeader,
+  DocTiles,
+  changeDocTocKey,
+  type DetailRelation,
+} from "./DetailShell";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_PILL_TONE, type ReviewBadgeStatus } from "./reviewStyle";
 import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_PILL_TONE, type VerifyBadgeStatus } from "./verifyStyle";
 import { setTaskMark } from "../tasks";
@@ -217,21 +229,55 @@ const TAB_FILES: Record<string, string> = {
   tasks: "tasks.md",
 };
 
-/** 「開啟 ▾」的對象（design D4）：作用中分頁對應的 artifact 與其已載入原文。規格分頁取
- * 清單中第一份 capability；排程沒有檔案；工單分頁只載解析後的回合、不帶原文。 */
+/** 「開啟 ▾」的對象（design D4）：目前文件對應的 artifact 與其已載入原文。規格文件取
+ * 選定的 capability（未選定或已不在清單時取第一份）；排程沒有檔案；工單只載解析後的回合、不帶原文。 */
 function documentTarget(
   name: string,
   tab: string,
   loaded: Record<string, Doc>,
   specDocs: Record<string, string | null> | undefined,
+  specCap: string | null,
 ): DocumentTarget | null {
   if (tab === "specs") {
-    const cap = specDocs ? Object.keys(specDocs)[0] : undefined;
+    const caps = Object.keys(specDocs ?? {});
+    const cap = specCap && caps.includes(specCap) ? specCap : caps[0];
     return cap ? { doc: { change: name, artifact: `specs/${cap}/spec.md` }, content: specDocs?.[cap] ?? null } : null;
   }
   if (tab === "review" || tab === "verify") return { doc: { change: name, artifact: `${tab}.md` } };
   const artifact = TAB_FILES[tab];
   return artifact ? { doc: { change: name, artifact }, content: loaded[tab] ?? null } : null;
+}
+
+/**
+ * 規格文件的一個 capability 段。`jump` 指到它時捲到段首並回報清除：捲動放在段自己的 effect，
+ * 因為 Radix 的 TabsContent 在切換後的下一輪 render 才掛上內文，頁層 effect 那時還找不到段。
+ */
+function SpecCapSection({
+  cap,
+  doc,
+  jump,
+  onJumped,
+}: {
+  cap: string;
+  doc: string | null;
+  jump: { cap: string } | null;
+  onJumped: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (jump?.cap !== cap) return;
+    ref.current?.scrollIntoView?.({ block: "start" });
+    onJumped();
+  }, [jump, cap, onJumped]);
+  return (
+    <div ref={ref} data-spec-cap={cap} className="mb-4">
+      <div className="mb-1 flex items-center gap-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+        {cap} <DeltaBadges counts={specDeltaCounts(doc)} />
+      </div>
+      {/* 逐項空態（capability 有列出、其 spec.md 為空）不套整體性文案。 */}
+      <DeltaSpecView markdown={doc} />
+    </div>
+  );
 }
 
 /** 排程分頁內的名稱籤（同波夥伴、前置、重疊、封存順序共用）。 */
@@ -268,7 +314,7 @@ function PlanCard({
         data-plan-card-header
         className="flex items-center justify-between px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
       >
-        <span>{title}</span>
+        <span data-doc-heading>{title}</span>
         {badge}
       </div>
       <div data-plan-card-body className="border-t border-border/60 px-2 py-1.5 text-sm">
@@ -452,9 +498,10 @@ function PlanTab({
 }
 
 /**
- * 變更詳情頁（design D6）：置中 768px 內容欄——標題列（名稱＋複製＋章籤＋動作區）、
- * 出身列、「狀態」卡、分析結果卡（有結果時）、內容卡（分頁列為其標頭：提案／設計／
- * 互動任務／彩色規格／排程／條件式工單）。宿主只在有選定變更時掛載本頁。
+ * 變更詳情頁（design D5；spec「詳情頁的文件樹、閱讀卡與本頁目錄」）：三欄骨架——左欄身分區
+ * （名稱、籤、出身、來自／同源／規格列）、「文件」節點（提案／設計／互動任務／彩色規格／排程／
+ * 條件式工單）、「狀態」列；中欄分析結果卡（有結果時）與閱讀卡；右欄本頁目錄。變更層動作經
+ * `DetailActions` 進宿主標題列。宿主只在有選定變更時掛載本頁。
  */
 export function ChangeDetailPage({
   change,
@@ -493,6 +540,12 @@ export function ChangeDetailPage({
   const [specDocs, setSpecDocs] = useState<Record<string, string | null> | undefined>();
   // 受控分頁：工單分頁退場時要能把當前分頁切回「提案」（design D3）。
   const [tab, setTab] = useState("proposal");
+  // 規格列能力籤選定的 capability：「開啟 ▾」指向它。
+  const [specCap, setSpecCap] = useState<string | null>(null);
+  // 能力籤的捲動請求：每點一次換一個物件，該規格段捲到後即清——自文件樹切回規格文件時自頂端呈現。
+  const [specJump, setSpecJump] = useState<{ cap: string } | null>(null);
+  const clearSpecJump = useCallback(() => setSpecJump(null), []);
+  const bodyRef = useRef<HTMLDivElement>(null);
   // 批次操作／拖放寫回進行中——鎖工具列與清單（design D4 例外）。單發勾選不設此旗標。
   const [taskBusy, setTaskBusy] = useState(false);
   // 在途單發寫回計數——僅作為世代重載的讓路條件，不鎖清單（勾選樂觀更新）。
@@ -577,6 +630,8 @@ export function ChangeDetailPage({
   // 開啟／換 change 從「提案」起。
   useEffect(() => {
     setTab("proposal");
+    setSpecCap(null);
+    setSpecJump(null);
   }, [name]);
   // 停在工單分頁而該站翻為非進行中（工單已蓋章或放棄刪除）：分頁消失，退回「提案」。
   useEffect(() => {
@@ -685,7 +740,21 @@ export function ChangeDetailPage({
   const wave = planWave(change);
   const blockedBy = planBlockedBy(change);
 
-  const docTarget = documentTarget(change.name, tab, { proposal, design, tasks: tasksMd }, specDocs);
+  const docTarget = documentTarget(change.name, tab, { proposal, design, tasks: tasksMd }, specDocs, specCap);
+  const docPath = documentArtifact(docTarget);
+  // 排程沒有檔案，內容即變更的排程欄位。
+  const tocKey = changeDocTocKey(tab, { content: tab === "plan" ? change : docTarget?.content, specs: specDocs, tickets });
+  const specCaps = Object.keys(specDocs ?? {});
+  const openSpec = (cap: string) => {
+    setSpecCap(cap);
+    setSpecJump({ cap });
+    setTab("specs");
+  };
+  // 工單節點的徽章：末輪序號（載入完成且有輪次時）。
+  const lastRound = (station: TicketStation) => {
+    const rounds = tickets[station]?.rounds ?? [];
+    return rounds.length > 0 ? Math.max(...rounds.map((r) => r.index)) : null;
+  };
 
   const actions = (
     <>
@@ -707,7 +776,6 @@ export function ChangeDetailPage({
       {onClaim && !change.claimedBy && (
         <UnavailableAction reason={unavailable?.claim}>
           <Button
-            variant="outline"
             size="sm"
             disabled={unavailable?.claim !== undefined}
             title={unavailable?.claim}
@@ -717,9 +785,9 @@ export function ChangeDetailPage({
           </Button>
         </UnavailableAction>
       )}
-      {/* 退回提案中（僅派生進行中）：點擊交宿主先確認，UI 不預判守門。 */}
+      {/* 依階段的主要鈕（實心主色）：退回提案中（僅派生進行中）點擊交宿主先確認，UI 不預判守門。 */}
       {stage === "in-progress" && onRevert && (
-        <Button variant="outline" size="sm" onClick={() => onRevert(change.name)}>
+        <Button size="sm" onClick={() => onRevert(change.name)}>
           <Undo2 className="h-3.5 w-3.5" /> {t("common.revert")}
         </Button>
       )}
@@ -738,7 +806,7 @@ export function ChangeDetailPage({
       )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="subtle" size="icon-sm" aria-label={t("detail.more")}>
+          <Button variant="outline" size="icon-sm" aria-label={t("detail.more")}>
             <MoreHorizontal className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
@@ -765,239 +833,301 @@ export function ChangeDetailPage({
   );
 
   const startedLabel = meta?.startedAt ? t("rdrawer.started").replace("{date}", meta.startedAt) : null;
+  const sources = sourceDiscussions ?? [];
+  const siblings = siblingChanges ?? [];
+  const relations: DetailRelation[] = [];
+  if (sources.length > 0) {
+    relations.push({
+      mark: "from",
+      label: t("detail.relFrom"),
+      children: <SourceChipRow items={sources} onOpen={(slug) => onOpenDiscussion?.(slug)} />,
+    });
+  }
+  if (siblings.length > 0) {
+    relations.push({
+      mark: "sibling",
+      label: t("detail.relSibling"),
+      children: (
+        <SourceChipRow items={siblings.map((sibling) => ({ slug: sibling }))} onOpen={(sibling) => onOpenSibling?.(sibling)} />
+      ),
+    });
+  }
+  if (specCaps.length > 0) {
+    relations.push({
+      mark: "specs",
+      label: t("detail.relSpecs"),
+      children: specCaps.map((cap) => (
+        <button key={cap} type="button" className="min-w-0 max-w-full" onClick={() => openSpec(cap)}>
+          <Badge variant="outline" className="block max-w-full truncate font-mono hover:bg-accent">
+            {cap}
+          </Badge>
+        </button>
+      )),
+    });
+  }
+  const ticketBadge = (station: TicketStation) => {
+    const n = lastRound(station);
+    return n === null ? null : (
+      <Badge variant="secondary" className="ml-auto">
+        {t("ticket.round").replace("{n}", String(n))}
+      </Badge>
+    );
+  };
+
+  const tree = (
+    <>
+      <DetailIdentity
+        title={change.name}
+        copyLabel={t("common.copyName")}
+        badges={
+          <>
+            <StatusPill data-stage-pill tone={STAGE_PILL_TONE[stage]}>
+              {t(`stage.${stage}`)}
+            </StatusPill>
+            {stamps.map((s) => (
+              <TitleStamp key={s.station} stamp={s} />
+            ))}
+          </>
+        }
+        provenance={[
+          meta?.createdBy && <IdentityName identity={meta.createdBy} />,
+          meta?.createdWith && <span className="shrink-0">✳ {meta.createdWith}</span>,
+          rel && <span className="shrink-0">{rel}</span>,
+          startedLabel &&
+            (meta?.startedBy ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="shrink-0">{startedLabel}</span>
+                </TooltipTrigger>
+                <TooltipContent>{meta.startedBy}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <span className="shrink-0">{startedLabel}</span>
+            )),
+          change.claimedBy && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex shrink-0 items-center gap-1">
+                  <Hand className="h-3 w-3" />
+                  {t("rdrawer.claimed").replace("{name}", displayName(change.claimedBy))}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{change.claimedBy}</TooltipContent>
+            </Tooltip>
+          ),
+          change.worktree && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex shrink-0 items-center gap-1" title={change.worktree.path}>
+                  <GitBranch className="h-3 w-3" />
+                  {change.worktree.branch}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{change.worktree.path}</TooltipContent>
+            </Tooltip>
+          ),
+        ]}
+        relations={relations}
+      />
+
+      <DetailTreeLabel>{t("detail.tree")}</DetailTreeLabel>
+      <TabsList variant="tree" aria-label={t("detail.tree")}>
+        <TabsTrigger value="proposal">
+          <FileText className="h-3.5 w-3.5" /> {t("common.tabProposal")}
+        </TabsTrigger>
+        <TabsTrigger value="design">
+          <PenTool className="h-3.5 w-3.5" /> {t("common.tabDesign")}
+        </TabsTrigger>
+        <TabsTrigger value="tasks">
+          <ListChecks className="h-3.5 w-3.5" /> {t("common.tabTasks")}
+          <Badge variant={pct === 100 ? "default" : "secondary"} className="ml-auto">
+            {taskBadge}
+          </Badge>
+        </TabsTrigger>
+        <TabsTrigger value="specs">
+          <Code2 className="h-3.5 w-3.5" /> {t("common.tabSpecs")}
+          <span className="ml-auto">
+            <DeltaBadges counts={delta} />
+          </span>
+        </TabsTrigger>
+        <TabsTrigger value="plan">
+          <ListOrdered className="h-3.5 w-3.5" /> {t("drawer.tab.plan")}
+          {wave !== null && (
+            <Badge variant="secondary" className="ml-auto">
+              {planWaveLabel(wave, t)}
+            </Badge>
+          )}
+        </TabsTrigger>
+        {/* 條件式工單節點（spec desktop-app「詳情頁的工單分頁」）：排程之後、審查在前，
+            與身分區章籤同序；節點名即站名，徽章為末輪序號。 */}
+        {inReview && (
+          <TabsTrigger value="review">
+            {REVIEW_ICON.inReview} {t("drawer.tab.review")}
+            {ticketBadge("review")}
+          </TabsTrigger>
+        )}
+        {inVerify && (
+          <TabsTrigger value="verify">
+            {VERIFY_ICON.inVerify} {t("drawer.tab.verify")}
+            {ticketBadge("verify")}
+          </TabsTrigger>
+        )}
+      </TabsList>
+
+      <DetailTreeLabel>{t("detail.status")}</DetailTreeLabel>
+      <DetailStatus>
+        <StatusRow mark="tasks" label={t("detail.statusTasks")}>
+          <div data-progress-track className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+          </div>
+          <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">{taskBadge}</span>
+        </StatusRow>
+        <StatusRow mark="quality" label={t("detail.statusQuality")} wrap>
+          {stamps.length === 0 ? (
+            <span className="text-muted-foreground">{t("detail.noQuality")}</span>
+          ) : (
+            stamps.map((s) => (
+              <span key={s.station} className="inline-flex shrink-0 items-center gap-1.5">
+                <StatusPill tone={s.tone} icon={s.icon}>
+                  {s.label}
+                </StatusPill>
+                {s.at && <span className="font-mono text-[11px] text-muted-foreground">{s.at}</span>}
+              </span>
+            ))
+          )}
+        </StatusRow>
+        <StatusRow mark="plan" label={t("detail.statusPlan")}>
+          {wave === null ? (
+            <span className="truncate text-muted-foreground">
+              {t(change.dependsOn ? "plan.cycle" : "plan.unavailable")}
+            </span>
+          ) : (
+            <>
+              <span className="font-medium">{planWaveLabel(wave, t)}</span>
+              <span className="text-muted-foreground">·</span>
+              <span
+                className="truncate text-muted-foreground"
+                title={blockedBy.length > 0 ? planBlockedLabel(blockedBy, t) : undefined}
+              >
+                {blockedBy.length === 0
+                  ? t("plan.canStart")
+                  : t("plan.blockedCount").replace("{n}", String(blockedBy.length))}
+              </span>
+            </>
+          )}
+        </StatusRow>
+      </DetailStatus>
+    </>
+  );
 
   return (
     <TooltipProvider>
-      <DetailPageFrame data-change-detail>
-        <DetailHeader
-          title={change.name}
-          copyLabel={t("common.copyName")}
-          badges={stamps.length > 0 ? stamps.map((s) => <TitleStamp key={s.station} stamp={s} />) : undefined}
-          actions={actions}
-          provenance={[
-            meta?.createdBy && <IdentityName identity={meta.createdBy} />,
-            meta?.createdWith && <span className="shrink-0">✳ {meta.createdWith}</span>,
-            rel && <span className="shrink-0">{rel}</span>,
-            startedLabel &&
-              (meta?.startedBy ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="shrink-0">{startedLabel}</span>
-                  </TooltipTrigger>
-                  <TooltipContent>{meta.startedBy}</TooltipContent>
-                </Tooltip>
-              ) : (
-                <span className="shrink-0">{startedLabel}</span>
-              )),
-            change.claimedBy && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex shrink-0 items-center gap-1">
-                    <Hand className="h-3 w-3" />
-                    {t("rdrawer.claimed").replace("{name}", displayName(change.claimedBy))}
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>{change.claimedBy}</TooltipContent>
-              </Tooltip>
-            ),
-            change.worktree && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex shrink-0 items-center gap-1" title={change.worktree.path}>
-                    <GitBranch className="h-3 w-3" />
-                    {change.worktree.branch}
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>{change.worktree.path}</TooltipContent>
-              </Tooltip>
-            ),
-            (sourceDiscussions ?? []).length > 0 && (
-              <SourceChipRow
-                label={t("rdrawer.fromDiscussion")}
-                items={sourceDiscussions ?? []}
-                onOpen={(slug) => onOpenDiscussion?.(slug)}
-              />
-            ),
-            (siblingChanges ?? []).length > 0 && (
-              <SourceChipRow
-                label={t("rdrawer.siblings")}
-                items={(siblingChanges ?? []).map((sibling) => ({ slug: sibling }))}
-                onOpen={(sibling) => onOpenSibling?.(sibling)}
-              />
-            ),
-          ]}
-        />
+      {/* 直向節點、Enter／Space 才切換（design D2）：方向鍵掃過節點不逐一載文件。 */}
+      <Tabs value={tab} onValueChange={setTab} orientation="vertical" activationMode="manual" className="h-full">
+        {/* 換文件或換變更（‹ ›）都讓閱讀區自頂端呈現：頁不因換變更重掛。 */}
+        <DetailShell
+          data-change-detail
+          tree={tree}
+          activeDoc={`${change.name}\u0000${tab}`}
+          tocKey={tocKey}
+          bodyRef={bodyRef}
+        >
+          <DetailActions>{actions}</DetailActions>
 
-        <StatusCard>
-          <StatusRow mark="tasks" label={t("detail.statusTasks")}>
-            <div data-progress-track className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-              <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
-            </div>
-            <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
-              {`${taskBadge} · ${pct}%`}
-            </span>
-          </StatusRow>
-          <StatusRow mark="quality" label={t("detail.statusQuality")}>
-            {stamps.length === 0 ? (
-              <span className="text-muted-foreground">{t("detail.noQuality")}</span>
-            ) : (
-              stamps.map((s) => (
-                <span key={s.station} className="inline-flex shrink-0 items-center gap-1.5">
-                  <StatusPill tone={s.tone} icon={s.icon}>
-                    {s.label}
-                  </StatusPill>
-                  {s.at && <span className="font-mono text-[11px] text-muted-foreground">{s.at}</span>}
-                </span>
-              ))
-            )}
-          </StatusRow>
-          <StatusRow mark="plan" label={t("detail.statusPlan")}>
-            {wave === null ? (
-              <span className="truncate text-muted-foreground">
-                {t(change.dependsOn ? "plan.cycle" : "plan.unavailable")}
-              </span>
-            ) : (
-              <>
-                <span className="font-medium">{planWaveLabel(wave, t)}</span>
-                <span className="text-muted-foreground">·</span>
-                <span
-                  className="truncate text-muted-foreground"
-                  title={blockedBy.length > 0 ? planBlockedLabel(blockedBy, t) : undefined}
-                >
-                  {blockedBy.length === 0
-                    ? t("plan.canStart")
-                    : t("plan.blockedCount").replace("{n}", String(blockedBy.length))}
-                </span>
-              </>
-            )}
-          </StatusRow>
-        </StatusCard>
+          {/* 分析結果（validate＋analyze 合併）於閱讀卡之上呈現——僅當前 change 相符時。 */}
+          {verbOpen && detailVerb && (
+            <Card data-verb-result className="p-4">
+              {detailVerb.error ? (
+                <div className="text-xs text-destructive">{detailVerb.error}</div>
+              ) : (
+                <AnalyzePanel report={detailVerb.analyze} validate={detailVerb.validate} onClose={onClearVerb} />
+              )}
+            </Card>
+          )}
 
-        {/* 分析結果（validate＋analyze 合併）於狀態卡之下呈現——僅當前 change 相符時。 */}
-        {verbOpen && detailVerb && (
-          <Card data-verb-result className="p-4">
-            {detailVerb.error ? (
-              <div className="text-xs text-destructive">{detailVerb.error}</div>
-            ) : (
-              <AnalyzePanel report={detailVerb.analyze} validate={detailVerb.validate} onClose={onClearVerb} />
-            )}
-          </Card>
-        )}
-
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList variant="card" actions={renderDocumentActions?.(docTarget)}>
-            <TabsTrigger value="proposal">
-              <FileText className="h-3.5 w-3.5" /> {t("common.tabProposal")}
-            </TabsTrigger>
-            <TabsTrigger value="design">
-              <PenTool className="h-3.5 w-3.5" /> {t("common.tabDesign")}
-            </TabsTrigger>
-            <TabsTrigger value="tasks">
-              <ListChecks className="h-3.5 w-3.5" /> {t("common.tabTasks")}
-              <Badge variant={pct === 100 ? "default" : "secondary"} className="ml-1">
-                {taskBadge}
-              </Badge>
-            </TabsTrigger>
-            <TabsTrigger value="specs">
-              <Code2 className="h-3.5 w-3.5" /> {t("common.tabSpecs")}
-              <span className="ml-1">
-                <DeltaBadges counts={delta} />
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="plan">
-              <ListOrdered className="h-3.5 w-3.5" /> {t("drawer.tab.plan")}
-            </TabsTrigger>
-            {/* 條件式工單分頁（spec desktop-app「詳情頁的工單分頁」）：排程之後、審查在前，
-                與標題列章籤同序；分頁名即站名。 */}
-            {inReview && (
-              <TabsTrigger value="review">
-                {REVIEW_ICON.inReview} {t("drawer.tab.review")}
-              </TabsTrigger>
-            )}
-            {inVerify && (
-              <TabsTrigger value="verify">
-                {VERIFY_ICON.inVerify} {t("drawer.tab.verify")}
-              </TabsTrigger>
-            )}
-          </TabsList>
-          <DetailContentCard>
-            {/* undefined＝載入在途、null＝文件不存在（空殼 change）——載入中畫骨架，
-                空態文案只在載入完成後出。 */}
-            <TabsContent value="proposal">
-              {proposal === undefined ? (
-                <DocSkeleton />
-              ) : (
-                <SectionedDoc content={proposal} empty={t("list.noProposalDoc")} />
-              )}
-            </TabsContent>
-            <TabsContent value="design">
-              {design === undefined ? (
-                <DocSkeleton />
-              ) : (
-                <SectionedDoc content={design} empty={t("list.noDesignDoc")} />
-              )}
-            </TabsContent>
-            <TabsContent value="tasks">
-              {taskError && (
-                <div className="mb-2 text-sm text-destructive">
-                  {t("tasks.writeFailed").replace("{msg}", taskError)}
-                </div>
-              )}
-              {unavailable?.tasks && (
-                <div data-testid="tasks-unavailable" className="mb-2 text-sm text-muted-foreground">
-                  {unavailable.tasks}
-                </div>
-              )}
-              {tasksMd === undefined ? (
-                <DocSkeleton />
-              ) : (
-                <TaskList
-                  markdown={tasksMd}
-                  busy={taskBusy}
-                  readOnly={unavailable?.tasks !== undefined}
-                  onDragActiveChange={setDragActive}
-                  onToggle={(ordinal, done, stableId) => void handleToggle(ordinal, done, stableId)}
-                  // 拖排寫回未提供（remote capability 缺口）即整段停用——把手不渲染。
-                  onReorder={
-                    onMoveTask ? (from, to, before) => void handleReorder(from, to, before) : undefined
-                  }
-                  onSetAll={(done) => void handleSetAll(done)}
-                />
-              )}
-            </TabsContent>
-            <TabsContent value="specs">
-              {specDocs === undefined ? (
-                <DocSkeleton />
-              ) : Object.keys(specDocs).length === 0 ? (
-                <div className="py-6 text-sm text-muted-foreground">{t("list.noDeltaSpecs")}</div>
-              ) : (
-                Object.entries(specDocs).map(([cap, doc]) => (
-                  <div key={cap} className="mb-4">
-                    <div className="mb-1 flex items-center gap-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                      {cap} <DeltaBadges counts={specDeltaCounts(doc)} />
-                    </div>
-                    {/* 逐項空態（capability 有列出、其 spec.md 為空）不套整體性文案。 */}
-                    <DeltaSpecView markdown={doc} />
+          <Card className="flex flex-col gap-5 p-6">
+            <DocHeader
+              title={t(DOC_TITLE_KEYS[tab])}
+              actions={renderDocumentActions?.(docTarget)}
+              provenance={[
+                tab === "plan" ? t("plan.derivedFrom") : docPath && <span className="font-mono">{docPath}</span>,
+              ]}
+            />
+            {/* 數字磚與提示框的容器：本刀不放內容（cut 2／3 由文件結構推導）。 */}
+            <DocTiles tiles={[]} />
+            <DocBody ref={bodyRef}>
+              {/* undefined＝載入在途、null＝文件不存在（空殼 change）——載入中畫骨架，
+                  空態文案只在載入完成後出。 */}
+              <TabsContent value="proposal">
+                {proposal === undefined ? (
+                  <DocSkeleton />
+                ) : (
+                  <SectionedDoc content={proposal} empty={t("list.noProposalDoc")} />
+                )}
+              </TabsContent>
+              <TabsContent value="design">
+                {design === undefined ? (
+                  <DocSkeleton />
+                ) : (
+                  <SectionedDoc content={design} empty={t("list.noDesignDoc")} />
+                )}
+              </TabsContent>
+              <TabsContent value="tasks">
+                {taskError && (
+                  <div className="mb-2 text-sm text-destructive">
+                    {t("tasks.writeFailed").replace("{msg}", taskError)}
                   </div>
-                ))
+                )}
+                {unavailable?.tasks && (
+                  <div data-testid="tasks-unavailable" className="mb-2 text-sm text-muted-foreground">
+                    {unavailable.tasks}
+                  </div>
+                )}
+                {tasksMd === undefined ? (
+                  <DocSkeleton />
+                ) : (
+                  <TaskList
+                    markdown={tasksMd}
+                    busy={taskBusy}
+                    readOnly={unavailable?.tasks !== undefined}
+                    onDragActiveChange={setDragActive}
+                    onToggle={(ordinal, done, stableId) => void handleToggle(ordinal, done, stableId)}
+                    // 拖排寫回未提供（remote capability 缺口）即整段停用——把手不渲染。
+                    onReorder={
+                      onMoveTask ? (from, to, before) => void handleReorder(from, to, before) : undefined
+                    }
+                    onSetAll={(done) => void handleSetAll(done)}
+                  />
+                )}
+              </TabsContent>
+              <TabsContent value="specs">
+                {specDocs === undefined ? (
+                  <DocSkeleton />
+                ) : specCaps.length === 0 ? (
+                  <div className="py-6 text-sm text-muted-foreground">{t("list.noDeltaSpecs")}</div>
+                ) : (
+                  Object.entries(specDocs).map(([cap, doc]) => (
+                    <SpecCapSection key={cap} cap={cap} doc={doc} jump={specJump} onJumped={clearSpecJump} />
+                  ))
+                )}
+              </TabsContent>
+              <TabsContent value="plan">
+                <PlanTab change={change} changes={changes ?? []} roster={roster} onSetDepends={onSetDepends} />
+              </TabsContent>
+              {inReview && (
+                <TabsContent value="review">
+                  <TicketTabBody station="review" ticket={tickets.review} />
+                </TabsContent>
               )}
-            </TabsContent>
-            <TabsContent value="plan">
-              <PlanTab change={change} changes={changes ?? []} roster={roster} onSetDepends={onSetDepends} />
-            </TabsContent>
-            {inReview && (
-              <TabsContent value="review">
-                <TicketTabBody station="review" ticket={tickets.review} />
-              </TabsContent>
-            )}
-            {inVerify && (
-              <TabsContent value="verify">
-                <TicketTabBody station="verify" ticket={tickets.verify} />
-              </TabsContent>
-            )}
-          </DetailContentCard>
-        </Tabs>
-      </DetailPageFrame>
+              {inVerify && (
+                <TabsContent value="verify">
+                  <TicketTabBody station="verify" ticket={tickets.verify} />
+                </TabsContent>
+              )}
+            </DocBody>
+          </Card>
+        </DetailShell>
+      </Tabs>
     </TooltipProvider>
   );
 }

@@ -129,8 +129,10 @@ describe("提案／設計分頁章節標籤", () => {
     });
     render(<ChangeDetailPage {...(props as never)} />);
     await waitFor(() => expect(screen.getByText("動機內文。")).toBeTruthy());
-    expect(screen.getByText("為什麼")).toBeTruthy();
-    expect(screen.getByText("變更內容")).toBeTruthy();
+    // 章節標籤同時是本頁目錄的錨點：斷言限定在閱讀卡內文。
+    const body = within(document.querySelector("[data-doc-body]") as HTMLElement);
+    expect(body.getByText("為什麼")).toBeTruthy();
+    expect(body.getByText("變更內容")).toBeTruthy();
     expect(screen.queryByText("Why")).toBeNull();
     expect(screen.queryByText("What Changes")).toBeNull();
   });
@@ -678,7 +680,7 @@ describe("詳情頁內分析結果呈現", () => {
     ]);
   });
 
-  it("分析結果卡渲染於狀態卡之下、內容卡之上", async () => {
+  it("分析結果卡渲染於閱讀區、閱讀卡之上；狀態列在左欄", async () => {
     const props = makeProps({
       detailVerb: {
         change: "desktop-shell-and-browser",
@@ -688,11 +690,13 @@ describe("詳情頁內分析結果呈現", () => {
     });
     render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByText("MomoChen");
-    const status = document.querySelector("[data-status-card]")!;
+    const tree = document.querySelector("[data-detail-tree]")!;
+    const reading = document.querySelector("[data-detail-reading]")!;
     const result = region()!;
-    const tabs = screen.getAllByRole("tablist")[0];
-    expect(status.compareDocumentPosition(result) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(result.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(tree.querySelector("[data-status-card]")).toBeTruthy();
+    expect(reading.contains(result)).toBe(true);
+    const header = reading.querySelector("[data-doc-header]")!;
+    expect(result.compareDocumentPosition(header) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("合併結果呈現結構驗證列、繁中維度摘要卡與發現卡", async () => {
@@ -793,23 +797,23 @@ describe("詳情頁內分析結果呈現", () => {
   });
 });
 
-// spec 需求「markdown 文件內容行寬有上限」（design D4）：內容卡內存在共用置中容器
-// （行寬上限＋水平置中），包住分頁全部內容——SectionedDoc 區段標籤、任務清單與
-// 內文同欄對齊置中；內容欄本身置中、寬 768px。
+// spec 需求「markdown 文件內容行寬有上限」（design D4）與「詳情頁的文件樹、閱讀卡與本頁目錄」：
+// 閱讀卡內文為共用置中容器（行寬上限＋水平置中），包住文件全部內容；閱讀區內容欄置中、寬 768px。
 describe("變更詳情頁閱讀欄置中", () => {
-  it("內容卡內有置中容器（w-full＋max-w-[96ch]＋mx-auto）且包住分頁內容；頁內容欄 768px 置中", async () => {
+  it("閱讀卡內文為置中容器（w-full＋max-w-[96ch]＋mx-auto）且包住文件內容；閱讀區內容欄 768px 置中", async () => {
     const props = makeProps();
     const { baseElement } = render(<ChangeDetailPage {...(props as never)} />);
     await waitFor(() => expect(screen.getByText(/doc for proposal.md/)).toBeTruthy());
-    const col = baseElement.querySelector("[data-reading-column]") as HTMLElement;
+    const col = baseElement.querySelector("[data-doc-body]") as HTMLElement;
     expect(col).toBeTruthy();
     expect(col.className).toContain("w-full");
     expect(col.className).toContain("max-w-[96ch]");
     expect(col.className).toContain("mx-auto");
-    const page = baseElement.querySelector("[data-change-detail]") as HTMLElement;
-    expect(page.className).toContain("max-w-[768px]");
-    expect(page.className).toContain("mx-auto");
-    expect(page.contains(col)).toBe(true);
+    const reading = baseElement.querySelector("[data-detail-reading]") as HTMLElement;
+    const frame = reading.firstElementChild as HTMLElement;
+    expect(frame.className).toContain("max-w-[768px]");
+    expect(frame.className).toContain("mx-auto");
+    expect(frame.contains(col)).toBe(true);
     // 包住分頁全部內容：提案分頁內文在欄內。
     expect(within(col).getByText(/doc for proposal.md/)).toBeTruthy();
     // 任務分頁：任務清單同欄（TaskList stub 在欄內）。
@@ -861,7 +865,7 @@ describe("變更抽屜來源討論標記（slug 直出）", () => {
     });
   });
 
-  it("頁內容欄可壓縮（min-w-0），出身列溢出裁切兜底——頁不產生水平捲軸", async () => {
+  it("閱讀區可壓縮（min-w-0），出身行溢出裁切、來自列不撐寬左欄——頁不產生水平捲軸", async () => {
     const props = makeProps({
       sourceDiscussions: [{ slug: "web-service-navigation-redesign", topic: LONG_TOPIC }],
     });
@@ -869,11 +873,14 @@ describe("變更抽屜來源討論標記（slug 直出）", () => {
     await waitFor(() =>
       expect(document.querySelector("[data-source-discussion-label]")).toBeTruthy(),
     );
-    const page = baseElement.querySelector("[data-change-detail]") as HTMLElement;
-    expect(page.className).toContain("min-w-0");
-    const row = baseElement.querySelector("[data-provenance-row]") as HTMLElement;
+    const reading = baseElement.querySelector("[data-detail-reading]") as HTMLElement;
+    expect(reading.className).toContain("min-w-0");
+    const row = baseElement.querySelector("[data-identity-provenance]") as HTMLElement;
     expect(row.className).toContain("overflow-hidden");
     expect(row.className).toContain("min-w-0");
+    const from = baseElement.querySelector("[data-relation-from]") as HTMLElement;
+    expect(from.className).toContain("min-w-0");
+    expect(from.querySelector("[data-source-discussion-label]")).toBeTruthy();
   });
 
   it("點擊籤開啟對應討論", async () => {
@@ -967,34 +974,33 @@ describe("來源討論多值呈現（+N 浮層）", () => {
   });
 });
 
-// spec 需求「變更詳情頁的標頭與狀態卡」：標題列（名稱＋複製＋章籤＋動作區）／
-// 出身列（單行）／「狀態」卡三列（任務進度、品質關卡、排程）。
+// spec 需求「變更詳情頁的標頭與狀態卡」：左欄身分區（名稱＋複製＋籤、單行出身、關聯列）／
+// 「文件」節點／「狀態」列三列（任務進度、品質關卡、排程）；變更層動作在標題列（無宿主時原地）。
 describe("標頭與狀態卡", () => {
-  const titleRow = () => document.querySelector("[data-title-row]") as HTMLElement;
+  const identity = () => document.querySelector("[data-detail-identity]") as HTMLElement;
+  const actions = () => document.querySelector("[data-detail-actions]") as HTMLElement;
   const statusRow = (name: "tasks" | "quality" | "plan") =>
     document.querySelector(`[data-status-${name}]`) as HTMLElement;
   const flat = (el: Element | null) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
 
-  it("內容欄由上而下為標題列、出身列、狀態卡、內容卡；標題列與出身列無任務計數", async () => {
+  it("左欄由上而下為身分區、「文件」節點、「狀態」列；身分區無任務計數", async () => {
     render(<ChangeDetailPage {...(makeProps() as never)} />);
     await screen.findByText("MomoChen");
-    const order = [
-      titleRow(),
-      document.querySelector("[data-provenance-row]")!,
-      document.querySelector("[data-status-card]")!,
-      screen.getAllByRole("tablist")[0],
-    ];
+    const tree = document.querySelector("[data-detail-tree]") as HTMLElement;
+    const order = [identity(), within(tree).getByRole("tablist"), within(tree).getByText("狀態"), tree.querySelector("[data-status-card]")!];
     for (let i = 1; i < order.length; i++) {
       expect(order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
-    expect(flat(titleRow())).not.toMatch(/30\/30/);
-    expect(flat(document.querySelector("[data-provenance-row]"))).not.toMatch(/30\/30/);
-    // 任務進度由狀態卡與分頁徽章承載。
-    expect(flat(statusRow("tasks"))).toContain("30/30 · 100%");
+    expect(within(tree).getByText("文件")).toBeTruthy();
+    expect(flat(identity())).not.toMatch(/30\/30/);
+    // 階段籤：已就緒。
+    expect(within(identity()).getByText("已就緒")).toBeTruthy();
+    // 任務進度由「狀態」列與「任務」節點徽章承載。
+    expect(flat(statusRow("tasks"))).toContain("30/30");
     expect(screen.getByRole("tab", { name: /任務/ }).textContent).toContain("30/30");
   });
 
-  it("狀態卡三列：任務進度 16/17 · 94%、品質關卡兩枚帶日期章籤、排程第 2 波等 1 項", async () => {
+  it("狀態列三列：任務進度 16/17、品質關卡兩枚帶日期章籤、排程第 2 波等 1 項", async () => {
     const c: ChangeItem = {
       ...change,
       totalTasks: 17,
@@ -1011,7 +1017,8 @@ describe("標頭與狀態卡", () => {
     render(<ChangeDetailPage {...(makeProps({ change: c }) as never)} />);
     await screen.findByText("MomoChen");
     expect(within(statusRow("tasks")).getByText("任務進度")).toBeTruthy();
-    expect(flat(statusRow("tasks"))).toContain("16/17 · 94%");
+    expect(flat(statusRow("tasks"))).toContain("16/17");
+    expect(flat(statusRow("tasks"))).not.toContain("94%");
     expect(statusRow("tasks").querySelector("[data-progress-track]")).toBeTruthy();
     const quality = flat(statusRow("quality"));
     expect(quality).toContain("品質關卡");
@@ -1027,13 +1034,13 @@ describe("標頭與狀態卡", () => {
     expect(plan).toContain("等 1 項");
   });
 
-  it("兩站皆 none：標題列無章籤、品質關卡列顯示「尚未經過品質關卡」；可以開工與缺 wave 的說明詞條", async () => {
+  it("兩站皆 none：身分區無章籤、品質關卡列顯示「尚未經過品質關卡」；可以開工與缺 wave 的說明詞條", async () => {
     const r = render(
       <ChangeDetailPage {...(makeProps({ change: { ...change, wave: 1, blockedBy: [] } }) as never)} />,
     );
     await screen.findByText("MomoChen");
-    expect(titleRow().querySelector("[data-review-row]")).toBeNull();
-    expect(titleRow().querySelector("[data-verify-row]")).toBeNull();
+    expect(identity().querySelector("[data-review-row]")).toBeNull();
+    expect(identity().querySelector("[data-verify-row]")).toBeNull();
     expect(flat(statusRow("quality"))).toContain("尚未經過品質關卡");
     expect(flat(statusRow("plan"))).toContain("可以開工");
     r.unmount();
@@ -1047,9 +1054,9 @@ describe("標頭與狀態卡", () => {
     expect(flat(statusRow("plan"))).toContain("依賴成環");
   });
 
-  // spec Scenario「章籤與品質關卡列」：標題列兩枚章籤，蓋章日期與含 email 完整識別
-  // 收進提示，標題列恆定單行。
-  it("標題列兩站章籤：可視僅狀態詞，日期與完整識別在提示內", async () => {
+  // spec Scenario「章籤與品質關卡列」：身分區兩枚章籤，蓋章日期與含 email 完整識別
+  // 收進提示。
+  it("身分區兩站章籤：可視僅狀態詞，日期與完整識別在提示內", async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const stamped: ChangeItem = {
       ...change,
@@ -1062,7 +1069,7 @@ describe("標頭與狀態卡", () => {
     };
     render(<ChangeDetailPage {...(makeProps({ change: stamped }) as never)} />);
     await screen.findByText("MomoChen");
-    const row = titleRow();
+    const row = identity();
     const text = row.textContent ?? "";
     expect(text).toContain("已審查");
     expect(text).toContain("已驗證");
@@ -1071,7 +1078,6 @@ describe("標頭與狀態卡", () => {
     expect(text).not.toContain("2026-08-04");
     expect(text).not.toContain("2026-08-06");
     expect(row.className).toContain("min-w-0");
-    expect(row.className).toContain("whitespace-nowrap");
 
     await user.hover(within(row).getByText("已審查"));
     await waitFor(() => {
@@ -1094,7 +1100,7 @@ describe("標頭與狀態卡", () => {
     };
     render(<ChangeDetailPage {...(makeProps({ change: stamped }) as never)} />);
     await screen.findByText("MomoChen");
-    await user.hover(within(titleRow()).getByText("已驗證"));
+    await user.hover(within(identity()).getByText("已驗證"));
     await waitFor(() => {
       const tip = document.querySelector("[data-radix-popper-content-wrapper]");
       expect(tip?.textContent).toContain("2026-08-06");
@@ -1102,7 +1108,7 @@ describe("標頭與狀態卡", () => {
     });
   });
 
-  it("進行中兩站（inReview／inVerify）：標題列與品質關卡列僅狀態詞、無日期", async () => {
+  it("進行中兩站（inReview／inVerify）：身分區與品質關卡列僅狀態詞、無日期", async () => {
     const running: ChangeItem = {
       ...change,
       reviewStatus: "inReview",
@@ -1110,19 +1116,19 @@ describe("標頭與狀態卡", () => {
     };
     render(<ChangeDetailPage {...(makeProps({ change: running }) as never)} />);
     await screen.findByText("MomoChen");
-    for (const el of [titleRow(), statusRow("quality")]) {
+    for (const el of [identity(), statusRow("quality")]) {
       expect(el.textContent).toContain("審查中");
       expect(el.textContent).toContain("驗證中");
       expect(el.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
     }
   });
 
-  it("已就緒時標題列有「封存」主要鈕；進行中為「退回提案中」", async () => {
+  it("已就緒時動作區有「封存」主要鈕；進行中為「退回提案中」", async () => {
     const r = render(<ChangeDetailPage {...(makeProps({ onRevert: vi.fn() }) as never)} />);
     await screen.findByText("MomoChen");
-    const archive = within(titleRow()).getByRole("button", { name: /^封存$/ });
+    const archive = within(actions()).getByRole("button", { name: /^封存$/ });
     expect(archive.className).toContain("bg-primary");
-    expect(within(titleRow()).queryByRole("button", { name: /退回提案中/ })).toBeNull();
+    expect(within(actions()).queryByRole("button", { name: /退回提案中/ })).toBeNull();
     r.unmount();
     render(
       <ChangeDetailPage
@@ -1133,8 +1139,22 @@ describe("標頭與狀態卡", () => {
       />,
     );
     await screen.findByText("MomoChen");
-    expect(within(titleRow()).getByRole("button", { name: /退回提案中/ })).toBeTruthy();
-    expect(within(titleRow()).queryByRole("button", { name: /^封存$/ })).toBeNull();
+    expect(within(actions()).getByRole("button", { name: /退回提案中/ })).toBeTruthy();
+    expect(within(actions()).queryByRole("button", { name: /^封存$/ })).toBeNull();
+  });
+
+  // spec Scenario「標題列的變更層動作」：無宿主插槽時原地渲染；順序為分析、主要鈕、⋯，「⋯」為 outline。
+  it("動作鈕在無 provider 時原地渲染且「⋯」為 outline、順序為分析／封存／⋯", async () => {
+    render(<ChangeDetailPage {...(makeProps() as never)} />);
+    await screen.findByText("MomoChen");
+    const buttons = within(actions()).getAllByRole("button");
+    expect(buttons.map((b) => b.textContent?.trim() || b.getAttribute("aria-label"))).toEqual(["分析", "封存", "更多動作"]);
+    const more = within(actions()).getByRole("button", { name: "更多動作" });
+    expect(more.className).toContain("border");
+    expect(more.className).not.toContain("bg-muted");
+    // 動作鈕不在左欄與閱讀卡內。
+    expect(document.querySelector("[data-detail-tree]")!.contains(more)).toBe(false);
+    expect(document.querySelector("[data-doc-header]")!.contains(more)).toBe(false);
   });
 
   it("建立者 email 不直出，僅顯名字；提示保完整識別", async () => {
@@ -1172,7 +1192,7 @@ describe("標頭與狀態卡", () => {
       <ChangeDetailPage {...(makeProps({ change: wtChange }) as never)} />,
     );
     await screen.findByText("MomoChen");
-    const row = baseElement.querySelector("[data-provenance-row]") as HTMLElement;
+    const row = baseElement.querySelector("[data-identity-provenance]") as HTMLElement;
     const branch = within(row).getByText(/speclink\/demo/);
     expect(branch).toBeTruthy();
     expect(within(row).getByTitle("/work/speclink.worktrees/demo")).toBeTruthy();
@@ -1184,11 +1204,11 @@ describe("標頭與狀態卡", () => {
 
     const plain = render(<ChangeDetailPage {...(makeProps() as never)} />);
     await screen.findByText("MomoChen");
-    const plainRow = plain.baseElement.querySelector("[data-provenance-row]") as HTMLElement;
+    const plainRow = plain.baseElement.querySelector("[data-identity-provenance]") as HTMLElement;
     expect(within(plainRow).queryByText(/speclink\//)).toBeNull();
   });
 
-  it("出身列為不折行單行容器（4 筆來源討論＋開工＋同源）", async () => {
+  it("出身行為不折行單行容器、關聯列各自一行（4 筆來源討論＋開工＋同源）", async () => {
     const props = makeProps({
       loadMeta: vi.fn(async () => ({
         created: "2026-07-05",
@@ -1207,17 +1227,28 @@ describe("標頭與狀態卡", () => {
     });
     const { baseElement } = render(<ChangeDetailPage {...(props as never)} />);
     await screen.findByText("MomoChen");
-    const row = baseElement.querySelector("[data-provenance-row]") as HTMLElement;
+    const row = baseElement.querySelector("[data-identity-provenance]") as HTMLElement;
     expect(row).toBeTruthy();
     // 恆定單行：不折行、溢出裁切兜底。
     expect(row.className).not.toContain("flex-wrap");
     expect(row.className).toContain("overflow-hidden");
     expect(row.className).toContain("whitespace-nowrap");
-    // 出身資訊全在此列：建立者、開工、來自首籤、同源首籤與各自 +N。
     expect(within(row).getByText("MomoChen")).toBeTruthy();
     expect(within(row).getByText(/開工 2026-08-03/)).toBeTruthy();
-    expect(within(row).getByRole("button", { name: /code-review-stage/ })).toBeTruthy();
-    expect(within(row).getByRole("button", { name: /sib-one/ })).toBeTruthy();
+    // 關聯列各自一行：「來自」首籤＋「+3」、「同源」首籤＋「+1」、「規格」能力籤。
+    const from = baseElement.querySelector("[data-relation-from]") as HTMLElement;
+    expect(within(from).getByText("來自")).toBeTruthy();
+    expect(within(from).getByRole("button", { name: /code-review-stage/ })).toBeTruthy();
+    expect(within(from).getByRole("button", { name: /其餘 3 份/ }).textContent).toBe("+3");
+    const sibling = baseElement.querySelector("[data-relation-sibling]") as HTMLElement;
+    expect(within(sibling).getByText("同源")).toBeTruthy();
+    expect(within(sibling).getByRole("button", { name: /sib-one/ })).toBeTruthy();
+    const specs = await waitFor(() => {
+      const el = baseElement.querySelector("[data-relation-specs]") as HTMLElement | null;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    expect(within(specs).getByRole("button", { name: "desktop-app" })).toBeTruthy();
   });
 });
 
@@ -1451,6 +1482,23 @@ describe("詳情抽屜的工單分頁", () => {
     );
   });
 
+  it("審查／驗證節點的徽章為末輪序號；排程節點有 wave 時帶「第 N 波」", async () => {
+    const loadStationTicket = vi.fn(async (_c: string, station: string) =>
+      station === "review" ? REVIEW_TICKET : VERIFY_TICKET,
+    );
+    render(
+      <ChangeDetailPage
+        {...(makeProps({
+          change: x({ reviewStatus: "inReview", verifyStatus: "inVerify", wave: 3, blockedBy: [] }),
+          loadStationTicket,
+        }) as never)}
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole("tab", { name: /審查/ }).textContent).toContain("第 2 輪"));
+    expect(screen.getByRole("tab", { name: /驗證/ }).textContent).toContain("第 1 輪");
+    expect(screen.getByRole("tab", { name: /排程/ }).textContent).toContain("第 3 波");
+  });
+
   it("兩站皆進行中 → 「審查」「驗證」依序出現、各載各站、內容互不混入", async () => {
     const loadStationTicket = vi.fn(async (_c: string, station: string) =>
       station === "review" ? REVIEW_TICKET : VERIFY_TICKET,
@@ -1609,7 +1657,7 @@ describe("詳情頁的文件動作槽", () => {
   const NAME = "desktop-shell-and-browser";
   const doc = (artifact: string) => ({ change: NAME, artifact });
 
-  it("各分頁回報對應文件；排程分頁回報 null；回傳節點渲染在分頁列右端", async () => {
+  it("各文件回報對應檔案；排程回報 null；回傳節點渲染在閱讀卡標題列", async () => {
     const renderDocumentActions = vi.fn((target: DocumentTarget | null) =>
       target && "change" in target.doc ? <button type="button">開啟 {target.doc.artifact}</button> : null,
     );
@@ -1625,8 +1673,9 @@ describe("詳情頁的文件動作槽", () => {
     await waitFor(() =>
       expect(lastCall(renderDocumentActions)).toEqual({ doc: doc("proposal.md"), content: "# doc for proposal.md" }),
     );
-    const tabsRow = screen.getAllByRole("tablist")[0].parentElement!;
-    expect(within(tabsRow).getByRole("button", { name: "開啟 proposal.md" })).toBeTruthy();
+    const docHeader = () => document.querySelector("[data-doc-header]") as HTMLElement;
+    expect(within(docHeader()).getByRole("button", { name: "開啟 proposal.md" })).toBeTruthy();
+    expect(within(document.querySelector("[data-detail-tree]") as HTMLElement).queryByRole("button", { name: /^開啟 / })).toBeNull();
 
     await openTab(/設計/);
     expect(lastCall(renderDocumentActions)).toEqual({ doc: doc("design.md"), content: "# doc for design.md" });
@@ -1636,7 +1685,7 @@ describe("詳情頁的文件動作槽", () => {
     expect(lastCall(renderDocumentActions)).toEqual({ doc: doc("specs/desktop-app/spec.md"), content: SPEC_MD });
     await openTab(/排程/);
     expect(lastCall(renderDocumentActions)).toBeNull();
-    expect(within(tabsRow).queryByRole("button", { name: /^開啟 / })).toBeNull();
+    expect(within(docHeader()).queryByRole("button", { name: /^開啟 / })).toBeNull();
     await openTab(/審查/);
     expect(lastCall(renderDocumentActions)).toEqual({ doc: doc("review.md") });
     await openTab(/驗證/);
@@ -1663,3 +1712,149 @@ describe("詳情頁的文件動作槽", () => {
     expect(screen.queryByRole("button", { name: /全螢幕|還原大小/ })).toBeNull();
   });
 });
+
+// spec「詳情頁的文件樹、閱讀卡與本頁目錄」：規格列能力籤切到規格文件並選定該 capability；
+// 切換文件時閱讀區自頂端呈現、閱讀卡標題換成該文件。
+describe("文件樹與閱讀卡", () => {
+  it("點規格列的能力籤切到規格文件，「開啟 ▾」指向該 capability", async () => {
+    const renderDocumentActions = vi.fn((_target: DocumentTarget | null) => null);
+    const props = makeProps({
+      loadCapabilities: vi.fn(async () => ["auth", "desktop-app"]),
+      renderDocumentActions,
+    });
+    render(<ChangeDetailPage {...(props as never)} />);
+    const specs = await waitFor(() => {
+      const el = document.querySelector("[data-relation-specs]") as HTMLElement | null;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    fireEvent.click(within(specs).getByRole("button", { name: "desktop-app" }));
+    expect(screen.getByRole("tab", { name: /規格/ }).getAttribute("aria-selected")).toBe("true");
+    expect(within(document.querySelector("[data-doc-header]") as HTMLElement).getByRole("heading").textContent).toBe("規格");
+    const last = renderDocumentActions.mock.calls.at(-1)![0];
+    expect(last?.doc).toEqual({ change: "desktop-shell-and-browser", artifact: "specs/desktop-app/spec.md" });
+  });
+
+  it("能力籤每點一次捲到該 capability 一次；自文件樹切走再切回規格文件時自頂端呈現", async () => {
+    const scrolled: string[] = [];
+    HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) {
+      scrolled.push(this.dataset.specCap ?? "");
+    };
+    try {
+      const props = makeProps({ loadCapabilities: vi.fn(async () => ["auth", "desktop-app"]) });
+      render(<ChangeDetailPage {...(props as never)} />);
+      const specs = await waitFor(() => {
+        const el = document.querySelector("[data-relation-specs]") as HTMLElement | null;
+        expect(el).toBeTruthy();
+        return el!;
+      });
+      fireEvent.click(within(specs).getByRole("button", { name: "desktop-app" }));
+      await waitFor(() => expect(scrolled).toEqual(["desktop-app"]));
+      fireEvent.mouseDown(screen.getByRole("tab", { name: /提案/ }));
+      fireEvent.mouseDown(screen.getByRole("tab", { name: /規格/ }));
+      expect((document.querySelector("[data-detail-reading]") as HTMLElement).scrollTop).toBe(0);
+      expect(scrolled).toEqual(["desktop-app"]);
+      fireEvent.click(within(specs).getByRole("button", { name: "desktop-app" }));
+      await waitFor(() => expect(scrolled).toEqual(["desktop-app", "desktop-app"]));
+    } finally {
+      delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
+  it("閱讀卡出處行：提案為相對變更目錄的路徑、排程為推算來源", async () => {
+    render(<ChangeDetailPage {...(makeProps() as never)} />);
+    await screen.findByText("MomoChen");
+    const provenance = () => document.querySelector("[data-doc-header] [data-doc-provenance]")?.textContent;
+    expect(provenance()).toBe("proposal.md");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /排程/ }));
+    expect(provenance()).toBe("由 speclink plan 推算");
+  });
+
+  it("換變更（‹ ›）時即使同為提案文件，閱讀區也捲回頂端", async () => {
+    const props = makeProps();
+    const { rerender } = render(<ChangeDetailPage {...(props as never)} />);
+    await screen.findByText("MomoChen");
+    const reading = document.querySelector("[data-detail-reading]") as HTMLElement;
+    reading.scrollTop = 300;
+    rerender(<ChangeDetailPage {...(makeProps({ change: { ...change, name: "another-change" } }) as never)} />);
+    expect((document.querySelector("[data-detail-reading]") as HTMLElement).scrollTop).toBe(0);
+    await screen.findByText("MomoChen");
+  });
+
+  it("切到內文未到的文件：節點立即標示、內文為 skeleton；左欄捲動位置不變", async () => {
+    const props = makeProps({
+      loadDocument: vi.fn((_c: string, artifact: string) =>
+        artifact === "design.md"
+          ? new Promise<string>(() => {})
+          : Promise.resolve(artifact.startsWith("specs/") ? SPEC_MD : `# doc for ${artifact}`),
+      ),
+    });
+    render(<ChangeDetailPage {...(props as never)} />);
+    await screen.findByText("MomoChen");
+    const tree = document.querySelector("[data-detail-tree]") as HTMLElement;
+    tree.scrollTop = 120;
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /設計/ }));
+    expect(screen.getByRole("tab", { name: /設計/ }).getAttribute("data-state")).toBe("active");
+    const body = document.querySelector("[data-doc-body]") as HTMLElement;
+    expect(body.querySelector('[aria-busy="true"]')).toBeTruthy();
+    expect(tree.scrollTop).toBe(120);
+  });
+
+  it("切換文件後閱讀區捲回頂端、閱讀卡標題立即換成該文件", async () => {
+    render(<ChangeDetailPage {...(makeProps() as never)} />);
+    await screen.findByText("MomoChen");
+    const reading = document.querySelector("[data-detail-reading]") as HTMLElement;
+    const heading = () => within(document.querySelector("[data-doc-header]") as HTMLElement).getByRole("heading");
+    expect(heading().textContent).toBe("提案");
+    reading.scrollTop = 240;
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /設計/ }));
+    expect(screen.getByRole("tab", { name: /設計/ }).getAttribute("data-state")).toBe("active");
+    expect(heading().textContent).toBe("設計");
+    expect(reading.scrollTop).toBe(0);
+  });
+});
+
+// design D5：各渲染器的區段標題帶 data-doc-heading，右欄本頁目錄以它們為錨點。
+describe("本頁目錄錨點", () => {
+  it("提案含 Why／What Changes／Impact 時內文錨點依序為三個章節標籤，本頁目錄列出同三筆", async () => {
+    const props = makeProps({
+      loadDocument: vi.fn(async (_c: string, artifact: string) =>
+        artifact === "proposal.md"
+          ? "## Why\n\n因為。\n\n## What Changes\n\n改這個。\n\n## Impact\n\n影響面。\n"
+          : artifact.startsWith("specs/")
+            ? SPEC_MD
+            : `# doc for ${artifact}`,
+      ),
+    });
+    render(<ChangeDetailPage {...(props as never)} />);
+    await screen.findByText("因為。");
+    const body = document.querySelector("[data-doc-body]") as HTMLElement;
+    const heads = Array.from(body.querySelectorAll("[data-doc-heading]")).map((el) => el.textContent);
+    expect(heads).toEqual(["為什麼", "變更內容", "影響"]);
+    expect(body.querySelector("[data-doc-heading]")!.tagName).toBe("H2");
+    const toc = document.querySelector("[data-detail-toc]") as HTMLElement;
+    await waitFor(() =>
+      expect(Array.from(toc.querySelectorAll("[data-manual-anchor]")).map((el) => el.textContent)).toEqual([
+        "為什麼",
+        "變更內容",
+        "影響",
+      ]),
+    );
+  });
+
+  it("規格 delta 的色標區段標頭與排程四卡標題為錨點", async () => {
+    render(
+      <ChangeDetailPage
+        {...(makeProps({ change: { ...change, wave: 1, blockedBy: [], dependsOn: [] } }) as never)}
+      />,
+    );
+    await screen.findByText("MomoChen");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /規格/ }));
+    await waitFor(() => expect(document.querySelector('[data-delta-section="added"]')).toBeTruthy());
+    expect(document.querySelector('[data-delta-section="added"]')!.hasAttribute("data-doc-heading")).toBe(true);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /排程/ }));
+    const titles = Array.from(document.querySelectorAll("[data-plan-card-header] [data-doc-heading]"));
+    expect(titles).toHaveLength(4);
+  });
+});
+

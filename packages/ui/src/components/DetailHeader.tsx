@@ -1,11 +1,18 @@
 import { Fragment, type HTMLAttributes, type ReactNode } from "react";
 
-import { useI18n } from "../i18n";
+import type { Stage } from "../stage";
 import { CopyButton } from "./CopyButton";
 import { READING_COLUMN_CLS } from "./Markdown";
-import { SectionHeader } from "./SectionHeader";
 import { Card } from "./ui/card";
+import type { StatusPillTone } from "./ui/status-pill";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+
+/** 變更階段籤的 tone（看板欄色相）：變更詳情頁身分區與討論頁的衍生變更籤共用；已封存中性、已刪除警示由呼叫端另判。 */
+export const STAGE_PILL_TONE: Record<Stage, StatusPillTone> = {
+  proposed: "primary",
+  "in-progress": "progress",
+  ready: "success",
+};
 
 /** 詳情頁分頁對應的文件（design D4「開啟 ▾」）：change 的 artifact（輸出路徑，如
  * `proposal.md`、`specs/<capability>/spec.md`）、一筆討論記錄、一份正式規格，或封存變更
@@ -16,6 +23,11 @@ export type DocumentRef =
   | { discussion: string }
   | { spec: string }
   | { archived: string; artifact: string };
+
+/** 對象的 artifact 路徑（相對變更目錄，閱讀卡出處行用）；討論、正式規格與沒有檔案時為 null。 */
+export function documentArtifact(target: DocumentTarget | null): string | null {
+  return target?.doc && "artifact" in target.doc ? target.doc.artifact : null;
+}
 
 /** 「開啟 ▾」的對象：文件與該分頁已載入的原文（未載完為 null）。分頁不載原文時
  * （審查／驗證工單只載解析後的回合）`content` 缺席；`doc` 為 null＝沒有可定位的檔案
@@ -50,6 +62,23 @@ export function IdentityName({ identity }: { identity: string }) {
   );
 }
 
+/** 以「·」分隔的資訊段：缺席（falsy）的段整段略過。以原始槽位為 key——資料陸續抵達時
+ * 前段由缺席變存在，後段不得因位移而重掛。詳情頁標頭、身分區與閱讀卡出處行共用。 */
+export function DotSeparated({ segments }: { segments: ReactNode[] }) {
+  return segments
+    .flatMap((node, slot) => (node ? [{ node, slot }] : []))
+    .map(({ node, slot }, i) => (
+      <Fragment key={slot}>
+        {i > 0 && (
+          <span aria-hidden="true" className="shrink-0 opacity-50">
+            ·
+          </span>
+        )}
+        {node}
+      </Fragment>
+    ));
+}
+
 export interface DetailHeaderProps {
   /** 等寬 22px 標題（變更名或討論 slug），單行截斷。 */
   title: string;
@@ -80,8 +109,7 @@ export function DetailHeader({
   subtitle,
   provenance,
 }: DetailHeaderProps) {
-  // 以原始槽位為 key：資料陸續抵達時前段由缺席變存在，後段不得因位移而重掛。
-  const segments = (provenance ?? []).flatMap((node, slot) => (node ? [{ node, slot }] : []));
+  const hasProvenance = (provenance ?? []).some(Boolean);
   return (
     <header className="flex min-w-0 flex-col gap-1.5">
       <div data-title-row className="flex min-w-0 items-center gap-2 whitespace-nowrap">
@@ -91,21 +119,12 @@ export function DetailHeader({
         {actions && <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">{actions}</div>}
       </div>
       {subtitle && <p className="truncate text-[15px] text-foreground/80">{subtitle}</p>}
-      {segments.length > 0 && (
+      {hasProvenance && (
         <div
           data-provenance-row
           className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-xs text-muted-foreground"
         >
-          {segments.map(({ node, slot }, i) => (
-            <Fragment key={slot}>
-              {i > 0 && (
-                <span aria-hidden="true" className="shrink-0 opacity-50">
-                  ·
-                </span>
-              )}
-              {node}
-            </Fragment>
-          ))}
+          <DotSeparated segments={provenance ?? []} />
         </div>
       )}
     </header>
@@ -121,19 +140,8 @@ export function DetailPageFrame({ children, ...rest }: HTMLAttributes<HTMLDivEle
   );
 }
 
-/** 「狀態」卡：區段標頭＋細線分隔的列（內容為 [`StatusRow`]）。 */
-export function StatusCard({ children }: { children: ReactNode }) {
-  const { t } = useI18n();
-  return (
-    <section data-status-card className="flex flex-col gap-2">
-      <SectionHeader label={t("detail.status")} />
-      <Card className="divide-y divide-border">{children}</Card>
-    </section>
-  );
-}
-
-/** 狀態卡的一列：左標籤右內容，`data-status-<mark>` 供測試定位。內容預設單行不撐寬；
- * `wrap` 讓多顆籤（衍生變更）折行。 */
+/** 「狀態」列的一列（文件樹左欄，design D1）：左標籤右內容，`data-status-<mark>` 供測試定位。
+ * 內容預設單行不撐寬；`wrap` 讓多顆籤（衍生變更、階段步驟）折行。 */
 export function StatusRow({
   mark,
   label,
@@ -146,13 +154,13 @@ export function StatusRow({
   children: ReactNode;
 }) {
   return (
-    <div {...{ [`data-status-${mark}`]: "" }} className="flex min-w-0 items-center gap-4 px-4 py-2.5 text-sm">
-      <span className="w-20 shrink-0 text-xs text-muted-foreground">{label}</span>
+    <div {...{ [`data-status-${mark}`]: "" }} className="flex min-w-0 items-start gap-2 px-2 py-2 text-xs">
+      <span className="w-14 shrink-0 leading-5 text-muted-foreground">{label}</span>
       <div
         className={
           wrap
-            ? "flex min-w-0 flex-1 flex-wrap items-center gap-1.5"
-            : "flex min-w-0 flex-1 items-center gap-2 overflow-hidden whitespace-nowrap"
+            ? "flex min-h-5 min-w-0 flex-1 flex-wrap items-center gap-1.5"
+            : "flex min-h-5 min-w-0 flex-1 items-center gap-2 overflow-hidden whitespace-nowrap"
         }
       >
         {children}

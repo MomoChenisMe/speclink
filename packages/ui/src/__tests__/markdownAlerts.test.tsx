@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 
 import { I18nProvider, type UiLocale } from "../i18n";
 import { Markdown } from "../components/Markdown";
+import { CALLOUT_BOX_CLS, CALLOUT_TITLE_CLS, Callout } from "../components/ui/callout";
 import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
 
 function renderMd(content: string, locale: UiLocale = "zh-TW") {
@@ -110,5 +111,24 @@ describe("Markdown GitHub Alert 提示框", () => {
     expect(container.querySelector(".markdown-alert")).toBeNull();
     expect(container.querySelector("h1")?.textContent).toBe("標題");
     expect(container.querySelector("table")).toBeTruthy();
+  });
+});
+
+// design D6：提示框樣式抽成 Callout 原語，Markdown 的四型與詳情頁閱讀卡的提示框槽共用。
+describe("Callout 原語", () => {
+  it("tip 型：外框為共用提示框 class＋success 語意色，標題列帶 success 字色", () => {
+    const { container } = render(
+      <Callout tone="tip" title="x">
+        y
+      </Callout>,
+    );
+    const box = container.firstElementChild as HTMLElement;
+    for (const cls of CALLOUT_BOX_CLS.split(" ")) expect(box.className).toContain(cls);
+    for (const cls of SEMANTIC_SURFACE.success.split(" ")) expect(box.className).toContain(cls);
+    const title = box.firstElementChild as HTMLElement;
+    expect(title.textContent).toBe("x");
+    for (const cls of CALLOUT_TITLE_CLS.split(" ")) expect(title.className).toContain(cls);
+    for (const cls of SEMANTIC_TONE.success.split(" ")) expect(title.className).toContain(cls);
+    expect(box.textContent).toBe("xy");
   });
 });

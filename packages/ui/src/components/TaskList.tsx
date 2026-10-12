@@ -161,6 +161,7 @@ function SortableGroupHeading({ id, text }: { id: string; text: string }) {
   return (
     <h4
       ref={setNodeRef}
+      data-doc-heading
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={`${SUB_LABEL_CLS} mt-4 mb-1.5 first:mt-0`}
     >
@@ -305,7 +306,7 @@ export function TaskList({ markdown, onToggle, onReorder, busy, onDragActiveChan
   const rows = items.map((item, i) =>
     item.kind === "group" ? (
       !sortable ? (
-        <h4 key={`g-${i}`} className={`${SUB_LABEL_CLS} mt-4 mb-1.5 first:mt-0`}>
+        <h4 key={`g-${i}`} data-doc-heading className={`${SUB_LABEL_CLS} mt-4 mb-1.5 first:mt-0`}>
           {item.text}
         </h4>
       ) : (

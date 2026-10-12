@@ -14,7 +14,12 @@ function render(ui: ReactElement) {
   return rtlRender(ui, { wrapper: zhWrapper });
 }
 
-import { DiscussionDetailPage, splitDiscussionSections, splitRounds } from "../components/DiscussionDetailPage";
+import {
+  DiscussionDetailPage,
+  countPriorDiscussions,
+  splitDiscussionSections,
+  splitRounds,
+} from "../components/DiscussionDetailPage";
 import type { DocumentTarget } from "../components/DetailHeader";
 import { LABEL_CLS } from "../components/SectionedDoc";
 import { ChangeCard } from "../components/ChangeCard";
@@ -339,13 +344,15 @@ const FULL_CONCLUSION = [
 ].join("\n");
 
 describe("結論欄位標籤化（討論結論以欄位標籤呈現）", () => {
+  // 欄位標籤同時是本頁目錄的錨點：斷言限定在閱讀卡內文。
+  const body = () => within(document.querySelector("[data-doc-body]") as HTMLElement);
   it("scaffold 結論六欄位成標籤區塊，粗體前綴原文不出現", async () => {
     const props = makeProps({ loadDocument: vi.fn(async () => docWithConclusion(FULL_CONCLUSION)) });
     render(<DiscussionDetailPage {...(props as never)} />);
     // 結論非空 → 預設分頁即結論。
     await waitFor(() => expect(screen.getByText("拍板做 A")).toBeTruthy());
     for (const label of ["決定", "理由", "否決替代案", "擱置", "記錄去向", "下一步"]) {
-      expect(screen.getByText(label)).toBeTruthy();
+      expect(body().getByText(label)).toBeTruthy();
     }
     expect(screen.queryByText("Decision")).toBeNull();
     expect(screen.queryByText("Rationale")).toBeNull();
@@ -356,8 +363,8 @@ describe("結論欄位標籤化（討論結論以欄位標籤呈現）", () => {
     const props = makeProps({ loadDocument: vi.fn(async () => doc) });
     render(<DiscussionDetailPage {...(props as never)} />);
     await waitFor(() => expect(screen.getByText("只有決定")).toBeTruthy());
-    expect(screen.getByText("決定")).toBeTruthy();
-    expect(screen.getByText("理由")).toBeTruthy();
+    expect(body().getByText("決定")).toBeTruthy();
+    expect(body().getByText("理由")).toBeTruthy();
     expect(screen.queryByText("擱置")).toBeNull();
     expect(screen.queryByText("下一步")).toBeNull();
   });
@@ -366,13 +373,13 @@ describe("結論欄位標籤化（討論結論以欄位標籤呈現）", () => {
   it("輪與結論欄位標籤為粗體大標題款式（與章節標籤同源）", async () => {
     const props = makeProps({ loadDocument: vi.fn(async () => docWithConclusion(FULL_CONCLUSION)) });
     render(<DiscussionDetailPage {...(props as never)} />);
-    await waitFor(() => expect(screen.getByText("決定")).toBeTruthy());
-    const conclusionLabel = screen.getByText("決定");
+    await waitFor(() => expect(body().getByText("決定")).toBeTruthy());
+    const conclusionLabel = body().getByText("決定");
     for (const cls of LABEL_CLS.split(" ")) expect(conclusionLabel.className).toContain(cls);
     expect(conclusionLabel.className).not.toContain("text-xs");
     fireEvent.mouseDown(screen.getByRole("tab", { name: /討論過程/ }));
-    await waitFor(() => expect(screen.getByText("焦點")).toBeTruthy());
-    const roundLabel = screen.getByText("焦點");
+    await waitFor(() => expect(body().getByText("焦點")).toBeTruthy());
+    const roundLabel = body().getByText("焦點");
     for (const cls of LABEL_CLS.split(" ")) expect(roundLabel.className).toContain(cls);
     expect(roundLabel.className).not.toContain("uppercase");
   });
@@ -637,20 +644,21 @@ describe("DiscussionDetailPage 標題 slug 化（design D4）", () => {
   });
 });
 
-// spec 需求「markdown 文件內容行寬有上限」（design D4）：討論詳情頁內容卡內存在
-// 共用置中容器，討論輪卡片與內文同欄對齊置中；頁內容欄 768px 置中。
+// spec 需求「markdown 文件內容行寬有上限」（design D4）與「詳情頁的文件樹、閱讀卡與本頁目錄」：
+// 閱讀卡內文為共用置中容器，討論輪卡片與內文同欄對齊置中；閱讀區內容欄 768px 置中。
 describe("討論詳情頁閱讀欄置中", () => {
-  it("內容卡內有置中容器（w-full＋max-w-[96ch]＋mx-auto）且輪卡片在欄內", async () => {
+  it("閱讀卡內文為置中容器（w-full＋max-w-[96ch]＋mx-auto）且輪卡片在欄內", async () => {
     const { baseElement } = render(<DiscussionDetailPage {...(makeProps() as never)} />);
     await screen.findByRole("tab", { name: /討論過程/ });
-    const col = baseElement.querySelector("[data-reading-column]") as HTMLElement;
+    const col = baseElement.querySelector("[data-doc-body]") as HTMLElement;
     expect(col).toBeTruthy();
     expect(col.className).toContain("w-full");
     expect(col.className).toContain("max-w-[96ch]");
     expect(col.className).toContain("mx-auto");
     const page = baseElement.querySelector("[data-discussion-detail]") as HTMLElement;
-    expect(page.className).toContain("max-w-[768px]");
-    expect(page.contains(col)).toBe(true);
+    const frame = page.querySelector("[data-detail-reading]")!.firstElementChild as HTMLElement;
+    expect(frame.className).toContain("max-w-[768px]");
+    expect(frame.contains(col)).toBe(true);
     // 結論分頁（預設）內文在欄內。
     expect(within(col).getByText("建置 alpha 搜尋")).toBeTruthy();
     // 討論過程分頁：輪卡片同欄。
@@ -791,14 +799,99 @@ describe("討論詳情頁狀態卡的保留與衍生列", () => {
 
 // spec「詳情頁的文件動作」：討論各分頁皆為討論記錄檔（磁碟位置——含已封存的日期檔名——由宿主解析）。
 describe("討論詳情頁的文件動作槽", () => {
-  it("回報討論 slug 與記錄原文，渲染在分頁列右端", async () => {
+  it("回報討論 slug 與記錄原文，渲染在閱讀卡標題列", async () => {
     const renderDocumentActions = vi.fn((target: DocumentTarget | null) =>
       target ? <button type="button">開啟記錄</button> : null,
     );
     render(<DiscussionDetailPage {...(makeProps({ renderDocumentActions }) as never)} />);
     await screen.findByRole("tab", { name: /背景/ });
     expect(renderDocumentActions).toHaveBeenLastCalledWith({ doc: { discussion: "alpha-search" }, content: DOC });
-    const tabsRow = screen.getAllByRole("tablist")[0].parentElement!;
-    expect(within(tabsRow).getByRole("button", { name: "開啟記錄" })).toBeTruthy();
+    const docHeader = document.querySelector("[data-doc-header]") as HTMLElement;
+    expect(within(docHeader).getByRole("button", { name: "開啟記錄" })).toBeTruthy();
   });
 });
+
+// spec「討論詳情頁檢視與轉出變更」：身分區「關聯」列（自背景的 Prior discussions 行計數、
+// none 或缺行時缺席、點擊切到背景）；封存動作經 DetailActions 進標題列（無宿主時原地）。
+describe("討論詳情頁的關聯列與標題列動作", () => {
+  const withPrior = (line: string) => DOC.replace("框架脈絡內容。", `框架脈絡內容。\n\n${line}`);
+
+  it("Prior discussions 三筆時關聯列顯示「先前討論 3」，點擊切到背景", async () => {
+    const props = makeProps({ loadDocument: vi.fn(async () => withPrior("Prior discussions: a-one, b-two, c-three")) });
+    render(<DiscussionDetailPage {...(props as never)} />);
+    const related = await waitFor(() => {
+      const el = document.querySelector("[data-relation-related]") as HTMLElement | null;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    expect(within(related).getByText("關聯")).toBeTruthy();
+    // 預設文件為結論；點關聯籤切到背景。
+    expect(screen.getByRole("tab", { name: /結論/ }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.click(within(related).getByRole("button", { name: "先前討論 3" }));
+    expect(screen.getByRole("tab", { name: /背景/ }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByText(/框架脈絡內容/)).toBeTruthy();
+  });
+
+  it("頓號分隔且帶括號備註時依項目計數（括號內的逗號不算）", async () => {
+    const line = "Prior discussions: alpha-one（備註，含逗號）、beta-two（另一則）";
+    render(<DiscussionDetailPage {...(makeProps({ loadDocument: vi.fn(async () => withPrior(line)) }) as never)} />);
+    const related = await waitFor(() => {
+      const el = document.querySelector("[data-relation-related]") as HTMLElement | null;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    expect(within(related).getByRole("button").textContent).toBe("先前討論 2");
+  });
+
+  it.each([
+    ["Prior discussions: none", null],
+    ["Prior discussions: None.", null],
+    ["Prior discussions: none — 首次討論這個主題", null],
+    ["Prior discussions: NONE（尚無）", null],
+    ["Prior discussions: none-legacy-topic", 1],
+    ["Prior discussions: alpha-one, beta-two", 2],
+  ])("countPriorDiscussions(%s) → %s：none 開頭的變體寫法都算沒有先前討論", (line, expected) => {
+    expect(countPriorDiscussions(`框架脈絡。\n\n${line}`)).toBe(expected);
+  });
+
+  it("Prior discussions 為 none 或缺行時無關聯列", async () => {
+    const r = render(
+      <DiscussionDetailPage
+        {...(makeProps({ loadDocument: vi.fn(async () => withPrior("Prior discussions: none")) }) as never)}
+      />,
+    );
+    await screen.findByRole("tab", { name: /背景/ });
+    expect(document.querySelector("[data-relation-related]")).toBeNull();
+    r.unmount();
+    render(<DiscussionDetailPage {...(makeProps() as never)} />);
+    await screen.findByRole("tab", { name: /背景/ });
+    expect(document.querySelector("[data-relation-related]")).toBeNull();
+  });
+
+  it("閱讀卡沒有出處行（討論文件的出處不在本刀）", async () => {
+    render(<DiscussionDetailPage {...(makeProps() as never)} />);
+    await screen.findByRole("tab", { name: /背景/ });
+    expect(document.querySelector("[data-doc-header]")).toBeTruthy();
+    expect(document.querySelector("[data-doc-provenance]")).toBeNull();
+  });
+
+  it("換討論時即使同為結論文件，閱讀區也捲回頂端", async () => {
+    const { rerender } = render(<DiscussionDetailPage {...(makeProps() as never)} />);
+    await screen.findByRole("tab", { name: /背景/ });
+    const reading = document.querySelector("[data-detail-reading]") as HTMLElement;
+    reading.scrollTop = 300;
+    rerender(<DiscussionDetailPage {...(makeProps({ discussion: { ...concludedD, slug: "beta-search" } }) as never)} />);
+    expect((document.querySelector("[data-detail-reading]") as HTMLElement).scrollTop).toBe(0);
+    await screen.findByRole("tab", { name: /背景/ });
+  });
+
+  it("封存鈕在 DetailActions 內，不在左欄與閱讀卡", async () => {
+    render(<DiscussionDetailPage {...(makeProps({ onArchiveDiscussion: vi.fn() }) as never)} />);
+    await screen.findByRole("tab", { name: /背景/ });
+    const actions = document.querySelector("[data-detail-actions]") as HTMLElement;
+    const archive = within(actions).getByRole("button", { name: /封存/ });
+    expect(document.querySelector("[data-detail-tree]")!.contains(archive)).toBe(false);
+    expect(document.querySelector("[data-doc-header]")!.contains(archive)).toBe(false);
+  });
+});
+

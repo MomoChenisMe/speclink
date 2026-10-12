@@ -158,6 +158,7 @@ function RoundBlock({ round, defaultOpen }: { round: TicketRound; defaultOpen: b
         <button
           type="button"
           data-ticket-round-toggle
+          data-doc-heading
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
           className="inline-flex items-center gap-1 font-semibold text-foreground hover:underline"

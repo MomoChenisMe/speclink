@@ -61,7 +61,8 @@ function makeProps(over: Record<string, unknown> = {}) {
 const discussionProps = (over: Record<string, unknown> = {}) =>
   makeProps({ target: { kind: "discussion", slug: "alpha-search" }, discussionTopic: "Alpha topic", ...over });
 
-const provenanceRow = () => document.querySelector("[data-provenance-row]") as HTMLElement | null;
+const provenanceRow = () => document.querySelector("[data-identity-provenance]") as HTMLElement | null;
+const identity = () => document.querySelector("[data-detail-identity]") as HTMLElement;
 const statusRow = (mark: string) => document.querySelector(`[data-status-${mark}]`) as HTMLElement | null;
 const clipboard = () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
@@ -89,7 +90,7 @@ describe("ArchivedDetailPage（封存變更）", () => {
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("已複製"));
   });
 
-  it("標題列帶結局籤；狀態卡三列為任務 n/m、品質關卡結局、封存日期；無進度條與動作區", async () => {
+  it("身分區帶已封存籤與結局籤；狀態列三列為任務 n/m、品質關卡結局、封存日期；無進度條與動作區", async () => {
     // spec Scenario「封存變更詳情頁的標題列、出身列與狀態卡」。
     render(
       <ArchivedDetailPage
@@ -101,7 +102,8 @@ describe("ArchivedDetailPage（封存變更）", () => {
       />,
     );
     await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
-    const title = document.querySelector("[data-title-row]") as HTMLElement;
+    const title = identity();
+    expect(title.querySelector("[data-archived-status]")!.textContent).toBe("已封存");
     expect(title.querySelector("[data-review-outcome]")!.textContent).toContain("已審查");
     expect(title.querySelector("[data-verify-outcome]")!.textContent).toContain("曾驗證未通過");
     await waitFor(() => expect(statusRow("tasks")!.textContent).toContain("1/2"));
@@ -114,7 +116,7 @@ describe("ArchivedDetailPage（封存變更）", () => {
     }
   });
 
-  it("皆無結局時品質關卡列顯示「未經品質關卡」、標題列無結局籤；無 tasks.md 時任務列為「—」", async () => {
+  it("皆無結局時品質關卡列顯示「未經品質關卡」、身分區無結局籤；無 tasks.md 時任務列為「—」", async () => {
     const loadDocument = vi.fn(async (_d: string, artifact: string) => (artifact === "proposal.md" ? PROPOSAL : null));
     render(<ArchivedDetailPage {...(makeProps({ loadDocument }) as never)} />);
     await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
@@ -159,8 +161,9 @@ describe("ArchivedDetailPage（封存變更）", () => {
     const props = makeProps({ sourceDiscussions: [{ slug: "alpha-ux", topic: "Alpha UX 討論" }], onOpenDiscussion });
     const { unmount } = render(<ArchivedDetailPage {...(props as never)} />);
     await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
-    expect(provenanceRow()!.textContent).toContain("來自");
-    fireEvent.click(within(provenanceRow()!).getByRole("button", { name: /alpha-ux/ }));
+    const from = document.querySelector("[data-relation-from]") as HTMLElement;
+    expect(from.textContent).toContain("來自");
+    fireEvent.click(within(from).getByRole("button", { name: /alpha-ux/ }));
     expect(onOpenDiscussion).toHaveBeenCalledWith("alpha-ux");
     unmount();
     render(<ArchivedDetailPage {...(makeProps() as never)} />);
@@ -237,13 +240,45 @@ describe("ArchivedDetailPage（封存變更）", () => {
   });
 });
 
+// spec「詳情頁的文件樹、閱讀卡與本頁目錄」Scenario「已封存詳情頁的唯讀變體」：同骨架、無標題列動作。
+describe("已封存詳情頁的唯讀骨架", () => {
+  it("已封存詳情頁無 data-detail-actions 子節點、身分區含已封存籤、文件節點在左欄", async () => {
+    const { unmount } = render(<ArchivedDetailPage {...(makeProps({ archivedDate: "2026-07-04" }) as never)} />);
+    await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
+    expect(document.querySelector("[data-detail-actions]")).toBeNull();
+    expect(within(identity()).getByText("已封存")).toBeTruthy();
+    expect(provenanceRow()!.textContent).toContain("封存 2026-07-04");
+    const tree = document.querySelector("[data-detail-tree]") as HTMLElement;
+    expect(within(tree).getByRole("tablist")).toBeTruthy();
+    expect(document.querySelector("[data-doc-header]")!.textContent).toContain("提案");
+    unmount();
+    render(<ArchivedDetailPage {...(discussionProps() as never)} />);
+    await waitFor(() => expect(screen.getByText(/就這麼辦/)).toBeTruthy());
+    expect(document.querySelector("[data-detail-actions]")).toBeNull();
+    expect(within(identity()).getByText("已封存")).toBeTruthy();
+  });
+
+  it("閱讀卡出處行：封存變更為相對變更目錄的路徑，封存討論沒有出處行", async () => {
+    const { unmount } = render(<ArchivedDetailPage {...(makeProps() as never)} />);
+    await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
+    expect(document.querySelector("[data-doc-header] [data-doc-provenance]")!.textContent).toBe("proposal.md");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /規格/ }));
+    expect(document.querySelector("[data-doc-header] [data-doc-provenance]")!.textContent).toBe("specs/cap-x/spec.md");
+    unmount();
+    render(<ArchivedDetailPage {...(discussionProps() as never)} />);
+    await waitFor(() => expect(screen.getByText(/就這麼辦/)).toBeTruthy());
+    expect(document.querySelector("[data-doc-header]")).toBeTruthy();
+    expect(document.querySelector("[data-doc-provenance]")).toBeNull();
+  });
+});
+
 describe("ArchivedDetailPage（封存討論）", () => {
   it("標題為 slug＋「已封存」籤、topic 為副標；階段列現站「已封存」；分頁結論／討論過程／背景／衍生變更；無寫入動詞", async () => {
     const props = discussionProps({ discussionKind: "improve" });
     render(<ArchivedDetailPage {...(props as never)} />);
     await waitFor(() => expect(screen.getByText(/就這麼辦/)).toBeTruthy());
     expect(props.loadDiscussionDocument).toHaveBeenCalledWith("alpha-search");
-    const title = document.querySelector("[data-title-row]") as HTMLElement;
+    const title = identity();
     expect(within(title).getByRole("heading", { level: 1 }).textContent).toBe("alpha-search");
     expect(title.querySelector("[data-archived-status]")!.textContent).toBe("已封存");
     expect(title.querySelector('[data-discussion-kind="improve"]')).toBeTruthy();

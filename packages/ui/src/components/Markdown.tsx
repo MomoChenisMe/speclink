@@ -11,7 +11,8 @@ import { code } from "@streamdown/code";
 
 import { useI18n } from "../i18n";
 import { rehypeSpecKeywords } from "../specSections";
-import { SEMANTIC_SURFACE, SEMANTIC_TONE, type SemanticTone } from "../tone";
+import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
+import { CALLOUT_BOX_CLS, CALLOUT_TITLE_CLS, CALLOUT_TONE, type CalloutTone } from "./ui/callout";
 
 /** 共用閱讀欄置中容器（design D4，spec「markdown 文件內容行寬有上限」）：
  * 寬度撐滿、max-width 與 Markdown 行寬上限同值、水平 margin auto——容器寬於
@@ -28,28 +29,26 @@ export interface MarkdownProps {
 }
 
 /** GitHub Alert 四型（desktop-manual-page spec「Markdown 的 GitHub Alert 提示框」）
- * → 介面狀態語意色（資訊、成功、警告、危險；不佔主色）與 i18n 標籤鍵。 */
-type AlertType = "note" | "tip" | "warning" | "caution";
-const ALERT_STYLE: Record<AlertType, { tone: SemanticTone; labelKey: string }> = {
-  note: { tone: "inProgress", labelKey: "markdown.alertNote" },
-  tip: { tone: "success", labelKey: "markdown.alertTip" },
-  warning: { tone: "warning", labelKey: "markdown.alertWarning" },
-  caution: { tone: "danger", labelKey: "markdown.alertCaution" },
+ * → i18n 標籤鍵；款式與語意色取自 Callout 原語（design D6）。 */
+type AlertType = CalloutTone;
+const ALERT_LABEL_KEYS: Record<AlertType, string> = {
+  note: "markdown.alertNote",
+  tip: "markdown.alertTip",
+  warning: "markdown.alertWarning",
+  caution: "markdown.alertCaution",
 };
 // 標記須獨占首段第一行（與 GitHub 同：`[!NOTE]` 後只能接換行或段落結束；大小寫不拘）。
 const ALERT_MARKER_RE = /^\[!(NOTE|TIP|WARNING|CAUTION)\][ \t]*(?:\r?\n|$)/i;
-const ALERT_BOX_CLS = "my-4 rounded-r-md border-l-4 px-4 py-2 [&>p]:my-1 [&>ul]:my-1 [&>ol]:my-1";
-const ALERT_TITLE_CLS = "markdown-alert-title mb-1 text-sm font-semibold";
 
 /** 提示框用到的全部 class token。Streamdown 的 sanitize 預設剝掉 div 的 class，這裡
  * 只放行這份清單——文件裡的 raw HTML 不能借道塞任意 class。 */
 const ALERT_CLASS_TOKENS = [
   ...new Set([
     "markdown-alert",
-    ...Object.keys(ALERT_STYLE).map((type) => `markdown-alert-${type}`),
-    ...ALERT_BOX_CLS.split(" "),
-    ...ALERT_TITLE_CLS.split(" "),
-    ...Object.values(ALERT_STYLE).flatMap(({ tone }) => [
+    ...Object.keys(CALLOUT_TONE).map((type) => `markdown-alert-${type}`),
+    ...CALLOUT_BOX_CLS.split(" "),
+    ...CALLOUT_TITLE_CLS.split(" "),
+    ...Object.values(CALLOUT_TONE).flatMap((tone) => [
       ...SEMANTIC_SURFACE[tone].split(" "),
       ...SEMANTIC_TONE[tone].split(" "),
     ]),
@@ -121,7 +120,7 @@ function remarkGithubAlerts(labels: Record<AlertType, string>) {
     const match = ALERT_MARKER_RE.exec(text.value);
     if (!match) return;
     const type = match[1].toLowerCase() as AlertType;
-    const { tone } = ALERT_STYLE[type];
+    const tone = CALLOUT_TONE[type];
     text.value = text.value.slice(match[0].length);
     if (!text.value) {
       first.children!.shift();
@@ -132,14 +131,14 @@ function remarkGithubAlerts(labels: Record<AlertType, string>) {
     quote.data = {
       hName: "div",
       hProperties: {
-        className: classTokens("markdown-alert", `markdown-alert-${type}`, ALERT_BOX_CLS, SEMANTIC_SURFACE[tone]),
+        className: classTokens("markdown-alert", `markdown-alert-${type}`, CALLOUT_BOX_CLS, SEMANTIC_SURFACE[tone]),
       },
     };
     quote.children!.unshift({
       type: "paragraph",
       data: {
         hName: "div",
-        hProperties: { className: classTokens(ALERT_TITLE_CLS, SEMANTIC_TONE[tone]) },
+        hProperties: { className: classTokens(CALLOUT_TITLE_CLS, SEMANTIC_TONE[tone]) },
       },
       children: [{ type: "text", value: labels[type] }],
     });
@@ -169,10 +168,10 @@ export function Markdown({ content, empty, specKeywords = false }: MarkdownProps
       [
         remarkGithubAlerts,
         {
-          note: t(ALERT_STYLE.note.labelKey),
-          tip: t(ALERT_STYLE.tip.labelKey),
-          warning: t(ALERT_STYLE.warning.labelKey),
-          caution: t(ALERT_STYLE.caution.labelKey),
+          note: t(ALERT_LABEL_KEYS.note),
+          tip: t(ALERT_LABEL_KEYS.tip),
+          warning: t(ALERT_LABEL_KEYS.warning),
+          caution: t(ALERT_LABEL_KEYS.caution),
         },
       ] as Pluggable,
       remarkBreaks,

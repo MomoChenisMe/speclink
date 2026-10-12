@@ -247,3 +247,21 @@
 - **definition**: `openspec/specs/<capability>/spec.md`——封存後的現況唯一真相，對照 OpenSpec 的 specs。與變更裡的「delta 規格」（`openspec/changes/<name>/specs/`，封存時合併進正式規格）成對；英文維持 specs／canonical specs。
 - **avoid**: 正典規格、正典 spec、正典 specs、規格正典、正典（指這個規格集合時）
 - **why**: 「正典」讀不出「合併後的定案」，與 delta 對著看才分得清哪個是草稿、哪個是定案。「正典」在專案內另有正典詞彙、正典值、正典化、正典 YAML 等別義，那些不改。2026-09-12 討論「canonical-spec-zh-wording」定案。
+
+### 文件樹
+
+- **definition**: 詳情頁（變更、討論、已封存）的左欄——身分區、「文件」節點與「狀態」列，與手冊頁的側欄樹對稱；一個節點是一整份文件，點擊即切換閱讀卡。
+- **avoid**: 文件分頁列
+- **why**: 節點是整份文件、不是分頁；左欄管頁與頁之間、右欄管頁內，與手冊頁同一套分工。2026-10-12 變更「desktop-detail-doc-tree」定案。
+
+### 本頁目錄
+
+- **definition**: 閱讀卡右側、自渲染後標題推導的錨點列——點擊捲至該段、捲動時高亮目前段；手冊頁與詳情頁共用。
+- **avoid**: 右欄目錄
+- **why**: 手冊頁既有詞（i18n `manual.toc`），詳情頁沿用同一詞，學一次就通。2026-10-12 變更「desktop-detail-doc-tree」定案。
+
+### 數字磚
+
+- **definition**: 閱讀卡標題下、由文件結構推出的計數格，最多四格；推不出時整列缺席。
+- **avoid**: KPI 磚
+- **why**: 不是指標儀表，是文件本身的計數。2026-10-12 變更「desktop-detail-doc-tree」定案。

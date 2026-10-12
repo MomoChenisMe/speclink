@@ -63,19 +63,17 @@ export function SourceDiscussionChip({
 }
 
 /**
- * 來源連結列：前綴標籤＋首籤（清單第一份＝出身）＋「+N」溢出浮層。
+ * 來源連結列：首籤（清單第一份＝出身）＋「+N」溢出浮層；前綴標籤由詳情頁左欄的關聯列自帶。
  *
- * 出身列恆定單行的固定顆數切點（design D3）：固定顯示 1 顆，其餘收進 +N 數字籤，
+ * 固定顆數切點：固定顯示 1 顆，其餘收進 +N 數字籤，
  * 點擊以 Popover 浮層列出（slug 主行＋topic 副行），點浮層項跳轉並關閉浮層——
  * 與看板卡片「單一討論徽章以出身討論為代表」對稱。「來自」「同源」「衍生」共用此列。
  * disabled 項在浮層內同樣不可點、不關閉浮層；onOpen 只對可點項觸發。
  */
 export function SourceChipRow({
-  label,
   items,
   onOpen,
 }: {
-  label: string;
   items: SourceLinkItem[];
   onOpen?: (slug: string) => void;
 }) {
@@ -86,7 +84,6 @@ export function SourceChipRow({
   return (
     <TooltipProvider>
       <span className="inline-flex min-w-0 items-center gap-1">
-        <span className="shrink-0">{label}</span>
         <SourceDiscussionChip
           slug={first.slug}
           topic={first.topic}

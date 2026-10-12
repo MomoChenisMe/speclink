@@ -133,6 +133,8 @@ describe("TaskList", () => {
     }
     // 標題文字照來源，不翻譯不改寫。
     expect(heading.textContent).toBe("1. Group A");
+    // 本頁目錄錨點（desktop-detail-doc-tree design D5）。
+    expect(heading.hasAttribute("data-doc-heading")).toBe(true);
   });
 
   // spec desktop-app「任務列的手動任務徽章」
