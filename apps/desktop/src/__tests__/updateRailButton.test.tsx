@@ -6,7 +6,7 @@ import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 import { I18nProvider, TooltipProvider } from "@speclink/ui";
 
-import { RAIL_SQUARE } from "../components/ProjectRail";
+import { RAIL_SQUARE } from "../components/projectTile";
 import { UpdateRailButton } from "../components/UpdateRailButton";
 import type { UpdaterState } from "../core/updater";
 import { APP_MESSAGES } from "../i18n/messages";

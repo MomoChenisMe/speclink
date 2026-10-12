@@ -1,0 +1,106 @@
+{
+  "version": 2,
+  "change": "tray-panel-restyle",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 新增 `apps/desktop/src/components/projectTile.ts`（design D3）：匯出 `RAIL_SQUARE`（字串自 ProjectRail 原樣搬入）、`PROJECT_TILE_ACTIVE`、`PROJECT_TILE_IDLE`、`ADD_TILE` 與 `projectInitial(name)`；`apps/desktop/src/components/ProjectRail.tsx` 改引用這些常數與函式並 `export { RAIL_SQUARE } from \"./projectTile\"`，非作用中方塊在 `PROJECT_TILE_IDLE` 之後保留自己的 hover 類別（spec「面板樣式（macOS）」專案 tab 同形的前置）。驗證：`npm test -w apps/desktop -- projectRail updateRailButton` 全綠；`grep -rn \"h-8 w-8 shrink-0 items-center justify-center rounded-lg\" apps/desktop/src` 只命中 projectTile.ts。",
+      "files": [
+        "apps/desktop/src/components/ProjectRail.tsx",
+        "apps/desktop/src/components/projectTile.ts"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 新增 `apps/desktop/src/panel/promotedExpanded.ts`（design D4）：`TRAY_PROMOTED_EXPANDED_STORAGE_KEY = \"speclink.tray.promotedExpanded\"`、`readTrayPromotedExpanded()`（取不到、壞值或拋錯一律 false）、`writeTrayPromotedExpanded(expanded)`（拋錯吞掉）（spec「討論列表」記憶展開）。驗證：`apps/desktop/src/__tests__/trayPanel.test.tsx` 新增三題——鍵缺席回 false、值為 \"yes\" 回 false、寫入 true 後讀回 true；`npm test -w apps/desktop -- trayPanel`。",
+      "files": [
+        "apps/desktop/src/__tests__/trayPanel.test.tsx",
+        "apps/desktop/src/panel/promotedExpanded.ts"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 `apps/desktop/src/panel/TrayPanel.tsx` 根層與卡片層（design D1）：根層改 `bg-sidebar/90`、拿掉主色漸層、`gap-2`；新增 `PanelCard`（`rounded-xl border border-border bg-card overflow-hidden`）取代 `SectionCard`；頁首 `panel-project-card`、頁尾 `panel-actions-card`、中段每個分區一張卡；刪除 `Divider` 與全部 `panel-divider`；`panel-header`／`panel-scroll-content`／`panel-footer` 三個量高錨點保留（spec「面板樣式（macOS）」補光層與三類卡、ready workspace 的區塊順序與卡片）。驗證：trayPanel.test 刪「分割線恰三條」，改「三段式版面」「分區卡片化」「根層漸層」「毛玻璃補光層」四組斷言為 design D6 所列（卡含 `bg-card`、`border-border`、`rounded-xl`；根層無 `bg-linear-to-b`、含 `bg-sidebar/90`；`queryAllByTestId(\"panel-divider\")` 為空）；`npm test -w apps/desktop -- trayPanel`。",
+      "files": [
+        "apps/desktop/src/panel/TrayPanel.tsx"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 分區卡的標頭與列（design D2）：`SectionHeader` 加 `px-3 py-2 text-foreground`，其下有內容時加 `border-b border-border/70`，空狀態卡維持 `min-h-12 justify-center`；`rowClass` 改為細線分隔＋`hover:bg-foreground/5`、無列圓角；刪除 `STAMP_HOVER` 與所有 `group-hover:text-primary-foreground*`（波次數字、站章、worktree 標記、任務數、topic 行、溢出標籤、動作列圖示、進度條軌道與填色）、`RowCopyButton` 不再傳 `inverted`；移除 `packages/ui/src/components/CopyButton.tsx` 的 `inverted` 屬性與 `packages/ui/src/__tests__/copyButton.test.tsx` 的對應題目（spec「面板樣式（macOS）」分區卡與列的外觀、「面板變更列的品質站章」hover 灰底時章色調不變、「變更列的波次標示與順序同源」hover 不改色）。驗證：trayPanel.test 刪「hover 反白時兩章隨列改前景色」「hover 反白時波次數字隨列改前景色」，新增「列 class 含 `hover:bg-foreground/5` 且不含 `hover:bg-primary`」「站章、波次數字、複製鈕皆不含 `group-hover:text-primary-foreground`」「有列的卡標頭含 `border-b`、空狀態卡標頭不含」；`npm test -w apps/desktop -- trayPanel` 與 `npm test -w packages/ui -- copyButton`。",
+      "files": [
+        "packages/ui/src/__tests__/copyButton.test.tsx",
+        "packages/ui/src/components/CopyButton.tsx"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.1 測試與守門收尾（design D6）：trayPanel.test 全檔對照 design D6 清單確認無殘留 `panel-divider`、`panel-section-promoted`、`inverted`、`group-hover:text-primary-foreground` 字樣；tray-status-menu「面板交接主視窗後滑鼠互動完整」的字面對齊（抽屜→詳情頁）無程式碼對應、僅確認規格 delta 已含兩個 REMOVED-SCENARIO；跑 `npm test -w packages/ui -- theme copyButton`（掃描面零原生色階）、`npm test -w apps/desktop -- trayPanel projectRail updateRailButton`、`npm run build -w apps/desktop`（panel 入口可建）。驗證：三組指令全綠，`grep -rn \"panel-divider\\|panel-section-promoted\\|inverted\" apps/desktop/src packages/ui/src/components/CopyButton.tsx` 只剩 SwipeBack 的捲動旗標命中。",
+      "files": [
+        "apps/desktop/src/__tests__/updateRailButton.test.tsx",
+        "apps/desktop/src/components/UpdateRailButton.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4NMNV5BGYZQAPYG1482N3C7",
+      "taskDesc": "1.1 新增 `apps/desktop/src/components/projectTile.ts`（design D3）：匯出 `RAIL_SQUARE`（字串自 ProjectRail 原樣搬入）、`PROJECT_TILE_ACTIVE`、`PROJECT_TILE_IDLE`、`ADD_TILE` 與 `projectInitial(name)`；`apps/desktop/src/components/ProjectRail.tsx` 改引用這些常數與函式並 `export { RAIL_SQUARE } from \"./projectTile\"`，非作用中方塊在 `PROJECT_TILE_IDLE` 之後保留自己的 hover 類別（spec「面板樣式（macOS）」專案 tab 同形的前置）。驗證：`npm test -w apps/desktop -- projectRail updateRailButton` 全綠；`grep -rn \"h-8 w-8 shrink-0 items-center justify-center rounded-lg\" apps/desktop/src` 只命中 projectTile.ts。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b52af5753fcafdef1b28957256c3dbe4d36bb0b6",
+      "touchedFiles": [
+        "apps/desktop/src/components/ProjectRail.tsx",
+        "apps/desktop/src/components/projectTile.ts"
+      ],
+      "recordedAt": "2026-10-12T01:18:54Z"
+    },
+    {
+      "taskId": "tsk_01M4NMNV5CFDRRFSVJ2XZSSFXT",
+      "taskDesc": "1.2 新增 `apps/desktop/src/panel/promotedExpanded.ts`（design D4）：`TRAY_PROMOTED_EXPANDED_STORAGE_KEY = \"speclink.tray.promotedExpanded\"`、`readTrayPromotedExpanded()`（取不到、壞值或拋錯一律 false）、`writeTrayPromotedExpanded(expanded)`（拋錯吞掉）（spec「討論列表」記憶展開）。驗證：`apps/desktop/src/__tests__/trayPanel.test.tsx` 新增三題——鍵缺席回 false、值為 \"yes\" 回 false、寫入 true 後讀回 true；`npm test -w apps/desktop -- trayPanel`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b52af5753fcafdef1b28957256c3dbe4d36bb0b6",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/trayPanel.test.tsx",
+        "apps/desktop/src/panel/promotedExpanded.ts"
+      ],
+      "recordedAt": "2026-10-12T01:19:33Z"
+    },
+    {
+      "taskId": "tsk_01M4NMNV5CS4PQM0S5SGZRRDVM",
+      "taskDesc": "2.1 `apps/desktop/src/panel/TrayPanel.tsx` 根層與卡片層（design D1）：根層改 `bg-sidebar/90`、拿掉主色漸層、`gap-2`；新增 `PanelCard`（`rounded-xl border border-border bg-card overflow-hidden`）取代 `SectionCard`；頁首 `panel-project-card`、頁尾 `panel-actions-card`、中段每個分區一張卡；刪除 `Divider` 與全部 `panel-divider`；`panel-header`／`panel-scroll-content`／`panel-footer` 三個量高錨點保留（spec「面板樣式（macOS）」補光層與三類卡、ready workspace 的區塊順序與卡片）。驗證：trayPanel.test 刪「分割線恰三條」，改「三段式版面」「分區卡片化」「根層漸層」「毛玻璃補光層」四組斷言為 design D6 所列（卡含 `bg-card`、`border-border`、`rounded-xl`；根層無 `bg-linear-to-b`、含 `bg-sidebar/90`；`queryAllByTestId(\"panel-divider\")` 為空）；`npm test -w apps/desktop -- trayPanel`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b52af5753fcafdef1b28957256c3dbe4d36bb0b6",
+      "touchedFiles": [
+        "apps/desktop/src/panel/TrayPanel.tsx"
+      ],
+      "recordedAt": "2026-10-12T01:20:38Z"
+    },
+    {
+      "taskId": "tsk_01M4NMNV5C7G15H0YVWM85CNWP",
+      "taskDesc": "2.2 分區卡的標頭與列（design D2）：`SectionHeader` 加 `px-3 py-2 text-foreground`，其下有內容時加 `border-b border-border/70`，空狀態卡維持 `min-h-12 justify-center`；`rowClass` 改為細線分隔＋`hover:bg-foreground/5`、無列圓角；刪除 `STAMP_HOVER` 與所有 `group-hover:text-primary-foreground*`（波次數字、站章、worktree 標記、任務數、topic 行、溢出標籤、動作列圖示、進度條軌道與填色）、`RowCopyButton` 不再傳 `inverted`；移除 `packages/ui/src/components/CopyButton.tsx` 的 `inverted` 屬性與 `packages/ui/src/__tests__/copyButton.test.tsx` 的對應題目（spec「面板樣式（macOS）」分區卡與列的外觀、「面板變更列的品質站章」hover 灰底時章色調不變、「變更列的波次標示與順序同源」hover 不改色）。驗證：trayPanel.test 刪「hover 反白時兩章隨列改前景色」「hover 反白時波次數字隨列改前景色」，新增「列 class 含 `hover:bg-foreground/5` 且不含 `hover:bg-primary`」「站章、波次數字、複製鈕皆不含 `group-hover:text-primary-foreground`」「有列的卡標頭含 `border-b`、空狀態卡標頭不含」；`npm test -w apps/desktop -- trayPanel` 與 `npm test -w packages/ui -- copyButton`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b52af5753fcafdef1b28957256c3dbe4d36bb0b6",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/copyButton.test.tsx",
+        "packages/ui/src/components/CopyButton.tsx"
+      ],
+      "recordedAt": "2026-10-12T01:21:55Z"
+    },
+    {
+      "taskId": "tsk_01M4NMNV5CGJQSFSW9SCFESZ6D",
+      "taskDesc": "3.1 測試與守門收尾（design D6）：trayPanel.test 全檔對照 design D6 清單確認無殘留 `panel-divider`、`panel-section-promoted`、`inverted`、`group-hover:text-primary-foreground` 字樣；tray-status-menu「面板交接主視窗後滑鼠互動完整」的字面對齊（抽屜→詳情頁）無程式碼對應、僅確認規格 delta 已含兩個 REMOVED-SCENARIO；跑 `npm test -w packages/ui -- theme copyButton`（掃描面零原生色階）、`npm test -w apps/desktop -- trayPanel projectRail updateRailButton`、`npm run build -w apps/desktop`（panel 入口可建）。驗證：三組指令全綠，`grep -rn \"panel-divider\\|panel-section-promoted\\|inverted\" apps/desktop/src packages/ui/src/components/CopyButton.tsx` 只剩 SwipeBack 的捲動旗標命中。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b52af5753fcafdef1b28957256c3dbe4d36bb0b6",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/updateRailButton.test.tsx",
+        "apps/desktop/src/components/UpdateRailButton.tsx"
+      ],
+      "recordedAt": "2026-10-12T02:08:23Z"
+    }
+  ]
+}

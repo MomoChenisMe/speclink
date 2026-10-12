@@ -119,13 +119,6 @@ describe("CopyButton", () => {
     expect(btn().textContent).toContain("已複製");
   });
 
-  it("inverted：放在 hover 整列主色反白的列裡，hover 時圖示改用主色前景色；預設不帶", () => {
-    const { rerender } = render(<CopyButton value="demo" label="複製名稱" onCopy={() => {}} />);
-    expect(btn().className).not.toContain("group-hover:text-primary-foreground");
-    rerender(<CopyButton value="demo" label="複製名稱" onCopy={() => {}} inverted />);
-    expect(btn().className).toContain("group-hover:text-primary-foreground");
-  });
-
   it("成功後標上 data-copied，呼叫端可據此讓 hover 才顯現的鈕保持可見", () => {
     render(<CopyButton value="demo" label="複製名稱" onCopy={() => {}} />);
     expect(btn().hasAttribute("data-copied")).toBe(false);

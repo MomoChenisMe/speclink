@@ -4,8 +4,7 @@ slug: desktop-ui-redesign
 status: promoted
 created: 2026-10-08
 created_by: MomoChen <momochenisme@gmail.com>
-hold: true
-promoted_to: fix-drawer-open-dismisses-overlays, desktop-design-foundation, desktop-shell-redesign, desktop-notice-relocation, desktop-native-menu, desktop-board-reskin, desktop-list-pages-reskin, desktop-detail-page, desktop-readonly-detail-pages, desktop-settings-mode, desktop-about-page, desktop-settings-editors
+promoted_to: fix-drawer-open-dismisses-overlays, desktop-design-foundation, desktop-shell-redesign, desktop-notice-relocation, desktop-native-menu, desktop-board-reskin, desktop-list-pages-reskin, desktop-detail-page, desktop-readonly-detail-pages, desktop-settings-mode, desktop-about-page, desktop-settings-editors, tray-panel-restyle
 ---
 
 # Discussion: 重新設計整個 Desktop 介面：白底中性灰、單一點綴色、扁平細框的桌面工具風格，含共用元件整理、原生選單、標題列與設定頁

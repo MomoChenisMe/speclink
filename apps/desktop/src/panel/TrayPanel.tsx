@@ -5,6 +5,7 @@
 // 分區圖示沿用看板同款（KanbanBoard 的 stage 圖示）。
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
+  Button,
   changeStage,
   CopyButton,
   DISCUSSION_TONE,
@@ -34,6 +35,7 @@ import {
 import {
   AlertTriangle,
   ArrowUpRight,
+  ChevronRight,
   CircleCheckBig,
   Cloud,
   CloudOff,
@@ -53,7 +55,15 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import {
+  ADD_TILE,
+  PROJECT_TILE_ACTIVE,
+  PROJECT_TILE_IDLE,
+  RAIL_SQUARE,
+  projectInitial,
+} from "../components/projectTile";
 import { OVERFLOW_LIMIT, type TraySnapshot, type TrayTabSnapshot } from "../tray";
+import { readTrayPromotedExpanded, writeTrayPromotedExpanded } from "./promotedExpanded";
 
 /** 分區圖示與看板欄位同款（KanbanBoard）：提案中／進行中／已就緒。 */
 const STAGE_ICONS: Record<Stage, LucideIcon> = {
@@ -89,27 +99,15 @@ export interface TrayPanelProps {
   onReauthenticate: (connectionId: string) => void;
 }
 
-/** 列尾常駐複製鈕（共用 CopyButton）：tabIndex=-1 退出 tab 順序（design D4）——面板成
-    key window 後 WebKit 會把焦點給第一個可 tab 元素，複製鈕不退出就吃到焦點框。列 hover
-    整列反白為主色，圖示隨之轉 primary-foreground 才看得見（共用元件的 inverted）。 */
-function RowCopyButton({ label, text, onCopy }: { label: string; text: string; onCopy: (t: string) => void }) {
-  return (
-    <CopyButton
-      value={text}
-      label={label}
-      onCopy={onCopy}
-      tabIndex={-1}
-      inverted
-    />
-  );
-}
+/** 分區卡標頭（tray-panel-restyle design D2）：12px 粗體前景色；其下有內容（列、骨架、
+    失敗提示、收合列）才畫細線——空狀態卡只有標頭，不留一條孤線。 */
+const sectionHeaderClass = (hasBody: boolean) =>
+  cn("px-3 py-2 text-foreground", hasBody && "border-b border-border/70");
 
-/** 分區卡片的區段標題列內距（六個分區同款）。 */
-const SECTION_HEADER_PAD = "px-2 pt-1.5 pb-1";
-
-/** 分區卡片容器（spec「面板樣式（macOS）」；design D2）：半透明圓角卡疊在
-    vibrancy 上——底色用主題 token 的低透明度（非寫死色值），毛玻璃可透出。 */
-function SectionCard({
+/** 面板卡片（spec「面板樣式（macOS）」；tray-panel-restyle design D1）：白底細框 12px
+    圓角卡疊在補光層上——tab 條、各分區、動作區各一張。overflow-hidden 讓最後一列的
+    hover 底色被卡角裁切。 */
+function PanelCard({
   testid,
   className,
   children,
@@ -120,7 +118,10 @@ function SectionCard({
   children: ReactNode;
 }) {
   return (
-    <section data-testid={testid} className={cn("flex flex-col rounded-lg bg-foreground/5 p-1", className)}>
+    <section
+      data-testid={testid}
+      className={cn("flex flex-col overflow-hidden rounded-xl border border-border bg-card", className)}
+    >
       {children}
     </section>
   );
@@ -153,13 +154,6 @@ function SectionSkeleton() {
       <RowSkeleton />
     </>
   );
-}
-
-/** 區塊分割線（spec「面板樣式（macOS）」區塊順序與分割線）：低透明度細線
-    疊在毛玻璃上，僅出現於 tab 條後與內容區塊之間——區塊內部（分區卡之間）
-    不加線；以 div 而非 hr 實作，面板卡片化後不使用原生分隔線元素。 */
-function Divider() {
-  return <div data-testid="panel-divider" aria-hidden className="mx-1 h-px shrink-0 bg-foreground/10" />;
 }
 
 /** 捲動停止後指示條淡出的延遲（ms）——比照 macOS overlay 捲軸的滯留時間。 */
@@ -219,9 +213,10 @@ function ScrollIndicator({ targetRef }: { targetRef: RefObject<HTMLDivElement | 
   );
 }
 
-/** 原生選單式列：hover 整列 accent 反白（含子元素經 group-hover 反白）。 */
+/** 卡內的列（design D2）：細線分隔、hover 整列半透明前景色灰底——列內符號維持本色。
+    變更列、討論列、溢出列與動作列共用。 */
 const rowClass =
-  "group flex w-full items-center gap-2 rounded-[5px] px-2 py-1 text-left hover:bg-primary hover:text-primary-foreground";
+  "flex w-full items-center gap-2 border-b border-border/70 px-3 py-1.5 text-left last:border-b-0 hover:bg-foreground/5";
 
 /** 分區溢出（spec「分區溢出摺疊」）：直列前 5、其餘收進「還有 N 個…」可展開列。 */
 function OverflowGroup({
@@ -240,13 +235,16 @@ function OverflowGroup({
       {rows.slice(0, OVERFLOW_LIMIT)}
       {expanded && rows.slice(OVERFLOW_LIMIT)}
       <div className={rowClass} onClick={() => setExpanded((v) => !v)}>
-        <span className="text-[12px] text-muted-foreground group-hover:text-primary-foreground">
+        <span className="text-[12px] text-muted-foreground">
           {expanded ? collapseLabel : moreLabel(rows.length - OVERFLOW_LIMIT)}
         </span>
       </div>
     </>
   );
 }
+
+/** 專案 tab 與「加入專案」共用的直欄容器（方塊＋其下文字，hover 灰底）。 */
+const TAB_ITEM = "flex shrink-0 flex-col items-center gap-1 rounded-lg px-1 py-1.5 hover:bg-foreground/5";
 
 function tabStatusLabel(tab: TrayTabSnapshot, t: (key: string) => string): string {
   if (tab.source === "local") return "";
@@ -263,8 +261,8 @@ function tabStatusLabel(tab: TrayTabSnapshot, t: (key: string) => string): strin
 }
 
 /**
- * 分頁狀態文字的語意色（spec「介面狀態語意色分層」）：選取由分頁外框表達，
- * 狀態則由列內這行文字承載——還原中＝藍、離線／需重新登入＝琥珀警示、
+ * 分頁狀態文字的語意色（spec「介面狀態語意色分層」）：選取由首字母方塊承載，
+ * 狀態則由方塊下這行文字承載——還原中＝藍、離線／需重新登入＝琥珀警示、
  * 連不上＝紅。無狀態文字的本機分頁走中性。
  */
 function tabStatusTone(tab: TrayTabSnapshot): string {
@@ -279,14 +277,14 @@ function tabStatusTone(tab: TrayTabSnapshot): string {
 
 function RemoteTabIcon({ tab }: { tab: Extract<TrayTabSnapshot, { source: "remote" }> }) {
   if (tab.status === "restoring") {
-    return <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />;
+    return <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" />;
   }
-  if (tab.status === "offline") return <CloudOff className="h-3.5 w-3.5" />;
+  if (tab.status === "offline") return <CloudOff className="h-4 w-4" />;
   if (tab.status === "needs-reauth" || tab.failureKind === "needs-reauth") {
-    return <LogIn className="h-3.5 w-3.5" />;
+    return <LogIn className="h-4 w-4" />;
   }
-  if (tab.status === "error") return <AlertTriangle className="h-3.5 w-3.5" />;
-  return <Cloud className="h-3.5 w-3.5" />;
+  if (tab.status === "error") return <AlertTriangle className="h-4 w-4" />;
+  return <Cloud className="h-4 w-4" />;
 }
 
 function PanelRecoveryCard({
@@ -315,9 +313,8 @@ function PanelRecoveryCard({
       data-status={tab.status}
       role="status"
       aria-live="polite"
-      // 卡底維持 bg-foreground/5（毛玻璃透出），只借語意色的邊框——故 surface 之後
-      // 再蓋回底色。
-      className={cn("rounded-xl border p-3", SEMANTIC_SURFACE[tone], "bg-foreground/5")}
+      // 白卡（tray-panel-restyle design D5），只借語意色的邊框——故 surface 之後再蓋回白底。
+      className={cn("rounded-xl border p-3", SEMANTIC_SURFACE[tone], "bg-card")}
     >
       <div className="flex items-start gap-2.5">
         <span
@@ -341,7 +338,7 @@ function PanelRecoveryCard({
         </div>
       </div>
 
-      <dl className="mt-3 grid gap-2 rounded-lg bg-background/45 p-2 text-[11px]">
+      <dl className="mt-3 grid gap-2 rounded-lg bg-muted/50 p-2 text-[11px]">
         <div className="flex min-w-0 items-center gap-1.5">
           <Cloud className="h-3 w-3 shrink-0 text-muted-foreground" />
           <dt className="text-muted-foreground">{t("tray.recovery.workspace")}</dt>
@@ -360,40 +357,24 @@ function PanelRecoveryCard({
       <div className="mt-3 grid grid-cols-2 gap-1.5">
         {!restoring &&
           (needsReauth ? (
-            <button
-              type="button"
-              tabIndex={-1}
-              onClick={onReauthenticate}
-              className="col-span-2 flex min-h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-2 font-medium text-primary-foreground hover:bg-primary/90"
-            >
-              <LogIn className="h-3.5 w-3.5" /> {t("tray.recovery.reauthenticate")}
-            </button>
+            <Button size="sm" tabIndex={-1} onClick={onReauthenticate} className="col-span-2">
+              <LogIn className="h-3.5 w-3.5" />
+              {t("tray.recovery.reauthenticate")}
+            </Button>
           ) : (
-            <button
-              type="button"
-              tabIndex={-1}
-              onClick={onRetry}
-              className="col-span-2 flex min-h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-2 font-medium text-primary-foreground hover:bg-primary/90"
-            >
-              <RefreshCw className="h-3.5 w-3.5" /> {t("tray.recovery.retry")}
-            </button>
+            <Button size="sm" tabIndex={-1} onClick={onRetry} className="col-span-2">
+              <RefreshCw className="h-3.5 w-3.5" />
+              {t("tray.recovery.retry")}
+            </Button>
           ))}
-        <button
-          type="button"
-          tabIndex={-1}
-          onClick={onOpenRecovery}
-          className="flex min-h-8 items-center justify-center gap-1 rounded-md bg-foreground/8 px-2 text-[11px] hover:bg-foreground/15"
-        >
-          <ArrowUpRight className="h-3 w-3" /> {t("tray.recovery.open")}
-        </button>
-        <button
-          type="button"
-          tabIndex={-1}
-          onClick={onOpenServerSettings}
-          className="flex min-h-8 items-center justify-center gap-1 rounded-md bg-foreground/8 px-2 text-[11px] hover:bg-foreground/15"
-        >
-          <Settings className="h-3 w-3" /> {t("tray.recovery.settings")}
-        </button>
+        <Button variant="outline" size="sm" tabIndex={-1} onClick={onOpenRecovery}>
+          <ArrowUpRight className="h-3 w-3" />
+          {t("tray.recovery.open")}
+        </Button>
+        <Button variant="outline" size="sm" tabIndex={-1} onClick={onOpenServerSettings}>
+          <Settings className="h-3 w-3" />
+          {t("tray.recovery.settings")}
+        </Button>
       </div>
     </section>
   );
@@ -417,16 +398,26 @@ export function TrayPanel({
 }: TrayPanelProps) {
   const { t } = useI18n();
   const scrollRef = useRef<HTMLDivElement>(null);
+  // 已轉出收合列的展開狀態（design D4）：面板 webview 只建一次，重啟 app 後由本機記憶讀回。
+  const [promotedExpanded, setPromotedExpanded] = useState(readTrayPromotedExpanded);
+  const togglePromoted = () => {
+    const next = !promotedExpanded;
+    setPromotedExpanded(next);
+    writeTrayPromotedExpanded(next);
+  };
   const moreLabel = (n: number) => t("tray.more").replace("{n}", String(n));
+  const discussionRow = (d: { slug: string; topic: string }) => (
+    <DiscussionRow key={d.slug} d={d} onOpen={onOpenDiscussion} onCopy={onCopy} copyLabel={t("tray.copySlug")} />
+  );
   const collapseLabel = t("tray.collapse");
-  // 討論分區四種狀態（載入中、失敗、有料、空）共用同一標題，只差計數。
-  const discussionsHeader = (count?: number) => (
+  // 討論分區四種狀態（載入中、失敗、有料、空）共用同一標題，只差計數與其下有無內容。
+  const discussionsHeader = (count: number | undefined, hasBody: boolean) => (
     <SectionHeader
       icon={<MessageSquareText className={cn("h-3.5 w-3.5", DISCUSSION_TONE.icon)} />}
       label={t("tray.discussionsHeader")}
       count={count}
       countClassName={DISCUSSION_TONE.badge}
-      className={SECTION_HEADER_PAD}
+      className={sectionHeaderClass(hasBody)}
     />
   );
   const tabs = snapshot?.tabs ?? [];
@@ -456,28 +447,28 @@ export function TrayPanel({
       : null;
 
   return (
-    // 極淡主色漸層 wash（design D3）：低透明度不遮蔽 vibrancy。圓角 13px 與
-    // Rust 側 apply_vibrancy 半徑一致——wash 畫出圓角外會在頂角留下方形殘料。
-    // h-screen 撐滿視窗：三段式版面的中段（flex-1）才有約束高度，wash 隨之固定於視窗。
-    // bg-background/60 補光基底：HudWindow（NSVisualEffectView 舊世代）無亮度自適應、
-    // 深色背景會把面板整片壓暗——以主題背景色半透明層錨定亮度（隨深淺模式自動），
-    // 毛玻璃自剩餘透明度透出；濃度為真實視窗調參值。
+    // 補光層（tray-panel-restyle design D1）：HudWindow（NSVisualEffectView 舊世代）無亮度
+    // 自適應、深色背景會把面板整片壓暗——以側欄面色約九成不透明錨定亮度（隨深淺模式），
+    // 毛玻璃自餘下一成透出。圓角 13px 與 Rust 側 apply_vibrancy 半徑一致——補光畫出圓角外
+    // 會在頂角留下方形殘料。h-screen 撐滿視窗：三段式版面的中段（flex-1）才有約束高度。
+    // 卡與卡之間只以 gap 分隔，不畫分割線。
     <div
       data-testid="panel-root"
-      className="flex h-screen flex-col gap-1.5 rounded-[13px] bg-background/60 bg-linear-to-b from-foreground/5 to-transparent p-2 text-[13px] text-foreground"
+      className="flex h-screen flex-col gap-2 rounded-[13px] bg-sidebar/90 p-2 text-[13px] text-foreground"
     >
-      {/* 固定頁首（spec 三段式版面）：tab 條＋其下分割線常駐、不隨內容捲動。 */}
-      <div data-testid="panel-header" className="flex shrink-0 flex-col gap-1.5">
-      {/* 專案 tab 條（spec「面板樣式（macOS）」；design D1）：首字母 avatar＋
-          專案名、作用中實心主色卡、超寬橫向捲動且隱藏捲軸；點 tab 沿用
-          open-project 原地切換語意（不喚主視窗）。刻意用 div 非 button——
-          面板中唯一可 tab 元素會吃到 WebKit 的預設焦點（design D4）。
+      {/* 固定頁首（spec 三段式版面）：tab 條卡常駐、不隨內容捲動。 */}
+      <div data-testid="panel-header" className="shrink-0">
+      <PanelCard testid="panel-project-card">
+      {/* 專案 tab 條（spec「面板樣式（macOS）」；tray-panel-restyle design D3）：首字母
+          方塊與主視窗圖示列同形（取 projectTile 同一份常數，作用中實心主色）＋其下專案名，
+          超寬橫向捲動且隱藏捲軸；點 tab 沿用 open-project 原地切換語意（不喚主視窗）。
+          刻意用 div 非 button——面板中唯一可 tab 元素會吃到 WebKit 的預設焦點（design D4）。
           條常駐（零專案時仍有尾端「加入專案」項，design D7）。 */}
       <div
         data-testid="panel-project-tabs"
         role="tablist"
         aria-label={t("app.projectRail")}
-        className="flex gap-1 overflow-x-auto p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex gap-1 overflow-x-auto p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
           {tabs.map((tab) => {
             // 識別與切換把手皆為 locator key（workspace-session 決策 6）。
@@ -499,39 +490,39 @@ export function TrayPanel({
                 }`}
                 tabIndex={-1}
                 onClick={() => onOpenProject(tab.key)}
-                className={cn(
-                  "flex min-h-14 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border px-2.5 py-1.5",
-                  // 選取一律由主色外框表達；狀態交給列內狀態文字的語意色。
-                  // （舊版非 ready 的作用中分頁塗琥珀，選取與警示混成同一片顏色。）
-                  active && tab.status === "ready"
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : active
-                      ? "border-primary/60 text-foreground"
-                      : "border-transparent hover:bg-primary/10",
-                )}
+                // 名稱在方塊下會截斷（max-w-14），title 帶出全名。
+                title={tab.name}
+                className={cn(TAB_ITEM, "w-16")}
               >
+                {/* 選取只由方塊承載：作用中不論 ready／restoring／error 皆實心主色（與圖示列一致），
+                    狀態交給其下狀態文字的語意色。 */}
                 <span
                   aria-hidden
-                  className={cn(
-                    "flex h-6 w-6 items-center justify-center rounded-md text-[13px] font-semibold",
-                    active ? "bg-primary-foreground/20" : "bg-primary/10 text-primary",
-                  )}
+                  data-project-tile
+                  className={cn(RAIL_SQUARE, active ? PROJECT_TILE_ACTIVE : PROJECT_TILE_IDLE)}
                 >
-                  {/* 切換中蓋過 avatar：探測擋在翻頁前，此處是使用者唯一的「有在動」訊號。 */}
+                  {/* 切換中蓋過首字母：探測擋在翻頁前，此處是使用者唯一的「有在動」訊號。 */}
                   {tab.key === pendingTabKey ? (
                     <LoaderCircle
                       data-tab-pending="true"
-                      className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+                      className="h-4 w-4 animate-spin motion-reduce:animate-none"
                     />
                   ) : tab.source === "remote" ? (
                     <RemoteTabIcon tab={tab} />
                   ) : (
-                    tab.name.charAt(0).toUpperCase()
+                    projectInitial(tab.name)
                   )}
                 </span>
-                <span className="max-w-24 truncate text-[11px] leading-none">{tab.name}</span>
+                <span
+                  className={cn(
+                    "max-w-14 truncate text-[11px] leading-none",
+                    active ? "font-medium text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  {tab.name}
+                </span>
                 {tab.source === "remote" && tab.status !== "ready" && (
-                  <span className={cn("max-w-24 truncate text-[9px] leading-none", tabStatusTone(tab))}>
+                  <span className={cn("max-w-14 truncate text-[9px] leading-none", tabStatusTone(tab))}>
                     {tabStatusLabel(tab, t)}
                   </span>
                 )}
@@ -544,19 +535,23 @@ export function TrayPanel({
           title={t("tray.addProject")}
           aria-label={t("tray.addProject")}
           onClick={onAddProject}
-          className="flex shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+          className={cn(TAB_ITEM, "group min-w-16")}
         >
-          <span className="flex h-6 w-6 items-center justify-center rounded-md border border-dashed border-muted-foreground/40">
-            <Plus className="h-3.5 w-3.5" />
+          {/* 虛線框方塊與圖示列的「＋」同形。文字不截斷——英文「Add project」比專案 tab 寬，
+              這一項跟著文字長（min-w 與專案 tab 對齊）。 */}
+          <span
+            aria-hidden
+            data-project-tile
+            className={cn(RAIL_SQUARE, ADD_TILE, "group-hover:bg-muted group-hover:text-foreground")}
+          >
+            <Plus className="h-4 w-4" />
           </span>
-          <span className="text-[11px] leading-none">{t("tray.addProject")}</span>
+          <span className="whitespace-nowrap text-[11px] leading-none text-muted-foreground">
+            {t("tray.addProject")}
+          </span>
         </div>
       </div>
-
-      {/* 區塊順序（spec「面板樣式（macOS）」區塊順序與分割線）：tab 條之下
-          依序為討論區塊（討論常駐＋已轉出有料才現）、生命週期區塊、動作區塊，
-          塊間各一條分割線——首尾兩條隨頁首頁尾常駐，中段內一條隨內容捲動。 */}
-      <Divider />
+      </PanelCard>
       </div>
 
       {/* 可捲中段（spec 三段式版面）：討論／生命週期分區或復原卡；捲動面自 body
@@ -571,7 +566,7 @@ export function TrayPanel({
         data-testid="panel-scroll"
         className="min-h-0 flex-1 overflow-y-auto overscroll-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-      <div data-testid="panel-scroll-content" className="flex flex-col gap-1.5">
+      <div data-testid="panel-scroll-content" className="flex flex-col gap-2">
       {activeRecovery ? (
         <PanelRecoveryCard
           tab={activeRecovery}
@@ -586,8 +581,9 @@ export function TrayPanel({
             <div
               data-testid="panel-stale-status"
               role="status"
+              // 琥珀淡底卡（design D5）：與專案欄的提示卡同語意，保留淡底而非白卡。
               className={cn(
-                "flex min-h-8 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[11px]",
+                "flex min-h-8 items-center gap-2 rounded-xl border px-3 py-2 text-[11px]",
                 SEMANTIC_SURFACE.warning,
               )}
             >
@@ -595,75 +591,88 @@ export function TrayPanel({
               <span className="font-medium">{tabStatusLabel(activeStale, t)}</span>
               <span className="ml-auto text-muted-foreground">{t("tray.recovery.stale")}</span>
               {activeStale.status === "needs-reauth" && (
-                <button
-                  type="button"
+                // 中性 outline：警示由整列的琥珀底承載，按鈕再塗琥珀只會兩片顏色互搶。
+                <Button
+                  variant="outline"
+                  size="sm"
                   tabIndex={-1}
                   onClick={() => onReauthenticate(activeStale.connectionId)}
-                  // 中性 outline：警示由整列的琥珀底承載，按鈕再塗琥珀只會兩片顏色互搶。
-                  className="rounded border border-border bg-background/60 px-2 py-1 font-medium hover:bg-foreground/10"
                 >
                   {t("tray.recovery.reauthenticate")}
-                </button>
+                </Button>
               )}
             </div>
           )}
 
-      {/* 討論區分流（spec「討論列表」）：「討論」列討論中、「已轉出」列已轉出；
-          slug 為題、topic 為描述（識別錨點慣例，與看板討論卡一致） */}
+      {/* 討論卡（spec「討論列表」）：標頭計數只算討論中；已轉出收於卡底「已轉出 N ›」
+          收合列（有料才現），展開區落在收合列正上方。slug 為題、topic 為描述（識別錨點
+          慣例，與看板討論卡一致）。 */}
       {loading ? (
         /* 首訪載入中（design D5）：標題照常、內容為佔位列——與計數 0 的空狀態卡可區分。 */
-        <SectionCard testid="panel-section-discussions">
-          {discussionsHeader()}
+        <PanelCard testid="panel-section-discussions">
+          {discussionsHeader(undefined, true)}
           <SectionSkeleton />
-        </SectionCard>
+        </PanelCard>
       ) : loadFailed ? (
         /* 首訪載入失敗：計數未知（不謊報 0），內容為失敗提示而非空態文案。 */
-        <SectionCard testid="panel-section-discussions">
-          {discussionsHeader()}
+        <PanelCard testid="panel-section-discussions">
+          {discussionsHeader(undefined, true)}
           <SectionLoadFailed label={t("tray.loadFailed")} />
-        </SectionCard>
-      ) : openDiscussions.length > 0 ? (
-        <SectionCard testid="panel-section-discussions">
-          {discussionsHeader(openDiscussions.length)}
+        </PanelCard>
+      ) : openDiscussions.length > 0 || promotedDiscussions.length > 0 ? (
+        <PanelCard testid="panel-section-discussions">
+          {discussionsHeader(openDiscussions.length, true)}
           <OverflowGroup
             moreLabel={moreLabel}
             collapseLabel={collapseLabel}
-            rows={openDiscussions.map((d) => (
-              <DiscussionRow key={d.slug} d={d} onOpen={onOpenDiscussion} onCopy={onCopy} copyLabel={t("tray.copySlug")} />
-            ))}
+            rows={openDiscussions.map(discussionRow)}
           />
-        </SectionCard>
+          {promotedDiscussions.length > 0 && (
+            <>
+              {promotedExpanded && (
+                <div data-testid="panel-promoted-rows" className="flex flex-col border-b border-border/70 bg-muted/40">
+                  <OverflowGroup
+                    moreLabel={moreLabel}
+                    collapseLabel={collapseLabel}
+                    rows={promotedDiscussions.map(discussionRow)}
+                  />
+                </div>
+              )}
+              {/* 計數在文字裡、中性配色，不給色相徽章（desktop-app「介面狀態語意色分層」）。 */}
+              <div
+                data-testid="panel-promoted-toggle"
+                role="button"
+                aria-expanded={promotedExpanded}
+                tabIndex={-1}
+                onClick={togglePromoted}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    togglePromoted();
+                  }
+                }}
+                className={cn(rowClass, "text-xs font-medium text-muted-foreground")}
+              >
+                <span>{t("discussion.promotedBar").replace("{n}", String(promotedDiscussions.length))}</span>
+                <ChevronRight
+                  className={cn("ml-auto h-3.5 w-3.5 shrink-0 transition-transform", promotedExpanded && "rotate-90")}
+                />
+              </div>
+            </>
+          )}
+        </PanelCard>
       ) : (
         /* 空狀態與非空同構（design D8）：標題＋計數 0、最小高度垂直置中。 */
-        <SectionCard testid="panel-section-discussions" className={emptyCardClass}>
-          {discussionsHeader(0)}
-        </SectionCard>
+        <PanelCard testid="panel-section-discussions" className={emptyCardClass}>
+          {discussionsHeader(0, false)}
+        </PanelCard>
       )}
-      {!loading && promotedDiscussions.length > 0 && (
-        <SectionCard testid="panel-section-promoted">
-          <SectionHeader
-            icon={<ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground/70" />}
-            label={t("tray.promotedHeader")}
-            count={promotedDiscussions.length}
-            className={SECTION_HEADER_PAD}
-          />
-          <OverflowGroup
-            moreLabel={moreLabel}
-            collapseLabel={collapseLabel}
-            rows={promotedDiscussions.map((d) => (
-              <DiscussionRow key={d.slug} d={d} onOpen={onOpenDiscussion} onCopy={onCopy} copyLabel={t("tray.copySlug")} />
-            ))}
-          />
-        </SectionCard>
-      )}
-
-      <Divider />
 
       {/* 生命週期分區：三階段分區卡常駐（工作站常駐、衍生群組有料才現）——
           零筆階段呈標題＋計數 0 的空狀態卡（與討論分區同構，design D8），
           分區位置固定不隨資料增減跳動；原生選單的全空佔位文案不在此重現。 */}
       {staged.map(({ stage, Icon, items }) => (
-        <SectionCard
+        <PanelCard
           key={stage}
           testid={`panel-section-${stage}`}
           className={!loading && !loadFailed && items.length === 0 ? emptyCardClass : undefined}
@@ -673,7 +682,7 @@ export function TrayPanel({
             label={t(`stage.${stage}`)}
             count={loading || loadFailed ? undefined : items.length}
             countClassName={STAGE_BADGE[stage]}
-            className={SECTION_HEADER_PAD}
+            className={sectionHeaderClass(loading || loadFailed || items.length > 0)}
           />
           {loading ? (
             <SectionSkeleton />
@@ -695,7 +704,7 @@ export function TrayPanel({
             ))}
           />
           )}
-        </SectionCard>
+        </PanelCard>
       ))}
 
         </>
@@ -705,27 +714,28 @@ export function TrayPanel({
       <ScrollIndicator targetRef={scrollRef} />
       </div>
 
-      {/* 固定頁尾（spec 三段式版面）：分割線＋動作區常駐、不隨內容捲動。
+      {/* 固定頁尾（spec 三段式版面）：動作區卡常駐、不隨內容捲動。
           動作區：開啟主視窗、專案設定、設定、結束（spec 動作區塊四項；與原生選單同序——
           專案層動作在前、app 層在後，呼應主視窗側欄層次；圖示沿用側欄同款） */}
-      <div data-testid="panel-footer" className="flex shrink-0 flex-col gap-1.5">
-      <Divider />
+      <div data-testid="panel-footer" className="shrink-0">
+      <PanelCard testid="panel-actions-card">
       <div onClick={onOpenApp} className={rowClass}>
-        <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary-foreground" />
+        <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         {t("tray.open")}
       </div>
       <div onClick={onOpenProjectSettings} className={rowClass}>
-        <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary-foreground" />
+        <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         {t("app.navProjectSettings")}
       </div>
       <div onClick={onOpenSettings} className={rowClass}>
-        <Settings className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary-foreground" />
+        <Settings className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         {t("tray.settings")}
       </div>
       <div onClick={onQuit} className={rowClass}>
-        <Power className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary-foreground" />
+        <Power className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         {t("tray.quit")}
       </div>
+      </PanelCard>
       </div>
     </div>
   );
@@ -750,11 +760,11 @@ function DiscussionRow({
     >
       <div className="min-w-0 flex-1">
         <div className="truncate font-mono text-[12px]">{d.slug}</div>
-        <div className="truncate text-[11px] text-muted-foreground group-hover:text-primary-foreground/80">
-          {d.topic}
-        </div>
+        <div className="truncate text-[11px] text-muted-foreground">{d.topic}</div>
       </div>
-      <RowCopyButton label={copyLabel} text={d.slug} onCopy={onCopy} />
+      {/* 列尾常駐複製鈕：tabIndex=-1 退出 tab 順序（design D4）——面板成 key window 後 WebKit
+          會把焦點給第一個可 tab 元素，複製鈕不退出就吃到焦點框。變更列同理。 */}
+      <CopyButton value={d.slug} label={copyLabel} onCopy={onCopy} tabIndex={-1} />
     </div>
   );
 }
@@ -768,11 +778,6 @@ function DiscussionRow({
  * 另建第二份對照，否則卡片改了色、tray 不會跟著改。tooltip 以 `title` 承載：
  * 面板是無焦點的一瞥介面，掛 Radix Tooltip 會多一層 portal 與焦點管理。
  */
-/** 列 hover 反白（主色底）時站章隨列改前景色（spec tray-status-menu「面板變更列的
-    品質站章」）：紫章壓在主色底上對比不足，反白期間與同列名稱、任務數、進度條一致，
-    站別改由圖示形狀承辨；指標離開即回復共用色調表。 */
-const STAMP_HOVER = "group-hover:text-primary-foreground";
-
 function StationBadges({ c }: { c: ChangeItem }) {
   const { t } = useI18n();
   const review = c.reviewStatus && c.reviewStatus !== "none" ? c.reviewStatus : null;
@@ -784,7 +789,7 @@ function StationBadges({ c }: { c: ChangeItem }) {
         <span
           aria-label={t(REVIEW_LABEL_KEY[review])}
           title={t(REVIEW_LABEL_KEY[review])}
-          className={cn("shrink-0", REVIEW_TONE[review], STAMP_HOVER)}
+          className={cn("shrink-0", REVIEW_TONE[review])}
         >
           {REVIEW_ICON[review]}
         </span>
@@ -793,7 +798,7 @@ function StationBadges({ c }: { c: ChangeItem }) {
         <span
           aria-label={t(VERIFY_LABEL_KEY[verify])}
           title={t(VERIFY_LABEL_KEY[verify])}
-          className={cn("shrink-0", VERIFY_TONE[verify], STAMP_HOVER)}
+          className={cn("shrink-0", VERIFY_TONE[verify])}
         >
           {VERIFY_ICON[verify]}
         </span>
@@ -828,7 +833,8 @@ function ChangeRow({
     <div
       data-testid={`panel-change-${c.name}`}
       onClick={() => onOpen(c.name)}
-      className={cn(rowClass, blockedBy.length > 0 && "opacity-60")}
+      // 淡化落在列的內容（直接子節點）上：列本身降透明度會連底部分隔線一起變淡。
+      className={cn(rowClass, blockedBy.length > 0 && "[&>*]:opacity-60")}
       title={blockedTitle}
     >
       <div className="min-w-0 flex-1">
@@ -837,7 +843,7 @@ function ChangeRow({
             <span
               aria-label={planWaveLabel(wave, t)}
               title={planWaveLabel(wave, t)}
-              className={cn("shrink-0 text-[11px] font-semibold tabular-nums text-primary", STAMP_HOVER)}
+              className="shrink-0 text-[11px] font-semibold tabular-nums text-primary"
             >
               {wave}
             </span>
@@ -851,31 +857,28 @@ function ChangeRow({
             <span
               aria-label={t("card.worktree")}
               title={t("card.worktreeTitle").replace("{branch}", c.worktree.branch)}
-              className={cn("shrink-0", SEMANTIC_TONE.inProgress, STAMP_HOVER)}
+              className={cn("shrink-0", SEMANTIC_TONE.inProgress)}
             >
               <GitBranch className="h-3.5 w-3.5" />
             </span>
           )}
           {c.totalTasks > 0 && (
-            <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground group-hover:text-primary-foreground/80">
+            <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">
               {`${c.completedTasks}/${c.totalTasks}`}
             </span>
           )}
         </div>
         {c.totalTasks > 0 && (
-          <div className="mt-1 h-1 overflow-hidden rounded-full bg-foreground/10 group-hover:bg-primary-foreground/25">
+          <div className="mt-1 h-1 overflow-hidden rounded-full bg-foreground/10">
             <div
               data-testid="panel-progress-fill"
-              className={cn(
-                "h-full rounded-full group-hover:bg-primary-foreground",
-                STAGE_BAR[stage],
-              )}
+              className={cn("h-full rounded-full", STAGE_BAR[stage])}
               style={{ width: `${pct}%` }}
             />
           </div>
         )}
       </div>
-      <RowCopyButton label={copyLabel} text={c.name} onCopy={onCopy} />
+      <CopyButton value={c.name} label={copyLabel} onCopy={onCopy} tabIndex={-1} />
     </div>
   );
 }

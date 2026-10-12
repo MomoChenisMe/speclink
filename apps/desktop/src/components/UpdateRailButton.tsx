@@ -6,7 +6,7 @@ import { AlertTriangle, Download, LoaderCircle, RotateCw } from "lucide-react";
 import { SEMANTIC_TONE, Tooltip, TooltipContent, TooltipTrigger, cn, useI18n } from "@speclink/ui";
 
 import { updateNeedsAttention, type UpdaterState } from "../core/updater";
-import { RAIL_SQUARE } from "./ProjectRail";
+import { RAIL_SQUARE } from "./projectTile";
 
 export interface UpdateRailButtonProps {
   state: UpdaterState;
