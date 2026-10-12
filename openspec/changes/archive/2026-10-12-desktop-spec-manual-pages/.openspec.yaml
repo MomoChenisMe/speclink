@@ -1,0 +1,123 @@
+schema: spec-driven
+created: 2026-10-12
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: spec-manual-page-alignment
+started_at: 2026-10-12
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-12
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 11
+reviewed_scope:
+  - path: apps/desktop/core/src/manual.rs
+    hash: b324dae03e698fb4d0eb99d146882b1154f032bf7ed2c9487b78cbaf2510597c
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: bf37539f01b9cf661c75b99d1414027bc1595550de0943551dcce5c9379a0a63
+  - path: apps/desktop/src/App.tsx
+    hash: 75ff48f7894c28a1f0abcc0e69ca373e12bfbc7ed65f7673d1ae4cfdf7b276c6
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 48abc7abcfdc1c871d4b304074af9791389b5d815eb6894d571d114e656923df
+  - path: apps/desktop/src/__tests__/fsActions.test.ts
+    hash: 9f7219cf4bba5a51ab1ec021ce98d4b131ab0f5b546613475bd55f78510dff3f
+  - path: apps/desktop/src/adapter/fsActions.ts
+    hash: d11decf45e0dd6d6345a82277de34959f390e1fdf34b2b9f176438ca62e780c0
+  - path: packages/ui/src/__tests__/deltaSpecView.test.tsx
+    hash: 0d14557ae7a346e5cb7db99281dcd6f0f1a78eb9f37dae2c98f88a074060d40d
+  - path: packages/ui/src/__tests__/manualPage.test.tsx
+    hash: 64ad02c9487d8db6f91d334ce07cc0cf9d10ca195cc66498afbf09a5b810f42d
+  - path: packages/ui/src/__tests__/specDetailPage.test.tsx
+    hash: a4ac0519c54c4d7d479b866805f3174ac694711e25ef00ef477110eacec288fb
+  - path: packages/ui/src/__tests__/specSections.test.ts
+    hash: 698ea9a93a2d67be590b9c5b0c04215e696ea4ebd3ae50815474d1ff6349045e
+  - path: packages/ui/src/__tests__/specSummary.test.ts
+    hash: 47f42e2ad9e0f366d1e593651141fe073be870d1cc42a9fbe0be8220f58ad90c
+  - path: packages/ui/src/__tests__/ticketView.test.tsx
+    hash: d30a1226edfa89e52c1cf032ce47e57c031c82f274162824f37b3ed93ef0e65d
+  - path: packages/ui/src/components/DetailHeader.tsx
+    hash: ed5da0f2fec8531395f4bc805e32b93363551ec8e9124cf1587033621300cedc
+  - path: packages/ui/src/components/ManualPage.tsx
+    hash: b8349037f5f1e9446b9ddbcb5a0e0efe37f46240b1e72cb6ef89dc3249de78df
+  - path: packages/ui/src/components/ManualToc.tsx
+    hash: d34261d211ac601acbdf36db4a64af477d417765e10749b75170e7051bdc0251
+  - path: packages/ui/src/components/ManualTree.tsx
+    hash: 40973103bc1b4314a9fa744eff77e5c9c6030dc02e18c2334f95147283eb8c51
+  - path: packages/ui/src/components/Markdown.tsx
+    hash: 4ac49c051d667feb6f7242653dee3533d81377d8a76aa42ac973b1b4fcf05589
+  - path: packages/ui/src/components/RequirementBlock.tsx
+    hash: 8276487fb04ac976f571ea257dddc244595ee87193d457ff4cc37a4292c89a94
+  - path: packages/ui/src/components/SpecDetailPage.tsx
+    hash: 9e5cd16a186954d14e09e304c54664257dc10c4efad9a07e849b208fc39c2a9d
+  - path: packages/ui/src/components/TicketView.tsx
+    hash: 41e2bb1d683d3a95d49127058b88c1cfde43c92a18b63ead6c46cdd4e66998d1
+  - path: packages/ui/src/components/ui/tabs.tsx
+    hash: 5aa34c6d5f8d989dbdebfed54ba55fa874c7d4186f3ca339ec027102c62fed32
+  - path: packages/ui/src/i18n.tsx
+    hash: 489bba8c843d1efbf1297d6119cfdd2f07079a12badca4ee33b2ede099671d45
+  - path: packages/ui/src/index.ts
+    hash: 758abe22a8891f79cf525808edc79f4b990c92d5909a3733518da5fef1103c5e
+  - path: packages/ui/src/manualDoc.ts
+    hash: 90dbccca2a09be5816db28571fdda1059e860e6e7c2e1f4030ee2a8014e88ce9
+  - path: packages/ui/src/specSections.ts
+    hash: 0ec6134d07013db0abba506fb85002490aa25abec365556fbe78262f825351bb
+  - path: packages/ui/src/specSummary.ts
+    hash: 045604145919b6f2a2e4eb85dff9aa714610487868605c496951fe288bd63e3c
+verified_at: 2026-10-12
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 11
+verified_scope:
+  - path: apps/desktop/core/src/manual.rs
+    hash: b324dae03e698fb4d0eb99d146882b1154f032bf7ed2c9487b78cbaf2510597c
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: bf37539f01b9cf661c75b99d1414027bc1595550de0943551dcce5c9379a0a63
+  - path: apps/desktop/src/App.tsx
+    hash: 75ff48f7894c28a1f0abcc0e69ca373e12bfbc7ed65f7673d1ae4cfdf7b276c6
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 48abc7abcfdc1c871d4b304074af9791389b5d815eb6894d571d114e656923df
+  - path: apps/desktop/src/__tests__/fsActions.test.ts
+    hash: 9f7219cf4bba5a51ab1ec021ce98d4b131ab0f5b546613475bd55f78510dff3f
+  - path: apps/desktop/src/adapter/fsActions.ts
+    hash: d11decf45e0dd6d6345a82277de34959f390e1fdf34b2b9f176438ca62e780c0
+  - path: packages/ui/src/__tests__/deltaSpecView.test.tsx
+    hash: 0d14557ae7a346e5cb7db99281dcd6f0f1a78eb9f37dae2c98f88a074060d40d
+  - path: packages/ui/src/__tests__/manualPage.test.tsx
+    hash: 64ad02c9487d8db6f91d334ce07cc0cf9d10ca195cc66498afbf09a5b810f42d
+  - path: packages/ui/src/__tests__/specDetailPage.test.tsx
+    hash: a4ac0519c54c4d7d479b866805f3174ac694711e25ef00ef477110eacec288fb
+  - path: packages/ui/src/__tests__/specSections.test.ts
+    hash: 698ea9a93a2d67be590b9c5b0c04215e696ea4ebd3ae50815474d1ff6349045e
+  - path: packages/ui/src/__tests__/specSummary.test.ts
+    hash: 47f42e2ad9e0f366d1e593651141fe073be870d1cc42a9fbe0be8220f58ad90c
+  - path: packages/ui/src/__tests__/ticketView.test.tsx
+    hash: d30a1226edfa89e52c1cf032ce47e57c031c82f274162824f37b3ed93ef0e65d
+  - path: packages/ui/src/components/DetailHeader.tsx
+    hash: ed5da0f2fec8531395f4bc805e32b93363551ec8e9124cf1587033621300cedc
+  - path: packages/ui/src/components/ManualPage.tsx
+    hash: b8349037f5f1e9446b9ddbcb5a0e0efe37f46240b1e72cb6ef89dc3249de78df
+  - path: packages/ui/src/components/ManualToc.tsx
+    hash: d34261d211ac601acbdf36db4a64af477d417765e10749b75170e7051bdc0251
+  - path: packages/ui/src/components/ManualTree.tsx
+    hash: 40973103bc1b4314a9fa744eff77e5c9c6030dc02e18c2334f95147283eb8c51
+  - path: packages/ui/src/components/Markdown.tsx
+    hash: 4ac49c051d667feb6f7242653dee3533d81377d8a76aa42ac973b1b4fcf05589
+  - path: packages/ui/src/components/RequirementBlock.tsx
+    hash: 8276487fb04ac976f571ea257dddc244595ee87193d457ff4cc37a4292c89a94
+  - path: packages/ui/src/components/SpecDetailPage.tsx
+    hash: 9e5cd16a186954d14e09e304c54664257dc10c4efad9a07e849b208fc39c2a9d
+  - path: packages/ui/src/components/TicketView.tsx
+    hash: 41e2bb1d683d3a95d49127058b88c1cfde43c92a18b63ead6c46cdd4e66998d1
+  - path: packages/ui/src/components/ui/tabs.tsx
+    hash: 5aa34c6d5f8d989dbdebfed54ba55fa874c7d4186f3ca339ec027102c62fed32
+  - path: packages/ui/src/i18n.tsx
+    hash: 489bba8c843d1efbf1297d6119cfdd2f07079a12badca4ee33b2ede099671d45
+  - path: packages/ui/src/index.ts
+    hash: 758abe22a8891f79cf525808edc79f4b990c92d5909a3733518da5fef1103c5e
+  - path: packages/ui/src/manualDoc.ts
+    hash: 90dbccca2a09be5816db28571fdda1059e860e6e7c2e1f4030ee2a8014e88ce9
+  - path: packages/ui/src/specSections.ts
+    hash: 0ec6134d07013db0abba506fb85002490aa25abec365556fbe78262f825351bb
+  - path: packages/ui/src/specSummary.ts
+    hash: 045604145919b6f2a2e4eb85dff9aa714610487868605c496951fe288bd63e3c
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-12
