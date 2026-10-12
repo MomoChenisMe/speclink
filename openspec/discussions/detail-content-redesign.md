@@ -4,8 +4,7 @@ slug: detail-content-redesign
 status: promoted
 created: 2026-10-12
 created_by: MomoChen <momochenisme@gmail.com>
-hold: true
-promoted_to: desktop-detail-doc-tree, desktop-change-doc-views
+promoted_to: desktop-detail-doc-tree, desktop-change-doc-views, desktop-discussion-doc-views
 ---
 
 # Discussion: 變更與討論詳情頁各分頁內容的呈現重新設計：提案、設計、任務、規格、審查，與討論的結論、討論過程、背景、衍生變更
