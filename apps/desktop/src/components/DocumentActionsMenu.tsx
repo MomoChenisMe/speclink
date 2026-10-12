@@ -1,4 +1,4 @@
-// 詳情頁內容卡標頭右端的「開啟 ▾」（design D4）：對目前分頁的檔案提供以預設 App
+// 詳情頁閱讀卡標題列右端的「開啟 ▾」（design D4）：對目前分頁的檔案提供以預設 App
 // 開啟、在檔案管理員顯示、複製路徑；remote 無本機 checkout、或分頁沒有可定位的檔案
 // （已封存討論）時只剩「複製內容」。
 import { useRef, useState } from "react";
@@ -63,7 +63,7 @@ export function DocumentActionsMenu({
   return (
     <DropdownMenu onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground">
+        <Button variant="outline" size="sm" className="gap-1">
           <FileText className="h-3.5 w-3.5" />
           {t("detail.open")}
           <ChevronDown className="h-3.5 w-3.5" />

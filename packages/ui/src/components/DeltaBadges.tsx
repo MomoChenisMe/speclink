@@ -65,6 +65,7 @@ export function DeltaSpecView({ markdown }: { markdown: string | null }) {
           <div key={i}>
             <div
               data-delta-section={s.op}
+              data-doc-heading
               className={`mt-4 mb-1 first:mt-0 flex items-center gap-1.5 ${LABEL_CLS} ${DELTA_COLORS[s.op]}`}
             >
               <span aria-hidden="true">{DELTA_MARKS[s.op]}</span>

@@ -456,9 +456,10 @@ describe("App (kanban primary + rich detail)", () => {
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
     fireEvent.click(screen.getByText("desktop-shell-and-browser"));
-    const page = await screen.findByTestId("detail-page");
+    await screen.findByTestId("detail-page");
     const user = userEvent.setup({ pointerEventsCheck: 0 });
-    await user.click(within(page).getByRole("button", { name: "更多動作" }));
+    // 變更層動作經插槽進主區標題列（desktop-detail-doc-tree design D3）。
+    await user.click(within(screen.getByTestId("main-titlebar")).getByRole("button", { name: "更多動作" }));
     await user.click(await screen.findByRole("menuitem", { name: /刪除/ }));
     // 確認對話框
     await waitFor(() => screen.getByText("刪除變更？"));
@@ -526,8 +527,9 @@ describe("App (kanban primary + rich detail)", () => {
     });
     renderApp(ds);
     fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
-    const page = await screen.findByTestId("detail-page");
-    fireEvent.click(within(page).getByRole("button", { name: "封存" }));
+    await screen.findByTestId("detail-page");
+    // 變更層動作經插槽進主區標題列（desktop-detail-doc-tree design D3）。
+    fireEvent.click(within(screen.getByTestId("main-titlebar")).getByRole("button", { name: "封存" }));
     const confirm = await screen.findByRole("alertdialog");
     fireEvent.click(within(confirm).getByRole("button", { name: "封存" }));
     await waitFor(() => expect(ds.runVerb).toHaveBeenCalledWith("archive", "desktop-shell-and-browser"));
@@ -2619,6 +2621,104 @@ describe("詳情頁層與導覽（desktop-detail-page）", () => {
   const page = () => screen.queryByTestId("detail-page");
   const host = () => screen.getByTestId("host-page");
   const currentChange = () => (pageSpy.change[pageSpy.change.length - 1]?.change as { name: string } | null)?.name;
+  const titlebar = () => screen.getByTestId("main-titlebar");
+
+  // desktop-detail-doc-tree design D3／D4：變更層動作經插槽進主區標題列，「開啟 ▾」留在閱讀卡標題列。
+  it("開已就緒變更：標題列依序為 ‹ n／m ›、分析、封存、更多動作；主區無 card 分頁列", async () => {
+    renderApp(
+      fakeDataSource({
+        listChanges: vi.fn().mockResolvedValue(
+          changeList([{ name: "ready-one", status: "in-progress", totalTasks: 3, completedTasks: 3 }]),
+        ),
+      }),
+    );
+    fireEvent.click(await screen.findByText("ready-one"));
+    const layer = await screen.findByTestId("detail-page");
+    await waitFor(() => expect(within(titlebar()).getByRole("button", { name: "封存" })).toBeTruthy());
+    const names = within(titlebar())
+      .getAllByRole("button")
+      .map((b) => b.getAttribute("aria-label") ?? b.textContent?.trim() ?? "");
+    const order = ["上一個", "下一個", "分析", "封存", "更多動作"].map((n) => names.indexOf(n));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(within(titlebar()).getByText("1 / 1")).toBeTruthy();
+    // 動作不在頁層內；頁層的 tablist 只有左欄的文件樹（直向）。
+    expect(within(layer).queryByRole("button", { name: "更多動作" })).toBeNull();
+    for (const list of within(layer).getAllByRole("tablist")) {
+      expect(list.getAttribute("aria-orientation")).toBe("vertical");
+      expect(list.closest("[data-detail-tree]")).toBeTruthy();
+    }
+  });
+
+  it("標題列動作區：‹ n／m › 之後先一條細線，「分析」為 outline、「封存」為實心主色", async () => {
+    renderApp(
+      fakeDataSource({
+        listChanges: vi.fn().mockResolvedValue(
+          changeList([{ name: "ready-one", status: "in-progress", totalTasks: 3, completedTasks: 3 }]),
+        ),
+      }),
+    );
+    fireEvent.click(await screen.findByText("ready-one"));
+    await screen.findByTestId("detail-page");
+    const slot = await waitFor(() => {
+      const el = titlebar().querySelector("[data-detail-actions]") as HTMLElement | null;
+      expect(el?.firstElementChild).toBeTruthy();
+      return el!;
+    });
+    expect(slot.firstElementChild!.getAttribute("aria-hidden")).toBe("true");
+    expect(within(slot).getByRole("button", { name: "分析" }).className).toContain("border-input");
+    expect(within(slot).getByRole("button", { name: "封存" }).className).toContain("bg-primary");
+  });
+
+  it("開 concluded 討論：「封存」經插槽進主區標題列、不在頁層內", async () => {
+    renderApp(
+      fakeDataSource({
+        listDiscussions: vi.fn().mockResolvedValue({
+          active: [
+            { slug: "settled", topic: "Settled topic", status: "concluded", rounds: 2, created: "2026-07-01", promotedTo: [] },
+          ],
+          archived: [],
+        }),
+      }),
+    );
+    fireEvent.click(await screen.findByText("Settled topic"));
+    const layer = await screen.findByTestId("detail-page");
+    await waitFor(() => expect(within(titlebar()).getByRole("button", { name: "封存" })).toBeTruthy());
+    expect(within(layer).queryByRole("button", { name: "封存" })).toBeNull();
+  });
+
+  it("「開啟 ▾」位於閱讀卡標題列，不在主區標題列", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+    const layer = await screen.findByTestId("detail-page");
+    const header = await waitFor(() => {
+      const el = layer.querySelector("[data-doc-header]") as HTMLElement | null;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    const open = await within(header).findByRole("button", { name: /開啟/ });
+    expect(open.className).toContain("border");
+    expect(within(titlebar()).queryByRole("button", { name: /^開啟/ })).toBeNull();
+  });
+
+  it("開已封存變更：標題列只有 ‹ n／m ›，無分析、封存與更多動作", async () => {
+    const ds = fakeDataSource({
+      listArchived: vi.fn().mockResolvedValue([
+        { datedName: "2026-07-04-old", date: "2026-07-04", name: "old", tasksTotal: 2, tasksDone: 2, specCount: 1, createdBy: null, fromDiscussions: [] },
+      ]),
+      getArchivedDocument: vi.fn().mockResolvedValue("## Why\n\n封存提案內文。"),
+    });
+    renderApp(ds);
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    fireEvent.click(within(projectColumn()).getByRole("button", { name: /已封存/ }));
+    fireEvent.click(await screen.findByText("old"));
+    const layer = await screen.findByTestId("detail-page");
+    await waitFor(() => expect(within(layer).getByText("封存提案內文。")).toBeTruthy());
+    expect(within(titlebar()).getByText("1 / 1")).toBeTruthy();
+    for (const name of ["分析", "封存", "更多動作"]) {
+      expect(within(titlebar()).queryByRole("button", { name })).toBeNull();
+    }
+  });
 
   it("開卡後頁層覆蓋主區、宿主頁 inert 且不可見；麵包屑三段、項目名等寬", async () => {
     renderApp();
@@ -2657,9 +2757,9 @@ describe("詳情頁層與導覽（desktop-detail-page）", () => {
   it("Esc 先給浮層：選單開著時第一次 Esc 只關選單，第二次才關頁", async () => {
     renderApp();
     fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
-    const layer = await screen.findByTestId("detail-page");
+    await screen.findByTestId("detail-page");
     const user = userEvent.setup({ pointerEventsCheck: 0 });
-    await user.click(within(layer).getByRole("button", { name: "更多動作" }));
+    await user.click(within(titlebar()).getByRole("button", { name: "更多動作" }));
     await screen.findByRole("menu");
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
@@ -2722,8 +2822,8 @@ describe("詳情頁層與導覽（desktop-detail-page）", () => {
     });
     renderApp(ds);
     fireEvent.click(await screen.findByText("change-a"));
-    const layer = await screen.findByTestId("detail-page");
-    fireEvent.click(within(layer).getByRole("button", { name: "封存" }));
+    await screen.findByTestId("detail-page");
+    fireEvent.click(within(titlebar()).getByRole("button", { name: "封存" }));
     const confirm = await screen.findByRole("alertdialog");
     fireEvent.click(within(confirm).getByRole("button", { name: "封存" }));
     await waitFor(() => expect(ds.runVerb).toHaveBeenCalledWith("archive", "change-a"));
@@ -2746,8 +2846,8 @@ describe("詳情頁層與導覽（desktop-detail-page）", () => {
       }),
     );
     fireEvent.click(await screen.findByText("change-a"));
-    const layer = await screen.findByTestId("detail-page");
-    fireEvent.click(within(layer).getByRole("button", { name: "封存" }));
+    await screen.findByTestId("detail-page");
+    fireEvent.click(within(titlebar()).getByRole("button", { name: "封存" }));
     await screen.findByRole("alertdialog");
     act(() => {
       fireEvent.keyDown(window, { key: "ArrowLeft", altKey: true });
@@ -2878,8 +2978,8 @@ describe("詳情頁層與導覽（desktop-detail-page）", () => {
     const ds = fakeDataSource();
     renderApp(ds);
     fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
-    const layer = await screen.findByTestId("detail-page");
-    fireEvent.click(within(layer).getByRole("button", { name: "封存" }));
+    await screen.findByTestId("detail-page");
+    fireEvent.click(within(titlebar()).getByRole("button", { name: "封存" }));
     const confirm = await screen.findByRole("alertdialog");
     fireEvent.click(within(confirm).getByRole("button", { name: "封存" }));
     await waitFor(() => expect(ds.runVerb).toHaveBeenCalledWith("archive", "desktop-shell-and-browser"));

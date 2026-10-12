@@ -108,7 +108,8 @@ function renderLocalApp(ds: SpeclinkDataSource) {
 /** 展開詳情頁的「⋯」選單，回傳「刪除」項。 */
 async function openDeleteItem(): Promise<HTMLElement> {
   const user = userEvent.setup({ pointerEventsCheck: 0 });
-  await user.click(within(screen.getByTestId("detail-page")).getByRole("button", { name: "更多動作" }));
+  // 變更層動作經插槽進主區標題列（desktop-detail-doc-tree design D3）。
+  await user.click(within(screen.getByTestId("main-titlebar")).getByRole("button", { name: "更多動作" }));
   return screen.findByRole("menuitem", { name: /刪除/ });
 }
 
@@ -168,7 +169,7 @@ describe("remote 分頁的 capability 停用", () => {
     const analyze = (await screen.findByRole("button", { name: /分析/ })) as HTMLButtonElement;
     expect(analyze.disabled).toBe(true);
     expect(analyze.title).toContain("validate/analyze");
-    const archive = within(screen.getByTestId("detail-page")).getByRole("button", { name: "封存" }) as HTMLButtonElement;
+    const archive = within(screen.getByTestId("main-titlebar")).getByRole("button", { name: "封存" }) as HTMLButtonElement;
     expect(archive.disabled).toBe(false);
     // 刪除在「⋯」選單：停用時項目下方灰字為能力缺口原因。
     const del = await openDeleteItem();

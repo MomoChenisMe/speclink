@@ -34,6 +34,7 @@ export {
 } from "./components/ui/card";
 export { Badge, badgeVariants, type BadgeProps } from "./components/ui/badge";
 export { StatusPill, type StatusPillLabel, type StatusPillTone } from "./components/ui/status-pill";
+export { Callout, type CalloutProps, type CalloutTone } from "./components/ui/callout";
 export {
   Table,
   TableHeader,
@@ -206,6 +207,22 @@ export {
   type DocumentRef,
   type DocumentTarget,
 } from "./components/DetailHeader";
+export {
+  DetailShell,
+  DetailIdentity,
+  DetailTreeLabel,
+  DetailStatus,
+  DocHeader,
+  DocTiles,
+  DocBody,
+  DetailActions,
+  DetailActionsSlot,
+  DetailActionsSlotProvider,
+  type DetailShellProps,
+  type DetailIdentityProps,
+  type DetailRelation,
+  type DocHeaderProps,
+} from "./components/DetailShell";
 
 // 互動任務、彩色 delta、封存頁
 export { parseTaskDoc, type TaskDocItem } from "./tasks";

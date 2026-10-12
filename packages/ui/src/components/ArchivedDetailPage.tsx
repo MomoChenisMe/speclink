@@ -1,4 +1,4 @@
-import { useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { Code2, FileText, Flag, ListChecks, MessagesSquare, PenTool, Rocket } from "lucide-react";
 
 import type { ArchivedItem, StationTicket, TicketStation } from "../adapter";
@@ -6,13 +6,14 @@ import { useI18n } from "../i18n";
 import { parseTasks } from "../tasks";
 import { settle, useGenerationLoad } from "../lib/useGenerationLoad";
 import { Badge } from "./ui/badge";
+import { Card } from "./ui/card";
 import { StatusPill } from "./ui/status-pill";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { TooltipProvider } from "./ui/tooltip";
 import { DeltaSpecView } from "./DeltaBadges";
 import {
   ConclusionView,
-  defaultDiscussionTab,
+  discussionDoc,
   DiscussionStageRow,
   PromotedChangeChip,
   PromotedChangeRow,
@@ -20,15 +21,18 @@ import {
   splitDiscussionSections,
   splitRounds,
 } from "./DiscussionDetailPage";
+import { IdentityName, StatusRow, documentArtifact, type DocumentTarget } from "./DetailHeader";
 import {
-  DetailContentCard,
-  DetailHeader,
-  DetailPageFrame,
-  IdentityName,
-  StatusCard,
-  StatusRow,
-  type DocumentTarget,
-} from "./DetailHeader";
+  DOC_TITLE_KEYS,
+  DetailIdentity,
+  DetailShell,
+  DetailStatus,
+  DetailTreeLabel,
+  DocBody,
+  DocHeader,
+  DocTiles,
+  changeDocTocKey,
+} from "./DetailShell";
 import { ImproveChip } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
 import { Markdown } from "./Markdown";
@@ -99,6 +103,16 @@ function provenance(
   ];
 }
 
+/** 身分區的「已封存」籤：封存變更與封存討論共用。 */
+function ArchivedPill() {
+  const { t } = useI18n();
+  return (
+    <StatusPill data-archived-status tone="neutral">
+      {t("ddetail.stationArchived")}
+    </StatusPill>
+  );
+}
+
 /** 分頁 → 封存目錄內的檔案（規格另依 capability 組路徑）。 */
 const TAB_FILES: Record<string, string> = {
   proposal: "proposal.md",
@@ -117,6 +131,7 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
   // undefined＝capability 清單與其規格文件尚未載完（與「無規格差異」的空物件分流）。
   const [specDocs, setSpecDocs] = useState<Record<string, string | null> | undefined>();
   const [tab, setTab] = useState("proposal");
+  const bodyRef = useRef<HTMLDivElement>(null);
   const gen = props.refreshGen ?? 0;
 
   useGenerationLoad(gen, (isLatest) => {
@@ -176,115 +191,144 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
             content: ({ proposal, design, tasks: tasksMd } as Record<string, Doc>)[tab] ?? null,
           };
 
+  const docPath = documentArtifact(docTarget);
+  const tocKey = changeDocTocKey(tab, { content: docTarget?.content, specs: specDocs, tickets });
+
+  const tree = (
+    <>
+      {/* 標題為變更名、複製含日期前綴的封存目錄名；無動作——封存是唯讀定格。 */}
+      <DetailIdentity
+        title={datedName.replace(/^\d{4}-\d{2}-\d{2}-/, "")}
+        copyLabel={t("archived.copyName")}
+        copyValue={datedName}
+        badges={
+          <>
+            <ArchivedPill />
+            {outcomes}
+          </>
+        }
+        provenance={provenance(t, props)}
+        relations={
+          (props.sourceDiscussions ?? []).length > 0
+            ? [
+                {
+                  mark: "from",
+                  label: t("detail.relFrom"),
+                  children: (
+                    <SourceChipRow
+                      items={props.sourceDiscussions ?? []}
+                      onOpen={(slug) => props.onOpenDiscussion?.(slug)}
+                    />
+                  ),
+                },
+              ]
+            : []
+        }
+      />
+
+      <DetailTreeLabel>{t("detail.tree")}</DetailTreeLabel>
+      <TabsList variant="tree" aria-label={t("detail.tree")}>
+        <TabsTrigger value="proposal">
+          <FileText className="h-3.5 w-3.5" /> {t("common.tabProposal")}
+        </TabsTrigger>
+        <TabsTrigger value="design">
+          <PenTool className="h-3.5 w-3.5" /> {t("common.tabDesign")}
+        </TabsTrigger>
+        <TabsTrigger value="tasks">
+          <ListChecks className="h-3.5 w-3.5" /> {t("common.tabTasks")}
+        </TabsTrigger>
+        <TabsTrigger value="specs">
+          <Code2 className="h-3.5 w-3.5" /> {t("common.tabSpecs")}
+          {specCaps.length > 0 && (
+            <Badge variant="secondary" className="ml-auto">
+              {specCaps.length}
+            </Badge>
+          )}
+        </TabsTrigger>
+        {/* 條件式工單節點：規格之後、審查在前，與身分區結局籤同序。 */}
+        {carriedReview && (
+          <TabsTrigger value="review">
+            {REVIEW_ICON.reviewedNotPassed} {t("drawer.tab.review")}
+          </TabsTrigger>
+        )}
+        {carriedVerify && (
+          <TabsTrigger value="verify">
+            {VERIFY_ICON.verifiedNotPassed} {t("drawer.tab.verify")}
+          </TabsTrigger>
+        )}
+      </TabsList>
+
+      <DetailTreeLabel>{t("detail.status")}</DetailTreeLabel>
+      <DetailStatus>
+        <StatusRow mark="tasks" label={t("detail.statusTasks")}>
+          {tasksMd !== undefined && (
+            <span className="font-mono text-[11px] tabular-nums">
+              {tasksMd === null ? t("adetail.tasksNone") : `${tasks.filter((l) => l.done).length}/${tasks.length}`}
+            </span>
+          )}
+        </StatusRow>
+        <StatusRow mark="quality" label={t("detail.statusQuality")} wrap>
+          {review || verify ? outcomes : <span className="text-muted-foreground">{t("adetail.noQuality")}</span>}
+        </StatusRow>
+        <StatusRow mark="archived" label={t("adetail.statusArchived")}>
+          {props.archivedDate && <span className="font-mono text-[11px] tabular-nums">{props.archivedDate}</span>}
+        </StatusRow>
+      </DetailStatus>
+    </>
+  );
+
   return (
     <TooltipProvider>
-      <DetailPageFrame data-archived-detail="change">
-        {/* 標題為變更名、複製含日期前綴的封存目錄名；無動作區——封存是唯讀定格。 */}
-        <DetailHeader
-          title={datedName.replace(/^\d{4}-\d{2}-\d{2}-/, "")}
-          copyLabel={t("archived.copyName")}
-          copyValue={datedName}
-          badges={review || verify ? outcomes : undefined}
-          provenance={[
-            ...provenance(t, props),
-            (props.sourceDiscussions ?? []).length > 0 && (
-              <SourceChipRow
-                label={t("rdrawer.fromDiscussion")}
-                items={props.sourceDiscussions ?? []}
-                onOpen={(slug) => props.onOpenDiscussion?.(slug)}
-              />
-            ),
-          ]}
-        />
-
-        <StatusCard>
-          <StatusRow mark="tasks" label={t("detail.statusTasks")}>
-            {tasksMd !== undefined && (
-              <span className="font-mono text-xs tabular-nums">
-                {tasksMd === null
-                  ? t("adetail.tasksNone")
-                  : `${tasks.filter((l) => l.done).length}/${tasks.length}`}
-              </span>
-            )}
-          </StatusRow>
-          <StatusRow mark="quality" label={t("detail.statusQuality")}>
-            {review || verify ? outcomes : <span className="text-muted-foreground">{t("adetail.noQuality")}</span>}
-          </StatusRow>
-          <StatusRow mark="archived" label={t("adetail.statusArchived")}>
-            {props.archivedDate && <span className="font-mono text-xs tabular-nums">{props.archivedDate}</span>}
-          </StatusRow>
-        </StatusCard>
-
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList variant="card" actions={props.renderDocumentActions?.(docTarget)}>
-            <TabsTrigger value="proposal">
-              <FileText className="h-3.5 w-3.5" /> {t("common.tabProposal")}
-            </TabsTrigger>
-            <TabsTrigger value="design">
-              <PenTool className="h-3.5 w-3.5" /> {t("common.tabDesign")}
-            </TabsTrigger>
-            <TabsTrigger value="tasks">
-              <ListChecks className="h-3.5 w-3.5" /> {t("common.tabTasks")}
-            </TabsTrigger>
-            <TabsTrigger value="specs">
-              <Code2 className="h-3.5 w-3.5" /> {t("common.tabSpecs")}
-              {specCaps.length > 0 && (
-                <Badge variant="secondary" className="ml-1">
-                  {specCaps.length}
-                </Badge>
-              )}
-            </TabsTrigger>
-            {/* 條件式工單分頁：規格之後、審查在前，與標題列結局籤同序。 */}
-            {carriedReview && (
-              <TabsTrigger value="review">
-                {REVIEW_ICON.reviewedNotPassed} {t("drawer.tab.review")}
-              </TabsTrigger>
-            )}
-            {carriedVerify && (
-              <TabsTrigger value="verify">
-                {VERIFY_ICON.verifiedNotPassed} {t("drawer.tab.verify")}
-              </TabsTrigger>
-            )}
-          </TabsList>
-          <DetailContentCard>
-            {/* 各分頁三態：載入中畫骨架，空態文案只在載入完成後出。 */}
-            <TabsContent value="proposal">
-              {proposal === undefined ? <DocSkeleton /> : <SectionedDoc content={proposal} empty={t("archived.noProposal")} />}
-            </TabsContent>
-            <TabsContent value="design">
-              {design === undefined ? <DocSkeleton /> : <SectionedDoc content={design} empty={t("archived.noDesign")} />}
-            </TabsContent>
-            <TabsContent value="tasks">
-              {/* 唯讀：不接任何回呼——核取方塊 disabled、無把手、無批次工具列、整列不回應。 */}
-              {tasksMd === undefined ? <DocSkeleton /> : <TaskList markdown={tasksMd} readOnly />}
-            </TabsContent>
-            <TabsContent value="specs">
-              {specDocs === undefined ? (
-                <DocSkeleton />
-              ) : specCaps.length === 0 ? (
-                <div className="py-6 text-sm text-muted-foreground">{t("archived.noSpecs")}</div>
-              ) : (
-                Object.entries(specDocs).map(([cap, doc]) => (
-                  <div key={cap} className="mb-4">
-                    <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{cap}</div>
-                    <DeltaSpecView markdown={doc} />
-                  </div>
-                ))
-              )}
-            </TabsContent>
-            {carriedReview && (
-              <TabsContent value="review">
-                <TicketTabBody station="review" ticket={tickets.review} />
+      <Tabs value={tab} onValueChange={setTab} orientation="vertical" activationMode="manual" className="h-full">
+        <DetailShell data-archived-detail="change" tree={tree} activeDoc={tab} tocKey={tocKey} bodyRef={bodyRef}>
+          <Card className="flex flex-col gap-5 p-6">
+            <DocHeader
+              title={t(DOC_TITLE_KEYS[tab])}
+              actions={props.renderDocumentActions?.(docTarget)}
+              provenance={[docPath && <span className="font-mono">{docPath}</span>]}
+            />
+            {/* 數字磚與提示框的容器：本刀不放內容（cut 2／3 由文件結構推導）。 */}
+            <DocTiles tiles={[]} />
+            <DocBody ref={bodyRef}>
+              {/* 各文件三態：載入中畫骨架，空態文案只在載入完成後出。 */}
+              <TabsContent value="proposal">
+                {proposal === undefined ? <DocSkeleton /> : <SectionedDoc content={proposal} empty={t("archived.noProposal")} />}
               </TabsContent>
-            )}
-            {carriedVerify && (
-              <TabsContent value="verify">
-                <TicketTabBody station="verify" ticket={tickets.verify} />
+              <TabsContent value="design">
+                {design === undefined ? <DocSkeleton /> : <SectionedDoc content={design} empty={t("archived.noDesign")} />}
               </TabsContent>
-            )}
-          </DetailContentCard>
-        </Tabs>
-      </DetailPageFrame>
+              <TabsContent value="tasks">
+                {/* 唯讀：不接任何回呼——核取方塊 disabled、無把手、無批次工具列、整列不回應。 */}
+                {tasksMd === undefined ? <DocSkeleton /> : <TaskList markdown={tasksMd} readOnly />}
+              </TabsContent>
+              <TabsContent value="specs">
+                {specDocs === undefined ? (
+                  <DocSkeleton />
+                ) : specCaps.length === 0 ? (
+                  <div className="py-6 text-sm text-muted-foreground">{t("archived.noSpecs")}</div>
+                ) : (
+                  Object.entries(specDocs).map(([cap, doc]) => (
+                    <div key={cap} className="mb-4">
+                      <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{cap}</div>
+                      <DeltaSpecView markdown={doc} />
+                    </div>
+                  ))
+                )}
+              </TabsContent>
+              {carriedReview && (
+                <TabsContent value="review">
+                  <TicketTabBody station="review" ticket={tickets.review} />
+                </TabsContent>
+              )}
+              {carriedVerify && (
+                <TabsContent value="verify">
+                  <TicketTabBody station="verify" ticket={tickets.verify} />
+                </TabsContent>
+              )}
+            </DocBody>
+          </Card>
+        </DetailShell>
+      </Tabs>
     </TooltipProvider>
   );
 }
@@ -293,6 +337,9 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
 function ArchivedDiscussionView({ slug, ...props }: ArchivedDetailPageProps & { slug: string }) {
   const { t } = useI18n();
   const [doc, setDoc] = useState<Doc>();
+  // 使用者選的文件；null＝依預設規則（記錄載入前後、結論有無都跟著走）。
+  const [picked, setPicked] = useState<string | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   useGenerationLoad(props.refreshGen ?? 0, (isLatest) => {
     void props
       .loadDiscussionDocument(slug)
@@ -305,124 +352,141 @@ function ArchivedDiscussionView({ slug, ...props }: ArchivedDetailPageProps & { 
   const sections = doc ? splitDiscussionSections(doc) : null;
   const promoted = props.promotedChanges ?? [];
   const roundCount = sections ? (splitRounds(sections.rounds)?.length ?? null) : null;
-  const defaultTab = defaultDiscussionTab(sections);
   // 衍生列與衍生籤共用：不可點（已刪除）者無開啟動作。
   const openPromoted = (item: SourceLinkItem) =>
     item.disabled ? undefined : () => props.onOpenPromotedChange?.(item.slug);
-  // 封存討論的檔名帶封存日期而清單資料不帶：「開啟 ▾」只能複製內容。
-  const tabsActions = props.renderDocumentActions?.({ doc: null, content: doc ?? null });
+  const tab = discussionDoc(picked, sections);
 
-  const promoteTrigger = (
-    <TabsTrigger value="promote">
-      <Rocket className="h-3.5 w-3.5" /> {t("ddrawer.tabPromote")} {promoted.length}
-    </TabsTrigger>
-  );
-  const promotePane = (
-    <TabsContent value="promote">
-      {promoted.length === 0 ? (
-        <p className="py-4 text-sm text-muted-foreground">{t("ddrawer.notPromoted")}</p>
-      ) : (
-        <div className="flex flex-col gap-1.5">
-          {promoted.map((item) => (
-            <PromotedChangeRow
-              key={item.slug}
-              name={item.slug}
-              badge={<StatusPill tone="neutral">{item.topic}</StatusPill>}
-              onOpen={openPromoted(item)}
-            />
-          ))}
-        </div>
-      )}
-    </TabsContent>
+  const tree = (
+    <>
+      <DetailIdentity
+        title={slug}
+        copyLabel={t("discussion.copySlug")}
+        badges={
+          <>
+            <ArchivedPill />
+            {isImproveKind(props.discussionKind) && <ImproveChip />}
+          </>
+        }
+        subtitle={props.discussionTopic}
+        provenance={provenance(t, props)}
+      />
+
+      <DetailTreeLabel>{t("detail.tree")}</DetailTreeLabel>
+      <TabsList variant="tree" aria-label={t("detail.tree")}>
+        {sections ? (
+          <>
+            <TabsTrigger value="conclusion">
+              <Flag className="h-3.5 w-3.5" /> {t("ddrawer.tabConclusion")}
+            </TabsTrigger>
+            <TabsTrigger value="rounds">
+              <MessagesSquare className="h-3.5 w-3.5" /> {t("ddrawer.tabRounds")}
+              {roundCount !== null && (
+                <Badge variant="secondary" className="ml-auto">
+                  {roundCount}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="context">
+              <FileText className="h-3.5 w-3.5" /> {t("ddrawer.tabContext")}
+            </TabsTrigger>
+          </>
+        ) : (
+          <TabsTrigger value="record">
+            <FileText className="h-3.5 w-3.5" /> {t("ddrawer.tabRecord")}
+          </TabsTrigger>
+        )}
+        <TabsTrigger value="promote">
+          <Rocket className="h-3.5 w-3.5" /> {t("ddrawer.tabPromote")}
+          <Badge variant="secondary" className="ml-auto">
+            {promoted.length}
+          </Badge>
+        </TabsTrigger>
+      </TabsList>
+
+      <DetailTreeLabel>{t("detail.status")}</DetailTreeLabel>
+      <DetailStatus>
+        <DiscussionStageRow current={3} />
+        {promoted.length > 0 && (
+          <StatusRow mark="promoted" label={t("ddetail.promotedLabel")} wrap>
+            {promoted.map((item) => (
+              <PromotedChangeChip
+                key={item.slug}
+                name={item.slug}
+                badge={<span className="text-xs text-muted-foreground">{item.topic}</span>}
+                onOpen={openPromoted(item)}
+              />
+            ))}
+          </StatusRow>
+        )}
+      </DetailStatus>
+    </>
   );
 
   return (
     <TooltipProvider>
-      <DetailPageFrame data-archived-detail="discussion">
-        <DetailHeader
-          title={slug}
-          copyLabel={t("discussion.copySlug")}
-          badges={
-            <>
-              <StatusPill data-archived-status tone="neutral">
-                {t("ddetail.stationArchived")}
-              </StatusPill>
-              {isImproveKind(props.discussionKind) && <ImproveChip />}
-            </>
-          }
-          subtitle={props.discussionTopic}
-          provenance={provenance(t, props)}
-        />
-
-        <StatusCard>
-          <DiscussionStageRow current={3} />
-          {promoted.length > 0 && (
-            <StatusRow mark="promoted" label={t("ddetail.promotedLabel")} wrap>
-              {promoted.map((item) => (
-                <PromotedChangeChip
-                  key={item.slug}
-                  name={item.slug}
-                  badge={<span className="text-xs text-muted-foreground">{item.topic}</span>}
-                  onOpen={openPromoted(item)}
-                />
-              ))}
-            </StatusRow>
-          )}
-        </StatusCard>
-
-        {sections ? (
-          // key 區分分頁組與預設分頁——自載入中 fallback 切換過來時，Radix Tabs 的未受控
-          // state 不得停在不存在的分頁值。
-          <Tabs key={`sections-${defaultTab}`} defaultValue={defaultTab}>
-            <TabsList variant="card" actions={tabsActions}>
-              <TabsTrigger value="conclusion">
-                <Flag className="h-3.5 w-3.5" /> {t("ddrawer.tabConclusion")}
-              </TabsTrigger>
-              <TabsTrigger value="rounds">
-                <MessagesSquare className="h-3.5 w-3.5" /> {t("ddrawer.tabRounds")} {roundCount ?? ""}
-              </TabsTrigger>
-              <TabsTrigger value="context">
-                <FileText className="h-3.5 w-3.5" /> {t("ddrawer.tabContext")}
-              </TabsTrigger>
-              {promoteTrigger}
-            </TabsList>
-            <DetailContentCard>
-              <TabsContent value="conclusion">
-                <ConclusionView text={sections.conclusion} empty={t("archived.noConclusion")} />
+      <Tabs value={tab} onValueChange={setPicked} orientation="vertical" activationMode="manual" className="h-full">
+        <DetailShell
+          data-archived-detail="discussion"
+          tree={tree}
+          activeDoc={tab}
+          tocKey={`${tab}\u0000${doc ?? ""}`}
+          bodyRef={bodyRef}
+        >
+          <Card className="flex flex-col gap-5 p-6">
+            {/* 封存討論的檔名帶封存日期而清單資料不帶：「開啟 ▾」只能複製內容。 */}
+            <DocHeader
+              title={t(DOC_TITLE_KEYS[tab])}
+              actions={props.renderDocumentActions?.({ doc: null, content: doc ?? null })}
+            />
+            {/* 數字磚與提示框的容器：本刀不放內容（cut 2／3 由文件結構推導）。 */}
+            <DocTiles tiles={[]} />
+            <DocBody ref={bodyRef}>
+              {sections ? (
+                <>
+                  <TabsContent value="conclusion">
+                    <ConclusionView text={sections.conclusion} empty={t("archived.noConclusion")} />
+                  </TabsContent>
+                  <TabsContent value="rounds">
+                    <RoundsView text={sections.rounds} empty={t("archived.noRounds")} />
+                  </TabsContent>
+                  <TabsContent value="context">
+                    <Markdown content={sections.context} empty={t("archived.noContext")} />
+                  </TabsContent>
+                </>
+              ) : (
+                // 區段缺失或格式非預期：整篇單一檢視退回（不報錯）；載入中畫骨架。
+                <TabsContent value="record">
+                  {doc === undefined ? <DocSkeleton /> : <Markdown content={doc} empty={t("common.noContent")} />}
+                </TabsContent>
+              )}
+              <TabsContent value="promote">
+                {promoted.length === 0 ? (
+                  <p className="py-4 text-sm text-muted-foreground">{t("ddrawer.notPromoted")}</p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {promoted.map((item) => (
+                      <PromotedChangeRow
+                        key={item.slug}
+                        name={item.slug}
+                        badge={<StatusPill tone="neutral">{item.topic}</StatusPill>}
+                        onOpen={openPromoted(item)}
+                      />
+                    ))}
+                  </div>
+                )}
               </TabsContent>
-              <TabsContent value="rounds">
-                <RoundsView text={sections.rounds} empty={t("archived.noRounds")} />
-              </TabsContent>
-              <TabsContent value="context">
-                <Markdown content={sections.context} empty={t("archived.noContext")} />
-              </TabsContent>
-              {promotePane}
-            </DetailContentCard>
-          </Tabs>
-        ) : (
-          <Tabs key="fallback" defaultValue="record">
-            <TabsList variant="card" actions={tabsActions}>
-              <TabsTrigger value="record">
-                <FileText className="h-3.5 w-3.5" /> {t("ddrawer.tabRecord")}
-              </TabsTrigger>
-              {promoteTrigger}
-            </TabsList>
-            {/* 區段缺失或格式非預期：整篇單一檢視退回（不報錯）；載入中畫骨架。 */}
-            <DetailContentCard>
-              <TabsContent value="record">
-                {doc === undefined ? <DocSkeleton /> : <Markdown content={doc} empty={t("common.noContent")} />}
-              </TabsContent>
-              {promotePane}
-            </DetailContentCard>
-          </Tabs>
-        )}
-      </DetailPageFrame>
+            </DocBody>
+          </Card>
+        </DetailShell>
+      </Tabs>
     </TooltipProvider>
   );
 }
 
 /**
- * 已封存詳情頁（spec「已封存項目以詳情頁檢視」；design D3）：與變更／討論詳情頁同骨架、唯讀。
+ * 已封存詳情頁（spec「已封存項目以詳情頁檢視」；design D5）：與變更／討論詳情頁同一三欄骨架、
+ * 唯讀——身分區帶「已封存」籤，不渲染標題列動作。
  * 目標一換即以 key 重掛對應變體——清空後全量載入；世代遞增就地重載。
  */
 export function ArchivedDetailPage(props: ArchivedDetailPageProps) {

@@ -3,8 +3,10 @@ import { Archive, ArrowUpRight, Check, Circle, FileText, Flag, MessagesSquare, R
 
 import type { ArchivedItem, ChangeItem, DiscussionItem } from "../adapter";
 import { useI18n } from "../i18n";
-import { changeStage, type Stage } from "../stage";
+import { changeStage } from "../stage";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Card } from "./ui/card";
 import { StatusPill, type StatusPillTone } from "./ui/status-pill";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
@@ -12,15 +14,19 @@ import { Markdown } from "./Markdown";
 import { DocSkeleton } from "./skeletons";
 import { LABEL_CLS } from "./SectionedDoc";
 import { discussionChipStage, isCollapsedPromoted } from "./DiscussionColumn";
+import { IdentityName, STAGE_PILL_TONE, StatusRow, type DocumentTarget } from "./DetailHeader";
 import {
-  DetailContentCard,
-  DetailHeader,
-  DetailPageFrame,
-  IdentityName,
-  StatusCard,
-  StatusRow,
-  type DocumentTarget,
-} from "./DetailHeader";
+  DOC_TITLE_KEYS,
+  DetailActions,
+  DetailIdentity,
+  DetailShell,
+  DetailStatus,
+  DetailTreeLabel,
+  DocBody,
+  DocHeader,
+  DocTiles,
+  type DetailRelation,
+} from "./DetailShell";
 import { ImproveChip } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
 
@@ -191,7 +197,7 @@ export function RoundsView({ text, empty }: { text: string; empty?: string }) {
         <section key={i} data-round={r.round} className="rounded-lg border border-border bg-card p-4">
           <header className="flex items-center gap-2">
             {/* 輪次籤是靜態編號，與同列 mode／日期同層級——走中性，不佔用主色。 */}
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+            <span data-doc-heading className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
               {t("rounds.roundN").replace("{n}", String(r.round))}
             </span>
             <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
@@ -260,7 +266,9 @@ export function ConclusionView({ text, empty }: { text: string; empty?: string }
       )}
       {present.map((l) => (
         <div key={l} className="mt-4 first:mt-0">
-          <div className={`${LABEL_CLS} mb-1`}>{t(CONCLUSION_LABEL_KEYS[l])}</div>
+          <div data-doc-heading className={`${LABEL_CLS} mb-1`}>
+            {t(CONCLUSION_LABEL_KEYS[l])}
+          </div>
           <Markdown content={fields[l]!} />
         </div>
       ))}
@@ -335,11 +343,32 @@ export function DiscussionStageRow({ current }: { current: number }) {
   );
 }
 
-/** 預設分頁＝讀者第一想看的：結論非空（去除鷹架註解後有內容）開結論，否則背景。
- * 討論詳情頁與已封存討論頁共用。 */
-export function defaultDiscussionTab(sections: DiscussionSections | null): "conclusion" | "context" {
+/** 背景的 `Prior discussions:` 行列出的先前討論數；缺行或 `none` 開頭（`None.`、`none — …`）為 null。
+ * 項目以逗號（含全形）或頓號分隔，括號內的備註先拿掉——記錄是人寫的，備註裡的逗號不算一筆。 */
+export function countPriorDiscussions(context: string): number | null {
+  const line = context.split(/\r?\n/).find((l) => l.trimStart().startsWith("Prior discussions:"));
+  if (!line) return null;
+  const list = line
+    .trimStart()
+    .slice("Prior discussions:".length)
+    .replace(/[（(][^）)]*[）)]/g, "")
+    .trim();
+  if (!list || /^none(?![\w-])/i.test(list)) return null;
+  return list.split(/[,，、]/).filter((item) => item.trim()).length;
+}
+
+/** 預設分頁＝讀者第一想看的：結論非空（去除鷹架註解後有內容）開結論，否則背景。 */
+function defaultDiscussionTab(sections: DiscussionSections | null): "conclusion" | "context" {
   const hasConclusion = !!sections && sections.conclusion.replace(/<!--[\s\S]*?-->/g, "").trim().length > 0;
   return hasConclusion ? "conclusion" : "context";
+}
+
+/** 受控文件的實際值：所選文件不在目前的節點組（記錄切分前後不同）時退回預設——切分成功取
+ * `defaultDiscussionTab`，失敗取「記錄」。討論詳情頁與已封存討論頁共用。 */
+export function discussionDoc(picked: string | null, sections: DiscussionSections | null): string {
+  const docs = sections ? ["conclusion", "rounds", "context", "promote"] : ["record", "promote"];
+  if (picked && docs.includes(picked)) return picked;
+  return sections ? defaultDiscussionTab(sections) : "record";
 }
 
 /** 衍生變更（列與籤共用）：變更名、狀態標示；`onOpen` 缺席＝不可開啟。 */
@@ -384,18 +413,12 @@ export function PromotedChangeChip({ name, badge, onOpen }: PromotedChangeProps)
   );
 }
 
-/** 衍生變更的階段籤 tone：作用中依看板欄色相、已封存中性、已刪除警示（加刪除線）。 */
-const STAGE_PILL_TONE: Record<Stage, StatusPillTone> = {
-  proposed: "primary",
-  "in-progress": "progress",
-  ready: "success",
-};
-
 /**
- * 討論詳情頁（design D7）：標題列（slug＋複製＋狀態籤＋改進籤、右端封存）、topic、
- * 出身列；「狀態」卡（階段步驟列、保留在途、衍生變更籤）；內容卡分頁 結論／討論過程 N／
- * 背景／衍生變更 N（結論非空時預設開結論）。衍生變更唯讀——無轉出動作（promote 已自
- * GUI 撤除，轉出改由 CLI／agent）。記錄格式非預期時整篇單一檢視退回。
+ * 討論詳情頁（design D5；spec「詳情頁的文件樹、閱讀卡與本頁目錄」）：左欄身分區（slug＋複製＋
+ * 狀態籤＋改進籤、topic、出身、「關聯」列）、「文件」節點 結論／討論過程 N／背景／衍生變更 N
+ * （結論非空時預設開結論）、「狀態」列（階段步驟列、保留在途、衍生變更籤）；封存動作經
+ * `DetailActions` 進標題列。衍生變更唯讀——無轉出動作（promote 已自 GUI 撤除，轉出改由
+ * CLI／agent）。記錄格式非預期時整篇單一檢視退回（節點為 記錄／衍生變更）。
  */
 export function DiscussionDetailPage({
   discussion,
@@ -409,6 +432,9 @@ export function DiscussionDetailPage({
 }: DiscussionDetailPageProps) {
   const { t } = useI18n();
   const [doc, setDoc] = useState<string | null | undefined>();
+  // 使用者選的文件；null＝依預設規則（記錄載入前後、結論有無都跟著走）。
+  const [picked, setPicked] = useState<string | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const slug = discussion?.slug ?? null;
   const gen = refreshGen ?? 0;
   // latest-wins：回應帶發起序號，落後即丟棄（涵蓋世代與換討論的交錯）。
@@ -430,9 +456,10 @@ export function DiscussionDetailPage({
       });
   };
 
-  // 開啟／換討論：清空後載入。
+  // 開啟／換討論：清空後載入，文件回到預設。
   useEffect(() => {
     if (!slug) return;
+    setPicked(null);
     loadRecord(gen, slug, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
@@ -483,8 +510,6 @@ export function DiscussionDetailPage({
     </div>
   );
 
-  const defaultTab = defaultDiscussionTab(sections);
-
   // 階段步驟列：現站由 status 派生；「已封存」站留給已封存討論頁。
   const stationIndex = discussion.status === "promoted" ? 2 : discussion.status === "concluded" ? 1 : 0;
 
@@ -509,105 +534,147 @@ export function DiscussionDetailPage({
       )
     ) : undefined;
 
-  const tabsActions = renderDocumentActions?.({ doc: { discussion: discussion.slug }, content: doc ?? null });
   const promoteCount = discussion.promotedTo.length;
+  // 受控文件：關聯列要能切到背景。
+  const tab = discussionDoc(picked, sections);
+  const prior = sections ? countPriorDiscussions(sections.context) : null;
+  const relations: DetailRelation[] =
+    prior === null
+      ? []
+      : [
+          {
+            mark: "related",
+            label: t("ddetail.relations"),
+            children: (
+              <button type="button" className="min-w-0" onClick={() => setPicked("context")}>
+                <Badge variant="outline" className="hover:bg-accent">
+                  {t("ddetail.priorDiscussions").replace("{n}", String(prior))}
+                </Badge>
+              </button>
+            ),
+          },
+        ];
+
+  const promoteTrigger = (
+    <TabsTrigger value="promote">
+      <Rocket className="h-3.5 w-3.5" /> {t("ddrawer.tabPromote")}
+      <Badge variant="secondary" className="ml-auto">
+        {promoteCount}
+      </Badge>
+    </TabsTrigger>
+  );
+
+  const tree = (
+    <>
+      {/* slug（檔名）為題＋複製鈕——與變更詳情頁「名稱＋複製鈕」對稱（LANGUAGE.md 受控例外）；
+          topic 為其下最多三行。 */}
+      <DetailIdentity
+        title={discussion.slug}
+        copyLabel={t("discussion.copySlug")}
+        badges={
+          <>
+            <StatusPill data-discussion-status tone={pill.tone}>
+              {t(pill.labelKey)}
+            </StatusPill>
+            {/* 改進標示（spec「討論詳情頁的改進標示」）：與卡片小章同一詞條。 */}
+            {isImproveKind(discussion.kind) && <ImproveChip />}
+          </>
+        }
+        subtitle={discussion.topic}
+        provenance={[
+          discussion.createdBy && <IdentityName identity={discussion.createdBy} />,
+          <span className="shrink-0 tabular-nums">{t("common.rounds").replace("{n}", String(discussion.rounds))}</span>,
+          discussion.created && <span className="shrink-0">{discussion.created}</span>,
+        ]}
+        relations={relations}
+      />
+
+      <DetailTreeLabel>{t("detail.tree")}</DetailTreeLabel>
+      <TabsList variant="tree" aria-label={t("detail.tree")}>
+        {sections ? (
+          <>
+            <TabsTrigger value="conclusion">
+              <Flag className="h-3.5 w-3.5" /> {t("ddrawer.tabConclusion")}
+            </TabsTrigger>
+            <TabsTrigger value="rounds">
+              <MessagesSquare className="h-3.5 w-3.5" /> {t("ddrawer.tabRounds")}
+              <Badge variant="secondary" className="ml-auto">
+                {discussion.rounds}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger value="context">
+              <FileText className="h-3.5 w-3.5" /> {t("ddrawer.tabContext")}
+            </TabsTrigger>
+          </>
+        ) : (
+          <TabsTrigger value="record">
+            <FileText className="h-3.5 w-3.5" /> {t("ddrawer.tabRecord")}
+          </TabsTrigger>
+        )}
+        {promoteTrigger}
+      </TabsList>
+
+      <DetailTreeLabel>{t("detail.status")}</DetailTreeLabel>
+      <DetailStatus>
+        <DiscussionStageRow current={stationIndex} />
+        {hold && (
+          <StatusRow mark="hold" label={t("ddetail.holdLabel")} wrap>
+            <span className="text-muted-foreground">{t("ddetail.holdHint")}</span>
+          </StatusRow>
+        )}
+        {promoteCount > 0 && (
+          <StatusRow mark="promoted" label={t("ddetail.promotedLabel")} wrap>
+            {discussion.promotedTo.map((name) => (
+              <PromotedChangeChip key={name} name={name} badge={stageBadge(name)} onOpen={openChild(name)} />
+            ))}
+          </StatusRow>
+        )}
+      </DetailStatus>
+    </>
+  );
 
   return (
     <TooltipProvider>
-      <DetailPageFrame data-discussion-detail>
-        {/* slug（檔名）為題＋複製鈕——與變更詳情頁「名稱＋複製鈕」對稱（LANGUAGE.md 受控例外）；
-            topic 為標題下方一行。 */}
-        <DetailHeader
-          title={discussion.slug}
-          copyLabel={t("discussion.copySlug")}
-          badges={
-            <>
-              <StatusPill data-discussion-status tone={pill.tone}>
-                {t(pill.labelKey)}
-              </StatusPill>
-              {/* 改進標示（spec「討論詳情頁的改進標示」）：與卡片小章同一詞條。 */}
-              {isImproveKind(discussion.kind) && <ImproveChip />}
-            </>
-          }
-          actions={archiveAction}
-          subtitle={discussion.topic}
-          provenance={[
-            discussion.createdBy && <IdentityName identity={discussion.createdBy} />,
-            <span className="shrink-0 tabular-nums">
-              {t("common.rounds").replace("{n}", String(discussion.rounds))}
-            </span>,
-            discussion.created && <span className="shrink-0">{discussion.created}</span>,
-          ]}
-        />
-
-        <StatusCard>
-          <DiscussionStageRow current={stationIndex} />
-          {hold && (
-            <StatusRow mark="hold" label={t("ddetail.holdLabel")} wrap>
-              <span className="text-muted-foreground">{t("ddetail.holdHint")}</span>
-            </StatusRow>
-          )}
-          {promoteCount > 0 && (
-            <StatusRow mark="promoted" label={t("ddetail.promotedLabel")} wrap>
-              {discussion.promotedTo.map((name) => (
-                <PromotedChangeChip key={name} name={name} badge={stageBadge(name)} onOpen={openChild(name)} />
-              ))}
-            </StatusRow>
-          )}
-        </StatusCard>
-
-        {sections ? (
-          // key 區分分頁組與預設分頁——否則自載入中 fallback 切換過來時，Radix Tabs 的
-          // 未受控 state 停留在不存在的分頁值，內容全數隱藏。
-          <Tabs key={`sections-${defaultTab}`} defaultValue={defaultTab}>
-            <TabsList variant="card" actions={tabsActions}>
-              <TabsTrigger value="conclusion">
-                <Flag className="h-3.5 w-3.5" /> {t("ddrawer.tabConclusion")}
-              </TabsTrigger>
-              <TabsTrigger value="rounds">
-                <MessagesSquare className="h-3.5 w-3.5" /> {t("ddrawer.tabRounds")} {discussion.rounds}
-              </TabsTrigger>
-              <TabsTrigger value="context">
-                <FileText className="h-3.5 w-3.5" /> {t("ddrawer.tabContext")}
-              </TabsTrigger>
-              <TabsTrigger value="promote">
-                <Rocket className="h-3.5 w-3.5" /> {t("ddrawer.tabPromote")} {promoteCount}
-              </TabsTrigger>
-            </TabsList>
-            <DetailContentCard>
-              <TabsContent value="conclusion">
-                <ConclusionView text={sections.conclusion} empty={t("ddrawer.noConclusion")} />
-              </TabsContent>
-              <TabsContent value="rounds">
-                <RoundsView text={sections.rounds} empty={t("ddrawer.noRounds")} />
-              </TabsContent>
-              <TabsContent value="context">
-                <Markdown content={sections.context} empty={t("ddrawer.noContext")} />
-              </TabsContent>
+      <Tabs value={tab} onValueChange={setPicked} orientation="vertical" activationMode="manual" className="h-full">
+        <DetailShell
+          data-discussion-detail
+          tree={tree}
+          activeDoc={`${discussion.slug}\u0000${tab}`}
+          tocKey={`${tab}\u0000${doc ?? ""}`}
+          bodyRef={bodyRef}
+        >
+          {archiveAction && <DetailActions>{archiveAction}</DetailActions>}
+          <Card className="flex flex-col gap-5 p-6">
+            <DocHeader
+              title={t(DOC_TITLE_KEYS[tab])}
+              actions={renderDocumentActions?.({ doc: { discussion: discussion.slug }, content: doc ?? null })}
+            />
+            {/* 數字磚與提示框的容器：本刀不放內容（cut 2／3 由文件結構推導）。 */}
+            <DocTiles tiles={[]} />
+            <DocBody ref={bodyRef}>
+              {sections ? (
+                <>
+                  <TabsContent value="conclusion">
+                    <ConclusionView text={sections.conclusion} empty={t("ddrawer.noConclusion")} />
+                  </TabsContent>
+                  <TabsContent value="rounds">
+                    <RoundsView text={sections.rounds} empty={t("ddrawer.noRounds")} />
+                  </TabsContent>
+                  <TabsContent value="context">
+                    <Markdown content={sections.context} empty={t("ddrawer.noContext")} />
+                  </TabsContent>
+                </>
+              ) : (
+                // 區段缺失或格式非預期：整篇以單一檢視退回（不報錯）；載入中畫骨架、空態文案只在載入完成後出。
+                <TabsContent value="record">
+                  {doc === undefined ? <DocSkeleton /> : <Markdown content={doc} empty={t("common.noContent")} />}
+                </TabsContent>
+              )}
               <TabsContent value="promote">{promotePane}</TabsContent>
-            </DetailContentCard>
-          </Tabs>
-        ) : (
-          <Tabs key="fallback" defaultValue="record">
-            <TabsList variant="card" actions={tabsActions}>
-              <TabsTrigger value="record">
-                <FileText className="h-3.5 w-3.5" /> {t("ddrawer.tabRecord")}
-              </TabsTrigger>
-              <TabsTrigger value="promote">
-                <Rocket className="h-3.5 w-3.5" /> {t("ddrawer.tabPromote")} {promoteCount}
-              </TabsTrigger>
-            </TabsList>
-            {/* 區段缺失或格式非預期：整篇以單一檢視退回（不報錯）。 */}
-            <DetailContentCard>
-              {/* 載入中畫骨架；空態文案只在載入完成後出。 */}
-              <TabsContent value="record">
-                {doc === undefined ? <DocSkeleton /> : <Markdown content={doc} empty={t("common.noContent")} />}
-              </TabsContent>
-              <TabsContent value="promote">{promotePane}</TabsContent>
-            </DetailContentCard>
-          </Tabs>
-        )}
-      </DetailPageFrame>
+            </DocBody>
+          </Card>
+        </DetailShell>
+      </Tabs>
     </TooltipProvider>
   );
 }

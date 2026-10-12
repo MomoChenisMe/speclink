@@ -97,7 +97,16 @@ export function SectionedDoc({ content, empty }: { content: string | null; empty
           <Markdown key={i} content={s.content} />
         ) : (
           <div key={i} data-section={s.labelKey} className={s.sub ? "mt-3" : "mt-5 first:mt-0"}>
-            <div className={`${s.sub ? SUB_LABEL_CLS : LABEL_CLS} mb-1`}>{t(s.labelKey)}</div>
+            {/* 章節標籤＝本頁目錄錨點（h2，Capabilities 內的次級標籤為 h3）。 */}
+            {s.sub ? (
+              <h3 data-doc-heading className={`${SUB_LABEL_CLS} mb-1`}>
+                {t(s.labelKey)}
+              </h3>
+            ) : (
+              <h2 data-doc-heading className={`${LABEL_CLS} mb-1`}>
+                {t(s.labelKey)}
+              </h2>
+            )}
             {s.content && <Markdown content={s.content} />}
           </div>
         ),

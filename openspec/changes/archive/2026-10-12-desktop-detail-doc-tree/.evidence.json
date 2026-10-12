@@ -1,0 +1,206 @@
+{
+  "version": 2,
+  "change": "desktop-detail-doc-tree",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 新增 `packages/ui/src/components/ui/callout.tsx`（design D6）：匯出 `Callout`（tone note／tip／warning／caution、title、icon、children）與 `CALLOUT_BOX_CLS`、`CALLOUT_TITLE_CLS`、`CALLOUT_TONE`；`packages/ui/src/components/Markdown.tsx` 刪掉私有 `ALERT_BOX_CLS`／`ALERT_TITLE_CLS`／`ALERT_STYLE` 的 class 字串改引用 callout.tsx，sanitize 白名單由同一組字串展開；`packages/ui/src/index.ts` 匯出 `Callout`。驗證：`packages/ui/src/__tests__/markdownAlerts.test.tsx` 既有 GitHub Alert 題目不改且全綠（四型 class 與標籤文字不變）；新增一題渲染 `<Callout tone=\"tip\" title=\"x\">y</Callout>` 斷言 class 含 `CALLOUT_BOX_CLS` 與 success 語意色；`npm test -w packages/ui -- markdownAlerts callout`。",
+      "files": [
+        "packages/ui/src/__tests__/markdownAlerts.test.tsx",
+        "packages/ui/src/components/Markdown.tsx",
+        "packages/ui/src/index.ts",
+        "packages/ui/src/components/ui/callout.tsx"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 `packages/ui/src/components/ui/tabs.tsx` 新增 `tree` 變體（design D2）：`tabsListVariants.tree` 為直向整寬清單，觸發鈕款式 `TREE_TRIGGER`（30px 列、8px 圓角、hover 灰底、作用中主色淡底＋主色字＋medium），徽章 `ml-auto`；card 與 underline 款式不變。驗證：新建 `packages/ui/src/__tests__/tabs.test.tsx`渲染 `orientation=\"vertical\"` 的 `Tabs`＋`TabsList variant=\"tree\"`，斷言觸發鈕帶 `role=\"tab\"`、作用中含 `bg-primary/12`、非作用中不含；`npm test -w packages/ui -- tabs`。",
+      "files": [
+        "packages/ui/src/components/ui/tabs.tsx",
+        "packages/ui/src/__tests__/tabs.test.tsx"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 新增 `packages/ui/src/components/DetailShell.tsx`（design D1、D3、D7；spec「詳情頁的文件樹、閱讀卡與本頁目錄」）：`DetailShell`（三欄外框，`@container`；左欄 `data-detail-tree` 240px 自捲；中欄 `data-detail-reading` 捲動容器包置中 768px 欄，`activeDoc` 變化時捲回頂端；右欄 `data-detail-toc` `hidden @min-[1200px]:flex` 包 `ManualToc`，`headings=\"[data-doc-heading], .markdown h2, .markdown h3\"`）、`DetailIdentity`（title 等寬 14px break-all、CopyButton、badges、provenance 單行、relations 每筆一行 `data-relation-<mark>`、subtitle line-clamp-3）、`DetailTreeLabel`、`DetailStatus`（`data-status-card` 包 `StatusRow`）、`DocHeader`（`data-doc-header`：h1 24px 一般字重、badges、actions `ml-auto`、provenance 13px 灰字）、`DocTiles`（四欄格，空陣列回 null）、`DocBody`（`data-doc-body`，轉 ref）、`DetailActionsSlotProvider`／`DetailActionsSlot`／`DetailActions`（有 provider 時 createPortal 進插槽並在最前渲染細線，無 provider 時原地渲染）；`index.ts` 匯出全部。驗證：新增 `packages/ui/src/__tests__/detailShell.test.tsx`——三欄 DOM 存在且右欄 class 含 `hidden` 與 `@min-[1200px]:flex`；`DocTiles` 空陣列不渲染、四格時渲染四個值；`DetailActions` 無 provider 原地渲染、有 provider 時子節點出現在插槽節點內；`DetailIdentity` relations 以 `data-relation-from` 可定位且 provenance 缺席段略過；`npm test -w packages/ui -- detailShell`。",
+      "files": [
+        "packages/ui/src/components/DetailHeader.tsx",
+        "packages/ui/src/__tests__/detailShell.test.tsx",
+        "packages/ui/src/components/DetailShell.tsx"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "5.1 `packages/ui/src/i18n.tsx` 新增 tw／en 詞條（design D8）：`detail.tree`、`detail.relFrom`、`detail.relSibling`、`detail.relSpecs`、`ddetail.relations`、`ddetail.priorDiscussions`、`plan.derivedFrom`；`openspec/LANGUAGE.md` 詞彙新增「文件樹」「本頁目錄」「數字磚」三條（definition／avoid／why 依 design D8）。驗證：`packages/ui/src/__tests__/i18n.test.tsx` 的鍵集合相等題全綠；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠（詞彙守門對新 avoid 詞零命中）。",
+      "files": [
+        "packages/ui/src/i18n.tsx"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "3.1 `packages/ui/src/components/ChangeDetailPage.tsx` 改用骨架（design D3、D4、D5；spec「變更詳情頁的標頭與狀態卡」「詳情頁的文件動作」「詳情頁標頭標記受寬度約束且頁不產生水平捲軸」「變更的來源討論多值呈現」「詳情頁文件載入以 skeleton 呈現」「詳情頁的排程分頁」「詳情頁的工單分頁」）：`Tabs` 根 `orientation=\"vertical\" activationMode=\"manual\"` 包 `DetailShell`；左欄為 `DetailIdentity`（階段籤＋章籤、出身行、來自／同源／規格三列——規格列每個已載入的 delta capability 一顆等寬 outline 籤，點擊切到規格文件並選定該 capability）、「文件」小標、`TabsList variant=\"tree\"`（提案、設計、任務 n/m、規格 DeltaBadges、排程波次籤、審查／驗證條件式＋末輪序號籤——`useStationTickets` 上提到頁層）、「狀態」小標、`DetailStatus` 三列；分析結果卡在閱讀卡之上；閱讀卡 `DocHeader` title 為目前文件詞條、actions 為 `renderDocumentActions(docTarget)`、provenance 為文件相對路徑或 `plan.derivedFrom`；`actions` 片段整個移入 `<DetailActions>`，「分析」outline sm、階段主要鈕 default sm、「⋯」outline icon-sm；移除 `DetailHeader`／`StatusCard`／`DetailContentCard`／card 分頁列的使用。驗證：`packages/ui/src/__tests__/changeDetailPage.test.tsx` 以 `data-relation-*`、`data-detail-tree`、`data-doc-header` 改寫原本錨定 `data-title-row`／`data-provenance-row`／`data-reading-column` 的題目，`getByRole(\"tab\")` 題目不動；新增「點規格列的能力籤切到規格文件」「切換文件後閱讀卡捲回頂端」「動作鈕在無 provider 時原地渲染且『⋯』為 outline」三題；`npm test -w packages/ui -- changeDetailPage`。",
+      "files": [
+        "packages/ui/src/__tests__/changeDetailPage.test.tsx",
+        "packages/ui/src/components/ChangeDetailPage.tsx",
+        "packages/ui/src/components/DiscussionDetailPage.tsx",
+        "packages/ui/src/components/SourceDiscussionChip.tsx"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.2 `packages/ui/src/components/DiscussionDetailPage.tsx` 改用骨架（design D3、D5；spec「討論詳情頁檢視與轉出變更」「詳情頁的文件動作」）：`DetailIdentity`（slug、狀態籤＋改進籤、topic 三行截斷、出身行、「關聯」列——自 `sections.context` 的 `Prior discussions:` 行以逗號計數，`none` 或缺行時列缺席，籤文字 `ddetail.priorDiscussions`，點擊切到背景）；文件節點 結論／討論過程 N／背景／衍生變更 N（切分失敗時 記錄／衍生變更），分頁狀態改受控且預設規則沿用 `defaultDiscussionTab`；`DetailStatus` 三列；封存動作經 `DetailActions`；「開啟 ▾」進 `DocHeader`；`RoundsView` 卡頭與 `ConclusionView` 欄位標籤加 `data-doc-heading`。驗證：`packages/ui/src/__tests__/discussionDetailPage.test.tsx` 改寫標頭錨點題目；新增「Prior discussions 三筆時關聯列顯示『先前討論 3』、點擊切到背景」「none 時無關聯列」「封存鈕在 DetailActions 內」三題；`npm test -w packages/ui -- discussionDetailPage`。",
+      "files": [
+        "packages/ui/src/__tests__/discussionDetailPage.test.tsx"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.3 `packages/ui/src/components/ArchivedDetailPage.tsx` 改用骨架（design D5；spec「已封存項目以詳情頁檢視」「已封存詳情頁的工單分頁」「詳情頁標頭標記受寬度約束且頁不產生水平捲軸」）：變更與討論兩個變體各自的 `DetailIdentity`（「已封存」籤、結局籤、封存日、來自列）、文件節點（含條件式審查／驗證）、`DetailStatus`；不渲染 `DetailActions`；「開啟 ▾」進 `DocHeader`；任務唯讀行為不變。驗證：`packages/ui/src/__tests__/archivedDetailPage.test.tsx` 改寫標頭錨點題目，新增「已封存詳情頁無 data-detail-actions 子節點、身分區含已封存籤」一題；`npm test -w packages/ui -- archivedDetailPage`。",
+      "files": [
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx",
+        "packages/ui/src/components/ArchivedDetailPage.tsx"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.4 目錄錨點（design D5）：`packages/ui/src/components/SectionedDoc.tsx` 章節標籤改 `h2`（次級 `h3`）並加 `data-doc-heading`；`packages/ui/src/components/DeltaBadges.tsx` 的 `DeltaSpecView` 色標標頭、`packages/ui/src/components/TaskList.tsx` 群組標題、`ChangeDetailPage.tsx` 的 `PlanCard` 標題、`packages/ui/src/components/TicketView.tsx` 輪次標題加 `data-doc-heading`；款式與既有 `data-section`／`data-plan-section` 錨點不變。驗證：`changeDetailPage.test.tsx` 新增一題——提案含 Why、What Changes、Impact 時 `data-doc-body` 內 `[data-doc-heading]` 依序為「為什麼」「變更內容」「影響」，且 `ManualToc` 列出同三筆錨點；`npm test -w packages/ui -- changeDetailPage taskList`。",
+      "files": [
+        "packages/ui/src/__tests__/taskList.test.tsx",
+        "packages/ui/src/components/DeltaBadges.tsx",
+        "packages/ui/src/components/SectionedDoc.tsx",
+        "packages/ui/src/components/TaskList.tsx",
+        "packages/ui/src/components/TicketView.tsx"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.1 `apps/desktop/src/App.tsx` 接插槽（design D3、D4）：`DetailActionsSlotProvider` 包主區、`MainTitleBar trailing` 為 `DetailNav`＋`DetailActionsSlot`；`apps/desktop/src/components/DocumentActionsMenu.tsx` 觸發鈕改 `variant=\"outline\" size=\"sm\"`；`apps/desktop/src/components/DetailNav.tsx` 的右側間距配合細線調整。驗證：`apps/desktop/src/__tests__/App.test.tsx` 於「詳情頁層與導覽（desktop-detail-page）」群組新增三題——開已就緒變更時 `main-titlebar` 內依序有 ‹ n／m ›、「分析」、「封存」、「更多動作」且主區內容卡無 `role=\"tablist\"` 的 card 變體；「開啟 ▾」位於 `data-doc-header` 內而不在 `main-titlebar`；開已封存變更時 `main-titlebar` 無「封存」鈕；既有 Esc 先給浮層、⌥↓ 切頁題目不改全綠；`npm test -w apps/desktop -- App`。",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/remoteCapabilities.test.tsx",
+        "apps/desktop/src/components/DetailNav.tsx",
+        "apps/desktop/src/components/DocumentActionsMenu.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4Q3BZ866KXFTXB2DKTTFYR1",
+      "taskDesc": "1.1 新增 `packages/ui/src/components/ui/callout.tsx`（design D6）：匯出 `Callout`（tone note／tip／warning／caution、title、icon、children）與 `CALLOUT_BOX_CLS`、`CALLOUT_TITLE_CLS`、`CALLOUT_TONE`；`packages/ui/src/components/Markdown.tsx` 刪掉私有 `ALERT_BOX_CLS`／`ALERT_TITLE_CLS`／`ALERT_STYLE` 的 class 字串改引用 callout.tsx，sanitize 白名單由同一組字串展開；`packages/ui/src/index.ts` 匯出 `Callout`。驗證：`packages/ui/src/__tests__/markdownAlerts.test.tsx` 既有 GitHub Alert 題目不改且全綠（四型 class 與標籤文字不變）；新增一題渲染 `<Callout tone=\"tip\" title=\"x\">y</Callout>` 斷言 class 含 `CALLOUT_BOX_CLS` 與 success 語意色；`npm test -w packages/ui -- markdownAlerts callout`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8132e8e11e3aa4bc411b848bc8378cbe8002d75c",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/markdownAlerts.test.tsx",
+        "packages/ui/src/components/Markdown.tsx",
+        "packages/ui/src/index.ts",
+        "packages/ui/src/components/ui/callout.tsx"
+      ],
+      "recordedAt": "2026-10-12T03:48:00Z"
+    },
+    {
+      "taskId": "tsk_01M4Q3BZ86QTQNXTAED6HEEJDB",
+      "taskDesc": "1.2 `packages/ui/src/components/ui/tabs.tsx` 新增 `tree` 變體（design D2）：`tabsListVariants.tree` 為直向整寬清單，觸發鈕款式 `TREE_TRIGGER`（30px 列、8px 圓角、hover 灰底、作用中主色淡底＋主色字＋medium），徽章 `ml-auto`；card 與 underline 款式不變。驗證：新建 `packages/ui/src/__tests__/tabs.test.tsx`渲染 `orientation=\"vertical\"` 的 `Tabs`＋`TabsList variant=\"tree\"`，斷言觸發鈕帶 `role=\"tab\"`、作用中含 `bg-primary/12`、非作用中不含；`npm test -w packages/ui -- tabs`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8132e8e11e3aa4bc411b848bc8378cbe8002d75c",
+      "touchedFiles": [
+        "packages/ui/src/components/ui/tabs.tsx",
+        "packages/ui/src/__tests__/tabs.test.tsx"
+      ],
+      "recordedAt": "2026-10-12T03:48:45Z"
+    },
+    {
+      "taskId": "tsk_01M4Q3BZ86T23ETNHR8ZPJD5E2",
+      "taskDesc": "2.1 新增 `packages/ui/src/components/DetailShell.tsx`（design D1、D3、D7；spec「詳情頁的文件樹、閱讀卡與本頁目錄」）：`DetailShell`（三欄外框，`@container`；左欄 `data-detail-tree` 240px 自捲；中欄 `data-detail-reading` 捲動容器包置中 768px 欄，`activeDoc` 變化時捲回頂端；右欄 `data-detail-toc` `hidden @min-[1200px]:flex` 包 `ManualToc`，`headings=\"[data-doc-heading], .markdown h2, .markdown h3\"`）、`DetailIdentity`（title 等寬 14px break-all、CopyButton、badges、provenance 單行、relations 每筆一行 `data-relation-<mark>`、subtitle line-clamp-3）、`DetailTreeLabel`、`DetailStatus`（`data-status-card` 包 `StatusRow`）、`DocHeader`（`data-doc-header`：h1 24px 一般字重、badges、actions `ml-auto`、provenance 13px 灰字）、`DocTiles`（四欄格，空陣列回 null）、`DocBody`（`data-doc-body`，轉 ref）、`DetailActionsSlotProvider`／`DetailActionsSlot`／`DetailActions`（有 provider 時 createPortal 進插槽並在最前渲染細線，無 provider 時原地渲染）；`index.ts` 匯出全部。驗證：新增 `packages/ui/src/__tests__/detailShell.test.tsx`——三欄 DOM 存在且右欄 class 含 `hidden` 與 `@min-[1200px]:flex`；`DocTiles` 空陣列不渲染、四格時渲染四個值；`DetailActions` 無 provider 原地渲染、有 provider 時子節點出現在插槽節點內；`DetailIdentity` relations 以 `data-relation-from` 可定位且 provenance 缺席段略過；`npm test -w packages/ui -- detailShell`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8132e8e11e3aa4bc411b848bc8378cbe8002d75c",
+      "touchedFiles": [
+        "packages/ui/src/components/DetailHeader.tsx",
+        "packages/ui/src/__tests__/detailShell.test.tsx",
+        "packages/ui/src/components/DetailShell.tsx"
+      ],
+      "recordedAt": "2026-10-12T03:52:00Z"
+    },
+    {
+      "taskId": "tsk_01M4Q3BZ86XQXK5SJ7ADGRPABB",
+      "taskDesc": "5.1 `packages/ui/src/i18n.tsx` 新增 tw／en 詞條（design D8）：`detail.tree`、`detail.relFrom`、`detail.relSibling`、`detail.relSpecs`、`ddetail.relations`、`ddetail.priorDiscussions`、`plan.derivedFrom`；`openspec/LANGUAGE.md` 詞彙新增「文件樹」「本頁目錄」「數字磚」三條（definition／avoid／why 依 design D8）。驗證：`packages/ui/src/__tests__/i18n.test.tsx` 的鍵集合相等題全綠；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠（詞彙守門對新 avoid 詞零命中）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8132e8e11e3aa4bc411b848bc8378cbe8002d75c",
+      "touchedFiles": [
+        "packages/ui/src/i18n.tsx"
+      ],
+      "recordedAt": "2026-10-12T03:53:55Z"
+    },
+    {
+      "taskId": "tsk_01M4Q3BZ865CJ49AKNQNMAPKC3",
+      "taskDesc": "3.1 `packages/ui/src/components/ChangeDetailPage.tsx` 改用骨架（design D3、D4、D5；spec「變更詳情頁的標頭與狀態卡」「詳情頁的文件動作」「詳情頁標頭標記受寬度約束且頁不產生水平捲軸」「變更的來源討論多值呈現」「詳情頁文件載入以 skeleton 呈現」「詳情頁的排程分頁」「詳情頁的工單分頁」）：`Tabs` 根 `orientation=\"vertical\" activationMode=\"manual\"` 包 `DetailShell`；左欄為 `DetailIdentity`（階段籤＋章籤、出身行、來自／同源／規格三列——規格列每個已載入的 delta capability 一顆等寬 outline 籤，點擊切到規格文件並選定該 capability）、「文件」小標、`TabsList variant=\"tree\"`（提案、設計、任務 n/m、規格 DeltaBadges、排程波次籤、審查／驗證條件式＋末輪序號籤——`useStationTickets` 上提到頁層）、「狀態」小標、`DetailStatus` 三列；分析結果卡在閱讀卡之上；閱讀卡 `DocHeader` title 為目前文件詞條、actions 為 `renderDocumentActions(docTarget)`、provenance 為文件相對路徑或 `plan.derivedFrom`；`actions` 片段整個移入 `<DetailActions>`，「分析」outline sm、階段主要鈕 default sm、「⋯」outline icon-sm；移除 `DetailHeader`／`StatusCard`／`DetailContentCard`／card 分頁列的使用。驗證：`packages/ui/src/__tests__/changeDetailPage.test.tsx` 以 `data-relation-*`、`data-detail-tree`、`data-doc-header` 改寫原本錨定 `data-title-row`／`data-provenance-row`／`data-reading-column` 的題目，`getByRole(\"tab\")` 題目不動；新增「點規格列的能力籤切到規格文件」「切換文件後閱讀卡捲回頂端」「動作鈕在無 provider 時原地渲染且『⋯』為 outline」三題；`npm test -w packages/ui -- changeDetailPage`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8132e8e11e3aa4bc411b848bc8378cbe8002d75c",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/changeDetailPage.test.tsx",
+        "packages/ui/src/components/ChangeDetailPage.tsx",
+        "packages/ui/src/components/DiscussionDetailPage.tsx",
+        "packages/ui/src/components/SourceDiscussionChip.tsx"
+      ],
+      "recordedAt": "2026-10-12T03:57:49Z"
+    },
+    {
+      "taskId": "tsk_01M4Q3BZ86RSJHQKH02QVHH98T",
+      "taskDesc": "3.2 `packages/ui/src/components/DiscussionDetailPage.tsx` 改用骨架（design D3、D5；spec「討論詳情頁檢視與轉出變更」「詳情頁的文件動作」）：`DetailIdentity`（slug、狀態籤＋改進籤、topic 三行截斷、出身行、「關聯」列——自 `sections.context` 的 `Prior discussions:` 行以逗號計數，`none` 或缺行時列缺席，籤文字 `ddetail.priorDiscussions`，點擊切到背景）；文件節點 結論／討論過程 N／背景／衍生變更 N（切分失敗時 記錄／衍生變更），分頁狀態改受控且預設規則沿用 `defaultDiscussionTab`；`DetailStatus` 三列；封存動作經 `DetailActions`；「開啟 ▾」進 `DocHeader`；`RoundsView` 卡頭與 `ConclusionView` 欄位標籤加 `data-doc-heading`。驗證：`packages/ui/src/__tests__/discussionDetailPage.test.tsx` 改寫標頭錨點題目；新增「Prior discussions 三筆時關聯列顯示『先前討論 3』、點擊切到背景」「none 時無關聯列」「封存鈕在 DetailActions 內」三題；`npm test -w packages/ui -- discussionDetailPage`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8132e8e11e3aa4bc411b848bc8378cbe8002d75c",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/discussionDetailPage.test.tsx"
+      ],
+      "recordedAt": "2026-10-12T04:00:10Z"
+    },
+    {
+      "taskId": "tsk_01M4Q3BZ86Y837RVZMSAK86PHC",
+      "taskDesc": "3.3 `packages/ui/src/components/ArchivedDetailPage.tsx` 改用骨架（design D5；spec「已封存項目以詳情頁檢視」「已封存詳情頁的工單分頁」「詳情頁標頭標記受寬度約束且頁不產生水平捲軸」）：變更與討論兩個變體各自的 `DetailIdentity`（「已封存」籤、結局籤、封存日、來自列）、文件節點（含條件式審查／驗證）、`DetailStatus`；不渲染 `DetailActions`；「開啟 ▾」進 `DocHeader`；任務唯讀行為不變。驗證：`packages/ui/src/__tests__/archivedDetailPage.test.tsx` 改寫標頭錨點題目，新增「已封存詳情頁無 data-detail-actions 子節點、身分區含已封存籤」一題；`npm test -w packages/ui -- archivedDetailPage`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8132e8e11e3aa4bc411b848bc8378cbe8002d75c",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx",
+        "packages/ui/src/components/ArchivedDetailPage.tsx"
+      ],
+      "recordedAt": "2026-10-12T04:01:42Z"
+    },
+    {
+      "taskId": "tsk_01M4Q3BZ86VA1634KWEF231V14",
+      "taskDesc": "3.4 目錄錨點（design D5）：`packages/ui/src/components/SectionedDoc.tsx` 章節標籤改 `h2`（次級 `h3`）並加 `data-doc-heading`；`packages/ui/src/components/DeltaBadges.tsx` 的 `DeltaSpecView` 色標標頭、`packages/ui/src/components/TaskList.tsx` 群組標題、`ChangeDetailPage.tsx` 的 `PlanCard` 標題、`packages/ui/src/components/TicketView.tsx` 輪次標題加 `data-doc-heading`；款式與既有 `data-section`／`data-plan-section` 錨點不變。驗證：`changeDetailPage.test.tsx` 新增一題——提案含 Why、What Changes、Impact 時 `data-doc-body` 內 `[data-doc-heading]` 依序為「為什麼」「變更內容」「影響」，且 `ManualToc` 列出同三筆錨點；`npm test -w packages/ui -- changeDetailPage taskList`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8132e8e11e3aa4bc411b848bc8378cbe8002d75c",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/taskList.test.tsx",
+        "packages/ui/src/components/DeltaBadges.tsx",
+        "packages/ui/src/components/SectionedDoc.tsx",
+        "packages/ui/src/components/TaskList.tsx",
+        "packages/ui/src/components/TicketView.tsx"
+      ],
+      "recordedAt": "2026-10-12T04:03:52Z"
+    },
+    {
+      "taskId": "tsk_01M4Q3BZ86GA9CQHVR5DZ25MYV",
+      "taskDesc": "4.1 `apps/desktop/src/App.tsx` 接插槽（design D3、D4）：`DetailActionsSlotProvider` 包主區、`MainTitleBar trailing` 為 `DetailNav`＋`DetailActionsSlot`；`apps/desktop/src/components/DocumentActionsMenu.tsx` 觸發鈕改 `variant=\"outline\" size=\"sm\"`；`apps/desktop/src/components/DetailNav.tsx` 的右側間距配合細線調整。驗證：`apps/desktop/src/__tests__/App.test.tsx` 於「詳情頁層與導覽（desktop-detail-page）」群組新增三題——開已就緒變更時 `main-titlebar` 內依序有 ‹ n／m ›、「分析」、「封存」、「更多動作」且主區內容卡無 `role=\"tablist\"` 的 card 變體；「開啟 ▾」位於 `data-doc-header` 內而不在 `main-titlebar`；開已封存變更時 `main-titlebar` 無「封存」鈕；既有 Esc 先給浮層、⌥↓ 切頁題目不改全綠；`npm test -w apps/desktop -- App`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8132e8e11e3aa4bc411b848bc8378cbe8002d75c",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/remoteCapabilities.test.tsx",
+        "apps/desktop/src/components/DetailNav.tsx",
+        "apps/desktop/src/components/DocumentActionsMenu.tsx"
+      ],
+      "recordedAt": "2026-10-12T04:08:32Z"
+    }
+  ]
+}

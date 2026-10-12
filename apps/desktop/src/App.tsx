@@ -13,6 +13,8 @@ import {
   ManualPage,
   ChangeDetailPage,
   DiscussionDetailPage,
+  DetailActionsSlot,
+  DetailActionsSlotProvider,
   RevertBlockedDialog,
   ReviewArchiveDialog,
   Button,
@@ -580,6 +582,8 @@ function AppInner({
   const resolveBack = (st: AppState) => (dialogOpen() ? null : backTarget(st));
   // 以呼叫當下的狀態決定去處（事件處理器與手勢結束時的狀態可能已不同於渲染時）。
   const goBack = () => resolveBack(useStore.getState())?.();
+  // 標題列的動作插槽（desktop-detail-doc-tree design D3）：詳情頁以 portal 把變更層動作送進來。
+  const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
   // 切換項目時頁層捲回頂端：捲動容器不重掛，否則沿用上一項的捲動位置。
   const detailLayerRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -1098,6 +1102,7 @@ function AppInner({
 
       {/* relative＋overflow-hidden：滑動返回指示定位在主區欄、裁掉左緣外那段；設定頁的 main
           會捲動，指示不能放在 main 裡 */}
+      <DetailActionsSlotProvider value={actionsSlot}>
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <MainTitleBar
           platform={platform}
@@ -1113,7 +1118,10 @@ function AppInner({
           }
           trailing={
             pageOpen ? (
-              <DetailNav index={detailIndex} total={detail?.sequence.length ?? 0} onStep={stepDetail} />
+              <>
+                <DetailNav index={detailIndex} total={detail?.sequence.length ?? 0} onStep={stepDetail} />
+                <DetailActionsSlot ref={setActionsSlot} />
+              </>
             ) : undefined
           }
         />
@@ -1342,6 +1350,7 @@ function AppInner({
           {/* 觸控板滑動返回（design D8）：左緣「←」指示，過門檻放開即返回（去處同返回鈕）。 */}
           <SwipeBack enabled={backTarget(s) !== null} onBack={goBack} />
       </div>
+      </DetailActionsSlotProvider>
 
       {workspace && (
         <WorkspaceChooser
