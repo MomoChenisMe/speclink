@@ -140,6 +140,8 @@ function makeProps(over: Record<string, unknown> = {}) {
     loadDocument: vi.fn(async () => SPEC_MD),
     archivedChanges: ARCHIVED,
     onOpenArchivedChange: vi.fn(),
+    // 預設 spec 目錄：core 解析出的相對路徑與契約預設版面同字。
+    locateDocument: vi.fn(async (doc: { spec?: string }) => ({ relative: `openspec/specs/${doc.spec}/spec.md` })),
     ...over,
   };
 }
@@ -353,6 +355,43 @@ describe("SpecDetailPage（左欄與閱讀卡標題）", () => {
     await waitFor(() => expect(tiles()[3]).toBe("13 ／ 15有來源的需求"));
   });
 
+  it("專案改過 spec 目錄名：出處行與 Purpose 待補提示框都用 core 解析出的實際相對路徑", async () => {
+    const locateDocument = vi.fn(async () => ({ relative: "docs/specs/specs/tray-status-menu/spec.md" }));
+    const md = trayMd({ purpose: "TBD - created by archiving change tray-status-menu. Update Purpose after archive." });
+    render(
+      <SpecDetailPage
+        {...(makeProps({ capability: "tray-status-menu", loadDocument: vi.fn(async () => md), locateDocument }) as never)}
+      />,
+    );
+    await waitFor(() => expect(sections()).toHaveLength(15));
+    await waitFor(() =>
+      expect(docProvenance()!.textContent).toBe(
+        "docs/specs/specs/tray-status-menu/spec.md·正式規格·最近更新 2026-10-12（tray-panel-restyle）",
+      ),
+    );
+    expect(locateDocument).toHaveBeenCalledWith({ spec: "tray-status-menu" });
+    expect(callout("purpose-tbd")!.textContent).toContain("docs/specs/specs/tray-status-menu/spec.md");
+    expect(callout("purpose-tbd")!.textContent).not.toContain("openspec/specs");
+  });
+
+  it("沒有可定位的檔案（remote 無 checkout）：出處行不列路徑、Purpose 待補提示框改用不帶路徑的說法", async () => {
+    const md = trayMd({ purpose: "TBD - created by archiving change tray-status-menu. Update Purpose after archive." });
+    render(
+      <SpecDetailPage
+        {...(makeProps({
+          capability: "tray-status-menu",
+          loadDocument: vi.fn(async () => md),
+          locateDocument: undefined,
+        }) as never)}
+      />,
+    );
+    await waitFor(() => expect(sections()).toHaveLength(15));
+    expect(docProvenance()!.textContent).toBe("正式規格·最近更新 2026-10-12（tray-panel-restyle）");
+    const tbd = callout("purpose-tbd")!;
+    expect(tbd.textContent).toContain("直接編輯這份規格檔的 Purpose 段即可");
+    expect(tbd.textContent).not.toContain("spec.md");
+  });
+
   it("無 @trace 時無最近更新段、無溯源關聯列、note 提示框列出全部需求、溯源文件無磚", async () => {
     render(<SpecDetailPage {...(makeProps({ loadDocument: vi.fn(async () => NO_TRACE_MD) }) as never)} />);
     await waitFor(() => expect(sections()).toHaveLength(1));
@@ -412,6 +451,9 @@ describe("SpecDetailPage（需求分段）", () => {
       expect(s.textContent).toContain("2 個 scenario");
       expect(s.querySelector("[data-doc-heading]")).toBeTruthy();
     }
+    // 收合列看得出可點：手指游標，滑過整列（含錨點）有淡底。
+    expect(toggleOf(logout).className).toContain("cursor-pointer");
+    expect(toggleOf(logout).parentElement!.className).toContain("hover:bg-foreground/5");
     // 收合列上的可點錨點：開該封存變更，不切換收合。
     fireEvent.click(within(logout).getByRole("button", { name: /add-logout/ }));
     expect(props.onOpenArchivedChange).toHaveBeenCalledWith("2026-08-01-add-logout");
@@ -474,6 +516,38 @@ describe("SpecDetailPage（需求分段）", () => {
     fireEvent.scroll(scroller);
     expect(anchor("登出").getAttribute("aria-current")).toBe("location");
     expect(anchor("Purpose").getAttribute("aria-current")).toBeNull();
+  });
+
+  it("展開或收合需求段觸發目錄重掃時，高亮留在原本的目前段；搜尋換掉標題時才回到第一項", async () => {
+    render(
+      <div data-testid="scroller">
+        <SpecDetailPage {...(makeProps({ loadDocument: vi.fn(async () => THREE_MD) }) as never)} />
+      </div>,
+    );
+    await waitFor(() => expect(sections()).toHaveLength(3));
+    await waitFor(() => expect(toc()).toBeTruthy());
+    const anchor = (text: string) =>
+      Array.from(toc()!.querySelectorAll("[data-manual-anchor]")).find((a) => a.textContent === text)!;
+    // 捲到「登出」為目前段（同上一題的量測替身）。
+    const scroller = screen.getByTestId("scroller");
+    const rect = (top: number) => () => ({ top }) as DOMRect;
+    scroller.getBoundingClientRect = rect(100);
+    const heads = Array.from(document.querySelectorAll<HTMLElement>("[data-doc-heading]"));
+    heads.forEach((h, i) => (h.getBoundingClientRect = rect(i < 3 ? 50 : 400)));
+    fireEvent.scroll(scroller);
+    expect(anchor("登出").getAttribute("aria-current")).toBe("location");
+    // 點開「登出」：展開不捲動，高亮不得跳回 Purpose。
+    fireEvent.click(toggleOf(sections()[1]));
+    await waitFor(() => expect(toggleOf(sections()[1]).getAttribute("aria-expanded")).toBe("true"));
+    expect(anchor("登出").getAttribute("aria-current")).toBe("location");
+    expect(anchor("Purpose").getAttribute("aria-current")).toBeNull();
+    fireEvent.click(toggleOf(sections()[1]));
+    await waitFor(() => expect(toggleOf(sections()[1]).getAttribute("aria-expanded")).toBe("false"));
+    expect(anchor("登出").getAttribute("aria-current")).toBe("location");
+    // 搜尋只留「記住帳號」：原本的目前段不在了，回到第一項。
+    fireEvent.change(screen.getByPlaceholderText("搜尋需求…"), { target: { value: "記住" } });
+    await waitFor(() => expect(tocAnchors()).toEqual(["Purpose", "記住帳號"]));
+    expect(anchor("Purpose").getAttribute("aria-current")).toBe("location");
   });
 
   it("搜尋需求只留標題命中的段，目錄隨之縮減；無命中顯示空態；清空還原", async () => {
@@ -548,6 +622,30 @@ describe("SpecDetailPage（需求分段）", () => {
     for (let i = 1; i < order.length; i++) {
       expect(order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
+    // 「附錄」列入本頁目錄。
+    await waitFor(() => expect(tocAnchors()).toContain("附錄"));
+  });
+
+  it("收合的需求段展開後，內文的子標題補進本頁目錄；再收合即移除", async () => {
+    const md = [
+      "# x Specification",
+      "## Purpose",
+      "目的。",
+      "## Requirements",
+      "### Requirement: A",
+      "A 內文。",
+      "### Requirement: B",
+      "B 內文。",
+      "### 補充細節",
+      "細節內文。",
+    ].join("\n\n");
+    render(<SpecDetailPage {...(makeProps({ loadDocument: vi.fn(async () => md) }) as never)} />);
+    await waitFor(() => expect(sections()).toHaveLength(2));
+    await waitFor(() => expect(tocAnchors()).toEqual(["Purpose", "A", "B"]));
+    fireEvent.click(toggleOf(sections()[1]));
+    await waitFor(() => expect(tocAnchors()).toEqual(["Purpose", "A", "B", "補充細節"]));
+    fireEvent.click(toggleOf(sections()[1]));
+    await waitFor(() => expect(tocAnchors()).toEqual(["Purpose", "A", "B"]));
   });
 });
 
@@ -563,6 +661,7 @@ describe("SpecDetailPage（溯源分頁）", () => {
     ].join("\n");
     const props = makeProps({
       loadDocument: vi.fn(async () => doc),
+      renderDocumentActions: () => <button type="button">開啟 ▾</button>,
       archivedChanges: [
         { datedName: "2026-08-04-drawer-polish", date: "2026-08-04", name: "drawer-polish" },
         { datedName: "2026-07-11-spec-archive-drawer", date: "2026-07-11", name: "spec-archive-drawer" },
@@ -582,6 +681,11 @@ describe("SpecDetailPage（溯源分頁）", () => {
     expect(traceRows()[0].textContent).toContain("2026-07-11");
     expect(traceRows()[1].textContent).toContain("2026-08-04");
     expect(traceRows()[2].textContent).toContain("2026-08-11");
+    // 閱讀卡標題「溯源」帶籤 3；推導文件不對應檔案、無「開啟 ▾」。
+    const header = document.querySelector("[data-doc-header]") as HTMLElement;
+    expect(within(header).getByRole("heading", { level: 2 }).textContent).toBe("溯源");
+    expect(within(header).getByText("3")).toBeTruthy();
+    expect(within(header).queryByRole("button", { name: "開啟 ▾" })).toBeNull();
   });
 
   it("點命中列以 datedName 呼叫 onOpenArchivedChange", async () => {

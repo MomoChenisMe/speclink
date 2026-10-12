@@ -6,7 +6,7 @@
 
 規格詳情頁 SHALL 採「詳情頁的文件樹、閱讀卡與本頁目錄」的三欄骨架（以引用共用，本需求只敘述規格詳情頁放進各欄的內容）。左欄身分區 SHALL 為：capability 名（等寬字型，其後緊跟複製名稱鈕，複製後 SHALL 有已複製回饋）、「正式規格」籤、一行出身「N 條需求 · M 個 scenario」與「最近更新 YYYY-MM-DD」（N 為 `### Requirement:` 段數、M 為各需求段 Scenario 數加總、最近更新取全部 `@trace` 的最大 updated；缺席段整段缺席），其下「溯源」關聯列呈現首顆來源變更籤與其餘數「+N」（來源為零時該列缺席），點擊 SHALL 切到溯源文件。「文件」節點依序 SHALL 為「規格」（徽章為需求數）與「溯源」（徽章為 `@trace` 來源變更去重數），預設開啟「規格」。「狀態」列 SHALL 為「需求」N、「溯源」M、「最近更新」日期與變更名（無 `@trace` 時最近更新列缺席）。主區標題列 SHALL NOT 有變更層動作。
 
-「規格」文件的閱讀卡 SHALL 由上而下為：標題區（標題「規格」、需求數籤、同列右端的「搜尋需求」輸入與「開啟 ▾」）、出處行（`openspec/specs/<capability>/spec.md · 正式規格 · 最近更新 YYYY-MM-DD（<變更>）`，無 `@trace` 時最近更新段缺席）、數字磚「需求」「Scenario」「溯源變更」「最近更新 · <變更>」（值為最近更新的日曆日；無 `@trace` 時該格缺席）、提示框、內文。「搜尋需求」SHALL 以大小寫不敏感子字串比對需求標題、只呈現命中的需求段（Purpose 段恆在），無命中時顯示「沒有符合的需求」，字串 SHALL NOT 持久化。內文 SHALL 先呈現 Purpose（標題「Purpose」為本頁目錄錨點、內文為灰底引言段），其後每條需求一段：「Requirement」小標＋需求標題（本頁目錄錨點）＋右端錨點「來自 <變更> · <日期>」（取該需求段尾的 `@trace` source 與 updated；該變更在封存清單中時錨點可點、點擊開啟該封存變更的已封存詳情頁；無 `@trace` 時錨點缺席）、需求文（`SHALL`／`SHALL NOT`／`MUST`／`MUST NOT` 以等寬灰底標示）、每個 Scenario 為左側細線縮排區塊（標題＋內文，`##### Example` 歸屬所在 Scenario）；命中的第一條需求段 SHALL 預設展開、其餘 SHALL 預設收合為一列（小標、標題、錨點與 Scenario 數籤），點擊列 SHALL 切換展開。本頁目錄（右欄，頁寬 ≥1200px 時顯示）SHALL 列出 Purpose 與全部呈現中的需求標題，點擊 SHALL 捲至該段、捲動時 SHALL 高亮目前段；搜尋過濾後目錄只列命中段。需求段之外的內容（`## Requirements` 下的引言、需求之間或之後的其他 `## ` 區段）SHALL 照原文呈現、SHALL NOT 丟棄：引言在 Purpose 段之後、其他區段在全部需求段之後。辨認結構時 fenced code block 內的行一律是內容，收尾圍欄 SHALL 與開頭同字元且不短於開頭（巢狀圍欄內的 `### Requirement:` 不是需求）。規格全文不含任何 `### Requirement:` 標題時 SHALL 整篇以單一 markdown 檢視退回、無數字磚、無提示框、無本頁目錄錨點，不報錯。
+「規格」文件的閱讀卡 SHALL 由上而下為：標題區（標題「規格」、需求數籤、同列右端的「搜尋需求」輸入與「開啟 ▾」）、出處行（`<spec.md 路徑> · 正式規格 · 最近更新 YYYY-MM-DD（<變更>）`：路徑為 spec.md 相對所在 checkout 根的實際位置，spec 目錄名依專案設定、預設為 `openspec/specs/<capability>/spec.md`，remote 專案無本機 checkout 時路徑段缺席；無 `@trace` 時最近更新段缺席）、數字磚「需求」「Scenario」「溯源變更」「最近更新 · <變更>」（值為最近更新的日曆日；無 `@trace` 時該格缺席）、提示框、內文。「搜尋需求」SHALL 以大小寫不敏感子字串比對需求標題、只呈現命中的需求段（Purpose 段恆在），無命中時顯示「沒有符合的需求」，字串 SHALL NOT 持久化。內文 SHALL 先呈現 Purpose（標題「Purpose」為本頁目錄錨點、內文為灰底引言段），其後每條需求一段：「Requirement」小標＋需求標題（本頁目錄錨點）＋右端錨點「來自 <變更> · <日期>」（取該需求段尾的 `@trace` source 與 updated；該變更在封存清單中時錨點可點、點擊開啟該封存變更的已封存詳情頁；無 `@trace` 時錨點缺席）、需求文（`SHALL`／`SHALL NOT`／`MUST`／`MUST NOT` 以等寬灰底標示）、每個 Scenario 為左側細線縮排區塊（標題＋內文，`##### Example` 歸屬所在 Scenario）；命中的第一條需求段 SHALL 預設展開、其餘 SHALL 預設收合為一列（小標、標題、錨點與 Scenario 數籤），點擊列 SHALL 切換展開。本頁目錄（右欄，頁寬 ≥1200px 時顯示）SHALL 列出 Purpose 與全部呈現中的需求標題，點擊 SHALL 捲至該段、捲動時 SHALL 高亮目前段；搜尋過濾後目錄只列命中段。需求段之外的內容（`## Requirements` 下的引言、需求之間或之後的其他 `## ` 區段）SHALL 照原文呈現、SHALL NOT 丟棄：引言在 Purpose 段之後、其他區段在全部需求段之後。辨認結構時 fenced code block 內的行一律是內容，收尾圍欄 SHALL 與開頭同字元且不短於開頭（巢狀圍欄內的 `### Requirement:` 不是需求）。規格全文不含任何 `### Requirement:` 標題時 SHALL 整篇以單一 markdown 檢視退回、無數字磚、無提示框、無本頁目錄錨點，不報錯。
 
 「規格」文件的提示框只放推得出的事實：Purpose 段內文以引擎封存流程的佔位前綴「TBD - created by archiving」起頭時 SHALL 有 warning 提示框「Purpose 待補」，內文指引直接編輯正式規格的 Purpose 段、不走 delta；有需求段缺 `@trace` 時 SHALL 有 note 提示框「N 條需求沒有來源變更」，內文列出這些需求的標題並說明溯源文件與「溯源變更」磚不含它們；兩者皆無時 SHALL NOT 有提示框。
 
@@ -88,7 +88,7 @@
 #### Scenario: Purpose 待補提示框
 
 - **WHEN** 使用者開啟一份 Purpose 段內文以「TBD - created by archiving」起頭的規格詳情頁
-- **THEN** 「規格」文件的數字磚之下有 warning 提示框「Purpose 待補」，內文含 `openspec/specs/<capability>/spec.md` 並指引直接編輯 Purpose 段；Purpose 引言段仍呈現佔位原文
+- **THEN** 「規格」文件的數字磚之下有 warning 提示框「Purpose 待補」，內文含該規格 spec.md 的實際相對路徑（預設 spec 目錄下為 `openspec/specs/<capability>/spec.md`；remote 無本機 checkout 時不列路徑、改指引直接編輯這份規格檔）並指引直接編輯 Purpose 段；Purpose 引言段仍呈現佔位原文
 
 #### Scenario: 缺來源變更的需求提示框
 
@@ -201,7 +201,7 @@ updated: 2026-10-12T16:18:33+08:00
 #### Scenario: 手冊頁的開啟選單
 
 - **WHEN** 使用者於本機專案 /work/app 的手冊頁閱讀〈系統匣選單〉（檔案 `openspec/manual/tray.md`），展開閱讀卡標題列的「開啟 ▾」並選「複製路徑」
-- **THEN** 選單首列為 `openspec/manual/tray.md`，其後三項為以預設 App 開啟、在 Finder 顯示（macOS）、複製路徑；剪貼簿寫入 `/work/app/openspec/manual/tray.md`；規格詳情頁的「溯源」文件與 remote 無 checkout 的手冊頁分別無選單、只有「複製內容」
+- **THEN** 選單首列為 `openspec/manual/tray.md`，其後三項為以預設 App 開啟、在 Finder 顯示（macOS）、複製路徑；剪貼簿寫入 `/work/app/openspec/manual/tray.md`；規格詳情頁的「溯源」文件無選單；remote 模式的手冊頁顯示既有空狀態，無閱讀卡與選單
 
 
 <!-- @trace

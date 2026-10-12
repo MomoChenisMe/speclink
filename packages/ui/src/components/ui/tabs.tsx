@@ -31,15 +31,16 @@ const UNDERLINE_TRIGGER =
   "inline-flex h-10 items-center gap-1.5 px-3.5 text-sm font-medium text-muted-foreground border-b-2 border-transparent -mb-px transition-colors hover:text-foreground data-[state=active]:text-primary data-[state=active]:border-primary";
 const SEGMENTED_TRIGGER =
   "inline-flex h-6 items-center gap-1.5 rounded-md px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm";
-/** 文件樹節點：與專案欄導覽項同款（主色淡底＝選取），徽章以 ml-auto 靠右。 */
-const TREE_TRIGGER =
+/** 文件樹節點：與專案欄導覽項同款（主色淡底＝選取），徽章以 ml-auto 靠右。手冊目錄樹的頁列共用
+ * 同一串（以 data-state 標作用中），樣式只改這裡。 */
+export const TREE_NODE_CLS =
   "flex h-[30px] w-full items-center gap-2 rounded-lg px-2.5 text-left text-[13px] text-foreground transition-colors hover:bg-foreground/5 data-[state=active]:bg-primary/12 data-[state=active]:font-medium data-[state=active]:text-primary [&_svg]:shrink-0";
 
 const TRIGGER_CLS: Record<TabsListVariant, string> = {
   underline: UNDERLINE_TRIGGER,
   card: UNDERLINE_TRIGGER,
   segmented: SEGMENTED_TRIGGER,
-  tree: TREE_TRIGGER,
+  tree: TREE_NODE_CLS,
 };
 
 /**

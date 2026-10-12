@@ -10,6 +10,9 @@ import { DELTA_BORDER } from "./DeltaBadges";
 import { MoreToggle, SECTION_HEADING_CLS } from "./DocParts";
 import { Markdown } from "./Markdown";
 
+/** 收合列的可點提示：手指游標、滑過淡底（與文件樹節點同一濃度）。 */
+const TOGGLE_HOVER_CLS = "rounded-lg transition-colors hover:bg-foreground/5";
+
 /** 「Requirement」小標：與需求文的 SHALL／MUST 關鍵字同款等寬灰底。 */
 const KW_LABEL_CLS = "shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground";
 
@@ -27,8 +30,9 @@ export interface RequirementBlockProps {
   /** 標題列右端（規格詳情頁的溯源錨點）；放在收合鈕之外，點它不切換收合。 */
   anchor?: ReactNode;
   delta?: RequirementDelta;
-  /** 非 delta 畫法的收合模式（規格詳情頁）；缺席＝恆展開、無收合鈕。 */
-  collapse?: { defaultOpen: boolean };
+  /** 非 delta 畫法的收合模式（規格詳情頁）；缺席＝恆展開、無收合鈕。`onToggle` 在每次展開／收合後
+   * 呼叫（頁據以重掃本頁目錄：收起的內文不在 DOM 裡）。 */
+  collapse?: { defaultOpen: boolean; onToggle?: () => void };
 }
 
 /** 超過這個數量的需求文段落與 Scenario 先收起來。 */
@@ -70,13 +74,17 @@ export function RequirementBlock({ req, anchor, delta, collapse }: RequirementBl
     );
     return (
       <section data-requirement className="border-t border-border/70 pt-4">
-        <div className="flex min-w-0 items-start gap-2">
+        {/* 收合列的淡底蓋整列（含錨點）；左右各外推 8px，文字與未收合的段落對齊不變。 */}
+        <div className={`flex min-w-0 items-start gap-2 ${collapse ? `-mx-2 ${TOGGLE_HOVER_CLS}` : ""}`}>
           {collapse ? (
             <button
               type="button"
               aria-expanded={open}
-              onClick={() => setOpen((v) => !v)}
-              className="flex min-w-0 flex-1 items-start gap-2 text-left"
+              onClick={() => {
+                setOpen((v) => !v);
+                collapse.onToggle?.();
+              }}
+              className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 px-2 py-1.5 text-left"
             >
               {head}
               {!open && (
@@ -88,7 +96,7 @@ export function RequirementBlock({ req, anchor, delta, collapse }: RequirementBl
           ) : (
             head
           )}
-          {anchor}
+          {collapse ? <div className="shrink-0 py-1.5 pr-2">{anchor}</div> : anchor}
         </div>
         {open && req.body && (
           <div className="mt-2">
@@ -113,11 +121,12 @@ export function RequirementBlock({ req, anchor, delta, collapse }: RequirementBl
   const shownScenarios = allScenarios ? req.scenarios : req.scenarios.slice(0, VISIBLE);
   return (
     <section data-requirement className={`border-l-4 ${DELTA_BORDER[delta.op]} py-1 pl-4`}>
+      {/* 左側外推 8px 進色條內距，淡底不貼字、文字位置不變。 */}
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full min-w-0 items-start gap-2 text-left"
+        className={`-ml-2 flex w-[calc(100%+0.5rem)] min-w-0 cursor-pointer items-start gap-2 px-2 py-1 text-left ${TOGGLE_HOVER_CLS}`}
       >
         <span data-requirement-label className={`mt-0.5 ${KW_LABEL_CLS}`}>
           {t("sdetail.requirementLabel")}

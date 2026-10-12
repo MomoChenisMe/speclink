@@ -1,10 +1,10 @@
 import type { ManualPageItem } from "../adapter";
 import { useI18n } from "../i18n";
-import { cn } from "../lib/utils";
 import { groupSections } from "../manualDoc";
 import { matchesQuery } from "../search";
 import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
 import { SearchField } from "./SearchField";
+import { TREE_NODE_CLS } from "./ui/tabs";
 
 export interface ManualTreeProps {
   /** 全部頁（已依閱讀序排好）。 */
@@ -55,10 +55,8 @@ export function ManualTree({ pages, currentSlug, query, onQuery, onSelect, uncov
                         type="button"
                         data-manual-page={p.slug}
                         aria-current={active ? "page" : undefined}
-                        className={cn(
-                          "flex h-[30px] w-full items-center gap-2 rounded-lg px-2.5 text-left text-[13px] transition-colors",
-                          active ? "bg-primary/12 font-medium text-primary" : "text-foreground hover:bg-foreground/5",
-                        )}
+                        data-state={active ? "active" : "inactive"}
+                        className={TREE_NODE_CLS}
                         onClick={() => onSelect(p.slug)}
                       >
                         <span className="min-w-0 flex-1 truncate">{p.title}</span>

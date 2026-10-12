@@ -1,7 +1,6 @@
 // 規格詳情頁閱讀卡的推導（desktop-spec-manual-pages design D4）：數字磚、提示框條件與溯源磚，
 // 全由需求段與 @trace 推出；形狀缺席回 null、0 或空陣列，不拋錯。
 
-import type { ArchivedItem } from "./adapter";
 import type { DocTile } from "./components/DetailShell";
 import { PURPOSE_TBD_PREFIX, type SpecSections } from "./specSections";
 
@@ -35,25 +34,30 @@ function compareUpdated(a: string, b: string): number {
   return cmp(a.slice(0, 10), b.slice(0, 10)) || cmp(a, b);
 }
 
-const calendarDay = (updated: string) => updated.slice(0, 10);
+/** 數字磚、出處行與提示框的日期只取日曆日。 */
+export const calendarDay = (updated: string) => updated.slice(0, 10);
 
-/** `sources` 為全文 @trace 來源去重清單（頁的溯源列）；`sections` 為 null＝規格沒有需求標題。 */
-export function specStats(sections: SpecSections | null, sources: { name: string; archived?: ArchivedItem }[]): SpecStats {
-  const requirements = sections?.requirements ?? [];
+/** 需求段尾 @trace 中最大／最小的 updated；全無 @trace 或 `sections` 為 null 時皆 null。 */
+export function traceSpan(sections: SpecSections | null): { latest: TracePoint | null; earliest: TracePoint | null } {
   let latest: TracePoint | null = null;
   let earliest: TracePoint | null = null;
-  for (const r of requirements) {
+  for (const r of sections?.requirements ?? []) {
     if (!r.trace?.updated) continue;
     const point = { source: r.trace.source, updated: r.trace.updated };
     if (!latest || compareUpdated(point.updated, latest.updated) > 0) latest = point;
     if (!earliest || compareUpdated(point.updated, earliest.updated) < 0) earliest = point;
   }
+  return { latest, earliest };
+}
+
+/** `sourceCount` 為全文 @trace 來源去重數（頁的溯源列長度）；`sections` 為 null＝規格沒有需求標題。 */
+export function specStats(sections: SpecSections | null, sourceCount: number): SpecStats {
+  const requirements = sections?.requirements ?? [];
   return {
     requirements: requirements.length,
     scenarios: requirements.reduce((n, r) => n + r.scenarios.length, 0),
-    sourceCount: sources.length,
-    latest,
-    earliest,
+    sourceCount,
+    ...traceSpan(sections),
     traced: requirements.filter((r) => r.trace).length,
     untraced: requirements.filter((r) => !r.trace).map((r) => r.title),
     purposeTbd: (sections?.purpose ?? "").trim().startsWith(PURPOSE_TBD_PREFIX),

@@ -850,6 +850,8 @@ function AppInner({
   const pathReveal = hasLocalDir
     ? { label: t(`fs.revealIn.${platform}`), reveal: (path: string) => void s.revealProjectPath(path) }
     : undefined;
+  // 規格與手冊閱讀卡出處行的檔案路徑同樣由 core 解析（跟著 spec 目錄名走）；無本機目錄時不查、該段缺席。
+  const locateDocument = hasLocalDir ? s.locateDocument : undefined;
   const renderDocumentActions = (target: DocumentTarget | null) => (
     <DocumentActionsMenu
       target={target}
@@ -988,6 +990,7 @@ function AppInner({
       archivedChanges={s.archived}
       onOpenArchivedChange={(datedName) => s.openArchived({ kind: "change", datedName })}
       renderDocumentActions={renderDocumentActions}
+      locateDocument={locateDocument}
     />
   );
   // 已封存詳情頁（design D3）：props 自原已封存抽屜的接線搬移。
@@ -1263,6 +1266,7 @@ function AppInner({
                 capabilities={s.specs.map((spec) => spec.id)}
                 refreshGen={s.refreshGen}
                 renderDocumentActions={renderDocumentActions}
+                locateDocument={locateDocument}
                 loadSpec={(capability) => dataSource?.getSpecDocument(capability) ?? Promise.resolve(null)}
               />
             ) : s.boardView === "specs" ? (

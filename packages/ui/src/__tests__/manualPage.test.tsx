@@ -8,6 +8,7 @@ import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
 import { ManualPage } from "../components/ManualPage";
+import { TREE_NODE_CLS } from "../components/ui/tabs";
 import { countHeadings } from "../manualDoc";
 import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
 import type { ManualIndex, ManualPageItem } from "../adapter";
@@ -89,6 +90,8 @@ function renderManual(
       loadPage={loadPage}
       onOpenSpec={onOpenSpec}
       capabilities={["github-oauth", "editor"]}
+      // 預設 spec 目錄：core 解析出的相對路徑與契約預設版面同字。
+      locateDocument={async (doc) => ("manual" in doc ? { relative: `openspec/manual/${doc.manual}.md` } : null)}
       {...props}
     />,
   );
@@ -424,6 +427,13 @@ describe("ManualPage 內頁渲染與出處", () => {
     expect(onOpenSpec).toHaveBeenCalledWith("desktop-app");
     expect(within(sources).queryByRole("button", { name: "policy-config" })).toBeNull();
     expect(sources.textContent).toContain("policy-config");
+    // 閱讀卡出處行同樣只有一顆可點的 desktop-app、policy-config 為純文字；數字磚「出處規格」為 2。
+    const provenance = docProvenance()!;
+    expect(within(provenance).getAllByText("desktop-app")).toHaveLength(1);
+    expect(within(provenance).getByRole("button", { name: "desktop-app" })).toBeTruthy();
+    expect(within(provenance).queryByRole("button", { name: "policy-config" })).toBeNull();
+    expect(provenance.textContent).toContain("policy-config");
+    expect(tiles()[3]).toBe("2出處規格");
   });
 
   it("出處列以索引 sources 為準：內文沒有出處行時照樣列出", async () => {
@@ -631,15 +641,14 @@ describe("ManualPage 三欄版面與固定底列", () => {
     const aside = tree().closest("aside") as HTMLElement;
     expect(aside.className).toContain("w-60");
     expect(aside.className).toContain("bg-sidebar");
-    for (const slug of ["index", "first-login"]) {
-      expect(row(slug).className).toContain("h-[30px]");
-      expect(row(slug).className).toContain("rounded-lg");
-    }
-    expect(row("index").className).toContain("bg-primary/12");
-    expect(row("index").className).toContain("text-primary");
+    // 同款＝直接共用文件樹節點的 class；作用中與否只看 data-state。
+    for (const slug of ["index", "first-login"]) expect(row(slug).className).toBe(TREE_NODE_CLS);
+    expect(TREE_NODE_CLS).toContain("h-[30px]");
+    expect(TREE_NODE_CLS).toContain("hover:bg-foreground/5");
+    expect(TREE_NODE_CLS).toContain("data-[state=active]:bg-primary/12");
+    expect(row("index").getAttribute("data-state")).toBe("active");
     expect(row("index").getAttribute("aria-current")).toBe("page");
-    expect(row("first-login").className).not.toContain("bg-primary/12");
-    expect(row("first-login").className).toContain("hover:bg-foreground/5");
+    expect(row("first-login").getAttribute("data-state")).toBe("inactive");
     // 樹的搜尋框為全圓。
     expect(screen.getByPlaceholderText("搜尋手冊…").className).toContain("rounded-full");
   });
@@ -782,6 +791,43 @@ describe("ManualPage 閱讀卡標題區、出處行、數字磚與提示框", ()
     expect(staleCallout()).toBeNull();
   });
 
+  it("出處行的路徑取 core 解析的實際位置：改過 spec 目錄名時照實顯示；沒有可定位的檔案時不列路徑", async () => {
+    const locateDocument = vi.fn(async () => ({ relative: "docs/specs/manual/tray.md" }));
+    const view = renderManual(
+      { index: { ...INDEX, pages: [TRAY_PAGE] }, capabilities: ["tray-status-menu"], locateDocument },
+      loader({ tray: async () => TRAY_BODY }),
+    );
+    await screen.findByText("開頭。");
+    await waitFor(() =>
+      expect(docProvenance()!.textContent).toBe("docs/specs/manual/tray.md·產生於 2026-09-17T16:05:41+08:00·出處tray-status-menu"),
+    );
+    expect(locateDocument).toHaveBeenCalledWith({ manual: "tray" });
+    view.unmount();
+    renderManual(
+      { index: { ...INDEX, pages: [TRAY_PAGE] }, capabilities: ["tray-status-menu"], locateDocument: undefined },
+      loader({ tray: async () => TRAY_BODY }),
+    );
+    await screen.findByText("開頭。");
+    expect(docProvenance()!.textContent).toBe("產生於 2026-09-17T16:05:41+08:00·出處tray-status-menu");
+  });
+
+  it("切換專案後同名頁的出處行不沿用前一個專案的路徑：新位置查到前該段缺席", async () => {
+    const gate = deferred<{ relative: string } | null>();
+    let call = 0;
+    const locateDocument = vi.fn(() => (call++ === 0 ? Promise.resolve({ relative: "a/manual/index.md" }) : gate.promise));
+    const props = { onOpenSpec: vi.fn(), capabilities: [], loadPage: loader(), locateDocument };
+    const { rerender } = render(<ManualPage index={INDEX} {...props} />);
+    await screen.findByText("歡迎。");
+    await waitFor(() => expect(docProvenance()!.textContent).toContain("a/manual/index.md"));
+    rerender(<ManualPage index={null} {...props} />);
+    rerender(<ManualPage index={INDEX} {...props} />);
+    await screen.findByText("歡迎。");
+    await waitFor(() => expect(locateDocument).toHaveBeenCalledTimes(2));
+    expect(docProvenance()!.textContent).not.toContain("a/manual");
+    gate.resolve({ relative: "b/manual/index.md" });
+    await waitFor(() => expect(docProvenance()!.textContent).toContain("b/manual/index.md"));
+  });
+
   it("缺 section 的頁分區籤為「其他」", async () => {
     renderManual();
     await screen.findByText("歡迎。");
@@ -813,11 +859,37 @@ describe("ManualPage 閱讀卡標題區、出處行、數字磚與提示框", ()
   });
 
   it("loadSpec reject 或規格無 @trace 時該行為「在本頁產生後更新過」，籤照常", async () => {
-    const loadSpec = vi.fn(() => Promise.reject(new Error("io")));
-    renderManual({ index: STALE_INDEX, capabilities: ["x"], loadSpec }, loader(STALE_BODIES));
+    const noTrace = "# x Specification\n\n## Requirements\n\n### Requirement: 甲\n\n甲 SHALL 做事。";
+    const cases: [string, () => Promise<string | null>][] = [
+      ["reject", () => Promise.reject(new Error("io"))],
+      ["缺件", async () => null],
+      ["無 @trace", async () => noTrace],
+    ];
+    for (const [, read] of cases) {
+      const view = renderManual({ index: STALE_INDEX, capabilities: ["x"], loadSpec: vi.fn(read) }, loader(STALE_BODIES));
+      await screen.findByText("過期內文。");
+      await waitFor(() => expect(staleCallout()!.textContent).toContain("出處 x 在本頁產生後更新過"));
+      expect(staleCallout()!.textContent).not.toContain("由變更");
+      expect(docHeader().querySelector("[data-manual-stale-pill]")).toBeTruthy();
+      view.unmount();
+    }
+  });
+
+  it("切換專案後同名的過期頁不沿用前一個專案的出處日期：新規格讀完前提示框不出現", async () => {
+    const gate = deferred<string | null>();
+    let call = 0;
+    const loadSpec = vi.fn(() => (call++ === 0 ? Promise.resolve(X_SPEC) : gate.promise));
+    const props = { onOpenSpec: vi.fn(), capabilities: ["x"], loadSpec, loadPage: loader(STALE_BODIES) };
+    const { rerender } = render(<ManualPage index={STALE_INDEX} {...props} />);
+    await waitFor(() => expect(staleCallout()!.textContent).toContain("由變更 change-x 更新"));
+    rerender(<ManualPage index={null} {...props} />);
+    rerender(<ManualPage index={STALE_INDEX} {...props} />);
     await screen.findByText("過期內文。");
-    await waitFor(() => expect(staleCallout()!.textContent).toContain("出處 x 在本頁產生後更新過"));
-    expect(docHeader().querySelector("[data-manual-stale-pill]")).toBeTruthy();
+    await waitFor(() => expect(loadSpec).toHaveBeenCalledTimes(2));
+    expect(staleCallout()).toBeNull();
+    gate.resolve(X_SPEC.replace("source: change-x", "source: change-b"));
+    await waitFor(() => expect(staleCallout()!.textContent).toContain("由變更 change-b 更新"));
+    expect(staleCallout()!.textContent).not.toContain("change-x");
   });
 
   it("換頁作廢在途的規格讀取：晚到的舊回應不覆蓋最新一次", async () => {

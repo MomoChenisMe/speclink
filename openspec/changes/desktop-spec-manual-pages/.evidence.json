@@ -70,6 +70,29 @@
         "packages/ui/src/components/Markdown.tsx",
         "packages/ui/src/index.ts"
       ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "7.2 macOS 手動驗收（`npm run dev:desktop`，淺色與深色各一次）：自規格頁開 tray-status-menu 的規格詳情頁——左欄身分區、文件節點與狀態列、閱讀卡出處行與四格磚、Purpose 引言段、第一條需求展開其餘收合並可點開、搜尋需求後右欄目錄縮減、「開啟 ▾」能在 Finder 顯示 spec.md；切到溯源文件看出處行、四格磚與列；開一份 Purpose 為 TBD 佔位的規格看 warning 提示框。手冊頁開〈系統匣選單〉——標題在卡內、分區籤、「可能過期」籤與 warning 提示框（列出 tray-status-menu 的最近 @trace 與來源變更）、出處行可點籤、四格磚、內文 15px 與章節 16px、左樹過期頁列尾「過期」籤、「開啟 ▾」能在 Finder 顯示 tray.md，底列的出處與上一頁／下一頁不變。驗證：觀察結果與 spec desktop-app「桌面 app 呈現 change 與 spec 的清單與內容」「markdown 內容保留文件結構呈現」「markdown 文件內容行寬有上限」「詳情頁的文件動作」與 desktop-manual-page「內頁渲染與出處跳規格」「可能過期與未入冊的標示」的新增與改寫 scenario 一致。",
+      "files": [
+        "packages/ui/src/__tests__/deltaSpecView.test.tsx",
+        "packages/ui/src/__tests__/ticketView.test.tsx",
+        "packages/ui/src/components/TicketView.tsx"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "7.1 收尾守門：`npm test -w packages/ui -- specSummary specSections deltaSpecView specDetailPage manualPage detailShell i18n components`、`npm test -w apps/desktop -- App fsActions documentActionsMenu`、`cargo test -p speclink-desktop-core manual`、`npm run build -w apps/desktop`、`speclink validate desktop-spec-manual-pages` 全部通過；最後跑 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。",
+      "files": [
+        "packages/ui/src/components/ui/tabs.tsx"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "7.1 收尾守門：`npm test -w packages/ui -- specSummary specSections deltaSpecView specDetailPage manualPage detailShell i18n components`、`npm test -w apps/desktop -- App fsActions documentActionsMenu`、`cargo test -p speclink-desktop-core manual`、`npm run build -w apps/desktop`、`speclink validate desktop-spec-manual-pages` 全部通過；最後跑 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。",
+      "files": [
+        "packages/ui/src/components/ManualToc.tsx"
+      ]
     }
   ],
   "entries": [
@@ -173,6 +196,40 @@
         "packages/ui/src/index.ts"
       ],
       "recordedAt": "2026-10-12T11:51:23Z"
+    },
+    {
+      "taskId": "tsk_01M4QSX58RQE25ZPPJC976NEY9",
+      "taskDesc": "7.2 macOS 手動驗收（`npm run dev:desktop`，淺色與深色各一次）：自規格頁開 tray-status-menu 的規格詳情頁——左欄身分區、文件節點與狀態列、閱讀卡出處行與四格磚、Purpose 引言段、第一條需求展開其餘收合並可點開、搜尋需求後右欄目錄縮減、「開啟 ▾」能在 Finder 顯示 spec.md；切到溯源文件看出處行、四格磚與列；開一份 Purpose 為 TBD 佔位的規格看 warning 提示框。手冊頁開〈系統匣選單〉——標題在卡內、分區籤、「可能過期」籤與 warning 提示框（列出 tray-status-menu 的最近 @trace 與來源變更）、出處行可點籤、四格磚、內文 15px 與章節 16px、左樹過期頁列尾「過期」籤、「開啟 ▾」能在 Finder 顯示 tray.md，底列的出處與上一頁／下一頁不變。驗證：觀察結果與 spec desktop-app「桌面 app 呈現 change 與 spec 的清單與內容」「markdown 內容保留文件結構呈現」「markdown 文件內容行寬有上限」「詳情頁的文件動作」與 desktop-manual-page「內頁渲染與出處跳規格」「可能過期與未入冊的標示」的新增與改寫 scenario 一致。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "headCommit": "2c618fa09b1f86955e8a26de303fbad0a7a33920",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/deltaSpecView.test.tsx",
+        "packages/ui/src/__tests__/ticketView.test.tsx",
+        "packages/ui/src/components/TicketView.tsx"
+      ],
+      "recordedAt": "2026-10-12T13:40:44Z"
+    },
+    {
+      "taskId": "tsk_01M4QSX58RG9H0KM3R1AXVTSH5",
+      "taskDesc": "7.1 收尾守門：`npm test -w packages/ui -- specSummary specSections deltaSpecView specDetailPage manualPage detailShell i18n components`、`npm test -w apps/desktop -- App fsActions documentActionsMenu`、`cargo test -p speclink-desktop-core manual`、`npm run build -w apps/desktop`、`speclink validate desktop-spec-manual-pages` 全部通過；最後跑 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "2c618fa09b1f86955e8a26de303fbad0a7a33920",
+      "touchedFiles": [
+        "packages/ui/src/components/ui/tabs.tsx"
+      ],
+      "recordedAt": "2026-10-12T14:19:43Z"
+    },
+    {
+      "taskId": "tsk_01M4QSX58RG9H0KM3R1AXVTSH5",
+      "taskDesc": "7.1 收尾守門：`npm test -w packages/ui -- specSummary specSections deltaSpecView specDetailPage manualPage detailShell i18n components`、`npm test -w apps/desktop -- App fsActions documentActionsMenu`、`cargo test -p speclink-desktop-core manual`、`npm run build -w apps/desktop`、`speclink validate desktop-spec-manual-pages` 全部通過；最後跑 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "2c618fa09b1f86955e8a26de303fbad0a7a33920",
+      "touchedFiles": [
+        "packages/ui/src/components/ManualToc.tsx"
+      ],
+      "recordedAt": "2026-10-12T14:29:35Z"
     }
   ]
 }

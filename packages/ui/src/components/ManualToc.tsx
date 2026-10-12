@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { useI18n } from "../i18n";
 import { cn } from "../lib/utils";
@@ -28,6 +28,9 @@ export function ManualToc({ bodyRef, markdownBody, headings = ".markdown h2, .ma
   const { t } = useI18n();
   const [toc, setToc] = useState<TocEntry[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  // 目前段的標題元素：重掃（規格詳情頁展開／收合需求段）時它若仍在，高亮留在它身上——展開不捲動，
+  // 不會有捲動事件把高亮帶回來；換文件、搜尋換掉標題時才回第一項。
+  const activeEl = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const root = bodyRef.current;
@@ -36,7 +39,9 @@ export function ManualToc({ bodyRef, markdownBody, headings = ".markdown h2, .ma
       el.id = `manual-h-${i}`;
     });
     setToc(heads.map((el) => ({ id: el.id, text: el.textContent ?? "", level: el.tagName === "H3" ? 3 : 2 })));
-    setActiveId(heads[0]?.id ?? null);
+    const kept = activeEl.current && heads.includes(activeEl.current) ? activeEl.current : (heads[0] ?? null);
+    activeEl.current = kept;
+    setActiveId(kept?.id ?? null);
     if (!root || heads.length === 0) return;
     const onScroll = (e: Event) => {
       const scroller = e.target instanceof Element ? e.target : null;
@@ -47,6 +52,7 @@ export function ManualToc({ bodyRef, markdownBody, headings = ".markdown h2, .ma
         if (el.getBoundingClientRect().top <= top) hit = el;
         else break;
       }
+      activeEl.current = hit;
       setActiveId(hit.id);
     };
     document.addEventListener("scroll", onScroll, { capture: true, passive: true });
