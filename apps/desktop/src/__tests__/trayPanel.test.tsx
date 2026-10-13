@@ -1,4 +1,4 @@
-// 面板樣式呈現層（spec「面板樣式（macOS）」；design D5）：以主視窗推送的
+// 面板樣式呈現層（spec「面板樣式」；design D5）：以主視窗推送的
 // TraySnapshot 薄渲染——分區與內容和原生選單同源；jsdom 只測結構與回呼，
 // 原生質感（不搶焦點、貼齊、失焦收合）由 4.4 真視窗手動驗證。
 import { beforeEach, describe, it, expect, vi } from "vitest";
@@ -323,7 +323,7 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
 
   it("全無變更時三個生命週期分區常駐：各帶計數 0 空狀態卡、無佔位卡（D8 同構）", () => {
     renderPanel({ snapshot: snapshot({ changes: [], discussions: [] }) });
-    // 佔位卡不再存在（spec「面板樣式（macOS）」常駐分區行為）
+    // 佔位卡不再存在（spec「面板樣式」常駐分區行為）
     expect(screen.queryByTestId("panel-empty-changes")).toBeNull();
     expect(screen.queryByText("尚無進行中變更")).toBeNull();
     for (const id of ["panel-section-proposed", "panel-section-in-progress", "panel-section-ready"]) {
@@ -431,7 +431,7 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
   });
 });
 
-describe("TrayPanel 專案 tab 條（spec「面板樣式（macOS）」；design D1）", () => {
+describe("TrayPanel 專案 tab 條（spec「面板樣式」；design D1）", () => {
   it("每個 tab 含專案名首字母 avatar 與專案名", () => {
     renderPanel();
     const one = screen.getByTestId("panel-project-local:/proj/one");
@@ -522,7 +522,7 @@ describe("TrayPanel 專案 tab 條（spec「面板樣式（macOS）」；design 
   });
 });
 
-// spec「面板樣式（macOS）」的邊緣淡出（design「專案 tab 條：「＋」固定右端、邊緣淡出、捲到作用中」
+// spec「面板樣式」的邊緣淡出（design「專案 tab 條：「＋」固定右端、邊緣淡出、捲到作用中」
 // 「中段上下緣淡出：與 tab 條共用邊緣淡出」）：淡出判斷與遮罩是 edgeFade.ts 的純函式、tab 條與中段
 // 共用——start＝左／上、end＝右／下。
 describe("面板可捲區的邊緣淡出", () => {
@@ -627,7 +627,7 @@ describe("面板可捲區的邊緣淡出", () => {
   });
 });
 
-// spec「面板樣式（macOS）」的專案 tab 條捲動（design「專案 tab 條：「＋」固定右端、邊緣淡出、
+// spec「面板樣式」的專案 tab 條捲動（design「專案 tab 條：「＋」固定右端、邊緣淡出、
 // 捲到作用中」）：露出目標是 tabStrip.ts 的純函式；jsdom 沒有版面，元件測試以注入尺寸驗證接線。
 describe("面板專案 tab 條的淡出與捲到作用中", () => {
 
@@ -716,7 +716,7 @@ describe("面板專案 tab 條的淡出與捲到作用中", () => {
   });
 });
 
-describe("TrayPanel 分區卡片化與主色（spec「面板樣式（macOS）」；design D2／D3）", () => {
+describe("TrayPanel 分區卡片化與主色（spec「面板樣式」；design D2／D3）", () => {
   const discBoth = [
     { slug: "open-d", topic: "討論中的", promoted: false },
     { slug: "prom-d", topic: "已轉出的", promoted: true },
@@ -865,7 +865,7 @@ describe("面板根層的平台外觀（spec「面板樣式」平台差異；tra
   });
 });
 
-describe("TrayPanel 分區計數（spec「面板樣式（macOS）」；design D8）", () => {
+describe("TrayPanel 分區計數（spec「面板樣式」；design D8）", () => {
   it("各分區標題帶項目計數徽章（STAGE_BADGE 同語彙；討論分區取看板討論欄同款，只計討論中）", () => {
     renderPanel({
       snapshot: snapshot({
@@ -1095,7 +1095,7 @@ describe("TrayPanel 互動（開啟與 hover 複製）", () => {
   });
 });
 
-describe("三段式版面（spec「面板樣式（macOS）」：固定頁首／可捲中段／固定頁尾）", () => {
+describe("三段式版面（spec「面板樣式」：固定頁首／可捲中段／固定頁尾）", () => {
   it("頁首為 tab 條卡、中段含分區卡並帶縱向捲動樣式、頁尾為動作單列卡；無分割線", () => {
     renderPanel();
     const header = screen.getByTestId("panel-header");

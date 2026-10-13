@@ -1,4 +1,4 @@
-// 面板樣式呈現層（spec「面板樣式（macOS）」；design D5）：主視窗推送的
+// 面板樣式呈現層（spec「面板樣式」；design D5）：主視窗推送的
 // TraySnapshot 薄渲染——分區內容與原生選單同源（同一 store 快照），不自建
 // 資料查詢路徑。原生質感（vibrancy、不搶焦點、失焦收合、高度自適應）由
 // Rust 側面板視窗與入口層承擔，此元件只負責結構與回呼；複製鈕常駐列尾、
@@ -122,7 +122,7 @@ export interface TrayPanelProps {
 const sectionHeaderClass = (hasBody: boolean) =>
   cn("px-3 py-2 text-foreground", hasBody && "border-b border-border/70");
 
-/** 面板卡片（spec「面板樣式（macOS）」；tray-panel-restyle design D1）：白底細框 12px
+/** 面板卡片（spec「面板樣式」；tray-panel-restyle design D1）：白底細框 12px
     圓角卡疊在補光層上——tab 條、各分區、動作區各一張。overflow-hidden 讓最後一列的
     hover 底色被卡角裁切。 */
 function PanelCard({
@@ -687,7 +687,7 @@ export function TrayPanel({
       <div data-testid="panel-header" className="shrink-0">
       <PanelCard testid="panel-project-card">
       <div className="flex">
-      {/* 專案 tab 條（spec「面板樣式（macOS）」；tray-panel-restyle design D3）：首字母
+      {/* 專案 tab 條（spec「面板樣式」；tray-panel-restyle design D3）：首字母
           方塊與主視窗圖示列同形（取 projectTile 同一份常數，作用中實心主色）＋其下專案名，
           超寬橫向捲動且隱藏捲軸，有 tab 被遮住的一側以遮罩淡出；點 tab 沿用 open-project
           原地切換語意（不喚主視窗）。刻意用 div 非 button——面板中唯一可 tab 元素會吃到

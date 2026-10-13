@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "tray-panel-macos",
+  "description": "macOS 面板樣式的 tray 相對定位能力（positioner；Windows 面板由殼自行定位）",
+  "platforms": ["macOS"],
+  "windows": ["main", "tray-panel"],
+  "permissions": ["positioner:default"]
+}

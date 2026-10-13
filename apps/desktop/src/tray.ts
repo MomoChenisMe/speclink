@@ -550,6 +550,7 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
     /* 無孤兒即略過 */
   }
   const tray = await TrayIcon.new({
+    // Windows 面板定位以此 id 找圖示位置（src-tauri/src/panel.rs 的 TRAY_ID），兩處須一致。
     id: "speclink-tray",
     icon,
     iconAsTemplate: platform === "macos",
@@ -560,8 +561,9 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
     action: (event) => {
       // 面板樣式限定（原生選單樣式由選單接管點擊）。
       if (styleOf() !== "panel") return;
-      // 先餵 tray 事件座標給 positioner——面板顯示前的 tray 相對定位依此計算。
-      void handleIconState(event).catch(() => {});
+      // macOS 先餵 tray 事件座標給 positioner——面板顯示前的 tray 相對定位依此計算；
+      // Windows 的面板位置由 Tauri 殼讀圖示位置自算（tray-panel-windows design D3）。
+      if (platform === "macos") void handleIconState(event).catch(() => {});
       const e = event as { type?: string; button?: string; buttonState?: string };
       // 放開才開閉；哪些鍵開閉面板依平台（spec「面板樣式」平台差異）。
       if (

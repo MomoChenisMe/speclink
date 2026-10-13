@@ -7,6 +7,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit as tauriEmit, listen as tauriListen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { handleIconState } from "@tauri-apps/plugin-positioner";
 
 import {
   buildTrayModel,
@@ -874,6 +875,29 @@ describe("initTray 接線（選單）", () => {
     expect(trayObj.setShowMenuOnLeftClick).toHaveBeenLastCalledWith(true);
     opts.action({ type: "Click", button: "Left", buttonState: "Up" });
     expect(onPanelToggle).not.toHaveBeenCalled();
+  });
+
+  // 面板位置：macOS 由 positioner 依點擊事件的圖示座標計算；Windows 由 Tauri 殼讀圖示位置自算
+  // （tray-panel-windows design D3），點擊不餵 positioner。
+  it("macOS panel 樣式：點擊先把事件餵給 positioner", async () => {
+    const bag = makeStore();
+    bag.emit({ trayStyle: "panel" });
+    await initTray(bag.store, { platform: "macos", onPanelToggle: vi.fn() });
+    const opts = vi.mocked(TrayIcon.new).mock.calls[0][0] as AnyItem;
+    const event = { type: "Click", button: "Left", buttonState: "Up" };
+    opts.action(event);
+    expect(handleIconState).toHaveBeenCalledWith(event);
+  });
+
+  it("Windows panel 樣式：點擊不餵 positioner", async () => {
+    const bag = makeStore();
+    bag.emit({ trayStyle: "panel" });
+    const onPanelToggle = vi.fn();
+    await initTray(bag.store, { platform: "windows", onPanelToggle });
+    const opts = vi.mocked(TrayIcon.new).mock.calls[0][0] as AnyItem;
+    opts.action({ type: "Click", button: "Left", buttonState: "Up" });
+    expect(onPanelToggle).toHaveBeenCalledTimes(1);
+    expect(handleIconState).not.toHaveBeenCalled();
   });
 
   it("tray 以固定 id 建立，建立前先移除同 id 孤兒（webview 重建不殘留殭屍徽章）", async () => {
