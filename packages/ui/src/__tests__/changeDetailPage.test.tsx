@@ -113,7 +113,9 @@ describe("規格分頁 delta 區段色標", () => {
     expect(screen.queryByText(/MODIFIED Requirements/)).toBeNull();
     // ADDED／MODIFIED 的需求成需求段；REMOVED／RENAMED 照 prose。
     expect(requirementTitles(baseElement)).toEqual(["a", "c"]);
-    expect(screen.getByText(/Requirement: e/)).toBeTruthy();
+    // prose 的 h3 同時是本頁目錄的錨點：斷言限定在閱讀卡內文。
+    const body = baseElement.querySelector("[data-doc-body]") as HTMLElement;
+    expect(within(body).getByText(/Requirement: e/)).toBeTruthy();
   });
 
   it("無 delta 標記的規格整篇照常渲染（無色標標頭）", async () => {
@@ -1861,6 +1863,26 @@ describe("本頁目錄錨點", () => {
         "影響",
       ]),
     );
+  });
+
+  // 分頁換文件時新內容晚一次畫面更新才掛上：本頁目錄要跟著重掃，不得停在前一份文件的錨點。
+  it("提案切到設計後，本頁目錄換成設計的章節錨點", async () => {
+    const props = makeProps({
+      loadDocument: vi.fn(async (_c: string, artifact: string) =>
+        artifact === "proposal.md"
+          ? "## Why\n\n因為。\n\n## Impact\n\n影響面。\n"
+          : artifact === "design.md"
+            ? "## Context\n\n脈絡。\n\n## Decisions\n\n決定。\n"
+            : `# doc for ${artifact}`,
+      ),
+    });
+    render(<ChangeDetailPage {...(props as never)} />);
+    const anchors = () =>
+      Array.from(document.querySelectorAll("[data-detail-toc] [data-manual-anchor]")).map((el) => el.textContent);
+    await waitFor(() => expect(anchors()).toEqual(["為什麼", "影響"]));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /設計/ }));
+    await screen.findByText("脈絡。");
+    await waitFor(() => expect(anchors()).toEqual(["背景", "決策"]));
   });
 
   it("規格 delta 的色標區段標頭與排程四卡標題為錨點", async () => {

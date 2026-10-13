@@ -215,11 +215,12 @@ export interface DocSummary {
   callout: ReactNode;
 }
 
-/** 數字磚：閱讀卡標題下由文件結構推出的計數格，最多四格；空陣列整列缺席。 */
+/** 數字磚：閱讀卡標題下由文件結構推出的計數格，最多四格、依格數平分整列（每格一欄等寬；
+ * `auto-cols-fr` 即 `minmax(0, 1fr)`，長標籤截斷、不撐寬欄）；空陣列整列缺席。 */
 export function DocTiles({ tiles }: { tiles: DocTile[] }) {
   if (tiles.length === 0) return null;
   return (
-    <div data-doc-tiles className="grid grid-cols-4 gap-2.5">
+    <div data-doc-tiles className="grid grid-flow-col auto-cols-fr gap-2.5">
       {tiles.map((tile, i) => (
         <div key={i} data-doc-tile className="flex min-w-0 flex-col gap-0.5 rounded-xl border border-border px-3 py-2.5">
           <span className="text-xl font-semibold tabular-nums">{tile.value}</span>
