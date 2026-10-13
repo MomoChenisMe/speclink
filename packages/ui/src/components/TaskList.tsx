@@ -77,9 +77,9 @@ function inRow(action: () => void) {
 
 /**
  * 任務列內容（spec「任務群組標題與章節標籤同款式」；design D5）——一般列與 DragOverlay 共用。
- * 描述拆「標題／內文／驗證」三層：標題層恆有勾選框、序號籤、標題、D 籤、手動籤與列尾展開鈕，
- * 展開時在標題下方畫內文與驗證。預設展開看勾選狀態（未勾展開、已勾收合），勾選狀態一變就跟著翻；
- * 列尾鈕的手動切換維持到勾選狀態下次改變。`titleOnly`（拖曳浮起列）只畫標題層。
+ * 描述拆「標題／內文／驗證」三層：標題層有勾選框、序號籤與標題，視內容再加 D 籤、手動籤，
+ * 有內文或驗證時另有列尾展開鈕；展開時在標題下方畫內文與驗證。展開與否由 `TaskList` 決定
+ * （`open`／`onToggleOpen`）。`titleOnly`（拖曳浮起列）只畫標題層。
  */
 function TaskRowBody({
   item,
@@ -87,6 +87,8 @@ function TaskRowBody({
   disabled,
   onToggle,
   onJumpDecision,
+  open = false,
+  onToggleOpen,
   titleOnly,
 }: {
   item: TaskItem;
@@ -94,16 +96,11 @@ function TaskRowBody({
   disabled?: boolean;
   onToggle?: (ordinal: number, done: boolean, stableId?: string) => void;
   onJumpDecision?: (id: string) => void;
+  open?: boolean;
+  onToggleOpen?: () => void;
   titleOnly?: boolean;
 }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(!item.done);
-  // 勾選狀態改變時在同一次渲染內翻展開（不走 effect：避免勾下去先畫一幀展開再收合）。
-  const [seenDone, setSeenDone] = useState(item.done);
-  if (seenDone !== item.done) {
-    setSeenDone(item.done);
-    setOpen(!item.done);
-  }
   const parts = splitTaskText(item.text);
   const detail = [parts.note, parts.body].filter(Boolean).join("\n\n");
   const expandable = !titleOnly && (detail !== "" || parts.verify !== null);
@@ -167,7 +164,7 @@ function TaskRowBody({
               aria-expanded={open}
               aria-label={t(open ? "tasks.collapse" : "tasks.expand").replace("{n}", n)}
               className="mt-0.5 h-5 w-5 shrink-0"
-              onClick={inRow(() => setOpen((v) => !v))}
+              onClick={inRow(() => onToggleOpen?.())}
             >
               {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
             </Button>
@@ -235,6 +232,8 @@ function PlainTaskRow({
   interactive,
   onToggle,
   onJumpDecision,
+  open,
+  onToggleOpen,
   highlight,
   rowRef,
 }: {
@@ -242,6 +241,8 @@ function PlainTaskRow({
   interactive: boolean;
   onToggle?: (ordinal: number, done: boolean, stableId?: string) => void;
   onJumpDecision?: (id: string) => void;
+  open: boolean;
+  onToggleOpen: () => void;
   highlight?: boolean;
   rowRef?: (el: HTMLElement | null) => void;
 }) {
@@ -262,6 +263,8 @@ function PlainTaskRow({
         disabled={!interactive}
         onToggle={onToggle}
         onJumpDecision={onJumpDecision}
+        open={open}
+        onToggleOpen={onToggleOpen}
       />
     </label>
   );
@@ -308,6 +311,8 @@ function SortableTaskRow({
   interactive,
   onToggle,
   onJumpDecision,
+  open,
+  onToggleOpen,
   highlight,
   rowRef,
 }: {
@@ -315,6 +320,8 @@ function SortableTaskRow({
   interactive: boolean;
   onToggle?: (ordinal: number, done: boolean, stableId?: string) => void;
   onJumpDecision?: (id: string) => void;
+  open: boolean;
+  onToggleOpen: () => void;
   /** 「下一個未完成」的短暫高亮標記。 */
   highlight?: boolean;
   /** 列元素回報（定位捲動用）。 */
@@ -363,6 +370,8 @@ function SortableTaskRow({
         disabled={!interactive}
         onToggle={onToggle}
         onJumpDecision={onJumpDecision}
+        open={open}
+        onToggleOpen={onToggleOpen}
       />
     </label>
   );
@@ -386,6 +395,25 @@ export function TaskList({
   const items = parseTaskDoc(markdown);
   const taskItems = items.filter((i): i is TaskItem => i.kind === "task");
   const [activeOrdinal, setActiveOrdinal] = useState<number | null>(null);
+  // 列的展開（spec「任務群組標題與章節標籤同款式」）：預設未勾展開、已勾收合；列尾鈕的手動選擇以
+  // taskKey 記在清單層——列因拖到別組或群組卡重建而重掛也不丟——連同當時的勾選狀態。勾選狀態一變，
+  // 那筆就在同一次渲染內作廢（不走 effect：避免勾下去先畫一幀展開再收合）。沒有穩定 ID 的任務以
+  // 序數為鍵，手動選擇留在原位置。
+  const [manualOpen, setManualOpen] = useState<ReadonlyMap<string, { open: boolean; done: boolean }>>(new Map());
+  const staleKeys = taskItems
+    .filter((i) => {
+      const m = manualOpen.get(taskKey(i));
+      return m !== undefined && m.done !== i.done;
+    })
+    .map(taskKey);
+  if (staleKeys.length > 0) {
+    const next = new Map(manualOpen);
+    staleKeys.forEach((k) => next.delete(k));
+    setManualOpen(next);
+  }
+  const isOpen = (item: TaskItem) => manualOpen.get(taskKey(item))?.open ?? !item.done;
+  const toggleOpen = (item: TaskItem) =>
+    setManualOpen(new Map(manualOpen).set(taskKey(item), { open: !isOpen(item), done: item.done }));
   // 「下一個未完成」的短暫高亮（ordinal）；列元素表供定位捲動。
   const [highlightOrdinal, setHighlightOrdinal] = useState<number | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -476,6 +504,8 @@ export function TaskList({
         interactive={interactive}
         onToggle={onToggle}
         onJumpDecision={onJumpDecision}
+        open={isOpen(item)}
+        onToggleOpen={() => toggleOpen(item)}
         highlight={highlightOrdinal === item.ordinal}
         rowRef={rowRef(item.ordinal)}
       />
@@ -486,6 +516,8 @@ export function TaskList({
         interactive={interactive}
         onToggle={onToggle}
         onJumpDecision={onJumpDecision}
+        open={isOpen(item)}
+        onToggleOpen={() => toggleOpen(item)}
         highlight={highlightOrdinal === item.ordinal}
         rowRef={rowRef(item.ordinal)}
       />
