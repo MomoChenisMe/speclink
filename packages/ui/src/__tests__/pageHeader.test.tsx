@@ -22,6 +22,16 @@ describe("PageHeader", () => {
     expect(classes(root)).toEqual(expect.arrayContaining(["flex", "items-end", "justify-between"]));
   });
 
+  it("level={1} 渲染 h1、未給時仍為 h2，樣式相同", () => {
+    const { unmount } = render(<PageHeader level={1} title="使用者" />);
+    const h1 = screen.getByRole("heading", { level: 1, name: "使用者" });
+    expect(classes(h1)).toEqual(expect.arrayContaining(["text-2xl", "font-normal"]));
+    unmount();
+    render(<PageHeader title="使用者" />);
+    expect(screen.getByRole("heading", { level: 2, name: "使用者" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
+  });
+
   it("說明與動作槽皆選配", () => {
     render(<PageHeader title="規格" />);
     const root = screen.getByRole("heading", { name: "規格" }).closest("[data-page-header]") as HTMLElement;

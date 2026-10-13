@@ -1,18 +1,11 @@
 // 三平台標題列（design D1／D6）：左側標題列（圖示列＋專案欄共用）與主區頂列，
 // 兩者整列可拖曳（deep：子樹皆可拖、按鈕等可點元素由 Tauri 自動排除）。
-import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ArrowLeft, Copy, Minus, Square, X } from "lucide-react";
-import { Button, cn, useI18n } from "@speclink/ui";
+import { Breadcrumbs, Button, cn, useI18n, type Crumb } from "@speclink/ui";
 
 import type { Platform } from "../platform";
-
-export interface Crumb {
-  label: string;
-  onClick?: () => void;
-  /** 等寬字型（詳情頁的項目名：變更名或討論 slug）。 */
-  mono?: boolean;
-}
 
 export function LeftTitleBar({
   title,
@@ -84,28 +77,7 @@ export function MainTitleBar({
       className="flex h-12 shrink-0 select-none items-center border-b border-border bg-background pl-5"
     >
       {leading}
-      <nav className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-muted-foreground">
-        {crumbs.map((crumb, i) => {
-          const last = i === crumbs.length - 1;
-          const cls = cn("truncate", last && "text-foreground", crumb.mono && "font-mono");
-          return (
-            <Fragment key={i}>
-              {i > 0 && <span className="opacity-50">/</span>}
-              {crumb.onClick ? (
-                <button
-                  type="button"
-                  className={cn(cls, "hover:text-foreground")}
-                  onClick={crumb.onClick}
-                >
-                  {crumb.label}
-                </button>
-              ) : (
-                <span className={cls}>{crumb.label}</span>
-              )}
-            </Fragment>
-          );
-        })}
-      </nav>
+      <Breadcrumbs crumbs={crumbs} />
       {trailing}
       {platform === "windows" && <WindowControls />}
     </div>

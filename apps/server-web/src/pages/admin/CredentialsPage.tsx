@@ -14,6 +14,7 @@ import {
   SEMANTIC_SURFACE,
   SEMANTIC_TONE,
   useI18n,
+  PageHeader,
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
@@ -126,17 +127,21 @@ export function CredentialsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{t("credentials.title")}</h1>
-        {/* 建立入口常駐而不只出現在空狀態：建完第一把之後就再也找不到新增的地方了。
-            存取金鑰只能建給自己，所以指向帳號頁——這裡沒有代建的 API。 */}
-        <Button asChild className="gap-1.5">
-          <Link to="/account">
-            <KeyRound aria-hidden="true" className="h-4 w-4" />
-            {t("credentials.createKey")}
-          </Link>
-        </Button>
-      </div>
+      {/* 建立入口常駐而不只出現在空狀態：建完第一把之後就再也找不到新增的地方了。
+          存取金鑰只能建給自己，所以指向帳號頁——這裡沒有代建的 API。 */}
+      <PageHeader
+        level={1}
+        title={t("credentials.title")}
+        description={t("credentials.description")}
+        actions={
+          <Button asChild className="gap-1.5">
+            <Link to="/account">
+              <KeyRound aria-hidden="true" className="h-4 w-4" />
+              {t("credentials.createKey")}
+            </Link>
+          </Button>
+        }
+      />
       {loading && <AdminLoading />}
       {error != null && <AdminError onRetry={reload} />}
 

@@ -46,7 +46,8 @@ describe("可存取性（axe）", () => {
     const { container } = render(
       <App client={client({ getSession: vi.fn(async () => ADMIN) })} initialEntries={["/admin"]} />,
     );
-    await screen.findByRole("navigation");
+    // 殼有兩個 nav landmark（側欄導覽與麵包屑），以名稱區分；axe 也檢查兩者名稱不重複。
+    await screen.findByRole("navigation", { name: "管理導覽" });
     await screen.findByRole("heading", { name: /總覽/ });
     const results = await axe(container, AXE);
     expect(results.violations).toEqual([]);

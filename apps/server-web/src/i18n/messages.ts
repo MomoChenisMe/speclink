@@ -65,7 +65,9 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "shell.logout": "登出",
     "shell.adminNav": "管理導覽",
     "shell.openNav": "開啟導覽",
-    "shell.menu": "選單",
+    "shell.nav": "導覽",
+    "shell.console": "後台",
+    "shell.accountMenu": "帳號選單：{name}",
     "shell.operations": "維運",
     "nav.overview": "總覽",
     "nav.users": "使用者",
@@ -80,6 +82,9 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     // 介面語言
     "locale.label": "介面語言",
     "locale.followSystem": "跟隨系統",
+
+    // 專注流程卡片
+    "focus.step": "步驟 {current} / {total}",
 
     // 首次導覽
     "tour.label": "導覽",
@@ -105,6 +110,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
     // 總覽
     "overview.title": "總覽",
+    "overview.description": "這台 server 的使用者、專案與憑證概況；點數字前往對應頁。",
     "overview.storeDownTitle": "儲存後端目前無法使用",
     "overview.storeDownBody": "使用者與憑證管理仍可操作；專案、儲存庫與系統資訊暫時無法讀取。",
     "overview.metricUsers": "使用者",
@@ -135,6 +141,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
     // 使用者
     "users.title": "使用者",
+    "users.description": "能登入這台 server 的帳號。",
     "users.invite": "邀請使用者",
     "users.inviteLinkNotice": "邀請已建立。把這個連結給受邀者，它只顯示這一次：",
     "users.pendingTitle": "邀請中",
@@ -173,6 +180,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
     // 專案與儲存庫
     "registry.title": "專案與儲存庫",
+    "registry.description": "遠端工作流程的範圍：專案與其底下的儲存庫。",
     "registry.create": "建立專案",
     "registry.emptyTitle": "尚無專案",
     "registry.emptyBody": "專案是遠端工作流程的範圍單位，建立後才能加入儲存庫與成員。",
@@ -199,6 +207,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
     // 憑證
     "credentials.title": "憑證",
+    "credentials.description": "所有使用者的存取金鑰與裝置登入；撤銷後立即失效。",
     "credentials.emptyTitle": "尚無任何憑證",
     "credentials.emptyBody": "存取金鑰讓遠端工作流程以你的身分連線；裝置憑證則來自桌面應用程式的授權。目前兩者都還沒有。",
     "credentials.createKey": "建立存取金鑰",
@@ -212,6 +221,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
     // 稽核
     "audit.title": "稽核紀錄",
+    "audit.description": "每一筆管理動作的紀錄；只能檢視，不能修改。",
     "audit.filterAction": "動作",
     "audit.filterAllActions": "全部動作",
     "audit.filterSource": "來源",
@@ -249,6 +259,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
     // 系統
     "system.title": "系統",
+    "system.description": "執行環境、儲存狀態、匯出與資料結構遷移。",
     "system.runtime": "執行環境",
     "system.engineVersion": "引擎版本",
     "system.apiVersion": "API 版本",
@@ -275,7 +286,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
     // 帳號
     "account.title": "帳號",
-    "account.identity": "{display}（{email}）",
+    "account.identity": "{display}（{email}）——你的專案、存取金鑰與登入紀錄。",
     "account.loadFailed": "無法載入帳號資料。",
     "account.projects": "我的專案",
     "account.noProjects": "尚無專案隸屬。專案隸屬由管理員授予，需要存取時請聯絡管理員。",
@@ -298,6 +309,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
     // 登入
     "login.title": "登入",
+    "login.description": "用管理員給你的帳號登入 {host}。",
     "login.submit": "登入",
     "login.pending": "登入中…",
     "login.error": "登入時發生錯誤",
@@ -306,17 +318,20 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "invite.invalidTitle": "邀請無效",
     "invite.invalidBody": "這個邀請連結無法使用。請向邀請你的人索取新的連結。",
     "invite.title": "接受邀請",
-    "invite.body": "為 {email} 設定登入密碼。",
+    "invite.body": "為 {email} 設定登入密碼；建立後會直接登入。",
+    "invite.server": "伺服器",
     "invite.submit": "建立帳號",
     "invite.error": "接受邀請時發生錯誤",
 
     // 裝置核准
     "activate.title": "裝置登入",
-    "activate.prompt": "輸入裝置上顯示的代碼以核准登入。",
+    "activate.prompt": "輸入裝置上顯示的代碼以核准登入。代碼在 Speclink 桌面 app 或 CLI 的登入畫面上。",
     "activate.codeLabel": "裝置代碼",
     "activate.checking": "檢查中…",
     "activate.invalidCode": "這個裝置代碼無法使用。",
-    "activate.confirmBody": "代碼 {code} 的裝置要求以你的身分登入。",
+    "activate.confirmTitle": "核准這個裝置？",
+    "activate.confirmBody": "代碼 {code} 的裝置要求以你的身分登入。只核准你自己剛才發起的登入。",
+    "activate.identity": "核准後以 {display}（{email}）的身分登入",
     "activate.approve": "核准",
     "activate.deny": "拒絕",
     "activate.approved": "已核准這個裝置的登入請求。",
@@ -326,11 +341,16 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     // 初始設定
     "setup.invalidTitle": "設定連結無效",
     "setup.invalidBody": "這個初始設定連結無法使用。請使用 server 啟動時輸出的最新連結。",
-    "setup.title": "Speclink 初始設定",
-    "setup.step1": "1. 建立管理員帳號",
+    "setup.stepLabel": "初始設定",
+    "setup.step1": "建立管理員帳號",
+    "setup.step1Body": "這台 server 的第一個帳號；之後用它邀請其他人、建立專案。",
     "setup.createAdmin": "建立管理員",
     "setup.createAdminError": "建立管理員時發生錯誤",
-    "setup.step2": "2. 建立第一組專案與儲存庫",
+    "setup.step2": "建立第一組專案與儲存庫",
+    "setup.step2Body": "專案是遠端工作流程的範圍單位；完成後會直接進入後台，並顯示連線所需的資訊。",
+    "setup.projectKeyLabel": "專案代號",
+    "setup.repoKeyLabel": "儲存庫代號",
+    "setup.keyHint": "建立後不可變更。",
     "setup.createRegistry": "建立專案與儲存庫",
     "setup.createRegistryError": "建立專案與儲存庫時發生錯誤",
   },
@@ -388,7 +408,9 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "shell.logout": "Sign out",
     "shell.adminNav": "Admin navigation",
     "shell.openNav": "Open navigation",
-    "shell.menu": "Menu",
+    "shell.nav": "Navigation",
+    "shell.console": "Admin",
+    "shell.accountMenu": "Account menu: {name}",
     "shell.operations": "Operations",
     "nav.overview": "Overview",
     "nav.users": "Users",
@@ -403,6 +425,9 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     // Interface language
     "locale.label": "Interface language",
     "locale.followSystem": "Follow system",
+
+    // Focus-flow card
+    "focus.step": "Step {current} of {total}",
 
     // First-run tour
     "tour.label": "Tour",
@@ -428,6 +453,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
     // Overview
     "overview.title": "Overview",
+    "overview.description": "Users, projects, and credentials on this server at a glance; select a number to open its page.",
     "overview.storeDownTitle": "The storage backend is unavailable",
     "overview.storeDownBody": "User and credential management still work; projects, repositories, and system details cannot be read right now.",
     "overview.metricUsers": "Users",
@@ -458,6 +484,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
     // Users
     "users.title": "Users",
+    "users.description": "Accounts that can sign in to this server.",
     "users.invite": "Invite user",
     "users.inviteLinkNotice": "Invitation created. Send this link to the invitee — it is shown only once:",
     "users.pendingTitle": "Invited",
@@ -496,6 +523,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
     // Projects & repositories
     "registry.title": "Projects & repositories",
+    "registry.description": "The scope of remote workflows: projects and the repositories under them.",
     "registry.create": "Create project",
     "registry.emptyTitle": "No projects yet",
     "registry.emptyBody": "A project scopes remote workflows; create one before adding repositories and members.",
@@ -522,6 +550,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
     // Credentials
     "credentials.title": "Credentials",
+    "credentials.description": "Access keys and device sign-ins for every user; revoking takes effect immediately.",
     "credentials.emptyTitle": "No credentials yet",
     "credentials.emptyBody": "Access keys let remote workflows connect as you; device credentials come from desktop app authorisation. Neither exists yet.",
     "credentials.createKey": "Create an access key",
@@ -535,6 +564,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
     // Audit
     "audit.title": "Audit log",
+    "audit.description": "A record of every admin action; it can be viewed but not changed.",
     "audit.filterAction": "Action",
     "audit.filterAllActions": "All actions",
     "audit.filterSource": "Source",
@@ -572,6 +602,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
     // System
     "system.title": "System",
+    "system.description": "Runtime, storage status, exports, and schema migration.",
     "system.runtime": "Runtime",
     "system.engineVersion": "Engine version",
     "system.apiVersion": "API version",
@@ -598,7 +629,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
     // Account
     "account.title": "Account",
-    "account.identity": "{display} ({email})",
+    "account.identity": "{display} ({email}) — your projects, access keys, and sign-in history.",
     "account.loadFailed": "Could not load your account.",
     "account.projects": "My projects",
     "account.noProjects":
@@ -622,6 +653,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
     // Sign in
     "login.title": "Sign in",
+    "login.description": "Sign in to {host} with the account your admin gave you.",
     "login.submit": "Sign in",
     "login.pending": "Signing in…",
     "login.error": "Something went wrong while signing in",
@@ -630,17 +662,22 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "invite.invalidTitle": "Invitation is not valid",
     "invite.invalidBody": "This invitation link cannot be used. Ask whoever invited you for a new one.",
     "invite.title": "Accept invitation",
-    "invite.body": "Set a sign-in password for {email}.",
+    "invite.body": "Set a sign-in password for {email}; you are signed in right after.",
+    "invite.server": "Server",
     "invite.submit": "Create account",
     "invite.error": "Something went wrong while accepting the invitation",
 
     // Device approval
     "activate.title": "Device sign-in",
-    "activate.prompt": "Enter the code shown on the device to approve its sign-in.",
+    "activate.prompt":
+      "Enter the code shown on the device to approve its sign-in. The code is on the sign-in screen of the Speclink desktop app or CLI.",
     "activate.codeLabel": "Device code",
     "activate.checking": "Checking…",
     "activate.invalidCode": "This device code cannot be used.",
-    "activate.confirmBody": "The device with code {code} is asking to sign in as you.",
+    "activate.confirmTitle": "Approve this device?",
+    "activate.confirmBody":
+      "The device with code {code} is asking to sign in as you. Only approve a sign-in you just started yourself.",
+    "activate.identity": "Once approved, it signs in as {display} ({email})",
     "activate.approve": "Approve",
     "activate.deny": "Deny",
     "activate.approved": "Approved this device's sign-in request.",
@@ -651,11 +688,17 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     // Setup
     "setup.invalidTitle": "Setup link is not valid",
     "setup.invalidBody": "This setup link cannot be used. Use the latest link printed when the server started.",
-    "setup.title": "Speclink setup",
-    "setup.step1": "1. Create the admin account",
+    "setup.stepLabel": "Setup",
+    "setup.step1": "Create the admin account",
+    "setup.step1Body": "The first account on this server; use it later to invite others and create projects.",
     "setup.createAdmin": "Create admin",
     "setup.createAdminError": "Something went wrong while creating the admin",
-    "setup.step2": "2. Create the first project and repository",
+    "setup.step2": "Create the first project and repository",
+    "setup.step2Body":
+      "A project is the scope of remote workflows. When you finish, you go straight to the console, which shows what you need to connect.",
+    "setup.projectKeyLabel": "Project key",
+    "setup.repoKeyLabel": "Repository key",
+    "setup.keyHint": "Cannot be changed after creation.",
     "setup.createRegistry": "Create project and repository",
     "setup.createRegistryError": "Something went wrong while creating the project and repository",
   },

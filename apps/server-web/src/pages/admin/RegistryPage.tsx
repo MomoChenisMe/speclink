@@ -12,6 +12,7 @@ import {
   TabsList,
   TabsTrigger,
   useI18n,
+  PageHeader,
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
@@ -46,18 +47,22 @@ export function RegistryPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{t("registry.title")}</h1>
-        <Button
-          type="button"
-          data-tour="list-primary"
-          className="gap-1.5"
-          onClick={() => setCreateOpen(true)}
-        >
-          <FolderPlus aria-hidden="true" className="h-4 w-4" />
-          {t("registry.create")}
-        </Button>
-      </div>
+      <PageHeader
+        level={1}
+        title={t("registry.title")}
+        description={t("registry.description")}
+        actions={
+          <Button
+            type="button"
+            data-tour="list-primary"
+            className="gap-1.5"
+            onClick={() => setCreateOpen(true)}
+          >
+            <FolderPlus aria-hidden="true" className="h-4 w-4" />
+            {t("registry.create")}
+          </Button>
+        }
+      />
 
       {loading && <AdminLoading />}
       {error != null && <AdminError onRetry={reload} />}

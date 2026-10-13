@@ -15,6 +15,7 @@ import {
   SEMANTIC_SURFACE,
   SEMANTIC_TONE,
   useI18n,
+  PageHeader,
 } from "@speclink/ui";
 import { useClient } from "../app/context";
 import { useAsync } from "../lib/useAsync";
@@ -75,22 +76,20 @@ export function AccountPage() {
 
   return (
     <div className="space-y-8">
-      {/* 頁面標題區塊用 div：<header> 會被讀成第二個 banner，與殼層 header 相衝。 */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">{t("account.title")}</h1>
-          <p className="mt-1 text-muted-foreground">
-            {t("account.identity")
-              .replace("{display}", data.user.display)
-              .replace("{email}", data.user.email)}
-          </p>
-        </div>
-        {/* 與管理列表頁一致：頁面唯一 primary action 開抽屜，建立欄位不常駐頁面。 */}
-        <Button type="button" className="gap-1.5" onClick={() => setCreateOpen(true)}>
-          <KeyRound aria-hidden="true" className="h-4 w-4" />
-          {t("account.createKey")}
-        </Button>
-      </div>
+      {/* 與管理列表頁一致：頁面唯一 primary action 開抽屜，建立欄位不常駐頁面。 */}
+      <PageHeader
+        level={1}
+        title={t("account.title")}
+        description={t("account.identity")
+          .replace("{display}", data.user.display)
+          .replace("{email}", data.user.email)}
+        actions={
+          <Button type="button" className="gap-1.5" onClick={() => setCreateOpen(true)}>
+            <KeyRound aria-hidden="true" className="h-4 w-4" />
+            {t("account.createKey")}
+          </Button>
+        }
+      />
 
       {plaintext && (
         <div

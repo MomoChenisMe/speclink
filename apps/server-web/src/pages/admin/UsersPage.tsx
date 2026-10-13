@@ -20,6 +20,7 @@ import {
   SEMANTIC_SURFACE,
   SEMANTIC_TONE,
   useI18n,
+  PageHeader,
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
@@ -144,18 +145,22 @@ export function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{t("users.title")}</h1>
-        <Button
-          type="button"
-          data-tour="list-primary"
-          className="gap-1.5"
-          onClick={() => setInviteOpen(true)}
-        >
-          <UserPlus aria-hidden="true" className="h-4 w-4" />
-          {t("users.invite")}
-        </Button>
-      </div>
+      <PageHeader
+        level={1}
+        title={t("users.title")}
+        description={t("users.description")}
+        actions={
+          <Button
+            type="button"
+            data-tour="list-primary"
+            className="gap-1.5"
+            onClick={() => setInviteOpen(true)}
+          >
+            <UserPlus aria-hidden="true" className="h-4 w-4" />
+            {t("users.invite")}
+          </Button>
+        }
+      />
 
       {token && (
         <div
