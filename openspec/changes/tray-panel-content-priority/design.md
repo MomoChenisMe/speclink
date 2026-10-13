@@ -80,6 +80,19 @@ macOS 系統匣面板是三段式版面：固定頁首（專案 tab 條卡）、
 - 替代方案「收合 ⌄、展開 ⌃」（顯示更多／顯示較少的慣例）：同一張討論卡上，標題的 ⌄ 代表「展開中」、收合列的 ⌄ 卻代表「未展開」，同一個符號兩種意思，被否決。
 - 替代方案「系統匣的已轉出細列改展開在該列下方、維持 › → 朝下」：要改版面與規格；看板的收合列固定在欄底、內容只能往上長，兩處做法會分岔，被否決。
 
+### 專案 tab 條：「＋」固定右端、邊緣淡出、捲到作用中
+
+現況：tab 寬 64px、tab 條可用約 290px，3 個專案加「加入專案」就塞滿；第 4 個專案起「加入專案」被擠出、第 5 個起專案也被擠出；捲軸隱藏、也不會捲到作用中的 tab，使用者看不出還有東西。決策三件事一起做：
+
+- 「加入專案」移出可捲區，固定在 tab 條卡的右端，改為只有虛線框「＋」的方塊（約 36px 寬；`aria-label` 與 `title` 為「加入專案」，取既有詞條），點擊行為不變。位置選右端：與主視窗圖示列「專案在前、＋在後」同序，且最常做的是切換專案，不該先看到很少用的動作。
+- 可捲區依捲動位置在左右兩側套漸層遮罩（mask-image），只在該側還有未完整顯示的 tab 時淡出；於捲動事件、可捲區尺寸改變與 tab 清單改變時重算。捲軸維持隱藏。
+- 面板開啟與作用中專案改變時，把可捲區的 scrollLeft 設到作用中 tab 完整可見的位置（已完整可見則不動）；直接設 scrollLeft，不用 scrollIntoView，避免連帶捲動外層。
+- 兩個計算寫成純函式放 `apps/desktop/src/panel/tabStrip.ts`：淡出判斷（scrollLeft、scrollWidth、clientWidth → 左右是否淡出，容差 1px）與露出目標（tab 左緣、tab 寬、目前 scrollLeft、可捲區寬 → 新的 scrollLeft）。jsdom 沒有版面，元件測試以注入尺寸驗證接線、純函式測試驗證計算。
+
+- 替代方案「固定在左邊」：先看到很少用的動作，且與主視窗圖示列順序相反，被否決。
+- 替代方案「不固定」：專案一多就看不到，也不知道它還在，被否決。
+- 替代方案「只固定『＋』、不做漸層與自動捲動」：第 5 個以後的專案仍像不存在，作用中的專案也可能不在畫面上，被否決。
+
 ## Implementation Contract
 
 **Behavior**
@@ -92,6 +105,7 @@ macOS 系統匣面板是三段式版面：固定頁首（專案 tab 條卡）、
 - 專案 tab 條卡、動作區塊卡、復原卡、stale 狀態列沒有收合控制。
 - 面板根層補光層為約六成不透明的側欄面色（`bg-sidebar/60`），三類卡維持不透明白底；毛玻璃自外框與卡片間距透出。
 - 「已轉出 N」收合列（系統匣討論卡底部、看板討論欄底部）收合時箭頭為 ›，展開時朝上；內容卡標題的收合箭頭收合時 ›、展開時朝下。
+- 專案 tab 條：「加入專案」為固定在右端、只有「＋」的方塊，不隨 tab 捲動；有 tab 未完整顯示的一側淡出；面板開啟與作用中專案改變時捲到作用中 tab 完整可見。
 - 收合觸發與圖示鈕都不在 Tab 順序內；開啟面板時沒有元素自動取得焦點（既有規格不變）。
 
 **Interface / data shape**
@@ -115,11 +129,12 @@ macOS 系統匣面板是三段式版面：固定頁首（專案 tab 條卡）、
 - 不自動展開測試：收合「已就緒」後送入多一筆已就緒變更的快照，卡仍收合、計數由 0 變 1。
 - 既有測試中以可見文字找「專案設定」「設定」「結束」的斷言，改以按鈕名稱（aria-label）查找。
 - 箭頭方向測試：系統匣「已轉出」收合列展開後，箭頭的 class 含 `-rotate-90`、不含單獨的 `rotate-90`，收合時兩者皆無（apps/desktop/src/__tests__/trayPanel.test.tsx 既有「展開後含 rotate-90」斷言改寫）；看板討論欄底部收合列同樣斷言（packages/ui/src/__tests__/discussionColumn.test.tsx 既有斷言改寫）。
+- tab 條測試：`panel-add-project` 不在 `panel-project-tabs` 可捲區內、`aria-label` 與 `title` 為「加入專案」、不含可見文字；以注入 scrollWidth／clientWidth／scrollLeft 驗證捲動事件後可捲區的遮罩隨左右狀態改變；作用中 tab 在可視範圍外時，開啟後可捲區 scrollLeft 改為讓它完整可見。tabStrip.ts 純函式測試涵蓋 Example「淡出的側邊」四列（最左端、中間、最右端、未超出）與露出目標（已可見不動、在右側外、在左側外）。
 - 補光層測試：panel-root 的 class 含 `bg-sidebar/60`、不含 `bg-sidebar/90`；專案 tab 條卡、動作區塊卡與各內容卡仍含 `bg-card`。既有「根層不疊漸層、以側欄面色約九成補光」測試改為約六成。
 
 **Scope boundaries**
 
-- In scope：面板元件（apps/desktop/src/panel/TrayPanel.tsx）的中段順序、動作區塊卡排法、內容卡收合、根層補光層濃度、「已轉出」收合列箭頭方向；看板討論欄（packages/ui/src/components/DiscussionColumn.tsx）「已轉出」收合列的箭頭方向；新增 apps/desktop/src/panel/sectionCollapse.ts；對應 vitest 測試；`tray-status-menu` 規格 delta。
+- In scope：面板元件（apps/desktop/src/panel/TrayPanel.tsx）的中段順序、動作區塊卡排法、內容卡收合、根層補光層濃度、「已轉出」收合列箭頭方向、專案 tab 條（「＋」固定右端、邊緣淡出、捲到作用中）；新增 apps/desktop/src/panel/tabStrip.ts；看板討論欄（packages/ui/src/components/DiscussionColumn.tsx）「已轉出」收合列的箭頭方向；新增 apps/desktop/src/panel/sectionCollapse.ts；對應 vitest 測試；`tray-status-menu` 規格 delta。
 - Out of scope：Rust 端 vibrancy 材質與面板視窗設定（apps/desktop/src-tauri/src/panel.rs）、卡片透明度、非 macOS 原生選單（apps/desktop/src/tray.ts 的選單建構）、看板主視窗、@speclink/ui 中 DiscussionColumn 收合列箭頭以外的共用元件、Rust crates、高度上限與溢出門檻。
 
 ## Risks / Trade-offs
@@ -130,5 +145,8 @@ macOS 系統匣面板是三段式版面：固定頁首（專案 tab 條卡）、
 - [既有 vitest 斷言以可見文字找動作列，改為圖示鈕後會失敗] → 本變更同步改寫那些斷言（見 Acceptance criteria）。
 - [在途變更 clickable-cursor-hover-rule 會新增守門，掃描 apps/desktop 原始碼中寫死的 cursor-pointer 與 cursor-not-allowed] → 收合觸發與三顆圖示鈕都不寫游標 class，游標交給共用樣式的全域規則（原生 button 與 role="button" 元素）決定；兩個變更修改 tray-status-menu 的不同需求，沒有需求層級的重疊。
 - [補光層變薄後，深色桌布下面板外框與卡片縫隙會偏灰暗] → 卡片維持不透明，內容亮度不受影響；六成是當初針對深色背景實測過的值，spec 寫「約六成」容許真機微調（55–65）。
+- [「＋」改成只有圖示，第一次用的人要滑過才知道是什麼] → 與主視窗圖示列的「＋」同形，使用者已見過；`title` 顯示名稱。
+- [「＋」固定後永遠佔約 36px，可捲區少半個 tab] → 換來「加入專案」永遠可見；比原本 64px 的 tab 形狀窄。
+- [tray-panel-windows 的 delta 以 REMOVED＋ADDED 複製了「面板樣式」全文] → 本次 tab 條的規格修改已同步套用到 tray-panel-windows 的 ADDED「面板樣式」，兩邊文字一致。
 - 回歸對照：沒有 CLI 輸出、golden 檔或 Rust 測試受影響；回歸面只在 desktop 的 vitest。
 - 跨平台：面板只在 macOS 使用；Windows／Linux 走原生選單，本變更不碰。localStorage 行為在各平台的 webview 相同。
