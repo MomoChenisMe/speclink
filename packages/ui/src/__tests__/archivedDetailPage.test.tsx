@@ -417,6 +417,27 @@ describe("ArchivedDetailPage（封存討論）", () => {
     expect(document.querySelector('[data-context-row="file"]')).toBeNull();
   });
 
+  it("封存討論的結論：未轉出的刀卡帶 data-cut-todo、沒有 [data-unpromoted-cut] 提示框列", async () => {
+    const doc = DISCUSSION_DOC.replace(
+      "**Decision**: 就這麼辦",
+      "**Decision**: 就這麼辦\n- **cut 1 `child-a`**: 一\n- **cut 2 `child-z`**: 二",
+    );
+    render(
+      <ArchivedDetailPage
+        {...(discussionProps({ promotedChanges: LINKS, ...LISTS, loadDiscussionDocument: vi.fn(async () => doc) }) as never)}
+      />,
+    );
+    const todo = await waitFor(() => {
+      const el = document.querySelector('[data-cut="cut 2"]') as HTMLElement | null;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    expect(todo.hasAttribute("data-cut-todo")).toBe(true);
+    expect(document.querySelector('[data-cut="cut 1"]')!.hasAttribute("data-cut-todo")).toBe(false);
+    expect(document.querySelector("[data-unpromoted-cut]")).toBeNull();
+    expect(document.querySelector("[data-doc-callout]")).toBeNull();
+  });
+
   it("「開啟 ▾」收到不帶檔案的目標（只能複製內容）", async () => {
     const renderDocumentActions = vi.fn(() => null);
     render(<ArchivedDetailPage {...(discussionProps({ renderDocumentActions }) as never)} />);

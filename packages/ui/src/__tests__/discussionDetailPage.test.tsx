@@ -198,6 +198,13 @@ function docWithConclusion(conclusion: string): string {
   return DOC.replace("**Decision**: 建置 alpha 搜尋", conclusion);
 }
 
+// spec Scenario「未轉出刀的提示框與前往」：cut 1 已轉出、cut 2 尚未轉出。
+const WAD_DECISION = [
+  "**Decision**: 分兩刀。",
+  "- **cut 1 `add-team-plugin-library`**: 團隊外掛庫",
+  "- **cut 2 `remove-builtin-wad-work`**: 移除內建 wad-work",
+].join("\n");
+
 const FULL_CONCLUSION = [
   "**Decision**: 拍板做 A",
   "**Rationale**: 因為證據充分",
@@ -260,6 +267,40 @@ describe("結論欄位標籤化（討論結論以欄位標籤呈現）", () => {
     expect(within(card).getByText("已封存")).toBeTruthy();
     fireEvent.click(within(card).getByRole("button", { name: "cut-old" }));
     expect(onOpenArchivedChange).toHaveBeenCalledWith("2026-07-20-cut-old");
+  });
+
+  it("點提示框的「前往」後 cut 2 的刀卡被捲動", async () => {
+    const targets: Element[] = [];
+    const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
+      targets.push(this);
+    });
+    try {
+      const props = makeProps({
+        discussion: {
+          ...concludedD,
+          slug: "wad-plugins-merge-or-split",
+          status: "promoted",
+          concluded: true,
+          hold: true,
+          promotedTo: ["add-team-plugin-library"],
+        },
+        changes: [{ name: "add-team-plugin-library", status: "in-progress", totalTasks: 3, completedTasks: 1 }],
+        loadDocument: vi.fn(async () => docWithConclusion(WAD_DECISION)),
+      });
+      render(<DiscussionDetailPage {...(props as never)} />);
+      const row = await waitFor(() => {
+        const el = document.querySelector("[data-doc-callout] [data-unpromoted-cut]") as HTMLElement | null;
+        expect(el).toBeTruthy();
+        return el!;
+      });
+      targets.length = 0;
+      scrollSpy.mockClear();
+      fireEvent.click(within(row).getByRole("button", { name: /前往/ }));
+      await waitFor(() => expect(targets).toEqual([document.querySelector('[data-cut="cut 2"]')]));
+      expect(scrollSpy).toHaveBeenCalledWith(expect.objectContaining({ block: "center" }));
+    } finally {
+      scrollSpy.mockRestore();
+    }
   });
 
   it("自由格式結論整篇以單一 markdown 檢視退回", async () => {
@@ -659,6 +700,42 @@ describe("討論詳情頁狀態卡的保留與衍生列", () => {
     expect(onArchiveDiscussion).not.toHaveBeenCalled();
   });
 
+  // spec Scenario「狀態卡的保留與衍生列」「尚無結論的已轉出討論的步驟列」「已轉出且未保留的討論現站為主色」：
+  // 步驟列現站與身分區狀態籤同色；尚無結論時「已結論」站不打勾。
+  const current = () => row("stage")!.querySelector('[aria-current="step"]') as HTMLElement;
+  const station = (label: string) => within(row("stage")!).getByText(label);
+
+  it("hold 為 true 的已轉出討論：現站為 warning 色、「已結論」站打勾", async () => {
+    render(<DiscussionDetailPage {...(makeProps({ discussion: heldD, changes: liveChanges, archivedChanges: archived }) as never)} />);
+    await screen.findByRole("tab", { name: /背景/ });
+    expect(current().textContent).toBe("已轉出");
+    expect(current().className).toContain("status-warning");
+    expect(station("已結論").querySelector("svg.lucide-check")).toBeTruthy();
+  });
+
+  it("concluded 為 false 的已轉出討論：現站為 warning 色、「已結論」站為未到站灰圈", async () => {
+    const unconcluded: DiscussionItem = { ...concludedD, status: "promoted", concluded: false, promotedTo: ["cut-b"] };
+    render(<DiscussionDetailPage {...(makeProps({ discussion: unconcluded, changes: liveChanges }) as never)} />);
+    await screen.findByRole("tab", { name: /背景/ });
+    expect((document.querySelector("[data-discussion-status]") as HTMLElement).textContent).toBe("已轉出・尚無結論");
+    expect(current().textContent).toBe("已轉出");
+    expect(current().className).toContain("status-warning");
+    const concluded = station("已結論");
+    expect(concluded.querySelector("svg.lucide-check")).toBeNull();
+    expect(concluded.querySelector("svg.lucide-circle")).toBeTruthy();
+    expect(concluded.className).toContain("text-muted-foreground/50");
+    expect(station("討論中").querySelector("svg.lucide-check")).toBeTruthy();
+  });
+
+  it("hold 為 false、已結論的已轉出討論：現站為主色", async () => {
+    const collapsed: DiscussionItem = { ...heldD, hold: false };
+    render(<DiscussionDetailPage {...(makeProps({ discussion: collapsed, changes: liveChanges, archivedChanges: archived }) as never)} />);
+    await screen.findByRole("tab", { name: /背景/ });
+    expect(current().className).toContain("primary");
+    expect(current().className).not.toContain("status-warning");
+    expect(station("已結論").querySelector("svg.lucide-check")).toBeTruthy();
+  });
+
   it("無 hold 無 promoted_to 時保留列與衍生列缺席", async () => {
     render(<DiscussionDetailPage {...(makeProps() as never)} />);
     await screen.findByRole("tab", { name: /背景/ });
@@ -801,6 +878,13 @@ describe("討論詳情頁的關聯列與標題列動作", () => {
 // （desktop-discussion-doc-views design D6）：推導入口的輸出直接畫進閱讀卡的標題區零件。
 describe("數字磚、出處行與提示框", () => {
   const NAMES = { specs: [], active: [], archived: [], discussions: [] };
+  const t = (key: string) => MESSAGES["zh-TW"][key] ?? key;
+  const live = (name: string, done: number, total: number): ChangeItem => ({
+    name,
+    status: "ready",
+    totalTasks: total,
+    completedTasks: done,
+  });
   const roundsOf = (modes: string[], dates: string[], lastOpen = "無：寫入結論") =>
     modes
       .map(
@@ -871,7 +955,7 @@ describe("數字磚、出處行與提示框", () => {
       hold: false,
       created: "2026-10-12",
       recordPath: "openspec/discussions/demo.md",
-      rows: [],
+      rows: promotedRows(["chg-1", "chg-2", "chg-3"], [1, 2, 3].map((n) => live(`chg-${n}`, n, n)), [], t),
       names: NAMES,
     });
     render(<Harness tab="conclusion" data={data} />);
@@ -882,6 +966,51 @@ describe("數字磚、出處行與提示框", () => {
       ["11", "否決的替代方案"],
       ["4", "擱置"],
     ]);
+    expect(callout()).toBeNull();
+  });
+
+  // spec Scenario「未轉出刀的提示框與前往」「沒有整刀未轉出的刀時無提示框」「已封存討論頁不出未轉出提示框」。
+  const wadData = (decision: string, promoted: string[], status = "promoted") =>
+    discussionDocData({
+      text: record(roundsOf(["interview"], ["2026-10-12"]), decision),
+      status,
+      hold: true,
+      created: "2026-10-12",
+      recordPath: "openspec/discussions/wad-plugins-merge-or-split.md",
+      rows: promotedRows(promoted, promoted.map((name) => live(name, 1, 3)), [], t),
+      names: { ...NAMES, self: "wad-plugins-merge-or-split" },
+    });
+
+  it("結論有整刀未轉出的刀時有橄欖色提示框", () => {
+    render(<Harness tab="conclusion" data={wadData(WAD_DECISION, ["add-team-plugin-library"])} />);
+    const box = callout()!;
+    expect(box).toBeTruthy();
+    expect(box.querySelector(".markdown-alert-title")!.textContent).toBe("1 刀尚未轉出");
+    expect(box.firstElementChild!.className).toContain("status-manual");
+    const rows = Array.from(box.querySelectorAll("[data-unpromoted-cut]"));
+    expect(rows.length).toBe(1);
+    expect(rows[0].textContent).toContain("cut 2");
+    expect(rows[0].textContent).toContain("移除內建 wad-work");
+    expect(box.querySelector("[data-command-chip]")!.textContent).toBe(
+      "/speclink-propose --from-discussion wad-plugins-merge-or-split",
+    );
+  });
+
+  it("全部刀已轉出或只部分轉出時無提示框", () => {
+    const decision = [
+      "**Decision**: 三刀。",
+      "- **cut 1 `a-one` `b-two`**: 部分轉出",
+      "- **cut 2 `c-three`**: 已轉出",
+      "- **刀三**：沒有變更名",
+    ].join("\n");
+    render(<Harness tab="conclusion" data={wadData(decision, ["a-one", "c-three"])} />);
+    expect(tiles()[1]).toEqual(["3", "分刀 · 3 個變更"]);
+    expect(callout()).toBeNull();
+  });
+
+  it("status 為 archived 時無提示框", () => {
+    render(<Harness tab="conclusion" data={wadData(WAD_DECISION, ["add-team-plugin-library"], "archived")} />);
+    expect(tiles()[1]).toEqual(["2", "分刀 · 2 個變更"]);
     expect(callout()).toBeNull();
   });
 
@@ -991,13 +1120,6 @@ describe("數字磚、出處行與提示框", () => {
   });
 
   describe("衍生變更", () => {
-    const t = (key: string) => MESSAGES["zh-TW"][key] ?? key;
-    const live = (name: string, done: number, total: number): ChangeItem => ({
-      name,
-      status: "ready",
-      totalTasks: total,
-      completedTasks: done,
-    });
     const gone = (name: string, n: number): ArchivedItem => ({
       datedName: `2026-10-0${n}-${name}`,
       date: `2026-10-0${n}`,

@@ -249,6 +249,17 @@ export function parseCuts(details: ListItem[]): { cuts: CutCard[]; rest: ListIte
   return { cuts, rest };
 }
 
+/** 刀的轉出判定：只看變更名籤是否已轉出（刀卡與未轉出提示框共用，兩處不會分岔）；沒有變更名籤時無從判定。 */
+export function cutPromotion(
+  cut: CutCard,
+  isPromoted: (name: string) => boolean,
+): "promoted" | "partial" | "none" | "unknown" {
+  if (cut.names.length === 0) return "unknown";
+  const promoted = cut.names.filter(isPromoted).length;
+  if (promoted === cut.names.length) return "promoted";
+  return promoted === 0 ? "none" : "partial";
+}
+
 /** 否決與擱置的一列：第一個「——」或前後帶空白的「 — 」（discuss 技能檔寫「option — why it lost」）切方案與
  * 落敗理由；切不到時整條為方案。提案的替代方案走 docModel 的 splitAlternative，不經這裡。 */
 export function splitOption(text: string): { option: string; reason: string | null } {
