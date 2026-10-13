@@ -1,0 +1,116 @@
+{
+  "version": 2,
+  "change": "tray-panel-content-priority",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫失敗測試，鎖定決策「收合狀態記在面板本機、所有專案共用一份」的讀寫契約：鍵缺席、值非 JSON、值非陣列、localStorage 丟例外時讀回空集合（全部展開）；陣列中的未知 id 被忽略；寫入以 JSON 陣列整份覆寫，丟例外時靜默。測試加在 apps/desktop/src/__tests__/trayPanel.test.tsx 的新 describe，執行 `npm test -w apps/desktop -- trayPanel` 確認紅燈。",
+      "files": [
+        "apps/desktop/src/__tests__/trayPanel.test.tsx"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 新增 apps/desktop/src/panel/sectionCollapse.ts：匯出鍵常數 `speclink.tray.collapsedSections`、讀取函式（回傳 proposed／in-progress／ready／discussions 中收合的集合）與寫入函式，形狀比照 apps/desktop/src/panel/promotedExpanded.ts；依 `speclink instructions --skill audit` 的 sharp-edges 清單檢查讀取路徑，確認壞值與未知 id 不會讓面板丟例外。驗證：`npm test -w apps/desktop -- trayPanel` 中 1.1 的測試轉綠。",
+      "files": [
+        "apps/desktop/src/panel/sectionCollapse.ts"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 實作決策「中段重排：生命週期卡在前、討論卡在後」：apps/desktop/src/panel/TrayPanel.tsx 的可捲中段改為提案中、進行中、已就緒、討論卡的順序，stale 狀態列仍在中段最上，復原卡分支不變。驗證：`npm test -w apps/desktop -- trayPanel` 的區塊順序測試轉綠。",
+      "files": [
+        "apps/desktop/src/panel/TrayPanel.tsx"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "2.7 實作決策「專案 tab 條：「＋」固定右端、邊緣淡出、捲到作用中」：新增 apps/desktop/src/panel/tabStrip.ts（淡出判斷與露出目標兩個純函式，容差 1px）；apps/desktop/src/panel/TrayPanel.tsx 把「加入專案」移出可捲區、固定在 tab 條卡右端並改為只有虛線框「＋」的方塊，可捲區依淡出判斷套左右漸層遮罩（於捲動、尺寸改變、tab 清單改變時重算），面板開啟與作用中專案改變時以露出目標設定 scrollLeft；捲軸維持隱藏。驗證：`npm test -w apps/desktop -- trayPanel` 中 2.6 的斷言轉綠。",
+      "files": [
+        "apps/desktop/src/panel/tabStrip.ts"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "3.4 先改寫失敗測試，對應「討論列表」與「討論於看板第 0 欄兩級呈現」需求的箭頭方向（決策「收合箭頭統一規則：收合 ›、展開時指向展開出來的內容」）：apps/desktop/src/__tests__/trayPanel.test.tsx 既有「已轉出收合列展開後箭頭含 rotate-90」斷言改為展開後 class 含 `-rotate-90` 且以空白切開後不含單獨的 `rotate-90`、收合時兩者皆無；packages/ui/src/__tests__/discussionColumn.test.tsx 欄底收合列的箭頭斷言同樣改寫。執行 `npm test -w apps/desktop -- trayPanel` 與 `npm test -w packages/ui -- discussionColumn` 確認新斷言紅燈。",
+      "files": [
+        "packages/ui/src/__tests__/discussionColumn.test.tsx"
+      ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "3.5 實作決策「收合箭頭統一規則：收合 ›、展開時指向展開出來的內容」：apps/desktop/src/panel/TrayPanel.tsx 的「已轉出」收合列與 packages/ui/src/components/DiscussionColumn.tsx 的欄底收合列，ChevronRight 展開時的旋轉由 90 度改為 -90 度（朝上），收合時不旋轉，版面與展開位置不變；內容卡標題的收合箭頭維持展開朝下。驗證：`npm test -w apps/desktop -- trayPanel` 與 `npm test -w packages/ui -- discussionColumn` 中 3.4 的斷言轉綠。",
+      "files": [
+        "packages/ui/src/components/DiscussionColumn.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4SCV3KAQQ9J7QZ37GWZQ8QV",
+      "taskDesc": "1.1 先寫失敗測試，鎖定決策「收合狀態記在面板本機、所有專案共用一份」的讀寫契約：鍵缺席、值非 JSON、值非陣列、localStorage 丟例外時讀回空集合（全部展開）；陣列中的未知 id 被忽略；寫入以 JSON 陣列整份覆寫，丟例外時靜默。測試加在 apps/desktop/src/__tests__/trayPanel.test.tsx 的新 describe，執行 `npm test -w apps/desktop -- trayPanel` 確認紅燈。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "35a32d3fe3839a66099f543d0eaa8032b6b4bfc0",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/trayPanel.test.tsx"
+      ],
+      "recordedAt": "2026-10-13T02:38:20Z"
+    },
+    {
+      "taskId": "tsk_01M4SCV3KATRQ3N83PPE6YT1VV",
+      "taskDesc": "1.2 新增 apps/desktop/src/panel/sectionCollapse.ts：匯出鍵常數 `speclink.tray.collapsedSections`、讀取函式（回傳 proposed／in-progress／ready／discussions 中收合的集合）與寫入函式，形狀比照 apps/desktop/src/panel/promotedExpanded.ts；依 `speclink instructions --skill audit` 的 sharp-edges 清單檢查讀取路徑，確認壞值與未知 id 不會讓面板丟例外。驗證：`npm test -w apps/desktop -- trayPanel` 中 1.1 的測試轉綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "35a32d3fe3839a66099f543d0eaa8032b6b4bfc0",
+      "touchedFiles": [
+        "apps/desktop/src/panel/sectionCollapse.ts"
+      ],
+      "recordedAt": "2026-10-13T02:38:49Z"
+    },
+    {
+      "taskId": "tsk_01M4SCV3KAAQQ697RQ0KGG5AD9",
+      "taskDesc": "2.2 實作決策「中段重排：生命週期卡在前、討論卡在後」：apps/desktop/src/panel/TrayPanel.tsx 的可捲中段改為提案中、進行中、已就緒、討論卡的順序，stale 狀態列仍在中段最上，復原卡分支不變。驗證：`npm test -w apps/desktop -- trayPanel` 的區塊順序測試轉綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "35a32d3fe3839a66099f543d0eaa8032b6b4bfc0",
+      "touchedFiles": [
+        "apps/desktop/src/panel/TrayPanel.tsx"
+      ],
+      "recordedAt": "2026-10-13T02:40:36Z"
+    },
+    {
+      "taskId": "tsk_01M4SHHEK1BS5WNMZC39YC9XBF",
+      "taskDesc": "2.7 實作決策「專案 tab 條：「＋」固定右端、邊緣淡出、捲到作用中」：新增 apps/desktop/src/panel/tabStrip.ts（淡出判斷與露出目標兩個純函式，容差 1px）；apps/desktop/src/panel/TrayPanel.tsx 把「加入專案」移出可捲區、固定在 tab 條卡右端並改為只有虛線框「＋」的方塊，可捲區依淡出判斷套左右漸層遮罩（於捲動、尺寸改變、tab 清單改變時重算），面板開啟與作用中專案改變時以露出目標設定 scrollLeft；捲軸維持隱藏。驗證：`npm test -w apps/desktop -- trayPanel` 中 2.6 的斷言轉綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "35a32d3fe3839a66099f543d0eaa8032b6b4bfc0",
+      "touchedFiles": [
+        "apps/desktop/src/panel/tabStrip.ts"
+      ],
+      "recordedAt": "2026-10-13T02:47:41Z"
+    },
+    {
+      "taskId": "tsk_01M4SFQZQVNEG9HRQ2X6HMJWK9",
+      "taskDesc": "3.4 先改寫失敗測試，對應「討論列表」與「討論於看板第 0 欄兩級呈現」需求的箭頭方向（決策「收合箭頭統一規則：收合 ›、展開時指向展開出來的內容」）：apps/desktop/src/__tests__/trayPanel.test.tsx 既有「已轉出收合列展開後箭頭含 rotate-90」斷言改為展開後 class 含 `-rotate-90` 且以空白切開後不含單獨的 `rotate-90`、收合時兩者皆無；packages/ui/src/__tests__/discussionColumn.test.tsx 欄底收合列的箭頭斷言同樣改寫。執行 `npm test -w apps/desktop -- trayPanel` 與 `npm test -w packages/ui -- discussionColumn` 確認新斷言紅燈。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "35a32d3fe3839a66099f543d0eaa8032b6b4bfc0",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/discussionColumn.test.tsx"
+      ],
+      "recordedAt": "2026-10-13T02:52:03Z"
+    },
+    {
+      "taskId": "tsk_01M4SFQZQVW54FM5VE2K9TYFTW",
+      "taskDesc": "3.5 實作決策「收合箭頭統一規則：收合 ›、展開時指向展開出來的內容」：apps/desktop/src/panel/TrayPanel.tsx 的「已轉出」收合列與 packages/ui/src/components/DiscussionColumn.tsx 的欄底收合列，ChevronRight 展開時的旋轉由 90 度改為 -90 度（朝上），收合時不旋轉，版面與展開位置不變；內容卡標題的收合箭頭維持展開朝下。驗證：`npm test -w apps/desktop -- trayPanel` 與 `npm test -w packages/ui -- discussionColumn` 中 3.4 的斷言轉綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "35a32d3fe3839a66099f543d0eaa8032b6b4bfc0",
+      "touchedFiles": [
+        "packages/ui/src/components/DiscussionColumn.tsx"
+      ],
+      "recordedAt": "2026-10-13T02:52:39Z"
+    }
+  ]
+}

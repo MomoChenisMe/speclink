@@ -611,15 +611,22 @@ describe("DiscussionColumn 容器卡與受控收合列（desktop-board-reskin）
     expect(empty.className).toContain("text-muted-foreground");
   });
 
-  it("收合列為白底上緣細線列，右端 › 於展開時旋轉；promoted 細列為白底細框 8px 圓角", () => {
+  it("收合列為白底上緣細線列，右端收合時為 ›、展開時朝上（指向其上方展開的細列）；promoted 細列為白底細框 8px 圓角", () => {
     render(<DiscussionColumn discussions={[openD, promotedD]} changes={chipChanges} archived={chipArchived} />);
     const bar = screen.getByRole("button", { name: /已轉出/ });
     expect(bar.className).toContain("bg-card");
     expect(bar.className).toContain("border-t");
-    const chevron = () => bar.querySelector("svg.lucide-chevron-right") as SVGElement;
-    expect(chevron().getAttribute("class")).not.toContain("rotate-90");
+    const chevron = () => (bar.querySelector("svg.lucide-chevron-right")!.getAttribute("class") ?? "").split(/\s+/);
+    expect(chevron()).not.toContain("-rotate-90");
+    expect(chevron()).not.toContain("rotate-90");
     fireEvent.click(bar);
-    expect(chevron().getAttribute("class")).toContain("rotate-90");
+    expect(chevron()).toContain("-rotate-90");
+    expect(chevron()).not.toContain("rotate-90");
+    // 收合後恢復 ›，再展開供下方細列斷言。
+    fireEvent.click(bar);
+    expect(chevron()).not.toContain("-rotate-90");
+    expect(chevron()).not.toContain("rotate-90");
+    fireEvent.click(bar);
     const row = document.querySelector('[data-discussion="fanout"]') as HTMLElement;
     const rowCls = row.className.split(/\s+/);
     expect(rowCls).toContain("rounded-lg");
