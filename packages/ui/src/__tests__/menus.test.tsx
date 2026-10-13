@@ -8,6 +8,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
@@ -54,6 +56,32 @@ describe("DropdownMenu", () => {
 
     await user.click(refresh);
     expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("單選群組的項角色為 menuitemradio，選中項 aria-checked，選另一項觸發 onValueChange", async () => {
+    const user = userEvent.setup();
+    const onValueChange = vi.fn();
+    render(
+      <DropdownMenu>
+        <DropdownMenuTrigger>語言</DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuRadioGroup value="zh-TW" onValueChange={onValueChange}>
+            <DropdownMenuRadioItem value="zh-TW">繁體中文</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="en">English</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>,
+    );
+    await user.click(screen.getByText("語言"));
+
+    const zh = screen.getByRole("menuitemradio", { name: "繁體中文" });
+    const en = screen.getByRole("menuitemradio", { name: "English" });
+    expect(zh.getAttribute("aria-checked")).toBe("true");
+    expect(en.getAttribute("aria-checked")).toBe("false");
+    expect(classes(en)).toEqual(expect.arrayContaining(["rounded-lg", "h-8"]));
+
+    await user.click(en);
+    expect(onValueChange).toHaveBeenCalledWith("en");
   });
 });
 

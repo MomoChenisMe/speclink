@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Inbox } from "lucide-react";
-import { Badge, Button, EmptyState, SelectItem, useI18n } from "@speclink/ui";
+import { Badge, Button, EmptyState, SelectItem, useI18n, PageHeader } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
 import { ListToolbar, ToolbarDate, ToolbarSelect } from "../../components/ListToolbar";
@@ -81,7 +81,7 @@ export function AuditPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">{t("audit.title")}</h1>
+      <PageHeader level={1} title={t("audit.title")} description={t("audit.description")} />
 
       <ListToolbar search={q} onSearchChange={(v) => narrow(() => setQ(v))}>
         <ToolbarSelect

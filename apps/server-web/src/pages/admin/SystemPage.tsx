@@ -14,6 +14,7 @@ import {
   SEMANTIC_SURFACE,
   SEMANTIC_TONE,
   useI18n,
+  PageHeader,
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
@@ -47,15 +48,19 @@ export function SystemPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{t("system.title")}</h1>
-        {/* 導覽的重新啟動入口。放在系統頁而非各列表頁：它是「設定與維運」性質的動作，
-            不是任何列表的 primary action。 */}
-        <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={restartTour}>
-          <Compass aria-hidden="true" className="h-4 w-4" />
-          {t("tour.restart")}
-        </Button>
-      </div>
+      {/* 導覽的重新啟動入口。放在系統頁而非各列表頁：它是「設定與維運」性質的動作，
+          不是任何列表的 primary action。 */}
+      <PageHeader
+        level={1}
+        title={t("system.title")}
+        description={t("system.description")}
+        actions={
+          <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={restartTour}>
+            <Compass aria-hidden="true" className="h-4 w-4" />
+            {t("tour.restart")}
+          </Button>
+        }
+      />
       {loading && <AdminLoading />}
       {error != null && <AdminError onRetry={reload} />}
       {data && (

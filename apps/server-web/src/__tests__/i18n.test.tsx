@@ -7,8 +7,8 @@ import { APP_MESSAGES } from "../i18n/messages";
 import { makeAdminClient, setViewport } from "./helpers/adminHarness";
 
 // spec 需求「介面語言支援中文與英文」：未設定偏好時跟隨瀏覽器語言（zh 開頭為中文，
-// 其餘為英文）、header 提供三選切換、切換即時生效並在重新載入後維持、兩語言訊息集合
-// 完全對應。語言選擇不影響 artifacts 產出語言、CLI 或伺服器回傳的字串。
+// 其餘為英文）、側欄底部帳號選單提供三選切換、切換即時生效並在重新載入後維持、兩語言
+// 訊息集合完全對應。語言選擇不影響 artifacts 產出語言、CLI 或伺服器回傳的字串。
 
 const LANGUAGE_KEY = "speclink.uiLocale";
 
@@ -51,14 +51,14 @@ describe("未設定偏好時跟隨瀏覽器語言", () => {
   });
 });
 
-describe("header 的語言切換", () => {
+describe("帳號選單的語言切換", () => {
   it("切為 English 後管理面改為英文，重新整理後維持", async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const { unmount } = renderAdmin();
     await screen.findByRole("heading", { level: 1, name: "總覽" });
 
-    await user.click(screen.getByRole("combobox", { name: /介面語言/ }));
-    await user.click(await screen.findByRole("option", { name: "English" }));
+    await user.click(screen.getByRole("button", { name: /帳號選單/ }));
+    await user.click(await screen.findByRole("menuitemradio", { name: "English" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Overview" })).toBeTruthy();
     expect(localStorage.getItem(LANGUAGE_KEY)).toBe("en");
 
@@ -74,8 +74,8 @@ describe("header 的語言切換", () => {
     renderAdmin();
     await screen.findByRole("heading", { level: 1, name: "Overview" });
 
-    await user.click(screen.getByRole("combobox", { name: /Interface language/ }));
-    await user.click(await screen.findByRole("option", { name: "Follow system" }));
+    await user.click(screen.getByRole("button", { name: /Account menu/ }));
+    await user.click(await screen.findByRole("menuitemradio", { name: "Follow system" }));
     expect(await screen.findByRole("heading", { level: 1, name: "總覽" })).toBeTruthy();
     expect(localStorage.getItem(LANGUAGE_KEY)).toBeNull();
   });

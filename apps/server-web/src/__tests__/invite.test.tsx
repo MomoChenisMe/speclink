@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "../App";
 import { WebApiError } from "../api/client";
@@ -42,7 +42,13 @@ beforeEach(() => {
 describe("邀請接受流程", () => {
   it("有效邀請顯示 email 與設定密碼表單", async () => {
     renderAt("/invite/tok123", makeClient());
-    expect(await screen.findByText(/invitee@example.com/)).toBeTruthy();
+    expect(await screen.findByRole("heading", { level: 1, name: "接受邀請" })).toBeTruthy();
+    expect(screen.getByText("為 invitee@example.com 設定登入密碼；建立後會直接登入。")).toBeTruthy();
+    // 密碼欄上方兩列唯讀資訊：電子郵件與伺服器。
+    const info = screen.getByText("伺服器").closest("dl") as HTMLElement;
+    expect(within(info).getByText("電子郵件")).toBeTruthy();
+    expect(within(info).getByText("invitee@example.com")).toBeTruthy();
+    expect(within(info).getByText(window.location.host)).toBeTruthy();
     expect(screen.getByLabelText(/密碼|password/i)).toBeTruthy();
     expect(screen.getByRole("button", { name: /建立帳號|接受邀請|設定密碼/ })).toBeTruthy();
   });
@@ -68,8 +74,10 @@ describe("邀請接受流程", () => {
       }),
     });
     renderAt("/invite/bad", client);
-    expect(await screen.findByText(/邀請無效/)).toBeTruthy();
-    expect(screen.queryByLabelText(/密碼|password/i)).toBeNull();
+    const notice = await screen.findByRole("alert");
+    expect(within(notice).getByRole("heading", { level: 1, name: "邀請無效" })).toBeTruthy();
+    expect(notice.querySelector("svg")?.getAttribute("class")).toContain("text-status-warning");
+    expect(document.querySelectorAll("input")).toHaveLength(0);
   });
 
   it("接受失敗的欄位錯誤以 role=alert 宣告", async () => {

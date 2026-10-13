@@ -167,6 +167,8 @@ export {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "./components/ui/dropdown-menu";
@@ -180,6 +182,7 @@ export {
 } from "./components/ui/context-menu";
 export { Kbd, MenuShortcut } from "./components/ui/kbd";
 export { PageHeader } from "./components/ui/page-header";
+export { Breadcrumbs, type Crumb } from "./components/Breadcrumbs";
 export { Textarea, type TextareaProps } from "./components/ui/textarea";
 export { Skeleton } from "./components/ui/skeleton";
 export {

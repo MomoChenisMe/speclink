@@ -35,6 +35,7 @@ import {
   useI18n,
   siblingChangesOf,
   discussionChipStage,
+  type Crumb,
   type DocumentTarget,
   type Verb,
 } from "@speclink/ui";
@@ -50,7 +51,7 @@ import { ProjectSettingsColumn } from "./components/ProjectSettingsColumn";
 import { APP_SETTINGS_CATEGORIES, PROJECT_SETTINGS_CATEGORIES } from "./settingsCatalog";
 import { EmptyWorkspace } from "./components/EmptyWorkspace";
 import { ProjectActionItems, type ProjectActions } from "./components/ProjectActionsMenu";
-import { LeftTitleBar, MainTitleBar, type Crumb } from "./components/TitleBar";
+import { LeftTitleBar, MainTitleBar } from "./components/TitleBar";
 import { DetailBack, DetailNav, isBackShortcut } from "./components/DetailNav";
 import { SwipeBack } from "./components/SwipeBack";
 import { DocumentActionsMenu } from "./components/DocumentActionsMenu";

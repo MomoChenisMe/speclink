@@ -11,7 +11,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { Badge, Button, Card, CopyButton, SEMANTIC_SURFACE, SEMANTIC_TONE, useI18n } from "@speclink/ui";
+import { Badge, Button, Card, CopyButton, SEMANTIC_SURFACE, SEMANTIC_TONE, useI18n, PageHeader } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
 import { AdminError, AdminLoading } from "./states";
@@ -33,7 +33,7 @@ export function OverviewPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">{t("overview.title")}</h1>
+      <PageHeader level={1} title={t("overview.title")} description={t("overview.description")} />
       {loading && <AdminLoading />}
       {error != null && <AdminError onRetry={reload} />}
       {data && (
