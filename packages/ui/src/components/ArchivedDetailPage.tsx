@@ -170,7 +170,8 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
   const carriedVerify = props.verifyStatus === "verifiedNotPassed";
   const tickets = useStationTickets(datedName, { review: carriedReview, verify: carriedVerify }, gen, props.loadStationTicket);
 
-  // 結局籤（spec「已封存側的審查標示」「已封存側的驗證標示」）：標題列與狀態卡共用。
+  // 結局籤（spec「已封存側的審查標示」「已封存側的驗證標示」）：只在「狀態」區的「品質關卡」
+  // 列渲染——身分區只放「已封存」籤。
   const review = props.reviewStatus === "reviewed" || props.reviewStatus === "reviewedNotPassed" ? props.reviewStatus : null;
   const verify = props.verifyStatus === "verified" || props.verifyStatus === "verifiedNotPassed" ? props.verifyStatus : null;
   const outcomes = (
@@ -229,12 +230,7 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
         title={datedName.replace(/^\d{4}-\d{2}-\d{2}-/, "")}
         copyLabel={t("archived.copyName")}
         copyValue={datedName}
-        badges={
-          <>
-            <ArchivedPill />
-            {outcomes}
-          </>
-        }
+        badges={<ArchivedPill />}
         provenance={provenance(t, props)}
         relations={
           (props.sourceDiscussions ?? []).length > 0

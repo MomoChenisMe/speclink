@@ -186,17 +186,19 @@ interface Stamp {
   by?: string | null;
 }
 
-/** 標題列的站章籤：可視只有圖示＋狀態詞，蓋章日期與蓋章者完整識別（含 email）
-    收進提示。兩站同構，只換站別——資料缺席（進行中、無戳記）時整個提示缺席。 */
-function TitleStamp({ stamp }: { stamp: Stamp }) {
+/** 「品質關卡」列的站章籤：圖示＋狀態詞，已蓋章時旁接蓋章日期；蓋章日期與蓋章者完整
+    識別（含 email）收進提示，整枚章籤（含日期）為觸發點。兩站同構，只換站別——資料
+    缺席（進行中、無戳記）時整個提示缺席。 */
+function QualityStamp({ stamp }: { stamp: Stamp }) {
   // 既有 data 標記維持站別各一份（回歸對照沿用 data-review-row／data-verify-row）。
   const rowMark = stamp.station === "review" ? { "data-review-row": "" } : { "data-verify-row": "" };
   const toneMark = stamp.station === "review" ? { "data-review-tone": "" } : { "data-verify-tone": "" };
   const chip = (
-    <span {...rowMark} className="inline-flex shrink-0">
+    <span {...rowMark} className="inline-flex shrink-0 items-center gap-1.5">
       <StatusPill {...toneMark} tone={stamp.tone} icon={stamp.icon}>
         {stamp.label}
       </StatusPill>
+      {stamp.at && <span className="font-mono text-[11px] text-muted-foreground">{stamp.at}</span>}
     </span>
   );
   const detail = [stamp.at, stamp.by].filter(Boolean).join(" · ");
@@ -448,8 +450,8 @@ export function ChangeDetailPage({
     }
   };
 
-  // 兩站章籤：圖示＋狀態詞依四態上色（stamp／progress／warning／destructive）；
-  // 標題列與狀態卡「品質關卡」列共用同一份資料。
+  // 兩站章籤：圖示＋狀態詞依四態上色（stamp／progress／warning／destructive），
+  // 只在「狀態」區的「品質關卡」列渲染——身分區只放階段籤。
   const reviewStatus: ReviewBadgeStatus | null =
     !change.reviewStatus || change.reviewStatus === "none" ? null : change.reviewStatus;
   const verifyStatus: VerifyBadgeStatus | null =
@@ -645,14 +647,9 @@ export function ChangeDetailPage({
         title={change.name}
         copyLabel={t("common.copyName")}
         badges={
-          <>
-            <StatusPill data-stage-pill tone={STAGE_PILL_TONE[stage]}>
-              {t(`stage.${stage}`)}
-            </StatusPill>
-            {stamps.map((s) => (
-              <TitleStamp key={s.station} stamp={s} />
-            ))}
-          </>
+          <StatusPill data-stage-pill tone={STAGE_PILL_TONE[stage]}>
+            {t(`stage.${stage}`)}
+          </StatusPill>
         }
         provenance={[
           meta?.createdBy && <IdentityName identity={meta.createdBy} />,
@@ -724,7 +721,7 @@ export function ChangeDetailPage({
           )}
         </TabsTrigger>
         {/* 條件式工單節點（spec desktop-app「詳情頁的工單分頁」）：排程之後、審查在前，
-            與身分區章籤同序；節點名即站名，徽章為末輪序號。 */}
+            與「品質關卡」列章籤同序；節點名即站名，徽章為末輪序號。 */}
         {inReview && (
           <TabsTrigger value="review">
             {REVIEW_ICON.inReview} {t("drawer.tab.review")}
@@ -751,14 +748,7 @@ export function ChangeDetailPage({
           {stamps.length === 0 ? (
             <span className="text-muted-foreground">{t("detail.noQuality")}</span>
           ) : (
-            stamps.map((s) => (
-              <span key={s.station} className="inline-flex shrink-0 items-center gap-1.5">
-                <StatusPill tone={s.tone} icon={s.icon}>
-                  {s.label}
-                </StatusPill>
-                {s.at && <span className="font-mono text-[11px] text-muted-foreground">{s.at}</span>}
-              </span>
-            ))
+            stamps.map((s) => <QualityStamp key={s.station} stamp={s} />)
           )}
         </StatusRow>
         <StatusRow mark="plan" label={t("detail.statusPlan")}>

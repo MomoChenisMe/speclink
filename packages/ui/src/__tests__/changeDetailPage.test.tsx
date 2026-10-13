@@ -1028,11 +1028,7 @@ describe("標頭與狀態卡", () => {
     expect(statusRow("tasks").querySelector("[data-progress-track]")).toBeTruthy();
     const quality = flat(statusRow("quality"));
     expect(quality).toContain("品質關卡");
-    expect(quality).toContain("已審查");
-    expect(quality).toContain("2026-08-04");
-    expect(quality).toContain("已驗證");
-    expect(quality).toContain("2026-08-06");
-    expect(quality.indexOf("已審查")).toBeLessThan(quality.indexOf("已驗證"));
+    expect(quality).toMatch(/已審查.*2026-08-04.*已驗證.*2026-08-06/);
     expect(quality).not.toContain("momochenisme@gmail.com");
     const plan = flat(statusRow("plan"));
     expect(plan).toContain("排程");
@@ -1040,13 +1036,13 @@ describe("標頭與狀態卡", () => {
     expect(plan).toContain("等 1 項");
   });
 
-  it("兩站皆 none：身分區無章籤、品質關卡列顯示「尚未經過品質關卡」；可以開工與缺 wave 的說明詞條", async () => {
+  it("兩站皆 none：全頁無章籤、品質關卡列顯示「尚未經過品質關卡」；可以開工與缺 wave 的說明詞條", async () => {
     const r = render(
       <ChangeDetailPage {...(makeProps({ change: { ...change, wave: 1, blockedBy: [] } }) as never)} />,
     );
     await screen.findByText("MomoChen");
-    expect(identity().querySelector("[data-review-row]")).toBeNull();
-    expect(identity().querySelector("[data-verify-row]")).toBeNull();
+    expect(document.querySelector("[data-review-row]")).toBeNull();
+    expect(document.querySelector("[data-verify-row]")).toBeNull();
     expect(flat(statusRow("quality"))).toContain("尚未經過品質關卡");
     expect(flat(statusRow("plan"))).toContain("可以開工");
     r.unmount();
@@ -1060,9 +1056,9 @@ describe("標頭與狀態卡", () => {
     expect(flat(statusRow("plan"))).toContain("依賴成環");
   });
 
-  // spec Scenario「章籤與品質關卡列」：身分區兩枚章籤，蓋章日期與含 email 完整識別
-  // 收進提示。
-  it("身分區兩站章籤：可視僅狀態詞，日期與完整識別在提示內", async () => {
+  // spec Scenario「章籤與品質關卡列」：身分區只有階段籤；章籤只在「品質關卡」列，
+  // 蓋章日期與含 email 完整識別收進該章籤的提示。
+  it("身分區只有階段籤；品質關卡列的章籤提示帶日期與完整識別", async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const stamped: ChangeItem = {
       ...change,
@@ -1077,15 +1073,14 @@ describe("標頭與狀態卡", () => {
     await screen.findByText("MomoChen");
     const row = identity();
     const text = row.textContent ?? "";
-    expect(text).toContain("已審查");
-    expect(text).toContain("已驗證");
-    expect(text.indexOf("已審查")).toBeLessThan(text.indexOf("已驗證"));
-    expect(text).not.toContain("momochenisme@gmail.com");
-    expect(text).not.toContain("2026-08-04");
-    expect(text).not.toContain("2026-08-06");
+    expect(within(row).getByText("已就緒")).toBeTruthy();
+    expect(text).not.toContain("已審查");
+    expect(text).not.toContain("已驗證");
+    expect(row.querySelector("[data-review-row]")).toBeNull();
+    expect(row.querySelector("[data-verify-row]")).toBeNull();
     expect(row.className).toContain("min-w-0");
 
-    await user.hover(within(row).getByText("已審查"));
+    await user.hover(within(statusRow("quality")).getByText("已審查"));
     await waitFor(() => {
       const tip = document.querySelector("[data-radix-popper-content-wrapper]");
       expect(tip?.textContent).toContain("2026-08-04");
@@ -1106,7 +1101,7 @@ describe("標頭與狀態卡", () => {
     };
     render(<ChangeDetailPage {...(makeProps({ change: stamped }) as never)} />);
     await screen.findByText("MomoChen");
-    await user.hover(within(identity()).getByText("已驗證"));
+    await user.hover(within(statusRow("quality")).getByText("已驗證"));
     await waitFor(() => {
       const tip = document.querySelector("[data-radix-popper-content-wrapper]");
       expect(tip?.textContent).toContain("2026-08-06");
@@ -1114,7 +1109,8 @@ describe("標頭與狀態卡", () => {
     });
   });
 
-  it("進行中兩站（inReview／inVerify）：身分區與品質關卡列僅狀態詞、無日期", async () => {
+  it("進行中兩站（inReview／inVerify）：身分區無章籤；品質關卡列僅狀態詞、無日期、無提示", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const running: ChangeItem = {
       ...change,
       reviewStatus: "inReview",
@@ -1122,11 +1118,16 @@ describe("標頭與狀態卡", () => {
     };
     render(<ChangeDetailPage {...(makeProps({ change: running }) as never)} />);
     await screen.findByText("MomoChen");
-    for (const el of [identity(), statusRow("quality")]) {
-      expect(el.textContent).toContain("審查中");
-      expect(el.textContent).toContain("驗證中");
-      expect(el.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
-    }
+    expect(identity().textContent).not.toContain("審查中");
+    expect(identity().textContent).not.toContain("驗證中");
+    const quality = statusRow("quality");
+    expect(quality.textContent).toContain("審查中");
+    expect(quality.textContent).toContain("驗證中");
+    expect(quality.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    // 進行中無戳記：停留超過 300ms 延遲仍無提示。
+    await user.hover(within(quality).getByText("審查中"));
+    await new Promise((r) => setTimeout(r, 400));
+    expect(document.querySelector("[data-radix-popper-content-wrapper]")).toBeNull();
   });
 
   it("已就緒時動作區有「封存」主要鈕；進行中為「退回提案中」", async () => {
@@ -1583,6 +1584,8 @@ describe("詳情抽屜的工單分頁", () => {
     expect(screen.getByRole("tab", { name: /提案/ }).getAttribute("data-state")).toBe("active");
     await screen.findByText(/doc for proposal.md/);
     expect(document.querySelector("[data-ticket-view]")).toBeNull();
+    // 「品質關卡」列的章籤改為「已審查」。
+    expect(document.querySelector("[data-status-quality] [data-review-row]")!.textContent).toContain("已審查");
   });
 
   it("refreshGen 遞增 → 工單重載（追加輪後段標題更新）", async () => {
