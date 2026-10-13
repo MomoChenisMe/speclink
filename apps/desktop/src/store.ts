@@ -58,7 +58,8 @@ import {
   writeAssetSkip,
   type AssetPromptState,
 } from "./assetPrompt";
-import { detectMacOS, type TrayStyle } from "./tray";
+import type { TrayStyle } from "./tray";
+import { detectPlatform } from "./platform";
 import { projectDirOf, type DocumentLocation, type FsActionsAdapter } from "./adapter/fsActions";
 import {
   focusRecheckAllowed,
@@ -519,7 +520,7 @@ export interface AppState {
   installCli: () => Promise<void>;
 
   // --- 系統匣樣式（平台決定；tray 接線層訂閱分流） ---
-  /** 系統匣樣式現值：macOS＝panel、其餘＝native-menu；執行期狀態、不持久化。 */
+  /** 系統匣樣式現值：macOS 與 Windows＝panel、Linux＝native-menu；執行期狀態、不持久化。 */
   trayStyle: TrayStyle;
   /** 面板建立失敗的單行錯誤（設定頁本機設定簽以獨立警示行浮出）。 */
   trayPanelError: string | null;
@@ -2105,7 +2106,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     // --- 系統匣樣式（平台決定、不持久化） ---
-    trayStyle: detectMacOS() ? "panel" : "native-menu",
+    trayStyle: detectPlatform() === "linux" ? "native-menu" : "panel",
     trayPanelError: null,
     panelFallback(message) {
       set({ trayStyle: "native-menu", trayPanelError: message });

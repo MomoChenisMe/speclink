@@ -32,7 +32,7 @@ pub mod remote;
 pub mod tray;
 mod watch;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod panel;
 
 use std::path::PathBuf;
@@ -1847,30 +1847,30 @@ fn remote_unwatch(app: tauri::AppHandle, connection_id: String, project: String,
     events.unregister(&remote_locator_key(&connection_id, &project, &repo));
 }
 
-/// 系統匣面板 toggle（tray-status-menu「面板樣式（macOS）」）：macOS 委派
-/// panel 模組；其他平台恆回 Err（面板樣式偏好在非 macOS 不可達，此為守門）。
-#[cfg(target_os = "macos")]
+/// 系統匣面板 toggle（tray-status-menu「面板樣式」）：macOS 與 Windows 委派
+/// panel 模組；Linux 恆回 Err（Linux 的系統匣樣式恆為原生選單、不可達，此為守門）。
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[tauri::command]
 fn toggle_tray_panel(app: tauri::AppHandle) -> Result<(), String> {
     panel::toggle(&app)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[tauri::command]
 fn toggle_tray_panel() -> Result<(), String> {
-    Err("tray panel is macOS-only".to_string())
+    Err("tray panel is unavailable on this platform".to_string())
 }
 
 /// 面板交接主視窗前先收合（tray-status-menu「面板交接主視窗後滑鼠互動完整」）：
-/// macOS 委派 panel 模組的冪等 hide；其他平台無面板，無事——喚起主視窗的前端
-/// 路徑在各平台共用，此命令不得成為非 macOS 的阻斷點。不會失敗，故無回傳值。
-#[cfg(target_os = "macos")]
+/// macOS 與 Windows 委派 panel 模組的冪等 hide；Linux 無面板，無事——喚起主視窗的
+/// 前端路徑在各平台共用，此命令不得成為阻斷點。不會失敗，故無回傳值。
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[tauri::command]
 fn hide_tray_panel(app: tauri::AppHandle) {
     panel::hide(&app);
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[tauri::command]
 fn hide_tray_panel() {}
 
@@ -1889,12 +1889,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
-    // 面板樣式相依僅 macOS 註冊（design D6）：positioner 供 tray 相對定位、
-    // nspanel 供不搶焦點的 NSPanel 容器。
+    // 面板樣式相依（tray-panel-windows design D3／D6）：positioner 供 tray 相對定位
+    // （macOS 與 Windows）；nspanel 供不搶焦點的 NSPanel 容器（僅 macOS）。
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    let builder = builder.plugin(tauri_plugin_positioner::init());
     #[cfg(target_os = "macos")]
-    let builder = builder
-        .plugin(tauri_plugin_positioner::init())
-        .plugin(tauri_nspanel::init());
+    let builder = builder.plugin(tauri_nspanel::init());
     builder
         .setup(|app| {
             // 監看槽位（決策 5）：啟動僅註冊空槽——前端還原分頁後以

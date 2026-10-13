@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { THEME_STORAGE_KEY } from "@speclink/ui";
 
 import indexHtml from "../../index.html?raw";
-import macosCapsRaw from "../../src-tauri/capabilities/macos.json?raw";
+import trayPanelCapsRaw from "../../src-tauri/capabilities/tray-panel.json?raw";
 
 const tauri = vi.hoisted(() => ({
   setTheme: vi.fn(() => Promise.resolve()),
@@ -74,8 +74,8 @@ describe("系統匣面板", () => {
     expect(tauri.setTheme).toHaveBeenLastCalledWith(null);
   });
 
-  it("macOS 能力檔給面板視窗 set-theme 權限", () => {
-    const caps = JSON.parse(macosCapsRaw) as { windows: string[]; permissions: string[] };
+  it("面板能力檔給面板視窗 set-theme 權限", () => {
+    const caps = JSON.parse(trayPanelCapsRaw) as { windows: string[]; permissions: string[] };
     expect(caps.windows).toContain("tray-panel");
     expect(caps.permissions).toContain("core:window:allow-set-theme");
   });

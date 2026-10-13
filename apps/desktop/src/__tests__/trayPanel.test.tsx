@@ -120,7 +120,7 @@ function renderPanel(over: Partial<Parameters<typeof TrayPanel>[0]> = {}) {
     onOpenServerSettings: vi.fn(),
     onReauthenticate: vi.fn(),
   };
-  const props = { snapshot: snapshot(), ...handlers, ...over };
+  const props = { snapshot: snapshot(), platform: "macos" as const, ...handlers, ...over };
   const { rerender } = render(<TrayPanel {...props} />);
   return {
     ...handlers,
@@ -187,6 +187,7 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
             ],
             activeKey: key,
           } as unknown as Partial<TraySnapshot>)}
+          platform="macos"
           onOpenProject={vi.fn()}
           onOpenChange={vi.fn()}
           onOpenDiscussion={vi.fn()}
@@ -223,6 +224,7 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
             activeKey: key,
             changes: [change({ name: "offline-stale-change", totalTasks: 2, completedTasks: 1 })],
           } as unknown as Partial<TraySnapshot>)}
+          platform="macos"
           onOpenProject={vi.fn()}
           onOpenChange={vi.fn()}
           onOpenDiscussion={vi.fn()}
@@ -842,6 +844,24 @@ describe("TrayPanel 分區卡片化與主色（spec「面板樣式（macOS）」
     expect(fillClasses("rdy")).toContain(STAGE_BAR.ready);
     // 三階各一色相（與看板同源），互不相同。
     expect(new Set([STAGE_BAR.proposed, STAGE_BAR["in-progress"], STAGE_BAR.ready]).size).toBe(3);
+  });
+});
+
+describe("面板根層的平台外觀（spec「面板樣式」平台差異；tray-panel-windows design D2）", () => {
+  it("Windows：不透明側欄底色、不畫圓角、不鋪半透明補光", () => {
+    renderPanel({ platform: "windows" });
+    const classes = screen.getByTestId("panel-root").className.split(/\s+/);
+    expect(classes).toContain("bg-sidebar");
+    expect(classes).not.toContain("rounded-[13px]");
+    expect(classes).not.toContain("bg-sidebar/60");
+  });
+
+  it("macOS：維持 13px 圓角與約六成補光層", () => {
+    renderPanel({ platform: "macos" });
+    const classes = screen.getByTestId("panel-root").className.split(/\s+/);
+    expect(classes).toContain("rounded-[13px]");
+    expect(classes).toContain("bg-sidebar/60");
+    expect(classes).not.toContain("bg-sidebar");
   });
 });
 

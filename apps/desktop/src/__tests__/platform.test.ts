@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { detectPlatform, modKey } from "../platform";
-import { detectMacOS } from "../tray";
 
 const MAC_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)";
@@ -26,16 +25,14 @@ describe("detectPlatform（design D1）", () => {
     expect(detectPlatform(LINUX_UA)).toBe("linux");
   });
 
-  it("非瀏覽器環境（無 navigator）回 linux，detectMacOS 為 false", () => {
+  it("非瀏覽器環境（無 navigator）回 linux", () => {
     vi.stubGlobal("navigator", undefined);
     expect(detectPlatform()).toBe("linux");
-    expect(detectMacOS()).toBe(false);
   });
 
-  it("未傳 UA 時讀 navigator.userAgent；tray 的 detectMacOS 走同一份判定", () => {
+  it("未傳 UA 時讀 navigator.userAgent", () => {
     vi.stubGlobal("navigator", { userAgent: MAC_UA });
     expect(detectPlatform()).toBe("macos");
-    expect(detectMacOS()).toBe(true);
   });
 });
 
