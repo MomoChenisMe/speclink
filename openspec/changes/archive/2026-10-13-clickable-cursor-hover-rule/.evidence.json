@@ -92,6 +92,15 @@
       "files": [
         "apps/desktop/src/components/RemoteConflictDialog.tsx"
       ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.2 收尾守門：`npm test -w packages/ui`、`npm test -w apps/desktop`、`npm test -w apps/server-web` 全綠；`npm run build -w apps/desktop` 與 `npm run build -w apps/server-web` 成功；`speclink validate clickable-cursor-hover-rule` 通過；最後跑 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。",
+      "files": [
+        "apps/desktop/src/__tests__/remoteWorkspaceRecovery.test.tsx",
+        "packages/ui/src/__tests__/markdownCode.test.tsx",
+        "packages/ui/src/components/Markdown.tsx"
+      ]
     }
   ],
   "entries": [
@@ -221,6 +230,19 @@
         "apps/desktop/src/components/RemoteConflictDialog.tsx"
       ],
       "recordedAt": "2026-10-13T02:47:31Z"
+    },
+    {
+      "taskId": "tsk_01M4SD0NFXA6KF3S6CYS6N8JB4",
+      "taskDesc": "5.2 收尾守門：`npm test -w packages/ui`、`npm test -w apps/desktop`、`npm test -w apps/server-web` 全綠；`npm run build -w apps/desktop` 與 `npm run build -w apps/server-web` 成功；`speclink validate clickable-cursor-hover-rule` 通過；最後跑 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6e42edf727debdf38bf2dfa29363f364110e32e5",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/remoteWorkspaceRecovery.test.tsx",
+        "packages/ui/src/__tests__/markdownCode.test.tsx",
+        "packages/ui/src/components/Markdown.tsx"
+      ],
+      "recordedAt": "2026-10-13T03:35:50Z"
     }
   ]
 }

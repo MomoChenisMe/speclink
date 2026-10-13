@@ -29,6 +29,27 @@ describe("Markdown 程式碼區塊", () => {
     expect(button.querySelector("svg.lucide-check")).toBeTruthy();
   });
 
+  it("複製鈕依共用游標規則：取用游標變數、停用為箭頭、滑過有淡底（spec desktop-app「可點元素的游標與 hover 回饋」）", () => {
+    const { container } = render(<Markdown content={"```ts\n" + CODE + "\n```"} />, { wrapper: zhWrapper });
+    const button = screen.getByRole("button", { name: "複製程式碼" });
+    // Streamdown 在按鈕上寫死 cursor-pointer／disabled:cursor-not-allowed（utilities 層，蓋過 base 層全域規則）；
+    // Markdown 容器的任意變體選擇器權重較高，把它們蓋回共用設定。
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.contains(button)).toBe(true);
+    const cls = root.className.split(/\s+/);
+    expect(button.closest('[data-streamdown="code-block-actions"]')).toBeTruthy();
+    expect(cls).toEqual(
+      expect.arrayContaining([
+        "[&_button]:cursor-(--cursor-interaction)",
+        "[&_button:disabled]:cursor-default",
+        "[&_[data-streamdown=code-block-actions]_button]:rounded-md",
+        "[&_[data-streamdown=code-block-actions]_button:enabled]:hover:bg-foreground/5",
+      ]),
+    );
+    // 淡底只給程式碼區塊的控制鈕：圖片下載鈕自帶底色與 hover 底色，不得被蓋成近透明。
+    expect(cls.filter((c) => c.startsWith("[&_button") && c.includes("hover:"))).toEqual([]);
+  });
+
   it("以 Shiki 上色：關鍵字帶 github-light 與 github-dark 兩套色", async () => {
     const { container } = render(<Markdown content={"```ts\n" + CODE + "\n```"} />, {
       wrapper: zhWrapper,

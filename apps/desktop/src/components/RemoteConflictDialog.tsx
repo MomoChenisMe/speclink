@@ -7,11 +7,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   Button,
-  cn,
   useI18n,
 } from "@speclink/ui";
 
 import type { RemoteMarkerConflict } from "../store";
+
+// 處理中三張卡一起停用：hover 只在 enabled 時命中（desktop-app「可點元素的游標與 hover 回饋」）。
+const CHOICE_CLASS =
+  "flex items-start gap-3 rounded-lg border border-border p-3 text-left transition-colors enabled:hover:border-primary/50 enabled:hover:bg-muted/60 disabled:opacity-50";
 
 export interface RemoteConflictDialogProps {
   conflict: RemoteMarkerConflict | null;
@@ -59,12 +62,6 @@ export function RemoteConflictDialog({
     }
   }
 
-  // 處理中三張卡一起停用：不給 hover 底色（desktop-app「可點元素的游標與 hover 回饋」）。
-  const choiceClass = cn(
-    "flex items-start gap-3 rounded-lg border border-border p-3 text-left transition-colors disabled:opacity-50",
-    !busy && "hover:border-primary/50 hover:bg-muted/60",
-  );
-
   return (
     <AlertDialog open={conflict !== null} onOpenChange={() => {}}>
       <AlertDialogContent className="max-w-xl gap-4" data-testid="remote-conflict-dialog">
@@ -79,7 +76,7 @@ export function RemoteConflictDialog({
           <button
             type="button"
             disabled={busy}
-            className={choiceClass}
+            className={CHOICE_CLASS}
             onClick={() => void onContinueLocal()}
           >
             <Folder className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -93,7 +90,7 @@ export function RemoteConflictDialog({
           <button
             type="button"
             disabled={busy}
-            className={choiceClass}
+            className={CHOICE_CLASS}
             onClick={() => void useServer()}
           >
             <Cloud className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -107,7 +104,7 @@ export function RemoteConflictDialog({
           <button
             type="button"
             disabled={busy}
-            className={choiceClass}
+            className={CHOICE_CLASS}
             onClick={() => void migrateLocal()}
           >
             <FolderUp className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />

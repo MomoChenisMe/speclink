@@ -112,9 +112,8 @@ function ChoiceCard({
       onClick={onClick}
       className={cn(
         "group flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors",
-        selected ? "border-primary bg-primary/5" : "border-border",
-        // 停用為箭頭且無 hover（desktop-app「可點元素的游標與 hover 回饋」）。
-        !selected && !disabled && "hover:border-primary/50 hover:bg-muted/60",
+        // 停用為箭頭且無 hover（desktop-app「可點元素的游標與 hover 回饋」）：hover 只在 enabled 時命中。
+        selected ? "border-primary bg-primary/5" : "border-border enabled:hover:border-primary/50 enabled:hover:bg-muted/60",
         disabled && "cursor-default opacity-50",
       )}
     >
@@ -163,8 +162,7 @@ function RadioRow({
       onClick={onClick}
       className={cn(
         "flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left text-sm transition-colors",
-        checked ? "border-primary bg-primary/5" : "border-border",
-        !checked && !disabled && "hover:bg-muted/60",
+        checked ? "border-primary bg-primary/5" : "border-border enabled:hover:bg-muted/60",
         disabled && "cursor-default opacity-50",
       )}
     >

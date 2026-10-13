@@ -41,6 +41,16 @@ const zhWrapper = ({ children }: { children: ReactNode }) => (
   </I18nProvider>
 );
 
+/** 元素 class 中的 hover token（含 enabled:hover: 這類組合變體）。 */
+const hoverClasses = (el: HTMLElement) => el.className.split(/\s+/).filter((c) => c.includes("hover:"));
+/** 停用時不給 hover（spec desktop-app「可點元素的游標與 hover 回饋」；design D4）：hover token 全掛在
+ * enabled: 之下，停用的 button 不命中。 */
+function expectHoverOnlyWhenEnabled(el: HTMLElement) {
+  const hovers = hoverClasses(el);
+  expect(hovers.length).toBeGreaterThan(0);
+  expect(hovers.filter((c) => !c.startsWith("enabled:"))).toEqual([]);
+}
+
 function fakeConnections(over: Partial<ConnectionsAdapter> = {}): ConnectionsAdapter {
   return {
     list: vi.fn().mockResolvedValue([CONNECTION]),
@@ -541,8 +551,6 @@ describe("WorkspaceChooser", () => {
 
 // 停用的選擇卡與單選列為箭頭且無 hover（spec desktop-app「可點元素的游標與 hover 回饋」；design D4）。
 describe("開啟專案畫面停用態", () => {
-  const hoverClasses = (el: HTMLElement) => el.className.split(/\s+/).filter((c) => c.includes("hover:"));
-
   it("最近開啟列開啟中，停用的本機選擇卡為箭頭且無 hover", async () => {
     const workspace = fakeWorkspace({ openProject: vi.fn(() => new Promise(() => {})) });
     await renderChooser({
@@ -552,7 +560,7 @@ describe("開啟專案畫面停用態", () => {
     fireEvent.click(screen.getByRole("button", { name: /\/work\/speclink/ }));
     const card = screen.getByRole("button", { name: /本機資料夾/ }) as HTMLButtonElement;
     await waitFor(() => expect(card.disabled).toBe(true));
-    expect(hoverClasses(card)).toEqual([]);
+    expectHoverOnlyWhenEnabled(card);
     expect(card.className).toContain("cursor-default");
   });
 
@@ -565,7 +573,8 @@ describe("開啟專案畫面停用態", () => {
     fireEvent.click(screen.getByRole("button", { name: "開啟專案" }));
     const row = screen.getByRole("radio", { name: /選擇本機資料夾/ }) as HTMLButtonElement;
     await waitFor(() => expect(row.disabled).toBe(true));
-    expect(hoverClasses(row)).toEqual([]);
+    // 已選中的單選列本來就沒有 hover；只確認沒有未受 enabled: 約束的 hover token。
+    expect(hoverClasses(row).filter((c) => !c.startsWith("enabled:"))).toEqual([]);
     expect(row.className).toContain("cursor-default");
   });
 });
@@ -623,12 +632,11 @@ describe("remote marker 與本機 openspec 並存", () => {
       { wrapper: zhWrapper },
     );
     const names = [/^繼續本機/, /^以 Server 為準/, /^遷移本機內容/];
-    expect(screen.getByRole("button", { name: names[0] }).className).toContain("hover:bg-muted/60");
     fireEvent.click(screen.getByRole("button", { name: names[1] }));
     for (const name of names) {
       const card = screen.getByRole("button", { name }) as HTMLButtonElement;
       await waitFor(() => expect(card.disabled).toBe(true));
-      expect(card.className.split(/\s+/).filter((c) => c.includes("hover:"))).toEqual([]);
+      expectHoverOnlyWhenEnabled(card);
     }
   });
 });

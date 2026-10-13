@@ -140,7 +140,7 @@ export function RemoteWorkspaceRecovery({
               type="button"
               aria-expanded={technicalDetailOpen}
               aria-controls={technicalDetailId}
-              className="flex w-full cursor-(--cursor-interaction) items-center gap-1.5 rounded-sm text-left font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="-mx-2 -my-1 flex w-[calc(100%+1rem)] cursor-(--cursor-interaction) items-center gap-1.5 rounded-md px-2 py-1 text-left font-medium text-muted-foreground outline-none transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               onClick={() => setTechnicalDetailOpen((open) => !open)}
             >
               <ChevronRight
