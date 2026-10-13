@@ -21,29 +21,30 @@ function FieldLabel({ label }: { label: string }) {
 }
 
 /**
- * 討論過程文件（desktop-discussion-doc-views design D3；spec「討論輪以卡片呈現」）：時間軸上每輪一張卡，卡頭為
- * 輪次（本頁目錄錨點）、焦點、mode 與日期；首末輪預設展開、其餘收合，點卡頭切換。任一輪標題不符 scaffold
- * 時整篇 Markdown 退回。討論詳情頁與已封存討論頁共用。
+ * 討論過程文件（desktop-discussion-doc-views design D3；spec「討論輪以卡片呈現」）：時間軸上每輪一張卡、由新到舊
+ * 排列（只改呈現，記錄檔的輪順序不變），卡頭為輪次（本頁目錄錨點）、焦點、mode 與日期；首末輪（畫面最下與最上）
+ * 預設展開、其餘收合，點卡頭切換。任一輪標題不符 scaffold 時整篇 Markdown 退回。討論詳情頁與已封存討論頁共用。
  */
 export function RoundsDoc({ text, empty }: { text: string; empty?: string }) {
-  // 使用者點過的輪：輪序 → 展開與否；沒點過的依預設（首末輪展開）。
+  // 使用者點過的輪：輪次 → 展開與否；沒點過的依預設（首末輪展開）。以輪次而非畫面位置記錄，新輪插在最上時不錯位。
   const [toggled, setToggled] = useState<Record<number, boolean>>({});
   const rounds = splitRounds(text);
   if (rounds === null) return <Markdown content={text} empty={empty} />;
   if (rounds.length === 0) return <Markdown content="" empty={empty} />;
+  const newestFirst = [...rounds].reverse();
   return (
     <ol
       data-round-timeline
       className="relative flex flex-col gap-3 pl-6 before:absolute before:top-3 before:bottom-3 before:left-[6px] before:w-px before:bg-border"
     >
-      {rounds.map((r, i) => {
-        const open = toggled[i] ?? (i === 0 || i === rounds.length - 1);
+      {newestFirst.map((r, i) => {
+        const open = toggled[r.round] ?? (i === 0 || i === newestFirst.length - 1);
         return (
           <RoundCard
-            key={i}
+            key={r.round}
             round={r}
             open={open}
-            onToggle={() => setToggled((prev) => ({ ...prev, [i]: !open }))}
+            onToggle={() => setToggled((prev) => ({ ...prev, [r.round]: !open }))}
           />
         );
       })}

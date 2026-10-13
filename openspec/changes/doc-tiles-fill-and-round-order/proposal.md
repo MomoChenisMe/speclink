@@ -18,6 +18,7 @@
 - 討論過程：共用元件 `RoundsDoc` 依輪次由新到舊排列輪卡。討論詳情頁與已封存討論頁共用這個元件，一起生效。右欄本頁目錄照畫面上的標題順序產生，自動跟著倒序。
   - 預設展開維持「第一輪與最後一輪」，倒序後即最上（最新一輪）與最下（Round 1）展開、其餘收合。
   - 例：9 輪的討論由上而下為 Round 9、Round 8 … Round 1，Round 9 與 Round 1 展開。
+- 本頁目錄換文件後重掃（apply 期發現的既有問題，順修）：詳情頁切換文件後，右欄本頁目錄會停在前一份文件的錨點——分頁元件換文件時新內容晚一次畫面更新才掛上，目錄剛好在前一次掃描。共用元件 `ManualToc` 改為監看內文的節點增減、一變就重掃。變更、討論、已封存、規格詳情頁與手冊頁共用這個元件，一起生效。正式規格已寫明目錄「自閱讀卡渲染後的 DOM 推導」，不另補字。
 - 規格補字（desktop-app 3 條）：
   - 「markdown 文件內容行寬有上限」補「數字磚列內各格等寬、依格數平分並填滿整列」，並加一個 scenario。討論結論原訂補在「詳情頁的文件樹、閱讀卡與本頁目錄」，改放這一條是因為它明列五種頁面（變更、討論、已封存、規格詳情頁與手冊頁）且已規範數字磚列的對齊；前者只涵蓋三種詳情頁，規格詳情頁與手冊頁會漏掉。
   - 「討論輪以卡片呈現」補「依輪次由新到舊排列」，改寫「標準記錄逐輪成卡」的順序並加「新的輪排在最上」scenario。
@@ -55,6 +56,6 @@
 - Affected specs: desktop-app（3 條 MODIFIED）
 - Affected app／package: `packages/ui`（共用 UI 元件，由 apps/desktop 渲染）；speclink-core、speclink-cli、speclink-host、server 皆不受影響
 - Affected code:
-  - Modified: `packages/ui/src/components/DetailShell.tsx`、`packages/ui/src/components/RoundsDoc.tsx`、`packages/ui/src/__tests__/detailShell.test.tsx`、`packages/ui/src/__tests__/roundsDoc.test.tsx`、`packages/ui/src/__tests__/discussionDetailPage.test.tsx`
+  - Modified: `packages/ui/src/components/DetailShell.tsx`、`packages/ui/src/components/RoundsDoc.tsx`、`packages/ui/src/components/ManualToc.tsx`、`packages/ui/src/__tests__/detailShell.test.tsx`、`packages/ui/src/__tests__/roundsDoc.test.tsx`、`packages/ui/src/__tests__/discussionDetailPage.test.tsx`、`packages/ui/src/__tests__/changeDetailPage.test.tsx`
   - New: (none)
   - Removed: (none)

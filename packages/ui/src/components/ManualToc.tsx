@@ -34,16 +34,28 @@ export function ManualToc({ bodyRef, markdownBody, headings = ".markdown h2, .ma
 
   useEffect(() => {
     const root = bodyRef.current;
-    const heads = root ? Array.from(root.querySelectorAll<HTMLElement>(headings)) : [];
-    heads.forEach((el, i) => {
-      el.id = `manual-h-${i}`;
-    });
-    setToc(heads.map((el) => ({ id: el.id, text: el.textContent ?? "", level: el.tagName === "H3" ? 3 : 2 })));
-    const kept = activeEl.current && heads.includes(activeEl.current) ? activeEl.current : (heads[0] ?? null);
-    activeEl.current = kept;
-    setActiveId(kept?.id ?? null);
-    if (!root || heads.length === 0) return;
+    let heads: HTMLElement[] = [];
+    const scan = (force: boolean) => {
+      const next = root ? Array.from(root.querySelectorAll<HTMLElement>(headings)) : [];
+      // 節點增減沒換到標題（如展開收合輪卡）就不動目錄。
+      if (!force && next.length === heads.length && next.every((el, i) => el === heads[i])) return;
+      heads = next;
+      heads.forEach((el, i) => {
+        el.id = `manual-h-${i}`;
+      });
+      setToc(heads.map((el) => ({ id: el.id, text: el.textContent ?? "", level: el.tagName === "H3" ? 3 : 2 })));
+      const kept = activeEl.current && heads.includes(activeEl.current) ? activeEl.current : (heads[0] ?? null);
+      activeEl.current = kept;
+      setActiveId(kept?.id ?? null);
+    };
+    scan(true);
+    if (!root) return;
+    // 詳情頁以分頁換文件時，新文件的內容晚一次畫面更新才掛上，重掃鍵變動那次掃到的還是前一份：
+    // 內文節點一增減就重掃。
+    const observer = new MutationObserver(() => scan(false));
+    observer.observe(root, { childList: true, subtree: true });
     const onScroll = (e: Event) => {
+      if (heads.length === 0) return;
       const scroller = e.target instanceof Element ? e.target : null;
       if (scroller && !scroller.contains(root)) return;
       const top = (scroller?.getBoundingClientRect().top ?? 0) + 12;
@@ -56,7 +68,10 @@ export function ManualToc({ bodyRef, markdownBody, headings = ".markdown h2, .ma
       setActiveId(hit.id);
     };
     document.addEventListener("scroll", onScroll, { capture: true, passive: true });
-    return () => document.removeEventListener("scroll", onScroll, { capture: true });
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("scroll", onScroll, { capture: true });
+    };
   }, [bodyRef, markdownBody, headings]);
 
   if (toc.length === 0) return null;

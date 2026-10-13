@@ -178,6 +178,19 @@ describe("輪卡片渲染（討論輪以卡片呈現）", () => {
     await waitFor(() => screen.getByText("插入的手寫標題"));
     expect(baseElement.querySelectorAll("[data-round]").length).toBe(0);
   });
+
+  // spec「詳情頁的文件樹、閱讀卡與本頁目錄」的「討論文件的本頁目錄錨點」：本頁目錄自 DOM 推導，跟著輪卡由新到舊。
+  it("本頁目錄的輪次錨點與輪卡同序：Round 2 在前、Round 1 在後", async () => {
+    const { baseElement } = await openRoundsTab(CARDS_DOC);
+    const toc = () => baseElement.querySelector("[data-detail-toc]") as HTMLElement;
+    await waitFor(() =>
+      expect(Array.from(toc().querySelectorAll("[data-manual-anchor]")).map((a) => a.textContent)).toEqual([
+        "Round 2",
+        "Round 1",
+      ]),
+    );
+    expect(baseElement.querySelector("[data-round-timeline] [data-round]")!.getAttribute("data-round")).toBe("2");
+  });
 });
 
 // spec 需求「討論結論以欄位標籤呈現」（design D7 六詞白名單共用欄位解析）。
