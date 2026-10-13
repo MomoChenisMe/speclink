@@ -1,9 +1,10 @@
 ---
 topic: 詳情頁的審查／驗證章籤在身分區與狀態區重複顯示
 slug: detail-quality-stamp-dedup
-status: concluded
+status: promoted
 created: 2026-10-13
 created_by: MomoChen <momochenisme@gmail.com>
+promoted_to: detail-quality-stamp-dedup
 ---
 
 # Discussion: 詳情頁的審查／驗證章籤在身分區與狀態區重複顯示
