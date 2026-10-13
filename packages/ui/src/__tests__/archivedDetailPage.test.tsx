@@ -107,6 +107,7 @@ describe("ArchivedDetailPage（封存變更）", () => {
     expect(title.querySelector("[data-review-outcome]")).toBeNull();
     expect(title.querySelector("[data-verify-outcome]")).toBeNull();
     expect(document.querySelectorAll("[data-review-outcome]")).toHaveLength(1);
+    expect(document.querySelectorAll("[data-verify-outcome]")).toHaveLength(1);
     await waitFor(() => expect(statusRow("tasks")!.textContent).toContain("1/2"));
     expect(statusRow("quality")!.textContent).toContain("已審查");
     expect(statusRow("quality")!.textContent).toContain("曾驗證未通過");
