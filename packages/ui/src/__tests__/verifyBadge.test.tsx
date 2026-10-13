@@ -132,10 +132,18 @@ describe("兩站同狀態同色、異形可辨（design D5）", () => {
   });
 });
 
+/** 章籤只在「狀態」區的「品質關卡」列，身分區沒有（spec「變更詳情頁的標頭與狀態卡」）。 */
+function qualityStamp(mark: string) {
+  const row = document.querySelector(mark) as HTMLElement;
+  expect(row).toBeTruthy();
+  expect(row.closest("[data-status-quality]")).toBeTruthy();
+  expect(row.closest("[data-detail-identity]")).toBeNull();
+  return row;
+}
+
 describe("ChangeDetailPage 驗證章籤", () => {
-  it("verified 章籤可視僅狀態詞——蓋章時間與驗證者收進提示", () => {
-    // spec Scenario「已驗證抽屜」＋「狀態列章籤與提示」：日期與含 email 的完整
-    // 識別不再直出（提示內容由 changeDetailPage.test.tsx 驗）。
+  it("verified 章籤落在品質關卡列：狀態詞＋蓋章日期，驗證者收進提示", () => {
+    // 含 email 的完整識別不直出，收進主題化提示（提示內容由 changeDetailPage.test.tsx 驗）。
     render(
       <ChangeDetailPage
         {...(drawerProps({
@@ -146,17 +154,15 @@ describe("ChangeDetailPage 驗證章籤", () => {
         }) as never)}
       />,
     );
-    const row = document.querySelector("[data-verify-row]") as HTMLElement;
-    expect(row).toBeTruthy();
+    const row = qualityStamp("[data-verify-row]");
     expect(within(row).getByText(/已驗證/)).toBeTruthy();
-    expect(row.textContent).not.toContain("2026-08-02");
+    expect(row.textContent).toContain("2026-08-02");
     expect(row.textContent).not.toContain("v@example.com");
   });
 
   it("inVerify 僅顯示狀態詞，無時間與驗證者", () => {
     render(<ChangeDetailPage {...(drawerProps({ ...base, verifyStatus: "inVerify" }) as never)} />);
-    const row = document.querySelector("[data-verify-row]") as HTMLElement;
-    expect(row).toBeTruthy();
+    const row = qualityStamp("[data-verify-row]");
     expect(within(row).getByText(/驗證中/)).toBeTruthy();
     expect(row.textContent).not.toContain("2026-");
   });

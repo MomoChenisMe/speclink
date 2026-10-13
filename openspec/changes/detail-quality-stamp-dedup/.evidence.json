@@ -1,0 +1,84 @@
+{
+  "version": 2,
+  "change": "detail-quality-stamp-dedup",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫紅燈（spec「變更詳情頁的標頭與狀態卡」的「章籤與品質關卡列」「品質關卡列的空態與進行中」；design D1、D2、D3）：改寫 `packages/ui/src/__tests__/changeDetailPage.test.tsx` 的「標頭與狀態卡」群組——reviewed＋verified 時身分區（`[data-detail-identity]`）只有「已就緒」、文字不含「已審查」「已驗證」；「品質關卡」列（`[data-status-quality]`）依序含「已審查」「2026-08-04」「已驗證」「2026-08-06」、不含 email；在「品質關卡」列內停留「已審查」時提示含 2026-08-04 與 email，停留「已驗證」時提示含驗證站自己的日期與識別；inReview＋inVerify 時身分區不含「審查中」「驗證中」、「品質關卡」列含兩者且無日期；兩站 none 時全頁沒有 `[data-review-row]`、`[data-verify-row]`。改寫 `packages/ui/src/__tests__/reviewBadge.test.tsx` 與 `packages/ui/src/__tests__/verifyBadge.test.tsx` 的 ChangeDetailPage 章籤群組——`[data-review-row]`／`[data-verify-row]` 位於 `[data-status-quality]` 內、不在身分區內，reviewed／verified 時列內含狀態詞與蓋章日期、不含 email；inReview／inVerify 時列內無日期；none 時不渲染；配色題（`[data-review-row] [data-review-tone]`）與兩站同構題照舊。驗證：`npm test -w packages/ui -- changeDetailPage reviewBadge verifyBadge` 中改寫的題目失敗、其餘照綠。",
+      "files": [
+        "packages/ui/src/__tests__/changeDetailPage.test.tsx",
+        "packages/ui/src/__tests__/reviewBadge.test.tsx",
+        "packages/ui/src/__tests__/verifyBadge.test.tsx"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 讓 1.1 轉綠（design D1「身分區只留階段籤」、D2「品質關卡列的章籤元件合一」、D3「既有 data 標記跟著章籤搬到品質關卡列」）：`packages/ui/src/components/ChangeDetailPage.tsx` 的 DetailIdentity badges 只放階段籤；TitleStamp 退場，改成模組內私有的 QualityStamp 元件——外層 inline-flex span 帶 `data-review-row`／`data-verify-row`、內含帶 `data-review-tone`／`data-verify-tone` 的 StatusPill 與蓋章日期（有日期時），蓋章日期或蓋章者任一存在時整個 span 為 Tooltip 觸發點、提示為兩者以「 · 」相連，兩者皆缺時不包 Tooltip；「品質關卡」列對每一站渲染它，兩站皆 none 時照舊顯示「尚未經過品質關卡」；同步改寫提到「標題列」「身分區章籤」的註解。驗證：`npm test -w packages/ui -- changeDetailPage reviewBadge verifyBadge statusPill` 全綠。",
+      "files": [
+        "packages/ui/src/components/ChangeDetailPage.tsx"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 先寫紅燈（spec「已封存項目以詳情頁檢視」的「封存變更詳情頁的標題列、出身列與狀態卡」；design D1、D3）：改寫 `packages/ui/src/__tests__/archivedDetailPage.test.tsx`——reviewed＋verifiedNotPassed 時身分區有「已封存」籤（`[data-archived-status]`）、沒有 `[data-review-outcome]` 與 `[data-verify-outcome]`；「品質關卡」列（`[data-status-quality]`）含「已審查」「曾驗證未通過」；全頁 `[data-review-outcome]` 恰有一個。兩站皆無時「品質關卡」列為「未經品質關卡」的題照舊。驗證：`npm test -w packages/ui -- archivedDetailPage` 中改寫的題目失敗、其餘照綠。",
+      "files": [
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 讓 2.1 轉綠（design D1、D3）：`packages/ui/src/components/ArchivedDetailPage.tsx` 的 DetailIdentity badges 只放「已封存」籤，結局籤片段只渲染在「品質關卡」列；同步改寫「標題列與狀態卡共用」的註解。驗證：`npm test -w packages/ui -- archivedDetailPage reviewBadge verifyBadge` 全綠（含已封存側配色題與「曾審查未通過」「曾驗證未通過」標示題）。",
+      "files": [
+        "packages/ui/src/components/ArchivedDetailPage.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4TRQA8FJWP2KRQZ3VH6MF13",
+      "taskDesc": "1.1 先寫紅燈（spec「變更詳情頁的標頭與狀態卡」的「章籤與品質關卡列」「品質關卡列的空態與進行中」；design D1、D2、D3）：改寫 `packages/ui/src/__tests__/changeDetailPage.test.tsx` 的「標頭與狀態卡」群組——reviewed＋verified 時身分區（`[data-detail-identity]`）只有「已就緒」、文字不含「已審查」「已驗證」；「品質關卡」列（`[data-status-quality]`）依序含「已審查」「2026-08-04」「已驗證」「2026-08-06」、不含 email；在「品質關卡」列內停留「已審查」時提示含 2026-08-04 與 email，停留「已驗證」時提示含驗證站自己的日期與識別；inReview＋inVerify 時身分區不含「審查中」「驗證中」、「品質關卡」列含兩者且無日期；兩站 none 時全頁沒有 `[data-review-row]`、`[data-verify-row]`。改寫 `packages/ui/src/__tests__/reviewBadge.test.tsx` 與 `packages/ui/src/__tests__/verifyBadge.test.tsx` 的 ChangeDetailPage 章籤群組——`[data-review-row]`／`[data-verify-row]` 位於 `[data-status-quality]` 內、不在身分區內，reviewed／verified 時列內含狀態詞與蓋章日期、不含 email；inReview／inVerify 時列內無日期；none 時不渲染；配色題（`[data-review-row] [data-review-tone]`）與兩站同構題照舊。驗證：`npm test -w packages/ui -- changeDetailPage reviewBadge verifyBadge` 中改寫的題目失敗、其餘照綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "417d38c6c122565dd42e7d1b65928a045ec8cb99",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/changeDetailPage.test.tsx",
+        "packages/ui/src/__tests__/reviewBadge.test.tsx",
+        "packages/ui/src/__tests__/verifyBadge.test.tsx"
+      ],
+      "recordedAt": "2026-10-13T14:30:13Z"
+    },
+    {
+      "taskId": "tsk_01M4TRQA8FSA9SC9Z8SHEK9VY7",
+      "taskDesc": "1.2 讓 1.1 轉綠（design D1「身分區只留階段籤」、D2「品質關卡列的章籤元件合一」、D3「既有 data 標記跟著章籤搬到品質關卡列」）：`packages/ui/src/components/ChangeDetailPage.tsx` 的 DetailIdentity badges 只放階段籤；TitleStamp 退場，改成模組內私有的 QualityStamp 元件——外層 inline-flex span 帶 `data-review-row`／`data-verify-row`、內含帶 `data-review-tone`／`data-verify-tone` 的 StatusPill 與蓋章日期（有日期時），蓋章日期或蓋章者任一存在時整個 span 為 Tooltip 觸發點、提示為兩者以「 · 」相連，兩者皆缺時不包 Tooltip；「品質關卡」列對每一站渲染它，兩站皆 none 時照舊顯示「尚未經過品質關卡」；同步改寫提到「標題列」「身分區章籤」的註解。驗證：`npm test -w packages/ui -- changeDetailPage reviewBadge verifyBadge statusPill` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "417d38c6c122565dd42e7d1b65928a045ec8cb99",
+      "touchedFiles": [
+        "packages/ui/src/components/ChangeDetailPage.tsx"
+      ],
+      "recordedAt": "2026-10-13T14:31:02Z"
+    },
+    {
+      "taskId": "tsk_01M4TRQA8FKVAF794QT0N4FGFN",
+      "taskDesc": "2.1 先寫紅燈（spec「已封存項目以詳情頁檢視」的「封存變更詳情頁的標題列、出身列與狀態卡」；design D1、D3）：改寫 `packages/ui/src/__tests__/archivedDetailPage.test.tsx`——reviewed＋verifiedNotPassed 時身分區有「已封存」籤（`[data-archived-status]`）、沒有 `[data-review-outcome]` 與 `[data-verify-outcome]`；「品質關卡」列（`[data-status-quality]`）含「已審查」「曾驗證未通過」；全頁 `[data-review-outcome]` 恰有一個。兩站皆無時「品質關卡」列為「未經品質關卡」的題照舊。驗證：`npm test -w packages/ui -- archivedDetailPage` 中改寫的題目失敗、其餘照綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "417d38c6c122565dd42e7d1b65928a045ec8cb99",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx"
+      ],
+      "recordedAt": "2026-10-13T14:31:26Z"
+    },
+    {
+      "taskId": "tsk_01M4TRQA8F658VK6TTGPHQAMDQ",
+      "taskDesc": "2.2 讓 2.1 轉綠（design D1、D3）：`packages/ui/src/components/ArchivedDetailPage.tsx` 的 DetailIdentity badges 只放「已封存」籤，結局籤片段只渲染在「品質關卡」列；同步改寫「標題列與狀態卡共用」的註解。驗證：`npm test -w packages/ui -- archivedDetailPage reviewBadge verifyBadge` 全綠（含已封存側配色題與「曾審查未通過」「曾驗證未通過」標示題）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "417d38c6c122565dd42e7d1b65928a045ec8cb99",
+      "touchedFiles": [
+        "packages/ui/src/components/ArchivedDetailPage.tsx"
+      ],
+      "recordedAt": "2026-10-13T14:31:49Z"
+    }
+  ]
+}

@@ -90,8 +90,8 @@ describe("ArchivedDetailPage（封存變更）", () => {
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("已複製"));
   });
 
-  it("身分區帶已封存籤與結局籤；狀態列三列為任務 n/m、品質關卡結局、封存日期；無進度條與動作區", async () => {
-    // spec Scenario「封存變更詳情頁的標題列、出身列與狀態卡」。
+  it("身分區只帶已封存籤；狀態列三列為任務 n/m、品質關卡結局、封存日期；無進度條與動作區", async () => {
+    // spec Scenario「封存變更詳情頁的標題列、出身列與狀態卡」：結局籤只在「品質關卡」列。
     render(
       <ArchivedDetailPage
         {...(makeProps({
@@ -104,8 +104,9 @@ describe("ArchivedDetailPage（封存變更）", () => {
     await waitFor(() => expect(screen.getByText("封存提案內文。")).toBeTruthy());
     const title = identity();
     expect(title.querySelector("[data-archived-status]")!.textContent).toBe("已封存");
-    expect(title.querySelector("[data-review-outcome]")!.textContent).toContain("已審查");
-    expect(title.querySelector("[data-verify-outcome]")!.textContent).toContain("曾驗證未通過");
+    expect(title.querySelector("[data-review-outcome]")).toBeNull();
+    expect(title.querySelector("[data-verify-outcome]")).toBeNull();
+    expect(document.querySelectorAll("[data-review-outcome]")).toHaveLength(1);
     await waitFor(() => expect(statusRow("tasks")!.textContent).toContain("1/2"));
     expect(statusRow("quality")!.textContent).toContain("已審查");
     expect(statusRow("quality")!.textContent).toContain("曾驗證未通過");

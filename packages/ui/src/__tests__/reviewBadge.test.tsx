@@ -79,10 +79,18 @@ describe("ChangeCard 審查章（四態）", () => {
   });
 });
 
+/** 章籤只在「狀態」區的「品質關卡」列，身分區沒有（spec「變更詳情頁的標頭與狀態卡」）。 */
+function qualityStamp(mark: string) {
+  const row = document.querySelector(mark) as HTMLElement;
+  expect(row).toBeTruthy();
+  expect(row.closest("[data-status-quality]")).toBeTruthy();
+  expect(row.closest("[data-detail-identity]")).toBeNull();
+  return row;
+}
+
 describe("ChangeDetailPage 審查章籤", () => {
-  it("reviewed 章籤可視僅狀態詞——蓋章時間與審查者收進提示", () => {
-    // 狀態列改章籤（spec「變更詳情抽屜標頭的四層結構」）：日期與含 email 的完整
-    // 識別不再直出，收進主題化提示（提示內容由 changeDetailPage.test.tsx 驗）。
+  it("reviewed 章籤落在品質關卡列：狀態詞＋蓋章日期，審查者收進提示", () => {
+    // 含 email 的完整識別不直出，收進主題化提示（提示內容由 changeDetailPage.test.tsx 驗）。
     render(
       <ChangeDetailPage
         {...(drawerProps({
@@ -93,17 +101,15 @@ describe("ChangeDetailPage 審查章籤", () => {
         }) as never)}
       />,
     );
-    const row = document.querySelector("[data-review-row]") as HTMLElement;
-    expect(row).toBeTruthy();
+    const row = qualityStamp("[data-review-row]");
     expect(within(row).getByText(/已審查/)).toBeTruthy();
-    expect(row.textContent).not.toContain("2026-08-01");
+    expect(row.textContent).toContain("2026-08-01");
     expect(row.textContent).not.toContain("r@example.com");
   });
 
   it("inReview 僅顯示狀態詞，無時間與審查者", () => {
     render(<ChangeDetailPage {...(drawerProps({ ...base, reviewStatus: "inReview" }) as never)} />);
-    const row = document.querySelector("[data-review-row]") as HTMLElement;
-    expect(row).toBeTruthy();
+    const row = qualityStamp("[data-review-row]");
     expect(within(row).getByText(/審查中/)).toBeTruthy();
     expect(row.textContent).not.toContain("2026-");
   });
