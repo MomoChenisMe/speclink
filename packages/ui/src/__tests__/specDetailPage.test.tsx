@@ -307,6 +307,8 @@ describe("SpecDetailPage（左欄與閱讀卡標題）", () => {
     );
     await waitFor(() => expect(sections()).toHaveLength(15));
     const relation = document.querySelector("[data-relation-trace]") as HTMLElement;
+    // 「+N」籤本身是灰底：滑過換主色淡底，不是更淡的灰。
+    expect(within(relation).getByRole("button", { name: "+8" }).className).toContain("hover:bg-accent");
     fireEvent.click(within(relation).getByRole("button", { name: "+8" }));
     await waitFor(() => expect(tab(/溯源/).getAttribute("aria-selected")).toBe("true"));
     const header = document.querySelector("[data-doc-header]") as HTMLElement;

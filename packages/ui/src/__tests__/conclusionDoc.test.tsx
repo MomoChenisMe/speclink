@@ -143,6 +143,18 @@ describe("ConclusionDoc", () => {
     expect(writeText).toHaveBeenCalledWith("/speclink-propose --from-discussion detail-content-redesign");
   });
 
+  it("記錄去向的長句籤可折行、不撐出卡片；整顆規格籤維持不換行", () => {
+    const long = "design 的 D3 補一段說明背景文件名稱籤的鍵盤操作與焦點順序";
+    const { container } = render(
+      <ConclusionDoc text={`**Decision**: 定\n**Capture to**: desktop-app、${long}`} specNames={["desktop-app"]} onOpenSpec={() => {}} />,
+    );
+    const chips = Array.from(section(container, "conclusion.captureTo").querySelectorAll<HTMLElement>("[data-capture-chip]"));
+    expect(chips.map((c) => c.textContent)).toEqual(["desktop-app", long]);
+    expect(chips[1].className).not.toContain("shrink-0");
+    expect(chips[1].className).toContain("break-words");
+    expect(chips[1].className).toContain("max-w-full");
+  });
+
   it("[data-doc-heading] 依序為決定、分刀、理由、否決替代案、擱置、記錄去向、下一步", () => {
     const { container } = render(<ConclusionDoc text={CUTS} />);
     expect(Array.from(container.querySelectorAll("[data-doc-heading]")).map((h) => h.textContent)).toEqual([

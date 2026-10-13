@@ -782,6 +782,11 @@ function AppInner({
   // 討論文件的名稱籤（desktop-discussion-doc-views design D8）：正式規格名與全部討論 slug。
   const specNames = s.specs.map((x) => x.id);
   const discussionSlugs = allDiscussions.map((d) => d.slug);
+  // 已封存討論頁背景文件的討論籤：作用中的開討論詳情頁，其餘開已封存討論頁（來源討論籤恆開已封存頁）。
+  const openAnyDiscussion = (slug: string) =>
+    s.discussions.active.some((d) => d.slug === slug)
+      ? s.openDiscussion(slug)
+      : s.openArchived({ kind: "discussion", slug });
   // 點衍生籤：已封存→封存抽屜（底層不切頁）；活躍→詳情抽屜（openDetail 依正典落回看板）。
   const openPromotedChange = (name: string) => {
     const archivedHit = s.archived.find((a) => a.name === name);
@@ -1014,6 +1019,7 @@ function AppInner({
       loadDiscussionDocument={(slug) => dataSource?.getDiscussionDocument(slug) ?? Promise.resolve(null)}
       sourceDiscussions={archivedSourceDiscussions}
       onOpenDiscussion={(slug) => s.openArchived({ kind: "discussion", slug })}
+      onOpenContextDiscussion={openAnyDiscussion}
       promotedChanges={archivedPromotedChanges}
       onOpenPromotedChange={openPromotedChange}
       reviewStatus={archivedItem?.reviewStatus}

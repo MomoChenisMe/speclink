@@ -1,6 +1,6 @@
 import type { KeyboardEvent, ReactNode, SyntheticEvent } from "react";
 
-import { contextRelations, parseContextMeta, splitLead } from "../discussionModel";
+import { splitLead, type ContextModel } from "../discussionModel";
 import { useI18n } from "../i18n";
 import { CopyButton } from "./CopyButton";
 import { displayName } from "./DetailHeader";
@@ -9,19 +9,14 @@ import { isImproveKind } from "./improveStyle";
 import { Markdown, type NameChip as NameChipRef } from "./Markdown";
 
 export interface ContextDocProps {
-  text: string;
+  /** 背景的推導（`contextModel`）：收尾行、關聯與比對所用的名稱清單（本討論的 slug 為 `names.self`）。 */
+  model: ContextModel;
   empty?: string;
-  /** 本討論的 slug：先前討論的比對排除自己。 */
-  slug: string;
   created?: string | null;
   createdBy?: string | null;
   kind?: string | null;
   /** 記錄檔路徑；已封存討論頁為 null（記錄列不出檔案列）。 */
   recordPath: string | null;
-  specNames: string[];
-  activeNames: string[];
-  archivedNames: string[];
-  discussionSlugs: string[];
   onOpenSpec?: (capability: string) => void;
   onOpenChange?: (name: string) => void;
   /** 開已封存變更（以變更名；宿主自己換成封存目錄名）。 */
@@ -58,15 +53,11 @@ function MetaRows({ rows }: { rows: MetaRow[] }) {
  */
 export function ContextDoc(props: ContextDocProps) {
   const { t } = useI18n();
-  if (!props.text.trim()) return <Markdown content="" empty={props.empty} />;
-  const meta = parseContextMeta(props.text);
-  const rel = contextRelations(meta, {
-    specs: props.specNames,
-    active: props.activeNames,
-    archived: props.archivedNames,
-    discussions: props.discussionSlugs,
-    self: props.slug,
-  });
+  const { meta, rel, names } = props.model;
+  // 背景全空白：沒有內文、也沒有任何收尾行。
+  if (!meta.body && meta.specs === null && meta.changes === null && meta.prior === null && meta.sourceDoc === null) {
+    return <Markdown content="" empty={props.empty} />;
+  }
   const { lead, rest } = splitLead(meta.body);
   const open: Record<ChipKind, ((name: string) => void) | undefined> = {
     spec: props.onOpenSpec,
@@ -83,19 +74,23 @@ export function ContextDoc(props: ContextDocProps) {
     ] as const
   ).flatMap(([kind, names]) => (open[kind] ? names.map((name) => ({ kind, name })) : []));
 
-  // 內文名稱籤的點擊與鍵盤啟動：籤以 `kind:name` 標在 data 屬性上。
-  const activate = (e: SyntheticEvent) => {
-    const chip = (e.target as HTMLElement).closest?.("[data-name-chip]");
-    const value = chip?.getAttribute("data-name-chip");
-    if (!value) return;
+  // 內文名稱籤的點擊與鍵盤啟動：籤以 `kind:name` 標在 data 屬性上；事件不是來自籤時不攔（連結、複製鈕照常）。
+  const chipOf = (e: SyntheticEvent) =>
+    (e.target as HTMLElement).closest?.("[data-name-chip]")?.getAttribute("data-name-chip") ?? null;
+  const activate = (value: string) => {
     const at = value.indexOf(":");
     open[value.slice(0, at) as ChipKind]?.(value.slice(at + 1));
   };
+  const onClick = (e: SyntheticEvent) => {
+    const value = chipOf(e);
+    if (value) activate(value);
+  };
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      activate(e);
-    }
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const value = chipOf(e);
+    if (!value) return;
+    e.preventDefault();
+    activate(value);
   };
 
   const chipRow = (names: string[], known: string[], onOpen?: (name: string) => void) =>
@@ -106,22 +101,22 @@ export function ContextDoc(props: ContextDocProps) {
     rel.specs.length > 0 && {
       key: "specs",
       label: t("context.relSpecs"),
-      value: chipRow(rel.specs, props.specNames, props.onOpenSpec),
+      value: chipRow(rel.specs, names.specs, props.onOpenSpec),
     },
     rel.changes.length > 0 && {
       key: "changes",
       label: t("context.relChanges"),
-      value: chipRow(rel.changes, props.activeNames, props.onOpenChange),
+      value: chipRow(rel.changes, names.active, props.onOpenChange),
     },
     rel.archived.length > 0 && {
       key: "archived",
       label: t("context.relArchived"),
-      value: chipRow(rel.archived, props.archivedNames, props.onOpenArchivedChange),
+      value: chipRow(rel.archived, names.archived, props.onOpenArchivedChange),
     },
     rel.prior.length > 0 && {
       key: "prior",
       label: t("context.relPrior"),
-      value: chipRow(rel.prior, props.discussionSlugs, props.onOpenDiscussion),
+      value: chipRow(rel.prior, names.discussions, props.onOpenDiscussion),
     },
     meta.sourceDoc !== null && {
       key: "source",
@@ -155,7 +150,7 @@ export function ContextDoc(props: ContextDocProps) {
       {(lead || rest) && (
         <DocSection sectionKey="context.intro" title={t("context.intro")}>
           {/* 籤由 Markdown 外掛產生、不是元件：點擊與鍵盤在容器上攔。 */}
-          <div className={`flex flex-col gap-3 ${NAME_CHIP_HOST_CLS}`} onClick={activate} onKeyDown={onKeyDown}>
+          <div className={`flex flex-col gap-3 ${NAME_CHIP_HOST_CLS}`} onClick={onClick} onKeyDown={onKeyDown}>
             {lead && (
               <div data-context-lead>
                 <Lead>

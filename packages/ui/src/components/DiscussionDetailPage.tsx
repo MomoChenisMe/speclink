@@ -32,7 +32,14 @@ import { PromotedDoc, promotedRows, rowStage } from "./PromotedDoc";
 import { ConclusionDoc } from "./ConclusionDoc";
 import { ContextDoc, type ContextDocProps } from "./ContextDoc";
 import { RoundsDoc } from "./RoundsDoc";
-import { discussionDocData, discussionDocProvenance, discussionDocSummary, type DiscussionDocData } from "./discussionDocSummary";
+import {
+  discussionDocData,
+  discussionDocProvenance,
+  discussionDocSummary,
+  discussionNames,
+  type DiscussionDocData,
+  type DiscussionTab,
+} from "./discussionDocSummary";
 import { isImproveKind } from "./improveStyle";
 
 export interface DiscussionDetailPageProps {
@@ -120,10 +127,9 @@ function defaultDiscussionTab(sections: DiscussionSections | null): "conclusion"
 
 /** 受控文件的實際值：所選文件不在目前的節點組（記錄切分前後不同）時退回預設——切分成功取
  * `defaultDiscussionTab`，失敗取「記錄」。討論詳情頁與已封存討論頁共用。 */
-export function discussionDoc(picked: string | null, sections: DiscussionSections | null): string {
-  const docs = sections ? ["conclusion", "rounds", "context", "promote"] : ["record", "promote"];
-  if (picked && docs.includes(picked)) return picked;
-  return sections ? defaultDiscussionTab(sections) : "record";
+export function discussionDoc(picked: string | null, sections: DiscussionSections | null): DiscussionTab {
+  const docs: DiscussionTab[] = sections ? ["conclusion", "rounds", "context", "promote"] : ["record", "promote"];
+  return docs.find((d) => d === picked) ?? (sections ? defaultDiscussionTab(sections) : "record");
 }
 
 /** 衍生變更（列與籤共用）：變更名、狀態標示；`onOpen` 缺席＝不可開啟。 */
@@ -173,29 +179,37 @@ export function DiscussionDocs({
 }: {
   doc: string | null | undefined;
   data: DiscussionDocData;
-  context: Omit<ContextDocProps, "text" | "empty">;
+  /** 背景文件的身分與開啟回呼；推導、建立日與記錄路徑取自 `data`。 */
+  context: Omit<ContextDocProps, "model" | "empty" | "created" | "recordPath">;
   empty: { conclusion: string; rounds: string; context: string };
 }) {
   const { t } = useI18n();
+  const { sections, context: model } = data;
   return (
     <>
-      {data.sections ? (
+      {sections && model ? (
         <>
           <TabsContent value="conclusion">
             <ConclusionDoc
-              text={data.sections.conclusion}
+              text={sections.conclusion}
               empty={empty.conclusion}
               stageOf={rowStage(data.rows)}
-              specNames={context.specNames}
+              specNames={model.names.specs}
               onOpenSpec={context.onOpenSpec}
             />
           </TabsContent>
           <TabsContent value="rounds">
             {/* 換討論時展開狀態歸零。 */}
-            <RoundsDoc key={context.slug} text={data.sections.rounds} empty={empty.rounds} />
+            <RoundsDoc key={model.names.self} text={sections.rounds} empty={empty.rounds} />
           </TabsContent>
           <TabsContent value="context">
-            <ContextDoc {...context} text={data.sections.context} empty={empty.context} />
+            <ContextDoc
+              {...context}
+              model={model}
+              created={data.created}
+              recordPath={data.recordPath}
+              empty={empty.context}
+            />
           </TabsContent>
         </>
       ) : (
@@ -277,14 +291,9 @@ export function DiscussionDetailPage({
 
   if (!discussion) return null;
 
-  const rows = promotedRows(discussion.promotedTo, changes, archivedChanges, t, onOpenChangeCard, onOpenArchivedChange);
-  const names = {
-    specs: specNames ?? [],
-    active: changes.map((c) => c.name),
-    archived: archivedChanges.map((a) => a.name),
-    discussions: discussionSlugs ?? [],
-    self: discussion.slug,
-  };
+  // 衍生列與背景的已封存變更籤都以變更名開啟：換成封存目錄名再交給宿主。
+  const openArchivedName = onOpenArchivedChange && openArchivedByName(archivedChanges, onOpenArchivedChange);
+  const rows = promotedRows(discussion.promotedTo, changes, archivedChanges, t, onOpenChangeCard, openArchivedName);
   const recordPath = `openspec/discussions/${discussion.slug}.md`;
   const data = discussionDocData({
     text: doc,
@@ -293,7 +302,7 @@ export function DiscussionDetailPage({
     created: discussion.created ?? null,
     recordPath,
     rows,
-    names,
+    names: discussionNames(discussion.slug, { specNames, changes, archivedChanges, discussionSlugs }),
   });
   const { sections } = data;
   const pill = statusPill(discussion);
@@ -465,18 +474,11 @@ export function DiscussionDetailPage({
                 doc={doc}
                 data={data}
                 context={{
-                  slug: discussion.slug,
-                  created: discussion.created,
                   createdBy: discussion.createdBy,
                   kind: discussion.kind,
-                  recordPath,
-                  specNames: names.specs,
-                  activeNames: names.active,
-                  archivedNames: names.archived,
-                  discussionSlugs: names.discussions,
                   onOpenSpec,
                   onOpenChange: onOpenChangeCard,
-                  onOpenArchivedChange: onOpenArchivedChange && openArchivedByName(archivedChanges, onOpenArchivedChange),
+                  onOpenArchivedChange: openArchivedName,
                   onOpenDiscussion,
                 }}
                 empty={{

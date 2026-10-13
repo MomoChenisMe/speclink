@@ -212,6 +212,9 @@ describe("countPriorDiscussions", () => {
     ["Prior discussions: NONE（尚無）", null],
     ["Prior discussions: none-legacy-topic", 1],
     ["Prior discussions: alpha-one, beta-two", 2],
+    // 與背景的先前討論籤同一套切法：分號也切項、重複名只算一次、括號內的頓號不算。
+    ["Prior discussions: alpha-one（甲、乙）；beta-two。", 2],
+    ["Prior discussions: alpha-one, alpha-one", 1],
   ])("countPriorDiscussions(%s) → %s：none 開頭的變體寫法都算沒有先前討論", (line, expected) => {
     expect(countPriorDiscussions(`框架脈絡。\n\n${line}`)).toBe(expected);
   });
@@ -338,6 +341,7 @@ describe("parseCuts", () => {
   it.each([
     "**範圍與驗收**：只改 UI 渲染",
     "**cutover 計畫**：切換步驟",
+    "**Cut scope**：範圍說明",
     "**`desktop-app`**: 粗體內只有反引號",
     "cut 1 `x`：沒有粗體",
   ])("%s 不是分刀，留在定案細節", (line) => {
@@ -377,6 +381,13 @@ describe("parseCuts", () => {
       "三平台標題列",
       "新原語 dropdown-menu、kbd、page-header",
     ]);
+  });
+
+  it("分刀列的縮排續行散文與巢狀子項依序成為卡內細線列，不丟內容", () => {
+    const { cuts } = parseCuts(
+      splitVerdict(["定論。", "- **cut 1 `a-one`**: 骨架——說明", "  續行散文一句。", "  - 子項"].join("\n")).details,
+    );
+    expect(cuts[0].items).toEqual(["說明", "續行散文一句。", "子項"]);
   });
 
   it("含空白的反引號片段不算變更名", () => {
@@ -512,6 +523,20 @@ describe("parseContextMeta", () => {
     });
   });
 
+  it("名稱止於括號、句尾標點拿掉、英數段後緊接的中文不算進名稱（真實記錄 spec-manual-page-alignment）", () => {
+    const meta = parseContextMeta(
+      [
+        "內文。",
+        "Related specs: desktop-app（桌面 app 呈現、markdown 內容）；desktop-manual-page（手冊頁的側欄樹）。",
+        "Related changes: desktop-change-doc-views（在途、apply 中）會改寫 markdown 的兩條需求；desktop-detail-doc-tree定義了三欄骨架；desktop-discussion-doc-views（cut 3，尚未建）。",
+        "Prior discussions: config-context-與-rules-gui-編輯, 桌面即時刷新與封存瀏覽。",
+      ].join("\n"),
+    );
+    expect(meta.specs).toEqual(["desktop-app", "desktop-manual-page"]);
+    expect(meta.changes).toEqual(["desktop-change-doc-views", "desktop-detail-doc-tree", "desktop-discussion-doc-views"]);
+    expect(meta.prior).toEqual(["config-context-與-rules-gui-編輯", "桌面即時刷新與封存瀏覽"]);
+  });
+
   it("圍欄內的同名行不剝", () => {
     const meta = parseContextMeta("```\nRelated specs: x\n```");
     expect(meta.specs).toBeNull();
@@ -601,6 +626,17 @@ describe("commandChips", () => {
     expect(commandChips("跑 `/speclink-quality` 後 /speclink-archive x-y；再 /speclink-quality")).toEqual([
       "/speclink-quality",
       "/speclink-archive x-y",
+    ]);
+  });
+
+  it("中文 slug 的參數完整擷取；英數段後緊接的中文、句尾句點與空白後的中文不算", () => {
+    expect(commandChips("/speclink-propose --from-discussion config-context-與-rules-gui-編輯")).toEqual([
+      "/speclink-propose --from-discussion config-context-與-rules-gui-編輯",
+    ]);
+    expect(commandChips("跑 /speclink-apply 的時候；/speclink-archive x-y後再推。最後 /speclink-archive z-w.")).toEqual([
+      "/speclink-apply",
+      "/speclink-archive x-y",
+      "/speclink-archive z-w",
     ]);
   });
 

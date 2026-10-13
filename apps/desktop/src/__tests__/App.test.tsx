@@ -1574,6 +1574,37 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     expect(crumbText()).toBe("proj-a/已封存/old-topic");
   });
 
+  it("封存變更的來源討論仍在作用中（保留在途）時，點來源討論籤同樣開已封存詳情頁、宿主維持已封存頁", async () => {
+    const ds = fakeDataSource({
+      listArchived: vi.fn().mockResolvedValue([
+        { datedName: "2026-07-04-old", date: "2026-07-04", name: "old", specCount: 1, createdBy: null, fromDiscussions: ["held-topic"] },
+      ]),
+      listDiscussions: vi.fn().mockResolvedValue({
+        active: [
+          { slug: "held-topic", topic: "Held topic", status: "promoted", rounds: 1, created: "2026-06-30", promotedTo: ["old"], hold: true },
+        ],
+        archived: [],
+      }),
+      getArchivedDocument: vi.fn().mockResolvedValue("## Why\n\n封存提案內文。"),
+      getDiscussionDocument: vi
+        .fn()
+        .mockResolvedValue(
+          "---\ntopic: Held topic\nslug: held-topic\nstatus: promoted\ncreated: 2026-06-30\n---\n\n# Discussion: Held topic\n\n## Context\n\n背景。\n\n## Rounds\n\n## Conclusion\n\n**Decision**: 收工\n",
+        ),
+    });
+    renderApp(ds);
+    await waitFor(() => screen.getByText("desktop-shell-and-browser"));
+    const archivedNav = within(projectColumn()).getByRole("button", { name: /已封存/ });
+    fireEvent.click(archivedNav);
+    fireEvent.click(await screen.findByText("old"));
+    const layer = await screen.findByTestId("detail-page");
+    await waitFor(() => expect(within(layer).getByText("封存提案內文。")).toBeTruthy());
+    fireEvent.click(within(layer).getByRole("button", { name: /held-topic/ }));
+    await waitFor(() => expect(document.querySelector('[data-archived-detail="discussion"]')).toBeTruthy());
+    expect(document.querySelector("[data-discussion-detail]")).toBeNull();
+    expect(archivedNav.className).toContain("bg-primary");
+  });
+
   it("已封存頁點封存討論列開已封存討論詳情頁（階段列現站「已封存」）", async () => {
     const ds = fakeDataSource({
       listDiscussions: vi.fn().mockResolvedValue({
@@ -2286,6 +2317,43 @@ describe("溯源與衍生變更接線（desktop-readonly-detail-pages）", () =>
     expect(ds.getArchivedDocument).toHaveBeenCalledWith("2026-09-02-arch-child", "proposal.md");
     expect(document.querySelector('[data-archived-detail="change"]')).toBeTruthy();
     expect(archivedNav.className).toContain("bg-primary");
+  });
+
+  it("已封存討論頁背景內文的作用中討論籤開討論詳情頁，已封存討論籤開已封存討論頁", async () => {
+    const ds = fakeDataSource({
+      listDiscussions: vi.fn().mockResolvedValue({
+        active: [
+          { slug: "topic-a", topic: "Topic A", status: "open", rounds: 1, created: "2026-07-17", promotedTo: [] },
+        ],
+        archived: [
+          { slug: "old-topic", topic: "Old topic", status: "promoted", rounds: 1, created: "2026-06-30", promotedTo: [] },
+          { slug: "older-topic", topic: "Older topic", status: "concluded", rounds: 1, created: "2026-06-01", promotedTo: [] },
+        ],
+      }),
+      getDiscussionDocument: vi
+        .fn()
+        .mockResolvedValue(DISCUSSION_DOC.replace("封存背景內文。", "接續 topic-a 與 older-topic 的討論。")),
+    });
+    renderApp(ds);
+    await screen.findByText("desktop-shell-and-browser");
+    fireEvent.click(within(projectColumn()).getByRole("button", { name: /已封存/ }));
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /已封存的討論/ }));
+    fireEvent.click(await screen.findByText("Old topic"));
+    const layer = await screen.findByTestId("detail-page");
+    fireEvent.mouseDown(await within(layer).findByRole("tab", { name: /背景/ }));
+    const chip = (slug: string) =>
+      waitFor(() => {
+        const el = document.querySelector(`[data-name-chip="discussion:${slug}"]`) as HTMLElement | null;
+        expect(el).toBeTruthy();
+        return el!;
+      });
+    fireEvent.click(await chip("older-topic"));
+    await waitFor(() => expect(document.querySelector('[data-archived-detail="discussion"]')).toBeTruthy());
+    expect(document.querySelector("[data-discussion-detail]")).toBeNull();
+    fireEvent.mouseDown(await within(await screen.findByTestId("detail-page")).findByRole("tab", { name: /背景/ }));
+    fireEvent.click(await chip("topic-a"));
+    await waitFor(() => expect(document.querySelector("[data-discussion-detail]")).toBeTruthy());
+    expect(document.querySelector("[data-archived-detail]")).toBeNull();
   });
 });
 

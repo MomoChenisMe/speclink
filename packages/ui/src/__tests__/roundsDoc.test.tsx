@@ -12,7 +12,7 @@ const render = (ui: ReactElement) => rtlRender(ui, { wrapper });
 const ROUNDS = `
 <!-- \`### Round N — <mode> (<date>)\` entries are appended here by the CLI. -->
 
-### Round 1 — assumptions (2026-10-12)
+### Round 1 — assumptions (2026-07-08)
 
 **Focus**: 現況的痛點是哪一種
 **Position**: 使用者裁定：只改 UI。
@@ -45,6 +45,7 @@ const cards = (container: HTMLElement) => Array.from(container.querySelectorAll<
 const toggle = (card: HTMLElement) => card.querySelector("button[aria-expanded]") as HTMLButtonElement;
 
 describe("RoundsDoc", () => {
+  // 首輪即 spec Example「輪標題解析」的輸入：Round 1、assumptions、2026-07-08、焦點「現況的痛點是哪一種」。
   it("四輪：第 1 與第 4 輪 aria-expanded 為 true、第 2 與第 3 輪 false，卡頭含 Round N、焦點、mode、日期", () => {
     const { container } = render(<RoundsDoc text={ROUNDS} />);
     expect(container.querySelector("[data-round-timeline]")).toBeTruthy();
@@ -52,7 +53,7 @@ describe("RoundsDoc", () => {
     expect(all.map((c) => c.getAttribute("data-round"))).toEqual(["1", "2", "3", "4"]);
     expect(all.map((c) => toggle(c).getAttribute("aria-expanded"))).toEqual(["true", "false", "false", "true"]);
     const head = toggle(all[0]).textContent;
-    for (const part of ["Round 1", "現況的痛點是哪一種", "assumptions", "2026-10-12"]) expect(head).toContain(part);
+    for (const part of ["Round 1", "現況的痛點是哪一種", "assumptions", "2026-07-08"]) expect(head).toContain(part);
     expect(all[0].querySelector("[data-doc-heading]")!.textContent).toBe("Round 1");
     expect(all[0].querySelector("h3")!.textContent).toContain("現況的痛點是哪一種");
   });
@@ -85,6 +86,9 @@ describe("RoundsDoc", () => {
     const { container } = render(<RoundsDoc text={ROUNDS} />);
     const [first, second] = cards(container);
     expect(second.querySelector("[data-position-verdict]")).toBeNull();
+    // 卡頭可點：手指游標與滑過淡底（與工單輪卡頭、需求收合列同款）。
+    expect(toggle(second).className).toContain("cursor-pointer");
+    expect(toggle(second).className).toContain("hover:bg-foreground/5");
     fireEvent.click(toggle(second));
     expect(toggle(second).getAttribute("aria-expanded")).toBe("true");
     expect(second.querySelector("[data-position-verdict]")!.textContent).toBe("直答");
@@ -92,6 +96,18 @@ describe("RoundsDoc", () => {
     expect(toggle(second).getAttribute("aria-expanded")).toBe("false");
     expect(second.querySelector("[data-position-verdict]")).toBeNull();
     expect(toggle(first).getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("焦點在收合卡頭一行截斷、展開後折行完整顯示", () => {
+    const long = "第二輪的焦點寫得很長，".repeat(8).trim();
+    const { container } = render(<RoundsDoc text={ROUNDS.replace("第二輪焦點", long)} />);
+    const second = cards(container)[1];
+    const focus = () => second.querySelector("[data-round-focus]") as HTMLElement;
+    expect(focus().className).toContain("truncate");
+    fireEvent.click(toggle(second));
+    expect(focus().className).not.toContain("truncate");
+    expect(focus().className).toContain("break-words");
+    expect(focus().textContent).toBe(long);
   });
 
   it("缺 Ruled out 時無否決欄位", () => {

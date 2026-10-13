@@ -6,6 +6,7 @@ import type { ReactElement, ReactNode } from "react";
 import { I18nProvider } from "../i18n";
 import { ContextDoc, type ContextDocProps } from "../components/ContextDoc";
 import { TooltipProvider } from "../components/ui/tooltip";
+import { contextModel, type ContextNames } from "../discussionModel";
 
 const wrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider locale="zh-TW">
@@ -25,18 +26,21 @@ const CONTEXT = [
   "Source doc: none",
 ].join("\n");
 
-function props(over: Partial<ContextDocProps> = {}): ContextDocProps {
+const NAMES: ContextNames = {
+  specs: ["desktop-app", "tray-status-menu", "server-api"],
+  active: ["add-copilot-tool"],
+  archived: ["tray-panel-card-design"],
+  discussions: ["card-redesign", "card-drawer-header-colors", "admin-console-redesign"],
+  self: "card-redesign",
+};
+
+function props({ text = CONTEXT, ...over }: Partial<ContextDocProps> & { text?: string } = {}): ContextDocProps {
   return {
-    text: CONTEXT,
-    slug: "card-redesign",
+    model: contextModel(text, NAMES),
     created: "2026-10-08",
     createdBy: "MomoChen <momo@example.com>",
     kind: null,
     recordPath: "openspec/discussions/card-redesign.md",
-    specNames: ["desktop-app", "tray-status-menu", "server-api"],
-    activeNames: ["add-copilot-tool"],
-    archivedNames: ["tray-panel-card-design"],
-    discussionSlugs: ["card-redesign", "card-drawer-header-colors", "admin-console-redesign"],
     onOpenSpec: vi.fn(),
     onOpenChange: vi.fn(),
     onOpenArchivedChange: vi.fn(),
@@ -97,6 +101,19 @@ describe("ContextDoc", () => {
       "關聯",
       "記錄",
     ]);
+  });
+
+  it("Enter／空白鍵只在名稱籤上攔下並開啟；內文連結上的按鍵照瀏覽器預設", () => {
+    const p = props({ text: "提到 desktop-app，詳見 [說明](https://example.com/doc)。" });
+    const { container } = render(<ContextDoc {...p} />);
+    const intro = section(container, "context.intro")!;
+    const link = intro.querySelector("a")!;
+    expect(fireEvent.keyDown(link, { key: "Enter" })).toBe(true);
+    expect(fireEvent.keyDown(link, { key: " " })).toBe(true);
+    expect(p.onOpenSpec).not.toHaveBeenCalled();
+    const chip = intro.querySelector('[data-name-chip="spec:desktop-app"]')!;
+    expect(fireEvent.keyDown(chip, { key: "Enter" })).toBe(false);
+    expect(p.onOpenSpec).toHaveBeenCalledWith("desktop-app");
   });
 
   it("無收尾行且零命中時無關聯段、無籤", () => {

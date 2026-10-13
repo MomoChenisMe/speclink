@@ -1,7 +1,7 @@
 // 討論記錄的結構解析（desktop-discussion-doc-views design D1）：區段、輪、結論欄位、分刀、背景收尾行與文中名稱。
 // 全部是純函式、不碰 React；形狀不符時回 null、空陣列或整條當一般列（逐項降級），不拋錯——呼叫端照 Markdown 排。
 // 記錄格式由引擎（speclink-core discuss）與 discuss 技能擁有：區段與輪標題的切分規則與引擎逐字同源。
-import { itemMarkdown, listItemsOf, parseListItems, type ListItem } from "./docModel";
+import { itemMarkdown, parseListItems, type ListBlock, type ListItem } from "./docModel";
 
 /** 討論記錄的三個標準區段。 */
 export interface DiscussionSections {
@@ -160,18 +160,11 @@ export const CONCLUSION_LABELS: readonly ConclusionLabel[] = [
 /** 「none」起頭（`None.`、`none — …`；`none-legacy` 不算）。 */
 const NONE_RE = /^none(?![\w-])/i;
 
-/** 背景的 `Prior discussions:` 行列出的先前討論數；缺行或 `none` 開頭（`None.`、`none — …`）為 null。
- * 項目以逗號（含全形）或頓號分隔，括號內的備註先拿掉——記錄是人寫的，備註裡的逗號不算一筆。 */
+/** 背景的 `Prior discussions:` 行列出的先前討論數；缺行、`none` 開頭（`None.`、`none — …`）或切不出名稱為 null。
+ * 與背景的先前討論籤同一套名單切法（`parseContextMeta`）。 */
 export function countPriorDiscussions(context: string): number | null {
-  const line = context.split(/\r?\n/).find((l) => l.trimStart().startsWith("Prior discussions:"));
-  if (!line) return null;
-  const list = line
-    .trimStart()
-    .slice("Prior discussions:".length)
-    .replace(/[（(][^）)]*[）)]/g, "")
-    .trim();
-  if (!list || NONE_RE.test(list)) return null;
-  return list.split(/[,，、]/).filter((item) => item.trim()).length;
+  const prior = parseContextMeta(context).prior;
+  return prior && prior.length > 0 ? prior.length : null;
 }
 
 const unique = (items: string[]) => [...new Set(items)];
@@ -201,8 +194,8 @@ export interface CutCard {
   items: string[];
 }
 
-/** 粗體開頭的分刀識別：`cut <編號>`（`cutover` 不算）、`刀…`、`第 N 刀`。 */
-const CUT_ID_RE = /^(?:cut(?:\s+|(?=\d))[^\s，,：:（(]+|第\s*[^\s刀]+?\s*刀|刀[^\s，,：:（(]*)/i;
+/** 粗體開頭的分刀識別：`cut <編號>`（編號以數字起頭：`cut 3a`；`cutover`、`Cut scope` 不算）、`刀…`、`第 N 刀`。 */
+const CUT_ID_RE = /^(?:cut\s*\d[^\s，,：:（(]*|第\s*[^\s刀]+?\s*刀|刀[^\s，,：:（(]*)/i;
 
 /** 反引號片段（不含空白的才算名稱：`speclink plan` 這類指令不是變更名）。 */
 const tickNames = (text: string) =>
@@ -240,7 +233,7 @@ function cutCard(item: ListItem): CutCard | null {
     id: id[0],
     title,
     names: inBold.length > 0 ? inBold : tickNames(after),
-    items: [...(note ? [note] : []), ...listItemsOf(parseListItems(item.body)).map(itemMarkdown)],
+    items: [...(note ? [note] : []), ...blockRows(parseListItems(item.body))],
   };
 }
 
@@ -283,13 +276,16 @@ function splitTopLevel(text: string, separators: string): string[] {
   return out.map((s) => s.trim()).filter(Boolean);
 }
 
+/** 每條列點與其間的散文段各一列（不丟內容）。 */
+function blockRows(blocks: ListBlock[]): string[] {
+  return blocks.flatMap((b) => (b.kind === "list" ? b.items.map(itemMarkdown) : [b.text]));
+}
+
 /** Ruled out、Open、Rejected alternatives、Deferred 的逐條：有列點時每條列點（與其間的散文段）一列，
  * 否則以頂層的「；」／「;」切段。 */
 export function splitRows(md: string): string[] {
   const blocks = parseListItems(md);
-  if (blocks.some((b) => b.kind === "list")) {
-    return blocks.flatMap((b) => (b.kind === "list" ? b.items.map(itemMarkdown) : [b.text]));
-  }
+  if (blocks.some((b) => b.kind === "list")) return blockRows(blocks);
   return splitTopLevel(md, "；;");
 }
 
@@ -347,14 +343,23 @@ const META_LINES = {
 } as const;
 const SOURCE_DOC = "Source doc:";
 
-/** 名單：括號備註先拿掉，以逗號、頓號、分號切項，每項取冒號前的第一個 token（`add-copilot-tool: desktop-config`）。 */
+/** 英數起頭的名稱：以連字號串起英數段或純漢字段（`config-context-與-rules-gui-編輯`）；英數段後緊接的中文
+ * 不算進名稱（`desktop-detail-doc-tree定義了…`）。名單與指令參數共用。 */
+const NAME_SRC = String.raw`[A-Za-z0-9][\w.]*(?:-(?:[\w.]+|\p{Script=Han}+))*`;
+const NAME_HEAD_RE = new RegExp(`^${NAME_SRC}`, "u");
+
+/** 名單：括號備註換成空白（名稱止於括號），以逗號、頓號、分號切項，每項取冒號前的第一個 token
+ * （`add-copilot-tool: desktop-config`）；英數起頭時只取名稱段，句尾的句點拿掉。 */
 function nameList(value: string): string[] {
-  const list = value.replace(/[（(][^）)]*[）)]/g, "").trim();
+  const list = value.replace(/[（(][^）)]*[）)]/g, " ").trim();
   if (NONE_RE.test(list)) return [];
   return unique(
     list
       .split(/[,，、;；]/)
-      .map((item) => item.split(/[:：]/)[0].trim().split(/\s+/)[0])
+      .map((item) => {
+        const token = item.split(/[:：]/)[0].trim().split(/\s+/)[0];
+        return (NAME_HEAD_RE.exec(token)?.[0] ?? token).replace(/[。.]+$/, "");
+      })
       .filter(Boolean),
   );
 }
@@ -420,6 +425,18 @@ export function contextRelations(meta: ContextMeta, names: ContextNames): Contex
   };
 }
 
+/** 背景文件的單一推導（ContextDoc 與頁的數字磚共用）：收尾行、關聯與比對所用的名稱清單。 */
+export interface ContextModel {
+  meta: ContextMeta;
+  rel: ContextRelations;
+  names: ContextNames;
+}
+
+export function contextModel(context: string, names: ContextNames): ContextModel {
+  const meta = parseContextMeta(context);
+  return { meta, rel: contextRelations(meta, names), names };
+}
+
 /** 引言段：圍欄外第一個空行之前的散文；第一段是列點、標題、圍欄、引言或表格時引言為空、全文進 rest。 */
 export function splitLead(body: string): { lead: string; rest: string } {
   const lines = body.split(/\r?\n/);
@@ -462,9 +479,9 @@ export function matchNames(text: string, names: string[]): string[] {
   return unique(nameSpans(plain, names).map((s) => s.name));
 }
 
-const COMMAND_RE = /\/speclink-[a-z-]+(?:\s+(?:--[a-z-]+|[A-Za-z0-9][\w.-]*))*/g;
+const COMMAND_RE = new RegExp(String.raw`/speclink-[a-z-]+(?:\s+(?:--[a-z-]+|${NAME_SRC}))*`, "gu");
 
-/** 下一步裡的 `/speclink-*` 指令（含旗標與參數；反引號內外皆算），去重保序。 */
+/** 下一步裡的 `/speclink-*` 指令（含旗標與參數；反引號內外皆算；句尾句點不算），去重保序。 */
 export function commandChips(md: string): string[] {
-  return unique(md.match(COMMAND_RE) ?? []);
+  return unique((md.match(COMMAND_RE) ?? []).map((command) => command.replace(/\.+$/, "")));
 }

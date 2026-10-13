@@ -15,7 +15,7 @@ import { DeltaCapSection } from "./DeltaBadges";
 import { DesignDoc } from "./DesignDoc";
 import type { PathReveal } from "./DocParts";
 import { discussionDoc, DiscussionDocs, DiscussionStageRow, PromotedChangeChip } from "./DiscussionDetailPage";
-import { discussionDocData, discussionDocProvenance, discussionDocSummary } from "./discussionDocSummary";
+import { discussionDocData, discussionDocProvenance, discussionDocSummary, discussionNames } from "./discussionDocSummary";
 import { IdentityName, StatusRow, documentArtifact, type DocumentTarget } from "./DetailHeader";
 import {
   DOC_TITLE_KEYS,
@@ -62,6 +62,9 @@ export interface ArchivedDetailPageProps {
   sourceDiscussions?: { slug: string; topic: string }[];
   /** 點來源討論籤：宿主開啟該討論的已封存詳情頁。 */
   onOpenDiscussion?: (slug: string) => void;
+  /** 封存討論背景文件的討論籤（內文名稱籤與先前討論）：宿主依討論所在開頁——作用中開討論詳情頁、其餘開已封存
+   * 詳情頁（`discussionSlugs` 含作用中的討論）。缺席時這些籤不可開。 */
+  onOpenContextDiscussion?: (slug: string) => void;
   /** 封存討論的衍生變更籤項（宿主派生三態：已封存→副標封存日期、活躍→副標看板階段詞、
    * 已刪除→disabled「無封存記錄」）；缺席／空＝狀態卡的衍生列缺席。 */
   promotedChanges?: SourceLinkItem[];
@@ -415,17 +418,9 @@ function ArchivedDiscussionView({ slug, ...props }: ArchivedDetailPageProps & { 
           archivedChanges,
           t,
           onOpenPromotedChange,
-          onOpenPromotedChange &&
-            ((datedName) => onOpenPromotedChange(archivedChanges.find((a) => a.datedName === datedName)!.name)),
+          onOpenPromotedChange,
         )
       : promotedRowsFromLinks(promoted, onOpenPromotedChange);
-  const names = {
-    specs: props.specNames ?? [],
-    active: (changes ?? []).map((c) => c.name),
-    archived: (archivedChanges ?? []).map((a) => a.name),
-    discussions: props.discussionSlugs ?? [],
-    self: slug,
-  };
   // 已封存：沒有記錄路徑段、不出「只差最後一刀」。
   const data = discussionDocData({
     text: doc,
@@ -434,7 +429,12 @@ function ArchivedDiscussionView({ slug, ...props }: ArchivedDetailPageProps & { 
     created: props.created ?? null,
     recordPath: null,
     rows,
-    names,
+    names: discussionNames(slug, {
+      specNames: props.specNames,
+      changes,
+      archivedChanges,
+      discussionSlugs: props.discussionSlugs,
+    }),
   });
   const { sections } = data;
   const roundCount = data.rounds?.length ?? null;
@@ -534,19 +534,12 @@ function ArchivedDiscussionView({ slug, ...props }: ArchivedDetailPageProps & { 
                 doc={doc}
                 data={data}
                 context={{
-                  slug,
-                  created: props.created,
                   createdBy: props.createdBy,
                   kind: props.discussionKind,
-                  recordPath: null,
-                  specNames: names.specs,
-                  activeNames: names.active,
-                  archivedNames: names.archived,
-                  discussionSlugs: names.discussions,
                   onOpenSpec: props.onOpenSpec,
                   onOpenChange: onOpenPromotedChange,
                   onOpenArchivedChange: onOpenPromotedChange,
-                  onOpenDiscussion: props.onOpenDiscussion,
+                  onOpenDiscussion: props.onOpenContextDiscussion,
                 }}
                 empty={{
                   conclusion: t("archived.noConclusion"),

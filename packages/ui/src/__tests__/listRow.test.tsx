@@ -52,6 +52,9 @@ describe("ListRow（共用列）", () => {
     // 朗讀名稱只取標題（不把描述、meta 串進來）；鍵盤聚焦有明顯外框。
     expect(screen.getByRole("button", { name: "desktop-app" })).toBe(el);
     expect(el.className).toContain("focus-visible:ring-2");
+    // 滑過淡底與文件樹節點、收合列同深度。
+    expect(el.className).toContain("cursor-pointer");
+    expect(el.className).toContain("hover:bg-foreground/5");
     // 標題等寬強調、一行截斷；與複製鈕同屬標題群組。
     const title = within(el).getByText("desktop-app");
     expect(title.className).toContain("font-mono");

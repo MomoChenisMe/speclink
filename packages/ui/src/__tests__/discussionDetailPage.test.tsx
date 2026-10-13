@@ -24,6 +24,7 @@ import {
   discussionDocProvenance,
   discussionDocSummary,
   type DiscussionDocData,
+  type DiscussionTab,
 } from "../components/discussionDocSummary";
 import { promotedRows, type PromotedRow } from "../components/PromotedDoc";
 
@@ -799,7 +800,7 @@ describe("數字磚、出處行與提示框", () => {
   const record = (rounds: string, conclusion: string, context = "背景。") =>
     `# Discussion\n\n## Context\n\n${context}\n\n## Rounds\n\n${rounds}\n\n## Conclusion\n\n${conclusion}\n`;
 
-  function Harness({ tab, data }: { tab: string; data: DiscussionDocData }) {
+  function Harness({ tab, data }: { tab: DiscussionTab; data: DiscussionDocData }) {
     const { t } = useI18n();
     const summary = discussionDocSummary(tab, data, t);
     return (
@@ -903,6 +904,61 @@ describe("數字磚、出處行與提示框", () => {
     expect(provenance()).toBe("記錄建立時寫入一次·2026-10-08");
     expect(callout()!.textContent).toContain("沒有 grill 階段");
     expect(callout()!.textContent).toContain("首輪直接列假設");
+  });
+
+  // spec Scenario「非標準格式整篇退回」「自由格式結論整篇退回」「結論缺席欄位不渲染空標籤」講數字磚的半句。
+  it("區段切得開、但輪標題不符 scaffold 時討論過程無數字磚、無提示框", () => {
+    const rounds = roundsOf(["interview", "interview"], ["2026-10-08", "2026-10-09"]).replace(
+      "### Round 2 — interview (2026-10-09)",
+      "### 插入的手寫標題",
+    );
+    const data = discussionDocData({
+      text: record(rounds, "**Decision**: 定案"),
+      status: "concluded",
+      hold: false,
+      created: null,
+      recordPath: null,
+      rows: [],
+      names: NAMES,
+    });
+    expect(data.sections).not.toBeNull();
+    render(<Harness tab="rounds" data={data} />);
+    expect(document.querySelector("[data-doc-tiles]")).toBeNull();
+    expect(callout()).toBeNull();
+  });
+
+  it("自由格式結論整篇退回時結論無數字磚", () => {
+    const data = discussionDocData({
+      text: record(roundsOf(["interview"], ["2026-10-08"]), "就這樣定了，大家都同意這個方向。"),
+      status: "concluded",
+      hold: false,
+      created: null,
+      recordPath: null,
+      rows: [],
+      names: NAMES,
+    });
+    render(<Harness tab="conclusion" data={data} />);
+    expect(document.querySelector("[data-doc-tiles]")).toBeNull();
+  });
+
+  it("結論缺 Deferred 時數字磚沒有「擱置」格", () => {
+    const data = discussionDocData({
+      text: record(
+        roundsOf(["interview"], ["2026-10-08"]),
+        "**Decision**: 定論。\n- 細節一\n**Rejected alternatives**:\n- 方案 — 理由",
+      ),
+      status: "concluded",
+      hold: false,
+      created: null,
+      recordPath: null,
+      rows: [],
+      names: NAMES,
+    });
+    render(<Harness tab="conclusion" data={data} />);
+    expect(tiles()).toEqual([
+      ["1", "定案細節"],
+      ["1", "否決的替代方案"],
+    ]);
   });
 
   it("背景無關聯時數字磚整列缺席；首輪不是 assumptions 時無提示框", () => {
@@ -1014,7 +1070,7 @@ describe("數字磚、出處行與提示框", () => {
       rows: [],
       names: NAMES,
     });
-    for (const tab of ["conclusion", "rounds", "context", "record"]) {
+    for (const tab of ["conclusion", "rounds", "context", "record"] as const) {
       const { unmount } = render(<Harness tab={tab} data={data} />);
       expect(document.querySelector("[data-doc-tiles]")).toBeNull();
       expect(provenance()).toBeNull();
