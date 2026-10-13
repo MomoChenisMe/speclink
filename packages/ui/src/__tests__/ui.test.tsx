@@ -29,6 +29,8 @@ import {
   AlertDialogDescription,
   AlertDialogTitle,
 } from "../components/ui/alert-dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { cn } from "../lib/utils";
 
 describe("shadcn 設計系統原語", () => {
@@ -302,5 +304,50 @@ describe("原語變體：全圓輸入與開關圖示鈕", () => {
     );
     expect(classes(btn)).not.toContain("rounded-md");
     expect(staticClasses(btn).some((c) => c.startsWith("bg-"))).toBe(false);
+  });
+});
+
+// 選單項與下拉選項取用游標變數（design D5）：網頁是手指、桌面是箭頭，不寫死箭頭。
+describe("原語游標：選單項與下拉選項", () => {
+  it("下拉選單項目為變數游標、不帶 cursor-default", async () => {
+    render(
+      <DropdownMenu defaultOpen>
+        <DropdownMenuTrigger>open</DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem>開啟</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>,
+    );
+    const item = classes(await screen.findByRole("menuitem", { name: "開啟" }));
+    expect(item).toContain("cursor-(--cursor-interaction)");
+    expect(item).not.toContain("cursor-default");
+  });
+
+  it("下拉選項為變數游標；捲動鈕（hover 即捲動、非點擊）維持 cursor-default", async () => {
+    // jsdom 沒有版面：撐出可捲動的高度，Radix 才會渲染捲動鈕。
+    const scrollHeight = vi.spyOn(Element.prototype, "scrollHeight", "get").mockReturnValue(1000);
+    const clientHeight = vi.spyOn(Element.prototype, "clientHeight", "get").mockReturnValue(100);
+    try {
+      render(
+        <Select defaultValue="a" defaultOpen>
+          <SelectTrigger aria-label="狀態">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="a">有效</SelectItem>
+            <SelectItem value="b">已停權</SelectItem>
+          </SelectContent>
+        </Select>,
+      );
+      const option = classes(await screen.findByRole("option", { name: "有效" }));
+      expect(option).toContain("cursor-(--cursor-interaction)");
+      expect(option).not.toContain("cursor-default");
+      const scrollButtons = [...screen.getByRole("listbox").querySelectorAll<HTMLElement>(":scope > [aria-hidden=true]")];
+      expect(scrollButtons.length).toBeGreaterThan(0);
+      for (const button of scrollButtons) expect(classes(button)).toContain("cursor-default");
+    } finally {
+      scrollHeight.mockRestore();
+      clientHeight.mockRestore();
+    }
   });
 });

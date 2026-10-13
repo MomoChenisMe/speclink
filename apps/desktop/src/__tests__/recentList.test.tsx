@@ -42,8 +42,8 @@ function renderList(over: Partial<RecentListProps> = {}) {
     onRemove: vi.fn(),
     ...over,
   };
-  render(<RecentList {...props} />);
-  return props;
+  const { unmount } = render(<RecentList {...props} />);
+  return { ...props, unmount };
 }
 
 describe("RecentList", () => {
@@ -107,6 +107,19 @@ describe("RecentList", () => {
     unmount();
     renderList({ entries: [REMOTE], connections: [], connectionsReady: false });
     expect(screen.queryByText("連線已移除")).toBeNull();
+  });
+
+  it("開啟進行中（busy）：列外層無 hover 底色、列按鈕停用游標為箭頭（design D4）", () => {
+    const { unmount } = renderList({ entries: [LOCAL] });
+    const idle = screen.getByRole("button", { name: /\/work\/speclink/ });
+    expect(idle.parentElement!.className).toContain("hover:bg-foreground/5");
+    unmount();
+
+    renderList({ entries: [LOCAL], busy: true });
+    const row = screen.getByRole("button", { name: /\/work\/speclink/ }) as HTMLButtonElement;
+    expect(row.disabled).toBe(true);
+    expect(row.className).toContain("disabled:cursor-default");
+    expect(row.parentElement!.className).not.toContain("hover:");
   });
 
   it("無條目時不渲染任何區段", () => {

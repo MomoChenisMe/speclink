@@ -72,7 +72,8 @@ export function RecentList({
               key={key}
               className={cn(
                 "group flex items-start gap-1 px-3 py-2 transition-colors",
-                reason ? "bg-destructive/5" : "hover:bg-foreground/5",
+                // 開啟進行中整份清單停用：不給 hover 底色。
+                reason ? "bg-destructive/5" : !busy && "hover:bg-foreground/5",
               )}
             >
               {/* 開啟失敗的錯誤態仍可再點重試；連線已移除／已登出才停用。 */}
@@ -80,7 +81,7 @@ export function RecentList({
                 type="button"
                 disabled={busy || Boolean(connectionReason)}
                 onClick={() => onOpen(entry)}
-                className="flex min-w-0 flex-1 items-start gap-2 text-left disabled:cursor-not-allowed"
+                className="flex min-w-0 flex-1 items-start gap-2 text-left disabled:cursor-default"
               >
                 <span className="mt-0.5 shrink-0 text-muted-foreground">
                   {reason ? (

@@ -191,7 +191,7 @@ function SpecDetailView({
                     <>
                       <button
                         type="button"
-                        className={cn(badgeVariants({ variant: "outline" }), "min-w-0 max-w-full cursor-pointer font-mono hover:bg-muted")}
+                        className={cn(badgeVariants({ variant: "outline" }), "min-w-0 max-w-full cursor-(--cursor-interaction) font-mono hover:bg-muted")}
                         onClick={showTrace}
                       >
                         <span className="truncate">{sources[0].name}</span>
@@ -199,7 +199,7 @@ function SpecDetailView({
                       {sources.length > 1 && (
                         <button
                           type="button"
-                          className={cn(badgeVariants({ variant: "secondary" }), "cursor-pointer tabular-nums hover:bg-accent")}
+                          className={cn(badgeVariants({ variant: "secondary" }), "cursor-(--cursor-interaction) tabular-nums hover:bg-accent")}
                           onClick={showTrace}
                         >
                           {`+${sources.length - 1}`}

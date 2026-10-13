@@ -203,12 +203,12 @@ function rowSurface(item: TaskItem, interactive: boolean, highlight?: boolean): 
 /** 手動任務列的標記（未勾與已勾都帶）。 */
 const manualMark = (item: TaskItem) => (item.manual ? { "data-task-manual": "" } : {});
 
-/** 整列為勾選框的 label（design D8）：可寫時 htmlFor 指向勾選框、游標為手指；唯讀與
+/** 整列為勾選框的 label（design D8）：可寫時 htmlFor 指向勾選框、游標取共用變數；唯讀與
  * 批次寫回中（busy）不帶 htmlFor、游標預設，勾選框同時停用——隱式關聯也不會觸發。 */
 function rowLabelProps(checkboxId: string, interactive: boolean) {
   return {
     htmlFor: interactive ? checkboxId : undefined,
-    className: interactive ? "cursor-pointer" : "cursor-default",
+    className: interactive ? "cursor-(--cursor-interaction)" : "cursor-default",
     onClick: ignoreClickAfterSelecting,
   };
 }

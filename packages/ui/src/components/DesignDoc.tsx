@@ -182,7 +182,7 @@ function DecisionCard({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-foreground/5"
+        className="flex w-full cursor-(--cursor-interaction) items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-foreground/5"
       >
         {open ? (
           <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />

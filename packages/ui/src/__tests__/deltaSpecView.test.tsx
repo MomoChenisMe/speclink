@@ -73,10 +73,10 @@ describe("DeltaSpecView", () => {
     expect(requirement(container, "新需求").className).toContain("border-status-success");
   });
 
-  it("收合列看得出可點：手指游標、滑過有淡底", () => {
+  it("收合列看得出可點：共用游標變數、滑過有淡底", () => {
     const { container } = render(<DeltaSpecView markdown={DELTA_MD} />);
     const toggle = requirement(container, "第二條修改").querySelector("button[aria-expanded]")!;
-    expect(toggle.className).toContain("cursor-pointer");
+    expect(toggle.className).toContain("cursor-(--cursor-interaction)");
     expect(toggle.className).toContain("hover:bg-foreground/5");
   });
 

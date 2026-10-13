@@ -240,10 +240,10 @@ describe("TicketView 軸向籤、可蓋章提示框與輪卡頭", () => {
     expect(counts).toEqual(["WARNING 2"]);
   });
 
-  it("輪卡頭看得出可點：手指游標、滑過有淡底，淡底不超出卡片圓角", () => {
+  it("輪卡頭看得出可點：共用游標變數、滑過有淡底，淡底不超出卡片圓角", () => {
     const { container } = render(<TicketView station="review" ticket={TWO_ROUNDS} />);
     const r1 = round(container, 1);
-    expect(roundToggle(r1).className).toContain("cursor-pointer");
+    expect(roundToggle(r1).className).toContain("cursor-(--cursor-interaction)");
     expect(roundToggle(r1).className).toContain("hover:bg-foreground/5");
     expect(r1.className).toContain("overflow-hidden");
   });

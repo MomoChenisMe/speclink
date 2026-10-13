@@ -27,7 +27,7 @@ describe("ListRow（共用列）", () => {
     const el = row();
     expect(el.getAttribute("aria-disabled")).toBe("true");
     expect(el.getAttribute("tabindex")).toBe("-1");
-    expect(el.className).not.toContain("cursor-pointer");
+    expect(el.className).not.toContain("cursor-(--cursor-interaction)");
     expect(el.querySelector(".lucide-chevron-right")).toBeNull();
     fireEvent.click(el);
     fireEvent.keyDown(el, { key: "Enter" });
@@ -53,7 +53,7 @@ describe("ListRow（共用列）", () => {
     expect(screen.getByRole("button", { name: "desktop-app" })).toBe(el);
     expect(el.className).toContain("focus-visible:ring-2");
     // 滑過淡底與文件樹節點、收合列同深度。
-    expect(el.className).toContain("cursor-pointer");
+    expect(el.className).toContain("cursor-(--cursor-interaction)");
     expect(el.className).toContain("hover:bg-foreground/5");
     // 標題等寬強調、一行截斷；與複製鈕同屬標題群組。
     const title = within(el).getByText("desktop-app");

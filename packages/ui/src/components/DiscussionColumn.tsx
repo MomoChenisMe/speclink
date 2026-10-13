@@ -148,7 +148,7 @@ export function DiscussionCard({
       data-discussion={d.slug}
       size="nested"
       interactive
-      className="group cursor-pointer"
+      className="group cursor-(--cursor-interaction)"
       onClick={() => onOpenDiscussion?.(d.slug)}
     >
       <CardHeader className="p-3 flex-row items-start gap-1.5">
@@ -265,7 +265,7 @@ function PromotedRow({
       role="button"
       tabIndex={0}
       data-discussion={d.slug}
-      className="group cursor-pointer rounded-lg border border-border bg-card px-2.5 py-2 text-left transition-colors hover:border-foreground/20"
+      className="group cursor-(--cursor-interaction) rounded-lg border border-border bg-card px-2.5 py-2 text-left transition-colors hover:border-foreground/20"
       onClick={() => onOpenDiscussion?.(d.slug)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") onOpenDiscussion?.(d.slug);

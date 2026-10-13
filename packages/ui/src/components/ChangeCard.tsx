@@ -64,7 +64,7 @@ export function ChangeCard({
       data-blocked={blocked ? "true" : undefined}
       size="nested"
       interactive
-      className={`group cursor-pointer${blocked ? " opacity-60" : ""}`}
+      className={`group cursor-(--cursor-interaction)${blocked ? " opacity-60" : ""}`}
       onClick={() => onOpen?.(change.name)}
     >
       <CardHeader className="p-3 flex-row items-start gap-1.5">

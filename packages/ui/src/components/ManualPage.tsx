@@ -105,7 +105,7 @@ function SourceChips({
       <button
         key={name}
         type="button"
-        className={cn(badgeVariants({ variant: "outline" }), "cursor-pointer font-mono hover:bg-muted")}
+        className={cn(badgeVariants({ variant: "outline" }), "cursor-(--cursor-interaction) font-mono hover:bg-muted")}
         onClick={() => onOpenSpec(name)}
       >
         {name}

@@ -453,8 +453,8 @@ describe("SpecDetailPage（需求分段）", () => {
       expect(s.textContent).toContain("2 個 scenario");
       expect(s.querySelector("[data-doc-heading]")).toBeTruthy();
     }
-    // 收合列看得出可點：手指游標，滑過整列（含錨點）有淡底。
-    expect(toggleOf(logout).className).toContain("cursor-pointer");
+    // 收合列看得出可點：共用游標變數（網頁手指、桌面箭頭），滑過整列（含錨點）有淡底。
+    expect(toggleOf(logout).className).toContain("cursor-(--cursor-interaction)");
     expect(toggleOf(logout).parentElement!.className).toContain("hover:bg-foreground/5");
     // 收合列上的可點錨點：開該封存變更，不切換收合。
     fireEvent.click(within(logout).getByRole("button", { name: /add-logout/ }));
