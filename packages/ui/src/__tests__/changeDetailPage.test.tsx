@@ -1109,8 +1109,28 @@ describe("標頭與狀態卡", () => {
     });
   });
 
+  it("有提示的章籤可用鍵盤聚焦，聚焦即出提示", async () => {
+    const stamped: ChangeItem = {
+      ...change,
+      reviewStatus: "reviewed",
+      reviewedAt: "2026-08-04",
+      reviewedBy: "MomoChen <momochenisme@gmail.com>",
+    };
+    render(<ChangeDetailPage {...(makeProps({ change: stamped }) as never)} />);
+    await screen.findByText("MomoChen");
+    const stamp = statusRow("quality").querySelector("[data-review-row]") as HTMLElement;
+    // 提示觸發點必帶 data-state（進行中題以其缺席判定無提示）。
+    expect(stamp.getAttribute("data-state")).toBe("closed");
+    act(() => stamp.focus());
+    expect(document.activeElement).toBe(stamp);
+    await waitFor(() => {
+      const tip = document.querySelector("[data-radix-popper-content-wrapper]");
+      expect(tip?.textContent).toContain("2026-08-04");
+      expect(tip?.textContent).toContain("momochenisme@gmail.com");
+    });
+  });
+
   it("進行中兩站（inReview／inVerify）：身分區無章籤；品質關卡列僅狀態詞、無日期、無提示", async () => {
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const running: ChangeItem = {
       ...change,
       reviewStatus: "inReview",
@@ -1124,10 +1144,12 @@ describe("標頭與狀態卡", () => {
     expect(quality.textContent).toContain("審查中");
     expect(quality.textContent).toContain("驗證中");
     expect(quality.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
-    // 進行中無戳記：停留超過 300ms 延遲仍無提示。
-    await user.hover(within(quality).getByText("審查中"));
-    await new Promise((r) => setTimeout(r, 400));
-    expect(document.querySelector("[data-radix-popper-content-wrapper]")).toBeNull();
+    // 進行中無戳記：兩站章籤都不是提示觸發點（無 data-state），也不進 Tab 序。
+    for (const mark of ["[data-review-row]", "[data-verify-row]"]) {
+      const stamp = quality.querySelector(mark)!;
+      expect(stamp.hasAttribute("data-state")).toBe(false);
+      expect(stamp.hasAttribute("tabindex")).toBe(false);
+    }
   });
 
   it("已就緒時動作區有「封存」主要鈕；進行中為「退回提案中」", async () => {

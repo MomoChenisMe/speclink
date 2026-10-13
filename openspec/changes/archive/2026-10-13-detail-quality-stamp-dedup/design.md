@@ -24,7 +24,6 @@
 - 不動看板卡片的章、已封存清單的結局標示、品質站配色（REVIEW_PILL_TONE／VERIFY_PILL_TONE）與提示的 300ms 延遲。
 - 不改 ChangeItem、ArchivedItem 或任何 protocol 資料形狀；不碰 CLI 與 server。
 - 已封存側不新增蓋章者提示——已封存資料本來就沒有帶蓋章者，維持現狀。
-- 不處理提示觸發點的鍵盤可達性（既有 TitleStamp 的觸發點同樣不可聚焦，屬既有行為）。
 
 ## Decisions
 
@@ -43,6 +42,7 @@ TitleStamp 退場，改成 ChangeDetailPage 模組內私有的 QualityStamp 元�
 - 外層一個 inline-flex 的 span（站別 data 標記在此），內含狀態籤（tone 標記在此）與蓋章日期（有 at 時，等寬 11px 灰字，與現行品質關卡列相同）。
 - 提示內容維持現行 TitleStamp 的組法：蓋章日期與蓋章者以「 · 」相連；兩者皆缺（進行中、無戳記）時不包 Tooltip。
 - 提示觸發點是整個外層 span（狀態籤＋日期），一站一個觸發點。
+- 有提示的觸發點可用鍵盤聚焦（tabIndex 0，比照同檔 UnavailableAction），聚焦即出提示；無提示時不進 Tab 序。品質關卡站的審查發現指出：章籤搬家後，這裡是全頁唯一看得到蓋章者完整識別的地方，只能滑鼠停留就把鍵盤使用者擋在外面。
 - 理由：兩條渲染路徑合一後，「品質關卡」列與提示只需要維護一份；觸發點涵蓋日期，使用者停在日期上也看得到蓋章者。
 - 取捨：日期在可視文字與提示內各出現一次。接受——提示內容與現行一致，不新增 i18n 詞條，「主題化提示統一延遲」需求的「變更詳情頁的章籤」情境字面不必改。
 - 否決：觸發點只包狀態籤——多一層結構，停在日期上看不到蓋章者，沒有好處。
@@ -69,12 +69,13 @@ TitleStamp 退場，改成 ChangeDetailPage 模組內私有的 QualityStamp 元�
 **可觀察行為**：
 
 - 變更詳情頁、reviewed（2026-08-04、蓋章者含 email）＋verified（2026-08-06）：身分區（data-detail-identity）只有階段籤「已就緒」，文字不含「已審查」「已驗證」；「品質關卡」列依序顯示「已審查」＋「2026-08-04」、「已驗證」＋「2026-08-06」，文字不含 email；停留在「品質關卡」列的「已審查」上，提示含 2026-08-04 與 email；停留在「已驗證」上，提示含驗證站自己的日期與識別。
-- 變更詳情頁、inReview＋inVerify：身分區無章籤；「品質關卡」列顯示「審查中」「驗證中」、無任何日期；停留時無提示。
+- 變更詳情頁、inReview＋inVerify：身分區無章籤；「品質關卡」列顯示「審查中」「驗證中」、無任何日期；停留時無提示，章籤不可聚焦。
+- 變更詳情頁、reviewed：以鍵盤聚焦「品質關卡」列的「已審查」章籤時，提示出現並含蓋章日期與 email。
 - 變更詳情頁、兩站 none：身分區與全頁都沒有 data-review-row／data-verify-row；「品質關卡」列為「尚未經過品質關卡」。
 - 已封存詳情頁、reviewed＋verifiedNotPassed：身分區只有「已封存」籤，沒有 data-review-outcome／data-verify-outcome；「品質關卡」列有「已審查」「曾驗證未通過」；全頁 data-review-outcome 只有一個。
 - 已封存詳情頁、兩站皆無：「品質關卡」列為「未經品質關卡」。
 
-**DOM 標記**：data-review-row／data-verify-row 在「品質關卡」列每站的外層 span，其內含狀態籤與日期；data-review-tone／data-verify-tone 在狀態籤；兩站的外層 span className 相同，審查在前。
+**DOM 標記**：data-review-row／data-verify-row 在「品質關卡」列每站的外層 span，其內含狀態籤與日期；data-review-tone／data-verify-tone 在狀態籤；兩站的外層 span className 相同，審查在前；有提示時外層 span 帶 tabIndex 0。
 
 **驗收**：
 

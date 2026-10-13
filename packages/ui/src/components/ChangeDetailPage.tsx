@@ -187,21 +187,21 @@ interface Stamp {
 }
 
 /** 「品質關卡」列的站章籤：圖示＋狀態詞，已蓋章時旁接蓋章日期；蓋章日期與蓋章者完整
-    識別（含 email）收進提示，整枚章籤（含日期）為觸發點。兩站同構，只換站別——資料
-    缺席（進行中、無戳記）時整個提示缺席。 */
+    識別（含 email）收進提示，整枚章籤（含日期）為觸發點，可用鍵盤聚焦叫出。兩站同構，
+    只換站別——資料缺席（進行中、無戳記）時整個提示缺席，章籤也不進 Tab 序。 */
 function QualityStamp({ stamp }: { stamp: Stamp }) {
   // 既有 data 標記維持站別各一份（回歸對照沿用 data-review-row／data-verify-row）。
   const rowMark = stamp.station === "review" ? { "data-review-row": "" } : { "data-verify-row": "" };
   const toneMark = stamp.station === "review" ? { "data-review-tone": "" } : { "data-verify-tone": "" };
+  const detail = [stamp.at, stamp.by].filter(Boolean).join(" · ");
   const chip = (
-    <span {...rowMark} className="inline-flex shrink-0 items-center gap-1.5">
+    <span {...rowMark} tabIndex={detail ? 0 : undefined} className="inline-flex shrink-0 items-center gap-1.5">
       <StatusPill {...toneMark} tone={stamp.tone} icon={stamp.icon}>
         {stamp.label}
       </StatusPill>
       {stamp.at && <span className="font-mono text-[11px] text-muted-foreground">{stamp.at}</span>}
     </span>
   );
-  const detail = [stamp.at, stamp.by].filter(Boolean).join(" · ");
   if (!detail) return chip;
   return (
     <Tooltip>

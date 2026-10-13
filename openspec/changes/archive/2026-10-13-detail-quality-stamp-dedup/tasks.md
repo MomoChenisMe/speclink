@@ -11,5 +11,5 @@
 ## 3. 收尾驗證
 
 - [x] 3.1 全面跑受影響面，並確認實作與 design D4「規格改寫四條 desktop-app 需求」一致（spec「變更詳情頁的標頭與狀態卡」「已封存項目以詳情頁檢視」「詳情頁的文件樹、閱讀卡與本頁目錄」「詳情頁的工單分頁」四條一併確認：身分區不含章籤、工單分頁退場後「品質關卡」列的章籤改為「已審查」）。驗證：`npm test -w packages/ui` 與 `npm test -w apps/desktop` 全綠；以 `rg "TitleStamp" packages/ui/src` 確認零命中。 <!-- speclink-task:tsk_01M4TRQA8FTETK4DCNX6ZF58JZ -->
-- [ ] [M] 3.2 desktop 實機驗收：在 repo 根目錄執行 `npm run dev:desktop`，開一個已蓋章（reviewed 或 verified）的變更詳情頁與一個帶品質關卡結局的已封存變更詳情頁，看身分區只有階段籤或「已封存」籤、「品質關卡」列有章籤與日期，滑鼠停在「品質關卡」列的章籤上約 300ms 後出現含蓋章者 email 的提示；再開一個 inReview 的變更，看「品質關卡」列為「審查中」、停留時沒有提示。 <!-- speclink-task:tsk_01M4TRQA8FM0DX14PC0G5A1P3A -->
+- [x] [M] 3.2 desktop 實機驗收：在 repo 根目錄執行 `npm run dev:desktop`，開一個已蓋章（reviewed 或 verified）的變更詳情頁與一個帶品質關卡結局的已封存變更詳情頁，看身分區只有階段籤或「已封存」籤、「品質關卡」列有章籤與日期，滑鼠停在「品質關卡」列的章籤上約 300ms 後出現含蓋章者 email 的提示；再開一個 inReview 的變更，看「品質關卡」列為「審查中」、停留時沒有提示。 <!-- speclink-task:tsk_01M4TRQA8FM0DX14PC0G5A1P3A -->
 - [x] 3.3 全組守門：確認本變更沒有動到詞彙守門與文件連結掃描面。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。 <!-- speclink-task:tsk_01M4TRQA8FYB2702EHS66R0AX1 -->
