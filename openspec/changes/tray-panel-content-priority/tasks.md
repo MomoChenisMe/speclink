@@ -10,6 +10,8 @@
 - [ ] 2.3 實作決策「動作區塊卡改為單列：文字鈕＋三顆圖示鈕」：apps/desktop/src/panel/TrayPanel.tsx 的動作區塊卡改為一列，左為「開啟 Speclink」文字鈕（佔滿其餘寬度），右為專案設定（SlidersHorizontal）、設定（Settings）、結束（Power）三顆 button（type="button"、tabIndex 為 -1、aria-label 與 title 取 app.navProjectSettings／tray.settings／tray.quit 詞條），「結束」前多一段間距，四個動作的回呼不變。驗證：`npm test -w apps/desktop -- trayPanel` 的動作區塊測試轉綠。 <!-- speclink-task:tsk_01M4SCV3KAMWZ6N8HTEYZHKRS2 -->
 - [ ] 2.4 先改寫失敗測試，對應「面板樣式（macOS）」需求的補光層濃度：既有「根層不疊漸層、以側欄面色約九成補光」測試改為斷言 panel-root 的 class 含 `bg-sidebar/60`、不含 `bg-sidebar/90`；並斷言專案 tab 條卡、動作區塊卡與各內容卡仍含 `bg-card`（白卡不透明不變）。測試在 apps/desktop/src/__tests__/trayPanel.test.tsx，執行 `npm test -w apps/desktop -- trayPanel` 確認紅燈。 <!-- speclink-task:tsk_01M4SE3R01PK1CB2PACXN7S2NW -->
 - [ ] 2.5 實作決策「毛玻璃找回：補光層調回約六成、白卡不變」：apps/desktop/src/panel/TrayPanel.tsx 的 panel-root 補光層由 `bg-sidebar/90` 改為 `bg-sidebar/60`，卡片樣式與 Rust 端 vibrancy 不動。驗證：`npm test -w apps/desktop -- trayPanel` 中 2.4 的測試轉綠。 <!-- speclink-task:tsk_01M4SE3R0147AJ5XTA32EYPGE5 -->
+- [ ] 2.6 先寫失敗測試，對應「面板樣式（macOS）」需求的專案 tab 條（決策「專案 tab 條：「＋」固定右端、邊緣淡出、捲到作用中」）：apps/desktop/src/__tests__/trayPanel.test.tsx 新增——`panel-add-project` 不在 `panel-project-tabs` 可捲區內、`aria-label` 與 `title` 為「加入專案」且不含可見文字、點擊仍觸發加入專案回呼；以注入 scrollWidth／clientWidth／scrollLeft 觸發捲動事件後，可捲區遮罩隨左右狀態改變；6 個專案且作用中為第 6 個時，開啟後可捲區 scrollLeft 讓它完整可見。tabStrip 純函式測試涵蓋淡出判斷四列（最左端：只淡右；中間：兩側；最右端：只淡左；未超出：都不淡）與露出目標三案（已可見不動、在右側外、在左側外）。執行 `npm test -w apps/desktop -- trayPanel` 確認紅燈。 <!-- speclink-task:tsk_01M4SHHEK1K84BQ1YB5J5AE8FQ -->
+- [ ] 2.7 實作決策「專案 tab 條：「＋」固定右端、邊緣淡出、捲到作用中」：新增 apps/desktop/src/panel/tabStrip.ts（淡出判斷與露出目標兩個純函式，容差 1px）；apps/desktop/src/panel/TrayPanel.tsx 把「加入專案」移出可捲區、固定在 tab 條卡右端並改為只有虛線框「＋」的方塊，可捲區依淡出判斷套左右漸層遮罩（於捲動、尺寸改變、tab 清單改變時重算），面板開啟與作用中專案改變時以露出目標設定 scrollLeft；捲軸維持隱藏。驗證：`npm test -w apps/desktop -- trayPanel` 中 2.6 的斷言轉綠。 <!-- speclink-task:tsk_01M4SHHEK1BS5WNMZC39YC9XBF -->
 
 ## 3. 面板內容卡收合
 
@@ -21,5 +23,5 @@
 
 ## 4. 收尾驗證
 
-- [ ] [M] 4.1 使用者於 macOS 以 root 的 `npm run dev:desktop` 開啟系統匣面板，切到討論很多的專案（例如 wadpilot）確認：打開即看得到提案中、進行中、已就緒三張卡；動作區塊卡為單列，滑過三顆圖示鈕會出現「專案設定」「設定」「結束」；收起「討論」後面板變矮，切到其他專案、關閉再開啟面板後仍收合；分別在色彩鮮明的淺色桌布與深色桌布（或全螢幕深色 IDE）前開啟面板，面板外框與卡片縫隙看得出毛玻璃透出的色調，卡片內文字清楚、未偏暗；展開系統匣與看板的「已轉出」收合列時箭頭朝上、收合時為 ›。 <!-- speclink-task:tsk_01M4SCV3KAQPYBS6SZVH5XK74X -->
+- [ ] [M] 4.1 使用者於 macOS 以 root 的 `npm run dev:desktop` 開啟系統匣面板，切到討論很多的專案（例如 wadpilot）確認：打開即看得到提案中、進行中、已就緒三張卡；動作區塊卡為單列，滑過三顆圖示鈕會出現「專案設定」「設定」「結束」；收起「討論」後面板變矮，切到其他專案、關閉再開啟面板後仍收合；分別在色彩鮮明的淺色桌布與深色桌布（或全螢幕深色 IDE）前開啟面板，面板外框與卡片縫隙看得出毛玻璃透出的色調，卡片內文字清楚、未偏暗；展開系統匣與看板的「已轉出」收合列時箭頭朝上、收合時為 ›；開啟 5 個以上專案時「加入專案」的「＋」固定在 tab 條右端、有隱藏 tab 的一側淡出、打開面板時作用中的專案在畫面內。 <!-- speclink-task:tsk_01M4SCV3KAQPYBS6SZVH5XK74X -->
 - [ ] 4.2 跑受影響面的完整測試確認沒有回歸：`npm test -w apps/desktop` 與 `npm test -w packages/ui` 全綠，且 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過（詞彙守門、中英對照與文件連結檢查）。 <!-- speclink-task:tsk_01M4SCV3KAF1E57FY5E2VPX863 -->
