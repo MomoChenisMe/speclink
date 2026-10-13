@@ -25,5 +25,5 @@
 
 ## 5. 收尾驗證
 
-- [ ] [M] 5.1 開發環境實機驗收：以 root `npm run dev:desktop` 開桌面視窗、切到 wadpilot 專案，開 wad-plugins-merge-or-split 的討論詳情頁，確認左欄步驟列現站「已轉出」與狀態籤同為琥珀色；結論文件數字磚下有橄欖色「1 刀尚未轉出」提示框，「前往」捲到 cut 2，cut 2 為橄欖色虛線框與「尚未轉出」籤，指令籤可複製；再開一筆已封存且有未轉出刀的討論（沒有時略過此項並註記），確認刀卡有標示、沒有提示框。 <!-- speclink-task:tsk_01M4SQWTHRRC1F59XW5MB9G7S1 -->
+- [x] [M] 5.1 開發環境實機驗收：以 root `npm run dev:desktop` 開桌面視窗、切到 wadpilot 專案，開 wad-plugins-merge-or-split 的討論詳情頁，確認左欄步驟列現站「已轉出」與狀態籤同為琥珀色；結論文件數字磚下有橄欖色「1 刀尚未轉出」提示框，「前往」捲到 cut 2，cut 2 為橄欖色虛線框與「尚未轉出」籤，指令籤可複製；再開一筆已封存且有未轉出刀的討論（沒有時略過此項並註記），確認刀卡有標示、沒有提示框。 <!-- speclink-task:tsk_01M4SQWTHRRC1F59XW5MB9G7S1 -->
 - [x] 5.2 全組守門：確認本變更沒有動到詞彙守門與文件連結掃描面。驗證：`npm test -w packages/ui` 全綠，且 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。 <!-- speclink-task:tsk_01M4SQWTHRM46XAH9WG7J09R4V -->

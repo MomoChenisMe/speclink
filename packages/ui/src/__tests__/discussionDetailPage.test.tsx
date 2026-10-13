@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { render as rtlRender, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 
@@ -11,6 +11,10 @@ const zhWrapper = ({ children }: { children: ReactNode }) => (
 function render(ui: ReactElement) {
   return rtlRender(ui, { wrapper: zhWrapper });
 }
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 import { DiscussionDetailPage } from "../components/DiscussionDetailPage";
 import type { DocumentTarget } from "../components/DetailHeader";
@@ -274,33 +278,33 @@ describe("結論欄位標籤化（討論結論以欄位標籤呈現）", () => {
     const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
       targets.push(this);
     });
-    try {
-      const props = makeProps({
-        discussion: {
-          ...concludedD,
-          slug: "wad-plugins-merge-or-split",
-          status: "promoted",
-          concluded: true,
-          hold: true,
-          promotedTo: ["add-team-plugin-library"],
-        },
-        changes: [{ name: "add-team-plugin-library", status: "in-progress", totalTasks: 3, completedTasks: 1 }],
-        loadDocument: vi.fn(async () => docWithConclusion(WAD_DECISION)),
-      });
-      render(<DiscussionDetailPage {...(props as never)} />);
-      const row = await waitFor(() => {
-        const el = document.querySelector("[data-doc-callout] [data-unpromoted-cut]") as HTMLElement | null;
-        expect(el).toBeTruthy();
-        return el!;
-      });
-      targets.length = 0;
-      scrollSpy.mockClear();
-      fireEvent.click(within(row).getByRole("button", { name: /前往/ }));
-      await waitFor(() => expect(targets).toEqual([document.querySelector('[data-cut="cut 2"]')]));
-      expect(scrollSpy).toHaveBeenCalledWith(expect.objectContaining({ block: "center" }));
-    } finally {
-      scrollSpy.mockRestore();
-    }
+    const props = makeProps({
+      discussion: {
+        ...concludedD,
+        slug: "wad-plugins-merge-or-split",
+        status: "promoted",
+        concluded: true,
+        hold: true,
+        promotedTo: ["add-team-plugin-library"],
+      },
+      changes: [{ name: "add-team-plugin-library", status: "in-progress", totalTasks: 3, completedTasks: 1 }],
+      loadDocument: vi.fn(async () => docWithConclusion(WAD_DECISION)),
+    });
+    render(<DiscussionDetailPage {...(props as never)} />);
+    const row = await waitFor(() => {
+      const el = document.querySelector("[data-doc-callout] [data-unpromoted-cut]") as HTMLElement | null;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    // cut 1 已轉出：一般外框、變更名籤附「進行中」階段籤。
+    const cut1 = document.querySelector('[data-cut="cut 1"]') as HTMLElement;
+    expect(cut1.hasAttribute("data-cut-todo")).toBe(false);
+    expect(within(cut1).getByText("進行中")).toBeTruthy();
+    targets.length = 0;
+    scrollSpy.mockClear();
+    fireEvent.click(within(row).getByRole("button", { name: /前往/ }));
+    await waitFor(() => expect(targets).toEqual([document.querySelector('[data-cut="cut 2"]')]));
+    expect(scrollSpy).toHaveBeenCalledWith(expect.objectContaining({ block: "center" }));
   });
 
   it("自由格式結論整篇以單一 markdown 檢視退回", async () => {
@@ -725,6 +729,7 @@ describe("討論詳情頁狀態卡的保留與衍生列", () => {
     expect(concluded.querySelector("svg.lucide-circle")).toBeTruthy();
     expect(concluded.className).toContain("text-muted-foreground/50");
     expect(station("討論中").querySelector("svg.lucide-check")).toBeTruthy();
+    expect(station("已封存").querySelector("svg.lucide-circle")).toBeTruthy();
   });
 
   it("hold 為 false、已結論的已轉出討論：現站為主色", async () => {
@@ -970,11 +975,11 @@ describe("數字磚、出處行與提示框", () => {
   });
 
   // spec Scenario「未轉出刀的提示框與前往」「沒有整刀未轉出的刀時無提示框」「已封存討論頁不出未轉出提示框」。
-  const wadData = (decision: string, promoted: string[], status = "promoted") =>
+  const wadData = (decision: string, promoted: string[], status = "promoted", hold = true) =>
     discussionDocData({
       text: record(roundsOf(["interview"], ["2026-10-12"]), decision),
       status,
-      hold: true,
+      hold,
       created: "2026-10-12",
       recordPath: "openspec/discussions/wad-plugins-merge-or-split.md",
       rows: promotedRows(promoted, promoted.map((name) => live(name, 1, 3)), [], t),
@@ -994,6 +999,41 @@ describe("數字磚、出處行與提示框", () => {
     expect(box.querySelector("[data-command-chip]")!.textContent).toBe(
       "/speclink-propose --from-discussion wad-plugins-merge-or-split",
     );
+    const writeText = vi.fn();
+    Object.assign(navigator, { clipboard: { writeText } });
+    fireEvent.click(within(box).getByRole("button", { name: "複製指令" }));
+    expect(writeText).toHaveBeenCalledWith("/speclink-propose --from-discussion wad-plugins-merge-or-split");
+  });
+
+  // 引擎只拒絕從已封存的記錄轉出：已轉出、未保留的 live 討論仍可再轉出下一刀。
+  it("已轉出、未保留（hold 為 false）的 live 討論仍有提示框", () => {
+    render(<Harness tab="conclusion" data={wadData(WAD_DECISION, ["add-team-plugin-library"], "promoted", false)} />);
+    expect(callout()!.querySelectorAll("[data-unpromoted-cut]").length).toBe(1);
+  });
+
+  it("名稱只寫在粗體之後的舊式刀列不列入提示框", () => {
+    const decision = ["**Decision**: 一刀。", "- **刀一（候選 1＋2）**：`KeyLines` 原語＋`DiscussionHead`。檔案面：`util.rs`"].join(
+      "\n",
+    );
+    render(<Harness tab="conclusion" data={wadData(decision, ["lifecycle-discussion-head"])} />);
+    expect(callout()).toBeNull();
+  });
+
+  it("名稱清單沒有本討論的 slug 時提示框照列刀、不出指令籤", () => {
+    const data = discussionDocData({
+      text: record(roundsOf(["interview"], ["2026-10-12"]), WAD_DECISION),
+      status: "promoted",
+      hold: true,
+      created: "2026-10-12",
+      recordPath: "openspec/discussions/wad-plugins-merge-or-split.md",
+      rows: promotedRows(["add-team-plugin-library"], [live("add-team-plugin-library", 1, 3)], [], t),
+      names: NAMES,
+    });
+    render(<Harness tab="conclusion" data={data} />);
+    const box = callout()!;
+    expect(box.querySelectorAll("[data-unpromoted-cut]").length).toBe(1);
+    expect(box.querySelector("[data-command-chip]")).toBeNull();
+    expect(box.textContent).not.toContain("undefined");
   });
 
   it("全部刀已轉出或只部分轉出時無提示框", () => {

@@ -108,7 +108,13 @@ describe("PromotedDoc", () => {
   it("7 刀分組：組頭數 7、cut 2 組內 3 列、組頭為 data-doc-heading、不在任何刀的列接在最後無組頭", () => {
     const cutNames = [["a0"], ["a1"], ["b1", "b2", "b3"], ["c1", "c2"], ["d1", "d2"], ["e1", "e2", "e3"], ["f1"]];
     const ids = ["cut 0", "cut 1", "cut 2", "cut 3a", "cut 3b", "cut 4", "cut 5"];
-    const cuts: CutCard[] = cutNames.map((names, i) => ({ id: ids[i], title: `範圍 ${i}`, names, items: [] }));
+    const cuts: CutCard[] = cutNames.map((names, i) => ({
+      id: ids[i],
+      title: `範圍 ${i}`,
+      names,
+      namesInBold: true,
+      items: [],
+    }));
     const all = [...cutNames.flat(), "stray"];
     const { container } = render(<PromotedDoc rows={rows(all)} cuts={cuts} />);
     const groups = Array.from(container.querySelectorAll<HTMLElement>("[data-cut-group]"));

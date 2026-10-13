@@ -395,10 +395,25 @@ describe("parseCuts", () => {
     const { cuts } = one("**cut 4 設定**（先跑 `speclink plan`，再建 `desktop-settings-mode`）");
     expect(cuts[0].names).toEqual(["desktop-settings-mode"]);
   });
+
+  it.each<[string, boolean]>([
+    ["**cut 1 `a-one`**: 骨架", true],
+    ["**cut 2 外殼**（`a-one` 外殼結構）", false],
+    ["**刀一（候選 1＋2）**：`KeyLines` 原語＋`DiscussionHead`", false],
+    ["**刀三**：系統匣面板", false],
+  ])("%s → 變更名在粗體內 %s", (line, inBold) => {
+    expect(one(line).cuts[0].namesInBold).toBe(inBold);
+  });
 });
 
 describe("cutPromotion（刀的轉出判定）", () => {
-  const cut = (names: string[]) => ({ id: "cut 1", title: "骨架", names, items: [] });
+  const cut = (names: string[], namesInBold = names.length > 0) => ({
+    id: "cut 1",
+    title: "骨架",
+    names,
+    namesInBold,
+    items: [],
+  });
 
   it.each<[string[], string[], string]>([
     [["a", "b"], ["a", "b"], "promoted"],
@@ -408,6 +423,10 @@ describe("cutPromotion（刀的轉出判定）", () => {
   ])("變更名籤 %j、已轉出 %j → %s", (names, promoted, verdict) => {
     const set = new Set(promoted);
     expect(cutPromotion(cut(names), (n) => set.has(n))).toBe(verdict);
+  });
+
+  it("名稱只寫在粗體之後（舊式刀列，可能混有識別字與檔名）時無從判定", () => {
+    expect(cutPromotion(cut(["KeyLines", "util.rs"], false), () => false)).toBe("unknown");
   });
 });
 

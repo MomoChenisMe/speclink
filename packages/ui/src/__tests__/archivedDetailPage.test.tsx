@@ -433,6 +433,8 @@ describe("ArchivedDetailPage（封存討論）", () => {
       return el!;
     });
     expect(todo.hasAttribute("data-cut-todo")).toBe(true);
+    expect(todo.className).toContain("border-dashed");
+    expect(todo.querySelector("header")!.textContent).toContain("尚未轉出");
     expect(document.querySelector('[data-cut="cut 1"]')!.hasAttribute("data-cut-todo")).toBe(false);
     expect(document.querySelector("[data-unpromoted-cut]")).toBeNull();
     expect(document.querySelector("[data-doc-callout]")).toBeNull();

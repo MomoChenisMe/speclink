@@ -676,7 +676,7 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "conclusion.afterRounds": "Written after {n} rounds",
     "conclusion.copyCommand": "Copy command",
     "conclusion.notPromoted": "Not promoted",
-    "conclusion.unpromotedCallout": "{n} cuts not promoted yet",
+    "conclusion.unpromotedCallout": "Cuts not promoted yet: {n}",
     "conclusion.unpromotedHint": "These cuts have no change yet. Promote the next one with:",
     "rounds.tileRounds": "Rounds",
     "rounds.tileDays": "Days",

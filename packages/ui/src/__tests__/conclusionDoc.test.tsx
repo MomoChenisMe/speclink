@@ -12,6 +12,7 @@ const render = (ui: ReactElement) => rtlRender(ui, { wrapper });
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const section = (container: HTMLElement, key: string) =>
@@ -130,32 +131,38 @@ describe("ConclusionDoc", () => {
     expect(card.textContent).not.toContain("尚未轉出");
   });
 
+  it("名稱只寫在粗體之後的舊式刀列（反引號裡是識別字與檔名）卡無 data-cut-todo、無「尚未轉出」", () => {
+    const { container } = render(
+      <ConclusionDoc
+        text={"**Decision**: 定。\n- **刀一（候選 1＋2）**：`KeyLines` 原語＋`DiscussionHead`。檔案面：`util.rs`"}
+        stageOf={() => null}
+      />,
+    );
+    const card = container.querySelector<HTMLElement>("[data-cut]")!;
+    expect(card.getAttribute("data-cut")).toBe("刀一");
+    expect(card.querySelector('[data-cut-change="KeyLines"]')).toBeTruthy();
+    expect(card.hasAttribute("data-cut-todo")).toBe(false);
+    expect(card.textContent).not.toContain("尚未轉出");
+  });
+
   it("jump 請求把該刀卡捲到畫面中央並呼叫 onJumped", () => {
     const targets: Element[] = [];
     const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
       targets.push(this);
     });
-    try {
-      const onJumped = vi.fn();
-      const { container } = render(<ConclusionDoc text={CUTS} jump={{ id: "cut 2", seq: 1 }} onJumped={onJumped} />);
-      expect(targets).toEqual([container.querySelector('[data-cut="cut 2"]')]);
-      expect(scrollSpy).toHaveBeenCalledWith(expect.objectContaining({ block: "center" }));
-      expect(onJumped).toHaveBeenCalledTimes(1);
-    } finally {
-      scrollSpy.mockRestore();
-    }
+    const onJumped = vi.fn();
+    const { container } = render(<ConclusionDoc text={CUTS} jump={{ id: "cut 2", seq: 1 }} onJumped={onJumped} />);
+    expect(targets).toEqual([container.querySelector('[data-cut="cut 2"]')]);
+    expect(scrollSpy).toHaveBeenCalledWith(expect.objectContaining({ block: "center" }));
+    expect(onJumped).toHaveBeenCalledTimes(1);
   });
 
   it("jump 的目標刀卡不存在時不捲動、照樣呼叫 onJumped", () => {
     const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
-    try {
-      const onJumped = vi.fn();
-      render(<ConclusionDoc text={CUTS} jump={{ id: "cut 9", seq: 1 }} onJumped={onJumped} />);
-      expect(scrollSpy).not.toHaveBeenCalled();
-      expect(onJumped).toHaveBeenCalledTimes(1);
-    } finally {
-      scrollSpy.mockRestore();
-    }
+    const onJumped = vi.fn();
+    render(<ConclusionDoc text={CUTS} jump={{ id: "cut 9", seq: 1 }} onJumped={onJumped} />);
+    expect(scrollSpy).not.toHaveBeenCalled();
+    expect(onJumped).toHaveBeenCalledTimes(1);
   });
 
   it("否決 14 列方案／理由、擱置其中一列無理由行且每列有時鐘圖示", () => {

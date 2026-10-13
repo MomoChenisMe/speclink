@@ -191,6 +191,8 @@ export interface CutCard {
   id: string;
   title: string;
   names: string[];
+  /** 變更名寫在粗體內（討論技能的寫法 **cut N `change-name`**）；false 時名稱取自粗體之後，可能混有識別字或檔名。 */
+  namesInBold: boolean;
   items: string[];
 }
 
@@ -233,6 +235,7 @@ function cutCard(item: ListItem): CutCard | null {
     id: id[0],
     title,
     names: inBold.length > 0 ? inBold : tickNames(after),
+    namesInBold: inBold.length > 0,
     items: [...(note ? [note] : []), ...blockRows(parseListItems(item.body))],
   };
 }
@@ -249,12 +252,13 @@ export function parseCuts(details: ListItem[]): { cuts: CutCard[]; rest: ListIte
   return { cuts, rest };
 }
 
-/** 刀的轉出判定：只看變更名籤是否已轉出（刀卡與未轉出提示框共用，兩處不會分岔）；沒有變更名籤時無從判定。 */
+/** 刀的轉出判定：只看粗體內的變更名籤是否已轉出（刀卡與未轉出提示框共用，兩處不會分岔）；粗體內沒有變更名
+ * （沒有名稱，或舊式刀列把名稱寫在粗體之後）時無從判定。 */
 export function cutPromotion(
   cut: CutCard,
   isPromoted: (name: string) => boolean,
 ): "promoted" | "partial" | "none" | "unknown" {
-  if (cut.names.length === 0) return "unknown";
+  if (!cut.namesInBold) return "unknown";
   const promoted = cut.names.filter(isPromoted).length;
   if (promoted === cut.names.length) return "promoted";
   return promoted === 0 ? "none" : "partial";
