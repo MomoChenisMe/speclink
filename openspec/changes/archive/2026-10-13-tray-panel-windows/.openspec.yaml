@@ -80,3 +80,5 @@ verified_scope:
     hash: fb4d1677f6a77ca0ac813610b772d8bcf71b723dda6fe7d580132e91237351ff
   - path: apps/desktop/src/tray.ts
     hash: 10982bb5710039bb62b08cb4983190fd1874d29947370135e844a211e7537144
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-13

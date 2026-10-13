@@ -16,6 +16,6 @@
 
 ## 4. 收尾驗證
 
-- [ ] [M] 4.1 使用者 push 含本變更的提交後，確認 CI 的 windows-latest 工作綠燈（`cargo test --workspace` 會編譯 Windows 面板分支，這是 Windows 程式碼唯一的自動編譯驗證）；紅燈時把錯誤訊息交回修正。 <!-- speclink-task:tsk_01M4SEZW0VFH627W96036V35XQ -->
-- [ ] [M] 4.2 使用者在 Windows 真機（Windows 上執行 root 的 `npm run dev:desktop`，或安裝含本變更的建置）逐項確認：工作列在底部時左鍵點圖示，面板出現在圖示正上方且底部貼齊工作列；工作列移到頂端時面板改在圖示下方；把圖示拖到最靠螢幕右緣的位置時面板不超出螢幕；收起與展開「討論」卡後面板仍貼齊工作列；面板開著時點圖示會關掉、不閃一下又打開；點面板外會收起；右鍵點圖示出現原生選單、最下面是「結束」；深色與淺色模式下面板底色不透明、Windows 11 四角為系統圓角；有多螢幕或縮放比例不是 100% 時面板位置仍正確。 <!-- speclink-task:tsk_01M4SEZW0V9681JCJ7SH4SD83B -->
+- [x] [M] 4.1 使用者 push 含本變更的提交後，確認 CI 的 windows-latest 工作綠燈（`cargo test --workspace` 會編譯 Windows 面板分支，這是 Windows 程式碼唯一的自動編譯驗證）；紅燈時把錯誤訊息交回修正。 <!-- speclink-task:tsk_01M4SEZW0VFH627W96036V35XQ -->
+- [x] [M] 4.2 使用者在 Windows 真機（Windows 上執行 root 的 `npm run dev:desktop`，或安裝含本變更的建置）逐項確認：工作列在底部時左鍵點圖示，面板出現在圖示正上方且底部貼齊工作列；工作列移到頂端時面板改在圖示下方；把圖示拖到最靠螢幕右緣的位置時面板不超出螢幕；收起與展開「討論」卡後面板仍貼齊工作列；面板開著時點圖示會關掉、不閃一下又打開；點面板外會收起；右鍵點圖示出現原生選單、最下面是「結束」；深色與淺色模式下面板底色不透明、Windows 11 四角為系統圓角；有多螢幕或縮放比例不是 100% 時面板位置仍正確。 <!-- speclink-task:tsk_01M4SEZW0V9681JCJ7SH4SD83B -->
 - [x] 4.3 跑受影響面的完整測試確認沒有回歸：`npm test -w apps/desktop` 全綠、`cargo test -p speclink-desktop-core` 全綠，且 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過（詞彙守門、中英對照與文件連結檢查）。 <!-- speclink-task:tsk_01M4SEZW0V35PCE94SQAN4Z7R1 -->
