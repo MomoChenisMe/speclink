@@ -63,7 +63,7 @@ describe("promotedRows", () => {
     rows[0].onOpen!();
     expect(openActive).toHaveBeenCalledWith("ready-stamped");
     rows[2].onOpen!();
-    expect(openArchived).toHaveBeenCalledWith("2026-10-05-archived-ok");
+    expect(openArchived).toHaveBeenCalledWith("archived-ok");
     expect(rows[4].onOpen).toBeUndefined();
   });
 });

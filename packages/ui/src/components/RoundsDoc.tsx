@@ -64,13 +64,13 @@ function RoundCard({ round, open, onToggle }: { round: DiscussionRound; open: bo
           MODE_DOT[round.mode] ?? "bg-muted-foreground/50",
         )}
       />
-      <div className="rounded-xl border border-border">
+      <div className="overflow-hidden rounded-xl border border-border">
         <h3>
           <button
             type="button"
             aria-expanded={open}
             onClick={onToggle}
-            className="flex w-full min-w-0 items-center gap-2 px-4 py-2.5 text-left"
+            className="flex w-full min-w-0 cursor-pointer items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-foreground/5"
           >
             {/* 輪次籤是靜態編號，與同列 mode／日期同層級——走中性，不佔用主色。 */}
             <span
@@ -79,7 +79,8 @@ function RoundCard({ round, open, onToggle }: { round: DiscussionRound; open: bo
             >
               {t("rounds.roundN").replace("{n}", String(round.round))}
             </span>
-            <span className="min-w-0 flex-1 truncate text-sm font-medium">
+            {/* 收合時一行截斷、展開時折行完整顯示（長焦點不被裁掉）。 */}
+            <span data-round-focus className={cn("min-w-0 flex-1 text-sm font-medium", open ? "break-words" : "truncate")}>
               {focus.trim() && <InlineMarks text={focus.trim()} />}
             </span>
             <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">

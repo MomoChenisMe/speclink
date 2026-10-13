@@ -192,11 +192,12 @@ function TaskRowBody({
 /** 任務列外框共用樣式。 */
 const ROW_CLS = "group/task flex items-start gap-2 py-1 pl-1 rounded-md";
 
-/** 列的底色：「下一個未完成」高亮優先；未勾的手動任務整列暖黃淡底（design D14）；其餘 hover 才淡灰。 */
-function rowSurface(item: TaskItem, highlight?: boolean): string {
+/** 列的底色：「下一個未完成」高亮優先；未勾的手動任務整列暖黃淡底（design D14）；其餘 hover 才淡灰。
+ * 唯讀列點了沒反應，不給 hover 底色。 */
+function rowSurface(item: TaskItem, interactive: boolean, highlight?: boolean): string {
   if (highlight) return "bg-accent ring-1 ring-primary/40";
-  if (item.manual && !item.done) return "bg-status-manual/12 hover:bg-status-manual/20";
-  return "hover:bg-muted/50";
+  if (item.manual && !item.done) return interactive ? "bg-status-manual/12 hover:bg-status-manual/20" : "bg-status-manual/12";
+  return interactive ? "hover:bg-foreground/5" : "";
 }
 
 /** 手動任務列的標記（未勾與已勾都帶）。 */
@@ -246,7 +247,7 @@ function PlainTaskRow({
       onClick={label.onClick}
       data-highlight={highlight ? "true" : "false"}
       {...manualMark(item)}
-      className={`${ROW_CLS} ${label.className} transition-colors ${rowSurface(item, highlight)}`}
+      className={`${ROW_CLS} ${label.className} transition-colors ${rowSurface(item, interactive, highlight)}`}
     >
       <TaskRowBody
         item={item}
@@ -329,7 +330,7 @@ function SortableTaskRow({
       style={{ transform: CSS.Transform.toString(transform), transition }}
       data-highlight={highlight ? "true" : "false"}
       {...manualMark(item)}
-      className={`${ROW_CLS} ${label.className} transition-colors ${rowSurface(item, highlight)} ${
+      className={`${ROW_CLS} ${label.className} transition-colors ${rowSurface(item, interactive, highlight)} ${
         isDragging ? "opacity-40" : ""
       }`}
     >

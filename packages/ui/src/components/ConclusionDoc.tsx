@@ -213,8 +213,9 @@ function CaptureChips({
         }
         const spans = onOpenSpec ? nameSpans(target, specNames) : [];
         let last = 0;
+        // 籤文字可能是一整句：可折行、寬度不超過容器（不沿用名稱籤的不換行）。
         return (
-          <span key={i} data-capture-chip className={NAME_CHIP_CLS}>
+          <span key={i} data-capture-chip className="inline-block max-w-full rounded bg-muted px-1.5 py-0.5 font-mono text-xs break-words">
             {spans.flatMap(({ name, start, end }) => {
               const parts = [
                 target.slice(last, start),

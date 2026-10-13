@@ -400,6 +400,7 @@ describe("TaskList 整列可點", () => {
     const checkbox = screen.getByRole("checkbox", { name: "任務 1" });
     expect(row.htmlFor).toBe(checkbox.id);
     expect(row.className).toContain("cursor-pointer");
+    expect(row.className).toContain("hover:bg-foreground/5");
     fireEvent.click(screen.getByText("first"));
     expect(onToggle).toHaveBeenCalledTimes(1);
     expect(onToggle).toHaveBeenCalledWith(1, true, undefined);
@@ -414,12 +415,13 @@ describe("TaskList 整列可點", () => {
     expect(onToggle).not.toHaveBeenCalled();
   });
 
-  it("唯讀列點擊不切換，label 無 htmlFor 且游標預設", () => {
+  it("唯讀列點擊不切換，label 無 htmlFor、游標預設且沒有 hover 底色", () => {
     const onToggle = vi.fn();
     render(<TaskList markdown={MD} readOnly onToggle={onToggle} />);
     const row = rowOf("first");
     expect(row.htmlFor).toBe("");
     expect(row.className).toContain("cursor-default");
+    expect(row.className).not.toContain("hover:");
     fireEvent.click(screen.getByText("first"));
     expect(onToggle).not.toHaveBeenCalled();
   });

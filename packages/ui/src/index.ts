@@ -259,37 +259,8 @@ export {
   discussionDocData,
   type DiscussionDocData,
 } from "./components/discussionDocSummary";
-export {
-  splitDiscussionSections,
-  splitRounds,
-  splitLabeledFields,
-  countPriorDiscussions,
-  parseConclusion,
-  splitVerdict,
-  parseCuts,
-  splitOption,
-  splitRows,
-  captureTargets,
-  openItems,
-  roundStats,
-  parseContextMeta,
-  contextRelations,
-  splitLead,
-  nameSpans,
-  matchNames,
-  commandChips,
-  ROUND_LABELS,
-  CONCLUSION_LABELS,
-  type DiscussionSections,
-  type DiscussionRound,
-  type RoundLabel,
-  type ConclusionLabel,
-  type LabeledFields,
-  type CutCard,
-  type ContextMeta,
-  type ContextNames,
-  type ContextRelations,
-} from "./discussionModel";
+// 記錄解析器留在套件內部；只延續原本就公開的區段切分。
+export { splitDiscussionSections, type DiscussionSections } from "./discussionModel";
 export { CopyButton, type CopyButtonProps } from "./components/CopyButton";
 export { EmptyState, type EmptyStateProps } from "./components/EmptyState";
 export { SectionHeader, type SectionHeaderProps } from "./components/SectionHeader";

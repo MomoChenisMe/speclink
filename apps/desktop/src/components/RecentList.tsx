@@ -72,7 +72,7 @@ export function RecentList({
               key={key}
               className={cn(
                 "group flex items-start gap-1 px-3 py-2 transition-colors",
-                reason ? "bg-destructive/5" : "hover:bg-muted/60",
+                reason ? "bg-destructive/5" : "hover:bg-foreground/5",
               )}
             >
               {/* 開啟失敗的錯誤態仍可再點重試；連線已移除／已登出才停用。 */}

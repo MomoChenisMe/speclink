@@ -1,16 +1,17 @@
 import type { ReactNode } from "react";
 
+import type { ArchivedItem, ChangeItem } from "../adapter";
 import {
-  contextRelations,
+  contextModel,
   openItems,
   parseConclusion,
-  parseContextMeta,
   parseCuts,
   roundStats,
   splitDiscussionSections,
   splitRounds,
   splitRows,
   splitVerdict,
+  type ContextModel,
   type ContextNames,
   type CutCard,
   type DiscussionRound,
@@ -20,19 +21,36 @@ import { Callout } from "./ui/callout";
 import type { DocSummary, DocTile } from "./DetailShell";
 import type { PromotedRow } from "./PromotedDoc";
 
-/** 兩頁自記錄與清單推出的同一份資料：渲染器的分刀與衍生列、閱讀卡標題區的推導都吃它。 */
+/** 討論頁的文件節點：記錄切分成功時結論、討論過程、背景，失敗時「記錄」；衍生變更恆在。 */
+export type DiscussionTab = "conclusion" | "rounds" | "context" | "promote" | "record";
+
+/** 兩頁自記錄與清單推出的同一份資料：渲染器的分刀、背景與衍生列、閱讀卡標題區的推導都吃它。 */
 export interface DiscussionDocData {
   sections: DiscussionSections | null;
   rounds: DiscussionRound[] | null;
   conclusion: ReturnType<typeof parseConclusion>;
   cuts: CutCard[];
+  /** 背景的推導（記錄切分失敗時為 null）：ContextDoc 與背景數字磚共用。 */
+  context: ContextModel | null;
   status: string;
   hold: boolean;
   created: string | null;
   rows: PromotedRow[];
-  /** 背景關聯列的籤數；`prior` 在 `Prior discussions:` 行缺席時為 null。 */
-  relations: { specs: number; changes: number; archived: number; prior: number | null };
   recordPath: string | null;
+}
+
+/** 兩頁共用的名稱清單（背景名稱籤、先前討論比對）：本討論的 slug 由 `self` 排除。 */
+export function discussionNames(
+  self: string,
+  lists: { specNames?: string[]; changes?: ChangeItem[]; archivedChanges?: ArchivedItem[]; discussionSlugs?: string[] },
+): ContextNames {
+  return {
+    specs: lists.specNames ?? [],
+    active: (lists.changes ?? []).map((c) => c.name),
+    archived: (lists.archivedChanges ?? []).map((a) => a.name),
+    discussions: lists.discussionSlugs ?? [],
+    self,
+  };
 }
 
 /** 記錄全文（undefined＝載入中、null＝不存在）與頁已持有的清單 → `DiscussionDocData`。 */
@@ -48,55 +66,50 @@ export function discussionDocData(input: {
   const sections = input.text ? splitDiscussionSections(input.text) : null;
   const conclusion = sections ? parseConclusion(sections.conclusion) : null;
   const decision = conclusion?.fields.Decision;
-  const meta = sections ? parseContextMeta(sections.context) : null;
-  const rel = meta ? contextRelations(meta, input.names) : null;
   return {
     sections,
     rounds: sections ? splitRounds(sections.rounds) : null,
     conclusion,
     cuts: decision !== undefined ? parseCuts(splitVerdict(decision).details).cuts : [],
+    context: sections ? contextModel(sections.context, input.names) : null,
     status: input.status,
     hold: input.hold,
     created: input.created,
     rows: input.rows,
-    relations: {
-      specs: rel?.specs.length ?? 0,
-      changes: rel?.changes.length ?? 0,
-      archived: rel?.archived.length ?? 0,
-      prior: meta?.prior === null || !rel ? null : rel.prior.length,
-    },
     recordPath: input.recordPath,
   };
 }
 
-type T = (key: string) => string;
+type Translate = (key: string) => string;
 
 const EMPTY: DocSummary = { badges: null, tiles: [], callout: null };
 
 const fill = (template: string, values: Record<string, string | number>) =>
   Object.entries(values).reduce((s, [k, v]) => s.replace(`{${k}}`, String(v)), template);
 
+/** 一份文件的閱讀卡標題區：數字磚與提示框、出處行。 */
+interface DocHeaderParts {
+  summary: (data: DiscussionDocData, t: Translate) => DocSummary;
+  provenance: (data: DiscussionDocData, t: Translate) => ReactNode[];
+}
+
 /**
  * 討論文件閱讀卡標題區的推導單一入口（design D6，對稱 changeDocSummary）：數字磚與提示框全由記錄結構與清單
  * 推出，缺資料少一格、條件不成立沒有提示框；記錄未載入或切分失敗時皆空。討論文件沒有籤。
  */
-export function discussionDocSummary(tab: string, data: DiscussionDocData, t: T): DocSummary {
-  if (!data.sections) return EMPTY;
-  switch (tab) {
-    case "conclusion":
-      return { ...EMPTY, tiles: conclusionTiles(data, t) };
-    case "rounds":
-      return roundsSummary(data, t);
-    case "context":
-      return contextSummary(data, t);
-    case "promote":
-      return promoteSummary(data, t);
-    default:
-      return EMPTY;
-  }
+export function discussionDocSummary(tab: DiscussionTab, data: DiscussionDocData, t: Translate): DocSummary {
+  const parts = data.sections ? DOC_HEADERS[tab] : undefined;
+  return parts ? parts.summary(data, t) : EMPTY;
 }
 
-function conclusionTiles(data: DiscussionDocData, t: T): DocTile[] {
+/** 閱讀卡出處行（design D6）：結論為記錄路徑與「N 輪之後寫入」、討論過程為日期範圍與各 mode 輪數、背景為
+ * 「記錄建立時寫入一次」與建立日、衍生變更為分組依據；已封存討論頁沒有記錄路徑段。 */
+export function discussionDocProvenance(tab: DiscussionTab, data: DiscussionDocData, t: Translate): ReactNode[] {
+  const parts = data.sections ? DOC_HEADERS[tab] : undefined;
+  return parts ? parts.provenance(data, t) : [];
+}
+
+function conclusionTiles(data: DiscussionDocData, t: Translate): DocTile[] {
   const fields = data.conclusion?.fields;
   if (!fields) return [];
   const rowsOf = (md: string | undefined) => (md === undefined ? null : splitRows(md).length);
@@ -113,7 +126,7 @@ function conclusionTiles(data: DiscussionDocData, t: T): DocTile[] {
   return tiles.filter((tile): tile is DocTile => tile !== null);
 }
 
-function roundsSummary(data: DiscussionDocData, t: T): DocSummary {
+function roundsSummary(data: DiscussionDocData, t: Translate): DocSummary {
   const rounds = data.rounds;
   if (!rounds || rounds.length === 0) return EMPTY;
   const stats = roundStats(rounds);
@@ -141,12 +154,15 @@ function roundsSummary(data: DiscussionDocData, t: T): DocSummary {
   };
 }
 
-function contextSummary(data: DiscussionDocData, t: T): DocSummary {
-  const { specs, changes, archived, prior } = data.relations;
+function contextSummary(data: DiscussionDocData, t: Translate): DocSummary {
+  const tile = (count: number, label: string): DocTile | null => (count > 0 ? { value: count, label: t(label) } : null);
+  const ctx = data.context;
+  // 先前討論：`Prior discussions:` 行在時恆有一格（含 0），行缺席時沒有這格。
+  const prior = ctx && ctx.meta.prior !== null ? ctx.rel.prior.length : null;
   const tiles: (DocTile | null)[] = [
-    specs > 0 ? { value: specs, label: t("context.tileSpecs") } : null,
-    changes > 0 ? { value: changes, label: t("context.tileChanges") } : null,
-    archived > 0 ? { value: archived, label: t("context.tileArchived") } : null,
+    tile(ctx?.rel.specs.length ?? 0, "context.tileSpecs"),
+    tile(ctx?.rel.changes.length ?? 0, "context.tileChanges"),
+    tile(ctx?.rel.archived.length ?? 0, "context.tileArchived"),
     prior === null ? null : { value: prior, label: t("context.tilePrior") },
   ];
   return {
@@ -161,7 +177,7 @@ function contextSummary(data: DiscussionDocData, t: T): DocSummary {
   };
 }
 
-function promoteSummary(data: DiscussionDocData, t: T): DocSummary {
+function promoteSummary(data: DiscussionDocData, t: Translate): DocSummary {
   const { rows } = data;
   if (rows.length === 0) return EMPTY;
   // 已封存討論頁的退回列所在未知：兩格寧缺勿錯。
@@ -189,29 +205,29 @@ function promoteSummary(data: DiscussionDocData, t: T): DocSummary {
   };
 }
 
-/** 閱讀卡出處行（design D6）：結論為記錄路徑與「N 輪之後寫入」、討論過程為日期範圍與各 mode 輪數、背景為
- * 「記錄建立時寫入一次」與建立日、衍生變更為分組依據；已封存討論頁沒有記錄路徑段。 */
-export function discussionDocProvenance(tab: string, data: DiscussionDocData, t: T): ReactNode[] {
-  if (!data.sections) return [];
-  switch (tab) {
-    case "conclusion":
-      return [
-        data.recordPath && <span className="font-mono">{data.recordPath}</span>,
-        data.conclusion && data.rounds && fill(t("conclusion.afterRounds"), { n: data.rounds.length }),
-      ];
-    case "rounds": {
-      if (!data.rounds || data.rounds.length === 0) return [];
-      const stats = roundStats(data.rounds);
-      return [
-        stats.first === stats.last ? stats.first : fill(t("rounds.dateRange"), { first: stats.first!, last: stats.last! }),
-        ...stats.modes.map((m) => fill(t("rounds.modeRounds"), { mode: m.mode, n: m.count })),
-      ];
-    }
-    case "context":
-      return [t("context.writtenOnce"), data.created];
-    case "promote":
-      return data.rows.length === 0 ? [] : [t(data.cuts.length > 0 ? "promoted.byCuts" : "promoted.byOrder")];
-    default:
-      return [];
-  }
+function roundsProvenance(data: DiscussionDocData, t: Translate): ReactNode[] {
+  if (!data.rounds || data.rounds.length === 0) return [];
+  const stats = roundStats(data.rounds);
+  return [
+    stats.first === stats.last ? stats.first : fill(t("rounds.dateRange"), { first: stats.first!, last: stats.last! }),
+    ...stats.modes.map((m) => fill(t("rounds.modeRounds"), { mode: m.mode, n: m.count })),
+  ];
 }
+
+/** 文件 → 標題區；「記錄」（切分失敗的整篇退回）沒有標題區。 */
+const DOC_HEADERS: Partial<Record<DiscussionTab, DocHeaderParts>> = {
+  conclusion: {
+    summary: (data, t) => ({ ...EMPTY, tiles: conclusionTiles(data, t) }),
+    provenance: (data, t) => [
+      data.recordPath && <span className="font-mono">{data.recordPath}</span>,
+      data.conclusion && data.rounds && fill(t("conclusion.afterRounds"), { n: data.rounds.length }),
+    ],
+  },
+  rounds: { summary: roundsSummary, provenance: roundsProvenance },
+  context: { summary: contextSummary, provenance: (data, t) => [t("context.writtenOnce"), data.created] },
+  promote: {
+    summary: promoteSummary,
+    provenance: (data, t) =>
+      data.rows.length === 0 ? [] : [t(data.cuts.length > 0 ? "promoted.byCuts" : "promoted.byOrder")],
+  },
+};

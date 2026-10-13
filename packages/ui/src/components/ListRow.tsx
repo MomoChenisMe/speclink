@@ -59,7 +59,7 @@ export function ListRow({
         "group flex items-center gap-4 border-b border-border/70 px-4 py-3 outline-none last:border-b-0",
         disabled
           ? "cursor-default text-muted-foreground"
-          : "cursor-pointer hover:bg-foreground/[0.03] focus-visible:bg-foreground/[0.03] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          : "cursor-pointer hover:bg-foreground/5 focus-visible:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
       )}
       onClick={disabled ? undefined : onClick}
       onKeyDown={onKeyDown}

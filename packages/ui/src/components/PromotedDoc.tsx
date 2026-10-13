@@ -34,7 +34,7 @@ export function promotedRows(
   archivedChanges: ArchivedItem[],
   t: (key: string) => string,
   openActive?: (name: string) => void,
-  openArchived?: (datedName: string) => void,
+  openArchived?: (name: string) => void,
 ): PromotedRow[] {
   return names.map((name) => {
     const label = t(discussionChipStage(name, changes, archivedChanges));
@@ -65,7 +65,7 @@ export function promotedRows(
         review: archived.reviewStatus === "reviewed",
         verify: archived.verifyStatus === "verified",
         date: archived.date,
-        onOpen: openArchived && (() => openArchived(archived.datedName)),
+        onOpen: openArchived && (() => openArchived(name)),
       };
     }
     return { name, stage: { label, tone: "destructive" }, state: "deleted", tasks: null, review: false, verify: false, date: null };

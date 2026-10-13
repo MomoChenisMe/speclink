@@ -199,7 +199,7 @@ function SpecDetailView({
                       {sources.length > 1 && (
                         <button
                           type="button"
-                          className={cn(badgeVariants({ variant: "secondary" }), "cursor-pointer tabular-nums hover:bg-muted/70")}
+                          className={cn(badgeVariants({ variant: "secondary" }), "cursor-pointer tabular-nums hover:bg-accent")}
                           onClick={showTrace}
                         >
                           {`+${sources.length - 1}`}
