@@ -10,7 +10,6 @@ import {
   useState,
   type KeyboardEvent,
   type ReactNode,
-  type RefObject,
 } from "react";
 import {
   Button,
@@ -77,7 +76,8 @@ import {
   writeTrayCollapsedSections,
   type TraySectionId,
 } from "./sectionCollapse";
-import { TAB_FADE_PX, tabFadeEdges, tabRevealScrollLeft, type TabFade } from "./tabStrip";
+import { tabRevealScrollLeft } from "./tabStrip";
+import { edgeFade, edgeFadeMask, type EdgeFadeSide, type ScrollMetrics } from "./edgeFade";
 
 /** 分區圖示與看板欄位同款（KanbanBoard）：提案中／進行中／已就緒。 */
 const STAGE_ICONS: Record<Stage, LucideIcon> = {
@@ -145,25 +145,32 @@ function PanelCard({
     零筆階段卡與討論零筆卡共用，維持空狀態同構。 */
 const emptyCardClass = "min-h-12 justify-center";
 
-/** role="button" 的 div 補上 Enter／Space 切換（與原生 button 一致）。 */
+/** role="button" 的 div 補上 Enter／Space 切換（與原生 button 一致：按住不放的自動重複不再切換）。 */
 const toggleOnKey = (toggle: () => void) => (event: KeyboardEvent<HTMLElement>) => {
   if (event.key === "Enter" || event.key === " ") {
     event.preventDefault();
-    toggle();
+    if (!event.repeat) toggle();
   }
 };
+
+/** 分區的載入狀態（design D3）：四張內容卡同一個答案，由 store 導出的旗標換算。 */
+type SectionLoad = "loading" | "failed" | "ready";
 
 /**
  * 可收合的內容卡（spec「面板內容卡收合」；design「收合觸發沿用已轉出收合列的模式」）：
  * 整條分區標題為觸發區（role="button"、tabIndex=-1、Enter／Space，同已轉出收合列），
  * 箭頭放 SectionHeader 的 action 插槽、在計數之後（展開朝下、收合朝右）。收合時只留
  * 標題一行——其下內容卸載（溢出列的展開暫態隨之歸零），不套空狀態最小高度、標題下
- * 不畫細線。empty＝展開時其下也沒有內容的空狀態卡。
+ * 不畫細線。
+ *
+ * 載入狀態由卡片統一換算：載入中為佔位列、失敗為失敗提示，兩者都不出計數（不謊報 0）；
+ * 有料時才顯示 count 與 children。empty＝有料時其下也沒有內容的空狀態卡。
  */
 function SectionCard({
   id,
   collapsed,
   onToggle,
+  load,
   icon,
   label,
   count,
@@ -174,17 +181,21 @@ function SectionCard({
   id: TraySectionId;
   collapsed: boolean;
   onToggle: () => void;
+  load: SectionLoad;
   icon: ReactNode;
   label: string;
-  count: number | undefined;
+  count: number;
   countClassName: string;
   empty: boolean;
   children: ReactNode;
 }) {
+  const { t } = useI18n();
+  const ready = load === "ready";
+  const isEmpty = ready && empty;
   return (
     <PanelCard
       testid={`panel-section-${id}`}
-      className={!collapsed && empty ? emptyCardClass : undefined}
+      className={!collapsed && isEmpty ? emptyCardClass : undefined}
     >
       <div
         data-testid="panel-section-toggle"
@@ -197,17 +208,24 @@ function SectionCard({
         <SectionHeader
           icon={icon}
           label={label}
-          count={count}
+          count={ready ? count : undefined}
           countClassName={countClassName}
           action={
             <ChevronRight
               className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", !collapsed && "rotate-90")}
             />
           }
-          className={sectionHeaderClass(!collapsed && !empty)}
+          className={sectionHeaderClass(!collapsed && !isEmpty)}
         />
       </div>
-      {!collapsed && children}
+      {!collapsed &&
+        (load === "loading" ? (
+          <SectionSkeleton />
+        ) : load === "failed" ? (
+          <SectionLoadFailed label={t("tray.loadFailed")} />
+        ) : (
+          children
+        ))}
     </PanelCard>
   );
 }
@@ -241,56 +259,107 @@ function SectionSkeleton() {
 const SCROLL_IDLE_MS = 800;
 
 /**
- * 中段捲動指示條（spec「面板樣式（macOS）」：捲動時浮現、停止後自動隱去、
- * 不佔版面寬度）。自繪而非用原生捲軸——系統「總是顯示捲軸」偏好會讓原生捲軸
- * 常駐且佔寬、無法淡出，而 spec 要求此行為不依賴系統偏好。內容未溢出時不渲染。
+ * 監看可捲區的捲動量測（tab 條與中段共用）：立即回報一次，之後於捲動時（scrolled=true）與
+ * 可捲區或其直接子節點尺寸改變時（scrolled=false）再回報——中段的內容 wrapper 隨收合與快照
+ * 增減改變高度，可捲區本身被 flex 約束、外框不變。回傳解除監看的函式。
  */
-function ScrollIndicator({ targetRef }: { targetRef: RefObject<HTMLDivElement | null> }) {
+function watchScroll(
+  el: HTMLElement,
+  axis: "x" | "y",
+  onMeasure: (metrics: ScrollMetrics, scrolled: boolean) => void,
+): () => void {
+  const measure = (scrolled: boolean) =>
+    onMeasure(
+      axis === "x"
+        ? { position: el.scrollLeft, scrollSize: el.scrollWidth, viewportSize: el.clientWidth }
+        : { position: el.scrollTop, scrollSize: el.scrollHeight, viewportSize: el.clientHeight },
+      scrolled,
+    );
+  const onScroll = () => measure(true);
+  const observer = new ResizeObserver(() => measure(false));
+  measure(false);
+  el.addEventListener("scroll", onScroll, { passive: true });
+  observer.observe(el);
+  for (const child of Array.from(el.children)) observer.observe(child);
+  return () => {
+    el.removeEventListener("scroll", onScroll);
+    observer.disconnect();
+  };
+}
+
+/** 遮罩掛在可捲區本身（不隨內容捲動）；WebKit 仍認前綴屬性，兩個都給。 */
+const edgeFadeStyle = (axis: "x" | "y", side: EdgeFadeSide) => {
+  const mask = edgeFadeMask(axis, side);
+  return { maskImage: mask, WebkitMaskImage: mask };
+};
+
+/**
+ * 可捲中段（spec 三段式版面）：生命週期／討論分區或復原卡；捲動面自 body 收斂至此容器，
+ * overscroll-none 隨遷防 rubber-band。一次監看同時供上下緣淡出與捲動指示條：
+ * - 上下緣依是否還有被捲走的內容淡出（design「中段上下緣淡出：與 tab 條共用邊緣淡出」），
+ *   卡片不會在頁首／頁尾邊緣被硬切；遮罩掛在捲動容器上，指示條與頁首頁尾都在它之外、不被淡出。
+ * - 捲動指示條（spec：捲動時浮現、停止後自動隱去、不佔版面寬度）自繪而非用原生捲軸——系統
+ *   「總是顯示捲軸」偏好會讓原生捲軸常駐且佔寬、無法淡出，而 spec 要求此行為不依賴系統偏好。
+ *   內容未溢出時不渲染；指示條為捲動容器的兄弟節點，才不會隨內容一起捲走。
+ * 內層 wrapper 保持自然高度，入口層的 ResizeObserver 觀察的是這層（高度量測依據）。捲動時只有
+ * 本元件重繪：卡片是上層傳入的 children，不隨捲動重繪。
+ */
+function PanelScrollArea({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [fade, setFade] = useState<EdgeFadeSide>("none");
   const [thumb, setThumb] = useState<{ top: number; height: number } | null>(null);
   const [active, setActive] = useState(false);
   useEffect(() => {
-    const el = targetRef.current;
+    const el = ref.current;
     if (!el) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const measure = () => {
-      const { scrollTop, scrollHeight, clientHeight } = el;
-      if (scrollHeight <= clientHeight) {
+    const unwatch = watchScroll(el, "y", (metrics, scrolled) => {
+      setFade(edgeFade(metrics));
+      const { position, scrollSize, viewportSize } = metrics;
+      if (scrollSize <= viewportSize) {
         setThumb(null);
-        return;
+      } else {
+        const height = Math.max(24, (viewportSize / scrollSize) * viewportSize);
+        const top = (viewportSize - height) * (position / (scrollSize - viewportSize));
+        setThumb({ top, height });
       }
-      const height = Math.max(24, (clientHeight / scrollHeight) * clientHeight);
-      const travel = clientHeight - height;
-      const top = travel * (scrollTop / (scrollHeight - clientHeight));
-      setThumb({ top, height });
-    };
-    const onScroll = () => {
-      measure();
-      setActive(true);
-      if (timer !== null) clearTimeout(timer);
-      timer = setTimeout(() => setActive(false), SCROLL_IDLE_MS);
-    };
-    measure();
-    el.addEventListener("scroll", onScroll, { passive: true });
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
+      if (scrolled) {
+        setActive(true);
+        if (timer !== null) clearTimeout(timer);
+        timer = setTimeout(() => setActive(false), SCROLL_IDLE_MS);
+      }
+    });
     return () => {
-      el.removeEventListener("scroll", onScroll);
-      observer.disconnect();
+      unwatch();
       if (timer !== null) clearTimeout(timer);
     };
-  }, [targetRef]);
-  if (!thumb) return null;
+  }, []);
   return (
-    <div
-      aria-hidden
-      data-testid="panel-scroll-indicator"
-      data-active={active ? "true" : "false"}
-      className={cn(
-        "pointer-events-none absolute right-0.5 w-1 rounded-full bg-foreground/35 transition-opacity duration-300",
-        active ? "opacity-100" : "opacity-0",
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={ref}
+        data-testid="panel-scroll"
+        data-fade={fade}
+        style={edgeFadeStyle("y", fade)}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        <div data-testid="panel-scroll-content" className="flex flex-col gap-2">
+          {children}
+        </div>
+      </div>
+      {thumb && (
+        <div
+          aria-hidden
+          data-testid="panel-scroll-indicator"
+          data-active={active ? "true" : "false"}
+          className={cn(
+            "pointer-events-none absolute right-0.5 w-1 rounded-full bg-foreground/35 transition-opacity duration-300",
+            active ? "opacity-100" : "opacity-0",
+          )}
+          style={{ top: thumb.top, height: thumb.height }}
+        />
       )}
-      style={{ top: thumb.top, height: thumb.height }}
-    />
+    </div>
   );
 }
 
@@ -308,12 +377,10 @@ function ActionIconButton({
   label,
   Icon,
   onClick,
-  className,
 }: {
   label: string;
   Icon: LucideIcon;
   onClick: () => void;
-  className?: string;
 }) {
   return (
     <button
@@ -322,7 +389,7 @@ function ActionIconButton({
       aria-label={label}
       title={label}
       onClick={onClick}
-      className={cn(actionButtonClass, "h-7 w-7 shrink-0 justify-center text-muted-foreground", className)}
+      className={cn(actionButtonClass, "h-7 w-7 shrink-0 justify-center text-muted-foreground")}
     >
       <Icon className="h-3.5 w-3.5" />
     </button>
@@ -356,21 +423,6 @@ function OverflowGroup({
 
 /** 專案 tab 與「加入專案」共用的直欄容器（方塊＋其下文字，hover 灰底）。 */
 const TAB_ITEM = "flex shrink-0 flex-col items-center gap-1 rounded-lg px-1 py-1.5 hover:bg-foreground/5";
-
-/** tab 條的淡出側；以字串存狀態，值相同時 setState 不重繪。 */
-type FadeSide = "none" | "left" | "right" | "both";
-
-function fadeSide({ left, right }: TabFade): FadeSide {
-  return left && right ? "both" : left ? "left" : right ? "right" : "none";
-}
-
-/** 各淡出側的遮罩（掛在可捲區本身，不隨內容捲動）；兩側都不淡出時不掛遮罩。 */
-const TAB_FADE_MASK: Record<FadeSide, string | undefined> = {
-  none: undefined,
-  left: `linear-gradient(to right, transparent, black ${TAB_FADE_PX}px)`,
-  right: `linear-gradient(to left, transparent, black ${TAB_FADE_PX}px)`,
-  both: `linear-gradient(to right, transparent, black ${TAB_FADE_PX}px, black calc(100% - ${TAB_FADE_PX}px), transparent)`,
-};
 
 function tabStatusLabel(tab: TrayTabSnapshot, t: (key: string) => string): string {
   if (tab.source === "local") return "";
@@ -523,9 +575,7 @@ export function TrayPanel({
   onReauthenticate,
 }: TrayPanelProps) {
   const { t } = useI18n();
-  const scrollRef = useRef<HTMLDivElement>(null);
   const tabStripRef = useRef<HTMLDivElement>(null);
-  const [tabFade, setTabFade] = useState<FadeSide>("none");
   // 已轉出收合列的展開狀態（design D4）：面板 webview 只建一次，重啟 app 後由本機記憶讀回。
   const [promotedExpanded, setPromotedExpanded] = useState(readTrayPromotedExpanded);
   const togglePromoted = () => {
@@ -548,6 +598,12 @@ export function TrayPanel({
     setCollapsedSections(next);
     writeTrayCollapsedSections(next);
   };
+  // 收合狀態與切換由分區 id 從同一份收合集合推出：呼叫端只寫一次 id。
+  const sectionCollapse = (id: TraySectionId) => ({
+    id,
+    collapsed: collapsedSections.has(id),
+    onToggle: () => toggleSection(id),
+  });
   const tabs = snapshot?.tabs ?? [];
   const changes = snapshot?.changes ?? [];
   const discussions = snapshot?.discussions ?? [];
@@ -562,26 +618,20 @@ export function TrayPanel({
   // 首訪載入中：分區以佔位列呈現。條件整條由 store 導出（design D3）——面板
   // 不自行組合旗標，與主視窗看板恆為同一個答案。快照未到（null）同樣算載入
   // 中——面板剛開、主視窗尚未推第一份快照，此時畫空分區與畫佔位列是同一個問題。
-  const loading = !snapshot || snapshot.workspaceLoading;
   // 首訪載入失敗的終態：載入已結束（故不與骨架並存），但沒有真值可畫——
   // 顯示失敗提示而非空態文案。
-  const loadFailed = !loading && snapshot.workspaceLoadFailed;
+  const sectionLoad: SectionLoad =
+    !snapshot || snapshot.workspaceLoading ? "loading" : snapshot.workspaceLoadFailed ? "failed" : "ready";
   const activeKey = snapshot?.activeKey ?? null;
-  const tabKeys = tabs.map((tab) => tab.key).join("\n");
 
-  // tab 條邊緣淡出：捲動、可捲區尺寸改變與 tab 清單改變時重算（值相同時 setState 不重繪）。
+  // tab 條左右淡出（design「專案 tab 條：「＋」固定右端、邊緣淡出、捲到作用中」）：tab 尺寸
+  // 固定，改在 tab 清單改變時重新監看——新 tab 才被觀察，且立即重算一次。
+  const [tabFade, setTabFade] = useState<EdgeFadeSide>("none");
+  const tabKeys = tabs.map((tab) => tab.key).join("\n");
   useEffect(() => {
     const strip = tabStripRef.current;
     if (!strip) return;
-    const update = () => setTabFade(fadeSide(tabFadeEdges(strip)));
-    update();
-    strip.addEventListener("scroll", update, { passive: true });
-    const observer = new ResizeObserver(update);
-    observer.observe(strip);
-    return () => {
-      strip.removeEventListener("scroll", update);
-      observer.disconnect();
-    };
+    return watchScroll(strip, "x", (metrics) => setTabFade(edgeFade(metrics)));
   }, [tabKeys]);
 
   // 捲到作用中 tab：作用中專案改變時；面板視窗只建一次、之後隱藏／顯示，再次開啟時
@@ -639,7 +689,7 @@ export function TrayPanel({
         data-fade={tabFade}
         role="tablist"
         aria-label={t("app.projectRail")}
-        style={{ maskImage: TAB_FADE_MASK[tabFade], WebkitMaskImage: TAB_FADE_MASK[tabFade] }}
+        style={edgeFadeStyle("x", tabFade)}
         className="relative flex min-w-0 flex-1 gap-1 overflow-x-auto p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
           {tabs.map((tab) => {
@@ -703,15 +753,17 @@ export function TrayPanel({
           })}
       </div>
         {/* 快速加入專案（design D7）：固定在 tab 條卡右端、不隨 tab 捲走——專案再多也看得到；
-            位置與主視窗圖示列「專案在前、＋在後」同序。只有虛線框「＋」（與圖示列同形），
-            名稱走 aria-label＋title。外層 py-1.5 對齊可捲區內距，「＋」與首字母方塊同高。 */}
+            位置與主視窗圖示列「專案在前、＋在後」同序。與專案 tab 同構：虛線框「＋」（與
+            圖示列同形）＋其下名稱——只留圖示在一排帶名稱的 tab 旁顯得突兀。文字不截斷：
+            英文「Add project」比專案 tab 寬，這一項跟著文字長（min-w 與專案 tab 對齊）。
+            外層 py-1.5 對齊可捲區內距，「＋」與首字母方塊同高。 */}
         <div className="shrink-0 py-1.5 pr-1.5">
           <div
             data-testid="panel-add-project"
             title={t("tray.addProject")}
             aria-label={t("tray.addProject")}
             onClick={onAddProject}
-            className={cn(TAB_ITEM, "group px-0.5")}
+            className={cn(TAB_ITEM, "group min-w-16")}
           >
             <span
               aria-hidden
@@ -720,25 +772,17 @@ export function TrayPanel({
             >
               <Plus className="h-4 w-4" />
             </span>
+            <span className="whitespace-nowrap text-[11px] leading-none text-muted-foreground">
+              {t("tray.addProject")}
+            </span>
           </div>
         </div>
       </div>
       </PanelCard>
       </div>
 
-      {/* 可捲中段（spec 三段式版面）：生命週期／討論分區或復原卡；捲動面自 body
-          收斂至此容器，overscroll-none 隨遷防 rubber-band。原生捲軸隱藏、改由
-          ScrollIndicator 自繪（見其註解：原生捲軸在此環境無法淡出且會佔寬）；
-          指示條為捲動容器的兄弟節點，才不會隨內容一起捲走。
-          內層 wrapper 保持自然高度——中段容器本身被 flex 約束，內容增減不改其
-          外框，入口層的 ResizeObserver 觀察的是這層 wrapper（高度量測依據）。 */}
-      <div className="relative flex min-h-0 flex-1 flex-col">
-      <div
-        ref={scrollRef}
-        data-testid="panel-scroll"
-        className="min-h-0 flex-1 overflow-y-auto overscroll-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-      <div data-testid="panel-scroll-content" className="flex flex-col gap-2">
+      {/* 可捲中段（spec 三段式版面）：生命週期／討論分區或復原卡。 */}
+      <PanelScrollArea>
       {activeRecovery ? (
         <PanelRecoveryCard
           tab={activeRecovery}
@@ -783,20 +827,14 @@ export function TrayPanel({
       {staged.map(({ stage, Icon, items }) => (
         <SectionCard
           key={stage}
-          id={stage}
-          collapsed={collapsedSections.has(stage)}
-          onToggle={() => toggleSection(stage)}
+          {...sectionCollapse(stage)}
+          load={sectionLoad}
           icon={<Icon className={cn("h-3.5 w-3.5", STAGE_ICON[stage])} />}
           label={t(`stage.${stage}`)}
-          count={loading || loadFailed ? undefined : items.length}
+          count={items.length}
           countClassName={STAGE_BADGE[stage]}
-          empty={!loading && !loadFailed && items.length === 0}
+          empty={items.length === 0}
         >
-          {loading ? (
-            <SectionSkeleton />
-          ) : loadFailed ? (
-            <SectionLoadFailed label={t("tray.loadFailed")} />
-          ) : (
           <OverflowGroup
             moreLabel={moreLabel}
             collapseLabel={collapseLabel}
@@ -811,7 +849,6 @@ export function TrayPanel({
               />
             ))}
           />
-          )}
         </SectionCard>
       ))}
 
@@ -821,70 +858,59 @@ export function TrayPanel({
           計數與其下內容：載入中為佔位列、失敗為失敗提示（計數未知，不謊報 0）、空為
           計數 0 的空狀態卡（與非空同構，design D8）。 */}
       <SectionCard
-        id="discussions"
-        collapsed={collapsedSections.has("discussions")}
-        onToggle={() => toggleSection("discussions")}
+        {...sectionCollapse("discussions")}
+        load={sectionLoad}
         icon={<MessageSquareText className={cn("h-3.5 w-3.5", DISCUSSION_TONE.icon)} />}
         label={t("tray.discussionsHeader")}
-        count={loading || loadFailed ? undefined : openDiscussions.length}
+        count={openDiscussions.length}
         countClassName={DISCUSSION_TONE.badge}
-        empty={!loading && !loadFailed && openDiscussions.length === 0 && promotedDiscussions.length === 0}
+        empty={openDiscussions.length === 0 && promotedDiscussions.length === 0}
       >
-        {loading ? (
-          <SectionSkeleton />
-        ) : loadFailed ? (
-          <SectionLoadFailed label={t("tray.loadFailed")} />
-        ) : (
+        <OverflowGroup
+          moreLabel={moreLabel}
+          collapseLabel={collapseLabel}
+          rows={openDiscussions.map(discussionRow)}
+        />
+        {promotedDiscussions.length > 0 && (
           <>
-          <OverflowGroup
-            moreLabel={moreLabel}
-            collapseLabel={collapseLabel}
-            rows={openDiscussions.map(discussionRow)}
-          />
-          {promotedDiscussions.length > 0 && (
-            <>
-              {promotedExpanded && (
-                <div data-testid="panel-promoted-rows" className="flex flex-col border-b border-border/70 bg-muted/40">
-                  <OverflowGroup
-                    moreLabel={moreLabel}
-                    collapseLabel={collapseLabel}
-                    rows={promotedDiscussions.map(discussionRow)}
-                  />
-                </div>
-              )}
-              {/* 計數在文字裡、中性配色，不給色相徽章（desktop-app「介面狀態語意色分層」）。 */}
-              <div
-                data-testid="panel-promoted-toggle"
-                role="button"
-                aria-expanded={promotedExpanded}
-                tabIndex={-1}
-                onClick={togglePromoted}
-                onKeyDown={toggleOnKey(togglePromoted)}
-                className={cn(rowClass, "text-xs font-medium text-muted-foreground")}
-              >
-                <span>{t("discussion.promotedBar").replace("{n}", String(promotedDiscussions.length))}</span>
-                {/* 收合箭頭統一規則：收合 ›、展開時指向展開出來的內容——細列展開在本列上方，故朝上。 */}
-                <ChevronRight
-                  className={cn("ml-auto h-3.5 w-3.5 shrink-0 transition-transform", promotedExpanded && "-rotate-90")}
+            {promotedExpanded && (
+              <div data-testid="panel-promoted-rows" className="flex flex-col border-b border-border/70 bg-muted/40">
+                <OverflowGroup
+                  moreLabel={moreLabel}
+                  collapseLabel={collapseLabel}
+                  rows={promotedDiscussions.map(discussionRow)}
                 />
               </div>
-            </>
-          )}
+            )}
+            {/* 計數在文字裡、中性配色，不給色相徽章（desktop-app「介面狀態語意色分層」）。 */}
+            <div
+              data-testid="panel-promoted-toggle"
+              role="button"
+              aria-expanded={promotedExpanded}
+              tabIndex={-1}
+              onClick={togglePromoted}
+              onKeyDown={toggleOnKey(togglePromoted)}
+              className={cn(rowClass, "text-xs font-medium text-muted-foreground")}
+            >
+              <span>{t("discussion.promotedBar").replace("{n}", String(promotedDiscussions.length))}</span>
+              {/* 收合箭頭統一規則：收合 ›、展開時指向展開出來的內容——細列展開在本列上方，故朝上。 */}
+              <ChevronRight
+                className={cn("ml-auto h-3.5 w-3.5 shrink-0 transition-transform", promotedExpanded && "-rotate-90")}
+              />
+            </div>
           </>
         )}
       </SectionCard>
 
         </>
       )}
-      </div>
-      </div>
-      <ScrollIndicator targetRef={scrollRef} />
-      </div>
+      </PanelScrollArea>
 
       {/* 固定頁尾（spec 三段式版面）：動作區卡常駐、不隨內容捲動。
           動作區單列：「開啟 Speclink」文字鈕佔滿左側（最常用、保留文字），右側專案設定、
           設定、結束三顆圖示鈕（與原生選單同序——專案層動作在前、app 層在後；圖示沿用
-          側欄同款）；「結束」前多一段間距防誤按。四顆皆 tabIndex=-1 退出 Tab 順序（同複製鈕）。 */}
+          側欄同款）；「設定」與「結束」之間以細直線分隔符隔開防誤按——只留加寬空白看起來像
+          排版出錯。四顆皆 tabIndex=-1 退出 Tab 順序（同複製鈕）。 */}
       <div data-testid="panel-footer" className="shrink-0">
       <PanelCard testid="panel-actions-card">
       <div className="flex items-center gap-0.5 p-1">
@@ -899,7 +925,8 @@ export function TrayPanel({
         </button>
         <ActionIconButton label={t("app.navProjectSettings")} Icon={SlidersHorizontal} onClick={onOpenProjectSettings} />
         <ActionIconButton label={t("tray.settings")} Icon={Settings} onClick={onOpenSettings} />
-        <ActionIconButton label={t("tray.quit")} Icon={Power} onClick={onQuit} className="ml-2" />
+        <span aria-hidden data-testid="panel-action-separator" className="mx-1 h-4 w-px shrink-0 bg-border" />
+        <ActionIconButton label={t("tray.quit")} Icon={Power} onClick={onQuit} />
       </div>
       </PanelCard>
       </div>
