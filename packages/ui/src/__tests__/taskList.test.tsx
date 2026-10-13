@@ -261,27 +261,20 @@ describe("TaskList 群組卡與三層任務列", () => {
     "- [ ] 1.1 新增 `a.ts`（design D3）：匯出 x；驗證：npm test\n" +
     "- [ ] 1.2 對齊匯出\n";
 
-  it("三層切分：未勾選的任務預設展開、顯示內文與驗證；點列尾鈕收起；已勾選的同一描述預設收合", () => {
-    const { container, unmount } = render(<TaskList markdown={LAYERED} onToggle={vi.fn()} />);
+  it("三層切分：標題層有序號、標題與 D 籤；展開時標題下方有內文與驗證，點列尾鈕收起", () => {
+    const { container } = render(<TaskList markdown={LAYERED} onToggle={vi.fn()} />);
     const titleRow = container.querySelector("[data-task-title-row]")!;
     expect(titleRow.querySelector("[data-task-title]")!.textContent).toBe("新增 a.ts");
     expect(titleRow.querySelector("[data-task-title] code")!.textContent).toBe("a.ts");
     expect(titleRow.querySelector("[data-task-decision]")!.textContent).toBe("D3");
-    const collapse = screen.getByRole("button", { name: "收合任務 1" });
-    expect(collapse.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByText("匯出 x；")).toBeTruthy();
     expect(screen.getByText("驗證")).toBeTruthy();
     expect(screen.getByText("npm test")).toBeTruthy();
-    fireEvent.click(collapse);
-    expect(screen.getByRole("button", { name: "展開任務 1" }).getAttribute("aria-expanded")).toBe("false");
+    const btn = titleRow.querySelector("[data-task-expand]")!;
+    fireEvent.click(btn);
+    expect(btn.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByText("匯出 x；")).toBeNull();
     expect(screen.queryByText("npm test")).toBeNull();
-    // 沒有內文與驗證的任務不長列尾鈕。
-    expect(screen.queryByRole("button", { name: /^(展開|收合)任務 2$/ })).toBeNull();
-    unmount();
-    render(<TaskList markdown={LAYERED.replace("- [ ] 1.1", "- [x] 1.1")} onToggle={vi.fn()} />);
-    expect(screen.getByRole("button", { name: "展開任務 1" }).getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByText("匯出 x；")).toBeNull();
   });
 
   it.each([
@@ -298,8 +291,10 @@ describe("TaskList 群組卡與三層任務列", () => {
         onJumpDecision={onJumpDecision}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "收合任務 1" }));
-    fireEvent.click(screen.getByRole("button", { name: "展開任務 1" }));
+    // 列尾鈕來回各點一次，之後點 D 籤與內文。
+    const btn = container.querySelector("[data-task-expand]")!;
+    fireEvent.click(btn);
+    fireEvent.click(btn);
     fireEvent.click(container.querySelector("[data-task-decision]")!);
     fireEvent.click(screen.getByText("匯出 x；"));
     expect(onJumpDecision).toHaveBeenCalledWith("D3");
@@ -322,40 +317,55 @@ describe("TaskList 群組卡與三層任務列", () => {
     expect(screen.getByText("前導任務").closest("[data-task-group]")).toBeNull();
   });
 
-  it("唯讀時未勾選的任務預設展開、列尾鈕可用、勾選框 disabled", () => {
-    render(<TaskList markdown={LAYERED} readOnly />);
+  it("唯讀時列尾鈕可用、勾選框 disabled", () => {
+    const { container } = render(<TaskList markdown={LAYERED} readOnly />);
     expect((screen.getByRole("checkbox", { name: "任務 1" }) as HTMLButtonElement).disabled).toBe(true);
-    const collapse = screen.getByRole("button", { name: "收合任務 1" }) as HTMLButtonElement;
-    expect(collapse.disabled).toBe(false);
-    expect(screen.getByText("npm test")).toBeTruthy();
-    fireEvent.click(collapse);
-    expect(screen.queryByText("npm test")).toBeNull();
+    const btn = container.querySelector("[data-task-expand]") as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    const before = btn.getAttribute("aria-expanded");
+    fireEvent.click(btn);
+    expect(btn.getAttribute("aria-expanded")).not.toBe(before);
+  });
+
+  it("拖曳時浮起的列只畫標題層：原列展開中，浮起列也不帶內文與驗證", async () => {
+    render(<TaskList markdown={LAYERED} onToggle={vi.fn()} onReorder={vi.fn()} />);
+    const handle = screen.getByLabelText("拖曳任務 1");
+    handle.focus();
+    fireEvent.keyDown(handle, { code: "Space", key: " " });
+    // 浮起列與原列同時在畫面上：1.1 的標題有兩份，內文與驗證仍只有原列那一份。
+    expect(screen.getAllByText("a.ts")).toHaveLength(2);
+    expect(document.querySelectorAll("[data-task-detail]")).toHaveLength(1);
+    // 結束拖曳：鍵盤感測器下一個 tick 才掛按鍵監聽，不收掉會吃掉後面題目的空白鍵。
+    await new Promise((r) => setTimeout(r, 0));
+    fireEvent.keyDown(handle, { code: "Escape", key: "Escape" });
   });
 
   // spec「任務群組標題與章節標籤同款式」：預設展開看勾選狀態，勾選狀態一變就跟著翻，
   // 手動切換維持到該任務的勾選狀態下次改變。
-  const ID = {
-    a: "tsk_01ARZ3NDEKTSV4RRFFQ69G5FA1",
-    b: "tsk_01ARZ3NDEKTSV4RRFFQ69G5FA2",
-    d: "tsk_01ARZ3NDEKTSV4RRFFQ69G5FA4",
-  };
   /** 以標題找該列的列尾鈕；沒有列尾鈕時為 null。 */
   const expandBtn = (title: string) =>
     screen.getByText(title).closest("[data-task-title-row]")!.querySelector("[data-task-expand]");
   const expandedOf = (title: string) => expandBtn(title)?.getAttribute("aria-expanded") ?? null;
   const clickExpand = (title: string) => fireEvent.click(expandBtn(title)!);
-  /** 三條任務的群組：3.1、3.2 有內文，3.3 沒有內文也沒有驗證。 */
-  const byDone = (d1: boolean, d2: boolean, d3: boolean) =>
-    "## 3. 丙\n\n" +
-    `- [${d1 ? "x" : " "}] 3.1 甲任務：甲內文\n` +
-    `- [${d2 ? "x" : " "}] 3.2 乙任務：乙內文\n` +
-    `- [${d3 ? "x" : " "}] 3.3 丙任務\n`;
+  /** 任務行：行文、勾選狀態與穩定 ID（行尾註解格式同本檔任務）。 */
+  type Row = { line: string; done: boolean; id?: string };
+  const t31 = (done: boolean): Row => ({ line: "3.1 甲任務：甲內文", done, id: "tsk_01ARZ3NDEKTSV4RRFFQ69G5FA1" });
+  const t32 = (done: boolean): Row => ({ line: "3.2 乙任務：乙內文", done, id: "tsk_01ARZ3NDEKTSV4RRFFQ69G5FA2" });
+  const t33 = (done: boolean): Row => ({ line: "3.3 丙任務", done, id: "tsk_01ARZ3NDEKTSV4RRFFQ69G5FA3" });
+  const t34 = (done: boolean): Row => ({ line: "3.4 丁任務：丁內文", done, id: "tsk_01ARZ3NDEKTSV4RRFFQ69G5FA4" });
+  const withoutId = (row: Row): Row => ({ ...row, id: undefined });
+  /** 一個群組的 markdown；跨群組的題目串接多段。 */
+  const group = (heading: string, ...rows: Row[]) =>
+    `## ${heading}\n\n` +
+    rows.map((r) => `- [${r.done ? "x" : " "}] ${r.line}${r.id ? ` <!-- speclink-task:${r.id} -->` : ""}\n`).join("") +
+    "\n";
+  const list = (md: string) => <TaskList markdown={md} onToggle={vi.fn()} onReorder={vi.fn()} />;
 
   it.each([
     ["可寫", false],
     ["唯讀", true],
   ])("%s：依勾選狀態決定預設展開——未勾展開、已勾收合、無內文沒有列尾鈕", (_label, readOnly) => {
-    render(<TaskList markdown={byDone(false, true, false)} onToggle={vi.fn()} readOnly={readOnly} />);
+    render(<TaskList markdown={group("3. 丙", t31(false), t32(true), t33(false))} onToggle={vi.fn()} readOnly={readOnly} />);
     expect(expandedOf("甲任務")).toBe("true");
     expect(screen.getByText("甲內文")).toBeTruthy();
     expect(expandedOf("乙任務")).toBe("false");
@@ -364,49 +374,62 @@ describe("TaskList 群組卡與三層任務列", () => {
   });
 
   it("勾選狀態改變時展開跟著翻（列勾選、工具列批次、寫回回滾與重新載入都以新 markdown 重繪）", () => {
-    const { rerender } = render(<TaskList markdown={byDone(false, true, false)} onToggle={vi.fn()} />);
+    const { rerender } = render(list(group("3. 丙", t31(false), t32(true), t33(false))));
     expect(expandedOf("甲任務")).toBe("true");
-    rerender(<TaskList markdown={byDone(true, true, false)} onToggle={vi.fn()} />);
+    rerender(list(group("3. 丙", t31(true), t32(true), t33(false))));
     expect(expandedOf("甲任務")).toBe("false");
     expect(screen.queryByText("甲內文")).toBeNull();
-    rerender(<TaskList markdown={byDone(false, true, false)} onToggle={vi.fn()} />);
+    rerender(list(group("3. 丙", t31(false), t32(true), t33(false))));
     expect(expandedOf("甲任務")).toBe("true");
-    rerender(<TaskList markdown={byDone(true, true, true)} onToggle={vi.fn()} />);
-    expect([expandedOf("甲任務"), expandedOf("乙任務")]).toEqual(["false", "false"]);
-    rerender(<TaskList markdown={byDone(false, false, false)} onToggle={vi.fn()} />);
-    expect([expandedOf("甲任務"), expandedOf("乙任務")]).toEqual(["true", "true"]);
+    rerender(list(group("3. 丙", t31(true), t32(true), t33(true))));
+    expect([expandedOf("甲任務"), expandedOf("乙任務"), expandedOf("丙任務")]).toEqual(["false", "false", null]);
+    rerender(list(group("3. 丙", t31(false), t32(false), t33(false))));
+    expect([expandedOf("甲任務"), expandedOf("乙任務"), expandedOf("丙任務")]).toEqual(["true", "true", null]);
   });
 
-  it("手動展開收合維持到勾選狀態改變：重新載入與排序不重設，跟著穩定 ID 走", () => {
-    type Row = [id: string, line: string, done: boolean];
-    const doc = (rows: Row[]) =>
-      "## 3. 丙\n\n" +
-      rows.map(([id, line, done]) => `- [${done ? "x" : " "}] ${line} <!-- speclink-task:${id} -->\n`).join("");
-    const r1 = (done: boolean): Row => [ID.a, "3.1 甲任務：甲內文", done];
-    const r2 = (done: boolean): Row => [ID.b, "3.2 乙任務：乙內文", done];
-    const r4 = (done: boolean): Row => [ID.d, "3.4 丁任務：丁內文", done];
-    const list = (rows: Row[]) => <TaskList markdown={doc(rows)} onToggle={vi.fn()} onReorder={vi.fn()} />;
-
-    const { rerender, unmount } = render(list([r1(false), r2(true), r4(false)]));
-    expect([expandedOf("甲任務"), expandedOf("乙任務")]).toEqual(["true", "false"]);
+  it("手動展開收合維持到勾選狀態改變：重新載入與組內排序不重設，跟著穩定 ID 走", () => {
+    const { rerender, unmount } = render(list(group("3. 丙", t31(false), t32(true), t34(false))));
     clickExpand("甲任務");
     clickExpand("乙任務");
     expect([expandedOf("甲任務"), expandedOf("乙任務")]).toEqual(["false", "true"]);
     // 別的任務勾選狀態改變而重新載入：兩列的手動選擇不變。
-    rerender(list([r1(false), r2(true), r4(true)]));
+    rerender(list(group("3. 丙", t31(false), t32(true), t34(true))));
     expect([expandedOf("甲任務"), expandedOf("乙任務"), expandedOf("丁任務")]).toEqual(["false", "true", "false"]);
-    // 排序後（穩定 ID 不變）手動選擇跟著各自的任務。
-    rerender(list([r2(true), r1(false), r4(true)]));
+    // 組內排序後（穩定 ID 不變）手動選擇跟著各自的任務。
+    rerender(list(group("3. 丙", t32(true), t31(false), t34(true))));
     expect([expandedOf("甲任務"), expandedOf("乙任務")]).toEqual(["false", "true"]);
-    // 該任務的勾選狀態一變，手動選擇失效、回到依勾選狀態決定。
-    rerender(list([r2(true), r1(true), r4(true)]));
-    expect(expandedOf("甲任務")).toBe("false");
-    rerender(list([r2(true), r1(false), r4(true)]));
-    expect(expandedOf("甲任務")).toBe("true");
+    // 勾選狀態一變，手動選擇就作廢。只翻一次時手動選擇剛好等於新的預設、分不出來，
+    // 所以兩列都來回翻一次再斷言：手動選擇還在的話，甲會停在收合、乙會停在展開。
+    rerender(list(group("3. 丙", t32(false), t31(true), t34(true))));
+    rerender(list(group("3. 丙", t32(true), t31(false), t34(true))));
+    expect([expandedOf("甲任務"), expandedOf("乙任務")]).toEqual(["true", "false"]);
     // 離開再回來：依勾選狀態重新決定。
+    clickExpand("乙任務");
+    expect(expandedOf("乙任務")).toBe("true");
     unmount();
-    render(list([r2(true), r1(false), r4(true)]));
+    render(list(group("3. 丙", t32(true), t31(false), t34(true))));
     expect(expandedOf("乙任務")).toBe("false");
+  });
+
+  it("手動選擇不因群組卡重建而重設：拖到別的群組、前面的群組增減一行", () => {
+    const { rerender } = render(list(group("2. 乙組", t31(false)) + group("3. 丙組", t32(true), t34(false))));
+    clickExpand("甲任務");
+    clickExpand("乙任務");
+    // 甲任務拖到丙組：甲換了群組卡，丙組卡頭在清單裡的位置也跟著位移。
+    rerender(list(group("2. 乙組") + group("3. 丙組", t32(true), t31(false), t34(false))));
+    expect([expandedOf("甲任務"), expandedOf("乙任務"), expandedOf("丁任務")]).toEqual(["false", "true", "true"]);
+    // 外部重新載入在前面的群組加一行：後面群組卡的位置位移。
+    rerender(list(group("2. 乙組", t33(false)) + group("3. 丙組", t32(true), t31(false), t34(false))));
+    expect([expandedOf("甲任務"), expandedOf("乙任務")]).toEqual(["false", "true"]);
+  });
+
+  it("沒有穩定 ID 的任務以序數識別：排序後手動選擇留在原位置", () => {
+    const { rerender } = render(list(group("3. 丙", withoutId(t31(false)), withoutId(t32(false)))));
+    clickExpand("甲任務");
+    expect([expandedOf("甲任務"), expandedOf("乙任務")]).toEqual(["false", "true"]);
+    rerender(list(group("3. 丙", withoutId(t32(false)), withoutId(t31(false)))));
+    // 第 1 個位置（現在是乙任務）留著收合，甲任務回到依勾選狀態決定。
+    expect([expandedOf("乙任務"), expandedOf("甲任務")]).toEqual(["false", "true"]);
   });
 });
 

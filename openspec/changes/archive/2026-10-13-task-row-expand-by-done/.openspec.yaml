@@ -1,0 +1,27 @@
+schema: spec-driven
+created: 2026-10-13
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: task-row-expand-by-done
+started_at: 2026-10-13
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-13
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 4
+reviewed_scope:
+  - path: packages/ui/src/__tests__/taskList.test.tsx
+    hash: b5ba1086e8ebde843ff86376191264286df8b3512f6753c7cf71eeeff464f839
+  - path: packages/ui/src/components/TaskList.tsx
+    hash: 4f16c9df7bb0737e03d1a1f823a1bc35d2910df940ec7db1ffe251a32ee63952
+verified_at: 2026-10-13
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 4
+verified_scope:
+  - path: packages/ui/src/__tests__/taskList.test.tsx
+    hash: b5ba1086e8ebde843ff86376191264286df8b3512f6753c7cf71eeeff464f839
+  - path: packages/ui/src/components/TaskList.tsx
+    hash: 4f16c9df7bb0737e03d1a1f823a1bc35d2910df940ec7db1ffe251a32ee63952
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-13
