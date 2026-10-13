@@ -623,7 +623,7 @@ code:
 
 討論中區 SHALL 顯示 status 為 open 或 concluded 的討論、已轉出但尚無結論的討論、以及已轉出且保留在途的討論為全尺寸卡——卡 SHALL 以 slug（檔名）為標題（等寬字型）、topic 為卡身描述；複製 slug 鈕 SHALL 行內尾隨於標題最後一個字元後（版面規則見「看板卡片統一解剖學」）；建立者（createdBy，缺席時省略）SHALL 以頭像圓點呈現且 hover 顯示全名；輪數與建立時間 SHALL 並排於卡底 meta 列，狀態 chip 保留；已轉出但尚無結論的卡 SHALL 帶「已轉出・尚無結論」狀態標；已轉出且保留在途的卡 SHALL 帶「已轉出・保留中」狀態標（英文介面為「Promoted · on hold」），與「已轉出・尚無結論」同為 warning 語意色；promoted 且 concluded 為 false 的卡不論 hold 值 SHALL 標「已轉出・尚無結論」。open 卡為唯讀，concluded 卡 SHALL 提供「封存」動詞（「轉為變更」動詞已自 GUI 撤除，轉出改由 CLI 或 agent）；已轉出但尚無結論的卡與已轉出且保留在途的卡 SHALL NOT 提供任何動詞按鈕（前者結論未寫；後者的收尾由使用者以 CLI 的 discuss archive 明示解除）。上區全卡 SHALL NOT 列出衍生變更清單（衍生進度於討論詳情頁檢視）。
 
-當存在至少一筆已有結論且未保留的 promoted 討論時，欄底 SHALL 呈現「已轉出 N ›」收合列（白底、上緣細線、右端 › 於展開時旋轉；N 為已有結論且未保留的 promoted 計數，預設收合）；點按 SHALL 就地展開 promoted 細列清單（白底細框列），再點按即收合；桌面 app SHALL 把展開狀態存於 app 本機並跨啟動保留，SHALL NOT 寫入任何專案目錄。無任何已有結論且未保留的 promoted 討論時收合列 SHALL 缺席。
+當存在至少一筆已有結論且未保留的 promoted 討論時，欄底 SHALL 呈現「已轉出 N ›」收合列（白底、上緣細線、右端箭頭依「收合時一律 ›、展開時箭頭指向展開出來的內容」：收合時為 ›，展開時朝上、指向展開於該列上方的 promoted 細列，SHALL NOT 朝下；N 為已有結論且未保留的 promoted 計數，預設收合）；點按 SHALL 就地展開 promoted 細列清單（白底細框列），再點按即收合；桌面 app SHALL 把展開狀態存於 app 本機並跨啟動保留，SHALL NOT 寫入任何專案目錄。無任何已有結論且未保留的 promoted 討論時收合列 SHALL 缺席。
 
 promoted 細列 SHALL 以討論 slug 為首行（等寬字型）且帶複製 slug 鈕、topic 為次行描述，其下每個 promoted_to 子變更 SHALL 以樹狀前綴（末列 └、其餘 ├）逐列列出名稱與階段 chip。子變更的階段 SHALL 由其於清單中的存在性派生：active 清單命中依看板欄位規則、封存清單命中為已封存、兩者皆無 SHALL 標示為已刪除且討論維持已轉出不回退。階段 chip SHALL 以看板階段配色呈現：提案中、進行中、已就緒各對應該階段欄的 teal 濃度，已封存為中性色，已刪除為 destructive 色加刪除線。
 
@@ -694,10 +694,15 @@ slug 為題與複製鈕（討論全卡標題、promoted 細列首行）屬 opens
 - **WHEN** 桌面 app 執行中，於外部以 CLI 對某 open 討論 add-round
 - **THEN** 數秒內該討論卡的輪數自動更新，無需任何 app 內操作
 
+#### Scenario: 欄底收合列箭頭指向展開內容
+
+- **WHEN** 看板討論欄底部有「已轉出 2 ›」收合列，使用者點按展開、再點按收合
+- **THEN** 展開後 2 筆 promoted 細列出現在收合列上方、箭頭朝上；收合後細列消失、箭頭恢復 ›
+
 
 <!-- @trace
-source: desktop-detail-page
-updated: 2026-10-10T15:55:28+08:00
+source: tray-panel-content-priority
+updated: 2026-10-13T12:56:33+08:00
 -->
 
 ---

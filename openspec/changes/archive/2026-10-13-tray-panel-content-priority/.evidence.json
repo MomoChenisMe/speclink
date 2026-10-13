@@ -43,6 +43,13 @@
       "files": [
         "packages/ui/src/components/DiscussionColumn.tsx"
       ]
+    },
+    {
+      "task_id": "20",
+      "task_desc": "5.4 實作中段上下緣淡出：新增 apps/desktop/src/panel/edgeFade.ts（軸向無關的淡出判斷與遮罩漸層，容差 1px、淡出寬 24px），apps/desktop/src/panel/tabStrip.ts 只留露出目標並沿用同一個淡出寬度；apps/desktop/src/panel/TrayPanel.tsx 以同一個 hook 套用 tab 條（橫向）與中段 `panel-scroll`（縱向）的淡出遮罩，於捲動、可捲區或其直接子節點尺寸改變時重算。驗證：`npm test -w apps/desktop -- trayPanel` 全綠，且 `npm test -w apps/desktop` 與 `npm test -w packages/ui` 沒有回歸。",
+      "files": [
+        "apps/desktop/src/panel/edgeFade.ts"
+      ]
     }
   ],
   "entries": [
@@ -111,6 +118,17 @@
         "packages/ui/src/components/DiscussionColumn.tsx"
       ],
       "recordedAt": "2026-10-13T02:52:39Z"
+    },
+    {
+      "taskId": "tsk_01M4SQDBW9BWW4M3E7QZRB2JF3",
+      "taskDesc": "5.4 實作中段上下緣淡出：新增 apps/desktop/src/panel/edgeFade.ts（軸向無關的淡出判斷與遮罩漸層，容差 1px、淡出寬 24px），apps/desktop/src/panel/tabStrip.ts 只留露出目標並沿用同一個淡出寬度；apps/desktop/src/panel/TrayPanel.tsx 以同一個 hook 套用 tab 條（橫向）與中段 `panel-scroll`（縱向）的淡出遮罩，於捲動、可捲區或其直接子節點尺寸改變時重算。驗證：`npm test -w apps/desktop -- trayPanel` 全綠，且 `npm test -w apps/desktop` 與 `npm test -w packages/ui` 沒有回歸。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "e61b6200185a015df89c838324024ad88c9a5bb7",
+      "touchedFiles": [
+        "apps/desktop/src/panel/edgeFade.ts"
+      ],
+      "recordedAt": "2026-10-13T04:16:23Z"
     }
   ]
 }

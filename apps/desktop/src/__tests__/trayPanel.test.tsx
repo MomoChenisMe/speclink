@@ -29,7 +29,8 @@ import {
   readTrayCollapsedSections,
   writeTrayCollapsedSections,
 } from "../panel/sectionCollapse";
-import { tabFadeEdges, tabRevealScrollLeft } from "../panel/tabStrip";
+import { tabRevealScrollLeft } from "../panel/tabStrip";
+import { EDGE_FADE_PX, edgeFade, edgeFadeMask } from "../panel/edgeFade";
 import { APP_MESSAGES } from "../i18n/messages";
 import type { TraySnapshot } from "../tray";
 
@@ -54,6 +55,22 @@ const follows = (a: Element, b: Element) =>
 const sectionToggle = (id: string) => within(screen.getByTestId(id)).getByTestId("panel-section-toggle");
 /** 分區卡的標頭（收合觸發區內的 SectionHeader）。 */
 const sectionHeader = (id: string) => sectionToggle(id).firstElementChild as HTMLElement;
+/** 收合觸發內箭頭的 class token（以空白切開，才分得出 rotate-90 與 -rotate-90）。 */
+const chevronTokens = (toggle: HTMLElement) =>
+  (toggle.querySelector("svg.lucide-chevron-right")?.getAttribute("class") ?? "").split(/\s+/);
+/** jsdom 沒有版面：注入可捲區的捲動量測（scrollTop／scrollHeight…）。 */
+function injectMetrics(el: HTMLElement, metrics: Record<string, number>) {
+  for (const [prop, value] of Object.entries(metrics)) {
+    Object.defineProperty(el, prop, { configurable: true, value });
+  }
+}
+/** 注入捲動量測後觸發捲動事件。 */
+function scrollWith(el: HTMLElement, metrics: Record<string, number>) {
+  injectMetrics(el, metrics);
+  act(() => {
+    fireEvent.scroll(el);
+  });
+}
 
 function change(over: Partial<ChangeItem> & { name: string }): ChangeItem {
   return { status: "", totalTasks: 0, completedTasks: 0, ...over };
@@ -78,6 +95,14 @@ function snapshot(over: Partial<TraySnapshot> = {}): TraySnapshot {
     ...over,
   };
 }
+
+/** 6 個本機專案 tab（p1…p6）：tab 條總寬超出可捲區的情境。 */
+const six = Array.from({ length: 6 }, (_, i) => ({
+  key: `local:/proj/p${i + 1}`,
+  name: `p${i + 1}`,
+  source: "local" as const,
+  status: "ready" as const,
+}));
 
 function renderPanel(over: Partial<Parameters<typeof TrayPanel>[0]> = {}) {
   const handlers = {
@@ -458,13 +483,17 @@ describe("TrayPanel 專案 tab 條（spec「面板樣式（macOS）」；design 
     expect(tile(screen.getByTestId("panel-project-local:/proj/sp")).textContent).toBe("規");
   });
 
-  it("「加入專案」為只有「＋」的虛線框方塊（與圖示列的「＋」同形），不帶可見文字", () => {
+  it("「加入專案」與專案 tab 同構：虛線框「＋」方塊（與圖示列的「＋」同形）其下為「加入專案」文字", () => {
     renderPanel();
     const add = screen.getByTestId("panel-add-project");
     const square = add.querySelector("[data-project-tile]") as HTMLElement;
     for (const token of RAIL_SQUARE.split(" ")) expect(square.classList.contains(token)).toBe(true);
     expect(square.className.split(/\s+/)).toEqual(expect.arrayContaining(["border-dashed", "border-border"]));
-    expect(add.textContent).toBe("");
+    const label = within(add).getByText("加入專案");
+    expect(follows(square, label)).toBe(true);
+    // 文字不截斷（英文「Add project」比專案 tab 寬），寬度至少與專案 tab 對齊。
+    expect(label.className.split(/\s+/)).toContain("whitespace-nowrap");
+    expect(add.className.split(/\s+/)).toContain("min-w-16");
   });
 
   it("「加入專案」固定在 tab 條卡右端、不在可捲區內，帶名稱且點擊觸發 onAddProject 而非 onOpenProject（D7）", () => {
@@ -491,23 +520,114 @@ describe("TrayPanel 專案 tab 條（spec「面板樣式（macOS）」；design 
   });
 });
 
-// spec「面板樣式（macOS）」的專案 tab 條捲動（design「專案 tab 條：「＋」固定右端、邊緣淡出、
-// 捲到作用中」）：計算是 tabStrip.ts 的純函式；jsdom 沒有版面，元件測試以注入尺寸驗證接線。
-describe("面板專案 tab 條的淡出與捲到作用中", () => {
-  // spec Example「淡出的側邊」：可捲區寬 250、tab 總寬 500（未超出那列為 250）。
+// spec「面板樣式（macOS）」的邊緣淡出（design「專案 tab 條：「＋」固定右端、邊緣淡出、捲到作用中」
+// 「中段上下緣淡出：與 tab 條共用邊緣淡出」）：淡出判斷與遮罩是 edgeFade.ts 的純函式、tab 條與中段
+// 共用——start＝左／上、end＝右／下。
+describe("面板可捲區的邊緣淡出", () => {
+  // spec Example「淡出的側邊」（tab 條）：可捲區寬 250、tab 總寬 500（未超出那列為 250）。
   it.each([
-    { position: "最左端", scrollLeft: 0, scrollWidth: 500, left: false, right: true },
-    { position: "中間", scrollLeft: 100, scrollWidth: 500, left: true, right: true },
-    { position: "最右端", scrollLeft: 250, scrollWidth: 500, left: true, right: false },
-    { position: "tab 總寬未超出", scrollLeft: 0, scrollWidth: 250, left: false, right: false },
-  ])("淡出判斷：$position → 左 $left、右 $right", ({ scrollLeft, scrollWidth, left, right }) => {
-    expect(tabFadeEdges({ scrollLeft, scrollWidth, clientWidth: 250 })).toEqual({ left, right });
+    { position: "最左端", scrollLeft: 0, scrollWidth: 500, fade: "end" },
+    { position: "中間", scrollLeft: 100, scrollWidth: 500, fade: "both" },
+    { position: "最右端", scrollLeft: 250, scrollWidth: 500, fade: "start" },
+    { position: "tab 總寬未超出", scrollLeft: 0, scrollWidth: 250, fade: "none" },
+  ])("tab 條：$position → $fade", ({ scrollLeft, scrollWidth, fade }) => {
+    expect(edgeFade({ position: scrollLeft, scrollSize: scrollWidth, viewportSize: 250 })).toBe(fade);
   });
 
-  it("淡出判斷容差 1px：小數捲動位置差不到 1px 視為已到盡頭", () => {
-    expect(tabFadeEdges({ scrollLeft: 0.6, scrollWidth: 500, clientWidth: 250 }).left).toBe(false);
-    expect(tabFadeEdges({ scrollLeft: 249.5, scrollWidth: 500, clientWidth: 250 }).right).toBe(false);
+  // spec Example「中段淡出的邊緣」：中段可視高 400、內容高 900（未超限那列為 400）。
+  it.each([
+    { position: "最上方", scrollTop: 0, scrollHeight: 900, fade: "end" },
+    { position: "中間", scrollTop: 250, scrollHeight: 900, fade: "both" },
+    { position: "最下方", scrollTop: 500, scrollHeight: 900, fade: "start" },
+    { position: "內容未超限", scrollTop: 0, scrollHeight: 400, fade: "none" },
+  ])("中段：$position → $fade", ({ scrollTop, scrollHeight, fade }) => {
+    expect(edgeFade({ position: scrollTop, scrollSize: scrollHeight, viewportSize: 400 })).toBe(fade);
   });
+
+  it("容差 1px：小數捲動位置差不到 1px 視為已到盡頭", () => {
+    expect(edgeFade({ position: 0.6, scrollSize: 500, viewportSize: 250 })).toBe("end");
+    expect(edgeFade({ position: 249.5, scrollSize: 500, viewportSize: 250 })).toBe("start");
+  });
+
+  it("遮罩：不淡出時不掛遮罩；橫向沿 to right、縱向沿 to bottom，淡出側漸到透明", () => {
+    expect(edgeFadeMask("x", "none")).toBeUndefined();
+    expect(edgeFadeMask("y", "none")).toBeUndefined();
+    expect(edgeFadeMask("x", "start")).toBe(`linear-gradient(to right, transparent, black ${EDGE_FADE_PX}px, black)`);
+    expect(edgeFadeMask("y", "end")).toBe(
+      `linear-gradient(to bottom, black, black calc(100% - ${EDGE_FADE_PX}px), transparent)`,
+    );
+    expect(edgeFadeMask("y", "both")).toBe(
+      `linear-gradient(to bottom, transparent, black ${EDGE_FADE_PX}px, black calc(100% - ${EDGE_FADE_PX}px), transparent)`,
+    );
+  });
+
+  it("中段捲動後上下緣淡出隨是否還有內容改變；固定頁首與頁尾不帶淡出", () => {
+    renderPanel();
+    const scroll = screen.getByTestId("panel-scroll");
+    const scrollTo = (scrollTop: number, scrollHeight = 900) =>
+      scrollWith(scroll, { scrollTop, scrollHeight, clientHeight: 400 });
+    expect(scroll.getAttribute("data-fade")).toBe("none");
+    scrollTo(0);
+    expect(scroll.getAttribute("data-fade")).toBe("end");
+    scrollTo(250);
+    expect(scroll.getAttribute("data-fade")).toBe("both");
+    scrollTo(500);
+    expect(scroll.getAttribute("data-fade")).toBe("start");
+    scrollTo(0, 400);
+    expect(scroll.getAttribute("data-fade")).toBe("none");
+    for (const id of ["panel-header", "panel-footer"]) {
+      expect(screen.getByTestId(id).getAttribute("data-fade")).toBeNull();
+      expect(screen.getByTestId(id).getAttribute("style")).toBeNull();
+    }
+  });
+
+  it("尺寸改變時重算淡出：中段內容 wrapper 變高、tab 清單改變，不必等捲動事件", () => {
+    // 可手動觸發的 ResizeObserver 替身（全域 stub 是 no-op）：記下每個觀察者與它觀察的元素。
+    const observers: Array<{ callback: () => void; targets: Element[] }> = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        private entry: { callback: () => void; targets: Element[] };
+        constructor(callback: () => void) {
+          this.entry = { callback, targets: [] };
+          observers.push(this.entry);
+        }
+        observe(el: Element) {
+          this.entry.targets.push(el);
+        }
+        unobserve() {}
+        disconnect() {
+          this.entry.targets = [];
+        }
+      },
+    );
+    try {
+      const h = renderPanel({ snapshot: snapshot({ tabs: six.slice(0, 3), activeKey: six[0].key }) });
+      // 中段：內容 wrapper 變高到超出可視高（收合展開、快照增減）→ 下緣淡出。
+      const scroll = screen.getByTestId("panel-scroll");
+      const content = screen.getByTestId("panel-scroll-content");
+      injectMetrics(scroll, { scrollTop: 0, scrollHeight: 900, clientHeight: 400 });
+      expect(scroll.getAttribute("data-fade")).toBe("none");
+      act(() => {
+        for (const o of observers) if (o.targets.includes(content)) o.callback();
+      });
+      expect(scroll.getAttribute("data-fade")).toBe("end");
+      // tab 條：tab 清單由 3 個變 6 個、總寬超出可捲區 → 右側淡出。
+      const strip = screen.getByTestId("panel-project-tabs");
+      injectMetrics(strip, { scrollLeft: 0, scrollWidth: 416, clientWidth: 250 });
+      // 注入尺寸本身不觸發重算（jsdom 掛載時的值沿用）；tab 清單改變才重算。
+      expect(strip.getAttribute("data-fade")).not.toBe("end");
+      h.pushSnapshot(snapshot({ tabs: six, activeKey: six[0].key }));
+      expect(strip.getAttribute("data-fade")).toBe("end");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+// spec「面板樣式（macOS）」的專案 tab 條捲動（design「專案 tab 條：「＋」固定右端、邊緣淡出、
+// 捲到作用中」）：露出目標是 tabStrip.ts 的純函式；jsdom 沒有版面，元件測試以注入尺寸驗證接線。
+describe("面板專案 tab 條的淡出與捲到作用中", () => {
 
   // 露出目標：tab 寬 64、可捲區寬 250。結果要讓 tab 完整落在可視範圍內。
   const fullyVisible = (tabLeft: number, scrollLeft: number) =>
@@ -532,39 +652,22 @@ describe("面板專案 tab 條的淡出與捲到作用中", () => {
     expect(tabRevealScrollLeft({ tabLeft: 6, tabWidth: 64, scrollLeft: 150, viewportWidth: 250 })).toBe(0);
   });
 
-  const six = Array.from({ length: 6 }, (_, i) => ({
-    key: `local:/proj/p${i + 1}`,
-    name: `p${i + 1}`,
-    source: "local" as const,
-    status: "ready" as const,
-  }));
-
   it("捲動事件後可捲區的遮罩隨左右是否還有隱藏的 tab 改變", () => {
     renderPanel({ snapshot: snapshot({ tabs: six, activeKey: six[0].key }) });
     const strip = screen.getByTestId("panel-project-tabs");
-    const scrollTo = (scrollLeft: number, scrollWidth = 500) => {
-      for (const [prop, value] of [
-        ["scrollLeft", scrollLeft],
-        ["scrollWidth", scrollWidth],
-        ["clientWidth", 250],
-      ] as const) {
-        Object.defineProperty(strip, prop, { configurable: true, value });
-      }
-      act(() => {
-        fireEvent.scroll(strip);
-      });
-    };
+    const scrollTo = (scrollLeft: number, scrollWidth = 500) =>
+      scrollWith(strip, { scrollLeft, scrollWidth, clientWidth: 250 });
     scrollTo(0);
-    expect(strip.getAttribute("data-fade")).toBe("right");
+    expect(strip.getAttribute("data-fade")).toBe("end");
     scrollTo(100);
     expect(strip.getAttribute("data-fade")).toBe("both");
     scrollTo(250);
-    expect(strip.getAttribute("data-fade")).toBe("left");
+    expect(strip.getAttribute("data-fade")).toBe("start");
     scrollTo(0, 250);
     expect(strip.getAttribute("data-fade")).toBe("none");
   });
 
-  it("6 個專案、作用中為第 6 個：開啟時捲到它完整可見；面板再次取得焦點時重新捲回", () => {
+  it("6 個專案、作用中為第 6 個：開啟時捲到它完整可見、左側淡出；面板再次取得焦點時重新捲回", () => {
     // 版面注入：tab 寬 64、間距 4、可捲區內距 6、可捲區寬 250（第 4 個起超出）。
     const tabLeft = (el: Element) => {
       const n = /^panel-project-local:\/proj\/p(\d)$/.exec(el.getAttribute("data-testid") ?? "")?.[1];
@@ -592,15 +695,16 @@ describe("面板專案 tab 條的淡出與捲到作用中", () => {
       renderPanel({ snapshot: snapshot({ tabs: six, activeKey: six[5].key }) });
       const strip = screen.getByTestId("panel-project-tabs");
       const sixthLeft = 6 + 5 * 68;
-      const visible = () => sixthLeft >= strip.scrollLeft && sixthLeft + 64 <= strip.scrollLeft + 250;
       expect(strip.scrollLeft).toBeGreaterThan(0);
-      expect(visible()).toBe(true);
+      expect(fullyVisible(sixthLeft, strip.scrollLeft)).toBe(true);
+      // 捲到作用中 tab 後左側有隱藏的 tab、右側已到盡頭：只淡左（spec 情境「開啟面板時捲到作用中專案」）。
+      expect(strip.getAttribute("data-fade")).toBe("start");
       // 使用者把 tab 條捲回最左後關閉面板；再次開啟（面板視窗取得焦點）時捲回作用中 tab。
       strip.scrollLeft = 0;
       act(() => {
         fireEvent.focus(window);
       });
-      expect(visible()).toBe(true);
+      expect(fullyVisible(sixthLeft, strip.scrollLeft)).toBe(true);
     } finally {
       for (const [proto, name, desc] of originals) {
         if (desc) Object.defineProperty(proto, name, desc);
@@ -911,10 +1015,15 @@ describe("TrayPanel 互動（開啟與 hover 複製）", () => {
       expect(b.className.split(/\s+/)).toContain("hover:bg-foreground/5");
       expect(b.className).not.toContain("hover:bg-primary");
     }
-    // 「結束」前多一段間距防誤按：只有它帶左外距。
-    expect(quit.className).toMatch(/(^|\s)ml-\d/);
-    expect(projectSettings.className).not.toMatch(/(^|\s)ml-\d/);
-    expect(settings.className).not.toMatch(/(^|\s)ml-\d/);
+    // 「設定」與「結束」之間以細直線分隔符隔開防誤按：間距由分隔符兩側外距承擔，鈕本身不帶左外距。
+    const separator = within(actions).getByTestId("panel-action-separator");
+    expect(separator.getAttribute("aria-hidden")).toBe("true");
+    expect(follows(settings, separator)).toBe(true);
+    expect(follows(separator, quit)).toBe(true);
+    expect(follows(projectSettings, separator)).toBe(true);
+    for (const b of [open.closest("button")!, ...iconButtons]) {
+      expect(b.className).not.toMatch(/(^|\s)ml-\d/);
+    }
     // 四顆鈕同在一列（同一個父節點）。
     expect(new Set([open.closest("button")!, ...iconButtons].map((b) => b.parentElement)).size).toBe(1);
     fireEvent.click(projectSettings);
@@ -1477,8 +1586,6 @@ describe("面板內容卡收合", () => {
   const SECTIONS = ["proposed", "in-progress", "ready", "discussions"] as const;
   const card = (id: string) => screen.getByTestId(`panel-section-${id}`);
   const toggle = (id: string) => sectionToggle(`panel-section-${id}`);
-  const chevronClasses = (id: string) =>
-    (toggle(id).querySelector("svg.lucide-chevron-right")?.getAttribute("class") ?? "").split(/\s+/);
   const threeInProgress = [
     change({ name: "ip1", totalTasks: 4, completedTasks: 1 }),
     change({ name: "ip2", totalTasks: 4, completedTasks: 2 }),
@@ -1488,19 +1595,19 @@ describe("面板內容卡收合", () => {
   it("(a) 點「進行中」標題收合：列消失、aria-expanded 為 false、計數仍為 3、箭頭朝右；再點恢復", () => {
     renderPanel({ snapshot: snapshot({ changes: threeInProgress }) });
     expect(toggle("in-progress").getAttribute("aria-expanded")).toBe("true");
-    expect(chevronClasses("in-progress")).toContain("rotate-90");
+    expect(chevronTokens(toggle("in-progress"))).toContain("rotate-90");
     fireEvent.click(toggle("in-progress"));
     expect(toggle("in-progress").getAttribute("aria-expanded")).toBe("false");
     expect(within(card("in-progress")).queryByTestId(/^panel-change-/)).toBeNull();
     expect(within(card("in-progress")).getByTestId("section-count").textContent).toBe("3");
     expect(within(card("in-progress")).getByText("進行中")).toBeTruthy();
-    expect(chevronClasses("in-progress")).not.toContain("rotate-90");
+    expect(chevronTokens(toggle("in-progress"))).not.toContain("rotate-90");
     // 其他卡不受影響。
     expect(toggle("proposed").getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(toggle("in-progress"));
     expect(toggle("in-progress").getAttribute("aria-expanded")).toBe("true");
     expect(within(card("in-progress")).getAllByTestId(/^panel-change-/)).toHaveLength(3);
-    expect(chevronClasses("in-progress")).toContain("rotate-90");
+    expect(chevronTokens(toggle("in-progress"))).toContain("rotate-90");
   });
 
   it("(b) 收合「討論」後重開面板、再切到另一個專案仍收合；記憶值為含 discussions 的 JSON 陣列", () => {
@@ -1534,6 +1641,27 @@ describe("面板內容卡收合", () => {
     expect(toggle("discussions").getAttribute("aria-expanded")).toBe("false");
     expect(within(card("discussions")).getByTestId("section-count").textContent).toBe("2");
     expect(within(card("discussions")).queryByTestId(/^panel-discussion-/)).toBeNull();
+  });
+
+  it("spec Example「收起討論後切換專案」：wadpilot 8 則收起後點 speclink（2 則）→ 只剩一行「討論」與計數 2，箭頭朝右", () => {
+    const wadpilot = { key: "local:/proj/wadpilot", name: "wadpilot", source: "local" as const, status: "ready" as const };
+    const speclink = { key: "local:/proj/speclink", name: "speclink", source: "local" as const, status: "ready" as const };
+    const topics = (prefix: string, n: number) =>
+      Array.from({ length: n }, (_, i) => ({ slug: `${prefix}-${i}`, topic: `${prefix} ${i}`, promoted: false }));
+    const h = renderPanel({
+      snapshot: snapshot({ tabs: [wadpilot, speclink], activeKey: wadpilot.key, discussions: topics("w", 8) }),
+    });
+    fireEvent.click(toggle("discussions"));
+    // 點 speclink 的專案 tab：面板回呼切換，主視窗推送 speclink 的快照。
+    fireEvent.click(screen.getByTestId(`panel-project-${speclink.key}`));
+    expect(h.onOpenProject).toHaveBeenCalledWith(speclink.key);
+    h.pushSnapshot(snapshot({ tabs: [wadpilot, speclink], activeKey: speclink.key, discussions: topics("s", 2) }));
+    expect(toggle("discussions").getAttribute("aria-expanded")).toBe("false");
+    expect(card("discussions").children).toHaveLength(1);
+    expect(within(card("discussions")).getByText("討論")).toBeTruthy();
+    expect(within(card("discussions")).getByTestId("section-count").textContent).toBe("2");
+    expect(chevronTokens(toggle("discussions"))).not.toContain("rotate-90");
+    expect(chevronTokens(toggle("discussions"))).not.toContain("-rotate-90");
   });
 
   it("(c) 記憶存壞值時四張卡全部展開、不顯示錯誤", () => {
@@ -1653,6 +1781,13 @@ describe("面板內容卡收合", () => {
     expect(toggle("proposed").getAttribute("aria-expanded")).toBe("true");
     fireEvent.keyDown(toggle("proposed"), { key: "a" });
     expect(toggle("proposed").getAttribute("aria-expanded")).toBe("true");
+    // 按住不放的自動重複不再切換（原生 button 按住也只觸發一次）。
+    fireEvent.keyDown(toggle("proposed"), { key: "Enter" });
+    for (const key of ["Enter", " "]) {
+      fireEvent.keyDown(toggle("proposed"), { key, repeat: true });
+      expect(toggle("proposed").getAttribute("aria-expanded")).toBe("false");
+    }
+    expect(JSON.parse(localStorage.getItem(TRAY_COLLAPSED_SECTIONS_STORAGE_KEY)!)).toEqual(["proposed"]);
   });
 });
 
@@ -1724,9 +1859,6 @@ describe("面板的已轉出收合列", () => {
     { slug: "open-a", topic: "討論中 a", promoted: false },
     { slug: "open-b", topic: "討論中 b", promoted: false },
   ];
-  /** 收合列箭頭的 class token（以空白切開，才分得出 rotate-90 與 -rotate-90）。 */
-  const promotedChevron = (toggle: HTMLElement) =>
-    (toggle.querySelector("svg.lucide-chevron-right")?.getAttribute("class") ?? "").split(/\s+/);
 
   it("預設收合：只列討論中，底部為「已轉出 3 ›」、aria-expanded 為 false", () => {
     renderPanel({ snapshot: snapshot({ discussions: [...open2, ...promoted(3)] }) });
@@ -1738,8 +1870,8 @@ describe("面板的已轉出收合列", () => {
     expect(toggle.getAttribute("tabindex")).toBe("-1");
     expect(toggle.textContent).toBe("已轉出 3");
     // 收合時為 ›（不旋轉）。
-    expect(promotedChevron(toggle)).not.toContain("-rotate-90");
-    expect(promotedChevron(toggle)).not.toContain("rotate-90");
+    expect(chevronTokens(toggle)).not.toContain("-rotate-90");
+    expect(chevronTokens(toggle)).not.toContain("rotate-90");
     expect(screen.queryByTestId("panel-promoted-rows")).toBeNull();
     expect(screen.queryByTestId("panel-discussion-prom-0")).toBeNull();
   });
@@ -1750,15 +1882,15 @@ describe("面板的已轉出收合列", () => {
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     // 展開時朝上：指向展開於收合列上方的已轉出細列（收合箭頭統一規則）。
-    expect(promotedChevron(toggle)).toContain("-rotate-90");
-    expect(promotedChevron(toggle)).not.toContain("rotate-90");
+    expect(chevronTokens(toggle)).toContain("-rotate-90");
+    expect(chevronTokens(toggle)).not.toContain("rotate-90");
     const rows = screen.getByTestId("panel-promoted-rows");
     expect(within(rows).getAllByTestId(/^panel-discussion-/)).toHaveLength(3);
     expect(localStorage.getItem(TRAY_PROMOTED_EXPANDED_STORAGE_KEY)).toBe("true");
     fireEvent.click(toggle);
     expect(screen.queryByTestId("panel-promoted-rows")).toBeNull();
-    expect(promotedChevron(toggle)).not.toContain("-rotate-90");
-    expect(promotedChevron(toggle)).not.toContain("rotate-90");
+    expect(chevronTokens(toggle)).not.toContain("-rotate-90");
+    expect(chevronTokens(toggle)).not.toContain("rotate-90");
     expect(localStorage.getItem(TRAY_PROMOTED_EXPANDED_STORAGE_KEY)).toBe("false");
   });
 
@@ -1770,6 +1902,9 @@ describe("面板的已轉出收合列", () => {
     fireEvent.keyDown(toggle, { key: " " });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     fireEvent.keyDown(toggle, { key: "a" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    // 按住不放的自動重複不再切換。
+    fireEvent.keyDown(toggle, { key: " ", repeat: true });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
   });
 

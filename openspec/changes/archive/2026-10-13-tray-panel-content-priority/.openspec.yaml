@@ -1,0 +1,47 @@
+schema: spec-driven
+created: 2026-10-13
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: tray-panel-content-priority
+started_at: 2026-10-13
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-13
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 20
+reviewed_scope:
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: e8542a8f518fae90ac1f655890646a202241710e42d8b281ae7317e228d8d6a0
+  - path: apps/desktop/src/panel/TrayPanel.tsx
+    hash: 3f3cb2220449fa903b9913764a74438a3aa3b06123a713807cab5343f2098580
+  - path: apps/desktop/src/panel/edgeFade.ts
+    hash: 4f640eca802531efd4016922ab28b1c7498944d31e73bc1618d0ad17cedea0e0
+  - path: apps/desktop/src/panel/sectionCollapse.ts
+    hash: 45314b035f0571b339a54355db23be6668d69623d1305c53aae083c93df46db8
+  - path: apps/desktop/src/panel/tabStrip.ts
+    hash: 0ac7a4d347eca6951e5d194db666ebd587c662319126f4b6713a1527064bab93
+  - path: packages/ui/src/__tests__/discussionColumn.test.tsx
+    hash: 19f30d0ba86631d0b655959fd7a8193c5c9027fc19bb88b67704b637ecdb562b
+  - path: packages/ui/src/components/DiscussionColumn.tsx
+    hash: 10471067175674e0d7ae68c3b64d3f2a856d0ae32212051d35ba12345a8cb424
+verified_at: 2026-10-13
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 20
+verified_scope:
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: e8542a8f518fae90ac1f655890646a202241710e42d8b281ae7317e228d8d6a0
+  - path: apps/desktop/src/panel/TrayPanel.tsx
+    hash: 3f3cb2220449fa903b9913764a74438a3aa3b06123a713807cab5343f2098580
+  - path: apps/desktop/src/panel/edgeFade.ts
+    hash: 4f640eca802531efd4016922ab28b1c7498944d31e73bc1618d0ad17cedea0e0
+  - path: apps/desktop/src/panel/sectionCollapse.ts
+    hash: 45314b035f0571b339a54355db23be6668d69623d1305c53aae083c93df46db8
+  - path: apps/desktop/src/panel/tabStrip.ts
+    hash: 0ac7a4d347eca6951e5d194db666ebd587c662319126f4b6713a1527064bab93
+  - path: packages/ui/src/__tests__/discussionColumn.test.tsx
+    hash: 19f30d0ba86631d0b655959fd7a8193c5c9027fc19bb88b67704b637ecdb562b
+  - path: packages/ui/src/components/DiscussionColumn.tsx
+    hash: 10471067175674e0d7ae68c3b64d3f2a856d0ae32212051d35ba12345a8cb424
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-13
