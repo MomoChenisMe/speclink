@@ -405,8 +405,9 @@ export function DiscussionColumn({
               <span className="flex-1 text-left tabular-nums">
                 {t("discussion.promotedBar").replace("{n}", String(promoted.length))}
               </span>
+              {/* 收合 ›、展開時指向展開出來的內容：細列展開在收合列上方，故朝上。 */}
               <ChevronRight
-                className={`h-3.5 w-3.5 shrink-0 transition-transform ${promotedOpen ? "rotate-90" : ""}`}
+                className={`h-3.5 w-3.5 shrink-0 transition-transform ${promotedOpen ? "-rotate-90" : ""}`}
               />
             </button>
           </>

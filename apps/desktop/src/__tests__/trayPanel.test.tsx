@@ -24,6 +24,12 @@ import {
   readTrayPromotedExpanded,
   writeTrayPromotedExpanded,
 } from "../panel/promotedExpanded";
+import {
+  TRAY_COLLAPSED_SECTIONS_STORAGE_KEY,
+  readTrayCollapsedSections,
+  writeTrayCollapsedSections,
+} from "../panel/sectionCollapse";
+import { tabFadeEdges, tabRevealScrollLeft } from "../panel/tabStrip";
 import { APP_MESSAGES } from "../i18n/messages";
 import type { TraySnapshot } from "../tray";
 
@@ -34,14 +40,20 @@ const zhWrapper = ({ children }: { children: ReactNode }) => (
 );
 const render = (ui: ReactElement) => rtlRender(ui, { wrapper: zhWrapper });
 
-// 已轉出收合列的展開記憶存 localStorage：每題從「未記憶＝收合」起跑，前一題的展開不外溢。
-beforeEach(() => localStorage.removeItem(TRAY_PROMOTED_EXPANDED_STORAGE_KEY));
+// 已轉出收合列的展開記憶與內容卡收合記憶都存 localStorage：每題從「未記憶」起跑，
+// 前一題的展開／收合不外溢。
+beforeEach(() => {
+  localStorage.removeItem(TRAY_PROMOTED_EXPANDED_STORAGE_KEY);
+  localStorage.removeItem(TRAY_COLLAPSED_SECTIONS_STORAGE_KEY);
+});
 
 /** b 在 a 之後（文件順序）。 */
 const follows = (a: Element, b: Element) =>
   (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-/** 分區卡的標頭（卡的第一個子節點）。 */
-const sectionHeader = (id: string) => screen.getByTestId(id).firstElementChild as HTMLElement;
+/** 內容卡標題的收合觸發區（包住整條分區標題）。 */
+const sectionToggle = (id: string) => within(screen.getByTestId(id)).getByTestId("panel-section-toggle");
+/** 分區卡的標頭（收合觸發區內的 SectionHeader）。 */
+const sectionHeader = (id: string) => sectionToggle(id).firstElementChild as HTMLElement;
 
 function change(over: Partial<ChangeItem> & { name: string }): ChangeItem {
   return { status: "", totalTasks: 0, completedTasks: 0, ...over };
@@ -83,8 +95,13 @@ function renderPanel(over: Partial<Parameters<typeof TrayPanel>[0]> = {}) {
     onOpenServerSettings: vi.fn(),
     onReauthenticate: vi.fn(),
   };
-  render(<TrayPanel snapshot={snapshot()} {...handlers} {...over} />);
-  return handlers;
+  const props = { snapshot: snapshot(), ...handlers, ...over };
+  const { rerender } = render(<TrayPanel {...props} />);
+  return {
+    ...handlers,
+    /** 送入新快照（模擬主視窗推送），其餘 props 不變。 */
+    pushSnapshot: (next: TraySnapshot) => rerender(<TrayPanel {...props} snapshot={next} />),
+  };
 }
 
 describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
@@ -340,7 +357,7 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
     expect(screen.queryByText(/已轉出/)).toBeNull();
   });
 
-  it("區塊順序：討論卡（底部帶已轉出收合列）位於生命週期分區之前、「開啟 Speclink」最末", () => {
+  it("區塊順序：提案中→進行中→已就緒三張卡在討論卡（底部帶已轉出收合列）之前、動作區塊卡最末", () => {
     renderPanel({
       snapshot: snapshot({
         discussions: [
@@ -349,13 +366,17 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
         ],
       }),
     });
-    const discussions = screen.getByTestId("panel-section-discussions");
     const proposed = screen.getByTestId("panel-section-proposed");
+    const inProgress = screen.getByTestId("panel-section-in-progress");
     const ready = screen.getByTestId("panel-section-ready");
-    const open = screen.getByText("開啟 Speclink");
+    const discussions = screen.getByTestId("panel-section-discussions");
+    const actions = screen.getByTestId("panel-actions-card");
     expect(within(discussions).getByTestId("panel-promoted-toggle")).toBeTruthy();
-    expect(follows(discussions, proposed)).toBe(true);
-    expect(follows(ready, open)).toBe(true);
+    expect(follows(proposed, inProgress)).toBe(true);
+    expect(follows(inProgress, ready)).toBe(true);
+    expect(follows(ready, discussions)).toBe(true);
+    expect(follows(discussions, actions)).toBe(true);
+    expect(within(actions).getByText("開啟 Speclink")).toBeTruthy();
   });
 
   it("區塊之間只以間距分隔：無任何分割線", () => {
@@ -437,19 +458,23 @@ describe("TrayPanel 專案 tab 條（spec「面板樣式（macOS）」；design 
     expect(tile(screen.getByTestId("panel-project-local:/proj/sp")).textContent).toBe("規");
   });
 
-  it("「加入專案」為虛線框方塊＋文字（與圖示列的「＋」同形）", () => {
+  it("「加入專案」為只有「＋」的虛線框方塊（與圖示列的「＋」同形），不帶可見文字", () => {
     renderPanel();
     const add = screen.getByTestId("panel-add-project");
     const square = add.querySelector("[data-project-tile]") as HTMLElement;
     for (const token of RAIL_SQUARE.split(" ")) expect(square.classList.contains(token)).toBe(true);
     expect(square.className.split(/\s+/)).toEqual(expect.arrayContaining(["border-dashed", "border-border"]));
-    expect(within(add).getByText("加入專案")).toBeTruthy();
+    expect(add.textContent).toBe("");
   });
 
-  it("tab 條尾端有「加入專案」動作項，點擊觸發 onAddProject 而非 onOpenProject（D7）", () => {
+  it("「加入專案」固定在 tab 條卡右端、不在可捲區內，帶名稱且點擊觸發 onAddProject 而非 onOpenProject（D7）", () => {
     const h = renderPanel();
+    const card = screen.getByTestId("panel-project-card");
     const strip = screen.getByTestId("panel-project-tabs");
-    const add = within(strip).getByTestId("panel-add-project");
+    const add = within(card).getByTestId("panel-add-project");
+    expect(strip.contains(add)).toBe(false);
+    expect(follows(strip, add)).toBe(true);
+    expect(add.getAttribute("aria-label")).toBe("加入專案");
     expect(add.getAttribute("title")).toBe("加入專案");
     fireEvent.click(add);
     expect(h.onAddProject).toHaveBeenCalled();
@@ -463,6 +488,125 @@ describe("TrayPanel 專案 tab 條（spec「面板樣式（macOS）」；design 
     expect(classes).toContain("overflow-x-auto");
     expect(classes).toContain("[scrollbar-width:none]");
     expect(classes).toContain("[&::-webkit-scrollbar]:hidden");
+  });
+});
+
+// spec「面板樣式（macOS）」的專案 tab 條捲動（design「專案 tab 條：「＋」固定右端、邊緣淡出、
+// 捲到作用中」）：計算是 tabStrip.ts 的純函式；jsdom 沒有版面，元件測試以注入尺寸驗證接線。
+describe("面板專案 tab 條的淡出與捲到作用中", () => {
+  // spec Example「淡出的側邊」：可捲區寬 250、tab 總寬 500（未超出那列為 250）。
+  it.each([
+    { position: "最左端", scrollLeft: 0, scrollWidth: 500, left: false, right: true },
+    { position: "中間", scrollLeft: 100, scrollWidth: 500, left: true, right: true },
+    { position: "最右端", scrollLeft: 250, scrollWidth: 500, left: true, right: false },
+    { position: "tab 總寬未超出", scrollLeft: 0, scrollWidth: 250, left: false, right: false },
+  ])("淡出判斷：$position → 左 $left、右 $right", ({ scrollLeft, scrollWidth, left, right }) => {
+    expect(tabFadeEdges({ scrollLeft, scrollWidth, clientWidth: 250 })).toEqual({ left, right });
+  });
+
+  it("淡出判斷容差 1px：小數捲動位置差不到 1px 視為已到盡頭", () => {
+    expect(tabFadeEdges({ scrollLeft: 0.6, scrollWidth: 500, clientWidth: 250 }).left).toBe(false);
+    expect(tabFadeEdges({ scrollLeft: 249.5, scrollWidth: 500, clientWidth: 250 }).right).toBe(false);
+  });
+
+  // 露出目標：tab 寬 64、可捲區寬 250。結果要讓 tab 完整落在可視範圍內。
+  const fullyVisible = (tabLeft: number, scrollLeft: number) =>
+    tabLeft >= scrollLeft && tabLeft + 64 <= scrollLeft + 250;
+
+  it("露出目標：已完整可見 → 不動", () => {
+    expect(tabRevealScrollLeft({ tabLeft: 74, tabWidth: 64, scrollLeft: 0, viewportWidth: 250 })).toBe(0);
+    expect(tabRevealScrollLeft({ tabLeft: 142, tabWidth: 64, scrollLeft: 60, viewportWidth: 250 })).toBe(60);
+  });
+
+  it("露出目標：在右側外 → 往右捲到它完整可見", () => {
+    const next = tabRevealScrollLeft({ tabLeft: 346, tabWidth: 64, scrollLeft: 0, viewportWidth: 250 });
+    expect(next).toBeGreaterThan(0);
+    expect(fullyVisible(346, next)).toBe(true);
+  });
+
+  it("露出目標：在左側外 → 往左捲到它完整可見，且不小於 0", () => {
+    const next = tabRevealScrollLeft({ tabLeft: 74, tabWidth: 64, scrollLeft: 150, viewportWidth: 250 });
+    expect(next).toBeLessThan(150);
+    expect(next).toBeGreaterThanOrEqual(0);
+    expect(fullyVisible(74, next)).toBe(true);
+    expect(tabRevealScrollLeft({ tabLeft: 6, tabWidth: 64, scrollLeft: 150, viewportWidth: 250 })).toBe(0);
+  });
+
+  const six = Array.from({ length: 6 }, (_, i) => ({
+    key: `local:/proj/p${i + 1}`,
+    name: `p${i + 1}`,
+    source: "local" as const,
+    status: "ready" as const,
+  }));
+
+  it("捲動事件後可捲區的遮罩隨左右是否還有隱藏的 tab 改變", () => {
+    renderPanel({ snapshot: snapshot({ tabs: six, activeKey: six[0].key }) });
+    const strip = screen.getByTestId("panel-project-tabs");
+    const scrollTo = (scrollLeft: number, scrollWidth = 500) => {
+      for (const [prop, value] of [
+        ["scrollLeft", scrollLeft],
+        ["scrollWidth", scrollWidth],
+        ["clientWidth", 250],
+      ] as const) {
+        Object.defineProperty(strip, prop, { configurable: true, value });
+      }
+      act(() => {
+        fireEvent.scroll(strip);
+      });
+    };
+    scrollTo(0);
+    expect(strip.getAttribute("data-fade")).toBe("right");
+    scrollTo(100);
+    expect(strip.getAttribute("data-fade")).toBe("both");
+    scrollTo(250);
+    expect(strip.getAttribute("data-fade")).toBe("left");
+    scrollTo(0, 250);
+    expect(strip.getAttribute("data-fade")).toBe("none");
+  });
+
+  it("6 個專案、作用中為第 6 個：開啟時捲到它完整可見；面板再次取得焦點時重新捲回", () => {
+    // 版面注入：tab 寬 64、間距 4、可捲區內距 6、可捲區寬 250（第 4 個起超出）。
+    const tabLeft = (el: Element) => {
+      const n = /^panel-project-local:\/proj\/p(\d)$/.exec(el.getAttribute("data-testid") ?? "")?.[1];
+      return n === undefined ? null : 6 + (Number(n) - 1) * 68;
+    };
+    const isStrip = (el: Element) => el.getAttribute("data-testid") === "panel-project-tabs";
+    const scrollLefts = new WeakMap<Element, number>();
+    const stubs: Array<[object, string, PropertyDescriptor]> = [
+      [HTMLElement.prototype, "offsetLeft", { get(this: Element) { return tabLeft(this) ?? 0; } }],
+      [HTMLElement.prototype, "offsetWidth", { get(this: Element) { return tabLeft(this) === null ? 0 : 64; } }],
+      [Element.prototype, "clientWidth", { get(this: Element) { return isStrip(this) ? 250 : 0; } }],
+      [Element.prototype, "scrollWidth", { get(this: Element) { return isStrip(this) ? 416 : 0; } }],
+      [
+        Element.prototype,
+        "scrollLeft",
+        {
+          get(this: Element) { return scrollLefts.get(this) ?? 0; },
+          set(this: Element, v: number) { scrollLefts.set(this, v); },
+        },
+      ],
+    ];
+    const originals = stubs.map(([proto, name]) => [proto, name, Object.getOwnPropertyDescriptor(proto, name)] as const);
+    for (const [proto, name, desc] of stubs) Object.defineProperty(proto, name, { configurable: true, ...desc });
+    try {
+      renderPanel({ snapshot: snapshot({ tabs: six, activeKey: six[5].key }) });
+      const strip = screen.getByTestId("panel-project-tabs");
+      const sixthLeft = 6 + 5 * 68;
+      const visible = () => sixthLeft >= strip.scrollLeft && sixthLeft + 64 <= strip.scrollLeft + 250;
+      expect(strip.scrollLeft).toBeGreaterThan(0);
+      expect(visible()).toBe(true);
+      // 使用者把 tab 條捲回最左後關閉面板；再次開啟（面板視窗取得焦點）時捲回作用中 tab。
+      strip.scrollLeft = 0;
+      act(() => {
+        fireEvent.focus(window);
+      });
+      expect(visible()).toBe(true);
+    } finally {
+      for (const [proto, name, desc] of originals) {
+        if (desc) Object.defineProperty(proto, name, desc);
+        else delete (proto as Record<string, unknown>)[name];
+      }
+    }
   });
 });
 
@@ -513,13 +657,25 @@ describe("TrayPanel 分區卡片化與主色（spec「面板樣式（macOS）」
     expect(root.className.split(/\s+/)).toContain("rounded-[13px]");
   });
 
-  it("根層不疊漸層、以側欄面色約九成補光", () => {
-    // 主色留給選取與主要操作；漸層 wash 隨卡片化移除。
-    renderPanel();
+  it("根層不疊漸層、以側欄面色約六成補光，白卡維持不透明", () => {
+    // 主色留給選取與主要操作；漸層 wash 隨卡片化移除。補光層調回約六成，毛玻璃才從
+    // 外框與卡片縫隙透得出來；卡片本身維持不透明白底（卡內亮度錨定卡片面色）。
+    renderPanel({ snapshot: snapshot({ discussions: discBoth }) });
     const root = screen.getByTestId("panel-root");
     expect(root.className).not.toContain("bg-linear-to-b");
     expect(root.className).not.toContain("from-");
-    expect(root.className.split(/\s+/)).toContain("bg-sidebar/90");
+    expect(root.className.split(/\s+/)).toContain("bg-sidebar/60");
+    expect(root.className.split(/\s+/)).not.toContain("bg-sidebar/90");
+    for (const id of [
+      "panel-project-card",
+      "panel-section-proposed",
+      "panel-section-in-progress",
+      "panel-section-ready",
+      "panel-section-discussions",
+      "panel-actions-card",
+    ]) {
+      expect(screen.getByTestId(id).className.split(/\s+/)).toContain("bg-card");
+    }
   });
 
   it("卡內的列以細線分隔、hover 為半透明前景色灰底，不以主色實心反白", () => {
@@ -531,7 +687,6 @@ describe("TrayPanel 分區卡片化與主色（spec「面板樣式（macOS）」
       screen.getByTestId("panel-change-c0"),
       screen.getByTestId("panel-discussion-open-d"),
       screen.getByText("還有 3 個…").parentElement!,
-      screen.getByText("開啟 Speclink"),
     ];
     for (const row of rows) {
       const classes = row.className.split(/\s+/);
@@ -735,15 +890,33 @@ describe("TrayPanel 互動（開啟與 hover 複製）", () => {
     expect(h.onOpenApp).toHaveBeenCalled();
   });
 
-  it("動作區塊依序渲染「開啟 Speclink」「專案設定」「設定」「結束」，點擊各列觸發對應回呼", () => {
+  it("動作區塊卡為單列：「開啟 Speclink」文字鈕在前，其後依序為「專案設定」「設定」「結束」三顆圖示鈕", () => {
     const h = renderPanel();
-    const open = screen.getByText("開啟 Speclink");
-    const projectSettings = screen.getByText("專案設定");
-    const settings = screen.getByText("設定");
-    const quit = screen.getByText("結束");
-    expect(follows(open, projectSettings)).toBe(true);
-    expect(follows(projectSettings, settings)).toBe(true);
-    expect(follows(settings, quit)).toBe(true);
+    const actions = screen.getByTestId("panel-actions-card");
+    const open = within(actions).getByText("開啟 Speclink");
+    const iconButtons = within(actions)
+      .getAllByRole("button")
+      .filter((b) => b.textContent === "");
+    expect(iconButtons.map((b) => b.getAttribute("aria-label"))).toEqual(["專案設定", "設定", "結束"]);
+    const [projectSettings, settings, quit] = iconButtons;
+    for (const b of iconButtons) {
+      // 名稱提示走原生 title（面板無焦點，不掛 Radix Tooltip）；圖示鈕退出 Tab 順序。
+      expect(b.getAttribute("title")).toBe(b.getAttribute("aria-label"));
+      expect(b.getAttribute("tabindex")).toBe("-1");
+      expect(b.getAttribute("type")).toBe("button");
+      expect(follows(open, b)).toBe(true);
+    }
+    // 文字鈕與圖示鈕的 hover 為半透明前景色灰底，不以主色反白。
+    for (const b of [open.closest("button")!, ...iconButtons]) {
+      expect(b.className.split(/\s+/)).toContain("hover:bg-foreground/5");
+      expect(b.className).not.toContain("hover:bg-primary");
+    }
+    // 「結束」前多一段間距防誤按：只有它帶左外距。
+    expect(quit.className).toMatch(/(^|\s)ml-\d/);
+    expect(projectSettings.className).not.toMatch(/(^|\s)ml-\d/);
+    expect(settings.className).not.toMatch(/(^|\s)ml-\d/);
+    // 四顆鈕同在一列（同一個父節點）。
+    expect(new Set([open.closest("button")!, ...iconButtons].map((b) => b.parentElement)).size).toBe(1);
     fireEvent.click(projectSettings);
     expect(h.onOpenProjectSettings).toHaveBeenCalled();
     expect(h.onOpenSettings).not.toHaveBeenCalled();
@@ -794,21 +967,21 @@ describe("TrayPanel 互動（開啟與 hover 複製）", () => {
 });
 
 describe("三段式版面（spec「面板樣式（macOS）」：固定頁首／可捲中段／固定頁尾）", () => {
-  it("頁首為 tab 條卡、中段含分區卡並帶縱向捲動樣式、頁尾為動作四列卡；無分割線", () => {
+  it("頁首為 tab 條卡、中段含分區卡並帶縱向捲動樣式、頁尾為動作單列卡；無分割線", () => {
     renderPanel();
     const header = screen.getByTestId("panel-header");
     const scroll = screen.getByTestId("panel-scroll");
     const footer = screen.getByTestId("panel-footer");
-    // 頁首＝tab 條卡；中段＝討論與生命週期分區卡；頁尾＝動作四列卡
+    // 頁首＝tab 條卡；中段＝生命週期與討論分區卡；頁尾＝動作單列卡
     expect(within(within(header).getByTestId("panel-project-card")).getByTestId("panel-project-tabs")).toBeTruthy();
     expect(within(scroll).getByTestId("panel-section-discussions")).toBeTruthy();
     expect(within(scroll).getByTestId("panel-section-proposed")).toBeTruthy();
     expect(within(scroll).getByTestId("panel-section-ready")).toBeTruthy();
     const actions = within(footer).getByTestId("panel-actions-card");
     expect(within(actions).getByText("開啟 Speclink")).toBeTruthy();
-    expect(within(actions).getByText("專案設定")).toBeTruthy();
-    expect(within(actions).getByText("設定")).toBeTruthy();
-    expect(within(actions).getByText("結束")).toBeTruthy();
+    for (const name of ["專案設定", "設定", "結束"]) {
+      expect(within(actions).getByRole("button", { name })).toBeTruthy();
+    }
     // 捲動樣式只掛中段
     expect(scroll.className).toContain("overflow-y-auto");
     expect(header.className).not.toContain("overflow-y-auto");
@@ -852,7 +1025,7 @@ describe("三段式版面（spec「面板樣式（macOS）」：固定頁首／�
 
   it("毛玻璃補光層：root 帶側欄面色半透明基底（隨深淺模式，亮度錨定側欄面色）", () => {
     renderPanel();
-    // 濃度約九成、真機可微調——只斷言補光層存在（bg-sidebar/<n>）
+    // 濃度約六成、真機可微調——只斷言補光層存在（bg-sidebar/<n>）
     expect(screen.getByTestId("panel-root").className).toMatch(/bg-sidebar\/\d+/);
   });
 
@@ -878,7 +1051,7 @@ describe("三段式版面（spec「面板樣式（macOS）」：固定頁首／�
     const footer = screen.getByTestId("panel-footer");
     expect(within(header).getByTestId("panel-project-card")).toBeTruthy();
     expect(within(scroll).getByTestId("panel-recovery-card")).toBeTruthy();
-    expect(within(within(footer).getByTestId("panel-actions-card")).getByText("結束")).toBeTruthy();
+    expect(within(within(footer).getByTestId("panel-actions-card")).getByRole("button", { name: "結束" })).toBeTruthy();
     expect(screen.queryAllByTestId("panel-divider")).toHaveLength(0);
   });
 });
@@ -1298,6 +1471,250 @@ describe("面板已轉出收合列的展開記憶", () => {
   });
 });
 
+// spec「面板內容卡收合」（design「收合觸發沿用已轉出收合列的模式」「收合中的卡只留標題一行、
+// 不自動展開」）：四張內容卡的整條標題是收合觸發區；收合後只剩標題一行，計數照常更新。
+describe("面板內容卡收合", () => {
+  const SECTIONS = ["proposed", "in-progress", "ready", "discussions"] as const;
+  const card = (id: string) => screen.getByTestId(`panel-section-${id}`);
+  const toggle = (id: string) => sectionToggle(`panel-section-${id}`);
+  const chevronClasses = (id: string) =>
+    (toggle(id).querySelector("svg.lucide-chevron-right")?.getAttribute("class") ?? "").split(/\s+/);
+  const threeInProgress = [
+    change({ name: "ip1", totalTasks: 4, completedTasks: 1 }),
+    change({ name: "ip2", totalTasks: 4, completedTasks: 2 }),
+    change({ name: "ip3", totalTasks: 4, completedTasks: 3 }),
+  ];
+
+  it("(a) 點「進行中」標題收合：列消失、aria-expanded 為 false、計數仍為 3、箭頭朝右；再點恢復", () => {
+    renderPanel({ snapshot: snapshot({ changes: threeInProgress }) });
+    expect(toggle("in-progress").getAttribute("aria-expanded")).toBe("true");
+    expect(chevronClasses("in-progress")).toContain("rotate-90");
+    fireEvent.click(toggle("in-progress"));
+    expect(toggle("in-progress").getAttribute("aria-expanded")).toBe("false");
+    expect(within(card("in-progress")).queryByTestId(/^panel-change-/)).toBeNull();
+    expect(within(card("in-progress")).getByTestId("section-count").textContent).toBe("3");
+    expect(within(card("in-progress")).getByText("進行中")).toBeTruthy();
+    expect(chevronClasses("in-progress")).not.toContain("rotate-90");
+    // 其他卡不受影響。
+    expect(toggle("proposed").getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(toggle("in-progress"));
+    expect(toggle("in-progress").getAttribute("aria-expanded")).toBe("true");
+    expect(within(card("in-progress")).getAllByTestId(/^panel-change-/)).toHaveLength(3);
+    expect(chevronClasses("in-progress")).toContain("rotate-90");
+  });
+
+  it("(b) 收合「討論」後重開面板、再切到另一個專案仍收合；記憶值為含 discussions 的 JSON 陣列", () => {
+    renderPanel({
+      snapshot: snapshot({
+        discussions: [
+          { slug: "w1", topic: "一", promoted: false },
+          { slug: "w2", topic: "二", promoted: false },
+          { slug: "w3", topic: "三", promoted: false },
+        ],
+      }),
+    });
+    fireEvent.click(toggle("discussions"));
+    expect(JSON.parse(localStorage.getItem(TRAY_COLLAPSED_SECTIONS_STORAGE_KEY)!)).toContain("discussions");
+    // 重新掛載＝關閉再開啟面板、重啟 app。
+    cleanup();
+    const h = renderPanel({
+      snapshot: snapshot({ discussions: [{ slug: "w1", topic: "一", promoted: false }] }),
+    });
+    expect(toggle("discussions").getAttribute("aria-expanded")).toBe("false");
+    // 主視窗推送另一個作用中專案的快照（2 則討論）：仍收合、計數換成新專案的。
+    h.pushSnapshot(
+      snapshot({
+        activeKey: "local:/proj/two",
+        discussions: [
+          { slug: "s1", topic: "甲", promoted: false },
+          { slug: "s2", topic: "乙", promoted: false },
+        ],
+      }),
+    );
+    expect(toggle("discussions").getAttribute("aria-expanded")).toBe("false");
+    expect(within(card("discussions")).getByTestId("section-count").textContent).toBe("2");
+    expect(within(card("discussions")).queryByTestId(/^panel-discussion-/)).toBeNull();
+  });
+
+  it("(c) 記憶存壞值時四張卡全部展開、不顯示錯誤", () => {
+    for (const raw of ["not json", '{"proposed":true}']) {
+      localStorage.setItem(TRAY_COLLAPSED_SECTIONS_STORAGE_KEY, raw);
+      renderPanel();
+      for (const id of SECTIONS) expect(toggle(id).getAttribute("aria-expanded")).toBe("true");
+      expect(screen.queryByRole("alert")).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("(d) 收合「已就緒」後送入多一筆已就緒變更的快照：卡仍收合、計數由 0 變 1", () => {
+    const base = [change({ name: "prop", totalTasks: 5, completedTasks: 0 })];
+    const h = renderPanel({ snapshot: snapshot({ changes: base }) });
+    expect(within(card("ready")).getByTestId("section-count").textContent).toBe("0");
+    fireEvent.click(toggle("ready"));
+    h.pushSnapshot(snapshot({ changes: [...base, change({ name: "rdy", totalTasks: 4, completedTasks: 4 })] }));
+    expect(toggle("ready").getAttribute("aria-expanded")).toBe("false");
+    expect(within(card("ready")).getByTestId("section-count").textContent).toBe("1");
+    expect(screen.queryByTestId("panel-change-rdy")).toBeNull();
+  });
+
+  it("(e) 收合的卡只剩標題一行：空狀態卡不帶最小高度、標題下沒有細線", () => {
+    renderPanel({ snapshot: snapshot({ changes: threeInProgress }) });
+    fireEvent.click(toggle("ready")); // 計數 0 的空狀態卡
+    fireEvent.click(toggle("in-progress")); // 有 3 列的卡
+    for (const id of ["ready", "in-progress"]) {
+      expect(card(id).className.split(/\s+/)).not.toContain("min-h-12");
+      expect(sectionHeader(`panel-section-${id}`).className.split(/\s+/)).not.toContain("border-b");
+      // 卡內只剩收合觸發區一個子節點。
+      expect(card(id).children).toHaveLength(1);
+    }
+  });
+
+  it("(e) 收合的卡在載入中與載入失敗時也只剩標題（不渲染骨架、失敗提示）", () => {
+    renderPanel();
+    fireEvent.click(toggle("in-progress"));
+    fireEvent.click(toggle("discussions"));
+    cleanup();
+    renderPanel({ snapshot: snapshot({ workspaceLoading: true, changes: [], discussions: [] }) });
+    for (const id of ["in-progress", "discussions"]) {
+      expect(card(id).querySelector('[aria-busy="true"]')).toBeNull();
+      expect(card(id).children).toHaveLength(1);
+    }
+    expect(card("proposed").querySelector('[aria-busy="true"]')).toBeTruthy();
+    cleanup();
+    renderPanel({ snapshot: snapshot({ workspaceLoadFailed: true, changes: [], discussions: [] }) });
+    for (const id of ["in-progress", "discussions"]) {
+      expect(within(card(id)).queryByTestId("panel-section-load-failed")).toBeNull();
+    }
+    expect(within(card("proposed")).getByTestId("panel-section-load-failed")).toBeTruthy();
+  });
+
+  it("(f) 討論卡收起再展開：「還有 N 個…」溢出列回到未展開，「已轉出」收合列維持展開", () => {
+    const openEight = Array.from({ length: 8 }, (_, i) => ({ slug: `open-${i}`, topic: `討論 ${i}`, promoted: false }));
+    const promotedThree = Array.from({ length: 3 }, (_, i) => ({ slug: `prom-${i}`, topic: `已轉出 ${i}`, promoted: true }));
+    renderPanel({ snapshot: snapshot({ discussions: [...openEight, ...promotedThree] }) });
+    fireEvent.click(screen.getByText("還有 3 個…"));
+    fireEvent.click(screen.getByTestId("panel-promoted-toggle"));
+    expect(screen.getByTestId("panel-discussion-open-7")).toBeTruthy();
+    fireEvent.click(toggle("discussions"));
+    expect(screen.queryByTestId("panel-promoted-toggle")).toBeNull();
+    expect(screen.queryByText("還有 3 個…")).toBeNull();
+    fireEvent.click(toggle("discussions"));
+    expect(screen.getByText("還有 3 個…")).toBeTruthy();
+    expect(screen.queryByTestId("panel-discussion-open-5")).toBeNull();
+    expect(screen.getByTestId("panel-promoted-toggle").getAttribute("aria-expanded")).toBe("true");
+    expect(within(screen.getByTestId("panel-promoted-rows")).getAllByTestId(/^panel-discussion-/)).toHaveLength(3);
+  });
+
+  it("(g) 專案 tab 條卡、動作區塊卡、復原卡、stale 狀態列沒有收合觸發；點其空白處不收起內容", () => {
+    renderPanel();
+    for (const id of ["panel-project-card", "panel-actions-card"]) {
+      const el = screen.getByTestId(id);
+      expect(within(el).queryByTestId("panel-section-toggle")).toBeNull();
+      expect(el.querySelector("[aria-expanded]")).toBeNull();
+      fireEvent.click(el);
+    }
+    for (const id of SECTIONS) expect(toggle(id).getAttribute("aria-expanded")).toBe("true");
+    cleanup();
+
+    const remote = (status: string) =>
+      snapshot({
+        tabs: [
+          {
+            key: "remote:c1/demo/backend",
+            name: "Demo/backend",
+            source: "remote",
+            status,
+            failureKind: "unreachable",
+            connectionId: "c1",
+            serverLabel: "Team Server",
+          },
+        ],
+        activeKey: "remote:c1/demo/backend",
+      } as unknown as Partial<TraySnapshot>);
+    renderPanel({ snapshot: remote("error") });
+    expect(screen.getByTestId("panel-recovery-card").querySelector("[aria-expanded]")).toBeNull();
+    expect(screen.queryAllByTestId("panel-section-toggle")).toHaveLength(0);
+    cleanup();
+    renderPanel({ snapshot: remote("offline") });
+    const stale = screen.getByTestId("panel-stale-status");
+    expect(stale.querySelector("[aria-expanded]")).toBeNull();
+    expect(stale.getAttribute("aria-expanded")).toBeNull();
+  });
+
+  it("(h) 收合觸發為 role=button、tabIndex 為 -1，Enter／Space 可切換", () => {
+    renderPanel();
+    for (const id of SECTIONS) {
+      expect(toggle(id).getAttribute("role")).toBe("button");
+      expect(toggle(id).getAttribute("tabindex")).toBe("-1");
+    }
+    fireEvent.keyDown(toggle("proposed"), { key: "Enter" });
+    expect(toggle("proposed").getAttribute("aria-expanded")).toBe("false");
+    fireEvent.keyDown(toggle("proposed"), { key: " " });
+    expect(toggle("proposed").getAttribute("aria-expanded")).toBe("true");
+    fireEvent.keyDown(toggle("proposed"), { key: "a" });
+    expect(toggle("proposed").getAttribute("aria-expanded")).toBe("true");
+  });
+});
+
+// spec「面板內容卡收合」的記憶（design「收合狀態記在面板本機、所有專案共用一份」）：
+// 單一鍵、值為收合中分區 id 的 JSON 陣列；讀不到或讀到壞值一律全部展開，寫入失敗靜默。
+describe("面板內容卡的收合記憶", () => {
+  it("鍵缺席 → 空集合（全部展開）", () => {
+    expect(TRAY_COLLAPSED_SECTIONS_STORAGE_KEY).toBe("speclink.tray.collapsedSections");
+    expect(readTrayCollapsedSections().size).toBe(0);
+  });
+
+  it.each([
+    ["非 JSON", "not json"],
+    ["非陣列（物件）", '{"proposed":true}'],
+    ["非陣列（字串）", '"proposed"'],
+    ["null", "null"],
+  ])("壞值（%s）→ 空集合", (_label, raw) => {
+    localStorage.setItem(TRAY_COLLAPSED_SECTIONS_STORAGE_KEY, raw);
+    expect(readTrayCollapsedSections().size).toBe(0);
+  });
+
+  it("陣列中的未知 id 與非字串元素被忽略", () => {
+    localStorage.setItem(
+      TRAY_COLLAPSED_SECTIONS_STORAGE_KEY,
+      JSON.stringify(["ready", "bogus", 3, null, "discussions"]),
+    );
+    expect([...readTrayCollapsedSections()].sort()).toEqual(["discussions", "ready"]);
+  });
+
+  it("寫入以 JSON 陣列整份覆寫，讀回同一集合", () => {
+    writeTrayCollapsedSections(new Set(["proposed", "in-progress"]));
+    writeTrayCollapsedSections(new Set(["discussions"]));
+    const raw = localStorage.getItem(TRAY_COLLAPSED_SECTIONS_STORAGE_KEY)!;
+    expect(JSON.parse(raw)).toEqual(["discussions"]);
+    expect([...readTrayCollapsedSections()]).toEqual(["discussions"]);
+    writeTrayCollapsedSections(new Set());
+    expect(JSON.parse(localStorage.getItem(TRAY_COLLAPSED_SECTIONS_STORAGE_KEY)!)).toEqual([]);
+  });
+
+  it("localStorage 不可用時讀回空集合、寫入不拋錯", () => {
+    // spy 落在 localStorage 實例的 prototype（同「已轉出收合列的展開記憶」的做法）。
+    const proto = Object.getPrototypeOf(localStorage) as Storage;
+    localStorage.setItem(TRAY_COLLAPSED_SECTIONS_STORAGE_KEY, JSON.stringify(["ready"]));
+    const get = vi.spyOn(proto, "getItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
+    const set = vi.spyOn(proto, "setItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
+    try {
+      // 鍵裡明明有 ready：讀回空集合只可能來自 catch。
+      expect(readTrayCollapsedSections().size).toBe(0);
+      expect(() => writeTrayCollapsedSections(new Set(["ready"]))).not.toThrow();
+      expect(get).toHaveBeenCalled();
+      expect(set).toHaveBeenCalled();
+    } finally {
+      get.mockRestore();
+      set.mockRestore();
+    }
+  });
+});
+
 // spec「討論列表」面板的已轉出收合列（design D4）：預設收合、點按就地展開並記憶，
 // 展開區與其他分區同受溢出摺疊約束。
 describe("面板的已轉出收合列", () => {
@@ -1307,6 +1724,9 @@ describe("面板的已轉出收合列", () => {
     { slug: "open-a", topic: "討論中 a", promoted: false },
     { slug: "open-b", topic: "討論中 b", promoted: false },
   ];
+  /** 收合列箭頭的 class token（以空白切開，才分得出 rotate-90 與 -rotate-90）。 */
+  const promotedChevron = (toggle: HTMLElement) =>
+    (toggle.querySelector("svg.lucide-chevron-right")?.getAttribute("class") ?? "").split(/\s+/);
 
   it("預設收合：只列討論中，底部為「已轉出 3 ›」、aria-expanded 為 false", () => {
     renderPanel({ snapshot: snapshot({ discussions: [...open2, ...promoted(3)] }) });
@@ -1317,7 +1737,9 @@ describe("面板的已轉出收合列", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(toggle.getAttribute("tabindex")).toBe("-1");
     expect(toggle.textContent).toBe("已轉出 3");
-    expect(toggle.querySelector("svg.lucide-chevron-right")?.getAttribute("class")).not.toContain("rotate-90");
+    // 收合時為 ›（不旋轉）。
+    expect(promotedChevron(toggle)).not.toContain("-rotate-90");
+    expect(promotedChevron(toggle)).not.toContain("rotate-90");
     expect(screen.queryByTestId("panel-promoted-rows")).toBeNull();
     expect(screen.queryByTestId("panel-discussion-prom-0")).toBeNull();
   });
@@ -1327,12 +1749,16 @@ describe("面板的已轉出收合列", () => {
     const toggle = screen.getByTestId("panel-promoted-toggle");
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(toggle.querySelector("svg.lucide-chevron-right")?.getAttribute("class")).toContain("rotate-90");
+    // 展開時朝上：指向展開於收合列上方的已轉出細列（收合箭頭統一規則）。
+    expect(promotedChevron(toggle)).toContain("-rotate-90");
+    expect(promotedChevron(toggle)).not.toContain("rotate-90");
     const rows = screen.getByTestId("panel-promoted-rows");
     expect(within(rows).getAllByTestId(/^panel-discussion-/)).toHaveLength(3);
     expect(localStorage.getItem(TRAY_PROMOTED_EXPANDED_STORAGE_KEY)).toBe("true");
     fireEvent.click(toggle);
     expect(screen.queryByTestId("panel-promoted-rows")).toBeNull();
+    expect(promotedChevron(toggle)).not.toContain("-rotate-90");
+    expect(promotedChevron(toggle)).not.toContain("rotate-90");
     expect(localStorage.getItem(TRAY_PROMOTED_EXPANDED_STORAGE_KEY)).toBe("false");
   });
 

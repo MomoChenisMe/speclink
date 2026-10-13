@@ -3,7 +3,15 @@
 // 資料查詢路徑。原生質感（vibrancy、不搶焦點、失焦收合、高度自適應）由
 // Rust 側面板視窗與入口層承擔，此元件只負責結構與回呼；複製鈕常駐列尾、
 // 分區圖示沿用看板同款（KanbanBoard 的 stage 圖示）。
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import {
   Button,
   changeStage,
@@ -64,6 +72,12 @@ import {
 } from "../components/projectTile";
 import { OVERFLOW_LIMIT, type TraySnapshot, type TrayTabSnapshot } from "../tray";
 import { readTrayPromotedExpanded, writeTrayPromotedExpanded } from "./promotedExpanded";
+import {
+  readTrayCollapsedSections,
+  writeTrayCollapsedSections,
+  type TraySectionId,
+} from "./sectionCollapse";
+import { TAB_FADE_PX, tabFadeEdges, tabRevealScrollLeft, type TabFade } from "./tabStrip";
 
 /** 分區圖示與看板欄位同款（KanbanBoard）：提案中／進行中／已就緒。 */
 const STAGE_ICONS: Record<Stage, LucideIcon> = {
@@ -130,6 +144,73 @@ function PanelCard({
 /** 空狀態分區卡附加樣式（design D8）：最小高度＋內容垂直置中——生命週期
     零筆階段卡與討論零筆卡共用，維持空狀態同構。 */
 const emptyCardClass = "min-h-12 justify-center";
+
+/** role="button" 的 div 補上 Enter／Space 切換（與原生 button 一致）。 */
+const toggleOnKey = (toggle: () => void) => (event: KeyboardEvent<HTMLElement>) => {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    toggle();
+  }
+};
+
+/**
+ * 可收合的內容卡（spec「面板內容卡收合」；design「收合觸發沿用已轉出收合列的模式」）：
+ * 整條分區標題為觸發區（role="button"、tabIndex=-1、Enter／Space，同已轉出收合列），
+ * 箭頭放 SectionHeader 的 action 插槽、在計數之後（展開朝下、收合朝右）。收合時只留
+ * 標題一行——其下內容卸載（溢出列的展開暫態隨之歸零），不套空狀態最小高度、標題下
+ * 不畫細線。empty＝展開時其下也沒有內容的空狀態卡。
+ */
+function SectionCard({
+  id,
+  collapsed,
+  onToggle,
+  icon,
+  label,
+  count,
+  countClassName,
+  empty,
+  children,
+}: {
+  id: TraySectionId;
+  collapsed: boolean;
+  onToggle: () => void;
+  icon: ReactNode;
+  label: string;
+  count: number | undefined;
+  countClassName: string;
+  empty: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <PanelCard
+      testid={`panel-section-${id}`}
+      className={!collapsed && empty ? emptyCardClass : undefined}
+    >
+      <div
+        data-testid="panel-section-toggle"
+        role="button"
+        aria-expanded={!collapsed}
+        tabIndex={-1}
+        onClick={onToggle}
+        onKeyDown={toggleOnKey(onToggle)}
+      >
+        <SectionHeader
+          icon={icon}
+          label={label}
+          count={count}
+          countClassName={countClassName}
+          action={
+            <ChevronRight
+              className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", !collapsed && "rotate-90")}
+            />
+          }
+          className={sectionHeaderClass(!collapsed && !empty)}
+        />
+      </div>
+      {!collapsed && children}
+    </PanelCard>
+  );
+}
 
 /** 分區載入失敗的終態列（spec「面板分區載入失敗終態」）：讀不到 ≠ 確認是空的，
     故不走空狀態文案；亦不留骨架——載入已經結束了。 */
@@ -214,9 +295,39 @@ function ScrollIndicator({ targetRef }: { targetRef: RefObject<HTMLDivElement | 
 }
 
 /** 卡內的列（design D2）：細線分隔、hover 整列半透明前景色灰底——列內符號維持本色。
-    變更列、討論列、溢出列與動作列共用。 */
+    變更列、討論列、溢出列與收合列共用。 */
 const rowClass =
   "flex w-full items-center gap-2 border-b border-border/70 px-3 py-1.5 text-left last:border-b-0 hover:bg-foreground/5";
+
+/** 動作區塊卡的按鈕（文字鈕與圖示鈕共用）：hover 半透明前景色灰底，與面板列同語彙。 */
+const actionButtonClass = "flex items-center rounded-lg hover:bg-foreground/5";
+
+/** 動作區塊卡的圖示鈕：名稱走 aria-label＋原生 title——面板是無焦點的一瞥介面，
+    掛 Radix Tooltip 會多一層 portal 與焦點管理（同站章 tooltip 的做法）。 */
+function ActionIconButton({
+  label,
+  Icon,
+  onClick,
+  className,
+}: {
+  label: string;
+  Icon: LucideIcon;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className={cn(actionButtonClass, "h-7 w-7 shrink-0 justify-center text-muted-foreground", className)}
+    >
+      <Icon className="h-3.5 w-3.5" />
+    </button>
+  );
+}
 
 /** 分區溢出（spec「分區溢出摺疊」）：直列前 5、其餘收進「還有 N 個…」可展開列。 */
 function OverflowGroup({
@@ -245,6 +356,21 @@ function OverflowGroup({
 
 /** 專案 tab 與「加入專案」共用的直欄容器（方塊＋其下文字，hover 灰底）。 */
 const TAB_ITEM = "flex shrink-0 flex-col items-center gap-1 rounded-lg px-1 py-1.5 hover:bg-foreground/5";
+
+/** tab 條的淡出側；以字串存狀態，值相同時 setState 不重繪。 */
+type FadeSide = "none" | "left" | "right" | "both";
+
+function fadeSide({ left, right }: TabFade): FadeSide {
+  return left && right ? "both" : left ? "left" : right ? "right" : "none";
+}
+
+/** 各淡出側的遮罩（掛在可捲區本身，不隨內容捲動）；兩側都不淡出時不掛遮罩。 */
+const TAB_FADE_MASK: Record<FadeSide, string | undefined> = {
+  none: undefined,
+  left: `linear-gradient(to right, transparent, black ${TAB_FADE_PX}px)`,
+  right: `linear-gradient(to left, transparent, black ${TAB_FADE_PX}px)`,
+  both: `linear-gradient(to right, transparent, black ${TAB_FADE_PX}px, black calc(100% - ${TAB_FADE_PX}px), transparent)`,
+};
 
 function tabStatusLabel(tab: TrayTabSnapshot, t: (key: string) => string): string {
   if (tab.source === "local") return "";
@@ -398,6 +524,8 @@ export function TrayPanel({
 }: TrayPanelProps) {
   const { t } = useI18n();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const tabStripRef = useRef<HTMLDivElement>(null);
+  const [tabFade, setTabFade] = useState<FadeSide>("none");
   // 已轉出收合列的展開狀態（design D4）：面板 webview 只建一次，重啟 app 後由本機記憶讀回。
   const [promotedExpanded, setPromotedExpanded] = useState(readTrayPromotedExpanded);
   const togglePromoted = () => {
@@ -410,16 +538,16 @@ export function TrayPanel({
     <DiscussionRow key={d.slug} d={d} onOpen={onOpenDiscussion} onCopy={onCopy} copyLabel={t("tray.copySlug")} />
   );
   const collapseLabel = t("tray.collapse");
-  // 討論分區四種狀態（載入中、失敗、有料、空）共用同一標題，只差計數與其下有無內容。
-  const discussionsHeader = (count: number | undefined, hasBody: boolean) => (
-    <SectionHeader
-      icon={<MessageSquareText className={cn("h-3.5 w-3.5", DISCUSSION_TONE.icon)} />}
-      label={t("tray.discussionsHeader")}
-      count={count}
-      countClassName={DISCUSSION_TONE.badge}
-      className={sectionHeaderClass(hasBody)}
-    />
-  );
+  // 內容卡收合（spec「面板內容卡收合」）：本機記憶、所有專案共用一份——切換專案與快照更新
+  // 都不改它，只有點擊會改（收合中的卡有新項目也不自動展開）。
+  const [collapsedSections, setCollapsedSections] = useState(readTrayCollapsedSections);
+  const toggleSection = (id: TraySectionId) => {
+    const next = new Set(collapsedSections);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setCollapsedSections(next);
+    writeTrayCollapsedSections(next);
+  };
   const tabs = snapshot?.tabs ?? [];
   const changes = snapshot?.changes ?? [];
   const discussions = snapshot?.discussions ?? [];
@@ -438,7 +566,45 @@ export function TrayPanel({
   // 首訪載入失敗的終態：載入已結束（故不與骨架並存），但沒有真值可畫——
   // 顯示失敗提示而非空態文案。
   const loadFailed = !loading && snapshot.workspaceLoadFailed;
-  const activeTab = tabs.find((tab) => tab.key === snapshot?.activeKey);
+  const activeKey = snapshot?.activeKey ?? null;
+  const tabKeys = tabs.map((tab) => tab.key).join("\n");
+
+  // tab 條邊緣淡出：捲動、可捲區尺寸改變與 tab 清單改變時重算（值相同時 setState 不重繪）。
+  useEffect(() => {
+    const strip = tabStripRef.current;
+    if (!strip) return;
+    const update = () => setTabFade(fadeSide(tabFadeEdges(strip)));
+    update();
+    strip.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(strip);
+    return () => {
+      strip.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, [tabKeys]);
+
+  // 捲到作用中 tab：作用中專案改變時；面板視窗只建一次、之後隱藏／顯示，再次開啟時
+  // 面板取得焦點，也捲一次。直接設 scrollLeft 而非 scrollIntoView——後者會連帶捲動外層。
+  useLayoutEffect(() => {
+    const strip = tabStripRef.current;
+    if (!strip || activeKey === null) return;
+    const reveal = () => {
+      const tab = strip.querySelector<HTMLElement>('[role="tab"][data-active="true"]');
+      if (!tab) return;
+      strip.scrollLeft = tabRevealScrollLeft({
+        tabLeft: tab.offsetLeft,
+        tabWidth: tab.offsetWidth,
+        scrollLeft: strip.scrollLeft,
+        viewportWidth: strip.clientWidth,
+      });
+    };
+    reveal();
+    window.addEventListener("focus", reveal);
+    return () => window.removeEventListener("focus", reveal);
+  }, [activeKey]);
+
+  const activeTab = tabs.find((tab) => tab.key === activeKey);
   const activeRecovery =
     activeTab?.status === "restoring" || activeTab?.status === "error" ? activeTab : null;
   const activeStale =
@@ -447,28 +613,34 @@ export function TrayPanel({
       : null;
 
   return (
-    // 補光層（tray-panel-restyle design D1）：HudWindow（NSVisualEffectView 舊世代）無亮度
-    // 自適應、深色背景會把面板整片壓暗——以側欄面色約九成不透明錨定亮度（隨深淺模式），
-    // 毛玻璃自餘下一成透出。圓角 13px 與 Rust 側 apply_vibrancy 半徑一致——補光畫出圓角外
-    // 會在頂角留下方形殘料。h-screen 撐滿視窗：三段式版面的中段（flex-1）才有約束高度。
+    // 補光層（tray-panel-content-priority「毛玻璃找回」）：HudWindow（NSVisualEffectView 舊世代）
+    // 無亮度自適應——卡內亮度改由不透明白卡錨定，根層只鋪側欄面色約六成（隨深淺模式），
+    // 毛玻璃自外框與卡片縫隙透出約四成（九成時幾乎看不見）。六成是當初針對深色背景實測
+    // 的濃度。圓角 13px 與 Rust 側 apply_vibrancy 半徑一致——補光畫出圓角外會在頂角留下
+    // 方形殘料。h-screen 撐滿視窗：三段式版面的中段（flex-1）才有約束高度。
     // 卡與卡之間只以 gap 分隔，不畫分割線。
     <div
       data-testid="panel-root"
-      className="flex h-screen flex-col gap-2 rounded-[13px] bg-sidebar/90 p-2 text-[13px] text-foreground"
+      className="flex h-screen flex-col gap-2 rounded-[13px] bg-sidebar/60 p-2 text-[13px] text-foreground"
     >
       {/* 固定頁首（spec 三段式版面）：tab 條卡常駐、不隨內容捲動。 */}
       <div data-testid="panel-header" className="shrink-0">
       <PanelCard testid="panel-project-card">
+      <div className="flex">
       {/* 專案 tab 條（spec「面板樣式（macOS）」；tray-panel-restyle design D3）：首字母
           方塊與主視窗圖示列同形（取 projectTile 同一份常數，作用中實心主色）＋其下專案名，
-          超寬橫向捲動且隱藏捲軸；點 tab 沿用 open-project 原地切換語意（不喚主視窗）。
-          刻意用 div 非 button——面板中唯一可 tab 元素會吃到 WebKit 的預設焦點（design D4）。
-          條常駐（零專案時仍有尾端「加入專案」項，design D7）。 */}
+          超寬橫向捲動且隱藏捲軸，有 tab 被遮住的一側以遮罩淡出；點 tab 沿用 open-project
+          原地切換語意（不喚主視窗）。刻意用 div 非 button——面板中唯一可 tab 元素會吃到
+          WebKit 的預設焦點（design D4）。relative 讓 tab 的 offsetLeft 以可捲區為基準
+          （捲到作用中 tab 的計算依此）。 */}
       <div
+        ref={tabStripRef}
         data-testid="panel-project-tabs"
+        data-fade={tabFade}
         role="tablist"
         aria-label={t("app.projectRail")}
-        className="flex gap-1 overflow-x-auto p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={{ maskImage: TAB_FADE_MASK[tabFade], WebkitMaskImage: TAB_FADE_MASK[tabFade] }}
+        className="relative flex min-w-0 flex-1 gap-1 overflow-x-auto p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
           {tabs.map((tab) => {
             // 識別與切換把手皆為 locator key（workspace-session 決策 6）。
@@ -529,32 +701,32 @@ export function TrayPanel({
               </div>
             );
           })}
-        {/* 尾端快速加入專案（design D7）：開資料夾選擇器，選定即加入並切換。 */}
-        <div
-          data-testid="panel-add-project"
-          title={t("tray.addProject")}
-          aria-label={t("tray.addProject")}
-          onClick={onAddProject}
-          className={cn(TAB_ITEM, "group min-w-16")}
-        >
-          {/* 虛線框方塊與圖示列的「＋」同形。文字不截斷——英文「Add project」比專案 tab 寬，
-              這一項跟著文字長（min-w 與專案 tab 對齊）。 */}
-          <span
-            aria-hidden
-            data-project-tile
-            className={cn(RAIL_SQUARE, ADD_TILE, "group-hover:bg-muted group-hover:text-foreground")}
+      </div>
+        {/* 快速加入專案（design D7）：固定在 tab 條卡右端、不隨 tab 捲走——專案再多也看得到；
+            位置與主視窗圖示列「專案在前、＋在後」同序。只有虛線框「＋」（與圖示列同形），
+            名稱走 aria-label＋title。外層 py-1.5 對齊可捲區內距，「＋」與首字母方塊同高。 */}
+        <div className="shrink-0 py-1.5 pr-1.5">
+          <div
+            data-testid="panel-add-project"
+            title={t("tray.addProject")}
+            aria-label={t("tray.addProject")}
+            onClick={onAddProject}
+            className={cn(TAB_ITEM, "group px-0.5")}
           >
-            <Plus className="h-4 w-4" />
-          </span>
-          <span className="whitespace-nowrap text-[11px] leading-none text-muted-foreground">
-            {t("tray.addProject")}
-          </span>
+            <span
+              aria-hidden
+              data-project-tile
+              className={cn(RAIL_SQUARE, ADD_TILE, "group-hover:bg-muted group-hover:text-foreground")}
+            >
+              <Plus className="h-4 w-4" />
+            </span>
+          </div>
         </div>
       </div>
       </PanelCard>
       </div>
 
-      {/* 可捲中段（spec 三段式版面）：討論／生命週期分區或復原卡；捲動面自 body
+      {/* 可捲中段（spec 三段式版面）：生命週期／討論分區或復原卡；捲動面自 body
           收斂至此容器，overscroll-none 隨遷防 rubber-band。原生捲軸隱藏、改由
           ScrollIndicator 自繪（見其註解：原生捲軸在此環境無法淡出且會佔寬）；
           指示條為捲動容器的兄弟節點，才不會隨內容一起捲走。
@@ -604,24 +776,66 @@ export function TrayPanel({
             </div>
           )}
 
+      {/* 生命週期分區：三階段分區卡常駐（工作站常駐、衍生群組有料才現）——
+          零筆階段呈標題＋計數 0 的空狀態卡（與討論分區同構，design D8），
+          分區位置固定不隨資料增減跳動；原生選單的全空佔位文案不在此重現。
+          生命週期在前、討論在後（與原生選單同序）：討論一多也不會把三個階段擠出第一屏。 */}
+      {staged.map(({ stage, Icon, items }) => (
+        <SectionCard
+          key={stage}
+          id={stage}
+          collapsed={collapsedSections.has(stage)}
+          onToggle={() => toggleSection(stage)}
+          icon={<Icon className={cn("h-3.5 w-3.5", STAGE_ICON[stage])} />}
+          label={t(`stage.${stage}`)}
+          count={loading || loadFailed ? undefined : items.length}
+          countClassName={STAGE_BADGE[stage]}
+          empty={!loading && !loadFailed && items.length === 0}
+        >
+          {loading ? (
+            <SectionSkeleton />
+          ) : loadFailed ? (
+            <SectionLoadFailed label={t("tray.loadFailed")} />
+          ) : (
+          <OverflowGroup
+            moreLabel={moreLabel}
+            collapseLabel={collapseLabel}
+            rows={items.map((c) => (
+              <ChangeRow
+                key={c.name}
+                c={c}
+                stage={stage}
+                onOpen={onOpenChange}
+                onCopy={onCopy}
+                copyLabel={t("tray.copyName")}
+              />
+            ))}
+          />
+          )}
+        </SectionCard>
+      ))}
+
       {/* 討論卡（spec「討論列表」）：標頭計數只算討論中；已轉出收於卡底「已轉出 N ›」
           收合列（有料才現），展開區落在收合列正上方。slug 為題、topic 為描述（識別錨點
-          慣例，與看板討論卡一致）。 */}
-      {loading ? (
-        /* 首訪載入中（design D5）：標題照常、內容為佔位列——與計數 0 的空狀態卡可區分。 */
-        <PanelCard testid="panel-section-discussions">
-          {discussionsHeader(undefined, true)}
+          慣例，與看板討論卡一致）。四種狀態（載入中、失敗、有料、空）共用同一標題，只差
+          計數與其下內容：載入中為佔位列、失敗為失敗提示（計數未知，不謊報 0）、空為
+          計數 0 的空狀態卡（與非空同構，design D8）。 */}
+      <SectionCard
+        id="discussions"
+        collapsed={collapsedSections.has("discussions")}
+        onToggle={() => toggleSection("discussions")}
+        icon={<MessageSquareText className={cn("h-3.5 w-3.5", DISCUSSION_TONE.icon)} />}
+        label={t("tray.discussionsHeader")}
+        count={loading || loadFailed ? undefined : openDiscussions.length}
+        countClassName={DISCUSSION_TONE.badge}
+        empty={!loading && !loadFailed && openDiscussions.length === 0 && promotedDiscussions.length === 0}
+      >
+        {loading ? (
           <SectionSkeleton />
-        </PanelCard>
-      ) : loadFailed ? (
-        /* 首訪載入失敗：計數未知（不謊報 0），內容為失敗提示而非空態文案。 */
-        <PanelCard testid="panel-section-discussions">
-          {discussionsHeader(undefined, true)}
+        ) : loadFailed ? (
           <SectionLoadFailed label={t("tray.loadFailed")} />
-        </PanelCard>
-      ) : openDiscussions.length > 0 || promotedDiscussions.length > 0 ? (
-        <PanelCard testid="panel-section-discussions">
-          {discussionsHeader(openDiscussions.length, true)}
+        ) : (
+          <>
           <OverflowGroup
             moreLabel={moreLabel}
             collapseLabel={collapseLabel}
@@ -645,67 +859,20 @@ export function TrayPanel({
                 aria-expanded={promotedExpanded}
                 tabIndex={-1}
                 onClick={togglePromoted}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    togglePromoted();
-                  }
-                }}
+                onKeyDown={toggleOnKey(togglePromoted)}
                 className={cn(rowClass, "text-xs font-medium text-muted-foreground")}
               >
                 <span>{t("discussion.promotedBar").replace("{n}", String(promotedDiscussions.length))}</span>
+                {/* 收合箭頭統一規則：收合 ›、展開時指向展開出來的內容——細列展開在本列上方，故朝上。 */}
                 <ChevronRight
-                  className={cn("ml-auto h-3.5 w-3.5 shrink-0 transition-transform", promotedExpanded && "rotate-90")}
+                  className={cn("ml-auto h-3.5 w-3.5 shrink-0 transition-transform", promotedExpanded && "-rotate-90")}
                 />
               </div>
             </>
           )}
-        </PanelCard>
-      ) : (
-        /* 空狀態與非空同構（design D8）：標題＋計數 0、最小高度垂直置中。 */
-        <PanelCard testid="panel-section-discussions" className={emptyCardClass}>
-          {discussionsHeader(0, false)}
-        </PanelCard>
-      )}
-
-      {/* 生命週期分區：三階段分區卡常駐（工作站常駐、衍生群組有料才現）——
-          零筆階段呈標題＋計數 0 的空狀態卡（與討論分區同構，design D8），
-          分區位置固定不隨資料增減跳動；原生選單的全空佔位文案不在此重現。 */}
-      {staged.map(({ stage, Icon, items }) => (
-        <PanelCard
-          key={stage}
-          testid={`panel-section-${stage}`}
-          className={!loading && !loadFailed && items.length === 0 ? emptyCardClass : undefined}
-        >
-          <SectionHeader
-            icon={<Icon className={cn("h-3.5 w-3.5", STAGE_ICON[stage])} />}
-            label={t(`stage.${stage}`)}
-            count={loading || loadFailed ? undefined : items.length}
-            countClassName={STAGE_BADGE[stage]}
-            className={sectionHeaderClass(loading || loadFailed || items.length > 0)}
-          />
-          {loading ? (
-            <SectionSkeleton />
-          ) : loadFailed ? (
-            <SectionLoadFailed label={t("tray.loadFailed")} />
-          ) : (
-          <OverflowGroup
-            moreLabel={moreLabel}
-            collapseLabel={collapseLabel}
-            rows={items.map((c) => (
-              <ChangeRow
-                key={c.name}
-                c={c}
-                stage={stage}
-                onOpen={onOpenChange}
-                onCopy={onCopy}
-                copyLabel={t("tray.copyName")}
-              />
-            ))}
-          />
-          )}
-        </PanelCard>
-      ))}
+          </>
+        )}
+      </SectionCard>
 
         </>
       )}
@@ -715,25 +882,24 @@ export function TrayPanel({
       </div>
 
       {/* 固定頁尾（spec 三段式版面）：動作區卡常駐、不隨內容捲動。
-          動作區：開啟主視窗、專案設定、設定、結束（spec 動作區塊四項；與原生選單同序——
-          專案層動作在前、app 層在後，呼應主視窗側欄層次；圖示沿用側欄同款） */}
+          動作區單列：「開啟 Speclink」文字鈕佔滿左側（最常用、保留文字），右側專案設定、
+          設定、結束三顆圖示鈕（與原生選單同序——專案層動作在前、app 層在後；圖示沿用
+          側欄同款）；「結束」前多一段間距防誤按。四顆皆 tabIndex=-1 退出 Tab 順序（同複製鈕）。 */}
       <div data-testid="panel-footer" className="shrink-0">
       <PanelCard testid="panel-actions-card">
-      <div onClick={onOpenApp} className={rowClass}>
-        <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        {t("tray.open")}
-      </div>
-      <div onClick={onOpenProjectSettings} className={rowClass}>
-        <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        {t("app.navProjectSettings")}
-      </div>
-      <div onClick={onOpenSettings} className={rowClass}>
-        <Settings className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        {t("tray.settings")}
-      </div>
-      <div onClick={onQuit} className={rowClass}>
-        <Power className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        {t("tray.quit")}
+      <div className="flex items-center gap-0.5 p-1">
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={onOpenApp}
+          className={cn(actionButtonClass, "min-w-0 flex-1 gap-2 px-2 py-1.5 text-left")}
+        >
+          <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate">{t("tray.open")}</span>
+        </button>
+        <ActionIconButton label={t("app.navProjectSettings")} Icon={SlidersHorizontal} onClick={onOpenProjectSettings} />
+        <ActionIconButton label={t("tray.settings")} Icon={Settings} onClick={onOpenSettings} />
+        <ActionIconButton label={t("tray.quit")} Icon={Power} onClick={onQuit} className="ml-2" />
       </div>
       </PanelCard>
       </div>
