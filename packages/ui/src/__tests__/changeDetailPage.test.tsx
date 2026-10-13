@@ -1881,7 +1881,9 @@ describe("本頁目錄錨點", () => {
       Array.from(document.querySelectorAll("[data-detail-toc] [data-manual-anchor]")).map((el) => el.textContent);
     await waitFor(() => expect(anchors()).toEqual(["為什麼", "影響"]));
     fireEvent.mouseDown(screen.getByRole("tab", { name: /設計/ }));
-    await screen.findByText("脈絡。");
+    // 前提：設計文件在切換前已載入，切換當下內文即在畫面上（不等待）。若改成切到分頁才載入，載入完成時重掃鍵
+    // 變動會強制重掃，拿掉內文監看也會綠——此斷言先紅，提醒本測試已失去守門作用。
+    expect(screen.getByText("脈絡。")).toBeTruthy();
     await waitFor(() => expect(anchors()).toEqual(["背景", "決策"]));
   });
 

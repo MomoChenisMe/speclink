@@ -26,25 +26,27 @@ function FieldLabel({ label }: { label: string }) {
  * 預設展開、其餘收合，點卡頭切換。任一輪標題不符 scaffold 時整篇 Markdown 退回。討論詳情頁與已封存討論頁共用。
  */
 export function RoundsDoc({ text, empty }: { text: string; empty?: string }) {
-  // 使用者點過的輪：輪次 → 展開與否；沒點過的依預設（首末輪展開）。以輪次而非畫面位置記錄，新輪插在最上時不錯位。
+  // 使用者點過的輪：記錄檔中的位置 → 展開與否；沒點過的依預設（首末輪展開）。以記錄位置而非畫面位置記錄：引擎只往
+  // 檔尾追加，新輪插在最上時不錯位；手改記錄出現重號時兩張卡也各自切換。
   const [toggled, setToggled] = useState<Record<number, boolean>>({});
   const rounds = splitRounds(text);
   if (rounds === null) return <Markdown content={text} empty={empty} />;
   if (rounds.length === 0) return <Markdown content="" empty={empty} />;
-  const newestFirst = [...rounds].reverse();
+  // 輪次大者在上；同號（手改記錄）時記錄中較後者在上。
+  const newestFirst = rounds.map((round, at) => ({ round, at })).sort((a, b) => b.round.round - a.round.round || b.at - a.at);
   return (
     <ol
       data-round-timeline
       className="relative flex flex-col gap-3 pl-6 before:absolute before:top-3 before:bottom-3 before:left-[6px] before:w-px before:bg-border"
     >
-      {newestFirst.map((r, i) => {
-        const open = toggled[r.round] ?? (i === 0 || i === newestFirst.length - 1);
+      {newestFirst.map(({ round, at }, i) => {
+        const open = toggled[at] ?? (i === 0 || i === newestFirst.length - 1);
         return (
           <RoundCard
-            key={r.round}
-            round={r}
+            key={at}
+            round={round}
             open={open}
-            onToggle={() => setToggled((prev) => ({ ...prev, [r.round]: !open }))}
+            onToggle={() => setToggled((prev) => ({ ...prev, [at]: !open }))}
           />
         );
       })}
