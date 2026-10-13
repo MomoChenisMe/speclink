@@ -29,10 +29,10 @@ import {
   type WorkspaceSession,
 } from "./session";
 import { trayIconBytes } from "./trayIcon";
-import { detectPlatform } from "./platform";
+import { detectPlatform, type Platform } from "./platform";
 
-/** 系統匣互動樣式：由平台決定（macOS＝panel、其餘＝native-menu），panel 建立失敗時
-    退回 native-menu——執行期狀態、不持久化（tray-macos-panel-only 拆除偏好）。 */
+/** 系統匣互動樣式：由平台決定（macOS 與 Windows＝panel、Linux＝native-menu），panel
+    建立失敗時退回 native-menu——執行期狀態、不持久化（tray-macos-panel-only 拆除偏好）。 */
 export type TrayStyle = "native-menu" | "panel";
 
 export type TrayTabSnapshot =
@@ -330,7 +330,7 @@ export interface TrayStoreApi {
     sessions: Record<string, WorkspaceSession>;
     remoteRecovery: Record<string, RemoteWorkspaceRecoveryState>;
     connections: ConnectionView[];
-    /** 系統匣樣式偏好：native-menu 掛原生選單、panel 卸選單改走點擊事件。 */
+    /** 系統匣樣式：native-menu 掛原生選單；panel 的點擊改走 action（Windows 右鍵仍是原生選單）。 */
     trayStyle: TrayStyle;
     /** 切換既有分頁；locator key 同時涵蓋 local 與 remote。 */
     activateTab: (key: string) => void | Promise<void>;
@@ -350,22 +350,18 @@ export interface TrayStoreApi {
 }
 
 export interface TrayDeps {
-  /** macOS 才套用 template 圖示（可注入以利測試；預設由 navigator 偵測）。 */
-  isMacOS?: boolean;
+  /** 平台（可注入以利測試；預設由 navigator 偵測）：macOS 套 template 圖示；panel 樣式下
+   * macOS 左右鍵皆開閉面板、Windows 左鍵開閉面板且右鍵為原生選單。 */
+  platform?: Platform;
   /** 選單重建去抖延遲（ms）；預設與看板刷新同量級（400ms）。 */
   debounceMs?: number;
-  /** 面板樣式下點擊圖示（不分左右鍵）的開閉回呼（面板實作由呼叫端注入；未注入即無動作）。 */
+  /** 面板樣式下點擊圖示的開閉回呼（面板實作由呼叫端注入；未注入即無動作）。 */
   onPanelToggle?: () => void;
 }
 
 export interface TrayController {
   /** 卸載時呼叫：取消訂閱、清去抖 timer、關閉 tray 圖示。 */
   dispose: () => void;
-}
-
-/** 平台偵測：沿用舊名，判定落在 platform.ts。 */
-export function detectMacOS(): boolean {
-  return detectPlatform() === "macos";
 }
 
 /** 面板骨架條件（design D3）：探測中或整批載入在途，且尚無真值。與 App.tsx
@@ -428,7 +424,7 @@ export function buildTraySnapshot(state: ReturnType<TrayStoreApi["getState"]>): 
  * 且不動視窗焦點；變更子選單「開啟此變更」與討論項開主視窗並跳詳情；「結束」為原生 predefined Quit。
  */
 export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promise<TrayController> {
-  const isMac = deps.isMacOS ?? detectMacOS();
+  const platform = deps.platform ?? detectPlatform();
   const debounceMs = deps.debounceMs ?? 400;
   const icon = await Image.fromBytes(trayIconBytes());
 
@@ -538,8 +534,13 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
     return { menu };
   };
 
+  // 掛選單的時機：native-menu 樣式，或 Windows 的 panel 樣式（右鍵由系統顯示同一份
+  // 原生選單——spec「面板樣式」平台差異；tray-panel-windows design D5）。左鍵開選單
+  // 只屬 native-menu：panel 樣式的左鍵要留給 action 開閉面板。
+  const menuAttached = () => styleOf() === "native-menu" || platform === "windows";
+  // macOS 的面板左右鍵等價；Windows 的右鍵已交給原生選單，只有左鍵開閉面板。
+  const panelButtons = platform === "windows" ? ["Left"] : ["Left", "Right"];
   const first = await render();
-  const nativeAtInit = styleOf() === "native-menu";
   // 固定 id＋先移除同 id 孤兒：webview 重建（重載、視窗重開）會再跑 initTray，
   // 前一個 context 的 tray 無人 dispose 時成為殭屍——其 title 永遠凍在最後值，
   // 使用者看到的就是「徽章不更新」。同 id 至多一個 tray，殭屍在此被清掉。
@@ -551,21 +552,21 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
   const tray = await TrayIcon.new({
     id: "speclink-tray",
     icon,
-    iconAsTemplate: isMac,
+    iconAsTemplate: platform === "macos",
     tooltip: "Speclink",
-    // 樣式分流：native-menu 掛選單（左鍵開選單）；panel 不掛——點擊交給 action。
-    menu: nativeAtInit ? first.menu : undefined,
-    showMenuOnLeftClick: nativeAtInit,
+    // 樣式分流：native-menu 掛選單（左鍵開選單）；panel 的點擊交給 action。
+    menu: menuAttached() ? first.menu : undefined,
+    showMenuOnLeftClick: styleOf() === "native-menu",
     action: (event) => {
       // 面板樣式限定（原生選單樣式由選單接管點擊）。
       if (styleOf() !== "panel") return;
-      // 先餵 tray 事件座標給 positioner——面板顯示前的 TrayBottomCenter 依此定位。
+      // 先餵 tray 事件座標給 positioner——面板顯示前的 tray 相對定位依此計算。
       void handleIconState(event).catch(() => {});
       const e = event as { type?: string; button?: string; buttonState?: string };
-      // 點擊不分左右鍵（spec「面板樣式（macOS）」）：主鍵與次要鍵放開時皆開閉面板。
+      // 放開才開閉；哪些鍵開閉面板依平台（spec「面板樣式」平台差異）。
       if (
         e.type === "Click" &&
-        (e.button === "Left" || e.button === "Right") &&
+        panelButtons.includes(e.button ?? "") &&
         e.buttonState === "Up"
       ) {
         deps.onPanelToggle?.();
@@ -604,7 +605,7 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
     },
   );
 
-  // 去抖訂閱：資料或樣式變動後依樣式分流——native 重建選單；panel 卸選單；
+  // 去抖訂閱：資料或樣式變動後依樣式分流——要掛選單者重建選單，其餘卸選單；
   // 兩樣式皆推送快照給面板（面板未開時為無害廣播）。
   let timer: ReturnType<typeof setTimeout> | null = null;
   // 面板的「我在看哪個 workspace、它載完了沒」走即時推送，不進去抖：spec 要求
@@ -642,16 +643,10 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
       void (async () => {
         pushSnapshot();
         try {
-          if (styleOf() === "native-menu") {
-            const { menu } = await render();
-            await tray.setMenu(menu);
-            await tray.setShowMenuOnLeftClick(true);
-          } else {
-            // 卸選單＋關左鍵開選單缺一不可：後者不關，左鍵仍被「開選單」路徑
-            // 吃掉（選單已空＝點了無事發生），點擊事件到不了 action／面板。
-            await tray.setMenu(null);
-            await tray.setShowMenuOnLeftClick(false);
-          }
+          await tray.setMenu(menuAttached() ? (await render()).menu : null);
+          // panel 樣式必關左鍵開選單：不關，左鍵仍被「開選單」路徑吃掉（macOS 選單
+          // 已空＝點了無事發生），點擊事件到不了 action／面板。
+          await tray.setShowMenuOnLeftClick(styleOf() === "native-menu");
         } catch (e) {
           console.error("tray menu update failed", e);
         }

@@ -19,6 +19,7 @@ pub mod search;
 pub mod settings;
 #[cfg(test)]
 pub(crate) mod testfixture;
+pub mod tray_panel;
 pub mod verbs;
 
 /// 桌面 app 對單一本地 openspec/ 專案的執行語境：探索到的 workspace ＋ 其 fs store。

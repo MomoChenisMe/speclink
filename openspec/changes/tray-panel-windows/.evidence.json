@@ -1,0 +1,134 @@
+{
+  "version": 2,
+  "change": "tray-panel-windows",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫失敗測試，對應 D3 與 D4 的兩個純函式：在 apps/desktop/core/src/tray_panel.rs 的 `#[cfg(test)]` 寫水平限制四案——候選 x=840、work area 0–1920、寬 320 → 840；x=1700 → 1600（貼右緣）；x=-60 → 0（貼左緣）；work area 寬 300、視窗寬 320 → 貼 work area 左緣——與重開抑制四案——無收起紀錄 → 不忽略；距收起 120ms、299ms → 忽略；300ms → 不忽略。執行 `cargo test -p speclink-desktop-core tray_panel` 確認紅燈（模組尚不存在而編譯失敗亦算紅燈）。",
+      "files": [
+        "apps/desktop/core/src/lib.rs",
+        "apps/desktop/core/src/tray_panel.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 依 D3 與 D6 讓面板相依、外掛與能力宣告擴及 Windows：apps/desktop/src-tauri/Cargo.toml 的 tauri-plugin-positioner 移到 macOS 或 Windows 的相依區段（tauri-nspanel 與 window-vibrancy 仍只在 macOS）；apps/desktop/src-tauri/src/lib.rs 在 macOS 與 Windows 註冊 positioner（nspanel 仍只在 macOS），`mod panel` 與 toggle_tray_panel／hide_tray_panel 在 macOS 與 Windows 編譯、Linux 維持回 Err／無事；apps/desktop/src-tauri/capabilities/macos.json 改名為 apps/desktop/src-tauri/capabilities/tray-panel.json（identifier 改 tray-panel、platforms 為 macOS 與 windows、permissions 不變），apps/desktop/src/__tests__/themeBoot.test.ts 改讀新檔。驗證：macOS 上 `cargo check -p speclink-desktop` 通過、`npm test -w apps/desktop -- themeBoot` 綠燈。",
+      "files": [
+        "apps/desktop/src-tauri/Cargo.toml",
+        "apps/desktop/src-tauri/capabilities/tray-panel.json",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src/__tests__/themeBoot.test.ts"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 實作 D1、D3、D4 的 Windows 視窗分支：apps/desktop/src-tauri/src/panel.rs 以平台區塊分開兩套實作、對外仍只露出 toggle 與 hide——macOS 為既有 NSPanel 實作且行為不變；Windows 以不透明、無外框、帶陰影、不進工作列、置頂、不可調整大小的 WebviewWindow 建立面板，開啟時以 positioner 的 TrayCenter 定位再套 1.2 的水平限制（取圖示所在螢幕的 work area）並取得焦點，視窗大小改變事件時重做同一套定位，失焦事件時收起並記下時間，開啟要求先經 1.2 的重開抑制判斷。驗證：macOS 上 `cargo check -p speclink-desktop` 通過；Windows 分支的編譯由 4.1 的 CI windows-latest 確認。",
+      "files": [
+        "apps/desktop/src-tauri/src/panel.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 先寫失敗測試，對應「系統匣圖示與原生選單」「生命週期分區與變更進度」與「面板樣式」需求（D7：以「面板樣式」取代「面板樣式（macOS）」）：apps/desktop/src/__tests__/store.test.ts 既有「系統匣樣式由平台決定」改為 macOS 與 Windows UA 的 trayStyle 初值為 panel、Linux UA 為 native-menu；apps/desktop/src/__tests__/tray.test.ts 新增——Windows 的 panel 樣式建立系統匣時掛原生選單且 showMenuOnLeftClick 為 false、去抖更新後仍掛選單，只有左鍵放開觸發 onPanelToggle、右鍵放開不觸發；macOS 的 panel 樣式不掛選單、左右鍵放開都觸發；Windows 面板建立失敗（panelFallback）後轉 native-menu 且左鍵開選單；apps/desktop/src/__tests__/trayPanel.test.tsx 新增——平台為 windows 時 panel-root 含不透明的 `bg-sidebar`、不含 `rounded-[13px]` 與 `bg-sidebar/60`，平台為 macos 時維持兩者。執行 `npm test -w apps/desktop -- store tray trayPanel` 確認新斷言紅燈。",
+      "files": [
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/__tests__/tray.test.ts",
+        "apps/desktop/src/__tests__/trayPanel.test.tsx"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.2 實作 D5 的點擊分流：apps/desktop/src/store.ts 的 trayStyle 初值改以 detectPlatform() 判斷（macOS、Windows → panel；Linux → native-menu）；apps/desktop/src/tray.ts 接受注入的平台（測試用），Windows 的 panel 樣式在建立與去抖更新時都掛同一份原生選單並設 showMenuOnLeftClick 為 false，action 只在左鍵放開時開閉面板；macOS 行為不變。驗證：`npm test -w apps/desktop -- store tray` 中 3.1 的 store 與 tray 斷言轉綠。",
+      "files": [
+        "apps/desktop/src/__tests__/platform.test.ts",
+        "apps/desktop/src/store.ts",
+        "apps/desktop/src/tray.ts"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.3 實作 D2 的平台外觀分支：apps/desktop/src/panel/main.tsx 以 detectPlatform() 取得平台並傳給 TrayPanel；apps/desktop/src/panel/TrayPanel.tsx 的 panel-root 在 Windows 用不透明 `bg-sidebar`、不畫圓角，在 macOS 維持 `rounded-[13px]` 與 `bg-sidebar/60`，其餘呈現不分平台。驗證：`npm test -w apps/desktop -- trayPanel` 中 3.1 的平台外觀斷言轉綠、整個檔案全綠。",
+      "files": [
+        "apps/desktop/src/panel/TrayPanel.tsx",
+        "apps/desktop/src/panel/main.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4SEZW0VVTJMWVDFMP4MG524",
+      "taskDesc": "1.1 先寫失敗測試，對應 D3 與 D4 的兩個純函式：在 apps/desktop/core/src/tray_panel.rs 的 `#[cfg(test)]` 寫水平限制四案——候選 x=840、work area 0–1920、寬 320 → 840；x=1700 → 1600（貼右緣）；x=-60 → 0（貼左緣）；work area 寬 300、視窗寬 320 → 貼 work area 左緣——與重開抑制四案——無收起紀錄 → 不忽略；距收起 120ms、299ms → 忽略；300ms → 不忽略。執行 `cargo test -p speclink-desktop-core tray_panel` 確認紅燈（模組尚不存在而編譯失敗亦算紅燈）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1a4fc4f05378b67ec23c9d51d64afb74921aebb6",
+      "touchedFiles": [
+        "apps/desktop/core/src/lib.rs",
+        "apps/desktop/core/src/tray_panel.rs"
+      ],
+      "recordedAt": "2026-10-13T05:03:13Z"
+    },
+    {
+      "taskId": "tsk_01M4SEZW0VXGX6NJPSFW8JKTWV",
+      "taskDesc": "2.1 依 D3 與 D6 讓面板相依、外掛與能力宣告擴及 Windows：apps/desktop/src-tauri/Cargo.toml 的 tauri-plugin-positioner 移到 macOS 或 Windows 的相依區段（tauri-nspanel 與 window-vibrancy 仍只在 macOS）；apps/desktop/src-tauri/src/lib.rs 在 macOS 與 Windows 註冊 positioner（nspanel 仍只在 macOS），`mod panel` 與 toggle_tray_panel／hide_tray_panel 在 macOS 與 Windows 編譯、Linux 維持回 Err／無事；apps/desktop/src-tauri/capabilities/macos.json 改名為 apps/desktop/src-tauri/capabilities/tray-panel.json（identifier 改 tray-panel、platforms 為 macOS 與 windows、permissions 不變），apps/desktop/src/__tests__/themeBoot.test.ts 改讀新檔。驗證：macOS 上 `cargo check -p speclink-desktop` 通過、`npm test -w apps/desktop -- themeBoot` 綠燈。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1a4fc4f05378b67ec23c9d51d64afb74921aebb6",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/Cargo.toml",
+        "apps/desktop/src-tauri/capabilities/tray-panel.json",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src/__tests__/themeBoot.test.ts"
+      ],
+      "recordedAt": "2026-10-13T05:05:40Z"
+    },
+    {
+      "taskId": "tsk_01M4SEZW0VZH6W1VP71E9016K4",
+      "taskDesc": "2.2 實作 D1、D3、D4 的 Windows 視窗分支：apps/desktop/src-tauri/src/panel.rs 以平台區塊分開兩套實作、對外仍只露出 toggle 與 hide——macOS 為既有 NSPanel 實作且行為不變；Windows 以不透明、無外框、帶陰影、不進工作列、置頂、不可調整大小的 WebviewWindow 建立面板，開啟時以 positioner 的 TrayCenter 定位再套 1.2 的水平限制（取圖示所在螢幕的 work area）並取得焦點，視窗大小改變事件時重做同一套定位，失焦事件時收起並記下時間，開啟要求先經 1.2 的重開抑制判斷。驗證：macOS 上 `cargo check -p speclink-desktop` 通過；Windows 分支的編譯由 4.1 的 CI windows-latest 確認。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1a4fc4f05378b67ec23c9d51d64afb74921aebb6",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/panel.rs"
+      ],
+      "recordedAt": "2026-10-13T05:08:02Z"
+    },
+    {
+      "taskId": "tsk_01M4SEZW0VMYXKDCFXM7GHVXBK",
+      "taskDesc": "3.1 先寫失敗測試，對應「系統匣圖示與原生選單」「生命週期分區與變更進度」與「面板樣式」需求（D7：以「面板樣式」取代「面板樣式（macOS）」）：apps/desktop/src/__tests__/store.test.ts 既有「系統匣樣式由平台決定」改為 macOS 與 Windows UA 的 trayStyle 初值為 panel、Linux UA 為 native-menu；apps/desktop/src/__tests__/tray.test.ts 新增——Windows 的 panel 樣式建立系統匣時掛原生選單且 showMenuOnLeftClick 為 false、去抖更新後仍掛選單，只有左鍵放開觸發 onPanelToggle、右鍵放開不觸發；macOS 的 panel 樣式不掛選單、左右鍵放開都觸發；Windows 面板建立失敗（panelFallback）後轉 native-menu 且左鍵開選單；apps/desktop/src/__tests__/trayPanel.test.tsx 新增——平台為 windows 時 panel-root 含不透明的 `bg-sidebar`、不含 `rounded-[13px]` 與 `bg-sidebar/60`，平台為 macos 時維持兩者。執行 `npm test -w apps/desktop -- store tray trayPanel` 確認新斷言紅燈。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1a4fc4f05378b67ec23c9d51d64afb74921aebb6",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/__tests__/tray.test.ts",
+        "apps/desktop/src/__tests__/trayPanel.test.tsx"
+      ],
+      "recordedAt": "2026-10-13T05:10:12Z"
+    },
+    {
+      "taskId": "tsk_01M4SEZW0VYGBV5ZMHD3S50TYF",
+      "taskDesc": "3.2 實作 D5 的點擊分流：apps/desktop/src/store.ts 的 trayStyle 初值改以 detectPlatform() 判斷（macOS、Windows → panel；Linux → native-menu）；apps/desktop/src/tray.ts 接受注入的平台（測試用），Windows 的 panel 樣式在建立與去抖更新時都掛同一份原生選單並設 showMenuOnLeftClick 為 false，action 只在左鍵放開時開閉面板；macOS 行為不變。驗證：`npm test -w apps/desktop -- store tray` 中 3.1 的 store 與 tray 斷言轉綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1a4fc4f05378b67ec23c9d51d64afb74921aebb6",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/platform.test.ts",
+        "apps/desktop/src/store.ts",
+        "apps/desktop/src/tray.ts"
+      ],
+      "recordedAt": "2026-10-13T05:11:22Z"
+    },
+    {
+      "taskId": "tsk_01M4SEZW0VD8FRQH8EK6B4PRWT",
+      "taskDesc": "3.3 實作 D2 的平台外觀分支：apps/desktop/src/panel/main.tsx 以 detectPlatform() 取得平台並傳給 TrayPanel；apps/desktop/src/panel/TrayPanel.tsx 的 panel-root 在 Windows 用不透明 `bg-sidebar`、不畫圓角，在 macOS 維持 `rounded-[13px]` 與 `bg-sidebar/60`，其餘呈現不分平台。驗證：`npm test -w apps/desktop -- trayPanel` 中 3.1 的平台外觀斷言轉綠、整個檔案全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1a4fc4f05378b67ec23c9d51d64afb74921aebb6",
+      "touchedFiles": [
+        "apps/desktop/src/panel/TrayPanel.tsx",
+        "apps/desktop/src/panel/main.tsx"
+      ],
+      "recordedAt": "2026-10-13T05:11:55Z"
+    }
+  ]
+}

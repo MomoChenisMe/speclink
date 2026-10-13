@@ -70,6 +70,7 @@ import {
   projectInitial,
 } from "../components/projectTile";
 import { OVERFLOW_LIMIT, type TraySnapshot, type TrayTabSnapshot } from "../tray";
+import type { Platform } from "../platform";
 import { readTrayPromotedExpanded, writeTrayPromotedExpanded } from "./promotedExpanded";
 import {
   readTrayCollapsedSections,
@@ -89,6 +90,9 @@ const STAGE_ICONS: Record<Stage, LucideIcon> = {
 export interface TrayPanelProps {
   /** 主視窗推送的快照；null＝尚未收到（lazy 建窗後的短暫空窗）。 */
   snapshot: TraySnapshot | null;
+  /** 面板所在平台（tray-panel-windows design D2）：只決定根層外觀——macOS 為毛玻璃補光
+      與 13px 圓角，Windows 為不透明側欄底色、不畫圓角；其餘呈現不分平台。 */
+  platform: Platform;
   onOpenProject: (key: string) => void;
   onOpenChange: (name: string) => void;
   onOpenDiscussion: (slug: string) => void;
@@ -560,6 +564,7 @@ function PanelRecoveryCard({
 
 export function TrayPanel({
   snapshot,
+  platform,
   onOpenProject,
   onOpenChange,
   onOpenDiscussion,
@@ -663,15 +668,20 @@ export function TrayPanel({
       : null;
 
   return (
-    // 補光層（tray-panel-content-priority「毛玻璃找回」）：HudWindow（NSVisualEffectView 舊世代）
-    // 無亮度自適應——卡內亮度改由不透明白卡錨定，根層只鋪側欄面色約六成（隨深淺模式），
-    // 毛玻璃自外框與卡片縫隙透出約四成（九成時幾乎看不見）。六成是當初針對深色背景實測
-    // 的濃度。圓角 13px 與 Rust 側 apply_vibrancy 半徑一致——補光畫出圓角外會在頂角留下
-    // 方形殘料。h-screen 撐滿視窗：三段式版面的中段（flex-1）才有約束高度。
+    // macOS 補光層（tray-panel-content-priority「毛玻璃找回」）：HudWindow（NSVisualEffectView
+    // 舊世代）無亮度自適應——卡內亮度改由不透明白卡錨定，根層只鋪側欄面色約六成（隨深淺
+    // 模式），毛玻璃自外框與卡片縫隙透出約四成（九成時幾乎看不見）。六成是當初針對深色
+    // 背景實測的濃度。圓角 13px 與 Rust 側 apply_vibrancy 半徑一致——補光畫出圓角外會在
+    // 頂角留下方形殘料。Windows（tray-panel-windows design D1／D2）視窗不透明、無毛玻璃，
+    // 根層鋪不透明側欄面色；圓角由 Windows 11 系統畫，面板不自繪。
+    // h-screen 撐滿視窗：三段式版面的中段（flex-1）才有約束高度。
     // 卡與卡之間只以 gap 分隔，不畫分割線。
     <div
       data-testid="panel-root"
-      className="flex h-screen flex-col gap-2 rounded-[13px] bg-sidebar/60 p-2 text-[13px] text-foreground"
+      className={cn(
+        "flex h-screen flex-col gap-2 p-2 text-[13px] text-foreground",
+        platform === "windows" ? "bg-sidebar" : "rounded-[13px] bg-sidebar/60",
+      )}
     >
       {/* 固定頁首（spec 三段式版面）：tab 條卡常駐、不隨內容捲動。 */}
       <div data-testid="panel-header" className="shrink-0">

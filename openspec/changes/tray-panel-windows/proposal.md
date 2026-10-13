@@ -30,5 +30,5 @@
 - 依賴：建立在 tray-panel-content-priority 的面板版面之上，且兩者都改「面板樣式（macOS）」，須在其後實作與封存。
 - Affected code:
   - New: apps/desktop/core/src/tray_panel.rs, apps/desktop/src-tauri/capabilities/tray-panel.json
-  - Modified: apps/desktop/core/src/lib.rs, apps/desktop/src-tauri/Cargo.toml, apps/desktop/src-tauri/src/panel.rs, apps/desktop/src-tauri/src/lib.rs, apps/desktop/src/tray.ts, apps/desktop/src/store.ts, apps/desktop/src/panel/TrayPanel.tsx, apps/desktop/src/panel/main.tsx, apps/desktop/src/__tests__/tray.test.ts, apps/desktop/src/__tests__/store.test.ts, apps/desktop/src/__tests__/trayPanel.test.tsx, apps/desktop/src/__tests__/themeBoot.test.ts
+  - Modified: apps/desktop/core/src/lib.rs, apps/desktop/src-tauri/Cargo.toml, apps/desktop/src-tauri/src/panel.rs, apps/desktop/src-tauri/src/lib.rs, apps/desktop/src/tray.ts, apps/desktop/src/store.ts, apps/desktop/src/panel/TrayPanel.tsx, apps/desktop/src/panel/main.tsx, apps/desktop/src/__tests__/tray.test.ts, apps/desktop/src/__tests__/store.test.ts, apps/desktop/src/__tests__/trayPanel.test.tsx, apps/desktop/src/__tests__/themeBoot.test.ts, apps/desktop/src/__tests__/platform.test.ts（tray.ts 改以注入平台取代 isMacOS 後，detectMacOS 已無程式使用而移除，連帶移除其斷言）
   - Removed: apps/desktop/src-tauri/capabilities/macos.json

@@ -14,6 +14,7 @@ import {
 } from "@speclink/ui";
 
 import { TrayPanel } from "./TrayPanel";
+import { detectPlatform } from "../platform";
 import { APP_MESSAGES } from "../i18n/messages";
 import { readLocalePreference, resolveUiLocale } from "../i18n/locale";
 import type { TraySnapshot } from "../tray";
@@ -35,6 +36,8 @@ void listen<ThemePreference>("speclink:theme-changed", (e) => applyPanelTheme(e.
 
 const PANEL_WIDTH = 320;
 const PANEL_MAX_HEIGHT = 640;
+// 面板根層外觀依平台（tray-panel-windows design D2）；平台在行程內不變，偵測一次。
+const PLATFORM = detectPlatform();
 
 function PanelRoot() {
   const [snap, setSnap] = useState<TraySnapshot | null>(null);
@@ -79,6 +82,7 @@ function PanelRoot() {
   return (
     <TrayPanel
       snapshot={snap}
+      platform={PLATFORM}
       onOpenProject={(key) => act("open-project", key)}
       onOpenChange={(name) => act("open-change", name)}
       onOpenDiscussion={(slug) => act("open-discussion", slug)}

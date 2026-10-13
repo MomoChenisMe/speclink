@@ -1334,24 +1334,27 @@ describe("app store (Zustand)", () => {
   });
 });
 
-// ---- 系統匣樣式由平台決定（tray-macos-panel-only：規格「系統匣圖示與原生選單」平台分流） ----
+// ---- 系統匣樣式由平台決定（tray-panel-windows：規格「系統匣圖示與原生選單」平台分流） ----
 
 describe("系統匣樣式由平台決定", () => {
   const setUA = (value: string) =>
     Object.defineProperty(window.navigator, "userAgent", { value, configurable: true });
   const MAC_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)";
   const WIN_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
+  const LINUX_UA = "Mozilla/5.0 (X11; Linux x86_64)";
 
-  it("macOS 初值為 panel、非 macOS 為 native-menu，且不讀 localStorage 舊偏好", () => {
+  it("macOS 與 Windows 初值為 panel、Linux 為 native-menu，且不讀 localStorage 舊偏好", () => {
     localStorage.setItem("speclink.trayStyle", "native-menu"); // 舊偏好殘留：不再被讀取
     setUA(MAC_UA);
     expect(storeWith(fakeDataSource()).getState().trayStyle).toBe("panel");
     setUA(WIN_UA);
+    expect(storeWith(fakeDataSource()).getState().trayStyle).toBe("panel");
+    setUA(LINUX_UA);
     expect(storeWith(fakeDataSource()).getState().trayStyle).toBe("native-menu");
     localStorage.removeItem("speclink.trayStyle");
   });
 
-  it("panelFallback 退回 native-menu、浮出單行錯誤，且不寫 localStorage（規格「面板樣式（macOS）」失敗退回）", () => {
+  it("panelFallback 退回 native-menu、浮出單行錯誤，且不寫 localStorage（規格「面板樣式」失敗退回）", () => {
     setUA(MAC_UA);
     const store = storeWith(fakeDataSource());
     store.getState().panelFallback("tray panel window creation failed: boom");
