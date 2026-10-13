@@ -184,6 +184,17 @@ export function NameChip({ name, onClick }: { name: string; onClick?: () => void
   );
 }
 
+/** 指令籤：等寬指令原文＋複製鈕。結論的「下一步」與未轉出提示框共用。 */
+export function CommandChip({ command }: { command: string }) {
+  const { t } = useI18n();
+  return (
+    <span data-command-chip className={`${NAME_CHIP_CLS} gap-1`}>
+      {command}
+      <CopyButton value={command} label={t("conclusion.copyCommand")} className="h-5 w-5" />
+    </span>
+  );
+}
+
 /** hover 籤時才浮出的動作鈕（鍵盤聚焦時也顯現）。 */
 const REVEAL_ON_CHIP_HOVER = "opacity-0 transition-opacity group-hover/path:opacity-100 focus-visible:opacity-100 data-[copied]:opacity-100";
 

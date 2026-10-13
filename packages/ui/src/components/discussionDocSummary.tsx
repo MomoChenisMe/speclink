@@ -4,7 +4,6 @@ import { ArrowRight } from "lucide-react";
 import type { ArchivedItem, ChangeItem } from "../adapter";
 import {
   contextModel,
-  cutPromotion,
   openItems,
   parseConclusion,
   parseCuts,
@@ -21,10 +20,10 @@ import {
 } from "../discussionModel";
 import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
-import { CommandChip } from "./ConclusionDoc";
+import { cutPromotionOf } from "./ConclusionDoc";
 import type { DocSummary, DocTile } from "./DetailShell";
-import { InlineMarks, NAME_CHIP_CLS } from "./DocParts";
-import type { PromotedRow } from "./PromotedDoc";
+import { CommandChip, InlineMarks, NAME_CHIP_CLS } from "./DocParts";
+import { rowStage, type PromotedRow } from "./PromotedDoc";
 
 /** 討論頁的文件節點：記錄切分成功時結論、討論過程、背景，失敗時「記錄」；衍生變更恆在。 */
 export type DiscussionTab = "conclusion" | "rounds" | "context" | "promote" | "record";
@@ -136,13 +135,15 @@ function conclusionTiles(data: DiscussionDocData, t: Translate): DocTile[] {
 }
 
 /** 結論的未轉出提示框（live 討論、至少一刀整刀未轉出）：每刀一列附「前往」，末行接轉出指令籤。判定與刀卡同一支
- * `cutPromotion`，列出的刀＝畫成虛線框的刀。 */
+ * `cutPromotionOf`（同一份衍生列），列出的刀＝畫成虛線框的刀。只排除已封存：引擎只拒絕從已封存的記錄轉出，
+ * 已轉出、未保留的 live 討論照樣能轉出下一刀。 */
 function unpromotedCallout(data: DiscussionDocData, t: Translate): ReactNode {
   if (data.status === "archived") return null;
-  const promoted = new Set(data.rows.map((r) => r.name));
-  const todo = data.cuts.filter((cut) => cutPromotion(cut, (name) => promoted.has(name)) === "none");
+  const stageOf = rowStage(data.rows);
+  const todo = data.cuts.filter((cut) => cutPromotionOf(cut, stageOf) === "none");
   if (todo.length === 0) return null;
   const { onLocateCut } = data;
+  const slug = data.context?.names.self;
   return (
     <Callout tone="manual" title={fill(t("conclusion.unpromotedCallout"), { n: todo.length })} className="my-0">
       <ul className="my-1 flex flex-col gap-0.5 text-sm">
@@ -169,10 +170,12 @@ function unpromotedCallout(data: DiscussionDocData, t: Translate): ReactNode {
           </li>
         ))}
       </ul>
-      <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
-        {t("conclusion.unpromotedHint")}
-        <CommandChip command={`/speclink-propose --from-discussion ${data.context?.names.self}`} />
-      </p>
+      {slug && (
+        <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+          {t("conclusion.unpromotedHint")}
+          <CommandChip command={`/speclink-propose --from-discussion ${slug}`} />
+        </p>
+      )}
     </Callout>
   );
 }

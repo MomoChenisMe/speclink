@@ -83,6 +83,9 @@ function statusPill(d: DiscussionItem): { labelKey: string; tone: StatusPillTone
   return { labelKey: "discussion.statusOpen", tone: "neutral" };
 }
 
+/** 討論詳情頁派生的步驟列站序；「已封存」站（序 3）只用在已封存討論頁。 */
+const STATION = { open: 0, concluded: 1, promoted: 2 } as const;
+
 /** 狀態卡的階段步驟列（討論中 → 已結論 → 已轉出 → 已封存）：現站籤（色調與身分區狀態籤一致）、已過站打勾、
  * 未到站灰圈；尚無結論（`concluded` 為 false）時「已結論」站為未到站。討論詳情頁與已封存討論頁共用（後者
  * 現站恆為「已封存」、不傳色調與結論）。 */
@@ -111,7 +114,7 @@ export function DiscussionStageRow({
             <StatusPill tone={tone} aria-current="step">
               {label}
             </StatusPill>
-          ) : i < current && (i !== 1 || concluded) ? (
+          ) : i < current && (i !== STATION.concluded || concluded) ? (
             <span className="inline-flex items-center gap-1 text-muted-foreground">
               <Check aria-hidden="true" className="h-3 w-3" />
               {label}
@@ -268,7 +271,7 @@ export function DiscussionDetailPage({
   // 使用者選的文件；null＝依預設規則（記錄載入前後、結論有無都跟著走）。
   const [picked, setPicked] = useState<string | null>(null);
   // 未轉出提示框「前往」的捲動請求（seq 遞增，同一刀可重複跳）；結論文件處理完即清除。
-  const [cutJump, setCutJump] = useState<{ id: string; seq: number } | null>(null);
+  const [cutJump, setCutJump] = useState<ConclusionDocProps["jump"]>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const slug = discussion?.slug ?? null;
   const gen = refreshGen ?? 0;
@@ -346,7 +349,12 @@ export function DiscussionDetailPage({
   const openChild = (name: string) => (childStage(name).alive ? () => onOpenChangeCard?.(name) : undefined);
 
   // 階段步驟列：現站由 status 派生；「已封存」站留給已封存討論頁。
-  const stationIndex = discussion.status === "promoted" ? 2 : discussion.status === "concluded" ? 1 : 0;
+  const stationIndex =
+    discussion.status === "promoted"
+      ? STATION.promoted
+      : discussion.status === "concluded"
+        ? STATION.concluded
+        : STATION.open;
 
   // 封存動詞：concluded 才可及；保留在途（hold）時停用並說明最後一刀轉出後自動封存。
   const archiveAction =

@@ -19,8 +19,16 @@ import {
 import { useI18n } from "../i18n";
 import { SEMANTIC_SURFACE } from "../tone";
 import { StatusPill, type StatusPillTone } from "./ui/status-pill";
-import { CopyButton } from "./CopyButton";
-import { DocSection, InlineMarks, MoreToggle, NAME_CHIP_CLS, NameChip, OptionReasonRows, RowList } from "./DocParts";
+import {
+  CommandChip,
+  DocSection,
+  InlineMarks,
+  MoreToggle,
+  NAME_CHIP_CLS,
+  NameChip,
+  OptionReasonRows,
+  RowList,
+} from "./DocParts";
 import { Markdown } from "./Markdown";
 
 /** 分刀卡變更籤的階段：名稱在 `promoted_to` 中時有階段籤，`onOpen` 缺席為不可點。 */
@@ -162,11 +170,16 @@ function DecisionSections({ md, stageOf }: { md: string; stageOf?: ConclusionDoc
   );
 }
 
+/** 刀的轉出判定（刀卡與未轉出提示框共用）：變更名查得到階段籤即已轉出。 */
+export function cutPromotionOf(cut: CutCard, stageOf: ConclusionDocProps["stageOf"]) {
+  return cutPromotion(cut, (name) => stageOf?.(name) != null);
+}
+
 /** 一張分刀卡：識別籤、範圍句、變更數；變更名籤附階段籤；卡內細線列。整刀未轉出時橄欖色虛線框、卡頭
  * 「尚未轉出」籤；部分轉出時未轉出的變更名籤之後接同款籤。 */
 function CutCardView({ cut, stageOf }: { cut: CutCard; stageOf?: ConclusionDocProps["stageOf"] }) {
   const { t } = useI18n();
-  const promotion = cutPromotion(cut, (name) => stageOf?.(name) != null);
+  const promotion = cutPromotionOf(cut, stageOf);
   const todo = promotion === "none";
   const notPromoted = <StatusPill tone="manual">{t("conclusion.notPromoted")}</StatusPill>;
   return (
@@ -262,17 +275,6 @@ function CaptureChips({
         );
       })}
     </div>
-  );
-}
-
-/** 指令籤：等寬指令原文＋複製鈕。「下一步」與未轉出提示框共用。 */
-export function CommandChip({ command }: { command: string }) {
-  const { t } = useI18n();
-  return (
-    <span data-command-chip className={`${NAME_CHIP_CLS} gap-1`}>
-      {command}
-      <CopyButton value={command} label={t("conclusion.copyCommand")} className="h-5 w-5" />
-    </span>
   );
 }
 

@@ -56,6 +56,6 @@
 - Affected specs: desktop-app（2 條 MODIFIED）
 - Affected app／package: `packages/ui`（共用 UI 元件，由 apps/desktop 渲染）；speclink-core、speclink-cli、speclink-host、server 皆不受影響
 - Affected code:
-  - Modified: `packages/ui/src/discussionModel.ts`、`packages/ui/src/components/DiscussionDetailPage.tsx`、`packages/ui/src/components/ConclusionDoc.tsx`、`packages/ui/src/components/discussionDocSummary.tsx`、`packages/ui/src/components/ui/status-pill.tsx`、`packages/ui/src/i18n.tsx`、`packages/ui/src/__tests__/discussionModel.test.ts`、`packages/ui/src/__tests__/statusPill.test.tsx`、`packages/ui/src/__tests__/conclusionDoc.test.tsx`、`packages/ui/src/__tests__/discussionDetailPage.test.tsx`、`packages/ui/src/__tests__/archivedDetailPage.test.tsx`
+  - Modified: `packages/ui/src/discussionModel.ts`、`packages/ui/src/components/DiscussionDetailPage.tsx`、`packages/ui/src/components/ConclusionDoc.tsx`、`packages/ui/src/components/discussionDocSummary.tsx`、`packages/ui/src/components/DocParts.tsx`、`packages/ui/src/components/ui/status-pill.tsx`、`packages/ui/src/i18n.tsx`、`packages/ui/src/__tests__/discussionModel.test.ts`、`packages/ui/src/__tests__/statusPill.test.tsx`、`packages/ui/src/__tests__/conclusionDoc.test.tsx`、`packages/ui/src/__tests__/discussionDetailPage.test.tsx`、`packages/ui/src/__tests__/archivedDetailPage.test.tsx`
   - New: (none)
   - Removed: (none)
