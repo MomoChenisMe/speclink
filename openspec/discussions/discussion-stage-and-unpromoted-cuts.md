@@ -1,9 +1,10 @@
 ---
 topic: 討論詳情頁：步驟列與狀態籤顏色對不上；結論裡還沒轉出的刀要更明顯並加提示
 slug: discussion-stage-and-unpromoted-cuts
-status: concluded
+status: promoted
 created: 2026-10-13
 created_by: MomoChen <momochenisme@gmail.com>
+promoted_to: discussion-stage-and-unpromoted-cuts
 ---
 
 # Discussion: 討論詳情頁：步驟列與狀態籤顏色對不上；結論裡還沒轉出的刀要更明顯並加提示
