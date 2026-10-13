@@ -34,11 +34,14 @@ export function ManualToc({ bodyRef, markdownBody, headings = ".markdown h2, .ma
 
   useEffect(() => {
     const root = bodyRef.current;
-    let heads: HTMLElement[] = [];
-    const scan = (force: boolean) => {
+    // null＝還沒掃過，第一次一定更新（沒有標題也要把目錄清空）。
+    let heads: HTMLElement[] | null = null;
+    const scan = () => {
       const next = root ? Array.from(root.querySelectorAll<HTMLElement>(headings)) : [];
-      // 節點增減沒換到標題（如展開收合輪卡）就不動目錄。
-      if (!force && next.length === heads.length && next.every((el, i) => el === heads[i])) return;
+      // 節點增減沒換到標題（如展開收合輪卡）就不動目錄。只比標題元素、不比文字：同一標題元素換字不會增減節點，
+      // 要靠呼叫端把內文放進重掃鍵（markdownBody），讓整段重跑。
+      const prev = heads;
+      if (prev && next.length === prev.length && next.every((el, i) => el === prev[i])) return;
       heads = next;
       heads.forEach((el, i) => {
         el.id = `manual-h-${i}`;
@@ -48,14 +51,14 @@ export function ManualToc({ bodyRef, markdownBody, headings = ".markdown h2, .ma
       activeEl.current = kept;
       setActiveId(kept?.id ?? null);
     };
-    scan(true);
+    scan();
     if (!root) return;
     // 詳情頁以分頁換文件時，新文件的內容晚一次畫面更新才掛上，重掃鍵變動那次掃到的還是前一份：
     // 內文節點一增減就重掃。
-    const observer = new MutationObserver(() => scan(false));
+    const observer = new MutationObserver(scan);
     observer.observe(root, { childList: true, subtree: true });
     const onScroll = (e: Event) => {
-      if (heads.length === 0) return;
+      if (!heads || heads.length === 0) return;
       const scroller = e.target instanceof Element ? e.target : null;
       if (scroller && !scroller.contains(root)) return;
       const top = (scroller?.getBoundingClientRect().top ?? 0) + 12;

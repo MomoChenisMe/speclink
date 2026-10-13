@@ -95,48 +95,16 @@ describe("DocTiles 數字磚", () => {
     expect(Array.from(cells).map((c) => c.firstElementChild!.textContent)).toEqual(["3", "7", "9/9", "2"]);
   });
 
-  // spec「markdown 文件內容行寬有上限」的「數字磚依格數平分整列」：每格一欄、各欄等寬、填滿整列。
+  // spec「markdown 文件內容行寬有上限」的「數字磚依格數平分整列」：每格一欄、各欄等寬、填滿整列（1 格也佔滿）。
   // jsdom 不算版面，以 class 斷言欄的分配方式。
-  const tilesClass = (container: HTMLElement) =>
-    (container.querySelector("[data-doc-tiles]") as HTMLElement).className.split(" ");
-
-  it("3 格時數字磚列每格一欄、各欄等寬", () => {
-    const tiles = [
-      { value: 3, label: "需求" },
-      { value: 7, label: "情境" },
-      { value: 2, label: "決策" },
-    ];
+  it.each([1, 3, 4])("%i 格時數字磚列每格一欄、各欄等寬", (count) => {
+    const tiles = Array.from({ length: count }, (_, i) => ({ value: i, label: `格 ${i}` }));
     const { container } = render(<DocTiles tiles={tiles} />, { wrapper });
-    const cls = tilesClass(container);
+    const cls = (container.querySelector("[data-doc-tiles]") as HTMLElement).className.split(" ");
     expect(cls).toContain("grid-flow-col");
     expect(cls).toContain("auto-cols-fr");
     expect(cls).not.toContain("grid-cols-4");
-    expect(container.querySelectorAll("[data-doc-tile]")).toHaveLength(3);
-  });
-
-  it("1 格時同一組 class，該格佔滿整列", () => {
-    const { container } = render(<DocTiles tiles={[{ value: 0, label: "先前討論" }]} />, { wrapper });
-    const cls = tilesClass(container);
-    expect(cls).toContain("grid-flow-col");
-    expect(cls).toContain("auto-cols-fr");
-    expect(cls).not.toContain("grid-cols-4");
-    expect(container.querySelectorAll("[data-doc-tile]")).toHaveLength(1);
-  });
-
-  it("4 格時同一組 class，值依序不變", () => {
-    const tiles = [
-      { value: 3, label: "需求" },
-      { value: 7, label: "情境" },
-      { value: "9/9", label: "任務" },
-      { value: 2, label: "決策" },
-    ];
-    const { container } = render(<DocTiles tiles={tiles} />, { wrapper });
-    const cls = tilesClass(container);
-    expect(cls).toContain("grid-flow-col");
-    expect(cls).toContain("auto-cols-fr");
-    expect(cls).not.toContain("grid-cols-4");
-    const cells = container.querySelectorAll("[data-doc-tile]");
-    expect(Array.from(cells).map((c) => c.firstElementChild!.textContent)).toEqual(["3", "7", "9/9", "2"]);
+    expect(container.querySelectorAll("[data-doc-tile]")).toHaveLength(count);
   });
 });
 

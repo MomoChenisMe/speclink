@@ -1,0 +1,48 @@
+schema: spec-driven
+created: 2026-10-13
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: doc-tiles-fill-and-round-order
+depends_on: clickable-cursor-hover-rule
+started_at: 2026-10-13
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-13
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 8
+reviewed_scope:
+  - path: packages/ui/src/__tests__/changeDetailPage.test.tsx
+    hash: 98cec25e702c335ce6b135b5004b24d80cdaed23352bc9055a9aa4752c7382b8
+  - path: packages/ui/src/__tests__/detailShell.test.tsx
+    hash: 8aaa3e51b94c3b80438b2b6f26703f05347e8db17fc43335a5b88e64f4855e18
+  - path: packages/ui/src/__tests__/discussionDetailPage.test.tsx
+    hash: e0148f522c6f8aa57c5d9c88a0b1b4f9698ed714758e3d786f873e6f0f1d0ee9
+  - path: packages/ui/src/__tests__/roundsDoc.test.tsx
+    hash: f77408665c4e8c70a0e4986c2023d151990c80c6d32a6b102f13eefc11c6408b
+  - path: packages/ui/src/components/DetailShell.tsx
+    hash: ce81b9e70fc7875ea2c19d6476525ee84b1cb29c470c221d9d88971b404e4c43
+  - path: packages/ui/src/components/ManualToc.tsx
+    hash: 47ed203423853ca091e87ef3462751ebc901bed1258b8019db2876c7f1ce1d0f
+  - path: packages/ui/src/components/RoundsDoc.tsx
+    hash: f09bcc32a13de693ddb3134fa89de17880f46546fe401102406de444b562c5b5
+verified_at: 2026-10-13
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 8
+verified_scope:
+  - path: packages/ui/src/__tests__/changeDetailPage.test.tsx
+    hash: 98cec25e702c335ce6b135b5004b24d80cdaed23352bc9055a9aa4752c7382b8
+  - path: packages/ui/src/__tests__/detailShell.test.tsx
+    hash: 8aaa3e51b94c3b80438b2b6f26703f05347e8db17fc43335a5b88e64f4855e18
+  - path: packages/ui/src/__tests__/discussionDetailPage.test.tsx
+    hash: e0148f522c6f8aa57c5d9c88a0b1b4f9698ed714758e3d786f873e6f0f1d0ee9
+  - path: packages/ui/src/__tests__/roundsDoc.test.tsx
+    hash: f77408665c4e8c70a0e4986c2023d151990c80c6d32a6b102f13eefc11c6408b
+  - path: packages/ui/src/components/DetailShell.tsx
+    hash: ce81b9e70fc7875ea2c19d6476525ee84b1cb29c470c221d9d88971b404e4c43
+  - path: packages/ui/src/components/ManualToc.tsx
+    hash: 47ed203423853ca091e87ef3462751ebc901bed1258b8019db2876c7f1ce1d0f
+  - path: packages/ui/src/components/RoundsDoc.tsx
+    hash: f09bcc32a13de693ddb3134fa89de17880f46546fe401102406de444b562c5b5
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-13

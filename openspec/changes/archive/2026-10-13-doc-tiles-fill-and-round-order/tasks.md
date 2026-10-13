@@ -12,5 +12,5 @@
 
 ## 3. 收尾驗證
 
-- [ ] [M] 3.1 開發環境實機驗收：以 root `npm run dev:desktop` 開桌面視窗，開一份提案（數字磚 3 格）、一份任務（4 格）與一份沒有關聯的討論背景（1 格），確認數字磚依格數平分、填滿整列、右端沒有空欄；再開一份 5 輪以上的討論與一份已封存討論的「討論過程」，確認由上而下為最新一輪到 Round 1、最新一輪與 Round 1 展開、右欄本頁目錄同序。 <!-- speclink-task:tsk_01M4SM05FJ5C18GQWHKMXBX3VD -->
+- [x] [M] 3.1 開發環境實機驗收：以 root `npm run dev:desktop` 開桌面視窗，開一份提案（數字磚 3 格）、一份任務（4 格）與一份沒有關聯的討論背景（1 格），確認數字磚依格數平分、填滿整列、右端沒有空欄；再開一份 5 輪以上的討論與一份已封存討論的「討論過程」，確認由上而下為最新一輪到 Round 1、最新一輪與 Round 1 展開、右欄本頁目錄同序。 <!-- speclink-task:tsk_01M4SM05FJ5C18GQWHKMXBX3VD -->
 - [x] 3.2 全組守門：確認本變更沒有動到詞彙守門與文件連結掃描面。驗證：`npm test -w packages/ui` 全綠，且 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。 <!-- speclink-task:tsk_01M4SM05FJXEFGZJJ426W99CP6 -->

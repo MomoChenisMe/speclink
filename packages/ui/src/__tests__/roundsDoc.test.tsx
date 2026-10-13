@@ -1,5 +1,5 @@
 // spec「討論輪以卡片呈現」的討論過程渲染器（desktop-discussion-doc-views design D3）。
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render as rtlRender } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 
@@ -103,6 +103,28 @@ describe("RoundsDoc", () => {
     expect(toggle(card(container, 4)).getAttribute("aria-expanded")).toBe("false");
     expect(toggle(card(container, 2)).getAttribute("aria-expanded")).toBe("true");
     expect(toggle(card(container, 1)).getAttribute("aria-expanded")).toBe("true");
+  });
+
+  // 手改記錄：輪次不照順序時仍依輪次號由大到小排。
+  it("記錄順序為 Round 1、3、2 時，由上而下 data-round 依序為 3、2、1", () => {
+    const shuffled = [1, 3, 2].map((n) => `### Round ${n} — assumptions (2026-10-0${n})\n\n**Focus**: 第 ${n} 輪\n`).join("\n");
+    const { container } = render(<RoundsDoc text={shuffled} />);
+    expect(cards(container).map((c) => c.getAttribute("data-round"))).toEqual(["3", "2", "1"]);
+  });
+
+  // 手改記錄出現重號：兩張同號卡各自展開收合，且不出現 React 重複 key 警告。
+  it("記錄為 Round 1、2、2 時，兩張 Round 2 卡各自切換、無重複 key 警告", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const dup = [1, 2, 2].map((n, i) => `### Round ${n} — assumptions (2026-10-0${i + 1})\n\n**Focus**: 第 ${i + 1} 段\n`).join("\n");
+    const { container } = render(<RoundsDoc text={dup} />);
+    const all = cards(container);
+    expect(all.map((c) => c.getAttribute("data-round"))).toEqual(["2", "2", "1"]);
+    expect(all.map((c) => toggle(c).getAttribute("aria-expanded"))).toEqual(["true", "false", "true"]);
+    fireEvent.click(toggle(all[1]));
+    fireEvent.click(toggle(all[0]));
+    expect(all.map((c) => toggle(c).getAttribute("aria-expanded"))).toEqual(["false", "true", "true"]);
+    expect(errors.mock.calls.flat().join(" ")).not.toContain("same key");
+    errors.mockRestore();
   });
 
   it("立場定論句與 3 條細線列、粗體前綴原文不出現", () => {
