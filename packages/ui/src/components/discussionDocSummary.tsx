@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
+import { ArrowRight } from "lucide-react";
 
 import type { ArchivedItem, ChangeItem } from "../adapter";
 import {
   contextModel,
+  cutPromotion,
   openItems,
   parseConclusion,
   parseCuts,
@@ -17,8 +19,11 @@ import {
   type DiscussionRound,
   type DiscussionSections,
 } from "../discussionModel";
+import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
+import { CommandChip } from "./ConclusionDoc";
 import type { DocSummary, DocTile } from "./DetailShell";
+import { InlineMarks, NAME_CHIP_CLS } from "./DocParts";
 import type { PromotedRow } from "./PromotedDoc";
 
 /** 討論頁的文件節點：記錄切分成功時結論、討論過程、背景，失敗時「記錄」；衍生變更恆在。 */
@@ -37,6 +42,8 @@ export interface DiscussionDocData {
   created: string | null;
   rows: PromotedRow[];
   recordPath: string | null;
+  /** 未轉出提示框的「前往」：只有討論詳情頁傳入（已封存討論頁沒有提示框）。 */
+  onLocateCut?: (id: string) => void;
 }
 
 /** 兩頁共用的名稱清單（背景名稱籤、先前討論比對）：本討論的 slug 由 `self` 排除。 */
@@ -62,6 +69,7 @@ export function discussionDocData(input: {
   recordPath: string | null;
   rows: PromotedRow[];
   names: ContextNames;
+  onLocateCut?: (id: string) => void;
 }): DiscussionDocData {
   const sections = input.text ? splitDiscussionSections(input.text) : null;
   const conclusion = sections ? parseConclusion(sections.conclusion) : null;
@@ -77,6 +85,7 @@ export function discussionDocData(input: {
     created: input.created,
     rows: input.rows,
     recordPath: input.recordPath,
+    onLocateCut: input.onLocateCut,
   };
 }
 
@@ -124,6 +133,48 @@ function conclusionTiles(data: DiscussionDocData, t: Translate): DocTile[] {
     rowsOf(fields.Deferred) === null ? null : { value: rowsOf(fields.Deferred)!, label: t("conclusion.tileDeferred") },
   ];
   return tiles.filter((tile): tile is DocTile => tile !== null);
+}
+
+/** 結論的未轉出提示框（live 討論、至少一刀整刀未轉出）：每刀一列附「前往」，末行接轉出指令籤。判定與刀卡同一支
+ * `cutPromotion`，列出的刀＝畫成虛線框的刀。 */
+function unpromotedCallout(data: DiscussionDocData, t: Translate): ReactNode {
+  if (data.status === "archived") return null;
+  const promoted = new Set(data.rows.map((r) => r.name));
+  const todo = data.cuts.filter((cut) => cutPromotion(cut, (name) => promoted.has(name)) === "none");
+  if (todo.length === 0) return null;
+  const { onLocateCut } = data;
+  return (
+    <Callout tone="manual" title={fill(t("conclusion.unpromotedCallout"), { n: todo.length })} className="my-0">
+      <ul className="my-1 flex flex-col gap-0.5 text-sm">
+        {todo.map((cut) => (
+          <li key={cut.id} data-unpromoted-cut={cut.id} className="flex items-center gap-2">
+            <span className={NAME_CHIP_CLS}>{cut.id}</span>
+            {cut.title && (
+              <span className="min-w-0">
+                <InlineMarks text={cut.title} />
+              </span>
+            )}
+            {onLocateCut && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="ml-auto h-6 shrink-0 gap-1 px-2"
+                onClick={() => onLocateCut(cut.id)}
+              >
+                {t("tasks.locate")}
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+        {t("conclusion.unpromotedHint")}
+        <CommandChip command={`/speclink-propose --from-discussion ${data.context?.names.self}`} />
+      </p>
+    </Callout>
+  );
 }
 
 function roundsSummary(data: DiscussionDocData, t: Translate): DocSummary {
@@ -217,7 +268,7 @@ function roundsProvenance(data: DiscussionDocData, t: Translate): ReactNode[] {
 /** 文件 → 標題區；「記錄」（切分失敗的整篇退回）沒有標題區。 */
 const DOC_HEADERS: Partial<Record<DiscussionTab, DocHeaderParts>> = {
   conclusion: {
-    summary: (data, t) => ({ ...EMPTY, tiles: conclusionTiles(data, t) }),
+    summary: (data, t) => ({ ...EMPTY, tiles: conclusionTiles(data, t), callout: unpromotedCallout(data, t) }),
     provenance: (data, t) => [
       data.recordPath && <span className="font-mono">{data.recordPath}</span>,
       data.conclusion && data.rounds && fill(t("conclusion.afterRounds"), { n: data.rounds.length }),

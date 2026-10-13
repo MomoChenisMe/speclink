@@ -10,6 +10,7 @@ import {
   commandChips,
   contextRelations,
   countPriorDiscussions,
+  cutPromotion,
   matchNames,
   openItems,
   parseConclusion,
@@ -393,6 +394,20 @@ describe("parseCuts", () => {
   it("含空白的反引號片段不算變更名", () => {
     const { cuts } = one("**cut 4 設定**（先跑 `speclink plan`，再建 `desktop-settings-mode`）");
     expect(cuts[0].names).toEqual(["desktop-settings-mode"]);
+  });
+});
+
+describe("cutPromotion（刀的轉出判定）", () => {
+  const cut = (names: string[]) => ({ id: "cut 1", title: "骨架", names, items: [] });
+
+  it.each<[string[], string[], string]>([
+    [["a", "b"], ["a", "b"], "promoted"],
+    [["a", "b"], ["a"], "partial"],
+    [["a"], [], "none"],
+    [[], [], "unknown"],
+  ])("變更名籤 %j、已轉出 %j → %s", (names, promoted, verdict) => {
+    const set = new Set(promoted);
+    expect(cutPromotion(cut(names), (n) => set.has(n))).toBe(verdict);
   });
 });
 

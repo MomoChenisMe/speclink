@@ -93,8 +93,69 @@ describe("ConclusionDoc", () => {
     expect(within(cards[2]).queryByRole("button", { name: "desktop-discussion-doc-views" })).toBeNull();
     expect(within(cards[2]).getByText("desktop-discussion-doc-views")).toBeTruthy();
     expect(within(cards[2]).queryByText("已封存")).toBeNull();
+    // 第三刀整刀未轉出：橄欖色虛線框、卡頭「尚未轉出」籤；前兩刀照舊。
+    expect(cards[2].hasAttribute("data-cut-todo")).toBe(true);
+    expect(cards[2].className).toContain("border-dashed");
+    expect(cards[2].className).toContain("border-status-manual/40");
+    expect(cards[2].querySelector("header")!.textContent).toContain("尚未轉出");
+    for (const card of cards.slice(0, 2)) {
+      expect(card.hasAttribute("data-cut-todo")).toBe(false);
+      expect(card.textContent).not.toContain("尚未轉出");
+    }
     // 分刀列不再出現在定案細節。
     expect(section(container, "conclusion.decision").querySelectorAll("[data-row-list] > li").length).toBe(1);
+  });
+
+  it("部分轉出：卡無 data-cut-todo，只有未轉出的變更名籤之後有「尚未轉出」", () => {
+    const stageOf = (name: string) => (name === "a-one" ? { label: "進行中", tone: "progress" as const } : null);
+    const { container } = render(
+      <ConclusionDoc text={"**Decision**: 定。\n- **cut 2 `a-one` `b-two`**: 外殼"} stageOf={stageOf} />,
+    );
+    const card = container.querySelector<HTMLElement>("[data-cut]")!;
+    expect(card.hasAttribute("data-cut-todo")).toBe(false);
+    expect(card.className).not.toContain("border-dashed");
+    expect(card.querySelector("header")!.textContent).not.toContain("尚未轉出");
+    const promoted = card.querySelector<HTMLElement>('[data-cut-change="a-one"]')!;
+    expect(promoted.textContent).toBe("a-one進行中");
+    const todo = card.querySelector<HTMLElement>('[data-cut-change="b-two"]')!;
+    expect(todo.textContent).toBe("b-two尚未轉出");
+    expect(todo.lastElementChild!.className).toContain("text-status-manual");
+  });
+
+  it("刀列沒有變更名籤時卡無 data-cut-todo、無「尚未轉出」", () => {
+    const { container } = render(<ConclusionDoc text={"**Decision**: 定。\n- **刀三**：系統匣面板"} stageOf={() => null} />);
+    const card = container.querySelector<HTMLElement>("[data-cut]")!;
+    expect(card.getAttribute("data-cut")).toBe("刀三");
+    expect(card.hasAttribute("data-cut-todo")).toBe(false);
+    expect(card.textContent).not.toContain("尚未轉出");
+  });
+
+  it("jump 請求把該刀卡捲到畫面中央並呼叫 onJumped", () => {
+    const targets: Element[] = [];
+    const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
+      targets.push(this);
+    });
+    try {
+      const onJumped = vi.fn();
+      const { container } = render(<ConclusionDoc text={CUTS} jump={{ id: "cut 2", seq: 1 }} onJumped={onJumped} />);
+      expect(targets).toEqual([container.querySelector('[data-cut="cut 2"]')]);
+      expect(scrollSpy).toHaveBeenCalledWith(expect.objectContaining({ block: "center" }));
+      expect(onJumped).toHaveBeenCalledTimes(1);
+    } finally {
+      scrollSpy.mockRestore();
+    }
+  });
+
+  it("jump 的目標刀卡不存在時不捲動、照樣呼叫 onJumped", () => {
+    const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    try {
+      const onJumped = vi.fn();
+      render(<ConclusionDoc text={CUTS} jump={{ id: "cut 9", seq: 1 }} onJumped={onJumped} />);
+      expect(scrollSpy).not.toHaveBeenCalled();
+      expect(onJumped).toHaveBeenCalledTimes(1);
+    } finally {
+      scrollSpy.mockRestore();
+    }
   });
 
   it("否決 14 列方案／理由、擱置其中一列無理由行且每列有時鐘圖示", () => {

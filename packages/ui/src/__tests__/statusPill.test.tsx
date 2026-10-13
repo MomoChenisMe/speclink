@@ -18,6 +18,7 @@ const TONE_CLASSES: [StatusPillTone, string[]][] = [
   ["destructive", ["bg-destructive/12", "text-destructive"]],
   ["stamp", ["bg-stamp/12", "text-stamp"]],
   ["improve", ["bg-improve/12", "text-improve"]],
+  ["manual", ["bg-status-manual/12", "text-status-manual"]],
 ];
 
 describe("StatusPill", () => {

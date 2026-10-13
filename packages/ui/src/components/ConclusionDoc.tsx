@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Clock } from "lucide-react";
 
 import { itemMarkdown } from "../docModel";
@@ -6,6 +6,7 @@ import {
   CONCLUSION_LABELS,
   captureTargets,
   commandChips,
+  cutPromotion,
   nameSpans,
   parseConclusion,
   parseCuts,
@@ -16,6 +17,7 @@ import {
   type CutCard,
 } from "../discussionModel";
 import { useI18n } from "../i18n";
+import { SEMANTIC_SURFACE } from "../tone";
 import { StatusPill, type StatusPillTone } from "./ui/status-pill";
 import { CopyButton } from "./CopyButton";
 import { DocSection, InlineMarks, MoreToggle, NAME_CHIP_CLS, NameChip, OptionReasonRows, RowList } from "./DocParts";
@@ -36,6 +38,9 @@ export interface ConclusionDocProps {
   /** 記錄去向的規格籤：名稱在 `specNames` 中才可點。 */
   specNames?: string[];
   onOpenSpec?: (capability: string) => void;
+  /** 「前往」請求：把該刀卡捲到閱讀區中央（seq 遞增，同一刀可重複跳）；處理完呼叫 `onJumped` 清除。 */
+  jump?: { id: string; seq: number } | null;
+  onJumped?: () => void;
 }
 
 /** 欄位 → 區段標題詞條（也是 `data-section` 的值）。 */
@@ -55,13 +60,23 @@ const DETAILS_SHOWN = 4;
  * 結論文件（desktop-discussion-doc-views design D2；spec「討論結論以欄位標籤呈現」）：六欄位各一段，決定之後
  * 有分刀時多一段「分刀」；欄位一個都沒有時整篇 Markdown 退回。討論詳情頁與已封存討論頁共用。
  */
-export function ConclusionDoc({ text, empty, stageOf, specNames, onOpenSpec }: ConclusionDocProps) {
+export function ConclusionDoc({ text, empty, stageOf, specNames, onOpenSpec, jump, onJumped }: ConclusionDocProps) {
   const { t } = useI18n();
+  const ref = useRef<HTMLDivElement>(null);
+  // 刀卡在這一輪 commit 後才在 DOM 裡，effect 裡捲動才找得到；找不到時只清請求。
+  useEffect(() => {
+    if (!jump) return;
+    ref.current
+      ?.querySelector(`[data-cut="${CSS.escape(jump.id)}"]`)
+      ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    onJumped?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump]);
   const parsed = parseConclusion(text);
   if (!parsed) return <Markdown content={text} empty={empty} />;
   const { lead, fields } = parsed;
   return (
-    <div>
+    <div ref={ref}>
       {lead && (
         <div className="mb-5">
           <Markdown content={lead} />
@@ -147,13 +162,22 @@ function DecisionSections({ md, stageOf }: { md: string; stageOf?: ConclusionDoc
   );
 }
 
-/** 一張分刀卡：識別籤、範圍句、變更數；變更名籤附階段籤；卡內細線列。 */
+/** 一張分刀卡：識別籤、範圍句、變更數；變更名籤附階段籤；卡內細線列。整刀未轉出時橄欖色虛線框、卡頭
+ * 「尚未轉出」籤；部分轉出時未轉出的變更名籤之後接同款籤。 */
 function CutCardView({ cut, stageOf }: { cut: CutCard; stageOf?: ConclusionDocProps["stageOf"] }) {
   const { t } = useI18n();
+  const promotion = cutPromotion(cut, (name) => stageOf?.(name) != null);
+  const todo = promotion === "none";
+  const notPromoted = <StatusPill tone="manual">{t("conclusion.notPromoted")}</StatusPill>;
   return (
-    <section data-cut={cut.id} className="rounded-xl border border-border px-4 py-3">
+    <section
+      data-cut={cut.id}
+      data-cut-todo={todo ? "" : undefined}
+      className={`rounded-xl border px-4 py-3 ${todo ? `border-dashed ${SEMANTIC_SURFACE.manual}` : "border-border"}`}
+    >
       <header className="flex min-w-0 items-center gap-2">
         <span className={NAME_CHIP_CLS}>{cut.id}</span>
+        {todo && notPromoted}
         {cut.title && (
           <span className="min-w-0 font-medium">
             <InlineMarks text={cut.title} />
@@ -170,10 +194,12 @@ function CutCardView({ cut, stageOf }: { cut: CutCard; stageOf?: ConclusionDocPr
             return (
               <span key={name} data-cut-change={name} className="inline-flex items-center gap-1">
                 <NameChip name={name} onClick={stage?.onOpen} />
-                {stage && (
+                {stage ? (
                   <StatusPill tone={stage.tone} className={stage.tone === "destructive" ? "line-through" : undefined}>
                     {stage.label}
                   </StatusPill>
+                ) : (
+                  promotion === "partial" && notPromoted
                 )}
               </span>
             );
@@ -239,9 +265,19 @@ function CaptureChips({
   );
 }
 
+/** 指令籤：等寬指令原文＋複製鈕。「下一步」與未轉出提示框共用。 */
+export function CommandChip({ command }: { command: string }) {
+  const { t } = useI18n();
+  return (
+    <span data-command-chip className={`${NAME_CHIP_CLS} gap-1`}>
+      {command}
+      <CopyButton value={command} label={t("conclusion.copyCommand")} className="h-5 w-5" />
+    </span>
+  );
+}
+
 /** 下一步：Markdown 之後列出 `/speclink-*` 指令籤，每顆附複製鈕。 */
 function NextCommands({ md }: { md: string }) {
-  const { t } = useI18n();
   const commands = commandChips(md);
   return (
     <div className="flex flex-col gap-2.5">
@@ -249,10 +285,7 @@ function NextCommands({ md }: { md: string }) {
       {commands.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           {commands.map((command) => (
-            <span key={command} data-command-chip className={`${NAME_CHIP_CLS} gap-1`}>
-              {command}
-              <CopyButton value={command} label={t("conclusion.copyCommand")} className="h-5 w-5" />
-            </span>
+            <CommandChip key={command} command={command} />
           ))}
         </div>
       )}

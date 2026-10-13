@@ -11,7 +11,8 @@ export type StatusPillTone =
   | "warning"
   | "destructive"
   | "stamp"
-  | "improve";
+  | "improve"
+  | "manual";
 
 /** 以 i18n 鍵描述的狀態籤內容：狀態對照函式回傳它，呈現端以 t(key) 填進 StatusPill。 */
 export interface StatusPillLabel {
@@ -29,6 +30,7 @@ const TONE_CLASS: Record<StatusPillTone, string> = {
   destructive: "bg-destructive/12 text-destructive",
   stamp: "bg-stamp/12 text-stamp",
   improve: "bg-improve/12 text-improve",
+  manual: "bg-status-manual/12 text-status-manual",
 };
 
 export interface StatusPillProps extends React.HTMLAttributes<HTMLSpanElement> {

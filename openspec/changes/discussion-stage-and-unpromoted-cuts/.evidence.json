@@ -1,0 +1,126 @@
+{
+  "version": 2,
+  "change": "discussion-stage-and-unpromoted-cuts",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫紅燈（design D2；spec「討論結論以欄位標籤呈現」Example「刀的轉出判定」）：`packages/ui/src/__tests__/discussionModel.test.ts` 新增群組「cutPromotion」四題——變更名 `a`、`b` 全在已轉出集合回 `\"promoted\"`；只有 `a` 在回 `\"partial\"`；`a` 不在回 `\"none\"`；`names` 為空陣列回 `\"unknown\"`（`isPromoted` 以 `Set.has` 傳入）。驗證：`npm test -w packages/ui -- discussionModel` 以「cutPromotion 未匯出」失敗，既有題目照綠。",
+      "files": [
+        "packages/ui/src/__tests__/discussionModel.test.ts"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 讓 1.1 轉綠：`packages/ui/src/discussionModel.ts` 匯出純函式 `cutPromotion(cut: CutCard, isPromoted: (name: string) => boolean)`，依 design D2 回 `\"promoted\" | \"partial\" | \"none\" | \"unknown\"`，不讀任何其他狀態。驗證：`npm test -w packages/ui -- discussionModel` 全綠。",
+      "files": [
+        "packages/ui/src/discussionModel.ts"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 先寫紅燈（design D3；spec「討論結論以欄位標籤呈現」的「分刀卡與變更籤」）：`packages/ui/src/__tests__/statusPill.test.tsx` 的 `TONE_CLASSES` 加 `[\"manual\", [\"bg-status-manual/12\", \"text-status-manual\"]]`；`packages/ui/src/__tests__/conclusionDoc.test.tsx` 的「三張分刀卡的識別籤與範圍句、前兩張變更籤帶階段籤且點擊呼叫 stageOf 回的 onOpen、第三張不可點」補斷言——第三張卡帶 `data-cut-todo`、className 含 `border-dashed` 與 `border-status-manual/40`、卡頭含文字「尚未轉出」，前兩張卡無 `data-cut-todo` 且不含「尚未轉出」；新增兩題「部分轉出：卡無 data-cut-todo，只有未轉出的變更名籤之後有『尚未轉出』」「刀列沒有變更名籤時卡無 data-cut-todo、無『尚未轉出』」。驗證：`npm test -w packages/ui -- statusPill conclusionDoc` 中新增斷言失敗、其餘題目照綠。",
+      "files": [
+        "packages/ui/src/__tests__/conclusionDoc.test.tsx",
+        "packages/ui/src/__tests__/statusPill.test.tsx"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 讓 2.1 轉綠：`packages/ui/src/components/ui/status-pill.tsx` 的 `StatusPillTone` 與色調表加 `manual`；`packages/ui/src/components/ConclusionDoc.tsx` 的 `CutCardView` 以 `cutPromotion(cut, (n) => stageOf?.(n) != null)` 判定，依 design D3 畫整刀未轉出（虛線＋`SEMANTIC_SURFACE.manual`、`data-cut-todo`、卡頭 `StatusPill tone=\"manual\"`）與部分轉出（未轉出變更名籤後接同款籤）；`packages/ui/src/i18n.tsx` 新增 `conclusion.notPromoted`（tw「尚未轉出」、en「Not promoted」）。驗證：`npm test -w packages/ui -- statusPill conclusionDoc` 全綠。",
+      "files": [
+        "packages/ui/src/components/ConclusionDoc.tsx",
+        "packages/ui/src/components/ui/status-pill.tsx",
+        "packages/ui/src/i18n.tsx"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 先寫紅燈（design D4；spec「討論結論以欄位標籤呈現」的「未轉出刀的提示框與前往」「沒有整刀未轉出的刀時無提示框」「已封存討論頁不出未轉出提示框」）：",
+      "files": [
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx",
+        "packages/ui/src/__tests__/discussionDetailPage.test.tsx"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.2 讓 3.1 轉綠（design D4）：`packages/ui/src/components/discussionDocSummary.tsx` 的 `DiscussionDocData` 與 `discussionDocData` 輸入加可選 `onLocateCut`，`conclusionSummary` 在非 archived 且有 `\"none\"` 刀時回 `Callout tone=\"manual\"`（標題、每刀一列 `[data-unpromoted-cut]` 含識別籤、範圍句與「前往」鈕、末行說明與指令籤）；`packages/ui/src/components/ConclusionDoc.tsx` 自 `NextCommands` 抽出並匯出 `CommandChip`、新增 `jump`／`onJumped` props 與捲動 effect（`CSS.escape` 選取 `[data-cut]`、找不到時只清請求）；`packages/ui/src/components/DiscussionDetailPage.tsx` 持有 `cutJump` 狀態（`{ id, seq }`），把 `onLocateCut` 傳進 `discussionDocData`、把 `jump`／`onJumped` 傳給 `ConclusionDoc`；`packages/ui/src/i18n.tsx` 新增 `conclusion.unpromotedCallout`、`conclusion.unpromotedHint`（tw／en 文案見 design D4）。驗證：`npm test -w packages/ui -- discussionDetailPage conclusionDoc archivedDetailPage` 全綠（既有「記錄去向 desktop-app 籤呼叫 onOpenSpec…下一步指令籤複製後剪貼簿為指令原文」不改照綠）。",
+      "files": [
+        "packages/ui/src/components/DiscussionDetailPage.tsx",
+        "packages/ui/src/components/discussionDocSummary.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4SQWTHRHDT6TS4NFMB1YDG0",
+      "taskDesc": "1.1 先寫紅燈（design D2；spec「討論結論以欄位標籤呈現」Example「刀的轉出判定」）：`packages/ui/src/__tests__/discussionModel.test.ts` 新增群組「cutPromotion」四題——變更名 `a`、`b` 全在已轉出集合回 `\"promoted\"`；只有 `a` 在回 `\"partial\"`；`a` 不在回 `\"none\"`；`names` 為空陣列回 `\"unknown\"`（`isPromoted` 以 `Set.has` 傳入）。驗證：`npm test -w packages/ui -- discussionModel` 以「cutPromotion 未匯出」失敗，既有題目照綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1975e18bde0b0217a137c3703e52a41a5c84ad48",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/discussionModel.test.ts"
+      ],
+      "recordedAt": "2026-10-13T10:41:40Z"
+    },
+    {
+      "taskId": "tsk_01M4SQWTHRCFH2X8RDBWRHEG2A",
+      "taskDesc": "1.2 讓 1.1 轉綠：`packages/ui/src/discussionModel.ts` 匯出純函式 `cutPromotion(cut: CutCard, isPromoted: (name: string) => boolean)`，依 design D2 回 `\"promoted\" | \"partial\" | \"none\" | \"unknown\"`，不讀任何其他狀態。驗證：`npm test -w packages/ui -- discussionModel` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1975e18bde0b0217a137c3703e52a41a5c84ad48",
+      "touchedFiles": [
+        "packages/ui/src/discussionModel.ts"
+      ],
+      "recordedAt": "2026-10-13T10:41:52Z"
+    },
+    {
+      "taskId": "tsk_01M4SQWTHR3T0EJ4CKNFCTJRX2",
+      "taskDesc": "2.1 先寫紅燈（design D3；spec「討論結論以欄位標籤呈現」的「分刀卡與變更籤」）：`packages/ui/src/__tests__/statusPill.test.tsx` 的 `TONE_CLASSES` 加 `[\"manual\", [\"bg-status-manual/12\", \"text-status-manual\"]]`；`packages/ui/src/__tests__/conclusionDoc.test.tsx` 的「三張分刀卡的識別籤與範圍句、前兩張變更籤帶階段籤且點擊呼叫 stageOf 回的 onOpen、第三張不可點」補斷言——第三張卡帶 `data-cut-todo`、className 含 `border-dashed` 與 `border-status-manual/40`、卡頭含文字「尚未轉出」，前兩張卡無 `data-cut-todo` 且不含「尚未轉出」；新增兩題「部分轉出：卡無 data-cut-todo，只有未轉出的變更名籤之後有『尚未轉出』」「刀列沒有變更名籤時卡無 data-cut-todo、無『尚未轉出』」。驗證：`npm test -w packages/ui -- statusPill conclusionDoc` 中新增斷言失敗、其餘題目照綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1975e18bde0b0217a137c3703e52a41a5c84ad48",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/conclusionDoc.test.tsx",
+        "packages/ui/src/__tests__/statusPill.test.tsx"
+      ],
+      "recordedAt": "2026-10-13T10:42:52Z"
+    },
+    {
+      "taskId": "tsk_01M4SQWTHRNBW33FZ3GV2KSGEV",
+      "taskDesc": "2.2 讓 2.1 轉綠：`packages/ui/src/components/ui/status-pill.tsx` 的 `StatusPillTone` 與色調表加 `manual`；`packages/ui/src/components/ConclusionDoc.tsx` 的 `CutCardView` 以 `cutPromotion(cut, (n) => stageOf?.(n) != null)` 判定，依 design D3 畫整刀未轉出（虛線＋`SEMANTIC_SURFACE.manual`、`data-cut-todo`、卡頭 `StatusPill tone=\"manual\"`）與部分轉出（未轉出變更名籤後接同款籤）；`packages/ui/src/i18n.tsx` 新增 `conclusion.notPromoted`（tw「尚未轉出」、en「Not promoted」）。驗證：`npm test -w packages/ui -- statusPill conclusionDoc` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1975e18bde0b0217a137c3703e52a41a5c84ad48",
+      "touchedFiles": [
+        "packages/ui/src/components/ConclusionDoc.tsx",
+        "packages/ui/src/components/ui/status-pill.tsx",
+        "packages/ui/src/i18n.tsx"
+      ],
+      "recordedAt": "2026-10-13T10:43:30Z"
+    },
+    {
+      "taskId": "tsk_01M4SQWTHRF72MZXCFE9VRZJT7",
+      "taskDesc": "3.1 先寫紅燈（design D4；spec「討論結論以欄位標籤呈現」的「未轉出刀的提示框與前往」「沒有整刀未轉出的刀時無提示框」「已封存討論頁不出未轉出提示框」）：",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1975e18bde0b0217a137c3703e52a41a5c84ad48",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx",
+        "packages/ui/src/__tests__/discussionDetailPage.test.tsx"
+      ],
+      "recordedAt": "2026-10-13T10:46:03Z"
+    },
+    {
+      "taskId": "tsk_01M4SQWTHRA95XBYVF2A4QC44B",
+      "taskDesc": "3.2 讓 3.1 轉綠（design D4）：`packages/ui/src/components/discussionDocSummary.tsx` 的 `DiscussionDocData` 與 `discussionDocData` 輸入加可選 `onLocateCut`，`conclusionSummary` 在非 archived 且有 `\"none\"` 刀時回 `Callout tone=\"manual\"`（標題、每刀一列 `[data-unpromoted-cut]` 含識別籤、範圍句與「前往」鈕、末行說明與指令籤）；`packages/ui/src/components/ConclusionDoc.tsx` 自 `NextCommands` 抽出並匯出 `CommandChip`、新增 `jump`／`onJumped` props 與捲動 effect（`CSS.escape` 選取 `[data-cut]`、找不到時只清請求）；`packages/ui/src/components/DiscussionDetailPage.tsx` 持有 `cutJump` 狀態（`{ id, seq }`），把 `onLocateCut` 傳進 `discussionDocData`、把 `jump`／`onJumped` 傳給 `ConclusionDoc`；`packages/ui/src/i18n.tsx` 新增 `conclusion.unpromotedCallout`、`conclusion.unpromotedHint`（tw／en 文案見 design D4）。驗證：`npm test -w packages/ui -- discussionDetailPage conclusionDoc archivedDetailPage` 全綠（既有「記錄去向 desktop-app 籤呼叫 onOpenSpec…下一步指令籤複製後剪貼簿為指令原文」不改照綠）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1975e18bde0b0217a137c3703e52a41a5c84ad48",
+      "touchedFiles": [
+        "packages/ui/src/components/DiscussionDetailPage.tsx",
+        "packages/ui/src/components/discussionDocSummary.tsx"
+      ],
+      "recordedAt": "2026-10-13T10:47:39Z"
+    }
+  ]
+}

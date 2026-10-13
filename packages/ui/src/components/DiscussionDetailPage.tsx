@@ -29,7 +29,7 @@ import {
 } from "./DetailShell";
 import { ImproveChip } from "./ImproveStamp";
 import { PromotedDoc, promotedRows, rowStage } from "./PromotedDoc";
-import { ConclusionDoc } from "./ConclusionDoc";
+import { ConclusionDoc, type ConclusionDocProps } from "./ConclusionDoc";
 import { ContextDoc, type ContextDocProps } from "./ContextDoc";
 import { RoundsDoc } from "./RoundsDoc";
 import {
@@ -83,9 +83,18 @@ function statusPill(d: DiscussionItem): { labelKey: string; tone: StatusPillTone
   return { labelKey: "discussion.statusOpen", tone: "neutral" };
 }
 
-/** 狀態卡的階段步驟列（討論中 → 已結論 → 已轉出 → 已封存）：現站主色籤、已過站打勾、
- * 未到站灰圈。討論詳情頁與已封存討論頁共用（後者現站恆為「已封存」）。 */
-export function DiscussionStageRow({ current }: { current: number }) {
+/** 狀態卡的階段步驟列（討論中 → 已結論 → 已轉出 → 已封存）：現站籤（色調與身分區狀態籤一致）、已過站打勾、
+ * 未到站灰圈；尚無結論（`concluded` 為 false）時「已結論」站為未到站。討論詳情頁與已封存討論頁共用（後者
+ * 現站恆為「已封存」、不傳色調與結論）。 */
+export function DiscussionStageRow({
+  current,
+  tone = "primary",
+  concluded = true,
+}: {
+  current: number;
+  tone?: "primary" | "warning";
+  concluded?: boolean;
+}) {
   const { t } = useI18n();
   const stations = [
     t("discussion.statusOpen"),
@@ -99,10 +108,10 @@ export function DiscussionStageRow({ current }: { current: number }) {
         <span key={label} className="flex items-center gap-1.5 text-xs">
           {i > 0 && <span className="text-muted-foreground/50">→</span>}
           {i === current ? (
-            <StatusPill tone="primary" aria-current="step">
+            <StatusPill tone={tone} aria-current="step">
               {label}
             </StatusPill>
-          ) : i < current ? (
+          ) : i < current && (i !== 1 || concluded) ? (
             <span className="inline-flex items-center gap-1 text-muted-foreground">
               <Check aria-hidden="true" className="h-3 w-3" />
               {label}
@@ -176,12 +185,17 @@ export function DiscussionDocs({
   data,
   context,
   empty,
+  jump,
+  onJumped,
 }: {
   doc: string | null | undefined;
   data: DiscussionDocData;
   /** 背景文件的身分與開啟回呼；推導、建立日與記錄路徑取自 `data`。 */
   context: Omit<ContextDocProps, "model" | "empty" | "created" | "recordPath">;
   empty: { conclusion: string; rounds: string; context: string };
+  /** 結論刀卡的「前往」請求（只有討論詳情頁有）。 */
+  jump?: ConclusionDocProps["jump"];
+  onJumped?: () => void;
 }) {
   const { t } = useI18n();
   const { sections, context: model } = data;
@@ -196,6 +210,8 @@ export function DiscussionDocs({
               stageOf={rowStage(data.rows)}
               specNames={model.names.specs}
               onOpenSpec={context.onOpenSpec}
+              jump={jump}
+              onJumped={onJumped}
             />
           </TabsContent>
           <TabsContent value="rounds">
@@ -251,6 +267,8 @@ export function DiscussionDetailPage({
   const [doc, setDoc] = useState<string | null | undefined>();
   // 使用者選的文件；null＝依預設規則（記錄載入前後、結論有無都跟著走）。
   const [picked, setPicked] = useState<string | null>(null);
+  // 未轉出提示框「前往」的捲動請求（seq 遞增，同一刀可重複跳）；結論文件處理完即清除。
+  const [cutJump, setCutJump] = useState<{ id: string; seq: number } | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const slug = discussion?.slug ?? null;
   const gen = refreshGen ?? 0;
@@ -303,6 +321,7 @@ export function DiscussionDetailPage({
     recordPath,
     rows,
     names: discussionNames(discussion.slug, { specNames, changes, archivedChanges, discussionSlugs }),
+    onLocateCut: (id) => setCutJump((prev) => ({ id, seq: (prev?.seq ?? 0) + 1 })),
   });
   const { sections } = data;
   const pill = statusPill(discussion);
@@ -433,7 +452,12 @@ export function DiscussionDetailPage({
 
       <DetailTreeLabel>{t("detail.status")}</DetailTreeLabel>
       <DetailStatus>
-        <DiscussionStageRow current={stationIndex} />
+        {/* 只映射 warning：open 討論的狀態籤是 neutral，現站維持主色。 */}
+        <DiscussionStageRow
+          current={stationIndex}
+          tone={pill.tone === "warning" ? "warning" : "primary"}
+          concluded={discussion.concluded !== false}
+        />
         {hold && (
           <StatusRow mark="hold" label={t("ddetail.holdLabel")} wrap>
             <span className="text-muted-foreground">{t("ddetail.holdHint")}</span>
@@ -486,6 +510,8 @@ export function DiscussionDetailPage({
                   rounds: t("ddrawer.noRounds"),
                   context: t("ddrawer.noContext"),
                 }}
+                jump={cutJump}
+                onJumped={() => setCutJump(null)}
               />
             </DocBody>
           </Card>
