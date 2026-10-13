@@ -77,8 +77,9 @@ function inRow(action: () => void) {
 
 /**
  * 任務列內容（spec「任務群組標題與章節標籤同款式」；design D5）——一般列與 DragOverlay 共用。
- * 描述拆「標題／內文／驗證」三層：預設只有勾選框、序號籤、標題、D 籤、手動籤與列尾展開鈕；
- * 展開後在標題下方畫內文與驗證。`titleOnly`（拖曳浮起列）只畫標題層。
+ * 描述拆「標題／內文／驗證」三層：標題層恆有勾選框、序號籤、標題、D 籤、手動籤與列尾展開鈕，
+ * 展開時在標題下方畫內文與驗證。預設展開看勾選狀態（未勾展開、已勾收合），勾選狀態一變就跟著翻；
+ * 列尾鈕的手動切換維持到勾選狀態下次改變。`titleOnly`（拖曳浮起列）只畫標題層。
  */
 function TaskRowBody({
   item,
@@ -96,7 +97,13 @@ function TaskRowBody({
   titleOnly?: boolean;
 }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!item.done);
+  // 勾選狀態改變時在同一次渲染內翻展開（不走 effect：避免勾下去先畫一幀展開再收合）。
+  const [seenDone, setSeenDone] = useState(item.done);
+  if (seenDone !== item.done) {
+    setSeenDone(item.done);
+    setOpen(!item.done);
+  }
   const parts = splitTaskText(item.text);
   const detail = [parts.note, parts.body].filter(Boolean).join("\n\n");
   const expandable = !titleOnly && (detail !== "" || parts.verify !== null);
