@@ -72,7 +72,7 @@ export function RecentList({
               key={key}
               className={cn(
                 "group flex items-start gap-1 px-3 py-2 transition-colors",
-                // 開啟進行中整份清單停用：不給 hover 底色。
+                // 開啟進行中各列的開啟鈕停用：外層不給 hover 底色（× 移除鈕仍可用，滑過整列時照常浮現）。
                 reason ? "bg-destructive/5" : !busy && "hover:bg-foreground/5",
               )}
             >

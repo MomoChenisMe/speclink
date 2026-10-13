@@ -10,7 +10,7 @@ import { DELTA_BORDER } from "./DeltaBadges";
 import { MoreToggle, SECTION_HEADING_CLS } from "./DocParts";
 import { Markdown } from "./Markdown";
 
-/** 收合列的可點提示：共用游標變數（網頁手指、桌面箭頭）、滑過淡底（與文件樹節點同一濃度）。 */
+/** 收合列的 hover 提示：滑過淡底（與文件樹節點同一濃度）；游標由呼叫端取共用游標變數。 */
 const TOGGLE_HOVER_CLS = "rounded-lg transition-colors hover:bg-foreground/5";
 
 /** 「Requirement」小標：與需求文的 SHALL／MUST 關鍵字同款等寬灰底。 */

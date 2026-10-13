@@ -10,12 +10,36 @@ import { REPO_ROOT, scanSources } from "./sourceScan";
 // 元件寫死手指或禁止游標就會讓桌面與網頁各自漂移，因此一律擋下。
 const SCAN_ROOTS = ["packages/ui/src/components", "apps/desktop/src", "apps/server-web/src"];
 
-/** 整字的 cursor-pointer／cursor-not-allowed（含 disabled:、peer-disabled: 等變體前綴）。 */
-const HARDCODED_CURSOR = /(?<![\w-])cursor-(?:pointer|not-allowed)(?![\w-])/;
+/** 寫死的手指或禁止游標：整字 class（含 disabled:、peer-disabled: 等變體前綴）、任意值 cursor-[…]、
+ * 任意屬性 [cursor:…] 與行內 style。第三方套件（Streamdown 控制鈕）的 class 掃不到，由 Markdown 容器的
+ * 任意變體蓋回共用設定（markdownCode.test.tsx 釘住）。 */
+const HARDCODED_CURSOR =
+  /(?<![\w-])cursor-(?:pointer|not-allowed)(?![\w-])|cursor-\[(?:pointer|not-allowed)\]|\[cursor:(?:pointer|not-allowed)\]|\bcursor\s*:\s*["'`](?:pointer|not-allowed)["'`]/;
 
 const readCss = (path: string) => readFileSync(`${REPO_ROOT}${path}`, "utf8");
 
 describe("可點元素游標守門", () => {
+  it("比對式抓得到各種寫死游標的寫法，不誤判共用設定（守門本身不空轉）", () => {
+    for (const hit of [
+      'className="cursor-pointer"',
+      "disabled:cursor-not-allowed",
+      "peer-disabled:cursor-not-allowed",
+      "cursor-[pointer]",
+      "[cursor:not-allowed]",
+      'style={{ cursor: "pointer" }}',
+    ]) {
+      expect(HARDCODED_CURSOR.test(hit), hit).toBe(true);
+    }
+    for (const miss of [
+      "cursor-(--cursor-interaction)",
+      "[&_.name-chip]:cursor-(--cursor-interaction)",
+      "disabled:cursor-default",
+      "pointer-events-none",
+    ]) {
+      expect(HARDCODED_CURSOR.test(miss), miss).toBe(false);
+    }
+  });
+
   it("元件原始碼不寫死手指或禁止游標", () => {
     const violations = scanSources(SCAN_ROOTS, [".ts", ".tsx"])
       .filter(([, source]) => HARDCODED_CURSOR.test(source))
@@ -37,9 +61,12 @@ describe("可點元素游標守門", () => {
     expect(base!.includes('[role="button"]'), '全域規則選擇器缺 [role="button"]').toBe(true);
   });
 
-  it("桌面根樣式把游標變數覆寫為箭頭", () => {
+  it("桌面根樣式把游標變數覆寫為箭頭，且排在 theme.css 匯入之後", () => {
     const css = readCss("apps/desktop/src/index.css");
-    expect(css.includes("--cursor-interaction: default"), "apps/desktop/src/index.css 缺 --cursor-interaction: default").toBe(
+    const override = css.indexOf("--cursor-interaction: default");
+    expect(override >= 0, "apps/desktop/src/index.css 缺 --cursor-interaction: default").toBe(true);
+    // 兩段 :root 都不在 layer 內、權重相同，靠先後取勝：覆寫必須在匯入之後。
+    expect(override > css.indexOf('/theme.css";'), "--cursor-interaction: default 必須排在 theme.css 匯入之後").toBe(
       true,
     );
   });

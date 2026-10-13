@@ -76,6 +76,8 @@ describe("RemoteWorkspaceRecovery", () => {
 
     const disclosure = screen.getByRole("button", { name: "技術細節" });
     expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    // 無外框的可點元素：滑過有前景色 5% 淡底（spec desktop-app「可點元素的游標與 hover 回饋」）。
+    expect(disclosure.className).toContain("hover:bg-foreground/5");
     expect(screen.queryByText(/internal transport diagnostics/)).toBeNull();
     fireEvent.click(disclosure);
     expect(disclosure.getAttribute("aria-expanded")).toBe("true");

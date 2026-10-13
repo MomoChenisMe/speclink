@@ -136,6 +136,12 @@ const CONTROLS: StreamdownProps["controls"] = { code: { copy: true, download: fa
 const ICONS: StreamdownProps["icons"] = { CopyIcon: Copy, CheckIcon: Check };
 const LINK_SAFETY: StreamdownProps["linkSafety"] = { enabled: false };
 const SHIKI_THEME: StreamdownProps["shikiTheme"] = ["github-light", "github-dark"];
+/** Streamdown 內建控制鈕（程式碼複製鈕、圖片下載鈕）寫死手指與停用禁止游標的 class，屬 utilities 層、
+ * 蓋過 theme.css 的 base 層全域規則。容器的任意變體選擇器權重較高，把游標蓋回共用設定；程式碼區塊的
+ * 無外框圖示鈕另補圓角與 hover 淡底，圖片下載鈕自帶底色、保留它的 hover 底色
+ * （desktop-app「可點元素的游標與 hover 回饋」）。 */
+const CONTROL_BUTTON_CLS =
+  "[&_button]:cursor-(--cursor-interaction) [&_button:disabled]:cursor-default [&_[data-streamdown=code-block-actions]_button]:rounded-md [&_[data-streamdown=code-block-actions]_button:enabled]:hover:bg-foreground/5";
 
 /** 最小 mdast 節點視圖——只用到 type／value／children 與 hast 覆寫資料，不引入
  * 型別套件相依。 */
@@ -243,7 +249,7 @@ export function Markdown({ content, empty, specKeywords = false, className, name
     return <div className="text-muted-foreground text-sm py-6">{empty ?? t("common.noContent")}</div>;
   }
   return (
-    <div className={cn("markdown max-w-[96ch]", className)}>
+    <div className={cn("markdown max-w-[96ch]", CONTROL_BUTTON_CLS, className)}>
       <Streamdown
         mode="static"
         remarkPlugins={remarkPlugins}

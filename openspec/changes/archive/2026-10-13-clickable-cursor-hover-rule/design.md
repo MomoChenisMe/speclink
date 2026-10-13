@@ -45,6 +45,8 @@ theme.css 新增：
 
 放在 base layer：元件上的 utility（`cursor-default`、`cursor-grab`）屬 utilities layer，仍可覆寫；停用的元素不命中，維持瀏覽器預設箭頭。`Button`、`NavItem`、分頁、文件樹節點、勾選框（Radix 以 button 實作）、名稱籤（Markdown 外掛產生的 `span[role="button"]`）都因此得到變數游標，不需逐一加 class。
 
+第三方元件寫死的游標 class 屬 utilities layer，會蓋過這條規則：Markdown 內 Streamdown 的程式碼複製鈕寫死手指與停用禁止游標。Markdown 容器以任意變體（`[&_button]:cursor-(--cursor-interaction)`、`[&_button:disabled]:cursor-default`）蓋回共用設定——同屬 utilities layer、選擇器權重較高；程式碼區塊的無外框圖示鈕另補圓角與 hover 淡底（`[&_[data-streamdown=code-block-actions]_button]:rounded-md`、`[&_[data-streamdown=code-block-actions]_button:enabled]:hover:bg-foreground/5`）；圖片下載鈕自帶底色，只蓋回游標、保留它的 hover 底色。D6 守門掃不到套件內的 class，由 Markdown 測試釘住容器變體（品質站第 1 輪補入）。
+
 ### D3 非按鈕的可點元素取用變數 class
 
 現有每一處 `cursor-pointer` 一律機械式換成 Tailwind v4 的變數寫法 `cursor-(--cursor-interaction)`（產生 `cursor: var(--cursor-interaction)`）。不逐一判斷該元素是否已被 D2 涵蓋：對 `<button>` 與 `role="button"` 元素重複但無害，對 `<label>`（任務列）、無 role 的 `<div>`（看板卡片 Card、網頁後台的可選取卡片與表格列）則是必要。名稱籤容器的任意變體 `[&_.name-chip]:cursor-pointer` 同樣換成 `[&_.name-chip]:cursor-(--cursor-interaction)`。
@@ -54,7 +56,8 @@ theme.css 新增：
 ### D4 停用與唯讀為箭頭且無 hover
 
 - 元件庫原語的 `disabled:cursor-not-allowed`（勾選框、輸入框、多行輸入、下拉觸發鈕、開關）與標籤的 `peer-disabled:cursor-not-allowed` 改成 `cursor-default` 對應變體。
-- 開啟專案畫面：選擇卡（ChoiceCard）與單選列（RadioRow）停用時改 `cursor-default`，hover 底色與框線只在未停用時套用；最近開啟列的外層在列停用（開啟進行中 `busy`）時不套 hover 底色，其內按鈕的 `disabled:cursor-not-allowed` 改 `disabled:cursor-default`；remote marker 與本機 openspec 並存時的衝突對話框（RemoteConflictDialog），三張選擇卡在處理中（`busy`）一起停用，hover 底色與框線只在未處理中套用（apply 期掃描停用元素時補入；游標本來就不命中 D2 的全域規則，維持箭頭）。
+- 開啟專案畫面：選擇卡（ChoiceCard）與單選列（RadioRow）停用時改 `cursor-default`，hover 底色與框線只在未停用時套用；最近開啟列的外層在列停用（開啟進行中 `busy`）時不套 hover 底色，其內按鈕的 `disabled:cursor-not-allowed` 改 `disabled:cursor-default`；remote marker 與本機 openspec 並存時的衝突對話框（RemoteConflictDialog），三張選擇卡在處理中（`busy`）一起停用，hover 底色與框線只在未處理中套用（apply 期掃描停用元素時補入；游標本來就不命中 D2 的全域規則，維持箭頭）。選擇卡、單選列與衝突對話框選擇卡都是原生 `<button>`，以 Tailwind 的 `enabled:hover:` 變體表達「只在可用時 hover」；最近開啟列的外層是 `div`，維持依 `busy` 的條件 class。
+- 遠端復原的技術細節鈕（無外框）補上前景色 5% 的 hover 淡底：proposal 前提把它列為已統一，實際只有文字變色（品質站第 1 輪補入）。
 - `Button` 原語已有 `disabled:pointer-events-none`（無 hover、游標取下層的箭頭），不需改。共用清單列停用分支已是 `cursor-default` 且無 hover，不需改。
 
 ### D5 選單項與下拉選項取用變數
