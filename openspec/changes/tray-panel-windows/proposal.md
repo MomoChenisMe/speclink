@@ -25,10 +25,10 @@
 
 - 目標使用者與情境：用 Windows 版 desktop 追蹤變更生命週期的開發者／PO／PM，對應 propose 之後到 archive 之前「看狀態、決定下一個動詞」的時刻。
 - Affected specs: `tray-status-menu`
-- 影響的 app：只有 `apps/desktop`——Tauri 殼的面板視窗模組、command 委派、外掛註冊與能力宣告，speclink-desktop-core 新增兩個純函式（面板水平限制、失焦後的重開抑制），系統匣建立與點擊分流、面板前端的平台外觀分支；speclink-core、speclink-cli、speclink-host、server 不動。
+- 影響的 app：只有 `apps/desktop`——Tauri 殼的面板視窗模組、command 委派、外掛註冊與能力宣告，speclink-desktop-core 新增兩個純函式（面板位置計算、失焦後的重開抑制），系統匣建立與點擊分流、面板前端的平台外觀分支；speclink-core、speclink-cli、speclink-host、server 不動。
 - 相容性影響：沒有 CLI 指令、`--json` 輸出、設定欄位或技能的變更；不新增 IPC command（沿用 toggle_tray_panel／hide_tray_panel）。Windows 使用者升級後左鍵由原生選單改為面板，右鍵仍是原本的原生選單；macOS 與 Linux 行為不變。
 - 依賴：建立在 tray-panel-content-priority 的面板版面之上，且兩者都改「面板樣式（macOS）」，須在其後實作與封存。
 - Affected code:
-  - New: apps/desktop/core/src/tray_panel.rs, apps/desktop/src-tauri/capabilities/tray-panel.json
+  - New: apps/desktop/core/src/tray_panel.rs, apps/desktop/src-tauri/capabilities/tray-panel.json, apps/desktop/src-tauri/capabilities/tray-panel-macos.json（positioner 權限只給 macOS：Windows 面板改由殼依圖示位置自行定位）
   - Modified: apps/desktop/core/src/lib.rs, apps/desktop/src-tauri/Cargo.toml, apps/desktop/src-tauri/src/panel.rs, apps/desktop/src-tauri/src/lib.rs, apps/desktop/src/tray.ts, apps/desktop/src/store.ts, apps/desktop/src/panel/TrayPanel.tsx, apps/desktop/src/panel/main.tsx, apps/desktop/src/__tests__/tray.test.ts, apps/desktop/src/__tests__/store.test.ts, apps/desktop/src/__tests__/trayPanel.test.tsx, apps/desktop/src/__tests__/themeBoot.test.ts, apps/desktop/src/__tests__/platform.test.ts（tray.ts 改以注入平台取代 isMacOS 後，detectMacOS 已無程式使用而移除，連帶移除其斷言）
   - Removed: apps/desktop/src-tauri/capabilities/macos.json

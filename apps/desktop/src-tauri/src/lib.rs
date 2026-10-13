@@ -20,6 +20,8 @@
 //! - `connection_state`——讀記憶體中的 TokenManager 健康狀態
 //! - `remote_unwatch`——退訂事件中樞，只動記憶體中的訂閱表
 //! - `toggle_tray_panel`、`hide_tray_panel`、`quit_app`——純視窗／行程操作
+//!   （例外：Windows 的 `toggle_tray_panel` 為 async——在同步 command 內建立視窗，
+//!   Windows 會因 WebView2 死結，見 Tauri `WebviewWindowBuilder::new` 的 Known issues）
 //! - tray recovery 動作轉發（[`tray`] 模組）——只釘 action 名稱與聚焦政策
 //!
 //! 新增 command 時：只要碰到檔案系統或子進程，就是 async＋spawn_blocking。
@@ -31,8 +33,6 @@ mod fs_actions;
 pub mod remote;
 pub mod tray;
 mod watch;
-
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod panel;
 
 use std::path::PathBuf;
@@ -1847,32 +1847,29 @@ fn remote_unwatch(app: tauri::AppHandle, connection_id: String, project: String,
     events.unregister(&remote_locator_key(&connection_id, &project, &repo));
 }
 
-/// 系統匣面板 toggle（tray-status-menu「面板樣式」）：macOS 與 Windows 委派
-/// panel 模組；Linux 恆回 Err（Linux 的系統匣樣式恆為原生選單、不可達，此為守門）。
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+/// 系統匣面板 toggle（tray-status-menu「面板樣式」）：委派 panel 模組（Linux 恆回 Err，
+/// 系統匣樣式恆為原生選單、不可達，此為守門）。macOS 維持同步——NSPanel 操作須在主執行緒。
+#[cfg(not(target_os = "windows"))]
 #[tauri::command]
 fn toggle_tray_panel(app: tauri::AppHandle) -> Result<(), String> {
     panel::toggle(&app)
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+/// Windows 版必須 async：首次開啟會建立面板視窗，在同步 command 內建立視窗 Windows 會因
+/// WebView2 死結（Tauri `WebviewWindowBuilder::new` 的 Known issues；tray-panel-windows design D6）。
+#[cfg(target_os = "windows")]
 #[tauri::command]
-fn toggle_tray_panel() -> Result<(), String> {
-    Err("tray panel is unavailable on this platform".to_string())
+async fn toggle_tray_panel(app: tauri::AppHandle) -> Result<(), String> {
+    panel::toggle(&app)
 }
 
 /// 面板交接主視窗前先收合（tray-status-menu「面板交接主視窗後滑鼠互動完整」）：
-/// macOS 與 Windows 委派 panel 模組的冪等 hide；Linux 無面板，無事——喚起主視窗的
-/// 前端路徑在各平台共用，此命令不得成為阻斷點。不會失敗，故無回傳值。
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+/// 委派 panel 模組的冪等 hide（Linux 無面板，無事）——喚起主視窗的前端路徑在各平台共用，
+/// 此命令不得成為阻斷點。不會失敗，故無回傳值。
 #[tauri::command]
 fn hide_tray_panel(app: tauri::AppHandle) {
     panel::hide(&app);
 }
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-#[tauri::command]
-fn hide_tray_panel() {}
 
 /// 結束 app（tray-status-menu「開啟視窗與結束動作」）：webview 無法自行結束
 /// 行程的能力橋接——面板動作區「結束」經此命令結束整個 app。
@@ -1889,12 +1886,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
-    // 面板樣式相依（tray-panel-windows design D3／D6）：positioner 供 tray 相對定位
-    // （macOS 與 Windows）；nspanel 供不搶焦點的 NSPanel 容器（僅 macOS）。
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    let builder = builder.plugin(tauri_plugin_positioner::init());
+    // macOS 面板相依：positioner 供 tray 相對定位、nspanel 供不搶焦點的 NSPanel 容器。
+    // Windows 面板由 panel 模組依圖示位置自行定位（tray-panel-windows design D3），不需外掛。
     #[cfg(target_os = "macos")]
-    let builder = builder.plugin(tauri_nspanel::init());
+    let builder = builder
+        .plugin(tauri_plugin_positioner::init())
+        .plugin(tauri_nspanel::init());
     builder
         .setup(|app| {
             // 監看槽位（決策 5）：啟動僅註冊空槽——前端還原分頁後以

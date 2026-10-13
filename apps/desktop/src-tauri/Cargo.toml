@@ -41,13 +41,11 @@ axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "net"] }
 tiny_http = "0.12"
 
-# 面板樣式（tray-status-menu「面板樣式」）在 macOS 與 Windows：Linux 建置不攜入。
-[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
-tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
-
-# macOS 面板的 NSPanel 容器與毛玻璃材質：其他平台建置不攜入。
+# macOS 面板（tray-status-menu「面板樣式」）的 NSPanel 容器、tray 相對定位與毛玻璃材質：
+# 其他平台建置不攜入（Windows 面板由殼依圖示位置自行定位，tray-panel-windows design D3）。
 [target.'cfg(target_os = "macos")'.dependencies]
 # 釘 commit（v2.1 分支 2026-07-16 快照）：git 相依的供應鏈衛生，升級須明改 rev。
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", rev = "a3122e894383aa068ec5365a42994e3ac94ba1b6" }
+tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
 # 釘 0.6 與 tauri 內建 window effects 的同版共用——不同版本並存會重複連結 objc 類別符號。
 window-vibrancy = "0.6"

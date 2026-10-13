@@ -9,7 +9,7 @@
 
 來源討論 `tray-panel-windows` 定案：Windows 左鍵開閉面板、右鍵顯示原生選單，畫面與 macOS 共用，差異收在視窗層。本變更建立在 `tray-panel-content-priority` 的面板版面（生命週期在前、頁尾單列、卡片收合、補光層約六成）之上。
 
-邊界：沒有新的領域邏輯，speclink-core／speclink-host 不動；兩個可單元測試的純計算（面板水平限制、失焦後的重開抑制）依專案慣例放 speclink-desktop-core，Tauri 殼只做視窗操作與委派。
+邊界：沒有新的領域邏輯，speclink-core／speclink-host 不動；兩個可單元測試的純計算（面板位置、失焦後的重開抑制）依專案慣例放 speclink-desktop-core，Tauri 殼只做視窗操作與委派。
 
 ## Goals / Non-Goals
 
@@ -43,12 +43,14 @@ Windows 分支以一般 WebviewWindow 建立面板：無標題列與外框（dec
 
 `apps/desktop/src/panel/main.tsx` 以既有的 `detectPlatform()`（apps/desktop/src/platform.ts）判斷平台並傳給 TrayPanel。panel-root 在 macOS 維持 13px 圓角與約六成的補光層；在 Windows 改為不透明側欄底色（`bg-sidebar`）、不畫圓角。其他所有呈現（卡片、列、收合、頁尾）不分平台。
 
-### D3 定位：圖示上方置中，大小改變就重新定位並限制在螢幕內
+### D3 定位：依圖示位置在其螢幕可用範圍內自算，大小改變就重新定位
 
-Windows 的開啟流程：先以 positioner 的 `TrayCenter` 移動視窗（圖示上方置中；上方放不下時套件自動改放下方），再把水平位置限制在圖示所在螢幕的可用範圍（work area）內。面板視窗收到大小改變事件時重做同一套定位——positioner 以「上次點擊的圖示位置＋目前視窗高度」重算，所以底部自然維持貼齊工作列。
+Windows 的開啟流程：讀取系統匣圖示的實際位置（Tauri 的 tray rect，實體像素）並記下，找出圖示中心所在的螢幕，以該螢幕的可用範圍（work area）算出面板位置後移動視窗。面板視窗收到大小改變事件時，以記下的圖示位置與目前視窗大小重做同一套計算，所以貼齊工作列的那一邊維持貼齊。記下開啟當下的位置、不在事後重查，是因為圖示在溢出區（^）時，溢出視窗收起後就查不到原本的位置。
 
-- 水平限制的計算是純函式，放 `apps/desktop/core/src/tray_panel.rs`：輸入候選 x、視窗寬、work area 左緣與寬度，輸出落在範圍內的 x（視窗比 work area 還寬時貼齊左緣）。
-- positioner 外掛、相依與能力宣告擴及 Windows：Cargo.toml 的 positioner 移到「macOS 或 Windows」的相依區段（nspanel 與 window-vibrancy 仍只在 macOS）；lib.rs 在 Windows 也註冊 positioner；`capabilities/macos.json` 改名為 `capabilities/tray-panel.json`、platforms 加入 windows（內容不變），apps/desktop/src/__tests__/themeBoot.test.ts 的讀檔路徑跟著改。
+- 位置計算是純函式 `panel_position`，放 `apps/desktop/core/src/tray_panel.rs`：輸入圖示矩形、面板寬高與 work area，輸出面板左上角。水平以圖示為中心，再限制在 work area 內（超出右緣往左貼齊、超出左緣往右貼齊，面板比範圍寬時貼齊左緣）；垂直看圖示在 work area 垂直中線的哪一側——中線以下（工作列在底部）時面板底部貼齊 work area 下緣，否則（工作列在頂端）面板頂部貼齊 work area 上緣。只看圖示所在的螢幕，其他螢幕的位置不影響結果。
+- 圖示位置或圖示所在螢幕取不到時不移動視窗，面板照樣顯示（見 Failure modes）。
+- positioner 只留在 macOS：Cargo.toml 的 positioner 維持在 macOS 相依區段，lib.rs 只在 macOS 註冊，tray.ts 只在 macOS 把點擊事件餵給 positioner，positioner 權限放在只給 macOS 的 `capabilities/tray-panel-macos.json`。面板視窗操作的能力宣告 `capabilities/macos.json` 改名為 `capabilities/tray-panel.json`、platforms 加入 windows，apps/desktop/src/__tests__/themeBoot.test.ts 的讀檔路徑跟著改。
+- 替代方案「positioner 的 `TrayCenter` 加上水平限制」（原定案，品質關卡後改掉）：TrayCenter 以整個虛擬桌面的 y < 0 判斷上方放不下，副螢幕位於主螢幕上方時會把面板翻到另一個螢幕；它也以圖示上緣而非工作列上緣對齊，面板會壓到工作列幾 px。
 - 替代方案「固定放在螢幕右下角」：工作列可能在頂端或圖示不在右側，被否決。
 
 ### D4 焦點與開閉競態保護
@@ -56,6 +58,7 @@ Windows 的開啟流程：先以 positioner 的 `TrayCenter` 移動視窗（圖�
 Windows 沒有不搶焦點的視窗：面板顯示後取得焦點，失焦（WindowEvent::Focused(false)）即收起並記下收起時間。之後的開啟要求若距收起不到 300ms 就忽略——在 Windows 上點系統匣圖示會先讓面板失焦收起、接著點擊事件才送到，沒有這層保護，點圖示關面板會閃一下又打開。
 
 - 判斷是否忽略是純函式，放 `apps/desktop/core/src/tray_panel.rs`：輸入上次收起時間（可為無）、現在時間與門檻 300ms，輸出是否忽略。
+- 上次收起時間與開啟當下的圖示位置（D3）存在面板狀態裡，隨面板建立以 `app.manage` 註冊，與殼層其他共用狀態同一做法。
 - macOS 維持 NSPanel 的失焦通知與不搶焦點，不套這層保護。
 
 ### D5 點擊分流：Windows 左鍵面板、右鍵原生選單
@@ -68,9 +71,11 @@ Windows 沒有不搶焦點的視窗：面板顯示後取得焦點，失焦（Win
 
 ### D6 Tauri 殼的模組與 command 委派
 
-`mod panel` 與兩個 command 改為「macOS 或 Windows」編譯；panel.rs 內以平台區塊分開兩套視窗實作（macOS 為既有 NSPanel 實作，Windows 為 D1／D3／D4），對外只露出同樣的 `toggle` 與 `hide`。Linux 的 command 維持回 Err／無事。不新增 IPC command。
+panel 模組在所有平台編譯，是唯一的平台差異落點：模組內以平台區塊分開三套實作——macOS 為既有 NSPanel 實作，Windows 為 D1／D3／D4，Linux 為守門（toggle 回 Err、hide 無事）——對外只露出同樣的 `toggle` 與 `hide`，lib.rs 的兩個 command 因此不必列舉平台。兩平台共用的視窗設定（標籤、尺寸、無外框、不可調整大小、不進工作列、置頂、先隱藏）收在同一個 builder 前段，各平台再疊上自己的外觀設定。不新增 IPC command。
 
-- 介面深度：panel 模組是唯一的平台差異落點，承載建立、定位、重新定位、失焦收起與競態保護；刪掉它 Windows 退回只有原生選單。
+- `toggle_tray_panel` 在 Windows 為 async command：首次開啟會建立面板視窗，而在同步 command 內建立視窗，Windows 會因 WebView2 死結（Tauri `WebviewWindowBuilder::new` 的 Known issues）。macOS 維持同步 command，因為 NSPanel 的操作必須在主執行緒。
+- 主視窗關閉時一併關閉 Windows 面板：Tauri 在所有視窗都關閉後才結束 app，常駐隱藏的面板會讓關主視窗後行程不結束；一併關閉才維持加入面板前「關主視窗即結束 app」的行為。
+- 介面深度：panel 模組承載建立、定位、重新定位、失焦收起與競態保護；刪掉它 Windows 退回只有原生選單。
 
 ### D7 規格：以「面板樣式」取代「面板樣式（macOS）」
 
@@ -86,30 +91,33 @@ Windows 沒有不搶焦點的視窗：面板顯示後取得焦點，失焦（Win
 - Windows：左鍵放開系統匣圖示 → 面板在圖示上方水平置中出現、底部貼工作列（工作列在頂端時改在圖示下方）、完整落在螢幕可用範圍內、取得焦點；內容與 macOS 面板相同。
 - Windows：面板高度改變（收合、展開、資料增減）→ 面板重新定位，貼齊工作列的那一邊維持貼齊。
 - Windows：面板開著時點圖示 → 面板收起且保持收起；點面板外任何地方 → 收起。
-- Windows：右鍵放開系統匣圖示 → 顯示原生選單（專案區、生命週期分區、討論區、動作區），面板不受影響。
+- Windows：右鍵放開系統匣圖示 → 顯示原生選單（專案區、生命週期分區、討論區、動作區），不開啟面板（面板開著時，點圖示會讓它失焦而收起）。
 - Windows：面板外觀為不透明側欄底色、無自繪圓角；Windows 11 由系統呈現圓角與陰影。
 - Windows：面板建立失敗 → 左鍵也開原生選單，設定頁浮出單行錯誤。
+- Windows：多螢幕時面板留在圖示所在的螢幕，上下邊依該螢幕的工作列位置決定。
+- Windows：開過面板後關閉主視窗 → app 照常結束。
 - macOS 與 Linux 的系統匣行為不變。
 
 **Interface / data shape**
 
 - 無新 IPC command；`toggle_tray_panel`、`hide_tray_panel` 在 Windows 生效。
 - `TrayStyle` 型別不變（panel／native-menu），只改初值的平台判斷。
-- speclink-desktop-core 新增模組 `tray_panel`，匯出兩個純函式：水平限制（候選 x、視窗寬、work area 左緣、work area 寬 → x）與重開抑制（上次收起時間、現在時間 → 是否忽略，門檻常數 300ms）。
-- 能力宣告檔改名為 `capabilities/tray-panel.json`，platforms 為 macOS 與 windows。
+- speclink-desktop-core 新增模組 `tray_panel`，匯出實體像素矩形型別 `PxRect` 與兩個純函式：面板位置（圖示矩形、面板寬、面板高、work area → 面板左上角）與重開抑制（上次收起時間、現在時間 → 是否忽略，門檻 300ms 為模組內常數）。
+- 能力宣告檔改名為 `capabilities/tray-panel.json`，platforms 為 macOS 與 windows；positioner 權限另置於只給 macOS 的 `capabilities/tray-panel-macos.json`。
 
 **Failure modes**
 
 - 面板視窗建立失敗或 toggle 回錯 → 走既有 `panelFallback`（native-menu＋設定頁單行錯誤），不崩潰。
-- positioner 尚未取得圖示位置（理論上點擊前不會發生）→ 定位失敗回錯，同樣走 `panelFallback`。
-- 取不到螢幕 work area → 略過水平限制，維持 positioner 的位置。
+- Windows 只有面板視窗建立或顯示失敗時 toggle 回錯；收起失敗與定位失敗不回錯，暫時性問題不會把整個執行期降為原生選單。
+- Windows 取不到圖示位置或圖示所在螢幕 → 不移動視窗，面板照樣顯示在原位。
+- macOS 維持原樣：positioner 定位失敗回錯，走 `panelFallback`。
 
 **Acceptance criteria**
 
-- `cargo test -p speclink-desktop-core`：水平限制（範圍內不變、超出右緣往左移、超出左緣往右移、視窗比範圍寬時貼左緣）與重開抑制（無收起紀錄不忽略、299ms 忽略、300ms 不忽略）的單元測試全綠。
+- `cargo test -p speclink-desktop-core`：水平限制（範圍內不變、超出右緣往左移、超出左緣往右移、視窗比範圍寬時貼左緣）、面板位置（spec Example「水平位置限制」三列與「垂直位置」三列：工作列在底部、在頂端、副螢幕位於主螢幕上方）與重開抑制（無收起紀錄不忽略、299ms 忽略、300ms 不忽略）的單元測試全綠。
 - `npm test -w apps/desktop`：
   - store：Windows UA 的 trayStyle 初值為 panel、Linux UA 為 native-menu、macOS 為 panel。
-  - tray：Windows 的 panel 樣式掛原生選單且 showMenuOnLeftClick 為 false，只有左鍵放開觸發 onPanelToggle、右鍵不觸發；macOS 左右鍵都觸發且不掛選單；面板建立失敗後轉 native-menu。
+  - tray：Windows 的 panel 樣式掛原生選單且 showMenuOnLeftClick 為 false，只有左鍵放開觸發 onPanelToggle、右鍵不觸發；macOS 左右鍵都觸發且不掛選單；面板建立失敗後轉 native-menu；點擊事件只在 macOS 餵給 positioner。
   - trayPanel：Windows 平台的 panel-root 不含圓角與半透明補光、含不透明側欄底色；macOS 維持圓角與 `bg-sidebar/60`。
   - themeBoot：改讀 `capabilities/tray-panel.json`，斷言不變。
 - CI 的 windows-latest 跑 `cargo test --workspace`，Windows 分支可編譯。
@@ -123,9 +131,10 @@ Windows 沒有不搶焦點的視窗：面板顯示後取得焦點，失焦（Win
 ## Risks / Trade-offs
 
 - [使用者暫時無法在真機測試，Windows 行為只能靠 CI 編譯與單元測試把關] → 面板建立失敗退回原生選單的保險仍在；真機項目列為 [M] 任務，封存前必須完成。
-- [positioner 的 TrayCenter 在 Windows 多螢幕、高 DPI 下的座標是否正確只有真機看得到] → 列入 [M] 檢查；水平限制用面板所在螢幕的 work area，降低超出螢幕的機率。
+- [圖示位置與螢幕可用範圍在 Windows 多螢幕、高 DPI 下的座標是否一致只有真機看得到] → 列入 [M] 檢查；兩者都取實體像素，位置計算只看圖示所在的螢幕。
+- [Tauri 殼以固定 id `speclink-tray` 找系統匣圖示，必須與 tray.ts 建立圖示的 id 一致] → 兩處以註解互相指向；id 不一致時取不到圖示位置，面板照樣顯示但不定位。
 - [不透明視窗在深色模式下，WebView2 首次繪製前可能先閃一下白底] → 面板 lazy 建立後常駐隱藏，只在第一次開啟時可能發生；真機若明顯，再於建立視窗時指定與主題相符的背景色。
 - [300ms 的抑制門檻在很慢的機器上可能不夠，或擋到使用者刻意快速再開] → 門檻是常數，真機若有問題可調；快速再開只需再點一次。
 - [REMOVED＋ADDED 讓「面板樣式」的溯源歷史從本變更重新開始] → 舊需求的歷史仍留在已封存變更與 git 中；這是引擎不允許同一 delta 改名又改內容的必然結果。
 - 回歸對照：沒有 CLI 輸出、golden 檔受影響；回歸面是 desktop 的 vitest、speclink-desktop-core 的 cargo test 與 CI 三平台的 workspace 編譯。
-- 跨平台：Linux 走原生選單、不編譯 panel 模組；macOS 實作不動，只是被包進平台區塊；Windows 為新路徑。
+- 跨平台：Linux 走原生選單、panel 模組只編譯守門區塊；macOS 實作不動，只是被包進平台區塊並改用共用的 builder 前段；Windows 為新路徑。
