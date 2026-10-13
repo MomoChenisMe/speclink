@@ -28,7 +28,7 @@ type ChipKind = "spec" | "change" | "archived" | "discussion";
 
 /** 內文名稱籤的款式：由容器以任意變體給（籤是 Markdown 外掛產生的 span）。 */
 const NAME_CHIP_HOST_CLS =
-  "[&_.name-chip]:cursor-pointer [&_.name-chip]:rounded [&_.name-chip]:border [&_.name-chip]:border-border [&_.name-chip]:bg-background [&_.name-chip]:px-1 [&_.name-chip]:font-mono [&_.name-chip]:text-[0.86em] [&_.name-chip]:text-primary [&_.name-chip:hover]:underline";
+  "[&_.name-chip]:cursor-(--cursor-interaction) [&_.name-chip]:rounded [&_.name-chip]:border [&_.name-chip]:border-border [&_.name-chip]:bg-background [&_.name-chip]:px-1 [&_.name-chip]:font-mono [&_.name-chip]:text-[0.86em] [&_.name-chip]:text-primary [&_.name-chip:hover]:underline";
 
 type MetaRow = { key: string; label: string; value: ReactNode };
 

@@ -7,6 +7,12 @@
 /* 共用元件庫在 node_modules（Tailwind 預設不掃），明確納入其 class 來源。 */
 @source "../../../packages/ui/src";
 
+/* 桌面可點元素維持箭頭、以 hover 底色表示可點（desktop-app「可點元素的游標與 hover 回饋」）；
+   覆寫共用樣式的游標變數，主視窗與系統匣面板共用這份根樣式。 */
+:root {
+  --cursor-interaction: default;
+}
+
 /* 觸控板水平滑動時 WebKit 對整頁做彈性回彈（整個畫面跟著手指平移）。桌面的返回手勢由
    SwipeBack 接手，根層關掉水平回彈；只放桌面——瀏覽器裡的 server-web 要保留瀏覽器自己的滑動返回。 */
 html,

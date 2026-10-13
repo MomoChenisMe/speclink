@@ -399,7 +399,7 @@ describe("TaskList 整列可點", () => {
     expect(row).toBeTruthy();
     const checkbox = screen.getByRole("checkbox", { name: "任務 1" });
     expect(row.htmlFor).toBe(checkbox.id);
-    expect(row.className).toContain("cursor-pointer");
+    expect(row.className).toContain("cursor-(--cursor-interaction)");
     expect(row.className).toContain("hover:bg-foreground/5");
     fireEvent.click(screen.getByText("first"));
     expect(onToggle).toHaveBeenCalledTimes(1);

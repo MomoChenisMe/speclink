@@ -64,7 +64,7 @@ describe("DesignDoc", () => {
     expect(head.textContent).toContain("D1");
     expect(head.textContent).toContain("2 點");
     expect(screen.queryByText("決策 1 的第一點")).toBeNull();
-    expect(head.className).toContain("cursor-pointer");
+    expect(head.className).toContain("cursor-(--cursor-interaction)");
     expect(head.className).toContain("hover:bg-foreground/5");
     fireEvent.click(head);
     expect(head.getAttribute("aria-expanded")).toBe("true");

@@ -49,6 +49,9 @@
   --stage-proposed: var(--primary);
   --stage-in-progress: var(--status-progress);
   --stage-ready: var(--status-success);
+  /* 可點元素的游標（desktop-app「可點元素的游標與 hover 回饋」）：網頁預設手指；
+     桌面 app 的根樣式覆寫為 default（箭頭），可點性改由 hover 底色表示。 */
+  --cursor-interaction: pointer;
 }
 
 /* Tailwind 的 dark: 變體（Streamdown 程式碼區塊、字標切換）與深色 token 同一套觸發：系統偏好深色
@@ -170,6 +173,15 @@
   font-family: "EllipsisLatin";
   src: local("Helvetica Neue"), local("Arial"), local("Segoe UI"), local("DejaVu Sans");
   unicode-range: U+2026;
+}
+
+/* 可用的原生按鈕與 role="button" 取用游標變數，新寫的按鈕不必記得加游標；停用的不命中，
+   維持瀏覽器預設箭頭。放 base layer：元件上的 cursor-default／cursor-grab 屬 utilities，仍可覆寫。 */
+@layer base {
+  button:not(:disabled):not([aria-disabled="true"]),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: var(--cursor-interaction);
+  }
 }
 
 body {

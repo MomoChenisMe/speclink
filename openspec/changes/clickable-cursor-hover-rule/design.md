@@ -54,7 +54,7 @@ theme.css 新增：
 ### D4 停用與唯讀為箭頭且無 hover
 
 - 元件庫原語的 `disabled:cursor-not-allowed`（勾選框、輸入框、多行輸入、下拉觸發鈕、開關）與標籤的 `peer-disabled:cursor-not-allowed` 改成 `cursor-default` 對應變體。
-- 開啟專案畫面：選擇卡（ChoiceCard）與單選列（RadioRow）停用時改 `cursor-default`，hover 底色與框線只在未停用時套用；最近開啟列的外層在列停用（開啟進行中 `busy`）時不套 hover 底色，其內按鈕的 `disabled:cursor-not-allowed` 改 `disabled:cursor-default`。
+- 開啟專案畫面：選擇卡（ChoiceCard）與單選列（RadioRow）停用時改 `cursor-default`，hover 底色與框線只在未停用時套用；最近開啟列的外層在列停用（開啟進行中 `busy`）時不套 hover 底色，其內按鈕的 `disabled:cursor-not-allowed` 改 `disabled:cursor-default`；remote marker 與本機 openspec 並存時的衝突對話框（RemoteConflictDialog），三張選擇卡在處理中（`busy`）一起停用，hover 底色與框線只在未處理中套用（apply 期掃描停用元素時補入；游標本來就不命中 D2 的全域規則，維持箭頭）。
 - `Button` 原語已有 `disabled:pointer-events-none`（無 hover、游標取下層的箭頭），不需改。共用清單列停用分支已是 `cursor-default` 且無 hover，不需改。
 
 ### D5 選單項與下拉選項取用變數

@@ -10,7 +10,7 @@ import { DELTA_BORDER } from "./DeltaBadges";
 import { MoreToggle, SECTION_HEADING_CLS } from "./DocParts";
 import { Markdown } from "./Markdown";
 
-/** 收合列的可點提示：手指游標、滑過淡底（與文件樹節點同一濃度）。 */
+/** 收合列的可點提示：共用游標變數（網頁手指、桌面箭頭）、滑過淡底（與文件樹節點同一濃度）。 */
 const TOGGLE_HOVER_CLS = "rounded-lg transition-colors hover:bg-foreground/5";
 
 /** 「Requirement」小標：與需求文的 SHALL／MUST 關鍵字同款等寬灰底。 */
@@ -84,7 +84,7 @@ export function RequirementBlock({ req, anchor, delta, collapse }: RequirementBl
                 setOpen((v) => !v);
                 collapse.onToggle?.();
               }}
-              className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 px-2 py-1.5 text-left"
+              className="flex min-w-0 flex-1 cursor-(--cursor-interaction) items-start gap-2 px-2 py-1.5 text-left"
             >
               {head}
               {!open && (
@@ -126,7 +126,7 @@ export function RequirementBlock({ req, anchor, delta, collapse }: RequirementBl
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className={`-ml-2 flex w-[calc(100%+0.5rem)] min-w-0 cursor-pointer items-start gap-2 px-2 py-1 text-left ${TOGGLE_HOVER_CLS}`}
+        className={`-ml-2 flex w-[calc(100%+0.5rem)] min-w-0 cursor-(--cursor-interaction) items-start gap-2 px-2 py-1 text-left ${TOGGLE_HOVER_CLS}`}
       >
         <span data-requirement-label className={`mt-0.5 ${KW_LABEL_CLS}`}>
           {t("sdetail.requirementLabel")}

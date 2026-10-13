@@ -48,7 +48,7 @@ export function DataList<T>({
         {items.map((item) => (
           <li key={keyOf(item)}>
             <Card
-              className={`p-4 ${onSelect ? "cursor-pointer" : ""}`}
+              className={`p-4 ${onSelect ? "cursor-(--cursor-interaction)" : ""}`}
               onClick={onSelect ? () => onSelect(item) : undefined}
             >
               <div className="flex items-start gap-3">
@@ -95,7 +95,7 @@ export function DataList<T>({
           {items.map((item) => (
             <TableRow
               key={keyOf(item)}
-              className={onSelect ? "cursor-pointer" : undefined}
+              className={onSelect ? "cursor-(--cursor-interaction)" : undefined}
               onClick={onSelect ? () => onSelect(item) : undefined}
             >
               {columns.map((column) => (

@@ -70,7 +70,7 @@ function RoundCard({ round, open, onToggle }: { round: DiscussionRound; open: bo
             type="button"
             aria-expanded={open}
             onClick={onToggle}
-            className="flex w-full min-w-0 cursor-pointer items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-foreground/5"
+            className="flex w-full min-w-0 cursor-(--cursor-interaction) items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-foreground/5"
           >
             {/* 輪次籤是靜態編號，與同列 mode／日期同層級——走中性，不佔用主色。 */}
             <span

@@ -81,7 +81,7 @@ export function RegistryPage() {
             {visible.map((p) => (
               <li key={p.key}>
                 <Card
-                  className="flex cursor-pointer items-center gap-3 p-4"
+                  className="flex cursor-(--cursor-interaction) items-center gap-3 p-4"
                   onClick={() => setSelectedKey(p.key)}
                 >
                   <div className="min-w-0 flex-1">

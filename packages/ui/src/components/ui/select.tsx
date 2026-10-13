@@ -22,7 +22,7 @@ const SelectTrigger = React.forwardRef<
       // 與 Input 原語同一組數值：並排時任何一項不同都看得出來。
       "flex h-8 w-full items-center justify-between gap-2 rounded-lg border border-input bg-background px-3 py-1 text-sm transition-colors",
       "focus-visible:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30",
-      "disabled:cursor-not-allowed disabled:opacity-50",
+      "disabled:cursor-default disabled:opacity-50",
       "[&>span]:min-w-0 [&>span]:truncate",
       className,
     )}
@@ -116,7 +116,7 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex w-full cursor-default select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] outline-none",
+      "relative flex w-full cursor-(--cursor-interaction) select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] outline-none",
       // 選取只呈勾號、不填主色；鍵盤與 hover 的停留項為灰底（Radix 以 focus 表示停留）。
       "focus:bg-muted",
       "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",

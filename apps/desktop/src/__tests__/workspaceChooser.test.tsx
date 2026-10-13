@@ -539,6 +539,37 @@ describe("WorkspaceChooser", () => {
   });
 });
 
+// 停用的選擇卡與單選列為箭頭且無 hover（spec desktop-app「可點元素的游標與 hover 回饋」；design D4）。
+describe("開啟專案畫面停用態", () => {
+  const hoverClasses = (el: HTMLElement) => el.className.split(/\s+/).filter((c) => c.includes("hover:"));
+
+  it("最近開啟列開啟中，停用的本機選擇卡為箭頭且無 hover", async () => {
+    const workspace = fakeWorkspace({ openProject: vi.fn(() => new Promise(() => {})) });
+    await renderChooser({
+      workspace,
+      recents: [{ locator: { kind: "local", root: "/work/speclink" }, name: "speclink" }],
+    });
+    fireEvent.click(screen.getByRole("button", { name: /\/work\/speclink/ }));
+    const card = screen.getByRole("button", { name: /本機資料夾/ }) as HTMLButtonElement;
+    await waitFor(() => expect(card.disabled).toBe(true));
+    expect(hoverClasses(card)).toEqual([]);
+    expect(card.className).toContain("cursor-default");
+  });
+
+  it("bind 進行中，停用的「選擇本機資料夾」單選列為箭頭且無 hover", async () => {
+    const adapter = fakeConnections({ bindCheckout: vi.fn(() => new Promise<string>(() => {})) });
+    const workspace = fakeWorkspace({ pickFolder: vi.fn().mockResolvedValue("/work/desktop") });
+    await renderChooser({ adapter, workspace });
+    await chooseDesktopRepo();
+    await reachCheckoutFolder();
+    fireEvent.click(screen.getByRole("button", { name: "開啟專案" }));
+    const row = screen.getByRole("radio", { name: /選擇本機資料夾/ }) as HTMLButtonElement;
+    await waitFor(() => expect(row.disabled).toBe(true));
+    expect(hoverClasses(row)).toEqual([]);
+    expect(row.className).toContain("cursor-default");
+  });
+});
+
 describe("remote marker 與本機 openspec 並存", () => {
   it("強制呈現繼續本機、以 server 為準、遷移本機內容三個出口", async () => {
     const continueLocal = vi.fn().mockResolvedValue(undefined);
@@ -579,6 +610,26 @@ describe("remote marker 與本機 openspec 並存", () => {
     await waitFor(() => expect(continueLocal).toHaveBeenCalledTimes(1));
     expect(migrateLocal).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: "取消" })).toBeNull();
+  });
+
+  it("處理中三張卡停用：無 hover 底色（spec desktop-app「可點元素的游標與 hover 回饋」；design D4）", async () => {
+    render(
+      <RemoteConflictDialog
+        conflict={{ path: "/work/coexists", url: "https://spec.example.test/api/speclink/v1/projects/demo", repo: "backend" }}
+        onContinueLocal={vi.fn().mockResolvedValue(undefined)}
+        onUseServer={vi.fn(() => new Promise<void>(() => {}))}
+        onMigrateLocal={vi.fn()}
+      />,
+      { wrapper: zhWrapper },
+    );
+    const names = [/^繼續本機/, /^以 Server 為準/, /^遷移本機內容/];
+    expect(screen.getByRole("button", { name: names[0] }).className).toContain("hover:bg-muted/60");
+    fireEvent.click(screen.getByRole("button", { name: names[1] }));
+    for (const name of names) {
+      const card = screen.getByRole("button", { name }) as HTMLButtonElement;
+      await waitFor(() => expect(card.disabled).toBe(true));
+      expect(card.className.split(/\s+/).filter((c) => c.includes("hover:"))).toEqual([]);
+    }
   });
 });
 

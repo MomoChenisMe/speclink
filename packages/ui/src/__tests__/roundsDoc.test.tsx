@@ -86,8 +86,8 @@ describe("RoundsDoc", () => {
     const { container } = render(<RoundsDoc text={ROUNDS} />);
     const [first, second] = cards(container);
     expect(second.querySelector("[data-position-verdict]")).toBeNull();
-    // 卡頭可點：手指游標與滑過淡底（與工單輪卡頭、需求收合列同款）。
-    expect(toggle(second).className).toContain("cursor-pointer");
+    // 卡頭可點：共用游標變數與滑過淡底（與工單輪卡頭、需求收合列同款）。
+    expect(toggle(second).className).toContain("cursor-(--cursor-interaction)");
     expect(toggle(second).className).toContain("hover:bg-foreground/5");
     fireEvent.click(toggle(second));
     expect(toggle(second).getAttribute("aria-expanded")).toBe("true");

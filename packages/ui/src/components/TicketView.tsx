@@ -200,7 +200,7 @@ function RoundBlock({ round, defaultOpen }: { round: TicketRound; defaultOpen: b
         data-ticket-round-toggle
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-left transition-colors hover:bg-foreground/5"
+        className="flex w-full cursor-(--cursor-interaction) flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-left transition-colors hover:bg-foreground/5"
       >
         {open ? (
           <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
