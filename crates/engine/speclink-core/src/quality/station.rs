@@ -459,6 +459,96 @@ pub fn scope_union<'a>(scopes: impl IntoIterator<Item = &'a str>) -> Vec<String>
     paths
 }
 
+/// finding 路徑違規的原因（add-round 寫入前的路徑檢查）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PathViolationReason {
+    /// 路徑以 `:<行號>` 或 `:<起>-<迄>` 結尾——finding 只錨定到檔案。
+    LineNumber,
+    /// 路徑不在工單各輪 Scope 的聯集加本輪 Scope 之內。
+    OutOfScope,
+}
+
+/// 一條違規的 finding 路徑（stdin 原文）與原因；Display 即 stderr 的逐條訊息。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PathViolation {
+    pub path: String,
+    pub reason: PathViolationReason,
+}
+
+impl std::fmt::Display for PathViolation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.reason {
+            PathViolationReason::LineNumber => write!(
+                f,
+                "{} — carries a line number; a finding path names the file only",
+                self.path
+            ),
+            PathViolationReason::OutOfScope => write!(
+                f,
+                "{} — outside the ticket's scope (every round's `**Scope**:` plus this \
+                 round's); anchor the finding on the in-scope file it concerns",
+                self.path
+            ),
+        }
+    }
+}
+
+/// add-round 寫入前的 finding 路徑檢查（spec「finding 路徑落在工單範圍內」，兩站
+/// 同一規則）。純函式：`existing` 為工單既有各輪（無工單時為空）；
+/// `exempt_prefixes` 是免除範圍檢查的目錄名（規格目錄與 `.speclink`——它們不進
+/// 驗證 patch，複驗的範圍解析本來就略過），由呼叫端提供，因為規格目錄名來自
+/// 本機設定。與上一輪某條 finding 的 severity、路徑、描述（去掉結尾
+/// `(accepted)`）完全相同的行是沿用的未解項，不檢查。內容文法錯誤回與
+/// `add_round` 同一則 invalid_argv 錯誤。
+pub fn finding_path_violations(
+    st: &Station,
+    existing: &[Round],
+    content: &str,
+    exempt_prefixes: &[&str],
+) -> Result<Vec<PathViolation>> {
+    let body = parse_round_body(st, content)
+        .map_err(|e| crate::command::InvalidContent(e.to_string()))?;
+    let scope =
+        scope_union(existing.iter().flat_map(|r| &r.scope).chain(&body.scope).map(String::as_str));
+    let carried: &[Finding] = existing.last().map(|r| r.findings.as_slice()).unwrap_or_default();
+    let is_carried = |f: &Finding| {
+        carried.iter().any(|c| {
+            c.severity == f.severity
+                && c.path == f.path
+                && strip_accepted(&c.text) == strip_accepted(&f.text)
+        })
+    };
+    let mut violations = Vec::new();
+    for finding in body.findings.iter().filter(|f| !is_carried(f)) {
+        let path = finding.path.replace('\\', "/");
+        let reason = if has_line_suffix(&path) {
+            PathViolationReason::LineNumber
+        } else if !is_under_any(&path, exempt_prefixes) && !scope.contains(&path) {
+            PathViolationReason::OutOfScope
+        } else {
+            continue;
+        };
+        violations.push(PathViolation { path: finding.path.clone(), reason });
+    }
+    Ok(violations)
+}
+
+/// 去掉 finding 描述結尾的 `(accepted)` 結構標記——沿用比對不計這個標記。
+fn strip_accepted(text: &str) -> &str {
+    text.strip_suffix("(accepted)").map(str::trim_end).unwrap_or(text)
+}
+
+/// `src/a.rs:42`、`src/a.rs:42-50` 這類以冒號加數字結尾的路徑。
+fn has_line_suffix(path: &str) -> bool {
+    path.rsplit_once(':').is_some_and(|(_, tail)| {
+        tail.split('-').all(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+    })
+}
+
+fn is_under_any(path: &str, dirs: &[&str]) -> bool {
+    dirs.iter().any(|d| path.strip_prefix(d).is_some_and(|rest| rest.starts_with('/')))
+}
+
 /// 逐檔算內容指紋（`read_file` 收 repo-root 相對路徑）。缺檔 fail-closed——
 /// 讀不到就無從證明檢查過的是哪份內容。路徑在讀取前過 repo-root 相對守門：
 /// remote 模式的清單來自 server 回應，是外部輸入。

@@ -124,6 +124,147 @@ fn freshness_takes_meta_and_reads_only_its_own_station() {
     );
 }
 
+/// add-round 寫入前的 finding 路徑檢查（quality-gate-speedup）：兩站同一條規則，
+/// 前綴由呼叫端給（規格目錄名來自本機設定）。
+mod finding_paths {
+    use super::super::*;
+
+    const EXEMPT: &[&str] = &["openspec", ".speclink"];
+
+    fn rounds(ticket: &str) -> Vec<Round> {
+        parse_ticket(&REVIEW, ticket).expect("ticket parses").rounds
+    }
+
+    fn violations(existing: &[Round], content: &str) -> Vec<(String, PathViolationReason)> {
+        finding_path_violations(&REVIEW, existing, content, EXEMPT)
+            .expect("content parses")
+            .into_iter()
+            .map(|v| (v.path, v.reason))
+            .collect()
+    }
+
+    const ROUND_1: &str = "# Review — demo\n\n## Round 1\n\n**Scope**: src/a.rs, src/b.rs\n\n\
+                           - [WARNING] src/a.rs:12 — Correctness: x\n";
+
+    #[test]
+    fn line_suffixed_paths_are_violations() {
+        let got = violations(
+            &[],
+            "**Scope**: src/a.rs\n\n- [WARNING] src/a.rs:42 — Correctness: edge\n\
+             - [WARNING] src/a.rs:42-50 — Correctness: range\n",
+        );
+        assert_eq!(
+            got,
+            vec![
+                ("src/a.rs:42".to_string(), PathViolationReason::LineNumber),
+                ("src/a.rs:42-50".to_string(), PathViolationReason::LineNumber),
+            ]
+        );
+    }
+
+    #[test]
+    fn paths_outside_every_scope_are_violations() {
+        let got = violations(
+            &rounds(ROUND_1),
+            "**Scope**: src/a.rs\n\n- [WARNING] src/caller.rs — Correctness: caller breaks\n",
+        );
+        assert_eq!(got, vec![("src/caller.rs".to_string(), PathViolationReason::OutOfScope)]);
+    }
+
+    #[test]
+    fn an_earlier_rounds_scope_admits_the_path() {
+        // Round 2 的 patch 只動 src/a.rs，但 src/b.rs 在 Round 1 Scope 內。
+        let got = violations(
+            &rounds(ROUND_1),
+            "**Scope**: src/a.rs\n\n- [WARNING] src/b.rs — Correctness: regression\n",
+        );
+        assert!(got.is_empty(), "{got:?}");
+    }
+
+    #[test]
+    fn spec_dir_and_sidecar_paths_skip_the_scope_check_but_not_the_line_check() {
+        let got = violations(
+            &[],
+            "**Scope**: src/a.rs\n\n\
+             - [CRITICAL] openspec/changes/demo/specs/auth/spec.md — Completeness: missing\n\
+             - [WARNING] openspec/changes/demo/design.md — Correctness: drift\n\
+             - [WARNING] .speclink/review-scopes/demo/baseline.json — Correctness: stale\n\
+             - [WARNING] openspec/changes/demo/design.md:3 — Correctness: drift\n\
+             - [WARNING] openspecs/x.md — Correctness: lookalike\n",
+        );
+        assert_eq!(
+            got,
+            vec![
+                ("openspec/changes/demo/design.md:3".to_string(), PathViolationReason::LineNumber),
+                ("openspecs/x.md".to_string(), PathViolationReason::OutOfScope),
+            ]
+        );
+    }
+
+    #[test]
+    fn verbatim_carry_overs_from_the_last_round_are_exempt() {
+        // 檢查上線前的舊工單：Round 1 已寫了帶行號的路徑，原文沿用（含補上
+        // `(accepted)`）不得卡住；改了描述就不是沿用，照樣檢查。
+        let got = violations(
+            &rounds(ROUND_1),
+            "**Scope**: src/a.rs\n\n- [WARNING] src/a.rs:12 — Correctness: x\n\
+             - [WARNING] src/a.rs:12 — Correctness: x (accepted)\n\
+             - [WARNING] src/a.rs:12 — Correctness: reworded\n\
+             - [CRITICAL] src/a.rs:12 — Correctness: x\n",
+        );
+        assert_eq!(
+            got,
+            vec![
+                ("src/a.rs:12".to_string(), PathViolationReason::LineNumber),
+                ("src/a.rs:12".to_string(), PathViolationReason::LineNumber),
+            ],
+            "only the reworded and the re-severitied lines are checked"
+        );
+    }
+
+    #[test]
+    fn accepted_lines_in_the_last_round_are_matched_without_the_token() {
+        let ticket = "# Verify — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n\n\
+                      - [WARNING] src/a.rs:7-9 — Correctness: legacy (accepted)\n";
+        let got = violations(
+            &rounds(ticket),
+            "**Scope**: src/a.rs\n\n- [WARNING] src/a.rs:7-9 — Correctness: legacy (accepted)\n",
+        );
+        assert!(got.is_empty(), "{got:?}");
+    }
+
+    #[test]
+    fn backslash_paths_are_normalized_before_the_scope_check() {
+        let got = violations(&[], "**Scope**: src/a.rs\n\n- [WARNING] src\\a.rs — Correctness: x\n");
+        assert!(got.is_empty(), "{got:?}");
+    }
+
+    #[test]
+    fn malformed_content_is_an_invalid_content_error() {
+        // 文法錯誤與 add_round 同一則訊息、同一類（invalid_argv）——檢查先跑也
+        // 不改變呼叫端看到的格式錯誤。
+        let err = finding_path_violations(&REVIEW, &[], "- [WARNING] src/a.rs — x\n", EXEMPT)
+            .expect_err("no scope line");
+        assert!(err.downcast_ref::<crate::command::InvalidContent>().is_some(), "{err}");
+    }
+
+    #[test]
+    fn violation_display_names_the_path_and_the_reason() {
+        let line = PathViolation {
+            path: "src/a.rs:42".into(),
+            reason: PathViolationReason::LineNumber,
+        };
+        let scope = PathViolation {
+            path: "src/caller.rs".into(),
+            reason: PathViolationReason::OutOfScope,
+        };
+        assert!(line.to_string().contains("src/a.rs:42"), "{line}");
+        assert!(line.to_string().contains("line number"), "{line}");
+        assert!(scope.to_string().contains("src/caller.rs"), "{scope}");
+        assert!(scope.to_string().contains("scope"), "{scope}");
+    }
+}
+
 /// 審查站：工單動詞、蓋章守門與五個 `reviewed_*` 欄位的寫入、scope 注入
 /// 蓋章、structured rounds、指紋與失效判定——全部帶 `&REVIEW` 走本模組的函式。
 mod review {

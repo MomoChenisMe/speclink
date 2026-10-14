@@ -1073,6 +1073,59 @@ fn remote_review_show_falls_back_to_the_summary_without_a_document() {
     assert!(out.contains("[WARNING] src/lib.rs"), "summary lists findings: {out}");
 }
 
+// --- 品質站 add-round：finding 路徑檢查在送出前（spec「finding 路徑落在工單範圍內」）---
+
+#[test]
+fn remote_review_add_round_rejects_an_out_of_scope_path_before_sending() {
+    // 同一套規則：CLI 先讀工單（Round 1 Scope 為 src/lib.rs）再檢查，違規時
+    // 不送出寫入，server 端工單零寫入。
+    let mut routes = ticket_routes(None);
+    routes.push(("POST", "/changes/demo/review/rounds", 200, r#"{"round":2}"#.into()));
+    let mock = mock_server(routes);
+    let p = TempProject::remote("add-round-outscope", &mock.base, "backend");
+    let out = p.run_stdin(
+        &["review", "add-round", "demo", "--stdin"],
+        "**Scope**: src/lib.rs\n\n- [WARNING] src/caller.rs — Correctness: caller breaks\n",
+    );
+    assert!(!out.status.success(), "violation → non-zero");
+    assert!(stderr_of(&out).contains("src/caller.rs"), "{}", stderr_of(&out));
+    let caps = mock.captured.lock().unwrap();
+    assert!(
+        caps.iter().all(|c| c.method != "POST"),
+        "nothing may be sent to the server: {caps:?}"
+    );
+}
+
+#[test]
+fn remote_verify_add_round_checks_against_the_round_scope_without_a_ticket() {
+    // 無工單（GET 404 not_found）：只以本輪 Scope 檢查；合法內容照常送出。
+    let mock = mock_server(vec![
+        (
+            "GET",
+            "/changes/demo/verify",
+            404,
+            r#"{"status":404,"reason":"not_found","message":"no verify ticket"}"#.into(),
+        ),
+        ("POST", "/changes/demo/verify/rounds", 200, r#"{"round":1}"#.into()),
+    ]);
+    let p = TempProject::remote("add-round-verify", &mock.base, "backend");
+    let bad = p.run_stdin(
+        &["verify", "add-round", "demo", "--stdin"],
+        "**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs:7 — Correctness: x\n",
+    );
+    assert!(!bad.status.success(), "line-suffixed path → non-zero");
+    assert!(stderr_of(&bad).contains("src/lib.rs:7"), "{}", stderr_of(&bad));
+    assert!(mock.captured.lock().unwrap().iter().all(|c| c.method != "POST"), "not sent");
+
+    let good = p.run_stdin(
+        &["verify", "add-round", "demo", "--stdin"],
+        "**Scope**: src/lib.rs\n\n- [CRITICAL] openspec/changes/demo/specs/a/spec.md — Completeness: missing\n",
+    );
+    assert!(good.status.success(), "stderr: {}", stderr_of(&good));
+    let cap = mock.find("POST", "/changes/demo/verify/rounds");
+    assert!(cap.body.contains("openspec/changes/demo/specs/a/spec.md"), "{}", cap.body);
+}
+
 #[test]
 fn remote_review_show_refuses_an_unknown_round_phase() {
     // server 比 CLI 新：未知 phase 靜默當 legacy 會讓輸出宣稱錯誤的事實。
@@ -1346,6 +1399,41 @@ fn remote_review_prepare_writes_the_local_sidecar_and_posts_nothing() {
         caps.iter().all(|c| c.method == "GET"),
         "prepare must not upload anything: {caps:?}"
     );
+}
+
+#[test]
+fn remote_review_prepare_base_reads_both_tickets_from_the_server() {
+    // spec「以可信 commit 重設 Apply baseline 並承接快照」remote 面：基準仍寫在
+    // 本機 checkout；「工單未結」由 server 回答——審查工單存在時拒絕改寫。
+    let no_verify_ticket = (
+        "GET",
+        "/changes/demo/verify",
+        404,
+        r#"{"status":404,"reason":"not_found","message":"no verify ticket"}"#.to_string(),
+    );
+    let mut routes = review_scope_routes();
+    routes.push(no_verify_ticket.clone());
+    let mock = mock_server(routes);
+    let p = TempProject::remote("review-prepare-base", &mock.base, "backend");
+    seed_git_src(&p);
+    let out = p.run(&["review", "prepare", "demo", "--base", "HEAD"]);
+    assert!(out.status.success(), "no tickets → reset lands: {}", stderr_of(&out));
+    assert!(stdout_of(&out).is_empty());
+    let baseline = p.dir.join(".speclink/review-scopes/demo/baseline.json");
+    let before = std::fs::read(&baseline).expect("baseline written locally");
+    drop(mock);
+
+    let mut routes = review_scope_routes();
+    routes.retain(|(_, suffix, _, _)| *suffix != "/changes/demo/review");
+    routes.extend(ticket_routes(None));
+    routes.push(no_verify_ticket);
+    let mock = mock_server(routes);
+    p.write(".speclink.yaml", &format!("remote:\n  url: {}\n  repo: backend\n", mock.base));
+    let out = p.run(&["review", "prepare", "demo", "--base", "HEAD"]);
+    assert!(!out.status.success(), "open review ticket → non-zero");
+    assert!(stderr_of(&out).contains("review ticket"), "{}", stderr_of(&out));
+    assert_eq!(std::fs::read(&baseline).unwrap(), before, "baseline untouched");
+    assert!(mock.captured.lock().unwrap().iter().all(|c| c.method == "GET"), "reads only");
 }
 
 #[test]

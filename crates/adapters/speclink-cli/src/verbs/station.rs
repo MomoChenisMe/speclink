@@ -22,7 +22,15 @@ pub(crate) struct ReviewArgs {
 #[derive(Subcommand)]
 enum ReviewCommands {
     /// Capture the Apply baseline sidecar before the change is marked in-progress
-    Prepare { change: String },
+    Prepare {
+        change: String,
+        /// Reset the baseline to this trusted commit (an ancestor of HEAD)
+        #[arg(long)]
+        base: Option<String>,
+        /// Carry both stations' snapshots over from this worktree (requires --base)
+        #[arg(long, requires = "base")]
+        from: Option<std::path::PathBuf>,
+    },
     /// Resolve and freeze the review scope (--json for the structured payload)
     Scope {
         change: String,
@@ -159,8 +167,9 @@ const VERIFY_CLI: StationCli = StationCli {
 pub(crate) fn cmd_review(a: ReviewArgs) -> Result<()> {
     let verb = match a.command {
         // prepare：Apply baseline 的兩站共用入口（verify 無此子指令），自成雙臂。
-        ReviewCommands::Prepare { change } => {
-            return dual(change, review_prepare_fs, |ctx, c| remote_review_prepare(ctx, c));
+        ReviewCommands::Prepare { change, base, from } => {
+            let req = PrepareReq { change, base, from };
+            return dual(req, review_prepare_fs, |ctx, r| remote_review_prepare(ctx, r));
         }
         ReviewCommands::Scope { change, json, base, candidate_hash, include_hunk } => {
             StationVerb::Scope { change, json, base, candidate_hash, include_hunk }
@@ -193,17 +202,25 @@ pub(crate) fn cmd_verify(a: VerifyArgs) -> Result<()> {
 fn station_dual(cli: &StationCli, verb: StationVerb) -> Result<()> {
     dual(verb, |v| station_fs(cli, v), |ctx, v| remote_station(ctx, cli, v))
 }
+/// `review prepare` 的參數：不帶旗標是 Apply 起點；`--base`（可帶 `--from`）
+/// 以可信 commit 重設基準並承接快照。
+struct PrepareReq {
+    change: String,
+    base: Option<String>,
+    from: Option<std::path::PathBuf>,
+}
 /// `review prepare` 的本機臂（驗證站無此動詞：Apply baseline 兩站共用）。
-fn review_prepare_fs(change: String) -> Result<()> {
+fn review_prepare_fs(req: PrepareReq) -> Result<()> {
     let (ws, store) = open_project()?;
-    if !store.change_exists(&change) {
-        bail!("change not found: {change}");
+    if !store.change_exists(&req.change) {
+        bail!("change not found: {}", req.change);
     }
     // started 判讀走 fail-closed 解析：壞 meta 不得被讀作「未開始」。
-    let raw_meta = store.read_change_meta(&change);
+    let raw_meta = store.read_change_meta(&req.change);
     let meta = core::model::ChangeMeta::from_text(raw_meta.as_deref())
         .map_err(|e| anyhow::anyhow!(e))?;
-    run_review_prepare(&ws, &change, meta.started_at.is_some())
+    let ticket_open = |st: &core::station::Station| Ok(store.artifact_exists(&req.change, st.doc));
+    run_review_prepare(&ws, &req, meta.started_at.is_some(), ticket_open)
 }
 fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
     let (ws, store) = open_project()?;
@@ -244,6 +261,13 @@ fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
         }
         StationVerb::AddRound { change, stdin } => {
             let content = read_stdin_content(stdin);
+            // 查無 change 或工單都讀作「沒有既有輪次」——查無的報錯留給 add_round。
+            let existing = match core::station::show(st, &store, &change) {
+                Ok(ticket) => ticket.rounds,
+                Err(e) if e.is::<core::station::NotFound>() => Vec::new(),
+                Err(e) => return Err(e),
+            };
+            ensure_finding_paths(&ws, st, &existing, &content)?;
             let round = core::station::add_round(st, &store, &change, &content)?;
             render_station_action(st, StationAction::AddRound(round), &change);
         }
@@ -299,6 +323,27 @@ enum StationAction {
     Stamp,
     Discard,
 }
+/// add-round 寫入前的 finding 路徑檢查（本機／remote 兩臂共用）：規則是引擎的
+/// 純函式，這裡只補上本機設定的免檢查前綴（規格目錄與 `.speclink`）。違規即
+/// invalid_argv 非零、零寫入，stderr 逐條點名。
+fn ensure_finding_paths(
+    ws: &core::workspace::Workspace,
+    st: &core::station::Station,
+    existing: &[core::station::Round],
+    content: &str,
+) -> Result<()> {
+    let exempt = [ws.spec_dir_name.as_str(), ".speclink"];
+    let violations = core::station::finding_path_violations(st, existing, content, &exempt)?;
+    if violations.is_empty() {
+        return Ok(());
+    }
+    let lines: Vec<String> = violations.iter().map(|v| format!("  - {v}")).collect();
+    bail!(core::command::InvalidContent(format!(
+        "finding paths rejected — nothing was written to the {} ticket:\n{}",
+        st.noun,
+        lines.join("\n")
+    )));
+}
 /// 工單閱讀的共用渲染。`--json` 一律走 `ticket_json`——payload 的欄位集合是
 /// 對外契約，工單原文不屬於它，所以原文只走人眼路徑。`doc` 缺席是 remote 對
 /// 舊 server 的退化：印結構化摘要，而不是拿結構化欄位反推一份假原文。
@@ -347,12 +392,25 @@ fn ticket_json(change: &str, ticket: &core::station::Ticket) -> serde_json::Valu
 /// checkout，只有「是否已開工」這件事實由各自的 store 提供。
 ///
 /// initial／kept 靜默（spec：stdout 為空）；late／unavailable 以 stderr 警告但
-/// 仍 exit 0，讓 apply 可以繼續。
+/// 仍 exit 0，讓 apply 可以繼續。`--base` 走重設：工單是否未結由各自的 store
+/// 回答（`ticket_open`），host 只管 Git 與 sidecar。
 fn run_review_prepare(
     ws: &core::workspace::Workspace,
-    change: &str,
+    req: &PrepareReq,
     started: bool,
+    ticket_open: impl Fn(&core::station::Station) -> Result<bool>,
 ) -> Result<()> {
+    let change = req.change.as_str();
+    if let Some(base) = &req.base {
+        let mut open = Vec::new();
+        for cli in [&REVIEW_CLI, &VERIFY_CLI] {
+            if ticket_open(cli.station)? {
+                open.push(cli.ns);
+            }
+        }
+        speclink_host::change_diff::prepare_at(ws, change, base, &open, req.from.as_deref())?;
+        return Ok(());
+    }
     match speclink_host::change_diff::prepare(ws, change, started)? {
         speclink_host::change_diff::PrepareOutcome::Captured(_)
         | speclink_host::change_diff::PrepareOutcome::KeptExisting(_) => {}
@@ -635,15 +693,18 @@ mod patch_hash_chain_tests {
 /// `review prepare` 的 remote 面：sidecar 仍在本地 checkout，先做 remote read
 /// （存在＋startedAt），失敗即零 sidecar effects。listing 的 status 只由任務
 /// 完成度推導，不能當「已開工」讀。
-fn remote_review_prepare(ctx: &RemoteCtx, change: String) -> Result<()> {
+fn remote_review_prepare(ctx: &RemoteCtx, req: PrepareReq) -> Result<()> {
     let summary = ctx
         .client
         .list_changes()?
         .changes
         .into_iter()
-        .find(|c| c.name == change)
-        .ok_or_else(|| anyhow::anyhow!("change not found: {change}"))?;
-    run_review_prepare(&ctx.ws, &change, summary.started_at.is_some())
+        .find(|c| c.name == req.change)
+        .ok_or_else(|| anyhow::anyhow!("change not found: {}", req.change))?;
+    let ticket_open = |st: &core::station::Station| {
+        Ok(ctx.client.station_ticket_if_any(st.noun, &req.change)?.is_some())
+    };
+    run_review_prepare(&ctx.ws, &req, summary.started_at.is_some(), ticket_open)
 }
 /// 兩個品質站的 remote 動詞（唯一實作落點）：工單經 typed client 的站別端點
 /// 讀寫，scope 仍由本地 checkout 的 Host resolver 解析——server 不收 patch、
@@ -693,6 +754,11 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
         }
         StationVerb::AddRound { change, stdin } => {
             let content = read_stdin_content(stdin);
+            let existing = match ctx.client.station_ticket_if_any(noun, &change)? {
+                Some(ticket) => to_station_ticket(ticket)?.rounds,
+                None => Vec::new(),
+            };
+            ensure_finding_paths(&ctx.ws, st, &existing, &content)?;
             let round = ctx.client.station_add_round(noun, &change, &content)?.round;
             // u64→usize：支援平台皆 64-bit，無損（不為不可能的情境設防）。
             render_station_action(st, StationAction::AddRound(round as usize), &change);

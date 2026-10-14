@@ -9,7 +9,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
@@ -100,7 +100,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
@@ -434,7 +434,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
@@ -954,7 +954,44 @@ Follow the `/speclink-commit` skill's attribution convention: stage only the fil
 
 The commit lands on branch `speclink/<change-name>` inside the worktree. Nothing reaches the main branch yet.
 
-### W2. Stop here — do not merge, do not remove the worktree
+### W2. Catch up with the main branch, then reset the quality starting point
+
+Rebasing now means a stamp landed in this worktree covers the content as it will be after the merge, and the later merge is a fast-forward that keeps the stamp fresh. Do it only while neither quality station has a ticket — a ticket means the stations are already running, and a rebase in the middle of their loop would move the ground under them:
+
+```bash
+speclink review show "<change-name>" --json
+speclink verify show "<change-name>" --json
+```
+
+Both report that no ticket exists → continue. Either one shows a ticket → skip this whole step and say so.
+
+1. Find the main checkout's path in `git worktree list --porcelain` (its first entry), then the branch it is on:
+
+   ```bash
+   git -C <main-checkout> branch --show-current
+   ```
+
+   A `speclink/*` branch or empty output (detached HEAD) → skip the rest of this step and tell the user why.
+
+2. Record that branch's current commit, then replay this worktree's branch onto it:
+
+   ```bash
+   git -C <main-checkout> rev-parse HEAD
+   git rebase "<recorded-commit>"
+   ```
+
+   - **Conflicts** → do not resolve them. Run `git rebase --abort` (the branch returns exactly as it was), report the conflicting files, and skip the reset below: the branch did not change, so its old starting point still holds.
+   - **Git refuses for another reason** (for example, uncommitted files) → report git's message and skip the reset below.
+
+3. The rebase succeeded → move the quality stations' starting point to the recorded commit:
+
+   ```bash
+   speclink review prepare "<change-name>" --base "<recorded-commit>"
+   ```
+
+A stamp can still go stale if the main branch changes the same files again while the stations run.
+
+### W3. Stop here — do not merge, do not remove the worktree
 
 This skill's job ends at the commit. Explicitly:
 
@@ -964,32 +1001,41 @@ This skill's job ends at the commit. Explicitly:
 
 Merging is a separate, human-triggered step: it needs a clean main tree, and a conflict there is the user's call, not yours. Leaving the worktree in place also means the main checkout's `speclink list` keeps showing this change with its `[worktree]` marker until the merge happens.
 
-### W3. Hand off
+### W4. Hand off
 
-Tell the user, plainly:
+Pick the path by the change's state: unchecked `[M]` manual tasks show in `speclink instructions apply --change "<change-name>" --json` as `remaining` above `codeRemaining`.
 
-> 這個 change 已在 worktree 內完成並提交，尚未合併回主分支。
->
-> 建議先在這個 worktree 內跑品質關卡——`/speclink-review`（工藝品質）∥ `/speclink-verify`（規格符合度），或 `/speclink-quality`（兩站合跑），是否要跑由你決定。品質關卡的 Apply baseline 就在這個 worktree 裡，離開就沒有了。蓋章會寫進 change 的 meta，記得補一次提交。
->
-> 品質關卡跑完（或決定略過）後執行 `/speclink-worktree-merge <change-name>` 收尾——它會檢查主樹是否乾淨、把分支合併回去，成功後移除 worktree 並刪掉分支。
+- **No unchecked `[M]` task** — tell the user, plainly:
 
-Report alongside it: the worktree path, the branch name, and the tasks completed this session.
+  > 這個 change 已在 worktree 內完成並提交，尚未合併回主分支。
+  >
+  > 建議在這個 worktree 內跑品質關卡——`/speclink-review`（工藝品質）∥ `/speclink-verify`（規格符合度），或 `/speclink-quality`（兩站合跑），是否要跑由你決定。蓋章會寫進 change 的 meta，記得補一次提交，再執行 `/speclink-worktree-merge <change-name>` 收尾。
+  >
+  > 想在蓋章前先看到 CI 結果的話，改走另一條路：先執行 `/speclink-worktree-merge <change-name>` 合併，再到主 checkout 跑品質關卡——worktree 分支只在本機、從不 push，CI 看不到它；合併時品質關卡的起點會一起承接到主 checkout。
+
+- **Unchecked `[M]` tasks remain** — tell the user, plainly:
+
+  > 這個 change 已在 worktree 內完成並提交，尚未合併回主分支，還有手動任務沒做。
+  >
+  > 建議先執行 `/speclink-worktree-merge <change-name>`——它會檢查主樹是否乾淨、把分支合併回去、把品質關卡的起點承接到主 checkout，成功後移除 worktree 並刪掉分支。之後在主 checkout 跑品質關卡——`/speclink-review`（工藝品質）∥ `/speclink-verify`（規格符合度），或 `/speclink-quality`（兩站合跑），是否要跑由你決定——做完手動任務再封存。
+
+Report alongside it: the worktree path, the branch name, the tasks completed this session, and whether W2 rebased or why it skipped.
 
 ### Wrap-up check
 
 Check these before you hand off:
 
 - [ ] The commit in the worktree holds only this change's artifacts and evidence-recorded source files (W1).
-- [ ] Nothing was merged, no worktree or branch was removed, and the main checkout was not touched (W2).
-- [ ] The hand-off names the worktree path, the branch, the tasks completed, and `/speclink-worktree-merge` as the next step (W3).
+- [ ] W2 rebased only while neither station had a ticket; a conflict was aborted, never resolved; a successful rebase was followed by `speclink review prepare --base` (W2).
+- [ ] Nothing was merged, no worktree or branch was removed, and the main checkout was not touched (W3).
+- [ ] The hand-off names the worktree path, the branch and the tasks completed, takes the path the manual tasks call for, and lists review, verify and quality as the entries next to `/speclink-worktree-merge` (W4).
 
 ## Next steps
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The change is committed inside the worktree → the quality stations belong **here**, while the Apply baseline still exists: `/speclink-review` ∥ `/speclink-verify`, or `/speclink-quality` for both
-- The stations are done or the user chose to skip them → `/speclink-worktree-merge <change-name>`
+- No unchecked `[M]` task → the quality stations here in the worktree: `/speclink-review` ∥ `/speclink-verify`, or `/speclink-quality` for both; commit the stamps, then `/speclink-worktree-merge <change-name>`
+- Unchecked `[M]` tasks remain, or the user wants CI results before stamping (the worktree branch is local only, so CI never sees it) → `/speclink-worktree-merge <change-name>` first, then the quality stations and the manual tasks in the main checkout, then archive
 - Requirements changed mid-work → `/speclink-ingest <change-name>` inside this worktree, then resume apply here
 
 === .claude/skills/speclink-archive/SKILL.md ===
@@ -1000,7 +1046,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
@@ -1342,7 +1388,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
@@ -1586,7 +1632,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
@@ -1710,7 +1756,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
@@ -2020,7 +2066,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
@@ -2201,7 +2247,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
@@ -2685,7 +2731,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
@@ -2826,7 +2872,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
@@ -3018,7 +3064,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
@@ -3330,7 +3376,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
@@ -3543,7 +3589,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
@@ -4005,11 +4051,11 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
-Run both quality stations over one change as a single pass that pauses after every round: `/speclink-review` and `/speclink-verify` each do their checking WITHOUT stamping, then this skill reports both stations' findings together and STOPS for the user's call on what to fix, when to stamp, and whether to archive. Nothing is fixed, stamped or archived without their answer. Use this when both stations are known up front to be in play. Running only one station does not go through this skill — call that station directly and let it keep its own stamp-when-clean default.
+Run both quality stations over one change as a single pass that pauses after every round: `/speclink-review` and `/speclink-verify` each do their checking WITHOUT stamping, then this skill reports both stations' findings together and STOPS for the user's call on what to fix, when to stamp, and whether to archive. Nothing is fixed, stamped or archived without their answer. Use this when both stations are known up front to be in play. Running only one station does not go through this skill — call that station directly and let it keep its own stamp-when-clean default and its own way of sending sub-agents.
 
 **Input**: Optionally specify a change name after `/speclink-quality` (e.g., `/speclink-quality add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous, resolve it BEFORE step 1: run `speclink list --json` and prompt with the available changes, then pass the same name to every station call.
 
@@ -4019,11 +4065,11 @@ Run both quality stations over one change as a single pass that pauses after eve
 
 **What this skill owns**
 
-The ORDER of the two stations and the pause that ends every round, and nothing else. What each station checks, how it freezes its scope, how it records its ticket, how it triages findings and what its stamp means all belong to `/speclink-review` and `/speclink-verify` — this document never restates them, and when it appears to disagree with a station's own instructions, the station wins. Follow each station's skill as written; this skill only decides when each one runs, which of its exits to take, and when to hand the decision back to the user.
+The ORDER of the two stations, the moment their sub-agents go out, and the pause that ends every round — nothing else. What each station checks, how it freezes its scope, what its briefs say, how it records its ticket, how it triages findings and what its stamp means all belong to `/speclink-review` and `/speclink-verify` — this document never restates them, and when it appears to disagree with a station's own instructions, the station wins. Follow each station's skill as written; this skill only decides when each step of a station runs, when the sub-agents are sent, which exit a station takes, and when to hand the decision back to the user.
 
 **Why the order matters**
 
-A station's stamp freezes the content fingerprint of the files in its scope. Every edit after that — including the fix for the OTHER station's findings — turns the stamp stale ("done, but changed since"). Holding BOTH stamps until every fix has landed and been re-validated keeps both green all the way to archive: no stamp exists yet when a fix lands, so no stamp can go stale.
+A station's stamp freezes the content fingerprint of the files in its scope. Every edit after that — including the fix for the OTHER station's findings — turns the stamp stale ("done, but changed since"). Holding BOTH stamps until every fix has landed and been re-validated keeps both green all the way to archive: no stamp exists yet when a fix lands, so no stamp can go stale. The tickets are written review first, verify second; the checks themselves do not depend on each other, so their sub-agents run at the same time.
 
 **Why every round pauses**
 
@@ -4033,19 +4079,23 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 **Steps**
 
-1. **Review check, no stamp**
+1. **Prepare both stations**
 
-   Run `/speclink-review` for the change. At its closing question, take the **stop without stamping** exit — the ticket and its frozen snapshot stay for the rounds that follow. A clean pass takes the same exit; the station's own quality-timeline exception covers it.
+   For the same change, walk `/speclink-review` steps 1–4 (choose the change, the code-task gate and the project review rules, the ticket check and the frozen scope, the artifacts), then `/speclink-verify` steps 1–5 (choose the change, the status, the artifacts and task progress, the branch on the call, the frozen scope), each exactly as its skill writes them. When a station stops during its preparation — a refusal, a mid-flight check-in, `needsInput`, a scope failure — relay its outcome verbatim and follow what that station says; do not send any sub-agent.
 
-   That exit ends the review station, not this run: do not ask the user anything here, and go straight on to step 2 in the same turn. This skill's only pause is step 3, and it comes after both stations have reported — it takes priority over the station's own closing question.
+2. **Send the three checks in one message**
 
-2. **Verify check, no stamp**
+   Compose the review station's Standards and Correctness briefs (review step 5) and the verify station's checking brief (verify step 6), each by its own station's rules, and send all three read-only sub-agents in ONE message — do not wait for the review ticket before sending the verify check. If your harness cannot spawn sub-agents, or cannot send three at once, fall back the way the stations do: run the three checks yourself one after another and keep each report separate.
 
-   Run `/speclink-verify` for the same change and take the same **stop without stamping** exit, clean pass included.
+3. **Close both stations, review first, no stamp**
 
-3. **Stop and ask — the round's pause**
+   Once all three have reported, finish `/speclink-review` steps 6–9 (present, triage, record the round), then `/speclink-verify` steps 10–13 (report, triage, record the round): the review ticket is written first, the verify ticket second. At each station's closing question, take the **stop without stamping** exit — the tickets and their frozen snapshots stay for the rounds that follow. A clean pass takes the same exit; each station's own quality-timeline exception covers it.
 
-   Both stations have reported. Summarize their findings TOGETHER — grouped by station, must-fix separated from the rest — and then STOP: put the next step to the user (see **Asking the user**). Make no edits before the answer arrives.
+   Do not ask the user anything between the two stations: this skill's only pause is step 4, and it takes priority over the stations' own closing questions.
+
+4. **Stop and ask — the round's pause**
+
+   Both stations have reported. Summarize their findings TOGETHER — grouped by station, must-fix separated from the rest — and keep the review station's opening line that names the review rules it applied. List on their own, ahead of everything else, the findings whose fix would touch an artifact (specs, design, tasks): the user decides those first, and the stations' verification gates say how such a fix is handled. Then STOP: put the next step to the user (see **Asking the user**). Make no edits before the answer arrives.
 
    The options:
 
@@ -4056,23 +4106,35 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
    Options with nothing to act on simply do not appear — a round where both stations found nothing offers the last two.
 
-   A **fix everything** or **fix a selection** answer continues to step 4; **fix nothing and stop** ends here; **go to the closing stamps** jumps to step 6.
+   **Top-severity findings left unfixed are confirmed here, once.** When the answer — **go to the closing stamps**, or **fix a selection** — leaves must-fix findings of the top severity unfixed, list each one verbatim and ask once whether to accept them (see **Asking the user**). Only a yes goes on; a no returns to the options above. Every later `/speclink-review` call in this run then states that the top-severity findings were listed verbatim and confirmed one by one, and names them — that hand-over is the confirmation the review station would otherwise ask for.
 
-4. **Fix exactly what was chosen**
+   A **fix everything** or **fix a selection** answer continues to step 5; **fix nothing and stop** ends here; **go to the closing stamps** jumps to step 7.
 
-   Fix the findings the user picked, and only those. Fixes happen HERE in the main thread following the project's TDD discipline — the stations' checking passes never edit files. Get the project's full build and test suite green before moving on.
+5. **Fix exactly what was chosen**
 
-5. **Another round, still no stamp**
+   Fix the findings the user picked, and only those. Fixes happen HERE in the main thread following the project's TDD discipline — the stations' checking passes never edit files. Then pass both stations' verification gates (review step 9, verify step 13, option 1 in each) before moving on: the build and the affected tests green, the report naming what ran and what CI guards, and an artifact edit handled by the gate's cases — a passage edited with its intent kept goes verbatim into the next round's briefs, and a fix that changes intent or scope ends this run as **scope changed** in both stations.
 
-   Run `/speclink-review` again, then `/speclink-verify` again, each taking the **stop without stamping** exit as before. Their validation passes cover every fix made since their frozen points — including the ones the other station's findings asked for. Then go back to step 3: the round ends in the same pause whatever it found. A clean round pauses too — report that both stations are green and let the user decide whether to close out.
+6. **Another round, still no stamp**
 
-6. **Closing stamps, back to back**
+   Repeat steps 1–3: prepare both stations (their scopes now freeze validation patches that cover every fix made since their frozen points — including the ones the other station's findings asked for), send the three checks in one message, then close the review station and the verify station, each through the **stop without stamping** exit. Then go back to step 4: the round ends in the same pause whatever it found. A clean round pauses too — report that both stations are green and let the user decide whether to close out.
 
-   Only on the user's say-so. Re-enter review, then verify, telling each station explicitly that this is the quality timeline's **closing stamp call** — that phrase switches off their defer-the-stamp exception for this one call. Where a ticket still carries must-fix findings the user chose to leave, relay their step-3 answer as the explicit authorization to stamp **with reservations** (the station's `--accept`) — a reservation stamp never lands unannounced; a ticket left with only SUGGESTION-level findings stamps clean without `--accept`. Each station's own rules then decide the mechanics: an untouched last round whose must-fix set is empty stamps directly; content that moved since gets one validation pass in the same call, and the cleared round stamps immediately. Do NOT edit anything from here to archive — with zero edits between them, both stamps stay green.
+7. **Closing stamps, back to back**
 
-7. **Archive — a recommendation**
+   Only on the user's say-so. Re-enter review, then verify, telling each station explicitly that this is the quality timeline's **closing stamp call** — that phrase switches off their defer-the-stamp exception for this one call. Where a ticket still carries must-fix findings the user chose to leave, relay their step-4 answer as the explicit authorization to stamp **with reservations** (the station's `--accept`) — and, for the review station, the step-4 hand-over of the top-severity findings; a reservation stamp never lands unannounced. A ticket left with only SUGGESTION-level findings stamps clean without `--accept`. Each station's own rules then decide the mechanics: an untouched last round whose must-fix set is empty stamps directly; content that moved since gets one validation pass in the same call, and the cleared round stamps immediately. Do NOT edit anything from here to archive — with zero edits between them, both stamps stay green.
+
+8. **Archive — a recommendation**
 
    Both stamps are green: recommend `/speclink-archive` and leave the run to the user. When the change still carries unchecked `[M]` manual tasks, the recommendation says so: the manual work has to be completed and those tasks checked off before archive will let the change through.
+
+**Resuming after an interrupted session**
+
+A session closed in the middle of a fix round resumes by running `/speclink-quality` again. The tickets live in the change folder and the frozen snapshots in `.speclink/review-scopes/<change>/`, so each station's scope sees its open ticket and freezes a validation patch that holds every fix landed before the close. A resumed run adds three rules to the steps above:
+
+- Pass both stations' verification gates before step 2 — the earlier session's test state is unknown.
+- A station whose validation patch has no files while its last round still carries must-fix findings sends no sub-agent and records no round this time: a round with nothing to judge would count as "no progress" and fail. The summary says that station had no fix to judge. When both stations are in that state, go straight to step 4 with the last rounds' findings.
+- Tell the user not to commit fixes between the close and the resume: a validation patch picks up fixes by content movement and the dirty state, and a commit can drop a new file the snapshots never captured out of it.
+
+The earlier session's fix-or-skip answers are not kept: step 4 lists only the findings still unresolved and asks again.
 
 **Edge cases**
 
@@ -4083,10 +4145,13 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 Check these before you report:
 
-- [ ] Never restate or override a station's checking, ticket or stamping rules — route to the station and follow what it says
+- [ ] Never restate or override a station's checking, brief, ticket or stamping rules — route to the station and follow what it says
+- [ ] Every checking round prepares both stations, sends the three sub-agents in one message, and writes the review ticket before the verify ticket
 - [ ] Both checking passes finish before any fixing starts; neither stamp lands before both stations' re-validations are clean
-- [ ] Every round ends with step 3's pause, a clean round included — never fix, stamp or archive without the user's answer
+- [ ] Every round ends with step 4's pause, a clean round included — never fix, stamp or archive without the user's answer
+- [ ] Findings whose fix touches an artifact are flagged at the pause; top-severity findings left unfixed are confirmed there once and handed to the review station
 - [ ] Fix only what the user picked; the findings they passed on stay in their tickets, unfixed and unargued
+- [ ] No round starts before both stations' verification gates pass — on a resumed run too
 - [ ] No edits between the two stamps, and none between them and archive
 - [ ] A station's refusal or error stops this flow and is reported as-is — do not work around it
 
@@ -4106,7 +4171,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
@@ -4178,15 +4243,26 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
 5. **Branch on `phase`**
 
+   Inside the `/speclink-quality` timeline, compose the briefs below exactly as this step says; `/speclink-quality` sends them in one message together with the verify station's brief, so three sub-agents run at once. Continue with step 6 once they report.
+
    **Discovery (`phase: discovery`) — the one and only exploration pass.**
 
    Send ONE message with TWO parallel read-only sub-agent calls (e.g. the Agent tool with a read-only agent). Sub-agents MUST NOT modify any file. If your harness cannot spawn sub-agents, run the two axes yourself sequentially and keep their analyses strictly separate.
 
-   Both briefs carry the same frozen patch — step 3's `patch` text with its hunk ranges — plus the relevant artifact intent and the reporting contract: **under 400 words**, each finding on its own line as `- [SEVERITY] path — description`, SEVERITY ∈ CRITICAL / WARNING / SUGGESTION. Both axes judge only the change hunks and the callers/tests needed to judge their direct impact — the unchanged remainder of a touched file is context, not review surface.
+   Both briefs carry the same frozen patch — step 3's `patch` text with its hunk ranges — plus the relevant artifact intent and the reporting contract: **under 400 words**, each finding on its own line as `- [SEVERITY] path — description`, SEVERITY ∈ CRITICAL / WARNING / SUGGESTION, `path` a repo-relative file path with no `:line` suffix. Both axes judge only the change hunks and the callers/tests needed to judge their direct impact — the unchanged remainder of a touched file is context, not review surface.
 
    Both briefs also carry the resolved `locale` (step 2): finding descriptions are written in that language; severity labels, the `Standards:` / `Correctness:` axis prefixes, file paths, and command lines stay in English. If `locale` is absent, everything is English.
 
    When accepted findings exist in the ticket's last round (the `(accepted)` token), both briefs also carry that list with a hard instruction: do not re-report these items or near-variants of them — they are already adjudicated.
+
+   **Brief discipline** — both axes, discovery and validation alike. A sub-agent that reads whole diff files or searches without a target stalls, so every brief:
+
+   - pastes the frozen patch verbatim when it is 25 KB or less; above that, gives only each file's path and its hunk line ranges;
+   - gives generated files — golden snapshots, `assets.lock`, skill files regenerated by `speclink update` — by path only, and tells the sub-agent to search them at most once;
+   - names the functions, types and files to check, and tells the sub-agent to read large files by line range rather than whole, and to search only for the names the brief lists — no open-ended recursive search;
+   - sets no tool-call cap in discovery; in validation, caps the sub-agent at 5 tool calls;
+   - says where a finding about a caller outside the frozen patch goes: on the in-patch file it calls, as a plain path — `add-round` rejects a path with a `:line` suffix or outside the ticket's scope;
+   - ends with: "If you did not finish checking something, say so plainly — do not guess."
 
    **Standards axis brief** — first gather what the repo documents (CLAUDE.md / AGENTS.md, CONTRIBUTING, style docs, lint configs) and check the frozen hunks against it, citing the document for each violation.
 
@@ -4228,7 +4304,7 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    **Validation (`phase: validation`) — remediation validation, never re-discovery.**
 
-   Send the same two parallel read-only axes, but each brief carries ONLY: the last round's unresolved findings (verbatim), the accepted list, the remediation patch (step 3's frozen validation patch), and the necessary adjacent callers/tests plus artifact intent. Each axis judges, per original finding, resolved or unresolved — and reports only regressions the remediation patch directly introduces. It must NOT report new smells, SUGGESTIONs, or pre-existing issues in unchanged areas, and it does not apply the project review rules afresh — a rule added after discovery never produces a finding here. The locale binding and the reporting contract are the same as in discovery.
+   Send the same two parallel read-only axes, but each brief carries ONLY: the last round's unresolved findings (verbatim), the accepted list, the remediation patch (step 3's frozen validation patch), the artifact passages the last fix edited (step 9's verification gate — the patch leaves the spec directory out), and the necessary adjacent callers/tests plus artifact intent. Each axis judges, per original finding, resolved or unresolved — and reports only regressions the remediation patch directly introduces. It must NOT report new smells, SUGGESTIONs, or pre-existing issues in unchanged areas, and it does not apply the project review rules afresh — a rule added after discovery never produces a finding here. The locale binding and the reporting contract are the same as in discovery.
 
    **Segments marked `attribution: "adjacent"`** are files the remediation moved that no finding named — a caller, a test, a regenerated artifact, or a parallel session's edit leaking in. State this in both briefs: each axis must confirm segment by segment that an adjacent segment genuinely belongs to THIS remediation, and report anything that does not as a regression. Never adopt an adjacent segment silently.
 
@@ -4244,7 +4320,7 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    This line belongs to the presentation only; it never enters the ticket.
 
-   Then render the two reports verbatim under `## Standards` and `## Correctness` headings — do not merge them, do not re-rank across axes. The reports already arrive in the `locale` language (bound in step 5) — never translate them. Close with exactly one summary line in that same language: the findings count per axis and the worst severity within each (never across).
+   Then render the two reports verbatim under `## Standards` and `## Correctness` headings — do not merge them, do not re-rank across axes. The reports already arrive in the `locale` language (bound in step 5) — never translate them. When a sub-agent says it did not finish checking something, list that verbatim after the reports: it is not confirmed clean, and the user decides whether to check it further. Close with exactly one summary line in that same language: the findings count per axis and the worst severity within each (never across).
 
 7. **Triage every finding**
 
@@ -4273,7 +4349,7 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    **Validation rounds**: every unresolved original finding is carried into the new round verbatim — never reworded; a reworded line fakes the shrinking the loop rule depends on. Regressions the remediation patch directly introduced enter as new findings lines. Every accepted, still-unfixed **must-fix** finding is appended verbatim ending with the structural token `(accepted)` — the token stays English like the severity labels. Unfixed SUGGESTIONs carry forward as plain unresolved lines without the token (the step 7 boundary). The last round must reflect all outstanding reservations — that is what keeps an `--accept` stamp honest.
 
-   NEVER hand-write or edit `openspec/changes/<name>/review.md` — the ticket is verb-owned; a malformed round is rejected by the verb, fix the stdin content and retry.
+   NEVER hand-write or edit `openspec/changes/<name>/review.md` — the ticket is verb-owned; a malformed round, or a finding path with a `:line` suffix or outside the ticket's scope, is rejected by the verb: fix the stdin content (anchor the finding on the in-scope file) and retry.
 
 9. **Branch on the blocking set**
 
@@ -4292,13 +4368,25 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    - **Bn is empty but accepted must-fix findings remain** → recommend the user explicitly stamp with reservations — `speclink review stamp "<name>" --accept --agent claude` — and report **passed with reservations**. Never run `--accept` unprompted.
 
    - **Bn is strictly smaller than Bn-1** (or this is the first round with must-fix findings) → use the **AskUserQuestion tool** (plain text + wait if unavailable) with three options, the recommended one first and labelled "(Recommended)": recommend option 1 — outstanding must-fix findings are what brought the loop here. SUGGESTION-only rounds never reach this menu: they stamp directly through the first bullet.
-     1. **Fix and re-validate** — fixes happen HERE in the main thread, following the project's TDD discipline; sub-agents never edit. Fix the must-fix list; discretionary items only when the user asks. A must-fix finding the user chooses not to fix is accepted and carried with the `(accepted)` token (step 8); unfixed SUGGESTIONs just carry forward (step 8). **Verification gate**: after the fixes, run the project's full build and test suite and get it green BEFORE looping back to step 3 — a fix-introduced regression must never flow into the next round. Step 3 then freezes the validation patch for the next round.
+     1. **Fix and re-validate** — fixes happen HERE in the main thread, following the project's TDD discipline; sub-agents never edit. Fix the must-fix list; discretionary items only when the user asks. A must-fix finding the user chooses not to fix is accepted and carried with the `(accepted)` token (step 8); unfixed SUGGESTIONs just carry forward (step 8). **Verification gate**: after the fixes, build the project and run the affected tests, and get both green BEFORE looping back to step 3 — a fix-introduced regression must never flow into the next round. The build always runs. Pick the tests in this order:
+        1. A fixed file lies in a path some task description names → run the verification command that task description gives (the task text is the `tasks` field of `speclink instructions apply --change "<name>" --json`).
+        2. A fixed file no task covers → pick tests by the project's documented test policy (CLAUDE.md, AGENTS.md, or the workflow config's artifact rules).
+        3. The project documents no test policy → run the repo's full test command.
+
+        Report which test commands ran and which scope was skipped, and say that CI guards the skipped scope. When a fix touches an artifact (specs, design, tasks), the case decides:
+        - **The code changes to meet the artifact** → leave the artifacts alone.
+        - **The artifact wording is wrong but its intent stays** → edit the artifact in the main thread and get `speclink validate "<name>"` to pass before the next round; report which passages changed, and paste them verbatim into the next round's briefs (step 5).
+        - **The intent or scope changes** (the fix needs a new task, or changes what a Requirement means) → end this station as **scope changed** (step 5): keep the ticket, record no new round, do not stamp, and recommend `/speclink-ingest <name>` before running the station again. Do not add or reopen tasks inside this loop.
+
+        Step 3 then freezes the validation patch for the next round.
      2. **Accept as-is and stamp** — `speclink review stamp "<name>" --accept --agent claude` (stamps with reservations; the round's findings stay on record in the change history).
      3. **Stop without stamping** — end the session; the ticket and its frozen snapshot stay for a later session or another reviewer (`speclink review show <name> --json` hands them the last round).
 
    - **Bn is not strictly smaller than Bn-1** (equal or larger) → the round is already recorded; report **failed** immediately: keep the ticket, do NOT stamp, do not start another round automatically. The user decides what happens next (more work outside this loop, `--accept`, or discard).
 
    **Accepting a CRITICAL takes one explicit confirmation.** Three paths accept must-fix findings: leaving one unfixed under option 1 (it is carried as `(accepted)`), option 2's `--accept` stamp, and the recommended `--accept` stamp in the second bullet. On any of them, when the accepted findings include that top severity, first list each such finding verbatim, then ask once with the **AskUserQuestion tool** (plain text + wait if unavailable) whether to accept them. Only a yes goes on to record `(accepted)` or run `--accept`. A no returns to the choice the user was making: record no `(accepted)` token and do not stamp. When every accepted finding is WARNING, ask nothing extra. The engine's stamp gate does not change: both must-fix severities still block a clean stamp, and both pass with `--accept`.
+
+   **The confirmation can arrive from `/speclink-quality`.** When that skill calls this station and states that the top-severity findings were listed verbatim and confirmed one by one at its pause, the hand-over is the confirmation above: ask nothing again. When this station is about to accept a top-severity finding the hand-over did not list, confirm only the unlisted ones, as above. Called directly as a single station, nothing changes.
 
    The shrinking blocking set only decides whether the automatic loop may continue — it is never a quality score and never described as "passed". There is no fixed maximum round count; every automatic continuation must strictly shrink the blocking set.
 
@@ -4313,7 +4401,8 @@ Check these before you report:
 - [ ] Sub-agents are read-only; every fix returns to the main thread
 - [ ] The ticket is verb-owned: create, append, and close it only through `speclink review` verbs
 - [ ] Unresolved findings travel verbatim between rounds — rewording fakes progress
-- [ ] The verification gate is hard: no next round starts on a failing build or test suite
+- [ ] The verification gate is hard: no next round starts on a failing build or affected tests, and the report names what ran and what CI guards
+- [ ] Every brief follows the brief discipline (step 5); unfinished checks are listed, never counted as clean
 - [ ] Accepted findings are carried, never re-reported: sub-agents get the no-re-report list, the round record keeps the items
 - [ ] Project review rules come from `speclink workflow-config show --json`, enter the Standards brief only, keep their list's severity, and are quoted verbatim in their findings
 - [ ] Accepting any CRITICAL finding first lists each one and gets one explicit confirmation
@@ -4339,7 +4428,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
@@ -4425,7 +4514,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
@@ -4493,9 +4582,20 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
    Run the checking pass (steps 7–10) in ONE read-only sub-agent call (e.g. the Agent tool with a read-only agent) so its exploration stays out of the main thread's context. The sub-agent MUST NOT modify any file. If your harness cannot spawn sub-agents, run the checking pass yourself and keep its report separate from the triage that follows. The brief carries the resolved `locale` (step 3): finding descriptions are written in that language; severity labels, dimension prefixes, file paths, and command lines stay in English. When accepted findings exist in the ticket's last round (the `(accepted)` token), the brief also carries that list with a hard instruction: do NOT re-report these items or near-variants of them — they are already adjudicated.
 
+   Inside the `/speclink-quality` timeline, compose the brief exactly as this step says; `/speclink-quality` sends it in one message together with the review station's two briefs, so three sub-agents run at once. Continue with step 10 once it reports.
+
+   **Brief discipline** — discovery and validation alike. A sub-agent that reads whole diff files or searches without a target stalls, so the brief:
+
+   - pastes the frozen patch verbatim when it is 25 KB or less; above that, gives only each file's path and its hunk line ranges;
+   - gives generated files — golden snapshots, `assets.lock`, skill files regenerated by `speclink update` — by path only, and tells the sub-agent to search them at most once;
+   - names the functions, types and files to check, and tells the sub-agent to read large files by line range rather than whole, and to search only for the names the brief lists — no open-ended recursive search;
+   - sets no tool-call cap in discovery; in validation, caps the sub-agent at 5 tool calls;
+   - says where a finding goes: `path` is a repo-relative file path with no `:line` suffix, and a finding about a caller outside the frozen patch sits on the in-patch file it calls — `add-round` rejects a path with a `:line` suffix or outside the ticket's scope (the spec directory is exempt, so a Requirement-level finding may sit on its delta spec);
+   - ends with: "If you did not finish checking something, say so plainly — do not guess."
+
    **Discovery (`phase: discovery`) — the one and only exploration pass.** Run the full three dimensions (steps 7–9) against every change artifact, using the frozen patch and the callers/tests needed to judge its direct impact as the code evidence.
 
-   **Validation (`phase: validation`) — remediation validation, never re-discovery.** Take ONLY the last round's unresolved findings (verbatim), the accepted list, the remediation patch frozen in step 5, and the adjacent callers/tests needed to judge it. Decide per original finding: resolved or unresolved. Report only regressions the remediation patch directly introduces. Do not re-scan the whole change, the finding's whole file, or any unmodified area; do not raise new SUGGESTIONs or pre-existing issues in unchanged areas.
+   **Validation (`phase: validation`) — remediation validation, never re-discovery.** Take ONLY the last round's unresolved findings (verbatim), the accepted list, the remediation patch frozen in step 5, the artifact passages the last fix edited (step 13's verification gate — the patch leaves the spec directory out, so the brief is the only place the edit shows; judge the original finding against them), and the adjacent callers/tests needed to judge it. Decide per original finding: resolved or unresolved. Report only regressions the remediation patch directly introduces. Do not re-scan the whole change, the finding's whole file, or any unmodified area; do not raise new SUGGESTIONs or pre-existing issues in unchanged areas.
 
    **Segments marked `attribution: "adjacent"`** are files the remediation moved that no finding named — a caller, a test, a regenerated artifact, or a parallel session's edit leaking in. Confirm segment by segment that each genuinely belongs to THIS remediation, and report anything that does not as a regression. Never adopt an adjacent segment silently.
 
@@ -4515,7 +4615,8 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
    - If delta specs exist in `openspec/changes/<name>/specs/`:
      - Extract all requirements (marked with "### Requirement:")
      - For each requirement:
-       - Search codebase for keywords related to the requirement
+       - Look for its implementation in the frozen patch first
+       - Only when the patch holds no implementation at all (for example, code that existed before the change satisfies it), search outside the patch for concrete function, type or file names — never a keyword sweep of the whole codebase — and say in the report that the evidence lies outside the patch
        - Assess if implementation likely exists
      - If requirements appear unimplemented:
        - Add CRITICAL issue: "Requirement not found: <requirement name>"
@@ -4525,7 +4626,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
    **Requirement Implementation Mapping**:
    - For each requirement from delta specs:
-     - Search codebase for implementation evidence
+     - Find implementation evidence in the same order as step 7: the frozen patch first, then a search by concrete names only when the patch holds none
      - If found, note file paths and line ranges
      - Assess if implementation matches requirement intent
      - If divergence detected:
@@ -4595,6 +4696,8 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
        - Minor improvements
        - Each with specific recommendation
 
+    **Unfinished checks**: when the sub-agent says it did not finish checking something, list that verbatim here — it is not confirmed clean, and the user decides whether to check it further.
+
     **Final Assessment**:
     - If CRITICAL issues: "X critical issue(s) found. Fix before archiving."
     - If only warnings: "No critical issues. Y warning(s) to consider. Ready for archive (with noted improvements)."
@@ -4627,7 +4730,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
     **Validation rounds**: every unresolved original finding is carried into the new round verbatim — never reworded; a reworded line fakes the shrinking the loop rule depends on. Resolved findings are dropped. Regressions the remediation patch directly introduced enter as new findings lines. Every accepted, still-unfixed **must-fix** finding is appended verbatim ending with the structural token `(accepted)` — the token stays English like the severity labels. Unfixed SUGGESTIONs carry forward as plain unresolved lines without the token (the step 11 boundary). The last round must reflect all outstanding reservations — that is what keeps an `--accept` stamp honest.
 
-    NEVER hand-write or edit `openspec/changes/<name>/verify.md` — the ticket is verb-owned; a malformed round is rejected by the verb, fix the stdin content and retry.
+    NEVER hand-write or edit `openspec/changes/<name>/verify.md` — the ticket is verb-owned; a malformed round, or a finding path with a `:line` suffix or outside the ticket's scope, is rejected by the verb: fix the stdin content (anchor the finding on the in-scope file) and retry.
 
 13. **Branch on the blocking set**
 
@@ -4646,7 +4749,17 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
     - **Bn is empty but accepted must-fix findings remain** → recommend the user explicitly stamp with reservations — `speclink verify stamp "<name>" --accept --agent claude` — and report **passed with reservations**. Never run `--accept` unprompted.
 
     - **Bn is strictly smaller than Bn-1** (or this is the first round with must-fix findings) → use the **AskUserQuestion tool** (plain text + wait if unavailable) with three options, the recommended one first and labelled "(Recommended)": recommend option 1 — outstanding must-fix findings are what brought the loop here. SUGGESTION-only rounds never reach this menu: they stamp directly through the first bullet.
-      1. **Fix and re-verify** — fixes happen HERE in the main thread, following the project's TDD discipline; the checking pass never edits files. Fix the must-fix list; discretionary items only when the user asks. A must-fix finding the user chooses not to fix is accepted and carried with the `(accepted)` token (step 12); unfixed SUGGESTIONs just carry forward (step 12). **Verification gate**: after the fixes, run the project's full build and test suite and get it green BEFORE looping back to step 5 — a fix-introduced regression must never flow into the next round. Step 5 then freezes the validation patch for the next round.
+      1. **Fix and re-verify** — fixes happen HERE in the main thread, following the project's TDD discipline; the checking pass never edits files. Fix the must-fix list; discretionary items only when the user asks. A must-fix finding the user chooses not to fix is accepted and carried with the `(accepted)` token (step 12); unfixed SUGGESTIONs just carry forward (step 12). **Verification gate**: after the fixes, build the project and run the affected tests, and get both green BEFORE looping back to step 5 — a fix-introduced regression must never flow into the next round. The build always runs. Pick the tests in this order:
+         1. A fixed file lies in a path some task description names → run the verification command that task description gives (the task text is the `tasks` field of `speclink instructions apply --change "<name>" --json`).
+         2. A fixed file no task covers → pick tests by the project's documented test policy (CLAUDE.md, AGENTS.md, or the workflow config's artifact rules).
+         3. The project documents no test policy → run the repo's full test command.
+
+         Report which test commands ran and which scope was skipped, and say that CI guards the skipped scope. When a fix touches an artifact (specs, design, tasks), the case decides:
+         - **The code changes to meet the artifact** → leave the artifacts alone.
+         - **The artifact wording is wrong but its intent stays** → edit the artifact in the main thread and get `speclink validate "<name>"` to pass before the next round; report which passages changed, and paste them verbatim into the next round's brief (step 6).
+         - **The intent or scope changes** (the fix needs a new task, or changes what a Requirement means) → end this station as **scope changed** (step 6): keep the ticket, record no new round, do not stamp, and recommend `/speclink-ingest <name>` before running the station again. Do not add or reopen tasks inside this loop.
+
+         Step 5 then freezes the validation patch for the next round.
       2. **Accept as-is and stamp** — `speclink verify stamp "<name>" --accept --agent claude` (stamps with reservations; the round's findings stay on record in the change history).
       3. **Stop without stamping** — end the session; the ticket and its frozen snapshot stay for a later session or another verifier (`speclink verify show <name> --json` hands them the last round).
 
@@ -4657,7 +4770,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 **Verification Heuristics**
 
 - **Completeness**: Focus on objective checklist items (checkboxes, requirements list)
-- **Correctness**: Use keyword search, file path analysis, reasonable inference - don't require perfect certainty
+- **Correctness**: Use the frozen patch first, then searches for concrete names, file path analysis, reasonable inference - don't require perfect certainty
 - **Coherence**: Look for glaring inconsistencies, don't nitpick style
 - **False Positives**: When uncertain, prefer SUGGESTION over WARNING, WARNING over CRITICAL
 - **Actionability**: Every issue must have a specific recommendation with file/line references where applicable
@@ -4676,7 +4789,7 @@ Use clear markdown with:
 - Write the report in the `locale` language from step 3's payload — prose, headings, and table labels included. Keep severity labels (CRITICAL/WARNING/SUGGESTION), structural spec markers, command lines, and code references in English. If `locale` is absent, write in English.
 - Table for summary scorecard
 - Grouped lists for issues (CRITICAL/WARNING/SUGGESTION)
-- Code references in format: `file.ts:123`
+- Code references in the report in format: `file.ts:123` (a ticket finding's path stays file-only — step 12)
 - Specific, actionable recommendations
 - No vague suggestions like "consider reviewing"
 
@@ -4692,7 +4805,8 @@ Check these before you report:
 - [ ] The checking pass is read-only; every fix returns to the main thread
 - [ ] The ticket is verb-owned: create, append, and close it only through `speclink verify` verbs
 - [ ] Unresolved findings travel verbatim between rounds — rewording fakes progress
-- [ ] The verification gate is hard: no next round starts on a failing build or test suite
+- [ ] The verification gate is hard: no next round starts on a failing build or affected tests, and the report names what ran and what CI guards
+- [ ] The brief follows the brief discipline (step 6) and looks for evidence in the frozen patch first; unfinished checks are listed, never counted as clean
 - [ ] Accepted findings are carried, never re-reported
 - [ ] Thin artifacts: verify what exists, never invent requirements
 - [ ] Stop on errors and report — don't guess past a failing verb
@@ -4714,7 +4828,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.45.0"
+  version: "v1.46.0"
   generatedBy: "Speclink"
 ---
 
@@ -4724,7 +4838,7 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 
 **Input**: Optionally specify a change name (e.g., `/speclink-worktree-merge add-auth`). If omitted, run `git worktree list --porcelain` and offer the `speclink/*` branches found. If more than one is a candidate you MUST ask which one and wait for the answer — never guess.
 
-**Prerequisites**: This skill requires `git`. Run `git --version`. If git is not available, report it and STOP. Every step below is driven from the **main checkout**; the steps that act on the worktree — its status check and the rebase — reach it with `git -C <worktree-path>` rather than moving you there.
+**Prerequisites**: This skill requires `git` and the `speclink` CLI. Run `git --version`. If git is not available, report it and STOP. Every step below is driven from the **main checkout**; the steps that act on the worktree — its status check and the rebase — reach it with `git -C <worktree-path>` rather than moving you there.
 
 **Steps**
 
@@ -4770,6 +4884,12 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 
    `speclink/*` branches are local and never pushed, so rewriting their history costs nothing. Replaying the branch onto the target first lets the merge be a fast-forward, which keeps the main branch a straight line instead of collecting one merge node per parallel change.
 
+   Before anything moves, record the main checkout's HEAD — the **pre-merge HEAD**. Step 5 gives it to the quality stations as their starting point in the main checkout:
+
+   ```bash
+   git -C <main-checkout> rev-parse HEAD
+   ```
+
    In the worktree, replay the branch onto the target branch verified in step 2:
 
    ```bash
@@ -4812,7 +4932,17 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 
    The main checkout must end up exactly as it was before step 3.
 
-5. **Clean up after a successful merge**
+5. **Carry the quality baseline over, then clean up**
+
+   After a successful merge — fast-forward or merge node alike — and before the worktree is removed, run this from the main checkout:
+
+   ```bash
+   speclink review prepare "<change-name>" --base "<pre-merge-HEAD>" --from "<worktree-path>"
+   ```
+
+   It writes the quality stations' Apply baseline in the main checkout and carries over both stations' snapshots from the worktree, so `/speclink-review`, `/speclink-verify` and `/speclink-quality` work in the main checkout with no `--base` from the user. From the pre-merge HEAD to the merged HEAD is exactly what this change brought in, conflict resolutions included. If the command fails, report its error and stop here: do not remove the worktree — the snapshots still live there.
+
+   Then remove the worktree and delete the branch:
 
    ```bash
    git -C <main-checkout> worktree remove "<worktree-path>"
@@ -4825,11 +4955,19 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 
 6. **Confirm and hand off**
 
-   Tell the user the wrap-up is done: the branch is merged, the worktree is removed, and the branch is deleted. Then point at what comes next in canonical order — the quality stations belong inside the worktree, so by this point they are either done or deliberately skipped, and the next step is archiving from the main checkout:
+   Tell the user the wrap-up is done: the branch is merged, the quality baseline is carried over, the worktree is removed, and the branch is deleted. Then hand off by the change's state. Read the manual tasks from `speclink instructions apply --change "<change-name>" --json` (`remaining` above `codeRemaining` means unchecked `[M]` tasks); ask the user when you cannot tell whether the quality stations already ran.
 
-   > 這個 change 已合併回主分支。品質關卡建議在 worktree 內就跑完；跑過或使用者決定略過的話，下一步是在主 checkout `/speclink-archive` 封存。
-   >
-   > 還沒跑品質關卡的話，仍可在主 checkout 補跑 `/speclink-review`、`/speclink-verify`，或 `/speclink-quality`（兩站合跑）—— 但那是降級路徑：主 checkout 沒有 Apply baseline，審查凍結面會退回較粗的判定。
+   - **The quality stations already ran in the worktree** (their stamps came along with the merge):
+
+     > 這個 change 已合併回主分支，品質關卡也已在 worktree 內跑完。下一步是在主 checkout `/speclink-archive` 封存。
+
+   - **The quality stations have not run, and no `[M]` task is open**:
+
+     > 這個 change 已合併回主分支，品質關卡的起點已承接到主 checkout。要跑的話直接在這裡執行 `/speclink-review`（工藝品質）∥ `/speclink-verify`（規格符合度），或 `/speclink-quality`（兩站合跑），是否要跑由你決定；之後 `/speclink-archive` 封存。
+
+   - **Unchecked `[M]` manual tasks remain**:
+
+     > 這個 change 已合併回主分支，品質關卡的起點已承接到主 checkout。在這裡執行 `/speclink-review` ∥ `/speclink-verify`，或 `/speclink-quality`，再把手動任務做完並勾選，之後 `/speclink-archive` 封存。
 
 **Output On Success**
 
@@ -4839,10 +4977,11 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 **Change:** <change-name>
 **Branch:** speclink/<change-name> → <main-branch> ✓
 **Landed as:** fast-forward (straight line) — or "merge node (rebase fell back)" when step 3 took the fallback
+**Quality baseline:** carried over to the main checkout ✓
 **Worktree:** <path> (removed)
 **Branch deleted:** ✓
 
-接下來：主 checkout 封存 /speclink-archive（品質關卡建議已在 worktree 內完成；未跑則主 checkout 補跑屬降級路徑）
+接下來：<step 6 的交棒——品質關卡已跑完→主 checkout /speclink-archive；未跑→直接在主 checkout 跑品質關卡再封存；有未勾手動任務→主 checkout 跑品質關卡、完成手動任務後封存>
 ```
 
 **Output On Stop**
@@ -4868,11 +5007,13 @@ Check these before you report:
 - [ ] Never resolve rebase conflicts yourself; `rebase --abort` and fall back to the plain merge (step 3)
 - [ ] Never leave a half-finished merge state behind (step 4)
 - [ ] Never force-remove a worktree that still has uncommitted work (step 5)
+- [ ] The pre-merge HEAD was recorded before the rebase, and the worktree was removed only after `speclink review prepare --base --from` succeeded (steps 3 and 5)
 - [ ] Never merge a change whose worktree you did not verify is fully committed (step 2)
 
 ## Next steps
 
 Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
 
-- The branch is merged, the worktree is removed and the branch is deleted → `/speclink-archive <change-name>` **from the main checkout** — archiving inside a linked worktree is refused by the engine
-- The quality stations were never run → they need the worktree's Apply baseline, which is gone after the merge; say so plainly instead of suggesting them here
+- The quality stations already ran in the worktree → `/speclink-archive <change-name>` **from the main checkout** — archiving inside a linked worktree is refused by the engine
+- The quality stations have not run → run them in the main checkout, where step 5 carried their baseline over: `/speclink-review` ∥ `/speclink-verify`, or `/speclink-quality` for both; then `/speclink-archive <change-name>`
+- Unchecked `[M]` manual tasks remain → the quality stations in the main checkout, then the manual tasks, then `/speclink-archive <change-name>`

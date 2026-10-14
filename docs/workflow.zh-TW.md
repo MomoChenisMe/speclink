@@ -14,6 +14,7 @@ baseline? → discuss?/improve? → propose → apply ⇄ ingest → (quality? |
                                     閒置後續作：先 drift
 
 worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) → worktree-merge → archive
+      或：apply-with-worktree ⇄ ingest → worktree-merge → (quality? | review? ∥ verify?) → archive
 
 工具：validate / analyze / audit / commit / config / manual / trace / plan
 ```
@@ -170,12 +171,16 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 - **什麼時候用**：手上有兩個以上互不衝突的變更。**跳過**：只有一個變更，或幾個變更會改到同一批檔案（排隊做比較快）。
 - **前置**：先開啟 worktree 設定：`speclink workflow-config set worktree true`。兩個 worktree 技能只在設定開啟時才會產生。
-- **輸入 → 產物**：一個可以開工的變更 → 一個 worktree 與分支。實作、品質關卡與提交都在裡面完成。
+- **輸入 → 產物**：一個可以開工的變更 → 一個 worktree 與分支。實作與提交在裡面完成。提交後分支會先追上主分支，之後合併就是直線前進（fast-forward）。
 - **技能**：`/speclink-apply-with-worktree <變更名稱>`，收尾用 `/speclink-worktree-merge <變更名稱>`。一次只處理一個變更；要平行就另開視窗，每個 session 各跑一個。
-- **底層 CLI**：`speclink plan` 判斷哪些變更可以並行；`speclink list` 用 `[worktree]` 標出在 worktree 裡的變更。
-- **完成**：worktree 裡的任務做完、選擇要跑的品質關卡已蓋章、變更已提交。`worktree-merge` 把分支併回主分支，並清掉 worktree。
+- **底層 CLI**：`speclink plan` 判斷哪些變更可以並行；`speclink list` 用 `[worktree]` 標出在 worktree 裡的變更。品質關卡的起點由技能代為移動：分支追上主分支後跑 `speclink review prepare <change> --base <commit>`；合併時跑 `speclink review prepare <change> --base <commit> --from <worktree-path>`，同時把品質關卡的快照帶進主 checkout。
+- **完成**：worktree 裡的任務做完、變更已提交。接著品質關卡有兩條路：
+  - 沒有未完成的手動任務：在 worktree 裡跑品質關卡，提交蓋章的異動，再跑 `worktree-merge`。
+  - 還有手動任務沒做，或想在蓋章前先看到 CI 結果（worktree 分支只在你的電腦上，CI 看不到）：先跑 `worktree-merge`，再到主 checkout 跑品質關卡。
+
+  `worktree-merge` 把分支併回主分支、把品質關卡的起點帶進主 checkout，並清掉 worktree。
 - **下一步**：回主 checkout 執行 `archive`。封存只能在主 checkout 跑，在 worktree 裡會被拒絕。
-- **出狀況**：品質關卡要在 worktree 裡跑，因為起點記在那裡。worktree 裡的 `tasks.md` 和主 checkout 的是兩份，只改 worktree 那份。
+- **出狀況**：worktree 裡的 `tasks.md` 和主 checkout 的是兩份，只改 worktree 那份。用舊版技能做完 apply 的變更沒有起點可以帶過來：在主 checkout 跑品質關卡時，用 `--base` 指定一次變更第一個 commit 的上一個 commit。
 
 ### <a id="quality"></a>quality：兩道關卡一起跑
 
@@ -196,7 +201,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 - **什麼時候用**：改動大、跨模組，或是會長期維護的程式碼。**跳過**：低風險的小改動。跳過是正當選擇，不是欠帳。
 - **輸入 → 產物**：從 apply 開工時記下的起點到現在的修改 → `review.md` 工單。問題分 CRITICAL、WARNING、SUGGESTION 三級。判準是 repo 自己的慣例文件，加上常見的程式碼壞味道與找 bug。
 - **技能**：`/speclink-review <變更名稱>`
-- **底層 CLI**：`speclink review prepare`、`scope`、`add-round`、`show`、`stamp`、`discard`。
+- **底層 CLI**：`speclink review prepare`（`--base` 與 `--from` 移動起點，worktree 技能會用到）、`scope`、`add-round`、`show`、`stamp`、`discard`。
 - **完成**：程式任務都完成，最後一輪沒有必修問題（CRITICAL、WARNING），就可以蓋章。SUGGESTION 不擋章。
 - **下一步**：也要跑 `verify` 就接著跑，否則 `archive`。
 - **出狀況**：有必修問題但你決定接受，用 `speclink review stamp --accept` 帶著問題蓋章。

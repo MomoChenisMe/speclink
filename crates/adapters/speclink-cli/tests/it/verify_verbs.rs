@@ -198,6 +198,54 @@ fn add_round_without_scope_fails_and_writes_nothing() {
 }
 
 #[test]
+fn add_round_line_suffixed_path_on_a_fresh_change_creates_no_ticket() {
+    // spec「驗證 finding 路徑落在工單範圍內」Scenario 帶行號的路徑被拒。
+    let p = TempProject::with_change("addround-lineno", TASKS_DONE);
+    let out = p.run_stdin(
+        &["verify", "add-round", "demo", "--stdin"],
+        "**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs:7-9 — Correctness: off by one\n",
+    );
+    assert!(!out.status.success(), "line-suffixed path → non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("src/lib.rs:7-9") && err.contains("line number"), "{err}");
+    assert!(!p.ticket_path().exists(), "refusal must not create the ticket");
+}
+
+#[test]
+fn add_round_out_of_scope_path_leaves_the_ticket_byte_identical() {
+    let p = TempProject::with_change("addround-outscope", TASKS_DONE);
+    p.run_stdin(&["verify", "add-round", "demo", "--stdin"], ROUND_WITH_FINDINGS);
+    let before = std::fs::read(p.ticket_path()).unwrap();
+    let out = p.run_stdin(
+        &["verify", "add-round", "demo", "--stdin"],
+        "**Scope**: src/lib.rs\n\n- [WARNING] src/caller.rs — Completeness: caller unchanged\n",
+    );
+    assert!(!out.status.success(), "out-of-scope path → non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("src/caller.rs") && err.contains("scope"), "{err}");
+    assert_eq!(std::fs::read(p.ticket_path()).unwrap(), before, "zero write");
+}
+
+#[test]
+fn add_round_accepts_a_finding_anchored_on_a_delta_spec() {
+    // Scenario 錨定在 delta 規格檔的 finding 可接受；stdout 與既有輸出相同。
+    let p = TempProject::with_change("addround-delta", TASKS_DONE);
+    let out = p.run_stdin(
+        &["verify", "add-round", "demo", "--stdin"],
+        "**Scope**: src/lib.rs\n\n\
+         - [CRITICAL] openspec/changes/demo/specs/auth/spec.md — Completeness: Requirement not found: 登入逾時\n",
+    );
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(
+        stdout_of(&out).trim_end(),
+        "✓ Recorded verification Round 1 for change 'demo'",
+        "success output unchanged"
+    );
+    let doc = std::fs::read_to_string(p.ticket_path()).unwrap();
+    assert!(doc.contains("Requirement not found: 登入逾時"), "{doc}");
+}
+
+#[test]
 fn structured_sequence_allows_one_discovery_then_validation_only() {
     // spec Scenario「第二個 discovery 被拒絕」＋「追加 structured validation」＋
     // 「phase 與 patch 必須成對」。
