@@ -73,7 +73,7 @@ Write rules:
 
 - `locale` accepts only `tw`, `ja`, `en`. `spec_locale` also accepts `auto` (follow `locale`). Case must match. A display name such as 「繁體中文」 is rejected, and the error lists the valid codes.
 - `tdd`, `audit`, and `worktree` accept only `true` / `false`. A `false` value (or an empty `locale`) removes the line, so the default applies again.
-- All write subcommands accept `--dry-run`. It prints the diff and writes nothing. The diff marks only the lines that change. A line that stays the same shows as context, also when it is between two changes.
+- All write subcommands accept `--dry-run`. It prints the diff and writes nothing. The diff compares the old and new text line by line. Only the lines that are removed, added, or moved get `-` or `+`. The other lines in the changed range show as context, also when they are between two changes. Up to three unchanged lines before and after that range are also shown.
 - A `review` write replaces the whole `review` block. `extend` writes no `baseline` key, an empty list removes its key, and a block with nothing left is removed. Comments inside the `review` block are not kept.
 - After a `review` write, the command checks the skill files in your local project. If they are older than the engine, the write still succeeds, but stderr shows a warning that tells you to run `speclink update`. An older review skill may not apply the review rules.
 - The `review` block is strict. An unknown key (a typo such as `critcal`), a `baseline` other than `extend` or `replace`, or a list entry that is not a string makes the file unparseable. Every command that reads the file then fails and names the key, until you correct it.

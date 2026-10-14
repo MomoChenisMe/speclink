@@ -5,3 +5,33 @@ created_with: claude
 from_discussion: config-skill-rule-routing
 started_at: 2026-10-14
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-14
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 8
+reviewed_scope:
+  - path: crates/adapters/speclink-cli/src/verbs/config.rs
+    hash: 7986a22631e7d83393b37613f97c4b67ebeeab13a2e20907a4614bc41a4190d8
+  - path: crates/adapters/speclink-cli/tests/it/workflow_config.rs
+    hash: 1723f1c265aeb393cac602cc996e23b03135876fa86a4779b40e17fa1fff6b1c
+  - path: crates/engine/speclink-core/src/testkit.rs
+    hash: a98c2bc8354527c9da4b9e19df159143433637748d17af57a0af8192f8fcc659
+  - path: docs/configuration.md
+    hash: 8fb68f2fee217db58cf553c986ba95ebd0322d4c53c7d420c9485330e3b8035d
+  - path: docs/configuration.zh-TW.md
+    hash: 0f2da03f8c76119b989239f796f99ef79c40973252b5f6793d98b0dc78b04ce9
+verified_at: 2026-10-14
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 8
+verified_scope:
+  - path: crates/adapters/speclink-cli/src/verbs/config.rs
+    hash: 7986a22631e7d83393b37613f97c4b67ebeeab13a2e20907a4614bc41a4190d8
+  - path: crates/adapters/speclink-cli/tests/it/workflow_config.rs
+    hash: 1723f1c265aeb393cac602cc996e23b03135876fa86a4779b40e17fa1fff6b1c
+  - path: crates/engine/speclink-core/src/testkit.rs
+    hash: a98c2bc8354527c9da4b9e19df159143433637748d17af57a0af8192f8fcc659
+  - path: docs/configuration.md
+    hash: 8fb68f2fee217db58cf553c986ba95ebd0322d4c53c7d420c9485330e3b8035d
+  - path: docs/configuration.zh-TW.md
+    hash: 0f2da03f8c76119b989239f796f99ef79c40973252b5f6793d98b0dc78b04ce9

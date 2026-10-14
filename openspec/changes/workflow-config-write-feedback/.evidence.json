@@ -17,6 +17,13 @@
         "docs/configuration.md",
         "docs/configuration.zh-TW.md"
       ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.2 收尾驗證受影響面：speclink-cli 的單元與整合測試、scripts 守門全部通過，且 git status 只含 proposal Impact 列出的檔案與本變更的 artifacts。驗證：`cargo test -p speclink-cli --bin speclink`、`cargo test -p speclink-cli --test it workflow_config` 與 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠",
+      "files": [
+        "crates/engine/speclink-core/src/testkit.rs"
+      ]
     }
   ],
   "entries": [
@@ -43,6 +50,17 @@
         "docs/configuration.zh-TW.md"
       ],
       "recordedAt": "2026-10-14T09:27:46Z"
+    },
+    {
+      "taskId": "tsk_01M4WSPCE9T0SZDD5WVDN777T9",
+      "taskDesc": "3.2 收尾驗證受影響面：speclink-cli 的單元與整合測試、scripts 守門全部通過，且 git status 只含 proposal Impact 列出的檔案與本變更的 artifacts。驗證：`cargo test -p speclink-cli --bin speclink`、`cargo test -p speclink-cli --test it workflow_config` 與 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "2f875411ddfd7c40c53a21ee3f0661bad7dec75c",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/testkit.rs"
+      ],
+      "recordedAt": "2026-10-14T10:39:07Z"
     }
   ]
 }

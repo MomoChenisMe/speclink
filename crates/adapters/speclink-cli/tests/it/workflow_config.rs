@@ -12,7 +12,7 @@ use std::process::{Command, Output, Stdio};
 use std::sync::{Arc, Mutex};
 
 use speclink_core::init::ASSET_VERSION;
-use speclink_core::testkit::set_skill_version;
+use speclink_core::testkit::{set_skill_version, write_skill_file};
 
 // --- fs fixture ---
 
@@ -553,18 +553,9 @@ fn rules_dry_run_prints_a_unified_diff_and_writes_nothing() {
     assert_eq!(p.config_bytes(), before, "config.yaml is byte-for-byte unchanged");
 }
 
-/// The `-`/`+` lines of a unified diff, file headers excluded.
-fn changed_lines(diff: &str) -> Vec<&str> {
-    diff.lines()
-        .filter(|l| {
-            (l.starts_with('-') || l.starts_with('+')) && !l.starts_with("---") && !l.starts_with("+++")
-        })
-        .collect()
-}
-
 #[test]
 fn dry_run_shows_lines_between_two_changes_as_context() {
-    // Spec scenario 兩處改動之間的未改行以 context 呈現.
+    // Spec scenario 兩處改動之間的未改行以 context 呈現＋Example rules.tasks 的差異.
     let p = TempProject::new(
         "dry-run-two-changes",
         "schema: spec-driven\nrules:\n  tasks:\n  - 甲\n  - 乙\n  - 丙\n",
@@ -576,10 +567,12 @@ fn dry_run_shows_lines_between_two_changes_as_context() {
     );
     assert!(out.status.success(), "dry-run exits 0: {}", stderr_of(&out));
     let diff = stdout_of(&out);
-    assert_eq!(changed_lines(&diff), ["-  - 甲", "+  - 甲二", "+  - 丁"], "{diff}");
-    for kept in ["   - 乙", "   - 丙"] {
-        assert!(diff.lines().any(|l| l == kept), "{kept:?} shows as context: {diff}");
-    }
+    let hunk: Vec<&str> = diff.lines().skip_while(|l| !l.starts_with("@@")).skip(1).collect();
+    assert_eq!(
+        hunk,
+        [" schema: spec-driven", " rules:", "   tasks:", "-  - 甲", "+  - 甲二", "   - 乙", "   - 丙", "+  - 丁"],
+        "{diff}"
+    );
     assert_eq!(p.config_bytes(), before, "config.yaml is byte-for-byte unchanged");
 }
 
@@ -975,9 +968,13 @@ fn parent_help_and_set_help_share_one_set_description() {
 // --- review 寫入後的技能檔過期提示 ---
 // Spec workflow-config「審查規則寫入後的技能檔過期提示」。
 
-/// 比任何引擎都舊／都新的技能版號（模擬以別版引擎生成的工作區）。
-const OLD_SKILLS: &str = "v0.9.0";
+/// 舊於／新於引擎現版的技能版號（模擬以別版引擎生成的工作區；舊值取自規格 Example）。
+const OLD_SKILLS: &str = "v1.44.0";
 const NEWER_SKILLS: &str = "v999.0.0";
+
+/// 兩個工具的技能檔所在（`<dir>/skills`）。
+const CLAUDE: &str = ".claude";
+const CODEX: &str = ".agents";
 
 /// 過期提示的開頭：不提示的情境只斷言它不出現。
 const STALE_HINT: &str = "speclink: warning: skill files are older";
@@ -989,26 +986,37 @@ fn stale_hint(tools: &str) -> String {
     )
 }
 
-/// Generate the declared tools' skills with `speclink update`; `claude_version`
-/// then restamps the claude skills (None keeps the engine's own version).
-fn generate_skills(p: &TempProject, claude_version: Option<&str>) {
+/// Generate the declared tools' skills with `speclink update`, then restamp each
+/// listed tool's skills as `(dir, version)`; unlisted tools stay current.
+fn generate_skills(p: &TempProject, stamps: &[(&str, &str)]) {
     let out = p.run(&["update"]);
     assert!(out.status.success(), "update: {}", stderr_of(&out));
-    if let Some(version) = claude_version {
-        set_skill_version(&p.dir.join(".claude").join("skills"), version);
+    for (dir, version) in stamps {
+        set_skill_version(&p.dir.join(dir).join("skills"), version);
     }
 }
 
 #[test]
 fn review_write_warns_when_skill_files_are_older_than_the_engine() {
-    // Spec scenario 技能檔過期時寫入後提示.
-    let p = TempProject::new("stale-hint", WF_YAML);
-    generate_skills(&p, Some(OLD_SKILLS));
-    let out = p.run_stdin(&["workflow-config", "review", "warning", "--stdin"], "one rule\n");
-    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
-    assert_eq!(stdout_of(&out), "✓ review.warning = 1 entries\n");
-    assert_eq!(stderr_of(&out), stale_hint(&format!("claude {OLD_SKILLS}")));
-    assert_eq!(strings(&review_json(&p)["warning"]), ["one rule"]);
+    // Spec scenario 技能檔過期時寫入後提示＋Example 提示行（逐列）.
+    let rows: [(&str, &[(&str, &str)], &str); 2] = [
+        ("tools:\n  - claude\n", &[(CLAUDE, "v1.44.0")], "claude v1.44.0"),
+        (
+            "tools:\n  - claude\n  - codex\n",
+            &[(CLAUDE, "v1.44.0"), (CODEX, "v1.43.0")],
+            "claude v1.44.0, codex v1.43.0",
+        ),
+    ];
+    for (i, (tools, stamps, named)) in rows.into_iter().enumerate() {
+        let p = TempProject::new(&format!("stale-hint-{i}"), WF_YAML);
+        std::fs::write(p.dir.join(".speclink.yaml"), tools).unwrap();
+        generate_skills(&p, stamps);
+        let out = p.run_stdin(&["workflow-config", "review", "warning", "--stdin"], "one rule\n");
+        assert!(out.status.success(), "row {i} stderr: {}", stderr_of(&out));
+        assert_eq!(stdout_of(&out), "✓ review.warning = 1 entries\n", "row {i}");
+        assert_eq!(stderr_of(&out), stale_hint(named), "row {i}");
+        assert_eq!(strings(&review_json(&p)["warning"]), ["one rule"], "row {i}");
+    }
 }
 
 #[test]
@@ -1016,8 +1024,8 @@ fn the_hint_names_the_stale_tool_when_another_tool_is_missing() {
     // Spec scenario 一個工具缺失、另一個過期時仍提示過期的工具.
     let p = TempProject::new("stale-hint-missing", WF_YAML);
     std::fs::write(p.dir.join(".speclink.yaml"), "tools:\n  - claude\n  - codex\n").unwrap();
-    generate_skills(&p, Some(OLD_SKILLS));
-    std::fs::remove_dir_all(p.dir.join(".agents").join("skills")).unwrap();
+    generate_skills(&p, &[(CLAUDE, OLD_SKILLS)]);
+    std::fs::remove_dir_all(p.dir.join(CODEX).join("skills")).unwrap();
     let out = p.run(&["workflow-config", "review", "baseline", "replace"]);
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     assert_eq!(stderr_of(&out), stale_hint(&format!("claude {OLD_SKILLS}")));
@@ -1025,15 +1033,21 @@ fn the_hint_names_the_stale_tool_when_another_tool_is_missing() {
 
 #[test]
 fn no_hint_when_skill_files_are_current_missing_or_newer() {
-    // Spec scenarios 技能檔現版或整組缺失時不提示＋工作區較新時不提示.
-    let current = TempProject::new("hint-current", WF_YAML);
-    generate_skills(&current, None);
-    let missing = TempProject::new("hint-missing", WF_YAML);
-    let newer = TempProject::new("hint-newer", WF_YAML);
-    generate_skills(&newer, Some(NEWER_SKILLS));
-    for (case, p, list) in
-        [("current", &current, "critical"), ("missing", &missing, "critical"), ("newer", &newer, "suggestion")]
-    {
+    // Spec scenarios 技能檔現版或整組缺失時不提示＋工作區較新時不提示。最後一列
+    // 有一個工具過期，整體仍為較新：釘住「整體較新就不提示」而非只看逐工具。
+    let both = "tools:\n  - claude\n  - codex\n";
+    let rows: [(&str, &str, Option<&[(&str, &str)]>, &str); 4] = [
+        ("current", "tools:\n  - claude\n", Some(&[]), "critical"),
+        ("missing", "tools:\n  - claude\n", None, "critical"),
+        ("newer", "tools:\n  - claude\n", Some(&[(CLAUDE, NEWER_SKILLS)]), "suggestion"),
+        ("newer+stale", both, Some(&[(CLAUDE, NEWER_SKILLS), (CODEX, OLD_SKILLS)]), "suggestion"),
+    ];
+    for (case, tools, stamps, list) in rows {
+        let p = TempProject::new(&format!("hint-{case}"), WF_YAML);
+        std::fs::write(p.dir.join(".speclink.yaml"), tools).unwrap();
+        if let Some(stamps) = stamps {
+            generate_skills(&p, stamps);
+        }
         let out = p.run_stdin(&["workflow-config", "review", list, "--stdin"], "one rule\n");
         assert!(out.status.success(), "{case}: {}", stderr_of(&out));
         assert_eq!(stdout_of(&out), format!("✓ review.{list} = 1 entries\n"), "{case}");
@@ -1045,7 +1059,7 @@ fn no_hint_when_skill_files_are_current_missing_or_newer() {
 fn no_hint_on_dry_run_or_non_review_writes() {
     // Spec scenario dry-run 與其他寫入子指令不提示.
     let p = TempProject::new("hint-other-writes", WF_YAML);
-    generate_skills(&p, Some(OLD_SKILLS));
+    generate_skills(&p, &[(CLAUDE, OLD_SKILLS)]);
     let before = p.config_bytes();
     let out = p.run_stdin(
         &["workflow-config", "review", "warning", "--stdin", "--dry-run"],
@@ -1323,13 +1337,7 @@ fn remote_review_write_warns_from_the_local_skill_files() {
     let yaml = p.dir.join(".speclink.yaml");
     let declared = std::fs::read_to_string(&yaml).unwrap() + "tools:\n  - claude\n";
     std::fs::write(&yaml, declared).unwrap();
-    let skill = p.dir.join(".claude").join("skills").join("speclink-review");
-    std::fs::create_dir_all(&skill).unwrap();
-    std::fs::write(
-        skill.join("SKILL.md"),
-        format!("---\nname: speclink-review\nmetadata:\n  version: \"{OLD_SKILLS}\"\n---\n\nbody\n"),
-    )
-    .unwrap();
+    write_skill_file(&p.dir.join(CLAUDE).join("skills"), "speclink-review", OLD_SKILLS);
 
     let out = p.run_stdin(&["workflow-config", "review", "critical", "--stdin"], "one rule\n");
 

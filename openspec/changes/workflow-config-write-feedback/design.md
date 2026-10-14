@@ -65,7 +65,7 @@ workflow-config 的寫入子指令（set、context、rules、review）全部集�
 - 技能檔為現版、整組缺失、整體較新或無法判定時，stderr 不出現該提示。
 - 帶 `--dry-run` 的 review 子指令、以及 set、context、rules 的任何寫入，都不出現該提示。
 - remote 模式寫入成功後，以本機工作區的技能檔判定，條件與本機模式相同。
-- 所有 workflow-config 寫入子指令的 `--dry-run`：stdout 仍以 `--- a/<label>`、`+++ b/<label>` 與一個 `@@ -<舊起點,行數> +<新起點,行數> @@` 標頭開頭；新舊文字都有的行不出現在 `-` 或 `+` 行，只以 context 行出現；無變更時輸出為空。
+- 所有 workflow-config 寫入子指令的 `--dry-run`：stdout 仍以 `--- a/<label>`、`+++ b/<label>` 與一個 `@@ -<舊起點,行數> +<新起點,行數> @@` 標頭開頭；依最長共同子序列對齊上的行（未改動且相對順序不變）不出現在 `-` 或 `+` 行，只以 context 行出現，被刪除、新增或移動位置的行才帶 `-`／`+`；無變更時輸出為空。
 
 **Interface / data shape**
 
@@ -90,7 +90,7 @@ workflow-config 的寫入子指令（set、context、rules、review）全部集�
 
 **Scope boundaries**
 
-- In scope：workflow-config 動詞模組的提示函式與差異函式、兩臂的呼叫點、對應的 CLI 整合與單元測試、docs/configuration.md 與 docs/configuration.zh-TW.md 的說明。
+- In scope：workflow-config 動詞模組的提示函式與差異函式、兩臂的呼叫點、對應的 CLI 整合與單元測試（含 speclink-core testkit 的技能檔測試 helper）、docs/configuration.md 與 docs/configuration.zh-TW.md 的說明。
 - Out of scope：speclink-core 的探測邏輯、desktop、server、技能範本與 ASSET_VERSION、golden 對照檔、其他動詞的輸出。
 
 ## Risks / Trade-offs
