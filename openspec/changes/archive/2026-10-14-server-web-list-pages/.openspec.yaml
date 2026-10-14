@@ -203,3 +203,5 @@ verified_scope:
     hash: 01f4b9777cb4bf5a0be8e01d35250c48f90c2c727279e8c4cef69d4902349269
   - path: packages/ui/src/reveal.ts
     hash: 29bc9244d9f3edc5b80f4f40c5aef74e8cce9ca38d47d3b9ad17b0cd232519f7
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-14
