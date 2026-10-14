@@ -14,6 +14,7 @@ baseline? → discuss?/improve? → propose → apply ⇄ ingest → (quality? |
                                     resume after a pause: drift first
 
 worktree: apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) → worktree-merge → archive
+      or: apply-with-worktree ⇄ ingest → worktree-merge → (quality? | review? ∥ verify?) → archive
 
 tools: validate / analyze / audit / commit / config / manual / trace / plan
 ```
@@ -170,12 +171,16 @@ Work on several independent changes at the same time. Each change gets its own g
 
 - **When to use**: You have two or more changes that do not conflict. **Skip**: You have only one change, or the changes touch the same files (one after another is faster).
 - **Before you start**: Turn on the worktree setting with `speclink workflow-config set worktree true`. The two worktree skills exist only when this setting is on.
-- **Input → output**: A change that is ready to start → one worktree and one branch. The work, the quality stations, and the commit all happen in the worktree.
+- **Input → output**: A change that is ready to start → one worktree and one branch. The work and the commit happen in the worktree. After the commit, the branch catches up with the main branch, so a later merge is a fast-forward.
 - **Skill**: `/speclink-apply-with-worktree <change-name>`. To finish, use `/speclink-worktree-merge <change-name>`. Each run takes one change. For parallel work, open one session for each change.
-- **CLI**: `speclink plan` shows which changes can run in parallel. `speclink list` marks the changes in a worktree with `[worktree]`.
-- **Done**: The tasks in the worktree are done, the quality stations that you chose have stamps, and the change is committed. `worktree-merge` merges the branch back into the main branch and removes the worktree.
+- **CLI**: `speclink plan` shows which changes can run in parallel. `speclink list` marks the changes in a worktree with `[worktree]`. The skills move the start point of the quality stations for you: `speclink review prepare <change> --base <commit>` after the branch catches up, and `speclink review prepare <change> --base <commit> --from <worktree-path>` at the merge, which also brings the quality snapshots into the main checkout.
+- **Done**: The tasks in the worktree are done and the change is committed. Then the quality stations go one of two ways:
+  - No open manual task: run the quality stations in the worktree, commit the stamps, then run `worktree-merge`.
+  - Manual tasks are still open, or you want the CI result before the stamps (the worktree branch stays on your machine, so CI cannot see it): run `worktree-merge` first, then run the quality stations in the main checkout.
+
+  `worktree-merge` merges the branch back into the main branch, brings the start point of the quality stations into the main checkout, and removes the worktree.
 - **Next**: Go back to the main checkout and run `archive`. Archive works only in the main checkout. In a worktree, it fails.
-- **If something goes wrong**: Run the quality stations in the worktree, because the start point is there. The worktree and the main checkout each have their own `tasks.md`. Change only the one in the worktree.
+- **If something goes wrong**: The worktree and the main checkout each have their own `tasks.md`. Change only the one in the worktree. A change that finished apply with older skills has no start point to bring over: in the main checkout, give the quality stations `--base` once, with the parent of the first commit of the change.
 
 ### <a id="quality"></a>quality: run both stations
 
@@ -196,7 +201,7 @@ Check the craft of the code, and record the problems by severity in a ticket.
 - **When to use**: The change is large, crosses modules, or adds code that people will maintain for a long time. **Skip**: A small, low-risk change. Skipping is a valid choice, not a debt.
 - **Input → output**: The changes from the start point that apply recorded → a `review.md` ticket. Problems have three levels: CRITICAL, WARNING, and SUGGESTION. The criteria are the convention documents of the repo, common code smells, and bug hunting.
 - **Skill**: `/speclink-review <change-name>`
-- **CLI**: `speclink review prepare`, `scope`, `add-round`, `show`, `stamp`, `discard`.
+- **CLI**: `speclink review prepare` (`--base` and `--from` move the start point; the worktree skills use them), `scope`, `add-round`, `show`, `stamp`, `discard`.
 - **Done**: When all code tasks are done and the last round has no must-fix problems (CRITICAL or WARNING), you can stamp. A SUGGESTION does not block the stamp.
 - **Next**: If you also want `verify`, run it. If not, `archive`.
 - **If something goes wrong**: If must-fix problems remain and you accept them, use `speclink review stamp --accept` to stamp with the problems.
