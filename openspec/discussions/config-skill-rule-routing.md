@@ -4,8 +4,7 @@ slug: config-skill-rule-routing
 status: promoted
 created: 2026-10-14
 created_by: MomoChen <momochenisme@gmail.com>
-hold: true
-promoted_to: workflow-config-write-feedback
+promoted_to: workflow-config-write-feedback, config-skill-rule-routing
 ---
 
 # Discussion: config 技能的規則分流：審查規則與產出規則的界定、重複檢查、嚴重度判斷，以及相關 CLI 缺口
