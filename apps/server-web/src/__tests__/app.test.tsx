@@ -154,6 +154,14 @@ describe("登入這一族的卡片", () => {
     expect(main.textContent).toContain(`用管理員給你的帳號登入 ${window.location.host}。`);
   });
 
+  it("跟隨系統時點已標示的「中文」不寫入偏好", async () => {
+    renderAt("/login", makeClient());
+    const user = userEvent.setup();
+    await screen.findByRole("heading", { level: 1, name: "登入" });
+    await user.click(screen.getByRole("button", { name: "中文" }));
+    expect(localStorage.getItem("speclink.uiLocale")).toBeNull();
+  });
+
   it("卡片下方的「中文」「English」標示目前語言，點 English 立即切換且登入後維持英文", async () => {
     const client = makeClient({
       getSession: vi.fn().mockResolvedValueOnce(UNAUTH).mockResolvedValue(ADMIN),

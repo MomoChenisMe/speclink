@@ -18,6 +18,7 @@ import {
   PageHeader,
 } from "@speclink/ui";
 import { useClient } from "../app/context";
+import { fillUser } from "../lib/userLabel";
 import { useAsync } from "../lib/useAsync";
 import { readFormError } from "../lib/formError";
 import { Field } from "../components/Field";
@@ -80,9 +81,7 @@ export function AccountPage() {
       <PageHeader
         level={1}
         title={t("account.title")}
-        description={t("account.identity")
-          .replace("{display}", data.user.display)
-          .replace("{email}", data.user.email)}
+        description={fillUser(t("account.description"), data.user)}
         actions={
           <Button type="button" className="gap-1.5" onClick={() => setCreateOpen(true)}>
             <KeyRound aria-hidden="true" className="h-4 w-4" />

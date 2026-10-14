@@ -55,6 +55,9 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "field.prefix": "前綴",
     "field.role": "角色",
     "field.project": "專案",
+    "field.projectKey": "專案代號",
+    "field.repoKey": "儲存庫代號",
+    "field.keyImmutable": "建立後不可變更。",
     "field.email": "電子郵件",
     "field.display": "顯示名稱",
     "field.password": "密碼",
@@ -82,9 +85,6 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     // 介面語言
     "locale.label": "介面語言",
     "locale.followSystem": "跟隨系統",
-
-    // 專注流程卡片
-    "focus.step": "步驟 {current} / {total}",
 
     // 首次導覽
     "tour.label": "導覽",
@@ -197,9 +197,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "registry.renameNamed": "更名 {name}",
     "registry.renameError": "更名時發生錯誤",
     "registry.noMembers": "尚無成員。成員資格在使用者頁指派。",
-    "registry.projectKeyLabel": "專案代號（建立後不可變更）",
     "registry.projectNameLabel": "專案名稱（留空沿用代號）",
-    "registry.repoKeyLabel": "儲存庫代號（建立後不可變更）",
     "registry.repoNameLabel": "儲存庫名稱（留空沿用代號）",
     "registry.createProjectError": "建立專案時發生錯誤",
     "registry.createRepoError": "建立儲存庫時發生錯誤",
@@ -286,7 +284,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
     // 帳號
     "account.title": "帳號",
-    "account.identity": "{display}（{email}）——你的專案、存取金鑰與登入紀錄。",
+    "account.description": "{display}（{email}）——你的專案、存取金鑰與登入紀錄。",
     "account.loadFailed": "無法載入帳號資料。",
     "account.projects": "我的專案",
     "account.noProjects": "尚無專案隸屬。專案隸屬由管理員授予，需要存取時請聯絡管理員。",
@@ -348,9 +346,6 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "setup.createAdminError": "建立管理員時發生錯誤",
     "setup.step2": "建立第一組專案與儲存庫",
     "setup.step2Body": "專案是遠端工作流程的範圍單位；完成後會直接進入後台，並顯示連線所需的資訊。",
-    "setup.projectKeyLabel": "專案代號",
-    "setup.repoKeyLabel": "儲存庫代號",
-    "setup.keyHint": "建立後不可變更。",
     "setup.createRegistry": "建立專案與儲存庫",
     "setup.createRegistryError": "建立專案與儲存庫時發生錯誤",
   },
@@ -398,6 +393,9 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "field.prefix": "Prefix",
     "field.role": "Role",
     "field.project": "Project",
+    "field.projectKey": "Project key",
+    "field.repoKey": "Repository key",
+    "field.keyImmutable": "Cannot be changed after creation.",
     "field.email": "Email",
     "field.display": "Display name",
     "field.password": "Password",
@@ -425,9 +423,6 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     // Interface language
     "locale.label": "Interface language",
     "locale.followSystem": "Follow system",
-
-    // Focus-flow card
-    "focus.step": "Step {current} of {total}",
 
     // First-run tour
     "tour.label": "Tour",
@@ -540,9 +535,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "registry.renameNamed": "Rename {name}",
     "registry.renameError": "Something went wrong while renaming",
     "registry.noMembers": "No members yet. Memberships are assigned on the Users page.",
-    "registry.projectKeyLabel": "Project key (cannot be changed after creation)",
     "registry.projectNameLabel": "Project name (defaults to the key)",
-    "registry.repoKeyLabel": "Repository key (cannot be changed after creation)",
     "registry.repoNameLabel": "Repository name (defaults to the key)",
     "registry.createProjectError": "Something went wrong while creating the project",
     "registry.createRepoError": "Something went wrong while creating the repository",
@@ -629,7 +622,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
 
     // Account
     "account.title": "Account",
-    "account.identity": "{display} ({email}) — your projects, access keys, and sign-in history.",
+    "account.description": "{display} ({email}) — your projects, access keys, and sign-in history.",
     "account.loadFailed": "Could not load your account.",
     "account.projects": "My projects",
     "account.noProjects":
@@ -696,9 +689,6 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "setup.step2": "Create the first project and repository",
     "setup.step2Body":
       "A project is the scope of remote workflows. When you finish, you go straight to the console, which shows what you need to connect.",
-    "setup.projectKeyLabel": "Project key",
-    "setup.repoKeyLabel": "Repository key",
-    "setup.keyHint": "Cannot be changed after creation.",
     "setup.createRegistry": "Create project and repository",
     "setup.createRegistryError": "Something went wrong while creating the project and repository",
   },

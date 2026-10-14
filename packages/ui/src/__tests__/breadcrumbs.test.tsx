@@ -25,6 +25,10 @@ describe("Breadcrumbs", () => {
     expect(onHome).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: "使用者" })).toBeNull();
     expect(screen.getAllByRole("button")).toHaveLength(1);
+    // 鍵盤聚焦時顯示 2px focus ring（共用 ring token），不靠瀏覽器預設外框。
+    expect(classes(screen.getByRole("button", { name: "後台" }))).toEqual(
+      expect.arrayContaining(["focus-visible:ring-2", "focus-visible:ring-ring"]),
+    );
   });
 
   it("mono 項用等寬字型", () => {

@@ -9,6 +9,7 @@ import {
   Button,
   Checkbox,
   Input,
+  StepProgress,
   cn,
   useI18n,
 } from "@speclink/ui";
@@ -534,24 +535,7 @@ export function WorkspaceChooser({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="max-w-xl gap-4 p-5" data-testid="workspace-chooser">
         <AlertDialogHeader>
-          <div className="mb-1 flex items-center justify-between gap-4">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              {t("chooser.step")
-                .replace("{current}", String(STEP_NUMBER[step]))
-                .replace("{total}", "4")}
-            </span>
-            <div className="flex gap-1" aria-hidden="true">
-              {[1, 2, 3, 4].map((number) => (
-                <span
-                  key={number}
-                  className={cn(
-                    "h-1 w-8 rounded-full bg-muted",
-                    number <= STEP_NUMBER[step] && "bg-primary",
-                  )}
-                />
-              ))}
-            </div>
-          </div>
+          <StepProgress current={STEP_NUMBER[step]} total={4} />
           <AlertDialogTitle className="text-[15px] font-medium">{t(`chooser.${step}Title`)}</AlertDialogTitle>
           <AlertDialogDescription>{t(`chooser.${step}Desc`)}</AlertDialogDescription>
         </AlertDialogHeader>

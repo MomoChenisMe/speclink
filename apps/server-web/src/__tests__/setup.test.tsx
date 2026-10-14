@@ -41,7 +41,7 @@ function renderAt(route: string, client: ReturnType<typeof makeClient>) {
 
 /** 步驟條（design D7）：已到的段為主色。 */
 function filledSteps() {
-  const bar = screen.getByTestId("focus-steps");
+  const bar = screen.getByTestId("step-bar");
   return Array.from(bar.children).filter((seg) => seg.className.includes("bg-primary")).length;
 }
 

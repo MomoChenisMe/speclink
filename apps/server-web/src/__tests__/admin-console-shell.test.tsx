@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { I18nProvider } from "@speclink/ui";
+import { ClientProvider, SessionProvider } from "../app/context";
+import { LocaleProvider } from "../i18n/LocaleContext";
+import { APP_MESSAGES } from "../i18n/messages";
+import { ConsoleLayout } from "../layouts/ConsoleLayout";
 import { ADMIN_SESSION, makeAdminClient, renderAt, setViewport } from "./helpers/adminHarness";
 
 // 主控台殼（server-web-console「全部 browser route 由單一 SPA 提供可發現導覽」
@@ -37,6 +43,27 @@ function member() {
 
 function breadcrumbs() {
   return screen.getByRole("navigation", { name: "頁面路徑" });
+}
+
+const classes = (el: Element) => (el.getAttribute("class") ?? "").split(/\s+/);
+
+/** 只渲染殼本身：用來看路由不會停留的路徑（例如管理面會立即導走的未知路徑）。 */
+function renderShellAt(path: string) {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <I18nProvider locale="zh-TW" messages={APP_MESSAGES}>
+        <LocaleProvider value={{ pref: null, setPref: () => {} }}>
+          <ClientProvider client={client() as never}>
+            <SessionProvider value={{ session: ADMIN_SESSION as never, refresh: async () => {} }}>
+              <ConsoleLayout>
+                <p>內容</p>
+              </ConsoleLayout>
+            </SessionProvider>
+          </ClientProvider>
+        </LocaleProvider>
+      </I18nProvider>
+    </MemoryRouter>,
+  );
 }
 
 beforeEach(() => setViewport(false));
@@ -99,6 +126,23 @@ describe("依角色裁切的主控台殼", () => {
     }
     expect(breadcrumbs().textContent).toBe("帳號");
   });
+
+  // spec「管理殼版面數值與 Desktop 一致」「只有主內容區捲動」：殼本身滿版不捲，側欄與頂列
+  // 固定，只有 main 捲動；頂列高度、側欄寬度與主內容內距採 Desktop 殼的數值。
+  it("版面數值與 Desktop 相同，且只有主內容區捲動", async () => {
+    renderAt("/admin", client());
+    const main = await screen.findByRole("main");
+    const sidebar = screen.getByRole("complementary");
+    expect(classes(sidebar.parentElement as HTMLElement)).toEqual(
+      expect.arrayContaining(["h-screen", "overflow-hidden"]),
+    );
+    expect(classes(sidebar)).toEqual(expect.arrayContaining(["w-[200px]", "shrink-0"]));
+    const sidebarTop = within(sidebar).getAllByAltText("Speclink")[0].parentElement as HTMLElement;
+    expect(classes(sidebarTop)).toEqual(expect.arrayContaining(["h-12", "shrink-0"]));
+    const topBar = breadcrumbs().parentElement as HTMLElement;
+    expect(classes(topBar)).toEqual(expect.arrayContaining(["h-12", "shrink-0"]));
+    expect(classes(main)).toEqual(expect.arrayContaining(["overflow-y-auto", "p-5"]));
+  });
 });
 
 describe("主區頂列的麵包屑", () => {
@@ -111,6 +155,18 @@ describe("主區頂列的麵包屑", () => {
     await user.click(within(breadcrumbs()).getByRole("button", { name: "後台" }));
     expect(await screen.findByRole("heading", { level: 1, name: "總覽" })).toBeTruthy();
     expect(breadcrumbs().textContent).toBe("後台/總覽");
+  });
+
+  // 路由比對不分大小寫：麵包屑與側欄高亮用同一套比對，手打大寫網址也標得出位置。
+  it("網址大小寫不同時麵包屑照樣標出目的地", async () => {
+    renderAt("/Admin/Users", client());
+    await screen.findByRole("heading", { level: 1, name: "使用者" });
+    expect(breadcrumbs().textContent).toBe("後台/使用者");
+  });
+
+  it("未列在目的地表內的 /admin/* 路徑只顯示「後台」", () => {
+    renderShellAt("/admin/unknown");
+    expect(breadcrumbs().textContent).toBe("後台");
   });
 });
 
@@ -164,6 +220,17 @@ describe("側欄底部的帳號選單", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "登入" })).toBeTruthy();
     expect(c.logout).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("complementary")).toBeNull();
+  });
+
+  it("登出後依 server 回傳的去處導向", async () => {
+    const user = userEvent.setup();
+    // session 保持登入，才看得出畫面是被 destination 帶走，而不是被登入守門彈回登入頁。
+    const c = client({ logout: vi.fn(async () => ({ destination: "/account" })) });
+    renderAt("/admin", c);
+    await user.click(await screen.findByRole("button", { name: "帳號選單：Admin" }));
+    await user.click(await screen.findByRole("menuitem", { name: "登出" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "帳號" })).toBeTruthy();
+    expect(breadcrumbs().textContent).toBe("帳號");
   });
 
   it("登出請求失敗時仍呈現登入頁", async () => {
@@ -237,6 +304,16 @@ describe("頁標題區", () => {
     const header = heading.closest("[data-page-header]") as HTMLElement;
     expect(header).not.toBeNull();
     expect(within(header).getByText(description)).toBeTruthy();
+  });
+
+  it("帳號頁的顯示名稱為空時，說明退回電子郵件", async () => {
+    const account = { ...ACCOUNT, user: { ...ACCOUNT.user, display: "" } };
+    renderAt("/account", client({ getAccount: vi.fn(async () => account) }));
+    const heading = await screen.findByRole("heading", { level: 1, name: "帳號" });
+    const header = heading.closest("[data-page-header]") as HTMLElement;
+    expect(
+      within(header).getByText("member@example.com（member@example.com）——你的專案、存取金鑰與登入紀錄。"),
+    ).toBeTruthy();
   });
 
   it("使用者頁的「邀請使用者」在標題區的動作槽並保留導覽標記", async () => {

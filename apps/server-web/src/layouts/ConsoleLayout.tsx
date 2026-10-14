@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import { Menu } from "lucide-react";
 import {
   Breadcrumbs,
@@ -37,7 +37,9 @@ export function ConsoleLayout({ children }: { children: ReactNode }) {
   const narrow = useMediaQuery("(max-width: 1023px)");
   const [sheetOpen, setSheetOpen] = useState(false);
   const admin = session.user?.admin === true;
-  const crumbs = useCrumbs(location.pathname);
+  // 路徑比對與路由、側欄高亮同一套（matchPath：不分大小寫、容許結尾斜線）。
+  const inAdmin = matchPath({ path: "/admin", end: false }, location.pathname) !== null;
+  const crumbs = useCrumbs(location.pathname, inAdmin);
 
   return (
     // 滿高欄式版面：殼本身固定滿版不捲動，只有主內容區捲——與 Desktop 殼同結構。
@@ -68,7 +70,7 @@ export function ConsoleLayout({ children }: { children: ReactNode }) {
         </div>
         <main id="main-content" ref={mainRef} className="min-w-0 flex-1 overflow-y-auto p-5">
           {/* 導覽只在管理面啟動：帳號頁沒有側欄目的地可指，一般成員更看不到管理面。 */}
-          <TourProvider enabled={admin && location.pathname.startsWith("/admin")}>
+          <TourProvider enabled={admin && inAdmin}>
             {children}
           </TourProvider>
         </main>
@@ -97,12 +99,11 @@ function SidebarBody({ admin, onNavigate }: { admin: boolean; onNavigate?: () =>
 
 /** 麵包屑（design D4）：管理面為「後台 / <目的地>」且「後台」可點回總覽，帳號頁為「帳號」；
  *  未列在目的地表內的 /admin/* 路徑只顯示「後台」。 */
-function useCrumbs(pathname: string): Crumb[] {
+function useCrumbs(pathname: string, inAdmin: boolean): Crumb[] {
   const { t } = useI18n();
   const navigate = useNavigate();
-  if (!pathname.startsWith("/admin")) return [{ label: t("account.title") }];
+  if (!inAdmin) return [{ label: t("account.title") }];
   const home: Crumb = { label: t("shell.console"), onClick: () => navigate("/admin") };
-  const path = pathname.replace(/\/$/, "");
-  const destination = ADMIN_DESTINATIONS.find((d) => d.to === path);
+  const destination = ADMIN_DESTINATIONS.find((d) => matchPath({ path: d.to, end: true }, pathname));
   return destination ? [home, { label: t(destination.labelKey) }] : [home];
 }
