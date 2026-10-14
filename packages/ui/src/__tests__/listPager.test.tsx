@@ -195,6 +195,37 @@ describe("ListPager（換頁工具列）", () => {
     fireEvent.click(screen.getByRole("button", { name: "第一頁" }));
     expect(onPage).toHaveBeenLastCalledWith(1);
   });
+
+  // server-web-list-pages design D1：窄版只留範圍、‹、「目前頁 / 總頁數」、›。
+  it("compact：只渲染範圍、上一頁、「2 / 3」與下一頁；沒有每頁筆數下拉、頁碼鈕、首末頁鈕與跳頁輸入", () => {
+    const onPage = vi.fn();
+    render(
+      <ListPager compact page={2} pageCount={3} total={45} pageSize={20} onPage={onPage} onPageSize={noop} />,
+    );
+    expect(screen.getByText("第 21–40 筆，共 45 筆")).toBeTruthy();
+    expect(screen.getByText("2 / 3")).toBeTruthy();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(pageButtons()).toEqual([]);
+    expect(screen.queryByRole("button", { name: "第一頁" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "最後一頁" })).toBeNull();
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+    const nav = screen.getByRole("navigation");
+    expect(within(nav).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["上一頁", "下一頁"]);
+    fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
+    expect(onPage).toHaveBeenLastCalledWith(3);
+    fireEvent.click(screen.getByRole("button", { name: "上一頁" }));
+    expect(onPage).toHaveBeenLastCalledWith(1);
+  });
+
+  it("compact 且總頁數 1：只有範圍，右側缺席", () => {
+    render(
+      <ListPager compact page={1} pageCount={1} total={12} pageSize={20} onPage={noop} onPageSize={noop} />,
+    );
+    expect(screen.getByText("第 1–12 筆，共 12 筆")).toBeTruthy();
+    expect(screen.queryByRole("navigation")).toBeNull();
+    expect(screen.queryByText("1 / 1")).toBeNull();
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
 });
 
 describe("usePaging（清單換頁狀態）", () => {

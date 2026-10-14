@@ -3,9 +3,10 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "../App";
 
-// 帳號自助頁（server-identity「帳號 browser API 保持憑證祕密邊界」, D4／D6）。顯示
-// 使用者、存取金鑰、登入工作階段與裝置；建立金鑰的明文只顯示一次；撤銷等破壞性操作先以
-// AlertDialog 確認才送出。
+// 帳號自助頁（server-identity「帳號 browser API 保持憑證祕密邊界」, D4／D6；server-web-console
+// 「帳號頁呈現我的專案」；server-web-list-pages design D8、D10）。768px 置中欄，由上而下為我的
+// 專案、存取金鑰、裝置登入、登入工作階段四張設定型卡；建立金鑰的明文只顯示一次；撤銷鈕滑過才
+// 出現，撤銷等破壞性操作先以 AlertDialog 確認才送出。
 
 const MEMBER = {
   authenticated: true,
@@ -28,6 +29,15 @@ const ACCOUNT = {
       expiresAt: null,
       lastUsedAt: null,
       revokedAt: null,
+    },
+    {
+      id: "p3",
+      prefix: "slk_old",
+      name: "old",
+      createdAt: "2026-01-01T00:00:00Z",
+      expiresAt: null,
+      lastUsedAt: "2026-01-04T00:00:00Z",
+      revokedAt: "2026-01-05T00:00:00Z",
     },
   ],
   sessions: [
@@ -87,20 +97,63 @@ beforeEach(() => {
 });
 
 describe("帳號自助頁", () => {
-  it("顯示使用者、存取金鑰、登入工作階段與裝置", async () => {
+  it("四張卡由上而下為我的專案、存取金鑰、裝置登入、登入工作階段，內容欄 768px 置中", async () => {
     renderAt("/account", makeClient());
     // 等帳號資料本身載入——header 的電子郵件連結在資料回來前就已渲染，不能當等待錨點。
-    expect(await screen.findByRole("cell", { name: "cli" })).toBeTruthy();
-    expect(screen.getAllByText(/member@example.com/).length).toBeGreaterThan(0);
-    // PAT、session、device 各區塊的識別資料（精確 cell 查詢，避開撤銷鈕 aria-label）。
-    expect(screen.getByRole("cell", { name: "slk_abc" })).toBeTruthy();
-    expect(screen.getByRole("cell", { name: "device 授權" })).toBeTruthy();
+    await screen.findByRole("region", { name: "我的專案" });
+    const cards = ["我的專案", "存取金鑰", "裝置登入", "登入工作階段"];
+    const order = screen
+      .getAllByRole("region")
+      .map((region) => region.getAttribute("aria-label"))
+      .filter((name) => cards.includes(name ?? ""));
+    expect(order).toEqual(cards);
+    const column = screen
+      .getByRole("heading", { level: 1, name: "帳號" })
+      .closest("[data-page-header]")?.parentElement as HTMLElement;
+    expect(column.className).toContain("max-w-[768px]");
+    expect(column.className).toContain("mx-auto");
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("存取金鑰列：說明為「前綴 · 到期 · 最近使用」或「前綴 · 撤銷於」；有效者的撤銷鈕滑過才出現，已撤銷的沒有", async () => {
+    renderAt("/account", makeClient());
+    const keys = await screen.findByRole("region", { name: "存取金鑰" });
+    expect(within(keys).getByText("遠端工作流程以你的身分連線時使用")).toBeTruthy();
+    const cli = within(keys).getByRole("group", { name: "cli" });
+    expect(cli.textContent).toContain("slk_abc · 到期 永久 · 最近使用 從未");
+    expect(within(cli).getByText("有效").className).toContain("status-success");
+    const revoke = within(cli).getByRole("button", { name: "撤銷存取金鑰 cli" });
+    expect(revoke.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["opacity-0", "group-hover:opacity-100", "focus-visible:opacity-100"]),
+    );
+    const old = within(keys).getByRole("group", { name: "old" });
+    expect(old.textContent).toContain("slk_old · 撤銷於 2026-01-05");
+    expect(within(old).getByText("已撤銷")).toBeTruthy();
+    expect(within(old).queryByRole("button")).toBeNull();
+  });
+
+  it("裝置登入列：說明為最近更新日期，撤銷鈕滑過才出現", async () => {
+    renderAt("/account", makeClient());
+    const devices = await screen.findByRole("region", { name: "裝置登入" });
+    expect(within(devices).getByText("桌面 app 或 CLI 授權後留下的憑證")).toBeTruthy();
+    const row = within(devices).getByRole("group", { name: "device 授權" });
+    expect(row.textContent).toContain("最近更新 2026-01-02");
+    const revoke = within(row).getByRole("button", { name: "撤銷裝置登入 device 授權" });
+    expect(revoke.className).toContain("group-hover:opacity-100");
+  });
+
+  it("登入工作階段列：建立日期、到期日與狀態籤", async () => {
+    renderAt("/account", makeClient());
+    const sessions = await screen.findByRole("region", { name: "登入工作階段" });
+    const row = within(sessions).getByRole("group", { name: "建立 2026-01-01" });
+    expect(row.textContent).toContain("到期 2026-02-01");
+    expect(within(row).getByText("有效").className).toContain("status-success");
   });
 
   // 建立動作與管理列表頁一致：頁面唯一 primary action 開抽屜，欄位不常駐頁面。
   it("建立表單不常駐頁面，按下建立存取金鑰後才出現於抽屜", async () => {
     renderAt("/account", makeClient());
-    await screen.findByRole("cell", { name: "cli" });
+    await screen.findByRole("region", { name: "存取金鑰" });
     expect(screen.queryByLabelText(/到期日/)).toBeNull();
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /建立存取金鑰/ }));
@@ -113,7 +166,7 @@ describe("帳號自助頁", () => {
     const client = makeClient();
     renderAt("/account", client);
     const user = userEvent.setup();
-    await screen.findByRole("cell", { name: "cli" });
+    await screen.findByRole("region", { name: "存取金鑰" });
     await user.click(screen.getByRole("button", { name: /建立存取金鑰/ }));
     const drawer = await screen.findByRole("dialog", { name: /建立存取金鑰/ });
     await user.type(within(drawer).getByLabelText(/名稱/), "laptop");
@@ -139,11 +192,13 @@ describe("帳號自助頁", () => {
 
   // 我的專案區塊（server-web-console「帳號頁呈現我的專案」）：資料來自 account
   // summary、唯讀、admin 與一般成員同一形狀，無隸屬時仍顯示區塊與空狀態。
-  it("列出自己的專案顯示名與角色，且無任何編輯操作", async () => {
+  it("列出自己的專案顯示名、等寬代號與角色籤，且無任何編輯操作", async () => {
     renderAt("/account", makeClient());
     const section = await screen.findByRole("region", { name: /我的專案/ });
-    expect(within(section).getByText("Alpha 專案")).toBeTruthy();
-    expect(within(section).getByText("editor")).toBeTruthy();
+    expect(within(section).getByText("由管理員授予")).toBeTruthy();
+    const alpha = within(section).getByRole("group", { name: "Alpha 專案" });
+    expect(within(alpha).getByText("alpha").className).toContain("font-mono");
+    expect(within(alpha).getByText("editor")).toBeTruthy();
     expect(within(section).getByText("Beta 專案")).toBeTruthy();
     expect(within(section).getByText("reader")).toBeTruthy();
     expect(within(section).queryAllByRole("button")).toHaveLength(0);
@@ -159,7 +214,8 @@ describe("帳號自助頁", () => {
     });
     renderAt("/account", client);
     const section = await screen.findByRole("region", { name: /我的專案/ });
-    expect(within(section).getByText("alpha")).toBeTruthy();
+    expect(within(section).getByText("alpha").className).toContain("font-mono");
+    expect(within(section).getByRole("group", { name: "alpha" })).toBeTruthy();
   });
 
   // admin 也走同一區塊：個人視角只列自己的隸屬，全部專案是 /admin 的治理視角。
@@ -177,16 +233,17 @@ describe("帳號自助頁", () => {
     const section = await screen.findByRole("region", { name: /我的專案/ });
     expect(within(section).getByText("Alpha 專案")).toBeTruthy();
     expect(within(section).queryByText("Beta 專案")).toBeNull();
-    expect(within(section).getAllByRole("row")).toHaveLength(2); // 表頭＋唯一一列
+    expect(within(section).getAllByRole("group")).toHaveLength(1);
   });
 
-  it("無任何隸屬時區塊仍可見並呈現空狀態", async () => {
+  it("無任何隸屬時卡仍可見並在卡內呈現空狀態", async () => {
     const client = makeClient({
       getAccount: vi.fn(async () => ({ ...ACCOUNT, memberships: [] })),
     });
     renderAt("/account", client);
     const section = await screen.findByRole("region", { name: /我的專案/ });
-    expect(within(section).getByText(/管理員/)).toBeTruthy();
+    const body = section.querySelector("[data-settings-card-body]") as HTMLElement;
+    expect(within(body).getByText(/專案隸屬由管理員授予/)).toBeTruthy();
   });
 
   it("撤銷存取金鑰需先經 AlertDialog 確認才送出", async () => {
@@ -195,7 +252,7 @@ describe("帳號自助頁", () => {
     const user = userEvent.setup();
     await screen.findByText(/slk_abc/);
     // 觸發撤銷：先出現確認對話框，尚未呼叫撤銷。
-    await user.click(screen.getByRole("button", { name: /撤銷存取金鑰/ }));
+    await user.click(screen.getByRole("button", { name: "撤銷存取金鑰 cli" }));
     const dialog = await screen.findByRole("alertdialog");
     expect(client.revokePat).not.toHaveBeenCalled();
     // 確認後才送出，帶正確 PAT id。

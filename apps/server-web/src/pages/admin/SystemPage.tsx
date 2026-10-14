@@ -1,18 +1,11 @@
-import { useState, type ReactNode } from "react";
-import { Compass, Database, Download, Server, TriangleAlert, type LucideIcon } from "lucide-react";
+import { useState } from "react";
+import { Compass, Database, Download, Server, TriangleAlert } from "lucide-react";
 import {
-  Badge,
   Button,
-  Card,
   ConfirmDialog,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  SEMANTIC_SURFACE,
-  SEMANTIC_TONE,
+  SettingsCard,
+  SettingsRow,
+  StatusPill,
   useI18n,
   PageHeader,
 } from "@speclink/ui";
@@ -21,10 +14,20 @@ import { useAsync } from "../../lib/useAsync";
 import { useTour } from "../../components/Tour";
 import { AdminError, AdminLoading } from "./states";
 
-// 系統頁（server-web-console「資料操作目的地已併入系統」）：原「資料操作」與「系統狀態」
-// 合併為一個目的地與一份 view model。四個區段——執行環境、儲存狀態、匯出、危險區。
-// 取得失敗時整頁呈現錯誤與重試，不部分渲染：儲存後端的健康狀態在整個介面只該有一處
-// 權威來源，半份資料比沒有資料更容易誤導。
+// 系統頁（server-web-console「資料操作目的地已併入系統」；server-web-list-pages design D10）：
+// 原「資料操作」與「系統狀態」合併為一個目的地與一份 view model。768px 置中欄，四張設定型卡——
+// 執行環境、儲存狀態、匯出、危險區，各值為卡內的列。取得失敗時整頁呈現錯誤與重試，不部分渲染：
+// 儲存後端的健康狀態在整個介面只該有一處權威來源，半份資料比沒有資料更容易誤導。
+
+/** 列右側的等寬值。 */
+function Mono({ children }: { children: string | number }) {
+  return <span className="break-all font-mono text-[13px]">{children}</span>;
+}
+
+/** 卡內沒有資料時的一列灰字。 */
+function EmptyLine({ children }: { children: string }) {
+  return <p className="m-0 px-4 py-3 text-[13px] text-muted-foreground">{children}</p>;
+}
 
 export function SystemPage() {
   const { t } = useI18n();
@@ -47,7 +50,7 @@ export function SystemPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto flex w-full max-w-[768px] flex-col gap-6">
       {/* 導覽的重新啟動入口。放在系統頁而非各列表頁：它是「設定與維運」性質的動作，
           不是任何列表的 primary action。 */}
       <PageHeader
@@ -65,71 +68,56 @@ export function SystemPage() {
       {error != null && <AdminError onRetry={reload} />}
       {data && (
         <>
-          <Section id="runtime" title={t("system.runtime")} icon={Server}>
-            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Row label={t("system.engineVersion")} value={data.engineVersion} />
-              <Row label={t("system.apiVersion")} value={data.apiVersion} />
-              <Row label={t("system.schemaVersion")} value={data.identitySchemaVersion ?? t("common.dash")} />
-              <Row label={t("system.storeDriver")} value={data.storeDriver} />
-              <Row label={t("system.contractVersion")} value={data.storeContractVersion} />
-              <Row label={t("system.storeLevel")} value={data.storeLevel} />
-              <Row label={t("system.storeCapabilities")} value={data.storeCapabilities.join("、") || t("common.dash")} />
-            </dl>
-          </Section>
+          <SettingsCard title={t("system.runtime")} icon={<Server />}>
+            <SettingsRow label={t("system.engineVersion")} control={<Mono>{data.engineVersion}</Mono>} />
+            <SettingsRow label={t("system.apiVersion")} control={<Mono>{data.apiVersion}</Mono>} />
+            <SettingsRow
+              label={t("system.schemaVersion")}
+              control={<Mono>{data.identitySchemaVersion ?? t("common.dash")}</Mono>}
+            />
+            <SettingsRow label={t("system.storeDriver")} control={<Mono>{data.storeDriver}</Mono>} />
+            <SettingsRow label={t("system.contractVersion")} control={<Mono>{data.storeContractVersion}</Mono>} />
+            <SettingsRow label={t("system.storeLevel")} control={<Mono>{data.storeLevel}</Mono>} />
+            <SettingsRow
+              label={t("system.storeCapabilities")}
+              control={<Mono>{data.storeCapabilities.join("、") || t("common.dash")}</Mono>}
+            />
+          </SettingsCard>
 
-          <Section id="storage" title={t("system.storage")} icon={Database}>
-            <div className="flex flex-wrap items-center gap-3">
-              <Badge
-                variant="outline"
-                className={
-                  data.storeHealthy
-                    ? `${SEMANTIC_SURFACE.success} ${SEMANTIC_TONE.success}`
-                    : `${SEMANTIC_SURFACE.danger} ${SEMANTIC_TONE.danger}`
-                }
-              >
-                {data.storeHealthy ? t("common.normal") : t("common.abnormal")}
-              </Badge>
-              {!data.storeHealthy && data.storeHealthError && (
-                <p className="text-sm text-destructive">{data.storeHealthError}</p>
-              )}
-            </div>
+          <SettingsCard title={t("system.storage")} icon={<Database />}>
+            <SettingsRow
+              label={t("system.storeDriver")}
+              description={data.storeHealthy ? undefined : data.storeHealthError}
+              control={
+                <StatusPill tone={data.storeHealthy ? "success" : "destructive"}>
+                  {data.storeHealthy ? t("common.normal") : t("common.abnormal")}
+                </StatusPill>
+              }
+            />
             {data.outboxBacklogs.length === 0 ? (
-              <p className="mt-3 text-sm text-muted-foreground">{t("system.noBacklog")}</p>
+              <EmptyLine>{t("system.noBacklog")}</EmptyLine>
             ) : (
-              <Card className="mt-3 overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t("system.colProject")}</TableHead>
-                      <TableHead>{t("system.colRepo")}</TableHead>
-                      <TableHead>{t("system.colBacklog")}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.outboxBacklogs.map((b) => (
-                      <TableRow key={`${b.project}/${b.repo}`}>
-                        <TableCell className="font-mono">{b.project}</TableCell>
-                        <TableCell className="font-mono">{b.repo}</TableCell>
-                        <TableCell className="tabular-nums">{b.backlog ?? t("common.dash")}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </Card>
+              data.outboxBacklogs.map((b) => (
+                <SettingsRow
+                  key={`${b.project}/${b.repo}`}
+                  label={<span className="font-mono">{`${b.project}/${b.repo}`}</span>}
+                  description={t("system.colBacklog")}
+                  control={<span className="tabular-nums">{b.backlog ?? t("common.dash")}</span>}
+                />
+              ))
             )}
-          </Section>
+          </SettingsCard>
 
-          <Section id="export" title={t("system.export")} icon={Download}>
+          <SettingsCard title={t("system.export")} icon={<Download />}>
             {data.scopes.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t("system.noScopes")}</p>
+              <EmptyLine>{t("system.noScopes")}</EmptyLine>
             ) : (
-              <ul className="space-y-2">
-                {data.scopes.map((s) => (
-                  <li key={`${s.project}/${s.repo}`} className="flex items-center gap-3">
-                    <span className="min-w-0 flex-1 truncate font-mono text-sm">
-                      {s.project}/{s.repo}
-                    </span>
-                    {/* 檔案下載用原生 <a href>，不是 router Link。 */}
+              data.scopes.map((s) => (
+                <SettingsRow
+                  key={`${s.project}/${s.repo}`}
+                  label={<span className="font-mono">{`${s.project}/${s.repo}`}</span>}
+                  control={
+                    // 檔案下載用原生 <a href>，不是 router Link。
                     <Button asChild variant="outline" size="sm" className="gap-1.5">
                       <a
                         href={s.exportPath}
@@ -139,28 +127,29 @@ export function SystemPage() {
                         {t("system.download")}
                       </a>
                     </Button>
-                  </li>
-                ))}
-              </ul>
+                  }
+                />
+              ))
             )}
-          </Section>
+          </SettingsCard>
 
-          <Section id="danger" title={t("system.danger")} icon={TriangleAlert}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-muted-foreground">
-                {t("system.migrateWarning")}
-                {!data.migrateAvailable && t("system.migrateUnavailable")}
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={busy || !data.migrateAvailable}
-                onClick={() => setConfirmMigrate(true)}
-              >
-                {t("system.migrate")}
-              </Button>
-            </div>
-          </Section>
+          <SettingsCard title={t("system.danger")} icon={<TriangleAlert className="text-destructive" />}>
+            <SettingsRow
+              label={t("system.migrate")}
+              description={`${t("system.migrateWarning")}${data.migrateAvailable ? "" : t("system.migrateUnavailable")}`}
+              control={
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={busy || !data.migrateAvailable}
+                  onClick={() => setConfirmMigrate(true)}
+                >
+                  {t("system.migrateAction")}
+                </Button>
+              }
+            />
+          </SettingsCard>
         </>
       )}
 
@@ -173,42 +162,6 @@ export function SystemPage() {
         busy={busy}
         onConfirm={runMigrate}
       />
-    </div>
-  );
-}
-
-function Section({
-  id,
-  title,
-  icon: Icon,
-  children,
-}: {
-  /** 區段的穩定識別（aria-labelledby 用），與顯示文字脫鉤——文字會隨語言改變。 */
-  id: "runtime" | "storage" | "export" | "danger";
-  title: string;
-  icon: LucideIcon;
-  children: ReactNode;
-}) {
-  const headingId = `system-${id}`;
-  return (
-    <section aria-labelledby={headingId} className="rounded-md border border-border p-4">
-      <h2 id={headingId} className="flex items-center gap-2 text-lg font-medium">
-        <Icon
-          aria-hidden="true"
-          className={`h-4 w-4 ${id === "danger" ? "text-destructive" : "text-muted-foreground"}`}
-        />
-        {title}
-      </h2>
-      <div className="mt-3">{children}</div>
-    </section>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-md bg-muted/40 p-3">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="mt-1 break-all font-mono text-sm">{value}</dd>
     </div>
   );
 }

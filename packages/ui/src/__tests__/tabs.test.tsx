@@ -43,3 +43,38 @@ describe("Tabs tree 變體", () => {
     expect(screen.getByRole("tablist").className).toContain("flex-col");
   });
 });
+
+// server-web-list-pages design D1：標籤後的計數籤（已封存頁與 server 使用者頁、憑證頁共用）。
+describe("TabsTrigger count", () => {
+  it("count 渲染在標籤之後的計數籤；未給時沒有計數籤", () => {
+    render(
+      <Tabs defaultValue="users">
+        <TabsList variant="card">
+          <TabsTrigger value="users" count={12}>
+            使用者
+          </TabsTrigger>
+          <TabsTrigger value="pending">邀請中</TabsTrigger>
+        </TabsList>
+      </Tabs>,
+    );
+    const users = screen.getByRole("tab", { name: /使用者/ });
+    const pill = users.querySelector("[data-tab-count]") as HTMLElement;
+    expect(pill.textContent).toBe("12");
+    expect(pill.className).toContain("rounded-full");
+    expect(users.textContent).toBe("使用者12");
+    expect(screen.getByRole("tab", { name: "邀請中" }).querySelector("[data-tab-count]")).toBeNull();
+  });
+
+  it("count 為 0 時仍渲染計數籤", () => {
+    render(
+      <Tabs defaultValue="a">
+        <TabsList variant="card">
+          <TabsTrigger value="a" count={0}>
+            邀請中
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>,
+    );
+    expect(screen.getByRole("tab").querySelector("[data-tab-count]")!.textContent).toBe("0");
+  });
+});

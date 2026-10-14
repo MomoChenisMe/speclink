@@ -144,7 +144,8 @@ describe("中文正典詞出現在對應畫面（zh-TW）", () => {
 
   it("憑證頁使用存取金鑰", async () => {
     renderAt("/admin/credentials", makeAdminClient());
-    expect(await screen.findByRole("tab", { name: "存取金鑰" })).toBeTruthy();
+    // 分頁標籤後帶計數籤，名稱以「存取金鑰」開頭。
+    expect(await screen.findByRole("tab", { name: /^存取金鑰/ })).toBeTruthy();
   });
 
   it("系統頁使用資料結構版本與待送佇列", async () => {

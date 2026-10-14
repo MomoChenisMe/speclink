@@ -1,95 +1,58 @@
-import { useState, type FormEvent } from "react";
-import { ChevronRight, UserPlus } from "lucide-react";
+import { useRef, useState, type FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Mail, UserPlus } from "lucide-react";
 import {
   Badge,
   Button,
-  Card,
   Checkbox,
   ConfirmDialog,
   CopyButton,
+  EmptyState,
   Label,
+  ListCard,
+  ListPager,
+  ListRow,
+  SearchField,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+  StatusPill,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
   SEMANTIC_SURFACE,
   SEMANTIC_TONE,
+  cn,
   useI18n,
+  usePaging,
   PageHeader,
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
+import { useMediaQuery } from "../../lib/useMediaQuery";
+import { userLabel } from "../../lib/userLabel";
 import { readFormError } from "../../lib/formError";
 import { Field } from "../../components/Field";
 import { DetailSheet } from "../../components/DetailSheet";
-import { DataList, type Column } from "../../components/DataList";
-import { ListToolbar, ToolbarSelect } from "../../components/ListToolbar";
+import { FilterSelect } from "../../components/FilterSelect";
 import { NoMatchState } from "../../components/NoMatchState";
 import { AdminError, AdminLoading } from "./states";
 import type { AdminPendingInvitation, AdminProject, AdminUser } from "../../api/client";
 
-// 管理使用者頁（server-web-console「管理列表以抽屜承載建立與編輯」）：列表為主體，
-// 列內不含任何輸入控制項，整列可點開細節抽屜；邀請由頁面唯一 primary action 開啟抽屜。
-// 停權等破壞性動作維持確認框確認（確認鈕為紅系）；最後一位 active admin 受保護（canSuspend／
-// canRemoveAdmin 為 false 時停用對應控制）。
+// 管理使用者頁（server-web-console「管理列表以抽屜承載建立與編輯」「使用者頁呈現尚未接受的
+// 邀請」；server-web-list-pages design D2–D4）：頁標題區右側是搜尋、狀態篩選與邀請；其下一張
+// 列表卡，卡頂「使用者｜邀請中」兩個分頁（分頁狀態在網址 ?tab=pending），卡底共用換頁列
+// （前端換頁）。使用者列整列可點開細節抽屜、列內不含輸入控制項；邀請由頁面唯一 primary action
+// 開啟抽屜。停權等破壞性動作維持確認框確認（確認鈕為紅系）；最後一位 active admin 受保護
+// （canSuspend／canRemoveAdmin 為 false 時停用對應控制）。
 
 type Confirm = { title: string; body: string; action: string; run: () => Promise<void> };
 
 /** 邀請抽屜的專案挑選器固定停在這個值；它對不到任何選項，所以 trigger 顯示 placeholder。 */
 const PICKER = "__picker__";
-
-// 列的欄位：規格釘死為使用者、狀態、角色、成員資格與建立日期，且不含任何輸入控制項。
-function userColumns(t: (key: string) => string): Column<AdminUser>[] {
-  return [
-    {
-      header: t("users.colUser"),
-      primary: true,
-      cell: (u) => (
-        <>
-          <span className="block font-medium">{u.display}</span>
-          <span className="block text-muted-foreground">{u.email}</span>
-        </>
-      ),
-    },
-    {
-      header: t("field.status"),
-      cell: (u) => (
-        <Badge
-          variant="outline"
-          className={
-            u.active
-              ? `${SEMANTIC_SURFACE.success} ${SEMANTIC_TONE.success}`
-              : `${SEMANTIC_SURFACE.warning} ${SEMANTIC_TONE.warning}`
-          }
-        >
-          {u.active ? t("common.active") : t("common.suspended")}
-        </Badge>
-      ),
-    },
-    {
-      header: t("field.role"),
-      cell: (u) => (u.admin ? t("users.roleAdmin") : t("users.roleMember")),
-    },
-    {
-      header: t("users.colMemberships"),
-      cell: (u) =>
-        u.memberships.length === 0 ? (
-          <span className="text-muted-foreground">{t("common.none")}</span>
-        ) : (
-          <span className="font-mono">{u.memberships.map((m) => m.projectKey).join("、")}</span>
-        ),
-    },
-    {
-      header: t("field.created"),
-      cell: (u) => <span className="tabular-nums">{fmtDate(u.createdAt)}</span>,
-    },
-  ];
-}
 
 /** The date portion of an ISO timestamp. */
 function fmtDate(iso: string | null, fallback = "—"): string {
@@ -99,10 +62,14 @@ function fmtDate(iso: string | null, fallback = "—"): string {
 export function UsersPage() {
   const { t } = useI18n();
   const client = useClient();
+  const narrow = useMediaQuery("(max-width: 1023px)");
   const { loading, data, error, reload } = useAsync(() => client.getAdminUsers(), []);
   // 成員資格的專案選項來自 registry（專案代號為封閉集合，不開放自由輸入）。
   const registry = useAsync(() => client.getAdminRegistry(), []);
   const projects = registry.data?.projects ?? [];
+  const [searchParams, setSearchParams] = useSearchParams();
+  // 其他值或缺席都是使用者分頁。
+  const tab = searchParams.get("tab") === "pending" ? "pending" : "users";
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [token, setToken] = useState<string | null>(null);
@@ -110,15 +77,34 @@ export function UsersPage() {
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const resetScroll = () => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  };
   // 以 id 選取而非快照：列表重載後抽屜內容跟著更新，不會停留在舊資料。
   const selected = data?.users.find((u) => u.id === selectedId) ?? null;
   const needle = q.trim().toLowerCase();
+  const matches = (...fields: string[]) =>
+    needle === "" || fields.some((field) => field.toLowerCase().includes(needle));
   const visible = (data?.users ?? []).filter(
-    (u) =>
-      (status === "" || (status === "active" ? u.active : !u.active)) &&
-      (needle === "" ||
-        [u.display, u.email].some((field) => field.toLowerCase().includes(needle))),
+    (u) => (status === "" || (status === "active" ? u.active : !u.active)) && matches(u.display, u.email),
   );
+  const visiblePending = (data?.pending ?? []).filter((i) => matches(i.email, i.display));
+  const users = usePaging(visible, { onMove: resetScroll });
+  const pending = usePaging(visiblePending, { onMove: resetScroll });
+
+  // 搜尋、篩選與切分頁都回到第 1 頁。
+  function firstPage() {
+    users.setPage(1);
+    pending.setPage(1);
+  }
+
+  // 分頁寫進網址但不新增瀏覽紀錄：上一頁不會在兩個分頁間來回。
+  function switchTab(next: string) {
+    setSearchParams(next === "pending" ? { tab: "pending" } : {}, { replace: true });
+    firstPage();
+    resetScroll();
+  }
 
   async function runConfirmed() {
     if (!confirm || busy) return;
@@ -144,21 +130,46 @@ export function UsersPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex h-full min-h-0 flex-col gap-4">
       <PageHeader
         level={1}
         title={t("users.title")}
         description={t("users.description")}
         actions={
-          <Button
-            type="button"
-            data-tour="list-primary"
-            className="gap-1.5"
-            onClick={() => setInviteOpen(true)}
-          >
-            <UserPlus aria-hidden="true" className="h-4 w-4" />
-            {t("users.invite")}
-          </Button>
+          <>
+            <SearchField
+              label={t("common.search")}
+              placeholder={t("users.searchPlaceholder")}
+              value={q}
+              onChange={(value) => {
+                setQ(value);
+                firstPage();
+              }}
+            />
+            {tab === "users" && (
+              <FilterSelect
+                label={t("field.status")}
+                allLabel={t("field.allStatuses")}
+                value={status}
+                onChange={(value) => {
+                  setStatus(value);
+                  firstPage();
+                }}
+              >
+                <SelectItem value="active">{t("common.active")}</SelectItem>
+                <SelectItem value="suspended">{t("common.suspended")}</SelectItem>
+              </FilterSelect>
+            )}
+            <Button
+              type="button"
+              data-tour="list-primary"
+              className="gap-1.5"
+              onClick={() => setInviteOpen(true)}
+            >
+              <UserPlus aria-hidden="true" className="h-4 w-4" />
+              {t("users.invite")}
+            </Button>
+          </>
         }
       />
 
@@ -180,54 +191,67 @@ export function UsersPage() {
       {loading && <AdminLoading />}
       {error != null && <AdminError onRetry={reload} />}
       {data && (
-        <ListToolbar search={q} onSearchChange={setQ}>
-          <ToolbarSelect
-            id="users-status"
-            label={t("field.status")}
-            allLabel={t("field.allStatuses")}
-            value={status}
-            onChange={setStatus}
+        <Tabs value={tab} onValueChange={switchTab} className="flex min-h-0 flex-1 flex-col">
+          <ListCard
+            scrollRef={scrollRef}
+            header={
+              // 計數是未經搜尋與篩選的總數。
+              <TabsList variant="card">
+                <TabsTrigger value="users" count={data.users.length}>
+                  {t("users.tabUsers")}
+                </TabsTrigger>
+                <TabsTrigger value="pending" count={data.pending.length}>
+                  {t("users.pendingTitle")}
+                </TabsTrigger>
+              </TabsList>
+            }
+            footer={
+              tab === "users" ? (
+                <ListPager key="users" compact={narrow} {...users.pager} />
+              ) : (
+                <ListPager key="pending" compact={narrow} {...pending.pager} />
+              )
+            }
           >
-            <SelectItem value="active">{t("common.active")}</SelectItem>
-            <SelectItem value="suspended">{t("common.suspended")}</SelectItem>
-          </ToolbarSelect>
-        </ListToolbar>
-      )}
-      {data && visible.length === 0 && <NoMatchState />}
-      {data && visible.length > 0 && (
-        <DataList
-          items={visible}
-          columns={userColumns(t)}
-          keyOf={(u) => u.id}
-          onSelect={(u) => setSelectedId(u.id)}
-          action={(u) => (
-            /* 鍵盤入口：整列可點只是滑鼠便利，實際可聚焦目標是這顆按鈕。 */
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              aria-label={t("users.viewDetail").replace("{name}", u.display)}
-              onClick={() => setSelectedId(u.id)}
-            >
-              <ChevronRight aria-hidden="true" className="h-4 w-4" />
-            </Button>
-          )}
-        />
-      )}
-
-      {data && data.pending.length > 0 && (
-        <PendingInvitations
-          invitations={data.pending}
-          busy={busy}
-          onRevoke={(invitation) =>
-            setConfirm({
-              title: t("users.revokeInviteTitle").replace("{email}", invitation.email),
-              body: t("users.revokeInviteBody"),
-              action: t("users.revokeInvite"),
-              run: () => client.adminRevokeInvitation(invitation.id),
-            })
-          }
-        />
+            <TabsContent value="users">
+              {visible.length === 0 ? (
+                <NoMatchState />
+              ) : (
+                users.pageItems.map((u) => (
+                  <UserRow key={u.id} user={u} narrow={narrow} onOpen={() => setSelectedId(u.id)} />
+                ))
+              )}
+            </TabsContent>
+            <TabsContent value="pending">
+              {data.pending.length === 0 ? (
+                <EmptyState icon={Mail} title={t("users.pendingEmpty")} description={t("users.pendingHint")} />
+              ) : visiblePending.length === 0 ? (
+                <NoMatchState />
+              ) : (
+                <>
+                  <p className="border-b border-border/70 px-4 py-3 text-[13px] text-muted-foreground">
+                    {t("users.pendingHint")}
+                  </p>
+                  {pending.pageItems.map((i) => (
+                    <PendingRow
+                      key={i.id}
+                      invitation={i}
+                      busy={busy}
+                      onRevoke={() =>
+                        setConfirm({
+                          title: t("users.revokeInviteTitle").replace("{email}", i.email),
+                          body: t("users.revokeInviteBody"),
+                          action: t("users.revokeInvite"),
+                          run: () => client.adminRevokeInvitation(i.id),
+                        })
+                      }
+                    />
+                  ))}
+                </>
+              )}
+            </TabsContent>
+          </ListCard>
+        </Tabs>
       )}
 
       {selected && (
@@ -280,60 +304,97 @@ function inviteUrl(token: string): string {
   return `${window.location.origin}/invite/${token}`;
 }
 
-// 待啟用邀請：受邀者接受前沒有 user row，不混進使用者表格——他們不能被停權、沒有
-// 憑證也沒有細節可看。獨立一區並標示到期日，管理員才知道哪一筆快失效。
-function PendingInvitations({
-  invitations,
+/** 使用者列（design D4）：頭像字、名稱與 email、管理員籤、狀態籤、所屬專案數；窄螢幕把管理員
+ *  併入 email 那一行、meta 只留狀態籤。整列可點開細節抽屜。 */
+function UserRow({ user, narrow, onOpen }: { user: AdminUser; narrow: boolean; onOpen: () => void }) {
+  const { t } = useI18n();
+  const name = userLabel(user);
+  const adminLabel = t("users.roleAdmin");
+  const statusPill = (
+    <StatusPill tone={user.active ? "success" : "warning"}>
+      {user.active ? t("common.active") : t("common.suspended")}
+    </StatusPill>
+  );
+  const projectCount = user.memberships.length;
+  return (
+    <ListRow
+      data-user={user.id}
+      mono={false}
+      leading={
+        <span
+          data-avatar
+          aria-hidden="true"
+          className={cn(
+            "flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium",
+            user.active ? "bg-primary/12 text-primary" : "bg-muted text-muted-foreground",
+          )}
+        >
+          {Array.from(name)[0]}
+        </span>
+      }
+      title={name}
+      description={narrow && user.admin ? `${user.email} · ${adminLabel}` : user.email}
+      meta={
+        narrow ? (
+          statusPill
+        ) : (
+          <>
+            {user.admin && <StatusPill tone="neutral">{adminLabel}</StatusPill>}
+            {statusPill}
+            <span className="tabular-nums">
+              {projectCount === 0
+                ? t("users.noProjectsShort")
+                : t("users.projectCount").replace("{n}", String(projectCount))}
+            </span>
+          </>
+        )
+      }
+      onClick={onOpen}
+    />
+  );
+}
+
+// 待啟用邀請列：受邀者接受前沒有 user row，不能被停權、沒有憑證也沒有細節可看，所以是靜態列；
+// 標示到期日，管理員才知道哪一筆快失效。撤回恆常顯示（破壞性動作，確認框指名受邀者）。
+function PendingRow({
+  invitation: i,
   busy,
   onRevoke,
 }: {
-  invitations: AdminPendingInvitation[];
+  invitation: AdminPendingInvitation;
   busy: boolean;
-  onRevoke: (invitation: AdminPendingInvitation) => void;
+  onRevoke: () => void;
 }) {
   const { t } = useI18n();
+  const role = i.admin ? t("users.roleAdmin") : t("users.roleMember");
+  const meta = (i.memberships.length > 0 ? t("users.pendingMetaProjects") : t("users.pendingMeta"))
+    .replace("{display}", () => i.display)
+    .replace("{role}", role)
+    .replace("{projects}", () => i.memberships.join("、"));
   return (
-    <section aria-labelledby="pending-invitations" className="rounded-md border border-border p-4">
-      <h2 id="pending-invitations" className="text-lg font-medium">
-        {t("users.pendingTitle")}
-      </h2>
-      <p className="mt-1 text-sm text-muted-foreground">{t("users.pendingHint")}</p>
-      <ul className="mt-3 space-y-2">
-        {invitations.map((i) => (
-          <li
-            key={i.id}
-            className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border px-3 py-2 text-sm"
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block font-medium">{i.display}</span>
-              <span className="block text-muted-foreground">{i.email}</span>
-            </span>
-            <Badge variant="outline">
-              {i.admin ? t("users.roleAdmin") : t("users.roleMember")}
-            </Badge>
-            {i.memberships.length > 0 && (
-              <span className="font-mono text-muted-foreground">
-                {i.memberships.join("、")}
-              </span>
-            )}
-            <span className="tabular-nums text-muted-foreground">
-              {t("users.pendingExpires").replace("{date}", fmtDate(i.expiresAt))}
-            </span>
-            {/* 破壞性動作：確認框指名受邀者，與停權／撤銷憑證同一套語彙。 */}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              aria-label={t("users.revokeInviteFor").replace("{email}", i.email)}
-              disabled={busy}
-              onClick={() => onRevoke(i)}
-            >
-              {t("users.revokeInvite")}
-            </Button>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <ListRow
+      data-invite={i.id}
+      leading={
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-muted-foreground">
+          <Mail aria-hidden="true" className="h-3.5 w-3.5" />
+        </span>
+      }
+      title={i.email}
+      description={meta}
+      meta={<span className="tabular-nums">{t("users.pendingExpires").replace("{date}", fmtDate(i.expiresAt))}</span>}
+      actions={
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-label={t("users.revokeInviteFor").replace("{email}", i.email)}
+          disabled={busy}
+          onClick={onRevoke}
+        >
+          {t("users.revokeInvite")}
+        </Button>
+      }
+    />
   );
 }
 

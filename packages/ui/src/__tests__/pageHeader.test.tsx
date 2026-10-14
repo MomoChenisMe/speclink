@@ -38,4 +38,13 @@ describe("PageHeader", () => {
     expect(root.querySelector("p")).toBeNull();
     expect(root.children).toHaveLength(1);
   });
+
+  // server-web-list-pages design D1：放不下時動作槽換到標題下方一列，槽內控件再各自換行。
+  it("根節點與動作槽帶 flex-wrap，動作槽寬度不超過整列", () => {
+    render(<PageHeader title="使用者" actions={<button>邀請使用者</button>} />);
+    const slot = screen.getByRole("button", { name: "邀請使用者" }).parentElement as HTMLElement;
+    const root = slot.closest("[data-page-header]") as HTMLElement;
+    expect(classes(root)).toContain("flex-wrap");
+    expect(classes(slot)).toEqual(expect.arrayContaining(["flex-wrap", "max-w-full"]));
+  });
 });

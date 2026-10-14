@@ -50,6 +50,21 @@ export const USERS = {
   ],
 };
 
+/** n 位一般成員（User 1…User n，user1@example.com…），測換頁用。 */
+export function makeUsers(n: number) {
+  return Array.from({ length: n }, (_, i) => ({
+    id: `u${i + 1}`,
+    email: `user${i + 1}@example.com`,
+    display: `User ${i + 1}`,
+    admin: false,
+    active: true,
+    createdAt: "2026-01-02T00:00:00Z",
+    memberships: [],
+    canSuspend: true,
+    canRemoveAdmin: false,
+  }));
+}
+
 export const REGISTRY = {
   projects: [{ key: "demo", name: "Demo", repos: [{ key: "backend", name: "Backend" }] }],
 };
@@ -118,6 +133,7 @@ export const AUDIT = {
     },
   ],
   totalPages: 1,
+  total: 1,
 };
 
 export const OVERVIEW = {

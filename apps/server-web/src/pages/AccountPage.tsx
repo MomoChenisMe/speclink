@@ -1,19 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { KeyRound } from "lucide-react";
 import {
-  Badge,
   Button,
-  Card,
   ConfirmDialog,
   CopyButton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  SettingsCard,
+  SettingsRow,
+  StatusPill,
   SEMANTIC_SURFACE,
-  SEMANTIC_TONE,
   useI18n,
   PageHeader,
 } from "@speclink/ui";
@@ -23,17 +17,24 @@ import { useAsync } from "../lib/useAsync";
 import { readFormError } from "../lib/formError";
 import { Field } from "../components/Field";
 import { DetailSheet } from "../components/DetailSheet";
-import type { DeviceFamilyMeta, MembershipMeta, PatMeta, SessionMeta } from "../api/client";
+import { RevokeButton } from "../components/RevokeButton";
+import type { AccountSummary, DeviceFamilyMeta, PatMeta } from "../api/client";
 
-// 帳號自助頁（server-identity「帳號 browser API 保持憑證祕密邊界」, D4／D6）：使用者、
-// 存取金鑰、登入工作階段與裝置。金鑰明文只在建立時顯示一次；撤銷等破壞性操作先以
-// 確認框確認且立即生效。所有 server 資料留在本 route 的 component state（D1）。
+// 帳號自助頁（server-identity「帳號 browser API 保持憑證祕密邊界」, D4／D6；server-web-list-pages
+// design D8、D10）：768px 置中欄，由上而下為我的專案、存取金鑰、裝置登入、登入工作階段四張設定型卡。
+// 金鑰明文只在建立時顯示一次；存取金鑰與裝置登入的撤銷鈕滑過才出現，撤銷等破壞性操作先以確認框
+// 確認且立即生效。所有 server 資料留在本 route 的 component state（D1）。
 
 type Confirm = { title: string; run: () => Promise<void> };
 
 /** The date portion of an ISO timestamp, or a fallback when absent. */
 function fmtDate(iso: string | null, fallback: string): string {
   return iso ? iso.slice(0, 10) : fallback;
+}
+
+/** 卡內沒有資料時的一列灰字。 */
+function EmptyLine({ children }: { children: string }) {
+  return <p className="m-0 px-4 py-3 text-[13px] text-muted-foreground">{children}</p>;
 }
 
 export function AccountPage() {
@@ -76,7 +77,7 @@ export function AccountPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="mx-auto flex w-full max-w-[768px] flex-col gap-6">
       {/* 與管理列表頁一致：頁面唯一 primary action 開抽屜，建立欄位不常駐頁面。 */}
       <PageHeader
         level={1}
@@ -104,23 +105,16 @@ export function AccountPage() {
         </div>
       )}
 
-      <ProjectSection memberships={data.memberships} />
-
-      <PatSection
-        pats={data.pats}
-        onRevoke={(pat) =>
+      <AccountCards
+        account={data}
+        busy={busy}
+        onRevokeKey={(pat) =>
           setConfirm({
             title: t("account.revokeKeyTitle").replace("{name}", pat.name),
             run: () => client.revokePat(pat.id),
           })
         }
-      />
-
-      <SessionSection sessions={data.sessions} />
-
-      <DeviceSection
-        families={data.deviceFamilies}
-        onRevoke={(family) =>
+        onRevokeDevice={(family) =>
           setConfirm({
             title: t("account.revokeDeviceTitle").replace("{name}", family.source),
             run: () => client.revokeDevice(family.id),
@@ -152,97 +146,135 @@ export function AccountPage() {
   );
 }
 
-// 我的專案區塊（server-web-console「帳號頁呈現我的專案」）：唯讀清單，資料只來自
-// account summary。這是個人視角——admin 與一般成員看到同一區塊、同一形狀，全部專案
-// 的治理視角在 /admin/registry。顯示名缺席時退回專案代號。
-function ProjectSection({ memberships }: { memberships: MembershipMeta[] }) {
+function StatePill({ revokedAt }: { revokedAt: string | null }) {
   const { t } = useI18n();
   return (
-    <section className="space-y-4" aria-labelledby="account-projects">
-      <h2 id="account-projects" className="text-lg font-medium">
-        {t("account.projects")}
-      </h2>
-      {memberships.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("account.noProjects")}</p>
-      ) : (
-        <Card className="overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("field.project")}</TableHead>
-                <TableHead>{t("field.role")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {memberships.map((membership) => (
-                <TableRow key={membership.projectKey}>
-                  <TableCell>{membership.projectName || membership.projectKey}</TableCell>
-                  <TableCell>{membership.role}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-      )}
-    </section>
+    <StatusPill tone={revokedAt ? "neutral" : "success"}>
+      {revokedAt ? t("common.revoked") : t("common.active")}
+    </StatusPill>
   );
 }
 
-// 存取金鑰區塊：唯讀列表與逐一撤銷。建立走頁面的 primary action 開抽屜。
-function PatSection({
-  pats,
-  onRevoke,
+// 四張卡（design D10）。我的專案（server-web-console「帳號頁呈現我的專案」）是唯讀的個人視角，
+// 資料只來自 account summary——admin 與一般成員看到同一張卡、同一形狀，全部專案的治理視角在
+// /admin/registry；顯示名缺席時以等寬代號為名、不再重複一次代號。存取金鑰的建立走頁面的 primary
+// action 開抽屜；登入工作階段唯讀（登出由殼層的登出動作處理）；裝置登入撤銷後立即使 access
+// token 與 refresh credential 失效。
+function AccountCards({
+  account,
+  busy,
+  onRevokeKey,
+  onRevokeDevice,
 }: {
-  pats: PatMeta[];
-  onRevoke: (pat: PatMeta) => void;
+  account: AccountSummary;
+  busy: boolean;
+  onRevokeKey: (pat: PatMeta) => void;
+  onRevokeDevice: (family: DeviceFamilyMeta) => void;
 }) {
   const { t } = useI18n();
   return (
-    <section className="space-y-4">
-      <h2 className="text-lg font-medium">{t("account.keys")}</h2>
-      {pats.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("account.noKeys")}</p>
-      ) : (
-        <Card className="overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("field.prefix")}</TableHead>
-                <TableHead>{t("field.name")}</TableHead>
-                <TableHead>{t("field.expires")}</TableHead>
-                <TableHead>{t("field.lastUsed")}</TableHead>
-                <TableHead>{t("field.status")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {pats.map((pat) => (
-                <TableRow key={pat.id}>
-                  <TableCell className="font-mono">{pat.prefix}</TableCell>
-                  <TableCell>{pat.name}</TableCell>
-                  <TableCell>{fmtDate(pat.expiresAt, t("common.forever"))}</TableCell>
-                  <TableCell>{fmtDate(pat.lastUsedAt, t("common.never"))}</TableCell>
-                  <TableCell>
-                    {pat.revokedAt ? (
-                      <Badge variant="outline" className="text-muted-foreground">{t("common.revoked")}</Badge>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        aria-label={t("account.revokeKey").replace("{name}", pat.name)}
-                        onClick={() => onRevoke(pat)}
-                      >
-                        {t("common.revoke")}
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-      )}
-    </section>
+    <>
+      <SettingsCard title={t("account.projects")} aside={t("account.projectsAside")}>
+        {account.memberships.length === 0 ? (
+          <EmptyLine>{t("account.noProjects")}</EmptyLine>
+        ) : (
+          account.memberships.map((m) => (
+            <SettingsRow
+              key={m.projectKey}
+              label={m.projectName || <span className="font-mono">{m.projectKey}</span>}
+              description={m.projectName ? <span className="font-mono">{m.projectKey}</span> : undefined}
+              control={
+                <StatusPill tone="neutral" className="font-mono">
+                  {m.role}
+                </StatusPill>
+              }
+            />
+          ))
+        )}
+      </SettingsCard>
+
+      <SettingsCard title={t("account.keys")} aside={t("account.keysAside")}>
+        {account.pats.length === 0 ? (
+          <EmptyLine>{t("account.noKeys")}</EmptyLine>
+        ) : (
+          account.pats.map((pat) => (
+            <SettingsRow
+              key={pat.id}
+              label={pat.name}
+              description={
+                pat.revokedAt
+                  ? t("account.keyRevokedMeta")
+                      .replace("{prefix}", pat.prefix)
+                      .replace("{date}", fmtDate(pat.revokedAt, t("common.dash")))
+                  : t("account.keyMeta")
+                      .replace("{prefix}", pat.prefix)
+                      .replace("{expires}", fmtDate(pat.expiresAt, t("common.forever")))
+                      .replace("{lastUsed}", fmtDate(pat.lastUsedAt, t("common.never")))
+              }
+              control={
+                <>
+                  {!pat.revokedAt && (
+                    <RevokeButton
+                      label={t("account.revokeKey").replace("{name}", pat.name)}
+                      disabled={busy}
+                      onClick={() => onRevokeKey(pat)}
+                    />
+                  )}
+                  <StatePill revokedAt={pat.revokedAt} />
+                </>
+              }
+            />
+          ))
+        )}
+      </SettingsCard>
+
+      <SettingsCard title={t("account.devices")} aside={t("account.devicesAside")}>
+        {account.deviceFamilies.length === 0 ? (
+          <EmptyLine>{t("account.noDevices")}</EmptyLine>
+        ) : (
+          account.deviceFamilies.map((family) => (
+            <SettingsRow
+              key={family.id}
+              label={family.source}
+              description={t("account.deviceMeta").replace(
+                "{date}",
+                fmtDate(family.lastRefreshAt, t("common.dash")),
+              )}
+              control={
+                <>
+                  {!family.revokedAt && (
+                    <RevokeButton
+                      label={t("account.revokeDevice").replace("{name}", family.source)}
+                      disabled={busy}
+                      onClick={() => onRevokeDevice(family)}
+                    />
+                  )}
+                  <StatePill revokedAt={family.revokedAt} />
+                </>
+              }
+            />
+          ))
+        )}
+      </SettingsCard>
+
+      <SettingsCard title={t("account.sessions")}>
+        {account.sessions.length === 0 ? (
+          <EmptyLine>{t("account.noSessions")}</EmptyLine>
+        ) : (
+          account.sessions.map((session) => (
+            <SettingsRow
+              key={session.id}
+              label={t("account.sessionCreated").replace("{date}", fmtDate(session.createdAt, t("common.dash")))}
+              description={t("account.sessionExpires").replace(
+                "{date}",
+                fmtDate(session.expiresAt, t("common.dash")),
+              )}
+              control={<StatePill revokedAt={session.revokedAt} />}
+            />
+          ))
+        )}
+      </SettingsCard>
+    </>
   );
 }
 
@@ -319,108 +351,5 @@ function CreateKeySheet({
         </div>
       </form>
     </DetailSheet>
-  );
-}
-
-// 登入工作階段區塊：唯讀清單（登出由殼層的登出動作處理）。
-function SessionSection({ sessions }: { sessions: SessionMeta[] }) {
-  const { t } = useI18n();
-  return (
-    <section className="space-y-4">
-      <h2 className="text-lg font-medium">{t("account.sessions")}</h2>
-      {sessions.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("account.noSessions")}</p>
-      ) : (
-        <Card className="overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("field.created")}</TableHead>
-                <TableHead>{t("field.expires")}</TableHead>
-                <TableHead>{t("field.status")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sessions.map((session) => (
-                <TableRow key={session.id}>
-                  <TableCell>{fmtDate(session.createdAt, t("common.dash"))}</TableCell>
-                  <TableCell>{fmtDate(session.expiresAt, t("common.dash"))}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={
-                        session.revokedAt
-                          ? "text-muted-foreground"
-                          : `${SEMANTIC_SURFACE.success} ${SEMANTIC_TONE.success}`
-                      }
-                    >
-                      {session.revokedAt ? t("common.revoked") : t("common.active")}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-      )}
-    </section>
-  );
-}
-
-// 裝置登入區塊：清單與逐一撤銷（撤銷立即使 access token 與 refresh credential 失效）。
-function DeviceSection({
-  families,
-  onRevoke,
-}: {
-  families: DeviceFamilyMeta[];
-  onRevoke: (family: DeviceFamilyMeta) => void;
-}) {
-  const { t } = useI18n();
-  return (
-    <section className="space-y-4">
-      <h2 className="text-lg font-medium">{t("account.devices")}</h2>
-      {families.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("account.noDevices")}</p>
-      ) : (
-        <Card className="overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("field.source")}</TableHead>
-                <TableHead>{t("field.created")}</TableHead>
-                <TableHead>{t("field.lastRefresh")}</TableHead>
-                <TableHead>{t("field.status")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {families.map((family) => (
-                <TableRow key={family.id}>
-                  <TableCell>
-                    <Badge variant="secondary">{family.source}</Badge>
-                  </TableCell>
-                  <TableCell>{fmtDate(family.createdAt, t("common.dash"))}</TableCell>
-                  <TableCell>{fmtDate(family.lastRefreshAt, t("common.dash"))}</TableCell>
-                  <TableCell>
-                    {family.revokedAt ? (
-                      <Badge variant="outline" className="text-muted-foreground">{t("common.revoked")}</Badge>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        aria-label={t("account.revokeDevice").replace("{name}", family.source)}
-                        onClick={() => onRevoke(family)}
-                      >
-                        {t("common.revoke")}
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-      )}
-    </section>
   );
 }
