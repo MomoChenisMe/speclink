@@ -50,7 +50,7 @@ speclink workflow-config review <critical|warning|suggestion> --stdin 與 specli
 
 ### Requirement: dry-run 差異只標示實際改動的行
 
-workflow-config 各寫入子指令（set、context、rules、review）帶 --dry-run 時於 stdout 印出的 unified diff SHALL 為單一 hunk：以 `--- a/<label>`、`+++ b/<label>` 兩行開頭，接一行 `@@ -<舊側起點,行數> +<新側起點,行數> @@` 標頭，hunk 前後各帶至多三行 context。hunk 內新舊文字都有的行 SHALL 以 context 行（前綴一個空白）呈現，SHALL NOT 以成對的 `-` 與 `+` 出現；只在舊文字的行 SHALL 以 `-` 開頭，只在新文字的行 SHALL 以 `+` 開頭；同一位置同時有刪除與新增時，`-` 行 SHALL 先於 `+` 行。標頭的舊側行數 SHALL 等於 hunk 內 context 行數加 `-` 行數，新側行數 SHALL 等於 context 行數加 `+` 行數。新舊文字相同時 SHALL 輸出空字串。只有單一連續改動時，輸出 SHALL 與只標示該段改動的單一 hunk 相同。--dry-run 的其他行為（不寫檔、exit code 0、本機與 remote 模式共用同一改寫）不變。
+workflow-config 各寫入子指令（set、context、rules、review）帶 --dry-run 時於 stdout 印出的 unified diff SHALL 為單一 hunk：以 `--- a/<label>`、`+++ b/<label>` 兩行開頭，接一行 `@@ -<舊側起點,行數> +<新側起點,行數> @@` 標頭，hunk 前後各帶至多三行 context。hunk 內的行 SHALL 依新舊文字的最長共同子序列逐行對齊：對齊上的行（未改動且相對順序不變）SHALL 以 context 行（前綴一個空白）呈現，SHALL NOT 以成對的 `-` 與 `+` 出現；其餘只在舊文字一側的行 SHALL 以 `-` 開頭，只在新文字一側的行 SHALL 以 `+` 開頭——被刪除、新增或移動位置的行才帶 `-`／`+`；同一位置同時有刪除與新增時，`-` 行 SHALL 先於 `+` 行。標頭的舊側行數 SHALL 等於 hunk 內 context 行數加 `-` 行數，新側行數 SHALL 等於 context 行數加 `+` 行數。新舊文字相同時 SHALL 輸出空字串。只有單一連續改動時，輸出 SHALL 與只標示該段改動的單一 hunk 相同。--dry-run 的其他行為（不寫檔、exit code 0、本機與 remote 模式共用同一改寫）不變。
 
 #### Scenario: 兩處改動之間的未改行以 context 呈現
 

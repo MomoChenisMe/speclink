@@ -9,7 +9,7 @@
   - 探測整體為「較新」（工作區檔案領先引擎）或「無法判定」時不提示：更新會降級或無從判斷；工具技能檔整組缺失不算過期、不提示。
   - `--dry-run` 不探測、不提示（沒有寫入）；remote 模式寫入成功後同樣探測本機工作區的技能檔。
   - 只有 review 寫入加提示：context、rules 與政策欄位由 CLI 在指令注入時讀取，不經技能檔，技能檔新舊不影響它們生效。
-- **`--dry-run` 差異只標示實際改動的行**：workflow-config 所有支援 `--dry-run` 的寫入子指令（set、context、rules、review）共用的差異預覽，改為逐行比對——內容相同的行一律以 context 行（前綴空白）呈現，只有真正刪除或新增的行帶 `-`／`+`；輸出仍是單一 hunk 的 unified diff，檔頭與 hunk 標頭格式不變。
+- **`--dry-run` 差異只標示實際改動的行**：workflow-config 所有支援 `--dry-run` 的寫入子指令（set、context、rules、review）共用的差異預覽，改為逐行比對——未改動且相對順序不變的行以 context 行（前綴空白）呈現，只有被刪除、新增或移動位置的行帶 `-`／`+`；輸出仍是單一 hunk 的 unified diff，檔頭與 hunk 標頭格式不變。
 - 文件：docs/configuration.md 與 docs/configuration.zh-TW.md 的 review 寫入說明補上過期提示。
 
 ### 相容性影響
@@ -34,13 +34,14 @@
 ## Impact
 
 - Affected specs: workflow-config
-- Affected crates／apps：speclink-cli（workflow-config 寫入臂的提示與差異產生）；speclink-core 的技能檔過期探測只被呼叫、不修改；speclink-server、apps/desktop 不受影響
+- Affected crates／apps：speclink-cli（workflow-config 寫入臂的提示與差異產生）；speclink-core 的技能檔過期探測只被呼叫、不修改，其 testkit 補一個寫出指定版號技能檔的測試 helper；speclink-server、apps/desktop 不受影響
 - 生成的技能：無（不改技能範本，claude、codex、copilot 的技能檔都不變）
 - Affected code:
   - New: (none)
   - Modified:
     - crates/adapters/speclink-cli/src/verbs/config.rs
     - crates/adapters/speclink-cli/tests/it/workflow_config.rs
+    - crates/engine/speclink-core/src/testkit.rs
     - docs/configuration.md
     - docs/configuration.zh-TW.md
   - Removed: (none)
