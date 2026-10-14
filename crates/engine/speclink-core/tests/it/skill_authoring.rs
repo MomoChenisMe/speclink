@@ -29,11 +29,14 @@ const EMPHASIS_CAPS: &[(&str, usize)] = &[
     ("manual.md", 5),
     ("propose.md", 6),
     ("quality.md", 3),
-    ("review.md", 20),
+    ("review-intro.md", 1),
+    ("review.md", 19),
+    ("station-shared.md", 0),
     ("sync.md", 5),
     ("tdd.md", 4),
     ("trace.md", 3),
-    ("verify.md", 21),
+    ("verify-intro.md", 1),
+    ("verify.md", 20),
     ("worktree-merge.md", 18),
 ];
 

@@ -75,7 +75,7 @@ quality 技能每輪改為四段：準備（依序執行審查站第 1–4 步�
 
 speclink-core 的 `quality::station` 新增純函式 `finding_path_violations`：輸入工單既有各輪、本輪內容與「免檢查的路徑前綴」，回傳違規清單。規則：
 
-1. 路徑以冒號加數字結尾（如 `src/a.rs:42`、`src/a.rs:42-50`）→ 違規。
+1. 路徑在最後一個冒號之後只剩行號寫法（如 `src/a.rs:42`、`src/a.rs:42-50`、`src/a.rs:42-`、`src/a.rs:L42`），或以單獨的冒號結尾 → 違規。
 2. 路徑（`\` 正規化為 `/`）不在「工單既有各輪 Scope 的聯集＋本輪 Scope」之內 → 違規；聯集沿用既有 `scope_union`，與蓋章指紋範圍同一個定義。位於規格目錄（`<spec_dir_name>/`）或 `.speclink/` 之下的路徑免除這一項——複驗的範圍解析本來就略過它們（change_diff 的 `normalize_targets`），驗證站也常把 Requirement 層級的 finding 錨定在 delta 規格檔上。
 3. 豁免：與工單上一輪某條 finding 的 severity、path、text（去掉結尾的 `(accepted)` 標記後）完全相同的行——沿用的未解項不受檢查，避免舊工單裡既存的壞路徑讓「原文沿用」寫不進去。
 
@@ -107,7 +107,7 @@ quality 技能新增接續規則：再跑一次 `/speclink-quality` 即可，兩
 
 ### Apply 基準以可信 commit 重設並承接快照
 
-speclink-host 的 change_diff 模組新增兩個入口，CLI 的 `review prepare` 依旗標呼叫：
+speclink-host 的 change_diff 模組新增入口 `prepare_at`（CLI 的 `review prepare` 依旗標呼叫），快照承接由它在模組內呼叫的 `carry_snapshots` 完成：
 
 - `prepare_at(ws, change, base_rev)`：以 `git rev-parse --verify <rev>^{commit}` 解析出完整 SHA，以 `git merge-base --is-ancestor <sha> HEAD` 確認是 HEAD 的祖先；寫入與既有格式相同的 baseline（version 1、baseCommit 為該 SHA、dirtyFilesAtStart 為當下 dirty 路徑、confidence 為 initial）。目標已有 baseline 且任一站處於工單未結狀態時拒絕——該站的快照綁著舊基準。
 - `carry_snapshots(ws, change, from_root)`：從來源 worktree 根目錄套用同一套 sidecar 路徑規則，把兩站的快照目錄（`snapshots`、`verify-snapshots`）逐檔複製到目前 checkout；快照檔名是 patch hash 的 digest（內容定址），目標已有同名檔就略過；逐檔以暫存檔＋rename 原子寫入。來源沒有快照目錄時什麼都不做。
@@ -167,7 +167,7 @@ review-rules-config 新增「接受 CRITICAL 必修項的逐條確認」，quali
 **介面**
 
 - `speclink review prepare <change> [--base <rev>] [--from <worktree-path>]`：不讀 stdin；`--from` 必須與 `--base` 同用；成功 exit 0、stdout 為空。
-- host：change_diff 模組的 `prepare_at` 與 `carry_snapshots`；既有 `prepare` 簽名與行為不變。
+- host：change_diff 模組的 `prepare_at`（快照承接由模組內的 `carry_snapshots` 完成）；既有 `prepare` 簽名與行為不變。
 - core：`quality::station` 新增純函式 `finding_path_violations`；`add_round` 簽名與行為不變。
 - CLI：station 動詞的 add-round 本機臂與 remote 臂共用一個呼叫該純函式的檢查。
 - Baseline、Snapshot、工單檔案格式皆不變。
@@ -191,7 +191,7 @@ review-rules-config 新增「接受 CRITICAL 必修項的逐條確認」，quali
 
 **範圍**
 
-- 範圍內：五份技能範本、station.rs 的路徑檢查純函式與 CLI 兩臂的呼叫點、change_diff 的兩個入口、CLI 旗標、九份正式規格、docs/workflow 兩份、版號與生成物。
+- 範圍內：五份技能範本、station.rs 的路徑檢查純函式與 CLI 兩臂的呼叫點、change_diff 的 `prepare_at` 與 `carry_snapshots`、CLI 旗標、九份正式規格、docs/workflow 兩份、版號與生成物。
 - 範圍外：desktop、server 路由、工單／基準／快照的檔案格式、驗證站拆子代理、單站的空差異處理、舊 worktree 變更的自動補救。
 
 ## Risks / Trade-offs
@@ -210,5 +210,5 @@ review-rules-config 新增「接受 CRITICAL 必修項的逐條確認」，quali
 
 - 無資料遷移：基準、快照、工單格式皆不變。
 - 既有專案執行 `speclink update` 取得新技能。
-- 已在 worktree 內、以舊技能完成 apply 的變更：合併時沒有基準可承接，主 checkout 照舊需要一次人工 `--base`（變更第一個 commit 的父 commit）。
+- 以舊版 worktree-merge 技能合併的變更：合併時沒有寫入基準，主 checkout 照舊需要一次人工 `--base`（變更第一個 commit 的父 commit）。新版合併技能不論 apply 用哪一版技能，合併時都會寫入基準。
 - 回退：還原技能範本與版號即回到舊流程；`review prepare` 的新旗標不被呼叫時沒有任何效果。

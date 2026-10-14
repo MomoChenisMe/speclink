@@ -462,7 +462,7 @@ pub fn scope_union<'a>(scopes: impl IntoIterator<Item = &'a str>) -> Vec<String>
 /// finding 路徑違規的原因（add-round 寫入前的路徑檢查）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PathViolationReason {
-    /// 路徑以 `:<行號>` 或 `:<起>-<迄>` 結尾——finding 只錨定到檔案。
+    /// 路徑在最後一個冒號後只剩行號寫法——finding 只錨定到檔案。
     LineNumber,
     /// 路徑不在工單各輪 Scope 的聯集加本輪 Scope 之內。
     OutOfScope,
@@ -538,10 +538,13 @@ fn strip_accepted(text: &str) -> &str {
     text.strip_suffix("(accepted)").map(str::trim_end).unwrap_or(text)
 }
 
-/// `src/a.rs:42`、`src/a.rs:42-50` 這類以冒號加數字結尾的路徑。
+/// 冒號後只剩行號寫法的路徑：`src/a.rs:42`、`src/a.rs:42-50`、`src/a.rs:42-`、
+/// `src/a.rs:L42`，以及結尾單獨的冒號。
 fn has_line_suffix(path: &str) -> bool {
     path.rsplit_once(':').is_some_and(|(_, tail)| {
-        tail.split('-').all(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+        tail.is_empty()
+            || (tail.trim_start_matches(['L', 'l']).starts_with(|c: char| c.is_ascii_digit())
+                && tail.chars().all(|c| c.is_ascii_digit() || matches!(c, '-' | 'L' | 'l')))
     })
 }
 

@@ -35,7 +35,7 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 1. **Prepare both stations**
 
-   For the same change, walk `/speclink-review` steps 1–4 (choose the change, the code-task gate and the project review rules, the ticket check and the frozen scope, the artifacts), then `/speclink-verify` steps 1–5 (choose the change, the status, the artifacts and task progress, the branch on the call, the frozen scope), each exactly as its skill writes them. When a station stops during its preparation — a refusal, a mid-flight check-in, `needsInput`, a scope failure — relay its outcome verbatim and follow what that station says; do not send any sub-agent.
+   For the same change, walk `/speclink-review` steps 1–4 (choose the change, the code-task gate and the project review rules, the ticket check and the frozen scope, the artifacts), then `/speclink-verify` steps 1–5 (choose the change, the status, the artifacts and task progress, the branch on the call, the frozen scope), each exactly as its skill writes them. When a station stops during its preparation — a refusal, a mid-flight check-in, `needsInput`, a scope failure — relay its outcome verbatim and follow what that station says; send no sub-agent for either station — a round checks both stations or neither, and the resume rule for an empty validation patch is the one exception.
 
 2. **Send the three checks in one message**
 
@@ -66,7 +66,7 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 5. **Fix exactly what was chosen**
 
-   Fix the findings the user picked, and only those. Fixes happen HERE in the main thread following the project's TDD discipline — the stations' checking passes never edit files. Then pass both stations' verification gates (review step 9, verify step 13, option 1 in each) before moving on: the build and the affected tests green, the report naming what ran and what CI guards, and an artifact edit handled by the gate's cases — a passage edited with its intent kept goes verbatim into the next round's briefs, and a fix that changes intent or scope ends this run as **scope changed** in both stations.
+   Fix the findings the user picked, and only those. Fixes happen HERE in the main thread following the project's TDD discipline — the stations' checking passes never edit files. Then pass both stations' **Verification gate** before moving on — the gate decides which tests run, what the report names and how an artifact edit is handled; when its intent-or-scope case applies, this run ends as **scope changed** in both stations.
 
 6. **Another round, still no stamp**
 
@@ -84,8 +84,10 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 A session closed in the middle of a fix round resumes by running `/speclink-quality` again. The tickets live in the change folder and the frozen snapshots in `.speclink/review-scopes/<change>/`, so each station's scope sees its open ticket and freezes a validation patch that holds every fix landed before the close. A resumed run adds three rules to the steps above:
 
-- Pass both stations' verification gates before step 2 — the earlier session's test state is unknown.
-- A station whose validation patch has no files while its last round still carries must-fix findings sends no sub-agent and records no round this time: a round with nothing to judge would count as "no progress" and fail. The summary says that station had no fix to judge. When both stations are in that state, go straight to step 4 with the last rounds' findings.
+- Pass both stations' **Verification gate** before step 1 — the earlier session's test state is unknown, and a fix the gate still needs must land before the scopes freeze.
+- A station whose validation patch has no files while its last round still carries must-fix findings may still have an artifact fix to judge, because the patch leaves the spec directory out. List the change folder's uncommitted and untracked files with `git status --porcelain -- "openspec/changes/<change-name>/"`, the two tickets left out. Git cannot tell whether those edits came before or after the last round, so:
+  - Nothing listed → that station sends no sub-agent and records no round this time: a round with nothing to judge would count as "no progress" and fail. The summary says that station had no fix to judge. When both stations are in that state, go straight to step 4 with the last rounds' findings.
+  - Files listed → show the list and ask the user (see **Asking the user**) whether the earlier session fixed findings by editing those artifacts. A yes runs the station's validation pass, its brief carrying the edited passages verbatim as the gate's artifact case says; a no takes the nothing-listed path above.
 - Tell the user not to commit fixes between the close and the resume: a validation patch picks up fixes by content movement and the dirty state, and a commit can drop a new file the snapshots never captured out of it.
 
 The earlier session's fix-or-skip answers are not kept: step 4 lists only the findings still unresolved and asks again.

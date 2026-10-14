@@ -180,7 +180,7 @@ Work on several independent changes at the same time. Each change gets its own g
 
   `worktree-merge` merges the branch back into the main branch, brings the start point of the quality stations into the main checkout, and removes the worktree.
 - **Next**: Go back to the main checkout and run `archive`. Archive works only in the main checkout. In a worktree, it fails.
-- **If something goes wrong**: The worktree and the main checkout each have their own `tasks.md`. Change only the one in the worktree. A change that finished apply with older skills has no start point to bring over: in the main checkout, give the quality stations `--base` once, with the parent of the first commit of the change.
+- **If something goes wrong**: The worktree and the main checkout each have their own `tasks.md`. Change only the one in the worktree. A change merged with an older worktree-merge skill has no start point in the main checkout: give the quality stations `--base` once, with the parent of the first commit of the change. The current merge skill writes the start point at merge time, whichever skill version ran the apply.
 
 ### <a id="quality"></a>quality: run both stations
 

@@ -3360,7 +3360,7 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 1. **Prepare both stations**
 
-   For the same change, walk `/speclink-review` steps 1–4 (choose the change, the code-task gate and the project review rules, the ticket check and the frozen scope, the artifacts), then `/speclink-verify` steps 1–5 (choose the change, the status, the artifacts and task progress, the branch on the call, the frozen scope), each exactly as its skill writes them. When a station stops during its preparation — a refusal, a mid-flight check-in, `needsInput`, a scope failure — relay its outcome verbatim and follow what that station says; do not send any sub-agent.
+   For the same change, walk `/speclink-review` steps 1–4 (choose the change, the code-task gate and the project review rules, the ticket check and the frozen scope, the artifacts), then `/speclink-verify` steps 1–5 (choose the change, the status, the artifacts and task progress, the branch on the call, the frozen scope), each exactly as its skill writes them. When a station stops during its preparation — a refusal, a mid-flight check-in, `needsInput`, a scope failure — relay its outcome verbatim and follow what that station says; send no sub-agent for either station — a round checks both stations or neither, and the resume rule for an empty validation patch is the one exception.
 
 2. **Send the three checks in one message**
 
@@ -3391,7 +3391,7 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 5. **Fix exactly what was chosen**
 
-   Fix the findings the user picked, and only those. Fixes happen HERE in the main thread following the project's TDD discipline — the stations' checking passes never edit files. Then pass both stations' verification gates (review step 9, verify step 13, option 1 in each) before moving on: the build and the affected tests green, the report naming what ran and what CI guards, and an artifact edit handled by the gate's cases — a passage edited with its intent kept goes verbatim into the next round's briefs, and a fix that changes intent or scope ends this run as **scope changed** in both stations.
+   Fix the findings the user picked, and only those. Fixes happen HERE in the main thread following the project's TDD discipline — the stations' checking passes never edit files. Then pass both stations' **Verification gate** before moving on — the gate decides which tests run, what the report names and how an artifact edit is handled; when its intent-or-scope case applies, this run ends as **scope changed** in both stations.
 
 6. **Another round, still no stamp**
 
@@ -3409,8 +3409,10 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 A session closed in the middle of a fix round resumes by running `/speclink-quality` again. The tickets live in the change folder and the frozen snapshots in `.speclink/review-scopes/<change>/`, so each station's scope sees its open ticket and freezes a validation patch that holds every fix landed before the close. A resumed run adds three rules to the steps above:
 
-- Pass both stations' verification gates before step 2 — the earlier session's test state is unknown.
-- A station whose validation patch has no files while its last round still carries must-fix findings sends no sub-agent and records no round this time: a round with nothing to judge would count as "no progress" and fail. The summary says that station had no fix to judge. When both stations are in that state, go straight to step 4 with the last rounds' findings.
+- Pass both stations' **Verification gate** before step 1 — the earlier session's test state is unknown, and a fix the gate still needs must land before the scopes freeze.
+- A station whose validation patch has no files while its last round still carries must-fix findings may still have an artifact fix to judge, because the patch leaves the spec directory out. List the change folder's uncommitted and untracked files with `git status --porcelain -- "openspec/changes/<change-name>/"`, the two tickets left out. Git cannot tell whether those edits came before or after the last round, so:
+  - Nothing listed → that station sends no sub-agent and records no round this time: a round with nothing to judge would count as "no progress" and fail. The summary says that station had no fix to judge. When both stations are in that state, go straight to step 4 with the last rounds' findings.
+  - Files listed → show the list and ask the user (see **Asking the user**) whether the earlier session fixed findings by editing those artifacts. A yes runs the station's validation pass, its brief carrying the edited passages verbatim as the gate's artifact case says; a no takes the nothing-listed path above.
 - Tell the user not to commit fixes between the close and the resume: a validation patch picks up fixes by content movement and the dirty state, and a commit can drop a new file the snapshots never captured out of it.
 
 The earlier session's fix-or-skip answers are not kept: step 4 lists only the findings still unresolved and asks again.
@@ -3459,6 +3461,33 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 **Input**: Optionally specify a change name after `/speclink-review` (e.g., `/speclink-review add-auth`). If omitted, check if it can be inferred from conversation context; if it is still vague or ambiguous, step 1 asks the user.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
+
+**Brief discipline**
+
+Every checking brief, in discovery and in validation alike, follows these rules. A sub-agent that reads whole diff files or searches without a target stalls, so the brief:
+
+- pastes the frozen patch verbatim when it is 25 KB or less; above that, gives only each file's path and its hunk line ranges;
+- gives generated files — golden snapshots, `assets.lock`, skill files regenerated by `speclink update` — by path only, and tells the sub-agent to search them at most once;
+- names the functions, types and files to check, and tells the sub-agent to read large files by line range rather than whole, and to search only for the names the brief lists — no open-ended recursive search;
+- sets no tool-call cap in discovery; in validation, caps the sub-agent at 5 tool calls;
+- says where a finding goes: `path` is a repo-relative file path with no `:line` suffix, and a finding about a caller outside the frozen patch sits on the in-patch file it calls — `add-round` rejects a path with a `:line` suffix or outside the ticket's scope (the spec directory is exempt, so a finding about a Requirement may sit on its delta spec);
+- ends with: "If you did not finish checking something, say so plainly — do not guess."
+
+When the harness cannot spawn sub-agents and the main thread runs a check itself, the same rules bound its own reading.
+
+**Verification gate**
+
+After the fixes of a fix-and-revalidate answer, build the project and run the affected tests, and get both green before this station freezes the scope of its next round — a fix-introduced regression must never flow into the next round. The build always runs. Pick the tests in this order:
+
+1. A fixed file lies in a path some task description names → run the verification command that task description gives (the task text is the `tasks` field of `speclink instructions apply --change "<name>" --json`).
+2. A fixed file no task covers → pick tests by the project's documented test policy (CLAUDE.md, AGENTS.md, or the workflow config's artifact rules).
+3. The project documents no test policy → run the repo's full test command.
+
+Report which test commands ran and which scope was skipped, and say that CI guards the skipped scope. When a fix touches an artifact (specs, design, tasks), the case decides:
+
+- **The code changes to meet the artifact** → leave the artifacts alone.
+- **The artifact wording is wrong but its intent stays** → edit the artifact in the main thread and get `speclink validate "<name>"` to pass before the next round; report which passages changed, and paste them verbatim into the next round's checking briefs.
+- **The intent or scope changes** (the fix needs a new task, or changes what a Requirement means) → end this station as **scope changed**: keep the ticket, record no new round, do not stamp, and recommend `/speclink-ingest <name>` before running the station again. Do not add or reopen tasks inside this loop.
 
 **Steps**
 
@@ -3528,20 +3557,13 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    Send ONE message with TWO parallel read-only sub-agent calls (e.g. the Agent tool with a read-only agent). Sub-agents MUST NOT modify any file. If your harness cannot spawn sub-agents, run the two axes yourself sequentially and keep their analyses strictly separate.
 
-   Both briefs carry the same frozen patch — step 3's `patch` text with its hunk ranges — plus the relevant artifact intent and the reporting contract: **under 400 words**, each finding on its own line as `- [SEVERITY] path — description`, SEVERITY ∈ CRITICAL / WARNING / SUGGESTION, `path` a repo-relative file path with no `:line` suffix. Both axes judge only the change hunks and the callers/tests needed to judge their direct impact — the unchanged remainder of a touched file is context, not review surface.
+   Both briefs carry the same frozen patch from step 3, delivered the way the **Brief discipline** says, plus the relevant artifact intent and the reporting contract: **under 400 words**, each finding on its own line as `- [SEVERITY] path — description`, SEVERITY ∈ CRITICAL / WARNING / SUGGESTION, `path` a repo-relative file path with no `:line` suffix. Both axes judge only the change hunks and the callers/tests needed to judge their direct impact — the unchanged remainder of a touched file is context, not review surface.
 
    Both briefs also carry the resolved `locale` (step 2): finding descriptions are written in that language; severity labels, the `Standards:` / `Correctness:` axis prefixes, file paths, and command lines stay in English. If `locale` is absent, everything is English.
 
    When accepted findings exist in the ticket's last round (the `(accepted)` token), both briefs also carry that list with a hard instruction: do not re-report these items or near-variants of them — they are already adjudicated.
 
-   **Brief discipline** — both axes, discovery and validation alike. A sub-agent that reads whole diff files or searches without a target stalls, so every brief:
-
-   - pastes the frozen patch verbatim when it is 25 KB or less; above that, gives only each file's path and its hunk line ranges;
-   - gives generated files — golden snapshots, `assets.lock`, skill files regenerated by `speclink update` — by path only, and tells the sub-agent to search them at most once;
-   - names the functions, types and files to check, and tells the sub-agent to read large files by line range rather than whole, and to search only for the names the brief lists — no open-ended recursive search;
-   - sets no tool-call cap in discovery; in validation, caps the sub-agent at 5 tool calls;
-   - says where a finding about a caller outside the frozen patch goes: on the in-patch file it calls, as a plain path — `add-round` rejects a path with a `:line` suffix or outside the ticket's scope;
-   - ends with: "If you did not finish checking something, say so plainly — do not guess."
+   **Brief discipline** — both axes, discovery and validation alike: every brief follows the **Brief discipline** rules above the steps.
 
    **Standards axis brief** — first gather what the repo documents (CLAUDE.md / AGENTS.md, CONTRIBUTING, style docs, lint configs) and check the frozen hunks against it, citing the document for each violation.
 
@@ -3583,7 +3605,7 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    **Validation (`phase: validation`) — remediation validation, never re-discovery.**
 
-   Send the same two parallel read-only axes, but each brief carries ONLY: the last round's unresolved findings (verbatim), the accepted list, the remediation patch (step 3's frozen validation patch), the artifact passages the last fix edited (step 9's verification gate — the patch leaves the spec directory out), and the necessary adjacent callers/tests plus artifact intent. Each axis judges, per original finding, resolved or unresolved — and reports only regressions the remediation patch directly introduces. It must NOT report new smells, SUGGESTIONs, or pre-existing issues in unchanged areas, and it does not apply the project review rules afresh — a rule added after discovery never produces a finding here. The locale binding and the reporting contract are the same as in discovery.
+   Send the same two parallel read-only axes, but each brief carries ONLY: the last round's unresolved findings (verbatim), the accepted list, the remediation patch (step 3's frozen validation patch), the artifact passages the last fix edited (the **Verification gate**'s second artifact case — the patch leaves the spec directory out), and the necessary adjacent callers/tests plus artifact intent. Each axis judges, per original finding, resolved or unresolved — and reports only regressions the remediation patch directly introduces. It must NOT report new smells, SUGGESTIONs, or pre-existing issues in unchanged areas, and it does not apply the project review rules afresh — a rule added after discovery never produces a finding here. The locale binding and the reporting contract are the same as in discovery.
 
    **Segments marked `attribution: "adjacent"`** are files the remediation moved that no finding named — a caller, a test, a regenerated artifact, or a parallel session's edit leaking in. State this in both briefs: each axis must confirm segment by segment that an adjacent segment genuinely belongs to THIS remediation, and report anything that does not as a regression. Never adopt an adjacent segment silently.
 
@@ -3647,17 +3669,7 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    - **Bn is empty but accepted must-fix findings remain** → recommend the user explicitly stamp with reservations — `speclink review stamp "<name>" --accept --agent copilot` — and report **passed with reservations**. Never run `--accept` unprompted.
 
    - **Bn is strictly smaller than Bn-1** (or this is the first round with must-fix findings) → use the **AskUserQuestion tool** (plain text + wait if unavailable) with three options, the recommended one first and labelled "(Recommended)": recommend option 1 — outstanding must-fix findings are what brought the loop here. SUGGESTION-only rounds never reach this menu: they stamp directly through the first bullet.
-     1. **Fix and re-validate** — fixes happen HERE in the main thread, following the project's TDD discipline; sub-agents never edit. Fix the must-fix list; discretionary items only when the user asks. A must-fix finding the user chooses not to fix is accepted and carried with the `(accepted)` token (step 8); unfixed SUGGESTIONs just carry forward (step 8). **Verification gate**: after the fixes, build the project and run the affected tests, and get both green BEFORE looping back to step 3 — a fix-introduced regression must never flow into the next round. The build always runs. Pick the tests in this order:
-        1. A fixed file lies in a path some task description names → run the verification command that task description gives (the task text is the `tasks` field of `speclink instructions apply --change "<name>" --json`).
-        2. A fixed file no task covers → pick tests by the project's documented test policy (CLAUDE.md, AGENTS.md, or the workflow config's artifact rules).
-        3. The project documents no test policy → run the repo's full test command.
-
-        Report which test commands ran and which scope was skipped, and say that CI guards the skipped scope. When a fix touches an artifact (specs, design, tasks), the case decides:
-        - **The code changes to meet the artifact** → leave the artifacts alone.
-        - **The artifact wording is wrong but its intent stays** → edit the artifact in the main thread and get `speclink validate "<name>"` to pass before the next round; report which passages changed, and paste them verbatim into the next round's briefs (step 5).
-        - **The intent or scope changes** (the fix needs a new task, or changes what a Requirement means) → end this station as **scope changed** (step 5): keep the ticket, record no new round, do not stamp, and recommend `/speclink-ingest <name>` before running the station again. Do not add or reopen tasks inside this loop.
-
-        Step 3 then freezes the validation patch for the next round.
+     1. **Fix and re-validate** — fixes happen HERE in the main thread, following the project's TDD discipline; sub-agents never edit. Fix the must-fix list; discretionary items only when the user asks. A must-fix finding the user chooses not to fix is accepted and carried with the `(accepted)` token (step 8); unfixed SUGGESTIONs just carry forward (step 8). Then pass the **Verification gate** above the steps BEFORE looping back to step 3; step 3 then freezes the validation patch for the next round.
      2. **Accept as-is and stamp** — `speclink review stamp "<name>" --accept --agent copilot` (stamps with reservations; the round's findings stay on record in the change history).
      3. **Stop without stamping** — end the session; the ticket and its frozen snapshot stay for a later session or another reviewer (`speclink review show <name> --json` hands them the last round).
 
@@ -3681,7 +3693,7 @@ Check these before you report:
 - [ ] The ticket is verb-owned: create, append, and close it only through `speclink review` verbs
 - [ ] Unresolved findings travel verbatim between rounds — rewording fakes progress
 - [ ] The verification gate is hard: no next round starts on a failing build or affected tests, and the report names what ran and what CI guards
-- [ ] Every brief follows the brief discipline (step 5); unfinished checks are listed, never counted as clean
+- [ ] Every brief follows the **Brief discipline**; unfinished checks are listed, never counted as clean
 - [ ] Accepted findings are carried, never re-reported: sub-agents get the no-re-report list, the round record keeps the items
 - [ ] Project review rules come from `speclink workflow-config show --json`, enter the Standards brief only, keep their list's severity, and are quoted verbatim in their findings
 - [ ] Accepting any CRITICAL finding first lists each one and gets one explicit confirmation
@@ -3800,6 +3812,33 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
+**Brief discipline**
+
+Every checking brief, in discovery and in validation alike, follows these rules. A sub-agent that reads whole diff files or searches without a target stalls, so the brief:
+
+- pastes the frozen patch verbatim when it is 25 KB or less; above that, gives only each file's path and its hunk line ranges;
+- gives generated files — golden snapshots, `assets.lock`, skill files regenerated by `speclink update` — by path only, and tells the sub-agent to search them at most once;
+- names the functions, types and files to check, and tells the sub-agent to read large files by line range rather than whole, and to search only for the names the brief lists — no open-ended recursive search;
+- sets no tool-call cap in discovery; in validation, caps the sub-agent at 5 tool calls;
+- says where a finding goes: `path` is a repo-relative file path with no `:line` suffix, and a finding about a caller outside the frozen patch sits on the in-patch file it calls — `add-round` rejects a path with a `:line` suffix or outside the ticket's scope (the spec directory is exempt, so a finding about a Requirement may sit on its delta spec);
+- ends with: "If you did not finish checking something, say so plainly — do not guess."
+
+When the harness cannot spawn sub-agents and the main thread runs a check itself, the same rules bound its own reading.
+
+**Verification gate**
+
+After the fixes of a fix-and-revalidate answer, build the project and run the affected tests, and get both green before this station freezes the scope of its next round — a fix-introduced regression must never flow into the next round. The build always runs. Pick the tests in this order:
+
+1. A fixed file lies in a path some task description names → run the verification command that task description gives (the task text is the `tasks` field of `speclink instructions apply --change "<name>" --json`).
+2. A fixed file no task covers → pick tests by the project's documented test policy (CLAUDE.md, AGENTS.md, or the workflow config's artifact rules).
+3. The project documents no test policy → run the repo's full test command.
+
+Report which test commands ran and which scope was skipped, and say that CI guards the skipped scope. When a fix touches an artifact (specs, design, tasks), the case decides:
+
+- **The code changes to meet the artifact** → leave the artifacts alone.
+- **The artifact wording is wrong but its intent stays** → edit the artifact in the main thread and get `speclink validate "<name>"` to pass before the next round; report which passages changed, and paste them verbatim into the next round's checking briefs.
+- **The intent or scope changes** (the fix needs a new task, or changes what a Requirement means) → end this station as **scope changed**: keep the ticket, record no new round, do not stamp, and recommend `/speclink-ingest <name>` before running the station again. Do not add or reopen tasks inside this loop.
+
 **Steps**
 
 1. **If no change name provided, prompt for selection**
@@ -3860,18 +3899,11 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
    Inside the `/speclink-quality` timeline, compose the brief exactly as this step says; `/speclink-quality` sends it in one message together with the review station's two briefs, so three sub-agents run at once. Continue with step 10 once it reports.
 
-   **Brief discipline** — discovery and validation alike. A sub-agent that reads whole diff files or searches without a target stalls, so the brief:
-
-   - pastes the frozen patch verbatim when it is 25 KB or less; above that, gives only each file's path and its hunk line ranges;
-   - gives generated files — golden snapshots, `assets.lock`, skill files regenerated by `speclink update` — by path only, and tells the sub-agent to search them at most once;
-   - names the functions, types and files to check, and tells the sub-agent to read large files by line range rather than whole, and to search only for the names the brief lists — no open-ended recursive search;
-   - sets no tool-call cap in discovery; in validation, caps the sub-agent at 5 tool calls;
-   - says where a finding goes: `path` is a repo-relative file path with no `:line` suffix, and a finding about a caller outside the frozen patch sits on the in-patch file it calls — `add-round` rejects a path with a `:line` suffix or outside the ticket's scope (the spec directory is exempt, so a Requirement-level finding may sit on its delta spec);
-   - ends with: "If you did not finish checking something, say so plainly — do not guess."
+   **Brief discipline** — discovery and validation alike: the brief follows the **Brief discipline** rules above the steps.
 
    **Discovery (`phase: discovery`) — the one and only exploration pass.** Run the full three dimensions (steps 7–9) against every change artifact, using the frozen patch and the callers/tests needed to judge its direct impact as the code evidence.
 
-   **Validation (`phase: validation`) — remediation validation, never re-discovery.** Take ONLY the last round's unresolved findings (verbatim), the accepted list, the remediation patch frozen in step 5, the artifact passages the last fix edited (step 13's verification gate — the patch leaves the spec directory out, so the brief is the only place the edit shows; judge the original finding against them), and the adjacent callers/tests needed to judge it. Decide per original finding: resolved or unresolved. Report only regressions the remediation patch directly introduces. Do not re-scan the whole change, the finding's whole file, or any unmodified area; do not raise new SUGGESTIONs or pre-existing issues in unchanged areas.
+   **Validation (`phase: validation`) — remediation validation, never re-discovery.** Take ONLY the last round's unresolved findings (verbatim), the accepted list, the remediation patch frozen in step 5, the artifact passages the last fix edited (the **Verification gate**'s second artifact case — the patch leaves the spec directory out, so the brief is the only place the edit shows; judge the original finding against them), and the adjacent callers/tests needed to judge it. Decide per original finding: resolved or unresolved. Report only regressions the remediation patch directly introduces. Do not re-scan the whole change, the finding's whole file, or any unmodified area; do not raise new SUGGESTIONs or pre-existing issues in unchanged areas.
 
    **Segments marked `attribution: "adjacent"`** are files the remediation moved that no finding named — a caller, a test, a regenerated artifact, or a parallel session's edit leaking in. Confirm segment by segment that each genuinely belongs to THIS remediation, and report anything that does not as a regression. Never adopt an adjacent segment silently.
 
@@ -4025,17 +4057,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
     - **Bn is empty but accepted must-fix findings remain** → recommend the user explicitly stamp with reservations — `speclink verify stamp "<name>" --accept --agent copilot` — and report **passed with reservations**. Never run `--accept` unprompted.
 
     - **Bn is strictly smaller than Bn-1** (or this is the first round with must-fix findings) → use the **AskUserQuestion tool** (plain text + wait if unavailable) with three options, the recommended one first and labelled "(Recommended)": recommend option 1 — outstanding must-fix findings are what brought the loop here. SUGGESTION-only rounds never reach this menu: they stamp directly through the first bullet.
-      1. **Fix and re-verify** — fixes happen HERE in the main thread, following the project's TDD discipline; the checking pass never edits files. Fix the must-fix list; discretionary items only when the user asks. A must-fix finding the user chooses not to fix is accepted and carried with the `(accepted)` token (step 12); unfixed SUGGESTIONs just carry forward (step 12). **Verification gate**: after the fixes, build the project and run the affected tests, and get both green BEFORE looping back to step 5 — a fix-introduced regression must never flow into the next round. The build always runs. Pick the tests in this order:
-         1. A fixed file lies in a path some task description names → run the verification command that task description gives (the task text is the `tasks` field of `speclink instructions apply --change "<name>" --json`).
-         2. A fixed file no task covers → pick tests by the project's documented test policy (CLAUDE.md, AGENTS.md, or the workflow config's artifact rules).
-         3. The project documents no test policy → run the repo's full test command.
-
-         Report which test commands ran and which scope was skipped, and say that CI guards the skipped scope. When a fix touches an artifact (specs, design, tasks), the case decides:
-         - **The code changes to meet the artifact** → leave the artifacts alone.
-         - **The artifact wording is wrong but its intent stays** → edit the artifact in the main thread and get `speclink validate "<name>"` to pass before the next round; report which passages changed, and paste them verbatim into the next round's brief (step 6).
-         - **The intent or scope changes** (the fix needs a new task, or changes what a Requirement means) → end this station as **scope changed** (step 6): keep the ticket, record no new round, do not stamp, and recommend `/speclink-ingest <name>` before running the station again. Do not add or reopen tasks inside this loop.
-
-         Step 5 then freezes the validation patch for the next round.
+      1. **Fix and re-verify** — fixes happen HERE in the main thread, following the project's TDD discipline; the checking pass never edits files. Fix the must-fix list; discretionary items only when the user asks. A must-fix finding the user chooses not to fix is accepted and carried with the `(accepted)` token (step 12); unfixed SUGGESTIONs just carry forward (step 12). Then pass the **Verification gate** above the steps BEFORE looping back to step 5; step 5 then freezes the validation patch for the next round.
       2. **Accept as-is and stamp** — `speclink verify stamp "<name>" --accept --agent copilot` (stamps with reservations; the round's findings stay on record in the change history).
       3. **Stop without stamping** — end the session; the ticket and its frozen snapshot stay for a later session or another verifier (`speclink verify show <name> --json` hands them the last round).
 
@@ -4082,7 +4104,7 @@ Check these before you report:
 - [ ] The ticket is verb-owned: create, append, and close it only through `speclink verify` verbs
 - [ ] Unresolved findings travel verbatim between rounds — rewording fakes progress
 - [ ] The verification gate is hard: no next round starts on a failing build or affected tests, and the report names what ran and what CI guards
-- [ ] The brief follows the brief discipline (step 6) and looks for evidence in the frozen patch first; unfinished checks are listed, never counted as clean
+- [ ] The brief follows the **Brief discipline** and looks for evidence in the frozen patch first; unfinished checks are listed, never counted as clean
 - [ ] Accepted findings are carried, never re-reported
 - [ ] Thin artifacts: verify what exists, never invent requirements
 - [ ] Stop on errors and report — don't guess past a failing verb

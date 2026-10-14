@@ -91,7 +91,7 @@
 session 於品質關卡的修正途中被關閉時,使用者 SHALL 能以再次執行 /speclink-quality 接續:兩站工單在變更資料夾、鎖定快照在 host 本機的 `.speclink/review-scopes/<change>/`,兩站的鎖定範圍看到工單仍有必修項目時即判為 validation,關閉前落地的修正都在驗證 patch 內。接續時技能 SHALL 另守三條:
 
 - 派出子代理之前 SHALL 先通過兩站的修復迴圈驗證門——前一個 session 的測試狀態未知。
-- 某站的鎖定範圍為 validation 且驗證 patch 無任何檔案、該站末輪仍有必修項目時,該站本輪 SHALL NOT 派出子代理、SHALL NOT 寫入新輪;兩站皆如此時技能 SHALL 直接回到停下詢問,以末輪 findings 讓使用者裁示——照常記一輪會被判「沒有進展」而以 failed 結束。
+- 某站的鎖定範圍為 validation 且驗證 patch 無任何檔案、該站末輪仍有必修項目時,技能 SHALL 先列出變更資料夾內未提交與未追蹤的檔案(兩站工單不計)——驗證 patch 不含規格目錄,只改 artifact 的修正只能從簡報判定,而 git 分不出這些修改發生在上一輪之前或之後。沒有列出任何檔案時,該站本輪 SHALL NOT 派出子代理、SHALL NOT 寫入新輪;兩站皆如此時技能 SHALL 直接回到停下詢問,以末輪 findings 讓使用者裁示——照常記一輪會被判「沒有進展」而以 failed 結束。有列出檔案時,技能 SHALL 把清單交給使用者,詢問前一個 session 是否以修改這些 artifact 修正 findings:回答是,該站本輪照常派出複驗子代理,簡報 SHALL 附上改過的段落原文;回答否,依「沒有列出任何檔案」處理。
 - 技能 SHALL 提醒使用者:關閉後、接續前不得 commit 修正——驗證 patch 以內容移動與 dirty 判定收錄修正,提交後未被快照收錄的新檔會離開驗證面。
 
 使用者前一輪的修／不修裁示不保存;接續後的停下詢問 SHALL 只列仍未解的 findings 讓使用者再裁示一次。
@@ -103,10 +103,20 @@ session 於品質關卡的修正途中被關閉時,使用者 SHALL 能以再次�
 
 #### Scenario: 複驗差異為空的站不記一輪
 
-- **WHEN** session 在任何修正落地前被關閉,新 session 執行 /speclink-quality,兩站的驗證 patch 皆無檔案
+- **WHEN** session 在任何修正落地前被關閉,新 session 執行 /speclink-quality,兩站的驗證 patch 皆無檔案,變更資料夾也沒有未提交或未追蹤的檔案
 - **THEN** 技能不派子代理、兩站工單皆不新增輪次,直接以末輪 findings 停下詢問,工單位元級不變
+
+#### Scenario: 只改 artifact 的修正於接續後照常複驗
+
+- **WHEN** 第 1 輪的必修項以修改 delta spec 字面修正後 session 被關閉,新 session 執行 /speclink-quality,兩站的驗證 patch 皆無檔案,但變更資料夾的 delta spec 有未提交的修改
+- **THEN** 技能列出該 delta spec 並詢問使用者;使用者確認這是前一個 session 的修正後,技能照常派出三個子代理,簡報附上改過的段落原文,兩站各寫入一輪
+
+#### Scenario: 未提交的 artifact 不屬於修正時不記一輪
+
+- **WHEN** 接續時兩站的驗證 patch 皆無檔案,變更資料夾只有 apply 期間留下、未提交的 tasks.md 勾選,使用者回答前一個 session 沒有修改 artifact
+- **THEN** 技能不派子代理、兩站工單皆不新增輪次,直接以末輪 findings 停下詢問
 
 #### Scenario: 只有一站的差異為空
 
-- **WHEN** 接續時審查站的驗證 patch 有檔案、驗證站的驗證 patch 無檔案且驗證工單末輪仍有必修
+- **WHEN** 接續時審查站的驗證 patch 有檔案、驗證站的驗證 patch 無檔案且驗證工單末輪仍有必修,變更資料夾也沒有未提交或未追蹤的檔案
 - **THEN** 技能只派審查站的兩個子代理並寫入審查工單,驗證工單不新增輪次,彙整報告註明驗證站本輪無修正可判

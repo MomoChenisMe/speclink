@@ -114,9 +114,20 @@ const B_MANUAL: &str = include_str!("../../assets/skills/manual.md");
 const B_BASELINE: &str = include_str!("../../assets/skills/baseline.md");
 const B_PROPOSE: &str = include_str!("../../assets/skills/propose.md");
 const B_QUALITY: &str = include_str!("../../assets/skills/quality.md");
-const B_REVIEW: &str = include_str!("../../assets/skills/review.md");
+/// The two quality stations share their checking rules (brief discipline,
+/// verification gate) from one source, placed between each station's intro
+/// and its steps.
+const B_REVIEW: &str = concat!(
+    include_str!("../../assets/skills/review-intro.md"),
+    include_str!("../../assets/skills/station-shared.md"),
+    include_str!("../../assets/skills/review.md"),
+);
 const B_TRACE: &str = include_str!("../../assets/skills/trace.md");
-const B_VERIFY: &str = include_str!("../../assets/skills/verify.md");
+const B_VERIFY: &str = concat!(
+    include_str!("../../assets/skills/verify-intro.md"),
+    include_str!("../../assets/skills/station-shared.md"),
+    include_str!("../../assets/skills/verify.md"),
+);
 const B_SYNC: &str = include_str!("../../assets/skills/sync.md");
 const B_CLARIFY: &str = include_str!("../../assets/skills/clarify.md");
 const B_TDD: &str = include_str!("../../assets/skills/tdd.md");

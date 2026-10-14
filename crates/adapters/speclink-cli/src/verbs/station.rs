@@ -324,7 +324,7 @@ enum StationAction {
     Discard,
 }
 /// add-round 寫入前的 finding 路徑檢查（本機／remote 兩臂共用）：規則是引擎的
-/// 純函式，這裡只補上本機設定的免檢查前綴（規格目錄與 `.speclink`）。違規即
+/// 純函式，免檢查前綴取自 host 範圍解析同一份排除清單（規格目錄與 `.speclink`）。違規即
 /// invalid_argv 非零、零寫入，stderr 逐條點名。
 fn ensure_finding_paths(
     ws: &core::workspace::Workspace,
@@ -332,7 +332,7 @@ fn ensure_finding_paths(
     existing: &[core::station::Round],
     content: &str,
 ) -> Result<()> {
-    let exempt = [ws.spec_dir_name.as_str(), ".speclink"];
+    let exempt = speclink_host::change_diff::non_review_dirs(ws);
     let violations = core::station::finding_path_violations(st, existing, content, &exempt)?;
     if violations.is_empty() {
         return Ok(());
@@ -405,7 +405,7 @@ fn run_review_prepare(
         let mut open = Vec::new();
         for cli in [&REVIEW_CLI, &VERIFY_CLI] {
             if ticket_open(cli.station)? {
-                open.push(cli.ns);
+                open.push(cli.station.noun);
             }
         }
         speclink_host::change_diff::prepare_at(ws, change, base, &open, req.from.as_deref())?;

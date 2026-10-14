@@ -98,16 +98,34 @@ pub fn prepare(ws: &Workspace, change: &str, started: bool) -> Result<PrepareOut
     } else {
         None
     };
-    let (base_commit, dirty, confidence) = match head {
-        None => (None, Vec::new(), Confidence::Unavailable),
-        Some(sha) => {
-            let mut dirty = speclink_core::tasks::git_changed_files(ws);
-            dirty.sort();
-            dirty.dedup();
-            let confidence = if started { Confidence::Late } else { Confidence::Initial };
-            (Some(sha), dirty, confidence)
-        }
+    let confidence = match (&head, started) {
+        (None, _) => Confidence::Unavailable,
+        (Some(_), true) => Confidence::Late,
+        (Some(_), false) => Confidence::Initial,
     };
+    let baseline = write_current_baseline(ws, change, head, confidence)?;
+    Ok(match confidence {
+        Confidence::Initial => PrepareOutcome::Captured(baseline),
+        Confidence::Late => PrepareOutcome::Late(baseline),
+        Confidence::Unavailable => PrepareOutcome::Unavailable(baseline),
+    })
+}
+
+/// Build and atomically write a baseline at `base_commit` with the current
+/// dirty paths (none without a commit) — the one writer both prepare entries
+/// share.
+fn write_current_baseline(
+    ws: &Workspace,
+    change: &str,
+    base_commit: Option<String>,
+    confidence: Confidence,
+) -> Result<Baseline> {
+    let mut dirty = match base_commit {
+        Some(_) => speclink_core::tasks::git_changed_files(ws),
+        None => Vec::new(),
+    };
+    dirty.sort();
+    dirty.dedup();
     let baseline = Baseline {
         version: BASELINE_VERSION,
         change: change.to_string(),
@@ -117,17 +135,14 @@ pub fn prepare(ws: &Workspace, change: &str, started: bool) -> Result<PrepareOut
         confidence,
     };
     write_baseline(ws, &baseline)?;
-    Ok(match confidence {
-        Confidence::Initial => PrepareOutcome::Captured(baseline),
-        Confidence::Late => PrepareOutcome::Late(baseline),
-        Confidence::Unavailable => PrepareOutcome::Unavailable(baseline),
-    })
+    Ok(baseline)
 }
 
 /// Reset the Apply baseline to a trusted commit, optionally carrying both
 /// stations' snapshots over from another checkout (`review prepare --base
-/// [--from]`). `open_tickets` names the stations whose ticket exists
-/// unstamped — the CLI reads the ticket store, this module does not.
+/// [--from]`). `open_tickets` names the stations (`review`, `verify`) whose
+/// ticket exists unstamped — the CLI reads the ticket store, this module does
+/// not.
 ///
 /// The order is the contract: every check runs before any write, snapshots
 /// are copied next, and the baseline is written last — a half-finished carry
@@ -137,13 +152,23 @@ pub fn prepare_at(
     ws: &Workspace,
     change: &str,
     base_rev: &str,
-    open_tickets: &[StationNs],
+    open_tickets: &[&str],
     from: Option<&Path>,
 ) -> Result<Baseline> {
     // git must never read the rev as an option.
     if base_rev.starts_with('-') {
         anyhow::bail!(
             "--base '{base_rev}' starts with '-' — pass a commit SHA, branch, or tag"
+        );
+    }
+    // The same guard as prepare: a project nested inside an ancestor repo has
+    // no fixed point of its own, and its snapshots would not sit where --from
+    // looks for them.
+    if !ws.root.join(".git").exists() {
+        anyhow::bail!(
+            "'{}' is not the root of a git checkout — --base needs the project to sit at \
+             its repository root",
+            ws.root.display()
         );
     }
     let base = verify_base(ws, base_rev)?;
@@ -154,11 +179,7 @@ pub fn prepare_at(
         );
     }
     if baseline_path(ws, change).exists() {
-        if let Some(ns) = open_tickets.first() {
-            let station = match ns {
-                StationNs::Review => "review",
-                StationNs::Verify => "verify",
-            };
+        if let Some(station) = open_tickets.first() {
             anyhow::bail!(
                 "the {station} ticket of '{change}' is still open and its snapshots are bound \
                  to the current baseline — stamp or discard it before resetting the baseline"
@@ -183,19 +204,7 @@ pub fn prepare_at(
         }
         carry_snapshots(ws, change, from)?;
     }
-    let mut dirty = speclink_core::tasks::git_changed_files(ws);
-    dirty.sort();
-    dirty.dedup();
-    let baseline = Baseline {
-        version: BASELINE_VERSION,
-        change: change.to_string(),
-        base_commit: Some(base),
-        dirty_files_at_start: dirty,
-        captured_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-        confidence: Confidence::Initial,
-    };
-    write_baseline(ws, &baseline)?;
-    Ok(baseline)
+    write_current_baseline(ws, change, Some(base), Confidence::Initial)
 }
 
 /// `git merge-base --is-ancestor`: exit 0 = ancestor, 1 = not; anything else
@@ -223,7 +232,7 @@ fn is_ancestor_of_head(ws: &Workspace, sha: &str) -> Result<bool> {
 /// skipped; each copy lands through a same-dir temp file + rename. The
 /// source's baseline is never copied, and a source without snapshots is not
 /// an error.
-pub fn carry_snapshots(ws: &Workspace, change: &str, from_root: &Path) -> Result<()> {
+fn carry_snapshots(ws: &Workspace, change: &str, from_root: &Path) -> Result<()> {
     let source = Workspace { root: from_root.to_path_buf(), spec_dir_name: ws.spec_dir_name.clone() };
     for ns in [StationNs::Review, StationNs::Verify] {
         let src_dir = snapshots_dir(&source, change, ns);
@@ -382,14 +391,21 @@ pub fn resolve_candidate(
     resolve_candidate_pathspec(ws, base_commit, &targets)
 }
 
-/// `\`→`/` normalized, sorted, deduped touched paths with `openspec/` and
-/// `.speclink/` excluded — never review targets.
+/// The two top-level folders that are never review surface: the spec
+/// directory and the host work data under `.speclink/`. The single source for
+/// the scope resolver's exclusions and add-round's path-check exemptions.
+pub fn non_review_dirs(ws: &Workspace) -> [&str; 2] {
+    [ws.spec_dir_name.as_str(), ".speclink"]
+}
+
+/// `\`→`/` normalized, sorted, deduped touched paths with the non-review
+/// folders excluded — never review targets.
 fn normalize_targets(ws: &Workspace, touched_paths: &[String]) -> Vec<String> {
-    let spec_prefix = format!("{}/", ws.spec_dir_name);
+    let dirs = non_review_dirs(ws);
     let mut targets: Vec<String> = touched_paths
         .iter()
         .map(|p| p.replace('\\', "/"))
-        .filter(|p| !p.starts_with(&spec_prefix) && !p.starts_with(".speclink/"))
+        .filter(|p| !dirs.iter().any(|d| p.strip_prefix(d).is_some_and(|r| r.starts_with('/'))))
         .collect();
     targets.sort();
     targets.dedup();
@@ -400,11 +416,8 @@ fn normalize_targets(ws: &Workspace, touched_paths: &[String]) -> Vec<String> {
 /// set (design D3): the entire diff — spec artifacts and work data still
 /// excluded — offered as a needsInput candidate only.
 fn resolve_worktree_candidate(ws: &Workspace, base_commit: &str) -> Result<Candidate> {
-    let pathspec = vec![
-        ".".to_string(),
-        format!(":(exclude){}", ws.spec_dir_name),
-        ":(exclude).speclink".to_string(),
-    ];
+    let mut pathspec = vec![".".to_string()];
+    pathspec.extend(non_review_dirs(ws).iter().map(|d| format!(":(exclude){d}")));
     resolve_candidate_pathspec(ws, base_commit, &pathspec)
 }
 
@@ -3008,15 +3021,27 @@ mod tests {
         let ws = repo.ws();
         prepare(&ws, "demo", false).expect("first baseline");
         let before = std::fs::read(baseline_path(&ws, "demo")).unwrap();
-        for (ns, name) in [(StationNs::Review, "review"), (StationNs::Verify, "verify")] {
-            let err = prepare_at(&ws, "demo", "HEAD", &[ns], None).expect_err("ticket open");
+        for name in ["review", "verify"] {
+            let err = prepare_at(&ws, "demo", "HEAD", &[name], None).expect_err("ticket open");
             assert!(format!("{err:#}").contains(name), "names the {name} station: {err:#}");
             assert_eq!(std::fs::read(baseline_path(&ws, "demo")).unwrap(), before, "untouched");
         }
         // 沒有 baseline 時不做這項檢查。
         let fresh = TempRepo::new("at-open-fresh");
-        prepare_at(&fresh.ws(), "demo", "HEAD", &[StationNs::Review], None)
+        prepare_at(&fresh.ws(), "demo", "HEAD", &["review"], None)
             .expect("no baseline → no open-ticket guard");
+    }
+
+    #[test]
+    fn prepare_at_refuses_a_project_nested_below_the_git_root() {
+        // 與 prepare 同一個守門：專案根目錄沒有自己的 `.git`，上層 repo 的 HEAD
+        // 不是它的固定點。
+        let repo = TempRepo::new("at-nested");
+        let nested = Workspace { root: repo.root.join("sub"), spec_dir_name: "openspec".to_string() };
+        std::fs::create_dir_all(&nested.root).unwrap();
+        let err = prepare_at(&nested, "demo", "HEAD", &[], None).expect_err("nested project");
+        assert!(format!("{err:#}").contains("git checkout"), "{err:#}");
+        assert!(!scope_dir(&nested, "demo").exists(), "zero writes");
     }
 
     #[test]

@@ -118,7 +118,7 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
    speclink review prepare "<change-name>" --base "<pre-merge-HEAD>" --from "<worktree-path>"
    ```
 
-   It writes the quality stations' Apply baseline in the main checkout and carries over both stations' snapshots from the worktree, so `/speclink-review`, `/speclink-verify` and `/speclink-quality` work in the main checkout with no `--base` from the user. From the pre-merge HEAD to the merged HEAD is exactly what this change brought in, conflict resolutions included. If the command fails, report its error and stop here: do not remove the worktree — the snapshots still live there.
+   It writes the quality stations' Apply baseline in the main checkout and carries over both stations' snapshots from the worktree, so `/speclink-review`, `/speclink-verify` and `/speclink-quality` work in the main checkout with no `--base` from the user. From the pre-merge HEAD to the merged HEAD is exactly what this change brought in, conflict resolutions included. If the command fails, report its error and stop here: do not remove the worktree — the snapshots still live there. The merge has already landed, so the way back is not this skill: once the cause is cleared (an open ticket stamped or discarded, a failed copy retried), run that same `speclink review prepare` line again with the pre-merge HEAD recorded in step 3, then run the cleanup below. A second run of this skill would record the merged HEAD as the pre-merge HEAD, and the baseline would then hide every change this merge brought in.
 
    Then remove the worktree and delete the branch:
 
@@ -168,12 +168,12 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 ## Merge stopped
 
 **Change:** <change-name>
-**Reason:** <preflight failure or conflict>
+**Reason:** <preflight failure, conflict, or baseline carry failed after the merge landed>
 
-<dirty file list, or conflicting file list>
+<dirty file list, conflicting file list, or the prepare error verbatim>
 
 **What you need to do:**
-<the specific action — commit/stash in the main tree, commit in the worktree, or resolve the conflict>
+<the specific action — commit/stash in the main tree, commit in the worktree, resolve the conflict, or clear the prepare error and rerun that one prepare line with the recorded pre-merge HEAD <sha>, then the cleanup>
 ```
 
 **Guardrails**
