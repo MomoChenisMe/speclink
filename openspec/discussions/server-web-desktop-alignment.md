@@ -5,7 +5,7 @@ status: promoted
 created: 2026-10-13
 created_by: MomoChen <momochenisme@gmail.com>
 hold: true
-promoted_to: server-web-shell-alignment
+promoted_to: server-web-shell-alignment, server-web-list-pages
 ---
 
 # Discussion: server 網頁後台（server-web）的 UI／UX 調整成與已全面改版的 desktop 一致的設計風格
