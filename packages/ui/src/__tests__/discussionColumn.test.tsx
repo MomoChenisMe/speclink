@@ -754,3 +754,24 @@ describe("DiscussionColumn 收合列展開區與欄殼（quality round 1）", ()
     expect(screen.getByText("尚無討論").className).toBe(screen.getByText("沒有提案中的變更").className);
   });
 });
+
+// spec desktop-app「變更與討論詳情頁的宿主為看板」Scenario「宿主頁不推動詳情頁外框」：
+// 捲動區不是定位容器時，卡片裡沒釘位置的 absolute 元素會跳出它的裁切、撐高 desktop 的 main。
+// 這是 class 字面守門（jsdom 不算版面），版面本身由該 Scenario 的 Mac 實機手動任務確認。
+describe("看板捲動區是定位容器（copy-button-live-region-pin）", () => {
+  it("grid、各欄卡片區與已轉出展開區都帶 relative", () => {
+    render(
+      <KanbanBoard
+        changes={chipChanges}
+        discussions={{ active: [openD, promotedD], archived: [] }}
+        archivedChanges={chipArchived}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /已轉出/ }));
+    const grid = column("proposed")!.closest(".overflow-x-auto") as HTMLElement;
+    const scrollers = [grid, ...Array.from(grid.querySelectorAll<HTMLElement>(".overflow-y-auto"))];
+    // grid＋四欄卡片區＋已轉出展開區。
+    expect(scrollers).toHaveLength(6);
+    for (const el of scrollers) expect(el.classList).toContain("relative");
+  });
+});
