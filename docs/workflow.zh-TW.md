@@ -180,7 +180,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
   `worktree-merge` 把分支併回主分支、把品質關卡的起點帶進主 checkout，並清掉 worktree。
 - **下一步**：回主 checkout 執行 `archive`。封存只能在主 checkout 跑，在 worktree 裡會被拒絕。
-- **出狀況**：worktree 裡的 `tasks.md` 和主 checkout 的是兩份，只改 worktree 那份。用舊版技能做完 apply 的變更沒有起點可以帶過來：在主 checkout 跑品質關卡時，用 `--base` 指定一次變更第一個 commit 的上一個 commit。
+- **出狀況**：worktree 裡的 `tasks.md` 和主 checkout 的是兩份，只改 worktree 那份。用舊版 worktree-merge 技能合併的變更，主 checkout 沒有起點：跑品質關卡時，用 `--base` 指定一次變更第一個 commit 的上一個 commit。現在的合併技能會在合併時寫入起點，不管 apply 用的是哪一版技能。
 
 ### <a id="quality"></a>quality：兩道關卡一起跑
 

@@ -1,0 +1,128 @@
+schema: spec-driven
+created: 2026-10-14
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: quality-gate-speed
+depends_on: review-rules-config
+started_at: 2026-10-14
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-14
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 19
+reviewed_scope:
+  - path: crates/adapters/speclink-cli/src/verbs/station.rs
+    hash: 109a2bca1cc80a5144214c8c11ca7c9d87d8c4154e9cc9ec69ee5917f8dadb90
+  - path: crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs
+    hash: bbc32c08811928b6f4314ba8e672f43996f62936c84908ec3a537f9165caf078
+  - path: crates/adapters/speclink-cli/tests/it/review_verbs.rs
+    hash: 1c8bbb850f3dfb26dc78e84b75832ab2d58108db402430dab0a6073ce0c3adb6
+  - path: crates/adapters/speclink-cli/tests/it/verify_verbs.rs
+    hash: 894b885236a55998b553c4677557240eba20c5e0f6620a9926a843537b46c036
+  - path: crates/engine/speclink-core/assets/skills/apply-worktree-post.md
+    hash: f388f66265260897a77dcc6035dc5dd0165fc6c2c3808064cfd5628a18a485d0
+  - path: crates/engine/speclink-core/assets/skills/quality.md
+    hash: abd3269b881a5a954f6324b504b8e1030e434b2514a5bce3317a875346d38817
+  - path: crates/engine/speclink-core/assets/skills/review-intro.md
+    hash: 4dbf5ab79f9d8bc45014fa0c3133d05d94de66c6ed56ddbca5cfb482b61c309d
+  - path: crates/engine/speclink-core/assets/skills/review.md
+    hash: b6d453b12574c91d2b7edc17bf37fdc9005698fc38ead45de232629c64fd5a5f
+  - path: crates/engine/speclink-core/assets/skills/station-shared.md
+    hash: 9e8edf9e035f8e1f3ca3b0a92069b7e967a319a7fc5c06c1ab5bc9e009bae60b
+  - path: crates/engine/speclink-core/assets/skills/verify-intro.md
+    hash: 09b586d08aab12dd53a44f3fd311dd1d048fa5fc61bddfb1350f86efe4c080c3
+  - path: crates/engine/speclink-core/assets/skills/verify.md
+    hash: df01f9c653fa3736b969779ae42f0f9d5dd85b8fb3952259ac2f252c3cc5d51c
+  - path: crates/engine/speclink-core/assets/skills/worktree-merge.md
+    hash: a310a47ec0b95e6dc57282359b250ebd608e44c5da178c259230faf19cc3f251
+  - path: crates/engine/speclink-core/src/quality/station.rs
+    hash: a6e244c0b0da5cd3eaacfbae94c578e770f0ddcceef500c901e012bf4924c86b
+  - path: crates/engine/speclink-core/src/quality/station/tests.rs
+    hash: a70509475218fb41c07b9f1d10ddec978f3a7210a72f2a117d7c018b408208fe
+  - path: crates/engine/speclink-core/src/workspace/init.rs
+    hash: 76bec420035249fdeb16f9bab168c7e7a8b7aec8774da94e8faf4fe936a51f7c
+  - path: crates/engine/speclink-core/src/workspace/skills.rs
+    hash: f5d357e0d2abcb60300f8dc3024ffafa613c0302326671ae2be095c5bc4bbf9f
+  - path: crates/engine/speclink-core/tests/golden/assets.lock
+    hash: cb1e4c8cd4814fe49b9e4ed18a90283f7adb7dcc230947aeee7ecd764c3ad0d3
+  - path: crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: 6baf4a2cf58ea162d0771ac625a9c90d750827fd0a8bbf7f64750fb5534afa89
+  - path: crates/engine/speclink-core/tests/golden/claude.snapshot.md
+    hash: 55c946a72b3e92ed7c746047647a2067f507a63d960f2a6ffdaf31cbd2a39b20
+  - path: crates/engine/speclink-core/tests/golden/codex.snapshot.md
+    hash: 80e162c096bdbff0eed7a28ef7487f0f50378d4b36a2ece2ce4e4bb3ff5991aa
+  - path: crates/engine/speclink-core/tests/golden/copilot.snapshot.md
+    hash: 617a84c21b548606256a7c1c367dc8602e6085461863ce53a5833ecba375e617
+  - path: crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: a5802a800d79990a1c5baf3b5ba9153d8978d134c2ef9b561dc53578131bcc73
+  - path: crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: 56b7220c0d268dc8d6a66a733684d68414d19d810727f873e134d61bfb9af125
+  - path: crates/engine/speclink-core/tests/it/skill_authoring.rs
+    hash: 2d44da67d7145ef85d52afd526c887dbaa14121b16fd546e8a2923617f94b97e
+  - path: crates/host/speclink-host/src/change_diff.rs
+    hash: 62a5f8ac90f60693f108694358cf5916cd78f5cc1870f5b4f01d66b62d72005b
+  - path: docs/workflow.md
+    hash: 5fe7fc8a4aef0f03c0ca53cc84b04d87f1b2c41d760ff1c1f6dc944f8f523dea
+  - path: docs/workflow.zh-TW.md
+    hash: 12f57064f30f9c8d9f8396fbd50417aa3d4ab09b9db0309f49ef43928018170a
+verified_at: 2026-10-14
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 19
+verified_scope:
+  - path: crates/adapters/speclink-cli/src/verbs/station.rs
+    hash: 109a2bca1cc80a5144214c8c11ca7c9d87d8c4154e9cc9ec69ee5917f8dadb90
+  - path: crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs
+    hash: bbc32c08811928b6f4314ba8e672f43996f62936c84908ec3a537f9165caf078
+  - path: crates/adapters/speclink-cli/tests/it/review_verbs.rs
+    hash: 1c8bbb850f3dfb26dc78e84b75832ab2d58108db402430dab0a6073ce0c3adb6
+  - path: crates/adapters/speclink-cli/tests/it/verify_verbs.rs
+    hash: 894b885236a55998b553c4677557240eba20c5e0f6620a9926a843537b46c036
+  - path: crates/engine/speclink-core/assets/skills/apply-worktree-post.md
+    hash: f388f66265260897a77dcc6035dc5dd0165fc6c2c3808064cfd5628a18a485d0
+  - path: crates/engine/speclink-core/assets/skills/quality.md
+    hash: abd3269b881a5a954f6324b504b8e1030e434b2514a5bce3317a875346d38817
+  - path: crates/engine/speclink-core/assets/skills/review-intro.md
+    hash: 4dbf5ab79f9d8bc45014fa0c3133d05d94de66c6ed56ddbca5cfb482b61c309d
+  - path: crates/engine/speclink-core/assets/skills/review.md
+    hash: b6d453b12574c91d2b7edc17bf37fdc9005698fc38ead45de232629c64fd5a5f
+  - path: crates/engine/speclink-core/assets/skills/station-shared.md
+    hash: 9e8edf9e035f8e1f3ca3b0a92069b7e967a319a7fc5c06c1ab5bc9e009bae60b
+  - path: crates/engine/speclink-core/assets/skills/verify-intro.md
+    hash: 09b586d08aab12dd53a44f3fd311dd1d048fa5fc61bddfb1350f86efe4c080c3
+  - path: crates/engine/speclink-core/assets/skills/verify.md
+    hash: df01f9c653fa3736b969779ae42f0f9d5dd85b8fb3952259ac2f252c3cc5d51c
+  - path: crates/engine/speclink-core/assets/skills/worktree-merge.md
+    hash: a310a47ec0b95e6dc57282359b250ebd608e44c5da178c259230faf19cc3f251
+  - path: crates/engine/speclink-core/src/quality/station.rs
+    hash: a6e244c0b0da5cd3eaacfbae94c578e770f0ddcceef500c901e012bf4924c86b
+  - path: crates/engine/speclink-core/src/quality/station/tests.rs
+    hash: a70509475218fb41c07b9f1d10ddec978f3a7210a72f2a117d7c018b408208fe
+  - path: crates/engine/speclink-core/src/workspace/init.rs
+    hash: 76bec420035249fdeb16f9bab168c7e7a8b7aec8774da94e8faf4fe936a51f7c
+  - path: crates/engine/speclink-core/src/workspace/skills.rs
+    hash: f5d357e0d2abcb60300f8dc3024ffafa613c0302326671ae2be095c5bc4bbf9f
+  - path: crates/engine/speclink-core/tests/golden/assets.lock
+    hash: cb1e4c8cd4814fe49b9e4ed18a90283f7adb7dcc230947aeee7ecd764c3ad0d3
+  - path: crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: 6baf4a2cf58ea162d0771ac625a9c90d750827fd0a8bbf7f64750fb5534afa89
+  - path: crates/engine/speclink-core/tests/golden/claude.snapshot.md
+    hash: 55c946a72b3e92ed7c746047647a2067f507a63d960f2a6ffdaf31cbd2a39b20
+  - path: crates/engine/speclink-core/tests/golden/codex.snapshot.md
+    hash: 80e162c096bdbff0eed7a28ef7487f0f50378d4b36a2ece2ce4e4bb3ff5991aa
+  - path: crates/engine/speclink-core/tests/golden/copilot.snapshot.md
+    hash: 617a84c21b548606256a7c1c367dc8602e6085461863ce53a5833ecba375e617
+  - path: crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: a5802a800d79990a1c5baf3b5ba9153d8978d134c2ef9b561dc53578131bcc73
+  - path: crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: 56b7220c0d268dc8d6a66a733684d68414d19d810727f873e134d61bfb9af125
+  - path: crates/engine/speclink-core/tests/it/skill_authoring.rs
+    hash: 2d44da67d7145ef85d52afd526c887dbaa14121b16fd546e8a2923617f94b97e
+  - path: crates/host/speclink-host/src/change_diff.rs
+    hash: 62a5f8ac90f60693f108694358cf5916cd78f5cc1870f5b4f01d66b62d72005b
+  - path: docs/workflow.md
+    hash: 5fe7fc8a4aef0f03c0ca53cc84b04d87f1b2c41d760ff1c1f6dc944f8f523dea
+  - path: docs/workflow.zh-TW.md
+    hash: 12f57064f30f9c8d9f8396fbd50417aa3d4ab09b9db0309f49ef43928018170a
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-14

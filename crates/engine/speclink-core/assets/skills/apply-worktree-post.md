@@ -48,6 +48,8 @@ Both report that no ticket exists → continue. Either one shows a ticket → sk
    speclink review prepare "<change-name>" --base "<recorded-commit>"
    ```
 
+   If it fails, report its error and the recorded commit. The branch now sits on the recorded commit while the starting point still names the old fork point, so a quality round run now would count the main branch's own changes as this change's. Rerun that one line once the cause is cleared, before any quality station runs.
+
 A stamp can still go stale if the main branch changes the same files again while the stations run.
 
 ### W3. Stop here — do not merge, do not remove the worktree

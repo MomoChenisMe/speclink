@@ -43,7 +43,7 @@
 - `review prepare` 不帶旗標的輸出與行為不變；新旗標只增不改。
 - `add-round` 以前接受、但會在下一輪讓 scope 解析失敗的路徑，現在寫入時就被拒絕；合法路徑的行為不變。人眼與 `--json` 輸出不變。
 - 審查、驗證、quality、apply-with-worktree、worktree-merge 五份技能內文變更：引擎的技能版號（ASSET_VERSION）以 review-rules-config 封存後的版號為底再升一版（預期 v1.45.0 → v1.46.0），golden 對照同批更新；影響所有已啟用工具（claude、codex、copilot）的技能檔；既有專案執行 `speclink update` 即取得新版。
-- 已在 worktree 裡、用舊技能完成 apply 的變更：合併時仍沒有基準可承接，主 checkout 照舊需要人工 `--base`；新版合併技能之後的變更才會自動承接。
+- 用舊版 worktree-merge 技能合併的變更：合併時沒有寫入基準，主 checkout 照舊需要人工 `--base`；新版合併技能不論 apply 用哪一版技能，合併時都會寫入基準。
 
 ## Alternatives Considered
 

@@ -2,9 +2,9 @@
 
 ### Requirement: finding 路徑落在工單範圍內
 
-`speclink review add-round <change> --stdin` SHALL 在既有的格式與輪次序列檢查之後、寫入之前，檢查本輪每一條 finding 的路徑：
+`speclink review add-round <change> --stdin` SHALL 在寫入之前檢查本輪每一條 finding 的路徑。這項檢查排在既有的 change 存在檢查與輪次序列檢查之前：同一份輸入同時違反多項時，先回報路徑違規；格式錯誤照舊回報同一則錯誤。規則如下：
 
-- 路徑以冒號加數字結尾（例如 `src/a.rs:42`、`src/a.rs:42-50`）時 SHALL 拒絕。
+- 路徑在最後一個冒號之後只剩行號寫法（例如 `src/a.rs:42`、`src/a.rs:42-50`、`src/a.rs:42-`、`src/a.rs:L42`），或以單獨的冒號結尾時 SHALL 拒絕。
 - 路徑（`\` 正規化為 `/` 後）不在「工單既有各輪 `**Scope**:` 的聯集，加上本輪 `**Scope**:`」之內時 SHALL 拒絕。此聯集與蓋章指紋範圍採同一定義。路徑位於規格目錄（預設 `openspec/`）或 `.speclink/` 之下時 SHALL 免除這一項——這類路徑本來就不進驗證 patch，複驗的範圍解析會略過它們。
 - 與工單上一輪某條 finding 的 severity、路徑與描述完全相同的行（描述結尾的 `(accepted)` 標記不計），視為沿用的未解項，SHALL NOT 受上述兩項檢查。
 

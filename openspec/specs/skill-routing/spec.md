@@ -64,8 +64,8 @@ updated: 2026-09-02
 | propose | artifacts 齊備 | apply；提案中變更 ≥2 時先盤點執行順序（worktree 政策開啟→分可平行／須依序，平行者各開 session 走 apply-with-worktree） |
 | apply | 全部勾完 | 品質站或 archive（commit 的先封存再一起提交可一步到位） |
 | apply | 需求中途變更 | ingest |
-| apply-with-worktree | worktree 內 commit 完 | 品質站（worktree 內）→worktree-merge |
-| worktree-merge | 合併清理完 | 回主 checkout archive |
+| apply-with-worktree | worktree 內 commit 完（已 rebase 並重設起點） | 無未勾手動任務→品質站（worktree 內）→補提交→worktree-merge；有未勾手動任務或要在蓋章前看到 CI→worktree-merge→主 checkout 品質站 |
+| worktree-merge | 合併清理完（基準與快照已承接到主 checkout） | 品質站已跑完→回主 checkout archive；未跑→主 checkout 品質站→archive；有未勾手動任務→主 checkout 品質站與手動任務完成後 archive |
 | drift | 假設過期／無漂移 | ingest／apply |
 | ingest | artifacts 更新完 | 回 apply |
 | review、verify | 落章 | archive（worktree 內→補提交後 worktree-merge） |
@@ -76,8 +76,8 @@ updated: 2026-09-02
 
 
 <!-- @trace
-source: add-plan-handoff-after-archive
-updated: 2026-09-16T16:37:51+08:00
+source: quality-gate-speedup
+updated: 2026-10-14T21:31:03+08:00
 -->
 
 ---

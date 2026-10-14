@@ -163,6 +163,19 @@ mod finding_paths {
     }
 
     #[test]
+    fn other_line_forms_are_violations_even_in_exempt_dirs() {
+        let got = violations(
+            &[],
+            "**Scope**: src/a.rs\n\n- [WARNING] src/a.rs:12- — Correctness: open range\n\
+             - [WARNING] src/a.rs: — Correctness: bare colon\n\
+             - [WARNING] src/a.rs:L12 — Correctness: L-prefixed\n\
+             - [WARNING] openspec/changes/demo/design.md:12- — Coherence: exempt dir\n",
+        );
+        let reasons: Vec<_> = got.iter().map(|(_, r)| *r).collect();
+        assert_eq!(reasons, vec![PathViolationReason::LineNumber; 4], "{got:?}");
+    }
+
+    #[test]
     fn paths_outside_every_scope_are_violations() {
         let got = violations(
             &rounds(ROUND_1),

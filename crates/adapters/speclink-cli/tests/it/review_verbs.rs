@@ -482,19 +482,14 @@ fn review_prepare_missing_change_fails_nonzero() {
 
 // --- review prepare --base／--from（spec「以可信 commit 重設 Apply baseline 並承接快照」）---
 
-/// 已提交變更的主 checkout：HEAD~1 是變更前的 commit。
-fn merged_fixture(tag: &str) -> TempProject {
-    let p = TempProject::with_git_change(tag, TASKS_DONE);
-    p.write("src/lib.rs", "fn demo() { merged(); }\n");
-    p.git(&["add", "src"]);
-    p.git(&["commit", "-q", "-m", "the change"]);
-    p
-}
-
 #[test]
 fn review_prepare_base_from_records_the_baseline_and_carries_snapshots() {
-    // Scenario 合併後在主 checkout 寫入基準並承接快照。
-    let main = merged_fixture("prepare-base-main");
+    // Scenario 合併後在主 checkout 寫入基準並承接快照。已提交變更的主
+    // checkout：HEAD~1 是變更前的 commit。
+    let main = TempProject::with_git_change("prepare-base-main", TASKS_DONE);
+    main.write("src/lib.rs", "fn demo() { merged(); }\n");
+    main.git(&["add", "src"]);
+    main.git(&["commit", "-q", "-m", "the change"]);
     main.touched("demo", &["src/lib.rs"]);
     let missing = main.run(&["review", "scope", "demo", "--json"]);
     assert!(!missing.status.success(), "no baseline yet → needsInput");
