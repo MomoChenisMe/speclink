@@ -4,8 +4,7 @@ slug: custom-review-rules
 status: promoted
 created: 2026-10-14
 created_by: MomoChen <momochenisme@gmail.com>
-hold: true
-promoted_to: review-rules-config
+promoted_to: review-rules-config, review-ticket-applied-rules
 ---
 
 # Discussion: 我想要讓review這個關卡的規則是可以讓使用者自訂的，除了預設的規則（目前設計的review規則）外，也可以自己定義
