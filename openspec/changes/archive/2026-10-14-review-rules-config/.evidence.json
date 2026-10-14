@@ -111,6 +111,17 @@
         "docs/configuration.md",
         "docs/configuration.zh-TW.md"
       ]
+    },
+    {
+      "task_id": "16",
+      "task_desc": "4.4 「設定頁編輯審查規則」與「設定頁圖形化讀寫兩層設定」的分類清單：先在 apps/desktop/src/__tests__/projectSettingsView.test.tsx 寫失敗測試——分類欄順序為專案說明、產出規則、審查規則、產出流程；唯讀呈現（模式、三節與效果說明、頁標題下 `openspec/config.yaml · review`）；查看 12 條展開；編輯儲存只寫 review；整份換掉且三節皆空時顯示提示但可儲存；固定三節不可新增；解析失敗時審查規則項帶警示點且編輯停用；遠端專案儲存帶 expected revision。再新增 apps/desktop/src/views/project-settings/ReviewRulesPage.tsx（沿用 CodeEditor、CardEditControls、SettingsPageHeader、PageNote、PageAlerts、FieldHelp 與 @speclink/ui 的 Card），apps/desktop/src/settingsCatalog.ts 於 rules 與 workflow 之間新增 review 分類（ShieldCheck 圖示、group config、remote true），apps/desktop/src/views/ProjectSettingsView.tsx 渲染新頁，apps/desktop/src/i18n/messages.ts 新增 zh-TW 與 en 文案。驗證：`npm test -w @speclink/desktop -- projectSettingsView` 全綠",
+      "files": [
+        "packages/ui/src/components/AnalyzePanel.tsx",
+        "packages/ui/src/components/TicketView.tsx",
+        "packages/ui/src/index.ts",
+        "packages/ui/src/__tests__/severityTag.test.tsx",
+        "packages/ui/src/components/SeverityTag.tsx"
+      ]
     }
   ],
   "entries": [
@@ -271,6 +282,21 @@
         "docs/configuration.zh-TW.md"
       ],
       "recordedAt": "2026-10-14T05:07:54Z"
+    },
+    {
+      "taskId": "tsk_01M4W6T1FS9E40EM7C9C389NKV",
+      "taskDesc": "4.4 「設定頁編輯審查規則」與「設定頁圖形化讀寫兩層設定」的分類清單：先在 apps/desktop/src/__tests__/projectSettingsView.test.tsx 寫失敗測試——分類欄順序為專案說明、產出規則、審查規則、產出流程；唯讀呈現（模式、三節與效果說明、頁標題下 `openspec/config.yaml · review`）；查看 12 條展開；編輯儲存只寫 review；整份換掉且三節皆空時顯示提示但可儲存；固定三節不可新增；解析失敗時審查規則項帶警示點且編輯停用；遠端專案儲存帶 expected revision。再新增 apps/desktop/src/views/project-settings/ReviewRulesPage.tsx（沿用 CodeEditor、CardEditControls、SettingsPageHeader、PageNote、PageAlerts、FieldHelp 與 @speclink/ui 的 Card），apps/desktop/src/settingsCatalog.ts 於 rules 與 workflow 之間新增 review 分類（ShieldCheck 圖示、group config、remote true），apps/desktop/src/views/ProjectSettingsView.tsx 渲染新頁，apps/desktop/src/i18n/messages.ts 新增 zh-TW 與 en 文案。驗證：`npm test -w @speclink/desktop -- projectSettingsView` 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "4c33325e4bbc90e3bc8c3110d69aee4644fa0d2d",
+      "touchedFiles": [
+        "packages/ui/src/components/AnalyzePanel.tsx",
+        "packages/ui/src/components/TicketView.tsx",
+        "packages/ui/src/index.ts",
+        "packages/ui/src/__tests__/severityTag.test.tsx",
+        "packages/ui/src/components/SeverityTag.tsx"
+      ],
+      "recordedAt": "2026-10-14T08:03:37Z"
     }
   ]
 }

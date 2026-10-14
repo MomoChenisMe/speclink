@@ -1,38 +1,24 @@
 // 審查規則頁（spec 需求「設定頁編輯審查規則」）：預設清單卡（模式＋可展開的 12 條名稱）與
 // 專案規則卡（CRITICAL／WARNING／SUGGESTION 三個固定節）。編輯沿用產出規則頁的頁標題右側
-// 編輯／取消／儲存 ⌘S 與純文字 CodeEditor；預設清單為兩個單選。12 條名稱取自快照（引擎提供）。
+// 編輯／取消／儲存 ⌘S 與純文字 CodeEditor；預設清單是列右側的共用下拉（與產出流程頁同一元件），
+// 展開鈕與產出流程頁的「檢視內容」同一種按鈕。12 條名稱取自快照（引擎提供）。
 import { useState } from "react";
-import { ChevronRight } from "lucide-react";
 import {
-  SEMANTIC_SURFACE,
-  SEMANTIC_TONE,
+  Button,
   SettingsCard,
+  SettingsChoice,
   SettingsPageHeader,
-  cn,
+  SettingsRow,
+  SeverityTag,
   useI18n,
 } from "@speclink/ui";
 
 import type { ReviewBaseline } from "../../adapter/workspace";
 import { CodeEditor } from "../../components/CodeEditor";
 import { CardEditControls, FieldHelp, PageAlerts, PageNote, useSaveShortcut } from "./parts";
-import { REVIEW_LISTS, textToEntries, type ReviewList, type ProjectSettingsState } from "./useProjectSettings";
-
-/** 嚴重度色章：與工單（TicketView）同語意同色——CRITICAL 破壞色、WARNING 琥珀、SUGGESTION 中性。 */
-const SEVERITY_CLS: Record<ReviewList, string> = {
-  critical: "bg-destructive/15 text-destructive",
-  warning: `${SEMANTIC_SURFACE.warning} ${SEMANTIC_TONE.warning}`,
-  suggestion: "bg-muted text-muted-foreground",
-};
+import { REVIEW_LISTS, textToEntries, type ProjectSettingsState } from "./useProjectSettings";
 
 const BASELINES: ReviewBaseline[] = ["extend", "replace"];
-
-function SeverityTag({ list }: { list: ReviewList }) {
-  return (
-    <span className={cn("rounded px-1.5 py-px font-mono text-[11px] font-semibold", SEVERITY_CLS[list])}>
-      {list.toUpperCase()}
-    </span>
-  );
-}
 
 export function ReviewRulesPage({ ps }: { ps: ProjectSettingsState }) {
   const { t } = useI18n();
@@ -43,6 +29,7 @@ export function ReviewRulesPage({ ps }: { ps: ProjectSettingsState }) {
   const smells = ps.snap.workflow.reviewBaselineSmells;
   const disabled = ps.wfDisabled || ps.reviewSaving;
   const total = REVIEW_LISTS.reduce((n, list) => n + ps.review[list].length, 0);
+  const baseline = ps.reviewEditing ? ps.draftReview.baseline : ps.review.baseline;
 
   return (
     <div data-testid="review-page" className="flex flex-col gap-6">
@@ -65,54 +52,42 @@ export function ReviewRulesPage({ ps }: { ps: ProjectSettingsState }) {
       <PageAlerts ps={ps} parseError={ps.snap.workflow.parseError} />
 
       <SettingsCard title={t("settings.reviewBaselineCard")}>
-        {ps.reviewEditing ? (
-          <fieldset className="m-0 flex flex-col gap-2 border-0 p-4">
-            <legend className="sr-only">{t("settings.reviewBaselineCard")}</legend>
-            {BASELINES.map((baseline) => {
-              const checked = ps.draftReview.baseline === baseline;
-              return (
-                <label
-                  key={baseline}
-                  className={cn(
-                    "flex items-start gap-2.5 rounded-lg border px-3 py-2.5",
-                    checked ? "border-primary/50 bg-primary/5" : "border-border",
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="review-baseline"
-                    value={baseline}
-                    checked={checked}
-                    disabled={disabled}
-                    onChange={() => ps.setDraftReview((prev) => ({ ...prev, baseline }))}
-                    className="mt-1 h-4 w-4 accent-primary"
-                  />
-                  <span className="flex flex-col gap-0.5">
-                    <span className="text-sm font-medium">{t(`settings.reviewBaseline.${baseline}`)}</span>
-                    <span className="text-xs text-muted-foreground">{t(`settings.reviewBaseline.${baseline}Desc`)}</span>
-                  </span>
-                </label>
-              );
-            })}
-          </fieldset>
-        ) : (
-          <div className="flex flex-col gap-2 p-4">
-            <span
-              data-testid="review-baseline-mode"
-              className="self-start rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
-            >
-              {t(`settings.reviewBaseline.${ps.review.baseline}`)}
-            </span>
-            <p className="m-0 text-sm text-muted-foreground">{t(`settings.reviewBaseline.${ps.review.baseline}Desc`)}</p>
-            <button
+        <SettingsRow
+          label={t("settings.reviewBaselineLabel").replace("{count}", String(smells.length))}
+          htmlFor={ps.reviewEditing ? "review-baseline" : undefined}
+          description={t(`settings.reviewBaseline.${baseline}Desc`)}
+          control={
+            ps.reviewEditing ? (
+              <SettingsChoice
+                id="review-baseline"
+                value={baseline}
+                options={BASELINES.map((value) => ({ value, label: t(`settings.reviewBaseline.${value}`) }))}
+                disabled={disabled}
+                onChange={(value) => ps.setDraftReview((prev) => ({ ...prev, baseline: value as ReviewBaseline }))}
+              />
+            ) : (
+              <span
+                data-testid="review-baseline-mode"
+                className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+              >
+                {t(`settings.reviewBaseline.${baseline}`)}
+              </span>
+            )
+          }
+        >
+          <div className="flex flex-col items-start gap-2">
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               aria-expanded={showSmells}
+              className="text-sm font-normal text-muted-foreground hover:text-foreground"
               onClick={() => setShowSmells((open) => !open)}
-              className="-ml-1 flex items-center gap-1 self-start rounded px-1 text-sm text-primary hover:underline"
             >
-              <ChevronRight aria-hidden className={cn("h-3.5 w-3.5 transition-transform", showSmells && "rotate-90")} />
-              {t("settings.reviewSmellsShow").replace("{count}", String(smells.length))}
-            </button>
+              {showSmells
+                ? t("settings.reviewSmellsHide")
+                : t("settings.reviewSmellsShow").replace("{count}", String(smells.length))}
+            </Button>
             {showSmells && (
               <ul data-testid="review-smells" className="m-0 flex list-none flex-wrap gap-1.5 p-0">
                 {smells.map((name) => (
@@ -123,7 +98,7 @@ export function ReviewRulesPage({ ps }: { ps: ProjectSettingsState }) {
               </ul>
             )}
           </div>
-        )}
+        </SettingsRow>
       </SettingsCard>
 
       <SettingsCard title={t("settings.reviewRulesCard")}>
@@ -141,7 +116,7 @@ export function ReviewRulesPage({ ps }: { ps: ProjectSettingsState }) {
             {REVIEW_LISTS.map((list) => (
               <section key={list} data-testid={`review-input-${list}`} aria-label={list.toUpperCase()} className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-center gap-1.5 px-1 text-sm font-medium">
-                  <SeverityTag list={list} />
+                  <SeverityTag severity={list.toUpperCase()} />
                   <span
                     data-testid={`review-count-${list}`}
                     className="inline-flex h-4 items-center rounded-full bg-muted px-1.5 text-[11px] font-normal tabular-nums text-muted-foreground"
@@ -172,7 +147,7 @@ export function ReviewRulesPage({ ps }: { ps: ProjectSettingsState }) {
             {REVIEW_LISTS.map((list) => (
               <div key={list} data-testid={`review-section-${list}`} className="flex flex-col gap-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <SeverityTag list={list} />
+                  <SeverityTag severity={list.toUpperCase()} />
                   <span className="text-xs text-muted-foreground">{t(`settings.reviewEffect.${list}`)}</span>
                   <span className="ml-auto text-xs text-muted-foreground">{countLabel(ps.review[list].length)}</span>
                 </div>

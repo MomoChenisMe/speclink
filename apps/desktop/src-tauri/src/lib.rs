@@ -755,15 +755,26 @@ async fn write_workflow_content(
     rules: Option<Vec<(String, Vec<String>)>>,
     review: Option<speclink_desktop_core::settings::ReviewConfig>,
 ) -> Result<(), String> {
-    let edit = match context {
-        Some(text) => speclink_desktop_core::settings::ContextEdit::Set(text),
-        None => speclink_desktop_core::settings::ContextEdit::Keep,
-    };
     tauri::async_runtime::spawn_blocking(move || {
-        speclink_desktop_core::settings::write_workflow_content_at(&root, &edit, rules.as_deref(), review.as_ref())
+        speclink_desktop_core::settings::write_workflow_content_at(&root, &content_edit(context, &rules, &review))
     })
     .await
     .map_err(|e| format!("write_workflow_content worker failed: {e}"))?
+}
+
+/// 兩個內容寫入指令共用的參數轉換：context 為 null 不動、有值即設值（空白＝移除，
+/// core 落實）；rules 與 review 為 null 不動。
+fn content_edit<'a>(
+    context: Option<String>,
+    rules: &'a Option<Vec<(String, Vec<String>)>>,
+    review: &'a Option<speclink_desktop_core::settings::ReviewConfig>,
+) -> speclink_desktop_core::settings::ContentEdit<'a> {
+    use speclink_desktop_core::settings::{ContentEdit, ContextEdit};
+    ContentEdit {
+        context: context.map_or(ContextEdit::Keep, ContextEdit::Set),
+        rules: rules.as_deref(),
+        review: review.as_ref(),
+    }
 }
 
 /// 連線 registry 檔位置：appConfigDir 下 connections.json（design 決策 4）。
@@ -1204,13 +1215,7 @@ async fn remote_write_workflow_content(
     expected_revision: u64,
 ) -> Result<u64, remote::RemoteSettingsError> {
     with_remote_settings(app, connection_id, project, repo, move |ws, credentials| {
-        ws.write_workflow_content(
-            credentials,
-            context.as_deref(),
-            rules.as_deref(),
-            review.as_ref(),
-            expected_revision,
-        )
+        ws.write_workflow_content(credentials, &content_edit(context, &rules, &review), expected_revision)
     })
     .await
 }

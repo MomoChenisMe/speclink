@@ -11,7 +11,7 @@ use speclink_core::skills::Tool;
 use speclink_core::workspace::Workspace;
 
 // Tauri 殼經本 crate 取用政策欄位與 context 三態型別，不直接依賴 speclink-core。
-pub use speclink_core::config::{ContextEdit, ReviewConfig, WorkflowPolicyFields};
+pub use speclink_core::config::{ContentEdit, ContextEdit, ReviewConfig, WorkflowPolicyFields};
 
 /// 設定頁載入快照：兩檔各自的欄位現值與可選的解析錯誤。
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -377,9 +377,7 @@ fn rewrite_workflow_fields_text_for(
     let new_text = speclink_core::config::update_workflow_config_text(
         original,
         fields,
-        &ContextEdit::Keep,
-        None,
-        None,
+        &ContentEdit::default(),
     )
     .map_err(|e| single_line(&e.to_string()))?;
     verify_workflow_text(&new_text, fields, file, "rewrite verification")?;
@@ -456,17 +454,12 @@ fn refuse_teardown_with_active_worktrees(ws: &Workspace) -> Result<(), String> {
 /// 空條目滌除、空節移除、全空移除 rules 鍵——清理語意在 core 純函式落實）。
 /// `review` 同理：`None` 不動，`Some` 為整塊代換（移除語意與 CLI 的
 /// `workflow-config review` 一致，同樣在 core 落實）。
-pub fn write_workflow_content_at(
-    root: &Path,
-    context: &ContextEdit,
-    rules: Option<&[(String, Vec<String>)]>,
-    review: Option<&ReviewConfig>,
-) -> Result<(), String> {
+pub fn write_workflow_content_at(root: &Path, edit: &ContentEdit) -> Result<(), String> {
     let ws = discover(root)?;
     let file = format!("{}/config.yaml", ws.spec_dir_name);
     let path = workflow_config_path(&ws);
     let original = read_opt(&path).unwrap_or_default();
-    let new_text = rewrite_workflow_content_text_for(&original, context, rules, review, &file)?;
+    let new_text = rewrite_workflow_content_text_for(&original, edit, &file)?;
     let expected = WorkflowConfig::from_text(Some(&new_text)).map_err(|e| {
         format!("{file}: pre-write verification failed: {}", single_line(&e.reason))
     })?;
@@ -488,22 +481,16 @@ pub fn write_workflow_content_at(
 
 /// 純文字 context/rules/review targeted-key 改寫 seam。政策欄位從原文讀出再原樣
 /// 回填，讓 remote 與 local 共用同一份未觸及鍵與清空移除語意。
-pub fn rewrite_workflow_content_text(
-    original: &str,
-    context: &ContextEdit,
-    rules: Option<&[(String, Vec<String>)]>,
-    review: Option<&ReviewConfig>,
-) -> Result<String, String> {
-    rewrite_workflow_content_text_for(original, context, rules, review, "config.yaml")
+pub fn rewrite_workflow_content_text(original: &str, edit: &ContentEdit) -> Result<String, String> {
+    rewrite_workflow_content_text_for(original, edit, "config.yaml")
 }
 
 fn rewrite_workflow_content_text_for(
     original: &str,
-    context: &ContextEdit,
-    rules: Option<&[(String, Vec<String>)]>,
-    review: Option<&ReviewConfig>,
+    edit: &ContentEdit,
     file: &str,
 ) -> Result<String, String> {
+    let ContentEdit { context, rules, review } = edit;
     let current = WorkflowConfig::from_text(Some(original)).map_err(|e| {
         format!("{file}: rewrite verification failed: {}", single_line(&e.reason))
     })?;
@@ -533,7 +520,7 @@ fn rewrite_workflow_content_text_for(
         },
     };
     let new_text =
-        speclink_core::config::update_workflow_config_text(original, &fields, context, rules, review)
+        speclink_core::config::update_workflow_config_text(original, &fields, edit)
             .map_err(|e| single_line(&e.to_string()))?;
     verify_workflow_content_text(
         &new_text,
@@ -802,9 +789,7 @@ mod tests {
         let original = "schema: spec-driven\nlocale: tw\ntdd: true\ncontext: old\nrules:\n  tasks:\n    - keep me\n";
         let output = rewrite_workflow_content_text(
             original,
-            &ContextEdit::Set("new context".into()),
-            None,
-            None,
+            &ContentEdit { context: ContextEdit::Set("new context".into()), ..Default::default() },
         )
         .expect("rewrite");
         let before = WorkflowConfig::from_text(Some(original)).expect("parse before");
@@ -1451,9 +1436,7 @@ mod tests {
         let rules = sections(&[("proposal", &["舊規則"]), ("tasks", &["@完成後執行全部測試"])]);
         write_workflow_content_at(
             fx.root(),
-            &ContextEdit::Set("新的專案說明\n跨兩行\n".into()),
-            Some(&rules),
-            None,
+            &ContentEdit { context: ContextEdit::Set("新的專案說明\n跨兩行\n".into()), rules: Some(&rules), ..Default::default() },
         )
         .expect("write ok");
         let text = read(&fx.root().join("openspec/config.yaml"));
@@ -1477,7 +1460,7 @@ mod tests {
             "openspec/config.yaml",
             "schema: spec-driven\ncontext: 舊說明\nrules:\n  tasks:\n    - t1\n",
         );
-        write_workflow_content_at(fx.root(), &ContextEdit::Set("   ".into()), Some(&sections(&[("tasks", &[])])), None)
+        write_workflow_content_at(fx.root(), &ContentEdit { context: ContextEdit::Set("   ".into()), rules: Some(&sections(&[("tasks", &[])])), ..Default::default() })
             .expect("write ok");
         let text = read(&fx.root().join("openspec/config.yaml"));
         let m: serde_yaml::Mapping = serde_yaml::from_str(&text).expect("mapping");
@@ -1491,7 +1474,7 @@ mod tests {
         let fx = FixtureRoot::new("wf-content-bad");
         let bad = "rules: [unclosed\n";
         fx.write("openspec/config.yaml", bad);
-        let err = write_workflow_content_at(fx.root(), &ContextEdit::Set("x".into()), None, None)
+        let err = write_workflow_content_at(fx.root(), &ContentEdit { context: ContextEdit::Set("x".into()), ..Default::default() })
             .expect_err("must refuse");
         assert!(err.contains("config.yaml"), "must name the file: {err}");
         assert!(!err.contains('\n'), "single line: {err:?}");
@@ -1505,7 +1488,7 @@ mod tests {
         fx.write("openspec/config.yaml", doc);
         let path = fx.root().join("openspec/config.yaml");
         block_writes(&path, true);
-        let err = write_workflow_content_at(fx.root(), &ContextEdit::Set("new".into()), None, None)
+        let err = write_workflow_content_at(fx.root(), &ContentEdit { context: ContextEdit::Set("new".into()), ..Default::default() })
             .expect_err("must fail");
         block_writes(&path, false);
         assert!(err.contains("config.yaml"), "must name the file: {err}");
@@ -1566,7 +1549,7 @@ mod tests {
         let prefix = "schema: spec-driven\nlocale: tw\ntdd: true\ncontext: |\n  說明\nrules:\n  tasks:\n    - t1\n";
         fx.write("openspec/config.yaml", &format!("{prefix}review:\n  warning:\n    - 舊規則\n"));
         let want = review_of(ReviewBaseline::Extend, [&[], &["舊規則", "新增的公開 API 要有對應的測試"], &[]]);
-        write_workflow_content_at(fx.root(), &ContextEdit::Keep, None, Some(&want)).expect("write ok");
+        write_workflow_content_at(fx.root(), &ContentEdit { review: Some(&want), ..Default::default() }).expect("write ok");
         let text = read(&fx.root().join("openspec/config.yaml"));
         assert!(text.starts_with(prefix), "everything outside review is byte-identical: {text}");
         let cfg = WorkflowConfig::from_text(Some(&text)).expect("output parses");
@@ -1592,7 +1575,7 @@ mod tests {
         for (i, (before, want, block)) in rows.into_iter().enumerate() {
             let fx = FixtureRoot::new(&format!("wf-review-remove-{i}"));
             fx.write("openspec/config.yaml", &format!("schema: spec-driven\n{before}"));
-            write_workflow_content_at(fx.root(), &ContextEdit::Keep, None, Some(&want)).expect("write ok");
+            write_workflow_content_at(fx.root(), &ContentEdit { review: Some(&want), ..Default::default() }).expect("write ok");
             let text = read(&fx.root().join("openspec/config.yaml"));
             match block {
                 Some(block) => assert_eq!(text, format!("schema: spec-driven\n{block}"), "row {i}"),
@@ -1604,7 +1587,7 @@ mod tests {
     #[test]
     fn content_text_rewrite_with_no_review_edit_leaves_the_review_block() {
         let original = "schema: spec-driven\ncontext: old\nreview:\n  baseline: replace # kept\n";
-        let output = rewrite_workflow_content_text(original, &ContextEdit::Set("new".into()), None, None)
+        let output = rewrite_workflow_content_text(original, &ContentEdit { context: ContextEdit::Set("new".into()), ..Default::default() })
             .expect("rewrite");
         assert!(output.ends_with("review:\n  baseline: replace # kept\n"), "{output}");
     }

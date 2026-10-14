@@ -30,17 +30,18 @@
 
 ### review 區塊以 typed 結構嚴格解析
 
-WorkflowConfig 新增選填欄位 `review`，型別為 ReviewConfig：`baseline`（ReviewBaseline 列舉，序列化為小寫 extend／replace，預設 extend）與 `critical`、`warning`、`suggestion` 三個字串清單（預設空）。ReviewConfig 標上 serde 的 deny_unknown_fields，因此未知子鍵、非法 baseline 值、非字串陣列的清單都由 serde 直接報錯，錯誤訊息點名出錯的鍵或值；這些錯誤經既有 ConfigError 路徑成為 fail-closed。WorkflowConfig 頂層不加 deny_unknown_fields，舊版 CLI 讀到 `review` 只會略過。
+WorkflowConfig 新增選填欄位 `review`，型別為 ReviewConfig：`baseline`（ReviewBaseline 列舉，序列化為小寫 extend／replace，預設 extend）與 `critical`、`warning`、`suggestion` 三個字串清單（預設空）。ReviewConfig 標上 serde 的 deny_unknown_fields，因此未知子鍵、非法 baseline 值、非字串陣列的清單都由 serde 直接報錯，錯誤訊息點名出錯的鍵或值；這些錯誤經既有 ConfigError 路徑成為 fail-closed。讀取時清單條目即去除頭尾空白並丟掉空白條目（與寫入相同的整理），手寫的空白條目不會進審查；改寫某一個清單時，原樣寫回的其他清單值也不會變。WorkflowConfig 頂層不加 deny_unknown_fields，舊版 CLI 讀到 `review` 只會略過。
 
 - 替代方案：寬鬆解析加警告——打錯鍵時整組規則默默失效，正是討論 config-context-與-rules-gui-編輯 否決自由鍵的理由。
 - 替代方案：放在 `rules.review`——會與自訂 schema 中 id 為 review 的 artifact 撞名、被 rules 寫入動詞的 artifact 檢查擋下，且放不下模式開關（討論已否決）。
 
 ### 寫入接縫擴充 review 參數
 
-update_workflow_config_text 新增第五個參數 `review: Option<&ReviewConfig>`：None 為不動；Some 為整塊代換——先依移除語意正規化（baseline 為 extend 時不寫 baseline 鍵、空清單不寫該鍵、全部為空則移除整個 review 鍵），再以既有的頂層區塊序列化（serialize_top_level_block，經 serde_yaml 產生，保留字元自動加引號）寫入，最後把 review 納入改寫後解析比對的目標狀態。手術沿用 rules 的區塊代換：只換 review 的行範圍，其他行逐位元保留，review 區塊內的註解不保留。
+update_workflow_config_text 的內容參數收成一個 ContentEdit（context、rules、review 三個欄位，各自預設為不動），呼叫端只寫要改的區塊（`ContentEdit { review: Some(&r), ..Default::default() }`），日後再加區塊不必改動所有呼叫端。review 為 None 時不動；Some 為整塊代換——先依移除語意正規化（baseline 為 extend 時不寫 baseline 鍵、空清單不寫該鍵、全部為空則移除整個 review 鍵），再以既有的頂層區塊序列化（serialize_top_level_block，經 serde_yaml 產生，保留字元自動加引號）寫入，最後把 review 納入改寫後解析比對的目標狀態。手術沿用 rules 的區塊代換：只換 review 的行範圍，其他行逐位元保留，review 區塊內的註解不保留。CRLF 檔裡，context、rules、review 三種代換區塊都沿用檔案的行尾。
 
-- 替代方案：另立 update_review_text 函式——兩個接縫各自做手術與驗證，日後行為容易分岔；既有接縫已具備整塊代換與驗證，擴充一個參數即可。
-- 成本：既有呼叫端（CLI 一處、desktop-core 一處、config 模組的單元測試約十處）都要補參數，測試補 None。
+- 替代方案：另立 update_review_text 函式——兩個接縫各自做手術與驗證，日後行為容易分岔；既有接縫已具備整塊代換與驗證，擴充一個欄位即可。
+- 替代方案：維持三個獨立參數——每加一個區塊，CLI、desktop-core、遠端寫入與約三十處單元測試都要補一個 None（品質關卡指出的 Data Clumps）。
+- Tauri 指令的 IPC 參數維持 context、rules、review 三個鍵（前端契約不變），由 lib.rs 的一個轉換函式組成 ContentEdit。
 
 ### CLI 子指令 workflow-config review 的形狀
 
@@ -75,9 +76,9 @@ config 技能範本新增：review.baseline 列為第六問（帶現值、不推
 
 ### desktop 沿用產出規則的寫入路徑新增審查規則頁
 
-- desktop-core：WorkflowSettings 新增 `review`（camelCase：baseline、critical、warning、suggestion）與 `reviewBaselineSmells`；write_workflow_content_at、rewrite_workflow_content_text 與內部的 rewrite／verify 函式新增 `review: Option<&ReviewConfig>` 參數，傳給同一接縫，寫後回讀驗證涵蓋 review。
-- Tauri：write_workflow_content 與 remote_write_workflow_content 新增選填參數 `review`，仍為單行委派；遠端 workspace 的 write_workflow_content 同步新增參數。不另立 Tauri 指令：本機與遠端維持同一對指令，既有的 revision 衝突與 reader 處理自動涵蓋新頁。
-- 前端：adapter 新增 writeWorkflowReview（本機與遠端兩實作，context 與 rules 傳 null）；useProjectSettings 新增 review 的唯讀值、編輯態、草稿、儲存與「整份換掉且三節皆空」判斷；新檔 ReviewRulesPage.tsx 以 @speclink/ui 的 Card、SettingsPageHeader 與既有的 CodeEditor、CardEditControls、PageNote、PageAlerts、FieldHelp 組成；settingsCatalog 在 rules 與 workflow 之間新增 id 為 review 的分類（group config、remote true、ShieldCheck 圖示）；ProjectSettingsView 依分類 id 渲染新頁；i18n 新增 zh-TW 與 en 文案。分類的解析失敗警示點沿用 config 群組的既有判斷。
+- desktop-core：WorkflowSettings 新增 `review`（camelCase：baseline、critical、warning、suggestion）與 `reviewBaselineSmells`；write_workflow_content_at 與 rewrite_workflow_content_text 改收一個 ContentEdit，傳給同一接縫，寫後回讀驗證涵蓋 review。
+- Tauri：write_workflow_content 與 remote_write_workflow_content 新增選填參數 `review`，仍為單行委派；遠端 workspace 的 write_workflow_content 同步改收 ContentEdit。不另立 Tauri 指令：本機與遠端維持同一對指令，既有的 revision 衝突與 reader 處理自動涵蓋新頁。
+- 前端：adapter 新增 writeWorkflowReview（本機與遠端兩實作，context 與 rules 傳 null）；useProjectSettings 新增 review 的唯讀值、編輯態、草稿、儲存與「整份換掉且三節皆空」判斷；新檔 ReviewRulesPage.tsx 以 @speclink/ui 的 Card、SettingsPageHeader、SettingsRow、SettingsChoice（預設清單為列右側下拉，與產出流程頁 locale 同一元件）、Button（「查看 12 條」與產出流程頁「檢視內容」同一種 outline 小按鈕）與既有的 CodeEditor、CardEditControls、PageNote、PageAlerts、FieldHelp 組成；嚴重度籤改用 @speclink/ui 新增的共用 SeverityTag，工單（TicketView）與分析面板（AnalyzePanel）原本各寫一份的色表一併改用它，三處同色同尺寸；草稿存回時沒編輯的節原樣沿用現值，手寫的多行規則不會被拆開（產出規則頁同一組轉換一併修正）；遠端衝突重送成功或重讀快照後，不在編輯中的各區一併採納 server 最新值，產出流程動作（切換、fork、建立、刪除）進行中則停用各頁的寫入入口，等待期間的改動不會被重讀蓋回；settingsCatalog 在 rules 與 workflow 之間新增 id 為 review 的分類（group config、remote true、ShieldCheck 圖示）；ProjectSettingsView 依分類 id 渲染新頁；i18n 新增 zh-TW 與 en 文案。分類的解析失敗警示點沿用 config 群組的既有判斷。
 - 畫面依討論定稿的草稿：https://claude.ai/artifact/RNqumZRVKjC7AWox64Z2pu （設定頁唯讀與編輯中兩張）。
 
 ### desktop-app 的側欄需求以進行中變更的版本為底
@@ -116,12 +117,12 @@ openspec/LANGUAGE.md 新增「審查規則」詞條（definition：config.yaml �
 
 **驗收：**
 
-- speclink-core 單元測試：review 解析（預設、合法、未知子鍵、非法 baseline、清單型別錯）、接縫寫入（代換、移除語意、保留字元引號、其他行逐位元保留、CRLF 文件）、REVIEW_BASELINE_SMELLS 與審查技能範本一致。
+- speclink-core 單元測試：review 解析（預設、合法、未知子鍵、非法 baseline、清單型別錯、讀取時整理條目）、接縫寫入（代換、移除語意、保留字元引號、其他行逐位元保留、CRLF 文件的三種區塊）、REVIEW_BASELINE_SMELLS 與各工具生成的審查技能檔一致。
 - CLI 整合測試（workflow_config.rs）：review 各子指令的寫入、dry-run、錯誤路徑、show 的人眼 review 行與 --json review 欄位；remote 對等測試（remote_verb_parity.rs）涵蓋 review 寫入。
 - server 測試（policy_write.rs）：review 區塊寫錯的 PUT /config 回 invalid_config 且不落盤。
 - golden：`cargo test -p speclink-core --test it render_golden::` 在再生後通過，快照含審查技能的新段落與 config 技能的第六問。
 - desktop-core 測試：快照帶出 review 與 12 條名稱、write_workflow_content_at 只寫 review 並保留其他鍵。
-- desktop 前端測試：projectSettingsView 測新頁的唯讀、展開、編輯儲存、整份換掉提示、解析失敗停用；remoteDataSource 與 workspace 測 adapter 的參數。
+- desktop 前端測試：projectSettingsView 測新頁的唯讀、展開、編輯儲存、整份換掉提示、解析失敗停用；remoteDataSource 與 session 測 adapter 的參數。
 - 手動：在 desktop 實際開審查規則頁編輯並儲存，確認檔案效果與畫面。
 
 **範圍：**
@@ -136,7 +137,7 @@ openspec/LANGUAGE.md 新增「審查規則」詞條（definition：config.yaml �
 - [接縫簽名變更牽動多處呼叫端] → 呼叫端皆在本 repo；測試補 None，編譯器會列出所有漏改處。
 - [desktop-app 需求與 desktop-swipe-back-finger-lift 重疊] → 本刀區塊以其版本為底，封存排在它之後；它若再改這條需求，本刀封存前重做區塊。
 - [平行變更同時提升 ASSET_VERSION] → 版號行對撞時以重生衍生物解決（重跑 UPDATE_GOLDEN、UPDATE_ASSETS_LOCK 與 speclink update），不挑邊。
-- [跨平台：Windows 的 CRLF config] → 接縫既有的行尾保留邏輯沿用到 review 區塊，單元測試以 CRLF 文件驗證寫入後行尾一致；路徑與指令行為不涉平台差異。
+- [跨平台：Windows 的 CRLF config] → 接縫的行尾保留邏輯涵蓋 context、rules、review 三種代換區塊，單元測試以 CRLF 文件驗證寫入後每一行都是 CRLF、沒有重複的 CR；路徑與指令行為不涉平台差異。
 - [舊版 CLI 不套用規則] → 舊版只會略過 review、不會失敗；docs 註明需要新版 CLI 與 `speclink update` 後的技能檔。
 
 ## Migration Plan

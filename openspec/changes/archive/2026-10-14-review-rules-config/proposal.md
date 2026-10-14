@@ -27,7 +27,7 @@
   - 預設清單模式列為第六問，每次帶現值詢問，不從 repo 推論。
   - 不從 repo 推導審查規則；只接收使用者口述的規則，依語氣建議放進哪個清單（「不得」「一律」→critical、「要」「需」→warning、「考慮」「盡量」「宜」「偏好」→suggestion），經使用者確認後以 `--dry-run` 預覽、同意才寫入。
   - 既有審查規則照判準檢查：`extend` 時不得重述 12 條 smell，`replace` 時不檢查這一點；不寫會過時的內容；引用的路徑與指令必須存在。
-- **desktop 設定頁新增「審查規則」**：位於專案設定的 `openspec/config.yaml` 分組、產出規則與產出流程之間；唯讀顯示預設清單模式（可展開 12 條名稱）與三個清單；編輯沿用產出規則頁同一個程式碼編輯器、同一組編輯／取消／儲存控制與同一條寫入路徑，預設清單為兩個單選；整份換掉且三個清單皆空時頁內提示。12 條名稱由引擎提供，desktop 不另存一份。
+- **desktop 設定頁新增「審查規則」**：位於專案設定的 `openspec/config.yaml` 分組、產出規則與產出流程之間；唯讀顯示預設清單模式（可展開 12 條名稱）與三個清單；編輯沿用產出規則頁同一個程式碼編輯器、同一組編輯／取消／儲存控制與同一條寫入路徑，預設清單為列右側的共用下拉；整份換掉且三個清單皆空時頁內提示。12 條名稱由引擎提供，desktop 不另存一份。
 - **詞彙**：`openspec/LANGUAGE.md` 新增「審查規則」詞條。
 - 畫面草稿：https://claude.ai/artifact/RNqumZRVKjC7AWox64Z2pu （設定頁唯讀與編輯中兩張屬本刀；審查分頁一張屬第 2 刀）。
 
@@ -67,11 +67,13 @@
 ## Impact
 
 - Affected specs: workflow-config、review-skill、config-skill、desktop-config、desktop-app
-- Affected crates／apps：speclink-core（設定解析與寫入接縫、兩份技能範本、技能版號）、speclink-cli（workflow-config 子指令與 show 輸出）、speclink-server（僅新增測試：寫錯的 review 區塊被 PUT /config 擋下）、apps/desktop（desktop-core 設定快照與寫入、Tauri 指令、前端設定頁）
+- Affected crates／apps：speclink-core（設定解析與寫入接縫、兩份技能範本、技能版號）、speclink-cli（workflow-config 子指令與 show 輸出）、speclink-server（僅新增測試：寫錯的 review 區塊被 PUT /config 擋下）、apps/desktop（desktop-core 設定快照與寫入、Tauri 指令、前端設定頁）、packages/ui（共用嚴重度色章 SeverityTag，工單與分析面板改用）
 - 生成的技能：speclink-review 與 speclink-config，影響所有已啟用工具（claude、codex、copilot）的技能檔；本 repo 自身的技能檔由 `speclink update` 再生
 - Affected code:
   - New:
     - apps/desktop/src/views/project-settings/ReviewRulesPage.tsx
+    - packages/ui/src/components/SeverityTag.tsx
+    - packages/ui/src/__tests__/severityTag.test.tsx
   - Modified:
     - crates/engine/speclink-core/src/workspace/config.rs
     - crates/engine/speclink-core/src/workspace/config/tests.rs
@@ -108,6 +110,9 @@
     - apps/desktop/src/__tests__/settingsColumn.test.tsx
     - apps/desktop/src/__tests__/App.test.tsx
     - apps/desktop/src/__tests__/helpers/remoteFixtures.ts
+    - packages/ui/src/components/TicketView.tsx
+    - packages/ui/src/components/AnalyzePanel.tsx
+    - packages/ui/src/index.ts
     - openspec/LANGUAGE.md
     - docs/configuration.md
     - docs/configuration.zh-TW.md

@@ -483,21 +483,22 @@ mod tests {
         );
     }
 
-    /// spec review-skill「Standards 軸的 smell baseline」：引擎提供的 12 個名稱與審查
-    /// 技能範本內嵌的 smell 清單（`- **<name>** — … → …` 項目）逐名、逐序一致——
+    /// spec review-skill「Standards 軸的 smell baseline」：引擎提供的 12 個名稱與每個內建工具
+    /// 生成的審查技能檔內嵌的 smell 清單（`- **<name>** — … → …` 項目）逐名、逐序一致——
     /// 任一端改名或增刪即失敗。
     #[test]
-    fn review_baseline_smells_match_the_review_skill_template() {
-        let names: Vec<&str> = B_REVIEW
-            .lines()
-            .map(str::trim_start)
-            .filter(|l| l.starts_with("- **") && l.contains("** — ") && l.contains(" → "))
-            .map(|l| l["- **".len()..].split("**").next().unwrap())
-            .collect();
-        assert_eq!(names.len(), 12, "the template carries exactly 12 smells: {names:?}");
-        assert_eq!(names, REVIEW_BASELINE_SMELLS);
-        for name in REVIEW_BASELINE_SMELLS {
-            assert!(B_REVIEW.contains(&format!("- **{name}**")), "{name} is a template list item");
+    fn review_baseline_smells_match_the_generated_review_skill_files() {
+        let reg = registry();
+        let review = reg.iter().find(|s| s.name == "review").expect("registry carries review");
+        for tool in [Tool::Claude, Tool::Codex, Tool::Copilot] {
+            let rendered = render_skill_file_for(RenderTarget::Builtin(tool), review, "openspec");
+            let names: Vec<&str> = rendered
+                .lines()
+                .map(str::trim_start)
+                .filter(|l| l.starts_with("- **") && l.contains("** — ") && l.contains(" → "))
+                .map(|l| l["- **".len()..].split("**").next().unwrap())
+                .collect();
+            assert_eq!(names, REVIEW_BASELINE_SMELLS, "generated review skill for {tool:?}");
         }
     }
 

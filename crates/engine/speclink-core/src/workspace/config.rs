@@ -377,13 +377,20 @@ pub struct ReviewConfig {
 }
 
 /// A rule list whose entries must be YAML strings (see [`RuleEntry`]). A null
-/// list (`critical:` with nothing after it) reads as an empty one.
+/// list (`critical:` with nothing after it) reads as an empty one. Entries are
+/// trimmed and blank ones dropped on read — the same cleanup every write applies —
+/// so a hand-written blank never reaches the review, and rewriting a list the
+/// caller did not edit never changes its values.
 fn de_rule_list<'de, D>(d: D) -> Result<Vec<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     let entries = Option::<Vec<RuleEntry>>::deserialize(d)?.unwrap_or_default();
-    Ok(entries.into_iter().map(|e| e.0).collect())
+    Ok(entries
+        .into_iter()
+        .map(|e| e.0.trim().to_string())
+        .filter(|e| !e.is_empty())
+        .collect())
 }
 
 /// One review rule: a YAML string only. `Vec<String>` would let serde_yaml coerce
@@ -417,6 +424,16 @@ pub enum ReviewBaseline {
     #[default]
     Extend,
     Replace,
+}
+
+impl ReviewBaseline {
+    /// The config-file spelling (`extend` / `replace`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ReviewBaseline::Extend => "extend",
+            ReviewBaseline::Replace => "replace",
+        }
+    }
 }
 
 /// `SPECLINK_*` environment overrides — the top layer of the three-layer policy resolution
@@ -596,18 +613,18 @@ pub struct WorkflowPolicyFields {
 /// call site. `Set` with a blank (whitespace-only) value degrades to `Remove`:
 /// "clearing the text area removes the key" is enforced here, in the single
 /// write-path truth, not left to each caller.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub enum ContextEdit {
+    #[default]
     Keep,
     Set(String),
     Remove,
 }
 
-/// Rewrite the workflow-config document (`openspec/config.yaml`) with the given
-/// change set — a text→text pure function; the caller owns file reads and writes.
+/// The content blocks one write may change. Each is untouched unless set, so a
+/// caller names only the blocks it changes:
+/// `ContentEdit { review: Some(&r), ..Default::default() }`.
 ///
-/// - `fields` is the COMPLETE target state of the four policy keys (see
-///   [`WorkflowPolicyFields`]).
 /// - `context` is a three-state edit; see [`ContextEdit`].
 /// - `rules` is `None` to leave the key untouched, or `Some` for a wholesale
 ///   replacement: sections in slice order, entries trimmed with blank entries
@@ -618,7 +635,21 @@ pub enum ContextEdit {
 ///   replacement of the block: entries are cleaned like `rules`, `extend` writes
 ///   no `baseline` key, an empty list drops its key, and nothing left (extend
 ///   with three empty lists) drops the `review` key itself. Comments inside the
-///   old block do not survive; the block follows the document's line endings.
+///   old block do not survive.
+#[derive(Debug, Clone, Default)]
+pub struct ContentEdit<'a> {
+    pub context: ContextEdit,
+    pub rules: Option<&'a [(String, Vec<String>)]>,
+    pub review: Option<&'a ReviewConfig>,
+}
+
+/// Rewrite the workflow-config document (`openspec/config.yaml`) with the given
+/// change set — a text→text pure function; the caller owns file reads and writes.
+///
+/// - `fields` is the COMPLETE target state of the four policy keys (see
+///   [`WorkflowPolicyFields`]).
+/// - `edit` names the content blocks to change; see [`ContentEdit`]. Every
+///   rewritten block follows the document's line endings.
 ///
 /// The rewrite is line-level text surgery, not re-serialization: only the target
 /// key's line or block changes; every other line — comments, blank lines, unknown
@@ -634,10 +665,9 @@ pub enum ContextEdit {
 pub fn update_workflow_config_text(
     original: &str,
     fields: &WorkflowPolicyFields,
-    context: &ContextEdit,
-    rules: Option<&[(String, Vec<String>)]>,
-    review: Option<&ReviewConfig>,
+    edit: &ContentEdit,
 ) -> anyhow::Result<String> {
+    let ContentEdit { context, rules, review } = edit;
     validate_policy_locales(fields)?;
     // Pure-syntax empty documents carry no user content to preserve; normalize so
     // surgery starts from a blank page instead of appending after a `{}` line.
@@ -657,8 +687,8 @@ pub fn update_workflow_config_text(
     });
     let review_value = review.map(|r| {
         let mut map = serde_yaml::Mapping::new();
-        if r.baseline == ReviewBaseline::Replace {
-            map.insert("baseline".into(), "replace".into());
+        if r.baseline != ReviewBaseline::default() {
+            map.insert("baseline".into(), r.baseline.as_str().into());
         }
         insert_cleaned_list(&mut map, "critical", &r.critical);
         insert_cleaned_list(&mut map, "warning", &r.warning);
@@ -865,11 +895,13 @@ fn surgical_rewrite(
         }
     }
 
+    // serde_yaml 一律以 \n 斷行；CRLF 檔的代換區塊沿用檔案的行尾，整份行尾一致。
+    let follow_eol = |block: String| if eol == "\n" { block } else { block.replace('\n', eol) };
     let mut appends: Vec<String> = Vec::new();
     match context {
         ContextEdit::Keep => {}
         ContextEdit::Set(text) if !text.trim().is_empty() => {
-            let block = serialize_top_level_block("context", text.as_str().into())?;
+            let block = follow_eol(serialize_top_level_block("context", text.as_str().into())?);
             match block_of("context") {
                 Some(b) => replace_block(&mut ops, b, block),
                 None => appends.push(block),
@@ -881,14 +913,11 @@ fn surgical_rewrite(
             }
         }
     }
-    if let Some(map) = rules {
-        let block = mapping_block("rules", map)?;
-        swap_block(&mut ops, &mut appends, block_of("rules"), block);
-    }
-    if let Some(map) = review {
-        // serde_yaml 一律以 \n 斷行；CRLF 檔沿用檔案的行尾，整份行尾一致。
-        let block = mapping_block("review", map)?.map(|b| b.replace('\n', eol));
-        swap_block(&mut ops, &mut appends, block_of("review"), block);
+    for (key, edit) in [("rules", rules), ("review", review)] {
+        if let Some(map) = edit {
+            let block = mapping_block(key, map)?.map(follow_eol);
+            swap_block(&mut ops, &mut appends, block_of(key), block);
+        }
     }
 
     let insert_at = block_of("schema").map(|b| b.end).unwrap_or(0);

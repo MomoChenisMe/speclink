@@ -495,7 +495,7 @@ fn print_workflow_config(original: &str, label: &str, json: bool) -> Result<()> 
     } else {
         format!(
             "{}, critical {}, warning {}, suggestion {}",
-            baseline_name(review.baseline),
+            review.baseline.as_str(),
             review.critical.len(),
             review.warning.len(),
             review.suggestion.len()
@@ -503,13 +503,6 @@ fn print_workflow_config(original: &str, label: &str, json: bool) -> Result<()> 
     };
     println!("  {:<13}{review}", "review");
     Ok(())
-}
-/// The config-file spelling of a baseline mode.
-fn baseline_name(baseline: core::config::ReviewBaseline) -> &'static str {
-    match baseline {
-        core::config::ReviewBaseline::Extend => "extend",
-        core::config::ReviewBaseline::Replace => "replace",
-    }
 }
 /// A toggle's canonical display: `false` is never stored, so "not set" and
 /// "set to false" are the same state — name the default so it reads as one.
@@ -587,18 +580,14 @@ fn plan_workflow_config_edit(
             let mut target = current.review();
             target.baseline = *baseline;
             review = Some(target);
-            match baseline {
-                core::config::ReviewBaseline::Extend => "review.baseline = extend (default)".to_string(),
-                core::config::ReviewBaseline::Replace => "review.baseline = replace".to_string(),
-            }
+            let default = if *baseline == core::config::ReviewBaseline::default() { " (default)" } else { "" };
+            format!("review.baseline = {}{default}", baseline.as_str())
         }
     };
     let new_text = core::config::update_workflow_config_text(
         original,
         &fields,
-        &context,
-        rules.as_deref(),
-        review.as_ref(),
+        &core::config::ContentEdit { context, rules: rules.as_deref(), review: review.as_ref() },
     )?;
     Ok(WorkflowConfigEdit { new_text, summary })
 }
