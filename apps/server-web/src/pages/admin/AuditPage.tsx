@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Inbox } from "lucide-react";
 import {
   EmptyState,
@@ -22,6 +22,7 @@ import {
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
 import { auditLabel } from "../../lib/auditLabel";
+import { useListScroll } from "../../lib/useListScroll";
 import { useNarrow } from "../../lib/useMediaQuery";
 import { FilterSelect } from "../../components/FilterSelect";
 import { AdminError, AdminLoading } from "./states";
@@ -67,27 +68,26 @@ export function AuditPage() {
   const [to, setTo] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const { scrollRef, scrollToTop } = useListScroll();
+  // 回應帶著自己是用哪一頁抓的：頁碼拉回之後、舊回應清掉之前，仍認得出它是越界頁的回應。
   const { loading, data, error, reload } = useAsync(
-    async () => client.getAdminAudit({ q, action, source, from, to, page, limit: pageSize }),
+    async () => ({ page, audit: await client.getAdminAudit({ q, action, source, from, to, page, limit: pageSize }) }),
     [q, action, source, from, to, page, pageSize],
   );
-  // 最近一次成功的回應：重新抓取時 useAsync 會先清空 data，這裡留著上一份繼續顯示。
+  // 重抓期間換頁列仍可按，可能點到新結果已不存在的頁（伺服器對越界頁碼回空頁）：這份空回應不顯示、
+  // 也不留作「上一份」，頁碼拉回最後一頁重抓。
+  const outOfRange = data != null && data.page > Math.max(data.audit.totalPages, 1);
+  if (data && outOfRange && page === data.page) setPage(Math.max(data.audit.totalPages, 1));
+  const fresh = data && !outOfRange ? data.audit : null;
+  // 最近一次成功且頁碼有效的回應：重新抓取時 useAsync 會先清空 data，這裡留著上一份繼續顯示。
   const [lastData, setLastData] = useState<AdminAudit | null>(null);
-  if (data && data !== lastData) setLastData(data);
-  const shown = error == null ? (data ?? lastData) : null;
-  // 重抓期間換頁列仍可按，可能點到新結果已不存在的頁（伺服器對越界頁碼回空頁）：拉回最後一頁重抓。
-  const lastPage = data ? Math.max(data.totalPages, 1) : page;
-  if (page > lastPage) setPage(lastPage);
+  if (fresh && fresh !== lastData) setLastData(fresh);
+  const shown = error == null ? (fresh ?? lastData) : null;
 
   // 任何篩選或每頁筆數變動都回到第 1 頁：留在第 3 頁看新篩選的結果只會得到空白畫面。
   function refilter(apply: () => void) {
     apply();
     setPage(1);
-  }
-
-  function resetScroll() {
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }
 
   return (
@@ -165,11 +165,11 @@ export function AuditPage() {
               pageSize={pageSize}
               onPage={(next) => {
                 setPage(next);
-                resetScroll();
+                scrollToTop();
               }}
               onPageSize={(size) => {
                 refilter(() => setPageSize(size));
-                resetScroll();
+                scrollToTop();
               }}
             />
           }
@@ -191,7 +191,7 @@ export function AuditPage() {
           ) : (
             // 不包外層捲動容器：由列表卡的捲動區負責兩個方向的捲動，sticky 表頭才固定得住。
             <Table wrapped={false}>
-              <TableHeader className="sticky top-0 z-10 bg-card">
+              <TableHeader sticky>
                 <TableRow>
                   <TableHead>{t("audit.colTime")}</TableHead>
                   <TableHead>{t("audit.colAction")}</TableHead>

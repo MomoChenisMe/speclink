@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Mail, UserPlus } from "lucide-react";
 import {
@@ -32,6 +32,7 @@ import {
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
+import { useListScroll } from "../../lib/useListScroll";
 import { useNarrow } from "../../lib/useMediaQuery";
 import { userLabel } from "../../lib/userLabel";
 import { readFormError } from "../../lib/formError";
@@ -77,10 +78,7 @@ export function UsersPage() {
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const resetScroll = () => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  };
+  const { scrollRef, scrollToTop } = useListScroll();
   // 以 id 選取而非快照：列表重載後抽屜內容跟著更新，不會停留在舊資料。
   const selected = data?.users.find((u) => u.id === selectedId) ?? null;
   const needle = q.trim().toLowerCase();
@@ -90,8 +88,8 @@ export function UsersPage() {
     (u) => (status === "" || (status === "active" ? u.active : !u.active)) && matches(u.display, u.email),
   );
   const visiblePending = (data?.pending ?? []).filter((i) => matches(i.email, i.display));
-  const users = usePaging(visible, { onMove: resetScroll });
-  const pending = usePaging(visiblePending, { onMove: resetScroll });
+  const users = usePaging(visible, { onMove: scrollToTop });
+  const pending = usePaging(visiblePending, { onMove: scrollToTop });
 
   // 搜尋、篩選與切分頁都回到第 1 頁。
   function firstPage() {
@@ -103,7 +101,7 @@ export function UsersPage() {
   function switchTab(next: string) {
     setSearchParams(next === "pending" ? { tab: "pending" } : {}, { replace: true });
     firstPage();
-    resetScroll();
+    scrollToTop();
   }
 
   async function runConfirmed() {

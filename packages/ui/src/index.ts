@@ -107,6 +107,9 @@ export type { DocumentViewerProps } from "./components/DocumentViewer";
 export { TicketView, type TicketViewProps } from "./components/TicketView";
 export { SeverityTag } from "./components/SeverityTag";
 
+// 列滑過才出現的控制項（複製鈕、撤銷鈕）共用的顯隱 class
+export { REVEAL_ON_GROUP_HOVER } from "./reveal";
+
 // 狀態語意色（單一來源；三紅分工見 tone.ts 表頭）
 export { SEMANTIC_TONE, SEMANTIC_SURFACE, type SemanticTone } from "./tone";
 
@@ -144,6 +147,7 @@ export { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 export { Input } from "./components/ui/input";
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "./components/ui/tooltip";
 export {
+  SELECT_ALL,
   Select,
   SelectGroup,
   SelectValue,

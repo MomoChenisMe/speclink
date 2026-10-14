@@ -15,10 +15,13 @@ export const Table = React.forwardRef<
 });
 Table.displayName = "Table";
 
+/** `sticky`：表頭固定在捲動區頂端並帶卡片底色蓋住底下的列（列表卡內的表格；搭配 `Table wrapped={false}`）。 */
 export const TableHeader = React.forwardRef<
   HTMLTableSectionElement,
-  React.HTMLAttributes<HTMLTableSectionElement>
->(({ className, ...props }, ref) => <thead ref={ref} className={cn(className)} {...props} />);
+  React.HTMLAttributes<HTMLTableSectionElement> & { sticky?: boolean }
+>(({ className, sticky = false, ...props }, ref) => (
+  <thead ref={ref} className={cn(sticky && "sticky top-0 z-10 bg-card", className)} {...props} />
+));
 TableHeader.displayName = "TableHeader";
 
 export const TableBody = React.forwardRef<

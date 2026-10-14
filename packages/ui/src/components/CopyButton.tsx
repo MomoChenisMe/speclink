@@ -2,12 +2,12 @@ import { Check, Copy } from "lucide-react";
 
 import { useI18n } from "../i18n";
 import { cn } from "../lib/utils";
+import { REVEAL_ON_GROUP_HOVER } from "../reveal";
 import { Button } from "./ui/button";
 import { useCopied } from "./useCopied";
 
 /** hover 才顯現、複製成功期間保持可見——卡片標題旁的複製鈕共用這組 class。 */
-export const REVEAL_ON_HOVER =
-  "opacity-0 transition-opacity group-hover:opacity-100 data-[copied]:opacity-100";
+export const REVEAL_ON_HOVER = `${REVEAL_ON_GROUP_HOVER} data-[copied]:opacity-100`;
 
 export interface CopyButtonProps {
   value: string;

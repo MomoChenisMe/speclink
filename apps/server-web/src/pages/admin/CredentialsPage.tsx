@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Inbox, KeyRound, MonitorSmartphone } from "lucide-react";
 import {
@@ -20,6 +20,7 @@ import {
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
+import { useListScroll } from "../../lib/useListScroll";
 import { useNarrow } from "../../lib/useMediaQuery";
 import { FilterSelect } from "../../components/FilterSelect";
 import { NoMatchState } from "../../components/NoMatchState";
@@ -67,10 +68,7 @@ export function CredentialsPage() {
   const [tab, setTab] = useState("keys");
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const resetScroll = () => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  };
+  const { scrollRef, scrollToTop } = useListScroll();
 
   async function runConfirmed() {
     if (!confirm || busy) return;
@@ -92,8 +90,8 @@ export function CredentialsPage() {
   const devices = (data?.deviceFamilies ?? []).filter(
     (f) => keep(f.revokedAt) && matches([f.source], q),
   );
-  const patPaging = usePaging(pats, { onMove: resetScroll });
-  const devicePaging = usePaging(devices, { onMove: resetScroll });
+  const patPaging = usePaging(pats, { onMove: scrollToTop });
+  const devicePaging = usePaging(devices, { onMove: scrollToTop });
   const nothingAtAll =
     data != null && data.pats.length === 0 && data.deviceFamilies.length === 0;
 
@@ -169,7 +167,7 @@ export function CredentialsPage() {
             onValueChange={(next) => {
               setTab(next);
               firstPage();
-              resetScroll();
+              scrollToTop();
             }}
             className="flex min-h-0 flex-1 flex-col"
           >

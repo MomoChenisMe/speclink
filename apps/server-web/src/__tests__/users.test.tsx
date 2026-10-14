@@ -237,6 +237,18 @@ describe("搜尋、篩選與換頁", () => {
     expect(screen.queryByText(/^第 .+ 筆，共 .+ 筆$/)).toBeNull();
   });
 
+  it("頁面填滿主內容區、列在列表卡的捲動區內，換頁列在捲動區之外", async () => {
+    renderAt("/admin/users", makeAdminClient());
+    const row = await screen.findByRole("button", { name: "Member" });
+    const scroll = row.closest("[data-list-scroll]") as HTMLElement;
+    expect(scroll).toBeTruthy();
+    expect(scroll.contains(screen.getByText("第 1–2 筆，共 2 筆"))).toBe(false);
+    const root = screen
+      .getByRole("heading", { level: 1, name: "使用者" })
+      .closest("[data-page-header]")?.parentElement as HTMLElement;
+    expect(root.className.split(/\s+/)).toEqual(expect.arrayContaining(["h-full", "min-h-0", "flex-col"]));
+  });
+
   it("25 位使用者時換頁列為「第 1–20 筆，共 25 筆」，按第 2 頁後只列第 21–25 位", async () => {
     const client = makeAdminClient({ getAdminUsers: vi.fn(async () => ({ users: makeUsers(25), pending: [] })) });
     renderAt("/admin/users", client);
