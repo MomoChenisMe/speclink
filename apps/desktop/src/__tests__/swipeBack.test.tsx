@@ -6,19 +6,13 @@ import { act, cleanup, render } from "@testing-library/react";
 import { listen } from "@tauri-apps/api/event";
 
 import { SWIPE_THRESHOLD, SwipeBack } from "../components/SwipeBack";
+import { type GestureHandler, gesture, gestureHandlers } from "./helpers/trackpadGesture";
 
-// 攔下 Tauri 事件層：捕捉 trackpad-gesture 的處理器，測試以 gesture() 模擬手指按下與離開。
-type GestureHandler = (e: { payload: { phase: "began" | "ended"; swipeEnabled: boolean } }) => void;
-const { gestureHandlers } = vi.hoisted(() => ({ gestureHandlers: [] as GestureHandler[] }));
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn((event: string, handler: GestureHandler) => {
-    if (event === "trackpad-gesture") gestureHandlers.push(handler);
-    return Promise.resolve(() => {
-      const i = gestureHandlers.indexOf(handler);
-      if (i >= 0) gestureHandlers.splice(i, 1);
-    });
-  }),
-}));
+// 攔下 Tauri 事件層：trackpad-gesture 的處理器交給共用替身，測試以 gesture() 模擬手指按下與離開。
+vi.mock("@tauri-apps/api/event", async () => {
+  const { subscribeGesture } = await import("./helpers/trackpadGesture");
+  return { listen: vi.fn((_event: string, handler: GestureHandler) => subscribeGesture(handler)) };
+});
 
 // 假計時器且從不推進：結算若仍靠計時器，onBack 就不會在 ended 的當下被呼叫。
 beforeEach(() => {
@@ -32,13 +26,6 @@ afterEach(() => {
 });
 
 const indicator = () => document.querySelector("[data-swipe-back]") as HTMLElement;
-
-/** 原生層的手指按下／離開；ended 的 swipeEnabled 恆為 false（Rust 端如此送）。 */
-function gesture(phase: "began" | "ended", swipeEnabled = phase === "began") {
-  act(() => {
-    for (const h of [...gestureHandlers]) h({ payload: { phase, swipeEnabled } });
-  });
-}
 
 /** 送一個 wheel 事件；`inverted` 對應 WebKit 的自然捲動旗標（缺席＝不帶此欄位）。 */
 function wheel(
@@ -134,17 +121,35 @@ describe("SwipeBack", () => {
     expect(indicator().getAttribute("data-progress")).toBe("0.00");
     gesture("ended");
     expect(onBack).not.toHaveBeenCalled();
+    // 設定改回允許兩指：下一次手勢即可返回。
+    swipe([-50, -50, -50, -50]);
+    expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it("MayBegin 之後的 Began（tracking 中再收 began）不歸零累計", () => {
+  it("同一手勢的 MayBegin 與 Began 各送一次 began：第二次歸零時尚未移動，放開照常返回", () => {
     const onBack = vi.fn();
     render(<SwipeBack enabled onBack={onBack} />);
     gesture("began");
-    wheel(window, -60);
     gesture("began");
-    wheel(window, -60);
+    for (let i = 0; i < 4; i++) wheel(window, -50);
     gesture("ended");
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  // ended 遺失（系統沒送 Cancelled）時，下一次 began 就是新手勢；輕觸不移動也是 began（MayBegin）→ended。
+  it.each([
+    { next: "允許兩指滑動", swipeEnabled: true },
+    { next: "系統設定已改為不允許", swipeEnabled: false },
+  ])("ended 遺失、指示停在實心後，下一次 began（$next）從零開始：輕觸放開不返回", ({ swipeEnabled }) => {
+    const onBack = vi.fn();
+    render(<SwipeBack enabled onBack={onBack} />);
+    gesture("began");
+    for (let i = 0; i < 4; i++) wheel(window, -50);
+    expect(indicator().getAttribute("data-armed")).toBe("true");
+    gesture("began", swipeEnabled);
+    expect(indicator().getAttribute("data-progress")).toBe("0.00");
+    gesture("ended");
+    expect(onBack).not.toHaveBeenCalled();
   });
 
   it("先垂直捲動 40px 再向右滑 200px：整次手勢取消，放開不返回", () => {
@@ -156,6 +161,9 @@ describe("SwipeBack", () => {
     expect(indicator().getAttribute("data-progress")).toBe("0.00");
     gesture("ended");
     expect(onBack).not.toHaveBeenCalled();
+    // 取消只持續到手指離開：下一次手勢重新判定。
+    swipe([-50, -50, -50, -50]);
+    expect(onBack).toHaveBeenCalledTimes(1);
   });
 
   it("純水平 200px 夾少量垂直晃動（累計 8px）不取消，放開即返回", () => {

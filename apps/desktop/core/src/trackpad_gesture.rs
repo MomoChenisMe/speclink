@@ -49,24 +49,22 @@ pub fn classify_scroll_phase(phase_bits: u64, momentum_bits: u64) -> Option<Trac
 mod tests {
     use super::*;
 
-    // NSEventPhase 位元值（與 AppKit 相同）。
+    // 判讀不認的 NSEventPhase 位元（AppKit 定義）；認的沿用上方 PHASE_*。
     const NONE: u64 = 0;
-    const BEGAN: u64 = 0x1;
     const CHANGED: u64 = 0x4;
-    const ENDED: u64 = 0x8;
-    const CANCELLED: u64 = 0x10;
-    const MAY_BEGIN: u64 = 0x20;
 
     #[test]
     fn finger_down_phases_classify_as_began() {
-        assert_eq!(classify_scroll_phase(MAY_BEGIN, NONE), Some(TrackpadGesturePhase::Began));
-        assert_eq!(classify_scroll_phase(BEGAN, NONE), Some(TrackpadGesturePhase::Began));
+        // MayBegin（手指觸碰、尚未移動）也算按下：輕觸不移動（MayBegin→Cancelled）因此是
+        // began→ended，前端在 ended 遺失、卡在追蹤中時也會先歸零，不把輕觸當成結算。
+        assert_eq!(classify_scroll_phase(PHASE_MAY_BEGIN, NONE), Some(TrackpadGesturePhase::Began));
+        assert_eq!(classify_scroll_phase(PHASE_BEGAN, NONE), Some(TrackpadGesturePhase::Began));
     }
 
     #[test]
     fn finger_up_phases_classify_as_ended() {
-        assert_eq!(classify_scroll_phase(ENDED, NONE), Some(TrackpadGesturePhase::Ended));
-        assert_eq!(classify_scroll_phase(CANCELLED, NONE), Some(TrackpadGesturePhase::Ended));
+        assert_eq!(classify_scroll_phase(PHASE_ENDED, NONE), Some(TrackpadGesturePhase::Ended));
+        assert_eq!(classify_scroll_phase(PHASE_CANCELLED, NONE), Some(TrackpadGesturePhase::Ended));
     }
 
     #[test]
@@ -87,8 +85,8 @@ mod tests {
     #[test]
     fn momentum_wins_over_finger_bits() {
         // 慣性事件不得開始或結束一次滑動，即使 phase 位元同時帶了按下／離開。
-        assert_eq!(classify_scroll_phase(BEGAN, BEGAN), None);
-        assert_eq!(classify_scroll_phase(ENDED, ENDED), None);
+        assert_eq!(classify_scroll_phase(PHASE_BEGAN, PHASE_BEGAN), None);
+        assert_eq!(classify_scroll_phase(PHASE_ENDED, PHASE_ENDED), None);
     }
 
     #[test]
