@@ -18,6 +18,66 @@ import {
 import { TrayPanel } from "../panel/TrayPanel";
 import { APP_MESSAGES } from "../i18n/messages";
 import type { TraySnapshot } from "../tray";
+import { PanelRoot } from "../panel/main";
+import { emit, listen } from "@tauri-apps/api/event";
+
+vi.mock("@tauri-apps/api/event", () => ({
+  emit: vi.fn().mockResolvedValue(undefined),
+  listen: vi.fn().mockResolvedValue(() => {}),
+}));
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ setSize: vi.fn().mockResolvedValue(undefined) }),
+  LogicalSize: class { constructor(public width: number, public height: number) {} },
+}));
+vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: vi.fn() }));
+
+describe("面板入口配色握手", () => {
+  it("先等訂閱才 ready，首次快照套色後呈現，重開與後續快照皆使用最新值", async () => {
+    vi.mocked(emit).mockClear();
+    let callback!: (event: { payload: TraySnapshot }) => void;
+    let finish!: (unlisten: () => void) => void;
+    const stop = vi.fn();
+    vi.mocked(listen).mockImplementationOnce((_event, handler) => {
+      callback = handler as typeof callback;
+      return new Promise((resolve) => { finish = resolve; });
+    });
+    const view = render(<PanelRoot />);
+    view.container.id = "root";
+    expect(emit).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("panel-header")).toBeNull();
+    await act(async () => { finish(stop); });
+    expect(emit).toHaveBeenCalledWith("tray-panel-ready", {});
+    act(() => callback({ payload: snapshot({ effectiveTheme: "light" }) }));
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(screen.getByTestId("panel-header")).toBeTruthy();
+    act(() => callback({ payload: snapshot({ effectiveTheme: "dark" }) }));
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    view.unmount();
+    expect(stop).toHaveBeenCalledOnce();
+    vi.mocked(listen).mockImplementationOnce(async (_event, handler) => {
+      callback = handler as typeof callback;
+      return stop;
+    });
+    const second = render(<PanelRoot />);
+    await act(async () => {});
+    act(() => callback({ payload: snapshot({ effectiveTheme: "dark" }) }));
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(screen.getByTestId("panel-header")).toBeTruthy();
+    second.unmount();
+  });
+
+  it("訂閱尚未完成就卸載時不送 ready，並清理延遲的監聽", async () => {
+    vi.mocked(emit).mockClear();
+    let finish!: (unlisten: () => void) => void;
+    const stop = vi.fn();
+    vi.mocked(listen).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const view = render(<PanelRoot />);
+    view.unmount();
+    await act(async () => { finish(stop); });
+    expect(stop).toHaveBeenCalledOnce();
+    expect(emit).not.toHaveBeenCalled();
+  });
+});
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider locale="zh-TW" messages={APP_MESSAGES}>
@@ -32,6 +92,7 @@ function change(over: Partial<ChangeItem> & { name: string }): ChangeItem {
 
 function snapshot(over: Partial<TraySnapshot> = {}): TraySnapshot {
   return {
+    effectiveTheme: "light",
     tabs: [
       { key: "local:/proj/one", name: "one", source: "local", status: "ready" },
       { key: "local:/proj/two", name: "two", source: "local", status: "ready" },

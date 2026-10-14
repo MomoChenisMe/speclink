@@ -12,6 +12,7 @@ import { TrayPanel } from "./TrayPanel";
 import { APP_MESSAGES } from "../i18n/messages";
 import { readLocalePreference, resolveUiLocale } from "../i18n/locale";
 import type { TraySnapshot } from "../tray";
+import { applyTheme } from "../theme";
 import "@fontsource-variable/noto-sans-tc";
 import "../index.css";
 
@@ -22,21 +23,35 @@ document.body.style.background = "transparent";
 const PANEL_WIDTH = 320;
 const PANEL_MAX_HEIGHT = 640;
 
-function PanelRoot() {
+export function PanelRoot() {
   const [snap, setSnap] = useState<TraySnapshot | null>(null);
   useEffect(() => {
-    const unlisten = listen<TraySnapshot>("tray-snapshot", (e) => setSnap(e.payload));
-    // 面板 lazy 建立：掛好監聽後向主視窗請求一次快照，避免首開空窗。
-    void emit("tray-panel-ready", {});
+    let disposed = false;
+    let stop: (() => void) | undefined;
+    void listen<TraySnapshot>("tray-snapshot", (e) => {
+      if (disposed) return;
+      applyTheme(e.payload.effectiveTheme);
+      setSnap(e.payload);
+    }).then((unlisten) => {
+      if (disposed) unlisten();
+      else {
+        stop = unlisten;
+        // 監聽確定掛好才請求首份快照，避免 lazy 建窗時漏接回覆。
+        return emit("tray-panel-ready", {});
+      }
+    }).catch((error) => console.error("tray panel snapshot subscription failed", error));
     return () => {
-      void unlisten.then((f) => f());
+      disposed = true;
+      stop?.();
     };
   }, []);
+  const ready = snap !== null;
   // 視窗高度自適應內容（三段式版面）：root 以 h-screen 撐滿視窗，直接量 root
   // 會與 setSize 形成「視窗高⇄root 高」循環——改以「root 現高 − 中段可視高 ＋
   // 中段內容自然高」還原無約束總高（＝頁首＋中段自然內容高＋頁尾＋留白），
   // 上限 640 後由中段內部捲動，失敗靜默。
   useEffect(() => {
+    if (!ready) return;
     const root = document.getElementById("root");
     if (!root) return;
     const win = getCurrentWindow();
@@ -58,10 +73,11 @@ function PanelRoot() {
     }
     fit();
     return () => observer.disconnect();
-  }, []);
+  }, [ready]);
   const act = (kind: string, id?: string) => {
     void emit("tray-panel-action", { kind, id });
   };
+  if (!ready) return null;
   return (
     <TrayPanel
       snapshot={snap}

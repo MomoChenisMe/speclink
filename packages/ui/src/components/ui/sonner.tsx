@@ -19,7 +19,7 @@ const TOKEN_CLASS_NAMES = {
     "!border-border !bg-card !text-muted-foreground hover:!bg-accent hover:!text-accent-foreground",
 };
 
-function Toaster({ toastOptions, style, ...props }: ToasterProps) {
+function Toaster({ toastOptions, style, theme = "system", ...props }: ToasterProps) {
   const { t } = useI18n();
   const classNames = toastOptions?.classNames;
 
@@ -27,7 +27,7 @@ function Toaster({ toastOptions, style, ...props }: ToasterProps) {
     <Sonner
       {...props}
       style={{ ...TOKEN_STYLE, ...style }}
-      theme="system"
+      theme={theme}
       duration={6000}
       closeButton
       visibleToasts={1}

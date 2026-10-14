@@ -37,6 +37,22 @@ afterEach(() => {
 });
 
 describe("Toaster", () => {
+  it("明示深色優先於系統淺色，已顯示的 toast 可即時換色", async () => {
+    const view = renderToaster({ theme: "dark" });
+    act(() => { toast.error("切換配色", { id: TOAST_ID }); });
+    await screen.findByText("切換配色");
+    expect(document.querySelector("[data-sonner-toaster]")?.getAttribute("data-sonner-theme")).toBe("dark");
+    view.rerender(<I18nProvider locale="zh-TW"><Toaster theme="light" /></I18nProvider>);
+    expect(document.querySelector("[data-sonner-toaster]")?.getAttribute("data-sonner-theme")).toBe("light");
+    expect(screen.getByText("切換配色")).toBeTruthy();
+  });
+
+  it("未指定 theme 仍使用系統淺色", async () => {
+    renderToaster();
+    act(() => { toast.error("系統配色", { id: TOAST_ID }); });
+    await screen.findByText("系統配色");
+    expect(document.querySelector("[data-sonner-toaster]")?.getAttribute("data-sonner-theme")).toBe("light");
+  });
   it("沿用主介面 tokens，並以 destructive 局部標示 error toast", async () => {
     renderToaster();
 

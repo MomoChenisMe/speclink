@@ -102,6 +102,7 @@ const textToEntries = (text: string) =>
 const isLongContext = (text: string) => text.split("\n").length > 12 || text.length > 1200;
 
 export interface ProjectSettingsViewProps {
+  projectDirectory?: string | null;
   /** 活躍 session 的設定面（root 已綁定；workspace-session 決策 3）。 */
   settings: WorkspaceSettingsProvider;
 }
@@ -207,7 +208,7 @@ function CardEditControls({
   );
 }
 
-export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
+export function ProjectSettingsView({ settings, projectDirectory = null }: ProjectSettingsViewProps) {
   const { t } = useI18n();
   const [snap, setSnap] = useState<SettingsSnapshot | null>(null);
   const [tools, setTools] = useState<string[]>([]);
@@ -673,6 +674,12 @@ export function ProjectSettingsView({ settings }: ProjectSettingsViewProps) {
 
   return (
     <div className="max-w-2xl mx-auto w-full">
+      <div className="mb-4 flex flex-col gap-1 rounded-lg border border-border bg-card p-4">
+        <span className="text-sm font-medium">{t("settings.projectDirectory")}</span>
+        <span data-testid="project-directory" className="font-mono text-sm text-muted-foreground select-text [overflow-wrap:anywhere]">
+          {projectDirectory ?? t("settings.noLocalDirectory")}
+        </span>
+      </div>
       {/* remote 409 對照面板：置於頁簽之外——政策與 schema 兩簽的寫入都可能
           撞衝突，面板必須在任一簽都可見（review R5）。 */}
       {conflict !== null && (

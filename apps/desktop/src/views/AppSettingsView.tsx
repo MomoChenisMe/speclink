@@ -1,4 +1,5 @@
 import { AlertTriangle } from "lucide-react";
+import { useState } from "react";
 import {
   Button,
   Card,
@@ -18,6 +19,7 @@ import { ServersPanel, type ServersPanelProps } from "../components/ServersPanel
 import type { LocalePreference } from "../i18n/locale";
 import type { UpdaterState } from "../core/updater";
 import type { CliInstallView } from "../store";
+import type { ThemePreference } from "../theme";
 
 /** 軟體更新卡的注入面：狀態機現值＋手動檢查入口＋更新日誌瀏覽入口＋常駐現版號（null＝尚未取得）。 */
 export interface AppSettingsUpdaterProps {
@@ -29,6 +31,8 @@ export interface AppSettingsUpdaterProps {
 }
 
 export interface AppSettingsViewProps {
+  themePref?: ThemePreference;
+  onThemePrefChange?: (pref: ThemePreference) => void;
   /** UI 語言偏好現值（null＝跟隨系統）。 */
   localePref: LocalePreference;
   /** 切換即時生效並持久化（App 層負責寫 localStorage）。 */
@@ -124,6 +128,8 @@ function TrayPanelError({ message }: { message: string }) {
 
 /** 與任何 workspace 分頁無關的應用程式設定：本機偏好與伺服器連線。 */
 export function AppSettingsView({
+  themePref = "system",
+  onThemePrefChange,
   localePref,
   onLocalePrefChange,
   trayPanelError = null,
@@ -133,6 +139,7 @@ export function AppSettingsView({
   cliInstall,
 }: AppSettingsViewProps) {
   const { t } = useI18n();
+  const [themeError, setThemeError] = useState<string | null>(null);
   const uiLocaleOptions: Array<{ value: LocalePreference; label: string }> = [
     { value: null, label: t("settings.followSystem") },
     { value: "zh-TW", label: "繁體中文" },
@@ -154,6 +161,45 @@ export function AppSettingsView({
           <span data-testid="local-note" className="text-xs text-muted-foreground">
             {t("settings.localTabNote")}
           </span>
+          <Card data-testid="ui-theme-card">
+            <CardHeader>
+              <CardTitle className="text-base">{t("settings.appearance")}</CardTitle>
+            </CardHeader>
+            <CardContent className="gap-2">
+              <div className="flex gap-1.5" role="group" aria-label={t("settings.appearance")}>
+                {(["system", "light", "dark"] as const).map((value) => (
+                  <Button
+                    key={value}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    aria-pressed={themePref === value}
+                    className={cn(
+                      "text-sm font-normal",
+                      themePref === value
+                        ? "border-primary bg-primary/8 font-medium text-primary hover:bg-primary/8 hover:text-primary"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    onClick={() => {
+                      try {
+                        onThemePrefChange?.(value);
+                        setThemeError(null);
+                      } catch (error) {
+                        setThemeError(String(error));
+                      }
+                    }}
+                  >
+                    {t(`settings.theme.${value}`)}
+                  </Button>
+                ))}
+              </div>
+              {themeError && (
+                <p role="alert" className="m-0 text-xs text-destructive">
+                  {t("settings.appearanceSaveFailed")} {themeError}
+                </p>
+              )}
+            </CardContent>
+          </Card>
           <Card data-testid="ui-locale-card">
             <CardHeader>
               <CardTitle className="text-base">{t("settings.uiLocaleLabel")}</CardTitle>

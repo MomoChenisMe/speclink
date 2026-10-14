@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Archive,
@@ -74,8 +74,10 @@ import {
   type LocalePreference,
 } from "./i18n/locale";
 import { setAppT } from "./i18n/runtime";
+import { createThemeController, type ThemeController } from "./theme";
 
 export interface AppProps {
+  theme?: ThemeController;
   /** local session 工廠（root 綁定 dataSource／settings／events；workspace-session 決策 3/6）。 */
   createSession: (root: string, name: string) => WorkspaceSession;
   /** remote session 工廠（remote-data-source 決策 6/7）：handshake 成功回
@@ -185,7 +187,10 @@ export function App({
   migration = DEFAULT_MIGRATION_ADAPTER,
   updater,
   cliInstall,
+  theme: providedTheme,
 }: AppProps) {
+  const [theme] = useState(() => providedTheme ?? createThemeController());
+  const appearance = useSyncExternalStore(theme.subscribe, theme.getSnapshot);
   const [localePref, setLocalePrefState] = useState<LocalePreference>(() => readLocalePreference());
   // 切換即時生效並持久化（設定頁的 UI 語言三選接這裡）。
   const setLocalePref = (pref: LocalePreference) => {
@@ -208,13 +213,17 @@ export function App({
         cliInstall={cliInstall}
         localePref={localePref}
         onLocalePrefChange={setLocalePref}
+        theme={theme}
+        appearance={appearance}
       />
-      <Toaster />
+      <Toaster theme={appearance.effectiveTheme} />
     </I18nProvider>
   );
 }
 
 interface AppInnerProps extends AppProps {
+  theme: ThemeController;
+  appearance: ReturnType<ThemeController["getSnapshot"]>;
   /** UI 語言偏好現值（null＝跟隨系統）；設定頁三選用。 */
   localePref: LocalePreference;
   onLocalePrefChange: (pref: LocalePreference) => void;
@@ -231,6 +240,8 @@ function AppInner({
   cliInstall,
   localePref,
   onLocalePrefChange,
+  theme,
+  appearance,
 }: AppInnerProps) {
   const useStore = useMemo(
     () =>
@@ -436,7 +447,7 @@ function AppInner({
         useStore.getState().panelFallback(String(e));
       });
     };
-    initTray(useStore, { onPanelToggle })
+    initTray(useStore, { onPanelToggle, theme })
       .then((c) => {
         if (disposed) c.dispose();
         else controller = c;
@@ -448,7 +459,7 @@ function AppInner({
       disposed = true;
       controller?.dispose();
     };
-  }, [useStore]);
+  }, [useStore, theme]);
 
   // 鍵盤切換分頁：Ctrl+Tab 循環、Ctrl+1..9 直達（spec「專案分頁列存於 app 本機」）。
   useEffect(() => {
@@ -720,6 +731,8 @@ function AppInner({
           )}
           {s.boardView === "settings" ? (
             <AppSettingsView
+              themePref={appearance.preference}
+              onThemePrefChange={theme.setPreference}
               localePref={localePref}
               onLocalePrefChange={onLocalePrefChange}
               trayPanelError={s.trayPanelError}
@@ -753,7 +766,14 @@ function AppInner({
               onRemove={() => s.closeTab(locatorKey(activeRecoveryTab.locator))}
             />
           ) : s.boardView === "project-settings" && activeSession !== undefined ? (
-            <ProjectSettingsView settings={activeSession.settings} />
+            <ProjectSettingsView
+              settings={activeSession.settings}
+              projectDirectory={
+                activeSession.locator.kind === "local"
+                  ? activeSession.locator.root
+                  : activeSession.locator.checkoutRoot ?? null
+              }
+            />
           ) : s.boardView === "manual" ? (
             <ManualPage
               index={s.manual}

@@ -24,6 +24,7 @@ import type {
 } from "../session";
 import type { ConnectionView } from "../adapter/connections";
 import { trayIconBytes } from "../trayIcon";
+import { createThemeController } from "../theme";
 
 // tray.ts 於頂層 import @tauri-apps/api 的 tray/menu/window/image（＋面板模式的 webviewWindow/dpi）；
 // 於 jsdom 下以樁替，使模組載入安全並讓接線測試可攔截呼叫。純函式測試不觸及這些。
@@ -79,6 +80,7 @@ function change(over: Partial<ChangeItem> & { name: string }): ChangeItem {
 /** 典型快照：兩分頁（p1 作用中）、一提案／一進行中／一已就緒、兩討論。 */
 function snapshot(over: Partial<TraySnapshot> = {}): TraySnapshot {
   return {
+    effectiveTheme: "light",
     tabs: [
       { key: "local:/proj/one", name: "one", source: "local", status: "ready" },
       { key: "local:/proj/two", name: "two", source: "local", status: "ready" },
@@ -500,6 +502,32 @@ describe("initTray 接線（選單）", () => {
     });
     vi.mocked(TrayIcon.new).mockResolvedValue(trayObj as never);
     vi.mocked(getCurrentWindow).mockReturnValue(win as never);
+  });
+
+  it("無 workspace 更新時配色仍即推，首次 ready 取最新值且 dispose 取消監聽", async () => {
+    localStorage.removeItem("speclink.uiTheme");
+    const media = new EventTarget() as MediaQueryList;
+    Object.defineProperty(media, "matches", { configurable: true, value: false });
+    const theme = createThemeController(media);
+    const bag = makeStore();
+    const controller = await initTray(bag.store, { isMacOS: true, theme });
+    const ready = vi.mocked(tauriListen).mock.calls.find(([name]) => name === "tray-panel-ready")![1];
+    ready({} as never);
+    expect(tauriEmit).toHaveBeenLastCalledWith("tray-snapshot", expect.objectContaining({ effectiveTheme: "light" }));
+    vi.mocked(tauriEmit).mockClear();
+    theme.setPreference("dark");
+    expect(tauriEmit).toHaveBeenLastCalledWith("tray-snapshot", expect.objectContaining({ effectiveTheme: "dark" }));
+    theme.setPreference("system");
+    Object.defineProperty(media, "matches", { value: true });
+    media.dispatchEvent(new Event("change"));
+    expect(tauriEmit).toHaveBeenLastCalledWith("tray-snapshot", expect.objectContaining({ effectiveTheme: "dark" }));
+    ready({} as never);
+    expect(tauriEmit).toHaveBeenLastCalledWith("tray-snapshot", expect.objectContaining({ effectiveTheme: "dark" }));
+    controller.dispose();
+    vi.mocked(tauriEmit).mockClear();
+    theme.setPreference("light");
+    expect(tauriEmit).not.toHaveBeenCalled();
+    localStorage.removeItem("speclink.uiTheme");
   });
 
   it("建立 tray 圖示並掛上由當前快照組出的選單（含兩專案 check 項）", async () => {

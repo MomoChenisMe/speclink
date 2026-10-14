@@ -9,6 +9,7 @@ import { RELEASE_NOTES } from "../release-notes/release-notes";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 import { STALE_PROBE } from "./helpers/assetFixtures";
 import { changeList, sharedBoardRequirement } from "./helpers/changeList";
+import { fakeRemoteSession, REMOTE_KEY } from "./helpers/remoteFixtures";
 import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
 // 模擬 Tauri 事件層：捕捉 workspace-changed 的訂閱 handler，測試可手動觸發。
@@ -48,8 +49,8 @@ vi.mock("@speclink/ui", async (importOriginal) => {
       drawerSpy.disc.push(props);
       return <mod.DiscussionDrawer {...(props as object) as Parameters<typeof mod.DiscussionDrawer>[0]} />;
     },
-    Toaster: () => {
-      toasterSpy();
+    Toaster: (props: object) => {
+      toasterSpy(props);
       return <div data-testid="app-toaster" />;
     },
   };
@@ -62,6 +63,7 @@ beforeEach(() => {
   toasterSpy.mockClear();
   // 各測試自行預置分頁持久化；先清掉避免跨測試洩漏。
   localStorage.removeItem("speclink.projectTabs");
+  localStorage.removeItem("speclink.uiTheme");
   // 技能檔提示的「保留現狀」記憶也是 localStorage：清掉，免得一條測試按過
   // 保留現狀就讓後面期待提示出現的測試依執行順序逾時。
   localStorage.removeItem("speclink.instructionSkips");
@@ -82,6 +84,52 @@ function fakeWorkspace() {
     pickFolder: vi.fn().mockResolvedValue(null),
   };
 }
+
+describe("App 外觀偏好", () => {
+  it.each([undefined, "/work/checkout-a"])("遠端 session 的本機目錄 %s 在離線時仍可檢視", async (checkoutRoot) => {
+    const remote = fakeRemoteSession(fakeDataSource());
+    remote.settings = { ...fakeSettings(), kind: "remote", policyWrite: true } as never;
+    remote.locator = { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend", checkoutRoot };
+    remote.connectionState = { state: "offline" } as never;
+    localStorage.setItem("speclink.projectTabs", JSON.stringify({ version: 2, tabs: [{ locator: remote.locator, name: "Demo/backend" }], activeKey: REMOTE_KEY }));
+    render(<App createSession={makeSession(fakeDataSource())} workspace={fakeWorkspace() as never} openRemote={async () => remote} />);
+    await waitFor(() => expect(screen.getByText("Demo/backend")).toBeTruthy());
+    fireEvent.click(await screen.findByText("專案設定"));
+    expect((await screen.findByTestId("project-directory")).textContent).toBe(checkoutRoot ?? "未連結本機目錄");
+  });
+
+  it("切換專案後目錄跟上，不保留上一專案", async () => {
+    const paths = ["/work/project-a", "/work/project-b"];
+    localStorage.setItem("speclink.projectTabs", JSON.stringify({ version: 2, tabs: paths.map((root) => ({ locator: { kind: "local", root }, name: root })), activeKey: `local:${paths[0]}` }));
+    const ws = fakeWorkspace();
+    ws.openProject.mockImplementation(async (root: string) => ({ status: "project", root, name: root }));
+    render(<App createSession={makeSession(fakeDataSource())} workspace={ws as never} />);
+    fireEvent.click(await screen.findByText("專案設定"));
+    expect((await screen.findByTestId("project-directory")).textContent).toBe(paths[0]);
+    fireEvent.click(screen.getByText(paths[1]));
+    await waitFor(() => expect(screen.getByTestId("project-directory").textContent).toBe(paths[1]));
+  });
+
+  it("專案設定目錄使用作用中 session 的位置", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByText("專案設定"));
+    expect((await screen.findByTestId("project-directory")).textContent).toBe("A");
+  });
+  it("無專案仍能切換配色，重掛載恢復選擇", async () => {
+    const props = { createSession: makeSession(fakeDataSource()), workspace: fakeWorkspace() as never };
+    const first = render(<App {...props} />);
+    fireEvent.click(await screen.findByText("設定"));
+    fireEvent.click(await screen.findByRole("button", { name: "深色" }));
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(toasterSpy).toHaveBeenLastCalledWith({ theme: "dark" });
+    expect(localStorage.getItem("speclink.uiTheme")).toBe("dark");
+    first.unmount();
+    render(<App {...props} />);
+    fireEvent.click(await screen.findByText("設定"));
+    expect((await screen.findByRole("button", { name: "深色" })).getAttribute("aria-pressed")).toBe("true");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+  });
+});
 
 /** 活躍 session 的設定面 mock（設定頁經 session.settings 讀寫）。 */
 function fakeSettings() {

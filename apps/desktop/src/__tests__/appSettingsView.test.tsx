@@ -5,6 +5,7 @@ import { I18nProvider, SEMANTIC_TONE } from "@speclink/ui";
 
 import { AppSettingsView } from "../views/AppSettingsView";
 import { APP_MESSAGES } from "../i18n/messages";
+import userEvent from "@testing-library/user-event";
 import type { CliInstallView } from "../store";
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
@@ -29,6 +30,27 @@ const servers = {
 };
 
 describe("AppSettingsView 資訊架構", () => {
+  it("外觀三選有選中狀態、鍵盤可操作，保存錯誤可重試", async () => {
+    const onThemePrefChange = vi.fn().mockImplementationOnce(() => { throw new Error("denied"); });
+    render(<AppSettingsView localePref={null} onLocalePrefChange={vi.fn()} themePref="light" onThemePrefChange={onThemePrefChange} />);
+    const card = within(screen.getByTestId("ui-theme-card"));
+    expect(card.getByRole("button", { name: "淺色" }).getAttribute("aria-pressed")).toBe("true");
+    const dark = card.getByRole("button", { name: "深色" });
+    dark.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(onThemePrefChange).toHaveBeenCalledWith("dark");
+    expect(card.getByRole("alert").textContent).toContain("denied");
+    expect(card.getByRole("button", { name: "淺色" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(dark);
+    expect(card.queryByRole("alert")).toBeNull();
+  });
+
+  it("英文外觀顯示 Appearance／System／Light／Dark", () => {
+    rtlRender(<I18nProvider locale="en" messages={APP_MESSAGES}><AppSettingsView localePref="en" onLocalePrefChange={vi.fn()} themePref="system" onThemePrefChange={vi.fn()} /></I18nProvider>);
+    const card = within(screen.getByTestId("ui-theme-card"));
+    expect(card.getByText("Appearance")).toBeTruthy();
+    for (const name of ["System", "Light", "Dark"]) expect(card.getByRole("button", { name })).toBeTruthy();
+  });
   it("頁簽依序為本機設定、伺服器且預設本機設定，內容含介面語言卡與裝置本機註記", () => {
     render(
       <AppSettingsView

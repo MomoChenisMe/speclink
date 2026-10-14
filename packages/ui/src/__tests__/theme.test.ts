@@ -204,6 +204,16 @@ describe("共用 semantic theme 抽取（既有）", () => {
     }
   });
 
+  it("主題 token 與 dark 變體共用明示優先的判定", () => {
+    const css = themeCss();
+    expect(css).toContain("@custom-variant dark");
+    expect(css).toContain('[data-theme="dark"]');
+    expect(css).toContain(":root:not([data-theme])");
+    expect(css).toContain("@variant dark");
+    expect(css).toContain("color-scheme: light");
+    expect(css).toContain("color-scheme: dark");
+  });
+
   it("theme.css 保留 @theme inline 對 Tailwind utility 的映射", () => {
     const css = themeCss();
     expect(css).toContain("@theme inline");

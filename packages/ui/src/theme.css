@@ -2,15 +2,27 @@
    青綠語意 token、Tailwind utility 映射與 body 字型的單一真相源——Desktop 與
    Server Web 各自 import 這份，證明「抽取只改所有權、不改值」。本 change 不改色。
 
-   深色跟隨系統偏好（prefers-color-scheme）；若某宿主要手動切換主題，另加
-   class 層即可，勿在此更動預設值以免 Desktop 觀察 token 漂移。 */
+   宿主以 data-theme 明示配色；沒有覆寫時跟隨系統偏好。 */
 
 /* 進出動畫 utility（animate-in／animate-out、fade-*、slide-*）：ui/sheet、popover、
    tooltip 的 data-[state] class 依賴它；Tailwind v4 不再內建，缺了就是「抽屜無動畫」。 */
 @import "tw-animate-css";
 
-/* shadcn/ui 設計 token（Tailwind v4）。淺色為預設，深色跟隨系統偏好。 */
+/* 色票與 dark utility 共用判定，確保系統深色時也能強制淺色。 */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme]), :root:not([data-theme]) *) {
+      @slot;
+    }
+  }
+}
+
+/* shadcn/ui 設計 token（Tailwind v4）。有效外觀由上方共用變體決定。 */
 :root {
+  color-scheme: light;
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -31,8 +43,9 @@
   --ring: oklch(0.62 0.1 192);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+:root {
+  @variant dark {
+    color-scheme: dark;
     --background: oklch(0.155 0.008 260);
     --foreground: oklch(0.945 0 0);
     --card: oklch(0.205 0.008 260);

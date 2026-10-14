@@ -93,6 +93,36 @@ function switchToTab(name: string) {
 }
 
 describe("ProjectSettingsView 載入", () => {
+  it("專案目錄完整可選取，跨頁籤與專案更新，無位置寫入", async () => {
+    const ws = fakeSettings(snapshot());
+    const root = "/Users/mosu/project/ai_dev/speclink";
+    const view = render(<ProjectSettingsView settings={ws} projectDirectory={root} />);
+    const directory = await screen.findByTestId("project-directory");
+    expect(directory.textContent).toBe(root);
+    for (const name of ["Schema", ".speclink.yaml", "config.yaml"]) {
+      switchToTab(name);
+      expect(screen.getByTestId("project-directory").textContent).toBe(root);
+    }
+    for (const path of ["/work/project-a", "/work/project-b", "C:\\Users\\Momo\\中文 專案\\" + "nested\\".repeat(30), '<img src=x onerror="alert(1)">']) {
+      view.rerender(<ProjectSettingsView settings={ws} projectDirectory={path} />);
+      expect(screen.getByTestId("project-directory").textContent).toBe(path);
+      expect(screen.getByTestId("project-directory").tagName).not.toBe("INPUT");
+      expect(screen.getByTestId("project-directory").querySelector("img")).toBeNull();
+    }
+    expect(ws.writeWorkflowConfig).not.toHaveBeenCalled();
+  });
+
+  it("遠端副本位置與未連結提示，英文詞條同義", async () => {
+    const ws = { ...fakeSettings(snapshot()), kind: "remote" as const };
+    const view = render(<ProjectSettingsView settings={ws} projectDirectory="/work/checkout-a" />);
+    expect((await screen.findByTestId("project-directory")).textContent).toBe("/work/checkout-a");
+    view.rerender(<ProjectSettingsView settings={ws} projectDirectory={null} />);
+    expect(screen.getByTestId("project-directory").textContent).toBe("未連結本機目錄");
+    view.unmount();
+    rtlRender(<I18nProvider locale="en" messages={APP_MESSAGES}><ProjectSettingsView settings={ws} projectDirectory={null} /></I18nProvider>);
+    expect((await screen.findByTestId("project-directory")).textContent).toBe("No local directory linked");
+    expect(screen.getByText("Project directory")).toBeTruthy();
+  });
   it("Copilot 保存真實選集，取消 Codex 不取消 Copilot", async () => {
     const ws = renderView(snapshot({ app: { tools: ["codex", "copilot"], customTools: [], parseError: null } }));
     await screen.findByLabelText("locale");
@@ -765,7 +795,7 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
       reason: "revision_conflict",
       status: 409,
     });
-    render(<ProjectSettingsView settings={ws} />);
+    render(<ProjectSettingsView settings={ws} projectDirectory="/work/checkout-a" />);
 
     const contextCard = await screen.findByTestId("context-card");
     fireEvent.click(within(contextCard).getByTestId("context-edit"));
@@ -775,6 +805,7 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
     fireEvent.click(within(contextCard).getByTestId("context-save"));
 
     const panel = await screen.findByTestId("policy-conflict-panel");
+    expect(screen.getByTestId("project-directory").textContent).toBe("/work/checkout-a");
     // 政策衝突是警示（要人決定，不是壞掉）：琥珀邊框，不用主色（主色＝可點的東西）。
     expect(panel.className).toContain("amber");
     expect(panel.className).not.toContain("border-primary");

@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
 
 import { App } from "./App";
+import { createThemeController } from "./theme";
 import {
   createLocalSession,
   createRemoteSession,
@@ -21,12 +22,14 @@ import "@fontsource-variable/noto-sans-tc";
 import "./index.css";
 
 const root = document.getElementById("root");
+const theme = createThemeController();
 async function start() {
   if (!root) return;
   const portable = await invoke<boolean>("portable_mode");
   createRoot(root).render(
     <StrictMode>
       <App
+        theme={theme}
         createSession={(dir, name) => createLocalSession(dir, { name })}
         openRemote={async (connectionId, target, checkoutRoot) => {
           // handshake fail-closed（remote-data-source 決策 6）：remote_open 成功

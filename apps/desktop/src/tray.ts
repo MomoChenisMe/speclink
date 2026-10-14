@@ -29,6 +29,7 @@ import {
   type WorkspaceSession,
 } from "./session";
 import { trayIconBytes } from "./trayIcon";
+import type { ResolvedTheme, ThemeController } from "./theme";
 
 /** 系統匣互動樣式：由平台決定（macOS＝panel、其餘＝native-menu），panel 建立失敗時
     退回 native-menu——執行期狀態、不持久化（tray-macos-panel-only 拆除偏好）。 */
@@ -56,6 +57,7 @@ export type TrayTabSnapshot =
 /** 組模型所需的 store 快照（自 AppState 收斂而來——與看板同源，design D3）。
  * 分頁項識別與切換把手皆為 locator key（workspace-session 決策 6）。 */
 export interface TraySnapshot {
+  effectiveTheme: ResolvedTheme;
   tabs: TrayTabSnapshot[];
   activeKey: string | null;
   changes: ChangeItem[];
@@ -349,6 +351,7 @@ export interface TrayStoreApi {
 }
 
 export interface TrayDeps {
+  theme?: ThemeController;
   /** macOS 才套用 template 圖示（可注入以利測試；預設由 navigator 偵測）。 */
   isMacOS?: boolean;
   /** 選單重建去抖延遲（ms）；預設與看板刷新同量級（400ms）。 */
@@ -378,8 +381,12 @@ function workspaceLoadingOf(
 }
 
 /** store 狀態 → 模型快照（與看板同源）。 */
-export function buildTraySnapshot(state: ReturnType<TrayStoreApi["getState"]>): TraySnapshot {
+export function buildTraySnapshot(
+  state: ReturnType<TrayStoreApi["getState"]>,
+  effectiveTheme: ResolvedTheme = "light",
+): TraySnapshot {
   return {
+    effectiveTheme,
     tabs: state.tabs.map((tab): TrayTabSnapshot => {
       const key = locatorKey(tab.locator);
       if (tab.locator.kind === "local") {
@@ -577,7 +584,10 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
   // 面板接線（design D5）：主視窗擁有資料——面板 ready 時補推快照（lazy 建窗的
   // 首開空窗）、去抖訂閱時推送、面板動作事件回流 store 執行（與選單動作同語意）。
   const pushSnapshot = () => {
-    void emit("tray-snapshot", buildTraySnapshot(store.getState()));
+    void emit(
+      "tray-snapshot",
+      buildTraySnapshot(store.getState(), deps.theme?.getSnapshot().effectiveTheme),
+    );
   };
   const unlistenReady = await listen("tray-panel-ready", pushSnapshot);
   const unlistenAction = await listen<{ kind: string; id?: string }>(
@@ -626,6 +636,7 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
   // 再由 refresh 的計數翻真），逐次即推會把中間那份「已翻頁、尚未起載入」的
   // 假空態推給面板。同段變動只推一份最終快照；跨段（真正的先後事件）仍逐次即推。
   let pushQueued = false;
+  const unsubscribeTheme = deps.theme?.subscribe(pushSnapshot);
   const unsubscribe = store.subscribe(() => {
     const surface = surfaceKey();
     if (surface !== lastSurface) {
@@ -664,6 +675,7 @@ export async function initTray(store: TrayStoreApi, deps: TrayDeps = {}): Promis
     dispose: () => {
       if (timer !== null) clearTimeout(timer);
       unsubscribe();
+      unsubscribeTheme?.();
       unlistenReady();
       unlistenAction();
       void tray.close();
