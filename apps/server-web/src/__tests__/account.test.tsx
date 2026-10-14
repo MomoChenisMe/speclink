@@ -123,8 +123,14 @@ describe("帳號自助頁", () => {
     expect(cli.textContent).toContain("slk_abc · 到期 永久 · 最近使用 從未");
     expect(within(cli).getByText("有效").className).toContain("status-success");
     const revoke = within(cli).getByRole("button", { name: "撤銷存取金鑰 cli" });
+    // 平時隱藏、列滑過或鍵盤聚焦時出現；沒有滑鼠移入能力的觸控裝置恆常顯示。
     expect(revoke.className.split(/\s+/)).toEqual(
-      expect.arrayContaining(["opacity-0", "group-hover:opacity-100", "focus-visible:opacity-100"]),
+      expect.arrayContaining([
+        "opacity-0",
+        "group-hover:opacity-100",
+        "focus-visible:opacity-100",
+        "[@media(hover:none)]:opacity-100",
+      ]),
     );
     const old = within(keys).getByRole("group", { name: "old" });
     expect(old.textContent).toContain("slk_old · 撤銷於 2026-01-05");

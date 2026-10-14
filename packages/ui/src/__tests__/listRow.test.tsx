@@ -152,27 +152,27 @@ describe("ListRow（共用列）", () => {
     expect(title.className).toContain("font-semibold");
   });
 
-  it("actions 槽在 meta 之後、› 之前；槽內按鈕的點擊與 Enter 都不觸發列的 onClick", () => {
-    const onClick = vi.fn();
+  it("靜態列的 actions 槽在 meta 之後、列的最後；槽內按鈕照常可按", () => {
     const onRevoke = vi.fn();
     render(
-      <ListRow
-        data-row="x"
-        title="t"
-        meta={<span data-meta>m</span>}
-        actions={<button onClick={onRevoke}>撤銷</button>}
-        onClick={onClick}
-      />,
+      <ListRow data-row="x" title="t" meta={<span data-meta>m</span>} actions={<button onClick={onRevoke}>撤銷</button>} />,
     );
     const btn = within(row()).getByRole("button", { name: "撤銷" });
     const meta = row().querySelector("[data-meta]") as HTMLElement;
-    const chevron = row().querySelector(".lucide-chevron-right") as Element;
     expect(meta.compareDocumentPosition(btn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(btn.compareDocumentPosition(chevron) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(row().lastElementChild!.contains(btn)).toBe(true);
     fireEvent.click(btn);
-    fireEvent.keyDown(btn, { key: "Enter" });
     expect(onRevoke).toHaveBeenCalledTimes(1);
-    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  // actions 只給靜態列：可點的列是 role=button，槽內再放按鈕就成了巢狀互動元素（axe nested-interactive）。
+  // 型別擋下兩者並用；這個函式不會執行，只讓 tsc 確認擋得住。
+  it("actions 與 onClick 在型別上互斥", () => {
+    const misuse = () => (
+      // @ts-expect-error actions 只給不帶 onClick 的靜態列
+      <ListRow title="t" onClick={() => {}} actions={<button>撤銷</button>} />
+    );
+    expect(typeof misuse).toBe("function");
   });
 
   it("actions 為 false 或 null（`有效 && <鈕 />` 的寫法）時不留空的動作槽", () => {

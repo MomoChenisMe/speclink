@@ -20,7 +20,7 @@ import {
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
-import { useMediaQuery } from "../../lib/useMediaQuery";
+import { useNarrow } from "../../lib/useMediaQuery";
 import { readFormError } from "../../lib/formError";
 import { Field } from "../../components/Field";
 import { DetailSheet } from "../../components/DetailSheet";
@@ -37,7 +37,7 @@ import type { AdminProject } from "../../api/client";
 export function RegistryPage() {
   const { t } = useI18n();
   const client = useClient();
-  const narrow = useMediaQuery("(max-width: 1023px)");
+  const narrow = useNarrow();
   const { loading, data, error, reload } = useAsync(() => client.getAdminRegistry(), []);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
+  CREDENTIALS,
   EMPTY_CREDENTIALS,
   makeAdminClient,
   renderAt,
@@ -44,8 +45,14 @@ describe("憑證頁", () => {
     await screen.findByText("slk_abc");
     const revoke = within(patRow("slk_abc")).getByRole("button", { name: "撤銷存取金鑰 cli" });
     const classes = revoke.className.split(/\s+/);
+    // 平時隱藏、列滑過或鍵盤聚焦時出現；沒有滑鼠移入能力的裝置恆常顯示。
     expect(classes).toEqual(
-      expect.arrayContaining(["opacity-0", "group-hover:opacity-100", "focus-visible:opacity-100"]),
+      expect.arrayContaining([
+        "opacity-0",
+        "group-hover:opacity-100",
+        "focus-visible:opacity-100",
+        "[@media(hover:none)]:opacity-100",
+      ]),
     );
     expect(classes).not.toContain("hidden");
     expect(within(patRow("slk_xyz")).queryByRole("button")).toBeNull();
@@ -116,6 +123,35 @@ describe("憑證頁", () => {
     const action = screen.getByRole("link", { name: /建立存取金鑰/ });
     expect(action.getAttribute("href")).toBe("/account");
     expect(screen.queryByRole("tab")).toBeNull();
+  });
+
+  // design D2：該類資料完全沒有時是說明用途的空狀態，與「搜尋後沒有符合」可區辨。
+  it("某一類原本就 0 筆時，該分頁呈現說明該類用途的空狀態，而不是無符合結果", async () => {
+    renderAt(
+      "/admin/credentials",
+      makeAdminClient({
+        getAdminCredentials: vi.fn(async () => ({ ...CREDENTIALS, pats: [] })),
+      }),
+    );
+    expect(await screen.findByText("尚無存取金鑰")).toBeTruthy();
+    expect(screen.queryByText(/沒有符合/)).toBeNull();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /^裝置/ }));
+    expect(await screen.findByText("desktop")).toBeTruthy();
+  });
+
+  it("沒有裝置登入時，裝置分頁呈現說明裝置憑證來源的空狀態", async () => {
+    renderAt(
+      "/admin/credentials",
+      makeAdminClient({
+        getAdminCredentials: vi.fn(async () => ({ ...CREDENTIALS, deviceFamilies: [] })),
+      }),
+    );
+    await screen.findByText("slk_abc");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /^裝置/ }));
+    expect(await screen.findByText("尚無裝置登入")).toBeTruthy();
+    expect(screen.queryByText(/沒有符合/)).toBeNull();
   });
 
   it("撤銷經 AlertDialog 確認後才送出", async () => {

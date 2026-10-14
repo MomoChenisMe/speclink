@@ -59,6 +59,25 @@ describe("Table 原語", () => {
     expect(wrapper?.className).toContain("overflow-x-auto");
   });
 
+  // server-web-list-pages design D1、D7：呼叫端自己就是捲動區（列表卡）時不包外層容器——外層的
+  // overflow-x-auto 會自成捲動容器，表頭的 sticky 就黏在那層、隨列表卡捲走。
+  it("wrapped={false} 時不包外層捲動容器，表格直接在呼叫端的容器內", () => {
+    const { container } = render(
+      <div data-host>
+        <Table wrapped={false}>
+          <TableBody>
+            <TableRow>
+              <TableCell>x</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </div>,
+    );
+    const table = screen.getByRole("table");
+    expect(table.parentElement).toBe(container.querySelector("[data-host]"));
+    expect(table.className).toContain("w-full");
+  });
+
   it("className 併入 cn，不覆蓋基底樣式", () => {
     render(
       <Table className="custom-table">

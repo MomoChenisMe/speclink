@@ -213,6 +213,10 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "credentials.revokeDeviceTitle": "撤銷裝置憑證「{name}」",
     "credentials.revokeBody": "撤銷後立即生效且無法復原。",
     "credentials.searchPlaceholder": "搜尋名稱、前綴或來源",
+    "credentials.noKeysTitle": "尚無存取金鑰",
+    "credentials.noKeysBody": "存取金鑰讓遠端工作流程以使用者的身分連線；每位使用者在自己的帳號頁建立。",
+    "credentials.noDevicesTitle": "尚無裝置登入",
+    "credentials.noDevicesBody": "裝置憑證來自桌面應用程式或 CLI 的授權，使用者在那裡登入後就會出現在這裡。",
     "credentials.keyMeta": "建立 {created} · 到期 {expires}",
     "credentials.deviceMeta": "建立 {created} · 最近更新 {refreshed}",
 
@@ -554,6 +558,10 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "credentials.revokeDeviceTitle": "Revoke device credential “{name}”",
     "credentials.revokeBody": "Revoking takes effect immediately and cannot be undone.",
     "credentials.searchPlaceholder": "Search name, prefix or source",
+    "credentials.noKeysTitle": "No access keys yet",
+    "credentials.noKeysBody": "Access keys let remote workflows connect as a user; each user creates them on their own account page.",
+    "credentials.noDevicesTitle": "No device sign-ins yet",
+    "credentials.noDevicesBody": "Device credentials come from authorizing the desktop app or the CLI; they appear here once a user signs in there.",
     "credentials.keyMeta": "Created {created} · Expires {expires}",
     "credentials.deviceMeta": "Created {created} · Last refreshed {refreshed}",
 

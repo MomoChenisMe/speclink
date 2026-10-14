@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { Inbox, KeyRound } from "lucide-react";
+import { Inbox, KeyRound, MonitorSmartphone } from "lucide-react";
 import {
   Button,
   ConfirmDialog,
@@ -10,7 +10,6 @@ import {
   ListRow,
   SearchField,
   SelectItem,
-  StatusPill,
   Tabs,
   TabsContent,
   TabsList,
@@ -21,9 +20,10 @@ import {
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
-import { useMediaQuery } from "../../lib/useMediaQuery";
+import { useNarrow } from "../../lib/useMediaQuery";
 import { FilterSelect } from "../../components/FilterSelect";
 import { NoMatchState } from "../../components/NoMatchState";
+import { RevocationPill } from "../../components/RevocationPill";
 import { RevokeButton } from "../../components/RevokeButton";
 import { AdminError, AdminLoading } from "./states";
 
@@ -57,18 +57,10 @@ function joinMeta(parts: ReactNode[], narrow: boolean): ReactNode {
   ));
 }
 
-function statusPill(revokedAt: string | null, t: (key: string) => string) {
-  return (
-    <StatusPill tone={revokedAt ? "neutral" : "success"}>
-      {revokedAt ? t("common.revoked") : t("common.active")}
-    </StatusPill>
-  );
-}
-
 export function CredentialsPage() {
   const { t } = useI18n();
   const client = useClient();
-  const narrow = useMediaQuery("(max-width: 1023px)");
+  const narrow = useNarrow();
   const { loading, data, error, reload } = useAsync(() => client.getAdminCredentials(), []);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [busy, setBusy] = useState(false);
@@ -201,8 +193,11 @@ export function CredentialsPage() {
                 )
               }
             >
+              {/* 該類完全沒有時說明用途（不放建立鈕，建立入口常駐頁首）；有資料但篩不出來才是無符合。 */}
               <TabsContent value="keys">
-                {pats.length === 0 ? (
+                {data.pats.length === 0 ? (
+                  <EmptyState icon={KeyRound} title={t("credentials.noKeysTitle")} description={t("credentials.noKeysBody")} />
+                ) : pats.length === 0 ? (
                   <NoMatchState />
                 ) : (
                   patPaging.pageItems.map((p) => (
@@ -221,7 +216,7 @@ export function CredentialsPage() {
                         ],
                         narrow,
                       )}
-                      meta={statusPill(p.revokedAt, t)}
+                      meta={<RevocationPill revokedAt={p.revokedAt} />}
                       actions={
                         p.revokedAt ? undefined : (
                           <RevokeButton
@@ -242,7 +237,13 @@ export function CredentialsPage() {
               </TabsContent>
 
               <TabsContent value="devices">
-                {devices.length === 0 ? (
+                {data.deviceFamilies.length === 0 ? (
+                  <EmptyState
+                    icon={MonitorSmartphone}
+                    title={t("credentials.noDevicesTitle")}
+                    description={t("credentials.noDevicesBody")}
+                  />
+                ) : devices.length === 0 ? (
                   <NoMatchState />
                 ) : (
                   devicePaging.pageItems.map((f) => (
@@ -260,7 +261,7 @@ export function CredentialsPage() {
                         ],
                         narrow,
                       )}
-                      meta={statusPill(f.revokedAt, t)}
+                      meta={<RevocationPill revokedAt={f.revokedAt} />}
                       actions={
                         f.revokedAt ? undefined : (
                           <RevokeButton

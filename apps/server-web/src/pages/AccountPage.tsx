@@ -17,6 +17,8 @@ import { useAsync } from "../lib/useAsync";
 import { readFormError } from "../lib/formError";
 import { Field } from "../components/Field";
 import { DetailSheet } from "../components/DetailSheet";
+import { CardNote } from "../components/CardNote";
+import { RevocationPill } from "../components/RevocationPill";
 import { RevokeButton } from "../components/RevokeButton";
 import type { AccountSummary, DeviceFamilyMeta, PatMeta } from "../api/client";
 
@@ -30,11 +32,6 @@ type Confirm = { title: string; run: () => Promise<void> };
 /** The date portion of an ISO timestamp, or a fallback when absent. */
 function fmtDate(iso: string | null, fallback: string): string {
   return iso ? iso.slice(0, 10) : fallback;
-}
-
-/** 卡內沒有資料時的一列灰字。 */
-function EmptyLine({ children }: { children: string }) {
-  return <p className="m-0 px-4 py-3 text-[13px] text-muted-foreground">{children}</p>;
 }
 
 export function AccountPage() {
@@ -146,15 +143,6 @@ export function AccountPage() {
   );
 }
 
-function StatePill({ revokedAt }: { revokedAt: string | null }) {
-  const { t } = useI18n();
-  return (
-    <StatusPill tone={revokedAt ? "neutral" : "success"}>
-      {revokedAt ? t("common.revoked") : t("common.active")}
-    </StatusPill>
-  );
-}
-
 // 四張卡（design D10）。我的專案（server-web-console「帳號頁呈現我的專案」）是唯讀的個人視角，
 // 資料只來自 account summary——admin 與一般成員看到同一張卡、同一形狀，全部專案的治理視角在
 // /admin/registry；顯示名缺席時以等寬代號為名、不再重複一次代號。存取金鑰的建立走頁面的 primary
@@ -176,7 +164,7 @@ function AccountCards({
     <>
       <SettingsCard title={t("account.projects")} aside={t("account.projectsAside")}>
         {account.memberships.length === 0 ? (
-          <EmptyLine>{t("account.noProjects")}</EmptyLine>
+          <CardNote>{t("account.noProjects")}</CardNote>
         ) : (
           account.memberships.map((m) => (
             <SettingsRow
@@ -195,7 +183,7 @@ function AccountCards({
 
       <SettingsCard title={t("account.keys")} aside={t("account.keysAside")}>
         {account.pats.length === 0 ? (
-          <EmptyLine>{t("account.noKeys")}</EmptyLine>
+          <CardNote>{t("account.noKeys")}</CardNote>
         ) : (
           account.pats.map((pat) => (
             <SettingsRow
@@ -220,7 +208,7 @@ function AccountCards({
                       onClick={() => onRevokeKey(pat)}
                     />
                   )}
-                  <StatePill revokedAt={pat.revokedAt} />
+                  <RevocationPill revokedAt={pat.revokedAt} />
                 </>
               }
             />
@@ -230,7 +218,7 @@ function AccountCards({
 
       <SettingsCard title={t("account.devices")} aside={t("account.devicesAside")}>
         {account.deviceFamilies.length === 0 ? (
-          <EmptyLine>{t("account.noDevices")}</EmptyLine>
+          <CardNote>{t("account.noDevices")}</CardNote>
         ) : (
           account.deviceFamilies.map((family) => (
             <SettingsRow
@@ -249,7 +237,7 @@ function AccountCards({
                       onClick={() => onRevokeDevice(family)}
                     />
                   )}
-                  <StatePill revokedAt={family.revokedAt} />
+                  <RevocationPill revokedAt={family.revokedAt} />
                 </>
               }
             />
@@ -259,7 +247,7 @@ function AccountCards({
 
       <SettingsCard title={t("account.sessions")}>
         {account.sessions.length === 0 ? (
-          <EmptyLine>{t("account.noSessions")}</EmptyLine>
+          <CardNote>{t("account.noSessions")}</CardNote>
         ) : (
           account.sessions.map((session) => (
             <SettingsRow
@@ -269,7 +257,7 @@ function AccountCards({
                 "{date}",
                 fmtDate(session.expiresAt, t("common.dash")),
               )}
-              control={<StatePill revokedAt={session.revokedAt} />}
+              control={<RevocationPill revokedAt={session.revokedAt} />}
             />
           ))
         )}

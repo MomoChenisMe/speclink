@@ -18,7 +18,7 @@ import { AccountMenu } from "../components/AccountMenu";
 import { TourProvider } from "../components/Tour";
 import { useSession } from "../app/context";
 import { useFocusMain } from "../lib/useFocusMain";
-import { useMediaQuery } from "../lib/useMediaQuery";
+import { useNarrow } from "../lib/useMediaQuery";
 
 // 主控台殼（design D1）：管理員與一般成員同一種形狀——側欄（頂端字標、中段導覽、底部
 // 帳號選單）加主欄（頂列麵包屑、下方主內容），沒有橫貫頂部的 header。導覽依 session 的
@@ -34,7 +34,7 @@ export function ConsoleLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const { session } = useSession();
   useFocusMain(mainRef, location.pathname);
-  const narrow = useMediaQuery("(max-width: 1023px)");
+  const narrow = useNarrow();
   const [sheetOpen, setSheetOpen] = useState(false);
   const admin = session.user?.admin === true;
   // 路徑比對與路由、側欄高亮同一套（matchPath：不分大小寫、容許結尾斜線）。
