@@ -64,15 +64,27 @@ export const TabsList = React.forwardRef<
 ));
 TabsList.displayName = "TabsList";
 
+/** 分頁標籤後的計數籤（已封存頁、server 使用者頁與憑證頁）。 */
+const COUNT_PILL_CLS =
+  "inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium tabular-nums";
+
+/** 分頁。`count` 給了就在標籤後渲染計數籤（0 也渲染）。 */
 export const TabsTrigger = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
->(({ className, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger> & { count?: number }
+>(({ className, count, children, ...props }, ref) => (
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(TRIGGER_CLS[React.useContext(TabsVariantContext)], className)}
     {...props}
-  />
+  >
+    {children}
+    {count !== undefined && (
+      <span data-tab-count className={COUNT_PILL_CLS}>
+        {count}
+      </span>
+    )}
+  </TabsPrimitive.Trigger>
 ));
 TabsTrigger.displayName = "TabsTrigger";
 

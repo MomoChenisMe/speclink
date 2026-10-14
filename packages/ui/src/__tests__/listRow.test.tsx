@@ -126,6 +126,62 @@ describe("ListRow（共用列）", () => {
     expect(title.compareDocumentPosition(copyBtn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(copyBtn.compareDocumentPosition(stamp) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  // server-web-list-pages design D1：不給 onClick 是靜態列（憑證列、邀請列、窄螢幕稽核列）。
+  it("不給 onClick：沒有 role=button 與 tabindex、沒有 ›、沒有 hover 底色與手指游標，點擊與按 Enter 無作用", () => {
+    render(<ListRow data-row="s" title="CI 金鑰" description="slk_ab12 · 使用者 u1" meta={<span data-meta>有效</span>} />);
+    const el = row();
+    expect(el.getAttribute("role")).toBeNull();
+    expect(el.getAttribute("tabindex")).toBeNull();
+    expect(el.querySelector(".lucide-chevron-right")).toBeNull();
+    expect(el.className).not.toContain("hover:bg-foreground/5");
+    expect(el.className).not.toContain("cursor-(--cursor-interaction)");
+    // 版面不變：描述與 meta 照舊。
+    expect((el.querySelector("[data-desc]") as HTMLElement).textContent).toBe("slk_ab12 · 使用者 u1");
+    expect(el.querySelector("[data-meta]")).toBeTruthy();
+    fireEvent.click(el);
+    fireEvent.keyDown(el, { key: "Enter" });
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("mono={false} 時標題改一般字（仍 14px semibold）；未給時照舊等寬", () => {
+    render(<ListRow data-row="m" title="王小明" mono={false} onClick={() => {}} />);
+    const title = within(row()).getByText("王小明");
+    expect(title.className).not.toContain("font-mono");
+    expect(title.className).toContain("text-sm");
+    expect(title.className).toContain("font-semibold");
+  });
+
+  it("actions 槽在 meta 之後、› 之前；槽內按鈕的點擊與 Enter 都不觸發列的 onClick", () => {
+    const onClick = vi.fn();
+    const onRevoke = vi.fn();
+    render(
+      <ListRow
+        data-row="x"
+        title="t"
+        meta={<span data-meta>m</span>}
+        actions={<button onClick={onRevoke}>撤銷</button>}
+        onClick={onClick}
+      />,
+    );
+    const btn = within(row()).getByRole("button", { name: "撤銷" });
+    const meta = row().querySelector("[data-meta]") as HTMLElement;
+    const chevron = row().querySelector(".lucide-chevron-right") as Element;
+    expect(meta.compareDocumentPosition(btn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(btn.compareDocumentPosition(chevron) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(btn);
+    fireEvent.keyDown(btn, { key: "Enter" });
+    expect(onRevoke).toHaveBeenCalledTimes(1);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("actions 為 false 或 null（`有效 && <鈕 />` 的寫法）時不留空的動作槽", () => {
+    const { unmount } = render(<ListRow data-row="y" title="t" meta={<span data-meta>m</span>} actions={false} />);
+    expect(row().lastElementChild!.querySelector("[data-meta]")).toBeTruthy();
+    unmount();
+    render(<ListRow data-row="z" title="t" meta={<span data-meta>m</span>} actions={null} />);
+    expect(row().lastElementChild!.querySelector("[data-meta]")).toBeTruthy();
+  });
 });
 
 describe("ListCard（列表卡）", () => {
@@ -190,5 +246,15 @@ describe("SearchField（全圓搜尋框）", () => {
     expect(input.parentElement!.querySelector(".lucide-search")).toBeTruthy();
     fireEvent.change(input, { target: { value: "desk" } });
     expect(onChange).toHaveBeenCalledWith("desk");
+  });
+
+  it("label 為輸入框的無障礙名稱；未給時沒有 aria-label", () => {
+    const { unmount } = render(
+      <SearchField value="" onChange={() => {}} label="搜尋" placeholder="搜尋名稱或 email" />,
+    );
+    expect(screen.getByRole("textbox", { name: "搜尋" })).toBeTruthy();
+    unmount();
+    render(<SearchField value="" onChange={() => {}} placeholder="搜尋規格…" />);
+    expect(screen.getByPlaceholderText("搜尋規格…").getAttribute("aria-label")).toBeNull();
   });
 });

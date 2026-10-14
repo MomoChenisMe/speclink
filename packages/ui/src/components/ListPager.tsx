@@ -88,14 +88,17 @@ export interface ListPagerProps {
   onPage: (next: number) => void;
   /** 改每頁筆數回呼；呼叫端重算總頁數並鉗制頁碼。 */
   onPageSize: (size: number) => void;
+  /** 窄版（server-web 窄螢幕）：左側只留範圍，右側只留 ‹「目前頁 / 總頁數」›。 */
+  compact?: boolean;
 }
 
 /**
  * 換頁工具列（spec「清單最新在前與換頁瀏覽」；design D2：自建受控元件，不採 shadcn
  * Pagination）：上緣自帶分隔線；左側「第 a–b 筆，共 N 筆」＋每頁筆數下拉；總頁數 > 1
  * 時右側為 « ‹ 頁碼 › » 與跳頁輸入（只認 Enter、越界鉗制、非數字忽略；失焦即捨棄輸入）。
+ * `compact` 收成範圍與 ‹ n / m ›（server-web-list-pages design D1）。
  */
-export function ListPager({ page, pageCount, total, pageSize, onPage, onPageSize }: ListPagerProps) {
+export function ListPager({ page, pageCount, total, pageSize, onPage, onPageSize, compact = false }: ListPagerProps) {
   const { t } = useI18n();
   const [jump, setJump] = useState("");
   if (total === 0) return null;
@@ -122,8 +125,51 @@ export function ListPager({ page, pageCount, total, pageSize, onPage, onPageSize
     if (e.key === "Enter") commitJump();
   };
 
+  const prev = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={t("pager.prev")}
+      disabled={page <= 1}
+      onClick={() => onPage(page - 1)}
+    >
+      <ChevronLeft className="h-3.5 w-3.5" />
+    </Button>
+  );
+  const next = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={t("pager.next")}
+      disabled={page >= pageCount}
+      onClick={() => onPage(page + 1)}
+    >
+      <ChevronRight className="h-3.5 w-3.5" />
+    </Button>
+  );
+  const bar = "flex items-center justify-between gap-3 border-t border-border px-4 py-2 text-xs text-muted-foreground";
+
+  if (compact) {
+    return (
+      <div className={bar}>
+        <span className="tabular-nums">{range}</span>
+        {pageCount > 1 && (
+          <nav className="flex items-center gap-1">
+            {prev}
+            <span className="tabular-nums">
+              {page} / {pageCount}
+            </span>
+            {next}
+          </nav>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-2 text-xs text-muted-foreground">
+    <div className={bar}>
       <div className="flex items-center gap-3">
         <span className="tabular-nums">{range}</span>
         <Select value={String(pageSize)} onValueChange={(v) => onPageSize(Number(v))}>
@@ -151,16 +197,7 @@ export function ListPager({ page, pageCount, total, pageSize, onPage, onPageSize
           >
             <ChevronsLeft className="h-3.5 w-3.5" />
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("pager.prev")}
-            disabled={page <= 1}
-            onClick={() => onPage(page - 1)}
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </Button>
+          {prev}
           {pageWindow(page, pageCount).map((item, i) =>
             item === "…" ? (
               <span key={`gap-${i}`} className="px-1 select-none">
@@ -181,16 +218,7 @@ export function ListPager({ page, pageCount, total, pageSize, onPage, onPageSize
               </Button>
             ),
           )}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("pager.next")}
-            disabled={page >= pageCount}
-            onClick={() => onPage(page + 1)}
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
+          {next}
           <Button
             type="button"
             variant="ghost"

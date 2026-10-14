@@ -1,40 +1,48 @@
-import { useState, type FormEvent, type ReactNode } from "react";
-import { ChevronRight, FolderPlus, Inbox } from "lucide-react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { FolderPlus, Inbox } from "lucide-react";
 import {
   Badge,
   Button,
-  Card,
   EmptyState,
   Input,
   Label,
+  ListCard,
+  ListPager,
+  ListRow,
+  SearchField,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
   useI18n,
+  usePaging,
   PageHeader,
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
+import { useMediaQuery } from "../../lib/useMediaQuery";
 import { readFormError } from "../../lib/formError";
 import { Field } from "../../components/Field";
 import { DetailSheet } from "../../components/DetailSheet";
-import { ListToolbar } from "../../components/ListToolbar";
 import { NoMatchState } from "../../components/NoMatchState";
 import { AdminError, AdminLoading } from "./states";
 import type { AdminProject } from "../../api/client";
 
-// 管理專案與儲存庫頁（server-web-console「不可變識別欄位唯讀且更名為顯式動作」）：
-// 代號是身分、建立後不可變更，一律以唯讀文字呈現並標示；名稱預設唯讀，按「更名」才
-// 出現輸入框與確認／取消。建立專案與新增儲存庫由抽屜承載，列表頁不含輸入控制項。
+// 管理專案與儲存庫頁（server-web-console「不可變識別欄位唯讀且更名為顯式動作」「管理列表提供
+// 搜尋、篩選、分頁與具引導的空狀態」；server-web-list-pages design D2、D3、D5）：頁標題區右側是
+// 搜尋與建立專案，其下一張列表卡（前端換頁），整列可點開專案抽屜。代號是身分、建立後不可變更，
+// 一律以唯讀文字呈現並標示；名稱預設唯讀，按「更名」才出現輸入框與確認／取消。建立專案與新增
+// 儲存庫由抽屜承載，列表頁不含輸入控制項。
 
 export function RegistryPage() {
   const { t } = useI18n();
   const client = useClient();
+  const narrow = useMediaQuery("(max-width: 1023px)");
   const { loading, data, error, reload } = useAsync(() => client.getAdminRegistry(), []);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [q, setQ] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
   const selected = data?.projects.find((p) => p.key === selectedKey) ?? null;
   const needle = q.trim().toLowerCase();
   const visible = (data?.projects ?? []).filter(
@@ -44,74 +52,67 @@ export function RegistryPage() {
         field.toLowerCase().includes(needle),
       ),
   );
+  const paging = usePaging(visible, {
+    onMove: () => {
+      if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    },
+  });
 
   return (
-    <div className="space-y-6">
+    <div className="flex h-full min-h-0 flex-col gap-4">
       <PageHeader
         level={1}
         title={t("registry.title")}
         description={t("registry.description")}
         actions={
-          <Button
-            type="button"
-            data-tour="list-primary"
-            className="gap-1.5"
-            onClick={() => setCreateOpen(true)}
-          >
-            <FolderPlus aria-hidden="true" className="h-4 w-4" />
-            {t("registry.create")}
-          </Button>
+          <>
+            <SearchField
+              label={t("common.search")}
+              placeholder={t("registry.searchPlaceholder")}
+              value={q}
+              onChange={(value) => {
+                setQ(value);
+                paging.setPage(1);
+              }}
+            />
+            <Button
+              type="button"
+              data-tour="list-primary"
+              className="gap-1.5"
+              onClick={() => setCreateOpen(true)}
+            >
+              <FolderPlus aria-hidden="true" className="h-4 w-4" />
+              {t("registry.create")}
+            </Button>
+          </>
         }
       />
 
       {loading && <AdminLoading />}
       {error != null && <AdminError onRetry={reload} />}
-      {data && data.projects.length > 0 && <ListToolbar search={q} onSearchChange={setQ} />}
-      {data &&
-        (data.projects.length === 0 ? (
-          <EmptyState
-            icon={Inbox}
-            title={t("registry.emptyTitle")}
-            description={t("registry.emptyBody")}
-            action={
-              <Button type="button" onClick={() => setCreateOpen(true)}>
-                {t("registry.create")}
-              </Button>
-            }
-          />
-        ) : visible.length === 0 ? (
-          <NoMatchState />
-        ) : (
-          <ul className="space-y-3">
-            {visible.map((p) => (
-              <li key={p.key}>
-                <Card
-                  className="flex cursor-(--cursor-interaction) items-center gap-3 p-4"
-                  onClick={() => setSelectedKey(p.key)}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{p.name}</p>
-                    <p className="truncate text-sm text-muted-foreground">
-                      {t("registry.projectMeta")
-                        .replace("{key}", p.key)
-                        .replace("{n}", String(p.repos.length))}
-                    </p>
-                  </div>
-                  {/* 鍵盤入口：整張卡片可點只是滑鼠便利，實際可聚焦目標是這顆按鈕。 */}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    aria-label={t("registry.viewDetail").replace("{name}", p.name)}
-                    onClick={() => setSelectedKey(p.key)}
-                  >
-                    <ChevronRight aria-hidden="true" className="h-4 w-4" />
-                  </Button>
-                </Card>
-              </li>
-            ))}
-          </ul>
-        ))}
+      {data && (
+        <ListCard scrollRef={scrollRef} footer={<ListPager compact={narrow} {...paging.pager} />}>
+          {/* 空狀態不放建立鈕：建立鈕常駐頁首，一頁只有一個主要動作。 */}
+          {data.projects.length === 0 ? (
+            <EmptyState icon={Inbox} title={t("registry.emptyTitle")} description={t("registry.emptyBody")} />
+          ) : visible.length === 0 ? (
+            <NoMatchState />
+          ) : (
+            paging.pageItems.map((p) => (
+              <ListRow
+                key={p.key}
+                data-project={p.key}
+                mono={false}
+                title={p.name}
+                description={t("registry.projectMeta")
+                  .replace("{key}", p.key)
+                  .replace("{n}", String(p.repos.length))}
+                onClick={() => setSelectedKey(p.key)}
+              />
+            ))
+          )}
+        </ListCard>
+      )}
 
       {selected && (
         <ProjectSheet project={selected} onClose={() => setSelectedKey(null)} afterMutate={reload} />

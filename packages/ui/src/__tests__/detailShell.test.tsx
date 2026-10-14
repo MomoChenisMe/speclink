@@ -106,6 +106,34 @@ describe("DocTiles 數字磚", () => {
     expect(cls).not.toContain("grid-cols-4");
     expect(container.querySelectorAll("[data-doc-tile]")).toHaveLength(count);
   });
+
+  // server-web-list-pages design D1：帶 link 的格以該連結元素渲染、整格可點；未帶的格照舊是 div。
+  it("帶 link 的格渲染成該 a（含值、標籤與 data-doc-tile），未帶的格照舊是 div", () => {
+    const tiles = [
+      { value: 12, label: "使用者 · 停權 1", link: <a href="/x" /> },
+      { value: 3, label: "專案" },
+    ];
+    const { container } = render(<DocTiles tiles={tiles} />, { wrapper });
+    const cells = container.querySelectorAll("[data-doc-tile]");
+    expect(cells).toHaveLength(2);
+    const linked = cells[0] as HTMLElement;
+    expect(linked.tagName).toBe("A");
+    expect(linked.getAttribute("href")).toBe("/x");
+    expect(linked.textContent).toContain("12");
+    expect(linked.textContent).toContain("使用者 · 停權 1");
+    expect(linked.className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("link", { name: /使用者 · 停權 1/ })).toBe(linked);
+    expect((cells[1] as HTMLElement).tagName).toBe("DIV");
+  });
+
+  it("link 自帶的子元素與 className 不採用，格子內容與樣式由元件決定", () => {
+    const tiles = [{ value: 5, label: "專案", link: <a href="/y" className="bg-red-500">舊字</a> }];
+    const { container } = render(<DocTiles tiles={tiles} />, { wrapper });
+    const cell = container.querySelector("[data-doc-tile]") as HTMLElement;
+    expect(cell.textContent).toBe("5專案");
+    expect(cell.className).not.toContain("bg-red-500");
+    expect(cell.className).toContain("rounded-xl");
+  });
 });
 
 // spec「markdown 內容保留文件結構呈現」「markdown 文件內容行寬有上限」（design D10）：閱讀卡內文 15px／1.75，

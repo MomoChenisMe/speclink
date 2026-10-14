@@ -187,10 +187,6 @@ export interface ArchivedListProps {
   onVisibleOrderChange?: (order: { changes: string[]; discussions: string[] }) => void;
 }
 
-/** 分頁標籤上的筆數徽章——沿用頁面計數 pill 樣式。 */
-const COUNT_PILL_CLS =
-  "inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium tabular-nums";
-
 type Section = "changes" | "discussions";
 
 const EMPTY_CLS = "py-8 text-center text-sm text-muted-foreground";
@@ -304,13 +300,11 @@ export function ArchivedList({
               scrollRef={scrollRef}
               header={
                 <TabsList variant="card">
-                  <TabsTrigger value="changes">
+                  <TabsTrigger value="changes" count={filtered.length}>
                     {t("archived.changesHeading")}
-                    <span className={COUNT_PILL_CLS}>{filtered.length}</span>
                   </TabsTrigger>
-                  <TabsTrigger value="discussions">
+                  <TabsTrigger value="discussions" count={discussions.length}>
                     {t("archived.discussionsHeading")}
-                    <span className={COUNT_PILL_CLS}>{discussions.length}</span>
                   </TabsTrigger>
                 </TabsList>
               }

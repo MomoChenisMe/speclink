@@ -119,9 +119,10 @@ export type AdminAuditEntry = {
   source: string;
   createdAt: string;
 };
-export type AdminAudit = { entries: AdminAuditEntry[]; totalPages: number };
+/** `total`＝符合篩選的事件總筆數，與頁碼及每頁筆數無關（換頁列的「共 N 筆」）。 */
+export type AdminAudit = { entries: AdminAuditEntry[]; totalPages: number; total: number };
 
-/** 稽核篩選與分頁參數——伺服器套用後只回當頁事件與總頁數，前端不自行裁切。 */
+/** 稽核篩選與分頁參數——伺服器套用後只回當頁事件、總頁數與總筆數，前端不自行裁切。 */
 export type AdminAuditParams = {
   q?: string;
   action?: string;

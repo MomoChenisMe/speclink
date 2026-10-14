@@ -1,15 +1,18 @@
 import {
+  cloneElement,
   createContext,
   forwardRef,
   useContext,
   useLayoutEffect,
   useRef,
+  type ReactElement,
   type ReactNode,
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
 
 import { useI18n } from "../i18n";
+import { cn } from "../lib/utils";
 import { CopyButton } from "./CopyButton";
 import { DotSeparated } from "./DetailHeader";
 import { ManualToc } from "./ManualToc";
@@ -206,6 +209,9 @@ export function DocHeader({ title, badges, actions, provenance }: DocHeaderProps
 export interface DocTile {
   value: ReactNode;
   label: string;
+  /** 不含內容的連結元素（react-router 的 `<Link to=… />`）：給了就以它渲染整格、可點；
+   *  元件填入格子內容與樣式，連結原有的子元素與 className 不採用。 */
+  link?: ReactElement<{ className?: string; children?: ReactNode }>;
 }
 
 /** 閱讀卡標題區的推導結果：籤槽、數字磚、提示框（缺席時為空）。 */
@@ -215,18 +221,37 @@ export interface DocSummary {
   callout: ReactNode;
 }
 
+const TILE_CLS = "flex min-w-0 flex-col gap-0.5 rounded-xl border border-border px-3 py-2.5";
+const TILE_LINK_CLS =
+  "cursor-(--cursor-interaction) outline-none transition-colors hover:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring";
+
 /** 數字磚：閱讀卡標題下由文件結構推出的計數格，最多四格、依格數平分整列（每格一欄等寬；
- * `auto-cols-fr` 即 `minmax(0, 1fr)`，長標籤截斷、不撐寬欄）；空陣列整列缺席。 */
+ * `auto-cols-fr` 即 `minmax(0, 1fr)`，長標籤截斷、不撐寬欄）；空陣列整列缺席。帶 `link` 的格
+ * 整格是連結（server 總覽；server-web-list-pages design D1）。 */
 export function DocTiles({ tiles }: { tiles: DocTile[] }) {
   if (tiles.length === 0) return null;
   return (
     <div data-doc-tiles className="grid grid-flow-col auto-cols-fr gap-2.5">
-      {tiles.map((tile, i) => (
-        <div key={i} data-doc-tile className="flex min-w-0 flex-col gap-0.5 rounded-xl border border-border px-3 py-2.5">
-          <span className="text-xl font-semibold tabular-nums">{tile.value}</span>
-          <span className="truncate text-[11px] text-muted-foreground">{tile.label}</span>
-        </div>
-      ))}
+      {tiles.map((tile, i) => {
+        const content = (
+          <>
+            <span className="text-xl font-semibold tabular-nums">{tile.value}</span>
+            <span className="truncate text-[11px] text-muted-foreground">{tile.label}</span>
+          </>
+        );
+        return tile.link ? (
+          cloneElement(tile.link, {
+            key: i,
+            "data-doc-tile": "",
+            className: cn(TILE_CLS, TILE_LINK_CLS),
+            children: content,
+          } as Record<string, unknown>)
+        ) : (
+          <div key={i} data-doc-tile className={TILE_CLS}>
+            {content}
+          </div>
+        );
+      })}
     </div>
   );
 }

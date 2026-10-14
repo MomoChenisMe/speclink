@@ -76,6 +76,28 @@ describe("SettingsCard", () => {
     expect(classes(card)).toEqual(expect.arrayContaining(["rounded-2xl", "divide-y"]));
     expect(within(card).getAllByRole("group")).toHaveLength(2);
   });
+
+  // server-web-list-pages design D1：小標同一列的右端槽（連結或 12px 灰字）。
+  it("aside 渲染在小標同一列、卡身之外；未給時小標列沒有 aside", () => {
+    const { unmount } = render(
+      <SettingsCard title="系統健康" aside={<a href="/admin/system">系統 ›</a>}>
+        <SettingsRow label="甲" control={<span />} />
+      </SettingsCard>,
+    );
+    const region = screen.getByRole("region", { name: "系統健康" });
+    const link = within(region).getByRole("link", { name: "系統 ›" });
+    const head = region.querySelector("[data-settings-card-head]") as HTMLElement;
+    expect(head.contains(link)).toBe(true);
+    expect(head.contains(within(region).getByText("系統健康"))).toBe(true);
+    expect((region.querySelector("[data-settings-card-body]") as HTMLElement).contains(link)).toBe(false);
+    unmount();
+    render(
+      <SettingsCard title="連線">
+        <SettingsRow label="甲" control={<span />} />
+      </SettingsCard>,
+    );
+    expect(screen.getByRole("region", { name: "連線" }).querySelector("[data-settings-card-aside]")).toBeNull();
+  });
 });
 
 describe("SettingsRow", () => {
@@ -110,6 +132,12 @@ describe("SettingsRow", () => {
     );
     expect(screen.getByLabelText("locale").id).toBe("cfg-x");
     expect(screen.getByText("展開內容")).toBeTruthy();
+  });
+
+  // server-web-list-pages design D1：根節點帶 group，列內按鈕可用 group-hover: 依列滑過顯示。
+  it("根節點帶 group class", () => {
+    render(<SettingsRow label="CI 金鑰" control={<button>撤銷</button>} />);
+    expect(classes(screen.getByRole("group", { name: "CI 金鑰" }))).toContain("group");
   });
 });
 

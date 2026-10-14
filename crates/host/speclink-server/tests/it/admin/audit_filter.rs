@@ -1,8 +1,8 @@
 //! 稽核 view model 的伺服器端篩選與分頁（server-admin「管理 browser API 提供最小且
 //! 完整的頁面 view model」）。`/api/speclink/v1/web/admin/audit` 接受關鍵字、動作、
-//! 來源、時間區間與頁碼參數，於伺服器端套用後只回當頁事件與總頁數——未符合篩選的事件
-//! 不出現在回應中。參數邊界：頁碼小於 1 或時間區間起始晚於結束回 400 `invalid_argument`；
-//! 頁碼超出總頁數不是錯誤，回空清單與正確總頁數。
+//! 來源、時間區間與頁碼參數，於伺服器端套用後只回當頁事件、總頁數與符合篩選的總筆數
+//! （`total`）——未符合篩選的事件不出現在回應中。參數邊界：頁碼小於 1 或時間區間起始晚於
+//! 結束回 400 `invalid_argument`；頁碼超出總頁數不是錯誤，回空清單與正確總頁數及總筆數。
 
 use crate::common;
 
@@ -107,7 +107,7 @@ fn seed_example(identity: &Arc<IdentitySqlite>, admin_id: &str) {
 #[test]
 fn filter_and_page_are_applied_server_side() {
     // Example「篩選與分頁組合」：以動作篩選 user-invited、每頁 2 筆、第 2 頁
-    // → 只回 E5，總頁數 2，且 E2 與 E4 不出現在回應中。
+    // → 只回 E5，總頁數 2，總筆數 3，且 E2 與 E4 不出現在回應中。
     let (base, identity, admin_id) = start();
     seed_example(&identity, &admin_id);
     let cookie = login(&base);
@@ -115,6 +115,7 @@ fn filter_and_page_are_applied_server_side() {
     assert_eq!(status, 200, "the filtered page loads: {body}");
     assert_eq!(subjects(&body), vec!["E5"], "page 2 of user-invited is E5");
     assert_eq!(body["data"]["totalPages"], json!(2), "three matches at 2 per page");
+    assert_eq!(body["data"]["total"], json!(3), "the filter matches three events");
     let raw = body.to_string();
     assert!(!raw.contains("E2"), "a project-created event is filtered out: {raw}");
     assert!(!raw.contains("E4"), "a user-suspended event is filtered out: {raw}");
@@ -136,7 +137,7 @@ fn a_page_below_one_is_invalid_argument() {
 
 #[test]
 fn a_page_beyond_the_last_is_empty_but_not_an_error() {
-    // Example「參數邊界」：頁碼大於總頁數 → 空清單與正確總頁數，不回 404。
+    // Example「參數邊界」：頁碼大於總頁數 → 空清單與正確總頁數及總筆數，不回 404。
     let (base, identity, admin_id) = start();
     seed_example(&identity, &admin_id);
     let cookie = login(&base);
@@ -144,11 +145,12 @@ fn a_page_beyond_the_last_is_empty_but_not_an_error() {
     assert_eq!(status, 200, "an over-run page is not an error: {body}");
     assert!(subjects(&body).is_empty(), "the page is empty");
     assert_eq!(body["data"]["totalPages"], json!(3), "five events at 2 per page");
+    assert_eq!(body["data"]["total"], json!(5), "the total ignores the page");
 }
 
 #[test]
 fn an_unknown_action_returns_no_events_and_zero_pages() {
-    // Example「參數邊界」：未知動作名稱 → 空清單與總頁數 0。
+    // Example「參數邊界」：未知動作名稱 → 空清單、總頁數 0 與總筆數 0。
     let (base, identity, admin_id) = start();
     seed_example(&identity, &admin_id);
     let cookie = login(&base);
@@ -156,6 +158,7 @@ fn an_unknown_action_returns_no_events_and_zero_pages() {
     assert_eq!(status, 200, "an unknown action is not an error: {body}");
     assert!(subjects(&body).is_empty(), "nothing matches");
     assert_eq!(body["data"]["totalPages"], json!(0));
+    assert_eq!(body["data"]["total"], json!(0));
 }
 
 #[test]
@@ -173,7 +176,7 @@ fn a_range_starting_after_it_ends_is_invalid_argument() {
 
 #[test]
 fn omitting_every_filter_returns_the_first_page_of_all_events() {
-    // Example「參數邊界」：全部篩選省略 → 第一頁全部事件與總頁數。
+    // Example「參數邊界」：全部篩選省略 → 第一頁全部事件、總頁數與全部事件的總筆數。
     let (base, identity, admin_id) = start();
     seed_example(&identity, &admin_id);
     let cookie = login(&base);
@@ -185,6 +188,7 @@ fn omitting_every_filter_returns_the_first_page_of_all_events() {
         "every event, newest first"
     );
     assert_eq!(body["data"]["totalPages"], json!(1), "five events fit one default page");
+    assert_eq!(body["data"]["total"], json!(5), "every event counts");
 }
 
 #[test]
@@ -225,6 +229,9 @@ fn the_audit_view_is_camel_case_and_carries_no_secret() {
     for field in ["id", "actorId", "action", "subject", "source", "createdAt"] {
         assert!(first[field].is_string(), "{field} is present (camelCase): {first}");
     }
+    for field in ["totalPages", "total"] {
+        assert!(body["data"][field].is_u64(), "{field} is a non-negative number: {body}");
+    }
     let raw = body.to_string();
     for forbidden in ["hash", "password", "secret", "token"] {
         assert!(!raw.contains(forbidden), "the audit view must not carry `{forbidden}`: {raw}");
@@ -257,6 +264,7 @@ fn an_out_of_range_page_size_is_clamped_not_refused() {
     assert_eq!(status, 200, "an oversized page is clamped: {body}");
     assert_eq!(subjects(&body).len(), 5);
     assert_eq!(body["data"]["totalPages"], json!(1));
+    assert_eq!(body["data"]["total"], json!(5), "the total ignores the page size");
 }
 
 #[test]

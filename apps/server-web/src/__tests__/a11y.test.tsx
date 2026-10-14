@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { axe } from "jest-axe";
 import { App } from "../App";
-import { setViewport } from "./helpers/adminHarness";
+import { ADMIN_SESSION, makeAdminClient, setViewport } from "./helpers/adminHarness";
 
 // 可存取性基線（server-web-console D6）：殼層無 axe 違規。jsdom 無法計算色彩對比，
 // color-contrast 停用，對比／zoom／reduced-motion 由手動 viewport 驗收涵蓋（7.3）。
@@ -50,6 +50,54 @@ describe("可存取性（axe）", () => {
     // 殼有兩個 nav landmark（側欄導覽與麵包屑），以名稱區分；axe 也檢查兩者名稱不重複。
     await screen.findByRole("navigation", { name: "管理導覽" });
     await screen.findByRole("heading", { name: /總覽/ });
+    const results = await axe(container, AXE);
+    expect(results.violations).toEqual([]);
+  });
+
+  // server-web-list-pages：列表卡、分頁、數字磚與設定型卡換上之後，三個代表頁仍無違規。
+  it("使用者頁無 axe 違規", async () => {
+    const { container } = render(
+      <App client={makeAdminClient() as never} initialEntries={["/admin/users"]} />,
+    );
+    await screen.findByRole("button", { name: "Member" });
+    const results = await axe(container, AXE);
+    expect(results.violations).toEqual([]);
+  });
+
+  it("總覽無 axe 違規", async () => {
+    const { container } = render(<App client={makeAdminClient() as never} initialEntries={["/admin"]} />);
+    await screen.findByRole("region", { name: "系統健康" });
+    const results = await axe(container, AXE);
+    expect(results.violations).toEqual([]);
+  });
+
+  it("帳號頁無 axe 違規", async () => {
+    const account = {
+      user: ADMIN_SESSION.user,
+      memberships: [{ projectKey: "demo", projectName: "Demo", role: "editor" }],
+      pats: [
+        {
+          id: "p1",
+          prefix: "slk_abc",
+          name: "cli",
+          createdAt: "2026-01-01T00:00:00Z",
+          expiresAt: null,
+          lastUsedAt: null,
+          revokedAt: null,
+        },
+      ],
+      sessions: [
+        { id: "s1", createdAt: "2026-01-01T00:00:00Z", expiresAt: "2026-02-01T00:00:00Z", revokedAt: null },
+      ],
+      deviceFamilies: [],
+    };
+    const { container } = render(
+      <App
+        client={makeAdminClient({ getAccount: vi.fn(async () => account) }) as never}
+        initialEntries={["/account"]}
+      />,
+    );
+    await screen.findByRole("region", { name: "存取金鑰" });
     const results = await axe(container, AXE);
     expect(results.violations).toEqual([]);
   });

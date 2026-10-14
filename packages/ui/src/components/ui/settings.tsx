@@ -68,21 +68,33 @@ export function SettingsGroupHeader({
   );
 }
 
-/** 卡：14px 小標＋16px 圓角卡，卡內一列一筆、列間細線；以小標為區域名。 */
+/** 卡：14px 小標＋16px 圓角卡，卡內一列一筆、列間細線；以小標為區域名。`aside` 放在小標同一列
+ *  右端（連結或 12px 灰字說明；server-web-list-pages design D1）。 */
 export function SettingsCard({
   title,
   count,
   icon,
+  aside,
   children,
 }: {
   title: string;
   count?: number;
   icon?: ReactNode;
+  aside?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section aria-label={title} className="flex flex-col gap-2">
-      <SettingsGroupHeader icon={icon} label={title} count={count} size="card" />
+      <div data-settings-card-head className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <SettingsGroupHeader icon={icon} label={title} count={count} size="card" />
+        </div>
+        {aside && (
+          <div data-settings-card-aside className="shrink-0 px-1 text-xs text-muted-foreground">
+            {aside}
+          </div>
+        )}
+      </div>
       <Card data-settings-card-body className="divide-y divide-border">
         {children}
       </Card>
@@ -92,7 +104,8 @@ export function SettingsCard({
 
 /** 列：左 14px 標籤＋12px 灰字說明、右控制項；`warning` 時說明改警示色；`children` 渲染在
  *  列下方（展開的細節、行內錯誤）。以標籤為群組名，呼叫端可就列找控制項；給了 `htmlFor`
- *  時標籤只標註該控制項，不再兼作群組名（同一個名字不指向兩個元素）。 */
+ *  時標籤只標註該控制項，不再兼作群組名（同一個名字不指向兩個元素）。根節點帶 `group`，
+ *  控制項可用 `group-hover:` 依列滑過顯示。 */
 export function SettingsRow({
   label,
   description,
@@ -112,7 +125,7 @@ export function SettingsRow({
   const labelId = useId();
   const Label = htmlFor ? "label" : "span";
   return (
-    <div role="group" aria-labelledby={htmlFor ? undefined : labelId} className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2 px-4 py-3">
+    <div role="group" aria-labelledby={htmlFor ? undefined : labelId} className="group grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2 px-4 py-3">
       <div className="flex min-w-0 flex-col gap-0.5">
         <Label id={labelId} htmlFor={htmlFor} className="text-sm">
           {label}
