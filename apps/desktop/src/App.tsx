@@ -15,6 +15,7 @@ import {
   DiscussionDetailPage,
   DetailActionsSlot,
   DetailActionsSlotProvider,
+  DetailNav,
   RevertBlockedDialog,
   ReviewArchiveDialog,
   Button,
@@ -52,7 +53,7 @@ import { APP_SETTINGS_CATEGORIES, PROJECT_SETTINGS_CATEGORIES } from "./settings
 import { EmptyWorkspace } from "./components/EmptyWorkspace";
 import { ProjectActionItems, type ProjectActions } from "./components/ProjectActionsMenu";
 import { LeftTitleBar, MainTitleBar } from "./components/TitleBar";
-import { DetailBack, DetailNav, isBackShortcut } from "./components/DetailNav";
+import { DetailBack, isBackShortcut } from "./components/DetailBack";
 import { SwipeBack } from "./components/SwipeBack";
 import { DocumentActionsMenu } from "./components/DocumentActionsMenu";
 import { detectPlatform } from "./platform";

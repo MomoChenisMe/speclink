@@ -1,0 +1,252 @@
+{
+  "version": 2,
+  "change": "server-web-detail-pages",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫紅燈（design「D3 `DetailNav` 搬進 packages/ui」「D4 對話框殼」「D8 `PageHeader` 的 `badge` 槽」）：新增 `packages/ui/src/__tests__/detailNav.test.tsx`，把 `apps/desktop/src/__tests__/detailNav.test.tsx` 的 `DetailNav` 五個案例（2/3 兩鈕可按且序位文字為等寬 11px「2 / 3」、1/3 ‹ 停用、3/3 › 停用不循環、index -1 或 total 0 整組缺席、‹ › 分別呼叫 onStep(-1)／onStep(1)）改為以 packages/ui 內建字典（`I18nProvider` 不帶 app 字典）驗「上一個」「下一個」；新增 `packages/ui/src/__tests__/selectInDialog.test.tsx`：開著的 `AlertDialog` 內放 `Select`，以 userEvent 開啟並選取第二個選項，斷言選取生效、選單的 listbox 節點位於 `alertdialog` 節點之內、焦點沒有離開對話框；`packages/ui/src/__tests__/pageHeader.test.tsx` 新增「給 `badge` 時狀態籤與標題文字在同一列、標題仍是唯一的 heading 且字級 class 不變；不給 `badge` 時 DOM 與現行相同」。驗證：`npm test -w packages/ui -- detailNav selectInDialog pageHeader` 三檔皆紅（缺元件、缺掛載點、缺槽），失敗原因如上。",
+      "files": [
+        "packages/ui/src/__tests__/pageHeader.test.tsx",
+        "packages/ui/src/__tests__/detailNav.test.tsx",
+        "packages/ui/src/__tests__/selectInDialog.test.tsx"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 讓 1.1 轉綠並完成 desktop 搬家（design「D3」「D4」「D8」）：新增 `packages/ui/src/components/DetailNav.tsx`（行為與 desktop 現版相同）並由 `packages/ui/src/index.ts` 匯出 `DetailNav`；`packages/ui/src/i18n.tsx` 兩語系加入 `detail.prev`、`detail.next`、`detail.position`（文案與 desktop 現值相同）；`packages/ui/src/components/ui/alert-dialog.tsx` 的 `AlertDialogContent` 比照 `SheetContent` 以 callback ref 取得 content 節點並以 `PortalContainerProvider` 包住 children（同時轉交外部 ref）；`packages/ui/src/components/ui/page-header.tsx` 新增選配 `badge`。desktop：`apps/desktop/src/components/DetailNav.tsx` 改名為 `apps/desktop/src/components/DetailBack.tsx` 並刪除其中的 `DetailNav`；`apps/desktop/src/App.tsx` 改從 `@speclink/ui` 取 `DetailNav`、從 `./components/DetailBack` 取 `DetailBack` 與 `isBackShortcut`；`apps/desktop/src/i18n/messages.ts` 兩語系刪除那三個 key；`apps/desktop/src/__tests__/detailNav.test.tsx` 改名為 `apps/desktop/src/__tests__/detailBack.test.tsx`，只留 `DetailBack` 與 `isBackShortcut` 案例。驗證：`npm test -w packages/ui` 全綠（含 `uiSingleSource.test.ts`）；`npm test -w apps/desktop -- detailBack messages App` 全綠；以 grep 確認 `apps/desktop/src` 沒有 `function DetailNav`。",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/detailBack.test.tsx",
+        "apps/desktop/src/components/DetailBack.tsx",
+        "apps/desktop/src/i18n/messages.ts",
+        "packages/ui/src/components/ui/alert-dialog.tsx",
+        "packages/ui/src/components/ui/page-header.tsx",
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/index.ts",
+        "packages/ui/src/components/DetailNav.tsx"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 先寫紅燈：使用者詳情頁（spec「管理列表以詳情頁與對話框承載檢視與建立」「全部 browser route 由單一 SPA 提供可發現導覽」「共用設計系統維持高密度可存取體驗」的滑過才出現條款、「後台狀態徽章語意色」；design「D1 路由」「D2 頂列」「D5 使用者詳情頁」）：新增 `apps/server-web/src/__tests__/userDetail.test.tsx`（沿用 `apps/server-web/src/__tests__/helpers/adminHarness.tsx`，需要時在 harness 補該使用者的存取金鑰、裝置登入與稽核事件 fixture）——在使用者頁點「Member」列與 Tab 到該列按 Enter 都使網址變為 `/admin/users/m1`、主內容區 `h1` 為「Member」且旁有「有效」綠系狀態籤、四個分頁「概要」「成員資格 1」「憑證 n」「稽核」、畫面上沒有 `dialog` 角色的側邊面板；直接開 `/admin/users/m1` 結果相同；開 `/admin/users/no-such-id` 顯示找不到說明與「回到使用者列表」按鈕且頂列沒有「上一個」「下一個」；麵包屑為「後台 / 使用者 / Member」、側欄「使用者」為作用中，點麵包屑「使用者」回到列表；以 `makeUsers(45)` 篩選「有效」、切到第 3 頁、進詳情頁再點麵包屑「使用者」後仍為第 3 頁且換頁列為「第 41–45 筆，共 45 筆」；以 `makeUsers(12)` 輸入只符合 3 位的關鍵字、點第 2 列，頂列序位為「2 / 3」，按「下一個」後為第 3 位且「下一個」停用，再按瀏覽器上一頁（`MemoryRouter` 的 history 回退）回到列表且搜尋框仍為該關鍵字；唯一有效管理員 a1 的詳情頁管理員開關為開且停用、「停權」停用；「停權」開出指名使用者的確認框，確認後呼叫 `adminSuspend`；成員資格分頁把 demo 的角色下拉改為 reader 立即呼叫 `adminSetMembership(\"m1\", { projectKey: \"demo\", role: \"reader\", member: true })` 且重載後仍停在成員資格分頁；按 demo 列的移除鈕先出現指名 Member 與 demo 的確認框，取消不呼叫 API、確認後以 `member: false` 呼叫；移除鈕帶 `REVEAL_ON_GROUP_HOVER` 的 class；「加入專案」列的專案下拉不含已加入的 demo；憑證分頁有效存取金鑰列的「撤銷」帶滑過才出現 class，確認後呼叫 `adminRevokeToken`；稽核分頁列出該使用者的事件、動作為中文名稱。並在 `apps/server-web/src/__tests__/admin-console-shell.test.tsx` 加「`/admin/registry/demo` 麵包屑三段且側欄『專案與儲存庫』作用中」。驗證：`npm test -w apps/server-web -- userDetail admin-console-shell` 新案例皆紅，失敗原因是詳情頁與路由尚不存在。",
+      "files": [
+        "apps/server-web/src/__tests__/admin-console-shell.test.tsx",
+        "apps/server-web/src/__tests__/helpers/adminHarness.tsx",
+        "apps/server-web/src/__tests__/userDetail.test.tsx"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.2 頂列插槽與使用者區段（design「D1 路由」「D2 頂列」）：新增 `apps/server-web/src/layouts/DetailTitle.tsx`（`DetailTitleProvider`、`DetailTitle({ label, index, total, onStep })`，label 進 state、`DetailNav` 以 portal 送進插槽）；`apps/server-web/src/layouts/ConsoleLayout.tsx` 加插槽節點與 provider，`useCrumbs` 改以各目的地的 `end` 比對並在有 label 時回三段、目的地可點；`apps/server-web/src/pages/admin/AdminSection.tsx` 的使用者路由改為 `users/*`；`apps/server-web/src/pages/admin/UsersPage.tsx` 改為 `UsersSection`：資料（使用者、registry）、搜尋、狀態篩選、兩組 `usePaging` 與 `visible` 上移到區段，內層 `<Routes>` 的 index 為列表、`:id` 為詳情頁、其他導回 `/admin/users`；區段留著最近一次成功的回應渲染（首次載入才顯示 `AdminLoading`）；使用者列的 `onClick` 改為導向 `/admin/users/<id>`；刪除 `UserDetailSheet` 與其私有元件。驗證：`npm test -w apps/server-web -- admin-console-shell users` 中與麵包屑、側欄高亮、列表相關的案例轉綠，列表既有案例不紅。",
+      "files": [
+        "apps/server-web/src/__tests__/users.test.tsx",
+        "apps/server-web/src/layouts/ConsoleLayout.tsx",
+        "apps/server-web/src/pages/admin/AdminSection.tsx",
+        "apps/server-web/src/pages/admin/UsersPage.tsx",
+        "apps/server-web/src/layouts/DetailTitle.tsx"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "2.3 使用者詳情頁讓 2.1 轉綠（design「D5 使用者詳情頁」）：新增 `apps/server-web/src/pages/admin/UserDetailPage.tsx`——768px 置中欄、`PageHeader`（level 1、`badge` 狀態籤、說明 `users.detailMeta`、停權或重新啟用）、`DetailTitle`（序列為區段 `visible`、`navigate(..., { replace: true })` 切換）、卡片標頭分頁（`TabsList variant=\"card\"` 窄螢幕可水平捲動＋去上圓角上框線的 `Card`）與四個分頁的 `SettingsRow` 列：概要（電子郵件＋`CopyButton`、狀態、建立、管理員 `Switch`）、成員資格（角色 `Select` 就地變更、`REVEAL_ON_GROUP_HOVER` 移除鈕＋確認框、「加入專案」末列，窄螢幕控制項放 children）、憑證（掛載時讀取並留著上一份成功回應、`RevokeButton`＋`RevocationPill`、確認後 `adminRevokeToken`／`adminRevokeFamily`）、稽核（`auditLabel`、操作者名稱）；找不到時 `EmptyState`＋回列表按鈕且不渲染 `DetailTitle`。`apps/server-web/src/i18n/messages.ts` 兩語系補詳情頁用字。驗證：`npm test -w apps/server-web -- userDetail admin-console-shell` 中 `userDetail` 全綠、`admin-console-shell` 除 2.1 加的 `/admin/registry/demo` 一案外全綠（該案要等 3.2 的專案詳情頁才轉綠）。",
+      "files": [
+        "apps/server-web/src/i18n/messages.ts",
+        "apps/server-web/src/pages/admin/UserDetailPage.tsx"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "2.5 讓 2.4 轉綠（design「D4」「D7」）：新增 `apps/server-web/src/components/FormDialog.tsx`（`FormDialog`、`FormDialogFooter`、`SecretDone`）；`apps/server-web/src/pages/admin/UsersPage.tsx` 的 `InviteSheet` 改為 `InviteDialog`（說明文字、已選專案的圓角細框列、管理員改 `Switch` 列、成功後換成 `SecretDone` 並立即 `reload`），刪除頁面頂端的邀請連結橫幅與其 state；`apps/server-web/src/i18n/messages.ts` 兩語系補對話框用字、刪除 `users.inviteLinkNotice`。另把 packages/ui 的 11 個 `@radix-ui` 套件以 `npm update -w packages/ui` 一起升到 `^` 範圍內的最新版（design D4「對話框內下拉的 Esc」，只改 `package-lock.json`），`packages/ui/src/__tests__/selectInDialog.test.tsx` 補「下拉開著時 Esc 只收起下拉、再按才關對話框、頁面恢復可點」。驗證：`npm test -w apps/server-web -- users userDetail` 全綠；升版後 `npm test -w packages/ui` 與 `npm test -w apps/desktop` 全綠。",
+      "files": [
+        "package-lock.json",
+        "apps/server-web/src/components/FormDialog.tsx"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "3.1 先寫紅燈（spec「管理列表以詳情頁與對話框承載檢視與建立」「不可變識別欄位唯讀且更名為顯式動作」；design「D1」「D6 專案詳情頁與更名」「D7」）：新增 `apps/server-web/src/__tests__/projectDetail.test.tsx`——直接開 `/admin/registry/demo` 顯示 `h1`「Demo」、說明含「代號 demo」與「建立後不可變更」、分頁「儲存庫 n」「成員 n」，畫面上沒有任何可編輯代號的輸入框；按頁標題區「更名」出現名為「更名專案」的 `alertdialog`，輸入框預填「Demo」、說明含「代號 demo 不會改變」，改為「Demo 2」確認後以 `adminRenameProject(\"demo\", \"Demo 2\")` 呼叫、對話框關閉、`h1` 與麵包屑末段變為「Demo 2」；更名回傳錯誤時對話框保持開啟、輸入保留、錯誤為 `role=alert`；儲存庫列的「更名 <名稱>」開「更名儲存庫」對話框並以 `adminRenameRepo` 呼叫；末列「新增儲存庫」開對話框，送出呼叫 `adminCreateRepo` 後關閉、儲存庫分頁多一列；成員分頁唯讀列出顯示名稱、電子郵件與角色籤且沒有按鈕；開 `/admin/registry/nope` 顯示找不到與「回到專案列表」。改寫 `apps/server-web/src/__tests__/registry.test.tsx`——刪除已由本檔承接的抽屜案例；點專案列與 Enter 皆導向 `/admin/registry/<key>`；「建立專案」開出名為「建立專案」的 `alertdialog`，輸入代號後點遮罩仍開著且代號仍在、按 Esc 關閉；送出成功後對話框關閉且列表多一列；欄位錯誤保留輸入。驗證：`npm test -w apps/server-web -- projectDetail registry` 新案例皆紅，失敗原因是詳情頁與對話框尚不存在。",
+      "files": [
+        "apps/server-web/src/__tests__/registry.test.tsx",
+        "apps/server-web/src/__tests__/projectDetail.test.tsx"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "3.2 讓 3.1 轉綠（design「D1」「D6」「D7」）：`apps/server-web/src/pages/admin/AdminSection.tsx` 的專案路由改為 `registry/*`；`apps/server-web/src/pages/admin/RegistryPage.tsx` 改為 `RegistrySection`（資料、搜尋、`usePaging`、`visible` 上移，留著上一份成功回應，內層路由 index 為列表、`:key` 為詳情頁），專案列導向詳情頁，`CreateProjectSheet` 改為 `CreateProjectDialog`，刪除 `ProjectSheet`、`RepoList`、`RenameAction`、`CreateRepoForm`、`ProjectMembers`；新增 `apps/server-web/src/pages/admin/ProjectDetailPage.tsx`（`PageHeader`＋更名、`DetailTitle`、儲存庫與成員兩個卡片標頭分頁、`RenameDialog`、`CreateRepoDialog`、成員於掛載時讀 `getAdminUsers()`、找不到狀態）；`apps/server-web/src/i18n/messages.ts` 兩語系補用字。驗證：`npm test -w apps/server-web -- projectDetail registry wording admin-console-shell` 全綠（含 2.1 加的 `/admin/registry/demo` 麵包屑案例）。",
+      "files": [
+        "apps/server-web/src/__tests__/wording.test.tsx",
+        "apps/server-web/src/pages/admin/RegistryPage.tsx",
+        "apps/server-web/src/pages/admin/ProjectDetailPage.tsx"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "4.1 先寫紅燈（spec「管理列表以詳情頁與對話框承載檢視與建立」的「帳號頁的建立金鑰以對話框承載」、「後台狀態徽章語意色」；design「D7」）：改寫 `apps/server-web/src/__tests__/account.test.tsx` 的建立金鑰案例——按「建立存取金鑰」前頁面沒有名稱欄位，按下後出現名為「建立存取金鑰」的 `alertdialog`；以名稱 ci 送出成功後同一個對話框標題為「金鑰已建立」、`aria-live=polite` 的綠系成功框內為明文金鑰與「複製」、說明只顯示這一次；按「完成」後對話框關閉、頁面上找不到明文、存取金鑰卡多出 ci 一列；送出失敗保留名稱且錯誤為 `role=alert`。驗證：`npm test -w apps/server-web -- account` 新案例皆紅，失敗原因是建立仍為抽屜與頁面橫幅。",
+      "files": [
+        "apps/server-web/src/__tests__/account.test.tsx"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "4.2 讓 4.1 轉綠並刪除抽屜殼（design「D7」）：`apps/server-web/src/pages/AccountPage.tsx` 的 `CreateKeySheet` 改為以 `FormDialog` 承載的 `CreateKeyDialog`（成功後換成 `SecretDone` 並立即 `reload`），刪除頁面頂端的明文金鑰橫幅與其 state；刪除 `apps/server-web/src/components/DetailSheet.tsx`；`apps/server-web/src/i18n/messages.ts` 兩語系補用字、刪除 `account.newKeyNotice`。驗證：`npm test -w apps/server-web -- account` 全綠；以 grep 確認 `apps/server-web/src` 沒有 `DetailSheet`。",
+      "files": [
+        "apps/server-web/src/components/DetailSheet.tsx",
+        "apps/server-web/src/pages/AccountPage.tsx"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "5.1 文案、無障礙與規格字面收尾（design「D9 規格寫法」「D10 i18n」「D11 窄螢幕」）：`apps/server-web/src/__tests__/wording.test.tsx` 與 `apps/server-web/src/__tests__/a11y.test.tsx` 的對話框查詢改為 `alertdialog` 角色，a11y 補「使用者詳情頁」與「開著的邀請對話框」兩個 axe 案例；以 grep 找出 `apps/server-web/src/i18n/messages.ts` 中本刀孤兒化的 key（逐一確認 `apps/server-web/src` 無引用後兩語系一起刪）；以 grep 確認 `apps/server-web/src` 的程式碼與註解不再出現「抽屜」（窄螢幕導覽的 Sheet 用「導覽」稱呼）；`openspec/specs/server-web-console/spec.md` 的 Purpose 一句把「管理列表的抽屜式建立編輯」改為「管理列表的詳情頁與對話框式檢視建立」。驗證：`npm test -w apps/server-web -- wording a11y i18n` 全綠；兩個 grep 結果為空。",
+      "files": [
+        "apps/server-web/src/__tests__/a11y.test.tsx",
+        "apps/server-web/src/__tests__/toolbar.test.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4WWDBEEK5X2QTRNWCG88V4M",
+      "taskDesc": "1.1 先寫紅燈（design「D3 `DetailNav` 搬進 packages/ui」「D4 對話框殼」「D8 `PageHeader` 的 `badge` 槽」）：新增 `packages/ui/src/__tests__/detailNav.test.tsx`，把 `apps/desktop/src/__tests__/detailNav.test.tsx` 的 `DetailNav` 五個案例（2/3 兩鈕可按且序位文字為等寬 11px「2 / 3」、1/3 ‹ 停用、3/3 › 停用不循環、index -1 或 total 0 整組缺席、‹ › 分別呼叫 onStep(-1)／onStep(1)）改為以 packages/ui 內建字典（`I18nProvider` 不帶 app 字典）驗「上一個」「下一個」；新增 `packages/ui/src/__tests__/selectInDialog.test.tsx`：開著的 `AlertDialog` 內放 `Select`，以 userEvent 開啟並選取第二個選項，斷言選取生效、選單的 listbox 節點位於 `alertdialog` 節點之內、焦點沒有離開對話框；`packages/ui/src/__tests__/pageHeader.test.tsx` 新增「給 `badge` 時狀態籤與標題文字在同一列、標題仍是唯一的 heading 且字級 class 不變；不給 `badge` 時 DOM 與現行相同」。驗證：`npm test -w packages/ui -- detailNav selectInDialog pageHeader` 三檔皆紅（缺元件、缺掛載點、缺槽），失敗原因如上。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/pageHeader.test.tsx",
+        "packages/ui/src/__tests__/detailNav.test.tsx",
+        "packages/ui/src/__tests__/selectInDialog.test.tsx"
+      ],
+      "recordedAt": "2026-10-14T14:09:21Z"
+    },
+    {
+      "taskId": "tsk_01M4WWDBEE54QEJA99XXKVQ5Q6",
+      "taskDesc": "1.2 讓 1.1 轉綠並完成 desktop 搬家（design「D3」「D4」「D8」）：新增 `packages/ui/src/components/DetailNav.tsx`（行為與 desktop 現版相同）並由 `packages/ui/src/index.ts` 匯出 `DetailNav`；`packages/ui/src/i18n.tsx` 兩語系加入 `detail.prev`、`detail.next`、`detail.position`（文案與 desktop 現值相同）；`packages/ui/src/components/ui/alert-dialog.tsx` 的 `AlertDialogContent` 比照 `SheetContent` 以 callback ref 取得 content 節點並以 `PortalContainerProvider` 包住 children（同時轉交外部 ref）；`packages/ui/src/components/ui/page-header.tsx` 新增選配 `badge`。desktop：`apps/desktop/src/components/DetailNav.tsx` 改名為 `apps/desktop/src/components/DetailBack.tsx` 並刪除其中的 `DetailNav`；`apps/desktop/src/App.tsx` 改從 `@speclink/ui` 取 `DetailNav`、從 `./components/DetailBack` 取 `DetailBack` 與 `isBackShortcut`；`apps/desktop/src/i18n/messages.ts` 兩語系刪除那三個 key；`apps/desktop/src/__tests__/detailNav.test.tsx` 改名為 `apps/desktop/src/__tests__/detailBack.test.tsx`，只留 `DetailBack` 與 `isBackShortcut` 案例。驗證：`npm test -w packages/ui` 全綠（含 `uiSingleSource.test.ts`）；`npm test -w apps/desktop -- detailBack messages App` 全綠；以 grep 確認 `apps/desktop/src` 沒有 `function DetailNav`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/detailBack.test.tsx",
+        "apps/desktop/src/components/DetailBack.tsx",
+        "apps/desktop/src/i18n/messages.ts",
+        "packages/ui/src/components/ui/alert-dialog.tsx",
+        "packages/ui/src/components/ui/page-header.tsx",
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/index.ts",
+        "packages/ui/src/components/DetailNav.tsx"
+      ],
+      "recordedAt": "2026-10-14T14:12:05Z"
+    },
+    {
+      "taskId": "tsk_01M4WWDBEEX27DQT5CYRFAE4C1",
+      "taskDesc": "2.1 先寫紅燈：使用者詳情頁（spec「管理列表以詳情頁與對話框承載檢視與建立」「全部 browser route 由單一 SPA 提供可發現導覽」「共用設計系統維持高密度可存取體驗」的滑過才出現條款、「後台狀態徽章語意色」；design「D1 路由」「D2 頂列」「D5 使用者詳情頁」）：新增 `apps/server-web/src/__tests__/userDetail.test.tsx`（沿用 `apps/server-web/src/__tests__/helpers/adminHarness.tsx`，需要時在 harness 補該使用者的存取金鑰、裝置登入與稽核事件 fixture）——在使用者頁點「Member」列與 Tab 到該列按 Enter 都使網址變為 `/admin/users/m1`、主內容區 `h1` 為「Member」且旁有「有效」綠系狀態籤、四個分頁「概要」「成員資格 1」「憑證 n」「稽核」、畫面上沒有 `dialog` 角色的側邊面板；直接開 `/admin/users/m1` 結果相同；開 `/admin/users/no-such-id` 顯示找不到說明與「回到使用者列表」按鈕且頂列沒有「上一個」「下一個」；麵包屑為「後台 / 使用者 / Member」、側欄「使用者」為作用中，點麵包屑「使用者」回到列表；以 `makeUsers(45)` 篩選「有效」、切到第 3 頁、進詳情頁再點麵包屑「使用者」後仍為第 3 頁且換頁列為「第 41–45 筆，共 45 筆」；以 `makeUsers(12)` 輸入只符合 3 位的關鍵字、點第 2 列，頂列序位為「2 / 3」，按「下一個」後為第 3 位且「下一個」停用，再按瀏覽器上一頁（`MemoryRouter` 的 history 回退）回到列表且搜尋框仍為該關鍵字；唯一有效管理員 a1 的詳情頁管理員開關為開且停用、「停權」停用；「停權」開出指名使用者的確認框，確認後呼叫 `adminSuspend`；成員資格分頁把 demo 的角色下拉改為 reader 立即呼叫 `adminSetMembership(\"m1\", { projectKey: \"demo\", role: \"reader\", member: true })` 且重載後仍停在成員資格分頁；按 demo 列的移除鈕先出現指名 Member 與 demo 的確認框，取消不呼叫 API、確認後以 `member: false` 呼叫；移除鈕帶 `REVEAL_ON_GROUP_HOVER` 的 class；「加入專案」列的專案下拉不含已加入的 demo；憑證分頁有效存取金鑰列的「撤銷」帶滑過才出現 class，確認後呼叫 `adminRevokeToken`；稽核分頁列出該使用者的事件、動作為中文名稱。並在 `apps/server-web/src/__tests__/admin-console-shell.test.tsx` 加「`/admin/registry/demo` 麵包屑三段且側欄『專案與儲存庫』作用中」。驗證：`npm test -w apps/server-web -- userDetail admin-console-shell` 新案例皆紅，失敗原因是詳情頁與路由尚不存在。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "apps/server-web/src/__tests__/admin-console-shell.test.tsx",
+        "apps/server-web/src/__tests__/helpers/adminHarness.tsx",
+        "apps/server-web/src/__tests__/userDetail.test.tsx"
+      ],
+      "recordedAt": "2026-10-14T14:17:40Z"
+    },
+    {
+      "taskId": "tsk_01M4WWDBEEN4X5Q5ESQ0VFFS11",
+      "taskDesc": "2.2 頂列插槽與使用者區段（design「D1 路由」「D2 頂列」）：新增 `apps/server-web/src/layouts/DetailTitle.tsx`（`DetailTitleProvider`、`DetailTitle({ label, index, total, onStep })`，label 進 state、`DetailNav` 以 portal 送進插槽）；`apps/server-web/src/layouts/ConsoleLayout.tsx` 加插槽節點與 provider，`useCrumbs` 改以各目的地的 `end` 比對並在有 label 時回三段、目的地可點；`apps/server-web/src/pages/admin/AdminSection.tsx` 的使用者路由改為 `users/*`；`apps/server-web/src/pages/admin/UsersPage.tsx` 改為 `UsersSection`：資料（使用者、registry）、搜尋、狀態篩選、兩組 `usePaging` 與 `visible` 上移到區段，內層 `<Routes>` 的 index 為列表、`:id` 為詳情頁、其他導回 `/admin/users`；區段留著最近一次成功的回應渲染（首次載入才顯示 `AdminLoading`）；使用者列的 `onClick` 改為導向 `/admin/users/<id>`；刪除 `UserDetailSheet` 與其私有元件。驗證：`npm test -w apps/server-web -- admin-console-shell users` 中與麵包屑、側欄高亮、列表相關的案例轉綠，列表既有案例不紅。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "apps/server-web/src/__tests__/users.test.tsx",
+        "apps/server-web/src/layouts/ConsoleLayout.tsx",
+        "apps/server-web/src/pages/admin/AdminSection.tsx",
+        "apps/server-web/src/pages/admin/UsersPage.tsx",
+        "apps/server-web/src/layouts/DetailTitle.tsx"
+      ],
+      "recordedAt": "2026-10-14T14:20:17Z"
+    },
+    {
+      "taskId": "tsk_01M4WWDBEEX689NXX033YMP52D",
+      "taskDesc": "2.3 使用者詳情頁讓 2.1 轉綠（design「D5 使用者詳情頁」）：新增 `apps/server-web/src/pages/admin/UserDetailPage.tsx`——768px 置中欄、`PageHeader`（level 1、`badge` 狀態籤、說明 `users.detailMeta`、停權或重新啟用）、`DetailTitle`（序列為區段 `visible`、`navigate(..., { replace: true })` 切換）、卡片標頭分頁（`TabsList variant=\"card\"` 窄螢幕可水平捲動＋去上圓角上框線的 `Card`）與四個分頁的 `SettingsRow` 列：概要（電子郵件＋`CopyButton`、狀態、建立、管理員 `Switch`）、成員資格（角色 `Select` 就地變更、`REVEAL_ON_GROUP_HOVER` 移除鈕＋確認框、「加入專案」末列，窄螢幕控制項放 children）、憑證（掛載時讀取並留著上一份成功回應、`RevokeButton`＋`RevocationPill`、確認後 `adminRevokeToken`／`adminRevokeFamily`）、稽核（`auditLabel`、操作者名稱）；找不到時 `EmptyState`＋回列表按鈕且不渲染 `DetailTitle`。`apps/server-web/src/i18n/messages.ts` 兩語系補詳情頁用字。驗證：`npm test -w apps/server-web -- userDetail admin-console-shell` 中 `userDetail` 全綠、`admin-console-shell` 除 2.1 加的 `/admin/registry/demo` 一案外全綠（該案要等 3.2 的專案詳情頁才轉綠）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "apps/server-web/src/i18n/messages.ts",
+        "apps/server-web/src/pages/admin/UserDetailPage.tsx"
+      ],
+      "recordedAt": "2026-10-14T14:22:56Z"
+    },
+    {
+      "taskId": "tsk_01M4WWDBEEY7J9714FETV1WC12",
+      "taskDesc": "2.5 讓 2.4 轉綠（design「D4」「D7」）：新增 `apps/server-web/src/components/FormDialog.tsx`（`FormDialog`、`FormDialogFooter`、`SecretDone`）；`apps/server-web/src/pages/admin/UsersPage.tsx` 的 `InviteSheet` 改為 `InviteDialog`（說明文字、已選專案的圓角細框列、管理員改 `Switch` 列、成功後換成 `SecretDone` 並立即 `reload`），刪除頁面頂端的邀請連結橫幅與其 state；`apps/server-web/src/i18n/messages.ts` 兩語系補對話框用字、刪除 `users.inviteLinkNotice`。另把 packages/ui 的 11 個 `@radix-ui` 套件以 `npm update -w packages/ui` 一起升到 `^` 範圍內的最新版（design D4「對話框內下拉的 Esc」，只改 `package-lock.json`），`packages/ui/src/__tests__/selectInDialog.test.tsx` 補「下拉開著時 Esc 只收起下拉、再按才關對話框、頁面恢復可點」。驗證：`npm test -w apps/server-web -- users userDetail` 全綠；升版後 `npm test -w packages/ui` 與 `npm test -w apps/desktop` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "package-lock.json",
+        "apps/server-web/src/components/FormDialog.tsx"
+      ],
+      "recordedAt": "2026-10-14T15:03:32Z"
+    },
+    {
+      "taskId": "tsk_01M4WWDBEEF0AM14M7GH7DZJKM",
+      "taskDesc": "3.1 先寫紅燈（spec「管理列表以詳情頁與對話框承載檢視與建立」「不可變識別欄位唯讀且更名為顯式動作」；design「D1」「D6 專案詳情頁與更名」「D7」）：新增 `apps/server-web/src/__tests__/projectDetail.test.tsx`——直接開 `/admin/registry/demo` 顯示 `h1`「Demo」、說明含「代號 demo」與「建立後不可變更」、分頁「儲存庫 n」「成員 n」，畫面上沒有任何可編輯代號的輸入框；按頁標題區「更名」出現名為「更名專案」的 `alertdialog`，輸入框預填「Demo」、說明含「代號 demo 不會改變」，改為「Demo 2」確認後以 `adminRenameProject(\"demo\", \"Demo 2\")` 呼叫、對話框關閉、`h1` 與麵包屑末段變為「Demo 2」；更名回傳錯誤時對話框保持開啟、輸入保留、錯誤為 `role=alert`；儲存庫列的「更名 <名稱>」開「更名儲存庫」對話框並以 `adminRenameRepo` 呼叫；末列「新增儲存庫」開對話框，送出呼叫 `adminCreateRepo` 後關閉、儲存庫分頁多一列；成員分頁唯讀列出顯示名稱、電子郵件與角色籤且沒有按鈕；開 `/admin/registry/nope` 顯示找不到與「回到專案列表」。改寫 `apps/server-web/src/__tests__/registry.test.tsx`——刪除已由本檔承接的抽屜案例；點專案列與 Enter 皆導向 `/admin/registry/<key>`；「建立專案」開出名為「建立專案」的 `alertdialog`，輸入代號後點遮罩仍開著且代號仍在、按 Esc 關閉；送出成功後對話框關閉且列表多一列；欄位錯誤保留輸入。驗證：`npm test -w apps/server-web -- projectDetail registry` 新案例皆紅，失敗原因是詳情頁與對話框尚不存在。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "apps/server-web/src/__tests__/registry.test.tsx",
+        "apps/server-web/src/__tests__/projectDetail.test.tsx"
+      ],
+      "recordedAt": "2026-10-14T15:05:04Z"
+    },
+    {
+      "taskId": "tsk_01M4WWDBEEE910YTARSW2BQB39",
+      "taskDesc": "3.2 讓 3.1 轉綠（design「D1」「D6」「D7」）：`apps/server-web/src/pages/admin/AdminSection.tsx` 的專案路由改為 `registry/*`；`apps/server-web/src/pages/admin/RegistryPage.tsx` 改為 `RegistrySection`（資料、搜尋、`usePaging`、`visible` 上移，留著上一份成功回應，內層路由 index 為列表、`:key` 為詳情頁），專案列導向詳情頁，`CreateProjectSheet` 改為 `CreateProjectDialog`，刪除 `ProjectSheet`、`RepoList`、`RenameAction`、`CreateRepoForm`、`ProjectMembers`；新增 `apps/server-web/src/pages/admin/ProjectDetailPage.tsx`（`PageHeader`＋更名、`DetailTitle`、儲存庫與成員兩個卡片標頭分頁、`RenameDialog`、`CreateRepoDialog`、成員於掛載時讀 `getAdminUsers()`、找不到狀態）；`apps/server-web/src/i18n/messages.ts` 兩語系補用字。驗證：`npm test -w apps/server-web -- projectDetail registry wording admin-console-shell` 全綠（含 2.1 加的 `/admin/registry/demo` 麵包屑案例）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "apps/server-web/src/__tests__/wording.test.tsx",
+        "apps/server-web/src/pages/admin/RegistryPage.tsx",
+        "apps/server-web/src/pages/admin/ProjectDetailPage.tsx"
+      ],
+      "recordedAt": "2026-10-14T15:06:52Z"
+    },
+    {
+      "taskId": "tsk_01M4WWDBEEQ51DTDRT5KXSVZ7K",
+      "taskDesc": "4.1 先寫紅燈（spec「管理列表以詳情頁與對話框承載檢視與建立」的「帳號頁的建立金鑰以對話框承載」、「後台狀態徽章語意色」；design「D7」）：改寫 `apps/server-web/src/__tests__/account.test.tsx` 的建立金鑰案例——按「建立存取金鑰」前頁面沒有名稱欄位，按下後出現名為「建立存取金鑰」的 `alertdialog`；以名稱 ci 送出成功後同一個對話框標題為「金鑰已建立」、`aria-live=polite` 的綠系成功框內為明文金鑰與「複製」、說明只顯示這一次；按「完成」後對話框關閉、頁面上找不到明文、存取金鑰卡多出 ci 一列；送出失敗保留名稱且錯誤為 `role=alert`。驗證：`npm test -w apps/server-web -- account` 新案例皆紅，失敗原因是建立仍為抽屜與頁面橫幅。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "apps/server-web/src/__tests__/account.test.tsx"
+      ],
+      "recordedAt": "2026-10-14T15:07:50Z"
+    },
+    {
+      "taskId": "tsk_01M4WWDBEEWMRG9D2JMDARA16J",
+      "taskDesc": "4.2 讓 4.1 轉綠並刪除抽屜殼（design「D7」）：`apps/server-web/src/pages/AccountPage.tsx` 的 `CreateKeySheet` 改為以 `FormDialog` 承載的 `CreateKeyDialog`（成功後換成 `SecretDone` 並立即 `reload`），刪除頁面頂端的明文金鑰橫幅與其 state；刪除 `apps/server-web/src/components/DetailSheet.tsx`；`apps/server-web/src/i18n/messages.ts` 兩語系補用字、刪除 `account.newKeyNotice`。驗證：`npm test -w apps/server-web -- account` 全綠；以 grep 確認 `apps/server-web/src` 沒有 `DetailSheet`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "apps/server-web/src/components/DetailSheet.tsx",
+        "apps/server-web/src/pages/AccountPage.tsx"
+      ],
+      "recordedAt": "2026-10-14T15:08:06Z"
+    },
+    {
+      "taskId": "tsk_01M4WWDBEEPZ0FVHC4CNFRVWD6",
+      "taskDesc": "5.1 文案、無障礙與規格字面收尾（design「D9 規格寫法」「D10 i18n」「D11 窄螢幕」）：`apps/server-web/src/__tests__/wording.test.tsx` 與 `apps/server-web/src/__tests__/a11y.test.tsx` 的對話框查詢改為 `alertdialog` 角色，a11y 補「使用者詳情頁」與「開著的邀請對話框」兩個 axe 案例；以 grep 找出 `apps/server-web/src/i18n/messages.ts` 中本刀孤兒化的 key（逐一確認 `apps/server-web/src` 無引用後兩語系一起刪）；以 grep 確認 `apps/server-web/src` 的程式碼與註解不再出現「抽屜」（窄螢幕導覽的 Sheet 用「導覽」稱呼）；`openspec/specs/server-web-console/spec.md` 的 Purpose 一句把「管理列表的抽屜式建立編輯」改為「管理列表的詳情頁與對話框式檢視建立」。驗證：`npm test -w apps/server-web -- wording a11y i18n` 全綠；兩個 grep 結果為空。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "apps/server-web/src/__tests__/a11y.test.tsx",
+        "apps/server-web/src/__tests__/toolbar.test.tsx"
+      ],
+      "recordedAt": "2026-10-14T15:10:01Z"
+    }
+  ]
+}

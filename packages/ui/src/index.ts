@@ -192,6 +192,7 @@ export {
 export { Kbd, MenuShortcut } from "./components/ui/kbd";
 export { PageHeader } from "./components/ui/page-header";
 export { Breadcrumbs, type Crumb } from "./components/Breadcrumbs";
+export { DetailNav } from "./components/DetailNav";
 export { StepProgress } from "./components/StepProgress";
 export { Textarea, type TextareaProps } from "./components/ui/textarea";
 export { Skeleton } from "./components/ui/skeleton";

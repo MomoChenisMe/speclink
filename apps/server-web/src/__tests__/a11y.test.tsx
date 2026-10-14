@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import { App } from "../App";
 import { ADMIN_SESSION, makeAdminClient, setViewport } from "./helpers/adminHarness";
@@ -99,6 +100,29 @@ describe("可存取性（axe）", () => {
     );
     await screen.findByRole("region", { name: "存取金鑰" });
     const results = await axe(container, AXE);
+    expect(results.violations).toEqual([]);
+  });
+
+  // server-web-detail-pages：詳情頁（頁標題接狀態籤、卡片標頭分頁、頂列 ‹ n / m ›）與置中對話框。
+  it("使用者詳情頁無 axe 違規", async () => {
+    const { container } = render(
+      <App client={makeAdminClient() as never} initialEntries={["/admin/users/m1"]} />,
+    );
+    await screen.findByRole("heading", { level: 1, name: "Member" });
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: /^憑證/ }).querySelector("[data-tab-count]")).not.toBeNull(),
+    );
+    const results = await axe(container, AXE);
+    expect(results.violations).toEqual([]);
+  });
+
+  // 對話框 portal 到 body，所以掃整個 body（同窄螢幕一題的理由，不傳 documentElement）。
+  it("開著的邀請對話框無 axe 違規", async () => {
+    render(<App client={makeAdminClient() as never} initialEntries={["/admin/users"]} />);
+    await screen.findByRole("button", { name: "Member" });
+    await userEvent.setup().click(screen.getByRole("button", { name: "邀請使用者" }));
+    await screen.findByRole("alertdialog", { name: "邀請使用者" });
+    const results = await axe(document.body, AXE);
     expect(results.violations).toEqual([]);
   });
 

@@ -3,11 +3,9 @@ import { KeyRound } from "lucide-react";
 import {
   Button,
   ConfirmDialog,
-  CopyButton,
   SettingsCard,
   SettingsRow,
   StatusPill,
-  SEMANTIC_SURFACE,
   useI18n,
   PageHeader,
 } from "@speclink/ui";
@@ -16,7 +14,7 @@ import { fillUser } from "../lib/userLabel";
 import { useAsync } from "../lib/useAsync";
 import { readFormError } from "../lib/formError";
 import { Field } from "../components/Field";
-import { DetailSheet } from "../components/DetailSheet";
+import { FormDialog, FormDialogFooter, SecretDone } from "../components/FormDialog";
 import { CardNote } from "../components/CardNote";
 import { RevocationPill } from "../components/RevocationPill";
 import { RevokeButton } from "../components/RevokeButton";
@@ -24,8 +22,9 @@ import type { AccountSummary, DeviceFamilyMeta, PatMeta } from "../api/client";
 
 // 帳號自助頁（server-identity「帳號 browser API 保持憑證祕密邊界」, D4／D6；server-web-list-pages
 // design D8、D10）：768px 置中欄，由上而下為我的專案、存取金鑰、裝置登入、登入工作階段四張設定型卡。
-// 金鑰明文只在建立時顯示一次；存取金鑰與裝置登入的撤銷鈕滑過才出現，撤銷等破壞性操作先以確認框
-// 確認且立即生效。所有 server 資料留在本 route 的 component state（D1）。
+// 金鑰明文只在建立對話框內顯示一次（server-web-detail-pages design D7）；存取金鑰與裝置登入的撤銷鈕
+// 滑過才出現，撤銷等破壞性操作先以確認框確認且立即生效。所有 server 資料留在本 route 的 component
+// state（D1）。
 
 type Confirm = { title: string; run: () => Promise<void> };
 
@@ -38,7 +37,6 @@ export function AccountPage() {
   const { t } = useI18n();
   const client = useClient();
   const { loading, data, reload } = useAsync(() => client.getAccount(), []);
-  const [plaintext, setPlaintext] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [busy, setBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -75,7 +73,7 @@ export function AccountPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[768px] flex-col gap-6">
-      {/* 與管理列表頁一致：頁面唯一 primary action 開抽屜，建立欄位不常駐頁面。 */}
+      {/* 與管理列表頁一致：頁面唯一 primary action 開對話框，建立欄位不常駐頁面。 */}
       <PageHeader
         level={1}
         title={t("account.title")}
@@ -87,20 +85,6 @@ export function AccountPage() {
           </Button>
         }
       />
-
-      {plaintext && (
-        <div
-          role="status"
-          aria-live="polite"
-          className={`rounded-md border p-4 ${SEMANTIC_SURFACE.success}`}
-        >
-          <p className="text-sm font-medium">{t("account.newKeyNotice")}</p>
-          <div className="mt-1 flex items-start gap-3">
-            <code className="min-w-0 flex-1 break-all font-mono text-sm">{plaintext}</code>
-            <CopyButton size="sm" value={plaintext} label={t("common.copy")} />
-          </div>
-        </div>
-      )}
 
       <AccountCards
         account={data}
@@ -119,15 +103,8 @@ export function AccountPage() {
         }
       />
 
-      <CreateKeySheet
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        onCreated={(secret) => {
-          setPlaintext(secret);
-          setCreateOpen(false);
-          reload();
-        }}
-      />
+      {/* 只在開著時掛載：每次開啟都是空白表單。 */}
+      {createOpen && <CreateKeyDialog onClose={() => setCreateOpen(false)} onCreated={reload} />}
 
       <ConfirmDialog
         open={confirm !== null}
@@ -146,7 +123,7 @@ export function AccountPage() {
 // 四張卡（design D10）。我的專案（server-web-console「帳號頁呈現我的專案」）是唯讀的個人視角，
 // 資料只來自 account summary——admin 與一般成員看到同一張卡、同一形狀，全部專案的治理視角在
 // /admin/registry；顯示名缺席時以等寬代號為名、不再重複一次代號。存取金鑰的建立走頁面的 primary
-// action 開抽屜；登入工作階段唯讀（登出由殼層的登出動作處理）；裝置登入撤銷後立即使 access
+// action 開對話框；登入工作階段唯讀（登出由殼層的登出動作處理）；裝置登入撤銷後立即使 access
 // token 與 refresh credential 失效。
 function AccountCards({
   account,
@@ -266,17 +243,9 @@ function AccountCards({
   );
 }
 
-// 建立存取金鑰的抽屜。成功後由頁面呈現一次性明文——明文屬於整頁的一次性回饋，
-// 不該跟著抽屜一起關掉。
-function CreateKeySheet({
-  open,
-  onOpenChange,
-  onCreated,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onCreated: (plaintext: string) => void;
-}) {
+// 建立存取金鑰的對話框（design D7）：送出成功後同一個對話框換成已建立狀態，一次性明文只在這裡出現、
+// 關掉就看不到；成功當下即重載，存取金鑰卡隨之多出一列。
+function CreateKeyDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const { t } = useI18n();
   const client = useClient();
   const [name, setName] = useState("");
@@ -284,6 +253,7 @@ function CreateKeySheet({
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [plaintext, setPlaintext] = useState<string | null>(null);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -292,10 +262,9 @@ function CreateKeySheet({
     setMessage(null);
     setFieldErrors({});
     try {
-      const { plaintext } = await client.createPat({ name, expires: expires || undefined });
-      setName("");
-      setExpires("");
-      onCreated(plaintext);
+      const created = await client.createPat({ name, expires: expires || undefined });
+      setPlaintext(created.plaintext);
+      onCreated();
     } catch (error) {
       const read = readFormError(error, t("account.createKeyError"));
       setMessage(read.message);
@@ -305,11 +274,28 @@ function CreateKeySheet({
     }
   }
 
-  if (!open) return null;
+  if (plaintext) {
+    return (
+      <FormDialog
+        open
+        onOpenChange={(open) => !open && onClose()}
+        title={t("account.keyDoneTitle")}
+        description={t("account.keyDoneBody")}
+        done
+      >
+        <SecretDone value={plaintext} copyLabel={t("common.copy")} onDone={onClose} />
+      </FormDialog>
+    );
+  }
 
   return (
-    <DetailSheet open onOpenChange={onOpenChange} title={t("account.createKey")}>
-      <form onSubmit={onSubmit} className="space-y-4" noValidate>
+    <FormDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={t("account.createKey")}
+      description={t("account.createKeyHint")}
+    >
+      <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
         <Field
           id="pat-name"
           label={t("account.keyNameLabel")}
@@ -329,15 +315,15 @@ function CreateKeySheet({
             {message}
           </p>
         )}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+        <FormDialogFooter>
+          <Button type="button" variant="ghost" onClick={onClose}>
             {t("common.cancel")}
           </Button>
           <Button type="submit" disabled={pending}>
             {pending ? t("common.creating") : t("common.create")}
           </Button>
-        </div>
+        </FormDialogFooter>
       </form>
-    </DetailSheet>
+    </FormDialog>
   );
 }

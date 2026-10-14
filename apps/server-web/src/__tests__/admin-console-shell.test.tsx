@@ -164,6 +164,16 @@ describe("主區頂列的麵包屑", () => {
     expect(breadcrumbs().textContent).toBe("後台/使用者");
   });
 
+  // server-web-detail-pages design D2：詳情頁為三段，目的地可點回列表、名稱不可點。
+  it("/admin/registry/demo 為「後台 / 專案與儲存庫 / Demo」，側欄「專案與儲存庫」作用中", async () => {
+    renderAt("/admin/registry/demo", client());
+    await screen.findByRole("heading", { level: 1, name: "Demo" });
+    expect(breadcrumbs().textContent).toBe("後台/專案與儲存庫/Demo");
+    expect(within(breadcrumbs()).getByRole("button", { name: "專案與儲存庫" })).toBeTruthy();
+    const nav = screen.getByRole("navigation", { name: "管理導覽" });
+    expect(within(nav).getByRole("link", { name: "專案與儲存庫" }).getAttribute("aria-current")).toBe("page");
+  });
+
   it("未列在目的地表內的 /admin/* 路徑只顯示「後台」", () => {
     renderShellAt("/admin/unknown");
     expect(breadcrumbs().textContent).toBe("後台");

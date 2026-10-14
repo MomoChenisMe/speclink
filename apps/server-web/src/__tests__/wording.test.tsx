@@ -138,7 +138,7 @@ describe("中文正典詞出現在對應畫面（zh-TW）", () => {
     const { default: userEvent } = await import("@testing-library/user-event");
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /建立專案/ }));
-    await screen.findByRole("dialog", { name: /建立專案/ });
+    await screen.findByRole("alertdialog", { name: /建立專案/ });
     expect(screen.getByLabelText(/專案代號/)).toBeTruthy();
   });
 

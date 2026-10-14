@@ -62,19 +62,19 @@ describe("工具列控件高度一致", () => {
   });
 });
 
-describe("使用者抽屜的成員資格表單使用 Select 原語", () => {
-  it("加入專案的專案與角色選擇皆為 combobox", async () => {
+describe("使用者詳情頁的成員資格列使用 Select 原語", () => {
+  it("每列的角色與加入專案的專案、角色選擇皆為 combobox", async () => {
     const { default: userEvent } = await import("@testing-library/user-event");
     const user = userEvent.setup();
-    renderAt("/admin/users", makeAdminClient());
+    renderAt("/admin/users/m1", makeAdminClient());
 
-    await user.click(await screen.findByRole("button", { name: "Member" }));
-    const drawer = await screen.findByRole("dialog", { name: /Member/ });
-    await user.click(within(drawer).getByRole("tab", { name: "成員資格" }));
-    await user.click(within(drawer).getByRole("button", { name: /加入專案/ }));
+    await screen.findByRole("heading", { level: 1, name: "Member" });
+    await user.click(screen.getByRole("tab", { name: /^成員資格/ }));
+    const panel = screen.getByRole("tabpanel");
 
-    expect(within(drawer).getByRole("combobox", { name: /專案/ })).toBeTruthy();
-    expect(within(drawer).getByRole("combobox", { name: /角色/ })).toBeTruthy();
+    expect(within(panel).getByRole("combobox", { name: "demo 的角色" })).toBeTruthy();
+    expect(within(panel).getByRole("combobox", { name: "要加入的專案" })).toBeTruthy();
+    expect(within(panel).getByRole("combobox", { name: "加入時的角色" })).toBeTruthy();
     expect(document.querySelector(VISIBLE_NATIVE_SELECT)).toBeNull();
   });
 });
