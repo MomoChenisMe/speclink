@@ -51,6 +51,8 @@ beforeEach(() => {
 /** b 在 a 之後（文件順序）。 */
 const follows = (a: Element, b: Element) =>
   (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+/** 分區卡（panel-section-<id>，id 為 proposed、discussions、promoted 等）。 */
+const card = (id: string) => screen.getByTestId(`panel-section-${id}`);
 /** 內容卡標題的收合觸發區（包住整條分區標題）。 */
 const sectionToggle = (id: string) => within(screen.getByTestId(id)).getByTestId("panel-section-toggle");
 /** 分區卡的標頭（收合觸發區內的 SectionHeader）。 */
@@ -373,6 +375,7 @@ describe("TrayPanel 渲染（與原生選單同源的分區內容）", () => {
     expect(follows(promoted, screen.getByTestId("panel-footer"))).toBe(true);
     expect(screen.queryByTestId("panel-promoted-toggle")).toBeNull();
     expect(screen.queryByTestId("panel-promoted-rows")).toBeNull();
+    expect(within(promoted).getByTestId("section-count").textContent).toBe("1");
     fireEvent.click(sectionToggle("panel-section-promoted"));
     expect(within(promoted).getByTestId("panel-discussion-prom-d")).toBeTruthy();
     expect(within(promoted).queryByTestId("panel-discussion-open-d")).toBeNull();
@@ -761,8 +764,10 @@ describe("TrayPanel 分區卡片化與主色（spec「面板樣式」；design D
     expect(iconClasses("panel-section-promoted")).toContain("lucide-message-square-text");
     expect(iconClasses("panel-section-promoted")).toContain("text-muted-foreground");
     expect(iconClasses("panel-section-promoted")).not.toContain(DISCUSSION_TONE.icon);
+    // 計數徽章沿用 Badge 的 secondary 變體（中性灰底），呼叫端不以 className 覆寫顏色。
     const badge = within(promoted).getByTestId("section-count").className.split(/\s+/);
-    expect(badge).toEqual(expect.arrayContaining(["bg-muted", "text-muted-foreground"]));
+    expect(badge).toEqual(expect.arrayContaining(["bg-muted", "text-foreground"]));
+    expect(badge).not.toContain("text-muted-foreground");
     for (const token of DISCUSSION_TONE.badge.split(/\s+/)) expect(badge).not.toContain(token);
     expect(promoted.querySelector("svg.lucide-arrow-up-right")).toBeNull();
     // 展開後已轉出列不另加底色：列的祖先節點都沒有舊收合列的 bg-muted/40。
@@ -1619,7 +1624,6 @@ describe("面板已轉出卡的展開記憶", () => {
 // 不自動展開」）：四張內容卡的整條標題是收合觸發區；收合後只剩標題一行，計數照常更新。
 describe("面板內容卡收合", () => {
   const SECTIONS = ["proposed", "in-progress", "ready", "discussions"] as const;
-  const card = (id: string) => screen.getByTestId(`panel-section-${id}`);
   const toggle = (id: string) => sectionToggle(`panel-section-${id}`);
   const threeInProgress = [
     change({ name: "ip1", totalTasks: 4, completedTasks: 1 }),
@@ -1795,15 +1799,21 @@ describe("面板內容卡收合", () => {
   it("切換已轉出卡不寫入收合集合（展開狀態只存已轉出自己的記憶）", () => {
     const promotedTwo = Array.from({ length: 2 }, (_, i) => ({ slug: `prom-${i}`, topic: `已轉出 ${i}`, promoted: true }));
     renderPanel({ snapshot: snapshot({ discussions: promotedTwo }) });
-    const collapsedSet = () => JSON.parse(localStorage.getItem(TRAY_COLLAPSED_SECTIONS_STORAGE_KEY) ?? "[]");
+    // 寫入端會濾掉未知 id，看集合內容驗不出來；改驗收合集合的記憶鍵根本沒被寫入。
     fireEvent.click(toggle("promoted"));
-    expect(localStorage.getItem(TRAY_PROMOTED_EXPANDED_STORAGE_KEY)).toBe("true");
-    expect(collapsedSet()).not.toContain("promoted");
-    // 收合集合已有內容時也一樣：再收起「提案中」、切回已轉出，集合只含 proposed。
-    fireEvent.click(toggle("proposed"));
     fireEvent.click(toggle("promoted"));
     expect(localStorage.getItem(TRAY_PROMOTED_EXPANDED_STORAGE_KEY)).toBe("false");
-    expect(collapsedSet()).toEqual(["proposed"]);
+    expect(localStorage.getItem(TRAY_COLLAPSED_SECTIONS_STORAGE_KEY)).toBeNull();
+    // 收合集合已有內容時也一樣：收起「提案中」後再切換已轉出，不再寫收合集合。
+    fireEvent.click(toggle("proposed"));
+    const set = vi.spyOn(Object.getPrototypeOf(localStorage) as Storage, "setItem");
+    try {
+      fireEvent.click(toggle("promoted"));
+      expect(set).toHaveBeenCalledWith(TRAY_PROMOTED_EXPANDED_STORAGE_KEY, "true");
+      expect(set.mock.calls.map(([key]) => key)).not.toContain(TRAY_COLLAPSED_SECTIONS_STORAGE_KEY);
+    } finally {
+      set.mockRestore();
+    }
   });
 
   it("(g) 專案 tab 條卡、動作區塊卡、復原卡、stale 狀態列沒有收合觸發；點其空白處不收起內容", () => {
@@ -1930,7 +1940,6 @@ describe("面板的已轉出卡", () => {
     Array.from({ length: n }, (_, i) => ({ slug: `prom-${i}`, topic: `已轉出 ${i}`, promoted: true }));
   const openN = (n: number) =>
     Array.from({ length: n }, (_, i) => ({ slug: `open-${i}`, topic: `討論中 ${i}`, promoted: false }));
-  const card = (id: string) => screen.getByTestId(`panel-section-${id}`);
   const toggle = () => sectionToggle("panel-section-promoted");
 
   it("預設收合：「討論」卡只列討論中，「已轉出」卡只剩標頭（「已轉出」、計數 3、箭頭朝右）", () => {
@@ -2022,15 +2031,30 @@ describe("面板的已轉出卡", () => {
     expect(within(card("promoted")).getAllByTestId(/^panel-discussion-prom-/)).toHaveLength(3);
   });
 
-  it("零已轉出、載入中、載入失敗都不渲染已轉出卡", () => {
+  it("零已轉出、載入中、載入失敗都不渲染已轉出卡；後兩者由「討論」卡呈現佔位列或失敗提示", () => {
     renderPanel({ snapshot: snapshot({ discussions: openN(2) }) });
     expect(screen.queryByTestId("panel-section-promoted")).toBeNull();
     cleanup();
     renderPanel({ snapshot: snapshot({ workspaceLoading: true, discussions: promoted(2) }) });
     expect(screen.queryByTestId("panel-section-promoted")).toBeNull();
+    expect(card("discussions").querySelector('[aria-busy="true"]')).toBeTruthy();
     cleanup();
     renderPanel({ snapshot: snapshot({ workspaceLoadFailed: true, discussions: promoted(2) }) });
     expect(screen.queryByTestId("panel-section-promoted")).toBeNull();
     expect(screen.queryByTestId("panel-promoted-toggle")).toBeNull();
+    expect(within(card("discussions")).getByTestId("panel-section-load-failed")).toBeTruthy();
+  });
+
+  it("同一面板內已轉出卡消失再出現（載入中、零筆）時保留展開狀態", () => {
+    const h = renderPanel({ snapshot: snapshot({ discussions: [...openN(2), ...promoted(3)] }) });
+    fireEvent.click(toggle());
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    h.pushSnapshot(snapshot({ workspaceLoading: true, discussions: [] }));
+    expect(screen.queryByTestId("panel-section-promoted")).toBeNull();
+    h.pushSnapshot(snapshot({ discussions: openN(2) }));
+    expect(screen.queryByTestId("panel-section-promoted")).toBeNull();
+    h.pushSnapshot(snapshot({ discussions: [...openN(2), ...promoted(3)] }));
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect(within(card("promoted")).getAllByTestId(/^panel-discussion-prom-/)).toHaveLength(3);
   });
 });

@@ -161,8 +161,8 @@ const toggleOnKey = (toggle: () => void) => (event: KeyboardEvent<HTMLElement>) 
 type SectionLoad = "loading" | "failed" | "ready";
 
 /**
- * 可收合的內容卡（spec「面板內容卡收合」；design「收合觸發沿用已轉出收合列的模式」）：
- * 整條分區標題為觸發區（role="button"、tabIndex=-1、Enter／Space，同已轉出收合列），
+ * 可收合的內容卡（spec「面板內容卡收合」）：生命週期三卡、討論卡與已轉出卡共用。
+ * 整條分區標題為觸發區（role="button"、tabIndex=-1、Enter／Space），
  * 箭頭放 SectionHeader 的 action 插槽、在計數之後（展開朝下、收合朝右）。收合時只留
  * 標題一行——其下內容卸載（溢出列的展開暫態隨之歸零），不套空狀態最小高度、標題下
  * 不畫細線。
@@ -190,7 +190,8 @@ function SectionCard({
   icon: ReactNode;
   label: string;
   count: number;
-  countClassName: string;
+  /** 未給為中性（Badge 的 secondary 變體），同 SectionHeader。 */
+  countClassName?: string;
   empty: boolean;
   children: ReactNode;
 }) {
@@ -886,8 +887,8 @@ export function TrayPanel({
       {/* 已轉出卡（spec「討論列表」）：討論卡正下方的獨立卡，靠卡片間距與討論中分開。
           收合外觀與互動同其他內容卡，但展開狀態走自己的記憶（預設收合），不進收合集合。
           只在討論清單 ready 且有料時呈現——載入中與失敗時筆數未知，由討論卡呈現佔位或提示。
-          圖示與計數徽章為中性灰（desktop-app「介面狀態語意色分層」）；不用 ArrowUpRight——
-          頁尾「開啟 Speclink」已用同一圖示。 */}
+          圖示與計數徽章為中性灰（desktop-app「介面狀態語意色分層」）：徽章不傳 countClassName，
+          沿用 Badge 的 secondary 變體。不用 ArrowUpRight——頁尾「開啟 Speclink」已用同一圖示。 */}
       {sectionLoad === "ready" && promotedDiscussions.length > 0 && (
         <SectionCard
           id="promoted"
@@ -897,7 +898,6 @@ export function TrayPanel({
           icon={<MessageSquareText className="h-3.5 w-3.5 text-muted-foreground" />}
           label={t("tray.promotedHeader")}
           count={promotedDiscussions.length}
-          countClassName="bg-muted text-muted-foreground"
           empty={false}
         >
           <OverflowGroup

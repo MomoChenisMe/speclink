@@ -39,7 +39,7 @@
 
 ### 已轉出卡標頭用中性灰的討論圖示
 
-- 圖示：`MessageSquareText`（與「討論」卡同款）加 `text-muted-foreground`；標籤：`t("tray.promotedHeader")`；計數徽章 class：`bg-muted text-muted-foreground`。全部是 token class，主題守門測試不受影響。
+- 圖示：`MessageSquareText`（與「討論」卡同款）加 `text-muted-foreground`；標籤：`t("tray.promotedHeader")`；計數徽章不傳 `countClassName`，沿用 Badge 的 secondary 變體（`bg-muted text-foreground`，中性灰底；專案審查規則不允許呼叫端以 className 覆蓋 @speclink/ui 元件變體的顏色）。全部是 token class，主題守門測試不受影響。
 - 替代方案：`ArrowUpRight`（看板舊開關曾用）——頁尾「開啟 Speclink」已用同一圖示，一個面板裡一圖兩義。否決。
 - 替代方案：給已轉出色相——違反「介面狀態語意色分層」，且與討論的桃紫互搶。否決。
 
