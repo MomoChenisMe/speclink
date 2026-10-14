@@ -19,21 +19,49 @@ import { editorText, typeInEditor } from "./helpers/codemirror";
 import { REMOTE_KEY, fakeRemoteDs, fakeRemoteSession } from "./helpers/remoteFixtures";
 import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
-// 模擬 Tauri 事件層：捕捉 workspace-changed 的訂閱 handler，測試可手動觸發。
-const { workspaceHandlers } = vi.hoisted(() => ({
+// 模擬 Tauri 事件層：捕捉 workspace-changed 與 trackpad-gesture（觸控板手指按下／離開）的
+// 訂閱 handler，測試可手動觸發。
+type GestureHandler = (e: { payload: { phase: "began" | "ended"; swipeEnabled: boolean } }) => void;
+const { workspaceHandlers, gestureHandlers } = vi.hoisted(() => ({
   workspaceHandlers: [] as Array<() => void>,
+  gestureHandlers: [] as GestureHandler[],
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   // 外觀偏好切換時通知系統匣面板（desktop-settings-mode design D4）。
   emit: vi.fn(() => Promise.resolve()),
-  listen: vi.fn((event: string, handler: () => void) => {
-    if (event === "workspace-changed") workspaceHandlers.push(handler);
+  listen: vi.fn((event: string, handler: GestureHandler) => {
+    const handlers: unknown[] | null =
+      event === "workspace-changed" ? workspaceHandlers : event === "trackpad-gesture" ? gestureHandlers : null;
+    handlers?.push(handler);
     return Promise.resolve(() => {
-      const i = workspaceHandlers.indexOf(handler);
-      if (i >= 0) workspaceHandlers.splice(i, 1);
+      const i = handlers?.indexOf(handler) ?? -1;
+      if (i >= 0) handlers!.splice(i, 1);
     });
   }),
 }));
+
+const MAC_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15";
+const WINDOWS_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+/** 在指定平台下跑一段測試：App 掛載時以 userAgent 判定平台，跑完還原。 */
+async function onPlatform(ua: string, body: () => Promise<void>) {
+  const spy = vi.spyOn(navigator, "userAgent", "get").mockReturnValue(ua);
+  try {
+    await body();
+  } finally {
+    spy.mockRestore();
+  }
+}
+/** 原生層送來的手指按下／離開（ended 的 swipeEnabled 恆為 false）。 */
+const gesture = (phase: "began" | "ended") =>
+  act(() => {
+    for (const h of [...gestureHandlers]) h({ payload: { phase, swipeEnabled: phase === "began" } });
+  });
+/** 手指按著向右滑 200px：四個 deltaX -50 的 wheel（自然捲動下手指向右＝deltaX 為負）。 */
+const swipeRight = () =>
+  act(() => {
+    for (let i = 0; i < 4; i++) window.dispatchEvent(new WheelEvent("wheel", { deltaX: -50, bubbles: true }));
+  });
+const swipeIndicator = () => document.querySelector("[data-swipe-back]") as HTMLElement;
 
 // app 版本查詢（側欄與設定頁的現版號）：jsdom 無 Tauri IPC，以固定版本模擬。
 vi.mock("@tauri-apps/api/app", () => ({
@@ -47,7 +75,13 @@ const { appMenuSpy, windowSpy } = vi.hoisted(() => ({
     deps: [] as Array<Parameters<typeof import("../appMenu").installAppMenu>[0]>,
     cancel: vi.fn(),
   },
-  windowSpy: { isFocused: vi.fn(), setFocus: vi.fn() },
+  windowSpy: {
+    isFocused: vi.fn(),
+    setFocus: vi.fn(),
+    // Windows 自繪視窗鈕（TitleBar 的 WindowControls）掛載時讀最大化狀態並訂閱 resize。
+    isMaximized: vi.fn(() => Promise.resolve(false)),
+    onResized: vi.fn(() => Promise.resolve(() => {})),
+  },
 }));
 vi.mock("../appMenu", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../appMenu")>()),
@@ -103,6 +137,7 @@ vi.mock("@speclink/ui", async (importOriginal) => {
 
 beforeEach(() => {
   workspaceHandlers.length = 0;
+  gestureHandlers.length = 0;
   pageSpy.change.length = 0;
   pageSpy.disc.length = 0;
   toasterSpy.mockClear();
@@ -1203,35 +1238,57 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     expect(leftSide().className).toContain("w-14");
   });
 
-  it("設定模式與專案設定模式：觸控板向右滑過門檻等同返回鈕，回到進入前的頁面；看板上滑動不作用", async () => {
-    renderApp();
-    await screen.findByText("desktop-shell-and-browser");
-    const swipe = () =>
+  it("macOS 設定模式與專案設定模式：觸控板向右滑過門檻、手指離開的當下等同返回鈕，回到進入前的頁面；看板上滑動不作用", () =>
+    onPlatform(MAC_UA, async () => {
+      renderApp();
+      await screen.findByText("desktop-shell-and-browser");
+
+      fireEvent.click(within(projectColumn()).getByRole("button", { name: "規格" }));
+      await waitFor(() => expect(crumbText()).toBe("proj-a/規格"));
+      fireEvent.click(settingsGear());
+      await waitFor(() => settingsColumn());
+      // 指示自主區左緣外推出：所在的主區欄要裁掉左緣外那段，否則會疊到分類欄上。
+      expect(swipeIndicator().parentElement!.className).toContain("overflow-hidden");
+      gesture("began");
+      swipeRight();
+      expect(swipeIndicator().getAttribute("data-armed")).toBe("true");
+      expect(crumbText()).toBe("設定/一般");
+      gesture("ended");
+      expect(crumbText()).toBe("proj-a/規格");
+
+      fireEvent.click(within(projectColumn()).getByRole("button", { name: "手冊" }));
+      fireEvent.click(within(projectColumn()).getByRole("button", { name: "專案設定" }));
+      await waitFor(() => projectSettingsColumn());
+      gesture("began");
+      swipeRight();
+      gesture("ended");
+      expect(crumbText()).toBe("proj-a/手冊");
+
+      fireEvent.click(within(projectColumn()).getByRole("button", { name: "變更" }));
+      gesture("began");
+      swipeRight();
+      expect(swipeIndicator().getAttribute("data-progress")).toBe("0.00");
+      gesture("ended");
+    }));
+
+  it("Windows 設定模式：觸控板滑動不出現指示、不離開設定；Alt+← 才回到進入前的頁面", () =>
+    onPlatform(WINDOWS_UA, async () => {
+      renderApp();
+      await screen.findByText("desktop-shell-and-browser");
+      fireEvent.click(within(projectColumn()).getByRole("button", { name: "規格" }));
+      await waitFor(() => expect(crumbText()).toBe("proj-a/規格"));
+      fireEvent.click(settingsGear());
+      await waitFor(() => settingsColumn());
+      gesture("began");
+      swipeRight();
+      expect(swipeIndicator().getAttribute("data-progress")).toBe("0.00");
+      gesture("ended");
+      expect(crumbText()).toBe("設定/一般");
       act(() => {
-        for (let i = 0; i < 4; i++) window.dispatchEvent(new WheelEvent("wheel", { deltaX: -50, bubbles: true }));
+        fireEvent.keyDown(window, { key: "ArrowLeft", altKey: true });
       });
-    const indicator = () => document.querySelector("[data-swipe-back]") as HTMLElement;
-
-    fireEvent.click(within(projectColumn()).getByRole("button", { name: "規格" }));
-    await waitFor(() => expect(crumbText()).toBe("proj-a/規格"));
-    fireEvent.click(settingsGear());
-    await waitFor(() => settingsColumn());
-    // 指示自主區左緣外推出：所在的主區欄要裁掉左緣外那段，否則會疊到分類欄上。
-    expect(indicator().parentElement!.className).toContain("overflow-hidden");
-    swipe();
-    expect(indicator().getAttribute("data-armed")).toBe("true");
-    await waitFor(() => expect(crumbText()).toBe("proj-a/規格"));
-
-    fireEvent.click(within(projectColumn()).getByRole("button", { name: "手冊" }));
-    fireEvent.click(within(projectColumn()).getByRole("button", { name: "專案設定" }));
-    await waitFor(() => projectSettingsColumn());
-    swipe();
-    await waitFor(() => expect(crumbText()).toBe("proj-a/手冊"));
-
-    fireEvent.click(within(projectColumn()).getByRole("button", { name: "變更" }));
-    swipe();
-    expect(indicator().getAttribute("data-progress")).toBe("0.00");
-  });
+      await waitFor(() => expect(crumbText()).toBe("proj-a/規格"));
+    }));
 
   it("專案設定有未存修改時，返回先問要不要捨棄：取消留在原頁且草稿還在，捨棄才回進入前的頁面", async () => {
     renderApp();
@@ -1270,30 +1327,32 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
-  it("設定模式有對話框開著時，滑鼠側鍵與觸控板滑動不離開設定、不收掉對話框", async () => {
-    renderApp();
-    await screen.findByText("desktop-shell-and-browser");
-    fireEvent.click(settingsGear());
-    await waitFor(() => settingsColumn());
-    const rail = document.querySelector("[data-project-rail]") as HTMLElement;
-    fireEvent.click(within(rail).getByRole("button", { name: "新增專案" }));
-    await screen.findByTestId("workspace-chooser");
-    act(() => {
-      fireEvent.mouseUp(window, { button: 3 });
-      for (let i = 0; i < 4; i++) window.dispatchEvent(new WheelEvent("wheel", { deltaX: -50, bubbles: true }));
-    });
-    await new Promise((r) => setTimeout(r, 200));
-    expect(screen.getByTestId("workspace-chooser")).toBeTruthy();
-    expect(crumbText()).toBe("設定/一般");
+  it("macOS 設定模式有對話框開著時，滑鼠側鍵與觸控板滑動不離開設定、不收掉對話框", () =>
+    onPlatform(MAC_UA, async () => {
+      renderApp();
+      await screen.findByText("desktop-shell-and-browser");
+      fireEvent.click(settingsGear());
+      await waitFor(() => settingsColumn());
+      const rail = document.querySelector("[data-project-rail]") as HTMLElement;
+      fireEvent.click(within(rail).getByRole("button", { name: "新增專案" }));
+      await screen.findByTestId("workspace-chooser");
+      act(() => {
+        fireEvent.mouseUp(window, { button: 3 });
+      });
+      gesture("began");
+      swipeRight();
+      gesture("ended");
+      expect(screen.getByTestId("workspace-chooser")).toBeTruthy();
+      expect(crumbText()).toBe("設定/一般");
 
-    // 對話框關掉後滑動返回照常（開關不得卡在對話框還在時的判斷）。
-    fireEvent.click(within(screen.getByTestId("workspace-chooser")).getByRole("button", { name: "取消" }));
-    await waitFor(() => expect(screen.queryByTestId("workspace-chooser")).toBeNull());
-    act(() => {
-      for (let i = 0; i < 4; i++) window.dispatchEvent(new WheelEvent("wheel", { deltaX: -50, bubbles: true }));
-    });
-    await waitFor(() => expect(crumbText()).toBe("proj-a/變更"));
-  });
+      // 對話框關掉後滑動返回照常（開關不得卡在對話框還在時的判斷）。
+      fireEvent.click(within(screen.getByTestId("workspace-chooser")).getByRole("button", { name: "取消" }));
+      await waitFor(() => expect(screen.queryByTestId("workspace-chooser")).toBeNull());
+      gesture("began");
+      swipeRight();
+      gesture("ended");
+      expect(crumbText()).toBe("proj-a/變更");
+    }));
 
   it("外觀選深色：寫入偏好、根元素套 data-theme、通知系統匣面板（spec「明示深色即時生效並持久化」）", async () => {
     renderApp();
@@ -3069,34 +3128,38 @@ describe("詳情頁層與導覽（desktop-detail-page）", () => {
     expect(currentChange()).toBe("change-a");
   });
 
-  it("確認框開著（尚未按確認）時返回快捷鍵、側鍵、滑動與 ⌥↓ 都不作用", async () => {
-    // 確認框屬於目前詳情頁：關頁或換頁會連同確認框一起收掉。
-    renderApp(
-      fakeDataSource({
-        listChanges: vi.fn().mockResolvedValue(
-          changeList([
-            { name: "change-a", status: "in-progress", totalTasks: 3, completedTasks: 3 },
-            { name: "change-b", status: "in-progress", totalTasks: 3, completedTasks: 3 },
-          ]),
-        ),
-      }),
-    );
-    fireEvent.click(await screen.findByText("change-a"));
-    await screen.findByTestId("detail-page");
-    fireEvent.click(within(titlebar()).getByRole("button", { name: "封存" }));
-    await screen.findByRole("alertdialog");
-    act(() => {
-      fireEvent.keyDown(window, { key: "ArrowLeft", altKey: true });
-      fireEvent.mouseUp(window, { button: 3 });
-      for (let i = 0; i < 4; i++) window.dispatchEvent(new WheelEvent("wheel", { deltaX: -50, bubbles: true }));
-      fireEvent.keyDown(window, { key: "ArrowDown", altKey: true });
-    });
-    expect(document.querySelector("[data-swipe-back]")!.getAttribute("data-progress")).toBe("0.00");
-    await new Promise((r) => setTimeout(r, 200));
-    expect(page()).toBeTruthy();
-    expect(currentChange()).toBe("change-a");
-    expect(screen.getByRole("alertdialog")).toBeTruthy();
-  });
+  it("macOS 確認框開著（尚未按確認）時 ⌘[、側鍵、觸控板滑動與 ⌥↓ 都不作用", () =>
+    onPlatform(MAC_UA, async () => {
+      // 確認框屬於目前詳情頁：關頁或換頁會連同確認框一起收掉。
+      renderApp(
+        fakeDataSource({
+          listChanges: vi.fn().mockResolvedValue(
+            changeList([
+              { name: "change-a", status: "in-progress", totalTasks: 3, completedTasks: 3 },
+              { name: "change-b", status: "in-progress", totalTasks: 3, completedTasks: 3 },
+            ]),
+          ),
+        }),
+      );
+      fireEvent.click(await screen.findByText("change-a"));
+      await screen.findByTestId("detail-page");
+      fireEvent.click(within(titlebar()).getByRole("button", { name: "封存" }));
+      await screen.findByRole("alertdialog");
+      act(() => {
+        fireEvent.keyDown(window, { key: "[", metaKey: true });
+        fireEvent.mouseUp(window, { button: 3 });
+      });
+      gesture("began");
+      swipeRight();
+      expect(swipeIndicator().getAttribute("data-progress")).toBe("0.00");
+      gesture("ended");
+      act(() => {
+        fireEvent.keyDown(window, { key: "ArrowDown", altKey: true });
+      });
+      expect(page()).toBeTruthy();
+      expect(currentChange()).toBe("change-a");
+      expect(screen.getByRole("alertdialog")).toBeTruthy();
+    }));
 
   it("詳情頁開著時點專案欄「規格」：詳情頁關閉、主區換成規格頁", async () => {
     renderApp();
@@ -3155,16 +3218,34 @@ describe("詳情頁層與導覽（desktop-detail-page）", () => {
     await waitFor(() => expect(page()).toBeNull());
   });
 
-  it("觸控板兩指向右滑過門檻：左緣「←」指示轉實心，手勢停止後關頁", async () => {
-    renderApp();
-    fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
-    await screen.findByTestId("detail-page");
-    act(() => {
-      for (let i = 0; i < 4; i++) window.dispatchEvent(new WheelEvent("wheel", { deltaX: -50, bubbles: true }));
-    });
-    expect(document.querySelector("[data-swipe-back]")!.getAttribute("data-armed")).toBe("true");
-    await waitFor(() => expect(page()).toBeNull());
-  });
+  it("macOS 觸控板兩指向右滑過門檻：左緣「←」指示轉實心，手指離開的當下關頁", () =>
+    onPlatform(MAC_UA, async () => {
+      renderApp();
+      fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+      await screen.findByTestId("detail-page");
+      gesture("began");
+      swipeRight();
+      expect(swipeIndicator().getAttribute("data-armed")).toBe("true");
+      expect(page()).toBeTruthy();
+      gesture("ended");
+      expect(page()).toBeNull();
+    }));
+
+  it("Windows 詳情頁：觸控板滑動不出現指示、不關頁；Alt+← 才關頁", () =>
+    onPlatform(WINDOWS_UA, async () => {
+      renderApp();
+      fireEvent.click(await screen.findByText("desktop-shell-and-browser"));
+      await screen.findByTestId("detail-page");
+      gesture("began");
+      swipeRight();
+      expect(swipeIndicator().getAttribute("data-progress")).toBe("0.00");
+      gesture("ended");
+      expect(page()).toBeTruthy();
+      act(() => {
+        fireEvent.keyDown(window, { key: "ArrowLeft", altKey: true });
+      });
+      await waitFor(() => expect(page()).toBeNull());
+    }));
 
   it("規格詳情頁與已封存詳情頁開著時點專案欄切頁：詳情頁先關閉再呈現該頁", async () => {
     // spec「詳情頁的導覽與返回」：經專案欄切換主區頁面 SHALL 先關閉詳情頁——四種詳情頁一體適用。

@@ -1,0 +1,140 @@
+{
+  "version": 2,
+  "change": "desktop-swipe-back-finger-lift",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 Red：在 apps/desktop/core/src/trackpad_gesture.rs 先寫 `#[cfg(test)]` 測試，釘住「階段判讀與事件格式放 speclink-desktop-core」的契約——`classify_scroll_phase` 對 MayBegin（0x20）、Began（0x1）回 Began，對 Ended（0x8）、Cancelled（0x10）回 Ended，對 Changed（0x4）、慣性事件（phase 0＋momentum 0x4）、一般滑鼠滾輪（兩者皆 0）回 None；`TrackpadGestureEvent { phase: Began, swipe_enabled: true }` 以 serde_json 序列化後恰為 `{\"phase\":\"began\",\"swipeEnabled\":true}`（欄位 camelCase、phase 為小寫字串、swipeEnabled 為布林），`TRACKPAD_GESTURE_EVENT` 等於 `\"trackpad-gesture\"`；驗證：`cargo test -p speclink-desktop-core trackpad_gesture` 因模組未實作而失敗",
+      "files": [
+        "apps/desktop/core/src/lib.rs",
+        "apps/desktop/core/src/trackpad_gesture.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 依「監聽的生命週期與相依」在 apps/desktop/src-tauri/Cargo.toml 既有的 macOS target 相依區塊加入 objc2 0.6、block2 0.6、objc2-app-kit 0.3（features：NSEvent、block2），Windows／Linux 建置不攜入；驗證：`cargo tree -p speclink-desktop -i objc2-app-kit` 只出現 0.3.2 一個版本、Cargo.lock 沒有新增第二個 objc2／objc2-app-kit／block2 條目，且 `cargo build -p speclink-desktop` 在 macOS 通過",
+      "files": [
+        "Cargo.lock",
+        "apps/desktop/src-tauri/Cargo.toml"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 依「原生層以 NSEvent 本地監聽提供手指按下與放開訊號」新增 apps/desktop/src-tauri/src/trackpad_gesture.rs（`#[cfg(target_os = \"macos\")]`）並在 apps/desktop/src-tauri/src/lib.rs 的 `run()` setup 中安裝：以 ScrollWheel mask 掛本地監聽、handler 原樣回傳事件不攔截、把 `phase().bits()` 與 `momentumPhase().bits()` 交給 `classify_scroll_phase`，Began 時讀 `NSEvent::isSwipeTrackingFromScrollEventsEnabled()` 填 swipeEnabled、Ended 時填 false，以 `app.emit(TRACKPAD_GESTURE_EVENT, …)` 廣播；monitor 物件由 app 管理的狀態持有到結束，安裝回傳 None 時記錄一行錯誤且 app 照常啟動；驗證：`cargo build -p speclink-desktop` 在 macOS 通過，且 `cargo test -p speclink-desktop-core trackpad_gesture` 仍綠（殼端只做 AppKit 黏合，判讀邏輯的測試在 1.1）",
+      "files": [
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src-tauri/src/trackpad_gesture.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 Red：改寫 apps/desktop/src/__tests__/swipeBack.test.tsx，以 vi.mock 攔截 `@tauri-apps/api/event` 的 listen 取得 `trackpad-gesture` 處理器，依「前端 SwipeBack 以手勢階段界定累計區間、放開即結算」寫測試：began→四個 deltaX -50 的 wheel 後指示 data-armed 為 true 且尚未呼叫 onBack，送 ended 的當下（不推進任何計時器）呼叫 onBack 一次且 data-progress 歸 0.00；向右 80px 後 ended 不呼叫；150px 後回滑到 80px 再 ended 不呼叫；沒有 began 的 wheel（一般滑鼠／Shift＋滾輪）指示維持 0.00；began 的 swipeEnabled 為 false 時 wheel 不推進；ended 後再來的慣性 wheel 不推進、也不造成第二次 onBack；先 deltaY 40 再 deltaX -200 後 ended 不呼叫（垂直取消），純水平 200px 夾少量 deltaY 晃動（累計 8px）仍會返回；保留往前方向忽略、ctrlKey 忽略、兩種自然捲動設定下的水平捲動區塊、只裁切區塊不擋、停用時不訂閱也不監聽等既有案例；驗證：`npm test -w apps/desktop -- swipeBack` 因實作仍為 120ms 計時器而失敗",
+      "files": [
+        "apps/desktop/src/__tests__/swipeBack.test.tsx"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.2 Green：改寫 apps/desktop/src/components/SwipeBack.tsx 為 idle／tracking／cancelled 狀態機——enabled 時訂閱 `trackpad-gesture`（訂閱失敗靜默）並監聽 window wheel；只在 began（swipeEnabled 為 true）到 ended 之間累計；tracking 中再收 began 只更新 swipeEnabled 不歸零；累計垂直位移超過 10px 且多於累計水平位移時取消到 ended；ended 時返回位移 ≥ `SWIPE_THRESHOLD`（120）立即呼叫 onBack；移除 IDLE_MS 與 setTimeout，保留 `backDelta`、`canScrollX` 與指示的外觀；驗證：`npm test -w apps/desktop -- swipeBack` 全綠",
+      "files": [
+        "apps/desktop/src/components/SwipeBack.tsx"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.3 Red：更新 apps/desktop/src/__tests__/App.test.tsx——擴充 `@tauri-apps/api/event` mock 讓測試能送 `trackpad-gesture` 的 began／ended，並以 navigator.userAgent 的 spy 固定平台；既有三則觸控板測試（設定模式與專案設定模式滑動返回、確認框開著時返回不作用、詳情頁滑過門檻關頁）改為 macOS 平台下以 began→wheel→ended 驅動，斷言 ended 後立即關頁或不作用；新增 Windows 平台案例：詳情頁與設定模式下 began→四個 deltaX -50→ended 後指示 data-progress 維持 0.00、頁面不變，按 Alt+← 才返回，對應需求「詳情頁的導覽與返回」與「側欄導覽結構」的非 macOS 情境；驗證：`npm test -w apps/desktop -- App` 的 Windows 案例因尚未限定平台而失敗",
+      "files": [
+        "apps/desktop/src/__tests__/App.test.tsx"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "3.4 Green：依「平台限定在 App 層」把 apps/desktop/src/App.tsx 中 SwipeBack 的 enabled 改為以既有 `detectPlatform()` 結果判定「平台為 macOS 且有返回去處」，Windows／Linux 不訂閱不監聽；驗證：`npm test -w apps/desktop` 全綠（含 swipeBack 與 App 全部測試）",
+      "files": [
+        "apps/desktop/src/App.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4W3V30S6XF90902T0VYXVXS",
+      "taskDesc": "1.1 Red：在 apps/desktop/core/src/trackpad_gesture.rs 先寫 `#[cfg(test)]` 測試，釘住「階段判讀與事件格式放 speclink-desktop-core」的契約——`classify_scroll_phase` 對 MayBegin（0x20）、Began（0x1）回 Began，對 Ended（0x8）、Cancelled（0x10）回 Ended，對 Changed（0x4）、慣性事件（phase 0＋momentum 0x4）、一般滑鼠滾輪（兩者皆 0）回 None；`TrackpadGestureEvent { phase: Began, swipe_enabled: true }` 以 serde_json 序列化後恰為 `{\"phase\":\"began\",\"swipeEnabled\":true}`（欄位 camelCase、phase 為小寫字串、swipeEnabled 為布林），`TRACKPAD_GESTURE_EVENT` 等於 `\"trackpad-gesture\"`；驗證：`cargo test -p speclink-desktop-core trackpad_gesture` 因模組未實作而失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "206abf1cf5b9c4fbd6721958ab97cefcc38a4f5a",
+      "touchedFiles": [
+        "apps/desktop/core/src/lib.rs",
+        "apps/desktop/core/src/trackpad_gesture.rs"
+      ],
+      "recordedAt": "2026-10-14T04:28:21Z"
+    },
+    {
+      "taskId": "tsk_01M4W3V30SXBJRXH95TDSPPJF4",
+      "taskDesc": "2.1 依「監聽的生命週期與相依」在 apps/desktop/src-tauri/Cargo.toml 既有的 macOS target 相依區塊加入 objc2 0.6、block2 0.6、objc2-app-kit 0.3（features：NSEvent、block2），Windows／Linux 建置不攜入；驗證：`cargo tree -p speclink-desktop -i objc2-app-kit` 只出現 0.3.2 一個版本、Cargo.lock 沒有新增第二個 objc2／objc2-app-kit／block2 條目，且 `cargo build -p speclink-desktop` 在 macOS 通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "206abf1cf5b9c4fbd6721958ab97cefcc38a4f5a",
+      "touchedFiles": [
+        "Cargo.lock",
+        "apps/desktop/src-tauri/Cargo.toml"
+      ],
+      "recordedAt": "2026-10-14T04:34:53Z"
+    },
+    {
+      "taskId": "tsk_01M4W3V30S7S56ACP2A8DC0RR9",
+      "taskDesc": "2.2 依「原生層以 NSEvent 本地監聽提供手指按下與放開訊號」新增 apps/desktop/src-tauri/src/trackpad_gesture.rs（`#[cfg(target_os = \"macos\")]`）並在 apps/desktop/src-tauri/src/lib.rs 的 `run()` setup 中安裝：以 ScrollWheel mask 掛本地監聽、handler 原樣回傳事件不攔截、把 `phase().bits()` 與 `momentumPhase().bits()` 交給 `classify_scroll_phase`，Began 時讀 `NSEvent::isSwipeTrackingFromScrollEventsEnabled()` 填 swipeEnabled、Ended 時填 false，以 `app.emit(TRACKPAD_GESTURE_EVENT, …)` 廣播；monitor 物件由 app 管理的狀態持有到結束，安裝回傳 None 時記錄一行錯誤且 app 照常啟動；驗證：`cargo build -p speclink-desktop` 在 macOS 通過，且 `cargo test -p speclink-desktop-core trackpad_gesture` 仍綠（殼端只做 AppKit 黏合，判讀邏輯的測試在 1.1）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "206abf1cf5b9c4fbd6721958ab97cefcc38a4f5a",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src-tauri/src/trackpad_gesture.rs"
+      ],
+      "recordedAt": "2026-10-14T04:35:37Z"
+    },
+    {
+      "taskId": "tsk_01M4W3V30SYSCVSWWZY1P5PMK9",
+      "taskDesc": "3.1 Red：改寫 apps/desktop/src/__tests__/swipeBack.test.tsx，以 vi.mock 攔截 `@tauri-apps/api/event` 的 listen 取得 `trackpad-gesture` 處理器，依「前端 SwipeBack 以手勢階段界定累計區間、放開即結算」寫測試：began→四個 deltaX -50 的 wheel 後指示 data-armed 為 true 且尚未呼叫 onBack，送 ended 的當下（不推進任何計時器）呼叫 onBack 一次且 data-progress 歸 0.00；向右 80px 後 ended 不呼叫；150px 後回滑到 80px 再 ended 不呼叫；沒有 began 的 wheel（一般滑鼠／Shift＋滾輪）指示維持 0.00；began 的 swipeEnabled 為 false 時 wheel 不推進；ended 後再來的慣性 wheel 不推進、也不造成第二次 onBack；先 deltaY 40 再 deltaX -200 後 ended 不呼叫（垂直取消），純水平 200px 夾少量 deltaY 晃動（累計 8px）仍會返回；保留往前方向忽略、ctrlKey 忽略、兩種自然捲動設定下的水平捲動區塊、只裁切區塊不擋、停用時不訂閱也不監聽等既有案例；驗證：`npm test -w apps/desktop -- swipeBack` 因實作仍為 120ms 計時器而失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "206abf1cf5b9c4fbd6721958ab97cefcc38a4f5a",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/swipeBack.test.tsx"
+      ],
+      "recordedAt": "2026-10-14T04:37:38Z"
+    },
+    {
+      "taskId": "tsk_01M4W3V30S7Z7E52S4QWHG6KQA",
+      "taskDesc": "3.2 Green：改寫 apps/desktop/src/components/SwipeBack.tsx 為 idle／tracking／cancelled 狀態機——enabled 時訂閱 `trackpad-gesture`（訂閱失敗靜默）並監聽 window wheel；只在 began（swipeEnabled 為 true）到 ended 之間累計；tracking 中再收 began 只更新 swipeEnabled 不歸零；累計垂直位移超過 10px 且多於累計水平位移時取消到 ended；ended 時返回位移 ≥ `SWIPE_THRESHOLD`（120）立即呼叫 onBack；移除 IDLE_MS 與 setTimeout，保留 `backDelta`、`canScrollX` 與指示的外觀；驗證：`npm test -w apps/desktop -- swipeBack` 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "206abf1cf5b9c4fbd6721958ab97cefcc38a4f5a",
+      "touchedFiles": [
+        "apps/desktop/src/components/SwipeBack.tsx"
+      ],
+      "recordedAt": "2026-10-14T04:38:27Z"
+    },
+    {
+      "taskId": "tsk_01M4W3V30S5YQQYKPC0A798M5J",
+      "taskDesc": "3.3 Red：更新 apps/desktop/src/__tests__/App.test.tsx——擴充 `@tauri-apps/api/event` mock 讓測試能送 `trackpad-gesture` 的 began／ended，並以 navigator.userAgent 的 spy 固定平台；既有三則觸控板測試（設定模式與專案設定模式滑動返回、確認框開著時返回不作用、詳情頁滑過門檻關頁）改為 macOS 平台下以 began→wheel→ended 驅動，斷言 ended 後立即關頁或不作用；新增 Windows 平台案例：詳情頁與設定模式下 began→四個 deltaX -50→ended 後指示 data-progress 維持 0.00、頁面不變，按 Alt+← 才返回，對應需求「詳情頁的導覽與返回」與「側欄導覽結構」的非 macOS 情境；驗證：`npm test -w apps/desktop -- App` 的 Windows 案例因尚未限定平台而失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "206abf1cf5b9c4fbd6721958ab97cefcc38a4f5a",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/App.test.tsx"
+      ],
+      "recordedAt": "2026-10-14T04:41:18Z"
+    },
+    {
+      "taskId": "tsk_01M4W3V30S1XDM0YKW6AZQGZK9",
+      "taskDesc": "3.4 Green：依「平台限定在 App 層」把 apps/desktop/src/App.tsx 中 SwipeBack 的 enabled 改為以既有 `detectPlatform()` 結果判定「平台為 macOS 且有返回去處」，Windows／Linux 不訂閱不監聽；驗證：`npm test -w apps/desktop` 全綠（含 swipeBack 與 App 全部測試）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "206abf1cf5b9c4fbd6721958ab97cefcc38a4f5a",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx"
+      ],
+      "recordedAt": "2026-10-14T04:42:36Z"
+    }
+  ]
+}

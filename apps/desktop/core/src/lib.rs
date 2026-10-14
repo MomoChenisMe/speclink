@@ -19,6 +19,7 @@ pub mod search;
 pub mod settings;
 #[cfg(test)]
 pub(crate) mod testfixture;
+pub mod trackpad_gesture;
 pub mod tray_panel;
 pub mod verbs;
 
