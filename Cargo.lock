@@ -4513,8 +4513,11 @@ name = "speclink-desktop"
 version = "0.8.0"
 dependencies = [
  "axum",
+ "block2",
  "chrono",
  "notify-debouncer-mini",
+ "objc2",
+ "objc2-app-kit",
  "serde",
  "serde_json",
  "speclink-core",

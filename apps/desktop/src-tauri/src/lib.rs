@@ -34,6 +34,8 @@ pub mod remote;
 pub mod tray;
 mod watch;
 mod panel;
+#[cfg(target_os = "macos")]
+mod trackpad_gesture;
 
 use std::path::PathBuf;
 
@@ -1918,6 +1920,9 @@ pub fn run() {
                     let _ = emitter.emit("remote-workspace-changed", key);
                 },
             )));
+            // 觸控板滑動返回的手指按下／離開訊號（desktop-swipe-back-finger-lift）：只在 macOS 提供。
+            #[cfg(target_os = "macos")]
+            trackpad_gesture::install(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

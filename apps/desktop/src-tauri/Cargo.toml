@@ -49,3 +49,8 @@ tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", rev = "a3122e
 tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
 # 釘 0.6 與 tauri 內建 window effects 的同版共用——不同版本並存會重複連結 objc 類別符號。
 window-vibrancy = "0.6"
+# 觸控板滑動返回的手指按下／放開訊號（NSEvent 本地監聽，desktop-swipe-back-finger-lift design D3）：
+# 版本對齊 tauri 已帶入的 objc2 0.6.4／block2 0.6.2／objc2-app-kit 0.3.2，同上理由不得引入第二個版本。
+objc2 = "0.6"
+block2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSEvent", "block2"] }

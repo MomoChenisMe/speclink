@@ -1381,8 +1381,9 @@ function AppInner({
               </div>
             )}
           </main>
-          {/* 觸控板滑動返回（design D8）：左緣「←」指示，過門檻放開即返回（去處同返回鈕）。 */}
-          <SwipeBack enabled={backTarget(s) !== null} onBack={goBack} />
+          {/* 觸控板滑動返回（design D8）：左緣「←」指示，過門檻放開即返回（去處同返回鈕）。
+              手指放開的訊號只有 macOS 原生層提供，其他平台不提供（desktop-swipe-back-finger-lift D5）。 */}
+          <SwipeBack enabled={platform === "macos" && backTarget(s) !== null} onBack={goBack} />
       </div>
       </DetailActionsSlotProvider>
 
