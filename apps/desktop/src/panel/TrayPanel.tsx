@@ -182,7 +182,8 @@ function SectionCard({
   empty,
   children,
 }: {
-  id: TraySectionId;
+  /** 只用來組 testid；"promoted" 不屬於收合集合（已轉出卡的展開狀態另存）。 */
+  id: TraySectionId | "promoted";
   collapsed: boolean;
   onToggle: () => void;
   load: SectionLoad;
@@ -368,7 +369,7 @@ function PanelScrollArea({ children }: { children: ReactNode }) {
 }
 
 /** 卡內的列（design D2）：細線分隔、hover 整列半透明前景色灰底——列內符號維持本色。
-    變更列、討論列、溢出列與收合列共用。 */
+    變更列、討論列與溢出列共用。 */
 const rowClass =
   "flex w-full items-center gap-2 border-b border-border/70 px-3 py-1.5 text-left last:border-b-0 hover:bg-foreground/5";
 
@@ -581,7 +582,7 @@ export function TrayPanel({
 }: TrayPanelProps) {
   const { t } = useI18n();
   const tabStripRef = useRef<HTMLDivElement>(null);
-  // 已轉出收合列的展開狀態（design D4）：面板 webview 只建一次，重啟 app 後由本機記憶讀回。
+  // 已轉出卡的展開狀態（design D4）：面板 webview 只建一次，重啟 app 後由本機記憶讀回。
   const [promotedExpanded, setPromotedExpanded] = useState(readTrayPromotedExpanded);
   const togglePromoted = () => {
     const next = !promotedExpanded;
@@ -862,11 +863,10 @@ export function TrayPanel({
         </SectionCard>
       ))}
 
-      {/* 討論卡（spec「討論列表」）：標頭計數只算討論中；已轉出收於卡底「已轉出 N ›」
-          收合列（有料才現），展開區落在收合列正上方。slug 為題、topic 為描述（識別錨點
-          慣例，與看板討論卡一致）。四種狀態（載入中、失敗、有料、空）共用同一標題，只差
-          計數與其下內容：載入中為佔位列、失敗為失敗提示（計數未知，不謊報 0）、空為
-          計數 0 的空狀態卡（與非空同構，design D8）。 */}
+      {/* 討論卡（spec「討論列表」）：計數與空狀態只看討論中，「還有 N 個…」是卡內最後一列。
+          slug 為題、topic 為描述（識別錨點慣例，與看板討論卡一致）。四種狀態（載入中、失敗、
+          有料、空）共用同一標題，只差計數與其下內容：載入中為佔位列、失敗為失敗提示（計數
+          未知，不謊報 0）、空為計數 0 的空狀態卡（與非空同構，design D8）。 */}
       <SectionCard
         {...sectionCollapse("discussions")}
         load={sectionLoad}
@@ -874,43 +874,39 @@ export function TrayPanel({
         label={t("tray.discussionsHeader")}
         count={openDiscussions.length}
         countClassName={DISCUSSION_TONE.badge}
-        empty={openDiscussions.length === 0 && promotedDiscussions.length === 0}
+        empty={openDiscussions.length === 0}
       >
         <OverflowGroup
           moreLabel={moreLabel}
           collapseLabel={collapseLabel}
           rows={openDiscussions.map(discussionRow)}
         />
-        {promotedDiscussions.length > 0 && (
-          <>
-            {promotedExpanded && (
-              <div data-testid="panel-promoted-rows" className="flex flex-col border-b border-border/70 bg-muted/40">
-                <OverflowGroup
-                  moreLabel={moreLabel}
-                  collapseLabel={collapseLabel}
-                  rows={promotedDiscussions.map(discussionRow)}
-                />
-              </div>
-            )}
-            {/* 計數在文字裡、中性配色，不給色相徽章（desktop-app「介面狀態語意色分層」）。 */}
-            <div
-              data-testid="panel-promoted-toggle"
-              role="button"
-              aria-expanded={promotedExpanded}
-              tabIndex={-1}
-              onClick={togglePromoted}
-              onKeyDown={toggleOnKey(togglePromoted)}
-              className={cn(rowClass, "text-xs font-medium text-muted-foreground")}
-            >
-              <span>{t("discussion.promotedBar").replace("{n}", String(promotedDiscussions.length))}</span>
-              {/* 收合箭頭統一規則：收合 ›、展開時指向展開出來的內容——細列展開在本列上方，故朝上。 */}
-              <ChevronRight
-                className={cn("ml-auto h-3.5 w-3.5 shrink-0 transition-transform", promotedExpanded && "-rotate-90")}
-              />
-            </div>
-          </>
-        )}
       </SectionCard>
+
+      {/* 已轉出卡（spec「討論列表」）：討論卡正下方的獨立卡，靠卡片間距與討論中分開。
+          收合外觀與互動同其他內容卡，但展開狀態走自己的記憶（預設收合），不進收合集合。
+          只在討論清單 ready 且有料時呈現——載入中與失敗時筆數未知，由討論卡呈現佔位或提示。
+          圖示與計數徽章為中性灰（desktop-app「介面狀態語意色分層」）；不用 ArrowUpRight——
+          頁尾「開啟 Speclink」已用同一圖示。 */}
+      {sectionLoad === "ready" && promotedDiscussions.length > 0 && (
+        <SectionCard
+          id="promoted"
+          collapsed={!promotedExpanded}
+          onToggle={togglePromoted}
+          load="ready"
+          icon={<MessageSquareText className="h-3.5 w-3.5 text-muted-foreground" />}
+          label={t("tray.promotedHeader")}
+          count={promotedDiscussions.length}
+          countClassName="bg-muted text-muted-foreground"
+          empty={false}
+        >
+          <OverflowGroup
+            moreLabel={moreLabel}
+            collapseLabel={collapseLabel}
+            rows={promotedDiscussions.map(discussionRow)}
+          />
+        </SectionCard>
+      )}
 
         </>
       )}
