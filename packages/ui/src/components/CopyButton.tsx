@@ -63,7 +63,8 @@ export function CopyButton({ value, label, size = "icon", onCopy, tabIndex, clas
         {icon}
         {size === "sm" && (copied ? t("common.copied") : t("common.copy"))}
       </Button>
-      <span role="status" aria-live="polite" className="sr-only">
+      {/* sr-only 是 absolute：不釘位置會停在捲動區外的深處，撐高外層（desktop 的 main）。 */}
+      <span role="status" aria-live="polite" className="sr-only top-0 left-0">
         {copied ? t("common.copied") : ""}
       </span>
     </>
