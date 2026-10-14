@@ -162,7 +162,7 @@ Every non-2xx response has the same JSON shape, the error envelope:
 | `permission_denied` | 401 | The credential is missing, invalid, expired, or revoked, or the account is suspended. |
 | `permission_denied` | 403 | The account is not a project member, or a reader calls a write endpoint. |
 | `not_found` | 404 | The project or repo is not registered, or the change, discussion, artifact, or spec does not exist. |
-| `invalid_argument` | 400 | A value is wrong: a bad slug, a missing `If-Match`, a non-numeric `If-Match`, an unknown artifact, or an empty search query. Or the written content has a bad format: a `tasks.md` with no `- [ ]` checkbox, a proposal without `## Why`, `## Problem`, or `## Summary`, a design without `## Context`, a delta spec without an operation section, or a review or verify round without a `**Scope**:` line or with a `**Phase**:` that does not fit the ticket state. |
+| `invalid_argument` | 400 | A value is wrong: a bad slug, a missing `If-Match`, a non-numeric `If-Match`, an unknown artifact, or an empty search query. Or the written content has a bad format: a `tasks.md` with no `- [ ]` checkbox, a proposal without `## Why`, `## Problem`, or `## Summary`, a design without `## Context`, a delta spec without an operation section, or a review or verify round without a `**Scope**:` line, with a `**Phase**:` that does not fit the ticket state, or with a bad applied-rules record (`**Rules**:` or `**Rule**:` lines in a bad format, or in a round that is not a discovery round). |
 | `invalid_config` | 422 | The change metadata is corrupt, or the server cannot parse the workflow config. |
 | `refused` | 409 | A precondition fails: API version mismatch, no repo in a multi-repo project, `force` needed, task number out of range, change claimed by someone else, dependency cycle, or import into a non-empty target. |
 | `refused` | 413 | The request body is larger than 32 MiB, or the board-order content is larger than 1 MiB. |
@@ -342,7 +342,7 @@ If-Match: 2
 | `DELETE /changes/{name}/review` | None | `{"change":"add-login"}` |
 
 - A round uses the same format as the stdin of `speclink review add-round`. It must have a `**Scope**:` line.
-- `GET /changes/{name}/review` gives `change`, `rounds`, `lastRound`, and `content` (the ticket text). Each round has `index`, `phase`, `patchHash`, `scope`, and `findings`. Each finding has `severity`, `path`, and `text`.
+- `GET /changes/{name}/review` gives `change`, `rounds`, `lastRound`, and `content` (the ticket text). Each round has `index`, `phase`, `patchHash`, `rules`, `scope`, and `findings`. Each finding has `severity`, `path`, and `text`. `rules` is null, or an object with `baseline` (`extend` or `replace`) and the lists `critical`, `warning`, and `suggestion`; only a discovery round that recorded its applied rules has the object.
 - The `scope` of a stamp holds content fingerprints from your working tree. It covers the files that the Scope lines of the ticket list. `hash` is the SHA-256 of the file content in lowercase hex. For UTF-8 text files, change CRLF to LF before you hash.
 - Put files that no longer exist in your working tree into `missing`. `scope` plus `missing` must be exactly the files that the ticket lists. The server does not hash files again; it only compares the file sets.
 - All code tasks of the change must be done before a stamp. `accept: true` stamps even with must-fix findings (CRITICAL or WARNING) in the last round.

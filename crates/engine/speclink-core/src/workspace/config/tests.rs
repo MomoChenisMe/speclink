@@ -1473,6 +1473,17 @@ fn review_replace_with_three_lists_parses() {
 }
 
 #[test]
+fn review_baseline_parse_is_the_case_sensitive_inverse_of_as_str() {
+    // review-ticket-applied-rules D3：工單的 `**Rules**:` 與 config 共用同一組 token。
+    for b in [ReviewBaseline::Extend, ReviewBaseline::Replace] {
+        assert_eq!(ReviewBaseline::parse(b.as_str()), Some(b));
+    }
+    for bad in ["Extend", "REPLACE", " extend", "strict", ""] {
+        assert_eq!(ReviewBaseline::parse(bad), None, "{bad:?} must not parse");
+    }
+}
+
+#[test]
 fn review_strict_parse_rejects_and_names_the_offending_key_or_value() {
     // spec Example 嚴格解析的拒收面：未知子鍵、大小寫不符的 baseline、清單寫成物件。
     for (doc, needle) in [

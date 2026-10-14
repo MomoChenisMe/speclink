@@ -342,9 +342,63 @@ fn structured_round_phase_and_patch_survive_the_wire() {
     keys.sort();
     assert_eq!(
         keys,
-        ["findings", "index", "patchHash", "phase", "scope"],
+        ["findings", "index", "patchHash", "phase", "rules", "scope"],
         "field set matches the local CLI payload"
     );
+    assert!(v["rounds"][0]["rules"].is_null(), "no rule record → explicit null: {v}");
+}
+
+#[test]
+fn discovery_round_rules_survive_the_wire() {
+    // review-station spec「審查工單的讀取」：server 端 rounds[] 帶出 discovery 輪的
+    // 套用規則記錄，形狀與 local CLI 相同；複驗輪與 lastRound 為 null。
+    let f = fixture();
+    let c = client(&f.base, &f.pat);
+    let discovery = format!(
+        "**Phase**: discovery\n**Patch**: sha256:{}\n**Rules**: replace\n\
+         **Rule**: SUGGESTION 偏好以提早返回取代深層巢狀\n**Scope**: src/lib.rs\n",
+        "a".repeat(64)
+    );
+    let validation =
+        format!("**Phase**: validation\n**Patch**: sha256:{}\n**Scope**: src/lib.rs\n", "b".repeat(64));
+    c.station_add_round("review", "demo-change", &discovery).expect("discovery round");
+    c.station_add_round("review", "demo-change", &validation).expect("validation round");
+    let body = raw("GET", &f, "changes/demo-change/review")
+        .call()
+        .expect("get ticket")
+        .into_string()
+        .expect("body");
+    let v: serde_json::Value = serde_json::from_str(&body).expect("valid JSON");
+    assert_eq!(
+        v["rounds"][0]["rules"],
+        serde_json::json!({
+            "baseline": "replace",
+            "critical": [],
+            "warning": [],
+            "suggestion": ["偏好以提早返回取代深層巢狀"],
+        })
+    );
+    assert!(v["rounds"][1]["rules"].is_null(), "validation round carries no record: {v}");
+    assert!(v["lastRound"]["rules"].is_null(), "lastRound mirrors the validation round: {v}");
+}
+
+#[test]
+fn malformed_rule_record_is_an_invalid_argument_with_zero_writes() {
+    // review-station spec「審查工單的建立與追加」：remote 模式由 server 以同一文法
+    // 檢查，拒絕時回 invalid_argument（HTTP 400），工單零寫入。
+    let f = fixture();
+    let content = format!(
+        "**Phase**: discovery\n**Patch**: sha256:{}\n**Rules**: Extend\n**Scope**: src/lib.rs\n",
+        "a".repeat(64)
+    );
+    let (status, error) = protocol_error(
+        raw("POST", &f, "changes/demo-change/review/rounds")
+            .send_json(serde_json::json!({ "content": content })),
+    );
+    assert_eq!(status, 400);
+    assert_eq!(error.reason, ErrorReason::InvalidArgument);
+    assert!(error.message.contains("extend or replace"), "names the problem: {}", error.message);
+    assert!(ticket_doc(&f).is_none(), "refusal must not write the ticket");
 }
 
 #[test]
@@ -366,5 +420,9 @@ fn legacy_round_emits_explicit_nulls_on_the_wire() {
     assert!(
         round.get("patchHash").is_some_and(serde_json::Value::is_null),
         "patchHash key present and null: {round:?}"
+    );
+    assert!(
+        round.get("rules").is_some_and(serde_json::Value::is_null),
+        "rules key present and null: {round:?}"
     );
 }

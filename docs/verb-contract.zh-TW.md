@@ -162,7 +162,7 @@ ETag 是 HTTP 回應標頭，用來判斷資料有沒有變。
 | `permission_denied` | 401 | 沒帶憑證，或憑證無效、過期、已撤銷，或帳號已停用 |
 | `permission_denied` | 403 | 帳號不是這個專案的成員；reader 呼叫寫入端點 |
 | `not_found` | 404 | 專案或 repo 沒有註冊；變更、討論、artifact 或規格不存在 |
-| `invalid_argument` | 400 | 參數值不對：slug 格式錯、缺 `If-Match`、`If-Match` 不是數字、未知的 artifact、搜尋關鍵字是空的；或寫入的內容格式不對：`tasks.md` 沒有 `- [ ]` 核取方塊、proposal 缺 `## Why`／`## Problem`／`## Summary`、design 缺 `## Context`、delta spec 沒有操作區段、審查站或驗證站的輪缺 `**Scope**:` 行，或輪的 `**Phase**:` 與工單狀態不符 |
+| `invalid_argument` | 400 | 參數值不對：slug 格式錯、缺 `If-Match`、`If-Match` 不是數字、未知的 artifact、搜尋關鍵字是空的；或寫入的內容格式不對：`tasks.md` 沒有 `- [ ]` 核取方塊、proposal 缺 `## Why`／`## Problem`／`## Summary`、design 缺 `## Context`、delta spec 沒有操作區段、審查站或驗證站的輪缺 `**Scope**:` 行、輪的 `**Phase**:` 與工單狀態不符，或套用規則記錄有誤（`**Rules**:`／`**Rule**:` 行格式錯誤，或出現在非 discovery 輪） |
 | `invalid_config` | 422 | 變更的 metadata 壞掉；工作流設定文件解析不了 |
 | `refused` | 409 | 前置條件不成立：API 版本不符、多 repo 卻沒指定 repo、需要 `force`、任務序號超出範圍、變更已被別人認領、依賴成環、匯入的目標不是空的 |
 | `refused` | 413 | 請求 body 超過 32 MiB，或看板順序內容超過 1 MiB |
@@ -342,7 +342,7 @@ If-Match: 2
 | `DELETE /changes/{name}/review` | 無 | `{"change":"add-login"}` |
 
 - 一輪的內容格式與 `speclink review add-round` 從 stdin 收的內容相同，必須有 `**Scope**:` 行。
-- `GET /changes/{name}/review` 回 `change`、`rounds`、`lastRound` 與 `content`（工單原文）。每一輪有 `index`、`phase`、`patchHash`、`scope` 與 `findings`（每項 `severity`、`path`、`text`）。
+- `GET /changes/{name}/review` 回 `change`、`rounds`、`lastRound` 與 `content`（工單原文）。每一輪有 `index`、`phase`、`patchHash`、`rules`、`scope` 與 `findings`（每項 `severity`、`path`、`text`）。`rules` 為 null，或是帶 `baseline`（`extend` 或 `replace`）與 `critical`、`warning`、`suggestion` 三個清單的物件；只有記錄了套用規則的 discovery 輪才有物件。
 - 蓋章的 `scope` 是工單各輪 Scope 列過的檔案，在你工作目錄裡的內容指紋。`hash` 是檔案內容的 SHA-256（小寫十六進位）；UTF-8 文字檔先把 CRLF 換成 LF 再算。
 - 工作目錄裡已經不存在的檔案放進 `missing`。`scope` 加 `missing` 必須剛好等於工單列過的檔案；server 不重算指紋，只檢查檔案集合。
 - 蓋章前，變更的寫碼任務必須全部完成。`accept: true` 表示最後一輪還有必須修的發現（CRITICAL／WARNING）也照樣蓋章。

@@ -159,11 +159,22 @@ export interface TicketFinding {
   text: string;
 }
 
+/** discovery 輪記錄的套用規則（`**Rules**:`／`**Rule**:` 行）：與 CLI `rounds[].rules` 同形。 */
+export interface TicketRules {
+  baseline: "extend" | "replace";
+  critical: string[];
+  warning: string[];
+  suggestion: string[];
+}
+
 /** 工單的一輪。phase／patchHash 在結構化輪為成對值、legacy 輪皆為 null。 */
 export interface TicketRound {
   index: number;
   phase: "discovery" | "validation" | null;
   patchHash: string | null;
+  /** 套用規則記錄，沒有記錄時為 null。引擎一定會帶；宣告為選填只為相容沒有此欄的
+   * 手寫字面值，缺席與 null 同義。 */
+  rules?: TicketRules | null;
   scope: string[];
   findings: TicketFinding[];
 }
@@ -173,6 +184,8 @@ export interface TicketRound {
  * 與遠端、活變更與已封存四條路回同一形狀。 */
 export interface StationTicket {
   rounds: TicketRound[];
+  /** 引擎提供的預設 smell 名稱（依審查技能範本順序），套用規則列的展開清單；選填理由同 `rules`。 */
+  reviewBaselineSmells?: string[];
 }
 
 /** 一筆討論的清單項（camelCase；status: open | concluded | promoted）。 */

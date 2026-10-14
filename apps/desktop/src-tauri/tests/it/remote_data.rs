@@ -1011,15 +1011,16 @@ fn station_ticket_maps_404_to_none_and_200_to_rounds() {
             },
         )
         .expect("begin uow");
+    let ticket_text = format!(
+        "# Review — demo\n\n## Round 1\n\n**Phase**: discovery\n**Patch**: sha256:{}\n**Rules**: replace\n**Rule**: WARNING 新增的公開 API 要有對應的測試\n**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs — possible smell\n",
+        "a".repeat(64)
+    );
     uow.create(
         DocumentId::ChangeArtifact {
             change: "demo".into(),
             artifact: "review.md".into(),
         },
-        &format!(
-            "# Review — demo\n\n## Round 1\n\n**Phase**: discovery\n**Patch**: sha256:{}\n**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs — possible smell\n",
-            "a".repeat(64)
-        ),
+        &ticket_text,
     );
     h.store.commit(uow, Vec::new()).expect("seed ticket");
 
@@ -1037,6 +1038,13 @@ fn station_ticket_maps_404_to_none_and_200_to_rounds() {
     assert!(
         json[0].get("patchHash").is_some() && json[0].get("patch_hash").is_none(),
         "D1 shape is camelCase: {json}"
+    );
+    // 遠端活工單交給與本機同一個組裝函式（D5）：payload 與本機解析同一份原文逐項相同，
+    // 含 rules 與 reviewBaselineSmells。
+    assert_eq!(
+        Some(speclink_desktop_core::query::ticket_payload(&ticket.rounds)),
+        speclink_desktop_core::query::ticket_json_from_text("review", &ticket_text),
+        "remote live payload matches the local parse"
     );
     assert!(
         ws.station_ticket(&credentials, "demo", "verify")
@@ -1087,6 +1095,7 @@ fn archived_station_ticket_text_parses_into_the_d1_shape() {
                 "index": 1,
                 "phase": "discovery",
                 "patchHash": format!("sha256:{hash}"),
+                "rules": null,
                 "scope": ["src/lib.rs"],
                 "findings": [{
                     "severity": "WARNING",
@@ -1094,6 +1103,7 @@ fn archived_station_ticket_text_parses_into_the_d1_shape() {
                     "text": "Correctness: scenario uncovered",
                 }],
             }],
+            "reviewBaselineSmells": speclink_core::skills::REVIEW_BASELINE_SMELLS,
         })
     );
     let missing = ws

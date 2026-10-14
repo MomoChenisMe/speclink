@@ -1,0 +1,250 @@
+{
+  "version": 2,
+  "change": "review-ticket-applied-rules",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 Red：在 crates/engine/speclink-core/src/quality/station/tests.rs 新增失敗測試，釘住「審查工單的建立與追加」的規則記錄文法（D2「文法：一行模式、每條規則一行，只能出現在 discovery 輪」）——discovery 輪帶 `**Rules**: extend` 與兩行 `**Rule**:` 解析成功、規則原文去頭尾空白且保持順序；design 失敗模式表的六種輸入（大小寫不符的 baseline、兩行 `**Rules**:`、沒有 `**Rules**:` 的 `**Rule**:`、未知 severity、缺少原文、validation 或 legacy 輪帶 `**Rules**:`）各自被 add-round 拒絕且工單位元級不變；`Round::to_json` 帶出 `rules` 物件，沒有記錄時為明確 null（D3「沿用 speclink-core 的 ReviewConfig 當作輪次的規則型別」）。驗證：`cargo test -p speclink-core --lib station` 有新測試失敗",
+      "files": [
+        "crates/engine/speclink-core/src/quality/station/tests.rs",
+        "crates/engine/speclink-core/src/workspace/config/tests.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 Green：在 crates/engine/speclink-core/src/workspace/config.rs 為 `ReviewBaseline` 新增 `parse`（與 `as_str` 同處，baseline token 的唯一來源），在 crates/engine/speclink-core/src/quality/station.rs 讓 `Round` 帶 `rules: Option<ReviewConfig>`，由 `parse_round_body` 解析與守門、`Round::to_json` 序列化（D1「規則行由審查技能寫入，引擎只檢查格式與解析」、D2、D3）。驗證：`cargo test -p speclink-core --lib station` 與 `cargo test -p speclink-core --lib config` 全綠",
+      "files": [
+        "crates/engine/speclink-core/src/quality/station.rs",
+        "crates/engine/speclink-core/src/workspace/config.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 Red：新增失敗測試，釘住「審查工單的讀取」的 `rules` 欄位——crates/adapters/speclink-cli/tests/it/review_verbs.rs 斷言 `review show --json` 的 rounds[0].rules 鍵為 camelCase 的 baseline／critical／warning／suggestion、型別為字串與字串陣列，複驗輪與 lastRound 為 null，格式錯誤的 add-round 非零退出且工單零寫入；crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs 斷言 local 與 remote 的 rules 逐項相同；crates/host/speclink-server/tests/it/api/review_api.rs 與 verify_api.rs 的欄位集合斷言加入 `rules`（驗證站為 null）；crates/protocol/speclink-protocol/src/command.rs 的測試斷言缺少 `rules` 的 JSON 反序列化為 None。驗證：`cargo test -p speclink-cli --test it review_verbs`、`cargo test -p speclink-cli --test it remote_verb_parity`、`cargo test -p speclink-server --test it review_api`、`cargo test -p speclink-protocol` 有新測試失敗",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs",
+        "crates/adapters/speclink-cli/tests/it/review_verbs.rs",
+        "crates/host/speclink-server/tests/it/api/review_api.rs",
+        "crates/host/speclink-server/tests/it/api/verify_api.rs",
+        "crates/protocol/speclink-protocol/src/command.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.2 Green：在 crates/protocol/speclink-protocol/src/command.rs 新增 `ReviewRulesDto`、`ReviewRoundDto.rules`（`#[serde(default)]`），crates/host/speclink-server/src/api/routes.rs 的 `review_round_dto` 對映 `Round.rules`，crates/adapters/speclink-cli/src/verbs/station.rs 的 `to_station_round` 轉回 `ReviewConfig`，baseline token 不認得時比照 phase 回報「這支 CLI 比 server 舊」（D4「唯一實作落點與各端接法」）；在 station.rs 的 CLI 單元測試補「server 回傳 baseline `strict` → 錯誤」。驗證：2.1 的四組指令、`cargo test -p speclink-cli --bin speclink` 與 `cargo test -p speclink-server --test it verify_api` 全綠",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/station.rs",
+        "crates/host/speclink-server/src/api/routes.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 Red：在 crates/engine/speclink-core/src/workspace/skills.rs 的測試新增 `review_skill_records_applied_rules_in_discovery_rounds`，斷言 claude、codex、copilot 生成的審查技能檔記錄輪次的步驟都含 `**Rules**:` 與 `**Rule**:` 的寫法、寫入位置在 Patch 與 Scope 之間、validation 輪不寫（「首輪工單記錄套用的規則」）。驗證：`cargo test -p speclink-core --lib skills` 該測試失敗",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/skills.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.2 Green：改 crates/engine/speclink-core/assets/skills/review.md 第 8 步，寫明 discovery 輪依開審前讀到的 review 物件寫入 `**Rules**:` 與每條專案規則的 `**Rule**:`（依 critical、warning、suggestion 順序，換行以單一空白連接）、validation 輪不寫、這些行不隨 locale 改變；不新增強調字。驗證：`cargo test -p speclink-core --lib skills` 全綠，crates/engine/speclink-core/src/workspace/skill_authoring.rs 的強調字上限守門通過",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/review.md"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.3 技能版號升為 v1.47.0（D7）：crates/engine/speclink-core/src/workspace/init.rs 的 `ASSET_VERSION` 改為 v1.47.0，以 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 重產 crates/engine/speclink-core/tests/golden/ 的六份快照、以 `UPDATE_ASSETS_LOCK=1` 重產 assets.lock，先 `cargo build -p speclink-cli` 再執行 `speclink update` 再生本 repo 的技能檔。驗證：`cargo test -p speclink-core --test it render_golden::` 全綠、`target/debug/speclink --version` 的 engine 為 v1.47.0、git status 列出再生的 SKILL.md",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.1 Red：在 apps/desktop/core/src/query.rs 的測試新增失敗斷言——本機活變更、本機封存與 `ticket_json_from_text` 回傳的工單資料都帶 `reviewBaselineSmells` 且等於 `speclink_core::skills::REVIEW_BASELINE_SMELLS`、輪次帶 `rules`；apps/desktop/src-tauri/tests/it/remote_data.rs 斷言遠端活工單的資料同形（D5「desktop 從工單 payload 取得 12 條名稱」）。驗證：`cargo test -p speclink-desktop-core query` 有新測試失敗（`cargo test -p speclink-desktop --test it remote_data` 需先補 sidecar 與 server-web dist）",
+      "files": [
+        "apps/desktop/core/src/query.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "packages/ui/src/__tests__/ticketView.test.tsx"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.2 Green：把組工單資料的邏輯收成 apps/desktop/core/src/query.rs 的一個函式並帶入 `reviewBaselineSmells`，`ticket_json` 改用它；apps/desktop/src-tauri/src/lib.rs 的 `remote_station_ticket` 改為單行委派給同一函式（「詳情頁的工單分頁」的工單資料形狀）。驗證：`cargo test -p speclink-desktop-core query` 與 `cargo test -p speclink-desktop --test it remote_data` 全綠",
+      "files": [
+        "apps/desktop/src-tauri/src/lib.rs"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "4.4 Green：packages/ui/src/adapter.ts 的 `TicketRound` 與 `StationTicket` 新增選填的 `rules` 與 `reviewBaselineSmells`；新增 packages/ui/src/components/BaselineSmellList.tsx 並由 packages/ui/src/index.ts 匯出，apps/desktop/src/views/project-settings/ReviewRulesPage.tsx 改用它；packages/ui/src/components/TicketView.tsx 在輪卡內渲染套用規則列，chevron 展開樣式與輪卡卡頭共用一個局部元件，嚴重度籤沿用 `SeverityTag`，琥珀底用 WARNING 語意色 token、不以 className 覆蓋元件變體，文字放 packages/ui/src/i18n.tsx（tw、en，計數以 `{count}` 代入）（D6「套用規則列放在 TicketView 的輪卡內，沿用既有元件」）。驗證：`npm test -w @speclink/ui` 與 `npm test -w @speclink/desktop` 全綠（設定頁的 projectSettingsView 測試在換用共用元件後仍通過）",
+      "files": [
+        "apps/desktop/src/views/project-settings/ReviewRulesPage.tsx",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/components/TicketView.tsx",
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/index.ts",
+        "packages/ui/src/components/BaselineSmellList.tsx"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "5.1 更新 docs/verb-contract.md 與 docs/verb-contract.zh-TW.md：`GET /changes/{name}/review` 每輪欄位加入 `rules`（物件或 null，含四個鍵），`invalid_argument` 列加入「規則記錄格式錯誤或出現在非 discovery 輪」。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠（中英對照與詞彙守門）",
+      "files": [
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4XAVYET7R28GRV067H3E3DG",
+      "taskDesc": "1.1 Red：在 crates/engine/speclink-core/src/quality/station/tests.rs 新增失敗測試，釘住「審查工單的建立與追加」的規則記錄文法（D2「文法：一行模式、每條規則一行，只能出現在 discovery 輪」）——discovery 輪帶 `**Rules**: extend` 與兩行 `**Rule**:` 解析成功、規則原文去頭尾空白且保持順序；design 失敗模式表的六種輸入（大小寫不符的 baseline、兩行 `**Rules**:`、沒有 `**Rules**:` 的 `**Rule**:`、未知 severity、缺少原文、validation 或 legacy 輪帶 `**Rules**:`）各自被 add-round 拒絕且工單位元級不變；`Round::to_json` 帶出 `rules` 物件，沒有記錄時為明確 null（D3「沿用 speclink-core 的 ReviewConfig 當作輪次的規則型別」）。驗證：`cargo test -p speclink-core --lib station` 有新測試失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/quality/station/tests.rs",
+        "crates/engine/speclink-core/src/workspace/config/tests.rs"
+      ],
+      "recordedAt": "2026-10-14T14:03:46Z"
+    },
+    {
+      "taskId": "tsk_01M4XAVYETDFAEWMMJP75XF006",
+      "taskDesc": "1.2 Green：在 crates/engine/speclink-core/src/workspace/config.rs 為 `ReviewBaseline` 新增 `parse`（與 `as_str` 同處，baseline token 的唯一來源），在 crates/engine/speclink-core/src/quality/station.rs 讓 `Round` 帶 `rules: Option<ReviewConfig>`，由 `parse_round_body` 解析與守門、`Round::to_json` 序列化（D1「規則行由審查技能寫入，引擎只檢查格式與解析」、D2、D3）。驗證：`cargo test -p speclink-core --lib station` 與 `cargo test -p speclink-core --lib config` 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/quality/station.rs",
+        "crates/engine/speclink-core/src/workspace/config.rs"
+      ],
+      "recordedAt": "2026-10-14T14:05:04Z"
+    },
+    {
+      "taskId": "tsk_01M4XAVYET1TFB2TGABRJQKPQ8",
+      "taskDesc": "2.1 Red：新增失敗測試，釘住「審查工單的讀取」的 `rules` 欄位——crates/adapters/speclink-cli/tests/it/review_verbs.rs 斷言 `review show --json` 的 rounds[0].rules 鍵為 camelCase 的 baseline／critical／warning／suggestion、型別為字串與字串陣列，複驗輪與 lastRound 為 null，格式錯誤的 add-round 非零退出且工單零寫入；crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs 斷言 local 與 remote 的 rules 逐項相同；crates/host/speclink-server/tests/it/api/review_api.rs 與 verify_api.rs 的欄位集合斷言加入 `rules`（驗證站為 null）；crates/protocol/speclink-protocol/src/command.rs 的測試斷言缺少 `rules` 的 JSON 反序列化為 None。驗證：`cargo test -p speclink-cli --test it review_verbs`、`cargo test -p speclink-cli --test it remote_verb_parity`、`cargo test -p speclink-server --test it review_api`、`cargo test -p speclink-protocol` 有新測試失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs",
+        "crates/adapters/speclink-cli/tests/it/review_verbs.rs",
+        "crates/host/speclink-server/tests/it/api/review_api.rs",
+        "crates/host/speclink-server/tests/it/api/verify_api.rs",
+        "crates/protocol/speclink-protocol/src/command.rs"
+      ],
+      "recordedAt": "2026-10-14T14:11:56Z"
+    },
+    {
+      "taskId": "tsk_01M4XAVYET6AA77TTYFNFM6GWN",
+      "taskDesc": "2.2 Green：在 crates/protocol/speclink-protocol/src/command.rs 新增 `ReviewRulesDto`、`ReviewRoundDto.rules`（`#[serde(default)]`），crates/host/speclink-server/src/api/routes.rs 的 `review_round_dto` 對映 `Round.rules`，crates/adapters/speclink-cli/src/verbs/station.rs 的 `to_station_round` 轉回 `ReviewConfig`，baseline token 不認得時比照 phase 回報「這支 CLI 比 server 舊」（D4「唯一實作落點與各端接法」）；在 station.rs 的 CLI 單元測試補「server 回傳 baseline `strict` → 錯誤」。驗證：2.1 的四組指令、`cargo test -p speclink-cli --bin speclink` 與 `cargo test -p speclink-server --test it verify_api` 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/station.rs",
+        "crates/host/speclink-server/src/api/routes.rs"
+      ],
+      "recordedAt": "2026-10-14T14:14:58Z"
+    },
+    {
+      "taskId": "tsk_01M4XAVYETFVT32ZGG1PRVRTWF",
+      "taskDesc": "3.1 Red：在 crates/engine/speclink-core/src/workspace/skills.rs 的測試新增 `review_skill_records_applied_rules_in_discovery_rounds`，斷言 claude、codex、copilot 生成的審查技能檔記錄輪次的步驟都含 `**Rules**:` 與 `**Rule**:` 的寫法、寫入位置在 Patch 與 Scope 之間、validation 輪不寫（「首輪工單記錄套用的規則」）。驗證：`cargo test -p speclink-core --lib skills` 該測試失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/skills.rs"
+      ],
+      "recordedAt": "2026-10-14T14:15:49Z"
+    },
+    {
+      "taskId": "tsk_01M4XAVYETJBJYRB28MHQ4A1CF",
+      "taskDesc": "3.2 Green：改 crates/engine/speclink-core/assets/skills/review.md 第 8 步，寫明 discovery 輪依開審前讀到的 review 物件寫入 `**Rules**:` 與每條專案規則的 `**Rule**:`（依 critical、warning、suggestion 順序，換行以單一空白連接）、validation 輪不寫、這些行不隨 locale 改變；不新增強調字。驗證：`cargo test -p speclink-core --lib skills` 全綠，crates/engine/speclink-core/src/workspace/skill_authoring.rs 的強調字上限守門通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/review.md"
+      ],
+      "recordedAt": "2026-10-14T14:16:01Z"
+    },
+    {
+      "taskId": "tsk_01M4XAVYETZCREQGZC8R5ABYV6",
+      "taskDesc": "3.3 技能版號升為 v1.47.0（D7）：crates/engine/speclink-core/src/workspace/init.rs 的 `ASSET_VERSION` 改為 v1.47.0，以 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 重產 crates/engine/speclink-core/tests/golden/ 的六份快照、以 `UPDATE_ASSETS_LOCK=1` 重產 assets.lock，先 `cargo build -p speclink-cli` 再執行 `speclink update` 再生本 repo 的技能檔。驗證：`cargo test -p speclink-core --test it render_golden::` 全綠、`target/debug/speclink --version` 的 engine 為 v1.47.0、git status 列出再生的 SKILL.md",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ],
+      "recordedAt": "2026-10-14T14:16:35Z"
+    },
+    {
+      "taskId": "tsk_01M4XAVYETE8R7TR3AVZC4H91B",
+      "taskDesc": "4.1 Red：在 apps/desktop/core/src/query.rs 的測試新增失敗斷言——本機活變更、本機封存與 `ticket_json_from_text` 回傳的工單資料都帶 `reviewBaselineSmells` 且等於 `speclink_core::skills::REVIEW_BASELINE_SMELLS`、輪次帶 `rules`；apps/desktop/src-tauri/tests/it/remote_data.rs 斷言遠端活工單的資料同形（D5「desktop 從工單 payload 取得 12 條名稱」）。驗證：`cargo test -p speclink-desktop-core query` 有新測試失敗（`cargo test -p speclink-desktop --test it remote_data` 需先補 sidecar 與 server-web dist）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "apps/desktop/core/src/query.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "packages/ui/src/__tests__/ticketView.test.tsx"
+      ],
+      "recordedAt": "2026-10-14T14:18:44Z"
+    },
+    {
+      "taskId": "tsk_01M4XAVYET8S7VPQV19SF6XKFN",
+      "taskDesc": "4.2 Green：把組工單資料的邏輯收成 apps/desktop/core/src/query.rs 的一個函式並帶入 `reviewBaselineSmells`，`ticket_json` 改用它；apps/desktop/src-tauri/src/lib.rs 的 `remote_station_ticket` 改為單行委派給同一函式（「詳情頁的工單分頁」的工單資料形狀）。驗證：`cargo test -p speclink-desktop-core query` 與 `cargo test -p speclink-desktop --test it remote_data` 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/lib.rs"
+      ],
+      "recordedAt": "2026-10-14T14:19:58Z"
+    },
+    {
+      "taskId": "tsk_01M4XAVYETV45MTTB5JZ2WXHYC",
+      "taskDesc": "4.4 Green：packages/ui/src/adapter.ts 的 `TicketRound` 與 `StationTicket` 新增選填的 `rules` 與 `reviewBaselineSmells`；新增 packages/ui/src/components/BaselineSmellList.tsx 並由 packages/ui/src/index.ts 匯出，apps/desktop/src/views/project-settings/ReviewRulesPage.tsx 改用它；packages/ui/src/components/TicketView.tsx 在輪卡內渲染套用規則列，chevron 展開樣式與輪卡卡頭共用一個局部元件，嚴重度籤沿用 `SeverityTag`，琥珀底用 WARNING 語意色 token、不以 className 覆蓋元件變體，文字放 packages/ui/src/i18n.tsx（tw、en，計數以 `{count}` 代入）（D6「套用規則列放在 TicketView 的輪卡內，沿用既有元件」）。驗證：`npm test -w @speclink/ui` 與 `npm test -w @speclink/desktop` 全綠（設定頁的 projectSettingsView 測試在換用共用元件後仍通過）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "apps/desktop/src/views/project-settings/ReviewRulesPage.tsx",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/components/TicketView.tsx",
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/index.ts",
+        "packages/ui/src/components/BaselineSmellList.tsx"
+      ],
+      "recordedAt": "2026-10-14T14:22:11Z"
+    },
+    {
+      "taskId": "tsk_01M4XAVYETJ50WK8B1RVS43D1S",
+      "taskDesc": "5.1 更新 docs/verb-contract.md 與 docs/verb-contract.zh-TW.md：`GET /changes/{name}/review` 每輪欄位加入 `rules`（物件或 null，含四個鍵），`invalid_argument` 列加入「規則記錄格式錯誤或出現在非 discovery 輪」。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠（中英對照與詞彙守門）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md"
+      ],
+      "recordedAt": "2026-10-14T14:22:43Z"
+    }
+  ]
+}

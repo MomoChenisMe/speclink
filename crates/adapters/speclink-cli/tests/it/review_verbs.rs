@@ -883,7 +883,63 @@ fn show_json_carries_nullable_phase_and_patch_hash() {
     // 欄位集合釘死（local／remote 同構的 local 半邊）。
     let mut keys: Vec<&str> = rounds[0].as_object().unwrap().keys().map(String::as_str).collect();
     keys.sort();
-    assert_eq!(keys, ["findings", "index", "patchHash", "phase", "scope"]);
+    assert_eq!(keys, ["findings", "index", "patchHash", "phase", "rules", "scope"]);
+}
+
+#[test]
+fn show_json_carries_the_applied_rules_record() {
+    // spec Scenario「首輪記錄套用規則」＋「讀取帶規則記錄的工單」：rounds[0].rules 的
+    // 鍵為 camelCase 的 baseline／critical／warning／suggestion，值為字串與字串
+    // 陣列；複驗輪與 lastRound 為 null。
+    let p = TempProject::with_change("show-rules", TASKS_DONE);
+    let discovery = format!(
+        "**Phase**: discovery\n**Patch**: sha256:{}\n**Rules**: extend\n\
+         **Rule**: CRITICAL 所有 SQL 一律用參數化查詢，不得用字串拼接\n\
+         **Rule**: WARNING 新增的公開 API 要有對應的測試\n\
+         **Scope**: src/lib.rs\n\n- [CRITICAL] src/lib.rs — unwrap on user input\n",
+        "a".repeat(64)
+    );
+    let out = p.run_stdin(&["review", "add-round", "demo", "--stdin"], &discovery);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let validation =
+        format!("**Phase**: validation\n**Patch**: sha256:{}\n**Scope**: src/lib.rs\n", "b".repeat(64));
+    let out = p.run_stdin(&["review", "add-round", "demo", "--stdin"], &validation);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+
+    let out = p.run(&["review", "show", "demo", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("valid JSON");
+    let rules = &v["rounds"][0]["rules"];
+    let mut keys: Vec<&str> = rules.as_object().expect("rules object").keys().map(String::as_str).collect();
+    keys.sort();
+    assert_eq!(keys, ["baseline", "critical", "suggestion", "warning"]);
+    assert_eq!(
+        *rules,
+        serde_json::json!({
+            "baseline": "extend",
+            "critical": ["所有 SQL 一律用參數化查詢，不得用字串拼接"],
+            "warning": ["新增的公開 API 要有對應的測試"],
+            "suggestion": [],
+        })
+    );
+    assert!(v["rounds"][1]["rules"].is_null(), "validation round: {v}");
+    assert!(v["lastRound"]["rules"].is_null(), "lastRound: {v}");
+}
+
+#[test]
+fn add_round_rejects_a_malformed_rule_record_and_writes_nothing() {
+    // spec Scenario「規則記錄格式錯誤被拒絕」：非零、stderr 點名問題、工單零寫入。
+    let p = TempProject::with_change("rules-bad", TASKS_DONE);
+    let content = format!(
+        "**Phase**: discovery\n**Patch**: sha256:{}\n**Rules**: extend\n**Rule**: NOTE 要有測試\n\
+         **Scope**: src/lib.rs\n",
+        "a".repeat(64)
+    );
+    let out = p.run_stdin(&["review", "add-round", "demo", "--stdin"], &content);
+    assert!(!out.status.success(), "malformed rule record → non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("NOTE") && err.contains("CRITICAL, WARNING, or SUGGESTION"), "{err}");
+    assert!(!p.ticket_path().exists(), "refusal must not create the ticket");
 }
 
 #[test]
@@ -901,6 +957,10 @@ fn show_json_legacy_round_emits_explicit_nulls() {
     assert!(
         round.get("patchHash").is_some_and(serde_json::Value::is_null),
         "patchHash key present and null: {round:?}"
+    );
+    assert!(
+        round.get("rules").is_some_and(serde_json::Value::is_null),
+        "rules key present and null: {round:?}"
     );
 }
 

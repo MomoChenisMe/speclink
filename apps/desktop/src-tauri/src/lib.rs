@@ -1459,8 +1459,8 @@ async fn remote_document(
     .await
 }
 
-/// 遠端活工單：`GET /changes/{name}/{station}` 已是結構化 rounds，直接取 `rounds`
-/// 即 D1 形狀；404 與本地語意一致回 null。未知站別不拼 URL，直接 null。
+/// 遠端活工單：`GET /changes/{name}/{station}` 已是結構化 rounds，交給 desktop core
+/// 與本機同一個組裝函式；404 與本地語意一致回 null。未知站別不拼 URL，直接 null。
 #[tauri::command]
 async fn remote_station_ticket(
     app: tauri::AppHandle,
@@ -1475,7 +1475,7 @@ async fn remote_station_ticket(
             return Ok(None);
         };
         ws.station_ticket(credentials, &change, st.noun)
-            .map(|ticket| ticket.map(|resp| json!({ "rounds": resp.rounds })))
+            .map(|ticket| ticket.map(|resp| speclink_desktop_core::query::ticket_payload(resp.rounds)))
             .map_err(|error| error.message)
     })
     .await

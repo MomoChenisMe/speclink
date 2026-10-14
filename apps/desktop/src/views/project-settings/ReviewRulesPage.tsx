@@ -4,6 +4,7 @@
 // 展開鈕與產出流程頁的「檢視內容」同一種按鈕。12 條名稱取自快照（引擎提供）。
 import { useState } from "react";
 import {
+  BaselineSmellList,
   Button,
   SettingsCard,
   SettingsChoice,
@@ -88,15 +89,7 @@ export function ReviewRulesPage({ ps }: { ps: ProjectSettingsState }) {
                 ? t("settings.reviewSmellsHide")
                 : t("settings.reviewSmellsShow").replace("{count}", String(smells.length))}
             </Button>
-            {showSmells && (
-              <ul data-testid="review-smells" className="m-0 flex list-none flex-wrap gap-1.5 p-0">
-                {smells.map((name) => (
-                  <li key={name} className="rounded-md border border-border bg-muted/40 px-2 py-0.5 font-mono text-xs">
-                    {name}
-                  </li>
-                ))}
-              </ul>
-            )}
+            {showSmells && <BaselineSmellList data-testid="review-smells" names={smells} />}
           </div>
         </SettingsRow>
       </SettingsCard>

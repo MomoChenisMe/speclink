@@ -434,6 +434,16 @@ impl ReviewBaseline {
             ReviewBaseline::Replace => "replace",
         }
     }
+
+    /// The inverse of [`as_str`](Self::as_str), case-sensitive — the one token
+    /// parser the review ticket's `**Rules**:` line shares with the config block.
+    pub fn parse(s: &str) -> Option<ReviewBaseline> {
+        match s {
+            "extend" => Some(ReviewBaseline::Extend),
+            "replace" => Some(ReviewBaseline::Replace),
+            _ => None,
+        }
+    }
 }
 
 /// `SPECLINK_*` environment overrides — the top layer of the three-layer policy resolution
