@@ -164,6 +164,8 @@ function tasksSummary(
   if (tasks.length === 0) return EMPTY;
   const done = tasks.filter((x) => x.done).length;
   const manual = tasks.filter((x) => x.manual);
+  // 提示框只提醒還要親手做的：已勾的手動任務不列，數字磚仍計總數。
+  const pendingManual = manual.filter((x) => !x.done);
   return {
     badges:
       done === tasks.length ? (
@@ -178,10 +180,10 @@ function tasksSummary(
       { value: items.length - tasks.length, label: t("tasks.tileGroups") },
     ],
     callout:
-      manual.length > 0 ? (
-        <Callout tone="manual" title={t("tasks.manualCallout").replace("{n}", String(manual.length))} className="my-0">
+      pendingManual.length > 0 ? (
+        <Callout tone="manual" title={t("tasks.manualCallout").replace("{n}", String(pendingManual.length))} className="my-0">
           <ul className="my-1 flex flex-col gap-0.5 text-sm">
-            {manual.map((m) => {
+            {pendingManual.map((m) => {
               const parts = splitTaskText(m.text);
               return (
                 <li key={m.ordinal} data-manual-task className="flex items-center gap-2">
