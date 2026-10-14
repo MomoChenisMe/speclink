@@ -2,11 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "../App";
+import { WebApiError } from "../api/client";
 
 // 帳號自助頁（server-identity「帳號 browser API 保持憑證祕密邊界」, D4／D6；server-web-console
 // 「帳號頁呈現我的專案」；server-web-list-pages design D8、D10）。768px 置中欄，由上而下為我的
-// 專案、存取金鑰、裝置登入、登入工作階段四張設定型卡；建立金鑰的明文只顯示一次；撤銷鈕滑過才
-// 出現，撤銷等破壞性操作先以 AlertDialog 確認才送出。
+// 專案、存取金鑰、裝置登入、登入工作階段四張設定型卡；建立金鑰以置中對話框承載，明文只在對話框內
+// 顯示一次（server-web-detail-pages design D7）；撤銷鈕滑過才出現，撤銷等破壞性操作先以 AlertDialog
+// 確認才送出。
 
 const MEMBER = {
   authenticated: true,
@@ -156,37 +158,79 @@ describe("帳號自助頁", () => {
     expect(within(row).getByText("有效").className).toContain("status-success");
   });
 
-  // 建立動作與管理列表頁一致：頁面唯一 primary action 開抽屜，欄位不常駐頁面。
-  it("建立表單不常駐頁面，按下建立存取金鑰後才出現於抽屜", async () => {
+  // 建立動作與管理列表頁一致：頁面唯一 primary action 開置中對話框，欄位不常駐頁面
+  // （server-web-detail-pages design D7）。
+  it("建立表單不常駐頁面，按下建立存取金鑰後才出現在置中對話框", async () => {
     renderAt("/account", makeClient());
     await screen.findByRole("region", { name: "存取金鑰" });
-    expect(screen.queryByLabelText(/到期日/)).toBeNull();
+    expect(screen.queryByLabelText("名稱")).toBeNull();
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /建立存取金鑰/ }));
-    const drawer = await screen.findByRole("dialog", { name: /建立存取金鑰/ });
-    expect(within(drawer).getByLabelText(/名稱/)).toBeTruthy();
-    expect(within(drawer).getByLabelText(/到期日/)).toBeTruthy();
+    const dialog = await screen.findByRole("alertdialog", { name: "建立存取金鑰" });
+    expect(within(dialog).getByLabelText("名稱")).toBeTruthy();
+    expect(within(dialog).getByLabelText(/到期日/)).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("建立存取金鑰後抽屜關閉，明文只顯示一次且可複製", async () => {
-    const client = makeClient();
+  it("送出成功後同一個對話框換成「金鑰已建立」：綠系成功框內是明文與複製；按「完成」後頁面沒有明文、存取金鑰卡多出 ci", async () => {
+    const ci = {
+      id: "p9",
+      prefix: "slk_ci",
+      name: "ci",
+      createdAt: "2026-01-06T00:00:00Z",
+      expiresAt: null,
+      lastUsedAt: null,
+      revokedAt: null,
+    };
+    const client = makeClient({
+      getAccount: vi.fn().mockResolvedValueOnce(ACCOUNT).mockResolvedValue({ ...ACCOUNT, pats: [...ACCOUNT.pats, ci] }),
+      createPat: vi.fn(async () => ({ pat: ci, plaintext: "slk_ci_SECRETPLAINTEXT" })),
+    });
     renderAt("/account", client);
     const user = userEvent.setup();
     await screen.findByRole("region", { name: "存取金鑰" });
     await user.click(screen.getByRole("button", { name: /建立存取金鑰/ }));
-    const drawer = await screen.findByRole("dialog", { name: /建立存取金鑰/ });
-    await user.type(within(drawer).getByLabelText(/名稱/), "laptop");
-    await user.click(within(drawer).getByRole("button", { name: /^建立$|建立存取金鑰/ }));
-    await waitFor(() => expect(client.createPat).toHaveBeenCalledOnce());
-    expect(client.createPat).toHaveBeenCalledWith(expect.objectContaining({ name: "laptop" }));
-    // 送出成功後抽屜關閉，明文出現在頁面的一次性回饋中並附複製鈕。
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    const plaintext = await screen.findByText(/slk_new_SECRETPLAINTEXT/);
-    expect(screen.getByRole("button", { name: /複製/ })).toBeTruthy();
-    // spec「揭示橫幅為成功語意」：一次性明碼是「建好了」的回饋，走綠系而非主色。
-    const notice = plaintext.closest("[role='status']") as HTMLElement;
-    expect(notice.className).toContain("status-success");
-    expect(notice.className).not.toContain("border-primary");
+    const dialog = await screen.findByRole("alertdialog", { name: "建立存取金鑰" });
+    await user.type(within(dialog).getByLabelText("名稱"), "ci");
+    await user.click(within(dialog).getByRole("button", { name: "建立" }));
+    await waitFor(() => expect(client.createPat).toHaveBeenCalledWith(expect.objectContaining({ name: "ci" })));
+
+    const done = await screen.findByRole("alertdialog", { name: "金鑰已建立" });
+    expect(done.textContent).toContain("只顯示這一次");
+    const plaintext = within(done).getByText("slk_ci_SECRETPLAINTEXT");
+    // （複製鈕自己也帶一個 sr-only 的 role=status，所以由明文回推外框。）
+    const box = plaintext.closest("[role='status']") as HTMLElement;
+    expect(box.getAttribute("aria-live")).toBe("polite");
+    expect(within(box).getByRole("button", { name: "複製" })).toBeTruthy();
+    // spec「祕密值成功框為成功語意」：一次性明碼是「建好了」的回饋，走綠系而非主色。
+    expect(box.className).toContain("status-success");
+    expect(box.className).not.toContain("primary");
+
+    await user.click(within(done).getByRole("button", { name: "完成" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(screen.queryByText(/slk_ci_SECRETPLAINTEXT/)).toBeNull();
+    const keys = screen.getByRole("region", { name: "存取金鑰" });
+    expect(within(keys).getByRole("group", { name: "ci" })).toBeTruthy();
+  });
+
+  it("送出失敗時對話框保持開啟、保留名稱，錯誤以 role=alert 緊貼欄位", async () => {
+    const client = makeClient({
+      createPat: vi.fn(async () => {
+        throw new WebApiError(400, "validation_error", "欄位有誤", { name: "名稱已存在" });
+      }),
+    });
+    renderAt("/account", client);
+    const user = userEvent.setup();
+    await screen.findByRole("region", { name: "存取金鑰" });
+    await user.click(screen.getByRole("button", { name: /建立存取金鑰/ }));
+    const dialog = await screen.findByRole("alertdialog", { name: "建立存取金鑰" });
+    await user.type(within(dialog).getByLabelText("名稱"), "cli");
+    await user.click(within(dialog).getByRole("button", { name: "建立" }));
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toContain("名稱已存在");
+    expect(alert.id).toBe("pat-name-error");
+    expect((within(dialog).getByLabelText("名稱") as HTMLInputElement).value).toBe("cli");
+    expect(screen.getByRole("alertdialog", { name: "建立存取金鑰" })).toBeTruthy();
   });
 
   it("工作階段狀態徽章：有效為綠系、已撤銷為中性", async () => {

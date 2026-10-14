@@ -19,6 +19,7 @@ import { TourProvider } from "../components/Tour";
 import { useSession } from "../app/context";
 import { useFocusMain } from "../lib/useFocusMain";
 import { useNarrow } from "../lib/useMediaQuery";
+import { DetailTitleProvider } from "./DetailTitle";
 
 // 主控台殼（design D1）：管理員與一般成員同一種形狀——側欄（頂端字標、中段導覽、底部
 // 帳號選單）加主欄（頂列麵包屑、下方主內容），沒有橫貫頂部的 header。導覽依 session 的
@@ -36,10 +37,13 @@ export function ConsoleLayout({ children }: { children: ReactNode }) {
   useFocusMain(mainRef, location.pathname);
   const narrow = useNarrow();
   const [sheetOpen, setSheetOpen] = useState(false);
+  // 詳情頁交出的麵包屑第三段與 ‹ n / m › 的插槽（server-web-detail-pages design D2）。
+  const [detailLabel, setDetailLabel] = useState<string | null>(null);
+  const [detailSlot, setDetailSlot] = useState<HTMLElement | null>(null);
   const admin = session.user?.admin === true;
   // 路徑比對與路由、側欄高亮同一套（matchPath：不分大小寫、容許結尾斜線）。
   const inAdmin = matchPath({ path: "/admin", end: false }, location.pathname) !== null;
-  const crumbs = useCrumbs(location.pathname, inAdmin);
+  const crumbs = useCrumbs(location.pathname, inAdmin, detailLabel);
 
   return (
     // 滿高欄式版面：殼本身固定滿版不捲動，只有主內容區捲——與 Desktop 殼同結構。
@@ -67,11 +71,14 @@ export function ConsoleLayout({ children }: { children: ReactNode }) {
             </Sheet>
           )}
           <Breadcrumbs crumbs={crumbs} />
+          <div ref={setDetailSlot} className="ml-auto flex shrink-0 items-center" />
         </div>
         <main id="main-content" ref={mainRef} className="min-w-0 flex-1 overflow-y-auto p-5">
           {/* 導覽只在管理面啟動：帳號頁沒有側欄目的地可指，一般成員更看不到管理面。 */}
           <TourProvider enabled={admin && inAdmin}>
-            {children}
+            <DetailTitleProvider setLabel={setDetailLabel} slot={detailSlot}>
+              {children}
+            </DetailTitleProvider>
           </TourProvider>
         </main>
       </div>
@@ -98,12 +105,18 @@ function SidebarBody({ admin, onNavigate }: { admin: boolean; onNavigate?: () =>
 }
 
 /** 麵包屑（design D4）：管理面為「後台 / <目的地>」且「後台」可點回總覽，帳號頁為「帳號」；
- *  未列在目的地表內的 /admin/* 路徑只顯示「後台」。 */
-function useCrumbs(pathname: string, inAdmin: boolean): Crumb[] {
+ *  未列在目的地表內的 /admin/* 路徑只顯示「後台」。詳情頁交出名稱時為「後台 / <目的地> / <名稱>」，
+ *  目的地可點回列表（server-web-detail-pages design D2）。目的地依各自的 `end` 比對，詳情頁的
+ *  網址也找得到所屬目的地。 */
+function useCrumbs(pathname: string, inAdmin: boolean, detailLabel: string | null): Crumb[] {
   const { t } = useI18n();
   const navigate = useNavigate();
   if (!inAdmin) return [{ label: t("account.title") }];
   const home: Crumb = { label: t("shell.console"), onClick: () => navigate("/admin") };
-  const destination = ADMIN_DESTINATIONS.find((d) => matchPath({ path: d.to, end: true }, pathname));
-  return destination ? [home, { label: t(destination.labelKey) }] : [home];
+  const destination = ADMIN_DESTINATIONS.find((d) => matchPath({ path: d.to, end: d.end ?? false }, pathname));
+  if (!destination) return [home];
+  const label = t(destination.labelKey);
+  return detailLabel
+    ? [home, { label, onClick: () => navigate(destination.to) }, { label: detailLabel }]
+    : [home, { label }];
 }

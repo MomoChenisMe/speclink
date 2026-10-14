@@ -39,6 +39,26 @@ describe("PageHeader", () => {
     expect(root.children).toHaveLength(1);
   });
 
+  // server-web-detail-pages design D8：詳情頁的狀態籤接在標題文字後面，標題仍是同一個 heading。
+  it("給 badge 時狀態籤與標題同一列、標題仍是唯一 heading 且字級不變", () => {
+    render(<PageHeader level={1} title="Member" badge={<span>有效</span>} />);
+    const headings = screen.getAllByRole("heading");
+    expect(headings).toHaveLength(1);
+    const title = screen.getByRole("heading", { level: 1, name: "Member" });
+    expect(classes(title)).toEqual(expect.arrayContaining(["text-2xl", "font-normal"]));
+    const row = screen.getByText("有效").parentElement as HTMLElement;
+    expect(title.parentElement).toBe(row);
+    expect(classes(row)).toEqual(expect.arrayContaining(["flex", "items-center", "gap-2"]));
+  });
+
+  it("不給 badge 時標題直接在標題欄內（DOM 與加槽前相同）", () => {
+    render(<PageHeader level={1} title="使用者" description="說明" />);
+    const title = screen.getByRole("heading", { level: 1, name: "使用者" });
+    const column = title.parentElement as HTMLElement;
+    expect(classes(column)).toEqual(expect.arrayContaining(["min-w-0", "grow", "basis-64"]));
+    expect(column.children).toHaveLength(2);
+  });
+
   // server-web-list-pages design D1：放不下時動作槽換到標題下方一列，槽內控件再各自換行。
   it("根節點與動作槽帶 flex-wrap，動作槽寬度不超過整列", () => {
     render(<PageHeader title="使用者" actions={<button>邀請使用者</button>} />);

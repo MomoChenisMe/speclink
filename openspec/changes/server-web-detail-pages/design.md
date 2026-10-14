@@ -81,6 +81,7 @@ react-router 在 `/admin/users` 與 `/admin/users/<id>` 之間切換時，`users
   - `FormDialogFooter({ children })`：頁尾細線上方右側排列（`AlertDialogFooter`＋`border-t border-border pt-3.5`，與第一刀專注流程卡的頁尾同一畫法）。
   - `SecretDone({ title, body, value, copyLabel, note?, onDone })`：已建立狀態——左側綠系圓形勾號＋15px 標題與灰字說明；其下 `role=status`＋`aria-live=polite` 的綠系成功框（`SEMANTIC_SURFACE.success`、12px 圓角），內為等寬字的值與 `CopyButton`；可選的 12px 灰字補充；頁尾只有主要鈕「完成」。
 - AlertDialog 原生行為：Esc 與取消關閉、點遮罩不關閉、關閉後焦點回到開啟它的按鈕。表單元件在 `open` 為 false 時回 null，下次開啟一律是空白表單。
+- 對話框內下拉的 Esc（apply 期發現）：packages/ui 的 Radix 元件原本各自釘住不同版本的內部套件（dismissable-layer、focus-scope 各有多份），Select 與 AlertDialog 都以為自己在最上層——下拉開著時按 Esc 會同時關掉下拉與對話框，且 body 的 pointer-events 停在 none，整頁點不動（舊抽屜同樣如此）。只在 `AlertDialogContent` 擋 Esc 行不通（擋住對話框就連下拉也關不掉），根治是讓兩邊共用同一份：以 `npm update -w packages/ui` 把 11 個 `@radix-ui` 套件一起升到 `^` 範圍內的最新版，只改 `package-lock.json`（package.json 範圍不變、不加 overrides），內部套件收斂為單一份。`selectInDialog.test.tsx` 釘住「下拉開著時 Esc 只收起下拉、再按才關對話框、頁面恢復可點」。
 
 ### D5 使用者詳情頁（新檔 `UserDetailPage.tsx`）
 
@@ -179,6 +180,7 @@ server-web 字典（zh-TW 與 en 同步）：
 - [稽核分頁只看得到最近一頁事件] → 既有限制、列入 Non-Goals；稽核紀錄頁可完整查詢。
 - [測試改寫量大：users.test.tsx、registry.test.tsx、account.test.tsx 的抽屜斷言] → 詳情頁的案例搬到新檔 `userDetail.test.tsx`、`projectDetail.test.tsx`，列表檔只留列表與對話框；回歸對照以「每個被刪的抽屜案例都在新檔有對應案例」檢查。
 - [desktop `DetailNav` 字串搬家] → 文案不變；`messages.test.ts` 兩語系 key 集合相等的檢查涵蓋刪除，`detailNav.test.tsx` 在 packages/ui 以內建字典驗字串。
+- [Radix 一起升版（D4）] → 小版本之間的行為差異可能影響 desktop 與 server-web 的對話框、選單與分頁；以 `npm test -w packages/ui`、`npm test -w apps/desktop`、`npm test -w apps/server-web` 全套與 `npm run build -w apps/server-web` 把關，瀏覽器實機驗收（[M]）再看一次。
 - [跨平台] → 本刀只改前端與共用 UI 套件，沒有路徑或檔案系統行為；CI 的 Windows 前端測試照常跑同一套 vitest。
 
 ## Migration Plan

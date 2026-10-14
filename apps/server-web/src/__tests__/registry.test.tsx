@@ -1,19 +1,29 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { makeAdminClient, REGISTRY, renderAt, setViewport } from "./helpers/adminHarness";
+import { WebApiError } from "../api/client";
+import {
+  currentLocation,
+  makeAdminClient,
+  REGISTRY,
+  renderAt,
+  renderWithLocation,
+  setViewport,
+} from "./helpers/adminHarness";
 
-// 管理專案與儲存庫頁（server-web-console「不可變識別欄位唯讀且更名為顯式動作」「管理列表提供
-// 搜尋、篩選、分頁與具引導的空狀態」；server-web-list-pages design D2、D3、D5）：專案以列表卡
-// 內的共用列呈現，整列可點開專案抽屜；代號建立後不可變更，以唯讀文字呈現；名稱預設唯讀，按下
-// 更名才出現輸入框與確認／取消。建立專案與新增儲存庫由抽屜承載，不常駐列表頁。
+// 管理專案與儲存庫頁（server-web-console「管理列表以詳情頁與對話框承載檢視與建立」「管理列表提供
+// 搜尋、篩選、分頁與具引導的空狀態」；server-web-list-pages design D2、D3、D5；server-web-detail-pages
+// design D1、D7）：專案以列表卡內的共用列呈現，整列可點進專案詳情頁（詳情頁本身見
+// projectDetail.test.tsx）；建立專案以置中對話框承載，不常駐列表頁。
 
 beforeEach(() => setViewport(false));
 
-async function openProjectDrawer() {
-  const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "Demo" }));
-  return { user, drawer: await screen.findByRole("dialog", { name: /Demo/ }) };
+async function openCreate(client = makeAdminClient()) {
+  renderAt("/admin/registry", client);
+  await screen.findByRole("button", { name: "Demo" });
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  await user.click(screen.getByRole("button", { name: /建立專案/ }));
+  return { user, dialog: await screen.findByRole("alertdialog", { name: "建立專案" }) };
 }
 
 describe("專案與儲存庫", () => {
@@ -27,12 +37,19 @@ describe("專案與儲存庫", () => {
     expect(screen.queryByRole("button", { name: /檢視/ })).toBeNull();
   });
 
-  it("以鍵盤移到專案列按 Enter 開出專案抽屜", async () => {
-    renderAt("/admin/registry", makeAdminClient());
+  it("點專案列或以鍵盤移到列上按 Enter 都進入 /admin/registry/<代號>", async () => {
+    renderWithLocation(["/admin/registry"], makeAdminClient());
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Demo" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Demo" })).toBeTruthy();
+    expect(currentLocation()).toBe("/admin/registry/demo");
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    await user.click(within(screen.getByRole("navigation", { name: "頁面路徑" })).getByRole("button", { name: "專案與儲存庫" }));
     (await screen.findByRole("button", { name: "Demo" })).focus();
     await user.keyboard("{Enter}");
-    expect(await screen.findByRole("dialog", { name: /Demo/ })).toBeTruthy();
+    expect(await screen.findByRole("heading", { level: 1, name: "Demo" })).toBeTruthy();
+    expect(currentLocation()).toBe("/admin/registry/demo");
   });
 
   it("沒有專案時空狀態說明用途、空狀態內沒有建立鈕，頁首「建立專案」仍在", async () => {
@@ -40,82 +57,6 @@ describe("專案與儲存庫", () => {
     expect(await screen.findByText("尚無專案")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: /建立專案/ })).toHaveLength(1);
     expect(screen.queryByText(/^第 .+ 筆，共 .+ 筆$/)).toBeNull();
-  });
-
-  it("建立專案由抽屜承載", async () => {
-    renderAt("/admin/registry", makeAdminClient());
-    expect(await screen.findByRole("button", { name: "Demo" })).toBeTruthy();
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /建立專案/ }));
-    const drawer = await screen.findByRole("dialog", { name: /建立專案/ });
-    expect(within(drawer).getByLabelText(/專案代號/)).toBeTruthy();
-  });
-
-  // 「建立後不可變更」與初始設定同一種寫法：標籤只放名稱，限制放在欄位下方的灰字說明。
-  it("建立專案與新增儲存庫的代號欄以灰字說明標示建立後不可變更", async () => {
-    renderAt("/admin/registry", makeAdminClient());
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: /建立專案/ }));
-    const create = await screen.findByRole("dialog", { name: /建立專案/ });
-    const projectKey = within(create).getByLabelText("專案代號");
-    expect(document.getElementById(projectKey.getAttribute("aria-describedby") ?? "")?.textContent).toBe(
-      "建立後不可變更。",
-    );
-    await user.keyboard("{Escape}");
-
-    const { drawer } = await openProjectDrawer();
-    await user.click(within(drawer).getByRole("button", { name: /新增儲存庫/ }));
-    const repoKey = within(drawer).getByLabelText("儲存庫代號");
-    expect(document.getElementById(repoKey.getAttribute("aria-describedby") ?? "")?.textContent).toBe(
-      "建立後不可變更。",
-    );
-  });
-
-  it("專案代號以唯讀文字呈現，畫面上沒有可編輯代號的輸入框", async () => {
-    renderAt("/admin/registry", makeAdminClient());
-    const { drawer } = await openProjectDrawer();
-    expect(drawer.textContent).toContain("demo");
-    expect(drawer.textContent).toContain("建立後不可變更");
-    // 代號沒有任何輸入框；名稱在未按更名前也還不是輸入框。
-    expect(within(drawer).queryByLabelText(/代號/)).toBeNull();
-    expect(within(drawer).queryAllByRole("textbox")).toHaveLength(0);
-  });
-
-  it("專案名稱預設唯讀，按下更名後才出現輸入框與確認及取消", async () => {
-    const client = makeAdminClient();
-    renderAt("/admin/registry", client);
-    const { user, drawer } = await openProjectDrawer();
-    await user.click(within(drawer).getByRole("button", { name: "更名" }));
-    const input = within(drawer).getByLabelText(/專案名稱/) as HTMLInputElement;
-    expect(input.value).toBe("Demo");
-    expect(within(drawer).getByRole("button", { name: "取消" })).toBeTruthy();
-    await user.clear(input);
-    await user.type(input, "示範專案");
-    await user.click(within(drawer).getByRole("button", { name: "確認" }));
-    await waitFor(() =>
-      expect(client.adminRenameProject).toHaveBeenCalledWith("demo", "示範專案"),
-    );
-  });
-
-  it("儲存庫代號唯讀，更名同樣是顯式動作", async () => {
-    const client = makeAdminClient();
-    renderAt("/admin/registry", client);
-    const { user, drawer } = await openProjectDrawer();
-    const repos = within(drawer).getByRole("tabpanel", { name: "儲存庫" });
-    expect(repos.textContent).toContain("backend");
-    expect(within(repos).queryAllByRole("textbox")).toHaveLength(0);
-    await user.click(within(repos).getByRole("button", { name: /更名.*Backend/ }));
-    const input = within(repos).getByLabelText(/儲存庫名稱/) as HTMLInputElement;
-    await user.clear(input);
-    await user.type(input, "後端");
-    await user.click(within(repos).getByRole("button", { name: "確認" }));
-    await waitFor(() =>
-      expect(client.adminRenameRepo).toHaveBeenCalledWith({
-        projectKey: "demo",
-        key: "backend",
-        name: "後端",
-      }),
-    );
   });
 
   // server-web-console「管理列表提供搜尋、篩選、分頁與具引導的空狀態」：專案與儲存庫頁
@@ -149,18 +90,55 @@ describe("專案與儲存庫", () => {
     expect(screen.getByRole("button", { name: "Operations" })).toBeTruthy();
   });
 
-  it("新增儲存庫在抽屜內按下動作後才出現欄位", async () => {
-    const client = makeAdminClient();
-    renderAt("/admin/registry", client);
-    const { user, drawer } = await openProjectDrawer();
-    expect(within(drawer).queryByLabelText(/儲存庫代號/)).toBeNull();
-    await user.click(within(drawer).getByRole("button", { name: /新增儲存庫/ }));
-    await user.type(within(drawer).getByLabelText(/儲存庫代號/), "web");
-    await user.click(within(drawer).getByRole("button", { name: "建立" }));
-    await waitFor(() =>
-      expect(client.adminCreateRepo).toHaveBeenCalledWith(
-        expect.objectContaining({ projectKey: "demo", key: "web" }),
-      ),
+});
+
+describe("建立專案對話框", () => {
+  // 「建立後不可變更」與初始設定同一種寫法：標籤只放名稱，限制放在欄位下方的灰字說明。
+  it("「建立專案」開出置中對話框，代號欄以灰字說明標示建立後不可變更", async () => {
+    const { dialog } = await openCreate();
+    const projectKey = within(dialog).getByLabelText("專案代號");
+    expect(document.getElementById(projectKey.getAttribute("aria-describedby") ?? "")?.textContent).toBe(
+      "建立後不可變更。",
     );
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("輸入代號後點遮罩不關閉、代號仍在；按 Esc 關閉", async () => {
+    const { user, dialog } = await openCreate();
+    await user.type(within(dialog).getByLabelText("專案代號"), "ops");
+    // 遮罩是對話框內容的前一個兄弟節點（同 packages/ui 的確認框測試）。
+    await user.click(dialog.previousElementSibling as HTMLElement);
+    expect(screen.getByRole("alertdialog", { name: "建立專案" })).toBeTruthy();
+    expect((within(dialog).getByLabelText("專案代號") as HTMLInputElement).value).toBe("ops");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  });
+
+  it("送出成功後對話框關閉，列表多出新專案", async () => {
+    const created = { projects: [...REGISTRY.projects, { key: "ops", name: "ops", repos: [] }] };
+    const client = makeAdminClient({
+      getAdminRegistry: vi.fn().mockResolvedValueOnce(REGISTRY).mockResolvedValue(created),
+    });
+    const { user, dialog } = await openCreate(client);
+    await user.type(within(dialog).getByLabelText("專案代號"), "ops");
+    await user.click(within(dialog).getByRole("button", { name: "建立專案" }));
+    await waitFor(() => expect(client.adminCreateProject).toHaveBeenCalledWith({ key: "ops", name: undefined }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(await screen.findByRole("button", { name: "ops" })).toBeTruthy();
+  });
+
+  it("欄位錯誤時對話框保持開啟、保留輸入，錯誤緊貼欄位", async () => {
+    const client = makeAdminClient({
+      adminCreateProject: vi.fn(async () => {
+        throw new WebApiError(400, "validation_error", "欄位有誤", { key: "代號已存在" });
+      }),
+    });
+    const { user, dialog } = await openCreate(client);
+    await user.type(within(dialog).getByLabelText("專案代號"), "demo");
+    await user.click(within(dialog).getByRole("button", { name: "建立專案" }));
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toContain("代號已存在");
+    expect(alert.id).toBe("new-project-key-error");
+    expect((within(dialog).getByLabelText("專案代號") as HTMLInputElement).value).toBe("demo");
   });
 });

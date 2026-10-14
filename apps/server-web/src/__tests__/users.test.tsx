@@ -2,24 +2,26 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { I18nProvider } from "@speclink/ui";
+import { I18nProvider, SEMANTIC_SURFACE } from "@speclink/ui";
 import { WebApiError } from "../api/client";
 import { ClientProvider, SessionProvider } from "../app/context";
 import { APP_MESSAGES } from "../i18n/messages";
-import { UsersPage } from "../pages/admin/UsersPage";
+import { UsersSection } from "../pages/admin/UsersPage";
 import {
   ADMIN_SESSION,
   makeAdminClient,
   makeUsers,
+  REGISTRY,
   renderAt,
   setViewport,
   USERS,
 } from "./helpers/adminHarness";
 
-// 管理使用者頁（server-web-console「管理列表以抽屜承載建立與編輯」「管理列表提供搜尋、篩選、
-// 分頁與具引導的空狀態」「使用者頁呈現尚未接受的邀請」；server-web-list-pages design D2–D4）：
-// 頁標題區右側是搜尋與狀態篩選，其下一張列表卡，卡頂「使用者｜邀請中」兩個分頁，卡底共用換頁列；
-// 使用者列整列可點開細節抽屜、列內不含輸入控制項；建立與編輯一律進抽屜；破壞性動作維持確認框。
+// 管理使用者頁（server-web-console「管理列表以詳情頁與對話框承載檢視與建立」「管理列表提供搜尋、
+// 篩選、分頁與具引導的空狀態」「使用者頁呈現尚未接受的邀請」；server-web-list-pages design D2–D4；
+// server-web-detail-pages design D4、D7）：頁標題區右側是搜尋與狀態篩選，其下一張列表卡，卡頂
+// 「使用者｜邀請中」兩個分頁，卡底共用換頁列；使用者列整列可點進詳情頁（詳情頁本身見
+// userDetail.test.tsx）、列內不含輸入控制項；邀請以置中對話框承載；破壞性動作維持確認框。
 
 beforeEach(() => setViewport(false));
 
@@ -46,7 +48,7 @@ function renderUsersPage(entries: string[], client = makeAdminClient()) {
           <SessionProvider value={{ session: ADMIN_SESSION as never, refresh: async () => {} }}>
             <Routes>
               <Route path="/admin" element={<p>總覽頁</p>} />
-              <Route path="/admin/users" element={<UsersPage />} />
+              <Route path="/admin/users/*" element={<UsersSection />} />
             </Routes>
             <LocationProbe />
           </SessionProvider>
@@ -96,24 +98,6 @@ describe("使用者分頁的列", () => {
     expect(within(member).getByText("尚無專案")).toBeTruthy();
     const nameless = screen.getByRole("button", { name: "zoe@example.com" });
     expect(nameless.querySelector("[data-avatar]")?.textContent).toBe("z");
-  });
-
-  it("點整列開啟含概要／成員資格／憑證／稽核的細節抽屜", async () => {
-    renderAt("/admin/users", makeAdminClient());
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Member" }));
-    const drawer = await screen.findByRole("dialog", { name: /Member/ });
-    for (const name of ["概要", "成員資格", "憑證", "稽核"]) {
-      expect(within(drawer).getByRole("tab", { name }), `抽屜有 ${name} 分頁`).toBeTruthy();
-    }
-  });
-
-  it("以鍵盤移到列上按 Enter 同樣開啟細節抽屜", async () => {
-    renderAt("/admin/users", makeAdminClient());
-    const user = userEvent.setup();
-    (await screen.findByRole("button", { name: "Member" })).focus();
-    await user.keyboard("{Enter}");
-    expect(await screen.findByRole("dialog", { name: /Member/ })).toBeTruthy();
   });
 
   it("沒有列尾的「檢視詳細資料」鈕，也沒有表格", async () => {
@@ -285,36 +269,55 @@ describe("搜尋、篩選與換頁", () => {
   });
 });
 
-describe("抽屜照舊", () => {
-  it("邀請欄位不常駐列表頁，按下邀請後才出現於抽屜", async () => {
+/** 開啟邀請對話框；registry 有 demo 與 ops 兩個專案。 */
+async function openInvite(client = makeAdminClient({ getAdminRegistry: vi.fn(async () => TWO_PROJECTS) })) {
+  renderAt("/admin/users", client);
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  await screen.findByRole("button", { name: "Member" });
+  await user.click(screen.getByRole("button", { name: /邀請使用者/ }));
+  const dialog = await screen.findByRole("alertdialog", { name: "邀請使用者" });
+  return { user, dialog };
+}
+
+const TWO_PROJECTS = { projects: [...REGISTRY.projects, { key: "ops", name: "Ops", repos: [] }] };
+
+describe("邀請對話框", () => {
+  it("邀請欄位不常駐列表頁，按下「邀請使用者」後才出現在置中對話框", async () => {
     renderAt("/admin/users", makeAdminClient());
     await screen.findByRole("button", { name: "Member" });
     expect(screen.queryByLabelText(/電子郵件/)).toBeNull();
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /邀請使用者/ }));
-    const drawer = await screen.findByRole("dialog", { name: /邀請使用者/ });
-    expect(within(drawer).getByLabelText(/電子郵件/)).toBeTruthy();
-    expect(within(drawer).getByLabelText(/顯示名稱/)).toBeTruthy();
+    const dialog = await screen.findByRole("alertdialog", { name: "邀請使用者" });
+    expect(within(dialog).getByLabelText(/電子郵件/)).toBeTruthy();
+    expect(within(dialog).getByLabelText(/顯示名稱/)).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("成員資格於抽屜內新增與移除", async () => {
-    const client = makeAdminClient();
-    renderAt("/admin/users", client);
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Member" }));
-    const drawer = await screen.findByRole("dialog", { name: /Member/ });
-    await user.click(within(drawer).getByRole("tab", { name: "成員資格" }));
-    await user.click(await within(drawer).findByRole("button", { name: /移除.*demo/ }));
-    await waitFor(() =>
-      expect(client.adminSetMembership).toHaveBeenCalledWith("m1", {
-        projectKey: "demo",
-        role: "editor",
-        member: false,
-      }),
-    );
+  // 加入專案以下拉挑選再逐一移除，而不是每個專案一列 checkbox——專案數量會成長，
+  // 一整欄的勾選框在十個專案之後就不可用了。
+  it("專案下拉選一個專案後列入已選、不再出現在下拉，已選列可移除；焦點留在對話框內", async () => {
+    const { user, dialog } = await openInvite();
+    expect(within(dialog).queryByRole("checkbox")).toBeNull();
+    await user.click(within(dialog).getByRole("combobox", { name: /加入專案/ }));
+    const listbox = await screen.findByRole("listbox");
+    expect(dialog.contains(listbox)).toBe(true);
+    await user.click(within(listbox).getByRole("option", { name: "Demo（demo）" }));
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(within(dialog).getByRole("button", { name: "移除 demo" })).toBeTruthy();
+
+    await user.click(within(dialog).getByRole("combobox", { name: /加入專案/ }));
+    const options = (await screen.findAllByRole("option")).map((o) => o.textContent);
+    expect(options).toEqual(["Ops（ops）"]);
+    await user.keyboard("{Escape}");
+    // Esc 只收起下拉，對話框還在。
+    expect(screen.getByRole("alertdialog", { name: "邀請使用者" })).toBeTruthy();
+
+    await user.click(within(dialog).getByRole("button", { name: "移除 demo" }));
+    expect(within(dialog).queryByRole("button", { name: "移除 demo" })).toBeNull();
   });
 
-  it("抽屜提交收到含 fieldErrors 的 400 時保持開啟並保留輸入", async () => {
+  it("送出收到含 fieldErrors 的 400 時對話框保持開啟、保留輸入，錯誤緊貼欄位", async () => {
     const client = makeAdminClient({
       adminInvite: vi.fn(async () => {
         throw new WebApiError(400, "validation_error", "欄位有誤", {
@@ -322,124 +325,74 @@ describe("抽屜照舊", () => {
         });
       }),
     });
-    renderAt("/admin/users", client);
-    await screen.findByRole("button", { name: "Member" });
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /邀請使用者/ }));
-    const drawer = await screen.findByRole("dialog", { name: /邀請使用者/ });
-    await user.type(within(drawer).getByLabelText(/電子郵件/), "bad");
-    await user.type(within(drawer).getByLabelText(/顯示名稱/), "New");
-    await user.click(within(drawer).getByRole("button", { name: /送出邀請/ }));
-    const alert = await within(drawer).findByRole("alert");
+    const { user, dialog } = await openInvite(client);
+    await user.type(within(dialog).getByLabelText(/電子郵件/), "bad");
+    await user.type(within(dialog).getByLabelText(/顯示名稱/), "New");
+    await user.click(within(dialog).getByRole("button", { name: /送出邀請/ }));
+    const alert = await within(dialog).findByRole("alert");
     expect(alert.textContent).toContain("email 格式不正確");
-    // 抽屜保持開啟且非祕密輸入保留。
-    expect(screen.getByRole("dialog", { name: /邀請使用者/ })).toBeTruthy();
-    expect((within(drawer).getByLabelText(/電子郵件/) as HTMLInputElement).value).toBe("bad");
-    expect((within(drawer).getByLabelText(/顯示名稱/) as HTMLInputElement).value).toBe("New");
+    expect(alert.id).toBe("invite-email-error");
+    expect(screen.getByRole("alertdialog", { name: "邀請使用者" })).toBeTruthy();
+    expect((within(dialog).getByLabelText(/電子郵件/) as HTMLInputElement).value).toBe("bad");
+    expect((within(dialog).getByLabelText(/顯示名稱/) as HTMLInputElement).value).toBe("New");
   });
 
-  it("停權於抽屜內觸發並經 AlertDialog 確認後才送出", async () => {
-    const client = makeAdminClient();
-    renderAt("/admin/users", client);
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Member" }));
-    const drawer = await screen.findByRole("dialog", { name: /Member/ });
-    await user.click(within(drawer).getByRole("button", { name: /停權/ }));
-    const confirm = await screen.findByRole("alertdialog");
-    expect(client.adminSuspend).not.toHaveBeenCalled();
-    await user.click(within(confirm).getByRole("button", { name: /停權|確認/ }));
-    await waitFor(() => expect(client.adminSuspend).toHaveBeenCalledWith("m1"));
-  });
-
-  it("最後一位管理員的停權不可用", async () => {
-    renderAt("/admin/users", makeAdminClient());
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Admin" }));
-    const drawer = await screen.findByRole("dialog", { name: /Admin/ });
-    const suspend = within(drawer).getByRole("button", { name: /停權/ }) as HTMLButtonElement;
-    expect(suspend.disabled).toBe(true);
-  });
-
-  // 加入專案以下拉挑選再逐一移除，而不是每個專案一列 checkbox——專案數量會成長，
-  // 一整欄的勾選框在十個專案之後就不可用了。
-  it("邀請抽屜的加入專案是下拉挑選，選中的專案列出且可移除", async () => {
-    const client = makeAdminClient();
-    renderAt("/admin/users", client);
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
-    await screen.findByRole("button", { name: "Member" });
-    await user.click(screen.getByRole("button", { name: /邀請使用者/ }));
-    const drawer = await screen.findByRole("dialog", { name: /邀請使用者/ });
-
-    // 不再是每個專案一個 checkbox。
-    expect(within(drawer).queryByRole("checkbox", { name: "demo" })).toBeNull();
-    await user.click(within(drawer).getByRole("combobox", { name: /加入專案/ }));
-    // 選項標籤是「名稱（代號）」，代號與名稱相同時只印一次。
-    await user.click(await screen.findByRole("option", { name: /demo/ }));
-
-    // 選中的專案以可移除的項目呈現，且不再出現在下拉的可選項裡。
-    expect(within(drawer).getByRole("button", { name: /移除 demo/ })).toBeTruthy();
-    await user.type(within(drawer).getByLabelText(/電子郵件/), "new@example.com");
-    await user.click(within(drawer).getByRole("button", { name: /送出邀請/ }));
-    await waitFor(() =>
-      expect(client.adminInvite).toHaveBeenCalledWith(
-        expect.objectContaining({ memberships: ["demo"] }),
-      ),
-    );
-  });
-
-  it("剛送出的邀請立即出現在邀請中分頁，分頁計數加一", async () => {
+  it("送出成功後同一個對話框換成「邀請已建立」：綠系成功框內是完整邀請連結與「複製連結」，按「完成」後頁面上沒有連結、邀請中加一", async () => {
     const invited = {
       ...USERS,
       pending: [...USERS.pending, { ...USERS.pending[0], id: "i2", email: "new@example.com", display: "New" }],
     };
     const client = makeAdminClient({
+      getAdminRegistry: vi.fn(async () => TWO_PROJECTS),
       getAdminUsers: vi.fn().mockResolvedValueOnce(USERS).mockResolvedValue(invited),
     });
     renderAt("/admin/users", client);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     await screen.findByRole("button", { name: "Member" });
     expect(tabCount(/^邀請中/)).toBe("1");
-    const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /邀請使用者/ }));
-    const drawer = await screen.findByRole("dialog", { name: /邀請使用者/ });
-    await user.type(within(drawer).getByLabelText(/電子郵件/), "new@example.com");
-    await user.click(within(drawer).getByRole("button", { name: /送出邀請/ }));
-    await waitFor(() => expect(tabCount(/^邀請中/)).toBe("2"));
+    const dialog = await screen.findByRole("alertdialog", { name: "邀請使用者" });
+    await user.type(within(dialog).getByLabelText(/電子郵件/), "new@example.com");
+    await user.type(within(dialog).getByLabelText(/顯示名稱/), "New");
+    await user.click(within(dialog).getByRole("combobox", { name: /加入專案/ }));
+    await user.click(await screen.findByRole("option", { name: "Demo（demo）" }));
+    await user.click(within(dialog).getByRole("button", { name: /送出邀請/ }));
+    await waitFor(() =>
+      expect(client.adminInvite).toHaveBeenCalledWith(
+        expect.objectContaining({ email: "new@example.com", display: "New", memberships: ["demo"] }),
+      ),
+    );
+
+    const done = await screen.findByRole("alertdialog", { name: "邀請已建立" });
+    // 給受邀者的是可直接開啟的連結，不是要他自己拼網址的 token。
+    // （複製鈕自己也帶一個 sr-only 的 role=status，所以由連結文字回推外框。）
+    const link = within(done).getByText(`${window.location.origin}/invite/invite-token-123`);
+    const box = link.closest("[role='status']") as HTMLElement;
+    expect(box.getAttribute("aria-live")).toBe("polite");
+    expect(within(box).getByRole("button", { name: "複製連結" })).toBeTruthy();
+    // spec「祕密值成功框為成功語意」：主色是連結／互動的顏色，用在這裡讀不出「成功了」。
+    for (const cls of SEMANTIC_SURFACE.success.split(" ")) expect(box.classList.contains(cls)).toBe(true);
+    expect(box.className).not.toContain("primary");
+    // 成功當下就重載；對話框開著時頁面對輔助技術隱藏，計數等關掉後再看。
+    await waitFor(() => expect(client.getAdminUsers).toHaveBeenCalledTimes(2));
+
+    await user.click(within(done).getByRole("button", { name: "完成" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(tabCount(/^邀請中/)).toBe("2");
+    expect(screen.queryByText(/\/invite\/invite-token-123/)).toBeNull();
     await user.click(tab(/^邀請中/));
     expect((await screen.findByText("new@example.com")).closest("[data-invite]")).toBeTruthy();
   });
 
-  it("邀請成功後抽屜關閉，頁面以 aria-live 呈現可複製的邀請連結而非裸 token", async () => {
-    const client = makeAdminClient();
-    renderAt("/admin/users", client);
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
-    await screen.findByRole("button", { name: "Member" });
-    await user.click(screen.getByRole("button", { name: /邀請使用者/ }));
-    const drawer = await screen.findByRole("dialog", { name: /邀請使用者/ });
-    await user.type(within(drawer).getByLabelText(/電子郵件/), "new@example.com");
-    await user.type(within(drawer).getByLabelText(/顯示名稱/), "New");
-    await user.click(within(drawer).getByRole("combobox", { name: /加入專案/ }));
-    await user.click(await screen.findByRole("option", { name: /demo/ }));
-    await user.click(within(drawer).getByRole("button", { name: /送出邀請/ }));
-    await waitFor(() =>
-      expect(client.adminInvite).toHaveBeenCalledWith(
-        expect.objectContaining({
-          email: "new@example.com",
-          display: "New",
-          memberships: ["demo"],
-        }),
-      ),
-    );
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: /邀請使用者/ })).toBeNull());
-
-    // 給受邀者的是可直接開啟的連結，不是要他自己拼網址的 token。
-    // （複製鈕自己也帶一個 sr-only 的 role=status，所以由連結文字回推外框。）
-    const link = await screen.findByText(/\/invite\/invite-token-123/);
-    const notice = link.closest("[role='status']") as HTMLElement;
-    expect(notice, "邀請連結以 aria-live 區塊回饋").toBeTruthy();
-    expect(within(notice).getByRole("button", { name: /複製/ })).toBeTruthy();
-    // spec「揭示橫幅為成功語意」：主色是連結／互動的顏色，用在這裡讀不出「成功了」。
-    expect(notice.className).toContain("status-success");
-    expect(notice.className).not.toContain("border-primary");
+  it("點對話框以外的遮罩不關閉，按 Esc 關閉", async () => {
+    const { user, dialog } = await openInvite();
+    await user.type(within(dialog).getByLabelText(/電子郵件/), "new@example.com");
+    // 遮罩是對話框內容的前一個兄弟節點（同 packages/ui 的確認框測試）。
+    await user.click(dialog.previousElementSibling as HTMLElement);
+    expect(screen.getByRole("alertdialog", { name: "邀請使用者" })).toBeTruthy();
+    expect((within(dialog).getByLabelText(/電子郵件/) as HTMLInputElement).value).toBe("new@example.com");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   });
 });
 
@@ -457,11 +410,12 @@ describe("窄螢幕", () => {
     expect(screen.queryByRole("combobox", { name: /每頁/ })).toBeNull();
   });
 
-  it("窄螢幕點列同樣開啟細節抽屜", async () => {
+  it("窄螢幕點列同樣進入詳情頁", async () => {
     setViewport(true);
     renderAt("/admin/users", makeAdminClient());
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Member" }));
-    expect(await screen.findByRole("dialog", { name: /Member/ })).toBeTruthy();
+    expect(await screen.findByRole("heading", { level: 1, name: "Member" })).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: /Member/ })).toBeNull();
   });
 });
