@@ -44,6 +44,17 @@ export interface SchemaArtifactDetail {
   template: string | null;
 }
 
+/** 審查規則的預設清單模式：extend＝預設 12 條加上專案規則；replace＝只用專案規則。 */
+export type ReviewBaseline = "extend" | "replace";
+
+/** config.yaml 的 review 區塊（依嚴重度分組的專案審查規則；未寫時為 extend 與三個空清單）。 */
+export interface ReviewRules {
+  baseline: ReviewBaseline;
+  critical: string[];
+  warning: string[];
+  suggestion: string[];
+}
+
 /** read_settings 的快照 payload（欄位值＋各檔可選的 parseError）。 */
 export interface SettingsSnapshot {
   app: { tools: string[]; customTools: string[]; parseError: string | null };
@@ -58,6 +69,10 @@ export interface SettingsSnapshot {
     context: string | null;
     /** 產出規則現值（依 artifact id 分組；條目順序即檔案順序）。 */
     rules: Record<string, string[]>;
+    /** 審查規則現值（config.yaml 的 review）。 */
+    review: ReviewRules;
+    /** 預設清單的 12 個 smell 名稱——引擎單一提供，前端只顯示、不另存。 */
+    reviewBaselineSmells: string[];
     /** 活躍 schema 的 artifact id（引擎顯示序）——產出規則分節的固定鍵。 */
     schemaArtifacts: string[];
     /** 活躍 schema 名稱（config 的 schema 鍵；缺席預設 spec-driven、壞檔空字串）。 */
@@ -156,6 +171,8 @@ export function createWorkspaceSettings(
     writeWorkflowContext: (context) =>
       invoke("write_workflow_content", { root, context, rules: null }),
     writeWorkflowRules: (rules) => invoke("write_workflow_content", { root, context: null, rules }),
+    writeWorkflowReview: (review) =>
+      invoke("write_workflow_content", { root, context: null, rules: null, review }),
     readSchemas: () => invoke("read_schemas", { root }),
     writeWorkflowSchema: (name) => invoke("write_workflow_schema", { root, name }),
     forkSchema: (source) => invoke("fork_schema", { root, source }),
@@ -227,6 +244,16 @@ export function createRemoteSettings(
           ...scope,
           context: null,
           rules,
+          expectedRevision: expectedRevision(),
+        }),
+      ),
+    writeWorkflowReview: (review) =>
+      adoptRevision(
+        invoke<number>("remote_write_workflow_content", {
+          ...scope,
+          context: null,
+          rules: null,
+          review,
           expectedRevision: expectedRevision(),
         }),
       ),

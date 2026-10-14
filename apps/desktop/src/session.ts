@@ -11,6 +11,7 @@ import { createTauriDataSource } from "./adapter/tauriDataSource";
 import {
   createRemoteSettings,
   createWorkspaceSettings,
+  type ReviewRules,
   type SchemaEntry,
   type SettingsSnapshot,
   type WorkflowFields,
@@ -54,6 +55,8 @@ export interface WorkspaceSettingsProvider {
   writeWorkflowConfig(fields: WorkflowFields): Promise<number | void>;
   writeWorkflowContext(context: string): Promise<number | void>;
   writeWorkflowRules(rules: Array<[string, string[]]>): Promise<number | void>;
+  /** 審查規則整塊代換（只寫 review 鍵）；remote 成功回新 revision、local 維持 void。 */
+  writeWorkflowReview(review: ReviewRules): Promise<number | void>;
   /** 產出流程清單（desktop-schema-panel D2）：local 三層、remote 僅內嵌內建。 */
   readSchemas(): Promise<SchemaEntry[]>;
   /** 切換專案 schema；remote 成功回新 revision、local 維持 void。 */

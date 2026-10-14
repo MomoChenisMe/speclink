@@ -669,7 +669,7 @@ fn workflow_update_sets_all_policy_fields_and_output_parses() {
         audit: true,
         worktree: true,
     };
-    let out = update_workflow_config_text(WF_DOC, &fields, &ContextEdit::Keep, None).expect("rewrite ok");
+    let out = update_workflow_config_text(WF_DOC, &fields, &ContextEdit::Keep, None, None).expect("rewrite ok");
     let w = WorkflowConfig::from_text(Some(&out)).expect("output parses");
     assert_eq!(w.locale.as_deref(), Some("ja"));
     assert_eq!(w.spec_locale.as_deref(), Some("auto"));
@@ -684,7 +684,7 @@ fn workflow_update_preserves_untouched_key_values_verbatim() {
     // untouched key (schema, multi-line context, rules) must stay identical
     // character for character.
     let fields = WorkflowPolicyFields { tdd: true, ..Default::default() };
-    let out = update_workflow_config_text(WF_DOC, &fields, &ContextEdit::Keep, None).expect("rewrite ok");
+    let out = update_workflow_config_text(WF_DOC, &fields, &ContextEdit::Keep, None, None).expect("rewrite ok");
     let (orig, new) = (wf(WF_DOC), wf(&out));
     assert_eq!(new.schema, orig.schema);
     assert_eq!(new.context, orig.context);
@@ -694,7 +694,7 @@ fn workflow_update_preserves_untouched_key_values_verbatim() {
 #[test]
 fn workflow_update_keeps_unknown_keys() {
     let doc = "schema: spec-driven\nfuture_key: keep me\n";
-    let out = update_workflow_config_text(doc, &WorkflowPolicyFields::default(), &ContextEdit::Keep, None).expect("rewrite ok");
+    let out = update_workflow_config_text(doc, &WorkflowPolicyFields::default(), &ContextEdit::Keep, None, None).expect("rewrite ok");
     let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
     assert_eq!(m.get("future_key").and_then(|v| v.as_str()), Some("keep me"));
 }
@@ -702,7 +702,7 @@ fn workflow_update_keeps_unknown_keys() {
 #[test]
 fn workflow_update_default_values_remove_keys() {
     let doc = "locale: tw\nspec_locale: auto\ntdd: true\naudit: true\nschema: spec-driven\n";
-    let out = update_workflow_config_text(doc, &WorkflowPolicyFields::default(), &ContextEdit::Keep, None).expect("rewrite ok");
+    let out = update_workflow_config_text(doc, &WorkflowPolicyFields::default(), &ContextEdit::Keep, None, None).expect("rewrite ok");
     let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
     for key in ["locale", "spec_locale", "tdd", "audit"] {
         assert!(!m.contains_key(key), "key '{key}' must be removed, got: {out}");
@@ -714,7 +714,7 @@ fn workflow_update_default_values_remove_keys() {
 fn workflow_update_writes_and_removes_worktree() {
     // Spec scenario worktree 欄位寫入與呈現: `set worktree true` lands `worktree: true`.
     let fields = WorkflowPolicyFields { worktree: true, ..Default::default() };
-    let out = update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None)
+    let out = update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None, None)
         .expect("rewrite ok");
     assert_eq!(
         WorkflowConfig::from_text(Some(&out)).expect("output parses").worktree,
@@ -722,7 +722,7 @@ fn workflow_update_writes_and_removes_worktree() {
         "got: {out}"
     );
     // Back to default removes the key, like the other toggles.
-    let out = update_workflow_config_text(&out, &WorkflowPolicyFields::default(), &ContextEdit::Keep, None)
+    let out = update_workflow_config_text(&out, &WorkflowPolicyFields::default(), &ContextEdit::Keep, None, None)
         .expect("rewrite ok");
     let m: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
     assert!(!m.contains_key("worktree"), "worktree must be removed, got: {out}");
@@ -735,7 +735,7 @@ fn workflow_update_bad_yaml_is_a_loud_error() {
     // document must fail loudly — otherwise the GUI would destroy user content.
     for bad in ["rules: [unclosed", "just a top-level scalar"] {
         assert!(
-            update_workflow_config_text(bad, &WorkflowPolicyFields::default(), &ContextEdit::Keep, None).is_err(),
+            update_workflow_config_text(bad, &WorkflowPolicyFields::default(), &ContextEdit::Keep, None, None).is_err(),
             "must reject {bad:?}"
         );
     }
@@ -746,7 +746,7 @@ fn workflow_update_empty_input_creates_fresh_document() {
     // Absent config.yaml: the caller hands an empty text and gets a fresh
     // parseable document containing exactly the requested fields.
     let fields = WorkflowPolicyFields { locale: Some("tw".into()), ..Default::default() };
-    let out = update_workflow_config_text("", &fields, &ContextEdit::Keep, None).expect("rewrite ok");
+    let out = update_workflow_config_text("", &fields, &ContextEdit::Keep, None, None).expect("rewrite ok");
     let w = WorkflowConfig::from_text(Some(&out)).expect("output parses");
     assert_eq!(w.locale.as_deref(), Some("tw"));
 }
@@ -756,10 +756,10 @@ fn workflow_update_matches_spec_example_table() {
     // spec「政策欄位寫入效果」Example 表——逐行對應。
     // 無 tdd 鍵 | tdd 切開啟 | 新增 tdd: true
     let fields = WorkflowPolicyFields { tdd: true, ..Default::default() };
-    let out = update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None).unwrap();
+    let out = update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None, None).unwrap();
     assert_eq!(WorkflowConfig::from_text(Some(&out)).expect("output parses").tdd, Some(true));
     // tdd: true | tdd 切關閉 | tdd 鍵被移除（預設即 false）——唯一鍵移除後輸出為空文件
-    let out = update_workflow_config_text("tdd: true\n", &WorkflowPolicyFields::default(), &ContextEdit::Keep, None).unwrap();
+    let out = update_workflow_config_text("tdd: true\n", &WorkflowPolicyFields::default(), &ContextEdit::Keep, None, None).unwrap();
     assert_eq!(WorkflowConfig::from_text(Some(&out)).expect("output parses").tdd, None, "got: {out}");
     // locale: tw、含 rules | spec_locale 選 auto | 新增 spec_locale: auto，locale 與 rules 原樣保留
     let doc = "locale: tw\nrules:\n  proposal:\n    - keep\n";
@@ -768,7 +768,7 @@ fn workflow_update_matches_spec_example_table() {
         spec_locale: Some("auto".into()),
         ..Default::default()
     };
-    let out = update_workflow_config_text(doc, &fields, &ContextEdit::Keep, None).unwrap();
+    let out = update_workflow_config_text(doc, &fields, &ContextEdit::Keep, None, None).unwrap();
     let w = WorkflowConfig::from_text(Some(&out)).expect("output parses");
     assert_eq!(w.spec_locale.as_deref(), Some("auto"));
     assert_eq!(w.locale.as_deref(), Some("tw"));
@@ -824,13 +824,13 @@ fn validate_policy_locales_error_names_field_value_and_codes() {
 #[test]
 fn workflow_update_rejects_invalid_locale_fields_without_output() {
     let fields = WorkflowPolicyFields { locale: Some("繁體中文".into()), ..Default::default() };
-    let err = update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None)
+    let err = update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None, None)
         .unwrap_err()
         .to_string();
     assert!(err.contains("locale") && err.contains("繁體中文"), "got: {err}");
     let fields = WorkflowPolicyFields { spec_locale: Some("zh-Hant".into()), ..Default::default() };
     assert!(
-        update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None).is_err()
+        update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None, None).is_err()
     );
 }
 
@@ -842,7 +842,7 @@ fn workflow_update_injected_special_values_are_rejected() {
     for evil in ["tw\nrules: {}", "a: b", "#comment", "'quoted'", "- item"] {
         let fields = WorkflowPolicyFields { locale: Some(evil.into()), ..Default::default() };
         assert!(
-            update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None).is_err(),
+            update_workflow_config_text("schema: spec-driven\n", &fields, &ContextEdit::Keep, None, None).is_err(),
             "injection vector must be rejected: {evil:?}"
         );
     }
@@ -856,7 +856,7 @@ fn rewrite(
     context: &ContextEdit,
     rules: Option<&[(String, Vec<String>)]>,
 ) -> anyhow::Result<String> {
-    update_workflow_config_text(doc, &wf_fields_of(doc), context, rules)
+    update_workflow_config_text(doc, &wf_fields_of(doc), context, rules, None)
 }
 
 /// 從原文讀出政策欄位現值（「完整目標狀態」契約：不想動政策就得先讀再回填）。
@@ -1045,6 +1045,7 @@ fn workflow_update_content_edit_bad_yaml_is_a_loud_error() {
                 &WorkflowPolicyFields::default(),
                 &ContextEdit::Set("x".into()),
                 None,
+                None,
             )
             .is_err(),
             "must reject {bad:?}"
@@ -1063,7 +1064,7 @@ fn loc(code: &str) -> WorkflowPolicyFields {
 fn surgical_missing_key_inserts_below_schema_with_single_blank_lines() {
     // spec Scenario 缺鍵插於 schema 之下且空行區隔——相鄰處已有空行時不重複補。
     let doc = "# 模板註解\nschema: spec-driven\n\ncontext: |\n  第一行\n\nrules:\n  proposal:\n    - 條目一\n";
-    let out = update_workflow_config_text(doc, &loc("tw"), &ContextEdit::Keep, None).expect("rewrite ok");
+    let out = update_workflow_config_text(doc, &loc("tw"), &ContextEdit::Keep, None, None).expect("rewrite ok");
     assert_eq!(
         out,
         "# 模板註解\nschema: spec-driven\n\nlocale: tw\n\ncontext: |\n  第一行\n\nrules:\n  proposal:\n    - 條目一\n"
@@ -1073,6 +1074,7 @@ fn surgical_missing_key_inserts_below_schema_with_single_blank_lines() {
         "schema: spec-driven\ncontext: 說明\n",
         &loc("tw"),
         &ContextEdit::Keep,
+        None,
         None,
     )
     .expect("rewrite ok");
@@ -1094,6 +1096,7 @@ fn surgical_multiple_missing_keys_insert_one_canonical_block() {
         &fields,
         &ContextEdit::Keep,
         None,
+        None,
     )
     .expect("rewrite ok");
     assert_eq!(
@@ -1106,7 +1109,7 @@ fn surgical_multiple_missing_keys_insert_one_canonical_block() {
 fn surgical_preserves_comments_and_blank_lines_byte_for_byte() {
     // spec Scenario 註解與空行逐位元保留：原位改值只動目標行。
     let doc = "# 頭註解\nschema: spec-driven\n\n# locale 註解\nlocale: tw\n\n# 尾註解\ncontext: 說明\n";
-    let out = update_workflow_config_text(doc, &loc("ja"), &ContextEdit::Keep, None).expect("rewrite ok");
+    let out = update_workflow_config_text(doc, &loc("ja"), &ContextEdit::Keep, None, None).expect("rewrite ok");
     assert_eq!(
         out,
         "# 頭註解\nschema: spec-driven\n\n# locale 註解\nlocale: ja\n\n# 尾註解\ncontext: 說明\n"
@@ -1117,7 +1120,7 @@ fn surgical_preserves_comments_and_blank_lines_byte_for_byte() {
 fn surgical_tail_key_updated_in_place_never_moves() {
     // spec Scenario 檔尾既有鍵原位改值不搬家（曾被舊版附加在 rules 之後）。
     let doc = "schema: spec-driven\n\nrules:\n  tasks:\n    - a\n\nlocale: tw\n";
-    let out = update_workflow_config_text(doc, &loc("ja"), &ContextEdit::Keep, None).expect("rewrite ok");
+    let out = update_workflow_config_text(doc, &loc("ja"), &ContextEdit::Keep, None, None).expect("rewrite ok");
     assert_eq!(out, "schema: spec-driven\n\nrules:\n  tasks:\n    - a\n\nlocale: ja\n");
 }
 
@@ -1125,11 +1128,11 @@ fn surgical_tail_key_updated_in_place_never_moves() {
 fn surgical_missing_schema_inserts_at_file_top() {
     // spec Scenario schema 缺席時插於檔案最頂端，與後續內容之間恰一空行。
     let fields = WorkflowPolicyFields { tdd: true, ..Default::default() };
-    let out = update_workflow_config_text("context: 說明\n", &fields, &ContextEdit::Keep, None)
+    let out = update_workflow_config_text("context: 說明\n", &fields, &ContextEdit::Keep, None, None)
         .expect("rewrite ok");
     assert_eq!(out, "tdd: true\n\ncontext: 說明\n");
     // 空檔案：只有插入區塊本身，無多餘空行。
-    let out = update_workflow_config_text("", &loc("tw"), &ContextEdit::Keep, None).expect("rewrite ok");
+    let out = update_workflow_config_text("", &loc("tw"), &ContextEdit::Keep, None, None).expect("rewrite ok");
     assert_eq!(out, "locale: tw\n");
 }
 
@@ -1137,7 +1140,7 @@ fn surgical_missing_schema_inserts_at_file_top() {
 fn surgical_user_content_below_schema_shifts_down_verbatim() {
     // schema 底下使用者自加內容：插入點仍在 schema 鍵行之後，使用者內容原樣後移。
     let doc = "schema: spec-driven\n# 使用者自加說明\nmy_key: 自訂\n\ncontext: 說明\n";
-    let out = update_workflow_config_text(doc, &loc("tw"), &ContextEdit::Keep, None).expect("rewrite ok");
+    let out = update_workflow_config_text(doc, &loc("tw"), &ContextEdit::Keep, None, None).expect("rewrite ok");
     assert_eq!(
         out,
         "schema: spec-driven\n\nlocale: tw\n\n# 使用者自加說明\nmy_key: 自訂\n\ncontext: 說明\n"
@@ -1148,7 +1151,7 @@ fn surgical_user_content_below_schema_shifts_down_verbatim() {
 fn surgical_set_false_removes_key_line_keeps_comment_above() {
     // spec Scenario 設 false 移除鍵：只刪鍵行，上方註解行仍在。
     let doc = "schema: spec-driven\n\n# audit 開關\naudit: true\n\ncontext: 說明\n";
-    let out = update_workflow_config_text(doc, &WorkflowPolicyFields::default(), &ContextEdit::Keep, None)
+    let out = update_workflow_config_text(doc, &WorkflowPolicyFields::default(), &ContextEdit::Keep, None, None)
         .expect("rewrite ok");
     assert_eq!(out, "schema: spec-driven\n\n# audit 開關\n\ncontext: 說明\n");
 }
@@ -1163,6 +1166,7 @@ fn surgical_context_replaces_only_its_block() {
         &WorkflowPolicyFields::default(),
         &ContextEdit::Set("新一\n新二\n".into()),
         None,
+        None,
     )
     .expect("rewrite ok");
     assert_eq!(
@@ -1175,18 +1179,18 @@ fn surgical_context_replaces_only_its_block() {
 fn surgical_multiline_unknown_key_is_not_misjudged() {
     // 未知頂層鍵含多行 block scalar：縮排內容行（即使含冒號）不被誤判為頂層鍵。
     let doc = "notes: |\n  first: 看似鍵\n  second: 也是\nlocale: tw\n";
-    let out = update_workflow_config_text(doc, &loc("ja"), &ContextEdit::Keep, None).expect("rewrite ok");
+    let out = update_workflow_config_text(doc, &loc("ja"), &ContextEdit::Keep, None, None).expect("rewrite ok");
     assert_eq!(out, "notes: |\n  first: 看似鍵\n  second: 也是\nlocale: ja\n");
 }
 
 #[test]
 fn surgical_no_trailing_newline_and_crlf_edges() {
     // 結尾無換行：插入前先補行終止，插入區塊照常。
-    let out = update_workflow_config_text("schema: spec-driven", &loc("tw"), &ContextEdit::Keep, None)
+    let out = update_workflow_config_text("schema: spec-driven", &loc("tw"), &ContextEdit::Keep, None, None)
         .expect("rewrite ok");
     assert_eq!(out, "schema: spec-driven\n\nlocale: tw\n");
     // 結尾無換行的末行原位改值：不憑空補結尾換行。
-    let out = update_workflow_config_text("schema: spec-driven\nlocale: tw", &loc("ja"), &ContextEdit::Keep, None)
+    let out = update_workflow_config_text("schema: spec-driven\nlocale: tw", &loc("ja"), &ContextEdit::Keep, None, None)
         .expect("rewrite ok");
     assert_eq!(out, "schema: spec-driven\nlocale: ja");
     // CRLF 檔：未動行逐位元保留，改寫行與插入行沿用檔案的 CRLF。
@@ -1195,6 +1199,7 @@ fn surgical_no_trailing_newline_and_crlf_edges() {
         "schema: spec-driven\r\nlocale: tw\r\n",
         &fields,
         &ContextEdit::Keep,
+        None,
         None,
     )
     .expect("rewrite ok");
@@ -1206,7 +1211,7 @@ fn surgical_rewrite_verification_failure_is_fail_closed() {
     // spec Scenario 內部改寫驗證失敗拒絕寫入：引號鍵 'locale' 對文字層手術不可見，
     // 插入裸鍵後重新解析成重複鍵——驗證必須攔下並以單行錯誤拒寫（函式為純 text→text，
     // 呼叫端收到 Err 即不落檔，原檔逐位元不變）。
-    let err = update_workflow_config_text("'locale': tw\n", &loc("ja"), &ContextEdit::Keep, None)
+    let err = update_workflow_config_text("'locale': tw\n", &loc("ja"), &ContextEdit::Keep, None, None)
         .expect_err("must fail closed")
         .to_string();
     assert!(err.contains("internal rewrite verification failed"), "got: {err}");
@@ -1443,4 +1448,236 @@ fn remove_remote_section_is_a_no_op_without_a_remote_key() {
     root.app_yaml(original);
     assert!(!remove_remote_section(&root.dir).expect("no-op"), "nothing to remove");
     assert_eq!(root.read_app_yaml(), original, "the file is byte-identical");
+}
+
+// --- review 區塊：typed 結構與嚴格解析（review-rules-config） ---
+
+#[test]
+fn review_absent_parses_as_extend_with_three_empty_lists() {
+    // spec Scenario 未寫 review 時為預設：review 鍵缺席（或為 null）等同 extend 與三個空清單。
+    for doc in ["schema: spec-driven\n", "schema: spec-driven\nreview:\n"] {
+        let w = WorkflowConfig::from_text(Some(doc)).expect("parses");
+        assert_eq!(w.review(), ReviewConfig::default(), "for {doc:?}");
+    }
+    let r = ReviewConfig::default();
+    assert_eq!(r.baseline, ReviewBaseline::Extend);
+    assert!(r.critical.is_empty() && r.warning.is_empty() && r.suggestion.is_empty());
+}
+
+#[test]
+fn review_replace_with_three_lists_parses() {
+    // spec Example 嚴格解析的拒收面：baseline: replace、critical: [x] → 正常讀取。
+    let w = WorkflowConfig::from_text(Some("review:\n  baseline: replace\n  critical: [x]\n"))
+        .expect("parses");
+    assert_eq!(w.review().baseline, ReviewBaseline::Replace);
+    assert_eq!(w.review().critical, vec!["x".to_string()]);
+    let doc = "review:\n  baseline: replace\n  critical:\n    - 所有 SQL 一律用參數化查詢\n  warning:\n    - 新增的公開 API 要有對應的測試\n  suggestion:\n    - 函式超過 50 行時宜拆分\n";
+    let r = WorkflowConfig::from_text(Some(doc)).expect("parses").review();
+    assert_eq!(r.baseline, ReviewBaseline::Replace);
+    assert_eq!(r.critical, vec!["所有 SQL 一律用參數化查詢".to_string()]);
+    assert_eq!(r.warning, vec!["新增的公開 API 要有對應的測試".to_string()]);
+    assert_eq!(r.suggestion, vec!["函式超過 50 行時宜拆分".to_string()]);
+    // 明寫 extend 與省略同義。
+    let r = WorkflowConfig::from_text(Some("review:\n  baseline: extend\n")).expect("parses").review();
+    assert_eq!(r, ReviewConfig::default());
+}
+
+#[test]
+fn review_strict_parse_rejects_and_names_the_offending_key_or_value() {
+    // spec Example 嚴格解析的拒收面：未知子鍵、大小寫不符的 baseline、清單寫成物件。
+    for (doc, needle) in [
+        ("review:\n  critcal: [x]\n", "critcal"),
+        ("review:\n  baseline: Replace\n", "Replace"),
+        ("review:\n  baseline: keep\n", "keep"),
+        ("review:\n  critical: {a: b}\n", "critical"),
+    ] {
+        let err = WorkflowConfig::from_text(Some(doc))
+            .expect_err(&format!("{doc:?} must be a config error"));
+        assert_eq!(err.file, "openspec/config.yaml", "for {doc:?}");
+        assert!(err.reason.contains(needle), "reason must name {needle:?}, got: {}", err.reason);
+    }
+}
+
+#[test]
+fn review_unknown_top_level_keys_stay_ignored() {
+    // 頂層不加 deny_unknown_fields：未知頂層鍵照舊略過，嚴格度只在 review 底下。
+    let w = WorkflowConfig::from_text(Some("future_key: keep me\nreview:\n  warning: [w]\n"))
+        .expect("unknown top-level keys are ignored");
+    assert_eq!(w.review().warning, vec!["w".to_string()]);
+}
+
+// --- update_workflow_config_text：review 區塊整塊代換（review-rules-config） ---
+
+fn review_cfg(
+    baseline: ReviewBaseline,
+    critical: &[&str],
+    warning: &[&str],
+    suggestion: &[&str],
+) -> ReviewConfig {
+    let list = |items: &[&str]| items.iter().map(|s| s.to_string()).collect();
+    ReviewConfig {
+        baseline,
+        critical: list(critical),
+        warning: list(warning),
+        suggestion: list(suggestion),
+    }
+}
+
+/// 政策欄位回填現值、context 與 rules 不動，只交 review 變更集。
+fn rewrite_review(doc: &str, review: Option<&ReviewConfig>) -> anyhow::Result<String> {
+    update_workflow_config_text(doc, &wf_fields_of(doc), &ContextEdit::Keep, None, review)
+}
+
+/// review 鍵底下的原始 mapping（驗「不寫該鍵」用，typed 讀取看不出鍵是否在場）。
+fn raw_review(out: &str) -> Option<serde_yaml::Mapping> {
+    let m: serde_yaml::Mapping = serde_yaml::from_str(out).expect("mapping");
+    m.get("review").map(|v| v.as_mapping().expect("review is a mapping").clone())
+}
+
+#[test]
+fn review_some_replaces_the_whole_block() {
+    let doc = "schema: spec-driven\nreview:\n  critical:\n    - old rule\n  warning:\n    - old warning\n";
+    let want = review_cfg(ReviewBaseline::Extend, &["new one", "new two"], &[], &[]);
+    let out = rewrite_review(doc, Some(&want)).expect("rewrite ok");
+    assert_eq!(WorkflowConfig::from_text(Some(&out)).expect("parses").review(), want);
+}
+
+#[test]
+fn review_extend_writes_no_baseline_key_and_replace_does() {
+    let doc = "schema: spec-driven\n";
+    let out = rewrite_review(doc, Some(&review_cfg(ReviewBaseline::Extend, &["a"], &[], &[])))
+        .expect("rewrite ok");
+    assert!(!raw_review(&out).unwrap().contains_key("baseline"), "extend is the default: {out}");
+    let out = rewrite_review(doc, Some(&review_cfg(ReviewBaseline::Replace, &["a"], &[], &[])))
+        .expect("rewrite ok");
+    assert_eq!(raw_review(&out).unwrap().get("baseline"), Some(&"replace".into()));
+}
+
+#[test]
+fn review_empty_lists_are_not_written() {
+    let out = rewrite_review(
+        "schema: spec-driven\n",
+        Some(&review_cfg(ReviewBaseline::Extend, &["a"], &[], &[])),
+    )
+    .expect("rewrite ok");
+    let keys: Vec<String> = raw_review(&out)
+        .unwrap()
+        .keys()
+        .map(|k| k.as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(keys, vec!["critical".to_string()], "only the non-empty list is written: {out}");
+}
+
+#[test]
+fn review_all_empty_removes_the_review_key() {
+    // baseline 缺席（extend）且三個清單皆空 → 移除整個 review 鍵。
+    let doc = "schema: spec-driven\nreview:\n  baseline: replace\n  critical:\n    - a\n";
+    let out = rewrite_review(doc, Some(&ReviewConfig::default())).expect("rewrite ok");
+    assert!(raw_review(&out).is_none(), "review key removed, got: {out}");
+    assert_eq!(out, "schema: spec-driven\n");
+    // 原本就沒有 review：檔案逐位元不變。
+    let doc = "schema: spec-driven\nlocale: tw\n";
+    assert_eq!(rewrite_review(doc, Some(&ReviewConfig::default())).unwrap(), doc);
+    // replace 且三清單皆空：只留 baseline。
+    let out = rewrite_review(doc, Some(&review_cfg(ReviewBaseline::Replace, &[], &[], &[])))
+        .expect("rewrite ok");
+    let review = raw_review(&out).expect("review kept for the baseline");
+    assert_eq!(review.len(), 1, "only baseline: {out}");
+}
+
+#[test]
+fn review_entries_are_trimmed_and_blank_entries_dropped() {
+    let want = review_cfg(ReviewBaseline::Extend, &["  a  ", "", "   "], &["  "], &[]);
+    let out = rewrite_review("{}", Some(&want)).expect("rewrite ok");
+    let r = WorkflowConfig::from_text(Some(&out)).expect("parses").review();
+    assert_eq!(r.critical, vec!["a".to_string()]);
+    assert!(r.warning.is_empty() && !raw_review(&out).unwrap().contains_key("warning"));
+}
+
+#[test]
+fn review_reserved_char_entries_round_trip_verbatim() {
+    // spec Scenario 保留字元開頭的條目自動加引號：讀回逐字元一致。
+    // 看起來像數字、布林、null 的條目同樣要加引號，否則讀回時被嚴格解析拒收。
+    for evil in ["@開頭的規則", "`cargo test` 全綠", "*星號開頭", "&錨點開頭", "- 破折號開頭", "1", "true", "null", "~"] {
+        let want = review_cfg(ReviewBaseline::Extend, &[], &[evil], &[]);
+        let out = rewrite_review("schema: spec-driven\n", Some(&want)).expect("rewrite ok");
+        let r = WorkflowConfig::from_text(Some(&out))
+            .unwrap_or_else(|e| panic!("{evil:?} must stay parseable: {e}"))
+            .review();
+        assert_eq!(r.warning, vec![evil.to_string()], "round-trip for {evil:?}");
+    }
+}
+
+#[test]
+fn review_write_preserves_every_other_line_byte_for_byte() {
+    let prefix = "# lead comment\nschema: spec-driven\n\nlocale: tw\ntdd: true\ncontext: |\n  line one\n\nrules:\n  tasks:\n    - keep me\n\n# review comment stays\n";
+    let doc = format!("{prefix}review:\n  critical:\n    - old rule # inline comment is not kept\n");
+    let want = review_cfg(ReviewBaseline::Replace, &["new rule"], &["w"], &[]);
+    let out = rewrite_review(&doc, Some(&want)).expect("rewrite ok");
+    assert!(out.starts_with(prefix), "lines outside review are byte-identical, got:\n{out}");
+    let w = WorkflowConfig::from_text(Some(&out)).expect("parses");
+    assert_eq!(w.review(), want);
+    assert_eq!(w.context, wf(&doc).context);
+    assert_eq!(w.rules, wf(&doc).rules);
+    assert_eq!((w.locale.as_deref(), w.tdd), (Some("tw"), Some(true)));
+    // review 在中段時，其後的鍵也逐位元保留。
+    let doc = "schema: spec-driven\nreview:\n  warning:\n    - old\nfuture_key: keep # tail\n";
+    let out = rewrite_review(doc, Some(&review_cfg(ReviewBaseline::Extend, &[], &["new"], &[])))
+        .expect("rewrite ok");
+    assert!(out.starts_with("schema: spec-driven\nreview:\n"), "got:\n{out}");
+    assert!(out.ends_with("\nfuture_key: keep # tail\n"), "got:\n{out}");
+}
+
+#[test]
+fn review_write_on_a_crlf_document_keeps_crlf_line_endings() {
+    let doc = "schema: spec-driven\r\nlocale: tw\r\nreview:\r\n  critical:\r\n    - old\r\n";
+    let want = review_cfg(ReviewBaseline::Replace, &["a"], &["b"], &["c"]);
+    let out = rewrite_review(doc, Some(&want)).expect("rewrite ok");
+    assert!(
+        !out.replace("\r\n", "").contains('\n'),
+        "every line ends with CRLF, got: {out:?}"
+    );
+    assert!(out.starts_with("schema: spec-driven\r\nlocale: tw\r\n"), "got: {out:?}");
+    assert_eq!(WorkflowConfig::from_text(Some(&out)).expect("parses").review(), want);
+    // 新增（附加在檔尾）的 review 區塊同樣沿用 CRLF。
+    let out = rewrite_review("schema: spec-driven\r\n", Some(&want)).expect("rewrite ok");
+    assert!(!out.replace("\r\n", "").contains('\n'), "appended block uses CRLF: {out:?}");
+}
+
+#[test]
+fn review_none_leaves_the_review_block_untouched() {
+    let block = "review:\n  baseline: replace # keep this comment\n  critical:\n    - a\n";
+    let doc = format!("schema: spec-driven\ncontext: old\n{block}");
+    let out = update_workflow_config_text(
+        &doc,
+        &wf_fields_of(&doc),
+        &ContextEdit::Set("new".into()),
+        None,
+        None,
+    )
+    .expect("rewrite ok");
+    assert!(out.ends_with(block), "review block verbatim, got:\n{out}");
+    assert_eq!(wf(&out).context.as_deref(), Some("new"));
+}
+
+#[test]
+fn review_non_string_entries_are_rejected_not_coerced() {
+    // audit（review-rules-config 2.4）：serde_yaml 預設把 1、true、空項目（null）轉成
+    // "1"、"true"、"null" 字串——那會把不是規則的東西當成規則送進審查。清單項目必須
+    // 是字串，否則整份 config 拒收並點名該清單。
+    for (doc, needle) in [
+        ("review:\n  critical: [1, 2]\n", "review.critical"),
+        ("review:\n  warning:\n    - true\n", "review.warning"),
+        ("review:\n  suggestion:\n    -\n", "review.suggestion"),
+    ] {
+        let err = WorkflowConfig::from_text(Some(doc))
+            .expect_err(&format!("{doc:?} must be a config error"));
+        assert!(err.reason.contains(needle), "reason names {needle:?}, got: {}", err.reason);
+    }
+    // 加引號的數字是字串；清單鍵留空（null）等同省略。
+    let r = WorkflowConfig::from_text(Some("review:\n  critical: [\"1\"]\n  warning:\n"))
+        .expect("parses")
+        .review();
+    assert_eq!(r.critical, vec!["1".to_string()]);
+    assert!(r.warning.is_empty());
 }

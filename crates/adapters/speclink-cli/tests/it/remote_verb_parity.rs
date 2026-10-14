@@ -1854,3 +1854,86 @@ fn remote_review_prepare_auth_failure_leaves_zero_sidecar_effects() {
         "zero sidecar effects on auth failure"
     );
 }
+
+// --- workflow-config review：remote 讀-改-寫與 fs 同語意（review-rules-config）---
+
+const REVIEW_BASE_YAML: &str = "schema: spec-driven\nlocale: tw\nreview:\n  critical:\n    - old rule\n";
+
+fn review_config_response(content: &str, revision: u64) -> String {
+    serde_json::json!({"schema": "spec-driven", "content": content, "revision": revision}).to_string()
+}
+
+#[test]
+fn remote_review_write_round_trips_through_show_like_fs_mode() {
+    // spec workflow-config「remote 寫入經版本檢查」：寫入帶讀得的 revision，寫入的文件
+    // 再經 show --json 讀回同內容，且與 fs 模式對同一文件的輸出逐位元一致。
+    let mock = mock_server(vec![
+        ("GET", "/config", 200, review_config_response(REVIEW_BASE_YAML, 7)),
+        ("PUT", "/config", 200, r#"{"revision":8}"#.into()),
+    ]);
+    let p = TempProject::remote("review-write", &mock.base, "backend");
+    let out = p.run_stdin(
+        &["workflow-config", "review", "critical", "--stdin", "--no-color"],
+        "rule one\nrule two\n",
+    );
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stdout_of(&out), "✓ review.critical = 2 entries\n");
+    let put = mock.find("PUT", "/config");
+    let body: serde_json::Value = serde_json::from_str(&put.body).expect("PUT body is JSON");
+    assert_eq!(body["expectedRevision"], 7, "the read revision guards the write");
+    let written = body["content"].as_str().expect("content string").to_string();
+
+    let reread = mock_server(vec![("GET", "/config", 200, review_config_response(&written, 8))]);
+    let remote = TempProject::remote("review-reread", &reread.base, "backend");
+    let shown = remote.run(&["workflow-config", "show", "--json"]);
+    assert!(shown.status.success(), "stderr: {}", stderr_of(&shown));
+    let payload: serde_json::Value = serde_json::from_slice(&shown.stdout).expect("JSON");
+    assert_eq!(
+        payload["review"],
+        serde_json::json!({"baseline": "extend", "critical": ["rule one", "rule two"], "warning": [], "suggestion": []})
+    );
+
+    let fs = TempProject::fs("review-write-fs");
+    fs.write("openspec/config.yaml", REVIEW_BASE_YAML);
+    let fs_out = fs.run_stdin(
+        &["workflow-config", "review", "critical", "--stdin", "--no-color"],
+        "rule one\nrule two\n",
+    );
+    assert!(fs_out.status.success(), "stderr: {}", stderr_of(&fs_out));
+    assert_eq!(stdout_of(&fs_out), stdout_of(&out), "same success line in both modes");
+    let fs_written = std::fs::read_to_string(fs.dir.join("openspec/config.yaml")).unwrap();
+    assert_eq!(fs_written, written, "both modes write the same document");
+    let fs_shown = fs.run(&["workflow-config", "show", "--json"]);
+    assert_eq!(stdout_of(&fs_shown), stdout_of(&shown), "show --json is identical");
+}
+
+#[test]
+fn remote_review_revision_conflict_asks_for_a_rerun_without_overwriting() {
+    // spec workflow-config「remote 版本衝突」：非零、提示重跑、不重試也不強寫。
+    let mock = mock_server(vec![
+        ("GET", "/config", 200, review_config_response(REVIEW_BASE_YAML, 7)),
+        (
+            "PUT",
+            "/config",
+            409,
+            r#"{"status":409,"reason":"revision_conflict","message":"stale write"}"#.into(),
+        ),
+    ]);
+    let p = TempProject::remote("review-conflict", &mock.base, "backend");
+    let out = p.run(&["workflow-config", "review", "baseline", "replace", "--no-color"]);
+    assert!(!out.status.success(), "a CAS refusal must exit non-zero");
+    let err = stderr_of(&out);
+    assert!(
+        err.contains("updated by someone else") && err.contains("re-run"),
+        "stderr explains the conflict and the fix: {err}"
+    );
+    assert!(stdout_of(&out).is_empty(), "no success line: {}", stdout_of(&out));
+    let puts = mock
+        .captured
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|c| c.method == "PUT")
+        .count();
+    assert_eq!(puts, 1, "exactly one guarded write attempt — no retry, no forced overwrite");
+}

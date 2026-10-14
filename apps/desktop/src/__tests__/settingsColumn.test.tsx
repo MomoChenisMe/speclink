@@ -90,7 +90,7 @@ describe("SettingsColumn", () => {
 });
 
 describe("ProjectSettingsColumn", () => {
-  it("local：兩群組——openspec/config.yaml 三項與專案組 .speclink.yaml", () => {
+  it("local：兩群組——openspec/config.yaml 四項與專案組 .speclink.yaml", () => {
     const onSelect = vi.fn();
     render(
       <ProjectSettingsColumn section="context" remote={false} configParseError={false} speclinkParseError={false} onSelect={onSelect} />,
@@ -98,7 +98,7 @@ describe("ProjectSettingsColumn", () => {
     const nav = screen.getByRole("navigation", { name: "專案設定分類" });
     expect(within(nav).getByText("openspec/config.yaml")).toBeTruthy();
     expect(within(nav).getByText("專案")).toBeTruthy();
-    expect(navItems(nav)).toEqual(["專案說明", "產出規則", "產出流程", ".speclink.yaml"]);
+    expect(navItems(nav)).toEqual(["專案說明", "產出規則", "審查規則", "產出流程", ".speclink.yaml"]);
     expect(within(nav).getByRole("button", { name: "專案說明" }).getAttribute("aria-current")).toBe("page");
     fireEvent.click(within(nav).getByRole("button", { name: ".speclink.yaml" }));
     expect(onSelect).toHaveBeenCalledWith("speclink");
@@ -109,17 +109,17 @@ describe("ProjectSettingsColumn", () => {
       <ProjectSettingsColumn section="context" remote configParseError={false} speclinkParseError={false} onSelect={() => {}} />,
     );
     const nav = screen.getByRole("navigation", { name: "專案設定分類" });
-    expect(navItems(nav)).toEqual(["專案說明", "產出規則", "產出流程"]);
+    expect(navItems(nav)).toEqual(["專案說明", "產出規則", "審查規則", "產出流程"]);
     expect(within(nav).queryByText("專案")).toBeNull();
   });
 
-  it("config.yaml 解析失敗時前三項帶警示點；.speclink.yaml 解析失敗時第四項帶警示點", () => {
+  it("config.yaml 解析失敗時前四項帶警示點；.speclink.yaml 解析失敗時第五項帶警示點", () => {
     const { rerender } = render(
       <ProjectSettingsColumn section="context" remote={false} configParseError speclinkParseError={false} onSelect={() => {}} />,
     );
     const warned = () =>
       screen.getAllByTestId("tab-warning").map((dot) => dot.closest("button")?.getAttribute("aria-label") ?? dot.closest("button")?.textContent);
-    expect(warned()).toEqual(["專案說明", "產出規則", "產出流程"]);
+    expect(warned()).toEqual(["專案說明", "產出規則", "審查規則", "產出流程"]);
     rerender(
       <ProjectSettingsColumn section="context" remote={false} configParseError={false} speclinkParseError onSelect={() => {}} />,
     );

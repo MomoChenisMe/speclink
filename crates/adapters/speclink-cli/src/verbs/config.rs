@@ -5,7 +5,7 @@
 //! both modes normalize identically.
 
 use anyhow::{bail, Result};
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use speclink_core as core;
 use std::path::PathBuf;
 
@@ -72,7 +72,7 @@ pub(crate) struct WorkflowConfigArgs {
 }
 #[derive(Subcommand)]
 enum WorkflowConfigCommands {
-    /// Show the canonical workflow config (policy fields, context, rules)
+    /// Show the canonical workflow config (policy fields, context, rules, review)
     Show {
         /// Output as JSON
         #[arg(long)]
@@ -110,6 +110,67 @@ enum WorkflowConfigCommands {
         #[arg(long = "dry-run")]
         dry_run: bool,
     },
+    /// Edit the project review rules the review station's Standards axis applies
+    #[command(subcommand_value_name = REVIEW_COMMANDS.as_str())]
+    Review {
+        #[command(subcommand)]
+        command: ReviewCommands,
+    },
+}
+#[derive(Subcommand)]
+enum ReviewCommands {
+    /// Replace the CRITICAL rule list from stdin (empty input removes it)
+    Critical(ReviewListArgs),
+    /// Replace the WARNING rule list from stdin (empty input removes it)
+    Warning(ReviewListArgs),
+    /// Replace the SUGGESTION rule list from stdin (empty input removes it)
+    Suggestion(ReviewListArgs),
+    /// Set whether the built-in smell baseline applies (extend is the default)
+    Baseline {
+        /// extend: the baseline plus project rules; replace: project rules only
+        #[arg(value_enum)]
+        mode: BaselineMode,
+        /// Print the unified diff instead of writing
+        #[arg(long = "dry-run")]
+        dry_run: bool,
+    },
+}
+#[derive(Args)]
+struct ReviewListArgs {
+    /// Read the rules from stdin (one per line)
+    #[arg(long)]
+    stdin: bool,
+    /// Print the unified diff instead of writing
+    #[arg(long = "dry-run")]
+    dry_run: bool,
+}
+#[derive(Clone, Copy, ValueEnum)]
+enum BaselineMode {
+    Extend,
+    Replace,
+}
+/// The three severity-grouped rule lists of the `review` block.
+#[derive(Clone, Copy)]
+enum ReviewList {
+    Critical,
+    Warning,
+    Suggestion,
+}
+impl ReviewList {
+    fn key(self) -> &'static str {
+        match self {
+            ReviewList::Critical => "critical",
+            ReviewList::Warning => "warning",
+            ReviewList::Suggestion => "suggestion",
+        }
+    }
+    fn entries(self, review: &mut core::config::ReviewConfig) -> &mut Vec<String> {
+        match self {
+            ReviewList::Critical => &mut review.critical,
+            ReviewList::Warning => &mut review.warning,
+            ReviewList::Suggestion => &mut review.suggestion,
+        }
+    }
 }
 fn global_config_path() -> PathBuf {
     speclink_host::context::global_config_dir().join("config.yaml")
@@ -218,6 +279,16 @@ const POLICY_KEYS: [&str; 5] = ["locale", "spec_locale", "tdd", "audit", "worktr
 /// same way `main.rs` builds `version` from a `LazyLock<String>`.
 static SET_ABOUT: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| format!("Set a policy field: {}", POLICY_KEYS.join(", ")));
+/// `review`'s usage placeholder: clap's unknown-subcommand error prints only the
+/// usage line, so the legal names must live there — grown from the subcommand
+/// definitions, so the usage can never name a different set.
+static REVIEW_COMMANDS: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    ReviewCommands::augment_subcommands(clap::Command::new("review"))
+        .get_subcommands()
+        .map(|c| c.get_name().to_string())
+        .collect::<Vec<_>>()
+        .join("|")
+});
 /// `workflow-config show --json` payload. camelCase field names are the contract;
 /// the values are CANONICAL (what the document says), never the three-layer
 /// resolution — effective policy is the instructions payload's job.
@@ -231,6 +302,7 @@ struct WorkflowConfigJson {
     worktree: bool,
     context: Option<String>,
     rules: std::collections::BTreeMap<String, Vec<String>>,
+    review: core::config::ReviewConfig,
 }
 /// A write subcommand once argv and stdin are resolved — the shape both the fs
 /// and the remote branch hand to the shared rewrite.
@@ -238,6 +310,8 @@ enum WorkflowConfigWrite {
     Policy { key: String, value: String },
     Context(String),
     Rules { artifact: String, body: String },
+    ReviewList { list: ReviewList, body: String },
+    ReviewBaseline(core::config::ReviewBaseline),
 }
 /// The rewrite a write subcommand produces: the complete new document plus the
 /// line printed on a successful write.
@@ -343,7 +417,25 @@ fn workflow_config_write(
                 *dry_run,
             ))
         }
+        WorkflowConfigCommands::Review { command } => Some(review_write(command)?),
     })
+}
+/// `review <list> --stdin` and `review baseline <mode>` resolved into a write.
+fn review_write(cmd: &ReviewCommands) -> Result<(WorkflowConfigWrite, bool)> {
+    let (list, args) = match cmd {
+        ReviewCommands::Critical(args) => (ReviewList::Critical, args),
+        ReviewCommands::Warning(args) => (ReviewList::Warning, args),
+        ReviewCommands::Suggestion(args) => (ReviewList::Suggestion, args),
+        ReviewCommands::Baseline { mode, dry_run } => {
+            let baseline = match mode {
+                BaselineMode::Extend => core::config::ReviewBaseline::Extend,
+                BaselineMode::Replace => core::config::ReviewBaseline::Replace,
+            };
+            return Ok((WorkflowConfigWrite::ReviewBaseline(baseline), *dry_run));
+        }
+    };
+    require_stdin_flag(args.stdin, &format!("review {} --stdin", list.key()))?;
+    Ok((WorkflowConfigWrite::ReviewList { list, body: read_stdin() }, args.dry_run))
 }
 /// Content-taking subcommands require the flag explicitly: without it the
 /// command would silently write an empty document from an interactive terminal.
@@ -366,6 +458,7 @@ fn print_workflow_config(original: &str, label: &str, json: bool) -> Result<()> 
             worktree: cfg.worktree.unwrap_or(false),
             context: cfg.context_text(),
             rules: cfg.rules.clone(),
+            review: cfg.review(),
         });
     }
     println!("{} {label}", color::bold("Workflow config:"));
@@ -396,7 +489,27 @@ fn print_workflow_config(original: &str, label: &str, json: bool) -> Result<()> 
         .collect();
     let rules = if rules.is_empty() { "none".to_string() } else { rules.join(", ") };
     println!("  {:<13}{rules}", "rules");
+    let review = cfg.review();
+    let review = if review == core::config::ReviewConfig::default() {
+        "none".to_string()
+    } else {
+        format!(
+            "{}, critical {}, warning {}, suggestion {}",
+            baseline_name(review.baseline),
+            review.critical.len(),
+            review.warning.len(),
+            review.suggestion.len()
+        )
+    };
+    println!("  {:<13}{review}", "review");
     Ok(())
+}
+/// The config-file spelling of a baseline mode.
+fn baseline_name(baseline: core::config::ReviewBaseline) -> &'static str {
+    match baseline {
+        core::config::ReviewBaseline::Extend => "extend",
+        core::config::ReviewBaseline::Replace => "replace",
+    }
 }
 /// A toggle's canonical display: `false` is never stored, so "not set" and
 /// "set to false" are the same state — name the default so it reads as one.
@@ -429,6 +542,8 @@ fn plan_workflow_config_edit(
     };
     let mut context = core::config::ContextEdit::Keep;
     let mut rules: Option<Vec<(String, Vec<String>)>> = None;
+    // review is handed over whole: the current block with only the edited key moved.
+    let mut review: Option<core::config::ReviewConfig> = None;
     let summary = match write {
         WorkflowConfigWrite::Policy { key, value } => {
             set_policy_field(&mut fields, key, value)?;
@@ -455,23 +570,52 @@ fn plan_workflow_config_edit(
                     artifacts.join(", ")
                 );
             }
-            let entries: Vec<String> = body
-                .lines()
-                .map(|line| line.trim().to_string())
-                .filter(|line| !line.is_empty())
-                .collect();
-            let summary = if entries.is_empty() {
-                format!("rules.{artifact} removed")
-            } else {
-                format!("rules.{artifact} = {} entries", entries.len())
-            };
+            let entries = stdin_entries(body);
+            let summary = list_summary(&format!("rules.{artifact}"), entries.len());
             rules = Some(merged_rules(&current.rules, &artifacts, artifact, entries));
             summary
         }
+        WorkflowConfigWrite::ReviewList { list, body } => {
+            let entries = stdin_entries(body);
+            let summary = list_summary(&format!("review.{}", list.key()), entries.len());
+            let mut target = current.review();
+            *list.entries(&mut target) = entries;
+            review = Some(target);
+            summary
+        }
+        WorkflowConfigWrite::ReviewBaseline(baseline) => {
+            let mut target = current.review();
+            target.baseline = *baseline;
+            review = Some(target);
+            match baseline {
+                core::config::ReviewBaseline::Extend => "review.baseline = extend (default)".to_string(),
+                core::config::ReviewBaseline::Replace => "review.baseline = replace".to_string(),
+            }
+        }
     };
-    let new_text =
-        core::config::update_workflow_config_text(original, &fields, &context, rules.as_deref())?;
+    let new_text = core::config::update_workflow_config_text(
+        original,
+        &fields,
+        &context,
+        rules.as_deref(),
+        review.as_ref(),
+    )?;
     Ok(WorkflowConfigEdit { new_text, summary })
+}
+/// stdin as list entries: one per line, trimmed, blank lines skipped.
+fn stdin_entries(body: &str) -> Vec<String> {
+    body.lines()
+        .map(|line| line.trim().to_string())
+        .filter(|line| !line.is_empty())
+        .collect()
+}
+/// The success line of a list write: an empty list removes its key.
+fn list_summary(key: &str, count: usize) -> String {
+    if count == 0 {
+        format!("{key} removed")
+    } else {
+        format!("{key} = {count} entries")
+    }
 }
 /// Map one `set <key> <value>` onto the complete-target-state fields. An empty
 /// locale value and `false` both mean "back to default" — the seam then removes

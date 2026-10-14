@@ -90,7 +90,7 @@ openspec/LANGUAGE.md 新增「審查規則」詞條（definition：config.yaml �
 
 ### 技能版號與生成物
 
-審查與 config 技能範本內文改變，ASSET_VERSION 由 v1.44.0 升為 v1.45.0；以 UPDATE_GOLDEN 再生六份 golden 快照、以 UPDATE_ASSETS_LOCK 再生 assets.lock；先 cargo build 再執行 `speclink update`，讓本 repo 自身的技能檔與指令檔換成新版，收尾以 git status 盤點這些再生檔一起提交。
+審查與 config 技能範本內文改變，ASSET_VERSION 由 v1.44.0 升為 v1.45.0。審查技能新增的段落必須寫出 CRITICAL 嚴重度籤（清單對應、呈現開頭行範例、接受確認與自我檢查清單各一處），而技能原稿守門把全大寫的 CRITICAL 計入強調字，review.md 原本恰在登記上限 16；其餘不必要的全大寫字已改寫掉，登記表中 review.md 的上限依規範改為 20（crates/engine/speclink-core/tests/it/skill_authoring.rs）。以 UPDATE_GOLDEN 再生六份 golden 快照、以 UPDATE_ASSETS_LOCK 再生 assets.lock；先 cargo build 再執行 `speclink update`，讓本 repo 自身的技能檔與指令檔換成新版，收尾以 git status 盤點這些再生檔一起提交。
 
 ## Implementation Contract
 

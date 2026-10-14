@@ -1,11 +1,13 @@
 // 專案設定（spec 需求「設定頁圖形化讀寫兩層設定」「設定頁編輯專案說明與產出規則」；
 // desktop-settings-mode design D8）：依專案設定分類欄的所在分類渲染一頁——專案說明、產出規則、
-// 產出流程、.speclink.yaml（remote 無此頁）。狀態與動作在 useProjectSettings，四頁共用、切頁不重載。
+// 審查規則、產出流程、.speclink.yaml（remote 無此頁）。狀態與動作在 useProjectSettings，各頁共用、
+// 切頁不重載。
 import { useEffect } from "react";
 
 import type { WorkspaceSettingsProvider } from "../session";
 import type { ProjectSettingsSection } from "../settingsCatalog";
 import { ContextPage } from "./project-settings/ContextPage";
+import { ReviewRulesPage } from "./project-settings/ReviewRulesPage";
 import { RulesPage } from "./project-settings/RulesPage";
 import { SpeclinkPage } from "./project-settings/SpeclinkPage";
 import { WorkflowPage } from "./project-settings/WorkflowPage";
@@ -48,6 +50,7 @@ export function ProjectSettingsView({ settings, section, onParseErrors, onDirtyC
     <div className="mx-auto flex w-full max-w-[768px] flex-col gap-6 px-6 pb-10 pt-7">
       {section === "context" && <ContextPage ps={ps} />}
       {section === "rules" && <RulesPage ps={ps} />}
+      {section === "review" && <ReviewRulesPage ps={ps} />}
       {section === "workflow" && <WorkflowPage ps={ps} />}
       {section === "speclink" && <SpeclinkPage ps={ps} />}
     </div>

@@ -1,6 +1,6 @@
 //! Configuration: `.speclink.yaml` (app) and `openspec/config.yaml` (workflow).
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -351,6 +351,72 @@ pub struct WorkflowConfig {
     pub worktree: Option<bool>,
     #[serde(default)]
     pub rules: BTreeMap<String, Vec<String>>,
+    /// Project review rules for the review station's Standards axis. Not a policy
+    /// field: no env override, never read from `.speclink.yaml`. `None` (key absent
+    /// or null) reads as the defaults via [`WorkflowConfig::review`].
+    #[serde(default)]
+    pub review: Option<ReviewConfig>,
+}
+
+/// `review:` block of `openspec/config.yaml`. Strict on purpose: an unknown
+/// sub-key (a typo like `critcal`), a baseline outside extend/replace, or a list
+/// that is not a string array fails the whole document through the fail-closed
+/// `ConfigError` path — a typo must never silently drop a rule list. The top
+/// level of `WorkflowConfig` stays lenient, so older CLIs skip this block.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewConfig {
+    #[serde(default)]
+    pub baseline: ReviewBaseline,
+    #[serde(default, deserialize_with = "de_rule_list")]
+    pub critical: Vec<String>,
+    #[serde(default, deserialize_with = "de_rule_list")]
+    pub warning: Vec<String>,
+    #[serde(default, deserialize_with = "de_rule_list")]
+    pub suggestion: Vec<String>,
+}
+
+/// A rule list whose entries must be YAML strings (see [`RuleEntry`]). A null
+/// list (`critical:` with nothing after it) reads as an empty one.
+fn de_rule_list<'de, D>(d: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let entries = Option::<Vec<RuleEntry>>::deserialize(d)?.unwrap_or_default();
+    Ok(entries.into_iter().map(|e| e.0).collect())
+}
+
+/// One review rule: a YAML string only. `Vec<String>` would let serde_yaml coerce
+/// `1`, `true` or an empty item (null) into the text "1"/"true"/"null" and hand
+/// it to the review as a rule; `deserialize_any` sees the real scalar type, and
+/// the error rises at the entry, so it names `review.<list>[i]`.
+struct RuleEntry(String);
+
+impl<'de> Deserialize<'de> for RuleEntry {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<RuleEntry, D::Error> {
+        struct StringOnly;
+        impl serde::de::Visitor<'_> for StringOnly {
+            type Value = RuleEntry;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a rule string")
+            }
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<RuleEntry, E> {
+                Ok(RuleEntry(v.to_string()))
+            }
+        }
+        d.deserialize_any(StringOnly)
+    }
+}
+
+/// Whether the review station's built-in smell baseline applies on top of the
+/// project rules (`extend`, the default) or not at all (`replace`). Values are
+/// case-sensitive.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReviewBaseline {
+    #[default]
+    Extend,
+    Replace,
 }
 
 /// `SPECLINK_*` environment overrides — the top layer of the three-layer policy resolution
@@ -501,6 +567,12 @@ impl WorkflowConfig {
             .filter(|v| !v.is_empty())
             .cloned()
     }
+
+    /// The review block, with an absent key read as its defaults (extend, three
+    /// empty lists).
+    pub fn review(&self) -> ReviewConfig {
+        self.review.clone().unwrap_or_default()
+    }
 }
 
 /// Target state of the workflow-policy fields for a settings-page write.
@@ -542,6 +614,11 @@ pub enum ContextEdit {
 ///   dropped, an emptied section drops its artifact key, and an all-empty map
 ///   drops the `rules` key itself. Entries starting with YAML-reserved characters
 ///   (backtick, `@`, `*`, …) are quoted by serialization and round-trip verbatim.
+/// - `review` is `None` to leave the key untouched, or `Some` for a wholesale
+///   replacement of the block: entries are cleaned like `rules`, `extend` writes
+///   no `baseline` key, an empty list drops its key, and nothing left (extend
+///   with three empty lists) drops the `review` key itself. Comments inside the
+///   old block do not survive; the block follows the document's line endings.
 ///
 /// The rewrite is line-level text surgery, not re-serialization: only the target
 /// key's line or block changes; every other line — comments, blank lines, unknown
@@ -559,6 +636,7 @@ pub fn update_workflow_config_text(
     fields: &WorkflowPolicyFields,
     context: &ContextEdit,
     rules: Option<&[(String, Vec<String>)]>,
+    review: Option<&ReviewConfig>,
 ) -> anyhow::Result<String> {
     validate_policy_locales(fields)?;
     // Pure-syntax empty documents carry no user content to preserve; normalize so
@@ -569,20 +647,22 @@ pub fn update_workflow_config_text(
     };
     let parsed = parse_yaml_mapping(base, "openspec/config.yaml")?;
 
-    // rules 的滌洗結果由手術（序列化區塊）與目標狀態（驗證基準）共用。
+    // rules 與 review 的滌洗結果由手術（序列化區塊）與目標狀態（驗證基準）共用。
     let rules_value = rules.map(|sections| {
         let mut map = serde_yaml::Mapping::new();
         for (artifact, entries) in sections {
-            let cleaned: Vec<serde_yaml::Value> = entries
-                .iter()
-                .map(|e| e.trim())
-                .filter(|e| !e.is_empty())
-                .map(Into::into)
-                .collect();
-            if !cleaned.is_empty() {
-                map.insert(artifact.as_str().into(), serde_yaml::Value::Sequence(cleaned));
-            }
+            insert_cleaned_list(&mut map, artifact, entries);
         }
+        map
+    });
+    let review_value = review.map(|r| {
+        let mut map = serde_yaml::Mapping::new();
+        if r.baseline == ReviewBaseline::Replace {
+            map.insert("baseline".into(), "replace".into());
+        }
+        insert_cleaned_list(&mut map, "critical", &r.critical);
+        insert_cleaned_list(&mut map, "warning", &r.warning);
+        insert_cleaned_list(&mut map, "suggestion", &r.suggestion);
         map
     });
 
@@ -602,14 +682,31 @@ pub fn update_workflow_config_text(
         // Set(blank) 與 Remove 同義：清空即移除鍵。
         ContextEdit::Set(_) | ContextEdit::Remove => set_or_remove(&mut target, "context", None),
     }
-    if let Some(map) = &rules_value {
-        let value = (!map.is_empty()).then(|| serde_yaml::Value::Mapping(map.clone()));
-        set_or_remove(&mut target, "rules", value);
+    for (key, edit) in [("rules", &rules_value), ("review", &review_value)] {
+        if let Some(map) = edit {
+            let value = (!map.is_empty()).then(|| serde_yaml::Value::Mapping(map.clone()));
+            set_or_remove(&mut target, key, value);
+        }
     }
 
-    let output = surgical_rewrite(base, fields, context, rules_value.as_ref())?;
+    let output =
+        surgical_rewrite(base, fields, context, rules_value.as_ref(), review_value.as_ref())?;
     verify_rewritten_config(&output, &target)?;
     Ok(output)
+}
+
+/// Insert `key: [entries]` with entries trimmed and blank ones dropped; a list
+/// left empty is not inserted (an emptied list drops its key).
+fn insert_cleaned_list(map: &mut serde_yaml::Mapping, key: &str, entries: &[String]) {
+    let cleaned: Vec<serde_yaml::Value> = entries
+        .iter()
+        .map(|e| e.trim())
+        .filter(|e| !e.is_empty())
+        .map(Into::into)
+        .collect();
+    if !cleaned.is_empty() {
+        map.insert(key.into(), serde_yaml::Value::Sequence(cleaned));
+    }
 }
 
 /// Set the `schema` key in a workflow config document, preserving every other byte.
@@ -706,6 +803,31 @@ fn delete_block(ops: &mut [LineOp], block: &KeyBlock) {
     }
 }
 
+/// The serialized block for a wholesale mapping edit, or `None` when the mapping
+/// is empty (the key is to be removed).
+fn mapping_block(key: &str, map: &serde_yaml::Mapping) -> anyhow::Result<Option<String>> {
+    if map.is_empty() {
+        return Ok(None);
+    }
+    serialize_top_level_block(key, serde_yaml::Value::Mapping(map.clone())).map(Some)
+}
+
+/// Plan a wholesale block swap: `None` deletes the existing block; `Some`
+/// replaces it in place, or appends it at the end when the key is absent.
+fn swap_block(
+    ops: &mut [LineOp],
+    appends: &mut Vec<String>,
+    existing: Option<&KeyBlock>,
+    block: Option<String>,
+) {
+    match (existing, block) {
+        (Some(b), Some(text)) => replace_block(ops, b, text),
+        (None, Some(text)) => appends.push(text),
+        (Some(b), None) => delete_block(ops, b),
+        (None, None) => {}
+    }
+}
+
 /// The line-level surgery itself (see `update_workflow_config_text` for the
 /// semantics). Pure text transform; correctness is enforced by the caller's
 /// re-parse verification, never assumed here.
@@ -714,6 +836,7 @@ fn surgical_rewrite(
     fields: &WorkflowPolicyFields,
     context: &ContextEdit,
     rules: Option<&serde_yaml::Mapping>,
+    review: Option<&serde_yaml::Mapping>,
 ) -> anyhow::Result<String> {
     let eol = if original.contains("\r\n") { "\r\n" } else { "\n" };
     let lines: Vec<&str> = original.split_inclusive('\n').collect();
@@ -759,17 +882,13 @@ fn surgical_rewrite(
         }
     }
     if let Some(map) = rules {
-        if map.is_empty() {
-            if let Some(b) = block_of("rules") {
-                delete_block(&mut ops, b);
-            }
-        } else {
-            let block = serialize_top_level_block("rules", serde_yaml::Value::Mapping(map.clone()))?;
-            match block_of("rules") {
-                Some(b) => replace_block(&mut ops, b, block),
-                None => appends.push(block),
-            }
-        }
+        let block = mapping_block("rules", map)?;
+        swap_block(&mut ops, &mut appends, block_of("rules"), block);
+    }
+    if let Some(map) = review {
+        // serde_yaml 一律以 \n 斷行；CRLF 檔沿用檔案的行尾，整份行尾一致。
+        let block = mapping_block("review", map)?.map(|b| b.replace('\n', eol));
+        swap_block(&mut ops, &mut appends, block_of("review"), block);
     }
 
     let insert_at = block_of("schema").map(|b| b.end).unwrap_or(0);

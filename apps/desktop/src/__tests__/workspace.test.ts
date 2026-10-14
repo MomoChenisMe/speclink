@@ -68,6 +68,7 @@ function fakeSession(ds: SpeclinkDataSource, root: string, name: string): Worksp
       writeWorkflowConfig: vi.fn(),
       writeWorkflowContext: vi.fn(),
       writeWorkflowRules: vi.fn(),
+      writeWorkflowReview: vi.fn(),
       readSchemas: vi.fn(),
       writeWorkflowSchema: vi.fn(),
       forkSchema: vi.fn(),

@@ -9,7 +9,7 @@ import { I18nProvider } from "@speclink/ui";
 
 import { ProjectSettingsView } from "../views/ProjectSettingsView";
 import { APP_MESSAGES } from "../i18n/messages";
-import type { SchemaEntry, SettingsSnapshot } from "../adapter/workspace";
+import type { ReviewRules, SchemaEntry, SettingsSnapshot } from "../adapter/workspace";
 import type { WorkspaceSettingsProvider } from "../session";
 import type { ProjectSettingsSection } from "../settingsCatalog";
 import { editorText, editorView, pressSave, typeInEditor } from "./helpers/codemirror";
@@ -23,6 +23,9 @@ function render(ui: ReactElement) {
   return rtlRender(ui, { wrapper: zhWrapper });
 }
 
+/** 引擎提供的 12 個 smell 名稱（快照 reviewBaselineSmells 的測試值）。 */
+const SMELLS = ["Mysterious Name", "Duplicated Code", "Feature Envy", "Data Clumps", "Primitive Obsession", "Repeated Switches", "Shotgun Surgery", "Divergent Change", "Speculative Generality", "Message Chains", "Middle Man", "Refused Bequest"];
+
 function snapshot(over: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
   return {
     app: { tools: ["claude"], customTools: [], parseError: null, ...(over.app ?? {}) },
@@ -34,6 +37,8 @@ function snapshot(over: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
       worktree: false,
       context: null,
       rules: {},
+      review: { baseline: "extend", critical: [], warning: [], suggestion: [] },
+      reviewBaselineSmells: SMELLS,
       schemaArtifacts: ["proposal", "design", "specs", "tasks"],
       schemaName: "spec-driven",
       schemaKnown: true,
@@ -53,6 +58,7 @@ function fakeSettings(snap: SettingsSnapshot): WorkspaceSettingsProvider {
     writeWorkflowConfig: vi.fn().mockResolvedValue(undefined),
     writeWorkflowContext: vi.fn().mockResolvedValue(undefined),
     writeWorkflowRules: vi.fn().mockResolvedValue(undefined),
+    writeWorkflowReview: vi.fn().mockResolvedValue(undefined),
     readSchemas: vi.fn().mockResolvedValue([]),
     writeWorkflowSchema: vi.fn().mockResolvedValue(undefined),
     forkSchema: vi.fn().mockResolvedValue("spec-driven-custom"),
@@ -1526,5 +1532,218 @@ describe("產出流程頁（spec「產出流程頁」）", () => {
       ["their-flow", true],
       ["spec-driven", false],
     ]);
+  });
+});
+
+// ---- 審查規則頁（spec 需求「設定頁編輯審查規則」；review-rules-config）----
+
+describe("審查規則頁（spec 需求「設定頁編輯審查規則」）", () => {
+  const RULES: ReviewRules = {
+    baseline: "extend",
+    critical: ["所有 SQL 一律用參數化查詢，不得用字串拼接", "不得把金鑰或密碼寫死在程式碼裡"],
+    warning: ["新增的公開 API 要有對應的測試"],
+    suggestion: ["函式超過 50 行時宜拆分"],
+  };
+  const reviewSnap = (review = RULES) => projectSnap({ review } as Partial<SettingsSnapshot["workflow"]>);
+
+  it("唯讀呈現：預設清單卡顯示模式，專案規則卡依三節列出規則、條數與效果說明（spec Scenario「唯讀呈現」）", async () => {
+    renderView(reviewSnap(), "review");
+    const page = await screen.findByTestId("review-page");
+    expect(within(page).getByRole("heading", { level: 2, name: "審查規則" })).toBeTruthy();
+    expect(screen.getByTestId("file-note-config").textContent).toBe("openspec/config.yaml · review");
+    expect(within(page).getByTestId("review-baseline-mode").textContent).toBe("沿用並追加");
+    const expected = {
+      critical: ["CRITICAL", "2 條", "擋蓋章；要接受放行須逐條再確認"],
+      warning: ["WARNING", "1 條", "擋蓋章；偶有正當例外可接受放行"],
+      suggestion: ["SUGGESTION", "1 條", "只記在工單，不擋蓋章"],
+    };
+    for (const [list, texts] of Object.entries(expected)) {
+      const section = within(page).getByTestId(`review-section-${list}`);
+      for (const text of texts) expect(within(section).getByText(text)).toBeTruthy();
+    }
+    expect(within(page).getByTestId("review-section-critical").textContent).toContain(
+      "不得把金鑰或密碼寫死在程式碼裡",
+    );
+    // 唯讀：沒有編輯器、頁標題右側只有編輯鈕。
+    expect(page.querySelector(".cm-editor")).toBeNull();
+    expect(within(page).getByTestId("review-edit")).toBeTruthy();
+  });
+
+  it("三節皆空時專案規則卡顯示空狀態；整份換掉的模式名稱照實呈現", async () => {
+    renderView(reviewSnap({ baseline: "replace", critical: [], warning: [], suggestion: [] }), "review");
+    const page = await screen.findByTestId("review-page");
+    expect(within(page).getByTestId("review-baseline-mode").textContent).toBe("整份換掉");
+    expect(within(page).getByTestId("review-empty")).toBeTruthy();
+    expect(within(page).queryByTestId("review-section-critical")).toBeNull();
+  });
+
+  it("查看 12 條展開引擎提供的名稱（spec Scenario「展開 12 條名稱」）；遠端專案同樣可展開", async () => {
+    renderView(reviewSnap(), "review");
+    const page = await screen.findByTestId("review-page");
+    expect(within(page).queryByTestId("review-smells")).toBeNull();
+    const toggle = within(page).getByRole("button", { name: "查看 12 條" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    const names = within(within(page).getByTestId("review-smells")).getAllByRole("listitem");
+    expect(names.map((n) => n.textContent)).toEqual(SMELLS);
+  });
+
+  it("遠端專案的審查規則頁同樣可展開 12 條，名稱與本機一致", async () => {
+    const ws = { ...fakeSettings(reviewSnap()), kind: "remote" } as WorkspaceSettingsProvider;
+    render(<Harness settings={ws} initial="review" />);
+    const page = await screen.findByTestId("review-page");
+    fireEvent.click(within(page).getByRole("button", { name: "查看 12 條" }));
+    const names = within(within(page).getByTestId("review-smells")).getAllByRole("listitem");
+    expect(names.map((n) => n.textContent)).toEqual(SMELLS);
+  });
+
+  it("編輯態：預設清單為兩個單選、專案規則恰為三個固定節（嚴重度籤＋即時條數），無新增節的輸入（spec Scenario「固定三節不可自由新增」）", async () => {
+    renderView(reviewSnap(), "review");
+    const page = await screen.findByTestId("review-page");
+    fireEvent.click(within(page).getByTestId("review-edit"));
+    const radios = within(page).getAllByRole("radio");
+    expect(radios.map((r) => r.getAttribute("aria-label") ?? r.closest("label")?.textContent)).toHaveLength(2);
+    expect((within(page).getByRole("radio", { name: /沿用並追加/ }) as HTMLInputElement).checked).toBe(true);
+    expect((within(page).getByRole("radio", { name: /整份換掉/ }) as HTMLInputElement).checked).toBe(false);
+    expect(within(page).getAllByRole("textbox")).toHaveLength(3);
+    for (const [list, count] of [["critical", "2 條"], ["warning", "1 條"], ["suggestion", "1 條"]]) {
+      const section = within(page).getByTestId(`review-input-${list}`);
+      expect(within(section).getByText(list.toUpperCase())).toBeTruthy();
+      expect(within(section).getByTestId(`review-count-${list}`).textContent).toBe(count);
+      expect(section.querySelector(".cm-editor")).not.toBeNull();
+    }
+    expect(editorText(within(page).getByTestId("review-input-critical"))).toBe(RULES.critical.join("\n"));
+    expect(within(within(page).getByTestId("review-save")).getByText("Ctrl+S")).toBeTruthy();
+  });
+
+  it("編輯並以 ⌘S 儲存只寫 review：逐行修剪、空行不寫；回唯讀並顯示新內容（spec Scenario「編輯並儲存僅寫 review」）", async () => {
+    const ws = renderView(reviewSnap(), "review");
+    const page = await screen.findByTestId("review-page");
+    fireEvent.click(within(page).getByTestId("review-edit"));
+    const warning = within(page).getByTestId("review-input-warning");
+    typeInEditor(warning, "新增的公開 API 要有對應的測試\n\n  錯誤訊息要指出出錯的檔案  ");
+    expect(within(page).getByTestId("review-count-warning").textContent).toBe("2 條");
+    pressSave(warning);
+    await waitFor(() => expect(ws.writeWorkflowReview).toHaveBeenCalledTimes(1));
+    expect(ws.writeWorkflowReview).toHaveBeenCalledWith({
+      ...RULES,
+      warning: ["新增的公開 API 要有對應的測試", "錯誤訊息要指出出錯的檔案"],
+    });
+    expect(ws.writeWorkflowContext).not.toHaveBeenCalled();
+    expect(ws.writeWorkflowRules).not.toHaveBeenCalled();
+    expect(ws.writeWorkflowConfig).not.toHaveBeenCalled();
+    await waitFor(() => expect(page.querySelector(".cm-editor")).toBeNull());
+    expect(within(page).getByTestId("review-section-warning").textContent).toContain("錯誤訊息要指出出錯的檔案");
+  });
+
+  it("整份換掉且三節皆空：顯示提示但可儲存（spec Scenario「整份換掉且無規則時提示但可儲存」）", async () => {
+    const ws = renderView(reviewSnap(), "review");
+    const page = await screen.findByTestId("review-page");
+    fireEvent.click(within(page).getByTestId("review-edit"));
+    fireEvent.click(within(page).getByRole("radio", { name: /整份換掉/ }));
+    expect(within(page).queryByTestId("review-replace-empty")).toBeNull();
+    for (const list of ["critical", "warning", "suggestion"]) {
+      typeInEditor(within(page).getByTestId(`review-input-${list}`), "");
+    }
+    expect(within(page).getByTestId("review-replace-empty").textContent).toContain(
+      "Standards 軸只依 repo 文件審查",
+    );
+    const save = within(page).getByTestId("review-save") as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(ws.writeWorkflowReview).toHaveBeenCalledWith({
+        baseline: "replace",
+        critical: [],
+        warning: [],
+        suggestion: [],
+      }),
+    );
+  });
+
+  it("切回沿用並追加、清空某節：payload 帶 extend 與空清單（移除語意由引擎落實；spec Scenario「清空即移除鍵」）", async () => {
+    const ws = renderView(reviewSnap({ ...RULES, baseline: "replace" }), "review");
+    const page = await screen.findByTestId("review-page");
+    fireEvent.click(within(page).getByTestId("review-edit"));
+    fireEvent.click(within(page).getByRole("radio", { name: /沿用並追加/ }));
+    typeInEditor(within(page).getByTestId("review-input-suggestion"), "");
+    fireEvent.click(within(page).getByTestId("review-save"));
+    await waitFor(() =>
+      expect(ws.writeWorkflowReview).toHaveBeenCalledWith({ ...RULES, baseline: "extend", suggestion: [] }),
+    );
+  });
+
+  it("取消：還原唯讀且不寫入；重進編輯草稿已重設；未存修改回報隨草稿起落", async () => {
+    const onDirtyChange = vi.fn();
+    const ws = fakeSettings(reviewSnap());
+    render(<Harness settings={ws} initial="review" onDirtyChange={onDirtyChange} />);
+    const page = await screen.findByTestId("review-page");
+    fireEvent.click(within(page).getByTestId("review-edit"));
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    typeInEditor(within(page).getByTestId("review-input-critical"), "改掉");
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+    fireEvent.click(within(page).getByTestId("review-cancel"));
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+    expect(ws.writeWorkflowReview).not.toHaveBeenCalled();
+    fireEvent.click(within(page).getByTestId("review-edit"));
+    expect(editorText(within(page).getByTestId("review-input-critical"))).toBe(RULES.critical.join("\n"));
+  });
+
+  it("審查規則頁編輯中，產出規則頁照常唯讀可用（一頁進入編輯不影響其他頁）", async () => {
+    renderView(reviewSnap(), "review");
+    const page = await screen.findByTestId("review-page");
+    fireEvent.click(within(page).getByTestId("review-edit"));
+    goto("rules");
+    const rulesPage = screen.getByTestId("rules-page");
+    expect(rulesPage.querySelector(".cm-editor")).toBeNull();
+    expect((within(rulesPage).getByTestId("rules-edit") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("config.yaml 解析失敗：頁內浮出解析原因、編輯鈕停用（spec Scenario「解析失敗時停用編輯」）", async () => {
+    const ws = fakeSettings(
+      projectSnap({ context: null, rules: {}, schemaArtifacts: [], parseError: "review: unknown field `critcal`" }),
+    );
+    render(<Harness settings={ws} initial="review" />);
+    const page = await screen.findByTestId("review-page");
+    expect(within(page).getByText(/critcal/)).toBeTruthy();
+    expect((within(page).getByTestId("review-edit") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("遠端專案：儲存帶 expected revision 的寫入、成功後 revision 前進；409 時輸入保留並浮出 review 對照（spec Scenario「遠端專案儲存帶 revision」）", async () => {
+    const initial = projectSnap({ revision: 41, review: RULES } as Partial<SettingsSnapshot["workflow"]>);
+    const latest = projectSnap({
+      revision: 42,
+      review: { ...RULES, critical: ["server 端的規則"] },
+    } as Partial<SettingsSnapshot["workflow"]>);
+    const ws = {
+      ...fakeSettings(initial),
+      kind: "remote",
+      writeWorkflowReview: vi
+        .fn()
+        .mockRejectedValueOnce({ message: "conflict", reason: "revision_conflict", status: 409 })
+        .mockResolvedValueOnce(43),
+    } as unknown as WorkspaceSettingsProvider;
+    (ws.readSettings as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(latest);
+    render(<Harness settings={ws} initial="review" />);
+    const page = await screen.findByTestId("review-page");
+    expect(screen.getByTestId("policy-revision").textContent).toContain("41");
+    fireEvent.click(within(page).getByTestId("review-edit"));
+    typeInEditor(within(page).getByTestId("review-input-critical"), "我新增的 CRITICAL 規則");
+    fireEvent.click(within(page).getByTestId("review-save"));
+
+    const panel = await screen.findByTestId("policy-conflict-panel");
+    const row = within(panel).getByTestId("conflict-row-review-critical");
+    expect(within(row).getByTestId("conflict-server").textContent).toContain("server 端的規則");
+    expect(within(row).getByTestId("conflict-mine").textContent).toContain("我新增的 CRITICAL 規則");
+    expect(editorText(within(page).getByTestId("review-input-critical"))).toBe("我新增的 CRITICAL 規則");
+
+    fireEvent.click(within(panel).getByRole("button", { name: "檢視後以最新 revision 重新提交" }));
+    await waitFor(() => expect(screen.queryByTestId("policy-conflict-panel")).toBeNull());
+    expect(ws.writeWorkflowReview).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("policy-revision").textContent).toContain("43");
   });
 });

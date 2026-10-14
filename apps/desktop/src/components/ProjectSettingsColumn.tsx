@@ -1,5 +1,5 @@
 // 專案設定分類欄（desktop-settings-mode design D2）：專案設定模式下取代專案欄——群組
-// 「openspec/config.yaml」三項與「專案」組 .speclink.yaml（遠端專案無此組）；解析失敗的檔
+// 「openspec/config.yaml」四項與「專案」組 .speclink.yaml（遠端專案無此組）；解析失敗的檔
 // 所掛分類項帶警示點。底部 notice 槽放技能檔提示卡（提示跨頁常駐，專案設定頁也在）。
 import type { ReactNode } from "react";
 import { NavItem, SEMANTIC_TONE, SettingsGroupHeader, cn, useI18n } from "@speclink/ui";
@@ -27,7 +27,7 @@ export function ProjectSettingsColumn({
 }: {
   section: ProjectSettingsSection;
   remote: boolean;
-  /** openspec/config.yaml 解析失敗：專案說明、產出規則、產出流程三項帶警示點。 */
+  /** openspec/config.yaml 解析失敗：專案說明、產出規則、審查規則、產出流程四項帶警示點。 */
   configParseError: boolean;
   /** .speclink.yaml 解析失敗：.speclink.yaml 項帶警示點。 */
   speclinkParseError: boolean;

@@ -744,21 +744,23 @@ async fn open_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// 寫入 config.yaml 的「專案說明」與「產出規則」。`context: None`＝不動、
+/// 寫入 config.yaml 的「專案說明」「產出規則」與「審查規則」。`context: None`＝不動、
 /// `Some(文字)`＝設值（空白即移除鍵，core 落實）；`rules: None`＝不動、
-/// `Some(節序清單)`＝整份代換。政策欄位不受本 command 波及。
+/// `Some(節序清單)`＝整份代換；`review` 同理（`Some` 整塊代換）。政策欄位不受本
+/// command 波及。
 #[tauri::command]
 async fn write_workflow_content(
     root: PathBuf,
     context: Option<String>,
     rules: Option<Vec<(String, Vec<String>)>>,
+    review: Option<speclink_desktop_core::settings::ReviewConfig>,
 ) -> Result<(), String> {
     let edit = match context {
         Some(text) => speclink_desktop_core::settings::ContextEdit::Set(text),
         None => speclink_desktop_core::settings::ContextEdit::Keep,
     };
     tauri::async_runtime::spawn_blocking(move || {
-        speclink_desktop_core::settings::write_workflow_content_at(&root, &edit, rules.as_deref())
+        speclink_desktop_core::settings::write_workflow_content_at(&root, &edit, rules.as_deref(), review.as_ref())
     })
     .await
     .map_err(|e| format!("write_workflow_content worker failed: {e}"))?
@@ -1198,6 +1200,7 @@ async fn remote_write_workflow_content(
     repo: String,
     context: Option<String>,
     rules: Option<Vec<(String, Vec<String>)>>,
+    review: Option<speclink_desktop_core::settings::ReviewConfig>,
     expected_revision: u64,
 ) -> Result<u64, remote::RemoteSettingsError> {
     with_remote_settings(app, connection_id, project, repo, move |ws, credentials| {
@@ -1205,6 +1208,7 @@ async fn remote_write_workflow_content(
             credentials,
             context.as_deref(),
             rules.as_deref(),
+            review.as_ref(),
             expected_revision,
         )
     })

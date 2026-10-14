@@ -550,6 +550,268 @@ fn rules_dry_run_prints_a_unified_diff_and_writes_nothing() {
     assert_eq!(p.config_bytes(), before, "config.yaml is byte-for-byte unchanged");
 }
 
+// --- review (fs) ---
+
+/// The `review` mapping of the config on disk, or None when the key is absent —
+/// the typed `show --json` payload cannot tell an absent key from its defaults.
+fn raw_review(p: &TempProject) -> Option<serde_yaml::Mapping> {
+    let doc: serde_yaml::Mapping = serde_yaml::from_str(&p.config_text()).expect("config parses");
+    doc.get("review").map(|v| v.as_mapping().expect("review is a mapping").clone())
+}
+
+fn review_json(p: &TempProject) -> serde_json::Value {
+    let out = p.run(&["workflow-config", "show", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    json_of(&out)["review"].clone()
+}
+
+fn strings(v: &serde_json::Value) -> Vec<String> {
+    v.as_array()
+        .unwrap_or_else(|| panic!("expected a string array: {v}"))
+        .iter()
+        .map(|s| s.as_str().expect("string entry").to_string())
+        .collect()
+}
+
+#[test]
+fn review_lists_replace_wholesale_with_a_one_line_summary() {
+    // Spec scenario 清單整段代換：一行一條、頭尾空白去除、空行略過；其他鍵逐位元不變。
+    let prefix = "schema: spec-driven\nlocale: tw\n";
+    for list in ["critical", "warning", "suggestion"] {
+        let p = TempProject::new(
+            &format!("review-replace-{list}"),
+            &format!("{prefix}review:\n  {list}:\n    - old rule\n"),
+        );
+        let out = p.run_stdin(
+            &["workflow-config", "review", list, "--stdin"],
+            "  rule one  \n\nrule two\n",
+        );
+        assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+        assert_eq!(stdout_of(&out), format!("✓ review.{list} = 2 entries\n"));
+        assert_eq!(strings(&review_json(&p)[list]), ["rule one", "rule two"]);
+        assert!(p.config_text().starts_with(prefix), "other keys untouched: {}", p.config_text());
+    }
+}
+
+#[test]
+fn review_writes_match_the_spec_example_table() {
+    // Spec Example 寫入效果與成功訊息——逐列對應。
+    struct Row {
+        before: &'static str,
+        args: &'static [&'static str],
+        stdin: &'static str,
+        stdout: &'static str,
+        check: fn(Option<serde_yaml::Mapping>),
+    }
+    fn keys(m: &serde_yaml::Mapping) -> Vec<&str> {
+        m.keys().map(|k| k.as_str().unwrap()).collect()
+    }
+    let rows = [
+        Row {
+            before: "schema: spec-driven\n",
+            args: &["review", "warning", "--stdin"],
+            stdin: "one rule\n",
+            stdout: "✓ review.warning = 1 entries\n",
+            check: |r| assert_eq!(keys(&r.expect("review written")), ["warning"]),
+        },
+        Row {
+            before: "schema: spec-driven\nreview:\n  warning:\n    - w\n",
+            args: &["review", "warning", "--stdin"],
+            stdin: "",
+            stdout: "✓ review.warning removed\n",
+            check: |r| assert!(r.is_none(), "review key removed: {r:?}"),
+        },
+        Row {
+            before: "schema: spec-driven\nreview:\n  critical:\n    - c\n",
+            args: &["review", "baseline", "replace"],
+            stdin: "",
+            stdout: "✓ review.baseline = replace\n",
+            check: |r| {
+                let r = r.expect("review kept");
+                assert_eq!(r.get("baseline"), Some(&"replace".into()));
+                assert!(r.contains_key("critical"));
+            },
+        },
+        Row {
+            before: "schema: spec-driven\nreview:\n  baseline: replace\n  critical:\n    - c\n",
+            args: &["review", "baseline", "extend"],
+            stdin: "",
+            stdout: "✓ review.baseline = extend (default)\n",
+            check: |r| assert_eq!(keys(&r.expect("review kept")), ["critical"]),
+        },
+        Row {
+            before: "schema: spec-driven\nreview:\n  baseline: replace\n",
+            args: &["review", "baseline", "extend"],
+            stdin: "",
+            stdout: "✓ review.baseline = extend (default)\n",
+            check: |r| assert!(r.is_none(), "review key removed: {r:?}"),
+        },
+    ];
+    for (i, row) in rows.iter().enumerate() {
+        let p = TempProject::new(&format!("review-table-{i}"), row.before);
+        let mut args = vec!["workflow-config"];
+        args.extend_from_slice(row.args);
+        let out = p.run_stdin(&args, row.stdin);
+        assert!(out.status.success(), "row {i} stderr: {}", stderr_of(&out));
+        assert_eq!(stdout_of(&out), row.stdout, "row {i}");
+        (row.check)(raw_review(&p));
+    }
+}
+
+#[test]
+fn review_list_without_the_stdin_flag_fails_with_usage() {
+    // Spec scenario 未帶 --stdin 說明用法.
+    let p = TempProject::new("review-no-stdin", WF_YAML);
+    let before = p.config_bytes();
+    let out = p.run_stdin(&["workflow-config", "review", "critical"], "ignored\n");
+    assert!(!out.status.success(), "missing --stdin must exit non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("review critical --stdin"), "stderr states the usage: {err}");
+    assert_eq!(p.config_bytes(), before, "no file effect");
+}
+
+#[test]
+fn review_rejects_an_unknown_list_or_baseline_value_listing_the_legal_ones() {
+    // Spec scenario 不認得的清單名或 baseline 值.
+    let p = TempProject::new("review-unknown", WF_YAML);
+    let before = p.config_bytes();
+    let out = p.run_stdin(&["workflow-config", "review", "blocker", "--stdin"], "x\n");
+    assert!(!out.status.success(), "unknown list must exit non-zero");
+    let err = stderr_of(&out);
+    for legal in ["critical", "warning", "suggestion", "baseline"] {
+        assert!(err.contains(legal), "stderr lists {legal}: {err}");
+    }
+    let out = p.run(&["workflow-config", "review", "baseline", "keep"]);
+    assert!(!out.status.success(), "unknown baseline must exit non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("extend") && err.contains("replace"), "stderr lists the values: {err}");
+    assert_eq!(p.config_bytes(), before, "no file effect");
+}
+
+#[test]
+fn review_dry_run_prints_a_unified_diff_and_writes_nothing() {
+    // Spec scenario dry-run 印 diff：只顯示 review 區塊的變更.
+    let p = TempProject::new("review-dry-run", WF_YAML);
+    let before = p.config_bytes();
+    let out = p.run_stdin(
+        &["workflow-config", "review", "suggestion", "--stdin", "--dry-run"],
+        "Prefer small functions\n",
+    );
+    assert!(out.status.success(), "dry-run exits 0: {}", stderr_of(&out));
+    let diff = stdout_of(&out);
+    assert!(diff.contains("--- a/openspec/config.yaml"), "unified diff header: {diff}");
+    let changed: Vec<&str> = diff
+        .lines()
+        .filter(|l| {
+            (l.starts_with('-') || l.starts_with('+'))
+                && !l.starts_with("---")
+                && !l.starts_with("+++")
+        })
+        .collect();
+    assert_eq!(
+        changed,
+        ["+", "+review:", "+  suggestion:", "+  - Prefer small functions"],
+        "only the review block is added: {diff}"
+    );
+    assert_eq!(p.config_bytes(), before, "config.yaml is byte-for-byte unchanged");
+}
+
+#[test]
+fn review_reserved_char_entry_round_trips_verbatim() {
+    // Spec scenario 保留字元開頭的條目自動加引號.
+    let p = TempProject::new("review-reserved", WF_YAML);
+    let out = p.run_stdin(&["workflow-config", "review", "warning", "--stdin"], "@team 要審過\n");
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(strings(&review_json(&p)["warning"]), ["@team 要審過"]);
+}
+
+#[test]
+fn review_refuses_to_rewrite_an_unparseable_config() {
+    // Spec scenario 壞檔拒寫：YAML 語法錯誤與 review 子鍵打錯皆拒寫。
+    for (tag, yaml) in [("syntax", BAD_YAML), ("typo", "review:\n  critcal:\n    - x\n")] {
+        let p = TempProject::new(&format!("review-bad-{tag}"), yaml);
+        let before = p.config_bytes();
+        let out = p.run_stdin(&["workflow-config", "review", "critical", "--stdin"], "x\n");
+        assert!(!out.status.success(), "{tag}: must exit non-zero");
+        let err = stderr_of(&out);
+        assert!(err.contains("openspec/config.yaml"), "{tag}: stderr names the file: {err}");
+        assert!(err.contains("write refused"), "{tag}: stderr says the write is refused: {err}");
+        assert_eq!(p.config_bytes(), before, "{tag}: no file effect");
+    }
+}
+
+#[test]
+fn show_prints_the_review_line_after_rules() {
+    // Spec scenario 人眼輸出的 review 行：rules 行之後恰一行、其餘各行逐位元不變。
+    let p = TempProject::new("show-review-none", WF_YAML);
+    let out = p.run(&["workflow-config", "show", "--no-color"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(
+        stdout_of(&out),
+        "Workflow config: openspec/config.yaml\n\n  locale       tw\n  spec_locale  unset (specs in English)\n  tdd          on\n  audit        unset (off)\n  worktree     unset (off)\n  context      2 lines\n  rules        design 2, tasks 1\n  review       none\n"
+    );
+    // Spec Example review 行的值.
+    for (tag, review, value) in [
+        (
+            "counts",
+            "review:\n  critical:\n    - a\n    - b\n  warning:\n    - c\n  suggestion:\n    - d\n",
+            "extend, critical 2, warning 1, suggestion 1",
+        ),
+        ("replace", "review:\n  baseline: replace\n", "replace, critical 0, warning 0, suggestion 0"),
+    ] {
+        let p = TempProject::new(&format!("show-review-{tag}"), &format!("schema: spec-driven\n{review}"));
+        let out = p.run(&["workflow-config", "show", "--no-color"]);
+        assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+        let text = stdout_of(&out);
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.last(), Some(&format!("  review       {value}").as_str()), "{text}");
+        assert!(lines[lines.len() - 2].starts_with("  rules "), "review follows rules: {text}");
+    }
+}
+
+#[test]
+fn show_json_carries_the_review_object() {
+    // Spec scenario --json 帶出 review 內容；未寫時為預設值、欄位恆存在。
+    let p = TempProject::new("show-review-json-default", WF_YAML);
+    assert_eq!(
+        review_json(&p),
+        serde_json::json!({"baseline": "extend", "critical": [], "warning": [], "suggestion": []})
+    );
+    let p = TempProject::new(
+        "show-review-json",
+        "review:\n  baseline: replace\n  critical:\n    - 所有 SQL 一律用參數化查詢\n",
+    );
+    assert_eq!(
+        review_json(&p),
+        serde_json::json!({
+            "baseline": "replace",
+            "critical": ["所有 SQL 一律用參數化查詢"],
+            "warning": [],
+            "suggestion": []
+        })
+    );
+}
+
+#[test]
+fn a_review_typo_fails_show_and_instructions_closed() {
+    // Spec scenario 子鍵打錯即 fail-closed ＋ 其他指令同樣 fail-closed.
+    let p = TempProject::new("review-typo-show", "review:\n  critcal:\n    - x\n");
+    let out = p.run(&["workflow-config", "show"]);
+    assert!(!out.status.success(), "show must exit non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("openspec/config.yaml") && err.contains("critcal"), "{err}");
+    assert!(stdout_of(&out).trim().is_empty(), "no stdout: {}", stdout_of(&out));
+    let p = TempProject::new("review-typo-instructions", "review:\n  baseline: keep\n");
+    let change = p.dir.join("openspec").join("changes").join("any-change");
+    std::fs::create_dir_all(&change).unwrap();
+    std::fs::write(change.join(".openspec.yaml"), "schema: spec-driven\ncreated: 2026-10-14\n").unwrap();
+    let out = p.run(&["instructions", "proposal", "--change", "any-change", "--json"]);
+    assert!(!out.status.success(), "instructions must exit non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("openspec/config.yaml") && err.contains("keep"), "{err}");
+    assert!(stdout_of(&out).trim().is_empty(), "no default payload: {}", stdout_of(&out));
+}
+
 // --- help parity ---
 
 /// The comma-separated list a "…: a, b, c" sentence ends with. Both the help

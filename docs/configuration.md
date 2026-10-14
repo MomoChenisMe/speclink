@@ -8,7 +8,7 @@ Speclink keeps settings in three layers. Workflow policy lives in `openspec/conf
 
 | Location | Contents | Read by | In version control |
 | --- | --- | --- | --- |
-| `openspec/config.yaml` | Workflow policy: `schema`, `locale`, `spec_locale`, `tdd`, `audit`, `worktree`, `context`, `rules` | The CLI and the desktop app; skills get the effective values through `speclink instructions` | Yes |
+| `openspec/config.yaml` | Workflow policy: `schema`, `locale`, `spec_locale`, `tdd`, `audit`, `worktree`, `context`, `rules`, `review` | The CLI and the desktop app; skills get the effective values through `speclink instructions` | Yes |
 | `.speclink.yaml` | The binding of this workspace: `tools`, `spec_dir`, `remote` | The CLI and the desktop app | Yes (it holds no credentials) |
 | `.speclink/` | Local work data: snapshots for archive and the quality stations, records of generated tool files, the read-only content snapshot of remote mode | The CLI and the desktop app | No (`speclink init` adds it to `.gitignore`) |
 | User config directory | `credentials.yaml` (the credential that the CLI stores for an access-token login), `schemas/` (user-level custom schemas), `config.yaml` (the key-value store of `speclink config`) | The CLI and the desktop app | No |
@@ -66,12 +66,16 @@ Use `speclink workflow-config`. In local mode it changes `openspec/config.yaml`.
 | `set <key> <value>` | Sets one of `locale`, `spec_locale`, `tdd`, `audit`, `worktree` |
 | `context --stdin` | Replaces `context` with the stdin text. Whitespace-only input removes the key |
 | `rules <artifact> --stdin` | Replaces the rules of one artifact with stdin, one rule per line. Blank lines are skipped. Empty input removes the section. `<artifact>` must be an artifact id of the current schema |
+| `review <list> --stdin` | Replaces one list of project review rules with stdin, one rule per line. Blank lines are skipped. Empty input removes the list. `<list>` is `critical`, `warning`, or `suggestion` |
+| `review baseline <mode>` | Sets whether the review station also checks its 12 built-in code smells. `<mode>` is `extend` (the default, which removes the key) or `replace` |
 
 Write rules:
 
 - `locale` accepts only `tw`, `ja`, `en`. `spec_locale` also accepts `auto` (follow `locale`). Case must match. A display name such as 「繁體中文」 is rejected, and the error lists the valid codes.
 - `tdd`, `audit`, and `worktree` accept only `true` / `false`. A `false` value (or an empty `locale`) removes the line, so the default applies again.
-- All three write subcommands accept `--dry-run`. It prints the diff and writes nothing.
+- All write subcommands accept `--dry-run`. It prints the diff and writes nothing.
+- A `review` write replaces the whole `review` block. `extend` writes no `baseline` key, an empty list removes its key, and a block with nothing left is removed. Comments inside the `review` block are not kept.
+- The `review` block is strict. An unknown key (a typo such as `critcal`), a `baseline` other than `extend` or `replace`, or a list entry that is not a string makes the file unparseable. Every command that reads the file then fails and names the key, until you correct it.
 - A write changes only the target lines. All other content and comments stay as they are. If the file cannot be parsed, reads and writes both fail, so your content stays safe.
 - In local mode, a `worktree` change also adds or removes the two worktree skills. You cannot change `worktree` from `true` to `false` while a worktree is still open. The command lists those worktrees. Close them with `speclink-worktree-merge` first.
 - In remote mode, a write fails if another person writes at the same time. Run the command again; it never overwrites the other write. The command also fails when you are offline or your credential is not valid. Nothing is queued.
@@ -103,7 +107,9 @@ Run the first line in a project right after `speclink init`. **Expected output**
 - Run `speclink schema init <name> --default`. It makes a new custom schema and sets it as the project default.
 - Use the Schema tab in **Project Settings** of the desktop app.
 
-**Project Settings** in the desktop app changes the same file with the same rules. The built-in `speclink-config` skill collects `context` and `rules` from your code. It shows you the diff and writes only after you approve.
+**Project Settings** in the desktop app changes the same file with the same rules. The built-in `speclink-config` skill collects `context` and `rules` from your code. It shows you the diff and writes only after you approve. It asks you for the review baseline, and it takes review rules only from you, never from your code.
+
+The review station applies the `review` block only with a CLI and skill files of this version or later. Run `speclink update` after you upgrade. An older CLI skips the block.
 
 ## <a id="tools"></a>AI tools and custom tools
 
@@ -166,6 +172,8 @@ When you connect to a remote, each setting keeps its layer. Only the location of
 | `worktree` | `true` / `false` | `false` | Turn on the parallel worktree flow and make the two worktree skills |
 | `context` | Multi-line text | None | Project background that the AI gets when it writes artifacts |
 | `rules` | Artifact id → list of rules | None | Writing rules for each artifact |
+| `review.baseline` | `extend`, `replace` | `extend` | Whether the review station checks its 12 built-in code smells plus the project rules (`extend`), or the project rules only (`replace`) |
+| `review.critical`, `review.warning`, `review.suggestion` | Lists of rules | None | Project review rules for the Standards axis of the review station. The list a rule is in sets the severity of a violation |
 
 Speclink ignores other keys.
 

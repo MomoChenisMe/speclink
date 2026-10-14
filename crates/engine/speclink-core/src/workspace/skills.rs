@@ -121,6 +121,24 @@ const B_SYNC: &str = include_str!("../../assets/skills/sync.md");
 const B_CLARIFY: &str = include_str!("../../assets/skills/clarify.md");
 const B_TDD: &str = include_str!("../../assets/skills/tdd.md");
 
+/// The review skill's smell baseline names, in template order — the single
+/// source presentation surfaces (the desktop review-rules page) list, so no
+/// second copy can drift. A unit test pins it to the review skill template.
+pub const REVIEW_BASELINE_SMELLS: [&str; 12] = [
+    "Mysterious Name",
+    "Duplicated Code",
+    "Feature Envy",
+    "Data Clumps",
+    "Primitive Obsession",
+    "Repeated Switches",
+    "Shotgun Surgery",
+    "Divergent Change",
+    "Speculative Generality",
+    "Message Chains",
+    "Middle Man",
+    "Refused Bequest",
+];
+
 /// The skills that generate SKILL.md files.
 pub fn registry() -> Vec<Skill> {
     vec![
@@ -463,6 +481,24 @@ mod tests {
             Some(manual.body),
             "skill_body resolves manual to the same embedded asset"
         );
+    }
+
+    /// spec review-skill「Standards 軸的 smell baseline」：引擎提供的 12 個名稱與審查
+    /// 技能範本內嵌的 smell 清單（`- **<name>** — … → …` 項目）逐名、逐序一致——
+    /// 任一端改名或增刪即失敗。
+    #[test]
+    fn review_baseline_smells_match_the_review_skill_template() {
+        let names: Vec<&str> = B_REVIEW
+            .lines()
+            .map(str::trim_start)
+            .filter(|l| l.starts_with("- **") && l.contains("** — ") && l.contains(" → "))
+            .map(|l| l["- **".len()..].split("**").next().unwrap())
+            .collect();
+        assert_eq!(names.len(), 12, "the template carries exactly 12 smells: {names:?}");
+        assert_eq!(names, REVIEW_BASELINE_SMELLS);
+        for name in REVIEW_BASELINE_SMELLS {
+            assert!(B_REVIEW.contains(&format!("- **{name}**")), "{name} is a template list item");
+        }
     }
 
     /// 鎖定基準（重構前後皆須成立）：三種 render target 的輸出外形——恰一個結尾

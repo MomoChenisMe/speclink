@@ -8,6 +8,7 @@ import {
   RefreshCw,
   Server,
   Settings2,
+  ShieldCheck,
   SquareTerminal,
   Workflow,
   type LucideIcon,
@@ -24,7 +25,7 @@ export interface AppSettingsCategory {
 }
 
 export interface ProjectSettingsCategory {
-  id: "context" | "rules" | "workflow" | "speclink";
+  id: "context" | "rules" | "review" | "workflow" | "speclink";
   labelKey: string;
   icon: LucideIcon;
   /** config＝openspec/config.yaml 組；project＝「專案」組（.speclink.yaml）。 */
@@ -96,6 +97,7 @@ export const APP_SETTINGS_CATEGORIES: AppSettingsCategory[] = [
 export const PROJECT_SETTINGS_CATEGORIES: ProjectSettingsCategory[] = [
   { id: "context", labelKey: "settings.projectSection.context", icon: FileText, group: "config", remote: true },
   { id: "rules", labelKey: "settings.projectSection.rules", icon: ListChecks, group: "config", remote: true },
+  { id: "review", labelKey: "settings.projectSection.review", icon: ShieldCheck, group: "config", remote: true },
   { id: "workflow", labelKey: "settings.projectSection.workflow", icon: Workflow, group: "config", remote: true },
   { id: "speclink", labelKey: "settings.projectSection.speclink", icon: FileCog, group: "project", remote: false },
 ];

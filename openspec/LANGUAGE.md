@@ -81,6 +81,12 @@
 - **why**: 與「產出規則」「產出政策」同族，字面可推出「這個變更會產出哪些文件、什麼順序」；schema 僅留於技術 token（鍵名、CLI 指令、識別符如 spec-driven）。經使用者裁定用譯詞（desktop-schema-panel，2026-08-20）。
 - **明文例外（已退場）**：設定頁產出流程頁籤直出「Schema」的例外（desktop-schema-panel，2026-08-22）已隨設定分類欄取代頁籤而退場（desktop-settings-mode，2026-10-10）；分類名與頁標題皆為「產出流程」，不再有例外。
 
+### 審查規則
+
+- **definition**: `openspec/config.yaml` 的 `review` 區塊——審查關卡 Standards 軸的預設清單模式（`extend` 沿用並追加、`replace` 整份換掉）與依嚴重度（critical、warning、suggestion）分組的專案規則（專案設定的分類名）。
+- **avoid**: review rules（中文散文中）、自訂規則（指此概念時）
+- **why**: 與「產出規則」同族，字面即可推出用途——一個管產出、一個管審查。2026-10-14 討論「custom-review-rules」定案。
+
 ### 待收尾
 
 - **definition**: 等使用者執行動詞的卡片——已就緒（任務全數完成、等待封存）的變更＋已結論未轉出（等待轉為變更或封存）的討論。專案分頁徽章顯示的即為待收尾數。

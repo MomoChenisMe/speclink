@@ -8,7 +8,7 @@ Speclink 的設定分三層：工作流政策寫在 `openspec/config.yaml`，跟
 
 | 位置 | 放什麼 | 誰會讀 | 進版本控制 |
 | --- | --- | --- | --- |
-| `openspec/config.yaml` | 工作流政策：`schema`、`locale`、`spec_locale`、`tdd`、`audit`、`worktree`、`context`、`rules` | CLI、桌面 app；技能透過 `speclink instructions` 取得生效值 | 是 |
+| `openspec/config.yaml` | 工作流政策：`schema`、`locale`、`spec_locale`、`tdd`、`audit`、`worktree`、`context`、`rules`、`review` | CLI、桌面 app；技能透過 `speclink instructions` 取得生效值 | 是 |
 | `.speclink.yaml` | 這個 workspace 的綁定：`tools`、`spec_dir`、`remote` | CLI、桌面 app | 是（裡面沒有憑證） |
 | `.speclink/` | 本機工作資料：封存與品質關卡用的快照、生成工具的記錄、遠端模式的唯讀內容快照 | CLI、桌面 app | 否（`speclink init` 會把它加進 `.gitignore`） |
 | 使用者層設定目錄 | `credentials.yaml`（CLI 用存取金鑰登入時存的憑證）、`schemas/`（使用者層自訂 schema）、`config.yaml`（`speclink config` 的鍵值） | CLI、桌面 app | 否 |
@@ -66,12 +66,16 @@ Speclink 的設定分三層：工作流政策寫在 `openspec/config.yaml`，跟
 | `set <key> <value>` | 改 `locale`、`spec_locale`、`tdd`、`audit`、`worktree` 其中一個 |
 | `context --stdin` | 用 stdin 的內容整段取代 `context`。內容只有空白時移除這個鍵 |
 | `rules <artifact> --stdin` | 用 stdin 整段取代一個 artifact 的規則，一行一條，空行略過。stdin 為空時移除這一節。`<artifact>` 必須是目前 schema 的 artifact id |
+| `review <list> --stdin` | 用 stdin 整段取代一個審查規則清單，一行一條，空行略過。stdin 為空時移除這個清單。`<list>` 是 `critical`、`warning` 或 `suggestion` |
+| `review baseline <mode>` | 設定審查關卡要不要檢查內建的 12 條 code smell。`<mode>` 是 `extend`（預設，寫入時移除這個鍵）或 `replace` |
 
 寫入規則：
 
 - `locale` 只收 `tw`、`ja`、`en`；`spec_locale` 另外收 `auto`（跟著 `locale`）。大小寫要相同。寫「繁體中文」這類名稱會被拒絕，錯誤訊息會列出可用的代碼。
 - `tdd`、`audit`、`worktree` 只收 `true`／`false`。設成 `false`（或把 `locale` 設成空字串）會刪掉那一行，回到預設值。
-- 三個寫入子指令都有 `--dry-run`：只印出差異，不寫檔。
+- 所有寫入子指令都有 `--dry-run`：只印出差異，不寫檔。
+- `review` 的寫入會整塊取代 `review` 區塊：`extend` 不寫 `baseline` 鍵、清單清空就移除該鍵、整塊沒有內容時移除 `review` 鍵。`review` 區塊內的註解不會保留。
+- `review` 區塊採嚴格解析：出現不認得的鍵（例如打錯成 `critcal`）、`baseline` 不是 `extend` 或 `replace`、或清單裡有不是字串的條目時，整份檔案視為無法解析。讀這份檔案的指令都會失敗並點名出錯的鍵，直到你改正。
 - 只改目標那幾行，其他內容與註解原樣保留。檔案無法解析時讀寫都會拒絕，不會蓋掉你的內容。
 - 本機模式下改 `worktree` 會同時產生或移除兩個 worktree 技能。還有 worktree 沒收尾時，不能從 `true` 改成 `false`；指令會列出那些 worktree，請先用 `speclink-worktree-merge` 收掉。
 - 遠端模式下，如果別人剛好同時寫入，指令會失敗並請你重跑，不會蓋掉別人的修改。離線或憑證失效也會直接失敗，不會排隊。
@@ -103,7 +107,9 @@ cat CONTEXT.md | speclink workflow-config context --stdin
 - `speclink schema init <name> --default`：建立一個新的自訂 schema，並設成專案預設。
 - 桌面 app「專案設定」的 Schema 分頁。
 
-桌面 app 的「專案設定」改的是同一份檔案，規則也相同。內建技能 `speclink-config` 會從程式碼整理出 `context` 與 `rules`，先給你看差異，你同意後才寫入。
+桌面 app 的「專案設定」改的是同一份檔案，規則也相同。內建技能 `speclink-config` 會從程式碼整理出 `context` 與 `rules`，先給你看差異，你同意後才寫入。審查規則的預設清單模式它會直接問你；審查規則只收你口述的，不從程式碼推導。
+
+審查關卡要套用 `review` 區塊，需要這個版本以後的 CLI 與技能檔；升級後請執行 `speclink update`。舊版 CLI 會略過這個區塊。
 
 ## <a id="tools"></a>AI 工具與自訂工具
 
@@ -166,6 +172,8 @@ tools:
 | `worktree` | `true`／`false` | `false` | 開啟 worktree 平行實作流程，並產生兩個 worktree 技能 |
 | `context` | 多行文字 | 無 | 產生 artifact 時提供給 AI 的專案背景 |
 | `rules` | artifact id → 規則清單 | 無 | 各 artifact 的撰寫規則 |
+| `review.baseline` | `extend`、`replace` | `extend` | 審查關卡檢查內建 12 條 code smell 再加上專案規則（`extend`），或只用專案規則（`replace`） |
+| `review.critical`、`review.warning`、`review.suggestion` | 規則清單 | 無 | 審查關卡 Standards 軸的專案審查規則。規則放在哪個清單，違反時就記成那個嚴重度 |
 
 其他鍵會被忽略。
 
