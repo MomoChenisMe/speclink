@@ -9,7 +9,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 
@@ -100,7 +100,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 
@@ -434,7 +434,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 
@@ -1048,7 +1048,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 
@@ -1390,7 +1390,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 
@@ -1634,7 +1634,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 
@@ -1758,7 +1758,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 
@@ -2068,7 +2068,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 
@@ -2249,7 +2249,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 
@@ -2733,7 +2733,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 
@@ -2874,7 +2874,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 
@@ -3066,7 +3066,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 
@@ -3378,7 +3378,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 
@@ -3591,7 +3591,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 
@@ -4053,7 +4053,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 
@@ -4175,7 +4175,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 
@@ -4366,10 +4366,13 @@ Report which test commands ran and which scope was skipped, and say that CI guar
    Feed via stdin, in order:
    - one `**Phase**:` line — step 3's `phase` (`discovery` or `validation`);
    - one `**Patch**:` line — step 3's `patchHash` (`sha256:<hex>`);
+   - discovery rounds only: one `**Rules**:` line — step 2's `review.baseline` (`extend` or `replace`) — then one `**Rule**: <SEVERITY> <rule text>` line per project rule: the `critical` list first, then `warning`, then `suggestion`, each list in its own order, with the list name in uppercase as SEVERITY;
    - one `**Scope**:` line — this round's reviewed files, comma-separated repo-root relative paths (the frozen patch's `paths`);
    - zero or more findings lines `- [SEVERITY] path — description`, carrying both axes; start each description with its axis (`Standards:` / `Correctness:`).
 
    Findings descriptions go in exactly as the sub-agents reported them — same language, never translated by the main thread; severity labels and axis prefixes stay in English.
+
+   **Rule lines**: they record what this discovery pass applied, so take them from the `review` object step 2 read — the rules the Standards brief carried — and do not read the config again. Without project rules the record is the single `**Rules**:` line. A rule that spans several lines goes on one line: replace each line break, together with the spaces around it, with one space. These lines do not follow the `locale`: `**Rules**:`, `**Rule**:`, `extend`, `replace` and the severity labels stay English, and the rule text is copied as the config wrote it, untranslated. A validation round writes no `**Rules**:` or `**Rule**:` line — it does not apply the rules afresh. The record is separate from step 6's opening line, which still stays out of the ticket.
 
    **Validation rounds**: every unresolved original finding is carried into the new round verbatim — never reworded; a reworded line fakes the shrinking the loop rule depends on. Regressions the remediation patch directly introduced enter as new findings lines. Every accepted, still-unfixed **must-fix** finding is appended verbatim ending with the structural token `(accepted)` — the token stays English like the severity labels. Unfixed SUGGESTIONs carry forward as plain unresolved lines without the token (the step 7 boundary). The last round must reflect all outstanding reservations — that is what keeps an `--accept` stamp honest.
 
@@ -4442,7 +4445,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 
@@ -4528,7 +4531,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 
@@ -4852,7 +4855,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.46.0"
+  version: "v1.47.0"
   generatedBy: "Speclink"
 ---
 

@@ -248,3 +248,148 @@ describe("TicketView 軸向籤、可蓋章提示框與輪卡頭", () => {
     expect(r1.className).toContain("overflow-hidden");
   });
 });
+
+// spec desktop-app「詳情頁的工單分頁」的「套用規則」列（review-ticket-applied-rules design D6）。
+describe("TicketView 套用規則列", () => {
+  const SMELLS = [
+    "Mysterious Name",
+    "Duplicated Code",
+    "Feature Envy",
+    "Data Clumps",
+    "Primitive Obsession",
+    "Repeated Switches",
+    "Shotgun Surgery",
+    "Divergent Change",
+    "Speculative Generality",
+    "Message Chains",
+    "Middle Man",
+    "Refused Bequest",
+  ];
+  type Rules = NonNullable<TicketRound["rules"]>;
+  const rulesOf = (baseline: Rules["baseline"], critical: string[], warning: string[], suggestion: string[]): Rules => ({
+    baseline,
+    critical,
+    warning,
+    suggestion,
+  });
+  const withRules = (rules: Rules | null): StationTicket => ({
+    rounds: [{ index: 1, phase: "discovery", patchHash: HASH, rules, scope: ["src/a.rs"], findings: [] }],
+    reviewBaselineSmells: SMELLS,
+  });
+  const enWrapper = ({ children }: { children: ReactNode }) => <I18nProvider locale="en">{children}</I18nProvider>;
+  const rulesRow = (container: HTMLElement) => container.querySelector("[data-ticket-rules]") as HTMLElement | null;
+  const rulesToggle = (container: HTMLElement) =>
+    rulesRow(container)!.querySelector("[data-ticket-rules-toggle]") as HTMLButtonElement;
+  const counts = (container: HTMLElement) =>
+    Array.from(rulesToggle(container).querySelectorAll("[data-ticket-rules-count]")).map((c) => text(c));
+  const NOTE = "記錄首輪當時的設定；之後改了審查規則，這裡不會跟著變。";
+
+  // spec Example「列頭呈現」：一列一案（tw 與 en 的列頭文字、條數籤、底色）。
+  const HEADER: Array<{ name: string; rules: Rules; tw: string; en: string; counts: string[]; amber: boolean }> = [
+    { name: "extend，三清單皆空", rules: rulesOf("extend", [], [], []), tw: "預設 12 條 code smell", en: "12 baseline code smells", counts: [], amber: false },
+    {
+      name: "extend，critical 2、warning 1、suggestion 0",
+      rules: rulesOf("extend", ["c1", "c2"], ["w1"], []),
+      tw: "預設 12 條＋專案規則",
+      en: "12 baseline smells + project rules",
+      counts: ["CRITICAL 2", "WARNING 1"],
+      amber: false,
+    },
+    {
+      name: "replace，suggestion 1",
+      rules: rulesOf("replace", [], [], ["s1"]),
+      tw: "只用專案規則（沒有套用預設 12 條）",
+      en: "Project rules only (baseline not applied)",
+      counts: ["SUGGESTION 1"],
+      amber: false,
+    },
+    {
+      name: "replace，三清單皆空",
+      rules: rulesOf("replace", [], [], []),
+      tw: "整份換掉且沒有專案規則：只依 repo 文件審查",
+      en: "Baseline replaced, no project rules: judged against repo documents only",
+      counts: [],
+      amber: true,
+    },
+  ];
+  for (const row of HEADER) {
+    it(`列頭：${row.name}`, () => {
+      const { container } = render(<TicketView station="review" ticket={withRules(row.rules)} />);
+      const toggle = rulesToggle(container);
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      expect(text(toggle.querySelector("[data-ticket-rules-label]"))).toBe("套用規則");
+      expect(text(toggle.querySelector("[data-ticket-rules-mode]"))).toBe(row.tw);
+      expect(counts(container)).toEqual(row.counts);
+      expect(rulesRow(container)!.className.includes("bg-status-warning/10")).toBe(row.amber);
+
+      const en = rtlRender(<TicketView station="review" ticket={withRules(row.rules)} />, { wrapper: enWrapper });
+      expect(text(rulesToggle(en.container).querySelector("[data-ticket-rules-label]"))).toBe("Rules applied");
+      expect(text(rulesToggle(en.container).querySelector("[data-ticket-rules-mode]"))).toBe(row.en);
+    });
+  }
+
+  it("沒有專案規則時：預設收合，展開後列 SUGGESTION 色章、預設清單 12 個名稱與末尾註記，沒有專案規則組", () => {
+    const { container } = render(<TicketView station="review" ticket={withRules(rulesOf("extend", [], [], []))} />);
+    expect(container.querySelector("[data-baseline-smells]")).toBeNull();
+    fireEvent.click(rulesToggle(container));
+    expect(rulesToggle(container).getAttribute("aria-expanded")).toBe("true");
+    const body = rulesRow(container)!.querySelector("[data-ticket-rules-body]") as HTMLElement;
+    const baseline = body.querySelector("[data-ticket-rules-baseline]") as HTMLElement;
+    expect(text(baseline.querySelector("[data-ticket-severity]"))).toBe("SUGGESTION");
+    expect(text(baseline)).toContain("預設 12 條 code smell");
+    const names = Array.from(body.querySelectorAll("[data-baseline-smells] li")).map((li) => text(li));
+    expect(names).toEqual(SMELLS);
+    expect(body.querySelectorAll("[data-ticket-rules-group]")).toHaveLength(0);
+    expect(text(body.querySelector("[data-ticket-rules-note]"))).toBe(NOTE);
+  });
+
+  it("展開後依嚴重度列出專案規則原文（spec Scenario「展開後列出專案規則原文」）", () => {
+    const rules = rulesOf(
+      "extend",
+      ["所有 SQL 一律用參數化查詢，不得用字串拼接", "不得把金鑰或密碼寫死在程式碼裡"],
+      ["新增的公開 API 要有對應的測試"],
+      [],
+    );
+    const { container } = render(<TicketView station="review" ticket={withRules(rules)} />);
+    fireEvent.click(rulesToggle(container));
+    const body = rulesRow(container)!.querySelector("[data-ticket-rules-body]") as HTMLElement;
+    expect(body.querySelectorAll("[data-baseline-smells] li")).toHaveLength(12);
+    const groups = Array.from(body.querySelectorAll("[data-ticket-rules-group]")) as HTMLElement[];
+    expect(groups.map((g) => g.getAttribute("data-ticket-rules-group"))).toEqual(["CRITICAL", "WARNING"]);
+    expect(text(groups[0].querySelector("[data-ticket-severity]"))).toBe("CRITICAL");
+    expect(text(groups[0])).toContain("專案規則 2 條");
+    expect(Array.from(groups[0].querySelectorAll("li")).map((li) => text(li))).toEqual(rules.critical);
+    expect(text(groups[1])).toContain("專案規則 1 條");
+    expect(Array.from(groups[1].querySelectorAll("li")).map((li) => text(li))).toEqual(rules.warning);
+    // 末尾註記排在最後。
+    expect(body.lastElementChild?.hasAttribute("data-ticket-rules-note")).toBe(true);
+  });
+
+  it("replace 展開後寫「沒有套用預設 12 條 code smell」，不列名稱", () => {
+    const { container } = render(<TicketView station="review" ticket={withRules(rulesOf("replace", [], [], ["s1"]))} />);
+    fireEvent.click(rulesToggle(container));
+    const body = rulesRow(container)!.querySelector("[data-ticket-rules-body]") as HTMLElement;
+    expect(text(body.querySelector("[data-ticket-rules-baseline]"))).toBe("沒有套用預設 12 條 code smell");
+    expect(body.querySelector("[data-baseline-smells]")).toBeNull();
+    expect(text(body.querySelector('[data-ticket-rules-group="SUGGESTION"]'))).toContain("s1");
+    expect(text(body.querySelector("[data-ticket-rules-note]"))).toBe(NOTE);
+  });
+
+  it("條數取 reviewBaselineSmells 的長度，不寫死 12", () => {
+    const ticket = { ...withRules(rulesOf("extend", [], [], [])), reviewBaselineSmells: SMELLS.slice(0, 3) };
+    const { container } = render(<TicketView station="review" ticket={ticket} />);
+    expect(text(rulesToggle(container).querySelector("[data-ticket-rules-mode]"))).toBe("預設 3 條 code smell");
+  });
+
+  it("列在範圍路徑之前", () => {
+    const { container } = render(<TicketView station="review" ticket={withRules(rulesOf("extend", [], [], []))} />);
+    const scope = container.querySelector("[data-ticket-scope-path]") as HTMLElement;
+    expect(rulesRow(container)!.compareDocumentPosition(scope) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("rules 為 null、缺席或驗證站工單時沒有此列", () => {
+    expect(rulesRow(render(<TicketView station="review" ticket={withRules(null)} />).container)).toBeNull();
+    expect(rulesRow(render(<TicketView station="review" ticket={TWO_ROUNDS} />).container)).toBeNull();
+    expect(rulesRow(render(<TicketView station="verify" ticket={withRules(null)} />).container)).toBeNull();
+  });
+});

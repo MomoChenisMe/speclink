@@ -384,10 +384,27 @@ pub struct ReviewRoundDto {
     /// 結構化輪次綁定的 frozen patch identity（`sha256:<hex>`）；legacy 為 null。
     #[serde(default)]
     pub patch_hash: Option<String>,
+    /// discovery 輪記錄的套用規則；沒有記錄時為 null，舊 server 缺席同樣讀作 null。
+    #[serde(default)]
+    pub rules: Option<ReviewRulesDto>,
     #[serde(default)]
     pub scope: Vec<String>,
     #[serde(default)]
     pub findings: Vec<ReviewFindingDto>,
+}
+
+/// 一輪記錄的套用規則（鏡射 speclink-core 的 `ReviewConfig`）：baseline 為
+/// extend|replace token，三個清單依嚴重度收錄規則原文。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewRulesDto {
+    pub baseline: String,
+    #[serde(default)]
+    pub critical: Vec<String>,
+    #[serde(default)]
+    pub warning: Vec<String>,
+    #[serde(default)]
+    pub suggestion: Vec<String>,
 }
 
 /// 工單 findings 行的 wire 形狀（severity ∈ CRITICAL／WARNING／SUGGESTION）。
@@ -572,6 +589,41 @@ mod tests {
     }
 
     #[test]
+    fn review_round_dto_rules_are_nullable_and_absent_on_old_servers() {
+        // review-station spec「審查工單的讀取」：rounds[] 增列 rules object|null；
+        // 舊 server 的 payload（無 rules）解析為 None、序列化為明確 null。
+        let old: ReviewRoundDto =
+            serde_json::from_str(r#"{"index":1,"scope":[],"findings":[]}"#).unwrap();
+        assert_eq!(old.rules, None);
+        let json = serde_json::to_value(&old).unwrap();
+        assert!(
+            json.as_object().unwrap().get("rules").is_some_and(serde_json::Value::is_null),
+            "rules must serialize as explicit null: {json}"
+        );
+
+        let wire = serde_json::json!({
+            "baseline": "extend",
+            "critical": ["所有 SQL 一律用參數化查詢，不得用字串拼接"],
+            "warning": [],
+            "suggestion": ["偏好以提早返回取代深層巢狀"],
+        });
+        let with: ReviewRoundDto = serde_json::from_value(serde_json::json!({
+            "index": 1, "scope": [], "findings": [], "rules": wire,
+        }))
+        .unwrap();
+        assert_eq!(
+            with.rules,
+            Some(ReviewRulesDto {
+                baseline: "extend".into(),
+                critical: vec!["所有 SQL 一律用參數化查詢，不得用字串拼接".into()],
+                warning: vec![],
+                suggestion: vec!["偏好以提早返回取代深層巢狀".into()],
+            })
+        );
+        assert_eq!(serde_json::to_value(&with).unwrap()["rules"], wire);
+    }
+
+    #[test]
     fn put_artifact_shapes_round_trip() {
         let req = PutArtifactRequest { content: "## Why\n".into() };
         assert_eq!(
@@ -685,6 +737,7 @@ mod tests {
             index: 1,
             phase: None,
             patch_hash: None,
+            rules: None,
             scope: vec![],
             findings: vec![],
         };
@@ -822,6 +875,7 @@ mod tests {
             index: 2,
             phase: Some("validation".into()),
             patch_hash: Some(format!("sha256:{}", "a".repeat(64))),
+            rules: None,
             scope: vec!["src/lib.rs".into()],
             findings: vec![ReviewFindingDto {
                 severity: "WARNING".into(),

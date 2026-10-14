@@ -9,6 +9,7 @@
 //! 工單本身是 sidecar：不註冊進 workflow schema，僅由動詞經 `&dyn Store` 讀寫
 //! （與 discuss 動詞同型）——本地隨 git、remote 走 store 文件管道。
 
+use crate::config::{ReviewBaseline, ReviewConfig};
 use crate::keylines::KeyLines;
 use crate::model::{ChangeMeta, ReviewedScopeEntry};
 use crate::store::Store;
@@ -140,12 +141,14 @@ impl RoundPhase {
 }
 
 /// 一輪檢查：`## Round N` 區段的解析結果。`phase`／`patch_hash` 為結構化輪次
-/// 的 frozen patch identity；legacy 輪次兩欄皆 None。
+/// 的 frozen patch identity；legacy 輪次兩欄皆 None。`rules` 是 discovery 輪記錄
+/// 的套用規則（`**Rules**:`／`**Rule**:` 行），沒有記錄時為 None。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Round {
     pub index: usize,
     pub phase: Option<RoundPhase>,
     pub patch_hash: Option<String>,
+    pub rules: Option<ReviewConfig>,
     pub scope: Vec<String>,
     pub findings: Vec<Finding>,
 }
@@ -153,12 +156,14 @@ pub struct Round {
 impl Round {
     /// 一輪的 JSON 形狀——CLI `<station> show --json` 的 `rounds` 項與桌面工單分頁
     /// 共用這一份（欄位集合與 null 語意是對外契約）：camelCase，legacy 輪的
-    /// `phase`／`patchHash` 為明確 null。server 的 `ReviewRoundDto` 是同形的型別化鏡射。
+    /// `phase`／`patchHash` 與沒有規則記錄的 `rules` 為明確 null。server 的
+    /// `ReviewRoundDto` 是同形的型別化鏡射。
     pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "index": self.index,
             "phase": self.phase.map(|p| p.as_str()),
             "patchHash": self.patch_hash,
+            "rules": self.rules,
             "scope": self.scope,
             "findings": self
                 .findings
@@ -810,11 +815,13 @@ struct RoundBody {
     findings: Vec<Finding>,
     phase: Option<RoundPhase>,
     patch_hash: Option<String>,
+    rules: Option<ReviewConfig>,
 }
 
 /// 解析並驗證一輪內容：非空 `**Scope**:` 清單＋合法 findings 行；結構化輪次
-/// 另帶成對的 `**Phase**:` 與 `**Patch**:`（spec「工單的建立與追加」）。
-/// stdin 驗證與 show 的輪次解析共用同一文法——動詞產生的格式即動詞驗證的格式。
+/// 另帶成對的 `**Phase**:` 與 `**Patch**:`，discovery 輪可再帶套用規則記錄
+/// （spec「工單的建立與追加」）。stdin 驗證與 show 的輪次解析共用同一文法——
+/// 動詞產生的格式即動詞驗證的格式。
 fn parse_round_body(st: &Station, content: &str) -> Result<RoundBody> {
     if content.trim().is_empty() {
         bail!("round content is empty — a round must carry a `**Scope**:` line");
@@ -823,6 +830,8 @@ fn parse_round_body(st: &Station, content: &str) -> Result<RoundBody> {
     let mut findings = Vec::new();
     let mut phase: Option<RoundPhase> = None;
     let mut patch_hash: Option<String> = None;
+    let mut baseline: Option<ReviewBaseline> = None;
+    let mut rule_lines: Vec<(Severity, String)> = Vec::new();
     for line in content.lines() {
         let t = line.trim_start();
         if let Some(rest) = t.strip_prefix("**Scope**:") {
@@ -855,6 +864,16 @@ fn parse_round_body(st: &Station, content: &str) -> Result<RoundBody> {
                 bail!("multiple `**Patch**:` lines in one round");
             }
             patch_hash = Some(ensure_patch_hash(rest.trim())?);
+        } else if let Some(rest) = t.strip_prefix("**Rules**:") {
+            if baseline.is_some() {
+                bail!("multiple `**Rules**:` lines in one round — one applied-rules record per round");
+            }
+            let token = rest.trim();
+            baseline = Some(ReviewBaseline::parse(token).ok_or_else(|| {
+                anyhow!("unknown rules baseline '{token}' — expected extend or replace")
+            })?);
+        } else if let Some(rest) = t.strip_prefix("**Rule**:") {
+            rule_lines.push(parse_rule(rest)?);
         } else if t.starts_with("##") && !t.starts_with("###") {
             // `## Round N` 是輪次分隔符——內容夾帶二級標題會偽造輪次結構。
             bail!("round content must not contain `## ` headings (round delimiter): {t}");
@@ -866,13 +885,57 @@ fn parse_round_body(st: &Station, content: &str) -> Result<RoundBody> {
         bail!("`**Phase**:` and `**Patch**:` must appear together — a structured round \
                binds its phase to a frozen patch hash");
     }
+    let rules = applied_rules(phase, baseline, rule_lines)?;
     let Some(scope) = scope else {
         bail!(
             "round content must contain a `**Scope**:` line listing the files {}",
             st.meta_prefix
         );
     };
-    Ok(RoundBody { scope, findings, phase, patch_hash })
+    Ok(RoundBody { scope, findings, phase, patch_hash, rules })
+}
+
+/// 組出一輪的套用規則記錄：`**Rule**:` 行需要同輪的 `**Rules**:`，帶
+/// `**Rules**:` 的輪必須是 discovery（複驗不重新套用規則）。規則依嚴重度分組、
+/// 組內保持出現順序。
+fn applied_rules(
+    phase: Option<RoundPhase>,
+    baseline: Option<ReviewBaseline>,
+    rule_lines: Vec<(Severity, String)>,
+) -> Result<Option<ReviewConfig>> {
+    let Some(baseline) = baseline else {
+        if !rule_lines.is_empty() {
+            bail!("`**Rule**:` lines need a `**Rules**:` line in the same round");
+        }
+        return Ok(None);
+    };
+    if phase != Some(RoundPhase::Discovery) {
+        bail!("applied rules are recorded only in a discovery round — `**Rules**:` needs \
+               `**Phase**: discovery`");
+    }
+    let mut rules = ReviewConfig { baseline, ..ReviewConfig::default() };
+    for (severity, text) in rule_lines {
+        match severity {
+            Severity::Critical => rules.critical.push(text),
+            Severity::Warning => rules.warning.push(text),
+            Severity::Suggestion => rules.suggestion.push(text),
+        }
+    }
+    Ok(Some(rules))
+}
+
+/// 解析 `**Rule**:` 之後的值：`<SEVERITY> <規則原文>`，原文去頭尾空白後須非空。
+fn parse_rule(rest: &str) -> Result<(Severity, String)> {
+    let rest = rest.trim();
+    let (sev, text) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+    let Some(severity) = Severity::parse(sev) else {
+        bail!("unknown rule severity '{sev}' — expected CRITICAL, WARNING, or SUGGESTION");
+    };
+    let text = text.trim();
+    if text.is_empty() {
+        bail!("`**Rule**: {sev}` is missing the rule text — expected `**Rule**: <SEVERITY> <rule text>`");
+    }
+    Ok((severity, text.to_string()))
 }
 
 /// Patch 行的格式守門：`sha256:` ＋恰好 64 個小寫十六進位字元。
@@ -939,6 +1002,7 @@ fn build_round(st: &Station, index: usize, body: &str) -> Result<Round> {
         index,
         phase: body.phase,
         patch_hash: body.patch_hash,
+        rules: body.rules,
         scope: body.scope,
         findings: body.findings,
     })

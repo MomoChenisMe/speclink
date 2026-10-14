@@ -1214,6 +1214,79 @@ fn remote_review_show_json_matches_fs_key_set() {
     );
 }
 
+#[test]
+fn remote_review_show_json_rules_match_fs_mode() {
+    // spec Scenario「local 與 remote payload 同構」的規則記錄面：server 回傳 fs 模式
+    // 的同一份輪次，remote CLI 的 rounds／lastRound（含 rules 物件與 null）逐項相同。
+    let fs = TempProject::fs("ticket-rules-fs");
+    fs.write(
+        "openspec/changes/demo/.openspec.yaml",
+        "schema: spec-driven\ncreated: 2026-07-01\n",
+    );
+    fs.write("openspec/changes/demo/tasks.md", "- [x] 1.1 done\n");
+    fs.write(
+        "openspec/changes/demo/review.md",
+        &format!(
+            "# Review — demo\n\n## Round 1\n\n**Phase**: discovery\n**Patch**: sha256:{}\n\
+             **Rules**: extend\n**Rule**: CRITICAL 所有 SQL 一律用參數化查詢，不得用字串拼接\n\
+             **Rule**: SUGGESTION 偏好以提早返回取代深層巢狀\n**Scope**: src/lib.rs\n\n\
+             - [WARNING] src/lib.rs — possible Feature Envy\n\n\
+             ## Round 2\n\n**Phase**: validation\n**Patch**: sha256:{}\n**Scope**: src/lib.rs\n",
+            "a".repeat(64),
+            "b".repeat(64)
+        ),
+    );
+    let fs_json = fs.run(&["review", "show", "demo", "--json"]);
+    assert!(fs_json.status.success(), "fs stderr: {}", stderr_of(&fs_json));
+    let fs_payload: serde_json::Value =
+        serde_json::from_str(stdout_of(&fs_json).trim()).expect("fs stdout is JSON");
+    assert!(fs_payload["rounds"][0]["rules"].is_object(), "fixture carries a record: {fs_payload}");
+
+    let mock = mock_server(vec![("GET", "/changes/demo/review", 200, fs_payload.to_string())]);
+    let p = TempProject::remote("ticket-rules-remote", &mock.base, "backend");
+    let remote_json = p.run(&["review", "show", "demo", "--json"]);
+    assert!(remote_json.status.success(), "remote stderr: {}", stderr_of(&remote_json));
+    let remote_payload: serde_json::Value =
+        serde_json::from_str(stdout_of(&remote_json).trim()).expect("remote stdout is JSON");
+    assert_eq!(remote_payload, fs_payload, "rounds and lastRound match field for field");
+}
+
+#[test]
+fn remote_review_show_reads_a_missing_rules_field_as_null() {
+    // spec Scenario「舊 server 沒有 rules 欄位」：exit 0，每輪 rules 為 null。
+    let mock = mock_server(ticket_routes(None));
+    let p = TempProject::remote("ticket-rules-old", &mock.base, "backend");
+    let out = p.run(&["review", "show", "demo", "--json"]);
+    assert!(out.status.success(), "remote stderr: {}", stderr_of(&out));
+    let v: serde_json::Value = serde_json::from_str(stdout_of(&out).trim()).expect("stdout is JSON");
+    for round in [&v["rounds"][0], &v["lastRound"]] {
+        assert!(
+            round.as_object().unwrap().get("rules").is_some_and(serde_json::Value::is_null),
+            "rules key present and null: {round}"
+        );
+    }
+}
+
+#[test]
+fn remote_review_show_refuses_an_unknown_rules_baseline() {
+    // spec Scenario「server 回傳不認得的 baseline」：非零、stderr 說明 CLI 比
+    // server 的工單格式舊，stdout 不輸出 JSON。
+    // rounds 與 lastRound 都帶（CLI 的末輪取自 rounds，不讀 lastRound）。
+    let mut routes = ticket_routes(None);
+    routes[0].3 = routes[0].3.replace(
+        "\"patchHash\":null",
+        r#""patchHash":null,"rules":{"baseline":"strict","critical":[],"warning":[],"suggestion":[]}"#,
+    );
+    assert_eq!(routes[0].3.matches("strict").count(), 2, "fixture injects the token: {}", routes[0].3);
+    let mock = mock_server(routes);
+    let p = TempProject::remote("ticket-rules-strict", &mock.base, "backend");
+    let out = p.run(&["review", "show", "demo", "--json"]);
+    assert!(!out.status.success(), "an unknown baseline token must fail loud");
+    let err = stderr_of(&out);
+    assert!(err.contains("strict") && err.contains("older than the server"), "{err}");
+    assert!(stdout_of(&out).is_empty(), "no JSON on stdout: {}", stdout_of(&out));
+}
+
 // --- discard：由 remote 拒絕改為實作；guard 訊息與本地一致 ---
 
 #[test]

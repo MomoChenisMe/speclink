@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ButtonHTMLAttributes } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
-import type { StationTicket, TicketFinding, TicketRound, TicketStation } from "../adapter";
+import type { StationTicket, TicketFinding, TicketRound, TicketRules, TicketStation } from "../adapter";
 import { findingAxis } from "../docModel";
 import { useI18n } from "../i18n";
+import { cn } from "../lib/utils";
+import { SEMANTIC_SURFACE } from "../tone";
+import { BaselineSmellList } from "./BaselineSmellList";
 import { Badge } from "./ui/badge";
 import { Callout } from "./ui/callout";
 import { SECTION_HEADING_CLS } from "./DocParts";
@@ -147,12 +150,13 @@ export function ticketSummary(
 
 /**
  * 結構化工單（spec desktop-app「詳情頁的工單分頁」、design D8）：輪次依序號升序逐輪一張卡，
- * 末輪展開、其餘收合；展開後先列範圍路徑再列 finding（色章、軸向籤、等寬路徑、原文描述、
- * 行尾 accepted 籤）。站名、輪數與計數在閱讀卡標題區（ticketSummary），內文不另畫段標題列。
+ * 末輪展開、其餘收合；展開後先列套用規則列（該輪有記錄時），再列範圍路徑與 finding（色章、
+ * 軸向籤、等寬路徑、原文描述、行尾 accepted 籤）。站名、輪數與計數在閱讀卡標題區（ticketSummary），內文不另畫段標題列。
  * 唯讀、無虛擬化。
  */
 export function TicketView({ station, ticket }: TicketViewProps) {
   const rounds = sortedRounds(ticket);
+  const smells = ticket.reviewBaselineSmells ?? [];
   return (
     <div data-ticket-view data-station={station} className="flex flex-col gap-2">
       {/* key 綁輪數：追加輪後整組重掛，預設「末輪展開、其餘收合」重新成立
@@ -160,7 +164,7 @@ export function TicketView({ station, ticket }: TicketViewProps) {
           陣列位置——引擎不檢查 `## Round N` 唯一，手改出的同序號不得撞 key。 */}
       <ol key={rounds.length} className="flex flex-col gap-1.5">
         {rounds.map((round, i) => (
-          <RoundBlock key={i} round={round} defaultOpen={i === rounds.length - 1} />
+          <RoundBlock key={i} round={round} smells={smells} defaultOpen={i === rounds.length - 1} />
         ))}
       </ol>
     </div>
@@ -171,9 +175,38 @@ function roundLabel(t: (key: string) => string, index: number): string {
   return t("ticket.round").replace("{n}", String(index));
 }
 
+/** 展開切換鈕：輪卡卡頭與套用規則列共用同一種 chevron 樣式。 */
+function ToggleButton({
+  open,
+  onToggle,
+  className,
+  children,
+  ...rest
+}: { open: boolean; onToggle: () => void } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type" | "onClick">) {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      onClick={onToggle}
+      {...rest}
+      className={cn(
+        "flex w-full cursor-(--cursor-interaction) flex-wrap items-center gap-x-2 gap-y-1 text-left transition-colors hover:bg-foreground/5",
+        className,
+      )}
+    >
+      {open ? (
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+      ) : (
+        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+      )}
+      {children}
+    </button>
+  );
+}
+
 /** 輪卡（與排程文件同一種邊框卡片）：卡頭 16px「第 N 輪」（本頁目錄錨點）、階段詞、範圍檔數、條數與
- * 各嚴重度計數籤；展開後先列範圍路徑、再列 finding。 */
-function RoundBlock({ round, defaultOpen }: { round: TicketRound; defaultOpen: boolean }) {
+ * 各嚴重度計數籤；展開後先列套用規則列（該輪有記錄時）、再列範圍路徑與 finding。 */
+function RoundBlock({ round, smells, defaultOpen }: { round: TicketRound; smells: string[]; defaultOpen: boolean }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(defaultOpen);
   const phase = round.phase ? t(PHASE_KEY[round.phase]) : null;
@@ -185,19 +218,13 @@ function RoundBlock({ round, defaultOpen }: { round: TicketRound; defaultOpen: b
   ].filter(Boolean);
   return (
     <li data-ticket-round={round.index} className="overflow-hidden rounded-md border border-border/60 bg-muted/20">
-      <button
-        type="button"
+      <ToggleButton
         data-ticket-round-header
         data-ticket-round-toggle
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full cursor-(--cursor-interaction) flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-left transition-colors hover:bg-foreground/5"
+        open={open}
+        onToggle={() => setOpen((v) => !v)}
+        className="px-3 py-2"
       >
-        {open ? (
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-        ) : (
-          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-        )}
         <h3 data-doc-heading className={SECTION_HEADING_CLS}>
           {roundLabel(t, round.index)}
         </h3>
@@ -207,9 +234,10 @@ function RoundBlock({ round, defaultOpen }: { round: TicketRound; defaultOpen: b
             {`${sev} ${counts[sev]}`}
           </SeverityTag>
         ))}
-      </button>
+      </ToggleButton>
       {open && (
         <div className="flex flex-col gap-2 border-t border-border/60 px-3 py-2">
+          {round.rules && <RulesRow rules={round.rules} smells={smells} />}
           <ul className="flex flex-col gap-0.5">
             {round.scope.map((path) => (
               <li key={path} data-ticket-scope-path className="break-all font-mono text-[11px] text-muted-foreground">
@@ -229,6 +257,87 @@ function RoundBlock({ round, defaultOpen }: { round: TicketRound; defaultOpen: b
         </div>
       )}
     </li>
+  );
+}
+
+/** 三個專案規則清單與其嚴重度籤，依 critical、warning、suggestion 順序。 */
+const RULE_LISTS = [
+  ["CRITICAL", "critical"],
+  ["WARNING", "warning"],
+  ["SUGGESTION", "suggestion"],
+] as const;
+
+/** 套用規則列（spec「詳情頁的工單分頁」）：預設收合；列頭依 baseline 與專案規則條數寫模式並附非零的
+ * 條數籤，replace 且沒有專案規則時琥珀底；展開後列預設清單（或寫明沒有套用）、各嚴重度的規則原文與
+ * 末尾註記。N 取 `smells` 的長度。 */
+function RulesRow({ rules, smells }: { rules: TicketRules; smells: string[] }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const count = (key: string, n: number) => t(key).replace("{count}", String(n));
+  const groups = RULE_LISTS.filter(([, list]) => rules[list].length > 0);
+  const extend = rules.baseline === "extend";
+  const mode = extend
+    ? groups.length > 0
+      ? "ticket.rules.extendWithRules"
+      : "ticket.rules.baselineOnly"
+    : groups.length > 0
+      ? "ticket.rules.replaceWithRules"
+      : "ticket.rules.replaceEmpty";
+  return (
+    <div
+      data-ticket-rules
+      className={cn("rounded-md border", !extend && groups.length === 0 ? SEMANTIC_SURFACE.warning : "border-border/60")}
+    >
+      <ToggleButton data-ticket-rules-toggle open={open} onToggle={() => setOpen((v) => !v)} className="px-2 py-1.5 text-xs">
+        <span data-ticket-rules-label className="font-medium">
+          {t("ticket.rules.label")}
+        </span>
+        <span data-ticket-rules-mode className="text-muted-foreground">
+          {count(mode, smells.length)}
+        </span>
+        {groups.map(([sev, list]) => (
+          <SeverityTag key={sev} severity={sev} data-ticket-rules-count={sev} className="tabular-nums">
+            {`${sev} ${rules[list].length}`}
+          </SeverityTag>
+        ))}
+      </ToggleButton>
+      {open && (
+        <div data-ticket-rules-body className="flex flex-col gap-2 border-t border-border/60 px-2 py-2 text-xs">
+          {extend ? (
+            <div data-ticket-rules-baseline className="flex flex-col gap-1">
+              <div className="flex items-center gap-1.5">
+                <SeverityTag data-ticket-severity severity="SUGGESTION" />
+                <span>{count("ticket.rules.baselineOnly", smells.length)}</span>
+              </div>
+              <BaselineSmellList names={smells} />
+            </div>
+          ) : (
+            <p data-ticket-rules-baseline className="m-0 text-muted-foreground">
+              {count("ticket.rules.baselineNotApplied", smells.length)}
+            </p>
+          )}
+          {groups.map(([sev, list]) => (
+            <div key={sev} data-ticket-rules-group={sev} className="flex flex-col gap-1">
+              <div className="flex items-center gap-1.5">
+                <SeverityTag data-ticket-severity severity={sev} />
+                <span>{count("ticket.rules.projectCount", rules[list].length)}</span>
+              </div>
+              {/* 規則原文：不翻譯、不截斷、可換行。 */}
+              <ul className="m-0 flex list-disc flex-col gap-0.5 pl-5">
+                {rules[list].map((rule, i) => (
+                  <li key={i} className="whitespace-pre-wrap break-words">
+                    {rule}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          <p data-ticket-rules-note className="m-0 text-muted-foreground">
+            {t("ticket.rules.note")}
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 

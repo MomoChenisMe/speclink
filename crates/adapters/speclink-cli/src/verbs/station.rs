@@ -856,11 +856,59 @@ fn to_station_round(
             Ok(core::station::Finding { severity, path: f.path, text: f.text })
         })
         .collect::<Result<Vec<_>>>()?;
+    let rules = match r.rules {
+        None => None,
+        Some(rules) => Some(core::config::ReviewConfig {
+            baseline: core::config::ReviewBaseline::parse(&rules.baseline)
+                .ok_or_else(|| unknown_ticket_token("rules baseline", &rules.baseline))?,
+            critical: rules.critical,
+            warning: rules.warning,
+            suggestion: rules.suggestion,
+        }),
+    };
     Ok(core::station::Round {
         index: r.index as usize,
         phase,
         patch_hash: r.patch_hash,
+        rules,
         scope: r.scope,
         findings,
     })
+}
+#[cfg(test)]
+mod station_round_tests {
+    //! remote 輪次 DTO → 引擎 `Round`：server 端詞彙比這支 CLI 新時一律報錯。
+    use super::to_station_round;
+    use speclink_protocol::command::{ReviewRoundDto, ReviewRulesDto};
+
+    fn round_with_baseline(baseline: &str) -> ReviewRoundDto {
+        ReviewRoundDto {
+            index: 1,
+            phase: Some("discovery".into()),
+            patch_hash: Some(format!("sha256:{}", "a".repeat(64))),
+            rules: Some(ReviewRulesDto {
+                baseline: baseline.into(),
+                critical: vec![],
+                warning: vec!["要有測試".into()],
+                suggestion: vec![],
+            }),
+            scope: vec!["src/lib.rs".into()],
+            findings: vec![],
+        }
+    }
+
+    #[test]
+    fn rules_map_back_to_the_engine_config() {
+        let round = to_station_round(round_with_baseline("replace")).expect("known baseline");
+        let rules = round.rules.expect("rules carried");
+        assert_eq!(rules.baseline, speclink_core::config::ReviewBaseline::Replace);
+        assert_eq!(rules.warning, vec!["要有測試".to_string()]);
+    }
+
+    #[test]
+    fn an_unknown_baseline_from_the_server_is_an_error() {
+        let err = to_station_round(round_with_baseline("strict")).expect_err("unknown baseline");
+        let msg = err.to_string();
+        assert!(msg.contains("strict") && msg.contains("older than the server"), "{msg}");
+    }
 }

@@ -477,7 +477,7 @@ pub fn archived_capabilities_at(root: &Path, dated_name: &str) -> Vec<String> {
     }
 }
 
-/// 工單分頁的資料（spec desktop-app「詳情抽屜的工單分頁」）：`{ "rounds": [ … ] }`，
+/// 工單分頁的資料（spec desktop-app「詳情抽屜的工單分頁」）：[`ticket_payload`] 的形狀，
 /// 每輪與 CLI `<station> show --json` 的 `rounds` 項同形（design D1）。`station` 為
 /// `review`／`verify`，其他值回 `None`；無工單、change 不存在或工單格式壞掉皆回
 /// `None`——面板顯示空態而非錯誤（design D2）。經 [`crate::context_for_change`]
@@ -508,10 +508,17 @@ pub fn ticket_json_from_text(station: &str, text: &str) -> Option<Value> {
     ticket_json_parsed(station_by_noun(station)?, text)
 }
 
-/// D1 形狀：`{ "rounds": [ … ] }`，每輪交引擎 `Round::to_json`——與 CLI `--json`
-/// 同一份序列化，只是不帶 `change`／`lastRound`（前端取陣列末項）。
+/// D1 形狀：每輪交引擎 `Round::to_json`——與 CLI `--json` 同一份序列化，只是不帶
+/// `change`／`lastRound`（前端取陣列末項）。
 pub fn ticket_json(ticket: &station::Ticket) -> Value {
-    json!({ "rounds": ticket.rounds.iter().map(station::Round::to_json).collect::<Vec<_>>() })
+    ticket_payload(ticket.rounds.iter().map(station::Round::to_json).collect::<Vec<_>>())
+}
+
+/// 工單資料的唯一組裝處：`{ "rounds": [ … ], "reviewBaselineSmells": [ … ] }`。本機與
+/// 封存經 [`ticket_json`] 傳入引擎序列化的輪次；遠端活工單由殼層直接傳入 server 回的
+/// 輪次（同形）。`reviewBaselineSmells` 取自引擎常數，兩站都帶（套用規則列的展開清單）。
+pub fn ticket_payload(rounds: impl serde::Serialize) -> Value {
+    json!({ "rounds": rounds, "reviewBaselineSmells": speclink_core::skills::REVIEW_BASELINE_SMELLS })
 }
 
 fn ticket_json_parsed(st: &station::Station, text: &str) -> Option<Value> {
@@ -1709,9 +1716,10 @@ mod tests {
         let rounds = v["rounds"].as_array().expect("rounds array");
         assert_eq!(rounds.len(), 2);
         let r1 = &rounds[0];
-        for key in ["index", "phase", "patchHash", "scope", "findings"] {
+        for key in ["index", "phase", "patchHash", "rules", "scope", "findings"] {
             assert!(r1.get(key).is_some(), "round missing camelCase key {key}: {r1}");
         }
+        assert_eq!(v["reviewBaselineSmells"], json!(speclink_core::skills::REVIEW_BASELINE_SMELLS));
         assert_eq!(r1["index"], 1);
         assert_eq!(r1["phase"], "discovery");
         assert_eq!(r1["patchHash"], format!("sha256:{}", "a".repeat(64)));
@@ -1803,9 +1811,10 @@ mod tests {
         let v = archived_station_ticket_at(fx.root(), "2026-07-04-old", "verify").expect("carried ticket");
         let rounds = v["rounds"].as_array().expect("rounds array");
         assert_eq!(rounds.len(), 2);
-        for key in ["index", "phase", "patchHash", "scope", "findings"] {
+        for key in ["index", "phase", "patchHash", "rules", "scope", "findings"] {
             assert!(rounds[1].get(key).is_some(), "round missing camelCase key {key}: {v}");
         }
+        assert_eq!(v["reviewBaselineSmells"], json!(speclink_core::skills::REVIEW_BASELINE_SMELLS));
         assert_eq!(rounds[1]["index"], 2);
         assert_eq!(rounds[1]["phase"], "validation");
         assert_eq!(rounds[1]["scope"], json!(["src/a.rs", "src/b.rs", "src/c.rs"]));
@@ -1818,6 +1827,42 @@ mod tests {
         assert!(archived_station_ticket_at(fx.root(), "2026-01-01-ghost", "verify").is_none());
         assert!(archived_station_ticket_at(fx.root(), "2026-07-04-old", "quality").is_none());
         assert!(archived_station_ticket_at(fx.root(), "../..", "verify").is_none());
+    }
+
+    #[test]
+    fn ticket_payload_carries_the_baseline_smells_and_the_round_rules() {
+        // spec desktop-app「詳情頁的工單分頁」的工單資料形狀（D5）：本機活變更、本機
+        // 封存與原文解析三條路都帶 reviewBaselineSmells（引擎常數）與每輪 rules。
+        let text = format!(
+            "# Review — x\n\n## Round 1\n\n**Phase**: discovery\n**Patch**: sha256:{}\n**Rules**: extend\n\
+             **Rule**: CRITICAL 所有 SQL 一律用參數化查詢，不得用字串拼接\n**Scope**: src/a.rs\n\n\
+             ## Round 2\n\n**Phase**: validation\n**Patch**: sha256:{}\n**Scope**: src/a.rs\n",
+            "a".repeat(64),
+            "b".repeat(64)
+        );
+        let fx = FixtureRoot::new("q-ticket-rules");
+        fx.add_change("x", OLD_META);
+        fx.write("openspec/changes/x/review.md", &text);
+        fx.write(
+            "openspec/changes/archive/2026-07-04-old/.openspec.yaml",
+            "schema: spec-driven\ncreated: 2026-07-01\narchived_at: 2026-07-04\n",
+        );
+        fx.write("openspec/changes/archive/2026-07-04-old/review.md", &text);
+
+        let live = station_ticket_at(fx.root(), "x", "review").expect("live ticket");
+        assert_eq!(live["reviewBaselineSmells"], json!(speclink_core::skills::REVIEW_BASELINE_SMELLS));
+        assert_eq!(
+            live["rounds"][0]["rules"],
+            json!({
+                "baseline": "extend",
+                "critical": ["所有 SQL 一律用參數化查詢，不得用字串拼接"],
+                "warning": [],
+                "suggestion": [],
+            })
+        );
+        assert_eq!(live["rounds"][1]["rules"], Value::Null);
+        assert_eq!(archived_station_ticket_at(fx.root(), "2026-07-04-old", "review"), Some(live.clone()));
+        assert_eq!(ticket_json_from_text("review", &text), Some(live));
     }
 
     #[test]

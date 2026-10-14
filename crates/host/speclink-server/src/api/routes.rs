@@ -29,7 +29,7 @@ use speclink_protocol::command::{
     CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
     DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, InProgressRemoveResponse,
     MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse,
-    PutArtifactRequest, PutArtifactResponse, ReviewFindingDto, ReviewRoundDto,
+    PutArtifactRequest, PutArtifactResponse, ReviewFindingDto, ReviewRoundDto, ReviewRulesDto,
     ReviewTicketResponse, SetDependsRequest, SetDependsResponse, SetDiscussionContextRequest,
     StampReviewRequest, StampReviewResponse, TaskDoneRequest, TaskDoneResponse,
     TaskUndoneResponse, UnlinkedDiscussion,
@@ -1171,6 +1171,12 @@ fn review_round_dto(r: &speclink_core::station::Round) -> ReviewRoundDto {
         index: r.index as u64,
         phase: r.phase.map(|p| p.as_str().to_string()),
         patch_hash: r.patch_hash.clone(),
+        rules: r.rules.as_ref().map(|rules| ReviewRulesDto {
+            baseline: rules.baseline.as_str().to_string(),
+            critical: rules.critical.clone(),
+            warning: rules.warning.clone(),
+            suggestion: rules.suggestion.clone(),
+        }),
         scope: r.scope.clone(),
         findings: r
             .findings

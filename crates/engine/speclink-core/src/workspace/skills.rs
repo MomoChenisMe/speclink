@@ -513,6 +513,36 @@ mod tests {
         }
     }
 
+    /// spec review-skill「首輪工單記錄套用的規則」Scenario 技能檔載明記錄規則：三種工具
+    /// 生成的審查技能檔，記錄輪次的步驟在 Patch 與 Scope 之間寫 `**Rules**:` 與
+    /// `**Rule**:`，並寫明 validation 輪不寫。
+    #[test]
+    fn review_skill_records_applied_rules_in_discovery_rounds() {
+        let reg = registry();
+        let review = reg.iter().find(|s| s.name == "review").expect("registry carries review");
+        for tool in [Tool::Claude, Tool::Codex, Tool::Copilot] {
+            let rendered = render_skill_file_for(RenderTarget::Builtin(tool), review, "openspec");
+            let step: Vec<&str> = rendered
+                .lines()
+                .skip_while(|l| !l.contains("**Record the round**"))
+                .take_while(|l| !l.contains("**Branch on the blocking set**"))
+                .collect();
+            let bullet = |needle: &str| {
+                step.iter()
+                    .position(|l| l.trim_start().starts_with("- ") && l.contains(needle))
+                    .unwrap_or_else(|| panic!("{tool:?}: no stdin bullet for {needle}"))
+            };
+            let (patch, rules, scope) = (bullet("`**Patch**:`"), bullet("`**Rules**:`"), bullet("`**Scope**:`"));
+            assert!(patch < rules && rules < scope, "{tool:?}: Rules sits between Patch and Scope");
+            assert!(step[rules].contains("`**Rule**:"), "{tool:?}: the Rules bullet names the Rule lines");
+            let text = step.join("\n");
+            assert!(
+                text.contains("A validation round writes no `**Rules**:` or `**Rule**:` line"),
+                "{tool:?}: the step says validation rounds skip the record"
+            );
+        }
+    }
+
     /// 鎖定基準（重構前後皆須成立）：三種 render target 的輸出外形——恰一個結尾
     /// 換行、frontmatter 版號等於 `ASSET_VERSION`、前言只出現在該出現的 target。
     #[test]
