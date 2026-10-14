@@ -2073,9 +2073,63 @@ describe("變更文件的籤、數字磚、提示框與跳轉", () => {
       render(<ChangeDetailPage {...(props() as never)} />);
       fireEvent.mouseDown(await screen.findByRole("tab", { name: /任務/ }));
       await waitFor(() => expect(badges()).toBe("全部完成"));
+      // 手動任務全部勾完：「手動」數字磚仍計總數，提示框缺席。
+      expect(tiles()).toContain("手動 1");
+      expect(document.querySelector("[data-doc-callout]")).toBeNull();
     } finally {
       docs["tasks.md"] = TASKS;
     }
+  });
+
+  // 4.3 已勾；5.8、6.9、7.6 未勾，分屬四個群組、各夾一條一般任務（序數 2、4、6、8）。
+  const MANUAL_TASKS = [
+    ["4. 丁", "- [x] 4.1 a", "- [x] [M] 4.3 手動甲"],
+    ["5. 戊", "- [ ] 5.1 b", "- [ ] [M] 5.8 手動乙"],
+    ["6. 己", "- [ ] 6.1 c", "- [ ] [M] 6.9 手動丙"],
+    ["7. 庚", "- [ ] 7.1 d", "- [ ] [M] 7.6 手動丁"],
+  ]
+    .map(([title, ...rows]) => [`## ${title}`, "", ...rows].join("\n"))
+    .join("\n\n");
+  const manualProps = (onToggleTask: Mock) =>
+    props({
+      loadDocument: vi.fn(async (_c: string, artifact: string) =>
+        artifact === "tasks.md" ? MANUAL_TASKS : (docs[artifact] ?? null),
+      ),
+      onToggleTask,
+    });
+  const toggle = (ordinal: number, done: boolean) =>
+    act(() => (taskListProps.at(-1)!.onToggle as (o: number, d: boolean) => void)(ordinal, done));
+  const callout = () => document.querySelector("[data-doc-callout]");
+  const manualRows = () =>
+    Array.from(document.querySelectorAll("[data-doc-callout] [data-manual-task]")).map((row) => flat(row.firstElementChild));
+
+  it("部分勾選時提示框只列未勾選的手動任務", async () => {
+    render(<ChangeDetailPage {...(manualProps(vi.fn().mockResolvedValue(undefined)) as never)} />);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /任務/ }));
+    await waitFor(() => expect(tiles()).toContain("手動 4"));
+    expect(flat(callout())).toContain("3 個手動任務");
+    expect(manualRows()).toEqual(["5.8", "6.9", "7.6"]);
+
+    toggle(4, true);
+    toggle(6, true);
+    toggle(8, true);
+    await waitFor(() => expect(callout()).toBeNull());
+    expect(tiles()).toContain("手動 4");
+
+    toggle(6, false);
+    await waitFor(() => expect(manualRows()).toEqual(["6.9"]));
+    expect(flat(callout())).toContain("1 個手動任務");
+    expect(tiles()).toContain("手動 4");
+  });
+
+  it("勾選寫回失敗時提示框跟著回滾", async () => {
+    render(<ChangeDetailPage {...(manualProps(vi.fn().mockRejectedValue(new Error("disk full"))) as never)} />);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /任務/ }));
+    await waitFor(() => expect(tiles()).toContain("手動 4"));
+    toggle(4, true);
+    await waitFor(() => expect(screen.getByText(/寫回失敗/)).toBeTruthy());
+    expect(flat(callout())).toContain("3 個手動任務");
+    expect(manualRows()).toEqual(["5.8", "6.9", "7.6"]);
   });
 
   it("規格文件：籤槽為各操作計數、數字磚 2／5／2／「1 ／ 0」", async () => {
