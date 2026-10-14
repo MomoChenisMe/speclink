@@ -163,6 +163,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "about.close": "關閉",
     "settings.projectSection.context": "專案說明",
     "settings.projectSection.rules": "產出規則",
+    "settings.projectSection.review": "審查規則",
     "settings.projectSection.workflow": "產出流程",
     "settings.projectSection.speclink": ".speclink.yaml",
     "settings.displayLanguage": "顯示語言",
@@ -207,6 +208,26 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.contextPageDesc": "注入 AI 指令的專案自由文字說明",
     "settings.rulesPageDesc": "依 artifact 注入產出指令的規則清單",
     "settings.rulesCount": "{count} 條",
+    "settings.reviewPageDesc": "審查關卡 Standards 軸要檢查的規則：預設的 12 條 code smell，加上專案自己的規則",
+    "settings.reviewBaselineCard": "預設清單",
+    "settings.reviewBaseline.extend": "沿用並追加",
+    "settings.reviewBaseline.extendDesc":
+      "預設的 12 條 code smell 照常檢查（只記為 SUGGESTION、不擋蓋章），專案規則加在上面。",
+    "settings.reviewBaseline.replace": "整份換掉",
+    "settings.reviewBaseline.replaceDesc":
+      "不檢查預設的 12 條，只用專案規則；想保留其中幾條，請寫進專案規則。",
+    "settings.reviewSmellsShow": "查看 {count} 條",
+    "settings.reviewRulesCard": "專案規則",
+    "settings.reviewEffect.critical": "擋蓋章；要接受放行須逐條再確認",
+    "settings.reviewEffect.warning": "擋蓋章；偶有正當例外可接受放行",
+    "settings.reviewEffect.suggestion": "只記在工單，不擋蓋章",
+    "settings.reviewEmpty": "尚未設定專案規則",
+    "settings.reviewReplaceEmpty":
+      "整份換掉且沒有專案規則：Standards 軸只依 repo 文件審查（CLAUDE.md、CONTRIBUTING、lint 設定）。",
+    "settings.reviewHelp":
+      "依嚴重度分節，一行一條規則（頭尾空白不保留）；規則放在哪一節，違反時就記成那個嚴重度。儲存只改動審查規則：審查規則區塊內的註解不會保留，config.yaml 的其他內容與註解會保留。",
+    "settings.reviewNote":
+      "規則放在哪一節，違反時就記成那個嚴重度，工單會原文引用被違反的規則。CRITICAL 與 WARNING 都擋蓋章，都能在審查時選擇接受放行。",
     "settings.speclinkPageDesc": "這份 checkout 要為哪些 AI 工具生成技能檔",
     "settings.fileCard": "設定檔",
     "settings.fileRow": "檔案",
@@ -662,6 +683,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "about.close": "Close",
     "settings.projectSection.context": "Project context",
     "settings.projectSection.rules": "Output rules",
+    "settings.projectSection.review": "Review rules",
     "settings.projectSection.workflow": "Workflow",
     "settings.projectSection.speclink": ".speclink.yaml",
     "settings.displayLanguage": "Display language",
@@ -706,6 +728,27 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.contextPageDesc": "Free-form project description injected into AI instructions",
     "settings.rulesPageDesc": "Rules injected into each artifact's instructions",
     "settings.rulesCount": "{count} rules",
+    "settings.reviewPageDesc":
+      "What the review station's Standards axis checks: the 12 built-in code smells plus the project's own rules",
+    "settings.reviewBaselineCard": "Baseline",
+    "settings.reviewBaseline.extend": "Keep and add",
+    "settings.reviewBaseline.extendDesc":
+      "The 12 built-in code smells are still checked (recorded as SUGGESTION, never blocking the stamp); the project rules are added on top.",
+    "settings.reviewBaseline.replace": "Replace entirely",
+    "settings.reviewBaseline.replaceDesc":
+      "The 12 built-in smells are not checked; only the project rules apply. To keep some of them, write them as project rules.",
+    "settings.reviewSmellsShow": "Show the {count} smells",
+    "settings.reviewRulesCard": "Project rules",
+    "settings.reviewEffect.critical": "Blocks the stamp; accepting it takes a per-item confirmation",
+    "settings.reviewEffect.warning": "Blocks the stamp; a justified exception can be accepted",
+    "settings.reviewEffect.suggestion": "Recorded in the ticket only; never blocks the stamp",
+    "settings.reviewEmpty": "No project rules yet",
+    "settings.reviewReplaceEmpty":
+      "Replace entirely with no project rules: the Standards axis reviews against repo documents only (CLAUDE.md, CONTRIBUTING, lint configs).",
+    "settings.reviewHelp":
+      "One rule per line in each severity section (leading/trailing whitespace is trimmed); the section a rule sits in is the severity its violation is recorded at. Saving updates only the review rules: comments under the review key are not kept, and the rest of config.yaml, comments included, stays as is.",
+    "settings.reviewNote":
+      "The section a rule sits in is the severity its violation is recorded at, and the ticket quotes the violated rule. CRITICAL and WARNING both block the stamp; both can be accepted during review.",
     "settings.speclinkPageDesc": "Which AI tools this checkout generates skill files for",
     "settings.fileCard": "Settings file",
     "settings.fileRow": "File",

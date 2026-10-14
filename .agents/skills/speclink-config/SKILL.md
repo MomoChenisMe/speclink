@@ -5,17 +5,17 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.45.0"
   generatedBy: "Speclink"
 ---
 
-Compose the workflow config's `context` and `rules` from what the codebase structurally declares, then land them through a diff the user approves.
+Compose the workflow config's `context` and `rules` from what the codebase structurally declares, take its `review` rules from the user alone, then land everything through a diff the user approves.
 
 **Input**: Optionally a scope hint after `$speclink-config` (e.g. "rules only", "refresh the context"). If omitted, work the whole document.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
-**What this document is.** `context` is the shared briefing every artifact prompt carries; `rules` are per-artifact constraints. Both exist to add what the engine does not already know. The policy fields (`locale`, `spec_locale`, `tdd`, `audit`) are answers, not findings — never infer them.
+**What this document is.** `context` is the shared briefing every artifact prompt carries; `rules` are per-artifact constraints; `review` holds the review station's project rules — a `baseline` mode and three severity lists (`critical`, `warning`, `suggestion`) that its Standards axis checks. All three exist to add what the engine and the quality stations do not already know. The policy fields (`locale`, `spec_locale`, `tdd`, `audit`) and `review.baseline` are answers, not findings — never infer them.
 
 **This skill never writes without approval.** Every change reaches the file through `speclink workflow-config ... --dry-run`, shown as a diff, and is only applied after the user says so.
 
@@ -74,6 +74,8 @@ No version numbers, no counts, no percentages, no "currently N crates", no test 
 
 Anything that no longer resolves is removed in this pass, even if you did not add it.
 
+The `review` rules do not come from this step — Step 3 takes them from the user — but they face the same judgement there: criteria 3 and 4 as written, and criterion 1's station-canon check while the smell baseline applies.
+
 ### The only reason to delete a line
 
 An existing line is dropped ONLY when it fails one of the four criteria, or when the user's own answer in Step 3 withdraws it — the authority that lands a ruling is the same one that can take it back. **"It cannot be derived from the fixed input set" is NOT a reason to delete.** A rule that came from a user's ruling — a discussion conclusion landed into this document — is invisible in manifests and READMEs by nature, and nothing in the file marks it as such, because a rewrite drops comments. So outside an explicit withdrawal, judge every existing line against the four criteria alone: if it survives all four, it stays, whatever produced it.
@@ -106,6 +108,32 @@ Never infer it from the repo. When the current document already carries a test-s
 - **"Only the affected surfaces"** — build the project's own mapping from the dependency manifests you already read in Step 1 (which component is verified by which test command), write it as a rule under the `tasks` rules, and land it through the same `--dry-run` approval as everything else.
 - **"The full suite"** — write no test-scope rule at all. When the current document already carries a test-scope rule, this answer is the user's ruling to withdraw it: remove that rule through the same `--dry-run` approval. Otherwise leave the current document as it is.
 
+### The sixth question — the review station's smell baseline
+
+Same nature as the four fields: an answer, not a finding. Ask it explicitly, the same way, showing the current `review.baseline` from Step 1 (unset reads as `extend`):
+
+- `extend` — the review station checks its built-in code-smell baseline plus the project's review rules
+- `replace` — it checks the project's review rules only; with no rules at all, its Standards axis judges against repo documents only
+
+Never derive it from the repo. Leave it alone when the user has no opinion.
+
+### Review rules — from the user, never from the repo
+
+The `critical`, `warning` and `suggestion` lists hold rules the review station's Standards axis enforces; the list a rule sits in sets the severity of its violation. **Do not compose review rules from the fixed input set or from repo documents** (CLAUDE.md, AGENTS.md, CONTRIBUTING, lint configs and the like): the Standards axis already reads those documents, and a copy here becomes a second canon.
+
+Ask whether the user wants to add or change any review rules. For each rule they state, suggest a list from its wording, and let the user confirm it or move it before anything lands:
+
+- a prohibition or an absolute (「不得」「一律」, "never", "always") → `critical`
+- a requirement (「要」「需」, "must", "needs") → `warning`
+- a preference (「考慮」「盡量」「宜」「偏好」, "consider", "prefer") → `suggestion`
+
+Judge every review rule — each existing one and each new one — before it lands:
+
+- **While the baseline is `extend` (or unset), drop a rule that restates the smell baseline.** Read the baseline in the generated `speclink-review` skill (criterion 1's station-canon check): "variable names say what they hold" restates Mysterious Name. Tell the user why the rule is dropped. With `replace` the baseline does not apply, so skip this check — the same rule can land.
+- Criteria 3 and 4 apply as written: nothing that goes stale, and every path, test name or command a rule references is checked statically.
+
+An existing review rule is dropped only for the reasons any other line is: it fails these checks, or the user withdraws it.
+
 ## Step 4: Show the diff, then write
 
 Produce the diff for each change with the write verb's own `--dry-run`, so the preview is byte-identical to what would land:
@@ -114,7 +142,11 @@ Produce the diff for each change with the write verb's own `--dry-run`, so the p
 speclink workflow-config set <key> <value> --dry-run
 speclink workflow-config context --stdin --dry-run
 speclink workflow-config rules <artifact> --stdin --dry-run
+speclink workflow-config review <critical|warning|suggestion> --stdin --dry-run
+speclink workflow-config review baseline <extend|replace> --dry-run
 ```
+
+A list write replaces the whole list: feed every rule that list should keep on stdin, one per line.
 
 Never compute a diff yourself — a hand-made preview and the real serialization can disagree, and a preview that lies is worse than none.
 
@@ -124,11 +156,11 @@ The same commands work in both local and remote mode; in remote mode the write i
 
 ## Step 5: Verify convergence
 
-Run this skill a second time against the same, unchanged codebase. **The second run's diffs must be empty.**
+Run this skill a second time against the same, unchanged codebase. **The second run's diffs must be empty** — the `review` block included.
 
 A non-empty second diff is not a reason to write again — it means a criterion was applied loosely (usually 3, restating something measurable, or 2, moving a line between `context` and `rules`). Go back to Step 2, find which line moved, and fix the judgment. Do not land the second diff.
 
-Report at the end: which of the five sources were read, what was added, what was dropped and under which criterion, and the convergence result.
+Report at the end: which of the five sources were read, what was added, what was dropped and under which criterion (review rules included), and the convergence result.
 
 ## Guardrails
 
@@ -140,6 +172,7 @@ Check these before you report:
 - [ ] **Don't write anything that can go stale** — no versions, counts, or dates.
 - [ ] **Don't reference what doesn't exist** — verify every command, test, and path statically, every run; the referenced test and build commands themselves are never executed.
 - [ ] **Don't delete for the wrong reason** — a line falls only to the four criteria or to the user's own withdrawal; "cannot be derived from the fixed input set" is never a reason.
-- [ ] **Don't infer the policy fields** — ask all four, plus the test-scope question.
+- [ ] **Don't infer the policy fields** — ask all four, plus the test-scope question and the review baseline.
+- [ ] **Don't derive review rules from the repo** — take them from the user, suggest a list from each rule's wording, and let the user confirm it.
 - [ ] **Don't write without approval** — `--dry-run` first, always.
 - [ ] **Don't land a non-empty second run** — that is a signal to re-judge, not to write.

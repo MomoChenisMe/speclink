@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.45.0"
   generatedBy: "Speclink"
 ---
 
@@ -340,7 +340,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.45.0"
   generatedBy: "Speclink"
 ---
 
@@ -681,7 +681,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.45.0"
   generatedBy: "Speclink"
 ---
 
@@ -925,7 +925,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.45.0"
   generatedBy: "Speclink"
 ---
 
@@ -1049,7 +1049,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.45.0"
   generatedBy: "Speclink"
 ---
 
@@ -1358,17 +1358,17 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.45.0"
   generatedBy: "Speclink"
 ---
 
-Compose the workflow config's `context` and `rules` from what the codebase structurally declares, then land them through a diff the user approves.
+Compose the workflow config's `context` and `rules` from what the codebase structurally declares, take its `review` rules from the user alone, then land everything through a diff the user approves.
 
 **Input**: Optionally a scope hint after `$speclink-config` (e.g. "rules only", "refresh the context"). If omitted, work the whole document.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
-**What this document is.** `context` is the shared briefing every artifact prompt carries; `rules` are per-artifact constraints. Both exist to add what the engine does not already know. The policy fields (`locale`, `spec_locale`, `tdd`, `audit`) are answers, not findings — never infer them.
+**What this document is.** `context` is the shared briefing every artifact prompt carries; `rules` are per-artifact constraints; `review` holds the review station's project rules — a `baseline` mode and three severity lists (`critical`, `warning`, `suggestion`) that its Standards axis checks. All three exist to add what the engine and the quality stations do not already know. The policy fields (`locale`, `spec_locale`, `tdd`, `audit`) and `review.baseline` are answers, not findings — never infer them.
 
 **This skill never writes without approval.** Every change reaches the file through `speclink workflow-config ... --dry-run`, shown as a diff, and is only applied after the user says so.
 
@@ -1427,6 +1427,8 @@ No version numbers, no counts, no percentages, no "currently N crates", no test 
 
 Anything that no longer resolves is removed in this pass, even if you did not add it.
 
+The `review` rules do not come from this step — Step 3 takes them from the user — but they face the same judgement there: criteria 3 and 4 as written, and criterion 1's station-canon check while the smell baseline applies.
+
 ### The only reason to delete a line
 
 An existing line is dropped ONLY when it fails one of the four criteria, or when the user's own answer in Step 3 withdraws it — the authority that lands a ruling is the same one that can take it back. **"It cannot be derived from the fixed input set" is NOT a reason to delete.** A rule that came from a user's ruling — a discussion conclusion landed into this document — is invisible in manifests and READMEs by nature, and nothing in the file marks it as such, because a rewrite drops comments. So outside an explicit withdrawal, judge every existing line against the four criteria alone: if it survives all four, it stays, whatever produced it.
@@ -1459,6 +1461,32 @@ Never infer it from the repo. When the current document already carries a test-s
 - **"Only the affected surfaces"** — build the project's own mapping from the dependency manifests you already read in Step 1 (which component is verified by which test command), write it as a rule under the `tasks` rules, and land it through the same `--dry-run` approval as everything else.
 - **"The full suite"** — write no test-scope rule at all. When the current document already carries a test-scope rule, this answer is the user's ruling to withdraw it: remove that rule through the same `--dry-run` approval. Otherwise leave the current document as it is.
 
+### The sixth question — the review station's smell baseline
+
+Same nature as the four fields: an answer, not a finding. Ask it explicitly, the same way, showing the current `review.baseline` from Step 1 (unset reads as `extend`):
+
+- `extend` — the review station checks its built-in code-smell baseline plus the project's review rules
+- `replace` — it checks the project's review rules only; with no rules at all, its Standards axis judges against repo documents only
+
+Never derive it from the repo. Leave it alone when the user has no opinion.
+
+### Review rules — from the user, never from the repo
+
+The `critical`, `warning` and `suggestion` lists hold rules the review station's Standards axis enforces; the list a rule sits in sets the severity of its violation. **Do not compose review rules from the fixed input set or from repo documents** (CLAUDE.md, AGENTS.md, CONTRIBUTING, lint configs and the like): the Standards axis already reads those documents, and a copy here becomes a second canon.
+
+Ask whether the user wants to add or change any review rules. For each rule they state, suggest a list from its wording, and let the user confirm it or move it before anything lands:
+
+- a prohibition or an absolute (「不得」「一律」, "never", "always") → `critical`
+- a requirement (「要」「需」, "must", "needs") → `warning`
+- a preference (「考慮」「盡量」「宜」「偏好」, "consider", "prefer") → `suggestion`
+
+Judge every review rule — each existing one and each new one — before it lands:
+
+- **While the baseline is `extend` (or unset), drop a rule that restates the smell baseline.** Read the baseline in the generated `speclink-review` skill (criterion 1's station-canon check): "variable names say what they hold" restates Mysterious Name. Tell the user why the rule is dropped. With `replace` the baseline does not apply, so skip this check — the same rule can land.
+- Criteria 3 and 4 apply as written: nothing that goes stale, and every path, test name or command a rule references is checked statically.
+
+An existing review rule is dropped only for the reasons any other line is: it fails these checks, or the user withdraws it.
+
 ## Step 4: Show the diff, then write
 
 Produce the diff for each change with the write verb's own `--dry-run`, so the preview is byte-identical to what would land:
@@ -1467,7 +1495,11 @@ Produce the diff for each change with the write verb's own `--dry-run`, so the p
 speclink workflow-config set <key> <value> --dry-run
 speclink workflow-config context --stdin --dry-run
 speclink workflow-config rules <artifact> --stdin --dry-run
+speclink workflow-config review <critical|warning|suggestion> --stdin --dry-run
+speclink workflow-config review baseline <extend|replace> --dry-run
 ```
+
+A list write replaces the whole list: feed every rule that list should keep on stdin, one per line.
 
 Never compute a diff yourself — a hand-made preview and the real serialization can disagree, and a preview that lies is worse than none.
 
@@ -1477,11 +1509,11 @@ The same commands work in both local and remote mode; in remote mode the write i
 
 ## Step 5: Verify convergence
 
-Run this skill a second time against the same, unchanged codebase. **The second run's diffs must be empty.**
+Run this skill a second time against the same, unchanged codebase. **The second run's diffs must be empty** — the `review` block included.
 
 A non-empty second diff is not a reason to write again — it means a criterion was applied loosely (usually 3, restating something measurable, or 2, moving a line between `context` and `rules`). Go back to Step 2, find which line moved, and fix the judgment. Do not land the second diff.
 
-Report at the end: which of the five sources were read, what was added, what was dropped and under which criterion, and the convergence result.
+Report at the end: which of the five sources were read, what was added, what was dropped and under which criterion (review rules included), and the convergence result.
 
 ## Guardrails
 
@@ -1493,7 +1525,8 @@ Check these before you report:
 - [ ] **Don't write anything that can go stale** — no versions, counts, or dates.
 - [ ] **Don't reference what doesn't exist** — verify every command, test, and path statically, every run; the referenced test and build commands themselves are never executed.
 - [ ] **Don't delete for the wrong reason** — a line falls only to the four criteria or to the user's own withdrawal; "cannot be derived from the fixed input set" is never a reason.
-- [ ] **Don't infer the policy fields** — ask all four, plus the test-scope question.
+- [ ] **Don't infer the policy fields** — ask all four, plus the test-scope question and the review baseline.
+- [ ] **Don't derive review rules from the repo** — take them from the user, suggest a list from each rule's wording, and let the user confirm it.
 - [ ] **Don't write without approval** — `--dry-run` first, always.
 - [ ] **Don't land a non-empty second run** — that is a signal to re-judge, not to write.
 
@@ -1505,7 +1538,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.45.0"
   generatedBy: "Speclink"
 ---
 
@@ -1986,7 +2019,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.45.0"
   generatedBy: "Speclink"
 ---
 
@@ -2118,7 +2151,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.45.0"
   generatedBy: "Speclink"
 ---
 
@@ -2310,7 +2343,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.45.0"
   generatedBy: "Speclink"
 ---
 
@@ -2622,7 +2655,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.45.0"
   generatedBy: "Speclink"
 ---
 
@@ -2835,7 +2868,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.45.0"
   generatedBy: "Speclink"
 ---
 
@@ -3297,7 +3330,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.45.0"
   generatedBy: "Speclink"
 ---
 
@@ -3398,11 +3431,11 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.45.0"
   generatedBy: "Speclink"
 ---
 
-Review a change's implementation for craft quality: two parallel read-only axes — **Standards** (repo conventions + a fixed code-smell baseline) and **Correctness** (bug hunting) — run ONCE against a frozen change patch, then validated round by round to a review ticket, closed by a stamp. Round 1 is the only discovery pass; every later round only validates remediation. Spec compliance is not this skill's job — that is `$speclink-verify`; the two quality stations run independently and either, both, or neither may be used per change.
+Review a change's implementation for craft quality: two parallel read-only axes — **Standards** (repo conventions, the project's review rules, and a code-smell baseline) and **Correctness** (bug hunting) — run ONCE against a frozen change patch, then validated round by round to a review ticket, closed by a stamp. Round 1 is the only discovery pass; every later round only validates remediation. Spec compliance is not this skill's job — that is `$speclink-verify`; the two quality stations run independently and either, both, or neither may be used per change.
 
 **Input**: Optionally specify a change name after `$speclink-review` (e.g., `$speclink-review add-auth`). If omitted, check if it can be inferred from conversation context; if it is still vague or ambiguous, step 1 asks the user.
 
@@ -3418,7 +3451,7 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    Do NOT guess or auto-select a change — always let the user choose, and wait for the answer.
 
-2. **Gate: all code tasks must be complete**
+2. **Gate: all code tasks must be complete, then read the project review rules**
 
    ```bash
    speclink instructions apply --change "<name>" --json
@@ -3429,6 +3462,14 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    `[M]` manual tasks are deliberately excluded from `codeRemaining`: they are work only the user can do by hand, and reviewing before them is the point — a review that changes code would void a manual run done earlier. When `codeRemaining` is 0 but `remaining` is not, continue with the review and tell the user in the result presentation which manual tasks are still open, plus the sequence that follows: the stamp can land now, the manual tasks are checked off afterwards, and archive is what waits for them.
 
    Keep the payload: `contextFiles` feeds step 4, and `locale` is the resolved language for the whole output chain — the sub-agent reports, the round presentation, the questions, and the ticket record alike (steps 5, 6 and 8).
+
+   Then read the project review rules:
+
+   ```bash
+   speclink workflow-config show --json
+   ```
+
+   Keep its `review` object: `baseline` (`extend` or `replace`) and three rule lists, `critical`, `warning` and `suggestion`. It feeds the Standards brief (step 5), the opening line of the presentation (step 6) and the triage (step 7). Always read it through this command, never from the config file — in remote mode the same command returns the server's config. If the command fails (for example, the config does not parse), report its error verbatim and stop: do not resolve the scope, do not spawn sub-agents, do not write the ticket. With `baseline: extend` and three empty lists, everything below works exactly as if the project had no review rules.
 
 3. **Check the ticket, then resolve the frozen scope**
 
@@ -3472,7 +3513,19 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    When accepted findings exist in the ticket's last round (the `(accepted)` token), both briefs also carry that list with a hard instruction: do not re-report these items or near-variants of them — they are already adjudicated.
 
-   **Standards axis brief** — first gather what the repo documents (CLAUDE.md / AGENTS.md, CONTRIBUTING, style docs, lint configs) and check the frozen hunks against it, citing the document for each violation. On top of whatever the repo documents, the Standards axis always carries the smell baseline below — a fixed set of Fowler code smells (Refactoring, ch.3) that applies even when a repo documents nothing. Two rules bind it:
+   **Standards axis brief** — first gather what the repo documents (CLAUDE.md / AGENTS.md, CONTRIBUTING, style docs, lint configs) and check the frozen hunks against it, citing the document for each violation.
+
+   **Project review rules** — when any of step 2's three `review` lists is non-empty, the Standards brief carries the rules verbatim, grouped by severity — one group per list. They bind the axis as follows:
+
+   - A rule's list decides the severity of its violation: `critical` → CRITICAL, `warning` → WARNING, `suggestion` → SUGGESTION. Neither the sub-agent nor the main thread raises or lowers it.
+   - The finding description quotes the violated rule verbatim; the rest of the description follows the locale binding above. For example, with an English locale: `- [WARNING] src/api.rs — Standards: violates project review rule "New public APIs need a matching test": add_user has no test`.
+   - Where a project rule and a repo document disagree, the project rule wins — it is the list the project wrote down for this station.
+
+   The Correctness brief never carries the project rules.
+
+   **Smell baseline** — put this paragraph and the smell list below into the Standards brief only when `review.baseline` is `extend` (the default). When it is `replace`, leave both out: the smells are not checked and never enter the ticket.
+
+   On top of whatever the repo documents, the Standards axis carries the smell baseline below — a fixed set of Fowler code smells (Refactoring, ch.3) that applies even when a repo documents nothing. Two rules bind it:
 
    - **The repo overrides.** A documented repo standard always wins; where it endorses something the baseline would flag, suppress the smell.
    - **Always a judgement call.** Each smell is a labelled heuristic ("possible Feature Envy"), never a hard violation — and, like any standard here, skip anything tooling already enforces.
@@ -3494,13 +3547,13 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    (Baseline source: Matt Pocock's code-review skill, MIT.)
 
-   Severity mapping for this axis: smells are judgement calls — report them as SUGGESTION with "possible X" phrasing and the offending hunk quoted; CRITICAL is reserved for unambiguous violations of a documented repo standard. This axis uses only those two levels — WARNING marks realistic-trigger correctness judgements, which belong to the Correctness axis.
+   Severity mapping for this axis: smells are judgement calls — report them as SUGGESTION with "possible X" phrasing and the offending hunk quoted; CRITICAL is reserved for unambiguous violations of a documented repo standard; a project review rule's violation takes its list's severity. Apart from violations of the `warning` list, this axis reports no WARNING — WARNING marks realistic-trigger correctness judgements, which belong to the Correctness axis.
 
    **Correctness axis brief** — hunt bugs in the frozen hunks: logic errors, boundary and edge cases, error-handling gaps, resource leaks, concurrency hazards, invariants broken between the changed hunks and their callers. Use the artifact intent only to understand what the code is for; report bugs, not compliance. CRITICAL = wrong behavior or data loss on a realistic path; WARNING = likely bug or fragile pattern; SUGGESTION = hardening opportunity. Quote the suspect hunk.
 
    **Validation (`phase: validation`) — remediation validation, never re-discovery.**
 
-   Send the same two parallel read-only axes, but each brief carries ONLY: the last round's unresolved findings (verbatim), the accepted list, the remediation patch (step 3's frozen validation patch), and the necessary adjacent callers/tests plus artifact intent. Each axis judges, per original finding, resolved or unresolved — and reports only regressions the remediation patch directly introduces. It must NOT report new smells, SUGGESTIONs, or pre-existing issues in unchanged areas. The locale binding and the reporting contract are the same as in discovery.
+   Send the same two parallel read-only axes, but each brief carries ONLY: the last round's unresolved findings (verbatim), the accepted list, the remediation patch (step 3's frozen validation patch), and the necessary adjacent callers/tests plus artifact intent. Each axis judges, per original finding, resolved or unresolved — and reports only regressions the remediation patch directly introduces. It must NOT report new smells, SUGGESTIONs, or pre-existing issues in unchanged areas, and it does not apply the project review rules afresh — a rule added after discovery never produces a finding here. The locale binding and the reporting contract are the same as in discovery.
 
    **Segments marked `attribution: "adjacent"`** are files the remediation moved that no finding named — a caller, a test, a regenerated artifact, or a parallel session's edit leaking in. State this in both briefs: each axis must confirm segment by segment that an adjacent segment genuinely belongs to THIS remediation, and report anything that does not as a regression. Never adopt an adjacent segment silently.
 
@@ -3508,14 +3561,21 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
 6. **Present both reports side by side**
 
-   Render the two reports verbatim under `## Standards` and `## Correctness` headings — do not merge them, do not re-rank across axes. The reports already arrive in the `locale` language (bound in step 5) — never translate them. Close with exactly one summary line in that same language: the findings count per axis and the worst severity within each (never across).
+   Open with one line that names the rules this Standards pass applied, written in the `locale` language: the baseline mode and the size of each project rule list. Keep `extend`, `replace` and the severity labels in English. With `replace` and three empty lists, the line says instead that the Standards axis judged against repo documents only. In English the line reads, for example:
+
+   - `Review rules: extend (the 12 baseline smells) + project rules CRITICAL 2, WARNING 1, SUGGESTION 1`
+   - `Review rules: replace, no project rules — the Standards axis judges against repo documents only`
+
+   This line belongs to the presentation only; it never enters the ticket.
+
+   Then render the two reports verbatim under `## Standards` and `## Correctness` headings — do not merge them, do not re-rank across axes. The reports already arrive in the `locale` language (bound in step 5) — never translate them. Close with exactly one summary line in that same language: the findings count per axis and the worst severity within each (never across).
 
 7. **Triage every finding**
 
    After the reports, classify each finding into one of two buckets and show the result as its own list. The triage drives step 9 — it never changes the ticket format:
 
-   - **Must-fix** — CRITICAL findings; Correctness findings with a realistic trigger path (WARNING included); unambiguous violations of a documented repo standard.
-   - **Discretionary** — "possible X" smell judgements and other nice-to-fix items. Give each one line: the cost of fixing weighed against the benefit.
+   - **Must-fix** — CRITICAL findings; Correctness findings with a realistic trigger path (WARNING included); unambiguous violations of a documented repo standard; violations of the project review rules' `critical` or `warning` list.
+   - **Discretionary** — "possible X" smell judgements, violations of the project review rules' `suggestion` list, and other nice-to-fix items. Give each one line: the cost of fixing weighed against the benefit.
 
    Severity IS the blocking boundary: must-fix findings are recorded as CRITICAL or WARNING; discretionary findings are always recorded as SUGGESTION — never WARNING. SUGGESTION-level findings do not block the stamp, need nobody's approval, and never enter the acceptance mechanism.
 
@@ -3562,6 +3622,8 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
    - **Bn is not strictly smaller than Bn-1** (equal or larger) → the round is already recorded; report **failed** immediately: keep the ticket, do NOT stamp, do not start another round automatically. The user decides what happens next (more work outside this loop, `--accept`, or discard).
 
+   **Accepting a CRITICAL takes one explicit confirmation.** Three paths accept must-fix findings: leaving one unfixed under option 1 (it is carried as `(accepted)`), option 2's `--accept` stamp, and the recommended `--accept` stamp in the second bullet. On any of them, when the accepted findings include that top severity, first list each such finding verbatim, then ask once with the **AskUserQuestion tool** (plain text + wait if unavailable) whether to accept them. Only a yes goes on to record `(accepted)` or run `--accept`. A no returns to the choice the user was making: record no `(accepted)` token and do not stamp. When every accepted finding is WARNING, ask nothing extra. The engine's stamp gate does not change: both must-fix severities still block a clean stamp, and both pass with `--accept`.
+
    The shrinking blocking set only decides whether the automatic loop may continue — it is never a quality score and never described as "passed". There is no fixed maximum round count; every automatic continuation must strictly shrink the blocking set.
 
 **Guardrails**
@@ -3577,6 +3639,8 @@ Check these before you report:
 - [ ] Unresolved findings travel verbatim between rounds — rewording fakes progress
 - [ ] The verification gate is hard: no next round starts on a failing build or test suite
 - [ ] Accepted findings are carried, never re-reported: sub-agents get the no-re-report list, the round record keeps the items
+- [ ] Project review rules come from `speclink workflow-config show --json`, enter the Standards brief only, keep their list's severity, and are quoted verbatim in their findings
+- [ ] Accepting any CRITICAL finding first lists each one and gets one explicit confirmation
 - [ ] Thin artifacts: judge from code and tests, never invent requirements
 - [ ] Stop on errors and report — don't guess past a failing verb
 
@@ -3596,7 +3660,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.45.0"
   generatedBy: "Speclink"
 ---
 
@@ -3682,7 +3746,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.45.0"
   generatedBy: "Speclink"
 ---
 

@@ -4,7 +4,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@speclink/ui";
 
-import type { SchemaEntry, SettingsSnapshot, WorkflowFields } from "../../adapter/workspace";
+import type {
+  ReviewBaseline,
+  ReviewRules,
+  SchemaEntry,
+  SettingsSnapshot,
+  WorkflowFields,
+} from "../../adapter/workspace";
 import type { WorkspaceSettingsProvider } from "../../session";
 
 /** locale／spec_locale 的「未設定」在 config 裡是空字串，Radix Select 的 item 不接受空字串。 */
@@ -18,6 +24,7 @@ type PendingRemoteWrite =
   | { kind: "policy"; fields: WorkflowFields }
   | { kind: "context"; context: string }
   | { kind: "rules"; rules: Array<[string, string[]]> }
+  | { kind: "review"; review: ReviewRules }
   | { kind: "schema"; name: string };
 
 interface ConflictRow {
@@ -64,7 +71,28 @@ export const textToEntries = (text: string) =>
     .map((line) => line.trim())
     .filter((line) => line !== "");
 
+/** 審查規則的三個嚴重度清單（固定三節，順序即畫面順序）。 */
+export const REVIEW_LISTS = ["critical", "warning", "suggestion"] as const;
+export type ReviewList = (typeof REVIEW_LISTS)[number];
 
+/** 審查規則編輯草稿：預設清單模式＋三節各一份「一行一條」文字。 */
+export type ReviewDraft = { baseline: ReviewBaseline } & Record<ReviewList, string>;
+
+const reviewToDraft = (review: ReviewRules): ReviewDraft => ({
+  baseline: review.baseline,
+  critical: entriesToText(review.critical),
+  warning: entriesToText(review.warning),
+  suggestion: entriesToText(review.suggestion),
+});
+const draftToReview = (draft: ReviewDraft): ReviewRules => ({
+  baseline: draft.baseline,
+  critical: textToEntries(draft.critical),
+  warning: textToEntries(draft.warning),
+  suggestion: textToEntries(draft.suggestion),
+});
+const sameReview = (a: ReviewRules, b: ReviewRules) =>
+  a.baseline === b.baseline && REVIEW_LISTS.every((list) => entriesToText(a[list]) === entriesToText(b[list]));
+const EMPTY_REVIEW: ReviewRules = { baseline: "extend", critical: [], warning: [], suggestion: [] };
 
 export function useProjectSettings(settings: WorkspaceSettingsProvider) {
   const { t } = useI18n();
@@ -90,11 +118,17 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
    * 也以此鍵集送草稿，新固定鍵的既有規則走非凍結鍵兜底原樣保留。 */
   const [editingRuleKeys, setEditingRuleKeys] = useState<string[]>([]);
   const [rulesMsg, setRulesMsg] = useState<string | null>(null);
+  // 審查規則頁：與產出規則卡同一套獨立編輯態（唯讀現值、編輯旗標、草稿、訊息、寫入中）。
+  const [review, setReview] = useState<ReviewRules>(EMPTY_REVIEW);
+  const [reviewEditing, setReviewEditing] = useState(false);
+  const [draftReview, setDraftReview] = useState<ReviewDraft>(reviewToDraft(EMPTY_REVIEW));
+  const [reviewMsg, setReviewMsg] = useState<string | null>(null);
   // 寫入中（desktop-settings-editors design D2）：state 驅動按鈕停用與編輯器唯讀，ref 擋同一輪
   // 事件內的重送；放在四頁共用的狀態裡，儲存中切頁再切回也不重送。
   const [ctxSaving, setCtxSaving] = useState(false);
   const [rulesSaving, setRulesSaving] = useState(false);
-  const writing = useRef({ context: false, rules: false });
+  const [reviewSaving, setReviewSaving] = useState(false);
+  const writing = useRef({ context: false, rules: false, review: false });
   const [appMsg, setAppMsg] = useState<string | null>(null);
   const [wfMsg, setWfMsg] = useState<string | null>(null);
   const [conflict, setConflictState] = useState<PolicyConflict | null>(null);
@@ -135,8 +169,11 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
         ]),
       ),
     );
+    setReview(next.workflow.review);
+    setDraftReview(reviewToDraft(next.workflow.review));
     setCtxEditing(false);
     setRulesEditing(false);
+    setReviewEditing(false);
   };
 
   useEffect(() => {
@@ -223,6 +260,8 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       ]),
     );
     const pendingRules = pending.kind === "rules" ? Object.fromEntries(pending.rules) : null;
+    const mineReview =
+      pending.kind === "review" ? pending.review : reviewEditing ? draftToReview(draftReview) : review;
     const show = (value: string | null | undefined) => value || "—";
     const rows: ConflictRow[] = [
       {
@@ -277,6 +316,20 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
         mine: show(mine),
       });
     }
+    rows.push({
+      key: "review-baseline",
+      label: "review.baseline",
+      server: latest.workflow.review.baseline,
+      mine: mineReview.baseline,
+    });
+    for (const list of REVIEW_LISTS) {
+      rows.push({
+        key: `review-${list}`,
+        label: `review.${list}`,
+        server: show(entriesToText(latest.workflow.review[list])),
+        mine: show(entriesToText(mineReview[list])),
+      });
+    }
     return rows;
   };
 
@@ -293,6 +346,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       if (pending.kind === "policy") setWfMsg(message);
       else if (pending.kind === "context") setCtxMsg(message);
       else if (pending.kind === "schema") setSchemaMsg(message);
+      else if (pending.kind === "review") setReviewMsg(message);
       else setRulesMsg(message);
     }
     return true;
@@ -345,7 +399,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
    * 不送——衝突對照中 adapter 已採用最新 revision，再送會繞過對照卡蓋掉 server 版；
    * 同一份寫入進行中也不重送。 */
   const guardWrite = async (
-    kind: "context" | "rules",
+    kind: "context" | "rules" | "review",
     setSaving: (saving: boolean) => void,
     write: () => Promise<void>,
   ) => {
@@ -410,6 +464,28 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     } catch (e) {
       if (await handleWriteError(e, { kind: "rules", rules: nextRules })) setRulesMsg(null);
       else setRulesMsg(errorMessage(e));
+    }
+  });
+
+  const beginReviewEdit = () => {
+    setDraftReview(reviewToDraft(review));
+    setReviewMsg(null);
+    setReviewEditing(true);
+  };
+
+  const saveReview = () => guardWrite("review", setReviewSaving, async () => {
+    // 整塊代換、只寫 review 鍵：逐行修剪、空行不寫；移除語意（extend 不寫 baseline、空節移除、
+    // 全空移除 review）在 core 落實。
+    const nextReview = draftToReview(draftReview);
+    try {
+      const next = await settings.writeWorkflowReview(nextReview);
+      adoptRevision(next);
+      setReview(nextReview);
+      setReviewEditing(false);
+      setReviewMsg(t("settings.saved"));
+    } catch (e) {
+      if (await handleWriteError(e, { kind: "review", review: nextReview })) setReviewMsg(null);
+      else setReviewMsg(errorMessage(e));
     }
   });
 
@@ -515,6 +591,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     setConflict(null);
     setCtxMsg(null);
     setRulesMsg(null);
+    setReviewMsg(null);
     setWfMsg(null);
   };
 
@@ -539,6 +616,11 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
         setConflict(null);
         await refreshSchemaFacts();
         return;
+      } else if (pending.kind === "review") {
+        next = await settings.writeWorkflowReview(pending.review);
+        setReview(pending.review);
+        setReviewEditing(false);
+        setReviewMsg(t("settings.saved"));
       } else {
         next = await settings.writeWorkflowRules(pending.rules);
         setRules(Object.fromEntries(pending.rules));
@@ -553,6 +635,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
         if (pending.kind === "policy") setWfMsg(message);
         else if (pending.kind === "context") setCtxMsg(message);
         else if (pending.kind === "schema") setSchemaMsg(message);
+        else if (pending.kind === "review") setReviewMsg(message);
         else setRulesMsg(message);
       }
     }
@@ -568,13 +651,17 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     audit !== snap.workflow.audit ||
     worktree !== snap.workflow.worktree ||
     (ctxEditing && draftContext !== contextText) ||
-    (rulesEditing && editingRuleKeys.some((id) => (draftRules[id] ?? "") !== entriesToText(rules[id] ?? [])));
+    (rulesEditing && editingRuleKeys.some((id) => (draftRules[id] ?? "") !== entriesToText(rules[id] ?? []))) ||
+    (reviewEditing && !sameReview(draftToReview(draftReview), review));
   // 頁標題下的 remote 註記：policy revision 與檢視者說明（local 為 null，改顯示檔案鍵）。
   const remoteNote = isRemote
     ? { revision: snap.workflow.revision ?? null, reader: !settings.policyWrite }
     : null;
 
   const populatedRuleKeys = snap.workflow.schemaArtifacts.filter((id) => (rules[id] ?? []).length > 0);
+  // 「整份換掉」且三節皆空：Standards 軸只剩 repo 文件可依——頁內提示，但不擋儲存。
+  const reviewReplaceEmpty =
+    draftReview.baseline === "replace" && REVIEW_LISTS.every((list) => textToEntries(draftReview[list]).length === 0);
   // 下拉選項：壞項不可選；同名跨層去重（解析語意本就取第一命中）。
   const selectableSchemaNames = Array.from(
     new Set(schemas.filter((s) => s.error === null).map((s) => s.name)),
@@ -589,6 +676,8 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     contextText, ctxEditing, setCtxEditing, draftContext, setDraftContext, ctxMsg, beginCtxEdit, saveContext, ctxSaving,
     rules, rulesEditing, setRulesEditing, draftRules, setDraftRules, editingRuleKeys, rulesMsg,
     beginRulesEdit, saveRules, rulesSaving, populatedRuleKeys,
+    review, reviewEditing, setReviewEditing, draftReview, setDraftReview, reviewMsg,
+    beginReviewEdit, saveReview, reviewSaving, reviewReplaceEmpty,
     conflict, reloadServerVersion, retryConflict,
     schemas, expandedSchema, setExpandedSchema, schemaMsg, setSchemaMsg, createName, setCreateName,
     pendingDeleteSchema, setPendingDeleteSchema, schemaSourceLabel, isResolutionHit, switchSchema,

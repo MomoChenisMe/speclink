@@ -190,6 +190,8 @@ function fakeSettings() {
         audit: false,
         context: null,
         rules: {},
+        review: { baseline: "extend", critical: [], warning: [], suggestion: [] },
+        reviewBaselineSmells: [],
         schemaArtifacts: ["proposal", "design", "specs", "tasks"],
         schemaName: "spec-driven",
         schemaKnown: true,
@@ -200,6 +202,7 @@ function fakeSettings() {
     writeWorkflowConfig: vi.fn().mockResolvedValue(undefined),
     writeWorkflowContext: vi.fn(),
     writeWorkflowRules: vi.fn(),
+    writeWorkflowReview: vi.fn(),
     readSchemas: vi.fn().mockResolvedValue([]),
     writeWorkflowSchema: vi.fn().mockResolvedValue(undefined),
     forkSchema: vi.fn().mockResolvedValue("spec-driven-custom"),
@@ -1150,7 +1153,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
       within(column)
         .getAllByRole("button")
         .map((b) => b.textContent),
-    ).toEqual(["專案說明", "產出規則", "產出流程", ".speclink.yaml"]);
+    ).toEqual(["專案說明", "產出規則", "審查規則", "產出流程", ".speclink.yaml"]);
     expect(within(column).getByRole("button", { name: "專案說明" }).getAttribute("aria-current")).toBe("page");
     expect(crumbText()).toBe("proj-a/專案設定/專案說明");
     fireEvent.click(within(column).getByRole("button", { name: "產出流程" }));

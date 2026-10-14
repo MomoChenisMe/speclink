@@ -86,6 +86,7 @@
     - crates/engine/speclink-core/tests/golden/copilot.snapshot.md
     - crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md
     - crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    - crates/engine/speclink-core/tests/it/skill_authoring.rs
     - crates/adapters/speclink-cli/src/verbs/config.rs
     - crates/adapters/speclink-cli/tests/it/workflow_config.rs
     - crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs
@@ -94,6 +95,8 @@
     - apps/desktop/src-tauri/src/lib.rs
     - apps/desktop/src-tauri/src/remote.rs
     - apps/desktop/src/adapter/workspace.ts
+    - apps/desktop/src/session.ts
+    - apps/desktop/src/components/ProjectSettingsColumn.tsx
     - apps/desktop/src/settingsCatalog.ts
     - apps/desktop/src/views/ProjectSettingsView.tsx
     - apps/desktop/src/views/project-settings/useProjectSettings.ts
@@ -101,6 +104,10 @@
     - apps/desktop/src/__tests__/projectSettingsView.test.tsx
     - apps/desktop/src/__tests__/remoteDataSource.test.ts
     - apps/desktop/src/__tests__/workspace.test.ts
+    - apps/desktop/src/__tests__/session.test.ts
+    - apps/desktop/src/__tests__/settingsColumn.test.tsx
+    - apps/desktop/src/__tests__/App.test.tsx
+    - apps/desktop/src/__tests__/helpers/remoteFixtures.ts
     - openspec/LANGUAGE.md
     - docs/configuration.md
     - docs/configuration.zh-TW.md
