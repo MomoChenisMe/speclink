@@ -73,8 +73,9 @@ Write rules:
 
 - `locale` accepts only `tw`, `ja`, `en`. `spec_locale` also accepts `auto` (follow `locale`). Case must match. A display name such as 「繁體中文」 is rejected, and the error lists the valid codes.
 - `tdd`, `audit`, and `worktree` accept only `true` / `false`. A `false` value (or an empty `locale`) removes the line, so the default applies again.
-- All write subcommands accept `--dry-run`. It prints the diff and writes nothing.
+- All write subcommands accept `--dry-run`. It prints the diff and writes nothing. The diff marks only the lines that change. A line that stays the same shows as context, also when it is between two changes.
 - A `review` write replaces the whole `review` block. `extend` writes no `baseline` key, an empty list removes its key, and a block with nothing left is removed. Comments inside the `review` block are not kept.
+- After a `review` write, the command checks the skill files in your local project. If they are older than the engine, the write still succeeds, but stderr shows a warning that tells you to run `speclink update`. An older review skill may not apply the review rules.
 - The `review` block is strict. An unknown key (a typo such as `critcal`), a `baseline` other than `extend` or `replace`, or a list entry that is not a string makes the file unparseable. Every command that reads the file then fails and names the key, until you correct it.
 - A write changes only the target lines. All other content and comments stay as they are. If the file cannot be parsed, reads and writes both fail, so your content stays safe.
 - In local mode, a `worktree` change also adds or removes the two worktree skills. You cannot change `worktree` from `true` to `false` while a worktree is still open. The command lists those worktrees. Close them with `speclink-worktree-merge` first.
