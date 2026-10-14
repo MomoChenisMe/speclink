@@ -134,7 +134,12 @@ const SelectItem = React.forwardRef<
 ));
 SelectItem.displayName = SelectPrimitive.Item.displayName;
 
+/** 「全部」選項的值：篩選的「不篩選」在呼叫端是空字串或 null，但 Radix Select 的 item 不接受空字串，
+ *  以這個哨兵值在元件與呼叫端之間來回換。 */
+const SELECT_ALL = "__all__";
+
 export {
+  SELECT_ALL,
   Select,
   SelectGroup,
   SelectValue,

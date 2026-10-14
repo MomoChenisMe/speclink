@@ -44,13 +44,10 @@ import {
   type PromotedExpansionProps,
 } from "./DiscussionColumn";
 import { Button } from "./ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { SELECT_ALL, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 /** 移動 8px 才視為拖曳——否則 dnd-kit 會吃掉單純點擊，導致卡片無法開啟詳情。 */
 export const DRAG_ACTIVATION_DISTANCE = 8;
-
-/** 篩選維度的「全部」在 BoardFilters 裡是 null，但 Radix Select 的 item 不接受空字串。 */
-const FILTER_ALL = "__all__";
 
 /** 各階段的視覺主題——每階一色相，全部取 stage.ts 的 stage-* token 對照；
  *  欄頂色相條與卡片進度條同用 bar（純 bg-stage-*）。 */
@@ -372,16 +369,16 @@ export function KanbanBoard({
       <div className="flex flex-col gap-1">
         <span className="text-xs font-medium text-muted-foreground">{t("filter.createdBy")}</span>
         <Select
-          value={filters.createdBy ?? FILTER_ALL}
+          value={filters.createdBy ?? SELECT_ALL}
           onValueChange={(v) =>
-            setFilters({ ...filters, createdBy: v === FILTER_ALL ? null : v })
+            setFilters({ ...filters, createdBy: v === SELECT_ALL ? null : v })
           }
         >
           <SelectTrigger aria-label={t("filter.createdBy")}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={FILTER_ALL}>{t("filter.all")}</SelectItem>
+            <SelectItem value={SELECT_ALL}>{t("filter.all")}</SelectItem>
             {creators.map((c) => (
               <SelectItem key={c} value={c}>
                 {c}
@@ -393,11 +390,11 @@ export function KanbanBoard({
       <div className="flex flex-col gap-1">
         <span className="text-xs font-medium text-muted-foreground">{t("filter.createdWithin")}</span>
         <Select
-          value={filters.createdWithin ?? FILTER_ALL}
+          value={filters.createdWithin ?? SELECT_ALL}
           onValueChange={(v) =>
             setFilters({
               ...filters,
-              createdWithin: (v === FILTER_ALL
+              createdWithin: (v === SELECT_ALL
                 ? null
                 : v) as BoardFilters["createdWithin"],
             })
@@ -407,7 +404,7 @@ export function KanbanBoard({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={FILTER_ALL}>{t("filter.all")}</SelectItem>
+            <SelectItem value={SELECT_ALL}>{t("filter.all")}</SelectItem>
             <SelectItem value="7d">{t("filter.range7d")}</SelectItem>
             <SelectItem value="30d">{t("filter.range30d")}</SelectItem>
             <SelectItem value="earlier">{t("filter.rangeEarlier")}</SelectItem>
@@ -417,16 +414,16 @@ export function KanbanBoard({
       <div className="flex flex-col gap-1">
         <span className="text-xs font-medium text-muted-foreground">{t("filter.fromDiscussion")}</span>
         <Select
-          value={filters.fromDiscussion ?? FILTER_ALL}
+          value={filters.fromDiscussion ?? SELECT_ALL}
           onValueChange={(v) =>
-            setFilters({ ...filters, fromDiscussion: v === FILTER_ALL ? null : v })
+            setFilters({ ...filters, fromDiscussion: v === SELECT_ALL ? null : v })
           }
         >
           <SelectTrigger aria-label={t("filter.fromDiscussion")}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={FILTER_ALL}>{t("filter.all")}</SelectItem>
+            <SelectItem value={SELECT_ALL}>{t("filter.all")}</SelectItem>
             {sourceDiscussions.map((d) => (
               <SelectItem key={d.slug} value={d.slug}>
                 {d.slug}

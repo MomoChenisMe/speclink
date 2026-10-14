@@ -6,7 +6,8 @@ import { act, cleanup, fireEvent, render as rtlRender, screen } from "@testing-l
 import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
-import { CopyButton } from "../components/CopyButton";
+import { CopyButton, REVEAL_ON_HOVER } from "../components/CopyButton";
+import { REVEAL_ON_GROUP_HOVER } from "../reveal";
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider locale="zh-TW">{children}</I18nProvider>
@@ -124,6 +125,21 @@ describe("CopyButton", () => {
     expect(btn().hasAttribute("data-copied")).toBe(false);
     fireEvent.click(btn());
     expect(btn().hasAttribute("data-copied")).toBe(true);
+  });
+
+  // 滑過才出現的共用基底（複製鈕、server 撤銷鈕）：所在列滑過或鍵盤聚焦時出現，觸控裝置恆常顯示。
+  it("REVEAL_ON_HOVER 以共用基底組成：列滑過、鍵盤聚焦、觸控恆顯，複製後保持可見", () => {
+    const base = REVEAL_ON_GROUP_HOVER.split(" ");
+    expect(base).toEqual(
+      expect.arrayContaining([
+        "opacity-0",
+        "group-hover:opacity-100",
+        "focus-visible:opacity-100",
+        "[@media(hover:none)]:opacity-100",
+      ]),
+    );
+    const copy = REVEAL_ON_HOVER.split(" ");
+    expect(copy).toEqual(expect.arrayContaining([...base, "data-[copied]:opacity-100"]));
   });
 
   // spec desktop-app「變更與討論詳情頁的宿主為看板」Scenario「宿主頁不推動詳情頁外框」：

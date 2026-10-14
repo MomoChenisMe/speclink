@@ -92,12 +92,18 @@ describe("稽核紀錄頁", () => {
   // 換頁列在重抓期間仍可按：若點了舊頁碼列上較後面的頁、而新結果的頁數更少，伺服器會回空頁。
   // 回應到了發現頁碼越界，就拉回最後一頁重抓，不讓使用者卡在空白頁、換頁列又消失。
   it("回應的總頁數比目前頁碼少時，頁碼拉回最後一頁並重新呼叫", async () => {
-    const lastPage = { entries: [PAGE_ONE.entries[0]], totalPages: 1, total: 3 };
+    const lastPage = { entries: [PAGE_ONE.entries[1]], totalPages: 1, total: 3 };
+    let release: (value: typeof lastPage) => void = () => {};
     const getAdminAudit = vi
       .fn()
       .mockImplementationOnce(async () => PAGE_ONE)
       .mockImplementationOnce(async () => ({ entries: [], totalPages: 1, total: 3 }))
-      .mockImplementation(async () => lastPage);
+      .mockImplementationOnce(
+        () =>
+          new Promise<typeof lastPage>((resolve) => {
+            release = resolve;
+          }),
+      );
     renderAt("/admin/audit", makeAdminClient({ getAdminAudit }));
     await screen.findByText("第 1–20 筆，共 45 筆");
     const user = userEvent.setup();
@@ -106,8 +112,13 @@ describe("稽核紀錄頁", () => {
       expect(getAdminAudit).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 })),
     );
     expect(getAdminAudit).toHaveBeenCalledTimes(3);
-    expect(await screen.findByText("第 1–3 筆，共 3 筆")).toBeTruthy();
+    // 越界的空回應不當成「上一份」：重抓期間照舊顯示上一頁，不閃出空狀態。
+    expect(screen.queryByText(/沒有符合/)).toBeNull();
     expect(screen.getByText("new@example.com")).toBeTruthy();
+    release(lastPage);
+    expect(await screen.findByText("第 1–3 筆，共 3 筆")).toBeTruthy();
+    expect(screen.queryByText("new@example.com")).toBeNull();
+    expect(screen.getByText("demo")).toBeTruthy();
   });
 
   it("停在第 3 頁時改每頁 50 筆，以 page=1、limit=50 重新呼叫", async () => {
@@ -123,6 +134,7 @@ describe("稽核紀錄頁", () => {
     await waitFor(() =>
       expect(getAdminAudit).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, limit: 50 })),
     );
+    expect(await screen.findByText("第 1–45 筆，共 45 筆")).toBeTruthy();
   });
 
   it("任一篩選變更回到第 1 頁，篩選值送進 browser API", async () => {

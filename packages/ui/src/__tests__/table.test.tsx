@@ -78,6 +78,24 @@ describe("Table 原語", () => {
     expect(table.className).toContain("w-full");
   });
 
+  // 固定表頭由元件提供（呼叫端不以 className 補底色）：捲動時表頭留在頂端、帶卡片底色蓋住底下的列。
+  it("TableHeader sticky 時表頭固定在頂端並帶卡片底色；未給時沒有", () => {
+    const { unmount } = render(
+      <Table wrapped={false}>
+        <TableHeader sticky>
+          <TableRow>
+            <TableHead>名稱</TableHead>
+          </TableRow>
+        </TableHeader>
+      </Table>,
+    );
+    const head = screen.getByRole("table").querySelector("thead") as HTMLElement;
+    expect(head.className.split(/\s+/)).toEqual(expect.arrayContaining(["sticky", "top-0", "bg-card"]));
+    unmount();
+    sample();
+    expect((screen.getByRole("table").querySelector("thead") as HTMLElement).className).not.toContain("sticky");
+  });
+
   it("className 併入 cn，不覆蓋基底樣式", () => {
     render(
       <Table className="custom-table">

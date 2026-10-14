@@ -65,6 +65,20 @@ describe("TabsTrigger count", () => {
     expect(screen.getByRole("tab", { name: "邀請中" }).querySelector("[data-tab-count]")).toBeNull();
   });
 
+  it("未給 count 時子節點原樣交給 Radix：asChild 搭單一子元素照常渲染", () => {
+    render(
+      <Tabs defaultValue="a">
+        <TabsList variant="card">
+          <TabsTrigger value="a" asChild>
+            <a href="#a">連結分頁</a>
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>,
+    );
+    const tab = screen.getByRole("tab", { name: "連結分頁" });
+    expect(tab.tagName).toBe("A");
+  });
+
   it("count 為 0 時仍渲染計數籤", () => {
     render(
       <Tabs defaultValue="a">

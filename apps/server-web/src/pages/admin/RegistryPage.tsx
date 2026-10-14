@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { FolderPlus, Inbox } from "lucide-react";
 import {
   Badge,
@@ -20,6 +20,7 @@ import {
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
+import { useListScroll } from "../../lib/useListScroll";
 import { useNarrow } from "../../lib/useMediaQuery";
 import { readFormError } from "../../lib/formError";
 import { Field } from "../../components/Field";
@@ -42,7 +43,7 @@ export function RegistryPage() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [q, setQ] = useState("");
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const { scrollRef, scrollToTop } = useListScroll();
   const selected = data?.projects.find((p) => p.key === selectedKey) ?? null;
   const needle = q.trim().toLowerCase();
   const visible = (data?.projects ?? []).filter(
@@ -52,11 +53,7 @@ export function RegistryPage() {
         field.toLowerCase().includes(needle),
       ),
   );
-  const paging = usePaging(visible, {
-    onMove: () => {
-      if (scrollRef.current) scrollRef.current.scrollTop = 0;
-    },
-  });
+  const paging = usePaging(visible, { onMove: scrollToTop });
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">

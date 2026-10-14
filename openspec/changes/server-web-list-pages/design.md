@@ -27,7 +27,7 @@ engine crates、speclink-host、CLI、Protocol 都不動。稽核欄位只存在
 - 稽核紀錄與其他列表用同一條換頁列，看得到總筆數、能改每頁筆數。
 - 撤銷鈕（存取金鑰、裝置登入）滑過才出現。
 - 375px 仍可完成全部操作、沒有整頁水平捲動。
-- 共用元件只補能力、不另寫一份；desktop 呼叫端外觀與行為不變。
+- 共用元件只補能力、不另寫一份；desktop 呼叫端外觀與行為不變，唯一例外是 hover 才顯現的複製鈕改用共用顯隱 class 後，鍵盤聚焦時也看得到、觸控裝置上恆常顯示（見 D1 的 `REVEAL_ON_GROUP_HOVER`）。
 
 **Non-Goals:**
 
@@ -42,7 +42,7 @@ engine crates、speclink-host、CLI、Protocol 都不動。稽核欄位只存在
 
 ### D1 共用元件的補強（packages/ui）
 
-全部是選配屬性，預設值等於現在的行為，desktop 呼叫端一行不改。
+全部是選配屬性，預設值等於現在的行為，desktop 呼叫端一行不改；唯一的行為改變來自共用顯隱 class：複製鈕在鍵盤聚焦時也看得到、觸控裝置上恆常顯示。
 
 | 元件 | 新能力 | 預設 | 用在 |
 | --- | --- | --- | --- |
@@ -58,6 +58,9 @@ engine crates、speclink-host、CLI、Protocol 都不動。稽核欄位只存在
 | `PageHeader` | 根節點 `flex-wrap`；動作槽 `max-w-full flex-wrap`：標題與動作並排放不下時，動作槽換到標題下方一列，槽內控件再各自換行 | — | server-web 窄螢幕 |
 | `TabsTrigger` | `count?: number`：標籤後的計數籤，樣式取自 `ArchivedList` 現有的計數籤 | 無 | 使用者頁、憑證頁分頁；`ArchivedList` 改用它（畫面不變） |
 | `Table` | `wrapped?: boolean`：`false` 時不包外層橫向捲動容器——呼叫端自己就是捲動區時，外層的 `overflow-x-auto` 會自成捲動容器，sticky 表頭就黏在那層 | `true` | 稽核紀錄頁（D7） |
+| `TableHeader` | `sticky?: boolean`：表頭固定在捲動區頂端並帶卡片底色（呼叫端不以 className 補底色） | `false` | 稽核紀錄頁（D7） |
+| `Select` 模組 | 匯出 `SELECT_ALL`：「全部」選項的哨兵值（Radix Select 的 item 不接受空字串）；看板篩選改用它 | — | server-web 的 `FilterSelect`、`KanbanBoard` |
+| 套件入口 | 匯出 `REVEAL_ON_GROUP_HOVER`：列滑過或鍵盤聚焦時出現、觸控裝置恆常顯示的顯隱 class；`CopyButton` 的 `REVEAL_ON_HOVER` 以它為基底（desktop 的複製鈕因此在鍵盤聚焦時也看得到） | — | server-web 的 `RevokeButton`、所有 hover 才顯現的複製鈕 |
 
 `ListRow` 的靜態列仍把描述與 meta 截斷在一列；`actions` 只給靜態列，所以沒有「槽內點擊冒成開列」的情況要處理。
 
@@ -67,7 +70,7 @@ engine crates、speclink-host、CLI、Protocol 都不動。稽核欄位只存在
 
 使用者、專案與儲存庫、憑證、稽核紀錄四頁的根節點改為 `flex h-full min-h-0 flex-col gap-4`（desktop `SpecList` 同值），由上而下：
 
-1. `PageHeader`（`level={1}`）：動作槽依序為 `SearchField`（`label` 為「搜尋」，各頁自己的 placeholder）、該頁篩選（`Select`，觸發鈕 `h-8`、`aria-label` 為篩選名稱，「全部」項以哨兵值對應空字串，沿用 `ListToolbar` 的作法）、頁級動作（`data-tour="list-primary"` 照舊在主要按鈕上）。
+1. `PageHeader`（`level={1}`）：動作槽依序為 `SearchField`（`label` 為「搜尋」，各頁自己的 placeholder）、該頁篩選（`Select`，觸發鈕 `h-8`、`aria-label` 為篩選名稱，「全部」項以共用的 `SELECT_ALL` 哨兵值對應空字串）、頁級動作（`data-tour="list-primary"` 照舊在主要按鈕上）。
 2. 一次性祕密值橫幅（使用者頁的邀請連結；本刀不動，見 Non-Goals）。
 3. 載入中與錯誤：沿用 `AdminLoading`／`AdminError`，放在列表卡位置。
 4. `ListCard`：`header` 為分頁（D4、D6）或不給；`footer` 為 `ListPager`；`scrollRef` 給換頁後捲回頂部。
@@ -123,8 +126,8 @@ engine crates、speclink-host、CLI、Protocol 都不動。稽核欄位只存在
 ### D7 稽核紀錄頁
 
 - **工具列**：搜尋、動作篩選、來源篩選、起始日期、結束日期（兩個日期輸入之間一個灰色「–」，各自 `aria-label` 為「起始日期」「結束日期」）。日期輸入 `h-8` 與 `Select` 同圓角。
-- **換頁**：頁碼與每頁筆數放在頁面狀態，呼叫 `getAdminAudit({ q, action, source, from, to, page, limit: pageSize })`。`ListPager` 以受控方式餵入：`page`、`pageCount = max(totalPages, 1)`、`total`（D9 新欄位）、`pageSize`、`onPage`、`onPageSize`。任一篩選或每頁筆數變更都把頁碼設回 1（沿用現有的重設寫法，函式改名 `refilter()`，`narrow` 留給窄螢幕旗標）。換頁與改筆數後捲回頂部。換頁或改篩選期間照舊顯示上一份回應（`useAsync` 重抓時會先清空 data），列表卡與換頁列不卸載，剛按的頁碼鈕留著、焦點不會掉回頁首；只在第一次載入時顯示 `AdminLoading`。重抓期間換頁列仍可按，可能點到新結果已不存在的頁（伺服器對越界頁碼回空頁），所以回應的總頁數比目前頁碼少時，頁碼拉回最後一頁並重抓一次。
-- **寬螢幕**：列表卡內是共用 `Table`（`wrapped={false}`，見 D1），表頭 `sticky top-0` 並帶卡片底色，五欄（時間、動作、對象、操作者、來源）照舊；來源改 `StatusPill tone="neutral"`。
+- **換頁**：頁碼與每頁筆數放在頁面狀態，呼叫 `getAdminAudit({ q, action, source, from, to, page, limit: pageSize })`。`ListPager` 以受控方式餵入：`page`、`pageCount = max(totalPages, 1)`、`total`（D9 新欄位）、`pageSize`、`onPage`、`onPageSize`。任一篩選或每頁筆數變更都把頁碼設回 1（沿用現有的重設寫法，函式改名 `refilter()`，`narrow` 留給窄螢幕旗標）。換頁與改筆數後捲回頂部。換頁或改篩選期間照舊顯示上一份回應（`useAsync` 重抓時會先清空 data），列表卡與換頁列不卸載，剛按的頁碼鈕留著、焦點不會掉回頁首；只在第一次載入時顯示 `AdminLoading`。重抓期間換頁列仍可按，可能點到新結果已不存在的頁（伺服器對越界頁碼回空頁），所以回應的總頁數比它抓取時的頁碼少時，這份空回應不顯示、也不留作「上一份」，頁碼拉回最後一頁並重抓一次（回應帶著抓取時的頁碼，頁碼拉回後、舊回應清掉前仍認得出它越界）。列表卡的捲動區與捲回頂部由 server-web 的 `useListScroll` 提供，四個列表頁共用。
+- **寬螢幕**：列表卡內是共用 `Table`（`wrapped={false}`，見 D1），表頭用 `TableHeader sticky` 固定並帶卡片底色，五欄（時間、動作、對象、操作者、來源）照舊；來源改 `StatusPill tone="neutral"`。
 - **窄螢幕**：每筆一列靜態 `ListRow`（`mono={false}`）：`leading` 為日期、`title` 為動作名稱、`description` 為「對象 · 操作者」、`meta` 為來源籤。
 - 沒有符合事件：照舊的 `EmptyState`，工具列保留。
 - 動作與來源的未知值照舊原樣呈現。
@@ -133,13 +136,14 @@ engine crates、speclink-host、CLI、Protocol 都不動。稽核欄位只存在
 
 新增 `apps/server-web/src/components/RevokeButton.tsx`：`Button variant="outline" size="sm"`，文字「撤銷」，props 為 `label`（`aria-label`）、`disabled`、`onClick`。顯隱只用不透明度：
 
+- 顯隱 class 取自 packages/ui 匯出的 `REVEAL_ON_GROUP_HOVER`（與 hover 才顯現的複製鈕同一個基底）。
 - 平時 `opacity-0`；所在列滑過（`group-hover:`）或按鈕本身鍵盤聚焦（`focus-visible:`）時 `opacity-100`。
 - 不具滑鼠移入能力的裝置（`@media (hover: none)`）恆常 `opacity-100`。
 - 只改不透明度，不用 `hidden`／`display`：隱藏期間按鈕仍在 Tab 順序內、螢幕閱讀器讀得到。
 
 用在帳號頁的存取金鑰與裝置登入列（`SettingsRow` 的 `control`）、憑證頁兩類列（`ListRow` 的 `actions`）。第三刀的使用者詳情頁憑證分頁會沿用它。「撤回邀請」不用它，恆常顯示（討論只裁定存取金鑰與裝置登入）。
 
-替代方案：在 packages/ui 加通用「滑過才出現」常數——desktop 目前只有一處（RecentList）且寫法不同，沒有第二個 packages/ui 消費者，否決；元件留在 server-web。
+替代方案：RevokeButton 自寫一份顯隱 class——packages/ui 的複製鈕已有同用途的 `REVEAL_ON_HOVER`（卡片名稱列、共用列、討論欄三處共用），另寫一份就是平行實作，否決；改為抽出共用基底 `REVEAL_ON_GROUP_HOVER`，兩者共用。元件本身留在 server-web（desktop 沒有撤銷鈕）。
 
 ### D9 稽核 view model 多回 `total`
 
@@ -232,7 +236,7 @@ zh-TW 與 en 同時增刪，兩種語言的 key 集合維持相等（i18n.test �
   - system.test.tsx、account.test.tsx：各卡為 region（名稱為小標）；帳號頁卡片順序；撤銷鈕帶 `opacity-0` 與 `group-hover:opacity-100` 的顯隱 class 且仍可由 `getByRole("button")` 找到；撤銷確認框照舊。
   - toolbar.test.tsx：稽核紀錄頁的搜尋框、兩個下拉與兩個日期輸入高度 class 相同；下拉是 combobox 而非原生 select；每個控件有無障礙名稱。
   - a11y.test.tsx：使用者頁、總覽、帳號頁無 axe 違規。
-- `npm test -w packages/ui` 全綠，含：listRow.test.tsx（不給 `onClick` 時沒有 `role=button`、沒有 ›、點擊無作用；`mono={false}`；`actions` 槽內點擊不觸發 `onClick`）、listPager.test.tsx（`compact` 只渲染範圍、上一頁、「n / m」、下一頁）、settingsParts.test.tsx（`aside` 渲染在小標列；`SettingsRow` 根節點有 `group`）、detailShell.test.tsx（帶 `link` 的格渲染成該連結元素並含值與標籤）、pageHeader.test.tsx（根節點與動作槽可換行）、tabs.test.tsx（`count` 渲染計數籤）、archivedList.test.tsx 照舊通過；uiSingleSource 守門照舊通過。
+- `npm test -w packages/ui` 全綠，含：listRow.test.tsx（不給 `onClick` 時沒有 `role=button`、沒有 ›、點擊無作用；`mono={false}`；`actions` 與 `onClick` 型別互斥，靜態列的槽內按鈕照常可按）、listPager.test.tsx（`compact` 只渲染範圍、上一頁、「n / m」、下一頁）、settingsParts.test.tsx（`aside` 渲染在小標列；`SettingsRow` 根節點有 `group`）、detailShell.test.tsx（帶 `link` 的格渲染成該連結元素並含值與標籤）、pageHeader.test.tsx（根節點與動作槽可換行）、tabs.test.tsx（`count` 渲染計數籤）、archivedList.test.tsx 照舊通過；uiSingleSource 守門照舊通過。
 - `npm test -w apps/desktop` 全綠（題目不改）。
 - `cargo test -p speclink-server --test it admin::audit_filter` 全綠，既有各題加 `total` 斷言（篩選第 2 頁為 3、超出頁碼為 5、未知動作為 0）。
 - `npm run build -w apps/server-web` 成功。
@@ -247,7 +251,7 @@ zh-TW 與 en 同時增刪，兩種語言的 key 集合維持相等（i18n.test �
 
 - [第三刀落地前，列表頁是新清單加舊抽屜] → 點列照舊開右側抽屜、建立照舊開抽屜，中間狀態可用；第三刀依序轉出。
 - [撤銷鈕滑過才出現，降低可發現性] → 鍵盤聚焦時出現、觸控裝置恆常顯示、按鈕始終在 Tab 順序與無障礙樹內；有效狀態籤恆常可見，提示這一列可操作。
-- [共用元件補強影響 desktop] → 全部是選配屬性、預設等於現狀；`ArchivedList` 改用計數屬性後 DOM 不變；`PageHeader` 只在放不下時換行。packages/ui 與 desktop 全套 vitest 都跑一次。
+- [共用元件補強影響 desktop] → 全部是選配屬性、預設等於現狀，唯一例外是複製鈕改用共用顯隱 class 後鍵盤聚焦時也看得到（原本聚焦時仍透明，屬無障礙改善）；`ArchivedList` 改用計數屬性後 DOM 不變；`PageHeader` 只在放不下時換行。packages/ui 與 desktop 全套 vitest 都跑一次。
 - [稽核 API 多一個欄位] → 只加不改，既有欄位與參數不變；Rust 測試補斷言。CLI 不讀這支 API，golden 與 CLI 測試不受影響。
 - [前端換頁對大量使用者的效能] → 資料本來就整份載入並在前端篩選，換頁只減少渲染的列數，不增加負擔。
 - [回歸對照] → 不碰 CLI 與 golden 檔；前端以 vitest 與 vite build 為準（前端 `tsc --noEmit` 基準本來就紅、不是守門）；Rust 只跑 speclink-server 的稽核測試。

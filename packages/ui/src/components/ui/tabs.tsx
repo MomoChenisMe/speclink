@@ -78,11 +78,16 @@ export const TabsTrigger = React.forwardRef<
     className={cn(TRIGGER_CLS[React.useContext(TabsVariantContext)], className)}
     {...props}
   >
-    {children}
-    {count !== undefined && (
-      <span data-tab-count className={COUNT_PILL_CLS}>
-        {count}
-      </span>
+    {count === undefined ? (
+      // 沒有計數籤時子節點原樣交出：asChild 的 Slot 只接受單一子元素。
+      children
+    ) : (
+      <>
+        {children}
+        <span data-tab-count className={COUNT_PILL_CLS}>
+          {count}
+        </span>
+      </>
     )}
   </TabsPrimitive.Trigger>
 ));

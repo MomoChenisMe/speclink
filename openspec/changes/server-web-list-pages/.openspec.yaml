@@ -15,7 +15,7 @@ reviewed_scope:
   - path: apps/server-web/src/__tests__/account.test.tsx
     hash: 83f5a95da5447cf53e53c58831434b5bcabc0eb8843ab7715e66c35447aa6ba4
   - path: apps/server-web/src/__tests__/audit.test.tsx
-    hash: 13dd6abbb468c3a0ed54156adcf860d28083f6b9c15f68c6fd58201beddc8818
+    hash: d9caf9df0a087b42d5f8f239bf51db2a1c76b1cbc6a8de22547739244c89ba3a
   - path: apps/server-web/src/__tests__/credentials.test.tsx
     hash: 1ef839532cad4ebc0e0b9b5fdca21eb45089ff0d84e2fc1eed5822eba27a1016
   - path: apps/server-web/src/__tests__/helpers/adminHarness.tsx
@@ -29,45 +29,39 @@ reviewed_scope:
   - path: apps/server-web/src/__tests__/toolbar.test.tsx
     hash: a697ae5a973497cb31d840e40381e6344fdd4d4137696831bc27544f5a28440e
   - path: apps/server-web/src/__tests__/users.test.tsx
-    hash: 6923aefa9cc192a8c2a16cc3acc085184618ea346cd4d172f8fc1b977e6ff4c4
+    hash: 447540d91b9398f052079056733ede5b731377e8a9abb63a18ec6dddc5901b19
   - path: apps/server-web/src/__tests__/wording.test.tsx
     hash: 2cf6486f626dcd79947925590c245b08e73f929af069dbb33acee8259e530a6c
   - path: apps/server-web/src/api/client.ts
     hash: cff796830ba26e1b7c5d9d87c07bb5b4653de416b4ec2c7d413dc74a85899753
-  - path: apps/server-web/src/components/CardNote.tsx
-    hash: 1be45947ee409788c4109bd05c99b517e49e23e962a7b587b18e1e5173547d61
   - path: apps/server-web/src/components/FilterSelect.tsx
-    hash: 7d084719e0b6dabf8f562b04987a7f3579703c4811a93074e2cf13e663dbeda7
-  - path: apps/server-web/src/components/RevocationPill.tsx
-    hash: ab010333ae2b1cd42bf418f1737c3d9fd60b51af34a92b5cafb05efe63246f65
+    hash: b8441da3ea363503a59b82e032c9c0a2993cdb3acafa3b35a8e07d96ec9704d8
   - path: apps/server-web/src/components/RevokeButton.tsx
-    hash: fd7da96a6a38c53f46c841e366c580195cbd5f1e9e2e7e566beda9f6549b6326
+    hash: 87d0cb1d74933af6a2995e5be92ef6bcc613103e0ac4df500eced73f59443e7e
   - path: apps/server-web/src/i18n/messages.ts
     hash: 1a5c36470338e3722cb43e093d88746826c78417f0c4afd1408e4c31ebbef15d
-  - path: apps/server-web/src/layouts/ConsoleLayout.tsx
-    hash: b3e5b7aaa44baaee583db9fdd4174ec5ef6b6f0220ca5307909d2019fd9086c2
-  - path: apps/server-web/src/lib/auditLabel.ts
-    hash: 754dfec27030d6c2343582ec284aa0caa2abedd83bd70791cdcb7d0021601a5f
-  - path: apps/server-web/src/lib/useMediaQuery.ts
-    hash: c523484dc9e7865c8698fbf89c6e1d8bfb63d06e1a1a5679b9d530dc7eb9f9b4
+  - path: apps/server-web/src/lib/useListScroll.ts
+    hash: ff9324a262e59972203fc34658cba76a45b1c87f2d242823fb9efd385528ed28
   - path: apps/server-web/src/pages/AccountPage.tsx
     hash: 1f0795229415cc9ea15b7317189e667f522514c1ac87a13e9ff9b7f52a59612a
   - path: apps/server-web/src/pages/admin/AuditPage.tsx
-    hash: 22e338de518411c757258300d3bf062541ac4b5ef69db14a3580f5a0410c2068
+    hash: f25e947b83d08d6f0e73e0a80598117a6ad0780cf07dd0f8c6a441f667f9dc5e
   - path: apps/server-web/src/pages/admin/CredentialsPage.tsx
-    hash: 186fce5d847c364af7b88a674bb6c21773680b735da856789ade56da366171eb
+    hash: 248734023b73a3b4ab96cc3beab6033f2e525f035746e106a028d963ff7760c5
   - path: apps/server-web/src/pages/admin/OverviewPage.tsx
     hash: 69364b371627e1f7367d47c4a330b180567fe701c512dff9bc6d9cc1ae40e7f0
   - path: apps/server-web/src/pages/admin/RegistryPage.tsx
-    hash: 073176bfe200f9666ee69ad143ccae599688f3a70669eec39c9ef75ce7666bbf
+    hash: 046e793545ca7c47f043894d5c898a5107349f71f62f194a870a72f46358506e
   - path: apps/server-web/src/pages/admin/SystemPage.tsx
     hash: 5b1454b65377b01484929a3bb6561caed79690dc9fd7ba76d6564f7f4c184df8
   - path: apps/server-web/src/pages/admin/UsersPage.tsx
-    hash: c1ebf5e82fb5bf7e7d59607c6734de61a8ffcf54299ba5c56b6fc72393fcd9e7
+    hash: 92900f2363e62ea9cf6d63b12e989c56ad55af2d48807b73e3cf498640e1cb9b
   - path: crates/host/speclink-server/src/admin.rs
     hash: 79780153ef9b32d2657abea01019c06192a55fcc6b4690ed45e69db1b7d72d4e
   - path: crates/host/speclink-server/tests/it/admin/audit_filter.rs
     hash: 35c216bc31934b37895919490836a1aa747252e3f046449173e15bd7216b7bdb
+  - path: packages/ui/src/__tests__/copyButton.test.tsx
+    hash: b53d85ccbdba41de60824118ff80669f9c2343ee7237e4bc855b290cfb725633
   - path: packages/ui/src/__tests__/detailShell.test.tsx
     hash: df1b83c2b7e730b5d5b4eb04ba985cea34f99206bf358aaff6044a63bb90c7a4
   - path: packages/ui/src/__tests__/listPager.test.tsx
@@ -79,13 +73,17 @@ reviewed_scope:
   - path: packages/ui/src/__tests__/settingsParts.test.tsx
     hash: e2b8f7bb8bd986611a45819ee2b7f5e1242050be488605d168824fc044ef0104
   - path: packages/ui/src/__tests__/table.test.tsx
-    hash: 0b1f26c7515c6f569f1acf6857bd3aeef65a6a99f525c981eb8a7ec97fc84b79
+    hash: f3451421b8275d0ea77ea67d650a4d709d20fd9e5f708243d92800b4a0e8adcd
   - path: packages/ui/src/__tests__/tabs.test.tsx
-    hash: 7b3825f105e3c9dfa7bbb2f01d1e91af05dca8e3a1d0a3ec96d906bff80ab27e
+    hash: 6d99cfdd0bcae405bb34939b44466449a7c77771cde5969b34ce906447e1d0dd
   - path: packages/ui/src/components/ArchivedList.tsx
     hash: a9a718410c45ccd5dee687d16b9200a53ebb5206ba3946c44b26046cb15d5ee9
+  - path: packages/ui/src/components/CopyButton.tsx
+    hash: dea0954c0006ada9439ce587f0c5ebecc6627351ed443b22bad3c78256777ad7
   - path: packages/ui/src/components/DetailShell.tsx
     hash: 38a2f5f0868002b6272fe534d96bf06cae43ee18ebe094702d60fee54422a99b
+  - path: packages/ui/src/components/KanbanBoard.tsx
+    hash: 86e8639068b31fdd855b7d10f5d9108ba9358a2fbf6df4e0470175e1041c364c
   - path: packages/ui/src/components/ListPager.tsx
     hash: 05d4ce4ef8349374f812902113baf88a58d4d684873bdc3dc9c40a20f5bc106e
   - path: packages/ui/src/components/ListRow.tsx
@@ -94,14 +92,18 @@ reviewed_scope:
     hash: dc608d71989aad69c446ef0ef781bf82932b25e8e725a016eeed40f9c4c71c37
   - path: packages/ui/src/components/ui/page-header.tsx
     hash: 895467280767feced5efb81f0025ec0c7053caffca2fa24a58accdbc76150742
+  - path: packages/ui/src/components/ui/select.tsx
+    hash: ace6f37bd4a75f4240039b97725fb0ee6d524005aa0612ccfdfca6851d0f4e29
   - path: packages/ui/src/components/ui/settings.tsx
     hash: d19e78dfe79987ab8ba28df2eb8e9eac3ab7328c5e589f764c71d304fba7a29d
   - path: packages/ui/src/components/ui/table.tsx
-    hash: 852defeb6c89278d18160685093d95a6180695c4751b53a43963e4688dbca094
+    hash: e212460622af8d2598f2b0976aaa348559492afe839a606ec94fd241e283218c
   - path: packages/ui/src/components/ui/tabs.tsx
-    hash: 0b7e3c5d20c88ed257a43d42a479f3750019804650d5b36809d126625ed232fc
+    hash: 9d15ad933a9914722c810d70999491dea50c00f66fd4100de5fd7a0d2fe6d8cd
   - path: packages/ui/src/index.ts
-    hash: 60a006503d2f878671f8ebb109bdc0e02bf97dee9f9afab5cf9d98f8d25ff1a9
+    hash: 01f4b9777cb4bf5a0be8e01d35250c48f90c2c727279e8c4cef69d4902349269
+  - path: packages/ui/src/reveal.ts
+    hash: 29bc9244d9f3edc5b80f4f40c5aef74e8cce9ca38d47d3b9ad17b0cd232519f7
 verified_at: 2026-10-14
 verified_by: MomoChen <momochenisme@gmail.com>
 verified_with: claude
@@ -112,7 +114,7 @@ verified_scope:
   - path: apps/server-web/src/__tests__/account.test.tsx
     hash: 83f5a95da5447cf53e53c58831434b5bcabc0eb8843ab7715e66c35447aa6ba4
   - path: apps/server-web/src/__tests__/audit.test.tsx
-    hash: 13dd6abbb468c3a0ed54156adcf860d28083f6b9c15f68c6fd58201beddc8818
+    hash: d9caf9df0a087b42d5f8f239bf51db2a1c76b1cbc6a8de22547739244c89ba3a
   - path: apps/server-web/src/__tests__/credentials.test.tsx
     hash: 1ef839532cad4ebc0e0b9b5fdca21eb45089ff0d84e2fc1eed5822eba27a1016
   - path: apps/server-web/src/__tests__/helpers/adminHarness.tsx
@@ -126,45 +128,39 @@ verified_scope:
   - path: apps/server-web/src/__tests__/toolbar.test.tsx
     hash: a697ae5a973497cb31d840e40381e6344fdd4d4137696831bc27544f5a28440e
   - path: apps/server-web/src/__tests__/users.test.tsx
-    hash: 6923aefa9cc192a8c2a16cc3acc085184618ea346cd4d172f8fc1b977e6ff4c4
+    hash: 447540d91b9398f052079056733ede5b731377e8a9abb63a18ec6dddc5901b19
   - path: apps/server-web/src/__tests__/wording.test.tsx
     hash: 2cf6486f626dcd79947925590c245b08e73f929af069dbb33acee8259e530a6c
   - path: apps/server-web/src/api/client.ts
     hash: cff796830ba26e1b7c5d9d87c07bb5b4653de416b4ec2c7d413dc74a85899753
-  - path: apps/server-web/src/components/CardNote.tsx
-    hash: 1be45947ee409788c4109bd05c99b517e49e23e962a7b587b18e1e5173547d61
   - path: apps/server-web/src/components/FilterSelect.tsx
-    hash: 7d084719e0b6dabf8f562b04987a7f3579703c4811a93074e2cf13e663dbeda7
-  - path: apps/server-web/src/components/RevocationPill.tsx
-    hash: ab010333ae2b1cd42bf418f1737c3d9fd60b51af34a92b5cafb05efe63246f65
+    hash: b8441da3ea363503a59b82e032c9c0a2993cdb3acafa3b35a8e07d96ec9704d8
   - path: apps/server-web/src/components/RevokeButton.tsx
-    hash: fd7da96a6a38c53f46c841e366c580195cbd5f1e9e2e7e566beda9f6549b6326
+    hash: 87d0cb1d74933af6a2995e5be92ef6bcc613103e0ac4df500eced73f59443e7e
   - path: apps/server-web/src/i18n/messages.ts
     hash: 1a5c36470338e3722cb43e093d88746826c78417f0c4afd1408e4c31ebbef15d
-  - path: apps/server-web/src/layouts/ConsoleLayout.tsx
-    hash: b3e5b7aaa44baaee583db9fdd4174ec5ef6b6f0220ca5307909d2019fd9086c2
-  - path: apps/server-web/src/lib/auditLabel.ts
-    hash: 754dfec27030d6c2343582ec284aa0caa2abedd83bd70791cdcb7d0021601a5f
-  - path: apps/server-web/src/lib/useMediaQuery.ts
-    hash: c523484dc9e7865c8698fbf89c6e1d8bfb63d06e1a1a5679b9d530dc7eb9f9b4
+  - path: apps/server-web/src/lib/useListScroll.ts
+    hash: ff9324a262e59972203fc34658cba76a45b1c87f2d242823fb9efd385528ed28
   - path: apps/server-web/src/pages/AccountPage.tsx
     hash: 1f0795229415cc9ea15b7317189e667f522514c1ac87a13e9ff9b7f52a59612a
   - path: apps/server-web/src/pages/admin/AuditPage.tsx
-    hash: 22e338de518411c757258300d3bf062541ac4b5ef69db14a3580f5a0410c2068
+    hash: f25e947b83d08d6f0e73e0a80598117a6ad0780cf07dd0f8c6a441f667f9dc5e
   - path: apps/server-web/src/pages/admin/CredentialsPage.tsx
-    hash: 186fce5d847c364af7b88a674bb6c21773680b735da856789ade56da366171eb
+    hash: 248734023b73a3b4ab96cc3beab6033f2e525f035746e106a028d963ff7760c5
   - path: apps/server-web/src/pages/admin/OverviewPage.tsx
     hash: 69364b371627e1f7367d47c4a330b180567fe701c512dff9bc6d9cc1ae40e7f0
   - path: apps/server-web/src/pages/admin/RegistryPage.tsx
-    hash: 073176bfe200f9666ee69ad143ccae599688f3a70669eec39c9ef75ce7666bbf
+    hash: 046e793545ca7c47f043894d5c898a5107349f71f62f194a870a72f46358506e
   - path: apps/server-web/src/pages/admin/SystemPage.tsx
     hash: 5b1454b65377b01484929a3bb6561caed79690dc9fd7ba76d6564f7f4c184df8
   - path: apps/server-web/src/pages/admin/UsersPage.tsx
-    hash: c1ebf5e82fb5bf7e7d59607c6734de61a8ffcf54299ba5c56b6fc72393fcd9e7
+    hash: 92900f2363e62ea9cf6d63b12e989c56ad55af2d48807b73e3cf498640e1cb9b
   - path: crates/host/speclink-server/src/admin.rs
     hash: 79780153ef9b32d2657abea01019c06192a55fcc6b4690ed45e69db1b7d72d4e
   - path: crates/host/speclink-server/tests/it/admin/audit_filter.rs
     hash: 35c216bc31934b37895919490836a1aa747252e3f046449173e15bd7216b7bdb
+  - path: packages/ui/src/__tests__/copyButton.test.tsx
+    hash: b53d85ccbdba41de60824118ff80669f9c2343ee7237e4bc855b290cfb725633
   - path: packages/ui/src/__tests__/detailShell.test.tsx
     hash: df1b83c2b7e730b5d5b4eb04ba985cea34f99206bf358aaff6044a63bb90c7a4
   - path: packages/ui/src/__tests__/listPager.test.tsx
@@ -176,13 +172,17 @@ verified_scope:
   - path: packages/ui/src/__tests__/settingsParts.test.tsx
     hash: e2b8f7bb8bd986611a45819ee2b7f5e1242050be488605d168824fc044ef0104
   - path: packages/ui/src/__tests__/table.test.tsx
-    hash: 0b1f26c7515c6f569f1acf6857bd3aeef65a6a99f525c981eb8a7ec97fc84b79
+    hash: f3451421b8275d0ea77ea67d650a4d709d20fd9e5f708243d92800b4a0e8adcd
   - path: packages/ui/src/__tests__/tabs.test.tsx
-    hash: 7b3825f105e3c9dfa7bbb2f01d1e91af05dca8e3a1d0a3ec96d906bff80ab27e
+    hash: 6d99cfdd0bcae405bb34939b44466449a7c77771cde5969b34ce906447e1d0dd
   - path: packages/ui/src/components/ArchivedList.tsx
     hash: a9a718410c45ccd5dee687d16b9200a53ebb5206ba3946c44b26046cb15d5ee9
+  - path: packages/ui/src/components/CopyButton.tsx
+    hash: dea0954c0006ada9439ce587f0c5ebecc6627351ed443b22bad3c78256777ad7
   - path: packages/ui/src/components/DetailShell.tsx
     hash: 38a2f5f0868002b6272fe534d96bf06cae43ee18ebe094702d60fee54422a99b
+  - path: packages/ui/src/components/KanbanBoard.tsx
+    hash: 86e8639068b31fdd855b7d10f5d9108ba9358a2fbf6df4e0470175e1041c364c
   - path: packages/ui/src/components/ListPager.tsx
     hash: 05d4ce4ef8349374f812902113baf88a58d4d684873bdc3dc9c40a20f5bc106e
   - path: packages/ui/src/components/ListRow.tsx
@@ -191,11 +191,15 @@ verified_scope:
     hash: dc608d71989aad69c446ef0ef781bf82932b25e8e725a016eeed40f9c4c71c37
   - path: packages/ui/src/components/ui/page-header.tsx
     hash: 895467280767feced5efb81f0025ec0c7053caffca2fa24a58accdbc76150742
+  - path: packages/ui/src/components/ui/select.tsx
+    hash: ace6f37bd4a75f4240039b97725fb0ee6d524005aa0612ccfdfca6851d0f4e29
   - path: packages/ui/src/components/ui/settings.tsx
     hash: d19e78dfe79987ab8ba28df2eb8e9eac3ab7328c5e589f764c71d304fba7a29d
   - path: packages/ui/src/components/ui/table.tsx
-    hash: 852defeb6c89278d18160685093d95a6180695c4751b53a43963e4688dbca094
+    hash: e212460622af8d2598f2b0976aaa348559492afe839a606ec94fd241e283218c
   - path: packages/ui/src/components/ui/tabs.tsx
-    hash: 0b7e3c5d20c88ed257a43d42a479f3750019804650d5b36809d126625ed232fc
+    hash: 9d15ad933a9914722c810d70999491dea50c00f66fd4100de5fd7a0d2fe6d8cd
   - path: packages/ui/src/index.ts
-    hash: 60a006503d2f878671f8ebb109bdc0e02bf97dee9f9afab5cf9d98f8d25ff1a9
+    hash: 01f4b9777cb4bf5a0be8e01d35250c48f90c2c727279e8c4cef69d4902349269
+  - path: packages/ui/src/reveal.ts
+    hash: 29bc9244d9f3edc5b80f4f40c5aef74e8cce9ca38d47d3b9ad17b0cd232519f7
