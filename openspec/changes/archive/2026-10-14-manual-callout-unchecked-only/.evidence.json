@@ -15,6 +15,13 @@
       "files": [
         "packages/ui/src/components/changeDocSummary.tsx"
       ]
+    },
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫紅燈（spec「任務群組標題與章節標籤同款式」的「數字磚與手動提示框」「部分勾選時提示框只列未勾選的手動任務」）：`packages/ui/src/__tests__/changeDetailPage.test.tsx` 中驗任務文件數字磚與手動提示框的那一組。改：既有「任務文件：數字磚 9／7／1／3 與手動提示框列出 3.2；全部勾選後籤槽為「全部完成」」題的全部勾選段落，加驗數字磚仍含「手動 1」且頁面上沒有 `[data-doc-callout]` 提示框。加一題「部分勾選時提示框只列未勾選的手動任務」：tasks.md 有 4 條帶 `[M]` 的任務 4.3（已勾）、5.8、6.9、7.6（未勾），分在不同群組並各夾一條一般任務；初次渲染時提示框標題為「3 個手動任務」、`[data-manual-task]` 恰三列且序號依序為 5.8、6.9、7.6、不含 4.3，數字磚為「手動 4」；接著以 TaskList 收到的 `onToggle`（`onToggleTask` resolve）依序勾 5.8、6.9、7.6，三條都勾完後提示框缺席、頁面沒有任何其他提示框、數字磚仍為「手動 4」；再取消勾選 6.9，提示框重新出現、標題「1 個手動任務」且只列 6.9。加一題「勾選寫回失敗時提示框跟著回滾」：同一份 tasks.md，`onToggleTask` reject，勾 5.8 後寫回失敗，提示框回到「3 個手動任務」並列出 5.8、6.9、7.6。驗證：1.2 實作前，`npm test -w packages/ui -- changeDetailPage` 中上述斷言失敗，同檔其餘題目照綠。",
+      "files": [
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx"
+      ]
     }
   ],
   "entries": [
@@ -39,6 +46,17 @@
         "packages/ui/src/components/changeDocSummary.tsx"
       ],
       "recordedAt": "2026-10-14T04:32:40Z"
+    },
+    {
+      "taskId": "tsk_01M4W43E0Y73RTG0095XH0DXP7",
+      "taskDesc": "1.1 先寫紅燈（spec「任務群組標題與章節標籤同款式」的「數字磚與手動提示框」「部分勾選時提示框只列未勾選的手動任務」）：`packages/ui/src/__tests__/changeDetailPage.test.tsx` 中驗任務文件數字磚與手動提示框的那一組。改：既有「任務文件：數字磚 9／7／1／3 與手動提示框列出 3.2；全部勾選後籤槽為「全部完成」」題的全部勾選段落，加驗數字磚仍含「手動 1」且頁面上沒有 `[data-doc-callout]` 提示框。加一題「部分勾選時提示框只列未勾選的手動任務」：tasks.md 有 4 條帶 `[M]` 的任務 4.3（已勾）、5.8、6.9、7.6（未勾），分在不同群組並各夾一條一般任務；初次渲染時提示框標題為「3 個手動任務」、`[data-manual-task]` 恰三列且序號依序為 5.8、6.9、7.6、不含 4.3，數字磚為「手動 4」；接著以 TaskList 收到的 `onToggle`（`onToggleTask` resolve）依序勾 5.8、6.9、7.6，三條都勾完後提示框缺席、頁面沒有任何其他提示框、數字磚仍為「手動 4」；再取消勾選 6.9，提示框重新出現、標題「1 個手動任務」且只列 6.9。加一題「勾選寫回失敗時提示框跟著回滾」：同一份 tasks.md，`onToggleTask` reject，勾 5.8 後寫回失敗，提示框回到「3 個手動任務」並列出 5.8、6.9、7.6。驗證：1.2 實作前，`npm test -w packages/ui -- changeDetailPage` 中上述斷言失敗，同檔其餘題目照綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7d42d29d886e94210d75425a99bc03769a79b0e0",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx"
+      ],
+      "recordedAt": "2026-10-14T05:46:03Z"
     }
   ]
 }

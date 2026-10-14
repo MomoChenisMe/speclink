@@ -547,6 +547,21 @@ describe("已封存變更的文件渲染器", () => {
     );
   });
 
+  it("手動提示框只列未勾的手動任務，「手動」數字磚仍計總數", async () => {
+    const tasks = "## 1. 甲\n\n- [x] [M] 1.1 已驗手動\n- [ ] [M] 1.2 待驗手動\n";
+    const loadDocument = vi.fn(async (_d: string, artifact: string) =>
+      artifact === "tasks.md" ? tasks : (docs[artifact] ?? null),
+    );
+    render(<ArchivedDetailPage {...(makeProps({ loadDocument }) as never)} />);
+    await screen.findByText("動機");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /任務/ }));
+    await waitFor(() => expect(flat(document.querySelector("[data-doc-callout]"))).toContain("1 個手動任務"));
+    expect(Array.from(document.querySelectorAll("[data-manual-task]")).map((row) => flat(row.firstElementChild))).toEqual([
+      "1.2",
+    ]);
+    expect(Array.from(document.querySelectorAll("[data-doc-tile]")).map((t) => flat(t))).toContain("2手動");
+  });
+
   it("任務的 D 籤切到設計文件；規格文件能力頭有「看正式規格」", async () => {
     const onOpenSpec = vi.fn();
     render(<ArchivedDetailPage {...(makeProps({ ...props(), onOpenSpec }) as never)} />);

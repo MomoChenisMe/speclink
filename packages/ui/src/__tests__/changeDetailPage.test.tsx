@@ -2068,68 +2068,91 @@ describe("變更文件的籤、數字磚、提示框與跳轉", () => {
     await waitFor(() => expect((taskListProps.at(-1)?.locate as { ordinal: number } | null)?.ordinal).toBe(8));
     first.unmount();
 
-    docs["tasks.md"] = TASKS.replace(/- \[ \]/g, "- [x]");
-    try {
-      render(<ChangeDetailPage {...(props() as never)} />);
-      fireEvent.mouseDown(await screen.findByRole("tab", { name: /任務/ }));
-      await waitFor(() => expect(badges()).toBe("全部完成"));
-      // 手動任務全部勾完：「手動」數字磚仍計總數，提示框缺席。
-      expect(tiles()).toContain("手動 1");
-      expect(document.querySelector("[data-doc-callout]")).toBeNull();
-    } finally {
-      docs["tasks.md"] = TASKS;
-    }
+    render(<ChangeDetailPage {...(props({ loadDocument: withTasks(TASKS.replace(/- \[ \]/g, "- [x]")) }) as never)} />);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /任務/ }));
+    await waitFor(() => expect(badges()).toBe("全部完成"));
+    // 手動任務全部勾完：「手動」數字磚仍計總數，提示框缺席。
+    expect(tiles()).toContain("手動 1");
+    expect(manualCallout()).toBeNull();
   });
 
-  // 4.3 已勾；5.8、6.9、7.6 未勾，分屬四個群組、各夾一條一般任務（序數 2、4、6、8）。
-  const MANUAL_TASKS = [
-    ["4. 丁", "- [x] 4.1 a", "- [x] [M] 4.3 手動甲"],
-    ["5. 戊", "- [ ] 5.1 b", "- [ ] [M] 5.8 手動乙"],
-    ["6. 己", "- [ ] 6.1 c", "- [ ] [M] 6.9 手動丙"],
-    ["7. 庚", "- [ ] 7.1 d", "- [ ] [M] 7.6 手動丁"],
-  ]
-    .map(([title, ...rows]) => [`## ${title}`, "", ...rows].join("\n"))
-    .join("\n\n");
-  const manualProps = (onToggleTask: Mock) =>
-    props({
-      loadDocument: vi.fn(async (_c: string, artifact: string) =>
-        artifact === "tasks.md" ? MANUAL_TASKS : (docs[artifact] ?? null),
-      ),
-      onToggleTask,
-    });
+  /** tasks.md 換成指定內容、其餘文件照 docs 的載入器。 */
+  const withTasks = (tasksMd: string) =>
+    vi.fn(async (_c: string, artifact: string) => (artifact === "tasks.md" ? tasksMd : (docs[artifact] ?? null)));
+  // 手動任務 4.3、5.8、6.9、7.6 分屬四個群組、各夾一條一般任務（序數 2、4、6、8）；checked 為已勾的手動任務。
+  const manualTasks = (checked: string[]) =>
+    ["4.3", "5.8", "6.9", "7.6"]
+      .map((n) =>
+        [`## ${n[0]}. 群組`, "", `- [ ] ${n[0]}.1 一般`, `- [${checked.includes(n) ? "x" : " "}] [M] ${n} 手動`].join("\n"),
+      )
+      .join("\n\n");
+  const manualProps = (checked: string[], over: Record<string, unknown> = {}) =>
+    props({ loadDocument: withTasks(manualTasks(checked)), ...over });
   const toggle = (ordinal: number, done: boolean) =>
     act(() => (taskListProps.at(-1)!.onToggle as (o: number, d: boolean) => void)(ordinal, done));
-  const callout = () => document.querySelector("[data-doc-callout]");
+  const manualCallout = () => document.querySelector("[data-doc-callout]");
   const manualRows = () =>
     Array.from(document.querySelectorAll("[data-doc-callout] [data-manual-task]")).map((row) => flat(row.firstElementChild));
 
-  it("部分勾選時提示框只列未勾選的手動任務", async () => {
-    render(<ChangeDetailPage {...(manualProps(vi.fn().mockResolvedValue(undefined)) as never)} />);
+  // spec Example「勾選狀態與提示框」：一列一題。
+  it.each([
+    { checked: [], title: "4 個手動任務", rows: ["4.3", "5.8", "6.9", "7.6"] },
+    { checked: ["4.3"], title: "3 個手動任務", rows: ["5.8", "6.9", "7.6"] },
+    { checked: ["4.3", "5.8", "6.9", "7.6"], title: null, rows: [] },
+  ])("勾選狀態與提示框：已勾 $checked → $title", async ({ checked, title, rows }) => {
+    render(<ChangeDetailPage {...(manualProps(checked) as never)} />);
     fireEvent.mouseDown(await screen.findByRole("tab", { name: /任務/ }));
     await waitFor(() => expect(tiles()).toContain("手動 4"));
-    expect(flat(callout())).toContain("3 個手動任務");
+    if (title) expect(flat(manualCallout())).toContain(title);
+    else expect(manualCallout()).toBeNull();
+    expect(manualRows()).toEqual(rows);
+  });
+
+  it("部分勾選時提示框只列未勾選的手動任務", async () => {
+    render(<ChangeDetailPage {...(manualProps(["4.3"], { onToggleTask: vi.fn().mockResolvedValue(undefined) }) as never)} />);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /任務/ }));
+    await waitFor(() => expect(tiles()).toContain("手動 4"));
+    expect(flat(manualCallout())).toContain("3 個手動任務");
     expect(manualRows()).toEqual(["5.8", "6.9", "7.6"]);
 
     toggle(4, true);
     toggle(6, true);
     toggle(8, true);
-    await waitFor(() => expect(callout()).toBeNull());
+    await waitFor(() => expect(manualCallout()).toBeNull());
     expect(tiles()).toContain("手動 4");
 
     toggle(6, false);
     await waitFor(() => expect(manualRows()).toEqual(["6.9"]));
-    expect(flat(callout())).toContain("1 個手動任務");
+    expect(flat(manualCallout())).toContain("1 個手動任務");
     expect(tiles()).toContain("手動 4");
   });
 
   it("勾選寫回失敗時提示框跟著回滾", async () => {
-    render(<ChangeDetailPage {...(manualProps(vi.fn().mockRejectedValue(new Error("disk full"))) as never)} />);
+    render(
+      <ChangeDetailPage
+        {...(manualProps(["4.3"], { onToggleTask: vi.fn().mockRejectedValue(new Error("disk full")) }) as never)}
+      />,
+    );
     fireEvent.mouseDown(await screen.findByRole("tab", { name: /任務/ }));
     await waitFor(() => expect(tiles()).toContain("手動 4"));
     toggle(4, true);
+    // 樂觀勾選先生效（寫回的拒絕要到下一個 microtask 才回滾）。
+    expect(manualRows()).toEqual(["6.9", "7.6"]);
     await waitFor(() => expect(screen.getByText(/寫回失敗/)).toBeTruthy());
-    expect(flat(callout())).toContain("3 個手動任務");
+    expect(flat(manualCallout())).toContain("3 個手動任務");
     expect(manualRows()).toEqual(["5.8", "6.9", "7.6"]);
+  });
+
+  it("「全部已完成」「重置任務」與外部變更：世代重載後提示框跟著 tasks.md", async () => {
+    const { rerender } = render(<ChangeDetailPage {...(manualProps(["4.3"]) as never)} refreshGen={0} />);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /任務/ }));
+    await waitFor(() => expect(manualRows()).toEqual(["5.8", "6.9", "7.6"]));
+    // 三者都由宿主 refresh 遞增世代、重讀 tasks.md 收斂。
+    rerender(<ChangeDetailPage {...(manualProps(["4.3", "5.8", "6.9", "7.6"]) as never)} refreshGen={1} />);
+    await waitFor(() => expect(manualCallout()).toBeNull());
+    rerender(<ChangeDetailPage {...(manualProps([]) as never)} refreshGen={2} />);
+    await waitFor(() => expect(manualRows()).toEqual(["4.3", "5.8", "6.9", "7.6"]));
+    expect(tiles()).toContain("手動 4");
   });
 
   it("規格文件：籤槽為各操作計數、數字磚 2／5／2／「1 ／ 0」", async () => {
