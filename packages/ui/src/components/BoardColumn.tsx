@@ -58,7 +58,8 @@ export function BoardColumn({
           </span>
         )}
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2 p-2">
+      {/* relative：卡片內的 absolute 元素以本捲動區為定位容器、受它裁切，不跳出去撐高外層。 */}
+      <div className="relative flex-1 min-h-0 overflow-y-auto flex flex-col gap-2 p-2">
         {empty !== null && <p className="px-2 py-6 text-center text-xs text-muted-foreground">{empty}</p>}
         {children}
       </div>

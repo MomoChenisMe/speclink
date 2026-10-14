@@ -382,9 +382,10 @@ export function DiscussionColumn({
           <>
             {/* 展開的 promoted 細列落在收合列正上方的有界區塊（淡灰底上、自捲）：欄內全卡
                 再多也看得到，不會被擠到卡片捲動區的最底部。不加 shrink-0——視窗很矮時區塊
-                可被壓縮，收合列不會被欄外框的 overflow-hidden 切掉。 */}
+                可被壓縮，收合列不會被欄外框的 overflow-hidden 切掉。relative 同卡片區：細列
+                內的 absolute 元素受本區裁切。 */}
             {promotedOpen && (
-              <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto px-2 pb-2">
+              <div className="relative flex max-h-64 flex-col gap-1.5 overflow-y-auto px-2 pb-2">
                 {promoted.map((d) => (
                   <PromotedRow
                     key={d.slug}

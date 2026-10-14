@@ -128,6 +128,7 @@ describe("CopyButton", () => {
 
   // spec desktop-app「變更與討論詳情頁的宿主為看板」Scenario「宿主頁不推動詳情頁外框」：
   // absolute 的朗讀區不釘位置會停在捲動區外的深處，撐高 desktop 的 main。
+  // 這是 class 字面守門（jsdom 不算版面），版面本身由該 Scenario 的 Mac 實機手動任務確認。
   it("隱藏朗讀區釘在定位容器左上角（sr-only top-0 left-0）", () => {
     render(<CopyButton value="demo" label="複製名稱" />);
     const live = screen.getByRole("status");

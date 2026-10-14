@@ -13,11 +13,12 @@
 ## What Changes
 
 - 共用元件 CopyButton 的隱藏朗讀區加上 top-0 與 left-0，釘在它定位容器的左上角。這樣它不再停在捲動區外的深處，也就不會撐高外層容器。朗讀內容與時機不變。
+- 看板的捲動區（各欄卡片區、討論欄的已轉出展開區、整個 grid）加上 relative，成為定位容器。日後卡片裡再加沒釘位置的 absolute 元素，也只會被所在的捲動區裁切，不會跳出去撐高 main。這條來自品質關卡 review round 1 的建議，從版面結構上根治同一類問題。
 - 修正一次涵蓋所有定位捲動入口（「前往」、「下一個未完成」、n 鍵、本頁目錄、D 籤跳轉），也涵蓋 desktop 與 server-web 共 15 處 CopyButton。
 - desktop-app「變更與討論詳情頁的宿主為看板」補一個情境：宿主頁的內容不推動詳情頁外框，定位捲動後主區底部沒有空白。
-- CopyButton 單元測試補一條：朗讀區帶 top-0 與 left-0。
+- CopyButton 單元測試補一條：朗讀區帶 top-0 與 left-0。看板測試補一條：grid、各欄卡片區與已轉出展開區都帶 relative。
 
-相容性影響：不新增也不變更任何 CLI 指令、旗標、`--json` 輸出、設定欄位或生成的技能；只改共用元件的一個 class。
+相容性影響：不新增也不變更任何 CLI 指令、旗標、`--json` 輸出、設定欄位或生成的技能；只改共用元件庫裡四個元件的 class。
 
 ## Non-Goals
 
@@ -41,4 +42,4 @@
 - Affected specs: desktop-app
 - Affected apps: packages/ui（共用元件庫）；受惠者為 apps/desktop 與 apps/server-web，兩者程式不改
 - Affected code:
-  - Modified: packages/ui/src/components/CopyButton.tsx、packages/ui/src/__tests__/copyButton.test.tsx
+  - Modified: packages/ui/src/components/CopyButton.tsx、packages/ui/src/__tests__/copyButton.test.tsx、packages/ui/src/components/BoardColumn.tsx、packages/ui/src/components/DiscussionColumn.tsx、packages/ui/src/components/KanbanBoard.tsx、packages/ui/src/__tests__/discussionColumn.test.tsx

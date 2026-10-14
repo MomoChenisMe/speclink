@@ -489,9 +489,10 @@ export function KanbanBoard({
       {/* relative wrapper 供封存落點浮層錨定於「可視」右緣（design D8）——浮層
           在捲動容器之外、不進 flex 流，欄寬零變動且不隨水平捲動漂移。 */}
       <div className="relative flex-1 min-h-0">
-      {/* 等寬 grid 填滿主區（design D1）：欄最小 220px，再窄才水平捲動；討論欄缺席時三欄。 */}
+      {/* 等寬 grid 填滿主區（design D1）：欄最小 220px，再窄才水平捲動；討論欄缺席時三欄。
+          relative：欄內 absolute 元素至少被 grid 裁切，不落到外層 wrapper 撐高主區。 */}
       <div
-        className={`grid h-full min-h-0 gap-3 overflow-x-auto ${
+        className={`relative grid h-full min-h-0 gap-3 overflow-x-auto ${
           discussions
             ? "grid-cols-[repeat(4,minmax(220px,1fr))]"
             : "grid-cols-[repeat(3,minmax(220px,1fr))]"
