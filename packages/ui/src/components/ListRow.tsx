@@ -4,7 +4,7 @@ import { ChevronRight } from "lucide-react";
 import { cn } from "../lib/utils";
 import { CopyButton, REVEAL_ON_HOVER } from "./CopyButton";
 
-export interface ListRowProps {
+interface ListRowBase {
   /** 標題（spec 名、change 名、討論 slug；預設等寬）。 */
   title: string;
   /** false 時標題改一般字（人名、專案名）；預設 true 等寬。 */
@@ -17,10 +17,6 @@ export interface ListRowProps {
   leading?: ReactNode;
   /** 右端 meta 槽（計數、徽章、相對時間），› 緊接其後。 */
   meta?: ReactNode;
-  /** meta 之後、› 之前的列尾動作槽（撤銷鈕）；槽內點擊不冒泡成開列。 */
-  actions?: ReactNode;
-  /** 不給就是靜態列：沒有按鈕語意、不可聚焦、無 hover 與 ›。 */
-  onClick?: () => void;
   /** 不可點的列（規格溯源的無封存記錄來源）：灰字、無 hover、無 ›，點擊與按鍵不觸發。 */
   disabled?: boolean;
   /** 複製鈕之後的章（如改進小章）。 */
@@ -29,12 +25,24 @@ export interface ListRowProps {
   [dataAttr: `data-${string}`]: string | undefined;
 }
 
+/** 可點的列與帶動作槽的靜態列互斥：可點的列是 role=button，槽內再放按鈕就成了巢狀互動元素。 */
+export type ListRowProps = ListRowBase &
+  (
+    | { onClick: () => void; actions?: never }
+    | {
+        /** 不給就是靜態列：沒有按鈕語意、不可聚焦、無 hover 與 ›。 */
+        onClick?: never;
+        /** 靜態列 meta 之後的列尾動作槽（撤銷鈕）。 */
+        actions?: ReactNode;
+      }
+  );
+
 /**
  * 共用列（spec desktop-app「規格與封存卡片收合資訊」；design D1）：整列可點、細線
  * 分隔、hover 微灰、右端 › 收尾。鍵盤 Enter／Space 觸發開啟——只認列本體上的按鍵，
- * 複製鈕與動作槽自己的 Enter 不冒成開列。複製鈕點擊由 CopyButton 停止冒泡、動作槽的點擊
- * 由槽的包裝停止冒泡。列的朗讀名稱只取標題（aria-labelledby），不把描述與 meta 串成一長串。
- * 不給 onClick 是靜態列（server-web-list-pages design D1：憑證列、邀請列）。
+ * 複製鈕自己的 Enter 不冒成開列；複製鈕點擊由 CopyButton 停止冒泡。列的朗讀名稱只取
+ * 標題（aria-labelledby），不把描述與 meta 串成一長串。不給 onClick 是靜態列，可帶列尾
+ * 動作槽（server-web-list-pages design D1：憑證列、邀請列）。
  */
 export function ListRow({
   title,
@@ -95,10 +103,7 @@ export function ListRow({
         <span className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">{meta}</span>
       )}
       {actions !== undefined && actions !== null && actions !== false && (
-        // 只攔點擊冒泡；鍵盤由 onKeyDown 只認列本體擋住。
-        <div className="flex shrink-0 items-center gap-2" onClick={(e) => e.stopPropagation()}>
-          {actions}
-        </div>
+        <div className="flex shrink-0 items-center gap-2">{actions}</div>
       )}
       {active && <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />}
     </div>

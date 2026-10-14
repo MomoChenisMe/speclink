@@ -14,3 +14,8 @@ export function useMediaQuery(query: string): boolean {
   }, [query]);
   return matches;
 }
+
+/** 窄螢幕（<1024px）：殼改用 Sheet 導覽、列表改窄版——全站同一個斷點。 */
+export function useNarrow(): boolean {
+  return useMediaQuery("(max-width: 1023px)");
+}

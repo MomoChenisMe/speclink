@@ -63,6 +63,53 @@ describe("稽核紀錄頁", () => {
     expect(await screen.findByText("第 21–40 筆，共 45 筆")).toBeTruthy();
   });
 
+  it("換頁時列表卡與換頁列不卸載：載入期間照舊顯示上一頁，回應到了才替換", async () => {
+    let release: (value: typeof PAGE_ONE) => void = () => {};
+    const getAdminAudit = vi
+      .fn()
+      .mockImplementationOnce(async () => PAGE_ONE)
+      .mockImplementationOnce(
+        () =>
+          new Promise<typeof PAGE_ONE>((resolve) => {
+            release = resolve;
+          }),
+      );
+    renderAt("/admin/audit", makeAdminClient({ getAdminAudit }));
+    await screen.findByText("第 1–20 筆，共 45 筆");
+    const user = userEvent.setup();
+    const pageTwo = screen.getByRole("button", { name: "第 2 頁" });
+    await user.click(pageTwo);
+    await waitFor(() => expect(getAdminAudit).toHaveBeenCalledTimes(2));
+    // 載入中：表格、換頁列與剛按的頁碼鈕都還在（焦點不會掉回頁首）。
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(pageTwo.isConnected).toBe(true);
+    expect(screen.queryByText("載入中…")).toBeNull();
+    release({ ...PAGE_ONE, entries: [PAGE_ONE.entries[1]] });
+    await waitFor(() => expect(screen.queryByText("new@example.com")).toBeNull());
+    expect(screen.getByText("第 21–40 筆，共 45 筆")).toBeTruthy();
+  });
+
+  // 換頁列在重抓期間仍可按：若點了舊頁碼列上較後面的頁、而新結果的頁數更少，伺服器會回空頁。
+  // 回應到了發現頁碼越界，就拉回最後一頁重抓，不讓使用者卡在空白頁、換頁列又消失。
+  it("回應的總頁數比目前頁碼少時，頁碼拉回最後一頁並重新呼叫", async () => {
+    const lastPage = { entries: [PAGE_ONE.entries[0]], totalPages: 1, total: 3 };
+    const getAdminAudit = vi
+      .fn()
+      .mockImplementationOnce(async () => PAGE_ONE)
+      .mockImplementationOnce(async () => ({ entries: [], totalPages: 1, total: 3 }))
+      .mockImplementation(async () => lastPage);
+    renderAt("/admin/audit", makeAdminClient({ getAdminAudit }));
+    await screen.findByText("第 1–20 筆，共 45 筆");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "第 3 頁" }));
+    await waitFor(() =>
+      expect(getAdminAudit).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 })),
+    );
+    expect(getAdminAudit).toHaveBeenCalledTimes(3);
+    expect(await screen.findByText("第 1–3 筆，共 3 筆")).toBeTruthy();
+    expect(screen.getByText("new@example.com")).toBeTruthy();
+  });
+
   it("停在第 3 頁時改每頁 50 筆，以 page=1、limit=50 重新呼叫", async () => {
     const getAdminAudit = vi.fn(async () => PAGE_ONE);
     renderAt("/admin/audit", makeAdminClient({ getAdminAudit }));

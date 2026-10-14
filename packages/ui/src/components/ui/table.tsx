@@ -4,14 +4,15 @@ import { cn } from "../../lib/utils";
 
 // shadcn Table（Tailwind v4）：語意 <table> 結構＋themed 邊框。外層 div 提供窄容器
 // 橫向捲動，避免寬表格撐破版面。列邊框明確用 border-border——裸 border 於 Tailwind v4
-// 會落到 currentColor（≈黑框）。
-export const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
-  ({ className, ...props }, ref) => (
-    <div className="relative w-full overflow-x-auto">
-      <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />
-    </div>
-  ),
-);
+// 會落到 currentColor（≈黑框）。`wrapped={false}` 不包外層：呼叫端自己就是捲動區（列表卡）時，
+// 外層的 overflow-x-auto 會自成捲動容器，sticky 表頭就黏在那層、隨捲動區捲走。
+export const Table = React.forwardRef<
+  HTMLTableElement,
+  React.HTMLAttributes<HTMLTableElement> & { wrapped?: boolean }
+>(({ className, wrapped = true, ...props }, ref) => {
+  const table = <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />;
+  return wrapped ? <div className="relative w-full overflow-x-auto">{table}</div> : table;
+});
 Table.displayName = "Table";
 
 export const TableHeader = React.forwardRef<

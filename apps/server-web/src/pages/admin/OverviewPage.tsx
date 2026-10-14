@@ -11,8 +11,9 @@ import {
   PageHeader,
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
+import { CardNote } from "../../components/CardNote";
 import { useAsync } from "../../lib/useAsync";
-import { auditLabel } from "./AuditPage";
+import { auditLabel } from "../../lib/auditLabel";
 import { AdminError, AdminLoading } from "./states";
 import type { AdminConnection, AdminTodo } from "../../api/client";
 
@@ -128,7 +129,7 @@ export function OverviewPage() {
             }
           >
             {data.recentAudit.length === 0 ? (
-              <p className="m-0 px-4 py-3 text-[13px] text-muted-foreground">{t("overview.recentEmpty")}</p>
+              <CardNote>{t("overview.recentEmpty")}</CardNote>
             ) : (
               data.recentAudit.map((e) => (
                 <SettingsRow
@@ -180,7 +181,7 @@ function WelcomeConnection({ connection }: { connection: AdminConnection }) {
   const { t } = useI18n();
   return (
     <SettingsCard title={t("overview.welcomeTitle")} icon={<Rocket />}>
-      <p className="m-0 px-4 py-3 text-[13px] text-muted-foreground">{t("overview.welcomeBody")}</p>
+      <CardNote>{t("overview.welcomeBody")}</CardNote>
       <CopyRow label={t("overview.welcomeUrl")} value={connection.publicUrl} />
       <CopyRow label={t("overview.welcomeProjectKey")} value={connection.projectKey} />
       <CopyRow label={t("overview.welcomeRepoKey")} value={connection.repoKey} />

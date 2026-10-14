@@ -375,6 +375,27 @@ describe("抽屜照舊", () => {
     );
   });
 
+  it("剛送出的邀請立即出現在邀請中分頁，分頁計數加一", async () => {
+    const invited = {
+      ...USERS,
+      pending: [...USERS.pending, { ...USERS.pending[0], id: "i2", email: "new@example.com", display: "New" }],
+    };
+    const client = makeAdminClient({
+      getAdminUsers: vi.fn().mockResolvedValueOnce(USERS).mockResolvedValue(invited),
+    });
+    renderAt("/admin/users", client);
+    await screen.findByRole("button", { name: "Member" });
+    expect(tabCount(/^邀請中/)).toBe("1");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /邀請使用者/ }));
+    const drawer = await screen.findByRole("dialog", { name: /邀請使用者/ });
+    await user.type(within(drawer).getByLabelText(/電子郵件/), "new@example.com");
+    await user.click(within(drawer).getByRole("button", { name: /送出邀請/ }));
+    await waitFor(() => expect(tabCount(/^邀請中/)).toBe("2"));
+    await user.click(tab(/^邀請中/));
+    expect((await screen.findByText("new@example.com")).closest("[data-invite]")).toBeTruthy();
+  });
+
   it("邀請成功後抽屜關閉，頁面以 aria-live 呈現可複製的邀請連結而非裸 token", async () => {
     const client = makeAdminClient();
     renderAt("/admin/users", client);

@@ -48,7 +48,7 @@ engine crates、speclink-host、CLI、Protocol 都不動。稽核欄位只存在
 | --- | --- | --- | --- |
 | `ListRow` | `onClick` 改選配：不給時為靜態列——沒有 `role=button`、`tabIndex`、按鍵處理、hover 底色、手指游標與 ›；標題、描述、meta 版面不變 | 必給（現狀） | 憑證列、邀請列、窄螢幕稽核列 |
 | `ListRow` | `mono?: boolean`：`false` 時標題改一般字（仍 14px semibold） | `true` | 使用者名稱、專案名稱、憑證名稱、稽核動作 |
-| `ListRow` | `actions?: ReactNode`：meta 之後、› 之前的列尾槽；槽內點擊不冒泡成開列 | 無 | 撤銷鈕、撤回邀請 |
+| `ListRow` | `actions?: ReactNode`：靜態列 meta 之後的列尾槽；與 `onClick` 在型別上互斥（可點的列是 `role=button`，槽內再放按鈕就成了巢狀互動元素） | 無 | 撤銷鈕、撤回邀請 |
 | `ListPager` | `compact?: boolean`：左側只留「第 a–b 筆，共 N 筆」，右側只留上一頁鈕、「目前頁 / 總頁數」與下一頁鈕（總頁數 > 1 才出現）；不渲染每頁筆數下拉、頁碼列、首末頁鈕與跳頁輸入 | `false` | server-web 窄螢幕 |
 | 套件入口 | 匯出 `ListPager`、`usePaging`、`ListPagerProps` | — | server-web |
 | `SearchField` | `label?: string`：輸入框的 `aria-label` | 無 | server-web 四個列表頁 |
@@ -57,8 +57,9 @@ engine crates、speclink-host、CLI、Protocol 都不動。稽核欄位只存在
 | `DocTiles` | `DocTile.link?: ReactElement`：呼叫端給一個不含內容的連結元素（例如 react-router 的 `<Link to=… />`），該格以它渲染，套同一組格子樣式並加 hover 底色與 2px focus ring | 無（div） | 總覽數字磚 |
 | `PageHeader` | 根節點 `flex-wrap`；動作槽 `max-w-full flex-wrap`：標題與動作並排放不下時，動作槽換到標題下方一列，槽內控件再各自換行 | — | server-web 窄螢幕 |
 | `TabsTrigger` | `count?: number`：標籤後的計數籤，樣式取自 `ArchivedList` 現有的計數籤 | 無 | 使用者頁、憑證頁分頁；`ArchivedList` 改用它（畫面不變） |
+| `Table` | `wrapped?: boolean`：`false` 時不包外層橫向捲動容器——呼叫端自己就是捲動區時，外層的 `overflow-x-auto` 會自成捲動容器，sticky 表頭就黏在那層 | `true` | 稽核紀錄頁（D7） |
 
-`ListRow` 的靜態列仍把描述與 meta 截斷在一列；`actions` 槽的包裝元素攔下 click 冒泡，鍵盤事件已由現有「只認列本體上的按鍵」擋住。
+`ListRow` 的靜態列仍把描述與 meta 截斷在一列；`actions` 只給靜態列，所以沒有「槽內點擊冒成開列」的情況要處理。
 
 替代方案：server-web 自寫靜態列、連結版數字磚與計數籤——同一個介面元件兩份實作，違反 desktop-app「共用元件唯一來源」的精神，否決。為窄螢幕另做 `ListPagerCompact` 元件——兩個元件共用九成邏輯（範圍字串、鉗制），否決，改用屬性。`PageHeader` 以媒體查詢切版——desktop 視窗沒有最小寬度，換行本來就比溢出好，用 flex-wrap 不必分支。
 
@@ -122,8 +123,8 @@ engine crates、speclink-host、CLI、Protocol 都不動。稽核欄位只存在
 ### D7 稽核紀錄頁
 
 - **工具列**：搜尋、動作篩選、來源篩選、起始日期、結束日期（兩個日期輸入之間一個灰色「–」，各自 `aria-label` 為「起始日期」「結束日期」）。日期輸入 `h-8` 與 `Select` 同圓角。
-- **換頁**：頁碼與每頁筆數放在頁面狀態，呼叫 `getAdminAudit({ q, action, source, from, to, page, limit: pageSize })`。`ListPager` 以受控方式餵入：`page`、`pageCount = max(totalPages, 1)`、`total`（D9 新欄位）、`pageSize`、`onPage`、`onPageSize`。任一篩選或每頁筆數變更都把頁碼設回 1（沿用現有 `narrow()`）。換頁與改筆數後捲回頂部。
-- **寬螢幕**：列表卡內是共用 `Table`，表頭 `sticky top-0` 並帶卡片底色，五欄（時間、動作、對象、操作者、來源）照舊；來源改 `StatusPill tone="neutral"`。
+- **換頁**：頁碼與每頁筆數放在頁面狀態，呼叫 `getAdminAudit({ q, action, source, from, to, page, limit: pageSize })`。`ListPager` 以受控方式餵入：`page`、`pageCount = max(totalPages, 1)`、`total`（D9 新欄位）、`pageSize`、`onPage`、`onPageSize`。任一篩選或每頁筆數變更都把頁碼設回 1（沿用現有的重設寫法，函式改名 `refilter()`，`narrow` 留給窄螢幕旗標）。換頁與改筆數後捲回頂部。換頁或改篩選期間照舊顯示上一份回應（`useAsync` 重抓時會先清空 data），列表卡與換頁列不卸載，剛按的頁碼鈕留著、焦點不會掉回頁首；只在第一次載入時顯示 `AdminLoading`。重抓期間換頁列仍可按，可能點到新結果已不存在的頁（伺服器對越界頁碼回空頁），所以回應的總頁數比目前頁碼少時，頁碼拉回最後一頁並重抓一次。
+- **寬螢幕**：列表卡內是共用 `Table`（`wrapped={false}`，見 D1），表頭 `sticky top-0` 並帶卡片底色，五欄（時間、動作、對象、操作者、來源）照舊；來源改 `StatusPill tone="neutral"`。
 - **窄螢幕**：每筆一列靜態 `ListRow`（`mono={false}`）：`leading` 為日期、`title` 為動作名稱、`description` 為「對象 · 操作者」、`meta` 為來源籤。
 - 沒有符合事件：照舊的 `EmptyState`，工具列保留。
 - 動作與來源的未知值照舊原樣呈現。

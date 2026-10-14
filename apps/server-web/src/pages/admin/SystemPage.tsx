@@ -11,6 +11,7 @@ import {
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
+import { CardNote } from "../../components/CardNote";
 import { useTour } from "../../components/Tour";
 import { AdminError, AdminLoading } from "./states";
 
@@ -22,11 +23,6 @@ import { AdminError, AdminLoading } from "./states";
 /** 列右側的等寬值。 */
 function Mono({ children }: { children: string | number }) {
   return <span className="break-all font-mono text-[13px]">{children}</span>;
-}
-
-/** 卡內沒有資料時的一列灰字。 */
-function EmptyLine({ children }: { children: string }) {
-  return <p className="m-0 px-4 py-3 text-[13px] text-muted-foreground">{children}</p>;
 }
 
 export function SystemPage() {
@@ -95,7 +91,7 @@ export function SystemPage() {
               }
             />
             {data.outboxBacklogs.length === 0 ? (
-              <EmptyLine>{t("system.noBacklog")}</EmptyLine>
+              <CardNote>{t("system.noBacklog")}</CardNote>
             ) : (
               data.outboxBacklogs.map((b) => (
                 <SettingsRow
@@ -110,7 +106,7 @@ export function SystemPage() {
 
           <SettingsCard title={t("system.export")} icon={<Download />}>
             {data.scopes.length === 0 ? (
-              <EmptyLine>{t("system.noScopes")}</EmptyLine>
+              <CardNote>{t("system.noScopes")}</CardNote>
             ) : (
               data.scopes.map((s) => (
                 <SettingsRow

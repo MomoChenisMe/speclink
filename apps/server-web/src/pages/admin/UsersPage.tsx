@@ -32,7 +32,7 @@ import {
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
-import { useMediaQuery } from "../../lib/useMediaQuery";
+import { useNarrow } from "../../lib/useMediaQuery";
 import { userLabel } from "../../lib/userLabel";
 import { readFormError } from "../../lib/formError";
 import { Field } from "../../components/Field";
@@ -62,7 +62,7 @@ function fmtDate(iso: string | null, fallback = "—"): string {
 export function UsersPage() {
   const { t } = useI18n();
   const client = useClient();
-  const narrow = useMediaQuery("(max-width: 1023px)");
+  const narrow = useNarrow();
   const { loading, data, error, reload } = useAsync(() => client.getAdminUsers(), []);
   // 成員資格的專案選項來自 registry（專案代號為封閉集合，不開放自由輸入）。
   const registry = useAsync(() => client.getAdminRegistry(), []);
