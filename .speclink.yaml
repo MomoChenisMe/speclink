@@ -1,11 +1,4 @@
-# Speclink application config
-# See: https://github.com/speclink-app/speclink
-
-# OpenSpec directory path (relative to project root)
-# spec_dir: docs/specs
-
-# AI tools to generate instruction files for
 tools:
-  - claude
-  - codex
-  - copilot
+- copilot
+- codex
+- claude
