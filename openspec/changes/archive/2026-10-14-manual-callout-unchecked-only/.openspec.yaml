@@ -1,0 +1,31 @@
+schema: spec-driven
+created: 2026-10-14
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: manual-callout-unchecked-only
+started_at: 2026-10-14
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-14
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 4
+reviewed_scope:
+  - path: packages/ui/src/__tests__/archivedDetailPage.test.tsx
+    hash: 85a71737b5158dc2961fe8f953fb54a51545e280646b0f3496da8a6a71e7cbf1
+  - path: packages/ui/src/__tests__/changeDetailPage.test.tsx
+    hash: d10a72d45a9e8e8d96107ab8a31562134fb1447e2c12fe852c5e3cff9aba3b23
+  - path: packages/ui/src/components/changeDocSummary.tsx
+    hash: 230ac3e5c94f68d6517e41dcc4bcf6b81e929526d63148cfa9878057c59af494
+verified_at: 2026-10-14
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 4
+verified_scope:
+  - path: packages/ui/src/__tests__/archivedDetailPage.test.tsx
+    hash: 85a71737b5158dc2961fe8f953fb54a51545e280646b0f3496da8a6a71e7cbf1
+  - path: packages/ui/src/__tests__/changeDetailPage.test.tsx
+    hash: d10a72d45a9e8e8d96107ab8a31562134fb1447e2c12fe852c5e3cff9aba3b23
+  - path: packages/ui/src/components/changeDocSummary.tsx
+    hash: 230ac3e5c94f68d6517e41dcc4bcf6b81e929526d63148cfa9878057c59af494
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-14

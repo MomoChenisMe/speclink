@@ -5,5 +5,5 @@
 
 ## 2. 收尾驗證
 
-- [ ] [M] 2.1 開發環境實機驗收：以 root `npm run dev:desktop` 開桌面視窗，打開一份有未勾手動任務的進行中變更的任務文件，確認提示框只列未勾的手動任務；點整列勾選其中一條，確認它當下從提示框消失、標題的數字減一、「手動」數字磚不變；把手動任務全部勾完，確認提示框整個消失；最後把勾選恢復原狀。 <!-- speclink-task:tsk_01M4W43E0Y1QB7RWB8DCTHJRHJ -->
+- [x] [M] 2.1 開發環境實機驗收：以 root `npm run dev:desktop` 開桌面視窗，打開一份有未勾手動任務的進行中變更的任務文件，確認提示框只列未勾的手動任務；點整列勾選其中一條，確認它當下從提示框消失、標題的數字減一、「手動」數字磚不變；把手動任務全部勾完，確認提示框整個消失；最後把勾選恢復原狀。 <!-- speclink-task:tsk_01M4W43E0Y1QB7RWB8DCTHJRHJ -->
 - [x] 2.2 全組守門：確認本變更沒有動到詞彙守門與文件連結掃描面。驗證：`npm test -w packages/ui` 全綠，且 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。 <!-- speclink-task:tsk_01M4W43E0YYE6DRSPNVG2A8HGC -->
