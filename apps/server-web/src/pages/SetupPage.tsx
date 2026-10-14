@@ -162,8 +162,8 @@ function RegistryStep({ token }: { token: string }) {
       />
       <Field
         id="project-key"
-        label={t("setup.projectKeyLabel")}
-        hint={t("setup.keyHint")}
+        label={t("field.projectKey")}
+        hint={t("field.keyImmutable")}
         value={projectKey}
         onChange={setProjectKey}
         error={fieldErrors.projectKey}
@@ -171,8 +171,8 @@ function RegistryStep({ token }: { token: string }) {
       <Field id="project-name" label={t("registry.projectNameLabel")} value={projectName} onChange={setProjectName} />
       <Field
         id="repo-key"
-        label={t("setup.repoKeyLabel")}
-        hint={t("setup.keyHint")}
+        label={t("field.repoKey")}
+        hint={t("field.keyImmutable")}
         value={repoKey}
         onChange={setRepoKey}
         error={fieldErrors.repoKey}

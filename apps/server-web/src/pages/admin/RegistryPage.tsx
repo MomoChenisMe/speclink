@@ -331,7 +331,8 @@ function CreateRepoForm({ projectKey, onDone }: { projectKey: string; onDone: ()
       <p className="text-sm font-medium">{t("registry.newRepo")}</p>
       <Field
         id={`new-repo-key-${projectKey}`}
-        label={t("registry.repoKeyLabel")}
+        label={t("field.repoKey")}
+        hint={t("field.keyImmutable")}
         value={key}
         onChange={setKey}
         error={fieldErrors.key}
@@ -427,7 +428,8 @@ function CreateProjectSheet({
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
         <Field
           id="new-project-key"
-          label={t("registry.projectKeyLabel")}
+          label={t("field.projectKey")}
+          hint={t("field.keyImmutable")}
           value={key}
           onChange={setKey}
           error={fieldErrors.key}

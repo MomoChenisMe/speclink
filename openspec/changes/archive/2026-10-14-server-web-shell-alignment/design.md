@@ -8,7 +8,7 @@ desktop 已改成另一套樣子：左側標題列與主區頂列各 48px、主�
 
 - `apps/server-web`：殼、頁標題、登入這一族四頁、i18n 文案與測試。
 - `packages/ui`：新增 `Breadcrumbs`；`PageHeader`、`SheetContent`、dropdown-menu 原語各補一個能力。
-- `apps/desktop`：MainTitleBar 改用共用 `Breadcrumbs`，外觀與行為不變。
+- `apps/desktop`：MainTitleBar 改用共用 `Breadcrumbs`、WorkspaceChooser 的步驟列改用共用 `StepProgress`，外觀與行為不變（麵包屑按鈕多了鍵盤聚焦時的 focus ring）。
 
 server crates、engine crates、CLI、server API 都不動，所以 crate 邊界、Host／Protocol 契約、local／remote 雙路徑都不涉及。視覺基準是討論 server-web-desktop-alignment 確認的原型（A 列殼＋總覽、B 列帳號頁與登入、C 列 375px 窄螢幕、初始設定、接受邀請、裝置登入）。
 
@@ -73,7 +73,7 @@ dropdown-menu 原語補 `DropdownMenuRadioGroup` 與 `DropdownMenuRadioItem`（R
 新增 `packages/ui/src/components/Breadcrumbs.tsx`，匯出 `Breadcrumbs` 元件與 `Crumb` 型別（`{ label: string; onClick?: () => void; mono?: boolean }`，與 desktop 現有 `Crumb` 相同）。渲染內容取自 MainTitleBar 現有的麵包屑：
 
 - `nav`（`aria-label` 為共用字典的「頁面路徑」／「Breadcrumb」）內一列 12px 灰字，項與項之間是半透明的「/」。
-- 最後一項為前景色；有 `onClick` 的項是按鈕、滑過變前景色；`mono` 的項用等寬字型；超長截斷。
+- 最後一項為前景色；有 `onClick` 的項是按鈕、滑過變前景色、鍵盤聚焦時顯示 2px focus ring（共用 ring token）；`mono` 的項用等寬字型；超長截斷。
 
 desktop 的 MainTitleBar 改為渲染 `<Breadcrumbs crumbs={crumbs} />`，`Crumb` 型別改由 `@speclink/ui` 匯入（`apps/desktop/src/App.tsx` 跟著改）。desktop 的外觀、拖曳區與 Windows 視窗鈕不變。
 
@@ -137,14 +137,14 @@ FocusLayout 改為：
 
 FocusLayout.tsx 另匯出三個小元件，四頁共用：
 
-- `FocusHeader({ title, description, step? })`：`h1`（15px、medium）加灰字說明；給 `step`（`{ current, total, label }`）時上方多一列「<label> · 步驟 n / total」（11px 大寫字距灰字）與步驟條（每段 `h-1 w-8` 圓角，已到的段為主色），與 desktop WorkspaceChooser 同款。
+- `FocusHeader({ title, description, step? })`：`h1`（15px、medium）加灰字說明；給 `step`（`{ current, total, label }`）時上方多一列「<label> · 步驟 n / total」（11px 大寫字距灰字）與步驟條（每段 `h-1 w-8` 圓角，已到的段為主色）。這一列是 `packages/ui` 的共用元件 `StepProgress`，desktop WorkspaceChooser 改用同一個元件。
 - `FocusFooter({ children })`：上緣細線、上內距 14px、右對齊的按鈕列。
 - `FocusNotice({ title, body })`：連結無效與無權限用。琥珀色圓形圖示（`SEMANTIC_TONE` 的 warning 色）、15px 標題、灰字說明，整塊 `role="alert"`。
 
 各頁內容：
 
 - **登入**：標題「登入」，說明「用管理員給你的帳號登入 <主機名>。」（主機名取 `window.location.host`，等寬字）。欄位電子郵件、密碼。頁尾「登入」。
-- **初始設定**：步驟 1「建立管理員帳號」，說明「這台 server 的第一個帳號；之後用它邀請其他人、建立專案。」，欄位電子郵件、顯示名稱、密碼，頁尾「建立管理員」。步驟 2「建立第一組專案與儲存庫」，說明「專案是遠端工作流程的範圍單位；完成後會直接進入後台，並顯示連線所需的資訊。」，四個欄位，兩個代號欄下方灰字「建立後不可變更。」，頁尾「建立專案與儲存庫」。步驟列的 label 為「初始設定」。連結無效用 `FocusNotice`。
+- **初始設定**：步驟 1「建立管理員帳號」，說明「這台 server 的第一個帳號；之後用它邀請其他人、建立專案。」，欄位電子郵件、顯示名稱、密碼，頁尾「建立管理員」。步驟 2「建立第一組專案與儲存庫」，說明「專案是遠端工作流程的範圍單位；完成後會直接進入後台，並顯示連線所需的資訊。」，四個欄位，兩個代號欄的標籤只放「專案代號」「儲存庫代號」，下方灰字「建立後不可變更。」（`Field` 的 `hint`），頁尾「建立專案與儲存庫」。專案與儲存庫頁的兩個代號欄（建立專案抽屜的專案代號、專案抽屜內新增儲存庫表單的儲存庫代號）改用同一種寫法，同一條限制只有一種說法。步驟列的 label 為「初始設定」。連結無效用 `FocusNotice`。
 - **接受邀請**：標題「接受邀請」，說明「為 <email> 設定登入密碼；建立後會直接登入。」。密碼欄上方兩列唯讀資訊（電子郵件、伺服器），以 `dl` 呈現。頁尾「建立帳號」。連結無效用 `FocusNotice`。
 - **裝置登入**：
   - 輸入代碼：標題「裝置登入」，說明「輸入裝置上顯示的代碼以核准登入。代碼在 Speclink 桌面 app 或 CLI 的登入畫面上。」，欄位「裝置代碼」，錯誤緊貼欄位下方，頁尾「下一步」。
@@ -182,10 +182,11 @@ server-web-console 三條需求 MODIFIED（見 delta）。要點：
 
 **介面與資料形狀**
 
-- `packages/ui` 新匯出：`Breadcrumbs`、`Crumb`（型別）、`DropdownMenuRadioGroup`、`DropdownMenuRadioItem`。
+- `packages/ui` 新匯出：`Breadcrumbs`、`Crumb`（型別）、`StepProgress`、`DropdownMenuRadioGroup`、`DropdownMenuRadioItem`。
 - `PageHeader` 新屬性 `level?: 1 | 2`（預設 2）；`SheetContent` 新屬性 `side?: "left" | "right"`（預設 `"right"`）。
-- `packages/ui` 共用字典新 key：麵包屑 `nav` 的 `aria-label`（zh-TW「頁面路徑」、en「Breadcrumb」）。
-- server-web 新 i18n key（zh-TW 與 en 同時新增）：帳號選單（觸發鈕 aria-label、角色字「管理員」「成員」、「導覽」）、七個頁標題說明、登入說明、初始設定步驟標籤與兩段說明、代號欄「建立後不可變更。」、接受邀請兩個唯讀欄名稱、裝置登入確認標題與身分句、「開啟導覽」沿用 `shell.openNav`。不再使用的 key（`shell.menu`、`setup.title` 若不再出現）隨之移除，兩種語言同步。
+- `packages/ui` 共用字典新 key：麵包屑 `nav` 的 `aria-label`（`breadcrumbs.label`：zh-TW「頁面路徑」、en「Breadcrumb」）、步驟列文字（`steps.progress`：zh-TW「步驟 {current} / {total}」、en「Step {current} of {total}」，取代 desktop 的 `chooser.step`）。
+- server-web 新 i18n key（zh-TW 與 en 同時新增）：帳號選單觸發鈕 aria-label（`shell.accountMenu`）、成員導覽與窄螢幕 Sheet 標題（`shell.nav`）、麵包屑根（`shell.console`）；角色字沿用既有的 `users.roleAdmin`／`users.roleMember`（值即「管理員」「成員」）。七個頁標題說明（帳號頁為 `account.description`，取代 `account.identity`）、登入說明、初始設定步驟標籤與兩段說明、代號欄共用的 `field.projectKey`／`field.repoKey`／`field.keyImmutable`（取代 `registry.projectKeyLabel`／`registry.repoKeyLabel`）、接受邀請的伺服器欄名稱、裝置登入確認標題與身分句、「開啟導覽」沿用 `shell.openNav`。不再使用的 key（`shell.menu`、`setup.title`、`registry.projectKeyLabel`、`registry.repoKeyLabel`、`account.identity`）隨之移除，兩種語言同步。
+- 語言選項（值、選單用名稱、切換鈕用短名）只有一份清單，帳號選單與登入卡片下方共用；顯示名稱為空時退回 email 的規則只有一個函式，帳號選單、裝置身分句與帳號頁說明共用，代入使用者資料時值以字面文字放入。
 - server API、網址、session 資料形狀不變（帳號選單用現有 `session.user` 的 `display`、`email`、`admin`）。
 
 **失敗模式**
@@ -201,22 +202,22 @@ server-web-console 三條需求 MODIFIED（見 delta）。要點：
   - i18n.test.tsx：語言切換改由帳號選單的單選項操作；登入頁卡片下方的「English」可切換語言。
   - app.test.tsx、setup.test.tsx、invite.test.tsx、activate.test.tsx：頁標題與步驟文字的斷言改成新字串；裝置確認狀態顯示大字代碼與「核准後以 … 的身分登入」。
   - a11y.test.tsx：登入頁與管理殼無 axe 違規（兩個 `nav` landmark 各有不同的 `aria-label`）。
-- `npm test -w packages/ui` 全綠，含新增 breadcrumbs.test.tsx（項目、分隔、最後一項前景色、`onClick` 項為按鈕、`aria-label`）、pageHeader.test.tsx 新增 `level={1}` 渲染 `h1`、menus.test.tsx 新增單選項的 `menuitemradio` 與 `aria-checked`。uiSingleSource 守門照舊通過（server-web 與 desktop 不再自行定義 `Crumb` 以外的同名元件；`Crumb` 是型別，不在守門範圍，但 desktop 也改為匯入共用型別）。
-- `npm test -w apps/desktop` 的 titleBar.test.tsx 照舊通過（麵包屑外觀與點擊行為不變）。
+- `npm test -w packages/ui` 全綠，含新增 breadcrumbs.test.tsx（項目、分隔、最後一項前景色、`onClick` 項為按鈕、`aria-label`）、stepProgress.test.tsx（「[前綴 · ]步驟 n / total」與步驟條）、pageHeader.test.tsx 新增 `level={1}` 渲染 `h1`、menus.test.tsx 新增單選項的 `menuitemradio` 與 `aria-checked`。uiSingleSource 守門照舊通過（server-web 與 desktop 不再自行定義 `Crumb` 以外的同名元件；`Crumb` 是型別，不在守門範圍，但 desktop 也改為匯入共用型別）。
+- `npm test -w apps/desktop` 全綠，其中 titleBar.test.tsx（麵包屑外觀與點擊行為不變）與 workspaceChooser.test.tsx（步驟列文字「步驟 n / 4」改由共用字典提供後不變）題目不改。
 - `npm run build -w apps/server-web` 成功。
 - 手動驗收：在瀏覽器以管理員與一般成員各走一次 1440px 與 375px，對照原型 A／B／C 列。
 
 **範圍邊界**
 
-- 範圍內：D1–D8 列出的殼、頁標題、四個流程頁、無權限頁、三個共用原語補強、麵包屑搬家、i18n、測試、server-web-console 三條需求。
-- 範圍外：各頁標題區以下的內容（清單、表格、卡片、抽屜）一律不動；Tour 的步驟與文案不動；desktop 除麵包屑換用共用元件外不動。
+- 範圍內：D1–D8 列出的殼、頁標題、四個流程頁、無權限頁、三個共用原語補強、麵包屑與步驟列搬進共用元件庫、i18n、測試、server-web-console 三條需求。
+- 範圍外：各頁標題區以下的內容（清單、表格、卡片、抽屜）一律不動，唯一例外是專案與儲存庫頁的兩個代號欄（建立專案抽屜的專案代號、專案抽屜內新增儲存庫表單的儲存庫代號）改用灰字說明（與初始設定同一種寫法）；Tour 的步驟與文案不動；desktop 除麵包屑與 WorkspaceChooser 步驟列換用共用元件外不動。
 
 ## Risks / Trade-offs
 
 - [第二、三刀尚未落地前，頁面是新殼加舊內容] → 標題區與殼已是新樣子，下方仍是 DataList 與抽屜；兩刀依序轉出，中間狀態可用、不會壞，只是不完全一致。
 - [帳號選單把登出藏進一層選單] → 選單觸發鈕常駐側欄底部並顯示自己的名稱與 email，比原本右上角的 email 連結更容易辨認「我是誰」；登出只多一次點擊，與 desktop 和常見後台一致。
 - [移除 16px／44px 承諾降低觸控友善度] → 窄螢幕版仍保留完整功能與鍵盤操作；共用按鈕本來就不是 44px，改寫只是讓規格說真話。
-- [麵包屑搬家動到 desktop] → 只換渲染來源、不換外觀；titleBar.test.tsx 守住現有行為。desktop 的 App.test.tsx 若有對麵包屑的快照或 DOM 斷言，跟著跑一次。
+- [麵包屑與步驟列搬家動到 desktop] → 只換渲染來源、不換外觀（麵包屑按鈕只多鍵盤聚焦時的 focus ring）；titleBar.test.tsx 與 workspaceChooser.test.tsx 守住現有行為，desktop 全套測試跟著跑一次。
 - [回歸對照] → 本變更不碰 CLI 與 golden 檔，`cargo test` 與 CLI golden 不受影響；前端以 vitest 與 vite build 為準（前端 `tsc --noEmit` 基準本來就紅、不是守門）。
 - [跨平台] → 純瀏覽器畫面，Windows／macOS／Linux 差異只在字型渲染；共用 theme 已處理字型堆疊。desktop 麵包屑在三平台的拖曳區設定不變。
 

@@ -101,6 +101,19 @@
         "apps/server-web/src/pages/InvitePage.tsx",
         "apps/server-web/src/pages/SetupPage.tsx"
       ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "5.3 全組守門：確認本變更沒有動到詞彙守門與文件連結掃描面。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。",
+      "files": [
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/server-web/src/__tests__/registry.test.tsx",
+        "apps/server-web/src/i18n/LocaleContext.tsx",
+        "apps/server-web/src/lib/userLabel.ts",
+        "packages/ui/src/__tests__/stepProgress.test.tsx",
+        "packages/ui/src/components/StepProgress.tsx"
+      ]
     }
   ],
   "entries": [
@@ -243,6 +256,23 @@
         "apps/server-web/src/pages/SetupPage.tsx"
       ],
       "recordedAt": "2026-10-13T14:43:16Z"
+    },
+    {
+      "taskId": "tsk_01M4T52JFN696P6H30K9E5PM5T",
+      "taskDesc": "5.3 全組守門：確認本變更沒有動到詞彙守門與文件連結掃描面。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "4e18342bec1eedb8611b50fb9e395d01f8bde1ac",
+      "touchedFiles": [
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/server-web/src/__tests__/registry.test.tsx",
+        "apps/server-web/src/i18n/LocaleContext.tsx",
+        "apps/server-web/src/lib/userLabel.ts",
+        "packages/ui/src/__tests__/stepProgress.test.tsx",
+        "packages/ui/src/components/StepProgress.tsx"
+      ],
+      "recordedAt": "2026-10-14T01:01:45Z"
     }
   ]
 }

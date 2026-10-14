@@ -5,6 +5,7 @@ import { useClient, useSession } from "../app/context";
 import { Field } from "../components/Field";
 import { FocusFooter, FocusHeader } from "../layouts/FocusLayout";
 import { WebApiError } from "../api/client";
+import { fillUser } from "../lib/userLabel";
 
 // 裝置核准頁（server-device-auth「核准頁 session 保護且明確確認」, D3）。需已登入；未
 // 登入時導向登入頁並僅保留格式合格的裝置碼（成功登入後由 Server 依 device code 裁決導回
@@ -114,9 +115,7 @@ export function ActivatePage() {
         <p className="font-mono text-[22px] font-medium tracking-wider">{shown}</p>
         {user && (
           <p className="mt-1 text-[13px] text-muted-foreground">
-            {t("activate.identity")
-              .replace("{display}", user.display || user.email)
-              .replace("{email}", user.email)}
+            {fillUser(t("activate.identity"), user)}
           </p>
         )}
       </div>

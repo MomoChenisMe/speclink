@@ -26,6 +26,26 @@ describe("專案與儲存庫", () => {
     expect(within(drawer).getByLabelText(/專案代號/)).toBeTruthy();
   });
 
+  // 「建立後不可變更」與初始設定同一種寫法：標籤只放名稱，限制放在欄位下方的灰字說明。
+  it("建立專案與新增儲存庫的代號欄以灰字說明標示建立後不可變更", async () => {
+    renderAt("/admin/registry", makeAdminClient());
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /建立專案/ }));
+    const create = await screen.findByRole("dialog", { name: /建立專案/ });
+    const projectKey = within(create).getByLabelText("專案代號");
+    expect(document.getElementById(projectKey.getAttribute("aria-describedby") ?? "")?.textContent).toBe(
+      "建立後不可變更。",
+    );
+    await user.keyboard("{Escape}");
+
+    const { drawer } = await openProjectDrawer();
+    await user.click(within(drawer).getByRole("button", { name: /新增儲存庫/ }));
+    const repoKey = within(drawer).getByLabelText("儲存庫代號");
+    expect(document.getElementById(repoKey.getAttribute("aria-describedby") ?? "")?.textContent).toBe(
+      "建立後不可變更。",
+    );
+  });
+
   it("專案代號以唯讀文字呈現，畫面上沒有可編輯代號的輸入框", async () => {
     renderAt("/admin/registry", makeAdminClient());
     const { drawer } = await openProjectDrawer();

@@ -72,6 +72,14 @@ describe("裝置核准頁", () => {
     expect(within(footer).getByRole("button", { name: "拒絕" })).toBeTruthy();
   });
 
+  it("身分句把顯示名稱當字面文字代入（含 $& 也原樣顯示）", async () => {
+    const session = { ...MEMBER, user: { ...MEMBER.user, display: "A$&B" } };
+    renderAt("/activate?user_code=ABCD-EFGH", makeClient({ getSession: vi.fn(async () => session) }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /下一步/ }));
+    expect(await screen.findByText("核准後以 A$&B（member@example.com）的身分登入")).toBeTruthy();
+  });
+
   it("提交後才顯示明確的核准／拒絕選項", async () => {
     const client = makeClient();
     renderAt("/activate?user_code=ABCD-EFGH", client);

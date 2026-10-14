@@ -26,7 +26,14 @@ export function Breadcrumbs({ crumbs }: { crumbs: Crumb[] }) {
           <Fragment key={i}>
             {i > 0 && <span className="opacity-50">/</span>}
             {crumb.onClick ? (
-              <button type="button" className={cn(cls, "hover:text-foreground")} onClick={crumb.onClick}>
+              <button
+                type="button"
+                className={cn(
+                  cls,
+                  "rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                )}
+                onClick={crumb.onClick}
+              >
                 {crumb.label}
               </button>
             ) : (

@@ -14,10 +14,10 @@ import {
   type LocalePreference,
 } from "@speclink/ui";
 import { useClient, useSession } from "../app/context";
-import { useLocalePreference } from "../i18n/LocaleContext";
+import { UI_LOCALES, useLocalePreference } from "../i18n/LocaleContext";
+import { userLabel } from "../lib/userLabel";
 
 // 側欄底部的帳號選單（design D2）：觸發鈕顯示自己是誰，選單收帳號、介面語言與登出。
-// 語言名稱維持母語寫法——把「English」翻成「英文」只會讓看不懂當前語言的人找不到自己的語言。
 
 /** 跟隨系統在 LocalePreference 裡是 null，但 Radix 單選項的 value 不接受空字串。 */
 const SYSTEM = "__system__";
@@ -31,8 +31,7 @@ export function AccountMenu({ onNavigate }: { onNavigate?: () => void }) {
   const [pending, setPending] = useState(false);
   const user = session.user;
   if (!user) return null;
-  // 顯示名稱為空時退回 email：頭像字與名稱列都不留白。
-  const name = user.display || user.email;
+  const name = userLabel(user);
 
   // 登出：撤銷 server session、reload 角色真相、導向 server 回傳的去處；失敗也回登入頁，
   // 不留在仍顯示帳號資訊的殼。
@@ -52,7 +51,7 @@ export function AccountMenu({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        aria-label={t("shell.accountMenu").replace("{name}", name)}
+        aria-label={t("shell.accountMenu").replace("{name}", () => name)}
         className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-foreground/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span
@@ -89,8 +88,11 @@ export function AccountMenu({ onNavigate }: { onNavigate?: () => void }) {
           value={pref ?? SYSTEM}
           onValueChange={(v) => setPref(v === SYSTEM ? null : (v as LocalePreference))}
         >
-          <DropdownMenuRadioItem value="zh-TW">繁體中文</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="en">English</DropdownMenuRadioItem>
+          {UI_LOCALES.map((option) => (
+            <DropdownMenuRadioItem key={option.value} value={option.value}>
+              {option.name}
+            </DropdownMenuRadioItem>
+          ))}
           <DropdownMenuRadioItem value={SYSTEM}>{t("locale.followSystem")}</DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />

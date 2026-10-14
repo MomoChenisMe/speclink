@@ -29,6 +29,7 @@ server 網頁後台（apps/server-web）的殼、全部頁標題與登入這一�
   - 錯誤維持 `role=alert`，緊貼在欄位下方。
 - **共用元件（packages/ui）**：
   - 新增 `Breadcrumbs`：desktop 主區頂列的麵包屑搬進共用元件庫，desktop 與 server-web 共用一份。
+  - 新增 `StepProgress`：多步驟進度列（「步驟 n / total」加步驟條）搬進共用元件庫，desktop 工作區精靈與 server 初始設定共用一份。
   - `PageHeader` 加標題層級屬性，server-web 以第一層標題使用，desktop 維持第二層。
   - `SheetContent` 加從左側滑出的選項。
   - dropdown-menu 補單選群組與單選項，供帳號選單的介面語言使用。
@@ -37,7 +38,7 @@ server 網頁後台（apps/server-web）的殼、全部頁標題與登入這一�
   - 「共用設計系統維持高密度可存取體驗」：header 改為側欄頂列與主區頂列；16px 正文與 44×44px 互動目標改為 desktop 密度（外殼 11–13px、閱讀內文 15px、按鈕 28–36px）；窄螢幕 Sheet 改為兩種角色都有、從左側滑出。
   - 「介面語言支援中文與英文」：語言切換從 header 移到帳號選單與登入這一族的卡片下方。討論結論只列前兩條，這一條是 propose 期查規格時發現「於 header 提供語言切換」會隨 header 一起失效而補上。
 
-相容性影響：只改 server 網頁後台與共用 UI 套件的畫面。網址、六個目的地、server API、CLI 人眼輸出與 `--json`、引擎全部不變；desktop 的麵包屑外觀與行為不變（只換成共用元件）。既有使用者不需遷移；語言偏好沿用同一個瀏覽器儲存鍵。
+相容性影響：只改 server 網頁後台與共用 UI 套件的畫面。網址、六個目的地、server API、CLI 人眼輸出與 `--json`、引擎全部不變；desktop 的麵包屑與工作區精靈步驟列外觀與行為不變（只換成共用元件；麵包屑按鈕多了鍵盤聚焦時的 focus ring）。專案與儲存庫頁的代號欄（建立專案抽屜的專案代號、專案抽屜內新增儲存庫表單的儲存庫代號），「建立後不可變更」從標籤移到欄位下方的灰字說明，與初始設定一致。既有使用者不需遷移；語言偏好沿用同一個瀏覽器儲存鍵。
 
 ## Alternatives Considered
 
@@ -61,8 +62,8 @@ server 網頁後台（apps/server-web）的殼、全部頁標題與登入這一�
 ## Impact
 
 - Affected specs: server-web-console（3 條 MODIFIED）
-- Affected app／package: `apps/server-web`（後台 SPA）、`packages/ui`（共用 UI 元件）、`apps/desktop`（只換用共用麵包屑）；speclink-core、speclink-cli、speclink-host、server crates 皆不受影響
+- Affected app／package: `apps/server-web`（後台 SPA）、`packages/ui`（共用 UI 元件）、`apps/desktop`（只換用共用麵包屑與步驟列）；speclink-core、speclink-cli、speclink-host、server crates 皆不受影響
 - Affected code:
-  - New: `packages/ui/src/components/Breadcrumbs.tsx`、`packages/ui/src/__tests__/breadcrumbs.test.tsx`、`packages/ui/src/__tests__/sheet.test.tsx`、`apps/server-web/src/components/AccountMenu.tsx`
-  - Modified: `apps/server-web/src/layouts/ConsoleLayout.tsx`、`apps/server-web/src/layouts/FocusLayout.tsx`、`apps/server-web/src/components/AdminNav.tsx`、`apps/server-web/src/components/Field.tsx`、`apps/server-web/src/routes/AppRoutes.tsx`、`apps/server-web/src/pages/LoginPage.tsx`、`apps/server-web/src/pages/SetupPage.tsx`、`apps/server-web/src/pages/InvitePage.tsx`、`apps/server-web/src/pages/ActivatePage.tsx`、`apps/server-web/src/pages/AccountPage.tsx`、`apps/server-web/src/pages/admin/OverviewPage.tsx`、`apps/server-web/src/pages/admin/UsersPage.tsx`、`apps/server-web/src/pages/admin/RegistryPage.tsx`、`apps/server-web/src/pages/admin/CredentialsPage.tsx`、`apps/server-web/src/pages/admin/SystemPage.tsx`、`apps/server-web/src/pages/admin/AuditPage.tsx`、`apps/server-web/src/i18n/messages.ts`、`apps/server-web/src/__tests__/admin-console-shell.test.tsx`、`apps/server-web/src/__tests__/a11y.test.tsx`、`apps/server-web/src/__tests__/i18n.test.tsx`、`apps/server-web/src/__tests__/app.test.tsx`、`apps/server-web/src/__tests__/setup.test.tsx`、`apps/server-web/src/__tests__/invite.test.tsx`、`apps/server-web/src/__tests__/activate.test.tsx`、`packages/ui/src/components/ui/page-header.tsx`、`packages/ui/src/components/ui/sheet.tsx`、`packages/ui/src/components/ui/dropdown-menu.tsx`、`packages/ui/src/index.ts`、`packages/ui/src/i18n.tsx`、`packages/ui/src/__tests__/pageHeader.test.tsx`、`packages/ui/src/__tests__/menus.test.tsx`、`apps/desktop/src/components/TitleBar.tsx`、`apps/desktop/src/App.tsx`
+  - New: `packages/ui/src/components/Breadcrumbs.tsx`、`packages/ui/src/__tests__/breadcrumbs.test.tsx`、`packages/ui/src/__tests__/sheet.test.tsx`、`apps/server-web/src/components/AccountMenu.tsx`、`apps/server-web/src/lib/userLabel.ts`、`packages/ui/src/components/StepProgress.tsx`、`packages/ui/src/__tests__/stepProgress.test.tsx`
+  - Modified: `apps/server-web/src/layouts/ConsoleLayout.tsx`、`apps/server-web/src/layouts/FocusLayout.tsx`、`apps/server-web/src/components/AdminNav.tsx`、`apps/server-web/src/components/Field.tsx`、`apps/server-web/src/routes/AppRoutes.tsx`、`apps/server-web/src/pages/LoginPage.tsx`、`apps/server-web/src/pages/SetupPage.tsx`、`apps/server-web/src/pages/InvitePage.tsx`、`apps/server-web/src/pages/ActivatePage.tsx`、`apps/server-web/src/pages/AccountPage.tsx`、`apps/server-web/src/pages/admin/OverviewPage.tsx`、`apps/server-web/src/pages/admin/UsersPage.tsx`、`apps/server-web/src/pages/admin/RegistryPage.tsx`、`apps/server-web/src/pages/admin/CredentialsPage.tsx`、`apps/server-web/src/pages/admin/SystemPage.tsx`、`apps/server-web/src/pages/admin/AuditPage.tsx`、`apps/server-web/src/i18n/messages.ts`、`apps/server-web/src/__tests__/admin-console-shell.test.tsx`、`apps/server-web/src/__tests__/a11y.test.tsx`、`apps/server-web/src/__tests__/i18n.test.tsx`、`apps/server-web/src/__tests__/app.test.tsx`、`apps/server-web/src/__tests__/setup.test.tsx`、`apps/server-web/src/__tests__/invite.test.tsx`、`apps/server-web/src/__tests__/activate.test.tsx`、`packages/ui/src/components/ui/page-header.tsx`、`packages/ui/src/components/ui/sheet.tsx`、`packages/ui/src/components/ui/dropdown-menu.tsx`、`packages/ui/src/index.ts`、`packages/ui/src/i18n.tsx`、`packages/ui/src/__tests__/pageHeader.test.tsx`、`packages/ui/src/__tests__/menus.test.tsx`、`apps/desktop/src/components/TitleBar.tsx`、`apps/desktop/src/App.tsx`、`apps/desktop/src/components/WorkspaceChooser.tsx`、`apps/desktop/src/i18n/messages.ts`、`apps/server-web/src/i18n/LocaleContext.tsx`、`apps/server-web/src/__tests__/registry.test.tsx`
   - Removed: `apps/server-web/src/components/HeaderAccount.tsx`、`apps/server-web/src/components/LocaleSwitch.tsx`、`apps/server-web/src/components/LogoutButton.tsx`

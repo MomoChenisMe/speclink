@@ -1,9 +1,9 @@
 import { Fragment, useRef, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { TriangleAlert } from "lucide-react";
-import { Card, cn, SEMANTIC_SURFACE, SEMANTIC_TONE, useI18n, Wordmark, type UiLocale } from "@speclink/ui";
+import { Card, cn, SEMANTIC_SURFACE, SEMANTIC_TONE, StepProgress, useI18n, Wordmark } from "@speclink/ui";
 import { SkipLink } from "../components/SkipLink";
-import { useLocalePreference } from "../i18n/LocaleContext";
+import { UI_LOCALES, useLocalePreference } from "../i18n/LocaleContext";
 import { useFocusMain } from "../lib/useFocusMain";
 
 // 專注流程殼（登入／setup／邀請／啟用；design D7）：畫面正中一個大字標，下方一張與 Desktop
@@ -28,31 +28,28 @@ export function FocusLayout({ children }: { children: ReactNode }) {
   );
 }
 
-// 登入前的語言切換：只有中文與 English 兩個鈕（跟隨系統在登入後的帳號選單裡），
-// 與帳號選單寫入同一個偏好。語言名稱維持母語寫法。
-const LOCALES: [UiLocale, string][] = [
-  ["zh-TW", "中文"],
-  ["en", "English"],
-];
-
+// 登入前的語言切換：每種語言一個鈕（跟隨系統在登入後的帳號選單裡），與帳號選單寫入同一個
+// 偏好。點目前已標示的語言不寫入——跟隨系統的人點了「中文」，偏好不該被悄悄固定下來。
 function LocaleToggle() {
   const { t, locale } = useI18n();
   const { setPref } = useLocalePreference();
   return (
     <div role="group" aria-label={t("locale.label")} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-      {LOCALES.map(([value, label], i) => (
+      {UI_LOCALES.map(({ value, short }, i) => (
         <Fragment key={value}>
           {i > 0 && <span aria-hidden="true">·</span>}
           <button
             type="button"
             aria-pressed={locale === value}
-            onClick={() => setPref(value)}
+            onClick={() => {
+              if (locale !== value) setPref(value);
+            }}
             className={cn(
               "rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               locale === value && "text-foreground",
             )}
           >
-            {label}
+            {short}
           </button>
         </Fragment>
       ))}
@@ -60,8 +57,7 @@ function LocaleToggle() {
   );
 }
 
-/** 卡片標題區：15px 標題＋灰字說明；多步驟流程在上方加「<label> · 步驟 n / total」與步驟條
- *  （與 Desktop WorkspaceChooser 同款）。 */
+/** 卡片標題區：15px 標題＋灰字說明；多步驟流程在上方加共用的步驟列（與 Desktop WorkspaceChooser 同一個元件）。 */
 export function FocusHeader({
   title,
   description,
@@ -71,23 +67,9 @@ export function FocusHeader({
   description?: ReactNode;
   step?: { current: number; total: number; label: string };
 }) {
-  const { t } = useI18n();
   return (
     <div className="flex flex-col gap-1">
-      {step && (
-        <div className="mb-1 flex items-center justify-between gap-4">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            {`${step.label} · ${t("focus.step")
-              .replace("{current}", String(step.current))
-              .replace("{total}", String(step.total))}`}
-          </span>
-          <div data-testid="focus-steps" className="flex gap-1" aria-hidden="true">
-            {Array.from({ length: step.total }, (_, i) => (
-              <span key={i} className={cn("h-1 w-8 rounded-full bg-muted", i < step.current && "bg-primary")} />
-            ))}
-          </div>
-        </div>
-      )}
+      {step && <StepProgress prefix={step.label} current={step.current} total={step.total} />}
       <h1 className="text-[15px] font-medium">{title}</h1>
       {description && <p className="text-[13px] text-muted-foreground">{description}</p>}
     </div>
@@ -113,8 +95,7 @@ export function FocusNotice({ title, body }: { title: string; body: string }) {
         <TriangleAlert aria-hidden="true" className={cn("h-4 w-4", SEMANTIC_TONE.warning)} />
       </span>
       <div className="min-w-0">
-        <h1 className="text-[15px] font-medium">{title}</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">{body}</p>
+        <FocusHeader title={title} description={body} />
       </div>
     </div>
   );
