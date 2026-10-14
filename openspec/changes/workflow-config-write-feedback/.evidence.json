@@ -1,0 +1,48 @@
+{
+  "version": 2,
+  "change": "workflow-config-write-feedback",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 【Red】差異函式與 rules dry-run 的失敗測試（requirement「dry-run 差異只標示實際改動的行」）：在 crates/adapters/speclink-cli/src/verbs/config.rs 新增 `#[cfg(test)]` 單元測試，覆蓋新舊文字相同時輸出空字串、單一連續改動的輸出與現行位元級相同、兩處改動夾著未改行時中間行只以 context 行（前綴一個空白）出現且 `-` 行先於 `+` 行、`@@` 標頭的舊側與新側行數分別等於 hunk 內 context 加 `-` 行數與 context 加 `+` 行數；在 crates/adapters/speclink-cli/tests/it/workflow_config.rs 新增整合測試對應情境「兩處改動之間的未改行以 context 呈現」（rules.tasks 由甲、乙、丙改為甲二、乙、丙、丁，diff 的 `-` 行恰為甲、`+` 行恰為甲二與丁，乙、丙只以 context 出現，config.yaml 逐位元不變）。驗證：`cargo test -p speclink-cli --bin speclink unified_diff` 與 `cargo test -p speclink-cli --test it workflow_config` 紅燈，失敗集中在中間行的 context 斷言",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/config.rs",
+        "crates/adapters/speclink-cli/tests/it/workflow_config.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.1 文件對應新行為：docs/configuration.md 與 docs/configuration.zh-TW.md 的 workflow-config 子指令注意事項中，review 寫入一條補上「技能檔比引擎舊時，寫入成功後 stderr 會提示執行 `speclink update`，因為舊版審查技能可能不套用審查規則」，`--dry-run` 一條補上「差異只標示實際改動的行」；兩份內容對應。驗證：兩份文件的對應段落內容一致（人工比對），`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠",
+      "files": [
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4WSPCE9A4SPHSFTD4WZX31N",
+      "taskDesc": "1.1 【Red】差異函式與 rules dry-run 的失敗測試（requirement「dry-run 差異只標示實際改動的行」）：在 crates/adapters/speclink-cli/src/verbs/config.rs 新增 `#[cfg(test)]` 單元測試，覆蓋新舊文字相同時輸出空字串、單一連續改動的輸出與現行位元級相同、兩處改動夾著未改行時中間行只以 context 行（前綴一個空白）出現且 `-` 行先於 `+` 行、`@@` 標頭的舊側與新側行數分別等於 hunk 內 context 加 `-` 行數與 context 加 `+` 行數；在 crates/adapters/speclink-cli/tests/it/workflow_config.rs 新增整合測試對應情境「兩處改動之間的未改行以 context 呈現」（rules.tasks 由甲、乙、丙改為甲二、乙、丙、丁，diff 的 `-` 行恰為甲、`+` 行恰為甲二與丁，乙、丙只以 context 出現，config.yaml 逐位元不變）。驗證：`cargo test -p speclink-cli --bin speclink unified_diff` 與 `cargo test -p speclink-cli --test it workflow_config` 紅燈，失敗集中在中間行的 context 斷言",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "f5138a3b96f22a852068dcf15f8da7df1d75f881",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/config.rs",
+        "crates/adapters/speclink-cli/tests/it/workflow_config.rs"
+      ],
+      "recordedAt": "2026-10-14T09:22:49Z"
+    },
+    {
+      "taskId": "tsk_01M4WSPCE9GY03ZWWHWM32S87N",
+      "taskDesc": "3.1 文件對應新行為：docs/configuration.md 與 docs/configuration.zh-TW.md 的 workflow-config 子指令注意事項中，review 寫入一條補上「技能檔比引擎舊時，寫入成功後 stderr 會提示執行 `speclink update`，因為舊版審查技能可能不套用審查規則」，`--dry-run` 一條補上「差異只標示實際改動的行」；兩份內容對應。驗證：兩份文件的對應段落內容一致（人工比對），`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "f5138a3b96f22a852068dcf15f8da7df1d75f881",
+      "touchedFiles": [
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md"
+      ],
+      "recordedAt": "2026-10-14T09:27:46Z"
+    }
+  ]
+}

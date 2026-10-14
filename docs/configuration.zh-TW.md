@@ -73,8 +73,9 @@ Speclink 的設定分三層：工作流政策寫在 `openspec/config.yaml`，跟
 
 - `locale` 只收 `tw`、`ja`、`en`；`spec_locale` 另外收 `auto`（跟著 `locale`）。大小寫要相同。寫「繁體中文」這類名稱會被拒絕，錯誤訊息會列出可用的代碼。
 - `tdd`、`audit`、`worktree` 只收 `true`／`false`。設成 `false`（或把 `locale` 設成空字串）會刪掉那一行，回到預設值。
-- 所有寫入子指令都有 `--dry-run`：只印出差異，不寫檔。
+- 所有寫入子指令都有 `--dry-run`：只印出差異，不寫檔。差異只標示實際改動的行；沒改的行一律以前後文呈現，夾在兩處改動之間的也一樣。
 - `review` 的寫入會整塊取代 `review` 區塊：`extend` 不寫 `baseline` 鍵、清單清空就移除該鍵、整塊沒有內容時移除 `review` 鍵。`review` 區塊內的註解不會保留。
+- `review` 寫入後，指令會檢查本機專案的技能檔。技能檔比引擎舊時，寫入照樣成功，但 stderr 會多一行警告，提示執行 `speclink update`——舊版審查技能可能不套用審查規則。
 - `review` 區塊採嚴格解析：出現不認得的鍵（例如打錯成 `critcal`）、`baseline` 不是 `extend` 或 `replace`、或清單裡有不是字串的條目時，整份檔案視為無法解析。讀這份檔案的指令都會失敗並點名出錯的鍵，直到你改正。
 - 只改目標那幾行，其他內容與註解原樣保留。檔案無法解析時讀寫都會拒絕，不會蓋掉你的內容。
 - 本機模式下改 `worktree` 會同時產生或移除兩個 worktree 技能。還有 worktree 沒收尾時，不能從 `true` 改成 `false`；指令會列出那些 worktree，請先用 `speclink-worktree-merge` 收掉。
