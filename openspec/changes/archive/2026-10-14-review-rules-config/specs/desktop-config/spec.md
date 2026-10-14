@@ -92,7 +92,7 @@
 
 唯讀呈現：預設清單卡 SHALL 顯示目前模式（「沿用並追加」或「整份換掉」）與一句說明，並 SHALL 提供「查看 12 條」展開鈕，展開後列出 12 條 smell 名稱——名稱 SHALL 取自引擎提供的清單，desktop SHALL NOT 另存一份。專案規則卡 SHALL 依 CRITICAL、WARNING、SUGGESTION 三節列出規則，每節帶嚴重度籤、一行效果說明與條數；效果說明 SHALL 為：CRITICAL「擋蓋章；要接受放行須逐條再確認」、WARNING「擋蓋章；偶有正當例外可接受放行」、SUGGESTION「只記在工單，不擋蓋章」。三節皆空時 SHALL 顯示空狀態。
 
-編輯：頁標題右側的編輯鈕 SHALL 切換本頁為編輯態並將按鈕列改為取消與儲存（儲存鈕標示 ⌘S／Ctrl+S，該快捷鍵於編輯器內與頁內皆觸發儲存）。預設清單 SHALL 為「沿用並追加」與「整份換掉」兩個單選項，各附一句說明。專案規則 SHALL 以 CRITICAL、WARNING、SUGGESTION 三個固定節各一張小卡呈現（嚴重度籤＋即時「N 條」計數），小卡內為與產出規則頁同一個程式碼編輯器元件（純文字模式、行號、自動換行、底部狀態列）；SHALL NOT 提供自由新增節的輸入。一行即一條規則，行序 SHALL 即寫入檔案的條目順序；儲存時 SHALL 逐行去除頭尾空白、空行 SHALL NOT 寫入。選擇「整份換掉」且三節皆空時，頁內 SHALL 顯示提示「Standards 軸只依 repo 文件審查」，該提示 SHALL NOT 阻擋儲存。
+編輯：頁標題右側的編輯鈕 SHALL 切換本頁為編輯態並將按鈕列改為取消與儲存（儲存鈕標示 ⌘S／Ctrl+S，該快捷鍵於編輯器內與頁內皆觸發儲存）。預設清單 SHALL 為列右側的下拉（與產出流程頁 locale 同一共用元件），選項為「沿用並追加」與「整份換掉」，列說明 SHALL 顯示所選模式的一句說明。專案規則 SHALL 以 CRITICAL、WARNING、SUGGESTION 三個固定節各一張小卡呈現（嚴重度籤＋即時「N 條」計數），小卡內為與產出規則頁同一個程式碼編輯器元件（純文字模式、行號、自動換行、底部狀態列）；SHALL NOT 提供自由新增節的輸入。一行即一條規則，行序 SHALL 即寫入檔案的條目順序；儲存時 SHALL 逐行去除頭尾空白、空行 SHALL NOT 寫入。選擇「整份換掉」且三節皆空時，頁內 SHALL 顯示提示「Standards 軸只依 repo 文件審查」，該提示 SHALL NOT 阻擋儲存。
 
 寫入：儲存 SHALL 僅寫入 review 鍵——context、rules 與政策欄位逐字元不變；移除語意與 CLI 的 workflow-config review 寫入一致：「沿用並追加」不寫 baseline 鍵、某節清空移除該清單鍵、baseline 缺席且三節皆空時移除整個 review 鍵。寫入 SHALL 經與產出規則頁相同的寫入路徑與雙重解析驗證，以 YAML 保留字元開頭的條目自動加引號、讀回逐字元一致。取消 SHALL 還原唯讀呈現且 SHALL NOT 寫入檔案。config.yaml 解析失敗時本頁 SHALL 依分類的解析失敗呈現停用編輯（見需求「設定頁圖形化讀寫兩層設定」）。遠端專案時本頁內容來自 server 的 policy 文件，儲存 SHALL 帶 expected revision，revision 衝突與 reader 唯讀的處理 SHALL 與同需求所述其他三頁一致。
 

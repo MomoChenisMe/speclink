@@ -2,18 +2,12 @@ import { Check, X } from "lucide-react";
 
 import type { AnalyzeReport } from "../adapter";
 import { useI18n } from "../i18n";
-import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
+import { SEMANTIC_TONE } from "../tone";
+import { SeverityTag } from "./SeverityTag";
 import { Button } from "./ui/button";
 
 /** 分析維度（固定四維，順序對應 speclink analyze 的 --json 輸出）。 */
 const DIMENSIONS = ["Coverage", "Consistency", "Ambiguity", "Gaps"] as const;
-
-/** 嚴重度配色——Critical 破壞色、Warning 琥珀警示（與維度摘要同語意同色）、Suggestion 中性。 */
-const SEVERITY_CLS: Record<string, string> = {
-  Critical: "bg-destructive/15 text-destructive",
-  Warning: `${SEMANTIC_SURFACE.warning} ${SEMANTIC_TONE.warning}`,
-  Suggestion: "bg-muted text-muted-foreground",
-};
 
 /**
  * 分析面板（design D1 兩層結構）：頂部結構驗證列（validate 併入分析單一入口）、
@@ -115,13 +109,7 @@ export function AnalyzePanel({
               className="rounded-md border border-border/60 bg-background p-2 text-xs"
             >
               <div className="flex items-center gap-1.5">
-                <span
-                  className={`shrink-0 rounded px-1 py-0.5 text-[10px] font-medium ${
-                    SEVERITY_CLS[f.severity] ?? "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {f.severity}
-                </span>
+                <SeverityTag severity={f.severity} />
                 <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
                   {f.location}
                 </span>

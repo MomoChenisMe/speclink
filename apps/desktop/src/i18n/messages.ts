@@ -216,7 +216,9 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.reviewBaseline.replace": "整份換掉",
     "settings.reviewBaseline.replaceDesc":
       "不檢查預設的 12 條，只用專案規則；想保留其中幾條，請寫進專案規則。",
+    "settings.reviewBaselineLabel": "{count} 條 code smell",
     "settings.reviewSmellsShow": "查看 {count} 條",
+    "settings.reviewSmellsHide": "收合",
     "settings.reviewRulesCard": "專案規則",
     "settings.reviewEffect.critical": "擋蓋章；要接受放行須逐條再確認",
     "settings.reviewEffect.warning": "擋蓋章；偶有正當例外可接受放行",
@@ -737,7 +739,9 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.reviewBaseline.replace": "Replace entirely",
     "settings.reviewBaseline.replaceDesc":
       "The 12 built-in smells are not checked; only the project rules apply. To keep some of them, write them as project rules.",
+    "settings.reviewBaselineLabel": "The {count} code smells",
     "settings.reviewSmellsShow": "Show the {count} smells",
+    "settings.reviewSmellsHide": "Collapse",
     "settings.reviewRulesCard": "Project rules",
     "settings.reviewEffect.critical": "Blocks the stamp; accepting it takes a per-item confirmation",
     "settings.reviewEffect.warning": "Blocks the stamp; a justified exception can be accepted",

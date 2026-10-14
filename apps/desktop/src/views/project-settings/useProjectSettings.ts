@@ -70,6 +70,10 @@ export const textToEntries = (text: string) =>
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line !== "");
+/** 草稿文字→條目，沒編輯的節原樣沿用現值（review R3）：檔案裡手寫的多行規則顯示成多行，
+ * 重新拆行會變成多條——只有使用者改過的節才照「一行一條」重切。 */
+const keepUnedited = (text: string, entries: string[]) =>
+  text === entriesToText(entries) ? entries : textToEntries(text);
 
 /** 審查規則的三個嚴重度清單（固定三節，順序即畫面順序）。 */
 export const REVIEW_LISTS = ["critical", "warning", "suggestion"] as const;
@@ -84,14 +88,15 @@ const reviewToDraft = (review: ReviewRules): ReviewDraft => ({
   warning: entriesToText(review.warning),
   suggestion: entriesToText(review.suggestion),
 });
-const draftToReview = (draft: ReviewDraft): ReviewRules => ({
+const draftToReview = (draft: ReviewDraft, current: ReviewRules): ReviewRules => ({
   baseline: draft.baseline,
-  critical: textToEntries(draft.critical),
-  warning: textToEntries(draft.warning),
-  suggestion: textToEntries(draft.suggestion),
+  critical: keepUnedited(draft.critical, current.critical),
+  warning: keepUnedited(draft.warning, current.warning),
+  suggestion: keepUnedited(draft.suggestion, current.suggestion),
 });
 const sameReview = (a: ReviewRules, b: ReviewRules) =>
-  a.baseline === b.baseline && REVIEW_LISTS.every((list) => entriesToText(a[list]) === entriesToText(b[list]));
+  a.baseline === b.baseline &&
+  REVIEW_LISTS.every((list) => a[list].length === b[list].length && a[list].every((entry, i) => entry === b[list][i]));
 const EMPTY_REVIEW: ReviewRules = { baseline: "extend", critical: [], warning: [], suggestion: [] };
 
 export function useProjectSettings(settings: WorkspaceSettingsProvider) {
@@ -146,6 +151,9 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
   const [createName, setCreateName] = useState("");
   /** 待確認刪除的專案層 schema 名稱（確認框開關；D7 確認後才執行）。 */
   const [pendingDeleteSchema, setPendingDeleteSchema] = useState<string | null>(null);
+  /** 產出流程動作（切換／fork／建立／刪除＋重讀）進行中：所有寫入入口停用。動作完成後
+   * adoptFresh 依按下當時的編輯與未存狀態採納 server 值，等待期間不得再有新改動。 */
+  const [schemaBusy, setSchemaBusy] = useState(false);
 
   const hydrate = (next: SettingsSnapshot) => {
     setSnap(next);
@@ -203,7 +211,35 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
   const wfDisabled =
     snap.workflow.parseError !== null ||
     (isRemote && !settings.policyWrite) ||
-    conflict !== null;
+    conflict !== null ||
+    schemaBusy;
+
+  // 政策表單相對快照的未存修改（dirty 與 adoptFresh 共用）。
+  const policyDirty =
+    locale !== (snap.workflow.locale ?? "") ||
+    specLocale !== (snap.workflow.specLocale ?? "") ||
+    tdd !== snap.workflow.tdd ||
+    audit !== snap.workflow.audit ||
+    worktree !== snap.workflow.worktree;
+
+  /** 採納最新快照裡「不是這次寫入、也不在編輯中」各區的現值（review R8）：remote 的
+   * readSettings 會靜默換上最新 revision，留著舊現值再起草儲存，就會不經 409 蓋掉別人的修改。
+   * 編輯中的卡保留草稿；政策欄位只在表單沒有未存修改時採納。 */
+  const adoptFresh = (fresh: SettingsSnapshot, written: PendingRemoteWrite["kind"]) => {
+    const w = fresh.workflow;
+    if (written !== "policy" && !policyDirty) {
+      setLocale(w.locale ?? "");
+      setSpecLocale(w.specLocale ?? "");
+      setTdd(w.tdd);
+      setAudit(w.audit);
+      setWorktree(w.worktree);
+    }
+    if (written !== "context" && !ctxEditing) setContextText(w.context ?? "");
+    if (written !== "rules" && !rulesEditing) {
+      setRules(Object.fromEntries(w.schemaArtifacts.map((id) => [id, w.rules[id] ?? []])));
+    }
+    if (written !== "review" && !reviewEditing) setReview(w.review);
+  };
 
   const adoptRevision = (next: number | void) => {
     if (typeof next !== "number") return;
@@ -261,7 +297,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     );
     const pendingRules = pending.kind === "rules" ? Object.fromEntries(pending.rules) : null;
     const mineReview =
-      pending.kind === "review" ? pending.review : reviewEditing ? draftToReview(draftReview) : review;
+      pending.kind === "review" ? pending.review : reviewEditing ? draftToReview(draftReview, review) : review;
     const show = (value: string | null | undefined) => value || "—";
     const rows: ConflictRow[] = [
       {
@@ -448,7 +484,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     // 當下的分節，不對新鍵送空值。
     const nextRules: Array<[string, string[]]> = editingRuleKeys.map((id) => [
       id,
-      textToEntries(draftRules[id] ?? ""),
+      keepUnedited(draftRules[id] ?? "", rules[id] ?? []),
     ]);
     // 非凍結鍵的既有分節原樣附上（review R3／N4）：整份代換不得靜默刪掉其他
     // schema 的分節——含編輯期間換入的新固定鍵既有規則。
@@ -476,7 +512,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
   const saveReview = () => guardWrite("review", setReviewSaving, async () => {
     // 整塊代換、只寫 review 鍵：逐行修剪、空行不寫；移除語意（extend 不寫 baseline、空節移除、
     // 全空移除 review）在 core 落實。
-    const nextReview = draftToReview(draftReview);
+    const nextReview = draftToReview(draftReview, review);
     try {
       const next = await settings.writeWorkflowReview(nextReview);
       adoptRevision(next);
@@ -518,21 +554,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     try {
       const fresh = await settings.readSettings();
       setSnap(fresh);
-      if (!rulesEditing) {
-        setRules(
-          Object.fromEntries(
-            fresh.workflow.schemaArtifacts.map((id) => [id, fresh.workflow.rules[id] ?? []]),
-          ),
-        );
-        setDraftRules(
-          Object.fromEntries(
-            fresh.workflow.schemaArtifacts.map((id) => [
-              id,
-              entriesToText(fresh.workflow.rules[id] ?? []),
-            ]),
-          ),
-        );
-      }
+      adoptFresh(fresh, "schema");
     } catch {
       /* 寫入已成功；重讀失敗容忍。 */
     }
@@ -540,6 +562,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
 
   const switchSchema = async (name: string) => {
     if (name === snap.workflow.schemaName) return;
+    setSchemaBusy(true);
     try {
       const next = await settings.writeWorkflowSchema(name);
       adoptRevision(next);
@@ -549,6 +572,8 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       // remote revision 落後走衝突對照（review R5）；其餘失敗單行浮出、下拉維持原值。
       if (await handleWriteError(e, { kind: "schema", name })) setSchemaMsg(null);
       else setSchemaMsg(errorMessage(e));
+    } finally {
+      setSchemaBusy(false);
     }
   };
 
@@ -556,6 +581,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
    * 建立／刪除都可能改變同名 shadow 下的活躍解析，固定鍵一併跟上）→ 已儲存；
    * 失敗單行浮出。 */
   const runSchemaAction = async (action: () => Promise<unknown>) => {
+    setSchemaBusy(true);
     try {
       await action();
       setSchemas(await settings.readSchemas());
@@ -563,6 +589,8 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       setSchemaMsg(t("settings.saved"));
     } catch (e) {
       setSchemaMsg(errorMessage(e));
+    } finally {
+      setSchemaBusy(false);
     }
   };
 
@@ -597,32 +625,39 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
 
   const retryConflict = async () => {
     if (conflict === null) return;
-    const pending = conflict.pending;
+    const { latest, pending } = conflict;
     try {
-      let next: number | void;
-      if (pending.kind === "policy") {
-        next = await settings.writeWorkflowConfig(pending.fields);
-        adoptPolicy(pending.fields);
-        setWfMsg(t("settings.saved"));
-      } else if (pending.kind === "context") {
-        next = await settings.writeWorkflowContext(pending.context);
-        setContextText(pending.context);
-        setCtxEditing(false);
-        setCtxMsg(t("settings.saved"));
-      } else if (pending.kind === "schema") {
-        next = await settings.writeWorkflowSchema(pending.name);
+      if (pending.kind === "schema") {
+        const next = await settings.writeWorkflowSchema(pending.name);
         setSchemaMsg(t("settings.saved"));
         adoptRevision(next);
         setConflict(null);
         await refreshSchemaFacts();
         return;
+      }
+      const next =
+        pending.kind === "policy"
+          ? await settings.writeWorkflowConfig(pending.fields)
+          : pending.kind === "context"
+            ? await settings.writeWorkflowContext(pending.context)
+            : pending.kind === "review"
+              ? await settings.writeWorkflowReview(pending.review)
+              : await settings.writeWorkflowRules(pending.rules);
+      // 以最新 revision 重送成功：快照換成 server 最新版，其他區一併採納（review R8）。
+      setSnap(latest);
+      adoptFresh(latest, pending.kind);
+      if (pending.kind === "policy") {
+        adoptPolicy(pending.fields);
+        setWfMsg(t("settings.saved"));
+      } else if (pending.kind === "context") {
+        setContextText(pending.context);
+        setCtxEditing(false);
+        setCtxMsg(t("settings.saved"));
       } else if (pending.kind === "review") {
-        next = await settings.writeWorkflowReview(pending.review);
         setReview(pending.review);
         setReviewEditing(false);
         setReviewMsg(t("settings.saved"));
       } else {
-        next = await settings.writeWorkflowRules(pending.rules);
         setRules(Object.fromEntries(pending.rules));
         setRulesEditing(false);
         setRulesMsg(t("settings.saved"));
@@ -645,14 +680,10 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
   const dirty =
     tools.length !== snap.app.tools.length ||
     tools.some((tool) => !snap.app.tools.includes(tool)) ||
-    locale !== (snap.workflow.locale ?? "") ||
-    specLocale !== (snap.workflow.specLocale ?? "") ||
-    tdd !== snap.workflow.tdd ||
-    audit !== snap.workflow.audit ||
-    worktree !== snap.workflow.worktree ||
+    policyDirty ||
     (ctxEditing && draftContext !== contextText) ||
     (rulesEditing && editingRuleKeys.some((id) => (draftRules[id] ?? "") !== entriesToText(rules[id] ?? []))) ||
-    (reviewEditing && !sameReview(draftToReview(draftReview), review));
+    (reviewEditing && !sameReview(draftToReview(draftReview, review), review));
   // 頁標題下的 remote 註記：policy revision 與檢視者說明（local 為 null，改顯示檔案鍵）。
   const remoteNote = isRemote
     ? { revision: snap.workflow.revision ?? null, reader: !settings.policyWrite }
@@ -660,8 +691,9 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
 
   const populatedRuleKeys = snap.workflow.schemaArtifacts.filter((id) => (rules[id] ?? []).length > 0);
   // 「整份換掉」且三節皆空：Standards 軸只剩 repo 文件可依——頁內提示，但不擋儲存。
+  const reviewDraft = draftToReview(draftReview, review);
   const reviewReplaceEmpty =
-    draftReview.baseline === "replace" && REVIEW_LISTS.every((list) => textToEntries(draftReview[list]).length === 0);
+    draftReview.baseline === "replace" && REVIEW_LISTS.every((list) => reviewDraft[list].length === 0);
   // 下拉選項：壞項不可選；同名跨層去重（解析語意本就取第一命中）。
   const selectableSchemaNames = Array.from(
     new Set(schemas.filter((s) => s.error === null).map((s) => s.name)),

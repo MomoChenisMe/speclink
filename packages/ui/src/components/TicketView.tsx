@@ -4,21 +4,12 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import type { StationTicket, TicketFinding, TicketRound, TicketStation } from "../adapter";
 import { findingAxis } from "../docModel";
 import { useI18n } from "../i18n";
-import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
 import { Badge } from "./ui/badge";
 import { Callout } from "./ui/callout";
 import { SECTION_HEADING_CLS } from "./DocParts";
+import { SeverityTag } from "./SeverityTag";
 import type { DocSummary } from "./DetailShell";
 import { DocSkeleton } from "./skeletons";
-
-/** 嚴重度色章：CRITICAL 破壞色、WARNING 琥珀、SUGGESTION 中性——與 AnalyzePanel 的
- * 發現卡同語意同色；三紅分工（tone.ts 表頭）之外不另立一紅。標籤維持英文，與
- * 工單原文一致。 */
-const SEVERITY_CLS: Record<TicketFinding["severity"], string> = {
-  CRITICAL: "bg-destructive/15 text-destructive",
-  WARNING: `${SEMANTIC_SURFACE.warning} ${SEMANTIC_TONE.warning}`,
-  SUGGESTION: "bg-muted text-muted-foreground",
-};
 
 /** 階段詞：discovery →「首輪」、validation →「複驗」（LANGUAGE.md 詞條）；legacy 輪無。 */
 const PHASE_KEY = {
@@ -212,13 +203,9 @@ function RoundBlock({ round, defaultOpen }: { round: TicketRound; defaultOpen: b
         </h3>
         <span className="text-xs tabular-nums text-muted-foreground">{meta.map((m) => ` · ${m}`).join("")}</span>
         {SEVERITIES.filter((sev) => counts[sev] > 0).map((sev) => (
-          <span
-            key={sev}
-            data-ticket-count={sev}
-            className={`rounded px-1 py-0.5 text-[10px] font-medium tabular-nums ${SEVERITY_CLS[sev]}`}
-          >
+          <SeverityTag key={sev} severity={sev} data-ticket-count={sev} className="tabular-nums">
             {`${sev} ${counts[sev]}`}
-          </span>
+          </SeverityTag>
         ))}
       </button>
       {open && (
@@ -252,12 +239,7 @@ function FindingRow({ finding }: { finding: TicketFinding }) {
   const { axis, text: shown } = findingAxis(tail);
   return (
     <li data-ticket-finding className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
-      <span
-        data-ticket-severity
-        className={`shrink-0 rounded px-1 py-0.5 text-[10px] font-medium ${SEVERITY_CLS[finding.severity]}`}
-      >
-        {finding.severity}
-      </span>
+      <SeverityTag data-ticket-severity severity={finding.severity} />
       {axis && (
         <Badge data-ticket-axis variant="outline" className="shrink-0">
           {axis}

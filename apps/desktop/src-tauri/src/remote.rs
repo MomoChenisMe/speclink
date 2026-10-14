@@ -16,7 +16,7 @@ use speclink_core::model::{require_valid_meta, ChangeMeta};
 use speclink_core::store::Store;
 use speclink_desktop_core::settings::{
     read_workflow_settings_from_text, rewrite_workflow_content_text, rewrite_workflow_fields_text,
-    AppSettings, ContextEdit, ReviewConfig, WorkflowPolicyFields, WorkflowSettings,
+    AppSettings, ContentEdit, WorkflowPolicyFields, WorkflowSettings,
 };
 use speclink_protocol::binding::BindingResponse;
 use speclink_protocol::command::{
@@ -1477,14 +1477,12 @@ impl RemoteWorkspace {
         .map_err(RemoteSettingsError::from)
     }
 
-    /// context/rules/review targeted rewrite；None 表示不觸及該鍵，Some 空值沿用
-    /// seam 的移除語意。沒有任何省略 expected revision 的寫入路徑。
+    /// context/rules/review targeted rewrite；未指定的區塊不觸及，空值沿用 seam 的
+    /// 移除語意。沒有任何省略 expected revision 的寫入路徑。
     pub fn write_workflow_content(
         &self,
         credentials: &dyn CredentialStore,
-        context: Option<&str>,
-        rules: Option<&[(String, Vec<String>)]>,
-        review: Option<&ReviewConfig>,
+        edit: &ContentEdit,
         expected_revision: u64,
     ) -> Result<u64, RemoteSettingsError> {
         self.manager
@@ -1493,16 +1491,8 @@ impl RemoteWorkspace {
         let config = self
             .run(credentials, |client| client.config())
             .map_err(RemoteSettingsError::from)?;
-        let context_edit = context
-            .map(|value| ContextEdit::Set(value.to_string()))
-            .unwrap_or(ContextEdit::Keep);
-        let rewritten = rewrite_workflow_content_text(
-            config.content.as_deref().unwrap_or_default(),
-            &context_edit,
-            rules,
-            review,
-        )
-        .map_err(RemoteSettingsError::local)?;
+        let rewritten = rewrite_workflow_content_text(config.content.as_deref().unwrap_or_default(), edit)
+            .map_err(RemoteSettingsError::local)?;
         self.run_write(credentials, |client| {
             client.put_config(&rewritten, expected_revision)
         })

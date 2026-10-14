@@ -92,7 +92,7 @@ Review a change's implementation for craft quality: two parallel read-only axes 
    **Project review rules** — when any of step 2's three `review` lists is non-empty, the Standards brief carries the rules verbatim, grouped by severity — one group per list. They bind the axis as follows:
 
    - A rule's list decides the severity of its violation: `critical` → CRITICAL, `warning` → WARNING, `suggestion` → SUGGESTION. Neither the sub-agent nor the main thread raises or lowers it.
-   - The finding description quotes the violated rule verbatim; the rest of the description follows the locale binding above. For example, with an English locale: `- [WARNING] src/api.rs — Standards: violates project review rule "New public APIs need a matching test": add_user has no test`.
+   - The finding description quotes the violated rule verbatim; the rest of the description follows the locale binding above. For example, with an English locale: `- [WARNING] src/api.rs — Standards: violates project review rule "New public APIs need a matching test": add_user has no test`; with a Traditional Chinese locale: `- [WARNING] src/api.rs — Standards: 違反專案審查規則「新增的公開 API 要有對應的測試」：add_user 沒有測試`.
    - Where a project rule and a repo document disagree, the project rule wins — it is the list the project wrote down for this station.
 
    The Correctness brief never carries the project rules.
@@ -135,9 +135,10 @@ Review a change's implementation for craft quality: two parallel read-only axes 
 
 6. **Present both reports side by side**
 
-   Open with one line that names the rules this Standards pass applied, written in the `locale` language: the baseline mode and the size of each project rule list. Keep `extend`, `replace` and the severity labels in English. With `replace` and three empty lists, the line says instead that the Standards axis judged against repo documents only. In English the line reads, for example:
+   Open with one line that names the rules this Standards pass applied, written in the `locale` language: the baseline mode and the size of each project rule list. Keep `extend`, `replace` and the severity labels in English. With three empty lists, the line says there are no project rules instead of listing three zero counts; with `replace` as well, it adds that the Standards axis judged against repo documents only. In English the line reads, for example:
 
    - `Review rules: extend (the 12 baseline smells) + project rules CRITICAL 2, WARNING 1, SUGGESTION 1`
+   - `Review rules: extend (the 12 baseline smells), no project rules`
    - `Review rules: replace, no project rules — the Standards axis judges against repo documents only`
 
    This line belongs to the presentation only; it never enters the ticket.

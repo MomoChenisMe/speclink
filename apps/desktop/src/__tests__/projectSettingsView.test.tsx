@@ -904,7 +904,7 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
     expect(screen.getByLabelText("audit")).toBeTruthy();
   });
 
-  it("reader 看得到三頁現值但全唯讀，存檔停用並附繁中角色說明", async () => {
+  it("reader 看得到四頁現值但全唯讀，存檔停用並附繁中角色說明", async () => {
     const ws = remoteSettings(
       projectSnap({ revision: 9 } as Partial<SettingsSnapshot["workflow"]>),
       false,
@@ -917,6 +917,9 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
     goto("rules");
     expect(screen.getByTestId("policy-reader-note")).toBeTruthy();
     expect((screen.getByTestId("rules-edit") as HTMLButtonElement).disabled).toBe(true);
+    goto("review");
+    expect(screen.getByTestId("policy-reader-note")).toBeTruthy();
+    expect((screen.getByTestId("review-edit") as HTMLButtonElement).disabled).toBe(true);
     goto("workflow");
     expect(screen.getByTestId("policy-reader-note")).toBeTruthy();
     expect((screen.getByLabelText("locale") as HTMLButtonElement).disabled).toBe(true);
@@ -1274,6 +1277,27 @@ describe("產出流程頁（spec「產出流程頁」）", () => {
     expect(screen.getByTestId("conflict-revision").textContent).toContain("42");
   });
 
+  it("切換進行中停用政策表單與各頁編輯，完成後恢復（等待期間的改動不會被重讀蓋回；review-rules-config 品質關卡第 2 輪）", async () => {
+    const snap = projectSnap({ revision: 41 } as Partial<SettingsSnapshot["workflow"]>);
+    let finish: (revision: number) => void = () => {};
+    const ws = schemaSettings(snap, [BUILTIN_ENTRY, CUSTOM_ENTRY], {
+      kind: "remote",
+      writeWorkflowSchema: vi.fn().mockReturnValue(new Promise<number>((resolve) => (finish = resolve))),
+    });
+    render(<Harness settings={ws} />);
+    await openSchemasTab();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(await screen.findByLabelText("使用中的產出流程"));
+    await user.click(await screen.findByRole("option", { name: /my-flow/ }));
+    await waitFor(() => expect((screen.getByLabelText("tdd") as HTMLButtonElement).disabled).toBe(true));
+    goto("review");
+    expect((screen.getByTestId("review-edit") as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => finish(42));
+    await waitFor(() => expect((screen.getByTestId("review-edit") as HTMLButtonElement).disabled).toBe(false));
+    goto("workflow");
+    expect((screen.getByLabelText("tdd") as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("下拉現值不在選項集時仍顯示名稱（review R6：remote 非內建）", async () => {
     const snap = projectSnap({
       revision: 7,
@@ -1545,6 +1569,12 @@ describe("審查規則頁（spec 需求「設定頁編輯審查規則」）", ()
     suggestion: ["函式超過 50 行時宜拆分"],
   };
   const reviewSnap = (review = RULES) => projectSnap({ review } as Partial<SettingsSnapshot["workflow"]>);
+  /** 從預設清單下拉選一個模式（Radix Select，與產出流程頁 locale 同一元件）。 */
+  async function chooseBaseline(page: HTMLElement, mode: string) {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(within(page).getByLabelText("12 條 code smell"));
+    await user.click(await screen.findByRole("option", { name: mode }));
+  }
 
   it("唯讀呈現：預設清單卡顯示模式，專案規則卡依三節列出規則、條數與效果說明（spec Scenario「唯讀呈現」）", async () => {
     renderView(reviewSnap(), "review");
@@ -1585,6 +1615,8 @@ describe("審查規則頁（spec 需求「設定頁編輯審查規則」）", ()
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    // 與產出流程頁的「檢視內容／收合」同一種展開鈕：展開後改為收合。
+    expect(toggle.textContent).toBe("收合");
     const names = within(within(page).getByTestId("review-smells")).getAllByRole("listitem");
     expect(names.map((n) => n.textContent)).toEqual(SMELLS);
   });
@@ -1598,14 +1630,18 @@ describe("審查規則頁（spec 需求「設定頁編輯審查規則」）", ()
     expect(names.map((n) => n.textContent)).toEqual(SMELLS);
   });
 
-  it("編輯態：預設清單為兩個單選、專案規則恰為三個固定節（嚴重度籤＋即時條數），無新增節的輸入（spec Scenario「固定三節不可自由新增」）", async () => {
+  it("編輯態：預設清單為列右側的兩選項下拉、專案規則恰為三個固定節（嚴重度籤＋即時條數），無新增節的輸入（spec Scenario「固定三節不可自由新增」）", async () => {
     renderView(reviewSnap(), "review");
     const page = await screen.findByTestId("review-page");
     fireEvent.click(within(page).getByTestId("review-edit"));
-    const radios = within(page).getAllByRole("radio");
-    expect(radios.map((r) => r.getAttribute("aria-label") ?? r.closest("label")?.textContent)).toHaveLength(2);
-    expect((within(page).getByRole("radio", { name: /沿用並追加/ }) as HTMLInputElement).checked).toBe(true);
-    expect((within(page).getByRole("radio", { name: /整份換掉/ }) as HTMLInputElement).checked).toBe(false);
+    // 與產出流程頁 locale 同一個共用下拉；列說明寫所選模式的效果。
+    expect(within(page).queryAllByRole("radio")).toHaveLength(0);
+    const baseline = within(page).getByLabelText("12 條 code smell");
+    expect(baseline.textContent).toContain("沿用並追加");
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(baseline);
+    expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual(["沿用並追加", "整份換掉"]);
+    await user.keyboard("{Escape}");
     expect(within(page).getAllByRole("textbox")).toHaveLength(3);
     for (const [list, count] of [["critical", "2 條"], ["warning", "1 條"], ["suggestion", "1 條"]]) {
       const section = within(page).getByTestId(`review-input-${list}`);
@@ -1641,7 +1677,7 @@ describe("審查規則頁（spec 需求「設定頁編輯審查規則」）", ()
     const ws = renderView(reviewSnap(), "review");
     const page = await screen.findByTestId("review-page");
     fireEvent.click(within(page).getByTestId("review-edit"));
-    fireEvent.click(within(page).getByRole("radio", { name: /整份換掉/ }));
+    await chooseBaseline(page, "整份換掉");
     expect(within(page).queryByTestId("review-replace-empty")).toBeNull();
     for (const list of ["critical", "warning", "suggestion"]) {
       typeInEditor(within(page).getByTestId(`review-input-${list}`), "");
@@ -1666,7 +1702,7 @@ describe("審查規則頁（spec 需求「設定頁編輯審查規則」）", ()
     const ws = renderView(reviewSnap({ ...RULES, baseline: "replace" }), "review");
     const page = await screen.findByTestId("review-page");
     fireEvent.click(within(page).getByTestId("review-edit"));
-    fireEvent.click(within(page).getByRole("radio", { name: /沿用並追加/ }));
+    await chooseBaseline(page, "沿用並追加");
     typeInEditor(within(page).getByTestId("review-input-suggestion"), "");
     fireEvent.click(within(page).getByTestId("review-save"));
     await waitFor(() =>
@@ -1745,5 +1781,75 @@ describe("審查規則頁（spec 需求「設定頁編輯審查規則」）", ()
     await waitFor(() => expect(screen.queryByTestId("policy-conflict-panel")).toBeNull());
     expect(ws.writeWorkflowReview).toHaveBeenCalledTimes(2);
     expect(screen.getByTestId("policy-revision").textContent).toContain("43");
+  });
+
+  it("只改模式時，沒編輯的多行規則原樣寫回不拆開；進入編輯未改動不算未存修改（review R3／R7）", async () => {
+    const multi: ReviewRules = { ...RULES, critical: ["第一行\n第二行", ...RULES.critical] };
+    const onDirtyChange = vi.fn();
+    const ws = fakeSettings(reviewSnap(multi));
+    render(<Harness settings={ws} initial="review" onDirtyChange={onDirtyChange} />);
+    const page = await screen.findByTestId("review-page");
+    fireEvent.click(within(page).getByTestId("review-edit"));
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    await chooseBaseline(page, "整份換掉");
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+    fireEvent.click(within(page).getByTestId("review-save"));
+    await waitFor(() => expect(ws.writeWorkflowReview).toHaveBeenCalledWith({ ...multi, baseline: "replace" }));
+  });
+
+  it("產出規則只改一節時，其他節的多行規則原樣寫回不拆開（review R3 同類位置）", async () => {
+    const ws = renderView(
+      projectSnap({ rules: { proposal: ["提案必須列出影響的 crates"], tasks: ["第一行\n第二行"] } }),
+      "rules",
+    );
+    const page = await screen.findByTestId("rules-page");
+    fireEvent.click(within(page).getByTestId("rules-edit"));
+    typeInEditor(within(page).getByTestId("rules-input-proposal"), "新的提案規則");
+    fireEvent.click(within(page).getByTestId("rules-save"));
+    await waitFor(() => expect(ws.writeWorkflowRules).toHaveBeenCalledTimes(1));
+    const payload = Object.fromEntries((ws.writeWorkflowRules as ReturnType<typeof vi.fn>).mock.calls[0][0]);
+    expect(payload.proposal).toEqual(["新的提案規則"]);
+    expect(payload.tasks).toEqual(["第一行\n第二行"]);
+  });
+
+  it("別區的衝突重送後，審查規則採納 server 最新值，之後儲存不蓋掉別人的修改（review R8）", async () => {
+    const initial = projectSnap({ revision: 41, review: RULES } as Partial<SettingsSnapshot["workflow"]>);
+    const serverReview: ReviewRules = { ...RULES, warning: ["別人剛加的 WARNING"] };
+    const latest = projectSnap({
+      revision: 42,
+      context: "server 較新的說明",
+      review: serverReview,
+    } as Partial<SettingsSnapshot["workflow"]>);
+    const ws = {
+      ...fakeSettings(initial),
+      kind: "remote",
+      writeWorkflowContext: vi
+        .fn()
+        .mockRejectedValueOnce({ message: "conflict", reason: "revision_conflict", status: 409 })
+        .mockResolvedValueOnce(43),
+      writeWorkflowReview: vi.fn().mockResolvedValue(44),
+    } as unknown as WorkspaceSettingsProvider;
+    (ws.readSettings as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(latest);
+    render(<Harness settings={ws} initial="context" />);
+    const contextPage = await screen.findByTestId("context-page");
+    fireEvent.click(within(contextPage).getByTestId("context-edit"));
+    typeInEditor(within(contextPage).getByTestId("context-input"), "我的說明");
+    fireEvent.click(within(contextPage).getByTestId("context-save"));
+    const panel = await screen.findByTestId("policy-conflict-panel");
+    fireEvent.click(within(panel).getByRole("button", { name: "檢視後以最新 revision 重新提交" }));
+    await waitFor(() => expect(screen.queryByTestId("policy-conflict-panel")).toBeNull());
+
+    goto("review");
+    const page = screen.getByTestId("review-page");
+    expect(within(page).getByTestId("review-section-warning").textContent).toContain("別人剛加的 WARNING");
+    fireEvent.click(within(page).getByTestId("review-edit"));
+    typeInEditor(within(page).getByTestId("review-input-suggestion"), "我的 SUGGESTION");
+    fireEvent.click(within(page).getByTestId("review-save"));
+    await waitFor(() =>
+      expect(ws.writeWorkflowReview).toHaveBeenCalledWith({ ...serverReview, suggestion: ["我的 SUGGESTION"] }),
+    );
   });
 });
