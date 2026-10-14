@@ -1,0 +1,63 @@
+schema: spec-driven
+created: 2026-10-14
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: swipe-back-delay
+started_at: 2026-10-14
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-14
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 11
+reviewed_scope:
+  - path: Cargo.lock
+    hash: e9cb18ada66c8b1e88e43a2a89fa4d5b2d2371dfd18e50ca00924b9815a0042d
+  - path: apps/desktop/core/src/lib.rs
+    hash: da6987a2aee6327e474f2ed7eb39c6ba00a159d126ad761dfadb3b990f509175
+  - path: apps/desktop/core/src/trackpad_gesture.rs
+    hash: 13d4846bc684e06db099c5717dfb8c5c94dc7f7a478ea5572f16a7777b84bf2f
+  - path: apps/desktop/src-tauri/Cargo.toml
+    hash: 31460be441b5aac82d86a30d9f6847b322ad78ff6892d60e9e8348b67c9298a1
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 31581524d107bb959c36546d36d65c93b658a30b3b9933aa83815994e47e8bef
+  - path: apps/desktop/src-tauri/src/trackpad_gesture.rs
+    hash: a930ecc6c4dc12c02d6170bc747a3ea1144b3aaba8c5832cd4b710c77232da81
+  - path: apps/desktop/src/App.tsx
+    hash: 4daa15d9cec7f457d8a2321f28f49946ae9762a14a09a84a11828c4a9b82d795
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 5f29b13e743531136f6d2634a2ba530667412aa7dec923d86661537d7d8b89b8
+  - path: apps/desktop/src/__tests__/helpers/trackpadGesture.ts
+    hash: 1ea8dd14dcde74a6bea95d1401a052af8ba04216eec44d7f930a11612332ff44
+  - path: apps/desktop/src/__tests__/swipeBack.test.tsx
+    hash: 1b8723e3e086f34241c2ffc13a6459dc54ab97327f2a808bcaaa569b725cd35a
+  - path: apps/desktop/src/components/SwipeBack.tsx
+    hash: 685658d8e05b9b164c2320883bdf3286069f305105bc52dcb0bd2bb5daa6eaf6
+verified_at: 2026-10-14
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 11
+verified_scope:
+  - path: Cargo.lock
+    hash: e9cb18ada66c8b1e88e43a2a89fa4d5b2d2371dfd18e50ca00924b9815a0042d
+  - path: apps/desktop/core/src/lib.rs
+    hash: da6987a2aee6327e474f2ed7eb39c6ba00a159d126ad761dfadb3b990f509175
+  - path: apps/desktop/core/src/trackpad_gesture.rs
+    hash: 13d4846bc684e06db099c5717dfb8c5c94dc7f7a478ea5572f16a7777b84bf2f
+  - path: apps/desktop/src-tauri/Cargo.toml
+    hash: 31460be441b5aac82d86a30d9f6847b322ad78ff6892d60e9e8348b67c9298a1
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 31581524d107bb959c36546d36d65c93b658a30b3b9933aa83815994e47e8bef
+  - path: apps/desktop/src-tauri/src/trackpad_gesture.rs
+    hash: a930ecc6c4dc12c02d6170bc747a3ea1144b3aaba8c5832cd4b710c77232da81
+  - path: apps/desktop/src/App.tsx
+    hash: 4daa15d9cec7f457d8a2321f28f49946ae9762a14a09a84a11828c4a9b82d795
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 5f29b13e743531136f6d2634a2ba530667412aa7dec923d86661537d7d8b89b8
+  - path: apps/desktop/src/__tests__/helpers/trackpadGesture.ts
+    hash: 1ea8dd14dcde74a6bea95d1401a052af8ba04216eec44d7f930a11612332ff44
+  - path: apps/desktop/src/__tests__/swipeBack.test.tsx
+    hash: 1b8723e3e086f34241c2ffc13a6459dc54ab97327f2a808bcaaa569b725cd35a
+  - path: apps/desktop/src/components/SwipeBack.tsx
+    hash: 685658d8e05b9b164c2320883bdf3286069f305105bc52dcb0bd2bb5daa6eaf6
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-14

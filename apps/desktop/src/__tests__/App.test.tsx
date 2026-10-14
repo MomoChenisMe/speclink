@@ -17,28 +17,29 @@ import { STALE_PROBE } from "./helpers/assetFixtures";
 import { changeList, sharedBoardRequirement } from "./helpers/changeList";
 import { editorText, typeInEditor } from "./helpers/codemirror";
 import { REMOTE_KEY, fakeRemoteDs, fakeRemoteSession } from "./helpers/remoteFixtures";
+import { gesture, gestureHandlers } from "./helpers/trackpadGesture";
 import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
 
-// 模擬 Tauri 事件層：捕捉 workspace-changed 與 trackpad-gesture（觸控板手指按下／離開）的
-// 訂閱 handler，測試可手動觸發。
-type GestureHandler = (e: { payload: { phase: "began" | "ended"; swipeEnabled: boolean } }) => void;
-const { workspaceHandlers, gestureHandlers } = vi.hoisted(() => ({
+// 模擬 Tauri 事件層：捕捉 workspace-changed 的訂閱 handler，測試可手動觸發；trackpad-gesture
+// （觸控板手指按下／離開）交給共用替身，測試以 gesture() 觸發。
+const { workspaceHandlers } = vi.hoisted(() => ({
   workspaceHandlers: [] as Array<() => void>,
-  gestureHandlers: [] as GestureHandler[],
 }));
-vi.mock("@tauri-apps/api/event", () => ({
-  // 外觀偏好切換時通知系統匣面板（desktop-settings-mode design D4）。
-  emit: vi.fn(() => Promise.resolve()),
-  listen: vi.fn((event: string, handler: GestureHandler) => {
-    const handlers: unknown[] | null =
-      event === "workspace-changed" ? workspaceHandlers : event === "trackpad-gesture" ? gestureHandlers : null;
-    handlers?.push(handler);
-    return Promise.resolve(() => {
-      const i = handlers?.indexOf(handler) ?? -1;
-      if (i >= 0) handlers!.splice(i, 1);
-    });
-  }),
-}));
+vi.mock("@tauri-apps/api/event", async () => {
+  const { subscribeGesture } = await import("./helpers/trackpadGesture");
+  return {
+    // 外觀偏好切換時通知系統匣面板（desktop-settings-mode design D4）。
+    emit: vi.fn(() => Promise.resolve()),
+    listen: vi.fn((event: string, handler: () => void) => {
+      if (event === "trackpad-gesture") return subscribeGesture(handler as never);
+      if (event === "workspace-changed") workspaceHandlers.push(handler);
+      return Promise.resolve(() => {
+        const i = workspaceHandlers.indexOf(handler);
+        if (i >= 0) workspaceHandlers.splice(i, 1);
+      });
+    }),
+  };
+});
 
 const MAC_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15";
 const WINDOWS_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
@@ -51,11 +52,6 @@ async function onPlatform(ua: string, body: () => Promise<void>) {
     spy.mockRestore();
   }
 }
-/** 原生層送來的手指按下／離開（ended 的 swipeEnabled 恆為 false）。 */
-const gesture = (phase: "began" | "ended") =>
-  act(() => {
-    for (const h of [...gestureHandlers]) h({ payload: { phase, swipeEnabled: phase === "began" } });
-  });
 /** 手指按著向右滑 200px：四個 deltaX -50 的 wheel（自然捲動下手指向右＝deltaX 為負）。 */
 const swipeRight = () =>
   act(() => {

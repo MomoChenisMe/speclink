@@ -57,7 +57,7 @@ Tauri 殼的 trackpad_gesture 模組（`#[cfg(target_os = "macos")]`）只負責
 SwipeBack 在 enabled 時以 `@tauri-apps/api/event` 的 listen 訂閱 `trackpad-gesture`（訂閱失敗，例如非 Tauri 環境，靜默：沒有階段事件就不會觸發），並保留 window wheel 監聽。狀態：
 
 - **idle**（手指未按下）：wheel 事件一律忽略——一般滑鼠滾輪、Shift＋滾輪與手指放開後的慣性捲動都落在這裡。
-- 收到 began：若 swipeEnabled 為 false 維持 idle；否則進入 **tracking**，歸零累計。已在 tracking 時再收到 began（MayBegin 之後的 Began）只更新 swipeEnabled，不歸零。
+- 收到 began：不論目前狀態都歸零累計；swipeEnabled 為 false 回到 idle，否則進入 **tracking**。同一手勢的 MayBegin 與 Began 各送一次 began，兩者之間沒有位移，第二次歸零無損；ended 遺失時，下一次按下（輕觸不移動也是 MayBegin→Cancelled＝began→ended）由此復原，不會把輕觸當成結算。
 - **tracking** 中的 wheel：ctrlKey（縮放）忽略；累計 `sumX += deltaX`、`sumAbsY += |deltaY|` 供垂直判定；返回位移沿用現行規則（起點只認朝返回方向、且不在仍可沿 deltaX 捲動的區塊內；開始後反向扣減、下限 0）；指示進度＝返回位移／120。每個事件後檢查垂直取消：`sumAbsY > 10 && sumAbsY > |sumX|` 時進入 **cancelled**，進度歸零。
 - **cancelled**：wheel 忽略，直到 ended。
 - 收到 ended：tracking 且返回位移 ≥ 120 時立即呼叫 onBack；不論結果歸零進度並回到 idle。
@@ -95,7 +95,7 @@ App 以既有 `detectPlatform()` 的結果把 SwipeBack 的 enabled 改為「平
 
 - `cargo test -p speclink-desktop-core trackpad_gesture`：classify_scroll_phase 對 MayBegin、Began、Changed、Ended、Cancelled、慣性（phase None＋momentum Changed）、一般滑鼠（兩者皆 None）的回傳，以及 payload 序列化為 `{"phase":"began","swipeEnabled":true}`。
 - `cargo build -p speclink-desktop`（macOS）通過；Windows CI 建置不含此模組與 objc 相依。
-- `npm test -w apps/desktop`：swipeBack.test.tsx 涵蓋放開即結算（無計時器）、未達門檻、放開前滑回、無 began 的 wheel 忽略、swipeEnabled false 忽略、ended 後慣性忽略且不二次返回、垂直取消、往前方向忽略、水平捲動區塊兩種自然捲動設定、只裁切區塊、停用時不訂閱不監聽；App.test.tsx 的觸控板測試改以 began／wheel／ended 驅動並固定平台為 macOS，另加 Windows 平台滑動不作用。
+- `npm test -w apps/desktop`：swipeBack.test.tsx 涵蓋放開即結算（無計時器）、未達門檻、放開前滑回、無 began 的 wheel 忽略、swipeEnabled false 忽略、ended 後慣性忽略且不二次返回、垂直取消（下一次手勢重新判定）、ended 遺失後下一次 began 歸零、往前方向忽略、水平捲動區塊兩種自然捲動設定、只裁切區塊、停用時不訂閱不監聽；App.test.tsx 的觸控板測試改以 began／wheel／ended 驅動並固定平台為 macOS，另加 Windows 平台滑動不作用。
 - 手動：使用者在 Mac 觸控板實測快甩即返回、Shift＋滾輪不觸發、系統設定改三指不觸發、先垂直再水平不觸發、設定模式滑動返回。
 
 **範圍：**
@@ -105,7 +105,7 @@ App 以既有 `detectPlatform()` 的結果把 SwipeBack 的 enabled 改為「平
 
 ## Risks / Trade-offs
 
-- [began 的 IPC 事件與 DOM wheel 事件分屬兩條管道，抵達順序不保證] → MayBegin 在手指觸碰、尚未移動時就送出，通常早於第一個位移事件；即使晚到，只少計最初幾 px，門檻 120px 不受實質影響。ended 晚到同理只多計幾 px。
+- [began 的 IPC 事件與 DOM wheel 事件分屬兩條管道，抵達順序不保證] → MayBegin 在手指觸碰、尚未移動時就送出，通常早於第一個位移事件；Began 的 began 若晚於最初幾個 wheel 抵達，歸零會丟掉那幾個事件。兩種情況都只少計最初幾 px，門檻 120px 不受實質影響。ended 晚到同理只多計幾 px。
 - [ended 遺失（例如手勢中視窗失焦而系統沒送 Cancelled）使指示停在半途] → 下一次 began 會歸零；enabled 轉為 false（詳情頁關閉、離開設定模式或專案設定模式）時，SwipeBack 解除訂閱與監聽並把進度歸零。
 - [垂直取消的 10px 死區與比例是自訂數值，與 Chromium 的正規化座標不同] → 以單元測試釘住「先垂直 40px 再水平 200px 取消」「純水平 200px 帶少量垂直晃動不取消」兩例；實測手感不對時只調常數。
 - [Windows／Linux 使用者失去觸控板滑動返回（刻意的行為變更）] → proposal 標 BREAKING；返回鈕、Alt+←、滑鼠側鍵照舊立即返回。

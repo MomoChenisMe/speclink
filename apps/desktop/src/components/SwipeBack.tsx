@@ -15,7 +15,7 @@ const VERTICAL_CANCEL = 10;
 
 /** 原生層的手指按下／離開（Rust speclink-desktop-core 的 TrackpadGestureEvent）；
  * swipeEnabled 為系統設定「在頁面之間滑動」是否允許兩指滑動，只在 began 有意義。 */
-type TrackpadGesture = { phase: "began" | "ended"; swipeEnabled: boolean };
+export type TrackpadGesture = { phase: "began" | "ended"; swipeEnabled: boolean };
 
 /** 朝返回方向的位移（正值）。WebKit 以 webkitDirectionInvertedFromDevice 標出自然捲動：
  * 開啟（macOS 預設）時手指向右 deltaX 為負；關閉時相反。缺席（非 WebKit）視同開啟。 */
@@ -45,7 +45,6 @@ export function SwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
     if (!enabled) return;
     // idle：手指未按下；tracking：累計中；cancelled：垂直為主，等手指離開。
     let state: "idle" | "tracking" | "cancelled" = "idle";
-    let swipeEnabled = false;
     let total = 0; // 朝返回方向的累計位移
     let sumX = 0;
     let sumAbsY = 0;
@@ -56,9 +55,9 @@ export function SwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
     };
     const onGesture = ({ payload }: { payload: TrackpadGesture }) => {
       if (payload.phase === "began") {
-        // MayBegin 之後的 Began 也送 began：tracking 中只更新設定，不歸零。
-        swipeEnabled = payload.swipeEnabled;
-        if (state !== "tracking") reset(swipeEnabled ? "tracking" : "idle");
+        // 每次 began 都從零開始：同一手勢的 MayBegin 與 Began 之間沒有位移，歸零無損；
+        // ended 遺失時，下一次按下（輕觸也是 MayBegin→Cancelled＝began→ended）由此復原。
+        reset(payload.swipeEnabled ? "tracking" : "idle");
         return;
       }
       const fire = state === "tracking" && total >= SWIPE_THRESHOLD;
@@ -67,7 +66,7 @@ export function SwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
     };
     const onWheel = (e: WheelEvent) => {
       // 縮放（ctrl＋滾輪）不是返回手勢。
-      if (state !== "tracking" || !swipeEnabled || e.ctrlKey) return;
+      if (state !== "tracking" || e.ctrlKey) return;
       sumX += e.deltaX;
       sumAbsY += Math.abs(e.deltaY);
       if (sumAbsY > VERTICAL_CANCEL && sumAbsY > Math.abs(sumX)) {
