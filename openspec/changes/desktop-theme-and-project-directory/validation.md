@@ -20,7 +20,14 @@
 - 目錄直接來自 session locator，以 React 文字節點輸出，不經 HTML、路徑拼接、外部查詢或寫入。
 - 未變更 Server 認證、權限、政策 revision 或 CLI／引擎輸出；既有 golden 無需更新。
 
-## 使用者實機驗收回報（task 5.2）
+## 品質站問題修正：目錄空白保留
+
+- 修正 ProjectSettingsView 的目錄文字：使用 white-space: pre-wrap 保留連續空白、Tab 與換行，原有 overflow-wrap: anywhere 與文字選取維持不變。
+- Red：新增三個真實路徑值 `/work/My  Project`、`/work/Tab\tProject`、`/work/Line\nProject` 的回歸案例，檢查原始 textContent 與保留空白且允許換行的計算樣式；修正前三項皆失敗。
+- Green：修正後專案設定頁 69／69 通過；全套 desktop 752／752、packages/ui 614／614、server-web 146／146、scripts 290／290 通過，desktop 與 server-web production build 成功。
+- 自動化證據確認原文與 white-space 設定，未宣稱取得實際 WebView 選取複製的新證據；先前使用者桌面驗收紀錄保留。Server Web 的 task 5.4 仍未測。
+
+## 使用者桌面實機驗收回報（task 5.2，已完成）
 
 使用者依本次提供的操作清單回報以下結果；這些是使用者的實機驗收結果，不是代理自行操作取得的證據。
 
@@ -31,10 +38,11 @@
 | 專案目錄與複製 | 通過 |
 | macOS 面板 | 通過 |
 | 錯誤通知 | 通過 |
-| Server Web | 未測 |
 
-## 尚未完成（task 5.2）
+依使用者確認，桌面驗收已全部完成，task 5.2 勾選完成；原本混在此任務的 Server Web 驗收獨立為 task 5.4，既有 task 5.3 的自動化驗證維持完成。
 
-剩餘 Server Web 實際瀏覽器驗收：未設定外觀覆寫時，切換系統深淺模式，確認頁面背景、文字與狀態色仍隨系統切換。自動化測試與建置已通過，但未取代此項實際畫面驗收；task 5.2 維持未勾選。
+## 尚未完成（task 5.4）
+
+Server Web：未測。剩餘實際瀏覽器驗收：未設定 data-theme 外觀覆寫時，切換系統深淺模式，確認頁面背景、文字與狀態色仍隨系統切換，且不受桌面 app 儲存偏好影響，記錄操作環境與兩種配色結果。自動化測試與建置已通過，但未取代此項實際畫面驗收；僅 task 5.4 維持未勾選。
 
 先前代理實機操作受工具權限限制：Chrome／iab 瀏覽器介面不可用；原生 Chrome 回覆「Computer Use was not approved to use Google Chrome」，以明確路徑選取 Speclink 後回覆「Computer Use permissions are not granted」。未透過其他 UI 操作方式繞過權限；桌面部分後續由使用者完成上述驗收。

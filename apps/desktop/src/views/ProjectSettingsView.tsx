@@ -676,7 +676,7 @@ export function ProjectSettingsView({ settings, projectDirectory = null }: Proje
     <div className="max-w-2xl mx-auto w-full">
       <div className="mb-4 flex flex-col gap-1 rounded-lg border border-border bg-card p-4">
         <span className="text-sm font-medium">{t("settings.projectDirectory")}</span>
-        <span data-testid="project-directory" className="font-mono text-sm text-muted-foreground select-text [overflow-wrap:anywhere]">
+        <span data-testid="project-directory" className="font-mono text-sm text-muted-foreground select-text [overflow-wrap:anywhere]" style={{ whiteSpace: "pre-wrap" }}>
           {projectDirectory ?? t("settings.noLocalDirectory")}
         </span>
       </div>

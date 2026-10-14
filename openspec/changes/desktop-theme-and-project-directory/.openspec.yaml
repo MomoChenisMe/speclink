@@ -5,3 +5,89 @@ created_with: codex
 from_discussion: desktop-theme-and-project-directory
 started_at: 2026-10-12
 started_by: mosutw <luke1974@gmail.com>
+reviewed_at: 2026-10-15
+reviewed_by: mosutw <luke1974@gmail.com>
+reviewed_with: codex
+reviewed_tasks_total: 12
+reviewed_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: cc558793b568e3cbf3a14ea3b225be7a34d438fe500c0380a60a9b43caf402ea
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 0cde5b40d613066a1baf6e5d3f3e24f3765846819bde3a393ae9844044c4a6c8
+  - path: apps/desktop/src/__tests__/appSettingsView.test.tsx
+    hash: 71f6f8d8ac2342f19c4f1d374973d838e153d69716224eb1cfca71d55af14b5e
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: 537870d1f2ce12f2dca91ad61be7d8c70b1a46975cd907ba4b12e05d53e294de
+  - path: apps/desktop/src/__tests__/theme.test.ts
+    hash: fd847ac7d82317ab872e7c714832c1b64818404197cc5eaba08769b50f4d0fb7
+  - path: apps/desktop/src/__tests__/tray.test.ts
+    hash: 59f29d41985d537ae627426ef4a234dcaa693dcaa1fd94a20cec90626ccf9b72
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: 697e4cbdb65620b5dffb70c1eb2aac527782e538a1236726f65a425a78afd0ee
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 07d0e8efb124a0d972dfc00d10fa630c40e72c415a3e3146dc22600a55c3379e
+  - path: apps/desktop/src/index.css
+    hash: c45bce7ef4cf929646c32cb64cd4fe2d1f5d6978c64a387e05def09efebea221
+  - path: apps/desktop/src/main.tsx
+    hash: 849950d76ba1c11f821e7886faf186e081f87b2148ea295683a75d68d62b1e25
+  - path: apps/desktop/src/panel/main.tsx
+    hash: 5128cef46c76bc13f9a758626f4b6ed52aa14cb6db8209416e4ffdb2e5ef6629
+  - path: apps/desktop/src/theme.ts
+    hash: 54c7673cab91c1eb9fb82be0e064d762afe78bed1355b35dc766cf654fbfc5d3
+  - path: apps/desktop/src/tray.ts
+    hash: e9e3c0aa89fcf5018e95e2449579c3ca67e38475228079667bc19fe7bbef8733
+  - path: apps/desktop/src/views/AppSettingsView.tsx
+    hash: 8f03d60b24b56dd6c5f26dfe637d91b74128b699ece28cec71599aaa4125102b
+  - path: apps/desktop/src/views/ProjectSettingsView.tsx
+    hash: 51acc9f7f2debbb0e716ea0269a39037caaa04d4c960dc51dfb7a384eb85bdc3
+  - path: packages/ui/src/__tests__/sonner.test.tsx
+    hash: 1d9289d202b116ad8530f31ec2414a0c5537ad1d99d4da5933072ddc756af610
+  - path: packages/ui/src/__tests__/theme.test.ts
+    hash: 95047710da02bd5b8433bf777bfe39294358dd69f7b6d12a38cdab55008ccd12
+  - path: packages/ui/src/components/ui/sonner.tsx
+    hash: e4c07fd9ab475b33bd52901799cb59d2140bbcb7f8f7d5710437855cb8d15f12
+  - path: packages/ui/src/theme.css
+    hash: acfdb8c9687ca133845e66936e59b9f7467dfbe35f93d1429da879bc1ef4bba9
+verified_at: 2026-10-15
+verified_by: mosutw <luke1974@gmail.com>
+verified_with: codex
+verified_tasks_total: 12
+verified_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: cc558793b568e3cbf3a14ea3b225be7a34d438fe500c0380a60a9b43caf402ea
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 0cde5b40d613066a1baf6e5d3f3e24f3765846819bde3a393ae9844044c4a6c8
+  - path: apps/desktop/src/__tests__/appSettingsView.test.tsx
+    hash: 71f6f8d8ac2342f19c4f1d374973d838e153d69716224eb1cfca71d55af14b5e
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: 537870d1f2ce12f2dca91ad61be7d8c70b1a46975cd907ba4b12e05d53e294de
+  - path: apps/desktop/src/__tests__/theme.test.ts
+    hash: fd847ac7d82317ab872e7c714832c1b64818404197cc5eaba08769b50f4d0fb7
+  - path: apps/desktop/src/__tests__/tray.test.ts
+    hash: 59f29d41985d537ae627426ef4a234dcaa693dcaa1fd94a20cec90626ccf9b72
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: 697e4cbdb65620b5dffb70c1eb2aac527782e538a1236726f65a425a78afd0ee
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 07d0e8efb124a0d972dfc00d10fa630c40e72c415a3e3146dc22600a55c3379e
+  - path: apps/desktop/src/index.css
+    hash: c45bce7ef4cf929646c32cb64cd4fe2d1f5d6978c64a387e05def09efebea221
+  - path: apps/desktop/src/main.tsx
+    hash: 849950d76ba1c11f821e7886faf186e081f87b2148ea295683a75d68d62b1e25
+  - path: apps/desktop/src/panel/main.tsx
+    hash: 5128cef46c76bc13f9a758626f4b6ed52aa14cb6db8209416e4ffdb2e5ef6629
+  - path: apps/desktop/src/theme.ts
+    hash: 54c7673cab91c1eb9fb82be0e064d762afe78bed1355b35dc766cf654fbfc5d3
+  - path: apps/desktop/src/tray.ts
+    hash: e9e3c0aa89fcf5018e95e2449579c3ca67e38475228079667bc19fe7bbef8733
+  - path: apps/desktop/src/views/AppSettingsView.tsx
+    hash: 8f03d60b24b56dd6c5f26dfe637d91b74128b699ece28cec71599aaa4125102b
+  - path: apps/desktop/src/views/ProjectSettingsView.tsx
+    hash: 51acc9f7f2debbb0e716ea0269a39037caaa04d4c960dc51dfb7a384eb85bdc3
+  - path: packages/ui/src/__tests__/sonner.test.tsx
+    hash: 1d9289d202b116ad8530f31ec2414a0c5537ad1d99d4da5933072ddc756af610
+  - path: packages/ui/src/__tests__/theme.test.ts
+    hash: 95047710da02bd5b8433bf777bfe39294358dd69f7b6d12a38cdab55008ccd12
+  - path: packages/ui/src/components/ui/sonner.tsx
+    hash: e4c07fd9ab475b33bd52901799cb59d2140bbcb7f8f7d5710437855cb8d15f12
+  - path: packages/ui/src/theme.css
+    hash: acfdb8c9687ca133845e66936e59b9f7467dfbe35f93d1429da879bc1ef4bba9

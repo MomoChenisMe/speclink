@@ -93,6 +93,17 @@ function switchToTab(name: string) {
 }
 
 describe("ProjectSettingsView 載入", () => {
+  it.each([
+    "/work/My  Project",
+    "/work/Tab\tProject",
+    "/work/Line\nProject",
+  ])("專案目錄保留空白且允許長路徑換行：%s", async (path) => {
+    render(<ProjectSettingsView settings={fakeSettings(snapshot())} projectDirectory={path} />);
+    const directory = await screen.findByTestId("project-directory");
+    expect(directory.textContent).toBe(path);
+    expect(["pre-wrap", "break-spaces"]).toContain(getComputedStyle(directory).whiteSpace);
+  });
+
   it("專案目錄完整可選取，跨頁籤與專案更新，無位置寫入", async () => {
     const ws = fakeSettings(snapshot());
     const root = "/Users/mosu/project/ai_dev/speclink";
