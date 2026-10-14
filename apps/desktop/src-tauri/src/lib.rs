@@ -39,7 +39,7 @@ mod trackpad_gesture;
 
 use std::path::PathBuf;
 
-use serde_json::{json, Value};
+use serde_json::Value;
 use tauri::{Emitter, Manager};
 
 /// 關於頁的版本資訊（desktop-about-page design D1）：app 版號由殼帶入，其餘由 desktop-core 回齊。
