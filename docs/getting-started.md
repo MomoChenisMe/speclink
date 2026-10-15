@@ -38,7 +38,7 @@ brew install MomoChenisMe/tap/speclink
 
 For a GUI, download a desktop installer from [Releases](https://github.com/MomoChenisMe/speclink/releases/latest) (macOS universal dmg, Windows installer, Linux AppImage). Each installer includes the CLI of the same version. Windows has no install script: use npm or the desktop app.
 
-If you have the CLI and want the desktop app too, read the [install notes in the README](../README.en.md#install) first. The desktop app can replace your CLI.
+If you have the CLI and want the desktop app too, read [Install both the CLI and the desktop app](#cli-and-desktop) below first. The desktop app can replace your CLI.
 
 Check the install:
 
@@ -46,7 +46,33 @@ Check the install:
 speclink --version
 ```
 
-**Expected output**: one version line, for example `speclink 0.8.0 (arm64, engine v1.41.0)`.
+**Expected output**: one version line, for example `speclink 0.8.0 (arm64, engine v1.48.0)`.
+
+### <a id="install-script"></a>Install script options
+
+The install script finds your platform, checks the sha512 of the npm package, and puts `speclink` in `~/.local/bin`. Three environment variables change its behavior:
+
+| Variable | Use |
+| --- | --- |
+| `SPECLINK_INSTALL_DIR` | Change the install folder |
+| `SPECLINK_INSTALL_VERSION` | Pin a version (`0.5.0` or `v0.5.0`; versions before 0.5.0 are not on npm) |
+| `SPECLINK_INSTALL_REGISTRY` | Use a different npm registry |
+
+### <a id="cli-and-desktop"></a>Install both the CLI and the desktop app
+
+The desktop app and the install script both use `~/.local/bin/speclink`. Thus the desktop app can replace your CLI:
+
+| Platform | What the desktop app does to `~/.local/bin/speclink` |
+| --- | --- |
+| macOS | It checks on each start. If the CLI is missing or its version is different from the app, it deletes the file and puts a symlink to the bundled CLI in its place |
+| Linux AppImage | It writes over the file only when the versions are different |
+| Windows | It does not touch this location; the installer manages PATH |
+
+Thus a version that you pin with `SPECLINK_INSTALL_VERSION` does not stay: if it is different from the app version, the app replaces it. To keep your own CLI, set `SPECLINK_INSTALL_DIR` to a different folder when you install. Then put that folder before `~/.local/bin` in your PATH.
+
+### <a id="from-deb"></a>Move from the .deb package to the AppImage
+
+Releases do not include a `.deb` package after 0.5.0. If you installed the `.deb`, run `sudo apt remove speclink`, then use the AppImage.
 
 ## <a id="init"></a>2. Initialize
 
@@ -267,9 +293,9 @@ Snapshot created for unarchive support.
 
 The archive step merges the delta specs into the specs and moves the change to `openspec/changes/archive/`. After that, `speclink list` shows `No active changes.` again, and `openspec/specs/csv-export/` exists. This folder is the result of the round.
 
-In the desktop app, the Specs page shows the merged specs, with one card for each capability.
+In the desktop app, the Specs page lists the merged specs, one row for each capability. Click a row to open the detail page of that spec, with its requirements and scenarios.
 
-![The Specs page in the desktop app, with a card for each spec](assets/screenshots/desktop-spec.png)
+![The detail page of a spec in the desktop app, with its requirements and scenarios](assets/screenshots/en/desktop-spec.png)
 
 Do not use `--mark-tasks-complete` or `--no-validate` to skip work that is not done.
 
@@ -282,7 +308,7 @@ Do not use `--mark-tasks-complete` or `--no-validate` to skip work that is not d
 | `openspec/changes/archive/` | Archived changes |
 | `openspec/discussions/` | Discussion records (only when a decision is necessary) |
 | `openspec/config.yaml` | Workflow settings: language, project context, rules, TDD, audit, worktree |
-| `.speclink.yaml` | The tools and the remote binding of this workspace |
+| `.speclink.yaml` | The tools and the remote binding of this checkout |
 | `.speclink/` | Local work data (not in Git) |
 
 For the settings, see [Configuration](configuration.md).

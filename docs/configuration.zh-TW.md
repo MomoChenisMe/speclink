@@ -2,14 +2,14 @@
 
 **繁體中文** · [English](configuration.md)
 
-Speclink 的設定分三層：工作流政策寫在 `openspec/config.yaml`，跟著規格走；這個 workspace 接哪些 AI 工具、連哪個遠端，寫在 `.speclink.yaml`；登入憑證放在使用者層，不進專案。環境變數可以在單次執行時蓋過政策。
+Speclink 的設定分三層：工作流政策寫在 `openspec/config.yaml`，跟著規格走；這個 checkout 接哪些 AI 工具、連哪個遠端，寫在 `.speclink.yaml`；登入憑證放在使用者層，不進專案。環境變數可以在單次執行時蓋過政策。
 
 ## <a id="layers"></a>設定放在哪裡
 
 | 位置 | 放什麼 | 誰會讀 | 進版本控制 |
 | --- | --- | --- | --- |
 | `openspec/config.yaml` | 工作流政策：`schema`、`locale`、`spec_locale`、`tdd`、`audit`、`worktree`、`context`、`rules`、`review` | CLI、桌面 app；技能透過 `speclink instructions` 取得生效值 | 是 |
-| `.speclink.yaml` | 這個 workspace 的綁定：`tools`、`spec_dir`、`remote` | CLI、桌面 app | 是（裡面沒有憑證） |
+| `.speclink.yaml` | 這個 checkout 的綁定：`tools`、`spec_dir`、`remote` | CLI、桌面 app | 是（裡面沒有憑證） |
 | `.speclink/` | 本機工作資料：封存與品質關卡用的快照、生成工具的記錄、遠端模式的唯讀內容快照 | CLI、桌面 app | 否（`speclink init` 會把它加進 `.gitignore`） |
 | 使用者層設定目錄 | `credentials.yaml`（CLI 用存取金鑰登入時存的憑證）、`schemas/`（使用者層自訂 schema）、`config.yaml`（`speclink config` 的鍵值） | CLI、桌面 app | 否 |
 | 系統鑰匙圈 | 裝置登入的憑證、桌面 app 存的存取金鑰（PAT） | CLI 與桌面 app 共用 | 否 |
@@ -23,9 +23,9 @@ Speclink 的設定分三層：工作流政策寫在 `openspec/config.yaml`，跟
 
 桌面 app 自己的介面語言與伺服器連線清單存在 app 的資料夾，憑證存在系統鑰匙圈，都不寫進專案。
 
-桌面 app 的「設定」頁分成兩個分頁：「本機設定」的內容只存在這台機器，「伺服器」管理伺服器連線清單。
+桌面 app 的「設定」以設定模式開啟：左欄列出分類，「應用程式」下有一般、更新、CLI、伺服器，「關於」下有「關於 Speclink」。一般與 CLI 頁的內容只存在這台機器，「伺服器」頁管理伺服器連線清單。
 
-![桌面 app 的設定頁，分成本機設定與伺服器兩個分頁](assets/screenshots/desktop-settings.png)
+![桌面 app 的設定模式，左欄是設定分類，右邊是「一般」頁](assets/screenshots/zh-TW/desktop-settings.png)
 
 新設定該放哪裡，照這三條判斷：
 
@@ -106,7 +106,7 @@ cat CONTEXT.md | speclink workflow-config context --stdin
 
 - 直接編輯 `openspec/config.yaml` 的 `schema:` 那一行。
 - `speclink schema init <name> --default`：建立一個新的自訂 schema，並設成專案預設。
-- 桌面 app「專案設定」的 Schema 分頁。
+- 桌面 app「專案設定」的「產出流程」頁。
 
 桌面 app 的「專案設定」改的是同一份檔案，規則也相同。內建技能 `speclink-config` 會從程式碼整理出 `context` 與 `rules`，先給你看差異，你同意後才寫入。政策欄位（含 `worktree`）它會用一張表列出現值，只問你要不要改。審查規則是選用的：可以不設定、附加在內建檢查之後（`extend`），或取代內建檢查（`replace`）。你可以交給它一份提醒清單（貼上或給檔案路徑），它會逐條判斷要放進審查規則、某個 artifact 的產出規則（`rules`），還是不收，並說明理由。審查規則只收你給的，不從程式碼推導。
 
@@ -125,7 +125,7 @@ cat CONTEXT.md | speclink workflow-config context --stdin
 
 GitHub Copilot 也會讀 `.claude/skills/` 與 `.agents/skills/`，但它先讀 `.github/skills/`。所以選了 `copilot`，Copilot 用的就是寫給它的那一份。
 
-改完 `tools` 後執行 `speclink update`。新加的工具會產生技能檔；從清單拿掉的工具，它的 `speclink-*` 技能目錄會被刪除，因此變空的目錄也一併移除。桌面 app 的設定頁勾選內建工具時，會自動做同樣的同步。
+改完 `tools` 後執行 `speclink update`。新加的工具會產生技能檔；從清單拿掉的工具，它的 `speclink-*` 技能目錄會被刪除，因此變空的目錄也一併移除。在桌面 app「專案設定」的 `.speclink.yaml` 頁勾選內建工具時，會自動做同樣的同步。
 
 其他 AI 工具用描述子接上：
 

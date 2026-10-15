@@ -1,6 +1,7 @@
 // 中英對等與正典詞彙的驗收（user-documentation spec「中英文文件保持結構與事實對等」、
 // design D5：同結構、同事實）。
-// D5 的可機械檢查部分有兩塊：成對文件的 H2 章節序列與截圖引用集合須逐項相同；
+// D5 的可機械檢查部分有兩塊：成對文件的 H2 章節序列與截圖檔名序列須逐項相同（截圖各自
+// 落在該語言的目錄）；
 // 繁體中文散文須用正典詞彙，引擎動詞只能出現在 code span 內。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,7 +15,7 @@ const read = (relative) => readFileSync(path.join(ROOT, relative), 'utf8');
 /// spec「中英文文件保持結構與事實對等」列出的全部成對文件。
 /// remote-getting-started 與 development 的內容檢查另由 remote-docs.test.mjs 負責。
 const PAIRS = [
-  ['README.md', 'README.en.md'],
+  ['README.zh-TW.md', 'README.md'],
   ['docs/getting-started.zh-TW.md', 'docs/getting-started.md'],
   ['docs/workflow.zh-TW.md', 'docs/workflow.md'],
   ['docs/product-status.zh-TW.md', 'docs/product-status.md'],
@@ -39,7 +40,11 @@ const h2s = (markdown) =>
     .filter((line) => line.startsWith('## '))
     .map((line) => ANCHORED_H2.exec(line)?.[1] ?? `（缺錨點）${line.slice(3).trim()}`);
 
-const shots = (markdown) => markdown.match(/[\w./-]*assets\/screenshots\/[a-z-]+\.png/g) ?? [];
+/// 截圖分語言放在 `assets/screenshots/<語言>/`；語言目錄寫成選用，平放的舊寫法也會被抓出來、
+/// 再由下面的目錄斷言點名。
+const shots = (markdown) => markdown.match(/[\w./-]*assets\/screenshots\/(?:[\w-]+\/)?[a-z-]+\.png/g) ?? [];
+
+const outsideDir = (refs, locale) => refs.filter((ref) => !ref.includes(`assets/screenshots/${locale}/`));
 
 const cells = (line) =>
   line
@@ -89,7 +94,7 @@ const AVOID = ['促轉', '已促轉', '再促轉', '促轉分頁', '歸檔', '�
 const PROSE_FORBIDDEN = ['promote', 'promoted'];
 
 const ZH_DOCS = [
-  'README.md',
+  'README.zh-TW.md',
   'docs/getting-started.zh-TW.md',
   'docs/workflow.zh-TW.md',
   'docs/product-status.zh-TW.md',
@@ -109,10 +114,15 @@ for (const [zhPath, enPath] of PAIRS) {
     assert.deepEqual(h2s(read(zhPath)), h2s(read(enPath)));
   });
 
-  test(`中英對等：${zhPath} 與 ${enPath} 的截圖引用集合與數量相同`, () => {
-    const zh = shots(read(zhPath)).map((s) => s.split('/').pop());
-    const en = shots(read(enPath)).map((s) => s.split('/').pop());
-    assert.deepEqual(zh, en);
+  test(`中英對等：${zhPath} 與 ${enPath} 的截圖檔名序列相同，且各自引用該語言目錄`, () => {
+    const zhRefs = shots(read(zhPath));
+    const enRefs = shots(read(enPath));
+    assert.deepEqual(
+      zhRefs.map((s) => s.split('/').pop()),
+      enRefs.map((s) => s.split('/').pop()),
+    );
+    assert.deepEqual(outsideDir(zhRefs, 'zh-TW'), [], `${zhPath} 有截圖不在 zh-TW/`);
+    assert.deepEqual(outsideDir(enRefs, 'en'), [], `${enPath} 有截圖不在 en/`);
   });
 }
 

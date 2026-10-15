@@ -2,14 +2,14 @@
 
 [繁體中文](configuration.zh-TW.md) · **English**
 
-Speclink keeps settings in three layers. Workflow policy lives in `openspec/config.yaml` and travels with the specs. The AI tools and the remote connection of this workspace live in `.speclink.yaml`. Sign-in credentials live at the user level and never enter the project. Environment variables can override policy for one run.
+Speclink keeps settings in three layers. Workflow policy lives in `openspec/config.yaml` and travels with the specs. The AI tools and the remote connection of this checkout live in `.speclink.yaml`. Sign-in credentials live at the user level and never enter the project. Environment variables can override policy for one run.
 
 ## <a id="layers"></a>Where settings live
 
 | Location | Contents | Read by | In version control |
 | --- | --- | --- | --- |
 | `openspec/config.yaml` | Workflow policy: `schema`, `locale`, `spec_locale`, `tdd`, `audit`, `worktree`, `context`, `rules`, `review` | The CLI and the desktop app; skills get the effective values through `speclink instructions` | Yes |
-| `.speclink.yaml` | The binding of this workspace: `tools`, `spec_dir`, `remote` | The CLI and the desktop app | Yes (it holds no credentials) |
+| `.speclink.yaml` | The binding of this checkout: `tools`, `spec_dir`, `remote` | The CLI and the desktop app | Yes (it holds no credentials) |
 | `.speclink/` | Local work data: snapshots for archive and the quality stations, records of generated tool files, the read-only content snapshot of remote mode | The CLI and the desktop app | No (`speclink init` adds it to `.gitignore`) |
 | User config directory | `credentials.yaml` (the credential that the CLI stores for an access-token login), `schemas/` (user-level custom schemas), `config.yaml` (the key-value store of `speclink config`) | The CLI and the desktop app | No |
 | System keychain | Device-login credentials, and access tokens (PATs) that the desktop app stores | Shared by the CLI and the desktop app | No |
@@ -23,9 +23,9 @@ The user config directory is here:
 
 The desktop app keeps its UI language and its server list in its own app folder. It keeps credentials in the system keychain. None of these go into the project.
 
-The Settings page of the desktop app has two tabs. The Local settings tab holds values that stay on this computer. The Servers tab manages the list of server connections.
+In the desktop app, Settings opens in settings mode. The left column lists the categories: General, Updates, CLI, and Servers under Application, and About Speclink under About. The General and CLI pages keep their values on this computer. The Servers page manages the list of server connections.
 
-![The Settings page of the desktop app, with the Local settings and Servers tabs](assets/screenshots/desktop-settings.png)
+![Settings mode in the desktop app, with the category column on the left and the General page](assets/screenshots/en/desktop-settings.png)
 
 Use these three rules to place a new setting:
 
@@ -106,7 +106,7 @@ Run the first line in a project right after `speclink init`. **Expected output**
 
 - Edit the `schema:` line in `openspec/config.yaml`.
 - Run `speclink schema init <name> --default`. It makes a new custom schema and sets it as the project default.
-- Use the Schema tab in **Project Settings** of the desktop app.
+- Use the Workflow page in **Project Settings** of the desktop app.
 
 **Project Settings** in the desktop app changes the same file with the same rules. The built-in `speclink-config` skill collects `context` and `rules` from your code. It shows you the diff and writes only after you approve. It shows all policy fields, `worktree` included, in one table with their current values, and asks only whether you want to change any of them. Review rules are optional: you can leave them not set, add them to the built-in checks (`extend`), or use them in place of the built-in checks (`replace`). You can give the skill a list of reminders, pasted or as a file path. For each reminder, it decides whether it goes into a review rule, a rule for one artifact (`rules`), or neither, and tells you why. It takes review rules only from you, never from your code.
 
@@ -125,7 +125,7 @@ The `tools` list in `.speclink.yaml` decides which AI tools get skill files:
 
 GitHub Copilot also reads `.claude/skills/` and `.agents/skills/`, but it reads `.github/skills/` first. Thus, when you select `copilot`, Copilot uses the skills that Speclink writes for it.
 
-After you change `tools`, run `speclink update`. A new tool gets its skill files. For a tool that you remove, Speclink deletes its `speclink-*` skill directories and any directory that becomes empty. When you select built-in tools in the desktop settings page, the app does the same sync.
+After you change `tools`, run `speclink update`. A new tool gets its skill files. For a tool that you remove, Speclink deletes its `speclink-*` skill directories and any directory that becomes empty. When you select built-in tools on the `.speclink.yaml` page of **Project Settings** in the desktop app, the app does the same sync.
 
 Use a descriptor to connect any other AI tool:
 

@@ -38,7 +38,7 @@ brew install MomoChenisMe/tap/speclink
 
 想要圖形介面，到 [Releases](https://github.com/MomoChenisMe/speclink/releases/latest) 下載桌面安裝檔（macOS universal dmg、Windows 安裝器、Linux AppImage），裡面已含同版 CLI。Windows 沒有安裝腳本：用 npm，或裝桌面 app。
 
-已經裝過 CLI 又要裝桌面 app，先看 [README 的安裝說明](../README.md#install)，桌面 app 可能換掉你的 CLI。
+已經裝過 CLI 又要裝桌面 app，先看下面的[同時裝 CLI 與桌面 app](#cli-and-desktop)，桌面 app 可能換掉你的 CLI。
 
 確認安裝成功：
 
@@ -46,7 +46,33 @@ brew install MomoChenisMe/tap/speclink
 speclink --version
 ```
 
-**預期輸出**：一行版本字串，例如 `speclink 0.8.0 (arm64, engine v1.41.0)`。
+**預期輸出**：一行版本字串，例如 `speclink 0.8.0 (arm64, engine v1.48.0)`。
+
+### <a id="install-script"></a>安裝腳本的選項
+
+安裝腳本會偵測平台、核對 npm 套件的 sha512，再把 `speclink` 放進 `~/.local/bin`。可用三個環境變數調整：
+
+| 變數 | 用途 |
+| --- | --- |
+| `SPECLINK_INSTALL_DIR` | 改安裝位置 |
+| `SPECLINK_INSTALL_VERSION` | 釘選版本（`0.5.0` 或 `v0.5.0` 都可以；0.5.0 之前的版本不在 npm 上） |
+| `SPECLINK_INSTALL_REGISTRY` | 換 npm registry |
+
+### <a id="cli-and-desktop"></a>同時裝 CLI 與桌面 app
+
+桌面 app 和安裝腳本都用 `~/.local/bin/speclink` 這個位置，所以桌面 app 可能換掉你的 CLI：
+
+| 平台 | 桌面 app 對 `~/.local/bin/speclink` 做的事 |
+| --- | --- |
+| macOS | 每次啟動都檢查一次；沒裝或版本和 app 不同時，刪掉原檔，換成指向內建 CLI 的 symlink |
+| Linux AppImage | 只在版本不符時覆蓋 |
+| Windows | 不動這個位置；PATH 由安裝器管理 |
+
+所以 `SPECLINK_INSTALL_VERSION` 釘選的版本也會跟著失效：只要版本和 app 不同，就會被換掉。要保留自己那份 CLI，安裝時用 `SPECLINK_INSTALL_DIR` 指到別的目錄，再把那個目錄排在 PATH 中 `~/.local/bin` 的前面。
+
+### <a id="from-deb"></a>從 .deb 換成 AppImage
+
+0.5.0 起不再提供 `.deb`。用 `.deb` 裝過的人，先執行 `sudo apt remove speclink`，再改用 AppImage。
 
 ## <a id="init"></a>2. 初始化
 
@@ -267,9 +293,9 @@ Snapshot created for unarchive support.
 
 封存會把 delta 規格合併進正式規格，並把變更移到 `openspec/changes/archive/`。之後 `speclink list` 回到 `No active changes.`，`openspec/specs/csv-export/` 出現。這就是這一輪的成果。
 
-在桌面 app 的「規格」頁可以看到合併後的正式規格，每項能力一張卡片。
+在桌面 app 的「規格」頁可以看到合併後的正式規格，每項能力一列；點一列開啟它的詳情頁，看得到需求與情境。
 
-![桌面 app 的規格頁，以卡片列出全部正式規格](assets/screenshots/desktop-spec.png)
+![桌面 app 的正式規格詳情頁，列出需求與情境](assets/screenshots/zh-TW/desktop-spec.png)
 
 不要用 `--mark-tasks-complete` 或 `--no-validate` 跳過沒做完的工作。
 
@@ -282,7 +308,7 @@ Snapshot created for unarchive support.
 | `openspec/changes/archive/` | 已封存的變更 |
 | `openspec/discussions/` | 討論記錄（需要做決定時才有） |
 | `openspec/config.yaml` | 工作流設定：語言、專案說明、產出規則、TDD、audit、worktree |
-| `.speclink.yaml` | 這個 workspace 的工具與遠端綁定 |
+| `.speclink.yaml` | 這個 checkout 的工具與遠端綁定 |
 | `.speclink/` | 本機工作資料（不進 Git） |
 
 設定的細節見[設定說明](configuration.zh-TW.md)。

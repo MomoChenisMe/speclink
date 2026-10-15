@@ -26,7 +26,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 桌面 app 把這條路線畫成看板：討論、提案中、進行中、已就緒四欄，每張卡片就是一個變更或一份討論。已封存的變更在另一個頁面。
 
-![Speclink 桌面 app 的看板，分成討論、提案中、進行中與已就緒四欄](assets/screenshots/desktop-board.png)
+![Speclink 桌面 app 的看板，分成討論、提案中、進行中與已就緒四欄](assets/screenshots/zh-TW/desktop-board.png)
 
 ## <a id="entry"></a>從哪一站開始
 
@@ -90,9 +90,9 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 - **下一步**：見[討論結論怎麼走](#discussion-outcomes)。
 - **出狀況**：已經談出內容的討論，寫結論後封存。什麼都還沒談出來，才用 `speclink discuss discard` 刪掉。
 
-在桌面 app 的看板點一則討論，會開啟它的詳情頁，結論、討論過程、背景與衍生變更各占一個分頁。
+在桌面 app 的看板點一則討論，會開啟它的詳情頁。左欄文件樹列出結論、討論過程、背景與衍生變更四份文件；沒有分段的舊討論只有一份「記錄」。
 
-![討論的詳情頁，顯示結論以及討論過程、背景、衍生變更分頁](assets/screenshots/desktop-discussion.png)
+![討論的詳情頁，左欄是文件樹，中間是結論](assets/screenshots/zh-TW/desktop-discussion.png)
 
 ### <a id="improve"></a>improve：找改進點
 
@@ -134,9 +134,9 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
   - 誤開工而且還沒動任何東西：`speclink in-progress remove <名稱>`，退回提案中。
   - 不做了：`speclink discard <名稱>`，開工後要加 `--force`。
 
-實作期間，變更的詳情頁最好用：提案、設計、任務與規格分頁對應同一組文件，任務分頁的進度就是 `speclink task done` 的結果。
+實作期間，變更的詳情頁最好用：左欄文件樹列出提案、設計、任務、規格與排程；有未結的審查或驗證工單時，另會出現「審查」「驗證」。「狀態」區的「任務進度」列就是 `speclink task done` 的結果。
 
-![變更的詳情頁，顯示提案內容以及任務、規格分頁](assets/screenshots/desktop-change-drawer.png)
+![變更的詳情頁，左欄是文件樹，中間是提案內容](assets/screenshots/zh-TW/desktop-change-detail.png)
 
 ### <a id="ingest"></a>ingest：更新需求
 
@@ -253,7 +253,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 封存後的變更與討論都在桌面 app 的「已封存」頁，分成已封存的變更與已封存的討論兩個分頁。
 
-![桌面 app 的已封存頁，分成已封存的變更與已封存的討論兩個分頁](assets/screenshots/desktop-archived.png)
+![桌面 app 的已封存頁，分成已封存的變更與已封存的討論兩個分頁](assets/screenshots/zh-TW/desktop-archived.png)
 
 ### <a id="validate"></a>validate：格式檢查
 
@@ -322,6 +322,8 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 - **CLI**：沒有 `speclink manual` 指令。桌面 app 的「手冊」頁可以瀏覽手冊。
 - **完成**：摘要列出新增、重寫、沒動的頁數，以及可能過期的頁。
 - **下一步**：提交手冊的修改。遠端專案目前不能產生手冊，導覽可以。
+
+![桌面 app 的手冊頁，左欄是頁面清單，中間是內容與出處規格](assets/screenshots/zh-TW/desktop-manual.png)
 - **出狀況**：手冊頁是一般檔案，刪掉或還原即可。
 
 ### <a id="trace"></a>trace：溯源
@@ -349,7 +351,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
   - `speclink plan [--json]`
   - 宣告依賴：`speclink change depends <變更> --on <前置變更>`（加 `--remove` 取消）
   - 調整同一欄裡的順序：`speclink change rank <變更> --before <另一個變更>`（或 `--after`；只限本地）
-- **下一步**：從 `next` 指出的變更開工。桌面詳情頁的「排程」分頁顯示同一份資訊。
+- **下一步**：從 `next` 指出的變更開工。桌面變更詳情頁文件樹的「排程」文件與「狀態」區的「排程」列顯示同一份資訊。
 
 ## <a id="discussion-outcomes"></a>討論結論怎麼走
 

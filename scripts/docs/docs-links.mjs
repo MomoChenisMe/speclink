@@ -12,7 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 /// 檢查面：入口的兩份 README，加上 docs/ 底下全部 markdown。
-const README_FILES = ['README.md', 'README.en.md'];
+const README_FILES = ['README.md', 'README.zh-TW.md'];
 const DOCS_DIR = 'docs';
 
 /// markdown 的 [text](target) 與 ![alt](target)。
