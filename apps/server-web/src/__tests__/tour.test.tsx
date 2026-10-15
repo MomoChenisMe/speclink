@@ -3,6 +3,7 @@ import { render } from "@testing-library/react";
 import { screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "../App";
+import { APP_MESSAGES } from "../i18n/messages";
 import { makeAdminClient, setViewport } from "./helpers/adminHarness";
 
 // spec 需求「首次進入提供可略過的分步導覽」：首次開啟管理面自動啟動、每一步指向畫面上
@@ -178,5 +179,32 @@ describe("鍵盤與降級", () => {
       getItem.mockRestore();
       setItem.mockRestore();
     }
+  });
+});
+
+// 情境「導覽說明符合現行的列表互動」：列表改成詳情頁與置中對話框後，說明曾停在舊的
+// 右側面板。字串比對只抓得到已知的舊字眼，抓不到新的不實描述——後者靠第二條釘住兩個
+// 描述互動的鍵。
+describe("導覽說明符合現行的列表互動", () => {
+  const STALE_WORDS = ["右側面板", "滑出", "drawer", "slides"];
+
+  it("兩種語言的導覽說明都不提已不存在的介面", () => {
+    const hits = Object.entries(APP_MESSAGES).flatMap(([locale, dict]) =>
+      Object.entries(dict)
+        .filter(([key]) => /^tour\..+\.hint$/.test(key))
+        .flatMap(([key, value]) =>
+          STALE_WORDS.filter((word) => value.toLowerCase().includes(word.toLowerCase())).map(
+            (word) => `${locale} ${key}：${word}`,
+          ),
+        ),
+    );
+    expect(hits).toEqual([]);
+  });
+
+  it("「使用者」提到詳情頁、「建立與編輯」提到對話框", () => {
+    expect(APP_MESSAGES["zh-TW"]["tour.navUsers.hint"]).toContain("詳情頁");
+    expect(APP_MESSAGES.en["tour.navUsers.hint"]).toContain("detail page");
+    expect(APP_MESSAGES["zh-TW"]["tour.listPrimary.hint"]).toContain("對話框");
+    expect(APP_MESSAGES.en["tour.listPrimary.hint"]).toContain("dialog");
   });
 });
