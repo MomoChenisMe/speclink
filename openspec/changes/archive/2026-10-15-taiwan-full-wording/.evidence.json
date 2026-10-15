@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "change": "taiwan-full-wording",
+  "touched": [
+    {
+      "task_id": "3",
+      "task_desc": "3.1 測試範圍意思的四份規格改成「完整測試」／「完整驗證」：openspec/specs/config-skill/spec.md（含 Scenario「答全量時不寫規則」→「答完整測試時不寫規則」）、openspec/specs/delivery-baseline/spec.md（Purpose、Requirement「root 單一指令全量驗證」→「root 單一指令完整驗證」、內文對自身標題的引用與「root 全量驗證」）、openspec/specs/review-skill/spec.md（含 Scenario「專案未寫測試政策時跑全量」→「專案未寫測試政策時跑完整測試」）、openspec/specs/verify-skill/spec.md；同批把 scripts/release/delivery-gate.test.mjs 段落註解裡的舊需求標題改成「root 單一指令完整驗證」，該檔其餘內容不動。驗證：`speclink validate --specs --strict` 綠；`speclink show delivery-baseline` 的需求標題含「root 單一指令完整驗證」；這四份規格與 delivery-gate.test.mjs `git grep 全量` 零命中；`git diff --numstat` 對這五個檔的新增行數等於刪除行數（只換字、不增刪行）",
+      "files": [
+        "scripts/release/delivery-gate.test.mjs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4YSWFMTGQ24C4MAFAQX0BV9",
+      "taskDesc": "3.1 測試範圍意思的四份規格改成「完整測試」／「完整驗證」：openspec/specs/config-skill/spec.md（含 Scenario「答全量時不寫規則」→「答完整測試時不寫規則」）、openspec/specs/delivery-baseline/spec.md（Purpose、Requirement「root 單一指令全量驗證」→「root 單一指令完整驗證」、內文對自身標題的引用與「root 全量驗證」）、openspec/specs/review-skill/spec.md（含 Scenario「專案未寫測試政策時跑全量」→「專案未寫測試政策時跑完整測試」）、openspec/specs/verify-skill/spec.md；同批把 scripts/release/delivery-gate.test.mjs 段落註解裡的舊需求標題改成「root 單一指令完整驗證」，該檔其餘內容不動。驗證：`speclink validate --specs --strict` 綠；`speclink show delivery-baseline` 的需求標題含「root 單一指令完整驗證」；這四份規格與 delivery-gate.test.mjs `git grep 全量` 零命中；`git diff --numstat` 對這五個檔的新增行數等於刪除行數（只換字、不增刪行）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a511e9b985884a01a52ea4153f433568ba22216c",
+      "touchedFiles": [
+        "scripts/release/delivery-gate.test.mjs"
+      ],
+      "recordedAt": "2026-10-15T04:04:18Z"
+    }
+  ]
+}

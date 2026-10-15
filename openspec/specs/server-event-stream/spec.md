@@ -104,7 +104,7 @@ code:
 ---
 ### Requirement: 保留政策與 reset 訊號
 
-server SHALL 依保留政策 ack outbox（每 scope 保留最近 N 筆，N 可組態、有預設值），讓 driver 得以清理更舊事件。重連的 Last-Event-ID 落在已清理範圍時，server SHALL 立即送出明確的 reset 訊號事件（獨立的 SSE 事件種類）再繼續推播新事件；SHALL NOT 猜測或重建已清理的事件。client 據 reset 以 Query 與 ETag 全量收斂的路徑 SHALL 可用（既有輪詢端點不受本能力影響）。
+server SHALL 依保留政策 ack outbox（每 scope 保留最近 N 筆，N 可組態、有預設值），讓 driver 得以清理更舊事件。重連的 Last-Event-ID 落在已清理範圍時，server SHALL 立即送出明確的 reset 訊號事件（獨立的 SSE 事件種類）再繼續推播新事件；SHALL NOT 猜測或重建已清理的事件。client 據 reset 以 Query 與 ETag 全部重新收斂的路徑 SHALL 可用（既有輪詢端點不受本能力影響）。
 
 #### Scenario: 過期 cursor 得到 reset
 

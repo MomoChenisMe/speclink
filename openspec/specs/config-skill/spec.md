@@ -143,7 +143,7 @@ code:
 ---
 ### Requirement: 技能規定任務驗證測試範圍的第五問
 
-渲染產出的 speclink-config 技能檔 SHALL 於政策詢問流程納入第五問：任務清單（tasks）的驗證步驟要包含全量測試，或只跑受影響面的測試——與其餘政策欄位同性質，SHALL 列入「技能規定政策欄位一次確認現值」的確認表、由使用者作答，SHALL NOT 自 repo 推斷；現行文件已有測試範圍相關 rule 時，確認表 SHALL 以該 rule 帶出現值，無既有 rule 時 SHALL 標為未設定、預設全量。使用者沿用現值時，技能 SHALL NOT 因這個答案改動測試範圍 rule；該 rule 仍照四條內容判準檢查（例如引用失效時依判準四移除）。使用者點名修改此項並答「只跑受影響面」時，技能檔 SHALL 指引自已讀取的 dependency manifests 組出該專案客製的對應規則（按專案的組件型態對應其測試指令）寫入 rules 的 tasks 段，並沿既有 dry-run 核准流程落地；答「全量」時 SHALL NOT 寫入任何測試範圍規則——現行文件已有測試範圍 rule 時，該答案即為使用者對其之明確撤回，技能檔 SHALL 指引沿同一 dry-run 核准流程移除之，無既有 rule 時現行文件維持原樣。
+渲染產出的 speclink-config 技能檔 SHALL 於政策詢問流程納入第五問：任務清單（tasks）的驗證步驟要包含完整測試，或只跑受影響面的測試——與其餘政策欄位同性質，SHALL 列入「技能規定政策欄位一次確認現值」的確認表、由使用者作答，SHALL NOT 自 repo 推斷；現行文件已有測試範圍相關 rule 時，確認表 SHALL 以該 rule 帶出現值，無既有 rule 時 SHALL 標為未設定、預設完整測試。使用者沿用現值時，技能 SHALL NOT 因這個答案改動測試範圍 rule；該 rule 仍照四條內容判準檢查（例如引用失效時依判準四移除）。使用者點名修改此項並答「只跑受影響面」時，技能檔 SHALL 指引自已讀取的 dependency manifests 組出該專案客製的對應規則（按專案的組件型態對應其測試指令）寫入 rules 的 tasks 段，並沿既有 dry-run 核准流程落地；答「完整測試」時 SHALL NOT 寫入任何測試範圍規則——現行文件已有測試範圍 rule 時，該答案即為使用者對其之明確撤回，技能檔 SHALL 指引沿同一 dry-run 核准流程移除之，無既有 rule 時現行文件維持原樣。
 
 #### Scenario: 渲染產物含第五問
 
@@ -155,10 +155,10 @@ code:
 - **WHEN** 檢視渲染產出的 speclink-config 技能檔關於第五問後續處理的段落
 - **THEN** 段落明定自已讀取的 dependency manifests 組出專案客製的測試對應規則、寫入 rules 的 tasks 段、經 dry-run 核准後落地
 
-#### Scenario: 答全量時不寫規則
+#### Scenario: 答完整測試時不寫規則
 
 - **WHEN** 檢視渲染產出的 speclink-config 技能檔關於第五問後續處理的段落
-- **THEN** 段落明定使用者選擇全量時不寫入任何測試範圍規則；現行文件已有測試範圍 rule 時視為明確撤回、經 dry-run 核准移除該 rule，無既有 rule 時現行文件維持原樣
+- **THEN** 段落明定使用者選擇完整測試時不寫入任何測試範圍規則；現行文件已有測試範圍 rule 時視為明確撤回、經 dry-run 核准移除該 rule，無既有 rule 時現行文件維持原樣
 
 #### Scenario: 沿用現值不動測試範圍規則
 
@@ -269,7 +269,7 @@ updated: 2026-10-15T11:59:36+08:00
 
 渲染產出的 speclink-config 技能檔 SHALL 規定政策欄位的問法：
 
-- **確認表**：技能 SHALL 先列一張確認表，逐列顯示每個政策項目的現值——locale、spec_locale、tdd、audit、worktree、任務驗證的測試範圍（第五問）、審查規則的模式（第六問）。未設定的項目 SHALL 標為「未設定，預設 X」：locale 與 spec_locale 預設英文、tdd、audit 與 worktree 預設 false、測試範圍預設全量、審查規則預設不設定。
+- **確認表**：技能 SHALL 先列一張確認表，逐列顯示每個政策項目的現值——locale、spec_locale、tdd、audit、worktree、任務驗證的測試範圍（第五問）、審查規則的模式（第六問）。未設定的項目 SHALL 標為「未設定，預設 X」：locale 與 spec_locale 預設英文、tdd、audit 與 worktree 預設 false、測試範圍預設完整測試、審查規則預設不設定。
 - **一題確認**：技能 SHALL 只問一題「全部沿用，還是要改其中幾項」。使用者選全部沿用時，技能 SHALL NOT 再逐項詢問，SHALL NOT 改動任何政策欄位；選要改時，技能 SHALL 只逐項詢問使用者點名的項目，每題帶出該項現值。第一次執行（config 尚無任何政策欄位）SHALL 同樣攤開確認表、以一題確認。
 - **不推斷**：「全部沿用」是使用者明確給的答案；技能 SHALL NOT 自 repo 推斷任何政策值（例如有測試目錄不代表 tdd 為 true）。
 - **工具限制**：互動提問工具的單題選項上限容不下所有項目時，「要改哪幾項」SHALL 改以純文字詢問；互動提問工具不可用時，整個確認 SHALL 以純文字進行。
@@ -289,7 +289,7 @@ updated: 2026-10-15T11:59:36+08:00
 | tdd | true | true |
 | audit | 未設定 | 未設定，預設 false |
 | worktree | 未設定 | 未設定，預設 false |
-| 測試範圍 | rules 無測試範圍 rule | 未設定，預設全量 |
+| 測試範圍 | rules 無測試範圍 rule | 未設定，預設完整測試 |
 | 審查規則 | 無 review 區塊 | 未設定，預設不設定（只用內建 12 條 code smell） |
 
 #### Scenario: 全部沿用不產生政策 diff

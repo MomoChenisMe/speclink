@@ -168,7 +168,7 @@ updated: 2026-08-06
 
 1. 修正改到的檔案落在某個任務說明列出的路徑內時，跑該任務說明寫的驗證指令（任務原文取自 `speclink instructions apply --change <name> --json` 的 `tasks`）；
 2. 任務沒涵蓋的檔案，依專案文件化的測試政策（CLAUDE.md、AGENTS.md 或 workflow config 的產出規則）選擇測試；
-3. 專案未寫任何測試政策時，跑 repo 慣例的全量測試指令。
+3. 專案未寫任何測試政策時，跑 repo 慣例的完整測試指令。
 
 建置 SHALL 照跑，SHALL NOT 因範圍判定而略過。報告 SHALL 列出本次跑了哪些測試指令、略過哪些範圍，並註明略過的範圍交由 CI 守門。
 
@@ -186,7 +186,7 @@ updated: 2026-08-06
 #### Scenario: 只跑任務寫的驗證指令
 
 - **WHEN** 修正只改了任務 3.2 說明列出的前端檔案，該任務說明寫明以 `npm test -w packages/ui` 驗證
-- **THEN** 技能執行建置與 `npm test -w packages/ui`，不執行全量測試；報告列出已跑的指令與略過的範圍，並註明交由 CI 守門
+- **THEN** 技能執行建置與 `npm test -w packages/ui`，不執行完整測試；報告列出已跑的指令與略過的範圍，並註明交由 CI 守門
 
 #### Scenario: 規格字面修正後下一輪看得到
 

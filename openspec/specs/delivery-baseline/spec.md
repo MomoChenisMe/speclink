@@ -2,7 +2,7 @@
 
 ## Purpose
 
-專案交付與驗證基線：Node 套件安裝的確定性、root 一道指令跑完的全量驗證、CI 必跑的完整測試面，以及 Node native 套件的全平台交付驗證。本 capability 保證任何人在乾淨環境下都能重現同一組綠燈——含桌面測試套件全綠與測試輸出零 React act 警告。
+專案交付與驗證基線：Node 套件安裝的確定性、root 一道指令跑完的完整驗證、CI 必跑的完整測試面，以及 Node native 套件的全平台交付驗證。本 capability 保證任何人在乾淨環境下都能重現同一組綠燈——含桌面測試套件全綠與測試輸出零 React act 警告。
 
 ## Requirements
 
@@ -21,7 +21,7 @@
 - **THEN** package-lock.json 同步更新，npm ci 不出現 Missing from lock file 錯誤
 
 ---
-### Requirement: root 單一指令全量驗證
+### Requirement: root 單一指令完整驗證
 
 repo root SHALL 提供單一指令，依序執行 `packages/ui`、`apps/desktop`、`apps/server-web`、Rust workspace 與 `crates/adapters/speclink-node` 五個測試面的測試；`apps/server-web` 測試後 SHALL 執行 production build，使後續 Rust asset integration 以本次 source 產生的 index 與 manifest 驗證。任一測試面或 Web production build 失敗時，指令 SHALL 以非零 exit code 中止。
 
@@ -37,7 +37,7 @@ repo root SHALL 提供單一指令，依序執行 `packages/ui`、`apps/desktop`
 
 #### Scenario: Rust 測試使用當次 Web build
 
-- **WHEN** `apps/server-web` source 有未建置變更並執行 root 全量驗證
+- **WHEN** `apps/server-web` source 有未建置變更並執行 root 完整驗證
 - **THEN** 指令先重建 production assets，再執行 Rust workspace 的 embedded asset 與 route tests
 
 
@@ -307,7 +307,7 @@ code:
 ---
 ### Requirement: 桌面測試套件於乾淨環境全綠
 
-`apps/desktop` 的 vitest 測試套件 SHALL 在乾淨環境下全數通過。其測試執行環境 SHALL 提供瀏覽器 Web Storage 全域（`localStorage` 與 `sessionStorage`），使依賴本機儲存持久化的測試不因環境缺漏而失敗。`apps/desktop` SHALL 直接於自身 package.json 宣告其宣稱使用的測試 DOM 環境（jsdom）為 devDependency，SHALL NOT 僅依賴其他 workspace 的 hoisting。此需求與「root 單一指令全量驗證」互補：後者要求 test:all 於任一面失敗時中止，本需求確保 `apps/desktop` 這一面在乾淨環境下實際通過，使 test:all 為可信的綠燈 gate。測試執行期間 SHALL NOT 有未處理例外（uncaught exception 或 unhandled rejection）使程序非零退出——含在途非同步作業於測試卸載後才觸發者——使 exit 0 為決定性結果而非偶發綠燈。
+`apps/desktop` 的 vitest 測試套件 SHALL 在乾淨環境下全數通過。其測試執行環境 SHALL 提供瀏覽器 Web Storage 全域（`localStorage` 與 `sessionStorage`），使依賴本機儲存持久化的測試不因環境缺漏而失敗。`apps/desktop` SHALL 直接於自身 package.json 宣告其宣稱使用的測試 DOM 環境（jsdom）為 devDependency，SHALL NOT 僅依賴其他 workspace 的 hoisting。此需求與「root 單一指令完整驗證」互補：後者要求 test:all 於任一面失敗時中止，本需求確保 `apps/desktop` 這一面在乾淨環境下實際通過，使 test:all 為可信的綠燈 gate。測試執行期間 SHALL NOT 有未處理例外（uncaught exception 或 unhandled rejection）使程序非零退出——含在途非同步作業於測試卸載後才觸發者——使 exit 0 為決定性結果而非偶發綠燈。
 
 #### Scenario: 乾淨環境 desktop 測試全綠
 

@@ -121,7 +121,7 @@ code:
 ---
 ### Requirement: 斷線以 Polling 加 ETag 收斂後續訂
 
-SSE 中斷時 Desktop SHALL：停流、以 /sync-state 的 ETag 比對偵測錯過的變更（不同即觸發重載）、以退避重連並帶 Last-Event-ID 續傳；server 回 reset 信號時 SHALL 觸發全量重載後自新事件位點續訂。SSE 持續不可用期間 SHALL 以輪詢維持收斂；恢復後 SHALL 回到事件驅動。全程 SHALL NOT 產生資料遺漏——完全漏掉 push 事件後仍能經 Query 收斂到 server 現況。
+SSE 中斷時 Desktop SHALL：停流、以 /sync-state 的 ETag 比對偵測錯過的變更（不同即觸發重載）、以退避重連並帶 Last-Event-ID 續傳；server 回 reset 信號時 SHALL 觸發全部重新載入後自新事件位點續訂。SSE 持續不可用期間 SHALL 以輪詢維持收斂；恢復後 SHALL 回到事件驅動。全程 SHALL NOT 產生資料遺漏——完全漏掉 push 事件後仍能經 Query 收斂到 server 現況。
 
 #### Scenario: server 重啟後自動收斂
 

@@ -8,7 +8,7 @@
 
 ### Requirement: 寫碼任務全完成預測子
 
-系統 SHALL 提供單一實作的「寫碼任務全完成」預測子:所有 manual=false 的任務皆已勾選。零任務的 change 與全數為 `[M]` 任務的 change,預測子 SHALL 空真成立。消費此預測子的守門 SHALL 僅在「寫碼任務總數大於零且寫碼任務未全完成」時拒絕。任務進度統計 SHALL 同時回傳全量計數與寫碼計數,各守門與失效判定共用同一份統計,SHALL NOT 各自過濾。
+系統 SHALL 提供單一實作的「寫碼任務全完成」預測子:所有 manual=false 的任務皆已勾選。零任務的 change 與全數為 `[M]` 任務的 change,預測子 SHALL 空真成立。消費此預測子的守門 SHALL 僅在「寫碼任務總數大於零且寫碼任務未全完成」時拒絕。任務進度統計 SHALL 同時回傳全部任務計數與寫碼計數,各守門與失效判定共用同一份統計,SHALL NOT 各自過濾。
 
 #### Scenario: 僅餘手動任務時預測子成立
 
@@ -22,7 +22,7 @@
 
 ##### Example: 預測子判定
 
-| 全量(完成/總數) | 寫碼(完成/總數) | 預測子 |
+| 全部任務(完成/總數) | 寫碼(完成/總數) | 預測子 |
 | --------------- | --------------- | ------ |
 | 9/10 | 9/9 | 成立 |
 | 7/10 | 7/8 | 不成立 |
@@ -38,7 +38,7 @@ updated: 2026-08-11
 ---
 ### Requirement: 任務 payload 的 manual 欄位與寫碼進度
 
-`speclink instructions apply --json` 的任務項欄位集合 SHALL 為 `id`/`description`/`done`/`manual`——`parallel` 欄位 SHALL NOT 出現(已隨 `[P]` 語意移除);progress SHALL 含 `codeTotal`/`codeComplete`/`codeRemaining` 三欄(寫碼任務的總數/完成數/剩餘數)。既有欄位名與語意 SHALL NOT 改變。無 `[M]` 任務的 change,三個 code 欄位之值 SHALL 與全量計數一致。
+`speclink instructions apply --json` 的任務項欄位集合 SHALL 為 `id`/`description`/`done`/`manual`——`parallel` 欄位 SHALL NOT 出現(已隨 `[P]` 語意移除);progress SHALL 含 `codeTotal`/`codeComplete`/`codeRemaining` 三欄(寫碼任務的總數/完成數/剩餘數)。既有欄位名與語意 SHALL NOT 改變。無 `[M]` 任務的 change,三個 code 欄位之值 SHALL 與全部任務計數一致。
 
 #### Scenario: 手動任務上線 payload
 
