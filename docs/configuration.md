@@ -108,7 +108,7 @@ Run the first line in a project right after `speclink init`. **Expected output**
 - Run `speclink schema init <name> --default`. It makes a new custom schema and sets it as the project default.
 - Use the Schema tab in **Project Settings** of the desktop app.
 
-**Project Settings** in the desktop app changes the same file with the same rules. The built-in `speclink-config` skill collects `context` and `rules` from your code. It shows you the diff and writes only after you approve. It asks you for the review baseline, and it takes review rules only from you, never from your code.
+**Project Settings** in the desktop app changes the same file with the same rules. The built-in `speclink-config` skill collects `context` and `rules` from your code. It shows you the diff and writes only after you approve. It shows all policy fields, `worktree` included, in one table with their current values, and asks only whether you want to change any of them. Review rules are optional: you can leave them not set, add them to the built-in checks (`extend`), or use them in place of the built-in checks (`replace`). You can give the skill a list of reminders, pasted or as a file path. For each reminder, it decides whether it goes into a review rule, a rule for one artifact (`rules`), or neither, and tells you why. It takes review rules only from you, never from your code.
 
 The review station applies the `review` block only with a CLI and skill files of this version or later. Run `speclink update` after you upgrade. An older CLI skips the block.
 
