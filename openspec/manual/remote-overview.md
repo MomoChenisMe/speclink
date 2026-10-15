@@ -4,7 +4,7 @@ section: Remote 模式
 order: 400
 keywords: [remote, server, link, 參考實作, project-scoped URL, .speclink.yaml]
 sources: [user-documentation, remote-connection]
-generated: 2026-09-17T16:05:41+08:00
+generated: 2026-10-15T12:25:31+08:00
 ---
 # remote 模式總覽
 
@@ -70,7 +70,7 @@ remote 模式下每個動詞都自動帶上 remote 區段的 repo 名。你在 r
 2. 開箱：用 server 印出的 `/setup?token=...` 建立第一位 Admin 與第一組 Project／Repo。見 [開箱：第一位 Admin 與第一組 Project／Repo](server-setup.md)。
 3. 在 `/admin/users` 為實際登入的帳號授予 Project membership。第一位 Admin 為自己授予所建 Project 的 membership 是必經步驟，不會自動發生。見 [帳號、邀請、存取金鑰與 membership](accounts.md)。
 4. 在 `/account` 建立存取金鑰（若要走 PAT 路徑）。
-5. 桌面 app 以裝置登入連線，或以存取金鑰為備援；選擇 Project／Repo；決定開 spec-only 還是 checkout 工作區。見 [桌面連線 server 與 remote 工作區](desktop-remote.md)。
+5. 桌面 app 以裝置登入連線，或以存取金鑰為備援；選擇 Project／Repo；決定開 spec-only 還是 checkout 工作區。見 [桌面連線 server 與 remote 專案](desktop-remote.md)。
 6. CLI 用 `speclink link` 與 `speclink auth login` 接上，跑一次讀寫。見 [CLI 連接 remote](cli-remote.md)。
 7. 了解一般重啟、失聯與完全重置的行為。見 [失聯與恢復](remote-offline.md)。
 
