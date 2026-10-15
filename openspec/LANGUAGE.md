@@ -271,3 +271,9 @@
 - **definition**: 閱讀卡標題下、由文件結構推出的計數格，最多四格；推不出時整列缺席。
 - **avoid**: KPI 磚
 - **why**: 不是指標儀表，是文件本身的計數。2026-10-12 變更「desktop-detail-doc-tree」定案。
+
+### 完整測試
+
+- **definition**: repo 慣例的整套測試——本 repo 為 root `npm run test:all`，CI 守門跑同一組；對照詞「只跑受影響面的測試」（config-skill 與 openspec/config.yaml 的既有寫法）。英文維持 full test suite。
+- **avoid**: 全量
+- **why**: 「全量」不是台灣慣用詞。專案內它另有四種意思，依「修飾動作用『全部』、指一整套東西用『完整』」改寫：全部重新載入／查詢／收斂、全部任務計數、全部重新產生、完整投影。2026-10-15 討論「test-speed-and-wording」定案。

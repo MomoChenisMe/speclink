@@ -76,7 +76,7 @@ code:
 ---
 ### Requirement: 恢復自動收斂並清除 stale
 
-server 恢復可達後 SHALL 全自動：事件 worker 以既有 Polling 加 ETag 收斂機制重連，runtime 回 online 並發全量失效通知，store 全量重查後清除 stale 標示——SHALL NOT 要求使用者手動重整或任何操作。同一 connection 的多個 remote session 或 worker 同時需要認證恢復時，Desktop SHALL 讓同一時刻最多一個呼叫消耗已儲存的 refresh credential，其他呼叫 SHALL 共用該次成功換發的 access token 與已輪替 credential，再各自重試原讀取；本機併發 SHALL NOT 被伺服器視為舊 credential 重放，SHALL NOT 因而撤銷 credential family 或進入 `needs-reauth`。伺服器明確拒絕已撤銷、失效或真正遭重放的 credential 時，Desktop SHALL 維持既有 `needs-reauth` 行為。
+server 恢復可達後 SHALL 全自動：事件 worker 以既有 Polling 加 ETag 收斂機制重連，runtime 回 online 並發出全部失效的通知，store 全部重新查詢後清除 stale 標示——SHALL NOT 要求使用者手動重整或任何操作。同一 connection 的多個 remote session 或 worker 同時需要認證恢復時，Desktop SHALL 讓同一時刻最多一個呼叫消耗已儲存的 refresh credential，其他呼叫 SHALL 共用該次成功換發的 access token 與已輪替 credential，再各自重試原讀取；本機併發 SHALL NOT 被伺服器視為舊 credential 重放，SHALL NOT 因而撤銷 credential family 或進入 `needs-reauth`。伺服器明確拒絕已撤銷、失效或真正遭重放的 credential 時，Desktop SHALL 維持既有 `needs-reauth` 行為。
 
 #### Scenario: server 重啟後自動復原
 
@@ -110,7 +110,7 @@ code:
 
 needs-reauth 時，已建立 session 的 remote 分頁橫幅與尚未建立 session 的 remote 復原頁 SHALL 提供重新登入入口（重用既有 device login／PAT 流程）；macOS Tray Panel 與原生 Tray 選單 SHALL 由同一狀態提供對應重新登入動作。使用者明確選取重新登入 SHALL 顯示主視窗、進入應用程式設定的伺服器頁並聚焦該 connection；僅顯示 needs-reauth 狀態或執行不需登入 UI 的 retry SHALL NOT 自動喚起主視窗。
 
-登入成功後 SHALL 自動對該 connection 的全部 remote sessions 與無 session 復原分頁重走 handshake、全量重查並重啟事件 worker：既有 session 與分頁 SHALL 原地恢復，無 session 分頁 SHALL 於同一 locator key 建立 session。全程分頁 SHALL NOT 消失、SHALL NOT 退回 local mode；既有 session 期間內容維持 stale 唯讀，無 session 分頁 SHALL 維持復原頁且 SHALL NOT 顯示偽造 stale 內容。
+登入成功後 SHALL 自動對該 connection 的全部 remote sessions 與無 session 復原分頁重走 handshake、全部重新查詢並重啟事件 worker：既有 session 與分頁 SHALL 原地恢復，無 session 分頁 SHALL 於同一 locator key 建立 session。全程分頁 SHALL NOT 消失、SHALL NOT 退回 local mode；既有 session 期間內容維持 stale 唯讀，無 session 分頁 SHALL 維持復原頁且 SHALL NOT 顯示偽造 stale 內容。
 
 #### Scenario: 撤銷 device family 後原地復活
 

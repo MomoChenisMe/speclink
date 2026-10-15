@@ -4,8 +4,7 @@ slug: test-speed-and-wording
 status: promoted
 created: 2026-10-15
 created_by: MomoChen <momochenisme@gmail.com>
-hold: true
-promoted_to: dev-profile-no-debuginfo
+promoted_to: dev-profile-no-debuginfo, taiwan-full-wording
 ---
 
 # Discussion: 我想優化測試，然後重新調整用詞：1. 目前的用詞「全量測試」英文是什麼？Full Test 嗎？因為台灣不太會用全量這個詞 2. 目前跑全量測試時間蠻久的，怎麼優化比較好？

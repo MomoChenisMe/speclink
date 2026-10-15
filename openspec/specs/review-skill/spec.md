@@ -304,7 +304,7 @@ updated: 2026-10-14T16:37:17+08:00
 
 1. 修正改到的檔案落在某個任務說明列出的路徑內時，跑該任務說明寫的驗證指令（任務原文取自 `speclink instructions apply --change <name> --json` 的 `tasks`）；
 2. 任務沒涵蓋的檔案，依專案文件化的測試政策（CLAUDE.md、AGENTS.md 或 workflow config 的產出規則）選擇測試；
-3. 專案未寫任何測試政策時，跑 repo 慣例的全量測試指令。
+3. 專案未寫任何測試政策時，跑 repo 慣例的完整測試指令。
 
 建置 SHALL 照跑，SHALL NOT 因範圍判定而略過。結果呈現 SHALL 列出本次跑了哪些測試指令、略過哪些範圍，並註明略過的範圍交由 CI 守門。
 
@@ -322,12 +322,12 @@ updated: 2026-10-14T16:37:17+08:00
 #### Scenario: 只跑任務寫的驗證指令
 
 - **WHEN** 修正只改了任務 2.1 說明列出的檔案，該任務說明寫明以 `cargo test -p speclink-core` 驗證
-- **THEN** 技能執行建置與 `cargo test -p speclink-core`，不執行 workspace 全量測試；結果呈現列出已跑的指令與略過的其餘 package，並註明交由 CI 守門
+- **THEN** 技能執行建置與 `cargo test -p speclink-core`，不執行 workspace 完整測試；結果呈現列出已跑的指令與略過的其餘 package，並註明交由 CI 守門
 
-#### Scenario: 專案未寫測試政策時跑全量
+#### Scenario: 專案未寫測試政策時跑完整測試
 
 - **WHEN** 修正改到的檔案不在任何任務說明的路徑內，且專案的 CLAUDE.md、AGENTS.md 與 workflow config 都沒有測試政策
-- **THEN** 技能執行 repo 慣例的全量測試指令，與本變更前的行為相同
+- **THEN** 技能執行 repo 慣例的完整測試指令，與本變更前的行為相同
 
 #### Scenario: 規格字面修正後驗證並附上段落
 

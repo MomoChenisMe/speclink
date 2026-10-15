@@ -24,7 +24,7 @@ function requireIndex(haystack, needle, label) {
   return i;
 }
 
-// --- root test:all（delivery-baseline「root 單一指令全量驗證」） ---
+// --- root test:all（delivery-baseline「root 單一指令完整驗證」） ---
 
 test('test:all 依序納入五個測試面，且 apps/server-web build 排在 cargo test --workspace 之前', () => {
   const pkg = JSON.parse(read('package.json'));
