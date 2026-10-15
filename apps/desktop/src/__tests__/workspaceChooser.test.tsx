@@ -1,5 +1,6 @@
+import type { ProjectProbe } from "../adapter/workspace";
 import { describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { I18nProvider } from "@speclink/ui";
 
@@ -41,6 +42,16 @@ const zhWrapper = ({ children }: { children: ReactNode }) => (
   </I18nProvider>
 );
 
+/** 元素 class 中的 hover token（含 enabled:hover: 這類組合變體）。 */
+const hoverClasses = (el: HTMLElement) => el.className.split(/\s+/).filter((c) => c.includes("hover:"));
+/** 停用時不給 hover（spec desktop-app「可點元素的游標與 hover 回饋」；design D4）：hover token 全掛在
+ * enabled: 之下，停用的 button 不命中。 */
+function expectHoverOnlyWhenEnabled(el: HTMLElement) {
+  const hovers = hoverClasses(el);
+  expect(hovers.length).toBeGreaterThan(0);
+  expect(hovers.filter((c) => !c.startsWith("enabled:"))).toEqual([]);
+}
+
 function fakeConnections(over: Partial<ConnectionsAdapter> = {}): ConnectionsAdapter {
   return {
     list: vi.fn().mockResolvedValue([CONNECTION]),
@@ -61,7 +72,7 @@ function fakeConnections(over: Partial<ConnectionsAdapter> = {}): ConnectionsAda
 
 /** 走到 checkout 步驟並選好本機資料夾（inspect 完成後顯示工具 checkbox）。 */
 async function reachCheckoutFolder() {
-  fireEvent.click(screen.getByRole("button", { name: /選擇本機資料夾/ }));
+  fireEvent.click(screen.getByRole("radio", { name: /選擇本機資料夾/ }));
   await waitFor(() =>
     expect(screen.getByRole("checkbox", { name: /claude/i })).toBeTruthy(),
   );
@@ -71,6 +82,9 @@ function fakeWorkspace(over: Partial<WorkspaceAdapter> = {}): WorkspaceAdapter {
   return {
     openProject: vi.fn(),
     initProject: vi.fn(),
+    adoptProject: vi.fn(),
+    probeAssets: vi.fn(),
+    updateAssets: vi.fn(),
     startupDir: vi.fn(),
     projectStats: vi.fn(),
     watchWorkspace: vi.fn(),
@@ -93,6 +107,9 @@ async function renderChooser({
   initialConnectionId,
   initialScope,
   initialCheckoutPath,
+  initialStep,
+  initialServerUrl,
+  defaultConnectionId,
 }: {
   adapter?: ConnectionsAdapter;
   workspace?: WorkspaceAdapter;
@@ -107,6 +124,9 @@ async function renderChooser({
   initialConnectionId?: string;
   initialScope?: { projectKey: string; repoKey: string };
   initialCheckoutPath?: string;
+  initialStep?: "server";
+  initialServerUrl?: string;
+  defaultConnectionId?: string;
 } = {}) {
   const onOpenChange = vi.fn();
   render(
@@ -129,6 +149,9 @@ async function renderChooser({
       initialConnectionId={initialConnectionId}
       initialScope={initialScope}
       initialCheckoutPath={initialCheckoutPath}
+      initialStep={initialStep}
+      initialServerUrl={initialServerUrl}
+      defaultConnectionId={defaultConnectionId}
     />,
     { wrapper: zhWrapper },
   );
@@ -147,6 +170,12 @@ async function renderChooser({
   };
 }
 
+/** 第一步：選取來源卡後按頁尾主要鈕（design D8：點卡只選取）。 */
+function chooseSource(source: "local" | "server") {
+  fireEvent.click(screen.getByRole("button", { name: source === "local" ? /本機資料夾/ : /^Server/ }));
+  fireEvent.click(screen.getByRole("button", { name: source === "local" ? "選擇資料夾…" : "下一步" }));
+}
+
 /** 最近開啟列的開啟鈕（移除鈕帶 aria-label，開啟鈕沒有）。 */
 function recentOpenButton(name: RegExp): HTMLButtonElement {
   const found = screen
@@ -157,14 +186,27 @@ function recentOpenButton(name: RegExp): HTMLButtonElement {
 }
 
 async function chooseDesktopRepo() {
-  fireEvent.click(screen.getByRole("button", { name: /^Server/ }));
-  fireEvent.click(screen.getByRole("button", { name: /團隊 Server/ }));
+  chooseSource("server");
+  fireEvent.click(screen.getByRole("radio", { name: /團隊 Server/ }));
   await waitFor(() => expect(screen.getByRole("radio", { name: /Desktop/ })).toBeTruthy());
   fireEvent.click(screen.getByRole("radio", { name: /Desktop/ }));
   fireEvent.click(screen.getByRole("button", { name: "下一步" }));
 }
 
 describe("WorkspaceChooser", () => {
+  it("對話框標題為「新增專案」（en「New project」），使用者可見文案不出現 Workspace", async () => {
+    await renderChooser({ recents: [] });
+    const dialog = screen.getByRole("alertdialog");
+    expect(within(dialog).getByRole("heading", { name: "新增專案" })).toBeTruthy();
+    expect(dialog.textContent).not.toMatch(/workspace/i);
+    expect(APP_MESSAGES.en["chooser.sourceTitle"]).toBe("New project");
+    // 說明先講清楚：本機資料夾沒有 openspec/ 時會先問要不要初始化。
+    expect(within(dialog).getByText(APP_MESSAGES["zh-TW"]["chooser.sourceDesc"]).textContent).toContain(
+      "openspec/",
+    );
+    expect(APP_MESSAGES.en["chooser.sourceDesc"]).toContain("openspec/");
+  });
+
   // 來源卡不綁產品品牌：卡名與其下一步標題都只稱 Server。定位錨在開頭，
   // 否則會連最近開啟的 remote 列（顯示名含 Server）一起命中。
   it("第一步來源卡稱「Server」，點入後標題為「選擇 Server」", async () => {
@@ -175,6 +217,7 @@ describe("WorkspaceChooser", () => {
     expect(source.textContent).not.toContain("Speclink Server");
 
     fireEvent.click(source);
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
     expect(screen.getByText("選擇 Server")).toBeTruthy();
   });
 
@@ -183,8 +226,8 @@ describe("WorkspaceChooser", () => {
     const { adapter, onOpenChange } = await renderChooser({ onOpenRemote: open });
 
     await chooseDesktopRepo();
-    fireEvent.click(screen.getByRole("button", { name: /略過（規格模式）/ }));
-    fireEvent.click(screen.getByRole("button", { name: "開啟 Workspace" }));
+    fireEvent.click(screen.getByRole("radio", { name: /略過（規格模式）/ }));
+    fireEvent.click(screen.getByRole("button", { name: "開啟專案" }));
 
     await waitFor(() =>
       expect(open).toHaveBeenCalledWith("conn_1", "speclink/desktop", undefined),
@@ -208,7 +251,7 @@ describe("WorkspaceChooser", () => {
     await renderChooser({ adapter, workspace, onOpenRemote: open });
 
     await chooseDesktopRepo();
-    fireEvent.click(screen.getByRole("button", { name: /選擇本機資料夾/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /選擇本機資料夾/ }));
 
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toContain(
@@ -231,7 +274,7 @@ describe("WorkspaceChooser", () => {
   it("folder mode：inspect 預選既有工具，開啟時先 bind 後 openRemote", async () => {
     const inspect = vi
       .fn()
-      .mockResolvedValue({ root: "/work/desktop", tools: ["copilot"] });
+      .mockResolvedValue({ root: "/work/desktop", tools: ["codex"] });
     const bind = vi.fn().mockResolvedValue("/work/desktop");
     const adapter = fakeConnections({ inspectCheckout: inspect, bindCheckout: bind });
     const workspace = fakeWorkspace({ pickFolder: vi.fn().mockResolvedValue("/work/desktop") });
@@ -241,19 +284,24 @@ describe("WorkspaceChooser", () => {
     await chooseDesktopRepo();
     await reachCheckoutFolder();
 
-    // inspect 回傳 copilot → copilot 勾選、claude 未勾。
+    // inspect 回傳 codex → codex 勾選、claude 與 copilot 未勾。
+    expect(
+      (screen.getByRole("checkbox", { name: /codex/i }) as HTMLInputElement).getAttribute(
+        "aria-checked",
+      ),
+    ).toBe("true");
     expect(
       (screen.getByRole("checkbox", { name: /copilot/i }) as HTMLInputElement).getAttribute(
         "aria-checked",
       ),
-    ).toBe("true");
+    ).toBe("false");
     expect(
       (screen.getByRole("checkbox", { name: /claude/i }) as HTMLInputElement).getAttribute(
         "aria-checked",
       ),
     ).toBe("false");
 
-    fireEvent.click(screen.getByRole("button", { name: "開啟 Workspace" }));
+    fireEvent.click(screen.getByRole("button", { name: "開啟專案" }));
 
     await waitFor(() =>
       expect(bind).toHaveBeenCalledWith(
@@ -261,7 +309,7 @@ describe("WorkspaceChooser", () => {
         "https://spec.example.test",
         "speclink",
         "desktop",
-        ["copilot"],
+        ["codex"],
       ),
     );
     await waitFor(() =>
@@ -272,7 +320,7 @@ describe("WorkspaceChooser", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("folder mode：空工具選集時「開啟 Workspace」停用且不 bind", async () => {
+  it("folder mode：空工具選集時「開啟專案」停用且不 bind", async () => {
     const inspect = vi.fn().mockResolvedValue({ root: "/work/desktop", tools: [] });
     const bind = vi.fn();
     const adapter = fakeConnections({ inspectCheckout: inspect, bindCheckout: bind });
@@ -283,13 +331,13 @@ describe("WorkspaceChooser", () => {
     await reachCheckoutFolder();
 
     expect(
-      (screen.getByRole("button", { name: "開啟 Workspace" }) as HTMLButtonElement).disabled,
+      (screen.getByRole("button", { name: "開啟專案" }) as HTMLButtonElement).disabled,
     ).toBe(true);
     // 勾一個工具後啟用。
     fireEvent.click(screen.getByRole("checkbox", { name: /claude/i }));
     await waitFor(() =>
       expect(
-        (screen.getByRole("button", { name: "開啟 Workspace" }) as HTMLButtonElement).disabled,
+        (screen.getByRole("button", { name: "開啟專案" }) as HTMLButtonElement).disabled,
       ).toBe(false),
     );
     expect(bind).not.toHaveBeenCalled();
@@ -307,7 +355,7 @@ describe("WorkspaceChooser", () => {
 
     await chooseDesktopRepo();
     await reachCheckoutFolder();
-    fireEvent.click(screen.getByRole("button", { name: "開啟 Workspace" }));
+    fireEvent.click(screen.getByRole("button", { name: "開啟專案" }));
 
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toContain("同步技能時發生檔案系統錯誤"),
@@ -347,7 +395,7 @@ describe("WorkspaceChooser", () => {
     );
     // 缺選集 → Open 停用，需使用者明示勾選。
     expect(
-      (screen.getByRole("button", { name: "開啟 Workspace" }) as HTMLButtonElement).disabled,
+      (screen.getByRole("button", { name: "開啟專案" }) as HTMLButtonElement).disabled,
     ).toBe(true);
     expect(open).not.toHaveBeenCalled();
   });
@@ -369,7 +417,7 @@ describe("WorkspaceChooser", () => {
 
     await chooseDesktopRepo();
     await reachCheckoutFolder();
-    const openButton = screen.getByRole("button", { name: "開啟 Workspace" });
+    const openButton = screen.getByRole("button", { name: "開啟專案" });
     fireEvent.click(openButton);
     await waitFor(() => expect((openButton as HTMLButtonElement).disabled).toBe(true));
     fireEvent.click(openButton);
@@ -379,12 +427,61 @@ describe("WorkspaceChooser", () => {
     release("/work/desktop");
   });
 
+  it("initialStep: \"server\" 起始於 Server 步驟（空狀態「連線 Server」入口）", async () => {
+    await renderChooser({ initialStep: "server" });
+    expect(screen.getByText("選擇 Server")).toBeTruthy();
+    expect(screen.getByText("步驟 2 / 4")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /本機資料夾/ })).toBeNull();
+  });
+
+  it("第一步未選來源卡時頁尾主要鈕停用；「取消」為 ghost", async () => {
+    await renderChooser();
+    const primary = screen.getByRole("button", { name: "選擇來源" }) as HTMLButtonElement;
+    expect(primary.disabled).toBe(true);
+    const local = screen.getByRole("button", { name: /本機資料夾/ });
+    expect(local.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("button", { name: "取消" }).className).not.toContain("border");
+  });
+
+  it("選本機卡：卡片為選取態、主要鈕為「選擇資料夾…」，按下才開資料夾選擇器", async () => {
+    const workspace = fakeWorkspace();
+    await renderChooser({ workspace });
+    const local = screen.getByRole("button", { name: /本機資料夾/ });
+    fireEvent.click(local);
+    expect(local.getAttribute("aria-pressed")).toBe("true");
+    expect(local.className).toContain("border-primary");
+    expect(workspace.pickFolder).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "選擇資料夾…" }));
+    await waitFor(() => expect(workspace.pickFolder).toHaveBeenCalledTimes(1));
+  });
+
+  it("選 Server 卡：主要鈕為「下一步」，按下進 Server 步驟，清單為整列單選", async () => {
+    await renderChooser();
+    fireEvent.click(screen.getByRole("button", { name: /^Server/ }));
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    expect(screen.getByText("選擇 Server")).toBeTruthy();
+    const group = screen.getByRole("radiogroup");
+    const row = within(group).getByRole("radio", { name: /團隊 Server/ });
+    expect(row.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("checkout 步驟的兩個選項是單選列", async () => {
+    await renderChooser();
+    await chooseDesktopRepo();
+    const skip = await screen.findByRole("radio", { name: /略過/ });
+    fireEvent.click(skip);
+    expect(skip.getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("radio", { name: /選擇本機資料夾/ }).getAttribute("aria-checked")).toBe(
+      "false",
+    );
+  });
+
   it("scopes 沒有 membership 時顯示繁中空清單說明", async () => {
     const adapter = fakeConnections({ scopes: vi.fn().mockResolvedValue({ projects: [] }) });
     await renderChooser({ adapter });
 
-    fireEvent.click(screen.getByRole("button", { name: /^Server/ }));
-    fireEvent.click(screen.getByRole("button", { name: /團隊 Server/ }));
+    chooseSource("server");
+    fireEvent.click(screen.getByRole("radio", { name: /團隊 Server/ }));
 
     expect((await screen.findByTestId("scopes-empty")).textContent).toContain(
       "此帳號目前沒有任何 Project／Repo membership",
@@ -398,7 +495,7 @@ describe("WorkspaceChooser", () => {
     const add = vi.fn().mockResolvedValue(undefined);
     await renderChooser({ connections: [], onAddServer: add });
 
-    fireEvent.click(screen.getByRole("button", { name: /^Server/ }));
+    chooseSource("server");
     expect(screen.getByText(/目前沒有已登入的 server/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "新增 server" }));
     fireEvent.change(screen.getByLabelText("伺服器位址（http://…）"), {
@@ -426,7 +523,7 @@ describe("WorkspaceChooser", () => {
     });
     const { onOpenChange } = await renderChooser({ workspace, onOpenLocal: local });
 
-    fireEvent.click(screen.getByRole("button", { name: /本機資料夾/ }));
+    chooseSource("local");
     fireEvent.click(await screen.findByRole("button", { name: "開啟本機" }));
 
     await waitFor(() => expect(local).toHaveBeenCalledWith("/work/local"));
@@ -448,11 +545,41 @@ describe("WorkspaceChooser", () => {
       onRequestMigration: migrate,
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /本機資料夾/ }));
+    chooseSource("local");
     fireEvent.click(await screen.findByRole("button", { name: "遷移到 Server…" }));
 
     await waitFor(() => expect(migrate).toHaveBeenCalledWith("/work/local"));
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+});
+
+// 停用的選擇卡與單選列為箭頭且無 hover（spec desktop-app「可點元素的游標與 hover 回饋」；design D4）。
+describe("開啟專案畫面停用態", () => {
+  it("最近開啟列開啟中，停用的本機選擇卡為箭頭且無 hover", async () => {
+    const workspace = fakeWorkspace({ openProject: vi.fn(() => new Promise<ProjectProbe>(() => {})) });
+    await renderChooser({
+      workspace,
+      recents: [{ locator: { kind: "local", root: "/work/speclink" }, name: "speclink" }],
+    });
+    fireEvent.click(screen.getByRole("button", { name: /\/work\/speclink/ }));
+    const card = screen.getByRole("button", { name: /本機資料夾/ }) as HTMLButtonElement;
+    await waitFor(() => expect(card.disabled).toBe(true));
+    expectHoverOnlyWhenEnabled(card);
+    expect(card.className).toContain("cursor-default");
+  });
+
+  it("bind 進行中，停用的「選擇本機資料夾」單選列為箭頭且無 hover", async () => {
+    const adapter = fakeConnections({ bindCheckout: vi.fn(() => new Promise<string>(() => {})) });
+    const workspace = fakeWorkspace({ pickFolder: vi.fn().mockResolvedValue("/work/desktop") });
+    await renderChooser({ adapter, workspace });
+    await chooseDesktopRepo();
+    await reachCheckoutFolder();
+    fireEvent.click(screen.getByRole("button", { name: "開啟專案" }));
+    const row = screen.getByRole("radio", { name: /選擇本機資料夾/ }) as HTMLButtonElement;
+    await waitFor(() => expect(row.disabled).toBe(true));
+    // 已選中的單選列本來就沒有 hover；只確認沒有未受 enabled: 約束的 hover token。
+    expect(hoverClasses(row).filter((c) => !c.startsWith("enabled:"))).toEqual([]);
+    expect(row.className).toContain("cursor-default");
   });
 });
 
@@ -480,7 +607,7 @@ describe("remote marker 與本機 openspec 並存", () => {
     for (const name of [/^繼續本機/, /^以 Server 為準/, /^遷移本機內容/]) {
       const cls = screen.getByRole("button", { name }).className;
       expect(cls).toContain("border-border");
-      expect(cls).not.toContain("amber");
+      expect(cls).not.toContain("status-warning");
       expect(cls).not.toContain("bg-primary");
     }
     fireEvent.click(screen.getByRole("button", { name: /^繼續本機/ }));
@@ -496,6 +623,25 @@ describe("remote marker 與本機 openspec 並存", () => {
     await waitFor(() => expect(continueLocal).toHaveBeenCalledTimes(1));
     expect(migrateLocal).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: "取消" })).toBeNull();
+  });
+
+  it("處理中三張卡停用：無 hover 底色（spec desktop-app「可點元素的游標與 hover 回饋」；design D4）", async () => {
+    render(
+      <RemoteConflictDialog
+        conflict={{ path: "/work/coexists", url: "https://spec.example.test/api/speclink/v1/projects/demo", repo: "backend" }}
+        onContinueLocal={vi.fn().mockResolvedValue(undefined)}
+        onUseServer={vi.fn(() => new Promise<void>(() => {}))}
+        onMigrateLocal={vi.fn()}
+      />,
+      { wrapper: zhWrapper },
+    );
+    const names = [/^繼續本機/, /^以 Server 為準/, /^遷移本機內容/];
+    fireEvent.click(screen.getByRole("button", { name: names[1] }));
+    for (const name of names) {
+      const card = screen.getByRole("button", { name }) as HTMLButtonElement;
+      await waitFor(() => expect(card.disabled).toBe(true));
+      expectHoverOnlyWhenEnabled(card);
+    }
   });
 });
 
@@ -574,7 +720,7 @@ describe("WorkspaceChooser 登入回饋", () => {
 
   /** 走到 server 步驟並送出新增並登入。 */
   function addAndLogin() {
-    fireEvent.click(screen.getByRole("button", { name: /^Server/ }));
+    chooseSource("server");
     fireEvent.click(screen.getByRole("button", { name: "新增 server" }));
     fireEvent.change(screen.getByLabelText("伺服器位址（http://…）"), {
       target: { value: "http://localhost:8080" },
@@ -690,10 +836,10 @@ describe("最近開啟清單（spec 需求「最近開啟清單」；design D3 �
     );
     expect(onOpenLocal).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    // 錯誤態的列仍可再點重試，也仍可移除。
     expect(
       (screen.getByRole("button", { name: /\/work\/speclink/ }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-    // 錯誤態的列仍可移除。
+    ).toBe(false);
     expect(screen.getByRole("button", { name: "自最近開啟移除 speclink" })).toBeTruthy();
   });
 
@@ -888,5 +1034,39 @@ describe("連線清單載入結果決定錯誤態（review 第 2 輪 WARNING）"
     expect(screen.queryByText(/^Error: /)).toBeNull();
     expect(adapter.inspectCheckout).not.toHaveBeenCalled();
     expect(onOpenRemote).not.toHaveBeenCalled();
+  });
+});
+
+// 伺服器頁「預設」卡（desktop-settings-mode design D7；spec「預設連線於新增專案預選」）。
+describe("新增遠端專案時預設使用的連線", () => {
+  const OTHER: ConnectionView = { ...CONNECTION, id: "conn_2", origin: "https://b.example.test", name: "備援 Server" };
+
+  it("指向已登入連線時 Server 步驟預選該列（仍可改選）、不自動前進", async () => {
+    await renderChooser({ connections: [CONNECTION, OTHER], defaultConnectionId: "conn_2" });
+    chooseSource("server");
+    expect(screen.getByRole("radio", { name: /備援 Server/ }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("radio", { name: /團隊 Server/ }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByRole("radio", { name: /Desktop/ })).toBeNull();
+  });
+
+  it("帶入口意圖（marker 指向的伺服器、未登入的連線）開啟時不預選預設連線", async () => {
+    // remote marker 指向尚未登入的伺服器：預選預設連線會讓「下一步」把資料夾綁到錯的伺服器。
+    await renderChooser({
+      connections: [CONNECTION, OTHER],
+      defaultConnectionId: "conn_2",
+      initialServerUrl: "https://marker.example.test",
+    });
+    expect(screen.getByRole("radio", { name: /備援 Server/ }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByRole("button", { name: "下一步" })).toBeNull();
+  });
+
+  it("指向已登出或不存在的連線時不預選", async () => {
+    await renderChooser({
+      connections: [CONNECTION, { ...OTHER, loggedIn: false }],
+      defaultConnectionId: "conn_2",
+    });
+    chooseSource("server");
+    expect(screen.getByRole("radio", { name: /團隊 Server/ }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByRole("radio", { name: /備援 Server/ })).toBeNull();
   });
 });

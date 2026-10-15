@@ -163,6 +163,47 @@ pub fn update_assets_at(path: &Path) -> Result<serde_json::Value, String> {
     }))
 }
 
+/// 關於頁的版本資訊（desktop-about-page design D1）：一次回齊，前端不自行拼湊。
+/// 引擎版號＝`ASSET_VERSION`（與 CLI `--version` 的 engine 同一個值）；平台與架構為
+/// 顯示文字（macOS／Windows／Linux、arm64／x64），複製版本資訊與回報問題網址照用。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppInfo {
+    pub app_version: String,
+    pub engine_version: String,
+    pub platform: String,
+    pub arch: String,
+}
+
+/// `app_version` 由 Tauri 殼帶入（`package_info().version`）。
+pub fn app_info(app_version: &str) -> AppInfo {
+    AppInfo {
+        app_version: app_version.to_string(),
+        engine_version: speclink_core::init::ASSET_VERSION.to_string(),
+        platform: platform_label(std::env::consts::OS).to_string(),
+        arch: arch_label(std::env::consts::ARCH).to_string(),
+    }
+}
+
+/// 作業系統的顯示文字；三大平台以外原樣回傳。
+fn platform_label(os: &str) -> &str {
+    match os {
+        "macos" => "macOS",
+        "windows" => "Windows",
+        "linux" => "Linux",
+        other => other,
+    }
+}
+
+/// 架構的顯示文字（與 CLI `--version` 的 arm64／x64 一致）；其餘原樣回傳。
+fn arch_label(arch: &str) -> &str {
+    match arch {
+        "aarch64" => "arm64",
+        "x86_64" => "x64",
+        other => other,
+    }
+}
+
 /// 引擎錯誤壓成單行（多行時取首行），符合 Err 單行訊息契約。
 fn single_line(msg: &str) -> String {
     msg.lines().next().unwrap_or(msg).to_string()
@@ -173,6 +214,36 @@ mod tests {
     use super::*;
     use crate::testfixture::FixtureRoot;
     use std::path::{Path, PathBuf};
+
+    // --- 關於頁的版本資訊（desktop-about-page design D1） ---
+
+    #[test]
+    fn app_info_engine_version_matches_cli_engine() {
+        // 與 CLI `--version` 的「engine vX.Y.Z」同一個值。
+        let info = app_info("0.8.0");
+        assert_eq!(info.app_version, "0.8.0");
+        assert_eq!(info.engine_version, speclink_core::init::ASSET_VERSION);
+        assert_eq!(info.platform, platform_label(std::env::consts::OS));
+        assert_eq!(info.arch, arch_label(std::env::consts::ARCH));
+    }
+
+    #[test]
+    fn app_info_serializes_camel_case_fields() {
+        let value = serde_json::to_value(app_info("0.8.0")).unwrap();
+        let mut keys: Vec<&str> = value.as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["appVersion", "arch", "engineVersion", "platform"]);
+    }
+
+    #[test]
+    fn app_info_platform_and_arch_use_display_labels() {
+        for (os, label) in [("macos", "macOS"), ("windows", "Windows"), ("linux", "Linux"), ("freebsd", "freebsd")] {
+            assert_eq!(platform_label(os), label, "{os}");
+        }
+        for (arch, label) in [("aarch64", "arm64"), ("x86_64", "x64"), ("riscv64", "riscv64")] {
+            assert_eq!(arch_label(arch), label, "{arch}");
+        }
+    }
 
     // --- 技能檔探測與更新包裝（desktop-instruction-staleness-prompt 決策 4、5） ---
 
@@ -525,13 +596,13 @@ mod tests {
     }
 
     #[test]
-    fn copilot_initialization_and_adoption_use_shared_skills_only() {
+    fn copilot_initialization_and_adoption_use_native_skills_only() {
         let plain = PlainDir::new("copilot-init");
         let probe = init_project_at(plain.path(), &["copilot".into()]).unwrap();
         assert_eq!(serde_json::to_value(probe).unwrap()["status"], "project");
         assert!(plain
             .path()
-            .join(".agents/skills/speclink-propose/SKILL.md")
+            .join(".github/skills/speclink-propose/SKILL.md")
             .is_file());
         assert!(!plain.path().join("AGENTS.md").exists());
         let fx = FixtureRoot::new("copilot-adopt");
@@ -548,7 +619,7 @@ mod tests {
         );
         assert!(fx
             .root()
-            .join(".agents/skills/speclink-propose/SKILL.md")
+            .join(".github/skills/speclink-propose/SKILL.md")
             .is_file());
     }
 
@@ -590,6 +661,43 @@ mod tests {
         assert!(p.join(".agents").join("skills").is_dir());
         let app = read(&p.join(".speclink.yaml"));
         assert!(app.contains("claude") && app.contains("codex"), "tools must record both: {app}");
+    }
+
+    #[test]
+    fn init_project_at_with_copilot_only_adds_github_skills() {
+        // spec Scenario「勾選 copilot 時生成對應工具檔」的只選 copilot 情形。
+        let plain = PlainDir::new("init-copilot");
+        init_project_at(plain.path(), &["copilot".into()]).expect("init ok");
+        let p = plain.path();
+        assert!(p
+            .join(".github")
+            .join("skills")
+            .join("speclink-propose")
+            .join("SKILL.md")
+            .is_file());
+        for absent in ["CLAUDE.md", "AGENTS.md", ".claude", ".agents"] {
+            assert!(!p.join(absent).exists(), "{absent} 不得生成");
+        }
+        assert!(!p.join(".github").join("copilot-instructions.md").exists());
+        assert!(read(&p.join(".speclink.yaml")).contains("copilot"));
+    }
+
+    #[test]
+    fn init_project_at_with_claude_and_copilot_adds_both_skill_sets() {
+        // spec Scenario「勾選 copilot 時生成對應工具檔」：預設的 claude 再加勾 copilot。
+        let plain = PlainDir::new("init-claude-copilot");
+        init_project_at(plain.path(), &["claude".into(), "copilot".into()]).expect("init ok");
+        let p = plain.path();
+        for skills in [".claude", ".github"] {
+            let propose = p.join(skills).join("skills").join("speclink-propose");
+            assert!(propose.join("SKILL.md").is_file(), "{skills} 技能須生成");
+        }
+        assert!(!p.join(".github").join("copilot-instructions.md").exists());
+        let app = read(&p.join(".speclink.yaml"));
+        assert!(
+            app.contains("claude") && app.contains("copilot"),
+            "tools must record both: {app}"
+        );
     }
 
     #[test]
@@ -726,6 +834,34 @@ mod tests {
         assert!(p.join(".claude").join("skills").is_dir());
         assert_eq!(
             read(&p.join("openspec").join("specs").join("auth").join("spec.md")),
+            "## Purpose\n既有規格。\n"
+        );
+    }
+
+    #[test]
+    fn adopt_project_at_with_copilot_only_adds_github_skills() {
+        // spec Scenario「啟用時勾選 copilot」。
+        let fx = FixtureRoot::new("adopt-copilot");
+        fx.write("openspec/specs/auth/spec.md", "## Purpose\n既有規格。\n");
+        adopt_project_at(fx.root(), &["copilot".into()]).expect("adopt ok");
+        let p = fx.root();
+        assert!(read(&p.join(".speclink.yaml")).contains("copilot"));
+        assert!(p
+            .join(".github")
+            .join("skills")
+            .join("speclink-propose")
+            .join("SKILL.md")
+            .is_file());
+        for absent in ["CLAUDE.md", "AGENTS.md", ".claude", ".agents"] {
+            assert!(!p.join(absent).exists(), "{absent} 不得生成");
+        }
+        assert_eq!(
+            read(
+                &p.join("openspec")
+                    .join("specs")
+                    .join("auth")
+                    .join("spec.md")
+            ),
             "## Purpose\n既有規格。\n"
         );
     }

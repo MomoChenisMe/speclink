@@ -61,7 +61,7 @@ fn deployed_version_output(platform: &str, home: Option<&str>) -> Option<String>
 /// PATH 提示的判定基準是「使用者終端」的 PATH——macOS GUI app 從 Dock 啟動
 /// 不繼承 shell 設定檔，程序 PATH 只有系統預設，直接用會誤報「不在 PATH」。
 /// 以 login shell 解析真實 PATH；失敗（非 unix、shell 異常）退回程序 PATH。
-fn user_shell_path() -> String {
+pub(crate) fn user_shell_path() -> String {
     #[cfg(unix)]
     {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());

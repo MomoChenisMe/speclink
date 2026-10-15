@@ -25,10 +25,17 @@ export const SheetOverlay = React.forwardRef<
 ));
 SheetOverlay.displayName = "SheetOverlay";
 
+// 滑出方向：抽屜貼右（預設），窄螢幕導覽貼左（server-web-shell-alignment design D6）。
+const SHEET_SIDE = {
+  right:
+    "right-0 border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
+  left: "left-0 border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left",
+};
+
 export const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>
->(({ className, children, ...props }, ref) => {
+  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content> & { side?: "left" | "right" }
+>(({ className, children, side = "right", ...props }, ref) => {
   // 抽屜內的浮層要 portal 進抽屜自己（見 portal-container.tsx）：portal 到 body 會落在
   // focus trap 外面，與 Dialog 的 FocusScope 互推焦點。
   const [content, setContent] = React.useState<HTMLElement | null>(null);
@@ -44,7 +51,8 @@ export const SheetContent = React.forwardRef<
         className={cn(
           // overflow-x-hidden 為必要而非贅述：CSS 規定 overflow-x: visible 搭配
           // overflow-y: auto 時，x 軸會被計算為 auto——單一過長子項即讓面板長出水平捲軸。
-          "fixed z-50 inset-y-0 right-0 h-full w-[440px] max-w-[92vw] bg-card border-l border-border shadow-lg p-5 overflow-y-auto overflow-x-hidden flex flex-col gap-4 duration-300 ease-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right motion-reduce:animate-none",
+          "fixed z-50 inset-y-0 h-full w-[440px] max-w-[92vw] bg-card border-border shadow-lg p-5 overflow-y-auto overflow-x-hidden flex flex-col gap-4 duration-300 ease-out data-[state=open]:animate-in data-[state=closed]:animate-out motion-reduce:animate-none",
+          SHEET_SIDE[side],
           className,
         )}
         {...props}

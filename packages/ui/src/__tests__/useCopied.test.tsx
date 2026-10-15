@@ -14,13 +14,17 @@ function Probe() {
 }
 
 describe("useCopied", () => {
-  it("觸發後亮起，1.2 秒自動復原", () => {
+  it("觸發後亮起，1.5 秒自動復原", () => {
     vi.useFakeTimers();
     render(<Probe />);
     fireEvent.click(screen.getByRole("button"));
     expect(screen.getByRole("button").textContent).toBe("copied");
     act(() => {
-      vi.advanceTimersByTime(1200);
+      vi.advanceTimersByTime(1499);
+    });
+    expect(screen.getByRole("button").textContent).toBe("copied");
+    act(() => {
+      vi.advanceTimersByTime(1);
     });
     expect(screen.getByRole("button").textContent).toBe("idle");
   });
@@ -30,15 +34,15 @@ describe("useCopied", () => {
     render(<Probe />);
     fireEvent.click(screen.getByRole("button"));
     act(() => {
-      vi.advanceTimersByTime(800);
+      vi.advanceTimersByTime(1000);
     });
     fireEvent.click(screen.getByRole("button"));
     act(() => {
-      vi.advanceTimersByTime(800);
+      vi.advanceTimersByTime(1000);
     });
     expect(screen.getByRole("button").textContent).toBe("copied");
     act(() => {
-      vi.advanceTimersByTime(400);
+      vi.advanceTimersByTime(500);
     });
     expect(screen.getByRole("button").textContent).toBe("idle");
   });

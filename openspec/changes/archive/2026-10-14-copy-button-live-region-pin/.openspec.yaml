@@ -1,0 +1,43 @@
+schema: spec-driven
+created: 2026-10-14
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: detail-locate-white-gap
+started_at: 2026-10-14
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-14
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 5
+reviewed_scope:
+  - path: packages/ui/src/__tests__/copyButton.test.tsx
+    hash: 7b599f31b36575bea3bbcaa1374d1ddc9ed0325292597aae3c46578f67f03afb
+  - path: packages/ui/src/__tests__/discussionColumn.test.tsx
+    hash: 154eb969e885e96748e7dfe088cf0eb64a243ada3ea95be32ae66c7497cb33ae
+  - path: packages/ui/src/components/BoardColumn.tsx
+    hash: 5753d876f59e8b8de72d7e68d36dc37ef9c5ec658b7c3f3711ca72f94143e3a6
+  - path: packages/ui/src/components/CopyButton.tsx
+    hash: b3198acbb5a098c4be42dd2a76b2bc42f263546aa105c6b071670a6525fa3512
+  - path: packages/ui/src/components/DiscussionColumn.tsx
+    hash: 5f911ce7443a4b62a660bbaf3df3cfe41a56ea19f8c6eadb2b6af5057514fab2
+  - path: packages/ui/src/components/KanbanBoard.tsx
+    hash: a2c92b0d617ee8842ab1a9c29b332786abae0f00cb9aa9bd3270b08b66a6e10f
+verified_at: 2026-10-14
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 5
+verified_scope:
+  - path: packages/ui/src/__tests__/copyButton.test.tsx
+    hash: 7b599f31b36575bea3bbcaa1374d1ddc9ed0325292597aae3c46578f67f03afb
+  - path: packages/ui/src/__tests__/discussionColumn.test.tsx
+    hash: 154eb969e885e96748e7dfe088cf0eb64a243ada3ea95be32ae66c7497cb33ae
+  - path: packages/ui/src/components/BoardColumn.tsx
+    hash: 5753d876f59e8b8de72d7e68d36dc37ef9c5ec658b7c3f3711ca72f94143e3a6
+  - path: packages/ui/src/components/CopyButton.tsx
+    hash: b3198acbb5a098c4be42dd2a76b2bc42f263546aa105c6b071670a6525fa3512
+  - path: packages/ui/src/components/DiscussionColumn.tsx
+    hash: 5f911ce7443a4b62a660bbaf3df3cfe41a56ea19f8c6eadb2b6af5057514fab2
+  - path: packages/ui/src/components/KanbanBoard.tsx
+    hash: a2c92b0d617ee8842ab1a9c29b332786abae0f00cb9aa9bd3270b08b66a6e10f
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-14

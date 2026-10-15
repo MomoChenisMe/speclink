@@ -1,32 +1,27 @@
 use super::init_tools::TempEnv;
 
 #[test]
-fn copilot_shared_update_and_switch_keep_real_names_and_user_files() {
+fn copilot_native_update_and_switch_keep_real_names_and_user_files() {
     let env = TempEnv::new("copilot-shared-lifecycle");
     assert!(env
         .run(&["init", "--tools", "codex,copilot"])
         .status
         .success());
-    let path = env.dir.join(".agents/skills/speclink-propose/SKILL.md");
+    let path = env.dir.join(".github/skills/speclink-propose/SKILL.md");
     let before = std::fs::read(&path).unwrap();
-    std::fs::create_dir_all(env.dir.join(".agents/skills/my-skill")).unwrap();
-    std::fs::write(env.dir.join(".agents/skills/my-skill/SKILL.md"), "user").unwrap();
+    for dir in [".agents/skills", ".github/skills"] {
+        std::fs::create_dir_all(env.dir.join(dir).join("my-skill")).unwrap();
+        std::fs::write(env.dir.join(dir).join("my-skill/SKILL.md"), "user").unwrap();
+    }
     let out = env.run(&["--no-color", "update"]);
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    assert!(
-        String::from_utf8_lossy(&out.stdout).contains("Updated skill files for: codex, copilot")
-    );
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("Updated skill files for: codex, copilot"));
     assert!(!out.stdout.contains(&0x1b) && !out.stderr.contains(&0x1b));
     for tools in ["copilot", "codex", "copilot,codex"] {
-        assert!(env
-            .run(&["init", "--force", "--tools", tools])
-            .status
-            .success());
-        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert!(env.run(&["init", "--force", "--tools", tools]).status.success());
+        assert_eq!(path.exists(), tools.contains("copilot"));
+        if path.exists() { assert_eq!(std::fs::read(&path).unwrap(), before); }
+        assert_eq!(env.exists(".agents/skills/speclink-propose/SKILL.md"), tools.contains("codex"));
     }
     assert_eq!(env.builtins(), ["copilot", "codex"]);
     assert!(env
@@ -44,7 +39,7 @@ fn copilot_shared_update_and_switch_keep_real_names_and_user_files() {
 fn copilot_guard_refuses_without_writes_and_allows_explicit_downgrade() {
     let env = TempEnv::new("copilot-guard-cli");
     assert!(env.run(&["init", "--tools", "copilot"]).status.success());
-    let path = env.dir.join(".agents/skills/speclink-propose/SKILL.md");
+    let path = env.dir.join(".github/skills/speclink-propose/SKILL.md");
     let text = std::fs::read_to_string(&path).unwrap();
     let version = speclink_core::init::ASSET_VERSION;
     std::fs::write(&path, text.replace(version, "v99999.0.0")).unwrap();
@@ -62,7 +57,7 @@ fn copilot_guard_refuses_without_writes_and_allows_explicit_downgrade() {
 }
 
 #[test]
-fn copilot_remote_init_generates_shared_skills_without_local_specs() {
+fn copilot_remote_init_generates_native_skills_without_local_specs() {
     let env = TempEnv::new("copilot-remote");
     let out = env.run(&[
         "init",
@@ -81,6 +76,6 @@ fn copilot_remote_init_generates_shared_skills_without_local_specs() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert_eq!(env.builtins(), ["copilot"]);
-    assert!(env.exists(".agents/skills/speclink-propose/SKILL.md"));
-    assert!(!env.exists("openspec") && !env.exists(".github") && !env.exists("AGENTS.md"));
+    assert!(env.exists(".github/skills/speclink-propose/SKILL.md"));
+    assert!(!env.exists("openspec") && !env.exists(".agents") && !env.exists("AGENTS.md"));
 }

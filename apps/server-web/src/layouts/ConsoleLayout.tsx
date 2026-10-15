@@ -1,84 +1,124 @@
 import { useRef, useState, type ReactNode } from "react";
-import { useLocation } from "react-router-dom";
+import { matchPath, useLocation, useNavigate } from "react-router-dom";
+import { Menu } from "lucide-react";
 import {
+  Breadcrumbs,
   Button,
   Sheet,
   SheetContent,
-  SheetHeader,
   SheetTitle,
   SheetTrigger,
   useI18n,
+  Wordmark,
+  type Crumb,
 } from "@speclink/ui";
 import { SkipLink } from "../components/SkipLink";
-import { AdminNav } from "../components/AdminNav";
+import { ADMIN_DESTINATIONS, AdminNav, MemberNav } from "../components/AdminNav";
+import { AccountMenu } from "../components/AccountMenu";
 import { TourProvider } from "../components/Tour";
-import { HeaderAccount } from "../components/HeaderAccount";
-import { Wordmark } from "../components/Wordmark";
 import { useSession } from "../app/context";
 import { useFocusMain } from "../lib/useFocusMain";
-import { useMediaQuery } from "../lib/useMediaQuery";
+import { useNarrow } from "../lib/useMediaQuery";
+import { DetailTitleProvider } from "./DetailTitle";
 
-// 主控台殼：管理員與一般成員共用，依角色裁切側欄。header 恆常呈現（品牌、電子郵件
-// 連結與登出）；側欄只在 session 帶 admin 旗標時渲染——可見性依伺服器回傳的角色真相，
-// 前端不自行推導。管理員在 /account 時側欄整條保留但無項目高亮（帳號已不是側欄目的地）。
+// 主控台殼（design D1）：管理員與一般成員同一種形狀——側欄（頂端字標、中段導覽、底部
+// 帳號選單）加主欄（頂列麵包屑、下方主內容），沒有橫貫頂部的 header。導覽依 session 的
+// admin 旗標裁切（伺服器回傳的角色真相，前端不自行推導）：管理員六個目的地，一般成員只有
+// 帳號一項。管理員在 /account 時側欄整條保留但無項目高亮。
 //
-// ≥1024px 顯示 icon＋label 的固定側欄；更窄以有可見 trigger 的 Sheet 提供相同六個目的地，
-// 關閉後 focus 回到 trigger（Radix 預設處理）。header 高度、側欄寬度與主內容內距採用
-// Desktop 應用程式殼的數值（h-12／w-[200px]／p-5）。
+// ≥1024px 顯示固定側欄；更窄時改由頂列的「開啟導覽」鈕開出從左滑出、內容相同的 Sheet，
+// 關閉後 focus 回到觸發鈕（Radix 預設處理）。頂列高度、側欄寬度與主內容內距採用 Desktop
+// 應用程式殼的數值（h-12／w-[200px]／p-5）。
 export function ConsoleLayout({ children }: { children: ReactNode }) {
   const { t } = useI18n();
   const mainRef = useRef<HTMLElement>(null);
   const location = useLocation();
   const { session } = useSession();
-  useFocusMain(mainRef, location.pathname);
-  const narrow = useMediaQuery("(max-width: 1023px)");
+  // ‹ › 在同一區段的詳情頁之間切換時焦點留在導覽鈕上，鍵盤才能連按；其他換頁把焦點移到頁標題。
+  const detailMatch = matchPath("/admin/:section/:item", location.pathname);
+  useFocusMain(mainRef, detailMatch ? `/admin/${detailMatch.params.section}/*` : location.pathname);
+  const narrow = useNarrow();
   const [sheetOpen, setSheetOpen] = useState(false);
+  // 詳情頁交出的麵包屑第三段與 ‹ n / m › 的插槽（server-web-detail-pages design D2）。
+  const [detailLabel, setDetailLabel] = useState<string | null>(null);
+  const [detailSlot, setDetailSlot] = useState<HTMLElement | null>(null);
   const admin = session.user?.admin === true;
+  // 路徑比對與路由、側欄高亮同一套（matchPath：不分大小寫、容許結尾斜線）。
+  const inAdmin = matchPath({ path: "/admin", end: false }, location.pathname) !== null;
+  const crumbs = useCrumbs(location.pathname, inAdmin, detailLabel);
 
   return (
     // 滿高欄式版面：殼本身固定滿版不捲動，只有主內容區捲——與 Desktop 殼同結構。
-    // 若讓整頁捲，header 與側欄會跟著滾出畫面，導覽就不再是恆常可見的。
-    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+    // 若讓整頁捲，側欄與頂列會跟著滾出畫面，導覽就不再是恆常可見的。
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <SkipLink />
-      <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
-        <div className="flex min-w-0 items-center gap-3">
-          {admin && narrow && (
+      {!narrow && (
+        <aside className="flex w-[200px] shrink-0 flex-col border-r border-border bg-sidebar">
+          <SidebarBody admin={admin} />
+        </aside>
+      )}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-5">
+          {narrow && (
             <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
               <SheetTrigger asChild>
-                <Button variant="outline" size="sm" aria-label={t("shell.openNav")}>
-                  {t("shell.menu")}
+                <Button variant="ghost" size="icon" className="-ml-2 shrink-0" aria-label={t("shell.openNav")}>
+                  <Menu aria-hidden="true" />
                 </Button>
               </SheetTrigger>
-              <SheetContent className="w-72">
-                <SheetHeader>
-                  <SheetTitle>{t("shell.adminNav")}</SheetTitle>
-                </SheetHeader>
-                <nav aria-label={t("shell.adminNav")} className="mt-4">
-                  <AdminNav onNavigate={() => setSheetOpen(false)} />
-                </nav>
+              <SheetContent side="left" aria-describedby={undefined} className="w-[280px] gap-0 p-0">
+                <SheetTitle className="sr-only">{t("shell.nav")}</SheetTitle>
+                <SidebarBody admin={admin} onNavigate={() => setSheetOpen(false)} />
               </SheetContent>
             </Sheet>
           )}
-          <Wordmark />
+          <Breadcrumbs crumbs={crumbs} />
+          <div ref={setDetailSlot} className="ml-auto flex shrink-0 items-center" />
         </div>
-        <HeaderAccount />
-      </header>
-      <div className="flex flex-1 overflow-hidden">
-        {admin && !narrow && (
-          <nav
-            aria-label={t("shell.adminNav")}
-            className="w-[200px] shrink-0 overflow-y-auto border-r border-border bg-card p-2"
-          >
-            <AdminNav />
-          </nav>
-        )}
         <main id="main-content" ref={mainRef} className="min-w-0 flex-1 overflow-y-auto p-5">
           {/* 導覽只在管理面啟動：帳號頁沒有側欄目的地可指，一般成員更看不到管理面。 */}
-          <TourProvider enabled={admin && location.pathname.startsWith("/admin")}>
-            {children}
+          <TourProvider enabled={admin && inAdmin}>
+            <DetailTitleProvider setLabel={setDetailLabel} slot={detailSlot}>
+              {children}
+            </DetailTitleProvider>
           </TourProvider>
         </main>
       </div>
     </div>
   );
+}
+
+/** 側欄與窄螢幕 Sheet 共用的內容：字標、該角色的導覽、帳號選單。 */
+function SidebarBody({ admin, onNavigate }: { admin: boolean; onNavigate?: () => void }) {
+  const { t } = useI18n();
+  return (
+    <>
+      <div className="flex h-12 shrink-0 items-center border-b border-border px-4">
+        <Wordmark className="h-5" />
+      </div>
+      <nav aria-label={t(admin ? "shell.adminNav" : "shell.nav")} className="min-h-0 flex-1 overflow-y-auto p-2">
+        {admin ? <AdminNav onNavigate={onNavigate} /> : <MemberNav onNavigate={onNavigate} />}
+      </nav>
+      <div className="shrink-0 border-t border-border p-2">
+        <AccountMenu onNavigate={onNavigate} />
+      </div>
+    </>
+  );
+}
+
+/** 麵包屑（design D4）：管理面為「後台 / <目的地>」且「後台」可點回總覽，帳號頁為「帳號」；
+ *  未列在目的地表內的 /admin/* 路徑只顯示「後台」。詳情頁交出名稱時為「後台 / <目的地> / <名稱>」，
+ *  目的地可點回列表（server-web-detail-pages design D2）。目的地依各自的 `end` 比對，詳情頁的
+ *  網址也找得到所屬目的地。 */
+function useCrumbs(pathname: string, inAdmin: boolean, detailLabel: string | null): Crumb[] {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  if (!inAdmin) return [{ label: t("account.title") }];
+  const home: Crumb = { label: t("shell.console"), onClick: () => navigate("/admin") };
+  const destination = ADMIN_DESTINATIONS.find((d) => matchPath({ path: d.to, end: d.end ?? false }, pathname));
+  if (!destination) return [home];
+  const label = t(destination.labelKey);
+  return detailLabel
+    ? [home, { label, onClick: () => navigate(destination.to) }, { label: detailLabel }]
+    : [home, { label }];
 }

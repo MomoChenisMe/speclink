@@ -1,25 +1,25 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
 
-import type { StationTicket, TicketFinding, TicketRound, TicketStation } from "../adapter";
+import {
+  REVIEW_LISTS,
+  type ReviewList,
+  type ReviewRules,
+  type StationTicket,
+  type TicketFinding,
+  type TicketRound,
+  type TicketStation,
+} from "../adapter";
+import { findingAxis } from "../docModel";
 import { useI18n } from "../i18n";
-import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
+import { cn } from "../lib/utils";
+import { SEMANTIC_SURFACE } from "../tone";
+import { BaselineSmellList } from "./BaselineSmellList";
+import { Badge } from "./ui/badge";
+import { Callout } from "./ui/callout";
+import { ExpandToggle, SECTION_HEADING_CLS } from "./DocParts";
+import { SeverityTag } from "./SeverityTag";
+import type { DocSummary } from "./DetailShell";
 import { DocSkeleton } from "./skeletons";
-
-/** 嚴重度色章：CRITICAL 破壞色、WARNING 琥珀、SUGGESTION 中性——與 AnalyzePanel 的
- * 發現卡同語意同色；三紅分工（tone.ts 表頭）之外不另立一紅。標籤維持英文，與
- * 工單原文一致。 */
-const SEVERITY_CLS: Record<TicketFinding["severity"], string> = {
-  CRITICAL: "bg-destructive/15 text-destructive",
-  WARNING: `${SEMANTIC_SURFACE.warning} ${SEMANTIC_TONE.warning}`,
-  SUGGESTION: "bg-muted text-muted-foreground",
-};
-
-/** 站名沿用分頁標籤——分頁名與狀態列章籤的站名一致（proposal）。 */
-const STATION_KEY: Record<TicketStation, string> = {
-  review: "drawer.tab.review",
-  verify: "drawer.tab.verify",
-};
 
 /** 階段詞：discovery →「首輪」、validation →「複驗」（LANGUAGE.md 詞條）；legacy 輪無。 */
 const PHASE_KEY = {
@@ -99,41 +99,79 @@ export interface TicketViewProps {
   ticket: StationTicket;
 }
 
+const SEVERITIES: TicketFinding["severity"][] = ["CRITICAL", "WARNING", "SUGGESTION"];
+
+/** 一輪三級嚴重度各自的條數。 */
+function severityCounts(round: TicketRound): Record<TicketFinding["severity"], number> {
+  const counts = { CRITICAL: 0, WARNING: 0, SUGGESTION: 0 };
+  for (const f of round.findings) counts[f.severity] += 1;
+  return counts;
+}
+
+/** 依序號升序的輪次（引擎不保證檔內順序）。 */
+const sortedRounds = (ticket: StationTicket) => [...ticket.rounds].sort((a, b) => a.index - b.index);
+
 /**
- * 結構化工單（spec desktop-app「詳情抽屜的工單分頁」、design D4）：段標題列站名、
- * 末輪輪數、末輪階段詞與三級計數；輪次依序號升序逐輪可收合，末輪展開、其餘收合；
- * 每條 finding 一列（色章、等寬路徑、原文描述、行尾 accepted 籤）。唯讀、無虛擬化。
+ * 工單文件的籤、數字磚與可蓋章提示框（spec「詳情頁的工單分頁」；design D8）：籤槽為「第 N 輪」與
+ * 末輪階段詞，數字磚為輪數與末輪三級計數；末輪 CRITICAL 與 WARNING 皆為 0 時 tip「可以蓋章」並
+ * 點名該站的 stamp 指令。工單未載入或不存在時全空。
+ */
+export function ticketSummary(
+  station: TicketStation,
+  ticket: StationTicket | null | undefined,
+  t: (key: string) => string,
+): DocSummary {
+  if (!ticket || ticket.rounds.length === 0) return { badges: null, tiles: [], callout: null };
+  const rounds = sortedRounds(ticket);
+  const last = rounds[rounds.length - 1];
+  const counts = severityCounts(last);
+  const [before, after] = t("ticket.stampHow").split("{cmd}");
+  return {
+    badges: (
+      <>
+        <Badge variant="secondary">{roundLabel(t, last.index)}</Badge>
+        {last.phase && <Badge variant="outline">{t(PHASE_KEY[last.phase])}</Badge>}
+      </>
+    ),
+    tiles: [
+      { value: rounds.length, label: t("ticket.tileRounds") },
+      ...SEVERITIES.map((sev) => ({ value: counts[sev], label: t("ticket.tileLast").replace("{sev}", sev) })),
+    ],
+    callout:
+      counts.CRITICAL === 0 && counts.WARNING === 0 ? (
+        <Callout tone="tip" title={t("ticket.stampable")} className="my-0">
+          <p className="text-sm">
+            {counts.SUGGESTION > 0
+              ? t("ticket.stampableHint").replace("{n}", String(counts.SUGGESTION))
+              : t("ticket.stampableNone")}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {before}
+            <code className="font-mono">{`speclink ${station} stamp`}</code>
+            {after}
+          </p>
+        </Callout>
+      ) : null,
+  };
+}
+
+/**
+ * 結構化工單（spec desktop-app「詳情頁的工單分頁」、design D8）：輪次依序號升序逐輪一張卡，
+ * 末輪展開、其餘收合；展開後先列套用規則列（該輪有記錄時），再列範圍路徑與 finding（色章、
+ * 軸向籤、等寬路徑、原文描述、行尾 accepted 籤）。站名、輪數與計數在閱讀卡標題區（ticketSummary），內文不另畫段標題列。
+ * 唯讀、無虛擬化。
  */
 export function TicketView({ station, ticket }: TicketViewProps) {
-  const { t } = useI18n();
-  const rounds = [...ticket.rounds].sort((a, b) => a.index - b.index);
-  const last = rounds[rounds.length - 1];
-  const counts = { CRITICAL: 0, WARNING: 0, SUGGESTION: 0 };
-  for (const f of last.findings) counts[f.severity] += 1;
-  const phase = last.phase ? t(PHASE_KEY[last.phase]) : null;
-  const title = `${t(STATION_KEY[station])} · ${roundLabel(t, last.index)}${phase ? `（${phase}）` : " · "}`;
+  const rounds = sortedRounds(ticket);
+  const smells = ticket.reviewBaselineSmells ?? [];
   return (
     <div data-ticket-view data-station={station} className="flex flex-col gap-2">
-      <div data-ticket-header className="flex flex-wrap items-baseline gap-x-1 text-sm">
-        <span className="font-semibold">{title}</span>
-        <span className="text-xs tabular-nums text-muted-foreground">
-          <span className={counts.CRITICAL > 0 ? SEMANTIC_TONE.danger : undefined}>
-            CRITICAL {counts.CRITICAL}
-          </span>
-          {" · "}
-          <span className={counts.WARNING > 0 ? SEMANTIC_TONE.warning : undefined}>
-            WARNING {counts.WARNING}
-          </span>
-          {" · "}
-          <span>SUGGESTION {counts.SUGGESTION}</span>
-        </span>
-      </div>
       {/* key 綁輪數：追加輪後整組重掛，預設「末輪展開、其餘收合」重新成立
           （spec Scenario「工單追加輪後分頁更新」），不必逐輪同步狀態。輪的 key 用
           陣列位置——引擎不檢查 `## Round N` 唯一，手改出的同序號不得撞 key。 */}
       <ol key={rounds.length} className="flex flex-col gap-1.5">
         {rounds.map((round, i) => (
-          <RoundBlock key={i} round={round} defaultOpen={i === rounds.length - 1} />
+          <RoundBlock key={i} round={round} smells={smells} defaultOpen={i === rounds.length - 1} />
         ))}
       </ol>
     </div>
@@ -144,52 +182,47 @@ function roundLabel(t: (key: string) => string, index: number): string {
   return t("ticket.round").replace("{n}", String(index));
 }
 
-function RoundBlock({ round, defaultOpen }: { round: TicketRound; defaultOpen: boolean }) {
-  const { t } = useI18n();
+/** 輪卡（與排程文件同一種邊框卡片）：卡頭 16px「第 N 輪」（本頁目錄錨點）、階段詞、範圍檔數、條數與
+ * 各嚴重度計數籤；展開後先列套用規則列（該輪有記錄時）、再列範圍路徑與 finding。 */
+function RoundBlock({ round, smells, defaultOpen }: { round: TicketRound; smells: string[]; defaultOpen: boolean }) {
+  const { t, tn } = useI18n();
   const [open, setOpen] = useState(defaultOpen);
-  const [scopeOpen, setScopeOpen] = useState(false);
   const phase = round.phase ? t(PHASE_KEY[round.phase]) : null;
+  const counts = severityCounts(round);
+  const meta = [
+    phase,
+    tn("ticket.scopeFiles", round.scope.length),
+    tn("ticket.findings", round.findings.length),
+  ].filter(Boolean);
   return (
-    <li data-ticket-round={round.index} className="rounded-md border border-border/60 bg-muted/20">
-      <div
+    <li data-ticket-round={round.index} className="overflow-hidden rounded-md border border-border/60 bg-muted/20">
+      <ExpandToggle
         data-ticket-round-header
-        className="flex flex-wrap items-center gap-x-1 px-2 py-1 text-xs text-muted-foreground"
+        data-ticket-round-toggle
+        open={open}
+        onToggle={() => setOpen((v) => !v)}
+        className="flex-wrap gap-x-2 gap-y-1 px-3 py-2"
       >
-        <button
-          type="button"
-          data-ticket-round-toggle
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-          className="inline-flex items-center gap-1 font-semibold text-foreground hover:underline"
-        >
-          {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-          {`${roundLabel(t, round.index)}${phase ? ` · ${phase}` : ""}`}
-        </button>
-        {" · "}
-        <button
-          type="button"
-          aria-expanded={scopeOpen}
-          onClick={() => setScopeOpen((v) => !v)}
-          className="hover:text-foreground hover:underline"
-        >
-          {t("ticket.scopeFiles").replace("{n}", String(round.scope.length))}
-        </button>
-        {" · "}
-        <span className="tabular-nums">
-          {t("ticket.findings").replace("{n}", String(round.findings.length))}
-        </span>
-      </div>
-      {scopeOpen && (
-        <ul className="flex flex-col gap-0.5 border-t border-border/60 px-2 py-1.5">
-          {round.scope.map((path) => (
-            <li key={path} data-ticket-scope-path className="break-all font-mono text-[11px] text-muted-foreground">
-              {path}
-            </li>
-          ))}
-        </ul>
-      )}
+        <h3 data-doc-heading className={SECTION_HEADING_CLS}>
+          {roundLabel(t, round.index)}
+        </h3>
+        <span className="text-xs tabular-nums text-muted-foreground">{meta.map((m) => ` · ${m}`).join("")}</span>
+        {SEVERITIES.filter((sev) => counts[sev] > 0).map((sev) => (
+          <SeverityTag key={sev} severity={sev} data-ticket-count={sev} className="tabular-nums">
+            {`${sev} ${counts[sev]}`}
+          </SeverityTag>
+        ))}
+      </ExpandToggle>
       {open && (
-        <div className="border-t border-border/60 px-2 py-1.5">
+        <div className="flex flex-col gap-2 border-t border-border/60 px-3 py-2">
+          {round.rules && <RulesRow rules={round.rules} smells={smells} />}
+          <ul className="flex flex-col gap-0.5">
+            {round.scope.map((path) => (
+              <li key={path} data-ticket-scope-path className="break-all font-mono text-[11px] text-muted-foreground">
+                {path}
+              </li>
+            ))}
+          </ul>
           {round.findings.length === 0 ? (
             <p className="text-xs text-muted-foreground">{t("ticket.noFindings")}</p>
           ) : (
@@ -205,17 +238,100 @@ function RoundBlock({ round, defaultOpen }: { round: TicketRound; defaultOpen: b
   );
 }
 
+/** 專案規則清單的嚴重度籤：清單名的大寫（critical → CRITICAL）。 */
+const severityOf = (list: ReviewList) => list.toUpperCase();
+
+/** 套用規則列（spec「詳情頁的工單分頁」）：預設收合；列頭依 baseline 與專案規則條數寫模式並附非零的
+ * 條數籤，replace 且沒有專案規則時琥珀底；展開後列預設清單（或寫明沒有套用）、各嚴重度的規則原文與
+ * 末尾註記。N 取 `smells` 的長度。 */
+function RulesRow({ rules, smells }: { rules: ReviewRules; smells: string[] }) {
+  const { t, tn } = useI18n();
+  const [open, setOpen] = useState(false);
+  const groups = REVIEW_LISTS.filter((list) => rules[list].length > 0);
+  const extend = rules.baseline === "extend";
+  const mode = extend
+    ? groups.length > 0
+      ? "ticket.rules.extendWithRules"
+      : "ticket.rules.baselineOnly"
+    : groups.length > 0
+      ? "ticket.rules.replaceWithRules"
+      : "ticket.rules.replaceEmpty";
+  return (
+    <div
+      data-ticket-rules
+      className={cn("rounded-md border", !extend && groups.length === 0 ? SEMANTIC_SURFACE.warning : "border-border/60")}
+    >
+      <ExpandToggle
+        data-ticket-rules-toggle
+        open={open}
+        onToggle={() => setOpen((v) => !v)}
+        className="flex-wrap gap-x-2 gap-y-1 px-2 py-1.5 text-xs"
+      >
+        <span data-ticket-rules-label className="font-medium">
+          {t("ticket.rules.label")}
+        </span>
+        <span data-ticket-rules-mode className="text-muted-foreground">
+          {tn(mode, smells.length)}
+        </span>
+        {groups.map((list) => (
+          <SeverityTag key={list} severity={severityOf(list)} data-ticket-rules-count={severityOf(list)} className="tabular-nums">
+            {`${severityOf(list)} ${rules[list].length}`}
+          </SeverityTag>
+        ))}
+      </ExpandToggle>
+      {open && (
+        <div data-ticket-rules-body className="flex flex-col gap-2 border-t border-border/60 px-2 py-2 text-xs">
+          {extend ? (
+            <div data-ticket-rules-baseline className="flex flex-col gap-1">
+              <div className="flex items-center gap-1.5">
+                <SeverityTag data-ticket-severity severity="SUGGESTION" />
+                <span>{tn("ticket.rules.baselineOnly", smells.length)}</span>
+              </div>
+              <BaselineSmellList names={smells} />
+            </div>
+          ) : (
+            <p data-ticket-rules-baseline className="m-0 text-muted-foreground">
+              {tn("ticket.rules.baselineNotApplied", smells.length)}
+            </p>
+          )}
+          {groups.map((list) => (
+            <div key={list} data-ticket-rules-group={severityOf(list)} className="flex flex-col gap-1">
+              <div className="flex items-center gap-1.5">
+                <SeverityTag data-ticket-severity severity={severityOf(list)} />
+                <span>{tn("ticket.rules.projectCount", rules[list].length)}</span>
+              </div>
+              {/* 規則原文：不翻譯、不截斷、可換行。 */}
+              <ul className="m-0 flex list-disc flex-col gap-0.5 pl-5">
+                {rules[list].map((rule, i) => (
+                  <li key={i} className="whitespace-pre-wrap break-words">
+                    {rule}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          <p data-ticket-rules-note className="m-0 text-muted-foreground">
+            {t("ticket.rules.note")}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FindingRow({ finding }: { finding: TicketFinding }) {
   const { t } = useI18n();
-  const { shown, accepted } = splitAcceptedToken(finding.text);
+  // 先切行尾 accepted token、再取開頭的軸向前綴（「Standards: (accepted) 語意不清」的 token 在行中，原樣）。
+  const { shown: tail, accepted } = splitAcceptedToken(finding.text);
+  const { axis, text: shown } = findingAxis(tail);
   return (
     <li data-ticket-finding className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
-      <span
-        data-ticket-severity
-        className={`shrink-0 rounded px-1 py-0.5 text-[10px] font-medium ${SEVERITY_CLS[finding.severity]}`}
-      >
-        {finding.severity}
-      </span>
+      <SeverityTag data-ticket-severity severity={finding.severity} />
+      {axis && (
+        <Badge data-ticket-axis variant="outline" className="shrink-0">
+          {axis}
+        </Badge>
+      )}
       <span data-ticket-path className="min-w-0 break-all font-mono text-[11px] text-muted-foreground">
         {finding.path}
       </span>

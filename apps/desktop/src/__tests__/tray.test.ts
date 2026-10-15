@@ -7,6 +7,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit as tauriEmit, listen as tauriListen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { handleIconState } from "@tauri-apps/plugin-positioner";
 
 import {
   buildTrayModel,
@@ -24,7 +25,7 @@ import type {
 } from "../session";
 import type { ConnectionView } from "../adapter/connections";
 import { trayIconBytes } from "../trayIcon";
-import { createThemeController } from "../theme";
+import { writeThemePreference } from "@speclink/ui";
 
 // tray.ts 於頂層 import @tauri-apps/api 的 tray/menu/window/image（＋面板模式的 webviewWindow/dpi）；
 // 於 jsdom 下以樁替，使模組載入安全並讓接線測試可攔截呼叫。純函式測試不觸及這些。
@@ -80,7 +81,7 @@ function change(over: Partial<ChangeItem> & { name: string }): ChangeItem {
 /** 典型快照：兩分頁（p1 作用中）、一提案／一進行中／一已就緒、兩討論。 */
 function snapshot(over: Partial<TraySnapshot> = {}): TraySnapshot {
   return {
-    effectiveTheme: "light",
+    themePreference: "light",
     tabs: [
       { key: "local:/proj/one", name: "one", source: "local", status: "ready" },
       { key: "local:/proj/two", name: "two", source: "local", status: "ready" },
@@ -438,7 +439,7 @@ function makeStore(
       active: [
         { slug: "d1", topic: "t1", promotedTo: [] as string[] },
         { slug: "d2", topic: "t2", promotedTo: [] as string[] },
-      ],
+      ] as Array<{ slug: string; topic: string; promotedTo: string[]; concluded?: boolean; hold?: boolean }>,
     },
     trayStyle: "native-menu" as "native-menu" | "panel",
     activateTab,
@@ -506,33 +507,34 @@ describe("initTray 接線（選單）", () => {
 
   it("無 workspace 更新時配色仍即推，首次 ready 取最新值且 dispose 取消監聽", async () => {
     localStorage.removeItem("speclink.uiTheme");
-    const media = new EventTarget() as MediaQueryList;
-    Object.defineProperty(media, "matches", { configurable: true, value: false });
-    const theme = createThemeController(media);
+    localStorage.removeItem("speclink.theme");
+    const handlers = new Map<string, (event: never) => void>();
+    const stops = new Map<string, ReturnType<typeof vi.fn>>();
+    vi.mocked(tauriListen).mockImplementation(async (name, handler) => {
+      handlers.set(name, handler as never);
+      const stop = vi.fn(() => { handlers.delete(name); });
+      stops.set(name, stop);
+      return stop;
+    });
     const bag = makeStore();
-    const controller = await initTray(bag.store, { isMacOS: true, theme });
-    const ready = vi.mocked(tauriListen).mock.calls.find(([name]) => name === "tray-panel-ready")![1];
-    ready({} as never);
-    expect(tauriEmit).toHaveBeenLastCalledWith("tray-snapshot", expect.objectContaining({ effectiveTheme: "light" }));
-    vi.mocked(tauriEmit).mockClear();
-    theme.setPreference("dark");
-    expect(tauriEmit).toHaveBeenLastCalledWith("tray-snapshot", expect.objectContaining({ effectiveTheme: "dark" }));
-    theme.setPreference("system");
-    Object.defineProperty(media, "matches", { value: true });
-    media.dispatchEvent(new Event("change"));
-    expect(tauriEmit).toHaveBeenLastCalledWith("tray-snapshot", expect.objectContaining({ effectiveTheme: "dark" }));
-    ready({} as never);
-    expect(tauriEmit).toHaveBeenLastCalledWith("tray-snapshot", expect.objectContaining({ effectiveTheme: "dark" }));
+    const controller = await initTray(bag.store, { platform: "macos" });
+    handlers.get("tray-panel-ready")!({} as never);
+    expect(tauriEmit).toHaveBeenLastCalledWith("tray-snapshot", expect.objectContaining({ themePreference: null }));
+    writeThemePreference("dark");
+    handlers.get("speclink:theme-changed")!({ payload: "dark" } as never);
+    expect(tauriEmit).toHaveBeenLastCalledWith("tray-snapshot", expect.objectContaining({ themePreference: "dark" }));
+    writeThemePreference(null);
+    handlers.get("speclink:theme-changed")!({ payload: null } as never);
+    expect(tauriEmit).toHaveBeenLastCalledWith("tray-snapshot", expect.objectContaining({ themePreference: null }));
     controller.dispose();
-    vi.mocked(tauriEmit).mockClear();
-    theme.setPreference("light");
-    expect(tauriEmit).not.toHaveBeenCalled();
-    localStorage.removeItem("speclink.uiTheme");
+    expect(stops.get("speclink:theme-changed")).toHaveBeenCalledOnce();
+    expect(handlers.has("speclink:theme-changed")).toBe(false);
+    vi.mocked(tauriListen).mockImplementation(async () => vi.fn());
   });
 
   it("建立 tray 圖示並掛上由當前快照組出的選單（含兩專案 check 項）", async () => {
     const { store } = makeStore();
-    await initTray(store, { isMacOS: true });
+    await initTray(store, { platform: "macos" });
     const opts = vi.mocked(TrayIcon.new).mock.calls[0][0] as AnyItem;
     expect(opts.menu).toBeDefined();
     expect(opts.iconAsTemplate).toBe(true);
@@ -543,7 +545,7 @@ describe("initTray 接線（選單）", () => {
 
   it("變更列為子選單（有 items）、標籤帶進度條；store 變動後重建選單", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true, debounceMs: 100 });
+    await initTray(bag.store, { platform: "macos", debounceMs: 100 });
     vi.mocked(Menu.new).mockClear();
     trayObj.setMenu.mockClear();
     trayObj.setTitle.mockClear();
@@ -592,16 +594,16 @@ describe("initTray 接線（選單）", () => {
             }
           : {},
     });
-    await initTray(bag.store, { isMacOS: true });
+    await initTray(bag.store, { platform: "macos" });
     const projects = lastItems.filter((i) => "checked" in i);
     projects[1].action();
     expect(bag.activateTab).toHaveBeenCalledWith(key);
     expect(bag.openProjectAt).not.toHaveBeenCalled();
   });
 
-  it("變更子選單「開啟此變更」開主視窗並開啟該變更詳情", async () => {
+  it("變更子選單「開啟此變更」開主視窗並開啟該變更的詳情頁（store openDetail，宿主落回看板）", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true });
+    await initTray(bag.store, { platform: "macos" });
     // alpha 為進行中，是子選單（有 items）
     const alpha = lastItems.find((i) => Array.isArray(i.items) && (i.text ?? "").startsWith("alpha"));
     expect(alpha).toBeDefined();
@@ -643,7 +645,7 @@ describe("initTray 接線（選單）", () => {
         },
       ],
     });
-    await initTray(bag.store, { isMacOS: true });
+    await initTray(bag.store, { platform: "macos" });
 
     const recovery = lastItems.find((item) =>
       Array.isArray(item.items) && item.text.includes("Demo/backend"),
@@ -711,7 +713,7 @@ describe("initTray 接線（選單）", () => {
       }),
     );
 
-    await initTray(bag.store, { isMacOS: true });
+    await initTray(bag.store, { platform: "macos" });
     const recovery = lastItems.find(
       (item) => Array.isArray(item.items) && item.text.includes("Demo/backend"),
     );
@@ -724,7 +726,7 @@ describe("initTray 接線（選單）", () => {
 
   it("變更子選單「複製名稱」寫入剪貼簿且不開主視窗", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true });
+    await initTray(bag.store, { platform: "macos" });
     const alpha = lastItems.find((i) => Array.isArray(i.items) && (i.text ?? "").startsWith("alpha"));
     expect(alpha.items.map((a: AnyItem) => a.text)).toEqual(["開啟此變更", "複製名稱"]);
     await alpha.items[1].action();
@@ -734,13 +736,13 @@ describe("initTray 接線（選單）", () => {
 
   it("討論為子選單：父標籤 slug、首行 disabled topic、開啟與複製 slug 動作", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true });
+    await initTray(bag.store, { platform: "macos" });
     const disc = lastItems.find((i) => Array.isArray(i.items) && i.text === "d1");
     expect(disc).toBeDefined();
     // 首行為 topic 描述（disabled、不可選取）
     expect(disc.items[0].text).toBe("t1");
     expect(disc.items[0].enabled).toBe(false);
-    // 開啟此討論 → 主視窗＋openDiscussion
+    // 開啟此討論 → 主視窗＋openDiscussion（開啟該討論的詳情頁）
     expect(disc.items[1].text).toBe("開啟此討論");
     disc.items[1].action();
     // openMainWindow 為 async（hide_tray_panel → unminimize → show → setFocus）：沖洗微任務後再斷言
@@ -756,7 +758,7 @@ describe("initTray 接線（選單）", () => {
   it("剪貼簿寫入失敗時靜默（不拋出、不彈窗）", async () => {
     vi.mocked(writeText).mockRejectedValue(new Error("denied"));
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true });
+    await initTray(bag.store, { platform: "macos" });
     const alpha = lastItems.find((i) => Array.isArray(i.items) && (i.text ?? "").startsWith("alpha"));
     await expect(Promise.resolve(alpha.items[1].action())).resolves.not.toThrow();
     // 沖洗微任務：內部 rejection 須被吞掉，否則 vitest 以 unhandled rejection 失敗
@@ -765,7 +767,7 @@ describe("initTray 接線（選單）", () => {
 
   it("點「開啟 Speclink」顯示視窗並取得焦點", async () => {
     const { store } = makeStore();
-    await initTray(store, { isMacOS: true });
+    await initTray(store, { platform: "macos" });
     const open = lastItems.find((i) => i.text === "開啟 Speclink");
     await open.action();
     expect(win.show).toHaveBeenCalled();
@@ -774,7 +776,7 @@ describe("initTray 接線（選單）", () => {
 
   it("點「設定」開主視窗、取得焦點並切換至設定頁", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true });
+    await initTray(bag.store, { platform: "macos" });
     const settings = lastItems.find((i) => i.text === "設定");
     expect(settings).toBeDefined();
     settings.action();
@@ -787,7 +789,7 @@ describe("initTray 接線（選單）", () => {
 
   it("點「專案設定」開主視窗、取得焦點並切換至專案設定頁", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true });
+    await initTray(bag.store, { platform: "macos" });
     const ps = lastItems.find((i) => i.text === "專案設定");
     expect(ps).toBeDefined();
     ps.action();
@@ -800,15 +802,15 @@ describe("initTray 接線（選單）", () => {
 
   it("「結束」映射為原生 predefined Quit", async () => {
     const { store } = makeStore();
-    await initTray(store, { isMacOS: true });
+    await initTray(store, { platform: "macos" });
     expect(lastItems.find((i) => i.item === "Quit")).toBeDefined();
   });
 
-  it("panel 樣式：建立時不掛選單、不開左鍵選單，點擊圖示觸發 onPanelToggle", async () => {
+  it("macOS panel 樣式：建立時不掛選單、不開左鍵選單，點擊圖示觸發 onPanelToggle", async () => {
     const bag = makeStore();
     bag.emit({ trayStyle: "panel" });
     const onPanelToggle = vi.fn();
-    await initTray(bag.store, { isMacOS: true, onPanelToggle });
+    await initTray(bag.store, { platform: "macos", onPanelToggle });
     const opts = vi.mocked(TrayIcon.new).mock.calls[0][0] as AnyItem;
     expect(opts.menu).toBeUndefined();
     expect(opts.showMenuOnLeftClick).toBe(false);
@@ -816,11 +818,11 @@ describe("initTray 接線（選單）", () => {
     expect(onPanelToggle).toHaveBeenCalledTimes(1);
   });
 
-  it("panel 樣式：右鍵點擊圖示同樣觸發 onPanelToggle（與左鍵等價），Down 不觸發", async () => {
+  it("macOS panel 樣式：右鍵點擊圖示同樣觸發 onPanelToggle（與左鍵等價），Down 不觸發", async () => {
     const bag = makeStore();
     bag.emit({ trayStyle: "panel" });
     const onPanelToggle = vi.fn();
-    await initTray(bag.store, { isMacOS: true, onPanelToggle });
+    await initTray(bag.store, { platform: "macos", onPanelToggle });
     const opts = vi.mocked(TrayIcon.new).mock.calls[0][0] as AnyItem;
     opts.action({ type: "Click", button: "Right", buttonState: "Up" });
     expect(onPanelToggle).toHaveBeenCalledTimes(1);
@@ -832,7 +834,7 @@ describe("initTray 接線（選單）", () => {
   it("native 樣式：點擊事件不觸發 onPanelToggle（選單接管互動）", async () => {
     const bag = makeStore();
     const onPanelToggle = vi.fn();
-    await initTray(bag.store, { isMacOS: true, onPanelToggle });
+    await initTray(bag.store, { platform: "macos", onPanelToggle });
     const opts = vi.mocked(TrayIcon.new).mock.calls[0][0] as AnyItem;
     opts.action?.({ type: "Click", button: "Left", buttonState: "Up" });
     opts.action?.({ type: "Click", button: "Right", buttonState: "Up" });
@@ -841,7 +843,7 @@ describe("initTray 接線（選單）", () => {
 
   it("樣式切換即時分流：panel 卸選單且關左鍵開選單、切回 native 雙雙復原（無需重啟）", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    await initTray(bag.store, { platform: "macos", debounceMs: 50 });
     trayObj.setMenu.mockClear();
     vi.useFakeTimers();
     bag.emit({ trayStyle: "panel" });
@@ -856,9 +858,80 @@ describe("initTray 接線（選單）", () => {
     expect(trayObj.setShowMenuOnLeftClick).toHaveBeenLastCalledWith(true);
   });
 
+  // Windows 的 panel 樣式（spec「面板樣式」平台差異——Windows；tray-panel-windows design D5）：
+  // 左鍵開閉面板、右鍵由系統顯示同一份原生選單。
+  it("Windows panel 樣式：建立時掛原生選單且關左鍵開選單，只有左鍵放開觸發 onPanelToggle", async () => {
+    const bag = makeStore();
+    bag.emit({ trayStyle: "panel" });
+    const onPanelToggle = vi.fn();
+    await initTray(bag.store, { platform: "windows", onPanelToggle });
+    const opts = vi.mocked(TrayIcon.new).mock.calls[0][0] as AnyItem;
+    expect(opts.menu).toEqual({ id: "menu" });
+    expect(opts.showMenuOnLeftClick).toBe(false);
+    expect(opts.iconAsTemplate).toBe(false);
+    opts.action({ type: "Click", button: "Right", buttonState: "Up" });
+    expect(onPanelToggle).not.toHaveBeenCalled();
+    opts.action({ type: "Click", button: "Left", buttonState: "Down" });
+    expect(onPanelToggle).not.toHaveBeenCalled();
+    opts.action({ type: "Click", button: "Left", buttonState: "Up" });
+    expect(onPanelToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("Windows panel 樣式：去抖更新後仍掛選單（隨快照重建）且維持關閉左鍵開選單", async () => {
+    const bag = makeStore();
+    bag.emit({ trayStyle: "panel" });
+    await initTray(bag.store, { platform: "windows", debounceMs: 50 });
+    trayObj.setMenu.mockClear();
+    vi.useFakeTimers();
+    bag.emit({ changes: [change({ name: "alpha", totalTasks: 12, completedTasks: 6 })] });
+    await vi.advanceTimersByTimeAsync(50);
+    vi.useRealTimers();
+    expect(trayObj.setMenu).toHaveBeenLastCalledWith({ id: "menu" });
+    expect(trayObj.setShowMenuOnLeftClick).toHaveBeenLastCalledWith(false);
+  });
+
+  it("Windows 面板建立失敗（panelFallback）後轉 native-menu：左鍵開選單、點擊不再開閉面板", async () => {
+    const bag = makeStore();
+    bag.emit({ trayStyle: "panel" });
+    const onPanelToggle = vi.fn();
+    await initTray(bag.store, { platform: "windows", debounceMs: 50, onPanelToggle });
+    const opts = vi.mocked(TrayIcon.new).mock.calls[0][0] as AnyItem;
+    vi.useFakeTimers();
+    bag.emit({ trayStyle: "native-menu" }); // panelFallback 的效果
+    await vi.advanceTimersByTimeAsync(50);
+    vi.useRealTimers();
+    expect(trayObj.setMenu).toHaveBeenLastCalledWith({ id: "menu" });
+    expect(trayObj.setShowMenuOnLeftClick).toHaveBeenLastCalledWith(true);
+    opts.action({ type: "Click", button: "Left", buttonState: "Up" });
+    expect(onPanelToggle).not.toHaveBeenCalled();
+  });
+
+  // 面板位置：macOS 由 positioner 依點擊事件的圖示座標計算；Windows 由 Tauri 殼讀圖示位置自算
+  // （tray-panel-windows design D3），點擊不餵 positioner。
+  it("macOS panel 樣式：點擊先把事件餵給 positioner", async () => {
+    const bag = makeStore();
+    bag.emit({ trayStyle: "panel" });
+    await initTray(bag.store, { platform: "macos", onPanelToggle: vi.fn() });
+    const opts = vi.mocked(TrayIcon.new).mock.calls[0][0] as AnyItem;
+    const event = { type: "Click", button: "Left", buttonState: "Up" };
+    opts.action(event);
+    expect(handleIconState).toHaveBeenCalledWith(event);
+  });
+
+  it("Windows panel 樣式：點擊不餵 positioner", async () => {
+    const bag = makeStore();
+    bag.emit({ trayStyle: "panel" });
+    const onPanelToggle = vi.fn();
+    await initTray(bag.store, { platform: "windows", onPanelToggle });
+    const opts = vi.mocked(TrayIcon.new).mock.calls[0][0] as AnyItem;
+    opts.action({ type: "Click", button: "Left", buttonState: "Up" });
+    expect(onPanelToggle).toHaveBeenCalledTimes(1);
+    expect(handleIconState).not.toHaveBeenCalled();
+  });
+
   it("tray 以固定 id 建立，建立前先移除同 id 孤兒（webview 重建不殘留殭屍徽章）", async () => {
     const { store } = makeStore();
-    await initTray(store, { isMacOS: true });
+    await initTray(store, { platform: "macos" });
     expect(TrayIcon.removeById).toHaveBeenCalledWith("speclink-tray");
     const opts = vi.mocked(TrayIcon.new).mock.calls[0][0] as AnyItem;
     expect(opts.id).toBe("speclink-tray");
@@ -871,7 +944,7 @@ describe("initTray 接線（選單）", () => {
     const bag = makeStore();
     bag.emit({ trayStyle: "panel" });
     const onPanelToggle = vi.fn();
-    await initTray(bag.store, { isMacOS: true, debounceMs: 50, onPanelToggle });
+    await initTray(bag.store, { platform: "macos", debounceMs: 50, onPanelToggle });
     const opts = vi.mocked(TrayIcon.new).mock.calls[0][0] as AnyItem;
     expect(opts.title).toBeUndefined();
     vi.useFakeTimers();
@@ -887,7 +960,7 @@ describe("initTray 接線（選單）", () => {
 
   it("溢出節點轉為原生子選單（內含其餘變更、各自保有動作子選單）", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    await initTray(bag.store, { platform: "macos", debounceMs: 50 });
     vi.useFakeTimers();
     bag.emit({
       changes: Array.from({ length: 7 }, (_, i) =>
@@ -905,7 +978,7 @@ describe("initTray 接線（選單）", () => {
 
   it("面板事件接線：訂閱 ready/action、去抖推送快照、動作回流 store", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    await initTray(bag.store, { platform: "macos", debounceMs: 50 });
     // 訂閱面板的 ready 與 action 事件
     const topics = vi.mocked(tauriListen).mock.calls.map((c) => c[0]);
     expect(topics).toContain("tray-panel-ready");
@@ -920,7 +993,7 @@ describe("initTray 接線（選單）", () => {
       "tray-snapshot",
       expect.objectContaining({ activeKey: "local:/proj/two" }),
     );
-    // 動作回流：open-change 開主視窗並開啟該變更詳情
+    // 動作回流：open-change 開主視窗並開啟該變更的詳情頁
     const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
     (actionCall[1] as (e: AnyItem) => void)({ payload: { kind: "open-change", id: "alpha" } });
     // openMainWindow 為 async（hide_tray_panel → unminimize → show → setFocus）：沖洗微任務後再斷言
@@ -934,7 +1007,7 @@ describe("initTray 接線（選單）", () => {
   // setFocus 全在其後；收合失敗靜默，不阻斷喚起。
   it("面板動作 open-change 先 invoke hide_tray_panel，之後才 unminimize／show／setFocus", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    await initTray(bag.store, { platform: "macos", debounceMs: 50 });
     const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
     (actionCall[1] as (e: AnyItem) => void)({ payload: { kind: "open-change", id: "alpha" } });
     await new Promise((r) => setTimeout(r, 0));
@@ -948,7 +1021,7 @@ describe("initTray 接線（選單）", () => {
 
   it("hide_tray_panel 拒絕時靜默，主視窗仍 show 並 setFocus", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    await initTray(bag.store, { platform: "macos", debounceMs: 50 });
     vi.mocked(invoke).mockRejectedValueOnce(new Error("tray panel unavailable"));
     const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
     (actionCall[1] as (e: AnyItem) => void)({ payload: { kind: "open-change", id: "alpha" } });
@@ -961,7 +1034,7 @@ describe("initTray 接線（選單）", () => {
 
   it("面板動作 open-project 以 remote locator key 呼叫 activateTab", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    await initTray(bag.store, { platform: "macos", debounceMs: 50 });
     const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
     const remoteKey = "remote:conn-1/demo/backend";
     (actionCall[1] as (e: AnyItem) => void)({ payload: { kind: "open-project", id: remoteKey } });
@@ -971,7 +1044,7 @@ describe("initTray 接線（選單）", () => {
 
   it("面板 recovery action 的 retry 留在 Tray，詳情／設定／登入才顯示並聚焦主視窗", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    await initTray(bag.store, { platform: "macos", debounceMs: 50 });
     const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
     const dispatch = actionCall[1] as (event: AnyItem) => void;
     const key = "remote:c1/demo/backend";
@@ -998,7 +1071,7 @@ describe("initTray 接線（選單）", () => {
 
   it("面板動作 open-settings 喚起主視窗並切換至設定頁", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    await initTray(bag.store, { platform: "macos", debounceMs: 50 });
     const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
     (actionCall[1] as (e: AnyItem) => void)({ payload: { kind: "open-settings" } });
     // openMainWindow 為 async：沖洗微任務後再斷言
@@ -1009,7 +1082,7 @@ describe("initTray 接線（選單）", () => {
 
   it("面板動作 open-project-settings 喚起主視窗並切換至專案設定頁", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    await initTray(bag.store, { platform: "macos", debounceMs: 50 });
     const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
     (actionCall[1] as (e: AnyItem) => void)({ payload: { kind: "open-project-settings" } });
     // openMainWindow 為 async：沖洗微任務後再斷言
@@ -1020,7 +1093,7 @@ describe("initTray 接線（選單）", () => {
 
   it("面板動作 quit 呼叫結束 app 的命令", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    await initTray(bag.store, { platform: "macos", debounceMs: 50 });
     const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
     (actionCall[1] as (e: AnyItem) => void)({ payload: { kind: "quit" } });
     expect(invoke).toHaveBeenCalledWith("quit_app");
@@ -1028,7 +1101,7 @@ describe("initTray 接線（選單）", () => {
 
   it("面板動作 add-project 先喚起主視窗再轉呼資料夾選擇流程（D7 快速加入專案）", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    await initTray(bag.store, { platform: "macos", debounceMs: 50 });
     const actionCall = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "tray-panel-action")!;
     (actionCall[1] as (e: AnyItem) => void)({ payload: { kind: "add-project" } });
     // 喚起主視窗（openIn 路徑）：主視窗在另一桌面時 macOS 才會切 Space，
@@ -1040,7 +1113,7 @@ describe("initTray 接線（選單）", () => {
 
   it("dispose 取消訂閱並關閉 tray", async () => {
     const bag = makeStore();
-    const controller = await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    const controller = await initTray(bag.store, { platform: "macos", debounceMs: 50 });
     controller.dispose();
     expect(trayObj.close).toHaveBeenCalled();
     trayObj.setMenu.mockClear();
@@ -1099,7 +1172,7 @@ describe("TraySnapshot 的載入態導出", () => {
   // store 變動都重設）等於探測快時 spinner 根本不出現——正是本變更要解決的情境。
   it("切換中標記不等去抖 → 即時推送快照給面板", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    await initTray(bag.store, { platform: "macos", debounceMs: 50 });
     vi.mocked(tauriEmit).mockClear();
     vi.useFakeTimers();
     bag.emit({ pendingTabKey: "local:/proj/two" });
@@ -1119,7 +1192,7 @@ describe("TraySnapshot 的載入態導出", () => {
   // pendingTabKey 會讓面板在 spinner 消失後仍停在切換前的高亮與資料。
   it("活躍分頁翻轉 → 一併即時推送，不落後於 spinner 消失", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    await initTray(bag.store, { platform: "macos", debounceMs: 50 });
     vi.mocked(tauriEmit).mockClear();
     vi.useFakeTimers();
     bag.emit({
@@ -1140,7 +1213,7 @@ describe("TraySnapshot 的載入態導出", () => {
   it("整批載入完成（載入態翻假）→ 一併即時推送", async () => {
     const bag = makeStore();
     bag.emit({ loaded: false, loadingActive: true });
-    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    await initTray(bag.store, { platform: "macos", debounceMs: 50 });
     vi.mocked(tauriEmit).mockClear();
     vi.useFakeTimers();
     bag.emit({ loaded: true, loadingActive: false });
@@ -1156,7 +1229,7 @@ describe("TraySnapshot 的載入態導出", () => {
   // 假空態推給面板——同段變動必須合併成一份最終快照。
   it("同一同步段的連續變動 → 只推最終快照，不推中間假空態", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    await initTray(bag.store, { platform: "macos", debounceMs: 50 });
     vi.mocked(tauriEmit).mockClear();
     vi.useFakeTimers();
     bag.emit({ activeKey: "local:/proj/two", loaded: false, changes: [] });
@@ -1175,7 +1248,7 @@ describe("TraySnapshot 的載入態導出", () => {
   it("首訪載入失敗（載入態翻假）→ 即時推送，骨架當下收掉", async () => {
     const bag = makeStore();
     bag.emit({ loaded: false, loadingActive: true });
-    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    await initTray(bag.store, { platform: "macos", debounceMs: 50 });
     vi.mocked(tauriEmit).mockClear();
     vi.useFakeTimers();
     bag.emit({ loadingActive: false, loadFailed: true });
@@ -1190,7 +1263,7 @@ describe("TraySnapshot 的載入態導出", () => {
 
   it("只有清單內容變動（活躍分頁與載入態不變）→ 維持去抖", async () => {
     const bag = makeStore();
-    await initTray(bag.store, { isMacOS: true, debounceMs: 50 });
+    await initTray(bag.store, { platform: "macos", debounceMs: 50 });
     vi.mocked(tauriEmit).mockClear();
     vi.useFakeTimers();
     bag.emit({ changes: [change({ name: "delta", totalTasks: 3, completedTasks: 1 })] });

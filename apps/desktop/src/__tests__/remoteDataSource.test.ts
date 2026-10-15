@@ -571,6 +571,30 @@ describe("createRemoteSession（決策 6/7：handshake 結果建 session）", ()
     });
   });
 
+  it("remote 審查規則寫入只帶 review，context／rules 為 null 且附讀得的 expectedRevision", async () => {
+    const { calls, invoke } = fakeInvoke();
+    const session = createRemoteSession(CONN, openInfo(), undefined, { invoke });
+    await session.settings.readSettings(); // 取得 revision 7
+    const review = {
+      baseline: "replace" as const,
+      critical: ["不得寫死金鑰"],
+      warning: [],
+      suggestion: ["函式超過 50 行時宜拆分"],
+    };
+
+    await expect(session.settings.writeWorkflowReview(review)).resolves.toBe(8);
+
+    expect(calls.find((call) => call.cmd === "remote_write_workflow_content")?.args).toEqual({
+      connectionId: CONN,
+      project: PROJECT,
+      repo: REPO,
+      context: null,
+      rules: null,
+      review,
+      expectedRevision: 7,
+    });
+  });
+
   it("remote 產出流程面：讀走本地內建組裝、切換帶 expectedRevision、fork 拒絕（desktop-schema-panel D2/D3）", async () => {
     const { calls, invoke } = fakeInvoke();
     const session = createRemoteSession(CONN, openInfo(), undefined, { invoke });

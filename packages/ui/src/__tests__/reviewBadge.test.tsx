@@ -21,9 +21,9 @@ vi.mock("../components/TaskList", () => ({
 }));
 
 import { ChangeCard } from "../components/ChangeCard";
-import { RichDetailDrawer } from "../components/RichDetailDrawer";
+import { ChangeDetailPage } from "../components/ChangeDetailPage";
 import { ArchivedList } from "../components/ArchivedList";
-import { ArchivedDrawer } from "../components/ArchivedDrawer";
+import { ArchivedDetailPage } from "../components/ArchivedDetailPage";
 import { ReviewArchiveDialog } from "../components/ReviewArchiveDialog";
 import type { ArchivedItem, ChangeItem } from "../adapter";
 
@@ -31,11 +31,9 @@ const base: ChangeItem = { name: "c", status: "in-progress", totalTasks: 2, comp
 
 const REVIEW_LABELS = ["審查中", "已審查", "已審查·其後有變動"];
 
-/** RichDetailDrawer 的最小 props（審查資訊列以外的相依一律給空替身）。 */
+/** ChangeDetailPage 的最小 props（審查資訊列以外的相依一律給空替身）。 */
 function drawerProps(change: ChangeItem) {
   return {
-    open: true,
-    onOpenChange: vi.fn(),
     change,
     loadDocument: vi.fn(async () => "# doc"),
     loadCapabilities: vi.fn(async () => [] as string[]),
@@ -81,37 +79,43 @@ describe("ChangeCard 審查章（四態）", () => {
   });
 });
 
-describe("RichDetailDrawer 審查資訊列", () => {
-  it("reviewed 章籤可視僅狀態詞——蓋章時間與審查者收進提示", () => {
-    // 狀態列改章籤（spec「變更詳情抽屜標頭的四層結構」）：日期與含 email 的完整
-    // 識別不再直出，收進主題化提示（提示內容由 richDrawer.test.tsx 驗）。
+/** 章籤只在「狀態」區的「品質關卡」列，身分區沒有（spec「變更詳情頁的標頭與狀態卡」）。 */
+function qualityStamp(mark: string) {
+  const row = document.querySelector(mark) as HTMLElement;
+  expect(row).toBeTruthy();
+  expect(row.closest("[data-status-quality]")).toBeTruthy();
+  expect(row.closest("[data-detail-identity]")).toBeNull();
+  return row;
+}
+
+describe("ChangeDetailPage 審查章籤", () => {
+  it("reviewed 章籤落在品質關卡列：狀態詞＋蓋章日期，審查者收進提示", () => {
+    // 含 email 的完整識別不直出，收進主題化提示（提示內容由 changeDetailPage.test.tsx 驗）。
     render(
-      <RichDetailDrawer
+      <ChangeDetailPage
         {...(drawerProps({
           ...base,
           reviewStatus: "reviewed",
           reviewedAt: "2026-08-01",
           reviewedBy: "Rev <r@example.com>",
-        }) as never)}
+        }) as Parameters<typeof ChangeDetailPage>[0])}
       />,
     );
-    const row = document.querySelector("[data-review-row]") as HTMLElement;
-    expect(row).toBeTruthy();
+    const row = qualityStamp("[data-review-row]");
     expect(within(row).getByText(/已審查/)).toBeTruthy();
-    expect(row.textContent).not.toContain("2026-08-01");
+    expect(row.textContent).toContain("2026-08-01");
     expect(row.textContent).not.toContain("r@example.com");
   });
 
   it("inReview 僅顯示狀態詞，無時間與審查者", () => {
-    render(<RichDetailDrawer {...(drawerProps({ ...base, reviewStatus: "inReview" }) as never)} />);
-    const row = document.querySelector("[data-review-row]") as HTMLElement;
-    expect(row).toBeTruthy();
+    render(<ChangeDetailPage {...(drawerProps({ ...base, reviewStatus: "inReview" }) as Parameters<typeof ChangeDetailPage>[0])} />);
+    const row = qualityStamp("[data-review-row]");
     expect(within(row).getByText(/審查中/)).toBeTruthy();
     expect(row.textContent).not.toContain("2026-");
   });
 
   it("none 不渲染資訊列", () => {
-    render(<RichDetailDrawer {...(drawerProps({ ...base, reviewStatus: "none" }) as never)} />);
+    render(<ChangeDetailPage {...(drawerProps({ ...base, reviewStatus: "none" }) as Parameters<typeof ChangeDetailPage>[0])} />);
     expect(document.querySelector("[data-review-row]")).toBeNull();
   });
 });
@@ -154,11 +158,9 @@ describe("已封存側審查結局標示", () => {
     }
   });
 
-  it("抽屜顯示「曾審查未通過」標示", () => {
+  it("已封存詳情頁顯示「曾審查未通過」標示", () => {
     render(
-      <ArchivedDrawer
-        open
-        onOpenChange={() => {}}
+      <ArchivedDetailPage
         target={{ kind: "change", datedName: "2026-07-06-carried" }}
         reviewStatus="reviewedNotPassed"
         loadDocument={async () => null}
@@ -166,7 +168,7 @@ describe("已封存側審查結局標示", () => {
         loadDiscussionDocument={async () => null}
       />,
     );
-    expect(screen.getByText(/曾審查未通過/)).toBeTruthy();
+    expect(document.querySelector("[data-review-outcome]")!.textContent).toContain("曾審查未通過");
   });
 });
 
@@ -183,9 +185,9 @@ describe("審查標示配色（四態各自可辨識，不落回灰階）", () =
 
   it("卡片章：審查中＝藍、已審查＝紫（深淺主題皆非主色）、其後有變動＝琥珀", () => {
     const tones: Array<[ChangeItem["reviewStatus"], string, string]> = [
-      ["inReview", "審查中", "text-sky-600"],
-      ["reviewed", "已審查", "text-violet-600 dark:text-violet-400"],
-      ["reviewedStale", "已審查·其後有變動", "text-amber-600"],
+      ["inReview", "審查中", "text-status-progress"],
+      ["reviewed", "已審查", "text-stamp"],
+      ["reviewedStale", "已審查·其後有變動", "text-status-warning"],
     ];
     for (const [reviewStatus, label, cls] of tones) {
       const { unmount } = render(<ChangeCard change={{ ...base, reviewStatus }} />);
@@ -198,13 +200,13 @@ describe("審查標示配色（四態各自可辨識，不落回灰階）", () =
 
   it("抽屜資訊列：狀態詞依狀態上色", () => {
     const tones: Array<[ChangeItem["reviewStatus"], string]> = [
-      ["inReview", "text-sky-600"],
-      ["reviewed", "text-violet-600 dark:text-violet-400"],
-      ["reviewedStale", "text-amber-600"],
+      ["inReview", "text-status-progress"],
+      ["reviewed", "text-stamp"],
+      ["reviewedStale", "text-status-warning"],
     ];
     for (const [reviewStatus, cls] of tones) {
       const { unmount } = render(
-        <RichDetailDrawer {...(drawerProps({ ...base, reviewStatus }) as never)} />,
+        <ChangeDetailPage {...(drawerProps({ ...base, reviewStatus }) as Parameters<typeof ChangeDetailPage>[0])} />,
       );
       const tone = document.querySelector("[data-review-row] [data-review-tone]") as HTMLElement;
       expect(tone).toBeTruthy();
@@ -223,21 +225,17 @@ describe("審查標示配色（四態各自可辨識，不落回灰階）", () =
         onOpen={() => {}}
       />,
     );
-    expect(screen.getByLabelText("已審查").className).toContain(
-      "text-violet-600 dark:text-violet-400",
-    );
-    expect(screen.getByLabelText("曾審查未通過").className).toContain("text-rose-600");
+    expect(screen.getByLabelText("已審查").className).toContain("text-stamp");
+    expect(screen.getByLabelText("曾審查未通過").className).toContain("text-destructive");
   });
 
-  it("已封存抽屜：已審查＝紫、曾審查未通過＝紅", () => {
+  it("已封存詳情頁：已審查＝紫、曾審查未通過＝紅", () => {
     for (const [reviewStatus, cls] of [
-      ["reviewed", "text-violet-600 dark:text-violet-400"],
-      ["reviewedNotPassed", "text-rose-600"],
+      ["reviewed", "text-stamp"],
+      ["reviewedNotPassed", "text-destructive"],
     ] as const) {
       const { unmount } = render(
-        <ArchivedDrawer
-          open
-          onOpenChange={() => {}}
+        <ArchivedDetailPage
           target={{ kind: "change", datedName: "2026-07-06-x" }}
           reviewStatus={reviewStatus}
           loadDocument={async () => null}
@@ -263,10 +261,8 @@ describe("審查標示配色（四態各自可辨識，不落回灰階）", () =
         onCarryReview={vi.fn()}
       />,
     );
-    // 危險動作（按鈕）走 destructive；rose 專屬「曾審查未通過」的永久標示，
-    // 兩者分工才不會讓同一片紅同時代表「按下去會怎樣」與「結果是什麼」。
+    // 危險動作（按鈕）走 destructive（錯誤與危險共用一個 token，不另設紅系）。
     expect(screen.getByText("照樣帶走").className).toContain("text-destructive");
-    expect(screen.getByText("照樣帶走").className).not.toContain("rose");
   });
 });
 

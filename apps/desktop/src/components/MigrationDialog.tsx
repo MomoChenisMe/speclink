@@ -44,12 +44,6 @@ export interface MigrationDialogProps {
   ) => Promise<void>;
 }
 
-function message(template: string, values: Record<string, string>): string {
-  return Object.entries(values).reduce(
-    (text, [key, value]) => text.replace(`{${key}}`, value),
-    template,
-  );
-}
 
 export function MigrationDialog({
   open,
@@ -60,7 +54,7 @@ export function MigrationDialog({
   onOpenChange,
   onMigrated,
 }: MigrationDialogProps) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const [step, setStep] = useState<MigrationStep>("server");
   const [connection, setConnection] = useState<ConnectionView | null>(null);
   const [scopes, setScopes] = useState<ScopesView | null>(null);
@@ -241,9 +235,7 @@ export function MigrationDialog({
               </span>
               <div className="min-w-0">
                 <p className="m-0 text-sm font-semibold">
-                  {message(t("migration.successCount"), {
-                    count: String(result.report.documents.length),
-                  })}
+                  {tn("migration.successCount", result.report.documents.length)}
                 </p>
                 <p className="mt-1 mb-0 text-xs text-muted-foreground">
                   {t("migration.backupPath")}

@@ -5,25 +5,19 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.48.1"
   generatedBy: "Speclink"
----
-
-## Shared execution
-
-Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
-
-When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
-
 ---
 
 Commit files related to a specific Speclink change.
 
 This is a **utility skill** (not a workflow step). It reads source file tracking data and artifact changes to stage and commit only the files belonging to one change — useful when multiple changes are in progress simultaneously.
 
-**Input**: Optionally specify a change name after `speclink-commit` (e.g., `speclink-commit add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+**Input**: Optionally specify a change name after `$speclink-commit` (e.g., `$speclink-commit add-auth`). If omitted, check if it can be inferred from conversation context; if it is still vague or ambiguous, step 1 asks the user.
 
 **Prerequisites**: This skill requires `git`. Run `git --version`. If git is not available (command not found or similar error), inform the user to install git and STOP.
+
+**Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response. The display-first rule of step 7 applies to the plain-text question too.
 
 **Steps**
 
@@ -32,7 +26,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    If a name is provided, use it. Otherwise:
    - Infer from conversation context if the user mentioned a change
    - Auto-select if only one active change exists
-   - If ambiguous, run `speclink list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select
+   - If ambiguous, run `speclink list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select, and wait for the answer
 
    Always announce: "Committing for change: <name>"
 
@@ -67,7 +61,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
 4. **Identify unrelated dirty files**
 
-   From the full `git status --porcelain` output, any dirty files NOT in the artifact set and NOT in the evidence record are "unrelated changes."
+   From the full `git status --porcelain` output, any dirty files that are neither in the artifact set nor in the evidence record are "unrelated changes."
 
 5. **Generate commit message**
 
@@ -159,8 +153,6 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
         - **Yes**: set a flag to pass `--mark-tasks-complete` to `speclink archive`
         - **No**: proceed without the flag (archive will continue with a warning)
 
-      If **AskUserQuestion tool** is not available, ask the same question as plain text and wait for the user's response.
-
     **7a-ii. Delta spec completeness check**
 
     Check whether delta specs exist at `openspec/changes/<name>/specs/`.
@@ -170,9 +162,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
       - If every delta is complete final-state and no ADDED requirement pre-exists: skip to 7a-ii-b.
       - Otherwise use the **AskUserQuestion tool** to ask: "Delta specs would be refused by the archive merge gate. Fix them before archiving?"
         - **Yes**: rewrite the delta files in place — merge the omitted canonical content into MODIFIED requirements (or declare deliberate drops with `<!-- REMOVED-SCENARIO: … -->`), drop or retarget pre-existing ADDED requirements — then proceed. Do NOT edit main specs.
-        - **No**: skip the archive (commit without it) and route the delta repair through `speclink drift <name>` → `speclink-ingest <name>` — archiving as-is would exit non-zero
-
-      If **AskUserQuestion tool** is not available, ask the same question as plain text and wait for the user's response.
+        - **No**: skip the archive (commit without it) and route the delta repair through `speclink drift <name>` → `$speclink-ingest <name>` — archiving as-is would exit non-zero
 
     **7a-ii-b. Plan order hint**
 
@@ -180,7 +170,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     - `archiveAfter` is non-empty:
 
-      > plan 建議先封存 <archiveAfter 的名稱>；它們封存後，重讀本 change 對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `speclink-ingest`）再封存 <name>。重疊的 requirement：<requirementOverlap 裡對應那些 change 的 capability › requirement>。
+      > plan 建議先封存 <archiveAfter 的名稱>；它們封存後，重讀本 change 對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `$speclink-ingest`）再封存 <name>。重疊的 requirement：<requirementOverlap 裡對應那些 change 的 capability › requirement>。
 
     - `requirementOverlap` holds an entry whose `conflict` is true:
 
@@ -207,7 +197,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     After archive completes successfully:
 
-    1. Re-run `git status --porcelain` to capture all file changes produced by the archive (deletions from `openspec/changes/<name>/`, additions in `openspec/archived/`)
+    1. Re-run `git status --porcelain` to capture all file changes produced by the archive (deletions from `openspec/changes/<name>/`, additions in `openspec/changes/archive/`)
     2. Add these archive-related file changes to the commit set
     3. Regenerate the commit message with an `Archived: yes` line appended to the body
     4. Display an **updated commit plan and message** as one visible message, showing all sections:
@@ -244,19 +234,19 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     6. Close the sub-flow with the reminders below. Print them once, wherever the flow ends: after the step 10 result, or right where the user stops at the re-confirmation above — the archive has already run either way, and after a stop its file moves are still uncommitted, so also remind the user to commit them with a plain git commit:
 
-       - When the workspace has a `openspec/manual/` directory, add one line: the manual may be stale now, and `speclink-manual` will report which pages this archive's spec changes outdated. The condition is the directory's existence only — do not work out which specs this archive touched, and do not judge whether the manual is actually stale; that is the manual skill's report. This is a reminder only — never run `speclink-manual` yourself.
+       - When the workspace has a `openspec/manual/` directory, add one line: the manual may be stale now, and `$speclink-manual` will report which pages this archive's spec changes outdated. The condition is the directory's existence only — do not work out which specs this archive touched, and do not judge whether the manual is actually stale; that is the manual skill's report. This is a reminder only — never run `$speclink-manual` yourself.
        - When the plan order hint noted changes that list `<name>` in their `archiveAfter`, add one more line:
 
-         > <那些 change 的名稱> 要在 <name> 之後封存，並動到同名的 requirement：先重讀它們對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `speclink-ingest`），再封存它們。
+         > <那些 change 的名稱> 要在 <name> 之後封存，並動到同名的 requirement：先重讀它們對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `$speclink-ingest`），再封存它們。
 
          This too is a reminder only — never run the ingest yourself.
        - Run `speclink plan --json` and hand the user the next change to start. When `next` is non-null, add one more line:
 
-         > plan 的下一個可開工：<next>，執行 `speclink-apply <next>`。
+         > plan 的下一個可開工：<next>，執行 `$speclink-apply <next>`。
 
          When the effective worktree policy is on (`speclink workflow-config show --json` → `worktree`; a `SPECLINK_WORKTREE` env override wins) and `changes` holds two or more entries with `wave` 1 and `stage` `proposed` (wave 1 waits on nothing, so their `blockedBy` is empty), also list them as parallel-safe:
 
-         > 第 1 波可並行：<name-a>、<name-b>，各開一個 session 走 `speclink-apply-with-worktree <name>`。
+         > 第 1 波可並行：<name-a>、<name-b>，各開一個 session 走 `$speclink-apply-with-worktree <name>`。
 
          Policy off, or only one such change → name `next` alone. A null `next`, or a `plan` failure (a dependency cycle) → say nothing about ordering. This too is a reminder only — never run apply yourself.
 
@@ -308,10 +298,10 @@ No dirty files found for this change (no modified artifacts, no tracked source f
 
 **Guardrails**
 
-- **NEVER use `git add .` or `git add -A`** — every file must be staged individually with `git add <file>`
-- **NEVER commit files the user hasn't confirmed** — always show the file list and get explicit confirmation first
-- **Always show the full file list before committing** — no silent staging
-- **NEVER ask for confirmation before the commit plan and the full commit message have been output as visible message text** — the confirmation question must not reference content that was never displayed in the conversation (e.g., "the plan above" when no plan was shown). This applies equally to the plain-text fallback: display first, then ask
-- If the evidence record is missing, warn but don't block — artifact-only commits are valid
-- The "Unrelated Changes" section is informational only — these files are excluded by default
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+Check these before you commit:
+
+- [ ] Every file was staged individually with `git add <file>` — no `git add .` or `git add -A` (step 8).
+- [ ] The user confirmed the exact file list; nothing unconfirmed was committed, and nothing was staged silently (step 7).
+- [ ] **NEVER ask for confirmation before the commit plan and the full commit message have been output as visible message text** — the confirmation question must not reference content that was never displayed in the conversation (e.g., "the plan above" when no plan was shown). This applies equally to the plain-text fallback: display first, then ask.
+- [ ] A missing evidence record produced a warning, not a block — artifact-only commits are valid (step 6).
+- [ ] The "Unrelated Changes" section stayed informational; those files were excluded by default (step 6).

@@ -66,7 +66,7 @@ describe("Select 原語", () => {
 });
 
 describe("Select 與 Input 的視覺一致", () => {
-  it("trigger 與 Input 共用高度、內距、圓角與陰影 class", () => {
+  it("trigger 與 Input 共用高度、內距、圓角、無陰影與聚焦樣式（design D5）", () => {
     render(
       <>
         <Input />
@@ -75,11 +75,38 @@ describe("Select 與 Input 的視覺一致", () => {
     );
     const input = screen.getByRole("textbox");
     const trigger = screen.getByRole("combobox", { name: "狀態" });
-    // 並排時看得出差異的四項：高度、水平內距、圓角、陰影。
-    for (const cls of ["h-9", "px-3", "rounded-md", "shadow-sm"]) {
-      expect(input.className, `Input 應有 ${cls}`).toContain(cls);
-      expect(trigger.className, `SelectTrigger 應有 ${cls}`).toContain(cls);
+    // 並排時看得出差異的幾項：高度、水平內距、圓角、聚焦框；兩者都不帶陰影。
+    for (const cls of [
+      "h-8",
+      "px-3",
+      "rounded-lg",
+      "focus-visible:border-ring",
+      "focus-visible:ring-2",
+      "focus-visible:ring-ring/30",
+    ]) {
+      expect(input.className.split(/\s+/), `Input 應有 ${cls}`).toContain(cls);
+      expect(trigger.className.split(/\s+/), `SelectTrigger 應有 ${cls}`).toContain(cls);
     }
+    expect(input.className).not.toContain("shadow");
+    expect(trigger.className).not.toContain("shadow");
+  });
+
+  it("選單面板 12px 圓角帶淡陰影、選項 8px 圓角 hover 灰底、選取只呈勾號不填主色", async () => {
+    const user = userEvent.setup();
+    render(<Fixture />);
+    await user.click(screen.getByRole("combobox", { name: "狀態" }));
+    // Radix 的 SelectContent 本身就是 role=listbox 的元素。
+    const contentCls = (await screen.findByRole("listbox")).className.split(/\s+/);
+    for (const cls of ["min-w-56", "rounded-xl", "p-1.5", "shadow-lg", "shadow-black/5"]) {
+      expect(contentCls, `SelectContent 應有 ${cls}`).toContain(cls);
+    }
+    const option = screen.getAllByRole("option")[0];
+    const optionCls = option.className.split(/\s+/);
+    for (const cls of ["rounded-lg", "px-2.5", "py-1.5", "text-[13px]", "focus:bg-muted"]) {
+      expect(optionCls, `SelectItem 應有 ${cls}`).toContain(cls);
+    }
+    expect(option.className).not.toContain("bg-primary");
+    expect(option.className).not.toContain("bg-accent");
   });
 });
 

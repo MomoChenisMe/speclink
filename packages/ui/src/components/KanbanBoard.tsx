@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -11,7 +11,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Archive, CircleCheckBig, Hammer, Lightbulb, type LucideIcon } from "lucide-react";
+import { Archive, CircleCheckBig, Hammer, Lightbulb } from "lucide-react";
 
 import type { ArchivedItem, CardKind, ChangeItem, DiscussionLists, SearchHit } from "../adapter";
 import {
@@ -32,45 +32,47 @@ import {
   type BoardFilters,
 } from "../search";
 import { changeStage, STAGE_BADGE, STAGE_BAR, STAGE_ICON, STAGES, type Stage } from "../stage";
+import { BoardColumn, type ColumnTone } from "./BoardColumn";
 import { BoardSearchBar } from "./BoardSearchBar";
+import { PageHeader } from "./ui/page-header";
 import { ChangeCard } from "./ChangeCard";
 import { ColumnLoadFailed, ColumnSkeleton } from "./skeletons";
-import { DiscussionCard, DiscussionColumn, isCollapsedPromoted } from "./DiscussionColumn";
+import {
+  DiscussionCard,
+  DiscussionColumn,
+  isCollapsedPromoted,
+  type PromotedExpansionProps,
+} from "./DiscussionColumn";
 import { Button } from "./ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { SELECT_ALL, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 /** 移動 8px 才視為拖曳——否則 dnd-kit 會吃掉單純點擊，導致卡片無法開啟詳情。 */
 export const DRAG_ACTIVATION_DISTANCE = 8;
 
-/** 篩選維度的「全部」在 BoardFilters 裡是 null，但 Radix Select 的 item 不接受空字串。 */
-const FILTER_ALL = "__all__";
-
-/** 各階段的視覺主題——單一 teal 色相、以深淺表達生命週期推進，守住主色系。 */
-const STAGE_STYLE: Record<Stage, { icon: LucideIcon; top: string; badge: string; bar: string; iconCls: string }> = {
+/** 各階段的視覺主題——每階一色相，全部取 stage.ts 的 stage-* token 對照；
+ *  欄頂色相條與卡片進度條同用 bar（純 bg-stage-*）。 */
+const STAGE_STYLE: Record<Stage, ColumnTone> = {
   proposed: {
     icon: Lightbulb,
-    top: "border-t-primary/25",
     badge: STAGE_BADGE.proposed,
     bar: STAGE_BAR.proposed,
     iconCls: STAGE_ICON.proposed,
   },
   "in-progress": {
     icon: Hammer,
-    top: "border-t-primary/55",
     badge: STAGE_BADGE["in-progress"],
     bar: STAGE_BAR["in-progress"],
     iconCls: STAGE_ICON["in-progress"],
   },
   ready: {
     icon: CircleCheckBig,
-    top: "border-t-primary",
     badge: STAGE_BADGE.ready,
     bar: STAGE_BAR.ready,
     iconCls: STAGE_ICON.ready,
   },
 };
 
-export interface KanbanBoardProps {
+interface KanbanBoardBaseProps {
   changes: ChangeItem[];
   onOpenChange?: (name: string) => void;
   /** 封存請求：ready 卡的封存鈕與拖曳落點皆經此觸發（app 端接確認流程）。 */
@@ -110,54 +112,24 @@ export interface KanbanBoardProps {
   /** 首訪整批載入以失敗收場：各欄卡片區顯示載入失敗提示，取代空態文案。
    * 讀不到 ≠ 確認是空的；loading 為真時不生效（重試在途，先畫骨架）。 */
   loadFailed?: boolean;
+  /** 頁標題（design D6）：提供時以頁標題區包住搜尋列（搜尋與篩選在標題同一列右端）；
+   * 缺席＝搜尋列照舊單獨一列。 */
+  title?: string;
+  description?: string;
+  /** 看板目前呈現順序（含搜尋與篩選；design D2）——詳情頁 ‹ n／m › 與 ⌥↑／⌥↓ 的序列。
+   * 變更依欄序（提案中 → 進行中 → 已就緒）再依欄內順序；討論為上區全卡依序、其後接
+   * 欄底「已轉出」細列（不論收合）。順序改變時才回報。 */
+  onVisibleOrderChange?: (order: { changes: string[]; discussions: string[] }) => void;
 }
 
-function Column({
-  stage,
-  count,
-  countUnknown,
-  children,
-}: {
-  stage: Stage;
-  count: number;
-  /** 計數未知（首訪載入中或載入失敗）：顯示 0 會謊報空，徽章整個不出。 */
-  countUnknown?: boolean;
-  children: React.ReactNode;
-}) {
-  const { t } = useI18n();
-  const style = STAGE_STYLE[stage];
-  const Icon = style.icon;
-  // 欄容器不作 droppable：跨欄放開為彈回＋零寫入（spec「跨欄拖曳不改變變更
-  // 階段」），isOver 高亮會假示可跨欄放置；唯一的欄外落點是封存浮層。
-  return (
-    <div
-      data-column={stage}
-      className={`flex h-full min-h-0 flex-1 min-w-[250px] max-w-[360px] flex-col gap-2 rounded-xl border-t-4 ${style.top} p-2 bg-muted/40`}
-    >
-      <div className="flex items-center gap-1.5 px-1.5 pt-0.5 shrink-0">
-        <Icon className={`h-3.5 w-3.5 ${style.iconCls}`} />
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {t(`stage.${stage}`)}
-        </h2>
-        <div className="flex-1" />
-        {!countUnknown && (
-          <span
-            data-testid="column-count"
-            className={`inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums ${style.badge}`}
-          >
-            {count}
-          </span>
-        )}
-      </div>
-      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">{children}</div>
-    </div>
-  );
-}
+/** 另含討論欄底「已轉出」收合列的展開狀態（design D2）：同名透傳 DiscussionColumn——
+ * 兩者同進同出時受控（桌面 app 跨啟動保留），皆缺席時欄內部狀態、不持久化。 */
+export type KanbanBoardProps = KanbanBoardBaseProps & PromotedExpansionProps;
 
 /**
  * 拖曳變更卡時才浮現的封存落點（design D8）：絕對定位浮層疊於看板右緣上方、
- * 不參與欄列 flex 佈局——浮現與消失時欄寬零變動。半透明底＋backdrop 讓其
- * 下方的欄內容仍可辨識。
+ * 不參與欄列佈局——浮現與消失時欄寬零變動。外觀只取 theme token（主色虛線框
+ * ＋主色淡底，isOver 時底色加深；desktop-board-reskin D3）。
  */
 function ArchiveDropZone() {
   const { t } = useI18n();
@@ -166,10 +138,8 @@ function ArchiveDropZone() {
     <div
       ref={setNodeRef}
       data-column="archived"
-      className={`absolute inset-y-2 right-2 z-10 flex w-[120px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed backdrop-blur-sm transition-colors ${
-        isOver
-          ? "border-primary bg-accent/80 text-primary"
-          : "border-border bg-background/80 text-muted-foreground"
+      className={`absolute inset-y-2 right-2 z-10 flex w-[120px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary/60 text-primary transition-colors ${
+        isOver ? "bg-primary/20" : "bg-primary/10"
       }`}
     >
       <Archive className="h-5 w-5" />
@@ -247,6 +217,10 @@ export function KanbanBoard({
   onDragActiveChange,
   loading,
   loadFailed,
+  title,
+  description,
+  onVisibleOrderChange,
+  ...promotedExpansion
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const { t } = useI18n();
@@ -310,6 +284,20 @@ export function KanbanBoard({
     useSensor(PointerSensor, { activationConstraint: { distance: DRAG_ACTIVATION_DISTANCE } }),
   );
 
+  // 呈現順序回報（design D2）：以序列內容為依賴，順序真的變了才通知宿主。
+  const changeOrder = STAGES.flatMap((stage) => byStage[stage].map((c) => c.name));
+  const discussionOrder = visibleDiscussions
+    ? [
+        ...visibleDiscussions.filter((d) => !isCollapsedPromoted(d)),
+        ...visibleDiscussions.filter(isCollapsedPromoted),
+      ].map((d) => d.slug)
+    : [];
+  const orderKey = JSON.stringify([changeOrder, discussionOrder]);
+  useEffect(() => {
+    onVisibleOrderChange?.({ changes: changeOrder, discussions: discussionOrder });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderKey]);
+
   // 落點解析輸入：每欄「可見」卡的識別碼（視覺序）——搜尋過濾中拖排沿同一語意
   //（spec：新鍵介於可見前後鄰居之間）。討論欄只有全卡參與（promoted 收合列不拖）。
   const columns: ColumnCards[] = [
@@ -366,6 +354,98 @@ export function KanbanBoard({
     onReorder?.(drop.kind, drop.id, drop.prevId, drop.nextId);
   };
 
+  const searchBar = showSearch && (
+    <BoardSearchBar
+      query={query}
+      onQuery={onQuery}
+      disabledReason={searchUnavailableReason}
+      hitCount={visibleChanges.length + (visibleDiscussions?.length ?? 0)}
+      filtersOpen={filtersOpen}
+      onToggleFilters={() => setFiltersOpen((v) => !v)}
+      onCloseFilters={() => setFiltersOpen(false)}
+      activeFilterCount={activeFilterCount}
+    >
+      {/* 篩選面板內容（design D5）：三維度選單直欄堆疊，選回「全部」即單獨清除。 */}
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-muted-foreground">{t("filter.createdBy")}</span>
+        <Select
+          value={filters.createdBy ?? SELECT_ALL}
+          onValueChange={(v) =>
+            setFilters({ ...filters, createdBy: v === SELECT_ALL ? null : v })
+          }
+        >
+          <SelectTrigger aria-label={t("filter.createdBy")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={SELECT_ALL}>{t("filter.all")}</SelectItem>
+            {creators.map((c) => (
+              <SelectItem key={c} value={c}>
+                {c}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-muted-foreground">{t("filter.createdWithin")}</span>
+        <Select
+          value={filters.createdWithin ?? SELECT_ALL}
+          onValueChange={(v) =>
+            setFilters({
+              ...filters,
+              createdWithin: (v === SELECT_ALL
+                ? null
+                : v) as BoardFilters["createdWithin"],
+            })
+          }
+        >
+          <SelectTrigger aria-label={t("filter.createdWithin")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={SELECT_ALL}>{t("filter.all")}</SelectItem>
+            <SelectItem value="7d">{t("filter.range7d")}</SelectItem>
+            <SelectItem value="30d">{t("filter.range30d")}</SelectItem>
+            <SelectItem value="earlier">{t("filter.rangeEarlier")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-muted-foreground">{t("filter.fromDiscussion")}</span>
+        <Select
+          value={filters.fromDiscussion ?? SELECT_ALL}
+          onValueChange={(v) =>
+            setFilters({ ...filters, fromDiscussion: v === SELECT_ALL ? null : v })
+          }
+        >
+          <SelectTrigger aria-label={t("filter.fromDiscussion")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={SELECT_ALL}>{t("filter.all")}</SelectItem>
+            {sourceDiscussions.map((d) => (
+              <SelectItem key={d.slug} value={d.slug}>
+                {d.slug}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      {activeFilterCount > 0 && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 justify-center text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => setFilters(EMPTY_FILTERS)}
+        >
+          {t("filter.clearAll")}
+        </Button>
+      )}
+    </BoardSearchBar>
+  );
+
   return (
     <DndContext
       sensors={sensors}
@@ -394,102 +474,27 @@ export function KanbanBoard({
           {planError}
         </div>
       )}
-      {showSearch && (
-        <BoardSearchBar
-          query={query}
-          onQuery={onQuery}
-          disabledReason={searchUnavailableReason}
-          hitCount={visibleChanges.length + (visibleDiscussions?.length ?? 0)}
-          filtersOpen={filtersOpen}
-          onToggleFilters={() => setFiltersOpen((v) => !v)}
-          onCloseFilters={() => setFiltersOpen(false)}
-          activeFilterCount={activeFilterCount}
-        >
-          {/* 篩選面板內容（design D5）：三維度選單直欄堆疊，選回「全部」即單獨清除。 */}
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">{t("filter.createdBy")}</span>
-            <Select
-              value={filters.createdBy ?? FILTER_ALL}
-              onValueChange={(v) =>
-                setFilters({ ...filters, createdBy: v === FILTER_ALL ? null : v })
-              }
-            >
-              <SelectTrigger aria-label={t("filter.createdBy")}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={FILTER_ALL}>{t("filter.all")}</SelectItem>
-                {creators.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">{t("filter.createdWithin")}</span>
-            <Select
-              value={filters.createdWithin ?? FILTER_ALL}
-              onValueChange={(v) =>
-                setFilters({
-                  ...filters,
-                  createdWithin: (v === FILTER_ALL
-                    ? null
-                    : v) as BoardFilters["createdWithin"],
-                })
-              }
-            >
-              <SelectTrigger aria-label={t("filter.createdWithin")}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={FILTER_ALL}>{t("filter.all")}</SelectItem>
-                <SelectItem value="7d">{t("filter.range7d")}</SelectItem>
-                <SelectItem value="30d">{t("filter.range30d")}</SelectItem>
-                <SelectItem value="earlier">{t("filter.rangeEarlier")}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">{t("filter.fromDiscussion")}</span>
-            <Select
-              value={filters.fromDiscussion ?? FILTER_ALL}
-              onValueChange={(v) =>
-                setFilters({ ...filters, fromDiscussion: v === FILTER_ALL ? null : v })
-              }
-            >
-              <SelectTrigger aria-label={t("filter.fromDiscussion")}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={FILTER_ALL}>{t("filter.all")}</SelectItem>
-                {sourceDiscussions.map((d) => (
-                  <SelectItem key={d.slug} value={d.slug}>
-                    {d.slug}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {activeFilterCount > 0 && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 justify-center text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => setFilters(EMPTY_FILTERS)}
-            >
-              {t("filter.clearAll")}
-            </Button>
-          )}
-        </BoardSearchBar>
+      {title ? (
+        <PageHeader
+          title={title}
+          description={description}
+          actions={searchBar}
+        />
+      ) : (
+        searchBar
       )}
       {/* relative wrapper 供封存落點浮層錨定於「可視」右緣（design D8）——浮層
           在捲動容器之外、不進 flex 流，欄寬零變動且不隨水平捲動漂移。 */}
       <div className="relative flex-1 min-h-0">
-      {/* safe center：寬螢幕置中、內容溢出時回到可捲動的靠左 */}
-      <div className="flex h-full min-h-0 gap-3 overflow-x-auto [justify-content:safe_center]">
+      {/* 等寬 grid 填滿主區（design D1）：欄最小 220px，再窄才水平捲動；討論欄缺席時三欄。
+          relative：欄內 absolute 元素至少被 grid 裁切，不落到外層 wrapper 撐高主區。 */}
+      <div
+        className={`relative grid h-full min-h-0 gap-3 overflow-x-auto ${
+          discussions
+            ? "grid-cols-[repeat(4,minmax(220px,1fr))]"
+            : "grid-cols-[repeat(3,minmax(220px,1fr))]"
+        }`}
+      >
         {discussions && (
           <DiscussionColumn
             discussions={visibleDiscussions ?? []}
@@ -502,14 +507,22 @@ export function KanbanBoard({
             fulltextHits={fulltextHits}
             loading={loading}
             loadFailed={failed}
+            {...promotedExpansion}
           />
         )}
         {STAGES.map((stage) => (
-          <Column
+          <BoardColumn
             key={stage}
-            stage={stage}
-            count={byStage[stage].length}
-            countUnknown={loading || failed}
+            id={stage}
+            title={t(`stage.${stage}`)}
+            tone={STAGE_STYLE[stage]}
+            count={loading || failed ? null : byStage[stage].length}
+            // 空欄（過濾後零卡且非載入中／失敗）：置中灰字；搜尋無命中時同樣顯示。
+            empty={
+              !loading && !failed && byStage[stage].length === 0
+                ? t(`board.emptyColumn.${stage}`)
+                : null
+            }
           >
             {loading ? (
               <ColumnSkeleton />
@@ -548,7 +561,7 @@ export function KanbanBoard({
                 />
               ))
             )}
-          </Column>
+          </BoardColumn>
         ))}
       </div>
       {/* 僅拖曳已就緒變更卡時浮現（archiveZoneVisible）：非就緒卡＝純排序、
@@ -559,11 +572,11 @@ export function KanbanBoard({
       {/* 拖曳浮動複本：渲染在最上層，不受欄位 overflow 裁切 */}
       <DragOverlay dropAnimation={null}>
         {activeChange ? (
-          <div className="shadow-lg rounded-lg rotate-2 cursor-grabbing">
+          <div className="rounded-xl shadow-lg rotate-2 cursor-grabbing">
             <ChangeCard change={activeChange} barClass={STAGE_STYLE[changeStage(activeChange)].bar} />
           </div>
         ) : activeDiscussion ? (
-          <div className="shadow-lg rounded-lg rotate-2 cursor-grabbing">
+          <div className="rounded-xl shadow-lg rotate-2 cursor-grabbing">
             <DiscussionCard d={activeDiscussion} />
           </div>
         ) : null}

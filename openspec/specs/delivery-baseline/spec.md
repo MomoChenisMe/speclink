@@ -2,7 +2,7 @@
 
 ## Purpose
 
-專案交付與驗證基線：Node 套件安裝的確定性、root 一道指令跑完的全量驗證、CI 必跑的完整測試面，以及 Node native 套件的全平台交付驗證。本 capability 保證任何人在乾淨環境下都能重現同一組綠燈——含桌面測試套件全綠與測試輸出零 React act 警告。
+專案交付與驗證基線：Node 套件安裝的確定性、root 一道指令跑完的完整驗證、CI 必跑的完整測試面，以及 Node native 套件的全平台交付驗證。本 capability 保證任何人在乾淨環境下都能重現同一組綠燈——含桌面測試套件全綠與測試輸出零 React act 警告。
 
 ## Requirements
 
@@ -21,7 +21,7 @@
 - **THEN** package-lock.json 同步更新，npm ci 不出現 Missing from lock file 錯誤
 
 ---
-### Requirement: root 單一指令全量驗證
+### Requirement: root 單一指令完整驗證
 
 repo root SHALL 提供單一指令，依序執行 `packages/ui`、`apps/desktop`、`apps/server-web`、Rust workspace 與 `crates/adapters/speclink-node` 五個測試面的測試；`apps/server-web` 測試後 SHALL 執行 production build，使後續 Rust asset integration 以本次 source 產生的 index 與 manifest 驗證。任一測試面或 Web production build 失敗時，指令 SHALL 以非零 exit code 中止。
 
@@ -37,7 +37,7 @@ repo root SHALL 提供單一指令，依序執行 `packages/ui`、`apps/desktop`
 
 #### Scenario: Rust 測試使用當次 Web build
 
-- **WHEN** `apps/server-web` source 有未建置變更並執行 root 全量驗證
+- **WHEN** `apps/server-web` source 有未建置變更並執行 root 完整驗證
 - **THEN** 指令先重建 production assets，再執行 Rust workspace 的 embedded asset 與 route tests
 
 
@@ -307,7 +307,7 @@ code:
 ---
 ### Requirement: 桌面測試套件於乾淨環境全綠
 
-`apps/desktop` 的 vitest 測試套件 SHALL 在乾淨環境下全數通過。其測試執行環境 SHALL 提供瀏覽器 Web Storage 全域（`localStorage` 與 `sessionStorage`），使依賴本機儲存持久化的測試不因環境缺漏而失敗。`apps/desktop` SHALL 直接於自身 package.json 宣告其宣稱使用的測試 DOM 環境（jsdom）為 devDependency，SHALL NOT 僅依賴其他 workspace 的 hoisting。此需求與「root 單一指令全量驗證」互補：後者要求 test:all 於任一面失敗時中止，本需求確保 `apps/desktop` 這一面在乾淨環境下實際通過，使 test:all 為可信的綠燈 gate。測試執行期間 SHALL NOT 有未處理例外（uncaught exception 或 unhandled rejection）使程序非零退出——含在途非同步作業於測試卸載後才觸發者——使 exit 0 為決定性結果而非偶發綠燈。
+`apps/desktop` 的 vitest 測試套件 SHALL 在乾淨環境下全數通過。其測試執行環境 SHALL 提供瀏覽器 Web Storage 全域（`localStorage` 與 `sessionStorage`），使依賴本機儲存持久化的測試不因環境缺漏而失敗。`apps/desktop` SHALL 直接於自身 package.json 宣告其宣稱使用的測試 DOM 環境（jsdom）為 devDependency，SHALL NOT 僅依賴其他 workspace 的 hoisting。此需求與「root 單一指令完整驗證」互補：後者要求 test:all 於任一面失敗時中止，本需求確保 `apps/desktop` 這一面在乾淨環境下實際通過，使 test:all 為可信的綠燈 gate。測試執行期間 SHALL NOT 有未處理例外（uncaught exception 或 unhandled rejection）使程序非零退出——含在途非同步作業於測試卸載後才觸發者——使 exit 0 為決定性結果而非偶發綠燈。
 
 #### Scenario: 乾淨環境 desktop 測試全綠
 
@@ -368,4 +368,55 @@ scripts 測試面 SHALL 含一條靜態斷言，遞迴走訪 repo 內的文字�
 <!-- @trace
 source: server-module-groups
 updated: 2026-09-11T09:37:30+08:00
+-->
+
+---
+### Requirement: 開發建置不保留除錯中間檔
+
+workspace 根目錄的 Cargo.toml SHALL 以 `[profile.dev]` 區段設定 `debug = false`，使 dev 與 test profile 的建置不產生除錯資訊，且不在 target/debug/deps 留下 .o 中間檔——macOS 預設把除錯資訊留在 .o 且重新編譯不刪舊檔，目錄累積到數百萬個檔案後，rustc 每次啟動讀取相依目錄都要付出分鐘級成本。release profile SHALL NOT 因此改變；dev 建置的 debug_assertions 與整數溢位檢查 SHALL 維持開啟；CLI 的人眼輸出與 `--json` 輸出 SHALL 維持既有位元級輸出。測試失敗時的 panic 訊息 SHALL 仍帶檔名與行號。scripts 測試面的 delivery gate SHALL 以靜態解析守住此設定：根 Cargo.toml 缺少 `[profile.dev]` 區段，或該區段的 `debug` 不是關閉值（`false` 或 `0`）時，該測試 SHALL 失敗，失敗訊息 SHALL 指出 dev profile 必須關閉除錯資訊及其原因。
+
+##### Example: delivery gate 對 dev profile 的判定
+
+| 根 Cargo.toml 的 dev profile | delivery gate |
+| ---------------------------- | ------------- |
+| `[profile.dev]` 內有 `debug = false` | 通過 |
+| `[profile.dev]` 內有 `debug = 0` | 通過 |
+| `[profile.dev]` 內有 `debug = "line-tables-only"` | 失敗 |
+| `[profile.dev]` 內有 `debug = true` | 失敗 |
+| `[profile.dev]` 區段存在但沒有 `debug` 鍵 | 失敗 |
+| 沒有 `[profile.dev]` 區段 | 失敗 |
+
+#### Scenario: dev 建置後不留 .o 中間檔
+
+- **WHEN** 在 macOS 以 dev 或 test profile 建置任一 workspace 成員（例如 cargo test --no-run）
+- **THEN** target/debug/deps 內沒有任何 .o 檔
+
+#### Scenario: 重新編譯不累積
+
+- **WHEN** 改動一個 workspace crate 的原始碼後再次以 test profile 建置
+- **THEN** target/debug/deps 內的 .o 檔數量仍為 0，不因重新編譯而增加
+
+#### Scenario: 測試失敗訊息仍帶位置
+
+- **WHEN** dev 建置的測試因 assert 失敗而 panic
+- **THEN** 測試輸出的 panic 訊息帶有出錯處的檔名、行號與欄號
+
+#### Scenario: 設定被移除時守門轉紅
+
+- **WHEN** 根 Cargo.toml 的 `[profile.dev]` 區段被移除，或其 `debug` 被改成 `true`、`"line-tables-only"` 等開啟除錯資訊的值，然後執行 scripts 測試面
+- **THEN** delivery gate 的 dev profile 測試失敗，scripts 測試步驟以非零 exit code 結束，失敗訊息指出 dev profile 必須關閉除錯資訊以避免 .o 累積
+
+#### Scenario: 設定存在時守門通過
+
+- **WHEN** 根 Cargo.toml 的 `[profile.dev]` 區段設定 `debug = false`，執行 scripts 測試面
+- **THEN** delivery gate 的 dev profile 測試通過
+
+#### Scenario: release 建置不受影響
+
+- **WHEN** 以 release profile 建置 CLI 或 server
+- **THEN** 建置設定與本需求生效前相同，輸出行為不變
+
+<!-- @trace
+source: dev-profile-no-debuginfo
+updated: 2026-10-15T11:23:51+08:00
 -->

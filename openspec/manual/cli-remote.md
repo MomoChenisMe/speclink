@@ -3,8 +3,8 @@ title: CLI 連接 remote
 section: Remote 模式
 order: 460
 keywords: [link, auth login, 裝置登入, 存取金鑰, 金鑰圈, logout, .speclink.yaml]
-sources: [remote-connection, remote-auth, server-device-auth, user-documentation]
-generated: 2026-09-17T16:05:41+08:00
+sources: [remote-connection, remote-auth, server-device-auth, user-documentation, "workspace-tools#init 內建 Agent 工具選擇"]
+generated: 2026-10-15T17:40:05+08:00
 ---
 
 # CLI 連接 remote
@@ -19,9 +19,12 @@ generated: 2026-09-17T16:05:41+08:00
 speclink init --store remote --url <project URL> --repo <repo> --tools claude
 ```
 
-- 寫入前 CLI 先要一個 Claude／Codex 的選集。帶 `--tools` 就直接用。互動終端沒帶時，CLI 在 stderr 詢問。非互動終端沒帶時，CLI 什麼都不寫、以非零 exit code 結束，stderr 指引 `--tools claude`、`codex` 或 `claude,codex`。
+- 寫入前 CLI 先要一個工具選集：`claude`、`codex`、`copilot` 任選一個或多個，多個用逗號分隔。帶 `--tools` 就直接用。互動終端沒帶時，CLI 在 stderr 依序問 Claude、Codex、Copilot 三題。非互動終端沒帶時，CLI 什麼都不寫、以非零 exit code 結束，stderr 指出 `--tools`、三個工具名與逗號組合的寫法。
 - 成功後，專案裡有 Skills、`.gitignore`，以及含 tools 與 remote 區段的 `.speclink.yaml`。
 - 不會建立 `openspec/` 目錄，不會建立獨立連接檔，也不會建立 `CLAUDE.md` 或 `AGENTS.md`。
+
+> [!NOTE]
+> 可選的工具在規格裡有兩種說法。較早的 remote 連接規格只列 Claude 與 Codex；較新的工具選擇規格寫所有 `speclink init`（含 remote）都接受三個工具。上面照較新的說法寫，差異記在 [本手冊的來源](about.md)。
 
 既有專案接上 server：
 
@@ -119,4 +122,4 @@ remote 動詞與 `speclink auth status` 依固定順序找憑證：
 
 登入後，用讀取動詞（例如 `speclink list`）確認連線正常，再試寫入動詞。規格未載試跑用的具體動詞清單。動詞在 remote 模式與本地模式的輸出同形。
 
-**出處**：`remote-connection`、`remote-auth`、`server-device-auth`、`user-documentation`
+**出處**：`remote-connection`、`remote-auth`、`server-device-auth`、`user-documentation`、`workspace-tools`

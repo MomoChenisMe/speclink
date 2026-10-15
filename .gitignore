@@ -12,6 +12,8 @@ openspec/.vector-search.db*
 # JS workspace (desktop app + shared UI + server web console)
 node_modules/
 apps/desktop/dist/
+# 第三方授權清單：predev／prebuild 由 scripts/desktop/third-party-licenses.mjs 重生（desktop-about-page D3）
+apps/desktop/src/generated/
 apps/desktop/src-tauri/gen/
 # Server Web Console 的 Vite 產物：不入版本控制，各 build path（dev／CI／Docker／
 # release）皆重建後由 speclink-server 內嵌（D5）。
@@ -30,3 +32,6 @@ apps/desktop/src-tauri/binaries/
 
 # Claude Code 載入 mod 時自動產生的型別檔，每次載入都會重寫
 integrations/claude-code/*/.claude-plugin/types/
+
+# 品牌套件壓縮檔不進 repo（原稿在 docs/assets/brand/svg）
+docs/assets/brand/*.zip

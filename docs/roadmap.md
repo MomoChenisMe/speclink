@@ -1,101 +1,121 @@
-# Speclink Project Roadmap
+# Roadmap
 
 [繁體中文](roadmap.zh-TW.md) · **English**
 
-This document answers where Speclink is heading. It describes **direction, not a schedule**. Each line states the problem it solves, where it stands now, and what you will see after the next step lands. No version numbers and no delivery dates appear here.
+This document collects the directions that Speclink does not complete yet. It describes directions, not a schedule. Thus it has no version numbers and no delivery dates.
 
-## How to read this / 這份路線圖怎麼讀
+Each direction answers three questions:
 
-- **The problem**: why this line exists. Without it, a direction is just a feature list.
-- **Where it stands**: what works today, as judged by [Project Capability Status](product-status.md). That document is the canon for "can I use this yet"; this one does not maintain a second status matrix.
-- **The observable next step**: something you can check yourself after it lands. For example: a command that runs, an entry that appears, or a documentation gap that becomes a tutorial. This is deliberate. Progress does not depend on an announcement.
+- **The problem**: why this direction exists.
+- **Where it is now**: what works today. [Product status](product-status.md) is the reference for what is available.
+- **The next visible step**: what you can check yourself when the step is done.
 
-Every line below is judged against **what actually exists today** — code that runs, the canonical specs under `openspec/specs/`, and the verdicts in the project capability status.
-
-This document is the **direction for users**. It answers only whether the capability you are waiting for is on the way. To decide whether something works today, this is not the entry point — check the project capability status.
-
-## SDK / SDK 發布
+## <a id="sdk"></a>SDK
 
 **The problem**
 
-Driving the Speclink engine from your own program currently means installing a Rust toolchain, building `crates/adapters/speclink-node` yourself, and loading it by path. That is a steep price for "write a script that wires specs into an existing pipeline". What you install should be a package, not a build environment.
+People who want to drive the Speclink engine from their own program must be able to install one package, not a full build toolchain. After the install, the calls must be easy to write, and the errors must be clear.
 
-**Where it stands**
+**Where it is now**
 
-The N-API binding itself works: the Engine and Store bridge are connected and the dispatch contract is covered by tests. Distribution is now wired too — every release tag builds all five platforms, stamps that tag's version, and publishes `@speclink/engine` with its five platform sub-packages to npm. What is left is running it once: nothing is on the registry yet, so the [Node SDK documentation](sdk-node.md) keeps the repo build as an alternative path. Rust users can already depend on the `speclink-core` crate directly.
+- `npm install @speclink/engine` works without a Rust toolchain. npm has native packages for five platforms.
+- Tests protect the engine, the Store bridge, and the `dispatch` contract. For usage, see the [Node SDK](sdk-node.md).
+- Not done yet:
+  - Typed JS methods. Now all verbs go through `dispatch` with string arguments.
+  - A contract version handshake: when the JS package and the native binary have different versions, the engine must stop with an error, not fail silently.
+  - Limits for the Store bridge: concurrency, timeouts, and cancellation. The bridge has none of these now.
+  - Rust users can depend on `speclink-core` only through Git. The crate is not on crates.io.
 
-**The observable next step**
+**The next visible step**
 
-Once the first release that carries the engine ships, `npm install @speclink/engine` succeeds in an empty folder, with no Rust toolchain on the machine. The Node SDK row in the project capability status changes then too.
+You list changes and read specs with typed methods, and your editor completes the arguments. When the JS package and the native binary have different versions, the error message shows both versions.
 
-## Build your own client / 以引擎自建客戶端
-
-**The problem**
-
-The Speclink desktop app is **one frontend over the engine**, not the engine itself. The same typed command/query/context path is used by the CLI, the Server, and the Node binding. So you should be able to build your own thing on it. For example: a desktop app shaped to your team's flow, a VS Code extension, or an internal web board. The official frontend's trade-offs do not have to bind you.
-
-This line shares an engine surface with the previous one, but it asks a different question. The SDK line asks "can I install it". This line asks "can I build my own client from documentation alone".
-
-**Where it stands**
-
-The engine surface is already shared. `speclink-core` is the single implementation of the rules. The Host composes authentication, revisions, transactions, and events. The [canonical Client Protocol](../openspec/specs/client-protocol/spec.md) defines the wire contract across clients. The [Verb and Flag Contract](verb-contract.md) records verb mode assignment and output guarantees.
-
-The path for a third party to attach is what is missing. Today's documentation targets the maintainers of this repo. No "build a client from scratch" tutorial exists. The SDK is not on npm yet (see the previous line).
-
-**The observable next step**
-
-Building a minimal client — list changes, read a spec, check off a task — from public documentation alone, without reading Speclink's own source. If that works, the engine boundary is clear. If it does not work, documentation or interface is still missing. This line exists to close that gap.
-
-## Remote collaboration / 遠端協作
+## <a id="own-client"></a>Build your own client or server
 
 **The problem**
 
-Using Speclink alone in your own repo is already complete; sharing one spec canon across several people is not. Both the command line and the desktop board can now point at a remote — what is left is the stretches of that road still unpaved.
+The desktop app is only one front end of the engine. The CLI, the server, and the Node SDK use the same path for commands, queries, and context. You must be able to build your own tools with it too. Examples: a desktop app for your team flow, a VS Code extension, an internal web board, or a server with your own authentication and database.
 
-**Where it stands**
+**Where it is now**
 
-The remote command-line path works. Tests cover `link`, `auth`, and the read-only Context Projection. Nearly every verb has a remote arm; the [Verb and Flag Contract](verb-contract.md) records the mode assignment. Server-side installation, accounts, membership, and backup and restore all work too.
+- One crate, `speclink-core`, holds all the rules. The Host handles authentication, revisions, transactions, and events.
+- The [Client Protocol spec](../openspec/specs/client-protocol/spec.md) defines the wire contract for all clients. The [Verb and flag contract](verb-contract.md) shows the local and remote mode of each verb and its output shape.
+- Missing:
+  - A document that shows how to build a client from zero.
+  - A remote HTTP client in JS. Now only the Rust `speclink-remote` client exists.
+  - UI components and an integration contract for other teams. `@speclink/ui` is a private package now.
 
-The desktop board points at remotes now: after signing in, the chooser picks a Project and Repo and offers either specs-only or a bound local checkout, and the board that opens browses changes, checks tasks, and reads and writes artifacts the way a local one does. It also shows change metadata (creator and start attribution) and capability lists straight from the server, and a discussion that was promoted into a change carries where it went. The touched files a remote task check-off reports are stored too, and read back from the evidence endpoint.
+**The next visible step**
 
-Claiming a change holds up now. `speclink claim` on a shared Store writes the claimant into the change's meta, so the claim survives restarts and shows up for every teammate; claiming a change someone else holds is refused with a 409 that names the holder. The desktop board shows who claimed each card, and the detail drawer offers the claim action itself (editor role and up).
+You build a small client from the public documents only, without the Speclink source code. The client lists changes, reads a spec, and checks a task. Each place where you get stuck shows a missing document or interface.
 
-Still unpaved: checking a task from the desktop remote board does not itself report touched files (only the CLI does) — a deliberate stance for now, keeping the "no new dirty file, no record" semantics rather than faking evidence — and a claim has no release or takeover verb yet, so hitting someone else's claim always ends at the 409. Offline and conflict handling has left this list: disconnection gives a read-only snapshot that refuses writes until reconnect, the board already walks through version conflicts on settings, proposal reverts, deletes, and board order, and what remains (a task check or move hitting a stale version falls back to a plain error message) is small enough that no work is scheduled on it.
-
-**The observable next step**
-
-Check off a task on the desktop remote board and see which files it touched — the way checking one from the CLI already does. Further out: a way to release or take over a claim whose holder has moved on.
-
-## Agent tool integration / Agent 工具整合
-
-**The problem**
-
-Speclink works with Agents today through generated skill files — slash commands in Claude, `$` commands in Codex. That path works. But it writes the workflow knowledge down for the model to read. It does not hand the model a callable tool. Only a callable tool lets an Agent look up a spec, open a change, or check off a task inside a conversation. Only then does the model skip a full re-read of the skill document.
-
-**Where it stands**
-
-The generated-skill side is mature: propose, apply, ingest, the quality stations, and archiving all have skills, across both Agent platforms (see the [Complete SDD Workflow](workflow.md)). The tool side has no usable entry yet — there is no installable Copilot tool package and no MCP adapter.
-
-**The observable next step**
-
-Mount Speclink as a server in an MCP-capable client. Then list changes and read specs with a direct tool call, instead of asking the model to shell out to the CLI. This step also has to close identity. The same rules the CLI uses must decide which account a tool call runs as, and which store it may write to.
-
-## System integration / 系統整合
+## <a id="remote"></a>Remote collaboration
 
 **The problem**
 
-Speclink inside a company is not an island. Accounts should connect to the identity system already in place. Spec changes should notify other tools. Deployment should follow existing operational practice. Today you bridge all three by hand.
+For one person in one repo, Speclink is complete. When several people share one set of specs, some parts of the path are not ready yet.
 
-**Where it stands**
+**Where it is now**
 
-Server operations already work: installation, account management, PAT and device login, and backup and restore all have entries and end-to-end tests. But identity covers only the accounts the server manages itself. There is no enterprise SSO. To extend behavior you edit the codebase, because no runtime plugin mechanism exists. The deployment posture is a single instance, with no cluster operations. Backups still need a maintenance window.
+- The Remote CLI works: `link`, `auth`, the read-only projection, and a remote version of most verbs, `plan` and dependency declarations included.
+- The desktop app opens remote boards. You can browse changes, check tasks, read and write artifacts, and see the creator, the claimant, and the capability list.
+- The Store keeps claims. A claim on a change that another person holds fails, and the message names the holder.
+- When the connection drops, the board becomes a read-only snapshot and rejects all writes. After the connection returns, the board updates by itself.
+- Not done yet:
+  - When you check a task on a remote board in the desktop app, report the touched files (the CLI does this already).
+  - Release and takeover of a claim.
+  - A view of the audit history. The Store keeps a history of each document that nobody can change, but no API or screen shows "who changed what, when, and with which command".
+  - Cleanup of the local projection cache: removal after a time limit, removal at logout or at a project switch, and read access for the owner only. Now the projection is read-only and stays out of Git.
+  - A handoff gate from PM to engineer (an approval that expires when somebody edits the document), and a record of the spec version that apply used. Quality stations and claims cover part of this need. A new decision about this item is necessary.
 
-**The observable next step**
+**The next visible step**
 
-Signing in to a Speclink server with your company's existing identity provider, without creating a second set of accounts. Two steps come after that: attach custom behavior without an edit to the codebase, and run across multiple nodes. Neither has an observable entry yet, and neither has a committed order. The project capability status shows them first.
+You check a task on a remote board in the desktop app, and you can see the files that it touched, the same as in the CLI. When a claimant leaves, you can release or take over the claim.
 
-## Related documents / 相關文件
+## <a id="agent-tools"></a>Agent tool integration
 
-- [Project Capability Status](product-status.md): what works today and what does not, with evidence and a last-audited date.
-- [Node SDK](sdk-node.md): the engine interface and how to load it today.
-- [Verb and Flag Contract](verb-contract.md): verb mode assignment, output guarantees, and endpoint contracts.
+**The problem**
+
+Now Speclink works with agents through generated skill files. A skill file gives workflow knowledge to the model as text. It does not give the model tools to call. Only tools let an agent read specs, start changes, and check tasks directly in the conversation, without a full read of a skill each time.
+
+**Where it is now**
+
+- The skills are mature. Claude Code and Codex have a skill for each stage. See the [SDD workflow](workflow.md). Other AI tools can get skills through a custom tool descriptor. See [Configuration](configuration.md).
+- The Claude Code plugin `speclink-skills` adds a skill button row and a side panel.
+- The tools have no entry point yet: no tool package to install and no MCP adapter.
+- The direction under discussion (not final):
+  - First, `@speclink/engine` gets one general tool that takes CLI arguments and stdin, with examples that connect it to agent SDKs.
+  - The host side sets the identity of each tool call. The model cannot set its own identity.
+  - The MCP adapter comes later. Without a checkout, it gives context through MCP resources.
+
+**The next visible step**
+
+You add Speclink as a tool in an agent framework, and you list changes and read specs with tool calls, without asking the model to run the CLI. Tool calls use the same rules as the CLI for the account and for the Store that they can write to.
+
+## <a id="system"></a>System integration
+
+**The problem**
+
+In a company, Speclink cannot be an island. Accounts must come from the existing identity system. Spec changes must send notifications to other tools. Deployment must follow the existing operations.
+
+**Where it is now**
+
+- Server operations work: install, account management, access tokens, device login, and backup and restore all have entry points and end-to-end tests.
+- The server sends an SSE event stream (`/events`), so clients see changes when they happen.
+- Not done yet:
+  - Enterprise SSO (OIDC). Now the server manages its own accounts only.
+  - Notifications to other systems, for example webhooks.
+  - Runtime plugins: change the Store or add custom behavior without a code change.
+  - Multi-node deployment. Now the server is one instance.
+  - Online backup without a server stop.
+  - A WebSocket transport (low priority).
+
+**The next visible step**
+
+You log in to the Speclink server with the identity provider of your company, without a separate account. The other items have no visible entry point and no order yet. When they move, [Product status](product-status.md) shows it first.
+
+## <a id="related"></a>Related documents
+
+- [Product status](product-status.md): what is available now, with evidence and check dates.
+- [Node SDK](sdk-node.md): the current engine interface and how to load it.
+- [Verb and flag contract](verb-contract.md): the mode of each verb, the output shapes, and the endpoints.

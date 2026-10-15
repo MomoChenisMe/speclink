@@ -9,6 +9,7 @@
 //! 工單本身是 sidecar：不註冊進 workflow schema，僅由動詞經 `&dyn Store` 讀寫
 //! （與 discuss 動詞同型）——本地隨 git、remote 走 store 文件管道。
 
+use crate::config::{ReviewBaseline, ReviewConfig};
 use crate::keylines::KeyLines;
 use crate::model::{ChangeMeta, ReviewedScopeEntry};
 use crate::store::Store;
@@ -140,12 +141,14 @@ impl RoundPhase {
 }
 
 /// 一輪檢查：`## Round N` 區段的解析結果。`phase`／`patch_hash` 為結構化輪次
-/// 的 frozen patch identity；legacy 輪次兩欄皆 None。
+/// 的 frozen patch identity；legacy 輪次兩欄皆 None。`rules` 是 discovery 輪記錄
+/// 的套用規則（`**Rules**:`／`**Rule**:` 行），沒有記錄時為 None。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Round {
     pub index: usize,
     pub phase: Option<RoundPhase>,
     pub patch_hash: Option<String>,
+    pub rules: Option<ReviewConfig>,
     pub scope: Vec<String>,
     pub findings: Vec<Finding>,
 }
@@ -153,12 +156,14 @@ pub struct Round {
 impl Round {
     /// 一輪的 JSON 形狀——CLI `<station> show --json` 的 `rounds` 項與桌面工單分頁
     /// 共用這一份（欄位集合與 null 語意是對外契約）：camelCase，legacy 輪的
-    /// `phase`／`patchHash` 為明確 null。server 的 `ReviewRoundDto` 是同形的型別化鏡射。
+    /// `phase`／`patchHash` 與沒有規則記錄的 `rules` 為明確 null。server 的
+    /// `ReviewRoundDto` 是同形的型別化鏡射。
     pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "index": self.index,
             "phase": self.phase.map(|p| p.as_str()),
             "patchHash": self.patch_hash,
+            "rules": self.rules,
             "scope": self.scope,
             "findings": self
                 .findings
@@ -242,8 +247,11 @@ pub fn add_round(st: &Station, store: &dyn Store, change: &str, content: &str) -
     if !store.change_exists(change) {
         bail!(NotFound(format!("change not found: {change}")));
     }
-    // 寫入前先驗證（系統邊界：stdin 為外部輸入）——拒絕路徑零寫入。
-    let body = parse_round_body(st, content)?;
+    // 寫入前先驗證（系統邊界：stdin 為外部輸入）——拒絕路徑零寫入。文法錯誤
+    // 只在這裡標成呼叫端內容錯誤（invalid_argv）；同一文法解析既存工單時的
+    // 壞檔仍是一般錯誤。
+    let body = parse_round_body(st, content)
+        .map_err(|e| crate::command::InvalidContent(e.to_string()))?;
     // 刻意不對稱（design D3）：驗證工單語意限定為成品驗證，中途盤點輪不落工單
     // ——誤落的盤點輪會讓「未結工單」失去語意，還會誤觸 archive 守門。
     if st.round_requires_tasks_complete {
@@ -261,21 +269,24 @@ pub fn add_round(st: &Station, store: &dyn Store, change: &str, content: &str) -
     let ticket = existing.as_deref().map(|t| parse_ticket(st, t)).transpose()?;
     // Sequence guard（spec「工單的建立與追加」）：工單首個結構化 round 是
     // discovery；已有結構化 round 後只能追加 validation；validation 必須有可
-    // 驗收的既有輪次（legacy ticket 也算）。
+    // 驗收的既有輪次（legacy ticket 也算）。`**Phase**:` 與工單狀態不符同樣是
+    // 呼叫端內容錯誤（invalid_argv）。
     match body.phase {
         Some(RoundPhase::Discovery)
             if ticket.as_ref().is_some_and(|t| t.rounds.iter().any(|r| r.phase.is_some())) =>
         {
-            bail!(
+            bail!(crate::command::InvalidContent(
                 "the ticket already carries a structured round — subsequent structured \
                  rounds must be validation"
-            );
+                    .into()
+            ));
         }
         Some(RoundPhase::Validation) if ticket.is_none() => {
-            bail!(
+            bail!(crate::command::InvalidContent(
                 "a validation round needs an existing ticket to validate — the first \
                  structured round is discovery"
-            );
+                    .into()
+            ));
         }
         _ => {}
     }
@@ -451,6 +462,99 @@ pub fn scope_union<'a>(scopes: impl IntoIterator<Item = &'a str>) -> Vec<String>
     paths.sort();
     paths.dedup();
     paths
+}
+
+/// finding 路徑違規的原因（add-round 寫入前的路徑檢查）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PathViolationReason {
+    /// 路徑在最後一個冒號後只剩行號寫法——finding 只錨定到檔案。
+    LineNumber,
+    /// 路徑不在工單各輪 Scope 的聯集加本輪 Scope 之內。
+    OutOfScope,
+}
+
+/// 一條違規的 finding 路徑（stdin 原文）與原因；Display 即 stderr 的逐條訊息。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PathViolation {
+    pub path: String,
+    pub reason: PathViolationReason,
+}
+
+impl std::fmt::Display for PathViolation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.reason {
+            PathViolationReason::LineNumber => write!(
+                f,
+                "{} — carries a line number; a finding path names the file only",
+                self.path
+            ),
+            PathViolationReason::OutOfScope => write!(
+                f,
+                "{} — outside the ticket's scope (every round's `**Scope**:` plus this \
+                 round's); anchor the finding on the in-scope file it concerns",
+                self.path
+            ),
+        }
+    }
+}
+
+/// add-round 寫入前的 finding 路徑檢查（spec「finding 路徑落在工單範圍內」，兩站
+/// 同一規則）。純函式：`existing` 為工單既有各輪（無工單時為空）；
+/// `exempt_prefixes` 是免除範圍檢查的目錄名（規格目錄與 `.speclink`——它們不進
+/// 驗證 patch，複驗的範圍解析本來就略過），由呼叫端提供，因為規格目錄名來自
+/// 本機設定。與上一輪某條 finding 的 severity、路徑、描述（去掉結尾
+/// `(accepted)`）完全相同的行是沿用的未解項，不檢查。內容文法錯誤回與
+/// `add_round` 同一則 invalid_argv 錯誤。
+pub fn finding_path_violations(
+    st: &Station,
+    existing: &[Round],
+    content: &str,
+    exempt_prefixes: &[&str],
+) -> Result<Vec<PathViolation>> {
+    let body = parse_round_body(st, content)
+        .map_err(|e| crate::command::InvalidContent(e.to_string()))?;
+    let scope =
+        scope_union(existing.iter().flat_map(|r| &r.scope).chain(&body.scope).map(String::as_str));
+    let carried: &[Finding] = existing.last().map(|r| r.findings.as_slice()).unwrap_or_default();
+    let is_carried = |f: &Finding| {
+        carried.iter().any(|c| {
+            c.severity == f.severity
+                && c.path == f.path
+                && strip_accepted(&c.text) == strip_accepted(&f.text)
+        })
+    };
+    let mut violations = Vec::new();
+    for finding in body.findings.iter().filter(|f| !is_carried(f)) {
+        let path = finding.path.replace('\\', "/");
+        let reason = if has_line_suffix(&path) {
+            PathViolationReason::LineNumber
+        } else if !is_under_any(&path, exempt_prefixes) && !scope.contains(&path) {
+            PathViolationReason::OutOfScope
+        } else {
+            continue;
+        };
+        violations.push(PathViolation { path: finding.path.clone(), reason });
+    }
+    Ok(violations)
+}
+
+/// 去掉 finding 描述結尾的 `(accepted)` 結構標記——沿用比對不計這個標記。
+fn strip_accepted(text: &str) -> &str {
+    text.strip_suffix("(accepted)").map(str::trim_end).unwrap_or(text)
+}
+
+/// 冒號後只剩行號寫法的路徑：`src/a.rs:42`、`src/a.rs:42-50`、`src/a.rs:42-`、
+/// `src/a.rs:L42`，以及結尾單獨的冒號。
+fn has_line_suffix(path: &str) -> bool {
+    path.rsplit_once(':').is_some_and(|(_, tail)| {
+        tail.is_empty()
+            || (tail.trim_start_matches(['L', 'l']).starts_with(|c: char| c.is_ascii_digit())
+                && tail.chars().all(|c| c.is_ascii_digit() || matches!(c, '-' | 'L' | 'l')))
+    })
+}
+
+fn is_under_any(path: &str, dirs: &[&str]) -> bool {
+    dirs.iter().any(|d| path.strip_prefix(d).is_some_and(|rest| rest.starts_with('/')))
 }
 
 /// 逐檔算內容指紋（`read_file` 收 repo-root 相對路徑）。缺檔 fail-closed——
@@ -711,11 +815,13 @@ struct RoundBody {
     findings: Vec<Finding>,
     phase: Option<RoundPhase>,
     patch_hash: Option<String>,
+    rules: Option<ReviewConfig>,
 }
 
 /// 解析並驗證一輪內容：非空 `**Scope**:` 清單＋合法 findings 行；結構化輪次
-/// 另帶成對的 `**Phase**:` 與 `**Patch**:`（spec「工單的建立與追加」）。
-/// stdin 驗證與 show 的輪次解析共用同一文法——動詞產生的格式即動詞驗證的格式。
+/// 另帶成對的 `**Phase**:` 與 `**Patch**:`，discovery 輪可再帶套用規則記錄
+/// （spec「工單的建立與追加」）。stdin 驗證與 show 的輪次解析共用同一文法——
+/// 動詞產生的格式即動詞驗證的格式。
 fn parse_round_body(st: &Station, content: &str) -> Result<RoundBody> {
     if content.trim().is_empty() {
         bail!("round content is empty — a round must carry a `**Scope**:` line");
@@ -724,6 +830,8 @@ fn parse_round_body(st: &Station, content: &str) -> Result<RoundBody> {
     let mut findings = Vec::new();
     let mut phase: Option<RoundPhase> = None;
     let mut patch_hash: Option<String> = None;
+    let mut baseline: Option<ReviewBaseline> = None;
+    let mut rule_lines: Vec<(Severity, String)> = Vec::new();
     for line in content.lines() {
         let t = line.trim_start();
         if let Some(rest) = t.strip_prefix("**Scope**:") {
@@ -756,6 +864,16 @@ fn parse_round_body(st: &Station, content: &str) -> Result<RoundBody> {
                 bail!("multiple `**Patch**:` lines in one round");
             }
             patch_hash = Some(ensure_patch_hash(rest.trim())?);
+        } else if let Some(rest) = t.strip_prefix("**Rules**:") {
+            if baseline.is_some() {
+                bail!("multiple `**Rules**:` lines in one round — one applied-rules record per round");
+            }
+            let token = rest.trim();
+            baseline = Some(ReviewBaseline::parse(token).ok_or_else(|| {
+                anyhow!("unknown rules baseline '{token}' — expected extend or replace")
+            })?);
+        } else if let Some(rest) = t.strip_prefix("**Rule**:") {
+            rule_lines.push(parse_rule(rest)?);
         } else if t.starts_with("##") && !t.starts_with("###") {
             // `## Round N` 是輪次分隔符——內容夾帶二級標題會偽造輪次結構。
             bail!("round content must not contain `## ` headings (round delimiter): {t}");
@@ -767,13 +885,57 @@ fn parse_round_body(st: &Station, content: &str) -> Result<RoundBody> {
         bail!("`**Phase**:` and `**Patch**:` must appear together — a structured round \
                binds its phase to a frozen patch hash");
     }
+    let rules = applied_rules(phase, baseline, rule_lines)?;
     let Some(scope) = scope else {
         bail!(
             "round content must contain a `**Scope**:` line listing the files {}",
             st.meta_prefix
         );
     };
-    Ok(RoundBody { scope, findings, phase, patch_hash })
+    Ok(RoundBody { scope, findings, phase, patch_hash, rules })
+}
+
+/// 組出一輪的套用規則記錄：`**Rule**:` 行需要同輪的 `**Rules**:`，帶
+/// `**Rules**:` 的輪必須是 discovery（複驗不重新套用規則）。規則依嚴重度分組、
+/// 組內保持出現順序。
+fn applied_rules(
+    phase: Option<RoundPhase>,
+    baseline: Option<ReviewBaseline>,
+    rule_lines: Vec<(Severity, String)>,
+) -> Result<Option<ReviewConfig>> {
+    let Some(baseline) = baseline else {
+        if !rule_lines.is_empty() {
+            bail!("`**Rule**:` lines need a `**Rules**:` line in the same round");
+        }
+        return Ok(None);
+    };
+    if phase != Some(RoundPhase::Discovery) {
+        bail!("applied rules are recorded only in a discovery round — `**Rules**:` needs \
+               `**Phase**: discovery`");
+    }
+    let mut rules = ReviewConfig { baseline, ..ReviewConfig::default() };
+    for (severity, text) in rule_lines {
+        match severity {
+            Severity::Critical => rules.critical.push(text),
+            Severity::Warning => rules.warning.push(text),
+            Severity::Suggestion => rules.suggestion.push(text),
+        }
+    }
+    Ok(Some(rules))
+}
+
+/// 解析 `**Rule**:` 之後的值：`<SEVERITY> <規則原文>`，原文去頭尾空白後須非空。
+fn parse_rule(rest: &str) -> Result<(Severity, String)> {
+    let rest = rest.trim();
+    let (sev, text) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+    let Some(severity) = Severity::parse(sev) else {
+        bail!("unknown rule severity '{sev}' — expected CRITICAL, WARNING, or SUGGESTION");
+    };
+    let text = text.trim();
+    if text.is_empty() {
+        bail!("`**Rule**: {sev}` is missing the rule text — expected `**Rule**: <SEVERITY> <rule text>`");
+    }
+    Ok((severity, text.to_string()))
 }
 
 /// Patch 行的格式守門：`sha256:` ＋恰好 64 個小寫十六進位字元。
@@ -840,6 +1002,7 @@ fn build_round(st: &Station, index: usize, body: &str) -> Result<Round> {
         index,
         phase: body.phase,
         patch_hash: body.patch_hash,
+        rules: body.rules,
         scope: body.scope,
         findings: body.findings,
     })

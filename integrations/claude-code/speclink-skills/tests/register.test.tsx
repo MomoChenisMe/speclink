@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { afterPrompt, changeIn, focusFromHistory, focusFromTitle, speclinkCommand, titleOf, verbOf } from '../hooks/focus'
-import { buildBoard, discussionBody, isNoTicket, parseTasks, speclinkArgv, toTicket } from '../hooks/board'
+import { buildBoard, discussionBody, isNoTicket, parseTasks, proposedRows, speclinkArgv, toTicket } from '../hooks/board'
 import type { PlanJson } from '../hooks/board'
 import { cells } from '../hooks/register'
 import { commandHead, groupSkills, withArgument, withCommand } from '../hooks/skills'
@@ -109,7 +109,8 @@ const cli = (argv: readonly string[]) => {
 }
 
 // 引擎在測試裡的替身：已安裝的技能、設定、輸入框與 CLI 輸出。
-const engine = (on: On, filled: string[], claudeLanguage: string, runs: Run[] = []) => {
+// panes：開著的面板（ui.panes 的答案）。
+const engine = (on: On, filled: string[], claudeLanguage: string, runs: Run[] = [], panes: () => string[] = () => []) => {
   mock.env(on, {})
   on('settings.read', () => ({ value: { language: claudeLanguage } }))
   on('command.list', () => ({
@@ -142,7 +143,7 @@ const engine = (on: On, filled: string[], claudeLanguage: string, runs: Run[] = 
       },
     }
   })
-  on('ui.panes', () => ({ value: [] }))
+  on('ui.panes', () => ({ value: panes().map(id => ({ id, title: id })) }) as never)
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
     const { Box } = $.ui.resolve(e)
@@ -263,6 +264,17 @@ test('面板資料：順序與階段取 plan，任務數取 list，已轉出的�
   ])
   expect(board.discussions.map(d => d.slug)).toEqual(['hold-auto-close', 'ship-it'])
   expect(board.next).toBe('add-auth')
+})
+
+test('輸入框 # 選單：只列提案中的 change，# 後面的字篩選名稱，不分大小寫', () => {
+  const changes = [...PLAN.changes, { name: 'Add-Search', wave: 2, stage: 'proposed' as const, blockedBy: [] }]
+
+  expect(proposedRows(changes, '#', '提案中')).toEqual([
+    { text: 'refactor-store', description: 'speclink · 提案中' },
+    { text: 'Add-Search', description: 'speclink · 提案中' },
+  ])
+  expect(proposedRows(changes, '#add', '提案中').map(r => r.text)).toEqual(['Add-Search'])
+  expect(proposedRows(changes, '#auth', '提案中')).toEqual([])
 })
 
 test('Windows 經 cmd.exe 執行 speclink，其他平台直接執行', () => {
@@ -578,5 +590,54 @@ test('封存指令跑完、change 從清單消失後，技能列與標題標上 
     expect(next.sessionTitle).toBe('archive · add-auth ✓')
   } finally {
     LIST.changes = before
+  }
+})
+
+test('送出技能指令後馬上按 Esc（還沒跑任何工具）：技能列回到原本的步驟；工具開始跑之後才中斷就留著', async ($, on) => {
+  focusEngine(on)
+  on('turn.complete', () => ({ text: '' }))
+  const turn = $.turn as unknown as { complete: (e: unknown) => Promise<unknown> }
+  const finish = (isAborted: boolean) =>
+    turn.complete({ turnId: 't', durationMs: 1000, answer: '', isAborted, reason: isAborted ? 'aborted' : 'answer' })
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await $.classic.UserPromptSubmit({ prompt: '/speclink-apply add-auth' })
+  await finish(false)
+  const ui = await $.ui.mount({ plugin: 'speclink-skills', surface: 'terminal', ...BAND })
+
+  await $.classic.UserPromptSubmit({ prompt: '/speclink-quality add-auth' })
+  expect(await ui.find({ type: 'Text', text: 'quality' })).toBeDefined()
+  await finish(true)
+  expect(await ui.find({ type: 'Text', text: 'apply' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'quality' })).toBeUndefined()
+  // 標題只能在送出時改：下一次送出就回到原本的步驟。
+  const next = await $.classic.UserPromptSubmit({ prompt: '繼續工作' })
+  expect(next.sessionTitle).toBe('apply · add-auth')
+  await finish(false)
+
+  await $.classic.UserPromptSubmit({ prompt: '/speclink-quality add-auth' })
+  await $.tool.call({ tool: 'Bash', command: 'git status' } as never)
+  await finish(true)
+  expect(await ui.find({ type: 'Text', text: 'quality' })).toBeDefined()
+})
+
+test('/clear、/resume 換成新 session 時，開著的面板重新讀取，不會一直停在讀取中', async ($, on) => {
+  const runs: Run[] = []
+  let isOpen = false
+  engine(on, [], 'English', runs, () => (isOpen ? ['speclink-panel'] : []))
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('session.messages', () => ({ value: [] }))
+  on('classic.SessionStart', () => ({}))
+  const readsBoard = () => runs.some(r => r.argv.includes('plan'))
+
+  for (const source of ['clear', 'resume'] as const) {
+    isOpen = false
+    runs.length = 0
+    await $.classic.SessionStart({ source })
+    expect(readsBoard()).toBe(false)
+
+    isOpen = true
+    runs.length = 0
+    await $.classic.SessionStart({ source })
+    expect(readsBoard()).toBe(true)
   }
 })

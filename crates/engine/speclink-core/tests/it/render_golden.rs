@@ -1,9 +1,9 @@
 //! Golden tests for skill rendering.
 //!
-//! Three render targets exist: built-in claude, built-in codex, and custom descriptors
-//! (neutral body, wording decided by `invocation`). The claude and codex snapshots lock
-//! the pre-existing output BIT-FOR-BIT — the neutral work must not drift them. The
-//! neutral snapshots pin the cli and tool-call wordings. Instruction files are not part
+//! Render targets: the built-in tools (claude, codex, copilot) and custom descriptors
+//! (neutral body, wording decided by `invocation`). The built-in snapshots lock their
+//! output BIT-FOR-BIT — the neutral work must not drift them. The neutral snapshots pin
+//! the cli and tool-call wordings. Instruction files are not part
 //! of the generated set (change: remove-marker-injection), so nothing here reads one.
 //!
 //! Regenerate goldens deliberately with: UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::
@@ -88,48 +88,35 @@ fn assert_matches_golden(name: &str, actual: &str) {
 // --- built-in targets: bit-level regression locks ---
 
 #[test]
-fn copilot_shared_selections_match_across_worktree_and_language_policies() {
+fn copilot_native_selections_match_across_worktree_and_language_policies() {
     for worktree in [false, true] {
         for locale in [None, Some("tw"), Some("ja"), Some("en")] {
-            let mut baseline = None;
             for (tag, tools) in [
                 ("codex", vec![Tool::Codex]),
                 ("copilot", vec![Tool::Copilot]),
                 ("both", vec![Tool::Codex, Tool::Copilot]),
             ] {
-                let root = TempRoot::new(&format!(
-                    "shared-{tag}-{worktree}-{}",
-                    locale.unwrap_or("unset")
-                ));
+                let root = TempRoot::new(&format!("native-{tag}-{worktree}-{}", locale.unwrap_or("unset")));
                 init::init(&root.dir, &tools, false, "openspec").unwrap();
-                let policy = format!(
-                    "worktree: {worktree}\n{}",
-                    locale.map(|l| format!("locale: {l}\n")).unwrap_or_default()
-                );
+                let policy = format!("worktree: {worktree}\n{}", locale.map(|l| format!("locale: {l}\n")).unwrap_or_default());
                 std::fs::write(root.dir.join("openspec/config.yaml"), policy).unwrap();
                 init::update(&root.dir, false).unwrap();
-                let files = generated_files(&root.dir, ".agents/skills");
-                assert_eq!(
-                    files.iter().any(|(p, _)| p.contains("apply-with-worktree")),
-                    worktree
-                );
-                assert_eq!(
-                    files.iter().any(|(p, _)| p.contains("worktree-merge")),
-                    worktree
-                );
-                if let Some(expected) = &baseline {
-                    assert!(
-                        files == *expected,
-                        "shared output differs for {tag}, worktree={worktree}, locale={locale:?}"
-                    );
-                } else {
-                    baseline = Some(files);
+                for (tool, dir) in [(Tool::Codex, ".agents/skills"), (Tool::Copilot, ".github/skills")] {
+                    let files = generated_files(&root.dir, dir);
+                    if !tools.contains(&tool) { assert!(files.is_empty()); continue; }
+                    assert!(!files.is_empty());
+                    for skill in ["apply-with-worktree", "worktree-merge"] {
+                        assert_eq!(files.iter().any(|(p, _)| p.contains(skill)), worktree);
+                    }
+                    let propose = files.iter().find(|(p, _)| p.contains("speclink-propose/")).unwrap();
+                    assert!(propose.1.contains(&format!("--agent {}", tool.name())));
+                    let prefix = if tool == Tool::Codex { "$speclink-" } else { "/speclink-" };
+                    assert!(propose.1.contains(prefix));
                 }
             }
         }
     }
 }
-
 
 #[test]
 fn claude_rendering_is_bit_identical_to_golden() {
@@ -148,6 +135,16 @@ fn codex_rendering_is_bit_identical_to_golden() {
     assert_matches_golden(
         "codex.snapshot.md",
         &snapshot(&root.dir, ".agents/skills"),
+    );
+}
+
+#[test]
+fn copilot_rendering_is_bit_identical_to_golden() {
+    let root = TempRoot::new("copilot");
+    init::init(&root.dir, &[Tool::Copilot], true, "openspec").unwrap();
+    assert_matches_golden(
+        "copilot.snapshot.md",
+        &snapshot(&root.dir, ".github/skills"),
     );
 }
 
@@ -967,8 +964,8 @@ fn fingerprint(input: &str) -> String {
     format!("{hash:016x}")
 }
 
-/// Every render output the lock covers, aggregated deterministically: the three skill
-/// render targets for every registered skill. Instruction-file content left the managed
+/// Every render output the lock covers, aggregated deterministically: every built-in
+/// tool plus one custom descriptor, for every registered skill. Instruction-file content left the managed
 /// set with change remove-marker-injection, so skills are now the whole asset surface.
 ///
 /// ASSET_VERSION is stamped INTO those outputs (skill frontmatter), so it is normalized
@@ -983,11 +980,8 @@ fn render_fingerprint_input() -> String {
     };
     let mut parts = Vec::new();
     for skill in skills::registry() {
-        for target in [
-            skills::RenderTarget::Builtin(Tool::Claude),
-            skills::RenderTarget::Builtin(Tool::Codex),
-            skills::RenderTarget::Custom(&custom),
-        ] {
+        let builtins = Tool::ALL.into_iter().map(skills::RenderTarget::Builtin);
+        for target in builtins.chain([skills::RenderTarget::Custom(&custom)]) {
             parts.push(skills::render_skill_file_for(target, &skill, "openspec"));
         }
     }
@@ -1243,7 +1237,7 @@ fn apply_with_worktree_selects_and_guards_with_plan() {
 /// Same requirement, Scenario「內文含本體複查以主 checkout 為準指示」: inside the
 /// worktree the apply body's own plan step is only a re-check, the main checkout's
 /// verdict wins, and step 2 still captures the review baseline. The note lives in the
-/// worktree preamble alone — plain apply adds only the shared execution note to its asset. That
+/// worktree preamble alone — the plain apply skill renders nothing but its asset. That
 /// the apply asset itself stays byte-identical is locked by the golden snapshots.
 #[test]
 fn apply_with_worktree_treats_the_body_plan_as_a_recheck() {
@@ -1272,11 +1266,6 @@ fn apply_with_worktree_treats_the_body_plan_as_a_recheck() {
             .splitn(3, "---\n")
             .nth(2)
             .unwrap_or_else(|| panic!("{rel}: missing the frontmatter"));
-        let body = if rel.starts_with(".agents/") {
-            body.split_once("\n---\n").expect("shared execution preamble separator").1
-        } else {
-            body
-        };
         assert_eq!(
             normalize_eol(body).trim(),
             normalize_eol(&rendered_apply_body(&rel)).trim(),
@@ -1396,6 +1385,63 @@ fn ingest_skill_rejudges_soft_dependencies_before_handoff() {
         assert!(
             content[next_steps..].contains(&format!("first (step {seal_number})")),
             "{rel}: Next steps must point at the seal step, number {seal_number}"
+        );
+    }
+}
+
+// --- ingest skill: the argument may name the change to update ---
+
+/// Spec ingest-skill「ingest 參數可指定要更新的變更」: the argument resolves in a fixed
+/// order — a path-like argument stays a plan file (a bare name still resolves under the plan
+/// directory), then an active change name selects that change from conversation context, then
+/// a plan file name; an argument that is neither stops with an error naming both misses. The
+/// resolution lives before the change-selection step, and that step honors it.
+#[test]
+fn ingest_skill_resolves_a_change_name_argument() {
+    for (rel, content) in skill_for_both_tools("ingest-change-arg", "ingest") {
+        let select = content
+            .find("**Check for active changes**")
+            .unwrap_or_else(|| panic!("{rel}: missing the change-selection step"));
+        let resolve = &content[..select];
+        let at = |needle: &str| {
+            resolve.find(needle).unwrap_or_else(|| {
+                panic!("{rel}: the argument resolution before the change-selection step is missing {needle:?}")
+            })
+        };
+        // 三段依序：路徑樣式 → 進行中的變更名 → 計畫檔名稱
+        let path_like = at("contains `/` or ends in `.md`");
+        let change_name = at("equals the name of an active change");
+        let plan_name = at("treat it as a plan file name");
+        assert!(
+            path_like < change_name && change_name < plan_name,
+            "{rel}: the argument resolves as a path, then a change name, then a plan file name"
+        );
+        // 路徑樣式沒有 `/` 時，照舊到計畫目錄找
+        assert!(
+            resolve[path_like..change_name].contains("when it has no `/`"),
+            "{rel}: a bare `.md` argument must still resolve under the plan directory"
+        );
+        for needle in [
+            // 同名即為要更新的變更：來源是對話內容，不找計畫檔
+            "speclink list --json",
+            "the source is conversation context",
+            "Do NOT look for a plan file with that name",
+            // 兩種都找不到：錯誤同時說明兩者、提示只寫變更名，並停止且不改 artifact
+            "is not an active change name",
+            "and no plan file",
+            "pass only its name",
+            "without touching any artifact",
+        ] {
+            at(needle);
+        }
+        let step = &content[select..];
+        let end = step
+            .find("**Select the change**")
+            .unwrap_or_else(|| panic!("{rel}: missing the select-the-change step"));
+        assert!(
+            step[..end].contains("**The argument named an active change**")
+                && step[..end].contains("do NOT ask which change to update"),
+            "{rel}: the change-selection step must take the named change without asking"
         );
     }
 }
@@ -1647,35 +1693,123 @@ fn config_skill_states_what_a_scope_hint_narrows() {
     }
 }
 
-/// Spec config-skill「技能規定任務驗證測試範圍的第五問」: the policy interview
-/// carries a fifth question about how much testing a task's verification runs —
-/// asked, never inferred, quoting the current value — and each answer has its
-/// own landing route.
+/// Spec config-skill「技能規定政策欄位一次確認現值」/「技能規定 diff 先行與收斂驗收」:
+/// step 3 shows every policy item in one table — worktree, test scope and the
+/// review rules mode included, each with what "not set" means — asks one
+/// keep-or-change question, and then asks only the items the user names. The
+/// diff and the convergence check move to steps 5 and 6.
+#[test]
+fn config_skill_confirms_policy_in_one_table() {
+    for (rel, config) in skill_for_both_tools("config-policy-table", "config") {
+        let step_three = section_between(&rel, &config, "## Step 3", "## Step 4");
+        // one table row per item, each carrying its not-set default
+        for (item, default) in [
+            ("`locale`", "system language"),
+            ("`spec_locale`", "system language"),
+            ("`tdd`", "`false`"),
+            ("`audit`", "`false`"),
+            ("`worktree`", "`false`"),
+            ("test scope", "the full suite"),
+            ("review rules mode", "not set (the built-in code-smell baseline only)"),
+        ] {
+            let row = step_three
+                .lines()
+                .find(|line| line.starts_with(&format!("| {item} |")))
+                .unwrap_or_else(|| panic!("{rel}: the policy table has no {item} row"));
+            assert!(
+                row.trim_end().trim_end_matches('|').trim_end().ends_with(default),
+                "{rel}: the {item} row must end with its not-set default {default:?}: {row}"
+            );
+        }
+        for needle in [
+            "not set — defaults to",
+            // one question, and only the named items afterwards
+            "keep everything, or change some of them",
+            "ask nothing more and change no policy field",
+            "only the items the user names",
+            "A first run — a document with no policy field set yet — shows the same table",
+            // never inferred, stated once for all seven items
+            "Never infer any of these values from the repo, the test scope and the review rules mode included",
+            // the tool limits and the plain-text fallback
+            "option limit for one question, ask which ones as plain text",
+            "run the whole confirmation as plain text",
+            // worktree lands through the same dry-run approval; a refusal is relayed
+            "speclink workflow-config set worktree <true|false>",
+            "`--dry-run`",
+            "In local mode that write syncs the skill files",
+            "relay the refusal to the user as it stands",
+            "do not close or remove any worktree yourself",
+            // remote mode only changes the server's config
+            "In remote mode the write changes only the server's config",
+            "neither syncs the skill files nor checks for active worktrees",
+        ] {
+            assert!(
+                step_three.contains(needle),
+                "{rel}: step 3 is missing {needle:?}"
+            );
+        }
+        // the one-by-one interview is gone
+        assert!(
+            !step_three.contains("one at a time, with the"),
+            "{rel}: step 3 must no longer interview every field one at a time"
+        );
+        let step_five = section_between(&rel, &config, "## Step 5: Show the diff, then write", "## Step 6");
+        for needle in [
+            "speclink workflow-config set worktree <true|false> --dry-run",
+            "speclink workflow-config review <critical|warning|suggestion> --stdin --dry-run",
+            "speclink workflow-config review baseline <extend|replace> --dry-run",
+            "In local mode the `worktree` write also syncs the skill files",
+            // the dry-run comes first, the write only after approval
+            "NEVER write before the user approves",
+            "re-run the same commands without `--dry-run`",
+        ] {
+            assert!(
+                step_five.contains(needle),
+                "{rel}: step 5 is missing {needle:?}"
+            );
+        }
+        let step_six = section_between(&rel, &config, "## Step 6: Verify convergence", "## Guardrails");
+        assert!(
+            step_six.contains("The second run's diffs must be empty"),
+            "{rel}: step 6 must carry the convergence check"
+        );
+    }
+}
+
+/// Spec config-skill「技能規定任務驗證測試範圍的第五問」: the test scope is a row in
+/// the policy table — never inferred, quoting an existing rule as its current
+/// value, left alone when the user keeps everything — and each answer to the
+/// question, once the user names the item, has its own landing route.
 #[test]
 fn config_skill_asks_the_test_scope_question() {
     for (rel, config) in skill_for_both_tools("config-fifth-question", "config") {
-        let audit_field = config
-            .find("- `audit`")
-            .unwrap_or_else(|| panic!("{rel}: missing the audit policy field"));
+        let step_three = config
+            .find("## Step 3")
+            .unwrap_or_else(|| panic!("{rel}: missing the step 3 heading"));
+        let audit_row = config
+            .find("| `audit` |")
+            .unwrap_or_else(|| panic!("{rel}: missing the audit row of the policy table"));
         let fifth = config
             .find("### The fifth question")
             .unwrap_or_else(|| panic!("{rel}: missing the fifth question section"));
-        let step_four = config
-            .find("## Step 4")
-            .unwrap_or_else(|| panic!("{rel}: missing the step 4 heading"));
+        let sixth = config
+            .find("### The sixth question")
+            .unwrap_or_else(|| panic!("{rel}: missing the sixth question section"));
         assert!(
-            audit_field < fifth && fifth < step_four,
-            "{rel}: the fifth question belongs after the four policy fields and inside step 3"
+            step_three < audit_row && audit_row < fifth && fifth < sixth,
+            "{rel}: the fifth question belongs inside step 3, after the policy table and before the sixth"
         );
-        let section = &config[fifth..step_four];
+        let section = &config[fifth..sixth];
         for needle in [
-            // same nature as the four fields: an answer, never a finding
+            // same nature as the policy fields: an answer, never a finding
             "an answer, not a finding",
-            "Never infer it from the repo",
             // the question itself, both answers named
             "run the full test suite, or only the tests for the surfaces",
-            // current value carried into the question
-            "quote its current value",
+            // an existing rule is the table's current value, and keeping it
+            // leaves the rule alone
+            "quote that rule as this row's current value",
+            "the answer itself leaves the test-scope rule as it is",
+            "like any other line, it still faces the four criteria",
             // answer A: build the mapping from what step 1 already read
             "dependency manifests you already read in Step 1",
             "`tasks` rules",
@@ -1695,8 +1829,162 @@ fn config_skill_asks_the_test_scope_question() {
             .find("## Guardrails")
             .unwrap_or_else(|| panic!("{rel}: missing the guardrails section"));
         assert!(
-            config[guard..].contains("plus the test-scope question"),
-            "{rel}: guardrails must name the fifth question alongside the four fields"
+            config[guard..].contains("test scope and review rules mode included"),
+            "{rel}: guardrails must name the fifth question alongside the policy fields"
+        );
+    }
+}
+
+/// Spec config-skill「技能規定審查規則的第六問與規則接收」: review rules are
+/// optional — one question with three choices, not set by default and then the
+/// `review` block is left alone — severity follows whether a violation has a
+/// legitimate exception (wording is only a hint), and two more kinds of rule are
+/// not taken: one a test or lint already guards, and one another station owns.
+#[test]
+fn config_skill_review_rules_are_optional() {
+    for (rel, config) in skill_for_both_tools("config-review-optional", "config") {
+        let sixth = section_between(&rel, &config, "### The sixth question", "## Step 4");
+        for needle in [
+            "Review rules are optional",
+            "**not set** (the default)",
+            "`extend`",
+            "`replace`",
+            // what show --json reports for a missing block, and the current value otherwise
+            "baseline `extend` and three empty lists",
+            "how many rules each of the three lists holds",
+            // not set adds nothing; an existing block keeps its mode and rules, and
+            // they still face step 4's checks
+            "adds nothing to the `review` block",
+            "Without a block, the review station keeps its built-in code-smell baseline alone",
+            "With a block, its mode and rules stay as they are",
+            "not a withdrawal",
+            "proposed for removal like any other line",
+            "a legitimate choice",
+        ] {
+            assert!(
+                sixth.contains(needle),
+                "{rel}: the sixth question is missing {needle:?}"
+            );
+        }
+        let step_four = section_between(&rel, &config, "## Step 4", "## Step 5");
+        for needle in [
+            // severity by legitimate exception, wording only a hint, with a counterexample
+            "legitimate exception",
+            "→ `critical`",
+            "→ `warning`",
+            "→ `suggestion`",
+            "The wording is a hint only",
+            "never decides the list on its own",
+            "so it is a `warning`",
+            // already guarded: a targeted static lookup, never a read of the source
+            "a test or a lint already guards",
+            "search the lint configuration",
+            "text-search for a test",
+            "Do not read through the source code",
+            // owned by another station, judged against this run's audit value —
+            // and the verify case regardless of audit
+            "With `audit` on, a security rule belongs to the audit station",
+            "Whatever `audit` says, a rule that the code must follow an artifact belongs to the verify station",
+            "confirmed in this run's table",
+            "from off to on",
+            "alongside the `audit` change",
+            // the smell check runs under extend only
+            "While the mode is `extend`, drop a rule that restates the smell baseline",
+            "With `replace` the baseline does not apply",
+            // with no mode, the audit removal and criteria 3 and 4 still run
+            "With the mode not set, only two of these run",
+            // review rules come from the user alone
+            "Do not compose review rules from the fixed input set or from repo documents",
+            "Review rules come only from what the user states",
+        ] {
+            assert!(
+                step_four.contains(needle),
+                "{rel}: step 4 is missing {needle:?}"
+            );
+        }
+        for gone in [
+            // severity no longer follows the rule's wording
+            "suggest a list from its wording",
+            // one word for the review rules mode's unset state
+            "(or unset)",
+            "does not touch the `review` block",
+        ] {
+            assert!(!config.contains(gone), "{rel}: {gone:?} must be gone");
+        }
+        let guard = config
+            .find("## Guardrails")
+            .unwrap_or_else(|| panic!("{rel}: missing the guardrails section"));
+        assert!(
+            config[guard..].contains("review rules are optional"),
+            "{rel}: guardrails must say review rules are optional"
+        );
+    }
+}
+
+/// Spec config-skill「技能規定提醒的分流」: every reminder the user gives — stated,
+/// pasted or in a file, never dug out of conversation history — goes through
+/// three questions to one of four destinations; the review rule exit opens only
+/// with a mode, a split suggestion only with a mode, and a reminder ahead of the
+/// code waits. The report accounts for each one.
+#[test]
+fn config_skill_routes_reminders() {
+    for (rel, config) in skill_for_both_tools("config-reminders", "config") {
+        let step_four = section_between(&rel, &config, "## Step 4", "## Step 5");
+        for needle in [
+            // where reminders come from, and where they never come from
+            "stated in the conversation",
+            "pasted as a list",
+            "given as a file path that you then read",
+            "Do not search any tool's conversation history for reminders",
+            // the three questions
+            "in the code, or in a document",
+            "reads only the patch",
+            "find the violation late",
+            // the four destinations, each reached by its condition
+            "→ **a review rule**",
+            "→ **a rule for one artifact**",
+            "→ **both**",
+            "→ **not taken**",
+            // both sides only when each stage gets its own use, as two different sentences
+            "each stage gets its own use",
+            "describe different things",
+            // a review rule never restates verify's job
+            "the verify station's work",
+            // no mode: the review rule exit is closed
+            "review rule — not written",
+            "lands only its artifact-rule sentence",
+            // split suggestions: only with a mode, and suggested again after a decline
+            "Suggest splitting",
+            "suggests it again",
+            "With the mode not set, suggest no split",
+            // timing, checked through verbs only
+            "not in the code yet",
+            "`speclink discuss list --json`",
+            "`speclink list --json`",
+        ] {
+            assert!(
+                step_four.contains(needle),
+                "{rel}: step 4 is missing {needle:?}"
+            );
+        }
+        let step_six = section_between(&rel, &config, "## Step 6", "## Guardrails");
+        for needle in [
+            "every reminder and its destination",
+            "a test or lint already guards it",
+            "it belongs to another station",
+            "it is not in the code yet",
+        ] {
+            assert!(
+                step_six.contains(needle),
+                "{rel}: the step 6 report is missing {needle:?}"
+            );
+        }
+        let guard = config
+            .find("## Guardrails")
+            .unwrap_or_else(|| panic!("{rel}: missing the guardrails section"));
+        assert!(
+            config[guard..].contains("**Don't leave a reminder unaccounted for**"),
+            "{rel}: guardrails must account for every reminder"
         );
     }
 }
@@ -1935,12 +2223,11 @@ fn baseline_skill_loads_workflow_config_and_applies_specs_rules() {
 
 // --- discuss and improve skills: discuss-conclusion-bullets ---
 
-/// One Conclusion template of a generated skill: the text from `start` (inclusive) up to
-/// the first `end` after it — a `speclink discuss conclude` heredoc ends at its
-/// `CONCLUSION_EOF` line, the "Capture decisions" summary at the paragraph that follows
-/// it. Bounding the block keeps a field line missing from THIS template from being
-/// found in the next template further down the file.
-fn conclusion_template<'a>(rel: &str, content: &'a str, start: &str, end: &str) -> &'a str {
+/// One block of a generated skill: the text from `start` (inclusive) up to the first
+/// `end` after it — a step up to the next step heading, or a `speclink discuss
+/// conclude` heredoc up to its `CONCLUSION_EOF` line. Bounding the block keeps a
+/// phrase missing from THIS block from being found further down the file.
+fn section_between<'a>(rel: &str, content: &'a str, start: &str, end: &str) -> &'a str {
     let from = content
         .find(start)
         .unwrap_or_else(|| panic!("{rel}: missing {start:?}"));
@@ -1992,27 +2279,122 @@ fn assert_conclusion_bullets(rel: &str, block: &str, decision_bulleted: bool) {
     );
 }
 
+/// The heading line (`## ` or `### `, outside fenced code) of the section that holds byte
+/// offset `at`, and the section's text from that heading up to the next heading.
+fn section_around<'a>(rel: &str, content: &'a str, at: usize) -> (&'a str, &'a str) {
+    let headings: Vec<usize> = crate::lines_outside_fences(content)
+        .into_iter()
+        .filter(|(_, line)| line.starts_with("## ") || line.starts_with("### "))
+        .map(|(offset, _)| offset)
+        .collect();
+    let start = *headings
+        .iter()
+        .rev()
+        .find(|&&h| h <= at)
+        .unwrap_or_else(|| panic!("{rel}: no heading above offset {at}"));
+    let end = headings
+        .iter()
+        .copied()
+        .find(|&h| h > at)
+        .unwrap_or(content.len());
+    let heading = content[start..].lines().next().unwrap_or("");
+    (heading, &content[start..end])
+}
+
+/// Whether `text` names `step` ("Step 8") as a whole number, so "Step 80" does not count.
+fn names_step(text: &str, step: &str) -> bool {
+    text.match_indices(step)
+        .any(|(at, _)| !text[at + step.len()..].starts_with(|c: char| c.is_ascii_digit()))
+}
+
+#[test]
+fn names_step_does_not_take_a_longer_step_number() {
+    assert!(names_step("see Step 8.", "Step 8"));
+    assert!(names_step("see Step 8", "Step 8"));
+    assert!(!names_step("see Step 80.", "Step 8"));
+    assert!(!names_step("see Step 81 and Step 9", "Step 8"));
+}
+
+/// Spec skill-authoring「技能原稿的跨模型寫法規範」, Scenario「技能引用依工具渲染」＋
+/// Example「同一個引用在四種渲染目標」: drift's source writes `/speclink:ingest`, and each
+/// render target spells it its own way; the codex files carry no `/speclink-` reference
+/// (skill directory paths such as `.agents/skills/speclink-apply` are not references).
+#[test]
+fn skill_references_render_per_tool() {
+    let expected = "ingest <change-name>`";
+    for (tag, tool, skills_dir, spelling) in [
+        (
+            "reference-claude",
+            Tool::Claude,
+            ".claude/skills",
+            "/speclink-",
+        ),
+        (
+            "reference-codex",
+            Tool::Codex,
+            ".agents/skills",
+            "$speclink-",
+        ),
+        (
+            "reference-copilot",
+            Tool::Copilot,
+            ".github/skills",
+            "/speclink-",
+        ),
+    ] {
+        let root = TempRoot::new(tag);
+        init::init(&root.dir, &[tool], true, "openspec").unwrap();
+        let files = generated_files(&root.dir, skills_dir);
+        let (rel, drift) = files
+            .iter()
+            .find(|(rel, _)| rel.contains("speclink-drift/"))
+            .unwrap_or_else(|| panic!("{tag}: no drift skill"));
+        assert!(
+            drift.contains(&format!("`{spelling}{expected}")),
+            "{rel}: /speclink:ingest must render as {spelling}ingest"
+        );
+        if tool == Tool::Codex {
+            let reference = crate::slash_skill_reference();
+            for (rel, content) in &files {
+                assert!(
+                    !reference.is_match(content),
+                    "{rel}: a codex skill must not carry a /speclink- reference"
+                );
+            }
+        }
+    }
+    let root = neutral_project("reference-neutral", "cli");
+    let files = generated_files(&root.dir, ".wad/skills");
+    let (rel, drift) = files
+        .iter()
+        .find(|(rel, _)| rel.contains("speclink-drift/"))
+        .expect("neutral drift skill");
+    assert!(
+        drift.contains(&format!("`speclink {expected}")),
+        "{rel}: /speclink:ingest must render as `speclink ingest`"
+    );
+}
+
 /// Spec discuss-skill「討論記錄的樹慣例與格式不變」, Scenario「技能檔載有結論條列規則且
 /// 三種渲染目標同源」＋ improve-skill「conclude 範例與討論結論條列規則同形」: the
-/// generated discuss skill carries Document rule 8 — the Conclusion counterpart of rule
-/// 5 — and every Conclusion template is itself in bullet shape: discuss's conclude
-/// heredoc and "Capture decisions" summary (which also share their hint wording), and
-/// improve's two conclude heredocs. The neutral targets share the assets and are pinned
-/// by their golden snapshots.
+/// generated discuss skill states the Conclusion counterpart of the Position rule exactly
+/// once, in the step that writes the conclusion, next to the bullet-shaped conclude
+/// heredoc; the Document rules list and the "Capture decisions" summary point at that
+/// step in one sentence instead of copying the rule or a second template. improve's two
+/// conclude heredocs are bullet-shaped too. The neutral targets share the assets and are
+/// pinned by their golden snapshots.
 #[test]
 fn discuss_skill_carries_the_conclusion_bullets_rule() {
-    // 第 8 條的字面 — 與第 5 條對稱的規則名、條件句、單段句、多刀子句、不回改句。
-    const RULE_PHRASES: [&str; 6] = [
-        "8. **Conclusion bullets over prose.**",
-        "exceeds one sentence it SHALL be bulleted",
+    // 規則全文的片語：各只出現一次，且都在 conclude 步驟裡。
+    const RULE_PHRASES: [&str; 5] = [
+        "Rejected alternatives or Deferred exceeds one sentence it SHALL be bulleted",
         "Rationale / Capture to / Next stay a single paragraph",
-        // 第 8 條專屬片語：範例只寫 `one bullet per cut when …`，不含這句
+        "never trim it to shorten the record",
         "one bullet per cut, headed",
-        "**cut N `change-name`**",
         "existing records are not rewritten",
     ];
-    // 兩份 discuss 模板的提示字句同文；佔位符慣例照舊各異（`...` vs `[...]`）。
-    const SHARED_HINTS: [&str; 7] = [
+    // conclude 範例的提示字句。
+    const TEMPLATE_HINTS: [&str; 7] = [
         "a one-sentence verdict; beyond one sentence, bullet it",
         "one settled point per line — keep every detail, never trim",
         "one bullet per cut when several changes spin out",
@@ -2022,28 +2404,66 @@ fn discuss_skill_carries_the_conclusion_bullets_rule() {
         "`- question — why not now`, one per line",
     ];
     for (rel, content) in skill_for_both_tools("discuss-conclusion-bullets", "discuss") {
-        for needle in RULE_PHRASES {
+        let anchor = "speclink discuss conclude <slug> --stdin";
+        let heredoc = section_between(&rel, &content, anchor, "\nCONCLUSION_EOF");
+        assert_conclusion_bullets(&rel, heredoc, true);
+        for hint in TEMPLATE_HINTS {
             assert!(
-                content.contains(needle),
-                "{rel}: missing conclusion-rule phrase {needle:?}"
+                heredoc.contains(hint),
+                "{rel}: the conclude template lacks the hint {hint:?}:\n{heredoc}"
             );
         }
-        let heredoc = conclusion_template(
+        let (heading, conclude_step) =
+            section_around(&rel, &content, content.find(anchor).unwrap());
+        let step = heading
+            .split_whitespace()
+            .skip_while(|word| *word != "Step")
+            .take(2)
+            .collect::<Vec<_>>()
+            .join(" ")
+            .trim_end_matches(':')
+            .to_string();
+        assert!(
+            step.starts_with("Step "),
+            "{rel}: the conclude heredoc must sit in a numbered step, got heading {heading:?}"
+        );
+        for needle in RULE_PHRASES {
+            assert_eq!(
+                content.matches(needle).count(),
+                1,
+                "{rel}: the conclusion rule must be stated exactly once ({needle:?})"
+            );
+            assert!(
+                conclude_step.contains(needle),
+                "{rel}: {needle:?} must sit in the conclude step ({heading})"
+            );
+        }
+        // 文件規則清單：第 8 條只剩一句指向 conclude 步驟。
+        let pointer = content
+            .lines()
+            .find(|line| line.starts_with("8. **Conclusion bullets over prose.**"))
+            .unwrap_or_else(|| panic!("{rel}: Document rule 8 is missing"));
+        assert!(
+            names_step(pointer, &step),
+            "{rel}: Document rule 8 must point at {step}, got {pointer:?}"
+        );
+        // Capture decisions：一句話指向 conclude 步驟，不另抄結論樣板。
+        let (_, capture) = section_around(
             &rel,
             &content,
-            "speclink discuss conclude <slug> --stdin",
-            "\nCONCLUSION_EOF",
+            content
+                .find("### Capture decisions")
+                .unwrap_or_else(|| panic!("{rel}: missing the Capture decisions section")),
         );
-        let summary =
-            conclusion_template(&rel, &content, "### Capture decisions", "Where to capture:");
-        for block in [heredoc, summary] {
-            assert_conclusion_bullets(&rel, block, true);
-            for hint in SHARED_HINTS {
-                assert!(
-                    block.contains(hint),
-                    "{rel}: template lacks the shared hint {hint:?}:\n{block}"
-                );
-            }
+        assert!(
+            names_step(capture, &step),
+            "{rel}: Capture decisions must point at {step}"
+        );
+        for field in ["**Decision**:", "**Rejected alternatives**:"] {
+            assert!(
+                !capture.contains(field),
+                "{rel}: Capture decisions must not carry a second conclusion template ({field})"
+            );
         }
     }
     // improve 是 discuss 的鏡像入口、寫同一種記錄：收斂範例的 Decision 條列，全數否決
@@ -2053,7 +2473,7 @@ fn discuss_skill_carries_the_conclusion_bullets_rule() {
         let blocks: Vec<&str> = content
             .match_indices(anchor)
             .map(|(from, _)| {
-                conclusion_template(&rel, &content[from..], anchor, "\nCONCLUSION_EOF")
+                section_between(&rel, &content[from..], anchor, "\nCONCLUSION_EOF")
             })
             .collect();
         assert_eq!(

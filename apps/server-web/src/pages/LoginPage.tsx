@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Button, Input, Label, useI18n } from "@speclink/ui";
+import { Button, useI18n } from "@speclink/ui";
 import { useClient, useSession } from "../app/context";
 import { WebApiError } from "../api/client";
+import { Field } from "../components/Field";
+import { FocusFooter, FocusHeader } from "../layouts/FocusLayout";
 
 // 本機密碼登入。提交期間停用避免重複；失敗保留輸入、把錯誤放欄位旁並以 role=alert
 // 宣告；成功依 Server 回傳的 destination 導向（D3）。
@@ -43,54 +45,49 @@ export function LoginPage() {
   }
 
   const hasFieldErrors = Object.keys(fieldErrors).length > 0;
+  // 說明點名這台主機（等寬字），讓使用者確認自己登入的是哪一台 server。
+  const [beforeHost, afterHost] = t("login.description").split("{host}");
 
   return (
-    <div>
-      <h1 className="mb-6 text-2xl font-semibold">{t("login.title")}</h1>
-      <form onSubmit={onSubmit} className="space-y-4" noValidate>
-        <div className="space-y-1.5">
-          <Label htmlFor="email">{t("field.email")}</Label>
-          <Input
-            id="email"
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            aria-invalid={Boolean(fieldErrors.email)}
-            aria-describedby={fieldErrors.email ? "email-error" : undefined}
-          />
-          {fieldErrors.email && (
-            <p id="email-error" role="alert" className="text-sm text-destructive">
-              {fieldErrors.email}
-            </p>
-          )}
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="password">{t("field.password")}</Label>
-          <Input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            aria-invalid={Boolean(fieldErrors.password)}
-            aria-describedby={fieldErrors.password ? "password-error" : undefined}
-          />
-          {fieldErrors.password && (
-            <p id="password-error" role="alert" className="text-sm text-destructive">
-              {fieldErrors.password}
-            </p>
-          )}
-        </div>
-        {message && !hasFieldErrors && (
-          <p role="alert" className="text-sm text-destructive">
-            {message}
-          </p>
-        )}
+    <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+      <FocusHeader
+        title={t("login.title")}
+        description={
+          <>
+            {beforeHost}
+            <span className="font-mono">{window.location.host}</span>
+            {afterHost}
+          </>
+        }
+      />
+      <Field
+        id="email"
+        label={t("field.email")}
+        type="email"
+        autoComplete="email"
+        value={email}
+        onChange={setEmail}
+        error={fieldErrors.email}
+      />
+      <Field
+        id="password"
+        label={t("field.password")}
+        type="password"
+        autoComplete="current-password"
+        value={password}
+        onChange={setPassword}
+        error={fieldErrors.password}
+      />
+      {message && !hasFieldErrors && (
+        <p role="alert" className="text-sm text-destructive">
+          {message}
+        </p>
+      )}
+      <FocusFooter>
         <Button type="submit" disabled={pending}>
           {pending ? t("login.pending") : t("login.submit")}
         </Button>
-      </form>
-    </div>
+      </FocusFooter>
+    </form>
   );
 }

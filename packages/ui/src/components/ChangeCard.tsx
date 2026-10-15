@@ -2,7 +2,15 @@ import { AlertTriangle, Archive, FileText, GitBranch, Hand, MessageSquareText, R
 
 import type { ChangeItem, SearchHit } from "../adapter";
 import { useI18n } from "../i18n";
-import { awaitingManualCount, changeStage, planBlockedBy, planBlockedLabel, planWave, planWaveLabel } from "../stage";
+import {
+  awaitingManualCount,
+  changeStage,
+  planBlockedBy,
+  planBlockedLabel,
+  planWave,
+  planWaveLabel,
+  STAGE_BADGE,
+} from "../stage";
 import { SEMANTIC_TONE } from "../tone";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
@@ -27,7 +35,7 @@ export interface ChangeCardProps {
   hit?: SearchHit;
 }
 
-/** 看板卡片（極簡）：名稱＋複製鈕＋進度。點卡片開詳情；動作歸詳情抽屜，僅 ready 卡有封存。 */
+/** 看板卡片（極簡）：名稱＋複製鈕＋進度。點卡片開詳情頁；動作歸詳情頁，僅 ready 卡有封存。 */
 export function ChangeCard({
   change,
   onOpen,
@@ -54,7 +62,9 @@ export function ChangeCard({
     <Card
       data-change={change.name}
       data-blocked={blocked ? "true" : undefined}
-      className={`group cursor-pointer transition-[border-color,box-shadow] hover:border-primary/60 hover:shadow-md${blocked ? " opacity-60" : ""}`}
+      size="nested"
+      interactive
+      className={`group cursor-(--cursor-interaction)${blocked ? " opacity-60" : ""}`}
       onClick={() => onOpen?.(change.name)}
     >
       <CardHeader className="p-3 flex-row items-start gap-1.5">
@@ -130,7 +140,7 @@ export function ChangeCard({
             <TooltipTrigger asChild>
               <span
                 aria-label={t("card.awaitingManual")}
-                className={`shrink-0 ${SEMANTIC_TONE.inProgress}`}
+                className={`shrink-0 ${SEMANTIC_TONE.manual}`}
               >
                 <Hand className="h-3.5 w-3.5" />
               </span>
@@ -210,7 +220,7 @@ export function ChangeCard({
               <TooltipTrigger asChild>
                 <span
                   aria-label={waveLabel}
-                  className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full border border-primary/60 px-1 text-[10px] font-semibold leading-none text-primary"
+                  className={`inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-none ${STAGE_BADGE[stage]}`}
                 >
                   {wave}
                 </span>

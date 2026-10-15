@@ -10,6 +10,8 @@ export interface AssetPromptState {
   fileCount: number;
   /** 此提示對應的產物層版號（「保留現狀」記的就是它）。 */
   version: string;
+  /** 專案指令檔的標記版號（確認框「這個專案的技能檔版本」列）；從未安裝為 null。 */
+  projectVersion: string | null;
 }
 
 // 沿用改名前的 key：既有使用者的略過記憶存在這個名字下，換名等於全部失效。
@@ -53,9 +55,16 @@ export function assetPrompt(
     return null;
   }
   if (skips[root] === probe.currentVersion) return null;
+  // 專案的技能檔版號取觸發這個狀態的工具：較新取領先的、過期取落後的；缺失（從未安裝）為 null。
+  const status = probe.status;
+  const flagged =
+    status === "missing"
+      ? undefined
+      : probe.tools.find((tool) => (status === "newer" ? tool.newer : tool.stale) && tool.workspaceVersion !== null);
   return {
-    kind: probe.status,
+    kind: status,
     fileCount: probe.differingFiles.length,
     version: probe.currentVersion,
+    projectVersion: flagged?.workspaceVersion ?? null,
   };
 }

@@ -9,6 +9,7 @@ import type {
   ArchivedItem,
   DiscussionItem,
   DiscussionLists,
+  DocumentRef,
   ListView,
   ManualIndex,
   SearchHit,
@@ -17,7 +18,13 @@ import type {
   AnalyzeReport,
   VerbDrawerResult,
 } from "@speclink/ui";
-import { RevertBlockedError, emptyManualIndex, type RevertBlockedInfo } from "@speclink/ui";
+import {
+  PAGE_SIZE,
+  PAGE_SIZE_OPTIONS,
+  RevertBlockedError,
+  emptyManualIndex,
+  type RevertBlockedInfo,
+} from "@speclink/ui";
 
 import { appT } from "./i18n/runtime";
 import type { ConnectionsAdapter, ConnectionView } from "./adapter/connections";
@@ -51,7 +58,9 @@ import {
   writeAssetSkip,
   type AssetPromptState,
 } from "./assetPrompt";
-import { detectMacOS, type TrayStyle } from "./tray";
+import type { TrayStyle } from "./tray";
+import { detectPlatform } from "./platform";
+import { projectDirOf, type DocumentLocation, type FsActionsAdapter } from "./adapter/fsActions";
 import {
   focusRecheckAllowed,
   focusRecheckDue,
@@ -71,6 +80,8 @@ import {
   type CliPlatform,
 } from "./core/cliInstall";
 import type { CliInstallAdapter } from "./adapter/cliInstall";
+import type { AppInfo } from "./adapter/appInfo";
+import type { ProjectSettingsSection, SettingsSection } from "./settingsCatalog";
 
 const FAILURE_TOAST_ID = "desktop-operation-failure";
 type FailureMessageKey =
@@ -89,7 +100,8 @@ type FailureMessageKey =
   | "store.setDependsFailed"
   | "store.openProjectFailed"
   | "store.initFailed"
-  | "store.adoptFailed";
+  | "store.adoptFailed"
+  | "store.documentActionFailed";
 
 /** error 缺席時不輸出尾綴——訊息本身已完整，且錯誤細節不得夾帶工程詞給使用者。 */
 function showFailureToast(subject: string, messageKey: FailureMessageKey, error?: unknown): void {
@@ -119,6 +131,8 @@ function moveBetweenNeighbors<T>(
 
 /** 主頁面：變更看板（預設）、規格頁、手冊頁、已封存頁、專案設定或應用程式設定。 */
 export type BoardView = "board" | "specs" | "manual" | "archived" | "project-settings" | "settings";
+type SettingsView = "project-settings" | "settings";
+export const isSettingsView = (v: BoardView): v is SettingsView => v === "settings" || v === "project-settings";
 
 /** 逐連線登入互動狀態（desktop-connections）：patInput＝device flow 明確
  * 不支援（404/405），就地收 PAT（規格 PAT fallback）；awaitingApproval＝device
@@ -139,6 +153,8 @@ export interface WorkspaceChooserIntent {
   initialScope?: { projectKey: string; repoKey: string } | null;
   /** 既有 marker 缺工具選集時，預填 checkout 資料夾路徑（chooser 直接 inspect）。 */
   initialCheckoutPath?: string | null;
+  /** 空狀態「連線 Server」入口：chooser 直接起始於 Server 步驟。 */
+  initialStep?: "server";
 }
 
 /** 設定頁 CLI 卡的呈現視圖（core 判定的彙整結果）。 */
@@ -161,6 +177,68 @@ export interface RemoteMarkerConflict {
   path: string;
   url: string;
   repo: string | null;
+}
+
+/** 看板討論欄底「已轉出」收合列的展開記憶鍵（desktop-board-reskin design D2）：
+ * app 本機（localStorage）、值為 "true"／"false"，不寫入任何專案目錄。 */
+export const PROMOTED_EXPANDED_STORAGE_KEY = "speclink.board.promotedExpanded";
+
+/** 鍵缺席、壞值或 localStorage 不可用一律視為收合（false），不拋錯。 */
+function readPromotedExpanded(): boolean {
+  try {
+    return localStorage.getItem(PROMOTED_EXPANDED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+/** 清單每頁筆數的記憶鍵（desktop-list-pages-reskin design D7）：app 本機（localStorage）、
+ * 值為 JSON 物件，不寫入任何專案目錄。 */
+export const PAGE_SIZES_STORAGE_KEY = "speclink.list.pageSizes";
+
+/** 記住每頁筆數的三個清單：規格頁、已封存「變更」節與「討論」節。 */
+export type PageSizeList = "specs" | "archivedChanges" | "archivedDiscussions";
+export type PageSizes = Record<PageSizeList, number>;
+
+/** 逐欄讀回：只接受 PAGE_SIZE_OPTIONS 內的值（0 會讓總頁數變無限大），其他一律 PAGE_SIZE。
+ * 鍵缺席、壞 JSON、非物件或 localStorage 不可用都不拋錯。 */
+function readPageSizes(): PageSizes {
+  let saved: unknown = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(PAGE_SIZES_STORAGE_KEY) ?? "null");
+  } catch {
+    // 壞 JSON 或 localStorage 不可用：當作沒記過。
+  }
+  const record = saved !== null && typeof saved === "object" && !Array.isArray(saved) ? (saved as Record<string, unknown>) : {};
+  const pick = (list: PageSizeList) => {
+    const value = record[list];
+    return typeof value === "number" && PAGE_SIZE_OPTIONS.includes(value) ? value : PAGE_SIZE;
+  };
+  return { specs: pick("specs"), archivedChanges: pick("archivedChanges"), archivedDiscussions: pick("archivedDiscussions") };
+}
+
+/** 更新頁「啟動時在背景檢查新版本」開關的記憶鍵（desktop-settings-mode design D6）：app 本機、
+ * 值為 "true"／"false"；只有 "false" 關閉——鍵缺席、壞值或 localStorage 不可用都維持預設開。 */
+export const UPDATER_AUTO_CHECK_STORAGE_KEY = "speclink.updater.autoCheck";
+
+function readUpdaterAutoCheck(): boolean {
+  try {
+    return localStorage.getItem(UPDATER_AUTO_CHECK_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+/** 新增遠端專案時預設使用的連線（desktop-settings-mode design D7）：app 本機、值為 connection id。
+ * 指向的連線不存在或未登入時由新增專案對話框忽略，這裡不驗證。 */
+export const DEFAULT_CONNECTION_STORAGE_KEY = "speclink.defaultConnection";
+
+function readDefaultConnectionId(): string | null {
+  try {
+    return localStorage.getItem(DEFAULT_CONNECTION_STORAGE_KEY) || null;
+  } catch {
+    return null;
+  }
 }
 
 export interface AppState {
@@ -188,10 +266,20 @@ export interface AppState {
   manual: ManualIndex | null;
 
   boardView: BoardView;
+  /** 應用程式設定的所在分類（desktop-settings-mode design D1）：切回設定模式時沿用上次分類。 */
+  settingsSection: SettingsSection;
+  /** 專案設定的所在分類；遠端專案無 .speclink.yaml 頁，呈現端退回專案說明。 */
+  projectSettingsSection: ProjectSettingsSection;
+  /** 兩種設定模式的返回去處：進入設定前所在的頁面（兩種設定模式之間切換不改寫）。 */
+  settingsReturnView: Exclude<BoardView, SettingsView>;
   view: ListView;
   query: string;
   /** 看板搜尋字串——與已封存頁的 query 各自獨立；不持久化、不跨啟動保留（spec）。 */
   boardQuery: string;
+  /** 討論欄底「已轉出」收合列的展開狀態（design D2）：初值自 app 本機鍵讀，跨啟動保留。 */
+  promotedExpanded: boolean;
+  /** 清單每頁筆數（design D7）：初值自 app 本機鍵讀，三個清單各自跨啟動保留。 */
+  pageSizes: PageSizes;
   /** 看板全文查詢命中（design D6）：去抖後由 searchWorkspace 回填；空 query 恆空。 */
   searchHits: SearchHit[];
   expandedName: string | null;
@@ -219,8 +307,8 @@ export interface AppState {
   revertBlocked: RevertBlockedInfo | null;
   /** 待確認的討論歸檔（slug）。 */
   pendingArchiveDiscussion: string | null;
-  /** 詳情抽屜內呈現的 validate／analyze 結構化結果（keyed by change）；null=無。 */
-  drawerVerb: VerbDrawerResult | null;
+  /** 變更詳情頁內呈現的 validate／analyze 結構化結果（keyed by change）；null=無。 */
+  detailVerb: VerbDrawerResult | null;
 
   refresh: () => Promise<void>;
   /** 監看重掛（事件驅動）：workspace-changed 後重解析監看目標——worktree 增減
@@ -230,21 +318,27 @@ export interface AppState {
    * （workspace-changed 沿用同一條路，不新增監看目標）；交錯回應以最新為準。 */
   refreshManual: () => Promise<void>;
   setBoardView: (v: BoardView) => void;
+  /** 離開設定模式，回到 settingsReturnView。 */
+  leaveSettings: () => void;
+  setSettingsSection: (section: SettingsSection) => void;
+  setProjectSettingsSection: (section: ProjectSettingsSection) => void;
   setView: (v: ListView) => void;
   setQuery: (q: string) => void;
   setBoardQuery: (q: string) => void;
+  /** 寫回同一個 app 本機鍵（"true"／"false"）。 */
+  setPromotedExpanded: (expanded: boolean) => void;
+  /** 改一個清單的每頁筆數，並把整組值寫回同一個 app 本機鍵。 */
+  setPageSize: (list: PageSizeList, size: number) => void;
   /** 生命週期清理：取消在途搜尋去抖 timer 並作廢在途回填——由擁有此 store 的
    * 元件卸載時呼叫，杜絕去抖在 store 卸載後才開火（否則漏出的 timer 會非同步觸發）。 */
   disposeSearch: () => void;
   toggleExpand: (name: string) => void;
   openDetail: (name: string) => void;
-  closeDetail: () => void;
   openDiscussion: (slug: string) => void;
-  closeDiscussion: () => void;
   openSpec: (capability: string) => void;
-  closeSpec: () => void;
   openArchived: (target: ArchivedTarget) => void;
-  closeArchived: () => void;
+  /** 關閉詳情頁回宿主頁（Esc、麵包屑、‹ › 失效時共用）：一次清空四個詳情欄位與 detailVerb。 */
+  closeDetailPage: () => void;
   requestArchive: (name: string) => void;
   confirmArchive: () => Promise<void>;
   cancelArchive: () => void;
@@ -267,8 +361,8 @@ export interface AppState {
   confirmArchiveDiscussion: () => Promise<void>;
   cancelArchiveDiscussion: () => void;
   runVerb: (verb: Verb, change: string) => Promise<void>;
-  /** 收合詳情抽屜的分析結果（design D2：再按分析或面板關閉鈕）。 */
-  clearDrawerVerb: () => void;
+  /** 收合變更詳情頁的分析結果（再按分析或面板關閉鈕）。 */
+  clearDetailVerb: () => void;
   /** 看板拖排寫回：把卡片排到兩鄰居之間（null＝欄頂／欄底）；失敗以 toast 呈現。 */
   reorderCard: (kind: CardKind, id: string, prevId: string | null, nextId: string | null) => Promise<void>;
   /** 排程分頁的前置新增／移除：寫回後刷新看板；引擎拒絕以 toast 呈現其訊息。 */
@@ -341,6 +435,25 @@ export interface AppState {
   /** 由 Tray 顯式開啟問題詳情：選取既有 recovery destination，但不隱含重試。 */
   showRemoteWorkspaceRecovery: (key: string) => void;
   closeTab: (key: string) => void;
+  /** 專案層檔案系統動作（design D5）：作用於本機根或 remote checkout；無本機目錄時不動作。
+   * 成功靜默、失敗 toast（i18n 鍵查表，否則原文）。 */
+  revealProject: (key: string) => Promise<void>;
+  openProjectInTerminal: (key: string) => Promise<void>;
+  openProjectInEditor: (key: string) => Promise<void>;
+  copyProjectPath: (key: string) => Promise<void>;
+  /** 詳情頁「開啟 ▾」的文件定位（design D4）：活躍專案有本機目錄時由 core 解析磁碟位置
+   * （與讀文件同一套：worktree 副本、spec 目錄名、已封存討論）；remote 無 checkout、
+   * 查不到或 core 回報錯誤時為 null。 */
+  locateDocument: (doc: DocumentRef) => Promise<DocumentLocation | null>;
+  /** 對已定位文件的動作：成功靜默、失敗以失敗 toast 呈現（主詞為相對路徑）。 */
+  openDocumentDefault: (location: DocumentLocation) => Promise<void>;
+  revealDocument: (location: DocumentLocation) => Promise<void>;
+  copyDocumentPath: (location: DocumentLocation) => Promise<void>;
+  /** 把分頁已載入的文件原文寫入剪貼簿（remote 無 checkout 時唯一的文件動作）；失敗同上。 */
+  copyDocumentContent: (text: string) => Promise<void>;
+  /** 在檔案管理員顯示活躍專案內的相對路徑（提案影響段的路徑籤）：沒有本機目錄時不動作；
+   * 失敗以失敗 toast 呈現（主詞為相對路徑）。 */
+  revealProjectPath: (relative: string) => Promise<void>;
   confirmInit: (tools: string[]) => Promise<void>;
   cancelInit: () => void;
   confirmAdopt: (tools: string[]) => Promise<void>;
@@ -353,8 +466,10 @@ export interface AppState {
   gotoTab: (n: number) => Promise<void>;
 
   // --- 技能檔過期提示（desktop-instruction-staleness-prompt；決策 4/6/7） ---
-  /** 活躍本地分頁的提示現值（null＝不提示：現版、無法判定或已略過同版）。 */
-  assetPrompt: AssetPromptState | null;
+  /** 各分頁上次探測的提示（locator key → 值；null＝不提示：現版、無法判定或已略過同版）。
+   * 只在分頁活躍時探測，切走後保留上次結果供圖示列琥珀點用；活躍分頁的提示以
+   * `selectAssetPrompt` 推算（desktop-notice-relocation design D1）。 */
+  assetPrompts: Record<string, AssetPromptState | null>;
   /** 更新失敗的單行訊息（呈現於提示原位、可重試）；成功或重查即清空。 */
   assetUpdateError: string | null;
   /** 更新進行中（動作停用、避免重複觸發）。 */
@@ -371,6 +486,10 @@ export interface AppState {
   updater: UpdaterState;
   /** 檢查更新（manual＝手動入口）：自動失敗靜默、手動失敗浮出無法檢查。 */
   checkForUpdates: (manual: boolean) => Promise<void>;
+  /** 關於頁的版本資訊（desktop-about-page design D1）；null＝尚未取得或取得失敗。 */
+  appInfo: AppInfo | null;
+  /** 首次進關於頁時取得並快取：已取得或取得中不重取；失敗維持 null，下次進頁再取。 */
+  loadAppInfo: () => Promise<void>;
   /**
    * 主視窗回到前景時的重檢（desktop-app「回到前景逾一小時即重檢」）：距上次
    * 檢查（自動或手動皆計）滿 1 小時才走自動檢查；now 未給時取現在時刻。
@@ -382,6 +501,15 @@ export interface AppState {
   dismissUpdate: () => void;
   /** 套用完成後重啟為新版。 */
   relaunchToUpdate: () => Promise<void>;
+  /** 設定頁軟體更新卡的聚焦旗標（圖示列更新鈕、toast「查看」、較新態「更新 Speclink」舉旗；
+   * AppSettingsView 捲到卡後清回 false）。執行期狀態、不持久化。 */
+  focusUpdater: boolean;
+  /** 進設定模式的更新頁並聚焦（desktop-settings-mode design D1／D6）。 */
+  openSettingsUpdate: () => void;
+  clearFocusUpdater: () => void;
+  /** 啟動時與回到前景的背景檢查開關（預設開、存 app 本機）：關閉時兩者都不發出，手動檢查照常。 */
+  updaterAutoCheck: boolean;
+  setUpdaterAutoCheck: (on: boolean) => void;
 
   // --- 安裝 CLI 指令（desktop-app「安裝 CLI 指令到 PATH」；design D5） ---
   /** CLI 佈署狀態視圖（null＝尚未探測或無 adapter；執行期狀態、不持久化）。 */
@@ -392,7 +520,7 @@ export interface AppState {
   installCli: () => Promise<void>;
 
   // --- 系統匣樣式（平台決定；tray 接線層訂閱分流） ---
-  /** 系統匣樣式現值：macOS＝panel、其餘＝native-menu；執行期狀態、不持久化。 */
+  /** 系統匣樣式現值：macOS 與 Windows＝panel、Linux＝native-menu；執行期狀態、不持久化。 */
   trayStyle: TrayStyle;
   /** 面板建立失敗的單行錯誤（設定頁本機設定簽以獨立警示行浮出）。 */
   trayPanelError: string | null;
@@ -404,9 +532,12 @@ export interface AppState {
   connections: ConnectionView[];
   /** 逐連線互動狀態（keyed by origin；執行期狀態、不持久化）。 */
   connectionPhases: Record<string, ConnectionPhase>;
-  /** needs-reauth 導向伺服器簽時要聚焦的 connection id。 */
+  /** needs-reauth 導向伺服器頁時要聚焦的 connection id。 */
   reauthConnectionId: string | null;
   openConnectionReauth: (connectionId: string) => void;
+  /** 新增遠端專案時預設使用的連線（null＝不預選；存 app 本機）。 */
+  defaultConnectionId: string | null;
+  setDefaultConnectionId: (connectionId: string | null) => void;
   /** 重整連線清單。回傳讀取是否成功——失敗時清單保留現值，呼叫端據此區分
    * 「清單真的空」與「讀不到」（chooser 的最近開啟列靠它判定連線已移除）。 */
   refreshConnections: () => Promise<boolean>;
@@ -482,6 +613,10 @@ export interface AppStoreDeps {
   updater?: UpdaterAdapter;
   /** CLI 佈署面（探測與計畫執行）；未注入時安裝 CLI 卡不啟用。 */
   cliInstall?: CliInstallAdapter;
+  /** 專案層檔案系統動作面（design D5）；未注入時四個動作不動作。 */
+  fsActions?: FsActionsAdapter;
+  /** 關於頁的版本資訊來源（Tauri `app_info`）；未注入時版本列顯示「—」。 */
+  loadAppInfo?: () => Promise<AppInfo>;
 }
 
 /**
@@ -501,6 +636,45 @@ export function openTicketStation(
   return null;
 }
 
+/** 封存守門的閒置狀態：無待封存目標，兩站都未處置、未帶走。 */
+function idleArchiveGate(): Pick<AppState, "pendingArchive" | "pendingArchiveSettled" | "pendingArchiveCarry"> {
+  return {
+    pendingArchive: null,
+    pendingArchiveSettled: { review: false, verify: false },
+    pendingArchiveCarry: { review: false, verify: false },
+  };
+}
+
+/**
+ * 可取消浮層的歸零片段（spec「detail 抽屜互斥」）：變更詳情與討論抽屜開啟時展開
+ * 進同一次 set，語意等同使用者按各浮層的「取消」或「關閉」。站別處置隨封存守門
+ * 一起還原，下一次封存入口不沿用上一輪。之後新增可取消浮層只改這裡。
+ */
+function cancelableOverlaysCleared(): Partial<AppState> {
+  return {
+    workspaceChooser: null,
+    pendingInit: null,
+    pendingAdopt: null,
+    ...idleArchiveGate(),
+    pendingArchiveDiscussion: null,
+    pendingDelete: null,
+    pendingRevert: null,
+    revertBlocked: null,
+  };
+}
+
+/** 不可取消浮層（遷移、遠端衝突）開啟中——變更詳情與討論的開啟動作此時不改任何狀態。 */
+function uncancelableOverlayOpen(s: AppState): boolean {
+  return s.migrationRoot !== null || s.pendingRemoteConflict !== null;
+}
+
+/** 活躍分頁的技能檔提示：`assetPrompts[activeKey]` 的推算值（null＝不提示）。 */
+export function selectAssetPrompt(
+  state: Pick<AppState, "activeKey" | "assetPrompts">,
+): AssetPromptState | null {
+  return state.activeKey ? (state.assetPrompts[state.activeKey] ?? null) : null;
+}
+
 /**
  * 建立 app 狀態 store（Zustand）。狀態集中此處、留在 apps/desktop；共用元件
  * （packages/ui）不依賴 store，仍經 props 取資料——守住資料源解耦。資料載入
@@ -515,8 +689,37 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     migration,
     updater: updaterAdapter,
     cliInstall: cliInstallAdapter,
+    fsActions: fsActionsAdapter,
+    loadAppInfo: fetchAppInfo,
   } = deps;
   return create<AppState>((set, get) => {
+    /** 分頁的本機目錄：local 為專案根、remote 為 checkout；remote 無 checkout 時為 null。 */
+    const localDirOf = (key: string | null): string | null => {
+      const tab = get().tabs.find((entry) => locatorKey(entry.locator) === key);
+      return tab ? projectDirOf(tab.locator) : null;
+    };
+    /** 對分頁的本機目錄執行檔案系統動作；remote 無 checkout 時沒有本機目錄、不動作。 */
+    const runOnProjectDir = async (
+      key: string,
+      action: "reveal" | "openTerminal" | "openEditor" | "copyText",
+    ) => {
+      const dir = localDirOf(key);
+      if (!fsActionsAdapter || dir === null) return;
+      try {
+        await fsActionsAdapter[action](dir);
+      } catch (e) {
+        // appT 對未知鍵回原字串：i18n 鍵（fs.noEditor）查表、opener 原文照舊。
+        toast.error(appT(String(e)));
+      }
+    };
+    /** 文件動作的單槽失敗 toast：i18n 鍵（fs.notDocument）查表、opener 原文照舊。 */
+    const runOnDocument = async (subject: string, run: () => Promise<void>) => {
+      try {
+        await run();
+      } catch (e) {
+        showFailureToast(subject, "store.documentActionFailed", appT(String(e)));
+      }
+    };
     // 全文查詢的去抖與 latest-wins 狀態（design D6）——閉包層、不進 store state。
     let searchSeq = 0;
     let searchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -524,6 +727,11 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     let pendingUpdate: PendingUpdate | null = null;
     // 上次真正進入檢查中的時刻（前景重檢的節流依據；design D2）——閉包層、不持久化。
     let lastCheckedAt: number | null = null;
+    // 關於頁版本資訊的取得中 promise：併發進頁只發一次。
+    let appInfoInFlight: Promise<void> | null = null;
+    // 已以 toast 提示過的目標版本（desktop-notice-relocation design D4：同一版本於 app 執行期間
+    // 只發一次）——閉包層、執行期記憶、不持久化。
+    let notifiedVersion: string | null = null;
     // 最後一次 CLI 佈署探測（installCli 取 home 與 sidecar 路徑）——閉包層。
     let lastCliProbe: Awaited<ReturnType<CliInstallAdapter["probe"]>> | null = null;
     // remote handshake 世代只屬目前 app 執行期；同 locator 僅最新結果可落地。
@@ -568,16 +776,26 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         detailDiscussion: null,
         detailSpec: null,
         detailArchived: null,
-        pendingArchive: null,
-        pendingArchiveSettled: { review: false, verify: false },
-        pendingArchiveCarry: { review: false, verify: false },
+        ...idleArchiveGate(),
         pendingDelete: null,
         pendingRevert: null,
         revertBlocked: null,
         pendingArchiveDiscussion: null,
-        drawerVerb: null,
+        detailVerb: null,
         manual: null,
       };
+    }
+
+    /** 探測指定分頁的技能檔並記進該分頁的記憶（結果屬於探測時的分頁，期間切走也不錯置）。 */
+    async function probeAssetPromptFor(ws: WorkspaceAdapter, key: string, root: string): Promise<void> {
+      let next: AssetPromptState | null;
+      try {
+        next = assetPrompt(await ws.probeAssets(root), root, readAssetSkips());
+      } catch {
+        // 探測不可用等同無法判定：靜默不提示，開專案不受影響（既有降級語意）。
+        next = null;
+      }
+      set({ assetPrompts: { ...get().assetPrompts, [key]: next } });
     }
 
     /** 活躍分頁的本地專案根；remote 分頁與零分頁回 null（技能檔探測只對本地
@@ -690,15 +908,26 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
      * 已處置與是否帶走，另一站仍有未結工單就留在守門流程（App 會彈該站的對話
      * 框），否則帶著累積的旗標真正封存。工單在 discard 已刪且不可回復——封存
      * 此後失敗的提示由「已放棄了哪些站」導出，不得退化成單純「封存失敗」。
+     *
+     * `prior` 是按下處置當下的守門快照：discard 在途時守門可能已被收掉（開抽屜）或
+     * 換了目標（另一個封存入口），已送出的處置照快照走完，守門狀態只在仍屬本
+     * change 時回寫。
      */
-    async function settleStation(change: string, station: "review" | "verify", carry: boolean) {
-      const settled = { ...get().pendingArchiveSettled, [station]: true };
-      const carried = { ...get().pendingArchiveCarry, [station]: carry };
-      set({ pendingArchiveSettled: settled, pendingArchiveCarry: carried });
+    async function settleStation(
+      change: string,
+      station: "review" | "verify",
+      carry: boolean,
+      prior: Pick<AppState, "pendingArchiveSettled" | "pendingArchiveCarry">,
+    ) {
+      const settled = { ...prior.pendingArchiveSettled, [station]: true };
+      const carried = { ...prior.pendingArchiveCarry, [station]: carry };
+      const stillGating = get().pendingArchive === change;
+      if (stillGating) set({ pendingArchiveSettled: settled, pendingArchiveCarry: carried });
       if (openTicketStation(get().changes, change, settled)) {
-        return; // 另一站的工單還沒處置——守門流程繼續。
+        // 另一站的工單還沒處置——守門流程繼續；守門已被收掉則停在這裡，等同在下一站按取消。
+        return;
       }
-      set({ pendingArchive: null });
+      if (stillGating) set({ pendingArchive: null });
       const dataSource = activeDataSource();
       if (!dataSource) {
         showFailureToast(change, "store.reviewActionUnsupported");
@@ -823,7 +1052,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           const fresh = locator.checkoutRoot
             ? await openRemote(connectionId, target, locator.checkoutRoot)
             : await openRemote(connectionId, target);
-          if (fresh.id !== key) throw new Error("重新連線後 workspace 身分不一致");
+          if (fresh.id !== key) throw new Error("重新連線後專案身分不一致");
           sessions[key] = fresh;
           delete tabErrors[key];
         } catch (error) {
@@ -981,7 +1210,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           : await openRemote(connectionId, `${projectId}/${repoId}`);
         if (!isCurrentRemoteOpen(key, generation)) return;
         if (!get().tabs.some((candidate) => locatorKey(candidate.locator) === key)) return;
-        if (session.id !== key) throw new Error("重新連線後 workspace 身分不一致");
+        if (session.id !== key) throw new Error("重新連線後專案身分不一致");
 
         const tabs = get().tabs.map((candidate) =>
           locatorKey(candidate.locator) === key
@@ -1039,23 +1268,26 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     refreshGen: 0,
     manual: null,
     boardView: "board",
+    settingsSection: "general",
+    settingsReturnView: "board",
+    projectSettingsSection: "context",
     view: "active",
     query: "",
     boardQuery: "",
+    promotedExpanded: readPromotedExpanded(),
+    pageSizes: readPageSizes(),
     searchHits: [],
     expandedName: null,
     detailChange: null,
     detailDiscussion: null,
     detailSpec: null,
     detailArchived: null,
-    pendingArchive: null,
-    pendingArchiveSettled: { review: false, verify: false },
-    pendingArchiveCarry: { review: false, verify: false },
+    ...idleArchiveGate(),
     pendingDelete: null,
     pendingRevert: null,
     revertBlocked: null,
     pendingArchiveDiscussion: null,
-    drawerVerb: null,
+    detailVerb: null,
 
     async refresh() {
       const sourceKey = get().activeKey;
@@ -1161,8 +1393,31 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     setBoardView(boardView) {
-      set({ boardView, reauthConnectionId: null });
+      const from = get().boardView;
+      // 切換主區頁面＝離開詳情頁：四種詳情頁都疊在宿主頁上，不關就會蓋住新頁。
+      set({
+        boardView,
+        ...(isSettingsView(boardView) && !isSettingsView(from) ? { settingsReturnView: from } : {}),
+        reauthConnectionId: null,
+        detailChange: null,
+        detailDiscussion: null,
+        detailSpec: null,
+        detailArchived: null,
+        detailVerb: null,
+      });
       if (boardView === "manual") void get().refreshManual();
+    },
+
+    leaveSettings() {
+      get().setBoardView(get().settingsReturnView);
+    },
+
+    setSettingsSection(settingsSection) {
+      set({ settingsSection });
+    },
+
+    setProjectSettingsSection(projectSettingsSection) {
+      set({ projectSettingsSection });
     },
 
     setView(view) {
@@ -1171,6 +1426,25 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     setQuery(query) {
       set({ query });
+    },
+
+    setPromotedExpanded(promotedExpanded) {
+      set({ promotedExpanded });
+      try {
+        localStorage.setItem(PROMOTED_EXPANDED_STORAGE_KEY, String(promotedExpanded));
+      } catch {
+        // 寫不進 app 本機（私密模式、配額）只失去跨啟動記憶，本次執行期照常展開。
+      }
+    },
+
+    setPageSize(list, size) {
+      const pageSizes = { ...get().pageSizes, [list]: size };
+      set({ pageSizes });
+      try {
+        localStorage.setItem(PAGE_SIZES_STORAGE_KEY, JSON.stringify(pageSizes));
+      } catch {
+        // 寫不進 app 本機（私密模式、配額）只失去跨啟動記憶，本次執行期照常生效。
+      }
     },
 
     setBoardQuery(boardQuery) {
@@ -1210,85 +1484,80 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       set({ expandedName: get().expandedName === name ? null : name });
     },
 
-    // detail 抽屜互斥（drawer-exclusivity）：每個 open* 清除其他三個 detail 欄位，
-    // 後開者取代先開者；互斥由此層保證，呼叫端入口不需自行先關再開。
-    // 落頁歸位（desktop-archived-parity D1）：變更詳情與討論抽屜的宿主頁面是看板，
-    // 開啟時同一次 set 內把底層切回看板，一個落點涵蓋全部入口（系統匣、抽屜內
-    // 跳轉、封存前「去蓋章」）；openSpec／openArchived 不在此列——其宿主頁面
-    // 本就是規格頁與已封存頁。
+    // 詳情頁互斥（spec「詳情頁互斥」）：每個 open* 清除其他三個 detail 欄位，後開者
+    // 取代先開者；互斥由此層保證，呼叫端入口（含 ‹ › 切換）不需自行先關再開。
+    // 宿主歸位（spec「變更與討論詳情頁的宿主為看板」）：變更與討論詳情頁疊在看板上，
+    // 開啟時同一次 set 內把宿主切回看板，一個落點涵蓋全部入口（系統匣、頁內跳轉、
+    // 封存前「去蓋章」）；openSpec／openArchived 不在此列——其宿主本就是規格頁與
+    // 已封存頁。兩者同時收掉可取消浮層（cancelableOverlaysCleared）；不可取消浮層
+    // 開啟中則不改任何狀態（系統匣仍會把主視窗帶到前景）。
     openDetail(name) {
+      if (uncancelableOverlayOpen(get())) return;
       const c = get().changes.find((x) => x.name === name);
-      // 換 change 清掉上一個 change 的動詞結果（drawerVerb keyed by change）。
+      // 換 change 清掉上一個 change 的動詞結果（detailVerb keyed by change）。
       if (c)
         set({
           detailChange: c,
           boardView: "board",
-          drawerVerb: null,
+          detailVerb: null,
           detailDiscussion: null,
           detailSpec: null,
           detailArchived: null,
+          ...cancelableOverlaysCleared(),
         });
     },
 
-    closeDetail() {
-      set({ detailChange: null, drawerVerb: null });
-    },
-
     openDiscussion(slug) {
+      if (uncancelableOverlayOpen(get())) return;
       const lists = get().discussions;
       const d =
         lists.active.find((x) => x.slug === slug) ??
         lists.archived.find((x) => x.slug === slug);
-      // 取代變更詳情抽屜時 drawerVerb 一併清空（比照 closeDetail）。
+      // 取代變更詳情頁時 detailVerb 一併清空（比照 closeDetailPage）。
       if (d)
         set({
           detailDiscussion: d,
           boardView: "board",
           detailChange: null,
-          drawerVerb: null,
+          detailVerb: null,
           detailSpec: null,
           detailArchived: null,
+          ...cancelableOverlaysCleared(),
         });
-    },
-
-    closeDiscussion() {
-      set({ detailDiscussion: null });
     },
 
     openSpec(capability) {
       set({
         detailSpec: capability,
         detailChange: null,
-        drawerVerb: null,
+        detailVerb: null,
         detailDiscussion: null,
         detailArchived: null,
       });
-    },
-
-    closeSpec() {
-      set({ detailSpec: null });
     },
 
     openArchived(target) {
       set({
         detailArchived: target,
         detailChange: null,
-        drawerVerb: null,
+        detailVerb: null,
         detailDiscussion: null,
         detailSpec: null,
       });
     },
 
-    closeArchived() {
-      set({ detailArchived: null });
+    closeDetailPage() {
+      set({
+        detailChange: null,
+        detailDiscussion: null,
+        detailSpec: null,
+        detailArchived: null,
+        detailVerb: null,
+      });
     },
 
     requestArchive(name) {
-      set({
-        pendingArchive: name,
-        pendingArchiveSettled: { review: false, verify: false },
-        pendingArchiveCarry: { review: false, verify: false },
-      });
+      set({ ...idleArchiveGate(), pendingArchive: name });
     },
 
     async confirmArchive() {
@@ -1302,7 +1571,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     async confirmArchiveDiscardTicket(station) {
-      const name = get().pendingArchive;
+      const gate = get();
+      const name = gate.pendingArchive;
       if (!name || ticketSettling) return;
       const dataSource = activeDataSource();
       const discard = station === "review" ? dataSource?.discardReview : dataSource?.discardVerify;
@@ -1325,18 +1595,19 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           await get().refresh();
           return;
         }
-        await settleStation(name, station, false);
+        await settleStation(name, station, false, gate);
       } finally {
         ticketSettling = false;
       }
     },
 
     async confirmArchiveCarryTicket(station) {
-      const name = get().pendingArchive;
+      const gate = get();
+      const name = gate.pendingArchive;
       if (!name || ticketSettling) return;
       ticketSettling = true;
       try {
-        await settleStation(name, station, true);
+        await settleStation(name, station, true, gate);
       } finally {
         ticketSettling = false;
       }
@@ -1455,20 +1726,20 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         ]);
         const o = (v ?? {}) as { valid?: boolean; errors?: string[] };
         set({
-          drawerVerb: {
+          detailVerb: {
             change,
             validate: { valid: !!o.valid, errors: o.errors ?? [] },
             analyze: a as AnalyzeReport,
           },
         });
       } catch (e) {
-        set({ drawerVerb: { change, error: String(e) } });
+        set({ detailVerb: { change, error: String(e) } });
       }
       await get().refresh();
     },
 
-    clearDrawerVerb() {
-      set({ drawerVerb: null });
+    clearDetailVerb() {
+      set({ detailVerb: null });
     },
 
     async reorderCard(kind, id, prevId, nextId) {
@@ -1657,8 +1928,21 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     // --- 自動更新（desktop-app「桌面自動更新」；design D6） ---
     updater: initialUpdaterState,
+    appInfo: null,
+    loadAppInfo() {
+      if (!fetchAppInfo || get().appInfo) return Promise.resolve();
+      appInfoInFlight ??= fetchAppInfo()
+        .then((appInfo) => set({ appInfo }))
+        .catch(() => {})
+        .finally(() => {
+          appInfoInFlight = null;
+        });
+      return appInfoInFlight;
+    },
     async checkForUpdates(manual) {
       if (!updaterAdapter) return;
+      // 自動檢查關閉：背景檢查（啟動、前景重檢）不發出、節流時間戳不動；手動照常。
+      if (!manual && !get().updaterAutoCheck) return;
       const before = get().updater;
       const checking = reduceUpdater(before, { type: "checkStarted", manual });
       if (checking === before) return; // 下載中／待重啟不可重檢
@@ -1673,6 +1957,15 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
             update ? { type: "updateFound", version: update.version } : { type: "noUpdate" },
           ),
         });
+        // 背景檢查（啟動或前景重檢）發現新版本：toast 一次，「查看」進設定頁軟體更新卡；手動
+        // 檢查的結果在卡內行內呈現、不發；同版本第二次不再發（spec「背景檢查的 toast 只發一次」）。
+        if (update && !manual && notifiedVersion !== update.version) {
+          notifiedVersion = update.version;
+          toast(appT("updater.toast.available").replace("{version}", update.version), {
+            id: "updater-available",
+            action: { label: appT("updater.toast.view"), onClick: () => get().openSettingsUpdate() },
+          });
+        }
       } catch {
         // 離線／端點不可達：reducer 決定靜默（自動）或浮出（手動）。
         set({ updater: reduceUpdater(get().updater, { type: "checkFailed" }) });
@@ -1689,10 +1982,17 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const pending = pendingUpdate;
       if (!pending) return;
       set({ updater: reduceUpdater(get().updater, { type: "accepted" }) });
+      // 這次同意是否仍有效：使用者取消（回閒置）或重新檢查換掉了待套用項之後，晚到的下載
+      // 結果一律不落地——不安裝、不推進狀態、不清掉新的待套用項（desktop-app「取消下載回到閒置」）。
+      const stillAccepted = () => pendingUpdate === pending && get().updater.phase === "downloading";
       try {
-        await pending.downloadAndInstall();
+        await pending.download();
+        if (!stillAccepted()) return;
+        await pending.install();
+        if (!stillAccepted()) return;
         set({ updater: reduceUpdater(get().updater, { type: "downloaded" }) });
       } catch (error) {
+        if (!stillAccepted()) return;
         // 簽章驗證失敗等：轉錯誤態、清掉待套用項；既有安裝不受影響。
         pendingUpdate = null;
         set({
@@ -1708,6 +2008,23 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
     async relaunchToUpdate() {
       await updaterAdapter?.relaunch();
+    },
+    focusUpdater: false,
+    openSettingsUpdate() {
+      get().setBoardView("settings");
+      set({ settingsSection: "updates", focusUpdater: true });
+    },
+    clearFocusUpdater() {
+      set({ focusUpdater: false });
+    },
+    updaterAutoCheck: readUpdaterAutoCheck(),
+    setUpdaterAutoCheck(updaterAutoCheck) {
+      set({ updaterAutoCheck });
+      try {
+        localStorage.setItem(UPDATER_AUTO_CHECK_STORAGE_KEY, String(updaterAutoCheck));
+      } catch {
+        // 寫不進 app 本機只失去跨啟動記憶，本次執行期照常生效。
+      }
     },
 
     // --- 安裝 CLI 指令（desktop-app「安裝 CLI 指令到 PATH」；design D5） ---
@@ -1789,7 +2106,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     // --- 系統匣樣式（平台決定、不持久化） ---
-    trayStyle: detectMacOS() ? "panel" : "native-menu",
+    trayStyle: detectPlatform() === "linux" ? "native-menu" : "panel",
     trayPanelError: null,
     panelFallback(message) {
       set({ trayStyle: "native-menu", trayPanelError: message });
@@ -1800,7 +2117,19 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     connectionPhases: {},
     reauthConnectionId: null,
     openConnectionReauth(connectionId) {
-      set({ boardView: "settings", reauthConnectionId: connectionId });
+      // 經 setBoardView 切頁：連線失效橫幅在主區外、詳情頁開著時仍點得到，詳情頁要一併關閉。
+      get().setBoardView("settings");
+      set({ settingsSection: "servers", reauthConnectionId: connectionId });
+    },
+    defaultConnectionId: readDefaultConnectionId(),
+    setDefaultConnectionId(defaultConnectionId) {
+      set({ defaultConnectionId });
+      try {
+        if (defaultConnectionId === null) localStorage.removeItem(DEFAULT_CONNECTION_STORAGE_KEY);
+        else localStorage.setItem(DEFAULT_CONNECTION_STORAGE_KEY, defaultConnectionId);
+      } catch {
+        // 寫不進 app 本機只失去跨啟動記憶，本次執行期照常生效。
+      }
     },
     async refreshConnections() {
       if (!connectionsAdapter) return false;
@@ -2115,6 +2444,34 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       persistRecents(recents);
     },
 
+    revealProject: (key) => runOnProjectDir(key, "reveal"),
+    openProjectInTerminal: (key) => runOnProjectDir(key, "openTerminal"),
+    openProjectInEditor: (key) => runOnProjectDir(key, "openEditor"),
+    copyProjectPath: (key) => runOnProjectDir(key, "copyText"),
+    async locateDocument(doc) {
+      const dir = localDirOf(get().activeKey);
+      if (!fsActionsAdapter || dir === null) return null;
+      try {
+        return await fsActionsAdapter.locate(dir, doc);
+      } catch {
+        return null;
+      }
+    },
+    openDocumentDefault: (location) =>
+      runOnDocument(location.relative, async () => fsActionsAdapter?.openDefault(location.path)),
+    revealDocument: (location) =>
+      runOnDocument(location.relative, async () => fsActionsAdapter?.reveal(location.path)),
+    copyDocumentPath: (location) =>
+      runOnDocument(location.relative, async () => fsActionsAdapter?.copyText(location.path)),
+    copyDocumentContent: (text) =>
+      runOnDocument(appT("detail.copyContent"), async () => fsActionsAdapter?.copyText(text)),
+    async revealProjectPath(relative) {
+      const dir = localDirOf(get().activeKey);
+      if (!fsActionsAdapter || dir === null) return;
+      // 相對路徑為正斜線；Windows 的 reveal 接受混合分隔符（Rust std::path 吸收）。
+      await runOnDocument(relative, async () => fsActionsAdapter.reveal(`${dir}/${relative}`));
+    },
+
     closeTab(key) {
       bumpRemoteOpenGeneration(key);
       const tabs = removeTab(get().tabs, key);
@@ -2147,7 +2504,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       persistTabs(tabs, activeKey);
       // 關掉 active 分頁：切到最近的剩餘分頁（走完整開啟語意）；零分頁則空狀態。
       if (wasActive) {
-        const next = tabs.at(-1);
+        const next = tabs[tabs.length - 1];
         if (next) void get().activateTab(locatorKey(next.locator));
       }
     },
@@ -2200,36 +2557,23 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       await get().activateTab(locatorKey(target.locator));
     },
 
-    assetPrompt: null,
+    assetPrompts: {},
     assetUpdateError: null,
     assetUpdating: false,
 
     async refreshAssetPrompt() {
+      const key = get().activeKey;
       const root = activeLocalRoot();
+      set({ assetUpdateError: null });
       // remote 分頁無本地受管技能檔可查（決策 4）；無 adapter 時 UI 不啟用。
-      if (!workspace || !root) {
-        set({ assetPrompt: null, assetUpdateError: null });
-        return;
-      }
-      let probe;
-      try {
-        probe = await workspace.probeAssets(root);
-      } catch {
-        // 探測不可用等同無法判定：靜默不提示，開專案不受影響（既有降級語意）。
-        set({ assetPrompt: null });
-        return;
-      }
-      // 分頁在探測期間被切走：結果屬於前一個 root，不得落地。
-      if (activeLocalRoot() !== root) return;
-      set({
-        assetPrompt: assetPrompt(probe, root, readAssetSkips()),
-        assetUpdateError: null,
-      });
+      if (!workspace || !root || !key) return;
+      await probeAssetPromptFor(workspace, key, root);
     },
 
     async applyAssetUpdate() {
+      const key = get().activeKey;
       const root = activeLocalRoot();
-      if (!workspace || !root || get().assetUpdating) return;
+      if (!workspace || !root || !key || get().assetUpdating) return;
       set({ assetUpdating: true, assetUpdateError: null });
       try {
         await workspace.updateAssets(root);
@@ -2239,15 +2583,17 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         return;
       }
       set({ assetUpdating: false });
-      await get().refreshAssetPrompt();
+      // 重探套用的那個分頁：使用者途中切走，它的提示與琥珀點仍要收合。
+      await probeAssetPromptFor(workspace, key, root);
     },
 
     dismissAssetPrompt() {
+      const key = get().activeKey;
       const root = activeLocalRoot();
-      const prompt = get().assetPrompt;
-      if (!root || !prompt) return;
+      const prompt = selectAssetPrompt(get());
+      if (!key || !root || !prompt) return;
       writeAssetSkip(root, prompt.version);
-      set({ assetPrompt: null, assetUpdateError: null });
+      set({ assetPrompts: { ...get().assetPrompts, [key]: null }, assetUpdateError: null });
     },
 
     async restoreTabs() {

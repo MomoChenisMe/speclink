@@ -10,7 +10,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Button, useI18n } from "@speclink/ui";
 import type { SessionData } from "../api/client";
 import { SessionProvider, useClient, useSession } from "../app/context";
-import { FocusLayout } from "../layouts/FocusLayout";
+import { FocusLayout, FocusNotice } from "../layouts/FocusLayout";
 import { ConsoleLayout } from "../layouts/ConsoleLayout";
 import { LoginPage } from "../pages/LoginPage";
 import { SetupPage } from "../pages/SetupPage";
@@ -86,10 +86,7 @@ function Forbidden() {
   const { t } = useI18n();
   return (
     <FocusLayout>
-      <div role="alert">
-        <h1 className="text-2xl font-semibold">{t("nav.forbiddenTitle")}</h1>
-        <p className="mt-2 text-muted-foreground">{t("nav.forbiddenBody")}</p>
-      </div>
+      <FocusNotice title={t("nav.forbiddenTitle")} body={t("nav.forbiddenBody")} />
     </FocusLayout>
   );
 }

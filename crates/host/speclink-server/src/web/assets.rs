@@ -46,6 +46,10 @@ frame-ancestors 'none'";
 /// `/admin/specs`、`/admin/discussions` 等 SHALL 維持 404（Non-Goal：管理面不提供
 /// changes／specs／discussions 的檢視或編輯）。`/admin/data` 已不是目的地，但仍留在
 /// 清單裡：舊書籤要拿到 shell 才能由 SPA 導向 `/admin/system`，回 404 只會是死連結。
+///
+/// 使用者與專案列表另有詳情頁 `/admin/users/<id>`、`/admin/registry/<代號>`：列表路徑
+/// 之後恰好一段非空片段才算，`/admin/users/a/b` 與 `/admin/users/` 仍是 404。id 是否
+/// 存在由 SPA 判斷，server 只回 shell。
 fn is_browser_route(path: &str) -> bool {
     matches!(
         path,
@@ -61,6 +65,10 @@ fn is_browser_route(path: &str) -> bool {
             | "/admin/system"
             | "/admin/audit"
     ) || path.starts_with("/invite/")
+        || ["/admin/users/", "/admin/registry/"].iter().any(|list| {
+            path.strip_prefix(list)
+                .is_some_and(|id| !id.is_empty() && !id.contains('/'))
+        })
 }
 
 /// 服務內嵌的 SPA shell（`index.html`），帶 no-cache 與 self-only CSP。bundle

@@ -1,0 +1,72 @@
+schema: spec-driven
+created: 2026-10-13
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: discussion-stage-and-unpromoted-cuts
+depends_on: doc-tiles-fill-and-round-order
+started_at: 2026-10-13
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-13
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 10
+reviewed_scope:
+  - path: packages/ui/src/__tests__/archivedDetailPage.test.tsx
+    hash: 8c0d6e66f47c9ca9bfbebf81c4b8abdd70cd3f433e0ead5c35963e48f8377614
+  - path: packages/ui/src/__tests__/conclusionDoc.test.tsx
+    hash: 006c4018344f3e3a931b8914d3b53a134d86de1cf3a16ddff191a580d9a4bee1
+  - path: packages/ui/src/__tests__/discussionDetailPage.test.tsx
+    hash: dad9d687352d3cbbcca914d9ba039ee47e96a85bcdc9a7eb9b1b3ba6e338735b
+  - path: packages/ui/src/__tests__/discussionModel.test.ts
+    hash: 7e2f80720c0babebd03c7bb467fd714cd518fbde9ee3ae6b1b527673c648b478
+  - path: packages/ui/src/__tests__/promotedDoc.test.tsx
+    hash: c6081e4b289d2fe250df74012581c2dcd0efa0dfea2b5d1e871e1f4c5c94da4f
+  - path: packages/ui/src/__tests__/statusPill.test.tsx
+    hash: a1f31005eceb80f9ff56bf33a81d8c85bb70387ce400a0372b1edd981e750e9d
+  - path: packages/ui/src/components/ConclusionDoc.tsx
+    hash: 08f7e2a2a3e1e706267fdac5deb04fd86387ce54a7528093d2005f71312588ac
+  - path: packages/ui/src/components/DiscussionDetailPage.tsx
+    hash: c12230950b7669d56775fbc9633017e37999f33533e97f7c6c0b68d8d5a3d2a7
+  - path: packages/ui/src/components/DocParts.tsx
+    hash: 4e2f5e4573b861a6f20d6fa5a4c184da2723609b9930cd048442dd399360b4bc
+  - path: packages/ui/src/components/discussionDocSummary.tsx
+    hash: 86c9e99b29bcde29f8ba216e7c64c09d5c61df2a07e3c45139bfa380bde4524b
+  - path: packages/ui/src/components/ui/status-pill.tsx
+    hash: 624c721b76cfa6d3252647a23cfe3dc9c193ef0fbf661fe38c190c73aa332e60
+  - path: packages/ui/src/discussionModel.ts
+    hash: 0c694eaa4aee1537b7084fb57384deefdf1dd473b67119db8708fede22007a10
+  - path: packages/ui/src/i18n.tsx
+    hash: 25e55125a84e947d64e9022a511c7abbdb9f0645c0974d642628a4b178d74200
+verified_at: 2026-10-13
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 10
+verified_scope:
+  - path: packages/ui/src/__tests__/archivedDetailPage.test.tsx
+    hash: 8c0d6e66f47c9ca9bfbebf81c4b8abdd70cd3f433e0ead5c35963e48f8377614
+  - path: packages/ui/src/__tests__/conclusionDoc.test.tsx
+    hash: 006c4018344f3e3a931b8914d3b53a134d86de1cf3a16ddff191a580d9a4bee1
+  - path: packages/ui/src/__tests__/discussionDetailPage.test.tsx
+    hash: dad9d687352d3cbbcca914d9ba039ee47e96a85bcdc9a7eb9b1b3ba6e338735b
+  - path: packages/ui/src/__tests__/discussionModel.test.ts
+    hash: 7e2f80720c0babebd03c7bb467fd714cd518fbde9ee3ae6b1b527673c648b478
+  - path: packages/ui/src/__tests__/promotedDoc.test.tsx
+    hash: c6081e4b289d2fe250df74012581c2dcd0efa0dfea2b5d1e871e1f4c5c94da4f
+  - path: packages/ui/src/__tests__/statusPill.test.tsx
+    hash: a1f31005eceb80f9ff56bf33a81d8c85bb70387ce400a0372b1edd981e750e9d
+  - path: packages/ui/src/components/ConclusionDoc.tsx
+    hash: 08f7e2a2a3e1e706267fdac5deb04fd86387ce54a7528093d2005f71312588ac
+  - path: packages/ui/src/components/DiscussionDetailPage.tsx
+    hash: c12230950b7669d56775fbc9633017e37999f33533e97f7c6c0b68d8d5a3d2a7
+  - path: packages/ui/src/components/DocParts.tsx
+    hash: 4e2f5e4573b861a6f20d6fa5a4c184da2723609b9930cd048442dd399360b4bc
+  - path: packages/ui/src/components/discussionDocSummary.tsx
+    hash: 86c9e99b29bcde29f8ba216e7c64c09d5c61df2a07e3c45139bfa380bde4524b
+  - path: packages/ui/src/components/ui/status-pill.tsx
+    hash: 624c721b76cfa6d3252647a23cfe3dc9c193ef0fbf661fe38c190c73aa332e60
+  - path: packages/ui/src/discussionModel.ts
+    hash: 0c694eaa4aee1537b7084fb57384deefdf1dd473b67119db8708fede22007a10
+  - path: packages/ui/src/i18n.tsx
+    hash: 25e55125a84e947d64e9022a511c7abbdb9f0645c0974d642628a4b178d74200
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-13

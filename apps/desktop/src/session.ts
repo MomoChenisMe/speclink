@@ -1,10 +1,10 @@
-// WorkspaceSession 模型（workspace-session design 決策 1/3；架構 §10.4）：
+// WorkspaceSession 模型（workspace-session design 決策 1/3）：
 // 分頁身分＝WorkspaceLocator、locatorKey 為去重／持久化 activeKey／tray 識別
 // 的唯一身分函式。remote 變體的建構路徑是 WorkspaceChooser 的遠端開啟
 // （skip 或 folder 模式）→ remote_open handshake → createRemoteSession。
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
-import type { SpeclinkDataSource } from "@speclink/ui";
+import type { ReviewRules, SpeclinkDataSource } from "@speclink/ui";
 
 import { createRemoteDataSource } from "./adapter/remoteDataSource";
 import { createTauriDataSource } from "./adapter/tauriDataSource";
@@ -54,6 +54,8 @@ export interface WorkspaceSettingsProvider {
   writeWorkflowConfig(fields: WorkflowFields): Promise<number | void>;
   writeWorkflowContext(context: string): Promise<number | void>;
   writeWorkflowRules(rules: Array<[string, string[]]>): Promise<number | void>;
+  /** 審查規則整塊代換（只寫 review 鍵）；remote 成功回新 revision、local 維持 void。 */
+  writeWorkflowReview(review: ReviewRules): Promise<number | void>;
   /** 產出流程清單（desktop-schema-panel D2）：local 三層、remote 僅內嵌內建。 */
   readSchemas(): Promise<SchemaEntry[]>;
   /** 切換專案 schema；remote 成功回新 revision、local 維持 void。 */

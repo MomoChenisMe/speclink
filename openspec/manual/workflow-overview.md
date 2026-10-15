@@ -3,8 +3,8 @@ title: 工作流總覽：站別與交棒
 section: 開始使用
 order: 50
 keywords: [工作流, 技能, 交棒, 下一步, SDD, 站別, baseline, 手冊]
-sources: [skill-routing, user-documentation, "change-plan#apply 技能以 plan 挑選與守門"]
-generated: 2026-09-17T16:05:41+08:00
+sources: [skill-routing, user-documentation, "change-plan#apply 技能以 plan 挑選與守門", "workspace-tools#Copilot 渲染目標"]
+generated: 2026-10-15T17:40:05+08:00
 ---
 
 # 工作流總覽：站別與交棒
@@ -15,6 +15,9 @@ Speclink 的工作流由一組 AI 技能串起來。每個技能就是一站：�
 
 - 技能是工作流知識，CLI 與 Host 是執行引擎。技能告訴 agent 該做什麼、怎麼判斷；真正改檔案的是 `speclink` 動詞。
 - 技能只會「建議」下一步，不會自動呼叫另一個技能。要不要走下一站，由你決定。
+
+> [!NOTE]
+> 本手冊把技能一律寫成 `/speclink-*`，這是 Claude 與 GitHub Copilot 的叫法；Codex 要寫成 `$speclink-*`，例如 `$speclink-propose`。三個工具的技能分別放在 `.claude/skills/`、`.agents/skills/`、`.github/skills/`。`/speclink-analyze` 只有 Claude 有，Codex 與 Copilot 沒有這個技能；要做產物一致性檢查時，直接執行 `speclink analyze`，見[分析：交叉檢查變更的產物](analyze.md)。
 
 ## 每一站的入口情境
 
@@ -49,7 +52,7 @@ Speclink 的工作流由一組 AI 技能串起來。每個技能就是一站：�
 - 工具技能：commit、analyze、audit、config、trace、manual。隨叫隨用，沒有固定的下一站。audit 是安全檢查，commit 是限定某個變更檔案的 Git 工具；兩者都不是每個變更必經的步驟。唯一的例外是 commit 的「先封存再一起提交」子流程：它本身就是封存入口，所以帶著與 archive 相同的封存前順序提示與封存後提醒。
 
 > [!NOTE]
-> apply、drift、analyze、audit 這四個技能的內文行為沒有各自的規格，本手冊只寫路由層面的資訊。apply 挑選變更的第一步（先看 plan 的順序與阻擋）與 ingest 收尾的依賴判定各自有規格，寫在[執行順序：plan 與依賴](plan.md)、[實作：完成任務](apply.md)與[續作與需求變更](drift-ingest.md)。其他技能各有一頁。
+> apply、drift、analyze、audit 這四個技能的內文行為沒有各自的規格，本手冊只寫路由層面的資訊。apply 挑選變更的第一步（先看 plan 的順序與阻擋），以及 ingest 的參數解讀與收尾的依賴判定，各自有規格，寫在[執行順序：plan 與依賴](plan.md)、[實作：完成任務](apply.md)與[續作與需求變更](drift-ingest.md)。其他技能各有一頁。
 
 ## 從哪裡開始
 
@@ -72,8 +75,8 @@ Speclink 的工作流由一組 AI 技能串起來。每個技能就是一站：�
 | propose | 產物齊備 | apply。提案中變更有 2 個以上時，先盤點執行順序（worktree 政策開啟時分可平行／須依序）。盤點的做法見[提案](propose.md)的收尾一節 |
 | apply | 全部勾完 | 品質關卡（review、verify 或 quality）或 archive。commit 技能的「先封存再一起提交」可以一步到位 |
 | apply | 需求中途變更 | ingest |
-| apply-with-worktree | worktree 內 commit 完 | 品質關卡（在 worktree 內）→ worktree-merge |
-| worktree-merge | 合併清理完 | 回主 checkout 執行 archive |
+| apply-with-worktree | worktree 內 commit 完（已 rebase 到主分支並重設品質關卡的起點） | 沒有未勾的手動任務：品質關卡（在 worktree 內）→ 補提交 → worktree-merge。有未勾的手動任務、或想在蓋章前看到 CI 結果：先 worktree-merge，再到主 checkout 跑品質關卡 |
+| worktree-merge | 合併清理完（起點與快照已承接到主 checkout） | 品質關卡已跑完：回主 checkout 執行 archive。還沒跑：在主 checkout 跑品質關卡，再 archive。有未勾的手動任務：在主 checkout 跑完品質關卡、做完手動任務後再 archive |
 | drift | 假設過期 | ingest |
 | drift | 無漂移 | apply |
 | ingest | 產物更新完 | 回 apply |
@@ -82,7 +85,7 @@ Speclink 的工作流由一組 AI 技能串起來。每個技能就是一站：�
 | archive | 封存完成 | 提醒你提交封存產生的異動；工作區有 `openspec/manual/` 時另提醒可跑 manual 檢查手冊是否過期；plan 算得出下一個可開工的變更時，提一句「下一個可開工」。都只提醒，不代跑 |
 | commit（先封存子流程） | 封存並提交完 | 有 `openspec/manual/` 時提醒可跑 manual；plan 算得出下一個可開工時提「下一個可開工」。都只提醒，不代跑 |
 
-apply 完成時如果還剩手動任務，建議會說品質關卡可以先跑，封存要等手動任務完成。
+apply 完成時如果還剩手動任務，建議會說品質關卡可以先跑，封存要等手動任務完成。worktree 流程為什麼依手動任務與 CI 分兩條路，見[平行實作與合回：worktree](worktree.md)。
 
 「下一個可開工」是 `speclink plan` 算出來的：第一個提案中、而且沒有被任何前置擋住的變更。變更之間的順序、波次與依賴怎麼算，見[執行順序：plan 與依賴](plan.md)。
 
@@ -117,4 +120,4 @@ review 與 verify 蓋章時，會在同一個寫入裡寫下章欄位並刪除�
 13. [產出流程 schema 管理](schemas.md)
 14. [操作手冊：生成與導覽](manual.md)
 
-**出處**：`skill-routing`、`user-documentation`、`change-plan`
+**出處**：`skill-routing`、`user-documentation`、`change-plan`、`workspace-tools`

@@ -1,0 +1,33 @@
+import type { ReactNode } from "react";
+import { SELECT_ALL, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@speclink/ui";
+
+/** 頁標題區的篩選下拉（server-web-list-pages design D2）：沒有可見標籤，以 `label` 作無障礙名稱；
+ *  高度與搜尋框同為 h-8（SelectTrigger 預設）。空字串代表不篩選，選項為「全部」——Radix Select 禁止
+ *  空字串當 item value，所以在元件內部與共用的 `SELECT_ALL` 來回換，呼叫端仍只認得空字串。 */
+export function FilterSelect({
+  label,
+  allLabel,
+  value,
+  onChange,
+  children,
+}: {
+  label: string;
+  /** 「不篩選」那一項的文字，例如「全部狀態」。 */
+  allLabel: string;
+  value: string;
+  onChange: (value: string) => void;
+  /** 該篩選器自己的選項（`SelectItem`），不含「全部」。 */
+  children: ReactNode;
+}) {
+  return (
+    <Select value={value === "" ? SELECT_ALL : value} onValueChange={(v) => onChange(v === SELECT_ALL ? "" : v)}>
+      <SelectTrigger aria-label={label} className="w-auto min-w-32 text-[13px]">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={SELECT_ALL}>{allLabel}</SelectItem>
+        {children}
+      </SelectContent>
+    </Select>
+  );
+}

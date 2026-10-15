@@ -1,6 +1,7 @@
 //! `new change` and `new artifact`.
 
 use crate::capname::{self, Source};
+use crate::command::InvalidContent;
 use crate::model::{self, Change};
 use crate::schema::Schema;
 use crate::store::Store;
@@ -117,6 +118,8 @@ pub fn new_artifact(
     Ok((artifact_id, out_path))
 }
 
+/// Caller-supplied content gate; failures carry the [`InvalidContent`] marker
+/// so every entry point classifies them `invalid_argv`.
 fn validate_artifact_content(artifact_id: &str, rel: &str, body: &str) -> Result<()> {
     match artifact_id {
         "proposal" => {
@@ -124,12 +127,12 @@ fn validate_artifact_content(artifact_id: &str, rel: &str, body: &str) -> Result
                 .iter()
                 .any(|h| body.lines().any(|l| l.trim_end() == *h || l.trim_start().starts_with(&format!("{h} "))));
             if !ok {
-                bail!("Proposal must contain a ## Why, ## Problem, or ## Summary section");
+                bail!(InvalidContent("Proposal must contain a ## Why, ## Problem, or ## Summary section".into()));
             }
         }
         "design" => {
             if !body.contains("## Context") {
-                bail!("Design must contain a ## Context section");
+                bail!(InvalidContent("Design must contain a ## Context section".into()));
             }
         }
         "tasks" => {
@@ -138,13 +141,13 @@ fn validate_artifact_content(artifact_id: &str, rel: &str, body: &str) -> Result
                 .lines()
                 .any(|l| l.trim_start().starts_with("- [ ] "));
             if !ok {
-                bail!("Tasks must contain at least one checkbox (- [ ])");
+                bail!(InvalidContent("Tasks must contain at least one checkbox (- [ ])".into()));
             }
         }
         "specs" => {
             let _ = rel;
             if !model::has_delta_operation(body) {
-                bail!("Delta spec parse error: Invalid format: Delta spec must contain at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)");
+                bail!(InvalidContent("Delta spec parse error: Invalid format: Delta spec must contain at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)".into()));
             }
         }
         _ => {}

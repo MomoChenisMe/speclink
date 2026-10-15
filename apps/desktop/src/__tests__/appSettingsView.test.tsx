@@ -1,11 +1,14 @@
+// 應用程式設定（desktop-settings-mode design D5；desktop-about-page design D7）：依所在分類渲染
+// 一頁——一般、CLI 於此檔；更新頁、伺服器頁與關於頁各有自己的測試檔。
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render as rtlRender, screen, within } from "@testing-library/react";
-import type { ReactElement, ReactNode } from "react";
-import { I18nProvider, SEMANTIC_TONE } from "@speclink/ui";
-
-import { AppSettingsView } from "../views/AppSettingsView";
-import { APP_MESSAGES } from "../i18n/messages";
 import userEvent from "@testing-library/user-event";
+import type { ComponentProps, ReactElement, ReactNode } from "react";
+import { I18nProvider } from "@speclink/ui";
+
+import { AppSettingsView, type AppSettingsUpdaterProps } from "../views/AppSettingsView";
+import type { UpdaterState } from "../core/updater";
+import { APP_MESSAGES } from "../i18n/messages";
 import type { CliInstallView } from "../store";
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
@@ -18,191 +21,20 @@ function render(ui: ReactElement) {
   return rtlRender(ui, { wrapper: zhWrapper });
 }
 
-const servers = {
-  connections: [],
-  phases: {},
-  onAdd: vi.fn().mockResolvedValue(undefined),
-  onLogin: vi.fn(),
-  onSubmitPat: vi.fn(),
-  onLogout: vi.fn(),
-  onRemove: vi.fn(),
-  onRefresh: vi.fn(),
-};
-
-describe("AppSettingsView 資訊架構", () => {
-  it("外觀三選有選中狀態、鍵盤可操作，保存錯誤可重試", async () => {
-    const onThemePrefChange = vi.fn().mockImplementationOnce(() => { throw new Error("denied"); });
-    render(<AppSettingsView localePref={null} onLocalePrefChange={vi.fn()} themePref="light" onThemePrefChange={onThemePrefChange} />);
-    const card = within(screen.getByTestId("ui-theme-card"));
-    expect(card.getByRole("button", { name: "淺色" }).getAttribute("aria-pressed")).toBe("true");
-    const dark = card.getByRole("button", { name: "深色" });
-    dark.focus();
-    await userEvent.keyboard("{Enter}");
-    expect(onThemePrefChange).toHaveBeenCalledWith("dark");
-    expect(card.getByRole("alert").textContent).toContain("denied");
-    expect(card.getByRole("button", { name: "淺色" }).getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(dark);
-    expect(card.queryByRole("alert")).toBeNull();
-  });
-
-  it("英文外觀顯示 Appearance／System／Light／Dark", () => {
-    rtlRender(<I18nProvider locale="en" messages={APP_MESSAGES}><AppSettingsView localePref="en" onLocalePrefChange={vi.fn()} themePref="system" onThemePrefChange={vi.fn()} /></I18nProvider>);
-    const card = within(screen.getByTestId("ui-theme-card"));
-    expect(card.getByText("Appearance")).toBeTruthy();
-    for (const name of ["System", "Light", "Dark"]) expect(card.getByRole("button", { name })).toBeTruthy();
-  });
-  it("頁簽依序為本機設定、伺服器且預設本機設定，內容含介面語言卡與裝置本機註記", () => {
-    render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        servers={servers}
-      />,
-    );
-
-    const tabs = screen.getAllByRole("tab");
-    expect(tabs.map((tab) => tab.textContent)).toEqual(["本機設定", "伺服器"]);
-    expect(tabs[0].getAttribute("data-state")).toBe("active");
-    expect(screen.getByTestId("ui-locale-card")).toBeTruthy();
-    expect(screen.getByTestId("local-note").textContent).toContain("僅存於此裝置");
-
-    fireEvent.mouseDown(within(document.body).getByRole("tab", { name: "伺服器" }));
-    expect(screen.getByTestId("servers-card")).toBeTruthy();
-  });
-
-  it("切換 UI 語言即回呼本機偏好，且不出現已拆除的系統匣樣式卡", () => {
-    const onLocalePrefChange = vi.fn();
-    render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={onLocalePrefChange}
-      />,
-    );
-
-    const group = screen.getByTestId("ui-locale");
-    fireEvent.click(within(group).getByText("English"));
-    expect(onLocalePrefChange).toHaveBeenCalledWith("en");
-    fireEvent.click(within(group).getByText(/跟隨系統/));
-    expect(onLocalePrefChange).toHaveBeenCalledWith(null);
-    expect(screen.queryByTestId("tray-style-card")).toBeNull();
-    expect(screen.queryByText("系統匣樣式")).toBeNull();
-  });
-
-  it("面板建立失敗時，本機設定簽以獨立警示行浮出錯誤", () => {
-    render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        trayPanelError="tray panel window creation failed: boom"
-      />,
-    );
-
-    const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("tray panel window creation failed: boom");
-    expect(screen.queryByTestId("tray-style-card")).toBeNull();
-  });
-});
-
-// --- 軟體更新卡（desktop-app「桌面自動更新」手動檢查入口） ---
-
-describe("AppSettingsView 軟體更新卡", () => {
-  it("未注入 updater 面時不出現更新卡", () => {
-    render(<AppSettingsView localePref={null} onLocalePrefChange={vi.fn()} />);
-    expect(screen.queryByTestId("updater-card")).toBeNull();
-  });
-
-  it("更新卡常駐顯示目前版本號", () => {
-    render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "idle" }, currentVersion: "0.1.0", onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
-      />,
-    );
-    expect(screen.getByTestId("updater-card").textContent).toContain("目前版本 0.1.0");
-  });
-
-  it("檢查更新按鈕回呼 onCheck；檢查中按鈕停用", () => {
-    const onCheck = vi.fn();
-    const { unmount } = render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "idle" }, onCheck, onShowReleaseNotes: vi.fn() }}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "檢查更新" }));
-    expect(onCheck).toHaveBeenCalledTimes(1);
-    unmount();
-
-    render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "checking", manual: true }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
-      />,
-    );
-    expect(
-      (screen.getByRole("button", { name: "檢查更新" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-  });
-
-  it("手動檢查已最新顯示已是最新；檢查失敗顯示無法檢查更新", () => {
-    const { unmount } = render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "upToDate" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
-      />,
-    );
-    expect(screen.getByTestId("updater-card").textContent).toContain("已是最新版本");
-    unmount();
-
-    render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "checkFailed" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
-      />,
-    );
-    expect(screen.getByTestId("updater-card").textContent).toContain("無法檢查更新");
-  });
-
-  it("發現新版時更新卡顯示目標版本", () => {
-    render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "available", version: "0.2.0" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
-      />,
-    );
-    expect(screen.getByTestId("updater-card").textContent).toContain("0.2.0");
-  });
-
-  it("更新狀態語意色：檢查失敗與錯誤為紅、有新版為藍", () => {
-    // spec「錯誤態以紅呈現」：更新檢查失敗是錯誤，不是待辦提醒。
-    const { unmount } = render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "checkFailed" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
-      />,
-    );
-    expect(screen.getByText("無法檢查更新").className).toContain("destructive");
-    unmount();
-
-    render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "available", version: "0.2.0" }, onCheck: vi.fn(), onShowReleaseNotes: vi.fn() }}
-      />,
-    );
-    expect(screen.getByText(/有新版本/).className).toContain(SEMANTIC_TONE.inProgress);
-  });
-});
-
-// --- CLI 指令卡（desktop-app「安裝 CLI 指令到 PATH」） ---
+/** 軟體更新面的最小注入：狀態＋回呼。 */
+function updaterProps(state: UpdaterState, over: Partial<AppSettingsUpdaterProps> = {}): AppSettingsUpdaterProps {
+  return {
+    state,
+    onCheck: vi.fn(),
+    onShowReleaseNotes: vi.fn(),
+    onAccept: vi.fn(),
+    onCancel: vi.fn(),
+    onRelaunch: vi.fn(),
+    autoCheck: true,
+    onAutoCheckChange: vi.fn(),
+    ...over,
+  };
+}
 
 function cliView(over: Partial<CliInstallView> = {}): CliInstallView {
   return {
@@ -217,151 +49,191 @@ function cliView(over: Partial<CliInstallView> = {}): CliInstallView {
   };
 }
 
-describe("AppSettingsView CLI 指令卡", () => {
-  it("未注入 cliInstall 面時不出現 CLI 卡", () => {
-    render(<AppSettingsView localePref={null} onLocalePrefChange={vi.fn()} />);
-    expect(screen.queryByTestId("cli-install-card")).toBeNull();
+type ViewProps = ComponentProps<typeof AppSettingsView>;
+function view(over: Partial<ViewProps> = {}) {
+  return (
+    <AppSettingsView
+      section="general"
+      platform="macos"
+      localePref={null}
+      onLocalePrefChange={vi.fn()}
+      themePref={null}
+      onThemePrefChange={vi.fn()}
+      {...over}
+    />
+  );
+}
+
+const cardTitles = () => screen.getAllByRole("region").map((r) => r.getAttribute("aria-label"));
+const row = (label: string) => screen.getByRole("group", { name: label });
+
+describe("一般頁", () => {
+  it("外觀保存失敗保留選中值並顯示錯誤，重試後清除", async () => {
+    const onThemePrefChange = vi.fn().mockImplementationOnce(() => { throw new Error("quota denied"); });
+    const user = userEvent.setup();
+    render(view({ themePref: "light", onThemePrefChange }));
+    await user.click(within(row("外觀")).getByRole("combobox"));
+    await user.click(await screen.findByRole("option", { name: "深色" }));
+    expect(screen.getByRole("alert").textContent).toContain("quota denied");
+    expect(within(row("外觀")).getByRole("combobox").textContent).toContain("淺色");
+    await user.click(within(row("外觀")).getByRole("combobox"));
+    await user.click(await screen.findByRole("option", { name: "深色" }));
+    expect(onThemePrefChange).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("未安裝且可佈署：顯示未安裝與安裝按鈕，點擊回呼 onInstall", () => {
+  it("頁標題「一般」、「僅存於此裝置」註記；只有語言與外觀、鍵盤快捷鍵兩卡，語言與外觀卡兩列依序為顯示語言與外觀", () => {
+    render(view());
+    expect(screen.getByRole("heading", { level: 2, name: "一般" })).toBeTruthy();
+    expect(screen.getByText("此頁內容僅存於此裝置，不寫入版本庫")).toBeTruthy();
+    expect(cardTitles()).toEqual(["語言與外觀", "鍵盤快捷鍵"]);
+    const card = screen.getByRole("region", { name: "語言與外觀" });
+    expect(within(card).getAllByRole("group").map((g) => g.querySelector("span, label")?.textContent)).toEqual([
+      "顯示語言",
+      "外觀",
+    ]);
+  });
+
+  it("注入更新與 CLI 面時一般頁也不重複其他分類頁的列（目前版本、檢查更新、更新日誌、speclink CLI）", () => {
+    render(view({ updater: updaterProps({ phase: "upToDate" }), cliInstall: { view: cliView(), onInstall: vi.fn() } }));
+    expect(cardTitles()).toEqual(["語言與外觀", "鍵盤快捷鍵"]);
+    for (const label of ["目前版本", "檢查更新", "更新日誌", "speclink CLI"]) {
+      expect(screen.queryByRole("group", { name: label })).toBeNull();
+    }
+  });
+
+  it("顯示語言列三選回呼本機偏好（跟隨系統＝null）", async () => {
+    const onLocalePrefChange = vi.fn();
+    const user = userEvent.setup();
+    render(view({ onLocalePrefChange }));
+    const trigger = within(row("顯示語言")).getByRole("combobox", { name: "顯示語言" });
+    expect(trigger.textContent).toContain("跟隨系統");
+    await user.click(trigger);
+    await user.click(await screen.findByRole("option", { name: "English" }));
+    expect(onLocalePrefChange).toHaveBeenCalledWith("en");
+  });
+
+  it("外觀列三選回呼 onThemePrefChange（跟隨系統／淺色／深色）", async () => {
+    const onThemePrefChange = vi.fn();
+    const user = userEvent.setup();
+    const { rerender } = render(view({ themePref: "dark", onThemePrefChange }));
+    const trigger = within(row("外觀")).getByRole("combobox", { name: "外觀" });
+    expect(trigger.textContent).toContain("深色");
+    await user.click(trigger);
+    await user.click(await screen.findByRole("option", { name: "淺色" }));
+    expect(onThemePrefChange).toHaveBeenLastCalledWith("light");
+    rerender(view({ themePref: "light", onThemePrefChange }));
+    await user.click(within(row("外觀")).getByRole("combobox", { name: "外觀" }));
+    await user.click(await screen.findByRole("option", { name: "跟隨系統" }));
+    expect(onThemePrefChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it("面板建立失敗時，頁底以獨立警示行浮出錯誤", () => {
+    render(view({ trayPanelError: "tray panel window creation failed: boom" }));
+    expect(screen.getByRole("alert").textContent).toContain("tray panel window creation failed: boom");
+  });
+});
+
+describe("CLI 頁的 CLI 指令卡", () => {
+  const card = () => screen.getByRole("region", { name: "CLI 指令" });
+  const withCli = (over: Partial<CliInstallView>, onInstall = vi.fn(), platform: ViewProps["platform"] = "macos") =>
+    view({ section: "cli", platform, cliInstall: { view: cliView(over), onInstall } });
+
+  it("未安裝且可佈署：列「speclink CLI」顯示未安裝與安裝鈕，點擊回呼 onInstall", () => {
     const onInstall = vi.fn();
-    render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        cliInstall={{ view: cliView(), onInstall }}
-      />,
-    );
-    expect(screen.getByTestId("cli-install-card").textContent).toContain("未安裝");
-    fireEvent.click(screen.getByRole("button", { name: "安裝 CLI 指令" }));
+    render(withCli({}, onInstall));
+    expect(within(row("speclink CLI")).getByText("未安裝")).toBeTruthy();
+    fireEvent.click(within(card()).getByRole("button", { name: "安裝 CLI 指令" }));
     expect(onInstall).toHaveBeenCalledTimes(1);
   });
 
-  it("已安裝同版：顯示已安裝與版本、不出現安裝按鈕", () => {
-    render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        cliInstall={{
-          view: cliView({ status: { kind: "installed", version: "0.2.0" } }),
-          onInstall: vi.fn(),
-        }}
-      />,
-    );
-    const card = screen.getByTestId("cli-install-card");
-    expect(card.textContent).toContain("已安裝");
-    expect(card.textContent).toContain("0.2.0");
+  it("已安裝同版：顯示已安裝與版本、不出現安裝鈕", () => {
+    render(withCli({ status: { kind: "installed", version: "0.2.0" } }));
+    expect(card().textContent).toContain("已安裝");
+    expect(card().textContent).toContain("0.2.0");
     expect(screen.queryByRole("button", { name: "安裝 CLI 指令" })).toBeNull();
   });
 
-  it("版本不符且可佈署：顯示版本不符與重新安裝按鈕", () => {
+  it("版本不符且可佈署：顯示版本不符與重新安裝鈕", () => {
     const onInstall = vi.fn();
-    render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        cliInstall={{
-          view: cliView({ status: { kind: "version-mismatch", version: "0.1.0" } }),
-          onInstall,
-        }}
-      />,
-    );
-    expect(screen.getByTestId("cli-install-card").textContent).toContain("版本不符");
+    render(withCli({ status: { kind: "version-mismatch", version: "0.1.0" } }, onInstall));
+    expect(card().textContent).toContain("版本不符");
     fireEvent.click(screen.getByRole("button", { name: "重新安裝" }));
     expect(onInstall).toHaveBeenCalledTimes(1);
   });
 
   it("佈署目錄不在 PATH：提示加入方式", () => {
-    render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        cliInstall={{
-          view: cliView({
-            status: { kind: "installed", version: "0.2.0" },
-            pathHint: true,
-          }),
-          onInstall: vi.fn(),
-        }}
-      />,
-    );
-    expect(screen.getByTestId("cli-path-hint").textContent).toContain("/Users/u/.local/bin");
-    expect(screen.getByTestId("cli-path-hint").textContent).toContain("PATH");
+    render(withCli({ status: { kind: "installed", version: "0.2.0" }, pathHint: true }));
+    const hint = screen.getByTestId("cli-path-hint");
+    expect(hint.textContent).toContain("/Users/u/.local/bin");
+    expect(hint.textContent).toContain("PATH");
   });
 
-  it("Windows 僅回報狀態：無安裝按鈕、顯示安裝器管理說明", () => {
+  it("Windows 僅回報狀態：無安裝鈕、說明由安裝器管理", () => {
     render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        cliInstall={{
-          view: cliView({
-            platform: "windows",
-            canDeploy: false,
-            deployDir: null,
-            status: { kind: "installed", version: "0.2.0" },
-          }),
-          onInstall: vi.fn(),
-        }}
-      />,
+      withCli(
+        { platform: "windows", canDeploy: false, deployDir: null, status: { kind: "installed", version: "0.2.0" } },
+        vi.fn(),
+        "windows",
+      ),
     );
-    const card = screen.getByTestId("cli-install-card");
-    expect(card.textContent).toContain("安裝器");
+    expect(card().textContent).toContain("安裝器");
     expect(screen.queryByRole("button", { name: "安裝 CLI 指令" })).toBeNull();
   });
 
-  it("Linux 非 AppImage 執行僅回報狀態：無安裝按鈕、說明沒有可佈署的 CLI", () => {
-    render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        cliInstall={{
-          view: cliView({
-            platform: "linux-unpackaged",
-            canDeploy: false,
-            deployDir: null,
-            status: { kind: "not-installed" },
-          }),
-          onInstall: vi.fn(),
-        }}
-      />,
-    );
-    const card = screen.getByTestId("cli-install-card");
-    expect(card.textContent).toContain("沒有可佈署的 CLI");
+  it("Linux 非 AppImage 執行僅回報狀態：無安裝鈕、說明沒有可佈署的 CLI", () => {
+    render(withCli({ platform: "linux-unpackaged", canDeploy: false, deployDir: null }, vi.fn(), "linux"));
+    expect(card().textContent).toContain("沒有可佈署的 CLI");
     expect(screen.queryByRole("button", { name: "安裝 CLI 指令" })).toBeNull();
   });
 
   it("佈署失敗錯誤浮出於卡內", () => {
-    render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        cliInstall={{
-          view: cliView({ error: "permission denied" }),
-          onInstall: vi.fn(),
-        }}
-      />,
-    );
-    expect(screen.getByTestId("cli-install-card").textContent).toContain("permission denied");
+    render(withCli({ error: "permission denied" }));
+    expect(card().textContent).toContain("permission denied");
   });
 });
 
-describe("AppSettingsView 更新日誌入口（desktop-app「更新日誌彈窗」設定頁瀏覽）", () => {
-  it("更新卡有「更新日誌」按鈕，按下回呼 onShowReleaseNotes", () => {
-    const onShowReleaseNotes = vi.fn();
-    render(
-      <AppSettingsView
-        localePref={null}
-        onLocalePrefChange={vi.fn()}
-        updater={{ state: { phase: "idle" }, onCheck: vi.fn(), onShowReleaseNotes }}
-      />,
-    );
-    fireEvent.click(within(screen.getByTestId("updater-card")).getByRole("button", { name: "更新日誌" }));
-    expect(onShowReleaseNotes).toHaveBeenCalledTimes(1);
+describe("一般頁的鍵盤快捷鍵卡（desktop-native-menu design D5）", () => {
+  const card = () => screen.getByRole("region", { name: "鍵盤快捷鍵" });
+
+  it("macOS：最後一張卡為「鍵盤快捷鍵」，11 列（動作名左、按鍵右）含 ⌘, 與 ⌃1–9", () => {
+    render(view({ updater: updaterProps({ phase: "idle" }), cliInstall: { view: cliView(), onInstall: vi.fn() } }));
+    const titles = cardTitles();
+    expect(titles[titles.length - 1]).toBe("鍵盤快捷鍵");
+    expect(within(card()).getAllByRole("group")).toHaveLength(11);
+    expect(within(row("設定…")).getByText("⌘,")).toBeTruthy();
+    expect(card().textContent).toContain("⌃1–9");
   });
 
-  it("updater 未注入時「更新日誌」按鈕不存在", () => {
-    render(<AppSettingsView localePref={null} onLocalePrefChange={vi.fn()} />);
-    expect(screen.queryByRole("button", { name: "更新日誌" })).toBeNull();
+  it("en 介面：卡片標題為 Keyboard Shortcuts", () => {
+    rtlRender(view({ localePref: "en" }), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <I18nProvider locale="en" messages={APP_MESSAGES}>
+          {children}
+        </I18nProvider>
+      ),
+    });
+    expect(screen.getByRole("region", { name: "Keyboard Shortcuts" })).toBeTruthy();
+  });
+
+  it("Windows：5 列，整張卡沒有 ⌘", () => {
+    render(view({ platform: "windows" }));
+    expect(within(card()).getAllByRole("group")).toHaveLength(5);
+    expect(card().textContent).not.toContain("⌘");
+  });
+});
+
+describe("CLI 頁", () => {
+  it("speclink CLI 列與等寬佈署位置列", () => {
+    render(view({ section: "cli", cliInstall: { view: cliView({ status: { kind: "installed", version: "0.2.0" } }), onInstall: vi.fn() } }));
+    expect(screen.getByRole("heading", { level: 2, name: "CLI" })).toBeTruthy();
+    expect(within(row("speclink CLI")).getByText(/已安裝/)).toBeTruthy();
+    const dir = within(row("佈署位置")).getByText("/Users/u/.local/bin");
+    expect(dir.className).toContain("font-mono");
+  });
+
+  it("佈署位置未知（null）時該列缺席", () => {
+    render(view({ section: "cli", cliInstall: { view: cliView({ platform: "windows", canDeploy: false, deployDir: null }), onInstall: vi.fn() } }));
+    expect(screen.queryByRole("group", { name: "佈署位置" })).toBeNull();
   });
 });

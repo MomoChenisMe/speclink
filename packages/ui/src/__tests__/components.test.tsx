@@ -15,7 +15,8 @@ function render(ui: ReactElement) {
 import { DocumentTree } from "../components/DocumentTree";
 import { DocumentViewer } from "../components/DocumentViewer";
 import { Markdown } from "../components/Markdown";
-import { LABEL_CLS, SectionedDoc } from "../components/SectionedDoc";
+import { SECTION_HEADING_CLS } from "../components/DocParts";
+import { ProposalDoc } from "../components/ProposalDoc";
 import type { ChangeItem, SpecItem } from "../adapter";
 
 const changes: ChangeItem[] = [
@@ -54,11 +55,37 @@ describe("Markdown", () => {
     expect(container.textContent).toContain("<div>x</div>");
   });
 
-  it("renders inside a prose container with the markdown hook class", () => {
+  // 文件正文常把 `<name>` 當佔位字寫；佔位字剛好是 HTML 標籤名時，原始 HTML 若被解析，
+  // <summary>／<details> 會把後文包進收合區塊、<template> 會吞掉後文。原始 HTML 一律丟棄。
+  it("drops raw HTML so placeholder-like tags do not hide or swallow the following text", () => {
+    const { container } = render(
+      <Markdown
+        content={"- 格式 speclink(<change-name>): <summary> 與欄位\n- 第二項 <template> 之後\n- 第三項 <details> 收合"}
+      />,
+    );
+    expect(container.querySelector("summary, details, template")).toBeNull();
+    for (const text of ["與欄位", "之後", "第三項", "收合"]) expect(container.textContent).toContain(text);
+  });
+
+  it("does not render raw HTML elements or their id attributes", () => {
+    const { container } = render(<Markdown content={'前 <span id="manual-h-1">中</span> 後'} />);
+    expect(container.querySelector("#manual-h-1")).toBeNull();
+    expect(container.textContent).toContain("中");
+  });
+
+  // spec「寬表格於容器內橫捲」：表格外層容器橫向可捲、不設高度上限。
+  it("wraps wide tables in a horizontally scrollable container without a height cap", () => {
+    const { container } = render(<Markdown content={"| a | b |\n| - | - |\n| 1 | 2 |"} />);
+    const scroller = container.querySelector('[data-streamdown="table"]')?.parentElement as HTMLElement;
+    expect(scroller.className).toContain("overflow-x-auto");
+    expect(scroller.style.maxHeight).toBe("");
+  });
+
+  it("renders inside the markdown hook class without typography prose (desktop-design-foundation D10)", () => {
     const { container } = render(<Markdown content={"hello"} />);
     const root = container.querySelector(".markdown");
     expect(root).toBeTruthy();
-    expect(root?.className).toContain("prose");
+    expect(root?.className).not.toContain("prose");
   });
 
   // spec「markdown 文件內容行寬有上限」（design D3 文件容器）：
@@ -71,8 +98,8 @@ describe("Markdown", () => {
   });
 });
 
-// spec 需求「提案與設計章節以中文標籤呈現」（design D1 白名單切分、D2 對照表）。
-describe("SectionedDoc", () => {
+// spec 需求「提案與設計章節以中文標籤呈現」（desktop-change-doc-views design D1 章節模型、D3 提案渲染器）。
+describe("ProposalDoc 章節標籤", () => {
   const PROPOSAL_MD = [
     "## Why",
     "",
@@ -98,7 +125,7 @@ describe("SectionedDoc", () => {
   ].join("\n");
 
   it("提案模板章節渲染中文標籤，英文標題不直出", () => {
-    render(<SectionedDoc content={PROPOSAL_MD} />);
+    render(<ProposalDoc content={PROPOSAL_MD} deltaCaps={[]} />);
     for (const label of ["為什麼", "變更內容", "非目標", "能力", "影響"]) {
       expect(screen.getByText(label)).toBeTruthy();
     }
@@ -110,7 +137,7 @@ describe("SectionedDoc", () => {
 
   it("設計模板章節渲染中文標籤（含斜線複合詞）", () => {
     const md = "## Context\n\n背景內文。\n\n## Decisions\n\n決策內文。\n\n## Risks / Trade-offs\n\n風險內文。\n";
-    render(<SectionedDoc content={md} />);
+    render(<ProposalDoc content={md} deltaCaps={[]} />);
     expect(screen.getByText("背景")).toBeTruthy();
     expect(screen.getByText("決策")).toBeTruthy();
     expect(screen.getByText("風險與取捨")).toBeTruthy();
@@ -118,36 +145,36 @@ describe("SectionedDoc", () => {
     expect(screen.queryByText(/Trade-offs/)).toBeNull();
   });
 
-  it("白名單外標題照 prose 排，不標籤化", () => {
+  it("白名單外標題以原文成段（不翻譯），內文照排", () => {
     const md = "## Decisions\n\n### D1 章節切分：白名單映射\n\n決策細節。\n\n## 自訂章節\n\n自訂內文。\n";
-    render(<SectionedDoc content={md} />);
+    render(<ProposalDoc content={md} deltaCaps={[]} />);
     expect(screen.getByText("決策")).toBeTruthy();
-    // 自訂決策標題與自訂章節照 prose 標題渲染（文字仍可見、非標籤樣式的區塊標題）。
+    // 自訂決策標題照 prose 渲染；自訂章節以原文為段標題。
     expect(screen.getByText(/D1 章節切分/)).toBeTruthy();
     expect(screen.getByText("自訂章節")).toBeTruthy();
     expect(screen.getByText("自訂內文。")).toBeTruthy();
   });
 
   it("模板附註 (optional) 於比對前剝除", () => {
-    render(<SectionedDoc content={"## Non-Goals (optional)\n\n- 不做\n"} />);
+    render(<ProposalDoc content={"## Non-Goals (optional)\n\n- 不做\n"} deltaCaps={[]} />);
     expect(screen.getByText("非目標")).toBeTruthy();
     expect(screen.queryByText(/Non-Goals/)).toBeNull();
   });
 
-  // spec「標籤為大標題且字級大於內文」（design D6 粗體大標題、單一常數）。
-  it("章節標籤為粗體大標題款式（引用共用常數）", () => {
-    render(<SectionedDoc content={PROPOSAL_MD} />);
+  // spec「章節標題為 16px 粗體」（desktop-change-doc-views design D2 單一常數）。
+  it("章節標題為 16px 粗體款式（引用共用常數）", () => {
+    render(<ProposalDoc content={PROPOSAL_MD} deltaCaps={[]} />);
     const label = screen.getByText("為什麼");
-    for (const cls of LABEL_CLS.split(" ")) expect(label.className).toContain(cls);
-    expect(label.className).toContain("text-xl");
-    expect(label.className).toContain("font-bold");
+    for (const cls of SECTION_HEADING_CLS.split(" ")) expect(label.className).toContain(cls);
+    expect(label.className).toContain("text-base");
+    expect(label.className).toContain("font-semibold");
     for (const stale of ["text-xs", "uppercase", "tracking-wider", "text-muted-foreground"]) {
       expect(label.className).not.toContain(stale);
     }
   });
 
-  it("無任何白名單章節整篇退回單一 markdown 檢視", () => {
-    const { container } = render(<SectionedDoc content={"# 自由文件\n\n段落內容而已。\n"} />);
+  it("沒有任何二級標題時整篇退回單一 markdown 檢視", () => {
+    const { container } = render(<ProposalDoc content={"# 自由文件\n\n段落內容而已。\n"} deltaCaps={[]} />);
     expect(screen.getByText("段落內容而已。")).toBeTruthy();
     expect(container.querySelectorAll("[data-section]").length).toBe(0);
   });

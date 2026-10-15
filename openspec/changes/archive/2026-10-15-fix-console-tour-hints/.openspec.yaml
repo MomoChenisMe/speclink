@@ -1,0 +1,26 @@
+schema: spec-driven
+created: 2026-10-15
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+started_at: 2026-10-15
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-15
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 4
+reviewed_scope:
+  - path: apps/server-web/src/__tests__/tour.test.tsx
+    hash: 0701ebe13284dbe14d02df4464855bed941a301ddba13e88a737ebb9a3aa6511
+  - path: apps/server-web/src/i18n/messages.ts
+    hash: 29b6a063aec5042707e34c4b4c183e90f0b26085d82e6d65da45a45def02c912
+verified_at: 2026-10-15
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 4
+verified_scope:
+  - path: apps/server-web/src/__tests__/tour.test.tsx
+    hash: 0701ebe13284dbe14d02df4464855bed941a301ddba13e88a737ebb9a3aa6511
+  - path: apps/server-web/src/i18n/messages.ts
+    hash: 29b6a063aec5042707e34c4b4c183e90f0b26085d82e6d65da45a45def02c912
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-15

@@ -101,7 +101,7 @@ code:
 ---
 ### Requirement: stale 標記與 refresh
 
-Host SHALL 提供將投影標記 stale 的操作：寫入固定名稱的 marker 檔、SHALL NOT 改動任何投影文件內容；讀取端見 marker SHALL 提示 refresh。refresh SHALL 以新 snapshot 全量重建投影並清除 marker。
+Host SHALL 提供將投影標記 stale 的操作：寫入固定名稱的 marker 檔、SHALL NOT 改動任何投影文件內容；讀取端見 marker SHALL 提示 refresh。refresh SHALL 以新 snapshot 全部重新建立投影並清除 marker。
 
 #### Scenario: stale 不偷換文件
 
@@ -163,7 +163,7 @@ code:
 ---
 ### Requirement: 依流程縮小 context
 
-materialize SHALL 接受流程參數並依預設集合挑選文件：discuss（config、LANGUAGE、canonical specs 索引）、propose（discussion、相關 canonical specs、schema 與 template）、apply（proposal、design、tasks、delta specs、base specs）、verify（apply 集合加最新 tasks 與驗證規則）、archive（delta specs、canonical base、tasks、revision）；未給流程參數 SHALL 為全量。挑選規則 SHALL 為 materializer 的單一實作。
+materialize SHALL 接受流程參數並依預設集合挑選文件：discuss（config、LANGUAGE、canonical specs 索引）、propose（discussion、相關 canonical specs、schema 與 template）、apply（proposal、design、tasks、delta specs、base specs）、verify（apply 集合加最新 tasks 與驗證規則）、archive（delta specs、canonical base、tasks、revision）；未給流程參數 SHALL 為完整投影。挑選規則 SHALL 為 materializer 的單一實作。
 
 #### Scenario: apply 流程集合齊備
 

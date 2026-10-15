@@ -14,5 +14,9 @@
     "dev:reset": "node scripts/dev/dev.mjs --reset",
     "cli": "node scripts/dev/cli.mjs",
     "test:all": "node --test \"scripts/**/*.test.mjs\" && npm test -w packages/ui && npm test -w apps/desktop && npm test -w apps/server-web && npm run build -w apps/server-web && cargo test --workspace && npm --prefix crates/adapters/speclink-node ci && npm --prefix crates/adapters/speclink-node run build && npm --prefix crates/adapters/speclink-node test"
+  },
+  "devDependencies": {
+    "@types/jest-axe": "^3.5.9",
+    "@types/node": "^22.20.5"
   }
 }

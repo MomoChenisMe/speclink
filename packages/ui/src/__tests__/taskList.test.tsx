@@ -14,7 +14,7 @@ function render(ui: ReactElement) {
 }
 
 import { TaskList } from "../components/TaskList";
-import { SUB_LABEL_CLS } from "../components/SectionedDoc";
+import { SECTION_HEADING_CLS } from "../components/DocParts";
 import { parseTaskDoc, parseTasks, resolveDropTarget } from "../tasks";
 
 const MD = "## 1. Group A\n\n- [ ] 1.1 first\n- [x] 1.2 second\n\n## 2. Group B\n\n- [ ] 2.1 third\n";
@@ -96,7 +96,7 @@ describe("TaskList", () => {
   it("renders groups, checked state and fires onToggle with ordinal", () => {
     const onToggle = vi.fn();
     render(<TaskList markdown={MD} onToggle={onToggle} />);
-    expect(screen.getByText("1. Group A")).toBeTruthy();
+    expect(screen.getByText("Group A")).toBeTruthy();
     const first = screen.getByRole("checkbox", { name: "任務 1" });
     const second = screen.getByRole("checkbox", { name: "任務 2" });
     expect(first.getAttribute("aria-checked")).toBe("false");
@@ -117,94 +117,105 @@ describe("TaskList", () => {
     expect(screen.queryByLabelText("下移任務 1")).toBeNull();
   });
 
-  it("uses 16px type for task text", () => {
-    // spec「markdown 內容保留文件結構呈現」：任務文字 16px 與內文對齊。
+  it("uses 15px type for task text", () => {
+    // spec「markdown 內容保留文件結構呈現」：閱讀卡內任務列文字 15px 與內文對齊。
     render(<TaskList markdown={MD} />);
-    expect(screen.getByText("1.1 first").className).toContain("text-base");
+    expect(screen.getByText("first").className).toContain("text-[15px]");
   });
 
-  it("群組標題與章節標籤同款式（任務群組標題與章節標籤同款式，design D6 次級款＝原尺寸）", () => {
-    render(<TaskList markdown={MD} />);
-    const heading = screen.getByText("1. Group A");
-    // 標籤家族次級款（共用常數 SUB_LABEL_CLS）：粗體、字級同內文基準 16px、小於章節主標題。
-    for (const cls of SUB_LABEL_CLS.split(" ")) expect(heading.className).toContain(cls);
+  it("群組卡頭與章節標題同款式（spec「任務群組標題與章節標籤同款式」，design D5）", () => {
+    const { container } = render(<TaskList markdown={MD} />);
+    const heading = screen.getByText("Group A");
+    // 16px 粗體章節標題（共用常數 SECTION_HEADING_CLS）。
+    for (const cls of SECTION_HEADING_CLS.split(" ")) expect(heading.className).toContain(cls);
     for (const stale of ["text-xl", "text-xs", "uppercase", "tracking-wider", "text-muted-foreground"]) {
       expect(heading.className).not.toContain(stale);
     }
-    // 標題文字照來源，不翻譯不改寫。
-    expect(heading.textContent).toBe("1. Group A");
+    // 標題文字照來源（序號拆成左端序號籤，不含序號後的空白），不翻譯不改寫。
+    expect(heading.tagName).toBe("H3");
+    expect(heading.textContent).toBe("Group A");
+    expect(heading.previousElementSibling!.textContent).toBe("1");
+    // 本頁目錄錨點（desktop-detail-doc-tree design D5）。
+    expect(heading.hasAttribute("data-doc-heading")).toBe(true);
+    expect(container.querySelectorAll("[data-task-group]")).toHaveLength(2);
   });
 
-  // spec desktop-app「任務列的手動任務徽章」
+  // spec desktop-app「任務列的手動任務徽章」（desktop-change-doc-views design D14：整列淡底＋列尾徽章）
   describe("手動任務徽章", () => {
     const MARKED = "- [ ] [M] 3.2 手動驗證匯入結果\n- [x] 3.1 跑全套測試\n";
+    const rowOf = (text: string) => screen.getByText(text).closest("label") as HTMLElement;
 
-    it("`[M]` 列於描述上方獨立一行顯示徽章、左緣與描述切齊", () => {
+    it("`[M]` 列整列淡底、徽章在標題列尾；勾選框與序號起始欄與無標記列同位", () => {
       // Scenario「手動任務列的徽章呈現」。
       render(<TaskList markdown={MARKED} />);
       const badge = screen.getByLabelText("手動");
       // 精確比對：文案退回「手動測試」等任何形變都會被抓到，不需模糊反向網。
       expect(badge.textContent).toBe("手動");
       expect(screen.getAllByLabelText("手動")).toHaveLength(1);
-      const marked = screen.getByText("3.2 手動驗證匯入結果");
-      const plain = screen.getByText("3.1 跑全套測試");
-      // 徽章與描述同屬一個直列容器，且徽章是首子元素＝描述正上方那一行；
-      // 兩者左緣同欄（容器本身即該欄），描述左緣不因徽章位移。
-      const col = marked.parentElement as HTMLElement;
-      expect(badge.parentElement).toBe(col);
-      expect(col.className).toContain("flex-col");
-      expect(col.firstElementChild).toBe(badge);
-      expect(col.children[1]).toBe(marked);
-      // 編號起始欄同位：兩列的描述欄容器都緊接 checkbox。
-      expect(col.previousElementSibling?.getAttribute("role")).toBe("checkbox");
-      const plainCol = plain.parentElement as HTMLElement;
-      expect(plainCol.previousElementSibling?.getAttribute("role")).toBe("checkbox");
-      // 徽章不得再置於行尾。
-      expect(badge.className).not.toContain("ml-auto");
+      const marked = rowOf("手動驗證匯入結果");
+      const plain = rowOf("跑全套測試");
+      expect(marked.hasAttribute("data-task-manual")).toBe(true);
+      expect(marked.className).toContain("bg-status-manual/12");
+      expect(plain.hasAttribute("data-task-manual")).toBe(false);
+      expect(plain.className).not.toContain("bg-status-manual");
+      // 徽章在標題那一行的列尾（展開鈕之前），不在文字流裡、不獨佔一行。
+      const titleRow = badge.parentElement as HTMLElement;
+      expect(titleRow.hasAttribute("data-task-title-row")).toBe(true);
+      expect(titleRow.firstElementChild!.textContent).toBe("3.2");
+      expect(titleRow.children[1].textContent).toBe("手動驗證匯入結果");
+      expect(Array.from(titleRow.children).indexOf(badge)).toBeGreaterThan(1);
+      // 兩列結構相同：描述欄只有標題那一行（沒有徽章行），且緊接 checkbox。
+      for (const row of [marked, plain]) {
+        const col = row.querySelector("[data-task-title-row]")!.parentElement as HTMLElement;
+        expect(col.firstElementChild!.hasAttribute("data-task-title-row")).toBe(true);
+        expect(col.previousElementSibling?.getAttribute("role")).toBe("checkbox");
+      }
     });
 
-    it("徽章配色取語意色票，不是 muted 灰階", () => {
-      // 實測回饋：灰底灰字在滿頁灰階任務文字裡讀不出來。
+    it("徽章配色取手動語意色（暖黃），不是 muted 灰階、也不是進行中藍", () => {
       render(<TaskList markdown={MARKED} />);
       const badge = screen.getByLabelText("手動");
+      expect(badge.className).toContain("text-status-manual");
       expect(badge.className).not.toContain("bg-muted");
-      expect(badge.className).not.toContain("text-muted-foreground");
-      expect(badge.className).toContain("sky");
+      expect(badge.className).not.toContain("status-progress");
     });
 
-    it("長描述換行時徽章仍獨佔描述上方那一行", () => {
-      // Scenario「長描述換行不動徽章」：徽章與描述是直列的兩個區塊，描述換幾行
-      // 都不影響徽章所在的行——jsdom 量不到實際換行，以結構為準。
+    it("長描述換行時徽章仍在標題列尾、不佔描述的行", () => {
+      // Scenario「長描述換行不動徽章」：jsdom 量不到實際換行，以結構為準。
       const long = `- [ ] [M] ${"很長的描述".repeat(40)}\n`;
       render(<TaskList markdown={long} />);
       const badge = screen.getByLabelText("手動");
-      const col = badge.parentElement as HTMLElement;
-      expect(col.className).toContain("flex-col");
-      expect(col.firstElementChild).toBe(badge);
-      // 徽章自身不撐滿整列寬（self-start），描述才貼得住同一條左緣。
-      expect(badge.className).toContain("self-start");
+      expect((badge.parentElement as HTMLElement).hasAttribute("data-task-title-row")).toBe(true);
+      expect(badge.className).toContain("shrink-0");
     });
 
-    it("勾完文字劃線、徽章保留且不劃線", () => {
+    it("勾完文字劃線、整列淡底退掉，徽章保留且不劃線", () => {
       // Scenario「勾完徽章保留」。
       render(<TaskList markdown={"- [x] [M] 3.2 手動驗證匯入結果\n"} />);
-      expect(screen.getByText("3.2 手動驗證匯入結果").className).toContain("line-through");
+      expect(screen.getByText("手動驗證匯入結果").className).toContain("line-through");
+      expect(rowOf("手動驗證匯入結果").className).not.toContain("bg-status-manual");
       const badge = screen.getByLabelText("手動");
       expect(badge.className).not.toContain("line-through");
     });
 
-    it("舊 `[P]` 行剝離後不長徽章行，也不留空行", () => {
+    it("舊 `[P]` 行剝離後無徽章、無淡底", () => {
       // Scenario「舊 [P] 行無徽章」。
       render(<TaskList markdown={"- [x] [P] 舊任務\n"} />);
-      const text = screen.getByText("舊任務");
       expect(screen.queryByLabelText("手動")).toBeNull();
-      // 描述欄容器只有描述一個子元素——沒有徽章預留的空槽。
-      expect((text.parentElement as HTMLElement).children).toHaveLength(1);
+      const row = rowOf("舊任務");
+      expect(row.hasAttribute("data-task-manual")).toBe(false);
+      expect(row.className).not.toContain("bg-status-manual");
     });
 
-    it("無 `[M]` 任務的清單不長徽章", () => {
-      render(<TaskList markdown={MD} />);
+    it("無 `[M]` 任務的清單不長徽章與淡底", () => {
+      const { container } = render(<TaskList markdown={MD} />);
       expect(screen.queryByLabelText("手動")).toBeNull();
+      expect(container.querySelector("[data-task-manual]")).toBeNull();
+    });
+
+    it("可拖排時手動列同樣整列淡底", () => {
+      render(<TaskList markdown={MARKED} onToggle={vi.fn()} onReorder={vi.fn()} />);
+      expect(rowOf("手動驗證匯入結果").className).toContain("bg-status-manual/12");
     });
 
     it("en 徽章文案為 Manual（放寬後不提 test）", () => {
@@ -240,6 +251,206 @@ describe("TaskList", () => {
     // 批次工具列照常（setAllTasks 在 remote 是組合實作、仍支援）。
     fireEvent.click(screen.getByRole("button", { name: /全部已完成/ }));
     expect(onSetAll).toHaveBeenCalledWith(true);
+  });
+});
+
+// spec「任務群組標題與章節標籤同款式」（desktop-change-doc-views design D5）：群組卡與三層任務列。
+describe("TaskList 群組卡與三層任務列", () => {
+  const LAYERED =
+    "## 1. 解析器\n\n" +
+    "- [ ] 1.1 新增 `a.ts`（design D3）：匯出 x；驗證：npm test\n" +
+    "- [ ] 1.2 對齊匯出\n";
+
+  it("三層切分：標題層有序號、標題與 D 籤；展開時標題下方有內文與驗證，點列尾鈕收起", () => {
+    const { container } = render(<TaskList markdown={LAYERED} onToggle={vi.fn()} />);
+    const titleRow = container.querySelector("[data-task-title-row]")!;
+    expect(titleRow.querySelector("[data-task-title]")!.textContent).toBe("新增 a.ts");
+    expect(titleRow.querySelector("[data-task-title] code")!.textContent).toBe("a.ts");
+    expect(titleRow.querySelector("[data-task-decision]")!.textContent).toBe("D3");
+    expect(screen.getByText("匯出 x；")).toBeTruthy();
+    expect(screen.getByText("驗證")).toBeTruthy();
+    expect(screen.getByText("npm test")).toBeTruthy();
+    const btn = titleRow.querySelector("[data-task-expand]")!;
+    fireEvent.click(btn);
+    expect(btn.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("匯出 x；")).toBeNull();
+    expect(screen.queryByText("npm test")).toBeNull();
+  });
+
+  it.each([
+    ["可拖排", true],
+    ["無拖排", false],
+  ])("%s：點展開鈕與 D 籤不切換勾選，D 籤回報決策編號", (_label, sortable) => {
+    const onToggle = vi.fn();
+    const onJumpDecision = vi.fn();
+    const { container } = render(
+      <TaskList
+        markdown={LAYERED}
+        onToggle={onToggle}
+        onReorder={sortable ? vi.fn() : undefined}
+        onJumpDecision={onJumpDecision}
+      />,
+    );
+    // 列尾鈕來回各點一次，之後點 D 籤與內文。
+    const btn = container.querySelector("[data-task-expand]")!;
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+    fireEvent.click(container.querySelector("[data-task-decision]")!);
+    fireEvent.click(screen.getByText("匯出 x；"));
+    expect(onJumpDecision).toHaveBeenCalledWith("D3");
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("兩個群組成兩張卡，卡頭右端為各自的小進度", () => {
+    const md =
+      "## 1. 甲\n\n- [x] 1.1 a\n- [x] 1.2 b\n\n" +
+      "## 2. 乙\n\n- [x] 2.1 c\n- [x] 2.2 d\n- [x] 2.3 e\n- [ ] 2.4 f\n- [ ] 2.5 g\n";
+    const { container } = render(<TaskList markdown={md} />);
+    const cards = Array.from(container.querySelectorAll("[data-task-group]"));
+    expect(cards.map((c) => c.querySelector("[data-task-group-progress]")!.textContent)).toEqual(["2/2", "3/5"]);
+    expect(cards.map((c) => c.querySelector("h3")!.textContent)).toEqual(["甲", "乙"]);
+  });
+
+  it("第一個群組之前的任務以無卡頭清單呈現", () => {
+    const { container } = render(<TaskList markdown={"- [ ] 前導任務\n\n## 1. 甲\n\n- [ ] 1.1 a\n"} />);
+    expect(container.querySelectorAll("[data-task-group]")).toHaveLength(1);
+    expect(screen.getByText("前導任務").closest("[data-task-group]")).toBeNull();
+  });
+
+  it("唯讀時列尾鈕可用、勾選框 disabled", () => {
+    const { container } = render(<TaskList markdown={LAYERED} readOnly />);
+    expect((screen.getByRole("checkbox", { name: "任務 1" }) as HTMLButtonElement).disabled).toBe(true);
+    const btn = container.querySelector("[data-task-expand]") as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    const before = btn.getAttribute("aria-expanded");
+    fireEvent.click(btn);
+    expect(btn.getAttribute("aria-expanded")).not.toBe(before);
+  });
+
+  it("拖曳時浮起的列只畫標題層：原列展開中，浮起列也不帶內文與驗證", async () => {
+    render(<TaskList markdown={LAYERED} onToggle={vi.fn()} onReorder={vi.fn()} />);
+    const handle = screen.getByLabelText("拖曳任務 1");
+    handle.focus();
+    fireEvent.keyDown(handle, { code: "Space", key: " " });
+    // 浮起列與原列同時在畫面上：1.1 的標題有兩份，內文與驗證仍只有原列那一份。
+    expect(screen.getAllByText("a.ts")).toHaveLength(2);
+    expect(document.querySelectorAll("[data-task-detail]")).toHaveLength(1);
+    // 結束拖曳：鍵盤感測器下一個 tick 才掛按鍵監聽，不收掉會吃掉後面題目的空白鍵。
+    await new Promise((r) => setTimeout(r, 0));
+    fireEvent.keyDown(handle, { code: "Escape", key: "Escape" });
+  });
+
+  // spec「任務群組標題與章節標籤同款式」：預設展開看勾選狀態，勾選狀態一變就跟著翻，
+  // 手動切換維持到該任務的勾選狀態下次改變。
+  /** 以標題找該列的列尾鈕；沒有列尾鈕時為 null。 */
+  const expandBtn = (title: string) =>
+    screen.getByText(title).closest("[data-task-title-row]")!.querySelector("[data-task-expand]");
+  const expandedOf = (title: string) => expandBtn(title)?.getAttribute("aria-expanded") ?? null;
+  const clickExpand = (title: string) => fireEvent.click(expandBtn(title)!);
+  /** 任務行：行文、勾選狀態與穩定 ID（行尾註解格式同本檔任務）。 */
+  type Row = { line: string; done: boolean; id?: string };
+  const t31 = (done: boolean): Row => ({ line: "3.1 甲任務：甲內文", done, id: "tsk_01ARZ3NDEKTSV4RRFFQ69G5FA1" });
+  const t32 = (done: boolean): Row => ({ line: "3.2 乙任務：乙內文", done, id: "tsk_01ARZ3NDEKTSV4RRFFQ69G5FA2" });
+  const t33 = (done: boolean): Row => ({ line: "3.3 丙任務", done, id: "tsk_01ARZ3NDEKTSV4RRFFQ69G5FA3" });
+  const t34 = (done: boolean): Row => ({ line: "3.4 丁任務：丁內文", done, id: "tsk_01ARZ3NDEKTSV4RRFFQ69G5FA4" });
+  const withoutId = (row: Row): Row => ({ ...row, id: undefined });
+  /** 一個群組的 markdown；跨群組的題目串接多段。 */
+  const group = (heading: string, ...rows: Row[]) =>
+    `## ${heading}\n\n` +
+    rows.map((r) => `- [${r.done ? "x" : " "}] ${r.line}${r.id ? ` <!-- speclink-task:${r.id} -->` : ""}\n`).join("") +
+    "\n";
+  const list = (md: string) => <TaskList markdown={md} onToggle={vi.fn()} onReorder={vi.fn()} />;
+
+  it.each([
+    ["可寫", false],
+    ["唯讀", true],
+  ])("%s：依勾選狀態決定預設展開——未勾展開、已勾收合、無內文沒有列尾鈕", (_label, readOnly) => {
+    render(<TaskList markdown={group("3. 丙", t31(false), t32(true), t33(false))} onToggle={vi.fn()} readOnly={readOnly} />);
+    expect(expandedOf("甲任務")).toBe("true");
+    expect(screen.getByText("甲內文")).toBeTruthy();
+    expect(expandedOf("乙任務")).toBe("false");
+    expect(screen.queryByText("乙內文")).toBeNull();
+    expect(expandedOf("丙任務")).toBeNull();
+  });
+
+  it("勾選狀態改變時展開跟著翻（列勾選、工具列批次、寫回回滾與重新載入都以新 markdown 重繪）", () => {
+    const { rerender } = render(list(group("3. 丙", t31(false), t32(true), t33(false))));
+    expect(expandedOf("甲任務")).toBe("true");
+    rerender(list(group("3. 丙", t31(true), t32(true), t33(false))));
+    expect(expandedOf("甲任務")).toBe("false");
+    expect(screen.queryByText("甲內文")).toBeNull();
+    rerender(list(group("3. 丙", t31(false), t32(true), t33(false))));
+    expect(expandedOf("甲任務")).toBe("true");
+    rerender(list(group("3. 丙", t31(true), t32(true), t33(true))));
+    expect([expandedOf("甲任務"), expandedOf("乙任務"), expandedOf("丙任務")]).toEqual(["false", "false", null]);
+    rerender(list(group("3. 丙", t31(false), t32(false), t33(false))));
+    expect([expandedOf("甲任務"), expandedOf("乙任務"), expandedOf("丙任務")]).toEqual(["true", "true", null]);
+  });
+
+  it("手動展開收合維持到勾選狀態改變：重新載入與組內排序不重設，跟著穩定 ID 走", () => {
+    const { rerender, unmount } = render(list(group("3. 丙", t31(false), t32(true), t34(false))));
+    clickExpand("甲任務");
+    clickExpand("乙任務");
+    expect([expandedOf("甲任務"), expandedOf("乙任務")]).toEqual(["false", "true"]);
+    // 別的任務勾選狀態改變而重新載入：兩列的手動選擇不變。
+    rerender(list(group("3. 丙", t31(false), t32(true), t34(true))));
+    expect([expandedOf("甲任務"), expandedOf("乙任務"), expandedOf("丁任務")]).toEqual(["false", "true", "false"]);
+    // 組內排序後（穩定 ID 不變）手動選擇跟著各自的任務。
+    rerender(list(group("3. 丙", t32(true), t31(false), t34(true))));
+    expect([expandedOf("甲任務"), expandedOf("乙任務")]).toEqual(["false", "true"]);
+    // 勾選狀態一變，手動選擇就作廢。只翻一次時手動選擇剛好等於新的預設、分不出來，
+    // 所以兩列都來回翻一次再斷言：手動選擇還在的話，甲會停在收合、乙會停在展開。
+    rerender(list(group("3. 丙", t32(false), t31(true), t34(true))));
+    rerender(list(group("3. 丙", t32(true), t31(false), t34(true))));
+    expect([expandedOf("甲任務"), expandedOf("乙任務")]).toEqual(["true", "false"]);
+    // 離開再回來：依勾選狀態重新決定。
+    clickExpand("乙任務");
+    expect(expandedOf("乙任務")).toBe("true");
+    unmount();
+    render(list(group("3. 丙", t32(true), t31(false), t34(true))));
+    expect(expandedOf("乙任務")).toBe("false");
+  });
+
+  it("手動選擇不因群組卡重建而重設：拖到別的群組、前面的群組增減一行", () => {
+    const { rerender } = render(list(group("2. 乙組", t31(false)) + group("3. 丙組", t32(true), t34(false))));
+    clickExpand("甲任務");
+    clickExpand("乙任務");
+    // 甲任務拖到丙組：甲換了群組卡，丙組卡頭在清單裡的位置也跟著位移。
+    rerender(list(group("2. 乙組") + group("3. 丙組", t32(true), t31(false), t34(false))));
+    expect([expandedOf("甲任務"), expandedOf("乙任務"), expandedOf("丁任務")]).toEqual(["false", "true", "true"]);
+    // 外部重新載入在前面的群組加一行：後面群組卡的位置位移。
+    rerender(list(group("2. 乙組", t33(false)) + group("3. 丙組", t32(true), t31(false), t34(false))));
+    expect([expandedOf("甲任務"), expandedOf("乙任務")]).toEqual(["false", "true"]);
+  });
+
+  it("沒有穩定 ID 的任務以序數識別：排序後手動選擇留在原位置", () => {
+    const { rerender } = render(list(group("3. 丙", withoutId(t31(false)), withoutId(t32(false)))));
+    clickExpand("甲任務");
+    expect([expandedOf("甲任務"), expandedOf("乙任務")]).toEqual(["false", "true"]);
+    rerender(list(group("3. 丙", withoutId(t32(false)), withoutId(t31(false)))));
+    // 第 1 個位置（現在是乙任務）留著收合，甲任務回到依勾選狀態決定。
+    expect([expandedOf("乙任務"), expandedOf("甲任務")]).toEqual(["false", "true"]);
+  });
+});
+
+// spec「任務群組標題與章節標籤同款式」Scenario「手動提示框前往任務列」（design D14）：頁的「前往」經 locate 定位。
+describe("TaskList 定位（locate）", () => {
+  it.each([
+    ["可寫", false],
+    ["唯讀", true],
+  ])("%s：locate 命中時捲到該列、短暫高亮並回報完成，勾選不變", (_label, readOnly) => {
+    const scrollSpy = vi.fn();
+    Element.prototype.scrollIntoView = scrollSpy;
+    const onLocated = vi.fn();
+    const onToggle = vi.fn();
+    render(
+      <TaskList markdown={MD} readOnly={readOnly} onToggle={onToggle} locate={{ ordinal: 3, seq: 1 }} onLocated={onLocated} />,
+    );
+    expect(scrollSpy).toHaveBeenCalled();
+    expect(screen.getByText("third").closest("[data-highlight]")?.getAttribute("data-highlight")).toBe("true");
+    expect(screen.getByText("first").closest("[data-highlight]")?.getAttribute("data-highlight")).toBe("false");
+    expect(onLocated).toHaveBeenCalledTimes(1);
+    expect(onToggle).not.toHaveBeenCalled();
   });
 });
 
@@ -279,6 +490,132 @@ describe("TaskList 勾選框主題化", () => {
   });
 });
 
+// spec「任務列整列可點」（design D8）：整列為勾選框的 label；把手不切換；唯讀與
+// 批次寫回中（busy）不回應；拖曳仍只由把手啟動。
+describe("TaskList 整列可點", () => {
+  const rowOf = (text: string) => screen.getByText(text).closest("label") as HTMLLabelElement;
+
+  it.each([
+    ["可拖排", true],
+    ["無拖排", false],
+  ])("%s：點任務文字呼叫 onToggle 一次，效果與點勾選框相同", (_label, sortable) => {
+    const onToggle = vi.fn();
+    render(<TaskList markdown={MD} onToggle={onToggle} onReorder={sortable ? vi.fn() : undefined} />);
+    const row = rowOf("first");
+    expect(row).toBeTruthy();
+    const checkbox = screen.getByRole("checkbox", { name: "任務 1" });
+    expect(row.htmlFor).toBe(checkbox.id);
+    expect(row.className).toContain("cursor-(--cursor-interaction)");
+    expect(row.className).toContain("hover:bg-foreground/5");
+    fireEvent.click(screen.getByText("first"));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(onToggle).toHaveBeenCalledWith(1, true, undefined);
+  });
+
+  it("點拖曳把手不切換", () => {
+    const onToggle = vi.fn();
+    render(<TaskList markdown={MD} onToggle={onToggle} onReorder={vi.fn()} />);
+    const handle = screen.getByLabelText("拖曳任務 1");
+    fireEvent.pointerDown(handle);
+    fireEvent.click(handle);
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("唯讀列點擊不切換，label 無 htmlFor、游標預設且沒有 hover 底色", () => {
+    const onToggle = vi.fn();
+    render(<TaskList markdown={MD} readOnly onToggle={onToggle} />);
+    const row = rowOf("first");
+    expect(row.htmlFor).toBe("");
+    expect(row.className).toContain("cursor-default");
+    expect(row.className).not.toContain("hover:");
+    fireEvent.click(screen.getByText("first"));
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["可拖排", true],
+    ["無拖排", false],
+  ])("%s：批次寫回中（busy）點列不切換", (_label, sortable) => {
+    const onToggle = vi.fn();
+    render(
+      <TaskList markdown={MD} busy onToggle={onToggle} onReorder={sortable ? vi.fn() : undefined} />,
+    );
+    const row = rowOf("first");
+    expect(row.htmlFor).toBe("");
+    expect(row.className).toContain("cursor-default");
+    fireEvent.click(screen.getByText("first"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "任務 1" }));
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("拖曳仍只由把手啟動：sortable 屬性只在把手上，列本身沒有", () => {
+    render(<TaskList markdown={MD} onToggle={vi.fn()} onReorder={vi.fn()} />);
+    const row = rowOf("first");
+    expect(row.getAttribute("aria-roledescription")).toBeNull();
+    expect(screen.getByLabelText("拖曳任務 1").getAttribute("aria-roledescription")).toBe("sortable");
+  });
+
+  it("有寫入能力時工具列附灰字提示；沒有把手時不提把手；唯讀時沒有", () => {
+    const { unmount } = render(
+      <TaskList markdown={MD} onToggle={vi.fn()} onReorder={vi.fn()} onSetAll={vi.fn()} />,
+    );
+    const hint = screen.getByText("點整列即可勾選；拖曳把手改順序");
+    expect(hint.className).toContain("text-muted-foreground");
+    expect(hint.className).toContain("text-xs");
+    unmount();
+    const plain = render(<TaskList markdown={MD} onToggle={vi.fn()} onSetAll={vi.fn()} />);
+    expect(screen.getByText("點整列即可勾選")).toBeTruthy();
+    expect(screen.queryByText(/拖曳把手/)).toBeNull();
+    plain.unmount();
+    render(<TaskList markdown={MD} readOnly />);
+    expect(screen.queryByText(/點整列即可勾選/)).toBeNull();
+  });
+
+  it.each([
+    ["可拖排", true],
+    ["無拖排", false],
+  ])("%s：拖選文字後的 click 不切換；直接點勾選框不受影響", (_label, sortable) => {
+    const onToggle = vi.fn();
+    render(<TaskList markdown={MD} onToggle={onToggle} onReorder={sortable ? vi.fn() : undefined} />);
+    const selection = vi.spyOn(window, "getSelection").mockReturnValue({ toString: () => "first" } as Selection);
+    fireEvent.click(screen.getByText("first"));
+    expect(onToggle).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("checkbox", { name: "任務 1" }));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    selection.mockRestore();
+  });
+
+  it("雙擊任務文字選字：兩下點擊互相抵銷，勾選狀態不變", () => {
+    const onToggle = vi.fn();
+    const reorder = vi.fn();
+    const { rerender } = render(<TaskList markdown={MD} onToggle={onToggle} onReorder={reorder} />);
+    fireEvent.click(screen.getByText("first"), { detail: 1 });
+    // 宿主樂觀改寫 tasks.md；第二下按下時瀏覽器已選取該字。
+    rerender(<TaskList markdown={MD.replace("- [ ] 1.1", "- [x] 1.1")} onToggle={onToggle} onReorder={reorder} />);
+    const text = screen.getByText("first");
+    const selection = vi.spyOn(window, "getSelection").mockReturnValue({ toString: () => "first" } as Selection);
+    fireEvent.click(text, { detail: 2 });
+    selection.mockRestore();
+    expect(onToggle.mock.calls).toEqual([
+      [1, true, undefined],
+      [1, false, undefined],
+    ]);
+  });
+
+  it("拖曳進行中按 Esc 標為已處理：只取消拖曳，不讓詳情頁的 Esc 關頁", () => {
+    const onDragActiveChange = vi.fn();
+    render(
+      <TaskList markdown={MD} onToggle={vi.fn()} onReorder={vi.fn()} onDragActiveChange={onDragActiveChange} />,
+    );
+    expect(fireEvent.keyDown(window, { key: "Escape" })).toBe(true);
+    const handle = screen.getByLabelText("拖曳任務 1");
+    handle.focus();
+    fireEvent.keyDown(handle, { code: "Space", key: " " });
+    expect(onDragActiveChange).toHaveBeenLastCalledWith(true);
+    expect(fireEvent.keyDown(window, { key: "Escape" })).toBe(false);
+  });
+});
+
 // spec「任務分頁提供批次操作工具列」（desktop-task-interactions）
 describe("TaskList 工具列", () => {
   it("renders the three batch actions and fires onSetAll", () => {
@@ -311,7 +648,7 @@ describe("TaskList 工具列", () => {
     fireEvent.click(screen.getByRole("button", { name: /下一個未完成/ }));
     expect(scrollSpy).toHaveBeenCalled();
     // 第一個未完成＝任務 1（1.1 first），其列帶短暫高亮標記。
-    const row = screen.getByText("1.1 first").closest("[data-highlight]");
+    const row = screen.getByText("first").closest("[data-highlight]");
     expect(row?.getAttribute("data-highlight")).toBe("true");
   });
 
@@ -414,7 +751,7 @@ describe("stable task IDs", () => {
   it("清單顯示不含標記、勾選請求攜 stable ID（無 ID 走 ordinal 相容）", () => {
     const onToggle = vi.fn();
     const stamped = render(<TaskList markdown={MD_IDS} onToggle={onToggle} />);
-    expect(screen.getByText("1.1 first")).toBeTruthy();
+    expect(screen.getByText("first")).toBeTruthy();
     expect(document.body.textContent).not.toContain("speclink-task");
     fireEvent.click(screen.getByRole("checkbox", { name: "任務 1" }));
     expect(onToggle).toHaveBeenCalledWith(1, true, TID_A);

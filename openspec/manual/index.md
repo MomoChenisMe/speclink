@@ -4,7 +4,7 @@ section: 開始使用
 order: 10
 keywords: [首頁, 入門, 角色, 導覽, SDD, 手冊]
 sources: []
-generated: 2026-10-10T08:25:58+08:00
+generated: 2026-10-15T17:40:05+08:00
 ---
 
 # Speclink 操作手冊
@@ -38,18 +38,12 @@ Speclink 是一套 SDD（規格驅動開發，Spec-Driven Development）引擎�
 - 好幾個變更同時做：先看[執行順序：plan 與依賴](plan.md)，再走[平行實作與合回](worktree.md)
 - 工具：[提交單一變更的檔案](commit.md)、[溯源](trace.md)、[工作流政策與設定](policy-config.md)、[產出流程 schema 管理](schemas.md)、[操作手冊：生成與導覽](manual.md)
 
-### 使用 Claude Code 的開發者
-
-- [選擇技能](claude-skill-bar.md)：點技能填入指令，再自行送出。
-- [目前工作與對話標題](claude-session-focus.md)：辨認正在執行的步驟與變更。
-- [查看進度與工單](claude-workflow-panel.md)：在對話旁查看看板、討論與品質發現。
-
 ### 產品負責人／PM（看進度、不碰 checkout）
 
 - [認識桌面 app](desktop-overview.md)、[看板與任務](desktop-board.md)
 - [規格、討論、已封存與搜尋](desktop-browse.md)、[桌面 app 的手冊頁](desktop-manual.md)、[桌面上的品質關卡](desktop-quality.md)
-- [專案分頁、新增工作區與設定頁](desktop-projects.md)、[自動更新、安裝 CLI 與指令檔過期](desktop-update.md)、[系統匣選單](tray.md)
-- 接上團隊 server：[桌面連線 server 與 remote 工作區](desktop-remote.md)
+- [專案、新增專案與設定頁](desktop-projects.md)、[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)、[系統匣面板與選單](tray.md)
+- 接上團隊 server：[桌面連線 server 與 remote 專案](desktop-remote.md)
 
 ### 團隊協作（remote 模式）
 

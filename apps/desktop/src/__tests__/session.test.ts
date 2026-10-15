@@ -124,9 +124,20 @@ describe("createLocalSession（spec「每個 session 自帶 dataSource 且 Rust 
     });
     await settings.writeWorkflowContext("ctx");
     await settings.writeWorkflowRules([["proposal", ["rule"]]]);
-    expect(calls).toHaveLength(5);
+    await settings.writeWorkflowReview({ baseline: "extend", critical: [], warning: ["w"], suggestion: [] });
+    expect(calls).toHaveLength(6);
     const missingRoot = calls.filter((c) => c.args?.root !== ROOT).map((c) => c.cmd);
     expect(missingRoot).toEqual([]);
+  });
+
+  it("審查規則寫入只帶 review：context 與 rules 為 null（review-rules-config）", async () => {
+    const { calls, invoke } = fakeInvoke();
+    const settings = createLocalSession(ROOT, { invoke }).settings;
+    const review = { baseline: "replace" as const, critical: ["c"], warning: [], suggestion: [] };
+    await settings.writeWorkflowReview(review);
+    expect(calls).toEqual([
+      { cmd: "write_workflow_content", args: { root: ROOT, context: null, rules: null, review } },
+    ]);
   });
 
   it("產出流程五方法各自呼叫對應 command（desktop-schema-panel D2/D5/D6）", async () => {
@@ -247,7 +258,6 @@ describe("upsertTab 以 locator key 去重（spec「同一專案重複開啟仍�
   const tab = (root: string, name = root): ProjectTab => ({
     locator: local(root),
     name,
-    badge: null,
   });
 
   it("appends a tab with a distinct locator", () => {
@@ -274,7 +284,7 @@ describe("upsertTab 以 locator key 去重（spec「同一專案重複開啟仍�
       checkoutRoot: "/work/old",
     };
     const newLocator: WorkspaceLocator = { ...oldLocator, checkoutRoot: "/work/new" };
-    const tabs = upsertTab([{ locator: oldLocator, name: "Demo/Backend", badge: null }], {
+    const tabs = upsertTab([{ locator: oldLocator, name: "Demo/Backend" }], {
       locator: newLocator,
       name: "Demo/Backend",
     });

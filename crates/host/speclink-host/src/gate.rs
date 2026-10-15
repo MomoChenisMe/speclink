@@ -1,5 +1,5 @@
 //! The lifecycle gate — the single adjudication point for station
-//! transitions (platform architecture §15.1: the PM→RD handoff gate).
+//! transitions (the PM→RD handoff gate).
 //!
 //! Six closed stations: drafting → review → ready → applying → verified →
 //! archived. The adjudication function is the only place a transition is

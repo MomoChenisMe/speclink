@@ -1,331 +1,77 @@
-import { AlertTriangle } from "lucide-react";
-import { useState } from "react";
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-  SEMANTIC_TONE,
-  cn,
-  useI18n,
-} from "@speclink/ui";
-
-import { ServersPanel, type ServersPanelProps } from "../components/ServersPanel";
-import type { LocalePreference } from "../i18n/locale";
+// 應用程式設定（desktop-settings-mode design D5）：與任何專案無關；依設定分類欄的所在分類渲染
+// 一頁——一般、更新、CLI、伺服器、關於（desktop-about-page design D4／D7）。
+import type { Platform } from "../platform";
 import type { UpdaterState } from "../core/updater";
-import type { CliInstallView } from "../store";
-import type { ThemePreference } from "../theme";
+import type { SettingsSection } from "../settingsCatalog";
+import { AboutPage, type AboutPageProps } from "./settings/AboutPage";
+import { CliPage, type CliInstallProps } from "./settings/CliPage";
+import { GeneralPage, type InterfacePrefsProps } from "./settings/GeneralPage";
+import { ServersPage, type ServersPageProps } from "./settings/ServersPage";
+import { UpdatesPage } from "./settings/UpdatesPage";
 
-/** 軟體更新卡的注入面：狀態機現值＋手動檢查入口＋更新日誌瀏覽入口＋常駐現版號（null＝尚未取得）。 */
+/** 軟體更新面：狀態機現值＋手動檢查入口＋更新日誌瀏覽入口＋常駐現版號（null＝尚未取得）
+ * ＋「下載與安裝」的動作＋聚焦捲動＋背景檢查開關。 */
 export interface AppSettingsUpdaterProps {
   state: UpdaterState;
   onCheck: () => void;
-  /** 開啟更新日誌對話框的瀏覽模式（desktop-app「更新日誌彈窗」）。 */
-  onShowReleaseNotes: () => void;
+  /** 開啟更新日誌對話框的瀏覽模式（desktop-app「更新日誌彈窗」）；帶版號時開啟後捲到該版。 */
+  onShowReleaseNotes: (version?: string) => void;
   currentVersion?: string | null;
+  /** 使用者同意：下載並套用。 */
+  onAccept: () => void;
+  /** 取消下載＝放棄本次同意、回閒置。 */
+  onCancel: () => void;
+  /** 套用完成後重啟為新版。 */
+  onRelaunch: () => void;
+  /** true＝進更新頁後捲到下載與安裝卡一次（圖示列更新鈕、toast「查看」、技能檔較新態的入口）。 */
+  focus?: boolean;
+  /** 捲到卡後回呼，呼叫端清旗標。 */
+  onFocusHandled?: () => void;
+  /** 啟動時與回到前景的背景檢查開關現值（預設開）。 */
+  autoCheck: boolean;
+  onAutoCheckChange: (on: boolean) => void;
 }
 
-export interface AppSettingsViewProps {
-  themePref?: ThemePreference;
-  onThemePrefChange?: (pref: ThemePreference) => void;
-  /** UI 語言偏好現值（null＝跟隨系統）。 */
-  localePref: LocalePreference;
-  /** 切換即時生效並持久化（App 層負責寫 localStorage）。 */
-  onLocalePrefChange: (pref: LocalePreference) => void;
-  /** 面板建立失敗時於本機設定簽浮出的單行錯誤。 */
+export interface AppSettingsViewProps extends InterfacePrefsProps {
+  /** 設定分類欄的所在分類。 */
+  section: SettingsSection;
+  /** 鍵盤快捷鍵卡依平台列出實際生效的快捷鍵（desktop-native-menu design D5）。 */
+  platform: Platform;
+  /** 面板建立失敗時於一般頁底浮出的單行錯誤。 */
   trayPanelError?: string | null;
   /** app 全域伺服器管理面；測試或不支援連線的殼層可不注入。 */
-  servers?: ServersPanelProps;
-  /** needs-reauth 導向時預選伺服器簽並聚焦該 connection。 */
-  focusConnectionId?: string | null;
+  servers?: ServersPageProps;
   /** 軟體更新面（desktop-app「桌面自動更新」）；測試或不支援更新的殼層可不注入。 */
   updater?: AppSettingsUpdaterProps;
   /** 安裝 CLI 指令面（desktop-app「安裝 CLI 指令到 PATH」）；探測前或無殼層支援時不注入。 */
-  cliInstall?: { view: CliInstallView; onInstall: () => void };
+  cliInstall?: CliInstallProps;
+  /** 關於頁的版本資訊面（更新狀態沿用 updater）；未注入時關於頁不渲染。 */
+  about?: Omit<AboutPageProps, "updaterState" | "thirdPartyLicenses">;
 }
 
-function FieldHelp({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs text-muted-foreground m-0">{children}</p>;
-}
-
-/** 軟體更新卡的行內狀態（手動檢查結果與進行中狀態；閒置不顯示）。 */
-function UpdaterInlineStatus({ state }: { state: UpdaterState }) {
-  const { t } = useI18n();
-  switch (state.phase) {
-    case "checking":
-      return <span className="text-xs text-muted-foreground">{t("updater.checking")}</span>;
-    case "upToDate":
-      return <span className="text-xs text-muted-foreground">{t("updater.upToDate")}</span>;
-    case "checkFailed":
-      return (
-        <span className={`text-xs ${SEMANTIC_TONE.danger}`}>
-          {t("updater.checkFailed")}
-        </span>
-      );
-    case "available":
-      return (
-        <span className={`text-xs ${SEMANTIC_TONE.inProgress}`}>
-          {t("updater.available")} {state.version}
-        </span>
-      );
-    case "downloading":
-      return (
-        <span className="text-xs text-muted-foreground">
-          {t("updater.downloading")} {state.version}…
-        </span>
-      );
-    case "restartPending":
-      return <span className="text-xs text-primary">{t("updater.restartPending")}</span>;
-    case "error":
-      return (
-        <span className={`text-xs ${SEMANTIC_TONE.danger}`}>
-          {t("updater.errorPrefix")}
-          {state.message}
-        </span>
-      );
-    case "idle":
-      return null;
-  }
-}
-
-/** CLI 卡狀態行：三態＋版本；佈署方式歸屬（安裝器／套件管理器）另有說明列。 */
-function CliInstallStatusLine({ view }: { view: CliInstallView }) {
-  const { t } = useI18n();
-  switch (view.status.kind) {
-    case "not-installed":
-      return <span className="text-xs text-muted-foreground">{t("cliInstall.notInstalled")}</span>;
-    case "installed":
-      return (
-        <span className="text-xs text-muted-foreground">
-          {t("cliInstall.installed")} {view.status.version}
-        </span>
-      );
-    case "version-mismatch":
-      return (
-        <span className={`text-xs ${SEMANTIC_TONE.warning}`}>
-          {t("cliInstall.mismatch")}（{view.status.version}）
-        </span>
-      );
-  }
-}
-
-function TrayPanelError({ message }: { message: string }) {
-  const { t } = useI18n();
-  return (
-    <p role="alert" className={`flex items-start gap-1.5 text-xs m-0 ${SEMANTIC_TONE.danger}`}>
-      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-      <span>
-        {t("settings.parseErrorHint")} {message}
-      </span>
-    </p>
-  );
-}
-
-/** 與任何 workspace 分頁無關的應用程式設定：本機偏好與伺服器連線。 */
 export function AppSettingsView({
-  themePref = "system",
-  onThemePrefChange,
+  section,
+  platform,
   localePref,
   onLocalePrefChange,
+  themePref,
+  onThemePrefChange,
   trayPanelError = null,
   servers,
-  focusConnectionId = null,
   updater,
   cliInstall,
+  about,
 }: AppSettingsViewProps) {
-  const { t } = useI18n();
-  const [themeError, setThemeError] = useState<string | null>(null);
-  const uiLocaleOptions: Array<{ value: LocalePreference; label: string }> = [
-    { value: null, label: t("settings.followSystem") },
-    { value: "zh-TW", label: "繁體中文" },
-    { value: "en", label: "English" },
-  ];
-
+  const prefs = { localePref, onLocalePrefChange, themePref, onThemePrefChange };
   return (
-    <div className="max-w-2xl mx-auto w-full">
-      <Tabs
-        key={focusConnectionId ?? "settings"}
-        defaultValue={focusConnectionId ? "servers" : "local"}
-      >
-        <TabsList>
-          <TabsTrigger value="local">{t("settings.localTabLabel")}</TabsTrigger>
-          {servers && <TabsTrigger value="servers">{t("settings.serversTabLabel")}</TabsTrigger>}
-        </TabsList>
-
-        <TabsContent value="local" className="pt-3 flex flex-col gap-4">
-          <span data-testid="local-note" className="text-xs text-muted-foreground">
-            {t("settings.localTabNote")}
-          </span>
-          <Card data-testid="ui-theme-card">
-            <CardHeader>
-              <CardTitle className="text-base">{t("settings.appearance")}</CardTitle>
-            </CardHeader>
-            <CardContent className="gap-2">
-              <div className="flex gap-1.5" role="group" aria-label={t("settings.appearance")}>
-                {(["system", "light", "dark"] as const).map((value) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    aria-pressed={themePref === value}
-                    className={cn(
-                      "text-sm font-normal",
-                      themePref === value
-                        ? "border-primary bg-primary/8 font-medium text-primary hover:bg-primary/8 hover:text-primary"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                    onClick={() => {
-                      try {
-                        onThemePrefChange?.(value);
-                        setThemeError(null);
-                      } catch (error) {
-                        setThemeError(String(error));
-                      }
-                    }}
-                  >
-                    {t(`settings.theme.${value}`)}
-                  </Button>
-                ))}
-              </div>
-              {themeError && (
-                <p role="alert" className="m-0 text-xs text-destructive">
-                  {t("settings.appearanceSaveFailed")} {themeError}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-          <Card data-testid="ui-locale-card">
-            <CardHeader>
-              <CardTitle className="text-base">{t("settings.uiLocaleLabel")}</CardTitle>
-            </CardHeader>
-            <CardContent className="gap-2">
-              <div className="flex gap-1.5" data-testid="ui-locale">
-                {uiLocaleOptions.map((option) => (
-                  <Button
-                    key={String(option.value)}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className={cn(
-                      "text-sm font-normal",
-                      localePref === option.value
-                        ? "border-primary bg-primary/8 font-medium text-primary hover:bg-primary/8 hover:text-primary"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                    onClick={() => onLocalePrefChange(option.value)}
-                  >
-                    {option.label}
-                  </Button>
-                ))}
-              </div>
-              <FieldHelp>{t("settings.uiLocaleHelp")}</FieldHelp>
-            </CardContent>
-          </Card>
-          {updater && (
-            <Card data-testid="updater-card">
-              <CardHeader>
-                <CardTitle className="text-base">{t("updater.cardTitle")}</CardTitle>
-              </CardHeader>
-              <CardContent className="gap-2">
-                <div className="flex items-center gap-2.5">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="text-sm font-normal"
-                    disabled={updater.state.phase === "checking"}
-                    onClick={updater.onCheck}
-                  >
-                    {t("updater.check")}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="text-sm font-normal"
-                    onClick={updater.onShowReleaseNotes}
-                  >
-                    {t("releaseNotes.open")}
-                  </Button>
-                  {updater.currentVersion && (
-                    <span className="text-xs text-muted-foreground">
-                      {t("updater.currentVersion")} {updater.currentVersion}
-                    </span>
-                  )}
-                  <UpdaterInlineStatus state={updater.state} />
-                </div>
-                <FieldHelp>{t("updater.help")}</FieldHelp>
-              </CardContent>
-            </Card>
-          )}
-          {cliInstall && (
-            <Card data-testid="cli-install-card">
-              <CardHeader>
-                <CardTitle className="text-base">{t("cliInstall.cardTitle")}</CardTitle>
-              </CardHeader>
-              <CardContent className="gap-2">
-                <div className="flex items-center gap-2.5">
-                  {cliInstall.view.canDeploy &&
-                    cliInstall.view.status.kind !== "installed" && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="text-sm font-normal"
-                        disabled={cliInstall.view.busy}
-                        onClick={cliInstall.onInstall}
-                      >
-                        {cliInstall.view.busy
-                          ? t("cliInstall.installing")
-                          : cliInstall.view.status.kind === "version-mismatch"
-                            ? t("cliInstall.reinstall")
-                            : t("cliInstall.install")}
-                      </Button>
-                    )}
-                  <CliInstallStatusLine view={cliInstall.view} />
-                </div>
-                {cliInstall.view.platform === "windows" && (
-                  <FieldHelp>{t("cliInstall.installerManaged")}</FieldHelp>
-                )}
-                {cliInstall.view.platform === "linux-unpackaged" && (
-                  <FieldHelp>{t("cliInstall.unpackaged")}</FieldHelp>
-                )}
-                {cliInstall.view.pathHint && cliInstall.view.deployDir && (
-                  <p
-                    data-testid="cli-path-hint"
-                    className={`flex items-start gap-1.5 text-xs m-0 ${SEMANTIC_TONE.warning}`}
-                  >
-                    <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                    <span>
-                      {cliInstall.view.deployDir} {t("cliInstall.pathHintSuffix")}{" "}
-                      <code>export PATH=&quot;$PATH:{cliInstall.view.deployDir}&quot;</code>
-                    </span>
-                  </p>
-                )}
-                {cliInstall.view.error && (
-                  <p role="alert" className="text-xs text-destructive m-0">
-                    {cliInstall.view.error}
-                  </p>
-                )}
-                {cliInstall.view.canDeploy && <FieldHelp>{t("cliInstall.help")}</FieldHelp>}
-              </CardContent>
-            </Card>
-          )}
-          {trayPanelError && <TrayPanelError message={trayPanelError} />}
-        </TabsContent>
-
-        {servers && (
-          <TabsContent value="servers" className="pt-3 flex flex-col gap-4">
-            <ServersPanel {...servers} />
-          </TabsContent>
-        )}
-      </Tabs>
+    <div className="mx-auto flex w-full max-w-[768px] flex-col gap-6 px-6 pb-10 pt-7">
+      {section === "general" && (
+        <GeneralPage {...prefs} platform={platform} trayPanelError={trayPanelError} />
+      )}
+      {section === "updates" && <UpdatesPage updater={updater} />}
+      {section === "cli" && <CliPage cliInstall={cliInstall} />}
+      {section === "servers" && servers && <ServersPage {...servers} />}
+      {section === "about" && about && <AboutPage {...about} updaterState={updater?.state} />}
     </div>
   );
 }

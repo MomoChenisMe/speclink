@@ -52,7 +52,7 @@ fn quality_is_a_registered_canon_skill() {
         !quality.disallow_edit,
         "the unified fix step edits files on the main thread"
     );
-    assert!(quality.for_codex, "quality is generated for codex too");
+    assert!(!quality.claude_only, "quality is generated for codex too");
     assert!(
         !quality.body.trim().is_empty(),
         "the quality skill body must not be empty"

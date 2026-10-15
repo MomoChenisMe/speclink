@@ -1,64 +1,79 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  Archive,
-  BookOpen,
-  CloudOff,
-  GitBranch,
-  FileText,
-  Settings,
-  SlidersHorizontal,
-  FolderOpen,
-} from "lucide-react";
+import { emit } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { CloudOff, MoreHorizontal } from "lucide-react";
 import {
   KanbanBoard,
   ArchivedList,
-  ArchivedDrawer,
+  ArchivedDetailPage,
   SpecList,
-  SpecDrawer,
+  SpecDetailPage,
+  sortSpecs,
   ManualPage,
-  RichDetailDrawer,
-  DiscussionDrawer,
+  ChangeDetailPage,
+  DiscussionDetailPage,
+  DetailActionsSlot,
+  DetailActionsSlotProvider,
+  DetailNav,
   RevertBlockedDialog,
   ReviewArchiveDialog,
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogFooter,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogAction,
-  AlertDialogCancel,
   Button,
   Checkbox,
+  ConfirmDialog,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
   I18nProvider,
   SEMANTIC_SURFACE,
+  applyThemePreference,
+  readThemePreference,
+  writeThemePreference,
+  type ThemePreference,
   SEMANTIC_TONE,
   Toaster,
   cn,
   useI18n,
   siblingChangesOf,
   discussionChipStage,
+  type Crumb,
+  type DocumentTarget,
   type Verb,
 } from "@speclink/ui";
 
-import { createAppStore, openTicketStation } from "./store";
+import { createAppStore, isSettingsView, openTicketStation, selectAssetPrompt, type AppState } from "./store";
 import { locatorKey, type WorkspaceSession } from "./session";
 import { initTray, type TrayController } from "./tray";
-import { ProjectTabs } from "./components/ProjectTabs";
+import { installAppMenu, type AppMenuAction } from "./appMenu";
+import { ProjectRail, tabPathHint } from "./components/ProjectRail";
+import { ProjectColumn } from "./components/ProjectColumn";
+import { SettingsColumn } from "./components/SettingsColumn";
+import { ProjectSettingsColumn } from "./components/ProjectSettingsColumn";
+import { APP_SETTINGS_CATEGORIES, PROJECT_SETTINGS_CATEGORIES } from "./settingsCatalog";
+import { EmptyWorkspace } from "./components/EmptyWorkspace";
+import { ProjectActionItems, type ProjectActions } from "./components/ProjectActionsMenu";
+import { LeftTitleBar, MainTitleBar } from "./components/TitleBar";
+import { DetailBack, isBackShortcut } from "./components/DetailBack";
+import { SwipeBack } from "./components/SwipeBack";
+import { DocumentActionsMenu } from "./components/DocumentActionsMenu";
+import { detectPlatform } from "./platform";
 import { WorkspaceChooser } from "./components/WorkspaceChooser";
 import { visibleRecents } from "./recents";
 import { MigrationDialog } from "./components/MigrationDialog";
 import { RemoteConflictDialog } from "./components/RemoteConflictDialog";
 import { RemoteWorkspaceRecovery } from "./components/RemoteWorkspaceRecovery";
 import { AppSettingsView } from "./views/AppSettingsView";
-import { UpdateBanner } from "./components/UpdateBanner";
-import { AssetUpdatePrompt } from "./components/AssetUpdatePrompt";
+import { ISSUE_URL, REPO_URL, openExternal } from "./views/settings/AboutPage";
+import { AssetNoticeCard } from "./components/AssetNoticeCard";
+import { AssetNoticeDialog } from "./components/AssetNoticeDialog";
+import { UpdateRailButton } from "./components/UpdateRailButton";
 import { appVersion, type UpdaterAdapter } from "./adapter/updater";
 import { ReleaseNotesDialog } from "./components/ReleaseNotesDialog";
 import { readLastSeenVersion, whatsNewDecision, writeLastSeenVersion } from "./core/whatsNew";
 import { RELEASE_NOTES, type ReleaseNotesEntry } from "./release-notes/release-notes";
 import type { CliInstallAdapter } from "./adapter/cliInstall";
+import { projectDirOf, type FsActionsAdapter } from "./adapter/fsActions";
+import type { AppInfo } from "./adapter/appInfo";
 import { ProjectSettingsView } from "./views/ProjectSettingsView";
 import type { ConnectionsAdapter } from "./adapter/connections";
 import type { WorkspaceAdapter } from "./adapter/workspace";
@@ -74,10 +89,9 @@ import {
   type LocalePreference,
 } from "./i18n/locale";
 import { setAppT } from "./i18n/runtime";
-import { createThemeController, type ThemeController } from "./theme";
+import { BUILTIN_TOOLS } from "./builtinTools";
 
 export interface AppProps {
-  theme?: ThemeController;
   /** local session 工廠（root 綁定 dataSource／settings／events；workspace-session 決策 3/6）。 */
   createSession: (root: string, name: string) => WorkspaceSession;
   /** remote session 工廠（remote-data-source 決策 6/7）：handshake 成功回
@@ -97,9 +111,82 @@ export interface AppProps {
   updater?: UpdaterAdapter;
   /** CLI 佈署面（desktop-app「安裝 CLI 指令到 PATH」）；未注入時 CLI 卡不啟用。 */
   cliInstall?: CliInstallAdapter;
+  /** 專案層檔案系統動作面（desktop-app「專案層檔案系統動作」）；未注入時選單動作不動作。 */
+  fsActions?: FsActionsAdapter;
+  /** 關於頁的版本資訊來源（desktop-about-page design D1）；未注入時版本列顯示「—」。 */
+  loadAppInfo?: () => Promise<AppInfo>;
 }
 
 const DEFAULT_MIGRATION_ADAPTER = createMigrationAdapter();
+
+
+/** 關閉作用中專案（非 macOS 的 Ctrl+W 與原生選單「關閉專案」共用）。 */
+function closeActiveProject(store: ReturnType<typeof createAppStore>) {
+  const { activeKey, closeTab } = store.getState();
+  if (activeKey) closeTab(activeKey);
+}
+
+/** 四種詳情頁任一開著（spec「詳情頁互斥」：同時至多一個）。 */
+function detailPageOpen(
+  st: Pick<AppState, "detailChange" | "detailDiscussion" | "detailSpec" | "detailArchived">,
+): boolean {
+  return st.detailChange !== null || st.detailDiscussion !== null || st.detailSpec !== null || st.detailArchived !== null;
+}
+
+/** 處在兩種設定模式之一（專案設定模式要有專案；零分頁時專案設定落在空狀態，不算）。 */
+function inSettingsMode(st: Pick<AppState, "boardView" | "tabs">): boolean {
+  return st.boardView === "settings" || (st.boardView === "project-settings" && st.tabs.length > 0);
+}
+
+/** 有對話框開著（Radix 只在開啟時掛載內容）：返回屬於底下的頁面，不得連帶收掉對話框。 */
+function dialogOpen(): boolean {
+  return document.querySelector('[role="dialog"], [role="alertdialog"]') !== null;
+}
+
+/** 有確認框（封存、退回、刪除、討論封存）待確認：確認框屬於目前詳情頁，返回與切換都不作用。 */
+function confirmPending(
+  st: Pick<AppState, "pendingArchive" | "pendingRevert" | "pendingDelete" | "pendingArchiveDiscussion">,
+): boolean {
+  return st.pendingArchive !== null || st.pendingRevert !== null || st.pendingDelete !== null || st.pendingArchiveDiscussion !== null;
+}
+
+/** 各清單頁回報的呈現順序（含搜尋與篩選）——詳情頁 ‹ › 序列的來源。 */
+type VisibleOrder = Record<"changes" | "discussions" | "specs" | "archivedChanges" | "archivedDiscussions", string[]>;
+
+/** 開著的詳情頁：種類、目前項目、‹ › 序列與在序列內開啟某項的動作（與開啟同一個狀態層動作）。 */
+interface OpenDetail {
+  kind: "change" | "discussion" | "spec" | "archived";
+  current: string;
+  sequence: string[];
+  open: (key: string) => void;
+}
+
+/**
+ * 詳情頁種類的唯一分派處（序列、麵包屑、切換、渲染共用）。規格與已封存的序列依宿主取：宿主是
+ * 對應清單頁時用它回報的順序；否則（手冊頁、規格頁開已封存）用 store 清單的未過濾順序——規格
+ * 依規格頁的預設排序，已封存沿清單序。
+ */
+function openDetailOf(s: AppState, order: VisibleOrder): OpenDetail | null {
+  const archivedHost = s.boardView === "archived";
+  const a = s.detailArchived;
+  if (s.detailChange) return { kind: "change", current: s.detailChange.name, sequence: order.changes, open: s.openDetail };
+  if (s.detailDiscussion) {
+    return { kind: "discussion", current: s.detailDiscussion.slug, sequence: order.discussions, open: s.openDiscussion };
+  }
+  if (s.detailSpec !== null) {
+    const sequence = s.boardView === "specs" ? order.specs : sortSpecs(s.specs).map((spec) => spec.id);
+    return { kind: "spec", current: s.detailSpec, sequence, open: s.openSpec };
+  }
+  if (a?.kind === "change") {
+    const sequence = archivedHost ? order.archivedChanges : s.archived.map((x) => x.datedName);
+    return { kind: "archived", current: a.datedName, sequence, open: (datedName) => s.openArchived({ kind: "change", datedName }) };
+  }
+  if (a?.kind === "discussion") {
+    const sequence = archivedHost ? order.archivedDiscussions : s.discussions.archived.map((d) => d.slug);
+    return { kind: "archived", current: a.slug, sequence, open: (slug) => s.openArchived({ kind: "discussion", slug }) };
+  }
+  return null;
+}
 
 const DISABLED_CHOOSER_CONNECTIONS: Pick<
   ConnectionsAdapter,
@@ -114,21 +201,6 @@ const DISABLED_CHOOSER_CONNECTIONS: Pick<
   },
 };
 
-/** 零分頁空狀態引導頁（spec：取代空看板；說明既有專案與一般目錄初始化兩條路）。 */
-function EmptyState({ onOpen }: { onOpen: () => void }) {
-  const { t } = useI18n();
-  return (
-    <div className="flex flex-col items-center justify-center h-full gap-3 text-center" data-empty-state>
-      <FolderOpen className="h-10 w-10 text-muted-foreground/40" />
-      <h2 className="text-lg font-semibold">{t("app.emptyTitle")}</h2>
-      <p className="text-sm text-muted-foreground max-w-md">{t("app.emptyDesc")}</p>
-      <Button className="gap-1.5" onClick={onOpen}>
-        <FolderOpen className="h-4 w-4" /> {t("app.addWorkspace")}
-      </Button>
-    </div>
-  );
-}
-
 /** 對話框描述文字內嵌粗體名稱：以 {name} 佔位切分渲染。 */
 function BoldName({ text, name }: { text: string; name: string }) {
   const [before, after] = text.split("{name}");
@@ -141,43 +213,6 @@ function BoldName({ text, name }: { text: string; name: string }) {
   );
 }
 
-function NavItem({
-  icon,
-  label,
-  active,
-  onClick,
-  trailing,
-  ariaLabel,
-  className,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  onClick?: () => void;
-  /** 尾隨元素（如計數徽章）；設 ariaLabel 使無障礙名稱不被徽章數字污染。 */
-  trailing?: React.ReactNode;
-  ariaLabel?: string;
-  /** 附加版面 class（如 mt-auto 沉底）；不影響既有樣式與行為。 */
-  className?: string;
-}) {
-  return (
-    <Button
-      variant="ghost"
-      aria-label={ariaLabel}
-      onClick={onClick}
-      className={`h-auto w-full justify-start gap-2 px-3 py-2 text-sm font-normal ${
-        active
-          ? "bg-primary text-primary-foreground font-medium hover:bg-primary hover:text-primary-foreground"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground"
-      }${className ? ` ${className}` : ""}`}
-    >
-      {icon}
-      {label}
-      {trailing && <span className="ml-auto">{trailing}</span>}
-    </Button>
-  );
-}
-
 /** 桌面 app 進入點：解析 UI 語言（偏好優先、null 跟隨系統）並掛 I18nProvider。 */
 export function App({
   createSession,
@@ -187,10 +222,9 @@ export function App({
   migration = DEFAULT_MIGRATION_ADAPTER,
   updater,
   cliInstall,
-  theme: providedTheme,
+  fsActions,
+  loadAppInfo,
 }: AppProps) {
-  const [theme] = useState(() => providedTheme ?? createThemeController());
-  const appearance = useSyncExternalStore(theme.subscribe, theme.getSnapshot);
   const [localePref, setLocalePrefState] = useState<LocalePreference>(() => readLocalePreference());
   // 切換即時生效並持久化（設定頁的 UI 語言三選接這裡）。
   const setLocalePref = (pref: LocalePreference) => {
@@ -201,6 +235,15 @@ export function App({
     localePref,
     typeof navigator !== "undefined" ? navigator.language : undefined,
   );
+  // 外觀偏好（desktop-settings-mode design D4）：啟動套用在 index.html 的開機腳本；切換時寫入、套用並通知
+  // 系統匣面板 webview 重套（非 Tauri 環境靜默）。
+  const [themePref, setThemePrefState] = useState<ThemePreference>(() => readThemePreference());
+  const setThemePref = (pref: ThemePreference) => {
+    writeThemePreference(pref);
+    applyThemePreference(pref);
+    setThemePrefState(pref);
+    void emit("speclink:theme-changed", pref).catch(() => {});
+  };
   return (
     <I18nProvider locale={uiLocale} messages={APP_MESSAGES}>
       <AppInner
@@ -211,22 +254,25 @@ export function App({
         migration={migration}
         updater={updater}
         cliInstall={cliInstall}
+        fsActions={fsActions}
+        loadAppInfo={loadAppInfo}
         localePref={localePref}
         onLocalePrefChange={setLocalePref}
-        theme={theme}
-        appearance={appearance}
+        themePref={themePref}
+        onThemePrefChange={setThemePref}
       />
-      <Toaster theme={appearance.effectiveTheme} />
+      <Toaster theme={themePref ?? "system"} />
     </I18nProvider>
   );
 }
 
 interface AppInnerProps extends AppProps {
-  theme: ThemeController;
-  appearance: ReturnType<ThemeController["getSnapshot"]>;
   /** UI 語言偏好現值（null＝跟隨系統）；設定頁三選用。 */
   localePref: LocalePreference;
   onLocalePrefChange: (pref: LocalePreference) => void;
+  /** 外觀偏好現值（null＝跟隨系統）；設定頁外觀列用。 */
+  themePref: ThemePreference;
+  onThemePrefChange: (pref: ThemePreference) => void;
 }
 
 /** 桌面主畫面：生命週期看板（主視圖）＋已封存獨立頁＋設定頁＋富詳情抽屜。 */
@@ -238,10 +284,12 @@ function AppInner({
   migration,
   updater,
   cliInstall,
+  fsActions,
+  loadAppInfo,
   localePref,
   onLocalePrefChange,
-  theme,
-  appearance,
+  themePref,
+  onThemePrefChange,
 }: AppInnerProps) {
   const useStore = useMemo(
     () =>
@@ -253,8 +301,10 @@ function AppInner({
         migration,
         updater,
         cliInstall,
+        fsActions,
+        loadAppInfo,
       }),
-    [createSession, openRemote, workspace, connections, migration, updater, cliInstall],
+    [createSession, openRemote, workspace, connections, migration, updater, cliInstall, fsActions, loadAppInfo],
   );
   const s = useStore();
   // 活躍 session（workspace-session 決策 6）：詳情／規格／封存抽屜的文件載入
@@ -307,15 +357,21 @@ function AppInner({
     onRemove: s.removeConnection,
     onRefresh: s.refreshConnections,
     focusConnectionId: s.reauthConnectionId,
+    // 開著的 remote session 回報需重新登入的連線：伺服器頁列為登入過期。
+    expiredConnectionIds: Object.values(s.sessions).flatMap((session) =>
+      session.connectionState?.state === "needs-reauth" ? [session.connectionState.connectionId] : [],
+    ),
     onOpenWorkspace:
       openRemote && ((id: string) => s.openWorkspaceChooser({ initialConnectionId: id })),
+    defaultConnectionId: s.defaultConnectionId,
+    onDefaultConnectionChange: s.setDefaultConnectionId,
   };
   // 設定頁軟體更新卡的常駐現版號（updater 注入時啟動取一次；非 Tauri 環境靜默）。
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
   // 更新日誌對話框（desktop-app「更新日誌彈窗」）：純 UI 開關，不進 store。whatsNew＝
   // 版號變更後首次啟動自動彈出（關閉即記下現版號）；browse＝設定頁按鈕（關閉不寫記錄）。
   const [releaseNotes, setReleaseNotes] = useState<
-    { mode: "whatsNew"; entries: ReleaseNotesEntry[] } | { mode: "browse" } | null
+    { mode: "whatsNew"; entries: ReleaseNotesEntry[] } | { mode: "browse"; focusVersion?: string } | null
   >(null);
   useEffect(() => {
     if (updater) {
@@ -337,6 +393,27 @@ function AppInner({
         .catch(() => {});
     }
   }, [updater]);
+  // 變更詳情或討論抽屜開啟或換開另一個時收掉更新日誌（spec「detail 抽屜互斥」）：被
+  // 抽屜頂掉不走關閉鈕，whatsNew 不記為已看過、下次啟動照舊彈出。以名稱為鍵，重載
+  // 換掉同一個 change 的物件不算換開。
+  const openedDrawer = s.detailChange
+    ? `change:${s.detailChange.name}`
+    : s.detailDiscussion
+      ? `discussion:${s.detailDiscussion.slug}`
+      : null;
+  // 技能檔提示確認框（desktop-notice-relocation design D1）：純 UI 開關，與 releaseNotes 同型；
+  // 抽屜開啟時一併收掉（可取消浮層互斥），提示消失（更新成功、保留現狀、切分頁）時也關。
+  const [assetDialogOpen, setAssetDialogOpen] = useState(false);
+  const assetPromptNow = selectAssetPrompt(s);
+  useEffect(() => {
+    if (openedDrawer !== null) {
+      setReleaseNotes(null);
+      setAssetDialogOpen(false);
+    }
+  }, [openedDrawer]);
+  useEffect(() => {
+    if (!assetPromptNow) setAssetDialogOpen(false);
+  }, [assetPromptNow]);
   // 初始化確認框的工具多選（預設勾 claude）；對話框每次開啟重設。
   const [initTools, setInitTools] = useState<string[]>(["claude"]);
   useEffect(() => {
@@ -352,14 +429,16 @@ function AppInner({
   useEffect(() => {
     setAppT(t);
   }, [t]);
+  // 寫入面的停用說明（server-reader-write-guard D5）：離線時是連線原因；連線
+  // 正常仍停用的寫入只剩角色原因——server 對 reader 的每個寫入都回 403。
+  const writeDisabledReason = t(stale ? "remote.writeUnavailable" : "remote.readerRole");
 
   // 看板拖曳手勢讓路（design D6、TaskList 同款）：手勢中暫緩 workspace-changed
   // 的整批 refresh（避免拖曳中卡片重排打斷手勢），放開後補跑一次。
   const boardDragActive = useRef(false);
   const pendingRefresh = useRef(false);
-  // Radix AlertDialog 從 Sheet 的 portal 開關時，原生 WebView 可能讓底下 Sheet
-  // 短暫收到 onOpenChange(false)。確認中的成功／失敗應由 store 決定是否關抽屜，
-  // 不讓這個 portal 生命週期誤清 detailChange。
+  // 詳情頁內的確認（封存、刪除、退回）在途時，成功／失敗由 store 決定是否關頁——
+  // 這段期間 Esc 不關頁，免得確認框收合的 Esc 尾巴誤清 detailChange。
   const detailConfirmInFlight = useRef(false);
   const handleBoardDragActive = (active: boolean) => {
     boardDragActive.current = active;
@@ -447,7 +526,7 @@ function AppInner({
         useStore.getState().panelFallback(String(e));
       });
     };
-    initTray(useStore, { onPanelToggle, theme })
+    initTray(useStore, { onPanelToggle })
       .then((c) => {
         if (disposed) c.dispose();
         else controller = c;
@@ -459,11 +538,98 @@ function AppInner({
       disposed = true;
       controller?.dispose();
     };
-  }, [useStore, theme]);
+  }, [useStore]);
 
-  // 鍵盤切換分頁：Ctrl+Tab 循環、Ctrl+1..9 直達（spec「專案分頁列存於 app 本機」）。
+  const platform = useMemo(() => detectPlatform(), []);
+  // 詳情頁序列（design D2；desktop-readonly-detail-pages D4）：各清單頁回報的呈現順序（含搜尋
+  // 與篩選），‹ › 與 ⌥↑／⌥↓ 共用。
+  const [visibleOrder, setVisibleOrder] = useState<VisibleOrder>({
+    changes: [],
+    discussions: [],
+    specs: [],
+    archivedChanges: [],
+    archivedDiscussions: [],
+  });
+  const detail = openDetailOf(s, visibleOrder);
+  const pageOpen = detail !== null;
+  const detailCurrent = detail?.current ?? null;
+  const detailIndex = detail ? detail.sequence.indexOf(detail.current) : -1;
+  // 確認（封存、刪除、退回）框開著或在途時，切換與返回都不作用：確認框屬於目前詳情頁，
+  // 會被一起收掉；在途確認成功後 store 關掉的是「目前」詳情頁，切過去的新頁會被誤關。
+  // 以 getState 讀：window 事件處理器只掛一次。
+  const detailActionsBlocked = () => detailConfirmInFlight.current || confirmPending(useStore.getState());
+  /** 在序列內切換：越界不動、不循環；經與開啟相同的狀態層動作（互斥與浮層規則同樣適用）。 */
+  const stepDetail = (delta: -1 | 1) => {
+    const next = detail?.sequence[detailIndex + delta];
+    if (!detail || detailIndex < 0 || next === undefined || detailActionsBlocked()) return;
+    detail.open(next);
+  };
+  // 專案設定的未存修改（ProjectSettingsView 回報）：離開前先問要不要捨棄。
+  const projectSettingsDirty = useRef(false);
+  const onProjectSettingsDirty = useCallback((dirty: boolean) => {
+    projectSettingsDirty.current = dirty;
+  }, []);
+  const [discardPrompt, setDiscardPrompt] = useState(false);
+  // 全系統唯一的返回：返回鈕、Esc、⌘[（非 macOS 為 Alt+←）、滑鼠側鍵、觸控板滑動都經此決定
+  // 去處——詳情頁開著時關頁回宿主頁（確認框待確認或確認在途時不作用）；設定與專案設定模式
+  // 回到進入前的頁面（專案設定有未存修改時先問）；其餘頁面沒有返回（null）。
+  const backTarget = (st: AppState): (() => void) | null => {
+    if (detailPageOpen(st)) return detailActionsBlocked() ? null : st.closeDetailPage;
+    if (!inSettingsMode(st)) return null;
+    return st.boardView === "project-settings" && projectSettingsDirty.current
+      ? () => setDiscardPrompt(true)
+      : st.leaveSettings;
+  };
+  // 觸發當下才看有沒有對話框開著（渲染時讀到的 DOM 還是上一刻，不能拿來決定滑動開關）。
+  const resolveBack = (st: AppState) => (dialogOpen() ? null : backTarget(st));
+  // 以呼叫當下的狀態決定去處（事件處理器與手勢結束時的狀態可能已不同於渲染時）。
+  const goBack = () => resolveBack(useStore.getState())?.();
+  // 標題列的動作插槽（desktop-detail-doc-tree design D3）：詳情頁以 portal 把變更層動作送進來。
+  const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
+  // 切換項目時頁層捲回頂端：捲動容器不重掛，否則沿用上一項的捲動位置。
+  const detailLayerRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (detailLayerRef.current) detailLayerRef.current.scrollTop = 0;
+  }, [detailCurrent]);
+  // window keydown 處理器只掛一次：以 ref 讀最新的序列與切換動作。
+  const stepDetailRef = useRef(stepDetail);
+  stepDetailRef.current = stepDetail;
+  const handleNavKey = (e: KeyboardEvent): boolean => {
+    const st = useStore.getState();
+    if (e.defaultPrevented) return false;
+    const target = e.target as HTMLElement | null;
+    if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+      return false;
+    }
+    // 返回（design D8）：Esc 與 ⌘[、⌘←（非 macOS 為 Alt+←）等效於返回鈕。
+    const escape = e.key === "Escape" && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
+    const back = escape || isBackShortcut(e, platform) ? resolveBack(st) : null;
+    if (back) {
+      e.preventDefault();
+      back();
+      return true;
+    }
+    if (detailPageOpen(st) && e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      e.preventDefault();
+      stepDetailRef.current(e.key === "ArrowUp" ? -1 : 1);
+      return true;
+    }
+    return false;
+  };
+  // 鍵盤切換分頁：Ctrl+Tab 循環、Ctrl+1..9 直達（spec「專案分頁列存於 app 本機」）；
+  // 專案動作選單標示的 ⌘R／Ctrl+R 重新整理、Ctrl+W 關閉專案（spec「專案層檔案系統動作」）。
+  // macOS 的 ⌘W 先被系統預設選單攔走（關閉視窗），由原生選單承接，這裡不接。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // 返回快捷鍵（Esc、⌘[／Alt+←）與詳情頁的 ⌥↑／⌥↓ 切上一個／下一個（spec「詳情頁的導覽與返回」）。
+      // 浮層已處理（defaultPrevented）或焦點在文字輸入時不作用。
+      if (handleNavKey(e)) return;
+      const key = e.key.toLowerCase();
+      if (key === "r" && (platform === "macos" ? e.metaKey : e.ctrlKey)) {
+        e.preventDefault();
+        void useStore.getState().refresh();
+        return;
+      }
       if (!e.ctrlKey) return;
       if (e.key === "Tab") {
         e.preventDefault();
@@ -471,11 +637,97 @@ function AppInner({
       } else if (e.key >= "1" && e.key <= "9") {
         e.preventDefault();
         void useStore.getState().gotoTab(Number(e.key));
+      } else if (key === "w" && platform !== "macos") {
+        e.preventDefault();
+        closeActiveProject(useStore);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, [useStore, platform]);
+  // 滑鼠側鍵「上一頁」（button 3）：WebView 是否送出此事件依平台而異，以真機驗收為準。
+  useEffect(() => {
+    const onMouseUp = (e: MouseEvent) => {
+      const back = e.button === 3 ? resolveBack(useStore.getState()) : null;
+      if (!back) return;
+      e.preventDefault();
+      back();
+    };
+    window.addEventListener("mouseup", onMouseUp);
+    return () => window.removeEventListener("mouseup", onMouseUp);
   }, [useStore]);
+
+  // macOS 原生選單列（desktop-native-menu design D3／D4）：語言或專案有無改變時重裝，cleanup
+  // 取消尚未套用的上一次；非 macOS 由 installAppMenu 自行 no-op。選單動作只派發到 store 既有
+  // 動作、看板搜尋列的 window 事件、更新日誌對話框，或外部瀏覽器。
+  const hasProject = s.activeKey !== null;
+  // 不在看板時的「搜尋看板」：先切回看板，等搜尋列掛上（子元件的 effect 先於本元件）再聚焦。
+  const pendingSearchFocus = useRef(false);
+  useEffect(() => {
+    if (s.boardView !== "board" || !pendingSearchFocus.current) return;
+    pendingSearchFocus.current = false;
+    window.dispatchEvent(new CustomEvent("speclink:focus-search"));
+  }, [s.boardView]);
+  useEffect(() => {
+    const dispatch = (action: AppMenuAction) => {
+      const st = useStore.getState();
+      switch (action) {
+        // 原生選單各入口進設定模式的對應分類（desktop-settings-mode design D1；
+        // desktop-about-page design D4）。
+        case "about":
+          st.setBoardView("settings");
+          return st.setSettingsSection("about");
+        case "settings":
+          st.setBoardView("settings");
+          return st.setSettingsSection("general");
+        case "installCli":
+          st.setBoardView("settings");
+          return st.setSettingsSection("cli");
+        case "checkUpdates":
+          // 手動檢查的進度與結果呈現在更新頁的「最新版本」列。
+          st.setBoardView("settings");
+          st.setSettingsSection("updates");
+          return void st.checkForUpdates(true);
+        case "openProject":
+          return st.openWorkspaceChooser();
+        case "closeProject":
+          // 系統匣面板（nonactivating NSPanel）在前景時 ⌘W 也會進到 app 選單：主視窗為焦點才關。
+          return void getCurrentWindow()
+            .isFocused()
+            .then((focused) => focused && closeActiveProject(useStore));
+        case "viewBoard":
+          return st.setBoardView("board");
+        case "viewArchived":
+          return st.setBoardView("archived");
+        case "viewSpecs":
+          return st.setBoardView("specs");
+        case "viewManual":
+        case "helpManual":
+          return st.setBoardView("manual");
+        case "viewProjectSettings":
+          return st.setBoardView("project-settings");
+        case "focusSearch":
+          if (st.boardView === "board") {
+            return void window.dispatchEvent(new CustomEvent("speclink:focus-search"));
+          }
+          pendingSearchFocus.current = true;
+          return st.setBoardView("board");
+        case "refresh":
+          return void st.refresh();
+        case "nextProject":
+          return void st.cycleTab();
+        case "bringAllToFront":
+          return void getCurrentWindow().setFocus();
+        case "releaseNotes":
+          return setReleaseNotes({ mode: "browse" });
+        case "github":
+          return openExternal(REPO_URL);
+        case "reportIssue":
+          return openExternal(ISSUE_URL);
+      }
+    };
+    return installAppMenu({ isMacOS: platform === "macos", t, hasProject, dispatch });
+  }, [useStore, platform, t, hasProject]);
 
   const onRunVerb = (verb: Verb, change: string) => {
     if (verb === "archive") s.requestArchive(change);
@@ -505,10 +757,13 @@ function AppInner({
   const siblingChanges = siblingChangesOf(s.changes, fromSlugs, s.detailChange?.name ?? "");
   // 封存變更抽屜的來源討論（design D1 增補）：自封存清單以 datedName 查 fromDiscussions，
   // topic 同上解析、記錄已不在時退回 slug。
-  const archivedFromSlugs =
-    s.detailArchived?.kind === "change"
-      ? (s.archived.find((a) => a.datedName === s.detailArchived?.datedName)?.fromDiscussions ?? [])
-      : [];
+  const detailArchived = s.detailArchived;
+  const archivedItem =
+    detailArchived?.kind === "change" ? s.archived.find((a) => a.datedName === detailArchived.datedName) : undefined;
+  // 封存討論的記錄 live 優先、封存後備（與載入同一序）。
+  const archivedDiscussion =
+    detailArchived?.kind === "discussion" ? allDiscussions.find((d) => d.slug === detailArchived.slug) : undefined;
+  const archivedFromSlugs = archivedItem?.fromDiscussions ?? [];
   const archivedSourceDiscussions = archivedFromSlugs.map((slug) => ({
     slug,
     topic: allDiscussions.find((d) => d.slug === slug)?.topic ?? slug,
@@ -516,10 +771,7 @@ function AppInner({
   // 封存討論抽屜的衍生列（drawer-provenance-links design D4）：自封存討論清單項的 promotedTo
   // 派生三態——封存清單命中→副標封存日期；活躍清單命中→副標看板階段詞；皆無→不可點「無封存記錄」。
   // 順序沿 promotedTo 原序（轉出順序、出身在前）。
-  const detailArchived = s.detailArchived;
-  const archivedDiscussionTarget = detailArchived?.kind === "discussion" ? detailArchived : null;
-  const archivedPromotedChanges = archivedDiscussionTarget
-    ? (s.discussions.archived.find((d) => d.slug === archivedDiscussionTarget.slug)?.promotedTo ?? []).map(
+  const archivedPromotedChanges = (archivedDiscussion?.promotedTo ?? []).map(
         (name) => {
           const archivedHit = s.archived.find((a) => a.name === name);
           if (archivedHit) return { slug: name, topic: archivedHit.date };
@@ -528,8 +780,15 @@ function AppInner({
           }
           return { slug: name, topic: t("rdrawer.noArchiveRecord"), disabled: true };
         },
-      )
-    : [];
+      );
+  // 討論文件的名稱籤（desktop-discussion-doc-views design D8）：正式規格名與全部討論 slug。
+  const specNames = s.specs.map((x) => x.id);
+  const discussionSlugs = allDiscussions.map((d) => d.slug);
+  // 已封存討論頁背景文件的討論籤：作用中的開討論詳情頁，其餘開已封存討論頁（來源討論籤恆開已封存頁）。
+  const openAnyDiscussion = (slug: string) =>
+    s.discussions.active.some((d) => d.slug === slug)
+      ? s.openDiscussion(slug)
+      : s.openArchived({ kind: "discussion", slug });
   // 點衍生籤：已封存→封存抽屜（底層不切頁）；活躍→詳情抽屜（openDetail 依正典落回看板）。
   const openPromotedChange = (name: string) => {
     const archivedHit = s.archived.find((a) => a.name === name);
@@ -538,451 +797,597 @@ function AppInner({
   };
   // 封存抽屜出身列的三欄（desktop-archived-parity D4）：一律自封存清單項帶入，
   // 抽屜零新查詢。封存討論無封存日期欄位——該欄自然缺席。
-  const archivedProvenance = (() => {
-    const target = s.detailArchived;
-    if (target?.kind === "change") {
-      const item = s.archived.find((a) => a.datedName === target.datedName);
-      return { createdBy: item?.createdBy, created: item?.created, archivedDate: item?.date };
-    }
-    if (target?.kind === "discussion") {
-      const item = s.discussions.archived.find((d) => d.slug === target.slug);
-      return { createdBy: item?.createdBy, created: item?.created };
-    }
-    return {};
-  })();
+  const archivedProvenance = archivedItem
+    ? { createdBy: archivedItem.createdBy, created: archivedItem.created, archivedDate: archivedItem.date }
+    : { createdBy: archivedDiscussion?.createdBy, created: archivedDiscussion?.created };
+
+  // 殼（design D2）：標題列文字與麵包屑依模式——設定、有作用中專案、零專案（留白）。
+  // projectTab＝標題列要呈現的專案（設定模式時沒有）。
+  const projectTab = s.boardView === "settings" ? undefined : activeTab;
+  // 設定模式（desktop-settings-mode design D1／D2）：遠端專案沒有 .speclink.yaml 頁，記住的分類
+  // 落在那頁時退回專案說明。
+  const remoteProject = activeTab?.locator.kind === "remote";
+  const projectSettingsSection =
+    remoteProject && s.projectSettingsSection === "speclink" ? "context" : s.projectSettingsSection;
+  const settingsMode = s.boardView === "settings";
+  const projectSettingsMode = inSettingsMode(s) && !settingsMode;
+  // 專案設定分類欄的解析失敗警示點：由專案設定頁讀到設定快照後回報。
+  const [projectParseErrors, setProjectParseErrors] = useState({ config: false, speclink: false });
+  const connectionNames = Object.fromEntries(s.connections.map((c) => [c.id, c.name]));
+  const PAGE_LABEL_KEY: Record<Exclude<typeof s.boardView, "settings">, string> = {
+    board: "app.navChanges",
+    archived: "app.archived",
+    specs: "app.navSpecs",
+    manual: "app.navManual",
+    "project-settings": "app.navProjectSettings",
+  };
+  // 詳情頁開啟時三段（spec「詳情頁的導覽與返回」）：專案名與頁名點擊關頁回宿主，
+  // 項目名等寬不可點。
+  const crumbs: Crumb[] =
+    s.boardView === "settings"
+      ? [
+          { label: t("app.settingsTitle"), onClick: () => s.setSettingsSection("general") },
+          { label: t(APP_SETTINGS_CATEGORIES.find((c) => c.id === s.settingsSection)!.labelKey) },
+        ]
+      : projectTab && s.boardView === "project-settings"
+        ? [
+            { label: projectTab.name, onClick: () => s.setBoardView("board") },
+            { label: t("app.navProjectSettings"), onClick: () => s.setProjectSettingsSection("context") },
+            { label: t(PROJECT_SETTINGS_CATEGORIES.find((c) => c.id === projectSettingsSection)!.labelKey) },
+          ]
+      : projectTab && detail
+        ? [
+            {
+              label: projectTab.name,
+              onClick: () => {
+                s.closeDetailPage();
+                s.setBoardView("board");
+              },
+            },
+            { label: t(PAGE_LABEL_KEY[s.boardView]), onClick: s.closeDetailPage },
+            // 已封存變更以變更名呈現（序列與複製用含日期前綴的封存目錄名）。
+            { label: archivedItem?.name ?? detail.current, mono: true },
+          ]
+        : projectTab
+          ? [
+              { label: projectTab.name, onClick: () => s.setBoardView("board") },
+              { label: t(PAGE_LABEL_KEY[s.boardView]) },
+            ]
+          : [];
+  // 「開啟 ▾」（design D4）：頁回報文件，位置由 core 解析；本機目錄缺席（remote 無 checkout）時只剩複製內容。
+  const hasLocalDir = activeTab ? projectDirOf(activeTab.locator) !== null : false;
+  // 提案影響段路徑籤的顯示鈕：文案與「開啟 ▾」選單同一組平台詞條（macOS「在 Finder 顯示」）。
+  const pathReveal = hasLocalDir
+    ? { label: t(`fs.revealIn.${platform}`), reveal: (path: string) => void s.revealProjectPath(path) }
+    : undefined;
+  // 規格與手冊閱讀卡出處行的檔案路徑同樣由 core 解析（跟著 spec 目錄名走）；無本機目錄時不查、該段缺席。
+  const locateDocument = hasLocalDir ? s.locateDocument : undefined;
+  const renderDocumentActions = (target: DocumentTarget | null) => (
+    <DocumentActionsMenu
+      target={target}
+      local={hasLocalDir}
+      platform={platform}
+      locate={s.locateDocument}
+      onOpenDefault={(location) => void s.openDocumentDefault(location)}
+      onReveal={(location) => void s.revealDocument(location)}
+      onCopyPath={(location) => void s.copyDocumentPath(location)}
+      onCopyContent={(text) => void s.copyDocumentContent(text)}
+    />
+  );
+  const projectActions: ProjectActions = {
+    reveal: (key) => void s.revealProject(key),
+    openTerminal: (key) => void s.openProjectInTerminal(key),
+    openEditor: (key) => void s.openProjectInEditor(key),
+    copyPath: (key) => void s.copyProjectPath(key),
+    // 背景專案沒有載入中的資料可重整：切過去即重新載入。
+    refresh: (key) => (key === s.activeKey ? void s.refresh() : void s.activateTab(key)),
+    close: s.closeTab,
+  };
+
+  // 變更詳情頁（design D6）：props 自原抽屜接線搬移，另接「開啟 ▾」。
+  const changeDetailPage = (
+    <ChangeDetailPage
+      change={s.detailChange}
+      refreshGen={s.refreshGen}
+      loadDocument={(change, artifact) => dataSource?.getDocument(change, artifact) ?? Promise.resolve(null)}
+      loadStationTicket={(change, station) =>
+        dataSource?.getStationTicket(change, station) ?? Promise.resolve(null)
+      }
+      // changeCapabilities/changeMeta 於 remote 亦直達（status payload 映射，
+      // remote-read-parity）；capability 為假時仍以空集呈現——同一條停用法則，
+      // 不偽造、也不讓詳情頁載入失敗。
+      loadCapabilities={(change) =>
+        caps && !caps.changeCapabilities
+          ? Promise.resolve([])
+          : (dataSource?.changeCapabilities(change) ?? Promise.resolve([]))
+      }
+      loadMeta={(change) =>
+        caps && !caps.changeMeta
+          ? Promise.resolve(null)
+          : (dataSource?.changeMeta(change) ?? Promise.resolve(null))
+      }
+      onRunVerb={onRunVerb}
+      detailVerb={s.detailVerb}
+      onClearVerb={s.clearDetailVerb}
+      onDelete={s.requestDelete}
+      // 認領是 RemoteOnly：後端沒有這個方法（本地）就整段不接線，詳情頁因此
+      // 連停用的入口都不長出來。
+      onClaim={dataSource?.claim ? s.claimChange : undefined}
+      onRevert={s.requestRevert}
+      // 排程分頁：同波夥伴自清單派生；前置編輯只在 capability 為真時接線（remote 的
+      // reader 為假，分頁唯讀）；資料源提供候選名冊時以它為準（worktree 映射時為副本）。
+      changes={s.changes}
+      onSetDepends={
+        caps && !caps.setDepends
+          ? undefined
+          : (change, on, remove) => void s.setDepends(change, on, remove)
+      }
+      loadDependsCandidates={
+        dataSource?.dependsCandidates
+          ? (change) => dataSource.dependsCandidates!(change)
+          : undefined
+      }
+      unavailable={
+        caps && {
+          analyze:
+            caps.validate && caps.analyze ? undefined : t("remote.analyzeUnavailable"),
+          archive: caps.archive ? undefined : writeDisabledReason,
+          delete: caps.deleteChange ? undefined : writeDisabledReason,
+          tasks: caps.setTaskDone && caps.setAllTasks ? undefined : writeDisabledReason,
+          claim: caps.claim ? undefined : writeDisabledReason,
+        }
+      }
+      onToggleTask={
+        caps && !caps.setTaskDone
+          ? undefined
+          : async (change, task, done) => {
+              await dataSource?.setTaskDone(change, task, done);
+              await s.refresh();
+            }
+      }
+      onMoveTask={
+        caps && !caps.moveTask
+          ? undefined
+          : async (change, from, to, before) => {
+              await dataSource?.moveTask(change, from, to, before);
+              await s.refresh();
+            }
+      }
+      onSetAllTasks={
+        caps && !caps.setAllTasks
+          ? undefined
+          : async (change, done) => {
+              await dataSource?.setAllTasks(change, done);
+              await s.refresh();
+            }
+      }
+      sourceDiscussions={sourceDiscussions}
+      siblingChanges={siblingChanges}
+      onOpenDiscussion={s.openDiscussion}
+      onOpenSibling={s.openDetail}
+      renderDocumentActions={renderDocumentActions}
+      onOpenSpec={s.openSpec}
+      // 路徑籤的顯示鈕只在有本機目錄時接（remote 無 checkout 時只有複製鈕）。
+      pathReveal={pathReveal}
+    />
+  );
+  // 討論詳情頁（design D7）。
+  const discussionDetailPage = (
+    <DiscussionDetailPage
+      discussion={s.detailDiscussion}
+      refreshGen={s.refreshGen}
+      loadDocument={(slug) => dataSource?.getDiscussionDocument(slug) ?? Promise.resolve(null)}
+      changes={s.changes}
+      archivedChanges={s.archived}
+      onOpenChangeCard={s.openDetail}
+      onOpenArchivedChange={(datedName) => s.openArchived({ kind: "change", datedName })}
+      specNames={specNames}
+      discussionSlugs={discussionSlugs}
+      onOpenSpec={s.openSpec}
+      onOpenDiscussion={s.openDiscussion}
+      onArchiveDiscussion={
+        // 已封存的討論(自來源討論 chip 開啟)與 capability 缺口不提供封存;
+        // 其餘走與討論卡同一確認流程。
+        (caps && !caps.archiveDiscussion) ||
+        s.discussions.archived.some((d) => d.slug === s.detailDiscussion?.slug)
+          ? undefined
+          : s.requestArchiveDiscussion
+      }
+      renderDocumentActions={renderDocumentActions}
+    />
+  );
+  // 規格詳情頁（desktop-readonly-detail-pages design D2）：宿主為規格頁或手冊頁，皆不切頁。
+  const specDetailPage = (
+    <SpecDetailPage
+      capability={s.detailSpec}
+      refreshGen={s.refreshGen}
+      loadDocument={(capability) => dataSource?.getSpecDocument(capability) ?? Promise.resolve(null)}
+      archivedChanges={s.archived}
+      onOpenArchivedChange={(datedName) => s.openArchived({ kind: "change", datedName })}
+      renderDocumentActions={renderDocumentActions}
+      locateDocument={locateDocument}
+    />
+  );
+  // 已封存詳情頁（design D3）：props 自原已封存抽屜的接線搬移。
+  const archivedDetailPage = (
+    <ArchivedDetailPage
+      target={s.detailArchived}
+      refreshGen={s.refreshGen}
+      loadDocument={(datedName, artifact) => dataSource?.getArchivedDocument(datedName, artifact) ?? Promise.resolve(null)}
+      loadStationTicket={(datedName, station) =>
+        dataSource?.getArchivedStationTicket(datedName, station) ?? Promise.resolve(null)
+      }
+      loadCapabilities={(datedName) => dataSource?.archivedCapabilities(datedName) ?? Promise.resolve([])}
+      loadDiscussionDocument={(slug) => dataSource?.getDiscussionDocument(slug) ?? Promise.resolve(null)}
+      sourceDiscussions={archivedSourceDiscussions}
+      onOpenDiscussion={(slug) => s.openArchived({ kind: "discussion", slug })}
+      onOpenContextDiscussion={openAnyDiscussion}
+      promotedChanges={archivedPromotedChanges}
+      onOpenPromotedChange={openPromotedChange}
+      reviewStatus={archivedItem?.reviewStatus}
+      verifyStatus={archivedItem?.verifyStatus}
+      discussionKind={archivedDiscussion?.kind}
+      discussionTopic={archivedDiscussion?.topic}
+      {...archivedProvenance}
+      renderDocumentActions={renderDocumentActions}
+      onOpenSpec={s.openSpec}
+      pathReveal={pathReveal}
+      changes={s.changes}
+      archivedChanges={s.archived}
+      specNames={specNames}
+      discussionSlugs={discussionSlugs}
+    />
+  );
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
-      {/* 更新通知列（徵詢／下載中／待重啟／錯誤時浮出；其餘狀態不佔畫面） */}
-      <UpdateBanner
-        state={s.updater}
-        onAccept={() => void s.acceptUpdate()}
-        onDismiss={s.dismissUpdate}
-        onRelaunch={() => void s.relaunchToUpdate()}
-      />
-      {/* 頂欄 */}
-      <header className="flex items-center gap-3 px-4 h-12 border-b border-border shrink-0">
-        <div className="flex items-center gap-1.5 shrink-0">
-          <img
-            src="./logo-mark.png"
-            alt=""
-            aria-hidden="true"
-            className="h-5 w-5"
-          />
-          <img src="./speclink-wordmark.png" alt="Speclink" className="h-5 w-auto" />
-        </div>
-        {workspace !== undefined ? (
-          // 專案分頁列取代「目前專案」佔位（design D10）：active 分頁即目前專案。
-          <ProjectTabs
+    <div className="flex h-screen overflow-hidden">
+      {/* 左側（design D2）：圖示列與專案欄共用一條 48px 標題列；零專案時只剩圖示列 */}
+      <div
+        className={cn(
+          "flex shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar",
+          settingsMode || s.tabs.length > 0 ? "w-[256px]" : "w-14",
+        )}
+      >
+        {/* 零專案且非設定模式時 56px 放不下文字（macOS 紅綠燈也佔住這段），標題列留白；
+            設定模式左端為「← 設定」，專案設定模式左端為「← 專案設定」、右端為等寬專案名 */}
+        <LeftTitleBar
+          title={projectTab?.name}
+          path={projectTab && tabPathHint(projectTab, connectionNames, t)}
+          back={
+            settingsMode || projectSettingsMode
+              ? { label: t(settingsMode ? "app.settingsTitle" : "app.navProjectSettings"), onClick: goBack }
+              : undefined
+          }
+          trailing={projectSettingsMode ? projectTab?.name : undefined}
+          menu={
+            projectTab && !projectSettingsMode ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t("app.projectActions")}
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <ProjectActionItems
+                    menu="dropdown"
+                    tab={projectTab}
+                    platform={platform}
+                    actions={projectActions}
+                  />
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : undefined
+          }
+        />
+        <div className="flex min-h-0 flex-1">
+          <ProjectRail
             tabs={s.tabs}
             activeKey={s.activeKey}
             tabErrors={s.tabErrors}
             recoveryStates={s.remoteRecovery}
             connectionStates={sessionConnectionStates}
+            connectionNames={connectionNames}
             pendingKey={s.pendingTabKey}
+            assetPrompts={s.assetPrompts}
+            platform={platform}
+            actions={projectActions}
             onActivate={(key) => void s.activateTab(key)}
-            onClose={s.closeTab}
             onOpen={() => s.openWorkspaceChooser()}
-          />
-        ) : (
-          <span className="text-xs text-muted-foreground px-2 py-0.5 rounded border border-border">
-            {t("app.currentProject")}
-          </span>
-        )}
-        <div className="flex-1" />
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-1.5 px-2 text-sm font-normal text-muted-foreground hover:text-foreground"
-          onClick={() => s.openWorkspaceChooser()}
-        >
-          <FolderOpen className="h-4 w-4" /> {t("app.addWorkspace")}
-        </Button>
-      </header>
-
-      {stale && connectionState && (
-        <div
-          role="status"
-          data-testid="remote-stale-banner"
-          data-connection-state={connectionState.state}
-          className={cn(
-            "flex min-h-10 shrink-0 items-center gap-2 border-b px-4 py-2",
-            SEMANTIC_SURFACE.warning,
-          )}
-        >
-          <CloudOff className={cn("h-4 w-4 shrink-0", SEMANTIC_TONE.warning)} />
-          <div className="min-w-0 text-xs">
-            <span className="font-semibold">
-              {connectionState.state === "needs-reauth"
-                ? t("remote.reauthTitle")
-                : t("remote.offlineTitle")}
-            </span>
-            <span className="ml-2 text-muted-foreground">
-              {connectionState.message ?? t("remote.staleHint")}
-            </span>
-          </div>
-          <span className="ml-auto rounded border border-border bg-background/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            stale
-          </span>
-          {connectionState.state === "needs-reauth" && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 bg-background/80 text-xs"
-              onClick={() => s.openConnectionReauth(connectionState.connectionId)}
-            >
-              {t("remote.reauthAction")}
-            </Button>
-          )}
-        </div>
-      )}
-
-      <div className="flex flex-1 overflow-hidden">
-        {/* 左側欄 */}
-        <aside className="w-[200px] shrink-0 border-r border-border bg-card p-2 flex flex-col gap-1">
-          <NavItem
-            icon={<GitBranch className="h-4 w-4" />}
-            label={t("app.navChanges")}
-            active={s.boardView === "board"}
-            onClick={() => s.setBoardView("board")}
-          />
-          {/* 已封存入口（獨立頁）：切頁語意，返回看板改點「變更」。 */}
-          <NavItem
-            icon={<Archive className="h-4 w-4" />}
-            label={t("app.archived")}
-            ariaLabel={t("app.archived")}
-            active={s.boardView === "archived"}
-            onClick={() => s.setBoardView("archived")}
-            trailing={
-              <span className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-muted text-muted-foreground text-[10px] tabular-nums">
-                {s.archived.length}
-              </span>
+            onOpenSettings={() => s.setBoardView("settings")}
+            settingsActive={s.boardView === "settings"}
+            updateButton={
+              updater && <UpdateRailButton state={s.updater} onClick={s.openSettingsUpdate} />
             }
           />
-          {/* 規格頁入口：切頁語意（與已封存頁同型），返回看板改點「變更」。 */}
-          <NavItem
-            icon={<FileText className="h-4 w-4" />}
-            label={t("app.navSpecs")}
-            active={s.boardView === "specs"}
-            onClick={() => s.setBoardView("specs")}
-          />
-          {/* 手冊頁入口（desktop-manual-page）：切頁語意同規格頁；無障礙標籤「手冊」。 */}
-          <NavItem
-            icon={<BookOpen className="h-4 w-4" />}
-            label={t("app.navManual")}
-            ariaLabel={t("app.navManual")}
-            active={s.boardView === "manual"}
-            onClick={() => s.setBoardView("manual")}
-          />
-          {/* 底部群組沉底：專案設定帶自動上邊距推至側欄底部、設定緊隨其後（design D5），
-              切頁與高亮語意不變。 */}
-          <NavItem
-            icon={<SlidersHorizontal className="h-4 w-4" />}
-            label={t("app.navProjectSettings")}
-            active={s.boardView === "project-settings"}
-            onClick={() => s.setBoardView("project-settings")}
-            className="mt-auto"
-          />
-          <NavItem
-            icon={<Settings className="h-4 w-4" />}
-            label={t("app.navSettings")}
-            active={s.boardView === "settings"}
-            onClick={() => s.setBoardView("settings")}
-          />
-        </aside>
-
-        {/* 主內容：看板、規格頁、已封存頁填滿高度（清單於內部容器捲動、換頁控
-            制列沉底常駐）；設定頁維持整頁縱向捲動；手冊頁的三欄分隔線要貫穿
-            主內容全高，padding 由 ManualPage 各欄自管。flex 直欄（spec「提示
-            SHALL 只佔用自身高度」）：技能檔提示存在時，各視圖根節點（h-full
-            min-h-0）縮到扣除提示後的剩餘高度，而非被 overflow-hidden 裁掉底部 */}
-        <main
-          className={cn(
-            "flex flex-1 flex-col",
-            s.boardView === "manual" ? "p-0" : "p-5",
-            s.boardView === "settings" || s.boardView === "project-settings"
-              ? "overflow-y-auto"
-              : "overflow-hidden",
-          )}
-        >
-          {/* 技能檔提示（spec「指令檔過期提示」、決策 7）：per 專案、分頁內容頂部、
-              非阻斷；應用程式設定頁不屬專案語境故不掛。包裹層 shrink-0：提示只佔
-              自身高度。捲動釘選也住在包裹層：sticky 只能在包住它的區塊內移動，
-              提示自帶 sticky 會被剛好等高的包裹層鎖死；包裹層是 main 這個捲動容器
-              的直接子節點，才釘得住專案設定頁整段捲動。包裹層帶頁面底色：提示的
-              mb-4 落在包裹層內側，釘住時那 1rem 才不是透出內容的透明帶。手冊視圖
-              的 main 無 padding，提示存在時自補。 */}
-          {s.boardView !== "settings" && (
-            <div
-              className={cn(
-                "sticky top-0 z-10 shrink-0 bg-background",
-                s.boardView === "manual" && s.assetPrompt && "px-5 pt-5",
-              )}
-            >
-              <AssetUpdatePrompt
-                prompt={s.assetPrompt}
-                error={s.assetUpdateError}
-                busy={s.assetUpdating}
-                onApply={() => void s.applyAssetUpdate()}
-                onDismiss={s.dismissAssetPrompt}
-              />
-            </div>
-          )}
-          {s.boardView === "settings" ? (
-            <AppSettingsView
-              themePref={appearance.preference}
-              onThemePrefChange={theme.setPreference}
-              localePref={localePref}
-              onLocalePrefChange={onLocalePrefChange}
-              trayPanelError={s.trayPanelError}
-              servers={servers}
-              focusConnectionId={s.reauthConnectionId}
-              updater={
-                updater && {
-                  state: s.updater,
-                  currentVersion,
-                  onCheck: () => void s.checkForUpdates(true),
-                  onShowReleaseNotes: () => setReleaseNotes({ mode: "browse" }),
-                }
+          {settingsMode ? (
+            <SettingsColumn section={s.settingsSection} onSelect={s.setSettingsSection} />
+          ) : projectSettingsMode ? (
+            <ProjectSettingsColumn
+              section={projectSettingsSection}
+              remote={remoteProject}
+              configParseError={projectParseErrors.config}
+              speclinkParseError={projectParseErrors.speclink}
+              onSelect={s.setProjectSettingsSection}
+              notice={
+                <AssetNoticeCard prompt={assetPromptNow} onOpen={() => setAssetDialogOpen(true)} />
               }
-              cliInstall={
-                s.cliInstall
-                  ? { view: s.cliInstall, onInstall: () => void s.installCli() }
-                  : undefined
-              }
-            />
-          ) : workspace !== undefined && s.tabs.length === 0 ? (
-            // 零分頁（首次使用）：專案範圍頁面落入空狀態；應用程式設定已於上方先行處理。
-            <EmptyState onOpen={() => s.openWorkspaceChooser()} />
-          ) : activeRecoveryTab && activeRecovery && activeRecoveryConnectionId ? (
-            <RemoteWorkspaceRecovery
-              tab={activeRecoveryTab}
-              recovery={activeRecovery}
-              connection={activeRecoveryConnection}
-              onRetry={() => void s.retryRemoteWorkspace(locatorKey(activeRecoveryTab.locator))}
-              onOpenSettings={() => s.openConnectionReauth(activeRecoveryConnectionId)}
-              onReauthenticate={() => s.openConnectionReauth(activeRecoveryConnectionId)}
-              onRemove={() => s.closeTab(locatorKey(activeRecoveryTab.locator))}
-            />
-          ) : s.boardView === "project-settings" && activeSession !== undefined ? (
-            <ProjectSettingsView
-              settings={activeSession.settings}
-              projectDirectory={
-                activeSession.locator.kind === "local"
-                  ? activeSession.locator.root
-                  : activeSession.locator.checkoutRoot ?? null
-              }
-            />
-          ) : s.boardView === "manual" ? (
-            <ManualPage
-              index={s.manual}
-              loadPage={(slug) => dataSource?.getManualPage(slug) ?? Promise.resolve(null)}
-              onOpenSpec={s.openSpec}
-              capabilities={s.specs.map((spec) => spec.id)}
-              refreshGen={s.refreshGen}
-            />
-          ) : s.boardView === "specs" ? (
-            <SpecList specs={s.specs} onOpen={s.openSpec} focus={s.detailSpec} />
-          ) : s.boardView === "board" ? (
-            <KanbanBoard
-              changes={s.changes}
-              onOpenChange={s.openDetail}
-              onArchive={caps && !caps.archive ? undefined : s.requestArchive}
-              onRevert={s.requestRevert}
-              discussions={s.discussions}
-              archivedChanges={s.archived}
-              onOpenDiscussion={s.openDiscussion}
-              onArchiveDiscussion={
-                caps && !caps.archiveDiscussion ? undefined : s.requestArchiveDiscussion
-              }
-              query={s.boardQuery}
-              onQuery={s.setBoardQuery}
-              fulltextHits={s.searchHits}
-              searchUnavailableReason={
-                caps && !caps.searchWorkspace ? t("remote.searchUnavailable") : undefined
-              }
-              onReorder={
-                caps?.reorderCard
-                  ? (kind, id, prevId, nextId) => void s.reorderCard(kind, id, prevId, nextId)
-                  : undefined
-              }
-              reorderUnavailableReason={
-                caps && !caps.reorderCard ? t("remote.reorderUnavailable") : undefined
-              }
-              planError={s.planError}
-              onDragActiveChange={handleBoardDragActive}
-              // 骨架的前提是「首訪的載入正在進行」：探測中（pendingTabKey）或整批
-              // 載入中（loadingActive），且尚無真值。只看 loaded 會讓探測失敗或讀取
-              // 失敗的 workspace 永遠停在載入中——讀不到不等於還在讀。
-              loading={(s.pendingTabKey !== null || s.loadingActive) && !s.loaded}
-              // 首訪失敗的終態：讀不到 ≠ 確認是空的，故不落回空態文案。已有舊
-              // 快取（loaded）時照舊靜默沿用最後成功快照，不顯示提示。
-              loadFailed={!s.loaded && s.loadFailed}
             />
           ) : (
-            <ArchivedList
-              archived={s.archived}
-              query={s.query}
-              onQuery={s.setQuery}
-              archivedDiscussions={s.discussions.archived}
-              onOpen={s.openArchived}
-            />
+            s.tabs.length > 0 && (
+              <ProjectColumn
+                boardView={s.boardView}
+                archivedCount={s.archived.length}
+                onNavigate={s.setBoardView}
+                notice={
+                  <AssetNoticeCard prompt={assetPromptNow} onOpen={() => setAssetDialogOpen(true)} />
+                }
+              />
+            )
           )}
-        </main>
+        </div>
       </div>
 
-      {/* 富詳情抽屜（含互動任務） */}
-      <RichDetailDrawer
-        open={s.detailChange !== null}
-        onOpenChange={(o) => !o && !detailConfirmInFlight.current && s.closeDetail()}
-        change={s.detailChange}
-        refreshGen={s.refreshGen}
-        loadDocument={(change, artifact) => dataSource?.getDocument(change, artifact) ?? Promise.resolve(null)}
-        loadStationTicket={(change, station) =>
-          dataSource?.getStationTicket(change, station) ?? Promise.resolve(null)
-        }
-        // changeCapabilities/changeMeta 於 remote 亦直達（status payload 映射，
-        // remote-read-parity）；capability 為假時仍以空集呈現——同一條停用法則，
-        // 不偽造、也不讓抽屜載入失敗。
-        loadCapabilities={(change) =>
-          caps && !caps.changeCapabilities
-            ? Promise.resolve([])
-            : (dataSource?.changeCapabilities(change) ?? Promise.resolve([]))
-        }
-        loadMeta={(change) =>
-          caps && !caps.changeMeta
-            ? Promise.resolve(null)
-            : (dataSource?.changeMeta(change) ?? Promise.resolve(null))
-        }
-        onRunVerb={onRunVerb}
-        drawerVerb={s.drawerVerb}
-        onClearVerb={s.clearDrawerVerb}
-        onDelete={s.requestDelete}
-        // 認領是 RemoteOnly：後端沒有這個方法（本地）就整段不接線，抽屜因此
-        // 連停用的入口都不長出來。
-        onClaim={dataSource?.claim ? s.claimChange : undefined}
-        onRevert={s.requestRevert}
-        // 排程分頁：同波夥伴自清單派生；前置編輯只在 capability 為真時接線（remote 的
-        // reader 為假，分頁唯讀）；資料源提供候選名冊時以它為準（worktree 映射時為副本）。
-        changes={s.changes}
-        onSetDepends={
-          caps && !caps.setDepends
-            ? undefined
-            : (change, on, remove) => void s.setDepends(change, on, remove)
-        }
-        loadDependsCandidates={
-          dataSource?.dependsCandidates
-            ? (change) => dataSource.dependsCandidates!(change)
-            : undefined
-        }
-        unavailable={
-          caps && {
-            analyze:
-              caps.validate && caps.analyze ? undefined : t("remote.analyzeUnavailable"),
-            archive: caps.archive ? undefined : t("remote.writeUnavailable"),
-            delete: caps.deleteChange ? undefined : t("remote.deleteUnavailable"),
-            tasks:
-              caps.setTaskDone && caps.setAllTasks ? undefined : t("remote.writeUnavailable"),
-            claim: caps.claim ? undefined : t("remote.claimUnavailable"),
+      {/* relative＋overflow-hidden：滑動返回指示定位在主區欄、裁掉左緣外那段；設定頁的 main
+          會捲動，指示不能放在 main 裡 */}
+      <DetailActionsSlotProvider value={actionsSlot}>
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        <MainTitleBar
+          platform={platform}
+          crumbs={crumbs}
+          leading={
+            pageOpen && s.boardView !== "settings" ? (
+              <DetailBack
+                page={t(PAGE_LABEL_KEY[s.boardView])}
+                keys={platform === "macos" ? "⌘[" : "Alt+←"}
+                onBack={goBack}
+              />
+            ) : undefined
           }
-        }
-        onToggleTask={
-          caps && !caps.setTaskDone
-            ? undefined
-            : async (change, task, done) => {
-                await dataSource?.setTaskDone(change, task, done);
-                await s.refresh();
-              }
-        }
-        onMoveTask={
-          caps && !caps.moveTask
-            ? undefined
-            : async (change, from, to, before) => {
-                await dataSource?.moveTask(change, from, to, before);
-                await s.refresh();
-              }
-        }
-        onSetAllTasks={
-          caps && !caps.setAllTasks
-            ? undefined
-            : async (change, done) => {
-                await dataSource?.setAllTasks(change, done);
-                await s.refresh();
-              }
-        }
-        sourceDiscussions={sourceDiscussions}
-        siblingChanges={siblingChanges}
-        onOpenDiscussion={s.openDiscussion}
-        onOpenSibling={s.openDetail}
-      />
+          trailing={
+            pageOpen ? (
+              <>
+                <DetailNav index={detailIndex} total={detail?.sequence.length ?? 0} onStep={stepDetail} />
+                <DetailActionsSlot ref={setActionsSlot} />
+              </>
+            ) : undefined
+          }
+        />
 
-      {/* 唯讀規格抽屜（spec-archive-drawer design D1/D2） */}
-      <SpecDrawer
-        open={s.detailSpec !== null}
-        onOpenChange={(o) => !o && s.closeSpec()}
-        capability={s.detailSpec}
-        refreshGen={s.refreshGen}
-        archivedChanges={s.archived}
-        onOpenArchivedChange={(datedName) => s.openArchived({ kind: "change", datedName })}
-        loadDocument={(capability) =>
-          dataSource?.getSpecDocument(capability) ?? Promise.resolve(null)
-        }
-      />
+          {stale && connectionState && (
+            <div
+              role="status"
+              data-testid="remote-stale-banner"
+              data-connection-state={connectionState.state}
+              className={cn(
+                "flex min-h-10 shrink-0 items-center gap-2 border-b px-4 py-2",
+                SEMANTIC_SURFACE.warning,
+              )}
+            >
+              <CloudOff className={cn("h-4 w-4 shrink-0", SEMANTIC_TONE.warning)} />
+              <div className="min-w-0 text-xs">
+                <span className="font-semibold">
+                  {connectionState.state === "needs-reauth"
+                    ? t("remote.reauthTitle")
+                    : t("remote.offlineTitle")}
+                </span>
+                <span className="ml-2 text-muted-foreground">
+                  {connectionState.message ?? t("remote.staleHint")}
+                </span>
+              </div>
+              <span className="ml-auto rounded border border-border bg-background/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                stale
+              </span>
+              {connectionState.state === "needs-reauth" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 bg-background/80 text-xs"
+                  onClick={() => s.openConnectionReauth(connectionState.connectionId)}
+                >
+                  {t("remote.reauthAction")}
+                </Button>
+              )}
+            </div>
+          )}
 
-      {/* 唯讀封存抽屜（封存變更四分頁／封存討論三區段） */}
-      <ArchivedDrawer
-        open={s.detailArchived !== null}
-        onOpenChange={(o) => !o && s.closeArchived()}
-        target={s.detailArchived}
-        refreshGen={s.refreshGen}
-        loadDocument={(datedName, artifact) => dataSource?.getArchivedDocument(datedName, artifact) ?? Promise.resolve(null)}
-        loadStationTicket={(datedName, station) =>
-          dataSource?.getArchivedStationTicket(datedName, station) ?? Promise.resolve(null)
-        }
-        loadCapabilities={(datedName) => dataSource?.archivedCapabilities(datedName) ?? Promise.resolve([])}
-        loadDiscussionDocument={(slug) => dataSource?.getDiscussionDocument(slug) ?? Promise.resolve(null)}
-        sourceDiscussions={archivedSourceDiscussions}
-        onOpenDiscussion={(slug) => s.openArchived({ kind: "discussion", slug })}
-        promotedChanges={archivedPromotedChanges}
-        onOpenPromotedChange={openPromotedChange}
-        reviewStatus={
-          s.detailArchived?.kind === "change"
-            ? s.archived.find((a) => a.datedName === s.detailArchived?.datedName)?.reviewStatus
-            : undefined
-        }
-        verifyStatus={
-          s.detailArchived?.kind === "change"
-            ? s.archived.find((a) => a.datedName === s.detailArchived?.datedName)?.verifyStatus
-            : undefined
-        }
-        discussionKind={
-          s.detailArchived?.kind === "discussion"
-            ? s.discussions.archived.find((d) => d.slug === s.detailArchived?.slug)?.kind
-            : undefined
-        }
-        {...archivedProvenance}
-      />
-
-      {/* 討論抽屜（結論/討論過程/背景/衍生變更） */}
-      <DiscussionDrawer
-        open={s.detailDiscussion !== null}
-        onOpenChange={(o) => !o && s.closeDiscussion()}
-        discussion={s.detailDiscussion}
-        refreshGen={s.refreshGen}
-        loadDocument={(slug) => dataSource?.getDiscussionDocument(slug) ?? Promise.resolve(null)}
-        changes={s.changes}
-        archivedChanges={s.archived}
-        onOpenChangeCard={s.openDetail}
-        onArchiveDiscussion={
-          // 已封存的討論(自來源討論 chip 開啟)與 capability 缺口不提供封存;
-          // 其餘走與討論卡同一確認流程。
-          (caps && !caps.archiveDiscussion) ||
-          s.discussions.archived.some((d) => d.slug === s.detailDiscussion?.slug)
-            ? undefined
-            : s.requestArchiveDiscussion
-        }
-      />
+          {/* 主內容：看板、規格頁、已封存頁填滿高度（清單於內部容器捲動、換頁控
+              制列沉底常駐）；設定頁維持整頁縱向捲動；手冊頁的三欄分隔線要貫穿
+              主內容全高，padding 由 ManualPage 各欄自管。flex 直欄讓各視圖根節點
+              （h-full min-h-0）填滿主區；技能檔提示住在專案欄，主區不為它扣高度 */}
+          <main
+            className={cn(
+              "relative flex flex-1 flex-col",
+              // 設定頁各頁自帶內距（desktop-settings-mode design D5）。
+              s.boardView === "manual" || isSettingsView(s.boardView) ? "p-0" : "p-5",
+              isSettingsView(s.boardView) ? "overflow-y-auto" : "overflow-hidden",
+            )}
+          >
+            {/* 宿主頁（design D1）：詳情頁開啟期間保持掛載但不可見、不可互動——捲動位置、
+                搜尋字串與篩選原樣保留，關頁後即回到開頁前的樣子。 */}
+            <div
+              data-testid="host-page"
+              inert={pageOpen || undefined}
+              aria-hidden={pageOpen || undefined}
+              className={cn("flex min-h-0 flex-1 flex-col", pageOpen && "invisible")}
+            >
+            {s.boardView === "settings" ? (
+              <AppSettingsView
+                section={s.settingsSection}
+                platform={platform}
+                localePref={localePref}
+                onLocalePrefChange={onLocalePrefChange}
+                themePref={themePref}
+                onThemePrefChange={onThemePrefChange}
+                trayPanelError={s.trayPanelError}
+                servers={servers}
+                updater={
+                  updater && {
+                    state: s.updater,
+                    currentVersion,
+                    onCheck: () => void s.checkForUpdates(true),
+                    onShowReleaseNotes: (focusVersion) => setReleaseNotes({ mode: "browse", focusVersion }),
+                    onAccept: () => void s.acceptUpdate(),
+                    onCancel: s.dismissUpdate,
+                    onRelaunch: () => void s.relaunchToUpdate(),
+                    focus: s.focusUpdater,
+                    onFocusHandled: s.clearFocusUpdater,
+                    autoCheck: s.updaterAutoCheck,
+                    onAutoCheckChange: s.setUpdaterAutoCheck,
+                  }
+                }
+                cliInstall={
+                  s.cliInstall
+                    ? { view: s.cliInstall, onInstall: () => void s.installCli() }
+                    : undefined
+                }
+                about={{ appInfo: s.appInfo, onLoadAppInfo: s.loadAppInfo, onOpenUpdates: s.openSettingsUpdate }}
+              />
+            ) : workspace !== undefined && s.tabs.length === 0 ? (
+              // 零分頁（首次使用）：專案範圍頁面落入空狀態引導頁（取代空看板）；應用程式設定已於上方先行處理。
+              <EmptyWorkspace
+                recents={visibleRecents(s.recents, s.tabs)}
+                connections={s.connections}
+                onRefreshConnections={s.refreshConnections}
+                workspace={workspace}
+                connectionAdapter={connections ?? DISABLED_CHOOSER_CONNECTIONS}
+                onOpenLocal={s.openProjectAt}
+                onOpenRemote={s.openRemoteWorkspace}
+                onRemoveRecent={s.forgetRecent}
+                onOpenChooser={s.openWorkspaceChooser}
+              />
+            ) : activeRecoveryTab && activeRecovery && activeRecoveryConnectionId ? (
+              <RemoteWorkspaceRecovery
+                tab={activeRecoveryTab}
+                recovery={activeRecovery}
+                connection={activeRecoveryConnection}
+                onRetry={() => void s.retryRemoteWorkspace(locatorKey(activeRecoveryTab.locator))}
+                onOpenSettings={() => s.openConnectionReauth(activeRecoveryConnectionId)}
+                onReauthenticate={() => s.openConnectionReauth(activeRecoveryConnectionId)}
+                onRemove={() => s.closeTab(locatorKey(activeRecoveryTab.locator))}
+              />
+            ) : s.boardView === "project-settings" && activeSession !== undefined ? (
+              <ProjectSettingsView
+                settings={activeSession.settings}
+                projectDirectory={activeSession.locator.kind === "local" ? activeSession.locator.root : activeSession.locator.checkoutRoot ?? null}
+                section={projectSettingsSection}
+                onParseErrors={setProjectParseErrors}
+                onDirtyChange={onProjectSettingsDirty}
+              />
+            ) : s.boardView === "manual" ? (
+              <ManualPage
+                index={s.manual}
+                loadPage={(slug) => dataSource?.getManualPage(slug) ?? Promise.resolve(null)}
+                onOpenSpec={s.openSpec}
+                capabilities={s.specs.map((spec) => spec.id)}
+                refreshGen={s.refreshGen}
+                renderDocumentActions={renderDocumentActions}
+                locateDocument={locateDocument}
+                loadSpec={(capability) => dataSource?.getSpecDocument(capability) ?? Promise.resolve(null)}
+              />
+            ) : s.boardView === "specs" ? (
+              <SpecList
+                title={t("app.navSpecs")}
+                description={t("specs.pageDesc")}
+                specs={s.specs}
+                onOpen={s.openSpec}
+                focus={s.detailSpec}
+                pageSize={s.pageSizes.specs}
+                onPageSizeChange={(size) => s.setPageSize("specs", size)}
+                onVisibleOrderChange={(specs) => setVisibleOrder((v) => ({ ...v, specs }))}
+              />
+            ) : s.boardView === "board" ? (
+              <KanbanBoard
+                title={t("app.navChanges")}
+                description={t("board.pageDesc")}
+                changes={s.changes}
+                onOpenChange={s.openDetail}
+                onArchive={caps && !caps.archive ? undefined : s.requestArchive}
+                onRevert={s.requestRevert}
+                discussions={s.discussions}
+                archivedChanges={s.archived}
+                onOpenDiscussion={s.openDiscussion}
+                onArchiveDiscussion={
+                  caps && !caps.archiveDiscussion ? undefined : s.requestArchiveDiscussion
+                }
+                query={s.boardQuery}
+                onQuery={s.setBoardQuery}
+                fulltextHits={s.searchHits}
+                searchUnavailableReason={
+                  caps && !caps.searchWorkspace ? t("remote.searchUnavailable") : undefined
+                }
+                onReorder={
+                  caps?.reorderCard
+                    ? (kind, id, prevId, nextId) => void s.reorderCard(kind, id, prevId, nextId)
+                    : undefined
+                }
+                reorderUnavailableReason={
+                  caps && !caps.reorderCard ? writeDisabledReason : undefined
+                }
+                planError={s.planError}
+                onDragActiveChange={handleBoardDragActive}
+                onVisibleOrderChange={(order) => setVisibleOrder((v) => ({ ...v, ...order }))}
+                promotedExpanded={s.promotedExpanded}
+                onPromotedExpandedChange={s.setPromotedExpanded}
+                // 骨架的前提是「首訪的載入正在進行」：探測中（pendingTabKey）或整批
+                // 載入中（loadingActive），且尚無真值。只看 loaded 會讓探測失敗或讀取
+                // 失敗的 workspace 永遠停在載入中——讀不到不等於還在讀。
+                loading={(s.pendingTabKey !== null || s.loadingActive) && !s.loaded}
+                // 首訪失敗的終態：讀不到 ≠ 確認是空的，故不落回空態文案。已有舊
+                // 快取（loaded）時照舊靜默沿用最後成功快照，不顯示提示。
+                loadFailed={!s.loaded && s.loadFailed}
+              />
+            ) : (
+              <ArchivedList
+                title={t("app.archived")}
+                description={t("archived.pageDesc")}
+                archived={s.archived}
+                query={s.query}
+                onQuery={s.setQuery}
+                archivedDiscussions={s.discussions.archived}
+                onOpen={s.openArchived}
+                changesPageSize={s.pageSizes.archivedChanges}
+                onChangesPageSizeChange={(size) => s.setPageSize("archivedChanges", size)}
+                discussionsPageSize={s.pageSizes.archivedDiscussions}
+                onDiscussionsPageSizeChange={(size) => s.setPageSize("archivedDiscussions", size)}
+                onVisibleOrderChange={(order) =>
+                  setVisibleOrder((v) => ({
+                    ...v,
+                    archivedChanges: order.changes,
+                    archivedDiscussions: order.discussions,
+                  }))
+                }
+              />
+            )}
+            </div>
+            {/* 詳情頁層（design D1／D9）：覆蓋主區，150ms 淡入＋4px 位移；關閉直接移除。 */}
+            {detail && (
+              <div
+                ref={detailLayerRef}
+                data-testid="detail-page"
+                className="absolute inset-0 overflow-x-hidden overflow-y-auto bg-background animate-in fade-in slide-in-from-bottom-1 duration-150 ease-out motion-reduce:animate-none"
+              >
+                {
+                  {
+                    change: changeDetailPage,
+                    discussion: discussionDetailPage,
+                    spec: specDetailPage,
+                    archived: archivedDetailPage,
+                  }[detail.kind]
+                }
+              </div>
+            )}
+          </main>
+          {/* 觸控板滑動返回（design D8）：左緣「←」指示，過門檻放開即返回（去處同返回鈕）。
+              手指放開的訊號只有 macOS 原生層提供，其他平台不提供（desktop-swipe-back-finger-lift D5）。 */}
+          <SwipeBack enabled={platform === "macos" && backTarget(s) !== null} onBack={goBack} />
+      </div>
+      </DetailActionsSlotProvider>
 
       {workspace && (
         <WorkspaceChooser
@@ -1003,8 +1408,10 @@ function AppInner({
           onRemoveRecent={s.forgetRecent}
           initialConnectionId={s.workspaceChooser?.initialConnectionId}
           initialServerUrl={s.workspaceChooser?.initialServerUrl}
+          initialStep={s.workspaceChooser?.initialStep}
           initialScope={s.workspaceChooser?.initialScope}
           initialCheckoutPath={s.workspaceChooser?.initialCheckoutPath}
+          defaultConnectionId={s.defaultConnectionId}
         />
       )}
 
@@ -1022,11 +1429,25 @@ function AppInner({
         />
       )}
 
+      {/* 技能檔提示確認框（spec「指令檔過期提示」）：三列資訊、依狀態的按鈕；較新態的主
+          動作改開設定頁軟體更新卡。 */}
+      <AssetNoticeDialog
+        open={assetDialogOpen}
+        onOpenChange={setAssetDialogOpen}
+        prompt={assetPromptNow}
+        busy={s.assetUpdating}
+        error={s.assetUpdateError}
+        onApply={() => void s.applyAssetUpdate()}
+        onDismiss={s.dismissAssetPrompt}
+        onOpenSettingsUpdate={s.openSettingsUpdate}
+      />
+
       {updater && (
         <ReleaseNotesDialog
           open={releaseNotes !== null}
           mode={releaseNotes?.mode ?? "browse"}
           entries={releaseNotes?.mode === "whatsNew" ? releaseNotes.entries : RELEASE_NOTES}
+          focusVersion={releaseNotes?.mode === "browse" ? releaseNotes.focusVersion : undefined}
           onOpenChange={(isOpen) => {
             if (isOpen) return;
             // 先關再寫：寫入失敗不能把 modal 卡在畫面上。
@@ -1044,99 +1465,82 @@ function AppInner({
         onMigrateLocal={s.migrateLocalFromConflict}
       />
 
-      {/* 初始化確認（design D3：寫入型確認框——取消靠左持預設焦點、建立靠右拉開距離） */}
-      <AlertDialog open={s.pendingInit !== null} onOpenChange={(o) => !o && s.cancelInit()}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("app.initTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              <BoldName text={t("app.initDesc")} name={s.pendingInit ?? ""} />
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="flex gap-4">
-            {["claude", "codex", "copilot"].map((tool) => (
-              <label key={tool} className="flex items-center gap-1.5 text-sm">
-                <Checkbox
-                  checked={initTools.includes(tool)}
-                  onCheckedChange={(v) =>
-                    setInitTools((prev) =>
-                      v === true ? [...prev, tool] : prev.filter((x) => x !== tool),
-                    )
-                  }
-                />
-                {tool}
-              </label>
-            ))}
-          </div>
-          <AlertDialogFooter className="justify-between sm:justify-between">
-            <AlertDialogCancel autoFocus onClick={s.cancelInit}>
-              {t("app.cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={() => void s.confirmInit(initTools)}>
-              {t("app.initConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* 初始化確認（寫入型確認框：Radix 預設焦點落在取消） */}
+      <ConfirmDialog
+        open={discardPrompt}
+        onOpenChange={setDiscardPrompt}
+        title={t("settings.discardTitle")}
+        description={t("settings.discardHint")}
+        confirmLabel={t("settings.discard")}
+        destructive
+        onConfirm={() => {
+          setDiscardPrompt(false);
+          useStore.getState().leaveSettings();
+        }}
+      />
+      <ConfirmDialog
+        open={s.pendingInit !== null}
+        onOpenChange={(o) => !o && s.cancelInit()}
+        title={t("app.initTitle")}
+        description={<BoldName text={t("app.initDesc")} name={s.pendingInit ?? ""} />}
+        confirmLabel={t("app.initConfirm")}
+        onConfirm={() => s.confirmInit(initTools)}
+      >
+        <div className="flex gap-4">
+          {BUILTIN_TOOLS.map((tool) => (
+            <label key={tool} className="flex items-center gap-1.5 text-sm">
+              <Checkbox
+                checked={initTools.includes(tool)}
+                onCheckedChange={(v) =>
+                  setInitTools((prev) =>
+                    v === true ? [...prev, tool] : prev.filter((x) => x !== tool),
+                  )
+                }
+              />
+              {tool}
+            </label>
+          ))}
+        </div>
+      </ConfirmDialog>
 
       {/* 啟用確認（spec「未啟用資料夾經確認後補齊啟用」；與初始化確認框同型、獨立狀態） */}
-      <AlertDialog open={s.pendingAdopt !== null} onOpenChange={(o) => !o && s.cancelAdopt()}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("app.adoptTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              <BoldName text={t("app.adoptDesc")} name={s.pendingAdopt ?? ""} />
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="flex gap-4">
-            {["claude", "codex", "copilot"].map((tool) => (
-              <label key={tool} className="flex items-center gap-1.5 text-sm">
-                <Checkbox
-                  checked={adoptTools.includes(tool)}
-                  onCheckedChange={(v) =>
-                    setAdoptTools((prev) =>
-                      v === true ? [...prev, tool] : prev.filter((x) => x !== tool),
-                    )
-                  }
-                />
-                {tool}
-              </label>
-            ))}
-          </div>
-          <AlertDialogFooter className="justify-between sm:justify-between">
-            <AlertDialogCancel autoFocus onClick={s.cancelAdopt}>
-              {t("app.cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={() => void s.confirmAdopt(adoptTools)}>
-              {t("app.adoptConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={s.pendingAdopt !== null}
+        onOpenChange={(o) => !o && s.cancelAdopt()}
+        title={t("app.adoptTitle")}
+        description={<BoldName text={t("app.adoptDesc")} name={s.pendingAdopt ?? ""} />}
+        confirmLabel={t("app.adoptConfirm")}
+        onConfirm={() => s.confirmAdopt(adoptTools)}
+      >
+        <div className="flex gap-4">
+          {BUILTIN_TOOLS.map((tool) => (
+            <label key={tool} className="flex items-center gap-1.5 text-sm">
+              <Checkbox
+                checked={adoptTools.includes(tool)}
+                onCheckedChange={(v) =>
+                  setAdoptTools((prev) =>
+                    v === true ? [...prev, tool] : prev.filter((x) => x !== tool),
+                  )
+                }
+              />
+              {tool}
+            </label>
+          ))}
+        </div>
+      </ConfirmDialog>
 
       {/* 討論封存確認 */}
-      <AlertDialog
+      <ConfirmDialog
         open={s.pendingArchiveDiscussion !== null}
         onOpenChange={(o) => !o && s.cancelArchiveDiscussion()}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("app.archiveDiscussionTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              <BoldName text={t("app.archiveDiscussionDesc")} name={s.pendingArchiveDiscussion ?? ""} />
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={s.cancelArchiveDiscussion}>{t("app.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={caps !== undefined && !caps.archiveDiscussion}
-              onClick={s.confirmArchiveDiscussion}
-            >
-              {t("app.archiveConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={t("app.archiveDiscussionTitle")}
+        description={
+          <BoldName text={t("app.archiveDiscussionDesc")} name={s.pendingArchiveDiscussion ?? ""} />
+        }
+        confirmLabel={t("app.archiveConfirm")}
+        confirmDisabled={caps !== undefined && !caps.archiveDiscussion}
+        onConfirm={s.confirmArchiveDiscussion}
+      />
 
       {/* 封存入口的未結工單三選項（spec「封存入口三選項擴及驗證工單」）：目標
           change 該站工單未結時取代一般封存確認；未選擇前不執行封存。remote
@@ -1158,75 +1562,48 @@ function AppInner({
       />
 
       {/* 封存確認 */}
-      <AlertDialog
+      <ConfirmDialog
         open={s.pendingArchive !== null && pendingArchiveStation === null}
         onOpenChange={(o) => !o && s.cancelArchive()}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("app.archiveTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              <BoldName text={t("app.archiveDesc")} name={s.pendingArchive ?? ""} />
-              {remoteArchiveScope && (
-                <span className="mt-2 block rounded-md border border-border bg-muted/45 px-2.5 py-2 font-mono text-xs text-foreground">
-                  {t("app.archiveRemoteScope").replace("{scope}", remoteArchiveScope)}
-                </span>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={s.cancelArchive}>{t("app.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={caps !== undefined && !caps.archive}
-              onClick={() => void confirmDetailAction(s.confirmArchive)}
-            >
-              {t("app.archiveConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={t("app.archiveTitle")}
+        description={
+          <>
+            <BoldName text={t("app.archiveDesc")} name={s.pendingArchive ?? ""} />
+            {remoteArchiveScope && (
+              <span className="mt-2 block rounded-md border border-border bg-muted/45 px-2.5 py-2 font-mono text-xs text-foreground">
+                {t("app.archiveRemoteScope").replace("{scope}", remoteArchiveScope)}
+              </span>
+            )}
+          </>
+        }
+        confirmLabel={t("app.archiveConfirm")}
+        confirmDisabled={caps !== undefined && !caps.archive}
+        onConfirm={() => confirmDetailAction(s.confirmArchive)}
+      />
 
       {/* 退回提案中確認：確認後直接呼叫引擎動詞,UI 不預判守門。 */}
-      <AlertDialog open={s.pendingRevert !== null} onOpenChange={(o) => !o && s.cancelRevert()}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("app.revertTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              <BoldName text={t("app.revertDesc")} name={s.pendingRevert ?? ""} />
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={s.cancelRevert}>{t("app.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void confirmDetailAction(s.confirmRevert)}>
-              {t("app.revertConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={s.pendingRevert !== null}
+        onOpenChange={(o) => !o && s.cancelRevert()}
+        title={t("app.revertTitle")}
+        description={<BoldName text={t("app.revertDesc")} name={s.pendingRevert ?? ""} />}
+        confirmLabel={t("app.revertConfirm")}
+        onConfirm={() => confirmDetailAction(s.confirmRevert)}
+      />
 
       {/* 退回被守門擋下：列引擎證據與出路,無清理或強制退回的機械出路。 */}
       <RevertBlockedDialog info={s.revertBlocked} onClose={s.dismissRevertBlocked} />
 
       {/* 刪除確認 */}
-      <AlertDialog open={s.pendingDelete !== null} onOpenChange={(o) => !o && s.cancelDelete()}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("app.deleteTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              <BoldName text={t("app.deleteDesc")} name={s.pendingDelete ?? ""} />
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={s.cancelDelete}>{t("app.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive hover:bg-destructive/90"
-              onClick={() => void confirmDetailAction(s.confirmDelete)}
-            >
-              {t("app.deleteConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={s.pendingDelete !== null}
+        onOpenChange={(o) => !o && s.cancelDelete()}
+        title={t("app.deleteTitle")}
+        description={<BoldName text={t("app.deleteDesc")} name={s.pendingDelete ?? ""} />}
+        confirmLabel={t("app.deleteConfirm")}
+        destructive
+        onConfirm={() => confirmDetailAction(s.confirmDelete)}
+      />
     </div>
   );
 }

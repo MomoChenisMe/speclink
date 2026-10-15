@@ -12,6 +12,8 @@
 
 結構化新輪次 SHALL 同時含 `**Phase**: discovery|validation` 與 `**Patch**: sha256:<64 lowercase hex>`；兩欄只出現其一、phase token 無效或 hash 格式無效時 SHALL 非零拒絕且工單零寫入。工單首個結構化 round SHALL 為 discovery；已有結構化 round 後追加者 SHALL 為 validation。既有兩欄皆缺席的 legacy round SHALL 保持可建立、追加與解析；legacy ticket 後 SHALL 能追加 validation round。
 
+輪次內容 SHALL 接受選填的套用規則記錄：至多一行 `**Rules**: extend|replace`（token 區分大小寫），以及零或多行 `**Rule**: <severity> <規則原文>`（severity ∈ CRITICAL／WARNING／SUGGESTION，其後至少一個空白與非空的規則原文；原文去頭尾空白後保存）。`**Rule**:` 行 SHALL 只出現在同輪帶 `**Rules**:` 的輪；帶 `**Rules**:` 的輪 SHALL 為 `**Phase**: discovery` 的結構化輪。違反任一條時 SHALL 非零拒絕、stderr 點名問題且工單零寫入；remote 模式由 server 以同一文法檢查，拒絕時回 `invalid_argument`（HTTP 400），CLI 非零退出，離線與認證失效時的行為與既有 add-round 相同。這兩種行皆為選填：不帶它們的輪次（含 legacy round）SHALL 照舊可建立、追加與解析。審查站與驗證站共用同一文法。
+
 工單 SHALL 為 append-only：既有輪次不因追加而改寫。工單檔 SHALL NOT 註冊進 workflow schema，speclink status／validate 輸出 SHALL 不因工單存在而改變。
 
 #### Scenario: 首輪建立 structured discovery 工單
@@ -49,46 +51,45 @@
 - **WHEN** stdin 不含 `**Scope**:` 行
 - **THEN** exit code 非零，stderr 說明格式要求，工單不變
 
+#### Scenario: 首輪記錄套用規則
+
+- **WHEN** 對無工單的 change 執行 review add-round，stdin 依序含 Phase=discovery、合法 Patch、`**Rules**: extend`、`**Rule**: CRITICAL 所有 SQL 一律用參數化查詢，不得用字串拼接`、`**Rule**: WARNING 新增的公開 API 要有對應的測試`、Scope 與 findings
+- **THEN** exit code 0，`review.md` 的 `## Round 1` 逐字含這三行規則記錄，review show --json 的 rounds[0].rules 為 `{"baseline":"extend","critical":["所有 SQL 一律用參數化查詢，不得用字串拼接"],"warning":["新增的公開 API 要有對應的測試"],"suggestion":[]}`
+
+#### Scenario: 規則記錄格式錯誤被拒絕
+
+- **WHEN** discovery 輪的 stdin 帶格式錯誤的規則記錄
+- **THEN** exit code 非零，stderr 點名該行的問題，工單零寫入（已存在者位元級不變）
+
+##### Example: 拒絕的規則記錄
+
+| stdin 中的規則記錄 | stderr 說明 |
+| ------------------ | ----------- |
+| `**Rules**: Extend` | baseline 只接受 extend 或 replace |
+| `**Rules**: extend` 出現兩行 | 一輪只能有一行 `**Rules**:` |
+| 只有 `**Rule**: WARNING 要有測試`，沒有 `**Rules**:` | `**Rule**:` 需要同輪的 `**Rules**:` |
+| `**Rules**: extend` 與 `**Rule**: NOTE 要有測試` | severity 只接受 CRITICAL、WARNING、SUGGESTION |
+| `**Rules**: replace` 與 `**Rule**: CRITICAL` | `**Rule**:` 缺少規則原文 |
+
+#### Scenario: 規則記錄只能出現在 discovery 輪
+
+- **WHEN** 工單已有 structured discovery Round 1，追加的 Phase=validation 輪帶 `**Rules**: extend`；或 stdin 為不含 Phase／Patch 的 legacy 內容卻帶 `**Rules**: extend`
+- **THEN** exit code 非零，stderr 說明規則記錄只能出現在 discovery 輪，工單位元級不變
+
 
 <!-- @trace
-source: converge-review-remediation-rounds
-updated: 2026-08-03
-code:
-  - AGENTS.md
-  - CLAUDE.md
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/it/remote_verb_parity.rs
-  - crates/speclink-cli/tests/it/review_verbs.rs
-  - crates/speclink-core/assets/skills/apply.md
-  - crates/speclink-core/assets/skills/review.md
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/review.rs
-  - crates/speclink-core/src/tasks.rs
-  - crates/speclink-core/src/workspace.rs
-  - crates/speclink-core/tests/golden/assets.lock
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-core/tests/golden/remote-claude.marker.md
-  - crates/speclink-core/tests/it/render_golden.rs
-  - crates/speclink-host/src/change_diff.rs
-  - crates/speclink-host/src/lib.rs
-  - crates/speclink-protocol/src/command.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/tests/it/typed_client.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/it/review_api.rs
+source: review-ticket-applied-rules
+updated: 2026-10-15T09:31:43+08:00
 -->
 
 ---
 ### Requirement: 審查工單的讀取
 
-系統 SHALL 提供 speclink review show <change> [--json]。人眼路徑 SHALL 將工單原文印至 stdout，`--no-color` 下不含 ANSI。`--json` payload SHALL 含 change:string、rounds:array、lastRound:object；rounds 每項 SHALL 含 index:number、phase:string|null、patchHash:string|null、scope:string[]、findings:array；findings 每項 SHALL 維持 severity:string、path:string、text:string。lastRound SHALL 與 rounds 末項同形。
+系統 SHALL 提供 speclink review show <change> [--json]。人眼路徑 SHALL 將工單原文印至 stdout，`--no-color` 下不含 ANSI。`--json` payload SHALL 含 change:string、rounds:array、lastRound:object；rounds 每項 SHALL 含 index:number、phase:string|null、patchHash:string|null、rules:object|null、scope:string[]、findings:array；findings 每項 SHALL 維持 severity:string、path:string、text:string。lastRound SHALL 與 rounds 末項同形。
 
-Local fs、remote CLI、typed client 與 server response SHALL 輸出相同 camelCase 欄位與 null 語意。phase／patchHash 是刻意的 additive shape change；既有欄位名稱、型別與 findings 順序 SHALL 維持。
+rules 非 null 時 SHALL 為 `{ baseline:string, critical:string[], warning:string[], suggestion:string[] }`：baseline 為該輪 `**Rules**:` 的 token（extend 或 replace），三個清單依嚴重度收錄該輪 `**Rule**:` 行的規則原文、保持出現順序，沒有對應行的清單為空陣列。該輪沒有 `**Rules**:` 行時（legacy round、驗證站技能寫的輪、複驗輪）rules SHALL 為 null。人眼路徑維持既有行為：原文照印，規則記錄行隨原文出現。
+
+Local fs、remote CLI、typed client 與 server response SHALL 輸出相同 camelCase 欄位與 null 語意。phase／patchHash 與 rules 是刻意的 additive shape change；既有欄位名稱、型別與 findings 順序 SHALL 維持。server 回傳的輪次沒有 rules 欄位時（舊 server），remote CLI SHALL 視為 null；server 回傳的 baseline 不是 extend 或 replace 時，remote CLI SHALL 非零退出，stderr 說明這支 CLI 比 server 的工單格式舊，SHALL NOT 靜默略過。
 
 #### Scenario: 讀取 structured 兩輪 JSON
 
@@ -110,38 +111,30 @@ Local fs、remote CLI、typed client 與 server response SHALL 輸出相同 came
 - **WHEN** 對無工單的 change 執行 review show
 - **THEN** exit code 非零，stderr 說明該 change 無審查工單
 
+#### Scenario: 讀取帶規則記錄的工單
+
+- **WHEN** 工單的 discovery Round 1 帶 `**Rules**: replace` 與一行 `**Rule**: SUGGESTION 偏好以提早返回取代深層巢狀`，validation Round 2 不帶規則記錄，執行 review show <change> --json
+- **THEN** rounds[0].rules 為 `{"baseline":"replace","critical":[],"warning":[],"suggestion":["偏好以提早返回取代深層巢狀"]}`，rounds[1].rules 與 lastRound.rules 為 null，其餘欄位與既有輸出相同
+
+#### Scenario: 沒有規則記錄的工單輸出 null
+
+- **WHEN** 工單只含不帶規則記錄的輪次（legacy 或 structured），分別經 review show --json 與 verify show --json 讀取
+- **THEN** 每輪都有 rules 鍵且值為 null
+
+#### Scenario: 舊 server 沒有 rules 欄位
+
+- **WHEN** remote CLI 執行 review show --json，server 回傳的輪次不含 rules 欄位
+- **THEN** exit code 0，CLI 輸出的每輪 rules 為 null
+
+#### Scenario: server 回傳不認得的 baseline
+
+- **WHEN** remote CLI 執行 review show --json，server 回傳某輪 rules.baseline 為 `strict`
+- **THEN** exit code 非零，stderr 說明這支 CLI 比 server 的工單格式舊，stdout 不輸出 JSON
+
 
 <!-- @trace
-source: converge-review-remediation-rounds
-updated: 2026-08-03
-code:
-  - AGENTS.md
-  - CLAUDE.md
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/it/remote_verb_parity.rs
-  - crates/speclink-cli/tests/it/review_verbs.rs
-  - crates/speclink-core/assets/skills/apply.md
-  - crates/speclink-core/assets/skills/review.md
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/review.rs
-  - crates/speclink-core/src/tasks.rs
-  - crates/speclink-core/src/workspace.rs
-  - crates/speclink-core/tests/golden/assets.lock
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-core/tests/golden/remote-claude.marker.md
-  - crates/speclink-core/tests/it/render_golden.rs
-  - crates/speclink-host/src/change_diff.rs
-  - crates/speclink-host/src/lib.rs
-  - crates/speclink-protocol/src/command.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/tests/it/typed_client.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/it/review_api.rs
+source: review-ticket-applied-rules
+updated: 2026-10-15T09:31:43+08:00
 -->
 
 ---
@@ -584,4 +577,55 @@ code:
   - packages/ui/src/components/reviewStyle.tsx
   - packages/ui/src/i18n.tsx
   - packages/ui/src/index.ts
+-->
+
+---
+### Requirement: finding 路徑落在工單範圍內
+
+`speclink review add-round <change> --stdin` SHALL 在寫入之前檢查本輪每一條 finding 的路徑。這項檢查排在既有的 change 存在檢查與輪次序列檢查之前：同一份輸入同時違反多項時，先回報路徑違規；格式錯誤照舊回報同一則錯誤。規則如下：
+
+- 路徑在最後一個冒號之後只剩行號寫法（例如 `src/a.rs:42`、`src/a.rs:42-50`、`src/a.rs:42-`、`src/a.rs:L42`），或以單獨的冒號結尾時 SHALL 拒絕。
+- 路徑（`\` 正規化為 `/` 後）不在「工單既有各輪 `**Scope**:` 的聯集，加上本輪 `**Scope**:`」之內時 SHALL 拒絕。此聯集與蓋章指紋範圍採同一定義。路徑位於規格目錄（預設 `openspec/`）或 `.speclink/` 之下時 SHALL 免除這一項——這類路徑本來就不進驗證 patch，複驗的範圍解析會略過它們。
+- 與工單上一輪某條 finding 的 severity、路徑與描述完全相同的行（描述結尾的 `(accepted)` 標記不計），視為沿用的未解項，SHALL NOT 受上述兩項檢查。
+
+違規時 SHALL 以非零 exit code 結束、stderr 逐一列出違規的路徑與原因，`review.md` SHALL 零寫入、位元級不變。合法內容的成功行為與 stdout SHALL 維持既有輸出不變。remote 模式下 CLI SHALL 以同一套規則先讀取工單再檢查，違規時於送出前非零結束、stderr 帶違規路徑，server 端工單零寫入；離線、認證失效與 revision 衝突沿用既有 remote 動詞行為。
+
+#### Scenario: 帶行號的路徑被拒
+
+- **WHEN** 對已有 Round 1（Scope 含 `src/a.rs`）的工單追加 validation 輪，新 finding 寫成 `- [WARNING] src/a.rs:42 — Correctness: 邊界未處理`
+- **THEN** exit code 非零，stderr 點名 `src/a.rs:42` 帶有行號，`review.md` 位元級不變
+
+#### Scenario: 範圍外的路徑被拒
+
+- **WHEN** 本輪 Scope 為 `src/a.rs`、既有各輪 Scope 也不含 `src/caller.rs`，新 finding 的路徑為 `src/caller.rs`
+- **THEN** exit code 非零，stderr 點名 `src/caller.rs` 不在工單範圍內，`review.md` 位元級不變
+
+#### Scenario: 早輪 Scope 內的路徑可接受
+
+- **WHEN** Round 1 的 Scope 含 `src/b.rs`，Round 2 驗證 patch 只改 `src/a.rs`，Round 2 寫入一條路徑為 `src/b.rs` 的新 finding
+- **THEN** exit code 0，`review.md` 新增 `## Round 2`
+
+#### Scenario: 規格目錄下的路徑免除範圍檢查
+
+- **WHEN** Scope 只含 `src/a.rs`，新 finding 的路徑為 `openspec/changes/demo/design.md`
+- **THEN** exit code 0，該 finding 照原文寫入
+
+#### Scenario: 沿用的未解項不受檢查
+
+- **WHEN** 舊工單 Round 1 已有 `- [WARNING] src/a.rs:12 — Correctness: x`，Round 2 原文沿用該行
+- **THEN** exit code 0，該行照原文寫入 Round 2，不因帶行號被拒
+
+#### Scenario: 反斜線路徑正規化後比對
+
+- **WHEN** Scope 含 `src/a.rs`，新 finding 的路徑寫成 `src\a.rs`
+- **THEN** 路徑正規化為 `src/a.rs` 後落在範圍內，exit code 0
+
+#### Scenario: remote 模式同樣拒絕
+
+- **WHEN** remote 模式下對工單追加一條範圍外路徑的 finding
+- **THEN** CLI 非零結束、stderr 帶該路徑，不送出寫入，server 端工單零寫入
+
+<!-- @trace
+source: quality-gate-speedup
+updated: 2026-10-14T21:31:03+08:00
 -->

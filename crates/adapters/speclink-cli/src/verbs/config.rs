@@ -5,7 +5,7 @@
 //! both modes normalize identically.
 
 use anyhow::{bail, Result};
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use speclink_core as core;
 use std::path::PathBuf;
 
@@ -72,7 +72,7 @@ pub(crate) struct WorkflowConfigArgs {
 }
 #[derive(Subcommand)]
 enum WorkflowConfigCommands {
-    /// Show the canonical workflow config (policy fields, context, rules)
+    /// Show the canonical workflow config (policy fields, context, rules, review)
     Show {
         /// Output as JSON
         #[arg(long)]
@@ -115,6 +115,67 @@ enum WorkflowConfigCommands {
         #[arg(long = "dry-run")]
         dry_run: bool,
     },
+    /// Edit the project review rules the review station's Standards axis applies
+    #[command(subcommand_value_name = REVIEW_COMMANDS.as_str())]
+    Review {
+        #[command(subcommand)]
+        command: ReviewCommands,
+    },
+}
+#[derive(Subcommand)]
+enum ReviewCommands {
+    /// Replace the CRITICAL rule list from stdin (empty input removes it)
+    Critical(ReviewListArgs),
+    /// Replace the WARNING rule list from stdin (empty input removes it)
+    Warning(ReviewListArgs),
+    /// Replace the SUGGESTION rule list from stdin (empty input removes it)
+    Suggestion(ReviewListArgs),
+    /// Set whether the built-in smell baseline applies (extend is the default)
+    Baseline {
+        /// extend: the baseline plus project rules; replace: project rules only
+        #[arg(value_enum)]
+        mode: BaselineMode,
+        /// Print the unified diff instead of writing
+        #[arg(long = "dry-run")]
+        dry_run: bool,
+    },
+}
+#[derive(Args)]
+struct ReviewListArgs {
+    /// Read the rules from stdin (one per line)
+    #[arg(long)]
+    stdin: bool,
+    /// Print the unified diff instead of writing
+    #[arg(long = "dry-run")]
+    dry_run: bool,
+}
+#[derive(Clone, Copy, ValueEnum)]
+enum BaselineMode {
+    Extend,
+    Replace,
+}
+/// The three severity-grouped rule lists of the `review` block.
+#[derive(Clone, Copy)]
+enum ReviewList {
+    Critical,
+    Warning,
+    Suggestion,
+}
+impl ReviewList {
+    fn key(self) -> &'static str {
+        match self {
+            ReviewList::Critical => "critical",
+            ReviewList::Warning => "warning",
+            ReviewList::Suggestion => "suggestion",
+        }
+    }
+    fn entries(self, review: &mut core::config::ReviewConfig) -> &mut Vec<String> {
+        match self {
+            ReviewList::Critical => &mut review.critical,
+            ReviewList::Warning => &mut review.warning,
+            ReviewList::Suggestion => &mut review.suggestion,
+        }
+    }
 }
 fn global_config_path() -> PathBuf {
     speclink_host::context::global_config_dir().join("config.yaml")
@@ -223,6 +284,16 @@ const POLICY_KEYS: [&str; 5] = ["locale", "spec_locale", "tdd", "audit", "worktr
 /// same way `main.rs` builds `version` from a `LazyLock<String>`.
 static SET_ABOUT: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| format!("Set a policy field: {}", POLICY_KEYS.join(", ")));
+/// `review`'s usage placeholder: clap's unknown-subcommand error prints only the
+/// usage line, so the legal names must live there — grown from the subcommand
+/// definitions, so the usage can never name a different set.
+static REVIEW_COMMANDS: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    ReviewCommands::augment_subcommands(clap::Command::new("review"))
+        .get_subcommands()
+        .map(|c| c.get_name().to_string())
+        .collect::<Vec<_>>()
+        .join("|")
+});
 /// `workflow-config show --json` payload. camelCase field names are the contract;
 /// the values are CANONICAL (what the document says), never the three-layer
 /// resolution — effective policy is the instructions payload's job.
@@ -236,6 +307,7 @@ struct WorkflowConfigJson {
     worktree: bool,
     context: Option<String>,
     rules: std::collections::BTreeMap<String, Vec<String>>,
+    review: core::config::ReviewConfig,
 }
 /// A write subcommand once argv and stdin are resolved — the shape both the fs
 /// and the remote branch hand to the shared rewrite.
@@ -243,6 +315,8 @@ enum WorkflowConfigWrite {
     Policy { key: String, value: String },
     Context(String),
     Rules { artifact: String, body: String },
+    ReviewList { list: ReviewList, body: String },
+    ReviewBaseline(core::config::ReviewBaseline),
 }
 /// The rewrite a write subcommand produces: the complete new document plus the
 /// line printed on a successful write.
@@ -291,6 +365,7 @@ fn workflow_config_fs(plan: WorkflowConfigPlan) -> Result<()> {
     core::util::write_file(&path, &edit.new_text)
         .map_err(|e| anyhow::anyhow!("{label}: write failed: {e}"))?;
     println!("{} {}", color::green("✓"), edit.summary);
+    warn_if_review_skills_stale(&ws.root, &write);
     if worktree_target.is_some() {
         let outcome = core::init::update(&ws.root, false).map_err(|e| {
             anyhow::anyhow!("{label} written, but the skill footprint did not sync: {e} — fix the cause above, then re-run `speclink update` to rebuild it")
@@ -302,6 +377,34 @@ fn workflow_config_fs(plan: WorkflowConfigPlan) -> Result<()> {
         );
     }
     Ok(())
+}
+/// Review rules reach the review station only through its skill file (every
+/// other field is injected by the CLI), so after a review write the local skill
+/// files are probed and a stale tool earns a stderr hint. No hint when the
+/// workspace is newer (update would downgrade) or the probe cannot tell; a tool
+/// whose skills are missing altogether is not stale.
+fn warn_if_review_skills_stale(root: &std::path::Path, write: &WorkflowConfigWrite) {
+    if !matches!(write, WorkflowConfigWrite::ReviewList { .. } | WorkflowConfigWrite::ReviewBaseline(_)) {
+        return;
+    }
+    let probe = core::init::probe_assets(root);
+    if matches!(probe.status, core::init::AssetStatus::Newer | core::init::AssetStatus::Unknown) {
+        return;
+    }
+    let stale: Vec<String> = probe
+        .tools
+        .iter()
+        .filter(|t| t.stale)
+        .map(|t| format!("{} {}", t.tool, t.workspace_version.as_deref().unwrap_or_default()))
+        .collect();
+    if stale.is_empty() {
+        return;
+    }
+    eprintln!(
+        "speclink: warning: skill files are older than this engine ({}; engine {}) — an older review skill may not apply these rules; run `speclink update`",
+        stale.join(", "),
+        probe.current_version
+    );
 }
 /// The `worktree` value a write is steering towards, or None when the write does
 /// not touch that key — the trigger for both the teardown check and the sync.
@@ -354,7 +457,25 @@ fn workflow_config_write(
                 *dry_run,
             ))
         }
+        WorkflowConfigCommands::Review { command } => Some(review_write(command)?),
     })
+}
+/// `review <list> --stdin` and `review baseline <mode>` resolved into a write.
+fn review_write(cmd: &ReviewCommands) -> Result<(WorkflowConfigWrite, bool)> {
+    let (list, args) = match cmd {
+        ReviewCommands::Critical(args) => (ReviewList::Critical, args),
+        ReviewCommands::Warning(args) => (ReviewList::Warning, args),
+        ReviewCommands::Suggestion(args) => (ReviewList::Suggestion, args),
+        ReviewCommands::Baseline { mode, dry_run } => {
+            let baseline = match mode {
+                BaselineMode::Extend => core::config::ReviewBaseline::Extend,
+                BaselineMode::Replace => core::config::ReviewBaseline::Replace,
+            };
+            return Ok((WorkflowConfigWrite::ReviewBaseline(baseline), *dry_run));
+        }
+    };
+    require_stdin_flag(args.stdin, &format!("review {} --stdin", list.key()))?;
+    Ok((WorkflowConfigWrite::ReviewList { list, body: read_stdin() }, args.dry_run))
 }
 /// Content-taking subcommands require the flag explicitly: without it the
 /// command would silently write an empty document from an interactive terminal.
@@ -377,6 +498,7 @@ fn print_workflow_config(original: &str, label: &str, json: bool) -> Result<()> 
             worktree: cfg.worktree.unwrap_or(false),
             context: cfg.context_text(),
             rules: cfg.rules.clone(),
+            review: cfg.review(),
         });
     }
     println!("{} {label}", color::bold("Workflow config:"));
@@ -407,6 +529,19 @@ fn print_workflow_config(original: &str, label: &str, json: bool) -> Result<()> 
         .collect();
     let rules = if rules.is_empty() { "none".to_string() } else { rules.join(", ") };
     println!("  {:<13}{rules}", "rules");
+    let review = cfg.review();
+    let review = if review == core::config::ReviewConfig::default() {
+        "none".to_string()
+    } else {
+        format!(
+            "{}, critical {}, warning {}, suggestion {}",
+            review.baseline.as_str(),
+            review.critical.len(),
+            review.warning.len(),
+            review.suggestion.len()
+        )
+    };
+    println!("  {:<13}{review}", "review");
     Ok(())
 }
 
@@ -452,6 +587,8 @@ fn plan_workflow_config_edit(
     };
     let mut context = core::config::ContextEdit::Keep;
     let mut rules: Option<Vec<(String, Vec<String>)>> = None;
+    // review is handed over whole: the current block with only the edited key moved.
+    let mut review: Option<core::config::ReviewConfig> = None;
     let summary = match write {
         WorkflowConfigWrite::Policy { key, value } => {
             set_policy_field(&mut fields, key, value)?;
@@ -478,23 +615,48 @@ fn plan_workflow_config_edit(
                     artifacts.join(", ")
                 );
             }
-            let entries: Vec<String> = body
-                .lines()
-                .map(|line| line.trim().to_string())
-                .filter(|line| !line.is_empty())
-                .collect();
-            let summary = if entries.is_empty() {
-                format!("rules.{artifact} removed")
-            } else {
-                format!("rules.{artifact} = {} entries", entries.len())
-            };
+            let entries = stdin_entries(body);
+            let summary = list_summary(&format!("rules.{artifact}"), entries.len());
             rules = Some(merged_rules(&current.rules, &artifacts, artifact, entries));
             summary
         }
+        WorkflowConfigWrite::ReviewList { list, body } => {
+            let entries = stdin_entries(body);
+            let summary = list_summary(&format!("review.{}", list.key()), entries.len());
+            let mut target = current.review();
+            *list.entries(&mut target) = entries;
+            review = Some(target);
+            summary
+        }
+        WorkflowConfigWrite::ReviewBaseline(baseline) => {
+            let mut target = current.review();
+            target.baseline = *baseline;
+            review = Some(target);
+            let default = if *baseline == core::config::ReviewBaseline::default() { " (default)" } else { "" };
+            format!("review.baseline = {}{default}", baseline.as_str())
+        }
     };
-    let new_text =
-        core::config::update_workflow_config_text(original, &fields, &context, rules.as_deref())?;
+    let new_text = core::config::update_workflow_config_text(
+        original,
+        &fields,
+        &core::config::ContentEdit { context, rules: rules.as_deref(), review: review.as_ref() },
+    )?;
     Ok(WorkflowConfigEdit { new_text, summary })
+}
+/// stdin as list entries: one per line, trimmed, blank lines skipped.
+fn stdin_entries(body: &str) -> Vec<String> {
+    body.lines()
+        .map(|line| line.trim().to_string())
+        .filter(|line| !line.is_empty())
+        .collect()
+}
+/// The success line of a list write: an empty list removes its key.
+fn list_summary(key: &str, count: usize) -> String {
+    if count == 0 {
+        format!("{key} removed")
+    } else {
+        format!("{key} = {count} entries")
+    }
 }
 /// Map one `set <key> <value>` onto the complete-target-state fields. An empty
 /// locale value and `false` both mean "back to default" — the seam then removes
@@ -572,9 +734,9 @@ fn merged_rules(
     out
 }
 /// Unified diff over lines, generated here rather than shelled out to a system
-/// `diff` (Windows has none): the changed span between the common prefix and
-/// suffix, with up to three lines of context on each side. Empty when the two
-/// texts are identical.
+/// `diff` (Windows has none): one hunk over the changed span between the common
+/// prefix and suffix, with up to three lines of context on each side, and the
+/// span itself compared line by line. Empty when the two texts are identical.
 fn unified_diff(label: &str, old: &str, new: &str) -> String {
     if old == new {
         return String::new();
@@ -603,16 +765,41 @@ fn unified_diff(label: &str, old: &str, new: &str) -> String {
     for line in &o[start..pre] {
         out.push_str(&format!(" {line}\n"));
     }
-    for line in &o[pre..o.len() - suf] {
-        out.push_str(&format!("-{line}\n"));
-    }
-    for line in &n[pre..n.len() - suf] {
-        out.push_str(&format!("+{line}\n"));
-    }
+    push_changed_span(&mut out, &o[pre..o.len() - suf], &n[pre..n.len() - suf]);
     for line in &o[o.len() - suf..o_end] {
         out.push_str(&format!(" {line}\n"));
     }
     out
+}
+/// The changed span line by line, by longest common subsequence: lines both
+/// sides keep are context, the rest `-`/`+`, each run's removals before its
+/// additions. The table is |o|×|n| — negligible at config.yaml's size.
+fn push_changed_span(out: &mut String, o: &[&str], n: &[&str]) {
+    // lcs[i][j]: the common-subsequence length of o[i..] and n[j..].
+    let mut lcs = vec![vec![0usize; n.len() + 1]; o.len() + 1];
+    for i in (0..o.len()).rev() {
+        for j in (0..n.len()).rev() {
+            lcs[i][j] =
+                if o[i] == n[j] { lcs[i + 1][j + 1] + 1 } else { lcs[i + 1][j].max(lcs[i][j + 1]) };
+        }
+    }
+    let (mut i, mut j) = (0, 0);
+    let mut added = String::new();
+    while i < o.len() || j < n.len() {
+        if i < o.len() && j < n.len() && o[i] == n[j] {
+            out.push_str(&std::mem::take(&mut added));
+            out.push_str(&format!(" {}\n", o[i]));
+            i += 1;
+            j += 1;
+        } else if j == n.len() || (i < o.len() && lcs[i + 1][j] >= lcs[i][j + 1]) {
+            out.push_str(&format!("-{}\n", o[i]));
+            i += 1;
+        } else {
+            added.push_str(&format!("+{}\n", n[j]));
+            j += 1;
+        }
+    }
+    out.push_str(&added);
 }
 /// One side of a hunk header. An empty side is `0,0` by unified-diff convention
 /// (there is no line 1 to point at).
@@ -650,6 +837,8 @@ fn remote_workflow_config(
         .put_config(&edit.new_text, current.revision)
         .map_err(remote_config_write_error)?;
     println!("{} {}", color::green("✓"), edit.summary);
+    // 技能檔永遠在本機 checkout：remote 只把 config 存到 server。
+    warn_if_review_skills_stale(&ctx.ws.root, &write);
     Ok(())
 }
 /// The CAS refusal restated in this verb's own terms — the generic
@@ -686,4 +875,77 @@ pub(crate) fn cmd_workflow_config(a: WorkflowConfigArgs) -> Result<()> {
         }
         remote_workflow_config(ctx, p.write, p.json)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The hunk body of a diff: every line after the `@@` header.
+    fn hunk_body(diff: &str) -> Vec<&str> {
+        diff.lines().skip_while(|l| !l.starts_with("@@")).skip(1).collect()
+    }
+
+    /// The `(old, new)` line counts the `@@ -a,b +c,d @@` header declares.
+    fn header_counts(diff: &str) -> (usize, usize) {
+        let header = diff.lines().find(|l| l.starts_with("@@")).expect("hunk header");
+        let count = |side: &str| side.split(',').nth(1).unwrap().parse::<usize>().unwrap();
+        let mut sides = header.trim_matches('@').split_whitespace();
+        (count(sides.next().unwrap()), count(sides.next().unwrap()))
+    }
+
+    #[test]
+    fn unified_diff_is_empty_for_identical_text() {
+        assert_eq!(unified_diff("f", "a\nb\n", "a\nb\n"), "");
+    }
+
+    #[test]
+    fn unified_diff_of_one_contiguous_change_is_unchanged() {
+        // 只有單一連續改動時，中段沒有共同行——輸出與改版前位元級相同。
+        let old = "a\nb\nc\nd\ne\nf\ng\nh\n";
+        let new = "a\nb\nc\nd\nX\nY\nf\ng\nh\n";
+        assert_eq!(
+            unified_diff("f", old, new),
+            "--- a/f\n+++ b/f\n@@ -2,7 +2,8 @@\n b\n c\n d\n-e\n+X\n+Y\n f\n g\n h\n"
+        );
+    }
+
+    #[test]
+    fn unified_diff_shows_lines_between_two_changes_as_context() {
+        // 兩處改動夾著未改行：中間行只以 context 出現，同一位置的 `-` 先於 `+`。
+        let old = "rules:\n  tasks:\n  - 甲\n  - 乙\n  - 丙\n";
+        let new = "rules:\n  tasks:\n  - 甲二\n  - 乙\n  - 丙\n  - 丁\n";
+        assert_eq!(
+            hunk_body(&unified_diff("f", old, new)),
+            [" rules:", "   tasks:", "-  - 甲", "+  - 甲二", "   - 乙", "   - 丙", "+  - 丁"]
+        );
+    }
+
+    #[test]
+    fn unified_diff_lists_removals_before_additions_at_each_position() {
+        let old = "k\nx1\nx2\nm\ny\n";
+        let new = "k\np1\nm\nq1\nq2\n";
+        assert_eq!(
+            hunk_body(&unified_diff("f", old, new)),
+            [" k", "-x1", "-x2", "+p1", " m", "-y", "+q1", "+q2"]
+        );
+    }
+
+    #[test]
+    fn unified_diff_header_counts_match_the_hunk_body() {
+        let cases = [
+            ("a\nb\nc\n", "a\nB\nc\nd\n"),
+            ("1\n2\n3\n4\n5\n6\n7\n8\n9\n", "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n"),
+            ("k\nx1\nx2\nm\ny\n", "k\np1\nm\nq1\nq2\n"),
+            ("", "only\n"),
+            ("gone\n", ""),
+        ];
+        for (old, new) in cases {
+            let diff = unified_diff("f", old, new);
+            let body = hunk_body(&diff);
+            let old_side = body.iter().filter(|l| l.starts_with(' ') || l.starts_with('-')).count();
+            let new_side = body.iter().filter(|l| l.starts_with(' ') || l.starts_with('+')).count();
+            assert_eq!(header_counts(&diff), (old_side, new_side), "{diff}");
+        }
+    }
 }

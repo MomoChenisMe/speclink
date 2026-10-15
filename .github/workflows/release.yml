@@ -185,10 +185,11 @@ jobs:
       - uses: actions/checkout@v5
 
       # 版本閘門（fail-closed）：tag、tauri.conf.json、release-notes.json 頂端三者同版，
-      # 且 CHANGELOG.md 與 JSON 重算一致（release-notes spec「release 管線守門版號四處
-      # 同版與渲染一致」）。版號不齊即紅燈——否則 latest.json 宣告 tag 版、安裝檔與 app
-      # 自報版本停在舊版，形成每次啟動都勸誘安裝同一 build 的無盡更新迴圈（spec「描述檔
-      # 欄位對齊發布內容」）；更新日誌落後則 Release 說明與桌面彈窗都拿不到這版內容。
+      # 且 CHANGELOG.md、CHANGELOG.zh-TW.md 兩份都與 JSON 重算一致（release-notes spec
+      # 「release 管線守門版號四處同版與渲染一致」）。版號不齊即紅燈——否則 latest.json
+      # 宣告 tag 版、安裝檔與 app 自報版本停在舊版，形成每次啟動都勸誘安裝同一 build 的
+      # 無盡更新迴圈（spec「描述檔欄位對齊發布內容」）；更新日誌落後則 Release 說明與
+      # 桌面彈窗都拿不到這版內容。
       # 排在所有建置之前：十分鐘建置之後才紅燈是浪費。
       - name: Assert release version and changelog consistency
         shell: bash
@@ -205,7 +206,7 @@ jobs:
             exit 1
           fi
           if ! node scripts/release/release-notes-render.mjs --check; then
-            echo "::error::CHANGELOG.md 與 release-notes.json 重算結果不一致——執行 node scripts/release/release-notes-render.mjs --write 後重新提交"
+            echo "::error::CHANGELOG.md 或 CHANGELOG.zh-TW.md 與 release-notes.json 重算結果不一致（--check 兩份都比對，漂移的檔名與差異見上方輸出）——執行 node scripts/release/release-notes-render.mjs --write 後提交 CHANGELOG.md 與 CHANGELOG.zh-TW.md 兩份"
             exit 1
           fi
 
@@ -496,7 +497,8 @@ jobs:
           ls -l dist
 
       # 下載指南前置於 Release 說明（desktop-release spec「Release 說明含下載指南」；
-      # 設計 D7），其後接該版的更新日誌片段（release-notes.json 為真相）；
+      # 設計 D7）：英文指南與英文更新日誌片段在前，繁中指南與繁中片段收在「繁體中文」
+      # 的 <details> 區塊（release-notes.json 為真相）；
       # generate_release_notes 只剩最後的比較連結。notes.md 落在 workspace 根而非
       # dist/，不會被當成資產上傳。
       - name: Download guide (release notes header)

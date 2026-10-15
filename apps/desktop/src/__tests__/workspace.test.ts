@@ -58,7 +58,7 @@ function fakeSession(ds: SpeclinkDataSource, root: string, name: string): Worksp
   return {
     id: `local:${root}`,
     locator: { kind: "local", root },
-    descriptor: { name },
+    descriptor: { name, badge: null },
     dataSource: ds,
     settings: {
       kind: "local",
@@ -68,6 +68,7 @@ function fakeSession(ds: SpeclinkDataSource, root: string, name: string): Worksp
       writeWorkflowConfig: vi.fn(),
       writeWorkflowContext: vi.fn(),
       writeWorkflowRules: vi.fn(),
+      writeWorkflowReview: vi.fn(),
       readSchemas: vi.fn(),
       writeWorkflowSchema: vi.fn(),
       forkSchema: vi.fn(),
@@ -424,7 +425,7 @@ describe("分頁列（spec 需求「專案分頁列存於 app 本機」）", () 
     expect(ws.openProject).toHaveBeenCalledTimes(1);
   });
 
-  it("失效分頁：點擊轉錯誤態、顯示錯誤、可自分頁移除且不切換（spec Scenario）", async () => {
+  it("失效分頁：點擊轉錯誤態、顯示錯誤、可自專案列移除且不切換（spec Scenario）", async () => {
     const ws = fakeWorkspace({
       openProject: vi.fn().mockRejectedValue("cannot open 'B': not an existing directory"),
     });
@@ -437,7 +438,7 @@ describe("分頁列（spec 需求「專案分頁列存於 app 本機」）", () 
     const s = store.getState();
     expect(s.activeKey).toBe("local:A");
     expect(s.tabErrors["local:B"]).toContain("not an existing directory");
-    // 自分頁移除後持久化清單同步消失。
+    // 自專案列移除後持久化清單同步消失。
     store.getState().closeTab("local:B");
     expect(keys(store.getState().tabs)).toEqual(["local:A"]);
     expect(store.getState().tabErrors["local:B"]).toBeUndefined();

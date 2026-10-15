@@ -1,0 +1,248 @@
+{
+  "version": 2,
+  "change": "clickable-cursor-hover-rule",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 新增游標守門測試 packages/ui/src/__tests__/cursorRule.test.ts（D6 游標守門測試，`// @vitest-environment node`，沿用 sourceScan 的 `scanSources`）：掃描 packages/ui/src/components、apps/desktop/src、apps/server-web/src 的 `.ts`／`.tsx`，出現整字 `cursor-pointer` 或 `cursor-not-allowed`（含 `disabled:`、`peer-disabled:` 前綴）即失敗並列出全部違規檔的 repo 相對路徑；另三條斷言分別檢查 packages/ui/src/theme.css 含 `--cursor-interaction: pointer` 與 `@layer base` 全域規則（選擇器含 `button:not(:disabled)` 與 `[role=\"button\"]`、宣告 `cursor: var(--cursor-interaction)`）、apps/desktop/src/index.css 含 `--cursor-interaction: default`、apps/server-web/src/index.css 不含 `--cursor-interaction`，每條失敗訊息指出缺的是哪一項。對應 spec desktop-app「可點元素的游標與 hover 回饋」的守門 scenario。驗證：`npm test -w packages/ui -- cursorRule` 失敗，訊息列出現有違規檔並報四項設定皆缺（預期紅燈）。",
+      "files": [
+        "packages/ui/src/__tests__/cursorRule.test.ts"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 更新既有斷言為變數游標：packages/ui/src/__tests__/listRow.test.tsx、taskList.test.tsx、deltaSpecView.test.tsx、specDetailPage.test.tsx、ticketView.test.tsx、roundsDoc.test.tsx、designDoc.test.tsx 中檢查 `cursor-pointer` 的斷言改為檢查 `cursor-(--cursor-interaction)`；packages/ui/src/__tests__/ui.test.tsx 新增斷言：下拉選單項目共用 class（menuItemClass）與 SelectItem 渲染出的選項含 `cursor-(--cursor-interaction)`、不含 `cursor-default`，下拉選單捲動鈕仍為 `cursor-default`（D5 選單項與下拉選項取用變數）。驗證：`npm test -w packages/ui -- listRow taskList deltaSpecView specDetailPage ticketView roundsDoc designDoc ui` 中上述斷言失敗（預期紅燈），其餘斷言照舊通過。",
+      "files": [
+        "packages/ui/src/__tests__/deltaSpecView.test.tsx",
+        "packages/ui/src/__tests__/designDoc.test.tsx",
+        "packages/ui/src/__tests__/listRow.test.tsx",
+        "packages/ui/src/__tests__/roundsDoc.test.tsx",
+        "packages/ui/src/__tests__/specDetailPage.test.tsx",
+        "packages/ui/src/__tests__/taskList.test.tsx",
+        "packages/ui/src/__tests__/ticketView.test.tsx",
+        "packages/ui/src/__tests__/ui.test.tsx"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 開啟專案畫面停用態斷言：apps/desktop/src/__tests__/workspaceChooser.test.tsx 新增停用的選擇卡（ChoiceCard）與單選列（RadioRow）的 class 不含任何 `hover:`、含 `cursor-default`；apps/desktop/src/__tests__/recentList.test.tsx 新增開啟進行中（busy）時列外層不含 `hover:` 底色、列按鈕停用游標為 `disabled:cursor-default`（D4 停用與唯讀為箭頭且無 hover）。驗證：`npm test -w apps/desktop -- workspaceChooser recentList` 中新斷言失敗（預期紅燈）。",
+      "files": [
+        "apps/desktop/src/__tests__/recentList.test.tsx",
+        "apps/desktop/src/__tests__/workspaceChooser.test.tsx"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 實作 D1 游標變數集中設定與 D2 全域規則套用原生按鈕與 role=\"button\"：packages/ui/src/theme.css 的 `:root` token 區新增 `--cursor-interaction: pointer;`，並新增 `@layer base` 規則讓 `button:not(:disabled):not([aria-disabled=\"true\"])` 與 `[role=\"button\"]:not([aria-disabled=\"true\"])` 取 `cursor: var(--cursor-interaction)`；apps/desktop/src/index.css 在匯入 theme.css 之後宣告 `:root { --cursor-interaction: default; }`（主視窗與系統匣面板共用此檔）；apps/server-web/src/index.css 不動。行為：網頁後台的可用按鈕顯示手指、桌面為箭頭，停用元素不命中規則。驗證：`npm test -w packages/ui -- cursorRule` 的三條設定斷言轉綠；`npm run build -w apps/desktop` 與 `npm run build -w apps/server-web` 成功，且兩份建置出的 CSS 都含 `cursor:var(--cursor-interaction)`、只有 desktop 的含 `--cursor-interaction:default`。",
+      "files": [
+        "apps/desktop/src/index.css",
+        "packages/ui/src/theme.css"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 實作 D3 非按鈕的可點元素取用變數 class：把下列位置的 `cursor-pointer` 一律換成 `cursor-(--cursor-interaction)`（名稱籤容器的任意變體換成 `[&_.name-chip]:cursor-(--cursor-interaction)`）——packages/ui/src/components 的設計決策卡頭（DesignDoc.tsx）、手冊頁出處籤（ManualPage.tsx）、背景內文名稱籤容器（ContextDoc.tsx）、任務列 label 可寫時（TaskList.tsx）、共用清單列（ListRow.tsx）、看板討論卡與收合討論列（DiscussionColumn.tsx）、討論過程輪次卡頭（RoundsDoc.tsx）、看板變更卡（ChangeCard.tsx）、規格頁溯源關聯兩顆籤（SpecDetailPage.tsx）、工單輪卡頭（TicketView.tsx）、需求收合列兩處（RequirementBlock.tsx）、開關原語（components/ui/switch.tsx）；apps/desktop/src/components/RemoteWorkspaceRecovery.tsx 的技術細節鈕；apps/server-web/src/components/DataList.tsx 的可選取卡片與表格列、apps/server-web/src/pages/admin/RegistryPage.tsx 的可選取卡片。行為：上述元素在網頁為手指、在桌面為箭頭，hover 底色不變。驗證：`npm test -w packages/ui -- cursorRule listRow taskList deltaSpecView specDetailPage ticketView roundsDoc designDoc` 中 `cursor-pointer` 違規清單清空、1.2 的變數斷言轉綠；`npm test -w apps/server-web` 全綠。",
+      "files": [
+        "apps/desktop/src/components/RemoteWorkspaceRecovery.tsx",
+        "apps/server-web/src/components/DataList.tsx",
+        "apps/server-web/src/pages/admin/RegistryPage.tsx",
+        "packages/ui/src/components/ChangeCard.tsx",
+        "packages/ui/src/components/ContextDoc.tsx",
+        "packages/ui/src/components/DesignDoc.tsx",
+        "packages/ui/src/components/DiscussionColumn.tsx",
+        "packages/ui/src/components/ListRow.tsx",
+        "packages/ui/src/components/ManualPage.tsx",
+        "packages/ui/src/components/RequirementBlock.tsx",
+        "packages/ui/src/components/RoundsDoc.tsx",
+        "packages/ui/src/components/SpecDetailPage.tsx",
+        "packages/ui/src/components/TaskList.tsx",
+        "packages/ui/src/components/TicketView.tsx",
+        "packages/ui/src/components/ui/switch.tsx"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.2 實作 D5 選單項與下拉選項取用變數：packages/ui/src/components/ui/dropdown-menu.tsx 的 menuItemClass 與 packages/ui/src/components/ui/select.tsx 的 SelectItem 由 `cursor-default` 改為 `cursor-(--cursor-interaction)`；select 的上下捲動鈕維持 `cursor-default`。行為：網頁的選單項與下拉選項為手指、桌面為箭頭。驗證：`npm test -w packages/ui -- ui` 中 1.2 新增的選單斷言轉綠。",
+      "files": [
+        "packages/ui/src/components/ui/dropdown-menu.tsx",
+        "packages/ui/src/components/ui/select.tsx"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.1 實作 D4 元件庫原語的停用游標：packages/ui/src/components/ui 的 checkbox.tsx、input.tsx、textarea.tsx、select.tsx（觸發鈕）、switch.tsx 的 `disabled:cursor-not-allowed` 改為 `disabled:cursor-default`，label.tsx 的 `peer-disabled:cursor-not-allowed` 改為 `peer-disabled:cursor-default`。行為：停用的勾選框、輸入框、下拉、開關與其標籤顯示箭頭而非禁止游標。驗證：`npm test -w packages/ui -- cursorRule ui` 中元件庫原語的 `cursor-not-allowed` 違規清空、既有原語斷言照舊通過。",
+      "files": [
+        "packages/ui/src/components/ui/checkbox.tsx",
+        "packages/ui/src/components/ui/input.tsx",
+        "packages/ui/src/components/ui/label.tsx",
+        "packages/ui/src/components/ui/textarea.tsx"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.2 實作 D4 開啟專案畫面的停用態：apps/desktop/src/components/WorkspaceChooser.tsx 的選擇卡（ChoiceCard）與單選列（RadioRow）停用時改 `cursor-default`，hover 底色與框線只在未停用時套用；apps/desktop/src/components/RecentList.tsx 的列外層在 `busy` 時不套 hover 底色，列按鈕的 `disabled:cursor-not-allowed` 改 `disabled:cursor-default`。行為：停用的選擇卡、單選列與最近開啟列為箭頭且無 hover 底色。驗證：`npm test -w apps/desktop -- workspaceChooser recentList` 中 1.3 的斷言轉綠；`npm test -w packages/ui -- cursorRule` 全綠（違規清單清空）。",
+      "files": [
+        "apps/desktop/src/components/RecentList.tsx",
+        "apps/desktop/src/components/WorkspaceChooser.tsx"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.2 實作 D4 開啟專案畫面的停用態：apps/desktop/src/components/WorkspaceChooser.tsx 的選擇卡（ChoiceCard）與單選列（RadioRow）停用時改 `cursor-default`，hover 底色與框線只在未停用時套用；apps/desktop/src/components/RecentList.tsx 的列外層在 `busy` 時不套 hover 底色，列按鈕的 `disabled:cursor-not-allowed` 改 `disabled:cursor-default`；apps/desktop/src/components/RemoteConflictDialog.tsx 的三張選擇卡（繼續本機、以 server 為準、遷移本機內容）hover 底色與框線只在未處理中（`busy`）時套用，並於 apps/desktop/src/__tests__/workspaceChooser.test.tsx 補斷言：處理中三張卡停用且 class 不含任何 `hover:`。行為：停用的選擇卡、單選列、最近開啟列與衝突對話框選擇卡為箭頭且無 hover 底色。驗證：`npm test -w apps/desktop -- workspaceChooser recentList` 中 1.3 與衝突對話框的斷言轉綠；`npm test -w packages/ui -- cursorRule` 全綠（違規清單清空）。",
+      "files": [
+        "apps/desktop/src/components/RemoteConflictDialog.tsx"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.2 收尾守門：`npm test -w packages/ui`、`npm test -w apps/desktop`、`npm test -w apps/server-web` 全綠；`npm run build -w apps/desktop` 與 `npm run build -w apps/server-web` 成功；`speclink validate clickable-cursor-hover-rule` 通過；最後跑 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。",
+      "files": [
+        "apps/desktop/src/__tests__/remoteWorkspaceRecovery.test.tsx",
+        "packages/ui/src/__tests__/markdownCode.test.tsx",
+        "packages/ui/src/components/Markdown.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4SD0NFX9VF4YHPNNE17CYFV",
+      "taskDesc": "1.1 新增游標守門測試 packages/ui/src/__tests__/cursorRule.test.ts（D6 游標守門測試，`// @vitest-environment node`，沿用 sourceScan 的 `scanSources`）：掃描 packages/ui/src/components、apps/desktop/src、apps/server-web/src 的 `.ts`／`.tsx`，出現整字 `cursor-pointer` 或 `cursor-not-allowed`（含 `disabled:`、`peer-disabled:` 前綴）即失敗並列出全部違規檔的 repo 相對路徑；另三條斷言分別檢查 packages/ui/src/theme.css 含 `--cursor-interaction: pointer` 與 `@layer base` 全域規則（選擇器含 `button:not(:disabled)` 與 `[role=\"button\"]`、宣告 `cursor: var(--cursor-interaction)`）、apps/desktop/src/index.css 含 `--cursor-interaction: default`、apps/server-web/src/index.css 不含 `--cursor-interaction`，每條失敗訊息指出缺的是哪一項。對應 spec desktop-app「可點元素的游標與 hover 回饋」的守門 scenario。驗證：`npm test -w packages/ui -- cursorRule` 失敗，訊息列出現有違規檔並報四項設定皆缺（預期紅燈）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "35a32d3fe3839a66099f543d0eaa8032b6b4bfc0",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/cursorRule.test.ts"
+      ],
+      "recordedAt": "2026-10-13T02:38:03Z"
+    },
+    {
+      "taskId": "tsk_01M4SD0NFX9M3YKVG72XTMDMS6",
+      "taskDesc": "1.2 更新既有斷言為變數游標：packages/ui/src/__tests__/listRow.test.tsx、taskList.test.tsx、deltaSpecView.test.tsx、specDetailPage.test.tsx、ticketView.test.tsx、roundsDoc.test.tsx、designDoc.test.tsx 中檢查 `cursor-pointer` 的斷言改為檢查 `cursor-(--cursor-interaction)`；packages/ui/src/__tests__/ui.test.tsx 新增斷言：下拉選單項目共用 class（menuItemClass）與 SelectItem 渲染出的選項含 `cursor-(--cursor-interaction)`、不含 `cursor-default`，下拉選單捲動鈕仍為 `cursor-default`（D5 選單項與下拉選項取用變數）。驗證：`npm test -w packages/ui -- listRow taskList deltaSpecView specDetailPage ticketView roundsDoc designDoc ui` 中上述斷言失敗（預期紅燈），其餘斷言照舊通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "35a32d3fe3839a66099f543d0eaa8032b6b4bfc0",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/deltaSpecView.test.tsx",
+        "packages/ui/src/__tests__/designDoc.test.tsx",
+        "packages/ui/src/__tests__/listRow.test.tsx",
+        "packages/ui/src/__tests__/roundsDoc.test.tsx",
+        "packages/ui/src/__tests__/specDetailPage.test.tsx",
+        "packages/ui/src/__tests__/taskList.test.tsx",
+        "packages/ui/src/__tests__/ticketView.test.tsx",
+        "packages/ui/src/__tests__/ui.test.tsx"
+      ],
+      "recordedAt": "2026-10-13T02:39:39Z"
+    },
+    {
+      "taskId": "tsk_01M4SD0NFXQK939N9KN1NAVRKK",
+      "taskDesc": "1.3 開啟專案畫面停用態斷言：apps/desktop/src/__tests__/workspaceChooser.test.tsx 新增停用的選擇卡（ChoiceCard）與單選列（RadioRow）的 class 不含任何 `hover:`、含 `cursor-default`；apps/desktop/src/__tests__/recentList.test.tsx 新增開啟進行中（busy）時列外層不含 `hover:` 底色、列按鈕停用游標為 `disabled:cursor-default`（D4 停用與唯讀為箭頭且無 hover）。驗證：`npm test -w apps/desktop -- workspaceChooser recentList` 中新斷言失敗（預期紅燈）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "35a32d3fe3839a66099f543d0eaa8032b6b4bfc0",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/recentList.test.tsx",
+        "apps/desktop/src/__tests__/workspaceChooser.test.tsx"
+      ],
+      "recordedAt": "2026-10-13T02:40:48Z"
+    },
+    {
+      "taskId": "tsk_01M4SD0NFXFHQCG3QSABAZ3Z0W",
+      "taskDesc": "2.1 實作 D1 游標變數集中設定與 D2 全域規則套用原生按鈕與 role=\"button\"：packages/ui/src/theme.css 的 `:root` token 區新增 `--cursor-interaction: pointer;`，並新增 `@layer base` 規則讓 `button:not(:disabled):not([aria-disabled=\"true\"])` 與 `[role=\"button\"]:not([aria-disabled=\"true\"])` 取 `cursor: var(--cursor-interaction)`；apps/desktop/src/index.css 在匯入 theme.css 之後宣告 `:root { --cursor-interaction: default; }`（主視窗與系統匣面板共用此檔）；apps/server-web/src/index.css 不動。行為：網頁後台的可用按鈕顯示手指、桌面為箭頭，停用元素不命中規則。驗證：`npm test -w packages/ui -- cursorRule` 的三條設定斷言轉綠；`npm run build -w apps/desktop` 與 `npm run build -w apps/server-web` 成功，且兩份建置出的 CSS 都含 `cursor:var(--cursor-interaction)`、只有 desktop 的含 `--cursor-interaction:default`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "35a32d3fe3839a66099f543d0eaa8032b6b4bfc0",
+      "touchedFiles": [
+        "apps/desktop/src/index.css",
+        "packages/ui/src/theme.css"
+      ],
+      "recordedAt": "2026-10-13T02:41:42Z"
+    },
+    {
+      "taskId": "tsk_01M4SD0NFXKV7JN1E1N877WKFT",
+      "taskDesc": "3.1 實作 D3 非按鈕的可點元素取用變數 class：把下列位置的 `cursor-pointer` 一律換成 `cursor-(--cursor-interaction)`（名稱籤容器的任意變體換成 `[&_.name-chip]:cursor-(--cursor-interaction)`）——packages/ui/src/components 的設計決策卡頭（DesignDoc.tsx）、手冊頁出處籤（ManualPage.tsx）、背景內文名稱籤容器（ContextDoc.tsx）、任務列 label 可寫時（TaskList.tsx）、共用清單列（ListRow.tsx）、看板討論卡與收合討論列（DiscussionColumn.tsx）、討論過程輪次卡頭（RoundsDoc.tsx）、看板變更卡（ChangeCard.tsx）、規格頁溯源關聯兩顆籤（SpecDetailPage.tsx）、工單輪卡頭（TicketView.tsx）、需求收合列兩處（RequirementBlock.tsx）、開關原語（components/ui/switch.tsx）；apps/desktop/src/components/RemoteWorkspaceRecovery.tsx 的技術細節鈕；apps/server-web/src/components/DataList.tsx 的可選取卡片與表格列、apps/server-web/src/pages/admin/RegistryPage.tsx 的可選取卡片。行為：上述元素在網頁為手指、在桌面為箭頭，hover 底色不變。驗證：`npm test -w packages/ui -- cursorRule listRow taskList deltaSpecView specDetailPage ticketView roundsDoc designDoc` 中 `cursor-pointer` 違規清單清空、1.2 的變數斷言轉綠；`npm test -w apps/server-web` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "35a32d3fe3839a66099f543d0eaa8032b6b4bfc0",
+      "touchedFiles": [
+        "apps/desktop/src/components/RemoteWorkspaceRecovery.tsx",
+        "apps/server-web/src/components/DataList.tsx",
+        "apps/server-web/src/pages/admin/RegistryPage.tsx",
+        "packages/ui/src/components/ChangeCard.tsx",
+        "packages/ui/src/components/ContextDoc.tsx",
+        "packages/ui/src/components/DesignDoc.tsx",
+        "packages/ui/src/components/DiscussionColumn.tsx",
+        "packages/ui/src/components/ListRow.tsx",
+        "packages/ui/src/components/ManualPage.tsx",
+        "packages/ui/src/components/RequirementBlock.tsx",
+        "packages/ui/src/components/RoundsDoc.tsx",
+        "packages/ui/src/components/SpecDetailPage.tsx",
+        "packages/ui/src/components/TaskList.tsx",
+        "packages/ui/src/components/TicketView.tsx",
+        "packages/ui/src/components/ui/switch.tsx"
+      ],
+      "recordedAt": "2026-10-13T02:42:54Z"
+    },
+    {
+      "taskId": "tsk_01M4SD0NFXJDMTNT2SDCR3FXEK",
+      "taskDesc": "3.2 實作 D5 選單項與下拉選項取用變數：packages/ui/src/components/ui/dropdown-menu.tsx 的 menuItemClass 與 packages/ui/src/components/ui/select.tsx 的 SelectItem 由 `cursor-default` 改為 `cursor-(--cursor-interaction)`；select 的上下捲動鈕維持 `cursor-default`。行為：網頁的選單項與下拉選項為手指、桌面為箭頭。驗證：`npm test -w packages/ui -- ui` 中 1.2 新增的選單斷言轉綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "35a32d3fe3839a66099f543d0eaa8032b6b4bfc0",
+      "touchedFiles": [
+        "packages/ui/src/components/ui/dropdown-menu.tsx",
+        "packages/ui/src/components/ui/select.tsx"
+      ],
+      "recordedAt": "2026-10-13T02:43:09Z"
+    },
+    {
+      "taskId": "tsk_01M4SD0NFX1K7S8CSY8G5W274T",
+      "taskDesc": "4.1 實作 D4 元件庫原語的停用游標：packages/ui/src/components/ui 的 checkbox.tsx、input.tsx、textarea.tsx、select.tsx（觸發鈕）、switch.tsx 的 `disabled:cursor-not-allowed` 改為 `disabled:cursor-default`，label.tsx 的 `peer-disabled:cursor-not-allowed` 改為 `peer-disabled:cursor-default`。行為：停用的勾選框、輸入框、下拉、開關與其標籤顯示箭頭而非禁止游標。驗證：`npm test -w packages/ui -- cursorRule ui` 中元件庫原語的 `cursor-not-allowed` 違規清空、既有原語斷言照舊通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "35a32d3fe3839a66099f543d0eaa8032b6b4bfc0",
+      "touchedFiles": [
+        "packages/ui/src/components/ui/checkbox.tsx",
+        "packages/ui/src/components/ui/input.tsx",
+        "packages/ui/src/components/ui/label.tsx",
+        "packages/ui/src/components/ui/textarea.tsx"
+      ],
+      "recordedAt": "2026-10-13T02:43:22Z"
+    },
+    {
+      "taskId": "tsk_01M4SD0NFXPVR7BEYXWKYMT1JR",
+      "taskDesc": "4.2 實作 D4 開啟專案畫面的停用態：apps/desktop/src/components/WorkspaceChooser.tsx 的選擇卡（ChoiceCard）與單選列（RadioRow）停用時改 `cursor-default`，hover 底色與框線只在未停用時套用；apps/desktop/src/components/RecentList.tsx 的列外層在 `busy` 時不套 hover 底色，列按鈕的 `disabled:cursor-not-allowed` 改 `disabled:cursor-default`。行為：停用的選擇卡、單選列與最近開啟列為箭頭且無 hover 底色。驗證：`npm test -w apps/desktop -- workspaceChooser recentList` 中 1.3 的斷言轉綠；`npm test -w packages/ui -- cursorRule` 全綠（違規清單清空）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "35a32d3fe3839a66099f543d0eaa8032b6b4bfc0",
+      "touchedFiles": [
+        "apps/desktop/src/components/RecentList.tsx",
+        "apps/desktop/src/components/WorkspaceChooser.tsx"
+      ],
+      "recordedAt": "2026-10-13T02:43:46Z"
+    },
+    {
+      "taskId": "tsk_01M4SD0NFXPVR7BEYXWKYMT1JR",
+      "taskDesc": "4.2 實作 D4 開啟專案畫面的停用態：apps/desktop/src/components/WorkspaceChooser.tsx 的選擇卡（ChoiceCard）與單選列（RadioRow）停用時改 `cursor-default`，hover 底色與框線只在未停用時套用；apps/desktop/src/components/RecentList.tsx 的列外層在 `busy` 時不套 hover 底色，列按鈕的 `disabled:cursor-not-allowed` 改 `disabled:cursor-default`；apps/desktop/src/components/RemoteConflictDialog.tsx 的三張選擇卡（繼續本機、以 server 為準、遷移本機內容）hover 底色與框線只在未處理中（`busy`）時套用，並於 apps/desktop/src/__tests__/workspaceChooser.test.tsx 補斷言：處理中三張卡停用且 class 不含任何 `hover:`。行為：停用的選擇卡、單選列、最近開啟列與衝突對話框選擇卡為箭頭且無 hover 底色。驗證：`npm test -w apps/desktop -- workspaceChooser recentList` 中 1.3 與衝突對話框的斷言轉綠；`npm test -w packages/ui -- cursorRule` 全綠（違規清單清空）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "35a32d3fe3839a66099f543d0eaa8032b6b4bfc0",
+      "touchedFiles": [
+        "apps/desktop/src/components/RemoteConflictDialog.tsx"
+      ],
+      "recordedAt": "2026-10-13T02:47:31Z"
+    },
+    {
+      "taskId": "tsk_01M4SD0NFXA6KF3S6CYS6N8JB4",
+      "taskDesc": "5.2 收尾守門：`npm test -w packages/ui`、`npm test -w apps/desktop`、`npm test -w apps/server-web` 全綠；`npm run build -w apps/desktop` 與 `npm run build -w apps/server-web` 成功；`speclink validate clickable-cursor-hover-rule` 通過；最後跑 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6e42edf727debdf38bf2dfa29363f364110e32e5",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/remoteWorkspaceRecovery.test.tsx",
+        "packages/ui/src/__tests__/markdownCode.test.tsx",
+        "packages/ui/src/components/Markdown.tsx"
+      ],
+      "recordedAt": "2026-10-13T03:35:50Z"
+    }
+  ]
+}

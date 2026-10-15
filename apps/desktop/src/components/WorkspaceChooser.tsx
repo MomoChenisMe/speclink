@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, ArrowLeft, Cloud, Folder, GitBranch, Plus, Server, X } from "lucide-react";
+import { ArrowLeft, Cloud, Folder, GitBranch, Plus, Server } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -9,22 +9,26 @@ import {
   Button,
   Checkbox,
   Input,
+  StepProgress,
   cn,
   useI18n,
 } from "@speclink/ui";
 
-import type {
-  ConnectionView,
-  ConnectionsAdapter,
-  ProjectScopeView,
-  ScopeRefView,
-  ScopesView,
+import {
+  defaultConnectionOf,
+  type ConnectionView,
+  type ConnectionsAdapter,
+  type ProjectScopeView,
+  type ScopeRefView,
+  type ScopesView,
 } from "../adapter/connections";
 import type { WorkspaceAdapter } from "../adapter/workspace";
 import type { RecentEntry } from "../recents";
 import { locatorKey } from "../session";
 import type { ConnectionPhase } from "../store";
 import { AwaitingApproval, PatLoginInput } from "./connectionLogin";
+import { RecentList, useRecentOpener } from "./RecentList";
+import { BUILTIN_TOOLS } from "../builtinTools";
 
 type Step = "source" | "server" | "scopes" | "checkout";
 
@@ -68,10 +72,14 @@ export interface WorkspaceChooserProps {
   initialConnectionId?: string | null;
   /** remote marker 未登入時：server 步驟預填 marker url。 */
   initialServerUrl?: string | null;
+  /** 空狀態「連線 Server」入口：直接起始於 Server 步驟。 */
+  initialStep?: "server" | null;
   /** 既有 marker 缺工具選集：直達 checkout 步驟並預選此 scope。 */
   initialScope?: { projectKey: string; repoKey: string } | null;
   /** 既有 marker 缺工具選集：checkout 步驟預填此資料夾路徑並自動 inspect。 */
   initialCheckoutPath?: string | null;
+  /** 伺服器頁「預設」卡選定的連線：Server 步驟預選（存在且已登入才預選，仍可改選）。 */
+  defaultConnectionId?: string | null;
 }
 
 const STEP_NUMBER: Record<Step, number> = {
@@ -81,6 +89,7 @@ const STEP_NUMBER: Record<Step, number> = {
   checkout: 4,
 };
 
+/** 第一步的來源卡（design D8）：點卡只選取，動作由頁尾主要鈕執行。 */
 function ChoiceCard({
   icon,
   title,
@@ -100,14 +109,13 @@ function ChoiceCard({
     <button
       type="button"
       disabled={disabled}
-      data-selected={String(selected)}
+      aria-pressed={selected}
       onClick={onClick}
       className={cn(
         "group flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors",
-        selected
-          ? "border-primary bg-primary/8"
-          : "border-border hover:border-primary/50 hover:bg-muted/60",
-        disabled && "cursor-not-allowed opacity-50",
+        // 停用為箭頭且無 hover（desktop-app「可點元素的游標與 hover 回饋」）：hover 只在 enabled 時命中。
+        selected ? "border-primary bg-primary/5" : "border-border enabled:hover:border-primary/50 enabled:hover:bg-muted/60",
+        disabled && "cursor-default opacity-50",
       )}
     >
       <span
@@ -124,6 +132,57 @@ function ChoiceCard({
           {description}
         </span>
       </span>
+    </button>
+  );
+}
+
+/** 步驟 2–4 的整列單選列（design D8）：選中主色淡底、左側圓點。 */
+function RadioRow({
+  checked,
+  onClick,
+  disabled = false,
+  icon,
+  title,
+  description,
+  trailing,
+}: {
+  checked: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  icon?: React.ReactNode;
+  title: string;
+  description?: string;
+  trailing?: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left text-sm transition-colors",
+        checked ? "border-primary bg-primary/5" : "border-border enabled:hover:bg-muted/60",
+        disabled && "cursor-default opacity-50",
+      )}
+    >
+      <span
+        className={cn(
+          "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+          checked ? "border-primary" : "border-border",
+        )}
+      >
+        {checked && <span className="h-2 w-2 rounded-full bg-primary" />}
+      </span>
+      {icon && <span className="shrink-0 text-muted-foreground">{icon}</span>}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium text-foreground">{title}</span>
+        {description && (
+          <span className="block truncate text-xs text-muted-foreground">{description}</span>
+        )}
+      </span>
+      {trailing}
     </button>
   );
 }
@@ -166,31 +225,18 @@ export function ScopeSelection({
               </span>
             </div>
             <div role="radiogroup" aria-label={project.name} className="flex flex-col gap-1.5">
-              {project.repos.map((repo) => {
-                const checked =
-                  selected?.project.id === project.id && selected.repo.id === repo.id;
-                return (
-                  <button
-                    key={repo.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={checked}
-                    onClick={() => onSelect({ project, repo })}
-                    className={cn(
-                      "flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm",
-                      checked
-                        ? "border-primary bg-primary/8"
-                        : "border-border hover:bg-muted/60",
-                    )}
-                  >
-                    <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="font-medium">{repo.name}</span>
-                    <span className="ml-auto font-mono text-xs text-muted-foreground">
-                      {repo.key}
-                    </span>
-                  </button>
-                );
-              })}
+              {project.repos.map((repo) => (
+                <RadioRow
+                  key={repo.id}
+                  checked={selected?.project.id === project.id && selected.repo.id === repo.id}
+                  onClick={() => onSelect({ project, repo })}
+                  icon={<GitBranch className="h-3.5 w-3.5" />}
+                  title={repo.name}
+                  trailing={
+                    <span className="ml-auto font-mono text-xs text-muted-foreground">{repo.key}</span>
+                  }
+                />
+              ))}
             </div>
           </section>
         ) : null,
@@ -217,8 +263,10 @@ export function WorkspaceChooser({
   onRemoveRecent,
   initialConnectionId = null,
   initialServerUrl = null,
+  initialStep = null,
   initialScope = null,
   initialCheckoutPath = null,
+  defaultConnectionId = null,
 }: WorkspaceChooserProps) {
   const { t } = useI18n();
   const [step, setStep] = useState<Step>("source");
@@ -238,12 +286,18 @@ export function WorkspaceChooser({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [localProject, setLocalProject] = useState<{ root: string; name: string } | null>(null);
-  /** 最近開啟列的錯誤態（design D4）：只活在本面，chooser 重開即清空。 */
-  const [recentErrors, setRecentErrors] = useState<Record<string, string>>({});
-  /** 連線清單是否讀取成功——載入中或讀取失敗時，remote 列都不得判成
-   * 「連線已移除」：清單初值是空陣列，讀取失敗又保留現值，先判斷會把有效
-   * 條目誤標成已移除且停用開啟。 */
-  const [connectionsReady, setConnectionsReady] = useState(false);
+  /** 第一步選取的來源卡（design D8）：未選時頁尾主要鈕停用。 */
+  const [source, setSource] = useState<"local" | "server" | null>(null);
+  /** 最近開啟列（design D4）：錯誤態只活在本面，chooser 重開即清空。 */
+  const recent = useRecentOpener({
+    workspace,
+    connections,
+    connectionAdapter,
+    onRefreshConnections,
+    onOpenLocal,
+    onOpenRemote,
+    onLocalProbed: () => onOpenChange(false),
+  });
 
   async function selectConnection(selected: ConnectionView) {
     setConnection(selected);
@@ -262,7 +316,7 @@ export function WorkspaceChooser({
   }
 
   // 既有 marker 缺工具選集的入口：載入 scopes、依 key 預選 scope、直達 checkout
-  // 步驟並以預填 path inspect（顯示既有選集），讓使用者明示選擇 Claude／Codex。
+  // 步驟並以預填 path inspect（顯示既有選集），讓使用者明示選擇 Claude／Codex／Copilot。
   async function startAtCheckout(
     selected: ConnectionView,
     scopeKeys: { projectKey: string; repoKey: string },
@@ -300,10 +354,12 @@ export function WorkspaceChooser({
     }
   }
 
+  /** 伺服器頁「預設」卡的連線：存在且已登入才預選，否則不預選。 */
+  const preferredConnection = () => defaultConnectionOf(connections, defaultConnectionId);
+
   useEffect(() => {
     if (!open) return;
-    setConnectionsReady(false);
-    void onRefreshConnections().then(setConnectionsReady, () => setConnectionsReady(false));
+    recent.reset();
     setConnection(null);
     setScopes(null);
     setScope(null);
@@ -317,7 +373,7 @@ export function WorkspaceChooser({
     setError(null);
     setNotice(null);
     setLocalProject(null);
-    setRecentErrors({});
+    setSource(null);
     const selected = initialConnectionId
       ? connections.find((entry) => entry.id === initialConnectionId && entry.loggedIn)
       : undefined;
@@ -326,11 +382,14 @@ export function WorkspaceChooser({
     } else if (selected) {
       void selectConnection(selected);
     } else {
-      setStep(initialConnectionId || initialServerUrl ? "server" : "source");
+      const nextStep = initialStep ?? (initialConnectionId || initialServerUrl ? "server" : "source");
+      // 入口意圖（指定連線、marker 指向的伺服器）優先：此時預選預設連線會把專案綁到別台伺服器。
+      if (nextStep === "server" && !initialConnectionId && !initialServerUrl) setConnection(preferredConnection());
+      setStep(nextStep);
     }
     // 開啟時只消費當次入口意圖；連線清單更新不得把進行中的 chooser 重設。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, initialConnectionId, initialServerUrl]);
+  }, [open, initialConnectionId, initialServerUrl, initialStep]);
 
   async function chooseLocal() {
     setBusy(true);
@@ -357,47 +416,9 @@ export function WorkspaceChooser({
     await onOpenLocal(root);
   }
 
-  /** 最近開啟列（design D4）：本機先探測再沿既有開啟流程（分流由 openProjectAt 承擔）；
-   * remote 以原 connection／scope／checkout 走既有 remote 開啟。失敗只標記該列。 */
-  async function openRecent(entry: RecentEntry) {
-    const key = locatorKey(entry.locator);
-    setBusy(true);
+  function openRecent(entry: RecentEntry) {
     setError(null);
-    try {
-      if (entry.locator.kind === "local") {
-        await workspace.openProject(entry.locator.root);
-        onOpenChange(false);
-        await onOpenLocal(entry.locator.root);
-      } else {
-        const { connectionId, projectId, repoId, checkoutRoot } = entry.locator;
-        // 綁著 checkout 的條目先驗資料夾仍與該 scope 一致（與其他 checkout 開啟
-        // 路徑同一步）——handshake 只問伺服器，不會發現資料夾已消失。這一步要
-        // connection 的 origin；規格模式（無 checkout 綁定）只需 connectionId，
-        // 不得因清單未就緒而被擋下。
-        if (checkoutRoot) {
-          const connection = connections.find((c) => c.id === connectionId);
-          if (!connection) {
-            // 清單未就緒時列仍是啟用的——此處補判，理由與就緒後的列同一句純文字。
-            setRecentErrors((prev) => ({
-              ...prev,
-              [key]: t("chooser.recentConnectionMissing"),
-            }));
-            return;
-          }
-          await connectionAdapter.inspectCheckout(
-            checkoutRoot,
-            connection.origin,
-            projectId,
-            repoId,
-          );
-        }
-        await onOpenRemote(connectionId, `${projectId}/${repoId}`, checkoutRoot);
-      }
-    } catch (reason) {
-      setRecentErrors((prev) => ({ ...prev, [key]: String(reason) }));
-    } finally {
-      setBusy(false);
-    }
+    void recent.open(entry);
   }
 
   async function migrateLocal(root: string) {
@@ -425,7 +446,7 @@ export function WorkspaceChooser({
     setNotice(null);
     try {
       const origin = await onAddServer(url, serverName.trim() || url);
-      setConnectionsReady(await onRefreshConnections());
+      await recent.refreshConnections();
       setServerName("");
       setPendingOrigin(origin ?? null);
       setNotice(t("chooser.serverAdded"));
@@ -512,27 +533,10 @@ export function WorkspaceChooser({
   const loggedInConnections = connections.filter((entry) => entry.loggedIn);
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-xl gap-4" data-testid="workspace-chooser">
+      <AlertDialogContent className="max-w-xl gap-4 p-5" data-testid="workspace-chooser">
         <AlertDialogHeader>
-          <div className="mb-1 flex items-center justify-between gap-4">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              {t("chooser.step")
-                .replace("{current}", String(STEP_NUMBER[step]))
-                .replace("{total}", "4")}
-            </span>
-            <div className="flex gap-1" aria-hidden="true">
-              {[1, 2, 3, 4].map((number) => (
-                <span
-                  key={number}
-                  className={cn(
-                    "h-1 w-8 rounded-full bg-muted",
-                    number <= STEP_NUMBER[step] && "bg-primary",
-                  )}
-                />
-              ))}
-            </div>
-          </div>
-          <AlertDialogTitle>{t(`chooser.${step}Title`)}</AlertDialogTitle>
+          <StepProgress current={STEP_NUMBER[step]} total={4} />
+          <AlertDialogTitle className="text-[15px] font-medium">{t(`chooser.${step}Title`)}</AlertDialogTitle>
           <AlertDialogDescription>{t(`chooser.${step}Desc`)}</AlertDialogDescription>
         </AlertDialogHeader>
 
@@ -542,98 +546,31 @@ export function WorkspaceChooser({
               icon={<Folder className="h-4 w-4" />}
               title={t("chooser.local")}
               description={t("chooser.localDesc")}
-              disabled={busy}
-              onClick={() => void chooseLocal()}
+              selected={source === "local"}
+              disabled={busy || recent.busy}
+              onClick={() => setSource("local")}
             />
             <ChoiceCard
               icon={<Cloud className="h-4 w-4" />}
               title={t("chooser.server")}
               description={t("chooser.serverSourceDesc")}
-              onClick={() => setStep("server")}
+              selected={source === "server"}
+              onClick={() => setSource("server")}
             />
           </div>
         )}
 
-        {step === "source" && !localProject && recents.length > 0 && (
-          <div className="flex flex-col gap-1.5">
-            <p className="m-0 text-xs font-medium text-muted-foreground">
-              {t("chooser.recentTitle")}
-            </p>
-            <div className="flex max-h-[240px] flex-col gap-1 overflow-y-auto pr-1">
-              {recents.map((entry) => {
-                const key = locatorKey(entry.locator);
-                const connectionId =
-                  entry.locator.kind === "remote" ? entry.locator.connectionId : null;
-                const connection = connectionId
-                  ? connections.find((c) => c.id === connectionId)
-                  : null;
-                // 連線清單載入完成前不下判斷；載入後才分「已移除」與「已登出」。
-                const connectionReason =
-                  connectionId && connectionsReady
-                    ? !connection
-                      ? t("chooser.recentConnectionMissing")
-                      : !connection.loggedIn
-                        ? t("chooser.recentConnectionLoggedOut")
-                        : null
-                    : null;
-                const reason = recentErrors[key] ?? connectionReason;
-                const subtitle =
-                  entry.locator.kind === "local" ? entry.locator.root : (connection?.name ?? null);
-                return (
-                  <div
-                    key={key}
-                    className={cn(
-                      "group flex items-start gap-1 rounded-md border px-2 py-1.5",
-                      reason ? "border-destructive/40" : "border-border hover:bg-muted/60",
-                    )}
-                  >
-                    <button
-                      type="button"
-                      disabled={busy || Boolean(reason)}
-                      onClick={() => void openRecent(entry)}
-                      className="flex min-w-0 flex-1 items-start gap-2 text-left disabled:cursor-not-allowed"
-                    >
-                      <span className="mt-0.5 shrink-0 text-muted-foreground">
-                        {reason ? (
-                          <AlertTriangle className="h-4 w-4 text-destructive" />
-                        ) : entry.locator.kind === "local" ? (
-                          <Folder className="h-4 w-4" />
-                        ) : (
-                          <Cloud className="h-4 w-4" />
-                        )}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-foreground">
-                          {entry.name}
-                        </span>
-                        {subtitle && (
-                          <span
-                            className={cn(
-                              "block truncate text-xs text-muted-foreground",
-                              entry.locator.kind === "local" && "font-mono",
-                            )}
-                          >
-                            {subtitle}
-                          </span>
-                        )}
-                        {reason && (
-                          <span className="block text-xs text-destructive">{reason}</span>
-                        )}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`${t("chooser.recentRemove")} ${entry.name}`}
-                      onClick={() => onRemoveRecent(key)}
-                      className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+        {step === "source" && !localProject && (
+          <RecentList
+            variant="dialog"
+            entries={recents}
+            connections={connections}
+            connectionsReady={recent.connectionsReady}
+            errors={recent.errors}
+            busy={busy || recent.busy}
+            onOpen={openRecent}
+            onRemove={(entry) => onRemoveRecent(locatorKey(entry.locator))}
+          />
         )}
 
         {step === "source" && localProject && (
@@ -674,10 +611,11 @@ export function WorkspaceChooser({
                 {t("chooser.noLoggedInServers")}
               </p>
             ) : (
-              <div className="flex flex-col gap-2">
+              <div role="radiogroup" aria-label={t("chooser.serverTitle")} className="flex flex-col gap-1.5">
                 {loggedInConnections.map((entry) => (
-                  <ChoiceCard
+                  <RadioRow
                     key={entry.id}
+                    checked={connection?.id === entry.id}
                     icon={<Server className="h-4 w-4" />}
                     title={entry.name}
                     description={`${entry.origin}${entry.lastActorDisplay ? ` · ${entry.lastActorDisplay}` : ""}`}
@@ -756,12 +694,12 @@ export function WorkspaceChooser({
         )}
 
         {step === "checkout" && scope && (
-          <div className="flex flex-col gap-2">
-            <ChoiceCard
+          <div role="radiogroup" aria-label={t("chooser.checkoutTitle")} className="flex flex-col gap-1.5">
+            <RadioRow
               icon={<Cloud className="h-4 w-4" />}
               title={t("chooser.skipCheckout")}
               description={t("chooser.skipCheckoutDesc")}
-              selected={checkoutMode === "skip"}
+              checked={checkoutMode === "skip"}
               onClick={() => {
                 setCheckoutMode("skip");
                 setCheckoutRoot(null);
@@ -769,11 +707,11 @@ export function WorkspaceChooser({
                 setError(null);
               }}
             />
-            <ChoiceCard
+            <RadioRow
               icon={<Folder className="h-4 w-4" />}
               title={t("chooser.connectCheckout")}
               description={checkoutRoot ?? t("chooser.connectCheckoutDesc")}
-              selected={checkoutMode === "folder"}
+              checked={checkoutMode === "folder"}
               disabled={busy}
               onClick={() => void chooseCheckoutFolder()}
             />
@@ -781,7 +719,7 @@ export function WorkspaceChooser({
               <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
                 <span className="text-sm font-medium">{t("chooser.checkoutTools")}</span>
                 <div className="flex gap-4">
-                  {["claude", "codex", "copilot"].map((tool) => (
+                  {BUILTIN_TOOLS.map((tool) => (
                     <label
                       key={tool}
                       htmlFor={`checkout-tool-${tool}`}
@@ -829,9 +767,35 @@ export function WorkspaceChooser({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
               {t("app.cancel")}
             </Button>
+            {step === "source" && !localProject && (
+              <Button
+                type="button"
+                size="sm"
+                disabled={source === null || busy || recent.busy}
+                onClick={() => {
+                  if (source === "local") return void chooseLocal();
+                  setConnection(preferredConnection());
+                  setStep("server");
+                }}
+              >
+                {t(
+                  source === "local"
+                    ? "chooser.chooseFolder"
+                    : source === "server"
+                      ? "chooser.next"
+                      : "chooser.selectSource",
+                )}
+              </Button>
+            )}
+            {/* 預選的連線（伺服器頁「預設」卡）可直接前進；點其他列即改選並前進。 */}
+            {step === "server" && connection && (
+              <Button type="button" size="sm" disabled={busy} onClick={() => void selectConnection(connection)}>
+                {t("chooser.next")}
+              </Button>
+            )}
             {step === "scopes" && (
               <Button
                 type="button"

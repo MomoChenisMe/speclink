@@ -14,8 +14,8 @@ pub struct SkillInfo {
     pub description: String,
 }
 
-/// Options of `skills.render` — the render matrix: target (claude | codex | copilot |
-/// neutral) and invocation (cli | tool-call, default cli), plus the spec
+/// Options of `skills.render` — the render matrix: target (claude | codex |
+/// copilot | neutral) and invocation (cli | tool-call, default cli), plus the spec
 /// directory name and the neutral target's tool name ({{TOOL}} substitution,
 /// default "speclink").
 #[napi(object)]

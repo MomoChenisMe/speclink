@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import { App } from "../App";
+import { ADMIN_SESSION, makeAdminClient, setViewport } from "./helpers/adminHarness";
 
 // 可存取性基線（server-web-console D6）：殼層無 axe 違規。jsdom 無法計算色彩對比，
 // color-contrast 停用，對比／zoom／reduced-motion 由手動 viewport 驗收涵蓋（7.3）。
@@ -46,9 +48,102 @@ describe("可存取性（axe）", () => {
     const { container } = render(
       <App client={client({ getSession: vi.fn(async () => ADMIN) })} initialEntries={["/admin"]} />,
     );
-    await screen.findByRole("navigation");
+    // 殼有兩個 nav landmark（側欄導覽與麵包屑），以名稱區分；axe 也檢查兩者名稱不重複。
+    await screen.findByRole("navigation", { name: "管理導覽" });
     await screen.findByRole("heading", { name: /總覽/ });
     const results = await axe(container, AXE);
     expect(results.violations).toEqual([]);
+  });
+
+  // server-web-list-pages：列表卡、分頁、數字磚與設定型卡換上之後，三個代表頁仍無違規。
+  it("使用者頁無 axe 違規", async () => {
+    const { container } = render(
+      <App client={makeAdminClient() as never} initialEntries={["/admin/users"]} />,
+    );
+    await screen.findByRole("button", { name: "Member" });
+    const results = await axe(container, AXE);
+    expect(results.violations).toEqual([]);
+  });
+
+  it("總覽無 axe 違規", async () => {
+    const { container } = render(<App client={makeAdminClient() as never} initialEntries={["/admin"]} />);
+    await screen.findByRole("region", { name: "系統健康" });
+    const results = await axe(container, AXE);
+    expect(results.violations).toEqual([]);
+  });
+
+  it("帳號頁無 axe 違規", async () => {
+    const account = {
+      user: ADMIN_SESSION.user,
+      memberships: [{ projectKey: "demo", projectName: "Demo", role: "editor" }],
+      pats: [
+        {
+          id: "p1",
+          prefix: "slk_abc",
+          name: "cli",
+          createdAt: "2026-01-01T00:00:00Z",
+          expiresAt: null,
+          lastUsedAt: null,
+          revokedAt: null,
+        },
+      ],
+      sessions: [
+        { id: "s1", createdAt: "2026-01-01T00:00:00Z", expiresAt: "2026-02-01T00:00:00Z", revokedAt: null },
+      ],
+      deviceFamilies: [],
+    };
+    const { container } = render(
+      <App
+        client={makeAdminClient({ getAccount: vi.fn(async () => account) }) as never}
+        initialEntries={["/account"]}
+      />,
+    );
+    await screen.findByRole("region", { name: "存取金鑰" });
+    const results = await axe(container, AXE);
+    expect(results.violations).toEqual([]);
+  });
+
+  // server-web-detail-pages：詳情頁（頁標題接狀態籤、卡片標頭分頁、頂列 ‹ n / m ›）與置中對話框。
+  it("使用者詳情頁無 axe 違規", async () => {
+    const { container } = render(
+      <App client={makeAdminClient() as never} initialEntries={["/admin/users/m1"]} />,
+    );
+    await screen.findByRole("heading", { level: 1, name: "Member" });
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: /^憑證/ }).querySelector("[data-tab-count]")).not.toBeNull(),
+    );
+    const results = await axe(container, AXE);
+    expect(results.violations).toEqual([]);
+  });
+
+  // 對話框 portal 到 body，所以掃整個 body（同窄螢幕一題的理由，不傳 documentElement）。
+  it("開著的邀請對話框無 axe 違規", async () => {
+    render(<App client={makeAdminClient() as never} initialEntries={["/admin/users"]} />);
+    await screen.findByRole("button", { name: "Member" });
+    await userEvent.setup().click(screen.getByRole("button", { name: "邀請使用者" }));
+    await screen.findByRole("alertdialog", { name: "邀請使用者" });
+    const results = await axe(document.body, AXE);
+    expect(results.violations).toEqual([]);
+  });
+
+  // 窄螢幕沒有固定側欄、頂列多一顆「開啟導覽」鈕：檢查內容都落在 landmark 內（axe 的 region
+  // 規則，這裡明確打開）。region 只在掃描範圍含 body 時適用，對 container 跑會判為不適用，所以
+  // 這一題掃整個 body；不傳 documentElement——jest-axe 會把 body 外的元素複製進 body 再掃，
+  // 活的畫面會被換成靜態複本。
+  it("窄螢幕管理殼無 axe 違規，且內容都在 landmark 內", async () => {
+    setViewport(true);
+    try {
+      render(
+        <App client={client({ getSession: vi.fn(async () => ADMIN) })} initialEntries={["/admin"]} />,
+      );
+      await screen.findByRole("button", { name: "開啟導覽" });
+      await screen.findByRole("heading", { name: /總覽/ });
+      const results = await axe(document.body, {
+        rules: { ...AXE.rules, region: { enabled: true } },
+      });
+      expect(results.violations).toEqual([]);
+    } finally {
+      setViewport(false);
+    }
   });
 });

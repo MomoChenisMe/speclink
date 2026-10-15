@@ -1,0 +1,30 @@
+import { Search } from "lucide-react";
+
+import { Input } from "./ui/input";
+
+export interface SearchFieldProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  /** 輸入框的無障礙名稱（server-web 列表頁沒有可見標籤）。 */
+  label?: string;
+}
+
+/** 全圓搜尋框（design D3；與看板同款）：左側搜尋圖示＋280px 圓角輸入框。 */
+export function SearchField({ value, onChange, placeholder, label }: SearchFieldProps) {
+  return (
+    <div className="relative">
+      <Search
+        aria-hidden="true"
+        className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+      />
+      <Input
+        aria-label={label}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-8 w-[280px] max-w-full rounded-full pl-8"
+      />
+    </div>
+  );
+}

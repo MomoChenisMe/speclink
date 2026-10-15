@@ -11,6 +11,9 @@ use std::path::PathBuf;
 use std::process::{Command, Output, Stdio};
 use std::sync::{Arc, Mutex};
 
+use speclink_core::init::ASSET_VERSION;
+use speclink_core::testkit::{set_skill_version, write_skill_file};
+
 // --- fs fixture ---
 
 /// A workflow config with a value in every surface the verb touches: two policy
@@ -550,6 +553,291 @@ fn rules_dry_run_prints_a_unified_diff_and_writes_nothing() {
     assert_eq!(p.config_bytes(), before, "config.yaml is byte-for-byte unchanged");
 }
 
+#[test]
+fn dry_run_shows_lines_between_two_changes_as_context() {
+    // Spec scenario 兩處改動之間的未改行以 context 呈現＋Example rules.tasks 的差異.
+    let p = TempProject::new(
+        "dry-run-two-changes",
+        "schema: spec-driven\nrules:\n  tasks:\n  - 甲\n  - 乙\n  - 丙\n",
+    );
+    let before = p.config_bytes();
+    let out = p.run_stdin(
+        &["workflow-config", "rules", "tasks", "--stdin", "--dry-run"],
+        "甲二\n乙\n丙\n丁\n",
+    );
+    assert!(out.status.success(), "dry-run exits 0: {}", stderr_of(&out));
+    let diff = stdout_of(&out);
+    let hunk: Vec<&str> = diff.lines().skip_while(|l| !l.starts_with("@@")).skip(1).collect();
+    assert_eq!(
+        hunk,
+        [" schema: spec-driven", " rules:", "   tasks:", "-  - 甲", "+  - 甲二", "   - 乙", "   - 丙", "+  - 丁"],
+        "{diff}"
+    );
+    assert_eq!(p.config_bytes(), before, "config.yaml is byte-for-byte unchanged");
+}
+
+// --- review (fs) ---
+
+/// The `review` mapping of the config on disk, or None when the key is absent —
+/// the typed `show --json` payload cannot tell an absent key from its defaults.
+fn raw_review(p: &TempProject) -> Option<serde_yaml::Mapping> {
+    let doc: serde_yaml::Mapping = serde_yaml::from_str(&p.config_text()).expect("config parses");
+    doc.get("review").map(|v| v.as_mapping().expect("review is a mapping").clone())
+}
+
+fn review_json(p: &TempProject) -> serde_json::Value {
+    let out = p.run(&["workflow-config", "show", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    json_of(&out)["review"].clone()
+}
+
+fn strings(v: &serde_json::Value) -> Vec<String> {
+    v.as_array()
+        .unwrap_or_else(|| panic!("expected a string array: {v}"))
+        .iter()
+        .map(|s| s.as_str().expect("string entry").to_string())
+        .collect()
+}
+
+#[test]
+fn review_lists_replace_wholesale_with_a_one_line_summary() {
+    // Spec scenario 清單整段代換：一行一條、頭尾空白去除、空行略過；其他鍵逐位元不變。
+    let prefix = "schema: spec-driven\nlocale: tw\n";
+    for list in ["critical", "warning", "suggestion"] {
+        let p = TempProject::new(
+            &format!("review-replace-{list}"),
+            &format!("{prefix}review:\n  {list}:\n    - old rule\n"),
+        );
+        let out = p.run_stdin(
+            &["workflow-config", "review", list, "--stdin"],
+            "  rule one  \n\nrule two\n",
+        );
+        assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+        assert_eq!(stdout_of(&out), format!("✓ review.{list} = 2 entries\n"));
+        assert_eq!(strings(&review_json(&p)[list]), ["rule one", "rule two"]);
+        assert!(p.config_text().starts_with(prefix), "other keys untouched: {}", p.config_text());
+    }
+}
+
+#[test]
+fn review_writes_match_the_spec_example_table() {
+    // Spec Example 寫入效果與成功訊息——逐列對應。
+    struct Row {
+        before: &'static str,
+        args: &'static [&'static str],
+        stdin: &'static str,
+        stdout: &'static str,
+        check: fn(Option<serde_yaml::Mapping>),
+    }
+    fn keys(m: &serde_yaml::Mapping) -> Vec<&str> {
+        m.keys().map(|k| k.as_str().unwrap()).collect()
+    }
+    let rows = [
+        Row {
+            before: "schema: spec-driven\n",
+            args: &["review", "warning", "--stdin"],
+            stdin: "one rule\n",
+            stdout: "✓ review.warning = 1 entries\n",
+            check: |r| assert_eq!(keys(&r.expect("review written")), ["warning"]),
+        },
+        Row {
+            before: "schema: spec-driven\nreview:\n  warning:\n    - w\n",
+            args: &["review", "warning", "--stdin"],
+            stdin: "",
+            stdout: "✓ review.warning removed\n",
+            check: |r| assert!(r.is_none(), "review key removed: {r:?}"),
+        },
+        Row {
+            before: "schema: spec-driven\nreview:\n  critical:\n    - c\n",
+            args: &["review", "baseline", "replace"],
+            stdin: "",
+            stdout: "✓ review.baseline = replace\n",
+            check: |r| {
+                let r = r.expect("review kept");
+                assert_eq!(r.get("baseline"), Some(&"replace".into()));
+                assert!(r.contains_key("critical"));
+            },
+        },
+        Row {
+            before: "schema: spec-driven\nreview:\n  baseline: replace\n  critical:\n    - c\n",
+            args: &["review", "baseline", "extend"],
+            stdin: "",
+            stdout: "✓ review.baseline = extend (default)\n",
+            check: |r| assert_eq!(keys(&r.expect("review kept")), ["critical"]),
+        },
+        Row {
+            before: "schema: spec-driven\nreview:\n  baseline: replace\n",
+            args: &["review", "baseline", "extend"],
+            stdin: "",
+            stdout: "✓ review.baseline = extend (default)\n",
+            check: |r| assert!(r.is_none(), "review key removed: {r:?}"),
+        },
+    ];
+    for (i, row) in rows.iter().enumerate() {
+        let p = TempProject::new(&format!("review-table-{i}"), row.before);
+        let mut args = vec!["workflow-config"];
+        args.extend_from_slice(row.args);
+        let out = p.run_stdin(&args, row.stdin);
+        assert!(out.status.success(), "row {i} stderr: {}", stderr_of(&out));
+        assert_eq!(stdout_of(&out), row.stdout, "row {i}");
+        (row.check)(raw_review(&p));
+    }
+}
+
+#[test]
+fn review_list_without_the_stdin_flag_fails_with_usage() {
+    // Spec scenario 未帶 --stdin 說明用法.
+    let p = TempProject::new("review-no-stdin", WF_YAML);
+    let before = p.config_bytes();
+    let out = p.run_stdin(&["workflow-config", "review", "critical"], "ignored\n");
+    assert!(!out.status.success(), "missing --stdin must exit non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("review critical --stdin"), "stderr states the usage: {err}");
+    assert_eq!(p.config_bytes(), before, "no file effect");
+}
+
+#[test]
+fn review_rejects_an_unknown_list_or_baseline_value_listing_the_legal_ones() {
+    // Spec scenario 不認得的清單名或 baseline 值.
+    let p = TempProject::new("review-unknown", WF_YAML);
+    let before = p.config_bytes();
+    let out = p.run_stdin(&["workflow-config", "review", "blocker", "--stdin"], "x\n");
+    assert!(!out.status.success(), "unknown list must exit non-zero");
+    let err = stderr_of(&out);
+    for legal in ["critical", "warning", "suggestion", "baseline"] {
+        assert!(err.contains(legal), "stderr lists {legal}: {err}");
+    }
+    let out = p.run(&["workflow-config", "review", "baseline", "keep"]);
+    assert!(!out.status.success(), "unknown baseline must exit non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("extend") && err.contains("replace"), "stderr lists the values: {err}");
+    assert_eq!(p.config_bytes(), before, "no file effect");
+}
+
+#[test]
+fn review_dry_run_prints_a_unified_diff_and_writes_nothing() {
+    // Spec scenario dry-run 印 diff：只顯示 review 區塊的變更.
+    let p = TempProject::new("review-dry-run", WF_YAML);
+    let before = p.config_bytes();
+    let out = p.run_stdin(
+        &["workflow-config", "review", "suggestion", "--stdin", "--dry-run"],
+        "Prefer small functions\n",
+    );
+    assert!(out.status.success(), "dry-run exits 0: {}", stderr_of(&out));
+    let diff = stdout_of(&out);
+    assert!(diff.contains("--- a/openspec/config.yaml"), "unified diff header: {diff}");
+    let changed: Vec<&str> = diff
+        .lines()
+        .filter(|l| {
+            (l.starts_with('-') || l.starts_with('+'))
+                && !l.starts_with("---")
+                && !l.starts_with("+++")
+        })
+        .collect();
+    assert_eq!(
+        changed,
+        ["+", "+review:", "+  suggestion:", "+  - Prefer small functions"],
+        "only the review block is added: {diff}"
+    );
+    assert_eq!(p.config_bytes(), before, "config.yaml is byte-for-byte unchanged");
+}
+
+#[test]
+fn review_reserved_char_entry_round_trips_verbatim() {
+    // Spec scenario 保留字元開頭的條目自動加引號.
+    let p = TempProject::new("review-reserved", WF_YAML);
+    let out = p.run_stdin(&["workflow-config", "review", "warning", "--stdin"], "@team 要審過\n");
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(strings(&review_json(&p)["warning"]), ["@team 要審過"]);
+}
+
+#[test]
+fn review_refuses_to_rewrite_an_unparseable_config() {
+    // Spec scenario 壞檔拒寫：YAML 語法錯誤與 review 子鍵打錯皆拒寫。
+    for (tag, yaml) in [("syntax", BAD_YAML), ("typo", "review:\n  critcal:\n    - x\n")] {
+        let p = TempProject::new(&format!("review-bad-{tag}"), yaml);
+        let before = p.config_bytes();
+        let out = p.run_stdin(&["workflow-config", "review", "critical", "--stdin"], "x\n");
+        assert!(!out.status.success(), "{tag}: must exit non-zero");
+        let err = stderr_of(&out);
+        assert!(err.contains("openspec/config.yaml"), "{tag}: stderr names the file: {err}");
+        assert!(err.contains("write refused"), "{tag}: stderr says the write is refused: {err}");
+        assert_eq!(p.config_bytes(), before, "{tag}: no file effect");
+    }
+}
+
+#[test]
+fn show_prints_the_review_line_after_rules() {
+    // Spec scenario 人眼輸出的 review 行：rules 行之後恰一行、其餘各行逐位元不變。
+    let p = TempProject::new("show-review-none", WF_YAML);
+    let out = p.run(&["workflow-config", "show", "--no-color"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(
+        stdout_of(&out),
+        "Workflow config: openspec/config.yaml\n\n  locale       tw\n  spec_locale  unset (system language)\n  tdd          on\n  audit        unset (off)\n  worktree     unset (off)\n  context      2 lines\n  rules        design 2, tasks 1\n  review       none\n"
+    );
+    // Spec Example review 行的值.
+    for (tag, review, value) in [
+        (
+            "counts",
+            "review:\n  critical:\n    - a\n    - b\n  warning:\n    - c\n  suggestion:\n    - d\n",
+            "extend, critical 2, warning 1, suggestion 1",
+        ),
+        ("replace", "review:\n  baseline: replace\n", "replace, critical 0, warning 0, suggestion 0"),
+    ] {
+        let p = TempProject::new(&format!("show-review-{tag}"), &format!("schema: spec-driven\n{review}"));
+        let out = p.run(&["workflow-config", "show", "--no-color"]);
+        assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+        let text = stdout_of(&out);
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.last(), Some(&format!("  review       {value}").as_str()), "{text}");
+        assert!(lines[lines.len() - 2].starts_with("  rules "), "review follows rules: {text}");
+    }
+}
+
+#[test]
+fn show_json_carries_the_review_object() {
+    // Spec scenario --json 帶出 review 內容；未寫時為預設值、欄位恆存在。
+    let p = TempProject::new("show-review-json-default", WF_YAML);
+    assert_eq!(
+        review_json(&p),
+        serde_json::json!({"baseline": "extend", "critical": [], "warning": [], "suggestion": []})
+    );
+    let p = TempProject::new(
+        "show-review-json",
+        "review:\n  baseline: replace\n  critical:\n    - 所有 SQL 一律用參數化查詢\n",
+    );
+    assert_eq!(
+        review_json(&p),
+        serde_json::json!({
+            "baseline": "replace",
+            "critical": ["所有 SQL 一律用參數化查詢"],
+            "warning": [],
+            "suggestion": []
+        })
+    );
+}
+
+#[test]
+fn a_review_typo_fails_show_and_instructions_closed() {
+    // Spec scenario 子鍵打錯即 fail-closed ＋ 其他指令同樣 fail-closed.
+    let p = TempProject::new("review-typo-show", "review:\n  critcal:\n    - x\n");
+    let out = p.run(&["workflow-config", "show"]);
+    assert!(!out.status.success(), "show must exit non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("openspec/config.yaml") && err.contains("critcal"), "{err}");
+    assert!(stdout_of(&out).trim().is_empty(), "no stdout: {}", stdout_of(&out));
+    let p = TempProject::new("review-typo-instructions", "review:\n  baseline: keep\n");
+    let change = p.dir.join("openspec").join("changes").join("any-change");
+    std::fs::create_dir_all(&change).unwrap();
+    std::fs::write(change.join(".openspec.yaml"), "schema: spec-driven\ncreated: 2026-10-14\n").unwrap();
+    let out = p.run(&["instructions", "proposal", "--change", "any-change", "--json"]);
+    assert!(!out.status.success(), "instructions must exit non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("openspec/config.yaml") && err.contains("keep"), "{err}");
+    assert!(stdout_of(&out).trim().is_empty(), "no default payload: {}", stdout_of(&out));
+}
+
 // --- help parity ---
 
 /// The comma-separated list a "…: a, b, c" sentence ends with. Both the help
@@ -675,6 +963,119 @@ fn parent_help_and_set_help_share_one_set_description() {
         keys_after_colon(&unknown_key_stderr(&p)),
         "the command list advertises every accepted key: {from_parent}"
     );
+}
+
+// --- review 寫入後的技能檔過期提示 ---
+// Spec workflow-config「審查規則寫入後的技能檔過期提示」。
+
+/// 舊於／新於引擎現版的技能版號（模擬以別版引擎生成的工作區；舊值取自規格 Example）。
+const OLD_SKILLS: &str = "v1.44.0";
+const NEWER_SKILLS: &str = "v999.0.0";
+
+/// 兩個工具的技能檔所在（`<dir>/skills`）。
+const CLAUDE: &str = ".claude";
+const CODEX: &str = ".agents";
+
+/// 過期提示的開頭：不提示的情境只斷言它不出現。
+const STALE_HINT: &str = "speclink: warning: skill files are older";
+
+/// The exact stderr of a stale hint naming `tools` (`<tool> <version>, …`).
+fn stale_hint(tools: &str) -> String {
+    format!(
+        "speclink: warning: skill files are older than this engine ({tools}; engine {ASSET_VERSION}) — an older review skill may not apply these rules; run `speclink update`\n"
+    )
+}
+
+/// Generate the declared tools' skills with `speclink update`, then restamp each
+/// listed tool's skills as `(dir, version)`; unlisted tools stay current.
+fn generate_skills(p: &TempProject, stamps: &[(&str, &str)]) {
+    let out = p.run(&["update"]);
+    assert!(out.status.success(), "update: {}", stderr_of(&out));
+    for (dir, version) in stamps {
+        set_skill_version(&p.dir.join(dir).join("skills"), version);
+    }
+}
+
+#[test]
+fn review_write_warns_when_skill_files_are_older_than_the_engine() {
+    // Spec scenario 技能檔過期時寫入後提示＋Example 提示行（逐列）.
+    let rows: [(&str, &[(&str, &str)], &str); 2] = [
+        ("tools:\n  - claude\n", &[(CLAUDE, "v1.44.0")], "claude v1.44.0"),
+        (
+            "tools:\n  - claude\n  - codex\n",
+            &[(CLAUDE, "v1.44.0"), (CODEX, "v1.43.0")],
+            "claude v1.44.0, codex v1.43.0",
+        ),
+    ];
+    for (i, (tools, stamps, named)) in rows.into_iter().enumerate() {
+        let p = TempProject::new(&format!("stale-hint-{i}"), WF_YAML);
+        std::fs::write(p.dir.join(".speclink.yaml"), tools).unwrap();
+        generate_skills(&p, stamps);
+        let out = p.run_stdin(&["workflow-config", "review", "warning", "--stdin"], "one rule\n");
+        assert!(out.status.success(), "row {i} stderr: {}", stderr_of(&out));
+        assert_eq!(stdout_of(&out), "✓ review.warning = 1 entries\n", "row {i}");
+        assert_eq!(stderr_of(&out), stale_hint(named), "row {i}");
+        assert_eq!(strings(&review_json(&p)["warning"]), ["one rule"], "row {i}");
+    }
+}
+
+#[test]
+fn the_hint_names_the_stale_tool_when_another_tool_is_missing() {
+    // Spec scenario 一個工具缺失、另一個過期時仍提示過期的工具.
+    let p = TempProject::new("stale-hint-missing", WF_YAML);
+    std::fs::write(p.dir.join(".speclink.yaml"), "tools:\n  - claude\n  - codex\n").unwrap();
+    generate_skills(&p, &[(CLAUDE, OLD_SKILLS)]);
+    std::fs::remove_dir_all(p.dir.join(CODEX).join("skills")).unwrap();
+    let out = p.run(&["workflow-config", "review", "baseline", "replace"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stderr_of(&out), stale_hint(&format!("claude {OLD_SKILLS}")));
+}
+
+#[test]
+fn no_hint_when_skill_files_are_current_missing_or_newer() {
+    // Spec scenarios 技能檔現版或整組缺失時不提示＋工作區較新時不提示。最後一列
+    // 有一個工具過期，整體仍為較新：釘住「整體較新就不提示」而非只看逐工具。
+    let both = "tools:\n  - claude\n  - codex\n";
+    let rows: [(&str, &str, Option<&[(&str, &str)]>, &str); 4] = [
+        ("current", "tools:\n  - claude\n", Some(&[]), "critical"),
+        ("missing", "tools:\n  - claude\n", None, "critical"),
+        ("newer", "tools:\n  - claude\n", Some(&[(CLAUDE, NEWER_SKILLS)]), "suggestion"),
+        ("newer+stale", both, Some(&[(CLAUDE, NEWER_SKILLS), (CODEX, OLD_SKILLS)]), "suggestion"),
+    ];
+    for (case, tools, stamps, list) in rows {
+        let p = TempProject::new(&format!("hint-{case}"), WF_YAML);
+        std::fs::write(p.dir.join(".speclink.yaml"), tools).unwrap();
+        if let Some(stamps) = stamps {
+            generate_skills(&p, stamps);
+        }
+        let out = p.run_stdin(&["workflow-config", "review", list, "--stdin"], "one rule\n");
+        assert!(out.status.success(), "{case}: {}", stderr_of(&out));
+        assert_eq!(stdout_of(&out), format!("✓ review.{list} = 1 entries\n"), "{case}");
+        assert!(!stderr_of(&out).contains(STALE_HINT), "{case}: {}", stderr_of(&out));
+    }
+}
+
+#[test]
+fn no_hint_on_dry_run_or_non_review_writes() {
+    // Spec scenario dry-run 與其他寫入子指令不提示.
+    let p = TempProject::new("hint-other-writes", WF_YAML);
+    generate_skills(&p, &[(CLAUDE, OLD_SKILLS)]);
+    let before = p.config_bytes();
+    let out = p.run_stdin(
+        &["workflow-config", "review", "warning", "--stdin", "--dry-run"],
+        "one rule\n",
+    );
+    assert!(out.status.success(), "dry-run: {}", stderr_of(&out));
+    assert!(!stderr_of(&out).contains(STALE_HINT), "dry-run: {}", stderr_of(&out));
+    assert_eq!(p.config_bytes(), before, "config.yaml is byte-for-byte unchanged");
+    for (args, stdin) in [
+        (&["workflow-config", "set", "tdd", "true"][..], ""),
+        (&["workflow-config", "rules", "tasks", "--stdin"][..], "one rule\n"),
+    ] {
+        let out = p.run_stdin(args, stdin);
+        assert!(out.status.success(), "{args:?}: {}", stderr_of(&out));
+        assert!(!stderr_of(&out).contains(STALE_HINT), "{args:?}: {}", stderr_of(&out));
+    }
 }
 
 // --- remote mode ---
@@ -1008,6 +1409,31 @@ fn remote_dry_run_prints_the_diff_without_writing() {
     assert!(diff.contains("@@"), "unified diff hunk: {diff}");
     assert!(diff.contains("+locale: ja"), "added line: {diff}");
     assert!(mock.none("PUT", "/config"), "dry-run sends no write request");
+}
+
+#[test]
+fn remote_review_write_warns_from_the_local_skill_files() {
+    // Spec scenario remote 模式以本機工作區判定.
+    let mock = mock_server(vec![
+        ("GET", "/config", 200, config_response()),
+        ("PUT", "/config", 200, r#"{"revision":8}"#.into()),
+    ]);
+    let p = RemoteProject::new("stale-hint", &mock.base);
+    // remote fixture 預設沒有 tools 清單（探測視為沒有受管工具），補上 claude。
+    let yaml = p.dir.join(".speclink.yaml");
+    let declared = std::fs::read_to_string(&yaml).unwrap() + "tools:\n  - claude\n";
+    std::fs::write(&yaml, declared).unwrap();
+    write_skill_file(&p.dir.join(CLAUDE).join("skills"), "speclink-review", OLD_SKILLS);
+
+    let out = p.run_stdin(&["workflow-config", "review", "critical", "--stdin"], "one rule\n");
+
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stdout_of(&out), "✓ review.critical = 1 entries\n");
+    assert!(
+        stderr_of(&out).contains(&stale_hint(&format!("claude {OLD_SKILLS}"))),
+        "stderr carries the hint naming claude: {}",
+        stderr_of(&out)
+    );
 }
 
 #[test]

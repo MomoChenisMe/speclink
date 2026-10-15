@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "../App";
@@ -59,7 +59,7 @@ function renderAt(route: string, client: ReturnType<typeof makeClient>) {
   return render(<App client={client as never} initialEntries={[route]} />);
 }
 
-// 側欄六個目的地與 header 帳號入口的完整契約在 admin-console-shell.test.tsx；
+// 側欄六個目的地與帳號選單的完整契約在 admin-console-shell.test.tsx；
 // 此檔只保留殼層以外的路由、focus、互動狀態與 session 過期行為，避免同一份清單兩處維護。
 const ADMIN_DESTINATIONS = ["使用者", "憑證", "稽核紀錄", "系統"];
 
@@ -96,7 +96,11 @@ describe("三種殼層與角色導覽", () => {
 
   it("一般成員直接開 /admin 得到明確 403，不顯示管理導覽", async () => {
     renderAt("/admin", makeClient({ getSession: vi.fn(async () => MEMBER) }));
-    expect(await screen.findByText(/沒有權限|無權限|403/)).toBeTruthy();
+    // 提示卡（design D7 FocusNotice）：標題與說明整塊以 role=alert 宣告。
+    const notice = await screen.findByRole("alert");
+    expect(within(notice).getByRole("heading", { level: 1, name: "沒有權限" })).toBeTruthy();
+    expect(notice.textContent).toContain("你沒有存取管理面的權限。");
+    expect(notice.querySelector("svg")?.getAttribute("class")).toContain("text-status-warning");
     expect(screen.queryByText("稽核紀錄")).toBeNull();
   });
 
@@ -104,7 +108,7 @@ describe("三種殼層與角色導覽", () => {
     renderAt("/admin/audit", makeClient({ getSession: vi.fn(async () => ADMIN) }));
     // lazy 管理 chunk 載入後呈現稽核頁標題。
     expect(await screen.findByRole("heading", { name: /稽核/ })).toBeTruthy();
-    expect(screen.getByRole("navigation")).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "管理導覽" })).toBeTruthy();
   });
 });
 
@@ -130,6 +134,54 @@ describe("導向與 focus", () => {
     const skip = await screen.findByRole("link", { name: /跳至主要內容|skip/i });
     expect(skip).toBeTruthy();
     expect(skip.getAttribute("href")).toContain("#");
+  });
+});
+
+// --- focus-flow card ---
+
+// spec「共用設計系統維持高密度可存取體驗」的「專注流程以置中字標與對話框式卡片呈現」與
+// spec「介面語言支援中文與英文」的「登入前可切換語言」（design D7）。
+describe("登入這一族的卡片", () => {
+  beforeEach(() => localStorage.removeItem("speclink.uiLocale"));
+  afterEach(() => localStorage.removeItem("speclink.uiLocale"));
+
+  it("登入頁為置中 40px 字標下的卡片：15px 標題「登入」、說明含目前主機名", async () => {
+    renderAt("/login", makeClient());
+    const heading = await screen.findByRole("heading", { level: 1, name: "登入" });
+    expect(heading.className).toContain("text-[15px]");
+    const main = screen.getByRole("main");
+    expect(within(main).getAllByAltText("Speclink")[0].className).toContain("h-10");
+    expect(main.textContent).toContain(`用管理員給你的帳號登入 ${window.location.host}。`);
+  });
+
+  it("跟隨系統時點已標示的「中文」不寫入偏好", async () => {
+    renderAt("/login", makeClient());
+    const user = userEvent.setup();
+    await screen.findByRole("heading", { level: 1, name: "登入" });
+    await user.click(screen.getByRole("button", { name: "中文" }));
+    expect(localStorage.getItem("speclink.uiLocale")).toBeNull();
+  });
+
+  it("卡片下方的「中文」「English」標示目前語言，點 English 立即切換且登入後維持英文", async () => {
+    const client = makeClient({
+      getSession: vi.fn().mockResolvedValueOnce(UNAUTH).mockResolvedValue(ADMIN),
+      login: vi.fn(async () => ({ destination: "/admin" })),
+    });
+    renderAt("/login", client);
+    const user = userEvent.setup();
+    await screen.findByRole("heading", { level: 1, name: "登入" });
+    expect(screen.getByRole("button", { name: "中文" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "English" }).getAttribute("aria-pressed")).toBe("false");
+
+    await user.click(screen.getByRole("button", { name: "English" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Sign in" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "English" }).getAttribute("aria-pressed")).toBe("true");
+    expect(localStorage.getItem("speclink.uiLocale")).toBe("en");
+
+    await user.type(screen.getByLabelText(/email/i), "admin@example.com");
+    await user.type(screen.getByLabelText(/password/i), "pw");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Overview" })).toBeTruthy();
   });
 });
 

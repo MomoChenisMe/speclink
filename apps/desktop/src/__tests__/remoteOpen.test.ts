@@ -65,6 +65,13 @@ function localSession(root: string, name: string): WorkspaceSession {
       writeWorkflowConfig: vi.fn(),
       writeWorkflowContext: vi.fn(),
       writeWorkflowRules: vi.fn(),
+      writeWorkflowReview: vi.fn(),
+      readSchemas: vi.fn().mockResolvedValue([]),
+      writeWorkflowSchema: vi.fn(),
+      forkSchema: vi.fn(),
+      createSchema: vi.fn(),
+      revealSchema: vi.fn(),
+      deleteSchema: vi.fn(),
     },
     events: { subscribe: () => () => {} },
     capabilities: LOCAL_CAPABILITIES,
@@ -198,7 +205,7 @@ describe("local migration 分頁原地轉換", () => {
       name: "Local",
     });
     const session = fakeRemoteSession(fakeRemoteDs());
-    session.locator = { ...session.locator, checkoutRoot: "/work/local" };
+    session.locator = { ...session.locator as Extract<WorkspaceSession["locator"], { kind: "remote" }>, checkoutRoot: "/work/local" };
     const openRemote = vi.fn().mockResolvedValue(session);
     const store = createAppStore({
       createSession: localSession,
@@ -266,7 +273,7 @@ describe("remote marker probe 分流", () => {
     });
     const order: string[] = [];
     const session = fakeRemoteSession(fakeRemoteDs());
-    session.locator = { ...session.locator, checkoutRoot: "/work/backend" };
+    session.locator = { ...session.locator as Extract<WorkspaceSession["locator"], { kind: "remote" }>, checkoutRoot: "/work/backend" };
     const inspectCheckout = vi.fn().mockImplementation(async (path: string) => {
       order.push("inspect");
       return { root: path, tools: ["codex"] };
@@ -419,7 +426,7 @@ describe("remote marker probe 分流", () => {
     });
     const order: string[] = [];
     const session = fakeRemoteSession(fakeRemoteDs());
-    session.locator = { ...session.locator, checkoutRoot: "/work/coexists" };
+    session.locator = { ...session.locator as Extract<WorkspaceSession["locator"], { kind: "remote" }>, checkoutRoot: "/work/coexists" };
     const bindCheckout = vi.fn().mockImplementation(async (path: string) => {
       order.push("reconcile");
       return path;
@@ -519,7 +526,6 @@ describe("重啟恢復（規格「重啟後 remote 分頁恢復需重驗」）",
         {
           locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
           name: "Demo/backend",
-          badge: null,
         },
       ],
     });
@@ -545,7 +551,6 @@ describe("重啟恢復（規格「重啟後 remote 分頁恢復需重驗」）",
             checkoutRoot: "/work/backend",
           },
           name: "Demo/backend",
-          badge: null,
         },
       ],
     });
@@ -567,7 +572,6 @@ describe("重啟恢復（規格「重啟後 remote 分頁恢復需重驗」）",
         {
           locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
           name: "Demo/backend",
-          badge: null,
         },
       ],
     });
@@ -594,7 +598,6 @@ describe("重啟恢復（規格「重啟後 remote 分頁恢復需重驗」）",
         {
           locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
           name: "Demo/backend",
-          badge: null,
         },
       ],
     });
@@ -623,7 +626,6 @@ describe("重啟恢復（規格「重啟後 remote 分頁恢復需重驗」）",
         {
           locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
           name: "Demo/backend",
-          badge: null,
         },
       ],
     });
@@ -654,9 +656,8 @@ describe("重啟恢復（規格「重啟後 remote 分頁恢復需重驗」）",
         {
           locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
           name: "Demo/backend",
-          badge: null,
         },
-        { locator: other.locator, name: "Demo/frontend", badge: null },
+        { locator: other.locator, name: "Demo/frontend" },
       ],
       sessions: { [other.id]: other },
     });
@@ -683,7 +684,6 @@ describe("重啟恢復（規格「重啟後 remote 分頁恢復需重驗」）",
         {
           locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
           name: "Demo/backend",
-          badge: null,
         },
       ],
     });
@@ -709,7 +709,6 @@ describe("重啟恢復（規格「重啟後 remote 分頁恢復需重驗」）",
         {
           locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
           name: "Demo/backend",
-          badge: null,
         },
       ],
     });
@@ -767,7 +766,7 @@ describe("最近開啟清單的本機轉 remote（design D2：移除 local 條�
       name: "Local",
     });
     const session = fakeRemoteSession(fakeRemoteDs());
-    session.locator = { ...session.locator, checkoutRoot: "/work/local" };
+    session.locator = { ...session.locator as Extract<WorkspaceSession["locator"], { kind: "remote" }>, checkoutRoot: "/work/local" };
     const store = createAppStore({
       createSession: localSession,
       workspace,
@@ -792,7 +791,7 @@ describe("最近開啟清單的其餘 remote 記入路徑（review／verify 第 
     localStorage.clear();
     const workspace = fakeWorkspace();
     const session = fakeRemoteSession(fakeRemoteDs());
-    session.locator = { ...session.locator, checkoutRoot: "/work/repo" };
+    session.locator = { ...session.locator as Extract<WorkspaceSession["locator"], { kind: "remote" }>, checkoutRoot: "/work/repo" };
     const store = createAppStore({
       createSession: localSession,
       workspace,

@@ -15,14 +15,18 @@ function render(ui: ReactElement) {
 // 捕捉 DndContext 的接線 props（onDragStart/onDragEnd）——jsdom 無法模擬真實
 // pointer 拖曳手勢，改直接驅動接線回呼驗證落點渲染與 archived 分支守門；
 // 元件本身仍以原 DndContext 渲染，既有測試不受影響。
-const captured = vi.hoisted(() => ({ dnd: null as any }));
+const captured = vi.hoisted(() => ({ dnd: null as any, overlayChildren: false }));
 vi.mock("@dnd-kit/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@dnd-kit/core")>();
   const Wrapped = (props: any) => {
     captured.dnd = props;
     return <actual.DndContext {...props} />;
   };
-  return { ...actual, DndContext: Wrapped };
+  // DragOverlay 只在 dnd-kit 內部 active 存在時渲染子節點；直接驅動回呼的測試要看浮動卡時
+  // 打開 overlayChildren，改為原樣渲染子節點（預設關閉，其餘測試照舊）。
+  const Overlay = (props: any) =>
+    captured.overlayChildren ? <div data-drag-overlay>{props.children}</div> : <actual.DragOverlay {...props} />;
+  return { ...actual, DndContext: Wrapped, DragOverlay: Overlay };
 });
 
 import { act } from "@testing-library/react";
@@ -46,6 +50,125 @@ const changes: ChangeItem[] = [
 function column(id: string): HTMLElement {
   return document.querySelector(`[data-column="${id}"]`) as HTMLElement;
 }
+
+describe("KanbanBoard 生命週期四欄色相（spec「生命週期四欄各一色相」「看板欄與卡片的容器外觀」；design D1）", () => {
+  it("三欄為白底細框圓角容器：首子節點為 bg-stage-* 色相條、標頭白底、欄名不全大寫；圖示與計數徽章取各自 stage token", () => {
+    render(<KanbanBoard changes={changes} />);
+    for (const stage of ["proposed", "in-progress", "ready"] as const) {
+      const token = `stage-${stage}`;
+      const col = column(stage);
+      const cls = col.className.split(/\s+/);
+      expect(cls).toContain("rounded-2xl");
+      expect(cls).toContain("bg-sidebar");
+      expect(cls).toContain("border");
+      // 欄不再以 border-t-4 當色條：第一個子節點是 3px 色相條，取 STAGE_BAR 的純 bg-stage-*。
+      expect(cls.some((c) => c.startsWith("border-t-"))).toBe(false);
+      expect(col.firstElementChild!.className).toContain(`bg-${token}`);
+      const heading = col.querySelector("h2")!;
+      expect(heading.className).not.toContain("uppercase");
+      expect(heading.parentElement!.className).toContain("bg-card");
+      const icon = heading.previousElementSibling as Element;
+      expect(icon.getAttribute("class")).toContain(`text-${token}`);
+      expect(within(col).getByTestId("column-count").className).toContain(token);
+    }
+  });
+
+  it("欄列為等寬 grid：有討論欄四欄、無討論欄三欄", () => {
+    const row = () => column("proposed").parentElement as HTMLElement;
+    const { unmount } = render(<KanbanBoard changes={changes} discussions={{ active: [], archived: [] }} />);
+    expect(row().className).toContain("grid-cols-[repeat(4,minmax(220px,1fr))]");
+    expect(row().className).not.toContain("safe_center");
+    unmount();
+    render(<KanbanBoard changes={changes} />);
+    expect(row().className).toContain("grid-cols-[repeat(3,minmax(220px,1fr))]");
+  });
+
+  it("零卡且非載入中的欄於卡片區置中顯示空文案", () => {
+    render(<KanbanBoard changes={[]} />);
+    const empty = within(column("proposed")).getByText("沒有提案中的變更");
+    expect(empty.className).toContain("text-center");
+    expect(empty.className).toContain("text-muted-foreground");
+    expect(within(column("in-progress")).getByText("沒有進行中的變更")).toBeTruthy();
+    expect(within(column("ready")).getByText("沒有已就緒的變更")).toBeTruthy();
+  });
+
+  it("搜尋無命中時三欄各顯示空文案（spec「空欄顯示置中灰字」）", () => {
+    render(<KanbanBoard changes={changes} query="zzz-no-match" onQuery={vi.fn()} />);
+    expect(within(column("proposed")).getByText("沒有提案中的變更")).toBeTruthy();
+    expect(within(column("in-progress")).getByText("沒有進行中的變更")).toBeTruthy();
+    expect(within(column("ready")).getByText("沒有已就緒的變更")).toBeTruthy();
+  });
+
+  it("已就緒零卡且搜尋使進行中無命中：兩欄各顯示空文案、計數為 0（spec「空欄顯示置中灰字」）", () => {
+    const noReady = changes.filter((c) => c.name !== "ready-z");
+    render(<KanbanBoard changes={noReady} query="proposing" onQuery={vi.fn()} />);
+    const count = (id: string) => within(column(id)).getByTestId("column-count").textContent;
+    expect(within(column("ready")).getByText("沒有已就緒的變更")).toBeTruthy();
+    expect(within(column("in-progress")).getByText("沒有進行中的變更")).toBeTruthy();
+    expect(count("ready")).toBe("0");
+    expect(count("in-progress")).toBe("0");
+    // 有命中的欄照常顯示卡片、不出空文案。
+    expect(column("proposed").querySelector('[data-change="proposing-x"]')).toBeTruthy();
+    expect(within(column("proposed")).queryByText("沒有提案中的變更")).toBeNull();
+  });
+
+  it("有卡片的欄、載入中與載入失敗的欄都不顯示空文案", () => {
+    const { unmount } = render(<KanbanBoard changes={changes} />);
+    expect(screen.queryByText("沒有提案中的變更")).toBeNull();
+    expect(screen.queryByText("沒有已就緒的變更")).toBeNull();
+    unmount();
+    const r2 = render(<KanbanBoard changes={[]} loading />);
+    expect(screen.queryByText("沒有提案中的變更")).toBeNull();
+    r2.unmount();
+    render(<KanbanBoard changes={[]} loadFailed />);
+    expect(screen.queryByText("沒有提案中的變更")).toBeNull();
+  });
+
+  it("en 空文案", () => {
+    rtlRender(
+      <I18nProvider locale="en">
+        <KanbanBoard changes={[]} />
+      </I18nProvider>,
+    );
+    expect(screen.getByText("No proposed changes")).toBeTruthy();
+    expect(screen.getByText("No changes in progress")).toBeTruthy();
+    expect(screen.getByText("No ready changes")).toBeTruthy();
+  });
+
+  it("變更卡與討論卡為容器內小卡（nested＋interactive）：12px 圓角、無陰影", () => {
+    render(
+      <KanbanBoard
+        changes={changes}
+        discussions={{
+          active: [{ slug: "d1", topic: "D1", status: "open", rounds: 1, created: "2026-10-08", promotedTo: [] }],
+          archived: [],
+        }}
+      />,
+    );
+    for (const card of [
+      document.querySelector('[data-change="working-y"]')!,
+      document.querySelector('[data-discussion="d1"]')!,
+    ]) {
+      const cls = card.className.split(/\s+/);
+      expect(cls).toContain("rounded-xl");
+      expect(cls.some((c) => c.includes("shadow"))).toBe(false);
+      expect(cls.some((c) => c.startsWith("hover:bg-"))).toBe(true);
+    }
+  });
+
+  it("卡片波次章隨所在欄色相，與欄計數徽章同色", () => {
+    const waved: ChangeItem[] = [
+      { name: "w-prop", status: "proposed", totalTasks: 3, completedTasks: 0, wave: 1 },
+      { name: "w-prog", status: "in-progress", totalTasks: 3, completedTasks: 1, wave: 2 },
+    ];
+    render(<KanbanBoard changes={waved} />);
+    const prop = within(column("proposed")).getByLabelText("第 1 波");
+    const prog = within(column("in-progress")).getByLabelText("第 2 波");
+    expect(prop.className).toContain("stage-proposed");
+    expect(prop.className).not.toContain("stage-in-progress");
+    expect(prog.className).toContain("stage-in-progress");
+  });
+});
 
 describe("KanbanBoard", () => {
   it("places each change in its lifecycle column (Chinese labels, no archived column)", () => {
@@ -181,7 +304,7 @@ describe("KanbanBoard", () => {
     const staleCard = screen.getByText("stale-a").closest("[data-change]") as HTMLElement;
     const restale = within(staleCard).getByLabelText("待重新反映");
     expect(restale).toBeTruthy();
-    // 警示語意走語意色表（含深色變體）——舊實作只有單一 amber-500，深色底下偏暗。
+    // 警示語意走語意色表（深色值由 theme.css 的深色 token 承擔）。
     expect(restale.className).toContain(SEMANTIC_TONE.warning);
     const freshCard = screen.getByText("fresh-b").closest("[data-change]") as HTMLElement;
     expect(within(freshCard).queryByLabelText("待重新反映")).toBeNull();
@@ -382,6 +505,32 @@ describe("KanbanBoard search（看板搜尋過濾卡片）", () => {
   });
 });
 
+// desktop-app「看板頁的頁標題區」（design D6）：title 選配；提供時搜尋與篩選落在標題同一列右端。
+describe("KanbanBoard 頁標題區", () => {
+  it("傳 title 時出現 h2 標題與說明，搜尋輸入在同一列", () => {
+    render(
+      <KanbanBoard
+        changes={changes}
+        query=""
+        onQuery={vi.fn()}
+        title="變更"
+        description="依生命週期分欄。"
+      />,
+    );
+    const heading = screen.getByRole("heading", { level: 2, name: "變更" });
+    const header = heading.closest("[data-page-header]") as HTMLElement;
+    expect(within(header).getByText("依生命週期分欄。")).toBeTruthy();
+    expect(within(header).getByPlaceholderText("搜尋看板卡片…")).toBeTruthy();
+  });
+
+  it("不傳 title 時無頁標題區，搜尋列照舊", () => {
+    render(<KanbanBoard changes={changes} query="" onQuery={vi.fn()} />);
+    expect(screen.queryByRole("heading", { name: "變更" })).toBeNull();
+    expect(document.querySelector("[data-page-header]")).toBeNull();
+    expect(screen.getByPlaceholderText("搜尋看板卡片…")).toBeTruthy();
+  });
+});
+
 describe("KanbanBoard 拖排（design D6）", () => {
   // 每欄可見卡的識別碼（視覺序）——resolveCardDrop 的輸入形狀。
   const cols: ColumnCards[] = [
@@ -495,7 +644,7 @@ describe("命中高亮與 snippet（design D7）", () => {
     expect(mark).toBeTruthy();
     expect(mark!.textContent).toBe("engine");
     // 搜尋高亮是「注意這裡」的警示層級，不是互動——改琥珀 mark，不佔用主色。
-    expect(mark!.className).toContain("amber");
+    expect(mark!.className).toContain("status-warning");
     expect(mark!.className).not.toContain("primary");
   });
 
@@ -602,6 +751,45 @@ describe("封存落點浮層（design D8 + archive-readiness-gating D3）", () =
     startDrag(cardDndId("change", "ready-z"));
     endDrag(cardDndId("change", "ready-z"), "archived");
     expect(onArchive).toHaveBeenCalledWith("ready-z");
+  });
+
+  // desktop-board-reskin design D3：落點浮層只用 theme token（主色虛線框＋主色淡底），
+  // 不再半透明背景＋backdrop 模糊；語意（僅就緒卡拖曳時浮現）不變。
+  it("拖曳已就緒卡時落點浮層為主色虛線框與淡底、無 backdrop 模糊", () => {
+    render(<KanbanBoard changes={changes} onArchive={vi.fn()} />);
+    startDrag(cardDndId("change", "ready-z"));
+    const zone = document.querySelector('[data-column="archived"]') as HTMLElement;
+    const cls = zone.className.split(/\s+/);
+    expect(cls).toContain("rounded-2xl");
+    expect(cls).toContain("border-dashed");
+    expect(cls).toContain("border-primary/60");
+    expect(cls).toContain("bg-primary/10");
+    expect(cls).toContain("text-primary");
+    expect(cls.some((c) => c.startsWith("backdrop-"))).toBe(false);
+    expect(cls.some((c) => c.startsWith("bg-background"))).toBe(false);
+  });
+
+  it("拖曳中的浮動卡帶陰影（浮層）；放開後浮動卡消失（spec「卡片無陰影而浮動卡有陰影」）", () => {
+    captured.overlayChildren = true;
+    try {
+      render(<KanbanBoard changes={changes} onReorder={vi.fn()} />);
+      startDrag(cardDndId("change", "ready-z"));
+      const overlay = document.querySelector("[data-drag-overlay]") as HTMLElement;
+      const floating = overlay.firstElementChild as HTMLElement;
+      expect(floating.className.split(/\s+/)).toEqual(expect.arrayContaining(["rounded-xl", "shadow-lg"]));
+      expect(floating.querySelector('[data-change="ready-z"]')).toBeTruthy();
+      endDrag(cardDndId("change", "ready-z"), null);
+      expect(overlay.childElementCount).toBe(0);
+    } finally {
+      captured.overlayChildren = false;
+    }
+  });
+
+  it("靜置的變更卡與其 sortable 包裝層都無陰影（陰影只在拖曳浮動卡）", () => {
+    render(<KanbanBoard changes={changes} onReorder={vi.fn()} />);
+    const card = document.querySelector('[data-change="ready-z"]') as HTMLElement;
+    expect(card.className.split(/\s+/).some((c) => c.includes("shadow"))).toBe(false);
+    expect(card.parentElement!.className).not.toContain("shadow");
   });
 });
 
@@ -866,5 +1054,76 @@ describe("看板首訪載入失敗終態", () => {
     render(<KanbanBoard changes={changes} discussions={emptyDiscussions} />);
     expect(document.querySelector('[data-testid="column-load-failed"]')).toBeNull();
     expect(within(column("ready")).getByText("ready-z")).toBeTruthy();
+  });
+});
+
+// spec「詳情頁的導覽與返回」（design D2）：看板回報目前呈現順序（含搜尋與篩選），
+// 供詳情頁 ‹ n／m › 與 ⌥↑／⌥↓ 切換——變更依欄序再欄內序；討論為上區全卡依序、
+// 其後接欄底「已轉出」細列（不論收合）。
+describe("KanbanBoard 呈現順序回報", () => {
+  const orderDiscussions: DiscussionLists = {
+    active: [
+      { slug: "promoted-done", topic: "已轉出", status: "promoted", rounds: 3, created: "2026-07-01", promotedTo: ["x"], concluded: true },
+      { slug: "talk-a", topic: "A", status: "open", rounds: 1, created: "2026-07-02", promotedTo: [] },
+      { slug: "talk-b", topic: "B", status: "concluded", rounds: 2, created: "2026-07-03", promotedTo: [] },
+    ],
+    archived: [],
+  };
+
+  it("初次渲染回報三欄順序與討論順序（上區卡後接已轉出細列）", () => {
+    const onVisibleOrderChange = vi.fn();
+    render(
+      <KanbanBoard changes={changes} discussions={orderDiscussions} onVisibleOrderChange={onVisibleOrderChange} />,
+    );
+    expect(onVisibleOrderChange).toHaveBeenLastCalledWith({
+      changes: ["proposing-x", "working-y", "progressed-w", "ready-z"],
+      discussions: ["talk-a", "talk-b", "promoted-done"],
+    });
+  });
+
+  it("輸入搜尋後回報過濾後順序；順序不變時不重複回報", () => {
+    const onVisibleOrderChange = vi.fn();
+    const { rerender } = render(
+      <KanbanBoard
+        changes={changes}
+        discussions={orderDiscussions}
+        query=""
+        onQuery={vi.fn()}
+        onVisibleOrderChange={onVisibleOrderChange}
+      />,
+    );
+    const calls = onVisibleOrderChange.mock.calls.length;
+    rerender(
+      <KanbanBoard
+        changes={changes}
+        discussions={orderDiscussions}
+        query=""
+        onQuery={vi.fn()}
+        onVisibleOrderChange={onVisibleOrderChange}
+      />,
+    );
+    expect(onVisibleOrderChange.mock.calls.length).toBe(calls);
+    rerender(
+      <KanbanBoard
+        changes={changes}
+        discussions={orderDiscussions}
+        query="ing"
+        onQuery={vi.fn()}
+        onVisibleOrderChange={onVisibleOrderChange}
+      />,
+    );
+    expect(onVisibleOrderChange).toHaveBeenLastCalledWith({
+      changes: ["proposing-x", "working-y"],
+      discussions: [],
+    });
+  });
+
+  it("未傳 discussions 時討論序列為空陣列", () => {
+    const onVisibleOrderChange = vi.fn();
+    render(<KanbanBoard changes={changes} onVisibleOrderChange={onVisibleOrderChange} />);
+    expect(onVisibleOrderChange).toHaveBeenLastCalledWith({
+      changes: ["proposing-x", "working-y", "progressed-w", "ready-z"],
+      discussions: [],
+    });
   });
 });

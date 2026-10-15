@@ -3,7 +3,9 @@ import { Navigate, useSearchParams } from "react-router-dom";
 import { Button, useI18n } from "@speclink/ui";
 import { useClient, useSession } from "../app/context";
 import { Field } from "../components/Field";
+import { FocusFooter, FocusHeader } from "../layouts/FocusLayout";
 import { WebApiError } from "../api/client";
+import { fillUser } from "../lib/userLabel";
 
 // 裝置核准頁（server-device-auth「核准頁 session 保護且明確確認」, D3）。需已登入；未
 // 登入時導向登入頁並僅保留格式合格的裝置碼（成功登入後由 Server 依 device code 裁決導回
@@ -68,55 +70,68 @@ export function ActivatePage() {
   // 已經結束、app 會自行取得結果（server-device-auth「核准頁 session 保護且明確確認」）。
   if (phase === "done") {
     return (
-      <div>
-        <h1 className="mb-2 text-2xl font-semibold">{t("activate.title")}</h1>
-        <p role="status" aria-live="polite" className="text-muted-foreground">
-          {result}
-        </p>
-        <p className="mt-2 text-muted-foreground">{t("activate.returnHint")}</p>
-      </div>
+      <>
+        <FocusHeader title={t("activate.title")} />
+        <div className="space-y-2 text-[13px] text-muted-foreground">
+          <p role="status" aria-live="polite">
+            {result}
+          </p>
+          <p>{t("activate.returnHint")}</p>
+        </div>
+      </>
     );
   }
 
-  return (
-    <div>
-      <h1 className="mb-2 text-2xl font-semibold">{t("activate.title")}</h1>
-      {phase === "enter" ? (
-        <form onSubmit={onCheck} className="space-y-4" noValidate>
-          <p className="text-muted-foreground">{t("activate.prompt")}</p>
-          <Field id="user-code" label={t("activate.codeLabel")} value={code} onChange={setCode} />
-          {message && (
-            <p role="alert" className="text-sm text-destructive">
-              {message}
-            </p>
-          )}
+  if (phase === "enter") {
+    return (
+      <form onSubmit={onCheck} className="flex flex-col gap-4" noValidate>
+        <FocusHeader title={t("activate.title")} description={t("activate.prompt")} />
+        <Field
+          id="user-code"
+          label={t("activate.codeLabel")}
+          value={code}
+          onChange={setCode}
+          error={message ?? undefined}
+        />
+        <FocusFooter>
           <Button type="submit" disabled={pending}>
             {pending ? t("activate.checking") : t("common.next")}
           </Button>
-        </form>
-      ) : (
-        <div className="space-y-4">
-          <p className="text-muted-foreground">{t("activate.confirmBody").replace("{code}", code)}</p>
-          {message && (
-            <p role="alert" className="text-sm text-destructive">
-              {message}
-            </p>
-          )}
-          <div className="flex gap-3">
-            <Button type="button" onClick={() => onDecide("approve")} disabled={pending}>
-              {t("activate.approve")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onDecide("deny")}
-              disabled={pending}
-            >
-              {t("activate.deny")}
-            </Button>
-          </div>
-        </div>
+        </FocusFooter>
+      </form>
+    );
+  }
+
+  // 確認：大字代碼讓使用者對照裝置上的畫面，身分句說清楚核准後誰會登入。
+  const user = session.user;
+  const shown = code.trim();
+  return (
+    <>
+      <FocusHeader
+        title={t("activate.confirmTitle")}
+        description={t("activate.confirmBody").replace("{code}", shown)}
+      />
+      <div className="rounded-lg bg-muted/50 px-4 py-3 text-center">
+        <p className="font-mono text-[22px] font-medium tracking-wider">{shown}</p>
+        {user && (
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            {fillUser(t("activate.identity"), user)}
+          </p>
+        )}
+      </div>
+      {message && (
+        <p role="alert" className="text-sm text-destructive">
+          {message}
+        </p>
       )}
-    </div>
+      <FocusFooter>
+        <Button type="button" variant="outline" onClick={() => onDecide("deny")} disabled={pending}>
+          {t("activate.deny")}
+        </Button>
+        <Button type="button" onClick={() => onDecide("approve")} disabled={pending}>
+          {t("activate.approve")}
+        </Button>
+      </FocusFooter>
+    </>
   );
 }

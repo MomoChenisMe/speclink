@@ -2,7 +2,8 @@
 // 以 node 環境執行：Vite build 內部使用 esbuild，在 jsdom 環境下其
 // TextEncoder/Uint8Array 不變式會被破壞。此測試僅檢視 build 產物，不需 DOM。
 import { describe, it, expect } from "vitest";
-import { build, type RollupOutput } from "vite";
+import { build } from "vite";
+import type { RollupOutput } from "rollup";
 import { fileURLToPath } from "node:url";
 
 // Production build 契約（server-web-console D5 / delivery-baseline）：Vite 產出的

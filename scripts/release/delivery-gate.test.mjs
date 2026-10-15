@@ -24,7 +24,7 @@ function requireIndex(haystack, needle, label) {
   return i;
 }
 
-// --- root test:all（delivery-baseline「root 單一指令全量驗證」） ---
+// --- root test:all（delivery-baseline「root 單一指令完整驗證」） ---
 
 test('test:all 依序納入五個測試面，且 apps/server-web build 排在 cargo test --workspace 之前', () => {
   const pkg = JSON.parse(read('package.json'));
@@ -60,6 +60,53 @@ test('test:all 全程以 && 串接，任一面失敗即以非零 exit 中止', (
     /&&\s*npm test -w apps\/server-web\s*&&/,
     'apps/server-web 測試面必須夾在 && 之間',
   );
+});
+
+// --- 開發建置（delivery-baseline「開發建置不保留除錯中間檔」） ---
+
+const DEV_DEBUG_WHY =
+  'Cargo.toml 的 dev profile 必須關閉除錯資訊（[profile.dev] debug = false）：' +
+  'macOS 預設把除錯資訊留在 .o 中間檔、重新編譯不刪舊檔，會在 target/debug/deps 累積到數百萬個，拖慢每次 rustc 啟動';
+
+/// 檢查 Cargo.toml 內容的 dev profile 是否關閉除錯資訊；通過回 null，否則回失敗訊息。
+/// 逐行找出 `[profile.dev]` 標頭到下一個 `[` 標頭之間的區段，只看 debug 鍵——
+/// 不引入 TOML 解析套件，scripts 測試面維持零外部依賴。
+function devProfileDebugIssue(toml) {
+  let inDev = false;
+  let seen = false;
+  let value;
+  for (const raw of toml.split(/\r?\n/)) {
+    const line = raw.replace(/#.*/, '').trim();
+    if (line.startsWith('[')) {
+      inDev = line === '[profile.dev]';
+      seen ||= inDev;
+    } else if (inDev) {
+      value = line.match(/^debug\s*=\s*(.+)$/)?.[1] ?? value;
+    }
+  }
+  if (!seen) return `缺少 [profile.dev] 區段。${DEV_DEBUG_WHY}`;
+  if (value !== 'false' && value !== '0') {
+    return `[profile.dev] 的 debug 是 ${value ?? '（未設定）'}。${DEV_DEBUG_WHY}`;
+  }
+  return null;
+}
+
+test('dev profile 關閉除錯資訊（debug = false），避免 .o 在 target/debug/deps 累積', () => {
+  // 判定對照 spec 範例表：只有 false 與 0 算關閉。
+  const examples = [
+    ['[profile.dev]\ndebug = false\n', true],
+    ['[profile.dev]\ndebug = 0\n', true],
+    ['[profile.dev]\ndebug = "line-tables-only"\n', false],
+    ['[profile.dev]\ndebug = true\n', false],
+    ['[profile.dev]\nopt-level = 0\n', false],
+    ['[workspace]\nresolver = "2"\n', false],
+  ];
+  for (const [toml, passes] of examples) {
+    assert.equal(devProfileDebugIssue(toml) === null, passes, `範例判定錯誤：\n${toml}`);
+  }
+
+  const issue = devProfileDebugIssue(read('Cargo.toml'));
+  assert.equal(issue, null, issue ?? undefined);
 });
 
 // --- 主 CI（delivery-baseline「CI 執行完整測試」） ---

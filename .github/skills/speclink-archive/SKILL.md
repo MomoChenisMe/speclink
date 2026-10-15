@@ -1,0 +1,339 @@
+---
+name: speclink-archive
+description: "Use when a change is finished and its quality stations are settled — folds the deltas into the specs and moves the change into the archive."
+license: MIT
+compatibility: Requires speclink CLI.
+metadata:
+  author: speclink
+  version: "v1.48.1"
+  generatedBy: "Speclink"
+---
+
+Archive a completed change.
+
+**Input**: Optionally specify a change name after `/speclink-archive` (e.g., `/speclink-archive add-auth`). If omitted, check if it can be inferred from conversation context; if it is still vague or ambiguous, step 1 asks the user.
+
+**Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
+
+**Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response.
+
+**Where to run it**: archiving runs in the **main checkout**. Inside a linked worktree on a `speclink/` branch the engine refuses the archive outright — the unarchive backup would land in the worktree's gitignored `.speclink/snapshots/` and vanish with the worktree, and deltas would merge onto the branch point's stale canon. If you are in a worktree, wrap it up with the `/speclink-worktree-merge` skill first, then archive from the main checkout.
+
+**Steps**
+
+1. **If no change name provided, prompt for selection**
+
+   Run `speclink plan --json` and list the candidates from its `changes` array in the given order — the order that honors declared dependencies. Label each candidate with its `archiveAfter` (the changes to archive before it, because both touch the same requirement): an empty array reads as 「可封存」, a non-empty one as 「等 <archiveAfter 的名稱> 封存」. When its `blockedBy` is non-empty, add 「前置 <blockedBy 的名稱> 未封存」. Append the names in `skipped` (changes whose metadata the plan could not parse) at the end, marked 「metadata 壞掉」 — they stay selectable, as `list --json` would have shown them. Use the **AskUserQuestion tool** to let the user select.
+
+   If `plan` fails (a dependency cycle), fall back to `speclink list --json` and list the active changes in its order, with no blocking labels.
+
+   Show only active changes (not already archived).
+   Include the schema used for each change if available.
+
+   Do NOT guess or auto-select a change — always let the user choose, and wait for the answer; a candidate marked 「可封存」 is not picked for them either.
+
+2. **Check artifact completion status**
+
+   Run `speclink status --change "<name>" --json` to check artifact completion.
+
+   Parse the JSON to understand:
+   - `schemaName`: The workflow being used
+   - `artifacts`: List of artifacts with their status (`done` or other)
+
+   **If any artifacts are not `done`:**
+   - Display warning listing incomplete artifacts
+   - Prompt user for confirmation to continue
+   - Proceed if user confirms
+
+3. **Check task completion status**
+
+   Read the tasks file (typically `tasks.md`) to check for incomplete tasks.
+
+   Count tasks marked with `- [ ]` (incomplete) vs `- [x]` (complete).
+
+   **If incomplete tasks found:**
+   - Display warning showing count of incomplete tasks
+   - Prompt user for confirmation to continue
+   - Proceed if user confirms
+
+   **If no tasks file exists:** Proceed without task-related warning.
+
+3b. **Plan order hint**
+
+   Run `speclink plan --json` and find the target change in its `changes` array. Tell the user each of these that applies:
+
+   - `archiveAfter` is non-empty:
+
+     > plan 建議先封存 <archiveAfter 的名稱>；它們封存後，重讀本 change 對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `/speclink-ingest`）再封存 <name>。重疊的 requirement：<requirementOverlap 裡對應那些 change 的 capability › requirement>。
+
+   - `requirementOverlap` holds an entry whose `conflict` is true:
+
+     > <name> 與 <change> 都新增（或改名成）同名的 requirement <requirement>，或都移除（或改名掉）它；後封存的那一個會封存失敗（名字重複，或名字已不存在），先改掉其中一邊。
+
+   - `blockedBy` is non-empty:
+
+     > 宣告前置 <blockedBy 的名稱> 尚未封存。
+
+   Do not offer `speclink drift` as the remedy for an overlap: drift only checks that the requirement names still exist, and cannot see content that an earlier archive overwrote.
+
+   Also note every other entry of `changes` that lists `<name>` in its `archiveAfter` — even when none of the hints above applies: those changes archive after `<name>` and touch the same requirements. Once `<name>` is archived, the plan no longer names it, so the reminder after the archive is the last point where their rewrite gets named — keep the list for it. The note asks nothing now.
+
+   Then use the **AskUserQuestion tool** to ask which way to go — archive `<name>` now anyway, or stop here and handle those first (plain text + wait if the tool is unavailable). This is a suggestion only. It does NOT block the archive and relies on no engine gate: if the user confirms, archive as usual. An empty `archiveAfter` and `blockedBy` with no conflict, a target missing from the plan, or a `plan` failure (a dependency cycle) → say nothing about ordering and continue. When the user stops instead, end the run without archiving.
+
+4. **Assess delta spec completeness**
+
+   Check for delta specs at `openspec/changes/<name>/specs/`. If none exist, skip this step.
+
+   Background: the merge engine is fail-closed. It validates every capability's delta
+   against the canonical spec first and writes nothing until all of them pass, so a stale
+   or self-contradicting delta refuses the archive with zero file effect instead of
+   silently dropping content. It refuses when:
+   - an ADDED requirement name already exists in the canonical spec
+   - a MODIFIED/REMOVED/RENAMED source requirement no longer exists
+   - one requirement name appears under more than one operation section of the delta
+   - a RENAMED target name is already taken in the canonical spec
+   - a MODIFIED block drops a scenario the canonical requirement has, without declaring it
+   - a capability with no canonical spec yet carries anything other than ADDED
+
+   A MODIFIED requirement **wholesale-replaces** the canonical requirement block, so it must
+   contain the complete final text. To drop a canonical scenario on purpose, declare it
+   inside the MODIFIED block — one per line, stripped before the text reaches the canon:
+
+   ```markdown
+   ### Requirement: Retry policy
+
+   <!-- REMOVED-SCENARIO: Offline queue -->
+   ```
+
+   A delta for a capability being created may also carry a `## Purpose` section; it becomes
+   the new canonical spec's Purpose (without one, a TBD placeholder is written).
+
+   **For each delta spec, compare against `openspec/specs/<capability>/spec.md`:**
+   - MODIFIED requirements: does the canonical requirement contain scenarios or content the delta omits but that should survive?
+   - ADDED requirements: does the requirement already exist in the canonical spec (e.g., from an earlier mid-flight sync)?
+
+   **If every delta is already complete final-state and no ADDED requirement pre-exists:** proceed directly to the archive (step 5) — no prompt needed.
+
+   **Otherwise**, show a summary of what the engine would refuse, then use the **AskUserQuestion tool**:
+   - "Fix the delta then archive (recommended)": rewrite the delta spec file(s) in place —
+     - merge the omitted canonical content into each MODIFIED requirement so it reads as the complete final state, or declare the drop with `<!-- REMOVED-SCENARIO: … -->`
+     - drop or retarget each pre-existing ADDED requirement (a requirement the canon already carries is edited via MODIFIED, not re-added)
+     - do NOT edit the main specs — only the delta files change
+   - "Refresh from the codebase": run `/speclink-drift <name>` to see what moved, then `/speclink-ingest <name>` to update the delta — the route the refusal message itself points at
+   - "Cancel"
+
+   After fixing, show a brief diff summary of the rewritten delta files, then continue.
+
+5. **Perform the archive**
+
+   Use the `speclink archive` CLI command which handles the full archive workflow
+   (spec snapshot, delta application, @trace injection, identity recording):
+
+   ```bash
+   speclink archive <name>
+   ```
+
+   **Optional flags:**
+   - `--skip-specs` — skip delta spec application (for tooling/doc-only changes)
+   - `--mark-tasks-complete` — mark all incomplete tasks as complete before archiving
+   - `--no-validate` — skip delta spec validation
+
+   **@trace**: every ADDED and MODIFIED requirement the archive materializes into a
+   canonical spec gets a `@trace` block carrying exactly two fields — `source` (the change
+   name) and `updated` (the archive timestamp: RFC 3339 with the local offset, to the
+   second). Injection is unconditional: it does not depend on
+   what the work tree looks like, and the canon carries no file list. Which files a change
+   touched lives in its evidence record, not in the specs.
+
+   **If archive fails** because the archived name already exists, suggest renaming existing archive.
+
+   **If the merge gate refuses**, the error lists every offending operation
+   (capability / operation / requirement / reason) at once. Fix them in one round on the
+   delta files — `speclink drift <name>` shows what moved, `/speclink-ingest <name>`
+   updates the delta — then re-run the archive. `--no-validate` does not unlock the gate;
+   `--skip-specs` skips spec application entirely.
+
+   **The zero-evidence note.** A change accumulates completion evidence in
+   `openspec/changes/<name>/.evidence.json` as `speclink task done` records which code
+   files each task touched. When a change carries none, the archive still succeeds and
+   stderr gains one line:
+
+   ```
+   note: no task evidence recorded for change '<name>' — fine for spec-only changes;
+   otherwise check that tasks went through apply
+   ```
+
+   It is a note, not a refusal — nothing to waive, no flag to pass, exit code unchanged. A
+   spec-only or docs-only change earns no code evidence by construction, so the note is
+   expected there. Anywhere else, read it as a prompt to check whether the work actually
+   went through `/speclink-apply` before archiving.
+
+6. **Display summary**
+
+   Show archive completion summary including:
+   - Change name
+   - Schema that was used
+   - Archive location
+   - Spec sync status (synced / sync skipped / no delta specs)
+   - Note about any warnings (incomplete artifacts/tasks)
+
+**Output On Success**
+
+```
+## Archive Complete
+
+**Change:** <change-name>
+**Schema:** <schema-name>
+**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
+**Specs:** ✓ Synced to main specs
+
+All artifacts complete. All tasks complete.
+```
+
+**Output On Success (No Delta Specs)**
+
+```
+## Archive Complete
+
+**Change:** <change-name>
+**Schema:** <schema-name>
+**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
+**Specs:** No delta specs
+
+All artifacts complete. All tasks complete.
+```
+
+**Output On Success With Warnings**
+
+```
+## Archive Complete (with warnings)
+
+**Change:** <change-name>
+**Schema:** <schema-name>
+**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
+**Specs:** Sync skipped (user chose to skip)
+
+**Warnings:**
+- Archived with 2 incomplete artifacts
+- Archived with 3 incomplete tasks
+- Delta spec sync was skipped (user chose to skip)
+
+Review the archive if this was not intentional.
+```
+
+**Output On Error (Archive Exists)**
+
+```
+## Archive Failed
+
+**Change:** <change-name>
+**Target:** openspec/changes/archive/YYYY-MM-DD-<name>/
+
+Target archive directory already exists.
+
+**Options:**
+1. Rename the existing archive
+2. Delete the existing archive if it's a duplicate
+3. Wait until a different date to archive
+```
+
+**Guardrails**
+
+Check these before you show the summary:
+
+- [ ] The user chose the change; nothing was auto-selected (step 1).
+- [ ] Completion was checked with the artifact graph (`speclink status --json`, step 2); warnings were reported and confirmed, not treated as blockers (steps 2–3).
+- [ ] When delta specs exist, the completeness assessment ran, and a prompt appeared only when a fix was needed (step 4).
+- [ ] Only delta files were edited — never the main specs; delta application is the archive CLI's job, and the merge gate was not worked around (steps 4–5).
+- [ ] `.openspec.yaml` moved with the change directory, and the summary says clearly what happened (step 6).
+
+
+## RENAMED is actually executed (speclink-specific)
+
+speclink executes renames at archive time — `## RENAMED Requirements` is applied to the
+canonical spec, not merely recorded. Both documented forms work:
+
+```markdown
+## RENAMED Requirements
+
+- FROM: `### Requirement: Old Name`
+- TO: `### Requirement: New Name`
+```
+
+or the header form (`### Requirement: Old Name` followed by a `TO: New Name` line). The
+canonical requirement header is rewritten, the summary counts it under `renamed:`, and a
+rename-only delta is a valid change (validates and archives). A stale FROM target — or a TO
+name the canon already carries — refuses the archive; `speclink drift` surfaces the same
+verdict in `spec_assumptions` so it routes to ingest before archiving.
+
+## Bulk archive (speclink-specific)
+
+When several changes are finished, archive them in one pass:
+
+```bash
+speclink archive <name-a> <name-b>     # explicit set
+speclink archive --all                 # every ready change
+```
+
+Semantics (the CLI enforces both):
+
+1. **Skip, never silently** — a change is archived only when it is ready: tasks complete
+   (or `--mark-tasks-complete`), validation passes (or `--no-validate`), and no delta
+   operation the merge gate would refuse (a MODIFIED/REMOVED target another change already
+   rewrote — run `speclink drift <name>` and reconcile via ingest). The pre-check reads the
+   engine's own verdict, so it never disagrees with it; it only reports the change as
+   skipped with the reason and a `Bulk archive: N archived, M skipped` summary instead of
+   aborting the run.
+2. **Fail-fast** — archives apply in created-date order; on the first hard error the run
+   stops and reports archived / failed / untouched (already-archived changes cannot be
+   rolled back automatically).
+
+The work tree's state is not one of them: @trace carries no file list, so an uncommitted
+edit cannot leak into any archived change's specs. The zero-evidence note is per change,
+exactly as in a single archive — one line per change that carries no evidence, never a
+reason to stop the run.
+
+Each archived change still gets the full single-archive treatment: delta application with
+@trace, snapshot for unarchive, `.started` cleanup, and its linked discussion archived
+alongside. The evidence record rides along inside the change directory — nothing to clean
+up, nothing to delete.
+
+## After the archive
+
+Every archive — whichever path led here: straight from apply, after a review or verify
+stamp, after `/speclink-quality`, or following `/speclink-worktree-merge` — leaves
+uncommitted working-tree changes: the deltas merged into the canonical specs and the
+change directory moved into the archive. Close by reminding the user to commit them
+with a plain git commit — the change-scoped `/speclink-commit` flow does not apply
+after the archive (its file selection reads the change directory that has just moved).
+This is a reminder only — never run the commit yourself.
+
+When the workspace has a `openspec/manual/` directory, add one more line to that
+reminder: the manual may be stale now, and `/speclink-manual` will report which pages
+this archive's spec changes outdated. The condition is the directory's existence only —
+do not work out which specs this archive touched, and do not judge whether the manual
+is actually stale; that is the manual skill's report. This too is a reminder only —
+never run `/speclink-manual` yourself.
+
+When the plan order hint noted changes that list `<name>` in their `archiveAfter`, add
+one more line:
+
+> <那些 change 的名稱> 要在 <name> 之後封存，並動到同名的 requirement：先重讀它們對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `/speclink-ingest`），再封存它們。
+
+This too is a reminder only — never run the ingest yourself.
+
+Then run `speclink plan --json` and hand the user the next change to start. When `next`
+is non-null, add one more line:
+
+> plan 的下一個可開工：<next>，執行 `/speclink-apply <next>`。
+
+When the effective worktree policy is on (`speclink workflow-config show --json` →
+`worktree`; a `SPECLINK_WORKTREE` env override wins) and `changes` holds two or more
+entries with `wave` 1 and `stage` `proposed` (wave 1 waits on nothing, so their
+`blockedBy` is empty), also list them as parallel-safe:
+
+> 第 1 波可並行：<name-a>、<name-b>，各開一個 session 走 `/speclink-apply-with-worktree <name>`。
+
+Policy off, or only one such change → name `next` alone. A null `next`, or a `plan`
+failure (a dependency cycle) → say nothing about ordering. This too is a reminder only —
+never run apply yourself.

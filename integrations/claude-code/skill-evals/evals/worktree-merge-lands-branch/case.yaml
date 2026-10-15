@@ -1,0 +1,3 @@
+schema_version: "1.0"
+context:
+  scaffold_script: scaffold.sh

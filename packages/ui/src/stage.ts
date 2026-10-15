@@ -7,32 +7,35 @@ export type Stage = "proposed" | "in-progress" | "ready";
 export const STAGES: Stage[] = ["proposed", "in-progress", "ready"];
 
 /**
- * 各階段的徽章／chip 配色——單一 teal 色相以深淺表達生命週期推進。看板欄計數
- * 徽章與討論欄 promoted chip 共用此單一來源，避免兩處配色分歧。
+ * 各階段的徽章／chip 配色——每階一色相（提案中＝主色、進行中＝藍、已就緒＝綠），
+ * 色值在 theme.css 的 stage-* token。看板欄計數徽章、討論欄 promoted chip 與
+ * 系統匣分區計數共用此單一來源，避免多處配色分歧。
  */
 export const STAGE_BADGE: Record<Stage, string> = {
-  proposed: "bg-primary/8 text-primary/70",
-  "in-progress": "bg-primary/12 text-primary",
-  ready: "bg-primary text-primary-foreground",
+  proposed: "bg-stage-proposed/10 text-stage-proposed",
+  "in-progress": "bg-stage-in-progress/10 text-stage-in-progress",
+  ready: "bg-stage-ready text-primary-foreground",
 };
 
-/**
- * 各階段的進度條填色——單一 teal 色相深淺階梯（提案中最淺、進行中次之、
- * 已就緒最深）。看板欄位進度條與系統匣面板進度條共用此單一來源，避免
- * 兩處配色分歧。
- */
+/** 各階段的進度條填色——看板欄位進度條與系統匣面板進度條共用。 */
 export const STAGE_BAR: Record<Stage, string> = {
-  proposed: "bg-primary/50",
-  "in-progress": "bg-primary/75",
-  ready: "bg-primary",
+  proposed: "bg-stage-proposed",
+  "in-progress": "bg-stage-in-progress",
+  ready: "bg-stage-ready",
 };
 
-/** 各階段的圖示色——與 STAGE_BAR 同階梯；看板欄標題與面板分區標題共用。 */
+/** 各階段的圖示色——與 STAGE_BAR 同色相；看板欄標題與面板分區標題共用。 */
 export const STAGE_ICON: Record<Stage, string> = {
-  proposed: "text-primary/50",
-  "in-progress": "text-primary/75",
-  ready: "text-primary",
+  proposed: "text-stage-proposed",
+  "in-progress": "text-stage-in-progress",
+  ready: "text-stage-ready",
 };
+
+/** 討論的色相（桃紫，專屬）——看板討論欄標頭與系統匣討論分區的圖示與計數共用。 */
+export const DISCUSSION_TONE = {
+  icon: "text-stage-discussion",
+  badge: "bg-stage-discussion/10 text-stage-discussion",
+} as const;
 
 /**
  * 由生命週期標記派生 change 的階段（優先序由上而下）：

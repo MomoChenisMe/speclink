@@ -1,0 +1,190 @@
+---
+name: speclink-improve
+description: "Use when improvements are asked for without naming a topic — user-initiated only, never on the model's own initiative; scans the codebase and records the candidates as a discussion."
+license: MIT
+compatibility: Requires speclink CLI.
+metadata:
+  author: speclink
+  version: "v1.48.1"
+  generatedBy: "Speclink"
+---
+
+Scan the codebase for architectural improvements and turn the best ones into a recorded discussion. This is the mirror image of `/speclink-discuss`: there the user brings the topic, here the model brings the candidates. Everything downstream — rounds, conclusion, promote/link, archive — is the same discussion machinery.
+
+**This skill is user-initiated only.** Never trigger it on your own. Do not offer to "run improve" in the middle of another task, and do not start scanning because some code looked messy while you were doing something else. It runs when the user asks for it, and only then.
+
+**This skill never implements.** You read files, search code, run git, and record a discussion. You do not write application code, refactor anything, or fix what you find. Improvements reach the codebase through the normal route: conclusion → `/speclink-propose` (or `promote`) → `/speclink-apply`. If the user asks you to just fix one of the candidates, tell them to conclude the discussion first and start a change.
+
+**Input**: Optionally a direction after `/speclink-improve` — a module, subsystem, crate, or pain point ("the store layer", "everything around auth", "the CLI feels bloated"). When given, that direction IS the scope and Step 2's inference is skipped. When omitted, Step 2 infers the scope.
+
+**Prerequisites**: This skill requires the `speclink` CLI and `git`. If any command fails with "command not found" or similar, report the error and STOP.
+
+**What counts as an improvement here**: structural deepening — making modules deeper, seams fewer and better placed, complexity concentrated instead of smeared. Behavioural correctness is not this skill's job: bugs belong to `/speclink-review`, spec compliance to `/speclink-verify`, security sharp edges to `/speclink-audit`.
+
+---
+
+## The six steps
+
+### Step 0: Load shared vocabulary
+
+Run `speclink language show`. It prints the project's canonical vocabulary — terms with `definition`, `avoid`, and `why`.
+
+- **Succeeds** → use the canonical terms when you name candidates and write the record. A candidate whose description drifts into an `avoid` synonym reads as a different problem than it is.
+- **Fails (no vocabulary document)** → continue silently. A missing vocabulary is not an error — do not announce it, do not block.
+
+Architecture vocabulary (seam, depth, adapter, shallow module) stays in this document — it is working vocabulary for the scan, not project vocabulary for `LANGUAGE.md`.
+
+### Step 1: Re-proposal check
+
+Before scanning, find out what has already been decided. Proposing something the user already rejected is worse than proposing nothing.
+
+```bash
+speclink discuss search <scope keyword>... --json
+speclink list --json
+```
+
+- **Search the discussions with your scope's keywords** — the module, crate or pain-point nouns. This check always runs before the scan (Step 3); its keywords come from the user's direction when one was given, and from the scope Step 2 settles when it was not — in that case do Step 2 first, then come back here. `discuss search` covers live and archived records alike and matches only the topic, the slug and the decision lines — each round's `Ruled out` and the Conclusion's `Decision` / `Rejected alternatives` / `Deferred`; any one keyword matching counts. Those lines are this project's decision record: an option that lost, with the reason it lost. Read the full Conclusion of the hits that touch your scope (`speclink discuss show <slug>` falls back to the archive), **earlier `improve` records for the same scope first** — a hit whose `kind` is `improve` is the closest precedent to what you are about to propose.
+- **A previously rejected approach is not re-proposed as a candidate** — unless you can name the reason it was rejected AND state concretely why that reason no longer holds (the code it depended on is gone, the constraint was lifted, the trade-off inverted). Say so in the candidate itself; do not quietly re-file it.
+- **Read the in-flight changes** from `speclink list --json` and their proposals. A candidate that overlaps the area an in-flight change is already rewriting is not proposed — the work is happening, and a discussion about it now collides with a change mid-flight.
+
+### Step 2: Converge the scope (scope before you scan)
+
+Never blind-scan the whole repository. Candidates from unrelated corners are not comparable, and the discussion loses its focus.
+
+- **The user named a direction** (a module, subsystem, or pain point) → that IS the scope. Use it directly and skip the inference below entirely.
+- **No direction** → infer from git history. Look for hotspots — the areas that change most often:
+
+  ```bash
+  git log --since="3 months ago" --name-only --pretty=format: | sort | uniq -c | sort -rn | head -40
+  ```
+
+  **Weight recent churn more heavily.** The payoff of deepening is that future changes get easier, so the code that keeps changing is where that payoff lands.
+
+  **Local supplement**: cross-check the archived changes' touched records (`.evidence.json` under `openspec/changes/archive/<dated-name>/`, the same records `/speclink-commit` uses). Where a bare `git log` says "these files changed together", the touched records say *which intent* moved *which files* — a stronger signal for what belongs to one seam.
+- **The hotspots are diffuse** — no clear focus, churn spread evenly → **widen the net** instead of forcing one. Take a larger area (a whole crate, a whole layer) and scan it as one scope rather than picking an arbitrary hot file.
+
+Announce the scope you settled on and why, in one or two sentences, before scanning.
+
+### Step 3: Scan
+
+Explore the scope organically — read the code, follow what looks strange, chase the thing that surprises you. **This is not a checklist to tick off.** The six friction signals below are what to keep an eye out for while reading, not a form to fill in.
+
+**The six friction signals:**
+
+1. **Understanding one concept requires jumping between several small modules.** The concept is real but its implementation is scattered; the reader reassembles it every time.
+2. **A shallow module: the interface is nearly as complex as the implementation behind it.** The abstraction charges as much to learn as it saves.
+3. **A pure function was extracted to make testing easy, but the bugs live at the call site.** The tests pass over the extracted piece while the actual behaviour — the wiring around it — has no locality and no coverage.
+4. **Tight coupling leaks across a seam.** Two sides that are supposed to be separable know each other's internals; changing one forces changing the other.
+5. **An area that is hard to test through its current interface.** The interface makes the natural test awkward — which usually means the interface is on the wrong boundary.
+6. **Grouping you can only guess from file names.** Files that belong to one concept sit side by side with unrelated ones in a flat directory, and the reader reassembles the grouping every time — from prefixes, from alphabetical order, or from a design document whose layering the directory does not follow.
+
+**The deletion test is the admission criterion for a candidate.** For anything you are tempted to propose, ask: if this module/abstraction were deleted and its callers absorbed the work, what would happen? A candidate only qualifies when deleting it **concentrates** complexity — the same behaviour ends up in one place that can be understood as a whole. If deleting it merely **moves** complexity somewhere else, that is not a signal; drop it and keep reading.
+
+**The sixth signal has its own admission criterion.** Deleting a folder concentrates nothing, so the deletion test does not apply to it. Ask the reader-prediction test instead: could someone opening this directory for the first time predict where a piece of behaviour lives and which files form one group, without searching? A layout candidate qualifies only when all three hold: (a) the grouping has an objective source — dependency direction between modules, a layering an existing design document already states, or which files are linked from outside; (b) it is invisible to callers — existing paths stay valid through a root-level re-export, and a guard test asserts no stale path remains where re-export is not possible (scripts, docs, CI); (c) moving the files is the whole change — a candidate that needs every caller to change its paths is a move, not a grouping. Drop it. When a candidate trips both a code signal and the sixth, the deletion test decides first: if deleting the scattered pieces would concentrate the behaviour, it is a code candidate and the layout is only the symptom. The sixth signal covers only what stays as it is and merely moves.
+
+**Scanning mechanism**: **inline is the default** — read and search the scope yourself. Dispatch an `Explore` subagent only when the user named no direction, or when the scope genuinely spans several crates. **The hard limit is 2 subagents.** Never spawn a third; if two are not enough, the scope was too wide — go back to Step 2 and narrow it. If you cannot spawn subagents, scan the whole scope inline yourself.
+
+Aim for 3-6 candidates. Fewer is fine when the scope is clean; a list of twelve is a sign the admission criteria were not applied.
+
+### Step 4: Record the candidates
+
+Create the discussion record and write the scan into it as Round 1:
+
+```bash
+speclink discuss new "<topic>" --slug improve-<scope> --kind improve
+```
+
+`--kind improve` marks the record as an improvement discussion (it is what the board and the discussion drawer show a badge for). The slug convention is `improve-<scope>` — `improve-store-layer`, `improve-cli-commands`. Write the Context once (what prompted the scan, the scope you settled on in Step 2 and why, what Step 1 excluded), then record the candidates as Round 1 with the mode label `scan`:
+
+```bash
+speclink discuss context improve-<scope> --stdin <<'CTX_EOF'
+...
+CTX_EOF
+
+speclink discuss add-round improve-<scope> --mode scan --stdin <<'ROUND_EOF'
+**Focus**: which structural improvements this scope offers
+**Position**: <one-sentence read of the scope>, with these candidates:
+...
+ROUND_EOF
+```
+
+**Every candidate carries exactly five fields:**
+
+| Field          | What goes in it                                                                       |
+| -------------- | ------------------------------------------------------------------------------------- |
+| Files          | The concrete paths involved — the reader must be able to open them                    |
+| Problem        | The friction, named and evidenced. Which signal, seen where                            |
+| Solution       | The structural change proposed — where the seam moves, what absorbs what               |
+| Wins           | What gets easier afterwards, concretely. "Cleaner" is not a win                        |
+| Recommendation | One of three strengths: **strongly recommended** / **worth exploring** / **speculative** |
+
+The three recommendation strengths are not decoration — they tell the user where to spend their attention. `strongly recommended`: the friction is evidenced and the admission criterion is clearly met — the deletion test, or the reader-prediction test for a sixth-signal candidate. `worth exploring`: the friction is real but the right shape of the fix is not obvious. `speculative`: you suspect something is off but the evidence is thin.
+
+**End the round with your own pick.** Say which candidate you would take first and why, then ask the user which one to dig into. Stop there and wait — do not grill anything until they answer; the pick is theirs.
+
+### Step 5: Grill the chosen candidate to a conclusion
+
+Once the user picks, this becomes an ordinary speclink discussion, run with the discuss skill's question discipline:
+
+- **One question per exchange.** Never a barrage. Resolve upstream questions first — the shape of the downstream ones depends on the answers.
+- **Every question carries your proposed answer, and the proposal cites evidence** — file paths, symbols, probe results. The user agrees or corrects; they never get a bare open question that a Grep could have grounded.
+- **Facts are yours to verify, decisions are theirs to make.** Anything the code can answer, answer yourself. Only genuine judgment calls go to the user.
+- **The interface depth check runs unconditionally on every chosen candidate** — no exemptions, this skill is about seams by definition. Work through all four: (1) **Seam location** — where does the boundary belong? (2) **Adapter count** — one adapter on this path, or several thin wrappers stacked? (3) **Depth** — what behaviour hides behind the interface? "It just forwards calls" means too shallow. (4) **Deletion test** — delete it today: what actually breaks? Surface the four answers in the round or the conclusion, not as private notes.
+- **For a sixth-signal candidate these four questions replace the four above** — the seam is a directory boundary, not a call boundary: (1) **Grouping source** — which objective source (dependency direction, documented layering, external links) draws each boundary? (2) **Path stability** — what keeps existing paths valid: a root re-export, a guard test for stale paths, or both? (3) **Path hazards** — which were inventoried before moving anything: public URLs that embed a path, tag-triggered or path-filtered CI workflows, build-time file includes written as relative paths, cross-package path dependencies? (4) **Reader-prediction test** — could someone opening the directory for the first time predict where behaviour lives and which files form one group, without searching? Flatten it again in your head to check: what does that reader lose? Surface these four answers instead of the four above.
+- **Two practices ride along with a sixth-signal candidate** — tests move with the code (integration tests mirror the source grouping; inline test modules past a size threshold move to a sibling tests file), and cuts follow path dependence — the cut that moves directories lands first, the cuts that group inside them come after, never in parallel worktrees.
+- **Append a round per exchange** with `speclink discuss add-round <slug> --mode interview --stdin` — `**Focus**` / `**Position**` / `**Ruled out**` / `**Open**`. Rejected candidates go under `**Ruled out**` with the reason they lost; that is what Step 1 of the next scan reads.
+
+**Converging:**
+
+```bash
+speclink discuss conclude improve-<scope> --stdin <<'CONCLUSION_EOF'
+**Decision**: ... (a one-sentence verdict; beyond one sentence, bullet it)
+- ... (one settled point per line — keep every detail, never trim)
+- **cut N `change-name`**: ... (one bullet per cut when the work is staged)
+  - ... (that cut's details, one item each)
+**Rationale**: ... (the trade-off that drove it — a single paragraph)
+**Rejected alternatives**:
+- ... — ... (each candidate that lost — why, one per line)
+**Deferred**: none (or `- question — why not now`, one per line)
+**Capture to**: proposal
+**Next**: /speclink-propose --from-discussion improve-<scope>
+CONCLUSION_EOF
+```
+
+Then fan out: `speclink discuss promote <slug>` (or `/speclink-propose --from-discussion <slug>`) for a new change, or `speclink discuss link <slug> <existing-change>` when the improvement belongs to a change already in flight. One scan can fan out into several changes — the record accumulates each name and is archived automatically when the last of them is archived and its conclusion is written. **When the conclusion stages the work — cut A now, cut B once A lands** — run `conclude` with `--hold` once: the record stays live past every middle cut's archive. The last cut is spun out with `--last` (`/speclink-propose --from-discussion <slug>` decides this from the conclusion's cut list and the record's `promoted_to`), which drops the flag so the last archive co-archives the record automatically — nothing to close by hand. Besides `--last`, only a `conclude` without `--hold` or a manual `speclink discuss archive <slug>` releases it; forgot `--last`, and the record just stays live until you run `speclink discuss archive <slug>` once. Without `--hold` the record is archived with the last of its changes, and any later cut needs a new discussion.
+
+**The user rejects every candidate** → the scan still concluded something. Write the conclusion — that nothing here is worth doing, and why each candidate lost — and archive the record:
+
+```bash
+speclink discuss conclude improve-<scope> --stdin <<'CONCLUSION_EOF'
+**Decision**: no change — none of this round's candidates are worth doing
+**Rationale**: ...
+**Rejected alternatives**:
+- ... — ... (every candidate, with the reason it lost, one per line)
+**Deferred**: none (or `- question — why not now`, one per line)
+CONCLUSION_EOF
+
+speclink discuss archive improve-<scope>
+```
+
+**NEVER `discard` an improvement discussion.** The rejections ARE the value: they are what stops the next scan from proposing the same thing again. A discarded record takes that memory with it.
+
+---
+
+## Guardrails
+
+Check these before you end each turn:
+
+- [ ] The user asked for this scan — it was not started on your own initiative.
+- [ ] No application code was written or changed; the output is a discussion record, not a diff.
+- [ ] The scope was settled before scanning (Step 2) — no blind whole-repo sweep.
+- [ ] Every candidate passed its admission criterion (Step 3) — the deletion test for the first five signals, the reader-prediction test for the sixth; moving complexity around never counts.
+- [ ] At most 2 Explore subagents ran (Step 3).
+- [ ] Settled rejections and in-flight areas were left out (Step 1).
+- [ ] A finished scan was concluded and archived, never discarded (Step 5).
+
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The candidates are recorded as a discussion → the discussion's own exits apply: promote it into a change, link it into an existing one, or archive it when the answer is "do nothing"

@@ -1,11 +1,14 @@
 // 使用者文件的連結完整性（user-documentation spec「文件內部連結全部可解析」）。
-// 純函式部分以字串驗證；最後一條掃過版本庫實況，讓斷鏈在 scripts 測試面就擋下來。
+// 純函式部分以字串驗證；最後兩條掃過版本庫實況，讓斷鏈與沒有文件引用的截圖在 scripts
+// 測試面就擋下來（後者對應 spec「使用者文件以截圖呈現實際介面」）。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { brokenIn, docFilesIn, extractTargets, resolveTarget, scanDocs } from './docs-links.mjs';
+import { SHOT_DIR, SHOT_LIST, SHOT_LOCALES } from './docs-screenshots.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -18,10 +21,10 @@ test('抽取：markdown 連結與圖片都算，行號指向出現的那一行',
 });
 
 test('抽取：HTML 的 src 與 href 也算（README 的品牌圖與語言切換就是這種寫法）', () => {
-  const md = '<img src="docs/assets/brand/logo.png" alt="x" />\n<a href="README.en.md">English</a>\n';
+  const md = '<img src="docs/assets/brand/logo.png" alt="x" />\n<a href="README.zh-TW.md">繁體中文</a>\n';
   assert.deepEqual(extractTargets(md), [
     { target: 'docs/assets/brand/logo.png', line: 1 },
-    { target: 'README.en.md', line: 2 },
+    { target: 'README.zh-TW.md', line: 2 },
   ]);
 });
 
@@ -83,7 +86,7 @@ test('比對：全部指得到時回空陣列', () => {
 test('檢查面：兩份 README 與 docs 下每一份 markdown 都在掃描範圍內', () => {
   const files = docFilesIn(ROOT);
   assert.ok(files.includes('README.md'));
-  assert.ok(files.includes('README.en.md'));
+  assert.ok(files.includes('README.zh-TW.md'));
   assert.ok(files.includes('docs/workflow.zh-TW.md'));
   assert.ok(
     files.filter((f) => f.startsWith('docs/')).length >= 20,
@@ -98,4 +101,23 @@ test('版本庫實況：使用者文件沒有任何斷鏈', () => {
     broken.map((b) => `${b.file}:${b.line} → ${b.target}`),
     [],
   );
+});
+
+/// 文件的語言看檔名：`.zh-TW.md` 是繁中，其餘是英文（docs 與 README 都是這個慣例）。
+const docLocale = (file) => (file.endsWith('.zh-TW.md') ? 'zh-TW' : 'en');
+
+test('版本庫實況：截圖腳本清單裡的每張截圖，在每個語言目錄都被同語言的 README 或 docs/ 文件引用', () => {
+  const referenced = new Set(
+    docFilesIn(ROOT).flatMap((file) =>
+      extractTargets(readFileSync(path.join(ROOT, file), 'utf8')).map(
+        ({ target }) => `${docLocale(file)}:${resolveTarget({ fromFile: file, target, root: ROOT })}`,
+      ),
+    ),
+  );
+  const orphans = SHOT_LOCALES.flatMap((locale) =>
+    SHOT_LIST.map((shot) => `${locale}/${shot.file}`).filter(
+      (relative) => !referenced.has(`${locale}:${path.join(ROOT, SHOT_DIR, relative)}`),
+    ),
+  );
+  assert.deepEqual(orphans, [], `沒有同語言文件引用的截圖：${orphans.join('、')}`);
 });

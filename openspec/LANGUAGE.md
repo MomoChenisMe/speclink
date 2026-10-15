@@ -9,8 +9,8 @@
 - 一個概念一個詞：同義詞在 avoid 列出，舊文案陸續汰換；歷史 artifacts（已封存的討論／變更）不回改。
 - 工程詞（meta 欄位名、kebab-case、slug 等）不出現在使用者可見文案，只出現在給 agent 的文件。
   - **明文例外**：設定檔檔名（config.yaml、.speclink.yaml）得直出作為設定頁的頁簽標籤——與本原則刻意抵觸，經使用者裁定：開發者工具中檔案即最直觀的心智模型，人話標籤（如「專案設定／整合」）反而多一層對應。僅限頁簽標籤；其他使用者可見文案仍禁工程詞（desktop-window-and-settings-polish，2026-07-08）。
-  - **明文例外**：討論（discuss）的識別錨點得以 slug（kebab-case 檔名）直出——與本原則刻意抵觸，經使用者裁定：slug 是執行 CLI 動詞（如 `--from-discussion <slug>`）的把手，開發者工具中檔名即最直觀且可複製的識別，與 change 卡以名稱為題對稱；topic 一律降為描述／副標。僅限討論識別錨點（討論全卡標題、已轉出細列首行、討論詳情面板標題、系統匣討論項父標籤、變更詳情面板與已封存詳情面板的來源討論籤及其溢出浮層）與其複製鈕／複製動作（含系統匣的「複製 slug」）；其他使用者可見文案仍禁工程詞（desktop-card-identity，2026-07-09；範圍擴充：desktop-ux-polish，2026-07-11；範圍擴充：tray-copy-and-panel-mode，2026-07-16；範圍擴充：change-drawer-header-redesign，2026-08-04）。
-  - **明文例外**：「worktree」得直出於 worktree 流程的使用者可見文案——與本原則刻意抵觸，經使用者裁定：worktree 是 git 的原生概念，本專案的使用者就是 git 使用者，直出即最短且無歧義的心智模型；任何中譯（「工作樹」「副本工作區」）都要多一層對應，且與使用者實際輸入的 `git worktree` 指令對不上。先例為 config.yaml 頁簽與討論 slug（同一條「開發者工具中原生詞即最直觀」的裁定線）。適用範圍：worktree 流程的使用者可見文案，含 `speclink list` 的 `[worktree]` 標示、兩個 worktree 技能的說明與輸出，以及後續 desktop 的卡片 worktree 標示與詳情面板分支資訊；其他使用者可見文案仍禁工程詞（討論 worktree-parallel-apply，2026-08-04）。
+  - **明文例外**：討論（discuss）的識別錨點得以 slug（kebab-case 檔名）直出——與本原則刻意抵觸，經使用者裁定：slug 是執行 CLI 動詞（如 `--from-discussion <slug>`）的把手，開發者工具中檔名即最直觀且可複製的識別，與 change 卡以名稱為題對稱；topic 一律降為描述／副標。僅限討論識別錨點（討論全卡標題、已轉出細列首行、討論詳情頁標題、系統匣討論項父標籤、變更詳情頁與已封存詳情頁的來源討論籤及其溢出浮層）與其複製鈕／複製動作（含系統匣的「複製 slug」）；其他使用者可見文案仍禁工程詞（desktop-card-identity，2026-07-09；範圍擴充：desktop-ux-polish，2026-07-11；範圍擴充：tray-copy-and-panel-mode，2026-07-16；範圍擴充：change-drawer-header-redesign，2026-08-04）。
+  - **明文例外**：「worktree」得直出於 worktree 流程的使用者可見文案——與本原則刻意抵觸，經使用者裁定：worktree 是 git 的原生概念，本專案的使用者就是 git 使用者，直出即最短且無歧義的心智模型；任何中譯（「工作樹」「副本工作區」）都要多一層對應，且與使用者實際輸入的 `git worktree` 指令對不上。先例為 config.yaml 頁簽與討論 slug（同一條「開發者工具中原生詞即最直觀」的裁定線）。適用範圍：worktree 流程的使用者可見文案，含 `speclink list` 的 `[worktree]` 標示、兩個 worktree 技能的說明與輸出，以及後續 desktop 的卡片 worktree 標示與詳情頁分支資訊；其他使用者可見文案仍禁工程詞（討論 worktree-parallel-apply，2026-08-04）。
 
 ## 詞彙
 
@@ -46,7 +46,7 @@
 
 ### 衍生變更
 
-- **definition**: 一份討論轉出的變更清單（討論詳情面板的分頁名；引擎欄位 `promoted_to`）。抽屜出身列的標籤縮寫為「衍生」，與「來自」「同源」同為兩字關係詞（drawer-provenance-links，2026-09-03）。
+- **definition**: 一份討論轉出的變更清單（討論詳情頁的分頁名；引擎欄位 `promoted_to`）。抽屜出身列的標籤縮寫為「衍生」，與「來自」「同源」同為兩字關係詞（drawer-provenance-links，2026-09-03）。
 - **avoid**: 促轉分頁、子 change（使用者可見文案中）
 - **why**: 分頁內容是「生出來的變更們」，不是動作本身。
 
@@ -58,19 +58,19 @@
 
 ### 背景
 
-- **definition**: 討論記錄的 Context 區段（討論詳情面板分頁名）。
+- **definition**: 討論記錄的 Context 區段（討論詳情頁分頁名）。
 - **avoid**: 脈絡（分頁名中）
 - **why**: 較常用的日常詞。
 
 ### 專案說明
 
-- **definition**: `openspec/config.yaml` 的 `context` 欄位——注入 AI 指令的專案自由文字說明（設定頁的編輯區段名）。
+- **definition**: `openspec/config.yaml` 的 `context` 欄位——注入 AI 指令的專案自由文字說明（專案設定的分類名）。
 - **avoid**: context（使用者可見文案中）、背景（此概念上）
 - **why**: 「背景」已被討論記錄的 Context 區段佔用，同詞兩義會混淆；對齊 Spectra 用詞。2026-07-07 討論「config-context-與-rules-gui-編輯」定案。
 
 ### 產出規則
 
-- **definition**: `openspec/config.yaml` 的 `rules` 欄位——依 artifact 注入產出指令的規則清單（設定頁的編輯區段名）。
+- **definition**: `openspec/config.yaml` 的 `rules` 欄位——依 artifact 注入產出指令的規則清單（專案設定的分類名）。
 - **avoid**: rules（使用者可見文案中）、規則（單獨使用時）
 - **why**: 「產出」點明規則作用於 artifacts 的產出過程；對齊 Spectra 用詞。2026-07-07 討論「config-context-與-rules-gui-編輯」定案。
 
@@ -79,7 +79,13 @@
 - **definition**: `openspec/config.yaml` 的 `schema` 鍵概念——一個變更會產出哪些文件、什麼順序的定義（設定頁的檢視／切換／複製為專案版區段名）。
 - **avoid**: schema（使用者可見文案中）
 - **why**: 與「產出規則」「產出政策」同族，字面可推出「這個變更會產出哪些文件、什麼順序」；schema 僅留於技術 token（鍵名、CLI 指令、識別符如 spec-driven）。經使用者裁定用譯詞（desktop-schema-panel，2026-08-20）。
-- **明文例外**：設定頁的產出流程頁籤標籤得直出「Schema」——與本詞條刻意抵觸，經使用者裁定：頁籤列全是技術 token（config.yaml、.speclink.yaml、Workflow），唯一的中文標籤在列上反而突兀，沿「開發者工具中原生詞即最直觀」的既有裁定線（檔名頁籤、討論 slug、worktree 同線）。僅限此頁籤標籤；籤內與其他使用者可見文案仍用「產出流程」（desktop-schema-panel，2026-08-22）。
+- **明文例外（已退場）**：設定頁產出流程頁籤直出「Schema」的例外（desktop-schema-panel，2026-08-22）已隨設定分類欄取代頁籤而退場（desktop-settings-mode，2026-10-10）；分類名與頁標題皆為「產出流程」，不再有例外。
+
+### 審查規則
+
+- **definition**: `openspec/config.yaml` 的 `review` 區塊——審查關卡 Standards 軸的預設清單模式（`extend` 沿用並追加、`replace` 整份換掉）與依嚴重度（critical、warning、suggestion）分組的專案規則（專案設定的分類名）。
+- **avoid**: review rules（中文散文中）、自訂規則（指此概念時）
+- **why**: 與「產出規則」同族，字面即可推出用途——一個管產出、一個管審查。2026-10-14 討論「custom-review-rules」定案。
 
 ### 待收尾
 
@@ -89,9 +95,9 @@
 
 ### 換頁
 
-- **definition**: 清單分批瀏覽（pagination）。artifacts 散文稱「換頁」；UI 文案不出現「換頁／分頁」名詞，僅用「上一頁」「下一頁」「第 N／M 頁」。詳情面板的 tab 稱「分頁」（提案／設計／任務／規格／排程／審查／驗證分頁），不稱「頁籤」（drawer-quality-ticket-tab，2026-09-22 補註）。
+- **definition**: 清單分批瀏覽（pagination）。artifacts 散文稱「換頁」；UI 文案不出現「換頁／分頁」名詞，僅用「上一頁」「下一頁」「第 N／M 頁」。詳情頁的 tab 稱「分頁」（提案／設計／任務／規格／排程／審查／驗證分頁），不稱「頁籤」（drawer-quality-ticket-tab，2026-09-22 補註）。
 - **avoid**: 分頁（pagination 語意上）
-- **why**: 「分頁」已被詳情面板 tabs 語意佔用（提案／設計／任務／規格分頁），同詞兩義會使規格與討論記錄歧義。2026-07-11 討論「specs-archive-pagination」定案。
+- **why**: 「分頁」已被詳情頁 tabs 語意佔用（提案／設計／任務／規格分頁），同詞兩義會使規格與討論記錄歧義。2026-07-11 討論「specs-archive-pagination」定案。
 
 ### 專案代號
 
@@ -155,13 +161,13 @@
 
 ### 首輪
 
-- **definition**: 工單的 discovery 輪——第一輪、唯一的全面盤點，對整個變更範圍逐檔檢查。詳情面板的工單分頁以「首輪」標示 phase 為 discovery 的輪次；沒有 phase 的舊工單輪次不標階段詞。
+- **definition**: 工單的 discovery 輪——第一輪、唯一的全面盤點，對整個變更範圍逐檔檢查。詳情頁的工單分頁以「首輪」標示 phase 為 discovery 的輪次；沒有 phase 的舊工單輪次不標階段詞。
 - **avoid**: 發現輪、discovery 輪（中文散文中）
 - **why**: 「發現」在繁中讀不出「第一次全面看過」的意思；「首輪」直說它是第一輪，且與「複驗」對仗。2026-09-22 變更「drawer-quality-ticket-tab」定案。
 
 ### 複驗
 
-- **definition**: 工單的 validation 輪——只判前輪 findings 是否修好與修補 patch 的直接回歸，不重新全面盤點。詳情面板的工單分頁以「複驗」標示 phase 為 validation 的輪次。審查站與驗證站的工單都有這種輪，詞通用。
+- **definition**: 工單的 validation 輪——只判前輪 findings 是否修好與修補 patch 的直接回歸，不重新全面盤點。詳情頁的工單分頁以「複驗」標示 phase 為 validation 的輪次。審查站與驗證站的工單都有這種輪，詞通用。
 - **avoid**: 驗證輪、複審、validation 輪（中文散文中）
 - **why**: 「驗證輪」與驗證站撞名——審查工單也有 validation 輪，叫它「驗證輪」會被讀成驗證站的輪；「複審」又只像審查站的詞。「複驗」兩站通用、直說「再驗一次前輪的結果」。2026-09-22 變更「drawer-quality-ticket-tab」定案。
 
@@ -179,15 +185,15 @@
 
 ### 改進討論
 
-- **definition**: kind 為 improve 的討論——由 `/speclink-improve` 掃描 codebase 主動提出 candidates 的討論記錄。與一般討論的差別只在誰帶題目：一般討論由使用者帶題，改進討論由模型提案；下游的輪、結論、轉出、封存完全相同。看板卡片與討論詳情面板以小章標示。
+- **definition**: kind 為 improve 的討論——由 `/speclink-improve` 掃描 codebase 主動提出 candidates 的討論記錄。與一般討論的差別只在誰帶題目：一般討論由使用者帶題，改進討論由模型提案；下游的輪、結論、轉出、封存完全相同。看板卡片與討論詳情頁以小章標示。
 - **avoid**: improve 討論、架構討論
-- **why**: 名詞直說內容——「改進」點出討論在談什麼，「討論」點出它是哪種記錄；與卡片 tooltip 及詳情面板標示文案一致。2026-08-01 討論「architecture-improve-flow」定案。
+- **why**: 名詞直說內容——「改進」點出討論在談什麼，「討論」點出它是哪種記錄；與卡片 tooltip 及詳情頁標示文案一致。2026-08-01 討論「architecture-improve-flow」定案。
 
-### 詳情面板
+### 詳情頁
 
-- **definition**: 自畫面右側滑出、承載單一項目完整內容的面板——變更詳情面板（提案／設計／任務／規格分頁）、討論詳情面板、已封存詳情面板皆屬之。
-- **avoid**: 抽屜
-- **why**: 「抽屜」是元件模式的內部代稱，不是台灣使用者對這種面板的說法；「詳情面板」直說裝什麼（單一項目的詳情）與是什麼（面板）。程式碼識別符（`RichDetailDrawer`、`SpecDrawer` 等）與 CSS 類名不在本表範圍，不隨之更名。2026-08-14 變更「zh-tw-vocabulary-drawer-and-quality-station」定案。
+- **definition**: 點卡片或列後主區整個換成該項目的頁（變更／討論／規格／已封存四種），麵包屑與 Esc 回原頁。
+- **avoid**: 抽屜、詳情面板
+- **why**: 「抽屜」是元件模式的內部代稱，不是台灣使用者的說法（2026-08-14 變更「zh-tw-vocabulary-drawer-and-quality-station」定案）。2026-10-09 討論「desktop-ui-redesign」cut 3b 裁定詳情不再從右側滑出、改為佔滿主區的頁，「面板」隨之失準；「詳情頁」直說裝什麼（單一項目的詳情）與是什麼（一頁）。程式碼識別符（`SpecDrawer`、`ArchivedDrawer` 等）與 CSS 類名不在本表範圍，不隨之更名。
 
 ### 品質關卡
 
@@ -224,9 +230,15 @@
 - **avoid**: 過時、stale（中文散文中）
 - **why**: 與規格的「過期」章語意平行——都是「源頭比衍生物新」；加「可能」是因為日期比對只證明來源動過，不證明內容真的變了。2026-09-02 變更「manual-skill」定案。
 
+### 專案（開啟的工作目錄）
+
+- **definition**: 桌面 app 開著的一個工作目錄——本機資料夾或 server 上的 Project／Repo；圖示列一個方塊＝一個專案，專案欄的四頁與專案設定都屬於它。
+- **avoid**: Workspace、workspace、工作區、專案分頁（使用者可見文案中）
+- **why**: 「新增 Workspace」「加入專案」「專案分頁」三處指同一件事，依「一個概念一個詞」收斂為「專案」；與 server 端的 Project 詞義分層——server 的 Project 是 scope 的上層分組，中文一律寫「Project／Repo」。Workspace 與 workspace 為純 ASCII，依 `ui-copy-vocabulary` 的既有設計不入機械守門集，由撰稿時人工判斷。討論「desktop-ui-redesign」第 5 回合提出詞彙漂移、結論定案，2026-10-08 變更「desktop-shell-redesign」落地。
+
 ### Server
 
-- **definition**: speclink server 服務端——桌面 app 連線的那一端（`speclink-server`）。桌面「新增 Workspace」第一步的來源卡、其下一步標題與伺服器連線說明皆以此稱之。
+- **definition**: speclink server 服務端——桌面 app 連線的那一端（`speclink-server`）。桌面「新增專案」第一步的來源卡、其下一步標題與伺服器連線說明皆以此稱之。
 - **avoid**: Speclink Server
 - **why**: 使用者要選的是「哪一台 server」，不是「哪一個品牌的 server」；品牌前綴綁死了通用概念，且同一個 chooser 內既有的「遷移到 Server…」「以 Server 為準」早已不帶前綴，前後不一致。直出英文而非中譯，沿用既有的「開發者工具中原生詞即最直觀」裁定線（先例：config.yaml 頁籤、討論 slug、worktree 直出）——本專案的使用者就是會 curl 自己那台 server 的開發者。此 avoid 詞為純 ASCII，依 `ui-copy-vocabulary` 的既有設計不入機械守門集，由撰稿時人工判斷。「Server」與「伺服器」的中英用詞統一是另一個待決問題，本詞條不預判其結果。2026-09-03 變更「server-wording-debrand」定案。
 
@@ -241,3 +253,27 @@
 - **definition**: `openspec/specs/<capability>/spec.md`——封存後的現況唯一真相，對照 OpenSpec 的 specs。與變更裡的「delta 規格」（`openspec/changes/<name>/specs/`，封存時合併進正式規格）成對；英文維持 specs／canonical specs。
 - **avoid**: 正典規格、正典 spec、正典 specs、規格正典、正典（指這個規格集合時）
 - **why**: 「正典」讀不出「合併後的定案」，與 delta 對著看才分得清哪個是草稿、哪個是定案。「正典」在專案內另有正典詞彙、正典值、正典化、正典 YAML 等別義，那些不改。2026-09-12 討論「canonical-spec-zh-wording」定案。
+
+### 文件樹
+
+- **definition**: 詳情頁（變更、討論、已封存）的左欄——身分區、「文件」節點與「狀態」列，與手冊頁的側欄樹對稱；一個節點是一整份文件，點擊即切換閱讀卡。
+- **avoid**: 文件分頁列
+- **why**: 節點是整份文件、不是分頁；左欄管頁與頁之間、右欄管頁內，與手冊頁同一套分工。2026-10-12 變更「desktop-detail-doc-tree」定案。
+
+### 本頁目錄
+
+- **definition**: 閱讀卡右側、自渲染後標題推導的錨點列——點擊捲至該段、捲動時高亮目前段；手冊頁與詳情頁共用。
+- **avoid**: 右欄目錄
+- **why**: 手冊頁既有詞（i18n `manual.toc`），詳情頁沿用同一詞，學一次就通。2026-10-12 變更「desktop-detail-doc-tree」定案。
+
+### 數字磚
+
+- **definition**: 閱讀卡標題下、由文件結構推出的計數格，最多四格；推不出時整列缺席。
+- **avoid**: KPI 磚
+- **why**: 不是指標儀表，是文件本身的計數。2026-10-12 變更「desktop-detail-doc-tree」定案。
+
+### 完整測試
+
+- **definition**: repo 慣例的整套測試——本 repo 為 root `npm run test:all`，CI 守門跑同一組；對照詞「只跑受影響面的測試」（config-skill 與 openspec/config.yaml 的既有寫法）。英文維持 full test suite。
+- **avoid**: 全量
+- **why**: 「全量」不是台灣慣用詞。專案內它另有四種意思，依「修飾動作用『全部』、指一整套東西用『完整』」改寫：全部重新載入／查詢／收斂、全部任務計數、全部重新產生、完整投影。2026-10-15 討論「test-speed-and-wording」定案。

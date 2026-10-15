@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "../App";
 import { WebApiError } from "../api/client";
@@ -39,6 +39,12 @@ function renderAt(route: string, client: ReturnType<typeof makeClient>) {
   return render(<App client={client as never} initialEntries={[route]} />);
 }
 
+/** 步驟條（design D7）：已到的段為主色。 */
+function filledSteps() {
+  const bar = screen.getByTestId("step-bar");
+  return Array.from(bar.children).filter((seg) => seg.className.includes("bg-primary")).length;
+}
+
 beforeEach(() => {
   window.matchMedia = ((query: string) => ({
     matches: false,
@@ -53,9 +59,11 @@ beforeEach(() => {
 });
 
 describe("setup 開箱流程", () => {
-  it("token 有效時顯示建立管理員表單", async () => {
+  it("token 有效時顯示建立管理員表單，卡片頂端標示步驟 1 / 2", async () => {
     renderAt("/setup?token=boot", makeClient());
-    expect(await screen.findByRole("heading", { name: /初始設定|setup/i })).toBeTruthy();
+    expect(await screen.findByRole("heading", { level: 1, name: "建立管理員帳號" })).toBeTruthy();
+    expect(screen.getByText("初始設定 · 步驟 1 / 2")).toBeTruthy();
+    expect(filledSteps()).toBe(1);
     expect(screen.getByLabelText(/email|電子郵件/i)).toBeTruthy();
     expect(screen.getByLabelText(/顯示名稱|display/i)).toBeTruthy();
     expect(screen.getByLabelText(/密碼|password/i)).toBeTruthy();
@@ -76,8 +84,15 @@ describe("setup 開箱流程", () => {
       expect.objectContaining({ email: "root@example.com", display: "Root", password: "hunter2password" }),
     );
     // The registry step's project/repo fields appear.
-    expect(await screen.findByLabelText(/專案代號/)).toBeTruthy();
-    expect(screen.getByLabelText(/儲存庫代號/)).toBeTruthy();
+    expect(await screen.findByRole("heading", { level: 1, name: "建立第一組專案與儲存庫" })).toBeTruthy();
+    expect(screen.getByText("初始設定 · 步驟 2 / 2")).toBeTruthy();
+    expect(filledSteps()).toBe(2);
+    // 兩個代號欄下方灰字說明「建立後不可變更。」，並以 aria-describedby 接到欄位。
+    for (const label of [/專案代號/, /儲存庫代號/]) {
+      const input = screen.getByLabelText(label);
+      const hint = document.getElementById(input.getAttribute("aria-describedby") ?? "");
+      expect(hint?.textContent).toBe("建立後不可變更。");
+    }
   });
 
   it("完成 registry 呼叫 submitSetupRegistry 並帶正確參數", async () => {
@@ -119,7 +134,10 @@ describe("setup 開箱流程", () => {
       }),
     });
     renderAt("/setup?token=bad", client);
-    expect(await screen.findByText(/設定連結無效|無效/)).toBeTruthy();
-    expect(screen.queryByLabelText(/顯示名稱|display/i)).toBeNull();
+    // 提示卡只有警示圖示、標題與說明，整塊 role=alert，沒有任何輸入欄。
+    const notice = await screen.findByRole("alert");
+    expect(within(notice).getByRole("heading", { level: 1, name: "設定連結無效" })).toBeTruthy();
+    expect(notice.querySelector("svg")?.getAttribute("class")).toContain("text-status-warning");
+    expect(document.querySelectorAll("input")).toHaveLength(0);
   });
 });

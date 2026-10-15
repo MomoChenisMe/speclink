@@ -5,6 +5,7 @@ import { useClient, useSession } from "../app/context";
 import { useAsync } from "../lib/useAsync";
 import { readFormError } from "../lib/formError";
 import { Field } from "../components/Field";
+import { FocusFooter, FocusHeader, FocusNotice } from "../layouts/FocusLayout";
 
 // 邀請接受（server-identity「邀請一次性且到期失效」, D2／D3）。token 由 URL path 帶入；
 // 有效邀請顯示設定密碼表單，提交後 Server 原子建帳號並建立 session，SPA 依回傳的
@@ -49,37 +50,38 @@ export function InvitePage() {
   }
   if (!data) {
     // 已用／過期／未知 token：不可區分的固定訊息，不回顯內部原因。
-    return (
-      <div role="alert">
-        <h1 className="mb-2 text-2xl font-semibold">{t("invite.invalidTitle")}</h1>
-        <p className="text-muted-foreground">{t("invite.invalidBody")}</p>
-      </div>
-    );
+    return <FocusNotice title={t("invite.invalidTitle")} body={t("invite.invalidBody")} />;
   }
 
   return (
-    <div>
-      <h1 className="mb-2 text-2xl font-semibold">{t("invite.title")}</h1>
-      <p className="mb-6 text-muted-foreground">{t("invite.body").replace("{email}", data.email)}</p>
-      <form onSubmit={onSubmit} className="space-y-4" noValidate>
-        <Field
-          id="password"
-          label={t("field.password")}
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          onChange={setPassword}
-          error={fieldErrors.password}
-        />
-        {message && Object.keys(fieldErrors).length === 0 && (
-          <p role="alert" className="text-sm text-destructive">
-            {message}
-          </p>
-        )}
+    <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+      <FocusHeader title={t("invite.title")} description={t("invite.body").replace("{email}", data.email)} />
+      {/* 唯讀資訊：受邀帳號與要加入的這台 server，設定密碼前先確認沒有找錯地方。 */}
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 rounded-lg bg-muted/50 px-3 py-2.5 text-[13px]">
+        <dt className="text-muted-foreground">{t("field.email")}</dt>
+        <dd className="truncate">{data.email}</dd>
+        <dt className="text-muted-foreground">{t("invite.server")}</dt>
+        <dd className="truncate font-mono">{window.location.host}</dd>
+      </dl>
+      <Field
+        id="password"
+        label={t("field.password")}
+        type="password"
+        autoComplete="new-password"
+        value={password}
+        onChange={setPassword}
+        error={fieldErrors.password}
+      />
+      {message && Object.keys(fieldErrors).length === 0 && (
+        <p role="alert" className="text-sm text-destructive">
+          {message}
+        </p>
+      )}
+      <FocusFooter>
         <Button type="submit" disabled={pending}>
           {pending ? t("common.creating") : t("invite.submit")}
         </Button>
-      </form>
-    </div>
+      </FocusFooter>
+    </form>
   );
 }

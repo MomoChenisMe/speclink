@@ -42,7 +42,8 @@ jobs:
           git config user.name CI
           git config user.email ci@example.com
           "$BIN" init . --tools claude,codex
-          test -f CLAUDE.md && test -f AGENTS.md && test -f .claude/skills/speclink-propose/SKILL.md
+          test -f .claude/skills/speclink-propose/SKILL.md
+          test -f .agents/skills/speclink-propose/SKILL.md
           "$BIN" new change smoke-test --agent claude
           printf '## Why\nSmoke test\n## Impact\n- none\n' | "$BIN" new artifact proposal --change smoke-test --stdin
           "$BIN" status --change smoke-test

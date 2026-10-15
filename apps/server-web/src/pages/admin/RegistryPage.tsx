@@ -1,39 +1,45 @@
-import { useState, type FormEvent, type ReactNode } from "react";
-import { ChevronRight, FolderPlus } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
+import { FolderPlus, Inbox } from "lucide-react";
 import {
-  Badge,
   Button,
-  Card,
-  Input,
-  Label,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
+  EmptyState,
+  ListCard,
+  ListPager,
+  ListRow,
+  SearchField,
   useI18n,
+  usePaging,
+  PageHeader,
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
-import { useAsync } from "../../lib/useAsync";
-import { readFormError } from "../../lib/formError";
+import { useAsync, useLastData } from "../../lib/useAsync";
+import { useListScroll } from "../../lib/useListScroll";
+import { useNarrow } from "../../lib/useMediaQuery";
 import { Field } from "../../components/Field";
-import { DetailSheet } from "../../components/DetailSheet";
-import { ListToolbar } from "../../components/ListToolbar";
-import { EmptyState, NoMatchState } from "../../components/EmptyState";
+import { FormDialog, FormDialogActions, FormMessage, useDialogSubmit } from "../../components/FormDialog";
+import { NoMatchState } from "../../components/NoMatchState";
+import { SectionRoutes } from "./detail";
 import { AdminError, AdminLoading } from "./states";
-import type { AdminProject } from "../../api/client";
+import { ProjectDetailPage, projectPath } from "./ProjectDetailPage";
 
-// 管理專案與儲存庫頁（server-web-console「不可變識別欄位唯讀且更名為顯式動作」）：
-// 代號是身分、建立後不可變更，一律以唯讀文字呈現並標示；名稱預設唯讀，按「更名」才
-// 出現輸入框與確認／取消。建立專案與新增儲存庫由抽屜承載，列表頁不含輸入控制項。
+// 專案區段（server-web-console「管理列表以詳情頁與對話框承載檢視與建立」「管理列表提供搜尋、篩選、
+// 分頁與具引導的空狀態」；server-web-list-pages design D2、D3、D5；server-web-detail-pages design D1）：
+// `/admin/registry` 是列表、`/admin/registry/<代號>` 是專案詳情頁。資料與列表狀態（搜尋、頁碼）放在
+// 區段，回列表時原樣保留。列表頁標題區右側是搜尋與建立專案，其下一張列表卡（前端換頁），整列可點
+// 進詳情頁；建立專案以置中對話框承載，列表頁不含輸入控制項。
 
-export function RegistryPage() {
-  const { t } = useI18n();
+export function RegistrySection() {
+  const { t, tn } = useI18n();
   const client = useClient();
-  const { loading, data, error, reload } = useAsync(() => client.getAdminRegistry(), []);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const narrow = useNarrow();
+  const { data: fresh, error, reload } = useAsync(() => client.getAdminRegistry(), []);
+  // 留著上一份成功回應：詳情頁變更後重載時不卸載重掛（同使用者區段，design D1）。
+  const data = useLastData(fresh, error);
   const [createOpen, setCreateOpen] = useState(false);
   const [q, setQ] = useState("");
-  const selected = data?.projects.find((p) => p.key === selectedKey) ?? null;
+  const { scrollRef, scrollToTop } = useListScroll();
   const needle = q.trim().toLowerCase();
   const visible = (data?.projects ?? []).filter(
     (p) =>
@@ -42,385 +48,107 @@ export function RegistryPage() {
         field.toLowerCase().includes(needle),
       ),
   );
+  const paging = usePaging(visible, { onMove: scrollToTop });
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{t("registry.title")}</h1>
-        <Button
-          type="button"
-          data-tour="list-primary"
-          className="gap-1.5"
-          onClick={() => setCreateOpen(true)}
-        >
-          <FolderPlus aria-hidden="true" className="h-4 w-4" />
-          {t("registry.create")}
-        </Button>
-      </div>
+  const list = (
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <PageHeader
+        level={1}
+        title={t("registry.title")}
+        description={t("registry.description")}
+        actions={
+          <>
+            <SearchField
+              label={t("common.search")}
+              placeholder={t("registry.searchPlaceholder")}
+              value={q}
+              onChange={(value) => {
+                setQ(value);
+                paging.setPage(1);
+              }}
+            />
+            <Button
+              type="button"
+              data-tour="list-primary"
+              className="gap-1.5"
+              onClick={() => setCreateOpen(true)}
+            >
+              <FolderPlus aria-hidden="true" className="h-4 w-4" />
+              {t("registry.create")}
+            </Button>
+          </>
+        }
+      />
 
-      {loading && <AdminLoading />}
+      {!data && error == null && <AdminLoading />}
       {error != null && <AdminError onRetry={reload} />}
-      {data && data.projects.length > 0 && <ListToolbar search={q} onSearchChange={setQ} />}
-      {data &&
-        (data.projects.length === 0 ? (
-          <EmptyState
-            title={t("registry.emptyTitle")}
-            description={t("registry.emptyBody")}
-            action={
-              <Button type="button" onClick={() => setCreateOpen(true)}>
-                {t("registry.create")}
-              </Button>
-            }
-          />
-        ) : visible.length === 0 ? (
-          <NoMatchState />
-        ) : (
-          <ul className="space-y-3">
-            {visible.map((p) => (
-              <li key={p.key}>
-                <Card
-                  className="flex cursor-pointer items-center gap-3 p-4"
-                  onClick={() => setSelectedKey(p.key)}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{p.name}</p>
-                    <p className="truncate text-sm text-muted-foreground">
-                      {t("registry.projectMeta")
-                        .replace("{key}", p.key)
-                        .replace("{n}", String(p.repos.length))}
-                    </p>
-                  </div>
-                  {/* 鍵盤入口：整張卡片可點只是滑鼠便利，實際可聚焦目標是這顆按鈕。 */}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    aria-label={t("registry.viewDetail").replace("{name}", p.name)}
-                    onClick={() => setSelectedKey(p.key)}
-                  >
-                    <ChevronRight aria-hidden="true" className="h-4 w-4" />
-                  </Button>
-                </Card>
-              </li>
-            ))}
-          </ul>
-        ))}
-
-      {selected && (
-        <ProjectSheet project={selected} onClose={() => setSelectedKey(null)} afterMutate={reload} />
+      {data && (
+        <ListCard scrollRef={scrollRef} footer={<ListPager compact={narrow} {...paging.pager} />}>
+          {/* 空狀態不放建立鈕：建立鈕常駐頁首，一頁只有一個主要動作。 */}
+          {data.projects.length === 0 ? (
+            <EmptyState icon={Inbox} title={t("registry.emptyTitle")} description={t("registry.emptyBody")} />
+          ) : visible.length === 0 ? (
+            <NoMatchState />
+          ) : (
+            paging.pageItems.map((p) => (
+              <ListRow
+                key={p.key}
+                data-project={p.key}
+                mono={false}
+                title={p.name}
+                description={tn("registry.projectMeta", p.repos.length).replace("{key}", p.key)}
+                onClick={() => navigate(projectPath(p.key))}
+              />
+            ))
+          )}
+        </ListCard>
       )}
 
-      <CreateProjectSheet open={createOpen} onOpenChange={setCreateOpen} afterMutate={reload} />
+      {/* 只在開著時掛載：每次開啟都是空白表單。 */}
+      {createOpen && <CreateProjectDialog onClose={() => setCreateOpen(false)} onCreated={reload} />}
     </div>
+  );
+
+  return (
+    <SectionRoutes
+      base="/admin/registry"
+      param="key"
+      list={list}
+      detail={data && <ProjectDetailPage projects={data.projects} sequence={visible} reload={reload} />}
+      error={error}
+      onRetry={reload}
+    />
   );
 }
 
-function ProjectSheet({
-  project,
-  onClose,
-  afterMutate,
-}: {
-  project: AdminProject;
-  onClose: () => void;
-  afterMutate: () => void;
-}) {
+function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const { t } = useI18n();
   const client = useClient();
+  const [key, setKey] = useState("");
+  const [name, setName] = useState("");
+  const { pending, message, fieldErrors, submit } = useDialogSubmit(t("registry.createProjectError"));
+
+  function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    void submit(async () => {
+      await client.adminCreateProject({ key, name: name.trim() || undefined });
+      onClose();
+      onCreated();
+    });
+  }
+
   return (
-    <DetailSheet
+    <FormDialog
       open
       onOpenChange={(open) => !open && onClose()}
-      title={project.name}
-      description={t("registry.projectKeyImmutable").replace("{key}", project.key)}
-      actions={
-        <RenameAction
-          label={t("registry.projectName")}
-          current={project.name}
-          onRename={(name) => client.adminRenameProject(project.key, name)}
-          afterMutate={afterMutate}
-        />
-      }
+      title={t("registry.create")}
+      description={t("registry.createProjectHint")}
     >
-      <Tabs defaultValue="repos" className="flex min-h-0 flex-col gap-4">
-        <TabsList>
-          <TabsTrigger value="repos">{t("registry.tabRepos")}</TabsTrigger>
-          <TabsTrigger value="members">{t("registry.tabMembers")}</TabsTrigger>
-        </TabsList>
-        <TabsContent value="repos">
-          <RepoList project={project} afterMutate={afterMutate} />
-        </TabsContent>
-        <TabsContent value="members">
-          <ProjectMembers projectKey={project.key} />
-        </TabsContent>
-      </Tabs>
-    </DetailSheet>
-  );
-}
-
-function RepoList({ project, afterMutate }: { project: AdminProject; afterMutate: () => void }) {
-  const { t } = useI18n();
-  const client = useClient();
-  const [adding, setAdding] = useState(false);
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-medium">{t("registry.repos")}</h3>
-        <Button type="button" variant="outline" size="sm" onClick={() => setAdding(true)}>
-          {t("registry.addRepo")}
-        </Button>
-      </div>
-      {project.repos.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("registry.noRepos")}</p>
-      ) : (
-        <ul className="space-y-2">
-          {project.repos.map((r) => (
-            <li key={r.key} className="space-y-2 rounded-md border border-border px-3 py-2">
-              <p className="truncate text-sm font-medium">{r.name}</p>
-              <div className="flex items-center gap-2">
-                <p className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-                  {t("registry.projectKeyImmutable").replace("{key}", r.key)}
-                </p>
-                <RenameAction
-                  label={t("registry.repoName")}
-                  buttonLabel={t("registry.renameNamed").replace("{name}", r.name)}
-                  current={r.name}
-                  onRename={(name) =>
-                    client.adminRenameRepo({ projectKey: project.key, key: r.key, name })
-                  }
-                  afterMutate={afterMutate}
-                />
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      {adding && (
-        <CreateRepoForm
-          projectKey={project.key}
-          onDone={() => {
-            setAdding(false);
-            afterMutate();
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-// 顯式編輯模式：預設只有一顆「更名」；按下後才出現輸入框與確認／取消。代號沒有這個
-// 入口——它建立後就不可變更，因此連 disabled 輸入框都不呈現（避免暗示「某些條件下可改」）。
-function RenameAction({
-  label,
-  buttonLabel,
-  current,
-  onRename,
-  afterMutate,
-}: {
-  label: string;
-  buttonLabel?: string;
-  current: string;
-  onRename: (name: string) => Promise<void>;
-  afterMutate: () => void;
-}): ReactNode {
-  const { t } = useI18n();
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(current);
-  const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const id = `rename-${label}-${current}`;
-
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (pending || !name.trim()) return;
-    setPending(true);
-    setMessage(null);
-    try {
-      await onRename(name.trim());
-      setEditing(false);
-      afterMutate();
-    } catch (error) {
-      setMessage(readFormError(error, t("registry.renameError")).message);
-    } finally {
-      setPending(false);
-    }
-  }
-
-  if (!editing) {
-    return (
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        aria-label={buttonLabel}
-        onClick={() => {
-          setName(current);
-          setMessage(null);
-          setEditing(true);
-        }}
-      >
-        {t("common.rename")}
-      </Button>
-    );
-  }
-
-  return (
-    <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-2">
-      <div className="space-y-1.5">
-        <Label htmlFor={id}>{label}</Label>
-        <Input
-          id={id}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="h-8 w-40"
-        />
-      </div>
-      <Button type="submit" variant="outline" size="sm" disabled={pending}>
-        {t("common.confirm")}
-      </Button>
-      <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}>
-        {t("common.cancel")}
-      </Button>
-      {message && (
-        <span role="alert" className="text-sm text-destructive">
-          {message}
-        </span>
-      )}
-    </form>
-  );
-}
-
-function CreateRepoForm({ projectKey, onDone }: { projectKey: string; onDone: () => void }) {
-  const { t } = useI18n();
-  const client = useClient();
-  const [key, setKey] = useState("");
-  const [name, setName] = useState("");
-  const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (pending) return;
-    setPending(true);
-    setMessage(null);
-    setFieldErrors({});
-    try {
-      await client.adminCreateRepo({ projectKey, key, name: name.trim() || undefined });
-      setKey("");
-      setName("");
-      onDone();
-    } catch (error) {
-      const read = readFormError(error, t("registry.createRepoError"));
-      setMessage(read.message);
-      setFieldErrors(read.fieldErrors);
-    } finally {
-      setPending(false);
-    }
-  }
-
-  return (
-    <form onSubmit={onSubmit} className="space-y-3 border-t border-border pt-3" noValidate>
-      <p className="text-sm font-medium">{t("registry.newRepo")}</p>
-      <Field
-        id={`new-repo-key-${projectKey}`}
-        label={t("registry.repoKeyLabel")}
-        value={key}
-        onChange={setKey}
-        error={fieldErrors.key}
-      />
-      <Field
-        id={`new-repo-name-${projectKey}`}
-        label={t("registry.repoNameLabel")}
-        value={name}
-        onChange={setName}
-        error={fieldErrors.name}
-      />
-      {message && Object.keys(fieldErrors).length === 0 && (
-        <p role="alert" className="text-sm text-destructive">
-          {message}
-        </p>
-      )}
-      <Button type="submit" variant="outline" size="sm" disabled={pending}>
-        {pending ? t("common.creating") : t("common.create")}
-      </Button>
-    </form>
-  );
-}
-
-// 專案成員：從使用者 view model 反查該專案的成員資格。只在抽屜的成員分頁開啟時讀取，
-// 列表頁不為此多打一支 API。
-function ProjectMembers({ projectKey }: { projectKey: string }) {
-  const { t } = useI18n();
-  const client = useClient();
-  const { loading, data, error, reload } = useAsync(() => client.getAdminUsers(), [projectKey]);
-  if (loading) return <AdminLoading />;
-  if (error != null) return <AdminError onRetry={reload} />;
-  const members =
-    data?.users
-      .map((u) => ({ user: u, membership: u.memberships.find((m) => m.projectKey === projectKey) }))
-      .filter((row) => row.membership !== undefined) ?? [];
-  if (members.length === 0) {
-    return <p className="text-sm text-muted-foreground">{t("registry.noMembers")}</p>;
-  }
-  return (
-    <ul className="space-y-2 text-sm">
-      {members.map(({ user, membership }) => (
-        <li key={user.id} className="flex items-center gap-2">
-          <span className="min-w-0 flex-1 truncate">{user.email}</span>
-          <Badge variant="outline">{membership?.role}</Badge>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function CreateProjectSheet({
-  open,
-  onOpenChange,
-  afterMutate,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  afterMutate: () => void;
-}) {
-  const { t } = useI18n();
-  const client = useClient();
-  const [key, setKey] = useState("");
-  const [name, setName] = useState("");
-  const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (pending) return;
-    setPending(true);
-    setMessage(null);
-    setFieldErrors({});
-    try {
-      await client.adminCreateProject({ key, name: name.trim() || undefined });
-      setKey("");
-      setName("");
-      onOpenChange(false);
-      afterMutate();
-    } catch (error) {
-      const read = readFormError(error, t("registry.createProjectError"));
-      setMessage(read.message);
-      setFieldErrors(read.fieldErrors);
-    } finally {
-      setPending(false);
-    }
-  }
-
-  if (!open) return null;
-
-  return (
-    <DetailSheet open onOpenChange={onOpenChange} title={t("registry.create")}>
-      <form onSubmit={onSubmit} className="space-y-4" noValidate>
+      <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
         <Field
           id="new-project-key"
-          label={t("registry.projectKeyLabel")}
+          label={t("field.projectKey")}
+          hint={t("field.keyImmutable")}
           value={key}
           onChange={setKey}
           error={fieldErrors.key}
@@ -432,20 +160,13 @@ function CreateProjectSheet({
           onChange={setName}
           error={fieldErrors.name}
         />
-        {message && Object.keys(fieldErrors).length === 0 && (
-          <p role="alert" className="text-sm text-destructive">
-            {message}
-          </p>
-        )}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            {t("common.cancel")}
-          </Button>
-          <Button type="submit" disabled={pending}>
-            {pending ? t("common.creating") : t("registry.create")}
-          </Button>
-        </div>
+        <FormMessage message={message} fieldErrors={fieldErrors} />
+        <FormDialogActions
+          submitLabel={pending ? t("common.creating") : t("registry.create")}
+          pending={pending}
+          onCancel={onClose}
+        />
       </form>
-    </DetailSheet>
+    </FormDialog>
   );
 }

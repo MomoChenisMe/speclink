@@ -3,6 +3,7 @@ import { render } from "@testing-library/react";
 import { screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "../App";
+import { APP_MESSAGES } from "../i18n/messages";
 import { makeAdminClient, setViewport } from "./helpers/adminHarness";
 
 // spec 需求「首次進入提供可略過的分步導覽」：首次開啟管理面自動啟動、每一步指向畫面上
@@ -178,5 +179,43 @@ describe("鍵盤與降級", () => {
       getItem.mockRestore();
       setItem.mockRestore();
     }
+  });
+});
+
+// 情境「導覽說明符合現行的列表互動」：列表改成詳情頁與置中對話框後，說明曾停在舊的
+// 右側面板。字串比對只抓得到已知的舊字眼，抓不到新的不實描述——後者靠第二條釘住兩個
+// 描述互動的鍵。
+describe("導覽說明符合現行的列表互動", () => {
+  const STALE_WORDS = ["右側面板", "滑出", "抽屜", "drawer", "slides"];
+
+  it("兩種語言的導覽說明都不提已不存在的介面", () => {
+    const hits = Object.entries(APP_MESSAGES).flatMap(([locale, dict]) => {
+      const hints = Object.entries(dict).filter(([key]) => /^tour\..+\.hint$/.test(key));
+      // Tour.tsx 的 STEPS 共七步；篩不出七個鍵代表鍵名變了，下面的比對會空轉。
+      expect(hints, `${locale} 的導覽說明鍵數`).toHaveLength(7);
+      return hints.flatMap(([key, value]) =>
+        STALE_WORDS.filter((word) => value.toLowerCase().includes(word.toLowerCase())).map(
+          (word) => `${locale} ${key}：${word}`,
+        ),
+      );
+    });
+    expect(hits).toEqual([]);
+  });
+
+  it("「使用者」提到使用者列與詳情頁，「建立」只講這一頁的主要動作與置中的對話框", () => {
+    const zh = APP_MESSAGES["zh-TW"];
+    const en = APP_MESSAGES.en;
+    // 「邀請中」分頁的列點了沒反應，只有使用者列會進詳情頁。
+    expect(zh["tour.navUsers.hint"]).toContain("點使用者那一列進入詳情頁");
+    expect(en["tour.navUsers.hint"]).toContain("click a user's row");
+    expect(en["tour.navUsers.hint"]).toContain("detail page");
+    // 編輯已移到詳情頁，這一步指的按鈕只負責建立。
+    expect(zh["tour.listPrimary.title"]).toBe("建立");
+    expect(en["tour.listPrimary.title"]).toBe("Create");
+    // 憑證頁的主要動作連到帳號頁，「每個列表頁都開對話框」不成立；這一步只出現在帶目標元素的頁面。
+    expect(zh["tour.listPrimary.hint"]).toMatch(/^這一頁/);
+    expect(en["tour.listPrimary.hint"]).toMatch(/^This page/);
+    expect(zh["tour.listPrimary.hint"]).toContain("置中的對話框");
+    expect(en["tour.listPrimary.hint"]).toContain("centered dialog");
   });
 });

@@ -1,129 +1,5 @@
 use super::*;
 
-#[test]
-fn copilot_shared_plan_has_one_physical_target_and_two_reported_tools() {
-    let root = TempRoot::new("copilot-plan");
-    let plan = SyncPlan::resolve(
-        &root.dir,
-        ToolSelection::builtins_only(&[Tool::Codex, Tool::Copilot]),
-        "openspec",
-    );
-    assert_eq!(
-        plan.targets.len(),
-        1,
-        "shared directory must be written and guarded once"
-    );
-    let out = plan.apply(&root.dir).unwrap();
-    assert_eq!(out.updated, ["codex", "copilot"]);
-}
-
-#[test]
-fn copilot_shared_probe_reports_real_tools_and_unique_differences() {
-    let root = TempRoot::new("copilot-probe");
-    init(&root.dir, &[Tool::Codex, Tool::Copilot], false, "openspec").unwrap();
-    let path = ".agents/skills/speclink-propose/SKILL.md";
-    let content = root.read(path);
-    root.write(path, &content.replace(ASSET_VERSION, "v0.9.0"));
-    let probe = serde_json::to_value(probe_assets(&root.dir)).unwrap();
-    assert_eq!(probe["status"], "stale");
-    assert!(probe["currentVersion"].is_string());
-    let tools = probe["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 2);
-    for (tool, name) in tools.iter().zip(["codex", "copilot"]) {
-        assert_eq!(tool["tool"], name);
-        assert_eq!(tool["workspaceVersion"], "v0.9.0");
-        assert_eq!(tool["stale"], true);
-        assert_eq!(tool["newer"], false);
-        assert_eq!(tool["missing"], false);
-    }
-    assert_eq!(probe["differingFiles"], serde_json::json!([path]));
-    root.write(path, &content.replace('\n', "\r\n"));
-    assert_eq!(probe_assets(&root.dir).status, AssetStatus::Current);
-    assert!(probe_assets(&root.dir).differing_files.is_empty());
-    std::fs::remove_dir_all(root.at(".agents/skills")).unwrap();
-    let missing = probe_assets(&root.dir);
-    assert_eq!(missing.status, AssetStatus::Missing);
-    assert!(missing
-        .tools
-        .iter()
-        .all(|t| t.missing && t.workspace_version.is_none()));
-    let unique: std::collections::HashSet<_> = missing.differing_files.iter().collect();
-    assert_eq!(unique.len(), missing.differing_files.len());
-}
-
-#[test]
-fn copilot_shared_selection_transitions_preserve_user_skills_and_content() {
-    for (tag, from, to, keep) in [
-        (
-            "both-copilot",
-            vec![Tool::Codex, Tool::Copilot],
-            vec![Tool::Copilot],
-            true,
-        ),
-        (
-            "copilot-codex",
-            vec![Tool::Copilot],
-            vec![Tool::Codex],
-            true,
-        ),
-        (
-            "codex-both",
-            vec![Tool::Codex],
-            vec![Tool::Codex, Tool::Copilot],
-            true,
-        ),
-        (
-            "both-claude",
-            vec![Tool::Codex, Tool::Copilot],
-            vec![Tool::Claude],
-            false,
-        ),
-    ] {
-        let root = TempRoot::new(&format!("copilot-transition-{tag}"));
-        init(&root.dir, &from, false, "openspec").unwrap();
-        root.write(".agents/skills/my-skill/SKILL.md", "user content");
-        let before = root.read(".agents/skills/speclink-propose/SKILL.md");
-        reconcile_builtin_tools(&root.dir, &to).unwrap();
-        reconcile_builtin_tools(&root.dir, &to).unwrap();
-        assert_eq!(
-            root.exists(".agents/skills/speclink-propose/SKILL.md"),
-            keep
-        );
-        if keep {
-            assert_eq!(
-                root.read(".agents/skills/speclink-propose/SKILL.md"),
-                before
-            );
-        }
-        assert_eq!(
-            root.read(".agents/skills/my-skill/SKILL.md"),
-            "user content"
-        );
-    }
-}
-
-#[test]
-fn copilot_guard_cannot_be_bypassed_by_selection_or_entry_point() {
-    let root = TempRoot::new("copilot-guard");
-    init(&root.dir, &[Tool::Codex, Tool::Copilot], false, "openspec").unwrap();
-    crate::testkit::set_skill_version(&root.at(".agents/skills"), &ahead_of_current());
-    let yaml = root.read(".speclink.yaml");
-    let skill = root.read(".agents/skills/speclink-propose/SKILL.md");
-    assert!(update(&root.dir, false)
-        .unwrap_err()
-        .to_string()
-        .contains("--allow-downgrade"));
-    assert!(reconcile_builtin_tools(&root.dir, &[Tool::Copilot]).is_err());
-    assert!(adopt(&root.dir, &[Tool::Copilot]).is_err());
-    assert!(init(&root.dir, &[Tool::Copilot], true, "openspec").is_err());
-    assert_eq!(root.read(".speclink.yaml"), yaml);
-    assert_eq!(root.read(".agents/skills/speclink-propose/SKILL.md"), skill);
-    assert!(probe_assets(&root.dir).tools.iter().all(|t| t.newer));
-    update(&root.dir, true).unwrap();
-    assert_eq!(probe_assets(&root.dir).status, AssetStatus::Current);
-}
-
-
 /// Throwaway project root, removed on drop.
 struct TempRoot {
     dir: PathBuf,
@@ -202,6 +78,21 @@ fn init_app_config_template_has_no_policy_keys() {
 }
 
 #[test]
+fn init_app_config_template_links_the_real_repository() {
+    let root = TempRoot::new("app-template-url");
+    init(&root.dir, &[], false, "openspec").unwrap();
+    let app = root.read(".speclink.yaml");
+    assert!(
+        app.contains("https://github.com/MomoChenisMe/speclink"),
+        ".speclink.yaml template must link the project repository:\n{app}"
+    );
+    assert!(
+        !app.contains("speclink-app"),
+        ".speclink.yaml template must not link the wrong organization:\n{app}"
+    );
+}
+
+#[test]
 fn init_with_tools_records_selection_without_policy_keys() {
     let root = TempRoot::new("app-tools");
     init(&root.dir, &[Tool::Claude, Tool::Codex], false, "openspec").unwrap();
@@ -227,13 +118,14 @@ const CLAUDE_USER_TEXT: &str = "使用者寫在 CLAUDE.md 的段落";
 const CODEX_USER_TEXT: &str = "使用者寫在 AGENTS.md 的段落";
 
 fn instructions_file(tool: Tool) -> &'static str {
-    instructions_path(tool)
+    instructions_path(tool).expect("只有 claude 與 codex 有指令檔")
 }
 
 fn user_text(tool: Tool) -> &'static str {
     match tool {
         Tool::Claude => CLAUDE_USER_TEXT,
-        Tool::Codex | Tool::Copilot => CODEX_USER_TEXT,
+        Tool::Codex => CODEX_USER_TEXT,
+        Tool::Copilot => unreachable!("copilot 沒有指令檔"),
     }
 }
 
@@ -299,10 +191,13 @@ fn snapshot(root: &TempRoot) -> Vec<(String, Vec<u8>)> {
 /// custom descriptor／未知頂層鍵／remote 原值保留，marker 不重複，使用者文字不動。
 #[test]
 fn reconcile_converts_builtin_selection_row_by_row() {
-    let rows: [(&[Tool], &[Tool]); 3] = [
+    let rows: [(&[Tool], &[Tool]); 6] = [
         (&[Tool::Claude], &[Tool::Codex]),
         (&[Tool::Claude, Tool::Codex], &[Tool::Claude]),
         (&[Tool::Codex], &[Tool::Claude, Tool::Codex]),
+        (&[Tool::Claude], &[Tool::Claude, Tool::Copilot]),
+        (&[Tool::Claude, Tool::Copilot], &[Tool::Claude]),
+        (&[Tool::Codex], &[Tool::Copilot]),
     ];
     for (i, (from, to)) in rows.iter().enumerate() {
         let root = TempRoot::new(&format!("reconcile-row-{i}"));
@@ -336,16 +231,18 @@ fn reconcile_converts_builtin_selection_row_by_row() {
         assert_eq!(remote.url.as_deref(), Some(REMOTE_URL), "row {i}");
         assert_eq!(remote.repo.as_deref(), Some("desktop"), "row {i}");
 
-        for tool in [Tool::Claude, Tool::Codex] {
-            let md = instructions_file(tool);
-            let text = root.read(md);
+        for tool in Tool::ALL {
             let skill = propose_skill(tool);
             if to.contains(&tool) {
                 assert!(root.exists(&skill), "row {i}: {skill} 應被補齊");
             } else {
                 assert!(!root.exists(&skill), "row {i}: {skill} 應被清理");
             }
-            // 指令檔已退出受管：不論選取與否都只剩使用者自己的內容。
+            // 指令檔已退出受管：不論選取與否都只剩使用者自己的內容（copilot 沒有指令檔）。
+            let Some(md) = instructions_path(tool) else {
+                continue;
+            };
+            let text = root.read(md);
             assert_eq!(marker_count(&text), 0, "row {i}: {md} 不得帶受管區塊:\n{text}");
             assert_eq!(text, format!("{}\n", user_text(tool)), "row {i}: {md} 須位元級不變");
         }
@@ -1256,7 +1153,7 @@ fn probe_reports_missing_for_a_descriptor_without_skills() {
             "差異清單只該含描述子技能檔：{path}"
         );
     }
-    // for_codex 子集＋worktree 政策關閉：兩顆 worktree 技能不在預期生成集合內。
+    // 非 Claude 子集＋worktree 政策關閉：兩顆 worktree 技能不在預期生成集合內。
     for gated in ["speclink-apply-with-worktree", "speclink-worktree-merge"] {
         assert!(
             !probe.differing_files.iter().any(|p| p.contains(gated)),
@@ -1625,17 +1522,17 @@ fn dir_names(set: &[(String, String)]) -> Vec<String> {
     set.iter().map(|(dir, _)| dir.clone()).collect()
 }
 
-/// registry 依 `codex_subset` 過濾後的 `speclink-<name>` 目錄名（順序同 registry）。
-fn registry_dirs(codex_subset: bool) -> Vec<String> {
+/// registry 依 `non_claude` 過濾後的 `speclink-<name>` 目錄名（順序同 registry）。
+fn registry_dirs(non_claude: bool) -> Vec<String> {
     skills::registry()
         .iter()
-        .filter(|s| !codex_subset || s.for_codex)
+        .filter(|s| !(non_claude && s.claude_only))
         .map(|s| format!("speclink-{}", s.name))
         .collect()
 }
 
 /// 受管技能集合只有一個擁有者：Claude 目標拿 registry 全集，非 Claude 目標拿
-/// `for_codex` 子集，每一筆內容逐字等於同參數的 render。
+/// 非 Claude 子集，每一筆內容逐字等於同參數的 render。
 #[test]
 fn managed_skills_covers_the_registry_per_target() {
     let custom = custom_target();
@@ -1693,9 +1590,9 @@ fn sync_plan_builds_one_target_per_selected_tool() {
     let plan =
         SyncPlan::resolve(&root.dir, ToolSelection::builtins_only(&[Tool::Codex]), "openspec");
     assert_eq!(plan.targets.len(), 1, "只選 codex 就只有一個 target");
-    assert_eq!(plan.targets[0].labels, ["codex"]);
+    assert_eq!(plan.targets[0].label, "codex");
     assert_eq!(plan.targets[0].skills_root, root.at(".agents/skills"));
-    assert_eq!(plan.deselected_builtins, vec![Tool::Claude]);
+    assert_eq!(plan.deselected_builtins, vec![Tool::Claude, Tool::Copilot]);
 }
 
 /// legacy 回退（沒有 tools 清單）不下架任何內建工具。
@@ -1706,7 +1603,7 @@ fn sync_plan_prunes_nothing_on_the_legacy_fallback() {
     let selection = ToolSelection::resolve(&root.dir, &app_config("tools: []\n"));
     let plan = SyncPlan::resolve(&root.dir, selection, "openspec");
     assert_eq!(plan.targets.len(), 1);
-    assert_eq!(plan.targets[0].labels, ["claude"]);
+    assert_eq!(plan.targets[0].label, "claude");
     assert!(plan.deselected_builtins.is_empty(), "沒有清單就沒有「下架」這回事");
 }
 
@@ -1720,10 +1617,10 @@ fn sync_plan_adds_a_target_for_each_descriptor() {
     );
     let plan = SyncPlan::resolve(&root.dir, selection, "openspec");
     assert_eq!(plan.targets.len(), 2);
-    assert_eq!(plan.targets[0].labels, ["claude"]);
-    assert_eq!(plan.targets[1].labels, ["wad-harness"]);
+    assert_eq!(plan.targets[0].label, "claude");
+    assert_eq!(plan.targets[1].label, "wad-harness");
     assert_eq!(plan.targets[1].skills_root, root.at(".wad/skills"));
-    assert_eq!(plan.deselected_builtins, vec![Tool::Codex]);
+    assert_eq!(plan.deselected_builtins, vec![Tool::Codex, Tool::Copilot]);
 }
 
 /// 守門的檢查面就是 targets 的 skills_root 集合：只有描述子目錄領先版本時
@@ -1773,4 +1670,314 @@ fn init_force_removes_gated_skill_directories_the_reset_policy_no_longer_allows(
         assert!(!root.exists(&dir), "政策被重置為關閉後 {dir} 不得留下");
     }
     assert!(root.exists(".claude/skills/speclink-apply/SKILL.md"));
+}
+
+// --- 內建 copilot（change: add-copilot-tool）---
+// Spec requirement「Copilot 渲染目標」與「worktree 技能的政策條件式生成」的 copilot
+// 分支：技能落在 .github/skills、子集與內容沿用 codex，只有叫用前綴與 agent 名不同。
+
+#[test]
+fn copilot_generates_the_codex_subset_under_github_skills() {
+    // Scenario「Copilot 與 Codex 生成集合相同」：非 Claude 子集，政策關閉時不含兩顆
+    // worktree 技能。
+    let root = TempRoot::new("copilot-subset");
+    init(&root.dir, &[Tool::Copilot], false, "openspec").unwrap();
+
+    assert_eq!(Tool::Copilot.skills_dir(), ".github/skills");
+    let generated = skill_dirs(&root, ".github/skills");
+    assert_eq!(
+        generated,
+        expected_dirs(Tool::Codex),
+        "copilot 的生成集合須等於 codex 的"
+    );
+    assert!(
+        !generated.contains(&"speclink-analyze".to_string()),
+        "analyze 只給 claude"
+    );
+    for dir in worktree_skill_dirs(Tool::Copilot) {
+        assert!(!root.exists(&dir), "政策關閉時不得生成 {dir}");
+    }
+}
+
+#[test]
+fn copilot_follows_the_worktree_policy_like_the_other_targets() {
+    // Requirement「worktree 技能的政策條件式生成」對 copilot 一視同仁：開啟即生成、
+    // 改回關閉後再生即清理。
+    let root = TempRoot::new("copilot-worktree");
+    init(&root.dir, &[Tool::Copilot], false, "openspec").unwrap();
+
+    set_worktree_policy(&root, true);
+    update(&root.dir, false).unwrap();
+    for dir in worktree_skill_dirs(Tool::Copilot) {
+        assert!(root.exists(&dir), "政策開啟時須生成 {dir}");
+    }
+
+    set_worktree_policy(&root, false);
+    update(&root.dir, false).unwrap();
+    for dir in worktree_skill_dirs(Tool::Copilot) {
+        assert!(!root.exists(&dir), "政策改回關閉後須清除 {dir}");
+    }
+}
+
+#[test]
+fn copilot_skill_has_neutral_frontmatter_and_slash_references() {
+    // Scenario「選取 Copilot 生成正確的技能檔」。
+    let root = TempRoot::new("copilot-render");
+    init(&root.dir, &[Tool::Copilot], false, "openspec").unwrap();
+
+    let propose = root.read(&propose_skill(Tool::Copilot));
+    let frontmatter = propose.split("---\n").nth(1).expect("frontmatter block");
+    let keys: Vec<&str> = frontmatter
+        .lines()
+        .filter(|l| !l.starts_with(' '))
+        .filter_map(|l| l.split(':').next())
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "name",
+            "description",
+            "license",
+            "compatibility",
+            "metadata"
+        ]
+    );
+    assert!(
+        frontmatter.contains("name: speclink-propose\n"),
+        "{frontmatter}"
+    );
+    assert!(
+        propose.contains("/speclink-apply"),
+        "技能引用須寫成 /speclink-<name>"
+    );
+    assert!(
+        !propose.contains("$speclink-"),
+        "不得出現 Codex 的 $ 叫用語法"
+    );
+    assert!(
+        propose.contains("--agent copilot"),
+        "建立變更須記錄 agent 為 copilot"
+    );
+
+    // fork 與唯讀技能在 claude 版才帶專用欄位與前言；copilot 版一律不帶。
+    for skill in ["drift", "trace", "discuss", "verify"] {
+        let text = root.read(&format!(".github/skills/speclink-{skill}/SKILL.md"));
+        for claude_only in [
+            "context: fork",
+            "agent: Explore",
+            "disallowedTools",
+            "## Claude fork context",
+        ] {
+            assert!(
+                !text.contains(claude_only),
+                "speclink-{skill} 不得含 {claude_only}"
+            );
+        }
+    }
+}
+
+#[test]
+fn copilot_skills_differ_from_codex_only_by_prefix_and_agent_name() {
+    // Requirement「Copilot 渲染目標」：除叫用前綴與 {{TOOL}} 代換值以外逐字相同。
+    let root = TempRoot::new("copilot-vs-codex");
+    init(&root.dir, &[Tool::Codex, Tool::Copilot], false, "openspec").unwrap();
+
+    for dir in expected_dirs(Tool::Codex) {
+        let codex = root.read(&format!(".agents/skills/{dir}/SKILL.md"));
+        let copilot = root.read(&format!(".github/skills/{dir}/SKILL.md"));
+        let mapped = codex
+            .replace("$speclink-", "/speclink-")
+            .replace("--agent codex", "--agent copilot");
+        assert_eq!(copilot, mapped, "{dir}");
+    }
+}
+
+#[test]
+fn copilot_writes_no_instruction_file() {
+    // Scenario「選取 Copilot 不產生指令檔」。
+    let root = TempRoot::new("copilot-no-instructions");
+    init(&root.dir, &[Tool::Copilot], false, "openspec").unwrap();
+
+    for file in ["AGENTS.md", "CLAUDE.md", ".github/copilot-instructions.md"] {
+        assert!(!root.exists(file), "{file} 不得生成");
+    }
+    let entries: Vec<String> = std::fs::read_dir(root.at(".github"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    assert_eq!(entries, ["skills"], ".github/ 下只能有 skills/");
+}
+
+#[test]
+fn footprint_detection_never_infers_copilot() {
+    // Scenario「footprint 偵測不推斷 Copilot」：多數 GitHub repo 都有 .github/，
+    // 它不代表使用者要 Copilot；legacy 回退的 update 也只依 .claude/ 再生。
+    let root = TempRoot::new("copilot-footprint");
+    root.write(".github/workflows/ci.yml", "on: push\n");
+    std::fs::create_dir_all(root.at(".github/skills/my-skill")).unwrap();
+    std::fs::create_dir_all(root.at(".claude")).unwrap();
+
+    assert_eq!(detect_footprint_tools(&root.dir), vec![Tool::Claude]);
+
+    root.write(".speclink.yaml", "# Speclink application config\n");
+    update(&root.dir, false).expect("legacy update");
+    assert!(
+        root.exists(&propose_skill(Tool::Claude)),
+        "claude 技能照常再生"
+    );
+    assert!(
+        skill_dirs(&root, ".github/skills").is_empty(),
+        "不得生成任何 copilot 技能"
+    );
+    assert_eq!(root.read(".github/workflows/ci.yml"), "on: push\n");
+}
+
+#[test]
+fn deselecting_copilot_removes_only_speclink_skill_dirs() {
+    // Scenario「取消 Copilot 只移除 speclink 技能目錄」（built-in tools 權威收斂）。
+    let root = TempRoot::new("copilot-deselect");
+    init(&root.dir, &[Tool::Claude, Tool::Copilot], false, "openspec").unwrap();
+    root.write(
+        ".github/skills/my-skill/SKILL.md",
+        "---\nname: my-skill\n---\n",
+    );
+    root.write(".github/workflows/ci.yml", "on: push\n");
+    root.write(".github/copilot-instructions.md", "團隊自己的指示\n");
+
+    reconcile_builtin_tools(&root.dir, &[Tool::Claude]).expect("reconcile succeeds");
+
+    assert!(
+        skill_dirs(&root, ".github/skills").is_empty(),
+        "speclink- 目錄須全數移除"
+    );
+    assert_eq!(
+        root.read(".github/skills/my-skill/SKILL.md"),
+        "---\nname: my-skill\n---\n"
+    );
+    assert_eq!(root.read(".github/workflows/ci.yml"), "on: push\n");
+    assert_eq!(
+        root.read(".github/copilot-instructions.md"),
+        "團隊自己的指示\n"
+    );
+    assert!(
+        root.exists(&propose_skill(Tool::Claude)),
+        "claude 技能照常更新"
+    );
+    assert_eq!(builtin_names(&root), ["claude"]);
+}
+
+#[test]
+fn deselecting_copilot_drops_the_emptied_skills_dir_but_keeps_github() {
+    // 只剩 speclink 技能的 .github/skills/ 變空即移除；.github/ 還有 workflows 就留著。
+    let root = TempRoot::new("copilot-deselect-empty");
+    init(&root.dir, &[Tool::Claude, Tool::Copilot], false, "openspec").unwrap();
+    root.write(".github/workflows/ci.yml", "on: push\n");
+
+    reconcile_builtin_tools(&root.dir, &[Tool::Claude]).expect("reconcile succeeds");
+
+    assert!(
+        !root.exists(".github/skills"),
+        "變空的 .github/skills/ 須移除"
+    );
+    assert_eq!(root.read(".github/workflows/ci.yml"), "on: push\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn update_never_prunes_through_a_symlinked_github_skills_dir() {
+    // 沒選 copilot 的 update 會清 .github/skills；它若是指向 .claude/skills 的
+    // symlink，清理不得穿過去刪掉 claude 剛寫好的技能。
+    let root = TempRoot::new("copilot-symlink");
+    init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+    std::fs::create_dir_all(root.at(".github")).unwrap();
+    std::os::unix::fs::symlink("../.claude/skills", root.at(".github/skills")).unwrap();
+
+    let outcome = update(&root.dir, false).expect("update succeeds");
+
+    assert!(
+        root.exists(&propose_skill(Tool::Claude)),
+        "claude 技能不得被刪"
+    );
+    let link = std::fs::symlink_metadata(root.at(".github/skills")).unwrap();
+    assert!(link.file_type().is_symlink(), "symlink 本身留著");
+    assert!(
+        !outcome.pruned.iter().any(|p| p == "copilot"),
+        "沒有清掉任何東西就不回報 copilot：{:?}",
+        outcome.pruned
+    );
+}
+
+#[test]
+fn update_keeps_a_preexisting_empty_github_skills_dir() {
+    // 從沒選過 copilot：本來就空的 .github/skills/ 不是這次清空的，不得被收掉。
+    let root = TempRoot::new("copilot-empty-kept");
+    init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+    std::fs::create_dir_all(root.at(".github/skills")).unwrap();
+
+    update(&root.dir, false).expect("update succeeds");
+
+    assert!(
+        root.exists(".github/skills"),
+        "原本就空的 .github/skills/ 須保留"
+    );
+}
+
+#[test]
+fn update_prunes_an_orphan_skill_dir_under_github_skills() {
+    // Requirement「update 清除孤兒技能目錄」：copilot 與 codex 同為非 Claude 子集，
+    // 改名留下的舊目錄一樣被清。
+    let root = TempRoot::new("copilot-orphan");
+    init(&root.dir, &[Tool::Copilot], false, "openspec").unwrap();
+    root.write(".github/skills/speclink-onboard/SKILL.md", "old\n");
+
+    update(&root.dir, false).expect("update succeeds");
+
+    assert!(
+        !root.exists(".github/skills/speclink-onboard"),
+        "舊目錄須被清除"
+    );
+    assert!(root.exists(".github/skills/speclink-baseline/SKILL.md"));
+}
+
+#[test]
+fn skill_probe_reports_missing_copilot_skills() {
+    // Requirement「技能檔過期探測」：逐工具資訊的內建名含 copilot，缺失的差異清單
+    // 落在 .github/skills/ 底下。
+    let root = TempRoot::new("copilot-probe-missing");
+    init(&root.dir, &[Tool::Claude, Tool::Copilot], false, "openspec").unwrap();
+    std::fs::remove_dir_all(root.at(Tool::Copilot.skills_dir())).unwrap();
+
+    let probe = probe_assets(&root.dir);
+    assert_eq!(probe.status, AssetStatus::Missing, "{probe:?}");
+    let copilot = probe
+        .tools
+        .iter()
+        .find(|t| t.tool == "copilot")
+        .expect("copilot 在列");
+    assert!(
+        copilot.missing && copilot.workspace_version.is_none(),
+        "{copilot:?}"
+    );
+    assert!(!probe.differing_files.is_empty());
+    for file in &probe.differing_files {
+        assert!(file.starts_with(".github/skills/speclink-"), "{file}");
+        assert!(file.ends_with("/SKILL.md"), "{file}");
+    }
+}
+
+#[test]
+fn skill_probe_reports_stale_copilot_skills() {
+    let root = TempRoot::new("copilot-probe-stale");
+    init(&root.dir, &[Tool::Copilot], false, "openspec").unwrap();
+    set_skill_version(&root, Tool::Copilot, "v0.9.0");
+
+    let probe = probe_assets(&root.dir);
+    assert_eq!(probe.status, AssetStatus::Stale, "{probe:?}");
+    assert_eq!(probe.tools.len(), 1);
+    assert_eq!(probe.tools[0].tool, "copilot");
+    assert!(probe.tools[0].stale);
+    assert!(probe
+        .differing_files
+        .contains(&propose_skill(Tool::Copilot)));
 }

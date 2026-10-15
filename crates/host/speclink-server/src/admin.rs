@@ -953,6 +953,9 @@ struct WebAudit {
     /// How many pages the filter matches at the requested page size. 0 when
     /// nothing matches, so the SPA can distinguish "empty result" from "page 1".
     total_pages: u64,
+    /// How many events the filter matches, independent of page and page size
+    /// (the pager's 「共 N 筆」).
+    total: u64,
 }
 
 /// The browser audit view's query string: keyword, action, source, an inclusive
@@ -1096,6 +1099,7 @@ pub async fn web_admin_audit(
             })
             .collect(),
         total_pages,
+        total: page.total,
     })
 }
 
