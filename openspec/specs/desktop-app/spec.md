@@ -1023,7 +1023,7 @@ code:
 ---
 ### Requirement: markdown 內容保留文件結構呈現
 
-桌面 app 渲染 markdown 內容（變更抽屜的提案／設計／規格分頁、討論抽屜各分頁、已封存檢視）SHALL 保留來源的文件結構：無序清單 SHALL 顯示列表符號、有序清單 SHALL 顯示編號、段落之間 SHALL 有可辨識的垂直間距、來源中的單一換行 SHALL 呈現為換行。內容基準字級 SHALL 為 16px，任務分頁的任務文字 SHALL 同為 16px。排版與內容色彩 SHALL 於淺色與深色主題（跟隨系統偏好）一致生效。
+桌面 app 渲染 markdown 內容（變更抽屜的提案／設計／規格分頁、討論抽屜各分頁、已封存檢視）SHALL 保留來源的文件結構：無序清單 SHALL 顯示列表符號、有序清單 SHALL 顯示編號、段落之間 SHALL 有可辨識的垂直間距、來源中的單一換行 SHALL 呈現為換行。內容基準字級 SHALL 為 16px，任務分頁的任務文字 SHALL 同為 16px。排版與內容色彩 SHALL 於淺色與深色主題（依 desktop-config 的有效外觀偏好：明示選擇優先，未明示才跟隨系統）一致生效。
 
 #### Scenario: 清單顯示列表符號與編號
 
@@ -1042,22 +1042,18 @@ code:
 
 #### Scenario: 深色主題下排版一致
 
-- **WHEN** 系統偏好為深色時檢視同一份文件
+- **WHEN** 有效外觀為深色（手動選深色，或跟隨系統且系統為深色）時檢視同一份文件
 - **THEN** 列表符號、段落間距、字級與淺色主題一致，內容色彩取自深色 token 且可讀
 
+#### Scenario: 手動淺色優先於系統深色
+
+- **WHEN** 系統為深色、app 外觀選淺色，使用者檢視含清單與程式碼區塊的文件
+- **THEN** 內文、清單、程式碼與表格皆使用淺色配色，字級與結構不變
+
+
 <!-- @trace
-source: desktop-reading-experience
-updated: 2026-07-08
-code:
-  - apps/desktop/package.json
-  - apps/desktop/src/index.css
-  - apps/desktop/src/main.tsx
-  - package-lock.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/components.test.tsx
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/components/Markdown.tsx
-  - packages/ui/src/components/TaskList.tsx
+source: desktop-theme-and-project-directory
+updated: 2026-10-15T22:40:22+08:00
 -->
 
 ---
@@ -2060,7 +2056,7 @@ code:
 
 上述任一操作失敗時，app SHALL 以 toast 浮層呈現失敗訊息。訊息 SHALL 包含操作對象的主詞與 core 回報的原始錯誤內容，SHALL NOT 吞掉或改寫該錯誤內容。toast SHALL 疊於詳情抽屜與確認對話框的遮罩之上——抽屜或確認框開啟中發生失敗時，toast SHALL 完整可見且不被遮蔽。toast SHALL 於固定時距後自動消失，並 SHALL 提供關閉鈕供提前關閉。同時 SHALL 僅呈現一則 toast；新訊息 SHALL 取代前一則並重置其自動消失時距。
 
-toast 的表面、前景、邊框、圓角、陰影與字體 SHALL 沿用桌面 app 的既有語意設計 tokens。失敗 toast SHALL 保持中性 card 表面與可讀前景，並以 destructive token 強調錯誤圖示與邊框；SHALL NOT 使用獨立於主介面的內建明暗色票或另建 raw 色票。作業系統切換淺色或深色模式時，toast SHALL 由同一組語意 tokens 取得該模式的對應值。
+toast 的表面、前景、邊框、圓角、陰影與字體 SHALL 沿用桌面 app 的既有語意設計 tokens。失敗 toast SHALL 保持中性 card 表面與可讀前景，並以 destructive token 強調錯誤圖示與邊框；SHALL NOT 使用獨立於主介面的內建明暗色票或另建 raw 色票。app 的有效外觀切換時，toast SHALL 由同一組語意 tokens 取得對應值；明示淺色或深色 SHALL 優先於系統，僅跟隨系統時才依系統切換。已顯示與新顯示的 toast SHALL 同步使用目前有效外觀。
 
 失敗後看板 SHALL 刷新回磁碟現況，SHALL NOT 保留未落檔的假象順序或狀態。
 
@@ -2078,7 +2074,7 @@ toast 的表面、前景、邊框、圓角、陰影與字體 SHALL 沿用桌面 
 
 #### Scenario: 系統明暗模式切換後 toast 使用對應 tokens
 
-- **WHEN** 作業系統由淺色切換為深色或由深色切換為淺色，之後看板全域操作失敗
+- **WHEN** app 選擇跟隨系統，作業系統由淺色切換為深色或由深色切換為淺色，之後看板全域操作失敗
 - **THEN** 新呈現的 toast 使用同一組語意 token 名稱在目前模式下的值，訊息內容、逾時、關閉與單槽取代行為不變
 
 #### Scenario: 刪除成功不呈現任何文字訊息
@@ -2117,13 +2113,15 @@ toast 的表面、前景、邊框、圓角、陰影與字體 SHALL 沿用桌面 
 | 開啟專案 | 靜默：切換至該專案 | toast：`<選定路徑> · 開啟專案失敗 ✗ <core 錯誤>` |
 | 初始化專案 | 靜默：進入該專案 | toast：`<選定目錄> · 初始化失敗 ✗ <core 錯誤>` |
 
+#### Scenario: 明示外觀覆蓋 toast 的系統配色
+
+- **WHEN** 系統為深色，畫面已顯示失敗 toast，使用者將 app 外觀設為淺色
+- **THEN** 已顯示的 toast 與後續 toast 均採淺色主介面配色，訊息、逾時、關閉與單槽行為不變
+
 
 <!-- @trace
-source: desktop-toast-theme-alignment
-updated: 2026-07-19
-code:
-  - packages/ui/src/__tests__/sonner.test.tsx
-  - packages/ui/src/components/ui/sonner.tsx
+source: desktop-theme-and-project-directory
+updated: 2026-10-15T22:40:22+08:00
 -->
 
 ---
@@ -3578,4 +3576,24 @@ updated: 2026-09-22T15:13:01+08:00
 <!-- @trace
 source: drawer-quality-ticket-tab
 updated: 2026-09-22T15:13:01+08:00
+-->
+
+---
+### Requirement: 全介面配色一致套用有效外觀
+
+桌面 app 的背景、文字、邊框、表單控制項、狀態徽章與互動提示 SHALL 使用 desktop-config 所定義的有效外觀。深淺色票及既有狀態色角色 SHALL 保留；手動淺色時 SHALL NOT 混入系統深色變體，手動深色時亦 SHALL NOT 混入系統淺色變體。共用樣式未收到外觀覆寫的宿主 SHALL 維持依系統配色，SHALL NOT 因桌面偏好改變其他 app 的選擇。
+
+#### Scenario: 系統與手動選擇相反仍一致
+
+- **WHEN** 系統為深色而 app 選淺色，或系統為淺色而 app 選深色
+- **THEN** 看板、設定、詳情面板、狀態徽章與表單控制項皆使用所選模式且文字可讀，既有狀態色意義不變
+
+#### Scenario: 共用樣式宿主無覆寫
+
+- **WHEN** server-web 未設定外觀覆寫，使用者切換系統深淺模式
+- **THEN** server-web 的共用背景、文字與狀態色跟隨系統，不受桌面 app 儲存偏好影響
+
+<!-- @trace
+source: desktop-theme-and-project-directory
+updated: 2026-10-15T22:40:22+08:00
 -->
