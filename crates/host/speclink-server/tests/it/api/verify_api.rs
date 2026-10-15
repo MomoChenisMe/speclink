@@ -239,7 +239,9 @@ fn structured_verify_rounds_survive_the_wire() {
     assert_eq!(v["lastRound"]["patchHash"], format!("sha256:{hex}"));
     assert_eq!(
         v["lastRound"].as_object().map(|o| o.len()),
-        Some(5),
-        "index/phase/patchHash/scope/findings only: {v}"
+        Some(6),
+        "index/phase/patchHash/rules/scope/findings only: {v}"
     );
+    // 兩站共用序列化；驗證技能不寫規則記錄，所以驗證站恆為 null。
+    assert!(v["lastRound"]["rules"].is_null(), "verify rounds carry rules: null: {v}");
 }

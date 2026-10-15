@@ -176,6 +176,57 @@ fn add_round_without_scope_fails_and_writes_nothing() {
     assert!(!p.ticket_path().exists(), "refusal must not create the ticket");
 }
 
+#[test]
+fn add_round_rejects_line_suffixed_and_out_of_scope_paths_byte_identically() {
+    // spec「finding 路徑落在工單範圍內」：帶行號、範圍外的路徑逐一點名，
+    // 非零結束，review.md 位元級不變。
+    let p = TempProject::with_change("addround-paths", TASKS_DONE);
+    let first = p.run_stdin(&["review", "add-round", "demo", "--stdin"], ROUND_WITH_FINDINGS);
+    assert!(first.status.success(), "stderr: {}", stderr_of(&first));
+    let before = std::fs::read(p.ticket_path()).unwrap();
+    let out = p.run_stdin(
+        &["review", "add-round", "demo", "--stdin"],
+        "**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs:42 — Correctness: edge\n\
+         - [WARNING] src/caller.rs — Correctness: caller breaks\n",
+    );
+    assert!(!out.status.success(), "violations → non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("src/lib.rs:42") && err.contains("line number"), "{err}");
+    assert!(err.contains("src/caller.rs") && err.contains("scope"), "{err}");
+    assert!(stdout_of(&out).is_empty(), "errors go to stderr only");
+    assert_eq!(std::fs::read(p.ticket_path()).unwrap(), before, "zero write");
+}
+
+#[test]
+fn add_round_accepts_spec_dir_anchors_with_the_unchanged_stdout() {
+    // 規格目錄下的路徑免除範圍檢查；合法內容的 stdout 與既有輸出相同。
+    let p = TempProject::with_change("addround-specdir", TASKS_DONE);
+    let out = p.run_stdin(
+        &["review", "add-round", "demo", "--stdin"],
+        "**Scope**: src/lib.rs\n\n- [WARNING] openspec/changes/demo/design.md — Correctness: drift\n",
+    );
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(
+        stdout_of(&out).trim_end(),
+        "✓ Recorded review Round 1 for change 'demo'",
+        "success output unchanged"
+    );
+    let doc = std::fs::read_to_string(p.ticket_path()).unwrap();
+    assert!(doc.contains("openspec/changes/demo/design.md — Correctness: drift"), "{doc}");
+}
+
+#[test]
+fn add_round_lets_a_verbatim_carry_over_through() {
+    // 檢查上線前寫下的帶行號路徑：下一輪原文沿用不得被拒。
+    let p = TempProject::with_change("addround-carry", TASKS_DONE);
+    let legacy = "**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs:12 — Correctness: x\n";
+    let tickets = p.ticket_path();
+    std::fs::write(&tickets, format!("# Review — demo\n\n## Round 1\n\n{legacy}")).unwrap();
+    let out = p.run_stdin(&["review", "add-round", "demo", "--stdin"], legacy);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert!(std::fs::read_to_string(&tickets).unwrap().contains("## Round 2"));
+}
+
 // --- review show ---
 
 #[test]
@@ -427,6 +478,119 @@ fn review_prepare_missing_change_fails_nonzero() {
         !p.dir.join(".speclink").join("review-scopes").join("ghost").exists(),
         "no sidecar for a missing change"
     );
+}
+
+// --- review prepare --base／--from（spec「以可信 commit 重設 Apply baseline 並承接快照」）---
+
+#[test]
+fn review_prepare_base_from_records_the_baseline_and_carries_snapshots() {
+    // Scenario 合併後在主 checkout 寫入基準並承接快照。已提交變更的主
+    // checkout：HEAD~1 是變更前的 commit。
+    let main = TempProject::with_git_change("prepare-base-main", TASKS_DONE);
+    main.write("src/lib.rs", "fn demo() { merged(); }\n");
+    main.git(&["add", "src"]);
+    main.git(&["commit", "-q", "-m", "the change"]);
+    main.touched("demo", &["src/lib.rs"]);
+    let missing = main.run(&["review", "scope", "demo", "--json"]);
+    assert!(!missing.status.success(), "no baseline yet → needsInput");
+    assert!(stderr_of(&missing).contains("no Apply baseline"), "{}", stderr_of(&missing));
+
+    let src = TempProject::with_git_change("prepare-base-src", TASKS_DONE);
+    src.write(".speclink/review-scopes/demo/snapshots/abc.json", "{\"review\":1}");
+    src.write(".speclink/review-scopes/demo/verify-snapshots/def.json", "{\"verify\":1}");
+    let from = src.dir.to_string_lossy().to_string();
+    let out = main.run(&["review", "prepare", "demo", "--base", "HEAD~1", "--from", &from]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert!(stdout_of(&out).is_empty(), "stdout stays empty: {}", stdout_of(&out));
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(main.baseline_path()).unwrap()).unwrap();
+    assert_eq!(v["confidence"], "initial");
+    assert_eq!(v["baseCommit"].as_str().map(str::len), Some(40), "full SHA: {v}");
+    let scopes = main.dir.join(".speclink/review-scopes/demo");
+    assert!(scopes.join("snapshots/abc.json").is_file(), "review snapshot carried");
+    assert!(scopes.join("verify-snapshots/def.json").is_file(), "verify snapshot carried");
+
+    let resolved = main.run(&["review", "scope", "demo", "--json"]);
+    assert!(resolved.status.success(), "stderr: {}", stderr_of(&resolved));
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&resolved)).expect("JSON");
+    assert_eq!(v["state"], "resolved", "{v}");
+}
+
+#[test]
+fn review_prepare_from_without_base_is_rejected() {
+    // Scenario --from 單獨使用被拒：非零、stderr 點名 --base、零寫入。
+    let p = TempProject::with_git_change("prepare-from-alone", TASKS_DONE);
+    let from = p.dir.to_string_lossy().to_string();
+    let out = p.run(&["review", "prepare", "demo", "--from", &from]);
+    assert!(!out.status.success(), "--from needs --base");
+    assert!(stderr_of(&out).contains("--base"), "{}", stderr_of(&out));
+    assert!(!p.baseline_path().exists(), "zero writes");
+}
+
+#[test]
+fn review_prepare_base_rejects_unresolvable_and_non_ancestor_revs() {
+    let p = TempProject::with_git_change("prepare-base-bad", TASKS_DONE);
+    p.git(&["checkout", "-q", "-b", "side"]);
+    p.write("src/side.rs", "fn side() {}\n");
+    p.git(&["add", "src"]);
+    p.git(&["commit", "-q", "-m", "side"]);
+    p.git(&["checkout", "-q", "-"]);
+    let out = p.run(&["review", "prepare", "demo", "--base", "no-such-ref"]);
+    assert!(!out.status.success(), "unresolvable rev → non-zero");
+    assert!(stderr_of(&out).contains("no-such-ref"), "{}", stderr_of(&out));
+    let out = p.run(&["review", "prepare", "demo", "--base", "side"]);
+    assert!(!out.status.success(), "non-ancestor → non-zero");
+    assert!(stderr_of(&out).contains("not an ancestor"), "{}", stderr_of(&out));
+    assert!(!p.baseline_path().exists(), "zero writes");
+}
+
+#[test]
+fn review_prepare_base_rejects_a_rev_that_looks_like_an_option() {
+    // sharp-edges：以 - 開頭的 rev 不得交給 git 當選項解讀，拒絕並說明。
+    let p = TempProject::with_git_change("prepare-base-dash", TASKS_DONE);
+    for rev in ["--base=--output=x", "--base=-q"] {
+        let out = p.run(&["review", "prepare", "demo", rev]);
+        assert!(!out.status.success(), "{rev} must be refused");
+        assert!(stderr_of(&out).contains("starts with '-'"), "{rev}: {}", stderr_of(&out));
+    }
+    assert!(!p.baseline_path().exists(), "zero writes");
+}
+
+#[test]
+fn review_prepare_from_must_name_an_existing_checkout() {
+    // sharp-edges：--from 指向不存在或非 checkout 的路徑——不得靜默只寫基準，
+    // 錯誤訊息指出正確用法。
+    let p = TempProject::with_git_change("prepare-from-bad", TASKS_DONE);
+    let gone = p.dir.join("no-such-worktree").to_string_lossy().to_string();
+    let plain = TempProject::with_change("prepare-from-plain", TASKS_DONE);
+    let plain_dir = plain.dir.to_string_lossy().to_string();
+    for (from, reason) in [(&gone, "does not exist"), (&plain_dir, "not a git checkout")] {
+        let out = p.run(&["review", "prepare", "demo", "--base", "HEAD", "--from", from]);
+        assert!(!out.status.success(), "{from} must be refused");
+        let err = stderr_of(&out);
+        assert!(err.contains(reason) && err.contains("worktree folder"), "{from}: {err}");
+    }
+    assert!(!p.baseline_path().exists(), "zero writes");
+}
+
+#[test]
+fn review_prepare_base_refuses_while_a_station_ticket_is_open() {
+    // Scenario 有未結工單時拒絕改寫既有基準：stderr 點名哪一站，baseline 不變。
+    let p = TempProject::with_git_change("prepare-base-open", TASKS_DONE);
+    assert!(p.run(&["review", "prepare", "demo"]).status.success());
+    let before = std::fs::read(p.baseline_path()).unwrap();
+    p.run_stdin(&["review", "add-round", "demo", "--stdin"], ROUND_WITH_FINDINGS);
+    let out = p.run(&["review", "prepare", "demo", "--base", "HEAD"]);
+    assert!(!out.status.success(), "open review ticket → non-zero");
+    assert!(stderr_of(&out).contains("review ticket"), "{}", stderr_of(&out));
+    assert_eq!(std::fs::read(p.baseline_path()).unwrap(), before, "baseline untouched");
+
+    assert!(p.run(&["review", "discard", "demo"]).status.success());
+    p.run_stdin(&["verify", "add-round", "demo", "--stdin"], ROUND_WITH_FINDINGS);
+    let out = p.run(&["review", "prepare", "demo", "--base", "HEAD"]);
+    assert!(!out.status.success(), "open verify ticket → non-zero");
+    assert!(stderr_of(&out).contains("verify ticket"), "{}", stderr_of(&out));
+    assert_eq!(std::fs::read(p.baseline_path()).unwrap(), before, "baseline untouched");
 }
 
 // --- review scope（change-diff-scope spec「review scope 的 human 與 JSON 契約」
@@ -719,7 +883,63 @@ fn show_json_carries_nullable_phase_and_patch_hash() {
     // 欄位集合釘死（local／remote 同構的 local 半邊）。
     let mut keys: Vec<&str> = rounds[0].as_object().unwrap().keys().map(String::as_str).collect();
     keys.sort();
-    assert_eq!(keys, ["findings", "index", "patchHash", "phase", "scope"]);
+    assert_eq!(keys, ["findings", "index", "patchHash", "phase", "rules", "scope"]);
+}
+
+#[test]
+fn show_json_carries_the_applied_rules_record() {
+    // spec Scenario「首輪記錄套用規則」＋「讀取帶規則記錄的工單」：rounds[0].rules 的
+    // 鍵為 camelCase 的 baseline／critical／warning／suggestion，值為字串與字串
+    // 陣列；複驗輪與 lastRound 為 null。
+    let p = TempProject::with_change("show-rules", TASKS_DONE);
+    let discovery = format!(
+        "**Phase**: discovery\n**Patch**: sha256:{}\n**Rules**: extend\n\
+         **Rule**: CRITICAL 所有 SQL 一律用參數化查詢，不得用字串拼接\n\
+         **Rule**: WARNING 新增的公開 API 要有對應的測試\n\
+         **Scope**: src/lib.rs\n\n- [CRITICAL] src/lib.rs — unwrap on user input\n",
+        "a".repeat(64)
+    );
+    let out = p.run_stdin(&["review", "add-round", "demo", "--stdin"], &discovery);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let validation =
+        format!("**Phase**: validation\n**Patch**: sha256:{}\n**Scope**: src/lib.rs\n", "b".repeat(64));
+    let out = p.run_stdin(&["review", "add-round", "demo", "--stdin"], &validation);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+
+    let out = p.run(&["review", "show", "demo", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("valid JSON");
+    let rules = &v["rounds"][0]["rules"];
+    let mut keys: Vec<&str> = rules.as_object().expect("rules object").keys().map(String::as_str).collect();
+    keys.sort();
+    assert_eq!(keys, ["baseline", "critical", "suggestion", "warning"]);
+    assert_eq!(
+        *rules,
+        serde_json::json!({
+            "baseline": "extend",
+            "critical": ["所有 SQL 一律用參數化查詢，不得用字串拼接"],
+            "warning": ["新增的公開 API 要有對應的測試"],
+            "suggestion": [],
+        })
+    );
+    assert!(v["rounds"][1]["rules"].is_null(), "validation round: {v}");
+    assert!(v["lastRound"]["rules"].is_null(), "lastRound: {v}");
+}
+
+#[test]
+fn add_round_rejects_a_malformed_rule_record_and_writes_nothing() {
+    // spec Scenario「規則記錄格式錯誤被拒絕」：非零、stderr 點名問題、工單零寫入。
+    let p = TempProject::with_change("rules-bad", TASKS_DONE);
+    let content = format!(
+        "**Phase**: discovery\n**Patch**: sha256:{}\n**Rules**: extend\n**Rule**: NOTE 要有測試\n\
+         **Scope**: src/lib.rs\n",
+        "a".repeat(64)
+    );
+    let out = p.run_stdin(&["review", "add-round", "demo", "--stdin"], &content);
+    assert!(!out.status.success(), "malformed rule record → non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("NOTE") && err.contains("CRITICAL, WARNING, or SUGGESTION"), "{err}");
+    assert!(!p.ticket_path().exists(), "refusal must not create the ticket");
 }
 
 #[test]
@@ -737,6 +957,10 @@ fn show_json_legacy_round_emits_explicit_nulls() {
     assert!(
         round.get("patchHash").is_some_and(serde_json::Value::is_null),
         "patchHash key present and null: {round:?}"
+    );
+    assert!(
+        round.get("rules").is_some_and(serde_json::Value::is_null),
+        "rules key present and null: {round:?}"
     );
 }
 

@@ -1,0 +1,350 @@
+{
+  "version": 2,
+  "change": "desktop-change-doc-views",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫紅燈：新增 `packages/ui/src/__tests__/docModel.test.ts`（design D1），以 spec「提案與設計章節以中文標籤呈現」「任務群組標題與章節標籤同款式」「規格分頁 delta 區段以色標呈現」「詳情頁的工單分頁」的 Example 表當案例——`splitH2Sections`（白名單命中、白名單外原文標題、fenced code block 內的 `## ` 不切、無 h2 回 null）、`parseListItems`、`splitAlternative`（有無「——」）、`parseImpact`（三組路徑與「(none)」、不符形狀回 null）、`parseCapabilities`、`parseGoalsNonGoals`、`parseDecisions`（D 編號與列點數）、`parseContractRows`、`splitRisk`、`splitTaskText`（四列案例）、`removedScenarios`（取名單並去掉註解行）、`splitScenarioSteps`（WHEN／THEN／AND／GIVEN 與 rest）、`findingAxis`（三個軸向與無前綴）、`proposalShape`（三形狀與 null）。驗證：`npm test -w packages/ui -- docModel` 以「模組不存在」失敗。",
+      "files": [
+        "packages/ui/src/__tests__/docModel.test.ts"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 新增 `packages/ui/src/docModel.ts`（design D1）讓 1.1 轉綠：匯出上述全部純函式，`fenceFlags` 自 `packages/ui/src/specSections.ts` 抽成共用匯出並由 `parseSpecSections` 繼續使用；每個解析器在形狀不符時回 null 或把該列標成一般列，不拋錯。驗證：`npm test -w packages/ui -- docModel specSections` 全綠。",
+      "files": [
+        "packages/ui/src/specSections.ts",
+        "packages/ui/src/docModel.ts"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 新增 `packages/ui/src/components/DocParts.tsx`（design D2、D13）：`SECTION_HEADING_CLS`（16px 粗體）、`DocSection`（`h2 data-doc-heading`＋右端計數籤＋段間細線）、`RowList`、`NumberedSteps`、`OptionReasonRows`、`KeyValueRows`、`PathChip`（hover 出複製鈕與可選的顯示鈕，`data-path-chip`）、`NameChip`（`data-capability-chip`）、`MoreToggle`（`aria-expanded`）、`Lead`；`LABEL_CLS`／`SUB_LABEL_CLS` 自 `packages/ui/src/components/SectionedDoc.tsx` 搬來，`packages/ui/src/components/TaskList.tsx`、`packages/ui/src/components/DeltaBadges.tsx`、`packages/ui/src/components/DiscussionDetailPage.tsx` 改匯入路徑；`packages/ui/src/components/Markdown.tsx` 新增 `className?` 合進外層容器；`packages/ui/src/components/DetailShell.tsx` 的 `DocBody` 改 15px／行高 1.75 並以任意變體覆蓋 `.markdown` 字級、移除 `READING_COLUMN_CLS`（design D10；spec「markdown 內容保留文件結構呈現」「markdown 文件內容行寬有上限」）。驗證：`packages/ui/src/__tests__/detailShell.test.tsx` 新增一題斷言 `data-doc-body` 的 class 含 `text-[15px]`、`leading-[1.75]` 與 `[&_.markdown]:text-[15px]` 且不含 `max-w-[96ch]`；`npm test -w packages/ui -- detailShell discussionDetailPage theme` 全綠。",
+      "files": [
+        "packages/ui/src/__tests__/components.test.tsx",
+        "packages/ui/src/__tests__/detailShell.test.tsx",
+        "packages/ui/src/__tests__/discussionDetailPage.test.tsx",
+        "packages/ui/src/__tests__/taskList.test.tsx",
+        "packages/ui/src/components/DeltaBadges.tsx",
+        "packages/ui/src/components/DetailShell.tsx",
+        "packages/ui/src/components/DiscussionDetailPage.tsx",
+        "packages/ui/src/components/Markdown.tsx",
+        "packages/ui/src/components/SectionedDoc.tsx",
+        "packages/ui/src/components/TaskList.tsx",
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/components/DocParts.tsx"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "3.1 新增 `packages/ui/src/components/ProposalDoc.tsx`（design D3；spec「提案與設計章節以中文標籤呈現」）：無 h2 整篇 Markdown；每段 `DocSection`（白名單翻譯、白名單外原文）；Summary 引言段、Why／Motivation／Problem／Root Cause／Success Criteria 細線列、What Changes／Proposed Solution 編號步驟、Non-Goals 禁止圖示列、Alternatives Considered 方案／落敗理由列、Capabilities 子段 `h3 data-doc-heading`＋能力籤（`deltaCaps` 含且有 `onOpenCapability` 時可點）＋`afterCapabilities` 槽、Impact 的規格列與新增／修改／移除三組路徑籤（`onRevealPath` 有時出顯示鈕）或降級為細線列。驗證：新增 `packages/ui/src/__tests__/proposalDoc.test.tsx`——五段提案的 `[data-doc-heading]` 依序為「為什麼」「變更內容」「非目標」「能力」「影響」且不含「Why」；白名單外「Rollout」成段標題；無 h2 文件無 `data-section`；替代方案一列拆兩段一列不拆；Impact 三組路徑籤與不符形狀時無 `data-path-chip`；點可點能力籤呼叫 `onOpenCapability(\"desktop-app\")`；`npm test -w packages/ui -- proposalDoc`。",
+      "files": [
+        "packages/ui/src/__tests__/proposalDoc.test.tsx",
+        "packages/ui/src/components/ProposalDoc.tsx"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.2 新增 `packages/ui/src/components/DesignDoc.tsx`（design D4；spec「提案與設計章節以中文標籤呈現」）：Context 細線列、Goals / Non-Goals 兩欄（切不到照 Markdown）、Decisions 每個 h3 一張 `data-decision` 可收合卡（D 籤、「N 點」、預設收合、`aria-expanded`）、Implementation Contract 鍵值列、Risks / Trade-offs 逐條 warning `Callout`（「→」切標題與內文）、Migration Plan／Open Questions／白名單外照 Markdown；`jump={ id, seq }` 命中時該卡展開並 `scrollIntoView`、完成後 `onJumped()`，沒命中只 `onJumped()`。驗證：新增 `packages/ui/src/__tests__/designDoc.test.tsx`——六個決策卡預設收合且 `[data-doc-heading]` 含六個決策標題、點 D1 卡頭展開、`jump={{ id: \"D3\", seq: 1 }}` 使 D3 卡 `aria-expanded` 為 true 且呼叫 `onJumped`、Risks 四條成四個 warning 提示框、Goals／Non-Goals 兩欄各列點數正確；`npm test -w packages/ui -- designDoc`。",
+      "files": [
+        "packages/ui/src/__tests__/designDoc.test.tsx",
+        "packages/ui/src/components/DesignDoc.tsx"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.3 改 `packages/ui/src/components/TaskList.tsx`（design D5；spec「任務群組標題與章節標籤同款式」）：群組成 `data-task-group` 卡（`h3 data-doc-heading` 卡頭、序號籤、小進度 n/m；第一個群組前的任務為無卡頭清單；`SortableGroupHeading` 改畫卡頭、落點語意不變）；任務列以 `splitTaskText` 拆三層，預設只畫勾選框、序號籤、標題（Markdown 行內）、D 籤（`data-task-decision`，`onJumpDecision`）、手動籤與列尾展開鈕（`data-task-expand`、`aria-expanded`），展開後畫內文與「驗證」；D 籤與展開鈕 `preventDefault`＋`stopPropagation` 不觸發 label 勾選；文字 15px；唯讀時展開照常；`DragOverlay` 只畫標題層。驗證：`packages/ui/src/__tests__/taskList.test.tsx` 既有勾選、拖排、工具列、n 快捷鍵題目不改全綠；新增「三層切分：預設不顯示內文、點展開鈕後顯示內文與驗證且 aria-expanded 為 true」「點展開鈕與 D 籤不切換勾選、D 籤呼叫 onJumpDecision(\"D3\")」「兩個群組成兩張卡且卡頭小進度為 2/2 與 3/5」「唯讀時展開鈕可用、勾選框 disabled」四題；`npm test -w packages/ui -- taskList`。",
+      "files": [
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx",
+        "packages/ui/src/__tests__/changeDetailPage.test.tsx"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.4 新增 `packages/ui/src/components/RequirementBlock.tsx`（design D6）並讓 `packages/ui/src/components/SpecDetailPage.tsx` 改用它：自 `RequirementSection` 抽出 Requirement 小標、標題（`headingTag` 可選 h2／h3 與 data 錨點）、右端 `anchor` 槽、需求文（>3 段收合「展開其餘 N 段需求文」）、Scenario（`splitScenarioSteps` 非 null 時左線內 WHEN／THEN 兩欄，null 時現行畫法；>3 個收合「還有 N 個 scenario」）、`accent` 左色條（`DeltaBadges.tsx` 新增 `DELTA_BORDER`）、`removedScenarios` 的 caution 提示框（`data-removed-scenarios`，刪除線名稱）、`collapsible`／`defaultOpen` 的收合列（Scenario 數籤、移除籤）；規格詳情頁傳不收合、無色條、無移除，外觀不變。驗證：`packages/ui/src/__tests__/specDetailPage.test.tsx` 與 `specSections.test.ts` 不改全綠；`npm test -w packages/ui -- specDetailPage specSections`。",
+      "files": [
+        "packages/ui/src/components/SpecDetailPage.tsx",
+        "packages/ui/src/components/RequirementBlock.tsx"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.5 改 `packages/ui/src/components/DeltaBadges.tsx` 的 `DeltaSpecView` 並新增 `CapabilityHeader`（design D6；spec「規格分頁 delta 區段以色標呈現」）：每個 op 區段色標標頭（`SECTION_HEADING_CLS`、`data-delta-section` 與 `data-doc-heading` 不變）之下，`parseSpecSections(區段內文)` 非 null 時每條需求一個 `RequirementBlock`（`accent=op`、`removedScenarios(req.body)`、可收合、第一條預設展開），null 時 Markdown；`CapabilityHeader`（`data-capability-header`、等寬能力名、`DeltaBadges`、`onOpenSpec` 有時「看正式規格」鈕）由 `ChangeDetailPage` 的 `SpecCapSection` 與 `ArchivedDetailPage` 的能力段共用。驗證：新增 `packages/ui/src/__tests__/deltaSpecView.test.tsx`——ADDED＋MODIFIED（三條）delta 的「新增」「修改」標頭存在且「MODIFIED Requirements」不出現、第一條需求展開且帶琥珀色條、其餘兩條收合為一列且 `[data-doc-heading]` 仍含三個需求標題、兩個 REMOVED-SCENARIO 宣告成 caution 提示框兩個刪除線名稱且註解原文不出現、五段需求文只展開三段並有「展開其餘 2 段需求文」鈕、五個 Scenario 有「還有 2 個 scenario」鈕且點後五個皆在、WHEN／THEN 兩欄存在、無 delta 標題的文件整篇照常、`CapabilityHeader` 點「看正式規格」呼叫 `onOpenSpec(\"desktop-app\")`；`npm test -w packages/ui -- deltaSpecView`。",
+      "files": [
+        "packages/ui/src/components/ArchivedDetailPage.tsx",
+        "packages/ui/src/components/ChangeDetailPage.tsx",
+        "packages/ui/src/__tests__/deltaSpecView.test.tsx"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "3.6 新增 `packages/ui/src/components/PlanDoc.tsx`（design D7；spec「詳情頁的排程分頁」）：`PlanTab`／`PlanCard`／`PlanName`／`OpTag` 自 `packages/ui/src/components/ChangeDetailPage.tsx` 搬入並匯出 `PlanDoc`，`PlanCard` 卡頭改 `h3 data-doc-heading`（16px 粗體）右端徽章或筆數籤；`data-plan-section`、`data-plan-card-header`、`data-plan-card-body`、前置增減、引擎拒絕單行錯誤、唯讀、成環與舊 server 退回全部不變；另匯出 `planSummary(change, changes, t)` 回籤（`plan.canStart`／`plan.blockedCount`）、四格磚與兩態提示框（標題依 spec Example 表五列組合、tone 兩子句皆綠為 tip 否則 warning、內文列前置名、要先封存的變更名、衝突對方名與重算一句），wave 為 null 回全空。驗證：`packages/ui/src/__tests__/planTab.test.tsx` 既有十二個 scenario 題目不改全綠；新增「排程分頁四段的資料得籤『等 1 項』、磚 2／1／1／1、warning 標題『等 1 項前置，封存前要等 1 個變更』」「全空資料得籤『可以開工』、tip 標題『可以開工，也可直接封存』」「缺 wave 時無 data-doc-tiles 與 data-doc-callout」三題；`npm test -w packages/ui -- planTab`。",
+      "files": [
+        "packages/ui/src/__tests__/planTab.test.tsx",
+        "packages/ui/src/components/PlanDoc.tsx"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "3.7 改 `packages/ui/src/components/TicketView.tsx`（design D8；spec「詳情頁的工單分頁」）：刪 `data-ticket-header` 段標題列；輪改 `Card` 細框卡，卡頭 `button`（`aria-expanded`）含 `h3 data-doc-heading`「第 N 輪」、階段詞、「範圍 N 檔」、「N 條」與各嚴重度計數籤，展開後先列 scope 路徑再列 findings；`FindingRow` 以 `findingAxis` 出 `data-ticket-axis` 軸向籤並去前綴（先切 accepted 尾 token 再取前綴）；另匯出 `ticketSummary(station, ticket, t)` 回籤（「第 N 輪」＋階段詞）、四格磚與末輪無 CRITICAL／WARNING 時的 tip 提示框（「可以蓋章」、「末輪只剩 N 條 SUGGESTION，不擋章」或「末輪無發現」、點名 `speclink review stamp` 或 `speclink verify stamp`），ticket 為 undefined／null 回全空。驗證：`packages/ui/src/__tests__/ticketView.test.tsx` 把四處 `data-ticket-header` 題改為 `ticketSummary` 的籤與磚斷言，既有輪展開收合、accepted、空態、追加輪題目全綠；新增「描述『Correctness: 未處理空清單』得軸向籤 Correctness 與去前綴描述；『Standards: (accepted) 語意不清』得軸向籤且無已接受籤」「末輪只有一條 SUGGESTION 時提示框標題『可以蓋章』且內文含 1；末輪有 WARNING 時無提示框」「卡頭顯示『WARNING 2』計數籤」三題；`npm test -w packages/ui -- ticketView`。",
+      "files": [
+        "packages/ui/src/__tests__/ticketView.test.tsx",
+        "packages/ui/src/components/TicketView.tsx"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "4.1 新增 `packages/ui/src/components/changeDocSummary.tsx` 並接進兩頁（design D9；spec「提案與設計章節以中文標籤呈現」「任務群組標題與章節標籤同款式」「規格分頁 delta 區段以色標呈現」「詳情頁的排程分頁」「詳情頁的工單分頁」）：`changeDocSummary(tab, data, t)` 依文件回 `{ badges, tiles, callout }`（提案形狀籤與前四格磚與改寫提示框、設計四格磚、任務「全部完成」或 n/m 籤與四格磚與手動 note 提示框、規格計數籤與四格磚、排程與工單委派 `planSummary`／`ticketSummary`；未載入或無內容全空）；`packages/ui/src/components/ChangeDetailPage.tsx` 的 `DocHeader badges`、`DocTiles tiles`、提示框槽 `data-doc-callout` 改接它，`TabsContent` 改掛 `ProposalDoc`（`deltaCaps`、`onOpenCapability` 走既有 `setTab(\"specs\")`＋`setSpecCap`＋`setSpecJump`、`onRevealPath`）、`DesignDoc`（新狀態 `designJump`）、`TaskList onJumpDecision`（切設計並設 `designJump`）、`CapabilityHeader onOpenSpec`、`PlanDoc`；新增 props `onOpenSpec`、`onRevealPath`；`packages/ui/src/components/ArchivedDetailPage.tsx` 變更變體同樣接線（唯讀、無排程）。驗證：`packages/ui/src/__tests__/changeDetailPage.test.tsx` 把四處 `data-ticket-header` 題改為籤槽與磚斷言，既有 `getByRole(\"tab\")`、規格能力籤、工單退場題目不改全綠；新增「提案文件籤槽『Refactor』、四格磚標籤依序解法步驟／非目標／能力／影響的檔案、能力段下 note 提示框文字含『desktop-app 有 3 條需求被改寫，其中 1 個 scenario 以 REMOVED-SCENARIO 宣告』」「點提案能力籤後規格節點作用中且『開啟 ▾』目標為 specs/desktop-app/spec.md」「點任務 D3 籤後設計節點作用中且 D3 卡 aria-expanded 為 true」「任務文件磚 9／7／1／3 與手動提示框列出 3.2、全勾後籤『全部完成』」「規格文件籤『修改 5』『新增 1』與磚 2／5／2／『1 ／ 0』」五題；`packages/ui/src/__tests__/archivedDetailPage.test.tsx` 新增「已封存變更的提案文件有磚與籤、任務卡勾選框 disabled 而展開鈕可用」一題；`packages/ui/src/__tests__/components.test.tsx` 的 `SectionedDoc` 群組改為 `ProposalDoc`；`npm test -w packages/ui -- changeDetailPage archivedDetailPage components`。",
+      "files": [
+        "packages/ui/src/components/changeDocSummary.tsx"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "4.2 宿主接線（design D11）：`apps/desktop/src/store.ts` 新增 `revealProjectPath(relative)`（`localDirOf` 為 null 直接回；否則經 `runOnDocument` 委派 `fsActionsAdapter.reveal(dir + \"/\" + relative)`）；`apps/desktop/src/App.tsx` 的 `ChangeDetailPage` 與 `ArchivedDetailPage` 加 `onOpenSpec={s.openSpec}`，`hasLocalDir` 時加 `onRevealPath`。驗證：`apps/desktop/src/__tests__/App.test.tsx` 於「詳情頁層與導覽（desktop-detail-page）」群組新增兩題——開變更詳情頁後點提案「能力」段的能力籤，左欄「規格」節點作用中；點規格文件能力頭的「看正式規格」後主區為該能力的規格詳情頁且麵包屑含「規格」；既有詳情頁題目不改全綠；`npm test -w apps/desktop -- App`。",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/store.ts"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "5.1 `packages/ui/src/i18n.tsx` 新增 design D12 列出的全部 tw／en 詞條（`doc.*`、`tasks.tile*`／`tasks.allDone`／`tasks.expand`／`tasks.collapse`／`tasks.verifyLabel`／`tasks.manualCallout*`、`plan.tile*`／`plan.callout*`、`ticket.tile*`／`ticket.stampable*`／`ticket.stampHow`／`ticket.findingsCount`、`detail.revealPath`），兩語系鍵集合相等；`packages/ui/src/index.ts` 新增匯出 `ProposalDoc`、`DesignDoc`、`PlanDoc`、`RequirementBlock`、`CapabilityHeader`、`changeDocSummary` 與 `docModel.ts` 的解析函式，刪 `packages/ui/src/components/SectionedDoc.tsx`（design D13）。驗證：`packages/ui/src/__tests__/i18n.test.tsx` 的鍵集合相等題全綠；`grep -rn \"SectionedDoc\" packages/ui/src apps/desktop/src` 零命中；`npm test -w packages/ui -- i18n components`。",
+      "files": [
+        "packages/ui/src/index.ts"
+      ]
+    },
+    {
+      "task_id": "16",
+      "task_desc": "7.1 新增手動語意色（design D14；spec「介面狀態語意色分層」）：`packages/ui/src/theme.css` 加 `--status-manual`（淺色、兩處深色）與 `--color-status-manual`，`packages/ui/src/tone.ts` 的 `SEMANTIC_TONE`／`SEMANTIC_SURFACE` 加 `manual`，`packages/ui/src/components/ui/callout.tsx` 的 `Callout` 多收 `tone=\"manual\"`（Markdown 的 GitHub Alert 四型不動），`packages/ui/src/components/changeDocSummary.tsx` 的手動任務提示框改 `manual`，`packages/ui/src/components/ChangeCard.tsx` 的「待手動」章改 `SEMANTIC_TONE.manual`。驗證：`packages/ui/src/__tests__/awaitingManualBadge.test.tsx` 新增「待手動章取手動色、非進行中藍」一題；`packages/ui/src/__tests__/changeDetailPage.test.tsx` 的任務文件題斷言提示框帶 `bg-status-manual/10`；`npm test -w packages/ui -- awaitingManualBadge changeDetailPage theme components` 全綠。",
+      "files": [
+        "packages/ui/src/__tests__/awaitingManualBadge.test.tsx",
+        "packages/ui/src/components/ChangeCard.tsx",
+        "packages/ui/src/components/ui/callout.tsx",
+        "packages/ui/src/theme.css",
+        "packages/ui/src/tone.ts"
+      ]
+    },
+    {
+      "task_id": "18",
+      "task_desc": "7.3 手動提示框的「前往」（design D14；spec「任務群組標題與章節標籤同款式」）：`packages/ui/src/components/TaskList.tsx` 新增 `locate`／`onLocated`（捲到該列並沿用「下一個未完成」高亮，唯讀時也可），`packages/ui/src/components/DocParts.tsx` 匯出 `InlineCode`（`TaskList` 改用它），`packages/ui/src/components/changeDocSummary.tsx` 的手動提示框標題改 `InlineCode` 並在有 `onLocateTask` 時每列附「前往」鈕，`packages/ui/src/components/ChangeDetailPage.tsx` 與 `packages/ui/src/components/ArchivedDetailPage.tsx` 持有 `taskLocate` 接線，`packages/ui/src/i18n.tsx` 新增 `tasks.locate`。驗證：`taskList.test.tsx` 新增「locate 命中時捲到該列、高亮並回報完成（含唯讀）」；`changeDetailPage.test.tsx` 新增「點提示框『前往』後 TaskList 收到該任務的 locate、標題程式碼為等寬籤」；`archivedDetailPage.test.tsx` 新增「已封存任務文件的『前往』使該列高亮」；`npm test -w packages/ui -- taskList changeDetailPage archivedDetailPage i18n` 全綠。",
+      "files": [
+        "packages/ui/src/__tests__/stage.test.ts"
+      ]
+    },
+    {
+      "task_id": "18",
+      "task_desc": "7.3 手動提示框的「前往」（design D14；spec「任務群組標題與章節標籤同款式」）：`packages/ui/src/components/TaskList.tsx` 新增 `locate`／`onLocated`（捲到該列並沿用「下一個未完成」高亮，唯讀時也可），`packages/ui/src/components/DocParts.tsx` 匯出 `InlineCode`（`TaskList` 改用它），`packages/ui/src/components/changeDocSummary.tsx` 的手動提示框標題改 `InlineCode` 並在有 `onLocateTask` 時每列附「前往」鈕，`packages/ui/src/components/ChangeDetailPage.tsx` 與 `packages/ui/src/components/ArchivedDetailPage.tsx` 持有 `taskLocate` 接線，`packages/ui/src/i18n.tsx` 新增 `tasks.locate`。驗證：`taskList.test.tsx` 新增「locate 命中時捲到該列、高亮並回報完成（含唯讀）」；`changeDetailPage.test.tsx` 新增「點提示框『前往』後 TaskList 收到該任務的 locate、標題程式碼為等寬籤」；`archivedDetailPage.test.tsx` 新增「已封存任務文件的『前往』使該列高亮」；`npm test -w packages/ui -- taskList changeDetailPage archivedDetailPage i18n` 全綠。",
+      "files": [
+        "packages/ui/src/components/useDocNav.ts"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4QB7JS24JV3Z42H48A6KB37",
+      "taskDesc": "1.1 先寫紅燈：新增 `packages/ui/src/__tests__/docModel.test.ts`（design D1），以 spec「提案與設計章節以中文標籤呈現」「任務群組標題與章節標籤同款式」「規格分頁 delta 區段以色標呈現」「詳情頁的工單分頁」的 Example 表當案例——`splitH2Sections`（白名單命中、白名單外原文標題、fenced code block 內的 `## ` 不切、無 h2 回 null）、`parseListItems`、`splitAlternative`（有無「——」）、`parseImpact`（三組路徑與「(none)」、不符形狀回 null）、`parseCapabilities`、`parseGoalsNonGoals`、`parseDecisions`（D 編號與列點數）、`parseContractRows`、`splitRisk`、`splitTaskText`（四列案例）、`removedScenarios`（取名單並去掉註解行）、`splitScenarioSteps`（WHEN／THEN／AND／GIVEN 與 rest）、`findingAxis`（三個軸向與無前綴）、`proposalShape`（三形狀與 null）。驗證：`npm test -w packages/ui -- docModel` 以「模組不存在」失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b19cb453022d42b591856d45749093f179de1ab8",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/docModel.test.ts"
+      ],
+      "recordedAt": "2026-10-12T06:08:15Z"
+    },
+    {
+      "taskId": "tsk_01M4QB7JS239HBH4AWSJG847J7",
+      "taskDesc": "1.2 新增 `packages/ui/src/docModel.ts`（design D1）讓 1.1 轉綠：匯出上述全部純函式，`fenceFlags` 自 `packages/ui/src/specSections.ts` 抽成共用匯出並由 `parseSpecSections` 繼續使用；每個解析器在形狀不符時回 null 或把該列標成一般列，不拋錯。驗證：`npm test -w packages/ui -- docModel specSections` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b19cb453022d42b591856d45749093f179de1ab8",
+      "touchedFiles": [
+        "packages/ui/src/specSections.ts",
+        "packages/ui/src/docModel.ts"
+      ],
+      "recordedAt": "2026-10-12T06:11:21Z"
+    },
+    {
+      "taskId": "tsk_01M4QB7JS213Q3ESG1XYHP3WWN",
+      "taskDesc": "2.1 新增 `packages/ui/src/components/DocParts.tsx`（design D2、D13）：`SECTION_HEADING_CLS`（16px 粗體）、`DocSection`（`h2 data-doc-heading`＋右端計數籤＋段間細線）、`RowList`、`NumberedSteps`、`OptionReasonRows`、`KeyValueRows`、`PathChip`（hover 出複製鈕與可選的顯示鈕，`data-path-chip`）、`NameChip`（`data-capability-chip`）、`MoreToggle`（`aria-expanded`）、`Lead`；`LABEL_CLS`／`SUB_LABEL_CLS` 自 `packages/ui/src/components/SectionedDoc.tsx` 搬來，`packages/ui/src/components/TaskList.tsx`、`packages/ui/src/components/DeltaBadges.tsx`、`packages/ui/src/components/DiscussionDetailPage.tsx` 改匯入路徑；`packages/ui/src/components/Markdown.tsx` 新增 `className?` 合進外層容器；`packages/ui/src/components/DetailShell.tsx` 的 `DocBody` 改 15px／行高 1.75 並以任意變體覆蓋 `.markdown` 字級、移除 `READING_COLUMN_CLS`（design D10；spec「markdown 內容保留文件結構呈現」「markdown 文件內容行寬有上限」）。驗證：`packages/ui/src/__tests__/detailShell.test.tsx` 新增一題斷言 `data-doc-body` 的 class 含 `text-[15px]`、`leading-[1.75]` 與 `[&_.markdown]:text-[15px]` 且不含 `max-w-[96ch]`；`npm test -w packages/ui -- detailShell discussionDetailPage theme` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b19cb453022d42b591856d45749093f179de1ab8",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/components.test.tsx",
+        "packages/ui/src/__tests__/detailShell.test.tsx",
+        "packages/ui/src/__tests__/discussionDetailPage.test.tsx",
+        "packages/ui/src/__tests__/taskList.test.tsx",
+        "packages/ui/src/components/DeltaBadges.tsx",
+        "packages/ui/src/components/DetailShell.tsx",
+        "packages/ui/src/components/DiscussionDetailPage.tsx",
+        "packages/ui/src/components/Markdown.tsx",
+        "packages/ui/src/components/SectionedDoc.tsx",
+        "packages/ui/src/components/TaskList.tsx",
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/components/DocParts.tsx"
+      ],
+      "recordedAt": "2026-10-12T06:14:26Z"
+    },
+    {
+      "taskId": "tsk_01M4QB7JS2WT11RJWNHQFDT8ZB",
+      "taskDesc": "3.1 新增 `packages/ui/src/components/ProposalDoc.tsx`（design D3；spec「提案與設計章節以中文標籤呈現」）：無 h2 整篇 Markdown；每段 `DocSection`（白名單翻譯、白名單外原文）；Summary 引言段、Why／Motivation／Problem／Root Cause／Success Criteria 細線列、What Changes／Proposed Solution 編號步驟、Non-Goals 禁止圖示列、Alternatives Considered 方案／落敗理由列、Capabilities 子段 `h3 data-doc-heading`＋能力籤（`deltaCaps` 含且有 `onOpenCapability` 時可點）＋`afterCapabilities` 槽、Impact 的規格列與新增／修改／移除三組路徑籤（`onRevealPath` 有時出顯示鈕）或降級為細線列。驗證：新增 `packages/ui/src/__tests__/proposalDoc.test.tsx`——五段提案的 `[data-doc-heading]` 依序為「為什麼」「變更內容」「非目標」「能力」「影響」且不含「Why」；白名單外「Rollout」成段標題；無 h2 文件無 `data-section`；替代方案一列拆兩段一列不拆；Impact 三組路徑籤與不符形狀時無 `data-path-chip`；點可點能力籤呼叫 `onOpenCapability(\"desktop-app\")`；`npm test -w packages/ui -- proposalDoc`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b19cb453022d42b591856d45749093f179de1ab8",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/proposalDoc.test.tsx",
+        "packages/ui/src/components/ProposalDoc.tsx"
+      ],
+      "recordedAt": "2026-10-12T06:15:51Z"
+    },
+    {
+      "taskId": "tsk_01M4QB7JS2WEMBPJVXAQDDXSNN",
+      "taskDesc": "3.2 新增 `packages/ui/src/components/DesignDoc.tsx`（design D4；spec「提案與設計章節以中文標籤呈現」）：Context 細線列、Goals / Non-Goals 兩欄（切不到照 Markdown）、Decisions 每個 h3 一張 `data-decision` 可收合卡（D 籤、「N 點」、預設收合、`aria-expanded`）、Implementation Contract 鍵值列、Risks / Trade-offs 逐條 warning `Callout`（「→」切標題與內文）、Migration Plan／Open Questions／白名單外照 Markdown；`jump={ id, seq }` 命中時該卡展開並 `scrollIntoView`、完成後 `onJumped()`，沒命中只 `onJumped()`。驗證：新增 `packages/ui/src/__tests__/designDoc.test.tsx`——六個決策卡預設收合且 `[data-doc-heading]` 含六個決策標題、點 D1 卡頭展開、`jump={{ id: \"D3\", seq: 1 }}` 使 D3 卡 `aria-expanded` 為 true 且呼叫 `onJumped`、Risks 四條成四個 warning 提示框、Goals／Non-Goals 兩欄各列點數正確；`npm test -w packages/ui -- designDoc`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b19cb453022d42b591856d45749093f179de1ab8",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/designDoc.test.tsx",
+        "packages/ui/src/components/DesignDoc.tsx"
+      ],
+      "recordedAt": "2026-10-12T06:16:59Z"
+    },
+    {
+      "taskId": "tsk_01M4QB7JS21CFK60A3Z04PMN39",
+      "taskDesc": "3.3 改 `packages/ui/src/components/TaskList.tsx`（design D5；spec「任務群組標題與章節標籤同款式」）：群組成 `data-task-group` 卡（`h3 data-doc-heading` 卡頭、序號籤、小進度 n/m；第一個群組前的任務為無卡頭清單；`SortableGroupHeading` 改畫卡頭、落點語意不變）；任務列以 `splitTaskText` 拆三層，預設只畫勾選框、序號籤、標題（Markdown 行內）、D 籤（`data-task-decision`，`onJumpDecision`）、手動籤與列尾展開鈕（`data-task-expand`、`aria-expanded`），展開後畫內文與「驗證」；D 籤與展開鈕 `preventDefault`＋`stopPropagation` 不觸發 label 勾選；文字 15px；唯讀時展開照常；`DragOverlay` 只畫標題層。驗證：`packages/ui/src/__tests__/taskList.test.tsx` 既有勾選、拖排、工具列、n 快捷鍵題目不改全綠；新增「三層切分：預設不顯示內文、點展開鈕後顯示內文與驗證且 aria-expanded 為 true」「點展開鈕與 D 籤不切換勾選、D 籤呼叫 onJumpDecision(\"D3\")」「兩個群組成兩張卡且卡頭小進度為 2/2 與 3/5」「唯讀時展開鈕可用、勾選框 disabled」四題；`npm test -w packages/ui -- taskList`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b19cb453022d42b591856d45749093f179de1ab8",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx",
+        "packages/ui/src/__tests__/changeDetailPage.test.tsx"
+      ],
+      "recordedAt": "2026-10-12T06:21:49Z"
+    },
+    {
+      "taskId": "tsk_01M4QB7JS2AC8J2CW2FKC0AACJ",
+      "taskDesc": "3.4 新增 `packages/ui/src/components/RequirementBlock.tsx`（design D6）並讓 `packages/ui/src/components/SpecDetailPage.tsx` 改用它：自 `RequirementSection` 抽出 Requirement 小標、標題（`headingTag` 可選 h2／h3 與 data 錨點）、右端 `anchor` 槽、需求文（>3 段收合「展開其餘 N 段需求文」）、Scenario（`splitScenarioSteps` 非 null 時左線內 WHEN／THEN 兩欄，null 時現行畫法；>3 個收合「還有 N 個 scenario」）、`accent` 左色條（`DeltaBadges.tsx` 新增 `DELTA_BORDER`）、`removedScenarios` 的 caution 提示框（`data-removed-scenarios`，刪除線名稱）、`collapsible`／`defaultOpen` 的收合列（Scenario 數籤、移除籤）；規格詳情頁傳不收合、無色條、無移除，外觀不變。驗證：`packages/ui/src/__tests__/specDetailPage.test.tsx` 與 `specSections.test.ts` 不改全綠；`npm test -w packages/ui -- specDetailPage specSections`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b19cb453022d42b591856d45749093f179de1ab8",
+      "touchedFiles": [
+        "packages/ui/src/components/SpecDetailPage.tsx",
+        "packages/ui/src/components/RequirementBlock.tsx"
+      ],
+      "recordedAt": "2026-10-12T06:23:07Z"
+    },
+    {
+      "taskId": "tsk_01M4QB7JS29SPHJJX39RSRYFHF",
+      "taskDesc": "3.5 改 `packages/ui/src/components/DeltaBadges.tsx` 的 `DeltaSpecView` 並新增 `CapabilityHeader`（design D6；spec「規格分頁 delta 區段以色標呈現」）：每個 op 區段色標標頭（`SECTION_HEADING_CLS`、`data-delta-section` 與 `data-doc-heading` 不變）之下，`parseSpecSections(區段內文)` 非 null 時每條需求一個 `RequirementBlock`（`accent=op`、`removedScenarios(req.body)`、可收合、第一條預設展開），null 時 Markdown；`CapabilityHeader`（`data-capability-header`、等寬能力名、`DeltaBadges`、`onOpenSpec` 有時「看正式規格」鈕）由 `ChangeDetailPage` 的 `SpecCapSection` 與 `ArchivedDetailPage` 的能力段共用。驗證：新增 `packages/ui/src/__tests__/deltaSpecView.test.tsx`——ADDED＋MODIFIED（三條）delta 的「新增」「修改」標頭存在且「MODIFIED Requirements」不出現、第一條需求展開且帶琥珀色條、其餘兩條收合為一列且 `[data-doc-heading]` 仍含三個需求標題、兩個 REMOVED-SCENARIO 宣告成 caution 提示框兩個刪除線名稱且註解原文不出現、五段需求文只展開三段並有「展開其餘 2 段需求文」鈕、五個 Scenario 有「還有 2 個 scenario」鈕且點後五個皆在、WHEN／THEN 兩欄存在、無 delta 標題的文件整篇照常、`CapabilityHeader` 點「看正式規格」呼叫 `onOpenSpec(\"desktop-app\")`；`npm test -w packages/ui -- deltaSpecView`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b19cb453022d42b591856d45749093f179de1ab8",
+      "touchedFiles": [
+        "packages/ui/src/components/ArchivedDetailPage.tsx",
+        "packages/ui/src/components/ChangeDetailPage.tsx",
+        "packages/ui/src/__tests__/deltaSpecView.test.tsx"
+      ],
+      "recordedAt": "2026-10-12T06:25:24Z"
+    },
+    {
+      "taskId": "tsk_01M4QB7JS24AR1NARCK1ASK5J8",
+      "taskDesc": "3.6 新增 `packages/ui/src/components/PlanDoc.tsx`（design D7；spec「詳情頁的排程分頁」）：`PlanTab`／`PlanCard`／`PlanName`／`OpTag` 自 `packages/ui/src/components/ChangeDetailPage.tsx` 搬入並匯出 `PlanDoc`，`PlanCard` 卡頭改 `h3 data-doc-heading`（16px 粗體）右端徽章或筆數籤；`data-plan-section`、`data-plan-card-header`、`data-plan-card-body`、前置增減、引擎拒絕單行錯誤、唯讀、成環與舊 server 退回全部不變；另匯出 `planSummary(change, changes, t)` 回籤（`plan.canStart`／`plan.blockedCount`）、四格磚與兩態提示框（標題依 spec Example 表五列組合、tone 兩子句皆綠為 tip 否則 warning、內文列前置名、要先封存的變更名、衝突對方名與重算一句），wave 為 null 回全空。驗證：`packages/ui/src/__tests__/planTab.test.tsx` 既有十二個 scenario 題目不改全綠；新增「排程分頁四段的資料得籤『等 1 項』、磚 2／1／1／1、warning 標題『等 1 項前置，封存前要等 1 個變更』」「全空資料得籤『可以開工』、tip 標題『可以開工，也可直接封存』」「缺 wave 時無 data-doc-tiles 與 data-doc-callout」三題；`npm test -w packages/ui -- planTab`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b19cb453022d42b591856d45749093f179de1ab8",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/planTab.test.tsx",
+        "packages/ui/src/components/PlanDoc.tsx"
+      ],
+      "recordedAt": "2026-10-12T06:27:42Z"
+    },
+    {
+      "taskId": "tsk_01M4QB7JS2Z033C0SRAHYX1YYR",
+      "taskDesc": "3.7 改 `packages/ui/src/components/TicketView.tsx`（design D8；spec「詳情頁的工單分頁」）：刪 `data-ticket-header` 段標題列；輪改 `Card` 細框卡，卡頭 `button`（`aria-expanded`）含 `h3 data-doc-heading`「第 N 輪」、階段詞、「範圍 N 檔」、「N 條」與各嚴重度計數籤，展開後先列 scope 路徑再列 findings；`FindingRow` 以 `findingAxis` 出 `data-ticket-axis` 軸向籤並去前綴（先切 accepted 尾 token 再取前綴）；另匯出 `ticketSummary(station, ticket, t)` 回籤（「第 N 輪」＋階段詞）、四格磚與末輪無 CRITICAL／WARNING 時的 tip 提示框（「可以蓋章」、「末輪只剩 N 條 SUGGESTION，不擋章」或「末輪無發現」、點名 `speclink review stamp` 或 `speclink verify stamp`），ticket 為 undefined／null 回全空。驗證：`packages/ui/src/__tests__/ticketView.test.tsx` 把四處 `data-ticket-header` 題改為 `ticketSummary` 的籤與磚斷言，既有輪展開收合、accepted、空態、追加輪題目全綠；新增「描述『Correctness: 未處理空清單』得軸向籤 Correctness 與去前綴描述；『Standards: (accepted) 語意不清』得軸向籤且無已接受籤」「末輪只有一條 SUGGESTION 時提示框標題『可以蓋章』且內文含 1；末輪有 WARNING 時無提示框」「卡頭顯示『WARNING 2』計數籤」三題；`npm test -w packages/ui -- ticketView`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b19cb453022d42b591856d45749093f179de1ab8",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/ticketView.test.tsx",
+        "packages/ui/src/components/TicketView.tsx"
+      ],
+      "recordedAt": "2026-10-12T06:29:38Z"
+    },
+    {
+      "taskId": "tsk_01M4QB7JS2J4F4CCMA23SM9REE",
+      "taskDesc": "4.1 新增 `packages/ui/src/components/changeDocSummary.tsx` 並接進兩頁（design D9；spec「提案與設計章節以中文標籤呈現」「任務群組標題與章節標籤同款式」「規格分頁 delta 區段以色標呈現」「詳情頁的排程分頁」「詳情頁的工單分頁」）：`changeDocSummary(tab, data, t)` 依文件回 `{ badges, tiles, callout }`（提案形狀籤與前四格磚與改寫提示框、設計四格磚、任務「全部完成」或 n/m 籤與四格磚與手動 note 提示框、規格計數籤與四格磚、排程與工單委派 `planSummary`／`ticketSummary`；未載入或無內容全空）；`packages/ui/src/components/ChangeDetailPage.tsx` 的 `DocHeader badges`、`DocTiles tiles`、提示框槽 `data-doc-callout` 改接它，`TabsContent` 改掛 `ProposalDoc`（`deltaCaps`、`onOpenCapability` 走既有 `setTab(\"specs\")`＋`setSpecCap`＋`setSpecJump`、`onRevealPath`）、`DesignDoc`（新狀態 `designJump`）、`TaskList onJumpDecision`（切設計並設 `designJump`）、`CapabilityHeader onOpenSpec`、`PlanDoc`；新增 props `onOpenSpec`、`onRevealPath`；`packages/ui/src/components/ArchivedDetailPage.tsx` 變更變體同樣接線（唯讀、無排程）。驗證：`packages/ui/src/__tests__/changeDetailPage.test.tsx` 把四處 `data-ticket-header` 題改為籤槽與磚斷言，既有 `getByRole(\"tab\")`、規格能力籤、工單退場題目不改全綠；新增「提案文件籤槽『Refactor』、四格磚標籤依序解法步驟／非目標／能力／影響的檔案、能力段下 note 提示框文字含『desktop-app 有 3 條需求被改寫，其中 1 個 scenario 以 REMOVED-SCENARIO 宣告』」「點提案能力籤後規格節點作用中且『開啟 ▾』目標為 specs/desktop-app/spec.md」「點任務 D3 籤後設計節點作用中且 D3 卡 aria-expanded 為 true」「任務文件磚 9／7／1／3 與手動提示框列出 3.2、全勾後籤『全部完成』」「規格文件籤『修改 5』『新增 1』與磚 2／5／2／『1 ／ 0』」五題；`packages/ui/src/__tests__/archivedDetailPage.test.tsx` 新增「已封存變更的提案文件有磚與籤、任務卡勾選框 disabled 而展開鈕可用」一題；`packages/ui/src/__tests__/components.test.tsx` 的 `SectionedDoc` 群組改為 `ProposalDoc`；`npm test -w packages/ui -- changeDetailPage archivedDetailPage components`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b19cb453022d42b591856d45749093f179de1ab8",
+      "touchedFiles": [
+        "packages/ui/src/components/changeDocSummary.tsx"
+      ],
+      "recordedAt": "2026-10-12T06:34:17Z"
+    },
+    {
+      "taskId": "tsk_01M4QB7JS24VS27G4R01T1K8BY",
+      "taskDesc": "4.2 宿主接線（design D11）：`apps/desktop/src/store.ts` 新增 `revealProjectPath(relative)`（`localDirOf` 為 null 直接回；否則經 `runOnDocument` 委派 `fsActionsAdapter.reveal(dir + \"/\" + relative)`）；`apps/desktop/src/App.tsx` 的 `ChangeDetailPage` 與 `ArchivedDetailPage` 加 `onOpenSpec={s.openSpec}`，`hasLocalDir` 時加 `onRevealPath`。驗證：`apps/desktop/src/__tests__/App.test.tsx` 於「詳情頁層與導覽（desktop-detail-page）」群組新增兩題——開變更詳情頁後點提案「能力」段的能力籤，左欄「規格」節點作用中；點規格文件能力頭的「看正式規格」後主區為該能力的規格詳情頁且麵包屑含「規格」；既有詳情頁題目不改全綠；`npm test -w apps/desktop -- App`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b19cb453022d42b591856d45749093f179de1ab8",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/store.ts"
+      ],
+      "recordedAt": "2026-10-12T06:36:45Z"
+    },
+    {
+      "taskId": "tsk_01M4QB7JS2V1K514WKWEP5Z32E",
+      "taskDesc": "5.1 `packages/ui/src/i18n.tsx` 新增 design D12 列出的全部 tw／en 詞條（`doc.*`、`tasks.tile*`／`tasks.allDone`／`tasks.expand`／`tasks.collapse`／`tasks.verifyLabel`／`tasks.manualCallout*`、`plan.tile*`／`plan.callout*`、`ticket.tile*`／`ticket.stampable*`／`ticket.stampHow`／`ticket.findingsCount`、`detail.revealPath`），兩語系鍵集合相等；`packages/ui/src/index.ts` 新增匯出 `ProposalDoc`、`DesignDoc`、`PlanDoc`、`RequirementBlock`、`CapabilityHeader`、`changeDocSummary` 與 `docModel.ts` 的解析函式，刪 `packages/ui/src/components/SectionedDoc.tsx`（design D13）。驗證：`packages/ui/src/__tests__/i18n.test.tsx` 的鍵集合相等題全綠；`grep -rn \"SectionedDoc\" packages/ui/src apps/desktop/src` 零命中；`npm test -w packages/ui -- i18n components`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b19cb453022d42b591856d45749093f179de1ab8",
+      "touchedFiles": [
+        "packages/ui/src/index.ts"
+      ],
+      "recordedAt": "2026-10-12T06:37:26Z"
+    },
+    {
+      "taskId": "tsk_01M4QF1TMHD480RGHY1PQZMMPR",
+      "taskDesc": "7.1 新增手動語意色（design D14；spec「介面狀態語意色分層」）：`packages/ui/src/theme.css` 加 `--status-manual`（淺色、兩處深色）與 `--color-status-manual`，`packages/ui/src/tone.ts` 的 `SEMANTIC_TONE`／`SEMANTIC_SURFACE` 加 `manual`，`packages/ui/src/components/ui/callout.tsx` 的 `Callout` 多收 `tone=\"manual\"`（Markdown 的 GitHub Alert 四型不動），`packages/ui/src/components/changeDocSummary.tsx` 的手動任務提示框改 `manual`，`packages/ui/src/components/ChangeCard.tsx` 的「待手動」章改 `SEMANTIC_TONE.manual`。驗證：`packages/ui/src/__tests__/awaitingManualBadge.test.tsx` 新增「待手動章取手動色、非進行中藍」一題；`packages/ui/src/__tests__/changeDetailPage.test.tsx` 的任務文件題斷言提示框帶 `bg-status-manual/10`；`npm test -w packages/ui -- awaitingManualBadge changeDetailPage theme components` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b19cb453022d42b591856d45749093f179de1ab8",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/awaitingManualBadge.test.tsx",
+        "packages/ui/src/components/ChangeCard.tsx",
+        "packages/ui/src/components/ui/callout.tsx",
+        "packages/ui/src/theme.css",
+        "packages/ui/src/tone.ts"
+      ],
+      "recordedAt": "2026-10-12T07:09:28Z"
+    },
+    {
+      "taskId": "tsk_01M4QFNRGVHJ03EJQKMFX55W1Q",
+      "taskDesc": "7.3 手動提示框的「前往」（design D14；spec「任務群組標題與章節標籤同款式」）：`packages/ui/src/components/TaskList.tsx` 新增 `locate`／`onLocated`（捲到該列並沿用「下一個未完成」高亮，唯讀時也可），`packages/ui/src/components/DocParts.tsx` 匯出 `InlineCode`（`TaskList` 改用它），`packages/ui/src/components/changeDocSummary.tsx` 的手動提示框標題改 `InlineCode` 並在有 `onLocateTask` 時每列附「前往」鈕，`packages/ui/src/components/ChangeDetailPage.tsx` 與 `packages/ui/src/components/ArchivedDetailPage.tsx` 持有 `taskLocate` 接線，`packages/ui/src/i18n.tsx` 新增 `tasks.locate`。驗證：`taskList.test.tsx` 新增「locate 命中時捲到該列、高亮並回報完成（含唯讀）」；`changeDetailPage.test.tsx` 新增「點提示框『前往』後 TaskList 收到該任務的 locate、標題程式碼為等寬籤」；`archivedDetailPage.test.tsx` 新增「已封存任務文件的『前往』使該列高亮」；`npm test -w packages/ui -- taskList changeDetailPage archivedDetailPage i18n` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b19cb453022d42b591856d45749093f179de1ab8",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/stage.test.ts"
+      ],
+      "recordedAt": "2026-10-12T07:21:02Z"
+    },
+    {
+      "taskId": "tsk_01M4QFNRGVHJ03EJQKMFX55W1Q",
+      "taskDesc": "7.3 手動提示框的「前往」（design D14；spec「任務群組標題與章節標籤同款式」）：`packages/ui/src/components/TaskList.tsx` 新增 `locate`／`onLocated`（捲到該列並沿用「下一個未完成」高亮，唯讀時也可），`packages/ui/src/components/DocParts.tsx` 匯出 `InlineCode`（`TaskList` 改用它），`packages/ui/src/components/changeDocSummary.tsx` 的手動提示框標題改 `InlineCode` 並在有 `onLocateTask` 時每列附「前往」鈕，`packages/ui/src/components/ChangeDetailPage.tsx` 與 `packages/ui/src/components/ArchivedDetailPage.tsx` 持有 `taskLocate` 接線，`packages/ui/src/i18n.tsx` 新增 `tasks.locate`。驗證：`taskList.test.tsx` 新增「locate 命中時捲到該列、高亮並回報完成（含唯讀）」；`changeDetailPage.test.tsx` 新增「點提示框『前往』後 TaskList 收到該任務的 locate、標題程式碼為等寬籤」；`archivedDetailPage.test.tsx` 新增「已封存任務文件的『前往』使該列高亮」；`npm test -w packages/ui -- taskList changeDetailPage archivedDetailPage i18n` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b19cb453022d42b591856d45749093f179de1ab8",
+      "touchedFiles": [
+        "packages/ui/src/components/useDocNav.ts"
+      ],
+      "recordedAt": "2026-10-12T07:58:32Z"
+    }
+  ]
+}

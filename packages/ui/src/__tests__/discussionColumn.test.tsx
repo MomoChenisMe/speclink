@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { render as rtlRender, screen, fireEvent, within } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { act, render as rtlRender, screen, fireEvent, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider, MESSAGES } from "../i18n";
@@ -14,7 +14,12 @@ function render(ui: ReactElement) {
 
 import { KanbanBoard } from "../components/KanbanBoard";
 import { DiscussionColumn, discussionChipStage } from "../components/DiscussionColumn";
+import { DISCUSSION_TONE } from "../stage";
 import type { ChangeItem, ArchivedItem, DiscussionItem, DiscussionLists } from "../adapter";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 // spec 需求「討論於看板第 0 欄兩級呈現」的 jsdom 可驗部分。
 
@@ -252,6 +257,34 @@ describe("DiscussionColumn（兩級呈現）", () => {
     expect(slugSpan.contains(copyBtn)).toBe(true);
   });
 
+  // spec「共用元件唯一來源」：看板卡片的複製鈕與系統匣、已封存清單同一元件——主色勾號 1.5 秒。
+  it("細列複製鈕來自共用 CopyButton：主色勾號維持 1.5 秒，並以 status 宣告已複製", async () => {
+    vi.useFakeTimers();
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    render(
+      <DiscussionColumn
+        discussions={[promotedD]}
+        changes={chipChanges}
+        archived={chipArchived}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /已轉出/ }));
+    const row = screen.getByText("fanout").closest("[data-discussion]") as HTMLElement;
+    const copyBtn = within(row).getByRole("button", { name: "複製 slug" });
+    fireEvent.click(copyBtn);
+    await act(async () => {});
+    expect(copyBtn.querySelector("svg.lucide-check")).toBeTruthy();
+    expect(within(row).getByRole("status").textContent).toBe("已複製");
+    act(() => {
+      vi.advanceTimersByTime(1400);
+    });
+    expect(copyBtn.querySelector("svg.lucide-check")).toBeTruthy();
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(copyBtn.querySelector("svg.lucide-check")).toBeNull();
+  });
+
   it("點細列複製鈕把 slug 寫入剪貼簿、不開啟抽屜", () => {
     const writeText = vi.fn();
     Object.assign(navigator, { clipboard: { writeText } });
@@ -338,18 +371,25 @@ describe("DiscussionColumn 計數只算 active 與空狀態（design D3）", () 
     expect(screen.getByTestId("column-count").textContent).toBe("0");
   });
 
-  it("欄頭圖示、頂部色條與計數徽章為中性，不自建平行主色階梯", () => {
-    // 討論欄不是生命週期階段：主色深淺階梯是看板三欄的語彙，討論欄照抄會讓
-    // 「顏色＝階段」的讀法失準（系統匣的討論分區同樣走中性）。
+  it("欄頭圖示、頂部色條與計數徽章取討論專屬的桃紫（DISCUSSION_TONE）", () => {
+    // spec「生命週期四欄各一色相」：討論欄有自己的色相，與系統匣討論分區同一來源。
     render(<DiscussionColumn discussions={[openD]} changes={[]} archived={[]} />);
     const col = document.querySelector('[data-column="discussions"]') as HTMLElement;
-    expect(col.className).not.toContain("border-t-primary");
+    // 與三個階段欄同一套容器（design D1）：首子節點為 3px 色相條，不再以 border-t 當色條。
+    expect(col.firstElementChild!.className).toContain("bg-stage-discussion");
+    expect(col.className).not.toContain("border-t-");
     const count = screen.getByTestId("column-count");
-    expect(count.className).toContain("bg-muted");
-    expect(count.className).not.toContain("primary");
+    for (const cls of DISCUSSION_TONE.badge.split(" ")) expect(count.className).toContain(cls);
     const heading = screen.getByText("討論");
     const icon = heading.previousElementSibling as HTMLElement;
-    expect(icon.getAttribute("class")).not.toContain("primary");
+    expect(icon.getAttribute("class")).toContain(DISCUSSION_TONE.icon);
+  });
+
+  it("已轉出收合列維持中性", () => {
+    render(<DiscussionColumn discussions={[promotedD]} changes={[]} archived={[]} />);
+    const toggle = screen.getByRole("button", { name: /已轉出/ });
+    expect(toggle.className).toContain("text-muted-foreground");
+    expect(toggle.className).not.toContain("stage-");
   });
 });
 
@@ -461,7 +501,7 @@ describe("DiscussionColumn hold 分區（discussion-hold-until-release）", () =
 });
 
 describe("DiscussionColumn promoted chip 階段配色（design D2）", () => {
-  it("chip 沿看板 STAGE_STYLE 配色：提案中/進行中/已就緒 teal 濃度、已封存中性、已刪除 destructive 加刪除線", () => {
+  it("chip 沿看板 STAGE_BADGE 配色：提案中/進行中/已就緒各階段色相、已封存中性、已刪除 destructive 加刪除線", () => {
     // 五態各一子變更：提案中/進行中/已就緒（active 清單）、已封存、已刪除。
     const d: DiscussionItem = {
       ...promotedD,
@@ -470,10 +510,11 @@ describe("DiscussionColumn promoted chip 階段配色（design D2）", () => {
     render(<DiscussionColumn discussions={[d]} changes={chipChanges} archived={chipArchived} />);
     fireEvent.click(screen.getByRole("button", { name: /已轉出/ }));
     const chipCls = (label: string) => screen.getByText(label).className;
-    // 提案中/進行中沿 STAGE_STYLE badge 的 teal 濃度階梯。
-    expect(chipCls("提案中")).toContain("bg-primary/8");
-    expect(chipCls("進行中")).toContain("bg-primary/12");
-    // 已就緒為實心主色（以 text-primary-foreground 辨識，與濃度階梯區隔）。
+    // 提案中/進行中沿 STAGE_BADGE 的各階段淡底實色字。
+    expect(chipCls("提案中")).toContain("bg-stage-proposed/10");
+    expect(chipCls("進行中")).toContain("bg-stage-in-progress/10");
+    // 已就緒為實心（以 text-primary-foreground 辨識，與淡底區隔）。
+    expect(chipCls("已就緒")).toContain("bg-stage-ready");
     expect(chipCls("已就緒")).toContain("text-primary-foreground");
     // 已封存中性色。
     expect(chipCls("已封存")).toContain("bg-muted");
@@ -545,5 +586,203 @@ describe("KanbanBoard 四欄整合", () => {
   it("未傳 discussions 時維持三欄（向後相容）", () => {
     render(<KanbanBoard changes={changes} />);
     expect(column("discussions")).toBeNull();
+  });
+});
+
+// spec「看板欄與卡片的容器外觀」＋「討論於看板第 0 欄兩級呈現」（desktop-board-reskin design D1／D2）：
+// 討論欄與階段欄共用容器卡；欄底收合列為白底上緣細線列、› 展開旋轉；展開狀態可由宿主受控。
+describe("DiscussionColumn 容器卡與受控收合列（desktop-board-reskin）", () => {
+  it("欄為白底細框 16px 圓角容器：淡灰卡片區、白底標頭、欄名不全大寫", () => {
+    render(<DiscussionColumn discussions={[openD]} changes={[]} archived={[]} />);
+    const col = document.querySelector('[data-column="discussions"]') as HTMLElement;
+    const cls = col.className.split(/\s+/);
+    expect(cls).toContain("rounded-2xl");
+    expect(cls).toContain("bg-sidebar");
+    expect(cls).toContain("border");
+    const heading = screen.getByText("討論");
+    expect(heading.className).not.toContain("uppercase");
+    expect(heading.parentElement!.className).toContain("bg-card");
+  });
+
+  it("「尚無討論」置中灰字，與其他欄的空文案同款", () => {
+    render(<DiscussionColumn discussions={[]} changes={[]} archived={[]} />);
+    const empty = screen.getByText("尚無討論");
+    expect(empty.className).toContain("text-center");
+    expect(empty.className).toContain("text-muted-foreground");
+  });
+
+  it("收合列為白底上緣細線列，右端收合時為 ›、展開時朝上（指向其上方展開的細列）；promoted 細列為白底細框 8px 圓角", () => {
+    render(<DiscussionColumn discussions={[openD, promotedD]} changes={chipChanges} archived={chipArchived} />);
+    const bar = screen.getByRole("button", { name: /已轉出/ });
+    expect(bar.className).toContain("bg-card");
+    expect(bar.className).toContain("border-t");
+    const chevron = () => (bar.querySelector("svg.lucide-chevron-right")!.getAttribute("class") ?? "").split(/\s+/);
+    expect(chevron()).not.toContain("-rotate-90");
+    expect(chevron()).not.toContain("rotate-90");
+    fireEvent.click(bar);
+    expect(chevron()).toContain("-rotate-90");
+    expect(chevron()).not.toContain("rotate-90");
+    // 收合後恢復 ›，再展開供下方細列斷言。
+    fireEvent.click(bar);
+    expect(chevron()).not.toContain("-rotate-90");
+    expect(chevron()).not.toContain("rotate-90");
+    fireEvent.click(bar);
+    const row = document.querySelector('[data-discussion="fanout"]') as HTMLElement;
+    const rowCls = row.className.split(/\s+/);
+    expect(rowCls).toContain("rounded-lg");
+    expect(rowCls).toContain("bg-card");
+    expect(rowCls).toContain("border-border");
+    expect(rowCls.some((c) => c.startsWith("bg-background"))).toBe(false);
+  });
+
+  it("受控：點收合列呼叫 onPromotedExpandedChange(true) 且不自行展開", () => {
+    const onChange = vi.fn();
+    render(
+      <DiscussionColumn
+        discussions={[openD, promotedD]}
+        changes={chipChanges}
+        archived={chipArchived}
+        promotedExpanded={false}
+        onPromotedExpandedChange={onChange}
+      />,
+    );
+    const bar = screen.getByRole("button", { name: /已轉出/ });
+    fireEvent.click(bar);
+    expect(onChange).toHaveBeenCalledWith(true);
+    expect(bar.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("Fanout topic")).toBeNull();
+  });
+
+  it("受控：promotedExpanded={true} 時細列可見，點收合列回報 false", () => {
+    const onChange = vi.fn();
+    render(
+      <DiscussionColumn
+        discussions={[openD, promotedD]}
+        changes={chipChanges}
+        archived={chipArchived}
+        promotedExpanded
+        onPromotedExpandedChange={onChange}
+      />,
+    );
+    const bar = screen.getByRole("button", { name: /已轉出/ });
+    expect(bar.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Fanout topic")).toBeTruthy();
+    expect(screen.getByText("Open topic")).toBeTruthy();
+    fireEvent.click(bar);
+    expect(onChange).toHaveBeenCalledWith(false);
+  });
+
+  it("非受控（兩個 props 皆缺席）：點收合列仍自行展開", () => {
+    render(<DiscussionColumn discussions={[openD, promotedD]} changes={chipChanges} archived={chipArchived} />);
+    const bar = screen.getByRole("button", { name: /已轉出/ });
+    fireEvent.click(bar);
+    expect(bar.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Fanout topic")).toBeTruthy();
+  });
+
+  it("KanbanBoard 同名透傳 promotedExpanded／onPromotedExpandedChange", () => {
+    const onChange = vi.fn();
+    render(
+      <KanbanBoard
+        changes={[]}
+        discussions={{ active: [openD, promotedD], archived: [] }}
+        archivedChanges={chipArchived}
+        promotedExpanded
+        onPromotedExpandedChange={onChange}
+      />,
+    );
+    expect(screen.getByText("Fanout topic")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /已轉出/ }));
+    expect(onChange).toHaveBeenCalledWith(false);
+  });
+});
+
+// 品質關卡 round 1 修補（review R-C1／R-C2、R-S1）：展開的 promoted 細列落在收合列正上方的
+// 有界區塊（欄內卡片再多也看得到）；受控 props 兩者同進同出；階段欄與討論欄共用同一欄殼。
+describe("DiscussionColumn 收合列展開區與欄殼（quality round 1）", () => {
+  const manyOpen: DiscussionItem[] = Array.from({ length: 12 }, (_, i) => ({
+    ...openD,
+    slug: `open-${i}`,
+    topic: `Open ${i}`,
+  }));
+
+  it("展開的 promoted 細列在收合列正上方的有界區塊，不在可捲動的卡片區底部", () => {
+    render(
+      <DiscussionColumn discussions={[...manyOpen, promotedD]} changes={chipChanges} archived={chipArchived} />,
+    );
+    const bar = screen.getByRole("button", { name: /已轉出/ });
+    fireEvent.click(bar);
+    const block = bar.previousElementSibling as HTMLElement;
+    const blockCls = block.className.split(/\s+/);
+    expect(blockCls).toEqual(expect.arrayContaining(["max-h-64", "overflow-y-auto"]));
+    // 不帶 shrink-0：視窗很矮時區塊可被壓縮，收合列不會被欄外框的 overflow-hidden 切掉（review round 2）。
+    expect(blockCls).not.toContain("shrink-0");
+    expect(within(block).getByText("Fanout topic")).toBeTruthy();
+    // 卡片區（flex-1 捲動區）只放全卡，不再包含 promoted 細列。
+    const cardArea = block.previousElementSibling as HTMLElement;
+    expect(cardArea.className).toContain("flex-1");
+    expect(within(cardArea).queryByText("Fanout topic")).toBeNull();
+    expect(within(cardArea).getByText("Open 11")).toBeTruthy();
+  });
+
+  it("收合時沒有展開區塊，收合列緊接在卡片區之後", () => {
+    render(<DiscussionColumn discussions={[openD, promotedD]} changes={chipChanges} archived={chipArchived} />);
+    const bar = screen.getByRole("button", { name: /已轉出/ });
+    expect((bar.previousElementSibling as HTMLElement).className).toContain("flex-1");
+  });
+
+  it("只給受控 props 其一：型別層擋下；執行期退回內部狀態（預設收合、點按自行展開）", () => {
+    render(
+      // @ts-expect-error — promotedExpanded 與 onPromotedExpandedChange 必須同進同出
+      <DiscussionColumn discussions={[openD, promotedD]} changes={chipChanges} archived={chipArchived} promotedExpanded />,
+    );
+    const bar = screen.getByRole("button", { name: /已轉出/ });
+    expect(bar.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(bar);
+    expect(bar.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("階段欄與討論欄共用同一欄殼：外框、色相條高度、標頭、卡片區 class 一致", () => {
+    render(<KanbanBoard changes={[]} discussions={{ active: [], archived: [] }} />);
+    const disc = column("discussions") as HTMLElement;
+    const prop = column("proposed") as HTMLElement;
+    const strip = (cls: string) => cls.split(/\s+/).filter((c) => !c.startsWith("bg-stage-")).sort();
+    expect(disc.className).toBe(prop.className);
+    expect(strip(disc.children[0].className)).toEqual(strip(prop.children[0].className));
+    expect(disc.children[1].className).toBe(prop.children[1].className);
+    expect(disc.children[2].className).toBe(prop.children[2].className);
+    expect(screen.getByText("尚無討論").className).toBe(screen.getByText("沒有提案中的變更").className);
+  });
+});
+
+// spec desktop-app「變更與討論詳情頁的宿主為看板」Scenario「宿主頁不推動詳情頁外框」：
+// 捲動區不是定位容器時，卡片裡沒釘位置的 absolute 元素會跳出它的裁切、撐高 desktop 的 main。
+// 這是 class 字面守門（jsdom 不算版面），版面本身由該 Scenario 的 Mac 實機手動任務確認。
+describe("看板捲動區是定位容器（copy-button-live-region-pin）", () => {
+  it("grid、各欄卡片區與已轉出展開區都帶 relative", () => {
+    render(
+      <KanbanBoard
+        changes={chipChanges}
+        discussions={{ active: [openD, promotedD], archived: [] }}
+        archivedChanges={chipArchived}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /已轉出/ }));
+    const grid = column("proposed")!.closest(".overflow-x-auto") as HTMLElement;
+    const scrollers = [grid, ...Array.from(grid.querySelectorAll<HTMLElement>(".overflow-y-auto"))];
+    // grid＋四欄卡片區＋已轉出展開區。
+    expect(scrollers).toHaveLength(6);
+    for (const el of scrollers) expect(el.classList).toContain("relative");
+  });
+});
+
+// fix-english-status-labels-and-plurals：desktop-config「數量為 1 時用單數」的討論卡情境。
+describe("英文介面的討論卡輪數", () => {
+  it("只有 1 輪時寫「1 round」", () => {
+    rtlRender(<DiscussionColumn discussions={[{ ...openD, rounds: 1 }]} changes={[]} archived={[]} />, {
+      wrapper: ({ children }: { children: ReactNode }) => <I18nProvider locale="en">{children}</I18nProvider>,
+    });
+    const card = screen.getByText("open-topic").closest("[data-discussion]") as HTMLElement;
+    expect(within(card).getByText(/1 round/).textContent).not.toContain("rounds");
   });
 });

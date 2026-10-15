@@ -381,6 +381,61 @@ pub fn document_at(root: &Path, change: &str, artifact: &str) -> Option<String> 
     ctx.store.read_artifact(change, artifact)
 }
 
+/// 一份文件在磁碟上的位置（詳情頁「開啟 ▾」，desktop-detail-page design D4）：絕對路徑，
+/// 與相對所在 checkout 根的路徑（正斜線；選單首列與失敗 toast 的主詞）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct DocumentLocation {
+    pub path: String,
+    pub relative: String,
+}
+
+impl DocumentLocation {
+    pub(crate) fn within(root: &Path, path: PathBuf) -> DocumentLocation {
+        let relative = speclink_core::util::to_slash(path.strip_prefix(root).unwrap_or(&path));
+        DocumentLocation { path: path.to_string_lossy().into_owned(), relative }
+    }
+}
+
+/// change artifact 的磁碟位置——與 [`document_at`] 同一套解析：綁 worktree 時為 worktree
+/// 副本、spec 目錄名取自專案設定。不檢查檔案存在（缺檔由 opener 回報）；含路徑穿越的
+/// 參數回 `None`。
+pub fn document_location_at(root: &Path, change: &str, artifact: &str) -> Option<DocumentLocation> {
+    if !is_safe_path_param(change) || !is_safe_path_param(artifact) {
+        return None;
+    }
+    let ctx = crate::context_for_change(root, change)?;
+    let path = ctx.store.layout().artifact_path(change, artifact);
+    Some(DocumentLocation::within(&ctx.workspace.root, path))
+}
+
+/// 正式規格 spec.md 的磁碟位置（規格詳情頁「開啟 ▾」）——與 [`spec_document_at`] 同一個
+/// store，spec 目錄名取自專案設定。不檢查檔案存在；含路徑穿越的參數回 `None`。
+pub fn spec_location_at(root: &Path, capability: &str) -> Option<DocumentLocation> {
+    if !is_safe_path_param(capability) {
+        return None;
+    }
+    let ctx = init_core_context(root)?;
+    let path = ctx.store.layout().canonical_spec(capability);
+    Some(DocumentLocation::within(&ctx.workspace.root, path))
+}
+
+/// 已封存 change 的 artifact 磁碟位置（已封存詳情頁「開啟 ▾」）——與
+/// [`archived_document_at`] 同一個 store；`artifact` 為 output path，逐段接在封存目錄下。
+/// 不檢查檔案存在；含路徑穿越的參數回 `None`。
+pub fn archived_document_location_at(
+    root: &Path,
+    dated_name: &str,
+    artifact: &str,
+) -> Option<DocumentLocation> {
+    if !is_safe_path_param(dated_name) || !is_safe_path_param(artifact) {
+        return None;
+    }
+    let ctx = init_core_context(root)?;
+    let dir = ctx.store.layout().archived_change_dir(dated_name);
+    let path = artifact.split('/').fold(dir, |p, c| p.join(c));
+    Some(DocumentLocation::within(&ctx.workspace.root, path))
+}
+
 /// 讀取一個 capability 的正式規格 spec.md。無則 `None`。含路徑穿越的 `capability` 回傳 `None`。
 pub fn spec_document_at(root: &Path, capability: &str) -> Option<String> {
     if !is_safe_path_param(capability) {
@@ -422,7 +477,7 @@ pub fn archived_capabilities_at(root: &Path, dated_name: &str) -> Vec<String> {
     }
 }
 
-/// 工單分頁的資料（spec desktop-app「詳情抽屜的工單分頁」）：`{ "rounds": [ … ] }`，
+/// 工單分頁的資料（spec desktop-app「詳情抽屜的工單分頁」）：[`ticket_payload`] 的形狀，
 /// 每輪與 CLI `<station> show --json` 的 `rounds` 項同形（design D1）。`station` 為
 /// `review`／`verify`，其他值回 `None`；無工單、change 不存在或工單格式壞掉皆回
 /// `None`——面板顯示空態而非錯誤（design D2）。經 [`crate::context_for_change`]
@@ -453,10 +508,17 @@ pub fn ticket_json_from_text(station: &str, text: &str) -> Option<Value> {
     ticket_json_parsed(station_by_noun(station)?, text)
 }
 
-/// D1 形狀：`{ "rounds": [ … ] }`，每輪交引擎 `Round::to_json`——與 CLI `--json`
-/// 同一份序列化，只是不帶 `change`／`lastRound`（前端取陣列末項）。
+/// D1 形狀：每輪交引擎 `Round::to_json`——與 CLI `--json` 同一份序列化，只是不帶
+/// `change`／`lastRound`（前端取陣列末項）。
 pub fn ticket_json(ticket: &station::Ticket) -> Value {
-    json!({ "rounds": ticket.rounds.iter().map(station::Round::to_json).collect::<Vec<_>>() })
+    ticket_payload(ticket.rounds.iter().map(station::Round::to_json).collect::<Vec<_>>())
+}
+
+/// 工單資料的唯一組裝處：`{ "rounds": [ … ], "reviewBaselineSmells": [ … ] }`。本機與
+/// 封存經 [`ticket_json`] 傳入引擎序列化的輪次；遠端活工單由殼層直接傳入 server 回的
+/// 輪次（同形）。`reviewBaselineSmells` 取自引擎常數，兩站都帶（套用規則列的展開清單）。
+pub fn ticket_payload(rounds: impl serde::Serialize) -> Value {
+    json!({ "rounds": rounds, "reviewBaselineSmells": speclink_core::skills::REVIEW_BASELINE_SMELLS })
 }
 
 fn ticket_json_parsed(st: &station::Station, text: &str) -> Option<Value> {
@@ -1654,9 +1716,10 @@ mod tests {
         let rounds = v["rounds"].as_array().expect("rounds array");
         assert_eq!(rounds.len(), 2);
         let r1 = &rounds[0];
-        for key in ["index", "phase", "patchHash", "scope", "findings"] {
+        for key in ["index", "phase", "patchHash", "rules", "scope", "findings"] {
             assert!(r1.get(key).is_some(), "round missing camelCase key {key}: {r1}");
         }
+        assert_eq!(v["reviewBaselineSmells"], json!(speclink_core::skills::REVIEW_BASELINE_SMELLS));
         assert_eq!(r1["index"], 1);
         assert_eq!(r1["phase"], "discovery");
         assert_eq!(r1["patchHash"], format!("sha256:{}", "a".repeat(64)));
@@ -1748,9 +1811,10 @@ mod tests {
         let v = archived_station_ticket_at(fx.root(), "2026-07-04-old", "verify").expect("carried ticket");
         let rounds = v["rounds"].as_array().expect("rounds array");
         assert_eq!(rounds.len(), 2);
-        for key in ["index", "phase", "patchHash", "scope", "findings"] {
+        for key in ["index", "phase", "patchHash", "rules", "scope", "findings"] {
             assert!(rounds[1].get(key).is_some(), "round missing camelCase key {key}: {v}");
         }
+        assert_eq!(v["reviewBaselineSmells"], json!(speclink_core::skills::REVIEW_BASELINE_SMELLS));
         assert_eq!(rounds[1]["index"], 2);
         assert_eq!(rounds[1]["phase"], "validation");
         assert_eq!(rounds[1]["scope"], json!(["src/a.rs", "src/b.rs", "src/c.rs"]));
@@ -1763,6 +1827,42 @@ mod tests {
         assert!(archived_station_ticket_at(fx.root(), "2026-01-01-ghost", "verify").is_none());
         assert!(archived_station_ticket_at(fx.root(), "2026-07-04-old", "quality").is_none());
         assert!(archived_station_ticket_at(fx.root(), "../..", "verify").is_none());
+    }
+
+    #[test]
+    fn ticket_payload_carries_the_baseline_smells_and_the_round_rules() {
+        // spec desktop-app「詳情頁的工單分頁」的工單資料形狀（D5）：本機活變更、本機
+        // 封存與原文解析三條路都帶 reviewBaselineSmells（引擎常數）與每輪 rules。
+        let text = format!(
+            "# Review — x\n\n## Round 1\n\n**Phase**: discovery\n**Patch**: sha256:{}\n**Rules**: extend\n\
+             **Rule**: CRITICAL 所有 SQL 一律用參數化查詢，不得用字串拼接\n**Scope**: src/a.rs\n\n\
+             ## Round 2\n\n**Phase**: validation\n**Patch**: sha256:{}\n**Scope**: src/a.rs\n",
+            "a".repeat(64),
+            "b".repeat(64)
+        );
+        let fx = FixtureRoot::new("q-ticket-rules");
+        fx.add_change("x", OLD_META);
+        fx.write("openspec/changes/x/review.md", &text);
+        fx.write(
+            "openspec/changes/archive/2026-07-04-old/.openspec.yaml",
+            "schema: spec-driven\ncreated: 2026-07-01\narchived_at: 2026-07-04\n",
+        );
+        fx.write("openspec/changes/archive/2026-07-04-old/review.md", &text);
+
+        let live = station_ticket_at(fx.root(), "x", "review").expect("live ticket");
+        assert_eq!(live["reviewBaselineSmells"], json!(speclink_core::skills::REVIEW_BASELINE_SMELLS));
+        assert_eq!(
+            live["rounds"][0]["rules"],
+            json!({
+                "baseline": "extend",
+                "critical": ["所有 SQL 一律用參數化查詢，不得用字串拼接"],
+                "warning": [],
+                "suggestion": [],
+            })
+        );
+        assert_eq!(live["rounds"][1]["rules"], Value::Null);
+        assert_eq!(archived_station_ticket_at(fx.root(), "2026-07-04-old", "review"), Some(live.clone()));
+        assert_eq!(ticket_json_from_text("review", &text), Some(live));
     }
 
     #[test]
@@ -1808,5 +1908,71 @@ mod tests {
         assert!(status_at(&root, "anything").is_err());
         assert!(document_at(&root, "anything", "proposal").is_none());
         assert!(station_ticket_at(&root, "anything", "review").is_none());
+    }
+
+    // --- 詳情頁「開啟 ▾」的文件定位（desktop-detail-page design D4）---
+
+    #[test]
+    fn document_location_resolves_like_the_reader_in_the_main_checkout() {
+        let fx = FixtureRoot::new("q-doc-loc");
+        fx.add_change("demo", OLD_META);
+        let loc = document_location_at(fx.root(), "demo", "proposal.md").expect("location");
+        assert_eq!(loc.relative, "openspec/changes/demo/proposal.md");
+        assert!(Path::new(&loc.path).ends_with("openspec/changes/demo/proposal.md"), "{}", loc.path);
+        let spec = document_location_at(fx.root(), "demo", "specs/auth/spec.md").expect("spec location");
+        assert_eq!(spec.relative, "openspec/changes/demo/specs/auth/spec.md");
+    }
+
+    #[test]
+    fn document_location_points_into_the_worktree_copy_for_a_mapped_change() {
+        // 讀文件走 context_for_change（worktree 副本）；開啟／顯示／複製路徑必須指向同一份。
+        let fx = FixtureRoot::new("q-doc-loc-wt");
+        fx.add_change("add-auth", OLD_META);
+        let wt = fx.attach_worktree("add-auth");
+        let loc = document_location_at(fx.root(), "add-auth", "tasks.md").expect("location");
+        assert_eq!(loc.relative, "openspec/changes/add-auth/tasks.md");
+        assert!(Path::new(&loc.path).starts_with(wt.path()), "{} 應在 {}", loc.path, wt.path().display());
+    }
+
+    #[test]
+    fn document_location_rejects_path_traversal() {
+        let fx = FixtureRoot::new("q-doc-loc-bad");
+        fx.add_change("demo", OLD_META);
+        assert!(document_location_at(fx.root(), "../x", "proposal.md").is_none());
+        assert!(document_location_at(fx.root(), "demo", "../../secret.md").is_none());
+    }
+
+    // --- 規格詳情頁與已封存詳情頁的文件定位（desktop-readonly-detail-pages design D7）---
+
+    #[test]
+    fn spec_location_resolves_the_canonical_spec_under_the_spec_dir() {
+        let fx = FixtureRoot::new("q-spec-loc");
+        let loc = spec_location_at(fx.root(), "auth").expect("location");
+        assert_eq!(loc.relative, "openspec/specs/auth/spec.md");
+        assert!(Path::new(&loc.path).ends_with("openspec/specs/auth/spec.md"), "{}", loc.path);
+    }
+
+    #[test]
+    fn archived_document_location_resolves_inside_the_dated_archive_dir() {
+        let fx = FixtureRoot::new("q-arch-loc");
+        let loc = archived_document_location_at(fx.root(), "2026-07-04-old", "proposal.md").expect("location");
+        assert_eq!(loc.relative, "openspec/changes/archive/2026-07-04-old/proposal.md");
+        let spec = archived_document_location_at(fx.root(), "2026-07-04-old", "specs/auth/spec.md").expect("spec");
+        assert_eq!(spec.relative, "openspec/changes/archive/2026-07-04-old/specs/auth/spec.md");
+    }
+
+    #[test]
+    fn spec_and_archived_locations_reject_path_traversal() {
+        let fx = FixtureRoot::new("q-ro-loc-bad");
+        assert!(spec_location_at(fx.root(), "../x").is_none());
+        assert!(archived_document_location_at(fx.root(), "../x", "proposal.md").is_none());
+        assert!(archived_document_location_at(fx.root(), "2026-07-04-old", "../../secret.md").is_none());
+    }
+
+    #[test]
+    fn spec_and_archived_locations_are_none_outside_a_project() {
+        let root = crate::testfixture::fresh_non_project_dir("q-ro-loc");
+        assert!(spec_location_at(&root, "auth").is_none());
+        assert!(archived_document_location_at(&root, "2026-07-04-old", "proposal.md").is_none());
     }
 }

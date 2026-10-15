@@ -1073,6 +1073,59 @@ fn remote_review_show_falls_back_to_the_summary_without_a_document() {
     assert!(out.contains("[WARNING] src/lib.rs"), "summary lists findings: {out}");
 }
 
+// --- 品質站 add-round：finding 路徑檢查在送出前（spec「finding 路徑落在工單範圍內」）---
+
+#[test]
+fn remote_review_add_round_rejects_an_out_of_scope_path_before_sending() {
+    // 同一套規則：CLI 先讀工單（Round 1 Scope 為 src/lib.rs）再檢查，違規時
+    // 不送出寫入，server 端工單零寫入。
+    let mut routes = ticket_routes(None);
+    routes.push(("POST", "/changes/demo/review/rounds", 200, r#"{"round":2}"#.into()));
+    let mock = mock_server(routes);
+    let p = TempProject::remote("add-round-outscope", &mock.base, "backend");
+    let out = p.run_stdin(
+        &["review", "add-round", "demo", "--stdin"],
+        "**Scope**: src/lib.rs\n\n- [WARNING] src/caller.rs — Correctness: caller breaks\n",
+    );
+    assert!(!out.status.success(), "violation → non-zero");
+    assert!(stderr_of(&out).contains("src/caller.rs"), "{}", stderr_of(&out));
+    let caps = mock.captured.lock().unwrap();
+    assert!(
+        caps.iter().all(|c| c.method != "POST"),
+        "nothing may be sent to the server: {caps:?}"
+    );
+}
+
+#[test]
+fn remote_verify_add_round_checks_against_the_round_scope_without_a_ticket() {
+    // 無工單（GET 404 not_found）：只以本輪 Scope 檢查；合法內容照常送出。
+    let mock = mock_server(vec![
+        (
+            "GET",
+            "/changes/demo/verify",
+            404,
+            r#"{"status":404,"reason":"not_found","message":"no verify ticket"}"#.into(),
+        ),
+        ("POST", "/changes/demo/verify/rounds", 200, r#"{"round":1}"#.into()),
+    ]);
+    let p = TempProject::remote("add-round-verify", &mock.base, "backend");
+    let bad = p.run_stdin(
+        &["verify", "add-round", "demo", "--stdin"],
+        "**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs:7 — Correctness: x\n",
+    );
+    assert!(!bad.status.success(), "line-suffixed path → non-zero");
+    assert!(stderr_of(&bad).contains("src/lib.rs:7"), "{}", stderr_of(&bad));
+    assert!(mock.captured.lock().unwrap().iter().all(|c| c.method != "POST"), "not sent");
+
+    let good = p.run_stdin(
+        &["verify", "add-round", "demo", "--stdin"],
+        "**Scope**: src/lib.rs\n\n- [CRITICAL] openspec/changes/demo/specs/a/spec.md — Completeness: missing\n",
+    );
+    assert!(good.status.success(), "stderr: {}", stderr_of(&good));
+    let cap = mock.find("POST", "/changes/demo/verify/rounds");
+    assert!(cap.body.contains("openspec/changes/demo/specs/a/spec.md"), "{}", cap.body);
+}
+
 #[test]
 fn remote_review_show_refuses_an_unknown_round_phase() {
     // server 比 CLI 新：未知 phase 靜默當 legacy 會讓輸出宣稱錯誤的事實。
@@ -1159,6 +1212,79 @@ fn remote_review_show_json_matches_fs_key_set() {
         keys(&remote_payload["lastRound"]["findings"][0]),
         "finding key sets match"
     );
+}
+
+#[test]
+fn remote_review_show_json_rules_match_fs_mode() {
+    // spec Scenario「local 與 remote payload 同構」的規則記錄面：server 回傳 fs 模式
+    // 的同一份輪次，remote CLI 的 rounds／lastRound（含 rules 物件與 null）逐項相同。
+    let fs = TempProject::fs("ticket-rules-fs");
+    fs.write(
+        "openspec/changes/demo/.openspec.yaml",
+        "schema: spec-driven\ncreated: 2026-07-01\n",
+    );
+    fs.write("openspec/changes/demo/tasks.md", "- [x] 1.1 done\n");
+    fs.write(
+        "openspec/changes/demo/review.md",
+        &format!(
+            "# Review — demo\n\n## Round 1\n\n**Phase**: discovery\n**Patch**: sha256:{}\n\
+             **Rules**: extend\n**Rule**: CRITICAL 所有 SQL 一律用參數化查詢，不得用字串拼接\n\
+             **Rule**: SUGGESTION 偏好以提早返回取代深層巢狀\n**Scope**: src/lib.rs\n\n\
+             - [WARNING] src/lib.rs — possible Feature Envy\n\n\
+             ## Round 2\n\n**Phase**: validation\n**Patch**: sha256:{}\n**Scope**: src/lib.rs\n",
+            "a".repeat(64),
+            "b".repeat(64)
+        ),
+    );
+    let fs_json = fs.run(&["review", "show", "demo", "--json"]);
+    assert!(fs_json.status.success(), "fs stderr: {}", stderr_of(&fs_json));
+    let fs_payload: serde_json::Value =
+        serde_json::from_str(stdout_of(&fs_json).trim()).expect("fs stdout is JSON");
+    assert!(fs_payload["rounds"][0]["rules"].is_object(), "fixture carries a record: {fs_payload}");
+
+    let mock = mock_server(vec![("GET", "/changes/demo/review", 200, fs_payload.to_string())]);
+    let p = TempProject::remote("ticket-rules-remote", &mock.base, "backend");
+    let remote_json = p.run(&["review", "show", "demo", "--json"]);
+    assert!(remote_json.status.success(), "remote stderr: {}", stderr_of(&remote_json));
+    let remote_payload: serde_json::Value =
+        serde_json::from_str(stdout_of(&remote_json).trim()).expect("remote stdout is JSON");
+    assert_eq!(remote_payload, fs_payload, "rounds and lastRound match field for field");
+}
+
+#[test]
+fn remote_review_show_reads_a_missing_rules_field_as_null() {
+    // spec Scenario「舊 server 沒有 rules 欄位」：exit 0，每輪 rules 為 null。
+    let mock = mock_server(ticket_routes(None));
+    let p = TempProject::remote("ticket-rules-old", &mock.base, "backend");
+    let out = p.run(&["review", "show", "demo", "--json"]);
+    assert!(out.status.success(), "remote stderr: {}", stderr_of(&out));
+    let v: serde_json::Value = serde_json::from_str(stdout_of(&out).trim()).expect("stdout is JSON");
+    for round in [&v["rounds"][0], &v["lastRound"]] {
+        assert!(
+            round.as_object().unwrap().get("rules").is_some_and(serde_json::Value::is_null),
+            "rules key present and null: {round}"
+        );
+    }
+}
+
+#[test]
+fn remote_review_show_refuses_an_unknown_rules_baseline() {
+    // spec Scenario「server 回傳不認得的 baseline」：非零、stderr 說明 CLI 比
+    // server 的工單格式舊，stdout 不輸出 JSON。
+    // rounds 與 lastRound 都帶（CLI 的末輪取自 rounds，不讀 lastRound）。
+    let mut routes = ticket_routes(None);
+    routes[0].3 = routes[0].3.replace(
+        "\"patchHash\":null",
+        r#""patchHash":null,"rules":{"baseline":"strict","critical":[],"warning":[],"suggestion":[]}"#,
+    );
+    assert_eq!(routes[0].3.matches("strict").count(), 2, "fixture injects the token: {}", routes[0].3);
+    let mock = mock_server(routes);
+    let p = TempProject::remote("ticket-rules-strict", &mock.base, "backend");
+    let out = p.run(&["review", "show", "demo", "--json"]);
+    assert!(!out.status.success(), "an unknown baseline token must fail loud");
+    let err = stderr_of(&out);
+    assert!(err.contains("strict") && err.contains("older than the server"), "{err}");
+    assert!(stdout_of(&out).is_empty(), "no JSON on stdout: {}", stdout_of(&out));
 }
 
 // --- discard：由 remote 拒絕改為實作；guard 訊息與本地一致 ---
@@ -1346,6 +1472,41 @@ fn remote_review_prepare_writes_the_local_sidecar_and_posts_nothing() {
         caps.iter().all(|c| c.method == "GET"),
         "prepare must not upload anything: {caps:?}"
     );
+}
+
+#[test]
+fn remote_review_prepare_base_reads_both_tickets_from_the_server() {
+    // spec「以可信 commit 重設 Apply baseline 並承接快照」remote 面：基準仍寫在
+    // 本機 checkout；「工單未結」由 server 回答——審查工單存在時拒絕改寫。
+    let no_verify_ticket = (
+        "GET",
+        "/changes/demo/verify",
+        404,
+        r#"{"status":404,"reason":"not_found","message":"no verify ticket"}"#.to_string(),
+    );
+    let mut routes = review_scope_routes();
+    routes.push(no_verify_ticket.clone());
+    let mock = mock_server(routes);
+    let p = TempProject::remote("review-prepare-base", &mock.base, "backend");
+    seed_git_src(&p);
+    let out = p.run(&["review", "prepare", "demo", "--base", "HEAD"]);
+    assert!(out.status.success(), "no tickets → reset lands: {}", stderr_of(&out));
+    assert!(stdout_of(&out).is_empty());
+    let baseline = p.dir.join(".speclink/review-scopes/demo/baseline.json");
+    let before = std::fs::read(&baseline).expect("baseline written locally");
+    drop(mock);
+
+    let mut routes = review_scope_routes();
+    routes.retain(|(_, suffix, _, _)| *suffix != "/changes/demo/review");
+    routes.extend(ticket_routes(None));
+    routes.push(no_verify_ticket);
+    let mock = mock_server(routes);
+    p.write(".speclink.yaml", &format!("remote:\n  url: {}\n  repo: backend\n", mock.base));
+    let out = p.run(&["review", "prepare", "demo", "--base", "HEAD"]);
+    assert!(!out.status.success(), "open review ticket → non-zero");
+    assert!(stderr_of(&out).contains("review ticket"), "{}", stderr_of(&out));
+    assert_eq!(std::fs::read(&baseline).unwrap(), before, "baseline untouched");
+    assert!(mock.captured.lock().unwrap().iter().all(|c| c.method == "GET"), "reads only");
 }
 
 #[test]
@@ -1853,4 +2014,87 @@ fn remote_review_prepare_auth_failure_leaves_zero_sidecar_effects() {
         !p.dir.join(".speclink").join("review-scopes").exists(),
         "zero sidecar effects on auth failure"
     );
+}
+
+// --- workflow-config review：remote 讀-改-寫與 fs 同語意（review-rules-config）---
+
+const REVIEW_BASE_YAML: &str = "schema: spec-driven\nlocale: tw\nreview:\n  critical:\n    - old rule\n";
+
+fn review_config_response(content: &str, revision: u64) -> String {
+    serde_json::json!({"schema": "spec-driven", "content": content, "revision": revision}).to_string()
+}
+
+#[test]
+fn remote_review_write_round_trips_through_show_like_fs_mode() {
+    // spec workflow-config「remote 寫入經版本檢查」：寫入帶讀得的 revision，寫入的文件
+    // 再經 show --json 讀回同內容，且與 fs 模式對同一文件的輸出逐位元一致。
+    let mock = mock_server(vec![
+        ("GET", "/config", 200, review_config_response(REVIEW_BASE_YAML, 7)),
+        ("PUT", "/config", 200, r#"{"revision":8}"#.into()),
+    ]);
+    let p = TempProject::remote("review-write", &mock.base, "backend");
+    let out = p.run_stdin(
+        &["workflow-config", "review", "critical", "--stdin", "--no-color"],
+        "rule one\nrule two\n",
+    );
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stdout_of(&out), "✓ review.critical = 2 entries\n");
+    let put = mock.find("PUT", "/config");
+    let body: serde_json::Value = serde_json::from_str(&put.body).expect("PUT body is JSON");
+    assert_eq!(body["expectedRevision"], 7, "the read revision guards the write");
+    let written = body["content"].as_str().expect("content string").to_string();
+
+    let reread = mock_server(vec![("GET", "/config", 200, review_config_response(&written, 8))]);
+    let remote = TempProject::remote("review-reread", &reread.base, "backend");
+    let shown = remote.run(&["workflow-config", "show", "--json"]);
+    assert!(shown.status.success(), "stderr: {}", stderr_of(&shown));
+    let payload: serde_json::Value = serde_json::from_slice(&shown.stdout).expect("JSON");
+    assert_eq!(
+        payload["review"],
+        serde_json::json!({"baseline": "extend", "critical": ["rule one", "rule two"], "warning": [], "suggestion": []})
+    );
+
+    let fs = TempProject::fs("review-write-fs");
+    fs.write("openspec/config.yaml", REVIEW_BASE_YAML);
+    let fs_out = fs.run_stdin(
+        &["workflow-config", "review", "critical", "--stdin", "--no-color"],
+        "rule one\nrule two\n",
+    );
+    assert!(fs_out.status.success(), "stderr: {}", stderr_of(&fs_out));
+    assert_eq!(stdout_of(&fs_out), stdout_of(&out), "same success line in both modes");
+    let fs_written = std::fs::read_to_string(fs.dir.join("openspec/config.yaml")).unwrap();
+    assert_eq!(fs_written, written, "both modes write the same document");
+    let fs_shown = fs.run(&["workflow-config", "show", "--json"]);
+    assert_eq!(stdout_of(&fs_shown), stdout_of(&shown), "show --json is identical");
+}
+
+#[test]
+fn remote_review_revision_conflict_asks_for_a_rerun_without_overwriting() {
+    // spec workflow-config「remote 版本衝突」：非零、提示重跑、不重試也不強寫。
+    let mock = mock_server(vec![
+        ("GET", "/config", 200, review_config_response(REVIEW_BASE_YAML, 7)),
+        (
+            "PUT",
+            "/config",
+            409,
+            r#"{"status":409,"reason":"revision_conflict","message":"stale write"}"#.into(),
+        ),
+    ]);
+    let p = TempProject::remote("review-conflict", &mock.base, "backend");
+    let out = p.run(&["workflow-config", "review", "baseline", "replace", "--no-color"]);
+    assert!(!out.status.success(), "a CAS refusal must exit non-zero");
+    let err = stderr_of(&out);
+    assert!(
+        err.contains("updated by someone else") && err.contains("re-run"),
+        "stderr explains the conflict and the fix: {err}"
+    );
+    assert!(stdout_of(&out).is_empty(), "no success line: {}", stdout_of(&out));
+    let puts = mock
+        .captured
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|c| c.method == "PUT")
+        .count();
+    assert_eq!(puts, 1, "exactly one guarded write attempt — no retry, no forced overwrite");
 }

@@ -25,9 +25,10 @@ describe("CardSkeleton（看板佔位卡）", () => {
   it("外框帶 Card 的表面樣式，不自刻描邊", () => {
     const { container } = render(<CardSkeleton />);
     const el = container.firstElementChild as HTMLElement;
+    // 看板卡片是容器內的小卡（Card size="nested"），佔位卡同形：細框、12px 圓角、無陰影。
     expect(el.className).toContain("border-border");
-    expect(el.className).toContain("rounded-lg");
-    expect(el.className).toContain("shadow-sm");
+    expect(el.className).toContain("rounded-xl");
+    expect(el.className).not.toContain("shadow");
     expect(el.className).toContain("bg-card");
   });
 });

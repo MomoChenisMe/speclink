@@ -1,13 +1,208 @@
 [
   {
+    "version": "0.9.0",
+    "date": "2026-10-15",
+    "sections": [
+      {
+        "kind": "features",
+        "items": [
+          {
+            "en": "The desktop app has a new window shell. The left side has an icon rail with one tile per project, and a project column. The app draws its own title bar and breadcrumbs on all three platforms. \"Add Workspace\" is now \"New project\".",
+            "zh-TW": "桌面 app 換上新的視窗外殼：左側是圖示列（每個專案一個方塊）加上專案欄，三個平台的標題列與麵包屑都由 app 自己畫，「新增 Workspace」改名為「新增專案」。"
+          },
+          {
+            "en": "Change and discussion details now open as full detail pages instead of a side panel. The breadcrumbs or Esc take you back to the board, and the board keeps its scroll position, search and filters. Use ‹ n/m › to go to the previous or next item in board order.",
+            "zh-TW": "變更與討論的詳情從右側滑出面板改成佔滿主區的詳情頁：麵包屑或 Esc 回看板，看板的捲動、搜尋與篩選原樣保留，‹ n／m › 依看板順序切換上一筆、下一筆。"
+          },
+          {
+            "en": "Specs and archived items also open as full detail pages. A spec shows each requirement as its own section, with a requirement index and its provenance. To go back, use the back button, ⌘[ (Alt+← on Windows and Linux) or the mouse back button. On macOS, you can also swipe right with two fingers on the trackpad.",
+            "zh-TW": "規格與已封存項目也改成佔滿主區的詳情頁，規格逐條需求分段呈現並附需求目錄與溯源；返回鈕、⌘[（Windows 與 Linux 為 Alt+←）與滑鼠側鍵都能回上一頁，macOS 也可以用觸控板兩指向右滑。"
+          },
+          {
+            "en": "Detail pages now use a three-column layout like a manual: a document tree on the left, a reading card in the middle, and an \"On this page\" list on the right in wide windows. The change actions move to the right end of the title bar.",
+            "zh-TW": "詳情頁改成手冊式三欄：左欄文件樹、中間閱讀卡、寬視窗時右欄本頁目錄，變更的動作移到標題列右端。"
+          },
+          {
+            "en": "The six documents of a change each get their own view. Proposals and designs show section by section, tasks group into cards, delta specs mark modified and removed parts, and the plan and tickets show summary tiles and hints. The manual-task hint lists only the manual tasks that are not checked yet. The source files do not change.",
+            "zh-TW": "變更的六份文件換上各自的呈現方式：提案與設計逐段排版、任務分群成卡、delta 規格標出修改與移除、排程與工單加上數字磚與提示框，手動任務提示框只列還沒勾的項目，原始檔案一個字都不改。"
+          },
+          {
+            "en": "The four documents of a discussion each get their own view. The conclusion splits into the decision, cut cards and rejected options. The discussion log becomes a timeline, and derived changes group by cut.",
+            "zh-TW": "討論的結論、討論過程、背景與衍生變更四份文件換上各自的呈現方式：結論拆成決定、分刀卡與否決列，討論過程變成時間軸，衍生變更依分刀分組。"
+          },
+          {
+            "en": "The spec detail page uses the same three-column layout, and the reading card of the Manual page matches the detail pages.",
+            "zh-TW": "規格詳情頁換上同一套三欄骨架，手冊頁的閱讀卡也對齊詳情頁。"
+          },
+          {
+            "en": "Settings now open in a settings mode. App settings and project settings each list their categories in the left column, with one page per category. New options let you pick a light, dark or system appearance and turn automatic update checks on or off.",
+            "zh-TW": "設定改成設定模式：應用程式設定與專案設定各自在左欄列出分類、每類一頁，並新增淺色／深色／跟隨系統的外觀選項與自動檢查更新的開關。"
+          },
+          {
+            "en": "Project context and output rules in project settings now use a code editor with line numbers and highlighting. Project context can switch between edit and preview, and ⌘S saves.",
+            "zh-TW": "專案設定的專案說明與產出規則改用有行號與上色的程式碼編輯器，專案說明可以切換編輯與預覽，⌘S 儲存。"
+          },
+          {
+            "en": "Settings has a new \"About Speclink\" page with version information, a button that copies it, links to the source code and issue reports, and the licenses. \"About Speclink\" in the macOS menu opens this page.",
+            "zh-TW": "設定新增「關於 Speclink」頁，提供版本資訊與一鍵複製、原始碼與回報問題連結和授權條款，macOS 選單的「關於 Speclink」直接開這一頁。"
+          },
+          {
+            "en": "On macOS, the desktop app has its own menu bar. It follows the interface language and has shortcuts to open a project, switch pages, search the board and check for updates. A new \"Keyboard Shortcuts\" card in Settings lists the shortcuts that work on your platform.",
+            "zh-TW": "macOS 有了跟著介面語言的原生選單列，提供開啟專案、切頁、搜尋看板、檢查更新等快捷鍵，設定頁新增「鍵盤快捷鍵」卡，列出你的平台實際生效的快捷鍵。"
+          },
+          {
+            "en": "On Windows, a left click on the system tray icon opens the same panel as on macOS. A right click still opens the native menu.",
+            "zh-TW": "Windows 的系統匣圖示左鍵改開與 macOS 相同的面板，右鍵保留原生選單。"
+          },
+          {
+            "en": "A project can write its own review rules and severities in openspec/config.yaml. `/speclink-review` grades findings by these rules, and `/speclink-config` and the desktop settings help you keep them.",
+            "zh-TW": "專案可以在 openspec/config.yaml 寫下自己的審查規則與嚴重度，`/speclink-review` 依這些規則定級，`/speclink-config` 與桌面設定頁協助維護。"
+          },
+          {
+            "en": "A review ticket records the review rules that the first round used. The Review tab in the desktop app shows which rules the review followed.",
+            "zh-TW": "審查工單記下首輪套用的審查規則，桌面 app 的「審查」分頁顯示這次依哪些規則判定。"
+          },
+          {
+            "en": "`speclink init` and `speclink update` can install skills for GitHub Copilot. The skills go to `.github/skills/` and use the Copilot command syntax.",
+            "zh-TW": "`speclink init` 與 `speclink update` 可以選 GitHub Copilot，技能寫到 `.github/skills/` 並使用 Copilot 的叫用語法。"
+          },
+          {
+            "en": "New Claude Code plugin speclink-skills, with this repo as its marketplace. A row of colored skill tabs marks the current step and change. A side panel has Board, Discussions and Quality tabs. Type # in the prompt to pick a proposed change, and the skill row wraps to three rows in a narrow terminal.",
+            "zh-TW": "新增 Claude Code 外掛 speclink-skills（這個 repo 就是它的 marketplace）：彩色的技能列標出目前的步驟與變更，側邊面板分看板、討論、品質三分頁，在輸入框打 # 可以選取提案中的變更，終端機太窄時技能列改成三列。"
+          },
+          {
+            "en": "The changelog is now in English and Traditional Chinese. The repo has an English CHANGELOG.md and a Traditional Chinese CHANGELOG.zh-TW.md. The GitHub Release notes show English first, with the Chinese text in a collapsed section. The desktop app shows the entries in your interface language.",
+            "zh-TW": "更新日誌改成中英雙語：repo 有英文 CHANGELOG.md 與繁中 CHANGELOG.zh-TW.md，GitHub Release 說明英文在前、繁中收合，桌面 app 依介面語言顯示條目。"
+          },
+          {
+            "en": "Speclink has a new joined \"S\" logo and a wordmark for dark backgrounds.",
+            "zh-TW": "Speclink 改用新的接合 S 標誌，並新增深色背景用的字標。"
+          },
+          {
+            "en": "The server console no longer uses a side drawer. Users and projects open as detail pages with their own URLs, which you can reload or share. Invite, create and rename actions open a dialog in the center of the screen, and the dialog shows the invite link or the key directly.",
+            "zh-TW": "server 後台拿掉右側抽屜：使用者與專案改成有自己網址、可以重新整理與分享的詳情頁，邀請、建立與更名改在畫面中央的對話框，邀請連結與金鑰明文直接顯示在對話框裡。"
+          }
+        ]
+      },
+      {
+        "kind": "fixes",
+        "items": [
+          {
+            "en": "The server now blocks every write from the reader role, from the CLI and from the desktop remote board. Content in a wrong format gets a 400 response that tells you what is wrong, not an internal server error.",
+            "zh-TW": "server 一律擋下 reader 角色的寫入（CLI 與桌面遠端看板都一樣），送出格式錯誤的內容時回 400 並說明哪裡不合格式，不再顯示伺服器內部錯誤。"
+          },
+          {
+            "en": "In the English interface, counts now use the singular for one item, for example \"1 scenario\". English labels in the status rows of detail pages no longer overlap the values.",
+            "zh-TW": "英文介面的計數依數量用單數或複數（例如「1 scenario」），詳情頁狀態列的英文標籤不再壓到數值。"
+          },
+          {
+            "en": "When you open a change or a discussion from the system tray, the app first closes any dialog in the main window. The dialog and the details no longer show on top of each other.",
+            "zh-TW": "從系統匣開啟變更或討論時，主視窗上開著的對話框會先關掉，不再和詳情疊在一起。"
+          },
+          {
+            "en": "You can give `/speclink-ingest` the name of the change to update.",
+            "zh-TW": "`/speclink-ingest` 的參數可以直接指定要更新哪個變更。"
+          }
+        ]
+      },
+      {
+        "kind": "improvements",
+        "items": [
+          {
+            "en": "The desktop app, the server console and the shared components have a new visual style: white surfaces with neutral grays, thin borders and flat components. Markdown uses a new renderer.",
+            "zh-TW": "桌面 app、server 後台與共用元件換上新的視覺風格：白底中性灰、細框、扁平的元件，markdown 也改用新的渲染器。"
+          },
+          {
+            "en": "Board columns and cards are now white containers with thin borders. Search and filters move to the page header, and the discussion column remembers if \"Promoted\" is open.",
+            "zh-TW": "看板的欄與卡片換成白底細框的容器卡，搜尋框與篩選移到頁標題區，討論欄記住「已轉出」的展開狀態。"
+          },
+          {
+            "en": "The Specs, Archived and Manual pages now show lists with a paging toolbar. You can jump to a page and pick the page size, and the app remembers the page size after a restart.",
+            "zh-TW": "規格、已封存與手冊頁換成列式清單與換頁工具列，可以跳頁、選每頁筆數，每頁筆數在重新啟動後保留。"
+          },
+          {
+            "en": "The notice about outdated skill files moves to a card at the bottom of the project column. When a new version is available, an update button shows in the icon rail, and you can download and install from it.",
+            "zh-TW": "技能檔過期的提示改放在專案欄底部的提示卡，有新版本時圖示列出現更新鈕，點開就能下載與安裝。"
+          },
+          {
+            "en": "The system tray panel uses the same white cards as the main window.",
+            "zh-TW": "系統匣面板換成與主視窗同一套白卡外觀。"
+          },
+          {
+            "en": "The system tray panel shows the Proposed, In progress and Ready sections first. Content cards can collapse, and the frosted-glass effect on macOS is back.",
+            "zh-TW": "系統匣面板把提案中、進行中、已就緒三個分區移到最前面，內容卡可以收合，macOS 的毛玻璃效果也回來了。"
+          },
+          {
+            "en": "Promoted discussions in the system tray panel have their own card, so you can tell them apart from open discussions at a glance.",
+            "zh-TW": "系統匣面板的已轉出討論改成獨立一張卡，與討論中的清單一眼分得開。"
+          },
+          {
+            "en": "Clickable items now give the same feedback everywhere. The desktop app keeps the arrow cursor and shows a hover background. The server console uses the hand cursor. Disabled and read-only items have no hover effect.",
+            "zh-TW": "可點的元素有一致的游標與滑過回饋：桌面 app 維持箭頭並以底色提示可點，server 後台用手指游標，停用與唯讀的元素沒有滑過效果。"
+          },
+          {
+            "en": "Review and verify stamps on a detail page show only in the Quality gates row of the left status area, not again in the header.",
+            "zh-TW": "詳情頁的審查與驗證章籤只放在左欄狀態區的「品質關卡」列，不再在身分區重複出現。"
+          },
+          {
+            "en": "Summary tiles on a reading card share the full row width equally, and the discussion log lists rounds from newest to oldest.",
+            "zh-TW": "閱讀卡的數字磚依格數平分整列，討論過程改成由新到舊排列。"
+          },
+          {
+            "en": "Task rows open or close by their check state: unchecked tasks are open and checked tasks are closed.",
+            "zh-TW": "任務文件的任務列依勾選狀態展開：沒勾的展開、勾完的收合。"
+          },
+          {
+            "en": "The step bar on a discussion detail page uses the same color as its status tag, and the conclusion marks the cuts that are not promoted yet.",
+            "zh-TW": "討論詳情頁的步驟列與狀態籤同色同義，結論文件標出還沒轉出的刀。"
+          },
+          {
+            "en": "The server console shell, page headers and the sign-in, setup, invite and device sign-in pages now look like the desktop app.",
+            "zh-TW": "server 後台的外殼、頁標題與登入、初始設定、接受邀請、裝置登入四頁改成與桌面 app 相同的樣子。"
+          },
+          {
+            "en": "The server console list pages, audit log and settings pages use the list and settings parts of the desktop app. The overview starts with four summary tiles, and revoke buttons show only when the pointer is on that row.",
+            "zh-TW": "server 後台的列表頁、稽核紀錄與設定型頁改用桌面 app 的清單與設定元件，總覽頂端改成四格數字磚，撤銷鈕只在滑鼠移入該列時出現。"
+          },
+          {
+            "en": "Each quality-station round now runs only the affected tests and starts its three subagents at the same time, so a round waits about 40 minutes less. After a worktree merge, the stations no longer ask for `--base` every time.",
+            "zh-TW": "品質關卡每一輪只跑受影響的測試、三個子代理同時派出，每輪少等約 40 分鐘，worktree 合併後也不再每次被問 `--base`。"
+          },
+          {
+            "en": "The 19 skills now follow one writing guide for all models. The rules are shorter and do not repeat, so models from Claude, Codex and Copilot follow them more easily.",
+            "zh-TW": "19 個技能依同一份跨模型的寫法規範重寫，規則更短、不重複，Claude、Codex 與 Copilot 的模型都更容易照做。"
+          },
+          {
+            "en": "`/speclink-config` confirms all policy settings in one table. Review rules are optional, and the skill helps you decide if a rule belongs in review rules or in output rules.",
+            "zh-TW": "`/speclink-config` 改用一張表確認全部政策，審查規則改成選用，並協助判斷一條規矩該放審查規則還是產出規則。"
+          },
+          {
+            "en": "When you write review rules and your skill files are older than the engine, the CLI tells you to update them first. The `--dry-run` diff marks only the lines that really change.",
+            "zh-TW": "寫入審查規則時，技能檔比引擎舊會提醒你先更新，`--dry-run` 的差異只標出真的改動的行。"
+          },
+          {
+            "en": "The README is now an English-first open-source home page. The Chinese version is README.zh-TW.md, and the repo adds CONTRIBUTING, SECURITY and issue templates.",
+            "zh-TW": "README 改成英文為主的開源首頁，繁中版改名為 README.zh-TW.md，並新增 CONTRIBUTING、SECURITY 與 issue 範本。"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.8.0",
     "date": "2026-09-25",
     "sections": [
       {
-        "title": "新功能",
+        "kind": "features",
         "items": [
-          "`speclink plan` 的波次改成只看宣告的依賴，兩個變更動到同一個 capability 不再把其中一個推到後面，沒有依賴的小變更可以馬上開工；兩個變更動到同一個 requirement 時，plan 改為標出封存順序（誰要等誰先封存）與同名衝突，archive 與 commit 技能封存前會提醒、封存後會點名排在後面的變更先對照正式規格重寫；沒有看板順序的變更改依被依賴數、任務數與建立時間排，新增的 `speclink change rank` 可以把變更排到另一個之前或之後，propose 與 ingest 收尾會替小而急的變更插隊；要用舊算法時加 `--strict-overlap`（只限本機）。",
-          "桌面 app 詳情面板的「排程」分頁改成波次、前置、重疊、封存順序四張卡片：是否被擋住改成前置卡上的徽章，重疊卡列出和哪個變更撞到哪個 requirement、雙方各做了什麼操作，封存順序卡列出封存時要排在誰後面，遇到同名衝突或互相等待時顯示警示；remote 專案也看得到同一份資訊，連到舊版 server 時前置卡會另列 server 依重疊判定的等待。"
+          {
+            "en": "`speclink plan` now builds waves from declared dependencies only. When two changes touch the same capability, plan no longer pushes one of them back. A small change with no dependencies can start at once. When two changes touch the same requirement, plan shows the archive order (which change waits for the other to archive) and name conflicts. The archive and commit skills warn you before an archive. After an archive, they name the later changes that must first rewrite against the specs. Changes with no board order now sort by dependent count, task count and creation time. The new `speclink change rank` puts a change before or after another one. At the end of propose and ingest, the skills move small, urgent changes up. To use the old algorithm, add `--strict-overlap` (local only).",
+            "zh-TW": "`speclink plan` 的波次改成只看宣告的依賴，兩個變更動到同一個 capability 不再把其中一個推到後面，沒有依賴的小變更可以馬上開工；兩個變更動到同一個 requirement 時，plan 改為標出封存順序（誰要等誰先封存）與同名衝突，archive 與 commit 技能封存前會提醒、封存後會點名排在後面的變更先對照正式規格重寫；沒有看板順序的變更改依被依賴數、任務數與建立時間排，新增的 `speclink change rank` 可以把變更排到另一個之前或之後，propose 與 ingest 收尾會替小而急的變更插隊；要用舊算法時加 `--strict-overlap`（只限本機）。"
+          },
+          {
+            "en": "The Plan tab in the desktop app detail panel now shows four cards: Wave, Prerequisites, Overlaps and Archive order. A badge on the Prerequisites card shows if the change is blocked. The Overlaps card lists which change touches which requirement, and what each side does to it. The Archive order card lists the changes that must archive first. The cards show a warning for a name conflict or a mutual wait. Remote projects show the same information. With an older server, the Prerequisites card also lists the waits that the server finds from overlaps.",
+            "zh-TW": "桌面 app 詳情面板的「排程」分頁改成波次、前置、重疊、封存順序四張卡片：是否被擋住改成前置卡上的徽章，重疊卡列出和哪個變更撞到哪個 requirement、雙方各做了什麼操作，封存順序卡列出封存時要排在誰後面，遇到同名衝突或互相等待時顯示警示；remote 專案也看得到同一份資訊，連到舊版 server 時前置卡會另列 server 依重疊判定的等待。"
+          }
         ]
       }
     ]
@@ -17,10 +212,16 @@
     "date": "2026-09-22",
     "sections": [
       {
-        "title": "新功能",
+        "kind": "features",
         "items": [
-          "桌面 app 的變更詳情面板在審查或驗證進行中時，多出「審查」「驗證」分頁，直接看到工單裡卡了哪些 findings：每輪可收合、最後一輪展開，每條 finding 標嚴重度、路徑與描述，已接受的標「已接受」籤；工單蓋章或放棄後分頁自動消失。已封存的變更若曾審查或驗證未通過，也能看到帶走的工單。",
-          "`/speclink-discuss` 寫結論時改用條列：Decision 一句定論起頭、其後一點一行，Rejected alternatives 與 Deferred 每項一行寫方案與理由，分幾刀轉出就每刀一個 bullet；桌面 app 的結論分頁因此不再出現整段長句。舊的討論記錄不會被改寫。"
+          {
+            "en": "While a review or verification is in progress, the change detail panel in the desktop app shows Review and Verify tabs. They show the findings that hold up the ticket. Each round can collapse, and the last round is open. Each finding shows its severity, path and description, and accepted findings carry an Accepted tag. The tabs go away when the ticket gets its stamp or you discard it. If an archived change did not pass review or verification, you can still see the ticket that it took into the archive.",
+            "zh-TW": "桌面 app 的變更詳情面板在審查或驗證進行中時，多出「審查」「驗證」分頁，直接看到工單裡卡了哪些 findings：每輪可收合、最後一輪展開，每條 finding 標嚴重度、路徑與描述，已接受的標「已接受」籤；工單蓋章或放棄後分頁自動消失。已封存的變更若曾審查或驗證未通過，也能看到帶走的工單。"
+          },
+          {
+            "en": "`/speclink-discuss` now writes conclusions as lists. The Decision starts with a one-sentence verdict, then one point per line. Rejected alternatives and Deferred give each option and its reason on one line. Each cut that the discussion promotes gets its own bullet. The Conclusion tab in the desktop app no longer shows long blocks of text. Older discussion records stay as they are.",
+            "zh-TW": "`/speclink-discuss` 寫結論時改用條列：Decision 一句定論起頭、其後一點一行，Rejected alternatives 與 Deferred 每項一行寫方案與理由，分幾刀轉出就每刀一個 bullet；桌面 app 的結論分頁因此不再出現整段長句。舊的討論記錄不會被改寫。"
+          }
         ]
       }
     ]
@@ -30,22 +231,49 @@
     "date": "2026-09-17",
     "sections": [
       {
-        "title": "新功能",
+        "kind": "features",
         "items": [
-          "`speclink plan` 會算出所有未封存變更的執行順序：分成一波一波（同一波可以並行），列出每個變更被誰擋住，並指出下一個可開工的變更；`speclink change depends` 可以宣告「這個變更要等哪些變更先做完」，apply 技能開工前會先看 plan、被擋住就停下，propose 收尾會把判定出的依賴落檔。",
-          "桌面 app 的看板、系統匣與詳情面板都照 plan 的順序排列：卡片標出波次、被擋住的變更變淡，詳情面板新增「排程」分頁可以查看與增減前置，拖排不能跨越宣告的依賴，依賴成環時看板會提示。",
-          "remote 模式也有同一套執行順序：server 提供 plan 與前置寫入，桌面連 server 的看板、系統匣與 CLI 的 remote 模式行為與本機一致；排程分頁新增前置的候選改取自該變更所在的名冊，worktree 內的變更不會再選到被引擎拒絕的名字。",
-          "封存完成後，archive 與 commit 技能會提示「下一個可開工」的變更；commit 技能的「先封存再一起提交」子流程補上封存前的順序建議與手冊過期提醒。",
-          "apply-with-worktree 建 worktree 之前先以 plan 守門：多個變更名時分出可並行與須等前置的，被擋住的變更不會留下空 worktree；ingest 收尾會重判本變更的依賴並落檔。",
-          "`/speclink-discuss` 開場偵察納入進行中變更的 delta 規格：假設清單會標出「進行中變更 X 將改動」哪些需求，避免討論建立在正被改掉的規格上；`speclink list --json` 每筆變更多帶 delta 的 capability 清單。"
+          {
+            "en": "`speclink plan` calculates the execution order of all changes that are not archived. It groups them into waves (changes in the same wave can run in parallel), lists what blocks each change, and names the next change that is ready to start. `speclink change depends` declares which changes must finish before a change. The apply skill checks plan before it starts and stops when the change is blocked. At the end of propose, the skill records the dependencies that it finds.",
+            "zh-TW": "`speclink plan` 會算出所有未封存變更的執行順序：分成一波一波（同一波可以並行），列出每個變更被誰擋住，並指出下一個可開工的變更；`speclink change depends` 可以宣告「這個變更要等哪些變更先做完」，apply 技能開工前會先看 plan、被擋住就停下，propose 收尾會把判定出的依賴落檔。"
+          },
+          {
+            "en": "The board, the system tray and the detail panel in the desktop app follow the plan order. Cards show their wave, and blocked changes appear faded. A new Plan tab in the detail panel shows the prerequisites and lets you add or remove them. Drag-and-drop cannot move a card past a declared dependency. The board shows a warning when dependencies form a cycle.",
+            "zh-TW": "桌面 app 的看板、系統匣與詳情面板都照 plan 的順序排列：卡片標出波次、被擋住的變更變淡，詳情面板新增「排程」分頁可以查看與增減前置，拖排不能跨越宣告的依賴，依賴成環時看板會提示。"
+          },
+          {
+            "en": "Remote mode has the same execution order. The server provides plan and writes prerequisites. When the desktop app connects to a server, its board and system tray work the same as locally, and so does the CLI in remote mode. When you add a prerequisite in the Plan tab, the candidates now come from the roster that holds the change. A change in a worktree no longer offers names that the engine rejects.",
+            "zh-TW": "remote 模式也有同一套執行順序：server 提供 plan 與前置寫入，桌面連 server 的看板、系統匣與 CLI 的 remote 模式行為與本機一致；排程分頁新增前置的候選改取自該變更所在的名冊，worktree 內的變更不會再選到被引擎拒絕的名字。"
+          },
+          {
+            "en": "After an archive, the archive and commit skills point to the next change that is ready to start. The \"archive first, then commit together\" flow of the commit skill now suggests an order before it archives and warns you when the manual is out of date.",
+            "zh-TW": "封存完成後，archive 與 commit 技能會提示「下一個可開工」的變更；commit 技能的「先封存再一起提交」子流程補上封存前的順序建議與手冊過期提醒。"
+          },
+          {
+            "en": "apply-with-worktree checks plan before it creates a worktree. With several change names, it separates the changes that can run in parallel from the changes that must wait for prerequisites. A blocked change no longer leaves an empty worktree behind. At the end of ingest, the skill checks the dependencies of the change again and records them.",
+            "zh-TW": "apply-with-worktree 建 worktree 之前先以 plan 守門：多個變更名時分出可並行與須等前置的，被擋住的變更不會留下空 worktree；ingest 收尾會重判本變更的依賴並落檔。"
+          },
+          {
+            "en": "The opening scan of `/speclink-discuss` now includes the delta specs of changes in progress. The list of assumptions marks the requirements that \"in-progress change X will change\". A discussion no longer builds on specs that are about to change. Each change in `speclink list --json` now carries the list of capabilities in its delta.",
+            "zh-TW": "`/speclink-discuss` 開場偵察納入進行中變更的 delta 規格：假設清單會標出「進行中變更 X 將改動」哪些需求，避免討論建立在正被改掉的規格上；`speclink list --json` 每筆變更多帶 delta 的 capability 清單。"
+          }
         ]
       },
       {
-        "title": "修正",
+        "kind": "fixes",
         "items": [
-          "技能檔提示（指令檔過期、缺失或較新）出現時，看板、規格頁、手冊頁與已封存頁不再被視窗底緣裁掉，每欄捲到底可以看到最後一張卡與沉底的換頁控制列。",
-          "macOS 從系統匣面板點變更列喚起主視窗後，hover、游標樣式與提示文字不再全部失效；面板會先收合再顯示主視窗。",
-          "用 Yarn 全域安裝 CLI 時保留轉接檔，安裝後可正常執行；Homebrew formula 的校驗值改自 npm registry 取回，重跑發版不會與 registry 脫節；install.sh 在 musl Linux 上說明只支援 glibc。"
+          {
+            "en": "When a skill file notice appears (instruction files out of date, missing or newer), the bottom of the window no longer cuts off the board, the specs page, the manual page and the archived page. Each column scrolls to the end and shows the last card and the pagination bar at the bottom.",
+            "zh-TW": "技能檔提示（指令檔過期、缺失或較新）出現時，看板、規格頁、手冊頁與已封存頁不再被視窗底緣裁掉，每欄捲到底可以看到最後一張卡與沉底的換頁控制列。"
+          },
+          {
+            "en": "On macOS, when you click a change row in the system tray panel to bring up the main window, hover effects, cursor styles and tooltips no longer stop working. The panel closes before the main window opens.",
+            "zh-TW": "macOS 從系統匣面板點變更列喚起主視窗後，hover、游標樣式與提示文字不再全部失效；面板會先收合再顯示主視窗。"
+          },
+          {
+            "en": "A global CLI install with Yarn keeps the shim file, so the CLI runs after the install. The Homebrew formula now takes its checksum from the npm registry, so a release rerun stays in sync with the registry. On musl Linux, install.sh tells you that it supports only glibc.",
+            "zh-TW": "用 Yarn 全域安裝 CLI 時保留轉接檔，安裝後可正常執行；Homebrew formula 的校驗值改自 npm registry 取回，重跑發版不會與 registry 脫節；install.sh 在 musl Linux 上說明只支援 glibc。"
+          }
         ]
       }
     ]
@@ -55,10 +283,16 @@
     "date": "2026-09-14",
     "sections": [
       {
-        "title": "新功能",
+        "kind": "features",
         "items": [
-          "Release 頁從 21 個檔收成 6 個：macOS 一個 universal dmg 同時跑 Apple Silicon 與 Intel、Windows 安裝器、Linux 兩種架構的 AppImage，加上自動更新用的 .app.tar.gz 與 latest.json；CLI 改由 npm 單一來源供給——`npm i -g @speclink/cli` 裝到的是原生執行檔，Homebrew 與 `install.sh` 抓的是同一份套件，無圖形介面的 Linux 也能 curl 一行裝好；Linux 桌面版不再出 .deb，既有 .deb 使用者請移除後改裝 AppImage。",
-          "桌面 app 的視窗回到前景時會重新檢查更新，長時間開著 app 也能發現新版本，不必再到設定頁手動按「檢查更新」。"
+          {
+            "en": "The Release page now has 6 files instead of 21: one universal macOS dmg for both Apple Silicon and Intel, the Windows installer, Linux AppImages for two architectures, and the .app.tar.gz and latest.json files for automatic updates. The CLI now comes from one source on npm. `npm i -g @speclink/cli` installs the native executable, and Homebrew and `install.sh` get the same package. A Linux machine without a graphical interface can install the CLI with one curl line. The Linux desktop build no longer ships a .deb. If you use the .deb, remove it and install the AppImage.",
+            "zh-TW": "Release 頁從 21 個檔收成 6 個：macOS 一個 universal dmg 同時跑 Apple Silicon 與 Intel、Windows 安裝器、Linux 兩種架構的 AppImage，加上自動更新用的 .app.tar.gz 與 latest.json；CLI 改由 npm 單一來源供給——`npm i -g @speclink/cli` 裝到的是原生執行檔，Homebrew 與 `install.sh` 抓的是同一份套件，無圖形介面的 Linux 也能 curl 一行裝好；Linux 桌面版不再出 .deb，既有 .deb 使用者請移除後改裝 AppImage。"
+          },
+          {
+            "en": "The desktop app checks for updates again when its window comes to the front. If you keep the app open for a long time, it still finds new versions. You do not need to click \"Check for Updates\" in Settings.",
+            "zh-TW": "桌面 app 的視窗回到前景時會重新檢查更新，長時間開著 app 也能發現新版本，不必再到設定頁手動按「檢查更新」。"
+          }
         ]
       }
     ]
@@ -68,15 +302,21 @@
     "date": "2026-09-13",
     "sections": [
       {
-        "title": "新功能",
+        "kind": "features",
         "items": [
-          "一份討論分多刀轉出變更時，最後一刀帶 `--last`（`discuss promote`、`new change --from-discussion`、`discuss seal` 都收），最後一個變更封存後討論記錄自動隨行封存，不用再手動跑 `speclink discuss archive`。"
+          {
+            "en": "When you promote a discussion into changes in several cuts, add `--last` to the last cut. `discuss promote`, `new change --from-discussion` and `discuss seal` all accept it. When the last change goes to the archive, the discussion record goes with it. You no longer need to run `speclink discuss archive` by hand.",
+            "zh-TW": "一份討論分多刀轉出變更時，最後一刀帶 `--last`（`discuss promote`、`new change --from-discussion`、`discuss seal` 都收），最後一個變更封存後討論記錄自動隨行封存，不用再手動跑 `speclink discuss archive`。"
+          }
         ]
       },
       {
-        "title": "改善",
+        "kind": "improvements",
         "items": [
-          "封存後合併的規格在繁中統一叫「正式規格」，與變更裡的「delta 規格」成對；桌面 app 的規格頁、手冊、README 與文件同步改字，英文維持 specs。"
+          {
+            "en": "The Traditional Chinese text now uses one term, 「正式規格」, for the specs that archive merges. It pairs with 「delta 規格」 in a change. The specs page and the manual in the desktop app, the README and the docs use the same words. The English text keeps \"specs\".",
+            "zh-TW": "封存後合併的規格在繁中統一叫「正式規格」，與變更裡的「delta 規格」成對；桌面 app 的規格頁、手冊、README 與文件同步改字，英文維持 specs。"
+          }
         ]
       }
     ]
@@ -86,22 +326,49 @@
     "date": "2026-09-11",
     "sections": [
       {
-        "title": "新功能",
+        "kind": "features",
         "items": [
-          "每個 release 版本都有白話的更新日誌：repo 新增 CHANGELOG.md，桌面 app 更新後首次啟動會彈出「X.Y.Z 更新內容」，之後也能從設定頁的「更新日誌」再看一次。",
-          "`speclink validate` 提早抓出封存時會被拒收的 delta（目標需求不存在、撞名、少宣告移除的 scenario），不用做到封存才發現。",
-          "手冊頁的出處可以只錨定規格裡的一段需求，別段的封存不會再把整頁標成「可能過期」；重生後內文沒變的頁只換時戳。",
-          "`/speclink-improve` 新增第六條摩擦訊號：資料夾與模組的分組整理有了自己的准入判準。"
+          {
+            "en": "Each release has a plain-language changelog. The repo adds CHANGELOG.md. After an update, the desktop app shows \"What's new in X.Y.Z\" on the first launch. You can open it again from \"Changelog\" in Settings.",
+            "zh-TW": "每個 release 版本都有白話的更新日誌：repo 新增 CHANGELOG.md，桌面 app 更新後首次啟動會彈出「X.Y.Z 更新內容」，之後也能從設定頁的「更新日誌」再看一次。"
+          },
+          {
+            "en": "`speclink validate` finds early the deltas that archive rejects: a target requirement that does not exist, a name collision, or a removed scenario that is not declared. You no longer find them only at archive time.",
+            "zh-TW": "`speclink validate` 提早抓出封存時會被拒收的 delta（目標需求不存在、撞名、少宣告移除的 scenario），不用做到封存才發現。"
+          },
+          {
+            "en": "A manual page can anchor its source to one requirement in a spec. The archive of another section no longer marks the whole page \"Possibly outdated\". When a regenerated page has the same text, only its timestamp changes.",
+            "zh-TW": "手冊頁的出處可以只錨定規格裡的一段需求，別段的封存不會再把整頁標成「可能過期」；重生後內文沒變的頁只換時戳。"
+          },
+          {
+            "en": "`/speclink-improve` adds a sixth friction signal: the grouping of folders and modules gets its own entry criteria.",
+            "zh-TW": "`/speclink-improve` 新增第六條摩擦訊號：資料夾與模組的分組整理有了自己的准入判準。"
+          }
         ]
       },
       {
-        "title": "修正",
+        "kind": "fixes",
         "items": [
-          "`speclink analyze` 收斂四條誤報：design 標題不再要求整串抄進 tasks，REMOVED 區塊不再要求 scenario；四個面向的規則正式寫進規格。",
-          "用 `--hold` 保留在途的討論，轉出下一刀時不再被清掉旗標、也不會被連帶封存；看板上與「已轉出」的討論分開呈現，收尾由 `speclink discuss archive` 明示解除。",
-          "`speclink archive --mark-tasks-complete` 遇到結構不合法的變更時，封存被拒也不會再把 tasks.md 全勾。",
-          "討論記錄的狀態改寫只動 frontmatter，內文出現相同字串不再被誤改；封存時對 meta 損壞的在途變更改成保守處理，討論不會被誤掃進封存區。",
-          "發版流程對剛上架的 npm 套件改成輪詢查詢，不再因 registry 延遲可見而誤判失敗。"
+          {
+            "en": "`speclink analyze` drops four false positives. It no longer asks you to copy a full design heading into tasks, and it no longer asks for scenarios in REMOVED blocks. The rules for the four dimensions are now part of the spec.",
+            "zh-TW": "`speclink analyze` 收斂四條誤報：design 標題不再要求整串抄進 tasks，REMOVED 區塊不再要求 scenario；四個面向的規則正式寫進規格。"
+          },
+          {
+            "en": "A discussion that you keep open with `--hold` no longer loses its flag when you promote the next cut. It also does not go into the archive with the change. The board shows these discussions apart from the \"promoted\" discussions. To close one out, run `speclink discuss archive`.",
+            "zh-TW": "用 `--hold` 保留在途的討論，轉出下一刀時不再被清掉旗標、也不會被連帶封存；看板上與「已轉出」的討論分開呈現，收尾由 `speclink discuss archive` 明示解除。"
+          },
+          {
+            "en": "`speclink archive --mark-tasks-complete` no longer checks every box in tasks.md when it rejects the archive of a change with a structure that is not valid.",
+            "zh-TW": "`speclink archive --mark-tasks-complete` 遇到結構不合法的變更時，封存被拒也不會再把 tasks.md 全勾。"
+          },
+          {
+            "en": "A status update to a discussion record now changes only the frontmatter. The same string in the body no longer changes by mistake. During an archive, an active change with damaged meta now gets careful handling, so a discussion does not go into the archive by mistake.",
+            "zh-TW": "討論記錄的狀態改寫只動 frontmatter，內文出現相同字串不再被誤改；封存時對 meta 損壞的在途變更改成保守處理，討論不會被誤掃進封存區。"
+          },
+          {
+            "en": "The release flow now polls for a newly published npm package. A registry delay no longer looks like a failure.",
+            "zh-TW": "發版流程對剛上架的 npm 套件改成輪詢查詢，不再因 registry 延遲可見而誤判失敗。"
+          }
         ]
       }
     ]
@@ -111,47 +378,134 @@
     "date": "2026-09-08",
     "sections": [
       {
-        "title": "新功能",
+        "kind": "features",
         "items": [
-          "新增 `/speclink-manual` 技能：一句話就能從正式規格生成 wiki 式的新人手冊，或讓 AI 在對話中帶你導覽系統。",
-          "桌面 app 新增「手冊」頁：側欄樹、搜尋與上一頁／下一頁由手冊頁自動推導，可能過期的頁面會標示出來。",
-          "新增 `speclink trace` 動詞與 `/speclink-trace` 技能：沿「規格 → 變更 → 討論 → 程式碼」回答某個功能怎麼來的、為什麼這樣設計。",
-          "新增 `speclink discuss search`：依關鍵字找出封存討論裡的定案；discuss 與 improve 技能開場會先查舊討論，不再重提已否決的方向。",
-          "討論可用 `discuss conclude --hold` 保留在途，一份討論可以分期轉出多個變更。",
-          "討論的生命週期改由結論決定：還沒寫結論的討論不會被連帶封存，看板也分得出「已轉出但未結論」的討論。",
-          "桌面 app 的「新增 Workspace」記住最近開過的 workspace，分頁關掉之後也能一鍵再開。",
-          "桌面 app 設定頁新增「產出流程」頁籤：檢視、切換、fork、建立與刪除產出流程。",
-          "桌面 app 的規格、變更與討論抽屜的溯源籤都可以點：規格 → 變更 → 討論三跳閉環。",
-          "遠端模式的認領真正落盤：桌面遠端看板可以認領變更，並看到是誰在做。",
-          "遠端模式勾任務時，觸及檔案的證據會保存到 server，之後 drift、commit 與封存溯源都查得到。",
-          "`@speclink/engine` 發布到 npm：不用自備 Rust 工具鏈，就能把引擎接進自己的腳本。",
-          "Node SDK 的 createEngine 可以注入操作者身分並提供蓋章動詞，多人系統的章不再匿名。",
-          "新開 capability 時擋下重複命名並建議近似名，不會再產出兩份語意重複的規格。"
+          {
+            "en": "New `/speclink-manual` skill: with one sentence, it generates a wiki-style manual for new team members from the specs. It can also give you a tour of the system in the conversation.",
+            "zh-TW": "新增 `/speclink-manual` 技能：一句話就能從正式規格生成 wiki 式的新人手冊，或讓 AI 在對話中帶你導覽系統。"
+          },
+          {
+            "en": "New Manual page in the desktop app: the sidebar tree, the search and the previous/next links come from the manual pages automatically. The page marks the pages that may be out of date.",
+            "zh-TW": "桌面 app 新增「手冊」頁：側欄樹、搜尋與上一頁／下一頁由手冊頁自動推導，可能過期的頁面會標示出來。"
+          },
+          {
+            "en": "New `speclink trace` verb and `/speclink-trace` skill: they follow \"spec → change → discussion → code\" to tell you how a feature came to be and why it works this way.",
+            "zh-TW": "新增 `speclink trace` 動詞與 `/speclink-trace` 技能：沿「規格 → 變更 → 討論 → 程式碼」回答某個功能怎麼來的、為什麼這樣設計。"
+          },
+          {
+            "en": "New `speclink discuss search`: it finds the decisions in archived discussions by keyword. The discuss and improve skills check old discussions when they start, so they do not bring back rejected directions.",
+            "zh-TW": "新增 `speclink discuss search`：依關鍵字找出封存討論裡的定案；discuss 與 improve 技能開場會先查舊討論，不再重提已否決的方向。"
+          },
+          {
+            "en": "`discuss conclude --hold` keeps a discussion open, so one discussion can promote several changes over time.",
+            "zh-TW": "討論可用 `discuss conclude --hold` 保留在途，一份討論可以分期轉出多個變更。"
+          },
+          {
+            "en": "The conclusion now controls the life cycle of a discussion. A discussion without a conclusion does not go into the archive with a change. The board shows discussions that are \"promoted but not concluded\" as a separate group.",
+            "zh-TW": "討論的生命週期改由結論決定：還沒寫結論的討論不會被連帶封存，看板也分得出「已轉出但未結論」的討論。"
+          },
+          {
+            "en": "\"Add Workspace\" in the desktop app remembers the workspaces that you opened recently. After you close a tab, you can open the workspace again with one click.",
+            "zh-TW": "桌面 app 的「新增 Workspace」記住最近開過的 workspace，分頁關掉之後也能一鍵再開。"
+          },
+          {
+            "en": "New Workflow tab in the desktop app settings: view, switch, fork, create and delete workflow schemas.",
+            "zh-TW": "桌面 app 設定頁新增「產出流程」頁籤：檢視、切換、fork、建立與刪除產出流程。"
+          },
+          {
+            "en": "The provenance tags in the spec, change and discussion drawers of the desktop app are all clickable. You can go from spec to change to discussion and back in three steps.",
+            "zh-TW": "桌面 app 的規格、變更與討論抽屜的溯源籤都可以點：規格 → 變更 → 討論三跳閉環。"
+          },
+          {
+            "en": "Claims in remote mode now save for real. The desktop remote board can claim a change and shows who works on it.",
+            "zh-TW": "遠端模式的認領真正落盤：桌面遠端看板可以認領變更，並看到是誰在做。"
+          },
+          {
+            "en": "When you check off a task in remote mode, the server keeps the evidence of the touched files. Drift, commit and archive provenance can find it later.",
+            "zh-TW": "遠端模式勾任務時，觸及檔案的證據會保存到 server，之後 drift、commit 與封存溯源都查得到。"
+          },
+          {
+            "en": "`@speclink/engine` is now on npm. You can use the engine in your own scripts without a Rust toolchain.",
+            "zh-TW": "`@speclink/engine` 發布到 npm：不用自備 Rust 工具鏈，就能把引擎接進自己的腳本。"
+          },
+          {
+            "en": "createEngine in the Node SDK can take an operator identity and provides stamp verbs. Stamps in multi-user systems are no longer anonymous.",
+            "zh-TW": "Node SDK 的 createEngine 可以注入操作者身分並提供蓋章動詞，多人系統的章不再匿名。"
+          },
+          {
+            "en": "When you open a new capability, Speclink blocks a duplicate name and suggests similar names. You no longer get two specs with the same meaning.",
+            "zh-TW": "新開 capability 時擋下重複命名並建議近似名，不會再產出兩份語意重複的規格。"
+          }
         ]
       },
       {
-        "title": "修正",
+        "kind": "fixes",
         "items": [
-          "`speclink init --force` 切換工具時會清掉前一個工具的技能目錄；技能檔過期提示也涵蓋自訂描述子。",
-          "手冊頁的「可能過期」判定改比到時戳，封存後立刻重生的手冊不再被誤標。",
-          "討論記錄內文含「## 」開頭的行時，輪次不再錯亂，也不會被誤當成結論。",
-          "遠端模式的審查與驗證改讀 server 上的證據，不再因本機沒有證據檔而卡住要求手動輸入。",
-          "baseline 技能會套用 config.yaml 裡的 specs 產出規則。",
-          "遠端看板補齊建立者、開工歸屬、capability 清單與已轉出討論的分區。",
-          "系統匣面板的變更列補上 worktree 標記。",
-          "品質關卡的章支援非 UTF-8 的範圍檔。"
+          {
+            "en": "`speclink init --force` removes the skill directory of the previous tool when you switch tools. The notice for stale skill files also covers custom descriptors.",
+            "zh-TW": "`speclink init --force` 切換工具時會清掉前一個工具的技能目錄；技能檔過期提示也涵蓋自訂描述子。"
+          },
+          {
+            "en": "The \"Possibly outdated\" check for manual pages now compares timestamps. A manual that you regenerate right after an archive no longer gets that mark by mistake.",
+            "zh-TW": "手冊頁的「可能過期」判定改比到時戳，封存後立刻重生的手冊不再被誤標。"
+          },
+          {
+            "en": "Lines that start with \"## \" in a discussion record no longer mix up the rounds, and they no longer count as the conclusion.",
+            "zh-TW": "討論記錄內文含「## 」開頭的行時，輪次不再錯亂，也不會被誤當成結論。"
+          },
+          {
+            "en": "Review and verification in remote mode now read the evidence on the server. They no longer stop and ask for manual input when no local evidence file exists.",
+            "zh-TW": "遠端模式的審查與驗證改讀 server 上的證據，不再因本機沒有證據檔而卡住要求手動輸入。"
+          },
+          {
+            "en": "The baseline skill applies the specs output rules in config.yaml.",
+            "zh-TW": "baseline 技能會套用 config.yaml 裡的 specs 產出規則。"
+          },
+          {
+            "en": "The remote board now shows the creator, the start owner, the capability list and the group for promoted discussions.",
+            "zh-TW": "遠端看板補齊建立者、開工歸屬、capability 清單與已轉出討論的分區。"
+          },
+          {
+            "en": "Change rows in the system tray panel now show the worktree marker.",
+            "zh-TW": "系統匣面板的變更列補上 worktree 標記。"
+          },
+          {
+            "en": "Quality station stamps support scope files that are not UTF-8.",
+            "zh-TW": "品質關卡的章支援非 UTF-8 的範圍檔。"
+          }
         ]
       },
       {
-        "title": "改善",
+        "kind": "improvements",
         "items": [
-          "onboard 技能改名為 baseline（`/speclink-baseline`），與 OpenSpec 的 Onboard 區隔。",
-          "技能收尾的交棒句更清楚：propose 後盤點執行順序、apply 後可以直接封存、worktree 收尾列出 `/speclink-quality`、archive 後提醒提交。",
-          "技能路由改由 description 與交棒句承載，不再注入 marker。",
-          "discuss 技能流程重寫：先讀正典再偵察、依需求清晰度分流、多需求討論有固定慣例。",
-          "內建產出流程收斂為單一正典，驗證強度對齊 OpenSpec。",
-          "apply 指令的 payload 直接帶 TDD 與 audit 的有效值，舊的政策鍵不再相容。",
-          "桌面「新增 Workspace」的來源卡改稱「Server」，去掉品牌前綴。"
+          {
+            "en": "The onboard skill is now baseline (`/speclink-baseline`), to keep it apart from Onboard in OpenSpec.",
+            "zh-TW": "onboard 技能改名為 baseline（`/speclink-baseline`），與 OpenSpec 的 Onboard 區隔。"
+          },
+          {
+            "en": "The handoff lines at the end of skills are clearer. After propose, they check the execution order. After apply, they say that you can archive directly. The worktree wrap-up lists `/speclink-quality`. After archive, they remind you to commit.",
+            "zh-TW": "技能收尾的交棒句更清楚：propose 後盤點執行順序、apply 後可以直接封存、worktree 收尾列出 `/speclink-quality`、archive 後提醒提交。"
+          },
+          {
+            "en": "Skill routing now lives in the description and the handoff lines of each skill. Speclink no longer injects a marker.",
+            "zh-TW": "技能路由改由 description 與交棒句承載，不再注入 marker。"
+          },
+          {
+            "en": "The discuss skill has a new flow. It reads the specs first and then scouts. It picks a path by how clear the requirements are. Discussions with several requirements follow a fixed convention.",
+            "zh-TW": "discuss 技能流程重寫：先讀正典再偵察、依需求清晰度分流、多需求討論有固定慣例。"
+          },
+          {
+            "en": "The built-in workflow schemas now come down to one canonical schema. Its validation strength matches OpenSpec.",
+            "zh-TW": "內建產出流程收斂為單一正典，驗證強度對齊 OpenSpec。"
+          },
+          {
+            "en": "The apply instructions payload now carries the effective TDD and audit values directly. The old policy keys no longer work.",
+            "zh-TW": "apply 指令的 payload 直接帶 TDD 與 audit 的有效值，舊的政策鍵不再相容。"
+          },
+          {
+            "en": "The source card in \"Add Workspace\" in the desktop app now has the name \"Server\", without the brand prefix.",
+            "zh-TW": "桌面「新增 Workspace」的來源卡改稱「Server」，去掉品牌前綴。"
+          }
         ]
       }
     ]

@@ -1,0 +1,310 @@
+---
+name: speclink-ingest
+description: "Use when requirements change mid-work, including after a separate planning session — folds the new context into an existing change's artifacts so apply can resume."
+license: MIT
+compatibility: Requires speclink CLI.
+metadata:
+  author: speclink
+  version: "v1.48.1"
+  generatedBy: "Speclink"
+---
+
+Update an existing Speclink change — from a plan file or conversation context.
+
+**Plan file support** is available when the tool has a plan directory (``). Otherwise, use conversation context to update artifacts.
+
+**Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
+
+**Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response.
+
+**This skill updates artifacts, not code.** Never write application code, and never skip the artifact workflow to write code directly. It only updates existing changes — it never creates one (step 3).
+
+**Input**: Optionally specify an active change name, or a plan file path or name.
+
+- `/speclink-ingest add-auth` (update the active change `add-auth` from conversation context)
+- `/speclink-ingest agile-discovering-rocket.md`
+- `/speclink-ingest agile-discovering-rocket`
+- `/speclink-ingest` (use conversation context or auto-detect plan file)
+
+**Steps**
+
+1. **Locate the requirement source**
+
+   a. **Argument provided** → resolve it in this order:
+   i. **Path-like** (it contains `/` or ends in `.md`) → treat it as a plan file reference (prepend `` when it has no `/`, and append `.md` if needed)
+      - The file exists → use it as the plan file source, proceed to Step 2
+      - The file does not exist → report the error and **stop**
+   ii. **An active change name** → run `speclink list --json`. When the argument equals the name of an active change, that change is the change to update, and the source is conversation context (plus its linked discussion conclusion, see below). Do NOT look for a plan file with that name: skip Step 2 and go to Step 3
+   iii. **Otherwise** → treat it as a plan file name (prepend `` and append `.md`)
+      - The file exists → use it as the plan file source, proceed to Step 2
+      - The file does not exist → report an error that says both: `<argument>` is not an active change name, and no plan file `<argument>.md` exists. Add a hint: to update a change, pass only its name and give the details in the conversation. Then **stop** without touching any artifact
+
+   b. **No argument, plan file detectable**:
+   - Check conversation context for plan file path (plan mode system messages include the path like `<name>.md`)
+   - Found and the file exists → use the **AskUserQuestion tool** to ask:
+     - Option 1: Use the plan file
+     - Option 2: Use conversation context
+   - The user picks the plan file → proceed to Step 2
+   - The user picks conversation context → skip Step 2, go to Step 3
+
+   c. **No argument, no plan file detectable**:
+   - Check `` for recent files
+   - Recent files exist → list the 5 most recent with the **AskUserQuestion tool**, include "Use conversation context" as an additional option
+   - The user picks a file → proceed to Step 2
+   - The user picks conversation context → skip Step 2, go to Step 3
+
+   d. **Conversation context fallback** (no plan files found at all):
+   - Use conversation context to update artifacts
+   - Conversation context is insufficient → use the **AskUserQuestion tool** to get more details
+   - Warn: "No plan file found. Using conversation context."
+
+   **Source is a discussion conclusion?** When the update being folded in comes from a concluded discussion — the discuss skill routed its **Capture to** at this existing change, or the change already carries a `from_discussion` link — treat that discussion's conclusion as a first-class source, not just the conversation context:
+
+   1. Discover the linked discussion(s): `speclink show <change> --json` exposes `fromDiscussions` (the change's `from_discussion` chain).
+   2. Read each linked discussion's conclusion and fold it into the artifacts alongside the conversation/plan context (merge, do not replace what you already have):
+
+      ```bash
+      speclink discuss show <slug> --json
+      ```
+
+   3. Confirm the lifecycle chain is forged before touching artifacts:
+
+      ```bash
+      speclink discuss link <slug> <change>
+      ```
+
+   `link` is idempotent (a no-op when the discuss step already ran it) and forges only the change-side chain — it does not mark the discussion promoted. Marking it 已轉出 is sealed at the end of this workflow (step 10), once the artifacts actually carry the discussion's content. Without the link, the discussion never archives with the change it fed.
+
+   **Change flagged stale (`restaleFrom`)?** When `speclink show <change> --json` exposes a non-empty `restaleFrom`, those discussions were re-concluded *after* this change last sealed them — its artifacts are now stale against the newer conclusions (`speclink analyze <change>` surfaces the same as an informational finding, and the desktop board shows a "待重新反映" badge). This is exactly a re-ingest: for each slug in `restaleFrom`, read the discussion's current conclusion (`speclink discuss show <slug> --json`), fold the revised decision into the artifacts, and the seal in step 10 clears that slug from `restaleFrom` — marking the reflection honest again.
+
+2. **Parse the plan structure** (skip if using conversation context)
+
+   Read the plan file; NEVER modify it — it is the user's original document in ``.
+
+   Claude Code plan files typically contain:
+   - **Title** (`# ...`) — the high-level goal
+   - **Context** section — background, motivation, current state
+   - **Stages/Steps** — numbered implementation stages with goals and file lists
+   - **Files involved** — list of files to modify/create
+   - **Verification** section — how to test the changes
+
+   Extract:
+   - `plan_title`: from the H1 heading
+   - `plan_context`: from the Context section
+   - `plan_stages`: each numbered stage with its goal and file list
+   - `plan_files`: all file paths mentioned
+   - `plan_verification`: verification steps
+
+3. **Check for active changes** (required — ingest only updates existing changes)
+
+   ```bash
+   speclink list --json
+   ```
+
+   Parse the JSON output to get the full list of changes.
+   - **The argument named an active change** (Step 1a) → update that change; do NOT ask which change to update
+   - One change exists → use the **AskUserQuestion tool** to confirm updating it
+   - Multiple changes exist → use the **AskUserQuestion tool** to let the user pick which one to update
+   - No changes at all → tell the user: "No active change found. Use `/speclink-propose` first to create one." and **stop**
+
+4. **Select the change**
+
+   Read existing artifacts for context before updating.
+
+5. **Update artifacts**
+
+   For each artifact, get instructions first:
+
+   ```bash
+   speclink instructions <artifact-id> --change "<name>" --json
+   ```
+
+   Use the `template` from instructions as the output structure. Apply `context` and `rules` as constraints but do not copy them into the file.
+
+   The instructions JSON includes `locale` — the language to write artifacts in. If present, write the artifact content in that language. Spec files (specs/\*/\*.md) default to the operating-system language of the machine running Speclink — unless the project sets `spec_locale` in `openspec/config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
+
+   **Plan-to-Artifact Mapping** (when using a plan file):
+
+   | Plan Section       | Artifact         | How to Map                                        |
+   | ------------------ | ---------------- | ------------------------------------------------- |
+   | Title              | Change name      | Convert to kebab-case                             |
+   | Context            | proposal: Why    | Direct content transfer                           |
+   | Stages overview    | proposal: What   | Summarize all stages                              |
+   | Individual stages  | tasks.md groups  | One stage = one `##` heading, sub-items = `- [ ]` |
+   | File paths         | proposal: Impact | Affected code list                                |
+   | Verification steps | tasks.md         | Final verification task group                     |
+
+   **Context-to-Artifact Mapping** (when using conversation context):
+
+   | Conversation Element | Artifact         | How to Map                         |
+   | -------------------- | ---------------- | ---------------------------------- |
+   | Goal / requirement   | proposal: Why    | Extract motivation from discussion |
+   | Discussed approach   | proposal: What   | Summarize agreed approach          |
+   | Mentioned files      | proposal: Impact | Affected code list                 |
+   | Discussion phases    | tasks.md groups  | One topic = one `##` heading       |
+
+   **When updating an existing change:**
+   - Merge new context into existing proposal (don't replace)
+   - Add new tasks from plan stages or conversation, and **preserve every completed `[x]` item** — never revert progress
+   - Do not remove existing content
+   - The source content is too brief to fill an artifact section → use the **AskUserQuestion tool** to get more details rather than inventing content
+
+   **Before adding a new delta capability**, compare its name against the existing ones — the canonical specs (`speclink list --specs --json`) and the delta capabilities of other in-flight changes. If an existing name means the same capability, reuse that exact name instead of opening a near-duplicate; `speclink validate` warns on near-named new capabilities.
+
+   **Mark manual tasks with `[M]`**: a task the agent cannot do itself — the user has to do it by hand, whether that is operating the product and accepting the result, creating an account on an external service, or placing a key — carries an `[M]` marker, so the quality stations can judge "the code is finished" separately from "a human did their part". Anything the agent can do itself, including code and automated tests, never carries it.
+
+   **The marker goes right after the checkbox, separated by exactly one space; the task number comes after the marker, NEVER before it.** Putting the number first reads naturally and is the easy mistake — the engine does not accept the marker there.
+
+   ```
+   Write:  - [ ] [M] 3.2 Open the imported document and confirm the list stays one list
+   Not:    - [ ] 3.2 [M] Open the imported document and confirm the list stays one list
+   Not:    - [ ]  [M] 3.2 Open the imported document …   (two spaces after the checkbox)
+   ```
+
+   A misplaced marker is read as ordinary description text: the task silently counts as code work, "code tasks all complete" never becomes true, and apply stalls on a task no agent may check off. `speclink validate` reports it as an error.
+
+   After creating each artifact, re-check status:
+
+   ```bash
+   speclink status --change "<name>" --json
+   ```
+
+   Continue until all `applyRequires` artifacts are complete. Show progress: "✓ Created <artifact-id>"
+
+6. **Inline Self-Review** (before CLI analysis)
+
+   After updating all artifacts, scan them manually. Fix issues inline, then proceed to the CLI analyzer.
+
+   **Check 1: No Placeholders**
+
+   These patterns are artifact failures — fix each one before proceeding:
+   - "TBD", "TODO", "FIXME", "implement later", "details to follow"
+   - Vague instructions: "Add appropriate error handling", "Handle edge cases", "Write tests for the above"
+   - Delegation by reference: "Similar to Task N" without repeating specifics
+   - Steps describing WHAT without HOW: "Implement the authentication flow" (what flow? what steps?)
+   - Empty template sections left unfilled
+   - Weasel quantities: "some", "various", "several" when a specific number or list is needed
+
+   **Check 2: Internal Consistency**
+   - Does every capability in the proposal have a corresponding spec?
+   - Does the design reference only capabilities from the proposal?
+   - Do tasks cover all design decisions, and nothing outside proposal scope?
+   - Are file paths consistent across proposal Impact, design, and tasks?
+
+   **Check 3: Scope Check**
+   - More than 15 pending tasks → consider decomposing into multiple changes
+   - Any single task would take more than 1 hour → split it
+   - Touches more than 3 unrelated subsystems → consider splitting
+
+   **Check 4: Ambiguity Check**
+   - Are success/failure conditions testable and specific?
+   - Are boundary conditions defined (empty input, max limits, error cases)?
+   - Could "the system" refer to multiple components? Be explicit.
+
+   **Check 5: Preservation Check** (ingest-specific)
+   - Are all completed tasks `[x]` still present and unchanged?
+   - Was existing content merged (not replaced)?
+
+   **Check 6: Durable Handoff Review** (run before the CLI analyzer)
+
+   The updated change has to survive being handed to another agent. Reject and fix any of the following on **incomplete** design and task content (do not rewrite completed `[x]` tasks):
+   - **File-path-only tasks**: a pending task whose entire description is "edit file X" with no behavior, contract, or verification target. File paths are locator context — the task still describes what is observably true when complete.
+   - **Line-number-coupled instructions**: design or task content that points to "line 42" / "the function on lines 80-95" as the only way to identify the work. Source line numbers drift; name the function, command, struct, or behavior instead.
+   - **Vague acceptance criteria**: success conditions like "works correctly", "behaves as expected", "handles edge cases" without naming the observable behavior or the verification target (test name, CLI invocation, analyzer rule, manual assertion).
+   - **Missing scope boundaries on non-trivial work**: design lacking explicit "in scope" / "out of scope" lines for any change that touches more than one subsystem or introduces new behavior. Trivial artifact-only edits may skip this; runtime, build, or tooling effects may not.
+
+   Fix every failure inline using the existing context and the new plan/conversation source before running the CLI analyzer. Update incomplete design and task content so behavior contracts, verification criteria, and scope boundaries stay current with the new context. Preserve completed tasks unchanged.
+
+7. **Analyze-Fix Loop** (max 2 iterations)
+
+   ```bash
+   speclink analyze <name> --json
+   ```
+
+   1. Filter findings to **Critical and Warning only** (ignore Suggestion)
+   2. No Critical/Warning findings → show "Artifacts look consistent ✓" and proceed
+   3. Critical/Warning findings exist →
+      a. Show: "Found N issue(s), fixing... (attempt M/2)"
+      b. Fix each finding in the affected artifact
+      c. Re-run `speclink analyze <name> --json`
+      d. Repeat up to 2 total iterations
+   4. Findings remain after 2 attempts → show them as a summary and proceed normally (do not block)
+
+8. **Validation**
+
+   ```bash
+   speclink validate "<name>"
+   ```
+
+   If validation fails, fix errors and re-validate.
+
+9. **Re-judge soft dependencies**
+
+   The update may have made this change build on another change's outcome. Record that now, so the plan guard of the next apply sees it:
+
+   1. Run `speclink list --json` for the active change names and their task counts (`totalTasks`). The change you just updated counts.
+   2. **Only one active change** (the one you just updated) → skip the rest of this step and run nothing — neither `change depends` nor `change rank`.
+   3. **Two or more** → judge the **soft dependencies of the change you just updated only** — never re-judge the whole landscape:
+      - Going by the updated artifacts, read the Impact section of each other active change's proposal and decide whether this change builds on that change's outcome. Each such change is a prerequisite of this one.
+      - Editing the same code areas alone is not a prerequisite here: this change may already be under way, and waiting for a change that has not started would stall it. Name such an overlap to the user instead of recording it.
+      - Record each prerequisite with its own call: `speclink change depends <change-name> --on <prerequisite>`. The verb writes all of its `--on` names or none, so one call per prerequisite keeps one refusal from dropping the others. This writes `depends_on` into the change's metadata, where `speclink plan` and every later session read it. A verbal note is not enough — if you found a prerequisite, the command must have run. An edge that already exists is left as it is. The verb refuses (with zero writes) a self-dependency, an unknown or archived name, and an edge that would form a cycle; report the refusal and move on to the next prerequisite — do not retry it, and do not edit another change's `depends_on`.
+      - No prerequisite found → run nothing.
+      - **Hard signal — requirement-level overlap** is the engine's job: `speclink plan` reads every delta. When two changes touch the same requirement of the same capability, the plan lists the one to archive first in the other's `archiveAfter`. It checks whether the canonical spec has that name now, and puts first the change whose archive leaves the name the way the other change needs it — for example, a change that ADDs a name the canonical spec lacks archives before one that MODIFIES it, and one that MODIFIES a name archives before one that REMOVES it. Two changes that both bring the same name in (ADD it, or rename a requirement to it), or both take it away (REMOVE it, or rename it away), are marked `conflict` in `requirementOverlap`. Overlap never delays a start. Do NOT judge overlap yourself. When the plan marks a `conflict` for this change, tell the user that one of the two sides has to change: whichever change archives second fails, on a duplicate name or on a name that is already gone.
+   4. **Queue jump — by stage and board rank.** Run `speclink plan --json` and read this change's `stage`:
+      - **Proposed** → judge the queue jump the way propose does. When it is small next to the proposed changes placed before it — fewer tasks than the one it would pass (`totalTasks` from the `speclink list --json` run above), and no change lists it in `dependsOn` — and it is urgent (for example a small fix from hands-on feedback that the user wants soon), move it ahead: find the first proposed change in the plan's `changes` placed before it that has more tasks, and run `speclink change rank <change-name> --before <that change>`. The verb writes the change's board rank — the same order key a drag on the desktop board writes — and `plan` follows it at once.
+        - The verb refuses because `<change-name>` already has a board rank (someone ordered it by hand) → only suggest the move to the user. Never add `--force`: it would overwrite that order.
+        - The verb refuses because the move would cross a declared dependency → report the refusal and leave the order as it is.
+        - Not small, or not urgent → run nothing.
+      - **In progress or ready** → do not run `change rank`: its place in the queue settled when work started. Re-judge `depends_on` only.
+   5. Never remove an existing `depends_on` entry here — dropping a prerequisite is the user's decision.
+
+10. **Seal the reflection** (discussion-sourced ingests only)
+
+   If this ingest folded a linked discussion's conclusion into the change, mark the reflection now that the content has landed:
+
+   ```bash
+   speclink discuss seal <slug> <change>
+   ```
+
+   `seal` flips the discussion to promoted (已轉出) and is idempotent — run it once per linked `from_discussion` slug (from `fromDiscussions` in `speclink show <change> --json`). This is what keeps "已轉出" honest: the discussion is marked reflected only after ingest actually carried its content in, never at link time. `seal` also clears that slug from the change's `restaleFrom` flag, so a re-ingest (triggered by a re-concluded discussion) closes the loop and the "待重新反映" marker disappears. Skip this step when no discussion fed the change.
+
+11. **Summary and next steps**
+
+   Show:
+   - Source used: plan file (`<path>`) or conversation context
+   - Change name and location
+   - Artifacts created/updated
+   - Validation result
+
+   Then state the suggestion from **Next steps** and STOP. NEVER invoke `/speclink-apply` yourself — starting implementation is the user's call, and this workflow is over once the summary is out.
+
+---
+
+## Rationalization Table
+
+| What You're Thinking                                             | What You Should Do                                                            |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| "The existing artifacts are close enough, just adjust the tasks" | Read the new context carefully. "Close enough" means you're missing something |
+| "The proposal doesn't need updating, the change is the same"     | If new context exists, the proposal likely needs updates. At minimum, check   |
+| "I can merge these tasks, they're basically the same"            | Keep tasks granular. Merged tasks are harder to track                         |
+| "The completed tasks still apply, no need to review"             | Verify they're still relevant to updated scope. Don't blindly keep stale work |
+| "This spec change is minor, skip the scenario update"            | If the requirement changed, the scenario must change                          |
+| "The conversation didn't discuss this artifact, so skip it"      | Absence of discussion doesn't mean absence of impact. Check                   |
+
+## Guardrails
+
+Check these before you present the summary:
+
+- [ ] The plan file in `` is unchanged (step 2), and no application code was written.
+- [ ] Only an existing change was updated — no new change was created (step 3).
+- [ ] Every completed `[x]` task is still present and unchanged (step 5).
+- [ ] `speclink status` shows each updated artifact, and `speclink validate` passed (steps 5 and 8).
+- [ ] Soft dependencies were re-judged (step 9), and every linked discussion was sealed (step 10).
+- [ ] `/speclink-apply` was not invoked (step 11).
+
+## Next steps
+
+Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.
+
+- The artifacts are updated and validated → `/speclink-apply <change-name>` to resume implementation
+- A linked discussion fed this change → `speclink discuss seal <slug>` first (step 10), then the same suggestion applies

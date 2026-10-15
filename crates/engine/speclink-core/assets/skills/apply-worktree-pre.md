@@ -4,6 +4,8 @@ Implement tasks from a Speclink change in an isolated git worktree, so several c
 
 **Prerequisites**: This skill requires the `speclink` CLI and `git`. If any command fails with "command not found" or similar, report the error and STOP.
 
+**Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response.
+
 ---
 
 ## Worktree preflight
@@ -41,8 +43,6 @@ Then act on how many names are parallel-ready:
 If the query fails, show the error and STOP.
 
 Do **NOT** run them one after another in this session. A single session working through several changes serializes what the user asked to parallelize, and its context is spent on the wrong change by the time the second one starts.
-
-If there is no AskUserQuestion tool available, ask the same question as plain text and wait for the answer.
 
 ### P1. Check the worktree policy
 
@@ -121,7 +121,7 @@ git status --porcelain -- <each touched path from that record>
   - **照樣繼續** — create the worktree knowing it will not contain those edits; the tasks they belong to will read as done with nothing behind them.
   - **停止** — end the run and leave everything as it is.
 
-Do NOT create the worktree before the user has chosen. If there is no AskUserQuestion tool available, present the same three options as plain text and wait for the answer.
+Do NOT create the worktree before the user has chosen.
 
 ### P4. Create or reuse the worktree
 

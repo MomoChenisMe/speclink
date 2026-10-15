@@ -3,9 +3,10 @@ import { screen, within } from "@testing-library/react";
 import { WebApiError } from "../api/client";
 import { makeAdminClient, renderAt, setViewport } from "./helpers/adminHarness";
 
-// 系統頁（server-web-console「資料操作目的地已併入系統」）：單頁呈現執行環境、儲存狀態、
-// 匯出與危險區，資料來自單一 view model。取得失敗時整頁呈現錯誤與重試入口——不部分渲染
-// 陳舊資料，因為 Store 健康在整個介面只該有一處權威來源。
+// 系統頁（server-web-console「資料操作目的地已併入系統」「共用設計系統維持高密度可存取體驗」
+// 的設定型頁條款；server-web-list-pages design D10）：768px 置中欄，執行環境、儲存狀態、匯出與
+// 危險區四張設定型卡，各值為卡內的列；資料來自單一 view model。取得失敗時整頁呈現錯誤與重試
+// 入口——不部分渲染陳舊資料，因為 Store 健康在整個介面只該有一處權威來源。
 
 beforeEach(() => setViewport(false));
 
@@ -44,13 +45,15 @@ describe("系統頁", () => {
     }));
     renderAt("/admin/system", makeAdminClient({ getAdminSystem }));
     const runtime = await screen.findByRole("region", { name: "執行環境" });
-    expect(runtime.textContent).toContain("0.1.0");
-    expect(runtime.textContent).toContain("sqlite");
+    expect(within(runtime).getByRole("group", { name: "引擎版本" }).textContent).toContain("0.1.0");
+    expect(within(runtime).getByRole("group", { name: "儲存後端" }).textContent).toContain("sqlite");
     const storage = screen.getByRole("region", { name: "儲存狀態" });
-    expect(storage.textContent).toContain("demo");
+    expect(within(storage).getByRole("group", { name: "儲存後端" }).textContent).toContain("正常");
+    expect(within(storage).getByRole("group", { name: "demo/backend" }).textContent).toContain("0");
     const exports = screen.getByRole("region", { name: "匯出" });
+    const scope = within(exports).getByRole("group", { name: "demo/backend" });
     expect(
-      within(exports).getByRole("link", { name: /demo\/backend|匯出/ }).getAttribute("href"),
+      within(scope).getByRole("link", { name: /demo\/backend|匯出/ }).getAttribute("href"),
     ).toBe("/admin/data/export/demo/backend");
     // 單一 view model：整頁只打一支 API。
     expect(getAdminSystem).toHaveBeenCalledTimes(1);
@@ -74,10 +77,22 @@ describe("系統頁", () => {
     }
   });
 
-  it("遷移在危險區並經 AlertDialog 確認後才送出", async () => {
+  it("內容欄 768px 置中、沒有表格", async () => {
+    renderAt("/admin/system", makeAdminClient());
+    await screen.findByRole("region", { name: "執行環境" });
+    const column = screen
+      .getByRole("heading", { level: 1, name: "系統" })
+      .closest("[data-page-header]")?.parentElement as HTMLElement;
+    expect(column.className).toContain("max-w-[768px]");
+    expect(column.className).toContain("mx-auto");
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("遷移在危險區的「資料結構遷移」列，經 AlertDialog 確認後才送出", async () => {
     const client = makeAdminClient();
     renderAt("/admin/system", client);
     const danger = await screen.findByRole("region", { name: "危險區" });
+    expect(within(danger).getByRole("group", { name: "資料結構遷移" })).toBeTruthy();
     const { default: userEvent } = await import("@testing-library/user-event");
     const user = userEvent.setup();
     await user.click(within(danger).getByRole("button", { name: /遷移/ }));
@@ -112,7 +127,9 @@ describe("系統頁", () => {
       true,
     );
     const storage = screen.getByRole("region", { name: "儲存狀態" });
-    expect(storage.textContent).toContain("store unreachable");
+    expect(within(storage).getByRole("group", { name: "儲存後端" }).textContent).toContain(
+      "store unreachable",
+    );
     // spec「儲存健康徽章」：徽章與同區的錯誤訊息同語意色層級。
     expect(within(storage).getByText("異常").className).toContain("destructive");
   });

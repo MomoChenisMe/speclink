@@ -1,0 +1,21 @@
+## 1. 純邏輯：面板水平限制與重開抑制（speclink-desktop-core）
+
+- [x] 1.1 先寫失敗測試，對應 D3 與 D4 的兩個純函式：在 apps/desktop/core/src/tray_panel.rs 的 `#[cfg(test)]` 寫水平限制四案——候選 x=840、work area 0–1920、寬 320 → 840；x=1700 → 1600（貼右緣）；x=-60 → 0（貼左緣）；work area 寬 300、視窗寬 320 → 貼 work area 左緣——與重開抑制四案——無收起紀錄 → 不忽略；距收起 120ms、299ms → 忽略；300ms → 不忽略。執行 `cargo test -p speclink-desktop-core tray_panel` 確認紅燈（模組尚不存在而編譯失敗亦算紅燈）。 <!-- speclink-task:tsk_01M4SEZW0VVTJMWVDFMP4MG524 -->
+- [x] 1.2 新增 apps/desktop/core/src/tray_panel.rs 並在 apps/desktop/core/src/lib.rs 註冊：匯出面板位置函式（圖示矩形、面板寬高、work area → 面板左上角：水平以圖示為中心並套 1.1 的水平限制，垂直貼齊工作列那一側）與重開抑制函式（上次收起時間、現在時間 → 是否忽略，門檻 300ms 為模組內常數），不依賴 Tauri。驗證：`cargo test -p speclink-desktop-core tray_panel` 中 1.1 的八案與面板位置的 spec Example（「水平位置限制」「垂直位置」）測試轉綠。 <!-- speclink-task:tsk_01M4SEZW0VQBXCRJGJ0R4W73M2 -->
+
+## 2. Tauri 殼：Windows 面板視窗
+
+- [x] 2.1 依 D3 與 D6 讓面板模組、command 與能力宣告擴及 Windows：apps/desktop/src-tauri/src/lib.rs 的 `mod panel` 改為所有平台編譯（Linux 由模組內守門區塊回 Err／無事）、toggle_tray_panel 在 Windows 為 async command；tauri-plugin-positioner、tauri-nspanel 與 window-vibrancy 仍只在 macOS 的相依區段（apps/desktop/src-tauri/Cargo.toml）與註冊，apps/desktop/src/tray.ts 只在 macOS 把點擊事件餵給 positioner；apps/desktop/src-tauri/capabilities/macos.json 改名為 apps/desktop/src-tauri/capabilities/tray-panel.json（identifier 改 tray-panel、platforms 為 macOS 與 windows），positioner 權限移到只給 macOS 的 apps/desktop/src-tauri/capabilities/tray-panel-macos.json，apps/desktop/src/__tests__/themeBoot.test.ts 改讀新檔。驗證：macOS 上 `cargo check -p speclink-desktop` 通過、`npm test -w apps/desktop -- themeBoot` 綠燈。 <!-- speclink-task:tsk_01M4SEZW0VXGX6NJPSFW8JKTWV -->
+- [x] 2.2 實作 D1、D3、D4 的 Windows 視窗分支：apps/desktop/src-tauri/src/panel.rs 以平台區塊分開實作、對外仍只露出 toggle 與 hide——macOS 為既有 NSPanel 實作且行為不變；Windows 以不透明、無外框、帶陰影、不進工作列、置頂、不可調整大小的 WebviewWindow 建立面板，開啟時讀取系統匣圖示位置並記下，以 1.2 的面板位置函式在圖示所在螢幕的 work area 內定位並取得焦點，視窗大小改變事件時以記下的圖示位置重做定位，失焦事件時收起並記下時間，開啟要求先經 1.2 的重開抑制判斷，主視窗關閉時一併關閉面板。驗證：macOS 上 `cargo check -p speclink-desktop` 通過；Windows 分支的編譯由 4.1 的 CI windows-latest 確認。 <!-- speclink-task:tsk_01M4SEZW0VZH6W1VP71E9016K4 -->
+
+## 3. 前端：點擊分流與平台外觀（系統匣圖示與原生選單、面板樣式）
+
+- [x] 3.1 先寫失敗測試，對應「系統匣圖示與原生選單」「生命週期分區與變更進度」與「面板樣式」需求（D7：以「面板樣式」取代「面板樣式（macOS）」）：apps/desktop/src/__tests__/store.test.ts 既有「系統匣樣式由平台決定」改為 macOS 與 Windows UA 的 trayStyle 初值為 panel、Linux UA 為 native-menu；apps/desktop/src/__tests__/tray.test.ts 新增——Windows 的 panel 樣式建立系統匣時掛原生選單且 showMenuOnLeftClick 為 false、去抖更新後仍掛選單，只有左鍵放開觸發 onPanelToggle、右鍵放開不觸發；macOS 的 panel 樣式不掛選單、左右鍵放開都觸發；Windows 面板建立失敗（panelFallback）後轉 native-menu 且左鍵開選單；apps/desktop/src/__tests__/trayPanel.test.tsx 新增——平台為 windows 時 panel-root 含不透明的 `bg-sidebar`、不含 `rounded-[13px]` 與 `bg-sidebar/60`，平台為 macos 時維持兩者。執行 `npm test -w apps/desktop -- store tray trayPanel` 確認新斷言紅燈。 <!-- speclink-task:tsk_01M4SEZW0VMYXKDCFXM7GHVXBK -->
+- [x] 3.2 實作 D5 的點擊分流：apps/desktop/src/store.ts 的 trayStyle 初值改以 detectPlatform() 判斷（macOS、Windows → panel；Linux → native-menu）；apps/desktop/src/tray.ts 接受注入的平台（測試用），Windows 的 panel 樣式在建立與去抖更新時都掛同一份原生選單並設 showMenuOnLeftClick 為 false，action 只在左鍵放開時開閉面板；macOS 行為不變。驗證：`npm test -w apps/desktop -- store tray` 中 3.1 的 store 與 tray 斷言轉綠。 <!-- speclink-task:tsk_01M4SEZW0VYGBV5ZMHD3S50TYF -->
+- [x] 3.3 實作 D2 的平台外觀分支：apps/desktop/src/panel/main.tsx 以 detectPlatform() 取得平台並傳給 TrayPanel；apps/desktop/src/panel/TrayPanel.tsx 的 panel-root 在 Windows 用不透明 `bg-sidebar`、不畫圓角，在 macOS 維持 `rounded-[13px]` 與 `bg-sidebar/60`，其餘呈現不分平台。驗證：`npm test -w apps/desktop -- trayPanel` 中 3.1 的平台外觀斷言轉綠、整個檔案全綠。 <!-- speclink-task:tsk_01M4SEZW0VD8FRQH8EK6B4PRWT -->
+
+## 4. 收尾驗證
+
+- [x] [M] 4.1 使用者 push 含本變更的提交後，確認 CI 的 windows-latest 工作綠燈（`cargo test --workspace` 會編譯 Windows 面板分支，這是 Windows 程式碼唯一的自動編譯驗證）；紅燈時把錯誤訊息交回修正。 <!-- speclink-task:tsk_01M4SEZW0VFH627W96036V35XQ -->
+- [x] [M] 4.2 使用者在 Windows 真機（Windows 上執行 root 的 `npm run dev:desktop`，或安裝含本變更的建置）逐項確認：工作列在底部時左鍵點圖示，面板出現在圖示正上方且底部貼齊工作列；工作列移到頂端時面板改在圖示下方；把圖示拖到最靠螢幕右緣的位置時面板不超出螢幕；收起與展開「討論」卡後面板仍貼齊工作列；面板開著時點圖示會關掉、不閃一下又打開；點面板外會收起；右鍵點圖示出現原生選單、最下面是「結束」；深色與淺色模式下面板底色不透明、Windows 11 四角為系統圓角；有多螢幕或縮放比例不是 100% 時面板位置仍正確。 <!-- speclink-task:tsk_01M4SEZW0V9681JCJ7SH4SD83B -->
+- [x] 4.3 跑受影響面的完整測試確認沒有回歸：`npm test -w apps/desktop` 全綠、`cargo test -p speclink-desktop-core` 全綠，且 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過（詞彙守門、中英對照與文件連結檢查）。 <!-- speclink-task:tsk_01M4SEZW0V35PCE94SQAN4Z7R1 -->

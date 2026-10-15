@@ -1,22 +1,16 @@
 import { useState } from "react";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-  Archive,
-  ArrowUpRight,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Copy,
-  MessageSquareText,
-} from "lucide-react";
+import { Archive, ChevronRight, MessageSquareText } from "lucide-react";
 
 import type { ArchivedItem, ChangeItem, DiscussionItem, SearchHit } from "../adapter";
 import { cardDndId } from "../boardDnd";
 import { useI18n } from "../i18n";
-import { changeStage, STAGE_BADGE } from "../stage";
+import { cn } from "../lib/utils";
+import { changeStage, DISCUSSION_TONE, STAGE_BADGE } from "../stage";
 import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
 import { Button } from "./ui/button";
+import { BoardColumn, type ColumnTone } from "./BoardColumn";
 import { ColumnLoadFailed, ColumnSkeleton } from "./skeletons";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { CardNameRow } from "./CardNameRow";
@@ -24,7 +18,7 @@ import { HighlightText } from "./HighlightText";
 import { ImproveStamp } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
-import { useCopied } from "./useCopied";
+import { CopyButton, REVEAL_ON_HOVER } from "./CopyButton";
 
 /**
  * promoted_to 子變更的階段標示（純前端由清單存在性派生）——active 清單命中
@@ -44,7 +38,7 @@ export function discussionChipStage(
 
 /**
  * promoted 子變更 chip 的配色（design D2）——與 discussionChipStage 同分類規則：
- * active 命中取看板階段的 STAGE_BADGE teal 濃度、封存命中為中性色、皆無為
+ * active 命中取看板階段的 STAGE_BADGE 色相、封存命中為中性色、皆無為
  * destructive 加刪除線（已刪除）。與看板欄配色同一來源，不引入新色輪。
  */
 export function discussionChipClass(
@@ -58,7 +52,7 @@ export function discussionChipClass(
   return "bg-destructive/15 text-destructive line-through";
 }
 
-export interface DiscussionColumnProps {
+interface DiscussionColumnBaseProps {
   /** 看板上的討論（active 清單；封存討論不進此欄）。 */
   discussions: DiscussionItem[];
   /** active change 清單（chips 階段派生）。 */
@@ -82,6 +76,25 @@ export interface DiscussionColumnProps {
   /** 首訪載入失敗：卡片區顯示載入失敗提示，取代空態文案（呼叫端已排除 loading）。 */
   loadFailed?: boolean;
 }
+
+/**
+ * 欄底「已轉出」收合列的展開狀態（design D2）：兩者同進同出——皆提供時受控（展開狀態
+ * 由宿主持有，桌面 app 存於 app 本機跨啟動保留）；皆缺席時元件內部狀態、不持久化。
+ * 只給其一在型別層就擋下，免得值被忽略或回呼永不觸發。
+ */
+export type PromotedExpansionProps =
+  | { promotedExpanded: boolean; onPromotedExpandedChange: (expanded: boolean) => void }
+  | { promotedExpanded?: undefined; onPromotedExpandedChange?: undefined };
+
+export type DiscussionColumnProps = DiscussionColumnBaseProps & PromotedExpansionProps;
+
+/** 討論欄的色相組：桃紫專屬，與系統匣討論分區同一來源（DISCUSSION_TONE）。 */
+const DISCUSSION_COLUMN_TONE: ColumnTone = {
+  icon: MessageSquareText,
+  bar: "bg-stage-discussion",
+  iconCls: DISCUSSION_TONE.icon,
+  badge: DISCUSSION_TONE.badge,
+};
 
 const STATUS_BADGE: Record<string, { labelKey: string; cls: string }> = {
   open: { labelKey: "discussion.statusOpen", cls: "bg-primary/8 text-primary/70" },
@@ -128,12 +141,14 @@ export function DiscussionCard({
   DiscussionColumnProps,
   "onOpenDiscussion" | "onArchiveDiscussion" | "highlight"
 >) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const badge = statusBadge(d);
   return (
     <Card
       data-discussion={d.slug}
-      className="group cursor-pointer transition-[border-color,box-shadow] hover:border-primary/60 hover:shadow-md"
+      size="nested"
+      interactive
+      className="group cursor-(--cursor-interaction)"
       onClick={() => onOpenDiscussion?.(d.slug)}
     >
       <CardHeader className="p-3 flex-row items-start gap-1.5">
@@ -169,7 +184,7 @@ export function DiscussionCard({
         </span>
         {/* meta 列（anatomy 三列骨架）：輪數與建立時間並排；建立者圓點已上移識別列。 */}
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="tabular-nums">{t("common.rounds").replace("{n}", String(d.rounds))}</span>
+          <span className="tabular-nums">{tn("common.rounds", d.rounds)}</span>
           <span className="tabular-nums">{d.created}</span>
         </div>
         {/* stopPropagation 掛在按鈕自身而非整列：鈕旁空白仍冒泡開討論抽屜。 */}
@@ -242,12 +257,6 @@ function PromotedRow({
   onOpenDiscussion,
 }: { d: DiscussionItem } & Pick<DiscussionColumnProps, "changes" | "archived" | "onOpenDiscussion">) {
   const { t } = useI18n();
-  const [copied, markCopied] = useCopied();
-  const copySlug = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    void navigator.clipboard?.writeText(d.slug);
-    markCopied();
-  };
   // 衍生樹細列：slug（檔名）為首行錨點——CLI 動詞把手，帶複製鈕（LANGUAGE.md
   // 受控例外，desktop-ux-polish 擴充）；topic 降為次行描述；子變更以樹狀前綴
   // 逐列列出——父子（討論→衍生變更）關係一眼可讀。
@@ -256,7 +265,7 @@ function PromotedRow({
       role="button"
       tabIndex={0}
       data-discussion={d.slug}
-      className="group cursor-pointer rounded-md border border-border/60 bg-background/60 px-2 py-1.5 text-left transition-colors hover:border-primary/60"
+      className="group cursor-(--cursor-interaction) rounded-lg border border-border bg-card px-2.5 py-2 text-left transition-colors hover:border-foreground/20"
       onClick={() => onOpenDiscussion?.(d.slug)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") onOpenDiscussion?.(d.slug);
@@ -272,16 +281,11 @@ function PromotedRow({
             <ImproveStamp />
           </span>
         )}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={t("discussion.copySlug")}
-          className={`ml-1 inline-flex h-4 w-4 align-text-bottom text-muted-foreground hover:text-foreground transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-          onClick={copySlug}
-        >
-          {copied ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}
-        </Button>
+        <CopyButton
+          value={d.slug}
+          label={t("discussion.copySlug")}
+          className={cn("ml-1 align-text-bottom", REVEAL_ON_HOVER)}
+        />
       </span>
       <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{d.topic}</span>
       <span className="mt-1 flex flex-col gap-0.5">
@@ -307,8 +311,9 @@ function PromotedRow({
  * 看板第 0 欄「討論」（兩級呈現，上下兩區同屏、不互斥切換；design D3）：
  * - 上區：open／concluded 全尺寸卡（open 唯讀、concluded 帶「封存」動詞——
  *   轉為變更已自 GUI 撤除）。
- * - 欄底：「已轉出 N」常駐收合列（有 promoted 時呈現、預設收合、不持久化），
- *   點按就地展開 promoted 衍生樹細列（slug 首行＋topic＋衍生變更樹＋階段 chip）。
+ * - 欄底：「已轉出 N ›」常駐收合列（有 promoted 時呈現、預設收合），點按就地在
+ *   收合列正上方展開 promoted 衍生樹細列（slug 首行＋topic＋衍生變更樹＋階段 chip）；
+ *   展開狀態可由宿主受控（桌面 app 跨啟動保留），缺席時元件內部狀態、不持久化。
  */
 export function DiscussionColumn({
   discussions,
@@ -321,12 +326,20 @@ export function DiscussionColumn({
   fulltextHits,
   loading,
   loadFailed,
+  promotedExpanded,
+  onPromotedExpandedChange,
 }: DiscussionColumnProps) {
   const { t } = useI18n();
   const full = discussions.filter((d) => !isCollapsedPromoted(d));
   const promoted = discussions.filter(isCollapsedPromoted);
-  // D3：欄底收合列的展開狀態——元件 local、預設收合、不跨啟動持久化。
-  const [promotedOpen, setPromotedOpen] = useState(false);
+  // 收合列展開狀態（design D2）：兩個 props 皆提供時受控，否則內部狀態、預設收合。
+  const controlled = promotedExpanded !== undefined && onPromotedExpandedChange !== undefined;
+  const [localOpen, setLocalOpen] = useState(false);
+  const promotedOpen = controlled ? promotedExpanded : localOpen;
+  const togglePromoted = () => {
+    if (controlled) onPromotedExpandedChange(!promotedOpen);
+    else setLocalOpen((v) => !v);
+  };
   const hitBySlug = new Map(
     (fulltextHits ?? []).filter((h) => h.kind === "discussion").map((h) => [h.id, h]),
   );
@@ -351,86 +364,71 @@ export function DiscussionColumn({
       />
     ),
   );
-  // 欄頭（色條／圖示／計數）一律中性：討論欄不是生命週期階段，主色深淺階梯是
-  // 看板三欄的語彙，照抄會讓「顏色＝階段」的讀法失準（系統匣的討論分區同樣中性）。
+  // 欄殼與三個階段欄共用（BoardColumn，design D1）。
   return (
-    <div
-      data-column="discussions"
-      className="flex h-full min-h-0 flex-1 min-w-[250px] max-w-[360px] flex-col gap-2 rounded-xl border-t-4 border-t-border bg-muted/40 p-2"
-    >
-      <div className="flex items-center gap-1.5 px-1.5 pt-0.5 shrink-0">
-        <MessageSquareText className="h-3.5 w-3.5 text-muted-foreground/60" />
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {t("discussion.heading")}
-        </h2>
-        <div className="flex-1" />
-        {!loading && !loadFailed && (
-          <span
-            data-testid="column-count"
-            className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold tabular-nums bg-muted text-muted-foreground"
-          >
-            {full.length}
-          </span>
-        )}
-      </div>
-      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
-        {loading ? (
-          <ColumnSkeleton />
-        ) : loadFailed ? (
-          <ColumnLoadFailed />
-        ) : (
+    <BoardColumn
+      id="discussions"
+      title={t("discussion.heading")}
+      tone={DISCUSSION_COLUMN_TONE}
+      count={loading || loadFailed ? null : full.length}
+      empty={
+        !loading && !loadFailed && full.length === 0 && promoted.length === 0
+          ? t("discussion.none")
+          : null
+      }
+      footer={
+        !loading &&
+        promoted.length > 0 && (
           <>
-            {full.length === 0 && promoted.length === 0 && (
-              <p className="px-1.5 pt-2 text-xs text-muted-foreground">{t("discussion.none")}</p>
+            {/* 展開的 promoted 細列落在收合列正上方的有界區塊（淡灰底上、自捲）：欄內全卡
+                再多也看得到，不會被擠到卡片捲動區的最底部。不加 shrink-0——視窗很矮時區塊
+                可被壓縮，收合列不會被欄外框的 overflow-hidden 切掉。relative 同卡片區：細列
+                內的 absolute 元素受本區裁切。 */}
+            {promotedOpen && (
+              <div className="relative flex max-h-64 flex-col gap-1.5 overflow-y-auto px-2 pb-2">
+                {promoted.map((d) => (
+                  <PromotedRow
+                    key={d.slug}
+                    d={d}
+                    changes={changes}
+                    archived={archived}
+                    onOpenDiscussion={onOpenDiscussion}
+                  />
+                ))}
+              </div>
             )}
-            {sortable ? (
-              <SortableContext
-                items={full.map((d) => cardDndId("discussion", d.slug))}
-                strategy={verticalListSortingStrategy}
-              >
-                {fullCards}
-              </SortableContext>
-            ) : (
-              fullCards
-            )}
+            <button
+              type="button"
+              aria-expanded={promotedOpen}
+              onClick={togglePromoted}
+              className="flex w-full shrink-0 items-center gap-2 border-t border-border/70 bg-card px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <span className="flex-1 text-left tabular-nums">
+                {t("discussion.promotedBar").replace("{n}", String(promoted.length))}
+              </span>
+              {/* 收合 ›、展開時指向展開出來的內容：細列展開在收合列上方，故朝上。 */}
+              <ChevronRight
+                className={`h-3.5 w-3.5 shrink-0 transition-transform ${promotedOpen ? "-rotate-90" : ""}`}
+              />
+            </button>
           </>
-        )}
-      </div>
-      {!loading && promoted.length > 0 && (
-        <div className="shrink-0 flex flex-col gap-1.5 border-t border-border/60 pt-1.5">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-expanded={promotedOpen}
-            onClick={() => setPromotedOpen((v) => !v)}
-            className="h-6 w-full justify-start gap-1 px-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
-          >
-            <ArrowUpRight className="h-3 w-3" />
-            <span className="tabular-nums">
-              {t("discussion.promotedBar").replace("{n}", String(promoted.length))}
-            </span>
-            {promotedOpen ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
-          </Button>
-          {promotedOpen && (
-            <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto">
-              {promoted.map((d) => (
-                <PromotedRow
-                  key={d.slug}
-                  d={d}
-                  changes={changes}
-                  archived={archived}
-                  onOpenDiscussion={onOpenDiscussion}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+        )
+      }
+    >
+      {loading ? (
+        <ColumnSkeleton />
+      ) : loadFailed ? (
+        <ColumnLoadFailed />
+      ) : sortable ? (
+        <SortableContext
+          items={full.map((d) => cardDndId("discussion", d.slug))}
+          strategy={verticalListSortingStrategy}
+        >
+          {fullCards}
+        </SortableContext>
+      ) : (
+        fullCards
       )}
-    </div>
+    </BoardColumn>
   );
 }

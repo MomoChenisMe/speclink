@@ -195,7 +195,11 @@ describe("remote offline stale snapshot", () => {
 
     expect((await screen.findByTestId("remote-stale-banner")).textContent).toContain("離線");
     expect(screen.getAllByText("remote-change").length).toBeGreaterThan(0);
-    expect(document.querySelector(`[data-cloud-off="${REMOTE_KEY}"]`)).toBeTruthy();
+    // 圖示列方塊：離線＝角落琥珀點。
+    const square = Array.from(document.querySelectorAll("[data-tab]")).find(
+      (el) => el.getAttribute("data-tab") === REMOTE_KEY,
+    );
+    expect(square?.querySelector('[data-tab-dot="warning"]')).toBeTruthy();
     expect((screen.getByRole("button", { name: "封存" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getAllByRole("checkbox")[0] as HTMLInputElement).disabled).toBe(true);
   });
@@ -285,7 +289,11 @@ describe("remote offline stale snapshot", () => {
 
     await screen.findByText("recovered-change");
     expect(screen.queryByTestId("remote-stale-banner")).toBeNull();
-    expect(document.querySelector(`[data-cloud-off="${REMOTE_KEY}"]`)).toBeNull();
+    const square = Array.from(document.querySelectorAll("[data-tab]")).find(
+      (el) => el.getAttribute("data-tab") === REMOTE_KEY,
+    );
+    expect(square).toBeTruthy();
+    expect(square?.querySelector("[data-tab-dot]")).toBeNull();
   });
 
   it("needs-reauth 導向聚焦登入，成功後依序 re-handshake 全部 remote sessions、重查並重掛 worker", async () => {
@@ -404,7 +412,7 @@ describe("remote offline stale snapshot", () => {
     });
     const reauth = await screen.findByRole("button", { name: "重新登入" });
     // stale 橫幅整條已是琥珀警示；按鈕再塗琥珀只會兩片顏色互搶，改中性 outline。
-    expect(reauth.className).not.toContain("amber");
+    expect(reauth.className).not.toContain("status-warning");
     expect(reauth.className).toContain("border");
     fireEvent.click(reauth);
     const login = await screen.findByTestId("reauth-login-c1");
@@ -432,5 +440,66 @@ describe("remote offline stale snapshot", () => {
     expect(document.querySelector(`[data-tab="${backendKey}"]`)).toBeTruthy();
     expect(document.querySelector(`[data-tab="${frontendKey}"]`)).toBeTruthy();
     expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it("session 回報 needs-reauth 後，從齒輪進伺服器頁也看得到該連線「登入過期」", async () => {
+    localStorage.setItem(
+      "speclink.projectTabs",
+      JSON.stringify({
+        version: 2,
+        tabs: [
+          {
+            locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
+            name: "Demo/Backend",
+          },
+        ],
+        activeKey: "remote:c1/demo/backend",
+      }),
+    );
+    const events = fakeEvents();
+    const invoke = vi.fn(async (command: string) => {
+      switch (command) {
+        case "remote_list_changes":
+          return { changes: [{ name: "backend-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }] };
+        case "remote_list_specs":
+          return { specs: [] };
+        case "remote_list_archived":
+          return { archived: [] };
+        case "remote_list_discussions":
+          return { active: [], archived: [] };
+        default:
+          return undefined;
+      }
+    }) as unknown as InvokeFn;
+    const openRemote = vi.fn(async () =>
+      createRemoteSession("c1", { ...INFO, repoKey: "backend", repoName: "Backend" }, undefined, {
+        invoke,
+        listen: events.listen,
+      }),
+    );
+    const connections = {
+      list: vi.fn(async () => [{ id: "c1", origin: "http://server.test", name: "Server", loggedIn: true }]),
+    } as unknown as ConnectionsAdapter;
+    render(
+      <App
+        createSession={vi.fn()}
+        openRemote={openRemote}
+        workspace={fakeWorkspace() as never}
+        connections={connections}
+      />,
+    );
+    await screen.findByText("backend-change");
+    act(() => {
+      events.emit("remote-connection-state", { connectionId: "c1", state: "needs-reauth", message: "登入已失效" });
+    });
+    await screen.findByTestId("remote-stale-banner");
+
+    fireEvent.click(
+      (document.querySelector("[data-project-rail]") as HTMLElement).querySelector('[aria-label="設定"]') as HTMLElement,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "伺服器" }));
+    const row = await screen.findByTestId("server-row-http://server.test");
+    expect(row.textContent).toContain("登入過期");
+    expect(row.textContent).toContain("重新登入");
   });
 });

@@ -8,15 +8,20 @@ import type {
   StatusReport,
 } from "@speclink/ui";
 
-import { createAppStore, openTicketStation } from "../store";
+import { createAppStore, openTicketStation, selectAssetPrompt, type AppState } from "../store";
+import { assetPrompt } from "../assetPrompt";
 import type { ConnectionsAdapter } from "../adapter/connections";
+import type { FsActionsAdapter } from "../adapter/fsActions";
+import { APP_MESSAGES } from "../i18n/messages";
+import fsActionsRs from "../../core/src/fs_actions.rs?raw";
 import type { WorkspaceAdapter } from "../adapter/workspace";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 import { STALE_PROBE } from "./helpers/assetFixtures";
 import { changeList } from "./helpers/changeList";
 
-const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
-vi.mock("sonner", () => ({ toast: { error: toastError } }));
+// sonner 雙面 mock：toast() 本體（背景檢查發現新版本的提示）與 toast.error（失敗路徑）。
+const { toastError, toastFn } = vi.hoisted(() => ({ toastError: vi.fn(), toastFn: vi.fn() }));
+vi.mock("sonner", () => ({ toast: Object.assign(toastFn, { error: toastError }) }));
 
 const STATUS: StatusReport = {
   changeName: "x",
@@ -45,14 +50,19 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
     listArchived: vi.fn().mockResolvedValue([{ datedName: "2026-07-04-x", date: "2026-07-04", name: "x" }]),
     status: vi.fn().mockResolvedValue(STATUS),
     changeMeta: vi.fn().mockResolvedValue(null),
+    revertChangeToProposed: vi.fn().mockResolvedValue(undefined),
+    dependsCandidates: vi.fn().mockResolvedValue([]),
     deleteChange: vi.fn().mockResolvedValue(undefined),
+    setAllTasks: vi.fn().mockResolvedValue(undefined),
     setTaskDone: vi.fn().mockResolvedValue(undefined),
     moveTask: vi.fn().mockResolvedValue(undefined),
+    getStationTicket: vi.fn().mockResolvedValue(null),
     getDocument: vi.fn().mockResolvedValue("## Why\nhello"),
     getSpecDocument: vi.fn().mockResolvedValue("# spec"),
     searchWorkspace: vi.fn().mockResolvedValue([]),
     changeCapabilities: vi.fn().mockResolvedValue(["desktop-app"]),
     runVerb: vi.fn().mockResolvedValue({ valid: true }),
+    getArchivedStationTicket: vi.fn().mockResolvedValue(null),
     getArchivedDocument: vi.fn().mockResolvedValue(null),
     archivedCapabilities: vi.fn().mockResolvedValue([]),
     listDiscussions: vi.fn().mockResolvedValue({ active: [], archived: [] }),
@@ -69,12 +79,25 @@ function fakeDataSource(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSou
   };
 }
 
+/** 帶一則 active 討論 topic-a 的資料源（討論抽屜相關測試共用）。 */
+function withTopicA(over: Partial<SpeclinkDataSource> = {}): SpeclinkDataSource {
+  return fakeDataSource({
+    listDiscussions: vi.fn().mockResolvedValue({
+      active: [
+        { slug: "topic-a", topic: "t", status: "open", rounds: 1, created: "2026-07-17", promotedTo: [] },
+      ],
+      archived: [],
+    }),
+    ...over,
+  });
+}
+
 /** 假 session（workspace-session 決策 6）：資料載入一律經活躍 session 的 dataSource。 */
 function fakeSession(ds: SpeclinkDataSource, root = "A", name = "a"): WorkspaceSession {
   return {
     id: `local:${root}`,
     locator: { kind: "local", root },
-    descriptor: { name },
+    descriptor: { name, badge: null },
     dataSource: ds,
     settings: {
       kind: "local",
@@ -84,6 +107,13 @@ function fakeSession(ds: SpeclinkDataSource, root = "A", name = "a"): WorkspaceS
       writeWorkflowConfig: vi.fn(),
       writeWorkflowContext: vi.fn(),
       writeWorkflowRules: vi.fn(),
+      writeWorkflowReview: vi.fn(),
+      readSchemas: vi.fn().mockResolvedValue([]),
+      writeWorkflowSchema: vi.fn(),
+      forkSchema: vi.fn(),
+      createSchema: vi.fn(),
+      revealSchema: vi.fn(),
+      deleteSchema: vi.fn(),
     },
     events: { subscribe: () => () => {} },
     capabilities: LOCAL_CAPABILITIES,
@@ -103,7 +133,7 @@ function remoteSession(ds: SpeclinkDataSource, repoId: string): WorkspaceSession
   return {
     id: `remote:c1/demo/${repoId}`,
     locator,
-    descriptor: { name: `Demo/${repoId}` },
+    descriptor: { name: `Demo/${repoId}`, badge: null },
     dataSource: ds,
     settings: {
       kind: "remote",
@@ -113,6 +143,13 @@ function remoteSession(ds: SpeclinkDataSource, repoId: string): WorkspaceSession
       writeWorkflowConfig: vi.fn(),
       writeWorkflowContext: vi.fn(),
       writeWorkflowRules: vi.fn(),
+      writeWorkflowReview: vi.fn(),
+      readSchemas: vi.fn().mockResolvedValue([]),
+      writeWorkflowSchema: vi.fn(),
+      forkSchema: vi.fn(),
+      createSchema: vi.fn(),
+      revealSchema: vi.fn(),
+      deleteSchema: vi.fn(),
     },
     events: { subscribe: () => () => {} },
     capabilities: LOCAL_CAPABILITIES,
@@ -149,6 +186,7 @@ function deferred<T>() {
 
 beforeEach(() => {
   toastError.mockClear();
+  toastFn.mockClear();
   localStorage.clear();
 });
 
@@ -377,7 +415,7 @@ describe("app store (Zustand)", () => {
         pendingArchive: null,
         pendingDelete: null,
         pendingArchiveDiscussion: null,
-        drawerVerb: null,
+        detailVerb: null,
       });
 
       pendingSearch.resolve([
@@ -637,7 +675,7 @@ describe("app store (Zustand)", () => {
     await store.getState().runVerb("analyze", "desktop-shell-and-browser");
     expect(runVerb).toHaveBeenCalledWith("validate", "desktop-shell-and-browser");
     expect(runVerb).toHaveBeenCalledWith("analyze", "desktop-shell-and-browser");
-    expect(store.getState().drawerVerb).toMatchObject({
+    expect(store.getState().detailVerb).toMatchObject({
       change: "desktop-shell-and-browser",
       validate: { valid: true },
       analyze: { findings: [{ dimension: "Ambiguity" }] },
@@ -651,23 +689,23 @@ describe("app store (Zustand)", () => {
     const ds = fakeDataSource({ runVerb: vi.fn().mockRejectedValue(new Error("parse boom")) });
     const store = storeWith(ds);
     await store.getState().runVerb("analyze", "desktop-shell-and-browser");
-    expect(store.getState().drawerVerb?.change).toBe("desktop-shell-and-browser");
-    expect(store.getState().drawerVerb?.error).toContain("parse boom");
+    expect(store.getState().detailVerb?.change).toBe("desktop-shell-and-browser");
+    expect(store.getState().detailVerb?.error).toContain("parse boom");
   });
 
-  it("clearDrawerVerb closes the analysis result; switching change still clears it", async () => {
-    // design D2：分析面板可關閉——clearDrawerVerb 收合；既有「換 change 清空」不回歸。
+  it("clearDetailVerb closes the analysis result; switching change still clears it", async () => {
+    // design D2：分析面板可關閉——clearDetailVerb 收合；既有「換 change 清空」不回歸。
     const ds = fakeDataSource();
     const store = storeWith(ds);
     await store.getState().refresh();
     await store.getState().runVerb("analyze", "desktop-shell-and-browser");
-    expect(store.getState().drawerVerb).not.toBeNull();
-    store.getState().clearDrawerVerb();
-    expect(store.getState().drawerVerb).toBeNull();
+    expect(store.getState().detailVerb).not.toBeNull();
+    store.getState().clearDetailVerb();
+    expect(store.getState().detailVerb).toBeNull();
     // 換 change 清空行為保留
     await store.getState().runVerb("analyze", "desktop-shell-and-browser");
     store.getState().openDetail("desktop-shell-and-browser");
-    expect(store.getState().drawerVerb).toBeNull();
+    expect(store.getState().detailVerb).toBeNull();
   });
 
   it("runVerb archive 成功維持靜默", async () => {
@@ -675,7 +713,7 @@ describe("app store (Zustand)", () => {
     const store = storeWith(ds);
     await store.getState().runVerb("archive", "desktop-shell-and-browser");
     expect(toastError).not.toHaveBeenCalled();
-    expect(store.getState().drawerVerb).toBeNull();
+    expect(store.getState().detailVerb).toBeNull();
     expect(ds.listChanges).toHaveBeenCalled();
   });
 
@@ -921,6 +959,46 @@ describe("app store (Zustand)", () => {
     expect(ds.runVerb).toHaveBeenCalledWith("archive", "desktop-shell-and-browser");
   });
 
+  it("放棄工單途中開啟抽屜：已送出的處置照常走完封存，不遺失前一站的處置", async () => {
+    // 規格「detail 抽屜互斥」收掉的是未送出的確認；工單已刪、不可回復，封存不得默默不做。
+    const verifyDiscard = deferred<void>();
+    const ds = fakeDataSource({
+      discardReview: vi.fn().mockResolvedValue(undefined),
+      discardVerify: vi.fn().mockReturnValue(verifyDiscard.promise),
+      listChanges: vi.fn().mockResolvedValue(changeList([BOTH_TICKETS_CHANGE])),
+    });
+    const store = storeWith(ds);
+    await store.getState().refresh();
+    store.getState().requestArchive("desktop-shell-and-browser");
+    await store.getState().confirmArchiveDiscardTicket("review");
+    const settling = store.getState().confirmArchiveDiscardTicket("verify");
+
+    store.getState().openDetail("desktop-shell-and-browser");
+    verifyDiscard.resolve();
+    await settling;
+
+    expect(ds.runVerb).toHaveBeenCalledWith("archive", "desktop-shell-and-browser");
+  });
+
+  it("放棄工單途中封存目標換成別的 change：不改寫新目標的守門狀態", async () => {
+    const reviewDiscard = deferred<void>();
+    const ds = fakeDataSource({ discardReview: vi.fn().mockReturnValue(reviewDiscard.promise) });
+    const store = storeWith(ds);
+    store.getState().requestArchive("desktop-shell-and-browser");
+    const settling = store.getState().confirmArchiveDiscardTicket("review");
+
+    store.getState().requestArchive("other-change");
+    reviewDiscard.resolve();
+    await settling;
+
+    expect(ds.runVerb).toHaveBeenCalledWith("archive", "desktop-shell-and-browser");
+    expect(store.getState()).toMatchObject({
+      pendingArchive: "other-change",
+      pendingArchiveSettled: { review: false, verify: false },
+      pendingArchiveCarry: { review: false, verify: false },
+    });
+  });
+
   it("openTicketStation 的順序固定：審查站在前、驗證站在後", () => {
     const both = [
       {
@@ -1051,7 +1129,7 @@ describe("app store (Zustand)", () => {
     expect(store.getState().detailSpec).toBeNull();
     store.getState().openSpec("desktop-app");
     expect(store.getState().detailSpec).toBe("desktop-app");
-    store.getState().closeSpec();
+    store.getState().closeDetailPage();
     expect(store.getState().detailSpec).toBeNull();
   });
 
@@ -1062,20 +1140,13 @@ describe("app store (Zustand)", () => {
     expect(store.getState().detailArchived).toEqual({ kind: "change", datedName: "2026-07-04-x" });
     store.getState().openArchived({ kind: "discussion", slug: "old-topic" });
     expect(store.getState().detailArchived).toEqual({ kind: "discussion", slug: "old-topic" });
-    store.getState().closeArchived();
+    store.getState().closeDetailPage();
     expect(store.getState().detailArchived).toBeNull();
   });
 
   it("detail 抽屜互斥：任一 open* 動作清除其他三個 detail 欄位（後開者取代先開者）", async () => {
     // 規格「detail 抽屜互斥」Example 表：討論→變更詳情→規格→封存→討論。
-    const ds = fakeDataSource({
-      listDiscussions: vi.fn().mockResolvedValue({
-        active: [
-          { slug: "topic-a", topic: "t", status: "open", rounds: 1, created: "2026-07-17", promotedTo: [] },
-        ],
-        archived: [],
-      }),
-    });
+    const ds = withTopicA();
     const store = storeWith(ds);
     await store.getState().refresh();
 
@@ -1098,18 +1169,71 @@ describe("app store (Zustand)", () => {
     expect(store.getState().detailArchived).toBeNull();
   });
 
-  it("detail 抽屜互斥：取代變更詳情抽屜時 drawerVerb 一併清空（比照 closeDetail）", async () => {
+  it("切換主區頁面先關閉變更／討論詳情頁（連同分析結果）", async () => {
+    const store = storeWith(withTopicA());
+    await store.getState().refresh();
+    store.getState().openDetail("desktop-shell-and-browser");
+    store.setState({ detailVerb: { change: "desktop-shell-and-browser" } as never });
+    store.getState().setBoardView("specs");
+    expect(store.getState().boardView).toBe("specs");
+    expect(store.getState().detailChange).toBeNull();
+    expect(store.getState().detailVerb).toBeNull();
+
+    store.getState().openDiscussion("topic-a");
+    store.getState().setBoardView("settings");
+    expect(store.getState().boardView).toBe("settings");
+    expect(store.getState().detailDiscussion).toBeNull();
+  });
+
+  it("重新登入（openConnectionReauth）切到設定頁時同樣先關閉詳情頁、聚焦該連線", async () => {
+    // 連線失效橫幅在主區外，詳情頁開著時仍點得到——不關頁設定頁就被詳情頁蓋住。
+    const store = storeWith(fakeDataSource());
+    await store.getState().refresh();
+    store.getState().openSpec("desktop-app");
+    store.getState().openConnectionReauth("c1");
+    expect(store.getState().boardView).toBe("settings");
+    expect(store.getState().detailSpec).toBeNull();
+    expect(store.getState().reauthConnectionId).toBe("c1");
+  });
+
+  it("詳情頁互斥：取代變更詳情頁時 detailVerb 一併清空（比照 closeDetailPage）", async () => {
     const store = storeWith(fakeDataSource());
     await store.getState().refresh();
     store.getState().openDetail("desktop-shell-and-browser");
     await store.getState().runVerb("analyze", "desktop-shell-and-browser");
-    expect(store.getState().drawerVerb).not.toBeNull();
+    expect(store.getState().detailVerb).not.toBeNull();
     store.getState().openSpec("desktop-app");
     expect(store.getState().detailChange).toBeNull();
-    expect(store.getState().drawerVerb).toBeNull();
+    expect(store.getState().detailVerb).toBeNull();
   });
 
-  it("openDetail 於已封存頁把底層頁面切回看板（規格「變更與討論抽屜開啟時底層落回看板」）", async () => {
+  it("closeDetailPage 一次清空四個詳情欄位與 detailVerb（Esc、麵包屑共用）", async () => {
+    const store = storeWith(fakeDataSource());
+    await store.getState().refresh();
+    store.getState().openDetail("desktop-shell-and-browser");
+    await store.getState().runVerb("analyze", "desktop-shell-and-browser");
+    // 四個欄位互斥，平常只有一個非 null；直接灌入全部非 null 以驗一次清空。
+    store.setState({
+      detailDiscussion: store.getState().discussions.active[0] ?? null,
+      detailSpec: "desktop-app",
+      detailArchived: { kind: "change", datedName: "2026-07-04-x" },
+    });
+    expect(store.getState().detailChange).not.toBeNull();
+    expect(store.getState().detailVerb).not.toBeNull();
+    store.getState().closeDetailPage();
+    const st = store.getState();
+    expect([st.detailChange, st.detailDiscussion, st.detailSpec, st.detailArchived, st.detailVerb]).toEqual([
+      null,
+      null,
+      null,
+      null,
+      null,
+    ]);
+    // 宿主頁不變：關頁只拿掉頁層。
+    expect(st.boardView).toBe("board");
+  });
+
+  it("openDetail 於已封存頁把底層頁面切回看板（規格「變更與討論詳情頁的宿主為看板」）", async () => {
     const store = storeWith(fakeDataSource());
     await store.getState().refresh();
     store.getState().setBoardView("archived");
@@ -1121,14 +1245,7 @@ describe("app store (Zustand)", () => {
   });
 
   it("openDiscussion 於規格頁把底層頁面切回看板", async () => {
-    const ds = fakeDataSource({
-      listDiscussions: vi.fn().mockResolvedValue({
-        active: [
-          { slug: "topic-a", topic: "t", status: "open", rounds: 1, created: "2026-07-17", promotedTo: [] },
-        ],
-        archived: [],
-      }),
-    });
+    const ds = withTopicA();
     const store = storeWith(ds);
     await store.getState().refresh();
     store.getState().setBoardView("specs");
@@ -1152,26 +1269,111 @@ describe("app store (Zustand)", () => {
     expect(store.getState().boardView).toBe("archived");
   });
 
+  // 規格「detail 抽屜互斥」：變更詳情與討論抽屜的開啟動作同時收掉可取消浮層，
+  // 語意等同按「取消」——浮層欄位歸零，封存守門的站別處置一併還原。
+  const OPENERS: [string, (s: AppState) => void, (s: AppState) => boolean][] = [
+    [
+      "openDetail",
+      (s) => s.openDetail("desktop-shell-and-browser"),
+      (s) => s.detailChange?.name === "desktop-shell-and-browser",
+    ],
+    ["openDiscussion", (s) => s.openDiscussion("topic-a"), (s) => s.detailDiscussion?.slug === "topic-a"],
+  ];
+  describe.each(OPENERS)("open 動作清除可取消浮層：%s", (_name, open, drawerOpen) => {
+    it.each<[string, Partial<AppState>]>([
+      ["新增專案", { workspaceChooser: {} }],
+      ["初始化確認", { pendingInit: "/tmp/new-project" }],
+      ["啟用確認", { pendingAdopt: "/tmp/old-project" }],
+      ["封存確認", { pendingArchive: "desktop-shell-and-browser" }],
+      [
+        "工單三選項框（已處置一站並選帶走）",
+        {
+          pendingArchive: "desktop-shell-and-browser",
+          pendingArchiveSettled: { review: true, verify: false },
+          pendingArchiveCarry: { review: true, verify: false },
+        },
+      ],
+      ["封存討論確認", { pendingArchiveDiscussion: "topic-a" }],
+      ["刪除確認", { pendingDelete: "desktop-shell-and-browser" }],
+      ["退回提案中確認", { pendingRevert: "desktop-shell-and-browser" }],
+      [
+        "退回被擋說明",
+        { revertBlocked: { change: "desktop-shell-and-browser", checkedTasks: 2, touchedFiles: ["a.rs"] } },
+      ],
+    ])("%s", async (_overlay, overlay) => {
+      const ds = withTopicA({ discardReview: vi.fn(), discardVerify: vi.fn() });
+      const store = storeWith(ds);
+      await store.getState().refresh();
+      store.getState().setBoardView("specs");
+      store.setState(overlay);
+      const activeKey = store.getState().activeKey;
+
+      open(store.getState());
+
+      const s = store.getState();
+      expect(drawerOpen(s)).toBe(true);
+      expect(s).toMatchObject({
+        boardView: "board",
+        activeKey,
+        workspaceChooser: null,
+        pendingInit: null,
+        pendingAdopt: null,
+        pendingArchive: null,
+        pendingArchiveSettled: { review: false, verify: false },
+        pendingArchiveCarry: { review: false, verify: false },
+        pendingArchiveDiscussion: null,
+        pendingDelete: null,
+        pendingRevert: null,
+        revertBlocked: null,
+      });
+      // 收掉等同按取消：沒有任何未確認的動作被送出（無封存、無刪除、工單維持未結）。
+      for (const write of [ds.runVerb, ds.deleteChange, ds.archiveDiscussion, ds.discardReview, ds.discardVerify]) {
+        expect(write).not.toHaveBeenCalled();
+      }
+    });
+  });
+
+  // 遷移與遠端衝突不可取消：開啟動作靜默 no-op，連 set 都不呼叫（state 參考不變）。
+  describe.each(OPENERS)("不可取消浮層開啟中 open 動作不改狀態：%s", (_name, open) => {
+    it.each<[string, Partial<AppState>]>([
+      ["遷移對話框", { migrationRoot: "/tmp/migrating" }],
+      ["遠端衝突對話框", { pendingRemoteConflict: { path: "/tmp/x", url: "https://example.test", repo: null } }],
+    ])("%s", async (_overlay, overlay) => {
+      const store = storeWith(withTopicA());
+      await store.getState().refresh();
+      store.getState().setBoardView("specs");
+      store.setState(overlay);
+      const before = store.getState();
+
+      open(before);
+
+      expect(store.getState()).toBe(before);
+      expect(store.getState().boardView).toBe("specs");
+    });
+  });
 });
 
-// ---- 系統匣樣式由平台決定（tray-macos-panel-only：規格「系統匣圖示與原生選單」平台分流） ----
+// ---- 系統匣樣式由平台決定（tray-panel-windows：規格「系統匣圖示與原生選單」平台分流） ----
 
 describe("系統匣樣式由平台決定", () => {
   const setUA = (value: string) =>
     Object.defineProperty(window.navigator, "userAgent", { value, configurable: true });
   const MAC_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)";
   const WIN_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
+  const LINUX_UA = "Mozilla/5.0 (X11; Linux x86_64)";
 
-  it("macOS 初值為 panel、非 macOS 為 native-menu，且不讀 localStorage 舊偏好", () => {
+  it("macOS 與 Windows 初值為 panel、Linux 為 native-menu，且不讀 localStorage 舊偏好", () => {
     localStorage.setItem("speclink.trayStyle", "native-menu"); // 舊偏好殘留：不再被讀取
     setUA(MAC_UA);
     expect(storeWith(fakeDataSource()).getState().trayStyle).toBe("panel");
     setUA(WIN_UA);
+    expect(storeWith(fakeDataSource()).getState().trayStyle).toBe("panel");
+    setUA(LINUX_UA);
     expect(storeWith(fakeDataSource()).getState().trayStyle).toBe("native-menu");
     localStorage.removeItem("speclink.trayStyle");
   });
 
-  it("panelFallback 退回 native-menu、浮出單行錯誤，且不寫 localStorage（規格「面板樣式（macOS）」失敗退回）", () => {
+  it("panelFallback 退回 native-menu、浮出單行錯誤，且不寫 localStorage（規格「面板樣式」失敗退回）", () => {
     setUA(MAC_UA);
     const store = storeWith(fakeDataSource());
     store.getState().panelFallback("tray panel window creation failed: boom");
@@ -1428,10 +1630,11 @@ describe("指令檔過期提示的顯示裁決", () => {
   it("過期且未略過：以更新語意提示並帶差異檔數", async () => {
     const store = storeWithAssetProbe(fakeInstructionWorkspace());
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).toEqual({
+    expect(selectAssetPrompt(store.getState())).toEqual({
       kind: "stale",
       fileCount: 2,
       version: "v1.3.0",
+      projectVersion: "v0.9.0",
     });
   });
 
@@ -1440,7 +1643,9 @@ describe("指令檔過期提示的顯示裁決", () => {
       fakeInstructionWorkspace({ probeAssets: vi.fn().mockResolvedValue(MISSING_PROBE) }),
     );
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt?.kind).toBe("missing");
+    expect(selectAssetPrompt(store.getState())?.kind).toBe("missing");
+    // 從未安裝：tools 全無標記版號，確認框第一列顯示「—」的依據。
+    expect(selectAssetPrompt(store.getState())?.projectVersion).toBeNull();
   });
 
   it("保留現狀後同版不再提示，且不寫入專案內任何檔案", async () => {
@@ -1448,10 +1653,10 @@ describe("指令檔過期提示的顯示裁決", () => {
     const store = storeWithAssetProbe(ws);
     await store.getState().refreshAssetPrompt();
     store.getState().dismissAssetPrompt();
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
 
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
     expect(ws.updateAssets).not.toHaveBeenCalled();
   });
 
@@ -1460,10 +1665,11 @@ describe("指令檔過期提示的顯示裁決", () => {
       fakeInstructionWorkspace({ probeAssets: vi.fn().mockResolvedValue(NEWER_PROBE) }),
     );
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).toEqual({
+    expect(selectAssetPrompt(store.getState())).toEqual({
       kind: "newer",
       fileCount: 2,
       version: "v1.3.0",
+      projectVersion: "v1.4.0",
     });
   });
 
@@ -1474,7 +1680,7 @@ describe("指令檔過期提示的顯示裁決", () => {
     await store.getState().refreshAssetPrompt();
     store.getState().dismissAssetPrompt();
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
   });
 
   it("缺失態的保留現狀與過期共用同一略過記憶", async () => {
@@ -1484,7 +1690,7 @@ describe("指令檔過期提示的顯示裁決", () => {
     await store.getState().refreshAssetPrompt();
     store.getState().dismissAssetPrompt();
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
   });
 
   it("已略過舊版、產物層版號變動後重新提示", async () => {
@@ -1495,7 +1701,7 @@ describe("指令檔過期提示的顯示裁決", () => {
 
     probe.mockResolvedValue({ ...STALE_PROBE, currentVersion: "v1.4.0" });
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt?.version).toBe("v1.4.0");
+    expect(selectAssetPrompt(store.getState())?.version).toBe("v1.4.0");
   });
 
   it("無法判定：不提示且不記入略過（後續判過期仍提示）", async () => {
@@ -1507,12 +1713,12 @@ describe("指令檔過期提示的顯示裁決", () => {
     });
     const store = storeWithAssetProbe(fakeInstructionWorkspace({ probeAssets: probe }));
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
     expect(localStorage.getItem("speclink.assetSkips")).toBeNull();
 
     probe.mockResolvedValue(STALE_PROBE);
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt?.kind).toBe("stale");
+    expect(selectAssetPrompt(store.getState())?.kind).toBe("stale");
   });
 
   it("現版：不提示", async () => {
@@ -1527,7 +1733,7 @@ describe("指令檔過期提示的顯示裁決", () => {
       }),
     );
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
   });
 
   it("remote 分頁不執行探測", async () => {
@@ -1548,7 +1754,7 @@ describe("指令檔過期提示的顯示裁決", () => {
 
     await store.getState().refreshAssetPrompt();
     expect(ws.probeAssets).not.toHaveBeenCalled();
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
   });
 
   it("更新成功：整套再生後重查，提示消失", async () => {
@@ -1566,7 +1772,7 @@ describe("指令檔過期提示的顯示裁決", () => {
     await store.getState().applyAssetUpdate();
 
     expect(ws.updateAssets).toHaveBeenCalledWith("A");
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
     expect(store.getState().assetUpdateError).toBeNull();
   });
 
@@ -1579,14 +1785,14 @@ describe("指令檔過期提示的顯示裁決", () => {
     await store.getState().applyAssetUpdate();
 
     expect(store.getState().assetUpdateError).toContain("permission denied");
-    expect(store.getState().assetPrompt).not.toBeNull();
+    expect(selectAssetPrompt(store.getState())).not.toBeNull();
   });
 
   it("外部 speclink update 後（workspace-changed 重查）提示自然消失", async () => {
     const probe = vi.fn().mockResolvedValue(STALE_PROBE);
     const store = storeWithAssetProbe(fakeInstructionWorkspace({ probeAssets: probe }));
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).not.toBeNull();
+    expect(selectAssetPrompt(store.getState())).not.toBeNull();
 
     // 使用者於終端跑 speclink update：受管檔成為現版，重查即收合。
     probe.mockResolvedValue({
@@ -1596,7 +1802,274 @@ describe("指令檔過期提示的顯示裁決", () => {
       differingFiles: [],
     });
     await store.getState().refreshAssetPrompt();
-    expect(store.getState().assetPrompt).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
+  });
+
+  // --- 多分頁記憶（desktop-notice-relocation design D1）：探測結果以 locator key 為鍵
+  // 保留，assetPrompt 是作用中分頁的派生值；背景分頁的值供圖示列琥珀點用。 ---
+
+  const CURRENT_PROBE = {
+    status: "current" as const,
+    currentVersion: "v1.3.0",
+    tools: [],
+    differingFiles: [],
+  };
+
+  /** 兩個本地分頁 A（作用中）與 B，共用同一個 workspace 探測面。 */
+  function storeWithTwoLocalTabs(ws: WorkspaceAdapter) {
+    const ds = fakeDataSource();
+    const store = trackedAppStore({
+      createSession: (root, name) => fakeSession(ds, root, name),
+      workspace: ws,
+    });
+    const a = fakeSession(ds, "A", "a");
+    const b = fakeSession(ds, "B", "b");
+    store.setState({
+      tabs: [
+        { locator: a.locator, name: a.descriptor.name },
+        { locator: b.locator, name: b.descriptor.name },
+      ],
+      sessions: { [a.id]: a, [b.id]: b },
+      activeKey: a.id,
+    });
+    return store;
+  }
+
+  it("探測後以 locator key 記下結果；projectVersion 取 tools 第一個非 null 的標記版號", async () => {
+    const store = storeWithAssetProbe(fakeInstructionWorkspace());
+    await store.getState().refreshAssetPrompt();
+    expect(store.getState().assetPrompts["local:A"]).toEqual({
+      kind: "stale",
+      fileCount: 2,
+      version: "v1.3.0",
+      projectVersion: "v0.9.0",
+    });
+    expect(selectAssetPrompt(store.getState())).toEqual(store.getState().assetPrompts["local:A"]);
+  });
+
+  it("切到另一分頁後原分頁的探測結果保留；作用中提示改為新分頁的值", async () => {
+    const probe = vi
+      .fn()
+      .mockImplementation((root: string) => Promise.resolve(root === "A" ? STALE_PROBE : CURRENT_PROBE));
+    const store = storeWithTwoLocalTabs(fakeInstructionWorkspace({ probeAssets: probe }));
+    await store.getState().refreshAssetPrompt();
+    expect(selectAssetPrompt(store.getState())?.kind).toBe("stale");
+
+    store.setState({ activeKey: "local:B" });
+    await store.getState().refreshAssetPrompt();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
+    expect(store.getState().assetPrompts["local:B"]).toBeNull();
+    expect(store.getState().assetPrompts["local:A"]?.kind).toBe("stale");
+  });
+
+  it("保留現狀只清作用中分頁的記憶，背景分頁的值不受影響", async () => {
+    const store = storeWithTwoLocalTabs(fakeInstructionWorkspace());
+    await store.getState().refreshAssetPrompt();
+    store.setState({ activeKey: "local:B" });
+    await store.getState().refreshAssetPrompt();
+    expect(store.getState().assetPrompts["local:B"]?.kind).toBe("stale");
+
+    store.getState().dismissAssetPrompt();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
+    expect(store.getState().assetPrompts["local:B"]).toBeNull();
+    expect(store.getState().assetPrompts["local:A"]?.kind).toBe("stale");
+    // 略過記憶以專案路徑為鍵：只記 B，A 下次探測照樣提示。
+    expect(JSON.parse(localStorage.getItem("speclink.instructionSkips") ?? "{}")).toEqual({
+      B: "v1.3.0",
+    });
+  });
+
+  it("套用途中切走分頁：完成後重探套用的那個分頁，它的提示收合、另一分頁的記憶不受影響", async () => {
+    const update = deferred<void>();
+    const probe = vi.fn().mockResolvedValue(STALE_PROBE);
+    const ws = fakeInstructionWorkspace({ probeAssets: probe, updateAssets: vi.fn(() => update.promise) });
+    const store = storeWithTwoLocalTabs(ws);
+    await store.getState().refreshAssetPrompt();
+    store.setState({ activeKey: "local:B" });
+    await store.getState().refreshAssetPrompt();
+    store.setState({ activeKey: "local:A" });
+
+    const applying = store.getState().applyAssetUpdate();
+    store.setState({ activeKey: "local:B" });
+    probe.mockImplementation((root: string) => Promise.resolve(root === "A" ? CURRENT_PROBE : STALE_PROBE));
+    update.resolve();
+    await applying;
+
+    expect(ws.updateAssets).toHaveBeenCalledWith("A");
+    expect(probe).toHaveBeenLastCalledWith("A");
+    expect(store.getState().assetPrompts["local:A"]).toBeNull();
+    expect(store.getState().assetPrompts["local:B"]?.kind).toBe("stale");
+    expect(selectAssetPrompt(store.getState())?.kind).toBe("stale");
+  });
+
+  it("projectVersion 依狀態挑工具：較新取領先的工具、過期取落後的工具、缺失為 null", () => {
+    const tool = (name: string, version: string | null, flags: { stale?: boolean; newer?: boolean; missing?: boolean }) => ({
+      tool: name,
+      workspaceVersion: version,
+      stale: flags.stale ?? false,
+      newer: flags.newer ?? false,
+      missing: flags.missing ?? false,
+    });
+    const newer = assetPrompt(
+      { ...STALE_PROBE, status: "newer", tools: [tool("claude", "v0.9.0", { stale: true }), tool("codex", "v1.4.0", { newer: true })] },
+      "A",
+      {},
+    );
+    expect(newer?.projectVersion).toBe("v1.4.0");
+    const stale = assetPrompt(
+      { ...STALE_PROBE, status: "stale", tools: [tool("codex", "v1.3.0", {}), tool("claude", "v0.9.0", { stale: true })] },
+      "A",
+      {},
+    );
+    expect(stale?.projectVersion).toBe("v0.9.0");
+    const missing = assetPrompt(
+      { ...STALE_PROBE, status: "missing", tools: [tool("claude", "v1.3.0", {}), tool("codex", null, { missing: true })] },
+      "A",
+      {},
+    );
+    expect(missing?.projectVersion).toBeNull();
+  });
+});
+
+// --- 背景檢查發現新版本的 toast（desktop-app「背景檢查的 toast 只發一次」；design D4） ---
+
+describe("背景檢查發現新版本的 toast", () => {
+  type ToastOptions = { id?: string; action?: { label: string; onClick: () => void } };
+  function updaterStore(versions: string[]) {
+    const check = vi.fn();
+    for (const version of versions) {
+      check.mockResolvedValueOnce({
+        version,
+        download: vi.fn(() => new Promise<void>(() => {})), // 停在下載中，供「取消」回閒置
+        install: vi.fn(),
+      });
+    }
+    return trackedAppStore({ createSession: vi.fn() as never, updater: { check, relaunch: vi.fn() } });
+  }
+
+  it("背景檢查發現新版本：toast 一次（含版號、固定 id）；「查看」進設定頁並聚焦軟體更新卡", async () => {
+    const store = updaterStore(["0.5.1"]);
+    await store.getState().checkForUpdates(false);
+    expect(store.getState().updater).toEqual({ phase: "available", version: "0.5.1" });
+    expect(toastFn).toHaveBeenCalledTimes(1);
+    const [message, options] = toastFn.mock.calls[0] as [string, ToastOptions];
+    expect(message).toContain("0.5.1");
+    expect(options.id).toBe("updater-available");
+    expect(options.action?.label).toBe("查看");
+    options.action?.onClick();
+    expect(store.getState().boardView).toBe("settings");
+    expect(store.getState().focusUpdater).toBe(true);
+  });
+
+  it("Scenario「背景檢查的 toast 只發一次」：下載後取消回閒置，一小時後前景重檢回報同版本不再發；換了版本才再發", async () => {
+    const store = updaterStore(["0.5.1", "0.5.1", "0.5.2"]);
+    await store.getState().checkForUpdates(false);
+    expect(toastFn).toHaveBeenCalledTimes(1);
+    // 待同意時前景重檢被擋（提示留到使用者處置）；取消下載回閒置後才會重檢。
+    void store.getState().acceptUpdate();
+    store.getState().dismissUpdate();
+    expect(store.getState().updater).toEqual({ phase: "idle" });
+
+    await store.getState().recheckOnFocus(Date.now() + 60 * 60 * 1000);
+    expect(store.getState().updater).toEqual({ phase: "available", version: "0.5.1" });
+    expect(toastFn).toHaveBeenCalledTimes(1);
+
+    void store.getState().acceptUpdate();
+    store.getState().dismissUpdate();
+    await store.getState().recheckOnFocus(Date.now() + 2 * 60 * 60 * 1000);
+    expect(toastFn).toHaveBeenCalledTimes(2);
+    expect((toastFn.mock.calls[1] as [string])[0]).toContain("0.5.2");
+  });
+
+  it("手動檢查不發 toast：結果以卡內行內文字呈現", async () => {
+    const store = updaterStore(["0.5.1"]);
+    await store.getState().checkForUpdates(true);
+    expect(store.getState().updater).toEqual({ phase: "available", version: "0.5.1" });
+    expect(toastFn).not.toHaveBeenCalled();
+  });
+});
+
+// --- 版本更新的取消（desktop-app「取消下載回到閒置」；desktop-notice-relocation design D3） ---
+
+describe("取消下載", () => {
+  function pendingUpdate(version: string) {
+    const download = deferred<void>();
+    return {
+      download,
+      pending: { version, download: vi.fn(() => download.promise), install: vi.fn().mockResolvedValue(undefined) },
+    };
+  }
+
+  it("取消後下載完成：不安裝、不進 restartPending，狀態留在閒置", async () => {
+    const first = pendingUpdate("0.2.0");
+    const store = trackedAppStore({
+      createSession: vi.fn() as never,
+      updater: { check: vi.fn().mockResolvedValue(first.pending), relaunch: vi.fn() },
+    });
+    await store.getState().checkForUpdates(false);
+    const accepting = store.getState().acceptUpdate();
+    expect(store.getState().updater).toEqual({ phase: "downloading", version: "0.2.0" });
+
+    store.getState().dismissUpdate();
+    expect(store.getState().updater).toEqual({ phase: "idle" });
+
+    first.download.resolve();
+    await accepting;
+    expect(first.pending.install).not.toHaveBeenCalled();
+    expect(store.getState().updater).toEqual({ phase: "idle" });
+  });
+
+  it("取消後重新檢查並再次下載：舊下載晚到完成不推進新下載、也不安裝舊包", async () => {
+    const first = pendingUpdate("0.2.0");
+    const second = pendingUpdate("0.2.0");
+    const store = trackedAppStore({
+      createSession: vi.fn() as never,
+      updater: {
+        check: vi.fn().mockResolvedValueOnce(first.pending).mockResolvedValueOnce(second.pending),
+        relaunch: vi.fn(),
+      },
+    });
+    await store.getState().checkForUpdates(false);
+    const firstAccept = store.getState().acceptUpdate();
+    store.getState().dismissUpdate();
+    await store.getState().checkForUpdates(true);
+    const secondAccept = store.getState().acceptUpdate();
+    expect(store.getState().updater).toEqual({ phase: "downloading", version: "0.2.0" });
+
+    first.download.resolve();
+    await firstAccept;
+    expect(first.pending.install).not.toHaveBeenCalled();
+    expect(store.getState().updater).toEqual({ phase: "downloading", version: "0.2.0" });
+
+    second.download.resolve();
+    await secondAccept;
+    expect(second.pending.install).toHaveBeenCalledTimes(1);
+    expect(store.getState().updater).toEqual({ phase: "restartPending", version: "0.2.0" });
+  });
+
+  it("取消後重新檢查：舊下載晚到失敗不轉錯誤、不清掉新的待更新項（「下載」仍可用）", async () => {
+    const first = pendingUpdate("0.2.0");
+    const second = pendingUpdate("0.2.0");
+    const store = trackedAppStore({
+      createSession: vi.fn() as never,
+      updater: {
+        check: vi.fn().mockResolvedValueOnce(first.pending).mockResolvedValueOnce(second.pending),
+        relaunch: vi.fn(),
+      },
+    });
+    await store.getState().checkForUpdates(false);
+    const firstAccept = store.getState().acceptUpdate();
+    store.getState().dismissUpdate();
+    await store.getState().checkForUpdates(true);
+    expect(store.getState().updater).toEqual({ phase: "available", version: "0.2.0" });
+
+    first.download.reject(new Error("network"));
+    await firstAccept;
+    expect(store.getState().updater).toEqual({ phase: "available", version: "0.2.0" });
+
+    void store.getState().acceptUpdate();
+    expect(second.pending.download).toHaveBeenCalledTimes(1);
+    expect(store.getState().updater).toEqual({ phase: "downloading", version: "0.2.0" });
   });
 });
 
@@ -2180,5 +2653,479 @@ describe("手冊索引的重取（refreshManual）", () => {
     store.getState().openSpec("desktop-app");
     expect(store.getState().boardView).toBe("manual");
     expect(store.getState().detailSpec).toBe("desktop-app");
+  });
+});
+
+// desktop-app「專案層檔案系統動作」（design D5）：成功靜默、失敗 toast；
+// remote 無 checkout 時沒有本機目錄，四個動作都不碰檔案系統。
+describe("專案層檔案系統動作", () => {
+  beforeEach(() => {
+    toastError.mockReset();
+  });
+
+  function fakeFsActions(): { [K in keyof FsActionsAdapter]: ReturnType<typeof vi.fn> } {
+    return {
+      reveal: vi.fn().mockResolvedValue(undefined),
+      openDefault: vi.fn().mockResolvedValue(undefined),
+      openTerminal: vi.fn().mockResolvedValue(undefined),
+      openEditor: vi.fn().mockResolvedValue(undefined),
+      copyText: vi.fn().mockResolvedValue(undefined),
+      locate: vi.fn().mockResolvedValue(null),
+    };
+  }
+
+  function storeWithTabs(fsActions = fakeFsActions()) {
+    const ds = fakeDataSource();
+    const store = trackedAppStore({
+      createSession: (root, name) => fakeSession(ds, root, name),
+      fsActions: fsActions as unknown as FsActionsAdapter,
+    });
+    store.setState({
+      tabs: [
+        { locator: { kind: "local", root: "/work/alpha" }, name: "alpha" },
+        {
+          locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "api" },
+          name: "Demo/api",
+        },
+        {
+          locator: {
+            kind: "remote",
+            connectionId: "c1",
+            projectId: "demo",
+            repoId: "web",
+            checkoutRoot: "/work/web",
+          },
+          name: "Demo/web",
+        },
+      ],
+    });
+    return { store, fsActions };
+  }
+
+  it("成功時四個動作都不呼叫 toast，路徑為專案根或 checkout", async () => {
+    const { store, fsActions } = storeWithTabs();
+    await store.getState().revealProject("local:/work/alpha");
+    await store.getState().openProjectInTerminal("local:/work/alpha");
+    await store.getState().openProjectInEditor("remote:c1/demo/web");
+    await store.getState().copyProjectPath("local:/work/alpha");
+    expect(fsActions.reveal).toHaveBeenCalledWith("/work/alpha");
+    expect(fsActions.openTerminal).toHaveBeenCalledWith("/work/alpha");
+    expect(fsActions.openEditor).toHaveBeenCalledWith("/work/web");
+    expect(fsActions.copyText).toHaveBeenCalledWith("/work/alpha");
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("i18n 鍵的錯誤以對應文案顯示 toast（找不到終端機、找不到編輯器、目錄已不存在）", async () => {
+    const fsActions = fakeFsActions();
+    fsActions.openTerminal.mockRejectedValueOnce("fs.noTerminal").mockRejectedValueOnce("fs.dirMissing");
+    fsActions.openEditor.mockRejectedValue("fs.noEditor");
+    const { store } = storeWithTabs(fsActions);
+    await store.getState().openProjectInTerminal("local:/work/alpha");
+    await store.getState().openProjectInEditor("local:/work/alpha");
+    await store.getState().openProjectInTerminal("local:/work/alpha");
+    expect(toastError.mock.calls).toEqual([
+      ["找不到可用的終端機"],
+      ["找不到可用的編輯器（支援 VS Code、Cursor、Zed、Sublime）"],
+      ["專案目錄已不存在"],
+    ]);
+  });
+
+  it("「找不到編輯器」文案列出的編輯器與 Rust 候選清單同一份、同順序（兩語系）", () => {
+    // 增減編輯器時，Rust 清單、兩語系文案要一起改；漏改任一處這裡就紅。
+    const LABEL: Record<string, string> = { code: "VS Code", cursor: "Cursor", zed: "Zed", subl: "Sublime" };
+    const list = /Platform::MacOs \| Platform::Linux => \[([^\]]*)\]/.exec(fsActionsRs)?.[1] ?? "";
+    const labels = [...list.matchAll(/"([^"]+)"/g)].map(([, program]) => LABEL[program] ?? `?${program}`);
+    expect(labels.length).toBeGreaterThan(0);
+    expect(APP_MESSAGES["zh-TW"]["fs.noEditor"]).toBe(`找不到可用的編輯器（支援 ${labels.join("、")}）`);
+    expect(APP_MESSAGES.en["fs.noEditor"]).toBe(`No editor found (supports ${labels.join(", ")})`);
+  });
+
+  it("非 i18n 鍵的錯誤原樣顯示（如 opener 的路徑不存在）", async () => {
+    const fsActions = fakeFsActions();
+    fsActions.reveal.mockRejectedValue("No such file or directory (os error 2)");
+    fsActions.copyText.mockRejectedValue(new Error("clipboard denied"));
+    const { store } = storeWithTabs(fsActions);
+    await store.getState().revealProject("local:/work/alpha");
+    await store.getState().copyProjectPath("local:/work/alpha");
+    expect(toastError.mock.calls).toEqual([
+      ["No such file or directory (os error 2)"],
+      ["Error: clipboard denied"],
+    ]);
+  });
+
+  it("remote 無 checkout 時四個動作都不呼叫檔案系統面", async () => {
+    const { store, fsActions } = storeWithTabs();
+    const key = "remote:c1/demo/api";
+    await store.getState().revealProject(key);
+    await store.getState().openProjectInTerminal(key);
+    await store.getState().openProjectInEditor(key);
+    await store.getState().copyProjectPath(key);
+    for (const action of Object.values(fsActions)) expect(action).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+});
+
+// desktop-app「詳情頁的文件動作」（design D4）：磁碟位置由 core 以讀文件同一套解析回報
+// （worktree 副本、spec 目錄名、已封存討論）；失敗以單槽失敗 toast 呈現、主詞為相對路徑；
+// remote 無 checkout 不查位置、只剩複製內容。
+describe("詳情頁文件動作", () => {
+  const DOC = { change: "add-auth", artifact: "proposal.md" };
+  const LOC = {
+    path: "/work/app-wt/add-auth/openspec/changes/add-auth/proposal.md",
+    relative: "openspec/changes/add-auth/proposal.md",
+  };
+
+  function fakeFsActions(): { [K in keyof FsActionsAdapter]: ReturnType<typeof vi.fn> } {
+    return {
+      reveal: vi.fn().mockResolvedValue(undefined),
+      openDefault: vi.fn().mockResolvedValue(undefined),
+      openTerminal: vi.fn().mockResolvedValue(undefined),
+      openEditor: vi.fn().mockResolvedValue(undefined),
+      copyText: vi.fn().mockResolvedValue(undefined),
+      locate: vi.fn().mockResolvedValue(LOC),
+    };
+  }
+
+  function storeActive(activeKey: string, fsActions = fakeFsActions()) {
+    const store = trackedAppStore({
+      createSession: (root, name) => fakeSession(fakeDataSource(), root, name),
+      fsActions: fsActions as unknown as FsActionsAdapter,
+    });
+    store.setState({
+      tabs: [
+        { locator: { kind: "local", root: "/work/app" }, name: "app" },
+        {
+          locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "api" },
+          name: "Demo/api",
+        },
+      ],
+      activeKey,
+    });
+    return { store, fsActions };
+  }
+
+  beforeEach(() => {
+    toastError.mockReset();
+  });
+
+  it("locateDocument 以活躍專案的本機目錄向 core 查位置", async () => {
+    const { store, fsActions } = storeActive("local:/work/app");
+    expect(await store.getState().locateDocument(DOC)).toEqual(LOC);
+    expect(fsActions.locate).toHaveBeenCalledWith("/work/app", DOC);
+  });
+
+  it("三個動作作用於 core 回報的絕對路徑（worktree 副本），成功靜默", async () => {
+    const { store, fsActions } = storeActive("local:/work/app");
+    await store.getState().openDocumentDefault(LOC);
+    await store.getState().revealDocument(LOC);
+    await store.getState().copyDocumentPath(LOC);
+    expect(fsActions.openDefault).toHaveBeenCalledWith(LOC.path);
+    expect(fsActions.reveal).toHaveBeenCalledWith(LOC.path);
+    expect(fsActions.copyText).toHaveBeenCalledWith(LOC.path);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("revealDocument 失敗發失敗 toast 且主詞為相對路徑", async () => {
+    const fsActions = fakeFsActions();
+    fsActions.reveal.mockRejectedValue("No such file or directory (os error 2)");
+    const { store } = storeActive("local:/work/app", fsActions);
+    await store.getState().revealDocument(LOC);
+    expect(toastError).toHaveBeenCalledTimes(1);
+    const [message, options] = toastError.mock.calls[0] as [string, { id?: string }];
+    expect(message.startsWith(`${LOC.relative} · `)).toBe(true);
+    expect(message).toContain("No such file or directory (os error 2)");
+    expect(options?.id).toBe("desktop-operation-failure");
+  });
+
+  // desktop-change-doc-views design D11：提案影響段路徑籤的「在檔案管理員顯示」。
+  it("revealProjectPath 以專案目錄拼出路徑交 reveal；失敗發失敗 toast、主詞為相對路徑", async () => {
+    const fsActions = fakeFsActions();
+    const { store } = storeActive("local:/work/app", fsActions);
+    await store.getState().revealProjectPath("packages/ui/src/docModel.ts");
+    expect(fsActions.reveal).toHaveBeenCalledWith("/work/app/packages/ui/src/docModel.ts");
+    expect(toastError).not.toHaveBeenCalled();
+    fsActions.reveal.mockRejectedValueOnce("No such file or directory (os error 2)");
+    await store.getState().revealProjectPath("gone.ts");
+    expect((toastError.mock.calls[0] as [string])[0].startsWith("gone.ts · ")).toBe(true);
+  });
+
+  it("revealProjectPath 在 remote 無 checkout 時不動作", async () => {
+    const { store, fsActions } = storeActive("remote:c1/demo/api");
+    await store.getState().revealProjectPath("a.ts");
+    expect(fsActions.reveal).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("core 查不到或回報錯誤時 locateDocument 為 null、不拋", async () => {
+    const fsActions = fakeFsActions();
+    fsActions.locate.mockResolvedValueOnce(null).mockRejectedValueOnce("boom");
+    const { store } = storeActive("local:/work/app", fsActions);
+    expect(await store.getState().locateDocument({ discussion: "gone" })).toBeNull();
+    expect(await store.getState().locateDocument(DOC)).toBeNull();
+  });
+
+  it("remote 無 checkout：不查位置；copyDocumentContent 寫入原文", async () => {
+    const { store, fsActions } = storeActive("remote:c1/demo/api");
+    expect(await store.getState().locateDocument(DOC)).toBeNull();
+    expect(fsActions.locate).not.toHaveBeenCalled();
+    await store.getState().copyDocumentContent("# 討論原文");
+    expect(fsActions.copyText).toHaveBeenCalledWith("# 討論原文");
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("copyDocumentContent 失敗與其他文件動作同樣以失敗 toast 呈現", async () => {
+    const fsActions = fakeFsActions();
+    fsActions.copyText.mockRejectedValue(new Error("clipboard denied"));
+    const { store } = storeActive("remote:c1/demo/api", fsActions);
+    await store.getState().copyDocumentContent("# 原文");
+    const [message, options] = toastError.mock.calls[0] as [string, { id?: string }];
+    expect(message).toBe("複製內容 · 檔案動作失敗 ✗ Error: clipboard denied");
+    expect(options?.id).toBe("desktop-operation-failure");
+  });
+});
+
+// desktop-board-reskin design D2：看板討論欄底「已轉出」收合列的展開狀態存於 app 本機
+// （localStorage 鍵 speclink.board.promotedExpanded）跨啟動保留；壞值或缺席一律收合。
+describe("promotedExpanded（討論欄收合列的跨啟動記憶）", () => {
+  const KEY = "speclink.board.promotedExpanded";
+
+  it("無鍵時為 false", () => {
+    const store = storeWith(fakeDataSource());
+    expect(store.getState().promotedExpanded).toBe(false);
+  });
+
+  it('鍵為 "true" 時為 true', () => {
+    localStorage.setItem(KEY, "true");
+    const store = storeWith(fakeDataSource());
+    expect(store.getState().promotedExpanded).toBe(true);
+  });
+
+  it("壞值視為 false、不拋錯", () => {
+    localStorage.setItem(KEY, "yes");
+    const store = storeWith(fakeDataSource());
+    expect(store.getState().promotedExpanded).toBe(false);
+  });
+
+  it('setPromotedExpanded(true) 後鍵為 "true"；false 寫回 "false"', () => {
+    const store = storeWith(fakeDataSource());
+    store.getState().setPromotedExpanded(true);
+    expect(store.getState().promotedExpanded).toBe(true);
+    expect(localStorage.getItem(KEY)).toBe("true");
+    store.getState().setPromotedExpanded(false);
+    expect(store.getState().promotedExpanded).toBe(false);
+    expect(localStorage.getItem(KEY)).toBe("false");
+  });
+});
+
+// desktop-list-pages-reskin design D7：清單每頁筆數存於 app 本機（localStorage 鍵
+// speclink.list.pageSizes，JSON 物件）跨啟動保留；三個清單各自記住，缺席、壞 JSON 或
+// 不在 20／50／100 之內的欄位一律退回 20。spec scenario「每頁筆數跨啟動記住」Example。
+describe("pageSizes（清單每頁筆數的跨啟動記憶）", () => {
+  const KEY = "speclink.list.pageSizes";
+
+  it.each<[string, string | null, { specs: number; archivedChanges: number; archivedDiscussions: number }]>([
+    ["缺席", null, { specs: 20, archivedChanges: 20, archivedDiscussions: 20 }],
+    [
+      "specs 50、archivedDiscussions 100",
+      JSON.stringify({ specs: 50, archivedDiscussions: 100 }),
+      { specs: 50, archivedChanges: 20, archivedDiscussions: 100 },
+    ],
+    [
+      "specs 0、archivedChanges 37",
+      JSON.stringify({ specs: 0, archivedChanges: 37 }),
+      { specs: 20, archivedChanges: 20, archivedDiscussions: 20 },
+    ],
+    ["無法解析的文字", "not json{", { specs: 20, archivedChanges: 20, archivedDiscussions: 20 }],
+  ])("記憶內容 %s", (_label, raw, expected) => {
+    if (raw !== null) localStorage.setItem(KEY, raw);
+    const store = storeWith(fakeDataSource());
+    expect(store.getState().pageSizes).toEqual(expected);
+  });
+
+  it("記憶內容不是物件（陣列、字串）時三個清單都退回 20", () => {
+    localStorage.setItem(KEY, JSON.stringify([50, 50, 50]));
+    expect(storeWith(fakeDataSource()).getState().pageSizes).toEqual({
+      specs: 20,
+      archivedChanges: 20,
+      archivedDiscussions: 20,
+    });
+    localStorage.setItem(KEY, JSON.stringify("50"));
+    expect(storeWith(fakeDataSource()).getState().pageSizes.specs).toBe(20);
+  });
+
+  it("setPageSize 更新該清單並把整個物件寫回鍵；其他清單不變", () => {
+    const store = storeWith(fakeDataSource());
+    store.getState().setPageSize("specs", 50);
+    expect(store.getState().pageSizes).toEqual({ specs: 50, archivedChanges: 20, archivedDiscussions: 20 });
+    expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual({
+      specs: 50,
+      archivedChanges: 20,
+      archivedDiscussions: 20,
+    });
+    store.getState().setPageSize("archivedDiscussions", 100);
+    expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual({
+      specs: 50,
+      archivedChanges: 20,
+      archivedDiscussions: 100,
+    });
+    // 新建的 store（重開 app）讀回同一組值。
+    expect(storeWith(fakeDataSource()).getState().pageSizes).toEqual({
+      specs: 50,
+      archivedChanges: 20,
+      archivedDiscussions: 100,
+    });
+  });
+
+  it("localStorage 寫入失敗時本次執行期照常生效、不拋錯", () => {
+    const store = storeWith(fakeDataSource());
+    const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota");
+    });
+    try {
+      expect(() => store.getState().setPageSize("archivedChanges", 50)).not.toThrow();
+      expect(store.getState().pageSizes.archivedChanges).toBe(50);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+// desktop-settings-mode design D1／D6／D7：設定模式的分類（記住上次所在分類）、更新頁的自動檢查
+// 開關（speclink.updater.autoCheck，預設開）與伺服器頁的預設連線（speclink.defaultConnection）。
+describe("設定模式的分類與偏好", () => {
+  it("預設落在一般與專案說明；setter 改分類，切回設定模式不重設", () => {
+    const store = storeWith(fakeDataSource());
+    expect(store.getState().settingsSection).toBe("general");
+    expect(store.getState().projectSettingsSection).toBe("context");
+    store.getState().setSettingsSection("cli");
+    store.getState().setProjectSettingsSection("workflow");
+    store.getState().setBoardView("board");
+    store.getState().setBoardView("settings");
+    expect(store.getState().settingsSection).toBe("cli");
+    store.getState().setBoardView("project-settings");
+    expect(store.getState().projectSettingsSection).toBe("workflow");
+  });
+
+  it("openSettingsUpdate 切到設定模式的更新頁並舉旗 focusUpdater", () => {
+    const store = storeWith(fakeDataSource());
+    store.getState().openSettingsUpdate();
+    expect(store.getState().boardView).toBe("settings");
+    expect(store.getState().settingsSection).toBe("updates");
+    expect(store.getState().focusUpdater).toBe(true);
+  });
+
+  it("openConnectionReauth 切到設定模式的伺服器頁並聚焦該連線", () => {
+    const store = storeWith(fakeDataSource());
+    store.getState().openConnectionReauth("c1");
+    expect(store.getState().boardView).toBe("settings");
+    expect(store.getState().settingsSection).toBe("servers");
+    expect(store.getState().reauthConnectionId).toBe("c1");
+  });
+
+  it("進入設定模式記下來處，兩種設定模式之間切換不改寫；leaveSettings 回到來處", () => {
+    const store = storeWith(fakeDataSource());
+    expect(store.getState().settingsReturnView).toBe("board");
+    store.getState().setBoardView("specs");
+    store.getState().setBoardView("project-settings");
+    expect(store.getState().settingsReturnView).toBe("specs");
+    store.getState().setBoardView("settings");
+    expect(store.getState().settingsReturnView).toBe("specs");
+    store.getState().leaveSettings();
+    expect(store.getState().boardView).toBe("specs");
+    // 其他入口（更新鈕、重新登入）同樣經 setBoardView，記下的是當時所在頁。
+    store.getState().setBoardView("manual");
+    store.getState().openSettingsUpdate();
+    store.getState().leaveSettings();
+    expect(store.getState().boardView).toBe("manual");
+  });
+
+  describe("updaterAutoCheck", () => {
+    const KEY = "speclink.updater.autoCheck";
+    const updaterStore = () => {
+      const check = vi.fn().mockResolvedValue(null);
+      const store = trackedAppStore({ createSession: vi.fn() as never, updater: { check, relaunch: vi.fn() } });
+      return { store, check };
+    };
+
+    it.each<[string | null, boolean]>([
+      [null, true],
+      ["false", false],
+      ["true", true],
+      ["0", true],
+    ])("鍵 %j 讀為 %s（壞值視為預設開）", (stored, expected) => {
+      if (stored !== null) localStorage.setItem(KEY, stored);
+      expect(updaterStore().store.getState().updaterAutoCheck).toBe(expected);
+    });
+
+    it("setUpdaterAutoCheck 寫回同一鍵", () => {
+      const { store } = updaterStore();
+      store.getState().setUpdaterAutoCheck(false);
+      expect(store.getState().updaterAutoCheck).toBe(false);
+      expect(localStorage.getItem(KEY)).toBe("false");
+      store.getState().setUpdaterAutoCheck(true);
+      expect(localStorage.getItem(KEY)).toBe("true");
+    });
+
+    it("關閉時背景檢查與前景重檢不呼叫端點，手動檢查照常", async () => {
+      localStorage.setItem(KEY, "false");
+      const { store, check } = updaterStore();
+      await store.getState().checkForUpdates(false);
+      await store.getState().recheckOnFocus(Date.now() + 2 * 60 * 60 * 1000);
+      expect(check).not.toHaveBeenCalled();
+      expect(store.getState().updater).toEqual({ phase: "idle" });
+      await store.getState().checkForUpdates(true);
+      expect(check).toHaveBeenCalledTimes(1);
+      expect(store.getState().updater).toEqual({ phase: "upToDate" });
+    });
+  });
+
+  describe("defaultConnectionId", () => {
+    const KEY = "speclink.defaultConnection";
+
+    it("無鍵為 null；有鍵讀回 connection id", () => {
+      expect(storeWith(fakeDataSource()).getState().defaultConnectionId).toBeNull();
+      localStorage.setItem(KEY, "c1");
+      expect(storeWith(fakeDataSource()).getState().defaultConnectionId).toBe("c1");
+    });
+
+    it("setDefaultConnectionId 寫入；設回 null 移除鍵", () => {
+      const store = storeWith(fakeDataSource());
+      store.getState().setDefaultConnectionId("c2");
+      expect(store.getState().defaultConnectionId).toBe("c2");
+      expect(localStorage.getItem(KEY)).toBe("c2");
+      store.getState().setDefaultConnectionId(null);
+      expect(store.getState().defaultConnectionId).toBeNull();
+      expect(localStorage.getItem(KEY)).toBeNull();
+    });
+  });
+});
+
+// desktop-about-page design D1：關於頁的版本資訊（一次取得並快取）。
+describe("關於頁的版本資訊", () => {
+  const INFO = {
+    appVersion: "0.8.0",
+    engineVersion: "v1.44.0",
+    platform: "macOS",
+    arch: "arm64",
+  };
+
+  it("loadAppInfo 只呼叫 adapter 一次：併發與再次進頁都沿用快取", async () => {
+    const loadAppInfo = vi.fn().mockResolvedValue(INFO);
+    const store = trackedAppStore({ createSession: vi.fn() as never, loadAppInfo });
+    expect(store.getState().appInfo).toBeNull();
+    await Promise.all([store.getState().loadAppInfo(), store.getState().loadAppInfo()]);
+    await store.getState().loadAppInfo();
+    expect(loadAppInfo).toHaveBeenCalledTimes(1);
+    expect(store.getState().appInfo).toEqual(INFO);
+  });
+
+  it("取得失敗時維持 null，下次進頁重取", async () => {
+    const loadAppInfo = vi.fn().mockRejectedValueOnce(new Error("ipc down")).mockResolvedValueOnce(INFO);
+    const store = trackedAppStore({ createSession: vi.fn() as never, loadAppInfo });
+    await store.getState().loadAppInfo();
+    expect(store.getState().appInfo).toBeNull();
+    await store.getState().loadAppInfo();
+    expect(loadAppInfo).toHaveBeenCalledTimes(2);
+    expect(store.getState().appInfo).toEqual(INFO);
   });
 });

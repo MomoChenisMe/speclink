@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="./logo-mark.png" />
     <title>Speclink</title>
+    <script>
+      // 外觀偏好（desktop-settings-mode design D4）：首次繪製前套上 data-theme，避免先閃一次系統主題。
+      // 鍵與合法值同 @speclink/ui 的 theme.ts；讀不到即跟隨系統。
+      try {
+        var pref = localStorage.getItem("speclink.theme") ?? localStorage.getItem("speclink.uiTheme");
+        if (pref === "light" || pref === "dark") document.documentElement.setAttribute("data-theme", pref);
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

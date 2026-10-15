@@ -3,8 +3,8 @@ title: 平行實作與合回：worktree
 section: SDD 工作流
 order: 190
 keywords: [worktree, 平行實作, apply-with-worktree, worktree-merge, 合併]
-sources: ["worktree-apply-skill", "worktree-merge-skill", "worktree-overlay", "workflow-config#worktree 欄位寫入的技能同步與關閉擋下", "workspace-tools#worktree 技能的政策條件式生成", "change-plan#apply 技能以 plan 挑選與守門"]
-generated: 2026-10-10T08:24:25+08:00
+sources: [worktree-apply-skill, worktree-merge-skill, worktree-overlay, workflow-config]
+generated: 2026-10-15T12:27:14+08:00
 ---
 # 平行實作與合回：worktree
 
@@ -53,21 +53,42 @@ speclink workflow-config set worktree true
 
 技能在 worktree 內完成這個變更的提交，沿用 [提交單一變更的檔案](commit.md) 的歸屬慣例。它不會合併回主分支，也不會移除 worktree。
 
-接著技能建議你先在 worktree 內跑品質關卡：`/speclink-review`（工藝品質）、`/speclink-verify`（規格符合度），或 `/speclink-quality`（兩站合跑）。要不要跑由你判斷。蓋章會寫入變更的中介資料，技能會提示你補提交。最後交棒給 `/speclink-worktree-merge`。
+提交之後、交棒之前，技能會把分支 rebase 到主分支的最新位置，並重設品質關卡的起點。起點是品質關卡用來比對「這個變更動了哪些東西」的那個 commit。
+
+1. 只有審查與驗證兩站都還沒有工單時才做（技能用 `speclink review show` 與 `speclink verify show` 判斷）。任一站已經有工單，整步略過：品質關卡跑到一半時不 rebase。
+2. 合併目標是主 checkout 目前所在的分支。那個分支是 `speclink/*` 或 detached 時，技能略過這一步並說明原因。
+3. 技能記下合併目標當下的 commit，在 worktree 內 rebase 上去。遇到衝突時，技能執行 `git rebase --abort` 中止 rebase、回報衝突檔案，並略過重設起點。分支沒有變，原本的起點仍然有效。技能不代你解衝突。
+4. rebase 成功後，技能在 worktree 內執行 `speclink review prepare <變更名> --base <記下的 commit>`，把起點改成剛才記下的 commit。
+
+接著技能建議下一步，三個品質關卡入口都會列出：`/speclink-review`（工藝品質）、`/speclink-verify`（規格符合度），或 `/speclink-quality`（兩站合跑）。要不要跑由你判斷。依變更的狀態，建議分兩條路：
+
+| 變更的狀態 | 建議的路 |
+| --- | --- |
+| 沒有未勾的手動任務 | 在 worktree 內跑品質關卡。蓋章會寫入變更的中介資料，技能會提示你補提交，再交給 `/speclink-worktree-merge` |
+| 還有未勾的手動任務，或你想在蓋章前看到 CI 結果 | 先用 `/speclink-worktree-merge` 合回，再到主 checkout 跑品質關卡、做完手動任務後封存。合併時，品質關卡的起點會承接到主 checkout |
+
+想看 CI 結果要走第二條路，是因為 worktree 分支只在你的電腦上、從不 push，CI 看不到它。
 
 ## 合回主分支：/speclink-worktree-merge
 
 合併是你明確觸發的一步。技能依序做：
 
 1. **前置檢查。** 主資料夾當前分支不能是 `speclink/*`，也不能是 detached。技能先向你宣告合併目標分支，不代你切換分支。主資料夾的工作樹必須乾淨，該變更的 worktree 分支必須全數提交。任一條件不成立，技能停下說明缺什麼。它不代你 stash，也不代你提交主資料夾的變更。
-2. **先 rebase，再 fast-forward。** 技能先在 worktree 內把 `speclink/<變更名>` rebase 到合併目標分支。成功後，在主資料夾以 fast-forward 限定方式合併，不產生合併節點。
+2. **先 rebase，再 fast-forward。** 合併開始前，技能先記下主資料夾目前的 HEAD commit（合併前 HEAD）。接著在 worktree 內把 `speclink/<變更名>` rebase 到合併目標分支。成功後，在主資料夾以 fast-forward 限定方式合併，不產生合併節點。
 3. **rebase 衝突時退回一般 merge。** 技能中止 rebase，讓分支完整復原，改在主資料夾做一般 merge。fast-forward 被拒時走同一條出口，並告訴你本次會留下合併節點。fast-forward 被拒的常見原因：另一個 worktree 先合回，目標分支前進了。
 4. **一般 merge 衝突時立即停止。** 技能回報衝突檔案清單，中止合併。它不代你編輯衝突內容，也不留下未完成的合併狀態。
-5. **合併成功後清理。** 技能移除該 worktree 並刪除分支。
-6. **確認收尾。** 成功輸出標示本次以 fast-forward 或合併節點落地，並提示下一步：回主 checkout [封存](archive.md)。
+5. **把品質關卡的起點承接到主資料夾。** 合併成功後（fast-forward 或留下合併節點都一樣）、移除 worktree 之前，技能在主資料夾執行 `speclink review prepare <變更名> --base <合併前 HEAD> --from <worktree 路徑>`。這會把品質關卡的起點寫到主資料夾，並把 worktree 裡審查與驗證兩站的快照搬過來。指令失敗時，技能回報並停止，不移除 worktree。
+6. **清理。** 技能移除該 worktree 並刪除分支。
+7. **確認收尾。** 成功輸出標示本次以 fast-forward 或合併節點落地，並依變更的狀態提示下一步：
+
+| 變更的狀態 | 下一步 |
+| --- | --- |
+| 品質關卡已在 worktree 內跑完 | 回主 checkout [封存](archive.md) |
+| 品質關卡還沒跑 | 直接在主 checkout 跑品質關卡，再封存 |
+| 還有未勾的手動任務 | 在主 checkout 跑完品質關卡、做完手動任務後再封存 |
 
 > [!NOTE]
-> 品質關卡建議在 worktree 內完成。你沒在 worktree 內跑，仍可在主 checkout 補跑。但主 checkout 沒有開工時記錄的比對基準，屬於降級路徑。
+> 合併後才在主 checkout 跑品質關卡，不是降級路徑：第 5 步已經把品質關卡的起點承接到主資料夾。
 
 ## 在主資料夾看 worktree 的進度
 
@@ -85,7 +106,7 @@ worktree 移除後再跑 `speclink list`，標示消失、計數回讀主資料�
 
 ### 桌面 app 的呈現
 
-桌面看板的變更卡片會帶 worktree 標示。打開變更的詳情面板可見分支名與 worktree 路徑。worktree 內勾任務，主看板的計數自動更新，不用手動重整。詳情面板各分頁的內容、狀態報告、分析報告與看板全文搜尋，都以 worktree 副本為準。
+桌面看板的變更卡片會帶 worktree 標示。打開變更的詳情頁可見分支名與 worktree 路徑。worktree 內勾任務，主看板的計數自動更新，不用手動重整。詳情頁各分頁的內容、狀態報告、分析報告與看板全文搜尋，都以 worktree 副本為準。
 
 worktree 掛著時，桌面上對這個變更的動詞分兩級：
 
@@ -97,4 +118,4 @@ worktree 掛著時，桌面上對這個變更的動詞分兩級：
 > [!CAUTION]
 > 封存在主 checkout 執行。worktree-merge 收尾完成後，再回主 checkout 走 [封存](archive.md)。
 
-**出處**：`worktree-apply-skill`、`worktree-merge-skill`、`worktree-overlay`、`workflow-config`、`workspace-tools`、`change-plan`
+**出處**：`worktree-apply-skill`、`worktree-merge-skill`、`worktree-overlay`、`workflow-config`

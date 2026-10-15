@@ -5,6 +5,7 @@
 // command 顯式帶 root。
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import type { ReviewRules } from "@speclink/ui";
 
 import type { InvokeFn, WorkspaceSettingsProvider } from "../session";
 
@@ -58,6 +59,10 @@ export interface SettingsSnapshot {
     context: string | null;
     /** 產出規則現值（依 artifact id 分組；條目順序即檔案順序）。 */
     rules: Record<string, string[]>;
+    /** 審查規則現值（config.yaml 的 review）。 */
+    review: ReviewRules;
+    /** 預設清單的 12 個 smell 名稱——引擎單一提供，前端只顯示、不另存。 */
+    reviewBaselineSmells: string[];
     /** 活躍 schema 的 artifact id（引擎顯示序）——產出規則分節的固定鍵。 */
     schemaArtifacts: string[];
     /** 活躍 schema 名稱（config 的 schema 鍵；缺席預設 spec-driven、壞檔空字串）。 */
@@ -156,6 +161,8 @@ export function createWorkspaceSettings(
     writeWorkflowContext: (context) =>
       invoke("write_workflow_content", { root, context, rules: null }),
     writeWorkflowRules: (rules) => invoke("write_workflow_content", { root, context: null, rules }),
+    writeWorkflowReview: (review) =>
+      invoke("write_workflow_content", { root, context: null, rules: null, review }),
     readSchemas: () => invoke("read_schemas", { root }),
     writeWorkflowSchema: (name) => invoke("write_workflow_schema", { root, name }),
     forkSchema: (source) => invoke("fork_schema", { root, source }),
@@ -230,6 +237,16 @@ export function createRemoteSettings(
           expectedRevision: expectedRevision(),
         }),
       ),
+    writeWorkflowReview: (review) =>
+      adoptRevision(
+        invoke<number>("remote_write_workflow_content", {
+          ...scope,
+          context: null,
+          rules: null,
+          review,
+          expectedRevision: expectedRevision(),
+        }),
+      ),
     // remote 產出流程清單：desktop core 以內嵌內建組裝（不打 server、不帶 root）。
     readSchemas: () => invoke("read_schemas", {}),
     writeWorkflowSchema: (name) =>
@@ -240,9 +257,9 @@ export function createRemoteSettings(
           expectedRevision: expectedRevision(),
         }),
       ),
-    forkSchema: () => Promise.reject(new Error("遠端工作區尚不支援 fork 產出流程")),
-    createSchema: () => Promise.reject(new Error("遠端工作區尚不支援建立產出流程")),
-    revealSchema: () => Promise.reject(new Error("遠端工作區沒有本機檔案可顯示")),
-    deleteSchema: () => Promise.reject(new Error("遠端工作區尚不支援刪除產出流程")),
+    forkSchema: () => Promise.reject(new Error("遠端專案尚不支援 fork 產出流程")),
+    createSchema: () => Promise.reject(new Error("遠端專案尚不支援建立產出流程")),
+    revealSchema: () => Promise.reject(new Error("遠端專案沒有本機檔案可顯示")),
+    deleteSchema: () => Promise.reject(new Error("遠端專案尚不支援刪除產出流程")),
   };
 }

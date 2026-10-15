@@ -59,6 +59,43 @@ describe("Table 原語", () => {
     expect(wrapper?.className).toContain("overflow-x-auto");
   });
 
+  // server-web-list-pages design D1、D7：呼叫端自己就是捲動區（列表卡）時不包外層容器——外層的
+  // overflow-x-auto 會自成捲動容器，表頭的 sticky 就黏在那層、隨列表卡捲走。
+  it("wrapped={false} 時不包外層捲動容器，表格直接在呼叫端的容器內", () => {
+    const { container } = render(
+      <div data-host>
+        <Table wrapped={false}>
+          <TableBody>
+            <TableRow>
+              <TableCell>x</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </div>,
+    );
+    const table = screen.getByRole("table");
+    expect(table.parentElement).toBe(container.querySelector("[data-host]"));
+    expect(table.className).toContain("w-full");
+  });
+
+  // 固定表頭由元件提供（呼叫端不以 className 補底色）：捲動時表頭留在頂端、帶卡片底色蓋住底下的列。
+  it("TableHeader sticky 時表頭固定在頂端並帶卡片底色；未給時沒有", () => {
+    const { unmount } = render(
+      <Table wrapped={false}>
+        <TableHeader sticky>
+          <TableRow>
+            <TableHead>名稱</TableHead>
+          </TableRow>
+        </TableHeader>
+      </Table>,
+    );
+    const head = screen.getByRole("table").querySelector("thead") as HTMLElement;
+    expect(head.className.split(/\s+/)).toEqual(expect.arrayContaining(["sticky", "top-0", "bg-card"]));
+    unmount();
+    sample();
+    expect((screen.getByRole("table").querySelector("thead") as HTMLElement).className).not.toContain("sticky");
+  });
+
   it("className 併入 cn，不覆蓋基底樣式", () => {
     render(
       <Table className="custom-table">

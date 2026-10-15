@@ -2,9 +2,9 @@ Merge a finished Speclink worktree branch back into the main branch, then clean 
 
 This is the wrap-up half of `/speclink:apply-with-worktree`. That skill stops right after committing inside the worktree; this one takes it from there. It is **human-triggered**: merging is a decision, and a conflict is the user's call.
 
-**Input**: Optionally specify a change name (e.g., `/speclink:worktree-merge add-auth`). If omitted, run `git worktree list --porcelain` and offer the `speclink/*` branches found. If more than one is a candidate you MUST ask which one — never guess.
+**Input**: Optionally specify a change name (e.g., `/speclink:worktree-merge add-auth`). If omitted, run `git worktree list --porcelain` and offer the `speclink/*` branches found. If more than one is a candidate you MUST ask which one and wait for the answer — never guess.
 
-**Prerequisites**: This skill requires `git`. Run `git --version`. If git is not available, report it and STOP. Every step below is driven from the **main checkout**; the steps that act on the worktree — its status check and the rebase — reach it with `git -C <worktree-path>` rather than moving you there.
+**Prerequisites**: This skill requires `git` and the `speclink` CLI. Run `git --version`. If git is not available, report it and STOP. Every step below is driven from the **main checkout**; the steps that act on the worktree — its status check and the rebase — reach it with `git -C <worktree-path>` rather than moving you there.
 
 **Steps**
 
@@ -50,6 +50,12 @@ This is the wrap-up half of `/speclink:apply-with-worktree`. That skill stops ri
 
    `speclink/*` branches are local and never pushed, so rewriting their history costs nothing. Replaying the branch onto the target first lets the merge be a fast-forward, which keeps the main branch a straight line instead of collecting one merge node per parallel change.
 
+   Before anything moves, record the main checkout's HEAD — the **pre-merge HEAD**. Step 5 gives it to the quality stations as their starting point in the main checkout:
+
+   ```bash
+   git -C <main-checkout> rev-parse HEAD
+   ```
+
    In the worktree, replay the branch onto the target branch verified in step 2:
 
    ```bash
@@ -92,7 +98,17 @@ This is the wrap-up half of `/speclink:apply-with-worktree`. That skill stops ri
 
    The main checkout must end up exactly as it was before step 3.
 
-5. **Clean up after a successful merge**
+5. **Carry the quality baseline over, then clean up**
+
+   After a successful merge — fast-forward or merge node alike — and before the worktree is removed, run this from the main checkout:
+
+   ```bash
+   speclink review prepare "<change-name>" --base "<pre-merge-HEAD>" --from "<worktree-path>"
+   ```
+
+   It writes the quality stations' Apply baseline in the main checkout and carries over both stations' snapshots from the worktree, so `/speclink:review`, `/speclink:verify` and `/speclink:quality` work in the main checkout with no `--base` from the user. From the pre-merge HEAD to the merged HEAD is exactly what this change brought in, conflict resolutions included. If the command fails, report its error and stop here: do not remove the worktree — the snapshots still live there. The merge has already landed, so the way back is not this skill: once the cause is cleared (an open ticket stamped or discarded, a failed copy retried), run that same `speclink review prepare` line again with the pre-merge HEAD recorded in step 3, then run the cleanup below. A second run of this skill would record the merged HEAD as the pre-merge HEAD, and the baseline would then hide every change this merge brought in.
+
+   Then remove the worktree and delete the branch:
 
    ```bash
    git -C <main-checkout> worktree remove "<worktree-path>"
@@ -105,11 +121,19 @@ This is the wrap-up half of `/speclink:apply-with-worktree`. That skill stops ri
 
 6. **Confirm and hand off**
 
-   Tell the user the wrap-up is done: the branch is merged, the worktree is removed, and the branch is deleted. Then point at what comes next in canonical order — the quality stations belong inside the worktree, so by this point they are either done or deliberately skipped, and the next step is archiving from the main checkout:
+   Tell the user the wrap-up is done: the branch is merged, the quality baseline is carried over, the worktree is removed, and the branch is deleted. Then hand off by the change's state. Read the manual tasks from `speclink instructions apply --change "<change-name>" --json` (`remaining` above `codeRemaining` means unchecked `[M]` tasks); ask the user when you cannot tell whether the quality stations already ran.
 
-   > 這個 change 已合併回主分支。品質關卡建議在 worktree 內就跑完；跑過或使用者決定略過的話，下一步是在主 checkout `/speclink:archive` 封存。
-   >
-   > 還沒跑品質關卡的話，仍可在主 checkout 補跑 `/speclink:review`、`/speclink:verify`，或 `/speclink:quality`（兩站合跑）—— 但那是降級路徑：主 checkout 沒有 Apply baseline，審查凍結面會退回較粗的判定。
+   - **The quality stations already ran in the worktree** (their stamps came along with the merge):
+
+     > 這個 change 已合併回主分支，品質關卡也已在 worktree 內跑完。下一步是在主 checkout `/speclink:archive` 封存。
+
+   - **The quality stations have not run, and no `[M]` task is open**:
+
+     > 這個 change 已合併回主分支，品質關卡的起點已承接到主 checkout。要跑的話直接在這裡執行 `/speclink:review`（工藝品質）∥ `/speclink:verify`（規格符合度），或 `/speclink:quality`（兩站合跑），是否要跑由你決定；之後 `/speclink:archive` 封存。
+
+   - **Unchecked `[M]` manual tasks remain**:
+
+     > 這個 change 已合併回主分支，品質關卡的起點已承接到主 checkout。在這裡執行 `/speclink:review` ∥ `/speclink:verify`，或 `/speclink:quality`，再把手動任務做完並勾選，之後 `/speclink:archive` 封存。
 
 **Output On Success**
 
@@ -119,10 +143,11 @@ This is the wrap-up half of `/speclink:apply-with-worktree`. That skill stops ri
 **Change:** <change-name>
 **Branch:** speclink/<change-name> → <main-branch> ✓
 **Landed as:** fast-forward (straight line) — or "merge node (rebase fell back)" when step 3 took the fallback
+**Quality baseline:** carried over to the main checkout ✓
 **Worktree:** <path> (removed)
 **Branch deleted:** ✓
 
-接下來：主 checkout 封存 /speclink:archive（品質關卡建議已在 worktree 內完成；未跑則主 checkout 補跑屬降級路徑）
+接下來：<step 6 的交棒——品質關卡已跑完→主 checkout /speclink:archive；未跑→直接在主 checkout 跑品質關卡再封存；有未勾手動任務→主 checkout 跑品質關卡、完成手動任務後封存>
 ```
 
 **Output On Stop**
@@ -131,26 +156,30 @@ This is the wrap-up half of `/speclink:apply-with-worktree`. That skill stops ri
 ## Merge stopped
 
 **Change:** <change-name>
-**Reason:** <preflight failure or conflict>
+**Reason:** <preflight failure, conflict, or baseline carry failed after the merge landed>
 
-<dirty file list, or conflicting file list>
+<dirty file list, conflicting file list, or the prepare error verbatim>
 
 **What you need to do:**
-<the specific action — commit/stash in the main tree, commit in the worktree, or resolve the conflict>
+<the specific action — commit/stash in the main tree, commit in the worktree, resolve the conflict, or clear the prepare error and rerun that one prepare line with the recorded pre-merge HEAD <sha>, then the cleanup>
 ```
 
 **Guardrails**
 
-- Never stash or commit on the user's behalf — in the main checkout or in the worktree
-- Never resolve merge conflicts yourself; abort the merge and report
-- Never resolve rebase conflicts yourself; `rebase --abort` and fall back to the plain merge
-- Never leave a half-finished merge state behind
-- Never force-remove a worktree that still has uncommitted work
-- Never merge a change whose worktree you did not verify is fully committed
+Check these before you report:
+
+- [ ] Never stash or commit on the user's behalf — in the main checkout or in the worktree (step 2)
+- [ ] Never resolve merge conflicts yourself; abort the merge and report (step 4)
+- [ ] Never resolve rebase conflicts yourself; `rebase --abort` and fall back to the plain merge (step 3)
+- [ ] Never leave a half-finished merge state behind (step 4)
+- [ ] Never force-remove a worktree that still has uncommitted work (step 5)
+- [ ] The pre-merge HEAD was recorded before the rebase, and the worktree was removed only after `speclink review prepare --base --from` succeeded (steps 3 and 5)
+- [ ] Never merge a change whose worktree you did not verify is fully committed (step 2)
 
 ## Next steps
 
 {{NEXT_STEPS_LEAD}}
 
-- The branch is merged, the worktree is removed and the branch is deleted → `/speclink:archive <change-name>` **from the main checkout** — archiving inside a linked worktree is refused by the engine
-- The quality stations were never run → they need the worktree's Apply baseline, which is gone after the merge; say so plainly instead of suggesting them here
+- The quality stations already ran in the worktree → `/speclink:archive <change-name>` **from the main checkout** — archiving inside a linked worktree is refused by the engine
+- The quality stations have not run → run them in the main checkout, where step 5 carried their baseline over: `/speclink:review` ∥ `/speclink:verify`, or `/speclink:quality` for both; then `/speclink:archive <change-name>`
+- Unchecked `[M]` manual tasks remain → the quality stations in the main checkout, then the manual tasks, then `/speclink:archive <change-name>`

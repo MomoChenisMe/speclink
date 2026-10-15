@@ -9,10 +9,12 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 /** app 自身版本（設定頁軟體更新卡的常駐現版號）。 */
 export const appVersion = (): Promise<string> => getVersion();
 
-/** check 找到的新版：版本號＋下載並套用（簽章驗證由 plugin 內建，失敗即 reject）。 */
+/** check 找到的新版：版本號＋下載與安裝兩段（簽章驗證由 plugin 內建，失敗即 reject）。
+ * 分兩段是為了「取消」：使用者在下載中取消後，下載完成也不安裝（desktop-app「取消下載回到閒置」）。 */
 export interface PendingUpdate {
   version: string;
-  downloadAndInstall: () => Promise<void>;
+  download: () => Promise<void>;
+  install: () => Promise<void>;
 }
 
 export interface UpdaterAdapter {
@@ -35,7 +37,8 @@ export function tauriUpdaterAdapter(): UpdaterAdapter {
       if (!update) return null;
       return {
         version: update.version,
-        downloadAndInstall: () => update.downloadAndInstall(),
+        download: () => update.download(),
+        install: () => update.install(),
       };
     },
     relaunch,

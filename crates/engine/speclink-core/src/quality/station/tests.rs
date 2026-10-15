@@ -37,6 +37,7 @@ fn round_to_json_is_the_one_wire_shape_for_cli_and_desktop() {
             "index": 1,
             "phase": null,
             "patchHash": null,
+            "rules": null,
             "scope": ["src/a.rs"],
             "findings": [{ "severity": "WARNING", "path": "src/a.rs", "text": "old style" }],
         })
@@ -47,6 +48,7 @@ fn round_to_json_is_the_one_wire_shape_for_cli_and_desktop() {
             "index": 2,
             "phase": "validation",
             "patchHash": format!("sha256:{}", "b".repeat(64)),
+            "rules": null,
             "scope": ["src/a.rs", "src/b.rs"],
             "findings": [{ "severity": "SUGGESTION", "path": "src/b.rs", "text": "nit (accepted)" }],
         })
@@ -122,6 +124,160 @@ fn freshness_takes_meta_and_reads_only_its_own_station() {
         Freshness::Stale,
         "review task anchor breaks on uncheck"
     );
+}
+
+/// add-round 寫入前的 finding 路徑檢查（quality-gate-speedup）：兩站同一條規則，
+/// 前綴由呼叫端給（規格目錄名來自本機設定）。
+mod finding_paths {
+    use super::super::*;
+
+    const EXEMPT: &[&str] = &["openspec", ".speclink"];
+
+    fn rounds(ticket: &str) -> Vec<Round> {
+        parse_ticket(&REVIEW, ticket).expect("ticket parses").rounds
+    }
+
+    fn violations(existing: &[Round], content: &str) -> Vec<(String, PathViolationReason)> {
+        finding_path_violations(&REVIEW, existing, content, EXEMPT)
+            .expect("content parses")
+            .into_iter()
+            .map(|v| (v.path, v.reason))
+            .collect()
+    }
+
+    const ROUND_1: &str = "# Review — demo\n\n## Round 1\n\n**Scope**: src/a.rs, src/b.rs\n\n\
+                           - [WARNING] src/a.rs:12 — Correctness: x\n";
+
+    #[test]
+    fn line_suffixed_paths_are_violations() {
+        let got = violations(
+            &[],
+            "**Scope**: src/a.rs\n\n- [WARNING] src/a.rs:42 — Correctness: edge\n\
+             - [WARNING] src/a.rs:42-50 — Correctness: range\n",
+        );
+        assert_eq!(
+            got,
+            vec![
+                ("src/a.rs:42".to_string(), PathViolationReason::LineNumber),
+                ("src/a.rs:42-50".to_string(), PathViolationReason::LineNumber),
+            ]
+        );
+    }
+
+    #[test]
+    fn other_line_forms_are_violations_even_in_exempt_dirs() {
+        let got = violations(
+            &[],
+            "**Scope**: src/a.rs\n\n- [WARNING] src/a.rs:12- — Correctness: open range\n\
+             - [WARNING] src/a.rs: — Correctness: bare colon\n\
+             - [WARNING] src/a.rs:L12 — Correctness: L-prefixed\n\
+             - [WARNING] openspec/changes/demo/design.md:12- — Coherence: exempt dir\n",
+        );
+        let reasons: Vec<_> = got.iter().map(|(_, r)| *r).collect();
+        assert_eq!(reasons, vec![PathViolationReason::LineNumber; 4], "{got:?}");
+    }
+
+    #[test]
+    fn paths_outside_every_scope_are_violations() {
+        let got = violations(
+            &rounds(ROUND_1),
+            "**Scope**: src/a.rs\n\n- [WARNING] src/caller.rs — Correctness: caller breaks\n",
+        );
+        assert_eq!(got, vec![("src/caller.rs".to_string(), PathViolationReason::OutOfScope)]);
+    }
+
+    #[test]
+    fn an_earlier_rounds_scope_admits_the_path() {
+        // Round 2 的 patch 只動 src/a.rs，但 src/b.rs 在 Round 1 Scope 內。
+        let got = violations(
+            &rounds(ROUND_1),
+            "**Scope**: src/a.rs\n\n- [WARNING] src/b.rs — Correctness: regression\n",
+        );
+        assert!(got.is_empty(), "{got:?}");
+    }
+
+    #[test]
+    fn spec_dir_and_sidecar_paths_skip_the_scope_check_but_not_the_line_check() {
+        let got = violations(
+            &[],
+            "**Scope**: src/a.rs\n\n\
+             - [CRITICAL] openspec/changes/demo/specs/auth/spec.md — Completeness: missing\n\
+             - [WARNING] openspec/changes/demo/design.md — Correctness: drift\n\
+             - [WARNING] .speclink/review-scopes/demo/baseline.json — Correctness: stale\n\
+             - [WARNING] openspec/changes/demo/design.md:3 — Correctness: drift\n\
+             - [WARNING] openspecs/x.md — Correctness: lookalike\n",
+        );
+        assert_eq!(
+            got,
+            vec![
+                ("openspec/changes/demo/design.md:3".to_string(), PathViolationReason::LineNumber),
+                ("openspecs/x.md".to_string(), PathViolationReason::OutOfScope),
+            ]
+        );
+    }
+
+    #[test]
+    fn verbatim_carry_overs_from_the_last_round_are_exempt() {
+        // 檢查上線前的舊工單：Round 1 已寫了帶行號的路徑，原文沿用（含補上
+        // `(accepted)`）不得卡住；改了描述就不是沿用，照樣檢查。
+        let got = violations(
+            &rounds(ROUND_1),
+            "**Scope**: src/a.rs\n\n- [WARNING] src/a.rs:12 — Correctness: x\n\
+             - [WARNING] src/a.rs:12 — Correctness: x (accepted)\n\
+             - [WARNING] src/a.rs:12 — Correctness: reworded\n\
+             - [CRITICAL] src/a.rs:12 — Correctness: x\n",
+        );
+        assert_eq!(
+            got,
+            vec![
+                ("src/a.rs:12".to_string(), PathViolationReason::LineNumber),
+                ("src/a.rs:12".to_string(), PathViolationReason::LineNumber),
+            ],
+            "only the reworded and the re-severitied lines are checked"
+        );
+    }
+
+    #[test]
+    fn accepted_lines_in_the_last_round_are_matched_without_the_token() {
+        let ticket = "# Verify — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n\n\
+                      - [WARNING] src/a.rs:7-9 — Correctness: legacy (accepted)\n";
+        let got = violations(
+            &rounds(ticket),
+            "**Scope**: src/a.rs\n\n- [WARNING] src/a.rs:7-9 — Correctness: legacy (accepted)\n",
+        );
+        assert!(got.is_empty(), "{got:?}");
+    }
+
+    #[test]
+    fn backslash_paths_are_normalized_before_the_scope_check() {
+        let got = violations(&[], "**Scope**: src/a.rs\n\n- [WARNING] src\\a.rs — Correctness: x\n");
+        assert!(got.is_empty(), "{got:?}");
+    }
+
+    #[test]
+    fn malformed_content_is_an_invalid_content_error() {
+        // 文法錯誤與 add_round 同一則訊息、同一類（invalid_argv）——檢查先跑也
+        // 不改變呼叫端看到的格式錯誤。
+        let err = finding_path_violations(&REVIEW, &[], "- [WARNING] src/a.rs — x\n", EXEMPT)
+            .expect_err("no scope line");
+        assert!(err.downcast_ref::<crate::command::InvalidContent>().is_some(), "{err}");
+    }
+
+    #[test]
+    fn violation_display_names_the_path_and_the_reason() {
+        let line = PathViolation {
+            path: "src/a.rs:42".into(),
+            reason: PathViolationReason::LineNumber,
+        };
+        let scope = PathViolation {
+            path: "src/caller.rs".into(),
+            reason: PathViolationReason::OutOfScope,
+        };
+        assert!(line.to_string().contains("src/a.rs:42"), "{line}");
+        assert!(line.to_string().contains("line number"), "{line}");
+        assert!(scope.to_string().contains("src/caller.rs"), "{scope}");
+        assert!(scope.to_string().contains("scope"), "{scope}");
+    }
 }
 
 /// 審查站：工單動詞、蓋章守門與五個 `reviewed_*` 欄位的寫入、scope 注入
@@ -916,6 +1072,208 @@ mod review {
         let ticket = show(&REVIEW, &store, "demo").expect("parses");
         assert_eq!(ticket.rounds[0].phase, None);
         assert_eq!(ticket.rounds[0].patch_hash, None);
+    }
+
+    // --- spec「審查工單的建立與追加」：套用規則記錄（`**Rules**:`／`**Rule**:`）---
+
+    /// discovery 輪：Phase／Patch 之後接 `rules` 這幾行規則記錄，再接 Scope 與一條 finding。
+    fn discovery_with_rules(rules: &str) -> String {
+        format!(
+            "**Phase**: discovery\n**Patch**: sha256:{}\n{rules}**Scope**: src/lib.rs\n\n\
+             - [WARNING] src/lib.rs — possible Feature Envy\n",
+            "a".repeat(64)
+        )
+    }
+
+    fn rules(
+        baseline: crate::config::ReviewBaseline,
+        critical: &[&str],
+        warning: &[&str],
+        suggestion: &[&str],
+    ) -> crate::config::ReviewConfig {
+        let list = |l: &[&str]| l.iter().map(|s| s.to_string()).collect();
+        crate::config::ReviewConfig {
+            baseline,
+            critical: list(critical),
+            warning: list(warning),
+            suggestion: list(suggestion),
+        }
+    }
+
+    #[test]
+    fn discovery_round_records_applied_rules() {
+        // spec Scenario「首輪記錄套用規則」：三行規則記錄逐字落進 Round 1，
+        // 解析成 baseline 與依嚴重度分組的規則原文。
+        let store = store_with_change();
+        let lines = "**Rules**: extend\n\
+                     **Rule**: CRITICAL 所有 SQL 一律用參數化查詢，不得用字串拼接\n\
+                     **Rule**: WARNING 新增的公開 API 要有對應的測試\n";
+        add_round(&REVIEW, &store, "demo", &discovery_with_rules(lines)).expect("round with rules");
+        let doc = store.read_artifact("demo", REVIEW_DOC).expect("ticket");
+        assert!(doc.contains(lines), "rule lines are carried verbatim: {doc}");
+        let ticket = show(&REVIEW, &store, "demo").expect("parses");
+        assert_eq!(
+            ticket.rounds[0].rules,
+            Some(rules(
+                crate::config::ReviewBaseline::Extend,
+                &["所有 SQL 一律用參數化查詢，不得用字串拼接"],
+                &["新增的公開 API 要有對應的測試"],
+                &[],
+            ))
+        );
+    }
+
+    #[test]
+    fn rule_text_is_trimmed_and_keeps_its_order_within_a_severity() {
+        // design D2：同一嚴重度內依出現順序保留；原文去頭尾空白。
+        let store = store_with_change();
+        let lines = "**Rules**: replace\n\
+                     **Rule**: CRITICAL   不得把金鑰或密碼寫死在程式碼裡  \n\
+                     **Rule**: SUGGESTION 偏好以提早返回取代深層巢狀\n\
+                     **Rule**: CRITICAL 所有 SQL 一律用參數化查詢，不得用字串拼接\n";
+        add_round(&REVIEW, &store, "demo", &discovery_with_rules(lines)).expect("round with rules");
+        let ticket = show(&REVIEW, &store, "demo").expect("parses");
+        assert_eq!(
+            ticket.rounds[0].rules,
+            Some(rules(
+                crate::config::ReviewBaseline::Replace,
+                &["不得把金鑰或密碼寫死在程式碼裡", "所有 SQL 一律用參數化查詢，不得用字串拼接"],
+                &[],
+                &["偏好以提早返回取代深層巢狀"],
+            ))
+        );
+    }
+
+    #[test]
+    fn rounds_without_rule_lines_parse_with_no_rules() {
+        // 兩種行皆選填：structured 與 legacy 輪不帶規則記錄時 rules 為 None。
+        let store = store_with_change();
+        add_round(&REVIEW, &store, "demo", &structured_round("discovery", &"a".repeat(64))).expect("r1");
+        add_round(&REVIEW, &store, "demo", &structured_round("validation", &"b".repeat(64))).expect("r2");
+        let ticket = show(&REVIEW, &store, "demo").expect("parses");
+        assert!(ticket.rounds.iter().all(|r| r.rules.is_none()));
+
+        let legacy = store_with_change();
+        add_round(&REVIEW, &legacy, "demo", ROUND_1).expect("legacy round");
+        assert_eq!(show(&REVIEW, &legacy, "demo").expect("parses").rounds[0].rules, None);
+    }
+
+    #[test]
+    fn malformed_rule_records_are_rejected_without_writing() {
+        // spec Example「拒絕的規則記錄」：每列各自被拒絕，stderr 點名該行的問題，
+        // 工單零寫入。
+        let cases: &[(&str, &[&str])] = &[
+            ("**Rules**: Extend\n", &["extend", "replace"]),
+            ("**Rules**: extend\n**Rules**: extend\n", &["multiple `**Rules**:`"]),
+            ("**Rule**: WARNING 要有測試\n", &["`**Rules**:`"]),
+            ("**Rules**: extend\n**Rule**: NOTE 要有測試\n", &["CRITICAL", "WARNING", "SUGGESTION"]),
+            ("**Rules**: replace\n**Rule**: CRITICAL\n", &["rule text"]),
+        ];
+        for (lines, expected) in cases {
+            let store = store_with_change();
+            let err = add_round(&REVIEW, &store, "demo", &discovery_with_rules(lines))
+                .expect_err("malformed rule record must be rejected");
+            assert!(
+                err.downcast_ref::<crate::command::InvalidContent>().is_some(),
+                "{lines:?} is a caller content error: {err}"
+            );
+            for word in *expected {
+                assert!(err.to_string().contains(word), "{lines:?}: error must mention {word:?}: {err}");
+            }
+            assert_eq!(*store.artifact_writes.borrow(), 0, "{lines:?}: refusal must not write");
+        }
+    }
+
+    #[test]
+    fn rule_record_edge_values_fail_closed() {
+        // sharp-edges 檢查（任務 1.3）：大小寫不符的 severity、空值、只有空白的原文
+        // （含全形空白）都拒絕且零寫入。
+        for lines in [
+            "**Rules**: extend\n**Rule**: critical 要有測試\n",
+            "**Rules**:\n",
+            "**Rules**: extend\n**Rule**:\n",
+            "**Rules**: extend\n**Rule**: WARNING \u{3000} \n",
+        ] {
+            let store = store_with_change();
+            assert!(
+                add_round(&REVIEW, &store, "demo", &discovery_with_rules(lines)).is_err(),
+                "{lines:?} must be rejected"
+            );
+            assert_eq!(*store.artifact_writes.borrow(), 0, "{lines:?}: refusal must not write");
+        }
+    }
+
+    #[test]
+    fn rule_record_whitespace_crlf_and_duplicates_have_defined_results() {
+        // sharp-edges 檢查（任務 1.3）：
+        // - 冒號後無空白、token 前後空白與全形空白（Unicode 空白）照 trim 處理；
+        // - severity 與原文之間的全形空白也算分隔；原文內部的全形空白保留；
+        // - CRLF 行尾不殘留 `\r`；
+        // - 相同的規則行照記錄保留兩條（config 清單本身允許重複）。
+        let store = store_with_change();
+        let lines = "**Rules**:replace\u{3000}\r\n\
+                     **Rule**: CRITICAL\u{3000}金鑰\u{3000}不得寫死\r\n\
+                     **Rule**: WARNING 要有測試\r\n\
+                     **Rule**: WARNING 要有測試\r\n";
+        add_round(&REVIEW, &store, "demo", &discovery_with_rules(lines)).expect("round with rules");
+        let ticket = show(&REVIEW, &store, "demo").expect("parses");
+        assert_eq!(
+            ticket.rounds[0].rules,
+            Some(rules(
+                crate::config::ReviewBaseline::Replace,
+                &["金鑰\u{3000}不得寫死"],
+                &["要有測試", "要有測試"],
+                &[],
+            ))
+        );
+
+        // 前綴本身區分大小寫：`**rules**:` 與 `**phase**:` 一樣是一般文字行，不算記錄。
+        let prose = store_with_change();
+        add_round(&REVIEW, &prose, "demo", &discovery_with_rules("**rules**: extend\n")).expect("prose line");
+        assert_eq!(show(&REVIEW, &prose, "demo").expect("parses").rounds[0].rules, None);
+    }
+
+    #[test]
+    fn rule_records_are_rejected_outside_a_discovery_round() {
+        // spec Scenario「規則記錄只能出現在 discovery 輪」：validation 輪與 legacy 輪
+        // 帶 `**Rules**:` 都拒絕，既有工單位元級不變。
+        let store = store_with_change();
+        add_round(&REVIEW, &store, "demo", &structured_round("discovery", &"a".repeat(64))).expect("r1");
+        let before = store.read_artifact("demo", REVIEW_DOC).expect("ticket");
+        let validation = format!(
+            "**Phase**: validation\n**Patch**: sha256:{}\n**Rules**: extend\n**Scope**: src/lib.rs\n",
+            "b".repeat(64)
+        );
+        let legacy = "**Rules**: extend\n**Scope**: src/lib.rs\n";
+        for content in [validation.as_str(), legacy] {
+            let err = add_round(&REVIEW, &store, "demo", content)
+                .expect_err("rules outside discovery must be rejected");
+            assert!(err.to_string().contains("discovery"), "error names the discovery round: {err}");
+            assert_eq!(store.read_artifact("demo", REVIEW_DOC).as_deref(), Some(before.as_str()));
+        }
+    }
+
+    #[test]
+    fn round_to_json_carries_the_rules_object() {
+        // design D3：`rules` 序列化為 { baseline, critical, warning, suggestion }，
+        // 沒有記錄的輪為明確 null（另見檔首的 wire 形狀測試）。
+        let store = store_with_change();
+        let lines = "**Rules**: replace\n**Rule**: SUGGESTION 偏好以提早返回取代深層巢狀\n";
+        add_round(&REVIEW, &store, "demo", &discovery_with_rules(lines)).expect("r1");
+        add_round(&REVIEW, &store, "demo", &structured_round("validation", &"b".repeat(64))).expect("r2");
+        let ticket = show(&REVIEW, &store, "demo").expect("parses");
+        assert_eq!(
+            ticket.rounds[0].to_json()["rules"],
+            serde_json::json!({
+                "baseline": "replace",
+                "critical": [],
+                "warning": [],
+                "suggestion": ["偏好以提早返回取代深層巢狀"],
+            })
+        );
+        let last = ticket.last_round().to_json();
+        assert!(last.as_object().expect("object").contains_key("rules"), "rules key is always present");
+        assert_eq!(last["rules"], serde_json::Value::Null);
     }
 
     // --- spec「內容指紋錨與失效判定」---

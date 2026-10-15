@@ -19,9 +19,9 @@ vi.mock("../components/TaskList", () => ({
 }));
 
 import { ChangeCard } from "../components/ChangeCard";
-import { RichDetailDrawer } from "../components/RichDetailDrawer";
+import { ChangeDetailPage } from "../components/ChangeDetailPage";
 import { ArchivedList } from "../components/ArchivedList";
-import { ArchivedDrawer } from "../components/ArchivedDrawer";
+import { ArchivedDetailPage } from "../components/ArchivedDetailPage";
 import { ReviewArchiveDialog } from "../components/ReviewArchiveDialog";
 import type { ArchivedItem, ChangeItem } from "../adapter";
 
@@ -30,8 +30,6 @@ const VERIFY_LABELS = ["驗證中", "已驗證", "已驗證·其後有變動"];
 
 function drawerProps(change: ChangeItem) {
   return {
-    open: true,
-    onOpenChange: vi.fn(),
     change,
     loadDocument: vi.fn(async () => "# doc"),
     loadCapabilities: vi.fn(async () => [] as string[]),
@@ -134,50 +132,56 @@ describe("兩站同狀態同色、異形可辨（design D5）", () => {
   });
 });
 
-describe("RichDetailDrawer 驗證資訊列", () => {
-  it("verified 章籤可視僅狀態詞——蓋章時間與驗證者收進提示", () => {
-    // spec Scenario「已驗證抽屜」＋「狀態列章籤與提示」：日期與含 email 的完整
-    // 識別不再直出（提示內容由 richDrawer.test.tsx 驗）。
+/** 章籤只在「狀態」區的「品質關卡」列，身分區沒有（spec「變更詳情頁的標頭與狀態卡」）。 */
+function qualityStamp(mark: string) {
+  const row = document.querySelector(mark) as HTMLElement;
+  expect(row).toBeTruthy();
+  expect(row.closest("[data-status-quality]")).toBeTruthy();
+  expect(row.closest("[data-detail-identity]")).toBeNull();
+  return row;
+}
+
+describe("ChangeDetailPage 驗證章籤", () => {
+  it("verified 章籤落在品質關卡列：狀態詞＋蓋章日期，驗證者收進提示", () => {
+    // 含 email 的完整識別不直出，收進主題化提示（提示內容由 changeDetailPage.test.tsx 驗）。
     render(
-      <RichDetailDrawer
+      <ChangeDetailPage
         {...(drawerProps({
           ...base,
           verifyStatus: "verified",
           verifiedAt: "2026-08-02",
           verifiedBy: "Ver <v@example.com>",
-        }) as never)}
+        }) as Parameters<typeof ChangeDetailPage>[0])}
       />,
     );
-    const row = document.querySelector("[data-verify-row]") as HTMLElement;
-    expect(row).toBeTruthy();
+    const row = qualityStamp("[data-verify-row]");
     expect(within(row).getByText(/已驗證/)).toBeTruthy();
-    expect(row.textContent).not.toContain("2026-08-02");
+    expect(row.textContent).toContain("2026-08-02");
     expect(row.textContent).not.toContain("v@example.com");
   });
 
   it("inVerify 僅顯示狀態詞，無時間與驗證者", () => {
-    render(<RichDetailDrawer {...(drawerProps({ ...base, verifyStatus: "inVerify" }) as never)} />);
-    const row = document.querySelector("[data-verify-row]") as HTMLElement;
-    expect(row).toBeTruthy();
+    render(<ChangeDetailPage {...(drawerProps({ ...base, verifyStatus: "inVerify" }) as Parameters<typeof ChangeDetailPage>[0])} />);
+    const row = qualityStamp("[data-verify-row]");
     expect(within(row).getByText(/驗證中/)).toBeTruthy();
     expect(row.textContent).not.toContain("2026-");
   });
 
   it("none 不渲染資訊列", () => {
-    render(<RichDetailDrawer {...(drawerProps({ ...base, verifyStatus: "none" }) as never)} />);
+    render(<ChangeDetailPage {...(drawerProps({ ...base, verifyStatus: "none" }) as Parameters<typeof ChangeDetailPage>[0])} />);
     expect(document.querySelector("[data-verify-row]")).toBeNull();
   });
 
   it("兩站資訊列同構並列", () => {
     render(
-      <RichDetailDrawer
+      <ChangeDetailPage
         {...(drawerProps({
           ...base,
           reviewStatus: "reviewed",
           reviewedAt: "2026-08-01",
           verifyStatus: "verified",
           verifiedAt: "2026-08-02",
-        }) as never)}
+        }) as Parameters<typeof ChangeDetailPage>[0])}
       />,
     );
     const review = document.querySelector("[data-review-row]") as HTMLElement;
@@ -226,14 +230,12 @@ describe("已封存側驗證結局標示", () => {
     for (const label of ["已驗證", "曾驗證未通過"]) {
       expect(within(card("2026-08-04-plain")).queryByLabelText(label)).toBeNull();
     }
-    expect(screen.getByLabelText("曾驗證未通過").className).toContain("text-rose-600");
+    expect(screen.getByLabelText("曾驗證未通過").className).toContain("text-destructive");
   });
 
-  it("抽屜顯示「曾驗證未通過」標示", () => {
+  it("已封存詳情頁顯示「曾驗證未通過」標示", () => {
     render(
-      <ArchivedDrawer
-        open
-        onOpenChange={() => {}}
+      <ArchivedDetailPage
         target={{ kind: "change", datedName: "2026-08-06-carried" }}
         verifyStatus="verifiedNotPassed"
         loadDocument={async () => null}
@@ -244,7 +246,7 @@ describe("已封存側驗證結局標示", () => {
     const outcome = document.querySelector("[data-verify-outcome]") as HTMLElement;
     expect(outcome).toBeTruthy();
     expect(outcome.textContent).toContain("曾驗證未通過");
-    expect(outcome.className).toContain("text-rose-600");
+    expect(outcome.className).toContain("text-destructive");
   });
 });
 

@@ -20,6 +20,15 @@ pub fn set_skill_version(skills_root: &Path, version: &str) {
     }
 }
 
+/// 在 `skills_root` 下寫一份 `<name>/SKILL.md`，frontmatter 帶 `version`——不經
+/// `speclink update` 生成技能時（例如 remote 模式的測試專案）模擬某版引擎的產物。
+pub fn write_skill_file(skills_root: &Path, name: &str, version: &str) {
+    let dir = skills_root.join(name);
+    std::fs::create_dir_all(&dir).unwrap();
+    let text = format!("---\nname: {name}\nmetadata:\n  version: \"{version}\"\n---\n");
+    std::fs::write(dir.join("SKILL.md"), text).unwrap();
+}
+
 /// 讀一份 SKILL.md frontmatter 的版號值（不含引號）；測試斷言用。
 pub fn skill_frontmatter_version(skill_file: &Path) -> String {
     let text = std::fs::read_to_string(skill_file).expect("SKILL.md exists");

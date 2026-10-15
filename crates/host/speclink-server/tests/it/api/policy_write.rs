@@ -243,6 +243,26 @@ fn invalid_locale_value_is_rejected_without_writes() {
 }
 
 #[test]
+fn review_block_typo_is_rejected_without_writes() {
+    // Spec scenario remote 寫入以同一解析拒收（review-rules-config）：review 底下的
+    // 未知子鍵 critcal 由同一引擎解析擋下，文件與 revision 皆不變。
+    let f = fixture();
+    let (before, _) = get_json(&f, &f.editor_pat, "config");
+    let revision = before["revision"].as_u64().expect("revision");
+
+    let (status, error) = protocol_error(put_config(
+        &f,
+        &f.editor_pat,
+        "schema: spec-driven\nreview:\n  critcal:\n    - x\n",
+        revision,
+    ));
+    assert_eq!(status, 422);
+    assert_eq!(error.reason, ErrorReason::InvalidConfig);
+    assert!(error.message.contains("critcal"), "message names the key: {}", error.message);
+    assert_eq!(stored_policy(&f), (INITIAL.to_string(), revision), "nothing lands");
+}
+
+#[test]
 fn reader_write_is_forbidden_and_binding_capability_follows_role() {
     let f = fixture();
     let (config, _) = get_json(&f, &f.reader_pat, "config");

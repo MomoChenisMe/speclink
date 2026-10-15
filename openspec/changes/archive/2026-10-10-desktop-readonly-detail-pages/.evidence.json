@@ -1,0 +1,240 @@
+{
+  "version": 2,
+  "change": "desktop-readonly-detail-pages",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 新增 `packages/ui/src/specSections.ts`（design D1：`parseSpecSections(markdown)` 以 `### Requirement:` 切段、Purpose 區段、每段 body／scenarios（`##### Example` 歸所在 scenario）／段尾 `@trace` 的 source 與 updated、移除 `---`；無需求標題回 null；`rehypeSpecKeywords` 把文字節點的 `SHALL NOT`／`SHALL`／`MUST NOT`／`MUST` 整詞包成 `<code class=\"spec-kw\">`、程式碼區塊不處理）（spec「桌面 app 呈現 change 與 spec 的清單與內容」）。驗證：新增 `packages/ui/src/__tests__/specSections.test.ts`——三段含 scenario 與 trace 的範本解析出標題／body／scenarios／trace、Example 歸屬 scenario、無 trace 時 null、無需求標題回 null、`---` 不出現在 body、關鍵字外掛只包整詞且 code 內不包；`npm test -w packages/ui -- specSections`。",
+      "files": [
+        "packages/ui/src/__tests__/specSections.test.ts",
+        "packages/ui/src/specSections.ts"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 新增 `packages/ui/src/components/SpecDetailPage.tsx`（design D2：`DetailHeader` 標題＋複製、meta 列三段（缺席整段缺席）、右端「搜尋需求」`SearchField`；`Tabs variant=\"card\"`「規格 N」「溯源 M」＋`renderDocumentActions({ doc: { spec: capability }, content: 原文 })`（`packages/ui/src/components/DetailHeader.tsx` 的 `DocumentRef` 加 `{ spec }`／`{ archived, artifact }`、`DocumentTarget.doc` 可為 null；design D7）；頁根 `@container`、「規格」分頁作用中時 `hidden @min-[1200px]:block` 的 200px 目錄在 768px 內容欄左側重用 `ManualToc`（`packages/ui/src/components/ManualToc.tsx` 加 `className` 槽與標題選擇器、改以 capture 監聽祖先捲動容器）、Purpose 與需求標題為 `h2`、每段「Requirement」小標＋標題＋右端可點錨點＋需求文（`packages/ui/src/components/Markdown.tsx` 加 `specKeywords` 掛 `rehypeSpecKeywords`；`apps/desktop/src/index.css` 的 `.markdown code.spec-kw` 灰底）＋左線縮排 Scenario 區塊；搜尋依標題過濾段、無命中「沒有符合的需求」；「溯源」分頁 `ListRow` 列（`packages/ui/src/components/ListRow.tsx` 加 `disabled`）、命中者依封存日期升冪可點、未命中者在後「無封存記錄」不可點、無來源「此規格沒有來源變更」；解析回 null 整篇 Markdown；skeleton 三態與 `refreshGen` 重載沿用）；i18n 加 `sdetail.*` 十一鍵（spec「桌面 app 呈現 change 與 spec 的清單與內容」「規格頁提供清單、搜尋與展開檢視」「詳情頁文件載入以 skeleton 呈現」）。驗證：`packages/ui/src/__tests__/specDrawer.test.tsx` 的案例搬到新增的 `packages/ui/src/__tests__/specDetailPage.test.tsx`（去掉 dialog 斷言），並新增——三段規格渲染三個 `section[data-requirement]` 各含 Requirement 小標、`h2` 標題、錨點文字「來自 X · 日期」、`code.spec-kw` 包住 SHALL、Scenario 區塊帶 `border-l-2`；meta 列「3 條需求 · 來自 2 個已封存變更 · 最近更新 …」；搜尋只剩命中段且目錄 DOM 隨之縮減、無命中文案；溯源分頁三列順序與副標、未命中列 disabled、點命中列呼叫 `onOpenArchivedChange(datedName)`；無 trace 時徽章 0 與空態；無需求標題時單一 Markdown 且無目錄節點；`renderDocumentActions` 收到 `{ spec: capability }` 與原文；`npm test -w packages/ui -- specDetailPage`。",
+      "files": [
+        "apps/desktop/src/index.css",
+        "packages/ui/src/__tests__/listRow.test.tsx",
+        "packages/ui/src/components/DetailHeader.tsx",
+        "packages/ui/src/components/ListRow.tsx",
+        "packages/ui/src/components/ManualToc.tsx",
+        "packages/ui/src/components/Markdown.tsx",
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/__tests__/specDetailPage.test.tsx",
+        "packages/ui/src/components/SpecDetailPage.tsx"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 新增 `packages/ui/src/components/ArchivedDetailPage.tsx`（design D3：封存變更變體——`DetailHeader` 變更名＋複製封存目錄名（`DetailHeader.tsx` 加 `copyValue`）＋結局 `StatusPill`（已審查／已驗證 stamp、曾審查／曾驗證未通過 destructive）、出身列建立者／建立日／「封存 日期」／「來自」籤（點擊 `onOpenDiscussion`）、無動作區、狀態卡三列（任務 n/m 或「—」、品質關卡結局或「未經品質關卡」、封存日期）、分頁提案／設計／任務／規格＋條件式審查／驗證、`renderDocumentActions({ doc: { archived: datedName, artifact }, content: 原文 })`、`TaskList` 唯讀無把手無工具列整列不回應；封存討論變體——slug＋複製＋「已封存」`StatusPill neutral`＋改進籤、topic、出身列、狀態卡階段列現站「已封存」（與 `DiscussionDetailPage` 共用步驟列元件，自 `packages/ui/src/components/DiscussionDetailPage.tsx` 抽出）＋衍生變更三態籤列、分頁結論／討論過程／背景／衍生變更、`renderDocumentActions({ doc: null, content: 原文 })`）；i18n 加 `adetail.*` 四鍵（spec「已封存項目以詳情頁檢視」「已封存詳情頁的工單分頁」「已封存側的審查標示」「已封存側的驗證標示」「規格與封存卡片收合資訊」）。驗證：`packages/ui/src/__tests__/archivedDrawer.test.tsx` 的案例搬到新增的 `packages/ui/src/__tests__/archivedDetailPage.test.tsx`，並新增——封存變更的標題列結局籤與狀態卡三列文字、複製鈕寫入含日期前綴目錄名、出身列缺席欄位、來源討論籤呼叫 `onOpenDiscussion`、任務分頁無把手無工具列且點列不呼叫任何回呼、`reviewedNotPassed` 出現審查分頁；封存討論的「已封存」籤、階段列 `aria-current` 在「已封存」、衍生籤三態與點擊、`renderDocumentActions` 收到 `doc` 為 null 的目標；`npm test -w packages/ui -- archivedDetailPage`。",
+      "files": [
+        "packages/ui/src/components/DiscussionDetailPage.tsx",
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx",
+        "packages/ui/src/components/ArchivedDetailPage.tsx"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "3.1 `packages/ui/src/components/SpecList.tsx` 加 `onVisibleOrderChange?: (ids: string[]) => void`（過濾後全部頁順序）、`packages/ui/src/components/ArchivedList.tsx` 加 `onVisibleOrderChange?: (order: { changes: string[]; discussions: string[] }) => void`（兩節各自過濾後全部頁順序），皆以 effect 回報（design D4；spec「詳情頁的導覽與返回」）。驗證：`packages/ui/src/__tests__/specList.test.tsx` 與 `archivedList.test.tsx` 各新增「初次回報全量順序、搜尋後回報過濾後順序且不受換頁影響」；`npm test -w packages/ui -- specList archivedList`。",
+      "files": [
+        "packages/ui/src/__tests__/archivedList.test.tsx",
+        "packages/ui/src/__tests__/specList.test.tsx",
+        "packages/ui/src/components/ArchivedList.tsx",
+        "packages/ui/src/components/SpecList.tsx"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.2 `apps/desktop/src/App.tsx`：`detailSpec` 非 null 時頁層掛 `SpecDetailPage`（`archivedChanges={s.archived}`、`onOpenArchivedChange` 走 `openArchived`、`renderDocumentActions` 接 `DocumentActionsMenu`），`detailArchived` 非 null 時掛 `ArchivedDetailPage`（props 自 `ArchivedDrawer` 接線搬移；`onOpenDiscussion` 改 `openArchived({ kind: \"discussion\", slug })`）；`visibleOrder` state 加 `specs`、`archivedChanges`、`archivedDiscussions`，`DetailNav` 序列依宿主選擇（宿主為對應清單頁取回報值，否則取 `s.specs`／`s.archived`／`s.discussions.archived` 未過濾順序）；麵包屑：規格「專案 / 規格 / capability」、已封存「專案 / 已封存 / 名稱」、自手冊頁開啟的規格頁「專案 / 手冊 / capability」且中段點擊關頁；移除 `SpecDrawer`／`ArchivedDrawer` 掛載；「開啟 ▾」的定位（design D7）：`apps/desktop/core/src/query.rs` 新增 `spec_location_at`／`archived_document_location_at`、`apps/desktop/src-tauri/src/lib.rs` 加 `spec_location`／`archived_document_location` 指令、`apps/desktop/src/adapter/fsActions.ts` 依 ref 型別分派、`apps/desktop/src/components/DocumentActionsMenu.tsx` 對 `doc` 為 null 的目標只給「複製內容」（design D4、D7；spec「桌面 app 呈現 change 與 spec 的清單與內容」「已封存項目以詳情頁檢視」「已封存頁含討論節」「內頁渲染與出處跳規格」「變更與討論詳情頁的宿主為看板」「詳情頁互斥」）。驗證：`apps/desktop/src/__tests__/App.test.tsx` 既有規格與已封存抽屜案例改為——規格頁點列後 `detail-page` 掛 `SpecDetailPage` 且 `host-page` 為規格頁並帶 `inert`、麵包屑「專案 / 規格 / 名稱」、Esc 後規格頁搜尋字串不變；手冊頁出處點擊後麵包屑「專案 / 手冊 / 名稱」、Esc 回手冊頁且 `boardView` 仍為 manual；規格詳情頁溯源列點擊後 `ArchivedDetailPage` 取代且 `boardView` 不變；已封存頁點列後 `ArchivedDetailPage` 且宿主為已封存頁；已封存討論衍生籤點活躍者後 `boardView` 為 board 且掛 `ChangeDetailPage`；`DetailNav` 於手冊宿主時 m 為全部規格數；`apps/desktop/src/__tests__/documentActionsMenu.test.tsx` 新增 `doc` 為 null 時本機也只有「複製內容」；`apps/desktop/src/__tests__/fsActions.test.ts` 釘住四種參照的指令分派；`query.rs` 單元測試釘住兩支定位函式的相對路徑與路徑穿越回 None；`npm test -w apps/desktop -- App documentActionsMenu fsActions`、`cargo test -p speclink-desktop-core location`。",
+      "files": [
+        "apps/desktop/core/src/query.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/documentActionsMenu.test.tsx",
+        "apps/desktop/src/adapter/fsActions.ts",
+        "apps/desktop/src/components/DocumentActionsMenu.tsx",
+        "packages/ui/src/index.ts",
+        "apps/desktop/src/__tests__/fsActions.test.ts"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.3 刪除 `packages/ui/src/components/SpecDrawer.tsx`、`packages/ui/src/components/ArchivedDrawer.tsx`、`packages/ui/src/__tests__/specDrawer.test.tsx`、`packages/ui/src/__tests__/archivedDrawer.test.tsx`；`packages/ui/src/index.ts` 改匯出 `SpecDetailPage`、`ArchivedDetailPage`、`parseSpecSections`（`ArchivedTarget` 型別改自 `ArchivedDetailPage` 匯出），`Sheet*` 匯出保留；`verifyBadge`／`improveBadge`／`reviewBadge` 測試的 `ArchivedDrawer` 案例改用 `ArchivedDetailPage`；孤兒 `packages/ui/src/lib/useLingering.ts`、`apps/desktop/src/store.ts` 的 `closeSpec`／`closeArchived`（`apps/desktop/src/__tests__/store.test.ts` 改走 `closeDetailPage`）與 8 個無人引用的 i18n 鍵一併移除（design D5、D6）。驗證：`grep -rn 'SpecDrawer\\|ArchivedDrawer' apps packages --include=*.ts --include=*.tsx` 零命中；`grep -rn 'Sheet' apps/desktop/src --include=*.ts --include=*.tsx` 零命中；`npm run build -w apps/desktop` 與 `npm run build -w apps/server-web` 通過。",
+      "files": [
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/store.ts",
+        "packages/ui/src/__tests__/archivedDrawer.test.tsx",
+        "packages/ui/src/__tests__/improveBadge.test.tsx",
+        "packages/ui/src/__tests__/reviewBadge.test.tsx",
+        "packages/ui/src/__tests__/specDrawer.test.tsx",
+        "packages/ui/src/__tests__/verifyBadge.test.tsx",
+        "packages/ui/src/components/ArchivedDrawer.tsx",
+        "packages/ui/src/components/SpecDrawer.tsx",
+        "packages/ui/src/lib/useLingering.ts"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.4 返回鈕與返回快捷鍵（design D8；spec「詳情頁的導覽與返回」）：`apps/desktop/src/components/DetailNav.tsx` 新增 `DetailBack`（「←」圖示鈕，無障礙名稱「返回<頁名>」、提示標示 Esc 與 ⌘[／Alt+←），`apps/desktop/src/components/TitleBar.tsx` 的 `MainTitleBar` 加 `leading` 槽，詳情頁開啟時 `apps/desktop/src/App.tsx` 放入 `DetailBack`（點擊 `closeDetailPage`）；詳情頁快捷鍵加 ⌘[（macOS）／Alt+←（其他平台），守門與 Esc 相同；window `mouseup` 的 `button === 3` 於詳情頁開啟且無確認在途時關頁；`apps/desktop/src/i18n/messages.ts` 加 `detail.back`、`detail.backHint`；`apps/desktop/src/store.ts` 的 `setBoardView` 一併清 `detailSpec`／`detailArchived`。驗證：`apps/desktop/src/__tests__/App.test.tsx` 新增——返回鈕名稱「返回規格」、點擊後回規格頁且搜尋字串保留；依平台的 ⌘[／Alt+← 關頁、焦點在輸入時不作用；`mouseup` button 3 關頁；規格詳情頁與已封存詳情頁開著時點專案欄先關頁；`apps/desktop/src/__tests__/detailNav.test.tsx` 新增 `DetailBack` 的名稱、提示與點擊；`npm test -w apps/desktop -- App detailNav`。",
+      "files": [
+        "apps/desktop/src/__tests__/detailNav.test.tsx",
+        "apps/desktop/src/components/DetailNav.tsx",
+        "apps/desktop/src/components/TitleBar.tsx",
+        "apps/desktop/src/i18n/messages.ts"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.5 觸控板滑動返回與返回快捷鍵補強（design D8；spec「詳情頁的導覽與返回」）：新增 `apps/desktop/src/components/SwipeBack.tsx`——詳情頁開啟時監聽 window `wheel`，水平分量為主且朝返回方向（依 `webkitDirectionInvertedFromDevice` 換算手指方向）時累計位移、主區左緣的「←」指示隨之推出、達門檻轉實心，最後一個事件後靜止 120ms 時已達門檻即 `closeDetailPage`、未達則收回；手勢開始於仍可往左捲動的水平捲動區塊時不接手；`apps/desktop/src/App.tsx` 掛載於主區。`apps/desktop/src/components/DetailNav.tsx` 抽出 `isBackShortcut(e, platform)`：macOS 以 `e.code`（BracketLeft／ArrowLeft）比對 ⌘[ 與 ⌘←，其他平台 Alt+←。驗證：新增 `apps/desktop/src/__tests__/swipeBack.test.tsx`——累計達門檻後靜止才觸發、未達門檻不觸發且指示收回、反向滑回扣減、垂直為主的捲動不理會、可往左捲動的區塊內不接手、自然捲動關閉時方向反轉、停用時不監聽；`apps/desktop/src/__tests__/detailNav.test.tsx` 新增 `isBackShortcut` 兩平台對照（含輸入法下 `e.key` 不是「[」的 ⌘[）；`apps/desktop/src/__tests__/App.test.tsx` 新增水平滑動關頁；`npm test -w apps/desktop -- swipeBack detailNav App`。",
+      "files": [
+        "apps/desktop/src/__tests__/swipeBack.test.tsx",
+        "apps/desktop/src/components/SwipeBack.tsx"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.2 全部對齊：`./target/debug/speclink validate desktop-readonly-detail-pages` 通過；`npm test -w packages/ui`、`npm test -w apps/desktop` 全綠；`npm run build -w apps/desktop` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。本任務同時落實 spec 以 REMOVED 退場的「已封存項目以抽屜檢視」「已封存抽屜的工單分頁」——其行為由同名的詳情頁需求承接。",
+      "files": [
+        "packages/ui/src/lib/useGenerationLoad.ts"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4GKXW3K64HAB4M5H1C3W0MA",
+      "taskDesc": "1.1 新增 `packages/ui/src/specSections.ts`（design D1：`parseSpecSections(markdown)` 以 `### Requirement:` 切段、Purpose 區段、每段 body／scenarios（`##### Example` 歸所在 scenario）／段尾 `@trace` 的 source 與 updated、移除 `---`；無需求標題回 null；`rehypeSpecKeywords` 把文字節點的 `SHALL NOT`／`SHALL`／`MUST NOT`／`MUST` 整詞包成 `<code class=\"spec-kw\">`、程式碼區塊不處理）（spec「桌面 app 呈現 change 與 spec 的清單與內容」）。驗證：新增 `packages/ui/src/__tests__/specSections.test.ts`——三段含 scenario 與 trace 的範本解析出標題／body／scenarios／trace、Example 歸屬 scenario、無 trace 時 null、無需求標題回 null、`---` 不出現在 body、關鍵字外掛只包整詞且 code 內不包；`npm test -w packages/ui -- specSections`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "252df364f01dac600414eb7a0de27ccb9029dac7",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/specSections.test.ts",
+        "packages/ui/src/specSections.ts"
+      ],
+      "recordedAt": "2026-10-10T08:10:35Z"
+    },
+    {
+      "taskId": "tsk_01M4GKXW3KZJECANJWZNGEFS39",
+      "taskDesc": "1.2 新增 `packages/ui/src/components/SpecDetailPage.tsx`（design D2：`DetailHeader` 標題＋複製、meta 列三段（缺席整段缺席）、右端「搜尋需求」`SearchField`；`Tabs variant=\"card\"`「規格 N」「溯源 M」＋`renderDocumentActions({ doc: { spec: capability }, content: 原文 })`（`packages/ui/src/components/DetailHeader.tsx` 的 `DocumentRef` 加 `{ spec }`／`{ archived, artifact }`、`DocumentTarget.doc` 可為 null；design D7）；頁根 `@container`、「規格」分頁作用中時 `hidden @min-[1200px]:block` 的 200px 目錄在 768px 內容欄左側重用 `ManualToc`（`packages/ui/src/components/ManualToc.tsx` 加 `className` 槽與標題選擇器、改以 capture 監聽祖先捲動容器）、Purpose 與需求標題為 `h2`、每段「Requirement」小標＋標題＋右端可點錨點＋需求文（`packages/ui/src/components/Markdown.tsx` 加 `specKeywords` 掛 `rehypeSpecKeywords`；`apps/desktop/src/index.css` 的 `.markdown code.spec-kw` 灰底）＋左線縮排 Scenario 區塊；搜尋依標題過濾段、無命中「沒有符合的需求」；「溯源」分頁 `ListRow` 列（`packages/ui/src/components/ListRow.tsx` 加 `disabled`）、命中者依封存日期升冪可點、未命中者在後「無封存記錄」不可點、無來源「此規格沒有來源變更」；解析回 null 整篇 Markdown；skeleton 三態與 `refreshGen` 重載沿用）；i18n 加 `sdetail.*` 十一鍵（spec「桌面 app 呈現 change 與 spec 的清單與內容」「規格頁提供清單、搜尋與展開檢視」「詳情頁文件載入以 skeleton 呈現」）。驗證：`packages/ui/src/__tests__/specDrawer.test.tsx` 的案例搬到新增的 `packages/ui/src/__tests__/specDetailPage.test.tsx`（去掉 dialog 斷言），並新增——三段規格渲染三個 `section[data-requirement]` 各含 Requirement 小標、`h2` 標題、錨點文字「來自 X · 日期」、`code.spec-kw` 包住 SHALL、Scenario 區塊帶 `border-l-2`；meta 列「3 條需求 · 來自 2 個已封存變更 · 最近更新 …」；搜尋只剩命中段且目錄 DOM 隨之縮減、無命中文案；溯源分頁三列順序與副標、未命中列 disabled、點命中列呼叫 `onOpenArchivedChange(datedName)`；無 trace 時徽章 0 與空態；無需求標題時單一 Markdown 且無目錄節點；`renderDocumentActions` 收到 `{ spec: capability }` 與原文；`npm test -w packages/ui -- specDetailPage`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "252df364f01dac600414eb7a0de27ccb9029dac7",
+      "touchedFiles": [
+        "apps/desktop/src/index.css",
+        "packages/ui/src/__tests__/listRow.test.tsx",
+        "packages/ui/src/components/DetailHeader.tsx",
+        "packages/ui/src/components/ListRow.tsx",
+        "packages/ui/src/components/ManualToc.tsx",
+        "packages/ui/src/components/Markdown.tsx",
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/__tests__/specDetailPage.test.tsx",
+        "packages/ui/src/components/SpecDetailPage.tsx"
+      ],
+      "recordedAt": "2026-10-10T08:16:36Z"
+    },
+    {
+      "taskId": "tsk_01M4GKXW3K0VQDXHNMN0R4Q9EX",
+      "taskDesc": "2.1 新增 `packages/ui/src/components/ArchivedDetailPage.tsx`（design D3：封存變更變體——`DetailHeader` 變更名＋複製封存目錄名（`DetailHeader.tsx` 加 `copyValue`）＋結局 `StatusPill`（已審查／已驗證 stamp、曾審查／曾驗證未通過 destructive）、出身列建立者／建立日／「封存 日期」／「來自」籤（點擊 `onOpenDiscussion`）、無動作區、狀態卡三列（任務 n/m 或「—」、品質關卡結局或「未經品質關卡」、封存日期）、分頁提案／設計／任務／規格＋條件式審查／驗證、`renderDocumentActions({ doc: { archived: datedName, artifact }, content: 原文 })`、`TaskList` 唯讀無把手無工具列整列不回應；封存討論變體——slug＋複製＋「已封存」`StatusPill neutral`＋改進籤、topic、出身列、狀態卡階段列現站「已封存」（與 `DiscussionDetailPage` 共用步驟列元件，自 `packages/ui/src/components/DiscussionDetailPage.tsx` 抽出）＋衍生變更三態籤列、分頁結論／討論過程／背景／衍生變更、`renderDocumentActions({ doc: null, content: 原文 })`）；i18n 加 `adetail.*` 四鍵（spec「已封存項目以詳情頁檢視」「已封存詳情頁的工單分頁」「已封存側的審查標示」「已封存側的驗證標示」「規格與封存卡片收合資訊」）。驗證：`packages/ui/src/__tests__/archivedDrawer.test.tsx` 的案例搬到新增的 `packages/ui/src/__tests__/archivedDetailPage.test.tsx`，並新增——封存變更的標題列結局籤與狀態卡三列文字、複製鈕寫入含日期前綴目錄名、出身列缺席欄位、來源討論籤呼叫 `onOpenDiscussion`、任務分頁無把手無工具列且點列不呼叫任何回呼、`reviewedNotPassed` 出現審查分頁；封存討論的「已封存」籤、階段列 `aria-current` 在「已封存」、衍生籤三態與點擊、`renderDocumentActions` 收到 `doc` 為 null 的目標；`npm test -w packages/ui -- archivedDetailPage`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "252df364f01dac600414eb7a0de27ccb9029dac7",
+      "touchedFiles": [
+        "packages/ui/src/components/DiscussionDetailPage.tsx",
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx",
+        "packages/ui/src/components/ArchivedDetailPage.tsx"
+      ],
+      "recordedAt": "2026-10-10T08:21:05Z"
+    },
+    {
+      "taskId": "tsk_01M4GKXW3K0C6WVBNP22VQSRWD",
+      "taskDesc": "3.1 `packages/ui/src/components/SpecList.tsx` 加 `onVisibleOrderChange?: (ids: string[]) => void`（過濾後全部頁順序）、`packages/ui/src/components/ArchivedList.tsx` 加 `onVisibleOrderChange?: (order: { changes: string[]; discussions: string[] }) => void`（兩節各自過濾後全部頁順序），皆以 effect 回報（design D4；spec「詳情頁的導覽與返回」）。驗證：`packages/ui/src/__tests__/specList.test.tsx` 與 `archivedList.test.tsx` 各新增「初次回報全量順序、搜尋後回報過濾後順序且不受換頁影響」；`npm test -w packages/ui -- specList archivedList`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "252df364f01dac600414eb7a0de27ccb9029dac7",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/archivedList.test.tsx",
+        "packages/ui/src/__tests__/specList.test.tsx",
+        "packages/ui/src/components/ArchivedList.tsx",
+        "packages/ui/src/components/SpecList.tsx"
+      ],
+      "recordedAt": "2026-10-10T08:22:06Z"
+    },
+    {
+      "taskId": "tsk_01M4GKXW3KQAQ9HB154G2MD59S",
+      "taskDesc": "3.2 `apps/desktop/src/App.tsx`：`detailSpec` 非 null 時頁層掛 `SpecDetailPage`（`archivedChanges={s.archived}`、`onOpenArchivedChange` 走 `openArchived`、`renderDocumentActions` 接 `DocumentActionsMenu`），`detailArchived` 非 null 時掛 `ArchivedDetailPage`（props 自 `ArchivedDrawer` 接線搬移；`onOpenDiscussion` 改 `openArchived({ kind: \"discussion\", slug })`）；`visibleOrder` state 加 `specs`、`archivedChanges`、`archivedDiscussions`，`DetailNav` 序列依宿主選擇（宿主為對應清單頁取回報值，否則取 `s.specs`／`s.archived`／`s.discussions.archived` 未過濾順序）；麵包屑：規格「專案 / 規格 / capability」、已封存「專案 / 已封存 / 名稱」、自手冊頁開啟的規格頁「專案 / 手冊 / capability」且中段點擊關頁；移除 `SpecDrawer`／`ArchivedDrawer` 掛載；「開啟 ▾」的定位（design D7）：`apps/desktop/core/src/query.rs` 新增 `spec_location_at`／`archived_document_location_at`、`apps/desktop/src-tauri/src/lib.rs` 加 `spec_location`／`archived_document_location` 指令、`apps/desktop/src/adapter/fsActions.ts` 依 ref 型別分派、`apps/desktop/src/components/DocumentActionsMenu.tsx` 對 `doc` 為 null 的目標只給「複製內容」（design D4、D7；spec「桌面 app 呈現 change 與 spec 的清單與內容」「已封存項目以詳情頁檢視」「已封存頁含討論節」「內頁渲染與出處跳規格」「變更與討論詳情頁的宿主為看板」「詳情頁互斥」）。驗證：`apps/desktop/src/__tests__/App.test.tsx` 既有規格與已封存抽屜案例改為——規格頁點列後 `detail-page` 掛 `SpecDetailPage` 且 `host-page` 為規格頁並帶 `inert`、麵包屑「專案 / 規格 / 名稱」、Esc 後規格頁搜尋字串不變；手冊頁出處點擊後麵包屑「專案 / 手冊 / 名稱」、Esc 回手冊頁且 `boardView` 仍為 manual；規格詳情頁溯源列點擊後 `ArchivedDetailPage` 取代且 `boardView` 不變；已封存頁點列後 `ArchivedDetailPage` 且宿主為已封存頁；已封存討論衍生籤點活躍者後 `boardView` 為 board 且掛 `ChangeDetailPage`；`DetailNav` 於手冊宿主時 m 為全部規格數；`apps/desktop/src/__tests__/documentActionsMenu.test.tsx` 新增 `doc` 為 null 時本機也只有「複製內容」；`apps/desktop/src/__tests__/fsActions.test.ts` 釘住四種參照的指令分派；`query.rs` 單元測試釘住兩支定位函式的相對路徑與路徑穿越回 None；`npm test -w apps/desktop -- App documentActionsMenu fsActions`、`cargo test -p speclink-desktop-core location`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "252df364f01dac600414eb7a0de27ccb9029dac7",
+      "touchedFiles": [
+        "apps/desktop/core/src/query.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/documentActionsMenu.test.tsx",
+        "apps/desktop/src/adapter/fsActions.ts",
+        "apps/desktop/src/components/DocumentActionsMenu.tsx",
+        "packages/ui/src/index.ts",
+        "apps/desktop/src/__tests__/fsActions.test.ts"
+      ],
+      "recordedAt": "2026-10-10T08:30:42Z"
+    },
+    {
+      "taskId": "tsk_01M4GKXW3KYAN5DJYPMAWB7EVD",
+      "taskDesc": "3.3 刪除 `packages/ui/src/components/SpecDrawer.tsx`、`packages/ui/src/components/ArchivedDrawer.tsx`、`packages/ui/src/__tests__/specDrawer.test.tsx`、`packages/ui/src/__tests__/archivedDrawer.test.tsx`；`packages/ui/src/index.ts` 改匯出 `SpecDetailPage`、`ArchivedDetailPage`、`parseSpecSections`（`ArchivedTarget` 型別改自 `ArchivedDetailPage` 匯出），`Sheet*` 匯出保留；`verifyBadge`／`improveBadge`／`reviewBadge` 測試的 `ArchivedDrawer` 案例改用 `ArchivedDetailPage`；孤兒 `packages/ui/src/lib/useLingering.ts`、`apps/desktop/src/store.ts` 的 `closeSpec`／`closeArchived`（`apps/desktop/src/__tests__/store.test.ts` 改走 `closeDetailPage`）與 8 個無人引用的 i18n 鍵一併移除（design D5、D6）。驗證：`grep -rn 'SpecDrawer\\|ArchivedDrawer' apps packages --include=*.ts --include=*.tsx` 零命中；`grep -rn 'Sheet' apps/desktop/src --include=*.ts --include=*.tsx` 零命中；`npm run build -w apps/desktop` 與 `npm run build -w apps/server-web` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "252df364f01dac600414eb7a0de27ccb9029dac7",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/store.ts",
+        "packages/ui/src/__tests__/archivedDrawer.test.tsx",
+        "packages/ui/src/__tests__/improveBadge.test.tsx",
+        "packages/ui/src/__tests__/reviewBadge.test.tsx",
+        "packages/ui/src/__tests__/specDrawer.test.tsx",
+        "packages/ui/src/__tests__/verifyBadge.test.tsx",
+        "packages/ui/src/components/ArchivedDrawer.tsx",
+        "packages/ui/src/components/SpecDrawer.tsx",
+        "packages/ui/src/lib/useLingering.ts"
+      ],
+      "recordedAt": "2026-10-10T08:32:44Z"
+    },
+    {
+      "taskId": "tsk_01M4JGHAQ59A8V2Z17CQRMFH9H",
+      "taskDesc": "3.4 返回鈕與返回快捷鍵（design D8；spec「詳情頁的導覽與返回」）：`apps/desktop/src/components/DetailNav.tsx` 新增 `DetailBack`（「←」圖示鈕，無障礙名稱「返回<頁名>」、提示標示 Esc 與 ⌘[／Alt+←），`apps/desktop/src/components/TitleBar.tsx` 的 `MainTitleBar` 加 `leading` 槽，詳情頁開啟時 `apps/desktop/src/App.tsx` 放入 `DetailBack`（點擊 `closeDetailPage`）；詳情頁快捷鍵加 ⌘[（macOS）／Alt+←（其他平台），守門與 Esc 相同；window `mouseup` 的 `button === 3` 於詳情頁開啟且無確認在途時關頁；`apps/desktop/src/i18n/messages.ts` 加 `detail.back`、`detail.backHint`；`apps/desktop/src/store.ts` 的 `setBoardView` 一併清 `detailSpec`／`detailArchived`。驗證：`apps/desktop/src/__tests__/App.test.tsx` 新增——返回鈕名稱「返回規格」、點擊後回規格頁且搜尋字串保留；依平台的 ⌘[／Alt+← 關頁、焦點在輸入時不作用；`mouseup` button 3 關頁；規格詳情頁與已封存詳情頁開著時點專案欄先關頁；`apps/desktop/src/__tests__/detailNav.test.tsx` 新增 `DetailBack` 的名稱、提示與點擊；`npm test -w apps/desktop -- App detailNav`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "252df364f01dac600414eb7a0de27ccb9029dac7",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/detailNav.test.tsx",
+        "apps/desktop/src/components/DetailNav.tsx",
+        "apps/desktop/src/components/TitleBar.tsx",
+        "apps/desktop/src/i18n/messages.ts"
+      ],
+      "recordedAt": "2026-10-10T09:00:56Z"
+    },
+    {
+      "taskId": "tsk_01M4JHJJ7AHF3J0T8HJVDDJGW7",
+      "taskDesc": "3.5 觸控板滑動返回與返回快捷鍵補強（design D8；spec「詳情頁的導覽與返回」）：新增 `apps/desktop/src/components/SwipeBack.tsx`——詳情頁開啟時監聽 window `wheel`，水平分量為主且朝返回方向（依 `webkitDirectionInvertedFromDevice` 換算手指方向）時累計位移、主區左緣的「←」指示隨之推出、達門檻轉實心，最後一個事件後靜止 120ms 時已達門檻即 `closeDetailPage`、未達則收回；手勢開始於仍可往左捲動的水平捲動區塊時不接手；`apps/desktop/src/App.tsx` 掛載於主區。`apps/desktop/src/components/DetailNav.tsx` 抽出 `isBackShortcut(e, platform)`：macOS 以 `e.code`（BracketLeft／ArrowLeft）比對 ⌘[ 與 ⌘←，其他平台 Alt+←。驗證：新增 `apps/desktop/src/__tests__/swipeBack.test.tsx`——累計達門檻後靜止才觸發、未達門檻不觸發且指示收回、反向滑回扣減、垂直為主的捲動不理會、可往左捲動的區塊內不接手、自然捲動關閉時方向反轉、停用時不監聽；`apps/desktop/src/__tests__/detailNav.test.tsx` 新增 `isBackShortcut` 兩平台對照（含輸入法下 `e.key` 不是「[」的 ⌘[）；`apps/desktop/src/__tests__/App.test.tsx` 新增水平滑動關頁；`npm test -w apps/desktop -- swipeBack detailNav App`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "252df364f01dac600414eb7a0de27ccb9029dac7",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/swipeBack.test.tsx",
+        "apps/desktop/src/components/SwipeBack.tsx"
+      ],
+      "recordedAt": "2026-10-10T09:18:52Z"
+    },
+    {
+      "taskId": "tsk_01M4GKXW3KNNPCD6YQNN4FVR9V",
+      "taskDesc": "4.2 全部對齊：`./target/debug/speclink validate desktop-readonly-detail-pages` 通過；`npm test -w packages/ui`、`npm test -w apps/desktop` 全綠；`npm run build -w apps/desktop` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。本任務同時落實 spec 以 REMOVED 退場的「已封存項目以抽屜檢視」「已封存抽屜的工單分頁」——其行為由同名的詳情頁需求承接。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "252df364f01dac600414eb7a0de27ccb9029dac7",
+      "touchedFiles": [
+        "packages/ui/src/lib/useGenerationLoad.ts"
+      ],
+      "recordedAt": "2026-10-10T10:03:42Z"
+    }
+  ]
+}

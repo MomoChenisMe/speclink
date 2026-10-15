@@ -1,0 +1,27 @@
+schema: spec-driven
+created: 2026-10-14
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: tray-promoted-separation
+started_at: 2026-10-14
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-14
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 8
+reviewed_scope:
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: 556ec13b21169b713c5a182a832e62a9f764527c0045db29e51a5eb845c0a61c
+  - path: apps/desktop/src/panel/TrayPanel.tsx
+    hash: e83f9e7cea670d6635820a8ef69bc4755804fd76b216826a1d280b0da2a9dc8c
+verified_at: 2026-10-14
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 8
+verified_scope:
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: 556ec13b21169b713c5a182a832e62a9f764527c0045db29e51a5eb845c0a61c
+  - path: apps/desktop/src/panel/TrayPanel.tsx
+    hash: e83f9e7cea670d6635820a8ef69bc4755804fd76b216826a1d280b0da2a9dc8c
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-14

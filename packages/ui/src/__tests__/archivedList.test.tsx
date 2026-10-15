@@ -1,8 +1,9 @@
-// spec 需求「已封存頁含討論節」（兩節卡片清單、點卡開抽屜、搜尋同時過濾）＋
-// 「規格與封存卡片收合資訊」（封存變更卡與封存討論卡）：行內展開全數移除
-//（正典「已封存變更可展開檢視」依 delta 移除，檢視由抽屜承接）。
+// spec 需求「已封存頁含討論節」（頁標題區搜尋、卡片標頭式分頁、兩節列式清單、點列
+// 開抽屜、搜尋同時過濾）＋「規格與封存卡片收合資訊」（封存變更列與封存討論列）：
+// 行內展開全數移除（正典「已封存變更可展開檢視」依 delta 移除，檢視由抽屜承接）。
 import { describe, it, expect, vi } from "vitest";
 import { render as rtlRender, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
@@ -80,28 +81,31 @@ function renderList(
 const card = (sel: string) => document.querySelector(sel) as HTMLElement;
 
 describe("ArchivedList（封存變更卡）", () => {
-  it("點卡觸發 onOpen（change target）；無 chevron 與行內展開", () => {
+  it("點列觸發 onOpen（change target）；列為共用 ListRow（日期在最左、等寬標題、› 收尾）、無行內展開", () => {
     const onOpen = renderList();
     fireEvent.click(screen.getByText("desktop-shell-and-browser"));
     expect(onOpen).toHaveBeenCalledWith({
       kind: "change",
       datedName: "2026-07-05-desktop-shell-and-browser",
     });
-    // 行內展開移除：點擊後卡片內不出現分頁（頁面級「變更／討論」子頁籤除外）。
     const clicked = card('[data-archived="2026-07-05-desktop-shell-and-browser"]');
+    expect(clicked.getAttribute("role")).toBe("button");
+    expect(clicked.firstElementChild!.textContent).toBe("2026-07-05");
+    expect(within(clicked).getByText("desktop-shell-and-browser").className).toContain("font-mono");
+    expect(clicked.querySelector(".lucide-chevron-right")).toBeTruthy();
+    // 行內展開移除：列內不出現分頁（頁面級「變更／討論」分頁除外）、無 chevron-down、無 aria-expanded。
     expect(within(clicked).queryByRole("tab")).toBeNull();
-    expect(document.querySelector(".lucide-chevron-right")).toBeNull();
-    expect(document.querySelector(".lucide-chevron-down")).toBeNull();
-    expect(document.querySelector("[aria-expanded]")).toBeNull();
+    expect(clicked.querySelector(".lucide-chevron-down")).toBeNull();
+    expect(clicked.querySelector("[aria-expanded]")).toBeNull();
   });
 
   it("任務徽章配色分級：未全完成琥珀警示、全完成一般樣式、無 tasks.md 不顯示", () => {
     renderList();
     // spec Example：前者警示樣式顯示 20/21，後者一般樣式顯示 48/48。
     const warnBadge = screen.getByText("20/21");
-    expect(warnBadge.className).toContain("amber");
+    expect(warnBadge.className).toContain("status-warning");
     const fullBadge = screen.getByText("48/48");
-    expect(fullBadge.className).not.toContain("amber");
+    expect(fullBadge.className).not.toContain("status-warning");
     // 任務數徽章維持 pill（狀態徽章例外，design D7 增補）。
     expect(warnBadge.className).toContain("rounded-full");
     expect(fullBadge.className).toContain("rounded-full");
@@ -194,7 +198,8 @@ describe("ArchivedList（封存討論卡）", () => {
     fireEvent.click(within(disc).getByLabelText("複製 slug"));
     expect(writeText).toHaveBeenCalledWith("old-topic");
     expect(onOpen).not.toHaveBeenCalled();
-    await waitFor(() => expect(within(disc).queryByLabelText("已複製")).toBeTruthy());
+    // 共用 CopyButton：成功以 status 宣告「已複製」，複製鈕名稱維持不變。
+    await waitFor(() => expect(within(disc).getByRole("status").textContent).toBe("已複製"));
   });
 
   it("slug 為等寬強調標題、topic 降為描述列一行截斷（與看板討論卡同構）", () => {
@@ -245,13 +250,67 @@ describe("ArchivedList（子頁籤、排序與換頁）", () => {
       el.getAttribute("data-archived-discussion"),
     );
 
-  it("呈現「變更」「討論」兩子頁籤且預設顯示變更；討論卡不在預設頁籤出現", () => {
+  it("初次回報兩節全量順序、搜尋後回報各自過濾後順序且不受換頁影響（詳情頁 ‹ › 的序列）", () => {
+    // 21 筆封存變更（跨兩頁）＋2 筆封存討論；傳入順序刻意打亂，回報的是呈現順序。
+    const many = Array.from({ length: 21 }, (_, i) => mkChange(`2026-06-${String(i + 1).padStart(2, "0")}-c${i + 1}`));
+    const onVisibleOrderChange = vi.fn();
+    render(
+      <ArchivedList
+        archived={many}
+        query=""
+        onQuery={() => {}}
+        archivedDiscussions={[mkDisc("older", "2026-01-01"), mkDisc("newer", "2026-02-01")]}
+        onOpen={vi.fn()}
+        onVisibleOrderChange={onVisibleOrderChange}
+      />,
+    );
+    expect(onVisibleOrderChange).toHaveBeenLastCalledWith({
+      changes: [...many].reverse().map((a) => a.datedName),
+      discussions: ["newer", "older"],
+    });
+    const calls = onVisibleOrderChange.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
+    expect(onVisibleOrderChange.mock.calls.length).toBe(calls);
+  });
+
+  it("搜尋字串過濾後回報兩節各自的命中順序", () => {
+    const onVisibleOrderChange = vi.fn();
+    const props = {
+      archived: [mkChange("2026-06-01-alpha"), mkChange("2026-06-02-beta")],
+      onQuery: () => {},
+      archivedDiscussions: [mkDisc("alpha-talk", "2026-01-01"), mkDisc("other", "2026-01-02")],
+      onOpen: vi.fn(),
+      onVisibleOrderChange,
+    };
+    const { rerender } = render(<ArchivedList {...props} query="" />);
+    rerender(<ArchivedList {...props} query="alpha" />);
+    expect(onVisibleOrderChange).toHaveBeenLastCalledWith({
+      changes: ["2026-06-01-alpha"],
+      discussions: ["alpha-talk"],
+    });
+  });
+
+  it("呈現「變更」「討論」兩分頁且預設顯示變更；討論列不在預設分頁出現", () => {
     renderList();
     const tabs = screen.getAllByRole("tab");
     expect(tabs).toHaveLength(2);
     expect(screen.getByRole("tab", { name: /已封存的變更/ }).getAttribute("data-state")).toBe("active");
     expect(screen.getByText("desktop-shell-and-browser")).toBeTruthy();
     expect(screen.queryByText("Old settled topic")).toBeNull();
+  });
+
+  it("分頁列為卡片標頭式（card variant：rounded-t-2xl）且是列表卡頂部；內容卡 rounded-t-none 接在其下", () => {
+    renderList();
+    const tabsBar = screen.getByRole("tablist").parentElement as HTMLElement;
+    expect(tabsBar.className).toContain("rounded-t-2xl");
+    const listCard = document.querySelector("[data-list-card]") as HTMLElement;
+    expect(listCard.className).toContain("rounded-t-none");
+    expect(listCard.className).toContain("border-t-0");
+    // 分頁列與內容卡相鄰：分頁列在前、內容卡緊接。
+    expect(tabsBar.nextElementSibling).toBe(listCard);
+    // 列在內容卡的捲動容器內。
+    const scroll = document.querySelector("[data-list-scroll]") as HTMLElement;
+    expect(scroll.contains(card('[data-archived="2026-07-05-desktop-shell-and-browser"]'))).toBe(true);
   });
 
   it("archivedDiscussions 未提供時子頁籤列缺席、僅顯示變更清單", () => {
@@ -310,21 +369,49 @@ describe("ArchivedList（子頁籤、排序與換頁）", () => {
     mkDisc(`t-${String(i + 1).padStart(2, "0")}`, `2026-05-${String(22 - (i + 1)).padStart(2, "0")}`),
   );
 
-  it("兩子頁籤頁碼互相獨立：變更翻到第 2 頁不影響討論頁碼", () => {
+  it("兩分頁頁碼互相獨立：變更翻到第 2 頁不影響討論頁碼", () => {
     renderList(MANY_CHANGES, { archivedDiscussions: MANY_DISCS });
-    // 變更子頁籤第 1 頁 20 筆，翻到第 2 頁。
+    // 變更分頁第 1 頁 20 筆，翻到第 2 頁。
     expect(changeOrder()).toHaveLength(20);
+    expect(screen.getByText("第 1–20 筆，共 21 筆")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
-    expect(screen.getByText("第 2／2 頁")).toBeTruthy();
+    expect(screen.getByText("第 21–21 筆，共 21 筆")).toBeTruthy();
     expect(screen.getByText("c-21")).toBeTruthy();
-    // 討論子頁籤仍在第 1 頁。
+    // 討論分頁仍在第 1 頁。
     toDiscussionsTab();
-    expect(screen.getByText("第 1／2 頁")).toBeTruthy();
+    expect(screen.getByText("第 1–20 筆，共 21 筆")).toBeTruthy();
     expect(discOrder()).toHaveLength(20);
     expect(screen.queryByText(/t-21/)).toBeNull();
     // 切回變更：其頁碼保持第 2 頁。
     fireEvent.mouseDown(screen.getByRole("tab", { name: /已封存的變更/ }));
-    expect(screen.getByText("第 2／2 頁")).toBeTruthy();
+    expect(screen.getByText("第 21–21 筆，共 21 筆")).toBeTruthy();
+  });
+
+  it("兩分頁的跳頁輸入互相獨立：變更節打了頁碼未提交，切到討論節時輸入框為空", () => {
+    renderList(MANY_CHANGES, { archivedDiscussions: MANY_DISCS });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "跳到第幾頁" }), { target: { value: "2" } });
+    toDiscussionsTab();
+    expect((screen.getByRole("spinbutton", { name: "跳到第幾頁" }) as HTMLInputElement).value).toBe("");
+  });
+
+  it("spec Example「改每頁筆數鉗制頁碼」：45 筆於第 3 頁改每頁 50 → 單頁 45 筆、頁碼鈕消失；改回 20 回第 1 頁", async () => {
+    const user = userEvent.setup();
+    const forty5 = Array.from({ length: 45 }, (_, i) =>
+      mkChange(`2026-0${i < 30 ? 6 : 7}-${String(30 - (i % 30)).padStart(2, "0")}-k-${String(i + 1).padStart(2, "0")}`),
+    );
+    renderList(forty5, { archivedDiscussions: [] });
+    expect(screen.getByText("第 1–20 筆，共 45 筆")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "第 3 頁" }));
+    expect(screen.getByText("第 41–45 筆，共 45 筆")).toBeTruthy();
+    await user.click(screen.getByRole("combobox", { name: "每頁 20 個" }));
+    await user.click(await screen.findByRole("option", { name: "每頁 50 個" }));
+    expect(changeOrder()).toHaveLength(45);
+    expect(screen.getByText("第 1–45 筆，共 45 筆")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^第 \d+ 頁$/ })).toBeNull();
+    await user.click(screen.getByRole("combobox", { name: "每頁 50 個" }));
+    await user.click(await screen.findByRole("option", { name: "每頁 20 個" }));
+    expect(screen.getByText("第 1–20 筆，共 45 筆")).toBeTruthy();
+    expect(changeOrder()).toHaveLength(20);
   });
 
   it("搜尋字串變更後兩側頁碼皆回第 1 頁", () => {
@@ -340,12 +427,12 @@ describe("ArchivedList（子頁籤、排序與換頁）", () => {
     fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
     toDiscussionsTab();
     fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
-    expect(screen.getByText("第 2／2 頁")).toBeTruthy();
+    expect(screen.getByText("第 21–21 筆，共 21 筆")).toBeTruthy();
     // 查詢 "-" 兩側皆命中全部 21 筆（仍兩頁）——頁碼必須重設回第 1 頁。
     rerender(<ArchivedList {...props} query="-" />);
-    expect(screen.getByText("第 1／2 頁")).toBeTruthy();
+    expect(screen.getByText("第 1–20 筆，共 21 筆")).toBeTruthy();
     fireEvent.mouseDown(screen.getByRole("tab", { name: /已封存的變更/ }));
-    expect(screen.getByText("第 1／2 頁")).toBeTruthy();
+    expect(screen.getByText("第 1–20 筆，共 21 筆")).toBeTruthy();
     expect(screen.getByText("c-01")).toBeTruthy();
   });
 });
@@ -390,7 +477,7 @@ describe("ArchivedList（填滿高度版面與換頁控制列沉底）", () => {
     );
   const scrollEl = () => document.querySelector("[data-list-scroll]") as HTMLElement;
 
-  it("根容器為填滿高度 flex 直欄；清單容器內部捲動；換頁控制列在捲動容器外沉底", () => {
+  it("根容器為填滿高度 flex 直欄；列於列表卡內捲動；工具列在捲動容器外的卡底", () => {
     const { container } = renderMany();
     const root = container.firstElementChild as HTMLElement;
     expect(root.className).toContain("h-full");
@@ -400,7 +487,7 @@ describe("ArchivedList（填滿高度版面與換頁控制列沉底）", () => {
     expect(scroll.className).toContain("overflow-y-auto");
     expect(scroll.className).toContain("flex-1");
     expect(scroll.className).toContain("min-h-0");
-    // 換頁控制列是捲動容器的手足（直欄末端），不被清單內容捲走。
+    // 工具列是捲動容器的手足（卡底），不被清單內容捲走。
     const nextBtn = screen.getByRole("button", { name: "下一頁" });
     expect(scroll.contains(nextBtn)).toBe(false);
     expect(scroll.parentElement!.contains(nextBtn)).toBe(true);
@@ -419,7 +506,7 @@ describe("ArchivedList（填滿高度版面與換頁控制列沉底）", () => {
     expect(scrollEl().scrollTop).toBe(0);
   });
 
-  it("無子頁籤相容路徑（archivedDiscussions 未提供）同樣填滿高度且清單內部捲動", () => {
+  it("無分頁相容路徑（archivedDiscussions 未提供）同樣填滿高度且清單內部捲動；列表卡維持完整圓角", () => {
     const { container } = renderMany({ archivedDiscussions: undefined });
     const root = container.firstElementChild as HTMLElement;
     expect(root.className).toContain("h-full");
@@ -428,5 +515,108 @@ describe("ArchivedList（填滿高度版面與換頁控制列沉底）", () => {
     expect(scroll.className).toContain("overflow-y-auto");
     const nextBtn = screen.getByRole("button", { name: "下一頁" });
     expect(scroll.contains(nextBtn)).toBe(false);
+    const listCard = document.querySelector("[data-list-card]") as HTMLElement;
+    expect(listCard.className).not.toContain("rounded-t-none");
+  });
+});
+
+// spec 需求「已封存頁含討論節」（頁標題區）：標題「已封存」、灰字說明與全圓搜尋框在
+// 列表卡之上；未傳 title 時只有搜尋框。搜尋框為外部受控（query／onQuery）。
+describe("ArchivedList（頁標題區）", () => {
+  it("傳 title 與 description 時出現 h2、說明與全圓搜尋框，輸入經 onQuery 回呼", () => {
+    const onQuery = vi.fn();
+    render(
+      <ArchivedList
+        archived={[WARN]}
+        query=""
+        onQuery={onQuery}
+        archivedDiscussions={[DISCUSSION]}
+        onOpen={vi.fn()}
+        title="已封存"
+        description="封存的變更與討論。"
+      />,
+    );
+    const header = document.querySelector("[data-page-header]") as HTMLElement;
+    expect(within(header).getByRole("heading", { level: 2 }).textContent).toBe("已封存");
+    expect(header.textContent).toContain("封存的變更與討論。");
+    const input = within(header).getByPlaceholderText("搜尋已封存的變更與討論…");
+    expect(input.className).toContain("rounded-full");
+    fireEvent.change(input, { target: { value: "x" } });
+    expect(onQuery).toHaveBeenCalledWith("x");
+  });
+
+  it("未傳 title 時無頁標題區，搜尋框仍在", () => {
+    renderList();
+    expect(document.querySelector("[data-page-header]")).toBeNull();
+    expect(screen.getByPlaceholderText("搜尋已封存的變更與討論…").className).toContain("rounded-full");
+  });
+});
+
+// desktop-list-pages-reskin design D7：兩節的每頁筆數各自可受控（桌面 store 記住並傳入）。
+describe("ArchivedList（受控每頁筆數）", () => {
+  const mkChange = (n: number): ArchivedItem => ({
+    datedName: `2026-06-${String(22 - n).padStart(2, "0")}-k-${String(n).padStart(2, "0")}`,
+    date: `2026-06-${String(22 - n).padStart(2, "0")}`,
+    name: `k-${String(n).padStart(2, "0")}`,
+    specCount: 0,
+    createdBy: null,
+    fromDiscussions: [],
+  });
+  const mkDisc = (n: number): DiscussionItem => ({
+    slug: `d-${String(n).padStart(2, "0")}`,
+    topic: `topic ${n}`,
+    status: "promoted",
+    rounds: 1,
+    created: `2026-05-${String(22 - n).padStart(2, "0")}`,
+    promotedTo: [],
+  });
+  const CHANGES = Array.from({ length: 21 }, (_, i) => mkChange(i + 1));
+  const DISCS = Array.from({ length: 21 }, (_, i) => mkDisc(i + 1));
+
+  it("changesPageSize={50} 只影響變更節，討論節仍為每頁 20", () => {
+    render(
+      <ArchivedList
+        archived={CHANGES}
+        query=""
+        onQuery={() => {}}
+        archivedDiscussions={DISCS}
+        onOpen={vi.fn()}
+        changesPageSize={50}
+        onChangesPageSizeChange={vi.fn()}
+      />,
+    );
+    expect(document.querySelectorAll("[data-archived]")).toHaveLength(21);
+    expect(screen.getByText("第 1–21 筆，共 21 筆")).toBeTruthy();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /已封存的討論/ }));
+    expect(document.querySelectorAll("[data-archived-discussion]")).toHaveLength(20);
+    expect(screen.getByText("第 1–20 筆，共 21 筆")).toBeTruthy();
+  });
+
+  it("在各節改每頁筆數只呼叫該節的回呼", async () => {
+    const user = userEvent.setup();
+    const onChanges = vi.fn();
+    const onDiscussions = vi.fn();
+    render(
+      <ArchivedList
+        archived={CHANGES}
+        query=""
+        onQuery={() => {}}
+        archivedDiscussions={DISCS}
+        onOpen={vi.fn()}
+        changesPageSize={20}
+        onChangesPageSizeChange={onChanges}
+        discussionsPageSize={20}
+        onDiscussionsPageSizeChange={onDiscussions}
+      />,
+    );
+    await user.click(screen.getByRole("combobox", { name: "每頁 20 個" }));
+    await user.click(await screen.findByRole("option", { name: "每頁 50 個" }));
+    expect(onChanges).toHaveBeenCalledWith(50);
+    expect(onDiscussions).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("tab", { name: /已封存的討論/ }));
+    await user.click(screen.getByRole("combobox", { name: "每頁 20 個" }));
+    await user.click(await screen.findByRole("option", { name: "每頁 100 個" }));
+    expect(onDiscussions).toHaveBeenCalledWith(100);
+    expect(onChanges).toHaveBeenCalledTimes(1);
   });
 });

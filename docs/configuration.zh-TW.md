@@ -1,158 +1,207 @@
 # 設定說明
 
-> **文件狀態**：本文描述目前已實作的本地 workspace 設定介面。遠端模式的 workflow policy 以具版本的 Store 為正典，本機 override 不得靜默覆寫團隊政策。規則的正式規格有兩份：`openspec/specs/workflow-config` 管欄位與解析順序，`openspec/specs/server-policy-write` 管遠端讀寫與授權。
+**繁體中文** · [English](configuration.md)
 
-Speclink 的設定分散在兩個檔案與一個目錄，各自有明確的歸屬規則：
+Speclink 的設定分三層：工作流政策寫在 `openspec/config.yaml`，跟著規格走；這個 checkout 接哪些 AI 工具、連哪個遠端，寫在 `.speclink.yaml`；登入憑證放在使用者層，不進專案。環境變數可以在單次執行時蓋過政策。
 
-| 位置 | 承載 | 跟著誰走 |
-|---|---|---|
-| `openspec/config.yaml` | 工作流政策：`locale`、`spec_locale`、`tdd`、`audit`、`worktree`，以及 `schema`、`context`、`rules` | **spec store**（spec 文件所在之處） |
-| `.speclink.yaml` | workspace 綁定：`tools`（為哪些 AI harness 生成檔案）、`spec_dir`（spec store 在哪裡） | **repo checkout** |
-| `.speclink/` | 主機工作資料：touched 記錄、archive 快照、生成工具足跡 | **本機**（gitignored） |
+## <a id="layers"></a>設定放在哪裡
 
-「這個設定該放哪」的判定規則：
+| 位置 | 放什麼 | 誰會讀 | 進版本控制 |
+| --- | --- | --- | --- |
+| `openspec/config.yaml` | 工作流政策：`schema`、`locale`、`spec_locale`、`tdd`、`audit`、`worktree`、`context`、`rules`、`review` | CLI、桌面 app；技能透過 `speclink instructions` 取得生效值 | 是 |
+| `.speclink.yaml` | 這個 checkout 的綁定：`tools`、`spec_dir`、`remote` | CLI、桌面 app | 是（裡面沒有憑證） |
+| `.speclink/` | 本機工作資料：封存與品質關卡用的快照、生成工具的記錄、遠端模式的唯讀內容快照 | CLI、桌面 app | 否（`speclink init` 會把它加進 `.gitignore`） |
+| 使用者層設定目錄 | `credentials.yaml`（CLI 用存取金鑰登入時存的憑證）、`schemas/`（使用者層自訂 schema）、`config.yaml`（`speclink config` 的鍵值） | CLI、桌面 app | 否 |
+| 系統鑰匙圈 | 裝置登入的憑證、桌面 app 存的存取金鑰（PAT） | CLI 與桌面 app 共用 | 否 |
+| `SPECLINK_*` 環境變數 | 單次執行的覆寫 | CLI、Node SDK | 否 |
 
-- **政策跟 store。** 會改變工作流產出的設定（artifact 語言、spec 語言、TDD 紀律、audit 紀律、worktree 流程開關）放在 `openspec/config.yaml`。無論本地或透過遠端 store 讀 spec 的人，看到的都是同一份真相。
-- **綁定跟 repo。** `.speclink.yaml` 只描述「這個 checkout」如何連上 store、接了哪些 AI 工具，不承載政策。
-- **個人差異跟環境變數。** `SPECLINK_*` 環境變數在單一 shell 或單一 CI job 內覆寫一切，不動任何檔案。
+使用者層設定目錄的位置：
 
-## Remote 模式的設定歸屬
+- macOS：`~/Library/Application Support/speclink/`
+- Linux：`$XDG_CONFIG_HOME/speclink/`；沒設 `XDG_CONFIG_HOME` 時是 `~/.config/speclink/`
+- Windows：`%USERPROFILE%\AppData\Roaming\speclink\`
 
-接上 Remote Store 之後，歸屬規則不變，只是「store 在哪裡」換了地方：
+桌面 app 自己的介面語言與伺服器連線清單存在 app 的資料夾，憑證存在系統鑰匙圈，都不寫進專案。
 
-| 位置 | 承載 | 備註 |
-|---|---|---|
-| server 的 `config.yaml` | 工作流政策：`locale`、`spec_locale`、`tdd`、`audit`、`worktree`、`schema`、`context`、`rules` | 政策跟著 store 走，所以遠端模式下這份才是團隊真相。`speclink workflow-config` 是 Dual 動詞，遠端模式作用於這一份。 |
-| `.speclink.yaml` 的 `remote:` 區段 | `url`（project-scoped 連線網址）、`repo`（這個 checkout 在遠端的註冊名稱） | 由 `speclink link` 寫入、`speclink unlink` 移除。`url` 也可以改由 `SPECLINK_STORE_URL` 提供，讓進版本控制的檔案不必寫死網址。 |
-| OS 的 Keychain | 存取憑證（device 憑證族與 PAT） | 以連線 origin 為鍵，**不落在任何專案檔案裡**——所以 `.speclink.yaml` 可以安心進版本控制。 |
-| `.speclink/` | 唯讀的 Context Projection 與本機工作資料 | gitignored。不要手動編輯投影：那不算遠端寫入，下一個命令會判定它已被改動而拒絕。 |
+桌面 app 的「設定」以設定模式開啟：左欄列出分類，「應用程式」下有一般、更新、CLI、伺服器，「關於」下有「關於 Speclink」。一般與 CLI 頁的內容只存在這台機器，「伺服器」頁管理伺服器連線清單。
 
-有兩條紅線。
+![桌面 app 的設定模式，左欄是設定分類，右邊是「一般」頁](assets/screenshots/zh-TW/desktop-settings.png)
 
-第一，**本機 override 不得靜默覆寫團隊政策**。遠端模式的政策正典是具版本的 Store，寫入一律經 CAS，而且先由引擎檢查（見 `openspec/specs/server-policy-write`）。
+新設定該放哪裡，照這三條判斷：
 
-第二，`remote:` 區段存在但缺 `url` 時，不會靜默退回本地模式，而是在下游明確失敗。
+- 會改變產出內容的設定（語言、TDD、audit、worktree 流程）是**政策**，放 `openspec/config.yaml`，全隊讀到同一份。
+- 只跟這個 checkout 有關的設定（接哪些 AI 工具、連哪個遠端）放 `.speclink.yaml`。
+- 個人或 CI 的臨時差異用環境變數，不改任何檔案。
 
-怎麼建立連線、怎麼登入、失聯怎麼回來，都不在本文。見[Remote 入門](remote-getting-started.zh-TW.md)。
+`speclink config` 與 `speclink workflow-config` 是兩回事。`speclink config` 管使用者層 `config.yaml` 的通用鍵值，Speclink 的其他指令都不讀它。工作流政策一律用 `speclink workflow-config` 改。
 
-## 解析順序
+## <a id="resolution"></a>解析順序
 
-有效政策值經三層解析，先命中者勝：
+政策值由上往下找，先找到的生效：
 
-| 優先序 | 層 | 說明 |
-|---|---|---|
-| 1（最高） | `SPECLINK_LOCALE`／`SPECLINK_SPEC_LOCALE`／`SPECLINK_TDD`／`SPECLINK_AUDIT`／`SPECLINK_WORKTREE` | 布林變數僅接受 `true`／`false`（不分大小寫）；其他值——`yes`、`1`、空字串——視為**未設定**，落到下一層。 |
-| 2 | `openspec/config.yaml` | 正典歸屬。 |
-| 3（最低） | 內建預設 | `locale` 與 `spec_locale` 未設定＝系統語系、`tdd`＝false、`audit`＝false、`worktree`＝false。 |
+| 順序 | 來源 | 說明 |
+| --- | --- | --- |
+| 1 | `SPECLINK_LOCALE`、`SPECLINK_SPEC_LOCALE`、`SPECLINK_TDD`、`SPECLINK_AUDIT`、`SPECLINK_WORKTREE` | 布林變數只認 `true`／`false`（不分大小寫）。`1`、`yes`、空字串都當成沒設，往下一層找 |
+| 2 | `openspec/config.yaml` | 專案的正式值 |
+| 3 | 內建預設 | `locale` 與 `spec_locale` 各自採系統語言；`tdd`、`audit`、`worktree` 為關閉；`schema` 為 `spec-driven` |
 
-未設定的 `locale` 與 `spec_locale` 各自採用執行 Speclink 的電腦／作業系統語言：中文對應 `tw`、日文對應 `ja`，其他語言或讀取失敗時使用 `en`。本地模式由本機判定，Remote 模式由執行指令的 server 判定；與 App 的介面語言偏好無關。`spec_locale: auto` 維持跟隨有效 `locale`，明確設定的語言優先於系統語系。系統語系只參與判定，不會寫回設定檔。
+另外三件事：
 
-政策鍵（`locale`、`spec_locale`、`tdd`、`audit`、`worktree`）寫在 `.speclink.yaml` 裡一律不生效、也不產生警告——檔案照常解析，這些鍵單純被忽略。若你的檔案帶有這些鍵，把它們以相同的值搬進 `openspec/config.yaml` 即可。
+- `.speclink.yaml` 裡的政策鍵（`locale`、`tdd` 等）不會生效，也不會警告。請照原值搬到 `openspec/config.yaml`。
+- 環境變數只影響你這台機器上執行的 CLI 與 Node SDK。遠端模式的指引由 server 依團隊設定產生，本機環境變數蓋不過團隊政策。
+- 要不要產生兩個 worktree 技能，只看 `openspec/config.yaml` 的 `worktree`。`SPECLINK_WORKTREE` 不影響技能檔。
 
-## 用 `workflow-config` 動詞管理 `openspec/config.yaml`
+遠端連線另有兩條順序：
 
-`speclink workflow-config` 管的是**工作流政策檔**。`speclink config` 管的是與專案無關的全域 KV 存放。兩者互不相干。
+- **連線網址**：`SPECLINK_STORE_URL` 優先，其次是 `.speclink.yaml` 的 `remote.url`。是不是遠端模式只看 `.speclink.yaml` 有沒有 `remote:` 區段，`SPECLINK_STORE_URL` 不會把本機專案切成遠端模式。有 `remote:` 區段、兩邊卻都沒有網址時，指令直接報錯，不會退回本機模式。
+- **憑證**：依序找 `SPECLINK_TOKEN` → 鑰匙圈裡的裝置登入 → 鑰匙圈裡的存取金鑰 → 使用者層的 `credentials.yaml`。憑證以伺服器的 origin（`scheme://host:port`）區分，同一台 server 上的專案共用一份登入。`speclink auth status` 會告訴你目前用的是哪一層。
+
+## <a id="workflow-config"></a>修改工作流政策
+
+用 `speclink workflow-config`。本機模式改 `openspec/config.yaml`，遠端模式改 server 上的那一份。
 
 | 子指令 | 作用 |
-|---|---|
-| `languages [--json]` | 將正典語言設定搭配執行電腦的作業系統預設解析，不套用環境覆寫。JSON 含 `locale`（顯示名稱）與 `specLocale`（`tw`／`ja`／`en`）。遠端經既有設定 API 取得 Server 結果；舊 Server 未提供語言資料時須先升級。只讀查詢，不需要變更，也不寫入設定。 |
-| `show [--json]` | 顯示政策五欄、`context`（行數）與 `rules`（各節條數）。顯示**正典值**——不套用環境變數覆寫（有效值的三層解析屬 `speclink instructions` 的職責）。`--json` payload 欄位為 camelCase：`locale`、`specLocale`、`tdd`、`audit`、`worktree`、`context`、`rules`；未設定的欄位為 `null`，未設定的布林為 `false`。 |
-| `set <key> <value>` | 寫入 `locale`、`spec_locale`、`tdd`、`audit`、`worktree` 之一。其他鍵以非 0 exit code 拒絕；`tdd`／`audit`／`worktree` 僅接受 `true`／`false`；`locale` 僅接受代碼 `tw`／`ja`／`en`、`spec_locale` 僅接受 `tw`／`ja`／`en`／`auto`（大小寫敏感）——顯示名稱（如「繁體中文」）會被拒絕並列出合法代碼。設為 `false`（或 locale 設為空字串）＝**移除該鍵**，維持「未設定＝預設」語意。 |
-| `context --stdin` | 以 stdin 全文設定 `context`；內容僅空白時移除該鍵。 |
-| `rules <artifact> --stdin` | 整節代換該 artifact 的規則（一行一條、空行忽略）；stdin 為空時移除該節。`artifact` 限目前 schema 的 artifact id，未知 id 以非 0 exit code 拒絕。 |
+| --- | --- |
+| `show [--json]` | 顯示檔案裡的值。不套用環境變數 |
+| `set <key> <value>` | 改 `locale`、`spec_locale`、`tdd`、`audit`、`worktree` 其中一個 |
+| `context --stdin` | 用 stdin 的內容整段取代 `context`。內容只有空白時移除這個鍵 |
+| `rules <artifact> --stdin` | 用 stdin 整段取代一個 artifact 的規則，一行一條，空行略過。stdin 為空時移除這一節。`<artifact>` 必須是目前 schema 的 artifact id |
+| `review <list> --stdin` | 用 stdin 整段取代一個審查規則清單，一行一條，空行略過。stdin 為空時移除這個清單。`<list>` 是 `critical`、`warning` 或 `suggestion` |
+| `review baseline <mode>` | 設定審查關卡要不要檢查內建的 12 條 code smell。`<mode>` 是 `extend`（預設，寫入時移除這個鍵）或 `replace` |
 
-languages 查詢會在輸出前拒絕未知的儲存語言值與不合法的 specLocale 回應。原 show 仍可讀取舊值以供修復；這些值的 config API 回應只省略語言資料，原文件及 revision 維持。
+寫入規則：
 
-**`worktree` 的寫入比其他四個鍵多兩件事。** 它會連動技能足跡：開啟時生成兩個 worktree 技能，關閉時清掉，範圍等同 `speclink update`。
-
-而且**由 `true` 改成 `false` 時，若還有活躍的 linked worktree，指令會拒絕寫入**——政策一關，收尾用的 merge 技能就沒了，那些 worktree 會卡在半路。拒絕時它逐列印出每個 worktree 的變更名、分支與路徑，並要你先跑 `speclink-worktree-merge` 收乾淨；`openspec/config.yaml` 位元組不動、技能足跡也不動。政策本來就是關的時候不擋（那是 no-op 寫入）。
-
-另一個邊界：config 寫進去了但技能同步失敗時，**寫入仍然成立**（config 才是正典），錯誤會浮到 stderr 並要你重跑 `speclink update` 重建足跡。
-
-三個寫入子指令都支援 `--dry-run`。它會印出 unified diff 至 stdout、不寫入任何檔案、以 0 結束。預覽與實寫走完全相同的改寫路徑，所以 diff 就是會落檔的內容。
+- `locale` 只收 `tw`、`ja`、`en`；`spec_locale` 另外收 `auto`（跟著 `locale`）。大小寫要相同。寫「繁體中文」這類名稱會被拒絕，錯誤訊息會列出可用的代碼。
+- `tdd`、`audit`、`worktree` 只收 `true`／`false`。設成 `false`（或把 `locale` 設成空字串）會刪掉那一行，回到預設值。
+- 所有寫入子指令都有 `--dry-run`：只印出差異，不寫檔。差異逐行比對新舊內容：只有被刪除、新增或移動位置的行會標 `-`／`+`；改動範圍內其餘沒改的行以前後文呈現，夾在兩處改動之間的也一樣。範圍前後另外最多各帶三行沒改的內容。
+- `review` 的寫入會整塊取代 `review` 區塊：`extend` 不寫 `baseline` 鍵、清單清空就移除該鍵、整塊沒有內容時移除 `review` 鍵。`review` 區塊內的註解不會保留。
+- `review` 寫入後，指令會檢查本機專案的技能檔。技能檔比引擎舊時，寫入照樣成功，但 stderr 會多一行警告，提示執行 `speclink update`——舊版審查技能可能不套用審查規則。
+- `review` 區塊採嚴格解析：出現不認得的鍵（例如打錯成 `critcal`）、`baseline` 不是 `extend` 或 `replace`、或清單裡有不是字串的條目時，整份檔案視為無法解析。讀這份檔案的指令都會失敗並點名出錯的鍵，直到你改正。
+- 只改目標那幾行，其他內容與註解原樣保留。檔案無法解析時讀寫都會拒絕，不會蓋掉你的內容。
+- 本機模式下改 `worktree` 會同時產生或移除兩個 worktree 技能。還有 worktree 沒收尾時，不能從 `true` 改成 `false`；指令會列出那些 worktree，請先用 `speclink-worktree-merge` 收掉。
+- 遠端模式下，如果別人剛好同時寫入，指令會失敗並請你重跑，不會蓋掉別人的修改。離線或憑證失效也會直接失敗，不會排隊。
 
 ```bash
-speclink workflow-config set tdd true --dry-run   # 先看
-speclink workflow-config set tdd true             # 再落檔
+speclink workflow-config set tdd true --dry-run   # 先看差異
+speclink workflow-config set tdd true             # 再寫入
 cat CONTEXT.md | speclink workflow-config context --stdin
 ```
 
-**fs 與 remote 模式。** 模式由既有 binding 判定。fs 模式直接讀寫 `openspec/config.yaml`。remote 模式經連線讀取 server 端 config 文件與其版本，套用同一改寫，寫回時附帶該版本。
+在剛 `speclink init` 完的專案跑第一行，**預期輸出**：
 
-版本識別不出現在指令介面。被他人並行改寫時，指令以非 0 exit code 提示你重新執行，絕不覆蓋他人的寫入。離線或認證失效同樣以非 0 exit code 失敗，不暫存也不排隊。
+```text
+--- a/openspec/config.yaml
++++ b/openspec/config.yaml
+@@ -1,5 +1,7 @@
+ schema: spec-driven
 
-**既知取捨：模板註解會喪失。** 寫入是 read-modify-write：讀進整份文件、改目標鍵、整份寫回。其他鍵值一律保留，但原檔的模板註解在重寫後不再存在。桌面設定頁是同一個取捨。
++tdd: true
++
+ # Workflow policy (optional)
+ # Personal/CI overrides: SPECLINK_LOCALE, SPECLINK_SPEC_LOCALE, SPECLINK_TDD, SPECLINK_AUDIT, SPECLINK_WORKTREE
+ #
+```
 
-首次使用先跑 `--dry-run` 看 diff 再決定。文件無法解析時一律 fail-closed，讀寫都以非 0 exit code 拒絕——重寫壞檔會毀掉既有內容。
+`workflow-config set` 不收 `schema`。要換 schema，用下列任一種方式：
 
-內建技能 `speclink-config` 就建立在這個動詞之上。它從 codebase 的固定來源整理 `context` 與 `rules`，一律先產 diff 交使用者裁決，再寫入。
+- 直接編輯 `openspec/config.yaml` 的 `schema:` 那一行。
+- `speclink schema init <name> --default`：建立一個新的自訂 schema，並設成專案預設。
+- 桌面 app「專案設定」的「產出流程」頁。
 
-## 自訂工具描述子
+桌面 app 的「專案設定」改的是同一份檔案，規則也相同。內建技能 `speclink-config` 會從程式碼整理出 `context` 與 `rules`，先給你看差異，你同意後才寫入。政策欄位（含 `worktree`）它會用一張表列出現值，只問你要不要改。審查規則是選用的：可以不設定、附加在內建檢查之後（`extend`），或取代內建檢查（`replace`）。你可以交給它一份提醒清單（貼上或給檔案路徑），它會逐條判斷要放進審查規則、某個 artifact 的產出規則（`rules`），還是不收，並說明理由。審查規則只收你給的，不從程式碼推導。
 
-內建工具是 `claude`、`codex`、`copilot`（`agents` 仍是 `codex` 的別名）。CLI 初始化可用 `speclink init --tools copilot` 或 `speclink init --tools codex,copilot`；桌面專案設定、初始化／啟用對話框及本機 checkout 選擇也提供 Copilot。
+審查關卡要套用 `review` 區塊，需要這個版本以後的 CLI 與技能檔；升級後請執行 `speclink update`。舊版 CLI 會略過這個區塊。
 
-Codex 與 Copilot CLI／VS Code 共用 `.agents/skills/speclink-*/SKILL.md` 及相同本文。任一工具仍勾選就保留一份；兩者都取消，例如改為只選 Claude，才清理 Speclink 受管技能，保留使用者自有技能。勾選管理生成物，不控制代理是否能讀到共享目錄。Claude 仍使用 `.claude/skills/`；不生成 `.github/skills/` 或任何指令檔。
+## <a id="tools"></a>AI 工具與自訂工具
 
-共享本文以 `speclink-propose` 等名稱引用技能，並使用真正的 CLI 動詞執行操作。Codex 可用 `$speclink-propose`；Copilot CLI／VS Code agent chat 可用 `/speclink-propose` 或其技能選單。技能名稱不是 CLI 子指令。建立變更與 review／verify 蓋章時，實際執行的 Codex 加 `--agent codex`，Copilot 加 `--agent copilot`；無法確認則省略，不由 tools 勾選推斷。
+`.speclink.yaml` 的 `tools` 決定要為哪些 AI 工具產生技能檔：
 
-**舊自訂名稱遷移：** `name: copilot` 現在是保留名，更新在任何寫入前拒絕。先備份設定，再選擇將名稱改成 `copilot-custom` 並保留原 `skills_dir`／`invocation`，或手動將整個描述子改成內建字串 `copilot`。不會自動轉換；成功同步才按舊足跡清理原受管產物。
+| 值 | 技能檔位置 |
+| --- | --- |
+| `claude` | `.claude/skills/` |
+| `codex`（`agents` 是它的別名） | `.agents/skills/` |
+| `copilot` | `.github/skills/` |
+| 自訂工具描述子 | 描述子的 `skills_dir` |
 
-`tools` 清單除內建名（`claude`、`codex`、`copilot`）外，也接受描述子物件，用於任何其他 AI harness：
+GitHub Copilot 也會讀 `.claude/skills/` 與 `.agents/skills/`，但它先讀 `.github/skills/`。所以選了 `copilot`，Copilot 用的就是寫給它的那一份。
+
+改完 `tools` 後執行 `speclink update`。新加的工具會產生技能檔；從清單拿掉的工具，它的 `speclink-*` 技能目錄會被刪除，因此變空的目錄也一併移除。在桌面 app「專案設定」的 `.speclink.yaml` 頁勾選內建工具時，會自動做同樣的同步。
+
+其他 AI 工具用描述子接上：
 
 ```yaml
 tools:
   - claude
-  - name: wad-harness
-    skills_dir: .wad/skills
+  - name: my-harness
+    skills_dir: .my-harness/skills
     invocation: tool-call
 ```
 
 | 欄位 | 必填 | 規則 |
-|---|---|---|
-| `name` | 是 | kebab-case，2–50 字元、限 `[a-z0-9-]`；不得與內建工具名衝突 |
-| `skills_dir` | 是 | 專案根相對路徑；不得逸出專案根 |
-| `instructions_file` | 否 | **已棄用**——引擎不再往它生成任何東西。保留只為兩件事：舊設定檔仍能解析，以及 `speclink update` 知道去哪裡剝除遺留的 `SPECLINK` 區塊。欄位存在時仍會驗證（專案根相對、不得逸出）；留著它會在 stderr 得到一行棄用提示 |
-| `invocation` | 否 | `cli`（預設）或 `tool-call`——決定生成文字如何指示 harness 執行 speclink 動詞：「執行 `speclink <動詞>`」vs「呼叫 speclink 工具（參數為 argv 陣列）」 |
+| --- | --- | --- |
+| `name` | 是 | kebab-case，2–50 個字元，只能用 `a-z`、`0-9`、`-`。不能是 `claude`、`codex`、`agents`、`copilot` |
+| `skills_dir` | 是 | 專案根目錄下的相對路徑。不能跑出專案、不能是專案根目錄本身，也不能是 `.claude/skills`、`.agents/skills` 或 `.github/skills`（不分大小寫） |
+| `invocation` | 否 | `cli`（預設）：技能寫「執行 `speclink <動詞>`」。`tool-call`：技能寫「呼叫 speclink 工具，參數是 argv 陣列」 |
+| `instructions_file` | 否，已棄用 | 不再產生任何內容，只用來讓 `speclink update` 清掉舊版留下的 `SPECLINK` 區塊。留著會在 stderr 印一行棄用提示 |
 
-四種情況會讓指令以非 0 exit code 結束：名稱衝突、大小寫違規、路徑逸出、`invocation` 值非法。每一種都輸出指明欄位的單行錯誤訊息。
+欄位不合法時，指令印出一行指出欄位的錯誤，並以非零結束。描述子產生的技能沒有 `/speclink-` 斜線指令，也不提 plan mode；內建的 claude、codex、copilot 不受影響。
 
-描述子與內建工具共享完整生命週期：
+舊版允許名為 `copilot`、或 `skills_dir` 是 `.github/skills` 的描述子。升級後 `speclink update` 會拒絕它並以非零結束。刪掉這個描述子，改在 `tools` 寫 `copilot` 即可。
 
-- **生成**——`speclink init`／`speclink update` 在 `skills_dir` 下寫入 `speclink-*/SKILL.md` 技能檔。就這樣：指令檔已退出受管集合。
-- **同步**——`speclink update` 對仍在清單上的描述子全部重新生成。
-- **清理**——把描述子從 `tools` 移除。下一次 `speclink update` 會刪除它的 `speclink-*` 技能目錄，並一併移除因此變空的目錄。描述子若仍寫著 `instructions_file`，該檔的遺留 `SPECLINK` 區塊也會被剝除；剝除後全空的話整檔刪除。先拿掉 `instructions_file` 才移除描述子的話，引擎就不知道那個檔案在哪——請自行手動刪除。
+## <a id="remote"></a>遠端模式
 
-描述子生成的內容採用**中性渲染**：沒有 `/speclink-` slash 前綴，沒有 plan mode 參照，動詞措辭由 `invocation` 決定。自訂描述子的渲染方式與 Claude 本文保持原有行為；Codex 現在改用上述共享本文。
+接上遠端後，設定的歸屬不變，只是「規格放在哪裡」換成 server：
 
-## 參考：全部鍵值
+- `speclink link <url> --repo <name>` 在 `.speclink.yaml` 寫入 `remote:` 區段（`url` 與 `repo`），`speclink unlink` 移除它。有這個區段就是遠端模式。
+- 工作流政策改存在 server 上。`speclink workflow-config` 讀寫 server 那一份，本機的 `openspec/config.yaml` 不再生效。
+- `.speclink/context/` 是遠端內容的唯讀快照。不要手改，下一個指令會發現它被改過而拒絕執行；要刷新就重新執行 `speclink instructions`。
+- 憑證不寫進任何專案檔案，所以 `.speclink.yaml` 可以放心 commit。
+
+怎麼啟動 server、登入、斷線後怎麼恢復，見 [Remote 入門](remote-getting-started.zh-TW.md)。啟動 server 用的環境變數（例如 `SPECLINK_PORT`）也在那裡。
+
+## <a id="reference"></a>完整鍵值參考
 
 ### `openspec/config.yaml`
 
-| 鍵 | 預設 | 意義 |
-|---|---|---|
-| `schema` | `spec-driven` | 新 change 使用的工作流 schema |
-| `locale` | English | AI 生成 artifact 的語言（`tw`、`ja`…） |
-| `spec_locale` | English | spec 檔語言；`auto` 跟隨 `locale` |
-| `tdd` | `false` | 要求實作遵循 Red-Green-Refactor 紀律 |
-| `worktree` | `false` | 開啟 worktree 平行實作流程；開關同時決定是否生成兩個 worktree 技能 |
-| `audit` | `false` | 要求實作套用 sharp-edges audit 紀律 |
-| `context` | — | 建立 artifact 時提供給 AI 的專案脈絡 |
-| `rules` | — | 各 artifact 的撰寫規則 |
+| 鍵 | 值 | 預設 | 用途 |
+| --- | --- | --- | --- |
+| `schema` | schema 名稱 | `spec-driven` | 新變更使用的產出流程（產出哪些文件、什麼順序） |
+| `locale` | `tw`、`ja`、`en` | 系統語言 | AI 產出 artifact 的語言 |
+| `spec_locale` | `tw`、`ja`、`en`、`auto` | 系統語言 | 規格檔的語言；`auto` 跟著 `locale` |
+| `tdd` | `true`／`false` | `false` | 實作時先寫會失敗的測試，再寫程式（紅→綠） |
+| `audit` | `true`／`false` | `false` | 實作時對新 API 與參數處理做 sharp-edges 安全檢查 |
+| `worktree` | `true`／`false` | `false` | 開啟 worktree 平行實作流程，並產生兩個 worktree 技能 |
+| `context` | 多行文字 | 無 | 產生 artifact 時提供給 AI 的專案背景 |
+| `rules` | artifact id → 規則清單 | 無 | 各 artifact 的撰寫規則 |
+| `review.baseline` | `extend`、`replace` | `extend` | 審查關卡檢查內建 12 條 code smell 再加上專案規則（`extend`），或只用專案規則（`replace`） |
+| `review.critical`、`review.warning`、`review.suggestion` | 規則清單 | 無 | 審查關卡 Standards 軸的專案審查規則。規則放在哪個清單，違反時就記成那個嚴重度 |
+
+其他鍵會被忽略。
 
 ### `.speclink.yaml`
 
-| 鍵 | 預設 | 意義 |
-|---|---|---|
-| `spec_dir` | `openspec` | spec store 目錄（專案根相對路徑） |
-| `tools` | — | 要生成技能檔的 AI harness（內建名或描述子） |
-| `locale`／`spec_locale`／`tdd`／`audit`／`worktree` | — | 不生效且不警告——政策一律讀 `openspec/config.yaml` |
+| 鍵 | 值 | 預設 | 用途 |
+| --- | --- | --- | --- |
+| `spec_dir` | 相對路徑 | `openspec` | 規格目錄的位置，相對於專案根目錄 |
+| `tools` | 清單 | 無 | 要產生技能檔的 AI 工具：`claude`、`codex`、`copilot` 或自訂工具描述子 |
+| `remote.url` | 網址 | 無 | 遠端專案的連線網址（project-scoped URL） |
+| `remote.repo` | 名稱 | 無 | 這個 repo 在遠端專案裡的註冊名稱；只有一個 repo 的專案可以省略 |
 
 ### 環境變數
 
-| 變數 | 值 |
-|---|---|
-| `SPECLINK_LOCALE` | 任意 locale 代碼 |
-| `SPECLINK_SPEC_LOCALE` | 任意 locale 代碼，或 `auto` |
-| `SPECLINK_TDD` | `true`／`false` |
-| `SPECLINK_AUDIT` | `true`／`false` |
-| `SPECLINK_WORKTREE` | `true`／`false` |
+| 變數 | 值 | 作用 |
+| --- | --- | --- |
+| `SPECLINK_LOCALE` | 語言代碼 | 覆寫 `locale` |
+| `SPECLINK_SPEC_LOCALE` | 語言代碼或 `auto` | 覆寫 `spec_locale` |
+| `SPECLINK_TDD` | `true`／`false` | 覆寫 `tdd` |
+| `SPECLINK_AUDIT` | `true`／`false` | 覆寫 `audit` |
+| `SPECLINK_WORKTREE` | `true`／`false` | 覆寫 `worktree`；不影響技能檔要不要產生 |
+| `SPECLINK_STORE_URL` | 網址 | 取代 `remote.url`；不會把本機專案切成遠端模式 |
+| `SPECLINK_TOKEN` | 存取金鑰 | 遠端憑證，優先於鑰匙圈與 `credentials.yaml`，適合 CI |
+
+
+## <a id="fork-language-defaults"></a>Fork 的語言預設
+
+未設定 locale 與 spec_locale 時，分別使用執行 Speclink 的主機語言：中文對應 tw、日文對應 ja，其餘或無法偵測時為 en。明示設定及環境覆寫優先；舊 spec_locale:auto 才跟隨 locale。Remote 使用 Server 的作業系統，不採 Client 或 UI 語言。偵測不回寫設定。
+
+`speclink workflow-config languages --json` 只讀查詢正典設定與主機預設，不套用環境覆寫，回傳具體 locale 及 specLocale；舊 Server 未提供語言資料時會明示要求升級，show 仍可使用。

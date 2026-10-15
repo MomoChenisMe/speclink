@@ -3,7 +3,7 @@
 use crate::config::{CustomTool, Invocation};
 use crate::init::ASSET_VERSION;
 
-/// Built-in tools or a custom descriptor.
+/// The render targets: a built-in tool (claude, codex, copilot) or a custom descriptor.
 /// Descriptors render the NEUTRAL body: no tool-specific slash prefix, no plan-mode
 /// references, verb wording decided by the descriptor's `invocation`.
 #[derive(Clone, Copy)]
@@ -12,7 +12,8 @@ pub enum RenderTarget<'a> {
     Custom(&'a CustomTool),
 }
 
-/// A tool target for generated skills. Codex and Copilot share their skills directory.
+/// A tool target for generated skills. Speclink deliberately scopes the tool matrix to
+/// claude, codex and copilot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tool {
     Claude,
@@ -21,6 +22,17 @@ pub enum Tool {
 }
 
 impl Tool {
+    /// Every built-in tool, in the order selections and reports list them. The engine
+    /// walks it for generation, deselection, the reserved descriptor names and
+    /// directories, the asset lock and its error messages; the adapters (CLI hint, Node
+    /// SDK, desktop) spell the set out in their own wording, pinned by their tests.
+    pub const ALL: [Tool; 3] = [Tool::Claude, Tool::Codex, Tool::Copilot];
+
+    /// The built-in names as error messages list them: `claude, codex, copilot`.
+    pub fn supported_names() -> String {
+        Tool::ALL.map(|t| t.name()).join(", ")
+    }
+
     pub fn parse(s: &str) -> Option<Tool> {
         match s.trim().to_ascii_lowercase().as_str() {
             "claude" => Some(Tool::Claude),
@@ -40,7 +52,8 @@ impl Tool {
     pub fn skills_dir(&self) -> &'static str {
         match self {
             Tool::Claude => ".claude/skills",
-            Tool::Codex | Tool::Copilot => ".agents/skills",
+            Tool::Codex => ".agents/skills",
+            Tool::Copilot => ".github/skills",
         }
     }
     /// Where the tool keeps plan-mode files ({{PLAN_DIR}}); empty when the tool has none.
@@ -53,8 +66,8 @@ impl Tool {
     /// The prefix that `/speclink:` becomes for this tool.
     fn slash_replacement(&self) -> &'static str {
         match self {
-            Tool::Claude => "/speclink-",
-            Tool::Codex | Tool::Copilot => "speclink-",
+            Tool::Claude | Tool::Copilot => "/speclink-",
+            Tool::Codex => "$speclink-",
         }
     }
 }
@@ -67,9 +80,9 @@ pub struct Skill {
     pub fork: bool,
     /// Whether to add `disallowedTools: [Edit, Write]` — Claude frontmatter only.
     pub disallow_edit: bool,
-    /// Part of the command subset generated for non-Claude tools (codex/cursor/gemini/windsurf
-    /// skills, and the cursor/gemini/windsurf command files).
-    pub for_codex: bool,
+    /// Generated for Claude only. Every other target (codex, copilot and custom
+    /// descriptors) gets the rest of the registry.
+    pub claude_only: bool,
     /// Generated only when the workflow config's `worktree` policy is on. The registry
     /// itself stays complete regardless — the gate applies to the GENERATION set, so
     /// `skill_body`, the SDK's render API and the golden locks keep seeing every skill.
@@ -101,60 +114,89 @@ const B_MANUAL: &str = include_str!("../../assets/skills/manual.md");
 const B_BASELINE: &str = include_str!("../../assets/skills/baseline.md");
 const B_PROPOSE: &str = include_str!("../../assets/skills/propose.md");
 const B_QUALITY: &str = include_str!("../../assets/skills/quality.md");
-const B_REVIEW: &str = include_str!("../../assets/skills/review.md");
+/// The two quality stations share their checking rules (brief discipline,
+/// verification gate) from one source, placed between each station's intro
+/// and its steps.
+const B_REVIEW: &str = concat!(
+    include_str!("../../assets/skills/review-intro.md"),
+    include_str!("../../assets/skills/station-shared.md"),
+    include_str!("../../assets/skills/review.md"),
+);
 const B_TRACE: &str = include_str!("../../assets/skills/trace.md");
-const B_VERIFY: &str = include_str!("../../assets/skills/verify.md");
+const B_VERIFY: &str = concat!(
+    include_str!("../../assets/skills/verify-intro.md"),
+    include_str!("../../assets/skills/station-shared.md"),
+    include_str!("../../assets/skills/verify.md"),
+);
 const B_SYNC: &str = include_str!("../../assets/skills/sync.md");
 const B_CLARIFY: &str = include_str!("../../assets/skills/clarify.md");
 const B_TDD: &str = include_str!("../../assets/skills/tdd.md");
 
+/// The review skill's smell baseline names, in template order — the single
+/// source presentation surfaces (the desktop review-rules page) list, so no
+/// second copy can drift. A unit test pins it to the review skill template.
+pub const REVIEW_BASELINE_SMELLS: [&str; 12] = [
+    "Mysterious Name",
+    "Duplicated Code",
+    "Feature Envy",
+    "Data Clumps",
+    "Primitive Obsession",
+    "Repeated Switches",
+    "Shotgun Surgery",
+    "Divergent Change",
+    "Speculative Generality",
+    "Message Chains",
+    "Middle Man",
+    "Refused Bequest",
+];
+
 /// The skills that generate SKILL.md files.
 pub fn registry() -> Vec<Skill> {
     vec![
-        Skill { name: "analyze", description: "Use when a change's artifacts should be cross-checked before implementing — coverage, consistency, ambiguity and gaps across proposal, design, specs and tasks; reports findings without editing anything.", fork: true, disallow_edit: true, for_codex: false, worktree_gated: false, body: B_ANALYZE },
-        Skill { name: "apply", description: "Use when a change's tasks are ready to implement, or when resuming one left half-done — works through the task list, marking each checkbox as it lands.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_APPLY },
+        Skill { name: "analyze", description: "Use when a change's artifacts should be cross-checked before implementing — coverage, consistency, ambiguity and gaps across proposal, design, specs and tasks; reports findings without editing anything.", fork: true, disallow_edit: true, claude_only: true, worktree_gated: false, body: B_ANALYZE },
+        Skill { name: "apply", description: "Use when a change's tasks are ready to implement, or when resuming one left half-done — works through the task list, marking each checkbox as it lands.", fork: false, disallow_edit: false, claude_only: false, worktree_gated: false, body: B_APPLY },
         // Same permissions as `apply` — it IS apply, wrapped in worktree setup
         // and hand-off; the extra steps are git commands, not a narrower role.
-        Skill { name: "apply-with-worktree", description: "Use when several independent changes are being implemented at once — runs apply inside an isolated git worktree per change so parallel work never collides.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: true, body: B_APPLY_WITH_WORKTREE },
-        Skill { name: "archive", description: "Use when a change is finished and its quality stations are settled — folds the deltas into the specs and moves the change into the archive.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_ARCHIVE },
+        Skill { name: "apply-with-worktree", description: "Use when several independent changes are being implemented at once — runs apply inside an isolated git worktree per change so parallel work never collides.", fork: false, disallow_edit: false, claude_only: false, worktree_gated: true, body: B_APPLY_WITH_WORKTREE },
+        Skill { name: "archive", description: "Use when a change is finished and its quality stations are settled — folds the deltas into the specs and moves the change into the archive.", fork: false, disallow_edit: false, claude_only: false, worktree_gated: false, body: B_ARCHIVE },
         // Not a fork skill: the rewritten standalone mode fans out three
         // parallel audit agents, which the fork's Explore agent cannot spawn.
-        Skill { name: "audit", description: "Use when changed code needs a security pass — hunts dangerous defaults, type confusion and silent failures, and reports the sharp edges it finds.", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_AUDIT },
-        Skill { name: "baseline", description: "Use when adopting Speclink on a codebase that already has behavior but no specs — establishes the baseline by generating the initial specs from what the code does today.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_BASELINE },
-        Skill { name: "commit", description: "Use when only the files belonging to one specific change should be committed — selects that change's files and writes the commit.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_COMMIT },
+        Skill { name: "audit", description: "Use when changed code needs a security pass — hunts dangerous defaults, type confusion and silent failures, and reports the sharp edges it finds.", fork: false, disallow_edit: true, claude_only: false, worktree_gated: false, body: B_AUDIT },
+        Skill { name: "baseline", description: "Use when adopting Speclink on a codebase that already has behavior but no specs — establishes the baseline by generating the initial specs from what the code does today.", fork: false, disallow_edit: false, claude_only: false, worktree_gated: false, body: B_BASELINE },
+        Skill { name: "commit", description: "Use when only the files belonging to one specific change should be committed — selects that change's files and writes the commit.", fork: false, disallow_edit: false, claude_only: false, worktree_gated: false, body: B_COMMIT },
         // Writes only through `speclink workflow-config` (never a direct file
         // edit), so Edit/Write stay disallowed; not a fork skill because the
         // policy fields must be asked for interactively.
-        Skill { name: "config", description: "Use when the workflow config's project context or per-artifact rules need composing or refreshing from the codebase — lands them through an approved diff.", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_CONFIG },
-        Skill { name: "discuss", description: "Use when requirements are fuzzy, contested, or worth debating before any change exists — records the exchange as a discussion document that can later be promoted into a change.", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_DISCUSS },
-        Skill { name: "drift", description: "Use when picking a change back up after it sat idle, before touching its tasks — reports how far the codebase has moved from the delta's assumptions.", fork: true, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_DRIFT },
+        Skill { name: "config", description: "Use when the workflow config's project context or per-artifact rules need composing or refreshing from the codebase — lands them through an approved diff.", fork: false, disallow_edit: true, claude_only: false, worktree_gated: false, body: B_CONFIG },
+        Skill { name: "discuss", description: "Use when requirements are fuzzy, contested, or worth debating before any change exists — records the exchange as a discussion document that can later be promoted into a change.", fork: false, disallow_edit: true, claude_only: false, worktree_gated: false, body: B_DISCUSS },
+        Skill { name: "drift", description: "Use when picking a change back up after it sat idle, before touching its tasks — reports how far the codebase has moved from the delta's assumptions.", fork: true, disallow_edit: true, claude_only: false, worktree_gated: false, body: B_DRIFT },
         // discuss 的鏡像入口（模型帶 candidates），權限比照 discuss：記錄一律
         // 經 CLI 寫入，技能本身不得實作程式碼，故 Edit/Write 禁用；要互動挑
         // candidate 並逐輪 grill，不是 fork。
-        Skill { name: "improve", description: "Use when improvements are asked for without naming a topic — user-initiated only, never on the model's own initiative; scans the codebase and records the candidates as a discussion.", fork: false, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_IMPROVE },
-        Skill { name: "ingest", description: "Use when requirements change mid-work, including after a separate planning session — folds the new context into an existing change's artifacts so apply can resume.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_INGEST },
+        Skill { name: "improve", description: "Use when improvements are asked for without naming a topic — user-initiated only, never on the model's own initiative; scans the codebase and records the candidates as a discussion.", fork: false, disallow_edit: true, claude_only: false, worktree_gated: false, body: B_IMPROVE },
+        Skill { name: "ingest", description: "Use when requirements change mid-work, including after a separate planning session — folds the new context into an existing change's artifacts so apply can resume.", fork: false, disallow_edit: false, claude_only: false, worktree_gated: false, body: B_INGEST },
         // Tool skill with two modes (spec manual-skill): generation writes the
         // manual pages under the spec dir, so Edit/Write stay allowed; tour mode
         // asks the user one role question interactively, so not a fork.
-        Skill { name: "manual", description: "Use when a human-readable operating manual is needed, or when someone wants to be walked through how to operate the system — generates a wiki-style Markdown manual under openspec/manual/ from the canonical specs, or gives an in-conversation tour with every answer sourced.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_MANUAL },
-        Skill { name: "propose", description: "Use when a change needs planning, proposing or designing — creates the change with every required artifact; seed it from a concluded discussion with --from-discussion.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_PROPOSE },
+        Skill { name: "manual", description: "Use when a human-readable operating manual is needed, or when someone wants to be walked through how to operate the system — generates a wiki-style Markdown manual under openspec/manual/ from the canonical specs, or gives an in-conversation tour with every answer sourced.", fork: false, disallow_edit: false, claude_only: false, worktree_gated: false, body: B_MANUAL },
+        Skill { name: "propose", description: "Use when a change needs planning, proposing or designing — creates the change with every required artifact; seed it from a concluded discussion with --from-discussion.", fork: false, disallow_edit: false, claude_only: false, worktree_gated: false, body: B_PROPOSE },
         // Pure ordering over the two stations plus the per-round pause（design
         // D1）：不是 fork——它要在主線依序呼叫兩站技能、停下問使用者，且步驟 4
         // 的修正就在主線改檔，故 Edit 不禁。
-        Skill { name: "quality", description: "Use when both quality stations should run over one change, pausing after every round for the user's call: both check without stamping, their findings are reported together and the skill stops — for only one station, call review or verify directly.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_QUALITY },
+        Skill { name: "quality", description: "Use when both quality stations should run over one change, pausing after every round for the user's call: both check without stamping, their findings are reported together and the skill stops — for only one station, call review or verify directly.", fork: false, disallow_edit: false, claude_only: false, worktree_gated: false, body: B_QUALITY },
         // Not a fork skill（design D7 替代案否決 fork）：主線 orchestrator 要
         // fan-out 兩個平行 sub-agent 並互動詢問三選項；修正回主線，故 Edit 不禁。
-        Skill { name: "review", description: "Use when an implementation should be checked for craft quality before archiving — parallel standards and correctness axes, recorded to a review ticket.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_REVIEW },
+        Skill { name: "review", description: "Use when an implementation should be checked for craft quality before archiving — parallel standards and correctness axes, recorded to a review ticket.", fork: false, disallow_edit: false, claude_only: false, worktree_gated: false, body: B_REVIEW },
         // 唯讀問答（比照 drift 的 fork 形狀）：走 speclink verbs 與 git 組敘事
         // 答案，永不改檔，Edit/Write 禁用。
-        Skill { name: "trace", description: "Use when someone asks how a capability came to be or why it works this way — walks its provenance chain across archived changes, source discussions, evidence and live code.", fork: true, disallow_edit: true, for_codex: true, worktree_gated: false, body: B_TRACE },
+        Skill { name: "trace", description: "Use when someone asks how a capability came to be or why it works this way — walks its provenance chain across archived changes, source discussions, evidence and live code.", fork: true, disallow_edit: true, claude_only: false, worktree_gated: false, body: B_TRACE },
         // Not a fork skill any more（design D6）：主線要取得 frozen scope、落
         // structured 工單、互動詢問三選項並在本地依 TDD 修正；檢查段本身仍以
         // 單一唯讀 sub-agent 隔離。codex 變體以純文字詢問，兩工具同步生成。
-        Skill { name: "verify", description: "Use when an implementation should be checked against its artifacts before archiving — confirms the specs and tasks are actually satisfied, recorded to a verify ticket.", fork: false, disallow_edit: false, for_codex: true, worktree_gated: false, body: B_VERIFY },
+        Skill { name: "verify", description: "Use when an implementation should be checked against its artifacts before archiving — confirms the specs and tasks are actually satisfied, recorded to a verify ticket.", fork: false, disallow_edit: false, claude_only: false, worktree_gated: false, body: B_VERIFY },
         // Runs git commands only — a conflict stops the flow for the user to
         // resolve, so the agent never edits a file: Edit/Write stay disallowed.
-        Skill { name: "worktree-merge", description: "Use when a worktree change is committed and ready to land — merges the branch back into the main branch, then cleans the worktree up.", fork: false, disallow_edit: true, for_codex: true, worktree_gated: true, body: B_WORKTREE_MERGE },
+        Skill { name: "worktree-merge", description: "Use when a worktree change is committed and ready to land — merges the branch back into the main branch, then cleans the worktree up.", fork: false, disallow_edit: true, claude_only: false, worktree_gated: true, body: B_WORKTREE_MERGE },
     ]
 }
 
@@ -193,8 +235,6 @@ struct Substitutions<'a> {
     /// Some bodies carry literal claude-style skill references; neutrally they are
     /// plain skill names (`speclink-ingest`), never slash commands.
     neutralize_skill_refs: bool,
-    /// Shared built-ins record the actual executing agent, never the render target.
-    dynamic_agent: bool,
 }
 
 impl Substitutions<'_> {
@@ -206,11 +246,6 @@ impl Substitutions<'_> {
                 .join("\n")
         } else {
             body.to_string()
-        };
-        let body = if self.dynamic_agent {
-            body.replace(" --agent {{TOOL}}", "")
-        } else {
-            body
         };
         let rendered = body
             .replace("{{SPEC_DIR}}", &self.spec_dir_slash)
@@ -238,9 +273,8 @@ fn substitutions<'a>(target: RenderTarget<'a>, spec_dir: &str) -> Substitutions<
             plan_dir: tool.plan_dir(),
             tool_name: tool.name(),
             slash_replacement: tool.slash_replacement(),
-            drop_plan_mode_lines: tool != Tool::Claude,
-            neutralize_skill_refs: tool != Tool::Claude,
-            dynamic_agent: tool != Tool::Claude,
+            drop_plan_mode_lines: false,
+            neutralize_skill_refs: false,
         },
         RenderTarget::Custom(custom) => Substitutions {
             spec_dir_slash,
@@ -249,7 +283,6 @@ fn substitutions<'a>(target: RenderTarget<'a>, spec_dir: &str) -> Substitutions<
             slash_replacement: "speclink ",
             drop_plan_mode_lines: true,
             neutralize_skill_refs: true,
-            dynamic_agent: false,
         },
     }
 }
@@ -302,19 +335,6 @@ as argv.\n\n---\n\n"
     }
 }
 
-const SHARED_EXECUTION: &str = "## Shared execution\n\n\
-Codex and Copilot use the same skills. Names such as `speclink-propose` and \
-`speclink-apply` are skill entry points, not CLI subcommands; invoke them using \
-your agent's skill interface. Execute the documented `speclink <verb> [arguments]` \
-operations as shell commands. For interactive questions use your available \
-question tool; if none is available, ask the user directly and wait.\n\n\
-When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, \
-identify the agent actually running this skill: Codex appends `--agent codex`, \
-Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. \
-Do not infer the executing agent from the selected tools in `.speclink.yaml` \
-or from the directory that contains this skill. Command examples below omit the \
-flag so they work for either agent; append the actual agent when known.\n\n---\n\n";
-
 /// Render a complete SKILL.md (frontmatter + preamble + substituted body) for one target.
 /// The fork/agent and disallowedTools lines are Claude-only; descriptors get the neutral
 /// frontmatter plus an invocation preamble (frozen output shape).
@@ -345,9 +365,6 @@ pub fn render_skill_file_for(target: RenderTarget, skill: &Skill, spec_dir: &str
                 if let Some(preamble) = fork_context(skill.name) {
                     fm.push_str(&preamble);
                 }
-            }
-            if !claude {
-                fm.push_str(SHARED_EXECUTION);
             }
         }
         RenderTarget::Custom(custom) => fm.push_str(invocation_note(custom.invocation)),
@@ -382,35 +399,6 @@ mod tests {
             skills_dir: ".my-harness/skills".to_string(),
             instructions_file: None,
             invocation: Invocation::Cli,
-        }
-    }
-
-    #[test]
-    fn copilot_shared_render_uses_skill_names_and_actual_executor() {
-        for skill in registry().into_iter().filter(|s| s.for_codex) {
-            for spec_dir in ["openspec", "docs/specs"] {
-                let codex =
-                    render_skill_file_for(RenderTarget::Builtin(Tool::Codex), &skill, spec_dir);
-                let copilot =
-                    render_skill_file_for(RenderTarget::Builtin(Tool::Copilot), &skill, spec_dir);
-                assert_eq!(codex, copilot, "{}", skill.name);
-                for forbidden in ["$speclink-", "/speclink-", "{{", "Plan Mode", "plan mode"] {
-                    assert!(
-                        !codex.contains(forbidden),
-                        "{} contains {forbidden}",
-                        skill.name
-                    );
-                }
-                assert!(codex.contains("--agent codex") && codex.contains("--agent copilot"));
-                assert!(codex.contains("omit --agent"));
-                assert!(codex.contains("not CLI subcommands"));
-                assert!(codex.contains("ask the user directly and wait"));
-                if skill.name == "propose" {
-                    assert!(codex.contains("speclink-propose"));
-                    assert!(codex.contains("speclink new change \"<name>\"\n"));
-                    assert!(!codex.contains("speclink propose "));
-                }
-            }
         }
     }
 
@@ -482,7 +470,10 @@ mod tests {
             .iter()
             .find(|s| s.name == "manual")
             .expect("registry carries the manual skill");
-        assert!(manual.for_codex, "manual renders for codex (and thus neutral) targets");
+        assert!(
+            !manual.claude_only,
+            "manual renders for codex (and thus neutral) targets"
+        );
         assert!(!manual.fork, "generation mode writes files — not a fork skill");
         assert!(!manual.disallow_edit, "generation mode writes files — Edit/Write allowed");
         assert!(!manual.worktree_gated, "manual is not part of the worktree flow");
@@ -501,6 +492,55 @@ mod tests {
             Some(manual.body),
             "skill_body resolves manual to the same embedded asset"
         );
+    }
+
+    /// spec review-skill「Standards 軸的 smell baseline」：引擎提供的 12 個名稱與每個內建工具
+    /// 生成的審查技能檔內嵌的 smell 清單（`- **<name>** — … → …` 項目）逐名、逐序一致——
+    /// 任一端改名或增刪即失敗。
+    #[test]
+    fn review_baseline_smells_match_the_generated_review_skill_files() {
+        let reg = registry();
+        let review = reg.iter().find(|s| s.name == "review").expect("registry carries review");
+        for tool in [Tool::Claude, Tool::Codex, Tool::Copilot] {
+            let rendered = render_skill_file_for(RenderTarget::Builtin(tool), review, "openspec");
+            let names: Vec<&str> = rendered
+                .lines()
+                .map(str::trim_start)
+                .filter(|l| l.starts_with("- **") && l.contains("** — ") && l.contains(" → "))
+                .map(|l| l["- **".len()..].split("**").next().unwrap())
+                .collect();
+            assert_eq!(names, REVIEW_BASELINE_SMELLS, "generated review skill for {tool:?}");
+        }
+    }
+
+    /// spec review-skill「首輪工單記錄套用的規則」Scenario 技能檔載明記錄規則：三種工具
+    /// 生成的審查技能檔，記錄輪次的步驟在 Patch 與 Scope 之間寫 `**Rules**:` 與
+    /// `**Rule**:`，並寫明 validation 輪不寫。
+    #[test]
+    fn review_skill_records_applied_rules_in_discovery_rounds() {
+        let reg = registry();
+        let review = reg.iter().find(|s| s.name == "review").expect("registry carries review");
+        for tool in [Tool::Claude, Tool::Codex, Tool::Copilot] {
+            let rendered = render_skill_file_for(RenderTarget::Builtin(tool), review, "openspec");
+            let step: Vec<&str> = rendered
+                .lines()
+                .skip_while(|l| !l.contains("**Record the round**"))
+                .take_while(|l| !l.contains("**Branch on the blocking set**"))
+                .collect();
+            let bullet = |needle: &str| {
+                step.iter()
+                    .position(|l| l.trim_start().starts_with("- ") && l.contains(needle))
+                    .unwrap_or_else(|| panic!("{tool:?}: no stdin bullet for {needle}"))
+            };
+            let (patch, rules, scope) = (bullet("`**Patch**:`"), bullet("`**Rules**:`"), bullet("`**Scope**:`"));
+            assert!(patch < rules && rules < scope, "{tool:?}: Rules sits between Patch and Scope");
+            assert!(step[rules].contains("`**Rule**:"), "{tool:?}: the Rules bullet names the Rule lines");
+            let text = step.join("\n");
+            assert!(
+                text.contains("A validation round writes no `**Rules**:` or `**Rule**:` line"),
+                "{tool:?}: the step says validation rounds skip the record"
+            );
+        }
     }
 
     /// 鎖定基準（重構前後皆須成立）：三種 render target 的輸出外形——恰一個結尾

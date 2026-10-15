@@ -13,7 +13,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use speclink_core::workspace::Workspace;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Baseline sidecar format version.
 pub const BASELINE_VERSION: u32 = 1;
@@ -98,16 +98,34 @@ pub fn prepare(ws: &Workspace, change: &str, started: bool) -> Result<PrepareOut
     } else {
         None
     };
-    let (base_commit, dirty, confidence) = match head {
-        None => (None, Vec::new(), Confidence::Unavailable),
-        Some(sha) => {
-            let mut dirty = speclink_core::tasks::git_changed_files(ws);
-            dirty.sort();
-            dirty.dedup();
-            let confidence = if started { Confidence::Late } else { Confidence::Initial };
-            (Some(sha), dirty, confidence)
-        }
+    let confidence = match (&head, started) {
+        (None, _) => Confidence::Unavailable,
+        (Some(_), true) => Confidence::Late,
+        (Some(_), false) => Confidence::Initial,
     };
+    let baseline = write_current_baseline(ws, change, head, confidence)?;
+    Ok(match confidence {
+        Confidence::Initial => PrepareOutcome::Captured(baseline),
+        Confidence::Late => PrepareOutcome::Late(baseline),
+        Confidence::Unavailable => PrepareOutcome::Unavailable(baseline),
+    })
+}
+
+/// Build and atomically write a baseline at `base_commit` with the current
+/// dirty paths (none without a commit) — the one writer both prepare entries
+/// share.
+fn write_current_baseline(
+    ws: &Workspace,
+    change: &str,
+    base_commit: Option<String>,
+    confidence: Confidence,
+) -> Result<Baseline> {
+    let mut dirty = match base_commit {
+        Some(_) => speclink_core::tasks::git_changed_files(ws),
+        None => Vec::new(),
+    };
+    dirty.sort();
+    dirty.dedup();
     let baseline = Baseline {
         version: BASELINE_VERSION,
         change: change.to_string(),
@@ -117,11 +135,140 @@ pub fn prepare(ws: &Workspace, change: &str, started: bool) -> Result<PrepareOut
         confidence,
     };
     write_baseline(ws, &baseline)?;
-    Ok(match confidence {
-        Confidence::Initial => PrepareOutcome::Captured(baseline),
-        Confidence::Late => PrepareOutcome::Late(baseline),
-        Confidence::Unavailable => PrepareOutcome::Unavailable(baseline),
-    })
+    Ok(baseline)
+}
+
+/// Reset the Apply baseline to a trusted commit, optionally carrying both
+/// stations' snapshots over from another checkout (`review prepare --base
+/// [--from]`). `open_tickets` names the stations (`review`, `verify`) whose
+/// ticket exists unstamped — the CLI reads the ticket store, this module does
+/// not.
+///
+/// The order is the contract: every check runs before any write, snapshots
+/// are copied next, and the baseline is written last — a half-finished carry
+/// leaves no baseline behind, and a rerun completes it because snapshot names
+/// are content-addressed and existing ones are skipped.
+pub fn prepare_at(
+    ws: &Workspace,
+    change: &str,
+    base_rev: &str,
+    open_tickets: &[&str],
+    from: Option<&Path>,
+) -> Result<Baseline> {
+    // git must never read the rev as an option.
+    if base_rev.starts_with('-') {
+        anyhow::bail!(
+            "--base '{base_rev}' starts with '-' — pass a commit SHA, branch, or tag"
+        );
+    }
+    // The same guard as prepare: a project nested inside an ancestor repo has
+    // no fixed point of its own, and its snapshots would not sit where --from
+    // looks for them.
+    if !ws.root.join(".git").exists() {
+        anyhow::bail!(
+            "'{}' is not the root of a git checkout — --base needs the project to sit at \
+             its repository root",
+            ws.root.display()
+        );
+    }
+    let base = verify_base(ws, base_rev)?;
+    if !is_ancestor_of_head(ws, &base)? {
+        anyhow::bail!(
+            "'{base_rev}' ({base}) is not an ancestor of HEAD — --base must name a commit \
+             in the current branch's history"
+        );
+    }
+    if baseline_path(ws, change).exists() {
+        if let Some(station) = open_tickets.first() {
+            anyhow::bail!(
+                "the {station} ticket of '{change}' is still open and its snapshots are bound \
+                 to the current baseline — stamp or discard it before resetting the baseline"
+            );
+        }
+    }
+    if let Some(from) = from {
+        // A folder that is not a checkout holds no snapshots: carrying from it
+        // would "succeed" with nothing carried.
+        let problem = if !from.is_dir() {
+            Some("does not exist")
+        } else if !from.join(".git").exists() {
+            Some("is not a git checkout")
+        } else {
+            None
+        };
+        if let Some(problem) = problem {
+            anyhow::bail!(
+                "--from '{}' {problem} — pass the worktree folder the change was applied in",
+                from.display()
+            );
+        }
+        carry_snapshots(ws, change, from)?;
+    }
+    write_current_baseline(ws, change, Some(base), Confidence::Initial)
+}
+
+/// `git merge-base --is-ancestor`: exit 0 = ancestor, 1 = not; anything else
+/// is git failing, not an answer.
+fn is_ancestor_of_head(ws: &Workspace, sha: &str) -> Result<bool> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&ws.root)
+        .args(["merge-base", "--is-ancestor", sha, "HEAD"])
+        .output()
+        .context("cannot run git")?;
+    match out.status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        _ => anyhow::bail!(
+            "git merge-base failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ),
+    }
+}
+
+/// Copy both stations' frozen snapshots of `change` from the checkout at
+/// `from_root` (same sidecar layout) into this one. Snapshot names are
+/// patchHash digests — same name, same content — so existing files are
+/// skipped; each copy lands through a same-dir temp file + rename. The
+/// source's baseline is never copied, and a source without snapshots is not
+/// an error.
+fn carry_snapshots(ws: &Workspace, change: &str, from_root: &Path) -> Result<()> {
+    let source = Workspace { root: from_root.to_path_buf(), spec_dir_name: ws.spec_dir_name.clone() };
+    for ns in [StationNs::Review, StationNs::Verify] {
+        let src_dir = snapshots_dir(&source, change, ns);
+        let mut names: Vec<std::ffi::OsString> = match std::fs::read_dir(&src_dir) {
+            Ok(entries) => entries
+                .filter_map(|e| e.ok())
+                .map(|e| e.file_name())
+                .filter(|n| Path::new(n).extension().is_some_and(|x| x == "json"))
+                .collect(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => {
+                return Err(e)
+                    .with_context(|| format!("cannot read snapshots in {}", src_dir.display()))
+            }
+        };
+        names.sort();
+        let dst_dir = snapshots_dir(ws, change, ns);
+        for name in names {
+            let target = dst_dir.join(&name);
+            if target.is_file() {
+                continue;
+            }
+            std::fs::create_dir_all(&dst_dir)
+                .with_context(|| format!("cannot create snapshot dir {}", dst_dir.display()))?;
+            let tmp = sidecar_tmp_path(&dst_dir, "snapshot.json");
+            let copied = std::fs::copy(src_dir.join(&name), &tmp)
+                .map(|_| ())
+                .and_then(|()| std::fs::rename(&tmp, &target));
+            if let Err(e) = copied {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(e)
+                    .with_context(|| format!("cannot carry snapshot {}", target.display()));
+            }
+        }
+    }
+    Ok(())
 }
 
 // --- D2: the single Git-backed change-diff resolver ---
@@ -244,14 +391,21 @@ pub fn resolve_candidate(
     resolve_candidate_pathspec(ws, base_commit, &targets)
 }
 
-/// `\`→`/` normalized, sorted, deduped touched paths with `openspec/` and
-/// `.speclink/` excluded — never review targets.
+/// The two top-level folders that are never review surface: the spec
+/// directory and the host work data under `.speclink/`. The single source for
+/// the scope resolver's exclusions and add-round's path-check exemptions.
+pub fn non_review_dirs(ws: &Workspace) -> [&str; 2] {
+    [ws.spec_dir_name.as_str(), ".speclink"]
+}
+
+/// `\`→`/` normalized, sorted, deduped touched paths with the non-review
+/// folders excluded — never review targets.
 fn normalize_targets(ws: &Workspace, touched_paths: &[String]) -> Vec<String> {
-    let spec_prefix = format!("{}/", ws.spec_dir_name);
+    let dirs = non_review_dirs(ws);
     let mut targets: Vec<String> = touched_paths
         .iter()
         .map(|p| p.replace('\\', "/"))
-        .filter(|p| !p.starts_with(&spec_prefix) && !p.starts_with(".speclink/"))
+        .filter(|p| !dirs.iter().any(|d| p.strip_prefix(d).is_some_and(|r| r.starts_with('/'))))
         .collect();
     targets.sort();
     targets.dedup();
@@ -262,11 +416,8 @@ fn normalize_targets(ws: &Workspace, touched_paths: &[String]) -> Vec<String> {
 /// set (design D3): the entire diff — spec artifacts and work data still
 /// excluded — offered as a needsInput candidate only.
 fn resolve_worktree_candidate(ws: &Workspace, base_commit: &str) -> Result<Candidate> {
-    let pathspec = vec![
-        ".".to_string(),
-        format!(":(exclude){}", ws.spec_dir_name),
-        ":(exclude).speclink".to_string(),
-    ];
+    let mut pathspec = vec![".".to_string()];
+    pathspec.extend(non_review_dirs(ws).iter().map(|d| format!(":(exclude){d}")));
     resolve_candidate_pathspec(ws, base_commit, &pathspec)
 }
 
@@ -2805,5 +2956,182 @@ mod tests {
             !Path::new(&baseline_path(&ws, "demo")).exists(),
             "no baseline may appear on the failure path"
         );
+    }
+
+    // --- spec「以可信 commit 重設 Apply baseline 並承接快照」---
+
+    fn commit_all(repo: &TempRepo, msg: &str) {
+        repo.git(&["add", "src"]);
+        repo.git(&["commit", "-q", "-m", msg]);
+    }
+
+    /// 在來源 checkout 的某站快照目錄放一個檔（承接只搬檔、不解析內容）。
+    fn put_snapshot(ws: &Workspace, ns: StationNs, name: &str, body: &str) {
+        let dir = snapshots_dir(ws, "demo", ns);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(name), body).unwrap();
+    }
+
+    fn dir_names(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .map(|it| {
+                it.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().to_string()).collect()
+            })
+            .unwrap_or_default();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn prepare_at_writes_an_initial_baseline_at_an_ancestor() {
+        let repo = TempRepo::new("at-ancestor");
+        let parent = repo.head();
+        repo.write("src/lib.rs", "fn demo() { merged(); }\n");
+        commit_all(&repo, "merged change");
+        repo.write("notes/local.txt", "scratch\n");
+        let ws = repo.ws();
+        let short = &parent[..8];
+        let b = prepare_at(&ws, "demo", short, &[], None).expect("ancestor accepted");
+        assert_eq!(b.base_commit.as_deref(), Some(parent.as_str()), "full SHA, not the short rev");
+        assert_eq!(b.confidence, Confidence::Initial);
+        assert_eq!(b.dirty_files_at_start, vec!["notes/local.txt".to_string()]);
+        assert_eq!(load_baseline(&ws, "demo"), Some(b), "the same baseline is on disk");
+        assert_eq!(dir_names(&scope_dir(&ws, "demo")), vec!["baseline.json"], "no temp leftovers");
+    }
+
+    #[test]
+    fn prepare_at_rejects_non_ancestor_and_unresolvable_revs_with_zero_writes() {
+        let repo = TempRepo::new("at-reject");
+        repo.git(&["checkout", "-q", "-b", "side"]);
+        repo.write("src/side.rs", "fn side() {}\n");
+        commit_all(&repo, "side");
+        let side = repo.head();
+        repo.git(&["checkout", "-q", "-"]);
+        let ws = repo.ws();
+        let err = prepare_at(&ws, "demo", &side, &[], None).expect_err("not an ancestor");
+        assert!(format!("{err:#}").contains("not an ancestor"), "{err:#}");
+        let err = prepare_at(&ws, "demo", "no-such-ref", &[], None).expect_err("unresolvable");
+        assert!(format!("{err:#}").contains("no-such-ref"), "{err:#}");
+        assert!(!scope_dir(&ws, "demo").exists(), "zero writes on both refusals");
+    }
+
+    #[test]
+    fn prepare_at_refuses_to_rewrite_a_baseline_while_a_ticket_is_open() {
+        let repo = TempRepo::new("at-open");
+        let ws = repo.ws();
+        prepare(&ws, "demo", false).expect("first baseline");
+        let before = std::fs::read(baseline_path(&ws, "demo")).unwrap();
+        for name in ["review", "verify"] {
+            let err = prepare_at(&ws, "demo", "HEAD", &[name], None).expect_err("ticket open");
+            assert!(format!("{err:#}").contains(name), "names the {name} station: {err:#}");
+            assert_eq!(std::fs::read(baseline_path(&ws, "demo")).unwrap(), before, "untouched");
+        }
+        // 沒有 baseline 時不做這項檢查。
+        let fresh = TempRepo::new("at-open-fresh");
+        prepare_at(&fresh.ws(), "demo", "HEAD", &["review"], None)
+            .expect("no baseline → no open-ticket guard");
+    }
+
+    #[test]
+    fn prepare_at_refuses_a_project_nested_below_the_git_root() {
+        // 與 prepare 同一個守門：專案根目錄沒有自己的 `.git`，上層 repo 的 HEAD
+        // 不是它的固定點。
+        let repo = TempRepo::new("at-nested");
+        let nested = Workspace { root: repo.root.join("sub"), spec_dir_name: "openspec".to_string() };
+        std::fs::create_dir_all(&nested.root).unwrap();
+        let err = prepare_at(&nested, "demo", "HEAD", &[], None).expect_err("nested project");
+        assert!(format!("{err:#}").contains("git checkout"), "{err:#}");
+        assert!(!scope_dir(&nested, "demo").exists(), "zero writes");
+    }
+
+    #[test]
+    fn carry_snapshots_copies_both_stations_skips_existing_and_never_the_baseline() {
+        let src = TempRepo::new("carry-src");
+        let dst = TempRepo::new("carry-dst");
+        let (src_ws, dst_ws) = (src.ws(), dst.ws());
+        prepare(&src_ws, "demo", false).expect("source baseline");
+        put_snapshot(&src_ws, StationNs::Review, "aaa.json", "review-a");
+        put_snapshot(&src_ws, StationNs::Verify, "vvv.json", "verify-v");
+        put_snapshot(&dst_ws, StationNs::Review, "aaa.json", "already-here");
+        carry_snapshots(&dst_ws, "demo", &src.root).expect("carry succeeds");
+        let review = snapshots_dir(&dst_ws, "demo", StationNs::Review);
+        let verify = snapshots_dir(&dst_ws, "demo", StationNs::Verify);
+        assert_eq!(std::fs::read_to_string(review.join("aaa.json")).unwrap(), "already-here");
+        assert_eq!(std::fs::read_to_string(verify.join("vvv.json")).unwrap(), "verify-v");
+        assert_eq!(dir_names(&verify), vec!["vvv.json"], "no temp leftovers");
+        assert!(!baseline_path(&dst_ws, "demo").exists(), "the source baseline stays behind");
+    }
+
+    #[test]
+    fn carry_snapshots_without_source_snapshots_creates_nothing() {
+        let src = TempRepo::new("carry-empty-src");
+        let dst = TempRepo::new("carry-empty-dst");
+        carry_snapshots(&dst.ws(), "demo", &src.root).expect("nothing to carry is fine");
+        assert!(!scope_dir(&dst.ws(), "demo").exists(), "no directory is created");
+    }
+
+    #[test]
+    fn carried_snapshots_let_the_main_checkout_resolve_a_validation_scope() {
+        // worktree（src）跑過 discovery 後提交；主 checkout（dst，clone 出來的
+        // 同一段歷史）以變更前的 commit 寫入基準並承接快照，validation scope
+        // 照常解析。
+        let src = TempRepo::new("carry-flow-src");
+        let base = src.head();
+        let src_ws = src.ws();
+        prepare(&src_ws, "demo", false).expect("worktree baseline");
+        src.write("src/lib.rs", "fn demo() { changed(); }\n");
+        let r1 = resolved(&src_ws, &scope_req(&["src/lib.rs"]));
+        commit_all(&src, "the change");
+        let dst = TempRepo { root: src.root.with_file_name(format!(
+            "speclink-host-changediff-carry-flow-dst-{}",
+            std::process::id()
+        )) };
+        let _ = std::fs::remove_dir_all(&dst.root);
+        let cloned = Command::new("git")
+            .args(["clone", "-q"])
+            .arg(&src.root)
+            .arg(&dst.root)
+            .status()
+            .expect("git clone");
+        assert!(cloned.success());
+        let dst_ws = dst.ws();
+        prepare_at(&dst_ws, "demo", &base, &[], Some(&src.root)).expect("baseline + carry");
+        let mut req = scope_req(&["src/lib.rs"]);
+        req.ticket = Some(TicketBinding {
+            patch_hash_chain: vec![r1.patch_hash.clone()],
+            finding_paths: vec!["src/lib.rs".to_string()],
+        });
+        let r2 = resolved(&dst_ws, &req);
+        assert_eq!(r2.phase, Phase::Validation);
+    }
+
+    #[test]
+    fn a_failed_copy_writes_no_baseline_and_a_rerun_completes() {
+        let src = TempRepo::new("carry-fail-src");
+        let dst = TempRepo::new("carry-fail-dst");
+        let (src_ws, dst_ws) = (src.ws(), dst.ws());
+        put_snapshot(&src_ws, StationNs::Review, "aaa.json", "first");
+        put_snapshot(&src_ws, StationNs::Review, "bbb.json", "second");
+        // 第二個檔案的目標位置被目錄佔住：rename 失敗。
+        let review = snapshots_dir(&dst_ws, "demo", StationNs::Review);
+        std::fs::create_dir_all(review.join("bbb.json")).unwrap();
+        let err = prepare_at(&dst_ws, "demo", "HEAD", &[], Some(&src.root));
+        assert!(err.is_err(), "the blocked copy fails the call");
+        assert!(review.join("aaa.json").is_file(), "the first copy stays");
+        assert!(!baseline_path(&dst_ws, "demo").exists(), "baseline is written last");
+        std::fs::remove_dir(review.join("bbb.json")).unwrap();
+        prepare_at(&dst_ws, "demo", "HEAD", &[], Some(&src.root)).expect("rerun completes");
+        assert_eq!(std::fs::read_to_string(review.join("bbb.json")).unwrap(), "second");
+        assert!(baseline_path(&dst_ws, "demo").exists());
+    }
+
+    #[test]
+    fn prepare_at_with_a_missing_source_writes_nothing() {
+        let repo = TempRepo::new("at-missing-src");
+        let ws = repo.ws();
+        let gone = repo.root.join("no-such-worktree");
+        let err = prepare_at(&ws, "demo", "HEAD", &[], Some(&gone)).expect_err("missing --from");
+        assert!(format!("{err:#}").contains("no-such-worktree"), "{err:#}");
+        assert!(!scope_dir(&ws, "demo").exists(), "zero writes");
     }
 }

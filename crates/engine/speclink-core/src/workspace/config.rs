@@ -1,6 +1,6 @@
 //! Configuration: `.speclink.yaml` (app) and `openspec/config.yaml` (workflow).
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -88,7 +88,7 @@ where
     Ok(Some(v.unwrap_or_default()))
 }
 
-/// One entry of the `tools:` list — a built-in tool name string or a
+/// One entry of the `tools:` list — a built-in tool name string (claude, codex, copilot) or a
 /// custom harness descriptor object.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
@@ -151,12 +151,11 @@ impl ToolDescriptor {
         }
         // "agents" is Tool::parse's alias for codex, so it is reserved alongside the
         // canonical built-in names.
-        if name == "copilot" {
-            return Err("tool descriptor: name 'copilot' conflicts with the built-in copilot; rename it to copilot-custom to retain skills_dir/invocation, or manually replace the descriptor with the built-in string copilot".to_string());
-        }
-        if ["claude", "codex", "agents"].contains(&name) {
+        if crate::skills::Tool::parse(name).is_some() {
             return Err(format!(
-                "tool descriptor: name '{name}' conflicts with a built-in tool name (claude, codex)"
+                "tool descriptor: name '{name}' conflicts with a built-in tool name ({}){}",
+                crate::skills::Tool::supported_names(),
+                if name == "copilot" { "; rename it to copilot-custom to retain skills_dir/invocation, or use the built-in string copilot" } else { "" }
             ));
         }
         // skills_dir 在這個邊界一次正規化：削去結尾分隔符，讓生成、足跡記錄與過期
@@ -175,10 +174,12 @@ impl ToolDescriptor {
             ));
         }
         // 內建工具的 skills 目錄同樣被保留：兩個 target 指向同一個目錄時，探測會對同
-        // 一份 SKILL.md 比兩種期望內容而永遠回報過期，生成時後手的 for_codex 子集也
+        // 一份 SKILL.md 比兩種期望內容而永遠回報過期，生成時後手的非 Claude 子集也
         // 會把前手剛寫的 claude 專屬技能當成孤兒刪掉。名稱衝突已擋，目錄衝突同理。
-        for builtin in [crate::skills::Tool::Claude, crate::skills::Tool::Codex] {
-            if normalized == Path::new(builtin.skills_dir()) {
+        // 比對不分大小寫：macOS／Windows 上 `.GitHub/skills` 就是 `.github/skills`。
+        let folded = normalized.to_string_lossy().to_lowercase();
+        for builtin in crate::skills::Tool::ALL {
+            if Path::new(&folded) == Path::new(builtin.skills_dir()) {
                 return Err(format!(
                     "tool descriptor '{name}': skills_dir '{raw}' is the built-in {} skills directory (choose another directory)",
                     builtin.name()
@@ -351,6 +352,100 @@ pub struct WorkflowConfig {
     pub worktree: Option<bool>,
     #[serde(default)]
     pub rules: BTreeMap<String, Vec<String>>,
+    /// Project review rules for the review station's Standards axis. Not a policy
+    /// field: no env override, never read from `.speclink.yaml`. `None` (key absent
+    /// or null) reads as the defaults via [`WorkflowConfig::review`].
+    #[serde(default)]
+    pub review: Option<ReviewConfig>,
+}
+
+/// `review:` block of `openspec/config.yaml`. Strict on purpose: an unknown
+/// sub-key (a typo like `critcal`), a baseline outside extend/replace, or a list
+/// that is not a string array fails the whole document through the fail-closed
+/// `ConfigError` path — a typo must never silently drop a rule list. The top
+/// level of `WorkflowConfig` stays lenient, so older CLIs skip this block.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewConfig {
+    #[serde(default)]
+    pub baseline: ReviewBaseline,
+    #[serde(default, deserialize_with = "de_rule_list")]
+    pub critical: Vec<String>,
+    #[serde(default, deserialize_with = "de_rule_list")]
+    pub warning: Vec<String>,
+    #[serde(default, deserialize_with = "de_rule_list")]
+    pub suggestion: Vec<String>,
+}
+
+/// A rule list whose entries must be YAML strings (see [`RuleEntry`]). A null
+/// list (`critical:` with nothing after it) reads as an empty one. Entries are
+/// trimmed and blank ones dropped on read — the same cleanup every write applies —
+/// so a hand-written blank never reaches the review, and rewriting a list the
+/// caller did not edit never changes its values.
+fn de_rule_list<'de, D>(d: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let entries = Option::<Vec<RuleEntry>>::deserialize(d)?.unwrap_or_default();
+    Ok(entries
+        .into_iter()
+        .map(|e| e.0.trim().to_string())
+        .filter(|e| !e.is_empty())
+        .collect())
+}
+
+/// One review rule: a YAML string only. `Vec<String>` would let serde_yaml coerce
+/// `1`, `true` or an empty item (null) into the text "1"/"true"/"null" and hand
+/// it to the review as a rule; `deserialize_any` sees the real scalar type, and
+/// the error rises at the entry, so it names `review.<list>[i]`.
+struct RuleEntry(String);
+
+impl<'de> Deserialize<'de> for RuleEntry {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<RuleEntry, D::Error> {
+        struct StringOnly;
+        impl serde::de::Visitor<'_> for StringOnly {
+            type Value = RuleEntry;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a rule string")
+            }
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<RuleEntry, E> {
+                Ok(RuleEntry(v.to_string()))
+            }
+        }
+        d.deserialize_any(StringOnly)
+    }
+}
+
+/// Whether the review station's built-in smell baseline applies on top of the
+/// project rules (`extend`, the default) or not at all (`replace`). Values are
+/// case-sensitive.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReviewBaseline {
+    #[default]
+    Extend,
+    Replace,
+}
+
+impl ReviewBaseline {
+    /// The config-file spelling (`extend` / `replace`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ReviewBaseline::Extend => "extend",
+            ReviewBaseline::Replace => "replace",
+        }
+    }
+
+    /// The inverse of [`as_str`](Self::as_str), case-sensitive — the token parser for
+    /// the review ticket's `**Rules**:` line and the remote round DTO. The config block
+    /// does not call it: serde's `rename_all = "lowercase"` reads the same spellings.
+    pub fn parse(s: &str) -> Option<ReviewBaseline> {
+        match s {
+            "extend" => Some(ReviewBaseline::Extend),
+            "replace" => Some(ReviewBaseline::Replace),
+            _ => None,
+        }
+    }
 }
 
 /// Host-injected policy inputs: `SPECLINK_*` overrides beat canonical config,
@@ -520,6 +615,12 @@ impl WorkflowConfig {
             .filter(|v| !v.is_empty())
             .cloned()
     }
+
+    /// The review block, with an absent key read as its defaults (extend, three
+    /// empty lists).
+    pub fn review(&self) -> ReviewConfig {
+        self.review.clone().unwrap_or_default()
+    }
 }
 
 /// Target state of the workflow-policy fields for a settings-page write.
@@ -543,11 +644,34 @@ pub struct WorkflowPolicyFields {
 /// call site. `Set` with a blank (whitespace-only) value degrades to `Remove`:
 /// "clearing the text area removes the key" is enforced here, in the single
 /// write-path truth, not left to each caller.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub enum ContextEdit {
+    #[default]
     Keep,
     Set(String),
     Remove,
+}
+
+/// The content blocks one write may change. Each is untouched unless set, so a
+/// caller names only the blocks it changes:
+/// `ContentEdit { review: Some(&r), ..Default::default() }`.
+///
+/// - `context` is a three-state edit; see [`ContextEdit`].
+/// - `rules` is `None` to leave the key untouched, or `Some` for a wholesale
+///   replacement: sections in slice order, entries trimmed with blank entries
+///   dropped, an emptied section drops its artifact key, and an all-empty map
+///   drops the `rules` key itself. Entries starting with YAML-reserved characters
+///   (backtick, `@`, `*`, …) are quoted by serialization and round-trip verbatim.
+/// - `review` is `None` to leave the key untouched, or `Some` for a wholesale
+///   replacement of the block: entries are cleaned like `rules`, `extend` writes
+///   no `baseline` key, an empty list drops its key, and nothing left (extend
+///   with three empty lists) drops the `review` key itself. Comments inside the
+///   old block do not survive.
+#[derive(Debug, Clone, Default)]
+pub struct ContentEdit<'a> {
+    pub context: ContextEdit,
+    pub rules: Option<&'a [(String, Vec<String>)]>,
+    pub review: Option<&'a ReviewConfig>,
 }
 
 /// Rewrite the workflow-config document (`openspec/config.yaml`) with the given
@@ -555,12 +679,8 @@ pub enum ContextEdit {
 ///
 /// - `fields` is the COMPLETE target state of the four policy keys (see
 ///   [`WorkflowPolicyFields`]).
-/// - `context` is a three-state edit; see [`ContextEdit`].
-/// - `rules` is `None` to leave the key untouched, or `Some` for a wholesale
-///   replacement: sections in slice order, entries trimmed with blank entries
-///   dropped, an emptied section drops its artifact key, and an all-empty map
-///   drops the `rules` key itself. Entries starting with YAML-reserved characters
-///   (backtick, `@`, `*`, …) are quoted by serialization and round-trip verbatim.
+/// - `edit` names the content blocks to change; see [`ContentEdit`]. Every
+///   rewritten block follows the document's line endings.
 ///
 /// The rewrite is line-level text surgery, not re-serialization: only the target
 /// key's line or block changes; every other line — comments, blank lines, unknown
@@ -576,9 +696,9 @@ pub enum ContextEdit {
 pub fn update_workflow_config_text(
     original: &str,
     fields: &WorkflowPolicyFields,
-    context: &ContextEdit,
-    rules: Option<&[(String, Vec<String>)]>,
+    edit: &ContentEdit,
 ) -> anyhow::Result<String> {
+    let ContentEdit { context, rules, review } = edit;
     validate_policy_locales(fields)?;
     // Pure-syntax empty documents carry no user content to preserve; normalize so
     // surgery starts from a blank page instead of appending after a `{}` line.
@@ -588,20 +708,22 @@ pub fn update_workflow_config_text(
     };
     let parsed = parse_yaml_mapping(base, "openspec/config.yaml")?;
 
-    // rules 的滌洗結果由手術（序列化區塊）與目標狀態（驗證基準）共用。
+    // rules 與 review 的滌洗結果由手術（序列化區塊）與目標狀態（驗證基準）共用。
     let rules_value = rules.map(|sections| {
         let mut map = serde_yaml::Mapping::new();
         for (artifact, entries) in sections {
-            let cleaned: Vec<serde_yaml::Value> = entries
-                .iter()
-                .map(|e| e.trim())
-                .filter(|e| !e.is_empty())
-                .map(Into::into)
-                .collect();
-            if !cleaned.is_empty() {
-                map.insert(artifact.as_str().into(), serde_yaml::Value::Sequence(cleaned));
-            }
+            insert_cleaned_list(&mut map, artifact, entries);
         }
+        map
+    });
+    let review_value = review.map(|r| {
+        let mut map = serde_yaml::Mapping::new();
+        if r.baseline != ReviewBaseline::default() {
+            map.insert("baseline".into(), r.baseline.as_str().into());
+        }
+        insert_cleaned_list(&mut map, "critical", &r.critical);
+        insert_cleaned_list(&mut map, "warning", &r.warning);
+        insert_cleaned_list(&mut map, "suggestion", &r.suggestion);
         map
     });
 
@@ -621,14 +743,31 @@ pub fn update_workflow_config_text(
         // Set(blank) 與 Remove 同義：清空即移除鍵。
         ContextEdit::Set(_) | ContextEdit::Remove => set_or_remove(&mut target, "context", None),
     }
-    if let Some(map) = &rules_value {
-        let value = (!map.is_empty()).then(|| serde_yaml::Value::Mapping(map.clone()));
-        set_or_remove(&mut target, "rules", value);
+    for (key, edit) in [("rules", &rules_value), ("review", &review_value)] {
+        if let Some(map) = edit {
+            let value = (!map.is_empty()).then(|| serde_yaml::Value::Mapping(map.clone()));
+            set_or_remove(&mut target, key, value);
+        }
     }
 
-    let output = surgical_rewrite(base, fields, context, rules_value.as_ref())?;
+    let output =
+        surgical_rewrite(base, fields, context, rules_value.as_ref(), review_value.as_ref())?;
     verify_rewritten_config(&output, &target)?;
     Ok(output)
+}
+
+/// Insert `key: [entries]` with entries trimmed and blank ones dropped; a list
+/// left empty is not inserted (an emptied list drops its key).
+fn insert_cleaned_list(map: &mut serde_yaml::Mapping, key: &str, entries: &[String]) {
+    let cleaned: Vec<serde_yaml::Value> = entries
+        .iter()
+        .map(|e| e.trim())
+        .filter(|e| !e.is_empty())
+        .map(Into::into)
+        .collect();
+    if !cleaned.is_empty() {
+        map.insert(key.into(), serde_yaml::Value::Sequence(cleaned));
+    }
 }
 
 /// Set the `schema` key in a workflow config document, preserving every other byte.
@@ -725,6 +864,31 @@ fn delete_block(ops: &mut [LineOp], block: &KeyBlock) {
     }
 }
 
+/// The serialized block for a wholesale mapping edit, or `None` when the mapping
+/// is empty (the key is to be removed).
+fn mapping_block(key: &str, map: &serde_yaml::Mapping) -> anyhow::Result<Option<String>> {
+    if map.is_empty() {
+        return Ok(None);
+    }
+    serialize_top_level_block(key, serde_yaml::Value::Mapping(map.clone())).map(Some)
+}
+
+/// Plan a wholesale block swap: `None` deletes the existing block; `Some`
+/// replaces it in place, or appends it at the end when the key is absent.
+fn swap_block(
+    ops: &mut [LineOp],
+    appends: &mut Vec<String>,
+    existing: Option<&KeyBlock>,
+    block: Option<String>,
+) {
+    match (existing, block) {
+        (Some(b), Some(text)) => replace_block(ops, b, text),
+        (None, Some(text)) => appends.push(text),
+        (Some(b), None) => delete_block(ops, b),
+        (None, None) => {}
+    }
+}
+
 /// The line-level surgery itself (see `update_workflow_config_text` for the
 /// semantics). Pure text transform; correctness is enforced by the caller's
 /// re-parse verification, never assumed here.
@@ -733,6 +897,7 @@ fn surgical_rewrite(
     fields: &WorkflowPolicyFields,
     context: &ContextEdit,
     rules: Option<&serde_yaml::Mapping>,
+    review: Option<&serde_yaml::Mapping>,
 ) -> anyhow::Result<String> {
     let eol = if original.contains("\r\n") { "\r\n" } else { "\n" };
     let lines: Vec<&str> = original.split_inclusive('\n').collect();
@@ -761,11 +926,13 @@ fn surgical_rewrite(
         }
     }
 
+    // serde_yaml 一律以 \n 斷行；CRLF 檔的代換區塊沿用檔案的行尾，整份行尾一致。
+    let follow_eol = |block: String| if eol == "\n" { block } else { block.replace('\n', eol) };
     let mut appends: Vec<String> = Vec::new();
     match context {
         ContextEdit::Keep => {}
         ContextEdit::Set(text) if !text.trim().is_empty() => {
-            let block = serialize_top_level_block("context", text.as_str().into())?;
+            let block = follow_eol(serialize_top_level_block("context", text.as_str().into())?);
             match block_of("context") {
                 Some(b) => replace_block(&mut ops, b, block),
                 None => appends.push(block),
@@ -777,17 +944,10 @@ fn surgical_rewrite(
             }
         }
     }
-    if let Some(map) = rules {
-        if map.is_empty() {
-            if let Some(b) = block_of("rules") {
-                delete_block(&mut ops, b);
-            }
-        } else {
-            let block = serialize_top_level_block("rules", serde_yaml::Value::Mapping(map.clone()))?;
-            match block_of("rules") {
-                Some(b) => replace_block(&mut ops, b, block),
-                None => appends.push(block),
-            }
+    for (key, edit) in [("rules", rules), ("review", review)] {
+        if let Some(map) = edit {
+            let block = mapping_block(key, map)?.map(follow_eol);
+            swap_block(&mut ops, &mut appends, block_of(key), block);
         }
     }
 

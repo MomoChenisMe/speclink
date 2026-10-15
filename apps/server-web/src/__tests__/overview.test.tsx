@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { makeAdminClient, renderAt, setViewport } from "./helpers/adminHarness";
 
-// 管理總覽（server-web-console「總覽提供可行動入口與待辦」）：四張可點入對應目的地的
-// 指標卡，加上待辦、系統健康摘要與最近活動三個區塊。沒有待處理事項時整塊不渲染——
-// 空標題與空清單只是視覺噪音。識別資料結構版本屬系統健康摘要，不是獨立指標卡。
+// 管理總覽（server-web-console「總覽提供可行動入口與待辦」；server-web-list-pages design D10）：
+// 768px 置中欄；頂端四格數字磚（與 desktop 閱讀卡同款、每格可點進對應頁），其下「需要處理」
+// 「系統健康」「最近活動」三張設定型卡。沒有待處理事項時整張卡不渲染——空標題與空清單只是
+// 視覺噪音。識別資料結構版本屬系統健康摘要，不是獨立數字磚。
 
 const HEALTHY = {
   activeUsers: 2,
@@ -30,34 +32,58 @@ const HEALTHY = {
 
 beforeEach(() => setViewport(false));
 
-describe("總覽指標卡", () => {
-  it("四張指標卡皆可點入對應目的地", async () => {
+/** 主內容區內的數字磚（側欄也有「使用者」等連結，查詢限定在主內容區）。 */
+const tiles = () => Array.from(screen.getByRole("main").querySelectorAll<HTMLElement>("[data-doc-tile]"));
+
+describe("總覽數字磚與版面", () => {
+  it("四格數字磚皆為連結，目的地依序為使用者、專案、憑證與邀請中分頁，標籤帶次要計數", async () => {
     renderAt("/admin", makeAdminClient({ getAdminOverview: vi.fn(async () => HEALTHY) }));
     // 標題在資料閘門之外就渲染，不能當等待錨點——等一個依賴資料的區塊。
     await screen.findByRole("region", { name: "系統健康" });
-    // 側欄也有「使用者」等連結，指標卡的查詢限定在主內容區。
-    const main = screen.getByRole("main");
-    const expected: [RegExp, string][] = [
-      [/使用者/, "/admin/users"],
-      [/專案/, "/admin/registry"],
-      [/憑證/, "/admin/credentials"],
-      [/待啟用/, "/admin/users"],
-    ];
-    for (const [name, href] of expected) {
-      const card = within(main).getByRole("link", { name });
-      expect(card.getAttribute("href"), `${name} 指標卡連往 ${href}`).toBe(href);
-    }
+    expect(tiles().map((tile) => tile.tagName)).toEqual(["A", "A", "A", "A"]);
+    expect(tiles().map((tile) => tile.getAttribute("href"))).toEqual([
+      "/admin/users",
+      "/admin/registry",
+      "/admin/credentials",
+      "/admin/users?tab=pending",
+    ]);
+    expect(tiles().map((tile) => tile.textContent)).toEqual([
+      "2使用者 · 停權 1",
+      "3專案 · 儲存庫 4",
+      "5憑證 · 有效",
+      "1待啟用 · 邀請未使用",
+    ]);
   });
 
-  it("識別資料結構版本呈現於系統健康摘要，而非獨立指標卡", async () => {
+  it("點待啟用數字磚直接看到使用者頁的邀請中分頁", async () => {
+    renderAt("/admin", makeAdminClient({ getAdminOverview: vi.fn(async () => HEALTHY) }));
+    await screen.findByRole("region", { name: "系統健康" });
+    const user = userEvent.setup();
+    await user.click(tiles()[3]);
+    const pending = await screen.findByRole("tab", { name: /^邀請中/ });
+    expect(pending.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("內容欄 768px 置中", async () => {
+    renderAt("/admin", makeAdminClient({ getAdminOverview: vi.fn(async () => HEALTHY) }));
+    await screen.findByRole("region", { name: "系統健康" });
+    const column = screen
+      .getByRole("heading", { level: 1, name: "總覽" })
+      .closest("[data-page-header]")?.parentElement as HTMLElement;
+    expect(column.className).toContain("max-w-[768px]");
+    expect(column.className).toContain("mx-auto");
+  });
+
+  it("識別資料結構版本呈現於系統健康摘要，而非獨立數字磚", async () => {
     renderAt("/admin", makeAdminClient({ getAdminOverview: vi.fn(async () => HEALTHY) }));
     const health = await screen.findByRole("region", { name: "系統健康" });
-    expect(health.textContent).toContain("6");
-    expect(health.textContent).toContain("資料結構");
+    const schema = within(health).getByRole("group", { name: "資料結構版本" });
+    expect(schema.textContent).toContain("v6");
+    expect(tiles()).toHaveLength(4);
     expect(screen.queryByRole("link", { name: /資料結構版本/ })).toBeNull();
   });
 
-  it("系統健康摘要與最近活動各自提供前往系統與稽核的入口", async () => {
+  it("系統健康與最近活動的標頭各自提供前往系統與稽核的入口", async () => {
     renderAt("/admin", makeAdminClient({ getAdminOverview: vi.fn(async () => HEALTHY) }));
     const health = await screen.findByRole("region", { name: "系統健康" });
     expect(within(health).getByRole("link", { name: /系統/ }).getAttribute("href")).toBe(
@@ -67,7 +93,13 @@ describe("總覽指標卡", () => {
     expect(within(activity).getByRole("link", { name: /稽核/ }).getAttribute("href")).toBe(
       "/admin/audit",
     );
-    expect(activity.textContent).toContain("new@example.com");
+  });
+
+  it("最近活動一列含動作名稱、對象、日期與操作者", async () => {
+    renderAt("/admin", makeAdminClient({ getAdminOverview: vi.fn(async () => HEALTHY) }));
+    const activity = await screen.findByRole("region", { name: "最近活動" });
+    const row = within(activity).getByRole("group", { name: "邀請使用者 new@example.com" });
+    expect(row.textContent).toContain("2026-01-03 · a1");
   });
 });
 
@@ -96,7 +128,7 @@ describe("總覽待辦區塊", () => {
     );
   });
 
-  it("有待啟用邀請時呈現該事項並連往使用者目的地", async () => {
+  it("有待啟用邀請時呈現該事項並連往使用者頁的邀請中分頁", async () => {
     renderAt(
       "/admin",
       makeAdminClient({
@@ -109,8 +141,39 @@ describe("總覽待辦區塊", () => {
     const todos = await screen.findByRole("region", { name: "需要處理" });
     expect(todos.textContent).toContain("2");
     expect(within(todos).getByRole("link", { name: /查看邀請/ }).getAttribute("href")).toBe(
-      "/admin/users",
+      "/admin/users?tab=pending",
     );
+  });
+  // fix-english-status-labels-and-plurals：英文介面數量為 1 時用單數（server-web-console「後台英文計數文案依數量使用單數或複數」）。
+  it("英文介面只有 1 位待啟用時寫「1 user has not activated yet.」", async () => {
+    localStorage.setItem("speclink.uiLocale", "en");
+    try {
+      renderAt(
+        "/admin",
+        makeAdminClient({
+          getAdminOverview: vi.fn(async () => ({
+            ...HEALTHY,
+            todos: [{ kind: "pending-invitations", destination: "/admin/users", count: 1 }],
+          })),
+        }),
+      );
+      const todos = await screen.findByRole("region", { name: "Needs attention" });
+      expect(todos.textContent).toContain("1 user has not activated yet.");
+      expect(todos.textContent).not.toContain("1 users");
+    } finally {
+      localStorage.removeItem("speclink.uiLocale");
+    }
+  });
+
+  it("英文介面只有 1 個儲存庫時，專案計數卡寫「1 repository」", async () => {
+    localStorage.setItem("speclink.uiLocale", "en");
+    try {
+      renderAt("/admin", makeAdminClient({ getAdminOverview: vi.fn(async () => ({ ...HEALTHY, projects: 1, repos: 1 })) }));
+      const projectTile = await screen.findByText(/1 repository/);
+      expect(projectTile.textContent).not.toContain("repositories");
+    } finally {
+      localStorage.removeItem("speclink.uiLocale");
+    }
   });
 });
 
@@ -169,6 +232,6 @@ describe("總覽的歡迎區塊與儲存後端健康", () => {
   it("儲存健康徽章：正常為綠系，與異常的紅系一眼可辨", async () => {
     renderAt("/admin", makeAdminClient({ getAdminOverview: vi.fn(async () => HEALTHY) }));
     const badge = await screen.findByText("正常");
-    expect(badge.className).toContain("emerald");
+    expect(badge.className).toContain("status-success");
   });
 });

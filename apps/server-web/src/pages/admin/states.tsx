@@ -22,3 +22,8 @@ export function AdminError({ onRetry }: { onRetry: () => void }) {
     </div>
   );
 }
+
+/** 卡內分頁的載入／錯誤狀態：與設定型列同樣的內距。 */
+export function AdminCardState({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  return <div className="px-4 py-3">{error != null ? <AdminError onRetry={onRetry} /> : <AdminLoading />}</div>;
+}

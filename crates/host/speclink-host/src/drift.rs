@@ -3,7 +3,7 @@
 //!
 //! Local git/worktree facts are a client (Host) responsibility — the Engine's
 //! drift computation is git-free and consumes the [`WorkspaceFacts`] this
-//! module gathers (platform architecture §6.5's client/server split). The
+//! module gathers (the client/server split). The
 //! DriftBundle fixes the basis a drift check runs against (project/repo
 //! binding, spec/tasks/policy digests, created metadata, design and tasks
 //! content, evidence summary), reusing the verify-evidence digest mechanism.

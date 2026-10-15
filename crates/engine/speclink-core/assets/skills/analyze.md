@@ -1,5 +1,7 @@
 Analyze artifact consistency for a change. Can be invoked directly or triggered automatically when all artifacts are complete.
 
+**Read-only**: this skill reads artifacts and reports; it never modifies files. Keep the output concise — it runs inline, not as a separate workflow.
+
 **Input**: Optionally specify a change name (e.g., `/speclink:analyze add-auth`). If omitted, infer from conversation context or auto-select if only one active change exists.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
@@ -8,7 +10,7 @@ Analyze artifact consistency for a change. Can be invoked directly or triggered 
 
 1. **Determine change name**
 
-   If not provided, infer from context or run `speclink list --json` to auto-select.
+   If not provided, infer from context or run `speclink list --json` to auto-select. Do not prompt for change selection when it can be inferred.
 
 2. **Run programmatic analysis**
 
@@ -51,9 +53,9 @@ Analyze artifact consistency for a change. Can be invoked directly or triggered 
    Add any additional findings to the report.
 
 5. **Recommend next steps**
-   - If CRITICAL findings: "Found N issue(s) worth addressing. Want to fix these before implementing?"
-   - If only warnings/suggestions: Note them briefly, then recommend proceeding with `/speclink:apply`
-   - If clean: "Artifacts look consistent" and suggest `/speclink:apply`
+   - Critical findings → "Found N issue(s) worth addressing. Want to fix these before implementing?" (ask with the **AskUserQuestion tool**, or as plain text and wait for the user's response when that tool is not available)
+   - Only Warning/Suggestion findings → note them briefly, then recommend proceeding with `/speclink:apply`
+   - Clean → "Artifacts look consistent" and suggest `/speclink:apply`
 
 **Passive Trigger**
 
@@ -61,8 +63,8 @@ When `speclink status --change "<name>" --json` shows `isComplete: true`, run th
 
 **Guardrails**
 
-- Read-only: NEVER modify files
-- Do NOT prompt for change selection if it can be inferred
-- Keep output concise - this runs inline, not as a separate workflow
-- If **AskUserQuestion tool** is not available, ask the same questions as plain text and wait for the user's response
+Check these before you report:
 
+- [ ] No file was modified ("Read-only").
+- [ ] The change name was inferred when possible, not asked for (step 1).
+- [ ] The report is in the `locale` language, grouped by severity (step 3).

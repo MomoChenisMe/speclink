@@ -2,17 +2,22 @@
 // 缺口」；design 決策 2）：remote 分頁的封存／搜尋／spec 內文直達，仍停用
 // 拖排/validate/analyze/刪除附繁中說明；本地分頁全功能不變（迴歸斷言）。
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { act, render, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { App } from "../App";
 import {
   applyRemoteConnectionState,
   createLocalSession,
+  type RemoteConnectionStateEvent,
   type WorkspaceSession,
 } from "../session";
 import type { SpeclinkDataSource } from "@speclink/ui";
 import { changeList, sharedBoardRequirement } from "./helpers/changeList";
 import { fakeRemoteDs, fakeRemoteSession, REMOTE_KEY } from "./helpers/remoteFixtures";
+
+// reader 寫入面的角色停用說明（server-reader-write-guard D5）。
+const ROLE = "你的角色為檢視者，只能查看";
 
 // Tauri 事件層 mock（App 的 session 事件訂閱走它）。
 vi.mock("@tauri-apps/api/event", () => ({
@@ -45,6 +50,7 @@ function fakeWorkspace() {
 function renderRemoteApp(
   ds: SpeclinkDataSource,
   capsOver: Partial<import("../session").WorkspaceCapabilities> = {},
+  sessionOver: Partial<WorkspaceSession> = {},
 ) {
   localStorage.setItem(
     "speclink.projectTabs",
@@ -61,7 +67,7 @@ function renderRemoteApp(
   );
   const openRemote = vi.fn(async (): Promise<WorkspaceSession> => {
     const session = fakeRemoteSession(ds);
-    return { ...session, capabilities: { ...session.capabilities, ...capsOver } };
+    return { ...session, ...sessionOver, capabilities: { ...session.capabilities, ...capsOver } };
   });
   render(
     <App
@@ -99,12 +105,29 @@ function renderLocalApp(ds: SpeclinkDataSource) {
   );
 }
 
+/** 展開詳情頁的「⋯」選單，回傳「刪除」項。 */
+async function openDeleteItem(): Promise<HTMLElement> {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  // 變更層動作經插槽進主區標題列（desktop-detail-doc-tree design D3）。
+  await user.click(within(screen.getByTestId("main-titlebar")).getByRole("button", { name: "更多動作" }));
+  return screen.findByRole("menuitem", { name: /刪除/ });
+}
+
+/** 收起「⋯」選單（Esc 先給選單，詳情頁維持開啟）。 */
+async function closeMenu() {
+  await userEvent.setup({ pointerEventsCheck: 0 }).keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+}
+
+/** 「⋯」選單項的停用原因（項目下方灰字）。 */
+const menuReason = (item: HTMLElement) => item.querySelector("[data-menu-reason]")?.textContent ?? "";
+
 describe("remote 分頁的 capability 停用", () => {
   it("reader 看板不渲染拖排把手並顯示繁中角色說明", async () => {
     renderRemoteApp(fakeRemoteDs());
     await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
     expect(document.querySelector('[aria-roledescription="sortable"]')).toBeNull();
-    expect(screen.getByText(/唯讀狀態.*無法拖曳調整卡片順序/)).toBeTruthy();
+    expect(screen.getByText(ROLE)).toBeTruthy();
   });
 
   it("搜尋輸入啟用並直達 server、看板照常呈現資料", async () => {
@@ -131,7 +154,7 @@ describe("remote 分頁的 capability 停用", () => {
     const ds = fakeRemoteDs();
     renderRemoteApp(ds);
     await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
-    const aside = document.querySelector("aside") as HTMLElement;
+    const aside = screen.getByRole("navigation", { name: "專案導覽" });
     fireEvent.click(within(aside).getByRole("button", { name: "規格" }));
     await waitFor(() => expect(screen.getByText("auth")).toBeTruthy());
     fireEvent.click(screen.getByText("auth"));
@@ -139,18 +162,19 @@ describe("remote 分頁的 capability 停用", () => {
     expect(ds.getSpecDocument).toHaveBeenCalledWith("auth");
   });
 
-  it("詳情抽屜的分析與刪除停用附繁中說明、封存照常可用", async () => {
+  it("詳情頁的分析與刪除停用附繁中說明、封存照常可用", async () => {
     renderRemoteApp(fakeRemoteDs());
     await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
     fireEvent.click(screen.getByText("remote-change"));
     const analyze = (await screen.findByRole("button", { name: /分析/ })) as HTMLButtonElement;
     expect(analyze.disabled).toBe(true);
     expect(analyze.title).toContain("validate/analyze");
-    const del = screen.getByRole("button", { name: /刪除/ }) as HTMLButtonElement;
-    expect(del.disabled).toBe(true);
-    expect(del.title).toContain("刪除變更");
-    const archive = screen.getByRole("button", { name: /封存/ }) as HTMLButtonElement;
+    const archive = within(screen.getByTestId("main-titlebar")).getByRole("button", { name: "封存" }) as HTMLButtonElement;
     expect(archive.disabled).toBe(false);
+    // 刪除在「⋯」選單：停用時項目下方灰字為能力缺口原因。
+    const del = await openDeleteItem();
+    expect(del.getAttribute("aria-disabled")).toBe("true");
+    expect(menuReason(del)).toBe(ROLE);
   });
 
   it("詳情抽屜的詮釋資料與 capability 清單直達、不再呈現停用說明", async () => {
@@ -226,6 +250,84 @@ describe("remote 分頁的 capability 停用", () => {
   });
 });
 
+describe("reader 的停用說明依連線狀態（server-reader-write-guard D5）", () => {
+  const READER_CAPS = {
+    deleteChange: false,
+    setTaskDone: false,
+    setAllTasks: false,
+    moveTask: false,
+    archive: false,
+    promoteDiscussion: false,
+    archiveDiscussion: false,
+    reorderCard: false,
+    setDepends: false,
+    claim: false,
+  };
+  const OFFLINE = "目前為 stale 唯讀狀態——恢復連線後才能寫入";
+
+  it("online 時寫入面說明指出角色，離線後改為離線版說明，恢復連線後回到角色說明", async () => {
+    let pushState: ((event: RemoteConnectionStateEvent) => void) | undefined;
+    renderRemoteApp(fakeRemoteDs({ claim: vi.fn() } as never), READER_CAPS, {
+      events: {
+        subscribe: (_onChange, onConnectionState) => {
+          pushState = onConnectionState;
+          return () => {};
+        },
+      },
+    });
+    await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
+    expect(screen.getByText(ROLE), "看板排序說明").toBeTruthy();
+
+    fireEvent.click(screen.getByText("remote-change"));
+    const archive = (await screen.findByRole("button", { name: "封存" })) as HTMLButtonElement;
+    const claim = screen.getByRole("button", { name: /認領/ }) as HTMLButtonElement;
+    for (const button of [archive, claim]) {
+      expect(button.disabled).toBe(true);
+      expect(button.title).toBe(ROLE);
+    }
+    const deleteReason = async () => {
+      const item = await openDeleteItem();
+      expect(item.getAttribute("aria-disabled")).toBe("true");
+      const reason = menuReason(item);
+      await closeMenu();
+      return reason;
+    };
+    expect(await deleteReason()).toBe(ROLE);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /任務/ }));
+    expect(await screen.findByTestId("tasks-unavailable")).toHaveProperty("textContent", ROLE);
+
+    await waitFor(() => expect(pushState).toBeDefined());
+    act(() => pushState!({ connectionId: "c1", state: "offline", message: null }));
+    await waitFor(() => expect(archive.title).toBe(OFFLINE));
+    expect(claim.title).toBe(OFFLINE);
+    expect(await deleteReason()).toBe(OFFLINE);
+    expect(screen.getByTestId("tasks-unavailable").textContent).toBe(OFFLINE);
+    expect(screen.queryByText(ROLE)).toBeNull();
+
+    act(() => pushState!({ connectionId: "c1", state: "online", message: null }));
+    await waitFor(() => expect(archive.title).toBe(ROLE));
+    for (const button of [archive, claim]) {
+      expect(button.disabled).toBe(true);
+      expect(button.title).toBe(ROLE);
+    }
+    expect(await deleteReason()).toBe(ROLE);
+    expect(screen.getByTestId("tasks-unavailable").textContent).toBe(ROLE);
+  });
+
+  it("editor 的寫入面沒有角色停用說明", async () => {
+    const editorCaps = Object.fromEntries(Object.keys(READER_CAPS).map((key) => [key, true]));
+    renderRemoteApp(fakeRemoteDs({ claim: vi.fn() } as never), editorCaps);
+    await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
+    fireEvent.click(screen.getByText("remote-change"));
+    const archive = (await screen.findByRole("button", { name: "封存" })) as HTMLButtonElement;
+    expect(archive.disabled).toBe(false);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /任務/ }));
+    await screen.findAllByRole("checkbox");
+    expect(screen.queryByTestId("tasks-unavailable")).toBeNull();
+    expect(screen.queryByText(ROLE)).toBeNull();
+  });
+});
+
 describe("排程分頁的前置編輯依 role（add-change-plan-remote D7）", () => {
   /** 帶 plan 排程欄位的 remote 清單：remote-change 第 2 波、前置 base-change，
    * 與 other-change 同動「看板與任務」且排在它之後封存。 */
@@ -257,7 +359,10 @@ describe("排程分頁的前置編輯依 role（add-change-plan-remote D7）", (
     await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
     fireEvent.click(screen.getByText("remote-change"));
     fireEvent.mouseDown(await screen.findByRole("tab", { name: /排程/ }));
-    await screen.findByText("第 2 波");
+    // 狀態卡的排程列也寫「第 2 波」——以排程分頁的波次卡為準。
+    await waitFor(() =>
+      expect(document.querySelector('[data-plan-section="wave"]')?.textContent).toContain("第 2 波"),
+    );
   }
 
   it("editor 可在排程分頁新增與移除前置，寫入走資料源 setDepends", async () => {
@@ -312,7 +417,7 @@ describe("認領面依 capability 與模式呈現（remote-claim-ownership）", 
     fireEvent.click(screen.getByText("remote-change"));
     const button = (await screen.findByRole("button", { name: /認領/ })) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    expect(button.title).toMatch(/唯讀/);
+    expect(button.title).toBe(ROLE);
     fireEvent.click(button);
     expect(claim).not.toHaveBeenCalled();
   });
@@ -339,9 +444,11 @@ describe("本地分頁不受影響（迴歸）", () => {
     fireEvent.click(screen.getByText("local-change"));
     const analyze = (await screen.findByRole("button", { name: /分析/ })) as HTMLButtonElement;
     expect(analyze.disabled).toBe(false);
-    const del = screen.getByRole("button", { name: /刪除/ }) as HTMLButtonElement;
-    expect(del.disabled).toBe(false);
     // claim 是 RemoteOnly 動詞——本地分頁連停用的入口都不長出來。
+    expect(screen.queryByRole("button", { name: /認領/ })).toBeNull();
+    const del = await openDeleteItem();
+    expect(del.getAttribute("aria-disabled")).toBeNull();
+    expect(menuReason(del)).toBe("");
     expect(screen.queryByRole("button", { name: /認領/ })).toBeNull();
     // 本地照常打 listArchived（capability 全真）。
     expect(ds.listArchived).toHaveBeenCalled();

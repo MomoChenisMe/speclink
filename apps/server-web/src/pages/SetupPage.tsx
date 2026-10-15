@@ -5,6 +5,7 @@ import { useClient, useSession } from "../app/context";
 import { useAsync } from "../lib/useAsync";
 import { readFormError } from "../lib/formError";
 import { Field } from "../components/Field";
+import { FocusFooter, FocusHeader, FocusNotice } from "../layouts/FocusLayout";
 import type { SetupState } from "../api/client";
 
 // 開箱流程（server-setup「setup 流程完成開箱四要素」, D2／D3／D8 第三階段）。token 由
@@ -30,23 +31,13 @@ export function SetupPage() {
       );
     }
     // 無效／過期／已耗用 token：不可區分的固定訊息，不回顯內部原因。
-    return (
-      <div role="alert">
-        <h1 className="mb-2 text-2xl font-semibold">{t("setup.invalidTitle")}</h1>
-        <p className="text-muted-foreground">{t("setup.invalidBody")}</p>
-      </div>
-    );
+    return <FocusNotice title={t("setup.invalidTitle")} body={t("setup.invalidBody")} />;
   }
 
-  return (
-    <div>
-      <h1 className="mb-6 text-2xl font-semibold">{t("setup.title")}</h1>
-      {state.step === "admin" ? (
-        <AdminStep token={token} onAdvance={setAdvanced} />
-      ) : (
-        <RegistryStep token={token} />
-      )}
-    </div>
+  return state.step === "admin" ? (
+    <AdminStep token={token} onAdvance={setAdvanced} />
+  ) : (
+    <RegistryStep token={token} />
   );
 }
 
@@ -85,8 +76,12 @@ function AdminStep({
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4" noValidate>
-      <h2 className="text-lg font-medium">{t("setup.step1")}</h2>
+    <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+      <FocusHeader
+        step={{ current: 1, total: 2, label: t("setup.stepLabel") }}
+        title={t("setup.step1")}
+        description={t("setup.step1Body")}
+      />
       <Field
         id="email"
         label={t("field.email")}
@@ -111,9 +106,11 @@ function AdminStep({
           {message}
         </p>
       )}
-      <Button type="submit" disabled={pending}>
-        {pending ? t("common.creating") : t("setup.createAdmin")}
-      </Button>
+      <FocusFooter>
+        <Button type="submit" disabled={pending}>
+          {pending ? t("common.creating") : t("setup.createAdmin")}
+        </Button>
+      </FocusFooter>
     </form>
   );
 }
@@ -157,20 +154,40 @@ function RegistryStep({ token }: { token: string }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4" noValidate>
-      <h2 className="text-lg font-medium">{t("setup.step2")}</h2>
-      <Field id="project-key" label={t("registry.projectKeyLabel")} value={projectKey} onChange={setProjectKey} error={fieldErrors.projectKey} />
+    <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+      <FocusHeader
+        step={{ current: 2, total: 2, label: t("setup.stepLabel") }}
+        title={t("setup.step2")}
+        description={t("setup.step2Body")}
+      />
+      <Field
+        id="project-key"
+        label={t("field.projectKey")}
+        hint={t("field.keyImmutable")}
+        value={projectKey}
+        onChange={setProjectKey}
+        error={fieldErrors.projectKey}
+      />
       <Field id="project-name" label={t("registry.projectNameLabel")} value={projectName} onChange={setProjectName} />
-      <Field id="repo-key" label={t("registry.repoKeyLabel")} value={repoKey} onChange={setRepoKey} error={fieldErrors.repoKey} />
+      <Field
+        id="repo-key"
+        label={t("field.repoKey")}
+        hint={t("field.keyImmutable")}
+        value={repoKey}
+        onChange={setRepoKey}
+        error={fieldErrors.repoKey}
+      />
       <Field id="repo-name" label={t("registry.repoNameLabel")} value={repoName} onChange={setRepoName} />
       {message && Object.keys(fieldErrors).length === 0 && (
         <p role="alert" className="text-sm text-destructive">
           {message}
         </p>
       )}
-      <Button type="submit" disabled={pending}>
-        {pending ? t("common.creating") : t("setup.createRegistry")}
-      </Button>
+      <FocusFooter>
+        <Button type="submit" disabled={pending}>
+          {pending ? t("common.creating") : t("setup.createRegistry")}
+        </Button>
+      </FocusFooter>
     </form>
   );
 }

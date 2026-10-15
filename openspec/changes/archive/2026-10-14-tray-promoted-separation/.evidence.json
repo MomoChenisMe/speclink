@@ -1,0 +1,44 @@
+{
+  "version": 2,
+  "change": "tray-promoted-separation",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先改寫失敗測試，對應「討論列表」與「面板樣式」需求的已轉出獨立卡：apps/desktop/src/__tests__/trayPanel.test.tsx 中「討論分流：已轉出討論收於討論卡底部收合列…」「零已轉出時無收合列」「區塊順序：提案中→進行中→已就緒三張卡在討論卡（底部帶已轉出收合列）之前…」與 describe「面板的已轉出收合列」各題改為斷言——`panel-section-promoted` 存在且在 DOM 順序上位於 `panel-section-discussions` 之後、`panel-footer` 之前，不存在 `panel-promoted-toggle` 與 `panel-promoted-rows`；預設收合（該卡的 `panel-section-toggle` 為 `aria-expanded=false`、已轉出列不在 DOM、標頭含「已轉出」與計數 3）；點標頭後已轉出列出現在 `panel-section-promoted` 內並寫入 `speclink.tray.promotedExpanded`＝\"true\"，重新掛載讀回展開，再點收合，Enter／Space 同樣可切換；展開時箭頭 class 含 `rotate-90` 且以空白切開後不含 `-rotate-90`；零已轉出、載入中、載入失敗三種情況都沒有 `panel-section-promoted`；討論中 0＋已轉出 2 時「討論」卡為帶 `min-h-12` 的空狀態卡且計數 0、已轉出卡計數 2；已轉出 7 則展開後該卡內為前 5 則＋「還有 2 個…」；討論中 11 則時「討論」卡的最後一列為「還有 6 個…」且卡內沒有任何已轉出列。執行 `npm test -w apps/desktop -- trayPanel` 確認新斷言紅燈。",
+      "files": [
+        "apps/desktop/src/__tests__/trayPanel.test.tsx"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 實作決策「討論卡只看討論中、已轉出列拿掉灰底」：apps/desktop/src/panel/TrayPanel.tsx 的「討論」卡 `empty` 只看討論中筆數、children 只剩討論中的 `OverflowGroup`；刪除特製收合列 `panel-promoted-toggle`、`panel-promoted-rows` 容器（含 `bg-muted/40` 與 `-rotate-90` 箭頭）及其註解，面板不再使用 `discussion.promotedBar`；因本次改動孤兒化的 import 一併清掉。驗證：`npm test -w apps/desktop -- trayPanel` 中 1.1 的「討論卡最後一列為還有 6 個…」與「討論中 0 時為空狀態卡」轉綠。",
+      "files": [
+        "apps/desktop/src/panel/TrayPanel.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4WWQ1TG225QN0SM7RQ6TTJN",
+      "taskDesc": "1.1 先改寫失敗測試，對應「討論列表」與「面板樣式」需求的已轉出獨立卡：apps/desktop/src/__tests__/trayPanel.test.tsx 中「討論分流：已轉出討論收於討論卡底部收合列…」「零已轉出時無收合列」「區塊順序：提案中→進行中→已就緒三張卡在討論卡（底部帶已轉出收合列）之前…」與 describe「面板的已轉出收合列」各題改為斷言——`panel-section-promoted` 存在且在 DOM 順序上位於 `panel-section-discussions` 之後、`panel-footer` 之前，不存在 `panel-promoted-toggle` 與 `panel-promoted-rows`；預設收合（該卡的 `panel-section-toggle` 為 `aria-expanded=false`、已轉出列不在 DOM、標頭含「已轉出」與計數 3）；點標頭後已轉出列出現在 `panel-section-promoted` 內並寫入 `speclink.tray.promotedExpanded`＝\"true\"，重新掛載讀回展開，再點收合，Enter／Space 同樣可切換；展開時箭頭 class 含 `rotate-90` 且以空白切開後不含 `-rotate-90`；零已轉出、載入中、載入失敗三種情況都沒有 `panel-section-promoted`；討論中 0＋已轉出 2 時「討論」卡為帶 `min-h-12` 的空狀態卡且計數 0、已轉出卡計數 2；已轉出 7 則展開後該卡內為前 5 則＋「還有 2 個…」；討論中 11 則時「討論」卡的最後一列為「還有 6 個…」且卡內沒有任何已轉出列。執行 `npm test -w apps/desktop -- trayPanel` 確認新斷言紅燈。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/trayPanel.test.tsx"
+      ],
+      "recordedAt": "2026-10-14T14:04:33Z"
+    },
+    {
+      "taskId": "tsk_01M4WWQ1TGF9B7BWRGJ1WVX0XR",
+      "taskDesc": "2.1 實作決策「討論卡只看討論中、已轉出列拿掉灰底」：apps/desktop/src/panel/TrayPanel.tsx 的「討論」卡 `empty` 只看討論中筆數、children 只剩討論中的 `OverflowGroup`；刪除特製收合列 `panel-promoted-toggle`、`panel-promoted-rows` 容器（含 `bg-muted/40` 與 `-rotate-90` 箭頭）及其註解，面板不再使用 `discussion.promotedBar`；因本次改動孤兒化的 import 一併清掉。驗證：`npm test -w apps/desktop -- trayPanel` 中 1.1 的「討論卡最後一列為還有 6 個…」與「討論中 0 時為空狀態卡」轉綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c20f124508572ca1c21034a7c2f170d914554346",
+      "touchedFiles": [
+        "apps/desktop/src/panel/TrayPanel.tsx"
+      ],
+      "recordedAt": "2026-10-14T14:06:06Z"
+    }
+  ]
+}

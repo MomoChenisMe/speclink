@@ -2,24 +2,52 @@
 // t(key) 缺 key 時靜默回傳 key 本身，單邊新增字串若無此測試會默默漏譯。
 import { describe, it, expect } from "vitest";
 
+import { dictionaryProblems, translatorFor } from "@speclink/ui";
+
 import { APP_MESSAGES } from "../i18n/messages";
 
 describe("APP_MESSAGES", () => {
-  it("兩語系都解釋 Copilot 與 Codex 共用技能及勾選的邊界", () => {
-    for (const [locale, marker] of [["zh-TW", "讀取"], ["en", "discover"]] as const) {
-      for (const key of ["settings.toolsHelp", "chooser.checkoutToolsHelp"] as const) {
-        const text = APP_MESSAGES[locale][key];
-        expect(text).toContain("Codex");
-        expect(text).toContain("Copilot");
-        expect(text).toContain(marker);
-      }
-    }
+  // 兩語言鍵集合（.one 除外）、.one 只在英文、計數文案用 {n} 並有 .one——與 @speclink/ui 共用同一個檢查。
+  it("passes the shared dictionary check", () => {
+    expect(dictionaryProblems(APP_MESSAGES)).toEqual([]);
+    expect(Object.keys(APP_MESSAGES.en).length).toBeGreaterThan(0);
   });
-  it("keeps the zh-TW and en dictionaries key-equal", () => {
-    const zh = Object.keys(APP_MESSAGES["zh-TW"]).sort();
-    const en = Object.keys(APP_MESSAGES.en).sort();
-    expect(zh).toEqual(en);
-    expect(zh.length).toBeGreaterThan(0);
+
+  it("英文計數文案在 1 時用單數（desktop-config「英文計數文案依數量使用單數或複數」）", () => {
+    const en = translatorFor("en", APP_MESSAGES);
+    expect(en.tn("settings.rulesCount", 1)).toBe("1 rule");
+    expect(en.tn("settings.rulesCount", 3)).toBe("3 rules");
+    expect(en.tn("assets.card.staleDesc", 1)).toBe("Updating rewrites 1 file");
+    expect(en.tn("migration.successCount", 1)).toBe("Migrated 1 document");
+  });
+
+  it("macOS 原生選單的 menu.* 文案鍵兩語系各 36 個且集合相等（desktop-native-menu design D2）", () => {
+    const menuKeys = (locale: "zh-TW" | "en") =>
+      Object.keys(APP_MESSAGES[locale])
+        .filter((key) => key.startsWith("menu."))
+        .sort();
+    expect(menuKeys("zh-TW")).toHaveLength(36);
+    expect(menuKeys("zh-TW")).toEqual(menuKeys("en"));
+  });
+
+  it("設定模式改版後沒人用的舊鍵已自兩語系移除", () => {
+    for (const key of [
+      "servers.title",
+      "settings.rulesLabel",
+      "settings.backToProject",
+      "updater.checking",
+      "updater.upToDate",
+      "updater.checkFailed",
+      "updater.available",
+      // desktop-about-page design D7：一般頁收斂後沒人用的鍵。
+      "settings.section.appearance",
+      "settings.uiLocaleLabel",
+      "updater.cardTitle",
+      "updater.help",
+    ]) {
+      expect(APP_MESSAGES["zh-TW"]).not.toHaveProperty([key]);
+      expect(APP_MESSAGES.en).not.toHaveProperty([key]);
+    }
   });
 
   it("側欄手冊項的文案鍵存在於兩語系（LANGUAGE.md 用語「手冊」）", () => {
@@ -34,9 +62,8 @@ describe("APP_MESSAGES", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("zh-TW 文案不得含工程詞 schema——LANGUAGE.md 正典詞是「產出流程」（頁籤標籤 settings.schemaTab 為明文例外）", () => {
+  it("zh-TW 文案不得含工程詞 schema——LANGUAGE.md 正典詞是「產出流程」（原頁籤標籤例外已隨分類欄退場）", () => {
     const offenders = Object.entries(APP_MESSAGES["zh-TW"])
-      .filter(([key]) => key !== "settings.schemaTab")
       .filter(([, value]) => /\bschemas?\b/i.test(value))
       .map(([key]) => key);
     expect(offenders).toEqual([]);

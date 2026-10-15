@@ -28,7 +28,7 @@ context: |
   ＋ `apps/desktop/src-tauri`（Tauri 殼）、`apps/desktop`、`apps/server-web`、`packages/ui`。
 
   現況與限制以 `docs/product-status.zh-TW.md` 為準；
-  `docs/design/platform-architecture.zh-TW.md` 僅是架構藍圖，不是現行行為正典。
+  之後的方向見 `docs/roadmap.zh-TW.md`。
 
   ## 跨 artifact 的載重約束
 
@@ -63,6 +63,8 @@ rules:
   - 若涉及 git 互動（drift / archive），必須說明用到的 git 行為與跨平台考量
   - 涉及規格儲存或流程抽象的決策，須說明如何朝「storage 解耦的規格驅動引擎」靠攏（或為何暫時不）
   - Risks 段須優先涵蓋回歸對照（golden 與 CLI 測試）與跨平台（Windows／macOS／Linux）
+  - 新增或修改全系統共通的前端行為（例如返回導覽、快捷鍵）時，必須指明唯一實作落點與各頁面的接法，不得各頁各自實作
+  - 前端共用元件優先用 @speclink/ui 既有原語與領域元件，並列出這次沿用的既有元件或編輯器，不沿用時寫明理由；需要現有變體沒有的外觀時，規劃在 @speclink/ui 新增變體；apps/* 不得定義與 @speclink/ui 匯出同名的元件
   specs:
   - 場景只以使用者或呼叫者可觀察的行為描述（CLI 的 stdout/stderr 與 exit code、`--json` 欄位、檔案系統效果、UI 或 Protocol 回應），不得以 Rust 型別或函式名稱代替行為
   - 必須涵蓋正常流程與異常流程（錯誤輸入、找不到變更、驗證失敗）
@@ -78,5 +80,15 @@ rules:
   - 每個 task 必須標註受影響的 repo-root 相對路徑（包含 crates/、apps/、packages/、scripts/ 等實際範圍）；檔名遵循 design 命名慣例，涉及 CLI 時才點名對應指令
   - 動到既有輸出的 task，驗證步驟須確認 golden 與 CLI 測試仍通過，或已在同批刻意更新 golden
   - 涉及 `--json` 的 task，須斷言 payload 結構（欄位存在、camelCase 命名與型別）
-  - task 的驗證步驟只跑受影響面的測試：Rust Cargo package（無論位於 crates/ 或 apps/desktop）用 `cargo test -p <package>`，有 integration test target 時才加 `--test <target>`；前端用 manifest 宣告的 `npm test -w <workspace>`；crates/adapters/speclink-node 先用 `npm --prefix crates/adapters/speclink-node run build` 建置 napi binding，再用 `npm --prefix crates/adapters/speclink-node test`；scripts/ 一律跑全組 `node --test scripts/*.test.mjs scripts/*/*.test.mjs`（不到一秒，不分受影響檔）；全量 `npm run test:all` 只由 CI（.github/workflows/ci.yml）守門，不寫進 task 驗證步驟
+  - task 的驗證步驟只跑受影響面的測試：Rust Cargo package（無論位於 crates/ 或 apps/desktop）用 `cargo test -p <package>`，有 integration test target 時才加 `--test <target>`；前端用 manifest 宣告的 `npm test -w <workspace>`；crates/adapters/speclink-node 先用 `npm --prefix crates/adapters/speclink-node run build` 建置 napi binding，再用 `npm --prefix crates/adapters/speclink-node test`；scripts/ 一律跑全組 `node --test scripts/*.test.mjs scripts/*/*.test.mjs`（不到一秒，不分受影響檔）；完整測試 `npm run test:all` 只由 CI（.github/workflows/ci.yml）守門，不寫進 task 驗證步驟
   - 不論觸碰面，tasks.md 最後一個 task 的驗證步驟必含 `node --test scripts/*.test.mjs scripts/*/*.test.mjs`：scripts/ 內的詞彙守門、中英對照與連結檢查掃的是整個 README 與 docs 面，只改 openspec/、docs/ 或 LANGUAGE.md 的變更也會讓它們紅；它們紅時 CI 會把 UI、Desktop、Server Web 與 Rust 四組測試整批跳過
+  - 修正 bug 的變更，必須有一項 task 排查同類位置：寫明搜尋的寫法與命中的檔案，逐一標明一併修正或不修的理由
+
+review:
+  critical:
+  - 呼叫端不得以 className 覆蓋 @speclink/ui 元件變體的顏色、圓角與陰影，需要的外觀改由變體提供
+  warning:
+  - 全系統共通的行為（例如返回導覽、快捷鍵、提示框）要在共用層實作一次，各頁面只接上共用實作；新增的頁面要接上既有的共用實作，不要在頁面裡各自重寫
+  - 新增功能時，repo 已有相同用途的元件、編輯器或工具函式（例如 @speclink/ui 的元件、設定頁共用的程式碼編輯器）要直接沿用，不要另做一套平行實作
+  - 修正 bug 的變更：同一種寫法或同一類元件在 repo 其他位置若有同樣的問題，要在這次一併修正，或在 tasks.md 寫明不修的理由
+  - 同一種操作在不同頁面要用同一個元件與同一種變體呈現（例如按鈕、選單、分頁工具、空狀態），不要同一種操作在各頁長得不一樣

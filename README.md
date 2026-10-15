@@ -1,208 +1,254 @@
 <p align="center">
-  <img src="docs/assets/brand/transparent/speclink-logo-horizontal.png" alt="Speclink" width="440" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/transparent/speclink-logo-horizontal-dark.png" />
+    <img src="docs/assets/brand/transparent/speclink-logo-horizontal.png" alt="Speclink" width="440" />
+  </picture>
 </p>
 
 <p align="center">
-  <b>一套 SDD Engine，支援 Local Repo 與 Remote Store</b>
+  <b>One SDD Engine for Local Repo and Remote Store</b>
 </p>
 
 <p align="center">
-  <b>繁體中文</b> · <a href="README.en.md">English</a>
+  <a href="https://github.com/MomoChenisMe/speclink/actions/workflows/ci.yml"><img src="https://github.com/MomoChenisMe/speclink/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/MomoChenisMe/speclink/releases/latest"><img src="https://img.shields.io/github/v/release/MomoChenisMe/speclink?label=release" alt="Release" /></a>
+  <a href="https://www.npmjs.com/package/@speclink/cli"><img src="https://img.shields.io/npm/v/@speclink/cli?label=npm" alt="npm" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT" /></a>
 </p>
 
-Speclink 是以 Rust 實作的 Spec-Driven Development（SDD）引擎與工具平台。PM、PO、RD 與 AI Agent 在這裡
-使用同一套語意：change、artifact、task、verify、archive。它同時保留兩種部署路徑：
+<p align="center">
+  <a href="README.zh-TW.md">繁體中文</a> · <b>English</b>
+</p>
 
-- **Local Repo**：規格位於 repo 的 `openspec/`，由 Git 協作，不需要 server。
-- **Remote Store**：規格位於共享 Store，由 Speclink Host 統一處理認證、revision、交易、事件與流程裁決。Host 與 Protocol 都是公開契約，所以 server 端可以用官方那一份，也可以自己寫。
+Speclink is a Spec-Driven Development (SDD) engine and tool platform written in Rust. You write down what a change must do before you build it. Then you and your AI agent work from that spec until the change is done. PMs, POs, engineers, and AI agents use one shared set of terms: change, artifact, task, verify, and archive.
 
-**Local 模式**的產物刻意貼合 OpenSpec 的目錄結構：`specs/<capability>/spec.md`、`changes/<名稱>/`、`changes/archive/`
-與 `config.yaml`。內容全是純 Markdown 與 YAML，沒有資料庫，也沒有專屬格式。不裝 Speclink 一樣讀得懂、
-改得動，每次規格變動都看得出 Git diff。Speclink 只在這個結構上多放兩樣東西：`discussions/`（討論記錄），
-以及每個變更的 `.openspec.yaml`（生命週期 metadata）。
+Speclink has two deployment paths:
 
-Local CLI 設計之初以 [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app) 所附 CLI 為行為參考。
-golden 與 CLI 整合測試守住人眼輸出、`--json` shape 與核心工作流。Speclink 在這個基礎上加入 discussion、
-Desktop、Store abstraction、Node SDK 與 Remote Platform。
+- **Local Repo**: Specs live in the `openspec/` folder of your repo. Git handles collaboration. No server is necessary.
+- **Remote Store**: Specs live in a shared Store. A Host handles authentication, revisions, transactions, events, and workflow decisions. The Host and Protocol are public contracts, so you can use the official server or write your own.
 
-規格不是寫完就擱著的文件——桌面 app 把每個變更放上看板，你看得到它站在哪一站、任務推到哪裡、規格改了什麼：
+![The Speclink desktop app: a board with the columns Discussions, Proposed, In progress, and Ready](docs/assets/screenshots/en/desktop-board.png)
 
-![Speclink 桌面 app 的變更看板與變更詳情面板](docs/assets/screenshots/desktop-board.png)
+## <a id="why"></a>Why Speclink
 
-## Current capabilities / 目前能力
+- **The specs live next to your code.** They are plain Markdown and YAML files in your repo. You can read them without Speclink, and every edit shows in the Git diff.
+- **Your AI agent knows each step.** Speclink writes skills for Claude Code, Codex, and GitHub Copilot. Each skill tells the agent what to read, what to write, and when to stop and ask you.
+- **You check the work before it lands.** Two optional quality stations run before archive: `review` checks the code craft, and `verify` checks the delivery against the specs.
+- **One workflow from one person to a team.** Start in one repo with Git. When the team grows, connect a shared server. The workflow and the terms stay the same.
 
-- **可用**：Local Repo CLI、Local Desktop、生成的 Agent 技能（Claude 與 Codex 全站別）、Command Runtime／Host／Protocol、SQLite／Server FS／PostgreSQL TeamStore、單節點 Server 與 Admin／Auth、Remote CLI 與 Context Projection、遠端的 task evidence、Server 營運（部署、備份還原）、桌面與 CLI 的安裝通路。
-- **部分可用**：Node SDK（綁定可用，npm 發布管線已接、自首個帶 engine 的 release 起上 npm）、Desktop Remote Workspace。
-- **規劃中**：MCP／Copilot in-process tools、SSO、runtime plugins 與 cluster mode。
-- **已棄用**：legacy remote REST v1 prototype；新工作使用目前 Client Protocol／Host 路徑。
+## <a id="quick-start"></a>Quick start
 
-逐項證據、限制與最後查核日期不在 README 重複維護，一律以[專案能力狀態](docs/product-status.zh-TW.md)為準；之後會往哪走見[專案路線圖](docs/roadmap.zh-TW.md)。
+1. Install the CLI:
 
-## SDD workflow / SDD 工作流
+   ```bash
+   npm i -g @speclink/cli
+   ```
+
+   For Homebrew, the install script, and the desktop app, see [Install](#install).
+
+2. Initialize the repo where you want to use Speclink:
+
+   ```bash
+   speclink init --tools claude,codex
+   ```
+
+   `--tools` lists the agent tools that you use: `claude`, `codex`, and `copilot`, in any comma-separated combination.
+
+3. Ask your agent to start a change. In Claude Code or GitHub Copilot, enter `/speclink-propose <change-name>`. In Codex, enter `$speclink-propose <change-name>`. The agent writes the proposal, the specs, and the task list.
+
+For the full first round (propose, apply, check, archive), see [Getting started](docs/getting-started.md). To connect to a shared server, see [Remote getting started](docs/remote-getting-started.md).
+
+## <a id="screenshots"></a>Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshots/en/desktop-change-detail.png" alt="The detail page of a change, with the document tree, the proposal, and the change details" /><br /><sub>A change: its documents, tasks, and quality stations</sub></td>
+    <td width="50%"><img src="docs/assets/screenshots/en/desktop-manual.png" alt="A manual page in the desktop app, generated from the specs" /><br /><sub>A manual that Speclink generates from the specs</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshots/en/desktop-spec.png" alt="The detail page of a spec, with its requirements and scenarios" /><br /><sub>A spec with its requirements and scenarios</sub></td>
+    <td width="50%"><img src="docs/assets/screenshots/en/server-overview.png" alt="The overview page of the server console" /><br /><sub>The console of the self-hosted server</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><img src="docs/assets/screenshots/en/desktop-tray.png" width="200" alt="The Speclink tray panel, opened from the macOS menu bar, with the changes grouped by Proposed, In progress, Ready, and Discussions" /><br /><sub>The tray panel in the macOS menu bar</sub></td>
+    <td width="50%"><img src="docs/assets/screenshots/en/claude-code-panel.png" alt="Claude Code with the speclink-skills skill bar above the input box and the side panel open on the Board tab" /><br /><sub>The Claude Code plugin: skill bar and side panel</sub></td>
+  </tr>
+</table>
+
+## <a id="features"></a>Features
+
+- **Plain text, OpenSpec-compatible**: Local mode uses the OpenSpec folder layout: `specs/<capability>/spec.md`, `changes/<name>/`, `changes/archive/`, and `config.yaml`. All content is Markdown and YAML. You can read and edit it without Speclink, and each change shows in the Git diff. Speclink adds only two items: `discussions/` (discussion records) and a `.openspec.yaml` file in each change (lifecycle metadata). This applies to Local mode only. In remote mode, the specs live in the Store, and your machine has only a read-only projection.
+- **Skills for AI agents**: `speclink init` writes skill files for Claude Code, Codex, and GitHub Copilot. Each stage, from discussion to archive, has a `/speclink-*` command (`$speclink-*` in Codex).
+- **Desktop board**: Each change is a card. You can see its stage, its task progress, and the spec changes it makes.
+- **Quality stations**: `review` checks code craft. `verify` checks that the delivery matches the specs. Both stations are optional.
+- **Execution order**: `speclink plan` puts changes into waves from their declared dependencies and shows the next change that is ready to start.
+- **Manual and trace**: Speclink generates a readable manual from the specs, and `trace` shows how a capability came to be.
+- **Team sharing**: After you connect a server, the CLI, the desktop app, and AI agents read and write the same specs.
+
+## <a id="workflow"></a>How it works
 
 ```text
 baseline? → discuss?/improve? → propose → apply ⇄ ingest → (quality? | review? ∥ verify?) → archive
                                             ↑
-                                    閒置後續作：先 drift
+                                    resume after a pause: drift first
 
-worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) → worktree-merge → archive
+worktree: apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) → worktree-merge → archive
 
-工具：validate / analyze / audit / commit / config / manual
+tools: validate / analyze / audit / commit / config / manual / trace / plan
 ```
 
-從哪一站進來，看你手上的情況：
+A stage with `?` is optional. Your situation tells you where to start:
 
-- 需求已經明確 → 直接 `propose`
-- 需求還要收斂 → `discuss`（你帶題目）或 `improve`（要模型幫你找題目）
-- 實作途中需求改變 → `ingest`
-- 變更閒置一陣子才續作 → 先跑 `drift`
-
-封存前有兩道可選的品質關卡：`review` 看工藝，`verify` 看合規。依風險自由組合。低風險變更兩道都跳過也是正當選擇。
-
-手上有多個互不衝突的變更要一起推時走 worktree 流程：每個變更在自己的 git worktree 裡實作、互不干擾，完成後 `worktree-merge` 併回主分支再封存。
-
-每一站的用途、對應的 `/speclink-*` 技能、完成判準與下一站，以及討論結論的分流與恢復路徑，見[完整 SDD 工作流](docs/workflow.zh-TW.md)。
-
-## Install / 安裝
-
-桌面 app 與 CLI 是**同一套引擎的兩種用法，擇一即可**。想看看板、規格與討論，就裝桌面 app。不需要圖形介面，或要把 Speclink 放進腳本與 CI，就只裝 CLI——功能不打折。
-
-Server 是第三個東西，**只有團隊要共用同一份正式規格時才需要**。一個人在自己 repo 裡用，完全不必碰它。
-
-**桌面 app**——到 [Releases](https://github.com/MomoChenisMe/speclink/releases/latest) 下載對應平台的安裝檔：
-
-| 平台 | 安裝檔 |
+| Situation | Entry |
 | --- | --- |
-| macOS | `Speclink_<版本>_universal.dmg`（Apple Silicon 與 Intel 同一檔） |
-| Windows | `Speclink_<版本>_x64-setup.exe` |
-| Linux 桌面機 | `Speclink_<版本>_amd64.AppImage`（x86_64）、`Speclink_<版本>_aarch64.AppImage`（arm64）；免安裝 |
+| The requirement is clear | `propose` |
+| The requirement needs decisions | `discuss` (you bring the topic) or `improve` (the model finds topics) |
+| The code has no specs yet | `baseline` |
+| The requirement changes during the work | `ingest` |
+| You resume a change after a pause | `drift` first |
+| You want to move several independent changes at the same time | the worktree flow |
 
-桌面安裝檔內含同版 CLI，可於 app 設定中一鍵安裝到 PATH。沒有圖形介面的 Linux（伺服器、WSL、CI）不裝桌面 app，直接用下面的 CLI 一行安裝。
+Before archive, two optional quality stations are available: `review` checks craft, and `verify` checks the specs. Choose the stations from the risk. For a low-risk change, you can skip both.
 
-以前用 `.deb` 裝的人：`.deb` 自 0.5.0 起不再發布，先 `sudo apt remove speclink`，再改用 AppImage。
+For the purpose, skill, done criteria, and next step of each stage, see the [SDD workflow](docs/workflow.md).
 
-**已經裝過 CLI 的人請注意：先裝 CLI、後裝桌面 app，你的 `speclink` 會被換成桌面 app 那一版。**
+## <a id="install"></a>Install
 
-原因是兩者都用 `~/.local/bin/speclink` 這個位置。逐平台的行為不同：
+The desktop app and the CLI are two ways to use the same engine. Pick one:
 
-| 平台 | 桌面 app 對 `~/.local/bin/speclink` 做的事 |
+- To see the board, specs, and discussions, install the desktop app. The installer includes the CLI of the same version.
+- To work without a GUI, or in scripts and CI, install only the CLI. It has all the features.
+
+### Desktop app
+
+Download the installer for your platform from [Releases](https://github.com/MomoChenisMe/speclink/releases/latest):
+
+| Platform | Installer |
 | --- | --- |
-| macOS | 每次啟動都刪掉原檔，換成指向內建 CLI 的 symlink |
-| Linux AppImage | 只在版本不符時覆蓋 |
-| Windows | 不動這個位置；PATH 由安裝器管理 |
+| macOS | `Speclink_<version>_universal.dmg` (one file for Apple Silicon and Intel) |
+| Windows | `Speclink_<version>_x64-setup.exe` |
+| Linux desktop | `Speclink_<version>_amd64.AppImage` (x86_64) or `Speclink_<version>_aarch64.AppImage` (arm64), no install step |
 
-`SPECLINK_INSTALL_VERSION` 釘選的版本也會一起失效。要保留自己那份 CLI，安裝時用 `SPECLINK_INSTALL_DIR`
-指到別的目錄，再把該目錄排在 PATH 中 `~/.local/bin` 的前面。
+- The Windows installer has no code signature. On the first run, SmartScreen shows a warning. Click "More info", then "Run anyway".
+- On Linux without a GUI (servers, WSL, CI), use the CLI below, not the desktop app.
 
-**CLI**——擇一（三條路裝到的都是同一份 binary，來源是 npm 上的 `@speclink/cli`）：
+### CLI
+
+All three methods install the same binary (the source is `@speclink/cli` on npm). Pick one:
 
 ```bash
-# 有 Node.js（任何平台）
+# With Node.js (any platform)
 npm i -g @speclink/cli
 
-# 沒有 Node.js 的 macOS／Linux（伺服器、WSL、CI）
+# macOS or Linux without Node.js (servers, WSL, CI)
 curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh
 
-# Homebrew（macOS／Linux）
+# Homebrew (macOS or Linux)
 brew install MomoChenisMe/tap/speclink
 ```
 
-Windows 沒有安裝腳本：有 Node.js 用 npm，沒有就裝桌面版（安裝器內含 CLI 並幫你設好 PATH）。
+Windows has no install script. With Node.js, use npm. Without Node.js, install the desktop app. Its installer also puts the CLI on your PATH.
 
-安裝腳本會偵測平台、核對 npm 的 sha512 integrity，再把 `speclink` 放進 `~/.local/bin`。`SPECLINK_INSTALL_DIR` 可改安裝位置，`SPECLINK_INSTALL_VERSION` 可釘選版本（`0.5.0` 或 `v0.5.0` 都行，0.5.0 之前的版本不在 npm 上、釘不到），`SPECLINK_INSTALL_REGISTRY` 可換 registry。
+Do you want both the CLI and the desktop app? The desktop app can replace your CLI. Read [Install in Getting started](docs/getting-started.md#install) first. That section also lists the install script options and the move to the AppImage for older Linux installs.
 
-Windows 的安裝檔目前未經程式碼簽章，首次執行時 SmartScreen 會出現警告——點「其他資訊」→「仍要執行」即可。
+### Claude Code plugin (optional)
 
-**Server**（只有要團隊共用時才需要）——`speclink-server` 是官方的**參考實作**，給你開箱即用、或拿來試遠端功能。三種形態擇一，都會在首次啟動時印出一次性的 `/setup` 連結（一般重啟不重印）：
+`speclink-skills` adds a row of speclink skill buttons above the Claude Code input box. It also adds a side panel that lists changes, discussions, and open quality tickets. In Claude Code, enter:
 
-| 形態 | 指令 |
-| --- | --- |
-| npx（有 Node 就能跑） | `npx @speclink/server` |
-| Docker | `docker run -d -p 8080:8080 -v speclink-data:/data ghcr.io/momochenisme/speclink-server:latest` |
-| Compose | `cd deploy && docker compose up -d` |
-
-預設使用 SQLite、資料落在 `./speclink-data`（容器內為 `/data`）。環境變數、PostgreSQL profile 與升級回退見[Server 部署](docs/server-deployment.zh-TW.md)。
-
-**遠端模式不綁這一份 server。** 正式規格放在哪、由誰守，是 Host 與 Protocol 兩份公開契約定義的；官方 server 只是照這兩份契約做出來的一個實作。要接自家的認證、資料庫或權限模型，就拿 Speclink 引擎自己寫一個 server 端，CLI 與桌面 app 照樣接得上。契約見 `openspec/specs/` 的 `client-protocol` 與 `host-runtime`，載入引擎的方式見 [Node SDK](docs/sdk-node.zh-TW.md)。
-
-**Claude Code mod**（選用）——在 Claude Code 的輸入框上方加一排可以點的 speclink 技能按鈕，以及一個分頁列出變更、討論與未結品質工單的側邊面板。在 Claude Code 裡輸入：
-
-```
+```text
 /plugin install speclink-skills --marketplace MomoChenisMe/speclink
 ```
 
-需求、設定與已知限制見 [speclink-skills](integrations/claude-code/speclink-skills/README.md)。
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshots/en/claude-code-quality.png" alt="The Quality tab of the side panel, with an open review ticket on add-keyboard-shortcuts and its two findings" /><br /><sub>The Quality tab lists the open review and verify tickets</sub></td>
+    <td width="50%"><img src="docs/assets/screenshots/en/claude-code-hash-menu.png" alt="After /speclink-apply, typing # opens a menu of proposed changes above the input box" /><br /><sub>Type <code>#</code> to pick a change name</sub></td>
+  </tr>
+</table>
 
-## Local Repo quick start / Local Repo 快速開始
+For requirements, settings, and known limits, see [speclink-skills](integrations/claude-code/speclink-skills/README.en.md).
 
-在要導入 Speclink 的 repo：
+## <a id="self-hosting"></a>Self-hosting a server
 
-```bash
-speclink init --tools claude,codex
-speclink list
-```
+You need a server only when a team shares one set of specs. For one person in one repo, you do not need a server.
 
-接著在 Claude 呼叫 `/speclink-propose <change>`，或在 Codex 呼叫 `$speclink-propose <change>`；Agent 會依 schema DAG
-建立必要 artifacts。可複製的第一輪與直接 CLI 對照見[Local Repo 入門](docs/getting-started.zh-TW.md)。
+`speclink-server` is the official **reference implementation**. Use it to start fast or to try the remote features. Pick one way to run it:
 
-## Deployment paths / 部署路徑
-
-- **Local Repo**：Embedded Rust Runtime → FsStore → `openspec/` → Git；適合單一 repo、本機與離線協作。
-- **Remote Store**：CLI／Desktop／其他 Client → Speclink Host → 同一 Rust Runtime → TeamStore；適合共享正式規格、集中認證、revision、交易與事件。中間那個 Host 可以是官方的 `speclink-server`，也可以是你自己照 Protocol 做的實作。
-
-Remote Store 不會同步成第二份可寫的本地真相。有 checkout 的 Agent 只讀 `.speclink/context/`，遠端寫入仍走
-Host command。這些邊界的正式規格在 `openspec/specs/` 底下，例如 `host-runtime`、`client-protocol`、
-`teamstore-contract` 與 `context-projection`。從 setup 到登入的完整操作見
-[Remote 入門](docs/remote-getting-started.zh-TW.md)。
-
-## Documentation map / 文件地圖
-
-**一個人用，先讀這三份就夠**
-
-| 文件 | 用途 |
+| Method | Command |
 | --- | --- |
-| [Local Repo 入門](docs/getting-started.zh-TW.md) | 目前可複製的第一輪 Local Repo 流程 |
-| [完整 SDD 工作流](docs/workflow.zh-TW.md) | 每一站的用途、對應技能、完成判準與下一站 |
-| [專案能力狀態](docs/product-status.zh-TW.md) | 可用／部分可用／規劃中／已棄用，附證據與限制 |
+| npx (needs only Node.js) | `npx @speclink/server` |
+| Docker | `docker run -d -p 8080:8080 -v speclink-data:/data ghcr.io/momochenisme/speclink-server:latest` |
+| Docker Compose | `cd deploy && docker compose up -d` |
 
-**要團隊共用一份正式規格才需要**
+On the first start, the server prints a one-time `/setup` link. A normal restart does not print it again. The default Store is SQLite, and the data goes to `./speclink-data` (`/data` in the container). For environment variables, PostgreSQL, upgrades, and rollbacks, see [Server deployment](docs/server-deployment.md). To connect the desktop app and the CLI, see [Remote getting started](docs/remote-getting-started.md).
 
-| 文件 | 用途 |
+Remote mode does not depend on this server. Two public contracts define remote mode: `host-runtime` and `client-protocol` in `openspec/specs/`. You can write your own server with the Speclink engine and connect your own authentication, database, and permission model. The CLI and the desktop app work with it too. To load the engine, see the [Node SDK](docs/sdk-node.md).
+
+## <a id="docs"></a>Documentation
+
+**For one person, start with these three**
+
+| Document | Content |
 | --- | --- |
-| [Remote Server、Desktop 與 CLI 入門](docs/remote-getting-started.zh-TW.md) | 從 `npx @speclink/server` 一行啟動、`/setup`、membership（含第一位 Admin 自授）、登入到 Desktop／CLI 與失聯恢復的完整流程 |
-| [Server 部署](docs/server-deployment.zh-TW.md) | npx／Docker／Compose 與升級操作 |
-| [Server Store drivers](docs/server-store-drivers.zh-TW.md) | SQLite／Server FS／PostgreSQL 選型與前提 |
-| [Server 備份與還原](docs/server-backup.zh-TW.md) | backup／verify-backup／restore |
+| [Getting started](docs/getting-started.md) | From install to your first archive |
+| [SDD workflow](docs/workflow.md) | The purpose, skill, done criteria, and next step of each stage |
+| [Configuration](docs/configuration.md) | `.speclink.yaml`, `openspec/config.yaml`, and remote settings |
 
-**遇到問題或想調整時再查**
+**For a team that shares one set of specs**
 
-| 文件 | 用途 |
+| Document | Content |
 | --- | --- |
-| [設定說明](docs/configuration.zh-TW.md) | Local／Remote 設定歸屬與目前欄位 |
-| [開發環境入口](docs/development.zh-TW.md) | 一鍵開發環境、checkout 內 CLI 與測試指令 |
-| [專案路線圖](docs/roadmap.zh-TW.md) | 之後會往哪走：SDK、以引擎自建客戶端、遠端協作、Agent 工具整合、系統整合 |
-| [品牌資產](docs/assets/brand/README.md) | Logo、配色與使用方式 |
+| [Remote getting started](docs/remote-getting-started.md) | From server start to a connected desktop app and CLI |
+| [Server deployment](docs/server-deployment.md) | npx, Docker, Compose, upgrades, and rollbacks |
+| [Server Store drivers](docs/server-store-drivers.md) | How to choose SQLite, Server FS, or PostgreSQL |
+| [Server backup and restore](docs/server-backup.md) | `backup`, `verify-backup`, and `restore` |
 
-**要把 Speclink 接進自己的程式，或自建客戶端才需要**——只用桌面 app 或 CLI 的話這兩份可以完全跳過。
+**To connect Speclink to your own program**
 
-| 文件 | 用途 |
+| Document | Content |
 | --- | --- |
-| [Node SDK](docs/sdk-node.zh-TW.md) | `@speclink/engine` 的載入方式、Store bridge 與 dispatch surface |
-| [動詞與旗標契約](docs/verb-contract.zh-TW.md) | 動詞的模式歸屬、兩模式輸出同形與端點的 payload／錯誤形狀 |
+| [Node SDK](docs/sdk-node.md) | Load `@speclink/engine`, the Store interface, and `dispatch` |
+| [Verb and flag contract](docs/verb-contract.md) | Local and remote verbs, output shapes, and HTTP endpoints |
 
-`openspec/changes/archive/` 與 `openspec/discussions/archive/` 是歷史稽核資料，不是目前操作手冊。
+**Project status and direction**
 
-## Development / 開發
+| Document | Content |
+| --- | --- |
+| [Product status](docs/product-status.md) | What is available and what is partial, with evidence and limits |
+| [Roadmap](docs/roadmap.md) | The work that comes next |
+| [Changelog](CHANGELOG.md) | The changes in each version |
+| [Brand assets](docs/assets/brand/README.en.md) | Logo, colors, and usage |
 
-從原始碼建置 CLI（需要 stable Rust toolchain）：
+`openspec/` holds the specs of Speclink itself. `openspec/changes/archive/` and `openspec/discussions/archive/` are history records, not user guides.
+
+## <a id="status"></a>Project status
+
+- **Available**: Local Repo CLI, Local desktop app, agent skills (Claude, Codex, and GitHub Copilot), quality stations, execution order, manual and trace, Node SDK (`@speclink/engine`), three TeamStores (SQLite, Server FS, PostgreSQL), single-node server and admin console, Remote CLI, install channels, server operations (deployment, backup, and restore).
+- **Partial**: Remote workspaces in the desktop app, the Claude Code plugin.
+- **Planned**: Agent tool packages and MCP, SSO, runtime plugins, multi-node deployment.
+
+For the evidence, limits, and check date of each item, see [Product status](docs/product-status.md). For the work that is not done yet, see the [Roadmap](docs/roadmap.md).
+
+## <a id="contributing"></a>Contributing
+
+Issues and pull requests are welcome, in English or Traditional Chinese.
+
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) for the dev setup, the tests to run, the commit style, and how changes go through Speclink itself.
+- Do not report a security problem in a public issue. Follow [SECURITY.md](SECURITY.md) to report it privately.
+- For the one-command dev environment (`npm run dev` and four more entry points), the full test commands, and the repo layout, see [Development](docs/development.md).
+
+To build the CLI from source (you need a stable Rust toolchain):
 
 ```bash
 cargo install --path crates/adapters/speclink-cli
 speclink --version
 ```
 
-[開發環境入口](docs/development.zh-TW.md)收了三類東西：一鍵開發環境的四個入口（整套 `npm run dev`、只跑 server、只跑 desktop、checkout 內 CLI）、完整測試指令，以及下載安裝檔的未簽章放行步驟。
+## <a id="acknowledgments"></a>Acknowledgments
 
-## License / 授權
+- [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app): the Local CLI started with its CLI as the behavior reference. Golden tests and CLI integration tests protect the human output, the `--json` shape, and the core workflow. On top of that base, Speclink adds discussions, a desktop app, a Store abstraction, a Node SDK, and a remote platform.
+- [OpenSpec](https://github.com/Fission-AI/OpenSpec): Local mode uses the OpenSpec folder layout for specs and changes.
+
+## <a id="license"></a>License
 
 [MIT](LICENSE)

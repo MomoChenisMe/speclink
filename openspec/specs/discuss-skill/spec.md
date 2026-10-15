@@ -89,7 +89,7 @@ updated: 2026-09-17T10:13:18+08:00
 
 技能檔 SHALL 規定記錄內容慣例：首輪 Position 攤開初始決策空間（得含 ASCII 樹），之後每輪聚焦解掉一個節點，中途發現的新分支記入該輪 Open。討論文件的骨架（Context／Rounds／Conclusion）、輪模板欄位（Focus／Position／Ruled out／Open）與 append-only 規則 SHALL 維持不變，既有討論記錄 SHALL NOT 需要遷移。
 
-技能檔的文件規則 SHALL 另含一條與「Position bullets over prose」對稱的結論條列規則：Conclusion 的 Decision、Rejected alternatives、Deferred 三個欄位超過一句時 SHALL 條列，以 `- ` 一點一行——Decision 以一句定論起頭、其後條列；Rejected alternatives 與 Deferred 的欄位標頭後 SHALL NOT 接文字，直接一點一行；Rationale、Capture to、Next 三個欄位 SHALL 維持單段。Decision SHALL 保留全部定案細節、SHALL NOT 為了縮短而刪減，其各點（含縮排子項）SHALL NOT 回指輪次；結論規劃多刀轉出時，Decision SHALL 每刀一個 bullet，開頭為 `**cut N \`change-name\`**：一句範圍`，該刀細節 SHALL 為縮排子項、一子項一件事。Rejected alternatives SHALL 每項一行，寫「方案——落敗理由」；Deferred SHALL 每項一行，寫「問題——為何現在不解」，無擱置項時單寫 none。技能檔的 conclude 指令範例與「Capture decisions」的 Conclusion 摘要格式 SHALL 與此規則同形（範例本身即為條列形）。此規則 SHALL 只約束新寫入的結論；既有記錄的結論 SHALL NOT 需要改寫。
+技能檔 SHALL 另含一條與「Position bullets over prose」對稱的結論條列規則：Conclusion 的 Decision、Rejected alternatives、Deferred 三個欄位超過一句時 SHALL 條列，以 `- ` 一點一行——Decision 以一句定論起頭、其後條列；Rejected alternatives 與 Deferred 的欄位標頭後 SHALL NOT 接文字，直接一點一行；Rationale、Capture to、Next 三個欄位 SHALL 維持單段。Decision SHALL 保留全部定案細節、SHALL NOT 為了縮短而刪減，其各點（含縮排子項）SHALL NOT 回指輪次；結論規劃多刀轉出時，Decision SHALL 每刀一個 bullet，開頭為 `**cut N \`change-name\`**：一句範圍`，該刀細節 SHALL 為縮排子項、一子項一件事。Rejected alternatives SHALL 每項一行，寫「方案——落敗理由」；Deferred SHALL 每項一行，寫「問題——為何現在不解」，無擱置項時單寫 none。此規則 SHALL 在技能檔中只完整陳述一次，寫在寫入結論（conclude）的步驟、緊鄰 conclude 指令範例；文件規則清單與「Capture decisions」的 Conclusion 摘要 SHALL 以一句話指向該處，SHALL NOT 重抄規則全文，也 SHALL NOT 另抄一份結論樣板。conclude 指令範例 SHALL 與此規則同形（範例本身即為條列形）。此規則 SHALL 只約束新寫入的結論；既有記錄的結論 SHALL NOT 需要改寫。
 
 #### Scenario: 首輪攤樹且每輪一節點
 
@@ -104,7 +104,7 @@ updated: 2026-09-17T10:13:18+08:00
 #### Scenario: 技能檔載有結論條列規則且三種渲染目標同源
 
 - **WHEN** 檢視 claude、codex、neutral 三種渲染目標產出的 speclink-discuss 技能檔的 Document rules
-- **THEN** 三份技能檔 SHALL 各含同一條結論條列規則：Decision／Rejected alternatives／Deferred 超過一句條列、Rationale／Capture to／Next 單段、多刀每刀一個 bullet；且 conclude 指令範例與 Conclusion 摘要格式為條列形
+- **THEN** 三份技能檔 SHALL 各含同一條結論條列規則：Decision／Rejected alternatives／Deferred 超過一句條列、Rationale／Capture to／Next 單段、多刀每刀一個 bullet；規則全文在技能檔中只出現一次，位於 conclude 步驟；conclude 指令範例為條列形；文件規則清單與 Capture decisions 段以一句話指向 conclude 步驟，不另抄規則全文或結論樣板
 
 #### Scenario: 多刀結論的 Decision 逐刀條列
 
@@ -144,8 +144,8 @@ updated: 2026-09-17T10:13:18+08:00
 
 
 <!-- @trace
-source: discuss-conclusion-bullets
-updated: 2026-09-22T14:29:35+08:00
+source: optimize-skill-prompts
+updated: 2026-10-08T16:45:46+08:00
 -->
 
 ---

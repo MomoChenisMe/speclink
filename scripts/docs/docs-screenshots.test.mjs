@@ -9,13 +9,18 @@ import path from 'node:path';
 import {
   DEMO_CHANGES,
   DEMO_DISCUSSION,
+  DEMO_MANUAL,
+  DEMO_REVIEW,
+  SHOT_DIR,
   SHOT_LIST,
+  SHOT_LOCALES,
   appIsRunning,
   backupPlanFor,
   dryRunReport,
   manifestPathIn,
   pathsFor,
   prepareBackup,
+  renderManualPage,
   restoreStepsFor,
   stateDirsFor,
 } from './docs-screenshots.mjs';
@@ -70,6 +75,11 @@ test('工作路徑推導：備份落在 home（可跨重開機救回）、示範
   assert.ok(backupRoot.startsWith(`${HOME}/`), `備份路徑 ${backupRoot} 要在 home 下`);
   assert.ok(workspace.startsWith(`${TMP}/`), `示範 workspace ${workspace} 要在暫存區`);
   assert.notEqual(backupRoot, workspace);
+});
+
+test('工作路徑推導：示範 workspace 的目錄名是中性的 acme-web（分頁與視窗標題只顯示這個名稱）', () => {
+  const { workspace } = pathsFor({ home: HOME, tmpdir: TMP });
+  assert.equal(path.posix.basename(workspace), 'acme-web');
 });
 
 test('備份計畫：每個來源有互不相同的落點，全部收在備份根目錄下', () => {
@@ -198,11 +208,15 @@ test('備份執行：只搬移確實存在的來源，並寫下供 --restore 判
   assert.deepEqual(JSON.parse(manifest.body).entries, plan);
 });
 
-test('示範內容：提案中、進行中、已封存三態齊備，另有一則討論', () => {
+test('示範內容：提案中、進行中、已就緒、已封存四態齊備，至少兩個已封存，另有一則討論', () => {
   const states = DEMO_CHANGES.map((c) => c.state);
-  for (const state of ['proposed', 'in-progress', 'archived']) {
+  for (const state of ['proposed', 'in-progress', 'ready', 'archived']) {
     assert.ok(states.includes(state), `示範內容缺少 ${state} 的變更，看板會有空欄`);
   }
+  assert.ok(
+    states.filter((state) => state === 'archived').length >= 2,
+    '規格頁要有兩份以上的正式規格，至少要兩個已封存的變更',
+  );
   assert.equal(DEMO_DISCUSSION.status, 'concluded');
   assert.ok(DEMO_DISCUSSION.rounds.length >= 1, '討論頁要有回合內容才不是空的');
   assert.ok(DEMO_DISCUSSION.conclusion.length > 0);
@@ -224,6 +238,12 @@ test('示範內容：已封存的變更帶 Purpose（archive 對新 capability �
   }
 });
 
+test('示範內容：已就緒的變更任務全部勾完但不封存，才會落在已就緒欄', () => {
+  for (const change of DEMO_CHANGES.filter((c) => c.state === 'ready')) {
+    assert.equal(change.completedTasks, null, `${change.name} 要勾完全部任務`);
+  }
+});
+
 test('示範內容：進行中的變更只完成一部分任務，卡片才看得到進度', () => {
   for (const change of DEMO_CHANGES.filter((c) => c.state === 'in-progress')) {
     const total = change.artifacts.tasks.match(/^- \[ \] /gm)?.length ?? 0;
@@ -232,11 +252,30 @@ test('示範內容：進行中的變更只完成一部分任務，卡片才看�
   }
 });
 
-test('待拍清單：九張截圖，檔名與存放位置固定（design D2）', () => {
-  assert.equal(SHOT_LIST.length, 9);
-  assert.equal(new Set(SHOT_LIST.map((s) => s.file)).size, 9, '檔名不可重複');
+test('待拍清單：十五個檔名，中英介面各一組（截圖依語言分目錄、檔名相同）', () => {
+  assert.deepEqual(
+    SHOT_LIST.map((s) => s.file),
+    [
+      'desktop-board.png',
+      'desktop-change-detail.png',
+      'desktop-discussion.png',
+      'desktop-spec.png',
+      'desktop-archived.png',
+      'desktop-manual.png',
+      'desktop-settings.png',
+      'server-setup.png',
+      'server-overview.png',
+      'server-members.png',
+      'server-project.png',
+      'desktop-tray.png',
+      'claude-code-panel.png',
+      'claude-code-quality.png',
+      'claude-code-hash-menu.png',
+    ],
+  );
+  assert.deepEqual(SHOT_LOCALES, ['en', 'zh-TW']);
   for (const shot of SHOT_LIST) {
-    assert.match(shot.file, /^(desktop|server)-[a-z-]+\.png$/, `${shot.file} 命名不符`);
+    assert.match(shot.file, /^(desktop|server|claude-code)-[a-z-]+\.png$/, `${shot.file} 命名不符`);
     assert.ok(shot.what.length > 0, `${shot.file} 要說明拍什麼`);
   }
 });
@@ -260,4 +299,74 @@ test('dry-run 報告：印出備份來源與落點、示範內容與待拍清單
   for (const shot of SHOT_LIST) {
     assert.ok(report.includes(shot.file), `報告要列出待拍的 ${shot.file}`);
   }
+  for (const locale of SHOT_LOCALES) {
+    assert.ok(report.includes(`${SHOT_DIR}/${locale}/`), `報告要點名 ${locale} 的存放目錄`);
+  }
+  for (const page of DEMO_MANUAL) {
+    assert.ok(report.includes(page.title), `報告要列出示範手冊頁 ${page.title}`);
+  }
+  assert.match(
+    report,
+    new RegExp(`審查工單.*${DEMO_REVIEW.change}`),
+    '報告要列出示範審查工單與它所屬的變更',
+  );
+});
+
+test('示範審查工單：開在已就緒的變更上，第一輪一條 WARNING、一條 SUGGESTION', () => {
+  const change = DEMO_CHANGES.find((c) => c.name === DEMO_REVIEW.change);
+  assert.ok(change, `${DEMO_REVIEW.change} 不在示範變更裡`);
+  assert.equal(change.state, 'ready', '只有已就緒的變更才會被送進品質關卡');
+  assert.deepEqual(
+    DEMO_REVIEW.findings.map((f) => f.severity),
+    ['WARNING', 'SUGGESTION'],
+  );
+  for (const finding of DEMO_REVIEW.findings) {
+    assert.ok(finding.text.trim().length > 0, '每條 finding 都要有內容');
+  }
+});
+
+test('示範審查工單：finding 只落在示範檔上（add-round 拒收凍結範圍外的路徑）', () => {
+  const { file, findings } = DEMO_REVIEW;
+  assert.match(file.path, /^[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*\.[a-z]+$/, `${file.path} 要是 repo 相對路徑`);
+  assert.ok(file.body.trim().length > 0, '示範檔要有內容，凍結的 patch 才不是空的');
+  for (const finding of findings) {
+    assert.equal(finding.path, file.path, `${finding.path} 不在凍結範圍內`);
+  }
+});
+
+test('示範手冊：至少三頁，含必產的 index.md 與 about.md，order 不重複', () => {
+  const files = DEMO_MANUAL.map((page) => page.file);
+  assert.ok(files.length >= 3, `示範手冊只有 ${files.length} 頁`);
+  assert.ok(files.includes('index.md'), '手冊缺 index.md');
+  assert.ok(files.includes('about.md'), '手冊缺 about.md');
+  const orders = DEMO_MANUAL.map((page) => page.order);
+  assert.equal(new Set(orders).size, orders.length, 'order 必須全手冊唯一');
+  for (const file of files) assert.match(file, /^[a-z][a-z0-9-]*\.md$/, `${file} 不是 kebab-case 檔名`);
+});
+
+test('示範手冊：frontmatter 恰為六欄、generated 為帶時區的秒級時戳、頁尾有出處行', () => {
+  const generated = '2026-10-15T10:00:00+08:00';
+  for (const page of DEMO_MANUAL) {
+    const text = renderManualPage(page, generated);
+    const [, frontmatter, body] = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(text) ?? [];
+    assert.ok(frontmatter, `${page.file} 沒有 frontmatter`);
+    const keys = frontmatter.split('\n').map((line) => line.split(':')[0]);
+    assert.deepEqual(keys, ['title', 'section', 'order', 'keywords', 'sources', 'generated']);
+    assert.match(frontmatter, new RegExp(`^generated: ${generated.replace('+', '\\+')}$`, 'm'));
+    const lastLine = body.trim().split('\n').pop();
+    assert.match(lastLine, /^\*\*出處\*\*：/, `${page.file} 的最後一行要是出處行`);
+  }
+});
+
+test('示範手冊：sources 只引用示範裡已封存變更的 capability', () => {
+  const canonical = new Set(DEMO_CHANGES.filter((c) => c.state === 'archived').map((c) => c.capability));
+  for (const page of DEMO_MANUAL) {
+    for (const source of page.sources) {
+      assert.ok(canonical.has(source), `${page.file} 引用了不存在的規格 ${source}`);
+    }
+  }
+  assert.ok(
+    DEMO_MANUAL.some((page) => page.sources.length > 0),
+    '至少一頁要有出處，出處行的規格籤才拍得到',
+  );
 });

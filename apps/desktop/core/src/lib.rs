@@ -10,6 +10,7 @@ use speclink_fs::FsStore;
 
 pub mod cache;
 pub mod discussions;
+pub mod fs_actions;
 pub mod manage;
 pub mod manual;
 pub mod project;
@@ -18,6 +19,8 @@ pub mod search;
 pub mod settings;
 #[cfg(test)]
 pub(crate) mod testfixture;
+pub mod trackpad_gesture;
+pub mod tray_panel;
 pub mod verbs;
 
 /// 桌面 app 對單一本地 openspec/ 專案的執行語境：探索到的 workspace ＋ 其 fs store。

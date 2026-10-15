@@ -11,6 +11,7 @@ import { cliBin, repoRoot } from './helpers'
 const normalize = (s: string) => s.replace(/\r\n/g, '\n')
 
 let initedProject: string
+let copilotProject: string
 
 beforeAll(() => {
   if (!existsSync(cliBin)) {
@@ -18,10 +19,13 @@ beforeAll(() => {
   }
   initedProject = mkdtempSync(join(tmpdir(), 'speclink-node-init-'))
   execFileSync(cliBin, ['init', '.', '--tools', 'claude'], { cwd: initedProject })
+  copilotProject = mkdtempSync(join(tmpdir(), 'speclink-node-init-copilot-'))
+  execFileSync(cliBin, ['init', '.', '--tools', 'copilot'], { cwd: copilotProject })
 }, 600_000)
 
 afterAll(() => {
   if (initedProject) rmSync(initedProject, { recursive: true, force: true })
+  if (copilotProject) rmSync(copilotProject, { recursive: true, force: true })
 })
 
 describe('skills.list', () => {
@@ -39,16 +43,15 @@ describe('skills.list', () => {
 })
 
 describe('skills.render — render matrix', () => {
-  it('copilot and codex share every skill and match CLI output', () => {
+  it('copilot renders native syntax for every skill and matches CLI output', () => {
     const fixture = mkdtempSync(join(tmpdir(), 'speclink-node-copilot-'))
     try {
       execFileSync(cliBin, ['init', '.', '--tools', 'copilot'], { cwd: fixture })
       for (const { name } of skills.list()) {
         const copilot = skills.render(name, { target: 'copilot' })
-        expect(copilot).toBe(skills.render(name, { target: 'codex' }))
         expect(copilot).not.toContain('$speclink-')
         expect(copilot).not.toContain('{{')
-        const path = join(fixture, '.agents/skills', `speclink-${name}`, 'SKILL.md')
+        const path = join(fixture, '.github/skills', `speclink-${name}`, 'SKILL.md')
         if (existsSync(path)) expect(normalize(copilot)).toBe(normalize(readFileSync(path, 'utf8')))
       }
     } finally {
@@ -80,6 +83,23 @@ describe('skills.render — render matrix', () => {
     )
     const rendered = skills.render('apply', { target: 'claude', invocation: 'cli' })
     expect(normalize(rendered)).toBe(normalize(generated))
+  })
+
+  it('copilot × cli matches the SKILL.md the CLI init generates under .github/skills', () => {
+    const generated = readFileSync(
+      join(copilotProject, '.github', 'skills', 'speclink-apply', 'SKILL.md'),
+      'utf8',
+    )
+    const rendered = skills.render('apply', { target: 'copilot' })
+    expect(normalize(rendered)).toBe(normalize(generated))
+    expect(rendered).toContain('/speclink-')
+    expect(rendered).not.toContain('$speclink-')
+  })
+
+  it('unknown target fails loud, listing every valid target', () => {
+    expect(() => skills.render('apply', { target: 'github-copilot' as never })).toThrow(
+      /'github-copilot' must be 'claude', 'codex', 'copilot', or 'neutral'/,
+    )
   })
 
   it('unknown skill name fails loud', () => {

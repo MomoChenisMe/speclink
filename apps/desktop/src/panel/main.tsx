@@ -6,13 +6,18 @@ import { createRoot } from "react-dom/client";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { I18nProvider } from "@speclink/ui";
+import {
+  I18nProvider,
+  applyThemePreference,
+  readThemePreference,
+  type ThemePreference,
+} from "@speclink/ui";
 
 import { TrayPanel } from "./TrayPanel";
+import { detectPlatform } from "../platform";
 import { APP_MESSAGES } from "../i18n/messages";
 import { readLocalePreference, resolveUiLocale } from "../i18n/locale";
 import type { TraySnapshot } from "../tray";
-import { applyTheme } from "../theme";
 import "@fontsource-variable/noto-sans-tc";
 import "../index.css";
 
@@ -20,8 +25,19 @@ import "../index.css";
 document.documentElement.style.background = "transparent";
 document.body.style.background = "transparent";
 
+// 外觀偏好（desktop-settings-mode design D4）：啟動時套用，主視窗切換時經事件重套。原生視窗主題
+// 一併設成同一偏好——vibrancy 材質跟原生視窗外觀走，不同步就會淺色字疊在深色玻璃上。
+const applyPanelTheme = (pref: ThemePreference) => {
+  applyThemePreference(pref);
+  void getCurrentWindow().setTheme(pref).catch(() => {});
+};
+applyPanelTheme(readThemePreference());
+void listen<ThemePreference>("speclink:theme-changed", (e) => applyPanelTheme(e.payload));
+
 const PANEL_WIDTH = 320;
 const PANEL_MAX_HEIGHT = 640;
+// 面板根層外觀依平台（tray-panel-windows design D2）；平台在行程內不變，偵測一次。
+const PLATFORM = detectPlatform();
 
 export function PanelRoot() {
   const [snap, setSnap] = useState<TraySnapshot | null>(null);
@@ -30,7 +46,7 @@ export function PanelRoot() {
     let stop: (() => void) | undefined;
     void listen<TraySnapshot>("tray-snapshot", (e) => {
       if (disposed) return;
-      applyTheme(e.payload.effectiveTheme);
+      applyPanelTheme(e.payload.themePreference);
       setSnap(e.payload);
     }).then((unlisten) => {
       if (disposed) unlisten();
@@ -81,6 +97,7 @@ export function PanelRoot() {
   return (
     <TrayPanel
       snapshot={snap}
+      platform={PLATFORM}
       onOpenProject={(key) => act("open-project", key)}
       onOpenChange={(name) => act("open-change", name)}
       onOpenDiscussion={(slug) => act("open-discussion", slug)}

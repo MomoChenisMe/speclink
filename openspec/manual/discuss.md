@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 100
 keywords: [討論, discuss, 決策樹, slug, 結論, 條列, 轉為變更, 分期轉出, hold, 最後一刀, 改進討論, 搜尋舊討論, search]
 sources: [discuss-skill, discussion-docs, improve-skill, user-documentation]
-generated: 2026-09-22T15:37:29+08:00
+generated: 2026-10-15T17:40:05+08:00
 ---
 
 # 討論：需求還模糊時
@@ -27,7 +27,7 @@ agent 開場先做一輪淺掃，順序固定是三段：正式規格 → 舊討
 淺掃的用途是接地與判斷需求清不清楚。深入查證留到決策樹逐節點進行。
 
 > [!NOTE]
-> 規格對開場淺掃有兩種說法：較早的版本是「正式規格 → 程式碼」兩段，較晚的版本加入舊討論查核成為三段。本頁依較晚的版本撰寫，詳見[本手冊的來源](about.md)。淺掃的時間盒是：正式規格最多 3 份 Purpose、進行中 delta 最多 3 份且只讀標題與區段標記、原始碼最多 5 個檔。
+> 淺掃的時間盒是：正式規格最多 3 份 Purpose、進行中 delta 最多 3 份且只讀標題與區段標記、原始碼最多 5 個檔。
 
 ### 需求鈍或利，決定要不要先磨
 
@@ -141,8 +141,8 @@ Context 固定有一行 `Prior discussions: <slug 清單>`，列出開場淺掃�
 | 欄位 | 寫法 |
 | --- | --- |
 | Decision | 先用一句定論起頭；內容超過一句時，其後以 `- ` 一點一行條列 |
-| Rejected alternatives | 標頭後不接文字，直接一點一行，每行寫「方案——落敗理由」 |
-| Deferred | 標頭後不接文字，直接一點一行，每行寫「問題——為何現在不解」；沒有擱置項時單寫 none |
+| Rejected alternatives | 標頭後不接文字，直接一點一行，每行寫「方案 — 落敗理由」（分隔號前後各留一個空白） |
+| Deferred | 標頭後不接文字，直接一點一行，每行寫「問題 — 為何現在不解」；沒有擱置項時單寫 none |
 | Rationale、Capture to、Next | 維持單段 |
 
 Decision 保留全部定案細節，不為了縮短而刪減；各點（含縮排子項）不回指「第幾輪」。結論規劃分幾刀轉出時，Decision 每刀一個 bullet，開頭寫 ``**cut N `change-name`**：`` 加一句範圍，該刀的細節放在縮排子項、一子項一件事。
@@ -165,9 +165,9 @@ Decision 保留全部定案細節，不為了縮短而刪減；各點（含縮�
 **Next**: /speclink-propose --from-discussion team-server-and-admin
 ```
 
-規則只在欄位超過一句時才要求條列：單刀結論的 Decision 只有一句、Rejected alternatives 只有一項時，兩欄維持單行即可。規則只約束新寫入的結論；規則落地前寫的舊記錄（Decision 是整段長句的）一個位元都不改，桌面 app 的結論分頁照常顯示、不報錯。
+規則只在欄位超過一句時才要求條列：單刀結論的 Decision 只有一句、Rejected alternatives 只有一項時，兩欄維持單行即可。規則只約束新寫入的結論；規則落地前寫的舊記錄（Decision 是整段長句的）一個位元都不改，桌面 app 照常顯示、不報錯。
 
-在桌面 app 的討論詳情面板裡，結論分頁把這六個欄位顯示成標籤區塊，條列的內容在標籤區塊內顯示為清單，見[規格、討論、已封存與搜尋](desktop-browse.md)。
+在桌面 app 的討論詳情頁裡，結論的六個欄位各自顯示成一個區段，條列的每一點各佔一列，見[規格、討論、已封存與搜尋](desktop-browse.md)。
 
 ## 搜尋舊討論的定案
 
@@ -311,7 +311,7 @@ conclude 時，如果這份討論轉出的變更全部已經封存、沒有任�
 5. 建記錄：用 `--kind improve` 與 `--slug improve-<範圍>` 建討論，候選寫在 Round 1。每個候選有 Files、Problem、Solution、Wins、建議強度五欄；建議強度分三級：強烈建議、值得探索、尚屬臆測。結尾給首選建議，並問你想深入哪一個。
 6. 收斂：沿用一次一題、提案帶證據的紀律，對每個被挑中的候選做介面深度檢查。第六種訊號的候選，四問改成：分組邊界的客觀來源是什麼、既有路徑靠什麼維持不變、搬移前盤點過哪些路徑風險（內嵌路徑的公開網址、依 tag 觸發或依路徑篩選的 CI workflow、以相對路徑寫的建置期檔案引入、跨套件的路徑相依）、回到平鋪目錄讀者會失去什麼。並附兩條做法：測試跟著原始碼的分組一起搬（內嵌測試超過行數門檻時搬到同名子檔）；切刀依路徑相依排序，先動目錄本身的刀、再動目錄內分組的刀，不用 worktree 平行做。
 
-收斂走 conclude，再經 promote 或 link 轉成變更。結論的寫法與一般討論相同（見上方「結論怎麼寫」）：收斂轉出時，Decision 一句定論起頭、其後條列，分幾刀就每刀一個 bullet；Rejected alternatives 每個候選一行「方案——落敗理由」。結論規劃分期立案（先立一刀、封存後再回同一份記錄轉出下一刀）時，conclude 帶一次 `--hold`；最後一刀由 propose 轉出時帶 `--last`，之後最後一個轉出變更封存時記錄自動隨行封存；忘了帶 `--last` 就執行一次 `speclink discuss archive <slug>` 收尾；沒帶旗標的記錄在最後一個轉出變更封存時隨行封存，之後的刀走新討論（見上方「分期轉出」）。你全數否決時，仍然要 conclude 並封存，不能 discard：Decision 寫一句「不做」的定論即可、不強制條列，Rejected alternatives 每個候選一行寫方案與落敗理由。
+收斂走 conclude，再經 promote 或 link 轉成變更。結論的寫法與一般討論相同（見上方「結論怎麼寫」）：收斂轉出時，Decision 一句定論起頭、其後條列，分幾刀就每刀一個 bullet；Rejected alternatives 每個候選一行「方案 — 落敗理由」。結論規劃分期立案（先立一刀、封存後再回同一份記錄轉出下一刀）時，conclude 帶一次 `--hold`；最後一刀由 propose 轉出時帶 `--last`，之後最後一個轉出變更封存時記錄自動隨行封存；忘了帶 `--last` 就執行一次 `speclink discuss archive <slug>` 收尾；沒帶旗標的記錄在最後一個轉出變更封存時隨行封存，之後的刀走新討論（見上方「分期轉出」）。你全數否決時，仍然要 conclude 並封存，不能 discard：Decision 寫一句「不做」的定論即可、不強制條列，Rejected alternatives 每個候選一行寫方案與落敗理由。
 
 ## Remote 模式
 

@@ -1,0 +1,107 @@
+schema: spec-driven
+created: 2026-10-12
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: detail-content-redesign
+started_at: 2026-10-12
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-13
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 14
+reviewed_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: 7c8bff1f97d468837b236657e6905e158d7d2d3c86498ec42f6736c2f111abfb
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 9328e20e2cdfd1c721e0aabadc5fdb978d7b07311e93f1ba0258eb71984e50e4
+  - path: packages/ui/src/__tests__/archivedDetailPage.test.tsx
+    hash: cdbe22ea32cced583fb3d01e2c174a108eda492d984929d504838c01f8e26603
+  - path: packages/ui/src/__tests__/conclusionDoc.test.tsx
+    hash: 781c60cf1cb2eefd753f20684fdf2f6e5679ea8ab227ae0508be07c91d7a4768
+  - path: packages/ui/src/__tests__/contextDoc.test.tsx
+    hash: d721d04fb7feb0919d432873f98b37d7b124fdbf9383960f37ddc58d30a10ca9
+  - path: packages/ui/src/__tests__/discussionDetailPage.test.tsx
+    hash: 4486a61f50af929152bc8b53053c2938c42a7515cdb7d38f37518f971d176381
+  - path: packages/ui/src/__tests__/discussionModel.test.ts
+    hash: 4c018e80fd7eea1947fa00151c2db6203b856ff8fc67c1ac0e95c6e36513e650
+  - path: packages/ui/src/__tests__/markdown.test.tsx
+    hash: 66b308ca6f8fb139dbd6dfb96bfb744ea54e9caefbf40f4bdf0579bff3e7a51a
+  - path: packages/ui/src/__tests__/promotedDoc.test.tsx
+    hash: cd786885fc570a64f10bf672c7124882c9fa3abaf3bf3493fbf4daee8b3a88fc
+  - path: packages/ui/src/__tests__/roundsDoc.test.tsx
+    hash: 30bee976fe3691d306f84ec71af5525d116bf05de67d22dcb2c81f1b8c29fdb1
+  - path: packages/ui/src/components/ArchivedDetailPage.tsx
+    hash: 80a629808cd1f59d7d3d85dbcbc5f63c312271f006f2ba92f4da951e9ad91a8b
+  - path: packages/ui/src/components/ConclusionDoc.tsx
+    hash: 88e39393c2794ce94ea59a8f5c1820d8139b88029d6e12e613d6ef74472eb3bb
+  - path: packages/ui/src/components/ContextDoc.tsx
+    hash: 10b6feec17ca8ab21503622e48a60127743a1bdde517c7ce955f7f0905907fef
+  - path: packages/ui/src/components/DiscussionDetailPage.tsx
+    hash: cd2e5b74ef919c04cb32190caad154bacaaba9803eb4d703bee0aef5a22c5ffb
+  - path: packages/ui/src/components/DocParts.tsx
+    hash: 9b49719f3c3b3b06aae358a76c4e76dd158cc3399b1bad9ce742fc2fe2ac4710
+  - path: packages/ui/src/components/Markdown.tsx
+    hash: e8284be06763d0aa80f9e4747e8d1933197cabf273708800c8be29db0e7066ee
+  - path: packages/ui/src/components/PromotedDoc.tsx
+    hash: 21d108207c7f57d4d001dafa222df9ab15fbd83ec37a9062c937ed1bfe01790e
+  - path: packages/ui/src/components/RoundsDoc.tsx
+    hash: 17b2ae75a63ed326e07e4fa9bf5e45c98ff8017a460e569e77e1ffc76575e474
+  - path: packages/ui/src/components/discussionDocSummary.tsx
+    hash: 49b7ca8208876ba336f67c0ae20696bf2556c32ebd87ff977dbcf680b4c733dc
+  - path: packages/ui/src/discussionModel.ts
+    hash: d28fc57060ec0f0b4cb9116fae2d3b7186d33f1e1260068974beca6296350574
+  - path: packages/ui/src/i18n.tsx
+    hash: a3d8d90fd2a193de228b766040a4e480dc874bbe3578662120a620b02c78f112
+  - path: packages/ui/src/index.ts
+    hash: 610793a707c23cdbc6098f65f1d0bd2b00028c91bbc8f57ecbb170a5554efd7b
+verified_at: 2026-10-13
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 14
+verified_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: 7c8bff1f97d468837b236657e6905e158d7d2d3c86498ec42f6736c2f111abfb
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 9328e20e2cdfd1c721e0aabadc5fdb978d7b07311e93f1ba0258eb71984e50e4
+  - path: packages/ui/src/__tests__/archivedDetailPage.test.tsx
+    hash: cdbe22ea32cced583fb3d01e2c174a108eda492d984929d504838c01f8e26603
+  - path: packages/ui/src/__tests__/conclusionDoc.test.tsx
+    hash: 781c60cf1cb2eefd753f20684fdf2f6e5679ea8ab227ae0508be07c91d7a4768
+  - path: packages/ui/src/__tests__/contextDoc.test.tsx
+    hash: d721d04fb7feb0919d432873f98b37d7b124fdbf9383960f37ddc58d30a10ca9
+  - path: packages/ui/src/__tests__/discussionDetailPage.test.tsx
+    hash: 4486a61f50af929152bc8b53053c2938c42a7515cdb7d38f37518f971d176381
+  - path: packages/ui/src/__tests__/discussionModel.test.ts
+    hash: 4c018e80fd7eea1947fa00151c2db6203b856ff8fc67c1ac0e95c6e36513e650
+  - path: packages/ui/src/__tests__/markdown.test.tsx
+    hash: 66b308ca6f8fb139dbd6dfb96bfb744ea54e9caefbf40f4bdf0579bff3e7a51a
+  - path: packages/ui/src/__tests__/promotedDoc.test.tsx
+    hash: cd786885fc570a64f10bf672c7124882c9fa3abaf3bf3493fbf4daee8b3a88fc
+  - path: packages/ui/src/__tests__/roundsDoc.test.tsx
+    hash: 30bee976fe3691d306f84ec71af5525d116bf05de67d22dcb2c81f1b8c29fdb1
+  - path: packages/ui/src/components/ArchivedDetailPage.tsx
+    hash: 80a629808cd1f59d7d3d85dbcbc5f63c312271f006f2ba92f4da951e9ad91a8b
+  - path: packages/ui/src/components/ConclusionDoc.tsx
+    hash: 88e39393c2794ce94ea59a8f5c1820d8139b88029d6e12e613d6ef74472eb3bb
+  - path: packages/ui/src/components/ContextDoc.tsx
+    hash: 10b6feec17ca8ab21503622e48a60127743a1bdde517c7ce955f7f0905907fef
+  - path: packages/ui/src/components/DiscussionDetailPage.tsx
+    hash: cd2e5b74ef919c04cb32190caad154bacaaba9803eb4d703bee0aef5a22c5ffb
+  - path: packages/ui/src/components/DocParts.tsx
+    hash: 9b49719f3c3b3b06aae358a76c4e76dd158cc3399b1bad9ce742fc2fe2ac4710
+  - path: packages/ui/src/components/Markdown.tsx
+    hash: e8284be06763d0aa80f9e4747e8d1933197cabf273708800c8be29db0e7066ee
+  - path: packages/ui/src/components/PromotedDoc.tsx
+    hash: 21d108207c7f57d4d001dafa222df9ab15fbd83ec37a9062c937ed1bfe01790e
+  - path: packages/ui/src/components/RoundsDoc.tsx
+    hash: 17b2ae75a63ed326e07e4fa9bf5e45c98ff8017a460e569e77e1ffc76575e474
+  - path: packages/ui/src/components/discussionDocSummary.tsx
+    hash: 49b7ca8208876ba336f67c0ae20696bf2556c32ebd87ff977dbcf680b4c733dc
+  - path: packages/ui/src/discussionModel.ts
+    hash: d28fc57060ec0f0b4cb9116fae2d3b7186d33f1e1260068974beca6296350574
+  - path: packages/ui/src/i18n.tsx
+    hash: a3d8d90fd2a193de228b766040a4e480dc874bbe3578662120a620b02c78f112
+  - path: packages/ui/src/index.ts
+    hash: 610793a707c23cdbc6098f65f1d0bd2b00028c91bbc8f57ecbb170a5554efd7b
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-13

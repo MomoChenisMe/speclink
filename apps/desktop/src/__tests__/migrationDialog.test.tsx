@@ -121,17 +121,17 @@ describe("MigrationDialog", () => {
     const dialog = screen.getByTestId("migration-dialog");
     const eyebrow = screen.getByText("Local → Remote").closest("div") as HTMLElement;
     expect(eyebrow.className).not.toContain("text-primary");
-    expect(screen.getByText(/openspec\/.*改名備份/).closest("div")!.className).toContain("amber");
+    expect(screen.getByText(/openspec\/.*改名備份/).closest("div")!.className).toContain("status-warning");
 
     fireEvent.click(screen.getByRole("button", { name: "開始遷移" }));
     const running = screen.getByRole("status");
-    expect(running.className).toContain("sky");
+    expect(running.className).toContain("status-progress");
     expect(running.querySelector("svg")?.getAttribute("class")).toContain(SEMANTIC_TONE.inProgress);
 
     resolveMigration(RESULT);
     await screen.findByText(/已遷移 14 份文件/);
     const check = dialog.querySelector(".rounded-full") as HTMLElement;
-    expect(check.className).toContain("emerald");
+    expect(check.className).toContain("status-success");
     expect(check.className).not.toContain("bg-primary");
   });
 

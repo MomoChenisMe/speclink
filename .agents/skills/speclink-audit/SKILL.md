@@ -5,16 +5,8 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.44.0"
+  version: "v1.48.1"
   generatedBy: "Speclink"
----
-
-## Shared execution
-
-Codex and Copilot use the same skills. Names such as `speclink-propose` and `speclink-apply` are skill entry points, not CLI subcommands; invoke them using your agent's skill interface. Execute the documented `speclink <verb> [arguments]` operations as shell commands. For interactive questions use your available question tool; if none is available, ask the user directly and wait.
-
-When executing `speclink new change`, `speclink review stamp`, or `speclink verify stamp`, identify the agent actually running this skill: Codex appends `--agent codex`, Copilot appends `--agent copilot`. If you cannot identify yourself, omit --agent. Do not infer the executing agent from the selected tools in `.speclink.yaml` or from the directory that contains this skill. Command examples below omit the flag so they work for either agent; append the actual agent when known.
-
 ---
 
 Audit changed code for security sharp edges — API design traps, dangerous defaults, and interfaces that make it easy to do the wrong thing.
@@ -27,8 +19,8 @@ Good APIs don't require developers to "be careful" to stay secure. If the correc
 
 This skill operates in two modes depending on how it's invoked:
 
-- **Standalone** (`speclink-audit`): Full 3-agent parallel analysis on current git diff. See [Standalone Mode](#standalone-mode).
-- **Discipline** (via `speclink-apply` when `audit: true`): Condensed checklist applied during implementation. See [Discipline Mode](#discipline-mode).
+- **Standalone** (`$speclink-audit`): Full 3-agent parallel analysis on current git diff. See [Standalone Mode](#standalone-mode).
+- **Discipline** (via `$speclink-apply` when `audit: true`): Condensed checklist applied during implementation. See [Discipline Mode](#discipline-mode).
 
 Both modes share the same [Core Framework](#core-framework).
 
@@ -36,7 +28,7 @@ Both modes share the same [Core Framework](#core-framework).
 
 ## Standalone Mode
 
-When invoked directly as `speclink-audit`:
+When invoked directly as `$speclink-audit`:
 
 ### Phase 1: Gather Changes
 
@@ -46,7 +38,7 @@ If there are no changes, report "No changes to audit" and stop.
 
 ### Phase 2: Parallel 3-Agent Analysis
 
-Launch 3 agents in parallel (one message, 3 tool calls). Each agent receives the full diff and analyzes it through one adversary lens.
+Launch 3 agents in parallel (one message, 3 tool calls). Each agent receives the full diff and analyzes it through one adversary lens. If you cannot spawn sub-agents, run the three lenses yourself one after another, and keep each lens's findings separate until Phase 3.
 
 **Agent 1 — The Scoundrel (壞蛋)**
 
@@ -84,21 +76,29 @@ Search the diff for:
 - Configuration cliffs: one wrong value = catastrophe with no warning (e.g., `verify_ssl: fasle`)
 - Stringly-typed security: permissions as comma-separated strings instead of enums
 
-### Phase 3: Consolidate and Fix
+### Phase 3: Consolidate and Report
 
-Merge findings from all 3 agents. For each finding:
+Standalone mode reports; it does not edit files. Fixing is the user's call — a change through `$speclink-propose`, or their own edit. (Discipline mode below fixes as it goes, because there it runs inside apply.)
 
-- If fixable: apply the fix directly
-- If false positive or not worth changing: skip without debate
+Merge findings from all 3 lenses. For each finding:
+
+- Fixable → name the fix: the file, and the change that removes the trap
+- False positive or not worth changing → skip without debate
 - Classify severity: Critical / High / Medium / Low
 
-End with a brief summary of what was fixed (or confirm the code is clean).
+End with a brief summary of the findings and their proposed fixes (or confirm the code is clean).
+
+**Standalone check** — before you report:
+
+- [ ] All three lenses ran over the full diff (Phase 2), as agents or one after another.
+- [ ] No file was edited; every fixable finding names its fix (Phase 3).
+- [ ] Every finding has a severity from the table in **Severity Classification**.
 
 ---
 
 ## Discipline Mode
 
-When referenced by `speclink-apply` (via `speclink instructions --skill audit`), do NOT launch the 3-agent workflow above. Instead, apply this condensed checklist continuously during implementation.
+When referenced by `$speclink-apply` (via `speclink instructions --skill audit`), do NOT launch the 3-agent workflow above. Instead, apply this condensed checklist continuously during implementation.
 
 ### Quick 3-Role Check
 

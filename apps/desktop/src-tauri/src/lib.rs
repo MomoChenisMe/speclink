@@ -16,9 +16,12 @@
 //! 維持同步的只有純記憶體或純視窗操作，不觸檔案系統、不 spawn 子進程：
 //!
 //! - `startup_dir`——讀行程環境（啟動時的工作目錄）
+//! - `app_info`——讀編譯期版本常數與平台（關於頁）
 //! - `connection_state`——讀記憶體中的 TokenManager 健康狀態
 //! - `remote_unwatch`——退訂事件中樞，只動記憶體中的訂閱表
 //! - `toggle_tray_panel`、`hide_tray_panel`、`quit_app`——純視窗／行程操作
+//!   （例外：Windows 的 `toggle_tray_panel` 為 async——在同步 command 內建立視窗，
+//!   Windows 會因 WebView2 死結，見 Tauri `WebviewWindowBuilder::new` 的 Known issues）
 //! - tray recovery 動作轉發（[`tray`] 模組）——只釘 action 名稱與聚焦政策
 //!
 //! 新增 command 時：只要碰到檔案系統或子進程，就是 async＋spawn_blocking。
@@ -27,17 +30,24 @@ pub mod cli_install;
 pub mod connections;
 pub mod event_manager;
 mod portable;
+mod fs_actions;
 pub mod remote;
 pub mod tray;
 mod watch;
-
-#[cfg(target_os = "macos")]
 mod panel;
+#[cfg(target_os = "macos")]
+mod trackpad_gesture;
 
 use std::path::PathBuf;
 
-use serde_json::{json, Value};
+use serde_json::Value;
 use tauri::{Emitter, Manager};
+
+/// 關於頁的版本資訊（desktop-about-page design D1）：app 版號由殼帶入，其餘由 desktop-core 回齊。
+#[tauri::command]
+fn app_info(app: tauri::AppHandle) -> speclink_desktop_core::project::AppInfo {
+    speclink_desktop_core::project::app_info(&app.package_info().version.to_string())
+}
 
 #[tauri::command]
 async fn cli_install_probe(app: tauri::AppHandle) -> Result<cli_install::CliInstallProbe, String> {
@@ -374,6 +384,73 @@ async fn archived_station_ticket(
     .map_err(|e| format!("archived_station_ticket worker failed: {e}"))
 }
 
+/// change artifact 的磁碟位置（詳情頁「開啟 ▾」）：與 `document` 同一套解析（worktree 副本）。
+#[tauri::command]
+async fn document_location(
+    root: PathBuf,
+    change: String,
+    artifact: String,
+) -> Result<Option<speclink_desktop_core::query::DocumentLocation>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::query::document_location_at(&root, &change, &artifact)
+    })
+    .await
+    .map_err(|e| format!("document_location worker failed: {e}"))
+}
+
+/// 討論記錄的磁碟位置（詳情頁「開啟 ▾」）：與 `discussion_document` 同一套解析（封存後備）。
+#[tauri::command]
+async fn discussion_location(
+    root: PathBuf,
+    slug: String,
+) -> Result<Option<speclink_desktop_core::query::DocumentLocation>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::discussions::discussion_location_at(&root, &slug)
+    })
+    .await
+    .map_err(|e| format!("discussion_location worker failed: {e}"))
+}
+
+/// 正式規格的磁碟位置（規格詳情頁「開啟 ▾」）：與 `spec_document` 同一個 store。
+#[tauri::command]
+async fn spec_location(
+    root: PathBuf,
+    capability: String,
+) -> Result<Option<speclink_desktop_core::query::DocumentLocation>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::query::spec_location_at(&root, &capability)
+    })
+    .await
+    .map_err(|e| format!("spec_location worker failed: {e}"))
+}
+
+/// 手冊頁的磁碟位置（手冊頁「開啟 ▾」）：與 `get_manual_page` 同一條 slug 守門與路徑解析。
+#[tauri::command]
+async fn manual_location(
+    root: PathBuf,
+    slug: String,
+) -> Result<Option<speclink_desktop_core::query::DocumentLocation>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::manual::manual_location_at(&root, &slug)
+    })
+    .await
+    .map_err(|e| format!("manual_location worker failed: {e}"))
+}
+
+/// 已封存 change 的 artifact 磁碟位置（已封存詳情頁「開啟 ▾」）：與 `archived_document` 同一個 store。
+#[tauri::command]
+async fn archived_document_location(
+    root: PathBuf,
+    dated_name: String,
+    artifact: String,
+) -> Result<Option<speclink_desktop_core::query::DocumentLocation>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        speclink_desktop_core::query::archived_document_location_at(&root, &dated_name, &artifact)
+    })
+    .await
+    .map_err(|e| format!("archived_document_location worker failed: {e}"))
+}
+
 #[tauri::command]
 async fn list_discussions(root: PathBuf) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -656,24 +733,49 @@ async fn reveal_in_folder(app: tauri::AppHandle, path: String) -> Result<(), Str
     app.opener().reveal_item_in_dir(&path).map_err(|e| e.to_string())
 }
 
-/// 寫入 config.yaml 的「專案說明」與「產出規則」。`context: None`＝不動、
+/// 以系統預設 App 開啟詳情頁目前分頁的文件（design D4「開啟 ▾」）：與
+/// `reveal_in_folder` 同一條 opener 路徑；只收實際目標為 `.md` 的檔案，其餘拒絕
+/// （見 `check_default_open`）。
+#[tauri::command]
+async fn open_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    speclink_desktop_core::fs_actions::check_default_open(&path)?;
+    app.opener()
+        .open_path(&path, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
+/// 寫入 config.yaml 的「專案說明」「產出規則」與「審查規則」。`context: None`＝不動、
 /// `Some(文字)`＝設值（空白即移除鍵，core 落實）；`rules: None`＝不動、
-/// `Some(節序清單)`＝整份代換。政策欄位不受本 command 波及。
+/// `Some(節序清單)`＝整份代換；`review` 同理（`Some` 整塊代換）。政策欄位不受本
+/// command 波及。
 #[tauri::command]
 async fn write_workflow_content(
     root: PathBuf,
     context: Option<String>,
     rules: Option<Vec<(String, Vec<String>)>>,
+    review: Option<speclink_desktop_core::settings::ReviewConfig>,
 ) -> Result<(), String> {
-    let edit = match context {
-        Some(text) => speclink_desktop_core::settings::ContextEdit::Set(text),
-        None => speclink_desktop_core::settings::ContextEdit::Keep,
-    };
     tauri::async_runtime::spawn_blocking(move || {
-        speclink_desktop_core::settings::write_workflow_content_at(&root, &edit, rules.as_deref())
+        speclink_desktop_core::settings::write_workflow_content_at(&root, &content_edit(context, &rules, &review))
     })
     .await
     .map_err(|e| format!("write_workflow_content worker failed: {e}"))?
+}
+
+/// 兩個內容寫入指令共用的參數轉換：context 為 null 不動、有值即設值（空白＝移除，
+/// core 落實）；rules 與 review 為 null 不動。
+fn content_edit<'a>(
+    context: Option<String>,
+    rules: &'a Option<Vec<(String, Vec<String>)>>,
+    review: &'a Option<speclink_desktop_core::settings::ReviewConfig>,
+) -> speclink_desktop_core::settings::ContentEdit<'a> {
+    use speclink_desktop_core::settings::{ContentEdit, ContextEdit};
+    ContentEdit {
+        context: context.map_or(ContextEdit::Keep, ContextEdit::Set),
+        rules: rules.as_deref(),
+        review: review.as_ref(),
+    }
 }
 
 /// 連線 registry 檔位置：appConfigDir 下 connections.json（design 決策 4）。
@@ -1113,15 +1215,11 @@ async fn remote_write_workflow_content(
     repo: String,
     context: Option<String>,
     rules: Option<Vec<(String, Vec<String>)>>,
+    review: Option<speclink_desktop_core::settings::ReviewConfig>,
     expected_revision: u64,
 ) -> Result<u64, remote::RemoteSettingsError> {
     with_remote_settings(app, connection_id, project, repo, move |ws, credentials| {
-        ws.write_workflow_content(
-            credentials,
-            context.as_deref(),
-            rules.as_deref(),
-            expected_revision,
-        )
+        ws.write_workflow_content(credentials, &content_edit(context, &rules, &review), expected_revision)
     })
     .await
 }
@@ -1365,8 +1463,9 @@ async fn remote_document(
     .await
 }
 
-/// 遠端活工單：`GET /changes/{name}/{station}` 已是結構化 rounds，直接取 `rounds`
-/// 即 D1 形狀；404 與本地語意一致回 null。未知站別不拼 URL，直接 null。
+/// 遠端活工單：`GET /changes/{name}/{station}` 已是結構化 rounds，經
+/// `remote::station_ticket_payload` 交給與本機同一個組裝函式；404 與本地語意一致回
+/// null，不認得的 rules baseline 同樣 null。未知站別不拼 URL，直接 null。
 #[tauri::command]
 async fn remote_station_ticket(
     app: tauri::AppHandle,
@@ -1381,7 +1480,7 @@ async fn remote_station_ticket(
             return Ok(None);
         };
         ws.station_ticket(credentials, &change, st.noun)
-            .map(|ticket| ticket.map(|resp| json!({ "rounds": resp.rounds })))
+            .map(|ticket| ticket.and_then(remote::station_ticket_payload))
             .map_err(|error| error.message)
     })
     .await
@@ -1764,32 +1863,29 @@ fn remote_unwatch(app: tauri::AppHandle, connection_id: String, project: String,
     events.unregister(&remote_locator_key(&connection_id, &project, &repo));
 }
 
-/// 系統匣面板 toggle（tray-status-menu「面板樣式（macOS）」）：macOS 委派
-/// panel 模組；其他平台恆回 Err（面板樣式偏好在非 macOS 不可達，此為守門）。
-#[cfg(target_os = "macos")]
+/// 系統匣面板 toggle（tray-status-menu「面板樣式」）：委派 panel 模組（Linux 恆回 Err，
+/// 系統匣樣式恆為原生選單、不可達，此為守門）。macOS 維持同步——NSPanel 操作須在主執行緒。
+#[cfg(not(target_os = "windows"))]
 #[tauri::command]
 fn toggle_tray_panel(app: tauri::AppHandle) -> Result<(), String> {
     panel::toggle(&app)
 }
 
-#[cfg(not(target_os = "macos"))]
+/// Windows 版必須 async：首次開啟會建立面板視窗，在同步 command 內建立視窗 Windows 會因
+/// WebView2 死結（Tauri `WebviewWindowBuilder::new` 的 Known issues；tray-panel-windows design D6）。
+#[cfg(target_os = "windows")]
 #[tauri::command]
-fn toggle_tray_panel() -> Result<(), String> {
-    Err("tray panel is macOS-only".to_string())
+async fn toggle_tray_panel(app: tauri::AppHandle) -> Result<(), String> {
+    panel::toggle(&app)
 }
 
 /// 面板交接主視窗前先收合（tray-status-menu「面板交接主視窗後滑鼠互動完整」）：
-/// macOS 委派 panel 模組的冪等 hide；其他平台無面板，無事——喚起主視窗的前端
-/// 路徑在各平台共用，此命令不得成為非 macOS 的阻斷點。不會失敗，故無回傳值。
-#[cfg(target_os = "macos")]
+/// 委派 panel 模組的冪等 hide（Linux 無面板，無事）——喚起主視窗的前端路徑在各平台共用，
+/// 此命令不得成為阻斷點。不會失敗，故無回傳值。
 #[tauri::command]
 fn hide_tray_panel(app: tauri::AppHandle) {
     panel::hide(&app);
 }
-
-#[cfg(not(target_os = "macos"))]
-#[tauri::command]
-fn hide_tray_panel() {}
 
 /// 結束 app（tray-status-menu「開啟視窗與結束動作」）：webview 無法自行結束
 /// 行程的能力橋接——面板動作區「結束」經此命令結束整個 app。
@@ -1818,8 +1914,8 @@ pub fn run() {
     } else {
         builder
     };
-    // 面板樣式相依僅 macOS 註冊（design D6）：positioner 供 tray 相對定位、
-    // nspanel 供不搶焦點的 NSPanel 容器。
+    // macOS 面板相依：positioner 供 tray 相對定位、nspanel 供不搶焦點的 NSPanel 容器。
+    // Windows 面板由 panel 模組依圖示位置自行定位（tray-panel-windows design D3），不需外掛。
     #[cfg(target_os = "macos")]
     let builder = builder
         .plugin(tauri_plugin_positioner::init())
@@ -1866,10 +1962,13 @@ pub fn run() {
                         .build()?;
                 }
             }
+            #[cfg(target_os = "macos")]
+            trackpad_gesture::install(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             portable_mode,
+            app_info,
             cli_install_probe,
             cli_deploy,
             cli_zprofile_append,
@@ -1923,6 +2022,14 @@ pub fn run() {
             fork_schema,
             init_schema,
             reveal_in_folder,
+            open_path,
+            document_location,
+            discussion_location,
+            spec_location,
+            manual_location,
+            archived_document_location,
+            fs_actions::open_in_terminal,
+            fs_actions::open_in_editor,
             delete_schema,
             connection_list,
             connection_add,

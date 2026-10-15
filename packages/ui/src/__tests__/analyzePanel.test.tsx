@@ -76,9 +76,9 @@ describe("AnalyzePanel（結構驗證列＋維度摘要卡＋發現卡）", () =
     render(<AnalyzePanel report={report} validate={ok} />);
     const warn = document.querySelector('[data-finding="AMB-2"]') as HTMLElement;
     const badge = within(warn).getByText("Warning");
-    expect(badge.className).toContain("amber");
+    expect(badge.className).toContain("status-warning");
     expect(badge.className).not.toContain("primary");
-    expect(within(dim("Ambiguity")).getByText("18 個問題").className).toContain("amber");
+    expect(within(dim("Ambiguity")).getByText("18 個問題").className).toContain("status-warning");
   });
 
   it("驗證通過列與零問題維度為中性，不以主色表達狀態", () => {

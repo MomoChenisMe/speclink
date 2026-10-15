@@ -3,6 +3,7 @@
 //（spec-archive-drawer design D6：已就緒變更＋已結論未轉出討論）。分頁列只管
 // 目前開著的專案；曾開啟過的「最近開啟」記憶另見 recents.test.ts。
 import { describe, it, expect } from "vitest";
+import { dictionaryProblems } from "@speclink/ui";
 
 import {
   MAX_TABS,
@@ -61,7 +62,7 @@ describe("upsertTab（spec「成功開啟後記入分頁並去重上移」的清
     tabs = upsertTab(tabs, { locator: local("extra"), name: "extra" });
     expect(tabs).toHaveLength(MAX_TABS);
     expect(keys(tabs)).not.toContain("local:p0");
-    expect(keys(tabs).at(-1)).toBe("local:extra");
+    expect(keys(tabs)[tabs.length - 1]).toBe("local:extra");
   });
 
   it("updates the display name of an existing tab", () => {
@@ -190,7 +191,7 @@ describe("分頁徽章已移除（分頁不顯示計數）", () => {
     expect("app.tabBadgeTooltip" in APP_MESSAGES.en).toBe(false);
   });
 
-  it("zh-TW and en app dictionaries expose the same key set", () => {
-    expect(Object.keys(APP_MESSAGES["zh-TW"]).sort()).toEqual(Object.keys(APP_MESSAGES.en).sort());
+  it("zh-TW and en app dictionaries pass the shared dictionary check (same key set, .one forms aside)", () => {
+    expect(dictionaryProblems(APP_MESSAGES)).toEqual([]);
   });
 });

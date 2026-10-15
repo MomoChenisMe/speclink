@@ -725,11 +725,18 @@ fn every_registry_reason_maps_to_the_frozen_cli_message() {
             "authentication failed — run `speclink auth login`".into(),
             Some("permission_denied"),
         ),
+        // 403 keeps the client-owned frame and relays the server's reason
+        // inside it — a reader write and a non-member read differently.
         (
             403,
-            r#"{"status":403,"reason":"permission_denied","message":"no access"}"#,
-            "access denied — your account has no access to this project; ask a project admin"
-                .into(),
+            r#"{"status":403,"reason":"permission_denied","message":"actor is not a member of project 'demo'"}"#,
+            "access denied — actor is not a member of project 'demo'; ask a project admin".into(),
+            Some("permission_denied"),
+        ),
+        (
+            403,
+            r#"{"status":403,"reason":"permission_denied","message":"your role in project 'demo' is reader; this action needs the editor role"}"#,
+            "access denied — your role in project 'demo' is reader; this action needs the editor role; ask a project admin".into(),
             Some("permission_denied"),
         ),
         (

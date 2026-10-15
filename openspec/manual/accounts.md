@@ -3,8 +3,8 @@ title: 帳號、邀請、存取金鑰與 membership
 section: Remote 模式
 order: 430
 keywords: [邀請, 登入, 存取金鑰, PAT, membership, reader, editor, 403]
-sources: [server-identity, server-policy-write, user-documentation]
-generated: 2026-09-17T16:05:41+08:00
+sources: [server-identity, server-policy-write, user-documentation, "server-web-console#帳號頁呈現我的專案", "server-web-console#管理列表以詳情頁與對話框承載檢視與建立"]
+generated: 2026-10-15T17:40:05+08:00
 ---
 
 # 帳號、邀請、存取金鑰與 membership
@@ -38,21 +38,22 @@ remote 模式的每個人都需要一個帳號、至少一個專案的成員資�
 
 ## 存取金鑰（PAT）
 
-存取金鑰是你自己建立、給 CLI 或桌面 app 用的長效憑證。規格裡叫 PAT。
+存取金鑰是你自己建立、給 CLI 或桌面 app 用的長效憑證。規格裡叫 PAT。它沒有專案範圍：拿它能做什麼，等於你的帳號在各專案的成員資格。
 
-- 到 `/account`，按頁面的建立動作，面板出現後填名稱與到期日。
-- 明文只在建立時顯示一次，附複製動作。重新載入後，清單只顯示開頭幾碼、名稱、到期、上次使用。沒有任何途徑再讀回明文。
-- 撤銷即時生效。撤銷後再用這把金鑰呼叫，回 401。
-- 直接在網址列開 `http://localhost:8080/account/tokens`：得到 HTTP 405 Method Not Allowed。那個路徑只接受表單送出。回到 `/account` 登入後，用 Personal Access Tokens 表單建立。
+- 到 `/account`，按「建立存取金鑰」。畫面中央出現對話框，填名稱與到期日後送出。按下之前，建立欄位不在頁面上。
+- 送出成功後，同一個對話框顯示明文金鑰與複製鈕，並說明只顯示這一次。按「完成」關閉對話框，存取金鑰卡多出這一列，頁面上不會出現明文。
+- 重新載入後，清單只顯示開頭幾碼、名稱、到期、上次使用。沒有任何途徑再讀回明文。
+- 撤銷即時生效。撤銷後再用這把金鑰呼叫，回 401。撤銷鈕怎麼出現，見 [瀏覽器後台](web-console.md)。
+- 直接在網址列開 `http://localhost:8080/api/speclink/v1/web/account/tokens`：得到 HTTP 405 Method Not Allowed。那個網址只接受 POST，由帳號頁送出。回到 `http://localhost:8080/account` 登入後，用存取金鑰表單建立。
 
 > [!CAUTION]
 > 不要把存取金鑰放進 URL、`.speclink.yaml`、repo、文件範例或 shell history。把它貼進應用程式，或經 stdin 交給 CLI。
 
-帳號頁還有這些區塊：
+帳號頁由上而下是四張卡：我的專案、存取金鑰、裝置登入、登入工作階段。存取金鑰以外的三張：
 
-- 我的專案：你隸屬的每個專案，顯示名與角色。這個區塊唯讀。沒有任何隸屬時，區塊顯示「由管理員授予」的說明，不會消失。admin 看到的也是自己的隸屬，不是全部專案。
+- 我的專案：你隸屬的每個專案。每列左邊是顯示名（沒有顯示名時用專案代號）與專案代號，右邊是角色。這張卡唯讀，不能在這裡改隸屬。沒有任何隸屬時，卡內說明隸屬由管理員授予，卡本身不會消失。admin 看到的也是自己的隸屬，不是全部專案。
+- 裝置登入：桌面 app 或 CLI 裝置登入產生的憑證，可逐一撤銷。撤銷即時生效，其他裝置與存取金鑰不受影響。
 - 登入工作階段：唯讀清單，顯示建立與到期。不能逐一撤銷。
-- 裝置憑證：桌面 app 或 CLI 裝置登入產生的憑證，可逐一撤銷。撤銷即時生效，其他裝置與存取金鑰不受影響。
 
 ## 成員資格與角色
 
@@ -62,6 +63,7 @@ remote 模式的每個人都需要一個帳號、至少一個專案的成員資�
 - 桌面 app 依角色停用寫入按鈕只是介面提示。server 才是最終防線。
 - 建立 Project／Repo 不會授予成員資格。Admin 旗標也不是 scope 的通行證。
 - 管理員在 `/admin/users` 對帳號授予或更新 `reader`／`editor`。之後桌面 app 的 scope 清單才顯示該 Project 及其 Repos。
+- 在後台的做法：點該帳號那一列，進入使用者詳情頁的成員資格分頁。每列的角色下拉一改就生效，沒有另外的儲存鈕；末列「加入專案」只列還沒加入的專案。移除一筆成員資格前，確認框會指名使用者與專案代號。
 - 管理員調整成員資格會記入稽核紀錄，含新的角色值。
 
 桌面 app 顯示「此帳號目前沒有任何 Project／Repo membership」，但管理面已有 Project 與 Repo 時：
@@ -71,7 +73,7 @@ remote 模式的每個人都需要一個帳號、至少一個專案的成員資�
 3. 回到桌面 app，重新載入工作區選擇器。
 
 > [!NOTE]
-> 唯讀角色的名稱在規格裡有兩種寫法。角色模型與 `/admin/users` 的說明寫 `reader`；帳號頁的一個較新範例寫 viewer。本頁採用 `reader`。差異記在 [本手冊的來源](about.md)。
+> 唯讀角色的名稱在規格裡有兩種寫法。角色模型、`/admin/users` 的說明與後台成員資格的範例寫 `reader`；帳號摘要的一個範例寫 viewer。本頁採用 `reader`。差異記在 [本手冊的來源](about.md)。
 
 ## 憑證檢查怎麼失敗
 
@@ -91,4 +93,4 @@ server 對每個 API 請求都重新查驗憑證，沒有快取：
 - 密碼、存取金鑰、邀請 token 與登入工作階段識別只以雜湊落庫，也不出現在 log。
 - identity 資料庫的結構版本比 server 新，或不是本 server 建立的：server 拒絕啟動並印出原因，不寫入。
 
-**出處**：`server-identity`、`server-policy-write`、`user-documentation`
+**出處**：`server-identity`、`server-policy-write`、`user-documentation`、`server-web-console`

@@ -1,0 +1,338 @@
+{
+  "version": 2,
+  "change": "desktop-detail-page",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 新增 `packages/ui/src/components/ui/status-pill.tsx`（design D5：`StatusPill({ tone, icon?, children })`，tone 八值對應 token 淡底深字、`rounded-full h-5 px-2 text-[11px]`），`packages/ui/src/components/reviewStyle.tsx` 與 `verifyStyle.tsx` 各加 `REVIEW_PILL_TONE`／`VERIFY_PILL_TONE` 對照（已審查／已驗證 stamp、進行中 progress、過期 warning、未通過 destructive），`packages/ui/src/index.ts` 匯出。驗證：新增 `packages/ui/src/__tests__/statusPill.test.tsx`——八種 tone 各渲染對應 token class、無原生色階、icon 槽渲染；`npm test -w packages/ui -- statusPill`；`npm test -w packages/ui -- theme` 通過（掃描面無原生色階）。",
+      "files": [
+        "packages/ui/src/components/reviewStyle.tsx",
+        "packages/ui/src/components/verifyStyle.tsx",
+        "packages/ui/src/index.ts",
+        "packages/ui/src/__tests__/statusPill.test.tsx",
+        "packages/ui/src/components/ui/status-pill.tsx"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 `apps/desktop/src/components/TitleBar.tsx` 的 `MainTitleBar` 加 `trailing?: ReactNode` 槽（麵包屑之後、Windows 視窗鈕之前）；新增 `apps/desktop/src/components/DetailNav.tsx`（design D2：‹ 鈕、`n / m` 等寬 11px、› 鈕，`index` 為 -1 或 `total` 為 0 時回 null，到頭對應鈕 disabled，`aria-label` 取 `detail.prev`／`detail.next`）；i18n 兩語系加 `detail.prev`、`detail.next`、`detail.position`（spec「詳情頁的導覽與返回」）。驗證：新增 `apps/desktop/src/__tests__/detailNav.test.tsx`——2/3 時兩鈕可按且文字為「2 / 3」、1/3 時 ‹ disabled、3/3 時 › disabled、index -1 不渲染、點擊呼叫 `onStep(±1)`；`apps/desktop/src/__tests__/titleBar.test.tsx` 加「`trailing` 渲染在麵包屑右側」；`npm test -w apps/desktop -- detailNav titleBar`。",
+      "files": [
+        "apps/desktop/src/__tests__/titleBar.test.tsx",
+        "apps/desktop/src/components/TitleBar.tsx",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/__tests__/detailNav.test.tsx",
+        "apps/desktop/src/components/DetailNav.tsx"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 `apps/desktop/src-tauri/src/lib.rs` 新增 `open_path` 命令（`app.opener().open_path(&path, None::<&str>)`）並註冊；`apps/desktop/src/adapter/fsActions.ts` 的 `FsActionsAdapter` 加 `openDefault`；`apps/desktop/src/store.ts` 加 `openDocumentDefault(path)`、`revealDocument(path)`、`copyDocumentPath(path)`、`copyDocumentContent(text)`（前三者失敗走既有失敗 toast，主詞為相對路徑）；新增 `apps/desktop/src/components/DocumentActionsMenu.tsx`（design D4：ghost 小鈕「開啟 ▾」、首列等寬灰字相對路徑、以預設 App 開啟／在 Finder 顯示（`fs.revealIn.<platform>`）／複製路徑；`path` 為 null 時只剩「複製內容」且 `content` 為 null 時該項 disabled；兩者皆 null 時回 null）；i18n 加 `detail.open`、`detail.openDefault`、`detail.copyContent`（spec「詳情頁的文件動作」）。驗證：新增 `apps/desktop/src/__tests__/documentActionsMenu.test.tsx`——本機三項與路徑首列、macOS 標籤為 Finder、remote 只有「複製內容」、`content` null 時 disabled、各項呼叫對應 callback、兩者皆 null 不渲染；`store.test.ts` 加「`revealDocument` 失敗發失敗 toast 且主詞為路徑」；`cargo build -p speclink-desktop` 通過；`npm test -w apps/desktop -- documentActionsMenu store`。",
+      "files": [
+        "apps/desktop/core/src/fs_actions.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/adapter/fsActions.ts",
+        "apps/desktop/src/store.ts",
+        "apps/desktop/src/__tests__/documentActionsMenu.test.tsx",
+        "apps/desktop/src/components/DocumentActionsMenu.tsx"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 新增 `packages/ui/src/components/DetailHeader.tsx`（標題列＋出身列＋動作區的共用骨架：等寬 22px 標題單行截斷、`CopyButton`、章籤槽、動作槽；出身列 `text-xs text-muted-foreground` 單行、段以「·」分隔、`min-w-0 truncate`）與 `packages/ui/src/components/ChangeDetailPage.tsx`（design D6：props 同 `RichDetailDrawer` 去掉 `open`／`onOpenChange`、`drawerVerb` 改 `detailVerb`、加 `renderDocumentActions`；標題列章籤用 `StatusPill`；動作區「分析」＋依階段鈕（進行中「退回提案中」、已就緒「封存」主要鈕、有 `onClaim`「認領」）＋「⋯」`DropdownMenu`（封存／刪除，停用時項目下方灰字原因、刪除 `text-destructive` 置底）；「狀態」卡三列；`detailVerb` 相符時 `AnalyzePanel` 包在卡內置於狀態卡下；內容卡 `Tabs variant=\"card\"` 的 `TabsList actions` 放 `renderDocumentActions(relativePath, content)`，relativePath 依作用中分頁對應、排程為 null；各分頁內容元件原樣搬入；無全螢幕鈕）（spec「變更詳情頁的標頭與狀態卡」「詳情頁的封存與刪除依階段守門」「詳情頁標頭標記受寬度約束且頁不產生水平捲軸」「詳情頁的排程分頁」「詳情頁的工單分頁」「詳情頁文件載入以 skeleton 呈現」「桌面 app 提供動詞操作面」「變更的來源討論多值呈現」「進行中變更可自看板退回提案中」）。驗證：`packages/ui/src/__tests__/richDrawer.test.tsx` 的案例逐條搬到新增的 `packages/ui/src/__tests__/changeDetailPage.test.tsx`（去掉 `role=\"dialog\"`、開關與全螢幕斷言），並新增——標題列兩枚章籤與提示含 email、狀態卡三列文字（`16/17 · 94%`、兩枚帶日期章籤、「第 2 波」「等 1 項」）、none/none 顯示「尚未經過品質關卡」、「⋯」選單封存停用附原因與刪除置底、已就緒時標題列有「封存」鈕、`renderDocumentActions` 於提案分頁收到 `openspec/changes/<name>/proposal.md`、排程分頁收到 null、分析結果卡渲染於狀態卡之下；`planTab.test.tsx`、`reviewBadge.test.tsx`、`verifyBadge.test.tsx` 改掛 `ChangeDetailPage`；`npm test -w packages/ui -- changeDetailPage planTab reviewBadge verifyBadge`。",
+      "files": [
+        "packages/ui/src/__tests__/planTab.test.tsx",
+        "packages/ui/src/__tests__/reviewBadge.test.tsx",
+        "packages/ui/src/__tests__/verifyBadge.test.tsx",
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/__tests__/changeDetailPage.test.tsx",
+        "packages/ui/src/components/ChangeDetailPage.tsx",
+        "packages/ui/src/components/DetailHeader.tsx"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.2 `packages/ui/src/components/TaskList.tsx` 任務列外層改 `<label>`（design D8：點列任一處切換、把手與連結 `onClick` 阻止冒泡且 `onPointerDown` 不觸發、唯讀與 busy 列無 `htmlFor` 且游標預設；勾選框保留 `role=\"checkbox\"` 與「任務 N」標籤），工具列有寫入能力時加灰字提示 `detail.tasksHint`（spec「任務列整列可點」「任務清單拖放排序與自動重編號」「任務分頁提供批次操作工具列」「GUI 勾任務與 CLI 完成語意一致」「表單控制項與按鈕以主題化元件呈現」「任務群組標題與章節標籤同款式」）。驗證：`packages/ui/src/__tests__/taskList.test.tsx` 新增——點文字呼叫 `onToggle` 一次、點把手不呼叫、唯讀列點擊不呼叫、busy 列點擊不呼叫、空白鍵仍可切換、拖曳仍只由把手啟動（既有案例通過）；`npm test -w packages/ui -- taskList`。",
+      "files": [
+        "packages/ui/src/__tests__/taskList.test.tsx",
+        "packages/ui/src/components/TaskList.tsx"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 新增 `packages/ui/src/components/DiscussionDetailPage.tsx`（design D7：`DetailHeader` 骨架——slug 標題＋複製＋狀態籤 `StatusPill`＋改進籤，topic 15px，出身列建立者／N 輪／建立日，右端「封存」（concluded 且有 `onArchiveDiscussion`；hold 時 disabled＋提示 `ddetail.holdHint`）；狀態卡：階段步驟列四站（現站 `StatusPill primary`、過站 ✓、未到站 ○）、「保留在途」列、「衍生變更」列（可點等寬籤＋階段 `StatusPill`，點擊 `onOpenChangeCard`）；內容卡 `Tabs variant=\"card\"` 結論／討論過程 N／背景／衍生變更 N，`TabsList actions` 放 `renderDocumentActions(\"openspec/discussions/<slug>.md\", 原文)`；預設分頁與退回規則原樣）；i18n 加 `ddetail.stationArchived`、`ddetail.holdLabel`、`ddetail.holdHint`、`ddetail.promotedLabel`、`detail.status`、`detail.statusTasks`、`detail.statusQuality`、`detail.statusPlan`、`detail.noQuality`、`detail.archiveMenu`、`detail.deleteMenu`、`detail.tasksHint`（spec「討論詳情頁檢視與轉出變更」「討論詳情頁的改進標示」「討論輪以卡片呈現」「討論結論以欄位標籤呈現」「raw HTML 不以原文呈現」「markdown 內容保留文件結構呈現」「markdown 文件內容行寬有上限」「規格分頁 delta 區段以色標呈現」「提案與設計章節以中文標籤呈現」）。驗證：`packages/ui/src/__tests__/discussionDrawer.test.tsx` 的案例搬到新增的 `packages/ui/src/__tests__/discussionDetailPage.test.tsx`，並新增——promoted＋hold＋promoted_to 兩項時狀態籤「已轉出・保留中」、階段列現站「已轉出」、保留列可見、衍生列兩顆籤各帶「已封存」「進行中」、點進行中籤呼叫 `onOpenChangeCard`、「封存」disabled；無 hold 無 promoted_to 時兩列缺席；`improveBadge.test.tsx` 改掛新元件；`npm test -w packages/ui -- discussionDetailPage improveBadge`。",
+      "files": [
+        "integrations/claude-code/speclink-skills/.claude-plugin/plugin.json",
+        "integrations/claude-code/speclink-skills/README.en.md",
+        "integrations/claude-code/speclink-skills/README.md",
+        "integrations/claude-code/speclink-skills/hooks/board.ts",
+        "integrations/claude-code/speclink-skills/hooks/register.tsx",
+        "integrations/claude-code/speclink-skills/tests/register.test.tsx",
+        "packages/ui/src/__tests__/improveBadge.test.tsx",
+        "packages/ui/src/components/DiscussionDrawer.tsx",
+        "packages/ui/src/__tests__/discussionDetailPage.test.tsx",
+        "packages/ui/src/components/DiscussionDetailPage.tsx"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "4.1 `apps/desktop/src/store.ts`：`drawerVerb`／`clearDrawerVerb` 改名 `detailVerb`／`clearDetailVerb`，新增 `closeDetailPage()`（清四個 `detail*` 與 `detailVerb`），`openDetail`／`openDiscussion` 行為不變但注記改頁語意（design D3；spec「詳情頁互斥」「變更與討論詳情頁的宿主為看板」「看板欄位由生命週期標記驅動」）。驗證：`apps/desktop/src/__tests__/store.test.ts` 既有互斥、落回看板、浮層收掉案例改用新名並通過，新增「`closeDetailPage` 一次清空四欄與 `detailVerb`」；`npm test -w apps/desktop -- store`。",
+      "files": [
+        "apps/desktop/src/App.tsx"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.2 `packages/ui/src/components/KanbanBoard.tsx` 加 `onVisibleOrderChange?: (order: { changes: string[]; discussions: string[] }) => void`，於 `visibleChanges`／`visibleDiscussions` 變動時以 effect 回報（變更依欄序再欄內序；討論為上區全卡依序接欄底已轉出細列）（design D2；spec「詳情頁的導覽與返回」「看板搜尋過濾卡片」「討論於看板第 0 欄兩級呈現」「看板卡片統一解剖學」）。驗證：`packages/ui/src/__tests__/kanban.test.tsx` 新增——初次渲染回報三欄順序、輸入搜尋後回報過濾後順序、討論順序為上區卡後接已轉出細列；`npm test -w packages/ui -- kanban`。",
+      "files": [
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/components/KanbanBoard.tsx"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.3 `apps/desktop/src/App.tsx`：`<main>` 改 `relative`、宿主頁包在 `<div data-testid=\"host-page\">` 內並於任一 `detail*` 非 null 時加 `inert`、`aria-hidden`、`invisible`；`detailChange`／`detailDiscussion` 非 null 時渲染 `<div data-testid=\"detail-page\">` 頁層（`absolute inset-0 overflow-y-auto bg-background animate-in fade-in slide-in-from-bottom-1 duration-150 motion-reduce:animate-none`）掛 `ChangeDetailPage`／`DiscussionDetailPage`（props 自既有 Drawer 接線搬移，`renderDocumentActions` 以 `projectDirOf(locator)` 接絕對路徑渲染 `DocumentActionsMenu`）；麵包屑三段（專案名與頁名點擊 `closeDetailPage`、項目名等寬）與 `MainTitleBar trailing={<DetailNav/>}`（序列取 `visibleOrder` state，由 `KanbanBoard onVisibleOrderChange` 回填；`stepDetail(delta)` 以 `openDetail`／`openDiscussion` 切換）；既有 keydown 處理器加 Esc／Alt+ArrowUp／Alt+ArrowDown（`defaultPrevented` 或焦點在 input／textarea／contenteditable 時不作用）；移除 `RichDetailDrawer`／`DiscussionDrawer` 的掛載（`SpecDrawer`／`ArchivedDrawer` 暫留）；`detailConfirmInFlight` 守門改接 `closeDetailPage`（design D1、D2、D9；spec「詳情頁的導覽與返回」「詳情頁與浮層的進出動畫」「詳情頁的文件動作」「外部變更即時反映」「看板全域操作成功靜默、失敗以 toast 浮層呈現」「封存入口的未結工單三選項」「品質站蓋章配色與主色分離」「介面狀態語意色分層」「主題化提示統一延遲」）。驗證：`apps/desktop/src/__tests__/App.test.tsx` 既有抽屜案例改為——開卡後 `detail-page` 存在且 `host-page` 帶 `inert`、麵包屑為「專案 / 變更 / 名稱」、Esc 後 `detail-page` 消失且看板搜尋輸入值不變、Esc 在 `defaultPrevented` 事件不關頁、焦點在 input 時 Alt+ArrowDown 不切換、Alt+ArrowDown 切到下一張卡、麵包屑「變更」點擊關頁、系統匣開啟事件落到 `detail-page`、封存成功後 `detail-page` 消失、外部刪除目前變更後頁關閉；`npm test -w apps/desktop -- App`。",
+      "files": [
+        "apps/desktop/src/__tests__/App.test.tsx"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.4 刪除 `packages/ui/src/components/RichDetailDrawer.tsx`、`packages/ui/src/components/DiscussionDrawer.tsx`、`packages/ui/src/__tests__/richDrawer.test.tsx`、`packages/ui/src/__tests__/discussionDrawer.test.tsx`；`packages/ui/src/index.ts` 改匯出 `ChangeDetailPage`、`DiscussionDetailPage`、`DetailHeader`、`splitDiscussionSections` 自新檔；`apps/desktop/src/__tests__/tray.test.ts` 的開啟斷言改頁語意（spec「變更子選單動作」「討論列表」）。驗證：`grep -rn 'RichDetailDrawer\\|DiscussionDrawer' apps packages --include=*.ts --include=*.tsx` 零命中；`npm run build -w apps/desktop` 通過；`npm test -w apps/desktop -- tray`。本任務同時落實 spec 以 REMOVED 退場的面板需求：「detail 抽屜互斥」「討論抽屜檢視與轉出變更」「抽屜標頭標記受寬度約束且抽屜不產生水平捲軸」「詳情抽屜的封存與刪除依階段守門」「詳情抽屜的審查資訊列」「變更詳情抽屜標頭的四層結構」「詳情抽屜的驗證資訊列」「討論抽屜的改進標示」「變更與討論抽屜開啟時底層落回看板」「抽屜文件載入以 skeleton 呈現」「抽屜與浮層的開關動畫」「詳情抽屜的排程分頁」「詳情抽屜的工單分頁」——其行為由同名的詳情頁需求承接。",
+      "files": [
+        "apps/desktop/src/__tests__/tray.test.ts",
+        "packages/ui/src/__tests__/archivedDrawer.test.tsx",
+        "packages/ui/src/__tests__/discussionDrawer.test.tsx",
+        "packages/ui/src/__tests__/richDrawer.test.tsx",
+        "packages/ui/src/components/ArchivedDrawer.tsx",
+        "packages/ui/src/components/DeltaBadges.tsx",
+        "packages/ui/src/components/RichDetailDrawer.tsx",
+        "packages/ui/src/components/SectionedDoc.tsx",
+        "packages/ui/src/components/SpecDrawer.tsx"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.1 `openspec/LANGUAGE.md`：「詳情面板」條目改「詳情頁」（design D10：definition、avoid「抽屜、詳情面板」、why 補 2026-10-09 cut 3b 裁定），文件內其餘「詳情面板」字樣改「詳情頁」；`apps/desktop/src/i18n/messages.ts` 的 `board.pageDesc` 改「依生命週期分欄；拖曳卡片調整順序，點卡片開詳情頁」。驗證：`node --test scripts/docs/vocabulary-guard.test.mjs` 通過；`grep -n '詳情面板' openspec/LANGUAGE.md` 只剩 avoid 欄一處；兩語系鍵集合相等測試通過。",
+      "files": [
+        "apps/server-web/src/i18n/messages.ts",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md",
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md",
+        "packages/ui/src/components/ChangeCard.tsx",
+        "scripts/docs/vocabulary-guard.test.mjs"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "5.3 全部對齊：`./target/debug/speclink validate desktop-detail-page` 通過；`npm test -w packages/ui`、`npm test -w apps/desktop` 全綠；`npm run build -w apps/desktop` 通過；`cargo build -p speclink-desktop` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
+      "files": [
+        "apps/desktop/src/__tests__/remoteCapabilities.test.tsx"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "5.3 全部對齊：`./target/debug/speclink validate desktop-detail-page` 通過；`npm test -w packages/ui`、`npm test -w apps/desktop` 全綠；`npm run build -w apps/desktop` 通過；`cargo build -p speclink-desktop` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
+      "files": [
+        "apps/desktop/core/src/discussions.rs",
+        "apps/desktop/core/src/query.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4GKJMM5YX4F7PN0P15KF6P7",
+      "taskDesc": "1.1 新增 `packages/ui/src/components/ui/status-pill.tsx`（design D5：`StatusPill({ tone, icon?, children })`，tone 八值對應 token 淡底深字、`rounded-full h-5 px-2 text-[11px]`），`packages/ui/src/components/reviewStyle.tsx` 與 `verifyStyle.tsx` 各加 `REVIEW_PILL_TONE`／`VERIFY_PILL_TONE` 對照（已審查／已驗證 stamp、進行中 progress、過期 warning、未通過 destructive），`packages/ui/src/index.ts` 匯出。驗證：新增 `packages/ui/src/__tests__/statusPill.test.tsx`——八種 tone 各渲染對應 token class、無原生色階、icon 槽渲染；`npm test -w packages/ui -- statusPill`；`npm test -w packages/ui -- theme` 通過（掃描面無原生色階）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "63b56bf28dd44e2ac69120c09cdb4f5ee34a74db",
+      "touchedFiles": [
+        "packages/ui/src/components/reviewStyle.tsx",
+        "packages/ui/src/components/verifyStyle.tsx",
+        "packages/ui/src/index.ts",
+        "packages/ui/src/__tests__/statusPill.test.tsx",
+        "packages/ui/src/components/ui/status-pill.tsx"
+      ],
+      "recordedAt": "2026-10-10T05:26:55Z"
+    },
+    {
+      "taskId": "tsk_01M4GKJMM6PQB2F2A6K3RRWXQY",
+      "taskDesc": "1.2 `apps/desktop/src/components/TitleBar.tsx` 的 `MainTitleBar` 加 `trailing?: ReactNode` 槽（麵包屑之後、Windows 視窗鈕之前）；新增 `apps/desktop/src/components/DetailNav.tsx`（design D2：‹ 鈕、`n / m` 等寬 11px、› 鈕，`index` 為 -1 或 `total` 為 0 時回 null，到頭對應鈕 disabled，`aria-label` 取 `detail.prev`／`detail.next`）；i18n 兩語系加 `detail.prev`、`detail.next`、`detail.position`（spec「詳情頁的導覽與返回」）。驗證：新增 `apps/desktop/src/__tests__/detailNav.test.tsx`——2/3 時兩鈕可按且文字為「2 / 3」、1/3 時 ‹ disabled、3/3 時 › disabled、index -1 不渲染、點擊呼叫 `onStep(±1)`；`apps/desktop/src/__tests__/titleBar.test.tsx` 加「`trailing` 渲染在麵包屑右側」；`npm test -w apps/desktop -- detailNav titleBar`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "63b56bf28dd44e2ac69120c09cdb4f5ee34a74db",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/titleBar.test.tsx",
+        "apps/desktop/src/components/TitleBar.tsx",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/__tests__/detailNav.test.tsx",
+        "apps/desktop/src/components/DetailNav.tsx"
+      ],
+      "recordedAt": "2026-10-10T05:28:00Z"
+    },
+    {
+      "taskId": "tsk_01M4GKJMM6FEEPGY2YA6SQ8DJ3",
+      "taskDesc": "1.3 `apps/desktop/src-tauri/src/lib.rs` 新增 `open_path` 命令（`app.opener().open_path(&path, None::<&str>)`）並註冊；`apps/desktop/src/adapter/fsActions.ts` 的 `FsActionsAdapter` 加 `openDefault`；`apps/desktop/src/store.ts` 加 `openDocumentDefault(path)`、`revealDocument(path)`、`copyDocumentPath(path)`、`copyDocumentContent(text)`（前三者失敗走既有失敗 toast，主詞為相對路徑）；新增 `apps/desktop/src/components/DocumentActionsMenu.tsx`（design D4：ghost 小鈕「開啟 ▾」、首列等寬灰字相對路徑、以預設 App 開啟／在 Finder 顯示（`fs.revealIn.<platform>`）／複製路徑；`path` 為 null 時只剩「複製內容」且 `content` 為 null 時該項 disabled；兩者皆 null 時回 null）；i18n 加 `detail.open`、`detail.openDefault`、`detail.copyContent`（spec「詳情頁的文件動作」）。驗證：新增 `apps/desktop/src/__tests__/documentActionsMenu.test.tsx`——本機三項與路徑首列、macOS 標籤為 Finder、remote 只有「複製內容」、`content` null 時 disabled、各項呼叫對應 callback、兩者皆 null 不渲染；`store.test.ts` 加「`revealDocument` 失敗發失敗 toast 且主詞為路徑」；`cargo build -p speclink-desktop` 通過；`npm test -w apps/desktop -- documentActionsMenu store`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "63b56bf28dd44e2ac69120c09cdb4f5ee34a74db",
+      "touchedFiles": [
+        "apps/desktop/core/src/fs_actions.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/adapter/fsActions.ts",
+        "apps/desktop/src/store.ts",
+        "apps/desktop/src/__tests__/documentActionsMenu.test.tsx",
+        "apps/desktop/src/components/DocumentActionsMenu.tsx"
+      ],
+      "recordedAt": "2026-10-10T05:32:32Z"
+    },
+    {
+      "taskId": "tsk_01M4GKJMM601JWZR1MS5KT1XP7",
+      "taskDesc": "2.1 新增 `packages/ui/src/components/DetailHeader.tsx`（標題列＋出身列＋動作區的共用骨架：等寬 22px 標題單行截斷、`CopyButton`、章籤槽、動作槽；出身列 `text-xs text-muted-foreground` 單行、段以「·」分隔、`min-w-0 truncate`）與 `packages/ui/src/components/ChangeDetailPage.tsx`（design D6：props 同 `RichDetailDrawer` 去掉 `open`／`onOpenChange`、`drawerVerb` 改 `detailVerb`、加 `renderDocumentActions`；標題列章籤用 `StatusPill`；動作區「分析」＋依階段鈕（進行中「退回提案中」、已就緒「封存」主要鈕、有 `onClaim`「認領」）＋「⋯」`DropdownMenu`（封存／刪除，停用時項目下方灰字原因、刪除 `text-destructive` 置底）；「狀態」卡三列；`detailVerb` 相符時 `AnalyzePanel` 包在卡內置於狀態卡下；內容卡 `Tabs variant=\"card\"` 的 `TabsList actions` 放 `renderDocumentActions(relativePath, content)`，relativePath 依作用中分頁對應、排程為 null；各分頁內容元件原樣搬入；無全螢幕鈕）（spec「變更詳情頁的標頭與狀態卡」「詳情頁的封存與刪除依階段守門」「詳情頁標頭標記受寬度約束且頁不產生水平捲軸」「詳情頁的排程分頁」「詳情頁的工單分頁」「詳情頁文件載入以 skeleton 呈現」「桌面 app 提供動詞操作面」「變更的來源討論多值呈現」「進行中變更可自看板退回提案中」）。驗證：`packages/ui/src/__tests__/richDrawer.test.tsx` 的案例逐條搬到新增的 `packages/ui/src/__tests__/changeDetailPage.test.tsx`（去掉 `role=\"dialog\"`、開關與全螢幕斷言），並新增——標題列兩枚章籤與提示含 email、狀態卡三列文字（`16/17 · 94%`、兩枚帶日期章籤、「第 2 波」「等 1 項」）、none/none 顯示「尚未經過品質關卡」、「⋯」選單封存停用附原因與刪除置底、已就緒時標題列有「封存」鈕、`renderDocumentActions` 於提案分頁收到 `openspec/changes/<name>/proposal.md`、排程分頁收到 null、分析結果卡渲染於狀態卡之下；`planTab.test.tsx`、`reviewBadge.test.tsx`、`verifyBadge.test.tsx` 改掛 `ChangeDetailPage`；`npm test -w packages/ui -- changeDetailPage planTab reviewBadge verifyBadge`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "63b56bf28dd44e2ac69120c09cdb4f5ee34a74db",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/planTab.test.tsx",
+        "packages/ui/src/__tests__/reviewBadge.test.tsx",
+        "packages/ui/src/__tests__/verifyBadge.test.tsx",
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/__tests__/changeDetailPage.test.tsx",
+        "packages/ui/src/components/ChangeDetailPage.tsx",
+        "packages/ui/src/components/DetailHeader.tsx"
+      ],
+      "recordedAt": "2026-10-10T05:42:17Z"
+    },
+    {
+      "taskId": "tsk_01M4GKJMM6BJZ9V6ANFG44ND6C",
+      "taskDesc": "2.2 `packages/ui/src/components/TaskList.tsx` 任務列外層改 `<label>`（design D8：點列任一處切換、把手與連結 `onClick` 阻止冒泡且 `onPointerDown` 不觸發、唯讀與 busy 列無 `htmlFor` 且游標預設；勾選框保留 `role=\"checkbox\"` 與「任務 N」標籤），工具列有寫入能力時加灰字提示 `detail.tasksHint`（spec「任務列整列可點」「任務清單拖放排序與自動重編號」「任務分頁提供批次操作工具列」「GUI 勾任務與 CLI 完成語意一致」「表單控制項與按鈕以主題化元件呈現」「任務群組標題與章節標籤同款式」）。驗證：`packages/ui/src/__tests__/taskList.test.tsx` 新增——點文字呼叫 `onToggle` 一次、點把手不呼叫、唯讀列點擊不呼叫、busy 列點擊不呼叫、空白鍵仍可切換、拖曳仍只由把手啟動（既有案例通過）；`npm test -w packages/ui -- taskList`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "63b56bf28dd44e2ac69120c09cdb4f5ee34a74db",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/taskList.test.tsx",
+        "packages/ui/src/components/TaskList.tsx"
+      ],
+      "recordedAt": "2026-10-10T05:44:32Z"
+    },
+    {
+      "taskId": "tsk_01M4GKJMM6QEP1PVVMMT2DJ7NW",
+      "taskDesc": "3.1 新增 `packages/ui/src/components/DiscussionDetailPage.tsx`（design D7：`DetailHeader` 骨架——slug 標題＋複製＋狀態籤 `StatusPill`＋改進籤，topic 15px，出身列建立者／N 輪／建立日，右端「封存」（concluded 且有 `onArchiveDiscussion`；hold 時 disabled＋提示 `ddetail.holdHint`）；狀態卡：階段步驟列四站（現站 `StatusPill primary`、過站 ✓、未到站 ○）、「保留在途」列、「衍生變更」列（可點等寬籤＋階段 `StatusPill`，點擊 `onOpenChangeCard`）；內容卡 `Tabs variant=\"card\"` 結論／討論過程 N／背景／衍生變更 N，`TabsList actions` 放 `renderDocumentActions(\"openspec/discussions/<slug>.md\", 原文)`；預設分頁與退回規則原樣）；i18n 加 `ddetail.stationArchived`、`ddetail.holdLabel`、`ddetail.holdHint`、`ddetail.promotedLabel`、`detail.status`、`detail.statusTasks`、`detail.statusQuality`、`detail.statusPlan`、`detail.noQuality`、`detail.archiveMenu`、`detail.deleteMenu`、`detail.tasksHint`（spec「討論詳情頁檢視與轉出變更」「討論詳情頁的改進標示」「討論輪以卡片呈現」「討論結論以欄位標籤呈現」「raw HTML 不以原文呈現」「markdown 內容保留文件結構呈現」「markdown 文件內容行寬有上限」「規格分頁 delta 區段以色標呈現」「提案與設計章節以中文標籤呈現」）。驗證：`packages/ui/src/__tests__/discussionDrawer.test.tsx` 的案例搬到新增的 `packages/ui/src/__tests__/discussionDetailPage.test.tsx`，並新增——promoted＋hold＋promoted_to 兩項時狀態籤「已轉出・保留中」、階段列現站「已轉出」、保留列可見、衍生列兩顆籤各帶「已封存」「進行中」、點進行中籤呼叫 `onOpenChangeCard`、「封存」disabled；無 hold 無 promoted_to 時兩列缺席；`improveBadge.test.tsx` 改掛新元件；`npm test -w packages/ui -- discussionDetailPage improveBadge`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "63b56bf28dd44e2ac69120c09cdb4f5ee34a74db",
+      "touchedFiles": [
+        "integrations/claude-code/speclink-skills/.claude-plugin/plugin.json",
+        "integrations/claude-code/speclink-skills/README.en.md",
+        "integrations/claude-code/speclink-skills/README.md",
+        "integrations/claude-code/speclink-skills/hooks/board.ts",
+        "integrations/claude-code/speclink-skills/hooks/register.tsx",
+        "integrations/claude-code/speclink-skills/tests/register.test.tsx",
+        "packages/ui/src/__tests__/improveBadge.test.tsx",
+        "packages/ui/src/components/DiscussionDrawer.tsx",
+        "packages/ui/src/__tests__/discussionDetailPage.test.tsx",
+        "packages/ui/src/components/DiscussionDetailPage.tsx"
+      ],
+      "recordedAt": "2026-10-10T05:48:44Z"
+    },
+    {
+      "taskId": "tsk_01M4GKJMM6FWYXD5B10MFRAH6S",
+      "taskDesc": "4.1 `apps/desktop/src/store.ts`：`drawerVerb`／`clearDrawerVerb` 改名 `detailVerb`／`clearDetailVerb`，新增 `closeDetailPage()`（清四個 `detail*` 與 `detailVerb`），`openDetail`／`openDiscussion` 行為不變但注記改頁語意（design D3；spec「詳情頁互斥」「變更與討論詳情頁的宿主為看板」「看板欄位由生命週期標記驅動」）。驗證：`apps/desktop/src/__tests__/store.test.ts` 既有互斥、落回看板、浮層收掉案例改用新名並通過，新增「`closeDetailPage` 一次清空四欄與 `detailVerb`」；`npm test -w apps/desktop -- store`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "63b56bf28dd44e2ac69120c09cdb4f5ee34a74db",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx"
+      ],
+      "recordedAt": "2026-10-10T05:49:33Z"
+    },
+    {
+      "taskId": "tsk_01M4GKJMM61NP2VDGYG2Y1HJ7A",
+      "taskDesc": "4.2 `packages/ui/src/components/KanbanBoard.tsx` 加 `onVisibleOrderChange?: (order: { changes: string[]; discussions: string[] }) => void`，於 `visibleChanges`／`visibleDiscussions` 變動時以 effect 回報（變更依欄序再欄內序；討論為上區全卡依序接欄底已轉出細列）（design D2；spec「詳情頁的導覽與返回」「看板搜尋過濾卡片」「討論於看板第 0 欄兩級呈現」「看板卡片統一解剖學」）。驗證：`packages/ui/src/__tests__/kanban.test.tsx` 新增——初次渲染回報三欄順序、輸入搜尋後回報過濾後順序、討論順序為上區卡後接已轉出細列；`npm test -w packages/ui -- kanban`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "63b56bf28dd44e2ac69120c09cdb4f5ee34a74db",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/components/KanbanBoard.tsx"
+      ],
+      "recordedAt": "2026-10-10T05:50:38Z"
+    },
+    {
+      "taskId": "tsk_01M4GKJMM624JQTG5QH1NDAXEQ",
+      "taskDesc": "4.3 `apps/desktop/src/App.tsx`：`<main>` 改 `relative`、宿主頁包在 `<div data-testid=\"host-page\">` 內並於任一 `detail*` 非 null 時加 `inert`、`aria-hidden`、`invisible`；`detailChange`／`detailDiscussion` 非 null 時渲染 `<div data-testid=\"detail-page\">` 頁層（`absolute inset-0 overflow-y-auto bg-background animate-in fade-in slide-in-from-bottom-1 duration-150 motion-reduce:animate-none`）掛 `ChangeDetailPage`／`DiscussionDetailPage`（props 自既有 Drawer 接線搬移，`renderDocumentActions` 以 `projectDirOf(locator)` 接絕對路徑渲染 `DocumentActionsMenu`）；麵包屑三段（專案名與頁名點擊 `closeDetailPage`、項目名等寬）與 `MainTitleBar trailing={<DetailNav/>}`（序列取 `visibleOrder` state，由 `KanbanBoard onVisibleOrderChange` 回填；`stepDetail(delta)` 以 `openDetail`／`openDiscussion` 切換）；既有 keydown 處理器加 Esc／Alt+ArrowUp／Alt+ArrowDown（`defaultPrevented` 或焦點在 input／textarea／contenteditable 時不作用）；移除 `RichDetailDrawer`／`DiscussionDrawer` 的掛載（`SpecDrawer`／`ArchivedDrawer` 暫留）；`detailConfirmInFlight` 守門改接 `closeDetailPage`（design D1、D2、D9；spec「詳情頁的導覽與返回」「詳情頁與浮層的進出動畫」「詳情頁的文件動作」「外部變更即時反映」「看板全域操作成功靜默、失敗以 toast 浮層呈現」「封存入口的未結工單三選項」「品質站蓋章配色與主色分離」「介面狀態語意色分層」「主題化提示統一延遲」）。驗證：`apps/desktop/src/__tests__/App.test.tsx` 既有抽屜案例改為——開卡後 `detail-page` 存在且 `host-page` 帶 `inert`、麵包屑為「專案 / 變更 / 名稱」、Esc 後 `detail-page` 消失且看板搜尋輸入值不變、Esc 在 `defaultPrevented` 事件不關頁、焦點在 input 時 Alt+ArrowDown 不切換、Alt+ArrowDown 切到下一張卡、麵包屑「變更」點擊關頁、系統匣開啟事件落到 `detail-page`、封存成功後 `detail-page` 消失、外部刪除目前變更後頁關閉；`npm test -w apps/desktop -- App`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d9ff87ce5f226378753ef336c50d996c8f9b2865",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/App.test.tsx"
+      ],
+      "recordedAt": "2026-10-10T06:18:22Z"
+    },
+    {
+      "taskId": "tsk_01M4GKJMM6JWYG523AQW25HFPM",
+      "taskDesc": "4.4 刪除 `packages/ui/src/components/RichDetailDrawer.tsx`、`packages/ui/src/components/DiscussionDrawer.tsx`、`packages/ui/src/__tests__/richDrawer.test.tsx`、`packages/ui/src/__tests__/discussionDrawer.test.tsx`；`packages/ui/src/index.ts` 改匯出 `ChangeDetailPage`、`DiscussionDetailPage`、`DetailHeader`、`splitDiscussionSections` 自新檔；`apps/desktop/src/__tests__/tray.test.ts` 的開啟斷言改頁語意（spec「變更子選單動作」「討論列表」）。驗證：`grep -rn 'RichDetailDrawer\\|DiscussionDrawer' apps packages --include=*.ts --include=*.tsx` 零命中；`npm run build -w apps/desktop` 通過；`npm test -w apps/desktop -- tray`。本任務同時落實 spec 以 REMOVED 退場的面板需求：「detail 抽屜互斥」「討論抽屜檢視與轉出變更」「抽屜標頭標記受寬度約束且抽屜不產生水平捲軸」「詳情抽屜的封存與刪除依階段守門」「詳情抽屜的審查資訊列」「變更詳情抽屜標頭的四層結構」「詳情抽屜的驗證資訊列」「討論抽屜的改進標示」「變更與討論抽屜開啟時底層落回看板」「抽屜文件載入以 skeleton 呈現」「抽屜與浮層的開關動畫」「詳情抽屜的排程分頁」「詳情抽屜的工單分頁」——其行為由同名的詳情頁需求承接。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d9ff87ce5f226378753ef336c50d996c8f9b2865",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/tray.test.ts",
+        "packages/ui/src/__tests__/archivedDrawer.test.tsx",
+        "packages/ui/src/__tests__/discussionDrawer.test.tsx",
+        "packages/ui/src/__tests__/richDrawer.test.tsx",
+        "packages/ui/src/components/ArchivedDrawer.tsx",
+        "packages/ui/src/components/DeltaBadges.tsx",
+        "packages/ui/src/components/RichDetailDrawer.tsx",
+        "packages/ui/src/components/SectionedDoc.tsx",
+        "packages/ui/src/components/SpecDrawer.tsx"
+      ],
+      "recordedAt": "2026-10-10T06:21:30Z"
+    },
+    {
+      "taskId": "tsk_01M4GKJMM64G6BFJ0PFNQSBF1N",
+      "taskDesc": "5.1 `openspec/LANGUAGE.md`：「詳情面板」條目改「詳情頁」（design D10：definition、avoid「抽屜、詳情面板」、why 補 2026-10-09 cut 3b 裁定），文件內其餘「詳情面板」字樣改「詳情頁」；`apps/desktop/src/i18n/messages.ts` 的 `board.pageDesc` 改「依生命週期分欄；拖曳卡片調整順序，點卡片開詳情頁」。驗證：`node --test scripts/docs/vocabulary-guard.test.mjs` 通過；`grep -n '詳情面板' openspec/LANGUAGE.md` 只剩 avoid 欄一處；兩語系鍵集合相等測試通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d9ff87ce5f226378753ef336c50d996c8f9b2865",
+      "touchedFiles": [
+        "apps/server-web/src/i18n/messages.ts",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md",
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md",
+        "packages/ui/src/components/ChangeCard.tsx",
+        "scripts/docs/vocabulary-guard.test.mjs"
+      ],
+      "recordedAt": "2026-10-10T06:25:12Z"
+    },
+    {
+      "taskId": "tsk_01M4GKJMM6PW36YB0NY6R0XXT7",
+      "taskDesc": "5.3 全部對齊：`./target/debug/speclink validate desktop-detail-page` 通過；`npm test -w packages/ui`、`npm test -w apps/desktop` 全綠；`npm run build -w apps/desktop` 通過；`cargo build -p speclink-desktop` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d9ff87ce5f226378753ef336c50d996c8f9b2865",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/remoteCapabilities.test.tsx"
+      ],
+      "recordedAt": "2026-10-10T06:30:09Z"
+    },
+    {
+      "taskId": "tsk_01M4GKJMM6PW36YB0NY6R0XXT7",
+      "taskDesc": "5.3 全部對齊：`./target/debug/speclink validate desktop-detail-page` 通過；`npm test -w packages/ui`、`npm test -w apps/desktop` 全綠；`npm run build -w apps/desktop` 通過；`cargo build -p speclink-desktop` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d9ff87ce5f226378753ef336c50d996c8f9b2865",
+      "touchedFiles": [
+        "apps/desktop/core/src/discussions.rs",
+        "apps/desktop/core/src/query.rs"
+      ],
+      "recordedAt": "2026-10-10T07:24:35Z"
+    }
+  ]
+}

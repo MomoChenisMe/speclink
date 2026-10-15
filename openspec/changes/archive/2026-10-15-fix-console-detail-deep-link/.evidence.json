@@ -1,0 +1,44 @@
+{
+  "version": 2,
+  "change": "fix-console-detail-deep-link",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 在 `crates/host/speclink-server/tests/it/web/assets.rs` 新增測試 `detail_pages_serve_the_spa_shell_on_direct_open`：直接 GET `/admin/users/usr_example` 與 `/admin/registry/demo` 時斷言 200 且內容含 `id=\"root\"`；GET `/admin/users/a/b`、`/admin/users/` 與 `/admin/registry/` 時斷言 404 且內容不含 `id=\"root\"`。驗證：執行 `cargo test -p speclink-server --test it web::assets`，新測試因詳情頁回 404 而失敗，其餘既有測試仍通過。",
+      "files": [
+        "crates/host/speclink-server/tests/it/web/assets.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "2.1 修改 `crates/host/speclink-server/src/web/assets.rs` 的 `is_browser_route`：路徑以 `/admin/users/` 或 `/admin/registry/` 開頭、且其後恰好一段非空且不含 `/` 的片段時回 true；其餘路徑的判定不變，維持「SPA 資產與 fallback 具可驗證的安全邊界」的允許清單語意。驗證：`cargo test -p speclink-server --test it web::assets` 全部通過，包含新測試、`every_browser_route_serves_the_spa_shell_after_the_switch`（`/admin/changes` 等仍為 404）與 `health_and_ready_are_not_swallowed_by_fallback`。",
+      "files": [
+        "crates/host/speclink-server/src/web/assets.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4Z38WZ01V3X6XPKVJ937CKJ",
+      "taskDesc": "1.1 在 `crates/host/speclink-server/tests/it/web/assets.rs` 新增測試 `detail_pages_serve_the_spa_shell_on_direct_open`：直接 GET `/admin/users/usr_example` 與 `/admin/registry/demo` 時斷言 200 且內容含 `id=\"root\"`；GET `/admin/users/a/b`、`/admin/users/` 與 `/admin/registry/` 時斷言 404 且內容不含 `id=\"root\"`。驗證：執行 `cargo test -p speclink-server --test it web::assets`，新測試因詳情頁回 404 而失敗，其餘既有測試仍通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "da51fad462ca584a133de4e8eb67ff635eb587fc",
+      "touchedFiles": [
+        "crates/host/speclink-server/tests/it/web/assets.rs"
+      ],
+      "recordedAt": "2026-10-15T07:36:52Z"
+    },
+    {
+      "taskId": "tsk_01M4Z38WZ07BE70N5V8RPYHNV3",
+      "taskDesc": "2.1 修改 `crates/host/speclink-server/src/web/assets.rs` 的 `is_browser_route`：路徑以 `/admin/users/` 或 `/admin/registry/` 開頭、且其後恰好一段非空且不含 `/` 的片段時回 true；其餘路徑的判定不變，維持「SPA 資產與 fallback 具可驗證的安全邊界」的允許清單語意。驗證：`cargo test -p speclink-server --test it web::assets` 全部通過，包含新測試、`every_browser_route_serves_the_spa_shell_after_the_switch`（`/admin/changes` 等仍為 404）與 `health_and_ready_are_not_swallowed_by_fallback`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "da51fad462ca584a133de4e8eb67ff635eb587fc",
+      "touchedFiles": [
+        "crates/host/speclink-server/src/web/assets.rs"
+      ],
+      "recordedAt": "2026-10-15T07:37:27Z"
+    }
+  ]
+}

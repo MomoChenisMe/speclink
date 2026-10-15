@@ -1,0 +1,148 @@
+schema: spec-driven
+created: 2026-10-07
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: docs-cleanup-findings
+depends_on: server-reader-write-guard, ingest-accepts-change-name
+started_at: 2026-10-07
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-08
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 10
+reviewed_scope:
+  - path: .github/workflows/ci.yml
+    hash: b2dda4c8e033d8c0c30b85df5f111bfcd9903a25bf571a7536b8673903ede8d1
+  - path: .speclink.yaml
+    hash: 9f57a868da2496b3258d3bf5f0eae6e1c792997907940e2fb94306db55027a97
+  - path: Cargo.toml
+    hash: 030a243c7bb8c442fc30aedd80c55d231197d1988e518d88a9a10328852aba64
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: d92727cbb9b1841aca4751978a78d03b05f310548e9d895d296e8c7f0cfe3116
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 5fba2fe6bdbfe31bd73c7bb22ed7905fb61bbbe8db50554561b0a001e4dd76b6
+  - path: crates/adapters/speclink-cli/Cargo.toml
+    hash: 3872d89e4a905806687ae5c8be4ce0f4f25beb3a43e1e92b56b8362276665ed5
+  - path: crates/adapters/speclink-cli/src/verbs/toolchain.rs
+    hash: 82fa2fad61b89484d72be03c92a5d8cde2ba8d67a648c393b8db07ff78f93361
+  - path: crates/engine/speclink-core/Cargo.toml
+    hash: 5a62a61d2fbecb3b1615a1fb593d76a9be36262a0d5bf4e9797b5000baebf45d
+  - path: crates/engine/speclink-core/src/workspace/init.rs
+    hash: b0a39f6790776f961adad16586a8c7e5b667db5b811d522f34cd434749acbf39
+  - path: crates/engine/speclink-core/src/workspace/init/tests.rs
+    hash: 27e3153737ab56c8a2631f7f07a3d5136acfb2e37a772cd2e5a432b729b0ad1d
+  - path: docs/assets/screenshots/desktop-archived.png
+    hash: 0a750b2fdec96998e4997c17659a74e74b0b34bf7b01ac04121e4014ff8f54d6
+  - path: docs/assets/screenshots/desktop-board.png
+    hash: c02aad2a9e64604842b0950ee84940062d80fe0ac4e4997a56b15918d9bec546
+  - path: docs/assets/screenshots/desktop-change-drawer.png
+    hash: a13d90df1fcdae7ad34429f32e19e6c0d57f90de9259063a0c859bf9fd869205
+  - path: docs/assets/screenshots/desktop-discussion.png
+    hash: a205e6027ebb076d2a07be0844f1ca9aaac6f13ed7cc1e5cf4759fa52c8711d6
+  - path: docs/assets/screenshots/desktop-settings.png
+    hash: 370ab25ecf378bbdabcd2d4faba82a6c542a0066fde7abb399f718d87ce39f85
+  - path: docs/assets/screenshots/desktop-spec.png
+    hash: b582453c916ec76af894c45a86ee0c982b6ef50529fabb8ae97435e22af939da
+  - path: docs/assets/screenshots/server-members.png
+    hash: ccf5d988e2a91822a69da2ef803364fbb9efd191289732f37f9a186dfebebe32
+  - path: docs/assets/screenshots/server-overview.png
+    hash: 2806d658270e4b9e5e90d9a3e2caa5c4e974987dfc96df114aa1c280e4b79ca7
+  - path: docs/assets/screenshots/server-setup.png
+    hash: 014fdb4460801124ed3a9f65e878223cb979a0fdd470724f515db328b45508d7
+  - path: docs/configuration.md
+    hash: 3698d9ac6f33fa6805b1aef139aa91014c38d6839d2a90ac6f9cb23f98ae526b
+  - path: docs/configuration.zh-TW.md
+    hash: 8f85a718e04c04a5c2ae887317fc9db65f7f36e3edde2541680122431d7961ad
+  - path: docs/getting-started.md
+    hash: d5681aaadb842ccdf4c4ae7feceee86257bfe3edcfec3f3c29d5f9ab754a1cf3
+  - path: docs/getting-started.zh-TW.md
+    hash: 6ecc872c59a42f261880875555157f485c9378dbe619827fa02210585849bbf8
+  - path: docs/workflow.md
+    hash: 337c7ac3867627210928ae4aa894b39fd1f93d07e7ba94238e4eca2ebd5dfa08
+  - path: docs/workflow.zh-TW.md
+    hash: 313f4ddb011e6efef4e866c7fbddfe92083432385fcaa924bc282123342f2b8a
+  - path: scripts/docs/built-cli.mjs
+    hash: cefb6d19521db5803aedc464aa9bdd1046297888d7fb413ba1ad8fbdc6e37f84
+  - path: scripts/docs/built-cli.test.mjs
+    hash: a64e3d4c55a4883ee42addab0d1326a8dc26308097fdedffcaeb7ba03443ab4b
+  - path: scripts/docs/docs-links.test.mjs
+    hash: 35273a688c294ec043c0f37e5c38d930294764c82a3c4c0c3db004f2788c8ed2
+  - path: scripts/docs/docs-parity.test.mjs
+    hash: 752b6df5489a1ab677e0e0d376b365404b7b9c53872c92461bd8383dfa1f6185
+  - path: scripts/docs/docs-screenshots.test.mjs
+    hash: 6f55a6825b60881b624d4d8b6b5ab1c95597f10894f70d10800f561bfceecab6
+  - path: scripts/docs/docs-surface.test.mjs
+    hash: 620534c3d613325a1ef0ee05460e98c41d17cb0713f9b7d634958003cf903803
+  - path: scripts/docs/remote-docs.test.mjs
+    hash: 266f2b6d48517211e6ce4b1037052cbcbf73c023a0d1c6a02167ab11a0bfb2e5
+verified_at: 2026-10-08
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 10
+verified_scope:
+  - path: .github/workflows/ci.yml
+    hash: b2dda4c8e033d8c0c30b85df5f111bfcd9903a25bf571a7536b8673903ede8d1
+  - path: .speclink.yaml
+    hash: 9f57a868da2496b3258d3bf5f0eae6e1c792997907940e2fb94306db55027a97
+  - path: Cargo.toml
+    hash: 030a243c7bb8c442fc30aedd80c55d231197d1988e518d88a9a10328852aba64
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: d92727cbb9b1841aca4751978a78d03b05f310548e9d895d296e8c7f0cfe3116
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 5fba2fe6bdbfe31bd73c7bb22ed7905fb61bbbe8db50554561b0a001e4dd76b6
+  - path: crates/adapters/speclink-cli/Cargo.toml
+    hash: 3872d89e4a905806687ae5c8be4ce0f4f25beb3a43e1e92b56b8362276665ed5
+  - path: crates/adapters/speclink-cli/src/verbs/toolchain.rs
+    hash: 82fa2fad61b89484d72be03c92a5d8cde2ba8d67a648c393b8db07ff78f93361
+  - path: crates/engine/speclink-core/Cargo.toml
+    hash: 5a62a61d2fbecb3b1615a1fb593d76a9be36262a0d5bf4e9797b5000baebf45d
+  - path: crates/engine/speclink-core/src/workspace/init.rs
+    hash: b0a39f6790776f961adad16586a8c7e5b667db5b811d522f34cd434749acbf39
+  - path: crates/engine/speclink-core/src/workspace/init/tests.rs
+    hash: 27e3153737ab56c8a2631f7f07a3d5136acfb2e37a772cd2e5a432b729b0ad1d
+  - path: docs/assets/screenshots/desktop-archived.png
+    hash: 0a750b2fdec96998e4997c17659a74e74b0b34bf7b01ac04121e4014ff8f54d6
+  - path: docs/assets/screenshots/desktop-board.png
+    hash: c02aad2a9e64604842b0950ee84940062d80fe0ac4e4997a56b15918d9bec546
+  - path: docs/assets/screenshots/desktop-change-drawer.png
+    hash: a13d90df1fcdae7ad34429f32e19e6c0d57f90de9259063a0c859bf9fd869205
+  - path: docs/assets/screenshots/desktop-discussion.png
+    hash: a205e6027ebb076d2a07be0844f1ca9aaac6f13ed7cc1e5cf4759fa52c8711d6
+  - path: docs/assets/screenshots/desktop-settings.png
+    hash: 370ab25ecf378bbdabcd2d4faba82a6c542a0066fde7abb399f718d87ce39f85
+  - path: docs/assets/screenshots/desktop-spec.png
+    hash: b582453c916ec76af894c45a86ee0c982b6ef50529fabb8ae97435e22af939da
+  - path: docs/assets/screenshots/server-members.png
+    hash: ccf5d988e2a91822a69da2ef803364fbb9efd191289732f37f9a186dfebebe32
+  - path: docs/assets/screenshots/server-overview.png
+    hash: 2806d658270e4b9e5e90d9a3e2caa5c4e974987dfc96df114aa1c280e4b79ca7
+  - path: docs/assets/screenshots/server-setup.png
+    hash: 014fdb4460801124ed3a9f65e878223cb979a0fdd470724f515db328b45508d7
+  - path: docs/configuration.md
+    hash: 3698d9ac6f33fa6805b1aef139aa91014c38d6839d2a90ac6f9cb23f98ae526b
+  - path: docs/configuration.zh-TW.md
+    hash: 8f85a718e04c04a5c2ae887317fc9db65f7f36e3edde2541680122431d7961ad
+  - path: docs/getting-started.md
+    hash: d5681aaadb842ccdf4c4ae7feceee86257bfe3edcfec3f3c29d5f9ab754a1cf3
+  - path: docs/getting-started.zh-TW.md
+    hash: 6ecc872c59a42f261880875555157f485c9378dbe619827fa02210585849bbf8
+  - path: docs/workflow.md
+    hash: 337c7ac3867627210928ae4aa894b39fd1f93d07e7ba94238e4eca2ebd5dfa08
+  - path: docs/workflow.zh-TW.md
+    hash: 313f4ddb011e6efef4e866c7fbddfe92083432385fcaa924bc282123342f2b8a
+  - path: scripts/docs/built-cli.mjs
+    hash: cefb6d19521db5803aedc464aa9bdd1046297888d7fb413ba1ad8fbdc6e37f84
+  - path: scripts/docs/built-cli.test.mjs
+    hash: a64e3d4c55a4883ee42addab0d1326a8dc26308097fdedffcaeb7ba03443ab4b
+  - path: scripts/docs/docs-links.test.mjs
+    hash: 35273a688c294ec043c0f37e5c38d930294764c82a3c4c0c3db004f2788c8ed2
+  - path: scripts/docs/docs-parity.test.mjs
+    hash: 752b6df5489a1ab677e0e0d376b365404b7b9c53872c92461bd8383dfa1f6185
+  - path: scripts/docs/docs-screenshots.test.mjs
+    hash: 6f55a6825b60881b624d4d8b6b5ab1c95597f10894f70d10800f561bfceecab6
+  - path: scripts/docs/docs-surface.test.mjs
+    hash: 620534c3d613325a1ef0ee05460e98c41d17cb0713f9b7d634958003cf903803
+  - path: scripts/docs/remote-docs.test.mjs
+    hash: 266f2b6d48517211e6ce4b1037052cbcbf73c023a0d1c6a02167ab11a0bfb2e5
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-08

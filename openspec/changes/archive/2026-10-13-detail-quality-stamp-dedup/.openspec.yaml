@@ -1,0 +1,44 @@
+schema: spec-driven
+created: 2026-10-13
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: detail-quality-stamp-dedup
+depends_on: discussion-stage-and-unpromoted-cuts
+started_at: 2026-10-13
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-13
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 7
+reviewed_scope:
+  - path: packages/ui/src/__tests__/archivedDetailPage.test.tsx
+    hash: beb1b30527c1af60906db8a8b0562f0c9f21ef028f2ba68a524932cf6f532588
+  - path: packages/ui/src/__tests__/changeDetailPage.test.tsx
+    hash: 0cfb85b3e151f5dc56dd7786c0eec8380f29acb8ec60dd60fbeaf4da2d5a7e85
+  - path: packages/ui/src/__tests__/reviewBadge.test.tsx
+    hash: c8bc751e474cacfb74a022ebe8854761ecd44ea920e5a39442a7c502fc10a4ca
+  - path: packages/ui/src/__tests__/verifyBadge.test.tsx
+    hash: 27a1210fe8f3ca10fd82ae27ae8dfb3bc04641621f64422ae7bdc3695a4b72c9
+  - path: packages/ui/src/components/ArchivedDetailPage.tsx
+    hash: 42b67d26dca7f55301af5a2cb7cd80294f171b470fb3ed09038dfa1a9066921f
+  - path: packages/ui/src/components/ChangeDetailPage.tsx
+    hash: bc5558d68b6201a95ac0c020814ba17c6ed286a701076b12b1dce45a0b315ada
+verified_at: 2026-10-13
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 7
+verified_scope:
+  - path: packages/ui/src/__tests__/archivedDetailPage.test.tsx
+    hash: beb1b30527c1af60906db8a8b0562f0c9f21ef028f2ba68a524932cf6f532588
+  - path: packages/ui/src/__tests__/changeDetailPage.test.tsx
+    hash: 0cfb85b3e151f5dc56dd7786c0eec8380f29acb8ec60dd60fbeaf4da2d5a7e85
+  - path: packages/ui/src/__tests__/reviewBadge.test.tsx
+    hash: c8bc751e474cacfb74a022ebe8854761ecd44ea920e5a39442a7c502fc10a4ca
+  - path: packages/ui/src/__tests__/verifyBadge.test.tsx
+    hash: 27a1210fe8f3ca10fd82ae27ae8dfb3bc04641621f64422ae7bdc3695a4b72c9
+  - path: packages/ui/src/components/ArchivedDetailPage.tsx
+    hash: 42b67d26dca7f55301af5a2cb7cd80294f171b470fb3ed09038dfa1a9066921f
+  - path: packages/ui/src/components/ChangeDetailPage.tsx
+    hash: bc5558d68b6201a95ac0c020814ba17c6ed286a701076b12b1dce45a0b315ada
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-13

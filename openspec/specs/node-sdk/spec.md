@@ -78,7 +78,7 @@ dispatch SHALL 由與 CLI 共用的引擎命令層執行：argv 詞彙、回傳�
 
 ---
 ### Requirement: 渲染 API
-SDK SHALL 提供 skills.list()（回傳技能名與描述清單）、skills.render(name, options) 與 instructions.render(options)——options 涵蓋渲染矩陣：target（claude｜codex｜copilot｜neutral）、invocation（cli｜tool-call）、store（fs｜remote）；回傳字串內容 SHALL 與 CLI 以對等參數生成的內容一致。
+SDK SHALL 提供 skills.list()（回傳技能名與描述清單）、skills.render(name, options) 與 instructions.render(options)——options 涵蓋渲染矩陣：target（claude｜codex｜copilot｜neutral）、invocation（cli｜tool-call）、store（fs｜remote）；回傳字串內容 SHALL 與 CLI 以對等參數生成的內容一致。target 不在值域內時 SHALL 拋出錯誤，訊息 SHALL 列出 claude、codex、copilot、neutral 四個合法值。
 
 #### Scenario: 中性 tool-call 渲染
 - **WHEN** 執行 skills.render('propose', { target: 'neutral', invocation: 'tool-call', store: 'remote' })
@@ -88,30 +88,22 @@ SDK SHALL 提供 skills.list()（回傳技能名與描述清單）、skills.rend
 - **WHEN** 以 target claude、store fs 呼叫 skills.render('apply', …)，並與 speclink init 於 fs 專案生成的 .claude/skills/speclink-apply/SKILL.md 比對
 - **THEN** 兩者內容一致
 
-#### Scenario: Codex 與 Copilot SDK 輸出共用
+#### Scenario: copilot target 與 CLI 生成一致
+- **WHEN** 以 target copilot、store fs 呼叫 skills.render('apply', …)，並與 speclink init --tools copilot 於 fs 專案生成的 .github/skills/speclink-apply/SKILL.md 比對
+- **THEN** 兩者內容一致，且回傳字串的技能引用為 `/speclink-` 形式、不含 `$speclink-`
 
-- **WHEN** 對相同技能與 specDir，以 target codex及copilot 呼叫 skills.render
-- **THEN** 回傳字串位元級相同，符合 CLI 在等效選集生成的 .agents/skills/speclink-*/SKILL.md，使用共享技能名稱與 CLI 執行者前言，不寫入檔案
+#### Scenario: 未知 target 被拒
+- **WHEN** 執行 skills.render('apply', { target: 'github-copilot' })
+- **THEN** 呼叫拋出錯誤，訊息含 `github-copilot` 與 claude、codex、copilot、neutral 四個合法值
 
-#### Scenario: 舊渲染入口維持
+#### Scenario: Copilot 原生渲染與 CLI 同源
 
-- **WHEN** 以 target claude 或 neutral 呼叫既有技能渲染
-- **THEN** 除同源資產版本戳更新，本文與既有輸出一致；neutral 的 toolName與cli／tool-call 語意不變
-
-#### Scenario: 未知 target 或技能
-
-- **WHEN** 呼叫 skills.render 的 target 為 vscode，或技能名為 no-such-skill
-- **THEN** 明確拋錯且無檔案寫入；target 錯誤列出 claude、codex、copilot、neutral，技能錯誤維持 Unknown skill 語意；不轉用另一個目標
-
-#### Scenario: SDK 輸出不新增命令通道
-
-- **WHEN** 宿主取得 target copilot 的共享技能字串
-- **THEN** 僅回傳字串、不新增 stdout／stderr／exit code／JSON 介面；字串指示使用既有 CLI 動詞，其人眼與 --json 契約及 --no-color 行為不改。tw／ja／en／未設定、中文弱偵測與遠端 revision／離線／認證仍由既有工作流處理，不在渲染 API 改寫
-
+- **WHEN** 以 target copilot 呼叫 skills.render，並以相同 specDir 生成 CLI Copilot 技能
+- **THEN** SDK 回傳字串與 .github/skills 對應技能一致；採 /speclink- 語法，Codex 仍採 $speclink-，不要求兩工具逐位元相同；不寫入檔案。未知 target 或技能明確拋錯，neutral 的 invocation/store 語意不變。
 
 <!-- @trace
-source: copilot-project-tool
-updated: 2026-10-10T08:18:29+08:00
+source: add-copilot-tool
+updated: 2026-10-08T11:52:22+08:00
 -->
 
 ---

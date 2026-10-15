@@ -17,7 +17,6 @@ const tab: ProjectTab = {
     repoId: "backend",
   },
   name: "Demo/backend",
-  badge: null,
 };
 
 const connection: ConnectionView = {
@@ -72,10 +71,12 @@ describe("RemoteWorkspaceRecovery", () => {
     expect(screen.getByText(/Team Server/).textContent).toContain("spec.example.test");
     expect(screen.getByRole("button", { name: "重新連線" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "伺服器設定" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "自分頁移除" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "自專案列移除" })).toBeTruthy();
 
     const disclosure = screen.getByRole("button", { name: "技術細節" });
     expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    // 無外框的可點元素：滑過有前景色 5% 淡底（spec desktop-app「可點元素的游標與 hover 回饋」）。
+    expect(disclosure.className).toContain("hover:bg-foreground/5");
     expect(screen.queryByText(/internal transport diagnostics/)).toBeNull();
     fireEvent.click(disclosure);
     expect(disclosure.getAttribute("aria-expanded")).toBe("true");
@@ -83,7 +84,7 @@ describe("RemoteWorkspaceRecovery", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "重新連線" }));
     fireEvent.click(screen.getByRole("button", { name: "伺服器設定" }));
-    fireEvent.click(screen.getByRole("button", { name: "自分頁移除" }));
+    fireEvent.click(screen.getByRole("button", { name: "自專案列移除" }));
     expect(onRetry).toHaveBeenCalledTimes(1);
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
     expect(onRemove).toHaveBeenCalledTimes(1);
@@ -159,7 +160,7 @@ describe("RemoteWorkspaceRecovery", () => {
       />,
     );
     const spinner = screen.getByRole("status").querySelector("div") as HTMLElement;
-    expect(spinner.className).toContain("sky");
+    expect(spinner.className).toContain("status-progress");
     expect(spinner.className).not.toContain("primary");
     unmount();
 
@@ -180,6 +181,6 @@ describe("RemoteWorkspaceRecovery", () => {
 
     expect(renderFailure("access-denied").className).toContain("destructive");
     cleanup();
-    expect(renderFailure("needs-reauth").className).toContain("amber");
+    expect(renderFailure("needs-reauth").className).toContain("status-warning");
   });
 });

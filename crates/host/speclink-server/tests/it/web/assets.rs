@@ -56,6 +56,20 @@ fn status_type_body(result: Result<ureq::Response, ureq::Error>) -> (u16, String
     (status, content_type, resp.into_string().unwrap_or_default())
 }
 
+/// A direct open of `path` gets the SPA shell.
+fn assert_shell(base: &str, path: &str) {
+    let (code, body) = status_body(get(base, path));
+    assert_eq!(code, 200, "{path} serves the SPA shell");
+    assert!(body.contains("id=\"root\""), "{path} must return the SPA shell");
+}
+
+/// `path` is not a browser route: a real 404, never the SPA shell.
+fn assert_not_shell(base: &str, path: &str) {
+    let (code, body) = status_body(get(base, path));
+    assert_eq!(code, 404, "{path} is not a browser route");
+    assert!(!body.contains("id=\"root\""), "{path} must not return the shell");
+}
+
 /// The first `/assets/…<ext>` reference in the SPA shell HTML.
 fn first_asset(html: &str, ext: &str) -> Option<String> {
     let mut search = html;
@@ -251,18 +265,30 @@ fn every_browser_route_serves_the_spa_shell_after_the_switch() {
         "/admin/audit",
         "/invite/some-token",
     ] {
-        let (code, body) = status_body(get(&base, path));
-        assert_eq!(code, 200, "{path} serves the SPA shell");
-        assert!(
-            body.contains("id=\"root\""),
-            "{path} must return the SPA shell, not an HTML page"
-        );
+        assert_shell(&base, path);
     }
     // Spec content stays a real 404 — the /admin UI never serves changes/specs/
     // discussions, and these paths are not in the browser-route allowlist.
     for path in ["/admin/changes", "/admin/specs", "/admin/discussions"] {
-        let (code, body) = status_body(get(&base, path));
-        assert_eq!(code, 404, "{path} is not a browser route");
-        assert!(!body.contains("id=\"root\""), "{path} must not return the shell");
+        assert_not_shell(&base, path);
+    }
+}
+
+#[test]
+fn detail_pages_serve_the_spa_shell_on_direct_open() {
+    // 詳情頁直接開啟、重新整理或開分享連結都要拿到 shell；server 不查 id 是否存在，
+    // 「找不到」由 SPA 自己呈現。
+    let base = server();
+    // 專案代號可含 `/`，SPA 以 encodeURIComponent 編成 `%2F`；判定看原始路徑，不得先解碼。
+    for path in [
+        "/admin/users/usr_example",
+        "/admin/registry/demo",
+        "/admin/registry/a%2Fb",
+    ] {
+        assert_shell(&base, path);
+    }
+    // 只放行列表路徑後恰好一段非空片段：多段與空片段仍是真 404。
+    for path in ["/admin/users/a/b", "/admin/users/", "/admin/registry/"] {
+        assert_not_shell(&base, path);
     }
 }

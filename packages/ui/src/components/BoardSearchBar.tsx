@@ -6,8 +6,9 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
 /**
- * 看板搜尋工具列（design D5，單列）：搜尋輸入填滿剩餘寬度（帶圖示、輸入非空時
- * 的清除鈕與即時命中數）＋同高的篩選開關鈕（漏斗；啟用中篩選帶計數徽章）。
+ * 看板搜尋工具列（design D5，單列；desktop-board-reskin D4 改為頁標題區右端的
+ * 280px 全圓輸入）：搜尋輸入帶圖示、輸入非空時的清除鈕與即時命中數，＋同高的
+ * 32px 篩選開關圖示鈕（啟用中篩選帶計數徽章）。
  * 點開關於其下方彈出篩選面板（children，由宿主組裝）；再點開關、點面板外或
  * 按 Esc 關閉——關閉不清除已啟用篩選。Cmd+F／Ctrl+F 聚焦快捷鍵。
  * 純受控元件——query 與面板開闔狀態皆在宿主，本元件不持久化。
@@ -41,20 +42,27 @@ export function BoardSearchBar({
    * 文字為 tooltip（title）、聚焦快捷鍵停用；缺席＝照常。 */
   disabledReason?: string;
 }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   // 全域快捷鍵聚焦：macOS Cmd+F、其他平台 Ctrl+F（spec「快捷鍵聚焦搜尋輸入」）。
+  // macOS 的 ⌘F 也是這裡的 keydown 先收到（preventDefault 後原生選單不再觸發）；原生選單的
+  // 「搜尋看板」項目（點選，或不在看板時按 ⌘F）改派 speclink:focus-search。
   useEffect(() => {
     if (disabledReason !== undefined) return; // 停用時快捷鍵一併不掛。
+    const focus = () => inputRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
         e.preventDefault();
-        inputRef.current?.focus();
+        focus();
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("speclink:focus-search", focus);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("speclink:focus-search", focus);
+    };
   }, [disabledReason]);
   // 面板關閉路徑：Esc 與點擊面板外（開關鈕在 popoverRef 內，點它走 toggle 不誤關）。
   const close = onCloseFilters ?? onToggleFilters;
@@ -80,22 +88,25 @@ export function BoardSearchBar({
   }, [filtersOpen, close]);
   const active = query.trim().length > 0;
   return (
-    <div className="flex w-full shrink-0 items-center gap-1.5">
-      <div className="relative min-w-0 flex-1">
+    <div className="flex shrink-0 items-center gap-1.5">
+      <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        {/* 280px 全圓（design D4）：圓角取 Input 的 pill 變體；命中數與清除鈕在右端內側，
+            active 時留 pr-24 給它們（en 三位數命中數也放得下）。 */}
         <Input
           ref={inputRef}
+          shape="pill"
           placeholder={t("kanban.searchPlaceholder")}
           value={query}
           disabled={disabledReason !== undefined}
           title={disabledReason}
           onChange={(e) => onQuery(e.target.value)}
-          className={`pl-8 ${active ? "pr-24" : ""}`}
+          className={`w-[280px] pl-8 text-[13px] ${active ? "pr-24" : "pr-2"}`}
         />
         {active && (
           <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
             <span data-testid="search-hits" className="text-[11px] tabular-nums text-muted-foreground">
-              {t("kanban.hitCount").replace("{n}", String(hitCount))}
+              {tn("kanban.hitCount", hitCount)}
             </span>
             <Button
               type="button"
@@ -115,14 +126,15 @@ export function BoardSearchBar({
       </div>
       {onToggleFilters && (
         <div ref={popoverRef} className="relative shrink-0">
+          {/* 32px 開關圖示鈕：圓角與展開態底色取 Button 的 toggle 變體（隨 aria-expanded）。 */}
           <Button
             type="button"
-            variant="ghost"
+            variant="toggle"
             size="icon"
             aria-label={t("filter.toggle")}
             aria-expanded={!!filtersOpen}
             onClick={onToggleFilters}
-            className={`relative h-9 w-9 ${filtersOpen ? "bg-accent text-foreground" : "text-muted-foreground"}`}
+            className="relative"
           >
             <SlidersHorizontal className="h-4 w-4" />
             {activeFilterCount > 0 && (

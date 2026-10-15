@@ -1,0 +1,140 @@
+schema: spec-driven
+created: 2026-10-10
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: desktop-ui-redesign
+depends_on: desktop-settings-mode
+started_at: 2026-10-10
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-12
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 10
+reviewed_scope:
+  - path: apps/desktop/core/src/project.rs
+    hash: 2c767ed2c625b9c6d6bbcc65fa9677b352158be3017e37930168de7f47970fed
+  - path: apps/desktop/package.json
+    hash: ce228530d72177abcdb93ce4dd90af7671e52a53178fd9feec171fa25ced57f5
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 5ac8d6cf35f7c3d21682dbecbad90aae356514fd7ce56e075d4d2142d63ddea6
+  - path: apps/desktop/src/App.tsx
+    hash: 21ee23336cfa69beb237ccf47062b2ee0fd75feff19fe4bc1a4c639e1bcb4473
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 2c5fbac2516f91db43b50678166db55278b51208a79d276f003ee384187ede13
+  - path: apps/desktop/src/__tests__/aboutPage.test.tsx
+    hash: 7e49c441cf1b64c9bddac4a1c5eb2a24f15375ca778e65d6fa70c99d3d7fad92
+  - path: apps/desktop/src/__tests__/appSettingsView.test.tsx
+    hash: 33fecedfce77dfa18c086bbbea136a2830262e6cb04313c9d84beac0160fb687
+  - path: apps/desktop/src/__tests__/messages.test.ts
+    hash: aa68ab55eae6aeeb45d1796c192d0a4c192cf5ba0836588bec76e8d695aebeb4
+  - path: apps/desktop/src/__tests__/releaseNotesDialog.test.tsx
+    hash: 2a6a2424428e953bd1baaeb18c078e1b8d599a89185e59cca427bebf6b46fddb
+  - path: apps/desktop/src/__tests__/settingsColumn.test.tsx
+    hash: b50268d0cc110e3f8f49c3ded6ca9dd52b7de41db09656161d3eac2516e66e0c
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: e9c2fbbb9ae9cd695cad105241fd7cc00c175ec5e6d8f37da7770582dd0b0cb2
+  - path: apps/desktop/src/__tests__/updatesPage.test.tsx
+    hash: e6c4082d809e194124ca09dca5af155512ba8ec14b7a090e3b90eb6ab7621978
+  - path: apps/desktop/src/adapter/appInfo.ts
+    hash: c77e17e6cc519741397a54ae6ed64b325e1db6d3b044d03cf5802f8721af6f90
+  - path: apps/desktop/src/components/LicenseDialog.tsx
+    hash: b2d5d088576a48e6d5c043564e658f9ef0bec87ebea81ef87aa172840147e541
+  - path: apps/desktop/src/components/ReleaseNotesDialog.tsx
+    hash: 57fd3ffc53624332c842b1d90dd283791aa551fb863e9a6d63986be486d0c1aa
+  - path: apps/desktop/src/components/SettingsColumn.tsx
+    hash: de2142aa7210b00f601fc1fbafbdff2423a41fa3927b98283f387ea0bb41961b
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 81019b64d51cabc5deb704b3a70546f01e1ff9f15e67372e11c3f22c996680ae
+  - path: apps/desktop/src/main.tsx
+    hash: 5a1b33c48edace4b82eb72c94ae7433d2816cc4f29533dfcaccbe0d03b085eda
+  - path: apps/desktop/src/settingsCatalog.ts
+    hash: be0652d1de8c5ae1866f84ddebd943373e2181615ea683c1fc1a2791d762dc87
+  - path: apps/desktop/src/store.ts
+    hash: 541ac60192f5c98ce8e81c2a8f94f7bbe8c2d76fe82d6a25962efc9b42e67733
+  - path: apps/desktop/src/views/AppSettingsView.tsx
+    hash: 2eb02f222e7c43726eb58e4289e93a4e0dd1d0847d2fe81e61eb6e8b3c074126
+  - path: apps/desktop/src/views/settings/AboutPage.tsx
+    hash: 33fbc90d2955fb17ca5468f1e434afeaca3ac0db4f97b6e36fbb130ac939be8c
+  - path: apps/desktop/src/views/settings/CliPage.tsx
+    hash: e5aabe338e6df9352d40837198cfeb14ed7b921d895a49aac8c601fe69843cf7
+  - path: apps/desktop/src/views/settings/GeneralPage.tsx
+    hash: 64e3fb1b5ffc6978ccf82e627cf0fa7c7ac57649bc1d12258df5f97e1b1ce046
+  - path: apps/desktop/src/views/settings/UpdatesPage.tsx
+    hash: 885ae75416a4252ee12630c0dc1fb05de76a25120cc9b831ae5d66b87fb5e582
+  - path: packages/ui/src/__tests__/settingsParts.test.tsx
+    hash: 5554b75195db01c7e6d930e6409d8394725de9ec9edcec1b59e3e1758a986775
+  - path: packages/ui/src/components/ui/settings.tsx
+    hash: 3b637c5579680581dfe7f35a09cca62a1b03b67553b7340b2e2fd9f79c2a1389
+  - path: packages/ui/src/index.ts
+    hash: 819a3dd05a71c0f3aa2d62008f0829050c75003cf8f848429e3bfaa292c879eb
+  - path: scripts/desktop/third-party-licenses.mjs
+    hash: 855eeda1d8d8307261ce86f8e608a9d7b93663771a831e08123fab6c3953227f
+  - path: scripts/desktop/third-party-licenses.test.mjs
+    hash: 41ae9701f5abdc886d582207f510bda86a215b6fddb58a9acc04143c074775d3
+verified_at: 2026-10-12
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 10
+verified_scope:
+  - path: apps/desktop/core/src/project.rs
+    hash: 2c767ed2c625b9c6d6bbcc65fa9677b352158be3017e37930168de7f47970fed
+  - path: apps/desktop/package.json
+    hash: ce228530d72177abcdb93ce4dd90af7671e52a53178fd9feec171fa25ced57f5
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 5ac8d6cf35f7c3d21682dbecbad90aae356514fd7ce56e075d4d2142d63ddea6
+  - path: apps/desktop/src/App.tsx
+    hash: 21ee23336cfa69beb237ccf47062b2ee0fd75feff19fe4bc1a4c639e1bcb4473
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 2c5fbac2516f91db43b50678166db55278b51208a79d276f003ee384187ede13
+  - path: apps/desktop/src/__tests__/aboutPage.test.tsx
+    hash: 7e49c441cf1b64c9bddac4a1c5eb2a24f15375ca778e65d6fa70c99d3d7fad92
+  - path: apps/desktop/src/__tests__/appSettingsView.test.tsx
+    hash: 33fecedfce77dfa18c086bbbea136a2830262e6cb04313c9d84beac0160fb687
+  - path: apps/desktop/src/__tests__/messages.test.ts
+    hash: aa68ab55eae6aeeb45d1796c192d0a4c192cf5ba0836588bec76e8d695aebeb4
+  - path: apps/desktop/src/__tests__/releaseNotesDialog.test.tsx
+    hash: 2a6a2424428e953bd1baaeb18c078e1b8d599a89185e59cca427bebf6b46fddb
+  - path: apps/desktop/src/__tests__/settingsColumn.test.tsx
+    hash: b50268d0cc110e3f8f49c3ded6ca9dd52b7de41db09656161d3eac2516e66e0c
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: e9c2fbbb9ae9cd695cad105241fd7cc00c175ec5e6d8f37da7770582dd0b0cb2
+  - path: apps/desktop/src/__tests__/updatesPage.test.tsx
+    hash: e6c4082d809e194124ca09dca5af155512ba8ec14b7a090e3b90eb6ab7621978
+  - path: apps/desktop/src/adapter/appInfo.ts
+    hash: c77e17e6cc519741397a54ae6ed64b325e1db6d3b044d03cf5802f8721af6f90
+  - path: apps/desktop/src/components/LicenseDialog.tsx
+    hash: b2d5d088576a48e6d5c043564e658f9ef0bec87ebea81ef87aa172840147e541
+  - path: apps/desktop/src/components/ReleaseNotesDialog.tsx
+    hash: 57fd3ffc53624332c842b1d90dd283791aa551fb863e9a6d63986be486d0c1aa
+  - path: apps/desktop/src/components/SettingsColumn.tsx
+    hash: de2142aa7210b00f601fc1fbafbdff2423a41fa3927b98283f387ea0bb41961b
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 81019b64d51cabc5deb704b3a70546f01e1ff9f15e67372e11c3f22c996680ae
+  - path: apps/desktop/src/main.tsx
+    hash: 5a1b33c48edace4b82eb72c94ae7433d2816cc4f29533dfcaccbe0d03b085eda
+  - path: apps/desktop/src/settingsCatalog.ts
+    hash: be0652d1de8c5ae1866f84ddebd943373e2181615ea683c1fc1a2791d762dc87
+  - path: apps/desktop/src/store.ts
+    hash: 541ac60192f5c98ce8e81c2a8f94f7bbe8c2d76fe82d6a25962efc9b42e67733
+  - path: apps/desktop/src/views/AppSettingsView.tsx
+    hash: 2eb02f222e7c43726eb58e4289e93a4e0dd1d0847d2fe81e61eb6e8b3c074126
+  - path: apps/desktop/src/views/settings/AboutPage.tsx
+    hash: 33fbc90d2955fb17ca5468f1e434afeaca3ac0db4f97b6e36fbb130ac939be8c
+  - path: apps/desktop/src/views/settings/CliPage.tsx
+    hash: e5aabe338e6df9352d40837198cfeb14ed7b921d895a49aac8c601fe69843cf7
+  - path: apps/desktop/src/views/settings/GeneralPage.tsx
+    hash: 64e3fb1b5ffc6978ccf82e627cf0fa7c7ac57649bc1d12258df5f97e1b1ce046
+  - path: apps/desktop/src/views/settings/UpdatesPage.tsx
+    hash: 885ae75416a4252ee12630c0dc1fb05de76a25120cc9b831ae5d66b87fb5e582
+  - path: packages/ui/src/__tests__/settingsParts.test.tsx
+    hash: 5554b75195db01c7e6d930e6409d8394725de9ec9edcec1b59e3e1758a986775
+  - path: packages/ui/src/components/ui/settings.tsx
+    hash: 3b637c5579680581dfe7f35a09cca62a1b03b67553b7340b2e2fd9f79c2a1389
+  - path: packages/ui/src/index.ts
+    hash: 819a3dd05a71c0f3aa2d62008f0829050c75003cf8f848429e3bfaa292c879eb
+  - path: scripts/desktop/third-party-licenses.mjs
+    hash: 855eeda1d8d8307261ce86f8e608a9d7b93663771a831e08123fab6c3953227f
+  - path: scripts/desktop/third-party-licenses.test.mjs
+    hash: 41ae9701f5abdc886d582207f510bda86a215b6fddb58a9acc04143c074775d3
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-12

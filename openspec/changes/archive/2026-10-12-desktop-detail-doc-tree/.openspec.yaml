@@ -1,0 +1,127 @@
+schema: spec-driven
+created: 2026-10-12
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: detail-content-redesign
+started_at: 2026-10-12
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-12
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 12
+reviewed_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: 07d8d2440b295ff42000f01842288019dd09d8ada15c3c8e80027cc04de58a81
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: f9a7de069242aff2e9dd6167c4c1e922cd3b403ee9b151f73a9caf1caf224208
+  - path: apps/desktop/src/__tests__/remoteCapabilities.test.tsx
+    hash: 732271f1c656ac65168f73f4b23407f21ed9e0682c12179e097002807f506343
+  - path: apps/desktop/src/components/DetailNav.tsx
+    hash: 7dc5f76a1e982fb2b6f67f79158f456ac1337a9714d301b4547cc0b36c7c684d
+  - path: apps/desktop/src/components/DocumentActionsMenu.tsx
+    hash: d2e0a213174a84ea19c355286e79cbacd2554d9bde560a112880295670c79b6d
+  - path: packages/ui/src/__tests__/archivedDetailPage.test.tsx
+    hash: 063724a825c8d3fd83a24fc26565a3ffc1cc0915076cbafc02fdfdc9fd88bea1
+  - path: packages/ui/src/__tests__/changeDetailPage.test.tsx
+    hash: 0d4e8d79a97236b9bd3ca680627374e94ecb1c8d0c842728858ef8adb08e9b43
+  - path: packages/ui/src/__tests__/detailShell.test.tsx
+    hash: fb298322e0d88ccbb49d78e8d89728bb222f64fe57b45bd824ba3666934c31ee
+  - path: packages/ui/src/__tests__/discussionDetailPage.test.tsx
+    hash: 81735c89a64ba396a0b38e87e6d8ad5996d34a3342eef667a6cd2d33013f7680
+  - path: packages/ui/src/__tests__/markdownAlerts.test.tsx
+    hash: 96dd2a33cf87529392d4ee4330f4c5162a5c7ec753c48c16a2aebc5990941053
+  - path: packages/ui/src/__tests__/tabs.test.tsx
+    hash: d5f32030e4922f7a1ad9b800a7a8517ecdc0184cbdbaa16899e990751f0a2edb
+  - path: packages/ui/src/__tests__/taskList.test.tsx
+    hash: 1692c28628205c8341a2f77f36a08385d2f0a57613bd55290a782980d4a5f440
+  - path: packages/ui/src/components/ArchivedDetailPage.tsx
+    hash: 9e30fa398dd0250c7451b86b1a47f8fb3b698b6ff31d0ee80f1c77050c65646a
+  - path: packages/ui/src/components/ChangeDetailPage.tsx
+    hash: 35b11453dba4d67326c76ba91ad7d2002e143bb9f28016f861e8e1774c726328
+  - path: packages/ui/src/components/DeltaBadges.tsx
+    hash: 720e751242376d2f26a0918eb8ab20868f2db3b6d17a31e9fceb7668fa71eb58
+  - path: packages/ui/src/components/DetailHeader.tsx
+    hash: 474ab30cd929d4b69594dc16c2a4c9d4a897a7b17d8c235beb37ff93a10b6cd4
+  - path: packages/ui/src/components/DetailShell.tsx
+    hash: 5199dec8b890b78b3d576fd8abeb5b063d7de28eefc4cca09fb7e2945f179747
+  - path: packages/ui/src/components/DiscussionDetailPage.tsx
+    hash: 29af207b2c8dfb002dedd61d6847f08aea6c81116df4d81f28f972c66ee470c2
+  - path: packages/ui/src/components/Markdown.tsx
+    hash: 0e0200864d0489ea4f390431c6cd0631c91a576df350945c7b2789707ff9bf0e
+  - path: packages/ui/src/components/SectionedDoc.tsx
+    hash: 518b51087e0b39c3da484ee5c8d309e68ce380bfcc77c96186071300e18e6856
+  - path: packages/ui/src/components/SourceDiscussionChip.tsx
+    hash: 35d5bfe056f6c254ec8f6ece0b23a9314cf187e5eef4c563aaa9ce97e4e6f5fb
+  - path: packages/ui/src/components/TaskList.tsx
+    hash: 628df0668bba117f34c7ece656f7d66caf801d61b433556dbf810d49c7548f27
+  - path: packages/ui/src/components/TicketView.tsx
+    hash: d36a14bdd7cbb39968a4737037161a17b8ec643df561e95b9dfcd1c93a46bb6f
+  - path: packages/ui/src/components/ui/callout.tsx
+    hash: c884e56e6804051bd4a336fa120672492858768a5b35d1ed06b43cf4a327c23f
+  - path: packages/ui/src/components/ui/tabs.tsx
+    hash: 8e49854b633ce425df10296381c35bc17c9865af8cf6b3a2887757b1b33fc6c1
+  - path: packages/ui/src/i18n.tsx
+    hash: f332cea803eae0bf6b1606c95b10db7cc1ab7c928b34afbb671fc2b6c9046e47
+  - path: packages/ui/src/index.ts
+    hash: a75a6577ae5cce44206bc32099defef58f8a9ee1483f0d90d0fb22cbe6c30862
+verified_at: 2026-10-12
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 12
+verified_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: 07d8d2440b295ff42000f01842288019dd09d8ada15c3c8e80027cc04de58a81
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: f9a7de069242aff2e9dd6167c4c1e922cd3b403ee9b151f73a9caf1caf224208
+  - path: apps/desktop/src/__tests__/remoteCapabilities.test.tsx
+    hash: 732271f1c656ac65168f73f4b23407f21ed9e0682c12179e097002807f506343
+  - path: apps/desktop/src/components/DetailNav.tsx
+    hash: 7dc5f76a1e982fb2b6f67f79158f456ac1337a9714d301b4547cc0b36c7c684d
+  - path: apps/desktop/src/components/DocumentActionsMenu.tsx
+    hash: d2e0a213174a84ea19c355286e79cbacd2554d9bde560a112880295670c79b6d
+  - path: packages/ui/src/__tests__/archivedDetailPage.test.tsx
+    hash: 063724a825c8d3fd83a24fc26565a3ffc1cc0915076cbafc02fdfdc9fd88bea1
+  - path: packages/ui/src/__tests__/changeDetailPage.test.tsx
+    hash: 0d4e8d79a97236b9bd3ca680627374e94ecb1c8d0c842728858ef8adb08e9b43
+  - path: packages/ui/src/__tests__/detailShell.test.tsx
+    hash: fb298322e0d88ccbb49d78e8d89728bb222f64fe57b45bd824ba3666934c31ee
+  - path: packages/ui/src/__tests__/discussionDetailPage.test.tsx
+    hash: 81735c89a64ba396a0b38e87e6d8ad5996d34a3342eef667a6cd2d33013f7680
+  - path: packages/ui/src/__tests__/markdownAlerts.test.tsx
+    hash: 96dd2a33cf87529392d4ee4330f4c5162a5c7ec753c48c16a2aebc5990941053
+  - path: packages/ui/src/__tests__/tabs.test.tsx
+    hash: d5f32030e4922f7a1ad9b800a7a8517ecdc0184cbdbaa16899e990751f0a2edb
+  - path: packages/ui/src/__tests__/taskList.test.tsx
+    hash: 1692c28628205c8341a2f77f36a08385d2f0a57613bd55290a782980d4a5f440
+  - path: packages/ui/src/components/ArchivedDetailPage.tsx
+    hash: 9e30fa398dd0250c7451b86b1a47f8fb3b698b6ff31d0ee80f1c77050c65646a
+  - path: packages/ui/src/components/ChangeDetailPage.tsx
+    hash: 35b11453dba4d67326c76ba91ad7d2002e143bb9f28016f861e8e1774c726328
+  - path: packages/ui/src/components/DeltaBadges.tsx
+    hash: 720e751242376d2f26a0918eb8ab20868f2db3b6d17a31e9fceb7668fa71eb58
+  - path: packages/ui/src/components/DetailHeader.tsx
+    hash: 474ab30cd929d4b69594dc16c2a4c9d4a897a7b17d8c235beb37ff93a10b6cd4
+  - path: packages/ui/src/components/DetailShell.tsx
+    hash: 5199dec8b890b78b3d576fd8abeb5b063d7de28eefc4cca09fb7e2945f179747
+  - path: packages/ui/src/components/DiscussionDetailPage.tsx
+    hash: 29af207b2c8dfb002dedd61d6847f08aea6c81116df4d81f28f972c66ee470c2
+  - path: packages/ui/src/components/Markdown.tsx
+    hash: 0e0200864d0489ea4f390431c6cd0631c91a576df350945c7b2789707ff9bf0e
+  - path: packages/ui/src/components/SectionedDoc.tsx
+    hash: 518b51087e0b39c3da484ee5c8d309e68ce380bfcc77c96186071300e18e6856
+  - path: packages/ui/src/components/SourceDiscussionChip.tsx
+    hash: 35d5bfe056f6c254ec8f6ece0b23a9314cf187e5eef4c563aaa9ce97e4e6f5fb
+  - path: packages/ui/src/components/TaskList.tsx
+    hash: 628df0668bba117f34c7ece656f7d66caf801d61b433556dbf810d49c7548f27
+  - path: packages/ui/src/components/TicketView.tsx
+    hash: d36a14bdd7cbb39968a4737037161a17b8ec643df561e95b9dfcd1c93a46bb6f
+  - path: packages/ui/src/components/ui/callout.tsx
+    hash: c884e56e6804051bd4a336fa120672492858768a5b35d1ed06b43cf4a327c23f
+  - path: packages/ui/src/components/ui/tabs.tsx
+    hash: 8e49854b633ce425df10296381c35bc17c9865af8cf6b3a2887757b1b33fc6c1
+  - path: packages/ui/src/i18n.tsx
+    hash: f332cea803eae0bf6b1606c95b10db7cc1ab7c928b34afbb671fc2b6c9046e47
+  - path: packages/ui/src/index.ts
+    hash: a75a6577ae5cce44206bc32099defef58f8a9ee1483f0d90d0fb22cbe6c30862
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-12

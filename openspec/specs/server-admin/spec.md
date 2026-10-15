@@ -367,7 +367,7 @@ code:
 ---
 ### Requirement: 管理 browser API 提供最小且完整的頁面 view model
 
-`/api/speclink/v1/web/admin` SHALL 提供總覽、users、registry、credentials、system 與 audit 的獨立讀取操作，SHALL NOT 保留獨立的 data view model。System view model SHALL 於單次回應內同時提供引擎與 API 版本、identity schema version、store 驅動、契約版本、等級、能力、store health、outbox backlog、可匯出 scope 清單與資料結構遷移可用性。Overview SHALL 回 active／suspended user 數、project／repo 數、active credential 數、待啟用邀請數、store health、identity schema version、setup welcome connection metadata、待處理事項清單與最近稽核事件清單；每則待處理事項 SHALL 標示其類型與對應目的地。Audit view model SHALL 接受關鍵字、動作、來源、時間區間與頁碼參數，於伺服器端套用後回傳當頁事件與總頁數；頁碼小於 1 或時間區間起始晚於結束 SHALL 回 400 `invalid_argument`，頁碼超出總頁數 SHALL 回空事件清單與正確總頁數。清單 SHALL 回穩定 id、顯示欄位與 action eligibility。回應 SHALL NOT 包含 PAT hash、PAT plaintext、password hash、refresh credential、setup token 或 invite token。Store health 失敗時，overview 與 system SHALL 回傳仍可取得的 identity 資料、`storeHealthy: false` 與可公開的 `storeHealthError`；users 與 credentials 管理 SHALL 保持可用。既有欄位名稱 SHALL 維持不變，新增欄位 SHALL 以 camelCase 輸出。
+`/api/speclink/v1/web/admin` SHALL 提供總覽、users、registry、credentials、system 與 audit 的獨立讀取操作，SHALL NOT 保留獨立的 data view model。System view model SHALL 於單次回應內同時提供引擎與 API 版本、identity schema version、store 驅動、契約版本、等級、能力、store health、outbox backlog、可匯出 scope 清單與資料結構遷移可用性。Overview SHALL 回 active／suspended user 數、project／repo 數、active credential 數、待啟用邀請數、store health、identity schema version、setup welcome connection metadata、待處理事項清單與最近稽核事件清單；每則待處理事項 SHALL 標示其類型與對應目的地。Audit view model SHALL 接受關鍵字、動作、來源、時間區間、頁碼與每頁筆數參數，於伺服器端套用後回傳當頁事件、總頁數與符合篩選的事件總筆數（`total`，非負整數，與頁碼及每頁筆數無關）；頁碼小於 1 或時間區間起始晚於結束 SHALL 回 400 `invalid_argument`，頁碼超出總頁數 SHALL 回空事件清單與正確總頁數及總筆數。清單 SHALL 回穩定 id、顯示欄位與 action eligibility。回應 SHALL NOT 包含 PAT hash、PAT plaintext、password hash、refresh credential、setup token 或 invite token。Store health 失敗時，overview 與 system SHALL 回傳仍可取得的 identity 資料、`storeHealthy: false` 與可公開的 `storeHealthError`；users 與 credentials 管理 SHALL 保持可用。既有欄位名稱 SHALL 維持不變，新增欄位 SHALL 以 camelCase 輸出。
 
 #### Scenario: 管理導覽各頁獨立載入
 
@@ -387,23 +387,23 @@ code:
 #### Scenario: 稽核篩選與分頁由伺服器套用
 
 - **WHEN** client 以動作篩選與第二頁頁碼呼叫 audit view model
-- **THEN** 回應只含符合該篩選的當頁事件與總頁數，未符合篩選的事件不出現在回應中
+- **THEN** 回應只含符合該篩選的當頁事件、總頁數與符合篩選的總筆數，未符合篩選的事件不出現在回應中
 
 ##### Example: 篩選與分頁組合
 
 - **GIVEN** 稽核事件依時間新到舊為 E1(user.invite)、E2(project.create)、E3(user.invite)、E4(user.suspend)、E5(user.invite)，每頁 2 筆
 - **WHEN** client 以動作篩選 `user.invite` 與頁碼 2 呼叫 audit view model
-- **THEN** 回應事件為 E5、總頁數為 2；E2 與 E4 不出現在回應中
+- **THEN** 回應事件為 E5、總頁數為 2、總筆數為 3；E2 與 E4 不出現在回應中
 
 ##### Example: 參數邊界
 
 | 參數 | 值 | 預期 |
 |------|----|------|
 | 頁碼 | 0 或負數 | 回 400 `invalid_argument`，不回傳事件 |
-| 頁碼 | 大於總頁數 | 回空事件清單與正確總頁數，不回 404 |
-| 動作篩選 | 未知動作名稱 | 回空事件清單與總頁數 0 |
+| 頁碼 | 大於總頁數 | 回空事件清單與正確總頁數及總筆數，不回 404 |
+| 動作篩選 | 未知動作名稱 | 回空事件清單、總頁數 0 與總筆數 0 |
 | 時間區間 | 起始晚於結束 | 回 400 `invalid_argument` |
-| 全部篩選 | 省略 | 回第一頁全部事件與總頁數 |
+| 全部篩選 | 省略 | 回第一頁全部事件、總頁數與全部事件的總筆數 |
 
 #### Scenario: Store 不健康時 identity 管理仍可用
 
@@ -417,92 +417,6 @@ code:
 
 
 <!-- @trace
-source: admin-console-redesign
-updated: 2026-07-26
-code:
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/projectSettingsView.test.tsx
-  - apps/desktop/src/i18n/locale.ts
-  - apps/desktop/src/views/ProjectSettingsView.tsx
-  - apps/desktop/vitest.setup.ts
-  - apps/server-web/src/App.tsx
-  - apps/server-web/src/__tests__/a11y.test.tsx
-  - apps/server-web/src/__tests__/account.test.tsx
-  - apps/server-web/src/__tests__/admin-console-shell.test.tsx
-  - apps/server-web/src/__tests__/admin.test.tsx
-  - apps/server-web/src/__tests__/app.test.tsx
-  - apps/server-web/src/__tests__/audit.test.tsx
-  - apps/server-web/src/__tests__/credentials.test.tsx
-  - apps/server-web/src/__tests__/helpers/adminHarness.tsx
-  - apps/server-web/src/__tests__/i18n.test.tsx
-  - apps/server-web/src/__tests__/overview.test.tsx
-  - apps/server-web/src/__tests__/reducedMotion.test.ts
-  - apps/server-web/src/__tests__/registry.test.tsx
-  - apps/server-web/src/__tests__/setup.test.tsx
-  - apps/server-web/src/__tests__/system.test.tsx
-  - apps/server-web/src/__tests__/toolbar.test.tsx
-  - apps/server-web/src/__tests__/tour.test.tsx
-  - apps/server-web/src/__tests__/users.test.tsx
-  - apps/server-web/src/__tests__/wording.test.tsx
-  - apps/server-web/src/api/client.ts
-  - apps/server-web/src/components/AdminNav.tsx
-  - apps/server-web/src/components/CopyButton.tsx
-  - apps/server-web/src/components/DataList.tsx
-  - apps/server-web/src/components/DetailSheet.tsx
-  - apps/server-web/src/components/EmptyState.tsx
-  - apps/server-web/src/components/HeaderAccount.tsx
-  - apps/server-web/src/components/ListToolbar.tsx
-  - apps/server-web/src/components/LocaleSwitch.tsx
-  - apps/server-web/src/components/LogoutButton.tsx
-  - apps/server-web/src/components/RouteErrorBoundary.tsx
-  - apps/server-web/src/components/SkipLink.tsx
-  - apps/server-web/src/components/Tour.tsx
-  - apps/server-web/src/i18n/LocaleContext.tsx
-  - apps/server-web/src/i18n/messages.ts
-  - apps/server-web/src/index.css
-  - apps/server-web/src/layouts/AccountLayout.tsx
-  - apps/server-web/src/layouts/AdminLayout.tsx
-  - apps/server-web/src/layouts/ConsoleLayout.tsx
-  - apps/server-web/src/lib/tourSeen.ts
-  - apps/server-web/src/pages/AccountPage.tsx
-  - apps/server-web/src/pages/ActivatePage.tsx
-  - apps/server-web/src/pages/InvitePage.tsx
-  - apps/server-web/src/pages/LoginPage.tsx
-  - apps/server-web/src/pages/SetupPage.tsx
-  - apps/server-web/src/pages/admin/AdminSection.tsx
-  - apps/server-web/src/pages/admin/AuditPage.tsx
-  - apps/server-web/src/pages/admin/CredentialsPage.tsx
-  - apps/server-web/src/pages/admin/DataPage.tsx
-  - apps/server-web/src/pages/admin/OverviewPage.tsx
-  - apps/server-web/src/pages/admin/RegistryPage.tsx
-  - apps/server-web/src/pages/admin/SystemPage.tsx
-  - apps/server-web/src/pages/admin/UsersPage.tsx
-  - apps/server-web/src/pages/admin/states.tsx
-  - apps/server-web/src/routes/AppRoutes.tsx
-  - apps/server-web/vitest.setup.ts
-  - crates/speclink-server/src/admin.rs
-  - crates/speclink-server/src/assets.rs
-  - crates/speclink-server/src/audit.rs
-  - crates/speclink-server/src/identity.rs
-  - crates/speclink-server/src/identity_sqlite.rs
-  - crates/speclink-server/tests/admin_audit_filter.rs
-  - crates/speclink-server/tests/admin_overview_view.rs
-  - crates/speclink-server/tests/admin_system_view.rs
-  - crates/speclink-server/tests/admin_users_view.rs
-  - crates/speclink-server/tests/admin_web_api.rs
-  - package-lock.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/boardSearchBar.test.tsx
-  - packages/ui/src/__tests__/select.test.tsx
-  - packages/ui/src/__tests__/selectInSheet.test.tsx
-  - packages/ui/src/__tests__/theme.test.ts
-  - packages/ui/src/components/BoardSearchBar.tsx
-  - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/components/ui/portal-container.tsx
-  - packages/ui/src/components/ui/select.tsx
-  - packages/ui/src/components/ui/sheet.tsx
-  - packages/ui/src/index.ts
-  - packages/ui/src/locale.ts
-  - packages/ui/vitest.config.ts
-  - packages/ui/vitest.setup.ts
+source: server-web-list-pages
+updated: 2026-10-14T17:14:35+08:00
 -->

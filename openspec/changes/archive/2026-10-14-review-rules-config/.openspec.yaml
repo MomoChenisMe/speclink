@@ -1,0 +1,192 @@
+schema: spec-driven
+created: 2026-10-14
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: custom-review-rules
+started_at: 2026-10-14
+started_by: MomoChen <momochenisme@gmail.com>
+depends_on: desktop-swipe-back-finger-lift
+reviewed_at: 2026-10-14
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 20
+reviewed_scope:
+  - path: apps/desktop/core/src/settings.rs
+    hash: 2a3b90a9f7569d3c3e57b94c0f3b0e67ed5d44caac3271b4a10621c110ce8b0c
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 385e8e1336e5caf568aa0814ad5a2ff43946c0bdc7dda47f190de9792267fc91
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 7c2791b97dd78f7f0a2dd49fa60f819e96b5823abc3fd71fb7d51c4bb8daab1c
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 7905573fb9435b6aadea660d3fe822c3658c60b433e2d78b1507db99aa86312a
+  - path: apps/desktop/src/__tests__/helpers/remoteFixtures.ts
+    hash: afa5977511c63b71a0385d4730c1347e42de19ed89e49446457342f02f8883c2
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: cac8d1f3da1bcc44ed30ee27f5ac22c9cd3f3e623d04688ebe6a2d3aad7bc2c0
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: f4fbfe95862a5f21734412bbed80fb31ca01d9c68db1a75a6027382bafc1d66f
+  - path: apps/desktop/src/__tests__/session.test.ts
+    hash: e9722a6943a7af701ade4bcb202a2e385efda13189e47274f35bd72167fa52e6
+  - path: apps/desktop/src/__tests__/settingsColumn.test.tsx
+    hash: ed8bde5f7fde893424a22822d835403f0bc670590c02d91fd37bb3b8bca627b9
+  - path: apps/desktop/src/__tests__/workspace.test.ts
+    hash: 2570591d4afd505b9c3545bf94536a6c7a60bf254ad0cb9f7496db9f147d3c13
+  - path: apps/desktop/src/adapter/workspace.ts
+    hash: 0a38005d0275ddb19b3d8ad1fc7d5da082ab924864b41107d872f993ef23a435
+  - path: apps/desktop/src/components/ProjectSettingsColumn.tsx
+    hash: e362a3e020a782dbea0b6f890bc9ecd0dcc711daaaa5b89cb3f34e8c35cd1968
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 82965df1487d81481adafba858f8014ebb56e8c9df27fa06f2ab9e1f3d0f9c16
+  - path: apps/desktop/src/session.ts
+    hash: e9de5957798328c6700954db85d1cb617d0a498a8afd156a88f68b956e9ca4ca
+  - path: apps/desktop/src/settingsCatalog.ts
+    hash: eae0812c1baab1eceb936b8c4988d3cb9714e5a3a02f6915098e2c7bab201ecb
+  - path: apps/desktop/src/views/ProjectSettingsView.tsx
+    hash: 68a5f3927d5ea9113fdcdfe239d9ee0c729569f74048f4220882e39b9e00fa18
+  - path: apps/desktop/src/views/project-settings/ReviewRulesPage.tsx
+    hash: 87214ec90aea96de1dea8856a8c64a2de4ef9158d6a595446dc3579f6e7c3763
+  - path: apps/desktop/src/views/project-settings/useProjectSettings.ts
+    hash: 7263b1198e100c1d0c61850140e90ef44e2ace6bc7982dcf52453f845fb67292
+  - path: crates/adapters/speclink-cli/src/verbs/config.rs
+    hash: 1a4083a2bff9016f4dd244df6884e1eb03222988dc7b04e1ce7631350485afdb
+  - path: crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs
+    hash: 5987e6e4680f6d6dd6f60926ad852b1f93fb444bdb800302b6c1c4c2f9132570
+  - path: crates/adapters/speclink-cli/tests/it/workflow_config.rs
+    hash: 180f766bbdc8c85695bfd52d7e72aec119228b1d609a48b3d102ee849bbedc2a
+  - path: crates/engine/speclink-core/assets/skills/config.md
+    hash: b89430c09cf7a1a0eb8ee08a5ad31ebd4297d04b23b6d020729ea3239d133e65
+  - path: crates/engine/speclink-core/assets/skills/review.md
+    hash: ff1155dac8da12c4c893e4325ed78faa26c703fb1409975fe7d985c61433d329
+  - path: crates/engine/speclink-core/src/workspace/config.rs
+    hash: 234c449369d7adb0acdf6e224cfc047f03a68feb184edf47c774704020678a5d
+  - path: crates/engine/speclink-core/src/workspace/config/tests.rs
+    hash: 1c1b2f77fc0007a7177fbf32ab18bdd2dca833e885365098aa0eb9f89c562afe
+  - path: crates/engine/speclink-core/src/workspace/init.rs
+    hash: 3c16dda65cf54871a42cad6868dc4e904c66dd94aa6e959e857751af0b337510
+  - path: crates/engine/speclink-core/src/workspace/skills.rs
+    hash: 2910ff60ea1e7e31e8f3311cbca04020ba8ec4d66ea7ddb3a5e2b15721be01ac
+  - path: crates/engine/speclink-core/tests/golden/assets.lock
+    hash: 10b65f2b45d76a5d64e2bc7e1ca068d4f60ff5cfb0235bc8c292b08df2d7ccd3
+  - path: crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: 7f84625bbf003171c816448d7b11af8ce32cf44ea964b0648ded6da3eef85a6c
+  - path: crates/engine/speclink-core/tests/golden/claude.snapshot.md
+    hash: b6b5979410c65c58e1fa438676c9d280e2fd197c0c990e5cd929b07cbfeaee19
+  - path: crates/engine/speclink-core/tests/golden/codex.snapshot.md
+    hash: fb92d6a5ca139ec3d26919a18f84c1e8ee1eb25aec596db4e9427d8c87271aa0
+  - path: crates/engine/speclink-core/tests/golden/copilot.snapshot.md
+    hash: 3c127c7809f8d78a60c1ede10e71dc26aa69a500f91473187edb5f3bb48d92c5
+  - path: crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: c773be10eeabf224fb72d9da09e0f82a88ba4d9ceb44170096f9a3f81b7bc758
+  - path: crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: aa0cc50547ae041dd5e61d808fac370e3439240c74262c40678a7b96ed3b189f
+  - path: crates/engine/speclink-core/tests/it/skill_authoring.rs
+    hash: 62cf5240fe0ee0272b192795f602854feec9c9db6a11fb5b4a872bdc3a53ba56
+  - path: crates/host/speclink-server/tests/it/api/policy_write.rs
+    hash: 0026dfcf42dc0311b0ee59353be9bd30513579f0ba941d8a866ef59889b0e2c0
+  - path: docs/configuration.md
+    hash: acf56993e6edb602f23e06344064aec993eafc4ab09e48a5d0cbd3f89e6e7782
+  - path: docs/configuration.zh-TW.md
+    hash: de5115fba472a63c97320e4f1604ea58ef5e55f5a31b2a8ddc6906d88d2df8ef
+  - path: packages/ui/src/__tests__/severityTag.test.tsx
+    hash: 7332476f75a7b72f85b47239b96d77fb123e6131f42a4c8af2b6795935a60081
+  - path: packages/ui/src/components/AnalyzePanel.tsx
+    hash: 09d5a1aa777248f7d0cd65f0a46ad635798109610e60bdb724e32c99145b9457
+  - path: packages/ui/src/components/SeverityTag.tsx
+    hash: a35f7cc6accae43e75009c87681d144cd565ca78972baac89975cac6294c8e18
+  - path: packages/ui/src/components/TicketView.tsx
+    hash: 9c64a1733410bbffdb5e0319e87a9f444adb40206f13f640afdeed1645cefcb7
+  - path: packages/ui/src/index.ts
+    hash: cf2099274b0597d578329171d8bed0126d3449fc32702e9366a54f39a0054564
+verified_at: 2026-10-14
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 20
+verified_scope:
+  - path: apps/desktop/core/src/settings.rs
+    hash: 2a3b90a9f7569d3c3e57b94c0f3b0e67ed5d44caac3271b4a10621c110ce8b0c
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 385e8e1336e5caf568aa0814ad5a2ff43946c0bdc7dda47f190de9792267fc91
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 7c2791b97dd78f7f0a2dd49fa60f819e96b5823abc3fd71fb7d51c4bb8daab1c
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 7905573fb9435b6aadea660d3fe822c3658c60b433e2d78b1507db99aa86312a
+  - path: apps/desktop/src/__tests__/helpers/remoteFixtures.ts
+    hash: afa5977511c63b71a0385d4730c1347e42de19ed89e49446457342f02f8883c2
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: cac8d1f3da1bcc44ed30ee27f5ac22c9cd3f3e623d04688ebe6a2d3aad7bc2c0
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: f4fbfe95862a5f21734412bbed80fb31ca01d9c68db1a75a6027382bafc1d66f
+  - path: apps/desktop/src/__tests__/session.test.ts
+    hash: e9722a6943a7af701ade4bcb202a2e385efda13189e47274f35bd72167fa52e6
+  - path: apps/desktop/src/__tests__/settingsColumn.test.tsx
+    hash: ed8bde5f7fde893424a22822d835403f0bc670590c02d91fd37bb3b8bca627b9
+  - path: apps/desktop/src/__tests__/workspace.test.ts
+    hash: 2570591d4afd505b9c3545bf94536a6c7a60bf254ad0cb9f7496db9f147d3c13
+  - path: apps/desktop/src/adapter/workspace.ts
+    hash: 0a38005d0275ddb19b3d8ad1fc7d5da082ab924864b41107d872f993ef23a435
+  - path: apps/desktop/src/components/ProjectSettingsColumn.tsx
+    hash: e362a3e020a782dbea0b6f890bc9ecd0dcc711daaaa5b89cb3f34e8c35cd1968
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 82965df1487d81481adafba858f8014ebb56e8c9df27fa06f2ab9e1f3d0f9c16
+  - path: apps/desktop/src/session.ts
+    hash: e9de5957798328c6700954db85d1cb617d0a498a8afd156a88f68b956e9ca4ca
+  - path: apps/desktop/src/settingsCatalog.ts
+    hash: eae0812c1baab1eceb936b8c4988d3cb9714e5a3a02f6915098e2c7bab201ecb
+  - path: apps/desktop/src/views/ProjectSettingsView.tsx
+    hash: 68a5f3927d5ea9113fdcdfe239d9ee0c729569f74048f4220882e39b9e00fa18
+  - path: apps/desktop/src/views/project-settings/ReviewRulesPage.tsx
+    hash: 87214ec90aea96de1dea8856a8c64a2de4ef9158d6a595446dc3579f6e7c3763
+  - path: apps/desktop/src/views/project-settings/useProjectSettings.ts
+    hash: 7263b1198e100c1d0c61850140e90ef44e2ace6bc7982dcf52453f845fb67292
+  - path: crates/adapters/speclink-cli/src/verbs/config.rs
+    hash: 1a4083a2bff9016f4dd244df6884e1eb03222988dc7b04e1ce7631350485afdb
+  - path: crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs
+    hash: 5987e6e4680f6d6dd6f60926ad852b1f93fb444bdb800302b6c1c4c2f9132570
+  - path: crates/adapters/speclink-cli/tests/it/workflow_config.rs
+    hash: 180f766bbdc8c85695bfd52d7e72aec119228b1d609a48b3d102ee849bbedc2a
+  - path: crates/engine/speclink-core/assets/skills/config.md
+    hash: b89430c09cf7a1a0eb8ee08a5ad31ebd4297d04b23b6d020729ea3239d133e65
+  - path: crates/engine/speclink-core/assets/skills/review.md
+    hash: ff1155dac8da12c4c893e4325ed78faa26c703fb1409975fe7d985c61433d329
+  - path: crates/engine/speclink-core/src/workspace/config.rs
+    hash: 234c449369d7adb0acdf6e224cfc047f03a68feb184edf47c774704020678a5d
+  - path: crates/engine/speclink-core/src/workspace/config/tests.rs
+    hash: 1c1b2f77fc0007a7177fbf32ab18bdd2dca833e885365098aa0eb9f89c562afe
+  - path: crates/engine/speclink-core/src/workspace/init.rs
+    hash: 3c16dda65cf54871a42cad6868dc4e904c66dd94aa6e959e857751af0b337510
+  - path: crates/engine/speclink-core/src/workspace/skills.rs
+    hash: 2910ff60ea1e7e31e8f3311cbca04020ba8ec4d66ea7ddb3a5e2b15721be01ac
+  - path: crates/engine/speclink-core/tests/golden/assets.lock
+    hash: 10b65f2b45d76a5d64e2bc7e1ca068d4f60ff5cfb0235bc8c292b08df2d7ccd3
+  - path: crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: 7f84625bbf003171c816448d7b11af8ce32cf44ea964b0648ded6da3eef85a6c
+  - path: crates/engine/speclink-core/tests/golden/claude.snapshot.md
+    hash: b6b5979410c65c58e1fa438676c9d280e2fd197c0c990e5cd929b07cbfeaee19
+  - path: crates/engine/speclink-core/tests/golden/codex.snapshot.md
+    hash: fb92d6a5ca139ec3d26919a18f84c1e8ee1eb25aec596db4e9427d8c87271aa0
+  - path: crates/engine/speclink-core/tests/golden/copilot.snapshot.md
+    hash: 3c127c7809f8d78a60c1ede10e71dc26aa69a500f91473187edb5f3bb48d92c5
+  - path: crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: c773be10eeabf224fb72d9da09e0f82a88ba4d9ceb44170096f9a3f81b7bc758
+  - path: crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: aa0cc50547ae041dd5e61d808fac370e3439240c74262c40678a7b96ed3b189f
+  - path: crates/engine/speclink-core/tests/it/skill_authoring.rs
+    hash: 62cf5240fe0ee0272b192795f602854feec9c9db6a11fb5b4a872bdc3a53ba56
+  - path: crates/host/speclink-server/tests/it/api/policy_write.rs
+    hash: 0026dfcf42dc0311b0ee59353be9bd30513579f0ba941d8a866ef59889b0e2c0
+  - path: docs/configuration.md
+    hash: acf56993e6edb602f23e06344064aec993eafc4ab09e48a5d0cbd3f89e6e7782
+  - path: docs/configuration.zh-TW.md
+    hash: de5115fba472a63c97320e4f1604ea58ef5e55f5a31b2a8ddc6906d88d2df8ef
+  - path: packages/ui/src/__tests__/severityTag.test.tsx
+    hash: 7332476f75a7b72f85b47239b96d77fb123e6131f42a4c8af2b6795935a60081
+  - path: packages/ui/src/components/AnalyzePanel.tsx
+    hash: 09d5a1aa777248f7d0cd65f0a46ad635798109610e60bdb724e32c99145b9457
+  - path: packages/ui/src/components/SeverityTag.tsx
+    hash: a35f7cc6accae43e75009c87681d144cd565ca78972baac89975cac6294c8e18
+  - path: packages/ui/src/components/TicketView.tsx
+    hash: 9c64a1733410bbffdb5e0319e87a9f444adb40206f13f640afdeed1645cefcb7
+  - path: packages/ui/src/index.ts
+    hash: cf2099274b0597d578329171d8bed0126d3449fc32702e9366a54f39a0054564
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-14
