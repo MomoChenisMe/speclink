@@ -1,6 +1,59 @@
 # Changelog
 **English** · [繁體中文](CHANGELOG.zh-TW.md)
 
+## 0.9.0 (2026-10-15)
+
+### New features
+
+- The desktop app has a new window shell. The left side has an icon rail with one tile per project, and a project column. The app draws its own title bar and breadcrumbs on all three platforms. "Add Workspace" is now "New project".
+- Change and discussion details now open as full detail pages instead of a side panel. The breadcrumbs or Esc take you back to the board, and the board keeps its scroll position, search and filters. Use ‹ n/m › to go to the previous or next item in board order.
+- Specs and archived items also open as full detail pages. A spec shows each requirement as its own section, with a requirement index and its provenance. To go back, use the back button, ⌘[ (Alt+← on Windows and Linux) or the mouse back button. On macOS, you can also swipe right with two fingers on the trackpad.
+- Detail pages now use a three-column layout like a manual: a document tree on the left, a reading card in the middle, and an "On this page" list on the right in wide windows. The change actions move to the right end of the title bar.
+- The six documents of a change each get their own view. Proposals and designs show section by section, tasks group into cards, delta specs mark modified and removed parts, and the plan and tickets show summary tiles and hints. The manual-task hint lists only the manual tasks that are not checked yet. The source files do not change.
+- The four documents of a discussion each get their own view. The conclusion splits into the decision, cut cards and rejected options. The discussion log becomes a timeline, and derived changes group by cut.
+- The spec detail page uses the same three-column layout, and the reading card of the Manual page matches the detail pages.
+- Settings now open in a settings mode. App settings and project settings each list their categories in the left column, with one page per category. New options let you pick a light, dark or system appearance and turn automatic update checks on or off.
+- Project context and output rules in project settings now use a code editor with line numbers and highlighting. Project context can switch between edit and preview, and ⌘S saves.
+- Settings has a new "About Speclink" page with version information, a button that copies it, links to the source code and issue reports, and the licenses. "About Speclink" in the macOS menu opens this page.
+- On macOS, the desktop app has its own menu bar. It follows the interface language and has shortcuts to open a project, switch pages, search the board and check for updates. A new "Keyboard Shortcuts" card in Settings lists the shortcuts that work on your platform.
+- On Windows, a left click on the system tray icon opens the same panel as on macOS. A right click still opens the native menu.
+- A project can write its own review rules and severities in openspec/config.yaml. `/speclink-review` grades findings by these rules, and `/speclink-config` and the desktop settings help you keep them.
+- A review ticket records the review rules that the first round used. The Review tab in the desktop app shows which rules the review followed.
+- `speclink init` and `speclink update` can install skills for GitHub Copilot. The skills go to `.github/skills/` and use the Copilot command syntax.
+- New Claude Code plugin speclink-skills, with this repo as its marketplace. A row of colored skill tabs marks the current step and change. A side panel has Board, Discussions and Quality tabs. Type # in the prompt to pick a proposed change, and the skill row wraps to three rows in a narrow terminal.
+- The changelog is now in English and Traditional Chinese. The repo has an English CHANGELOG.md and a Traditional Chinese CHANGELOG.zh-TW.md. The GitHub Release notes show English first, with the Chinese text in a collapsed section. The desktop app shows the entries in your interface language.
+- Speclink has a new joined "S" logo and a wordmark for dark backgrounds.
+- The server console no longer uses a side drawer. Users and projects open as detail pages with their own URLs, which you can reload or share. Invite, create and rename actions open a dialog in the center of the screen, and the dialog shows the invite link or the key directly.
+
+### Fixes
+
+- The server now blocks every write from the reader role, from the CLI and from the desktop remote board. Content in a wrong format gets a 400 response that tells you what is wrong, not an internal server error.
+- In the English interface, counts now use the singular for one item, for example "1 scenario". English labels in the status rows of detail pages no longer overlap the values.
+- When you open a change or a discussion from the system tray, the app first closes any dialog in the main window. The dialog and the details no longer show on top of each other.
+- You can give `/speclink-ingest` the name of the change to update.
+
+### Improvements
+
+- The desktop app, the server console and the shared components have a new visual style: white surfaces with neutral grays, thin borders and flat components. Markdown uses a new renderer.
+- Board columns and cards are now white containers with thin borders. Search and filters move to the page header, and the discussion column remembers if "Promoted" is open.
+- The Specs, Archived and Manual pages now show lists with a paging toolbar. You can jump to a page and pick the page size, and the app remembers the page size after a restart.
+- The notice about outdated skill files moves to a card at the bottom of the project column. When a new version is available, an update button shows in the icon rail, and you can download and install from it.
+- The system tray panel uses the same white cards as the main window.
+- The system tray panel shows the Proposed, In progress and Ready sections first. Content cards can collapse, and the frosted-glass effect on macOS is back.
+- Promoted discussions in the system tray panel have their own card, so you can tell them apart from open discussions at a glance.
+- Clickable items now give the same feedback everywhere. The desktop app keeps the arrow cursor and shows a hover background. The server console uses the hand cursor. Disabled and read-only items have no hover effect.
+- Review and verify stamps on a detail page show only in the Quality gates row of the left status area, not again in the header.
+- Summary tiles on a reading card share the full row width equally, and the discussion log lists rounds from newest to oldest.
+- Task rows open or close by their check state: unchecked tasks are open and checked tasks are closed.
+- The step bar on a discussion detail page uses the same color as its status tag, and the conclusion marks the cuts that are not promoted yet.
+- The server console shell, page headers and the sign-in, setup, invite and device sign-in pages now look like the desktop app.
+- The server console list pages, audit log and settings pages use the list and settings parts of the desktop app. The overview starts with four summary tiles, and revoke buttons show only when the pointer is on that row.
+- Each quality-station round now runs only the affected tests and starts its three subagents at the same time, so a round waits about 40 minutes less. After a worktree merge, the stations no longer ask for `--base` every time.
+- The 19 skills now follow one writing guide for all models. The rules are shorter and do not repeat, so models from Claude, Codex and Copilot follow them more easily.
+- `/speclink-config` confirms all policy settings in one table. Review rules are optional, and the skill helps you decide if a rule belongs in review rules or in output rules.
+- When you write review rules and your skill files are older than the engine, the CLI tells you to update them first. The `--dry-run` diff marks only the lines that really change.
+- The README is now an English-first open-source home page. The Chinese version is README.zh-TW.md, and the repo adds CONTRIBUTING, SECURITY and issue templates.
+
 ## 0.8.0 (2026-09-25)
 
 ### New features
