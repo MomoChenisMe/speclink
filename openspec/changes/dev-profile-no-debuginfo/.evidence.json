@@ -1,0 +1,44 @@
+{
+  "version": 2,
+  "change": "dev-profile-no-debuginfo",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 RED 先行：在 scripts/release/delivery-gate.test.mjs 新增一條測試，守「開發建置不保留除錯中間檔」——逐行找出根 Cargo.toml 的 [profile.dev] 區段（標頭到下一個 [ 標頭之間），斷言區段存在且 debug 的值為 false 或 0；失敗訊息寫明 dev profile 必須關閉除錯資訊，原因是避免 .o 在 target/debug/deps 累積（D2，不引入 TOML 解析套件）。驗證：執行 node --test scripts/*.test.mjs scripts/*/*.test.mjs，這條新測試在 Cargo.toml 尚未設定前失敗，訊息含上述原因，其他測試維持綠",
+      "files": [
+        "scripts/release/delivery-gate.test.mjs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 在根 Cargo.toml 新增 [profile.dev] 區段，只設 debug = false（D1：不用 macOS 限定的 packed、不用 line-tables-only），使 dev 與 test 建置不再產生 .o；不新增 [profile.release]、不新增 .cargo/config.toml，release 建置維持原狀。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs 全綠（1.1 的守門轉綠）；git diff Cargo.toml 只有這兩行新增",
+      "files": [
+        "Cargo.toml"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4YJP1R6T7XVZ1K90K8BMN49",
+      "taskDesc": "1.1 RED 先行：在 scripts/release/delivery-gate.test.mjs 新增一條測試，守「開發建置不保留除錯中間檔」——逐行找出根 Cargo.toml 的 [profile.dev] 區段（標頭到下一個 [ 標頭之間），斷言區段存在且 debug 的值為 false 或 0；失敗訊息寫明 dev profile 必須關閉除錯資訊，原因是避免 .o 在 target/debug/deps 累積（D2，不引入 TOML 解析套件）。驗證：執行 node --test scripts/*.test.mjs scripts/*/*.test.mjs，這條新測試在 Cargo.toml 尚未設定前失敗，訊息含上述原因，其他測試維持綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "36a4ad0759ada1446464d9f0e8f5e5c82c9211e4",
+      "touchedFiles": [
+        "scripts/release/delivery-gate.test.mjs"
+      ],
+      "recordedAt": "2026-10-15T02:32:48Z"
+    },
+    {
+      "taskId": "tsk_01M4YJP1R6YWCNMX899TWDFRED",
+      "taskDesc": "1.2 在根 Cargo.toml 新增 [profile.dev] 區段，只設 debug = false（D1：不用 macOS 限定的 packed、不用 line-tables-only），使 dev 與 test 建置不再產生 .o；不新增 [profile.release]、不新增 .cargo/config.toml，release 建置維持原狀。驗證：node --test scripts/*.test.mjs scripts/*/*.test.mjs 全綠（1.1 的守門轉綠）；git diff Cargo.toml 只有這兩行新增",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "36a4ad0759ada1446464d9f0e8f5e5c82c9211e4",
+      "touchedFiles": [
+        "Cargo.toml"
+      ],
+      "recordedAt": "2026-10-15T02:33:25Z"
+    }
+  ]
+}
