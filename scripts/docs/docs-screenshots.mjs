@@ -139,6 +139,10 @@ export const SHOT_LIST = [
   { file: 'server-overview.png', what: '後台總覽（含「開始使用」區塊）' },
   { file: 'server-members.png', what: '使用者詳情頁的成員資格' },
   { file: 'server-project.png', what: '專案詳情頁（儲存庫與成員）' },
+  { file: 'desktop-tray.png', what: '系統匣面板（只擷取面板視窗，不含選單列）' },
+  { file: 'claude-code-panel.png', what: 'Claude Code 技能列與側邊面板的看板分頁' },
+  { file: 'claude-code-quality.png', what: 'Claude Code 側邊面板的品質分頁（列出示範審查工單）' },
+  { file: 'claude-code-hash-menu.png', what: 'Claude Code 輸入框打 # 跳出的變更選單' },
 ];
 
 /// 截圖的介面語言，也是 SHOT_DIR 底下的子目錄名。
@@ -609,6 +613,35 @@ The system SHALL let admins filter log entries by actor and by date range.
 /// 內容全部由本腳本產生，不引用任何真實資料。
 export const DEMO_CHANGES = [TEAM_INVITES, SEARCH_RANKING, KEYBOARD_SHORTCUTS, DARK_MODE, AUDIT_LOG];
 
+/// 已就緒變更上的一張未結審查工單（docs-tray-and-mod-screenshots design D2）。不蓋章，
+/// 讓桌面詳情頁與 Claude Code 外掛的品質分頁都有內容。finding 為虛構，路徑只能是
+/// 示範檔——審查範圍由 evidence 推出，add-round 拒收範圍外的路徑。
+export const DEMO_REVIEW = {
+  change: KEYBOARD_SHORTCUTS.name,
+  file: {
+    path: 'src/actions.ts',
+    body: `// One table defines each action, its menu label and its shortcut.
+export const actions = [
+  { id: 'search', label: 'Search', shortcut: 'Mod+K' },
+  { id: 'new-item', label: 'New item', shortcut: 'Mod+N' },
+  { id: 'switch-view', label: 'Switch view', shortcut: 'Mod+1' },
+];
+`,
+  },
+  findings: [
+    {
+      severity: 'WARNING',
+      path: 'src/actions.ts',
+      text: 'Correctness: Mod+N opens a new browser window, and the collision check does not list it, so the shortcut never reaches the app.',
+    },
+    {
+      severity: 'SUGGESTION',
+      path: 'src/actions.ts',
+      text: 'Standards: Export the action ids as a union type so a menu entry cannot name an action that does not exist.',
+    },
+  ],
+};
+
 /// 示範討論：已結論，讓討論頁不是空的。
 export const DEMO_DISCUSSION = {
   slug: 'background-exports',
@@ -776,6 +809,8 @@ export function dryRunReport({ plan, workspace }) {
     lines.push(`  - [${STATE_LABEL[change.state]}] ${change.name} — ${change.description}`);
   }
   lines.push(`  - [已結論的討論] ${DEMO_DISCUSSION.topic}`);
+  const severities = DEMO_REVIEW.findings.map((f) => f.severity).join('、');
+  lines.push(`  - [審查工單] ${DEMO_REVIEW.change} — 第一輪 ${severities}，不蓋章`);
   for (const page of DEMO_MANUAL) {
     lines.push(`  - [手冊頁] ${page.title}（${page.file}）`);
   }
@@ -844,6 +879,10 @@ export function createDemoWorkspace(workspace) {
   run('git', ['config', 'user.email', DEMO_IDENTITY.email], { cwd: workspace });
 
   cli(workspace, ['init', '--tools', 'claude']);
+  // 先 commit：task done 把當下的髒檔記進 evidence，不 commit 的話每個變更都會記到
+  // init 產生的 .speclink.yaml，審查範圍就會跨變更撞名而解析不出來。
+  run('git', ['add', '-A'], { cwd: workspace });
+  run('git', ['commit', '-q', '-m', 'Initialize Speclink'], { cwd: workspace });
 
   for (const change of DEMO_CHANGES) {
     cli(workspace, ['new', 'change', change.name, '--description', change.description]);
@@ -851,7 +890,12 @@ export function createDemoWorkspace(workspace) {
 
     if (change.state === 'proposed') continue;
 
+    const reviewed = change.name === DEMO_REVIEW.change;
+    // 審查基準要在標記進行中之前取，否則 review scope 會判定基準太晚。
+    if (reviewed) cli(workspace, ['review', 'prepare', change.name]);
     cli(workspace, ['in-progress', 'add', change.name]);
+    // 示範檔在 task done 之前寫好，才會記進 evidence、成為審查範圍。
+    if (reviewed) writeDemoFile(workspace, DEMO_REVIEW.file);
     const ids = cliJson(workspace, ['instructions', 'apply', '--change', change.name, '--json']).tasks.map(
       (task) => task.id,
     );
@@ -860,6 +904,7 @@ export function createDemoWorkspace(workspace) {
       cli(workspace, ['task', 'done', '--change', change.name, id]);
     }
     if (change.state === 'archived') cli(workspace, ['archive', change.name]);
+    if (reviewed) openReviewTicket(workspace);
   }
 
   const { slug, topic, context, rounds, conclusion } = DEMO_DISCUSSION;
@@ -889,6 +934,29 @@ function writeChangeArtifacts(workspace, change) {
   const specDir = path.join(dir, 'specs', change.capability);
   mkdirSync(specDir, { recursive: true });
   writeFileSync(path.join(specDir, 'spec.md'), change.artifacts.spec);
+}
+
+function writeDemoFile(workspace, file) {
+  const target = path.join(workspace, file.path);
+  mkdirSync(path.dirname(target), { recursive: true });
+  writeFileSync(target, file.body);
+}
+
+/// 凍結審查範圍後寫入第一輪，不蓋章。
+function openReviewTicket(workspace) {
+  const { change, findings } = DEMO_REVIEW;
+  const { patchHash, paths } = cliJson(workspace, ['review', 'scope', change, '--json']);
+  const round = [
+    '**Phase**: discovery',
+    `**Patch**: ${patchHash}`,
+    '**Rules**: extend',
+    `**Scope**: ${paths.join(', ')}`,
+    ...findings.map((f) => `- [${f.severity}] ${f.path} — ${f.text}`),
+  ];
+  cli(workspace, ['review', 'add-round', change, '--stdin'], {
+    input: `${round.join('\n')}\n`,
+    stdio: ['pipe', 'inherit', 'inherit'],
+  });
 }
 
 /// 還原：先刪掉現場的目錄，再把備份搬回。任一步失敗都印出備份路徑——使用者至少
@@ -935,7 +1003,11 @@ function printHandoff(workspace) {
   for (const shot of SHOT_LIST.filter((s) => s.file.startsWith('desktop-'))) {
     console.log(`       ${shot.file} — ${shot.what}`);
   }
+  console.log('     系統匣面板從選單列的 Speclink 圖示打開；它不在 layer 0，取視窗 ID 時別只找 layer 0');
   console.log('     （server 四張另外用一次性的 server 擷取，資料目錄放在暫存區，不碰 .dev/）');
+  console.log('     （claude-code 三張不需要 desktop：在 Terminal 新視窗對示範 workspace 開 Claude Code，');
+  console.log('       用 --settings 只開 speclink-skills、清空 statusLine；只開面板、點分頁、打 #，');
+  console.log('       不按 Enter 送出提示。畫面會顯示專案路徑，示範 workspace 要建在 /Users/Shared/acme-web）');
   console.log('  4. 拍完先完全結束 desktop app，再回到這裡按 Enter 還原');
   console.log('');
   console.log('中途 Ctrl+C 也會還原；若腳本整個當掉，改跑 --restore。');

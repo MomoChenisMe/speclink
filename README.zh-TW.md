@@ -69,6 +69,10 @@ Speclink 有兩條部署路徑：
     <td width="50%"><img src="docs/assets/screenshots/zh-TW/desktop-spec.png" alt="正式規格的詳情頁，列出需求與情境" /><br /><sub>一份正式規格的需求與情境</sub></td>
     <td width="50%"><img src="docs/assets/screenshots/zh-TW/server-overview.png" alt="Server 後台的總覽頁" /><br /><sub>自架 server 的後台</sub></td>
   </tr>
+  <tr>
+    <td width="50%" align="center"><img src="docs/assets/screenshots/zh-TW/desktop-tray.png" width="200" alt="從 macOS 選單列打開的 Speclink 系統匣面板，依提案中、進行中、已就緒與討論分組列出變更" /><br /><sub>macOS 選單列的系統匣面板</sub></td>
+    <td width="50%"><img src="docs/assets/screenshots/zh-TW/claude-code-panel.png" alt="Claude Code 輸入框上方是 speclink-skills 技能列，右邊開著側邊面板的看板分頁" /><br /><sub>Claude Code 外掛的技能列與側邊面板</sub></td>
+  </tr>
 </table>
 
 ## <a id="features"></a>特色
@@ -154,6 +158,13 @@ CLI 與桌面 app 都想裝？桌面 app 可能換掉你的 CLI，先看 [Local 
 ```text
 /plugin install speclink-skills --marketplace MomoChenisMe/speclink
 ```
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshots/zh-TW/claude-code-quality.png" alt="側邊面板的品質分頁，列出 add-keyboard-shortcuts 未結的審查工單與兩條發現" /><br /><sub>品質分頁列出未結的審查與驗證工單</sub></td>
+    <td width="50%"><img src="docs/assets/screenshots/zh-TW/claude-code-hash-menu.png" alt="在 /speclink-apply 後面打 #，輸入框上方跳出提案中的變更選單" /><br /><sub>打 <code>#</code> 選變更名稱</sub></td>
+  </tr>
+</table>
 
 需求、設定與已知限制見 [speclink-skills](integrations/claude-code/speclink-skills/README.md)。
 

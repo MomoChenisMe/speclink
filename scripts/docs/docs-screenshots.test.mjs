@@ -10,6 +10,7 @@ import {
   DEMO_CHANGES,
   DEMO_DISCUSSION,
   DEMO_MANUAL,
+  DEMO_REVIEW,
   SHOT_DIR,
   SHOT_LIST,
   SHOT_LOCALES,
@@ -251,7 +252,7 @@ test('示範內容：進行中的變更只完成一部分任務，卡片才看�
   }
 });
 
-test('待拍清單：十一個檔名，中英介面各一組（截圖依語言分目錄、檔名相同）', () => {
+test('待拍清單：十五個檔名，中英介面各一組（截圖依語言分目錄、檔名相同）', () => {
   assert.deepEqual(
     SHOT_LIST.map((s) => s.file),
     [
@@ -266,11 +267,15 @@ test('待拍清單：十一個檔名，中英介面各一組（截圖依語言�
       'server-overview.png',
       'server-members.png',
       'server-project.png',
+      'desktop-tray.png',
+      'claude-code-panel.png',
+      'claude-code-quality.png',
+      'claude-code-hash-menu.png',
     ],
   );
   assert.deepEqual(SHOT_LOCALES, ['en', 'zh-TW']);
   for (const shot of SHOT_LIST) {
-    assert.match(shot.file, /^(desktop|server)-[a-z-]+\.png$/, `${shot.file} 命名不符`);
+    assert.match(shot.file, /^(desktop|server|claude-code)-[a-z-]+\.png$/, `${shot.file} 命名不符`);
     assert.ok(shot.what.length > 0, `${shot.file} 要說明拍什麼`);
   }
 });
@@ -299,6 +304,33 @@ test('dry-run 報告：印出備份來源與落點、示範內容與待拍清單
   }
   for (const page of DEMO_MANUAL) {
     assert.ok(report.includes(page.title), `報告要列出示範手冊頁 ${page.title}`);
+  }
+  assert.match(
+    report,
+    new RegExp(`審查工單.*${DEMO_REVIEW.change}`),
+    '報告要列出示範審查工單與它所屬的變更',
+  );
+});
+
+test('示範審查工單：開在已就緒的變更上，第一輪一條 WARNING、一條 SUGGESTION', () => {
+  const change = DEMO_CHANGES.find((c) => c.name === DEMO_REVIEW.change);
+  assert.ok(change, `${DEMO_REVIEW.change} 不在示範變更裡`);
+  assert.equal(change.state, 'ready', '只有已就緒的變更才會被送進品質關卡');
+  assert.deepEqual(
+    DEMO_REVIEW.findings.map((f) => f.severity),
+    ['WARNING', 'SUGGESTION'],
+  );
+  for (const finding of DEMO_REVIEW.findings) {
+    assert.ok(finding.text.trim().length > 0, '每條 finding 都要有內容');
+  }
+});
+
+test('示範審查工單：finding 只落在示範檔上（add-round 拒收凍結範圍外的路徑）', () => {
+  const { file, findings } = DEMO_REVIEW;
+  assert.match(file.path, /^[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*\.[a-z]+$/, `${file.path} 要是 repo 相對路徑`);
+  assert.ok(file.body.trim().length > 0, '示範檔要有內容，凍結的 patch 才不是空的');
+  for (const finding of findings) {
+    assert.equal(finding.path, file.path, `${finding.path} 不在凍結範圍內`);
   }
 });
 

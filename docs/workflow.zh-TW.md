@@ -234,7 +234,9 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 - **蓋章後檔案又被改**：卡片顯示「已審查·其後有變動」或「已驗證·其後有變動」，封存也會被擋。回該關卡再跑一輪、重新蓋章。
 - **封存遇到沒結的工單會被擋**：回去蓋章、用 `discard` 放棄這道關卡，或用 `--carry-*` 帶著走。
 
-卡片與系統匣面板上，審查章與驗證章並排顯示，審查在前。
+卡片與系統匣面板上，審查章與驗證章並排顯示，審查在前。系統匣面板從 macOS 選單列的 Speclink 圖示打開，不開主視窗也能看到各專案的變更與品質關卡。
+
+<img src="assets/screenshots/zh-TW/desktop-tray.png" width="280" alt="Speclink 系統匣面板，依提案中、進行中、已就緒與討論分組列出變更" />
 
 ### <a id="archive"></a>archive：封存
 

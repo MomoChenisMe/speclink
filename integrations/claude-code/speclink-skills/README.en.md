@@ -13,6 +13,15 @@ It adds four things to Claude Code:
 - **The `#` menu in the prompt box**: type `#` in the prompt box, and a menu above it lists the proposed changes. Type more after `#` to filter the names (case does not matter). Press Tab to take the first one, or press ↓ to select one and then Tab or Enter. The word that starts with `#` changes to the change name, for example after you type `/speclink-apply #`. If you press Enter with no selection, the prompt goes as you typed it. The menu works in the middle of a sentence too, after a space.
 - **What this session works on**: right of "speclink" on the skill bar, the bar shows the step and the change that this session works on, for example `▸ apply · add-auth`, with the step in its tab's color. The session title changes to `apply · add-auth` too, so a tab bar that shows the terminal title (Warp, for example) tells your sessions apart by change. The step comes from the `/speclink-…` command you send and from speclink skills that the model calls itself (for example the review that quality runs next). The change comes from the command's arguments and from the change name that a skill passes to the speclink CLI, so it is found even when you type no name. A session started in a change's worktree shows that change from the start. After the archive is done (the change leaves the list), the bar adds `✓`, for example `archive · add-auth ✓`. If you press Esc after you send a `/speclink-…` command and before the model starts any tool, the bar goes back to the step and change it had before. If a tool already started, the bar keeps the new step. A compact changes nothing. `/clear` clears it, and the title changes back to `Claude Code` at your next message. A conversation brought back with `/resume` gets the step and change back from its title or its transcript, also after a compact. A session that has not used speclink shows nothing and keeps its title.
 
+![Claude Code with the skill bar above the prompt and the side panel open on the Board tab](../../../docs/assets/screenshots/en/claude-code-panel.png)
+
+<table>
+  <tr>
+    <td width="50%"><img src="../../../docs/assets/screenshots/en/claude-code-quality.png" alt="The Quality tab of the side panel, with an open review ticket and its two findings" /><br /><sub>The Quality tab</sub></td>
+    <td width="50%"><img src="../../../docs/assets/screenshots/en/claude-code-hash-menu.png" alt="After /speclink-apply, typing # opens a menu of proposed changes above the prompt" /><br /><sub>The <code>#</code> menu in the prompt box</sub></td>
+  </tr>
+</table>
+
 ## Requirements
 
 - Claude Code 2.1.290 or later (tested on this version). The mod API is early access, so a Claude Code release can make an update of this mod necessary.

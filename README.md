@@ -69,6 +69,10 @@ For the full first round (propose, apply, check, archive), see [Getting started]
     <td width="50%"><img src="docs/assets/screenshots/en/desktop-spec.png" alt="The detail page of a spec, with its requirements and scenarios" /><br /><sub>A spec with its requirements and scenarios</sub></td>
     <td width="50%"><img src="docs/assets/screenshots/en/server-overview.png" alt="The overview page of the server console" /><br /><sub>The console of the self-hosted server</sub></td>
   </tr>
+  <tr>
+    <td width="50%" align="center"><img src="docs/assets/screenshots/en/desktop-tray.png" width="200" alt="The Speclink tray panel, opened from the macOS menu bar, with the changes grouped by Proposed, In progress, Ready, and Discussions" /><br /><sub>The tray panel in the macOS menu bar</sub></td>
+    <td width="50%"><img src="docs/assets/screenshots/en/claude-code-panel.png" alt="Claude Code with the speclink-skills skill bar above the input box and the side panel open on the Board tab" /><br /><sub>The Claude Code plugin: skill bar and side panel</sub></td>
+  </tr>
 </table>
 
 ## <a id="features"></a>Features
@@ -154,6 +158,13 @@ Do you want both the CLI and the desktop app? The desktop app can replace your C
 ```text
 /plugin install speclink-skills --marketplace MomoChenisMe/speclink
 ```
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshots/en/claude-code-quality.png" alt="The Quality tab of the side panel, with an open review ticket on add-keyboard-shortcuts and its two findings" /><br /><sub>The Quality tab lists the open review and verify tickets</sub></td>
+    <td width="50%"><img src="docs/assets/screenshots/en/claude-code-hash-menu.png" alt="After /speclink-apply, typing # opens a menu of proposed changes above the input box" /><br /><sub>Type <code>#</code> to pick a change name</sub></td>
+  </tr>
+</table>
 
 For requirements, settings, and known limits, see [speclink-skills](integrations/claude-code/speclink-skills/README.en.md).
 
