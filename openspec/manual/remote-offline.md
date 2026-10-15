@@ -4,7 +4,7 @@ section: Remote 模式
 order: 500
 keywords: [離線, offline, 重新登入, stale, 恢復, 重置]
 sources: [remote-resilience, user-documentation]
-generated: 2026-10-15T12:25:31+08:00
+generated: 2026-10-15T17:40:05+08:00
 ---
 # 失聯與恢復
 

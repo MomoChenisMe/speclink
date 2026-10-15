@@ -3,8 +3,8 @@ title: 認識桌面 app
 section: 桌面 app
 order: 300
 keywords: [桌面, 圖示列, 專案欄, 標題列, 麵包屑, 選單列, 詳情頁, 文件樹, 閱讀卡, 本頁目錄, 滑動返回, 即時更新, 浮層提示, 語意色]
-sources: ["desktop-app#桌面 app 直嵌引擎並以本地檔案為真相", "desktop-app#桌面 app 呈現 change 與 spec 的清單與內容", "desktop-app#桌面 app 提供動詞操作面", "desktop-app#外部變更即時反映", "desktop-app#監看根解析與專案探索一致", "desktop-app#側欄導覽結構", "desktop-app#視窗預設尺寸與置中", "desktop-app#隱藏原生標題列與三平台視窗殼", "desktop-app#macOS 原生選單", "desktop-app#關於頁", "desktop-app#介面文字以打包的 Noto Sans TC 呈現", "desktop-app#markdown 內容保留文件結構呈現", "desktop-app#raw HTML 不以原文呈現", "desktop-app#表單控制項與按鈕以主題化元件呈現", "desktop-app#markdown 文件內容行寬有上限", "desktop-app#詳情頁互斥", "desktop-app#詳情頁的導覽與返回", "desktop-app#變更與討論詳情頁的宿主為看板", "desktop-app#詳情頁標頭標記受寬度約束且頁不產生水平捲軸", "desktop-app#詳情頁文件載入以 skeleton 呈現", "desktop-app#詳情頁與浮層的進出動畫", "desktop-app#詳情頁的文件樹、閱讀卡與本頁目錄", "desktop-app#詳情頁的文件動作", "desktop-app#看板全域操作成功靜默、失敗以 toast 浮層呈現", "desktop-app#品質站蓋章配色與主色分離", "desktop-app#介面狀態語意色分層", "desktop-app#主題化提示統一延遲", "desktop-app#截斷省略號的統一字形", "desktop-app#觸及檔案系統的 command 不佔用主執行緒", "desktop-app#分頁切換中即時回饋", "desktop-app#看板首訪以 skeleton 佔位", "desktop-app#首訪載入失敗終態呈現", "desktop-app#可點元素的游標與 hover 回饋"]
-generated: 2026-10-15T12:33:36+08:00
+sources: ["desktop-app#桌面 app 直嵌引擎並以本地檔案為真相", "desktop-app#桌面 app 呈現 change 與 spec 的清單與內容", "desktop-app#桌面 app 提供動詞操作面", "desktop-app#外部變更即時反映", "desktop-app#監看根解析與專案探索一致", "desktop-app#側欄導覽結構", "desktop-app#視窗預設尺寸與置中", "desktop-app#隱藏原生標題列與三平台視窗殼", "desktop-app#macOS 原生選單", "desktop-app#關於頁", "desktop-app#介面文字以打包的 Noto Sans TC 呈現", "desktop-app#markdown 內容保留文件結構呈現", "desktop-app#raw HTML 不以原文呈現", "desktop-app#表單控制項與按鈕以主題化元件呈現", "desktop-app#markdown 文件內容行寬有上限", "desktop-app#詳情頁互斥", "desktop-app#詳情頁的導覽與返回", "desktop-app#變更與討論詳情頁的宿主為看板", "desktop-app#詳情頁標頭標記受寬度約束且頁不產生水平捲軸", "desktop-app#詳情頁文件載入以 skeleton 呈現", "desktop-app#詳情頁與浮層的進出動畫", "desktop-app#詳情頁的文件樹、閱讀卡與本頁目錄", "desktop-app#詳情頁的文件動作", "desktop-app#看板全域操作成功靜默、失敗以 toast 浮層呈現", "desktop-app#品質站蓋章配色與主色分離", "desktop-app#介面狀態語意色分層", "desktop-app#主題化提示統一延遲", "desktop-app#截斷省略號的統一字形", "desktop-app#觸及檔案系統的 command 不佔用主執行緒", "desktop-app#分頁切換中即時回饋", "desktop-app#看板首訪以 skeleton 佔位", "desktop-app#首訪載入失敗終態呈現", "desktop-app#可點元素的游標與 hover 回饋", "desktop-app#詳情頁狀態列的標籤欄依最長標籤對齊"]
+generated: 2026-10-15T17:40:05+08:00
 ---
 
 # 認識桌面 app
@@ -193,7 +193,7 @@ macOS 上 app 用自己的選單列，共六組。Windows 與 Linux 沒有選單
 
 - **身分區**：名稱或討論 slug（等寬 14px，過長時折行，不會撐寬欄）、階段籤、一行出身（建立者首字母圓標＋名字、產生工具、建立日、「開工 YYYY-MM-DD」；缺的段整段不出現），以及各自成行的關聯列。變更的關聯列是「來自」（來源討論籤）與「規格」（本變更 delta 涵蓋的能力籤，點了切到規格文件）；討論是 topic（最多三行，溢出截斷）與「關聯」列（先前討論數，點了切到背景文件）。建立者與開工者含 email 的完整識別收在提示裡。身分區不放審查與驗證章，品質關卡由「狀態」列呈現。
 - **「文件」節點**：每份文件一個，帶圖示、名稱與徽章。點一下切換閱讀卡，作用中的節點以主色淡底標示。節點不列出文件裡的段落，頁內的段落由本頁目錄負責。
-- **「狀態」列**：左標籤、右內容，細線分隔。
+- **「狀態」列**：左標籤、右內容，細線分隔。同一頁的各列共用一個標籤欄，寬度是這一頁最長標籤的寬度，最窄 56px、最寬 112px，超過時標籤在字間折行。不論介面語言，標籤都不會壓到同列的數值，各列數值的左緣對齊。繁中介面的標籤都不超過 56px，標籤欄維持 56px；英文介面例如規格詳情頁的「Requirements」「Provenance」兩列，標籤與數值之間留有間距。變更、討論、規格與已封存詳情頁都照這條規則。
 
 | 詳情頁 | 文件節點（依序） |
 | --- | --- |

@@ -4,7 +4,7 @@ section: 桌面 app
 order: 340
 keywords: [專案, 圖示列, 新增專案, 最近開啟, 初始化, 啟用, 專案動作選單, 專案設定, 應用程式設定, 專案說明, 產出規則, 審查規則, 產出流程, config.yaml, 顯示語言, 外觀, 鍵盤快捷鍵]
 sources: [desktop-config, "workspace-chooser#新增專案的來源分流", "workspace-chooser#最近開啟清單", "desktop-app#專案層檔案系統動作", "desktop-app#設定頁的鍵盤快捷鍵卡"]
-generated: 2026-10-15T12:29:37+08:00
+generated: 2026-10-15T17:40:05+08:00
 ---
 
 # 專案、新增專案與設定頁
@@ -273,6 +273,8 @@ app 從你選的資料夾往上找 speclink 專案根。找到就直接切換過
 #### 顯示語言
 
 「顯示語言」列三選：跟隨系統、zh-TW、en。切換即時對全介面生效（標題列、圖示列、專案欄、看板、對話框，以及 macOS 的原生選單列），並跨重啟保留。跟隨系統時，系統語言以 zh 開頭判為 zh-TW，其餘為 en，例如 zh-CN 得到 zh-TW、ja-JP 得到 en。介面語言與 config.yaml 的 locale（AI 產物的語言）互不影響。
+
+英文介面的計數依數量用單數或複數：數量是 1 時用單數，例如規格詳情頁一條只有 1 個 scenario 的需求顯示「1 scenario」、只有 1 輪的討論卡顯示「1 round」；數量是 0 或 2 以上時用複數，例如「0 tasks」「3 days ago」。繁中介面不分單複數，文案不變。
 
 #### 外觀
 

@@ -3,8 +3,8 @@ title: 自動更新、CLI、技能檔過期與關於頁
 section: 桌面 app
 order: 350
 keywords: [檢查更新, 更新頁, 回到前景, 更新日誌, 安裝 CLI, PATH, 技能檔過期, 保留現狀, speclink update, 關於 Speclink, 版本資訊, 第三方授權]
-sources: ["desktop-app#桌面自動更新", "desktop-app#更新日誌彈窗", "desktop-app#安裝 CLI 指令到 PATH", "desktop-app#指令檔過期提示", "desktop-app#指令檔過期提示捲動釘選", "desktop-app#關於頁", "workspace-tools#技能檔過期探測", "workspace-tools#受管檔再生的降級守門", "workspace-tools#引擎版號查詢面", "workspace-tools#產物層版本戳同源", "workspace-tools#內嵌資產版本鎖定紀律", "workspace-tools#update 清除孤兒技能目錄"]
-generated: 2026-10-15T12:26:31+08:00
+sources: ["desktop-app#桌面自動更新", "desktop-app#更新日誌彈窗", "desktop-app#安裝 CLI 指令到 PATH", "desktop-app#指令檔過期提示", "desktop-app#指令檔過期提示捲動釘選", "desktop-app#關於頁", "workspace-tools#技能檔過期探測", "workspace-tools#受管檔再生的降級守門", "workspace-tools#引擎版號查詢面", "workspace-tools#產物層版本戳同源", "workspace-tools#內嵌資產版本鎖定紀律", "workspace-tools#update 清除孤兒技能目錄", "desktop-app#更新日誌依介面語言呈現"]
+generated: 2026-10-15T17:40:05+08:00
 ---
 
 # 自動更新、CLI、技能檔過期與關於頁
@@ -101,6 +101,8 @@ app 隨版帶一份更新日誌。更新到新版後第一次啟動，app 會彈
 | app 版號與日誌最新版號不同 | 不彈 |
 
 更新頁的「更新日誌」卡：最新版本是第一列，預設展開它的分組列點；較舊的版本每版一列（版號、日期、第一條摘要），附「檢視」；最底下一列是「全部更新日誌」。兩種入口都打開同一個對話框的瀏覽模式：標題是「更新日誌」、列出全部條目、主鈕是「關閉」。按「全部更新日誌」從頂端開始看；按某一版的「檢視」，開啟後那一版的小標會在捲動區最上面。
+
+條目跟著介面語言：介面語言是英文時，「X.Y.Z 更新內容」彈窗、瀏覽模式與更新頁的「更新日誌」卡（含每版一列的第一條摘要）都顯示英文條目，分組標題是 New features、Fixes、Improvements；介面語言是繁中時顯示繁中條目，分組標題是新功能、修正、改善。切換介面語言後，已開著的對話框與更新頁立即換成新語言。介面語言不影響彈出判定與已看過記錄：看過 0.9.0 的更新內容後把介面改成英文再重新啟動，不會再彈出 0.9.0。
 
 應用程式設定裡，更新日誌只有更新頁這個入口，一般頁與關於頁都沒有。macOS 原生選單的「說明 › 更新日誌」也會打開瀏覽模式。瀏覽模式不改變已看過記錄，不影響下次啟動的判定。已看過記錄只存在 app 本機，不進任何專案檔案；記錄壞掉時視同沒有記錄。
 
