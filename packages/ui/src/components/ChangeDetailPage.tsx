@@ -288,7 +288,7 @@ export function ChangeDetailPage({
   onOpenSpec,
   pathReveal,
 }: ChangeDetailPageProps) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const [meta, setMeta] = useState<ChangeMetaInfo | null>(null);
   // 前置候選名冊：陣列＝查詢結果、null＝自清單派生（無查詢或查詢失敗）、undefined＝查詢中。
   const [roster, setRoster] = useState<string[] | null | undefined>(null);
@@ -400,7 +400,7 @@ export function ChangeDetailPage({
   const pct = change.totalTasks > 0 ? Math.round((change.completedTasks / change.totalTasks) * 100) : 0;
   const taskBadge = `${change.completedTasks}/${change.totalTasks}`;
   const delta = sumDeltaCounts(Object.values(specDocs ?? {}).map(specDeltaCounts));
-  const rel = relativeDays(meta?.created, t);
+  const rel = relativeDays(meta?.created, { t, tn });
 
   // 勾選走樂觀更新（design D3）：本地先翻轉 tasksMd 立即反映，再發寫回；失敗
   // 還原快照並顯示單行錯誤。不鎖清單——僅以 pendingWrites 讓世代重載讓路，
@@ -514,7 +514,7 @@ export function ChangeDetailPage({
       tickets,
       onLocateTask: nav.locateTask,
     },
-    t,
+    { t, tn },
   );
   const calloutSlot = summary.callout && <div data-doc-callout>{summary.callout}</div>;
   // 工單節點的徽章：末輪序號（載入完成且有輪次時）。

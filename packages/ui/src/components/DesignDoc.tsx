@@ -166,7 +166,7 @@ function DecisionCard({
   jump: DecisionJump | null;
   onJumped: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -184,7 +184,7 @@ function DecisionCard({
           <InlineMarks text={card.title} />
         </h3>
         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-          {t("doc.points").replace("{n}", String(card.bullets))}
+          {tn("doc.points", card.bullets)}
         </span>
       </ExpandToggle>
       {open && card.body && (

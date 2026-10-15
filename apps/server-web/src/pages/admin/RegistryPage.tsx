@@ -30,7 +30,7 @@ import { ProjectDetailPage, projectPath } from "./ProjectDetailPage";
 // 進詳情頁；建立專案以置中對話框承載，列表頁不含輸入控制項。
 
 export function RegistrySection() {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const client = useClient();
   const navigate = useNavigate();
   const narrow = useNarrow();
@@ -96,9 +96,7 @@ export function RegistrySection() {
                 data-project={p.key}
                 mono={false}
                 title={p.name}
-                description={t("registry.projectMeta")
-                  .replace("{key}", p.key)
-                  .replace("{n}", String(p.repos.length))}
+                description={tn("registry.projectMeta", p.repos.length).replace("{key}", p.key)}
                 onClick={() => navigate(projectPath(p.key))}
               />
             ))

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WebApiError } from "../api/client";
@@ -148,5 +148,28 @@ describe("建立專案對話框", () => {
     expect(alert.textContent).toContain("代號已存在");
     expect(alert.id).toBe("new-project-key-error");
     expect((within(dialog).getByLabelText("專案代號") as HTMLInputElement).value).toBe("demo");
+  });
+});
+
+// fix-english-status-labels-and-plurals：server-web-console「後台英文計數文案依數量使用單數或複數」的專案列情境。
+describe("英文介面的專案列計數", () => {
+  beforeEach(() => localStorage.setItem("speclink.uiLocale", "en"));
+  afterEach(() => localStorage.removeItem("speclink.uiLocale"));
+
+  it("只有 1 個儲存庫時寫「Key demo · 1 repository」", async () => {
+    renderAt("/admin/registry", makeAdminClient());
+    const row = await screen.findByRole("button", { name: "Demo" });
+    expect(row.querySelector("[data-desc]")?.textContent).toBe("Key demo · 1 repository");
+  });
+
+  it("2 個儲存庫時寫「Key demo · 2 repositories」", async () => {
+    const registry = {
+      projects: [
+        { ...REGISTRY.projects[0], repos: [...REGISTRY.projects[0].repos, { key: "frontend", name: "Frontend" }] },
+      ],
+    };
+    renderAt("/admin/registry", makeAdminClient({ getAdminRegistry: vi.fn(async () => registry) }));
+    const row = await screen.findByRole("button", { name: "Demo" });
+    expect(row.querySelector("[data-desc]")?.textContent).toBe("Key demo · 2 repositories");
   });
 });

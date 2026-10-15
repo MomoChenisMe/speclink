@@ -185,14 +185,14 @@ function roundLabel(t: (key: string) => string, index: number): string {
 /** 輪卡（與排程文件同一種邊框卡片）：卡頭 16px「第 N 輪」（本頁目錄錨點）、階段詞、範圍檔數、條數與
  * 各嚴重度計數籤；展開後先列套用規則列（該輪有記錄時）、再列範圍路徑與 finding。 */
 function RoundBlock({ round, smells, defaultOpen }: { round: TicketRound; smells: string[]; defaultOpen: boolean }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const [open, setOpen] = useState(defaultOpen);
   const phase = round.phase ? t(PHASE_KEY[round.phase]) : null;
   const counts = severityCounts(round);
   const meta = [
     phase,
-    t("ticket.scopeFiles").replace("{n}", String(round.scope.length)),
-    t("ticket.findings").replace("{n}", String(round.findings.length)),
+    tn("ticket.scopeFiles", round.scope.length),
+    tn("ticket.findings", round.findings.length),
   ].filter(Boolean);
   return (
     <li data-ticket-round={round.index} className="overflow-hidden rounded-md border border-border/60 bg-muted/20">
@@ -245,9 +245,8 @@ const severityOf = (list: ReviewList) => list.toUpperCase();
  * 條數籤，replace 且沒有專案規則時琥珀底；展開後列預設清單（或寫明沒有套用）、各嚴重度的規則原文與
  * 末尾註記。N 取 `smells` 的長度。 */
 function RulesRow({ rules, smells }: { rules: ReviewRules; smells: string[] }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const [open, setOpen] = useState(false);
-  const count = (key: string, n: number) => t(key).replace("{count}", String(n));
   const groups = REVIEW_LISTS.filter((list) => rules[list].length > 0);
   const extend = rules.baseline === "extend";
   const mode = extend
@@ -272,7 +271,7 @@ function RulesRow({ rules, smells }: { rules: ReviewRules; smells: string[] }) {
           {t("ticket.rules.label")}
         </span>
         <span data-ticket-rules-mode className="text-muted-foreground">
-          {count(mode, smells.length)}
+          {tn(mode, smells.length)}
         </span>
         {groups.map((list) => (
           <SeverityTag key={list} severity={severityOf(list)} data-ticket-rules-count={severityOf(list)} className="tabular-nums">
@@ -286,20 +285,20 @@ function RulesRow({ rules, smells }: { rules: ReviewRules; smells: string[] }) {
             <div data-ticket-rules-baseline className="flex flex-col gap-1">
               <div className="flex items-center gap-1.5">
                 <SeverityTag data-ticket-severity severity="SUGGESTION" />
-                <span>{count("ticket.rules.baselineOnly", smells.length)}</span>
+                <span>{tn("ticket.rules.baselineOnly", smells.length)}</span>
               </div>
               <BaselineSmellList names={smells} />
             </div>
           ) : (
             <p data-ticket-rules-baseline className="m-0 text-muted-foreground">
-              {count("ticket.rules.baselineNotApplied", smells.length)}
+              {tn("ticket.rules.baselineNotApplied", smells.length)}
             </p>
           )}
           {groups.map((list) => (
             <div key={list} data-ticket-rules-group={severityOf(list)} className="flex flex-col gap-1">
               <div className="flex items-center gap-1.5">
                 <SeverityTag data-ticket-severity severity={severityOf(list)} />
-                <span>{count("ticket.rules.projectCount", rules[list].length)}</span>
+                <span>{tn("ticket.rules.projectCount", rules[list].length)}</span>
               </div>
               {/* 規則原文：不翻譯、不截斷、可換行。 */}
               <ul className="m-0 flex list-disc flex-col gap-0.5 pl-5">

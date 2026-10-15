@@ -24,7 +24,7 @@ export function AnalyzePanel({
   validate?: { valid: boolean; errors: string[] } | null;
   onClose?: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   // IPC 邊界防禦：findings／dimensions 缺席（畸形 payload）時退回空陣列，不讓抽屜崩潰。
   const findings = report?.findings ?? [];
   const dimensions = report?.dimensions ?? [];
@@ -49,7 +49,7 @@ export function AnalyzePanel({
             ) : (
               <div data-validate-row className="flex flex-col gap-0.5 text-xs text-destructive">
                 <span className="font-medium">
-                  {t("analyze.validateFail").replace("{n}", String(validate.errors.length))}
+                  {tn("analyze.validateFail", validate.errors.length)}
                 </span>
                 {validate.errors.map((err, i) => (
                   <span key={i} className="min-w-0 break-all font-mono text-[11px]">
@@ -79,7 +79,7 @@ export function AnalyzePanel({
                     {t(`analyze.dim.${d}`)}
                   </span>
                   <span className={`text-xs font-medium tabular-nums ${tone}`}>
-                    {n === 0 ? t("analyze.noIssues") : t("analyze.issues").replace("{n}", String(n))}
+                    {n === 0 ? t("analyze.noIssues") : tn("analyze.issues", n)}
                   </span>
                 </div>
               );

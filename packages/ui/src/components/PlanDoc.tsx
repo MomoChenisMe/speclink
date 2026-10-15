@@ -2,7 +2,7 @@ import type { ReactElement, ReactNode } from "react";
 import { X } from "lucide-react";
 
 import type { ChangeItem, DeltaOperation } from "../adapter";
-import { useI18n } from "../i18n";
+import { useI18n, type Translator } from "../i18n";
 import {
   planArchiveAfter,
   planBlockedBy,
@@ -252,19 +252,19 @@ function conflictNames(change: ChangeItem): string[] {
  * 由兩個子句組成——前置（可以開工／等 N 項前置）與封存（也可直接封存／封存前要等 M 個變更／有同名
  * 衝突要先改）；兩子句皆綠為 tip，否則 warning。
  */
-export function planSummary(change: ChangeItem, t: (key: string) => string): DocSummary {
+export function planSummary(change: ChangeItem, { t, tn }: Translator): DocSummary {
   const wave = planWave(change);
   if (wave === null) return { badges: null, tiles: [], callout: null };
   const blockedBy = planBlockedBy(change);
   const archiveAfter = planArchiveAfter(change);
   const conflicts = conflictNames(change);
   const startClause =
-    blockedBy.length === 0 ? t("plan.calloutStart") : t("plan.calloutBlocked").replace("{n}", String(blockedBy.length));
+    blockedBy.length === 0 ? t("plan.calloutStart") : tn("plan.calloutBlocked", blockedBy.length);
   const archiveClause =
     conflicts.length > 0
       ? t("plan.calloutConflict")
       : archiveAfter.length > 0
-        ? t("plan.calloutArchiveWait").replace("{n}", String(archiveAfter.length))
+        ? tn("plan.calloutArchiveWait", archiveAfter.length)
         : t(blockedBy.length === 0 ? "plan.calloutArchiveFree" : "plan.noArchiveAfter");
   const green = blockedBy.length === 0 && archiveAfter.length === 0 && conflicts.length === 0;
   const lines = [

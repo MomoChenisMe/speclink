@@ -34,7 +34,7 @@ const ASIDE_LINK_CLS =
   "rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function OverviewPage() {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const client = useClient();
   const [params] = useSearchParams();
   const welcome = params.get("welcome") === "1";
@@ -71,7 +71,7 @@ export function OverviewPage() {
               },
               {
                 value: data.projects,
-                label: tile("overview.metricProjects", t("overview.metricProjectsHint").replace("{n}", String(data.repos))),
+                label: tile("overview.metricProjects", tn("overview.metricProjectsHint", data.repos)),
                 link: <Link to="/admin/registry" />,
               },
               {
@@ -160,13 +160,13 @@ const TODO_KEYS: Record<string, { message: string; action: string }> = {
 };
 
 function TodoRow({ todo }: { todo: AdminTodo }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const keys = TODO_KEYS[todo.kind];
   // 待接受邀請直接開到邀請中分頁；其他待辦照伺服器給的目的地。
   const to = todo.kind === "pending-invitations" ? PENDING_INVITATIONS : todo.destination;
   return (
     <SettingsRow
-      label={keys ? t(keys.message).replace("{n}", String(todo.count)) : todo.kind}
+      label={keys ? tn(keys.message, todo.count) : todo.kind}
       control={
         <Button asChild variant="outline" size="sm">
           <Link to={to}>{keys ? t(keys.action) : t("overview.todoGo")}</Link>

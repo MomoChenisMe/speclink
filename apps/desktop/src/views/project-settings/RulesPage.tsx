@@ -9,10 +9,10 @@ import { CardEditControls, FieldHelp, PageAlerts, PageNote, useSaveShortcut } fr
 import { textToEntries, type ProjectSettingsState } from "./useProjectSettings";
 
 export function RulesPage({ ps }: { ps: ProjectSettingsState }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const save = () => void ps.saveRules();
   useSaveShortcut(ps.rulesEditing, save);
-  const countLabel = (n: number) => t("settings.rulesCount").replace("{count}", String(n));
+  const countLabel = (n: number) => tn("settings.rulesCount", n);
   return (
     <div data-testid="rules-page" className="flex flex-col gap-6">
       <SettingsPageHeader

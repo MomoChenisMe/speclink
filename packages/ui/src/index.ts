@@ -5,7 +5,16 @@
 export const UI_PACKAGE = "@speclink/ui";
 
 // UI 介面 i18n（zh-TW／en；與 config locale 無關）
-export { I18nProvider, useI18n, MESSAGES, type UiLocale, type I18nProviderProps } from "./i18n";
+export {
+  I18nProvider,
+  useI18n,
+  MESSAGES,
+  translatorFor,
+  dictionaryProblems,
+  type Translator,
+  type UiLocale,
+  type I18nProviderProps,
+} from "./i18n";
 export {
   detectSystemLocale,
   readLocalePreference,

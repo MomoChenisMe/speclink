@@ -12,10 +12,10 @@ export interface AssetNoticeCardProps {
 }
 
 export function AssetNoticeCard({ prompt, onOpen }: AssetNoticeCardProps) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   if (!prompt) return null;
   const title = t(`assets.card.${prompt.kind}Title`);
-  const desc = t(`assets.card.${prompt.kind}Desc`).replace("{count}", String(prompt.fileCount));
+  const desc = tn(`assets.card.${prompt.kind}Desc`, prompt.fileCount);
   return (
     <button
       type="button"

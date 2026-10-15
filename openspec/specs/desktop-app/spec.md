@@ -4263,3 +4263,23 @@ updated: 2026-10-13T23:23:36+08:00
 source: clickable-cursor-hover-rule
 updated: 2026-10-13T11:49:40+08:00
 -->
+
+---
+### Requirement: 詳情頁狀態列的標籤欄依最長標籤對齊
+
+變更、討論、規格與已封存詳情頁左欄的「狀態」列 SHALL 讓同一頁的全部列共用一個標籤欄：標籤欄寬度 SHALL 為該頁最長標籤的寬度，下限 56px、上限 112px；超過上限的標籤 SHALL 在字間折行。任何介面語言下，標籤 SHALL NOT 與同列的數值重疊，同一頁各列數值的左緣 SHALL 對齊。繁中介面的標籤都不超過 56px，標籤欄 SHALL 維持 56px。
+
+#### Scenario: 英文介面的規格詳情頁狀態列不重疊
+
+- **WHEN** 使用者以英文介面開啟一份 2 條需求、1 個溯源變更的規格詳情頁
+- **THEN** 狀態列顯示「Requirements」與「2」、「Provenance」與「1」，標籤與數值之間有間距、不重疊，兩列數值的左緣對齊
+
+#### Scenario: 繁中介面版面不變
+
+- **WHEN** 使用者以繁中介面開啟同一份規格詳情頁
+- **THEN** 狀態列標籤欄寬 56px，「需求」「溯源」「最近更新」三列的數值左緣對齊
+
+<!-- @trace
+source: fix-english-status-labels-and-plurals
+updated: 2026-10-15T15:31:48+08:00
+-->

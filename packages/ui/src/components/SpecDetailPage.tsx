@@ -112,7 +112,7 @@ function SpecDetailView({
   renderDocumentActions,
   locateDocument,
 }: SpecDetailPageProps & { capability: string }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const [doc, setDoc] = useState<Doc>();
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState("spec");
@@ -172,10 +172,10 @@ function SpecDetailView({
         badges={<StatusPill tone="neutral">{t("sdetail.canonical")}</StatusPill>}
         provenance={[
           sections && (
-            <span className="shrink-0">{t("sdetail.metaRequirements").replace("{n}", String(stats.requirements))}</span>
+            <span className="shrink-0">{tn("sdetail.metaRequirements", stats.requirements)}</span>
           ),
           sections && (
-            <span className="shrink-0">{t("sdetail.metaScenarios").replace("{n}", String(stats.scenarios))}</span>
+            <span className="shrink-0">{tn("sdetail.metaScenarios", stats.scenarios)}</span>
           ),
           stats.latest && (
             <span className="truncate">{`${t("sdetail.stateUpdated")} ${calendarDay(stats.latest.updated)}`}</span>
@@ -267,7 +267,7 @@ function SpecDetailView({
         <Callout
           data-callout="untraced"
           tone="note"
-          title={t("sdetail.untraced").replace("{n}", String(stats.untraced.length))}
+          title={tn("sdetail.untraced", stats.untraced.length)}
           className="my-0"
         >
           <p className="text-sm">{stats.untraced.join("、")}</p>

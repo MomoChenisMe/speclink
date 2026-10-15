@@ -131,7 +131,7 @@ export function ConclusionDoc({ text, empty, stageOf, specNames, onOpenSpec, jum
 
 /** 決定：定論句放大、定案細節收合；分刀列抽成其後的「分刀」段。 */
 function DecisionSections({ md, stageOf }: { md: string; stageOf?: ConclusionDocProps["stageOf"] }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const { verdict, details } = splitVerdict(md);
   const { cuts, rest } = parseCuts(details);
@@ -150,7 +150,7 @@ function DecisionSections({ md, stageOf }: { md: string; stageOf?: ConclusionDoc
           {hidden > 0 && (
             <div>
               <MoreToggle
-                label={t("conclusion.moreDetails").replace("{n}", String(hidden))}
+                label={tn("conclusion.moreDetails", hidden)}
                 onExpand={() => setExpanded(true)}
               />
             </div>
@@ -178,7 +178,7 @@ export function cutPromotionOf(cut: CutCard, stageOf: ConclusionDocProps["stageO
 /** 一張分刀卡：識別籤、範圍句、變更數；變更名籤附階段籤；卡內細線列。整刀未轉出時橄欖色虛線框、卡頭
  * 「尚未轉出」籤；部分轉出時未轉出的變更名籤之後接同款籤。 */
 function CutCardView({ cut, stageOf }: { cut: CutCard; stageOf?: ConclusionDocProps["stageOf"] }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const promotion = cutPromotionOf(cut, stageOf);
   const todo = promotion === "none";
   const notPromoted = <StatusPill tone="manual">{t("conclusion.notPromoted")}</StatusPill>;
@@ -197,7 +197,7 @@ function CutCardView({ cut, stageOf }: { cut: CutCard; stageOf?: ConclusionDocPr
           </span>
         )}
         <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
-          {t("conclusion.cutChanges").replace("{n}", String(cut.names.length))}
+          {tn("conclusion.cutChanges", cut.names.length)}
         </span>
       </header>
       {cut.names.length > 0 && (

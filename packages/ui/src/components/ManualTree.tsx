@@ -22,7 +22,7 @@ export interface ManualTreeProps {
  * 節點同款）：搜尋列以大小寫不敏感比對 title 與 keywords、命中頁依分區分組列出（stale 者列尾
  * 帶「過期」籤）、底部在有未入冊規格時顯示計數提示。 */
 export function ManualTree({ pages, currentSlug, query, onQuery, onSelect, uncoveredCount }: ManualTreeProps) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const visibleSections = groupSections(
     pages.filter((p) => matchesQuery(query, p.title, ...p.keywords)),
     t("manual.sectionOther"),
@@ -82,7 +82,7 @@ export function ManualTree({ pages, currentSlug, query, onQuery, onSelect, uncov
           data-manual-uncovered
           className={`mt-auto rounded-md border px-2 py-1.5 text-xs ${SEMANTIC_SURFACE.warning}`}
         >
-          {t("manual.uncoveredNew").replace("{n}", String(uncoveredCount))}
+          {tn("manual.uncoveredNew", uncoveredCount)}
         </div>
       )}
     </aside>

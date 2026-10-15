@@ -7,7 +7,7 @@ import { render as rtlRender, screen, waitFor, fireEvent, within, cleanup, act }
 import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 
-import { I18nProvider, MESSAGES } from "../i18n";
+import { I18nProvider, translatorFor } from "../i18n";
 import { ChangeDetailPage, type ChangeDetailPageProps } from "../components/ChangeDetailPage";
 import type { ChangeItem, DeltaOperation } from "../adapter";
 import { DELTA_COLORS } from "../components/DeltaBadges";
@@ -427,7 +427,7 @@ describe("排程分頁", () => {
 
 // spec「詳情頁的排程分頁」的籤槽、數字磚與兩態提示框（desktop-change-doc-views design D7）。
 describe("排程文件的籤、數字磚與提示框", () => {
-  const t = (key: string) => MESSAGES["zh-TW"][key] ?? key;
+  const i18n = translatorFor("zh-TW");
   const show = (node: ReactNode) => render(<>{node}</>).container;
   const empty: ChangeItem = {
     name: "add-z",
@@ -441,7 +441,7 @@ describe("排程文件的籤、數字磚與提示框", () => {
   };
 
   it("排程分頁四段的資料：籤「等 1 項」、磚 2／1／1／1、warning 標題「等 1 項前置，封存前要等 1 個變更」並列出名稱", () => {
-    const summary = planSummary(changes[2], t);
+    const summary = planSummary(changes[2], i18n);
     expect(show(summary.badges).textContent).toBe("等 1 項");
     expect(summary.tiles.map((x) => [x.label, x.value])).toEqual([
       ["波次", 2],
@@ -459,7 +459,7 @@ describe("排程文件的籤、數字磚與提示框", () => {
   });
 
   it("全空資料：籤「可以開工」、tip 標題「可以開工，也可直接封存」", () => {
-    const summary = planSummary(empty, t);
+    const summary = planSummary(empty, i18n);
     expect(show(summary.badges).textContent).toBe("可以開工");
     expect(summary.tiles.map((x) => x.value)).toEqual([1, 0, 0, 0]);
     cleanup();
@@ -483,14 +483,14 @@ describe("排程文件的籤、數字磚與提示框", () => {
       archiveAfter,
       requirementOverlap: conflict ? clash.requirementOverlap : [],
     };
-    const callout = show(planSummary(item, t).callout);
+    const callout = show(planSummary(item, i18n).callout);
     expect(callout.querySelector(".markdown-alert-title")!.textContent).toBe(title);
     expect(callout.firstElementChild!.className).toContain(`bg-status-${tone}/10`);
   });
 
   it("缺 wave 時籤、磚與提示框皆空；頁上無 data-doc-tiles 與 data-doc-callout", async () => {
     const bare: ChangeItem = { name: "add-c", ...base };
-    expect(planSummary(bare, t)).toEqual({ badges: null, tiles: [], callout: null });
+    expect(planSummary(bare, i18n)).toEqual({ badges: null, tiles: [], callout: null });
     await openPlanTab(makeProps({ change: bare, changes: [bare] }));
     expect(document.querySelector("[data-doc-tiles]")).toBeNull();
     expect(document.querySelector("[data-doc-callout]")).toBeNull();

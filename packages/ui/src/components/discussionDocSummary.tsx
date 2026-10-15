@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { ArrowRight } from "lucide-react";
 
 import type { ArchivedItem, ChangeItem } from "../adapter";
+import type { Translator } from "../i18n";
 import {
   contextModel,
   openItems,
@@ -97,27 +98,27 @@ const fill = (template: string, values: Record<string, string | number>) =>
 
 /** 一份文件的閱讀卡標題區：數字磚與提示框、出處行。 */
 interface DocHeaderParts {
-  summary: (data: DiscussionDocData, t: Translate) => DocSummary;
-  provenance: (data: DiscussionDocData, t: Translate) => ReactNode[];
+  summary: (data: DiscussionDocData, i18n: Translator) => DocSummary;
+  provenance: (data: DiscussionDocData, i18n: Translator) => ReactNode[];
 }
 
 /**
  * 討論文件閱讀卡標題區的推導單一入口（design D6，對稱 changeDocSummary）：數字磚與提示框全由記錄結構與清單
  * 推出，缺資料少一格、條件不成立沒有提示框；記錄未載入或切分失敗時皆空。討論文件沒有籤。
  */
-export function discussionDocSummary(tab: DiscussionTab, data: DiscussionDocData, t: Translate): DocSummary {
+export function discussionDocSummary(tab: DiscussionTab, data: DiscussionDocData, i18n: Translator): DocSummary {
   const parts = data.sections ? DOC_HEADERS[tab] : undefined;
-  return parts ? parts.summary(data, t) : EMPTY;
+  return parts ? parts.summary(data, i18n) : EMPTY;
 }
 
 /** 閱讀卡出處行（design D6）：結論為記錄路徑與「N 輪之後寫入」、討論過程為日期範圍與各 mode 輪數、背景為
  * 「記錄建立時寫入一次」與建立日、衍生變更為分組依據；已封存討論頁沒有記錄路徑段。 */
-export function discussionDocProvenance(tab: DiscussionTab, data: DiscussionDocData, t: Translate): ReactNode[] {
+export function discussionDocProvenance(tab: DiscussionTab, data: DiscussionDocData, i18n: Translator): ReactNode[] {
   const parts = data.sections ? DOC_HEADERS[tab] : undefined;
-  return parts ? parts.provenance(data, t) : [];
+  return parts ? parts.provenance(data, i18n) : [];
 }
 
-function conclusionTiles(data: DiscussionDocData, t: Translate): DocTile[] {
+function conclusionTiles(data: DiscussionDocData, { t, tn }: Translator): DocTile[] {
   const fields = data.conclusion?.fields;
   if (!fields) return [];
   const rowsOf = (md: string | undefined) => (md === undefined ? null : splitRows(md).length);
@@ -125,7 +126,7 @@ function conclusionTiles(data: DiscussionDocData, t: Translate): DocTile[] {
   const changes = new Set(data.cuts.flatMap((c) => c.names)).size;
   const tiles: (DocTile | null)[] = [
     details === null ? null : { value: details, label: t("conclusion.tileDetails") },
-    data.cuts.length > 0 ? { value: data.cuts.length, label: fill(t("conclusion.tileCuts"), { n: changes }) } : null,
+    data.cuts.length > 0 ? { value: data.cuts.length, label: tn("conclusion.tileCuts", changes) } : null,
     rowsOf(fields["Rejected alternatives"]) === null
       ? null
       : { value: rowsOf(fields["Rejected alternatives"])!, label: t("conclusion.tileRejected") },
@@ -180,7 +181,7 @@ function unpromotedCallout(data: DiscussionDocData, t: Translate): ReactNode {
   );
 }
 
-function roundsSummary(data: DiscussionDocData, t: Translate): DocSummary {
+function roundsSummary(data: DiscussionDocData, { t, tn }: Translator): DocSummary {
   const rounds = data.rounds;
   if (!rounds || rounds.length === 0) return EMPTY;
   const stats = roundStats(rounds);
@@ -200,7 +201,7 @@ function roundsSummary(data: DiscussionDocData, t: Translate): DocSummary {
         <p className="text-sm">{fill(t("rounds.convergedBody"), { n: rounds.length })}</p>
         {open && (
           <p className="text-sm">
-            {open.none ? t("rounds.convergedOpenNone") : fill(t("rounds.convergedOpenLeft"), { n: open.items.length })}
+            {open.none ? t("rounds.convergedOpenNone") : tn("rounds.convergedOpenLeft", open.items.length)}
           </p>
         )}
       </Callout>
@@ -259,29 +260,32 @@ function promoteSummary(data: DiscussionDocData, t: Translate): DocSummary {
   };
 }
 
-function roundsProvenance(data: DiscussionDocData, t: Translate): ReactNode[] {
+function roundsProvenance(data: DiscussionDocData, { t, tn }: Translator): ReactNode[] {
   if (!data.rounds || data.rounds.length === 0) return [];
   const stats = roundStats(data.rounds);
   return [
     stats.first === stats.last ? stats.first : fill(t("rounds.dateRange"), { first: stats.first!, last: stats.last! }),
-    ...stats.modes.map((m) => fill(t("rounds.modeRounds"), { mode: m.mode, n: m.count })),
+    ...stats.modes.map((m) => fill(tn("rounds.modeRounds", m.count), { mode: m.mode })),
   ];
 }
 
 /** 文件 → 標題區；「記錄」（切分失敗的整篇退回）沒有標題區。 */
 const DOC_HEADERS: Partial<Record<DiscussionTab, DocHeaderParts>> = {
   conclusion: {
-    summary: (data, t) => ({ ...EMPTY, tiles: conclusionTiles(data, t), callout: unpromotedCallout(data, t) }),
-    provenance: (data, t) => [
+    summary: (data, i18n) => ({ ...EMPTY, tiles: conclusionTiles(data, i18n), callout: unpromotedCallout(data, i18n.t) }),
+    provenance: (data, { tn }) => [
       data.recordPath && <span className="font-mono">{data.recordPath}</span>,
-      data.conclusion && data.rounds && fill(t("conclusion.afterRounds"), { n: data.rounds.length }),
+      data.conclusion && data.rounds && tn("conclusion.afterRounds", data.rounds.length),
     ],
   },
   rounds: { summary: roundsSummary, provenance: roundsProvenance },
-  context: { summary: contextSummary, provenance: (data, t) => [t("context.writtenOnce"), data.created] },
+  context: {
+    summary: (data, { t }) => contextSummary(data, t),
+    provenance: (data, { t }) => [t("context.writtenOnce"), data.created],
+  },
   promote: {
-    summary: promoteSummary,
-    provenance: (data, t) =>
+    summary: (data, { t }) => promoteSummary(data, t),
+    provenance: (data, { t }) =>
       data.rows.length === 0 ? [] : [t(data.cuts.length > 0 ? "promoted.byCuts" : "promoted.byOrder")],
   },
 };

@@ -57,7 +57,7 @@ function paragraphs(md: string): string[] {
  * Scenario 時收合，且整段可收合為一列。兩種畫法的標題常駐、皆為本頁目錄錨點。
  */
 export function RequirementBlock({ req, anchor, delta, collapse }: RequirementBlockProps) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const [open, setOpen] = useState(delta?.defaultOpen ?? collapse?.defaultOpen ?? true);
   const [allParagraphs, setAllParagraphs] = useState(false);
   const [allScenarios, setAllScenarios] = useState(false);
@@ -89,7 +89,7 @@ export function RequirementBlock({ req, anchor, delta, collapse }: RequirementBl
               {head}
               {!open && (
                 <Badge variant="secondary" className="shrink-0">
-                  {t("doc.scenarioCount").replace("{n}", String(req.scenarios.length))}
+                  {tn("doc.scenarioCount", req.scenarios.length)}
                 </Badge>
               )}
             </button>
@@ -136,10 +136,10 @@ export function RequirementBlock({ req, anchor, delta, collapse }: RequirementBl
         </h3>
         {!open && (
           <span className="flex shrink-0 items-center gap-1.5">
-            <Badge variant="secondary">{t("doc.scenarioCount").replace("{n}", String(req.scenarios.length))}</Badge>
+            <Badge variant="secondary">{tn("doc.scenarioCount", req.scenarios.length)}</Badge>
             {removed.length > 0 && (
               <Badge variant="outline" className="text-destructive">
-                {t("doc.removedScenariosChip").replace("{n}", String(removed.length))}
+                {tn("doc.removedScenariosChip", removed.length)}
               </Badge>
             )}
           </span>
@@ -151,7 +151,7 @@ export function RequirementBlock({ req, anchor, delta, collapse }: RequirementBl
             <Callout
               data-removed-scenarios
               tone="caution"
-              title={t("doc.removedScenarios").replace("{n}", String(removed.length))}
+              title={tn("doc.removedScenarios", removed.length)}
               className="my-0"
             >
               <ul className="my-1 flex flex-col gap-0.5">
@@ -168,7 +168,7 @@ export function RequirementBlock({ req, anchor, delta, collapse }: RequirementBl
           {paras.length > shownParas.length && (
             <div>
               <MoreToggle
-                label={t("doc.moreParagraphs").replace("{n}", String(paras.length - shownParas.length))}
+                label={tn("doc.moreParagraphs", paras.length - shownParas.length)}
                 onExpand={() => setAllParagraphs(true)}
               />
             </div>
@@ -179,7 +179,7 @@ export function RequirementBlock({ req, anchor, delta, collapse }: RequirementBl
           {req.scenarios.length > shownScenarios.length && (
             <div>
               <MoreToggle
-                label={t("doc.moreScenarios").replace("{n}", String(req.scenarios.length - shownScenarios.length))}
+                label={tn("doc.moreScenarios", req.scenarios.length - shownScenarios.length)}
                 onExpand={() => setAllScenarios(true)}
               />
             </div>

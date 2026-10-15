@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 
-import { I18nProvider, MESSAGES } from "../i18n";
+import { I18nProvider, translatorFor } from "../i18n";
 import { changeDocSummary } from "../components/changeDocSummary";
 import { DesignDoc } from "../components/DesignDoc";
 import { ProposalDoc } from "../components/ProposalDoc";
@@ -83,12 +83,12 @@ describe("章節對照與畫法", () => {
 
 // spec Scenario「替代方案與影響段的逐項降級」與 Example「影響段不符形狀時當一般列」的數字磚。
 describe("提案數字磚「影響的檔案」", () => {
-  const t = (key: string) => MESSAGES["zh-TW"][key] ?? key;
+  const i18n = translatorFor("zh-TW");
   const tiles = (proposal: string) =>
     changeDocSummary(
       "proposal",
       { proposal, design: null, tasksMd: null, specDocs: {}, change: null, tickets: { review: null, verify: null } },
-      t,
+      i18n,
     ).tiles.map((x) => `${x.label} ${x.value}`);
 
   it("New 兩個、Modified 一個、Removed (none) 時為 3", () => {

@@ -144,6 +144,37 @@ describe("總覽待辦區塊", () => {
       "/admin/users?tab=pending",
     );
   });
+  // fix-english-status-labels-and-plurals：英文介面數量為 1 時用單數（server-web-console「後台英文計數文案依數量使用單數或複數」）。
+  it("英文介面只有 1 位待啟用時寫「1 user has not activated yet.」", async () => {
+    localStorage.setItem("speclink.uiLocale", "en");
+    try {
+      renderAt(
+        "/admin",
+        makeAdminClient({
+          getAdminOverview: vi.fn(async () => ({
+            ...HEALTHY,
+            todos: [{ kind: "pending-invitations", destination: "/admin/users", count: 1 }],
+          })),
+        }),
+      );
+      const todos = await screen.findByRole("region", { name: "Needs attention" });
+      expect(todos.textContent).toContain("1 user has not activated yet.");
+      expect(todos.textContent).not.toContain("1 users");
+    } finally {
+      localStorage.removeItem("speclink.uiLocale");
+    }
+  });
+
+  it("英文介面只有 1 個儲存庫時，專案計數卡寫「1 repository」", async () => {
+    localStorage.setItem("speclink.uiLocale", "en");
+    try {
+      renderAt("/admin", makeAdminClient({ getAdminOverview: vi.fn(async () => ({ ...HEALTHY, projects: 1, repos: 1 })) }));
+      const projectTile = await screen.findByText(/1 repository/);
+      expect(projectTile.textContent).not.toContain("repositories");
+    } finally {
+      localStorage.removeItem("speclink.uiLocale");
+    }
+  });
 });
 
 // server-setup「完成 setup 即可邀請與連線」要求導向 /admin?welcome=1 顯示連線資訊；

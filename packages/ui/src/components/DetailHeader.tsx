@@ -91,8 +91,12 @@ export function StatusRow({
   children: ReactNode;
 }) {
   return (
-    <div {...{ [`data-status-${mark}`]: "" }} className="flex min-w-0 items-start gap-2 px-2 py-2 text-xs">
-      <span className="w-14 shrink-0 leading-5 text-muted-foreground">{label}</span>
+    <div
+      {...{ [`data-status-${mark}`]: "" }}
+      className="col-span-2 grid grid-cols-subgrid items-start gap-x-2 px-2 py-2 text-xs"
+    >
+      {/* 標籤欄寬由 DetailStatus 的格線依最長標籤決定：下限 56px（繁中版面不變）、上限 112px，超過才在字間折行。 */}
+      <span className="min-w-14 max-w-28 break-words leading-5 text-muted-foreground">{label}</span>
       <div
         className={
           wrap

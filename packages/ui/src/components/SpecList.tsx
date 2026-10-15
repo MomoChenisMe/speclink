@@ -27,12 +27,12 @@ export function sortSpecs(specs: SpecItem[]): SpecItem[] {
  * Purpose 摘要一行截斷（佔位時改顯琥珀「Purpose 待補」警示）、meta 為需求數、溯源
  * 變更數（>0 才顯示）與相對修改時間。點整列開唯讀規格檢視，無行內展開。 */
 function SpecRow({ item, onOpen }: { item: SpecItem; onOpen: (capability: string) => void }) {
-  const { t } = useI18n();
-  const rel = relativeDays(item.modifiedAt, t);
+  const { t, tn } = useI18n();
+  const rel = relativeDays(item.modifiedAt, { t, tn });
   const reqCount = item.requirementCount ?? 0;
   const traceCount = item.traceCount ?? 0;
-  const reqLabel = t("specs.requirementCount").replace("{n}", String(reqCount));
-  const traceLabel = t("specs.traceCount").replace("{n}", String(traceCount));
+  const reqLabel = tn("specs.requirementCount", reqCount);
+  const traceLabel = tn("specs.traceCount", traceCount);
   return (
     <ListRow
       data-spec={item.id}
