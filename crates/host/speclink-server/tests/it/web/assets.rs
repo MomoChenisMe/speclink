@@ -266,3 +266,21 @@ fn every_browser_route_serves_the_spa_shell_after_the_switch() {
         assert!(!body.contains("id=\"root\""), "{path} must not return the shell");
     }
 }
+
+#[test]
+fn detail_pages_serve_the_spa_shell_on_direct_open() {
+    // 詳情頁直接開啟、重新整理或開分享連結都要拿到 shell；server 不查 id 是否存在，
+    // 「找不到」由 SPA 自己呈現。
+    let base = server();
+    for path in ["/admin/users/usr_example", "/admin/registry/demo"] {
+        let (code, body) = status_body(get(&base, path));
+        assert_eq!(code, 200, "{path} serves the SPA shell");
+        assert!(body.contains("id=\"root\""), "{path} must return the SPA shell");
+    }
+    // 只放行列表路徑後恰好一段非空片段：多段與空片段仍是真 404。
+    for path in ["/admin/users/a/b", "/admin/users/", "/admin/registry/"] {
+        let (code, body) = status_body(get(&base, path));
+        assert_eq!(code, 404, "{path} is not a browser route");
+        assert!(!body.contains("id=\"root\""), "{path} must not return the shell");
+    }
+}
