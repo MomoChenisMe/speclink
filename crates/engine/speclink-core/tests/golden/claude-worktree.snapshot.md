@@ -2159,7 +2159,7 @@ The policy fields are the user's decision, and so are the test scope and the rev
 | `audit` | whether apply enforces sharp-edges discipline | `false` |
 | `worktree` | whether apply works each change in its own git worktree | `false` |
 | test scope | how much testing a task's verification runs — the fifth question below | the full suite |
-| review rules mode | whether the review station takes project rules — the sixth question below | not set |
+| review rules mode | whether the review station takes project rules — the sixth question below | not set (the built-in code-smell baseline only) |
 
 Show the user one table with every item and its current value from Step 1, in the user's language. An item with no value reads "not set — defaults to" its entry in the last column.
 
@@ -2170,15 +2170,15 @@ Then ask one question with the **AskUserQuestion tool**: keep everything, or cha
 
 A first run — a document with no policy field set yet — shows the same table and asks the same one question. When the AskUserQuestion tool is unavailable, run the whole confirmation as plain text and wait for each answer.
 
-Never derive a value from the repo (a test directory does not mean `tdd: true`).
+Never infer any of these values from the repo, the test scope and the review rules mode included — a test directory does not mean `tdd: true`.
 
 **Locale fields take locale CODES, never display names.** `locale` accepts exactly `tw`, `ja`, `en`; `spec_locale` accepts `tw`, `ja`, `en`, `auto`. Map the user's natural-language answer to its code before writing — 「繁體中文」 → `tw`, 「日本語」 → `ja`, "English" → `en` — the write verb rejects any value outside the code set, including display names.
 
-**`worktree` also syncs the skill files.** It lands like the other fields, through `speclink workflow-config set worktree <true|false>` and its `--dry-run` preview in Step 5. That write syncs the skill files: turning it on generates the worktree skills, and turning it off removes them. The CLI refuses to turn it off while a linked worktree is still active, and lists each one; relay the refusal to the user as it stands. The config stays as it was, and the refusal already says how to wrap those worktrees up — do not close or remove any worktree yourself.
+**`worktree` also syncs the skill files, in local mode.** It lands like the other fields, through `speclink workflow-config set worktree <true|false>` and its `--dry-run` preview in Step 5. In local mode that write syncs the skill files: turning it on generates the worktree skills, and turning it off removes them. The CLI refuses to turn it off while a linked worktree is still active, and lists each one; relay the refusal to the user as it stands. The config stays as it was, and the refusal already says how to wrap those worktrees up — do not close or remove any worktree yourself. In remote mode the write changes only the server's config: it neither syncs the skill files nor checks for active worktrees, so tell the user that.
 
 ### The fifth question — how much testing a task's verification runs
 
-Same nature as the policy fields: an answer, not a finding. Never infer it from the repo. When the current document already carries a test-scope rule, quote that rule as this row's current value; with none, the row reads not set. When the user keeps everything, leave the test-scope rule exactly as it is.
+Same nature as the policy fields: an answer, not a finding. When the current document already carries a test-scope rule, quote that rule as this row's current value; with none, the row reads not set. When the user keeps everything, the answer itself leaves the test-scope rule as it is; like any other line, it still faces the four criteria — criterion 4 removes it when a reference in it no longer resolves.
 
 When the user names this item, ask:
 
@@ -2193,11 +2193,9 @@ Same nature as the policy fields: an answer, not a finding. Review rules are opt
 
 When the user names this item, ask one question with three choices:
 
-- **not set** (the default) — this skill does not touch the `review` block: no `baseline` write and no new rule, and the review station keeps its built-in code-smell baseline alone. When the block already holds rules, they stay as they are — choosing not set is not a withdrawal — and Step 4 still checks them.
+- **not set** (the default) — this skill adds nothing to the `review` block: no `baseline` write and no new rule. Without a block, the review station keeps its built-in code-smell baseline alone. With a block, its mode and rules stay as they are — choosing not set is not a withdrawal — and Step 4 still checks those rules, so a rule that fails a check there is proposed for removal like any other line.
 - `extend` — the review station checks its built-in code-smell baseline plus the project's review rules.
 - `replace` — it checks the project's review rules only. With all three lists empty, its Standards axis judges against repo documents only, which is a legitimate choice.
-
-Never derive it from the repo.
 
 ## Step 4: Route the user's reminders
 
@@ -2213,12 +2211,12 @@ Judge each reminder with three questions:
 2. Can a reviewer who reads only the patch tell that it is violated?
 3. How costly is it to find the violation late?
 
-The answers send the reminder to one of four destinations:
+The answers decide the destination:
 
-- **a review rule** — the evidence is in the code, and the patch alone shows it.
-- **a rule for one artifact** (`rules`) — the evidence is in a document: what a proposal, design, spec or task list has to state. A high cost of finding the violation late is a reason to catch it in the plan.
-- **both** — only when each stage gets its own use from it. The two sentences then describe different things: the artifact rule asks the plan to state something, and the review rule checks the code itself. Otherwise pick one side — an artifact rule is injected every time that artifact is produced, so a copy that adds nothing is paid for on every prompt.
-- **not taken** — it fails the checks of its destination.
+- the evidence is in the code, and the patch alone shows it → **a review rule**.
+- the evidence is in a document — what a proposal, design, spec or task list has to state → **a rule for one artifact** (`rules`).
+- finding the violation late is costly, the plan can state what to do, and the patch still shows a violation → **both**, but only when each stage gets its own use from it. The two sentences then describe different things: the artifact rule asks the plan to state something, and the review rule checks the code itself. Otherwise pick one side by the first two answers — an artifact rule is injected every time that artifact is produced, so a copy that adds nothing is paid for on every prompt.
+- the reminder fails the checks of its destination → **not taken**.
 
 A review rule never says that the code follows an artifact: that is the verify station's work.
 
@@ -2244,12 +2242,12 @@ The wording is a hint only, and never decides the list on its own: 「不得」�
 
 **Checks for every review rule**, each existing one and each new one:
 
-- **While the baseline is `extend` (or unset), drop a rule that restates the smell baseline.** Read the baseline in the generated `speclink-review` skill (criterion 1's station-canon check): "variable names say what they hold" restates Mysterious Name. Tell the user why the rule is dropped. With `replace` the baseline does not apply, so skip this check — the same rule can land.
+- **While the mode is `extend`, drop a rule that restates the smell baseline.** A `review` block with no `baseline` key reads as `extend`. Read the baseline in the generated `speclink-review` skill (criterion 1's station-canon check): "variable names say what they hold" restates Mysterious Name. Tell the user why the rule is dropped. With `replace` the baseline does not apply, so skip this check — the same rule can land.
 - **Do not take a rule that a test or a lint already guards.** Check it with the same kind of targeted static lookup as criterion 4: search the lint configuration for that rule, and text-search for a test that pins the behavior. Do not read through the source code for it. When a guard turns up, name that test or lint rule in the report as the reason; when none turns up, judge the rule as usual.
-- **Do not take a rule that belongs to another station.** With `audit` on, a security rule belongs to the audit station; a rule that the code must follow an artifact belongs to the verify station. Judge `audit` by the value confirmed in this run's table. When this run turns `audit` from off to on, propose removing the existing security review rules alongside the `audit` change, in the same set of `--dry-run` previews.
+- **Do not take a rule that belongs to another station.** With `audit` on, a security rule belongs to the audit station. Whatever `audit` says, a rule that the code must follow an artifact belongs to the verify station. Judge `audit` by the value confirmed in this run's table. When this run turns `audit` from off to on, propose removing the existing security review rules alongside the `audit` change, in the same set of `--dry-run` previews.
 - Criteria 3 and 4 apply as written: nothing that goes stale, and every path, test name or command a rule references is checked statically.
 
-With the mode not set, only the last check runs, over the rules already in the block.
+With the mode not set, only two of these run, over the rules already in the block: the removal of security rules when this run turns `audit` on, and criteria 3 and 4.
 
 An existing review rule is dropped only for the reasons any other line is: it fails these checks, or the user withdraws it.
 
@@ -2266,13 +2264,13 @@ speclink workflow-config review <critical|warning|suggestion> --stdin --dry-run
 speclink workflow-config review baseline <extend|replace> --dry-run
 ```
 
-A list write replaces the whole list: feed every rule that list should keep on stdin, one per line. The `worktree` write also syncs the skill files; a refusal to turn it off is relayed as Step 3 says.
+A list write replaces the whole list: feed every rule that list should keep on stdin, one per line. In local mode the `worktree` write also syncs the skill files; Step 3 says what to relay when it is refused, and what remote mode leaves out.
 
 Never compute a diff yourself — a hand-made preview and the real serialization can disagree, and a preview that lies is worse than none.
 
 Present the diffs and WAIT — NEVER write before the user approves. Only after the user approves, re-run the same commands without `--dry-run`. Note for the user that a rewrite drops template comments from the file (the read-modify-write trade-off) — that is expected, not damage.
 
-The same commands work in both local and remote mode; in remote mode the write is guarded against concurrent edits, and a refusal means someone else changed the document — re-run the command and it applies on top.
+The same commands work in both local and remote mode, apart from the `worktree` side effects above; in remote mode the write is guarded against concurrent edits, and a refusal means someone else changed the document — re-run the command and it applies on top.
 
 ## Step 6: Verify convergence
 

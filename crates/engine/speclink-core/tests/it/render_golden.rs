@@ -1662,17 +1662,6 @@ fn config_skill_states_what_a_scope_hint_narrows() {
     }
 }
 
-/// The text from `start` up to the next `end` heading after it.
-fn config_section<'a>(rel: &str, config: &'a str, start: &str, end: &str) -> &'a str {
-    let from = config
-        .find(start)
-        .unwrap_or_else(|| panic!("{rel}: missing {start:?}"));
-    let len = config[from..]
-        .find(end)
-        .unwrap_or_else(|| panic!("{rel}: missing {end:?} after {start:?}"));
-    &config[from..from + len]
-}
-
 /// Spec config-skill「技能規定政策欄位一次確認現值」/「技能規定 diff 先行與收斂驗收」:
 /// step 3 shows every policy item in one table — worktree, test scope and the
 /// review rules mode included, each with what "not set" means — asks one
@@ -1681,7 +1670,7 @@ fn config_section<'a>(rel: &str, config: &'a str, start: &str, end: &str) -> &'a
 #[test]
 fn config_skill_confirms_policy_in_one_table() {
     for (rel, config) in skill_for_both_tools("config-policy-table", "config") {
-        let step_three = config_section(&rel, &config, "## Step 3", "## Step 4");
+        let step_three = section_between(&rel, &config, "## Step 3", "## Step 4");
         // one table row per item, each carrying its not-set default
         for (item, default) in [
             ("`locale`", "English"),
@@ -1690,7 +1679,7 @@ fn config_skill_confirms_policy_in_one_table() {
             ("`audit`", "`false`"),
             ("`worktree`", "`false`"),
             ("test scope", "the full suite"),
-            ("review rules mode", "not set"),
+            ("review rules mode", "not set (the built-in code-smell baseline only)"),
         ] {
             let row = step_three
                 .lines()
@@ -1707,16 +1696,21 @@ fn config_skill_confirms_policy_in_one_table() {
             "keep everything, or change some of them",
             "ask nothing more and change no policy field",
             "only the items the user names",
-            "first run",
+            "A first run — a document with no policy field set yet — shows the same table",
+            // never inferred, stated once for all seven items
+            "Never infer any of these values from the repo, the test scope and the review rules mode included",
             // the tool limits and the plain-text fallback
-            "option limit",
-            "plain text",
+            "option limit for one question, ask which ones as plain text",
+            "run the whole confirmation as plain text",
             // worktree lands through the same dry-run approval; a refusal is relayed
             "speclink workflow-config set worktree <true|false>",
             "`--dry-run`",
-            "syncs the skill files",
+            "In local mode that write syncs the skill files",
             "relay the refusal to the user as it stands",
             "do not close or remove any worktree yourself",
+            // remote mode only changes the server's config
+            "In remote mode the write changes only the server's config",
+            "neither syncs the skill files nor checks for active worktrees",
         ] {
             assert!(
                 step_three.contains(needle),
@@ -1728,12 +1722,22 @@ fn config_skill_confirms_policy_in_one_table() {
             !step_three.contains("one at a time, with the"),
             "{rel}: step 3 must no longer interview every field one at a time"
         );
-        let step_five = config_section(&rel, &config, "## Step 5: Show the diff, then write", "## Step 6");
-        assert!(
-            step_five.contains("speclink workflow-config set worktree <true|false> --dry-run"),
-            "{rel}: step 5 must list the worktree dry-run"
-        );
-        let step_six = config_section(&rel, &config, "## Step 6: Verify convergence", "## Guardrails");
+        let step_five = section_between(&rel, &config, "## Step 5: Show the diff, then write", "## Step 6");
+        for needle in [
+            "speclink workflow-config set worktree <true|false> --dry-run",
+            "speclink workflow-config review <critical|warning|suggestion> --stdin --dry-run",
+            "speclink workflow-config review baseline <extend|replace> --dry-run",
+            "In local mode the `worktree` write also syncs the skill files",
+            // the dry-run comes first, the write only after approval
+            "NEVER write before the user approves",
+            "re-run the same commands without `--dry-run`",
+        ] {
+            assert!(
+                step_five.contains(needle),
+                "{rel}: step 5 is missing {needle:?}"
+            );
+        }
+        let step_six = section_between(&rel, &config, "## Step 6: Verify convergence", "## Guardrails");
         assert!(
             step_six.contains("The second run's diffs must be empty"),
             "{rel}: step 6 must carry the convergence check"
@@ -1768,13 +1772,13 @@ fn config_skill_asks_the_test_scope_question() {
         for needle in [
             // same nature as the policy fields: an answer, never a finding
             "an answer, not a finding",
-            "Never infer it from the repo",
             // the question itself, both answers named
             "run the full test suite, or only the tests for the surfaces",
             // an existing rule is the table's current value, and keeping it
             // leaves the rule alone
             "quote that rule as this row's current value",
-            "leave the test-scope rule exactly as it is",
+            "the answer itself leaves the test-scope rule as it is",
+            "like any other line, it still faces the four criteria",
             // answer A: build the mapping from what step 1 already read
             "dependency manifests you already read in Step 1",
             "`tasks` rules",
@@ -1808,7 +1812,7 @@ fn config_skill_asks_the_test_scope_question() {
 #[test]
 fn config_skill_review_rules_are_optional() {
     for (rel, config) in skill_for_both_tools("config-review-optional", "config") {
-        let sixth = config_section(&rel, &config, "### The sixth question", "## Step 4");
+        let sixth = section_between(&rel, &config, "### The sixth question", "## Step 4");
         for needle in [
             "Review rules are optional",
             "**not set** (the default)",
@@ -1817,19 +1821,21 @@ fn config_skill_review_rules_are_optional() {
             // what show --json reports for a missing block, and the current value otherwise
             "baseline `extend` and three empty lists",
             "how many rules each of the three lists holds",
-            // not set leaves the block alone, and existing rules are not withdrawn by it
-            "does not touch the `review` block",
-            "they stay as they are",
+            // not set adds nothing; an existing block keeps its mode and rules, and
+            // they still face step 4's checks
+            "adds nothing to the `review` block",
+            "Without a block, the review station keeps its built-in code-smell baseline alone",
+            "With a block, its mode and rules stay as they are",
             "not a withdrawal",
+            "proposed for removal like any other line",
             "a legitimate choice",
-            "Never derive it from the repo",
         ] {
             assert!(
                 sixth.contains(needle),
                 "{rel}: the sixth question is missing {needle:?}"
             );
         }
-        let step_four = config_section(&rel, &config, "## Step 4", "## Step 5");
+        let step_four = section_between(&rel, &config, "## Step 4", "## Step 5");
         for needle in [
             // severity by legitimate exception, wording only a hint, with a counterexample
             "legitimate exception",
@@ -1844,24 +1850,36 @@ fn config_skill_review_rules_are_optional() {
             "search the lint configuration",
             "text-search for a test",
             "Do not read through the source code",
-            // owned by another station, judged against this run's audit value
-            "belongs to the audit station",
-            "belongs to the verify station",
+            // owned by another station, judged against this run's audit value —
+            // and the verify case regardless of audit
+            "With `audit` on, a security rule belongs to the audit station",
+            "Whatever `audit` says, a rule that the code must follow an artifact belongs to the verify station",
             "confirmed in this run's table",
             "from off to on",
             "alongside the `audit` change",
-            // with no mode, only the stale-content and reference checks run
-            "With the mode not set, only the last check runs",
+            // the smell check runs under extend only
+            "While the mode is `extend`, drop a rule that restates the smell baseline",
+            "With `replace` the baseline does not apply",
+            // with no mode, the audit removal and criteria 3 and 4 still run
+            "With the mode not set, only two of these run",
+            // review rules come from the user alone
+            "Do not compose review rules from the fixed input set or from repo documents",
+            "Review rules come only from what the user states",
         ] {
             assert!(
                 step_four.contains(needle),
                 "{rel}: step 4 is missing {needle:?}"
             );
         }
-        assert!(
-            !config.contains("suggest a list from its wording"),
-            "{rel}: severity must no longer follow the rule's wording"
-        );
+        for gone in [
+            // severity no longer follows the rule's wording
+            "suggest a list from its wording",
+            // one word for the review rules mode's unset state
+            "(or unset)",
+            "does not touch the `review` block",
+        ] {
+            assert!(!config.contains(gone), "{rel}: {gone:?} must be gone");
+        }
         let guard = config
             .find("## Guardrails")
             .unwrap_or_else(|| panic!("{rel}: missing the guardrails section"));
@@ -1880,22 +1898,22 @@ fn config_skill_review_rules_are_optional() {
 #[test]
 fn config_skill_routes_reminders() {
     for (rel, config) in skill_for_both_tools("config-reminders", "config") {
-        let step_four = config_section(&rel, &config, "## Step 4", "## Step 5");
+        let step_four = section_between(&rel, &config, "## Step 4", "## Step 5");
         for needle in [
             // where reminders come from, and where they never come from
             "stated in the conversation",
             "pasted as a list",
-            "file path",
-            "conversation history",
+            "given as a file path that you then read",
+            "Do not search any tool's conversation history for reminders",
             // the three questions
             "in the code, or in a document",
             "reads only the patch",
             "find the violation late",
-            // the four destinations
-            "**a review rule**",
-            "**a rule for one artifact**",
-            "**both**",
-            "**not taken**",
+            // the four destinations, each reached by its condition
+            "→ **a review rule**",
+            "→ **a rule for one artifact**",
+            "→ **both**",
+            "→ **not taken**",
             // both sides only when each stage gets its own use, as two different sentences
             "each stage gets its own use",
             "describe different things",
@@ -1918,7 +1936,7 @@ fn config_skill_routes_reminders() {
                 "{rel}: step 4 is missing {needle:?}"
             );
         }
-        let step_six = config_section(&rel, &config, "## Step 6", "## Guardrails");
+        let step_six = section_between(&rel, &config, "## Step 6", "## Guardrails");
         for needle in [
             "every reminder and its destination",
             "a test or lint already guards it",
@@ -2171,12 +2189,11 @@ fn baseline_skill_loads_workflow_config_and_applies_specs_rules() {
 
 // --- discuss and improve skills: discuss-conclusion-bullets ---
 
-/// One Conclusion template of a generated skill: the text from `start` (inclusive) up to
-/// the first `end` after it — a `speclink discuss conclude` heredoc ends at its
-/// `CONCLUSION_EOF` line, the "Capture decisions" summary at the paragraph that follows
-/// it. Bounding the block keeps a field line missing from THIS template from being
-/// found in the next template further down the file.
-fn conclusion_template<'a>(rel: &str, content: &'a str, start: &str, end: &str) -> &'a str {
+/// One block of a generated skill: the text from `start` (inclusive) up to the first
+/// `end` after it — a step up to the next step heading, or a `speclink discuss
+/// conclude` heredoc up to its `CONCLUSION_EOF` line. Bounding the block keeps a
+/// phrase missing from THIS block from being found further down the file.
+fn section_between<'a>(rel: &str, content: &'a str, start: &str, end: &str) -> &'a str {
     let from = content
         .find(start)
         .unwrap_or_else(|| panic!("{rel}: missing {start:?}"));
@@ -2354,7 +2371,7 @@ fn discuss_skill_carries_the_conclusion_bullets_rule() {
     ];
     for (rel, content) in skill_for_both_tools("discuss-conclusion-bullets", "discuss") {
         let anchor = "speclink discuss conclude <slug> --stdin";
-        let heredoc = conclusion_template(&rel, &content, anchor, "\nCONCLUSION_EOF");
+        let heredoc = section_between(&rel, &content, anchor, "\nCONCLUSION_EOF");
         assert_conclusion_bullets(&rel, heredoc, true);
         for hint in TEMPLATE_HINTS {
             assert!(
@@ -2422,7 +2439,7 @@ fn discuss_skill_carries_the_conclusion_bullets_rule() {
         let blocks: Vec<&str> = content
             .match_indices(anchor)
             .map(|(from, _)| {
-                conclusion_template(&rel, &content[from..], anchor, "\nCONCLUSION_EOF")
+                section_between(&rel, &content[from..], anchor, "\nCONCLUSION_EOF")
             })
             .collect();
         assert_eq!(
