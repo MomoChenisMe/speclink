@@ -87,7 +87,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "tour.navOverview.title": "總覽",
     "tour.navOverview.hint": "需要處理事項、系統健康與最近活動集中在這一頁，數字都可以點進對應的目的地。",
     "tour.navUsers.title": "使用者",
-    "tour.navUsers.hint": "列表是主體：點一列進入詳情頁編輯，邀請在置中的對話框完成，列上不放任何輸入控制項。",
+    "tour.navUsers.hint": "列表是主體：點使用者那一列進入詳情頁編輯，邀請在置中的對話框完成，列上不放任何輸入控制項。",
     "tour.navRegistry.title": "專案與儲存庫",
     "tour.navRegistry.hint": "代號建立後不可變更；名稱預設唯讀，按「更名」才進入編輯。",
     "tour.navCredentials.title": "憑證",
@@ -96,8 +96,8 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "tour.navSystem.hint": "執行環境、儲存狀態、匯出與危險區都在這裡，也可以從這裡重看這份導覽。",
     "tour.navAudit.title": "稽核紀錄",
     "tour.navAudit.hint": "篩選與分頁由伺服器計算，事件累積再多也不會拖慢頁面。",
-    "tour.listPrimary.title": "建立與編輯",
-    "tour.listPrimary.hint": "每個列表頁只有一個主要動作，按下去會開啟置中的對話框，不會離開這一頁。",
+    "tour.listPrimary.title": "建立",
+    "tour.listPrimary.hint": "這一頁只有一個主要動作，按下去會開啟置中的對話框，不會離開這一頁。",
 
     // 總覽
     "overview.title": "總覽",
@@ -458,7 +458,7 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "tour.navOverview.title": "Overview",
     "tour.navOverview.hint": "Pending work, system health, and recent activity live on this page; every number links to where you act on it.",
     "tour.navUsers.title": "Users",
-    "tour.navUsers.hint": "The list is the page: click a row to edit it on its detail page, and invite people in a centered dialog. Rows hold no inputs.",
+    "tour.navUsers.hint": "The list is the page: click a user's row to edit it on its detail page, and invite people in a centered dialog. Rows hold no inputs.",
     "tour.navRegistry.title": "Projects & repositories",
     "tour.navRegistry.hint": "Keys cannot change once created; names are read-only until you press Rename.",
     "tour.navCredentials.title": "Credentials",
@@ -467,8 +467,8 @@ export const APP_MESSAGES: Record<UiLocale, Dict> = {
     "tour.navSystem.hint": "Runtime, storage, exports, and the danger zone are all here — including a way to replay this tour.",
     "tour.navAudit.title": "Audit log",
     "tour.navAudit.hint": "Filtering and paging run on the server, so the page stays fast no matter how many events pile up.",
-    "tour.listPrimary.title": "Create and edit",
-    "tour.listPrimary.hint": "Each list page has exactly one primary action; it opens a centered dialog without leaving the page.",
+    "tour.listPrimary.title": "Create",
+    "tour.listPrimary.hint": "This page has exactly one primary action; it opens a centered dialog without leaving the page.",
 
     // Overview
     "overview.title": "Overview",
