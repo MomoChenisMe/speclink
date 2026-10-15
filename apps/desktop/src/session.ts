@@ -4,14 +4,13 @@
 // （skip 或 folder 模式）→ remote_open handshake → createRemoteSession。
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
-import type { SpeclinkDataSource } from "@speclink/ui";
+import type { ReviewRules, SpeclinkDataSource } from "@speclink/ui";
 
 import { createRemoteDataSource } from "./adapter/remoteDataSource";
 import { createTauriDataSource } from "./adapter/tauriDataSource";
 import {
   createRemoteSettings,
   createWorkspaceSettings,
-  type ReviewRules,
   type SchemaEntry,
   type SettingsSnapshot,
   type WorkflowFields,

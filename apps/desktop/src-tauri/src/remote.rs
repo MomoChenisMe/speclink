@@ -1825,6 +1825,23 @@ impl RemoteWorkspace {
     }
 }
 
+/// 遠端活工單 → 前端工單資料，與本機同一個組裝函式（desktop core 的 `ticket_payload`）。
+/// server 比這支 desktop 新、某輪帶來不認得的 rules baseline 時回 `None`（空態），
+/// 比照封存原文解析失敗——不把它畫成 replace 的套用規則列。
+pub fn station_ticket_payload(ticket: ReviewTicketResponse) -> Option<serde_json::Value> {
+    let known = |round: &speclink_protocol::command::ReviewRoundDto| {
+        round
+            .rules
+            .as_ref()
+            .is_none_or(|rules| speclink_core::config::ReviewBaseline::parse(&rules.baseline).is_some())
+    };
+    ticket
+        .rounds
+        .iter()
+        .all(known)
+        .then(|| speclink_desktop_core::query::ticket_payload(ticket.rounds))
+}
+
 #[cfg(test)]
 mod capability_tests {
     use super::RemoteCapabilities;

@@ -5,11 +5,11 @@ import { describe, it, expect, vi } from "vitest";
 import { act, render as rtlRender, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ReactElement, type ReactNode } from "react";
-import { I18nProvider } from "@speclink/ui";
+import { I18nProvider, type ReviewRules } from "@speclink/ui";
 
 import { ProjectSettingsView } from "../views/ProjectSettingsView";
 import { APP_MESSAGES } from "../i18n/messages";
-import type { ReviewRules, SchemaEntry, SettingsSnapshot } from "../adapter/workspace";
+import type { SchemaEntry, SettingsSnapshot } from "../adapter/workspace";
 import type { WorkspaceSettingsProvider } from "../session";
 import type { ProjectSettingsSection } from "../settingsCatalog";
 import { editorText, editorView, pressSave, typeInEditor } from "./helpers/codemirror";

@@ -1,8 +1,9 @@
-import type { ReactNode } from "react";
-import { FolderOpen } from "lucide-react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { ChevronDown, ChevronRight, FolderOpen } from "lucide-react";
 
 import { listItemsOf, parseListItems, type H2Section, type ListBlock, type ListItem } from "../docModel";
 import { useI18n } from "../i18n";
+import { cn } from "../lib/utils";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { CopyButton } from "./CopyButton";
@@ -237,6 +238,36 @@ export function MoreToggle({ label, onExpand }: { label: string; onExpand: () =>
     <Button type="button" variant="ghost" size="sm" aria-expanded={false} className="text-muted-foreground" onClick={onExpand}>
       {label}
     </Button>
+  );
+}
+
+/** 整列可點的展開切換鈕，左側 chevron 標示開合（設計決策卡、工單輪卡與套用規則列同一種）；
+ * 內距、間距與換行由呼叫端給。 */
+export function ExpandToggle({
+  open,
+  onToggle,
+  className,
+  children,
+  ...rest
+}: { open: boolean; onToggle: () => void } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type" | "onClick">) {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      onClick={onToggle}
+      {...rest}
+      className={cn(
+        "flex w-full cursor-(--cursor-interaction) items-center text-left transition-colors hover:bg-foreground/5",
+        className,
+      )}
+    >
+      {open ? (
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+      ) : (
+        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+      )}
+      {children}
+    </button>
   );
 }
 

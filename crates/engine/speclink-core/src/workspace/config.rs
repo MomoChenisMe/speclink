@@ -435,8 +435,9 @@ impl ReviewBaseline {
         }
     }
 
-    /// The inverse of [`as_str`](Self::as_str), case-sensitive — the one token
-    /// parser the review ticket's `**Rules**:` line shares with the config block.
+    /// The inverse of [`as_str`](Self::as_str), case-sensitive — the token parser for
+    /// the review ticket's `**Rules**:` line and the remote round DTO. The config block
+    /// does not call it: serde's `rename_all = "lowercase"` reads the same spellings.
     pub fn parse(s: &str) -> Option<ReviewBaseline> {
         match s {
             "extend" => Some(ReviewBaseline::Extend),

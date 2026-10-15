@@ -159,9 +159,17 @@ export interface TicketFinding {
   text: string;
 }
 
-/** discovery 輪記錄的套用規則（`**Rules**:`／`**Rule**:` 行）：與 CLI `rounds[].rules` 同形。 */
-export interface TicketRules {
-  baseline: "extend" | "replace";
+/** 審查規則的預設清單模式：extend＝預設 12 條加上專案規則；replace＝只用專案規則。 */
+export type ReviewBaseline = "extend" | "replace";
+
+/** 三個專案規則清單，依 critical、warning、suggestion 順序（設定頁與工單套用規則列共用）。 */
+export const REVIEW_LISTS = ["critical", "warning", "suggestion"] as const;
+export type ReviewList = (typeof REVIEW_LISTS)[number];
+
+/** 依嚴重度分組的審查規則：config.yaml 的 review 區塊（未寫時為 extend 與三個空清單），也是
+ * 工單 discovery 輪記錄的套用規則（`**Rules**:`／`**Rule**:` 行，與 CLI `rounds[].rules` 同形）。 */
+export interface ReviewRules {
+  baseline: ReviewBaseline;
   critical: string[];
   warning: string[];
   suggestion: string[];
@@ -174,7 +182,7 @@ export interface TicketRound {
   patchHash: string | null;
   /** 套用規則記錄，沒有記錄時為 null。引擎一定會帶；宣告為選填只為相容沒有此欄的
    * 手寫字面值，缺席與 null 同義。 */
-  rules?: TicketRules | null;
+  rules?: ReviewRules | null;
   scope: string[];
   findings: TicketFinding[];
 }

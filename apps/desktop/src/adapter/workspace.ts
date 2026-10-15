@@ -5,6 +5,7 @@
 // command 顯式帶 root。
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import type { ReviewRules } from "@speclink/ui";
 
 import type { InvokeFn, WorkspaceSettingsProvider } from "../session";
 
@@ -42,17 +43,6 @@ export interface SchemaArtifactDetail {
   description: string;
   instruction: string | null;
   template: string | null;
-}
-
-/** 審查規則的預設清單模式：extend＝預設 12 條加上專案規則；replace＝只用專案規則。 */
-export type ReviewBaseline = "extend" | "replace";
-
-/** config.yaml 的 review 區塊（依嚴重度分組的專案審查規則；未寫時為 extend 與三個空清單）。 */
-export interface ReviewRules {
-  baseline: ReviewBaseline;
-  critical: string[];
-  warning: string[];
-  suggestion: string[];
 }
 
 /** read_settings 的快照 payload（欄位值＋各檔可選的 parseError）。 */

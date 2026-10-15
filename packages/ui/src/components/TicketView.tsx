@@ -1,7 +1,14 @@
-import { useEffect, useRef, useState, type ButtonHTMLAttributes } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
-import type { StationTicket, TicketFinding, TicketRound, TicketRules, TicketStation } from "../adapter";
+import {
+  REVIEW_LISTS,
+  type ReviewList,
+  type ReviewRules,
+  type StationTicket,
+  type TicketFinding,
+  type TicketRound,
+  type TicketStation,
+} from "../adapter";
 import { findingAxis } from "../docModel";
 import { useI18n } from "../i18n";
 import { cn } from "../lib/utils";
@@ -9,7 +16,7 @@ import { SEMANTIC_SURFACE } from "../tone";
 import { BaselineSmellList } from "./BaselineSmellList";
 import { Badge } from "./ui/badge";
 import { Callout } from "./ui/callout";
-import { SECTION_HEADING_CLS } from "./DocParts";
+import { ExpandToggle, SECTION_HEADING_CLS } from "./DocParts";
 import { SeverityTag } from "./SeverityTag";
 import type { DocSummary } from "./DetailShell";
 import { DocSkeleton } from "./skeletons";
@@ -175,35 +182,6 @@ function roundLabel(t: (key: string) => string, index: number): string {
   return t("ticket.round").replace("{n}", String(index));
 }
 
-/** 展開切換鈕：輪卡卡頭與套用規則列共用同一種 chevron 樣式。 */
-function ToggleButton({
-  open,
-  onToggle,
-  className,
-  children,
-  ...rest
-}: { open: boolean; onToggle: () => void } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type" | "onClick">) {
-  return (
-    <button
-      type="button"
-      aria-expanded={open}
-      onClick={onToggle}
-      {...rest}
-      className={cn(
-        "flex w-full cursor-(--cursor-interaction) flex-wrap items-center gap-x-2 gap-y-1 text-left transition-colors hover:bg-foreground/5",
-        className,
-      )}
-    >
-      {open ? (
-        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-      ) : (
-        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-      )}
-      {children}
-    </button>
-  );
-}
-
 /** 輪卡（與排程文件同一種邊框卡片）：卡頭 16px「第 N 輪」（本頁目錄錨點）、階段詞、範圍檔數、條數與
  * 各嚴重度計數籤；展開後先列套用規則列（該輪有記錄時）、再列範圍路徑與 finding。 */
 function RoundBlock({ round, smells, defaultOpen }: { round: TicketRound; smells: string[]; defaultOpen: boolean }) {
@@ -218,12 +196,12 @@ function RoundBlock({ round, smells, defaultOpen }: { round: TicketRound; smells
   ].filter(Boolean);
   return (
     <li data-ticket-round={round.index} className="overflow-hidden rounded-md border border-border/60 bg-muted/20">
-      <ToggleButton
+      <ExpandToggle
         data-ticket-round-header
         data-ticket-round-toggle
         open={open}
         onToggle={() => setOpen((v) => !v)}
-        className="px-3 py-2"
+        className="flex-wrap gap-x-2 gap-y-1 px-3 py-2"
       >
         <h3 data-doc-heading className={SECTION_HEADING_CLS}>
           {roundLabel(t, round.index)}
@@ -234,7 +212,7 @@ function RoundBlock({ round, smells, defaultOpen }: { round: TicketRound; smells
             {`${sev} ${counts[sev]}`}
           </SeverityTag>
         ))}
-      </ToggleButton>
+      </ExpandToggle>
       {open && (
         <div className="flex flex-col gap-2 border-t border-border/60 px-3 py-2">
           {round.rules && <RulesRow rules={round.rules} smells={smells} />}
@@ -260,21 +238,17 @@ function RoundBlock({ round, smells, defaultOpen }: { round: TicketRound; smells
   );
 }
 
-/** 三個專案規則清單與其嚴重度籤，依 critical、warning、suggestion 順序。 */
-const RULE_LISTS = [
-  ["CRITICAL", "critical"],
-  ["WARNING", "warning"],
-  ["SUGGESTION", "suggestion"],
-] as const;
+/** 專案規則清單的嚴重度籤：清單名的大寫（critical → CRITICAL）。 */
+const severityOf = (list: ReviewList) => list.toUpperCase();
 
 /** 套用規則列（spec「詳情頁的工單分頁」）：預設收合；列頭依 baseline 與專案規則條數寫模式並附非零的
  * 條數籤，replace 且沒有專案規則時琥珀底；展開後列預設清單（或寫明沒有套用）、各嚴重度的規則原文與
  * 末尾註記。N 取 `smells` 的長度。 */
-function RulesRow({ rules, smells }: { rules: TicketRules; smells: string[] }) {
+function RulesRow({ rules, smells }: { rules: ReviewRules; smells: string[] }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const count = (key: string, n: number) => t(key).replace("{count}", String(n));
-  const groups = RULE_LISTS.filter(([, list]) => rules[list].length > 0);
+  const groups = REVIEW_LISTS.filter((list) => rules[list].length > 0);
   const extend = rules.baseline === "extend";
   const mode = extend
     ? groups.length > 0
@@ -288,19 +262,24 @@ function RulesRow({ rules, smells }: { rules: TicketRules; smells: string[] }) {
       data-ticket-rules
       className={cn("rounded-md border", !extend && groups.length === 0 ? SEMANTIC_SURFACE.warning : "border-border/60")}
     >
-      <ToggleButton data-ticket-rules-toggle open={open} onToggle={() => setOpen((v) => !v)} className="px-2 py-1.5 text-xs">
+      <ExpandToggle
+        data-ticket-rules-toggle
+        open={open}
+        onToggle={() => setOpen((v) => !v)}
+        className="flex-wrap gap-x-2 gap-y-1 px-2 py-1.5 text-xs"
+      >
         <span data-ticket-rules-label className="font-medium">
           {t("ticket.rules.label")}
         </span>
         <span data-ticket-rules-mode className="text-muted-foreground">
           {count(mode, smells.length)}
         </span>
-        {groups.map(([sev, list]) => (
-          <SeverityTag key={sev} severity={sev} data-ticket-rules-count={sev} className="tabular-nums">
-            {`${sev} ${rules[list].length}`}
+        {groups.map((list) => (
+          <SeverityTag key={list} severity={severityOf(list)} data-ticket-rules-count={severityOf(list)} className="tabular-nums">
+            {`${severityOf(list)} ${rules[list].length}`}
           </SeverityTag>
         ))}
-      </ToggleButton>
+      </ExpandToggle>
       {open && (
         <div data-ticket-rules-body className="flex flex-col gap-2 border-t border-border/60 px-2 py-2 text-xs">
           {extend ? (
@@ -316,10 +295,10 @@ function RulesRow({ rules, smells }: { rules: TicketRules; smells: string[] }) {
               {count("ticket.rules.baselineNotApplied", smells.length)}
             </p>
           )}
-          {groups.map(([sev, list]) => (
-            <div key={sev} data-ticket-rules-group={sev} className="flex flex-col gap-1">
+          {groups.map((list) => (
+            <div key={list} data-ticket-rules-group={severityOf(list)} className="flex flex-col gap-1">
               <div className="flex items-center gap-1.5">
-                <SeverityTag data-ticket-severity severity={sev} />
+                <SeverityTag data-ticket-severity severity={severityOf(list)} />
                 <span>{count("ticket.rules.projectCount", rules[list].length)}</span>
               </div>
               {/* 規則原文：不翻譯、不截斷、可換行。 */}

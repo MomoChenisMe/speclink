@@ -326,6 +326,8 @@ fn show_json_legacy_round_emits_explicit_nulls() {
     assert!(v["rounds"][0]["phase"].is_null(), "{v}");
     assert!(v["rounds"][0]["patchHash"].is_null(), "{v}");
     assert!(v["lastRound"]["phase"].is_null(), "{v}");
+    // spec Scenario「沒有規則記錄的工單輸出 null」：rules 鍵在、值為 null（驗證技能不寫規則行）。
+    assert_eq!(v["rounds"][0].get("rules"), Some(&serde_json::Value::Null), "{v}");
 }
 
 #[test]
@@ -349,6 +351,11 @@ fn show_json_carries_nullable_phase_and_patch_hash() {
     assert_eq!(v["rounds"][0]["phase"], "discovery");
     assert_eq!(v["lastRound"]["phase"], "validation");
     assert_eq!(v["lastRound"]["patchHash"], format!("sha256:{b}"));
+    // spec Scenario「沒有規則記錄的工單輸出 null」：structured 輪同樣每輪帶 rules: null。
+    for round in v["rounds"].as_array().expect("rounds array") {
+        assert_eq!(round.get("rules"), Some(&serde_json::Value::Null), "{v}");
+    }
+    assert_eq!(v["lastRound"].get("rules"), Some(&serde_json::Value::Null), "{v}");
 }
 
 #[test]

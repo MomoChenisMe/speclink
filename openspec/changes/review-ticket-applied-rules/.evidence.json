@@ -100,6 +100,20 @@
         "docs/verb-contract.md",
         "docs/verb-contract.zh-TW.md"
       ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "5.3 收尾驗證：`cargo test -p speclink-core`、`cargo test -p speclink-protocol`、`cargo test -p speclink-cli --test it review_verbs`、`cargo test -p speclink-cli --test it remote_verb_parity`、`cargo test -p speclink-cli --test it verify_verbs`、`cargo test -p speclink-server --test it review_api`、`cargo test -p speclink-server --test it verify_api`、`cargo test -p speclink-desktop-core`、`npm test -w @speclink/ui`、`npm test -w @speclink/desktop` 與 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠",
+      "files": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "apps/desktop/src/adapter/workspace.ts",
+        "apps/desktop/src/session.ts",
+        "apps/desktop/src/views/project-settings/useProjectSettings.ts",
+        "crates/adapters/speclink-cli/tests/it/verify_verbs.rs",
+        "packages/ui/src/components/DesignDoc.tsx",
+        "packages/ui/src/components/DocParts.tsx"
+      ]
     }
   ],
   "entries": [
@@ -245,6 +259,24 @@
         "docs/verb-contract.zh-TW.md"
       ],
       "recordedAt": "2026-10-14T14:22:43Z"
+    },
+    {
+      "taskId": "tsk_01M4XAVYET1BCH61ETQV58K3N5",
+      "taskDesc": "5.3 收尾驗證：`cargo test -p speclink-core`、`cargo test -p speclink-protocol`、`cargo test -p speclink-cli --test it review_verbs`、`cargo test -p speclink-cli --test it remote_verb_parity`、`cargo test -p speclink-cli --test it verify_verbs`、`cargo test -p speclink-server --test it review_api`、`cargo test -p speclink-server --test it verify_api`、`cargo test -p speclink-desktop-core`、`npm test -w @speclink/ui`、`npm test -w @speclink/desktop` 與 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "e23d03323b0ddb7cce00cd312d0bc25f10fb8c35",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "apps/desktop/src/adapter/workspace.ts",
+        "apps/desktop/src/session.ts",
+        "apps/desktop/src/views/project-settings/useProjectSettings.ts",
+        "crates/adapters/speclink-cli/tests/it/verify_verbs.rs",
+        "packages/ui/src/components/DesignDoc.tsx",
+        "packages/ui/src/components/DocParts.tsx"
+      ],
+      "recordedAt": "2026-10-15T01:19:15Z"
     }
   ]
 }
