@@ -315,7 +315,9 @@ code:
 
 於 macOS，點擊系統匣圖示 SHALL NOT 顯示原生下拉選單，而 SHALL 於圖示下方彈出貼齊圖示的面板視窗，再次點擊 SHALL 收合——無需任何偏好設定。點擊 SHALL 不分滑鼠按鍵：主鍵（左鍵）與次要鍵（右鍵）點擊圖示 SHALL 完全等價，皆為開閉面板。面板內容 SHALL 與原生選單同源（同一前端 store 投影：專案與復原狀態、生命週期分區的變更與進度、討論——討論比照原生選單分「討論」與「已轉出」兩分區），SHALL NOT 為面板另建第二條資料查詢路徑或狀態機。
 
-面板底 SHALL 於毛玻璃之上、內容之下鋪一層主題背景色的半透明補光層（隨系統深淺色模式切換）：深色背景下面板亮度 SHALL 錨定主題背景色、SHALL NOT 明顯偏暗；淺色背景下毛玻璃 SHALL 仍可辨（背後內容輪廓經模糊可見）。
+面板底 SHALL 於毛玻璃之上、內容之下鋪一層主題背景色的半透明補光層（依 desktop-config 的有效外觀偏好切換，手動選擇優先於系統）：深色背景下面板亮度 SHALL 錨定主題背景色、SHALL NOT 明顯偏暗；淺色背景下毛玻璃 SHALL 仍可辨（背後內容輪廓經模糊可見）。
+
+面板的背景、文字、控制項與狀態色 SHALL 與主視窗使用相同有效外觀。面板已開啟時 SHALL 即時反映外觀改變；首次建立或隱藏後再次開啟 SHALL 使用目前有效外觀，SHALL NOT 以舊值或相反系統模式呈現內容。主視窗隱藏且偏好為跟隨系統時，系統切換 SHALL 仍反映到面板。同步 SHALL 沿用既有主視窗投影通道，SHALL NOT 為面板另設可獨立修改的偏好。原生選單、選單列 template 圖示與系統管理的毛玻璃材質 SHALL 保留原生行為。
 
 專案區 SHALL 呈現為橫向 tab 條：每個 tab SHALL 顯示專案名首字母的圓角方塊 avatar 與專案名；remote tab SHALL 另以圖示與文字可辨識 ready、restoring、offline、needs-reauth 或 error，SHALL NOT 只用顏色表意。作用中 ready 專案的 tab SHALL 以實心主色底＋反白文字標示；作用中 restoring／error 專案 SHALL 維持同等清楚的 selected 狀態且不呈 disabled 外觀。tab 總寬超出面板時 SHALL 可橫向捲動且 SHALL NOT 顯示捲軸。
 
@@ -353,7 +355,7 @@ active workspace 為 ready 或已有 session 的 offline 時，面板內容 SHAL
 
 #### Scenario: 深色背景下面板亮度不明顯下沉
 
-- **WHEN** 系統為淺色模式，面板於深色背景（如全螢幕深色 IDE）之上開啟
+- **WHEN** app 有效外觀為淺色模式，面板於深色背景（如全螢幕深色 IDE）之上開啟
 - **THEN** 面板底色錨定主題背景色、亮度未明顯偏暗，毛玻璃仍可辨背後內容輪廓
 
 #### Scenario: 點擊專案 tab 原地切換
@@ -436,18 +438,25 @@ active workspace 為 ready 或已有 session 的 offline 時，面板內容 SHAL
 - **WHEN** macOS 上面板視窗建立失敗
 - **THEN** 系統匣以原生選單樣式運作，remote error workspace 仍可經復原 submenu 操作，設定頁本機設定簽浮出單行面板建立錯誤
 
+#### Scenario: 面板首次開啟使用手動配色
+
+- **WHEN** 系統為深色、app 已選淺色，使用者首次開啟 macOS 系統匣面板
+- **THEN** 面板內容初次呈現即為淺色，背景、文字與狀態色與主視窗一致
+
+#### Scenario: 配色變更不依賴專案刷新
+
+- **WHEN** 工作區內容未變，app 外觀由淺色改成深色，面板已建立
+- **THEN** 已開啟面板立即使用深色；若面板隱藏，下次開啟亦使用深色，無需切換專案或刷新資料
+
+#### Scenario: 主視窗隱藏仍跟隨系統
+
+- **WHEN** app 外觀選跟隨系統、主視窗隱藏，系統從淺色切換至深色，使用者開啟面板
+- **THEN** 面板內容以深色呈現且主視窗保持隱藏，無需先開啟主視窗
+
 
 <!-- @trace
-source: tray-panel-scroll-and-vibrancy
-updated: 2026-07-31
-code:
-  - apps/desktop/panel.html
-  - apps/desktop/src/__tests__/tray.test.ts
-  - apps/desktop/src/__tests__/trayPanel.test.tsx
-  - apps/desktop/src/panel/TrayPanel.tsx
-  - apps/desktop/src/panel/main.tsx
-  - apps/desktop/src/tray.ts
-  - apps/desktop/vitest.setup.ts
+source: desktop-theme-and-project-directory
+updated: 2026-10-15T22:40:22+08:00
 -->
 
 ---
