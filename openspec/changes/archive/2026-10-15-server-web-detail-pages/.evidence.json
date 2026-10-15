@@ -101,6 +101,22 @@
         "apps/server-web/src/__tests__/a11y.test.tsx",
         "apps/server-web/src/__tests__/toolbar.test.tsx"
       ]
+    },
+    {
+      "task_id": "16",
+      "task_desc": "5.4 全組守門：確認本變更沒有讓詞彙守門與文件連結掃描面變紅。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。",
+      "files": [
+        "apps/server-web/src/lib/useAsync.ts",
+        "apps/server-web/src/pages/admin/AuditPage.tsx",
+        "apps/server-web/src/pages/admin/CredentialsPage.tsx",
+        "apps/server-web/src/pages/admin/states.tsx",
+        "packages/ui/src/__tests__/ui.test.tsx",
+        "packages/ui/src/components/ListCard.tsx",
+        "packages/ui/src/components/ui/card.tsx",
+        "packages/ui/src/components/ui/tabs.tsx",
+        "apps/server-web/src/lib/fmtDate.ts",
+        "apps/server-web/src/pages/admin/detail.tsx"
+      ]
     }
   ],
   "entries": [
@@ -247,6 +263,26 @@
         "apps/server-web/src/__tests__/toolbar.test.tsx"
       ],
       "recordedAt": "2026-10-14T15:10:01Z"
+    },
+    {
+      "taskId": "tsk_01M4WWDBEEWE4XQ5ZA483H9TMR",
+      "taskDesc": "5.4 全組守門：確認本變更沒有讓詞彙守門與文件連結掃描面變紅。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d074600f860b8f2e365f838dc8b72c61b602c27f",
+      "touchedFiles": [
+        "apps/server-web/src/lib/useAsync.ts",
+        "apps/server-web/src/pages/admin/AuditPage.tsx",
+        "apps/server-web/src/pages/admin/CredentialsPage.tsx",
+        "apps/server-web/src/pages/admin/states.tsx",
+        "packages/ui/src/__tests__/ui.test.tsx",
+        "packages/ui/src/components/ListCard.tsx",
+        "packages/ui/src/components/ui/card.tsx",
+        "packages/ui/src/components/ui/tabs.tsx",
+        "apps/server-web/src/lib/fmtDate.ts",
+        "apps/server-web/src/pages/admin/detail.tsx"
+      ],
+      "recordedAt": "2026-10-15T02:13:19Z"
     }
   ]
 }

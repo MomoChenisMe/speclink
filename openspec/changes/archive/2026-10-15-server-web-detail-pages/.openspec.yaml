@@ -1,0 +1,191 @@
+schema: spec-driven
+created: 2026-10-14
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: server-web-desktop-alignment
+started_at: 2026-10-14
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-15
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 16
+reviewed_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: d3b9256d4ba99a2ca82e3cd0a2e8d6091ee3e37190a31a9583f0c5c21d5ca91d
+  - path: apps/desktop/src/__tests__/detailBack.test.tsx
+    hash: 5a89651faeb39101b861a59f4bfa42b09b29d9447c634d6b236d6cf957ac9539
+  - path: apps/desktop/src/components/DetailBack.tsx
+    hash: c262292c8786bbab7a878d435b674ef413d7644bb585f5b075f444ead8389b0f
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: cf55b111052d148dc96131f242d86020b6f1214fca2ecf9de0101195cd781de0
+  - path: apps/server-web/src/__tests__/a11y.test.tsx
+    hash: bbeaa06f81e664fe35545871b494b0415421b29c0ba6b7bc7ece3db374b2989c
+  - path: apps/server-web/src/__tests__/account.test.tsx
+    hash: 869f2b6d643b30e16732ecebdb38653a59f1b06e33d0f16ff68bd2649cff4eda
+  - path: apps/server-web/src/__tests__/admin-console-shell.test.tsx
+    hash: 6659a66d8ce2fad923c589b90c283d45746d0aef1ad8e79cd730bc8c0b29da76
+  - path: apps/server-web/src/__tests__/helpers/adminHarness.tsx
+    hash: 8fbc366af7b0c5fa867dad212d7d70ca0f2b0727ca1e528b1edef7177d90ecc0
+  - path: apps/server-web/src/__tests__/projectDetail.test.tsx
+    hash: 9eab8f07d285c1624d528372b2022d6b62daa5b657bcff621e3bb7f5aef31f35
+  - path: apps/server-web/src/__tests__/registry.test.tsx
+    hash: e39cd3903cc64f9110785f618f0fc12b5ec081108a8a305808bdc5c10139e158
+  - path: apps/server-web/src/__tests__/toolbar.test.tsx
+    hash: b904dc262af73b3233a1d9baf748030454e4c228d26f63d0b84292c134e802a7
+  - path: apps/server-web/src/__tests__/userDetail.test.tsx
+    hash: 2a3cced8242a158d866f74a8ee31139d3c1fb58a7f6755f36fa600cde8d43220
+  - path: apps/server-web/src/__tests__/users.test.tsx
+    hash: 41d1e35f4ce4da495c1069aa9e5c0902bb3826204abde337176116586b04d2b8
+  - path: apps/server-web/src/__tests__/wording.test.tsx
+    hash: 354130caf5ddb8fc480672091b1140c10ef10b39ed29f852742555e3ff99bf8f
+  - path: apps/server-web/src/components/FormDialog.tsx
+    hash: 124595934b933fd6d4f58969deecdd62e04664c8e011590f17b60ad270745255
+  - path: apps/server-web/src/i18n/messages.ts
+    hash: c110e0d4efd813c1d8c499cb8f14147267141e043f9ff906c12bbd13da808093
+  - path: apps/server-web/src/layouts/ConsoleLayout.tsx
+    hash: b96e756ae740a7c99f941876bd6f298110665a49de1f44754ea0d598d1c238bb
+  - path: apps/server-web/src/layouts/DetailTitle.tsx
+    hash: c6035c76905309797bc9feff7c89d14686dbfcceab9f6971c05feae2186a922b
+  - path: apps/server-web/src/lib/fmtDate.ts
+    hash: 2ca1b48997a042a870ea7c6fdfca9c04c43f75826763547c6bd6a8da13c4c2b9
+  - path: apps/server-web/src/lib/useAsync.ts
+    hash: f2fb3edba5e9ffb7d89f03005d7167bd70537ae66c99cd102213b603af7117d7
+  - path: apps/server-web/src/pages/AccountPage.tsx
+    hash: 9b745d5e08e851ed06f1657e5e1282fd49362be3394e16db5ff7d1b4a02b33ad
+  - path: apps/server-web/src/pages/admin/AdminSection.tsx
+    hash: 2deebfc28bb17de4934f3c71ae67955ad1f2ec2880737e4f6282d402316611df
+  - path: apps/server-web/src/pages/admin/AuditPage.tsx
+    hash: 2c7c03ab8491e11ab873dd476166425ec7598f661622cb499eed2e9c88399814
+  - path: apps/server-web/src/pages/admin/CredentialsPage.tsx
+    hash: 24ef3250439847d591523bfc2c77c5c4e1aa851fc7f194908d57b00b022f5cc7
+  - path: apps/server-web/src/pages/admin/ProjectDetailPage.tsx
+    hash: d0011e537e1aa9db7f080a78c257e5a376fefd21630d2cd500c9825e56342c69
+  - path: apps/server-web/src/pages/admin/RegistryPage.tsx
+    hash: 2104ee0ca74767e48fa034f027444cfb5a2e03b63e7fd159df1cebbcec5d141e
+  - path: apps/server-web/src/pages/admin/UserDetailPage.tsx
+    hash: 2eb3848b0d4765fa9665f82b4589b280603d5c6647a49c766bc3921244ab7950
+  - path: apps/server-web/src/pages/admin/UsersPage.tsx
+    hash: 10e0691b3ceeb8df6ba1e9e6dca8e6eb08bad07b7e0102d5d183ac5c2a685502
+  - path: apps/server-web/src/pages/admin/detail.tsx
+    hash: de30bde4e49863138687d8d6c3cc8632999d876cea33c245af690f80d24a6081
+  - path: apps/server-web/src/pages/admin/states.tsx
+    hash: a55be44d9b12168c2a18d3186c39536c61785f9fb26e31d541c450d998002baa
+  - path: package-lock.json
+    hash: 3e445f1ffcf6b8a6b0949ea1aa1a60ab2e44aecb124785b2083b41cd5580ee9d
+  - path: packages/ui/src/__tests__/detailNav.test.tsx
+    hash: 76e0bc4225f11f7cff3dae84a703c7e9c3ebb5e15f3a25e80c03afa6a96352ad
+  - path: packages/ui/src/__tests__/pageHeader.test.tsx
+    hash: de7981aa8832ebe868a707f75ded8dedcea06fe7c905c0302a64bf05fe83dff4
+  - path: packages/ui/src/__tests__/selectInDialog.test.tsx
+    hash: 4d3f99847257fe45a119d324b38f22ad4bbd0ca06651f94afe51ffdcb376c18f
+  - path: packages/ui/src/__tests__/ui.test.tsx
+    hash: 70fe27ce448aa03fd0966537d5446090722927564f2b39ec5d6d4166ce3a6160
+  - path: packages/ui/src/components/DetailNav.tsx
+    hash: 881fafbf8ef95dedbf4e2b67c95380c7dbc79931171ee6c0d7e564b1756279d5
+  - path: packages/ui/src/components/ListCard.tsx
+    hash: b45386bd6eacaffec6c776e9ebb3ed0a3f4ed494a65e7b807fb75548cba7bf66
+  - path: packages/ui/src/components/ui/alert-dialog.tsx
+    hash: 0fd3ab53658e16bcf9bc57091ce3bdbf744b7e5089752d7890a717a6ba86f289
+  - path: packages/ui/src/components/ui/card.tsx
+    hash: a0e17ea0edb8922b7976a998cca8374097c5404583e2e0a41f43bf3d26da8327
+  - path: packages/ui/src/components/ui/page-header.tsx
+    hash: 545761a280b1cfa01c226aa01b25106873f637235321abdfa80645719d240cce
+  - path: packages/ui/src/components/ui/tabs.tsx
+    hash: 1b764f430de711b9e5cd44084f3cfdf4463c712810280ccdd6a6e34b8b732461
+  - path: packages/ui/src/i18n.tsx
+    hash: c2ee8450c63da4f26428b908c2c20939ea4ebef7ae06dd4dff2d5deeb0d14115
+  - path: packages/ui/src/index.ts
+    hash: e9797ad3ce2fa649b01440201972963b07eb0f1d0a4c81e400fdb1e2908962ce
+verified_at: 2026-10-15
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 16
+verified_scope:
+  - path: apps/desktop/src/App.tsx
+    hash: d3b9256d4ba99a2ca82e3cd0a2e8d6091ee3e37190a31a9583f0c5c21d5ca91d
+  - path: apps/desktop/src/__tests__/detailBack.test.tsx
+    hash: 5a89651faeb39101b861a59f4bfa42b09b29d9447c634d6b236d6cf957ac9539
+  - path: apps/desktop/src/components/DetailBack.tsx
+    hash: c262292c8786bbab7a878d435b674ef413d7644bb585f5b075f444ead8389b0f
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: cf55b111052d148dc96131f242d86020b6f1214fca2ecf9de0101195cd781de0
+  - path: apps/server-web/src/__tests__/a11y.test.tsx
+    hash: bbeaa06f81e664fe35545871b494b0415421b29c0ba6b7bc7ece3db374b2989c
+  - path: apps/server-web/src/__tests__/account.test.tsx
+    hash: 869f2b6d643b30e16732ecebdb38653a59f1b06e33d0f16ff68bd2649cff4eda
+  - path: apps/server-web/src/__tests__/admin-console-shell.test.tsx
+    hash: 6659a66d8ce2fad923c589b90c283d45746d0aef1ad8e79cd730bc8c0b29da76
+  - path: apps/server-web/src/__tests__/helpers/adminHarness.tsx
+    hash: 8fbc366af7b0c5fa867dad212d7d70ca0f2b0727ca1e528b1edef7177d90ecc0
+  - path: apps/server-web/src/__tests__/projectDetail.test.tsx
+    hash: 9eab8f07d285c1624d528372b2022d6b62daa5b657bcff621e3bb7f5aef31f35
+  - path: apps/server-web/src/__tests__/registry.test.tsx
+    hash: e39cd3903cc64f9110785f618f0fc12b5ec081108a8a305808bdc5c10139e158
+  - path: apps/server-web/src/__tests__/toolbar.test.tsx
+    hash: b904dc262af73b3233a1d9baf748030454e4c228d26f63d0b84292c134e802a7
+  - path: apps/server-web/src/__tests__/userDetail.test.tsx
+    hash: 2a3cced8242a158d866f74a8ee31139d3c1fb58a7f6755f36fa600cde8d43220
+  - path: apps/server-web/src/__tests__/users.test.tsx
+    hash: 41d1e35f4ce4da495c1069aa9e5c0902bb3826204abde337176116586b04d2b8
+  - path: apps/server-web/src/__tests__/wording.test.tsx
+    hash: 354130caf5ddb8fc480672091b1140c10ef10b39ed29f852742555e3ff99bf8f
+  - path: apps/server-web/src/components/FormDialog.tsx
+    hash: 124595934b933fd6d4f58969deecdd62e04664c8e011590f17b60ad270745255
+  - path: apps/server-web/src/i18n/messages.ts
+    hash: c110e0d4efd813c1d8c499cb8f14147267141e043f9ff906c12bbd13da808093
+  - path: apps/server-web/src/layouts/ConsoleLayout.tsx
+    hash: b96e756ae740a7c99f941876bd6f298110665a49de1f44754ea0d598d1c238bb
+  - path: apps/server-web/src/layouts/DetailTitle.tsx
+    hash: c6035c76905309797bc9feff7c89d14686dbfcceab9f6971c05feae2186a922b
+  - path: apps/server-web/src/lib/fmtDate.ts
+    hash: 2ca1b48997a042a870ea7c6fdfca9c04c43f75826763547c6bd6a8da13c4c2b9
+  - path: apps/server-web/src/lib/useAsync.ts
+    hash: f2fb3edba5e9ffb7d89f03005d7167bd70537ae66c99cd102213b603af7117d7
+  - path: apps/server-web/src/pages/AccountPage.tsx
+    hash: 9b745d5e08e851ed06f1657e5e1282fd49362be3394e16db5ff7d1b4a02b33ad
+  - path: apps/server-web/src/pages/admin/AdminSection.tsx
+    hash: 2deebfc28bb17de4934f3c71ae67955ad1f2ec2880737e4f6282d402316611df
+  - path: apps/server-web/src/pages/admin/AuditPage.tsx
+    hash: 2c7c03ab8491e11ab873dd476166425ec7598f661622cb499eed2e9c88399814
+  - path: apps/server-web/src/pages/admin/CredentialsPage.tsx
+    hash: 24ef3250439847d591523bfc2c77c5c4e1aa851fc7f194908d57b00b022f5cc7
+  - path: apps/server-web/src/pages/admin/ProjectDetailPage.tsx
+    hash: d0011e537e1aa9db7f080a78c257e5a376fefd21630d2cd500c9825e56342c69
+  - path: apps/server-web/src/pages/admin/RegistryPage.tsx
+    hash: 2104ee0ca74767e48fa034f027444cfb5a2e03b63e7fd159df1cebbcec5d141e
+  - path: apps/server-web/src/pages/admin/UserDetailPage.tsx
+    hash: 2eb3848b0d4765fa9665f82b4589b280603d5c6647a49c766bc3921244ab7950
+  - path: apps/server-web/src/pages/admin/UsersPage.tsx
+    hash: 10e0691b3ceeb8df6ba1e9e6dca8e6eb08bad07b7e0102d5d183ac5c2a685502
+  - path: apps/server-web/src/pages/admin/detail.tsx
+    hash: de30bde4e49863138687d8d6c3cc8632999d876cea33c245af690f80d24a6081
+  - path: apps/server-web/src/pages/admin/states.tsx
+    hash: a55be44d9b12168c2a18d3186c39536c61785f9fb26e31d541c450d998002baa
+  - path: package-lock.json
+    hash: 3e445f1ffcf6b8a6b0949ea1aa1a60ab2e44aecb124785b2083b41cd5580ee9d
+  - path: packages/ui/src/__tests__/detailNav.test.tsx
+    hash: 76e0bc4225f11f7cff3dae84a703c7e9c3ebb5e15f3a25e80c03afa6a96352ad
+  - path: packages/ui/src/__tests__/pageHeader.test.tsx
+    hash: de7981aa8832ebe868a707f75ded8dedcea06fe7c905c0302a64bf05fe83dff4
+  - path: packages/ui/src/__tests__/selectInDialog.test.tsx
+    hash: 4d3f99847257fe45a119d324b38f22ad4bbd0ca06651f94afe51ffdcb376c18f
+  - path: packages/ui/src/__tests__/ui.test.tsx
+    hash: 70fe27ce448aa03fd0966537d5446090722927564f2b39ec5d6d4166ce3a6160
+  - path: packages/ui/src/components/DetailNav.tsx
+    hash: 881fafbf8ef95dedbf4e2b67c95380c7dbc79931171ee6c0d7e564b1756279d5
+  - path: packages/ui/src/components/ListCard.tsx
+    hash: b45386bd6eacaffec6c776e9ebb3ed0a3f4ed494a65e7b807fb75548cba7bf66
+  - path: packages/ui/src/components/ui/alert-dialog.tsx
+    hash: 0fd3ab53658e16bcf9bc57091ce3bdbf744b7e5089752d7890a717a6ba86f289
+  - path: packages/ui/src/components/ui/card.tsx
+    hash: a0e17ea0edb8922b7976a998cca8374097c5404583e2e0a41f43bf3d26da8327
+  - path: packages/ui/src/components/ui/page-header.tsx
+    hash: 545761a280b1cfa01c226aa01b25106873f637235321abdfa80645719d240cce
+  - path: packages/ui/src/components/ui/tabs.tsx
+    hash: 1b764f430de711b9e5cd44084f3cfdf4463c712810280ccdd6a6e34b8b732461
+  - path: packages/ui/src/i18n.tsx
+    hash: c2ee8450c63da4f26428b908c2c20939ea4ebef7ae06dd4dff2d5deeb0d14115
+  - path: packages/ui/src/index.ts
+    hash: e9797ad3ce2fa649b01440201972963b07eb0f1d0a4c81e400fdb1e2908962ce
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-15

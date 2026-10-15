@@ -8,7 +8,7 @@ server 的瀏覽器後台：全部 browser route 由單一 SPA 提供且導覽�
 
 ### Requirement: 全部 browser route 由單一 SPA 提供可發現導覽
 
-Server SHALL 以 Vite、React 與 TypeScript SPA 提供 `/`、`/setup`、`/invite/:token`、`/login`、`/activate`、`/account`、`/admin` 與 `/admin/*`；每個頁面 SHALL 可由應用內導覽或當前流程中的明確動作到達，且 SHALL 支援直接開啟與重新整理。未登入流程 SHALL 使用專注流程殼；已登入的管理員與一般成員 SHALL 共用同一個依角色裁切的主控台殼：左側側欄（頂端品牌字標、中段導覽、底部帳號選單）加主欄（頂列麵包屑、下方主內容），殼 SHALL NOT 含橫貫頂部的 header。管理員的側欄導覽 SHALL 提供總覽、使用者、專案與儲存庫、憑證、系統、稽核紀錄六個目的地，且 SHALL NOT 提供獨立的資料操作目的地；一般成員的側欄導覽 SHALL 只有帳號一項，SHALL NOT 呈現任何管理目的地。帳號 SHALL NOT 列為管理員側欄的目的地，SHALL 由側欄底部帳號選單的「帳號」項進入。帳號選單 SHALL 在觸發鈕上顯示當前使用者的顯示名稱與電子郵件，展開後 SHALL 顯示顯示名稱與「電子郵件 · 管理員」或「電子郵件 · 成員」，並提供帳號、介面語言與登出；登出請求失敗時 SPA SHALL 仍導向登入頁。管理員開啟 `/account` 時側欄 SHALL 完整呈現且無任何項目高亮。主區頂列的麵包屑 SHALL 標示目前位置：管理面為「後台 / <目的地>」且「後台」可點回總覽，帳號頁為「帳號」。SPA SHALL NOT 提供 changes、specs 或 discussions 的檢視與編輯。
+Server SHALL 以 Vite、React 與 TypeScript SPA 提供 `/`、`/setup`、`/invite/:token`、`/login`、`/activate`、`/account`、`/admin` 與 `/admin/*`；每個頁面 SHALL 可由應用內導覽或當前流程中的明確動作到達，且 SHALL 支援直接開啟與重新整理。未登入流程 SHALL 使用專注流程殼；已登入的管理員與一般成員 SHALL 共用同一個依角色裁切的主控台殼：左側側欄（頂端品牌字標、中段導覽、底部帳號選單）加主欄（頂列麵包屑、下方主內容），殼 SHALL NOT 含橫貫頂部的 header。管理員的側欄導覽 SHALL 提供總覽、使用者、專案與儲存庫、憑證、系統、稽核紀錄六個目的地，且 SHALL NOT 提供獨立的資料操作目的地；一般成員的側欄導覽 SHALL 只有帳號一項，SHALL NOT 呈現任何管理目的地。帳號 SHALL NOT 列為管理員側欄的目的地，SHALL 由側欄底部帳號選單的「帳號」項進入。帳號選單 SHALL 在觸發鈕上顯示當前使用者的顯示名稱與電子郵件，展開後 SHALL 顯示顯示名稱與「電子郵件 · 管理員」或「電子郵件 · 成員」，並提供帳號、介面語言與登出；登出請求失敗時 SPA SHALL 仍導向登入頁。管理員開啟 `/account` 時側欄 SHALL 完整呈現且無任何項目高亮。主區頂列的麵包屑 SHALL 標示目前位置：管理面為「後台 / <目的地>」且「後台」可點回總覽；使用者與專案的詳情頁為「後台 / <目的地> / <該筆名稱>」，「後台」可點回總覽、「<目的地>」可點回該列表，名稱 SHALL NOT 可點；帳號頁為「帳號」。管理員在詳情頁時，側欄 SHALL 高亮該詳情頁所屬的目的地。SPA SHALL NOT 提供 changes、specs 或 discussions 的檢視與編輯。
 
 #### Scenario: 管理員不需手打 URL 走訪管理功能
 
@@ -50,10 +50,15 @@ Server SHALL 以 Vite、React 與 TypeScript SPA 提供 `/`、`/setup`、`/invit
 - **WHEN** 管理員開啟 `/admin/users` 後點麵包屑的「後台」
 - **THEN** 點擊前麵包屑為「後台 / 使用者」，點擊後呈現總覽且麵包屑為「後台 / 總覽」
 
+#### Scenario: 詳情頁麵包屑三段並可回列表
+
+- **WHEN** 管理員在使用者頁點顯示名稱為「Member」的使用者列，再點麵包屑的「使用者」
+- **THEN** 點擊前麵包屑為「後台 / 使用者 / Member」且側欄高亮「使用者」；點擊後主內容區回到使用者列表，麵包屑為「後台 / 使用者」
+
 
 <!-- @trace
-source: server-web-shell-alignment
-updated: 2026-10-14T09:30:48+08:00
+source: server-web-detail-pages
+updated: 2026-10-15T10:20:04+08:00
 -->
 
 ---
@@ -307,7 +312,7 @@ code:
 ---
 ### Requirement: 共用設計系統維持高密度可存取體驗
 
-Server SPA SHALL 復用 `packages/ui` 的 shadcn/ui 原語、共用 semantic theme、Noto Sans TC 與青綠 focus token，SHALL NOT 建立第二套 theme 或 import Desktop 的 Tauri、Zustand store 與 SDD board 元件。介面上的下拉選單 SHALL 使用 `packages/ui` 的 shadcn/ui Select 原語，SHALL NOT 使用未套用 theme 的原生 `select`；同一組工具列內的搜尋框、下拉與日期輸入 SHALL 具有相同高度；搜尋框 SHALL 為與 Desktop 同一個共用全圓搜尋框並具有無障礙名稱，下拉與日期輸入 SHALL 具有相同圓角與陰影，且各自以無障礙名稱標示用途。下拉展開後的選單 SHALL 具有不透明底色，且在抽屜或對話框內開啟時 SHALL 可正常開啟與選取。主控台殼的側欄頂列與主區頂列高度、側欄寬度與主內容內距 SHALL 與 Desktop 應用程式殼採用相同數值；側欄頂列 SHALL 顯示共用元件庫的橫式字標，主區頂列的麵包屑 SHALL 使用與 Desktop 同一個共用麵包屑元件。主控台殼 SHALL NOT 整頁捲動——側欄與主區頂列 SHALL 恆常留在可視範圍內，只有主內容區捲動。寬度至少 1024px 時主控台殼 SHALL 顯示 icon 加 label 的固定側欄；更窄時 SHALL 隱藏固定側欄，以主區頂列上可見的 trigger 開啟從左側滑出的 Sheet，Sheet 內容 SHALL 與側欄相同（字標、該角色的導覽目的地與帳號選單），管理員與一般成員皆同。每頁標題 SHALL 使用與 Desktop 同一個共用頁標題元件（24px 一般字重標題、灰字說明、右側頁級動作），且頁標題 SHALL 為該頁唯一的第一層標題；頁標題區寬度不足以並排標題與動作時，動作槽 SHALL 換到標題下方一列，SHALL NOT 溢出主內容區。列表頁（使用者、專案與儲存庫、憑證、稽核紀錄）SHALL 全寬排版：搜尋與篩選置於頁標題區的動作槽，其下一張共用列表卡填滿主內容區剩餘高度，列於卡內縱向捲動、卡底為共用換頁列，頁面本身 SHALL NOT 因清單長度而縱向捲動。設定型頁（總覽、系統、帳號）SHALL 以 768px 置中欄排版，每個區塊為一張共用設定型卡（14px 小標、圓角卡、一列一筆、列間細線）。存取金鑰與裝置登入列上的撤銷鈕（帳號頁、憑證頁）SHALL 只在滑鼠移入該列或鍵盤焦點落在該鈕時顯示，隱藏期間 SHALL 仍在 Tab 順序內；裝置不具滑鼠移入能力時 SHALL 恆常顯示。專注流程殼 SHALL 於畫面正中呈現橫式字標，其下為一張與 Desktop 對話框同款的卡片（12px 圓角、15px 標題加灰字說明、頁尾細線上方右側為主要動作）；多步驟流程 SHALL 於卡片頂端標示「步驟 n / 總數」與步驟條；連結無效或無權限時卡片 SHALL 只呈現警示色圖示、標題與說明並以 `role=alert` 宣告。每頁 SHALL 只有一個視覺 primary action。寬度小於 1024px 時清單 SHALL 轉為可換行的清單列（稽核紀錄的表格亦同），換頁列 SHALL 收為筆數範圍與「‹ 目前頁 / 總頁數 ›」，且 SHALL NOT 造成整頁水平捲動。
+Server SPA SHALL 復用 `packages/ui` 的 shadcn/ui 原語、共用 semantic theme、Noto Sans TC 與青綠 focus token，SHALL NOT 建立第二套 theme 或 import Desktop 的 Tauri、Zustand store 與 SDD board 元件。介面上的下拉選單 SHALL 使用 `packages/ui` 的 shadcn/ui Select 原語，SHALL NOT 使用未套用 theme 的原生 `select`；同一組工具列內的搜尋框、下拉與日期輸入 SHALL 具有相同高度；搜尋框 SHALL 為與 Desktop 同一個共用全圓搜尋框並具有無障礙名稱，下拉與日期輸入 SHALL 具有相同圓角與陰影，且各自以無障礙名稱標示用途。下拉展開後的選單 SHALL 具有不透明底色，且在對話框內開啟時 SHALL 可正常開啟與選取。主控台殼的側欄頂列與主區頂列高度、側欄寬度與主內容內距 SHALL 與 Desktop 應用程式殼採用相同數值；側欄頂列 SHALL 顯示共用元件庫的橫式字標，主區頂列的麵包屑 SHALL 使用與 Desktop 同一個共用麵包屑元件。主控台殼 SHALL NOT 整頁捲動——側欄與主區頂列 SHALL 恆常留在可視範圍內，只有主內容區捲動。寬度至少 1024px 時主控台殼 SHALL 顯示 icon 加 label 的固定側欄；更窄時 SHALL 隱藏固定側欄，以主區頂列上可見的 trigger 開啟從左側滑出的 Sheet，Sheet 內容 SHALL 與側欄相同（字標、該角色的導覽目的地與帳號選單），管理員與一般成員皆同。每頁標題 SHALL 使用與 Desktop 同一個共用頁標題元件（24px 一般字重標題、灰字說明、右側頁級動作），且頁標題 SHALL 為該頁唯一的第一層標題；頁標題區寬度不足以並排標題與動作時，動作槽 SHALL 換到標題下方一列，SHALL NOT 溢出主內容區。列表頁（使用者、專案與儲存庫、憑證、稽核紀錄）SHALL 全寬排版：搜尋與篩選置於頁標題區的動作槽，其下一張共用列表卡填滿主內容區剩餘高度，列於卡內縱向捲動、卡底為共用換頁列，頁面本身 SHALL NOT 因清單長度而縱向捲動。設定型頁（總覽、系統、帳號）SHALL 以 768px 置中欄排版，每個區塊為一張共用設定型卡（14px 小標、圓角卡、一列一筆、列間細線）。存取金鑰與裝置登入列上的撤銷鈕（帳號頁、憑證頁、使用者詳情頁的憑證分頁）與使用者詳情頁成員資格列上的移除鈕 SHALL 只在滑鼠移入該列或鍵盤焦點落在該鈕時顯示，隱藏期間 SHALL 仍在 Tab 順序內；裝置不具滑鼠移入能力時 SHALL 恆常顯示。專注流程殼 SHALL 於畫面正中呈現橫式字標，其下為一張與 Desktop 對話框同款的卡片（12px 圓角、15px 標題加灰字說明、頁尾細線上方右側為主要動作）；多步驟流程 SHALL 於卡片頂端標示「步驟 n / 總數」與步驟條；連結無效或無權限時卡片 SHALL 只呈現警示色圖示、標題與說明並以 `role=alert` 宣告。每頁 SHALL 只有一個視覺 primary action。寬度小於 1024px 時清單 SHALL 轉為可換行的清單列（稽核紀錄的表格亦同），換頁列 SHALL 收為筆數範圍與「‹ 目前頁 / 總頁數 ›」，且 SHALL NOT 造成整頁水平捲動。
 
 字級與控件高度 SHALL 與 Desktop 相同：側欄、麵包屑與選單文字 11–13px，閱讀內文 15px，按鈕高度 28–36px（指共用按鈕元件；麵包屑與語言切換這類行內文字鈕隨所在文字列的字級）。所有互動 SHALL 可由鍵盤完成，並包含 skip link、至少 2px focus ring、連續 heading、icon-only control 的 aria-label、輸入 label／helper text／autocomplete、鄰近欄位且以 `role=alert` 宣告的錯誤與至少 4.5:1 正常文字對比。動畫 SHALL 限於 150–250ms opacity 或 transform；`prefers-reduced-motion` 啟用時 SHALL 停用動畫。
 
@@ -341,10 +346,10 @@ Server SPA SHALL 復用 `packages/ui` 的 shadcn/ui 原語、共用 semantic the
 - **WHEN** 管理員檢視稽核紀錄頁同時具有關鍵字搜尋、下拉篩選與日期輸入的工具列
 - **THEN** 搜尋框、下拉篩選與日期輸入的高度相同，搜尋框為全圓，下拉是套用 theme 的 Select 原語而非原生 `select`，且每個控件都有無障礙名稱
 
-#### Scenario: 抽屜內的下拉可正常開啟
+#### Scenario: 對話框內的下拉可正常開啟
 
-- **WHEN** 管理員在抽屜內開啟下拉選單並選取一個選項
-- **THEN** 選單以不透明底色呈現於抽屜內、選取生效，且畫面不失去回應
+- **WHEN** 管理員在邀請使用者對話框內開啟專案下拉並選取一個專案
+- **THEN** 選單以不透明底色呈現於對話框之上、選取生效（該專案列入已選），焦點留在對話框內，且畫面不失去回應
 
 #### Scenario: reduced motion 停用轉場
 
@@ -403,8 +408,8 @@ Server SPA SHALL 復用 `packages/ui` 的 shadcn/ui 原語、共用 semantic the
 
 
 <!-- @trace
-source: server-web-list-pages
-updated: 2026-10-14T17:14:35+08:00
+source: server-web-detail-pages
+updated: 2026-10-15T10:20:04+08:00
 -->
 
 ---
@@ -531,52 +536,6 @@ code:
 -->
 
 ---
-### Requirement: 管理列表以抽屜承載建立與編輯
-
-管理列表頁 SHALL 以列表為主體：清單列 SHALL NOT 內嵌文字輸入、下拉選擇或提交按鈕，可開細節的清單列 SHALL 以整列為可點目標（滑鼠點擊與鍵盤 Enter／Space）開啟該筆資料的細節抽屜。建立、邀請與加入類動作 SHALL 由頁面的單一 primary action 開啟抽屜承載，SHALL NOT 常駐於頁面；此規則 SHALL 一併適用於帳號頁的建立存取金鑰。挑選既有項目加入一筆資料（例如邀請時選擇要加入的專案）SHALL 以下拉選單逐一挑選並列出已選項目，SHALL NOT 為每個候選項各渲染一個常駐勾選框。細節抽屜 SHALL 承載該筆資料的檢視與編輯，並 SHALL 在窄螢幕改為全寬呈現。停權、撤銷憑證、移除成員資格、刪除專案與資料結構遷移 SHALL 在送出前以 AlertDialog 顯示確切對象並要求確認。抽屜內提交失敗 SHALL 保持抽屜開啟、保留非祕密輸入，並把錯誤置於對應欄位附近；提交成功 SHALL 關閉抽屜、更新列表並以 `aria-live=polite` 回饋。只顯示一次的祕密值（存取金鑰明文、邀請）SHALL 附複製動作；邀請 SHALL 以受邀者可直接開啟的連結呈現，SHALL NOT 只呈現裸 token。
-
-#### Scenario: 加入專案以下拉逐一挑選
-
-- **WHEN** 管理員在邀請抽屜為受邀者選擇要加入的專案
-- **THEN** 專案以下拉選單挑選，已選的專案列在下方且可逐一移除，未出現逐一列出全部專案的勾選框
-
-#### Scenario: 邀請以可複製的連結回饋
-
-- **WHEN** 管理員送出邀請
-- **THEN** 頁面以 `aria-live=polite` 呈現受邀者可直接開啟的邀請連結並提供複製動作
-
-#### Scenario: 帳號頁的建立金鑰不常駐
-
-- **WHEN** 使用者開啟帳號頁
-- **THEN** 建立存取金鑰的欄位不在頁面上，按下頁面的建立動作後才於抽屜出現；建立成功後抽屜關閉，明文金鑰以一次性回饋呈現並提供複製動作
-
-#### Scenario: 邀請表單不常駐列表頁
-
-- **WHEN** 管理員開啟使用者頁
-- **THEN** 頁面只呈現使用者列表與工具列，邀請欄位在按下邀請動作開啟抽屜後才出現
-
-#### Scenario: 清單列不含輸入控制項
-
-- **WHEN** 管理員以 1440px viewport 檢視使用者列表中任一列
-- **THEN** 該列只呈現頭像字、顯示名稱與電子郵件、管理員籤（僅管理員）、狀態籤與所屬專案數，不含下拉選擇或提交按鈕
-
-#### Scenario: 點整列開啟細節抽屜
-
-- **WHEN** 管理員點擊使用者列表中的一列，或以 Tab 移到該列後按 Enter
-- **THEN** 右側抽屜開啟並呈現該使用者的概要、成員資格、憑證與稽核，且成員資格可於抽屜內新增與移除
-
-#### Scenario: 抽屜提交失敗保留輸入
-
-- **WHEN** 管理員在邀請抽屜送出後收到含 `fieldErrors` 的 400 回應
-- **THEN** 抽屜保持開啟、電子郵件與顯示名稱維持已輸入內容，錯誤以 `role=alert` 宣告於對應欄位附近
-
-
-<!-- @trace
-source: server-web-list-pages
-updated: 2026-10-14T17:14:35+08:00
--->
-
----
 ### Requirement: 管理列表提供搜尋、篩選、分頁與具引導的空狀態
 
 管理列表頁 SHALL 於頁標題區的動作槽提供工具列。使用者頁 SHALL 提供關鍵字搜尋與狀態篩選；專案與儲存庫頁 SHALL 提供關鍵字搜尋；憑證頁 SHALL 以列表卡頂端的分頁區分存取金鑰與裝置（各分頁標示該類的總筆數），並提供關鍵字搜尋與狀態篩選；稽核紀錄頁 SHALL 提供關鍵字搜尋、動作篩選、來源篩選與時間區間篩選。使用者、專案與儲存庫、憑證三個列表 SHALL 換頁瀏覽：清單非空時列表卡底部 SHALL 常駐與 Desktop 同一個共用換頁列——左側為「第 a–b 筆，共 N 筆」與每頁筆數下拉（20／50／100，預設 20），過濾後筆數超過每頁筆數時右側為第一頁、上一頁、頁碼、下一頁、最後一頁與跳頁輸入，筆數不超過每頁筆數時右側 SHALL 缺席；搜尋字串、篩選或分頁變更 SHALL 使清單回到第 1 頁；清單縮短使頁碼越界時 SHALL 鉗制至末頁；換頁後列表卡 SHALL 捲回頂部。這三個列表的搜尋、篩選與換頁 SHALL 只在前端進行，SHALL NOT 改變清單的載入方式與資料欄位。稽核紀錄頁 SHALL 使用同一條換頁列，篩選、頁碼與每頁筆數 SHALL 作為參數交由伺服器計算，「共 N 筆」SHALL 取自伺服器回傳的符合篩選總筆數；任一篩選或每頁筆數變更 SHALL 使頁碼回到第 1 頁。每頁筆數與頁碼 SHALL NOT 跨重新整理保留。列表為空時 SHALL 呈現說明該資料用途的文字，SHALL NOT 只呈現單行「尚無資料」訊息；搜尋或篩選後沒有符合項目時 SHALL 呈現與「清單本來就空」可區辨的無符合結果狀態，且 SHALL 保留工具列。該頁的建立入口 SHALL 常駐於頁首，SHALL NOT 只在列表為空時出現，空狀態內 SHALL NOT 另放第二個建立鈕。
@@ -666,107 +625,32 @@ updated: 2026-10-14T17:14:35+08:00
 ---
 ### Requirement: 不可變識別欄位唯讀且更名為顯式動作
 
-專案代號與儲存庫代號建立後不可變更，介面 SHALL 以唯讀文字呈現並標示其不可變更，SHALL NOT 以輸入框樣式呈現。專案名稱與儲存庫名稱 SHALL 預設以唯讀文字呈現，SHALL 於使用者觸發更名動作後才呈現輸入框與確認及取消動作。
+專案代號與儲存庫代號建立後不可變更，介面 SHALL 以唯讀文字呈現並標示其不可變更，SHALL NOT 以輸入框樣式呈現。專案名稱與儲存庫名稱 SHALL 預設以唯讀文字呈現（專案名稱為專案詳情頁的頁標題，儲存庫名稱為儲存庫分頁的列標題），SHALL 於使用者觸發更名動作後才以對話框呈現預填目前名稱的輸入框與確認及取消動作；對話框 SHALL 標示該筆的代號不隨更名改變。更名提交失敗時對話框 SHALL 保持開啟、保留已輸入的名稱，並以 `role=alert` 宣告錯誤；更名成功時對話框 SHALL 關閉，頁標題、麵包屑或列標題 SHALL 立即呈現新名稱。
 
 #### Scenario: 代號不可編輯
 
-- **WHEN** 管理員在專案抽屜檢視專案代號
-- **THEN** 代號以唯讀文字呈現並標示建立後不可變更，畫面上沒有可編輯代號的輸入框
+- **WHEN** 管理員在專案詳情頁檢視專案代號與儲存庫分頁的儲存庫代號
+- **THEN** 兩者皆以唯讀文字呈現並標示建立後不可變更，畫面上沒有可編輯代號的輸入框
 
 #### Scenario: 更名需先觸發動作
 
-- **WHEN** 管理員開啟專案抽屜並按下更名
-- **THEN** 名稱轉為輸入框並提供確認與取消；未按下更名前名稱以唯讀文字呈現
+- **WHEN** 管理員開啟專案詳情頁並按下頁標題區的「更名」
+- **THEN** 畫面中央出現對話框，含預填目前名稱的輸入框與確認、取消；未按下更名前名稱只以唯讀文字呈現
+
+#### Scenario: 更名成功立即反映
+
+- **WHEN** 管理員在專案 demo 的更名對話框把名稱改為「Demo 2」並確認
+- **THEN** 對話框關閉，頁標題與麵包屑最後一段變為「Demo 2」，說明裡的專案代號仍為 demo
+
+#### Scenario: 更名失敗保留輸入
+
+- **WHEN** 管理員在更名對話框確認後收到錯誤回應
+- **THEN** 對話框保持開啟、輸入框保留已輸入的名稱，錯誤以 `role=alert` 宣告
+
 
 <!-- @trace
-source: admin-console-redesign
-updated: 2026-07-26
-code:
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/projectSettingsView.test.tsx
-  - apps/desktop/src/i18n/locale.ts
-  - apps/desktop/src/views/ProjectSettingsView.tsx
-  - apps/desktop/vitest.setup.ts
-  - apps/server-web/src/App.tsx
-  - apps/server-web/src/__tests__/a11y.test.tsx
-  - apps/server-web/src/__tests__/account.test.tsx
-  - apps/server-web/src/__tests__/admin-console-shell.test.tsx
-  - apps/server-web/src/__tests__/admin.test.tsx
-  - apps/server-web/src/__tests__/app.test.tsx
-  - apps/server-web/src/__tests__/audit.test.tsx
-  - apps/server-web/src/__tests__/credentials.test.tsx
-  - apps/server-web/src/__tests__/helpers/adminHarness.tsx
-  - apps/server-web/src/__tests__/i18n.test.tsx
-  - apps/server-web/src/__tests__/overview.test.tsx
-  - apps/server-web/src/__tests__/reducedMotion.test.ts
-  - apps/server-web/src/__tests__/registry.test.tsx
-  - apps/server-web/src/__tests__/setup.test.tsx
-  - apps/server-web/src/__tests__/system.test.tsx
-  - apps/server-web/src/__tests__/toolbar.test.tsx
-  - apps/server-web/src/__tests__/tour.test.tsx
-  - apps/server-web/src/__tests__/users.test.tsx
-  - apps/server-web/src/__tests__/wording.test.tsx
-  - apps/server-web/src/api/client.ts
-  - apps/server-web/src/components/AdminNav.tsx
-  - apps/server-web/src/components/CopyButton.tsx
-  - apps/server-web/src/components/DataList.tsx
-  - apps/server-web/src/components/DetailSheet.tsx
-  - apps/server-web/src/components/EmptyState.tsx
-  - apps/server-web/src/components/HeaderAccount.tsx
-  - apps/server-web/src/components/ListToolbar.tsx
-  - apps/server-web/src/components/LocaleSwitch.tsx
-  - apps/server-web/src/components/LogoutButton.tsx
-  - apps/server-web/src/components/RouteErrorBoundary.tsx
-  - apps/server-web/src/components/SkipLink.tsx
-  - apps/server-web/src/components/Tour.tsx
-  - apps/server-web/src/i18n/LocaleContext.tsx
-  - apps/server-web/src/i18n/messages.ts
-  - apps/server-web/src/index.css
-  - apps/server-web/src/layouts/AccountLayout.tsx
-  - apps/server-web/src/layouts/AdminLayout.tsx
-  - apps/server-web/src/layouts/ConsoleLayout.tsx
-  - apps/server-web/src/lib/tourSeen.ts
-  - apps/server-web/src/pages/AccountPage.tsx
-  - apps/server-web/src/pages/ActivatePage.tsx
-  - apps/server-web/src/pages/InvitePage.tsx
-  - apps/server-web/src/pages/LoginPage.tsx
-  - apps/server-web/src/pages/SetupPage.tsx
-  - apps/server-web/src/pages/admin/AdminSection.tsx
-  - apps/server-web/src/pages/admin/AuditPage.tsx
-  - apps/server-web/src/pages/admin/CredentialsPage.tsx
-  - apps/server-web/src/pages/admin/DataPage.tsx
-  - apps/server-web/src/pages/admin/OverviewPage.tsx
-  - apps/server-web/src/pages/admin/RegistryPage.tsx
-  - apps/server-web/src/pages/admin/SystemPage.tsx
-  - apps/server-web/src/pages/admin/UsersPage.tsx
-  - apps/server-web/src/pages/admin/states.tsx
-  - apps/server-web/src/routes/AppRoutes.tsx
-  - apps/server-web/vitest.setup.ts
-  - crates/speclink-server/src/admin.rs
-  - crates/speclink-server/src/assets.rs
-  - crates/speclink-server/src/audit.rs
-  - crates/speclink-server/src/identity.rs
-  - crates/speclink-server/src/identity_sqlite.rs
-  - crates/speclink-server/tests/admin_audit_filter.rs
-  - crates/speclink-server/tests/admin_overview_view.rs
-  - crates/speclink-server/tests/admin_system_view.rs
-  - crates/speclink-server/tests/admin_users_view.rs
-  - crates/speclink-server/tests/admin_web_api.rs
-  - package-lock.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/boardSearchBar.test.tsx
-  - packages/ui/src/__tests__/select.test.tsx
-  - packages/ui/src/__tests__/selectInSheet.test.tsx
-  - packages/ui/src/__tests__/theme.test.ts
-  - packages/ui/src/components/BoardSearchBar.tsx
-  - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/components/ui/portal-container.tsx
-  - packages/ui/src/components/ui/select.tsx
-  - packages/ui/src/components/ui/sheet.tsx
-  - packages/ui/src/index.ts
-  - packages/ui/src/locale.ts
-  - packages/ui/vitest.config.ts
-  - packages/ui/vitest.setup.ts
+source: server-web-detail-pages
+updated: 2026-10-15T10:20:04+08:00
 -->
 
 ---
@@ -981,7 +865,7 @@ updated: 2026-10-14T17:14:35+08:00
 ---
 ### Requirement: 後台狀態徽章語意色
 
-Console 的狀態徽章 SHALL 依語意上色:正常/啟用/有效為綠系;異常為紅系;停權為琥珀系;已撤銷為中性且與有效態可一眼區辨。祕密揭示橫幅(PAT 建立後的一次性明碼、邀請連結揭示)SHALL 為綠系成功樣式,SHALL NOT 使用主題主色。純 metadata 徽章(成員角色、稽核來源)SHALL 維持中性。同一事實於同頁的橫幅與徽章 SHALL 呈現一致的語意色層級。
+Console 的狀態徽章 SHALL 依語意上色:正常/啟用/有效為綠系;異常為紅系;停權為琥珀系;已撤銷為中性且與有效態可一眼區辨。只顯示一次的祕密值成功框(建立存取金鑰對話框內的明文金鑰、邀請使用者對話框內的邀請連結)SHALL 為綠系成功樣式,SHALL NOT 使用主題主色。純 metadata 徽章(成員角色、稽核來源)SHALL 維持中性。同一事實於同頁的橫幅與徽章 SHALL 呈現一致的語意色層級。
 
 #### Scenario: 儲存健康徽章
 
@@ -990,7 +874,7 @@ Console 的狀態徽章 SHALL 依語意上色:正常/啟用/有效為綠系;異�
 
 #### Scenario: 成員狀態徽章
 
-- **WHEN** 成員清單呈現 active 與停權成員
+- **WHEN** 使用者列表與使用者詳情頁的狀態籤呈現 active 與停權成員
 - **THEN** active 為綠系、停權為琥珀系
 
 #### Scenario: 憑證狀態徽章
@@ -998,14 +882,15 @@ Console 的狀態徽章 SHALL 依語意上色:正常/啟用/有效為綠系;異�
 - **WHEN** PAT 清單、裝置憑證清單或工作階段清單呈現有效與已撤銷項目
 - **THEN** 有效為綠系、已撤銷為中性,兩態可區辨
 
-#### Scenario: 揭示橫幅為成功語意
+#### Scenario: 祕密值成功框為成功語意
 
-- **WHEN** 建立 PAT 後顯示一次性明碼、或產生邀請連結
-- **THEN** 揭示橫幅以綠系成功樣式呈現,非主題主色
+- **WHEN** 建立存取金鑰或送出邀請成功,對話框換成已建立狀態
+- **THEN** 對話框內盛裝明文金鑰或邀請連結的成功框以綠系成功樣式呈現,非主題主色
+
 
 <!-- @trace
-source: semantic-color-system
-updated: 2026-08-05
+source: server-web-detail-pages
+updated: 2026-10-15T10:20:04+08:00
 -->
 
 ---
@@ -1033,4 +918,97 @@ updated: 2026-08-05
 <!-- @trace
 source: clickable-cursor-hover-rule
 updated: 2026-10-13T11:49:40+08:00
+-->
+
+---
+### Requirement: 管理列表以詳情頁與對話框承載檢視與建立
+
+管理列表頁 SHALL 以列表為主體：清單列 SHALL NOT 內嵌文字輸入、下拉選擇或提交按鈕。使用者列與專案列 SHALL 以整列為可點目標（滑鼠點擊與鍵盤 Enter／Space），點擊後主內容區 SHALL 換成該筆資料的詳情頁，網址為 `/admin/users/<使用者 id>` 或 `/admin/registry/<專案代號>`，SHALL NOT 以從側邊滑出的面板呈現。詳情頁網址 SHALL 可直接開啟與重新整理；網址對不到任何資料時 SHALL 呈現「找不到」說明與回到該列表的動作，SHALL NOT 呈現空白頁。
+
+詳情頁 SHALL 以 768px 置中欄排版：頁標題為該筆的名稱（使用者詳情頁於名稱後接狀態籤），其下為灰字說明、右側為頁級動作；再下方為卡片標頭分頁，分頁內容為設定型列（14px 列標題、灰字說明、列間細線）。
+- 使用者詳情頁的頁級動作 SHALL 為停權（停權中的使用者為重新啟用）；分頁 SHALL 為概要、成員資格、憑證與稽核，成員資格與憑證分頁 SHALL 標示筆數。概要 SHALL 呈現電子郵件（附複製動作）、狀態、建立日期與管理員開關列；最後一位有效管理員的管理員開關與停權鈕 SHALL 停用。成員資格的每列 SHALL 呈現專案名稱與等寬專案代號，並提供角色下拉（變更立即生效，不需另按儲存）與移除鈕；末列 SHALL 為「加入專案」列，含只列尚未加入之專案的專案下拉、角色下拉與加入鈕。憑證分頁 SHALL 列出該使用者的存取金鑰與裝置登入，並對有效項目提供撤銷。
+- 專案詳情頁的頁級動作 SHALL 為更名，說明 SHALL 標示專案代號；分頁 SHALL 為儲存庫與成員並各自標示筆數。儲存庫分頁的每列 SHALL 提供更名，末列 SHALL 為新增儲存庫；成員分頁 SHALL 唯讀列出該專案成員的顯示名稱、電子郵件與角色。
+
+主區頂列右端 SHALL 呈現 ‹ n／m ›：m 為列表目前呈現的筆數（含搜尋與篩選），n 為目前這一筆在其中的序位；直接開啟詳情頁網址時，序列為該列表未經搜尋與篩選的全部項目。到頭時對應鈕 SHALL 停用，SHALL NOT 循環；目前這一筆不在序列中時整組 SHALL 缺席；以 ‹ › 切換 SHALL NOT 新增瀏覽紀錄。從詳情頁回到列表（麵包屑的目的地、側欄的目的地或瀏覽器上一頁）時，列表的搜尋字串、篩選與頁碼 SHALL 維持進入詳情頁前的狀態。
+
+建立與邀請類動作（邀請使用者、建立專案、新增儲存庫、建立存取金鑰）SHALL 由一個按鈕開啟置中對話框承載，SHALL NOT 常駐於頁面；邀請使用者、建立專案與建立存取金鑰 SHALL 為各自頁面唯一的 primary action。對話框 SHALL 與 Desktop 新增專案對話框同款（12px 圓角、15px 標題加灰字說明、頁尾細線上方右側為主要動作）；按取消或 Esc SHALL 關閉對話框，點對話框以外的區域 SHALL NOT 關閉。挑選既有項目加入一筆資料（例如邀請時選擇要加入的專案）SHALL 以下拉選單逐一挑選並列出已選項目，SHALL NOT 為每個候選項各渲染一個常駐勾選框。停權、撤銷憑證、移除成員資格、刪除專案與資料結構遷移 SHALL 在送出前以 AlertDialog 顯示確切對象並要求確認。對話框提交失敗 SHALL 保持對話框開啟、保留非祕密輸入，並把錯誤以 `role=alert` 置於對應欄位附近；建立專案、新增儲存庫與更名提交成功 SHALL 關閉對話框，並 SHALL 立即更新列表或詳情頁。只顯示一次的祕密值（邀請連結、存取金鑰明文）SHALL 於送出成功後在同一個對話框內以已建立狀態呈現：成功標題、說明此值只顯示這一次、綠系成功框內的值與複製動作、「完成」鈕；成功框 SHALL 以 `aria-live=polite` 宣告。邀請 SHALL 以受邀者可直接開啟的連結呈現，SHALL NOT 只呈現裸 token；對話框關閉後該值 SHALL NOT 出現在頁面上。
+
+#### Scenario: 點整列開啟詳情頁
+
+- **WHEN** 管理員在使用者頁點顯示名稱為「Member」的列，或以 Tab 移到該列後按 Enter
+- **THEN** 網址變為 `/admin/users/<Member 的 id>`，主內容區呈現頁標題「Member」與狀態籤，其下為概要、成員資格、憑證、稽核四個分頁，畫面上沒有從側邊滑出的面板
+
+#### Scenario: 詳情頁網址可直接開啟
+
+- **WHEN** 管理員直接開啟或重新整理 `/admin/registry/demo`
+- **THEN** 呈現專案 demo 的詳情頁：頁標題為專案名稱、說明標示代號 demo，分頁為儲存庫與成員
+
+#### Scenario: 對不到資料的詳情頁
+
+- **WHEN** 管理員開啟 `/admin/users/no-such-id`
+- **THEN** 主內容區說明找不到這位使用者並提供回到使用者列表的按鈕，頂列不呈現 ‹ n／m ›
+
+#### Scenario: ‹ n／m › 依列表呈現順序
+
+- **WHEN** 管理員在有 12 位使用者的使用者頁輸入只符合 3 位的關鍵字，點清單第 2 列，再按 ›
+- **THEN** 頂列先顯示「2 / 3」；按下後主內容區換成清單第 3 位的詳情頁、顯示「3 / 3」且 › 停用；此時按瀏覽器上一頁回到使用者列表，搜尋框仍是該關鍵字
+
+#### Scenario: 回到列表保留篩選與頁碼
+
+- **WHEN** 管理員在有 45 位有效使用者的使用者頁以狀態篩選「有效」後切到第 3 頁，點一列進入詳情頁，再點麵包屑的「使用者」
+- **THEN** 列表仍為狀態篩選「有效」並停在第 3 頁，換頁列顯示「第 41–45 筆，共 45 筆」
+
+#### Scenario: 清單列不含輸入控制項
+
+- **WHEN** 管理員以 1440px viewport 檢視使用者列表中任一列
+- **THEN** 該列只呈現頭像字、顯示名稱與電子郵件、管理員籤（僅管理員）、狀態籤與所屬專案數，不含下拉選擇或提交按鈕
+
+#### Scenario: 邀請表單不常駐列表頁
+
+- **WHEN** 管理員開啟使用者頁，再按下「邀請使用者」
+- **THEN** 按下前頁面只呈現使用者列表與工具列；按下後畫面中央出現「邀請使用者」對話框，邀請欄位才出現
+
+#### Scenario: 加入專案以下拉逐一挑選
+
+- **WHEN** 管理員在邀請使用者對話框為受邀者選擇要加入的專案
+- **THEN** 專案以下拉選單挑選，已選的專案列在下方且可逐一移除，已選的專案不再出現在下拉中，未出現逐一列出全部專案的勾選框
+
+#### Scenario: 邀請連結在對話框內一次性呈現
+
+- **WHEN** 管理員在邀請使用者對話框送出邀請且伺服器回傳成功
+- **THEN** 同一個對話框換成「邀請已建立」狀態：說明連結只顯示這一次，綠系成功框內為受邀者可直接開啟的完整 `/invite/<token>` 連結與複製鈕，並以 `aria-live=polite` 宣告；按「完成」後對話框關閉，頁面上不出現該連結，邀請中分頁的計數加一
+
+#### Scenario: 帳號頁的建立金鑰以對話框承載
+
+- **WHEN** 使用者開啟帳號頁，按下「建立存取金鑰」並以名稱 ci 送出
+- **THEN** 按下前建立欄位不在頁面上；送出成功後同一個對話框呈現明文金鑰與複製鈕並說明只顯示這一次；按「完成」後對話框關閉，存取金鑰卡多出 ci 一列，頁面上不出現明文
+
+#### Scenario: 對話框提交失敗保留輸入
+
+- **WHEN** 管理員在邀請使用者對話框送出後收到含 `fieldErrors` 的 400 回應
+- **THEN** 對話框保持開啟，電子郵件與顯示名稱維持已輸入內容，錯誤以 `role=alert` 宣告於對應欄位附近
+
+#### Scenario: 點對話框以外不關閉
+
+- **WHEN** 管理員在建立專案對話框輸入專案代號後點對話框以外的遮罩，再按 Esc
+- **THEN** 點遮罩後對話框保持開啟且代號仍在；按 Esc 後對話框關閉
+
+#### Scenario: 成員資格就地改角色
+
+- **WHEN** 管理員在使用者詳情頁的成員資格分頁，把專案 demo 那列的角色下拉由 editor 改為 reader
+- **THEN** 變更立即送出，該列角色顯示 reader，畫面上沒有另外的儲存鈕
+
+#### Scenario: 移除成員資格需確認
+
+- **WHEN** 管理員在成員資格分頁按專案 demo 那列的移除鈕
+- **THEN** 先出現指名該使用者與專案代號 demo 的確認框；確認後該列消失且分頁計數減一，取消則不送出任何請求
+
+#### Scenario: 最後一位管理員受保護
+
+- **WHEN** 管理員開啟唯一一位有效管理員的使用者詳情頁
+- **THEN** 概要分頁的管理員開關為開啟且停用，頁標題區的停權鈕停用
+
+<!-- @trace
+source: server-web-detail-pages
+updated: 2026-10-15T10:20:04+08:00
 -->
