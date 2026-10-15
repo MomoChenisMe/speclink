@@ -26,7 +26,7 @@ tools: validate / analyze / audit / commit / config / manual / trace / plan
 
 The desktop app shows this flow as a board with four columns: Discussions, Proposed, In progress, and Ready. Each card is a change or a discussion. Archived changes have their own page.
 
-![The board in the Speclink desktop app, with the columns Discussions, Proposed, In progress, and Ready](assets/screenshots/desktop-board.png)
+![The board in the Speclink desktop app, with the columns Discussions, Proposed, In progress, and Ready](assets/screenshots/en/desktop-board.png)
 
 ## <a id="entry"></a>Where to start
 
@@ -90,9 +90,9 @@ Talk through a decision round by round, and keep a conclusion with its sources.
 - **Next**: See [Discussion outcomes](#discussion-outcomes).
 - **If something goes wrong**: If a discussion has content, write a conclusion and archive it. Use `speclink discuss discard` only when the discussion has no content yet.
 
-On the board in the desktop app, click a discussion to open its detail page. The Conclusion, Rounds, Context, and Promoted changes tabs each show one part of the discussion.
+On the board in the desktop app, click a discussion to open its detail page. The document tree on the left lists the Conclusion, Rounds, Context, and Promoted changes documents. An old discussion without sections shows one Record document.
 
-![The detail page of a discussion, with the conclusion and the Rounds, Context, and Promoted changes tabs](assets/screenshots/desktop-discussion.png)
+![The detail page of a discussion, with the document tree and the conclusion](assets/screenshots/en/desktop-discussion.png)
 
 ### <a id="improve"></a>improve: find improvements
 
@@ -134,9 +134,9 @@ Do the tasks in the task list, and check each task when it is done.
   - You started the change by mistake and changed nothing: `speclink in-progress remove <name>` moves it back to Proposed.
   - You do not want the change: `speclink discard <name>`. After the work starts, add `--force`.
 
-During the work, the detail page of the change is the best view. The Proposal, Design, Tasks, and Specs tabs show the same documents. The progress in the Tasks tab is the result of `speclink task done`.
+During the work, the detail page of the change is the best view. Its document tree lists the Proposal, Design, Tasks, Specs, and Plan documents. An open review or verify ticket adds a Review or Verify document. The Tasks row under Status shows the result of `speclink task done`.
 
-![The detail page of a change, with the proposal and the Tasks and Specs tabs](assets/screenshots/desktop-change-drawer.png)
+![The detail page of a change, with the document tree and the proposal](assets/screenshots/en/desktop-change-detail.png)
 
 ### <a id="ingest"></a>ingest: update the requirement
 
@@ -253,7 +253,7 @@ Merge the delta specs into the specs, and move the done change into the archive.
 
 The desktop app shows archived changes and archived discussions on the Archived page, in two tabs.
 
-![The Archived page in the desktop app, with the Archived changes and Archived discussions tabs](assets/screenshots/desktop-archived.png)
+![The Archived page in the desktop app, with the Archived changes and Archived discussions tabs](assets/screenshots/en/desktop-archived.png)
 
 ### <a id="validate"></a>validate: format check
 
@@ -322,6 +322,8 @@ Generate a manual for people from the specs (`openspec/manual/`), or get a tour 
 - **CLI**: No `speclink manual` command exists. The Manual page of the desktop app shows the manual.
 - **Done**: The summary shows the counts of new, rewritten, and unchanged pages, and the pages that can be stale.
 - **Next**: Commit the manual changes. Remote projects cannot generate a manual yet. The tour works.
+
+![A manual page in the desktop app, with the page list, the content, and the source spec](assets/screenshots/en/desktop-manual.png)
 - **If something goes wrong**: Manual pages are normal files. Delete or restore them.
 
 ### <a id="trace"></a>trace: trace
@@ -349,7 +351,7 @@ Put all open changes in an execution order.
   - `speclink plan [--json]`
   - Declare a dependency: `speclink change depends <change> --on <prerequisite>` (add `--remove` to drop it)
   - Change the order in one column: `speclink change rank <change> --before <other-change>` (or `--after`; local only)
-- **Next**: Start the change that `next` names. The Schedule tab in the desktop detail page shows the same data.
+- **Next**: Start the change that `next` names. In the desktop app, the Plan document and the Plan row of the change detail page show the same data.
 
 ## <a id="discussion-outcomes"></a>Discussion outcomes
 

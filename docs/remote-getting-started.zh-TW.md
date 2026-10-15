@@ -11,7 +11,7 @@
 你需要：
 
 - Node.js 18 以上，用來執行 `npx @speclink/server`。不需要 clone 這個 repo。
-- `speclink` CLI，安裝方式見 [README](../README.md#install)。
+- `speclink` CLI，安裝方式見 [README](../README.zh-TW.md#install)。
 - Desktop app（選用）。
 
 接上遠端之後，規格與變更都存在 server 上。本機不會留一份可寫的副本，所有寫入都經過 server。
@@ -69,7 +69,7 @@ curl -o /dev/null -w "%{http_code}\n" http://localhost:8080/healthz
 1. 建立管理員帳號：填 email、顯示名稱與密碼。
 2. 建立第一組專案與儲存庫：本文的專案代號用 `demo`，儲存庫代號用 `backend`。代號建立後不能改；名稱留空會沿用代號。
 
-![Speclink server 的初始設定畫面，第二步建立專案與儲存庫](assets/screenshots/server-setup.png)
+![Speclink server 的初始設定畫面，第二步建立專案與儲存庫](assets/screenshots/zh-TW/server-setup.png)
 
 完成後，瀏覽器會以管理員身分進入管理主控台的總覽。最上面的「開始使用」區塊列出服務網址、專案代號與儲存庫代號。這個區塊只在剛完成設定時出現這一次，可以順手記下來。
 
@@ -88,17 +88,19 @@ curl -o /dev/null -w "%{http_code}\n" http://localhost:8080/healthz
 所以這一步一定要做：
 
 1. 用瀏覽器開 `http://localhost:8080/admin/users`。
-2. 點你自己的帳號，切到「成員資格」分頁，按「＋ 加入專案」。
-3. 專案選 `demo`，角色選 `editor`，按「加入」。
+2. 點你自己的帳號，進入使用者詳情頁，切到「成員資格」分頁。
+3. 在最後一列「加入專案」的下拉選單選 `demo`，角色維持 `editor`，按「加入」。
 
 角色只有兩種：
 
 - `editor`：可以讀，也可以寫。
 - `reader`：只能讀。
 
-成員資格以專案為單位，專案裡的每個儲存庫都適用。
+成員資格以專案為單位，專案裡的每個儲存庫都適用。`/admin/registry` 的專案詳情頁列出這個專案的儲存庫與成員：
 
-要讓同事加入，在同一頁按「邀請使用者」，勾選要加入的專案。畫面會給一條一次性的邀請連結，交給對方完成註冊；對方接受後就是那些專案的 `editor`。命令列的做法見 [Server 部署](server-deployment.zh-TW.md#manage)。
+![Server 後台的專案詳情頁，列出專案的儲存庫](assets/screenshots/zh-TW/server-project.png)
+
+要讓同事加入，在同一頁按「邀請使用者」，在對話框填電子郵件與顯示名稱，從「加入專案」下拉選單逐一選要加入的專案，再按「送出邀請」。對話框會顯示一次性的邀請連結，關掉前先複製，交給對方完成註冊；對方接受後就是那些專案的 `editor`。命令列的做法見 [Server 部署](server-deployment.zh-TW.md#manage)。
 
 ## <a id="access-key"></a>4. 建立存取金鑰（給 CI 用）
 
@@ -107,8 +109,8 @@ curl -o /dev/null -w "%{http_code}\n" http://localhost:8080/healthz
 建立方式：
 
 1. 用瀏覽器開 `http://localhost:8080/account`。
-2. 在「存取金鑰」填名稱。到期日可以留空，代表永久有效。
-3. 按「建立存取金鑰」，立刻複製畫面上的金鑰。它只顯示這一次，離開頁面就拿不回來。
+2. 按頁面上方的「建立存取金鑰」，在對話框填名稱。到期日可以留空，代表永久有效。
+3. 按「建立」，立刻複製對話框裡的金鑰。它只顯示這一次，關掉對話框就拿不回來。
 
 按下建立時，頁面在背景送出 POST `/api/speclink/v1/web/account/tokens`。這個網址只接受 POST，不是可以直接開的頁面；用瀏覽器直接開它，會得到 `405 Method Not Allowed`。
 
@@ -122,7 +124,7 @@ curl -o /dev/null -w "%{http_code}\n" http://localhost:8080/healthz
 
 1. 在 Desktop 左側圖示列按「＋」（新增專案），選「Server」來源卡，再按「下一步」。
 2. 在「選擇 Server」下方填伺服器位址 `http://localhost:8080`（Server base URL），按「新增並登入」。
-3. Desktop 會開瀏覽器到裝置登入頁 `/activate`。還沒登入就先登入，確認代碼和 Desktop 上的一樣，再按「核准」。
+3. Desktop 會開瀏覽器到裝置登入頁 `/activate`。還沒登入就先登入。頁面已帶入代碼，按「下一步」，確認代碼和 Desktop 上的一樣，再按「核准」。
 4. 回到 Desktop，在「選擇 Project 與 Repo」選 `demo` 與 `backend`。
 5. 在「連接本機 checkout？」選一種開法，見下方說明。
 6. 按「開啟專案」。
@@ -166,7 +168,7 @@ speclink auth login
 speclink auth status
 ```
 
-`auth login` 會印出一個網址和代碼，並開瀏覽器到 `/activate`，按「核准」就完成登入。`auth status` 會印出你的身分；最後一行是 `Repo 'backend' is registered in this project`，代表儲存庫代號對得上。
+`auth login` 會印出一個網址和代碼，並開瀏覽器到 `/activate`。頁面已帶入代碼，按「下一步」再按「核准」就完成登入。`auth status` 會印出你的身分；最後一行是 `Repo 'backend' is registered in this project`，代表儲存庫代號對得上。
 
 做一次讀寫測試：
 
@@ -249,7 +251,7 @@ npx 跑法的所有資料都在 `speclink-data/`。要從頭來過：
 | 設定已完成後，設定連結顯示「設定連結無效」 | 這是正常的：設定完成後就永久關閉。直接到 `/admin` 登入。 |
 | 送出表單時出現「跨來源請求被拒絕」 | 網址列的協定、主機與埠，要和 server 的 `public_url` 完全一樣。例如用 `localhost`，不要用 `127.0.0.1`。 |
 | Desktop 的 Project／Repo 清單是空的、CLI 回 `access denied`，或 API 回 `403`（`permission_denied`） | 已登入，但這個帳號沒有成員資格，管理員也一樣。到 `/admin/users` 給它 `reader` 或 `editor`，再回 Desktop 重新載入清單。 |
-| 用瀏覽器開 `/api/speclink/v1/web/account/tokens` 得到 `405` | 這個網址只接受 POST。到 `/account` 頁面用表單建立存取金鑰。 |
+| 用瀏覽器開 `/api/speclink/v1/web/account/tokens` 得到 `405` | 這個網址只接受 POST。到 `/account` 頁面按「建立存取金鑰」。 |
 | 存取金鑰弄丟了 | 拿不回來。到 `/account` 撤銷，再建一把新的。 |
 | `speclink auth login` 說需要終端機 | 目前不在互動終端機裡。改用 `--token-stdin` 或 `SPECLINK_TOKEN`，見第 6 節。 |
 | `link` 或 `auth status` 說 `repo '…' is not registered in this project` | `--repo` 的值和儲存庫代號對不上。訊息會列出可用的代號；用正確的代號重跑 `speclink link`。 |

@@ -208,17 +208,17 @@ docker compose exec server speclink-server invite \
 
 第一，看主控台總覽。剛完成設定時，總覽最上面會出現一次「開始使用」區塊，列出服務網址、專案代號與儲存庫代號：
 
-![Server 主控台總覽，顯示服務網址、專案與儲存庫代號、計數與系統健康](assets/screenshots/server-overview.png)
+![Server 主控台總覽，顯示服務網址、專案與儲存庫代號、計數與系統健康](assets/screenshots/zh-TW/server-overview.png)
 
 - 服務網址要和使用者實際開的網址一樣。不一樣就改 `public_url`。
 - 「系統健康」顯示「正常」，資料結構版本有值。
 - 「需要處理」寫著「尚無有效憑證——遠端工作流程無法連線」是正常的。有人用 Desktop 或 CLI 登入、或建立存取金鑰之後，它就會消失。
 
-第二，看使用者頁，確認成員資格。能登入不等於看得到專案；角色與成員資格是兩個欄位。初始設定建立的管理員，成員資格一開始是空的：
+第二，看使用者頁，確認成員資格。能登入不等於看得到專案；管理員身分和專案成員資格是分開的。初始設定建立的管理員一開始沒有成員資格，使用者頁上那一列顯示「尚無專案」。加了成員資格之後，使用者詳情頁的「成員資格」分頁會列出每個專案與角色：
 
-![Server 主控台的使用者頁與使用者詳情，顯示角色與成員資格欄](assets/screenshots/server-members.png)
+![Server 後台的使用者詳情頁，「成員資格」分頁列出專案與角色](assets/screenshots/zh-TW/server-members.png)
 
-每位要用遠端的人，都要在「成員資格」欄看到目標專案。加成員資格的步驟見 [Remote 入門](remote-getting-started.zh-TW.md#grant-membership)。
+每位要用遠端的人，點進他的使用者詳情頁，「成員資格」分頁裡都要有目標專案。加成員資格的步驟見 [Remote 入門](remote-getting-started.zh-TW.md#grant-membership)。
 
 第三，從另一台電腦打一次健康檢查：
 

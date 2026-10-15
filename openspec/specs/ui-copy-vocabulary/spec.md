@@ -8,7 +8,7 @@
 
 ### Requirement: 使用者可見文案面的範圍與詞彙約束
 
-「使用者可見文案面」SHALL 涵蓋下列檔案集合:兩個前端 app 的 i18n 訊息檔(`apps/desktop/src/i18n/messages.ts`、`apps/server-web/src/i18n/messages.ts`)、共用看板元件的 i18n 訊息檔(`packages/ui/src/i18n.tsx`)、`crates/engine/speclink-core/assets/skills/` 底下全部 `.md` 技能資產、`docs/` 底下全部 `.md`、以及 `README.md` 與 `README.en.md`。
+「使用者可見文案面」SHALL 涵蓋下列檔案集合:兩個前端 app 的 i18n 訊息檔(`apps/desktop/src/i18n/messages.ts`、`apps/server-web/src/i18n/messages.ts`)、共用看板元件的 i18n 訊息檔(`packages/ui/src/i18n.tsx`)、`crates/engine/speclink-core/assets/skills/` 底下全部 `.md` 技能資產、`docs/` 底下全部 `.md`、以及 `README.md`（英文）與 `README.zh-TW.md`（繁中）。
 
 此面內的繁體中文文案 SHALL NOT 出現 `openspec/LANGUAGE.md` 各詞條 `avoid` 欄列出的詞。約束標的 SHALL 限於中日韓文字構成的詞彙字串;ASCII 識別符(型別名、函式名、變數名、CSS 類名、i18n 訊息鍵名)SHALL NOT 因此受限,亦 SHALL NOT 因本約束而更名。
 
@@ -51,10 +51,15 @@
 - **WHEN** 解析 `openspec/LANGUAGE.md` 各詞條 `avoid` 欄組成守門詞集
 - **THEN** 限定為「使用者可見文案中」的條目(如「覆審(使用者可見文案中)」)剝掉限定後入集,其他語境限定的條目(如「背景(此概念上)」「分頁(pagination 語意上)」)不入集
 
+#### Scenario: 繁中 README 在守門面內
+
+- **WHEN** 詞彙守門測試組成使用者可見文案面的檔案清單
+- **THEN** 清單含 `README.md` 與 `README.zh-TW.md`，不含已不存在的 `README.en.md`；`README.zh-TW.md` 的繁中散文出現 avoid 詞時測試失敗並點名該檔
+
 
 <!-- @trace
-source: manual-marker-scope-beyond-tests
-updated: 2026-08-14
+source: readme-open-source-refresh
+updated: 2026-10-15T14:00:05+08:00
 -->
 
 ---

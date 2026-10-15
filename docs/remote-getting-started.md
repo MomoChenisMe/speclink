@@ -11,7 +11,7 @@ The `speclink-server` in this guide is the official **reference implementation**
 You need:
 
 - Node.js 18 or later, to run `npx @speclink/server`. You do not need to clone this repo.
-- The `speclink` CLI. The [README](../README.en.md#install) shows how to install it.
+- The `speclink` CLI. The [README](../README.md#install) shows how to install it.
 - The Desktop app (optional).
 
 After you connect to a remote, the server keeps the specs and the changes. Your computer does not keep a writable copy. All writes go through the server.
@@ -69,7 +69,7 @@ The setup has two steps:
 1. Create the admin account: enter an email, a display name, and a password.
 2. Create the first project and repository: this guide uses the project key `demo` and the repository key `backend`. You cannot change a key later. An empty name uses the key.
 
-![The Speclink server first-run setup screen, step 2 creates the project and the repository](assets/screenshots/server-setup.png)
+![The Speclink server first-run setup screen, step 2 creates the project and the repository](assets/screenshots/en/server-setup.png)
 
 (The screenshots show the interface in Traditional Chinese. You can change the interface language.)
 
@@ -90,17 +90,19 @@ Without membership, you see these results:
 So you must do this step:
 
 1. Open `http://localhost:8080/admin/users` in the browser.
-2. Click your own account, open the "Memberships" tab, and click "＋ Add to project".
-3. Select the project `demo` and the role `editor`, and then click "Add".
+2. Click your own account. The user detail page opens. Open the "Memberships" tab.
+3. In the last row, "Add to project", select `demo` in the project list. Keep the role `editor`, and then click "Add".
 
 There are only two roles:
 
 - `editor`: can read and write.
 - `reader`: can only read.
 
-A membership applies to a full project, so it covers every repository in that project.
+A membership applies to a full project, so it covers every repository in that project. The project detail page on `/admin/registry` lists the repositories and the members of the project:
 
-To add a teammate, click "Invite user" on the same page and select the projects. The page shows a one-time invitation link. Give the link to the teammate to finish the sign-up. After the teammate accepts, the teammate is an `editor` in those projects. For the command-line method, see [Server Deployment](server-deployment.md#manage).
+![The project detail page in the server console, with the repositories of the project](assets/screenshots/en/server-project.png)
+
+To add a teammate, click "Invite user" on the same page. In the dialog, enter the email and the display name. Select each project in the "Add to projects" list, and then click "Send invitation". The dialog shows a one-time invitation link. Copy it before you close the dialog, and give it to the teammate to finish the sign-up. After the teammate accepts, the teammate is an `editor` in those projects. For the command-line method, see [Server Deployment](server-deployment.md#manage).
 
 ## <a id="access-key"></a>4. Create an access key (for CI)
 
@@ -109,8 +111,8 @@ You do not need an access key (PAT, Personal Access Token) for daily sign-in. By
 To create an access key:
 
 1. Open `http://localhost:8080/account` in the browser.
-2. Under "Access keys", enter a name. You can leave the expiry date empty, and then the key never expires.
-3. Click "Create access key", and copy the key immediately. The page shows it only once. After you leave the page, you cannot get it back.
+2. Click "Create access key" at the top of the page. In the dialog, enter a name. You can leave the expiry date empty, and then the key never expires.
+3. Click "Create", and copy the key immediately. The dialog shows it only once. After you close the dialog, you cannot get it back.
 
 When you click the button, the page sends POST `/api/speclink/v1/web/account/tokens` in the background. This URL accepts only POST. It is not a page that you can open. If you open it directly in a browser, you get `405 Method Not Allowed`.
 
@@ -124,7 +126,7 @@ Keep these three rules in mind:
 
 1. In the icon rail on the left of the Desktop app, click "+" (New project). Select the "Server" source card, and then click "Next".
 2. Under "Choose a Server", enter the server URL `http://localhost:8080` (the Server base URL), and then click "Add and sign in".
-3. The Desktop app opens the device sign-in page `/activate` in a browser. Sign in if necessary. Make sure that the code is the same as the code in the Desktop app, and then click "Approve".
+3. The Desktop app opens the device sign-in page `/activate` in a browser. Sign in if necessary. The page fills in the code. Click "Next", make sure that the code is the same as the code in the Desktop app, and then click "Approve".
 4. Go back to the Desktop app. Under "Choose a Project and Repo", select `demo` and `backend`.
 5. Under "Connect a local checkout?", select one of the two modes below.
 6. Click "Open Project".
@@ -168,7 +170,7 @@ speclink auth login
 speclink auth status
 ```
 
-`auth login` shows a URL and a code, and it opens `/activate` in a browser. Click "Approve" to finish the sign-in. `auth status` shows your identity. Its last line is `Repo 'backend' is registered in this project`, which means that the repository key matches.
+`auth login` shows a URL and a code, and it opens `/activate` in a browser. The page fills in the code. Click "Next", and then click "Approve" to finish the sign-in. `auth status` shows your identity. Its last line is `Repo 'backend' is registered in this project`, which means that the repository key matches.
 
 Do one read and write test:
 
@@ -251,7 +253,7 @@ To move data or to make regular backups, see [Server Backup and Restore](server-
 | After the setup, the setup link shows "Setup link is not valid" | This is correct: the setup closes permanently when it is complete. Sign in at `/admin`. |
 | A form shows a cross-origin rejection | The scheme, host, and port in the address bar must be the same as the server `public_url`. For example, use `localhost`, not `127.0.0.1`. |
 | The Desktop Project and Repo list is empty, the CLI shows `access denied`, or the API returns `403` (`permission_denied`) | The account is signed in but has no membership. This applies to admins too. Give the account `reader` or `editor` on `/admin/users`, and then reload the list in the Desktop app. |
-| You open `/api/speclink/v1/web/account/tokens` in a browser and get `405` | This URL accepts only POST. Use the form on the `/account` page to create an access key. |
+| You open `/api/speclink/v1/web/account/tokens` in a browser and get `405` | This URL accepts only POST. On the `/account` page, click "Create access key". |
 | You lost an access key | You cannot get it back. Revoke it on `/account` and create a new one. |
 | `speclink auth login` says that it needs a terminal | You are not in an interactive terminal. Use `--token-stdin` or `SPECLINK_TOKEN`. See section 6. |
 | `link` or `auth status` says `repo '…' is not registered in this project` | The `--repo` value does not match the repository key. The message shows the available keys. Run `speclink link` again with the correct key. |

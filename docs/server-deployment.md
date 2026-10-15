@@ -208,17 +208,17 @@ After the deployment and the `/setup`, do these three checks to make sure that t
 
 First, look at the console overview. Right after the setup, the top of the overview shows a "Getting started" block one time. It shows the service URL, the project key, and the repository key:
 
-![The server console overview with the service URL, the project and repository keys, the counts, and the system health](assets/screenshots/server-overview.png)
+![The server console overview with the service URL, the project and repository keys, the counts, and the system health](assets/screenshots/en/server-overview.png)
 
 - The service URL must be the same as the URL that your users open. If it is not, change `public_url`.
 - "System health" shows "Healthy", and the data schema version has a value.
 - The "Needs attention" item "No active credentials — remote workflows cannot connect." is normal. It goes away after a person signs in with the Desktop app or the CLI, or creates an access key.
 
-Second, look at the Users page to check the memberships. A sign-in does not give access to a project. The role and the membership are two separate columns. The admin from the setup starts with no membership:
+Second, look at the Users page to check the memberships. A sign-in does not give access to a project. The admin flag and the project membership are separate. The admin from the setup starts with no membership, so the row on the Users page shows "No projects". After you add a membership, the "Memberships" tab of the user detail page lists each project and its role:
 
-![The server console Users page and user details, with the role and membership columns](assets/screenshots/server-members.png)
+![The user detail page in the server console, with the Memberships tab that lists each project and its role](assets/screenshots/en/server-members.png)
 
-Each person who uses the remote must see the target project in the "Memberships" column. For the steps to add a membership, see [Remote Getting Started](remote-getting-started.md#grant-membership).
+Each person who uses the remote must have the target project on the "Memberships" tab of their user detail page. For the steps to add a membership, see [Remote Getting Started](remote-getting-started.md#grant-membership).
 
 Third, run a health check from a different computer:
 

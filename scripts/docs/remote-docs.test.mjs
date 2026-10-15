@@ -103,8 +103,8 @@ test('both guides cover the remote setup, authorization, and recovery contract',
 });
 
 test('existing user entry points link to the matching remote guide', () => {
-  assert.match(read('README.md'), /docs\/remote-getting-started\.zh-TW\.md/);
-  assert.match(read('README.en.md'), /docs\/remote-getting-started\.md/);
+  assert.match(read('README.zh-TW.md'), /docs\/remote-getting-started\.zh-TW\.md/);
+  assert.match(read('README.md'), /docs\/remote-getting-started\.md/);
   assert.match(read('docs/product-status.zh-TW.md'), /remote-getting-started\.zh-TW\.md/);
   assert.match(read('docs/product-status.md'), /remote-getting-started\.md/);
   assert.match(read('docs/server-deployment.zh-TW.md'), /remote-getting-started\.zh-TW\.md/);
@@ -197,7 +197,7 @@ test(
 test('relative Markdown links in the changed documentation resolve', () => {
   const documents = [
     'README.md',
-    'README.en.md',
+    'README.zh-TW.md',
     'docs/remote-getting-started.zh-TW.md',
     'docs/remote-getting-started.md',
     'docs/product-status.zh-TW.md',

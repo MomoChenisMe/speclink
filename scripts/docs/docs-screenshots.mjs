@@ -53,7 +53,8 @@ export function stateDirsFor({ home, platform }) {
 export function pathsFor({ home, tmpdir }) {
   return {
     backupRoot: path.posix.join(home, '.speclink-docs-screenshots-backup'),
-    workspace: path.posix.join(tmpdir, 'speclink-docs-screenshots-workspace'),
+    // 目錄名會出現在分頁與視窗標題上，所以用中性的示範專案名。
+    workspace: path.posix.join(tmpdir, 'acme-web'),
   };
 }
 
@@ -124,18 +125,24 @@ export function prepareBackup({ platform, home, backupRoot, isRunning, ops }) {
   return plan;
 }
 
-/// 待拍清單（design D2）。中英兩版共用同一組圖片檔。
+/// 待拍清單（readme-open-source-refresh design「截圖依語言分目錄、檔名相同」）。
+/// 每個檔名在 SHOT_LOCALES 的每個語言目錄各拍一張：英文文件引用 en/、繁中文件引用 zh-TW/。
 export const SHOT_LIST = [
-  { file: 'desktop-board.png', what: '變更看板三欄與卡片' },
-  { file: 'desktop-change-drawer.png', what: '變更詳情抽屜（含任務與 artifacts）' },
-  { file: 'desktop-spec.png', what: '規格檢視' },
-  { file: 'desktop-discussion.png', what: '討論記錄檢視' },
-  { file: 'desktop-archived.png', what: '已封存檢視' },
-  { file: 'desktop-settings.png', what: '設定（含 Server 連線）' },
-  { file: 'server-setup.png', what: 'server 首次 /setup 畫面' },
-  { file: 'server-overview.png', what: '後台總覽' },
-  { file: 'server-members.png', what: '成員與 PAT 管理' },
+  { file: 'desktop-board.png', what: '看板四欄都有卡片' },
+  { file: 'desktop-change-detail.png', what: '變更詳情頁（文件樹、內容、資訊三欄）' },
+  { file: 'desktop-discussion.png', what: '討論詳情頁' },
+  { file: 'desktop-spec.png', what: '規格詳情頁' },
+  { file: 'desktop-archived.png', what: '已封存列表' },
+  { file: 'desktop-manual.png', what: '手冊頁' },
+  { file: 'desktop-settings.png', what: '設定模式' },
+  { file: 'server-setup.png', what: 'server 初始設定第二步（建立專案與儲存庫）' },
+  { file: 'server-overview.png', what: '後台總覽（含「開始使用」區塊）' },
+  { file: 'server-members.png', what: '使用者詳情頁的成員資格' },
+  { file: 'server-project.png', what: '專案詳情頁（儲存庫與成員）' },
 ];
+
+/// 截圖的介面語言，也是 SHOT_DIR 底下的子目錄名。
+export const SHOT_LOCALES = ['en', 'zh-TW'];
 
 /// 截圖存放位置（相對 repo root）。
 export const SHOT_DIR = 'docs/assets/screenshots';
@@ -326,6 +333,96 @@ The system SHALL order equally scored results by the most recently touched docum
   },
 };
 
+const KEYBOARD_SHORTCUTS = {
+  name: 'add-keyboard-shortcuts',
+  state: 'ready',
+  capability: 'keyboard-shortcuts',
+  description: 'Reach the most used actions without the mouse',
+  completedTasks: null,
+  artifacts: {
+    proposal: `## Why
+
+Power users switch between the board, search and the editor dozens of times an hour. Every switch is a trip to the mouse.
+
+## What Changes
+
+- Add shortcuts for search, new item and switching views
+- Show the shortcut next to each menu entry
+- List every shortcut on one help sheet
+
+## Capabilities
+
+### New Capabilities
+
+- \`keyboard-shortcuts\`: Reach the most used actions from the keyboard
+
+### Modified Capabilities
+
+（None）
+
+## Impact
+
+- **Code**: menu definitions, help sheet
+- **Behavior**: the common actions work without the mouse
+`,
+    design: `## Context
+
+The menu already names every action, so shortcuts can hang off the same action table instead of a second registry.
+
+## Goals / Non-Goals
+
+**Goals:**
+- One table defines the action, its label and its shortcut
+- The help sheet is generated from that table
+
+**Non-Goals:**
+- User-defined key bindings
+
+## Decisions
+
+### One action table
+
+Labels and shortcuts that live in two places drift; one table keeps the menu and the help sheet in step.
+
+## Risks / Trade-offs
+
+- A shortcut can collide with a browser default; the table test rejects known collisions.
+`,
+    tasks: `## 1. Actions
+
+- [ ] 1.1 Add shortcuts to the action table
+- [ ] 1.2 Reject shortcuts that collide with browser defaults
+
+## 2. Surfaces
+
+- [ ] 2.1 Show the shortcut next to each menu entry
+- [ ] 2.2 Generate the help sheet from the action table
+`,
+    spec: `## Purpose
+
+Let readers reach the most used actions from the keyboard, with every shortcut discoverable from the menu and from one help sheet.
+
+## ADDED Requirements
+
+### Requirement: Shortcuts for common actions
+
+The system SHALL provide keyboard shortcuts for search, new item and view switching.
+
+#### Scenario: Search from anywhere
+- **WHEN** a reader presses the search shortcut on any screen
+- **THEN** the search field SHALL receive focus
+
+### Requirement: Discoverable shortcuts
+
+The system SHALL show each shortcut next to its menu entry and on the help sheet.
+
+#### Scenario: Help sheet lists every shortcut
+- **WHEN** a reader opens the help sheet
+- **THEN** every action with a shortcut SHALL be listed with its key combination
+`,
+  },
+};
+
 const DARK_MODE = {
   name: 'add-dark-mode',
   state: 'archived',
@@ -418,8 +515,99 @@ The system SHALL honour a manual appearance choice over the operating system set
   },
 };
 
-/// 示範變更：三種看板欄位各一，內容全部由本腳本產生，不引用任何真實資料。
-export const DEMO_CHANGES = [TEAM_INVITES, SEARCH_RANKING, DARK_MODE];
+const AUDIT_LOG = {
+  name: 'add-audit-log',
+  state: 'archived',
+  capability: 'audit-log',
+  description: 'Record who changed what and when',
+  completedTasks: null,
+  artifacts: {
+    proposal: `## Why
+
+When a setting changes unexpectedly, nobody can tell who changed it or when. Support tickets end in guesses.
+
+## What Changes
+
+- Record every settings and membership change with its actor and time
+- Let admins filter the log by actor and by date
+- Keep entries for 90 days
+
+## Capabilities
+
+### New Capabilities
+
+- \`audit-log\`: Record who changed what and when, and let admins search it
+
+### Modified Capabilities
+
+（None）
+
+## Impact
+
+- **Code**: settings and membership writes, admin screen
+- **Behavior**: every change leaves an entry an admin can find
+`,
+    design: `## Context
+
+Settings and membership writes already go through one service, so the log can be written in the same transaction as the change it describes.
+
+## Goals / Non-Goals
+
+**Goals:**
+- No change lands without its log entry
+- Admins find an entry by actor or date in one step
+
+**Non-Goals:**
+- Logging read access
+
+## Decisions
+
+### Same transaction as the change
+
+A log written after the fact can miss an entry when the process stops in between; one transaction cannot.
+
+## Risks / Trade-offs
+
+- The log grows with every change; entries older than 90 days are removed nightly.
+`,
+    tasks: `## 1. Recording
+
+- [ ] 1.1 Write a log entry in the same transaction as each change
+- [ ] 1.2 Remove entries older than 90 days
+
+## 2. Admin screen
+
+- [ ] 2.1 List entries newest first
+- [ ] 2.2 Filter entries by actor and by date
+`,
+    spec: `## Purpose
+
+Record every settings and membership change with its actor and time, and let admins find any entry from the last 90 days by actor or by date.
+
+## ADDED Requirements
+
+### Requirement: Every change is recorded
+
+The system SHALL write a log entry with the actor, the time and the changed item in the same transaction as each settings or membership change.
+
+#### Scenario: Change and entry land together
+- **WHEN** an admin changes a member role
+- **THEN** the log SHALL contain one entry naming the admin, the member and the new role
+
+### Requirement: Admins can search the log
+
+The system SHALL let admins filter log entries by actor and by date range.
+
+#### Scenario: Filter by actor
+- **WHEN** an admin filters the log by one actor
+- **THEN** the system SHALL list only that actor's entries, newest first
+`,
+  },
+};
+
+/// 示範變更：看板四欄各至少一張卡，另有兩個已封存（規格頁才有兩份正式規格）。
+/// 內容全部由本腳本產生，不引用任何真實資料。
+export const DEMO_CHANGES = [TEAM_INVITES, SEARCH_RANKING, KEYBOARD_SHORTCUTS, DARK_MODE, AUDIT_LOG];
 
 /// 示範討論：已結論，讓討論頁不是空的。
 export const DEMO_DISCUSSION = {
@@ -429,14 +617,151 @@ export const DEMO_DISCUSSION = {
   context: 'Exporting a large store freezes the window until it finishes, so people assume the app has crashed and force-quit it.\n',
   rounds: [
     'Option A: run the export as a background job and report progress in a toast.\nOption B: keep it blocking but refuse exports above a size cap.\n\nOption B is cheaper, but the cap has to be guessed and the people it blocks are exactly the ones who need the export most.\n',
+    'The import path already runs on the job queue, so Option A reuses it instead of adding a second mechanism.\nA 1,000-item threshold keeps small exports instant; above it the job takes over.\n',
   ],
-  conclusion:
-    'Go with Option A. A size cap only moves the pain onto the largest stores, and the progress toast is reusable for the import path later.\n',
+  // 結論照 discuss 技能現行的寫法：Decision 一句起頭、其後一點一行，再接 Rationale 與 Rejected alternatives。
+  conclusion: `**Decision**: Run large exports as a background job and report progress in a toast.
+- Exports above 1,000 items move to the job queue; smaller exports stay instant.
+- The toast shows progress and links to the file when it is ready.
+- The import path reuses the same toast later.
+**Rationale**: A size cap only moves the pain onto the largest stores, and those stores need the export most. A background job keeps the window responsive for everyone, and the job queue already exists for imports.
+**Rejected alternatives**:
+- Refuse exports above a size cap — the cap has to be guessed, and it blocks the largest stores
+- Keep the export blocking with a spinner — the window still freezes, so people still force-quit
+`,
 };
 
 /// 示範用的 git 身分：示範 workspace 內的 .openspec.yaml 會記下 created_by，
 /// 沿用使用者的全域 git 設定就會把真名與 email 拍進截圖裡。
 const DEMO_IDENTITY = { name: 'Speclink Demo', email: 'demo@speclink.invalid' };
+
+/// 示範手冊：符合 manual-pages 契約的最小一份（index、about 與取材自已封存規格的內容頁）。
+/// generated 在寫檔當下才填——要晚於封存寫下的規格時戳，手冊頁才不會被標成可能過期。
+export const DEMO_MANUAL = [
+  {
+    file: 'index.md',
+    title: 'Acme Web manual',
+    section: 'Getting started',
+    order: 10,
+    keywords: ['overview', 'getting started'],
+    sources: [],
+    body: `# Acme Web manual
+
+Acme Web is the browser app the team ships to customers. This manual describes what it does today, page by page.
+
+Three ideas carry the whole app:
+
+- **Workspace**: the place where a team keeps its data and settings.
+- **Appearance**: the app follows your system theme unless you pick one.
+- **Audit log**: every settings and membership change leaves an entry.
+
+Start with [Appearance and dark mode](appearance.md). Admins go to [Audit log](audit-log.md).`,
+  },
+  {
+    file: 'appearance.md',
+    title: 'Appearance and dark mode',
+    section: 'Using the app',
+    order: 20,
+    keywords: ['dark mode', 'theme', 'appearance'],
+    sources: ['dark-mode'],
+    body: `# Appearance and dark mode
+
+The app matches your operating system appearance the first time it opens. You do not need to set anything.
+
+## Pick an appearance yourself
+
+1. Open **Settings**.
+2. Under **Appearance**, choose **Light** or **Dark**.
+3. The window switches at once. It does not reload.
+
+Your choice stays after a restart. Choose **System** to follow the operating system again.
+
+> [!TIP]
+> If the colours look wrong after a system change, check that **System** is selected.`,
+  },
+  {
+    file: 'audit-log.md',
+    title: 'Audit log',
+    section: 'Administration',
+    order: 30,
+    keywords: ['audit', 'history', 'admin'],
+    sources: ['audit-log'],
+    body: `# Audit log
+
+The audit log answers one question: who changed what, and when.
+
+- Every settings change and every membership change writes one entry.
+- An entry names the person, the time and the item that changed.
+- Entries stay for 90 days.
+
+## Find an entry
+
+1. Open **Admin** → **Audit log**.
+2. Filter by person, by date, or both.
+3. The newest entries show first.
+
+> [!NOTE]
+> The log records changes only. Opening a page does not write an entry.`,
+  },
+  {
+    file: 'about.md',
+    title: 'About this manual',
+    section: 'Reference',
+    order: 90,
+    keywords: ['sources', 'scope'],
+    sources: [],
+    body: `# About this manual
+
+## Scope
+
+Every page comes from the specs in \`openspec/specs/\`. The manual does not read the code.
+
+## Contradictions in the specs
+
+None found.
+
+## Known limits
+
+- The manual has no screenshots. When the app and the manual differ, trust the app.`,
+  },
+];
+
+/// 一頁手冊的完整檔案內容：六欄 frontmatter、內文、頁尾出處行。
+export function renderManualPage(page, generated) {
+  const list = (items) => `[${items.join(', ')}]`;
+  const sources =
+    page.sources.length > 0
+      ? page.sources.map((source) => `\`${source}\``).join('、')
+      : 'this page introduces the manual; each page lists its own sources.';
+  return [
+    '---',
+    `title: ${page.title}`,
+    `section: ${page.section}`,
+    `order: ${page.order}`,
+    `keywords: ${list(page.keywords)}`,
+    `sources: ${list(page.sources)}`,
+    `generated: ${generated}`,
+    '---',
+    '',
+    page.body.trim(),
+    '',
+    `**出處**：${sources}`,
+    '',
+  ].join('\n');
+}
+
+/// 帶本機時區偏移的 RFC 3339 秒級時戳（manual-pages 契約的 generated 格式）。
+function localTimestamp(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const offset = -date.getTimezoneOffset();
+  const sign = offset >= 0 ? '+' : '-';
+  const hours = pad(Math.floor(Math.abs(offset) / 60));
+  const minutes = pad(Math.abs(offset) % 60);
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${sign}${hours}:${minutes}`
+  );
+}
 
 export function dryRunReport({ plan, workspace }) {
   const lines = ['[dry-run] 不會搬移、建立或刪除任何檔案。', '', '將備份的狀態目錄：'];
@@ -451,14 +776,17 @@ export function dryRunReport({ plan, workspace }) {
     lines.push(`  - [${STATE_LABEL[change.state]}] ${change.name} — ${change.description}`);
   }
   lines.push(`  - [已結論的討論] ${DEMO_DISCUSSION.topic}`);
-  lines.push('', `待拍清單（存入 ${SHOT_DIR}/）：`);
+  for (const page of DEMO_MANUAL) {
+    lines.push(`  - [手冊頁] ${page.title}（${page.file}）`);
+  }
+  lines.push('', `待拍清單（每個檔名在 ${SHOT_LOCALES.map((l) => `${SHOT_DIR}/${l}/`).join(' 與 ')} 各一張）：`);
   for (const shot of SHOT_LIST) {
     lines.push(`  - ${shot.file} — ${shot.what}`);
   }
   return lines;
 }
 
-const STATE_LABEL = { proposed: '提案中', 'in-progress': '進行中', archived: '已封存' };
+const STATE_LABEL = { proposed: '提案中', 'in-progress': '進行中', ready: '已就緒', archived: '已封存' };
 
 // ---------------------------------------------------------------------------
 // 以下為實際執行路徑（測試以注入的假 ops 覆蓋上方的純函式，不進入這一段）
@@ -544,6 +872,13 @@ export function createDemoWorkspace(workspace) {
     input: conclusion,
     stdio: ['pipe', 'inherit', 'inherit'],
   });
+
+  const manualDir = path.join(workspace, 'openspec', 'manual');
+  mkdirSync(manualDir, { recursive: true });
+  const generated = localTimestamp();
+  for (const page of DEMO_MANUAL) {
+    writeFileSync(path.join(manualDir, page.file), renderManualPage(page, generated));
+  }
 }
 
 function writeChangeArtifacts(workspace, change) {
@@ -592,12 +927,15 @@ function printHandoff(workspace) {
   console.log('');
   console.log('接著請你手動完成：');
   console.log('  1. 開啟 Speclink desktop（此時它是全新狀態，沒有任何分頁與連線）');
-  console.log('  2. 把上面這個路徑加入為 workspace');
-  console.log(`  3. 逐張擷取並存入 ${SHOT_DIR}/：`);
+  console.log('  2. 把上面這個路徑加入為專案');
+  console.log('  3. 每種介面語言各拍一輪（在設定切換語言），只擷取 app 視窗：');
+  for (const locale of SHOT_LOCALES) {
+    console.log(`     ${locale} → ${SHOT_DIR}/${locale}/`);
+  }
   for (const shot of SHOT_LIST.filter((s) => s.file.startsWith('desktop-'))) {
     console.log(`       ${shot.file} — ${shot.what}`);
   }
-  console.log('     （server 三張另外依 docs/development.zh-TW.md 啟動 server 擷取）');
+  console.log('     （server 四張另外用一次性的 server 擷取，資料目錄放在暫存區，不碰 .dev/）');
   console.log('  4. 拍完先完全結束 desktop app，再回到這裡按 Enter 還原');
   console.log('');
   console.log('中途 Ctrl+C 也會還原；若腳本整個當掉，改跑 --restore。');

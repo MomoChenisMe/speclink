@@ -16,7 +16,7 @@ const SURFACE_FILES = [
   'apps/server-web/src/i18n/messages.ts',
   'packages/ui/src/i18n.tsx',
   'README.md',
-  'README.en.md',
+  'README.zh-TW.md',
 ];
 const SURFACE_DIRS = ['crates/engine/speclink-core/assets/skills', 'docs'];
 

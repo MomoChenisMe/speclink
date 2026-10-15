@@ -1,0 +1,65 @@
+name: Bug report
+description: Something in Speclink does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. You can write in English or Traditional Chinese.
+
+        **Do not paste access tokens, setup tokens, or internal URLs.** Replace them with placeholders such as `<token>` or `https://example.com`.
+
+        To report a security problem, do not use this form. Follow [SECURITY.md](https://github.com/MomoChenisMe/speclink/blob/main/SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Speclink version
+      description: The output of `speclink --version`. For the desktop app, the version on the About page.
+      placeholder: speclink 0.8.0 (arm64, engine v1.48.0)
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      description: Local mode keeps the specs in your repo. Remote mode connects to a server.
+      options:
+        - Local
+        - Remote
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The commands that you ran or the actions that you took, in order.
+      placeholder: |
+        1. speclink init --tools claude
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: Include the error output if there is one.
+      render: text
+    validations:
+      required: true
