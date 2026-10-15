@@ -130,6 +130,22 @@ describe("專案詳情頁", () => {
     expect(within(panel).queryAllByRole("button")).toHaveLength(0);
   });
 
+  it("代號含 / ? # 的專案：點列進得了詳情頁，‹ › 切換也對得到", async () => {
+    const odd = { key: "a/b?c#d", name: "Odd", repos: [] };
+    const client = makeAdminClient({
+      getAdminRegistry: vi.fn(async () => ({ projects: [...REGISTRY.projects, odd] })),
+    });
+    renderWithLocation(["/admin/registry"], client);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Odd" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Odd" })).toBeTruthy();
+    expect(screen.getByText("2 / 2")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "上一個" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Demo" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "下一個" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Odd" })).toBeTruthy();
+  });
+
   it("對不到資料時說明找不到並提供回到專案列表", async () => {
     renderWithLocation(["/admin/registry/nope"], makeAdminClient());
     expect(await screen.findByText("找不到這個專案")).toBeTruthy();

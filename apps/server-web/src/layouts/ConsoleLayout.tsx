@@ -34,7 +34,9 @@ export function ConsoleLayout({ children }: { children: ReactNode }) {
   const mainRef = useRef<HTMLElement>(null);
   const location = useLocation();
   const { session } = useSession();
-  useFocusMain(mainRef, location.pathname);
+  // ‹ › 在同一區段的詳情頁之間切換時焦點留在導覽鈕上，鍵盤才能連按；其他換頁把焦點移到頁標題。
+  const detailMatch = matchPath("/admin/:section/:item", location.pathname);
+  useFocusMain(mainRef, detailMatch ? `/admin/${detailMatch.params.section}/*` : location.pathname);
   const narrow = useNarrow();
   const [sheetOpen, setSheetOpen] = useState(false);
   // 詳情頁交出的麵包屑第三段與 ‹ n / m › 的插槽（server-web-detail-pages design D2）。

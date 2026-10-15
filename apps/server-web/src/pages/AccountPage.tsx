@@ -11,10 +11,10 @@ import {
 } from "@speclink/ui";
 import { useClient } from "../app/context";
 import { fillUser } from "../lib/userLabel";
-import { useAsync } from "../lib/useAsync";
-import { readFormError } from "../lib/formError";
+import { useAsync, useLastData } from "../lib/useAsync";
+import { fmtDate } from "../lib/fmtDate";
 import { Field } from "../components/Field";
-import { FormDialog, FormDialogFooter, SecretDone } from "../components/FormDialog";
+import { FormDialog, FormDialogActions, FormMessage, SecretDone, useDialogSubmit } from "../components/FormDialog";
 import { CardNote } from "../components/CardNote";
 import { RevocationPill } from "../components/RevocationPill";
 import { RevokeButton } from "../components/RevokeButton";
@@ -28,15 +28,13 @@ import type { AccountSummary, DeviceFamilyMeta, PatMeta } from "../api/client";
 
 type Confirm = { title: string; run: () => Promise<void> };
 
-/** The date portion of an ISO timestamp, or a fallback when absent. */
-function fmtDate(iso: string | null, fallback: string): string {
-  return iso ? iso.slice(0, 10) : fallback;
-}
-
 export function AccountPage() {
   const { t } = useI18n();
   const client = useClient();
-  const { loading, data, reload } = useAsync(() => client.getAccount(), []);
+  const { loading, data: fresh, error, reload } = useAsync(() => client.getAccount(), []);
+  // 建立金鑰或撤銷後重讀期間留著上一份：頁面若退回載入中，開著的建立對話框（連同只顯示一次的
+  // 明文）會一起被卸掉。
+  const data = useLastData(fresh, error);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [busy, setBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -250,28 +248,16 @@ function CreateKeyDialog({ onClose, onCreated }: { onClose: () => void; onCreate
   const client = useClient();
   const [name, setName] = useState("");
   const [expires, setExpires] = useState("");
-  const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [plaintext, setPlaintext] = useState<string | null>(null);
+  const { pending, message, fieldErrors, submit } = useDialogSubmit(t("account.createKeyError"));
 
-  async function onSubmit(event: FormEvent) {
+  function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (pending) return;
-    setPending(true);
-    setMessage(null);
-    setFieldErrors({});
-    try {
+    void submit(async () => {
       const created = await client.createPat({ name, expires: expires || undefined });
       setPlaintext(created.plaintext);
       onCreated();
-    } catch (error) {
-      const read = readFormError(error, t("account.createKeyError"));
-      setMessage(read.message);
-      setFieldErrors(read.fieldErrors);
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   if (plaintext) {
@@ -310,19 +296,12 @@ function CreateKeyDialog({ onClose, onCreated }: { onClose: () => void; onCreate
           onChange={setExpires}
           error={fieldErrors.expires}
         />
-        {message && Object.keys(fieldErrors).length === 0 && (
-          <p role="alert" className="text-sm text-destructive">
-            {message}
-          </p>
-        )}
-        <FormDialogFooter>
-          <Button type="button" variant="ghost" onClick={onClose}>
-            {t("common.cancel")}
-          </Button>
-          <Button type="submit" disabled={pending}>
-            {pending ? t("common.creating") : t("common.create")}
-          </Button>
-        </FormDialogFooter>
+        <FormMessage message={message} fieldErrors={fieldErrors} />
+        <FormDialogActions
+          submitLabel={pending ? t("common.creating") : t("common.create")}
+          pending={pending}
+          onCancel={onClose}
+        />
       </form>
     </FormDialog>
   );

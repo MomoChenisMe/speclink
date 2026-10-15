@@ -3,8 +3,8 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "../../lib/utils";
 
-/** 卡片：細框白底無陰影；容器內的小卡（看板卡片、對話框內清單卡）用 nested。
- *  呼叫端不以 className 覆蓋圓角與陰影。 */
+/** 卡片：細框白底無陰影；容器內的小卡（看板卡片、對話框內清單卡）用 nested；接在卡片標頭
+ *  分頁列（Tabs card variant）下方的內容卡用 attached="top"。呼叫端不以 className 覆蓋圓角與陰影。 */
 const cardVariants = cva("border border-border bg-card text-card-foreground", {
   variants: {
     size: { default: "rounded-2xl", nested: "rounded-xl" },
@@ -12,8 +12,9 @@ const cardVariants = cva("border border-border bg-card text-card-foreground", {
       true: "transition-colors hover:border-foreground/20 hover:bg-muted/40",
       false: "",
     },
+    attached: { none: "", top: "rounded-t-none border-t-0" },
   },
-  defaultVariants: { size: "default", interactive: false },
+  defaultVariants: { size: "default", interactive: false, attached: "none" },
 });
 
 export interface CardProps
@@ -21,8 +22,8 @@ export interface CardProps
     VariantProps<typeof cardVariants> {}
 
 export const Card = React.forwardRef<HTMLDivElement, CardProps>(
-  ({ className, size, interactive, ...props }, ref) => (
-    <div ref={ref} className={cn(cardVariants({ size, interactive }), className)} {...props} />
+  ({ className, size, interactive, attached, ...props }, ref) => (
+    <div ref={ref} className={cn(cardVariants({ size, interactive, attached }), className)} {...props} />
   ),
 );
 Card.displayName = "Card";

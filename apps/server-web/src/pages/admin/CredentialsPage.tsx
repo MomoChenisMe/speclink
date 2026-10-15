@@ -22,6 +22,7 @@ import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
 import { useListScroll } from "../../lib/useListScroll";
 import { useNarrow } from "../../lib/useMediaQuery";
+import { fmtDate } from "../../lib/fmtDate";
 import { FilterSelect } from "../../components/FilterSelect";
 import { NoMatchState } from "../../components/NoMatchState";
 import { RevocationPill } from "../../components/RevocationPill";
@@ -34,11 +35,6 @@ import { AdminError, AdminLoading } from "./states";
 // 滑過才出現的撤銷鈕；撤銷先以確認框確認後立即生效。
 
 type Confirm = { title: string; run: () => Promise<void> };
-
-/** The date portion of an ISO timestamp. */
-function fmtDate(iso: string | null, fallback: string): string {
-  return iso ? iso.slice(0, 10) : fallback;
-}
 
 /** 關鍵字比對：以使用者看得到的欄位為準，不含不透明 id。 */
 function matches(haystack: string[], keyword: string): boolean {

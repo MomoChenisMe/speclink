@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { FolderPlus, Inbox } from "lucide-react";
 import {
   Button,
@@ -13,16 +13,15 @@ import {
   PageHeader,
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
-import { useAsync } from "../../lib/useAsync";
+import { useAsync, useLastData } from "../../lib/useAsync";
 import { useListScroll } from "../../lib/useListScroll";
 import { useNarrow } from "../../lib/useMediaQuery";
-import { readFormError } from "../../lib/formError";
 import { Field } from "../../components/Field";
-import { FormDialog, FormDialogFooter } from "../../components/FormDialog";
+import { FormDialog, FormDialogActions, FormMessage, useDialogSubmit } from "../../components/FormDialog";
 import { NoMatchState } from "../../components/NoMatchState";
+import { SectionRoutes } from "./detail";
 import { AdminError, AdminLoading } from "./states";
-import { ProjectDetailPage } from "./ProjectDetailPage";
-import type { AdminRegistry } from "../../api/client";
+import { ProjectDetailPage, projectPath } from "./ProjectDetailPage";
 
 // 專案區段（server-web-console「管理列表以詳情頁與對話框承載檢視與建立」「管理列表提供搜尋、篩選、
 // 分頁與具引導的空狀態」；server-web-list-pages design D2、D3、D5；server-web-detail-pages design D1）：
@@ -37,9 +36,7 @@ export function RegistrySection() {
   const narrow = useNarrow();
   const { data: fresh, error, reload } = useAsync(() => client.getAdminRegistry(), []);
   // 留著上一份成功回應：詳情頁變更後重載時不卸載重掛（同使用者區段，design D1）。
-  const [last, setLast] = useState<AdminRegistry | null>(null);
-  if (fresh && fresh !== last) setLast(fresh);
-  const data = error == null ? (fresh ?? last) : null;
+  const data = useLastData(fresh, error);
   const [createOpen, setCreateOpen] = useState(false);
   const [q, setQ] = useState("");
   const { scrollRef, scrollToTop } = useListScroll();
@@ -102,7 +99,7 @@ export function RegistrySection() {
                 description={t("registry.projectMeta")
                   .replace("{key}", p.key)
                   .replace("{n}", String(p.repos.length))}
-                onClick={() => navigate(`/admin/registry/${p.key}`)}
+                onClick={() => navigate(projectPath(p.key))}
               />
             ))
           )}
@@ -115,22 +112,14 @@ export function RegistrySection() {
   );
 
   return (
-    <Routes>
-      <Route index element={list} />
-      <Route
-        path=":key"
-        element={
-          data ? (
-            <ProjectDetailPage projects={data.projects} sequence={visible} reload={reload} />
-          ) : error != null ? (
-            <AdminError onRetry={reload} />
-          ) : (
-            <AdminLoading />
-          )
-        }
-      />
-      <Route path="*" element={<Navigate to="/admin/registry" replace />} />
-    </Routes>
+    <SectionRoutes
+      base="/admin/registry"
+      param="key"
+      list={list}
+      detail={data && <ProjectDetailPage projects={data.projects} sequence={visible} reload={reload} />}
+      error={error}
+      onRetry={reload}
+    />
   );
 }
 
@@ -139,31 +128,24 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
   const client = useClient();
   const [key, setKey] = useState("");
   const [name, setName] = useState("");
-  const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const { pending, message, fieldErrors, submit } = useDialogSubmit(t("registry.createProjectError"));
 
-  async function onSubmit(event: FormEvent) {
+  function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (pending) return;
-    setPending(true);
-    setMessage(null);
-    setFieldErrors({});
-    try {
+    void submit(async () => {
       await client.adminCreateProject({ key, name: name.trim() || undefined });
       onClose();
       onCreated();
-    } catch (error) {
-      const read = readFormError(error, t("registry.createProjectError"));
-      setMessage(read.message);
-      setFieldErrors(read.fieldErrors);
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   return (
-    <FormDialog open onOpenChange={(open) => !open && onClose()} title={t("registry.create")}>
+    <FormDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={t("registry.create")}
+      description={t("registry.createProjectHint")}
+    >
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
         <Field
           id="new-project-key"
@@ -180,19 +162,12 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
           onChange={setName}
           error={fieldErrors.name}
         />
-        {message && Object.keys(fieldErrors).length === 0 && (
-          <p role="alert" className="text-sm text-destructive">
-            {message}
-          </p>
-        )}
-        <FormDialogFooter>
-          <Button type="button" variant="ghost" onClick={onClose}>
-            {t("common.cancel")}
-          </Button>
-          <Button type="submit" disabled={pending}>
-            {pending ? t("common.creating") : t("registry.create")}
-          </Button>
-        </FormDialogFooter>
+        <FormMessage message={message} fieldErrors={fieldErrors} />
+        <FormDialogActions
+          submitLabel={pending ? t("common.creating") : t("registry.create")}
+          pending={pending}
+          onCancel={onClose}
+        />
       </form>
     </FormDialog>
   );

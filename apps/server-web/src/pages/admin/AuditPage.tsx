@@ -20,13 +20,12 @@ import {
   PageHeader,
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
-import { useAsync } from "../../lib/useAsync";
+import { useAsync, useLastData } from "../../lib/useAsync";
 import { auditLabel } from "../../lib/auditLabel";
 import { useListScroll } from "../../lib/useListScroll";
 import { useNarrow } from "../../lib/useMediaQuery";
 import { FilterSelect } from "../../components/FilterSelect";
 import { AdminError, AdminLoading } from "./states";
-import type { AdminAudit } from "../../api/client";
 
 // 管理稽核紀錄頁（server-admin「管理 browser API 提供最小且完整的頁面 view model」；
 // server-web-list-pages design D7）：唯讀清單。關鍵字、動作、來源與時間區間篩選加分頁一律由
@@ -80,9 +79,7 @@ export function AuditPage() {
   if (data && outOfRange && page === data.page) setPage(Math.max(data.audit.totalPages, 1));
   const fresh = data && !outOfRange ? data.audit : null;
   // 最近一次成功且頁碼有效的回應：重新抓取時 useAsync 會先清空 data，這裡留著上一份繼續顯示。
-  const [lastData, setLastData] = useState<AdminAudit | null>(null);
-  if (fresh && fresh !== lastData) setLastData(fresh);
-  const shown = error == null ? (fresh ?? lastData) : null;
+  const shown = useLastData(fresh, error);
 
   // 任何篩選或每頁筆數變動都回到第 1 頁：留在第 3 頁看新篩選的結果只會得到空白畫面。
   function refilter(apply: () => void) {

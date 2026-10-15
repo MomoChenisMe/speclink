@@ -1,28 +1,16 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { FolderX } from "lucide-react";
-import {
-  Button,
-  Card,
-  EmptyState,
-  PageHeader,
-  SettingsRow,
-  StatusPill,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-  useI18n,
-} from "@speclink/ui";
+import { Button, PageHeader, SettingsRow, StatusPill, TabsContent, TabsTrigger, useI18n } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
 import { userLabel } from "../../lib/userLabel";
-import { readFormError } from "../../lib/formError";
 import { DetailTitle } from "../../layouts/DetailTitle";
 import { CardNote } from "../../components/CardNote";
 import { Field } from "../../components/Field";
-import { FormDialog, FormDialogFooter } from "../../components/FormDialog";
-import { AdminError, AdminLoading } from "./states";
+import { FormDialog, FormDialogActions, FormMessage, useDialogSubmit } from "../../components/FormDialog";
+import { DetailNotFound, DetailTabs } from "./detail";
+import { AdminCardState } from "./states";
 import type { AdminProject } from "../../api/client";
 
 // 專案詳情頁（server-web-console「管理列表以詳情頁與對話框承載檢視與建立」「不可變識別欄位唯讀且
@@ -31,7 +19,20 @@ import type { AdminProject } from "../../api/client";
 // 身分，只以唯讀文字呈現（連 disabled 輸入框都不出現，避免暗示「某些條件下可改」）；名稱按「更名」
 // 才在對話框裡出現輸入框。成員由使用者清單反查，唯讀。
 
-type RenameTarget = { kind: "project" } | { kind: "repo"; key: string; name: string };
+/** 更名對話框的對象：專案或儲存庫，在按下「更名」時就組好。 */
+type RenameTarget = {
+  title: string;
+  label: string;
+  /** 不隨更名改變的代號。 */
+  identity: string;
+  current: string;
+  rename: (name: string) => Promise<void>;
+};
+
+/** 專案詳情頁的網址：代號只擋空白，可能含 / ? # 這類字元，要編碼成一段路徑。 */
+export function projectPath(key: string): string {
+  return `/admin/registry/${encodeURIComponent(key)}`;
+}
 
 export function ProjectDetailPage({
   projects,
@@ -44,20 +45,16 @@ export function ProjectDetailPage({
   reload: () => void;
 }) {
   const { t } = useI18n();
-  const navigate = useNavigate();
   const { key } = useParams();
   const project = projects.find((p) => p.key === key);
   if (!project) {
     return (
-      <EmptyState
+      <DetailNotFound
         icon={FolderX}
         title={t("registry.notFoundTitle")}
-        description={t("registry.notFoundBody")}
-        action={
-          <Button type="button" variant="outline" onClick={() => navigate("/admin/registry")}>
-            {t("registry.backToList")}
-          </Button>
-        }
+        body={t("registry.notFoundBody")}
+        backLabel={t("registry.backToList")}
+        backTo="/admin/registry"
       />
     );
   }
@@ -94,100 +91,107 @@ function ProjectDetail({
         label={project.name}
         index={index}
         total={sequence.length}
-        onStep={(delta) => navigate(`/admin/registry/${sequence[index + delta].key}`, { replace: true })}
+        onStep={(delta) => navigate(projectPath(sequence[index + delta].key), { replace: true })}
       />
       <PageHeader
         level={1}
         title={project.name}
         description={keyMeta(project.key)}
         actions={
-          <Button type="button" variant="outline" onClick={() => setRename({ kind: "project" })}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() =>
+              setRename({
+                title: t("registry.renameProjectTitle"),
+                label: t("registry.projectName"),
+                identity: project.key,
+                current: project.name,
+                rename: (name) => client.adminRenameProject(project.key, name),
+              })
+            }
+          >
             {t("common.rename")}
           </Button>
         }
       />
 
-      <Tabs value={tab} onValueChange={setTab} className="flex flex-col">
-        <TabsList variant="card" className="overflow-x-auto">
-          <TabsTrigger value="repos" count={project.repos.length}>
-            {t("registry.tabRepos")}
-          </TabsTrigger>
-          <TabsTrigger value="members" count={users.data ? members.length : undefined}>
-            {t("registry.tabMembers")}
-          </TabsTrigger>
-        </TabsList>
-        <Card className="rounded-t-none border-t-0">
-          <TabsContent value="repos" className="divide-y divide-border">
-            {project.repos.length === 0 && <CardNote>{t("registry.noRepos")}</CardNote>}
-            {project.repos.map((r) => (
-              <SettingsRow
-                key={r.key}
-                label={r.name}
-                description={keyMeta(r.key)}
-                control={
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    aria-label={t("registry.renameNamed").replace("{name}", r.name)}
-                    onClick={() => setRename({ kind: "repo", key: r.key, name: r.name })}
-                  >
-                    {t("common.rename")}
-                  </Button>
-                }
-              />
-            ))}
+      <DetailTabs
+        value={tab}
+        onValueChange={setTab}
+        triggers={
+          <>
+            <TabsTrigger value="repos" count={project.repos.length}>
+              {t("registry.tabRepos")}
+            </TabsTrigger>
+            <TabsTrigger value="members" count={users.data ? members.length : undefined}>
+              {t("registry.tabMembers")}
+            </TabsTrigger>
+          </>
+        }
+      >
+        <TabsContent value="repos" className="divide-y divide-border">
+          {project.repos.length === 0 && <CardNote>{t("registry.noRepos")}</CardNote>}
+          {project.repos.map((r) => (
             <SettingsRow
-              label={t("registry.newRepo")}
-              description={t("registry.addRepoHint")}
+              key={r.key}
+              label={r.name}
+              description={keyMeta(r.key)}
               control={
-                <Button type="button" variant="outline" size="sm" onClick={() => setAddingRepo(true)}>
-                  {t("registry.newRepo")}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label={t("registry.renameNamed").replace("{name}", r.name)}
+                  onClick={() =>
+                    setRename({
+                      title: t("registry.renameRepoTitle"),
+                      label: t("registry.repoName"),
+                      identity: r.key,
+                      current: r.name,
+                      rename: (name) => client.adminRenameRepo({ projectKey: project.key, key: r.key, name }),
+                    })
+                  }
+                >
+                  {t("common.rename")}
                 </Button>
               }
             />
-          </TabsContent>
+          ))}
+          <SettingsRow
+            label={t("registry.newRepo")}
+            description={t("registry.addRepoHint")}
+            control={
+              <Button type="button" variant="outline" size="sm" onClick={() => setAddingRepo(true)}>
+                {t("registry.newRepo")}
+              </Button>
+            }
+          />
+        </TabsContent>
 
-          <TabsContent value="members" className="divide-y divide-border">
-            {users.loading || users.error != null ? (
-              <div className="px-4 py-3">
-                {users.loading ? <AdminLoading /> : <AdminError onRetry={users.reload} />}
-              </div>
-            ) : members.length === 0 ? (
-              <CardNote>{t("registry.noMembers")}</CardNote>
-            ) : (
-              members.map(({ user, role }) => (
-                <SettingsRow
-                  key={user.id}
-                  label={userLabel(user)}
-                  description={user.email}
-                  control={
-                    <StatusPill tone="neutral" className="font-mono">
-                      {role}
-                    </StatusPill>
-                  }
-                />
-              ))
-            )}
-          </TabsContent>
-        </Card>
-      </Tabs>
+        <TabsContent value="members" className="divide-y divide-border">
+          {users.loading || users.error != null ? (
+            <AdminCardState error={users.error} onRetry={users.reload} />
+          ) : members.length === 0 ? (
+            <CardNote>{t("registry.noMembers")}</CardNote>
+          ) : (
+            members.map(({ user, role }) => (
+              <SettingsRow
+                key={user.id}
+                label={userLabel(user)}
+                description={user.email}
+                control={
+                  <StatusPill tone="neutral" className="font-mono">
+                    {role}
+                  </StatusPill>
+                }
+              />
+            ))
+          )}
+        </TabsContent>
+      </DetailTabs>
 
-      {rename && (
-        <RenameDialog
-          title={t(rename.kind === "project" ? "registry.renameProjectTitle" : "registry.renameRepoTitle")}
-          label={t(rename.kind === "project" ? "registry.projectName" : "registry.repoName")}
-          identity={rename.kind === "project" ? project.key : rename.key}
-          current={rename.kind === "project" ? project.name : rename.name}
-          onRename={(name) =>
-            rename.kind === "project"
-              ? client.adminRenameProject(project.key, name)
-              : client.adminRenameRepo({ projectKey: project.key, key: rename.key, name })
-          }
-          onClose={() => setRename(null)}
-          onRenamed={reload}
-        />
-      )}
+      {rename && <RenameDialog target={rename} onClose={() => setRename(null)} onRenamed={reload} />}
       {addingRepo && (
         <CreateRepoDialog project={project} onClose={() => setAddingRepo(false)} onCreated={reload} />
       )}
@@ -198,61 +202,43 @@ function ProjectDetail({
 // 更名對話框（專案與儲存庫共用）：預填目前名稱、標示代號不隨更名改變；空白名稱時確認鈕停用。
 // 失敗保持開啟並保留輸入；成功關閉，頁標題、麵包屑或列標題隨重載換成新名稱。
 function RenameDialog({
-  title,
-  label,
-  identity,
-  current,
-  onRename,
+  target,
   onClose,
   onRenamed,
 }: {
-  title: string;
-  label: string;
-  /** 不隨更名改變的代號。 */
-  identity: string;
-  current: string;
-  onRename: (name: string) => Promise<void>;
+  target: RenameTarget;
   onClose: () => void;
   onRenamed: () => void;
 }) {
   const { t } = useI18n();
-  const [name, setName] = useState(current);
-  const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [name, setName] = useState(target.current);
+  const { pending, message, submit } = useDialogSubmit(t("registry.renameError"));
 
-  async function onSubmit(event: FormEvent) {
+  function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (pending || !name.trim()) return;
-    setPending(true);
-    setMessage(null);
-    try {
-      await onRename(name.trim());
+    if (!name.trim()) return;
+    void submit(async () => {
+      await target.rename(name.trim());
       onClose();
       onRenamed();
-    } catch (error) {
-      setMessage(readFormError(error, t("registry.renameError")).message);
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   return (
     <FormDialog
       open
       onOpenChange={(open) => !open && onClose()}
-      title={title}
-      description={t("registry.renameBody").replace("{key}", identity)}
+      title={target.title}
+      description={t("registry.renameBody").replace("{key}", target.identity)}
     >
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
-        <Field id="rename-name" label={label} value={name} onChange={setName} error={message ?? undefined} />
-        <FormDialogFooter>
-          <Button type="button" variant="ghost" onClick={onClose}>
-            {t("common.cancel")}
-          </Button>
-          <Button type="submit" disabled={pending || !name.trim()}>
-            {t("common.confirm")}
-          </Button>
-        </FormDialogFooter>
+        <Field id="rename-name" label={target.label} value={name} onChange={setName} error={message ?? undefined} />
+        <FormDialogActions
+          submitLabel={t("common.confirm")}
+          pending={pending}
+          disabled={!name.trim()}
+          onCancel={onClose}
+        />
       </form>
     </FormDialog>
   );
@@ -271,27 +257,15 @@ function CreateRepoDialog({
   const client = useClient();
   const [key, setKey] = useState("");
   const [name, setName] = useState("");
-  const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const { pending, message, fieldErrors, submit } = useDialogSubmit(t("registry.createRepoError"));
 
-  async function onSubmit(event: FormEvent) {
+  function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (pending) return;
-    setPending(true);
-    setMessage(null);
-    setFieldErrors({});
-    try {
+    void submit(async () => {
       await client.adminCreateRepo({ projectKey: project.key, key, name: name.trim() || undefined });
       onClose();
       onCreated();
-    } catch (error) {
-      const read = readFormError(error, t("registry.createRepoError"));
-      setMessage(read.message);
-      setFieldErrors(read.fieldErrors);
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   return (
@@ -317,19 +291,12 @@ function CreateRepoDialog({
           onChange={setName}
           error={fieldErrors.name}
         />
-        {message && Object.keys(fieldErrors).length === 0 && (
-          <p role="alert" className="text-sm text-destructive">
-            {message}
-          </p>
-        )}
-        <FormDialogFooter>
-          <Button type="button" variant="ghost" onClick={onClose}>
-            {t("common.cancel")}
-          </Button>
-          <Button type="submit" disabled={pending}>
-            {pending ? t("common.creating") : t("common.create")}
-          </Button>
-        </FormDialogFooter>
+        <FormMessage message={message} fieldErrors={fieldErrors} />
+        <FormDialogActions
+          submitLabel={pending ? t("common.creating") : t("common.create")}
+          pending={pending}
+          onCancel={onClose}
+        />
       </form>
     </FormDialog>
   );

@@ -3,10 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Trash2, UserX } from "lucide-react";
 import {
   Button,
-  Card,
   ConfirmDialog,
   CopyButton,
-  EmptyState,
   PageHeader,
   REVEAL_ON_GROUP_HOVER,
   Select,
@@ -18,23 +16,23 @@ import {
   SettingsRow,
   StatusPill,
   Switch,
-  Tabs,
   TabsContent,
-  TabsList,
   TabsTrigger,
   useI18n,
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
-import { useAsync } from "../../lib/useAsync";
+import { useAsync, useLastData } from "../../lib/useAsync";
 import { useNarrow } from "../../lib/useMediaQuery";
 import { userLabel } from "../../lib/userLabel";
 import { auditLabel } from "../../lib/auditLabel";
+import { fmtDate } from "../../lib/fmtDate";
 import { DetailTitle } from "../../layouts/DetailTitle";
 import { CardNote } from "../../components/CardNote";
 import { RevocationPill } from "../../components/RevocationPill";
 import { RevokeButton } from "../../components/RevokeButton";
-import { AdminError, AdminLoading } from "./states";
-import type { AdminCredentials, AdminProject, AdminUser } from "../../api/client";
+import { DetailNotFound, DetailTabs } from "./detail";
+import { AdminCardState } from "./states";
+import type { AdminProject, AdminUser } from "../../api/client";
 
 // 使用者詳情頁（server-web-console「管理列表以詳情頁與對話框承載檢視與建立」；server-web-detail-pages
 // design D5）：768px 置中欄，頁標題接狀態籤、頁級動作為停權或重新啟用；其下卡片標頭分頁——概要、
@@ -44,11 +42,6 @@ import type { AdminCredentials, AdminProject, AdminUser } from "../../api/client
 type Confirm = { title: string; body: string; action: string; run: () => Promise<void> };
 
 const ROLES = ["editor", "reader"];
-
-/** The date portion of an ISO timestamp. */
-function fmtDate(iso: string | null, fallback: string): string {
-  return iso ? iso.slice(0, 10) : fallback;
-}
 
 function projectOption(p: AdminProject): string {
   return p.name === p.key ? p.key : `${p.name}（${p.key}）`;
@@ -63,24 +56,21 @@ export function UserDetailPage({
   users: AdminUser[];
   /** 列表目前呈現的項目（含搜尋與篩選）——‹ n / m › 的序列。 */
   sequence: AdminUser[];
-  projects: AdminProject[];
+  /** registry 的專案；還沒載入（或載入失敗）時為 null。 */
+  projects: AdminProject[] | null;
   reload: () => void;
 }) {
   const { t } = useI18n();
-  const navigate = useNavigate();
   const { id } = useParams();
   const user = users.find((u) => u.id === id);
   if (!user) {
     return (
-      <EmptyState
+      <DetailNotFound
         icon={UserX}
         title={t("users.notFoundTitle")}
-        description={t("users.notFoundBody")}
-        action={
-          <Button type="button" variant="outline" onClick={() => navigate("/admin/users")}>
-            {t("users.backToList")}
-          </Button>
-        }
+        body={t("users.notFoundBody")}
+        backLabel={t("users.backToList")}
+        backTo="/admin/users"
       />
     );
   }
@@ -97,7 +87,7 @@ function UserDetail({
   user: AdminUser;
   users: AdminUser[];
   sequence: AdminUser[];
-  projects: AdminProject[];
+  projects: AdminProject[] | null;
   reload: () => void;
 }) {
   const { t } = useI18n();
@@ -109,11 +99,39 @@ function UserDetail({
   const [busy, setBusy] = useState(false);
   const credentials = useAsync(() => client.getAdminCredentials(), [user.id]);
   // 撤銷後重讀期間留著上一份成功回應，分頁計數不閃掉（design D5）。
-  const [lastCredentials, setLastCredentials] = useState<AdminCredentials | null>(null);
-  if (credentials.data && credentials.data !== lastCredentials) setLastCredentials(credentials.data);
-  const shownCredentials = credentials.error == null ? (credentials.data ?? lastCredentials) : null;
-  const pats = shownCredentials?.pats.filter((p) => p.userId === user.id) ?? [];
-  const devices = shownCredentials?.deviceFamilies.filter((f) => f.userId === user.id) ?? [];
+  const shownCredentials = useLastData(credentials.data, credentials.error);
+  // 存取金鑰與裝置登入同一種列：名稱、說明、撤銷鈕（只在有效時）與撤銷籤。
+  const credentialRows = [
+    ...(shownCredentials?.pats ?? [])
+      .filter((p) => p.userId === user.id)
+      .map((p) => ({
+        key: `pat:${p.id}`,
+        label: p.name,
+        description: p.revokedAt
+          ? t("users.credKeyRevokedMeta")
+              .replace("{prefix}", p.prefix)
+              .replace("{date}", fmtDate(p.revokedAt, t("common.dash")))
+          : t("users.credKeyMeta")
+              .replace("{prefix}", p.prefix)
+              .replace("{expires}", fmtDate(p.expiresAt, t("common.forever")))
+              .replace("{lastUsed}", fmtDate(p.lastUsedAt, t("common.never"))),
+        revokedAt: p.revokedAt,
+        revokeLabel: t("credentials.revokeKey").replace("{name}", p.name),
+        revokeTitle: t("credentials.revokeKeyTitle").replace("{name}", p.name),
+        revoke: () => client.adminRevokeToken(p.id),
+      })),
+    ...(shownCredentials?.deviceFamilies ?? [])
+      .filter((f) => f.userId === user.id)
+      .map((f) => ({
+        key: `device:${f.id}`,
+        label: f.source,
+        description: t("users.credDeviceMeta").replace("{date}", fmtDate(f.lastRefreshAt, t("common.dash"))),
+        revokedAt: f.revokedAt,
+        revokeLabel: t("credentials.revokeDevice").replace("{name}", f.source),
+        revokeTitle: t("credentials.revokeDeviceTitle").replace("{name}", f.source),
+        revoke: () => client.adminRevokeFamily(f.id),
+      })),
+  ];
 
   const name = userLabel(user);
   const index = sequence.findIndex((u) => u.id === user.id);
@@ -196,160 +214,121 @@ function UserDetail({
         }
       />
 
-      <Tabs value={tab} onValueChange={setTab} className="flex flex-col">
-        <TabsList variant="card" className="overflow-x-auto">
-          <TabsTrigger value="summary">{t("users.tabSummary")}</TabsTrigger>
-          <TabsTrigger value="memberships" count={user.memberships.length}>
-            {t("users.tabMemberships")}
-          </TabsTrigger>
-          <TabsTrigger value="credentials" count={shownCredentials ? pats.length + devices.length : undefined}>
-            {t("users.tabCredentials")}
-          </TabsTrigger>
-          <TabsTrigger value="audit">{t("users.tabAudit")}</TabsTrigger>
-        </TabsList>
-        <Card className="rounded-t-none border-t-0">
-          <TabsContent value="summary" className="divide-y divide-border">
-            <SettingsRow
-              label={t("field.email")}
-              control={
-                <>
-                  <span className="font-mono text-[13px]">{user.email}</span>
-                  <CopyButton value={user.email} label={t("common.copyField").replace("{name}", t("field.email"))} />
-                </>
-              }
-            />
-            <SettingsRow
-              label={t("field.status")}
-              control={
-                <StatusPill tone={user.active ? "success" : "warning"}>
-                  {user.active ? t("common.active") : t("common.suspended")}
-                </StatusPill>
-              }
-            />
-            <SettingsRow
-              label={t("field.created")}
-              control={
-                <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                  {fmtDate(user.createdAt, t("common.dash"))}
-                </span>
-              }
-            />
-            <SettingsRow
-              label={t("users.roleAdmin")}
-              htmlFor={`admin-flag-${user.id}`}
-              description={t("users.adminHint")}
-              control={
-                <Switch
-                  id={`admin-flag-${user.id}`}
-                  // 按鈕的名稱 axe 只認 aria-*，不認 <label for>。
-                  aria-label={t("users.roleAdmin")}
-                  checked={user.admin}
-                  disabled={busy || (user.admin && !user.canRemoveAdmin)}
-                  onCheckedChange={(admin) => runNow(() => client.adminSetAdminFlag(user.id, admin))}
-                />
-              }
-            />
-          </TabsContent>
-
-          <TabsContent value="memberships" className="divide-y divide-border">
-            <Memberships
-              user={user}
-              projects={projects}
-              busy={busy}
-              onSet={(body) => runNow(() => client.adminSetMembership(user.id, body))}
-              onRemove={(projectKey, role) =>
-                setConfirm({
-                  title: t("users.removeMembershipTitle").replace("{name}", name).replace("{project}", projectKey),
-                  body: t("users.removeMembershipBody"),
-                  action: t("common.remove"),
-                  run: () => client.adminSetMembership(user.id, { projectKey, role, member: false }),
-                })
-              }
-            />
-          </TabsContent>
-
-          <TabsContent value="credentials" className="divide-y divide-border">
-            {!shownCredentials ? (
-              <div className="px-4 py-3">
-                {credentials.error != null ? <AdminError onRetry={credentials.reload} /> : <AdminLoading />}
-              </div>
-            ) : pats.length === 0 && devices.length === 0 ? (
-              <CardNote>{t("users.noCredentials")}</CardNote>
-            ) : (
+      <DetailTabs
+        value={tab}
+        onValueChange={setTab}
+        triggers={
+          <>
+            <TabsTrigger value="summary">{t("users.tabSummary")}</TabsTrigger>
+            <TabsTrigger value="memberships" count={user.memberships.length}>
+              {t("users.tabMemberships")}
+            </TabsTrigger>
+            <TabsTrigger value="credentials" count={shownCredentials ? credentialRows.length : undefined}>
+              {t("users.tabCredentials")}
+            </TabsTrigger>
+            <TabsTrigger value="audit">{t("users.tabAudit")}</TabsTrigger>
+          </>
+        }
+      >
+        <TabsContent value="summary" className="divide-y divide-border">
+          <SettingsRow
+            label={t("field.email")}
+            control={
               <>
-                {pats.map((p) => (
-                  <SettingsRow
-                    key={p.id}
-                    label={p.name}
-                    description={
-                      p.revokedAt
-                        ? t("users.credKeyRevokedMeta")
-                            .replace("{prefix}", p.prefix)
-                            .replace("{date}", fmtDate(p.revokedAt, t("common.dash")))
-                        : t("users.credKeyMeta")
-                            .replace("{prefix}", p.prefix)
-                            .replace("{expires}", fmtDate(p.expiresAt, t("common.forever")))
-                            .replace("{lastUsed}", fmtDate(p.lastUsedAt, t("common.never")))
-                    }
-                    control={
-                      <>
-                        {!p.revokedAt && (
-                          <RevokeButton
-                            label={t("credentials.revokeKey").replace("{name}", p.name)}
-                            disabled={busy}
-                            onClick={() =>
-                              setConfirm({
-                                title: t("credentials.revokeKeyTitle").replace("{name}", p.name),
-                                body: t("credentials.revokeBody"),
-                                action: t("common.revoke"),
-                                run: () => client.adminRevokeToken(p.id),
-                              })
-                            }
-                          />
-                        )}
-                        <RevocationPill revokedAt={p.revokedAt} />
-                      </>
-                    }
-                  />
-                ))}
-                {devices.map((f) => (
-                  <SettingsRow
-                    key={f.id}
-                    label={f.source}
-                    description={t("users.credDeviceMeta").replace(
-                      "{date}",
-                      fmtDate(f.lastRefreshAt, t("common.dash")),
-                    )}
-                    control={
-                      <>
-                        {!f.revokedAt && (
-                          <RevokeButton
-                            label={t("credentials.revokeDevice").replace("{name}", f.source)}
-                            disabled={busy}
-                            onClick={() =>
-                              setConfirm({
-                                title: t("credentials.revokeDeviceTitle").replace("{name}", f.source),
-                                body: t("credentials.revokeBody"),
-                                action: t("common.revoke"),
-                                run: () => client.adminRevokeFamily(f.id),
-                              })
-                            }
-                          />
-                        )}
-                        <RevocationPill revokedAt={f.revokedAt} />
-                      </>
-                    }
-                  />
-                ))}
+                <span className="font-mono text-[13px]">{user.email}</span>
+                <CopyButton value={user.email} label={t("common.copyField").replace("{name}", t("field.email"))} />
               </>
-            )}
-          </TabsContent>
+            }
+          />
+          <SettingsRow
+            label={t("field.status")}
+            control={
+              <StatusPill tone={user.active ? "success" : "warning"}>
+                {user.active ? t("common.active") : t("common.suspended")}
+              </StatusPill>
+            }
+          />
+          <SettingsRow
+            label={t("field.created")}
+            control={
+              <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                {fmtDate(user.createdAt, t("common.dash"))}
+              </span>
+            }
+          />
+          <SettingsRow
+            label={t("users.roleAdmin")}
+            htmlFor={`admin-flag-${user.id}`}
+            description={t("users.adminHint")}
+            control={
+              <Switch
+                id={`admin-flag-${user.id}`}
+                // 按鈕的名稱 axe 只認 aria-*，不認 <label for>。
+                aria-label={t("users.roleAdmin")}
+                checked={user.admin}
+                disabled={busy || (user.admin && !user.canRemoveAdmin)}
+                onCheckedChange={(admin) => runNow(() => client.adminSetAdminFlag(user.id, admin))}
+              />
+            }
+          />
+        </TabsContent>
 
-          <TabsContent value="audit" className="divide-y divide-border">
-            <UserAudit userId={user.id} users={users} />
-          </TabsContent>
-        </Card>
-      </Tabs>
+        <TabsContent value="memberships" className="divide-y divide-border">
+          <Memberships
+            user={user}
+            projects={projects}
+            busy={busy}
+            onSet={(body) => runNow(() => client.adminSetMembership(user.id, body))}
+            onRemove={(projectKey, role) =>
+              setConfirm({
+                title: t("users.removeMembershipTitle").replace("{name}", name).replace("{project}", projectKey),
+                body: t("users.removeMembershipBody"),
+                action: t("common.remove"),
+                run: () => client.adminSetMembership(user.id, { projectKey, role, member: false }),
+              })
+            }
+          />
+        </TabsContent>
+
+        <TabsContent value="credentials" className="divide-y divide-border">
+          {!shownCredentials ? (
+            <AdminCardState error={credentials.error} onRetry={credentials.reload} />
+          ) : credentialRows.length === 0 ? (
+            <CardNote>{t("users.noCredentials")}</CardNote>
+          ) : (
+            credentialRows.map((row) => (
+              <SettingsRow
+                key={row.key}
+                label={row.label}
+                description={row.description}
+                control={
+                  <>
+                    {!row.revokedAt && (
+                      <RevokeButton
+                        label={row.revokeLabel}
+                        disabled={busy}
+                        onClick={() =>
+                          setConfirm({
+                            title: row.revokeTitle,
+                            body: t("credentials.revokeBody"),
+                            action: t("common.revoke"),
+                            run: row.revoke,
+                          })
+                        }
+                      />
+                    )}
+                    <RevocationPill revokedAt={row.revokedAt} />
+                  </>
+                }
+              />
+            ))
+          )}
+        </TabsContent>
+
+        <TabsContent value="audit" className="divide-y divide-border">
+          <UserAudit userId={user.id} users={users} />
+        </TabsContent>
+      </DetailTabs>
 
       <ConfirmDialog
         open={confirm !== null}
@@ -384,6 +363,10 @@ function ControlRow({
   );
 }
 
+const ROLE_OPTIONS = ROLES.map((value) => ({ value, label: value }));
+
+type SetMembership = (body: { projectKey: string; role: string; member: boolean }) => void;
+
 // 成員資格：每列就地改角色（伺服器的成員資格寫入是 upsert）、移除先確認；末列加入專案——專案來自
 // registry 且只列尚未加入的，角色為伺服器的固定集合，皆不開放自由輸入。
 function Memberships({
@@ -394,23 +377,18 @@ function Memberships({
   onRemove,
 }: {
   user: AdminUser;
-  projects: AdminProject[];
+  projects: AdminProject[] | null;
   busy: boolean;
-  onSet: (body: { projectKey: string; role: string; member: boolean }) => void;
+  onSet: SetMembership;
   onRemove: (projectKey: string, role: string) => void;
 }) {
   const { t } = useI18n();
-  const [projectKey, setProjectKey] = useState("");
-  const [role, setRole] = useState("editor");
-  const joined = new Set(user.memberships.map((m) => m.projectKey));
-  const available = projects.filter((p) => !joined.has(p.key));
-  const roleOptions = ROLES.map((value) => ({ value, label: value }));
 
   return (
     <>
       {user.memberships.length === 0 && <CardNote>{t("users.noMemberships")}</CardNote>}
       {user.memberships.map((m) => {
-        const projectName = projects.find((p) => p.key === m.projectKey)?.name;
+        const projectName = projects?.find((p) => p.key === m.projectKey)?.name;
         return (
           <ControlRow
             key={m.projectKey}
@@ -419,7 +397,7 @@ function Memberships({
           >
             <SettingsChoice
               value={m.role}
-              options={roleOptions}
+              options={ROLE_OPTIONS}
               ariaLabel={t("users.roleFor").replace("{project}", m.projectKey)}
               disabled={busy}
               onChange={(next) => onSet({ projectKey: m.projectKey, role: next, member: true })}
@@ -438,36 +416,62 @@ function Memberships({
           </ControlRow>
         );
       })}
-      <ControlRow label={t("users.addProjectTitle")} description={t("users.addProjectHint")}>
-        {/* 未選時以 placeholder 呈現，而非一個空值選項——Radix Select 的 item 不接受空字串。 */}
-        <Select value={projectKey} onValueChange={setProjectKey} disabled={available.length === 0}>
-          <SelectTrigger aria-label={t("users.addProjectPick")} className="w-auto min-w-40 text-[13px]">
-            <SelectValue placeholder={t(available.length === 0 ? "users.allProjectsJoined" : "users.pickProject")} />
-          </SelectTrigger>
-          <SelectContent>
-            {available.map((p) => (
-              <SelectItem key={p.key} value={p.key}>
-                {projectOption(p)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <SettingsChoice value={role} options={roleOptions} ariaLabel={t("users.addProjectRole")} onChange={setRole} />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={busy || !projectKey}
-          onClick={() => {
-            onSet({ projectKey, role, member: true });
-            setProjectKey("");
-            setRole("editor");
-          }}
-        >
-          {t("common.add")}
-        </Button>
-      </ControlRow>
+      {/* 以使用者為 key：‹ › 換人時選到一半的專案與角色清空，不會套到下一位身上。 */}
+      <AddMembership key={user.id} user={user} projects={projects} busy={busy} onSet={onSet} />
     </>
+  );
+}
+
+/** 末列「加入專案」：只列尚未加入的專案；專案清單還沒載入時不宣稱「已加入全部專案」。 */
+function AddMembership({
+  user,
+  projects,
+  busy,
+  onSet,
+}: {
+  user: AdminUser;
+  projects: AdminProject[] | null;
+  busy: boolean;
+  onSet: SetMembership;
+}) {
+  const { t } = useI18n();
+  const [projectKey, setProjectKey] = useState("");
+  const [role, setRole] = useState("editor");
+  const joined = new Set(user.memberships.map((m) => m.projectKey));
+  const available = (projects ?? []).filter((p) => !joined.has(p.key));
+  const placeholder =
+    projects === null ? "users.projectsNotLoaded" : available.length === 0 ? "users.allProjectsJoined" : "users.pickProject";
+
+  return (
+    <ControlRow label={t("users.addProjectTitle")} description={t("users.addProjectHint")}>
+      {/* 未選時以 placeholder 呈現，而非一個空值選項——Radix Select 的 item 不接受空字串。 */}
+      <Select value={projectKey} onValueChange={setProjectKey} disabled={available.length === 0}>
+        <SelectTrigger aria-label={t("users.addProjectPick")} className="w-auto min-w-40 text-[13px]">
+          <SelectValue placeholder={t(placeholder)} />
+        </SelectTrigger>
+        <SelectContent>
+          {available.map((p) => (
+            <SelectItem key={p.key} value={p.key}>
+              {projectOption(p)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <SettingsChoice value={role} options={ROLE_OPTIONS} ariaLabel={t("users.addProjectRole")} onChange={setRole} />
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={busy || !projectKey}
+        onClick={() => {
+          onSet({ projectKey, role, member: true });
+          setProjectKey("");
+          setRole("editor");
+        }}
+      >
+        {t("common.add")}
+      </Button>
+    </ControlRow>
   );
 }
 
@@ -476,9 +480,7 @@ function UserAudit({ userId, users }: { userId: string; users: AdminUser[] }) {
   const { t } = useI18n();
   const client = useClient();
   const { loading, data, error, reload } = useAsync(() => client.getAdminAudit(), [userId]);
-  if (loading || error != null) {
-    return <div className="px-4 py-3">{loading ? <AdminLoading /> : <AdminError onRetry={reload} />}</div>;
-  }
+  if (loading || error != null) return <AdminCardState error={error} onRetry={reload} />;
   const entries = data?.entries.filter((e) => e.actorId === userId || e.subject === userId) ?? [];
   if (entries.length === 0) return <CardNote>{t("users.noAudit")}</CardNote>;
   return (

@@ -1,11 +1,10 @@
 import { useState, type FormEvent } from "react";
-import { Navigate, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Mail, UserPlus, X } from "lucide-react";
 import {
   Button,
   ConfirmDialog,
   EmptyState,
-  Label,
   ListCard,
   ListPager,
   ListRow,
@@ -15,6 +14,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SettingsRow,
   StatusPill,
   Switch,
   Tabs,
@@ -27,18 +27,25 @@ import {
   PageHeader,
 } from "@speclink/ui";
 import { useClient } from "../../app/context";
-import { useAsync } from "../../lib/useAsync";
+import { useAsync, useLastData } from "../../lib/useAsync";
 import { useListScroll } from "../../lib/useListScroll";
 import { useNarrow } from "../../lib/useMediaQuery";
 import { userLabel } from "../../lib/userLabel";
-import { readFormError } from "../../lib/formError";
+import { fmtDate } from "../../lib/fmtDate";
 import { Field } from "../../components/Field";
-import { FormDialog, FormDialogFooter, SecretDone } from "../../components/FormDialog";
+import {
+  FormDialog,
+  FormDialogActions,
+  FormMessage,
+  SecretDone,
+  useDialogSubmit,
+} from "../../components/FormDialog";
 import { FilterSelect } from "../../components/FilterSelect";
 import { NoMatchState } from "../../components/NoMatchState";
+import { SectionRoutes } from "./detail";
 import { AdminError, AdminLoading } from "./states";
 import { UserDetailPage } from "./UserDetailPage";
-import type { AdminPendingInvitation, AdminProject, AdminUser, AdminUsers } from "../../api/client";
+import type { AdminPendingInvitation, AdminProject, AdminUser } from "../../api/client";
 
 // 使用者區段（server-web-console「管理列表以詳情頁與對話框承載檢視與建立」「使用者頁呈現尚未接受的
 // 邀請」；server-web-list-pages design D2–D4；server-web-detail-pages design D1）：`/admin/users` 是
@@ -53,11 +60,6 @@ type Confirm = { title: string; body: string; action: string; run: () => Promise
 /** 邀請對話框的專案挑選器固定停在這個值；它對不到任何選項，所以 trigger 顯示 placeholder。 */
 const PICKER = "__picker__";
 
-/** The date portion of an ISO timestamp. */
-function fmtDate(iso: string | null, fallback = "—"): string {
-  return iso ? iso.slice(0, 10) : fallback;
-}
-
 export function UsersSection() {
   const { t } = useI18n();
   const client = useClient();
@@ -66,12 +68,10 @@ export function UsersSection() {
   const { data: fresh, error, reload } = useAsync(() => client.getAdminUsers(), []);
   // useAsync 重抓時會先清空 data：留著上一份成功回應繼續渲染，詳情頁的變更（改角色、撤銷）
   // 重載時詳情頁才不會卸載重掛、跳回第一個分頁（design D1）。只有第一次載入顯示載入中。
-  const [last, setLast] = useState<AdminUsers | null>(null);
-  if (fresh && fresh !== last) setLast(fresh);
-  const data = error == null ? (fresh ?? last) : null;
-  // 成員資格的專案選項來自 registry（專案代號為封閉集合，不開放自由輸入）。
+  const data = useLastData(fresh, error);
+  // 成員資格的專案選項來自 registry（專案代號為封閉集合，不開放自由輸入）；還沒載入時為 null。
   const registry = useAsync(() => client.getAdminRegistry(), []);
-  const projects = registry.data?.projects ?? [];
+  const projects = registry.data?.projects ?? null;
   const [searchParams, setSearchParams] = useSearchParams();
   // 其他值或缺席都是使用者分頁。
   const tab = searchParams.get("tab") === "pending" ? "pending" : "users";
@@ -248,22 +248,14 @@ export function UsersSection() {
   );
 
   return (
-    <Routes>
-      <Route index element={list} />
-      <Route
-        path=":id"
-        element={
-          data ? (
-            <UserDetailPage users={data.users} sequence={visible} projects={projects} reload={reload} />
-          ) : error != null ? (
-            <AdminError onRetry={reload} />
-          ) : (
-            <AdminLoading />
-          )
-        }
-      />
-      <Route path="*" element={<Navigate to="/admin/users" replace />} />
-    </Routes>
+    <SectionRoutes
+      base="/admin/users"
+      param="id"
+      list={list}
+      detail={data && <UserDetailPage users={data.users} sequence={visible} projects={projects} reload={reload} />}
+      error={error}
+      onRetry={reload}
+    />
   );
 }
 
@@ -349,7 +341,11 @@ function PendingRow({
       }
       title={i.email}
       description={meta}
-      meta={<span className="tabular-nums">{t("users.pendingExpires").replace("{date}", fmtDate(i.expiresAt))}</span>}
+      meta={
+        <span className="tabular-nums">
+          {t("users.pendingExpires").replace("{date}", fmtDate(i.expiresAt, t("common.dash")))}
+        </span>
+      }
       actions={
         <Button
           type="button"
@@ -374,7 +370,8 @@ function InviteDialog({
   onClose,
   onCreated,
 }: {
-  projects: AdminProject[];
+  /** registry 的專案；還沒載入（或載入失敗）時為 null。 */
+  projects: AdminProject[] | null;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -384,28 +381,16 @@ function InviteDialog({
   const [display, setDisplay] = useState("");
   const [memberships, setMemberships] = useState<string[]>([]);
   const [admin, setAdmin] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [token, setToken] = useState<string | null>(null);
+  const { pending, message, fieldErrors, submit } = useDialogSubmit(t("users.inviteError"));
 
-  async function onSubmit(event: FormEvent) {
+  function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (pending) return;
-    setPending(true);
-    setMessage(null);
-    setFieldErrors({});
-    try {
+    void submit(async () => {
       const created = await client.adminInvite({ email, display, memberships, admin });
       setToken(created.token);
       onCreated();
-    } catch (error) {
-      const read = readFormError(error, t("users.inviteError"));
-      setMessage(read.message);
-      setFieldErrors(read.fieldErrors);
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   if (token) {
@@ -454,8 +439,10 @@ function InviteDialog({
           <legend className="text-sm font-medium">{t("users.inviteJoinProjects")}</legend>
           {/* 以下拉挑選再逐一移除，而不是每個專案一列勾選框：專案數量會成長，一整欄
               勾選框在十來個專案之後就不可用了。已選的專案不再出現在可選項裡。 */}
-          {projects.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t("users.inviteNoProjects")}</p>
+          {projects === null || projects.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {t(projects === null ? "users.projectsNotLoaded" : "users.inviteNoProjects")}
+            </p>
           ) : (
             <>
               {/* 純挑選器，不持有選中值：value 固定綁在一個對不到任何選項的哨符上，
@@ -504,30 +491,24 @@ function InviteDialog({
             </p>
           )}
         </fieldset>
-        {/* 管理員開關與使用者詳情頁的同一列畫法。 */}
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <Label htmlFor="invite-admin" className="text-sm font-normal">
-              {t("users.roleAdmin")}
-            </Label>
-            <p className="m-0 text-xs text-muted-foreground">{t("users.adminHint")}</p>
-          </div>
-          {/* 按鈕的名稱 axe 只認 aria-*，不認 <label for>。 */}
-          <Switch id="invite-admin" aria-label={t("users.roleAdmin")} checked={admin} onCheckedChange={setAdmin} />
+        {/* 管理員開關與使用者詳情頁同一個設定型列，框起來與上方的已選專案清單同一種外框。 */}
+        <div className="rounded-xl border border-border">
+          <SettingsRow
+            label={t("users.roleAdmin")}
+            htmlFor="invite-admin"
+            description={t("users.adminHint")}
+            control={
+              // 按鈕的名稱 axe 只認 aria-*，不認 <label for>。
+              <Switch id="invite-admin" aria-label={t("users.roleAdmin")} checked={admin} onCheckedChange={setAdmin} />
+            }
+          />
         </div>
-        {message && Object.keys(fieldErrors).length === 0 && (
-          <p role="alert" className="text-sm text-destructive">
-            {message}
-          </p>
-        )}
-        <FormDialogFooter>
-          <Button type="button" variant="ghost" onClick={onClose}>
-            {t("common.cancel")}
-          </Button>
-          <Button type="submit" disabled={pending}>
-            {pending ? t("common.submitting") : t("users.inviteSubmit")}
-          </Button>
-        </FormDialogFooter>
+        <FormMessage message={message} fieldErrors={fieldErrors} />
+        <FormDialogActions
+          submitLabel={pending ? t("common.submitting") : t("users.inviteSubmit")}
+          pending={pending}
+          onCancel={onClose}
+        />
       </form>
     </FormDialog>
   );

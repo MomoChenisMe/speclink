@@ -11,7 +11,7 @@ const tabsListVariants = cva("flex w-full items-center", {
     variant: {
       /** 整列底線：預設。各頁版面尚未把內容放進卡片時用這款，不畫外框。 */
       underline: "border-b border-border",
-      /** 卡片標頭：作為內容卡的頂部，內容卡以 rounded-t-none border-t-0 接在下方。 */
+      /** 卡片標頭：作為內容卡的頂部，內容卡以 Card 的 attached="top" 接在下方。 */
       card: "px-2 bg-card border border-border rounded-t-2xl",
       /** 膠囊切換：頁標題右側的小型兩段切換（專案說明的「編輯／預覽」）。 */
       segmented: "w-auto h-7 rounded-lg bg-muted p-0.5",

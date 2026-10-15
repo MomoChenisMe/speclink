@@ -103,6 +103,14 @@ describe("建立專案對話框", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  // spec：對話框為 15px 標題加灰字說明（與其他建立類對話框同款）。
+  it("對話框標題下有灰字說明", async () => {
+    const { dialog } = await openCreate();
+    const describedBy = dialog.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy ?? "")?.textContent).toContain("代號建立後不可變更");
+  });
+
   it("輸入代號後點遮罩不關閉、代號仍在；按 Esc 關閉", async () => {
     const { user, dialog } = await openCreate();
     await user.type(within(dialog).getByLabelText("專案代號"), "ops");
