@@ -1,0 +1,96 @@
+{
+  "version": 2,
+  "change": "config-skill-rule-routing",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 【Red】政策確認表與第五問的失敗測試（requirement「技能規定政策欄位一次確認現值」「技能規定任務驗證測試範圍的第五問」「技能規定 diff 先行與收斂驗收」；設計「render 測試的改法」）：在 crates/engine/speclink-core/tests/it/render_golden.rs 新增 `config_skill_confirms_policy_in_one_table`，以 `skill_for_both_tools` 對 claude 與 codex 斷言 `## Step 3` 內含七個政策項目（`locale`、`spec_locale`、`tdd`、`audit`、`worktree`、測試範圍、審查規則模式）且各帶未設定時的預設值、只問一題「keep everything, or change some」、選要改才逐項問被點名的項目、項目多於單題上限或互動工具不可用時改純文字、`speclink workflow-config set worktree` 的 `--dry-run` 用法與「關閉被拒時轉告、不自行收尾 worktree」；並斷言 `## Step 5` 為 diff 與寫入、`## Step 6` 為收斂驗收。改寫 `config_skill_asks_the_test_scope_question`：第五問小節的結束邊界改為 `### The sixth question`，needle 改為確認表帶出現值、沿用現值不動測試範圍 rule 的新字面，保留「Never infer it from the repo」「dependency manifests you already read in Step 1」「write no test-scope rule at all」「ruling to withdraw」，守則錨點改為新守則字面。驗證：`cargo test -p speclink-core --test it config_skill` 中這兩支紅燈，其餘 config_skill 測試仍綠",
+      "files": [
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 【Green】依設計「技能分成六步，提醒分流獨立成一步」與「政策確認表的七個項目與預設值標示」改寫 crates/engine/speclink-core/assets/skills/config.md：開頭說明段的政策欄位清單納入 `worktree`；Step 3 改為確認表＋一題確認＋純文字退路，保留 `### The fifth question` 與 `### The sixth question` 兩小節說明被點名時的問法與落地；原 Step 3 尾端的審查規則接收內容整段移到新的 `## Step 4`（內容由 2.2 改寫）；原 Step 4、Step 5 改為 Step 5、Step 6，Step 5 的指令清單補 `speclink workflow-config set worktree <true|false> --dry-run` 與寫入會同步技能檔、關閉被拒時轉告的說明；Step 2 與判準四中指向舊步驟編號的參照改為新編號。完成後渲染出的技能檔以一張表確認政策、不再逐題問六題。驗證：1.1 兩支轉綠；`cargo test -p speclink-core --test it config_skill` 全綠（判準一、判準四、刪除理由、scope hint 四支既有測試不改即綠）",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/config.md"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 依設計「技能版號升一個 minor，與 review-ticket-applied-rules 依序進行」：先以 `speclink plan --json` 確認 review-ticket-applied-rules 不在進行中（它若已合併，以合併後 main 的版號為底）；把 crates/engine/speclink-core/src/workspace/init.rs 的 `ASSET_VERSION` 升一個 minor；在 `git status` 只含本 change 原稿與版號改動的乾淨樹上，以 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 再生 crates/engine/speclink-core/tests/golden 下六份快照（claude、claude-worktree、codex、copilot、neutral-cli、neutral-tool-call），再以 `UPDATE_ASSETS_LOCK=1 cargo test -p speclink-core --test it render_golden::` 再生 assets.lock。完成後快照的 diff 只含 speclink-config 區段與版號行。驗證：不帶環境變數重跑 `cargo test -p speclink-core --test it` 全綠",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "4.1 文件對應新問法：docs/configuration.md 與 docs/configuration.zh-TW.md 描述內建 `speclink-config` 技能的段落，改寫為「政策欄位（含 worktree）以一張表確認、只問要不要改；審查規則是選用的，可選不設定、附加或覆蓋；可以交給它一份提醒清單（貼上或檔案路徑），它逐條判斷放進審查規則、產出規則或不收，並說明理由；審查規則只收你給的、不從程式碼推導」，兩份內容對應。驗證：兩份段落內容一致（人工比對），`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠",
+      "files": [
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M4XB25Z1A5DXH8FYMSD5VBFK",
+      "taskDesc": "1.1 【Red】政策確認表與第五問的失敗測試（requirement「技能規定政策欄位一次確認現值」「技能規定任務驗證測試範圍的第五問」「技能規定 diff 先行與收斂驗收」；設計「render 測試的改法」）：在 crates/engine/speclink-core/tests/it/render_golden.rs 新增 `config_skill_confirms_policy_in_one_table`，以 `skill_for_both_tools` 對 claude 與 codex 斷言 `## Step 3` 內含七個政策項目（`locale`、`spec_locale`、`tdd`、`audit`、`worktree`、測試範圍、審查規則模式）且各帶未設定時的預設值、只問一題「keep everything, or change some」、選要改才逐項問被點名的項目、項目多於單題上限或互動工具不可用時改純文字、`speclink workflow-config set worktree` 的 `--dry-run` 用法與「關閉被拒時轉告、不自行收尾 worktree」；並斷言 `## Step 5` 為 diff 與寫入、`## Step 6` 為收斂驗收。改寫 `config_skill_asks_the_test_scope_question`：第五問小節的結束邊界改為 `### The sixth question`，needle 改為確認表帶出現值、沿用現值不動測試範圍 rule 的新字面，保留「Never infer it from the repo」「dependency manifests you already read in Step 1」「write no test-scope rule at all」「ruling to withdraw」，守則錨點改為新守則字面。驗證：`cargo test -p speclink-core --test it config_skill` 中這兩支紅燈，其餘 config_skill 測試仍綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "36a4ad0759ada1446464d9f0e8f5e5c82c9211e4",
+      "touchedFiles": [
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ],
+      "recordedAt": "2026-10-15T02:34:50Z"
+    },
+    {
+      "taskId": "tsk_01M4XB25Z1T7N7XJJCC4TGFEZR",
+      "taskDesc": "1.2 【Green】依設計「技能分成六步，提醒分流獨立成一步」與「政策確認表的七個項目與預設值標示」改寫 crates/engine/speclink-core/assets/skills/config.md：開頭說明段的政策欄位清單納入 `worktree`；Step 3 改為確認表＋一題確認＋純文字退路，保留 `### The fifth question` 與 `### The sixth question` 兩小節說明被點名時的問法與落地；原 Step 3 尾端的審查規則接收內容整段移到新的 `## Step 4`（內容由 2.2 改寫）；原 Step 4、Step 5 改為 Step 5、Step 6，Step 5 的指令清單補 `speclink workflow-config set worktree <true|false> --dry-run` 與寫入會同步技能檔、關閉被拒時轉告的說明；Step 2 與判準四中指向舊步驟編號的參照改為新編號。完成後渲染出的技能檔以一張表確認政策、不再逐題問六題。驗證：1.1 兩支轉綠；`cargo test -p speclink-core --test it config_skill` 全綠（判準一、判準四、刪除理由、scope hint 四支既有測試不改即綠）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "36a4ad0759ada1446464d9f0e8f5e5c82c9211e4",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/config.md"
+      ],
+      "recordedAt": "2026-10-15T02:35:48Z"
+    },
+    {
+      "taskId": "tsk_01M4XB25Z1G24J77W7Z2BY37XB",
+      "taskDesc": "3.1 依設計「技能版號升一個 minor，與 review-ticket-applied-rules 依序進行」：先以 `speclink plan --json` 確認 review-ticket-applied-rules 不在進行中（它若已合併，以合併後 main 的版號為底）；把 crates/engine/speclink-core/src/workspace/init.rs 的 `ASSET_VERSION` 升一個 minor；在 `git status` 只含本 change 原稿與版號改動的乾淨樹上，以 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 再生 crates/engine/speclink-core/tests/golden 下六份快照（claude、claude-worktree、codex、copilot、neutral-cli、neutral-tool-call），再以 `UPDATE_ASSETS_LOCK=1 cargo test -p speclink-core --test it render_golden::` 再生 assets.lock。完成後快照的 diff 只含 speclink-config 區段與版號行。驗證：不帶環境變數重跑 `cargo test -p speclink-core --test it` 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "36a4ad0759ada1446464d9f0e8f5e5c82c9211e4",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ],
+      "recordedAt": "2026-10-15T02:38:56Z"
+    },
+    {
+      "taskId": "tsk_01M4XB25Z1MEY639BKTEMG81J6",
+      "taskDesc": "4.1 文件對應新問法：docs/configuration.md 與 docs/configuration.zh-TW.md 描述內建 `speclink-config` 技能的段落，改寫為「政策欄位（含 worktree）以一張表確認、只問要不要改；審查規則是選用的，可選不設定、附加或覆蓋；可以交給它一份提醒清單（貼上或檔案路徑），它逐條判斷放進審查規則、產出規則或不收，並說明理由；審查規則只收你給的、不從程式碼推導」，兩份內容對應。驗證：兩份段落內容一致（人工比對），`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "36a4ad0759ada1446464d9f0e8f5e5c82c9211e4",
+      "touchedFiles": [
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md"
+      ],
+      "recordedAt": "2026-10-15T02:39:41Z"
+    }
+  ]
+}

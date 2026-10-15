@@ -108,7 +108,7 @@ cat CONTEXT.md | speclink workflow-config context --stdin
 - `speclink schema init <name> --default`：建立一個新的自訂 schema，並設成專案預設。
 - 桌面 app「專案設定」的 Schema 分頁。
 
-桌面 app 的「專案設定」改的是同一份檔案，規則也相同。內建技能 `speclink-config` 會從程式碼整理出 `context` 與 `rules`，先給你看差異，你同意後才寫入。審查規則的預設清單模式它會直接問你；審查規則只收你口述的，不從程式碼推導。
+桌面 app 的「專案設定」改的是同一份檔案，規則也相同。內建技能 `speclink-config` 會從程式碼整理出 `context` 與 `rules`，先給你看差異，你同意後才寫入。政策欄位（含 `worktree`）它會用一張表列出現值，只問你要不要改。審查規則是選用的：可以不設定、附加在內建檢查之後（`extend`），或取代內建檢查（`replace`）。你可以交給它一份提醒清單（貼上或給檔案路徑），它會逐條判斷要放進審查規則、某個 artifact 的產出規則（`rules`），還是不收，並說明理由。審查規則只收你給的，不從程式碼推導。
 
 審查關卡要套用 `review` 區塊，需要這個版本以後的 CLI 與技能檔；升級後請執行 `speclink update`。舊版 CLI 會略過這個區塊。
 
