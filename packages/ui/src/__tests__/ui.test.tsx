@@ -149,6 +149,12 @@ describe("原語扁平化：button／card／badge／tabs", () => {
     expect(cls).not.toContain("rounded-2xl");
   });
 
+  it("card attached=top 變體去上圓角與上框線，接在卡片標頭分頁列下方", () => {
+    render(<Card attached="top" data-testid="card" />);
+    const cls = classes(screen.getByTestId("card"));
+    expect(cls).toEqual(expect.arrayContaining(["rounded-t-none", "border-t-0"]));
+  });
+
   it("card interactive 變體 hover 框變深、底微灰", () => {
     render(<Card interactive data-testid="card" />);
     const hover = classes(screen.getByTestId("card")).filter((c) => c.startsWith("hover:"));

@@ -54,3 +54,13 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]): AsyncState<T
 
   return { ...state, reload };
 }
+
+/**
+ * 留著最近一次成功的回應：`useAsync` 重抓時會先清空 data，畫面若照著清空就會退回載入中、把裡面
+ * 開著的對話框或分頁一起卸掉。這裡在重抓期間回傳上一份；出錯時回 null，讓呼叫端呈現錯誤。
+ */
+export function useLastData<T>(fresh: T | null, error: unknown): T | null {
+  const [last, setLast] = useState<T | null>(null);
+  if (fresh && fresh !== last) setLast(fresh);
+  return error == null ? (fresh ?? last) : null;
+}

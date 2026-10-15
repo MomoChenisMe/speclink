@@ -137,6 +137,25 @@ describe("頂列：麵包屑與 ‹ n / m ›", () => {
     expect(currentLocation()).toBe("/admin/users");
     expect((screen.getByRole("textbox", { name: "搜尋" }) as HTMLInputElement).value).toBe("ops.");
   });
+
+  it("以鍵盤連按 ‹ ›：焦點留在按鈕上，不跳回頁標題", async () => {
+    const client = makeAdminClient({ getAdminUsers: vi.fn(async () => ({ users: makeUsers(3), pending: [] })) });
+    renderWithLocation(["/admin/users/u1"], client);
+    const user = userEvent.setup();
+    await screen.findByRole("heading", { level: 1, name: "User 1" });
+    const next = screen.getByRole("button", { name: "下一個" });
+    next.focus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("heading", { level: 1, name: "User 2" })).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "下一個" }));
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("heading", { level: 1, name: "User 3" })).toBeTruthy();
+  });
+
+  it("從列表進入詳情頁時焦點移到頁標題", async () => {
+    await openMember();
+    expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Member" }));
+  });
 });
 
 describe("頁級動作與概要", () => {
@@ -172,8 +191,14 @@ describe("頁級動作與概要", () => {
 });
 
 describe("成員資格分頁", () => {
-  it("角色下拉改為 reader 立即送出，重載後仍停在成員資格分頁", async () => {
-    const client = makeAdminClient();
+  it("角色下拉改為 reader 立即送出，重載後仍停在成員資格分頁、該列顯示 reader", async () => {
+    const asReader = {
+      ...USERS,
+      users: [USERS.users[0], { ...USERS.users[1], memberships: [{ projectKey: "demo", role: "reader" }] }],
+    };
+    const client = makeAdminClient({
+      getAdminUsers: vi.fn().mockResolvedValueOnce(USERS).mockResolvedValue(asReader),
+    });
     const user = await openMember(client);
     await user.click(tab(/^成員資格/));
     await user.click(screen.getByRole("combobox", { name: "demo 的角色" }));
@@ -187,11 +212,15 @@ describe("成員資格分頁", () => {
     );
     await waitFor(() => expect(client.getAdminUsers).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(tab(/^成員資格/).getAttribute("aria-selected")).toBe("true"));
+    expect(screen.getByRole("combobox", { name: "demo 的角色" }).textContent).toContain("reader");
     expect(screen.queryByRole("button", { name: /儲存/ })).toBeNull();
   });
 
-  it("移除鈕滑過才出現；按下先確認並指名使用者與專案，取消不送出、確認才送出", async () => {
-    const client = makeAdminClient();
+  it("移除鈕滑過才出現；按下先確認並指名使用者與專案，取消不送出、確認才送出；重載後該列消失、計數減一", async () => {
+    const removed = { ...USERS, users: [USERS.users[0], { ...USERS.users[1], memberships: [] }] };
+    const client = makeAdminClient({
+      getAdminUsers: vi.fn().mockResolvedValueOnce(USERS).mockResolvedValue(removed),
+    });
     const user = await openMember(client);
     await user.click(tab(/^成員資格/));
     const remove = screen.getByRole("button", { name: "移除 Member 在 demo 的成員資格" });
@@ -215,6 +244,9 @@ describe("成員資格分頁", () => {
         member: false,
       }),
     );
+    await waitFor(() => expect(screen.queryByRole("combobox", { name: "demo 的角色" })).toBeNull());
+    expect(tabCount(/^成員資格/)).toBe("0");
+    expect(screen.getByText("尚未加入任何專案。")).toBeTruthy();
   });
 
   it("「加入專案」列的專案下拉只列尚未加入的專案，選好後按加入送出", async () => {
@@ -238,6 +270,37 @@ describe("成員資格分頁", () => {
         member: true,
       }),
     );
+  });
+  it("加入列選好專案後按 ‹ › 換人：選擇清空，不會替對方改掉既有角色", async () => {
+    const registry = { projects: [...REGISTRY.projects, { key: "ops", name: "Ops", repos: [] }] };
+    const users = {
+      ...USERS,
+      users: [
+        { ...USERS.users[0], memberships: [{ projectKey: "ops", role: "reader" }] },
+        USERS.users[1],
+      ],
+    };
+    const client = makeAdminClient({
+      getAdminRegistry: vi.fn(async () => registry),
+      getAdminUsers: vi.fn(async () => users),
+    });
+    const user = await openMember(client);
+    await user.click(tab(/^成員資格/));
+    await user.click(screen.getByRole("combobox", { name: "要加入的專案" }));
+    await user.click(await screen.findByRole("option", { name: "Ops（ops）" }));
+    expect((screen.getByRole("button", { name: "加入" }) as HTMLButtonElement).disabled).toBe(false);
+    await user.click(screen.getByRole("button", { name: "上一個" }));
+    await screen.findByRole("heading", { level: 1, name: "Admin" });
+    expect((screen.getByRole("button", { name: "加入" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("專案清單還沒載入時，加入列不說「已加入全部專案」", async () => {
+    const client = makeAdminClient({ getAdminRegistry: vi.fn(() => new Promise(() => {})) });
+    const user = await openMember(client);
+    await user.click(tab(/^成員資格/));
+    const picker = screen.getByRole("combobox", { name: "要加入的專案" });
+    expect(picker.textContent).not.toContain("已加入全部專案");
+    expect(picker.textContent).toContain("專案清單還沒載入");
   });
 });
 

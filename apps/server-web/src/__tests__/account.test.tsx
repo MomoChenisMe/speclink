@@ -213,6 +213,32 @@ describe("帳號自助頁", () => {
     expect(within(keys).getByRole("group", { name: "ci" })).toBeTruthy();
   });
 
+  it("建立成功後重讀帳號較慢：明文留在對話框內，頁面不退回載入中", async () => {
+    let finish: (value: typeof ACCOUNT) => void = () => {};
+    const client = makeClient({
+      getAccount: vi
+        .fn()
+        .mockResolvedValueOnce(ACCOUNT)
+        .mockImplementationOnce(() => new Promise((resolve) => (finish = resolve))),
+      createPat: vi.fn(async () => ({ pat: ACCOUNT.pats[0], plaintext: "slk_ci_SECRETPLAINTEXT" })),
+    });
+    renderAt("/account", client);
+    const user = userEvent.setup();
+    await screen.findByRole("region", { name: "存取金鑰" });
+    await user.click(screen.getByRole("button", { name: /建立存取金鑰/ }));
+    const dialog = await screen.findByRole("alertdialog", { name: "建立存取金鑰" });
+    await user.type(within(dialog).getByLabelText("名稱"), "ci");
+    await user.click(within(dialog).getByRole("button", { name: "建立" }));
+
+    const done = await screen.findByRole("alertdialog", { name: "金鑰已建立" });
+    await waitFor(() => expect(client.getAccount).toHaveBeenCalledTimes(2));
+    expect(within(done).getByText("slk_ci_SECRETPLAINTEXT")).toBeTruthy();
+    expect(screen.queryByText("載入中…")).toBeNull();
+    finish(ACCOUNT);
+    await waitFor(() => expect(screen.getByText("slk_ci_SECRETPLAINTEXT")).toBeTruthy());
+    expect(screen.getByRole("alertdialog", { name: "金鑰已建立" })).toBeTruthy();
+  });
+
   it("送出失敗時對話框保持開啟、保留名稱，錯誤以 role=alert 緊貼欄位", async () => {
     const client = makeClient({
       createPat: vi.fn(async () => {
