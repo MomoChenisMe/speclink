@@ -40,13 +40,14 @@ README 的畫面一覽從 2×2 改為 3×2，依序為變更詳情、手冊、�
 
 ### D2 示範專案加一張未結審查工單
 
-`createDemoWorkspace` 在建立已就緒變更 `add-keyboard-shortcuts` 之後，用 CLI 為它開一張審查工單：
+`createDemoWorkspace` 用 CLI 為已就緒變更 `add-keyboard-shortcuts` 開一張審查工單。審查範圍由變更的 evidence（`task done` 記下的檔案）推出，所以步驟要配合 evidence 的記錄時機：
 
-1. 在示範 repo 加一個與該變更任務對應的小檔案並 commit，讓審查範圍有內容。
-2. 執行 `review prepare`、`review scope`，再以 `review add-round` 寫入第一輪。
-3. 第一輪有 2 條 finding：1 條 WARNING、1 條 SUGGESTION，內容為虛構，路徑在凍結的範圍內。
+1. `init` 之後先 commit 一次。不 commit 的話，每個變更的 evidence 都會記到 `.speclink.yaml`，審查範圍會跨變更撞名而解析不出來。
+2. 在標記進行中之前執行 `review prepare`。基準取得太晚時，`review scope` 會要求明確的 `--base`。
+3. 在 `task done` 之前寫入一個與該變更任務對應的小檔案，讓它記進 evidence。
+4. 任務全部勾完後執行 `review scope`，再以 `review add-round` 寫入第一輪。第一輪有 2 條 finding：1 條 WARNING、1 條 SUGGESTION，內容為虛構，路徑在凍結的範圍內。
 
-工單不蓋章，所以桌面詳情頁的文件樹會多一個「審查」節點，外掛的品質分頁也會列出它。示範定義以 `DEMO_REVIEW` 常數匯出，讓單元測試檢查它的結構。如果引擎在空範圍時拒絕 add-round，就由第 1 步的 commit 提供範圍。
+工單不蓋章，所以桌面詳情頁的文件樹會多一個「審查」節點，外掛的品質分頁也會列出它。示範定義以 `DEMO_REVIEW` 常數匯出，讓單元測試檢查它的結構。
 
 ### D3 系統匣面板的拍法
 
@@ -60,10 +61,11 @@ README 的畫面一覽從 2×2 改為 3×2，依序為變更詳情、手冊、�
 
 ### D4 Claude Code 截圖的拍法與隱私
 
-- **終端機**：用 macOS 內建 Terminal 開一個新視窗，固定欄列數。只擷取這個視窗。Warp 會顯示使用者其他分頁的標題，所以不用 Warp。
-- **示範專案**：用 `TMPDIR=/tmp` 執行建立函式，讓專案路徑是 `/tmp/acme-web`，不含使用者帳號名稱。
+- **終端機**：用 macOS 內建 Terminal 開一個新視窗，固定欄列數。只擷取這個視窗。Warp 會顯示使用者其他分頁的標題，所以不用 Warp。Terminal 的標題列會顯示帳號名稱與完整指令列，AppleScript 關不掉這兩段，所以擷取後裁掉標題列。`#` 選單那張只取下方的選單、技能列與輸入框，在兩欄表格裡才看得清楚。
+- **乾淨的環境**：啟動腳本先清掉所有 `CLAUDE*` 環境變數。Terminal 由拍攝用的 session 開啟時會繼承這些變數，新 session 會因此關閉對話記錄並顯示警告。
+- **示範專案**：Claude Code 的標頭會顯示專案路徑，所以用建立函式把示範專案建在 `/Users/Shared/acme-web`。這個路徑不含使用者帳號名稱，也不是家目錄或系統暫存目錄（`/tmp` 是系統暫存目錄，規格不允許）。
 - **只開 speclink-skills**：用 `claude --settings <scratchpad 內的 JSON>` 覆寫：把使用者自己的其他外掛設為停用、清空 statusLine、開啟 fullscreen tui。外掛 language 依輪次設為 `en` 或 `zh-TW`。如果覆寫關不掉某個外掛，就先停下來問使用者，由使用者決定要不要暫時停用。
-- **不送出提示**：只用 `/speclink-panel` 開面板、點分頁、在輸入框打 `#`，從不按 Enter 送出提示。截圖後用 Ctrl+C 結束 session。`/speclink-panel` 是外掛指令，不會呼叫模型。
+- **不送出提示**：點技能列的面板鈕開面板、點分頁，在輸入框打 `/speclink-apply #` 並按 ↓ 選取第一項，從不按 Enter 送出提示。computer-use 對終端機只能點擊、不能打字，所以打字這一步由使用者在拍攝時代為輸入。截圖後以結束訊號關閉 session。
 - **隱私檢查**：沿用上一輪的 OCR 檢查與 PNG 文字區塊清理，另外搜尋 Claude Code 可能顯示的帳號信箱、組織名稱與用量字樣。
 
 ### D5 先修再拍
@@ -102,6 +104,6 @@ README 的畫面一覽從 2×2 改為 3×2，依序為變更詳情、手冊、�
 
 - [`--settings` 覆寫不一定能停用已安裝的外掛] → 先在 scratchpad 試；不行就請使用者在 `/plugin` 暫時停用，拍完再開回來。
 - [Claude Code 版本更新讓畫面變動] → 截圖反映拍攝當下的版本；外掛 README 已註明測試版本。
-- [審查工單讓已就緒變更多一個「審查」節點，改變其他截圖] → 已就緒變更只出現在看板卡片上，看板截圖不重拍；卡片若因工單多出圖示，接受這個差異，或在拍看板之前不開工單（擇一，在 apply 時依實際畫面決定並記錄）。
+- [審查工單讓已就緒變更多一個「審查」節點，改變其他截圖] → 已就緒變更只出現在看板卡片上，看板截圖不重拍。apply 時的實際畫面：看板卡片與系統匣的已就緒列都多一個審查圖示；決定接受這個差異，工單照常建立，下次重拍看板時會一起入鏡。
 - [回歸對照] → 不動 CLI 與引擎，只有文件守門測試與 `docs-screenshots.test.mjs` 是回歸面。
 - [跨平台] → 截圖腳本只支援 macOS，屬既有限制；守門測試在 Windows CI 照常跑。
