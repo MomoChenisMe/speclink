@@ -1,0 +1,26 @@
+schema: spec-driven
+created: 2026-10-15
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+started_at: 2026-10-15
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-15
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 4
+reviewed_scope:
+  - path: crates/host/speclink-server/src/web/assets.rs
+    hash: 3251ada149a80b0e8e037f97deb82be2aef6dd668bfb9740c25a9a0f78b2c020
+  - path: crates/host/speclink-server/tests/it/web/assets.rs
+    hash: 8e60206a4f53c29c40aea9f0562a0b2cf3a66b4c50516826d324eace3a74a624
+verified_at: 2026-10-15
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 4
+verified_scope:
+  - path: crates/host/speclink-server/src/web/assets.rs
+    hash: 3251ada149a80b0e8e037f97deb82be2aef6dd668bfb9740c25a9a0f78b2c020
+  - path: crates/host/speclink-server/tests/it/web/assets.rs
+    hash: 8e60206a4f53c29c40aea9f0562a0b2cf3a66b4c50516826d324eace3a74a624
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-15

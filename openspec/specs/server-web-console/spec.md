@@ -188,7 +188,7 @@ code:
 ---
 ### Requirement: SPA 資產與 fallback 具可驗證的安全邊界
 
-Production SPA SHALL 以 compile-time asset embedding 進入 `speclink-server` binary，runtime SHALL NOT 依賴相鄰 `dist`、Node、CDN 或外部字型服務。`/assets/*` SHALL 只回傳 build manifest 內的資產與正確 MIME；內容雜湊資產 SHALL 回 `Cache-Control: public, max-age=31536000, immutable`，SPA shell SHALL 回 `Cache-Control: no-cache` 與 self-only Content Security Policy。SPA fallback SHALL 僅匹配已定義 browser GET route；未知 browser path、asset、`/api/*`、`/auth/*`、health、readiness 與下載 route SHALL NOT 回傳 `index.html`。
+Production SPA SHALL 以 compile-time asset embedding 進入 `speclink-server` binary，runtime SHALL NOT 依賴相鄰 `dist`、Node、CDN 或外部字型服務。`/assets/*` SHALL 只回傳 build manifest 內的資產與正確 MIME；內容雜湊資產 SHALL 回 `Cache-Control: public, max-age=31536000, immutable`，SPA shell SHALL 回 `Cache-Control: no-cache` 與 self-only Content Security Policy。SPA fallback SHALL 僅匹配已定義 browser GET route，其中包含管理列表的詳情頁 `/admin/users/<使用者 id>` 與 `/admin/registry/<專案代號>`（列表路徑之後恰好一段非空的路徑片段）；未知 browser path、asset、`/api/*`、`/auth/*`、health、readiness 與下載 route SHALL NOT 回傳 `index.html`。
 
 #### Scenario: 無外部靜態檔仍可載入 SPA
 
@@ -205,108 +205,20 @@ Production SPA SHALL 以 compile-time asset embedding 進入 `speclink-server` b
 - **WHEN** browser GET `/assets/missing.js`
 - **THEN** Server 回 404，回應內容不是 SPA index
 
+#### Scenario: 詳情頁直接開啟與重新整理回傳 SPA shell
+
+- **WHEN** browser 直接 GET `/admin/users/<任一使用者 id>` 或 `/admin/registry/<任一專案代號>`（例如在詳情頁按重新整理，或開啟別人分享的詳情頁連結）
+- **THEN** Server 回 200 與 SPA index，由 SPA 依網址呈現該筆詳情頁或其「找不到」狀態；Server SHALL NOT 回 JSON 404
+
+#### Scenario: 詳情頁以外的多段或空片段路徑不回 shell
+
+- **WHEN** browser GET `/admin/users/a/b`、`/admin/users/` 或 `/admin/changes`
+- **THEN** Server 回 404，回應內容不是 SPA index
+
 
 <!-- @trace
-source: web-service-navigation-redesign
-updated: 2026-07-25
-code:
-  - .dockerignore
-  - .github/workflows/ci.yml
-  - .github/workflows/release.yml
-  - Cargo.lock
-  - apps/desktop/src/index.css
-  - apps/server-web/index.html
-  - apps/server-web/package.json
-  - apps/server-web/src/App.tsx
-  - apps/server-web/src/__tests__/a11y.test.tsx
-  - apps/server-web/src/__tests__/account.test.tsx
-  - apps/server-web/src/__tests__/activate.test.tsx
-  - apps/server-web/src/__tests__/admin.test.tsx
-  - apps/server-web/src/__tests__/app.test.tsx
-  - apps/server-web/src/__tests__/build.test.ts
-  - apps/server-web/src/__tests__/invite.test.tsx
-  - apps/server-web/src/__tests__/setup.test.tsx
-  - apps/server-web/src/api/client.ts
-  - apps/server-web/src/app/context.tsx
-  - apps/server-web/src/assets/logo-mark.png
-  - apps/server-web/src/assets/speclink-wordmark.png
-  - apps/server-web/src/components/AdminNav.tsx
-  - apps/server-web/src/components/Field.tsx
-  - apps/server-web/src/components/LogoutButton.tsx
-  - apps/server-web/src/components/RouteErrorBoundary.tsx
-  - apps/server-web/src/components/SkipLink.tsx
-  - apps/server-web/src/components/Wordmark.tsx
-  - apps/server-web/src/index.css
-  - apps/server-web/src/layouts/AccountLayout.tsx
-  - apps/server-web/src/layouts/AdminLayout.tsx
-  - apps/server-web/src/layouts/FocusLayout.tsx
-  - apps/server-web/src/lib/formError.ts
-  - apps/server-web/src/lib/returnTo.ts
-  - apps/server-web/src/lib/useAsync.ts
-  - apps/server-web/src/lib/useFocusMain.ts
-  - apps/server-web/src/lib/useMediaQuery.ts
-  - apps/server-web/src/main.tsx
-  - apps/server-web/src/pages/AccountPage.tsx
-  - apps/server-web/src/pages/ActivatePage.tsx
-  - apps/server-web/src/pages/InvitePage.tsx
-  - apps/server-web/src/pages/LoginPage.tsx
-  - apps/server-web/src/pages/SetupPage.tsx
-  - apps/server-web/src/pages/admin/AdminSection.tsx
-  - apps/server-web/src/pages/admin/AuditPage.tsx
-  - apps/server-web/src/pages/admin/CredentialsPage.tsx
-  - apps/server-web/src/pages/admin/DataPage.tsx
-  - apps/server-web/src/pages/admin/OverviewPage.tsx
-  - apps/server-web/src/pages/admin/RegistryPage.tsx
-  - apps/server-web/src/pages/admin/SystemPage.tsx
-  - apps/server-web/src/pages/admin/UsersPage.tsx
-  - apps/server-web/src/pages/admin/states.tsx
-  - apps/server-web/src/pages/admin/stubs.tsx
-  - apps/server-web/src/routes/AppRoutes.tsx
-  - apps/server-web/src/vite-env.d.ts
-  - apps/server-web/tsconfig.json
-  - apps/server-web/vite.config.ts
-  - apps/server-web/vitest.config.ts
-  - apps/server-web/vitest.setup.ts
-  - crates/speclink-server/Cargo.toml
-  - crates/speclink-server/Dockerfile
-  - crates/speclink-server/src/admin.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/assets.rs
-  - crates/speclink-server/src/lib.rs
-  - crates/speclink-server/src/setup.rs
-  - crates/speclink-server/src/web.rs
-  - crates/speclink-server/tests/admin_api.rs
-  - crates/speclink-server/tests/admin_data.rs
-  - crates/speclink-server/tests/admin_e2e.rs
-  - crates/speclink-server/tests/admin_pages.rs
-  - crates/speclink-server/tests/admin_system.rs
-  - crates/speclink-server/tests/admin_three_entry.rs
-  - crates/speclink-server/tests/admin_web_api.rs
-  - crates/speclink-server/tests/backup_e2e.rs
-  - crates/speclink-server/tests/device_e2e.rs
-  - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/phase2_chain.rs
-  - crates/speclink-server/tests/setup_flow.rs
-  - crates/speclink-server/tests/web_account.rs
-  - crates/speclink-server/tests/web_activate.rs
-  - crates/speclink-server/tests/web_assets.rs
-  - crates/speclink-server/tests/web_device_sessions.rs
-  - crates/speclink-server/tests/web_invite.rs
-  - crates/speclink-server/tests/web_session.rs
-  - crates/speclink-server/tests/web_setup.rs
-  - docs/remote-getting-started.md
-  - docs/remote-getting-started.zh-TW.md
-  - docs/server-deployment.zh-TW.md
-  - package-lock.json
-  - package.json
-  - packages/ui/src/__tests__/table.test.tsx
-  - packages/ui/src/__tests__/theme.test.ts
-  - packages/ui/src/components/ui/label.tsx
-  - packages/ui/src/components/ui/table.tsx
-  - packages/ui/src/index.ts
-  - packages/ui/src/theme.css
-  - scripts/delivery-gate.test.mjs
-  - scripts/remote-docs.test.mjs
+source: fix-console-detail-deep-link
+updated: 2026-10-15T15:58:26+08:00
 -->
 
 ---
