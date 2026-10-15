@@ -599,7 +599,7 @@ updated: 2026-10-14T17:14:35+08:00
 ---
 ### Requirement: 首次進入提供可略過的分步導覽
 
-管理員首次開啟管理面時，SPA SHALL 自動啟動分步導覽。每一步 SHALL 指向畫面上實際存在的元素並附一句說明其用途，說明卡片 SHALL 依該元素的位置擺放且 SHALL NOT 遮住它，且 SHALL 提供前往下一步、返回上一步與略過整個導覽的動作。導覽走完或被略過後 SHALL 記錄為已檢視，之後開啟管理面 SHALL NOT 再自動啟動；介面 SHALL 保留重新啟動導覽的入口。導覽 SHALL NOT 讀寫任何管理資料，SHALL NOT 阻擋鍵盤離開，且某一步的目標元素不存在時 SHALL 跳過該步而非中斷導覽。
+管理員首次開啟管理面時，SPA SHALL 自動啟動分步導覽。每一步 SHALL 指向畫面上實際存在的元素並附一句說明其用途；說明描述的互動方式（例如在詳情頁編輯、在置中對話框建立）SHALL 與畫面上實際的互動方式一致，SHALL NOT 提及已不存在的介面，說明卡片 SHALL 依該元素的位置擺放且 SHALL NOT 遮住它，且 SHALL 提供前往下一步、返回上一步與略過整個導覽的動作。導覽走完或被略過後 SHALL 記錄為已檢視，之後開啟管理面 SHALL NOT 再自動啟動；介面 SHALL 保留重新啟動導覽的入口。導覽 SHALL NOT 讀寫任何管理資料，SHALL NOT 阻擋鍵盤離開，且某一步的目標元素不存在時 SHALL 跳過該步而非中斷導覽。
 
 #### Scenario: 首次進入自動啟動
 
@@ -616,95 +616,15 @@ updated: 2026-10-14T17:14:35+08:00
 - **WHEN** 導覽的某一步指向當前角色或版面下不存在的元素
 - **THEN** 導覽跳過該步繼續進行，不呈現空的高亮框也不中斷
 
+#### Scenario: 導覽說明符合現行的列表互動
+
+- **WHEN** 管理員在任一介面語言走到「使用者」與「建立」兩步
+- **THEN** 說明描述點使用者那一列進入詳情頁編輯、這一頁的主要動作開啟置中的對話框，且兩種語言的全部導覽說明都不出現右側面板、滑出、抽屜或 drawer 等已不存在的介面
+
+
 <!-- @trace
-source: admin-console-redesign
-updated: 2026-07-26
-code:
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/projectSettingsView.test.tsx
-  - apps/desktop/src/i18n/locale.ts
-  - apps/desktop/src/views/ProjectSettingsView.tsx
-  - apps/desktop/vitest.setup.ts
-  - apps/server-web/src/App.tsx
-  - apps/server-web/src/__tests__/a11y.test.tsx
-  - apps/server-web/src/__tests__/account.test.tsx
-  - apps/server-web/src/__tests__/admin-console-shell.test.tsx
-  - apps/server-web/src/__tests__/admin.test.tsx
-  - apps/server-web/src/__tests__/app.test.tsx
-  - apps/server-web/src/__tests__/audit.test.tsx
-  - apps/server-web/src/__tests__/credentials.test.tsx
-  - apps/server-web/src/__tests__/helpers/adminHarness.tsx
-  - apps/server-web/src/__tests__/i18n.test.tsx
-  - apps/server-web/src/__tests__/overview.test.tsx
-  - apps/server-web/src/__tests__/reducedMotion.test.ts
-  - apps/server-web/src/__tests__/registry.test.tsx
-  - apps/server-web/src/__tests__/setup.test.tsx
-  - apps/server-web/src/__tests__/system.test.tsx
-  - apps/server-web/src/__tests__/toolbar.test.tsx
-  - apps/server-web/src/__tests__/tour.test.tsx
-  - apps/server-web/src/__tests__/users.test.tsx
-  - apps/server-web/src/__tests__/wording.test.tsx
-  - apps/server-web/src/api/client.ts
-  - apps/server-web/src/components/AdminNav.tsx
-  - apps/server-web/src/components/CopyButton.tsx
-  - apps/server-web/src/components/DataList.tsx
-  - apps/server-web/src/components/DetailSheet.tsx
-  - apps/server-web/src/components/EmptyState.tsx
-  - apps/server-web/src/components/HeaderAccount.tsx
-  - apps/server-web/src/components/ListToolbar.tsx
-  - apps/server-web/src/components/LocaleSwitch.tsx
-  - apps/server-web/src/components/LogoutButton.tsx
-  - apps/server-web/src/components/RouteErrorBoundary.tsx
-  - apps/server-web/src/components/SkipLink.tsx
-  - apps/server-web/src/components/Tour.tsx
-  - apps/server-web/src/i18n/LocaleContext.tsx
-  - apps/server-web/src/i18n/messages.ts
-  - apps/server-web/src/index.css
-  - apps/server-web/src/layouts/AccountLayout.tsx
-  - apps/server-web/src/layouts/AdminLayout.tsx
-  - apps/server-web/src/layouts/ConsoleLayout.tsx
-  - apps/server-web/src/lib/tourSeen.ts
-  - apps/server-web/src/pages/AccountPage.tsx
-  - apps/server-web/src/pages/ActivatePage.tsx
-  - apps/server-web/src/pages/InvitePage.tsx
-  - apps/server-web/src/pages/LoginPage.tsx
-  - apps/server-web/src/pages/SetupPage.tsx
-  - apps/server-web/src/pages/admin/AdminSection.tsx
-  - apps/server-web/src/pages/admin/AuditPage.tsx
-  - apps/server-web/src/pages/admin/CredentialsPage.tsx
-  - apps/server-web/src/pages/admin/DataPage.tsx
-  - apps/server-web/src/pages/admin/OverviewPage.tsx
-  - apps/server-web/src/pages/admin/RegistryPage.tsx
-  - apps/server-web/src/pages/admin/SystemPage.tsx
-  - apps/server-web/src/pages/admin/UsersPage.tsx
-  - apps/server-web/src/pages/admin/states.tsx
-  - apps/server-web/src/routes/AppRoutes.tsx
-  - apps/server-web/vitest.setup.ts
-  - crates/speclink-server/src/admin.rs
-  - crates/speclink-server/src/assets.rs
-  - crates/speclink-server/src/audit.rs
-  - crates/speclink-server/src/identity.rs
-  - crates/speclink-server/src/identity_sqlite.rs
-  - crates/speclink-server/tests/admin_audit_filter.rs
-  - crates/speclink-server/tests/admin_overview_view.rs
-  - crates/speclink-server/tests/admin_system_view.rs
-  - crates/speclink-server/tests/admin_users_view.rs
-  - crates/speclink-server/tests/admin_web_api.rs
-  - package-lock.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/boardSearchBar.test.tsx
-  - packages/ui/src/__tests__/select.test.tsx
-  - packages/ui/src/__tests__/selectInSheet.test.tsx
-  - packages/ui/src/__tests__/theme.test.ts
-  - packages/ui/src/components/BoardSearchBar.tsx
-  - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/components/ui/portal-container.tsx
-  - packages/ui/src/components/ui/select.tsx
-  - packages/ui/src/components/ui/sheet.tsx
-  - packages/ui/src/index.ts
-  - packages/ui/src/locale.ts
-  - packages/ui/vitest.config.ts
-  - packages/ui/vitest.setup.ts
+source: fix-console-tour-hints
+updated: 2026-10-15T16:19:21+08:00
 -->
 
 ---
