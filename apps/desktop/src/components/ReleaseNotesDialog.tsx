@@ -2,7 +2,8 @@
 // whatsNew（版號變更後首次啟動自動彈出，標題「X.Y.Z 更新內容」、主鈕「知道了」）與
 // browse（設定頁按鈕開啟，標題「更新日誌」、列出全部條目、主鈕「關閉」）。看過即止的
 // 記錄由 App 層在 onOpenChange 決定，這裡只呈現（MigrationDialog 先例）。browse 模式可帶
-// focusVersion：開啟後把該版捲到捲動區頂端（desktop-about-page design D8）。
+// focusVersion：開啟後把該版捲到捲動區頂端（desktop-about-page design D8）。條目、分組標題與
+// 版號小標依介面語言呈現（spec「更新日誌依介面語言呈現」），切換語言即重繪。
 import { useCallback } from "react";
 import {
   AlertDialog,
@@ -13,7 +14,7 @@ import {
   useI18n,
 } from "@speclink/ui";
 
-import type { ReleaseNotesEntry } from "../release-notes/release-notes";
+import { entryText, type ReleaseNotesEntry } from "../release-notes/release-notes";
 
 export interface ReleaseNotesDialogProps {
   open: boolean;
@@ -25,7 +26,7 @@ export interface ReleaseNotesDialogProps {
 }
 
 export function ReleaseNotesDialog({ open, mode, entries, focusVersion, onOpenChange }: ReleaseNotesDialogProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   // callback ref：Radix 的 Portal 在開啟後下一輪才掛上內容，effect 那時還拿不到節點；捲動區
   // 掛上（每次開啟）時才找該版並捲到頂端。
   const listRef = useCallback(
@@ -64,16 +65,16 @@ export function ReleaseNotesDialog({ open, mode, entries, focusVersion, onOpenCh
             entries.map((entry) => (
               <section key={entry.version} data-version={entry.version} className="flex flex-col gap-3">
                 <h3 className="m-0 text-sm font-semibold">
-                  {entry.version}（{entry.date}）
+                  {t("releaseNotes.versionHeading").replace("{version}", entry.version).replace("{date}", entry.date)}
                 </h3>
                 {entry.sections.map((section) => (
-                  <div key={section.title} className="flex flex-col gap-1">
+                  <div key={section.kind} className="flex flex-col gap-1">
                     <h4 className="m-0 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      {section.title}
+                      {t(`releaseNotes.kind.${section.kind}`)}
                     </h4>
                     <ul className="m-0 list-disc pl-5 text-sm leading-6">
                       {section.items.map((item, index) => (
-                        <li key={index}>{item}</li>
+                        <li key={index}>{entryText(item, locale)}</li>
                       ))}
                     </ul>
                   </div>

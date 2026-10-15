@@ -1,6 +1,6 @@
 ---
 name: release
-description: "執行即發版——在乾淨的 main 上守門、判定版號、把 commit 策展成白話更新日誌、寫檔、commit、附註 tag 並 push，push 前停一次讓使用者點頭。使用者說「發版」「發布新版本」「release」「壓 tag」「出 0.x.y」時使用。這是本 repo 自用的技能，不是 speclink 產品技能。"
+description: "執行即發版——在乾淨的 main 上守門、判定版號、把 commit 策展成白話的中英雙語更新日誌、寫檔、commit、附註 tag 並 push，push 前停一次讓使用者點頭。使用者說「發版」「發布新版本」「release」「壓 tag」「出 0.x.y」時使用。這是本 repo 自用的技能，不是 speclink 產品技能。"
 ---
 
 # /release — 執行即發版
@@ -66,11 +66,12 @@ description: "執行即發版——在乾淨的 main 上守門、判定版號、
 
 ## 4. 更新日誌策展
 
-把範圍內的 commit 改寫成**使用者語氣的繁體中文條目**，分三組：
+把範圍內的 commit 改寫成**使用者語氣的中英雙語條目**：每一條同時寫英文（`en`）與繁體中文（`zh-TW`），
+兩種寫法描述同一件事，不多不少。分三組（JSON 的 `kind`，標題由渲染端依語言決定）：
 
-- **新功能**：feat
-- **修正**：fix、perf
-- **改善**：其餘有保留價值者（例：面向使用者的改名、流程調整、相容層移除）
+- **features**（New features／新功能）：feat
+- **fixes**（Fixes／修正）：fix、perf
+- **improvements**（Improvements／改善）：其餘有保留價值者（例：面向使用者的改名、流程調整、相容層移除）
 
 策展規則：
 
@@ -80,22 +81,28 @@ description: "執行即發版——在乾淨的 main 上守門、判定版號、
 2. **不屬於任何變更的 feat／fix／perf 逐筆改寫**成一條。
 3. **雜訊不進**：`chore`、`test`、`refactor`、`docs`、`ci`、`build`、`style` 一律不出現在條目中
    （純內部重構的封存變更也不進）。
-4. **使用者語氣、不照抄主旨**：寫「使用者會看到什麼／能做什麼」，不寫「修了哪個函式」。
-   每條一句話，句尾句號。
-5. **技術名詞保留原文**：CLI、worktree、Tauri、slug、capability、server、npm 等直接寫，不硬翻。
-6. **詞彙**：使用者可見文案遵守 `openspec/LANGUAGE.md`（例：「變更」不寫 change、「產出流程」不寫 schema、
-   「更新日誌」不寫 changelog）。
-7. 沒有條目的分組不寫。
+4. **使用者語氣、不照抄主旨**：兩種語言都寫「使用者會看到什麼／能做什麼」，不寫「修了哪個函式」。
+5. **繁中寫法**：每條一句話，句尾句號；使用者可見文案遵守 `openspec/LANGUAGE.md` 的正典詞彙
+   （例：「變更」不寫 change、「產出流程」不寫 schema、「更新日誌」不寫 changelog）。
+6. **英文寫法**：簡化技術英文——一句一事、主動語態、只用簡單式，不用完成式（寫 `plan now shows …`，
+   不寫 `plan has shown …`）。
+7. **技術名詞保留原文**：兩種語言都直接寫 CLI、worktree、Tauri、slug、capability、server、npm 等，不硬翻。
+8. 沒有條目的分組不寫；不能只寫一種語言——兩種都寫齊才算一條。
 
 ## 5. 停一次
 
 寫任何檔之前，呈現：
 
 - 建議版號與理由（決定等級的 commit）
-- 三組日誌草稿（markdown 條目）
+- 分組的雙語日誌草稿：每個分組下每一條列兩行，英文一行、繁中一行，例：
+  ```
+  ### features（New features／新功能）
+  - en: `speclink plan` now shows the archive order.
+    zh-TW: `speclink plan` 會標出封存順序。
+  ```
 - 將被改動的檔案清單（見第 6 節）
 
-用 AskUserQuestion 等使用者點頭。使用者要改條目文字或版號時，改完**重新呈現**再問一次；
+用 AskUserQuestion 等使用者點頭。使用者要改任一語言的條目文字或版號時，改完**重新呈現**整份雙語草稿再問一次；
 點頭之前工作樹零改動。
 
 ## 6. 寫檔（順序固定，任一步失敗即停在該步）
@@ -103,20 +110,22 @@ description: "執行即發版——在乾淨的 main 上守門、判定版號、
 設 `VERSION` 為點頭的版號、`DATE` 為當天（`YYYY-MM-DD`）：
 
 1. **更新日誌 JSON**：`apps/desktop/src/release-notes/release-notes.json` 頂端 prepend
-   `{ "version": VERSION, "date": DATE, "sections": [...] }`（title 只用「新功能」「修正」「改善」；
+   `{ "version": VERSION, "date": DATE, "sections": [{ "kind": "features", "items": [{ "en": "…", "zh-TW": "…" }] }] }`
+   （`kind` 只用 `features`、`fixes`、`improvements` 並依此順序；每個條目的 `en` 與 `zh-TW` 都是非空字串；
    空分組不寫；維持兩空格縮排與檔尾換行）。
 2. **workspace Cargo.toml**：`[workspace.package]` 的 `version = "VERSION"`。
 3. **tauri.conf.json**：`apps/desktop/src-tauri/tauri.conf.json` 的 `version`。
 4. **刷 Cargo.lock**：`cargo metadata --format-version 1 > /dev/null`。
-5. **產 CHANGELOG.md**：`node scripts/release/release-notes-render.mjs --write`。
+5. **產 CHANGELOG.md 與 CHANGELOG.zh-TW.md**：`node scripts/release/release-notes-render.mjs --write`
+   （一次寫出英文 `CHANGELOG.md` 與繁中 `CHANGELOG.zh-TW.md`）。
 6. **測試與比對**：
    ```bash
    node --test scripts/release/release-notes-render.test.mjs scripts/release/release-notes.test.mjs
-   node scripts/release/release-notes-render.mjs --check
+   node scripts/release/release-notes-render.mjs --check   # 兩份更新日誌都比對
    ```
 
 任一步失敗：印出失敗的步驟與原因，**不 commit**；已改的檔留在工作樹供使用者檢視，並提示
-`git checkout -- . && git clean -f CHANGELOG.md` 可整批還原（CHANGELOG.md 已存在時只需前半句）。
+`git checkout -- . && git clean -f CHANGELOG.md CHANGELOG.zh-TW.md` 可整批還原（兩份更新日誌已存在時只需前半句）。
 
 ## 7. 提交、附註 tag、原子 push
 
@@ -124,7 +133,7 @@ description: "執行即發版——在乾淨的 main 上守門、判定版號、
 
 ```bash
 git add apps/desktop/src/release-notes/release-notes.json Cargo.toml Cargo.lock \
-  apps/desktop/src-tauri/tauri.conf.json CHANGELOG.md
+  apps/desktop/src-tauri/tauri.conf.json CHANGELOG.md CHANGELOG.zh-TW.md
 git commit -m "chore(release): 版號升至 VERSION"
 git tag -a "vVERSION" -m "vVERSION"
 git push --atomic origin main "vVERSION"

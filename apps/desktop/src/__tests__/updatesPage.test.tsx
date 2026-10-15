@@ -1,8 +1,8 @@
-// 更新頁（desktop-settings-mode design D6；spec「桌面自動更新」「更新日誌彈窗」）。
+// 更新頁（desktop-settings-mode design D6；spec「桌面自動更新」「更新日誌彈窗」「更新日誌依介面語言呈現」）。
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render as rtlRender, screen, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
-import { I18nProvider } from "@speclink/ui";
+import { I18nProvider, type UiLocale } from "@speclink/ui";
 
 import { UpdatesPage } from "../views/settings/UpdatesPage";
 import type { AppSettingsUpdaterProps } from "../views/AppSettingsView";
@@ -16,6 +16,15 @@ const zhWrapper = ({ children }: { children: ReactNode }) => (
   </I18nProvider>
 );
 const render = (ui: ReactElement) => rtlRender(ui, { wrapper: zhWrapper });
+const inLocale = (locale: UiLocale, ui: ReactElement) => (
+  <I18nProvider locale={locale} messages={APP_MESSAGES}>
+    {ui}
+  </I18nProvider>
+);
+const KIND_LABELS = {
+  "zh-TW": { features: "新功能", fixes: "修正", improvements: "改善" },
+  en: { features: "New features", fixes: "Fixes", improvements: "Improvements" },
+} as const;
 
 function updaterProps(state: UpdaterState, over: Partial<AppSettingsUpdaterProps> = {}): AppSettingsUpdaterProps {
   return {
@@ -95,15 +104,45 @@ describe("UpdatesPage", () => {
     expect(first.textContent).toContain(latest.version);
     expect(first.textContent).toContain(latest.date);
     for (const section of latest.sections) {
-      expect(within(first).getByText(section.title)).toBeTruthy();
-      expect(first.textContent).toContain(section.items[0]);
+      expect(within(first).getByText(KIND_LABELS["zh-TW"][section.kind])).toBeTruthy();
+      expect(first.textContent).toContain(section.items[0]["zh-TW"]);
     }
+    // 舊版本列的摘要是該版首條的繁中文字。
+    expect(within(card).getAllByRole("group")[1].textContent).toContain(older[0].sections[0].items[0]["zh-TW"]);
     const views = within(card).getAllByRole("button", { name: "檢視" });
     expect(views).toHaveLength(older.length);
     // 舊版本列的「檢視」帶該列版號（開啟後捲到該版）；「全部更新日誌」不帶版號（自頂端呈現）。
     fireEvent.click(views[0]);
     fireEvent.click(within(card).getByRole("button", { name: "全部更新日誌" }));
     expect(onShowReleaseNotes.mock.calls).toEqual([[older[0].version], []]);
+  });
+
+  it("英文介面的更新日誌卡：最新版本展開英文分組標題與英文條目，舊版本列摘要為英文首條", () => {
+    rtlRender(inLocale("en", <UpdatesPage updater={updaterProps({ phase: "idle" })} />));
+    const card = screen.getByRole("region", { name: "Changelog" });
+    const [latest, ...older] = RELEASE_NOTES;
+    const [first, second] = within(card).getAllByRole("group");
+    for (const section of latest.sections) {
+      expect(within(first).getByText(KIND_LABELS.en[section.kind])).toBeTruthy();
+      for (const item of section.items) {
+        expect(first.textContent).toContain(item.en);
+        expect(first.textContent).not.toContain(item["zh-TW"]);
+      }
+    }
+    expect(second.textContent).toContain(older[0].sections[0].items[0].en);
+    expect(second.textContent).not.toContain(older[0].sections[0].items[0]["zh-TW"]);
+  });
+
+  it("切換介面語言後，更新日誌卡改以新語言呈現", () => {
+    const page = <UpdatesPage updater={updaterProps({ phase: "idle" })} />;
+    const { rerender } = rtlRender(inLocale("zh-TW", page));
+    const top = RELEASE_NOTES[0].sections[0];
+    expect(screen.getByRole("region", { name: "更新日誌" }).textContent).toContain(top.items[0]["zh-TW"]);
+    rerender(inLocale("en", page));
+    const card = screen.getByRole("region", { name: "Changelog" });
+    expect(card.textContent).toContain(top.items[0].en);
+    expect(within(card).getAllByText(KIND_LABELS.en[top.kind]).length).toBeGreaterThan(0);
+    expect(card.textContent).not.toContain(top.items[0]["zh-TW"]);
   });
 
   it("自動檢查卡：開關反映偏好、切換回呼 onAutoCheckChange", () => {

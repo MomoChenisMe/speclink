@@ -12,7 +12,7 @@ import type { ReleaseNotesEntry } from "../release-notes/release-notes";
 const entry = (version: string): ReleaseNotesEntry => ({
   version,
   date: "2026-09-10",
-  sections: [{ title: "新功能", items: [`${version} 的內容`] }],
+  sections: [{ kind: "features", items: [{ en: `${version} notes`, "zh-TW": `${version} 的內容` }] }],
 });
 const ENTRIES = [entry("0.3.1"), entry("0.3.0"), entry("0.2.0")];
 const versions = (decision: ReturnType<typeof whatsNewDecision>) =>
