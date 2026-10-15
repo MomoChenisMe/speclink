@@ -2,9 +2,9 @@
 title: 建立工作區與指令檔
 section: 開始使用
 order: 30
-keywords: [init, update, 工作區, 技能檔, 指令檔, 過期, 降級, skills_dir, init --force]
+keywords: [init, update, 工作區, 技能檔, 指令檔, 過期, 降級, skills_dir, init --force, Copilot]
 sources: [workspace-tools, skill-routing]
-generated: 2026-09-17T16:05:41+08:00
+generated: 2026-10-15T12:27:14+08:00
 ---
 
 # 建立工作區與指令檔
@@ -13,31 +13,55 @@ generated: 2026-09-17T16:05:41+08:00
 
 ## 用 speclink init 初始化
 
-初始化前，你一定要選至少一個內建的 AI 工具。內建工具只有兩個：Claude 與 Codex。
+初始化前，你一定要選至少一個內建的 AI 工具。內建工具有三個：Claude、Codex 與 GitHub Copilot（指令裡寫 `copilot`）。
 
 ```
 speclink init --tools claude
 speclink init --tools codex
-speclink init --tools claude,codex
+speclink init --tools copilot
+speclink init --tools claude,codex,copilot
 ```
+
+`--tools` 可以只給一個名稱，也可以用逗號串起任意幾個。大小寫不拘，重複的名稱只算一次：
+
+| `--tools` 的值 | 結果 |
+| --- | --- |
+| `copilot` | 接受，選 Copilot |
+| `Copilot` | 接受，選 Copilot |
+| `claude,copilot` | 接受，選 Claude 與 Copilot |
+| `copilot,copilot` | 接受，選 Copilot（重複只算一次） |
+| `github-copilot` | 拒絕：不認識的工具，錯誤訊息列出 claude、codex、copilot |
+| `vscode` | 拒絕：不認識的工具 |
 
 不帶 `--tools` 時的行為依你的終端而定：
 
-- 互動終端：CLI 會問你要不要 Claude、要不要 Codex。你可以選一個或兩個。兩個都回答「否」時，init 不會開始，並再次要求你至少選一個。
-- 非互動（stdin 是管線或轉向）：init 直接失敗，不寫任何檔案。錯誤訊息會提到 `--tools` 與三種有效寫法。
+- 互動終端：CLI 依序問你要不要 Claude、要不要 Codex、要不要 Copilot，三題各自回答，選幾個都可以。三題都回答「否」時，init 不會開始：CLI 印一行提醒你至少選一個，再從 Claude 開始重問三題。
+- 非互動（stdin 是管線或轉向）：init 直接失敗，不寫任何檔案，stdout 是空的。錯誤訊息只有一行，會提到 `--tools`、三個工具名與逗號分隔的組合寫法。
 
-`--tools` 給空值、或給了不認識的名稱（例如 vscode）時，init 失敗，不寫任何檔案。
+`--tools` 給空值、或給了不認識的名稱時，init 失敗，不寫任何檔案。
 
 成功時，stdout 印出 Initialized 與 Generated files 摘要。產生的東西有：
 
 - `.speclink.yaml`：專案根的設定檔，記錄你選的工具。
 - `openspec/`：規格、變更與討論的資料夾。細節見[認識資料：變更、討論與規格](data-layout.md)。
 - `.gitignore` 的 `.speclink/` 條目：`.speclink/` 是工作資料夾，不進版控。
-- 技能檔：Claude 放在 `.claude/skills/`，Codex 放在 `.agents/skills/`。每個技能一個資料夾，名稱以 `speclink-` 開頭。
+- 技能檔：Claude 放在 `.claude/skills/`，Codex 放在 `.agents/skills/`，Copilot 放在 `.github/skills/`。每個技能一個資料夾，名稱以 `speclink-` 開頭。
 
-init 不會產生 `CLAUDE.md` 或 `AGENTS.md`。它也不會碰 AI 工具的使用者設定檔，例如 `.claude/settings.json`。
+init 不會產生 `CLAUDE.md`、`AGENTS.md` 或 `.github/copilot-instructions.md`。它也不會碰 AI 工具的使用者設定檔，例如 `.claude/settings.json`。
 
-Remote 模式的 init 同樣要選工具。產物是帶 remote 區段的 `.speclink.yaml` 與技能檔，不會建立 `openspec/`。見 [CLI 連接 remote](cli-remote.md)。
+### 三個內建工具的技能檔差在哪
+
+| 工具 | 技能資料夾 | 技能裡互相引用的寫法 | 有沒有 analyze 技能 |
+| --- | --- | --- | --- |
+| Claude | `.claude/skills/` | `/speclink-apply` | 有 |
+| Codex | `.agents/skills/` | `$speclink-apply` | 沒有 |
+| Copilot | `.github/skills/` | `/speclink-apply` | 沒有 |
+
+Copilot 拿到的技能組合與 Codex 相同：Claude 有的技能，除了 analyze 以外都有（兩個 worktree 技能一樣只在政策開啟時產生）。兩者的技能內容除了叫用前綴與工具名以外逐字相同。Copilot 的技能在建立變更與蓋章時，記下的工具名是 copilot。
+
+在 `.github/` 底下，選 Copilot 只會動到 `.github/skills/`。Speclink 不建立、不改寫、也不剝除 `.github/copilot-instructions.md`，`.github/` 底下的其他檔案（例如 CI 設定）一律不碰。`.speclink.yaml` 沒有工具清單時，引擎會依資料夾裡的工具痕跡決定產生哪些技能，但不會因為專案裡有 `.github/` 或 `.github/skills/` 就推斷你用 Copilot。
+
+Remote 模式的 init 同樣要選工具，規則與上面相同。產物是帶 remote 區段的 `.speclink.yaml` 與技能檔，不會建立 `openspec/`。見 [CLI 連接 remote](cli-remote.md)。
 
 ## 指令檔裡沒有 Speclink 的受管區塊
 
@@ -55,7 +79,7 @@ update 會：
 
 - 依 `.speclink.yaml` 的工具清單，重新產生每個工具的技能檔。
 - 剝除指令檔裡遺留的 SPECLINK 標記區塊，並在 stdout 列出被剝除的檔案。
-- 清掉已經從清單移除的工具所產生的技能檔。
+- 清掉已經從清單移除的工具所產生的技能檔。拿掉 Copilot 時，只移除 `.github/skills/` 底下名稱以 `speclink-` 開頭的資料夾；`.github/skills/` 因此變空才一併移除，原本就是空的會保留；`.github/` 的其他內容不動。被拿掉的工具，如果它的技能資料夾本身是 symlink，Speclink 不會穿過 symlink 刪任何東西，symlink 本身也保留。
 - 清掉技能資料夾下名稱以 `speclink-` 開頭、但這次不該產生的資料夾。例如舊版的 speclink-onboard 會被清掉，換成 speclink-baseline。你自己建的技能資料夾（名稱不以 `speclink-` 開頭）不會被動到。
 - 補齊缺少的技能檔。
 
@@ -96,7 +120,7 @@ speclink-apply-with-worktree 與 speclink-worktree-merge 這兩個技能，只�
 | 現版 | 全部技能檔都是現版 |
 | 無法判定 | 設定檔解析失敗，或技能檔存在但讀取錯誤 |
 
-多個工具狀態不同時，整體以「較新 > 缺失 > 過期 > 現版」的順序回報。探測會一併列出「更新將新建或改寫」的受管檔清單。只有換行形式不同的檔案不列入。桌面 app 用這個探測提示你更新，見[自動更新、安裝 CLI 與指令檔過期](desktop-update.md)。
+多個工具狀態不同時，整體以「較新 > 缺失 > 過期 > 現版」的順序回報。探測會一併列出「更新將新建或改寫」的受管檔清單。只有換行形式不同的檔案不列入。桌面 app 用這個探測提示你更新，見[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)。
 
 ## 降級守門：工作區比引擎新時拒絕更新
 
@@ -112,14 +136,14 @@ speclink update --allow-downgrade
 
 ## 自訂 AI 工具
 
-除了 Claude 與 Codex，你可以在 `.speclink.yaml` 的 tools 清單裡加自訂描述子，讓其他 AI 工具也拿到技能檔。描述子的欄位：
+除了三個內建工具，你可以在 `.speclink.yaml` 的 tools 清單裡加自訂描述子，讓其他 AI 工具也拿到技能檔。描述子的欄位：
 
-- name（必填）：kebab-case，2 到 50 字，不能與 claude、codex 同名。
+- name（必填）：kebab-case，2 到 50 字，不能與內建工具同名：claude、codex、copilot，以及 codex 的別名 agents 都不行。
 - skills_dir（必填）：專案根相對路徑，不能逸出專案根。結尾的 `/` 會被削掉，之後所有地方（技能生成、足跡記錄、過期探測回報的路徑）都用削掉後的形式。
 - invocation（選填）：cli 或 tool-call，預設 cli。決定技能檔裡怎麼稱呼 speclink 動詞。
 - instructions_file（選填）：已棄用，不再產生任何東西。仍留著這個欄位時，update 印一行棄用提示，不影響結果。
 
-skills_dir 還有兩條拒絕規則，比對的是把 `.` 段丟掉、`..` 回退一段之後的路徑，所以等價拼法一樣被拒：不能等同專案根本身，也不能等同內建工具的 skills 目錄（`.claude/skills`、`.agents/skills`）。
+skills_dir 還有兩條拒絕規則，比對的是把 `.` 段丟掉、`..` 回退一段之後的路徑，所以等價拼法一樣被拒：不能等同專案根本身，也不能等同內建工具的 skills 目錄（`.claude/skills`、`.agents/skills`、`.github/skills`）。和內建目錄的比對不分大小寫，因為在 macOS 與 Windows 的檔案系統上，`.GitHub/skills` 就是 `.github/skills`。
 
 | skills_dir | 結果 |
 | --- | --- |
@@ -129,6 +153,12 @@ skills_dir 還有兩條拒絕規則，比對的是把 `.` 段丟掉、`..` 回�
 | `/`、`./`、`.`、`.wad/..` | 拒絕：等同專案根 |
 | `.claude/skills`、`./.claude/skills`、`.claude//skills`、`.wad/../.claude/skills` | 拒絕：等同內建工具的 skills 目錄 |
 | `.claude/skills-extra` | 接受：與內建目錄不同 |
+| `.github/skills`、`./.github/skills` | 拒絕：等同內建 Copilot 的 skills 目錄 |
+| `.GitHub/skills` | 拒絕：不分大小寫，等同內建 Copilot 的 skills 目錄 |
+| `.github/skills-extra` | 接受：與內建目錄不同 |
+
+> [!WARNING]
+> 升級前就寫好、名叫 copilot 的描述子，或 skills_dir 指向 `.github/skills` 的描述子，升級後會被拒絕：`speclink update` 以單行錯誤結束，分別指出名稱與內建工具衝突、或 skills_dir 屬於內建 Copilot 目錄。所有技能檔與 `.github/skills/` 底下既有的檔案都不會被改動。描述子要改名或改路徑，才能通過驗證。
 
 自訂工具的技能檔用中性寫法：不含 `/speclink-` 前綴，也不提 plan mode。描述子驗證失敗時，指令以單行錯誤結束並指出錯誤欄位。通過驗證的描述子也參與技能檔過期探測，逐工具結果用描述子的 name 表示；沒通過驗證的描述子不參與探測、不讓結果變成無法判定，錯誤由 update 報出。
 

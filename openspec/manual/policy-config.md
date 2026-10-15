@@ -2,13 +2,13 @@
 title: 工作流政策與設定
 section: SDD 工作流
 order: 210
-keywords: [config.yaml, 政策, locale, tdd, audit, 專案說明, 產出規則]
+keywords: [config.yaml, 政策, locale, tdd, audit, worktree, 專案說明, 產出規則, 審查規則, review, 確認表, 提醒分流, dry-run]
 sources: [workflow-config, config-skill]
-generated: 2026-09-02
+generated: 2026-10-15T12:29:49+08:00
 ---
 # 工作流政策與設定
 
-工作流政策存在 `openspec/config.yaml`。這個檔有三類內容：五個政策欄位、專案說明，以及產出規則。你可以用 `speclink workflow-config` 指令讀寫，也可以請 `/speclink-config` 技能幫你整理專案說明與產出規則。
+工作流政策存在 `openspec/config.yaml`。這個檔有四類內容：五個政策欄位、專案說明、產出規則，以及審查規則。你可以用 `speclink workflow-config` 指令讀寫，也可以請 `/speclink-config` 技能幫你整理。桌面 app 的設定頁怎麼編輯這些內容，見 [專案、新增專案與設定頁](desktop-projects.md)。
 
 ## 五個政策欄位
 
@@ -35,7 +35,7 @@ generated: 2026-09-02
 布林環境變數只接受 true 或 false。其他值視為未設定，落到下一層，不報錯。`.speclink.yaml` 裡的同名鍵一律不生效，也不會有警告。
 
 > [!WARNING]
-> `openspec/config.yaml` 存在但無法解析（YAML 語法錯誤或型別不符）時，所有讀政策的指令都會失敗。錯誤訊息指出檔案路徑與解析原因。指令不會退回預設值繼續跑，設環境變數也繞不過。檔案不存在時才用內建預設。
+> `openspec/config.yaml` 存在但無法解析（YAML 語法錯誤或型別不符）時，所有讀政策的指令都會失敗。錯誤訊息指出檔案路徑與解析原因。指令不會退回預設值繼續跑，設環境變數也繞不過。檔案不存在時才用內建預設。review 區塊寫錯也算無法解析，見下方「審查規則」。
 
 ## 讀設定：workflow-config show
 
@@ -43,7 +43,15 @@ generated: 2026-09-02
 speclink workflow-config show
 ```
 
-顯示 config.yaml 裡的正典內容：五個政策欄位（未設定的會標示未設定與其預設語意）、專案說明的有無與行數、各產出規則節的條數。它顯示的是檔案裡的值，不套用環境變數覆寫。remote 模式下讀的是 server 上的設定，輸出形狀相同。
+顯示 config.yaml 裡的正典內容：五個政策欄位（未設定的會標示未設定與其預設語意）、專案說明的有無與行數、各產出規則節的條數，以及審查規則的摘要。它顯示的是檔案裡的值，不套用環境變數覆寫。remote 模式下讀的是 server 上的設定，輸出形狀相同。
+
+審查規則那一行接在產出規則那一行之後：
+
+| config.yaml 的 review 區塊 | review 行的值 |
+| --- | --- |
+| 沒寫 | none |
+| critical 兩條、warning 一條、suggestion 一條，沒寫模式 | extend, critical 2, warning 1, suggestion 1 |
+| 模式為 replace、三個清單皆空 | replace, critical 0, warning 0, suggestion 0 |
 
 ## 寫政策：workflow-config set
 
@@ -79,9 +87,81 @@ speclink workflow-config rules <artifact> --stdin
 
 兩個指令沒帶 `--stdin` 時失敗並說明用法。保留其他行、`--dry-run`、remote 的版本檢查、壞檔拒寫等行為，與 set 相同。
 
+## 審查規則：review 區塊
+
+審查規則給審查站的 Standards 軸用，怎麼套用見 [審查站](review.md)。它是 config.yaml 的頂層 review 區塊，子鍵只有四個：
+
+- **baseline**：預設清單模式，extend 或 replace（區分大小寫）。省略等於 extend：照常檢查內建的 12 條 code smell，再加上專案規則。replace 只檢查專案規則。
+- **critical、warning、suggestion**：三個規則清單，每條一個字串。省略等於空清單。
+
+整個 review 區塊不寫，等於 extend 加三個空清單。審查規則不是政策欄位：沒有環境變數可以覆寫，`.speclink.yaml` 的同名鍵也不讀。
+
+```yaml
+review:
+  baseline: replace
+  critical:
+    - 所有 SQL 一律用參數化查詢，不得用字串拼接
+  warning:
+    - 新增的公開 API 要有對應的測試
+```
+
+> [!CAUTION]
+> review 區塊寫錯，整份 config.yaml 就當成無法解析：出現不認得的子鍵（例如把 critical 拼成 critcal）、baseline 不是 extend 或 replace（例如寫成 Replace）、或某個清單不是字串陣列時，所有讀設定的指令（含 `speclink workflow-config show` 與 `speclink instructions`）都會失敗，錯誤訊息點名出錯的鍵或值，不會退回預設。remote 模式下 server 用同一套規則拒收，server 上的內容與版本都不變。
+
+### 寫審查規則：workflow-config review
+
+```
+speclink workflow-config review <critical|warning|suggestion> --stdin
+speclink workflow-config review baseline <extend|replace>
+```
+
+- **清單**：stdin 整段代換該清單，一行一條，頭尾空白去掉，空行忽略。stdin 為空或只有空白時移除該清單。沒帶 `--stdin` 時失敗並說明用法，不動檔案。
+- **baseline**：寫 replace 會寫入 `baseline: replace`；寫 extend 會移除 baseline 鍵（省略就是預設）。
+- 寫完後 baseline 不在、三個清單也都空時，整個 review 區塊會被移除。
+- 第一個參數不是這四個之一，或 baseline 的值不是 extend、replace 時拒絕，列出合法值，不動檔案。
+- 只代換 review 區塊：其他鍵、註解與空行逐位元保留；review 區塊內的註解不保留。以 YAML 保留字元（反引號、@ 等）開頭的條目會自動加引號，讀回時一字不差。
+- `--dry-run`、remote 的讀改寫與版本衝突處理、離線與認證失效、壞檔拒寫，行為都與 set 相同。
+
+成功時印一行訊息：
+
+| 寫入前 | 指令 | 寫入後 | 訊息 |
+| --- | --- | --- | --- |
+| 沒有 review | review warning --stdin（一行） | warning 一條 | ✓ review.warning = 1 entries |
+| warning 一條 | review warning --stdin（空） | review 區塊被移除 | ✓ review.warning removed |
+| critical 一條 | review baseline replace | baseline: replace、critical 一條 | ✓ review.baseline = replace |
+| baseline: replace、critical 一條 | review baseline extend | critical 一條，沒有 baseline 鍵 | ✓ review.baseline = extend (default) |
+| baseline: replace、三個清單皆空 | review baseline extend | review 區塊被移除 | ✓ review.baseline = extend (default) |
+
+### 寫完提醒技能檔過期
+
+審查規則是審查技能自己去讀的，舊版的審查技能可能不會套用。所以 `workflow-config review` 實際寫入成功後，CLI 會檢查本機工作區的技能檔；有工具的技能檔比引擎舊時，stderr 多印一行提醒，列出過期的工具與它的技能版號、引擎版號，請你執行 `speclink update`：
+
+```
+speclink: warning: skill files are older than this engine (claude v1.44.0; engine v1.45.0) — an older review skill may not apply these rules; run `speclink update`
+```
+
+這行只是提醒：寫入照樣成功、不會回滾，exit code 仍是 0，stdout 仍是那一行成功訊息。一個工具缺技能檔、另一個過期時，只列過期的那個。以下情況不提醒：
+
+- 技能檔都是現版，或整組缺失。
+- 工作區的技能檔比引擎新（執行 update 會降級），或判斷不出來。
+- 帶 `--dry-run`（沒有寫入，也不檢查）。
+- set、context、rules 的寫入。這些內容由 CLI 在下指令時注入，技能檔新舊不影響生效。
+
+remote 模式寫入成功後，用本機工作區的技能檔判斷，條件相同。檢查本身失敗時不影響寫入結果。
+
+## 先看差異：--dry-run
+
+所有寫入子指令（set、context、rules、review）帶 `--dry-run` 時，只印差異、不寫檔。差異是單一段的 unified diff：`--- a/…`、`+++ b/…` 兩行開頭，接一行 `@@` 標頭，前後各帶至多三行沒改的內容。
+
+- 沒改動、順序也沒變的行以空白開頭顯示，不會成對出現 `-` 與 `+`。
+- 只有被刪、新增或換了位置的行才帶 `-`／`+`；同一處有刪有增時，`-` 在前。
+- 沒有變更時輸出空白。
+
+例如 tasks 的產出規則原本依序是「甲」「乙」「丙」，用「甲二、乙、丙、丁」整節代換時，差異裡只有「甲」標 `-`、「甲二」與「丁」標 `+`，「乙」「丙」照原樣當上下文。
+
 ## 讓技能幫你整理：/speclink-config
 
-`/speclink-config` 技能從固定的來源推導專案說明與產出規則：workspace 清單與相依 manifest、README、docs 索引、既有的 config.yaml，以及共用詞彙（若有）。它不掃整個 repo 的原始碼。
+`/speclink-config` 技能從固定的來源推導專案說明與產出規則：workspace 清單與相依 manifest、README、docs 索引、既有的 config.yaml，以及共用詞彙（若有）。它不掃整個 repo 的原始碼。它也管理審查規則，但審查規則只來自你，不從 repo 推導（見「第六問」）。
 
 技能寫內容時守四條判準：
 
@@ -92,10 +172,93 @@ speclink workflow-config rules <artifact> --stdin
 
 既有的規則只在兩種情況下被刪：不過四條判準，或你在政策詢問中明確撤回。「無法從固定來源導出」不是刪除理由。
 
-技能會逐項問你五件事，不自己推斷：locale、spec_locale、tdd、audit，以及任務驗證步驟要跑完整測試還是只跑受影響面。你用自然語言回答（例如「繁體中文」），技能換成代碼（tw）再寫入。第五問答「只跑受影響面」時，技能依 repo 的相依 manifest 組出這個專案專用的測試對應規則，寫進 tasks 的產出規則。答「完整測試」時不寫任何測試範圍規則；既有的測試範圍規則視為撤回而被移除。
+### 政策先列確認表，一題確認
+
+技能先列一張確認表，每列是一個項目的現值，共七項：locale、spec_locale、tdd、audit、worktree、任務驗證的測試範圍（第五問）、審查規則的模式（第六問）。沒設定的項目標成「未設定，預設 X」。
+
+| 項目 | config 現況 | 確認表顯示 |
+| --- | --- | --- |
+| locale | tw | tw |
+| spec_locale | 未設定 | 未設定，預設英文 |
+| tdd | true | true |
+| audit | 未設定 | 未設定，預設 false |
+| worktree | 未設定 | 未設定，預設 false |
+| 測試範圍 | 產出規則沒有測試範圍規則 | 未設定，預設完整測試 |
+| 審查規則 | 沒有 review 區塊 | 未設定，預設不設定（只用內建 12 條 code smell） |
+
+接著只問一題：全部沿用，還是要改其中幾項？
+
+- 選全部沿用：不再逐項問，不改任何政策欄位，review 區塊也不因這題而動。
+- 選要改：只逐項問你點名的項目，每題帶出現值。例如你說要改 tdd 與 worktree，就只問這兩題。
+- 第一次執行（config 還沒有任何政策欄位）也一樣，先攤開確認表、問一題。
+
+技能不從 repo 推斷任何政策值，例如有測試目錄不代表 tdd 是 true。你用自然語言回答語言（例如「繁體中文」）時，技能換成代碼（tw）再寫入，不會把顯示名稱寫進去。互動提問工具一題放不下所有項目時，「要改哪幾項」改用純文字問；沒有互動提問工具時，整個確認都用純文字。
+
+worktree 的改動同樣走 `speclink workflow-config set worktree <true|false>` 的 `--dry-run` 核准流程。本機模式下寫入會同步技能檔，有活躍 worktree 時關閉會被拒，技能只把 CLI 列出的活躍 worktree 轉告你，不會自己收尾或移除 worktree。remote 模式下這個寫入只改 server 上的設定，不同步技能檔、也不檢查活躍 worktree，技能會告訴你這點。
+
+### 第五問：任務驗證的測試範圍
+
+任務清單的驗證步驟要跑完整測試，還是只跑受影響面的測試？現行產出規則裡已有測試範圍的規則時，確認表以它帶出現值；沒有時標為未設定、預設完整測試。
+
+- **沿用現值**：不因這一題改動測試範圍規則。那條規則仍照四條判準檢查，例如引用失效時依判準四移除。
+- **改成只跑受影響面**：技能依已讀取的相依 manifest，按專案的組件型態對應各自的測試指令，組出這個專案專用的測試對應規則，寫進 tasks 的產出規則。
+- **改成完整測試**：不寫任何測試範圍規則。既有的測試範圍規則視為你明確撤回，經同一個 `--dry-run` 核准流程移除；本來就沒有的話維持原樣。
+
+### 第六問：審查規則的模式
+
+一題三選，預設「不設定」：
+
+- **不設定**：技能不動 review 區塊，不寫模式、不加規則。只適合當審查規則的提醒不會寫進去，最後報告列為「屬審查規則，未寫入」；技能也不會建議把產出規則的句子搬去審查規則。
+- **附加**（extend）：審查站照舊檢查內建的 12 條 code smell，再加專案審查規則。
+- **覆蓋**（replace）：審查站只檢查專案審查規則；三個清單都空時，Standards 軸只依 repo 文件判斷，這是正當的選擇。
+
+config 已有 review 區塊時，確認表帶出模式與三個清單各自的條數。已有審查規則而你選不設定或沿用時，review 區塊維持原狀，既有規則不會因此被刪（刪除只經你明確撤回），但仍要過下面「會過時的內容」與「引用核實」兩項檢查。
+
+技能不會從 repo 文件（CLAUDE.md、AGENTS.md、CONTRIBUTING、lint 設定等）整理出審查規則。審查站的 Standards 軸本來就會讀這些文件，抄一份會變成第二份正典。審查規則只來自你口述，或你提供的提醒清單。
+
+模式為附加或覆蓋時，技能會問你要不要新增或修改審查規則，並用「有沒有正當例外」建議放哪個清單：違反一定錯、沒有正當例外的建議 critical；通常要修、偶有正當例外的建議 warning；屬偏好的建議 suggestion。「不得」「一律」「要」「宜」「偏好」這類措辭只當提示，不單獨決定分格，最後放哪一格由你確認或改過才寫入。
+
+| 你的規則 | 有沒有正當例外 | 技能建議 |
+| --- | --- | --- |
+| 公開函式在錯誤路徑不得 panic，一律回傳錯誤 | 沒有 | critical |
+| 元件一律使用設計 token 的顏色 | 有：圖表配色需要原始色碼 | warning（措辭雖為「一律」） |
+| 新增的公開 API 要有對應的測試 | 有：純 re-export 不需要 | warning |
+| 錯誤訊息偏好寫成完整句子 | 屬偏好 | suggestion |
+
+每條既有與新收的審查規則都要過這幾項檢查：
+
+- **重述 smell**：模式為 extend（含未設定）時，和內建 12 條 smell 同義的規則淘汰，例如「變數名稱要能說明用途」就是 Mysterious Name；replace 時不做這項。
+- **已有守門**：已經有測試或 lint 守住的規矩不收。核實只用針對性的靜態查找（在 lint 設定裡找該規則、用文字搜尋找釘住該行為的測試），不通讀原始碼；查不到守門才照常收。
+- **屬於其他關卡**：audit 開啟時，安全類規矩歸 audit；要求「程式照 artifact 做」的規矩歸驗證站。audit 以本次確認表確認後的值為準；audit 由關改開時，既有的安全類審查規則會在差異裡提出移除，你確認後才寫入。
+- **會過時的內容**：版本號、計數、統計數字不寫。
+- **引用核實**：引用的路徑、測試名、指令要以靜態手段核實存在。
+- **刪除理由**：與產出規則相同，只因不過上面這些檢查，或你明確撤回。
+
+審查規則與模式的寫入，同樣先用 `speclink workflow-config review` 的 `--dry-run` 產出差異給你看，你確認後才不帶 `--dry-run` 重跑。
+
+### 提醒的分流
+
+你可以把希望專案遵守的規矩（提醒）口述給技能，或給一份提醒清單：貼在對話裡，或給一個檔案路徑讓技能讀。提醒清單是你的輸入，不算固定來源的掃描範圍。技能不會自己去翻任何工具的對話紀錄找提醒。
+
+每條提醒依三題判斷去處：違反的證據在程式還是文件？審查員只看差異能不能判斷？太晚發現的代價大不大？結果分到四個去處之一：審查規則、某個 artifact 的產出規則、兩邊都放、或不收。
+
+| 提醒 | 判斷 | 模式為附加時 | 模式為不設定時 |
+| --- | --- | --- | --- |
+| 呼叫端不得用 className 覆蓋共用元件的顏色 | 證據在程式，只看差異就能判斷 | 審查規則 | 報告列為「屬審查規則，未寫入」 |
+| design 要列出這次沿用的既有元件 | 證據在文件 | design 的產出規則 | design 的產出規則 |
+| 共通行為要在共用層實作一次 | 計畫要寫出落點、程式要檢查，兩個階段各自有用 | 兩邊都放，兩句描述不同對象 | 只寫 design 的產出規則 |
+
+- **審查規則的出口只在選用時開放**：模式為附加或覆蓋時四個去處都開放；模式為不設定時，分到審查規則的提醒不寫入，分到兩邊都放的只寫產出規則那一句。
+- **兩邊都放的條件**：只有兩個階段各自有用時才兩邊放，其餘選一邊，因為產出規則每次產出該 artifact 都會注入。兩句描述不同對象：產出規則要求計畫寫出什麼，審查規則檢查程式本身。
+- **審查規則不寫驗證站的工作**：不寫成「程式要照 artifact 做」。
+- **搬移建議**：模式為附加或覆蓋時，既有產出規則裡如果有一句其實在檢查程式本身，技能會建議拆到審查規則；你確認才搬，拒絕就原句保留。技能不記被拒絕的建議，下次執行會再提一次，這是預期行為。模式為不設定時不提搬移建議。
+- **時機**：提醒依賴的行為還沒進程式（例如討論已定案、對應的變更還沒實作）時先不寫，技能會告訴你並在最後報告列出。查討論或變更的狀態只用 `speclink discuss list --json` 或 `speclink list --json`，不直接讀 openspec/ 目錄。
+- **各自的判準**：分到產出規則的提醒照四條判準檢查；分到審查規則的照「第六問」的檢查。
+
+最後報告逐條列出每條提醒的去處；不收或沒寫入的附上理由：不過判準、重述 smell、已有測試或 lint 守門、屬其他關卡、尚未進程式、屬審查規則未寫入。
 
 > [!TIP]
-> 技能一律先用 `--dry-run` 產出差異給你看，你確認後才寫入。對同一份沒動過的程式碼連跑兩次，第二次的差異應該是空的。第二次還有差異，表示判準執行不當，技能會回查判準而不是落檔。
+> 技能一律先用 `--dry-run` 產出差異給你看，你確認後才寫入。對同一份沒動過的程式碼連跑兩次，第二次的差異應該是空的，審查規則也算在內。第二次還有差異，表示判準執行不當，技能會回查判準而不是落檔。被拒絕的搬移建議不是差異，下次再提一次不影響這項驗收。
 
 你也可以帶範圍提示呼叫技能。此時前三條判準只重審範圍內的 artifacts，第四條的引用核實仍掃全文件。
 

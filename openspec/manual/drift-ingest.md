@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 130
 keywords: [drift, ingest, 漂移, 閒置, 需求變更, 過期, validate]
 sources: [drift-computation, archive-merge, skill-routing, user-documentation, ingest-skill]
-generated: 2026-09-25T08:39:09+08:00
+generated: 2026-10-15T12:27:14+08:00
 ---
 
 # 續作與需求變更：drift 與 ingest
@@ -15,7 +15,7 @@ generated: 2026-09-25T08:39:09+08:00
 - **實作到一半需求變了**：走 ingest，把新的需求併進這個變更的產物，再回去實作。
 
 > [!NOTE]
-> drift 技能的內文行為規格未載；ingest 技能只有收尾的依賴判定有規格。本頁只寫規格有寫的部分：drift 報告的內容、它與封存守門的關係、ingest 收尾怎麼重判依賴，以及兩個技能的交棒方向。
+> drift 技能的內文行為規格未載；ingest 技能只有參數的解讀與收尾的依賴判定有規格。本頁只寫規格有寫的部分：drift 報告的內容、它與封存守門的關係、ingest 怎麼解讀你帶的參數、收尾怎麼重判依賴，以及兩個技能的交棒方向。
 
 ## drift：看漂移了多少
 
@@ -70,6 +70,25 @@ drift 技能結尾依結果給建議，只建議、不代跑：
 3. 執行討論的 seal 動詞：內容反映完之後，把討論標成已轉出。
 
 link 只建立變更側的來源鏈；seal 只在內容已經反映後才做。討論的完整流程與 seal 的指令寫法見 [討論：需求還模糊時](discuss.md)。
+
+### 呼叫時帶的參數
+
+`/speclink-ingest` 可以帶一個參數。技能依這個順序判斷它是什麼：
+
+1. 參數含 `/`，或以 `.md` 結尾：當成計畫檔。agent 照原本的流程讀這份計畫檔，再詢問或確認要更新哪個變更。
+2. 其他情況，agent 先執行 `speclink list --json` 取得作用中的變更名。參數剛好等於其中一個時，就更新這個變更，需求來源是目前的對話內容（以及與這個變更連結的討論結論）。這時不會再去找同名的計畫檔，也不會再問你要更新哪個變更。
+3. 參數不等於任何作用中的變更名：當成計畫檔的名稱去找。找不到時，agent 回報錯誤並停止，訊息同時說明「這不是作用中的變更名稱」與「找不到同名的計畫檔」，不修改任何產物。
+
+不帶參數時，行為與以前相同。
+
+| 你輸入的 | 當下的狀況 | 結果 |
+| --- | --- | --- |
+| `/speclink-ingest add-auth` | 作用中變更有 add-auth 與 add-billing | 更新 add-auth，以對話內容為來源；不找 add-auth.md、不問要更新哪個 |
+| `/speclink-ingest <計畫目錄>agile-discovering-rocket.md` | 任何 | 讀這份計畫檔，再詢問或確認要更新的變更 |
+| `/speclink-ingest agile-discovering-rocket` | 沒有同名的作用中變更；計畫目錄有 agile-discovering-rocket.md | 使用這份計畫檔 |
+| `/speclink-ingest add-ath`（拼錯） | 沒有叫 add-ath 的作用中變更，也沒有 add-ath.md | 回報錯誤並停止，不改任何產物 |
+
+計畫檔放在哪個目錄，規格未載。
 
 ### ingest 收尾：重判這個變更的依賴
 

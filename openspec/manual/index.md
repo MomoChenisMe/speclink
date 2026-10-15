@@ -4,7 +4,7 @@ section: 開始使用
 order: 10
 keywords: [首頁, 入門, 角色, 導覽, SDD, 手冊]
 sources: []
-generated: 2026-09-25T08:39:09+08:00
+generated: 2026-10-15T12:36:56+08:00
 ---
 
 # Speclink 操作手冊
@@ -42,8 +42,8 @@ Speclink 是一套 SDD（規格驅動開發，Spec-Driven Development）引擎�
 
 - [認識桌面 app](desktop-overview.md)、[看板與任務](desktop-board.md)
 - [規格、討論、已封存與搜尋](desktop-browse.md)、[桌面 app 的手冊頁](desktop-manual.md)、[桌面上的品質關卡](desktop-quality.md)
-- [專案分頁、新增工作區與設定頁](desktop-projects.md)、[自動更新、安裝 CLI 與指令檔過期](desktop-update.md)、[系統匣選單](tray.md)
-- 接上團隊 server：[桌面連線 server 與 remote 工作區](desktop-remote.md)
+- [專案、新增專案與設定頁](desktop-projects.md)、[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)、[系統匣面板與選單](tray.md)
+- 接上團隊 server：[桌面連線 server 與 remote 專案](desktop-remote.md)
 
 ### 團隊協作（remote 模式）
 

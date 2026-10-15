@@ -4,7 +4,7 @@ section: 開始使用
 order: 20
 keywords: [安裝, CLI, 桌面 app, npm, Homebrew, 安裝腳本, 未簽章, universal, AppImage]
 sources: [cli-distribution, user-documentation]
-generated: 2026-09-17T16:05:41+08:00
+generated: 2026-10-15T12:27:14+08:00
 ---
 
 # 安裝 CLI 與桌面 app
@@ -89,18 +89,18 @@ speclink --version
 
 | 平台 | 行為 |
 | --- | --- |
-| macOS | 桌面 app 每次啟動，會把該位置換成指向內建 CLI 的 symlink，並刪除原有檔案 |
+| macOS | 桌面 app 每次啟動都會檢查該位置；那裡沒有 CLI、或 CLI 版本與 app 不同時，刪除原有檔案，換成指向內建 CLI 的 symlink |
 | Linux AppImage | 只在版本不符時覆蓋 |
 | Windows | 由安裝器管理，不動該位置 |
 
 > [!WARNING]
-> 在 macOS 上先用 npm、腳本或 Homebrew 裝了 CLI，再裝桌面 app，桌面 app 啟動後你的 CLI 會被換成 app 內建的版本。你釘住的版本也會一併失效。
+> 在 macOS 上先用 npm、腳本或 Homebrew 裝了 CLI，再裝桌面 app：只要你的 CLI 版本與 app 不同，桌面 app 一啟動就會把它換成 app 內建的版本。你釘住的版本也會一併失效。
 
-要保留自己安裝的 CLI，把它裝到另一個目錄，並把該目錄放在 PATH 順序的前面。桌面 app 這一側的細節見[自動更新、安裝 CLI 與指令檔過期](desktop-update.md)。
+要保留自己安裝的 CLI，把它裝到另一個目錄，並把該目錄放在 PATH 順序的前面。桌面 app 這一側的細節見[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)。
 
 ## Node SDK
 
-`@speclink/engine` 以 `npm install @speclink/engine` 為主要安裝路徑。實際可安裝的時點，以第一個帶 engine 的 release 為準；在那之前只能從 repo 建置。
+`@speclink/engine` 以 `npm install @speclink/engine` 為主要安裝路徑，從 0.2.0 版起可以從 npm 安裝。不走 npm 的話，也可以從 repo 自行建置。
 
 下一步：[建立工作區與指令檔](init-workspace.md)。
 
