@@ -216,7 +216,7 @@ Remote mode does not depend on this server. Two public contracts define remote m
 | --- | --- |
 | [Product status](docs/product-status.md) | What is available and what is partial, with evidence and limits |
 | [Roadmap](docs/roadmap.md) | The work that comes next |
-| [Changelog](CHANGELOG.md) | The changes in each version (Traditional Chinese) |
+| [Changelog](CHANGELOG.md) | The changes in each version |
 | [Brand assets](docs/assets/brand/README.en.md) | Logo, colors, and usage |
 
 `openspec/` holds the specs of Speclink itself. `openspec/changes/archive/` and `openspec/discussions/archive/` are history records, not user guides.

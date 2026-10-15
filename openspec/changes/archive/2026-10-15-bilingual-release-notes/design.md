@@ -82,6 +82,7 @@
 
 - `release-notes.ts` 匯出新的型別（`kind` 與雙語條目），並匯出依語言取文字的函式 `entryText(item, locale)`。
 - 分組標題改用 i18n 鍵：`releaseNotes.kind.features`、`releaseNotes.kind.fixes`、`releaseNotes.kind.improvements`，寫在 `apps/desktop/src/i18n/messages.ts`，中英各一份。
+- 對話框每版的小標也改用 i18n 鍵 `releaseNotes.versionHeading`：繁中「{version}（{date}）」（與現在相同），英文「{version} ({date})」，與兩份更新日誌的版號標題寫法一致。
 - `ReleaseNotesDialog` 與 `UpdatesPage`（含首條摘要）從 `useI18n()` 取得 `locale`，呈現對應語言。
 - `whatsNew` 的判定只看版號，不受影響；它的測試夾具改成新形狀。
 
@@ -120,7 +121,7 @@
 - `node scripts/release/release-notes-render.mjs --write` 產出英文 `CHANGELOG.md` 與繁中 `CHANGELOG.zh-TW.md`；`--check` 兩份一致時 exit 0。
 - `--version 0.8.0 --lang zh-TW` 印出繁中片段；不加 `--lang` 印出英文片段。
 - `node scripts/release/release-notes.mjs --tag v0.8.0` 的輸出：英文指南與英文 0.8.0 片段在前，接著是 `<details><summary>繁體中文</summary>`，內含繁中指南與繁中片段。
-- 桌面 app 英文介面的「更新內容」對話框與更新頁顯示英文條目與「New features／Fixes／Improvements」；繁中介面與現在相同。
+- 桌面 app 英文介面的「更新內容」對話框與更新頁顯示英文條目與「New features／Fixes／Improvements」，對話框的版號小標為「0.3.1 (2026-09-20)」；繁中介面與現在相同。
 
 **資料形狀：** 見 D1。舊形狀不再被讀取。
 

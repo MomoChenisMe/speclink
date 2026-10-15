@@ -216,7 +216,7 @@ Server 只有在團隊要共用同一份正式規格時才需要。一個人在�
 | --- | --- |
 | [專案能力狀態](docs/product-status.zh-TW.md) | 哪些能用、哪些部分可用，附證據與限制 |
 | [專案路線圖](docs/roadmap.zh-TW.md) | 之後要做的方向 |
-| [更新日誌](CHANGELOG.md) | 每個版本改了什麼 |
+| [更新日誌](CHANGELOG.zh-TW.md) | 每個版本改了什麼 |
 | [品牌資產](docs/assets/brand/README.md) | Logo、配色與使用方式 |
 
 `openspec/` 是 Speclink 自己的規格。`openspec/changes/archive/` 與 `openspec/discussions/archive/` 是歷史記錄，不是操作文件。

@@ -1,6 +1,6 @@
 // 更新頁（desktop-settings-mode design D6；spec「桌面自動更新」「更新日誌彈窗」）：頁標題右側
 // 「檢查更新」；版本卡（目前版本、最新版本＋狀態籤）；下載與安裝卡（只在有事等使用者處置時）；
-// 更新日誌卡（最新版本展開、較舊版本一列一個）；自動檢查卡（背景檢查開關）。
+// 更新日誌卡（最新版本展開、較舊版本一列一個；條目與分組標題依介面語言）；自動檢查卡（背景檢查開關）。
 import { useEffect, useRef } from "react";
 import {
   Button,
@@ -15,7 +15,7 @@ import {
 
 import { UpdateInstallRow } from "../../components/UpdateInstallRow";
 import { updateNeedsAttention, type UpdaterState } from "../../core/updater";
-import { RELEASE_NOTES } from "../../release-notes/release-notes";
+import { entryText, RELEASE_NOTES } from "../../release-notes/release-notes";
 import type { AppSettingsUpdaterProps } from "../AppSettingsView";
 
 /** 「最新版本」列：等寬版號（無則「—」或不顯示）＋狀態籤；關於頁版本列的狀態籤共用。 */
@@ -47,7 +47,7 @@ const VersionText = ({ children }: { children: string }) => (
 );
 
 export function UpdatesPage({ updater }: { updater?: AppSettingsUpdaterProps }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   // 聚焦捲動（圖示列更新鈕、toast「查看」、技能檔較新態的入口舉旗）：捲到下載與安裝卡，
   // 沒有該卡時捲到版本卡；捲一次並回呼清旗標。
   const versionCard = useRef<HTMLDivElement>(null);
@@ -119,11 +119,11 @@ export function UpdatesPage({ updater }: { updater?: AppSettingsUpdaterProps }) 
           >
             <div className="flex flex-col gap-2">
               {newest.sections.map((section) => (
-                <div key={section.title} className="flex flex-col gap-1">
-                  <span className="text-xs font-medium">{section.title}</span>
+                <div key={section.kind} className="flex flex-col gap-1">
+                  <span className="text-xs font-medium">{t(`releaseNotes.kind.${section.kind}`)}</span>
                   <ul className="m-0 flex list-disc flex-col gap-0.5 pl-5 text-[13px] text-muted-foreground">
                     {section.items.map((item, i) => (
-                      <li key={i}>{item}</li>
+                      <li key={i}>{entryText(item, locale)}</li>
                     ))}
                   </ul>
                 </div>
@@ -137,7 +137,7 @@ export function UpdatesPage({ updater }: { updater?: AppSettingsUpdaterProps }) 
             label={<VersionText>{entry.version}</VersionText>}
             description={
               <span className="line-clamp-1">
-                {entry.date} · {entry.sections[0]?.items[0] ?? ""}
+                {entry.date} · {entry.sections[0] ? entryText(entry.sections[0].items[0], locale) : ""}
               </span>
             }
             control={

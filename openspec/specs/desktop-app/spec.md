@@ -4283,3 +4283,28 @@ updated: 2026-10-13T11:49:40+08:00
 source: fix-english-status-labels-and-plurals
 updated: 2026-10-15T15:31:48+08:00
 -->
+
+---
+### Requirement: 更新日誌依介面語言呈現
+
+desktop 的更新日誌對話框（自動彈出的「X.Y.Z 更新內容」與瀏覽模式的「更新日誌」）與更新頁「更新日誌」卡（含每版一列的首條摘要）SHALL 依目前的介面語言呈現 release-notes.json 的條目：介面語言為英文時 SHALL 顯示每個條目的 `en` 文字，分組標題 SHALL 為 New features、Fixes、Improvements；介面語言為繁中時 SHALL 顯示 `zh-TW` 文字，分組標題 SHALL 為新功能、修正、改善。切換介面語言後，已開啟的對話框與更新頁 SHALL 改以新語言呈現。彈出判定與已看過記錄 SHALL NOT 受介面語言影響。
+
+#### Scenario: 英文介面看到英文更新內容
+
+- **WHEN** 介面語言為英文的使用者由 0.8.0 更新到 0.9.0 後首次啟動
+- **THEN** 彈出「0.9.0」更新內容對話框，條目為英文、分組標題為 New features 等英文標題
+
+#### Scenario: 繁中介面維持繁中
+
+- **WHEN** 介面語言為繁中的使用者在更新頁按「全部更新日誌」
+- **THEN** 對話框列出全部版本的繁中條目，分組標題為新功能、修正、改善
+
+#### Scenario: 切換語言不影響已看過記錄
+
+- **WHEN** 使用者看過 0.9.0 的更新內容後把介面語言改為英文並重新啟動
+- **THEN** 不再彈出 0.9.0 的更新內容
+
+<!-- @trace
+source: bilingual-release-notes
+updated: 2026-10-15T17:28:24+08:00
+-->
