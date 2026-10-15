@@ -6,18 +6,19 @@ import { useState } from "react";
 import {
   BaselineSmellList,
   Button,
+  REVIEW_LISTS,
   SettingsCard,
   SettingsChoice,
   SettingsPageHeader,
   SettingsRow,
   SeverityTag,
   useI18n,
+  type ReviewBaseline,
 } from "@speclink/ui";
 
-import type { ReviewBaseline } from "../../adapter/workspace";
 import { CodeEditor } from "../../components/CodeEditor";
 import { CardEditControls, FieldHelp, PageAlerts, PageNote, useSaveShortcut } from "./parts";
-import { REVIEW_LISTS, textToEntries, type ProjectSettingsState } from "./useProjectSettings";
+import { textToEntries, type ProjectSettingsState } from "./useProjectSettings";
 
 const BASELINES: ReviewBaseline[] = ["extend", "replace"];
 

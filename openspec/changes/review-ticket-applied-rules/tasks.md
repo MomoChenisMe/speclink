@@ -25,5 +25,5 @@
 ## 5. 文件與收尾
 
 - [x] 5.1 更新 docs/verb-contract.md 與 docs/verb-contract.zh-TW.md：`GET /changes/{name}/review` 每輪欄位加入 `rules`（物件或 null，含四個鍵），`invalid_argument` 列加入「規則記錄格式錯誤或出現在非 discovery 輪」。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠（中英對照與詞彙守門） <!-- speclink-task:tsk_01M4XAVYETJ50WK8B1RVS43D1S -->
-- [ ] [M] 5.2 執行 `npm run dev:desktop`，開一個 discovery 輪帶規則記錄的審查中變更，在「審查」分頁展開第 1 輪，確認套用規則列的文字、條數籤與展開內容符合 design 的呈現表，再開一個沒有規則記錄的工單確認沒有此列 <!-- speclink-task:tsk_01M4XAVYETS8N7ES5SZGSZ3CQE -->
+- [x] [M] 5.2 執行 `npm run dev:desktop`，開一個 discovery 輪帶規則記錄的審查中變更，在「審查」分頁展開第 1 輪，確認套用規則列的文字、條數籤與展開內容符合 design 的呈現表，再開一個沒有規則記錄的工單確認沒有此列 <!-- speclink-task:tsk_01M4XAVYETS8N7ES5SZGSZ3CQE -->
 - [x] 5.3 收尾驗證：`cargo test -p speclink-core`、`cargo test -p speclink-protocol`、`cargo test -p speclink-cli --test it review_verbs`、`cargo test -p speclink-cli --test it remote_verb_parity`、`cargo test -p speclink-cli --test it verify_verbs`、`cargo test -p speclink-server --test it review_api`、`cargo test -p speclink-server --test it verify_api`、`cargo test -p speclink-desktop-core`、`npm test -w @speclink/ui`、`npm test -w @speclink/desktop` 與 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠 <!-- speclink-task:tsk_01M4XAVYET1BCH61ETQV58K3N5 -->

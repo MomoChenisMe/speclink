@@ -2,11 +2,9 @@
 // 兩層設定的載入、儲存、remote revision 衝突對照與產出流程的切換／fork／建立／刪除，邏輯不變；
 // 四個分類頁共用同一份狀態，切頁不重載、各頁的編輯態與草稿跨頁保留。
 import { useEffect, useRef, useState } from "react";
-import { useI18n } from "@speclink/ui";
+import { REVIEW_LISTS, useI18n, type ReviewBaseline, type ReviewList, type ReviewRules } from "@speclink/ui";
 
 import type {
-  ReviewBaseline,
-  ReviewRules,
   SchemaEntry,
   SettingsSnapshot,
   WorkflowFields,
@@ -74,10 +72,6 @@ export const textToEntries = (text: string) =>
  * 重新拆行會變成多條——只有使用者改過的節才照「一行一條」重切。 */
 const keepUnedited = (text: string, entries: string[]) =>
   text === entriesToText(entries) ? entries : textToEntries(text);
-
-/** 審查規則的三個嚴重度清單（固定三節，順序即畫面順序）。 */
-export const REVIEW_LISTS = ["critical", "warning", "suggestion"] as const;
-export type ReviewList = (typeof REVIEW_LISTS)[number];
 
 /** 審查規則編輯草稿：預設清單模式＋三節各一份「一行一條」文字。 */
 export type ReviewDraft = { baseline: ReviewBaseline } & Record<ReviewList, string>;

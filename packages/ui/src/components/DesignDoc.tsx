@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
 
 import {
   itemMarkdown,
@@ -18,6 +17,7 @@ import { Callout } from "./ui/callout";
 import { Card } from "./ui/card";
 import {
   DocSection,
+  ExpandToggle,
   InlineMarks,
   KeyValueRows,
   ListBlocks,
@@ -178,17 +178,7 @@ function DecisionCard({
   }, [jump]);
   return (
     <Card ref={ref} size="nested" data-decision={mark} className="overflow-hidden">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full cursor-(--cursor-interaction) items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-foreground/5"
-      >
-        {open ? (
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-        ) : (
-          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-        )}
+      <ExpandToggle open={open} onToggle={() => setOpen((v) => !v)} className="gap-2 px-4 py-3">
         {card.id && <span className={NAME_CHIP_CLS}>{card.id}</span>}
         <h3 data-doc-heading className={`min-w-0 flex-1 ${SECTION_HEADING_CLS}`}>
           <InlineMarks text={card.title} />
@@ -196,7 +186,7 @@ function DecisionCard({
         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
           {t("doc.points").replace("{n}", String(card.bullets))}
         </span>
-      </button>
+      </ExpandToggle>
       {open && card.body && (
         <div className="border-t border-border/70 px-4 py-3">
           <Markdown content={card.body} />
