@@ -23,11 +23,11 @@ import { textToEntries, type ProjectSettingsState } from "./useProjectSettings";
 const BASELINES: ReviewBaseline[] = ["extend", "replace"];
 
 export function ReviewRulesPage({ ps }: { ps: ProjectSettingsState }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const [showSmells, setShowSmells] = useState(false);
   const save = () => void ps.saveReview();
   useSaveShortcut(ps.reviewEditing, save);
-  const countLabel = (n: number) => t("settings.rulesCount").replace("{count}", String(n));
+  const countLabel = (n: number) => tn("settings.rulesCount", n);
   const smells = ps.snap.workflow.reviewBaselineSmells;
   const disabled = ps.wfDisabled || ps.reviewSaving;
   const total = REVIEW_LISTS.reduce((n, list) => n + ps.review[list].length, 0);
@@ -55,7 +55,7 @@ export function ReviewRulesPage({ ps }: { ps: ProjectSettingsState }) {
 
       <SettingsCard title={t("settings.reviewBaselineCard")}>
         <SettingsRow
-          label={t("settings.reviewBaselineLabel").replace("{count}", String(smells.length))}
+          label={tn("settings.reviewBaselineLabel", smells.length)}
           htmlFor={ps.reviewEditing ? "review-baseline" : undefined}
           description={t(`settings.reviewBaseline.${baseline}Desc`)}
           control={
@@ -88,7 +88,7 @@ export function ReviewRulesPage({ ps }: { ps: ProjectSettingsState }) {
             >
               {showSmells
                 ? t("settings.reviewSmellsHide")
-                : t("settings.reviewSmellsShow").replace("{count}", String(smells.length))}
+                : tn("settings.reviewSmellsShow", smells.length)}
             </Button>
             {showSmells && <BaselineSmellList data-testid="review-smells" names={smells} />}
           </div>

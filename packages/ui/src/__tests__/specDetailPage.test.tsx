@@ -799,3 +799,35 @@ describe("規格詳情頁文件三態", () => {
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
 });
+
+// fix-english-status-labels-and-plurals：英文介面數量為 1 時用單數（desktop-config「英文計數文案依數量使用單數或複數」）。
+describe("英文介面的計數單複數", () => {
+  const ONE_SCENARIO_MD = `# plain Specification
+
+## Purpose
+
+One requirement with one scenario.
+
+## Requirements
+
+### Requirement: Only
+
+The system SHALL work.
+
+#### Scenario: Works
+
+- **WHEN** a reader opens it
+- **THEN** it works
+`;
+  const enWrapper = ({ children }: { children: ReactNode }) => (
+    <I18nProvider locale="en">{children}</I18nProvider>
+  );
+
+  it("身分區出身行為「1 requirement · 1 scenario」，不出現「1 scenarios」", async () => {
+    rtlRender(<SpecDetailPage {...(makeProps({ loadDocument: vi.fn(async () => ONE_SCENARIO_MD) }) as never)} />, {
+      wrapper: enWrapper,
+    });
+    await waitFor(() => expect(identityRow()?.textContent).toBe("1 requirement·1 scenario"));
+    expect(document.body.textContent).not.toContain("1 scenarios");
+  });
+});

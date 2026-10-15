@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MESSAGES } from "@speclink/ui";
+import { MESSAGES, dictionaryProblems } from "@speclink/ui";
 import { App } from "../App";
 import { APP_MESSAGES } from "../i18n/messages";
 import { makeAdminClient, setViewport } from "./helpers/adminHarness";
@@ -11,6 +11,7 @@ import { makeAdminClient, setViewport } from "./helpers/adminHarness";
 // 訊息集合完全對應。語言選擇不影響 artifacts 產出語言、CLI 或伺服器回傳的字串。
 
 const LANGUAGE_KEY = "speclink.uiLocale";
+
 
 function setBrowserLanguage(language: string) {
   Object.defineProperty(navigator, "language", { value: language, configurable: true });
@@ -82,10 +83,9 @@ describe("帳號選單的語言切換", () => {
 });
 
 describe("兩種語言的訊息集合對應", () => {
-  it("zh-TW 與 en 的 key 集合完全相等", () => {
-    const zh = Object.keys(APP_MESSAGES["zh-TW"]).sort();
-    const en = Object.keys(APP_MESSAGES.en).sort();
-    expect(en).toEqual(zh);
+  // 兩語言鍵集合（.one 除外）、.one 只在英文、計數文案用 {n} 並有 .one——與 @speclink/ui 共用同一個檢查。
+  it("通過共用的字典檢查", () => {
+    expect(dictionaryProblems(APP_MESSAGES)).toEqual([]);
   });
 
   // app 字典與 @speclink/ui 內建字典合併：同 key 同值的條目只是重複定義，換字時兩邊要一起改。

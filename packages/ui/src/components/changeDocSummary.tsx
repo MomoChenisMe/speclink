@@ -1,5 +1,6 @@
 import type { ChangeItem, StationTicket, TicketStation } from "../adapter";
 import { specDeltaCounts, sumDeltaCounts, type DeltaCounts } from "../delta";
+import type { Translator } from "../i18n";
 import {
   listItemsOf,
   parseCapabilities,
@@ -57,18 +58,19 @@ const itemCount = (md: string) => listItemsOf(parseListItems(md)).length;
  * 閱讀卡標題區的推導單一入口（design D9）：依目前文件回籤槽、數字磚與提示框，全部由文件結構推出；
  * 文件未載入或無內容時三者皆空。提案的提示框由頁放在能力段尾，其他文件放在數字磚與內文之間。
  */
-export function changeDocSummary(tab: string, data: ChangeDocData, t: (key: string) => string): DocSummary {
+export function changeDocSummary(tab: string, data: ChangeDocData, i18n: Translator): DocSummary {
+  const { t } = i18n;
   switch (tab) {
     case "proposal":
-      return data.proposal ? proposalSummary(data.proposal, data.specDocs, t) : EMPTY;
+      return data.proposal ? proposalSummary(data.proposal, data.specDocs, i18n) : EMPTY;
     case "design":
       return data.design ? designSummary(data.design, t) : EMPTY;
     case "tasks":
-      return data.tasksMd ? tasksSummary(data.tasksMd, t, data.onLocateTask) : EMPTY;
+      return data.tasksMd ? tasksSummary(data.tasksMd, i18n, data.onLocateTask) : EMPTY;
     case "specs":
       return specsSummary(data.specDocs, t);
     case "plan":
-      return data.change ? planSummary(data.change, t) : EMPTY;
+      return data.change ? planSummary(data.change, i18n) : EMPTY;
     case "review":
     case "verify": {
       const summary = ticketSummary(tab, data.tickets[tab], t);
@@ -79,7 +81,7 @@ export function changeDocSummary(tab: string, data: ChangeDocData, t: (key: stri
   }
 }
 
-function proposalSummary(proposal: string, specDocs: ChangeDocData["specDocs"], t: (key: string) => string): DocSummary {
+function proposalSummary(proposal: string, specDocs: ChangeDocData["specDocs"], { t, tn }: Translator): DocSummary {
   const doc = splitH2Sections(proposal);
   if (!doc) return EMPTY;
   const { sections } = doc;
@@ -110,10 +112,8 @@ function proposalSummary(proposal: string, specDocs: ChangeDocData["specDocs"], 
     .map((cap) => {
       const doc = specDocs![cap]!;
       const removed = removedScenarios(doc).names.length;
-      const line = t("doc.capabilityRewritten")
-        .replace("{cap}", cap)
-        .replace("{n}", String(specDeltaCounts(doc).modified));
-      return removed > 0 ? line + t("doc.capabilityRemovedScenarios").replace("{m}", String(removed)) : line;
+      const line = tn("doc.capabilityRewritten", specDeltaCounts(doc).modified).replace("{cap}", cap);
+      return removed > 0 ? line + tn("doc.capabilityRemovedScenarios", removed) : line;
     });
   return {
     badges: shape && <Badge variant="outline">{t(SHAPE_KEYS[shape])}</Badge>,
@@ -156,7 +156,7 @@ type TaskItem = Extract<TaskDocItem, { kind: "task" }>;
 
 function tasksSummary(
   tasksMd: string,
-  t: (key: string) => string,
+  { t, tn }: Translator,
   onLocateTask?: (ordinal: number) => void,
 ): DocSummary {
   const items = parseTaskDoc(tasksMd);
@@ -181,7 +181,7 @@ function tasksSummary(
     ],
     callout:
       pendingManual.length > 0 ? (
-        <Callout tone="manual" title={t("tasks.manualCallout").replace("{n}", String(pendingManual.length))} className="my-0">
+        <Callout tone="manual" title={tn("tasks.manualCallout", pendingManual.length)} className="my-0">
           <ul className="my-1 flex flex-col gap-0.5 text-sm">
             {pendingManual.map((m) => {
               const parts = splitTaskText(m.text);

@@ -141,7 +141,7 @@ export function DiscussionCard({
   DiscussionColumnProps,
   "onOpenDiscussion" | "onArchiveDiscussion" | "highlight"
 >) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const badge = statusBadge(d);
   return (
     <Card
@@ -184,7 +184,7 @@ export function DiscussionCard({
         </span>
         {/* meta 列（anatomy 三列骨架）：輪數與建立時間並排；建立者圓點已上移識別列。 */}
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="tabular-nums">{t("common.rounds").replace("{n}", String(d.rounds))}</span>
+          <span className="tabular-nums">{tn("common.rounds", d.rounds)}</span>
           <span className="tabular-nums">{d.created}</span>
         </div>
         {/* stopPropagation 掛在按鈕自身而非整列：鈕旁空白仍冒泡開討論抽屜。 */}

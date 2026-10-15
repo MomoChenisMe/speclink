@@ -164,10 +164,12 @@ export function DetailTreeLabel({ children }: { children: ReactNode }) {
   );
 }
 
-/** 左欄「狀態」列：承接原「狀態」卡的內容（`DetailHeader` 的 `StatusRow` 清單，細線分隔）。 */
+/** 左欄「狀態」列：承接原「狀態」卡的內容（`DetailHeader` 的 `StatusRow` 清單，細線分隔）。兩欄格線讓各列以
+ * subgrid 共用標籤欄——欄寬取最長標籤，英文單字標籤不溢出、各列數值左緣對齊（desktop-app「詳情頁狀態列的標籤欄
+ * 依最長標籤對齊」）。 */
 export function DetailStatus({ children }: { children: ReactNode }) {
   return (
-    <section data-status-card className="flex flex-col divide-y divide-border">
+    <section data-status-card className="grid grid-cols-[max-content_minmax(0,1fr)] divide-y divide-border">
       {children}
     </section>
   );

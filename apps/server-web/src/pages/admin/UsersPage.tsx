@@ -267,7 +267,7 @@ function inviteUrl(token: string): string {
 /** 使用者列（design D4）：頭像字、名稱與 email、管理員籤、狀態籤、所屬專案數；窄螢幕把管理員
  *  併入 email 那一行、meta 只留狀態籤。整列可點進詳情頁。 */
 function UserRow({ user, narrow, onOpen }: { user: AdminUser; narrow: boolean; onOpen: () => void }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const name = userLabel(user);
   const adminLabel = t("users.roleAdmin");
   const statusPill = (
@@ -304,7 +304,7 @@ function UserRow({ user, narrow, onOpen }: { user: AdminUser; narrow: boolean; o
             <span className="tabular-nums">
               {projectCount === 0
                 ? t("users.noProjectsShort")
-                : t("users.projectCount").replace("{n}", String(projectCount))}
+                : tn("users.projectCount", projectCount)}
             </span>
           </>
         )

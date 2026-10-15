@@ -42,7 +42,7 @@ export function BoardSearchBar({
    * 文字為 tooltip（title）、聚焦快捷鍵停用；缺席＝照常。 */
   disabledReason?: string;
 }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   // 全域快捷鍵聚焦：macOS Cmd+F、其他平台 Ctrl+F（spec「快捷鍵聚焦搜尋輸入」）。
@@ -106,7 +106,7 @@ export function BoardSearchBar({
         {active && (
           <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
             <span data-testid="search-hits" className="text-[11px] tabular-nums text-muted-foreground">
-              {t("kanban.hitCount").replace("{n}", String(hitCount))}
+              {tn("kanban.hitCount", hitCount)}
             </span>
             <Button
               type="button"

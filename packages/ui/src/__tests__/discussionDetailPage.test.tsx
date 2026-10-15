@@ -903,11 +903,11 @@ describe("數字磚、出處行與提示框", () => {
     `# Discussion\n\n## Context\n\n${context}\n\n## Rounds\n\n${rounds}\n\n## Conclusion\n\n${conclusion}\n`;
 
   function Harness({ tab, data }: { tab: DiscussionTab; data: DiscussionDocData }) {
-    const { t } = useI18n();
-    const summary = discussionDocSummary(tab, data, t);
+    const { t, tn } = useI18n();
+    const summary = discussionDocSummary(tab, data, { t, tn });
     return (
       <>
-        <DocHeader title="文件" provenance={discussionDocProvenance(tab, data, t)} />
+        <DocHeader title="文件" provenance={discussionDocProvenance(tab, data, { t, tn })} />
         <DocTiles tiles={summary.tiles} />
         {summary.callout && <div data-doc-callout>{summary.callout}</div>}
       </>

@@ -266,7 +266,7 @@ export function DiscussionDetailPage({
   onArchiveDiscussion,
   renderDocumentActions,
 }: DiscussionDetailPageProps) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const [doc, setDoc] = useState<string | null | undefined>();
   // 使用者選的文件；null＝依預設規則（記錄載入前後、結論有無都跟著走）。
   const [picked, setPicked] = useState<string | null>(null);
@@ -380,7 +380,7 @@ export function DiscussionDetailPage({
   const promoteCount = discussion.promotedTo.length;
   // 受控文件：關聯列要能切到背景。
   const tab = discussionDoc(picked, sections);
-  const summary = discussionDocSummary(tab, data, t);
+  const summary = discussionDocSummary(tab, data, { t, tn });
   const prior = sections ? countPriorDiscussions(sections.context) : null;
   const relations: DetailRelation[] =
     prior === null
@@ -392,7 +392,7 @@ export function DiscussionDetailPage({
             children: (
               <button type="button" className="min-w-0" onClick={() => setPicked("context")}>
                 <Badge variant="outline" className="hover:bg-accent">
-                  {t("ddetail.priorDiscussions").replace("{n}", String(prior))}
+                  {tn("ddetail.priorDiscussions", prior)}
                 </Badge>
               </button>
             ),
@@ -427,7 +427,7 @@ export function DiscussionDetailPage({
         subtitle={discussion.topic}
         provenance={[
           discussion.createdBy && <IdentityName identity={discussion.createdBy} />,
-          <span className="shrink-0 tabular-nums">{t("common.rounds").replace("{n}", String(discussion.rounds))}</span>,
+          <span className="shrink-0 tabular-nums">{tn("common.rounds", discussion.rounds)}</span>,
           discussion.created && <span className="shrink-0">{discussion.created}</span>,
         ]}
         relations={relations}
@@ -497,7 +497,7 @@ export function DiscussionDetailPage({
             <DocHeader
               title={t(DOC_TITLE_KEYS[tab])}
               actions={renderDocumentActions?.({ doc: { discussion: discussion.slug }, content: doc ?? null })}
-              provenance={discussionDocProvenance(tab, data, t)}
+              provenance={discussionDocProvenance(tab, data, { t, tn })}
             />
             <DocTiles tiles={summary.tiles} />
             {summary.callout && <div data-doc-callout>{summary.callout}</div>}

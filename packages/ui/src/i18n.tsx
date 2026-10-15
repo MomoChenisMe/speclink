@@ -136,12 +136,12 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "ticket.stampableNone": "末輪無發現。",
     "ticket.stampHow": "蓋章請用 CLI 或 agent 跑 {cmd}。",
     "ticket.rules.label": "套用規則",
-    "ticket.rules.baselineOnly": "預設 {count} 條 code smell",
-    "ticket.rules.extendWithRules": "預設 {count} 條＋專案規則",
-    "ticket.rules.replaceWithRules": "只用專案規則（沒有套用預設 {count} 條）",
+    "ticket.rules.baselineOnly": "預設 {n} 條 code smell",
+    "ticket.rules.extendWithRules": "預設 {n} 條＋專案規則",
+    "ticket.rules.replaceWithRules": "只用專案規則（沒有套用預設 {n} 條）",
     "ticket.rules.replaceEmpty": "整份換掉且沒有專案規則：只依 repo 文件審查",
-    "ticket.rules.baselineNotApplied": "沒有套用預設 {count} 條 code smell",
-    "ticket.rules.projectCount": "專案規則 {count} 條",
+    "ticket.rules.baselineNotApplied": "沒有套用預設 {n} 條 code smell",
+    "ticket.rules.projectCount": "專案規則 {n} 條",
     "ticket.rules.note": "記錄首輪當時的設定；之後改了審查規則，這裡不會跟著變。",
     "board.empty": "沒有 active change",
     "drawer.subtitle": "Artifact 管線與任務",
@@ -347,7 +347,7 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "doc.tileRisks": "風險與取捨",
     "doc.tileOpenQuestions": "開放問題",
     "doc.capabilityRewritten": "{cap} 有 {n} 條需求被改寫",
-    "doc.capabilityRemovedScenarios": "，其中 {m} 個 scenario 以 REMOVED-SCENARIO 宣告",
+    "doc.capabilityRemovedScenarios": "，其中 {n} 個 scenario 以 REMOVED-SCENARIO 宣告",
     "doc.tileCapsTouched": "觸及的能力",
     "doc.tileModifiedReqs": "修改的需求",
     "doc.tileRemovedScenarios": "移除的 scenario",
@@ -479,7 +479,9 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "common.tabTasks": "Tasks",
     "common.tabSpecs": "Specs",
     "common.tasksCount": "{n} tasks",
+    "common.tasksCount.one": "{n} task",
     "common.rounds": "{n} rounds",
+    "common.rounds.one": "{n} round",
     "common.noContent": "(no content)",
     "toast.close": "Close notification",
     "stage.proposed": "Proposed",
@@ -488,6 +490,7 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "kanban.dropToArchive": "Drop here to archive",
     "kanban.searchPlaceholder": "Search board cards…",
     "kanban.hitCount": "{n} cards",
+    "kanban.hitCount.one": "{n} card",
     "kanban.clearSearch": "Clear search",
     "kanban.loadFailed": "Couldn't load — retrying later, or switch tabs to retry",
     "filter.toggle": "Filters",
@@ -543,8 +546,10 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "plan.tileArchiveAfter": "Archive after",
     "plan.calloutStart": "Ready to start",
     "plan.calloutBlocked": "Waiting on {n} prerequisites",
+    "plan.calloutBlocked.one": "Waiting on {n} prerequisite",
     "plan.calloutArchiveFree": "and free to archive",
     "plan.calloutArchiveWait": "archive after {n} changes",
+    "plan.calloutArchiveWait.one": "archive after {n} change",
     "plan.calloutConflict": "resolve the name conflict first",
     "plan.calloutJoin": ", ",
     "plan.calloutRecompute": "The plan is recomputed when the board refreshes.",
@@ -577,7 +582,9 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "ticket.phase.discovery": "First pass",
     "ticket.phase.validation": "Re-check",
     "ticket.scopeFiles": "{n} files in scope",
+    "ticket.scopeFiles.one": "{n} file in scope",
     "ticket.findings": "{n} findings",
+    "ticket.findings.one": "{n} finding",
     "ticket.accepted": "Accepted",
     "ticket.noFindings": "No findings this round",
     "ticket.empty": "Ticket not loaded or already removed",
@@ -588,12 +595,16 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "ticket.stampableNone": "No findings in the last round.",
     "ticket.stampHow": "Stamp it from the CLI or an agent with {cmd}.",
     "ticket.rules.label": "Rules applied",
-    "ticket.rules.baselineOnly": "{count} baseline code smells",
-    "ticket.rules.extendWithRules": "{count} baseline smells + project rules",
+    "ticket.rules.baselineOnly": "{n} baseline code smells",
+    "ticket.rules.baselineOnly.one": "{n} baseline code smell",
+    "ticket.rules.extendWithRules": "{n} baseline smells + project rules",
+    "ticket.rules.extendWithRules.one": "{n} baseline smell + project rules",
     "ticket.rules.replaceWithRules": "Project rules only (baseline not applied)",
     "ticket.rules.replaceEmpty": "Baseline replaced, no project rules: judged against repo documents only",
-    "ticket.rules.baselineNotApplied": "The {count} baseline code smells were not applied",
-    "ticket.rules.projectCount": "{count} project rules",
+    "ticket.rules.baselineNotApplied": "The {n} baseline code smells were not applied",
+    "ticket.rules.baselineNotApplied.one": "The {n} baseline code smell was not applied",
+    "ticket.rules.projectCount": "{n} project rules",
+    "ticket.rules.projectCount.one": "{n} project rule",
     "ticket.rules.note": "Recorded as set at the first pass; later changes to the review rules do not show here.",
     "board.empty": "No active changes",
     "drawer.subtitle": "Artifact pipeline and tasks",
@@ -616,6 +627,7 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "tasks.tileGroups": "Groups",
     "tasks.allDone": "All done",
     "tasks.manualCallout": "{n} manual tasks",
+    "tasks.manualCallout.one": "{n} manual task",
     "tasks.manualCalloutHint": "Do these yourself, then check them off; an agent running apply stops in front of them and waits for you.",
     "archived.searchPlaceholder": "Search archived changes and discussions…",
     "archived.pageDesc": "Archived changes and discussions; open a row for the read-only view.",
@@ -631,7 +643,9 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "archived.noRounds": "(no rounds)",
     "archived.noConclusion": "(no conclusion)",
     "archived.specCount": "Touches {n} specs",
+    "archived.specCount.one": "Touches {n} spec",
     "archived.promotedCount": "{n} promoted changes",
+    "archived.promotedCount.one": "{n} promoted change",
     "adetail.archivedOn": "Archived {date}",
     "adetail.statusArchived": "Archived on",
     "adetail.noQuality": "No quality gates",
@@ -673,6 +687,7 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "ddetail.promotedLabel": "Promoted",
     "ddetail.relations": "Related",
     "ddetail.priorDiscussions": "{n} prior discussions",
+    "ddetail.priorDiscussions.one": "{n} prior discussion",
     "rounds.roundN": "Round {n}",
     "rounds.position": "Position",
     "rounds.ruledOut": "Ruled out",
@@ -689,12 +704,16 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "conclusion.next": "Next",
     "conclusion.cuts": "Cuts",
     "conclusion.cutChanges": "{n} changes",
+    "conclusion.cutChanges.one": "{n} change",
     "conclusion.moreDetails": "Show {n} more settled details",
+    "conclusion.moreDetails.one": "Show {n} more settled detail",
     "conclusion.tileDetails": "Settled details",
     "conclusion.tileCuts": "Cuts · {n} changes",
+    "conclusion.tileCuts.one": "Cuts · {n} change",
     "conclusion.tileRejected": "Rejected alternatives",
     "conclusion.tileDeferred": "Deferred",
     "conclusion.afterRounds": "Written after {n} rounds",
+    "conclusion.afterRounds.one": "Written after {n} round",
     "conclusion.copyCommand": "Copy command",
     "conclusion.notPromoted": "Not promoted",
     "conclusion.unpromotedCallout": "Cuts not promoted yet: {n}",
@@ -702,11 +721,13 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "rounds.tileRounds": "Rounds",
     "rounds.tileDays": "Days",
     "rounds.modeRounds": "{mode} {n} rounds",
+    "rounds.modeRounds.one": "{mode} {n} round",
     "rounds.dateRange": "{first} – {last}",
     "rounds.converged": "Discussion converged",
     "rounds.convergedBody": "Conclusion written after round {n}",
     "rounds.convergedOpenNone": "Last round open items: none",
     "rounds.convergedOpenLeft": "The last round still lists {n} open items",
+    "rounds.convergedOpenLeft.one": "The last round still lists {n} open item",
     "context.intro": "Origin and scope",
     "context.relations": "Related",
     "context.record": "Record",
@@ -739,6 +760,7 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "promoted.stampReview": "R",
     "promoted.stampVerify": "V",
     "promoted.groupChanges": "{n} changes",
+    "promoted.groupChanges.one": "{n} change",
     "sections.why": "Why",
     "sections.whatChanges": "What Changes",
     "sections.nonGoals": "Non-Goals",
@@ -799,7 +821,9 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "doc.tileRisks": "Risks and trade-offs",
     "doc.tileOpenQuestions": "Open questions",
     "doc.capabilityRewritten": "{cap}: {n} requirements rewritten",
-    "doc.capabilityRemovedScenarios": ", {m} scenarios removed with REMOVED-SCENARIO",
+    "doc.capabilityRewritten.one": "{cap}: {n} requirement rewritten",
+    "doc.capabilityRemovedScenarios": ", {n} scenarios removed with REMOVED-SCENARIO",
+    "doc.capabilityRemovedScenarios.one": ", {n} scenario removed with REMOVED-SCENARIO",
     "doc.tileCapsTouched": "Capabilities touched",
     "doc.tileModifiedReqs": "Modified requirements",
     "doc.tileRemovedScenarios": "Removed scenarios",
@@ -811,25 +835,34 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "doc.goals": "Goals {n}",
     "doc.nonGoals": "Non-goals {n}",
     "doc.points": "{n} points",
+    "doc.points.one": "{n} point",
     "doc.moreParagraphs": "Show {n} more paragraphs",
+    "doc.moreParagraphs.one": "Show {n} more paragraph",
     "doc.moreScenarios": "{n} more scenarios",
+    "doc.moreScenarios.one": "{n} more scenario",
     "doc.scenarioCount": "{n} scenarios",
+    "doc.scenarioCount.one": "{n} scenario",
     "doc.removedScenarios": "This change removes {n} scenarios",
+    "doc.removedScenarios.one": "This change removes {n} scenario",
     "doc.removedScenariosHint": "Archiving drops these scenarios from the canonical spec.",
     "doc.removedScenariosChip": "Removes {n} scenarios",
+    "doc.removedScenariosChip.one": "Removes {n} scenario",
     "doc.viewSpec": "View canonical spec",
     "revert.blockedTitle": "Cannot revert to proposed",
     "revert.blockedDesc": "{name} carries work traces — the gate refused the revert.",
-    "revert.blockedChecked": "{n} checked task(s)",
+    "revert.blockedChecked": "{n} checked tasks",
+    "revert.blockedChecked.one": "{n} checked task",
     "revert.blockedCheckedHint": "Uncheck them on the Tasks tab, then retry.",
     "revert.blockedTouched": "Files in the touched record:",
     "revert.blockedTouchedHint": "These files may mix content from other changes — have an agent judge them; the GUI offers no cleanup.",
     "revert.blockedClose": "Got it",
     "analyze.validatePass": "Structural validation passed",
-    "analyze.validateFail": "Structural validation: {n} error(s)",
+    "analyze.validateFail": "Structural validation: {n} errors",
+    "analyze.validateFail.one": "Structural validation: {n} error",
     "analyze.close": "Close analysis",
     "analyze.noIssues": "No issues",
-    "analyze.issues": "{n} issue(s)",
+    "analyze.issues": "{n} issues",
+    "analyze.issues.one": "{n} issue",
     "analyze.dim.Coverage": "Coverage",
     "analyze.dim.Consistency": "Consistency",
     "analyze.dim.Ambiguity": "Ambiguity",
@@ -837,12 +870,14 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "time.today": "today",
     "time.yesterday": "yesterday",
     "time.daysAgo": "{n} days ago",
+    "time.daysAgo.one": "{n} day ago",
     "specs.searchPlaceholder": "Search specs…",
     "specs.pageDesc": "Every canonical spec; open a row for the full text and its source changes.",
     "specs.empty": "No canonical specs in this project",
     "specs.noResults": "No matching specs",
     "sdrawer.fromChanges": "From",
     "sdetail.metaRequirements": "{n} requirements",
+    "sdetail.metaRequirements.one": "{n} requirement",
     "sdetail.metaUpdated": "last updated {date} ({change})",
     "sdetail.tabSpec": "Spec",
     "sdetail.tabTrace": "Provenance",
@@ -862,6 +897,7 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "sdetail.tileTraced": "Traced requirements",
     "sdetail.canonical": "Canonical spec",
     "sdetail.metaScenarios": "{n} scenarios",
+    "sdetail.metaScenarios.one": "{n} scenario",
     "sdetail.relationTrace": "Traced",
     "sdetail.stateRequirements": "Requirements",
     "sdetail.stateSources": "Provenance",
@@ -871,9 +907,12 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "sdetail.purposeTbdBody": "This spec's Purpose is still the archive placeholder; edit the Purpose section of `{path}` directly, no delta needed.",
     "sdetail.purposeTbdBodyNoPath": "This spec's Purpose is still the archive placeholder; edit the Purpose section of this spec file directly, no delta needed.",
     "sdetail.untraced": "{n} requirements have no source change",
+    "sdetail.untraced.one": "{n} requirement has no source change",
     "sdetail.untracedBody": "They carry no @trace note, so the provenance document and the Traced changes tile leave them out.",
     "specs.requirementCount": "{n} requirements",
+    "specs.requirementCount.one": "{n} requirement",
     "specs.traceCount": "Traced from {n} changes",
+    "specs.traceCount.one": "Traced from {n} change",
     "specs.purposeTbd": "Purpose pending",
     "breadcrumbs.label": "Breadcrumb",
     "steps.progress": "Step {current} of {total}",
@@ -897,6 +936,7 @@ export const MESSAGES: Record<UiLocale, Dict> = {
     "manual.sectionOther": "Other",
     "manual.stale": "Possibly outdated",
     "manual.uncoveredNew": "{n} specs added after the manual was generated are not covered yet",
+    "manual.uncoveredNew.one": "{n} spec added after the manual was generated is not covered yet",
     "manual.emptyTitle": "No manual yet",
     "manual.emptyDesc": "Generate one from the specs with the manual skill and it will show up here.",
     "manual.remoteTitle": "The manual is not available in remote mode yet",
@@ -923,11 +963,65 @@ interface I18nContextValue {
   locale: UiLocale;
   /** 查內建＋app 合併字典；缺 key 回傳 key 本身（可見的失敗，非靜默錯語言）。 */
   t: (key: string) => string;
+  /**
+   * 計數文案：n 為 1 且字典有 `<key>.one` 時用單數形，否則用 `<key>`；`{n}` 已代入。
+   * 只有英文字典寫 `.one`（繁中不分單複數）。其他佔位符仍由呼叫端代入。
+   */
+  tn: (key: string, n: number) => string;
+}
+
+/** 一組翻譯函式：宿主元件經 useI18n 取得，非 React 的輔助函式（摘要、相對時間）以參數接收。 */
+export type Translator = Pick<I18nContextValue, "t" | "tn">;
+
+/** 依合併後的字典建出 t 與 tn——Provider、Provider 外的預設值與 translatorFor 共用同一套規則。 */
+function lookups(dict: Dict): Translator {
+  const t = (key: string) => dict[key] ?? key;
+  const tn = (key: string, n: number) =>
+    ((n === 1 ? dict[`${key}.one`] : undefined) ?? t(key)).replace("{n}", String(n));
+  return { t, tn };
+}
+
+/** 不經 React 取得某語言的翻譯函式（內建字典＋可選的 app 字典，同 key 時 app 覆蓋內建）。 */
+export function translatorFor(locale: UiLocale, messages?: Partial<Record<UiLocale, Dict>>): Translator {
+  return lookups({ ...MESSAGES[locale], ...(messages?.[locale] ?? {}) });
+}
+
+/** 計數文案：數字佔位符之後、隔零到兩個單字、接以 s 結尾的複數名詞。 */
+const COUNT_MESSAGE = /\{(n|m|count)\}\s+(?:[A-Za-z-]+\s+){0,2}[A-Za-z]+s\b/;
+
+/**
+ * 兩語言字典的一致性檢查（fix-english-status-labels-and-plurals D4），三個 workspace 的字典測試共用：
+ * 兩語言鍵集合相等（`.one` 除外）、`.one` 只在英文且有基礎鍵、英文計數文案用 `{n}` 並有 `.one`、
+ * 對應的繁中也用 `{n}`（tn 只代入 `{n}`）。回傳每個問題一行，空陣列表示通過。
+ */
+export function dictionaryProblems(dicts: Record<UiLocale, Dict>): string[] {
+  const zh = dicts["zh-TW"];
+  const en = dicts.en;
+  const isOne = (key: string) => key.endsWith(".one");
+  const problems: string[] = [];
+  for (const key of Object.keys(zh).sort()) {
+    if (isOne(key)) problems.push(`.one outside en: zh-TW ${key}`);
+    else if (!(key in en)) problems.push(`key only in zh-TW: ${key}`);
+  }
+  for (const key of Object.keys(en).sort()) {
+    if (!isOne(key) && !(key in zh)) problems.push(`key only in en: ${key}`);
+  }
+  for (const key of Object.keys(en).sort()) {
+    if (isOne(key) && !(key.slice(0, -".one".length) in en)) problems.push(`.one without a base key: ${key}`);
+  }
+  for (const key of Object.keys(en).sort()) {
+    const match = isOne(key) ? null : COUNT_MESSAGE.exec(en[key]);
+    if (!match) continue;
+    if (match[1] !== "n") problems.push(`count message must use {n}: ${key}`);
+    else if (!(`${key}.one` in en)) problems.push(`count message without .one: ${key}`);
+    else if (key in zh && !zh[key].includes("{n}")) problems.push(`zh-TW count message must use {n} too: ${key}`);
+  }
+  return problems;
 }
 
 const I18nContext = createContext<I18nContextValue>({
   locale: "zh-TW",
-  t: (key) => MESSAGES["zh-TW"][key] ?? key,
+  ...lookups(MESSAGES["zh-TW"]),
 });
 
 export interface I18nProviderProps {
@@ -939,13 +1033,12 @@ export interface I18nProviderProps {
 
 export function I18nProvider({ locale, messages, children }: I18nProviderProps) {
   const value = useMemo<I18nContextValue>(() => {
-    const dict: Dict = { ...MESSAGES[locale], ...(messages?.[locale] ?? {}) };
-    return { locale, t: (key) => dict[key] ?? key };
+    return { locale, ...translatorFor(locale, messages) };
   }, [locale, messages]);
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 
-/** 取得 t(key) 與當前 locale；Provider 外預設 zh-TW（既有宿主不包也不炸）。 */
+/** 取得 t(key)、tn(key, n) 與當前 locale；Provider 外預設 zh-TW（既有宿主不包也不炸）。 */
 export function useI18n(): I18nContextValue {
   return useContext(I18nContext);
 }

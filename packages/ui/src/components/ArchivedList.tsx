@@ -24,13 +24,13 @@ import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE } from "./verifyStyle";
  * 琥珀警示：「沒做完就封存」才是需要被看見的異常）、觸及規格數、審查／驗證結局、
  * createdBy 頭像圓點、來源討論標記。點整列開唯讀抽屜。 */
 function ArchivedRow({ item, onOpen }: { item: ArchivedItem; onOpen: (target: ArchivedTarget) => void }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const badge =
     item.tasksTotal != null && item.tasksDone != null ? `${item.tasksDone}/${item.tasksTotal}` : null;
   const incomplete = badge != null && item.tasksDone! < item.tasksTotal!;
   const specCount = item.specCount ?? 0;
   const discussions = item.fromDiscussions ?? [];
-  const specLabel = t("archived.specCount").replace("{n}", String(specCount));
+  const specLabel = tn("archived.specCount", specCount);
   return (
     <ListRow
       data-archived={item.datedName}
@@ -132,9 +132,9 @@ function ArchivedDiscussionRow({
   item: DiscussionItem;
   onOpen: (target: ArchivedTarget) => void;
 }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const promoted = item.promotedTo.length;
-  const promotedLabel = t("archived.promotedCount").replace("{n}", String(promoted));
+  const promotedLabel = tn("archived.promotedCount", promoted);
   return (
     <ListRow
       data-archived-discussion={item.slug}
@@ -144,7 +144,7 @@ function ArchivedDiscussionRow({
       meta={
         <>
           <span className="tabular-nums">{item.created}</span>
-          <span className="tabular-nums">{t("common.rounds").replace("{n}", String(item.rounds))}</span>
+          <span className="tabular-nums">{tn("common.rounds", item.rounds)}</span>
           {promoted > 0 && (
             <Tooltip>
               <TooltipTrigger asChild>

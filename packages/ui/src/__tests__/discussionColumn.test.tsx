@@ -775,3 +775,14 @@ describe("看板捲動區是定位容器（copy-button-live-region-pin）", () =
     for (const el of scrollers) expect(el.classList).toContain("relative");
   });
 });
+
+// fix-english-status-labels-and-plurals：desktop-config「數量為 1 時用單數」的討論卡情境。
+describe("英文介面的討論卡輪數", () => {
+  it("只有 1 輪時寫「1 round」", () => {
+    rtlRender(<DiscussionColumn discussions={[{ ...openD, rounds: 1 }]} changes={[]} archived={[]} />, {
+      wrapper: ({ children }: { children: ReactNode }) => <I18nProvider locale="en">{children}</I18nProvider>,
+    });
+    const card = screen.getByText("open-topic").closest("[data-discussion]") as HTMLElement;
+    expect(within(card).getByText(/1 round/).textContent).not.toContain("rounds");
+  });
+});

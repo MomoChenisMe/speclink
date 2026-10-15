@@ -18,7 +18,7 @@ import { changeList, sharedBoardRequirement } from "./helpers/changeList";
 import { editorText, typeInEditor } from "./helpers/codemirror";
 import { REMOTE_KEY, fakeRemoteDs, fakeRemoteSession } from "./helpers/remoteFixtures";
 import { gesture, gestureHandlers } from "./helpers/trackpadGesture";
-import type { SpeclinkDataSource, StatusReport } from "@speclink/ui";
+import { dictionaryProblems, type SpeclinkDataSource, type StatusReport } from "@speclink/ui";
 
 // 模擬 Tauri 事件層：捕捉 workspace-changed 的訂閱 handler，測試可手動觸發；trackpad-gesture
 // （觸控板手指按下／離開）交給共用替身，測試以 gesture() 觸發。
@@ -1692,10 +1692,8 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
   });
 
   it("i18n 兩語系鍵集合相等，備忘鍵已自兩語系移除", () => {
-    const zhKeys = Object.keys(APP_MESSAGES["zh-TW"]).sort();
-    const enKeys = Object.keys(APP_MESSAGES.en).sort();
-    expect(zhKeys).toEqual(enKeys);
-    expect(zhKeys).not.toContain("app.navNotes");
+    expect(dictionaryProblems(APP_MESSAGES)).toEqual([]);
+    expect(Object.keys(APP_MESSAGES["zh-TW"])).not.toContain("app.navNotes");
   });
 });
 

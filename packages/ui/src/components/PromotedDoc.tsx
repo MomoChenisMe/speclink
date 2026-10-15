@@ -155,7 +155,7 @@ function RowGroup({ rows }: { rows: PromotedRow[] }) {
  * 沒有列的刀不出組），不屬任何刀的列接在最後、無組頭；讀不到時依轉出順序平面清單。唯讀、無轉出動作。
  */
 export function PromotedDoc({ rows, cuts, empty }: { rows: PromotedRow[]; cuts: CutCard[]; empty?: string }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   if (rows.length === 0) return <p className="py-4 text-sm text-muted-foreground">{empty ?? t("ddrawer.notPromoted")}</p>;
   if (cuts.length === 0) return <RowGroup rows={rows} />;
   const placed = new Set<string>();
@@ -178,7 +178,7 @@ export function PromotedDoc({ rows, cuts, empty }: { rows: PromotedRow[]; cuts: 
               </span>
             </h3>
             <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
-              {t("promoted.groupChanges").replace("{n}", String(members.length))}
+              {tn("promoted.groupChanges", members.length)}
             </span>
           </div>
           <RowGroup rows={members} />

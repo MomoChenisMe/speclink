@@ -29,7 +29,7 @@ export interface RevertBlockedDialogProps {
  * 唯一按鈕只負責關閉。
  */
 export function RevertBlockedDialog({ info, onClose }: RevertBlockedDialogProps) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   if (!info) return null;
   return (
     <AlertDialog open onOpenChange={(o) => !o && onClose()}>
@@ -44,7 +44,7 @@ export function RevertBlockedDialog({ info, onClose }: RevertBlockedDialogProps)
           {info.checkedTasks > 0 && (
             <div data-blocked-tasks>
               <div className="font-medium">
-                {t("revert.blockedChecked").replace("{n}", String(info.checkedTasks))}
+                {tn("revert.blockedChecked", info.checkedTasks)}
               </div>
               <div className="text-muted-foreground">{t("revert.blockedCheckedHint")}</div>
             </div>

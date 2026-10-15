@@ -133,7 +133,7 @@ const TAB_FILES: Record<string, string> = {
 
 /** 封存變更變體（design D3）。 */
 function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & { datedName: string }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const [proposal, setProposal] = useState<Doc>();
   const [design, setDesign] = useState<Doc>();
   const [tasksMd, setTasksMd] = useState<Doc>();
@@ -219,7 +219,7 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
       readOnly: true,
       onLocateTask: nav.locateTask,
     },
-    t,
+    { t, tn },
   );
   const calloutSlot = summary.callout && <div data-doc-callout>{summary.callout}</div>;
 
@@ -389,7 +389,7 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
 
 /** 封存討論變體（design D3）。 */
 function ArchivedDiscussionView({ slug, ...props }: ArchivedDetailPageProps & { slug: string }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const [doc, setDoc] = useState<Doc>();
   // 使用者選的文件；null＝依預設規則（記錄載入前後、結論有無都跟著走）。
   const [picked, setPicked] = useState<string | null>(null);
@@ -438,7 +438,7 @@ function ArchivedDiscussionView({ slug, ...props }: ArchivedDetailPageProps & { 
   const openPromoted = (item: SourceLinkItem) =>
     item.disabled ? undefined : () => props.onOpenPromotedChange?.(item.slug);
   const tab = discussionDoc(picked, sections);
-  const summary = discussionDocSummary(tab, data, t);
+  const summary = discussionDocSummary(tab, data, { t, tn });
 
   const tree = (
     <>
@@ -521,7 +521,7 @@ function ArchivedDiscussionView({ slug, ...props }: ArchivedDetailPageProps & { 
             <DocHeader
               title={t(DOC_TITLE_KEYS[tab])}
               actions={props.renderDocumentActions?.({ doc: null, content: doc ?? null })}
-              provenance={discussionDocProvenance(tab, data, t)}
+              provenance={discussionDocProvenance(tab, data, { t, tn })}
             />
             <DocTiles tiles={summary.tiles} />
             {summary.callout && <div data-doc-callout>{summary.callout}</div>}
