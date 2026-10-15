@@ -78,8 +78,8 @@ react-router 在 `/admin/users` 與 `/admin/users/<id>` 之間切換時，`users
 - packages/ui `AlertDialogContent` 比照 `SheetContent`：以 callback ref 取得 content 節點，children 包進 `PortalContainerProvider`。對話框內的 Select、DropdownMenu、Popover 浮層因此掛進對話框自己，焦點留在同一個焦點鎖內。新測試 `packages/ui/src/__tests__/selectInDialog.test.tsx` 釘住「AlertDialog 內的 Select 可開啟、可選取、選單節點在對話框內」。
 - 新檔 `apps/server-web/src/components/FormDialog.tsx`（取代 `DetailSheet`）：
   - `FormDialog({ open, onOpenChange, title, description?, children })`：`AlertDialog`＋`AlertDialogContent`（寬 520px、上限為視窗寬減 2rem）＋`AlertDialogHeader`（15px 標題、13px 灰字說明）＋內容。沒有說明時 content 的 `aria-describedby` 設為 undefined。
-  - `FormDialogFooter({ children })`：頁尾細線上方右側排列（`AlertDialogFooter`＋`border-t border-border pt-3.5`，與第一刀專注流程卡的頁尾同一畫法）。
-  - `SecretDone({ title, body, value, copyLabel, note?, onDone })`：已建立狀態——左側綠系圓形勾號＋15px 標題與灰字說明；其下 `role=status`＋`aria-live=polite` 的綠系成功框（`SEMANTIC_SURFACE.success`、12px 圓角），內為等寬字的值與 `CopyButton`；可選的 12px 灰字補充；頁尾只有主要鈕「完成」。
+  - 頁尾直接沿用第一刀專注流程卡的 `FocusFooter`（細線上方右側排列），不另做一份；`FormDialogActions({ submitLabel, pending, disabled?, onCancel })` 是「取消＋送出」的頁尾。各對話框表單共用 `useDialogSubmit(fallback)`（送出中擋重複送出、失敗讀出訊息與欄位錯誤、保留輸入）與 `FormMessage`（表單底部的非欄位錯誤）。
+  - 已建立狀態由 `FormDialog` 的 `done` 旗標呈現標題列：左側綠系圓形勾號＋15px 標題與灰字說明。`SecretDone({ value, copyLabel, note?, onDone })` 放其下的內容：`role=status`＋`aria-live=polite` 的綠系成功框（`SEMANTIC_SURFACE.success`、12px 圓角），內為等寬字的值與 `CopyButton`；可選的 12px 灰字補充；頁尾只有主要鈕「完成」。
 - AlertDialog 原生行為：Esc 與取消關閉、點遮罩不關閉、關閉後焦點回到開啟它的按鈕。表單元件在 `open` 為 false 時回 null，下次開啟一律是空白表單。
 - 對話框內下拉的 Esc（apply 期發現）：packages/ui 的 Radix 元件原本各自釘住不同版本的內部套件（dismissable-layer、focus-scope 各有多份），Select 與 AlertDialog 都以為自己在最上層——下拉開著時按 Esc 會同時關掉下拉與對話框，且 body 的 pointer-events 停在 none，整頁點不動（舊抽屜同樣如此）。只在 `AlertDialogContent` 擋 Esc 行不通（擋住對話框就連下拉也關不掉），根治是讓兩邊共用同一份：以 `npm update -w packages/ui` 把 11 個 `@radix-ui` 套件一起升到 `^` 範圍內的最新版，只改 `package-lock.json`（package.json 範圍不變、不加 overrides），內部套件收斂為單一份。`selectInDialog.test.tsx` 釘住「下拉開著時 Esc 只收起下拉、再按才關對話框、頁面恢復可點」。
 
@@ -89,7 +89,7 @@ react-router 在 `/admin/users` 與 `/admin/users/<id>` 之間切換時，`users
 - 版面：`mx-auto flex w-full max-w-[768px] flex-col gap-6`（與第二刀設定型頁同一寬度）。
 - 頁標題：`PageHeader`（level 1）＋ D8 的 `badge` 放狀態籤（有效為綠系、停權為琥珀系）；說明沿用 `users.detailMeta`（「email · 角色 · 建立於 日期」）；動作為「停權」（outline，`canSuspend` 為 false 時停用，按下開確認框）或停權中的「重新啟用」（直接送出）。
 - `DetailTitle`：label 為使用者名稱（`userLabel`），序列為區段 `visible`。
-- 分頁：`Tabs`＋`TabsList variant="card"`（窄螢幕時 `overflow-x-auto`，卡片標頭內水平捲動）＋去上圓角與上框線的 `Card`（與 `ListCard` 同一接法）；分頁內容為 `SettingsRow` 列。分頁狀態是元件 state，‹ › 切換使用者時保留所在分頁。
+- 分頁：`Tabs`＋`TabsList variant="card"`（窄螢幕時 `overflow-x-auto`，卡片標頭內水平捲動）＋`Card` 的 `attached="top"` 變體（去上圓角與上框線；packages/ui 新增此變體，`ListCard` 也改用它，呼叫端不以 className 覆蓋圓角）；兩個詳情頁共用 `pages/admin/detail.tsx` 的 `DetailTabs`。分頁內容為 `SettingsRow` 列。分頁狀態是元件 state，‹ › 切換使用者時保留所在分頁。
   - 概要：電子郵件（等寬＋`CopyButton`）、狀態（狀態籤）、建立（日期）、管理員（`Switch`，說明「可以管理使用者、專案與系統；這台 server 至少要保留一位管理員。」；`admin && !canRemoveAdmin` 時停用，切換即送 `adminSetAdminFlag`）。
   - 成員資格（計數＝成員資格筆數）：每列標題為專案名稱（registry 查不到時用代號）、說明為等寬代號；右側為角色 `Select`（editor／reader，`aria-label`「<代號> 的角色」，變更即送 `adminSetMembership(..., member: true)`）與移除圖示鈕（`REVEAL_ON_GROUP_HOVER`，按下開確認框指名使用者與代號，確認後送 `member: false`）。末列「加入專案」：專案 `Select`（只列尚未加入的專案；全都加入時停用並以 placeholder 說明）、角色 `Select`（預設 editor）、「加入」鈕（未選專案時停用）。寬螢幕控制項在列右側，窄螢幕放到 `SettingsRow` 的 children（標題下方整列、可換行）。沒有任何成員資格時以 `CardNote` 說明。
   - 憑證（計數＝存取金鑰＋裝置登入筆數）：詳情頁掛載與 id 改變時讀 `getAdminCredentials()` 並裁切成該使用者。存取金鑰列：名稱；說明「前綴 · 存取金鑰 · 到期 · 最近使用」（已撤銷改為撤銷日期）；右側 `RevokeButton`（僅有效項目）＋`RevocationPill`。裝置登入列：來源；說明「裝置登入 · 最近更新 日期」。撤銷開確認框，確認後送 `adminRevokeToken`／`adminRevokeFamily` 並重讀憑證；重讀期間同 D1 留著上一份成功回應，分頁計數不閃掉。
@@ -152,7 +152,8 @@ server-web 字典（zh-TW 與 en 同步）：
 
 **介面／資料形狀**
 - packages/ui 新匯出 `DetailNav({ index: number; total: number; onStep: (delta: -1 | 1) => void })`；`PageHeader` 新增選配 `badge?: ReactNode`；`AlertDialogContent` 對外 props 不變，內部多提供浮層掛載點。
-- server-web 新元件：`DetailTitleProvider`、`DetailTitle({ label: string; index: number; total: number; onStep })`（`layouts/DetailTitle.tsx`）；`FormDialog`、`FormDialogFooter`、`SecretDone`（`components/FormDialog.tsx`）；`UserDetailPage`、`ProjectDetailPage`。
+- packages/ui `Card` 新增 `attached?: "none" | "top"` 變體（接在卡片標頭分頁列下方的內容卡）。
+- server-web 新元件：`DetailTitleProvider`、`DetailTitle({ label: string; index: number; total: number; onStep })`（`layouts/DetailTitle.tsx`）；`FormDialog`、`FormDialogActions`、`FormMessage`、`SecretDone`、`useDialogSubmit`（`components/FormDialog.tsx`）；`SectionRoutes`、`DetailNotFound`、`DetailTabs`（`pages/admin/detail.tsx`）；`UserDetailPage`、`ProjectDetailPage`。
 - 路由：`/admin/users/*`、`/admin/registry/*` 由區段元件承接；server API 呼叫與參數完全不變。
 
 **失敗模式**
@@ -169,7 +170,7 @@ server-web 字典（zh-TW 與 en 同步）：
 - 瀏覽器實機驗收（[M] 任務）。
 
 **範圍**
-- 內：上列 apps/server-web、packages/ui 三處（DetailNav、AlertDialogContent、PageHeader）、apps/desktop 的 import 與檔名、server-web-console 規格（含 Purpose 一句）。
+- 內：上列 apps/server-web、packages/ui 四處（DetailNav、AlertDialogContent、PageHeader、Card 的 `attached` 變體）、apps/desktop 的 import 與檔名、server-web-console 規格（含 Purpose 一句）。
 - 外：server API、speclink-server、CLI、引擎；憑證頁、稽核紀錄頁、總覽、系統頁的版面；desktop 任何畫面。
 
 ## Risks / Trade-offs
