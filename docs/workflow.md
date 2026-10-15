@@ -234,7 +234,9 @@ Compare the delivery with each spec of the change, one by one.
 - **Files change after the stamp**: The card shows "Reviewed · changed since" or "Verified · changed since", and archive stops. Run that station again and stamp again.
 - **Archive stops at an open ticket**: Go back and stamp, give up that station with `discard`, or take the ticket with `--carry-*`.
 
-On cards and in the tray panel, the review stamp and the verify stamp show side by side, review first.
+On cards and in the tray panel, the review stamp and the verify stamp show side by side, review first. The tray panel opens from the Speclink icon in the macOS menu bar. It shows the changes and the quality stations of each project without the main window.
+
+<img src="assets/screenshots/en/desktop-tray.png" width="280" alt="The Speclink tray panel, with the changes grouped by Proposed, In progress, Ready, and Discussions" />
 
 ### <a id="archive"></a>archive: archive
 

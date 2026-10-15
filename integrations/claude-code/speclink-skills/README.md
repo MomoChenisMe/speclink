@@ -13,6 +13,15 @@
 - **輸入框的 `#` 選單**：在輸入框打 `#`，上方會出現下拉選單，列出提案中的變更；`#` 後面再打字可以篩選名稱（不分大小寫）。按 Tab 選第一個，或按 ↓ 選一個再按 Tab／Enter，`#` 那個字就換成變更名稱，例如打 `/speclink-apply #` 再選一個變更。沒有選就按 Enter，會照你打的字送出。句中也可以用，`#` 前面要有空白。
 - **目前在處理什麼**：技能列的「speclink」右邊標出這個 session 正在跑的步驟與 change，例如 `▸ apply · add-auth`，步驟用它所在分頁的顏色。session 標題也換成 `apply · add-auth`，Warp 等會顯示終端機標題的分頁列，從分頁名稱就分得出每個 session 在做哪個 change。步驟取自你送出的 `/speclink-…` 指令，以及模型自己呼叫的 speclink 技能（例如 quality 裡接著跑的 review）；change 取自指令的參數，以及技能執行 speclink CLI 時帶的 change 名稱，所以沒打名稱也認得出來。在某個 change 的 worktree 裡開的 session，一開始就標出那個 change。封存完成（change 從清單消失）後標上 `✓`，例如 `archive · add-auth ✓`。送出 `/speclink-…` 指令後，模型還沒開始跑任何工具就按 Esc 中斷，會回到送出前的步驟與 change；已經開始跑工具才中斷，就留在新的步驟。`compact` 不影響；`/clear` 會清掉，標題在你下一次送出訊息時改回 `Claude Code`；`/resume` 接回的對話，從它的標題或紀錄找回步驟與 change，被 compact 過的也找得回來。還沒用過 speclink 的 session 不顯示，也不改標題。
 
+![Claude Code 輸入框上方是技能列，右邊開著側邊面板的看板分頁](../../../docs/assets/screenshots/zh-TW/claude-code-panel.png)
+
+<table>
+  <tr>
+    <td width="50%"><img src="../../../docs/assets/screenshots/zh-TW/claude-code-quality.png" alt="側邊面板的品質分頁，列出未結的審查工單與兩條發現" /><br /><sub>品質分頁</sub></td>
+    <td width="50%"><img src="../../../docs/assets/screenshots/zh-TW/claude-code-hash-menu.png" alt="在 /speclink-apply 後面打 #，輸入框上方跳出提案中的變更選單" /><br /><sub>輸入框的 <code>#</code> 選單</sub></td>
+  </tr>
+</table>
+
 ## 需求
 
 - Claude Code 2.1.290 以上（以這一版測試）。mod 的 API 目前是 early access，Claude Code 改版時，這個 mod 可能要跟著更新。
