@@ -4,7 +4,7 @@ section: 開始使用
 order: 40
 keywords: [openspec, 變更, 討論, 規格, 生命週期, 封存, 廢棄]
 sources: [change-lifecycle, discussion-docs, user-documentation]
-generated: 2026-10-15T12:27:14+08:00
+generated: 2026-10-15T17:40:05+08:00
 ---
 
 # 認識資料：變更、討論與規格

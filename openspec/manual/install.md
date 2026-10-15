@@ -4,7 +4,7 @@ section: 開始使用
 order: 20
 keywords: [安裝, CLI, 桌面 app, npm, Homebrew, 安裝腳本, 未簽章, universal, AppImage]
 sources: [cli-distribution, user-documentation]
-generated: 2026-10-15T12:27:14+08:00
+generated: 2026-10-15T17:40:05+08:00
 ---
 
 # 安裝 CLI 與桌面 app
@@ -24,7 +24,7 @@ Speclink 有兩個可以安裝的東西：命令列工具 `speclink`（下稱 CL
 Windows 沒有安裝腳本：走 npm 全域安裝，或裝桌面 app 由安裝器處理。沒有圖形介面的 Linux 主機走 CLI 的一行安裝。Linux 不再提供 deb 套件；已經用 deb 裝過的人，移除 deb 套件後改裝 AppImage。
 
 > [!NOTE]
-> 規格只規定通路與行為，沒有載明每條指令的本文與下載網址。實際的一行指令與下載入口，請看 README 的安裝區塊。
+> 規格只規定通路與行為，沒有載明每條指令的本文與下載網址。實際的一行指令與下載入口，請看 README 的安裝區塊；桌面 app 與 CLI 的覆蓋行為、安裝腳本可用的環境變數與 deb 的遷移方式，README 不重複，改由入門文件（getting-started）的安裝節完整說明。
 
 ## 用 npm 裝 CLI
 

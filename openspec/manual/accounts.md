@@ -4,7 +4,7 @@ section: Remote 模式
 order: 430
 keywords: [邀請, 登入, 存取金鑰, PAT, membership, reader, editor, 403]
 sources: [server-identity, server-policy-write, user-documentation, "server-web-console#帳號頁呈現我的專案", "server-web-console#管理列表以詳情頁與對話框承載檢視與建立"]
-generated: 2026-10-15T12:25:31+08:00
+generated: 2026-10-15T17:40:05+08:00
 ---
 
 # 帳號、邀請、存取金鑰與 membership

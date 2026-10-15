@@ -4,7 +4,7 @@ section: 開始使用
 order: 50
 keywords: [工作流, 技能, 交棒, 下一步, SDD, 站別, baseline, 手冊]
 sources: [skill-routing, user-documentation, "change-plan#apply 技能以 plan 挑選與守門", "workspace-tools#Copilot 渲染目標"]
-generated: 2026-10-15T12:27:14+08:00
+generated: 2026-10-15T17:40:05+08:00
 ---
 
 # 工作流總覽：站別與交棒
