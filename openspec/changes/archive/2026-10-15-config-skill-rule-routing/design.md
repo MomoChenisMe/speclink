@@ -48,7 +48,7 @@ render_golden 測試以字面片段釘住 config 技能的結構：第五問測�
 - 只問一題「keep everything, or change some of them」；選 keep 不再提問、不改任何政策欄位。
 - 選 change 時，「要改哪幾項」超過互動工具單題的選項上限就改純文字問；逐項問被點名的項目時沿用既有的 locale 代碼映射、第五問的落地路徑。
 - 互動工具不可用時，整個確認以純文字進行，沿用 skill-authoring 規格的跨模型寫法（AskUserQuestion 要有純文字退路；守門 `missing_fallbacks` 會檢查）。
-- worktree 寫入沿用 `speclink workflow-config set worktree <true|false>`：寫入會同步技能檔、有活躍 worktree 時關閉會被拒絕；技能只轉告拒絕訊息，不自行收尾 worktree（收尾屬 /speclink:worktree-merge）。
+- worktree 寫入沿用 `speclink workflow-config set worktree <true|false>`：本機模式下寫入會同步技能檔、有活躍 worktree 時關閉會被拒絕；技能只轉告拒絕訊息，不自行收尾 worktree（收尾屬 /speclink:worktree-merge）。remote 模式下寫入只改 server 端的 config，不同步技能檔也不檢查 worktree（`speclink update` 只讀本機 config），技能把這點告知使用者。
 
 ### 審查規則模式一題三選，不設定時審查規則出口關閉
 

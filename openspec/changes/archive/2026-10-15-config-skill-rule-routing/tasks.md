@@ -19,5 +19,5 @@
 ## 5. 再生、人工驗收與收尾
 
 - [x] 5.1 本 repo 的受管技能檔換成新版：`cargo build -p speclink-cli` 後執行 `./target/debug/speclink update`，`.claude/skills/` 與 `.agents/skills/` 的受管技能檔版號行換成新版、speclink-config 的內文換成新內容。驗證：再執行一次 `./target/debug/speclink update` 後 `git status` 不再增加改動，且 `.claude/skills/speclink-config/SKILL.md` 含新的 Step 3 確認表段落 <!-- speclink-task:tsk_01M4XB25Z1QRB2FG1FJFBYTSHW -->
-- [ ] [M] 5.2 在本 repo 執行 `/speclink-config`：確認第一個政策問題是一張含 worktree 的七項確認表加一題「全部沿用或改幾項」，審查規則一列顯示附加與三個清單的條數；交給它一份含三條提醒的清單（一條只適合當審查規則、一條屬 design 產出規則、一條已有測試守門），確認報告逐條列出去處與理由。不核准任何寫入即可結束 <!-- speclink-task:tsk_01M4XB25Z19PPRV7T4DF6J54YT -->
+- [x] [M] 5.2 在本 repo 執行 `/speclink-config`：確認第一個政策問題是一張含 worktree 的七項確認表加一題「全部沿用或改幾項」，審查規則一列顯示附加與三個清單的條數；交給它一份含三條提醒的清單（一條只適合當審查規則、一條屬 design 產出規則、一條已有測試守門），確認報告逐條列出去處與理由。不核准任何寫入即可結束 <!-- speclink-task:tsk_01M4XB25Z19PPRV7T4DF6J54YT -->
 - [x] 5.3 收尾驗證受影響面：speclink-core 的整合測試與 scripts 守門全部通過；`git status` 只含 proposal Impact 列出的檔案、5.1 再生的受管技能檔與本變更的 artifacts（受管技能檔不會被 task done 記進 evidence，以 `git status` 盤點）。驗證：`cargo test -p speclink-core --test it` 與 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠 <!-- speclink-task:tsk_01M4XB25Z14R4AA94VSRQ7P814 -->

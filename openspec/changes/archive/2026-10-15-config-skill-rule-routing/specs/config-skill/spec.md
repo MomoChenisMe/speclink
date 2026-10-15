@@ -20,7 +20,7 @@
 
 <!-- BEFORE: 第五問與政策四欄同樣逐項詢問；已有測試範圍 rule 時提問帶現值 -->
 
-渲染產出的 speclink-config 技能檔 SHALL 於政策詢問流程納入第五問：任務清單（tasks）的驗證步驟要包含全量測試，或只跑受影響面的測試——與其餘政策欄位同性質，SHALL 列入「技能規定政策欄位一次確認現值」的確認表、由使用者作答，SHALL NOT 自 repo 推斷；現行文件已有測試範圍相關 rule 時，確認表 SHALL 以該 rule 帶出現值，無既有 rule 時 SHALL 標為未設定、預設全量。使用者沿用現值時，技能 SHALL NOT 改動測試範圍 rule。使用者點名修改此項並答「只跑受影響面」時，技能檔 SHALL 指引自已讀取的 dependency manifests 組出該專案客製的對應規則（按專案的組件型態對應其測試指令）寫入 rules 的 tasks 段，並沿既有 dry-run 核准流程落地；答「全量」時 SHALL NOT 寫入任何測試範圍規則——現行文件已有測試範圍 rule 時，該答案即為使用者對其之明確撤回，技能檔 SHALL 指引沿同一 dry-run 核准流程移除之，無既有 rule 時現行文件維持原樣。
+渲染產出的 speclink-config 技能檔 SHALL 於政策詢問流程納入第五問：任務清單（tasks）的驗證步驟要包含全量測試，或只跑受影響面的測試——與其餘政策欄位同性質，SHALL 列入「技能規定政策欄位一次確認現值」的確認表、由使用者作答，SHALL NOT 自 repo 推斷；現行文件已有測試範圍相關 rule 時，確認表 SHALL 以該 rule 帶出現值，無既有 rule 時 SHALL 標為未設定、預設全量。使用者沿用現值時，技能 SHALL NOT 因這個答案改動測試範圍 rule；該 rule 仍照四條內容判準檢查（例如引用失效時依判準四移除）。使用者點名修改此項並答「只跑受影響面」時，技能檔 SHALL 指引自已讀取的 dependency manifests 組出該專案客製的對應規則（按專案的組件型態對應其測試指令）寫入 rules 的 tasks 段，並沿既有 dry-run 核准流程落地；答「全量」時 SHALL NOT 寫入任何測試範圍規則——現行文件已有測試範圍 rule 時，該答案即為使用者對其之明確撤回，技能檔 SHALL 指引沿同一 dry-run 核准流程移除之，無既有 rule 時現行文件維持原樣。
 
 #### Scenario: 渲染產物含第五問
 
@@ -39,7 +39,7 @@
 
 #### Scenario: 沿用現值不動測試範圍規則
 
-- **WHEN** 現行文件的 tasks 段已有測試範圍 rule，使用者在確認表選全部沿用
+- **WHEN** 現行文件的 tasks 段已有測試範圍 rule、且其引用的指令與路徑都存在，使用者在確認表選全部沿用
 - **THEN** 技能不再詢問第五問，該 rule 原樣保留，rules 的 dry-run diff 不含測試範圍 rule 的改動
 
 ### Requirement: 技能規定審查規則的第六問與規則接收
@@ -142,7 +142,7 @@
 - **一題確認**：技能 SHALL 只問一題「全部沿用，還是要改其中幾項」。使用者選全部沿用時，技能 SHALL NOT 再逐項詢問，SHALL NOT 改動任何政策欄位；選要改時，技能 SHALL 只逐項詢問使用者點名的項目，每題帶出該項現值。第一次執行（config 尚無任何政策欄位）SHALL 同樣攤開確認表、以一題確認。
 - **不推斷**：「全部沿用」是使用者明確給的答案；技能 SHALL NOT 自 repo 推斷任何政策值（例如有測試目錄不代表 tdd 為 true）。
 - **工具限制**：互動提問工具的單題選項上限容不下所有項目時，「要改哪幾項」SHALL 改以純文字詢問；互動提問工具不可用時，整個確認 SHALL 以純文字進行。
-- **worktree 的寫入**：worktree 的改動 SHALL 經 speclink workflow-config set worktree <true|false> 的 --dry-run 核准流程落地。該寫入會同步技能檔，且有活躍 worktree 時關閉會被 CLI 拒絕；技能 SHALL 把拒絕訊息轉告使用者，SHALL NOT 自行收尾或移除 worktree。
+- **worktree 的寫入**：worktree 的改動 SHALL 經 speclink workflow-config set worktree <true|false> 的 --dry-run 核准流程落地。本機模式下該寫入會同步技能檔，且有活躍 worktree 時關閉會被 CLI 拒絕；技能 SHALL 把拒絕訊息轉告使用者，SHALL NOT 自行收尾或移除 worktree。remote 模式下該寫入只改 server 端的 config，不同步技能檔、不檢查活躍 worktree，技能 SHALL 把這點告知使用者。
 
 #### Scenario: 渲染產物含確認表與單題確認
 
@@ -178,7 +178,7 @@
 
 #### Scenario: 關閉 worktree 被拒時轉告使用者
 
-- **WHEN** 使用者把 worktree 改為 false，而專案有活躍的 linked worktree
+- **WHEN** 本機模式下，使用者把 worktree 改為 false，而專案有活躍的 linked worktree
 - **THEN** speclink workflow-config set worktree false 以非零 exit code 拒絕、config 位元組不變；技能把 CLI 列出的活躍 worktree 轉告使用者，不自行收尾或移除 worktree
 
 ### Requirement: 技能規定提醒的分流

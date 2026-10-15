@@ -1,0 +1,70 @@
+schema: spec-driven
+created: 2026-10-14
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: config-skill-rule-routing
+depends_on: review-ticket-applied-rules
+started_at: 2026-10-15
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-15
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 9
+reviewed_scope:
+  - path: crates/engine/speclink-core/assets/skills/config.md
+    hash: 5ee6a7c858a4b817aaf1a9059108e2e1f9c5f51813e92920da9325b87e43f8c8
+  - path: crates/engine/speclink-core/src/workspace/init.rs
+    hash: 4e80a57b5a8a67ef9e1698ace489589510d94488ad61bb4f8bcb1a8cac479ede
+  - path: crates/engine/speclink-core/tests/golden/assets.lock
+    hash: e33094f84e205900a050274200a6818534ef3c5b230b957afd09b489944c131e
+  - path: crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: acb711481d1b148dc7a1b2db2c0628f35476b342a30d35a78e4eda7c4f3daba0
+  - path: crates/engine/speclink-core/tests/golden/claude.snapshot.md
+    hash: a38bb7d7ba97a0c6bf376fcd93e34633215e6fc12dc5dd3f878269b8307aebf0
+  - path: crates/engine/speclink-core/tests/golden/codex.snapshot.md
+    hash: 85907cf7c479f4d632270b8f3b14feace0d6eef4a85e03c551d685d601558ecf
+  - path: crates/engine/speclink-core/tests/golden/copilot.snapshot.md
+    hash: 8d0e2cd63819b776e0e22351a20a7bcf730d02ad4a1a4917343696262b6a7af2
+  - path: crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: bc4be95f0046dab0b73caea5cd659fd70a46cfe1c05de8119ca30216b20f8873
+  - path: crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: b5f037526800b25538124077743f14f30aca9634fa871ae2cca24ec19412f8af
+  - path: crates/engine/speclink-core/tests/it/render_golden.rs
+    hash: ba08f167ce8d42459ecb61a1ac7bd6da666b67ca3b058fef69db9b4d55d88581
+  - path: docs/configuration.md
+    hash: ffd288499374db9fd42b08c277a54a3c8b893abfb936962a777c21a2b66cfca5
+  - path: docs/configuration.zh-TW.md
+    hash: c849c93f9a9ce9638cb9ca7915d4c7b8a43090db115fccba7782b84d32a70dcc
+verified_at: 2026-10-15
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 9
+verified_scope:
+  - path: crates/engine/speclink-core/assets/skills/config.md
+    hash: 5ee6a7c858a4b817aaf1a9059108e2e1f9c5f51813e92920da9325b87e43f8c8
+  - path: crates/engine/speclink-core/src/workspace/init.rs
+    hash: 4e80a57b5a8a67ef9e1698ace489589510d94488ad61bb4f8bcb1a8cac479ede
+  - path: crates/engine/speclink-core/tests/golden/assets.lock
+    hash: e33094f84e205900a050274200a6818534ef3c5b230b957afd09b489944c131e
+  - path: crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: acb711481d1b148dc7a1b2db2c0628f35476b342a30d35a78e4eda7c4f3daba0
+  - path: crates/engine/speclink-core/tests/golden/claude.snapshot.md
+    hash: a38bb7d7ba97a0c6bf376fcd93e34633215e6fc12dc5dd3f878269b8307aebf0
+  - path: crates/engine/speclink-core/tests/golden/codex.snapshot.md
+    hash: 85907cf7c479f4d632270b8f3b14feace0d6eef4a85e03c551d685d601558ecf
+  - path: crates/engine/speclink-core/tests/golden/copilot.snapshot.md
+    hash: 8d0e2cd63819b776e0e22351a20a7bcf730d02ad4a1a4917343696262b6a7af2
+  - path: crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: bc4be95f0046dab0b73caea5cd659fd70a46cfe1c05de8119ca30216b20f8873
+  - path: crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: b5f037526800b25538124077743f14f30aca9634fa871ae2cca24ec19412f8af
+  - path: crates/engine/speclink-core/tests/it/render_golden.rs
+    hash: ba08f167ce8d42459ecb61a1ac7bd6da666b67ca3b058fef69db9b4d55d88581
+  - path: docs/configuration.md
+    hash: ffd288499374db9fd42b08c277a54a3c8b893abfb936962a777c21a2b66cfca5
+  - path: docs/configuration.zh-TW.md
+    hash: c849c93f9a9ce9638cb9ca7915d4c7b8a43090db115fccba7782b84d32a70dcc
+  - path: openspec/changes/config-skill-rule-routing/specs/config-skill/spec.md
+    hash: 1a16288a243425918ad61fe51b483b3f23ed78b76a385e225f5626671dba99a0
+archived_by: MomoChen <momochenisme@gmail.com>
+archived_at: 2026-10-15
