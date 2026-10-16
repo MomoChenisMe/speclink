@@ -4,7 +4,7 @@ section: 開始使用
 order: 10
 keywords: [首頁, 入門, 角色, 導覽, SDD, 手冊]
 sources: []
-generated: 2026-10-15T17:40:05+08:00
+generated: 2026-10-16T23:25:26+08:00
 ---
 
 # Speclink 操作手冊
@@ -36,7 +36,7 @@ Speclink 是一套 SDD（規格驅動開發，Spec-Driven Development）引擎�
 - 放了一陣子再回來、或需求中途變了：[續作與需求變更](drift-ingest.md)
 - 交付前的把關：[品質關卡總覽](quality-stations.md)、[審查站](review.md)、[驗證站](verify.md)、[封存](archive.md)
 - 好幾個變更同時做：先看[執行順序：plan 與依賴](plan.md)，再走[平行實作與合回](worktree.md)
-- 工具：[提交單一變更的檔案](commit.md)、[溯源](trace.md)、[工作流政策與設定](policy-config.md)、[產出流程 schema 管理](schemas.md)、[操作手冊：生成與導覽](manual.md)
+- 工具：[提交單一變更的檔案](commit.md)、[安全稽核](audit.md)、[溯源](trace.md)、[工作流政策與設定](policy-config.md)、[產出流程 schema 管理](schemas.md)、[操作手冊：生成與導覽](manual.md)
 
 ### 產品負責人／PM（看進度、不碰 checkout）
 

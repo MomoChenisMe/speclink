@@ -4,7 +4,7 @@ section: 附錄
 order: 900
 keywords: [來源, 矛盾, 限制, 編纂日期, 規格]
 sources: []
-generated: 2026-10-15T17:40:05+08:00
+generated: 2026-10-16T23:25:26+08:00
 ---
 
 # 本手冊的來源
@@ -75,15 +75,16 @@ generated: 2026-10-15T17:40:05+08:00
 ## 已知限制
 
 - 沒有截圖。畫面文字與按鈕名稱逐字取自規格，實際畫面若不同，以執行中的產品為準。
-- drift、audit 兩個技能沒有各自的規格，手冊只寫 `skill-routing` 與 `user-documentation` 載明的入口情境與交棒關係。apply 只有挑選變更的第一步（plan 守門）有規格，載於 `change-plan`；ingest 只有參數解讀與收尾的依賴、插隊判定有規格，載於 `ingest-skill`；兩者其餘的內文行為未載。analyze 的技能本身也沒有規格，但 `speclink analyze` 指令的判定規則有 `change-analysis`，寫在[分析：交叉檢查變更的產物](analyze.md)。
+- drift 技能沒有自己的規格，手冊只寫 `skill-routing` 與 `user-documentation` 載明的入口情境與交棒關係。audit 的規格 `audit-skill` 目前只管獨立模式報告的語言，[安全稽核：/speclink-audit](audit.md) 只寫這部分與 `user-documentation` 載明的定位。apply 只有挑選變更的第一步（plan 守門）有規格，載於 `change-plan`；ingest 只有參數解讀與收尾的依賴、插隊判定有規格，載於 `ingest-skill`；兩者其餘的內文行為未載。analyze 的技能本身也沒有規格，但 `speclink analyze` 指令的判定規則有 `change-analysis`，寫在[分析：交叉檢查變更的產物](analyze.md)。
 - `server-web-console` 的確認框清單列了「刪除專案」，但 `server-admin` 的管理功能只有專案的建立與改顯示名，沒有需求說刪除專案從哪裡進入。[瀏覽器後台](web-console.md)照規格把它列在確認框清單，沒有另外寫入口。
 - 過期判定逐項比較：頁的生成時戳與規格的更新時戳都帶時區時比到秒，同一秒不算；任一邊只有純日期時比到日，同一天也算。每一頁的 `generated` 都寫成帶時區的秒級時戳；較早封存的規格，其更新時戳仍是純日期，封存不會回改。只取材某規格幾段需求的頁，`sources` 用「capability#需求名」錨定到那幾段，別段的封存不會把它標成可能過期；錨定的需求標題改名或移除時，該頁會被標為可能過期並整頁重寫。
 - 來源規格改了、但改的部分與某一頁的內容無關時，那一頁重生後內文不變，只換生成時戳，「可能過期」標記就消掉。取材自 `desktop-app` 的頁都用錨定寫法：[認識桌面 app](desktop-overview.md)、[規格、討論、已封存與搜尋](desktop-browse.md)、[看板與任務](desktop-board.md)、[桌面上的品質關卡](desktop-quality.md)、[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)、[專案、新增專案與設定頁](desktop-projects.md)、[桌面 app 的手冊頁](desktop-manual.md)。
 - 錨定寫法有一個盲點：某能力新增一段需求時，沒有任何頁錨定到它，過期判定不會亮。2026-10-15 這次，桌面 app 改版把多段需求改名（「抽屜」改成「詳情頁」），上述桌面頁整頁重寫並錨定到新名稱；先前盲點中的「詳情頁的工單分頁」「已封存詳情頁的工單分頁」已寫進[桌面上的品質關卡](desktop-quality.md)。同日稍晚新增的「更新日誌依介面語言呈現」與「詳情頁狀態列的標籤欄依最長標籤對齊」兩段一開始也沒有頁錨定，已分別寫進[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)與[認識桌面 app](desktop-overview.md)。目前 `desktop-app` 沒有被任何頁錨定的需求，只有上面說的兩段內部結構需求。
+- `skill-authoring` 是技能檔寫法的內部規範，不入冊；只有其中「技能共用的對話語言段落」一段寫進[工作流政策與設定](policy-config.md)，因為它決定 agent 跟你對話用哪種語言。
 - 規格裡的內部識別符（欄位名、型別名、旗標）不進手冊，改以白話描述效果。
 
 ## 編纂日期
 
-2026-10-15
+2026-10-16
 
 **出處**：本頁為說明頁，不直接取材自單一能力；各頁末行列出自己的出處。
