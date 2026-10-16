@@ -1,0 +1,172 @@
+{
+  "version": 2,
+  "change": "skill-conversation-language",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 （Red）在 `crates/engine/speclink-core/tests/it/render_golden.rs` 新增測試 `every_product_skill_carries_conversation_language_once`，釘住「技能共用的對話語言段落」：以 speclink init 產出 claude 與 codex 兩個工具的技能檔後，每一份 speclink-* SKILL.md 都恰好含一次 `**Conversation language**:` 與 `keep the language it is written in`，段落位置在 frontmatter 結尾之後、該技能原稿（`skills::skill_body` 取得）第一行之前；claude 的 speclink-drift 依序為 fork 前言、段落、內文；以自訂描述子（`RenderTarget::Custom`）渲染的技能檔段落在 invocation 說明之後；`skills::skill_body(\"audit\")` 不含段落。驗證：`cargo test -p speclink-core --test it every_product_skill_carries_conversation_language_once` 失敗（紅燈）",
+      "files": [
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 （Green）依 design「共用對話語言段落在渲染函式插入」與「段落措辭」：新增原稿 `crates/engine/speclink-core/assets/skills/conversation-language.md`（內容為 design 的段落原文、無大寫強調字），在 `crates/engine/speclink-core/src/workspace/skills.rs` 以 `include_str!` 讀成常數，`render_skill_file_for` 在 fork 前言或 invocation 說明之後、技能內文之前寫入段落並空一行；在 `crates/engine/speclink-core/tests/it/skill_authoring.rs` 的 `EMPHASIS_CAPS` 登記 `(\"conversation-language.md\", 0)`。驗證：`cargo test -p speclink-core --test it every_product_skill_carries_conversation_language_once` 與 `cargo test -p speclink-core --test it skill_authoring` 皆通過",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/skills.rs",
+        "crates/engine/speclink-core/tests/it/skill_authoring.rs",
+        "crates/engine/speclink-core/assets/skills/conversation-language.md"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 （Green）在 `crates/engine/speclink-core/assets/skills/discuss.md` 建立記錄的步驟（Step 5）加入 **Record language** 規則：新建記錄依 `locale`、topic 維持使用者原文、欄位標記與 slug 維持英文，並依 design「既有討論記錄沿用原語言」寫明恢復既有記錄時沿用原語言。驗證：`cargo test -p speclink-core --test it document_skills_bind_locale` 的 discuss 斷言通過，`cargo test -p speclink-core --test it skill_authoring` 通過（discuss.md 強調字仍為 5、行數不超過 500）",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/discuss.md"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.3 （Green）在 `crates/engine/speclink-core/assets/skills/improve.md` 記錄 candidates 的步驟（Step 4）加入 **Record language** 規則：topic、Context、各輪與結論依 `locale`，欄位標記、slug 與 mode 標籤 `scan` 維持英文。驗證：`cargo test -p speclink-core --test it document_skills_bind_locale` 的 improve 斷言通過，`cargo test -p speclink-core --test it skill_authoring` 通過（improve.md 強調字仍為 2）",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/improve.md"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "2.4 （Green）在 `crates/engine/speclink-core/assets/skills/config.md` 的起草步驟（Step 2）加入起草語言句：以 Step 1 已讀的 `workflow-config show --json` 的 `locale` 撰寫新起草或改寫的 `context`、`rules` 行，未改動的既有行維持原文，review 規則照使用者原話。驗證：`cargo test -p speclink-core --test it document_skills_bind_locale` 的 config 斷言通過，`cargo test -p speclink-core --test it skill_authoring` 通過（config.md 強調字仍為 4）",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/config.md"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "2.5 （Green）在 `crates/engine/speclink-core/assets/skills/audit.md` 的 Phase 3（Consolidate and Report）加入 **Report language** 規則，寫法比照 analyze、drift；Discipline Mode 段落一字不動。驗證：`cargo test -p speclink-core --test it document_skills_bind_locale` 全部通過，`cargo test -p speclink-core --test it skill_authoring` 通過（audit.md 強調字仍為 1），且 `git diff crates/engine/speclink-core/assets/skills/audit.md` 只在 Phase 3 有新增行",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/audit.md"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.1 依 design「版號與再生」：把 `crates/engine/speclink-core/src/workspace/init.rs` 的 ASSET_VERSION 由 v1.48.0 升為 v1.49.0，再以 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden` 再生 `crates/engine/speclink-core/tests/golden/` 下六份 snapshot，以 `UPDATE_ASSETS_LOCK=1 cargo test -p speclink-core --test it render_golden` 再生 `crates/engine/speclink-core/tests/golden/assets.lock`。驗證：用 git diff 確認六份 snapshot 的差異只有對話語言段落、四個綁定句與版號三種；`cargo test -p speclink-core` 與 `cargo test -p speclink-cli --test it engine_version` 皆通過",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.1 依 design「使用者文件補一句」：`docs/configuration.md` 與 `docs/configuration.zh-TW.md` 設定鍵表格的 `locale` 列，用途改為「AI 產出文件與報告的語言；不決定 Agent 跟你對話的語言」（英文版同義），兩份同步。驗證：兩份文件的 `locale` 列語意一致；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過",
+      "files": [
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M51Y98J7XRXAJETBJ6ZTKPWF",
+      "taskDesc": "1.1 （Red）在 `crates/engine/speclink-core/tests/it/render_golden.rs` 新增測試 `every_product_skill_carries_conversation_language_once`，釘住「技能共用的對話語言段落」：以 speclink init 產出 claude 與 codex 兩個工具的技能檔後，每一份 speclink-* SKILL.md 都恰好含一次 `**Conversation language**:` 與 `keep the language it is written in`，段落位置在 frontmatter 結尾之後、該技能原稿（`skills::skill_body` 取得）第一行之前；claude 的 speclink-drift 依序為 fork 前言、段落、內文；以自訂描述子（`RenderTarget::Custom`）渲染的技能檔段落在 invocation 說明之後；`skills::skill_body(\"audit\")` 不含段落。驗證：`cargo test -p speclink-core --test it every_product_skill_carries_conversation_language_once` 失敗（紅燈）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b908c985d14cab2b4244cbd73aec91cccacd162c",
+      "touchedFiles": [
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ],
+      "recordedAt": "2026-10-16T08:50:46Z"
+    },
+    {
+      "taskId": "tsk_01M51Y98J70R0G7M7THDT48YHH",
+      "taskDesc": "1.2 （Green）依 design「共用對話語言段落在渲染函式插入」與「段落措辭」：新增原稿 `crates/engine/speclink-core/assets/skills/conversation-language.md`（內容為 design 的段落原文、無大寫強調字），在 `crates/engine/speclink-core/src/workspace/skills.rs` 以 `include_str!` 讀成常數，`render_skill_file_for` 在 fork 前言或 invocation 說明之後、技能內文之前寫入段落並空一行；在 `crates/engine/speclink-core/tests/it/skill_authoring.rs` 的 `EMPHASIS_CAPS` 登記 `(\"conversation-language.md\", 0)`。驗證：`cargo test -p speclink-core --test it every_product_skill_carries_conversation_language_once` 與 `cargo test -p speclink-core --test it skill_authoring` 皆通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b908c985d14cab2b4244cbd73aec91cccacd162c",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/skills.rs",
+        "crates/engine/speclink-core/tests/it/skill_authoring.rs",
+        "crates/engine/speclink-core/assets/skills/conversation-language.md"
+      ],
+      "recordedAt": "2026-10-16T08:51:19Z"
+    },
+    {
+      "taskId": "tsk_01M51Y98J7H58PJTQA1NJ31GTW",
+      "taskDesc": "2.2 （Green）在 `crates/engine/speclink-core/assets/skills/discuss.md` 建立記錄的步驟（Step 5）加入 **Record language** 規則：新建記錄依 `locale`、topic 維持使用者原文、欄位標記與 slug 維持英文，並依 design「既有討論記錄沿用原語言」寫明恢復既有記錄時沿用原語言。驗證：`cargo test -p speclink-core --test it document_skills_bind_locale` 的 discuss 斷言通過，`cargo test -p speclink-core --test it skill_authoring` 通過（discuss.md 強調字仍為 5、行數不超過 500）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b908c985d14cab2b4244cbd73aec91cccacd162c",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/discuss.md"
+      ],
+      "recordedAt": "2026-10-16T08:52:08Z"
+    },
+    {
+      "taskId": "tsk_01M51Y98J757ZS2Q82WZYBN011",
+      "taskDesc": "2.3 （Green）在 `crates/engine/speclink-core/assets/skills/improve.md` 記錄 candidates 的步驟（Step 4）加入 **Record language** 規則：topic、Context、各輪與結論依 `locale`，欄位標記、slug 與 mode 標籤 `scan` 維持英文。驗證：`cargo test -p speclink-core --test it document_skills_bind_locale` 的 improve 斷言通過，`cargo test -p speclink-core --test it skill_authoring` 通過（improve.md 強調字仍為 2）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b908c985d14cab2b4244cbd73aec91cccacd162c",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/improve.md"
+      ],
+      "recordedAt": "2026-10-16T08:52:18Z"
+    },
+    {
+      "taskId": "tsk_01M51Y98J7476ER36PGKW8GXGC",
+      "taskDesc": "2.4 （Green）在 `crates/engine/speclink-core/assets/skills/config.md` 的起草步驟（Step 2）加入起草語言句：以 Step 1 已讀的 `workflow-config show --json` 的 `locale` 撰寫新起草或改寫的 `context`、`rules` 行，未改動的既有行維持原文，review 規則照使用者原話。驗證：`cargo test -p speclink-core --test it document_skills_bind_locale` 的 config 斷言通過，`cargo test -p speclink-core --test it skill_authoring` 通過（config.md 強調字仍為 4）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b908c985d14cab2b4244cbd73aec91cccacd162c",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/config.md"
+      ],
+      "recordedAt": "2026-10-16T08:52:32Z"
+    },
+    {
+      "taskId": "tsk_01M51Y98J7QHKZ3R2HJXSSVVYE",
+      "taskDesc": "2.5 （Green）在 `crates/engine/speclink-core/assets/skills/audit.md` 的 Phase 3（Consolidate and Report）加入 **Report language** 規則，寫法比照 analyze、drift；Discipline Mode 段落一字不動。驗證：`cargo test -p speclink-core --test it document_skills_bind_locale` 全部通過，`cargo test -p speclink-core --test it skill_authoring` 通過（audit.md 強調字仍為 1），且 `git diff crates/engine/speclink-core/assets/skills/audit.md` 只在 Phase 3 有新增行",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b908c985d14cab2b4244cbd73aec91cccacd162c",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/audit.md"
+      ],
+      "recordedAt": "2026-10-16T08:52:38Z"
+    },
+    {
+      "taskId": "tsk_01M51Y98J7C0FNPZ8SEEFAN896",
+      "taskDesc": "3.1 依 design「版號與再生」：把 `crates/engine/speclink-core/src/workspace/init.rs` 的 ASSET_VERSION 由 v1.48.0 升為 v1.49.0，再以 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden` 再生 `crates/engine/speclink-core/tests/golden/` 下六份 snapshot，以 `UPDATE_ASSETS_LOCK=1 cargo test -p speclink-core --test it render_golden` 再生 `crates/engine/speclink-core/tests/golden/assets.lock`。驗證：用 git diff 確認六份 snapshot 的差異只有對話語言段落、四個綁定句與版號三種；`cargo test -p speclink-core` 與 `cargo test -p speclink-cli --test it engine_version` 皆通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b908c985d14cab2b4244cbd73aec91cccacd162c",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ],
+      "recordedAt": "2026-10-16T08:53:27Z"
+    },
+    {
+      "taskId": "tsk_01M51Y98J79DFG37M8CMXSRB47",
+      "taskDesc": "4.1 依 design「使用者文件補一句」：`docs/configuration.md` 與 `docs/configuration.zh-TW.md` 設定鍵表格的 `locale` 列，用途改為「AI 產出文件與報告的語言；不決定 Agent 跟你對話的語言」（英文版同義），兩份同步。驗證：兩份文件的 `locale` 列語意一致；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "b908c985d14cab2b4244cbd73aec91cccacd162c",
+      "touchedFiles": [
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md"
+      ],
+      "recordedAt": "2026-10-16T08:54:07Z"
+    }
+  ]
+}

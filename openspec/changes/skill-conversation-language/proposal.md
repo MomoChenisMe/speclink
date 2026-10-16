@@ -4,16 +4,17 @@
 
 ## What Changes
 
-- 新增一份共用的對話語言段落（技能原稿 `crates/engine/speclink-core/assets/skills/conversation-language.md`）。渲染每個產品 skill 的 SKILL.md 時，這段接在內文最前面；claude、codex、copilot 三個內建工具與自訂描述子都一樣。段落規定四件事：
+- 新增一份共用的對話語言段落（技能原稿 `crates/engine/speclink-core/assets/skills/conversation-language.md`）。渲染每個產品 skill 的 SKILL.md 時，這段接在內文最前面；claude、codex、copilot 三個內建工具與自訂描述子都一樣。段落規定五件事：
   - 對使用者說的話（進度、提問、摘要）用使用者跟 Agent 講話的語言。
   - skill 用英文寫，回報範例只示範格式：範例的文字要翻譯，指令、檔案路徑、程式碼與固定 token（嚴重度籤、狀態詞）維持原樣。
-  - 某個步驟規定文件或報告的語言（例如經 `locale`）時，以該步驟為準。
+  - 某個步驟規定自己產出的語言（文件、報告，或像 review 那樣呈現結果與提問的方式；例如經 `locale`）時，以該步驟為準。
   - 修改既有文件、且沒有步驟規定語言時，沿用該文件原本的語言。
-- discuss 與 improve：新建的討論記錄，其散文（Context、各輪、結論；improve 另含 topic）依 `locale` 撰寫；已存在的記錄沿用它原本的語言。欄位標記（`**Focus**:`、`**Ruled out**:`、`**Decision**:` 等）、slug、指令與程式碼維持英文；discuss 的 topic 照既有規格維持使用者原文。
-- config：起草的 `context` 與 `rules` 依 `locale` 撰寫；review 規則照使用者原話寫。
+  - 在 fork 情境中執行、看不到對話時，用收到的請求所用的語言。
+- discuss 與 improve：新建的討論記錄，其散文（Context、各輪、結論；improve 另含 topic）依 `locale` 撰寫；已存在的記錄沿用它原本的語言。欄位標記（`**Focus**:`、`**Ruled out**:`、`**Decision**:` 等）、固定標記（`Prior discussions:`、`Source doc:`、`none`、cut 刀頭等）、slug、指令與程式碼維持英文；discuss 的 topic 照既有規格維持使用者原文。improve 的防重提搜尋改用 `locale` 語言與英文識別字一起搜尋。
+- config：起草的 `context` 與 `rules` 依 Step 3 確認後的 `locale` 撰寫（Step 3 改了就先改寫草稿再顯示 diff）；review 規則照使用者原話寫。
 - audit：獨立模式的報告依 `locale` 撰寫；嚴重度（Critical／High／Medium／Low）、檔案路徑與指令維持英文。
-- 上述四個 skill 從 `speclink workflow-config show --json` 的 `locale` 欄位取得語言（`tw`、`ja`、`en`；null 代表英文）。
-- 使用者文件 `docs/configuration.md` 與 `docs/configuration.zh-TW.md` 的 `locale` 說明補一句：它不決定 Agent 跟使用者對話的語言。
+- 上述四個 skill 從 `speclink workflow-config show --json` 的 `locale` 欄位取得語言（`tw`、`ja`、`en`；null 代表英文；config 以 Step 3 確認後的值為準）。
+- 使用者文件 `docs/configuration.md` 與 `docs/configuration.zh-TW.md` 的 `locale` 說明改寫：它是 AI 產出文件與報告的語言，review、verify 也用它呈現結果；其餘時候 Agent 用使用者的語言對話。
 - ASSET_VERSION 由 v1.48.0 升為 v1.49.0，render golden 與 assets.lock 跟著再生。
 
 ## Capabilities

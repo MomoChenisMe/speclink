@@ -222,6 +222,11 @@ pub fn skill_body(name: &str) -> Option<&'static str> {
 /// hand-off section cannot drift apart one wording tweak at a time.
 const NEXT_STEPS_LEAD: &str = "Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.";
 
+/// The conversation-language paragraph every rendered product skill opens with
+/// (spec skill-authoring「技能共用的對話語言段落」). Inserted by the renderer rather
+/// than embedded in each body, so `instructions --skill` keeps printing the raw body.
+const CONVERSATION_LANGUAGE: &str = include_str!("../../assets/skills/conversation-language.md");
+
 /// The placeholder values one render target substitutes into a skill body. The target is
 /// the only thing that varies: built-ins keep their slash prefix and plan directory,
 /// descriptors drop plan mode and read verbs as plain `speclink <verb>` commands.
@@ -335,7 +340,8 @@ as argv.\n\n---\n\n"
     }
 }
 
-/// Render a complete SKILL.md (frontmatter + preamble + substituted body) for one target.
+/// Render a complete SKILL.md (frontmatter + preamble + conversation-language paragraph +
+/// substituted body) for one target.
 /// The fork/agent and disallowedTools lines are Claude-only; descriptors get the neutral
 /// frontmatter plus an invocation preamble (frozen output shape).
 pub fn render_skill_file_for(target: RenderTarget, skill: &Skill, spec_dir: &str) -> String {
@@ -369,7 +375,10 @@ pub fn render_skill_file_for(target: RenderTarget, skill: &Skill, spec_dir: &str
         }
         RenderTarget::Custom(custom) => fm.push_str(invocation_note(custom.invocation)),
     }
-    fm.push_str(&substitutions(target, spec_dir).apply(skill.body));
+    let subs = substitutions(target, spec_dir);
+    fm.push_str(subs.apply(CONVERSATION_LANGUAGE).trim_end());
+    fm.push_str("\n\n");
+    fm.push_str(&subs.apply(skill.body));
     // Exactly one trailing newline (frozen output shape), regardless of asset file endings.
     while fm.ends_with("\n\n") {
         fm.pop();

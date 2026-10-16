@@ -6,9 +6,11 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.48.0"
+  version: "v1.49.0"
   generatedBy: "Speclink"
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Have a focused discussion about a topic and reach a conclusion. Every discussion has a topic, works toward a goal, and ends with a clear conclusion — unlike open-ended exploration, discuss mode converges.
 
@@ -62,7 +64,7 @@ Every record has the same fixed skeleton:
    ```
 
 2. Act on what the discussion list shows:
-   - **A record matches the topic and is still live** — `status` `open`, or `promoted` mid-way through a spin-out (Step 9) → resume it (reuse its `slug`): the record already exists; every later `add-round`/`conclude` call uses it. Only `concluded` and archived records are past resuming. **Resume ritual**: before continuing, present a recap derived from the record — one line per round (its Focus → the first sentence of its Position), then the last round's Open ledger as the current frontier — and only then pick the discussion back up. The recap is mechanically derived from fields the record already has; it introduces no new format and existing records need no migration.
+   - **A record matches the topic and is still live** — `status` `open`, or `promoted` mid-way through a spin-out (Step 9) → resume it (reuse its `slug`): the record already exists; every later `add-round`/`conclude` call uses it. Only `concluded` and archived records are past resuming. **Resume ritual**: before continuing, present a recap derived from the record — one line per round (its Focus → the first sentence of its Position), then the last round's Open ledger as the current frontier — and only then pick the discussion back up. The recap is mechanically derived from fields the record already has; it introduces no new format and existing records need no migration. Rounds you add to a resumed record follow **Record language** (Step 5).
    - **No live record matches** → do not create one yet. Derive an English kebab-case slug from the topic (translate when the topic is not English — e.g. 「看板搜尋列」 → `board-search-bar`), announce it ("This discussion will be recorded as `<slug>` once it has substance."), and proceed — scout, judge requirement clarity, present your first assumptions or question with nothing on disk. A mis-invocation or a topic answered in one exchange leaves no file behind. Step 5 says when the record is created.
 3. If the user mentioned a specific change name, read its artifacts for context.
 
@@ -298,6 +300,8 @@ speclink discuss new "<topic>" --slug <english-kebab-slug>
 
 Always pass `--slug` with the English kebab-case slug you derived — the slug names the record file; the topic stays in the user's language verbatim. Without `--slug` the filename falls back to deriving from the topic, so non-English topics produce non-English filenames.
 
+**Record language**: run `speclink workflow-config show --json` and write the record's prose — the Context, every round and the conclusion — in the language of its `locale` field (`tw` Traditional Chinese, `ja` Japanese, `en` or null English; English when the command fails). The topic is the exception: it keeps the user's words, as above. These stay in English: the field labels (`**Focus**:`, `**Position**:`, `**Ruled out**:`, `**Open**:` and the conclusion's labels), the fixed markers (`Prior discussions:`, `Source doc:`, the word `none`, the ``**cut N `change-name`**:`` heads, the **Capture to** values), the slug, command lines and code. When you resume an existing record, keep the language it is written in.
+
 Then fill the Context section once — the framing a future reader (or `propose`) needs before the rounds make sense:
 
 ```bash
@@ -465,6 +469,7 @@ Check these before you end each turn:
 - [ ] No application code was written ("Discuss mode is for thinking").
 - [ ] The record exists only if the user has replied with substance (Step 5); every exchange since then has its round (Step 6).
 - [ ] The record was touched only through `speclink discuss` verbs.
+- [ ] The record's prose follows **Record language**, its labels and markers in English (Step 5).
 - [ ] One question per exchange, and every question carries its evidence ("How to discuss").
 - [ ] Facts were verified with Grep/Read, not asked or guessed ("How to discuss").
 - [ ] A recommendation was given — the user can disagree ("Be direct").

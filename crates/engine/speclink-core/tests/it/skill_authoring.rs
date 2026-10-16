@@ -22,6 +22,7 @@ const EMPHASIS_CAPS: &[(&str, usize)] = &[
     ("clarify.md", 4),
     ("commit.md", 6),
     ("config.md", 4),
+    ("conversation-language.md", 0),
     ("discuss.md", 5),
     ("drift.md", 2),
     ("improve.md", 2),

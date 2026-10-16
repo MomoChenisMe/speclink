@@ -32,7 +32,7 @@ speclink discuss search <scope keyword>... --json
 speclink list --json
 ```
 
-- **Search the discussions with your scope's keywords** — the module, crate or pain-point nouns. This check always runs before the scan (Step 3); its keywords come from the user's direction when one was given, and from the scope Step 2 settles when it was not — in that case do Step 2 first, then come back here. `discuss search` covers live and archived records alike and matches only the topic, the slug and the decision lines — each round's `Ruled out` and the Conclusion's `Decision` / `Rejected alternatives` / `Deferred`; any one keyword matching counts. Those lines are this project's decision record: an option that lost, with the reason it lost. Read the full Conclusion of the hits that touch your scope (`speclink discuss show <slug>` falls back to the archive), **earlier `improve` records for the same scope first** — a hit whose `kind` is `improve` is the closest precedent to what you are about to propose.
+- **Search the discussions with your scope's keywords** — the module, crate or pain-point nouns. This check always runs before the scan (Step 3); its keywords come from the user's direction when one was given, and from the scope Step 2 settles when it was not — in that case do Step 2 first, then come back here. Records are written in the `locale` language of `speclink workflow-config show --json` (Step 4), so pass your keywords in that language as well as the English identifiers — crate, module and command names. `discuss search` covers live and archived records alike and matches only the topic, the slug and the decision lines — each round's `Ruled out` and the Conclusion's `Decision` / `Rejected alternatives` / `Deferred`; any one keyword matching counts. Those lines are this project's decision record: an option that lost, with the reason it lost. Read the full Conclusion of the hits that touch your scope (`speclink discuss show <slug>` falls back to the archive), **earlier `improve` records for the same scope first** — a hit whose `kind` is `improve` is the closest precedent to what you are about to propose.
 - **A previously rejected approach is not re-proposed as a candidate** — unless you can name the reason it was rejected AND state concretely why that reason no longer holds (the code it depended on is gone, the constraint was lifted, the trade-off inverted). Say so in the candidate itself; do not quietly re-file it.
 - **Read the in-flight changes** from `speclink list --json` and their proposals. A candidate that overlaps the area an in-flight change is already rewriting is not proposed — the work is happening, and a discussion about it now collides with a change mid-flight.
 
@@ -82,6 +82,8 @@ Create the discussion record and write the scan into it as Round 1:
 ```bash
 speclink discuss new "<topic>" --slug improve-<scope> --kind improve
 ```
+
+**Record language**: run `speclink workflow-config show --json` and write the record — its topic, the Context, every round and the conclusion — in the language of its `locale` field (`tw` Traditional Chinese, `ja` Japanese, `en` or null English; English when the command fails). These stay in English: the field labels (`**Focus**:`, `**Position**:`, `**Ruled out**:`, `**Open**:` and the conclusion's labels), the fixed markers (the word `none`, the ``**cut N `change-name`**:`` heads, the **Capture to** values), the `improve-<scope>` slug, the `scan` mode label, command lines and code.
 
 `--kind improve` marks the record as an improvement discussion (it is what the board and the discussion drawer show a badge for). The slug convention is `improve-<scope>` — `improve-store-layer`, `improve-cli-commands`. Write the Context once (what prompted the scan, the scope you settled on in Step 2 and why, what Step 1 excluded), then record the candidates as Round 1 with the mode label `scan`:
 
@@ -170,6 +172,7 @@ Check these before you end each turn:
 - [ ] Every candidate passed its admission criterion (Step 3) — the deletion test for the first five signals, the reader-prediction test for the sixth; moving complexity around never counts.
 - [ ] At most 2 Explore subagents ran (Step 3).
 - [ ] Settled rejections and in-flight areas were left out (Step 1).
+- [ ] The record follows **Record language**, its labels and markers in English (Step 4).
 - [ ] A finished scan was concluded and archived, never discarded (Step 5).
 
 ## Next steps

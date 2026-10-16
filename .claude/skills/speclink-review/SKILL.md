@@ -5,9 +5,11 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.48.0"
+  version: "v1.49.0"
   generatedBy: "Speclink"
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Review a change's implementation for craft quality: two parallel read-only axes — **Standards** (repo conventions, the project's review rules, and a code-smell baseline) and **Correctness** (bug hunting) — run ONCE against a frozen change patch, then validated round by round to a review ticket, closed by a stamp. Round 1 is the only discovery pass; every later round only validates remediation. Spec compliance is not this skill's job — that is `/speclink-verify`; the two quality stations run independently and either, both, or neither may be used per change.
 

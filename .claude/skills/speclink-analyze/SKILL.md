@@ -8,7 +8,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.48.0"
+  version: "v1.49.0"
   generatedBy: "Speclink"
 ---
 
@@ -19,6 +19,8 @@ This generated Claude Code skill runs with `context: fork`. The rules in this se
 When no change name is provided, run `speclink list --json`. Auto-select only when there is exactly one active change. If there are zero active changes or more than one active change, return the candidate list or empty-state message and ask the main thread to rerun `/speclink-analyze <change-name>`. Do NOT ask an interactive selection question inside the fork.
 
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Analyze artifact consistency for a change. Can be invoked directly or triggered automatically when all artifacts are complete.
 
