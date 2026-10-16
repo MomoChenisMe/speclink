@@ -6,9 +6,11 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.48.0"
+  version: "v1.49.0"
   generatedBy: "Speclink"
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Audit changed code for security sharp edges — API design traps, dangerous defaults, and interfaces that make it easy to do the wrong thing.
 
@@ -87,6 +89,8 @@ Merge findings from all 3 lenses. For each finding:
 - False positive or not worth changing → skip without debate
 - Classify severity: Critical / High / Medium / Low
 
+**Report language**: run `speclink workflow-config show --json` and write the report, closing summary included, in the language of its `locale` field (`tw` Traditional Chinese, `ja` Japanese, `en` or null English; English when the command fails) — prose, headings, and table labels included. Keep severity labels (Critical/High/Medium/Low), file paths, command lines, and code references in English.
+
 End with a brief summary of the findings and their proposed fixes (or confirm the code is clean).
 
 **Standalone check** — before you report:
@@ -94,6 +98,7 @@ End with a brief summary of the findings and their proposed fixes (or confirm th
 - [ ] All three lenses ran over the full diff (Phase 2), as agents or one after another.
 - [ ] No file was edited; every fixable finding names its fix (Phase 3).
 - [ ] Every finding has a severity from the table in **Severity Classification**.
+- [ ] The report, closing summary included, is in the `locale` language (Phase 3).
 
 ---
 

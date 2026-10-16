@@ -4,14 +4,15 @@
 
 speclink 渲染的每一份產品技能檔（registry 中的全部技能；claude、codex、copilot 三個內建工具與自訂描述子皆同）SHALL 在 frontmatter 與 fork 前言或 invocation 說明（若有）之後、技能內文之前，恰好含一次共用的對話語言段落，段落以 `**Conversation language**:` 開頭。段落的來源 SHALL 為單一原稿 crates/engine/speclink-core/assets/skills/conversation-language.md，SHALL NOT 在各技能原稿各存一份複本。
 
-段落 SHALL 依序規定四件事，前者優先於後者：
+段落 SHALL 依序規定五件事：
 
 1. 對使用者說的話（進度、提問、摘要）以使用者跟 Agent 講話的語言撰寫。
 2. 技能以英文撰寫、回報範例只示範格式：範例的散文要翻譯，指令、檔案路徑、程式碼與固定 token（嚴重度標籤、狀態詞）維持原樣。
-3. 步驟規定文件或報告的語言（例如經 `locale`）時，該產出以該步驟為準。
+3. 步驟規定其自身產出的語言（文件、報告，或呈現結果與提問的方式，例如經 `locale`）時，該產出以該步驟為準，優先於第 1 件。
 4. 修改既有文件且沒有步驟規定語言時，沿用該文件原本的語言。
+5. 在 fork 情境中執行、看不到對話時，使用收到的請求所用的語言。
 
-段落 SHALL NOT 含全大寫強調字，其原稿在強調字守門的上限表登記為 0。對話語言 SHALL NOT 由 `locale` 決定：`locale` 為 tw、ja、en 或未設定時，段落內容逐字相同。`speclink instructions --skill <name>` 輸出的原稿 SHALL NOT 含此段落；內部技能（tdd、clarify、sync）不渲染為技能檔，不在本條範圍。
+段落 SHALL NOT 含全大寫強調字，其原稿在強調字守門的上限表登記為 0。段落本身 SHALL NOT 讓 `locale` 決定對話語言，只有步驟明文綁定的產出依 `locale`（例如 review 的回合呈現與提問）；`locale` 為 tw、ja、en 或未設定時，段落內容逐字相同。`speclink instructions --skill <name>` 輸出的原稿 SHALL NOT 含此段落；內部技能（tdd、clarify、sync）不渲染為技能檔，不在本條範圍。
 
 此為刻意變更：所有產品技能檔在內文前多出此段落，段落之外的技能內容維持既有位元級輸出（另行變更的技能除外）。
 

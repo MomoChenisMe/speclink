@@ -42,19 +42,19 @@ GitHub issue #2 回報：長流程 skill 中 Agent 會中途改用英文。討�
 段落內容（英文，與其他原稿一致；不用任何大寫強調字，所以新原稿在 `EMPHASIS_CAPS` 登記上限 0）：
 
 ```
-**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of a document or a report (for example through `locale`), that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in.
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 ```
 
-四句的先後就是優先順序：步驟規定的語言勝過「沿用原檔語言」，兩者都只管文件與報告，不管對話。
+第三句的例外勝過第一句：步驟替自己的產出（文件、報告，或像 review 那樣呈現結果與提問的方式）指定語言時，以該步驟為準；第四句只在沒有步驟指定時才適用；第五句處理 Claude fork 技能看不到對話的情況。段落本身不讓 `locale` 決定對話語言，只有步驟明文綁定的產出才依 `locale`。
 
 ### 四個 skill 的 locale 綁定寫在執行該動作的步驟
 
 依 skill-authoring「每條規則只在執行該動作的步驟完整陳述一次」，綁定句寫在各自產出內容的那一步，讀法統一為 `speclink workflow-config show --json` 的 `locale` 欄位（`tw` 繁體中文、`ja` 日文、`en` 或 null 英文）：
 
-- discuss：Step 5（建立記錄）加 **Record language**。新建記錄的 Context、各輪與結論用 `locale` 語言；topic 維持使用者原文；欄位標記（`**Focus**:`、`**Position**:`、`**Ruled out**:`、`**Open**:` 與結論各欄位）、slug、指令與程式碼維持英文。恢復既有記錄時沿用它原本的語言。
-- improve：Step 4（記錄 candidates）加同樣的 **Record language**；improve 的 topic 由模型撰寫，所以也用 `locale` 語言。
-- config：Step 1 第 4 項已讀 `workflow-config show --json`；Step 2 起草處加一句，`context` 與 `rules` 的新行用 `locale` 語言，review 規則照使用者原話。
-- audit：Phase 3（彙整與報告）加 **Report language**，比照 analyze、drift 的寫法；嚴重度（Critical／High／Medium／Low）、檔案路徑與指令維持英文。只綁獨立模式，Discipline Mode 不產出報告。
+- discuss：Step 5（建立記錄）加 **Record language**。新建記錄的 Context、各輪與結論用 `locale` 語言；topic 維持使用者原文；欄位標記（`**Focus**:`、`**Position**:`、`**Ruled out**:`、`**Open**:` 與結論各欄位）、固定標記（`Prior discussions:`、`Source doc:`、`none`、cut 刀頭、Capture to 的值）、slug、指令與程式碼維持英文。恢復既有記錄時沿用它原本的語言；Resume ritual 與 Guardrails 各以一句話指回。
+- improve：Step 4（記錄 candidates）加同樣的 **Record language**（固定標記含 `none`、cut 刀頭、Capture to 的值）；improve 的 topic 由模型撰寫，所以也用 `locale` 語言。記錄改用 `locale` 語言後，Step 1 的防重提搜尋改為同時用 `locale` 語言的關鍵字與英文識別字。Guardrails 以一句話指回。
+- config：Step 1 第 4 項已讀 `workflow-config show --json`，但 Step 3 才讓使用者確認或修改 `locale`，所以 **Draft language** 放在 Step 5（顯示 diff 並寫入）：新行與改寫行用 Step 3 確認後的 `locale`，Step 3 改了就先改寫草稿再產生 diff；review 規則照使用者原話。Guardrails 以一句話指回。
+- audit：Phase 3（彙整與報告）加 **Report language**，比照 analyze、drift 的寫法，報告含結尾摘要；嚴重度（Critical／High／Medium／Low）、檔案路徑與指令維持英文。只綁獨立模式，Discipline Mode 不產出報告。Standalone check 加一項報告語言的檢查。
 
 ### 既有討論記錄沿用原語言
 
@@ -66,7 +66,7 @@ ASSET_VERSION 由 v1.48.0 升為 v1.49.0（新增技能行為，次版號）。�
 
 ### 使用者文件補一句
 
-`docs/configuration.md` 與 `docs/configuration.zh-TW.md` 設定鍵表格的 `locale` 列，用途欄改寫為「AI 產出文件與報告的語言；不決定 Agent 跟你對話的語言」（英文版同義）。兩份同步改，維持中英對照。
+`docs/configuration.md` 與 `docs/configuration.zh-TW.md` 設定鍵表格的 `locale` 列，用途欄改寫為「AI 產出文件與報告的語言；review、verify 也用它呈現結果。其餘時候 Agent 用你的語言跟你對話」（英文版同義）。兩份同步改，維持中英對照。
 
 ## Implementation Contract
 
@@ -74,7 +74,7 @@ ASSET_VERSION 由 v1.48.0 升為 v1.49.0（新增技能行為，次版號）。�
 
 - 任何工具（claude、codex、copilot、自訂描述子）產出的每一份產品 skill SKILL.md，在 frontmatter（與 fork 前言或 invocation 說明）之後、技能內文之前，都恰好出現一次 `**Conversation language**:` 段落，內容與上述措辭逐字相同。
 - `speclink instructions --skill <name>` 的輸出不含該段落。
-- discuss、improve 的 SKILL.md 在建立記錄的步驟含 **Record language** 規則；config 的 SKILL.md 在起草步驟含 `locale` 綁定；audit 的 SKILL.md 在 Phase 3 含 **Report language** 規則；四者都點名 `speclink workflow-config show --json` 的 `locale` 欄位，並寫明哪些固定 token 維持英文、`locale` 為 null 時寫英文。
+- discuss、improve 的 SKILL.md 在建立記錄的步驟含 **Record language** 規則；config 的 SKILL.md 在 Step 5 含 **Draft language**（以 Step 3 確認後的 `locale` 為準，其初值來自 `speclink workflow-config show --json`）；audit 的 SKILL.md 在 Phase 3 含 **Report language** 規則；discuss、improve、audit 點名 `speclink workflow-config show --json` 的 `locale` 欄位；四者都寫明哪些固定 token 維持英文、`locale` 未設定時寫英文；每條綁定在技能檔中只完整陳述一次，其他位置只用一句話指回。
 
 **Interface / data shape**
 
@@ -89,8 +89,8 @@ ASSET_VERSION 由 v1.48.0 升為 v1.49.0（新增技能行為，次版號）。�
 
 **Acceptance criteria**
 
-- `render_golden.rs` 新增測試：claude 與 codex 兩個工具的每一份產品 skill 都恰好含一次段落開頭 `**Conversation language**:` 與「keep the language it is written in」，且段落在技能內文第一行之前；`skill_body` 取得的原稿不含段落。
-- `render_golden.rs` 新增測試：discuss、improve、config、audit 四份 SKILL.md 含各自的 `locale` 綁定字句（`speclink workflow-config show --json`、`locale`、維持英文的 token 清單）。
+- `render_golden.rs` 新增測試：`locale` 為 tw、ja、en、未設定四種情況下，claude 與 codex 兩個工具的每一份產品 skill 都恰好含一次段落開頭 `**Conversation language**:`，段落與原稿逐字相同，且在技能內文第一行之前；以 `.speclink.yaml` 宣告的自訂描述子經 `update` 產出的技能檔同樣帶段落；`skill_body` 取得的原稿不含段落。
+- `render_golden.rs` 新增測試：discuss、improve、config、audit 四份 SKILL.md 含各自的 `locale` 綁定字句（`locale` 的來源、代碼對照、維持英文的 token 清單），每條綁定只完整陳述一次，Resume ritual、Guardrails、Standalone check 與 improve 的防重提步驟含指回的句子。
 - `skill_authoring.rs` 的守門測試全綠（含新原稿上限 0）。
 - 六份 render golden 與 assets.lock 以新版號再生後，`cargo test -p speclink-core` 全綠。
 - `speclink update` 後，repo 內 claude 與 codex 技能目錄的 speclink 技能檔都帶有段落與 v1.49.0。
