@@ -1,6 +1,12 @@
 # Changelog
 **English** · [繁體中文](CHANGELOG.zh-TW.md)
 
+## 0.10.0 (2026-10-16)
+
+### New features
+
+- Every skill now tells the agent to talk to you in the language you use, so long skills such as apply and quality no longer switch to English halfway. `locale` still sets only the language of documents and reports, and it now also covers discussion records, the `context` and `rules` that `/speclink-config` writes, and `/speclink-audit` reports. When `locale` is not set, these are in English. Run `speclink update` to get the new skill files.
+
 ## 0.9.0 (2026-10-15)
 
 ### New features
