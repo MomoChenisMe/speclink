@@ -14,10 +14,10 @@ it("儲存被拒絕時回報錯誤，不冒稱成功",()=>{
  expect(()=>writeProjectColors({"local:/a":"blue"},storage)).toThrow("denied");
 });
 it.each(PROJECT_COLORS)("%s 未選取底色混入50%白色，選取維持深底白字",(color)=>{
- expect(projectTileClass(color,false)).toContain(`bg-[color-mix(in_srgb,var(--color-${color}-700)_50%,white)]`);
- expect(projectTileClass(color,false)).toContain(`text-${color}-950`);
- expect(projectTileClass(color,true)).toContain(`bg-${color}-700`);
- expect(projectTileClass(color,true)).toContain("text-white");
+ expect(projectTileClass(color,false).split(" ")).toContain(`bg-project-${color}-muted`);
+ expect(projectTileClass(color,false).split(" ")).toContain(`text-project-${color}-muted-foreground`);
+ expect(projectTileClass(color,true).split(" ")).toContain(`bg-project-${color}`);
+ expect(projectTileClass(color,true).split(" ")).toContain("text-project-foreground");
 });
 it("紫色和粉紅色保持不同色系；預設維持原行為",()=>{
  expect(projectTileClass("purple",false)).not.toBe(projectTileClass("pink",false));

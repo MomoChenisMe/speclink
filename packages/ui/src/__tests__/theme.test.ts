@@ -138,6 +138,21 @@ const scannedSources = () =>
   scanSources(SCAN_ROOTS, [".ts", ".tsx", ".css"]).map(([file, source]) => [file, stripComments(source)] as const);
 
 describe("共用 semantic theme 抽取", () => {
+  it.each(["teal", "blue", "purple", "pink", "orange", "green"])("專案圖示 %s 色票由共用主題定義，未選取時淡化 50%%", (color) => {
+    const css = themeCss();
+    const root = css.match(/:root\s*\{([^}]+)\}/)?.[1] ?? "";
+    for (const suffix of ["", "-hover", "-muted-foreground"]) {
+      expect(root).toMatch(new RegExp(`--project-${color}${suffix}: oklch\\([^;]+\\);`));
+    }
+    expect(root).toContain(`--project-${color}-muted: color-mix(in srgb, var(--project-${color}) 50%, white);`);
+    expect(root).toContain("--project-foreground: white;");
+    for (const name of ["foreground", color, `${color}-hover`, `${color}-muted`, `${color}-muted-foreground`]) {
+      expect(css).toContain(`--color-project-${name}: var(--project-${name});`);
+    }
+    // 固定色票由根元素繼承，明示／系統深色不另覆寫。
+    expect(css.match(new RegExp(`--project-${color}:`, "g"))).toHaveLength(1);
+  });
+
   it("元件用到的 bg-* 語意色都在 theme.css 有對應 token", () => {
     const mapped = new Set([...themeCss().matchAll(/--color-([a-z0-9-]+):/g)].map((m) => m[1]));
     const unmapped: string[] = [];

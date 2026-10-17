@@ -1971,7 +1971,7 @@ it("設定色票預覽選取深色、其他淡化50%",async()=>{
  for (const [name,color] of [["青綠色","teal"],["藍色","blue"],["紫色","purple"],["粉紅色","pink"],["橘色","orange"],["綠色","green"]]) {
   const input=await screen.findByRole("radio",{name});
   const preview=input.closest("label")?.querySelector('[aria-hidden="true"]');
-  expect(preview?.className).toContain(color === "blue" ? "bg-blue-700" : `bg-[color-mix(in_srgb,var(--color-${color}-700)_50%,white)]`);
-  expect(preview?.className).toContain(color === "blue" ? "text-white" : `text-${color}-950`);
+  expect(preview?.className).toContain(color === "blue" ? "bg-project-blue" : `bg-project-${color}-muted`);
+  expect(preview?.className).toContain(color === "blue" ? "text-project-foreground" : `text-project-${color}-muted-foreground`);
  }
 });

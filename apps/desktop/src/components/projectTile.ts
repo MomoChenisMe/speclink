@@ -21,12 +21,12 @@ export function projectInitial(name: string): string {
 
 /** 自訂色票未選取時混入 50% 白色，選取時保持深底白字。 */
 const COLORS = {
-  teal: ["bg-[color-mix(in_srgb,var(--color-teal-700)_50%,white)] text-teal-950", "bg-teal-700 text-white hover:bg-teal-800"],
-  blue: ["bg-[color-mix(in_srgb,var(--color-blue-700)_50%,white)] text-blue-950", "bg-blue-700 text-white hover:bg-blue-800"],
-  purple: ["bg-[color-mix(in_srgb,var(--color-purple-700)_50%,white)] text-purple-950", "bg-purple-700 text-white hover:bg-purple-800"],
-  pink: ["bg-[color-mix(in_srgb,var(--color-pink-700)_50%,white)] text-pink-950", "bg-pink-700 text-white hover:bg-pink-800"],
-  orange: ["bg-[color-mix(in_srgb,var(--color-orange-700)_50%,white)] text-orange-950", "bg-orange-700 text-white hover:bg-orange-800"],
-  green: ["bg-[color-mix(in_srgb,var(--color-green-700)_50%,white)] text-green-950", "bg-green-700 text-white hover:bg-green-800"],
+  teal: ["bg-project-teal-muted text-project-teal-muted-foreground", "bg-project-teal text-project-foreground hover:bg-project-teal-hover"],
+  blue: ["bg-project-blue-muted text-project-blue-muted-foreground", "bg-project-blue text-project-foreground hover:bg-project-blue-hover"],
+  purple: ["bg-project-purple-muted text-project-purple-muted-foreground", "bg-project-purple text-project-foreground hover:bg-project-purple-hover"],
+  pink: ["bg-project-pink-muted text-project-pink-muted-foreground", "bg-project-pink text-project-foreground hover:bg-project-pink-hover"],
+  orange: ["bg-project-orange-muted text-project-orange-muted-foreground", "bg-project-orange text-project-foreground hover:bg-project-orange-hover"],
+  green: ["bg-project-green-muted text-project-green-muted-foreground", "bg-project-green text-project-foreground hover:bg-project-green-hover"],
 };
 export function projectTileClass(color: import("../projectColors").ProjectColor | undefined, active: boolean): string {
   if (color && Object.prototype.hasOwnProperty.call(COLORS, color)) return COLORS[color][active ? 1 : 0];
