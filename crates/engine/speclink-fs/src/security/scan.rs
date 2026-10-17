@@ -575,8 +575,10 @@ fn verify_windows_handle(file: &File, expected: &Path) -> Result<()> {
             .unwrap_or_else(|| path.strip_prefix("\\\\?\\").unwrap_or(path).to_owned())
             .to_lowercase()
     };
+    // Compare path components: joining an empty scan root adds a trailing separator,
+    // while GetFinalPathNameByHandleW returns the same directory without it.
     ensure!(
-        normalize(&actual) == normalize(&expected.to_string_lossy()),
+        Path::new(&normalize(&actual)) == Path::new(&normalize(&expected.to_string_lossy())),
         "unauthorized_path: opened file identity changed"
     );
     Ok(())
@@ -812,6 +814,25 @@ mod tests {
         assert_eq!(failure.code, "unsupported_encoding");
         assert!(!error.to_string().contains("private"));
     }
+    #[cfg(windows)]
+    #[test]
+    fn security_scan_windows_directory_identity_accepts_trailing_separator_only() {
+        let fixture = Fixture::new();
+        fixture.write("src/app.ts", b"const value = 1;");
+        let root = AuthorizedProject::open(&fixture.0).unwrap();
+        verify_windows_handle(&root.handle, &root.root.join("")).unwrap();
+        let outside = Fixture::new();
+        assert!(verify_windows_handle(&root.handle, &outside.0).is_err());
+        let inputs = root.scan(&[], &ScanLimits::default(), &|| None).unwrap();
+        assert!(inputs.complete, "{:?}", inputs.coverage);
+        assert_eq!(inputs.documents.len(), 1);
+        assert_eq!(inputs.documents[0].path, "src/app.ts");
+        assert_eq!(
+            root.read_text("src/app.ts", 1024, &|| None).unwrap(),
+            "const value = 1;"
+        );
+    }
+
     #[cfg(windows)]
     #[test]
     fn security_scan_windows_reparse_is_never_followed() {
