@@ -1,6 +1,6 @@
 # Fork 與 Upstream 0.10.0 整合報告
 
-狀態：**部分完成**。已完成備份、三方盤點、保留歷史的程式整合與本機測試；沒有未解決的 Git 衝突。非 Portable 安裝版的更新來源仍須人工決定，Windows／Linux、正式簽章與發布驗收尚未完成，因此不宣稱已可正式發布。
+狀態：**部分完成**。已完成備份、三方盤點、保留歷史的程式整合與本機測試；沒有未解決的 Git 衝突。2026-10-18 依使用者指示將非 Portable 安裝版的更新來源改為 origin；Fork 更新包與簽章配套、Windows／Linux 及正式發布驗收尚未完成，因此不宣稱已可正式發布。
 
 ## A. 版本與 Git 環境
 
@@ -59,7 +59,7 @@ Fork 306 檔、Upstream 82 檔，交集 56 檔；完整聯集 332 檔與每檔�
 | Desktop 手動／Tag 發布 | desktop-vX.Y.Z[-prerelease]；四個 target、ad-hoc macOS、Windows NSIS／Portable、Linux AppImage | 官方 vX.Y.Z 正式流程另存 | Fork desktop-build.yml 與版本 guard 原樣保留；新版本仍可走預先發行規則 | 靜態／腳本通過；未觸發 Actions |
 | CI 測試範圍 | 純發布白名單可省應用測試，未知／產品路徑必跑完整 CI | 既有完整 CI 與各平台測試 | 完整保留 ci-scope；本次產品變更仍會跑完整 CI | 通過 |
 | npm／SDK／依賴 | TypeScript fixture 與 ES2022 lib 相容修正、現有 types 依賴 | Cargo workspace 更新正式版號 | 保留 npm metadata／lockfile 和所有 Fork Cargo 依賴；Node 重新 build 後測試 | 通過 |
-| 正式版發布／Updater | Fork 自用 workflow 不產生簽章更新包；非 Portable 既有端點仍指官方 | 官方簽章、npm、Release 與 latest.json 流程 | 全部保留；不變更發布目的地／公鑰／app ID，不觸發發布 | 更新來源待人工決策 |
+| 正式版發布／Updater | Fork 自用 workflow 不產生簽章更新包；非 Portable 原有端點指官方 | 官方簽章、npm、Release 與 latest.json 流程 | 整合時保留；2026-10-18 依使用者指示將更新端點改為 origin，公鑰／app ID／發布流程維持原樣 | 來源已改 origin；更新包與簽章未驗證 |
 | 文件、規格、封存歷史 | Copilot／外觀／安全規格、LANGUAGE、手冊、前次升級證據 | 語言規格／封存與 audit 手冊、0.10 日誌 | 合併新內容、保留舊證據；0.10 日誌的預設語言說明改為 Fork 真實行為 | 通過 |
 | 資產版本與回歸快照 | v1.49.1 已高於官方 v1.49.0 | 新 renderer／測試／快照 | 整合資產升 v1.50.1、重產指紋與六組快照；沒有降版 | 通過 |
 
@@ -136,17 +136,19 @@ Fork 306 檔、Upstream 82 檔，交集 56 檔；完整聯集 332 檔與每檔�
 
 ## E. 發布相容性、風險與下一步
 
-### 待人工決定：非 Portable 版更新來源
+### 已決定：非 Portable 版更新來源改為 origin
 
 Fork 的 desktop-build.yml 仍發布到目前 repository，支援 desktop-v 預先發行 Tag，make_latest=false，且不產生 signed updater packages／latest.json。它與 CI／版本腳本相對整合前逐位元一致。
 
-但既有 tauri.conf.json 的 updater endpoint 與公鑰仍指向原作者：
+2026-10-18 使用者明確指示「自動更新改為指向 origin」。已核對 origin 為 mosutw/speclink，並將 tauri.conf.json 的 updater endpoint 改為：
 
-https://github.com/MomoChenisMe/speclink/releases/latest/download/latest.json
+https://github.com/mosutw/speclink/releases/latest/download/latest.json
 
-非 Portable 的 main.tsx 仍接官方 updater adapter；Portable 不注入 updater。這是升級前就存在的設定，本次未改目的地。若安裝版使用者接受官方更新，可能裝回不含 Fork 客製功能的原作者版本；0.10.0-build.m1 與官方穩定版的版本排序也須在決定更新策略後驗收。沒有實際下載或安裝更新。
+非 Portable 的 main.tsx 繼續使用既有 updater adapter，更新資料改由 Fork 取得；Portable 仍不注入 updater。未修改既有公鑰、app ID、發布流程或版本號，也未實際下載或安裝更新。先前打包的 .app 使用修改前設定，須重新建置才會包含此網址。
 
-建議在任何正式自用安裝版發布前，選定「Fork 自用包停用自動更新」或「建立 Fork 專用且有簽章的更新端點」。不能直接換 URL：還牽涉簽章、公鑰、權限及 artifact 配套。依任務要求，這個發布策略取捨保留給人工決策。
+更新來源已完成設定，但現有 desktop-build.yml 不產生 latest.json 或簽章更新包，且預先發行版設為 make_latest=false，因此不能宣稱自動更新已可端到端使用。正式啟用前仍需由 Fork 發布可供 releases/latest 取得的更新資訊及更新包，且簽章須與 app 內公鑰相符。沒有略過簽章驗證或擅自建立金鑰、Tag、Release。
+
+此次網址調整已核對 JSON：除 endpoints 外所有設定均與修改前相同；重新執行 node --test scripts/*.test.mjs scripts/*/*.test.mjs，372 項通過，git diff --check 通過。尚未重建安裝包或驗證實際更新下載與安裝。
 
 ### 其他限制與建議
 
