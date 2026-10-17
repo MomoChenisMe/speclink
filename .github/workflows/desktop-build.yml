@@ -194,6 +194,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Speclink Desktop ${{ needs.prepare.outputs.version }}
           make_latest: false
+          prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}
           fail_on_unmatched_files: true
           body: |
             Desktop installers and Windows portable ZIP built from this tag.

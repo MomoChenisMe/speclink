@@ -29,11 +29,20 @@ test('CI 版號檢查輸出可供後續工作使用，錯誤 Tag 不寫入輸出
 
 test('桌面 tag 與 App、CLI 同版才可發布', () => {
   assert.equal(desktopReleaseVersion('desktop-v0.9.0', '0.9.0', '0.9.0'), '0.9.0');
-  for (const tag of ['v0.9.0', 'desktop-v01.9.0', 'desktop-v0.9', 'desktop-v0.9.0-rc.1', 'desktop-v0.9.0;echo bad']) {
+  for (const tag of ['v0.9.0', 'desktop-v01.9.0', 'desktop-v0.9', 'desktop-v0.9.0-', 'desktop-v0.9.0-rc..1', 'desktop-v0.9.0-rc.01', 'desktop-v0.9.0;echo bad']) {
     assert.throws(() => desktopReleaseVersion(tag, '0.9.0', '0.9.0'), /desktop-vX\.Y\.Z/);
   }
   assert.throws(() => desktopReleaseVersion('desktop-v0.9.1', '0.9.0', '0.9.1'), /App/);
   assert.throws(() => desktopReleaseVersion('desktop-v0.9.1', '0.9.1', '0.9.0'), /CLI/);
+});
+
+test('接受合法預先發行版，仍要求 App 與 CLI 的完整版本一致', () => {
+  for (const version of ['0.9.0-build.m1', '0.9.0-rc.1']) {
+    assert.equal(desktopReleaseVersion(`desktop-v${version}`, version, version), version);
+    assert.throws(() => desktopReleaseVersion(`desktop-v${version}`, '0.9.0', version), /App/);
+    assert.throws(() => desktopReleaseVersion(`desktop-v${version}`, version, '0.9.0'), /CLI/);
+  }
+  assert.ok(workflow.includes("prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}"));
 });
 
 test('保留手動建置，僅桌面 tag 可發布，四平台全部成功才執行發布', () => {
