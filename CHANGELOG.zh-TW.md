@@ -1,6 +1,12 @@
 # 更新日誌
 [English](CHANGELOG.md) · **繁體中文**
 
+## 0.10.0（2026-10-16）
+
+### 新功能
+
+- 每個技能都會請 agent 用你說話的語言跟你對話，apply、quality 這類長流程不再中途改講英文；locale 仍只決定文件與報告的語言，並擴及討論記錄、`/speclink-config` 寫入的 context 與 rules，以及 `/speclink-audit` 的報告（此 Fork 保留未設定時採系統語言，遠端採 Server 語言的行為），執行 `speclink update` 即可取得新的技能檔。
+
 ## 0.9.0（2026-10-15）
 
 ### 新功能

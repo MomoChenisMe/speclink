@@ -5,9 +5,11 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.1"
+  version: "v1.50.1"
   generatedBy: "Speclink"
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Detect drift between a Speclink change and the current codebase state. Reports time dormancy, broken design anchors, task collisions with external commits, and a single recommended next command.
 

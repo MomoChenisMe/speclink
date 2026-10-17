@@ -519,6 +519,259 @@ fn review_skill_binds_locale_across_output_chain() {
     }
 }
 
+// --- every product skill: the shared conversation-language paragraph ---
+
+const CONVERSATION_LANGUAGE_OPENING: &str = "**Conversation language**:";
+
+/// The paragraph sits exactly once between `after` (the frontmatter close, the fork
+/// preamble or the invocation note) and the first line of the skill's own body.
+fn assert_conversation_language_before_body(rel: &str, content: &str, body: &str, after: &str) {
+    let content = normalize_eol(content);
+    assert_eq!(
+        content.matches(CONVERSATION_LANGUAGE_OPENING).count(),
+        1,
+        "{rel}: the conversation-language paragraph appears exactly once"
+    );
+    assert!(
+        content.contains("keep the language it is written in"),
+        "{rel}: missing the keep-the-existing-language rule"
+    );
+    let paragraph = content.find(CONVERSATION_LANGUAGE_OPENING).unwrap();
+    let after_at = content
+        .find(after)
+        .unwrap_or_else(|| panic!("{rel}: missing {after:?}"));
+    // Up to the first inline code or placeholder: those are rewritten per target.
+    let first_line = body.lines().next().unwrap().split(['`', '{']).next().unwrap();
+    let body_at = content
+        .find(first_line)
+        .unwrap_or_else(|| panic!("{rel}: missing the body's first line {first_line:?}"));
+    assert!(
+        after_at < paragraph && paragraph < body_at,
+        "{rel}: the paragraph must sit after {after:?} and before the body"
+    );
+}
+
+fn read_generated(root: &Path, rel: &str) -> String {
+    std::fs::read_to_string(root.join(rel.split('/').collect::<PathBuf>())).expect(rel)
+}
+
+/// Spec skill-authoring「技能共用的對話語言段落」: every rendered product skill
+/// carries the shared paragraph once, word for word whatever the `locale`, after
+/// the frontmatter (and the fork preamble or the invocation note) and before its
+/// own body; the raw body that `instructions --skill` prints does not.
+#[test]
+fn every_product_skill_carries_conversation_language_once() {
+    let source = normalize_eol(include_str!("../../assets/skills/conversation-language.md"));
+    let paragraph = source.trim();
+    for (locale, locale_line) in [
+        ("tw", "locale: tw\n"),
+        ("ja", "locale: ja\n"),
+        ("en", "locale: en\n"),
+        ("unset", ""),
+    ] {
+        for (tool, skills_dir) in [(Tool::Claude, ".claude/skills"), (Tool::Codex, ".agents/skills"), (Tool::Copilot, ".github/skills")] {
+            // The worktree-gated skills render only with the policy on.
+            let config = format!("schema: spec-driven\nworktree: true\n{locale_line}");
+            let tag = format!("conversation-{locale}-{}", tool.name());
+            let root = workspace_for(&tag, tool, Some(&config));
+            for skill in skills::registry() {
+                if skill.claude_only && tool != Tool::Claude {
+                    continue;
+                }
+                let rel = format!("{skills_dir}/speclink-{}/SKILL.md", skill.name);
+                let content = read_generated(&root.dir, &rel);
+                assert_conversation_language_before_body(&rel, &content, skill.body, "\n---\n");
+                assert!(
+                    normalize_eol(&content).contains(paragraph),
+                    "{rel} (locale {locale}): the paragraph must match its source word for word"
+                );
+            }
+            if tool == Tool::Claude {
+                let rel = format!("{skills_dir}/speclink-drift/SKILL.md");
+                let drift = read_generated(&root.dir, &rel);
+                let drift_body = skills::skill_body("drift").unwrap();
+                assert_conversation_language_before_body(
+                    &rel,
+                    &drift,
+                    drift_body,
+                    "When no change name is provided",
+                );
+            }
+        }
+    }
+
+    // A descriptor declared in .speclink.yaml, rendered through `update`.
+    let root = neutral_project("conversation-descriptor", "cli");
+    for skill in skills::registry() {
+        if skill.claude_only || skill.worktree_gated {
+            continue;
+        }
+        let rel = format!(".wad/skills/speclink-{}/SKILL.md", skill.name);
+        let content = read_generated(&root.dir, &rel);
+        assert_conversation_language_before_body(&rel, &content, skill.body, "## Invocation");
+    }
+
+    for skill in skills::registry() {
+        assert!(
+            !skills::skill_body(skill.name)
+                .unwrap()
+                .contains(CONVERSATION_LANGUAGE_OPENING),
+            "instructions --skill {}: the raw body must not carry the paragraph",
+            skill.name
+        );
+    }
+}
+
+/// Specs discuss-skill「討論記錄的撰寫語言依 locale」, improve-skill「改進討論記錄的
+/// 撰寫語言依 locale」, config-skill「技能規定起草內容的撰寫語言依 locale」 and
+/// audit-skill「獨立模式報告的撰寫語言依 locale」: each binding sits in the step that
+/// writes the output, reads resolved `locale` from `workflow-config languages --json`, and keeps
+/// the fixed tokens in English.
+#[test]
+fn document_skills_bind_locale() {
+    let field_labels = "`**Focus**:`, `**Position**:`, `**Ruled out**:`, `**Open**:`";
+    let resolved_language = "`Traditional Chinese (繁體中文)`, `Japanese (日本語)`, or `English`";
+    // (skill, the binding's label, its step's start and end, needles in that step)
+    let bindings: [(&str, &str, &str, &str, &[&str]); 4] = [
+        (
+            "discuss",
+            "**Record language**",
+            "## Step 5:",
+            "## Step 6:",
+            &[
+                "`speclink workflow-config languages --json`",
+                "`locale` field",
+                resolved_language,
+                "The topic is the exception: it keeps the user's words",
+                field_labels,
+                "`Prior discussions:`, `Source doc:`, the word `none`",
+                "When you resume an existing record, keep the language it is written in",
+            ],
+        ),
+        (
+            "improve",
+            "**Record language**",
+            "### Step 4:",
+            "### Step 5:",
+            &[
+                "`speclink workflow-config languages --json`",
+                "`locale` field",
+                resolved_language,
+                "its topic, the Context",
+                field_labels,
+                "the word `none`",
+                "the `scan` mode label",
+            ],
+        ),
+        (
+            "config",
+            "**Draft language**",
+            "## Step 5:",
+            "## Step 6:",
+            &[
+                "`locale` as Step 3 confirmed it",
+                "`tw` Traditional Chinese, `ja` Japanese, `en` English",
+                "rewrite those lines before you produce the diff",
+                "Lines you leave unchanged keep their wording",
+                "review rules keep the user's own words",
+                "Commands, file paths, test names, config keys and code identifiers",
+            ],
+        ),
+        (
+            "audit",
+            "**Report language**",
+            "### Phase 3:",
+            "## Discipline Mode",
+            &[
+                "`speclink workflow-config languages --json`",
+                "the report, closing summary included",
+                "`locale` field",
+                resolved_language,
+                "Critical/High/Medium/Low",
+            ],
+        ),
+    ];
+    for (skill, label, start, end, needles) in bindings {
+        for (rel, content) in skill_for_both_tools(&format!("locale-{skill}"), skill) {
+            assert_eq!(
+                content.matches(&format!("{label}:")).count(),
+                1,
+                "{rel}: {label} is stated once, in the step that writes the output"
+            );
+            let step = section_between(&rel, &content, start, end);
+            for needle in std::iter::once(&label).chain(needles.iter()) {
+                assert!(
+                    step.contains(needle),
+                    "{rel}: {start} is missing the locale-binding phrase {needle:?}"
+                );
+            }
+        }
+    }
+    // Every other place that refers to a binding points at it in one line:
+    // (skill, block start, block end, pointer)
+    let pointers = [
+        ("discuss", "**Resume ritual**", "3. If the user mentioned", "**Record language** (Step 5)"),
+        ("discuss", "## Guardrails", "## Next steps", "**Record language**"),
+        ("improve", "### Step 1:", "### Step 2:", "as well as the English identifiers"),
+        ("improve", "## Guardrails", "## Next steps", "**Record language**"),
+        ("config", "## Guardrails", "**Don't land a non-empty second run**", "**Draft language**"),
+        ("audit", "**Standalone check**", "## Discipline Mode", "closing summary included, is in the `locale` language"),
+    ];
+    for (skill, start, end, pointer) in pointers {
+        for (rel, content) in skill_for_both_tools(&format!("locale-pointer-{skill}"), skill) {
+            assert!(
+                section_between(&rel, &content, start, end).contains(pointer),
+                "{rel}: the {start:?} block is missing {pointer:?}"
+            );
+        }
+    }
+    // Discipline Mode carries no report, so the binding stays out of it.
+    for (rel, content) in skill_for_both_tools("locale-audit-discipline", "audit") {
+        let discipline = section_between(&rel, &content, "## Discipline Mode", "## Core Framework");
+        assert!(
+            !discipline.contains("**Report language**"),
+            "{rel}: Discipline Mode must not carry the report-language rule"
+        );
+    }
+}
+
+/// The upstream output-language rules must preserve the fork's resolved OS/server
+/// defaults rather than treating canonical null as English or guessing client locale.
+#[test]
+fn document_language_rules_preserve_fork_system_and_remote_defaults() {
+    for skill in ["discuss", "improve", "audit", "config"] {
+        let body = skills::skill_body(skill).unwrap();
+        assert!(
+            body.contains("`speclink workflow-config languages --json`"),
+            "{skill}: missing resolved-language query"
+        );
+        assert!(
+            body.contains("`Traditional Chinese (繁體中文)`, `Japanese (日本語)`, or `English`"),
+            "{skill}: use resolved display names, not canonical codes"
+        );
+        assert!(
+            body.contains("server's language"),
+            "{skill}: remote must use server language"
+        );
+        assert!(
+            body.contains("report the error and stop"),
+            "{skill}: failed resolution must not guess"
+        );
+        assert!(
+            !body.contains("or null English") && !body.contains("or not set English"),
+            "{skill}: null must resolve via OS defaults"
+        );
+    }
+    for skill in ["audit", "config"] {
+        assert!(
+            skills::skill_body(skill)
+                .unwrap()
+                .contains("**Preliminary security review boundary**"),
+            "{skill}: fork security guidance lost"
+        );
+    }
+}
+
 // --- apply / review skills: converge-review-remediation-rounds (D6–D8) ---
 
 /// Read one generated skill for both built-in tools. `tag` keeps parallel
@@ -534,6 +787,18 @@ fn worktree_skill_for_both_tools(tag: &str, skill: &str) -> Vec<(String, String)
     generated_skill_for_both_tools(tag, skill, true)
 }
 
+/// A workspace initialized for one tool; with `config`, that workflow config is
+/// written and the skills are regenerated from it.
+fn workspace_for(tag: &str, tool: Tool, config: Option<&str>) -> TempRoot {
+    let root = TempRoot::new(tag);
+    init::init(&root.dir, &[tool], true, "openspec").unwrap();
+    if let Some(config) = config {
+        std::fs::write(root.dir.join("openspec").join("config.yaml"), config).unwrap();
+        init::update(&root.dir, false).unwrap();
+    }
+    root
+}
+
 fn generated_skill_for_both_tools(tag: &str, skill: &str, worktree: bool) -> Vec<(String, String)> {
     let cases = [
         (format!("{tag}-claude"), Tool::Claude, ".claude/skills"),
@@ -542,20 +807,10 @@ fn generated_skill_for_both_tools(tag: &str, skill: &str, worktree: bool) -> Vec
     cases
         .into_iter()
         .map(|(tag, tool, skills_dir)| {
-            let root = TempRoot::new(&tag);
-            init::init(&root.dir, &[tool], true, "openspec").unwrap();
-            if worktree {
-                std::fs::write(
-                    root.dir.join("openspec").join("config.yaml"),
-                    "schema: spec-driven\nworktree: true\n",
-                )
-                .unwrap();
-                init::update(&root.dir, false).unwrap();
-            }
+            let config = worktree.then_some("schema: spec-driven\nworktree: true\n");
+            let root = workspace_for(&tag, tool, config);
             let rel = format!("{skills_dir}/speclink-{skill}/SKILL.md");
-            let content =
-                std::fs::read_to_string(root.dir.join(rel.split('/').collect::<PathBuf>()))
-                    .expect(&rel);
+            let content = read_generated(&root.dir, &rel);
             (rel, content)
         })
         .collect()
@@ -1237,7 +1492,8 @@ fn apply_with_worktree_selects_and_guards_with_plan() {
 /// Same requirement, Scenario「內文含本體複查以主 checkout 為準指示」: inside the
 /// worktree the apply body's own plan step is only a re-check, the main checkout's
 /// verdict wins, and step 2 still captures the review baseline. The note lives in the
-/// worktree preamble alone — the plain apply skill renders nothing but its asset. That
+/// worktree preamble alone — the plain apply skill renders nothing but the shared
+/// conversation-language paragraph and its asset. That
 /// the apply asset itself stays byte-identical is locked by the golden snapshots.
 #[test]
 fn apply_with_worktree_treats_the_body_plan_as_a_recheck() {
@@ -1266,10 +1522,17 @@ fn apply_with_worktree_treats_the_body_plan_as_a_recheck() {
             .splitn(3, "---\n")
             .nth(2)
             .unwrap_or_else(|| panic!("{rel}: missing the frontmatter"));
+        let paragraph =
+            normalize_eol(include_str!("../../assets/skills/conversation-language.md"));
+        let body = normalize_eol(body);
+        let asset = body
+            .trim()
+            .strip_prefix(paragraph.trim())
+            .unwrap_or_else(|| panic!("{rel}: the body must open with the shared paragraph"));
         assert_eq!(
-            normalize_eol(body).trim(),
+            asset.trim(),
             normalize_eol(&rendered_apply_body(&rel)).trim(),
-            "{rel}: the plain apply skill must render nothing but its asset"
+            "{rel}: the plain apply skill must render nothing but the shared paragraph and its asset"
         );
         assert!(
             !content.contains("re-check"),

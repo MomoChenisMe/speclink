@@ -6,9 +6,11 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.1"
+  version: "v1.50.1"
   generatedBy: "Speclink"
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Compose the workflow config's `context` and `rules` from what the codebase structurally declares, take its `review` rules from the user alone, then land everything through a diff the user approves.
 
@@ -191,6 +193,8 @@ An existing review rule is dropped only for the reasons any other line is: it fa
 
 ## Step 5: Show the diff, then write
 
+**Draft language**: the lines you drafted or rewrote are in the language of `locale` as Step 3 confirmed it (`tw` Traditional Chinese, `ja` Japanese, `en` English; when not set, use the resolved language name (such as `Traditional Chinese (繁體中文)`, `Japanese (日本語)`, or `English`) in the `locale` field from `speclink workflow-config languages --json`, which resolves OS defaults and in remote mode uses the server's language, never the client's; if the query fails, report the error and stop rather than guessing) — when Step 3 changed it, rewrite those lines before you produce the diff. Lines you leave unchanged keep their wording, and review rules keep the user's own words. Commands, file paths, test names, config keys and code identifiers stay as they are.
+
 Produce the diff for each change with the write verb's own `--dry-run`, so the preview is byte-identical to what would land:
 
 ```bash
@@ -237,6 +241,7 @@ Check these before you report:
 - [ ] **Don't derive review rules from the repo** — review rules are optional; take them only from the user, suggest a list by whether a violation has a legitimate exception, and let the user confirm it.
 - [ ] **Don't leave a reminder unaccounted for** — the report gives every reminder its destination, and the reason when it was not taken or not written.
 - [ ] **Don't write without approval** — `--dry-run` first, always.
+- [ ] **Don't draft in the wrong language** — new and rewritten lines follow **Draft language**, in `locale` as Step 3 confirmed it (Step 5).
 - [ ] **Don't land a non-empty second run** — that is a signal to re-judge, not to write.
 
 

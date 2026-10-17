@@ -75,6 +75,8 @@ Merge findings from all 3 lenses. For each finding:
 - False positive or not worth changing → skip without debate
 - Classify severity: Critical / High / Medium / Low
 
+**Report language**: run `speclink workflow-config languages --json` and write the report, closing summary included, in the language of its `locale` field (a resolved language name such as `Traditional Chinese (繁體中文)`, `Japanese (日本語)`, or `English`; unset locale resolves to the operating-system language of the machine running Speclink, and remote mode uses the server's language, never the client's; if the query fails, report the error and stop rather than guessing) — prose, headings, and table labels included. Keep severity labels (Critical/High/Medium/Low), file paths, command lines, and code references in English.
+
 End with a brief summary of the findings and their proposed fixes (or confirm the code is clean).
 
 **Standalone check** — before you report:
@@ -82,6 +84,7 @@ End with a brief summary of the findings and their proposed fixes (or confirm th
 - [ ] All three lenses ran over the full diff (Phase 2), as agents or one after another.
 - [ ] No file was edited; every fixable finding names its fix (Phase 3).
 - [ ] Every finding has a severity from the table in **Severity Classification**.
+- [ ] The report, closing summary included, is in the `locale` language (Phase 3).
 
 ---
 

@@ -2,8 +2,8 @@
 title: 工作流政策與設定
 section: SDD 工作流
 order: 210
-keywords: [config.yaml, 政策, locale, tdd, audit, worktree, 專案說明, 產出規則, 審查規則, review, 確認表, 提醒分流, dry-run]
-sources: ["workflow-config", "config-skill#技能規定固定輸入來源與四條內容判準", "config-skill#技能規定 diff 先行與收斂驗收", "config-skill#技能規定政策語系欄位寫入代碼", "config-skill#技能規定任務驗證測試範圍的第五問", "config-skill#技能規定審查規則的第六問與規則接收", "config-skill#技能規定政策欄位一次確認現值", "config-skill#技能規定提醒的分流"]
+keywords: [config.yaml, 政策, locale, tdd, audit, worktree, 專案說明, 產出規則, 審查規則, review, 確認表, 提醒分流, dry-run, 對話語言]
+sources: ["skill-authoring#技能共用的對話語言段落", "workflow-config", "config-skill#技能規定固定輸入來源與四條內容判準", "config-skill#技能規定 diff 先行與收斂驗收", "config-skill#技能規定政策語系欄位寫入代碼", "config-skill#技能規定任務驗證測試範圍的第五問", "config-skill#技能規定審查規則的第六問與規則接收", "config-skill#技能規定政策欄位一次確認現值", "config-skill#技能規定提醒的分流"]
 generated: 2026-10-17T17:07:22+08:00
 ---
 # 工作流政策與設定
@@ -23,6 +23,16 @@ generated: 2026-10-17T17:07:22+08:00
 值的比對區分大小寫。TW、Auto 都不合法。顯示名稱（例如「繁體中文」）也不合法，要寫代碼 tw。
 
 `speclink init` 產生的 config.yaml 範本已含這五個欄位的註解示例，並列出對應的環境變數名。`.speclink.yaml` 不放政策鍵。
+
+### locale 管文件，不管對話
+
+locale 決定 AI 產出的文件與報告用哪種語言。技能替自己的產出指定了語言時，就照 locale 寫；例如審查站的回合呈現與提問也照 locale。除此之外，agent 跟你說的話（進度、提問、摘要）都用你跟它說話的語言。
+
+- 技能檔本身是英文寫的，裡面的回報範例只示範格式。agent 會把範例的文字換成你的語言；指令、檔案路徑、程式碼，以及嚴重度標籤、狀態詞這類固定字樣維持原樣。
+- agent 修改一份既有文件、而且沒有步驟指定語言時，沿用那份文件原本的語言。
+- 技能在看不到對話的獨立情境中執行時，用收到的請求所用的語言。
+
+這段規則每一個技能都有，內容與 locale 的值無關。
 
 ### 有效值怎麼決定
 
@@ -231,6 +241,14 @@ remote 模式寫入成功後，用本機工作區的技能檔判斷，條件相�
 
 worktree 的改動同樣走 `speclink workflow-config set worktree <true|false>` 的 `--dry-run` 核准流程。本機模式下寫入會同步技能檔，有活躍 worktree 時關閉會被拒，技能只把 CLI 列出的活躍 worktree 轉告你，不會自己收尾或移除 worktree。remote 模式下這個寫入只改 server 上的設定，不同步技能檔、也不檢查活躍 worktree，技能會告訴你這點。
 
+### 寫入的內容用哪種語言
+
+技能起草或改寫的專案說明與產出規則，用確認表確認後的 locale 撰寫：tw 是繁體中文，ja 是日文，en 是英文；未設定時採主機系統語言（Remote 採 Server 語言）。你在確認表改了 locale 時，技能先把已起草的行改寫成新語言，再顯示差異。
+
+- 沒改動的既有行維持原文，不會為了統一語言而翻譯。
+- 審查規則照你的原話記錄，不翻譯。
+- 指令、檔案路徑、測試名、設定鍵與程式碼識別字維持原樣。
+
 ### 第五問：任務驗證的測試範圍
 
 任務清單的驗證步驟要跑完整測試，還是只跑受影響面的測試？現行產出規則裡已有測試範圍的規則時，確認表以它帶出現值；沒有時標為未設定、預設完整測試。
@@ -303,4 +321,4 @@ config 已有 review 區塊時，確認表帶出模式與三個清單各自的�
 
 locale 與 spec_locale 未設定時各自採主機 OS 語言：中文 tw、日文 ja，其餘 en；只有舊 auto 跟隨 locale。Remote 使用 Server 語言，UI 偏好不參與解析；不回寫設定。`speclink workflow-config languages --json` 只讀查詢正典設定與 OS 預設；show 仍顯示正典 null，舊 Server 缺語言資料時只有 languages 明示要求升級。
 
-**出處**：`workflow-config`、`config-skill`
+**出處**：`workflow-config`、`config-skill`、`skill-authoring`

@@ -166,7 +166,7 @@ tools:
 | 鍵 | 值 | 預設 | 用途 |
 | --- | --- | --- | --- |
 | `schema` | schema 名稱 | `spec-driven` | 新變更使用的產出流程（產出哪些文件、什麼順序） |
-| `locale` | `tw`、`ja`、`en` | 系統語言 | AI 產出 artifact 的語言 |
+| `locale` | `tw`、`ja`、`en` | 系統語言 | AI 產出文件與報告的語言；review、verify 也用它呈現結果。其餘時候 Agent 用你的語言跟你對話 |
 | `spec_locale` | `tw`、`ja`、`en`、`auto` | 系統語言 | 規格檔的語言；`auto` 跟著 `locale` |
 | `tdd` | `true`／`false` | `false` | 實作時先寫會失敗的測試，再寫程式（紅→綠） |
 | `audit` | `true`／`false` | `false` | 實作時對新 API 與參數處理做 sharp-edges 安全檢查 |

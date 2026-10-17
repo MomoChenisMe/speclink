@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.10.0",
+    "date": "2026-10-16",
+    "sections": [
+      {
+        "kind": "features",
+        "items": [
+          {
+            "en": "Every skill now tells the agent to talk to you in the language you use, so long skills such as apply and quality no longer switch to English halfway. `locale` still sets only the language of documents and reports, and it now also covers discussion records, the `context` and `rules` that `/speclink-config` writes, and `/speclink-audit` reports. This fork keeps its system-language default when `locale` is not set; remote work uses the server's language. Run `speclink update` to get the new skill files.",
+            "zh-TW": "每個技能都會請 agent 用你說話的語言跟你對話，apply、quality 這類長流程不再中途改講英文；locale 仍只決定文件與報告的語言，並擴及討論記錄、`/speclink-config` 寫入的 context 與 rules，以及 `/speclink-audit` 的報告（此 Fork 保留未設定時採系統語言，遠端採 Server 語言的行為），執行 `speclink update` 即可取得新的技能檔。"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.9.0",
     "date": "2026-10-15",
     "sections": [

@@ -166,7 +166,7 @@ When you connect to a remote, each setting keeps its layer. Only the location of
 | Key | Values | Default | Use |
 | --- | --- | --- | --- |
 | `schema` | A schema name | `spec-driven` | The workflow schema for new changes (which documents, in which order) |
-| `locale` | `tw`, `ja`, `en` | System language | The language of AI-generated artifacts |
+| `locale` | `tw`, `ja`, `en` | System language | The language of AI-generated documents and reports; review and verify also present their results in it. Otherwise the agent talks to you in your own language |
 | `spec_locale` | `tw`, `ja`, `en`, `auto` | System language | The language of spec files. `auto` follows `locale` |
 | `tdd` | `true` / `false` | `false` | Write a failing test first, then the code (red to green) |
 | `audit` | `true` / `false` | `false` | Run a sharp-edges security check on new APIs and parameter handling |

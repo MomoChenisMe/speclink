@@ -37,7 +37,7 @@ Speclink 是一套 SDD（規格驅動開發，Spec-Driven Development）引擎�
 - 交付前的把關：[品質關卡總覽](quality-stations.md)、[審查站](review.md)、[驗證站](verify.md)、[封存](archive.md)
 - 初步安全審查：[設定政策](policy-config.md) → [安裝資料](security-data.md) → [執行審查](security-review.md) → [閱讀報告](security-report.md)
 - 好幾個變更同時做：先看[執行順序：plan 與依賴](plan.md)，再走[平行實作與合回](worktree.md)
-- 工具：[提交單一變更的檔案](commit.md)、[溯源](trace.md)、[工作流政策與設定](policy-config.md)、[產出流程 schema 管理](schemas.md)、[操作手冊：生成與導覽](manual.md)
+- 工具：[提交單一變更的檔案](commit.md)、[安全稽核](audit.md)、[溯源](trace.md)、[工作流政策與設定](policy-config.md)、[產出流程 schema 管理](schemas.md)、[操作手冊：生成與導覽](manual.md)
 
 ### 產品負責人／PM（看進度、不碰 checkout）
 

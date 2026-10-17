@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.1"
+  version: "v1.50.1"
   generatedBy: "Speclink"
 ---
 
@@ -15,6 +15,8 @@ metadata:
 This harness executes speclink verbs by calling the speclink tool with an argv array (e.g. ["apply", "add-auth"]). Wherever this document says `speclink <verb> [arguments]`, it means calling the speclink tool with those arguments as argv.
 
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Implement tasks from a Speclink change.
 
@@ -353,7 +355,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.1"
+  version: "v1.50.1"
   generatedBy: "Speclink"
 ---
 
@@ -362,6 +364,8 @@ metadata:
 This harness executes speclink verbs by calling the speclink tool with an argv array (e.g. ["apply", "add-auth"]). Wherever this document says `speclink <verb> [arguments]`, it means calling the speclink tool with those arguments as argv.
 
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Archive a completed change.
 
@@ -700,7 +704,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.1"
+  version: "v1.50.1"
   generatedBy: "Speclink"
 ---
 
@@ -709,6 +713,8 @@ metadata:
 This harness executes speclink verbs by calling the speclink tool with an argv array (e.g. ["apply", "add-auth"]). Wherever this document says `speclink <verb> [arguments]`, it means calling the speclink tool with those arguments as argv.
 
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Audit changed code for security sharp edges — API design traps, dangerous defaults, and interfaces that make it easy to do the wrong thing.
 
@@ -787,6 +793,8 @@ Merge findings from all 3 lenses. For each finding:
 - False positive or not worth changing → skip without debate
 - Classify severity: Critical / High / Medium / Low
 
+**Report language**: run `speclink workflow-config languages --json` and write the report, closing summary included, in the language of its `locale` field (a resolved language name such as `Traditional Chinese (繁體中文)`, `Japanese (日本語)`, or `English`; unset locale resolves to the operating-system language of the machine running Speclink, and remote mode uses the server's language, never the client's; if the query fails, report the error and stop rather than guessing) — prose, headings, and table labels included. Keep severity labels (Critical/High/Medium/Low), file paths, command lines, and code references in English.
+
 End with a brief summary of the findings and their proposed fixes (or confirm the code is clean).
 
 **Standalone check** — before you report:
@@ -794,6 +802,7 @@ End with a brief summary of the findings and their proposed fixes (or confirm th
 - [ ] All three lenses ran over the full diff (Phase 2), as agents or one after another.
 - [ ] No file was edited; every fixable finding names its fix (Phase 3).
 - [ ] Every finding has a severity from the table in **Severity Classification**.
+- [ ] The report, closing summary included, is in the `locale` language (Phase 3).
 
 ---
 
@@ -958,7 +967,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.1"
+  version: "v1.50.1"
   generatedBy: "Speclink"
 ---
 
@@ -967,6 +976,8 @@ metadata:
 This harness executes speclink verbs by calling the speclink tool with an argv array (e.g. ["apply", "add-auth"]). Wherever this document says `speclink <verb> [arguments]`, it means calling the speclink tool with those arguments as argv.
 
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Establish the baseline for an existing codebase: generate the initial canonical specs from current behavior, so later changes have a spec baseline to build on.
 
@@ -1091,7 +1102,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.1"
+  version: "v1.50.1"
   generatedBy: "Speclink"
 ---
 
@@ -1100,6 +1111,8 @@ metadata:
 This harness executes speclink verbs by calling the speclink tool with an argv array (e.g. ["apply", "add-auth"]). Wherever this document says `speclink <verb> [arguments]`, it means calling the speclink tool with those arguments as argv.
 
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Commit files related to a specific Speclink change.
 
@@ -1406,7 +1419,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.1"
+  version: "v1.50.1"
   generatedBy: "Speclink"
 ---
 
@@ -1415,6 +1428,8 @@ metadata:
 This harness executes speclink verbs by calling the speclink tool with an argv array (e.g. ["apply", "add-auth"]). Wherever this document says `speclink <verb> [arguments]`, it means calling the speclink tool with those arguments as argv.
 
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Compose the workflow config's `context` and `rules` from what the codebase structurally declares, take its `review` rules from the user alone, then land everything through a diff the user approves.
 
@@ -1597,6 +1612,8 @@ An existing review rule is dropped only for the reasons any other line is: it fa
 
 ## Step 5: Show the diff, then write
 
+**Draft language**: the lines you drafted or rewrote are in the language of `locale` as Step 3 confirmed it (`tw` Traditional Chinese, `ja` Japanese, `en` English; when not set, use the resolved language name (such as `Traditional Chinese (繁體中文)`, `Japanese (日本語)`, or `English`) in the `locale` field from `speclink workflow-config languages --json`, which resolves OS defaults and in remote mode uses the server's language, never the client's; if the query fails, report the error and stop rather than guessing) — when Step 3 changed it, rewrite those lines before you produce the diff. Lines you leave unchanged keep their wording, and review rules keep the user's own words. Commands, file paths, test names, config keys and code identifiers stay as they are.
+
 Produce the diff for each change with the write verb's own `--dry-run`, so the preview is byte-identical to what would land:
 
 ```bash
@@ -1643,6 +1660,7 @@ Check these before you report:
 - [ ] **Don't derive review rules from the repo** — review rules are optional; take them only from the user, suggest a list by whether a violation has a legitimate exception, and let the user confirm it.
 - [ ] **Don't leave a reminder unaccounted for** — the report gives every reminder its destination, and the reason when it was not taken or not written.
 - [ ] **Don't write without approval** — `--dry-run` first, always.
+- [ ] **Don't draft in the wrong language** — new and rewritten lines follow **Draft language**, in `locale` as Step 3 confirmed it (Step 5).
 - [ ] **Don't land a non-empty second run** — that is a signal to re-judge, not to write.
 
 
@@ -1660,7 +1678,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.1"
+  version: "v1.50.1"
   generatedBy: "Speclink"
 ---
 
@@ -1669,6 +1687,8 @@ metadata:
 This harness executes speclink verbs by calling the speclink tool with an argv array (e.g. ["apply", "add-auth"]). Wherever this document says `speclink <verb> [arguments]`, it means calling the speclink tool with those arguments as argv.
 
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Have a focused discussion about a topic and reach a conclusion. Every discussion has a topic, works toward a goal, and ends with a clear conclusion — unlike open-ended exploration, discuss mode converges.
 
@@ -1722,7 +1742,7 @@ Every record has the same fixed skeleton:
    ```
 
 2. Act on what the discussion list shows:
-   - **A record matches the topic and is still live** — `status` `open`, or `promoted` mid-way through a spin-out (Step 9) → resume it (reuse its `slug`): the record already exists; every later `add-round`/`conclude` call uses it. Only `concluded` and archived records are past resuming. **Resume ritual**: before continuing, present a recap derived from the record — one line per round (its Focus → the first sentence of its Position), then the last round's Open ledger as the current frontier — and only then pick the discussion back up. The recap is mechanically derived from fields the record already has; it introduces no new format and existing records need no migration.
+   - **A record matches the topic and is still live** — `status` `open`, or `promoted` mid-way through a spin-out (Step 9) → resume it (reuse its `slug`): the record already exists; every later `add-round`/`conclude` call uses it. Only `concluded` and archived records are past resuming. **Resume ritual**: before continuing, present a recap derived from the record — one line per round (its Focus → the first sentence of its Position), then the last round's Open ledger as the current frontier — and only then pick the discussion back up. The recap is mechanically derived from fields the record already has; it introduces no new format and existing records need no migration. Rounds you add to a resumed record follow **Record language** (Step 5).
    - **No live record matches** → do not create one yet. Derive an English kebab-case slug from the topic (translate when the topic is not English — e.g. 「看板搜尋列」 → `board-search-bar`), announce it ("This discussion will be recorded as `<slug>` once it has substance."), and proceed — scout, judge requirement clarity, present your first assumptions or question with nothing on disk. A mis-invocation or a topic answered in one exchange leaves no file behind. Step 5 says when the record is created.
 3. If the user mentioned a specific change name, read its artifacts for context.
 
@@ -1958,6 +1978,8 @@ speclink discuss new "<topic>" --slug <english-kebab-slug>
 
 Always pass `--slug` with the English kebab-case slug you derived — the slug names the record file; the topic stays in the user's language verbatim. Without `--slug` the filename falls back to deriving from the topic, so non-English topics produce non-English filenames.
 
+**Record language**: run `speclink workflow-config languages --json` and write the record's prose — the Context, every round and the conclusion — in the language of its `locale` field (a resolved language name such as `Traditional Chinese (繁體中文)`, `Japanese (日本語)`, or `English`; unset locale resolves to the operating-system language of the machine running Speclink, and remote mode uses the server's language, never the client's; if the query fails, report the error and stop rather than guessing). The topic is the exception: it keeps the user's words, as above. These stay in English: the field labels (`**Focus**:`, `**Position**:`, `**Ruled out**:`, `**Open**:` and the conclusion's labels), the fixed markers (`Prior discussions:`, `Source doc:`, the word `none`, the ``**cut N `change-name`**:`` heads, the **Capture to** values), the slug, command lines and code. When you resume an existing record, keep the language it is written in.
+
 Then fill the Context section once — the framing a future reader (or `propose`) needs before the rounds make sense:
 
 ```bash
@@ -2125,6 +2147,7 @@ Check these before you end each turn:
 - [ ] No application code was written ("Discuss mode is for thinking").
 - [ ] The record exists only if the user has replied with substance (Step 5); every exchange since then has its round (Step 6).
 - [ ] The record was touched only through `speclink discuss` verbs.
+- [ ] The record's prose follows **Record language**, its labels and markers in English (Step 5).
 - [ ] One question per exchange, and every question carries its evidence ("How to discuss").
 - [ ] Facts were verified with Grep/Read, not asked or guessed ("How to discuss").
 - [ ] A recommendation was given — the user can disagree ("Be direct").
@@ -2147,7 +2170,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.1"
+  version: "v1.50.1"
   generatedBy: "Speclink"
 ---
 
@@ -2156,6 +2179,8 @@ metadata:
 This harness executes speclink verbs by calling the speclink tool with an argv array (e.g. ["apply", "add-auth"]). Wherever this document says `speclink <verb> [arguments]`, it means calling the speclink tool with those arguments as argv.
 
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Detect drift between a Speclink change and the current codebase state. Reports time dormancy, broken design anchors, task collisions with external commits, and a single recommended next command.
 
@@ -2285,7 +2310,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.1"
+  version: "v1.50.1"
   generatedBy: "Speclink"
 ---
 
@@ -2294,6 +2319,8 @@ metadata:
 This harness executes speclink verbs by calling the speclink tool with an argv array (e.g. ["apply", "add-auth"]). Wherever this document says `speclink <verb> [arguments]`, it means calling the speclink tool with those arguments as argv.
 
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Scan the codebase for architectural improvements and turn the best ones into a recorded discussion. This is the mirror image of `speclink discuss`: there the user brings the topic, here the model brings the candidates. Everything downstream — rounds, conclusion, promote/link, archive — is the same discussion machinery.
 
@@ -2329,7 +2356,7 @@ speclink discuss search <scope keyword>... --json
 speclink list --json
 ```
 
-- **Search the discussions with your scope's keywords** — the module, crate or pain-point nouns. This check always runs before the scan (Step 3); its keywords come from the user's direction when one was given, and from the scope Step 2 settles when it was not — in that case do Step 2 first, then come back here. `discuss search` covers live and archived records alike and matches only the topic, the slug and the decision lines — each round's `Ruled out` and the Conclusion's `Decision` / `Rejected alternatives` / `Deferred`; any one keyword matching counts. Those lines are this project's decision record: an option that lost, with the reason it lost. Read the full Conclusion of the hits that touch your scope (`speclink discuss show <slug>` falls back to the archive), **earlier `improve` records for the same scope first** — a hit whose `kind` is `improve` is the closest precedent to what you are about to propose.
+- **Search the discussions with your scope's keywords** — the module, crate or pain-point nouns. This check always runs before the scan (Step 3); its keywords come from the user's direction when one was given, and from the scope Step 2 settles when it was not — in that case do Step 2 first, then come back here. Records are written in the `locale` language of `speclink workflow-config languages --json` (Step 4), so pass your keywords in that language as well as the English identifiers — crate, module and command names. `discuss search` covers live and archived records alike and matches only the topic, the slug and the decision lines — each round's `Ruled out` and the Conclusion's `Decision` / `Rejected alternatives` / `Deferred`; any one keyword matching counts. Those lines are this project's decision record: an option that lost, with the reason it lost. Read the full Conclusion of the hits that touch your scope (`speclink discuss show <slug>` falls back to the archive), **earlier `improve` records for the same scope first** — a hit whose `kind` is `improve` is the closest precedent to what you are about to propose.
 - **A previously rejected approach is not re-proposed as a candidate** — unless you can name the reason it was rejected AND state concretely why that reason no longer holds (the code it depended on is gone, the constraint was lifted, the trade-off inverted). Say so in the candidate itself; do not quietly re-file it.
 - **Read the in-flight changes** from `speclink list --json` and their proposals. A candidate that overlaps the area an in-flight change is already rewriting is not proposed — the work is happening, and a discussion about it now collides with a change mid-flight.
 
@@ -2379,6 +2406,8 @@ Create the discussion record and write the scan into it as Round 1:
 ```bash
 speclink discuss new "<topic>" --slug improve-<scope> --kind improve
 ```
+
+**Record language**: run `speclink workflow-config languages --json` and write the record — its topic, the Context, every round and the conclusion — in the language of its `locale` field (a resolved language name such as `Traditional Chinese (繁體中文)`, `Japanese (日本語)`, or `English`; unset locale resolves to the operating-system language of the machine running Speclink, and remote mode uses the server's language, never the client's; if the query fails, report the error and stop rather than guessing). These stay in English: the field labels (`**Focus**:`, `**Position**:`, `**Ruled out**:`, `**Open**:` and the conclusion's labels), the fixed markers (the word `none`, the ``**cut N `change-name`**:`` heads, the **Capture to** values), the `improve-<scope>` slug, the `scan` mode label, command lines and code.
 
 `--kind improve` marks the record as an improvement discussion (it is what the board and the discussion drawer show a badge for). The slug convention is `improve-<scope>` — `improve-store-layer`, `improve-cli-commands`. Write the Context once (what prompted the scan, the scope you settled on in Step 2 and why, what Step 1 excluded), then record the candidates as Round 1 with the mode label `scan`:
 
@@ -2467,6 +2496,7 @@ Check these before you end each turn:
 - [ ] Every candidate passed its admission criterion (Step 3) — the deletion test for the first five signals, the reader-prediction test for the sixth; moving complexity around never counts.
 - [ ] At most 2 Explore subagents ran (Step 3).
 - [ ] Settled rejections and in-flight areas were left out (Step 1).
+- [ ] The record follows **Record language**, its labels and markers in English (Step 4).
 - [ ] A finished scan was concluded and archived, never discarded (Step 5).
 
 ## Next steps
@@ -2483,7 +2513,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.1"
+  version: "v1.50.1"
   generatedBy: "Speclink"
 ---
 
@@ -2492,6 +2522,8 @@ metadata:
 This harness executes speclink verbs by calling the speclink tool with an argv array (e.g. ["apply", "add-auth"]). Wherever this document says `speclink <verb> [arguments]`, it means calling the speclink tool with those arguments as argv.
 
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Update an existing Speclink change — from a plan file or conversation context.
 
@@ -2800,7 +2832,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.1"
+  version: "v1.50.1"
   generatedBy: "Speclink"
 ---
 
@@ -2809,6 +2841,8 @@ metadata:
 This harness executes speclink verbs by calling the speclink tool with an argv array (e.g. ["apply", "add-auth"]). Wherever this document says `speclink <verb> [arguments]`, it means calling the speclink tool with those arguments as argv.
 
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Generate a human-readable operating manual from the canonical specs, or walk the user through the system in conversation. The manual is a wiki-style set of Markdown pages under `openspec/manual/`, written for someone who joined today and only wants to know how to operate the system.
 
@@ -3019,7 +3053,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.1"
+  version: "v1.50.1"
   generatedBy: "Speclink"
 ---
 
@@ -3028,6 +3062,8 @@ metadata:
 This harness executes speclink verbs by calling the speclink tool with an argv array (e.g. ["apply", "add-auth"]). Wherever this document says `speclink <verb> [arguments]`, it means calling the speclink tool with those arguments as argv.
 
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Create a complete Speclink change proposal — from requirement to validated artifacts — in a single workflow.
 
@@ -3492,7 +3528,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.1"
+  version: "v1.50.1"
   generatedBy: "Speclink"
 ---
 
@@ -3501,6 +3537,8 @@ metadata:
 This harness executes speclink verbs by calling the speclink tool with an argv array (e.g. ["apply", "add-auth"]). Wherever this document says `speclink <verb> [arguments]`, it means calling the speclink tool with those arguments as argv.
 
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Run both quality stations over one change as a single pass that pauses after every round: `speclink review` and `speclink verify` each do their checking WITHOUT stamping, then this skill reports both stations' findings together and STOPS for the user's call on what to fix, when to stamp, and whether to archive. Nothing is fixed, stamped or archived without their answer. Use this when both stations are known up front to be in play. Running only one station does not go through this skill — call that station directly and let it keep its own stamp-when-clean default and its own way of sending sub-agents.
 
@@ -3620,7 +3658,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.1"
+  version: "v1.50.1"
   generatedBy: "Speclink"
 ---
 
@@ -3629,6 +3667,8 @@ metadata:
 This harness executes speclink verbs by calling the speclink tool with an argv array (e.g. ["apply", "add-auth"]). Wherever this document says `speclink <verb> [arguments]`, it means calling the speclink tool with those arguments as argv.
 
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Review a change's implementation for craft quality: two parallel read-only axes — **Standards** (repo conventions, the project's review rules, and a code-smell baseline) and **Correctness** (bug hunting) — run ONCE against a frozen change patch, then validated round by round to a review ticket, closed by a stamp. Round 1 is the only discovery pass; every later round only validates remediation. Spec compliance is not this skill's job — that is `speclink verify`; the two quality stations run independently and either, both, or neither may be used per change.
 
@@ -3893,7 +3933,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.1"
+  version: "v1.50.1"
   generatedBy: "Speclink"
 ---
 
@@ -3902,6 +3942,8 @@ metadata:
 This harness executes speclink verbs by calling the speclink tool with an argv array (e.g. ["apply", "add-auth"]). Wherever this document says `speclink <verb> [arguments]`, it means calling the speclink tool with those arguments as argv.
 
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Answer "how did this come to be / why is it designed this way" for a feature: map the question to a capability, walk its provenance chain (archived changes → source discussions → evidence → live code), and reply with one sourced narrative.
 
@@ -3985,7 +4027,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.1"
+  version: "v1.50.1"
   generatedBy: "Speclink"
 ---
 
@@ -3994,6 +4036,8 @@ metadata:
 This harness executes speclink verbs by calling the speclink tool with an argv array (e.g. ["apply", "add-auth"]). Wherever this document says `speclink <verb> [arguments]`, it means calling the speclink tool with those arguments as argv.
 
 ---
+
+**Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
 Verify that an implementation matches the change artifacts (specs, tasks, design).
 
