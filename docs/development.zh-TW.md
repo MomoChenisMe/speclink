@@ -154,6 +154,25 @@ npm --prefix crates/adapters/speclink-node test         #           再跑測試
 | `docs/` | 使用者文件 |
 | `openspec/` | Speclink 自己的規格、變更與討論 |
 
+## <a id="desktop-tags"></a>以 Tag 發布桌面版
+
+`Desktop Build` 保留手動建置，並支援推送 `desktop-vX.Y.Z` 後自動建置與發布。先將工作流程變更合併到 `main`；Tag 指向的提交必須包含這份工作流程。Tag 版本須同時等於 `apps/desktop/src-tauri/tauri.conf.json` 的 `version` 與 `Cargo.toml` 的 `[workspace.package].version`，否則在建置前停止。改版時也須提交對應的 `Cargo.lock` 更新。
+
+以下以目前的 `0.9.0` 為例；每次發布應使用尚未存在且與原始碼相同的版號：
+
+```bash
+git switch main
+git pull --ff-only
+git tag -a desktop-v0.9.0 -m "Speclink Desktop 0.9.0"
+git push origin desktop-v0.9.0
+```
+
+四個平台全部成功後，會在此儲存庫的 Releases 發布五個附件：macOS universal DMG、Windows x64 安裝器、Windows x64 免安裝 ZIP，以及 Linux amd64／aarch64 AppImage。Windows ZIP 沿用解壓縮、CLI 設定與搬移測試。任一平台失敗不會進入發布步驟；可在 Actions 重跑失敗工作。手動執行仍只保留 14 天的 Artifacts，不建立 Release。
+
+此流程使用 GitHub 內建的 `GITHUB_TOKEN`，只有發布工作取得 `contents: write`，不需另外設定私鑰。macOS 使用 ad-hoc 簽章，Windows 未使用發行者憑證；安裝方式見下節。此發布通道沒有簽章更新包與 `latest.json`，請手動下載更新。App 既有的更新網址仍維持原設定，不會改成此通道；若需要 Fork 自動更新，須另外設定自己的更新公鑰與網址。
+
+`desktop-v*` 不觸發原本 `v*` 的完整 Release，也不發布 npm 或 Docker；桌面 Release 不取代儲存庫既有的 Latest Release。原本的簽章發布流程維持不變。
+
 ## <a id="unsigned"></a>下載安裝檔的未簽章放行
 
 桌面安裝檔都在 [Releases](https://github.com/MomoChenisMe/speclink/releases/latest)：

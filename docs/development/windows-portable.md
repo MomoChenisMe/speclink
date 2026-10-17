@@ -4,7 +4,7 @@
 
 ## 下載與啟動
 
-1. 在 GitHub 的 **Actions → Desktop Build → Run workflow** 選包含免安裝流程的分支並執行。
+1. 正式桌面發布請從此儲存庫的 **Releases** 下載 `desktop-vX.Y.Z` 下的 `Speclink_<版本>_x64-portable.zip`，直接解壓縮即可。若要測試未發布的分支，在 **Actions → Desktop Build → Run workflow** 選分支並執行，再依以下步驟下載 Artifacts。
 2. 等 Windows 工作成功後，從該次 **Summary → Artifacts** 下載 `desktop-x86_64-pc-windows-msvc-portable`。
 3. 解開 GitHub 下載的外層 ZIP，再解開裡面的 `Speclink_<版本>_x64-portable.zip`。
 4. 將整個資料夾放到自己可讀寫的位置，雙擊 **`speclink-desktop.exe`**。
@@ -59,7 +59,7 @@ Speclink_<版本>_x64-portable/
 
 Windows 工作先建置 CLI 與 Tauri 桌面程式，再執行 `node scripts/desktop/windows-portable.mjs`，以 PowerShell `Compress-Archive` 產生 ZIP。Windows 建置使用靜態 C runtime，WebView2 仍由系統提供。
 
-四個平台工作完成後，Artifacts 會有五項：macOS 一項、Windows 安裝版與免安裝版各一項、Linux 兩項，保留 14 天。這個 workflow 不會自動建立 Release；若要發布，可將內層的 `Speclink_<版本>_x64-portable.zip` 作為 Release 附件。
+四個平台工作完成後，Artifacts 會有五項：macOS 一項、Windows 安裝版與免安裝版各一項、Linux 兩項，保留 14 天。手動執行不會建立 Release；推送 `desktop-vX.Y.Z` 後，四平台成功才會自動將五種附件發布至 Release。操作步驟見[以 Tag 發布桌面版](../development.zh-TW.md#desktop-tags)。
 
 工作流程會解開 ZIP、執行內附 CLI、驗證設定寫入旁邊的 `data`，再搬移資料夾確認設定仍可讀取。發布前仍需在 Windows 實際驗收：
 

@@ -154,6 +154,25 @@ npm --prefix crates/adapters/speclink-node test         #           then run the
 | `docs/` | User documentation |
 | `openspec/` | The specs, changes, and discussions of Speclink itself |
 
+## <a id="desktop-tags"></a>Publish desktop builds with a tag
+
+`Desktop Build` supports manual builds and automatic releases on `desktop-vX.Y.Z` tags. Merge the workflow changes into `main` first; the tagged commit must include this workflow. The tag version must match both `apps/desktop/src-tauri/tauri.conf.json` (`version`) and `Cargo.toml` (`[workspace.package].version`), or the workflow stops before building. Commit the corresponding `Cargo.lock` changes when bumping the version.
+
+This example uses the current version, `0.9.0`. Each release needs a new tag that matches the source version:
+
+```bash
+git switch main
+git pull --ff-only
+git tag -a desktop-v0.9.0 -m "Speclink Desktop 0.9.0"
+git push origin desktop-v0.9.0
+```
+
+After all four platforms succeed, the repository's Releases page receives five assets: a macOS universal DMG, Windows x64 installer, Windows x64 portable ZIP, and Linux amd64/aarch64 AppImages. The Windows ZIP retains the extraction, CLI configuration, and relocation checks. A failed platform prevents the release job from running; rerun failed jobs in Actions. Manual runs still create only Artifacts retained for 14 days, without a Release.
+
+The workflow uses the built-in `GITHUB_TOKEN`; only the release job receives `contents: write`. No additional private key is needed. macOS uses ad-hoc signing, and Windows has no publisher certificate; see the installation instructions below. This channel has no signed updater packages or `latest.json`; download updates manually. The app's existing updater URL is unchanged and does not point to this channel. Fork auto-updates require a separate updater public key and endpoint.
+
+`desktop-v*` does not trigger the existing full `v*` Release, npm publishing, or Docker publishing. Desktop releases do not replace the repository's existing Latest Release. The original signed release workflow is unchanged.
+
 ## <a id="unsigned"></a>Open unsigned installers
 
 The desktop installers are on [Releases](https://github.com/MomoChenisMe/speclink/releases/latest):
