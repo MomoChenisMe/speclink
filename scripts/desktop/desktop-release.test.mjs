@@ -14,7 +14,10 @@ test('CI 版號檢查輸出可供後續工作使用，錯誤 Tag 不寫入輸出
   const temp = mkdtempSync(join(tmpdir(), 'speclink-desktop-release-'));
   t.after(() => rmSync(temp, { recursive: true, force: true }));
   const version = JSON.parse(readFileSync(new URL('../../apps/desktop/src-tauri/tauri.conf.json', import.meta.url), 'utf8')).version;
-  for (const [event, tag, passes] of [['push', `desktop-v${version}`, true], ['push', 'desktop-v999.0.0', false], ['workflow_dispatch', 'main', true]]) {
+  const cases = [['push', `desktop-v${version}`, true], ['push', 'desktop-v999.0.0', false], ['workflow_dispatch', 'main', true]];
+  const build = /^(\d+\.\d+\.\d+)-build\.(\d+)$/.exec(version);
+  if (build) cases.push(['push', `desktop-v${build[1]}.${build[2]}`, true]);
+  for (const [event, tag, passes] of cases) {
     const output = join(temp, `${event}-${tag}.txt`);
     const result = spawnSync(process.execPath, ['scripts/desktop/desktop-release-version.mjs'], {
       cwd: root,
@@ -43,6 +46,20 @@ test('接受合法預先發行版，仍要求 App 與 CLI 的完整版本一致'
     assert.throws(() => desktopReleaseVersion(`desktop-v${version}`, version, '0.9.0'), /CLI/);
   }
   assert.ok(workflow.includes("prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}"));
+});
+
+test('四段桌面 Tag 對應合法的 App 與 CLI 建置版號', () => {
+  for (const [tag, version] of [
+    ['desktop-v0.10.0.1', '0.10.0-build.1'],
+    ['desktop-v0.10.0.12', '0.10.0-build.12'],
+  ]) {
+    assert.equal(desktopReleaseVersion(tag, version, version), version);
+    assert.throws(() => desktopReleaseVersion(tag, '0.10.0', version), /App/);
+    assert.throws(() => desktopReleaseVersion(tag, version, '0.10.0'), /CLI/);
+  }
+  for (const tag of ['desktop-v0.10.0.01', 'desktop-v0.10.0.1.2', 'desktop-v0.10.0.1-rc.1']) {
+    assert.throws(() => desktopReleaseVersion(tag, '0.10.0-build.1', '0.10.0-build.1'), /desktop-vX\.Y\.Z/);
+  }
 });
 
 test('保留手動建置，僅桌面 tag 可發布，四平台全部成功才執行發布', () => {

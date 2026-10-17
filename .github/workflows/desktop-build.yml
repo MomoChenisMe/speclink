@@ -1,4 +1,4 @@
-# 桌面安裝檔：手動選分支建置，或 push desktop-vX.Y.Z 自動建置並發布 Release。
+# 桌面安裝檔：手動建置，或 push desktop-vX.Y.Z／desktop-vX.Y.Z.N 自動建置並發布。
 # 首次使用須先將此 workflow 合併到預設分支，才能顯示 Run workflow。
 # macOS 使用 ad-hoc 簽章；不需發布私鑰，不產生 updater 更新包。
 name: Desktop Build

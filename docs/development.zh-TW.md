@@ -160,6 +160,8 @@ npm --prefix crates/adapters/speclink-node test         #           再跑測試
 
 亦支援預先發行版，例如 `desktop-v0.9.0-build.m1`；App 與 CLI 也須使用完整的 `0.9.0-build.m1` 版號。含預先發行版尾碼的 Tag 會將 GitHub Release 標示為預先發行版。
 
+四段 Tag `desktop-vX.Y.Z.N` 會對應合法的 App／CLI 版本 `X.Y.Z-build.N`，例如 `desktop-v0.10.0.1` 對應 `0.10.0-build.1`；App、Cargo.toml 與 Cargo.lock 必須先同步此版本。GitHub Release 保留四段 Tag，附件使用實際 App 版號，並標示為預先發行版；不接受含前導零的序號。
+
 以下以正式版 `0.9.0` 為例；每次發布應使用尚未存在且與原始碼相同的版號：
 
 ```bash
@@ -171,7 +173,7 @@ git push origin desktop-v0.9.0
 
 四個平台全部成功後，會在此儲存庫的 Releases 發布五個附件：macOS universal DMG、Windows x64 安裝器、Windows x64 免安裝 ZIP，以及 Linux amd64／aarch64 AppImage。Windows ZIP 沿用解壓縮、CLI 設定與搬移測試。任一平台失敗不會進入發布步驟；可在 Actions 重跑失敗工作。手動執行仍只保留 14 天的 Artifacts，不建立 Release。
 
-此流程使用 GitHub 內建的 `GITHUB_TOKEN`，只有發布工作取得 `contents: write`，不需另外設定私鑰。macOS 使用 ad-hoc 簽章，Windows 未使用發行者憑證；安裝方式見下節。此發布通道沒有簽章更新包與 `latest.json`，請手動下載更新。App 既有的更新網址仍維持原設定，不會改成此通道；若需要 Fork 自動更新，須另外設定自己的更新公鑰與網址。
+此流程使用 GitHub 內建的 `GITHUB_TOKEN`，只有發布工作取得 `contents: write`，不需另外設定私鑰。macOS 使用 ad-hoc 簽章，Windows 未使用發行者憑證；安裝方式見下節。此發布通道沒有簽章更新包與 `latest.json`，請手動下載更新。App 更新網址已指向 origin 的 Latest Release，但此桌面通道不提供簽章更新清單；Fork 自動更新仍需補齊與公鑰相符的更新包及 manifest。
 
 `desktop-v*` 不觸發原本 `v*` 的完整 Release，也不發布 npm 或 Docker；桌面 Release 不取代儲存庫既有的 Latest Release。原本的簽章發布流程維持不變。
 

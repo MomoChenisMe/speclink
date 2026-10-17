@@ -160,6 +160,8 @@ npm --prefix crates/adapters/speclink-node test         #           then run the
 
 Prerelease tags such as `desktop-v0.9.0-build.m1` are also supported. Both App and CLI must use the full `0.9.0-build.m1` version. Tags with a prerelease suffix create a GitHub prerelease.
 
+A four-part tag `desktop-vX.Y.Z.N` maps to the valid App/CLI version `X.Y.Z-build.N`: for example, `desktop-v0.10.0.1` maps to `0.10.0-build.1`. Update the App, Cargo.toml, and Cargo.lock to that version first. The GitHub release retains the four-part tag, uses the actual App version for asset names, and is marked as a prerelease. Build numbers with leading zeros are rejected.
+
 This example uses the stable version `0.9.0`. Each release needs a new tag that matches the source version:
 
 ```bash
@@ -171,7 +173,7 @@ git push origin desktop-v0.9.0
 
 After all four platforms succeed, the repository's Releases page receives five assets: a macOS universal DMG, Windows x64 installer, Windows x64 portable ZIP, and Linux amd64/aarch64 AppImages. The Windows ZIP retains the extraction, CLI configuration, and relocation checks. A failed platform prevents the release job from running; rerun failed jobs in Actions. Manual runs still create only Artifacts retained for 14 days, without a Release.
 
-The workflow uses the built-in `GITHUB_TOKEN`; only the release job receives `contents: write`. No additional private key is needed. macOS uses ad-hoc signing, and Windows has no publisher certificate; see the installation instructions below. This channel has no signed updater packages or `latest.json`; download updates manually. The app's existing updater URL is unchanged and does not point to this channel. Fork auto-updates require a separate updater public key and endpoint.
+The workflow uses the built-in `GITHUB_TOKEN`; only the release job receives `contents: write`. No additional private key is needed. macOS uses ad-hoc signing, and Windows has no publisher certificate; see the installation instructions below. This channel has no signed updater packages or `latest.json`; download updates manually. The app's updater URL now points to origin's Latest Release, but this desktop channel provides no signed update metadata. Fork auto-updates still need an update manifest and packages signed with a key matching the app's public key.
 
 `desktop-v*` does not trigger the existing full `v*` Release, npm publishing, or Docker publishing. Desktop releases do not replace the repository's existing Latest Release. The original signed release workflow is unchanged.
 
