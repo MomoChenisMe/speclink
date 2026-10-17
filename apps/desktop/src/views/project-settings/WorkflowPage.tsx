@@ -2,6 +2,7 @@
 // 下拉與 tdd、audit、worktree 開關）與產出流程卡（清單、唯讀詳情、切換、fork、建立、刪除——原樣
 // 自原產出流程頁籤搬入）。
 import { AlertTriangle } from "lucide-react";
+import { useEffect, useState } from "react";
 import {
   Button,
   ConfirmDialog,
@@ -17,6 +18,7 @@ import {
   SettingsPageHeader,
   SettingsRow,
   Switch,
+  Textarea,
   useI18n,
 } from "@speclink/ui";
 
@@ -28,6 +30,7 @@ import {
   errorMessage,
   type ProjectSettingsState,
 } from "./useProjectSettings";
+import { listSecurityData, type StandardDataList, type SecurityPolicy } from "../../adapter/security";
 
 const LOCALE_LABEL: Record<string, string> = { tw: "tw（繁體中文）", ja: "ja（日本語）", en: "en（English）", auto: "auto" };
 
@@ -45,6 +48,17 @@ function localeOptions(value: string, codes: readonly string[], unsetLabel: stri
 
 export function WorkflowPage({ ps }: { ps: ProjectSettingsState }) {
   const { t } = useI18n();
+  const [data, setData] = useState<StandardDataList | null>(null);
+  const [dataError, setDataError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!ps.security.enabled || ps.settings.securityReview===false) return;
+    let active = true;
+    void listSecurityData().then(
+      (value) => { if (active) { setData(value); setDataError(null); } },
+      (error) => { if (active) setDataError(errorMessage(error)); },
+    );
+    return () => { active = false; };
+  }, [ps.security.enabled, ps.settings.securityReview]);
   const {
     settings,
     snap,
@@ -78,6 +92,21 @@ export function WorkflowPage({ ps }: { ps: ProjectSettingsState }) {
       control={<Switch id={`cfg-${key}`} checked={checked} disabled={wfDisabled} onCheckedChange={set} />}
     />
   );
+  const standardChoice = (key: keyof SecurityPolicy["standards"], label: string, versions: string[], help?: string) => {
+    const selected = ps.security.standards[key];
+    const installed = data?.standards.find((s) => s.standardId === key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`))?.versions ?? [];
+    const choices = key === "cwe" ? installed.filter((v) => v.status === "installed").map((v) => v.version) : versions;
+    const missing = selected.version !== null && !choices.includes(selected.version);
+    return <SettingsRow key={key} label={label} htmlFor={`cfg-security-${key}`} description={help} control={
+      <SettingsChoice id={`cfg-security-${key}`} disabled={wfDisabled} value={selected.enabled ? selected.version! : "__off__"}
+        options={[
+          { value: "__off__", label: t("security.off") },
+          ...(missing ? [{ value: selected.version!, label: `${selected.version} · ${t("security.missingData")}`, disabled: true }] : []),
+          ...choices.map((v) => ({ value: v, label: v })),
+        ]}
+        onChange={(value) => ps.setSecurity((current) => ({ ...current, standards: { ...current.standards, [key]: { ...current.standards[key], enabled: value !== "__off__", version: value === "__off__" ? current.standards[key].version : value } } }))} />
+    }>{selected.enabled && <FieldHelp>{installed.some((v) => v.version === selected.version && v.status === "installed") ? t("security.installed") : t("security.missingData")}</FieldHelp>}</SettingsRow>;
+  };
   return (
     <>
       <SettingsPageHeader
@@ -128,6 +157,34 @@ export function WorkflowPage({ ps }: { ps: ProjectSettingsState }) {
           </SettingsRow>
           {toggle("tdd", ps.tdd, ps.setTdd)}
           {toggle("audit", ps.audit, ps.setAudit)}
+          <SettingsRow label={t("security.enable")} htmlFor="cfg-security-enabled" description={t("security.help")} control={
+            <Switch id="cfg-security-enabled" checked={ps.security.enabled} disabled={wfDisabled || ps.settings.securityReview===false} onCheckedChange={(enabled) => ps.setSecurity((current) => ({ ...current, enabled }))} />
+          } />
+          {ps.settings.securityReview===false && <p role="status" className="px-4 text-xs text-muted-foreground">unsupported_version</p>}
+          {ps.security.enabled && ps.settings.securityReview!==false && <div data-testid="security-policy-fields">
+            <SettingsRow label={t("security.scope")} htmlFor="cfg-security-scope" description={t(`security.scopeHelp.${ps.security.scope}`)} control={
+              <SettingsChoice id="cfg-security-scope" disabled={wfDisabled} value={ps.security.scope}
+                options={["off", "web-api", "api", "web"].map((value) => ({ value, label: t(`security.scope.${value}`) }))}
+                onChange={(scope) => ps.setSecurity((current) => ({ ...current, scope: scope as SecurityPolicy["scope"] }))} />
+            } />
+            {!Object.values(ps.security.standards).some((s) => s.enabled) && <p className="px-4 text-sm text-muted-foreground" role="status">{t("security.unconfigured")}</p>}
+            {standardChoice("owaspTop10", "OWASP Top 10", ["2021", "2025"], t("security.top10Help"))}
+            {standardChoice("owaspApiTop10", "OWASP API Security Top 10", ["2019", "2023"], t("security.apiHelp"))}
+            {standardChoice("owaspAsvs", "OWASP ASVS", ["4.0.3", "5.0.0"])}
+            {ps.security.standards.owaspAsvs.enabled && <SettingsRow label={t("security.asvsLevel")} htmlFor="cfg-security-level" control={
+              <SettingsChoice id="cfg-security-level" disabled={wfDisabled} value={ps.security.standards.owaspAsvs.level} options={["L1", "L2", "L3"].map((value) => ({ value, label: value }))}
+                onChange={(level) => ps.setSecurity((current) => ({ ...current, standards: { ...current.standards, owaspAsvs: { ...current.standards.owaspAsvs, level: level as "L1" | "L2" | "L3" } } }))} />
+            } />}
+            {standardChoice("cwe", "MITRE CWE", [])}
+            {(["spec", "code", "apiBoundary"] as const).map((key) => <SettingsRow key={key} label={t(`security.review.${key}`)} htmlFor={`cfg-security-review-${key}`} control={
+              <Switch id={`cfg-security-review-${key}`} disabled={wfDisabled} checked={ps.security.reviews[key]} onCheckedChange={(checked) => ps.setSecurity((current) => ({ ...current, reviews: { ...current.reviews, [key]: checked } }))} />
+            } />)}
+            {(["excludeDirs", "disabledRules"] as const).map((key) => <SettingsRow key={key} label={t(`security.${key}`)} htmlFor={`cfg-security-${key}`} description={t(`security.${key}Help`)} control={null}>
+              <Textarea id={`cfg-security-${key}`} disabled={wfDisabled} value={ps.security[key].join("\n")} onChange={(event) => ps.setSecurity((current) => ({ ...current, [key]: event.target.value.split("\n") }))} />
+            </SettingsRow>)}
+            <p className="px-4 text-xs text-muted-foreground">{t("security.dataLocation")}</p>
+            {dataError && <p role="alert" className={`px-4 text-xs ${SEMANTIC_TONE.warning}`}>{t("security.dataError")}: {dataError}</p>}
+          </div>}
           {/* worktree 屬本機 checkout 概念：remote 不顯示（spec「產出政策的 worktree 開關」）。 */}
           {!isRemote && toggle("worktree", ps.worktree, ps.setWorktree)}
           <div className="flex items-center justify-end gap-2 px-4 py-3">

@@ -20,6 +20,7 @@ pub(crate) mod new;
 pub(crate) mod plan;
 pub(crate) mod progress;
 pub(crate) mod query;
+pub(crate) mod security;
 pub(crate) mod station;
 pub(crate) mod toolchain;
 pub(crate) mod trace;

@@ -3,6 +3,8 @@
 // 元件為純呈現、資料由 props 注入；資料源經 SpeclinkDataSource 介面解耦（見 adapter.ts）。
 
 export const UI_PACKAGE = "@speclink/ui";
+export type * from "./security";
+export { SecurityReviewPanel } from "./components/SecurityReviewPanel";
 
 // UI 介面 i18n（zh-TW／en；與 config locale 無關）
 export {

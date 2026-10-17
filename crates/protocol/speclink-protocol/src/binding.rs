@@ -47,6 +47,8 @@ pub struct Capabilities {
     #[serde(default)]
     pub context_snapshots: bool,
     #[serde(default)]
+    pub security_review: bool,
+    #[serde(default)]
     pub policy_write: bool,
     /// validate/analyze 唯讀衍生查詢端點（全 role 可用）。
     #[serde(default)]

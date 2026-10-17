@@ -889,6 +889,8 @@ function AppInner({
     <ChangeDetailPage
       change={s.detailChange}
       refreshGen={s.refreshGen}
+      securityReview={dataSource?.securityReview}
+      onOpenSecurityData={() => { s.setBoardView("settings"); s.setSettingsSection("security-data"); }}
       loadDocument={(change, artifact) => dataSource?.getDocument(change, artifact) ?? Promise.resolve(null)}
       loadStationTicket={(change, station) =>
         dataSource?.getStationTicket(change, station) ?? Promise.resolve(null)
@@ -1087,6 +1089,7 @@ function AppInner({
         <div className="flex min-h-0 flex-1">
           <ProjectRail
             tabs={s.tabs}
+            projectColors={s.projectColors}
             activeKey={s.activeKey}
             tabErrors={s.tabErrors}
             recoveryStates={s.remoteRecovery}
@@ -1274,6 +1277,8 @@ function AppInner({
             ) : s.boardView === "project-settings" && activeSession !== undefined ? (
               <ProjectSettingsView
                 settings={activeSession.settings}
+                projectColor={s.activeKey ? s.projectColors[s.activeKey] : undefined}
+                onProjectColorChange={(color) => { s.setProjectColor(activeSession.id, color); }}
                 projectDirectory={activeSession.locator.kind === "local" ? activeSession.locator.root : activeSession.locator.checkoutRoot ?? null}
                 section={projectSettingsSection}
                 onParseErrors={setProjectParseErrors}

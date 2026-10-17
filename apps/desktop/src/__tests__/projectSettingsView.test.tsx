@@ -10,6 +10,7 @@ import { I18nProvider, type ReviewRules } from "@speclink/ui";
 import { ProjectSettingsView } from "../views/ProjectSettingsView";
 import { APP_MESSAGES } from "../i18n/messages";
 import type { SchemaEntry, SettingsSnapshot } from "../adapter/workspace";
+import { DEFAULT_SECURITY_POLICY, applySecurityPolicyPatch } from "../adapter/security";
 import type { WorkspaceSettingsProvider } from "../session";
 import type { ProjectSettingsSection } from "../settingsCatalog";
 import { editorText, editorView, pressSave, typeInEditor } from "./helpers/codemirror";
@@ -112,6 +113,86 @@ function projectSnap(over: Partial<SettingsSnapshot["workflow"]> = {}) {
     },
   });
 }
+
+describe("OWASP / CWE 初步安全審查政策", () => {
+  it("未安裝 CWE 保值，停用與重開還原，reader 維持唯讀", async () => {
+    let stored = projectSnap({ securityVerification: {
+      ...DEFAULT_SECURITY_POLICY, enabled: true,
+      standards: { ...DEFAULT_SECURITY_POLICY.standards, cwe: { enabled: true, version: "4.20" } },
+    } });
+    const ws = fakeSettings(stored);
+    vi.mocked(ws.readSettings).mockImplementation(async () => stored);
+    vi.mocked(ws.writeWorkflowConfig).mockImplementation(async (fields) => {
+      stored = { ...stored, workflow: { ...stored.workflow, ...fields, securityVerification: applySecurityPolicyPatch(stored.workflow.securityVerification!, fields.securityPatch) } };
+    });
+    let view = render(<Harness settings={ws} initial="workflow" />);
+    const toggle = await screen.findByRole("switch", { name: "啟用 OWASP / CWE 安全審查" });
+    expect(screen.getByLabelText("MITRE CWE").textContent).toContain("4.20");
+    expect(screen.getByLabelText("MITRE CWE").textContent).toContain("缺失");
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByTestId("save-workflow"));
+    await waitFor(() => expect(ws.writeWorkflowConfig).toHaveBeenCalledTimes(1));
+    view.unmount();
+    view = render(<Harness settings={ws} initial="workflow" />);
+    const reopened = await screen.findByRole("switch", { name: "啟用 OWASP / CWE 安全審查" });
+    expect(reopened.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(reopened);
+    expect(screen.getByLabelText("MITRE CWE").textContent).toContain("4.20");
+    view.unmount();
+    render(<Harness settings={{ ...fakeSettings(stored), kind: "remote", policyWrite: false }} initial="workflow" />);
+    expect((await screen.findByRole("switch", { name: "啟用 OWASP / CWE 安全審查" })).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByTestId("save-workflow").hasAttribute("disabled")).toBe(true);
+  });
+
+  it("Remote 衝突保留安全輸入並逐欄對照，重送只改原先編輯的葉節點", async () => {
+    const initial = projectSnap({ revision: 41, securityVerification: DEFAULT_SECURITY_POLICY });
+    const latest = projectSnap({ revision: 42, securityVerification: { ...DEFAULT_SECURITY_POLICY, scope: "api" } });
+    const ws = { ...fakeSettings(initial), kind: "remote" as const, policyWrite: true };
+    vi.mocked(ws.readSettings).mockResolvedValueOnce(initial).mockResolvedValue(latest);
+    vi.mocked(ws.writeWorkflowConfig).mockRejectedValueOnce({ message: "conflict", reason: "revision_conflict", status: 409 }).mockResolvedValue(43);
+    render(<Harness settings={ws} initial="workflow" />);
+    fireEvent.click(await screen.findByRole("switch", { name: "啟用 OWASP / CWE 安全審查" }));
+    fireEvent.click(screen.getByTestId("save-workflow"));
+    const panel = await screen.findByTestId("policy-conflict-panel");
+    const row = within(panel).getByTestId("conflict-row-security_verification.enabled");
+    expect(within(row).getByTestId("conflict-server").textContent).toBe("false");
+    expect(within(row).getByTestId("conflict-mine").textContent).toBe("true");
+    expect(screen.getByRole("switch", { name: "啟用 OWASP / CWE 安全審查" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(within(panel).getByRole("button", { name: "檢視後以最新 revision 重新提交" }));
+    await waitFor(() => expect(screen.queryByTestId("policy-conflict-panel")).toBeNull());
+    expect(JSON.parse(vi.mocked(ws.writeWorkflowConfig).mock.calls[1][0].securityPatch!)).toEqual({ enabled: true });
+    expect(screen.getByLabelText("驗證範圍").textContent).toContain("僅 API / 後端服務");
+  });
+  it.each(["light", "dark"])("%s：開關保留子設定，僅 Top 10 2025 可獨立儲存", async (theme) => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    const ws = renderView(snapshot(), "workflow");
+    const user = userEvent.setup();
+    const toggle = await screen.findByRole("switch", { name: "啟用 OWASP / CWE 安全審查" });
+    expect(screen.queryByLabelText("驗證範圍")).toBeNull();
+    await user.click(toggle);
+    expect(screen.getByText("依選定的 OWASP / CWE 安全標準與規則，對 SDD 規格、原始碼及 API 進行初步安全審查。")).toBeTruthy();
+    expect(screen.getByText(/已啟用但未配置/)).toBeTruthy();
+    expect(screen.getByLabelText("驗證範圍").textContent).toContain("關閉／不指定範圍");
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    await user.click(screen.getByLabelText("OWASP Top 10"));
+    await user.click(await screen.findByRole("option", { name: "2025" }));
+    expect(screen.queryByLabelText("ASVS 驗證等級")).toBeNull();
+    expect(screen.getByLabelText("OWASP ASVS").textContent).toContain("關閉");
+    await user.click(screen.getByTestId("save-workflow"));
+    await waitFor(() => expect(ws.writeWorkflowConfig).toHaveBeenCalled());
+    const fields = vi.mocked(ws.writeWorkflowConfig).mock.calls[0][0];
+    expect(JSON.parse(fields.securityPatch!)).toEqual({ enabled: true, standards: { owasp_top10: { enabled: true, version: "2025" } } });
+    expect(fields.audit).toBe(false);
+    await user.click(toggle);
+    expect(screen.queryByLabelText("OWASP Top 10")).toBeNull();
+    await user.click(toggle);
+    expect(screen.getByLabelText("OWASP Top 10").textContent).toContain("2025");
+    await user.click(screen.getByLabelText("OWASP ASVS"));
+    await user.click(await screen.findByRole("option", { name: "5.0.0" }));
+    expect(screen.getByLabelText("ASVS 驗證等級").textContent).toContain("L1");
+    document.documentElement.classList.remove("dark");
+  });
+});
 
 describe("ProjectSettingsView 載入", () => {
   it.each(["/work/My  Project", "/work/Tab\tProject", "/work/Line\nProject"])("完整目錄保留空白並換行：%s", async (path) => {
@@ -1866,4 +1947,31 @@ describe("審查規則頁（spec 需求「設定頁編輯審查規則」）", ()
       expect(ws.writeWorkflowReview).toHaveBeenCalledWith({ ...serverReview, suggestion: ["我的 SUGGESTION"] }),
     );
   });
+});
+
+it("舊 server 安全能力缺席不當成已停用，保留其他政策",async()=>{
+ const settings={...fakeSettings(projectSnap()),kind:"remote" as const,securityReview:false};
+ render(<Harness settings={settings} initial="workflow"/>);
+ expect(await screen.findByText("unsupported_version")).toBeTruthy();
+ expect((screen.getByRole("switch",{name:"啟用 OWASP / CWE 安全審查"}) as HTMLButtonElement).disabled).toBe(true);
+ expect(screen.queryByTestId("security-policy-fields")).toBeNull();
+});
+
+it("專案設定可選圖示底色；Remote reader 仍可改裝置偏好，失敗顯示原因",async()=>{
+ const change=vi.fn().mockRejectedValue(new Error("storage_denied"));
+ render(<ProjectSettingsView settings={{...fakeSettings(projectSnap()),kind:"remote",policyWrite:false}} section="context" projectColor="blue" onProjectColorChange={change}/>);
+ const purple=await screen.findByRole("radio",{name:"紫色"});
+ expect((screen.getByRole("radio",{name:"藍色"}) as HTMLInputElement).checked).toBe(true);
+ fireEvent.click(purple);await waitFor(()=>expect(change).toHaveBeenCalledWith("purple"));
+ expect((await screen.findByRole("alert")).textContent).toContain("storage_denied");
+});
+
+it("設定色票預覽選取深色、其他淡化50%",async()=>{
+ render(<ProjectSettingsView settings={fakeSettings(projectSnap())} section="context" projectColor="blue" onProjectColorChange={vi.fn()}/>);
+ for (const [name,color] of [["青綠色","teal"],["藍色","blue"],["紫色","purple"],["粉紅色","pink"],["橘色","orange"],["綠色","green"]]) {
+  const input=await screen.findByRole("radio",{name});
+  const preview=input.closest("label")?.querySelector('[aria-hidden="true"]');
+  expect(preview?.className).toContain(color === "blue" ? "bg-project-blue" : `bg-project-${color}-muted`);
+  expect(preview?.className).toContain(color === "blue" ? "text-project-foreground" : `text-project-${color}-muted-foreground`);
+ }
 });

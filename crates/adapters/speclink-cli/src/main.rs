@@ -1,5 +1,6 @@
 use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
+use verbs::security::{cmd_security, SecurityArgs};
 use speclink_core as core;
 
 mod color;
@@ -140,6 +141,8 @@ enum Commands {
     /// Workflow config commands (openspec/config.yaml)
     #[command(name = "workflow-config")]
     WorkflowConfig(WorkflowConfigArgs),
+    /// OWASP / CWE Preliminary Security Review
+    Security(SecurityArgs),
     /// Shell completion commands
     Completion(CompletionArgs),
     /// Task operations
@@ -163,6 +166,9 @@ fn main() -> ExitCode {
     match dispatch(cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
+            if let Some(status) = verbs::security::exit_status(&e) {
+                return ExitCode::from(status);
+            }
             eprintln!("Error: {e}");
             ExitCode::FAILURE
         }
@@ -170,7 +176,9 @@ fn main() -> ExitCode {
 }
 
 fn dispatch(cli: Cli) -> Result<()> {
-    warn_leftover_remote_file();
+    if !matches!(&cli.command, Commands::Security(_)) {
+        warn_leftover_remote_file();
+    }
     // 全部頂層動詞的模式形狀宣告（design D5 分類表）：ModeFree 直呼、Dual
     // 兩臂必填、FsOnly／RemoteOnly 明寫拒絕。分岔決策只活在這一層。
     match cli.command {
@@ -186,6 +194,7 @@ fn dispatch(cli: Cli) -> Result<()> {
         Commands::Feedback(a) => cmd_feedback(a),
         Commands::Schema(a) => cmd_schema(a),
         Commands::Config(a) => cmd_config(a),
+        Commands::Security(a) => cmd_security(a), // ModeFree: device-local operations
         Commands::Completion(a) => cmd_completion(a),
         // --- Dual：本機臂與 remote 臂皆為必填參數 ---
         Commands::List(a) => dual(a, cmd_list, |ctx, a| remote_list(ctx, &a)),

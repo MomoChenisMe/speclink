@@ -90,6 +90,8 @@ import {
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_PILL_TONE, type ReviewBadgeStatus } from "./reviewStyle";
 import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_PILL_TONE, type VerifyBadgeStatus } from "./verifyStyle";
 import { setTaskMark } from "../tasks";
+import { SecurityReviewPanel } from "./SecurityReviewPanel";
+import type { SecurityInspection, SecurityReviewAdapter } from "../security";
 
 export interface ChangeDetailPageProps {
   change: ChangeItem | null;
@@ -102,6 +104,8 @@ export interface ChangeDetailPageProps {
    * refreshGen 重載；回 null 或 reject 皆為分頁空態。未提供時分頁仍依清單狀態出現、
    * 內容為空態。 */
   loadStationTicket?: (change: string, station: TicketStation) => Promise<StationTicket | null>;
+  securityReview?: SecurityReviewAdapter;
+  onOpenSecurityData?: () => void;
   onRunVerb?: (verb: Verb, change: string) => void;
   /** 頁內呈現的分析結構化結果（validate＋analyze 合併；僅當 change 相符時呈現；archive 不走此結果面）。 */
   detailVerb?: VerbDrawerResult | null;
@@ -267,6 +271,8 @@ export function ChangeDetailPage({
   loadCapabilities,
   loadMeta,
   loadStationTicket,
+  securityReview,
+  onOpenSecurityData,
   onRunVerb,
   detailVerb,
   onClearVerb,
@@ -381,6 +387,17 @@ export function ChangeDetailPage({
 
   const inReview = change?.reviewStatus === "inReview";
   const inVerify = change?.verifyStatus === "inVerify";
+  const [securityInspection, setSecurityInspection] = useState<SecurityInspection | null>(null);
+  const [securityError, setSecurityError] = useState<string | null>(null);
+  useEffect(() => {
+    let current = true;
+    setSecurityInspection(null); setSecurityError(null);
+    if (securityReview && name) securityReview.inspect(name).then((next) => {
+      if (current) setSecurityInspection(next);
+    }).catch((error: unknown) => { if (current) setSecurityError(error instanceof Error ? error.message : String(error)); });
+    return () => { current = false; };
+  }, [securityReview, name, gen]);
+  const securityVisible = !!securityReview && (!!securityError || !!securityInspection && (securityInspection.enabled !== false || !!securityInspection.latest));
   // 兩站工單（design D3）：分頁出現時載入、隨世代重載、分頁消失時清回未載入。
   const tickets = useStationTickets(name, { review: inReview, verify: inVerify }, gen, loadStationTicket);
   // 開啟／換 change 從「提案」起。
@@ -390,8 +407,8 @@ export function ChangeDetailPage({
   }, [name]);
   // 停在工單分頁而該站翻為非進行中（工單已蓋章或放棄刪除）：分頁消失，退回「提案」。
   useEffect(() => {
-    if ((tab === "review" && !inReview) || (tab === "verify" && !inVerify)) setTab("proposal");
-  }, [tab, inReview, inVerify]);
+    if ((tab === "review" && !inReview) || (tab === "verify" && !inVerify && !securityVisible)) setTab("proposal");
+  }, [tab, inReview, inVerify, securityVisible]);
 
   if (!change) return null;
 
@@ -728,7 +745,7 @@ export function ChangeDetailPage({
             {ticketBadge("review")}
           </TabsTrigger>
         )}
-        {inVerify && (
+        {(inVerify || securityVisible) && (
           <TabsTrigger value="verify">
             {VERIFY_ICON.inVerify} {t("drawer.tab.verify")}
             {ticketBadge("verify")}
@@ -892,9 +909,11 @@ export function ChangeDetailPage({
                   <TicketTabBody station="review" ticket={tickets.review} />
                 </TabsContent>
               )}
-              {inVerify && (
+              {(inVerify || securityVisible) && (
                 <TabsContent value="verify">
-                  <TicketTabBody station="verify" ticket={tickets.verify} />
+                  {inVerify && <TicketTabBody station="verify" ticket={tickets.verify} />}
+                  {securityError && <p role="alert">{securityError}</p>}
+                  {securityReview && securityInspection && securityVisible && <SecurityReviewPanel adapter={securityReview} change={change.name} inspection={securityInspection} onInspection={setSecurityInspection} onOpenDataSettings={onOpenSecurityData} />}
                 </TabsContent>
               )}
             </DocBody>

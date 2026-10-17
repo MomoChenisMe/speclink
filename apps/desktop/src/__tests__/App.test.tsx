@@ -1225,7 +1225,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
 
     fireEvent.click(settingsGear());
     // 設定模式左側恆為圖示列加設定分類欄（零專案亦然；spec「零分頁仍可進入應用程式設定」）。
-    expect(within(settingsColumn()).getAllByRole("button")).toHaveLength(5);
+    expect(within(settingsColumn()).getAllByRole("button")).toHaveLength(6);
     expect(screen.queryByText("開啟一個專案開始")).toBeNull();
     expect(settingsGear().className).toContain("bg-primary");
     expect(leftSide().className).toContain("w-[256px]");

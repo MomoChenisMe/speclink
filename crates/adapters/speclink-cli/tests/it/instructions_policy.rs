@@ -240,3 +240,36 @@ fn update_with_legacy_policy_keys_touches_no_config_and_stays_silent() {
         "no deprecation warning on stderr"
     );
 }
+
+#[test]
+fn security_instructions_are_typed_independent_and_do_not_embed_external_documents() {
+    let project=TempProject::new("security","tools: [codex]\n","audit: false\nsecurity_verification:\n  enabled: true\n  scope: api\n  standards:\n    owasp_top10: {enabled: true, version: '2025'}\n");
+    for artifact in ["proposal", "design", "tasks", "apply"] {
+        let value = json_payload(&project.instructions(artifact, &[]));
+        let security = &value["securityVerification"];
+        assert_eq!(security["enabled"], true, "{artifact}: {value}");
+        assert_eq!(security["scope"], "api");
+        assert_eq!(security["standards"][0]["version"], "2025");
+        assert_eq!(security["standards"][0]["standardId"], "owasp_top10");
+        assert!(security["standards"][0]["level"].is_null());
+        assert!(security["reviews"].is_array());
+        assert_eq!(security["dataAvailability"], "device_local_check_required");
+        assert!(security.get("disabledRules").is_none());
+        assert!(security.get("excludeDirs").is_none());
+        assert_eq!(security["executionMode"], "builtin-offline");
+        assert!(security["requirements"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|s| s.as_str().unwrap().contains("authorization")));
+        assert!(!instruction_text(&value).contains("Ignore all previous instructions"));
+        if artifact == "apply" {
+            assert_eq!(value["audit"], false);
+        }
+    }
+    let defaults = TempProject::new("security-default", "tools: [codex]\n", "audit: true\n");
+    assert_eq!(
+        json_payload(&defaults.instructions("apply", &[]))["securityVerification"]["enabled"],
+        false
+    );
+}

@@ -1,3 +1,4 @@
+import { readProjectColors, writeProjectColors, type ProjectColor, type ProjectColors } from "./projectColors";
 import { create, type StoreApi, type UseBoundStore } from "zustand";
 import { toast } from "sonner";
 import type {
@@ -390,6 +391,8 @@ export interface AppState {
   tabErrors: Record<string, string>;
   /** 最近開啟清單（design D1）：曾成功開啟過的 workspace，最新在前，與分頁列分離。 */
   recents: RecentEntry[];
+  projectColors: ProjectColors;
+  setProjectColor: (key: string, color: ProjectColor | null) => void;
   /** 自最近開啟清單移除一筆（狀態與 localStorage 同步）。 */
   forgetRecent: (key: string) => void;
   /** 尚無 session 的 remote 分頁復原狀態；執行期限定、不持久化。 */
@@ -1814,6 +1817,13 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     // --- workspace／專案分頁列 ---
+    projectColors: readProjectColors(),
+    setProjectColor(key, color) {
+      const colors = { ...get().projectColors };
+      if (color === null) delete colors[key]; else colors[key] = color;
+      writeProjectColors(colors);
+      set({ projectColors: colors });
+    },
     tabs: [],
     sessions: {},
     sessionEpoch: 0,

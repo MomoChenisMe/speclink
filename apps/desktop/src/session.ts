@@ -48,7 +48,10 @@ export interface WorkspaceSettingsProvider {
   kind: "local" | "remote";
   /** remote 取自 handshake；local 固定為 true。server 仍是最終防線。 */
   policyWrite: boolean;
+  securityReview?: boolean;
   readSettings(): Promise<SettingsSnapshot>;
+  /** 裝置本機的刪除保護紀錄；舊 adapter 沒有此能力。 */
+  rememberSecurityPolicy?(policy:import("./adapter/security").SecurityPolicy):Promise<void>;
   writeAppTools(tools: string[]): Promise<void>;
   /** remote 成功回新 revision；local 維持 void。 */
   writeWorkflowConfig(fields: WorkflowFields): Promise<number | void>;
@@ -118,6 +121,7 @@ export interface WorkspaceCapabilities {
   claim: boolean;
   /** remote membership 是否可寫 policy；local 固定為 true。 */
   policyWrite: boolean;
+  securityReview?: boolean;
   /** server 是否宣告事件能力（SSE／polling）；缺席時退化為手動重整。 */
   liveUpdates: boolean;
 }
@@ -412,13 +416,14 @@ export function createRemoteSession(
     id: key,
     locator,
     descriptor: { name: `${info.projectName}/${info.repoName}`, badge: null },
-    dataSource: createRemoteDataSource(connectionId, info.projectKey, info.repoKey, invoke),
+    dataSource: createRemoteDataSource(connectionId, info.projectKey, info.repoKey, invoke, {supported:info.capabilities.securityReview===true,checkoutRoot}),
     settings: createRemoteSettings(
       connectionId,
       info.projectKey,
       info.repoKey,
       info.capabilities.policyWrite,
       invoke,
+      info.capabilities.securityReview===true,
     ),
     events: {
       subscribe(onChange, onConnectionState) {

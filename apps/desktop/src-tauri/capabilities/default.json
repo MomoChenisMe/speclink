@@ -23,7 +23,13 @@
     "core:window:allow-is-maximized",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://github.com/MomoChenisMe/speclink*" }]
+      "allow": [
+        { "url": "https://github.com/MomoChenisMe/speclink*" },
+        { "url": "https://github.com/OWASP/*" },
+        { "url": "https://raw.githubusercontent.com/OWASP/*" },
+        { "url": "https://cwe.mitre.org/data/*" },
+        { "url": "https://cwe.mitre.org/about/termsofuse.html" }
+      ]
     }
   ]
 }

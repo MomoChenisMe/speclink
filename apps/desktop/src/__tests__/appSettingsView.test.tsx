@@ -1,7 +1,7 @@
 // 應用程式設定（desktop-settings-mode design D5；desktop-about-page design D7）：依所在分類渲染
 // 一頁——一般、CLI 於此檔；更新頁、伺服器頁與關於頁各有自己的測試檔。
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render as rtlRender, screen, within } from "@testing-library/react";
+import { act, fireEvent, render as rtlRender, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 import { I18nProvider } from "@speclink/ui";
@@ -10,6 +10,7 @@ import { AppSettingsView, type AppSettingsUpdaterProps } from "../views/AppSetti
 import type { UpdaterState } from "../core/updater";
 import { APP_MESSAGES } from "../i18n/messages";
 import type { CliInstallView } from "../store";
+vi.mock("../adapter/security",()=>({listSecurityData:vi.fn().mockResolvedValue({standards:[]}),watchSecurityProgress:vi.fn().mockResolvedValue(()=>{})}));
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider locale="zh-TW" messages={APP_MESSAGES}>
@@ -66,6 +67,11 @@ function view(over: Partial<ViewProps> = {}) {
 
 const cardTitles = () => screen.getAllByRole("region").map((r) => r.getAttribute("aria-label"));
 const row = (label: string) => screen.getByRole("group", { name: label });
+
+it("沒有專案仍可從應用程式設定進入安全標準資料", async () => {
+  await act(async()=>render(view({section:"security-data"})));
+  expect(screen.getByRole("heading",{name:"安全標準資料"})).toBeTruthy();
+});
 
 describe("一般頁", () => {
   it("外觀保存失敗保留選中值並顯示錯誤，重試後清除", async () => {

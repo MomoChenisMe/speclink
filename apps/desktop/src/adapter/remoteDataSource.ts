@@ -17,6 +17,7 @@ import type {
 } from "@speclink/ui";
 
 import type { InvokeFn } from "../session";
+import { createSecurityReviewAdapter } from "./security";
 
 // remote adapter（remote-data-source 決策 7）：SpeclinkDataSource 對 remote_*
 // command 的薄 invoke 包裝——每擊帶 locator 識別（connectionId＋project＋repo），
@@ -63,6 +64,7 @@ export function createRemoteDataSource(
   project: string,
   repo: string,
   invoke: InvokeFn = tauriInvoke as InvokeFn,
+  security?: {supported:boolean;checkoutRoot?:string},
 ): SpeclinkDataSource {
   const locator = { connectionId, project, repo };
   // changeCapabilities 與 changeMeta 映射同一份 status payload（spec：不另開
@@ -78,6 +80,7 @@ export function createRemoteDataSource(
     return p;
   }
   return {
+    ...(security?.supported?{securityReview:createSecurityReviewAdapter({kind:"remote",connectionId,project,repo,checkoutRoot:security.checkoutRoot},invoke)}:{}),
     async listChanges(): Promise<ChangeListPayload> {
       // remote_list_changes payload 原樣（add-change-plan-remote D5）：清單項已依 plan
       // 排序並帶排程欄位，頂層 planError 在 plan 成環時為訊息。

@@ -15,6 +15,9 @@ serde_json.workspace = true
 sha2 = "0.10"
 chrono.workspace = true
 sys-locale = "0.3.2"
+ureq = { version = "2.12.1", default-features = false, features = ["tls"] }
+ulid.workspace = true
+webpki-roots = "0.26.11"
 
 [dev-dependencies]
 speclink-fs = { path = "../../engine/speclink-fs" }

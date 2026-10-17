@@ -161,6 +161,7 @@ fn to_apply_instructions(
             .collect(),
         state: p.state,
         missing_artifacts: p.missing_artifacts,
+        security_verification: p.security_verification.map(security_instructions),
         locale: p.locale,
         tdd: p.tdd,
         audit: p.audit,
@@ -183,6 +184,7 @@ fn to_artifact_instructions(
         instruction: p.instruction,
         context: p.context,
         rules: p.rules,
+        security_verification: p.security_verification.map(security_instructions),
         locale: p.locale,
         template: p.template,
         dependencies: p
@@ -294,4 +296,26 @@ pub(crate) fn remote_instructions(ctx: &RemoteCtx, a: &InstructionsArgs) -> Resu
         render_artifact_human(&p);
     }
     Ok(())
+}
+
+fn security_instructions(
+    value: protocol_query::SecurityInstructions,
+) -> core::instructions::SecurityInstructions {
+    core::instructions::SecurityInstructions {
+        enabled: value.enabled,
+        scope: value.scope,
+        standards: value
+            .standards
+            .into_iter()
+            .map(|s| core::instructions::SecurityStandardChoice {
+                standard_id: s.standard_id,
+                version: s.version,
+                level: s.level,
+            })
+            .collect(),
+        reviews: value.reviews,
+        execution_mode: value.execution_mode,
+        data_availability: value.data_availability,
+        requirements: value.requirements,
+    }
 }

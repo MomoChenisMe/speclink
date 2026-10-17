@@ -40,12 +40,14 @@ export type TrayTabSnapshot =
   | {
       key: string;
       name: string;
+      projectColor?: import("./projectColors").ProjectColor;
       source: "local";
       status: "ready";
     }
   | {
       key: string;
       name: string;
+      projectColor?: import("./projectColors").ProjectColor;
       source: "remote";
       status: RemoteWorkspaceStatus;
       /** 僅 remote error 的封閉分類；不把 raw technical detail 帶入 Tray。 */
@@ -310,6 +312,7 @@ export function buildTrayModel(
 export interface TrayStoreApi {
   getState: () => {
     tabs: Array<{ locator: WorkspaceLocator; name: string }>;
+    projectColors?: import("./projectColors").ProjectColors;
     activeKey: string | null;
     /** 探測進行中的目標分頁 key（store 的切換中標記）。 */
     pendingTabKey: string | null;
@@ -381,7 +384,7 @@ export function buildTraySnapshot(state: ReturnType<TrayStoreApi["getState"]>, t
     tabs: state.tabs.map((tab): TrayTabSnapshot => {
       const key = locatorKey(tab.locator);
       if (tab.locator.kind === "local") {
-        return { key, name: tab.name, source: "local", status: "ready" };
+        return { key, name: tab.name, source: "local", status: "ready", ...(state.projectColors?.[key] ? { projectColor: state.projectColors[key] } : {}) };
       }
       const connectionId = tab.locator.connectionId;
       const recovery = state.remoteRecovery[key];
@@ -391,6 +394,7 @@ export function buildTraySnapshot(state: ReturnType<TrayStoreApi["getState"]>, t
         key,
         name: tab.name,
         source: "remote",
+        ...(state.projectColors?.[key] ? { projectColor: state.projectColors[key] } : {}),
         status: remoteWorkspaceStatus(session, recovery),
         failureKind:
           recovery?.status === "error"

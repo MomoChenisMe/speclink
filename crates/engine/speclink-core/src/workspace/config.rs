@@ -357,6 +357,8 @@ pub struct WorkflowConfig {
     /// or null) reads as the defaults via [`WorkflowConfig::review`].
     #[serde(default)]
     pub review: Option<ReviewConfig>,
+    #[serde(default)]
+    pub security_verification: Option<crate::security::policy::SecurityPolicy>,
 }
 
 /// `review:` block of `openspec/config.yaml`. Strict on purpose: an unknown
@@ -620,6 +622,10 @@ impl WorkflowConfig {
     /// empty lists).
     pub fn review(&self) -> ReviewConfig {
         self.review.clone().unwrap_or_default()
+    }
+
+    pub fn security(&self) -> crate::security::policy::SecurityPolicy {
+        self.security_verification.clone().unwrap_or_default()
     }
 }
 

@@ -277,3 +277,15 @@
 - **definition**: repo 慣例的整套測試——本 repo 為 root `npm run test:all`，CI 守門跑同一組；對照詞「只跑受影響面的測試」（config-skill 與 openspec/config.yaml 的既有寫法）。英文維持 full test suite。
 - **avoid**: 全量
 - **why**: 「全量」不是台灣慣用詞。專案內它另有四種意思，依「修飾動作用『全部』、指一整套東西用『完整』」改寫：全部重新載入／查詢／收斂、全部任務計數、全部重新產生、完整投影。2026-10-15 討論「test-speed-and-wording」定案。
+
+### 初步安全審查
+
+- **definition**: 「OWASP / CWE 初步安全審查」是依指定版本、自有離線規則提供疑似風險與未驗證資訊；英文為 OWASP / CWE Preliminary Security Review。安全要求缺漏不等於已確認漏洞；PASS 只涵蓋實際執行規則。
+- **avoid**: 完整 OWASP 掃描通過、正式資安認證、無安全漏洞、符合全部 ASVS；不可把此功能與 review 審查規則、audit sharp-edges 或 Verify 品質關卡混稱。
+- **why**: 初步模式檢查有誤判與覆蓋限制，報告是獨立提示資訊，不新增安全章或封存守門。
+
+### 預設
+
+- **definition**: default——未另行指定時採用的設定或行為；繁體中文介面與跟隨系統繁中時皆使用台灣用語「預設」。
+- **avoid**: 缺省、默认、默認（指 default 的產品文案時）
+- **why**: 維持台灣使用者熟悉的詞彙，介面字典及後續新增文案皆遵循此約定；不更改官方文件原文或歷史紀錄。

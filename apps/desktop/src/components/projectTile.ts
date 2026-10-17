@@ -18,3 +18,17 @@ export const ADD_TILE = "border border-dashed border-border bg-transparent text-
 export function projectInitial(name: string): string {
   return Array.from(name.trim())[0]?.toUpperCase() ?? "";
 }
+
+/** 自訂色票未選取時混入 50% 白色，選取時保持深底白字。 */
+const COLORS = {
+  teal: ["bg-project-teal-muted text-project-teal-muted-foreground", "bg-project-teal text-project-foreground hover:bg-project-teal-hover"],
+  blue: ["bg-project-blue-muted text-project-blue-muted-foreground", "bg-project-blue text-project-foreground hover:bg-project-blue-hover"],
+  purple: ["bg-project-purple-muted text-project-purple-muted-foreground", "bg-project-purple text-project-foreground hover:bg-project-purple-hover"],
+  pink: ["bg-project-pink-muted text-project-pink-muted-foreground", "bg-project-pink text-project-foreground hover:bg-project-pink-hover"],
+  orange: ["bg-project-orange-muted text-project-orange-muted-foreground", "bg-project-orange text-project-foreground hover:bg-project-orange-hover"],
+  green: ["bg-project-green-muted text-project-green-muted-foreground", "bg-project-green text-project-foreground hover:bg-project-green-hover"],
+};
+export function projectTileClass(color: import("../projectColors").ProjectColor | undefined, active: boolean): string {
+  if (color && Object.prototype.hasOwnProperty.call(COLORS, color)) return COLORS[color][active ? 1 : 0];
+  return active ? PROJECT_TILE_ACTIVE : `${PROJECT_TILE_IDLE} hover:bg-muted/70`;
+}

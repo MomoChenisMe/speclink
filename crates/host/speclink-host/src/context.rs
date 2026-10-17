@@ -94,6 +94,49 @@ pub fn global_config_dir() -> std::path::PathBuf {
     base.unwrap_or_else(|| PathBuf::from(".")).join("speclink")
 }
 
+/// Shared CLI/Desktop data location. Security operations never fall back to a project.
+pub fn security_data_dir() -> anyhow::Result<std::path::PathBuf> {
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let xdg = std::env::var_os("XDG_DATA_HOME").map(std::path::PathBuf::from);
+    let local = std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from);
+    security_data_dir_for(
+        std::env::consts::OS,
+        home.as_deref(),
+        xdg.as_deref(),
+        local.as_deref(),
+        crate::portable::data_dir(),
+    )
+}
+
+fn security_data_dir_for(
+    os: &str,
+    home: Option<&std::path::Path>,
+    xdg: Option<&std::path::Path>,
+    local: Option<&std::path::Path>,
+    portable: Option<&std::path::Path>,
+) -> anyhow::Result<std::path::PathBuf> {
+    let base = if let Some(portable) = portable {
+        portable.to_path_buf()
+    } else {
+        match os {
+            "macos" => home.map(|h| h.join("Library/Application Support")),
+            "windows" => local.map(std::path::Path::to_path_buf),
+            "linux" => xdg
+                .map(std::path::Path::to_path_buf)
+                .or_else(|| home.map(|h| h.join(".local/share"))),
+            _ => None,
+        }
+        .ok_or_else(|| {
+            anyhow::anyhow!("data_directory_unavailable: no application data directory")
+        })?
+    };
+    anyhow::ensure!(
+        base.is_absolute(),
+        "data_directory_unavailable: expected an absolute application data directory"
+    );
+    Ok(base.join("speclink"))
+}
+
 /// Build the "Name <email>" identity string from git config, if available.
 /// Identity resolution is a Host responsibility — moved verbatim from the
 /// engine's util: full identity when name and email are both set, the name
@@ -114,6 +157,68 @@ mod tests {
     use crate::binding::local_default_binding;
     use crate::policy::EffectiveWorkflowPolicy;
     use speclink_core::config::ResolvedPolicy;
+
+    #[test]
+    #[cfg(not(windows))]
+    fn security_data_directory_is_shared_absolute_and_never_project_fallback() {
+        use std::path::Path;
+        let home = Path::new("/home/example");
+        let xdg = Path::new("/data/example");
+        let portable = Path::new("/portable/data");
+        assert_eq!(
+            security_data_dir_for("macos", Some(home), None, None, None).unwrap(),
+            home.join("Library/Application Support/speclink")
+        );
+        assert_eq!(
+            security_data_dir_for("linux", Some(home), None, None, None).unwrap(),
+            home.join(".local/share/speclink")
+        );
+        assert_eq!(
+            security_data_dir_for("linux", Some(home), Some(xdg), None, None).unwrap(),
+            xdg.join("speclink")
+        );
+        assert_eq!(
+            security_data_dir_for("windows", None, None, Some(xdg), None).unwrap(),
+            xdg.join("speclink")
+        );
+        assert_eq!(
+            security_data_dir_for("windows", None, None, None, Some(portable)).unwrap(),
+            portable.join("speclink")
+        );
+        for (os, h, x, l, p) in [
+            ("macos", None, None, None, None),
+            ("windows", None, None, None, None),
+            ("linux", None, None, None, None),
+            ("linux", Some(home), Some(Path::new("relative")), None, None),
+            ("windows", None, None, None, Some(Path::new("relative"))),
+        ] {
+            assert!(security_data_dir_for(os, h, x, l, p)
+                .unwrap_err()
+                .to_string()
+                .contains("data_directory_unavailable"));
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn security_data_directory_windows_native_paths() {
+        use std::path::Path;
+        let local = Path::new(r"C:\Users\Example\AppData\Local");
+        assert_eq!(
+            security_data_dir_for("windows", None, None, Some(local), None).unwrap(),
+            local.join("speclink")
+        );
+        let portable = Path::new(r"D:\SpecLink\data");
+        assert_eq!(
+            security_data_dir_for("windows", None, None, None, Some(portable)).unwrap(),
+            portable.join("speclink")
+        );
+        assert!(
+            security_data_dir_for("windows", None, None, Some(Path::new("relative")), None)
+                .is_err()
+        );
+        assert!(security_data_dir_for("windows", None, None, None, None).is_err());
+    }
 
     fn sample_policy() -> EffectiveWorkflowPolicy {
         EffectiveWorkflowPolicy::new(

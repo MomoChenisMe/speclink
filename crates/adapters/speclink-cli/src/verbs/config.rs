@@ -83,6 +83,13 @@ enum WorkflowConfigCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Partially update the preliminary security policy from a YAML mapping
+    Security {
+        #[arg(long)]
+        stdin: bool,
+        #[arg(long = "dry-run")]
+        dry_run: bool,
+    },
     #[command(about = SET_ABOUT.as_str())]
     Set {
         /// Policy key
@@ -308,6 +315,7 @@ struct WorkflowConfigJson {
     context: Option<String>,
     rules: std::collections::BTreeMap<String, Vec<String>>,
     review: core::config::ReviewConfig,
+    security_verification: core::security::policy::SecurityPolicy,
 }
 /// A write subcommand once argv and stdin are resolved — the shape both the fs
 /// and the remote branch hand to the shared rewrite.
@@ -317,6 +325,7 @@ enum WorkflowConfigWrite {
     Rules { artifact: String, body: String },
     ReviewList { list: ReviewList, body: String },
     ReviewBaseline(core::config::ReviewBaseline),
+    Security(String),
 }
 /// The rewrite a write subcommand produces: the complete new document plus the
 /// line printed on a successful write.
@@ -442,6 +451,18 @@ fn workflow_config_write(
 ) -> Result<Option<(WorkflowConfigWrite, bool)>> {
     Ok(match cmd {
         WorkflowConfigCommands::Show { .. } | WorkflowConfigCommands::Languages { .. } => None,
+        WorkflowConfigCommands::Security { stdin, dry_run } => {
+            use std::io::Read;
+            require_stdin_flag(*stdin, "security --stdin")?;
+            let limit = core::security::policy::MAX_POLICY_PATCH_BYTES;
+            let mut body = String::new();
+            std::io::stdin()
+                .lock()
+                .take((limit + 1) as u64)
+                .read_to_string(&mut body)?;
+            anyhow::ensure!(body.len() <= limit, "security policy patch exceeds 64 KiB");
+            Some((WorkflowConfigWrite::Security(body), *dry_run))
+        }
         WorkflowConfigCommands::Set { key, value, dry_run } => Some((
             WorkflowConfigWrite::Policy { key: key.clone(), value: value.clone() },
             *dry_run,
@@ -499,6 +520,7 @@ fn print_workflow_config(original: &str, label: &str, json: bool) -> Result<()> 
             context: cfg.context_text(),
             rules: cfg.rules.clone(),
             review: cfg.review(),
+            security_verification: cfg.security(),
         });
     }
     println!("{} {label}", color::bold("Workflow config:"));
@@ -542,6 +564,15 @@ fn print_workflow_config(original: &str, label: &str, json: bool) -> Result<()> 
         )
     };
     println!("  {:<13}{review}", "review");
+    let security = cfg.security();
+    let summary = if !security.enabled {
+        "disabled"
+    } else if security.standards.selected().is_empty() {
+        "enabled (unconfigured)"
+    } else {
+        "enabled"
+    };
+    println!("  {:<23}{summary}", "security_verification");
     Ok(())
 }
 
@@ -590,6 +621,12 @@ fn plan_workflow_config_edit(
     // review is handed over whole: the current block with only the edited key moved.
     let mut review: Option<core::config::ReviewConfig> = None;
     let summary = match write {
+        WorkflowConfigWrite::Security(body) => {
+            return Ok(WorkflowConfigEdit {
+                new_text: core::security::policy::patch_workflow_security(original, body)?,
+                summary: "security_verification updated".into(),
+            });
+        }
         WorkflowConfigWrite::Policy { key, value } => {
             set_policy_field(&mut fields, key, value)?;
             format!("{key} = {value}")

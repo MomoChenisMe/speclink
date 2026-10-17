@@ -14,6 +14,7 @@ mod workspace_group;
 pub mod command;
 pub mod demo;
 pub mod keylines;
+pub mod security;
 pub mod store;
 /// Test-support helpers for this workspace's test suites — compiled only for
 /// this crate's own tests or when a sibling crate's dev-dependency opts in via

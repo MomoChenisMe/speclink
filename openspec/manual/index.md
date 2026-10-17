@@ -4,7 +4,7 @@ section: 開始使用
 order: 10
 keywords: [首頁, 入門, 角色, 導覽, SDD, 手冊]
 sources: []
-generated: 2026-10-15T17:40:05+08:00
+generated: 2026-10-17T17:07:22+08:00
 ---
 
 # Speclink 操作手冊
@@ -35,6 +35,7 @@ Speclink 是一套 SDD（規格驅動開發，Spec-Driven Development）引擎�
 - 建立與實作變更：[提案](propose.md)、[分析：交叉檢查變更的產物](analyze.md)、[實作](apply.md)、[執行順序：plan 與依賴](plan.md)
 - 放了一陣子再回來、或需求中途變了：[續作與需求變更](drift-ingest.md)
 - 交付前的把關：[品質關卡總覽](quality-stations.md)、[審查站](review.md)、[驗證站](verify.md)、[封存](archive.md)
+- 初步安全審查：[設定政策](policy-config.md) → [安裝資料](security-data.md) → [執行審查](security-review.md) → [閱讀報告](security-report.md)
 - 好幾個變更同時做：先看[執行順序：plan 與依賴](plan.md)，再走[平行實作與合回](worktree.md)
 - 工具：[提交單一變更的檔案](commit.md)、[溯源](trace.md)、[工作流政策與設定](policy-config.md)、[產出流程 schema 管理](schemas.md)、[操作手冊：生成與導覽](manual.md)
 
@@ -43,6 +44,7 @@ Speclink 是一套 SDD（規格驅動開發，Spec-Driven Development）引擎�
 - [認識桌面 app](desktop-overview.md)、[看板與任務](desktop-board.md)
 - [規格、討論、已封存與搜尋](desktop-browse.md)、[桌面 app 的手冊頁](desktop-manual.md)、[桌面上的品質關卡](desktop-quality.md)
 - [專案、新增專案與設定頁](desktop-projects.md)、[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)、[系統匣面板與選單](tray.md)
+- 查看初步風險：[執行初步安全審查](security-review.md)、[閱讀與匯出報告](security-report.md)；沒有本機原始碼時，來源項目會標示未驗證
 - 接上團隊 server：[桌面連線 server 與 remote 專案](desktop-remote.md)
 
 ### 團隊協作（remote 模式）

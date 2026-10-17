@@ -342,3 +342,9 @@ describe("切換中方塊 spinner", () => {
     expect(beta.querySelector("[data-tab-dot]")?.className).toContain("bg-destructive");
   });
 });
+
+it("同首字母專案選取用深紫底，未選取粉紅底淡化50%",()=>{
+ renderRail({tabs:[{locator:local("/a"),name:"Spec A"},{locator:local("/b"),name:"Spec B"}],activeKey:"local:/a",projectColors:{"local:/a":"purple","local:/b":"pink"}});
+ const tiles=screen.getAllByRole("tab");expect(tiles.map(t=>t.textContent)).toEqual(["S","S"]);
+ expect(tiles[0].className).toContain("bg-project-purple");expect(tiles[1].className).toContain("bg-project-pink-muted");
+});

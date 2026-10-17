@@ -31,10 +31,11 @@ import {
   type RemoteWorkspaceStatus,
 } from "../session";
 import { ProjectActionItems, type ProjectActions } from "./ProjectActionsMenu";
-import { ADD_TILE, PROJECT_TILE_ACTIVE, PROJECT_TILE_IDLE, RAIL_SQUARE, projectInitial } from "./projectTile";
+import { ADD_TILE, RAIL_SQUARE, projectInitial, projectTileClass } from "./projectTile";
 
 export interface ProjectRailProps {
   tabs: ProjectTab[];
+  projectColors?: import("../projectColors").ProjectColors;
   activeKey: string | null;
   /** 失效分頁錯誤（locator key → 單行訊息）。 */
   tabErrors: Record<string, string>;
@@ -74,6 +75,7 @@ export function tabPathHint(
 export function ProjectRail({
   tabs,
   activeKey,
+  projectColors = {},
   tabErrors,
   recoveryStates = {},
   connectionStates = {},
@@ -157,7 +159,7 @@ export function ProjectRail({
                 className={cn(
                   RAIL_SQUARE,
                   "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  active ? PROJECT_TILE_ACTIVE : cn(PROJECT_TILE_IDLE, "hover:bg-muted/70"),
+                  projectTileClass(projectColors[key], active),
                 )}
                 onClick={() => {
                   if (!active && !localError) onActivate?.(key);

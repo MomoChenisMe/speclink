@@ -2015,6 +2015,7 @@ fn apply_instructions(apply: engine::ApplyInstructions) -> ApplyInstructions {
         tasks: apply.tasks.into_iter().map(task_entry).collect(),
         state: apply.state,
         missing_artifacts: apply.missing_artifacts,
+        security_verification: apply.security_verification.map(security_instructions),
         locale: apply.locale,
         tdd: apply.tdd,
         audit: apply.audit,
@@ -2033,6 +2034,7 @@ fn artifact_instructions(instr: engine::ArtifactInstructions) -> ArtifactInstruc
         instruction: instr.instruction,
         context: instr.context,
         rules: instr.rules,
+        security_verification: instr.security_verification.map(security_instructions),
         locale: instr.locale,
         template: instr.template,
         dependencies: instr
@@ -2117,5 +2119,27 @@ mod tests {
         )
         .expect("v1 shape still parses");
         assert!(parsed.entries.is_empty());
+    }
+}
+
+fn security_instructions(
+    value: speclink_core::instructions::SecurityInstructions,
+) -> speclink_protocol::query::SecurityInstructions {
+    speclink_protocol::query::SecurityInstructions {
+        enabled: value.enabled,
+        scope: value.scope,
+        standards: value
+            .standards
+            .into_iter()
+            .map(|s| speclink_protocol::query::SecurityStandardChoice {
+                standard_id: s.standard_id,
+                version: s.version,
+                level: s.level,
+            })
+            .collect(),
+        reviews: value.reviews,
+        execution_mode: value.execution_mode,
+        data_availability: value.data_availability,
+        requirements: value.requirements,
     }
 }
