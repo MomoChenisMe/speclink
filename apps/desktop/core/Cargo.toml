@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+anyhow = { workspace = true }
 speclink-core = { path = "../../../crates/engine/speclink-core" }
 speclink-fs = { path = "../../../crates/engine/speclink-fs" }
 speclink-host = { path = "../../../crates/host/speclink-host" }

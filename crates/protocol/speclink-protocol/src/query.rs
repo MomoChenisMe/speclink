@@ -12,6 +12,26 @@ use serde::{Deserialize, Serialize};
 
 use crate::binding::ScopeRef;
 
+/// A policy summary, never external standard prose or an instruction from data files.
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SecurityInstructions {
+    pub enabled: bool,
+    pub scope: String,
+    pub standards: Vec<SecurityStandardChoice>,
+    pub reviews: Vec<String>,
+    pub execution_mode: String,
+    pub data_availability: String,
+    pub requirements: Vec<String>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SecurityStandardChoice {
+    pub standard_id: String,
+    pub version: String,
+    pub level: Option<String>,
+}
+
 /// `POST /import` request. This migration surface is intentionally closed:
 /// there is no mode field, so the store's maintenance-only Overwrite mode can
 /// never be selected over the wire.
@@ -331,6 +351,8 @@ pub struct ArtifactStatus {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ApplyInstructions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub security_verification: Option<SecurityInstructions>,
     pub change_name: String,
     pub change_dir: String,
     pub schema_name: String,
@@ -385,6 +407,8 @@ pub struct TaskEntry {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtifactInstructions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub security_verification: Option<SecurityInstructions>,
     pub change_name: String,
     pub artifact_id: String,
     pub schema_name: String,
@@ -956,6 +980,10 @@ mod tests {
             r#"{"changeName":"demo","changeDir":"changes/demo","schemaName":"spec-driven","contextFiles":{"design":"design.md","proposal":"proposal.md","specs":"specs/**/*.md","tasks":"tasks.md"},"progress":{"total":3,"complete":3,"remaining":0,"codeTotal":2,"codeComplete":2,"codeRemaining":0},"tasks":[{"id":"1","description":"1.1 First","done":true,"manual":false},{"id":"3","description":"1.3 Hand check","done":true,"manual":true}],"state":"all_done","locale":"English","tdd":true,"audit":false,"instruction":"Work through the tasks.\n"}"#,
         )
         .unwrap();
+        assert!(
+            apply.security_verification.is_none(),
+            "old server security support is unknown, never disabled by default"
+        );
         assert_eq!(apply.change_name, "demo");
         assert_eq!(apply.progress.total, 3);
         assert_eq!(apply.progress.code_total, 2, "manual tasks stay out of the code counts");

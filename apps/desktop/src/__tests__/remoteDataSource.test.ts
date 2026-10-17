@@ -531,7 +531,8 @@ describe("createRemoteSession（決策 6/7：handshake 結果建 session）", ()
 
   it("remote settings 綁 locator，以讀得 revision 作 expectedRevision 寫回", async () => {
     const { calls, invoke } = fakeInvoke();
-    const session = createRemoteSession(CONN, openInfo(), undefined, { invoke });
+    const info = openInfo(); info.capabilities.securityReview = true;
+    const session = createRemoteSession(CONN, info, undefined, { invoke });
 
     const snap = await session.settings.readSettings();
     expect(snap.workflow.revision).toBe(7);
@@ -543,6 +544,7 @@ describe("createRemoteSession（決策 6/7：handshake 結果建 session）", ()
         audit: false,
         // remote 無 worktree 軸；欄位存在於完整目標狀態，寫入端忽略。
         worktree: false,
+        securityPatch: '{"enabled":true}',
       }),
     ).resolves.toBe(8);
     await session.settings.writeWorkflowContext("updated");
@@ -562,6 +564,7 @@ describe("createRemoteSession（決策 6/7：handshake 結果建 session）", ()
       tdd: true,
       audit: false,
       expectedRevision: 7,
+      securityPatch: '{"enabled":true}',
     });
     const contentWrites = calls.filter((call) => call.cmd === "remote_write_workflow_content");
     expect(contentWrites[0]?.args).toMatchObject({ context: "updated", expectedRevision: 8 });

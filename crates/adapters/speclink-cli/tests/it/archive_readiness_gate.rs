@@ -368,3 +368,56 @@ fn bulk_archive_inside_a_speclink_worktree_refuses_too() {
     assert!(!wt.join("openspec").join("specs").exists(), "no canonical spec is written");
     assert!(!wt.join(".speclink").join("snapshots").exists(), "no unarchive backup is written");
 }
+
+#[test]
+fn security_findings_do_not_create_quality_tickets_or_an_archive_gate() {
+    let p = TempProject::new("security-advisory", "- [x] 1.1 Done\n");
+    let home = p.dir.with_extension("home");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(p.dir.join("openspec/config.yaml"),"audit: false\nsecurity_verification:\n  enabled: true\n  reviews: {spec: false, code: true, api_boundary: false}\n").unwrap();
+    std::fs::write(
+        p.dir.join("app.ts"),
+        "const password = 'test-only-private-sentinel';\n",
+    )
+    .unwrap();
+    let run = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_speclink"))
+            .args(args)
+            .current_dir(&p.dir)
+            .env("HOME", &home)
+            .env("XDG_DATA_HOME", home.join("data"))
+            .env("LOCALAPPDATA", home.join("data"))
+            .env_remove("SPECLINK_STORE_URL")
+            .output()
+            .unwrap()
+    };
+    let output = run(&["security", "run", "--change", "demo", "--json"]);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["counts"]["findings"], 1);
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("test-only-private-sentinel"));
+    let change = p.dir.join("openspec/changes/demo");
+    assert!(!change.join("verify.md").exists());
+    assert!(!change.join("review.md").exists());
+    std::fs::write(
+        change.join("verify.md"),
+        "# Verify — demo\n\n## Round 1\n\n- [CRITICAL] missing original requirement\n",
+    )
+    .unwrap();
+    assert!(
+        !run(&["archive", "demo", "--no-validate"]).status.success(),
+        "original verify ticket must still block"
+    );
+    std::fs::remove_file(change.join("verify.md")).unwrap();
+    let archived = run(&["archive", "demo", "--no-validate"]);
+    assert!(
+        archived.status.success(),
+        "{}",
+        String::from_utf8_lossy(&archived.stderr)
+    );
+    let id = report["reportId"].as_str().unwrap();
+    assert!(
+        run(&["security", "report", id]).status.success(),
+        "report survives archive"
+    );
+    let _ = std::fs::remove_dir_all(home);
+}

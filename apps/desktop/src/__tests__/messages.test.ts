@@ -7,6 +7,11 @@ import { dictionaryProblems, translatorFor } from "@speclink/ui";
 import { APP_MESSAGES } from "../i18n/messages";
 
 describe("APP_MESSAGES", () => {
+  it("安全審查的繁中文案符合政策", () => {
+    expect(APP_MESSAGES["zh-TW"]["security.enable"]).toBe("啟用 OWASP / CWE 安全審查");
+    expect(APP_MESSAGES["zh-TW"]["security.help"]).toBe("依選定的 OWASP / CWE 安全標準與規則，對 SDD 規格、原始碼及 API 進行初步安全審查。");
+    expect(APP_MESSAGES.en["security.title"]).toBe("OWASP / CWE Preliminary Security Review");
+  });
   // 兩語言鍵集合（.one 除外）、.one 只在英文、計數文案用 {n} 並有 .one——與 @speclink/ui 共用同一個檢查。
   it("passes the shared dictionary check", () => {
     expect(dictionaryProblems(APP_MESSAGES)).toEqual([]);
@@ -68,4 +73,12 @@ describe("APP_MESSAGES", () => {
       .map(([key]) => key);
     expect(offenders).toEqual([]);
   });
+});
+
+it("繁中與跟隨系統繁中採台灣用語",async()=>{
+ const {resolveUiLocale}=await import("@speclink/ui");
+ const {MESSAGES}=await import("@speclink/ui");
+ for (const system of ["zh-TW","zh-Hant","zh-Hant-TW"]) expect(resolveUiLocale(null,system)).toBe("zh-TW");expect(resolveUiLocale("zh-TW","en-US")).toBe("zh-TW");
+ expect(Object.values({...MESSAGES["zh-TW"],...APP_MESSAGES["zh-TW"]}).filter(value=>/缺省|默认|默認/.test(value))).toEqual([]);
+ const language=await import("../../../../openspec/LANGUAGE.md?raw");expect(language.default).toContain("### 預設");
 });

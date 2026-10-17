@@ -97,6 +97,7 @@ impl Binding {
             engine_version: ENGINE_VERSION.to_string(),
             capabilities: Capabilities {
                 context_snapshots: true,
+                security_review: true,
                 policy_write: self.policy_write,
                 // 唯讀衍生查詢全 role 可用；寫入動詞依 role（server-verb-api
                 // 決策 5：capability 依 role 呈現）。

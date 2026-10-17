@@ -4,7 +4,7 @@ section: 附錄
 order: 900
 keywords: [來源, 矛盾, 限制, 編纂日期, 規格]
 sources: []
-generated: 2026-10-15T17:40:05+08:00
+generated: 2026-10-17T17:07:22+08:00
 ---
 
 # 本手冊的來源
@@ -13,11 +13,13 @@ generated: 2026-10-15T17:40:05+08:00
 
 本手冊全部內容只取材自 `openspec/specs/` 底下的正式規格。README、`docs/` 與原始碼都不是來源。規格沒寫的，手冊就不寫，或在該處標明「規格未載」。每一頁的最後一行列出它取材的能力名稱。
 
-正式規格共 87 個能力。其中 59 個是使用者會操作或看到的東西（畫面、指令、技能、輸出、檔案），已入冊。其餘 28 個是引擎內部（儲存、wire 契約、host 執行期、測試骨架、建置與發布管線、本 repo 自用的發版技能、更新日誌的資料契約、技能原稿的寫法規範），不入冊：
+正式規格共 93 個能力。其中 66 個是使用者會操作或看到的東西（畫面、指令、技能、輸出、檔案），已入冊。其餘 27 個是引擎內部（儲存、wire 契約、host 執行期、測試骨架、建置與發布管線、本 repo 自用的發版技能、更新日誌的資料契約、技能原稿的寫法規範），不入冊：
 
-`client-protocol`、`command-runtime`、`delivery-baseline`、`desktop-release`、`dev-harness`、`host-runtime`、`node-sdk`、`node-sdk-release`、`phase2-acceptance`、`phase3-acceptance`、`postgres-team-store`、`reference-server`、`release-notes`、`release-skill`、`remote-board-order`、`remote-workspace-data`、`server-context-api`、`server-drift-api`、`server-event-stream`、`server-read-api`、`server-verb-api`、`serverfs-team-store`、`skill-authoring`、`sqlite-team-store`、`store-abstraction`、`teamstore-contract`、`ui-copy-vocabulary`、`workspace-session`。
+`client-protocol`、`command-runtime`、`delivery-baseline`、`desktop-release`、`dev-harness`、`host-runtime`、`node-sdk`、`node-sdk-release`、`phase2-acceptance`、`phase3-acceptance`、`postgres-team-store`、`reference-server`、`release-notes`、`release-skill`、`remote-board-order`、`remote-workspace-data`、`server-context-api`、`server-drift-api`、`server-event-stream`、`server-read-api`、`server-verb-api`、`serverfs-team-store`、`skill-authoring`、`sqlite-team-store`、`store-abstraction`、`teamstore-contract`、`workspace-session`。
 
 `release-notes` 定義的更新日誌，使用者看得到的那一面（桌面 app 的更新日誌）由 `desktop-app` 載明，寫在[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)。`desktop-app` 裡有兩段需求講前端元件怎麼共用（「前端元件庫與資料源解耦」「共用元件唯一來源」），屬於內部結構，沒有任何一頁取材。
+
+`ui-copy-vocabulary` 只將使用者可見的「繁體中文採台灣用語」收入[專案設定](desktop-projects.md)，不將內部詞彙守門測試寫成操作流程。
 
 ## 旅程主幹
 
@@ -26,7 +28,7 @@ generated: 2026-10-15T17:40:05+08:00
 - `phase2-acceptance`：setup 開箱 → 邀請與存取金鑰 → 提案 → 政策 → 完成任務 → 規格投影 → 漂移 → 封存。
 - `phase3-acceptance`：PM 無 checkout → RD 有 checkout → 多 server → 多分頁 → 失聯與恢復。
 
-劇本沒有涵蓋的站（基準盤點、討論、審查、驗證、品質關卡合跑、提交、worktree、操作手冊），順序依 `skill-routing` 的入口情境與交棒邊表補齊：基準盤點放在 SDD 工作流最前，操作手冊放在工具技能之末。「開始使用」與「桌面 app」兩章依功能領域排列，沒有對應的劇本。
+劇本沒有涵蓋的站（基準盤點、討論、審查、驗證、品質關卡合跑、提交、worktree、操作手冊），順序依 `skill-routing` 的入口情境與交棒邊表補齊：基準盤點放在 SDD 工作流最前，操作手冊放在工具技能之末。「開始使用」與「桌面 app」兩章依功能領域排列，沒有對應的劇本。「初步安全審查」章依 security-standard-data、security-review、security-review-report 與 desktop-config 重建為設定政策、安裝資料、執行與讀報告的旅程，沒有把內部測試劇本當使用者指令。
 
 ## 規格內的矛盾
 
@@ -72,6 +74,9 @@ generated: 2026-10-15T17:40:05+08:00
 - `tray-status-menu` 好幾段需求仍寫「macOS 面板」「非 macOS 平台用原生選單」，但「面板樣式」自己宣告這些規定也適用 Windows 面板。
 - 詞彙：`desktop-app` 的需求名與內文仍有舊詞——「歸檔」見於「歸檔清單經衍生快取加速且可重建」與幾段 2026-10-10 改寫過的需求；「品質站」見於「品質站蓋章配色與主色分離」等；「workspace」「工作區」見於「看板首訪以 skeleton 佔位」與 `desktop-connections`。詳情自 2026-10-10 起改成佔滿主區的頁，需求內文已改稱「詳情頁」。桌面 app 各頁依 `openspec/LANGUAGE.md` 一律用「封存」「詳情頁」「品質關卡」「專案」，引用需求名稱時保留原字。CLI 與 remote 模式的頁沿用規格的「工作區」。
 
+29. **應用程式設定有哪些分類**：`desktop-config`「設定頁圖形化讀寫兩層設定」（2026-10-14T16:37:17+08:00）列一般、更新、CLI、伺服器與關於，沒有安全資料分類；同規格「應用程式設定的安全標準資料管理」（2026-10-17T16:55:59+08:00）新增「安全標準資料」，且零專案也能進入。內文採較新的清單。
+30. **reader 能不能調專案設定**：`desktop-config`「設定頁圖形化讀寫兩層設定」（2026-10-14T16:37:17+08:00）寫四頁唯讀；`desktop-app`「裝置層專案圖示底色」（2026-10-17T16:55:59+08:00）明定 Remote reader 能調自己的圖示底色。內文保留團隊政策唯讀，並按新規格說明本機圖示偏好的例外。
+
 ## 已知限制
 
 - 沒有截圖。畫面文字與按鈕名稱逐字取自規格，實際畫面若不同，以執行中的產品為準。
@@ -84,6 +89,6 @@ generated: 2026-10-15T17:40:05+08:00
 
 ## 編纂日期
 
-2026-10-15
+2026-10-17
 
 **出處**：本頁為說明頁，不直接取材自單一能力；各頁末行列出自己的出處。

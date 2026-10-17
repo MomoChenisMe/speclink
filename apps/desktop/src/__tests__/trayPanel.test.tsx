@@ -2119,3 +2119,9 @@ describe("面板的已轉出卡", () => {
     expect(within(card("promoted")).getAllByTestId(/^panel-discussion-prom-/)).toHaveLength(3);
   });
 });
+
+it("系統匣專案圖示選取維持深色，未選取淡化50%",()=>{
+ renderPanel({snapshot:snapshot({tabs:[{key:"local:/a",name:"Spec A",source:"local",status:"ready",projectColor:"purple"},{key:"local:/b",name:"Spec B",source:"local",status:"ready",projectColor:"pink"}],activeKey:"local:/a"})});
+ expect(screen.getByTestId("panel-project-local:/a").querySelector("[data-project-tile]")?.className).toContain("bg-purple-700");
+ expect(screen.getByTestId("panel-project-local:/b").querySelector("[data-project-tile]")?.className).toContain("bg-[color-mix(in_srgb,var(--color-pink-700)_50%,white)]");
+});

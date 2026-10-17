@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 
 export interface AppSettingsCategory {
-  id: "general" | "updates" | "cli" | "servers" | "about";
+  id: "general" | "updates" | "cli" | "servers" | "security-data" | "about";
   labelKey: string;
   icon: LucideIcon;
   /** app＝「應用程式」群組；about＝其後的「關於」群組（desktop-about-page design D4）。 */
@@ -77,6 +77,13 @@ export const APP_SETTINGS_CATEGORIES: AppSettingsCategory[] = [
       "servers.page.deviceLogin",
       "servers.page.pat",
     ],
+  },
+  {
+    id:"security-data",
+    labelKey:"securityData.title",
+    icon:ShieldCheck,
+    group:"app",
+    rows:["securityData.refresh","securityData.import","securityData.source","securityData.license"],
   },
   {
     id: "about",

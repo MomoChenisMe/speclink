@@ -64,8 +64,7 @@ import {
 
 import {
   ADD_TILE,
-  PROJECT_TILE_ACTIVE,
-  PROJECT_TILE_IDLE,
+  projectTileClass,
   RAIL_SQUARE,
   projectInitial,
 } from "../components/projectTile";
@@ -733,7 +732,7 @@ export function TrayPanel({
                 <span
                   aria-hidden
                   data-project-tile
-                  className={cn(RAIL_SQUARE, active ? PROJECT_TILE_ACTIVE : PROJECT_TILE_IDLE)}
+                  className={cn(RAIL_SQUARE, projectTileClass(tab.projectColor, active))}
                 >
                   {/* 切換中蓋過首字母：探測擋在翻頁前，此處是使用者唯一的「有在動」訊號。 */}
                   {tab.key === pendingTabKey ? (

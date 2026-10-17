@@ -15,8 +15,8 @@ use serde::Serialize;
 use speclink_core::model::{require_valid_meta, ChangeMeta};
 use speclink_core::store::Store;
 use speclink_desktop_core::settings::{
-    read_workflow_settings_from_text, rewrite_workflow_content_text, rewrite_workflow_fields_text,
-    AppSettings, ContentEdit, WorkflowPolicyFields, WorkflowSettings,
+    read_workflow_settings_from_text, rewrite_workflow_content_text, AppSettings, ContentEdit,
+    WorkflowPolicyFields, WorkflowSettings,
 };
 use speclink_protocol::binding::BindingResponse;
 use speclink_protocol::command::{
@@ -1133,6 +1133,7 @@ pub struct RemoteCapabilities {
     pub claim: bool,
     /// 此 membership 是否可寫 workflow policy；server 仍是最終權限防線。
     pub policy_write: bool,
+    pub security_review: bool,
     /// handshake 宣告了事件能力（SSE transport 或 polling）——缺席時 UI 退化
     /// 為手動重整。
     pub live_updates: bool,
@@ -1178,6 +1179,7 @@ impl RemoteCapabilities {
             change_capabilities: true,
             claim: writable,
             policy_write: binding.capabilities.policy_write,
+            security_review: binding.capabilities.security_review,
             live_updates,
         }
     }
@@ -1336,6 +1338,45 @@ impl std::fmt::Debug for RemoteWorkspace {
 }
 
 impl RemoteWorkspace {
+    /// Explicit user-requested preparation only. The offline runner has no Client.
+    pub fn security_preparation(
+        &self,
+        credentials: &dyn CredentialStore,
+        target: &speclink_host::security::ReviewTarget,
+        budget: &speclink_host::security::ReviewBudget,
+    ) -> Result<speclink_host::security::PreparationInput, speclink_desktop_core::security::JobError>
+    {
+        use speclink_desktop_core::security::JobError;
+        let snapshot = self
+            .run(credentials, |client| {
+                let binding = client.handshake()?;
+                if !binding.capabilities.context_snapshots || !binding.capabilities.security_review
+                {
+                    return Err(RemoteError {
+                        message: "unsupported_version".into(),
+                        reason: Some("unsupported_version".into()),
+                        status: None,
+                        evidence: None,
+                    });
+                }
+                client.security_context_snapshot(
+                    &speclink_protocol::context::ContextSnapshotRequest {
+                        change: target.change_name.clone(),
+                        flow: Some("verify".into()),
+                    },
+                    &|| budget.stop_reason().is_some(),
+                )
+            })
+            .map_err(|e| {
+                JobError::review(if e.reason.as_deref() == Some("unsupported_version") {
+                    "unsupported_version"
+                } else {
+                    "remote_prepare_failed"
+                })
+            })?;
+        speclink_host::security::preparation_from_context(target, snapshot)
+            .map_err(|e| JobError::review(&e.to_string()))
+    }
     /// 以已知的 locator 識別直接建構把手——open 之後的資料面呼叫走這裡
     /// （handshake 是 session 前置、不是逐請求前置），命令層據此無狀態重建。
     pub fn at(
@@ -1436,6 +1477,16 @@ impl RemoteWorkspace {
         fields: &WorkflowPolicyFields,
         expected_revision: u64,
     ) -> Result<u64, RemoteSettingsError> {
+        self.write_workflow_fields_with_security(credentials, fields, None, expected_revision)
+    }
+
+    pub fn write_workflow_fields_with_security(
+        &self,
+        credentials: &dyn CredentialStore,
+        fields: &WorkflowPolicyFields,
+        security_patch: Option<&str>,
+        expected_revision: u64,
+    ) -> Result<u64, RemoteSettingsError> {
         self.manager
             .ensure_write_allowed()
             .map_err(RemoteSettingsError::from)?;
@@ -1443,8 +1494,12 @@ impl RemoteWorkspace {
             .run(credentials, |client| client.config())
             .map_err(RemoteSettingsError::from)?;
         let rewritten =
-            rewrite_workflow_fields_text(config.content.as_deref().unwrap_or_default(), fields)
-                .map_err(RemoteSettingsError::local)?;
+            speclink_desktop_core::settings::rewrite_workflow_fields_with_security_text(
+                config.content.as_deref().unwrap_or_default(),
+                fields,
+                security_patch,
+            )
+            .map_err(RemoteSettingsError::local)?;
         self.run_write(credentials, |client| {
             client.put_config(&rewritten, expected_revision)
         })

@@ -36,6 +36,120 @@ rules:
 
 const BAD_YAML: &str = ": not yaml : [\n";
 
+#[test]
+fn security_show_and_partial_update_preserve_existing_settings() {
+    let original = format!(
+        "{WF_YAML}\nsecurity_verification:\n  # keep unknown\n  future_option: {{custom: true}}\n"
+    );
+    let p = TempProject::new("security-patch", &original);
+    let shown = p.run(&["workflow-config", "show", "--json"]);
+    assert!(shown.status.success(), "{}", stderr_of(&shown));
+    let policy = &json_of(&shown)["securityVerification"];
+    assert_eq!(policy["enabled"], false);
+    assert_eq!(policy["reviews"]["apiBoundary"], true);
+    assert!(policy["disabledRules"].is_array());
+    let patch = "enabled: true\nscope: web-api\nstandards:\n  owasp_top10:\n    enabled: true\n    version: '2025'\n";
+    let dry = p.run_stdin(
+        &["workflow-config", "security", "--stdin", "--dry-run"],
+        patch,
+    );
+    assert!(dry.status.success(), "{}", stderr_of(&dry));
+    assert!(stdout_of(&dry).contains("+  enabled: true"));
+    assert_eq!(p.config_text(), original);
+    let saved = p.run_stdin(&["workflow-config", "security", "--stdin"], patch);
+    assert!(saved.status.success(), "{}", stderr_of(&saved));
+    let text = p.config_text();
+    assert!(text.starts_with(WF_YAML));
+    assert!(text.contains("  # keep unknown\n  future_option: {custom: true}\n"));
+    let show = p.run(&["workflow-config", "show", "--json"]);
+    let policy = &json_of(&show)["securityVerification"];
+    assert_eq!(policy["standards"]["owaspTop10"]["version"], "2025");
+    assert_eq!(policy["standards"]["owaspAsvs"]["enabled"], false);
+    let human = stdout_of(&p.run(&["workflow-config", "show", "--no-color"]));
+    assert!(
+        human
+            .lines()
+            .position(|l| l.contains("security_verification"))
+            .unwrap()
+            > human
+                .lines()
+                .position(|l| l.trim_start().starts_with("review"))
+                .unwrap()
+    );
+    assert!(!human.contains('\u{1b}'));
+}
+
+#[test]
+fn security_invalid_and_missing_stdin_do_not_write() {
+    let p = TempProject::new("security-invalid", WF_YAML);
+    let missing = p.run(&["workflow-config", "security"]);
+    assert_eq!(missing.status.code(), Some(1));
+    assert!(stderr_of(&missing).contains("--stdin"));
+    for patch in [
+        "",
+        "[]",
+        "enabled: yes",
+        "future: true",
+        "standards: {owasp_asvs: {level: L4}}",
+    ] {
+        let out = p.run_stdin(&["workflow-config", "security", "--stdin"], patch);
+        assert_eq!(out.status.code(), Some(1), "{}", stderr_of(&out));
+        assert!(out.stdout.is_empty());
+        assert_eq!(p.config_text(), WF_YAML);
+    }
+    let oversized = format!("enabled: false\n#{}", "x".repeat(65_537));
+    let out = p.run_stdin(&["workflow-config", "security", "--stdin"], &oversized);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(p.config_text(), WF_YAML);
+}
+
+#[test]
+fn security_remote_patch_uses_cas_and_the_shared_read_shape() {
+    let mock = mock_server(vec![
+        ("GET", "/config", 200, config_response()),
+        ("PUT", "/config", 200, r#"{"revision":8}"#.into()),
+    ]);
+    let p = RemoteProject::new("security-cas", &mock.base);
+    let shown = p.run(&["workflow-config", "show", "--json"]);
+    assert_eq!(json_of(&shown)["securityVerification"]["enabled"], false);
+    let out = p.run_stdin(
+        &["workflow-config", "security", "--stdin"],
+        "enabled: true\n",
+    );
+    assert!(out.status.success(), "{}", stderr_of(&out));
+    let put: serde_json::Value = serde_json::from_str(&mock.find("PUT", "/config").body).unwrap();
+    assert_eq!(put["expectedRevision"], 7);
+    assert!(put["content"].as_str().unwrap().contains("enabled: true"));
+    assert!(!p.dir.join("openspec").exists());
+    for (i, status, error) in [
+        (
+            0,
+            409,
+            r#"{"status":409,"reason":"revision_conflict","message":"conflict"}"#,
+        ),
+        (
+            1,
+            401,
+            r#"{"status":401,"reason":"unauthenticated","message":"expired"}"#,
+        ),
+    ] {
+        let mock = mock_server(vec![
+            ("GET", "/config", 200, config_response()),
+            ("PUT", "/config", status, error.into()),
+        ]);
+        let p = RemoteProject::new(&format!("security-refused-{i}"), &mock.base);
+        let out = p.run_stdin(
+            &["workflow-config", "security", "--stdin"],
+            "enabled: true\n",
+        );
+        assert!(!out.status.success());
+        assert!(out.stdout.is_empty());
+        if status == 409 {
+            assert!(stderr_of(&out).contains("re-run"), "{}", stderr_of(&out));
+        }
+    }
+}
+
 struct TempProject {
     dir: PathBuf,
 }
@@ -774,7 +888,7 @@ fn show_prints_the_review_line_after_rules() {
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     assert_eq!(
         stdout_of(&out),
-        "Workflow config: openspec/config.yaml\n\n  locale       tw\n  spec_locale  unset (system language)\n  tdd          on\n  audit        unset (off)\n  worktree     unset (off)\n  context      2 lines\n  rules        design 2, tasks 1\n  review       none\n"
+        "Workflow config: openspec/config.yaml\n\n  locale       tw\n  spec_locale  unset (system language)\n  tdd          on\n  audit        unset (off)\n  worktree     unset (off)\n  context      2 lines\n  rules        design 2, tasks 1\n  review       none\n  security_verification  disabled\n"
     );
     // Spec Example review 行的值.
     for (tag, review, value) in [
@@ -790,8 +904,15 @@ fn show_prints_the_review_line_after_rules() {
         assert!(out.status.success(), "stderr: {}", stderr_of(&out));
         let text = stdout_of(&out);
         let lines: Vec<&str> = text.lines().collect();
-        assert_eq!(lines.last(), Some(&format!("  review       {value}").as_str()), "{text}");
-        assert!(lines[lines.len() - 2].starts_with("  rules "), "review follows rules: {text}");
+        assert_eq!(
+            lines.get(lines.len() - 2),
+            Some(&format!("  review       {value}").as_str()),
+            "{text}"
+        );
+        assert!(
+            lines[lines.len() - 3].starts_with("  rules "),
+            "review follows rules: {text}"
+        );
     }
 }
 

@@ -19,4 +19,6 @@ pub mod gate;
 pub mod policy;
 pub mod portable;
 pub mod projection;
+pub mod security;
+pub mod security_data;
 pub mod worktree;

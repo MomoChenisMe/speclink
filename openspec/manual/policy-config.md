@@ -3,12 +3,12 @@ title: 工作流政策與設定
 section: SDD 工作流
 order: 210
 keywords: [config.yaml, 政策, locale, tdd, audit, worktree, 專案說明, 產出規則, 審查規則, review, 確認表, 提醒分流, dry-run]
-sources: [workflow-config, config-skill]
-generated: 2026-10-15T12:29:49+08:00
+sources: ["workflow-config", "config-skill#技能規定固定輸入來源與四條內容判準", "config-skill#技能規定 diff 先行與收斂驗收", "config-skill#技能規定政策語系欄位寫入代碼", "config-skill#技能規定任務驗證測試範圍的第五問", "config-skill#技能規定審查規則的第六問與規則接收", "config-skill#技能規定政策欄位一次確認現值", "config-skill#技能規定提醒的分流"]
+generated: 2026-10-17T17:07:22+08:00
 ---
 # 工作流政策與設定
 
-工作流政策存在 `openspec/config.yaml`。這個檔有四類內容：五個政策欄位、專案說明、產出規則，以及審查規則。你可以用 `speclink workflow-config` 指令讀寫，也可以請 `/speclink-config` 技能幫你整理。桌面 app 的設定頁怎麼編輯這些內容，見 [專案、新增專案與設定頁](desktop-projects.md)。
+工作流政策存在 `openspec/config.yaml`。這個檔包含五個既有政策欄位、安全審查政策、專案說明、產出規則，以及審查規則。你可以用 `speclink workflow-config` 指令讀寫，也可以請 `/speclink-config` 技能幫你整理。桌面 app 的設定頁怎麼編輯這些內容，見 [專案、新增專案與設定頁](desktop-projects.md)。
 
 ## 五個政策欄位
 
@@ -43,7 +43,7 @@ generated: 2026-10-15T12:29:49+08:00
 speclink workflow-config show
 ```
 
-顯示 config.yaml 裡的正典內容：五個政策欄位（未設定的會標示未設定與其預設語意）、專案說明的有無與行數、各產出規則節的條數，以及審查規則的摘要。它顯示的是檔案裡的值，不套用環境變數覆寫。remote 模式下讀的是 server 上的設定，輸出形狀相同。
+顯示 config.yaml 裡的正典內容：五個政策欄位（未設定的會標示未設定與其預設語意）、專案說明的有無與行數、各產出規則節的條數，以及審查規則與安全審查政策的摘要。安全審查摘要接在審查規則之後；未設定時顯示停用。它顯示的是檔案裡的值，不套用環境變數覆寫。remote 模式下讀的是 server 上的設定，輸出形狀相同。
 
 審查規則那一行接在產出規則那一行之後：
 
@@ -74,6 +74,41 @@ remote 模式下，指令先讀 server 上的現行設定，套用同樣的改�
 `set worktree false` 時，若還有活躍的 worktree 掛著，指令拒絕寫入，列出每個 worktree 的變更名、分支與路徑，並提示先收尾。
 
 設定寫入成功但技能同步失敗時，設定仍成立。錯誤訊息提示重跑 `speclink update` 重建技能。詳見 [平行實作與合回：worktree](worktree.md)。
+
+## OWASP / CWE 初步安全審查政策
+
+舊專案沒有安全設定時，主開關預設關閉，原有 audit、TDD 與 worktree 不受影響。設定入口在桌面 app 的專案設定 → 產出流程 → 產出政策，audit 下方的「啟用 OWASP / CWE 安全審查」。
+
+### 先選範圍，再選標準
+
+| 範圍 | 用途 |
+| --- | --- |
+| 關閉／不指定範圍 | 不自動限定 Web 或 API；不等於關閉主開關。目標資訊不足時保留未驗證 |
+| Web 應用程式 + API | 同時涵蓋 Web 與 API |
+| 僅 API / 後端服務 | 著重 API 與後端邊界 |
+| 僅 Web 應用程式 | 著重 Web 輸出與瀏覽器端風險 |
+
+| 標準 | 可選版本 |
+| --- | --- |
+| OWASP Top 10 | 關閉、2021、2025 |
+| OWASP API Security Top 10 | 關閉、2019、2023 |
+| OWASP ASVS | 關閉、4.0.3、5.0.0；啟用後選 L1、L2 或 L3 |
+| MITRE CWE | 關閉，或從已安裝資料選版本 |
+
+每個標準各自開關，可以只啟用 Top 10 2025，不必同時選 ASVS 或 CWE。主開關開著但四個標準全關時，政策是已啟用但未配置；標準化審查不執行，另外啟用的自有基本規則仍可執行。
+
+規格、原始碼、API 與參數邊界三種審查分別選用；也能停用個別規則、調整根相對的排除目錄。關閉主開關或某個標準會保留先前選值，日後重新開啟仍可還原。版本、型別或 ASVS 等級不合法時拒絕載入，不會靜默改成停用。
+
+### 從 CLI 局部更新
+
+```sh
+speclink workflow-config security --stdin --dry-run
+speclink workflow-config security --stdin
+```
+
+從標準輸入提供單一 YAML 部分更新，最多64 KiB。第一條只看差異；第二條才寫入。它只改提供的項目，保留未動的設定、未知欄位及註解。空白、非設定物件、未知輸入鍵、非法值，或無法安全改寫的複雜 YAML 都會被拒絕，原檔不變。這個區塊不使用新的環境變數或另一份設定檔。
+
+Remote 仍需要 editor 權限並核對讀取時的版次；衝突、離線或認證失效不會排隊寫入或強制覆蓋。儲存合法政策不要求 server 已安裝標準資料，也不會順便下載。接著到[安全標準資料](security-data.md)明確安裝所選版本，再[執行審查](security-review.md)。
 
 ## 寫專案說明與產出規則
 
@@ -151,7 +186,7 @@ remote 模式寫入成功後，用本機工作區的技能檔判斷，條件相�
 
 ## 先看差異：--dry-run
 
-所有寫入子指令（set、context、rules、review）帶 `--dry-run` 時，只印差異、不寫檔。差異是單一段的 unified diff：`--- a/…`、`+++ b/…` 兩行開頭，接一行 `@@` 標頭，前後各帶至多三行沒改的內容。
+所有寫入子指令（set、context、rules、review、security）帶 `--dry-run` 時，只印差異、不寫檔。差異是單一段的 unified diff：`--- a/…`、`+++ b/…` 兩行開頭，接一行 `@@` 標頭，前後各帶至多三行沒改的內容。
 
 - 沒改動、順序也沒變的行以空白開頭顯示，不會成對出現 `-` 與 `+`。
 - 只有被刪、新增或換了位置的行才帶 `-`／`+`；同一處有刪有增時，`-` 在前。
@@ -262,9 +297,10 @@ config 已有 review 區塊時，確認表帶出模式與三個清單各自的�
 
 你也可以帶範圍提示呼叫技能。此時前三條判準只重審範圍內的 artifacts，第四條的引用核實仍掃全文件。
 
-**出處**：`workflow-config`、`config-skill`
 
 
 ### Fork 的語言預設與查詢
 
 locale 與 spec_locale 未設定時各自採主機 OS 語言：中文 tw、日文 ja，其餘 en；只有舊 auto 跟隨 locale。Remote 使用 Server 語言，UI 偏好不參與解析；不回寫設定。`speclink workflow-config languages --json` 只讀查詢正典設定與 OS 預設；show 仍顯示正典 null，舊 Server 缺語言資料時只有 languages 明示要求升級。
+
+**出處**：`workflow-config`、`config-skill`

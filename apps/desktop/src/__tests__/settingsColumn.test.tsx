@@ -26,7 +26,7 @@ describe("SettingsColumn", () => {
     render(<SettingsColumn section="updates" onSelect={onSelect} />);
     const nav = screen.getByRole("navigation", { name: "設定分類" });
     expect(within(nav).getByText("應用程式")).toBeTruthy();
-    expect(navItems(nav)).toEqual(["一般", "更新", "CLI", "伺服器", "關於 Speclink"]);
+    expect(navItems(nav)).toEqual(["一般", "更新", "CLI", "伺服器", "安全標準資料", "關於 Speclink"]);
     expect(within(nav).getByRole("button", { name: "更新" }).getAttribute("aria-current")).toBe("page");
     fireEvent.click(within(nav).getByRole("button", { name: "伺服器" }));
     expect(onSelect).toHaveBeenCalledWith("servers");
@@ -77,7 +77,7 @@ describe("SettingsColumn", () => {
     expect(within(nav).queryAllByRole("button")).toHaveLength(0);
     expect(within(nav).getByText("沒有符合的設定")).toBeTruthy();
     fireEvent.change(search, { target: { value: "" } });
-    expect(navItems(nav)).toHaveLength(5);
+    expect(navItems(nav)).toHaveLength(6);
   });
 
   it("比對大小寫不敏感（分類名與列標籤）", () => {

@@ -3,8 +3,8 @@ title: 驗證站
 section: SDD 工作流
 order: 160
 keywords: [驗證, verify, 規格符合, 完整, 正確, 一致, 驗證門, 子代理, 證據順序, 首輪, 複驗]
-sources: [verify-skill, verify-station]
-generated: 2026-10-15T12:29:49+08:00
+sources: ["verify-skill", "verify-station"]
+generated: 2026-10-17T17:07:22+08:00
 ---
 
 # 驗證站
@@ -109,6 +109,17 @@ stamp 通過時，同一次原子寫入把驗證章寫進變更的 .openspec.yam
 ## remote 模式
 
 工單走 store 讀寫。離線、版本衝突、認證失效時，指令以非零結束並在 stderr 說明；離線時追加輪次，遠端與本機投影都不會變。`verify scope` 仍在你本機的 checkout 上算，與 apply 的基準點、touched 記錄、驗證快照共用；server 不會收到差異或快照。本機的 git 錯誤不會被包裝成版本衝突。add-round 的路徑檢查在 CLI 送出前就做，違規時 server 上的工單不動。
+
+## 獨立的初步安全資訊
+
+專案啟用安全政策時，Verify 報告會另外列出已選 OWASP／CWE 標準與版本、初步結果、疑似風險、未驗證原因及本機報告連結。缺報告、資料或本機目標時會明寫未驗證，不會自動下載或假稱通過；需要執行時使用同一套[內建離線審查](security-review.md)。
+
+初步疑似風險與未驗證的 ASVS 要求，不會自動成為驗證工單的 CRITICAL／WARNING，也不新增品質章或封存門檻。原本的規格符合度判斷、未結工單與過期章守門照常。TDD 與 audit 各自保持原設定。
+
+> [!NOTE]
+> PASS 只代表本次執行的指定規則沒有發現問題，不代表不存在其他漏洞，也不代表正式認證或全部 ASVS 要求通過。
+
+沒有設定 AI 仍能透過 CLI 或桌面執行基本規則。標準文件只當參考資料，不當作 Agent 指令，也不上傳原始碼。主開關停用且沒有歷史報告時，既有 Verify 輸出維持；已有的歷史報告可以手動看，但不是本輪新結果。報告怎麼讀見[閱讀與匯出初步報告](security-report.md)。
 
 ## 蓋章之後
 

@@ -16,6 +16,7 @@ use speclink_core::config::{
 pub struct EffectiveWorkflowPolicy {
     resolved: ResolvedPolicy,
     digest: String,
+    security: Result<speclink_core::security::policy::SecurityPolicy, ConfigError>,
 }
 
 impl EffectiveWorkflowPolicy {
@@ -27,6 +28,7 @@ impl EffectiveWorkflowPolicy {
         Self {
             resolved,
             digest: format!("sha256:{:x}", hasher.finalize()),
+            security: WorkflowConfig::from_text(Some(policy_document)).map(|wf| wf.security()),
         }
     }
 
@@ -34,6 +36,17 @@ impl EffectiveWorkflowPolicy {
         &self.resolved
     }
 
+    /// Security has no environment override. Invalid content is never silently disabled.
+    pub fn security(&self) -> Result<speclink_core::security::policy::SecurityPolicy, ConfigError> {
+        self.security.clone()
+    }
+
+    pub fn security_instructions(
+        &self,
+    ) -> Result<speclink_core::instructions::SecurityInstructions, ConfigError> {
+        self.security()
+            .map(|p| speclink_core::instructions::SecurityInstructions::from_policy(&p))
+    }
     /// The policy-document content digest — the policyRevision precursor.
     pub fn digest(&self) -> &str {
         &self.digest
@@ -88,6 +101,34 @@ pub fn workflow_languages(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn security_instructions_preserve_effective_audit_independence() {
+        let policy = resolve_effective_policy(
+            |_| None,
+            Some("audit: false\nsecurity_verification: {enabled: true}\n"),
+        )
+        .unwrap();
+        assert!(policy.security_instructions().unwrap().enabled);
+        assert!(!policy.resolved().audit);
+    }
+    #[test]
+    fn security_policy_effective_value_is_independent_from_audit_and_env() {
+        let policy = resolve_effective_policy(
+            |key| (key == "SPECLINK_AUDIT").then(|| "false".into()),
+            Some("audit: true\nsecurity_verification:\n  enabled: true\n"),
+        )
+        .unwrap();
+        assert!(policy.security().unwrap().enabled);
+        assert!(!policy.resolved().audit);
+        let disabled = resolve_effective_policy(|_| None, None).unwrap();
+        assert!(!disabled.security().unwrap().enabled);
+        let invalid = EffectiveWorkflowPolicy::new(
+            disabled.resolved().clone(),
+            "security_verification: {enabled: wrong}\n",
+        );
+        assert!(invalid.security().is_err());
+    }
 
     #[test]
     fn workflow_languages_rejects_unknown_canonical_language_values() {

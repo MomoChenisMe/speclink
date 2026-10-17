@@ -8,6 +8,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type { ReviewRules } from "@speclink/ui";
 
 import type { InvokeFn, WorkspaceSettingsProvider } from "../session";
+import type { SecurityPolicy } from "./security";
 
 /** open_project／init_project／adopt_project 的判定 payload（錯誤走 rejected Promise）。 */
 export type ProjectProbe =
@@ -55,6 +56,7 @@ export interface SettingsSnapshot {
     audit: boolean;
     /** worktree 政策現值；remote 快照恆為 false（該面不支援此軸）。 */
     worktree: boolean;
+    securityVerification?: SecurityPolicy;
     /** 專案說明現值（config.yaml 的 context；null＝未設定）。 */
     context: string | null;
     /** 產出規則現值（依 artifact id 分組；條目順序即檔案順序）。 */
@@ -83,6 +85,8 @@ export interface WorkflowFields {
   audit: boolean;
   /** 並行 apply 的 worktree 流程；remote 無此軸（寫入時忽略）。 */
   worktree: boolean;
+  /** JSON (a YAML mapping) containing only edited security leaves. */
+  securityPatch?: string;
 }
 
 /** probe_assets 的回報（引擎 AssetProbe 的 camelCase 序列化）：
@@ -148,6 +152,7 @@ export function createWorkspaceSettings(
     kind: "local",
     policyWrite: true,
     readSettings: () => invoke("read_settings", { root }),
+    rememberSecurityPolicy: (policy) => invoke("security_remember_policy",{key:`local:${root}`,policy}),
     writeAppTools: (tools) => invoke("write_app_tools", { root, tools }),
     writeWorkflowConfig: (fields) =>
       invoke("write_workflow_config", {
@@ -157,6 +162,7 @@ export function createWorkspaceSettings(
         tdd: fields.tdd,
         audit: fields.audit,
         worktree: fields.worktree,
+        ...(fields.securityPatch === undefined ? {} : { securityPatch: fields.securityPatch }),
       }),
     writeWorkflowContext: (context) =>
       invoke("write_workflow_content", { root, context, rules: null }),
@@ -181,6 +187,7 @@ export function createRemoteSettings(
   repo: string,
   policyWrite: boolean,
   invoke: InvokeFn = tauriInvoke as InvokeFn,
+  securityReview = true,
 ): WorkspaceSettingsProvider {
   const scope = { connectionId, project, repo };
   let revision: number | null = null;
@@ -199,6 +206,8 @@ export function createRemoteSettings(
   return {
     kind: "remote",
     policyWrite,
+    securityReview,
+    rememberSecurityPolicy: securityReview ? (policy) => invoke("security_remember_policy",{key:`remote:${connectionId}/${project}/${repo}`,policy}) : undefined,
     readSettings: async () => {
       const snapshot = await invoke<SettingsSnapshot>("remote_read_settings", scope);
       revision = snapshot.workflow.revision ?? null;
@@ -208,7 +217,7 @@ export function createRemoteSettings(
     // kind 不渲染入口，拒絕是第二道防線，非 Refused Bequest（介面成員對 remote
     // 語意上就是「尚不支援」，與 writeAppTools 同款）。
     writeAppTools: () => Promise.reject(new Error("remote Workflow 無 .speclink.yaml 工具設定")),
-    writeWorkflowConfig: (fields) =>
+    writeWorkflowConfig: (fields) => fields.securityPatch && !securityReview ? Promise.reject(new Error("unsupported_version")) :
       adoptRevision(
         invoke<number>("remote_write_workflow_config", {
           ...scope,
@@ -217,6 +226,7 @@ export function createRemoteSettings(
           tdd: fields.tdd,
           audit: fields.audit,
           expectedRevision: expectedRevision(),
+          ...(fields.securityPatch === undefined ? {} : { securityPatch: fields.securityPatch }),
         }),
       ),
     writeWorkflowContext: (context) =>

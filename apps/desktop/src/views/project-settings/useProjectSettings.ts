@@ -10,6 +10,7 @@ import type {
   WorkflowFields,
 } from "../../adapter/workspace";
 import type { WorkspaceSettingsProvider } from "../../session";
+import { DEFAULT_SECURITY_POLICY, applySecurityPolicyPatch, securityPolicyPatch, type SecurityPolicy } from "../../adapter/security";
 
 /** locale／spec_locale 的「未設定」在 config 裡是空字串，Radix Select 的 item 不接受空字串。 */
 export const LOCALE_UNSET = "__unset__";
@@ -102,6 +103,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
   const [tdd, setTdd] = useState(false);
   const [audit, setAudit] = useState(false);
   const [worktree, setWorktree] = useState(false);
+  const [security, setSecurity] = useState<SecurityPolicy>(DEFAULT_SECURITY_POLICY);
   const [contextText, setContextText] = useState("");
   /** 產出規則現值：schemaArtifacts 固定鍵 → 條目清單（清單順序即檔案順序）。 */
   const [rules, setRules] = useState<Record<string, string[]>>({});
@@ -157,6 +159,10 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     setTdd(next.workflow.tdd);
     setAudit(next.workflow.audit);
     setWorktree(next.workflow.worktree);
+    setSecurity(next.workflow.securityVerification ?? DEFAULT_SECURITY_POLICY);
+    if (next.workflow.securityVerification && !next.workflow.parseError) {
+      void settings.rememberSecurityPolicy?.(next.workflow.securityVerification).catch((e)=>setWfMsg(`${t("securityData.referenceError")}: ${errorMessage(e)}`));
+    }
     setContextText(next.workflow.context ?? "");
     const nextRules = Object.fromEntries(
       next.workflow.schemaArtifacts.map((id) => [id, next.workflow.rules[id] ?? []]),
@@ -214,7 +220,8 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     specLocale !== (snap.workflow.specLocale ?? "") ||
     tdd !== snap.workflow.tdd ||
     audit !== snap.workflow.audit ||
-    worktree !== snap.workflow.worktree;
+    worktree !== snap.workflow.worktree ||
+    securityPolicyPatch(snap.workflow.securityVerification ?? DEFAULT_SECURITY_POLICY, security) !== undefined;
 
   /** 採納最新快照裡「不是這次寫入、也不在編輯中」各區的現值（review R8）：remote 的
    * readSettings 會靜默換上最新 revision，留著舊現值再起草儲存，就會不經 409 蓋掉別人的修改。
@@ -227,6 +234,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       setTdd(w.tdd);
       setAudit(w.audit);
       setWorktree(w.worktree);
+      setSecurity(w.securityVerification ?? DEFAULT_SECURITY_POLICY);
     }
     if (written !== "context" && !ctxEditing) setContextText(w.context ?? "");
     if (written !== "rules" && !rulesEditing) {
@@ -247,8 +255,13 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
   // 寫入成功後把已存值併進快照：快照＝檔案現值，未存修改（dirty）以它為基準比對。
   const adoptTools = (saved: string[]) =>
     setSnap((current) => current && { ...current, app: { ...current.app, tools: saved } });
-  const adoptPolicy = (fields: WorkflowFields) =>
-    setSnap((current) => current && { ...current, workflow: { ...current.workflow, ...fields } });
+  const adoptPolicy = (fields: WorkflowFields) => {
+    setSnap((current) => {
+      if (!current) return current;
+      const next = applySecurityPolicyPatch(current.workflow.securityVerification ?? DEFAULT_SECURITY_POLICY, fields.securityPatch);
+      return { ...current, workflow: { ...current.workflow, ...fields, securityVerification: next } };
+    });
+  };
 
   const toggleTool = (tool: string, on: boolean) =>
     setTools((prev) => (on ? [...prev.filter((x) => x !== tool), tool] : prev.filter((x) => x !== tool)));
@@ -331,6 +344,17 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
         mine: String(policy.audit),
       },
     ];
+    const mineSecurity = pending.kind === "policy"
+      ? applySecurityPolicyPatch(snap.workflow.securityVerification ?? DEFAULT_SECURITY_POLICY, pending.fields.securityPatch)
+      : security;
+    const securityRows = (server: unknown, mine: unknown, path: string) => {
+      if (server !== null && typeof server === "object" && !Array.isArray(server)) {
+        for (const key of Object.keys(server)) securityRows((server as Record<string, unknown>)[key], (mine as Record<string, unknown>)[key], `${path}.${key}`);
+      } else {
+        rows.push({ key: path, label: path, server: JSON.stringify(server), mine: JSON.stringify(mine) });
+      }
+    };
+    securityRows(latest.workflow.securityVerification ?? DEFAULT_SECURITY_POLICY, mineSecurity, "security_verification");
     for (const id of artifactIds) {
       // 編輯中：凍結鍵顯示草稿；非凍結鍵（編輯期間換入的新固定鍵）顯示將被
       // 兜底原樣保留的現值，而非誤導的空白（review S-a）。
@@ -383,18 +407,27 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
   };
 
   const saveWorkflow = async () => {
+    if (wfDisabled) return;
+    const normalizedSecurity = { ...security, excludeDirs: textToEntries(security.excludeDirs.join("\n")), disabledRules: textToEntries(security.disabledRules.join("\n")) };
+    const securityPatch = securityPolicyPatch(snap.workflow.securityVerification ?? DEFAULT_SECURITY_POLICY, normalizedSecurity);
     const fields: WorkflowFields = {
       locale: locale || null,
       specLocale: specLocale || null,
       tdd,
       audit,
       worktree,
+      ...(securityPatch === undefined ? {} : { securityPatch }),
     };
     try {
       const next = await settings.writeWorkflowConfig(fields);
       adoptRevision(next);
       adoptPolicy(fields);
+      setSecurity(normalizedSecurity);
       setWfMsg(t("settings.saved"));
+      if (securityPatch !== undefined) {
+        try { await settings.rememberSecurityPolicy?.(normalizedSecurity); }
+        catch(e) { setWfMsg(`${t("settings.saved")} · ${t("securityData.referenceError")}: ${errorMessage(e)}`); }
+      }
     } catch (e) {
       if (await handleWriteError(e, { kind: "policy", fields })) setWfMsg(null);
       else if (!isRemote) {
@@ -641,8 +674,12 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       setSnap(latest);
       adoptFresh(latest, pending.kind);
       if (pending.kind === "policy") {
+        const nextSecurity = applySecurityPolicyPatch(latest.workflow.securityVerification ?? DEFAULT_SECURITY_POLICY, pending.fields.securityPatch);
+        setSecurity(nextSecurity);
         adoptPolicy(pending.fields);
         setWfMsg(t("settings.saved"));
+        try { await settings.rememberSecurityPolicy?.(nextSecurity); }
+        catch(e) { setWfMsg(`${t("settings.saved")} · ${t("securityData.referenceError")}: ${errorMessage(e)}`); }
       } else if (pending.kind === "context") {
         setContextText(pending.context);
         setCtxEditing(false);
@@ -698,7 +735,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     settings, snap, isRemote, appDisabled, wfDisabled, dirty, remoteNote,
     tools, toggleTool, saveApp, appMsg,
     locale, setLocale, specLocale, setSpecLocale, tdd, setTdd, audit, setAudit, worktree, setWorktree,
-    saveWorkflow, wfMsg,
+    saveWorkflow, wfMsg, security, setSecurity,
     contextText, ctxEditing, setCtxEditing, draftContext, setDraftContext, ctxMsg, beginCtxEdit, saveContext, ctxSaving,
     rules, rulesEditing, setRulesEditing, draftRules, setDraftRules, editingRuleKeys, rulesMsg,
     beginRulesEdit, saveRules, rulesSaving, populatedRuleKeys,

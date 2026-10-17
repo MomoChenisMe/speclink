@@ -1550,3 +1550,19 @@ fn unterminated_before_note_refuses_archive() {
     let msg = refuse_merge(&store);
     assert!(msg.contains("BEFORE"), "malformed BEFORE note named: {msg}");
 }
+
+#[test]
+fn security_policy_remains_advisory_and_original_verify_gate_still_applies() {
+    for open_ticket in [false, true] {
+        let store = gate_store("- [x] 1.1 Done\n");
+        *store.workflow_config.borrow_mut() =
+            Some("security_verification: {enabled: true}\n".into());
+        if open_ticket {
+            store.put_artifact("demo", crate::station::VERIFY_DOC, VERIFY_TICKET);
+        }
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let outcome = archive(&ghost_ws(), &store, &change, &skip_opts(), None);
+        assert_eq!(outcome.is_err(), open_ticket);
+        assert_eq!(store.change_exists("demo"), open_ticket);
+    }
+}

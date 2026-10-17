@@ -14,6 +14,7 @@ use std::path::PathBuf;
 
 #[derive(Default)]
 pub(crate) struct TestStore {
+    pub workflow_config: RefCell<Option<String>>,
     /// Active change name → raw `.openspec.yaml` text.
     pub metas: RefCell<HashMap<String, String>>,
     /// (change, artifact rel path) → content.
@@ -371,7 +372,7 @@ impl Store for TestStore {
         Ok(Some(format!("{created}-{slug}.md")))
     }
     fn read_workflow_config(&self) -> Option<String> {
-        None
+        self.workflow_config.borrow().clone()
     }
     fn read_language(&self) -> Option<String> {
         None

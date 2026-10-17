@@ -205,3 +205,11 @@ Speclink ignores other keys.
 Unset locale and spec_locale independently use the language of the machine running Speclink: Chinese maps to tw, Japanese to ja, all other or unavailable values to en. Explicit settings and environment overrides take precedence; only legacy spec_locale:auto follows locale. Remote mode uses the Server OS, independently of Client or UI language. Detection never writes configuration.
 
 `speclink workflow-config languages --json` reads canonical settings and host defaults without environment overrides and returns concrete locale and specLocale values. Older Servers without language metadata produce an upgrade error for this query; show remains compatible.
+
+## <a id="security-review"></a>OWASP / CWE Preliminary Security Review
+
+The optional `security_verification` block lives in the existing openspec/config.yaml policy document. Absence means disabled; audit, TDD and worktree remain independent. Desktop exposes it beneath audit in Output Policy. Use `speclink workflow-config security --stdin [--dry-run]` for a partial patch that preserves unknown fields. Each standard is independent; Top 10 2025 works on its own. Users explicitly install standards in application settings; review never downloads data. See the [operation, licensing and maintenance guide](security-review.md).
+
+## <a id="project-icon-color"></a>Project icon color
+
+Choose Default, Teal, Blue, Purple, Pink, Orange or Green in project settings. Changes save immediately on this device and appear in both the main window and tray: selected custom icons use deep backgrounds with white text; unselected backgrounds mix in 50% white and use dark text of the same hue. Preferences survive closing/restarting; Default restores the original appearance. Local and Remote identities are kept separate. This never writes openspec/config.yaml or Remote policy, so readers can change their own appearance. Storage errors keep the last adopted color and display the failure.

@@ -13,6 +13,166 @@ fn set_schema_refuses_an_unparseable_document() {
 use super::*;
 
 #[test]
+fn security_policy_absent_and_null_are_disabled() {
+    for text in [
+        None,
+        Some("schema: spec-driven\n"),
+        Some("security_verification: null\n"),
+    ] {
+        let policy = WorkflowConfig::from_text(text).unwrap().security();
+        assert!(!policy.enabled);
+        let json = serde_json::to_value(policy).unwrap();
+        assert_eq!(json["scope"], "off");
+        assert_eq!(
+            json["reviews"],
+            serde_json::json!({"spec":true,"code":true,"apiBoundary":true})
+        );
+        assert_eq!(json["disabledRules"], serde_json::json!([]));
+        assert_eq!(json["excludeDirs"], serde_json::json!([]));
+        for key in ["owaspTop10", "owaspApiTop10", "owaspAsvs", "cwe"] {
+            assert_eq!(json["standards"][key]["enabled"], false);
+        }
+    }
+}
+
+#[test]
+fn security_policy_rejects_invalid_known_fields_even_when_disabled() {
+    for body in [
+        "enabled: 'yes'",
+        "scope: desktop",
+        "reviews: {code: 'true'}",
+        "standards: {owasp_top10: {enabled: true}}",
+        "standards: {owasp_top10: {enabled: true, version: '2030'}}",
+        "standards: {owasp_top10: {version: 2025}}",
+        "standards: {owasp_asvs: {level: L4}}",
+        "standards: {cwe: {enabled: true, version: '../../escape'}}",
+        "standards: {cwe: {enabled: true, version: '2025'}}",
+        "exclude_dirs: ['../outside']",
+        "exclude_dirs: ['/absolute']",
+        "exclude_dirs: ['C:/outside']",
+        "exclude_dirs: ['']",
+        "disabled_rules: [1]",
+    ] {
+        let text = format!("security_verification:\n  {body}\n");
+        assert!(
+            WorkflowConfig::from_text(Some(&text)).is_err(),
+            "accepted {body}"
+        );
+    }
+}
+
+#[test]
+fn security_policy_versions_and_all_four_standards_are_independent() {
+    use crate::security::policy::patch_workflow_security;
+    for (standard, versions) in [
+        ("owasp_top10", &["2021", "2025"][..]),
+        ("owasp_api_top10", &["2019", "2023"][..]),
+        ("owasp_asvs", &["4.0.3", "5.0.0"][..]),
+        ("cwe", &["4.20"][..]),
+    ] {
+        for version in versions {
+            let patch =
+                format!("standards:\n  {standard}:\n    enabled: true\n    version: '{version}'\n");
+            let output = patch_workflow_security("", &patch).unwrap();
+            assert_eq!(
+                WorkflowConfig::from_text(Some(&output))
+                    .unwrap()
+                    .security()
+                    .standards
+                    .selected()
+                    .len(),
+                1
+            );
+        }
+    }
+    let all = "standards:\n  owasp_top10: {enabled: true, version: '2025'}\n  owasp_api_top10: {enabled: true, version: '2023'}\n  owasp_asvs: {enabled: true, version: '5.0.0'}\n  cwe: {enabled: true, version: '4.20'}\n";
+    let original = patch_workflow_security("", all).unwrap();
+    for standard in ["owasp_top10", "owasp_api_top10", "owasp_asvs", "cwe"] {
+        let output = patch_workflow_security(
+            &original,
+            &format!("standards:\n  {standard}:\n    enabled: false\n"),
+        )
+        .unwrap();
+        let policy = WorkflowConfig::from_text(Some(&output)).unwrap().security();
+        let selected = policy.standards.selected();
+        assert_eq!(selected.len(), 3);
+        assert!(!selected.iter().any(|(id, _, _)| *id == standard));
+    }
+}
+
+#[test]
+fn security_policy_patch_preserves_unknown_fields_comments_and_other_policies() {
+    use crate::security::policy::patch_workflow_security;
+    let original = "# keep\nschema: spec-driven\nlocale: tw\ntdd: true\naudit: false\nworktree: true\nsecurity_verification:\n  enabled: true # switch\n  # future note\n  future_option:\n    custom: [a, b]\n  standards:\n    owasp_top10:\n      enabled: true\n      version: '2025'\n    owasp_asvs:\n      enabled: true\n      version: '5.0.0'\n      level: L2\nother_unknown: keep\n";
+    let out = patch_workflow_security(original, "standards:\n  owasp_asvs:\n    enabled: false\n")
+        .unwrap();
+    assert_eq!(
+        out,
+        original.replacen(
+            "    owasp_asvs:\n      enabled: true",
+            "    owasp_asvs:\n      enabled: false",
+            1
+        )
+    );
+    let policy =
+        serde_json::to_value(WorkflowConfig::from_text(Some(&out)).unwrap().security()).unwrap();
+    assert_eq!(policy["standards"]["owaspTop10"]["version"], "2025");
+    assert_eq!(policy["standards"]["owaspTop10"]["enabled"], true);
+    assert_eq!(policy["standards"]["owaspAsvs"]["level"], "L2");
+    let off = patch_workflow_security(&out, "enabled: false\n").unwrap();
+    assert_eq!(
+        off,
+        out.replacen("  enabled: true # switch", "  enabled: false # switch", 1)
+    );
+}
+
+#[test]
+fn security_policy_patch_can_create_nested_fields_and_retain_crlf() {
+    use crate::security::policy::patch_workflow_security;
+    for original in [
+        "schema: spec-driven\r\n# keep\r\n",
+        "security_verification: null\r\n# keep\r\n",
+    ] {
+        let out = patch_workflow_security(original, "enabled: true\nscope: off\nstandards:\n  owasp_top10:\n    enabled: true\n    version: '2025'\n").unwrap();
+        assert!(out.contains("# keep\r\n"));
+        assert!(!out.replace("\r\n", "").contains('\n'));
+        let policy = WorkflowConfig::from_text(Some(&out)).unwrap().security();
+        assert!(policy.enabled);
+        assert!(policy.standards.owasp_top10.enabled);
+    }
+}
+
+#[test]
+fn security_policy_patch_rejects_invalid_unknown_and_oversized_input() {
+    use crate::security::policy::patch_workflow_security;
+    for patch in [
+        "",
+        "\n",
+        "[]",
+        "future_option: false",
+        "reviews: {typo: true}",
+        "enabled: true\nenabled: false\n",
+    ] {
+        assert!(
+            patch_workflow_security("schema: spec-driven\n", patch).is_err(),
+            "accepted {patch}"
+        );
+    }
+    let at_limit = format!(
+        "enabled: false\n#{}",
+        "x".repeat(65_536 - "enabled: false\n#".len())
+    );
+    assert!(patch_workflow_security("schema: spec-driven\n", &at_limit).is_ok());
+    assert!(patch_workflow_security("schema: spec-driven\n", &(at_limit + "x")).is_err());
+    for original in [
+        "security_verification:\n  enabled: &flag true\n",
+        "defaults: &defaults {enabled: false}\nsecurity_verification:\n  <<: *defaults\n",
+    ] {
+        assert!(patch_workflow_security(original, "enabled: false\n").is_err());
+    }
+}
+
+#[test]
 fn copilot_builtin_and_agents_alias_keep_their_identity() {
     assert_eq!(Tool::parse("copilot").map(|t| t.name()), Some("copilot"));
     assert_eq!(Tool::parse("agents"), Tool::parse("codex"));

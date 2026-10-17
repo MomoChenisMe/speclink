@@ -16,6 +16,43 @@ use std::sync::Arc;
 const INITIAL: &str = "schema: spec-driven\nlocale: en\n";
 const WINNER: &str = "schema: spec-driven\nlocale: tw\ntdd: true\n";
 
+#[test]
+fn security_policy_validates_without_installed_data_and_keeps_cas_and_roles() {
+    let f = fixture();
+    let (_, revision) = stored_policy(&f);
+    for bad in [
+        "standards: {owasp_asvs: {level: L4}}",
+        "standards: {owasp_top10: {enabled: true, version: '2030'}}",
+        "enabled: 'true'",
+    ] {
+        let content = format!("{INITIAL}security_verification:\n  {bad}\n");
+        let (status, error) = protocol_error(put_config(&f, &f.editor_pat, &content, revision));
+        assert_eq!(status, 422);
+        assert_eq!(error.reason, ErrorReason::InvalidConfig);
+        assert!(
+            error.message.contains("security_verification"),
+            "{}",
+            error.message
+        );
+        assert_eq!(stored_policy(&f), (INITIAL.into(), revision));
+        assert_eq!(
+            protocol_error(put_config(&f, &f.reader_pat, &content, revision)).0,
+            403
+        );
+    }
+    let content = format!("{INITIAL}security_verification:\n  enabled: true\n  standards:\n    owasp_top10: {{enabled: true, version: '2025'}}\n  future: keep\n");
+    let response = put_config(&f, &f.editor_pat, &content, revision).unwrap();
+    let next = response.into_json::<Value>().unwrap()["revision"]
+        .as_u64()
+        .unwrap();
+    assert!(next > revision);
+    assert_eq!(
+        protocol_error(put_config(&f, &f.editor_pat, INITIAL, revision)).0,
+        409
+    );
+    assert_eq!(stored_policy(&f), (content, next));
+}
+
 struct Fixture {
     base: String,
     store: Arc<MemoryStore>,

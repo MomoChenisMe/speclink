@@ -343,6 +343,66 @@ impl Client {
 
     // --- write path ---
 
+    /// Explicit security preparation only. Bound actual response bytes and
+    /// never return server document text in transport/parse errors.
+    pub fn security_context_snapshot(
+        &self,
+        request: &ContextSnapshotRequest,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<ContextSnapshot, RemoteError> {
+        let stopped = || RemoteError {
+            message: "security preparation cancelled".into(),
+            reason: Some("cancelled".into()),
+            status: None,
+            evidence: None,
+        };
+        if cancelled() {
+            return Err(stopped());
+        }
+        let response = match self.request("POST", "/context").send_json(request) {
+            Ok(response) => response,
+            Err(ureq::Error::Status(status, _)) => {
+                return Err(translate_protocol_error(status, ""))
+            }
+            Err(_) => return Err(translate_transport()),
+        };
+        const LIMIT: usize = 256 * 1024 * 1024;
+        let invalid = || RemoteError {
+            message: "invalid or oversized security preparation snapshot".into(),
+            reason: Some("invalid_preparation".into()),
+            status: None,
+            evidence: None,
+        };
+        if response
+            .header("Content-Length")
+            .and_then(|s| s.parse::<u64>().ok())
+            .is_some_and(|n| n > LIMIT as u64)
+        {
+            return Err(invalid());
+        }
+        let mut reader = response.into_reader();
+        let mut bytes = Vec::new();
+        let mut chunk = [0; 64 * 1024];
+        loop {
+            if cancelled() {
+                return Err(stopped());
+            }
+            let count =
+                std::io::Read::read(&mut reader, &mut chunk).map_err(|_| translate_transport())?;
+            if cancelled() {
+                return Err(stopped());
+            }
+            if count == 0 {
+                break;
+            }
+            if count > LIMIT.saturating_sub(bytes.len()) {
+                return Err(invalid());
+            }
+            bytes.extend_from_slice(&chunk[..count]);
+        }
+        serde_json::from_slice(&bytes).map_err(|_| invalid())
+    }
+
     /// `POST /import` — atomically migrate a complete local workspace bundle
     /// into the empty bound scope. The request DTO deliberately has no mode,
     /// so callers cannot select the store's maintenance-only Overwrite path.

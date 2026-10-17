@@ -7,6 +7,7 @@
 //! `speclink_core::store::Store`.
 
 pub mod layout;
+pub mod security;
 
 use anyhow::Result;
 use layout::Layout;

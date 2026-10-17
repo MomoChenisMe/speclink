@@ -1,0 +1,96 @@
+{
+  "ruleVersion":"1.0.0",
+  "rules":[
+    {"id":"SL-API-001","title":"API null handling not specified","type":"api-boundary","severity":"medium","languages":["json","yaml"],"description":"Check explicit parameter required/null handling in a local OpenAPI contract; implementation remains unverified.","references":{"cwe":[],"sources":[]},"check":{"mode":"pattern","selector":"boundary-null"},"remediation":"Define required and nullable input behavior and invalid-null responses."},
+    {"id":"SL-API-002","title":"API input type not specified","type":"api-boundary","severity":"medium","languages":["json","yaml"],"description":"Check that input schemas define their types. This does not validate runtime code.","references":{"cwe":[],"sources":[]},"check":{"mode":"pattern","selector":"boundary-type"},"remediation":"Define supported input types and reject incompatible values."},
+    {"id":"SL-API-003","title":"API string length bounds not specified","type":"api-boundary","severity":"medium","languages":["json","yaml"],"description":"Check string minLength/maxLength constraints in the selected API contract.","references":{"cwe":[],"sources":[]},"check":{"mode":"pattern","selector":"boundary-length"},"remediation":"Set appropriate minimum and maximum lengths for string inputs."},
+    {"id":"SL-API-004","title":"API numeric bounds not specified","type":"api-boundary","severity":"medium","languages":["json","yaml"],"description":"Check numeric lower and upper bounds in the selected API contract.","references":{"cwe":[],"sources":[]},"check":{"mode":"pattern","selector":"boundary-number"},"remediation":"Define valid numeric ranges, including any exclusive bounds."},
+    {"id":"SL-API-005","title":"API invalid-parameter response not specified","type":"api-boundary","severity":"low","languages":["json","yaml"],"description":"Check whether 400/422/4XX responses document invalid input handling.","references":{"cwe":[],"sources":[]},"check":{"mode":"pattern","selector":"boundary-invalid-input"},"remediation":"Document a stable response for invalid parameters and test the implementation separately."},
+    {"id":"SL-API-006","title":"API authorization needs review","type":"api-boundary","severity":"medium","languages":["json","yaml"],"description":"Check the operation's declared security requirement and scheme. Object-level authorization cannot be proved by this check.","references":{"cwe":[],"sources":[]},"check":{"mode":"pattern","selector":"boundary-authorization"},"remediation":"Document applicable authentication and object/operation authorization; manually confirm intentionally public operations."},
+    {"id":"SL-API-007","title":"API error disclosure needs review","type":"api-boundary","severity":"medium","languages":["json","yaml"],"description":"Check explicit error response schemas for diagnostic fields. Actual runtime output remains unverified.","references":{"cwe":[],"sources":[]},"check":{"mode":"pattern","selector":"boundary-errors"},"remediation":"Use a bounded public error schema without stack traces or internal diagnostic fields."},
+    {
+      "id":"SL-SPEC-001","title":"Authentication requirement not described","type":"spec-review","severity":"medium","languages":["markdown"],
+      "description":"Check whether selected SDD artifacts mention authentication for an identified API or sensitive operation. Missing text is a requirement gap, not a confirmed vulnerability.",
+      "references":{"cwe":[],"sources":[]},"check":{"mode":"pattern","selector":"spec-authentication"},
+      "remediation":"Describe the applicable authentication mechanism and its security acceptance criteria."
+    },
+    {
+      "id":"SL-SPEC-002","title":"Authorization requirement not described","type":"spec-review","severity":"medium","languages":["markdown"],
+      "description":"Check for authorization requirements around an identified API or sensitive operation.",
+      "references":{"cwe":[],"sources":[]},"check":{"mode":"pattern","selector":"spec-authorization"},
+      "remediation":"Define who may perform the operation and how object ownership or permissions are checked."
+    },
+    {
+      "id":"SL-SPEC-003","title":"Input constraints not described","type":"spec-review","severity":"medium","languages":["markdown"],
+      "description":"Check for both input type and string length requirements in selected SDD artifacts.",
+      "references":{"cwe":[],"sources":[]},"check":{"mode":"pattern","selector":"spec-input"},
+      "remediation":"Define input types, lengths and relevant bounds, including invalid-input handling."
+    },
+    {
+      "id":"SL-SPEC-004","title":"Sensitive data handling not described","type":"spec-review","severity":"medium","languages":["markdown"],
+      "description":"Check whether selected SDD artifacts address sensitive data or credential handling.",
+      "references":{"cwe":[],"sources":[]},"check":{"mode":"pattern","selector":"spec-sensitive-data"},
+      "remediation":"Describe secret storage, redaction and protection of sensitive input, output and logs."
+    },
+    {
+      "id":"SL-SPEC-005","title":"Safe error handling not described","type":"spec-review","severity":"medium","languages":["markdown"],
+      "description":"Check whether public error handling is described for the identified operation.",
+      "references":{"cwe":[],"sources":[]},"check":{"mode":"pattern","selector":"spec-errors"},
+      "remediation":"Define stable public errors and keep sensitive diagnostic details out of responses."
+    },
+    {
+      "id":"SL-SPEC-006","title":"Security acceptance criteria not described","type":"spec-review","severity":"low","languages":["markdown"],
+      "description":"Check whether selected artifacts explicitly describe security acceptance criteria.",
+      "references":{"cwe":[],"sources":[]},"check":{"mode":"pattern","selector":"spec-acceptance"},
+      "remediation":"Add security acceptance criteria for the operation's relevant controls and failure cases."
+    },
+    {
+      "id":"SL-SEC-003","title":"Potential unsafe HTML output","type":"code-review","severity":"medium",
+      "languages":["rust","typescript","javascript"],
+      "description":"Dynamic text appears to reach an explicit HTML output sink. Context and sanitization require human review; this is not proof of XSS.",
+      "references":{"cwe":["CWE-79"],"sources":["https://cwe.mitre.org/data/definitions/79.html"]},
+      "check":{"mode":"pattern","selector":"html-output"},
+      "remediation":"Prefer text output or context-appropriate escaping. Review any deliberate HTML sanitization before rendering dynamic markup."
+    },
+    {
+      "id":"SL-SEC-006","title":"Potential unsafe security configuration","type":"code-review","severity":"medium",
+      "languages":["rust","typescript","javascript","json","yaml"],
+      "description":"A listed security-sensitive setting has a plainly unsafe literal value. Runtime context and compensating controls are not inferred.",
+      "references":{"cwe":["CWE-295","CWE-1004"],"sources":["https://cwe.mitre.org/data/definitions/295.html","https://cwe.mitre.org/data/definitions/1004.html"]},
+      "check":{"mode":"pattern","selector":"unsafe-config"},
+      "remediation":"Enable certificate verification and HttpOnly cookie protection. Remove insecure mode from production configuration and confirm the intended environment."
+    },
+    {
+      "id":"SL-SEC-002","title":"Potential SQL string interpolation","type":"code-review","severity":"medium",
+      "languages":["rust","typescript","javascript"],
+      "description":"Interpolated SQL appears near a query or execute call in a bounded text window. This does not prove SQL injection or trace data across functions.",
+      "references":{"cwe":["CWE-89"],"sources":["https://cwe.mitre.org/data/definitions/89.html"]},
+      "check":{"mode":"pattern","selector":"sql-interpolation"},
+      "remediation":"Use parameterized queries and separate bound values. Validate identifiers using a fixed allowlist when parameters cannot represent them."
+    },
+    {
+      "id":"SL-SEC-004","title":"Potential shell command interpolation","type":"code-review","severity":"medium",
+      "languages":["rust","typescript","javascript"],
+      "description":"A shell command appears to contain interpolated text. Literal commands and direct argument-array APIs are outside this heuristic.",
+      "references":{"cwe":["CWE-78"],"sources":["https://cwe.mitre.org/data/definitions/78.html"]},
+      "check":{"mode":"pattern","selector":"shell-interpolation"},
+      "remediation":"Avoid a shell; invoke a fixed executable with separate arguments and validate arguments against the operation's intended inputs."
+    },
+    {
+      "id":"SL-SEC-001","title":"Potential hardcoded secret","type":"code-review","severity":"medium",
+      "languages":["rust","typescript","javascript"],
+      "description":"A credential-like name has a non-placeholder string literal. This heuristic does not prove the value is a live credential.",
+      "references":{"cwe":["CWE-798"],"sources":["https://cwe.mitre.org/data/definitions/798.html"]},
+      "check":{"mode":"pattern","selector":"hardcoded-secret"},
+      "remediation":"Read credentials from a secure configuration or secret management mechanism. Confirm validity and rotate exposed real credentials."
+    },
+    {
+      "id":"SL-SEC-005","title":"Potential detailed error disclosure","type":"code-review","severity":"medium",
+      "languages":["rust","typescript","javascript"],
+      "description":"An HTTP response appears to include a full error or debug representation. Server-only logging is not this check's target.",
+      "references":{"cwe":["CWE-209"],"sources":["https://cwe.mitre.org/data/definitions/209.html"]},
+      "check":{"mode":"pattern","selector":"error-disclosure"},
+      "remediation":"Return a stable public error and correlation identifier; retain diagnostic details only in access-controlled server logs."
+    }
+  ]
+}

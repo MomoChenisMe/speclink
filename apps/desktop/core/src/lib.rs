@@ -7,6 +7,7 @@ use std::path::Path;
 
 use speclink_core::workspace::Workspace;
 use speclink_fs::FsStore;
+pub mod security;
 
 pub mod cache;
 pub mod discussions;

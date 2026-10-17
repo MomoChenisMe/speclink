@@ -2487,3 +2487,20 @@ fn discuss_skill_carries_the_conclusion_bullets_rule() {
         }
     }
 }
+
+#[test]
+fn security_verify_skill_preserves_five_states_and_advisory_boundary() {
+    let body = skills::skill_body("verify").unwrap();
+    for status in [
+        "PASS",
+        "FINDING",
+        "NOT_VERIFIED",
+        "NOT_APPLICABLE",
+        "DISABLED",
+    ] {
+        assert!(body.contains(status), "missing {status}");
+    }
+    assert!(body.contains("does not create a verify/review ticket item"));
+    assert!(body.contains("security report <ID>"));
+    assert!(body.contains("If disabled with no report, add no section"));
+}

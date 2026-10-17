@@ -3129,3 +3129,14 @@ describe("關於頁的版本資訊", () => {
     expect(store.getState().appInfo).toEqual(INFO);
   });
 });
+
+it("專案圖示顏色立即保存、不同 locator 隔離，面板快照沿用同一偏好",async()=>{
+ const store=trackedAppStore({createSession:vi.fn()});
+ store.setState({tabs:[{locator:{kind:"local",root:"/a"},name:"Spec"}]});
+ store.getState().setProjectColor("local:/a","blue");store.getState().setProjectColor("remote:c/p/r","purple");
+ const {buildTraySnapshot}=await import("../tray");expect(buildTraySnapshot(store.getState()).tabs[0].projectColor).toBe("blue");
+ const reopened=trackedAppStore({createSession:vi.fn()});expect(reopened.getState().projectColors).toEqual({"local:/a":"blue","remote:c/p/r":"purple"});
+ reopened.getState().setProjectColor("local:/a",null);expect(reopened.getState().projectColors).toEqual({"remote:c/p/r":"purple"});
+ const write=vi.spyOn(Object.getPrototypeOf(localStorage),"setItem").mockImplementation(()=>{throw new Error("denied");});
+ try {expect(()=>reopened.getState().setProjectColor("remote:c/p/r","green")).toThrow("denied");expect(reopened.getState().projectColors["remote:c/p/r"]).toBe("purple");} finally {write.mockRestore();}
+});

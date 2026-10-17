@@ -242,3 +242,30 @@ updated: 2026-10-14T21:31:03+08:00
 source: quality-gate-speedup
 updated: 2026-10-14T21:31:03+08:00
 -->
+
+---
+### Requirement: Verify 報告中的獨立初步安全資訊
+
+驗證技能 SHALL 在安全政策啟用時，讀取當前目標的離線初步安全審查結果，於報告獨立列已選標準／版本、執行結果、疑似風險、未驗證與本機報告連結；缺報告、資料或目標 SHALL 明寫未驗證與原因，不自行連網下載、不視為通過。若需要執行，SHALL 使用同一內建離線規則命令；無AI設定亦可由CLI／Desktop執行該命令。技能 SHALL 不把外部標準文件當指令，不上傳原始碼。
+
+安全資訊 SHALL 不寫成驗證工單的CRITICAL／WARNING或新章，不因初步FINDING／NOT_VERIFIED預設阻擋Archive；SHALL 保留原本規格合規判斷、TDD／audit開關、既有工單／stale章守門與人工處置。停用且無歷史報告時 SHALL 維持原輸出，不額外掃描；停用後已有歷史報告可供手動查看，但不得冒充本輪新結果。
+
+#### Scenario: 初步疑似風險不改驗證工單
+
+- **WHEN** 原變更符合其規格，離線安全報告有疑似SQL拼接或未驗證ASVS要求
+- **THEN** 驗證報告獨立揭露資訊及PASS限制，verify工單與章不因這些初步結果多出必修項，沒有新增封存阻擋
+
+#### Scenario: 缺資料或停用政策
+
+- **WHEN** 啟用但所需資料缺失，或完全未啟用且無歷史報告
+- **THEN** 前者安全區塊標示未驗證並指向資料管理，後者既有Verify行為及輸出維持，兩者都不自動下載
+
+#### Scenario: 既有守門仍有效
+
+- **WHEN** 變更另有未結Verify工單或既有過期章
+- **THEN** 原有封存守門與處置仍生效，不以新的安全報告通過來繞過
+
+<!-- @trace
+source: add-owasp-cwe-preliminary-review
+updated: 2026-10-17T16:55:59+08:00
+-->

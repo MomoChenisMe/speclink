@@ -31,6 +31,7 @@ pub mod connections;
 pub mod event_manager;
 mod portable;
 mod fs_actions;
+mod security_commands;
 pub mod remote;
 pub mod tray;
 mod watch;
@@ -42,6 +43,75 @@ use std::path::PathBuf;
 
 use serde_json::Value;
 use tauri::{Emitter, Manager};
+
+#[tauri::command]
+async fn security_data_list(
+) -> Result<speclink_host::security_data::StandardDataList, speclink_desktop_core::security::JobError>
+{
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = speclink_host::context::security_data_dir()
+            .map_err(|_| speclink_desktop_core::security::JobError::directory_unavailable())?;
+        speclink_desktop_core::security::list_data_at(&path)
+    })
+    .await
+    .map_err(|_| speclink_desktop_core::security::JobError::worker_failed())?
+}
+
+#[tauri::command]
+fn security_data_start(
+    app: tauri::AppHandle,
+    jobs: tauri::State<'_, speclink_desktop_core::security::SecurityJobs>,
+    request: speclink_desktop_core::security::DataRequest,
+) -> Result<speclink_desktop_core::security::JobTicket, speclink_desktop_core::security::JobError> {
+    let path = speclink_host::context::security_data_dir()
+        .map_err(|_| speclink_desktop_core::security::JobError::directory_unavailable())?;
+    let progress_app = app.clone();
+    jobs.start_data(
+        path,
+        request,
+        move |p| {
+            let _ = progress_app.emit("security-progress", p);
+        },
+        move |p| {
+            let _ = app.emit("security-completed", p);
+        },
+    )
+}
+
+#[tauri::command]
+async fn security_data_wait(
+    jobs: tauri::State<'_, speclink_desktop_core::security::SecurityJobs>,
+    job_id: String,
+    project_key: String,
+) -> Result<Value, speclink_desktop_core::security::JobError> {
+    let jobs = jobs.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || jobs.wait(&job_id, &project_key))
+        .await
+        .map_err(|_| speclink_desktop_core::security::JobError::worker_failed())?
+}
+
+#[tauri::command]
+fn security_cancel(
+    jobs: tauri::State<'_, speclink_desktop_core::security::SecurityJobs>,
+    job_id: String,
+    project_key: String,
+) -> Result<bool, speclink_desktop_core::security::JobError> {
+    jobs.cancel(&job_id, &project_key)
+}
+
+#[tauri::command]
+async fn security_remember_policy(
+    key: String,
+    policy: speclink_core::security::policy::SecurityPolicy,
+) -> Result<(), speclink_desktop_core::security::JobError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = speclink_host::context::security_data_dir()
+            .map_err(|_| speclink_desktop_core::security::JobError::directory_unavailable())?;
+        speclink_desktop_core::security::remember_policy_at(&path, &key, &policy)
+    })
+    .await
+    .map_err(|_| speclink_desktop_core::security::JobError::worker_failed())?
+}
 
 /// 關於頁的版本資訊（desktop-about-page design D1）：app 版號由殼帶入，其餘由 desktop-core 回齊。
 #[tauri::command]
@@ -658,6 +728,7 @@ async fn write_workflow_config(
     tdd: bool,
     audit: bool,
     worktree: bool,
+    security_patch: Option<String>,
 ) -> Result<(), String> {
     let fields = speclink_desktop_core::settings::WorkflowPolicyFields {
         locale,
@@ -667,7 +738,11 @@ async fn write_workflow_config(
         worktree,
     };
     tauri::async_runtime::spawn_blocking(move || {
-        speclink_desktop_core::settings::write_workflow_fields_at(&root, &fields)
+        speclink_desktop_core::settings::write_workflow_fields_with_security_at(
+            &root,
+            &fields,
+            security_patch.as_deref(),
+        )
     })
     .await
     .map_err(|e| format!("write_workflow_config worker failed: {e}"))?
@@ -1191,6 +1266,7 @@ async fn remote_write_workflow_config(
     tdd: bool,
     audit: bool,
     expected_revision: u64,
+    security_patch: Option<String>,
 ) -> Result<u64, remote::RemoteSettingsError> {
     let fields = speclink_desktop_core::settings::WorkflowPolicyFields {
         locale,
@@ -1201,7 +1277,12 @@ async fn remote_write_workflow_config(
         ..Default::default()
     };
     with_remote_settings(app, connection_id, project, repo, move |ws, credentials| {
-        ws.write_workflow_fields(credentials, &fields, expected_revision)
+        ws.write_workflow_fields_with_security(
+            credentials,
+            &fields,
+            security_patch.as_deref(),
+            expected_revision,
+        )
     })
     .await
 }
@@ -1905,6 +1986,7 @@ pub fn run() {
     let mut context = tauri::generate_context!();
     let windows = portable::windows(context.config_mut(), data);
     let builder = tauri::Builder::default()
+        .manage(speclink_desktop_core::security::SecurityJobs::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
@@ -1967,6 +2049,19 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            security_commands::security_inspect,
+            security_commands::security_start,
+            security_commands::security_prepare,
+            security_commands::security_wait,
+            security_commands::security_report,
+            security_commands::security_report_export,
+            security_commands::security_report_summary,
+            security_commands::security_reveal,
+            security_data_list,
+            security_data_start,
+            security_data_wait,
+            security_cancel,
+            security_remember_policy,
             portable_mode,
             app_info,
             cli_install_probe,

@@ -397,6 +397,7 @@ export interface ChangeListPayload {
 
 /** 元件透過此介面取得資料與觸發動詞——不知道背後是 Tauri 還是 HTTP。 */
 export interface SpeclinkDataSource {
+  securityReview?: import("./security").SecurityReviewAdapter;
   /** 清單項連頂層 planError 同一次 IO 回來（add-change-plan-desktop design D1）。 */
   listChanges(): Promise<ChangeListPayload>;
   listSpecs(): Promise<SpecItem[]>;

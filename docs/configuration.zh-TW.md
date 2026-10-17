@@ -205,3 +205,11 @@ tools:
 未設定 locale 與 spec_locale 時，分別使用執行 Speclink 的主機語言：中文對應 tw、日文對應 ja，其餘或無法偵測時為 en。明示設定及環境覆寫優先；舊 spec_locale:auto 才跟隨 locale。Remote 使用 Server 的作業系統，不採 Client 或 UI 語言。偵測不回寫設定。
 
 `speclink workflow-config languages --json` 只讀查詢正典設定與主機預設，不套用環境覆寫，回傳具體 locale 及 specLocale；舊 Server 未提供語言資料時會明示要求升級，show 仍可使用。
+
+## <a id="security-review"></a>OWASP / CWE 初步安全審查
+
+安全政策使用同一份 openspec/config.yaml 的 security_verification，缺席預設停用，與 audit／tdd／worktree 獨立。Desktop 位於既有「產出政策」的 audit 下方；CLI 用 `speclink workflow-config security --stdin [--dry-run]` 部分更新，保留未知欄位。四個標準可各自關閉；Top 10 2025 可單獨使用。標準資料由使用者在應用程式設定下載到裝置資料目錄，審查不自動連網。詳見[操作、授權與維護說明](security-review.zh-TW.md)。
+
+## <a id="project-icon-color"></a>專案圖示底色
+
+在專案設定的「專案圖示底色」選擇預設、青綠、藍、紫、粉紅、橘或綠色。選取後立即儲存在本裝置，主視窗與系統匣同步：自訂色票選取時為深底白字，未選取時底色混入50%白色並搭配同色系深色字。關閉或重新啟動仍保留；「預設」恢復原樣式。Local／Remote 依既有專案識別分開保存，不寫入 openspec/config.yaml 或 Remote政策，檢視者也能設定自己的顏色。無法寫入本機儲存時顯示錯誤，保留上次顏色。

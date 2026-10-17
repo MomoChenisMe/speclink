@@ -44,6 +44,7 @@ pub struct WorkflowSettings {
     pub tdd: bool,
     pub audit: bool,
     pub worktree: bool,
+    pub security_verification: speclink_core::security::policy::SecurityPolicy,
     pub context: Option<String>,
     pub rules: BTreeMap<String, Vec<String>>,
     /// 「審查規則」頁的現值；未寫 review 時為預設（extend 與三個空清單）。
@@ -134,6 +135,7 @@ fn workflow_settings_from_text(
                 tdd: cfg.tdd.unwrap_or(false),
                 audit: cfg.audit.unwrap_or(false),
                 worktree: cfg.worktree.unwrap_or(false),
+                security_verification: cfg.security(),
                 context: cfg.context.clone(),
                 rules: cfg.rules.clone(),
                 review: cfg.review(),
@@ -150,6 +152,7 @@ fn workflow_settings_from_text(
             tdd: false,
             audit: false,
             worktree: false,
+            security_verification: Default::default(),
             context: None,
             rules: Default::default(),
             review: ReviewConfig::default(),
@@ -369,6 +372,21 @@ pub fn rewrite_workflow_fields_text(
     rewrite_workflow_fields_text_for(original, fields, "config.yaml")
 }
 
+/// Apply both policy forms before a single local write or remote CAS commit.
+/// An absent patch preserves the security block for older clients.
+pub fn rewrite_workflow_fields_with_security_text(
+    original: &str,
+    fields: &WorkflowPolicyFields,
+    security_patch: Option<&str>,
+) -> Result<String, String> {
+    let text = rewrite_workflow_fields_text(original, fields)?;
+    match security_patch {
+        Some(patch) => speclink_core::security::policy::patch_workflow_security(&text, patch)
+            .map_err(|e| single_line(&e.to_string())),
+        None => Ok(text),
+    }
+}
+
 fn rewrite_workflow_fields_text_for(
     original: &str,
     fields: &WorkflowPolicyFields,
@@ -398,11 +416,19 @@ pub fn write_workflow_fields_at(
     root: &Path,
     fields: &speclink_core::config::WorkflowPolicyFields,
 ) -> Result<(), String> {
+    write_workflow_fields_with_security_at(root, fields, None)
+}
+
+pub fn write_workflow_fields_with_security_at(
+    root: &Path,
+    fields: &WorkflowPolicyFields,
+    security_patch: Option<&str>,
+) -> Result<(), String> {
     let ws = discover(root)?;
     let file = format!("{}/config.yaml", ws.spec_dir_name);
     let path = workflow_config_path(&ws);
     let original = read_opt(&path).unwrap_or_default();
-    let new_text = rewrite_workflow_fields_text_for(&original, fields, &file)?;
+    let new_text = rewrite_workflow_fields_with_security_text(&original, fields, security_patch)?;
     let worktree_was_on = WorkflowConfig::from_text(Some(&original))
         .ok()
         .and_then(|c| c.worktree)
@@ -415,6 +441,11 @@ pub fn write_workflow_fields_at(
     let reread = read_opt(&path)
         .ok_or_else(|| format!("{file}: verify after write failed: file unreadable"))?;
     verify_workflow_text(&reread, fields, &file, "verify after write")?;
+    if reread != new_text {
+        return Err(format!(
+            "{file}: verify after write failed: content changed"
+        ));
+    }
     if worktree_was_on != fields.worktree {
         speclink_core::init::update(&ws.root, false).map_err(|e| {
             format!(
@@ -640,6 +671,59 @@ fn single_line(msg: &str) -> String {
 mod tests {
     use super::*;
     use crate::testfixture::FixtureRoot;
+
+    #[test]
+    fn security_policy_local_remote_shared_patch_is_atomic_and_preserves_unknown() {
+        let fx = FixtureRoot::new("security-policy");
+        let original = "schema: spec-driven\nlocale: tw\ntdd: true\nsecurity_verification:\n  # future comment\n  future_option: keep\n";
+        fx.write("openspec/config.yaml", original);
+        let fields = WorkflowPolicyFields {
+            locale: Some("tw".into()),
+            tdd: true,
+            audit: true,
+            ..Default::default()
+        };
+        let patch = "enabled: true\nscope: off\nstandards:\n  owasp_top10: {enabled: true, version: '2025'}\n";
+        let remote =
+            rewrite_workflow_fields_with_security_text(original, &fields, Some(patch)).unwrap();
+        write_workflow_fields_with_security_at(fx.root(), &fields, Some(patch)).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(fx.root().join("openspec/config.yaml")).unwrap(),
+            remote
+        );
+        assert!(remote.contains("  # future comment\n  future_option: keep\n"));
+        let snapshot = read_settings_at(fx.root()).unwrap();
+        assert!(snapshot.workflow.security_verification.enabled);
+        assert!(snapshot.workflow.audit && snapshot.workflow.tdd);
+        assert_eq!(
+            snapshot
+                .workflow
+                .security_verification
+                .standards
+                .owasp_top10
+                .version
+                .as_deref(),
+            Some("2025")
+        );
+        let old_client = rewrite_workflow_fields_text(&remote, &fields).unwrap();
+        assert_eq!(old_client, remote);
+        for bad in [
+            "enabled: 'true'",
+            "standards: {owasp_asvs: {level: L4}}",
+            "unknown: true",
+        ] {
+            assert!(write_workflow_fields_with_security_at(fx.root(), &fields, Some(bad)).is_err());
+            assert_eq!(
+                std::fs::read_to_string(fx.root().join("openspec/config.yaml")).unwrap(),
+                remote
+            );
+        }
+        assert!(
+            !read_workflow_settings_from_text(None)
+                .security_verification
+                .enabled
+        );
+    }
 
     // --- read_settings_at：三態讀取（檔案缺席／可解析／解析失敗） ---
 
