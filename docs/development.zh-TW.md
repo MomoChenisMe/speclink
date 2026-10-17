@@ -173,6 +173,8 @@ git push origin desktop-v0.9.0
 
 `desktop-v*` 不觸發原本 `v*` 的完整 Release，也不發布 npm 或 Docker；桌面 Release 不取代儲存庫既有的 Latest Release。原本的簽章發布流程維持不變。
 
+一般 CI 與 Desktop Build 是兩個工作流程。push 或 PR 若只有明確列出的桌面發布設定、版號／CI 範圍腳本、相應測試與文件變更，只執行 `Workflow and scripts checks`，不啟動應用程式建置、smoke、React／Rust 測試、Docker 或 PostgreSQL。混入程式碼、相依套件或未列出的檔案時，仍跑原有完整 CI；無法判斷範圍時也跑完整 CI。桌面 Tag 本身仍會執行真正的四平台打包。
+
 ## <a id="unsigned"></a>下載安裝檔的未簽章放行
 
 桌面安裝檔都在 [Releases](https://github.com/MomoChenisMe/speclink/releases/latest)：

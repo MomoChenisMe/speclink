@@ -173,6 +173,8 @@ The workflow uses the built-in `GITHUB_TOKEN`; only the release job receives `co
 
 `desktop-v*` does not trigger the existing full `v*` Release, npm publishing, or Docker publishing. Desktop releases do not replace the repository's existing Latest Release. The original signed release workflow is unchanged.
 
+The general CI and Desktop Build are separate workflows. A push or PR that changes only the explicitly listed desktop delivery configuration, version/CI scope scripts, related tests, and documentation runs `Workflow and scripts checks` only. It does not start application builds, smoke tests, React/Rust tests, Docker, or PostgreSQL. Any source code, dependency, or unlisted file change still runs the original full CI; an unknown change scope also runs full CI. Desktop tags continue to run the actual four-platform packaging pipeline.
+
 ## <a id="unsigned"></a>Open unsigned installers
 
 The desktop installers are on [Releases](https://github.com/MomoChenisMe/speclink/releases/latest):
