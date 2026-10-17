@@ -598,34 +598,9 @@ fn sync_directory(path: &Path) -> Result<()> {
 }
 
 fn atomic_replace(source: &Path, destination: &Path) -> Result<()> {
-    #[cfg(windows)]
-    {
-        if destination.try_exists()? {
-            use std::os::windows::ffi::OsStrExt;
-            let dst: Vec<u16> = destination
-                .as_os_str()
-                .encode_wide()
-                .chain(Some(0))
-                .collect();
-            let src: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
-            let result = unsafe {
-                windows_sys::Win32::Storage::FileSystem::ReplaceFileW(
-                    dst.as_ptr(),
-                    src.as_ptr(),
-                    std::ptr::null(),
-                    0,
-                    std::ptr::null(),
-                    std::ptr::null(),
-                )
-            };
-            ensure!(
-                result != 0,
-                "storage_error: atomic pointer replace: {}",
-                std::io::Error::last_os_error()
-            );
-            return Ok(());
-        }
-    }
+    // Rust's rename replaces an existing file on Windows as well as Unix.
+    // ReplaceFileW can briefly remove the destination name during replacement,
+    // making a concurrent inventory/read incorrectly report missing data.
     fs::rename(source, destination).context("storage_error: atomic pointer replace")
 }
 
@@ -1452,6 +1427,24 @@ mod tests {
     }
 
     #[test]
+    fn security_data_pointer_replace_preserves_open_reader_and_failed_update() {
+        let dir = TestDirectory::new();
+        let current = dir.0.join("current.json");
+        let next = dir.0.join("next.json");
+        write_new(&current, b"old", &|| false).unwrap();
+        write_new(&next, b"new", &|| false).unwrap();
+        let mut reader = open_regular(&current, false).unwrap();
+        atomic_replace(&next, &current).unwrap();
+        assert_eq!(read_limited(&current, 4096).unwrap(), b"new");
+        let mut old = Vec::new();
+        reader.read_to_end(&mut old).unwrap();
+        assert_eq!(old, b"old");
+        assert!(!next.exists());
+        assert!(atomic_replace(&next, &current).is_err());
+        assert_eq!(read_limited(&current, 4096).unwrap(), b"new");
+    }
+
+    #[test]
     fn security_data_read_during_replacement_never_mixes_generations() {
         let dir = TestDirectory::new();
         let repository = FsSecurityData::new(&dir.0).unwrap();
@@ -1474,7 +1467,7 @@ mod tests {
                 let value = repository
                     .read(StandardId::OwaspAsvs, "5.0.0")
                     .unwrap()
-                    .unwrap();
+                    .expect("an installed version must stay visible during replacement");
                 assert!(matches!(
                     value.snapshot.items[0].description.as_str(),
                     "first" | "second"
