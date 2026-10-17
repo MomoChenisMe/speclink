@@ -147,7 +147,7 @@ code:
 ---
 ### Requirement: CI 執行完整測試
 
-主 CI SHALL 在三個作業系統（Windows、macOS、Linux）上執行 `scripts` 測試面、`packages/ui`、`apps/desktop`、`apps/server-web` 測試、Server Web production build 與 `cargo test --workspace`，而非僅 build 與 smoke；測試與 Web build 步驟 SHALL NOT 設定 `continue-on-error`。`scripts` 測試面守的是設定檔本身的契約（workflow 步驟順序、release 產物組裝、簽章閘門），SHALL 排在其他測試面之前，且其執行方式 SHALL 相容於本 workflow 釘選的 Node 版本與三平台的預設 shell——glob 於傳入 Node 之前完成展開。Rust 測試 SHALL 在 Web production build 後執行；既有 Node SDK 與其他 delivery gate SHALL 保持啟用。
+主 CI 遇到應用程式碼、相依套件、未列明的路徑變更或無法判斷變更範圍時，SHALL 在三個作業系統（Windows、macOS、Linux）上執行 `scripts` 測試面、`packages/ui`、`apps/desktop`、`apps/server-web` 測試、Server Web production build 與 `cargo test --workspace`，而非僅 build 與 smoke；測試與 Web build 步驟 SHALL NOT 設定 `continue-on-error`。`scripts` 測試面守的是設定檔本身的契約（workflow 步驟順序、release 產物組裝、簽章閘門），SHALL 排在其他測試面之前，且其執行方式 SHALL 相容於本 workflow 釘選的 Node 版本與三平台的預設 shell——glob 於傳入 Node 之前完成展開。Rust 測試 SHALL 在 Web production build 後執行；既有 Node SDK 與其他 delivery gate SHALL 保持啟用。
 
 #### Scenario: 測試失敗使 CI 紅燈
 
@@ -156,8 +156,23 @@ code:
 
 #### Scenario: push 觸發完整測試
 
-- **WHEN** push 或 pull request 觸發主 CI
+- **WHEN** push 或 pull request 觸發主 CI，且變更包含程式碼、相依套件、未列明的路徑，或缺少可用的差異資訊
 - **THEN** workflow 依序完成 `scripts` 測試面、三個 React workspace 測試、Server Web production build 與 Rust workspace 測試，全數通過才回報成功
+
+#### Scenario: 純桌面發布設定變更僅執行設定檢查
+
+- **WHEN** push 或 pull request 的差異只有明確列出的 Desktop Build 工作流程、版號與 CI 範圍腳本、相關測試及文件
+- **THEN** CI 執行全部 scripts 測試；成功後回報成功，應用程式三平台建置與測試、Phase 3、Docker 與 PostgreSQL 工作標示略過，SHALL NOT 宣稱這些測試已執行
+
+#### Scenario: 混合變更仍須完整驗證
+
+- **WHEN** 桌面發布設定變更同時含應用程式碼、相依套件或其他未列出的檔案，包含重新命名至未列出的路徑
+- **THEN** CI 執行原有完整驗證，SHALL NOT 因包含桌面發布設定就略過
+
+#### Scenario: 無法取得差異時保留完整驗證
+
+- **WHEN** 沒有有效的比較起點、無變更資訊或讀取 Git 差異失敗
+- **THEN** CI 執行完整驗證，不將未知範圍判定為僅設定變更
 
 #### Scenario: scripts 測試面在釘選 Node 版本上實際執行
 

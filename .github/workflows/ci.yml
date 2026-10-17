@@ -6,7 +6,33 @@ on:
   pull_request:
 
 jobs:
+  changes:
+    name: Workflow and scripts checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      full: ${{ steps.scope.outputs.full }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+      - name: Decide application test scope
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/ci/ci-scope.mjs
+      - name: Test (scripts)
+        shell: bash
+        run: node --test scripts/*.test.mjs scripts/*/*.test.mjs
+
   build-and-smoke:
+    needs: [changes]
+    if: needs.changes.outputs.full == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -100,6 +126,8 @@ jobs:
 
   # Phase 3 收官劇本獨立計時、獨立失敗現場；不藏在 workspace 單元測試裡。
   phase3-e2e:
+    needs: [changes]
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-latest
     env:
       PHASE3_E2E_ARTIFACT_DIR: target/phase3-e2e-artifacts
@@ -155,6 +183,8 @@ jobs:
   # /healthz 與 /readyz 皆 2xx、logs 印 setup token、壞組態 fail closed 以非零
   # exit code 結束，四件事都驗到才算。兩份 compose 檔的語法驗證也掛在這裡。
   docker-smoke:
+    needs: [changes]
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -261,6 +291,8 @@ jobs:
   # above. There, with no SPECLINK_TEST_POSTGRES_URL set, those suites report
   # `skipped` and the matrix stays green on machines without a database.
   postgres-store:
+    needs: [changes]
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
