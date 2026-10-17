@@ -158,7 +158,9 @@ npm --prefix crates/adapters/speclink-node test         #           再跑測試
 
 `Desktop Build` 保留手動建置，並支援推送 `desktop-vX.Y.Z` 後自動建置與發布。先將工作流程變更合併到 `main`；Tag 指向的提交必須包含這份工作流程。Tag 版本須同時等於 `apps/desktop/src-tauri/tauri.conf.json` 的 `version` 與 `Cargo.toml` 的 `[workspace.package].version`，否則在建置前停止。改版時也須提交對應的 `Cargo.lock` 更新。
 
-以下以目前的 `0.9.0` 為例；每次發布應使用尚未存在且與原始碼相同的版號：
+亦支援預先發行版，例如 `desktop-v0.9.0-build.m1`；App 與 CLI 也須使用完整的 `0.9.0-build.m1` 版號。含預先發行版尾碼的 Tag 會將 GitHub Release 標示為預先發行版。
+
+以下以正式版 `0.9.0` 為例；每次發布應使用尚未存在且與原始碼相同的版號：
 
 ```bash
 git switch main

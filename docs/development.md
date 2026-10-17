@@ -158,7 +158,9 @@ npm --prefix crates/adapters/speclink-node test         #           then run the
 
 `Desktop Build` supports manual builds and automatic releases on `desktop-vX.Y.Z` tags. Merge the workflow changes into `main` first; the tagged commit must include this workflow. The tag version must match both `apps/desktop/src-tauri/tauri.conf.json` (`version`) and `Cargo.toml` (`[workspace.package].version`), or the workflow stops before building. Commit the corresponding `Cargo.lock` changes when bumping the version.
 
-This example uses the current version, `0.9.0`. Each release needs a new tag that matches the source version:
+Prerelease tags such as `desktop-v0.9.0-build.m1` are also supported. Both App and CLI must use the full `0.9.0-build.m1` version. Tags with a prerelease suffix create a GitHub prerelease.
+
+This example uses the stable version `0.9.0`. Each release needs a new tag that matches the source version:
 
 ```bash
 git switch main

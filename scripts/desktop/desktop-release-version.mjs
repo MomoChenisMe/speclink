@@ -3,8 +3,8 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export function desktopReleaseVersion(tag, appVersion, cliVersion) {
-  const match = /^desktop-v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/.exec(tag);
-  if (!match) throw new Error('桌面發布 Tag 必須使用 desktop-vX.Y.Z，例如 desktop-v0.9.0');
+  const match = /^desktop-v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?)$/.exec(tag);
+  if (!match) throw new Error('桌面發布 Tag 必須使用 desktop-vX.Y.Z，可加預先發行版尾碼，例如 desktop-v0.9.0-build.m1');
   const version = match[1];
   if (appVersion !== version) throw new Error(`App 版本 ${appVersion} 與 Tag 版本 ${version} 不一致`);
   if (cliVersion !== version) throw new Error(`CLI 版本 ${cliVersion} 與 Tag 版本 ${version} 不一致`);
