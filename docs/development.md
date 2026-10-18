@@ -162,6 +162,8 @@ Prerelease tags such as `desktop-v0.9.0-build.m1` are also supported. Both App a
 
 A four-part tag `desktop-vX.Y.Z.N` maps to the valid App/CLI version `X.Y.Z-build.N`: for example, `desktop-v0.10.0.1` maps to `0.10.0-build.1`. Update the App, Cargo.toml, and Cargo.lock to that version first. The GitHub release retains the four-part tag, uses the actual App version for asset names, and is marked as a prerelease. Build numbers with leading zeros are rejected.
 
+Both manual and tag runs wait for the latest push CI on the default branch for the exact same commit before starting the four-platform build. A different SHA, a pull request run, or an older successful run cannot substitute. Failed, cancelled, or skipped CI stops the workflow immediately. Missing or unfinished CI is checked every 30 seconds for up to 40 minutes; lookup errors and timeout also block the build, with no bypass. Only a lightweight preparation job runs while waiting; the four platform jobs are not allocated. An unmerged feature branch cannot bypass this check through a manual build. Changes to the CI gate scripts run full CI.
+
 This example uses the stable version `0.9.0`. Each release needs a new tag that matches the source version:
 
 ```bash

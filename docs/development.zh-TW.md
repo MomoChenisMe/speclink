@@ -162,6 +162,8 @@ npm --prefix crates/adapters/speclink-node test         #           再跑測試
 
 四段 Tag `desktop-vX.Y.Z.N` 會對應合法的 App／CLI 版本 `X.Y.Z-build.N`，例如 `desktop-v0.10.0.1` 對應 `0.10.0-build.1`；App、Cargo.toml 與 Cargo.lock 必須先同步此版本。GitHub Release 保留四段 Tag，附件使用實際 App 版號，並標示為預先發行版；不接受含前導零的序號。
 
+手動與 Tag 流程都先等待同一個 commit 在預設主分支的最新 push CI 通過，才啟動四平台建置；其他 SHA、PR 或較早成功的 CI 不能替代。CI 失敗、取消或遭略過，流程立即停止；尚未出現或尚未完成時每 30 秒查詢，最多等待 40 分鐘。查詢失敗或逾時也停止，不提供略過入口。等待期間只有輕量準備工作執行，四平台工作尚未配置。純功能分支若尚未合回主分支，不能用手動建置繞過此檢查。建置檢查腳本的變更會執行完整 CI。
+
 以下以正式版 `0.9.0` 為例；每次發布應使用尚未存在且與原始碼相同的版號：
 
 ```bash

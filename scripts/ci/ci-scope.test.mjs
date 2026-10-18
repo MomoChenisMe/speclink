@@ -11,7 +11,7 @@ test('純 Desktop 發布設定與文件只跑設定檢查，混入任何程式�
   const release = ['.github/workflows/desktop-build.yml', 'scripts/desktop/desktop-release-version.mjs', 'docs/development.md'];
   assert.equal(requiresFullCI(release), false);
   assert.equal(requiresFullCI(['.github/workflows/ci.yml', 'scripts/ci/ci-scope.mjs', 'scripts/ci/ci-scope.test.mjs']), false);
-  for (const file of ['apps/server-web/src/main.tsx', 'apps/desktop/src/App.tsx', 'crates/engine/speclink-core/src/lib.rs', 'Cargo.lock', 'package.json', '.github/workflows/release.yml', 'scripts/desktop/desktop-sidecar.mjs', 'unknown.txt']) {
+  for (const file of ['apps/server-web/src/main.tsx', 'apps/desktop/src/App.tsx', 'crates/engine/speclink-core/src/lib.rs', 'Cargo.lock', 'package.json', '.github/workflows/release.yml', 'scripts/desktop/desktop-sidecar.mjs', 'scripts/desktop/desktop-ci-gate.mjs', 'scripts/desktop/desktop-ci-gate.test.mjs', 'unknown.txt']) {
     assert.equal(requiresFullCI([...release, file]), true, file);
   }
   assert.equal(requiresFullCI([]), true, '沒有變更資訊時保守執行完整 CI');

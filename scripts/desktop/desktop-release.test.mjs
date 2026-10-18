@@ -77,6 +77,17 @@ test('保留手動建置，僅桌面 tag 可發布，四平台全部成功才執
   assert.doesNotMatch(publish, /always\(\)|continue-on-error/);
 });
 
+test('手動與 Tag 建置都必須先通過同一 SHA 的主 CI，沒有略過入口', () => {
+  const prepare = workflow.slice(workflow.indexOf('\n  prepare:'), workflow.indexOf('\n  desktop:'));
+  assert.match(prepare, /actions: read/);
+  assert.match(prepare, /timeout-minutes: 45/);
+  assert.match(prepare, /GH_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.match(prepare, /CI_BRANCH: \$\{\{ github\.event\.repository\.default_branch \}\}/);
+  const gate = prepare.indexOf('run: node scripts/desktop/desktop-ci-gate.mjs');
+  assert.ok(gate !== -1 && gate < prepare.indexOf('run: node scripts/desktop/desktop-release-version.mjs'));
+  assert.doesNotMatch(prepare, /continue-on-error:|\n\s+if:/);
+});
+
 test('只發布五種桌面附件，缺任一檔案失敗，保留免私鑰建置方式', () => {
   const publish = workflow.slice(workflow.indexOf('\n  release:'));
   for (const suffix of ['universal.dmg', 'x64-setup.exe', 'amd64.AppImage', 'aarch64.AppImage', 'x64-portable.zip']) {

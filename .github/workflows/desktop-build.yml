@@ -18,6 +18,10 @@ concurrency:
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -25,6 +29,11 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 20
+      - name: Wait for successful CI on the same commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_BRANCH: ${{ github.event.repository.default_branch }}
+        run: node scripts/desktop/desktop-ci-gate.mjs
       - name: Check desktop tag and source versions
         id: version
         run: node scripts/desktop/desktop-release-version.mjs
