@@ -1536,6 +1536,8 @@ mod tests {
         let generation = base.join("generations").join(&first.generation);
         let pin = open_regular(&generation.join(".pin"), false).unwrap();
         pin.lock_shared().unwrap();
+        // A concurrent subprocess can inherit this handle until exec closes it.
+        let inherited_pin = pin.try_clone().unwrap();
         let yesterday = std::time::SystemTime::now() - std::time::Duration::from_secs(90_000);
         std::fs::File::open(&generation)
             .unwrap()
@@ -1560,9 +1562,12 @@ mod tests {
             !stale.exists(),
             "crashed old staging is cleaned under the version lock"
         );
+        // Explicit unlock also releases the lock held through inherited handles.
+        pin.unlock().unwrap();
         drop(pin);
         cleanup_stale(&base, &second.generation).unwrap();
         assert!(!generation.exists());
+        drop(inherited_pin);
         std::fs::write(
             base.join("generations")
                 .join(second.generation)
