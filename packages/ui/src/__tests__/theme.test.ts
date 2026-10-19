@@ -138,18 +138,17 @@ const scannedSources = () =>
   scanSources(SCAN_ROOTS, [".ts", ".tsx", ".css"]).map(([file, source]) => [file, stripComments(source)] as const);
 
 describe("共用 semantic theme 抽取", () => {
-  it.each(["teal", "blue", "purple", "pink", "orange", "green"])("專案圖示 %s 色票由共用主題定義，未選取時淡化 50%%", (color) => {
+  it.each([
+    ["default", "#374151", "#E5E7EB"], ["teal", "#0F766E", "#99F6E4"],
+    ["blue", "#1D4ED8", "#BFDBFE"], ["purple", "#9400D3", "#DA70D6"],
+    ["pink", "#BE185D", "#FBCFE8"], ["orange", "#C2410C", "#FED7AA"],
+    ["green", "#15803D", "#BBF7D0"],
+  ])("專案圖示 %s 使用固定深淺色票", (color, deep, light) => {
     const css = themeCss();
-    const root = css.match(/:root\s*\{([^}]+)\}/)?.[1] ?? "";
-    for (const suffix of ["", "-hover", "-muted-foreground"]) {
-      expect(root).toMatch(new RegExp(`--project-${color}${suffix}: oklch\\([^;]+\\);`));
-    }
-    expect(root).toContain(`--project-${color}-muted: color-mix(in srgb, var(--project-${color}) 50%, white);`);
-    expect(root).toContain("--project-foreground: white;");
-    for (const name of ["foreground", color, `${color}-hover`, `${color}-muted`, `${color}-muted-foreground`]) {
-      expect(css).toContain(`--color-project-${name}: var(--project-${name});`);
-    }
-    // 固定色票由根元素繼承，明示／系統深色不另覆寫。
+    expect(css).toContain(`--project-${color}: ${deep};`);
+    expect(css).toContain(`--project-${color}-muted: ${light};`);
+    expect(css).toContain(`--project-${color}-muted-foreground: black;`);
+    expect(css).toContain("--project-foreground: white;");
     expect(css.match(new RegExp(`--project-${color}:`, "g"))).toHaveLength(1);
   });
 

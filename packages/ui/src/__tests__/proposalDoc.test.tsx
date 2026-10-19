@@ -55,7 +55,7 @@ describe("章節對照與畫法", () => {
   const IMPACT = "- Affected specs: desktop-app\n- Affected code:\n  - New: a.ts\n  - Modified: (none)\n  - Removed: (none)\n";
   const rows: Array<[string, string, "proposal" | "design", string, string]> = [
     ["Summary", "摘要", "proposal", "一句話。", ".bg-muted"],
-    ["Why", "為什麼", "proposal", "- 甲\n- 乙\n", "[data-row-list]"],
+    ["Why", "為什麼", "proposal", "- 甲\n- 乙\n", "[data-numbered-steps]"],
     ["What Changes", "變更內容", "proposal", "- 甲\n- 乙\n", "[data-numbered-steps]"],
     ["Proposed Solution", "解法", "proposal", "1. 甲\n2. 乙\n", "[data-numbered-steps]"],
     ["Non-Goals", "非目標", "proposal", "- 甲\n", "[data-row-list] svg"],

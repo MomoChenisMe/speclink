@@ -515,8 +515,8 @@ describe("TrayPanel 專案 tab 條（spec「面板樣式」；design D1）", () 
     renderPanel();
     const one = screen.getByTestId("panel-project-local:/proj/one");
     const two = screen.getByTestId("panel-project-local:/proj/two");
-    expect(tile(one).className.split(/\s+/)).toEqual(expect.arrayContaining(["bg-primary", "text-primary-foreground"]));
-    expect(tile(two).className.split(/\s+/)).toEqual(expect.arrayContaining(["bg-muted", "text-muted-foreground"]));
+    expect(tile(one).className.split(/\s+/)).toEqual(expect.arrayContaining(["bg-project-default", "text-project-foreground"]));
+    expect(tile(two).className.split(/\s+/)).toEqual(expect.arrayContaining(["bg-project-default-muted", "text-project-default-muted-foreground"]));
     expect(tile(two).className.split(/\s+/)).not.toContain("bg-primary");
     for (const tab of [one, two]) {
       expect(tab.className).not.toContain("primary");
@@ -1021,7 +1021,7 @@ describe("TrayPanel 狀態語意色（spec「介面狀態語意色分層」）",
     const tab = screen.getByTestId("panel-project-remote:c1/demo/backend");
     // 選取只由方塊承載（與圖示列一致），tab 本體不畫主色外框、不塗琥珀。
     const square = tab.querySelector("[data-project-tile]") as HTMLElement;
-    expect(square.className.split(/\s+/)).toContain("bg-primary");
+    expect(square.className.split(/\s+/)).toContain("bg-project-default");
     expect(tab.className).not.toContain("border-primary");
     expect(tab.className).not.toContain("status-warning");
     // 狀態文字自己帶語意色：還原中＝藍、連不上＝紅。
@@ -2120,7 +2120,7 @@ describe("面板的已轉出卡", () => {
   });
 });
 
-it("系統匣專案圖示選取維持深色，未選取淡化50%",()=>{
+it("系統匣專案圖示選取維持深色，未選取淺底黑字",()=>{
  renderPanel({snapshot:snapshot({tabs:[{key:"local:/a",name:"Spec A",source:"local",status:"ready",projectColor:"purple"},{key:"local:/b",name:"Spec B",source:"local",status:"ready",projectColor:"pink"}],activeKey:"local:/a"})});
  expect(screen.getByTestId("panel-project-local:/a").querySelector("[data-project-tile]")?.className).toContain("bg-project-purple");
  expect(screen.getByTestId("panel-project-local:/b").querySelector("[data-project-tile]")?.className).toContain("bg-project-pink-muted");

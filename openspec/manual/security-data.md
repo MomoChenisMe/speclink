@@ -2,9 +2,9 @@
 title: 安裝與管理安全標準資料
 section: 初步安全審查
 order: 240
-keywords: ["OWASP", "CWE", "下載", "下載中", "離線匯入", "授權", "取消"]
-sources: ["security-standard-data", "desktop-config#應用程式設定的安全標準資料管理"]
-generated: 2026-10-17T17:07:22+08:00
+keywords: ["OWASP", "CWE", "下載", "下載中", "離線匯入", "匯出", "全部匯出", "集合包", "授權", "取消"]
+sources: ["security-standard-data", "desktop-config#應用程式設定的安全標準資料管理", "desktop-network-diagnostics#裝置網路與診斷偏好"]
+generated: 2026-10-19T23:07:34+08:00
 ---
 
 # 安裝與管理安全標準資料
@@ -33,11 +33,28 @@ generated: 2026-10-17T17:07:22+08:00
 
 Desktop 可按取消，CLI 可按 Ctrl+C；取消應在兩秒內結束，未完成版本不會成為可用資料。單次下載上限64 MiB、解壓總量256 MiB、最多128個項目、工作上限120秒，超限會中止並保留舊資料。
 
+## 匯出資料，帶到離線電腦
+
+先在一台已有有效安裝資料的電腦開啟「安全標準資料」：
+
+1. 只帶一個版本時，在該標準版本按「匯出」。
+2. 要帶全部有效版本時，按頁面的「全部匯出」。
+3. 在系統儲存視窗選擇新的 ZIP 檔案位置，等待完成。
+4. 把 ZIP 帶到另一台電腦，再使用同一個離線包匯入入口。
+
+匯出完全離線，不會補下載缺少的資料，也不改已安裝版本或專案文件。單包仍可沿用原有的匯入方式；全部匯出產生集合包，包含開始匯出時全部有效的已安裝版本。無效版本會逐項列為跳過；沒有任何有效版本時不輸出空包。已選版本讀取或指紋核對失敗時，整次匯出失敗，不會少匯一部分卻顯示全部成功。
+
+包內保留原始資料、來源、授權、署名及內容指紋，不把自算指紋當作官方認證。選到已存在的目的檔時會拒絕，不覆寫原檔；取消、磁碟不足或寫入失敗也不留下完成包，原有資料不變。
+
 ## 沒有網路時匯入
 
 在此頁選離線包匯入，提供符合 SpecLink 離線包格式的 ZIP。一般文件壓縮檔不等於有效離線包；包內版本、內容指紋、結構與授權都要符合要求。越出目錄的路徑、連結、可執行檔、重名檔案或不安全的 XML 會被拒絕。
 
 匯入成功後可離線查詢及使用。來源會標為匯入；包內自填的雜湊不能當成官方來源證明。實際授權、署名與解析修改說明仍會保留，不會被改成 SpecLink 程式碼的授權。
+
+同一入口可接受單包或集合包。集合包最多 32 個版本、壓縮資料合計最多 512 MiB、所有內包的原始資料累計最多 1 GiB；每個單包仍受原有大小與安全限制。整包會先檢查內容指紋、格式、授權及能否解析，全部通過前不安裝任何一個版本。
+
+預檢通過後，才依序安裝各版本。若第一個成功、第二個失敗或取消，第一個會保留，第二個的舊資料不變，後面的版本不再執行。請查看逐項結果；部分成功或取消不能當作全部成功。若預檢就發現壞包，所有既有版本都不變。
 
 ## 刪除未使用版本
 
@@ -51,12 +68,18 @@ speclink security data refresh
 speclink security data install owasp_top10 --version 2025
 speclink security data install owasp_top10 --version 2025 --reinstall
 speclink security data import OFFLINE_PACKAGE.zip
+speclink security data export owasp_asvs --version 5.0.0 --output ASVS_PACKAGE.zip
+speclink security data export --all --output ALL_STANDARDS.zip
 speclink security data remove owasp_top10 --version 2025
 ```
 
 把離線包檔名換成你自己的檔案。列清單不連網；更新清單及安裝才明確連官方來源。成功結束碼為0，失敗為1，取消為130，指令語法錯誤為2；錯誤與進度不混進資料輸出。需要機器可讀輸出時，在對應指令加 `--json`；不想要終端色彩時加 `--no-color`。
 
+單一版本匯出必須同時指定標準與版本；全部匯出改用 `--all`，兩種方式不能混用，兩者都要提供 `--output`。集合包仍用上面的 import 指令匯入，文字結果會逐項列出版本、結果與可取得的指紋；機器可讀結果也會保留每個版本的成功、失敗或未執行狀態。提交途中失敗回傳 1，取消回傳 130，即使已有部分版本安裝成功，也不會回傳全部成功。
+
+遠端專案離線或認證失效，不妨礙這些裝置資料操作。公司網路下載失敗時，可先到[網路與診斷](desktop-network-diagnostics.md)設定 Proxy 或開啟紀錄；離線匯出入不需要連網。
+
 > [!NOTE]
 > 審查發現缺資料時，只提供前往資料管理的操作，不會在背景下載。安裝資料也不代表專案通過安全審查。
 
-**出處**：`security-standard-data`、`desktop-config`
+**出處**：`security-standard-data`、`desktop-config`、`desktop-network-diagnostics`

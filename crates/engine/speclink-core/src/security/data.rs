@@ -165,6 +165,13 @@ pub trait StandardRepository: Send + Sync {
     ) -> Result<InstallReceipt>;
     fn versions(&self) -> Result<Vec<(StandardId, String)>>;
     fn read(&self, standard: StandardId, version: &str) -> Result<Option<InstalledStandard>>;
+    fn read_export_source(
+        &self,
+        _standard: StandardId,
+        _version: &str,
+    ) -> Result<Option<ExportSource>> {
+        anyhow::bail!("export_unavailable")
+    }
     fn begin_install(
         &self,
         standard: StandardId,
@@ -238,4 +245,74 @@ impl PackageManifest {
         ensure!(names.contains("license"), "license_missing");
         Ok(source)
     }
+}
+
+/// Verified bytes from one pinned generation; never contains parsed or project files.
+pub struct ExportSource {
+    pub metadata: StandardMetadata,
+    pub files: BTreeMap<String, Vec<u8>>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExportedPackage {
+    pub standard_id: StandardId,
+    pub version: String,
+    pub sha256: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SkippedPackage {
+    pub standard_id: StandardId,
+    pub version: String,
+    pub reason: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExportReceipt {
+    pub path: String,
+    pub format_version: u8,
+    pub bytes: u64,
+    pub packages: Vec<ExportedPackage>,
+    pub skipped: Vec<SkippedPackage>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CollectionEntry {
+    pub standard_id: StandardId,
+    pub version: String,
+    pub name: String,
+    pub sha256: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CollectionManifest {
+    pub format_version: u8,
+    pub packages: Vec<CollectionEntry>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BatchImportEntry {
+    pub standard_id: StandardId,
+    pub version: String,
+    pub status: String,
+    pub sha256: Option<String>,
+    pub error_code: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BatchImportReceipt {
+    pub format_version: u8,
+    pub status: String,
+    pub results: Vec<BatchImportEntry>,
+}
+/// A codec owns private staging until the host finishes sequential commits.
+pub trait PreparedCollection {
+    fn manifest(&self) -> &CollectionManifest;
+    fn load(&self, index: usize, cancelled: &dyn Fn() -> bool) -> Result<ValidatedStandard>;
+}
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum ImportReceipt {
+    Single(InstallReceipt),
+    Batch(BatchImportReceipt),
 }

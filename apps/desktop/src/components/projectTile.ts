@@ -5,11 +5,11 @@
 export const RAIL_SQUARE =
   "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[13px] font-medium";
 
-/** 作用中專案：實心主色＋反白字。 */
-export const PROJECT_TILE_ACTIVE = "bg-primary text-primary-foreground";
+/** 作用中專案：固定深灰底白字。 */
+export const PROJECT_TILE_ACTIVE = "bg-project-default text-project-foreground hover:bg-project-default-hover";
 
 /** 非作用中專案：灰底。 */
-export const PROJECT_TILE_IDLE = "bg-muted text-muted-foreground";
+export const PROJECT_TILE_IDLE = "bg-project-default-muted text-project-default-muted-foreground";
 
 /** 「加入專案」／「＋」的虛線方塊。 */
 export const ADD_TILE = "border border-dashed border-border bg-transparent text-muted-foreground";
@@ -19,7 +19,7 @@ export function projectInitial(name: string): string {
   return Array.from(name.trim())[0]?.toUpperCase() ?? "";
 }
 
-/** 自訂色票未選取時混入 50% 白色，選取時保持深底白字。 */
+/** 固定色票未選取淺底黑字，選取深底白字。 */
 const COLORS = {
   teal: ["bg-project-teal-muted text-project-teal-muted-foreground", "bg-project-teal text-project-foreground hover:bg-project-teal-hover"],
   blue: ["bg-project-blue-muted text-project-blue-muted-foreground", "bg-project-blue text-project-foreground hover:bg-project-blue-hover"],
@@ -30,5 +30,5 @@ const COLORS = {
 };
 export function projectTileClass(color: import("../projectColors").ProjectColor | undefined, active: boolean): string {
   if (color && Object.prototype.hasOwnProperty.call(COLORS, color)) return COLORS[color][active ? 1 : 0];
-  return active ? PROJECT_TILE_ACTIVE : `${PROJECT_TILE_IDLE} hover:bg-muted/70`;
+  return active ? PROJECT_TILE_ACTIVE : PROJECT_TILE_IDLE;
 }

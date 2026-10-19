@@ -81,7 +81,13 @@ impl JobError {
             | "already_installed"
             | "download_failed"
             | "untrusted_source"
-            | "data_directory_unavailable" => code,
+            | "data_directory_unavailable"
+            | "proxy_unsupported"
+            | "proxy_invalid"
+            | "preferences_invalid"
+            | "invalid_request"
+            | "file_exists"
+            | "storage_error" => code,
             _ => "data_error",
         })
     }
@@ -111,6 +117,14 @@ pub enum DataRequest {
         reinstall: bool,
     },
     Import {
+        path: PathBuf,
+    },
+    Export {
+        #[serde(rename = "standardId")]
+        standard_id: Option<StandardId>,
+        version: Option<String>,
+        #[serde(default)]
+        all: bool,
         path: PathBuf,
     },
     Remove {
@@ -229,11 +243,43 @@ impl SecurityJobs {
         progress: impl Fn(JobProgress) + Send + Sync + 'static,
         completed: impl Fn(JobCompleted) + Send + 'static,
     ) -> std::result::Result<JobTicket, JobError> {
+        self.start_data_with_network(application_data, request, None, progress, completed)
+    }
+    pub fn start_data_managed(
+        &self,
+        application_data: PathBuf,
+        request: DataRequest,
+        runtime: &crate::runtime_preferences::DeviceRuntime,
+        progress: impl Fn(JobProgress) + Send + Sync + 'static,
+        completed: impl Fn(JobCompleted) + Send + 'static,
+    ) -> Result<JobTicket, JobError> {
+        let network = if matches!(&request, DataRequest::Refresh | DataRequest::Install { .. }) {
+            Some((
+                runtime.policy().map_err(|code| JobError::new(&code))?,
+                runtime.diagnostics.sink(),
+            ))
+        } else {
+            None
+        };
+        self.start_data_with_network(application_data, request, network, progress, completed)
+    }
+    fn start_data_with_network(
+        &self,
+        application_data: PathBuf,
+        request: DataRequest,
+        network: Option<(
+            speclink_host::network::ProxyPolicy,
+            speclink_host::network::DiagnosticSink,
+        )>,
+        progress: impl Fn(JobProgress) + Send + Sync + 'static,
+        completed: impl Fn(JobCompleted) + Send + 'static,
+    ) -> Result<JobTicket, JobError> {
         self.launch(
             DataJob::new(Arc::new(AtomicBool::new(false))),
             "application-data",
             move |job| {
-                let result = execute_data(&application_data, request, &job, &progress);
+                let result =
+                    execute_data_with_network(&application_data, request, &job, &progress, network);
                 completed(JobCompleted {
                     job_id: job.id.clone(),
                     project_key: "application-data".into(),
@@ -261,19 +307,27 @@ pub fn remember_policy_at(
         .and_then(|r| r.remember_policy(key, policy))
         .map_err(|e| JobError::from_message(&e.to_string()))
 }
-fn execute_data(
+fn execute_data_with_network(
     application_data: &Path,
     request: DataRequest,
     job: &DataJob,
     progress: &dyn Fn(JobProgress),
+    network: Option<(
+        speclink_host::network::ProxyPolicy,
+        speclink_host::network::DiagnosticSink,
+    )>,
 ) -> Outcome {
+    let transport = match network {
+        Some((policy, sink)) => OfficialTransport::with_policy(job, policy, sink),
+        None => OfficialTransport::new(job),
+    };
     let run = || -> Result<Value, Box<dyn std::error::Error>> {
         let repository = speclink_fs::security::FsSecurityData::new(application_data)?;
         job.check()?;
         let value = match request {
             DataRequest::Refresh => serde_json::to_value(security_data::refresh_data(
                 &repository,
-                &OfficialTransport::new(job),
+                &transport,
                 job,
                 progress,
             )?)?,
@@ -286,15 +340,49 @@ fn execute_data(
                 standard_id,
                 &version,
                 reinstall,
-                &OfficialTransport::new(job),
+                &transport,
                 &speclink_fs::security::decode_sources,
                 job,
                 progress,
             )?)?,
             DataRequest::Import { path } => {
-                serde_json::to_value(security_data::import_data(&repository, &path, &|| {
-                    job.check().is_err()
-                })?)?
+                serde_json::to_value(security_data::import_data_bundle(
+                    &repository,
+                    &path,
+                    job,
+                    progress,
+                    &speclink_fs::security_packages::prepare_collection,
+                )?)?
+            }
+            DataRequest::Export {
+                standard_id,
+                version,
+                all,
+                path,
+            } => {
+                let selection = match (standard_id, version, all) {
+                    (None, None, true) => security_data::ExportSelection::All,
+                    (Some(id), Some(version), false) => {
+                        security_data::ExportSelection::One(id, version)
+                    }
+                    _ => return Err("invalid_request".into()),
+                };
+                serde_json::to_value(security_data::export_data(
+                    &repository,
+                    selection,
+                    job,
+                    progress,
+                    &|selected, all, skipped, load| {
+                        speclink_fs::security_packages::write_export(
+                            &path,
+                            selected,
+                            all,
+                            skipped,
+                            load,
+                            &|| job.check().is_err(),
+                        )
+                    },
+                )?)?
             }
             DataRequest::Remove {
                 standard_id,
@@ -577,6 +665,28 @@ pub fn reveal_report_path_at(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn network_job_errors_preserve_safe_codes_without_external_details() {
+        for code in ["proxy_unsupported","proxy_invalid","preferences_invalid"] {
+            let error=JobError::from_message(&format!("{code}: SECRET"));assert_eq!(error.code,code);assert_eq!(error.message,code);
+        }
+    }
+    #[test]
+    fn export_request_is_device_local_and_existing_destination_is_preserved() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("already.zip");
+        std::fs::write(&path, b"keep").unwrap();
+        let request: DataRequest =
+            serde_json::from_value(serde_json::json!({"action":"export","all":true,"path":path}))
+                .expect("export request");
+        let jobs = SecurityJobs::default();
+        let ticket = jobs
+            .start_data(root.path().to_path_buf(), request, |_| {}, |_| {})
+            .unwrap();
+        let error = jobs.wait(&ticket.job_id, "application-data").unwrap_err();
+        assert_eq!(error.code, "missing_data");
+        assert_eq!(std::fs::read(&path).unwrap(), b"keep");
+    }
     #[test]
     fn security_report_export_never_overwrites_or_follows_links() {
         let device = crate::testfixture::FixtureRoot::new("security-export");

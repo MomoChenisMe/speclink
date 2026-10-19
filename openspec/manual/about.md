@@ -4,7 +4,7 @@ section: 附錄
 order: 900
 keywords: [來源, 矛盾, 限制, 編纂日期, 規格]
 sources: []
-generated: 2026-10-17T17:07:22+08:00
+generated: 2026-10-19T23:07:34+08:00
 ---
 
 # 本手冊的來源
@@ -13,7 +13,7 @@ generated: 2026-10-17T17:07:22+08:00
 
 本手冊全部內容只取材自 `openspec/specs/` 底下的正式規格。README、`docs/` 與原始碼都不是來源。規格沒寫的，手冊就不寫，或在該處標明「規格未載」。每一頁的最後一行列出它取材的能力名稱。
 
-正式規格共 93 個能力。其中 66 個是使用者會操作或看到的東西（畫面、指令、技能、輸出、檔案），已入冊。其餘 27 個是引擎內部（儲存、wire 契約、host 執行期、測試骨架、建置與發布管線、本 repo 自用的發版技能、更新日誌的資料契約、技能原稿的寫法規範），不入冊：
+正式規格共 95 個能力。其中 68 個是使用者會操作或看到的東西（畫面、指令、技能、輸出、檔案），已入冊。其餘 27 個是引擎內部（儲存、wire 契約、host 執行期、測試骨架、建置與發布管線、本 repo 自用的發版技能、更新日誌的資料契約、技能原稿的寫法規範），不入冊：
 
 `client-protocol`、`command-runtime`、`delivery-baseline`、`desktop-release`、`dev-harness`、`host-runtime`、`node-sdk`、`node-sdk-release`、`phase2-acceptance`、`phase3-acceptance`、`postgres-team-store`、`reference-server`、`release-notes`、`release-skill`、`remote-board-order`、`remote-workspace-data`、`server-context-api`、`server-drift-api`、`server-event-stream`、`server-read-api`、`server-verb-api`、`serverfs-team-store`、`skill-authoring`、`sqlite-team-store`、`store-abstraction`、`teamstore-contract`、`workspace-session`。
 
@@ -38,7 +38,7 @@ generated: 2026-10-17T17:07:22+08:00
 2. **綁定 checkout 後產生什麼**：`remote-connection`「Remote Workspace bootstrap 跨入口一致性」（2026-07-24）寫 CLI 的 remote init 與桌面綁定會產生 AGENTS.md／CLAUDE.md 的 Speclink 區塊；`workspace-chooser`「checkout 綁定驗證與 marker 寫入」與 `workspace-tools`「built-in tools 權威收斂」（都是 2026-10-08T11:52:22+08:00），以及 `remote-connection` 自己的「remote 初始化與連接指令」（2026-08-23），都寫只生成技能檔、並剝除指令檔裡遺留的 SPECLINK 區塊。內文採只生成技能檔。
 3. **可選的 AI 工具有幾個**：`remote-connection`「remote 初始化與連接指令」（2026-08-23）寫 remote init 要一個 Claude／Codex 的選集，非互動終端只指引 `--tools claude`、`codex` 或 `claude,codex`；同規格「Remote Workspace bootstrap 跨入口一致性」（2026-07-24）也寫「相同 Claude／Codex 選集」。`workspace-tools`「init 內建 Agent 工具選擇」（2026-10-08T11:52:22+08:00）寫所有 `speclink init`（含 remote）都接受 claude、codex、copilot 三個，`workspace-chooser` 與 `desktop-config` 的勾選框也已是三個。內文採三個，[CLI 連接 remote](cli-remote.md) 以附註指出差異。
 4. **技能檔過期怎麼判**：`desktop-app`「指令檔過期提示」（2026-10-10T23:13:14+08:00）的情境仍以「CLAUDE.md 不存在就提示安裝」「指令檔的 SPECLINK 標記被移除不提示」舉例；`workspace-tools`「技能檔過期探測」（2026-10-08T11:52:22+08:00）以 skills 目錄下的 speclink- 技能檔與版號判定。`desktop-app` 時戳較晚，但那次改的是提示卡的位置與按鈕；它的需求本文只說「執行指令檔過期探測」，不定義判定方式。內文照探測規格寫。
-5. **唯讀角色叫什麼**：`server-policy-write`（2026-07-20）、`user-documentation`「帳號、PAT 與 membership 的操作邊界明確」（2026-10-08T10:00:10+08:00）、`desktop-config`「設定頁圖形化讀寫兩層設定」（2026-10-14T16:37:17+08:00）與 `server-web-console`「管理列表以詳情頁與對話框承載檢視與建立」（2026-10-15T10:20:04+08:00）寫 reader；`server-identity`「帳號 browser API 保持憑證祕密邊界」的一條 scenario（2026-07-28）與 `server-verb-api`「task done 消費 touchedFiles 且 evidence 有唯讀端點」（2026-08-25）寫 viewer。內文採 reader。
+5. **唯讀角色叫什麼**：`server-policy-write`（2026-07-20）、`user-documentation`「帳號、PAT 與 membership 的操作邊界明確」（2026-10-08T10:00:10+08:00）、`desktop-config`「設定頁圖形化讀寫兩層設定」（2026-10-19T23:00:19+08:00）與 `server-web-console`「管理列表以詳情頁與對話框承載檢視與建立」（2026-10-15T10:20:04+08:00）寫 reader；`server-identity`「帳號 browser API 保持憑證祕密邊界」的一條 scenario（2026-07-28）與 `server-verb-api`「task done 消費 touchedFiles 且 evidence 有唯讀端點」（2026-08-25）寫 viewer。內文採 reader。
 6. **server 的官方發布物**：`server-release`「Server 交付物內嵌同版本 SPA 資產」（2026-07-25）寫 release binary 與「tag 觸發 server binary 與 Docker image 發布」；同規格「release 產物含 server 與部署文件」（2026-08-14）寫 server binary 不上傳 GitHub Release，官方通路只有 Docker 映像與 npm 套件。內文採後者。
 7. **討論結論後的路**：`user-documentation`「討論結論後的轉出與併入分流完整」（2026-07-17）把 `speclink discuss promote` 列為結論後四條路之一；`discuss-skill`「結論後交棒單推 propose 入口」（2026-08-27）與 `skill-routing`「出口交棒由技能結尾承載」的交棒邊表（2026-10-14T21:31:03+08:00）寫結論後只建議 `/speclink-propose --from-discussion`，promote 留給中途轉出。內文採後者。
 8. **verify 是不是可呼叫的站**：`user-documentation`「Getting Started 僅使用已驗證入口」（2026-10-08T11:52:22+08:00）的 Codex 情境仍寫入門文件不要求呼叫未安裝的 `$speclink-verify`；`skill-routing`「出口交棒由技能結尾承載」（2026-10-14T21:31:03+08:00）把 verify 列為流程鏈上的技能，`workspace-tools`「update 清除孤兒技能目錄」（2026-10-08T11:52:22+08:00）寫 Codex 拿到 analyze 以外的全部技能。內文採 verify 是可呼叫的站。
@@ -57,9 +57,9 @@ generated: 2026-10-17T17:07:22+08:00
 21. **已封存討論的「開啟 ▾」有幾項**：`desktop-app`「詳情頁的文件動作」（2026-10-12T22:59:10+08:00）寫從變更詳情頁的來源討論籤開啟一筆已封存的討論時，選單三項齊全；「已封存項目以詳情頁檢視」（2026-10-13T23:23:36+08:00）寫從已封存頁開的已封存討論詳情頁只有「複製內容」。同一個檔案依入口不同出現不同選單。內文兩者都寫並標明入口。
 22. **已封存討論有哪幾份文件**：`desktop-app`「已封存頁含討論節」（2026-10-10T19:39:25+08:00）寫背景、討論過程、結論三份、背景在前；「已封存項目以詳情頁檢視」與「詳情頁的文件樹、閱讀卡與本頁目錄」（都是 2026-10-13T23:23:36+08:00）寫結論、討論過程、背景、衍生變更四份。內文採後者。
 23. **選單的「關於 Speclink」去哪**：`desktop-app`「macOS 原生選單」（2026-10-09T21:29:17+08:00）寫在關於頁落地前先進入應用程式設定頁；「關於頁」（2026-10-12T09:12:54+08:00）寫直接開啟關於頁。內文採後者。同一段選單需求的「檢查更新…」仍寫進入「軟體更新卡」，設定現在已有獨立的「更新」頁；內文照選單需求的字面寫。
-24. **零專案時能不能點「手冊」**：`desktop-manual-page`「無手冊與 remote 模式的空狀態」（2026-09-02）寫零分頁時點側欄「手冊」會看到空狀態引導；`desktop-app`「側欄導覽結構」（2026-10-14T16:37:17+08:00）寫零專案時不渲染專案欄、主區是「開啟一個專案開始」，「macOS 原生選單」也規定零專案時「手冊」停用。內文採後者。
+24. **零專案時能不能點「手冊」**：`desktop-manual-page`「無手冊與 remote 模式的空狀態」（2026-09-02）寫零分頁時點側欄「手冊」會看到空狀態引導；`desktop-app`「側欄導覽結構」（2026-10-19T23:00:19+08:00）寫零專案時不渲染專案欄、主區是「開啟一個專案開始」，「macOS 原生選單」也規定零專案時「手冊」停用。內文採後者。
 25. **品質關卡的章是不是只限本地**：`desktop-app`「看板卡片的待手動標示」（2026-08-14）順帶寫「與審查標示的 local-only 行為同構」；同規格「詳情頁的工單分頁」（2026-10-15T09:31:43+08:00）有 remote 變更處於審查中的情境，也規定遠端怎麼取工單。內文採後者，不再寫 remote 卡片不顯示章；「待手動」章在 remote 不出現，仍照它自己的需求寫。
-26. **系統匣面板建立失敗的錯誤浮在哪**：`tray-status-menu`「面板樣式」（2026-10-14T23:04:04+08:00）寫在設定頁的「本機設定」簽浮出單行錯誤；`desktop-config`「設定頁圖形化讀寫兩層設定」（2026-10-14T16:37:17+08:00）的應用程式設定分類只有一般、更新、CLI、伺服器、關於，沒有「本機設定」。內文照較晚的 `tray-status-menu` 字面寫，並加附註。
+26. **系統匣面板建立失敗的錯誤浮在哪**：`tray-status-menu`「面板樣式」（2026-10-14T23:04:04+08:00）寫在設定頁的「本機設定」簽浮出單行錯誤；`desktop-config`「設定頁圖形化讀寫兩層設定」（2026-10-19T23:00:19+08:00）的正式分類仍沒有「本機設定」。規格沒有給出對應的新分類，不另外推測錯誤落點；[系統匣面板與選單](tray.md)本輪未過期，保留舊字面及附註。
 27. **checkout 步驟的按鈕字面**：`workspace-chooser`「checkout 綁定驗證與 marker 寫入」（2026-10-08T11:52:22+08:00）把按鈕寫作「開啟 Workspace」；同規格「新增專案的來源分流」（2026-10-09T12:33:58+08:00）規定使用者可見文案不得出現「Workspace」，但沒有給新字面。內文只寫「開啟按鈕」，不引字面。
 28. **更新日誌的分組標題**：`desktop-app`「更新日誌彈窗」（2026-10-12T09:12:54+08:00）寫每筆「其下依『新功能／修正／改善』分組列點」；同規格「更新日誌依介面語言呈現」（2026-10-15T17:28:24+08:00）寫介面語言是英文時分組標題為 New features、Fixes、Improvements，條目也換成英文。內文採後者：繁中字面照舊，另寫英文介面的呈現。
 
@@ -74,15 +74,16 @@ generated: 2026-10-17T17:07:22+08:00
 - `tray-status-menu` 好幾段需求仍寫「macOS 面板」「非 macOS 平台用原生選單」，但「面板樣式」自己宣告這些規定也適用 Windows 面板。
 - 詞彙：`desktop-app` 的需求名與內文仍有舊詞——「歸檔」見於「歸檔清單經衍生快取加速且可重建」與幾段 2026-10-10 改寫過的需求；「品質站」見於「品質站蓋章配色與主色分離」等；「workspace」「工作區」見於「看板首訪以 skeleton 佔位」與 `desktop-connections`。詳情自 2026-10-10 起改成佔滿主區的頁，需求內文已改稱「詳情頁」。桌面 app 各頁依 `openspec/LANGUAGE.md` 一律用「封存」「詳情頁」「品質關卡」「專案」，引用需求名稱時保留原字。CLI 與 remote 模式的頁沿用規格的「工作區」。
 
-29. **應用程式設定有哪些分類**：`desktop-config`「設定頁圖形化讀寫兩層設定」（2026-10-14T16:37:17+08:00）列一般、更新、CLI、伺服器與關於，沒有安全資料分類；同規格「應用程式設定的安全標準資料管理」（2026-10-17T16:55:59+08:00）新增「安全標準資料」，且零專案也能進入。內文採較新的清單。
-30. **reader 能不能調專案設定**：`desktop-config`「設定頁圖形化讀寫兩層設定」（2026-10-14T16:37:17+08:00）寫四頁唯讀；`desktop-app`「裝置層專案圖示底色」（2026-10-17T16:55:59+08:00）明定 Remote reader 能調自己的圖示底色。內文保留團隊政策唯讀，並按新規格說明本機圖示偏好的例外。
+29. **reader 能不能調專案設定**：`desktop-config`「設定頁圖形化讀寫兩層設定」寫四頁唯讀；`desktop-app`「裝置層專案圖示底色」明定 Remote reader 能調自己的圖示底色（兩段皆為2026-10-19T23:00:19+08:00）。內文保留團隊政策唯讀，並說明本機圖示偏好的例外。
+
+本次規格同步已消除先前的應用程式設定分類差異：`desktop-app`「側欄導覽結構」與 `desktop-config`「設定頁圖形化讀寫兩層設定」都已列入「網路與診斷」及「安全標準資料」。新增操作寫在[網路與診斷](desktop-network-diagnostics.md)，離線資料交換補入[安全標準資料](security-data.md)。
 
 ## 已知限制
 
 - 沒有截圖。畫面文字與按鈕名稱逐字取自規格，實際畫面若不同，以執行中的產品為準。
 - drift 技能沒有自己的規格，手冊只寫 `skill-routing` 與 `user-documentation` 載明的入口情境與交棒關係。audit 的規格 `audit-skill` 目前只管獨立模式報告的語言，[安全稽核：/speclink-audit](audit.md) 只寫這部分與 `user-documentation` 載明的定位。apply 只有挑選變更的第一步（plan 守門）有規格，載於 `change-plan`；ingest 只有參數解讀與收尾的依賴、插隊判定有規格，載於 `ingest-skill`；兩者其餘的內文行為未載。analyze 的技能本身也沒有規格，但 `speclink analyze` 指令的判定規則有 `change-analysis`，寫在[分析：交叉檢查變更的產物](analyze.md)。
 - `server-web-console` 的確認框清單列了「刪除專案」，但 `server-admin` 的管理功能只有專案的建立與改顯示名，沒有需求說刪除專案從哪裡進入。[瀏覽器後台](web-console.md)照規格把它列在確認框清單，沒有另外寫入口。
-- 過期判定逐項比較：頁的生成時戳與規格的更新時戳都帶時區時比到秒，同一秒不算；任一邊只有純日期時比到日，同一天也算。每一頁的 `generated` 都寫成帶時區的秒級時戳；較早封存的規格，其更新時戳仍是純日期，封存不會回改。只取材某規格幾段需求的頁，`sources` 用「capability#需求名」錨定到那幾段，別段的封存不會把它標成可能過期；錨定的需求標題改名或移除時，該頁會被標為可能過期並整頁重寫。
+- 過期判定逐項比較：頁的生成時戳與規格的更新時戳都帶時區時比到秒，同一秒不算；任一邊只有純日期時比到日，同一天也算。本次產生的頁都寫成帶時區的秒級時戳；未重生的舊頁與較早封存的規格仍可能是純日期。只取材某規格幾段需求的頁，出處錨定到那幾段，別段的封存不會把它標成可能過期；錨定的需求標題改名或移除時，該頁會被標為可能過期並整頁重寫。
 - 來源規格改了、但改的部分與某一頁的內容無關時，那一頁重生後內文不變，只換生成時戳，「可能過期」標記就消掉。取材自 `desktop-app` 的頁都用錨定寫法：[認識桌面 app](desktop-overview.md)、[規格、討論、已封存與搜尋](desktop-browse.md)、[看板與任務](desktop-board.md)、[桌面上的品質關卡](desktop-quality.md)、[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)、[專案、新增專案與設定頁](desktop-projects.md)、[桌面 app 的手冊頁](desktop-manual.md)。
 - 錨定寫法有一個盲點：某能力新增一段需求時，沒有任何頁錨定到它，過期判定不會亮。2026-10-15 這次，桌面 app 改版把多段需求改名（「抽屜」改成「詳情頁」），上述桌面頁整頁重寫並錨定到新名稱；先前盲點中的「詳情頁的工單分頁」「已封存詳情頁的工單分頁」已寫進[桌面上的品質關卡](desktop-quality.md)。同日稍晚新增的「更新日誌依介面語言呈現」與「詳情頁狀態列的標籤欄依最長標籤對齊」兩段一開始也沒有頁錨定，已分別寫進[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)與[認識桌面 app](desktop-overview.md)。目前 `desktop-app` 沒有被任何頁錨定的需求，只有上面說的兩段內部結構需求。
 - `skill-authoring` 是技能檔寫法的內部規範，不入冊；只有其中「技能共用的對話語言段落」一段寫進[工作流政策與設定](policy-config.md)，因為它決定 agent 跟你對話用哪種語言。
@@ -90,6 +91,6 @@ generated: 2026-10-17T17:07:22+08:00
 
 ## 編纂日期
 
-2026-10-17
+2026-10-19
 
 **出處**：本頁為說明頁，不直接取材自單一能力；各頁末行列出自己的出處。

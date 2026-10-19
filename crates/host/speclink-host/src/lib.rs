@@ -22,3 +22,5 @@ pub mod projection;
 pub mod security;
 pub mod security_data;
 pub mod worktree;
+
+pub mod network;

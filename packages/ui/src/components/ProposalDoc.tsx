@@ -41,13 +41,12 @@ export interface ProposalDocProps {
 
 /** 列式章節：列點成細線列，prose 照排。 */
 const ROW_SECTIONS = new Set([
-  "sections.why",
   "sections.motivation",
   "sections.problem",
   "sections.rootCause",
   "sections.successCriteria",
 ]);
-const STEP_SECTIONS = new Set(["sections.whatChanges", "sections.proposedSolution"]);
+const STEP_SECTIONS = new Set(["sections.why", "sections.whatChanges", "sections.proposedSolution"]);
 
 const CODE_GROUP_KEYS = { new: "doc.codeNew", modified: "doc.codeModified", removed: "doc.codeRemoved" } as const;
 

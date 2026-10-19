@@ -1207,6 +1207,8 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     expect(crumbText()).toBe("proj-a/專案設定/.speclink.yaml");
 
     fireEvent.click(document.querySelector(`[data-tab="${REMOTE_KEY}"]`) as HTMLElement);
+    await screen.findByText("remote-change");
+    fireEvent.click(within(projectColumn()).getByRole("button", { name: "專案設定" }));
     await screen.findByTestId("context-page");
     expect(crumbText()).toBe("Demo/backend/專案設定/專案說明");
     expect(within(projectSettingsColumn()).getByRole("button", { name: "專案說明" }).getAttribute("aria-current")).toBe("page");
@@ -1225,7 +1227,7 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
 
     fireEvent.click(settingsGear());
     // 設定模式左側恆為圖示列加設定分類欄（零專案亦然；spec「零分頁仍可進入應用程式設定」）。
-    expect(within(settingsColumn()).getAllByRole("button")).toHaveLength(6);
+    expect(within(settingsColumn()).getAllByRole("button")).toHaveLength(7);
     expect(screen.queryByText("開啟一個專案開始")).toBeNull();
     expect(settingsGear().className).toContain("bg-primary");
     expect(leftSide().className).toContain("w-[256px]");
@@ -3454,4 +3456,25 @@ describe("詳情頁層與導覽（desktop-detail-page）", () => {
     // 宿主仍是看板（openSpec 不切宿主頁）：麵包屑為「專案 / 變更 / 能力名」，Esc 回看板。
     expect(crumbText()).toBe("proj-a/變更/desktop-app");
   });
+});
+
+
+it.each(["設定", "專案設定"])("從%s點目前專案圖示回到看板",async(mode)=>{
+ renderApp();await screen.findByText("desktop-shell-and-browser");
+ if(mode==="設定") fireEvent.click(settingsGear());
+ else fireEvent.click(within(projectColumn()).getByRole("button",{name:"專案設定"}));
+ fireEvent.click(document.querySelector('[data-tab="local:A"]')!);
+ await waitFor(()=>expect(crumbText()).toBe("proj-a/變更"));
+});
+it("點目前專案離開設定時先確認草稿；取消保留、捨棄回看板",async()=>{
+ renderApp();await screen.findByText("desktop-shell-and-browser");
+ fireEvent.click(within(projectColumn()).getByRole("button",{name:"專案設定"}));
+ fireEvent.click(await screen.findByTestId("context-edit"));
+ typeInEditor(screen.getByTestId("context-input"),"保留草稿");
+ fireEvent.click(document.querySelector('[data-tab="local:A"]')!);
+ fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button",{name:"取消"}));
+ expect(editorText(screen.getByTestId("context-input"))).toBe("保留草稿");
+ fireEvent.click(document.querySelector('[data-tab="local:A"]')!);
+ fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button",{name:"捨棄"}));
+ await waitFor(()=>expect(crumbText()).toBe("proj-a/變更"));
 });

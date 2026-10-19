@@ -16,6 +16,13 @@ chrono = { workspace = true }
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 regex = { workspace = true }
 
+tempfile = "3"
+url = "2"
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "stream"] }
+ulid.workspace = true
+zip = { version = "4.6.1", default-features = false, features = ["deflate-flate2"] }
+
 [dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
 # 測試借 core 的 testkit（技能檔版號讀寫 helper）；feature 只在 dev 構建生效。
 speclink-core = { path = "../../../crates/engine/speclink-core", features = ["testkit"] }

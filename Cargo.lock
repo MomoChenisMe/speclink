@@ -2094,9 +2094,11 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "socket2",
+ "system-configuration",
  "tokio",
  "tower-service",
  "tracing",
+ "windows-registry",
 ]
 
 [[package]]
@@ -4549,6 +4551,7 @@ dependencies = [
  "notify-debouncer-mini",
  "objc2",
  "objc2-app-kit",
+ "reqwest",
  "serde",
  "serde_json",
  "speclink-core",
@@ -4581,6 +4584,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "regex",
+ "reqwest",
  "rusqlite",
  "serde",
  "serde_json",
@@ -4588,6 +4592,11 @@ dependencies = [
  "speclink-core",
  "speclink-fs",
  "speclink-host",
+ "tempfile",
+ "tokio",
+ "ulid",
+ "url",
+ "zip",
 ]
 
 [[package]]
@@ -4601,6 +4610,7 @@ dependencies = [
  "serde",
  "serde_json",
  "speclink-core",
+ "tempfile",
  "ulid",
  "windows-sys 0.61.2",
  "zip",
@@ -4612,6 +4622,9 @@ version = "0.10.0-build.2"
 dependencies = [
  "anyhow",
  "chrono",
+ "http",
+ "hyper-util",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -4623,6 +4636,7 @@ dependencies = [
  "tempfile",
  "ulid",
  "ureq",
+ "url",
  "webpki-roots 0.26.11",
 ]
 
@@ -4874,6 +4888,27 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8eab9a99a024a169fe8a903cf9d4a3b3601109bcc13bd9e3c6fff259138626c4"
 dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "system-configuration"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a13f3d0daba03132c0aa9767f98351b3488edc2c100cda2d2ec2b04f3d8d3c8b"
+dependencies = [
+ "bitflags 2.13.0",
+ "core-foundation 0.9.4",
+ "system-configuration-sys",
+]
+
+[[package]]
+name = "system-configuration-sys"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e1d1b10ced5ca923a1fcb8d03e96b8d3268065d724548c0211415ff6ac6bac4"
+dependencies = [
+ "core-foundation-sys",
  "libc",
 ]
 
@@ -6525,6 +6560,17 @@ checksum = "9150af68066c4c5c07ddc0ce30421554771e528bde427614c61038bc2c92c2b1"
 dependencies = [
  "windows-core 0.61.2",
  "windows-link 0.1.3",
+]
+
+[[package]]
+name = "windows-registry"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02752bf7fbdcce7f2a27a742f798510f3e5ad88dbe84871e5168e2120c3d5720"
+dependencies = [
+ "windows-link 0.2.1",
+ "windows-result 0.4.1",
+ "windows-strings 0.5.1",
 ]
 
 [[package]]

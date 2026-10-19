@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 
 export interface AppSettingsCategory {
-  id: "general" | "updates" | "cli" | "servers" | "security-data" | "about";
+  id: "general" | "updates" | "cli" | "servers" | "network" | "security-data" | "about";
   labelKey: string;
   icon: LucideIcon;
   /** app＝「應用程式」群組；about＝其後的「關於」群組（desktop-about-page design D4）。 */
@@ -78,6 +78,7 @@ export const APP_SETTINGS_CATEGORIES: AppSettingsCategory[] = [
       "servers.page.pat",
     ],
   },
+  {id:"network",labelKey:"network.title",icon:Settings2,group:"app",rows:["network.proxyMode","network.proxyUrl","network.export","network.probe","network.diagnostics","network.debugHelp","network.debugMode"]},
   {
     id:"security-data",
     labelKey:"securityData.title",

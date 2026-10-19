@@ -77,7 +77,7 @@ export function ProjectSettingsView({ settings, section, onParseErrors, onDirtyC
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {([null, ...PROJECT_COLORS] as const).map((color) => <label key={color ?? "default"} className={`flex items-center gap-2 rounded-md border p-2 text-sm focus-within:ring-2 focus-within:ring-ring ${projectColor === (color ?? undefined) ? "border-primary" : "border-border"}`}>
               <input type="radio" name={colorGroup} value={color ?? "default"} className="sr-only" checked={projectColor === (color ?? undefined)} onChange={() => void chooseColor(color)} />
-              <span aria-hidden="true" className={`flex h-7 w-7 items-center justify-center rounded-md ${projectTileClass(color ?? undefined, projectColor === (color ?? undefined))}`}>A</span>
+              <span aria-hidden="true" className={`flex h-7 w-7 items-center justify-center rounded-md ${projectTileClass(color ?? undefined, true)}`}>A</span>
               {t(`settings.projectColor.${color ?? "default"}`)}
             </label>)}
           </div>

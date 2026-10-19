@@ -1,0 +1,232 @@
+{
+  "version": 2,
+  "change": "desktop-colors-network-and-offline-bundles",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 Red：在 `apps/desktop/src/__tests__/projectColors.test.ts`、`apps/desktop/src/__tests__/projectSettingsView.test.tsx`、`apps/desktop/src/__tests__/trayPanel.test.tsx` 與 `packages/ui/src/__tests__/theme.test.ts` 補上「裝置層專案圖示底色」的七色深淺、預覽固定深色與主題一致案例；先執行 npm test -w @speclink/desktop 及 npm test -w @speclink/ui，確認因舊配色失敗。",
+      "files": [
+        "apps/desktop/src/__tests__/projectColors.test.ts",
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/trayPanel.test.tsx",
+        "packages/ui/src/__tests__/proposalDoc.test.tsx",
+        "packages/ui/src/__tests__/theme.test.ts",
+        "packages/ui/src/components/ProposalDoc.tsx"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 Green／Refactor：依「固定深淺色票」設計修改 `packages/ui/src/theme.css`、`apps/desktop/src/components/projectTile.ts`、`apps/desktop/src/views/ProjectSettingsView.tsx` 與 `apps/desktop/src/i18n/messages.ts`，主視窗／系統匣共用深淺與白／黑字，預設不再用主色；驗證1.1測試轉綠及「專案分頁列存於 app 本機」的儲存、reader與失敗保值案例仍通過。",
+      "files": [
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/projectRail.test.tsx",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/components/projectTile.ts",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/views/ProjectSettingsView.tsx",
+        "packages/ui/src/theme.css"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.1 Red：在 `apps/desktop/core/src/runtime_preferences.rs` 的cfg(test)加入「裝置網路與診斷偏好」缺檔預設、camelCase結構、未知版本、寫入故障、portable路徑與明確重設案例；cargo test -p speclink-desktop-core 確認缺少契約而失敗，不以編譯錯誤代替行為斷言。",
+      "files": [
+        "Cargo.lock",
+        "apps/desktop/core/Cargo.toml",
+        "apps/desktop/core/src/lib.rs",
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/components/ProjectRail.tsx",
+        "apps/desktop/src/store.ts",
+        "apps/desktop/core/src/runtime_preferences.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "2.3 Red：於 `apps/desktop/core/src/diagnostics.rs` 的cfg(test)補上「有界且遮蔽敏感資訊的診斷紀錄」開關、4×2MiB輪替、16KiB單筆、256佇列、writeFailed及匯出秘密sentinel檢查；覆蓋「診斷匯出與明確觸發的更新連線測試」中的匯出／取消／損壞行為，以cargo test -p speclink-desktop-core確認尚未滿足契約。",
+      "files": [
+        "crates/host/speclink-host/Cargo.toml",
+        "crates/host/speclink-host/src/lib.rs",
+        "apps/desktop/core/src/diagnostics.rs",
+        "apps/desktop/core/src/network.rs",
+        "crates/host/speclink-host/src/network.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "2.4 Green／Refactor：實作 `apps/desktop/core/src/diagnostics.rs` 的固定schema、分類與有界worker、二次過濾及9MiB ZIP匯出，於 `apps/desktop/core/Cargo.toml` 與 `apps/desktop/core/src/lib.rs` 接既有ZIP／SHA工具；以cargo test -p speclink-desktop-core確認匯出不含token、密碼、query、完整路徑與專案內容，關閉後不接收事件。",
+      "files": [
+        "crates/host/speclink-host/src/security_data.rs"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "3.4 Green／Refactor：於 `crates/host/speclink-host/src/security_data.rs` 注入路由與結構化診斷，僅允許設定端點使用Proxy resolver；`apps/desktop/core/src/security.rs` 在工作開始取偏好快照，獨立CLI保留既有預設；以兩個Cargo package測試驗證來源驗證、限制、取消與失敗保舊未退化。",
+      "files": [
+        "apps/desktop/core/src/security.rs",
+        "apps/desktop/src-tauri/Cargo.toml",
+        "apps/desktop/src-tauri/capabilities/default.json",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src/__tests__/securityDataPage.test.tsx",
+        "apps/desktop/src/__tests__/settingsColumn.test.tsx",
+        "apps/desktop/src/__tests__/updater.test.ts",
+        "apps/desktop/src/adapter/security.ts",
+        "apps/desktop/src/adapter/updater.ts",
+        "apps/desktop/src/settingsCatalog.ts",
+        "apps/desktop/src/views/AppSettingsView.tsx",
+        "apps/desktop/src/views/settings/SecurityDataPage.tsx",
+        "crates/adapters/speclink-cli/src/verbs/security.rs",
+        "crates/adapters/speclink-cli/tests/it/security.rs",
+        "crates/engine/speclink-core/src/security/data.rs",
+        "crates/engine/speclink-fs/Cargo.toml",
+        "crates/engine/speclink-fs/src/lib.rs",
+        "crates/engine/speclink-fs/src/security.rs",
+        "apps/desktop/src-tauri/src/runtime_commands.rs",
+        "apps/desktop/src-tauri/src/updater_commands.rs",
+        "apps/desktop/src/__tests__/diagnostics.test.tsx",
+        "apps/desktop/src/__tests__/networkDiagnosticsPage.test.tsx",
+        "apps/desktop/src/adapter/runtime.ts",
+        "apps/desktop/src/diagnostics.tsx",
+        "apps/desktop/src/views/settings/NetworkDiagnosticsPage.tsx",
+        "crates/engine/speclink-fs/src/security_packages.rs"
+      ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "4.3 Red：在 `apps/desktop/core/src/network.rs` 的cfg(test)及 `apps/desktop/src/__tests__/appSettingsView.test.tsx` 補上使用者觸發的更新連線測試、407、TLS、20秒／2MiB／三跳上限與Debug關閉不發請求；以cargo test -p speclink-desktop-core及npm test -w @speclink/desktop確認失敗。",
+      "files": [
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M59WZ8NF5VKM9AY7EK3GXXR0",
+      "taskDesc": "1.1 Red：在 `apps/desktop/src/__tests__/projectColors.test.ts`、`apps/desktop/src/__tests__/projectSettingsView.test.tsx`、`apps/desktop/src/__tests__/trayPanel.test.tsx` 與 `packages/ui/src/__tests__/theme.test.ts` 補上「裝置層專案圖示底色」的七色深淺、預覽固定深色與主題一致案例；先執行 npm test -w @speclink/desktop 及 npm test -w @speclink/ui，確認因舊配色失敗。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "f3b9956aba19b00460513e168a0ed0999aeb7b82",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/projectColors.test.ts",
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/trayPanel.test.tsx",
+        "packages/ui/src/__tests__/proposalDoc.test.tsx",
+        "packages/ui/src/__tests__/theme.test.ts",
+        "packages/ui/src/components/ProposalDoc.tsx"
+      ],
+      "recordedAt": "2026-10-19T11:08:10Z"
+    },
+    {
+      "taskId": "tsk_01M59WZ8NFGA3ZSBKNJBDP6ZHN",
+      "taskDesc": "1.2 Green／Refactor：依「固定深淺色票」設計修改 `packages/ui/src/theme.css`、`apps/desktop/src/components/projectTile.ts`、`apps/desktop/src/views/ProjectSettingsView.tsx` 與 `apps/desktop/src/i18n/messages.ts`，主視窗／系統匣共用深淺與白／黑字，預設不再用主色；驗證1.1測試轉綠及「專案分頁列存於 app 本機」的儲存、reader與失敗保值案例仍通過。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "f3b9956aba19b00460513e168a0ed0999aeb7b82",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/projectRail.test.tsx",
+        "apps/desktop/src/__tests__/store.test.ts",
+        "apps/desktop/src/components/projectTile.ts",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/views/ProjectSettingsView.tsx",
+        "packages/ui/src/theme.css"
+      ],
+      "recordedAt": "2026-10-19T11:09:32Z"
+    },
+    {
+      "taskId": "tsk_01M59WZ8NGWPDGRQSMFR26SFTP",
+      "taskDesc": "2.1 Red：在 `apps/desktop/core/src/runtime_preferences.rs` 的cfg(test)加入「裝置網路與診斷偏好」缺檔預設、camelCase結構、未知版本、寫入故障、portable路徑與明確重設案例；cargo test -p speclink-desktop-core 確認缺少契約而失敗，不以編譯錯誤代替行為斷言。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "f3b9956aba19b00460513e168a0ed0999aeb7b82",
+      "touchedFiles": [
+        "Cargo.lock",
+        "apps/desktop/core/Cargo.toml",
+        "apps/desktop/core/src/lib.rs",
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/components/ProjectRail.tsx",
+        "apps/desktop/src/store.ts",
+        "apps/desktop/core/src/runtime_preferences.rs"
+      ],
+      "recordedAt": "2026-10-19T11:11:14Z"
+    },
+    {
+      "taskId": "tsk_01M59WZ8NGNH97RMJ3FRBGRJJN",
+      "taskDesc": "2.3 Red：於 `apps/desktop/core/src/diagnostics.rs` 的cfg(test)補上「有界且遮蔽敏感資訊的診斷紀錄」開關、4×2MiB輪替、16KiB單筆、256佇列、writeFailed及匯出秘密sentinel檢查；覆蓋「診斷匯出與明確觸發的更新連線測試」中的匯出／取消／損壞行為，以cargo test -p speclink-desktop-core確認尚未滿足契約。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "f3b9956aba19b00460513e168a0ed0999aeb7b82",
+      "touchedFiles": [
+        "crates/host/speclink-host/Cargo.toml",
+        "crates/host/speclink-host/src/lib.rs",
+        "apps/desktop/core/src/diagnostics.rs",
+        "apps/desktop/core/src/network.rs",
+        "crates/host/speclink-host/src/network.rs"
+      ],
+      "recordedAt": "2026-10-19T11:50:51Z"
+    },
+    {
+      "taskId": "tsk_01M59WZ8NGW3Z14S0A6K7QK6KF",
+      "taskDesc": "2.4 Green／Refactor：實作 `apps/desktop/core/src/diagnostics.rs` 的固定schema、分類與有界worker、二次過濾及9MiB ZIP匯出，於 `apps/desktop/core/Cargo.toml` 與 `apps/desktop/core/src/lib.rs` 接既有ZIP／SHA工具；以cargo test -p speclink-desktop-core確認匯出不含token、密碼、query、完整路徑與專案內容，關閉後不接收事件。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "f3b9956aba19b00460513e168a0ed0999aeb7b82",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/security_data.rs"
+      ],
+      "recordedAt": "2026-10-19T11:57:56Z"
+    },
+    {
+      "taskId": "tsk_01M59WZ8NG78XMMZE9JPTMHNP7",
+      "taskDesc": "3.4 Green／Refactor：於 `crates/host/speclink-host/src/security_data.rs` 注入路由與結構化診斷，僅允許設定端點使用Proxy resolver；`apps/desktop/core/src/security.rs` 在工作開始取偏好快照，獨立CLI保留既有預設；以兩個Cargo package測試驗證來源驗證、限制、取消與失敗保舊未退化。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "f3b9956aba19b00460513e168a0ed0999aeb7b82",
+      "touchedFiles": [
+        "apps/desktop/core/src/security.rs",
+        "apps/desktop/src-tauri/Cargo.toml",
+        "apps/desktop/src-tauri/capabilities/default.json",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src/__tests__/securityDataPage.test.tsx",
+        "apps/desktop/src/__tests__/settingsColumn.test.tsx",
+        "apps/desktop/src/__tests__/updater.test.ts",
+        "apps/desktop/src/adapter/security.ts",
+        "apps/desktop/src/adapter/updater.ts",
+        "apps/desktop/src/settingsCatalog.ts",
+        "apps/desktop/src/views/AppSettingsView.tsx",
+        "apps/desktop/src/views/settings/SecurityDataPage.tsx",
+        "crates/adapters/speclink-cli/src/verbs/security.rs",
+        "crates/adapters/speclink-cli/tests/it/security.rs",
+        "crates/engine/speclink-core/src/security/data.rs",
+        "crates/engine/speclink-fs/Cargo.toml",
+        "crates/engine/speclink-fs/src/lib.rs",
+        "crates/engine/speclink-fs/src/security.rs",
+        "apps/desktop/src-tauri/src/runtime_commands.rs",
+        "apps/desktop/src-tauri/src/updater_commands.rs",
+        "apps/desktop/src/__tests__/diagnostics.test.tsx",
+        "apps/desktop/src/__tests__/networkDiagnosticsPage.test.tsx",
+        "apps/desktop/src/adapter/runtime.ts",
+        "apps/desktop/src/diagnostics.tsx",
+        "apps/desktop/src/views/settings/NetworkDiagnosticsPage.tsx",
+        "crates/engine/speclink-fs/src/security_packages.rs"
+      ],
+      "recordedAt": "2026-10-19T12:53:01Z"
+    },
+    {
+      "taskId": "tsk_01M59WZ8NGTT2VNXQH0YFYKCB9",
+      "taskDesc": "4.3 Red：在 `apps/desktop/core/src/network.rs` 的cfg(test)及 `apps/desktop/src/__tests__/appSettingsView.test.tsx` 補上使用者觸發的更新連線測試、407、TLS、20秒／2MiB／三跳上限與Debug關閉不發請求；以cargo test -p speclink-desktop-core及npm test -w @speclink/desktop確認失敗。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "f3b9956aba19b00460513e168a0ed0999aeb7b82",
+      "touchedFiles": [
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md"
+      ],
+      "recordedAt": "2026-10-19T13:13:46Z"
+    }
+  ]
+}

@@ -32,6 +32,8 @@ pub mod event_manager;
 mod portable;
 mod fs_actions;
 mod security_commands;
+mod runtime_commands;
+mod updater_commands;
 pub mod remote;
 pub mod tray;
 mod watch;
@@ -58,7 +60,7 @@ async fn security_data_list(
 }
 
 #[tauri::command]
-fn security_data_start(
+async fn security_data_start(
     app: tauri::AppHandle,
     jobs: tauri::State<'_, speclink_desktop_core::security::SecurityJobs>,
     request: speclink_desktop_core::security::DataRequest,
@@ -66,16 +68,26 @@ fn security_data_start(
     let path = speclink_host::context::security_data_dir()
         .map_err(|_| speclink_desktop_core::security::JobError::directory_unavailable())?;
     let progress_app = app.clone();
-    jobs.start_data(
-        path,
-        request,
-        move |p| {
-            let _ = progress_app.emit("security-progress", p);
-        },
-        move |p| {
-            let _ = app.emit("security-completed", p);
-        },
-    )
+    let runtime = app
+        .state::<speclink_desktop_core::runtime_preferences::DeviceRuntime>()
+        .inner()
+        .clone();
+    let jobs = jobs.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        jobs.start_data_managed(
+            path,
+            request,
+            &runtime,
+            move |p| {
+                let _ = progress_app.emit("security-progress", p);
+            },
+            move |p| {
+                let _ = app.emit("security-completed", p);
+            },
+        )
+    })
+    .await
+    .map_err(|_| speclink_desktop_core::security::JobError::worker_failed())?
 }
 
 #[tauri::command]
@@ -1234,9 +1246,7 @@ async fn remote_open(
             .map_err(|error| remote::RemoteOpenFailure::unknown(error.to_string()))
     })
     .await
-    .map_err(|error| {
-        remote::RemoteOpenFailure::unknown(format!("remote worker failed: {error}"))
-    })?
+    .map_err(|error| remote::RemoteOpenFailure::unknown(format!("remote worker failed: {error}")))?
 }
 
 /// remote Workflow 設定快照：`/config` 原文經 desktop-core 文字 seam，並帶
@@ -1987,6 +1997,7 @@ pub fn run() {
     let windows = portable::windows(context.config_mut(), data);
     let builder = tauri::Builder::default()
         .manage(speclink_desktop_core::security::SecurityJobs::default())
+        .manage(updater_commands::UpdaterJobs::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
@@ -2004,6 +2015,14 @@ pub fn run() {
         .plugin(tauri_nspanel::init());
     builder
         .setup(move |app| {
+            let runtime_root = connections_path(app.handle())
+                .map_err(std::io::Error::other)?
+                .parent()
+                .unwrap()
+                .to_path_buf();
+            app.manage(
+                speclink_desktop_core::runtime_preferences::DeviceRuntime::new(runtime_root),
+            );
             // 監看槽位（決策 5）：啟動僅註冊空槽——前端還原分頁後以
             // watch_workspace 顯式掛上活躍專案（監看與資料載入同由前端
             // session 驅動；建立失敗僅記錄，app 照常、只失去自動刷新）。
@@ -2049,6 +2068,14 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            runtime_commands::runtime_preferences_read,
+            runtime_commands::runtime_preferences_write,
+            runtime_commands::diagnostics_append,
+            runtime_commands::diagnostics_export,
+            runtime_commands::network_probe_update,
+            updater_commands::updater_check,
+            updater_commands::updater_download,
+            updater_commands::updater_install,
             security_commands::security_inspect,
             security_commands::security_start,
             security_commands::security_prepare,

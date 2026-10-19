@@ -50,32 +50,36 @@
   --stage-proposed: var(--primary);
   --stage-in-progress: var(--status-progress);
   --stage-ready: var(--status-success);
-  /* 專案圖示固定色票：兩種主題共用；未選取時混入 50% 白色，保留各色系深色字。 */
+  /* 專案圖示固定深淺色票，亮暗主題共用。 */
   --project-foreground: white;
-  --project-teal: oklch(51.1% 0.096 186.391);
-  --project-teal-hover: oklch(43.7% 0.078 188.216);
-  --project-teal-muted-foreground: oklch(27.7% 0.046 192.524);
-  --project-teal-muted: color-mix(in srgb, var(--project-teal) 50%, white);
-  --project-blue: oklch(48.8% 0.243 264.376);
-  --project-blue-hover: oklch(42.4% 0.199 265.638);
-  --project-blue-muted-foreground: oklch(28.2% 0.091 267.935);
-  --project-blue-muted: color-mix(in srgb, var(--project-blue) 50%, white);
-  --project-purple: oklch(49.6% 0.265 301.924);
-  --project-purple-hover: oklch(43.8% 0.218 303.724);
-  --project-purple-muted-foreground: oklch(29.1% 0.149 302.717);
-  --project-purple-muted: color-mix(in srgb, var(--project-purple) 50%, white);
-  --project-pink: oklch(52.5% 0.223 3.958);
-  --project-pink-hover: oklch(45.9% 0.187 3.815);
-  --project-pink-muted-foreground: oklch(28.4% 0.109 3.907);
-  --project-pink-muted: color-mix(in srgb, var(--project-pink) 50%, white);
-  --project-orange: oklch(55.3% 0.195 38.402);
-  --project-orange-hover: oklch(47% 0.157 37.304);
-  --project-orange-muted-foreground: oklch(26.6% 0.079 36.259);
-  --project-orange-muted: color-mix(in srgb, var(--project-orange) 50%, white);
-  --project-green: oklch(52.7% 0.154 150.069);
-  --project-green-hover: oklch(44.8% 0.119 151.328);
-  --project-green-muted-foreground: oklch(26.6% 0.065 152.934);
-  --project-green-muted: color-mix(in srgb, var(--project-green) 50%, white);
+  --project-default: #374151;
+  --project-default-hover: color-mix(in srgb, var(--project-default) 90%, black);
+  --project-default-muted-foreground: black;
+  --project-default-muted: #E5E7EB;
+  --project-teal: #0F766E;
+  --project-teal-hover: color-mix(in srgb, var(--project-teal) 90%, black);
+  --project-teal-muted-foreground: black;
+  --project-teal-muted: #99F6E4;
+  --project-blue: #1D4ED8;
+  --project-blue-hover: color-mix(in srgb, var(--project-blue) 90%, black);
+  --project-blue-muted-foreground: black;
+  --project-blue-muted: #BFDBFE;
+  --project-purple: #9400D3;
+  --project-purple-hover: color-mix(in srgb, var(--project-purple) 90%, black);
+  --project-purple-muted-foreground: black;
+  --project-purple-muted: #DA70D6;
+  --project-pink: #BE185D;
+  --project-pink-hover: color-mix(in srgb, var(--project-pink) 90%, black);
+  --project-pink-muted-foreground: black;
+  --project-pink-muted: #FBCFE8;
+  --project-orange: #C2410C;
+  --project-orange-hover: color-mix(in srgb, var(--project-orange) 90%, black);
+  --project-orange-muted-foreground: black;
+  --project-orange-muted: #FED7AA;
+  --project-green: #15803D;
+  --project-green-hover: color-mix(in srgb, var(--project-green) 90%, black);
+  --project-green-muted-foreground: black;
+  --project-green-muted: #BBF7D0;
   /* 可點元素的游標（desktop-app「可點元素的游標與 hover 回饋」）：網頁預設手指；
      桌面 app 的根樣式覆寫為 default（箭頭），可點性改由 hover 底色表示。 */
   --cursor-interaction: pointer;
@@ -164,6 +168,10 @@
 }
 
 @theme inline {
+  --color-project-default: var(--project-default);
+  --color-project-default-hover: var(--project-default-hover);
+  --color-project-default-muted: var(--project-default-muted);
+  --color-project-default-muted-foreground: var(--project-default-muted-foreground);
   --color-project-foreground: var(--project-foreground);
   --color-project-teal: var(--project-teal);
   --color-project-teal-hover: var(--project-teal-hover);

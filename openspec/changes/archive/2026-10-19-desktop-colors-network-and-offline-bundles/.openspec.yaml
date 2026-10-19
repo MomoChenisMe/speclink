@@ -1,0 +1,243 @@
+schema: spec-driven
+created: 2026-10-19
+created_by: mosutw <luke1974@gmail.com>
+created_with: codex
+from_discussion: desktop-colors-network-and-offline-bundles
+started_at: 2026-10-19
+started_by: mosutw <luke1974@gmail.com>
+reviewed_at: 2026-10-19
+reviewed_by: mosutw <luke1974@gmail.com>
+reviewed_with: codex
+reviewed_tasks_total: 31
+reviewed_scope:
+  - path: Cargo.lock
+    hash: afaaee59abd7b593060a25f1b5f8b06df23cca33d4cecb516e5eca38447e2b54
+  - path: apps/desktop/core/Cargo.toml
+    hash: 44f12db972249f47e333520ce9f01c50a86adf1ba92e97424f8f0743d81610e4
+  - path: apps/desktop/core/src/diagnostics.rs
+    hash: b4b474cc9567d27ddd1a6b2ea08c3fce859e60f1a1b9f5ec051a90b085fa7809
+  - path: apps/desktop/core/src/lib.rs
+    hash: db2beb17bf2a6da14b1ae4432c8afb3ff20c0ce3617b6873713ad53107ac2476
+  - path: apps/desktop/core/src/network.rs
+    hash: 88f0bcd918d9fc77718f2e10d8f724f93c569282adde910966dd7803b90c474c
+  - path: apps/desktop/core/src/runtime_preferences.rs
+    hash: 6054980dc36380282c4f226bbaf2b114fdc519200d9f057e1002d58977b9b700
+  - path: apps/desktop/core/src/security.rs
+    hash: 11e09fe612e8282d4aaaf3c7674762d6453d8b1e46066aaf31d937b37e1eb8d5
+  - path: apps/desktop/src-tauri/Cargo.toml
+    hash: 4dab519dbeb296aad612e6f61d613b862148d29eeeed5e3368464ac3e2654876
+  - path: apps/desktop/src-tauri/capabilities/default.json
+    hash: 913771d73cafe602d13b9401a19c8862f976705068f1d058a67ab438a2c80e03
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 27102e650ee5d625db0480e0059ff38fcc048b49da255c34333771b771d65749
+  - path: apps/desktop/src-tauri/src/runtime_commands.rs
+    hash: 41baa097bc3933775e4d79ecb818f0192f3393c8122ba88167f58fe46bea1688
+  - path: apps/desktop/src-tauri/src/updater_commands.rs
+    hash: 5b8118df243eccfc7dc5ca05eb874637d344285de2b0a012c92fc4b0ee39ad89
+  - path: apps/desktop/src/App.tsx
+    hash: 54154d9f972a1bae07520c814018a68cb2481c8c4d4df00a22cca5b7694db31b
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: c08109e0f3267c5742c69a9d2b92ff48ca34e68a468448c23271947cd727d858
+  - path: apps/desktop/src/__tests__/diagnostics.test.tsx
+    hash: 33d33a31f746f79c060b364c517fe1267a1f07f73cfc1ad7820480b94ede30fc
+  - path: apps/desktop/src/__tests__/networkDiagnosticsPage.test.tsx
+    hash: b60d78b52d30013f344d9e946e39bd63dbb22e93f7b743fd76072efaef8c16a2
+  - path: apps/desktop/src/__tests__/projectColors.test.ts
+    hash: 83109e1b03c159e4cbe2f954c102415511857df35c561b34a0f0f5575664cb2e
+  - path: apps/desktop/src/__tests__/projectRail.test.tsx
+    hash: 2b7ad845c3a8cb7dadcde09601d72fcd0c10a0741c5da31530050fb308c382fd
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: e440e83d2a85a6ea05a3c4aa361160164df19c7c13c34a1a72a2cc8a78454e08
+  - path: apps/desktop/src/__tests__/securityDataPage.test.tsx
+    hash: 78bddc4f5fb43cb0fe263f6bfca7a46d2945bd3665826b7712707b9d3fdcdd84
+  - path: apps/desktop/src/__tests__/settingsColumn.test.tsx
+    hash: ee7acd0355c0b9a28b9f00843c02518f2234e66a630068f9a231c8f118cb47ba
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: c741eaed0d79e8da3b0edb2222948de266130440e10b99ece3eaf5191c45109c
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: bbe6c9977563fca680eb90ef3ac67f04372d1c854ecb46859de6503035270fd0
+  - path: apps/desktop/src/__tests__/updater.test.ts
+    hash: 0d5c52f1b972871ef646d5bd0b78deb455475066e942fffebddd9416b3c34d87
+  - path: apps/desktop/src/adapter/runtime.ts
+    hash: 7e8657cd6e0d3cdce83c89714d8a89406682b66770a9ae072dafb43a708f4404
+  - path: apps/desktop/src/adapter/security.ts
+    hash: 91763a872f4faedeab2b8ddac5ac9e4e95264aa11bbb07a714210e3ae38ca50d
+  - path: apps/desktop/src/adapter/updater.ts
+    hash: 715d6908c66067842ed61a489da6484b33035c0aeb3fba7f9990394c7d1f1e75
+  - path: apps/desktop/src/components/ProjectRail.tsx
+    hash: 65a268bc751eb55a78f52a613524fad5459bccd3db11a8fa81d3619462052b8d
+  - path: apps/desktop/src/components/projectTile.ts
+    hash: 5ae8e70a63d89b5b99d813072575730257657fee0420a76f1039bb30ee40f5c0
+  - path: apps/desktop/src/diagnostics.tsx
+    hash: 01b15a019c996bf44de2245bc4ba78bc047713783c0cb2354fdaa6395e433af0
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: f244c648f37acac2d0f0e3a935954305527d4709bf573ae0362d44cf09010186
+  - path: apps/desktop/src/settingsCatalog.ts
+    hash: 559729d1ff888f46dd90fa2e39474583d163ea1bd2716b27d062d935b2ed3a3c
+  - path: apps/desktop/src/store.ts
+    hash: b851d1e6e18cc63cec420f03672033e9f52bd61cc9569fa75d7d8cb4fe6167e0
+  - path: apps/desktop/src/views/AppSettingsView.tsx
+    hash: 37baa9f09823b2e5922cf01fa3eb7ca8d0a01c48dd07109839d7e5064ff5f82f
+  - path: apps/desktop/src/views/ProjectSettingsView.tsx
+    hash: 1c9907079f6e169a3707972e6f3ff07d56374246642a5cf1ca249d9b1083acd7
+  - path: apps/desktop/src/views/settings/NetworkDiagnosticsPage.tsx
+    hash: 7d1aaab17e5e791512c56e4f92b0faa6de4f280a3fd0314acc334d769b9256a7
+  - path: apps/desktop/src/views/settings/SecurityDataPage.tsx
+    hash: bd332f09ddd75ad9332c4f19a4d57f1f6e914d0dd8fbc36d44c19c3380c8cf7d
+  - path: crates/adapters/speclink-cli/src/verbs/security.rs
+    hash: d2b1f8831bbc539bcbb40398756be64192649a4bbf9ada4c09d7994e3298db83
+  - path: crates/adapters/speclink-cli/tests/it/security.rs
+    hash: 88319d183bf0f4d760734c392b47764652c0edd26c662432f35308c924dca42a
+  - path: crates/engine/speclink-core/src/security/data.rs
+    hash: dfde0644ccc848c56b84c6994e2f5b9665ae8b7c1dbf9be7ec45b93c48a75392
+  - path: crates/engine/speclink-fs/Cargo.toml
+    hash: 1ded8abe0a6f166ce44c5b39471584dadd193013ca20d123ae70bb38735ff809
+  - path: crates/engine/speclink-fs/src/lib.rs
+    hash: bcbed98953bb4e09034957a1481963a47c6745cb242d43a9a57fd180d33657c7
+  - path: crates/engine/speclink-fs/src/security.rs
+    hash: 04d6b735cf72b167ab9dfcfb473d64129b298532b6e3d1999a4cf2eb56532291
+  - path: crates/engine/speclink-fs/src/security_packages.rs
+    hash: 6fe9e3a27a78545eb03cb3424c11e932b14afb721a7056ea9a927527dcb330c8
+  - path: crates/host/speclink-host/Cargo.toml
+    hash: cd5d8c1f76e3f01ea40f92662c87266dc82c0665f2d79a32f585baa670f878c0
+  - path: crates/host/speclink-host/src/lib.rs
+    hash: efc6914b29ce74ade621323ae4979706d678a6cc9975d92aac052e5c7a0a58c8
+  - path: crates/host/speclink-host/src/network.rs
+    hash: eec96bcc63d2a3f0ca456d54b16420535ff8288bcbc4aa39787592532f8616a2
+  - path: crates/host/speclink-host/src/security_data.rs
+    hash: dae8a1f2bddc556dd14db3e931893948b5d871b2255e5535520da740c9b3edcb
+  - path: docs/configuration.md
+    hash: 84f0f2ef2686a17773d820f11a9afdeb47e1da9816306c7f1dfa514b18e08572
+  - path: docs/configuration.zh-TW.md
+    hash: 77e5705cdbf6b568aaf5733a0aa61e958bdfea5ca7fde1763eb97ccbb3e0e66e
+  - path: docs/product-status.md
+    hash: dc53900a31aca040536ec0e3d534fda655bce4e6d94f816eeace737ac47848bf
+  - path: docs/product-status.zh-TW.md
+    hash: c9f0f667e4ebb2d3ae0206cf391049ed26046c2bf90587cd6edea4a99a43059a
+  - path: packages/ui/src/__tests__/proposalDoc.test.tsx
+    hash: 36d00d16d94d5dd96ec014d4d253d0b40711477956f37fada929f4bdf324b052
+  - path: packages/ui/src/__tests__/theme.test.ts
+    hash: 15b779bab1e81e279ac407f2140ae84c4673dfe64a2c279c40b203684644bae5
+  - path: packages/ui/src/components/ProposalDoc.tsx
+    hash: ea54a6068cfd254c11dbf0c97518977d742c1078a0e75449782c202e51a5cbf9
+  - path: packages/ui/src/theme.css
+    hash: a022d7d4a60dee06e7106e05542bf4bed509d6cf3c927e220e16b3776e25401e
+verified_at: 2026-10-19
+verified_by: mosutw <luke1974@gmail.com>
+verified_with: codex
+verified_tasks_total: 31
+verified_scope:
+  - path: Cargo.lock
+    hash: afaaee59abd7b593060a25f1b5f8b06df23cca33d4cecb516e5eca38447e2b54
+  - path: apps/desktop/core/Cargo.toml
+    hash: 44f12db972249f47e333520ce9f01c50a86adf1ba92e97424f8f0743d81610e4
+  - path: apps/desktop/core/src/diagnostics.rs
+    hash: b4b474cc9567d27ddd1a6b2ea08c3fce859e60f1a1b9f5ec051a90b085fa7809
+  - path: apps/desktop/core/src/lib.rs
+    hash: db2beb17bf2a6da14b1ae4432c8afb3ff20c0ce3617b6873713ad53107ac2476
+  - path: apps/desktop/core/src/network.rs
+    hash: 88f0bcd918d9fc77718f2e10d8f724f93c569282adde910966dd7803b90c474c
+  - path: apps/desktop/core/src/runtime_preferences.rs
+    hash: 6054980dc36380282c4f226bbaf2b114fdc519200d9f057e1002d58977b9b700
+  - path: apps/desktop/core/src/security.rs
+    hash: 11e09fe612e8282d4aaaf3c7674762d6453d8b1e46066aaf31d937b37e1eb8d5
+  - path: apps/desktop/src-tauri/Cargo.toml
+    hash: 4dab519dbeb296aad612e6f61d613b862148d29eeeed5e3368464ac3e2654876
+  - path: apps/desktop/src-tauri/capabilities/default.json
+    hash: 913771d73cafe602d13b9401a19c8862f976705068f1d058a67ab438a2c80e03
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 27102e650ee5d625db0480e0059ff38fcc048b49da255c34333771b771d65749
+  - path: apps/desktop/src-tauri/src/runtime_commands.rs
+    hash: 41baa097bc3933775e4d79ecb818f0192f3393c8122ba88167f58fe46bea1688
+  - path: apps/desktop/src-tauri/src/updater_commands.rs
+    hash: 5b8118df243eccfc7dc5ca05eb874637d344285de2b0a012c92fc4b0ee39ad89
+  - path: apps/desktop/src/App.tsx
+    hash: 54154d9f972a1bae07520c814018a68cb2481c8c4d4df00a22cca5b7694db31b
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: c08109e0f3267c5742c69a9d2b92ff48ca34e68a468448c23271947cd727d858
+  - path: apps/desktop/src/__tests__/diagnostics.test.tsx
+    hash: 33d33a31f746f79c060b364c517fe1267a1f07f73cfc1ad7820480b94ede30fc
+  - path: apps/desktop/src/__tests__/networkDiagnosticsPage.test.tsx
+    hash: b60d78b52d30013f344d9e946e39bd63dbb22e93f7b743fd76072efaef8c16a2
+  - path: apps/desktop/src/__tests__/projectColors.test.ts
+    hash: 83109e1b03c159e4cbe2f954c102415511857df35c561b34a0f0f5575664cb2e
+  - path: apps/desktop/src/__tests__/projectRail.test.tsx
+    hash: 2b7ad845c3a8cb7dadcde09601d72fcd0c10a0741c5da31530050fb308c382fd
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: e440e83d2a85a6ea05a3c4aa361160164df19c7c13c34a1a72a2cc8a78454e08
+  - path: apps/desktop/src/__tests__/securityDataPage.test.tsx
+    hash: 78bddc4f5fb43cb0fe263f6bfca7a46d2945bd3665826b7712707b9d3fdcdd84
+  - path: apps/desktop/src/__tests__/settingsColumn.test.tsx
+    hash: ee7acd0355c0b9a28b9f00843c02518f2234e66a630068f9a231c8f118cb47ba
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: c741eaed0d79e8da3b0edb2222948de266130440e10b99ece3eaf5191c45109c
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: bbe6c9977563fca680eb90ef3ac67f04372d1c854ecb46859de6503035270fd0
+  - path: apps/desktop/src/__tests__/updater.test.ts
+    hash: 0d5c52f1b972871ef646d5bd0b78deb455475066e942fffebddd9416b3c34d87
+  - path: apps/desktop/src/adapter/runtime.ts
+    hash: 7e8657cd6e0d3cdce83c89714d8a89406682b66770a9ae072dafb43a708f4404
+  - path: apps/desktop/src/adapter/security.ts
+    hash: 91763a872f4faedeab2b8ddac5ac9e4e95264aa11bbb07a714210e3ae38ca50d
+  - path: apps/desktop/src/adapter/updater.ts
+    hash: 715d6908c66067842ed61a489da6484b33035c0aeb3fba7f9990394c7d1f1e75
+  - path: apps/desktop/src/components/ProjectRail.tsx
+    hash: 65a268bc751eb55a78f52a613524fad5459bccd3db11a8fa81d3619462052b8d
+  - path: apps/desktop/src/components/projectTile.ts
+    hash: 5ae8e70a63d89b5b99d813072575730257657fee0420a76f1039bb30ee40f5c0
+  - path: apps/desktop/src/diagnostics.tsx
+    hash: 01b15a019c996bf44de2245bc4ba78bc047713783c0cb2354fdaa6395e433af0
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: f244c648f37acac2d0f0e3a935954305527d4709bf573ae0362d44cf09010186
+  - path: apps/desktop/src/settingsCatalog.ts
+    hash: 559729d1ff888f46dd90fa2e39474583d163ea1bd2716b27d062d935b2ed3a3c
+  - path: apps/desktop/src/store.ts
+    hash: b851d1e6e18cc63cec420f03672033e9f52bd61cc9569fa75d7d8cb4fe6167e0
+  - path: apps/desktop/src/views/AppSettingsView.tsx
+    hash: 37baa9f09823b2e5922cf01fa3eb7ca8d0a01c48dd07109839d7e5064ff5f82f
+  - path: apps/desktop/src/views/ProjectSettingsView.tsx
+    hash: 1c9907079f6e169a3707972e6f3ff07d56374246642a5cf1ca249d9b1083acd7
+  - path: apps/desktop/src/views/settings/NetworkDiagnosticsPage.tsx
+    hash: 7d1aaab17e5e791512c56e4f92b0faa6de4f280a3fd0314acc334d769b9256a7
+  - path: apps/desktop/src/views/settings/SecurityDataPage.tsx
+    hash: bd332f09ddd75ad9332c4f19a4d57f1f6e914d0dd8fbc36d44c19c3380c8cf7d
+  - path: crates/adapters/speclink-cli/src/verbs/security.rs
+    hash: d2b1f8831bbc539bcbb40398756be64192649a4bbf9ada4c09d7994e3298db83
+  - path: crates/adapters/speclink-cli/tests/it/security.rs
+    hash: 88319d183bf0f4d760734c392b47764652c0edd26c662432f35308c924dca42a
+  - path: crates/engine/speclink-core/src/security/data.rs
+    hash: dfde0644ccc848c56b84c6994e2f5b9665ae8b7c1dbf9be7ec45b93c48a75392
+  - path: crates/engine/speclink-fs/Cargo.toml
+    hash: 1ded8abe0a6f166ce44c5b39471584dadd193013ca20d123ae70bb38735ff809
+  - path: crates/engine/speclink-fs/src/lib.rs
+    hash: bcbed98953bb4e09034957a1481963a47c6745cb242d43a9a57fd180d33657c7
+  - path: crates/engine/speclink-fs/src/security.rs
+    hash: 04d6b735cf72b167ab9dfcfb473d64129b298532b6e3d1999a4cf2eb56532291
+  - path: crates/engine/speclink-fs/src/security_packages.rs
+    hash: 6fe9e3a27a78545eb03cb3424c11e932b14afb721a7056ea9a927527dcb330c8
+  - path: crates/host/speclink-host/Cargo.toml
+    hash: cd5d8c1f76e3f01ea40f92662c87266dc82c0665f2d79a32f585baa670f878c0
+  - path: crates/host/speclink-host/src/lib.rs
+    hash: efc6914b29ce74ade621323ae4979706d678a6cc9975d92aac052e5c7a0a58c8
+  - path: crates/host/speclink-host/src/network.rs
+    hash: eec96bcc63d2a3f0ca456d54b16420535ff8288bcbc4aa39787592532f8616a2
+  - path: crates/host/speclink-host/src/security_data.rs
+    hash: dae8a1f2bddc556dd14db3e931893948b5d871b2255e5535520da740c9b3edcb
+  - path: docs/configuration.md
+    hash: 84f0f2ef2686a17773d820f11a9afdeb47e1da9816306c7f1dfa514b18e08572
+  - path: docs/configuration.zh-TW.md
+    hash: 77e5705cdbf6b568aaf5733a0aa61e958bdfea5ca7fde1763eb97ccbb3e0e66e
+  - path: docs/product-status.md
+    hash: dc53900a31aca040536ec0e3d534fda655bce4e6d94f816eeace737ac47848bf
+  - path: docs/product-status.zh-TW.md
+    hash: c9f0f667e4ebb2d3ae0206cf391049ed26046c2bf90587cd6edea4a99a43059a
+  - path: packages/ui/src/__tests__/proposalDoc.test.tsx
+    hash: 36d00d16d94d5dd96ec014d4d253d0b40711477956f37fada929f4bdf324b052
+  - path: packages/ui/src/__tests__/theme.test.ts
+    hash: 15b779bab1e81e279ac407f2140ae84c4673dfe64a2c279c40b203684644bae5
+  - path: packages/ui/src/components/ProposalDoc.tsx
+    hash: ea54a6068cfd254c11dbf0c97518977d742c1078a0e75449782c202e51a5cbf9
+  - path: packages/ui/src/theme.css
+    hash: a022d7d4a60dee06e7106e05542bf4bed509d6cf3c927e220e16b3776e25401e
+archived_by: mosutw <luke1974@gmail.com>
+archived_at: 2026-10-19

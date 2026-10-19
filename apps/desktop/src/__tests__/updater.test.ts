@@ -470,3 +470,16 @@ describe("前景重檢 store 接線（recheckOnFocus）", () => {
     expect(store.getState().updater).toEqual({ phase: "idle" });
   });
 });
+
+vi.mock("@tauri-apps/api/core",()=>({invoke:vi.fn()}));
+vi.mock("@tauri-apps/plugin-updater",()=>({check:vi.fn()}));
+it("更新adapter透過Rust保留候選更新id，下載及安裝沿用同一候選",async()=>{
+ const {invoke}=await import("@tauri-apps/api/core");
+ const {tauriUpdaterAdapter}=await import("../adapter/updater");
+ vi.mocked(invoke).mockResolvedValueOnce({id:"candidate-one",version:"1.0.0"}).mockResolvedValue(undefined);
+ const pending=await tauriUpdaterAdapter().check();
+ expect(invoke).toHaveBeenCalledWith("updater_check");expect(pending?.version).toBe("1.0.0");
+ await pending?.download();await pending?.install();
+ expect(invoke).toHaveBeenCalledWith("updater_download",{id:"candidate-one"});
+ expect(invoke).toHaveBeenCalledWith("updater_install",{id:"candidate-one"});
+});

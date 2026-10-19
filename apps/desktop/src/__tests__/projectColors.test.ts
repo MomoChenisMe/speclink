@@ -13,14 +13,14 @@ it("儲存被拒絕時回報錯誤，不冒稱成功",()=>{
  const storage={setItem:vi.fn(()=>{throw new Error("denied");})} as unknown as Storage;
  expect(()=>writeProjectColors({"local:/a":"blue"},storage)).toThrow("denied");
 });
-it.each(PROJECT_COLORS)("%s 未選取底色混入50%白色，選取維持深底白字",(color)=>{
+it.each(PROJECT_COLORS)("%s 未選取淺底黑字，選取維持深底白字",(color)=>{
  expect(projectTileClass(color,false).split(" ")).toContain(`bg-project-${color}-muted`);
  expect(projectTileClass(color,false).split(" ")).toContain(`text-project-${color}-muted-foreground`);
  expect(projectTileClass(color,true).split(" ")).toContain(`bg-project-${color}`);
  expect(projectTileClass(color,true).split(" ")).toContain("text-project-foreground");
 });
-it("紫色和粉紅色保持不同色系；預設維持原行為",()=>{
+it("紫色和粉紅色保持不同色系；預設深灰與淺灰",()=>{
  expect(projectTileClass("purple",false)).not.toBe(projectTileClass("pink",false));
- expect(projectTileClass(undefined,true)).toContain("bg-primary");
- expect(projectTileClass(undefined,false)).toContain("bg-muted");
+ expect(projectTileClass(undefined,true)).toContain("bg-project-default");
+ expect(projectTileClass(undefined,false)).toContain("bg-project-default-muted");
 });

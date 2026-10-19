@@ -67,7 +67,7 @@ export const listSecurityData = () => invoke<StandardDataList>("security_data_li
 
 export interface SecurityJobTicket { jobId: string; projectKey: string }
 export interface SecurityProgress extends SecurityJobTicket { phase: string; completedBytes: number; totalBytes: number | null; completedFiles: number; message: string }
-export type SecurityDataRequest = { action: "refresh" } | {action:"install";standardId:string;version:string;reinstall:boolean} | {action:"import";path:string} | {action:"remove";standardId:string;version:string};
+export type SecurityDataRequest = { action: "refresh" } | {action:"install";standardId:string;version:string;reinstall:boolean} | {action:"import";path:string} | {action:"remove";standardId:string;version:string} | ({action:"export";path:string} & ({all:true;standardId?:never;version?:never}|{all?:false;standardId:string;version:string}));
 export const startSecurityData = (request:SecurityDataRequest) => invoke<SecurityJobTicket>("security_data_start",{request});
 export const waitSecurityData = (jobId:string) => invoke<unknown>("security_data_wait",{jobId,projectKey:"application-data"});
 export const cancelSecurityJob = (jobId:string,projectKey="application-data") => invoke<boolean>("security_cancel",{jobId,projectKey});
@@ -101,3 +101,7 @@ export function createSecurityReviewAdapter(target:SecurityReviewTarget, ipc:imp
   async reveal(id,path,line) { await ipc("security_reveal",{target,id,path,line}); },
  };
 }
+
+export async function chooseSecurityExport(name="standards.zip"):Promise<string|null> {return save({defaultPath:name,filters:[{name:"ZIP",extensions:["zip"]}]});}
+export interface BatchImportReceipt {formatVersion:2;status:"installed"|"partial"|"failed"|"cancelled";results:Array<{standardId:string;version:string;status:"installed"|"failed"|"notAttempted";sha256:string|null;errorCode:string|null}>}
+export interface DataExportReceipt {path:string;formatVersion:number;bytes:number;packages:Array<{standardId:string;version:string;sha256:string}>;skipped:Array<{standardId:string;version:string;reason:string}>}

@@ -60,6 +60,125 @@ impl FsSecurityData {
         ensure!(id.supports_version(version), "unsupported_version");
         Ok(self.root.join(id.as_str()).join(version))
     }
+    fn read_generation(
+        &self,
+        id: StandardId,
+        version: &str,
+        export: bool,
+    ) -> Result<
+        Option<(
+            InstalledStandard,
+            std::collections::BTreeMap<String, Vec<u8>>,
+        )>,
+    > {
+        let base = self.version_path(id, version)?;
+        if !owned_directory(&base, &self.application_data, false)? {
+            return Ok(None);
+        }
+        let pointer = base.join("current.json");
+        if !pointer.try_exists()? {
+            return Ok(None);
+        }
+        for _ in 0..3 {
+            let pointer_bytes = read_limited(&pointer, 4096)?;
+            let current: Current = serde_json::from_slice(&pointer_bytes)
+                .context("invalid_package: current pointer")?;
+            ensure!(
+                current.format_version == 1 && valid_generation(&current.generation),
+                "invalid_package: current generation"
+            );
+            let result: Result<
+                Option<(
+                    InstalledStandard,
+                    std::collections::BTreeMap<String, Vec<u8>>,
+                )>,
+            > = (|| {
+                let generation = base.join("generations").join(&current.generation);
+                check_directory(&base.join("generations"))?;
+                check_directory(&generation)?;
+                // Old generations are retained for at least 24h. A reader pins its selected
+                // generation while checking every file, so cleanup cannot remove it mid-read.
+                let pin = open_regular(&generation.join(".pin"), false)?;
+                match pin.try_lock_shared() {
+                    Ok(()) => {}
+                    Err(fs::TryLockError::WouldBlock) => {
+                        anyhow::bail!("busy: selected generation is being cleaned")
+                    }
+                    Err(fs::TryLockError::Error(error)) => {
+                        return Err(error).context("storage_error: generation pin")
+                    }
+                }
+                let metadata_bytes = read_limited(&generation.join("metadata.json"), 128 * 1024)?;
+                ensure!(
+                    sha256(&metadata_bytes) == current.metadata_sha256,
+                    "integrity_error: metadata fingerprint"
+                );
+                let metadata: StandardMetadata =
+                    serde_json::from_slice(&metadata_bytes).context("invalid_package: metadata")?;
+                ensure!(
+                    metadata.standard_id == id
+                        && metadata.version == version
+                        && metadata.generation == current.generation
+                        && metadata.parser_version == PARSER_VERSION
+                        && metadata.installed_status == "installed",
+                    "invalid_package: metadata identity"
+                );
+                ensure!(
+                    metadata.files.len() <= MAX_PACKAGE_ENTRIES
+                        && metadata.files.contains_key("LICENSE"),
+                    "invalid_package: metadata entries"
+                );
+                let mut total = 0usize;
+                let mut files = std::collections::BTreeMap::new();
+                for (name, expected) in &metadata.files {
+                    ensure!(
+                        valid_data_name(name),
+                        "invalid_package: unsafe metadata path"
+                    );
+                    if name.starts_with("raw/") {
+                        check_directory(&generation.join("raw"))?;
+                    }
+                    let bytes = read_limited(
+                        &generation.join(name),
+                        if name.ends_with(".xml") {
+                            MAX_XML_BYTES
+                        } else {
+                            MAX_DATA_FILE_BYTES
+                        },
+                    )?;
+                    total += bytes.len();
+                    ensure!(total <= MAX_PACKAGE_BYTES, "size_limit: installed package");
+                    ensure!(
+                        sha256(&bytes) == *expected,
+                        "integrity_error: installed data fingerprint"
+                    );
+                    if export {
+                        files.insert(name.clone(), bytes);
+                    }
+                }
+                let parsed = read_limited(&generation.join("parsed.json"), MAX_PACKAGE_BYTES)?;
+                ensure!(
+                    sha256(&parsed) == metadata.parsed_sha256,
+                    "integrity_error: parsed fingerprint"
+                );
+                let snapshot = serde_json::from_slice::<
+                    speclink_core::security::standards::StandardSnapshot,
+                >(&parsed)
+                .context("invalid_package: parsed data")?;
+                ensure!(
+                    snapshot.standard_id == id && snapshot.version == version,
+                    "invalid_package: parsed identity"
+                );
+                Ok(Some((InstalledStandard { metadata, snapshot }, files)))
+            })();
+            if result.is_ok() || read_limited(&pointer, 4096)? == pointer_bytes {
+                return result;
+            }
+            // A stale generation may disappear between selecting current and pinning it.
+            // Retry the new pointer, with a bound so concurrent changes cannot spin forever.
+        }
+        anyhow::bail!("busy: current generation keeps changing")
+    }
 }
 
 impl StandardRepository for FsSecurityData {
@@ -214,104 +333,23 @@ impl StandardRepository for FsSecurityData {
     }
 
     fn read(&self, id: StandardId, version: &str) -> Result<Option<InstalledStandard>> {
-        let base = self.version_path(id, version)?;
-        if !owned_directory(&base, &self.application_data, false)? {
-            return Ok(None);
-        }
-        let pointer = base.join("current.json");
-        if !pointer.try_exists()? {
-            return Ok(None);
-        }
-        for _ in 0..3 {
-            let pointer_bytes = read_limited(&pointer, 4096)?;
-            let current: Current = serde_json::from_slice(&pointer_bytes)
-                .context("invalid_package: current pointer")?;
-            ensure!(
-                current.format_version == 1 && valid_generation(&current.generation),
-                "invalid_package: current generation"
-            );
-            let result: Result<Option<InstalledStandard>> = (|| {
-                let generation = base.join("generations").join(&current.generation);
-                check_directory(&base.join("generations"))?;
-                check_directory(&generation)?;
-                // Old generations are retained for at least 24h. A reader pins its selected
-                // generation while checking every file, so cleanup cannot remove it mid-read.
-                let pin = open_regular(&generation.join(".pin"), false)?;
-                match pin.try_lock_shared() {
-                    Ok(()) => {}
-                    Err(fs::TryLockError::WouldBlock) => {
-                        anyhow::bail!("busy: selected generation is being cleaned")
-                    }
-                    Err(fs::TryLockError::Error(error)) => {
-                        return Err(error).context("storage_error: generation pin")
-                    }
-                }
-                let metadata_bytes = read_limited(&generation.join("metadata.json"), 128 * 1024)?;
-                ensure!(
-                    sha256(&metadata_bytes) == current.metadata_sha256,
-                    "integrity_error: metadata fingerprint"
-                );
-                let metadata: StandardMetadata =
-                    serde_json::from_slice(&metadata_bytes).context("invalid_package: metadata")?;
-                ensure!(
-                    metadata.standard_id == id
-                        && metadata.version == version
-                        && metadata.generation == current.generation
-                        && metadata.parser_version == PARSER_VERSION
-                        && metadata.installed_status == "installed",
-                    "invalid_package: metadata identity"
-                );
-                ensure!(
-                    metadata.files.len() <= MAX_PACKAGE_ENTRIES
-                        && metadata.files.contains_key("LICENSE"),
-                    "invalid_package: metadata entries"
-                );
-                let mut total = 0usize;
-                for (name, expected) in &metadata.files {
-                    ensure!(
-                        valid_data_name(name),
-                        "invalid_package: unsafe metadata path"
-                    );
-                    if name.starts_with("raw/") {
-                        check_directory(&generation.join("raw"))?;
-                    }
-                    let bytes = read_limited(
-                        &generation.join(name),
-                        if name.ends_with(".xml") {
-                            MAX_XML_BYTES
-                        } else {
-                            MAX_DATA_FILE_BYTES
-                        },
-                    )?;
-                    total += bytes.len();
-                    ensure!(total <= MAX_PACKAGE_BYTES, "size_limit: installed package");
-                    ensure!(
-                        sha256(&bytes) == *expected,
-                        "integrity_error: installed data fingerprint"
-                    );
-                }
-                let parsed = read_limited(&generation.join("parsed.json"), MAX_PACKAGE_BYTES)?;
-                ensure!(
-                    sha256(&parsed) == metadata.parsed_sha256,
-                    "integrity_error: parsed fingerprint"
-                );
-                let snapshot = serde_json::from_slice::<
-                    speclink_core::security::standards::StandardSnapshot,
-                >(&parsed)
-                .context("invalid_package: parsed data")?;
-                ensure!(
-                    snapshot.standard_id == id && snapshot.version == version,
-                    "invalid_package: parsed identity"
-                );
-                Ok(Some(InstalledStandard { metadata, snapshot }))
-            })();
-            if result.is_ok() || read_limited(&pointer, 4096)? == pointer_bytes {
-                return result;
-            }
-            // A stale generation may disappear between selecting current and pinning it.
-            // Retry the new pointer, with a bound so concurrent changes cannot spin forever.
-        }
-        anyhow::bail!("busy: current generation keeps changing")
+        Ok(self
+            .read_generation(id, version, false)?
+            .map(|(installed, _)| installed))
+    }
+    fn read_export_source(
+        &self,
+        id: StandardId,
+        version: &str,
+    ) -> Result<Option<speclink_core::security::data::ExportSource>> {
+        Ok(self
+            .read_generation(id, version, true)?
+            .map(
+                |(installed, files)| speclink_core::security::data::ExportSource {
+                    metadata: installed.metadata,
+                    files,
+                },
+            ))
     }
 
     fn begin_install(&self, id: StandardId, version: &str) -> Result<Box<dyn StandardInstall>> {
@@ -777,6 +815,8 @@ fn checked_zip<'a>(
     for i in 0..archive.len() {
         ensure!(!cancelled(), "cancelled");
         let file = archive.by_index(i).context("invalid_package: ZIP entry")?;
+        crate::security_packages::check_local_header(&mut std::io::Cursor::new(bytes),file.header_start())?;
+        ensure!(file.extra_data().is_none_or(|data|!crate::security_packages::has_zip64(data)),"unsupported_format: ZIP64 entry");
         let name = std::str::from_utf8(file.name_raw())
             .context("invalid_package: ZIP file name must be UTF-8")?;
         ensure!(
@@ -1057,6 +1097,32 @@ mod tests {
             }
         }
         zip.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn export_source_retains_same_generation_raw_and_license() {
+        let (manifest, files) = offline_fixture();
+        let dir = TestDirectory::new();
+        let repo = FsSecurityData::new(&dir.0).unwrap();
+        let path = dir.0.join("source.zip");
+        fs::write(&path, fixture_zip(&manifest, &files, None)).unwrap();
+        let installed = repo.import_package(&path, &|| false).unwrap();
+        let exported = repo
+            .read_export_source(StandardId::Cwe, "4.20")
+            .unwrap()
+            .unwrap();
+        assert_eq!(exported.metadata.generation, installed.generation);
+        assert_eq!(exported.files, files.into_iter().collect());
+        let json = serde_json::to_value(speclink_core::security::data::ExportReceipt {
+            path: "a.zip".into(),
+            format_version: 1,
+            bytes: 42,
+            packages: vec![],
+            skipped: vec![],
+        })
+        .unwrap();
+        assert_eq!(json["formatVersion"], 1);
+        assert!(json["bytes"].is_u64());
     }
 
     #[test]

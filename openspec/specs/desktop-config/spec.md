@@ -130,7 +130,7 @@ app SHALL 以圖示列的專案方塊呈現目前開著的專案(每個專案一
 #### Scenario: 成功開啟後記入分頁並去重上移
 
 - **WHEN** 使用者依序開啟專案 A、B,再次開啟專案 A
-- **THEN** 圖示列僅含 A、B 各一個方塊且 A 為作用中(teal 底白字),A 與 B 的專案目錄內均無因此新增的檔案;重啟 app 後圖示列還原為相同內容與順序
+- **THEN** 圖示列僅含 A、B 各一個方塊且 A 為作用中(預設深灰#374151底白字),A 與 B 的專案目錄內均無因此新增的檔案;重啟 app 後圖示列還原為相同內容與順序
 
 #### Scenario: 點擊分頁切換專案
 
@@ -159,8 +159,8 @@ app SHALL 以圖示列的專案方塊呈現目前開著的專案(每個專案一
 
 
 <!-- @trace
-source: desktop-shell-redesign
-updated: 2026-10-09T12:33:58+08:00
+source: desktop-colors-network-and-offline-bundles
+updated: 2026-10-19T23:00:19+08:00
 -->
 
 ---
@@ -175,12 +175,14 @@ updated: 2026-10-09T12:33:58+08:00
 - **產出流程**頁 SHALL 含「產出政策」卡——locale、spec_locale（列右側下拉）與 tdd、audit、worktree（列右側開關）——與「產出流程」卡（行為見需求「產出流程頁」）。
 - **.speclink.yaml** 頁 SHALL 含「檔案」列（等寬路徑，唯讀）與「AI 工具」卡——內建工具 claude／codex／copilot 每個一列附開關，自訂工具描述子原樣呈現為不可編輯列。
 
-應用程式設定的分類欄 SHALL 為「應用程式」組：一般、更新、CLI、伺服器，其後為「關於」組：關於 Speclink（行為見 desktop-app 需求「關於頁」）；預設落在一般；零專案時 SHALL 照常可進入且分類欄照常呈現。
+應用程式設定的分類欄 SHALL 為「應用程式」組：一般、更新、CLI、伺服器、網路與診斷、安全標準資料，其後為「關於」組：關於 Speclink（行為見 desktop-app 需求「關於頁」）；預設落在一般；零專案時 SHALL 照常可進入且分類欄照常呈現。
 
 - **一般**頁 SHALL 含「語言與外觀」卡（顯示語言列、外觀列；行為見需求「UI 介面語言支援 zh-TW 與 en」「外觀偏好」）與「鍵盤快捷鍵」卡，並 SHALL 以頁標題下的註記說明其內容僅存於此裝置、不寫入版本庫；SHALL NOT 含軟體更新卡與 CLI 指令卡。
 - **更新**頁行為見 desktop-app 需求「桌面自動更新」「更新日誌彈窗」。
 - **CLI**頁行為見 desktop-app 需求「安裝 CLI 指令到 PATH」。
 - **伺服器**頁行為見 desktop-connections 需求「伺服器管理最小面」。
+- **網路與診斷**頁 SHALL 提供 desktop-network-diagnostics 規定的裝置網路偏好、Debug mode與診斷匯出，分類搜尋 SHALL 同時比對Proxy、Debug mode、匯出診斷與測試更新連線等列標籤。
+- **安全標準資料**頁 SHALL 沿用既有資料管理，並提供 security-standard-data 規定的匯入及匯出操作。
 
 應用程式設定的同一個設定列 SHALL 只出現在一個分類頁，SHALL NOT 在其他分類頁重複。
 
@@ -191,7 +193,7 @@ updated: 2026-10-09T12:33:58+08:00
 #### Scenario: 兩種設定模式與預設分類
 
 - **WHEN** 使用者於 local 專案分別點專案欄「專案設定」與圖示列齒輪
-- **THEN** 專案設定的分類欄為「openspec/config.yaml」組（專案說明、產出規則、審查規則、產出流程）與「專案」組（.speclink.yaml），預設在專案說明頁（頁標題下等寬註記 `openspec/config.yaml · context`）；切到產出流程頁見產出政策卡與產出流程卡、切到 .speclink.yaml 頁見檔案列與 AI 工具卡；應用程式設定的分類欄為「應用程式」組（一般、更新、CLI、伺服器）與「關於」組（關於 Speclink），預設在一般頁（含語言與外觀、鍵盤快捷鍵兩卡與「僅存於此裝置」註記，無軟體更新卡與 CLI 指令卡）
+- **THEN** 專案設定的分類欄為「openspec/config.yaml」組（專案說明、產出規則、審查規則、產出流程）與「專案」組（.speclink.yaml），預設在專案說明頁（頁標題下等寬註記 `openspec/config.yaml · context`）；切到產出流程頁見產出政策卡與產出流程卡、切到 .speclink.yaml 頁見檔案列與 AI 工具卡；應用程式設定的分類欄為「應用程式」組（一般、更新、CLI、伺服器、網路與診斷、安全標準資料）與「關於」組（關於 Speclink），預設在一般頁（含語言與外觀、鍵盤快捷鍵兩卡與「僅存於此裝置」註記，無軟體更新卡與 CLI 指令卡）
 
 #### Scenario: 遠端專案的專案設定分類
 
@@ -246,10 +248,14 @@ updated: 2026-10-09T12:33:58+08:00
 - **WHEN** config.yaml 被外部改壞為無法解析，使用者開啟專案設定
 - **THEN** 分類欄的專案說明、產出規則、審查規則、產出流程四項帶警示點；進入任一頁可見解析失敗說明，產出政策卡表單與專案說明、產出規則、審查規則三頁的編輯鈕停用；應用程式設定的顯示語言列仍可正常使用
 
+#### Scenario: 網路與診斷可搜尋且零專案可進入
+- **WHEN** 使用者沒有開啟專案，在應用程式設定搜尋Proxy或匯出診斷，再進入命中分類
+- **THEN** 顯示網路與診斷頁的對應設定，安全標準資料分類仍存在；切頁重回時分類記憶沿既有規則
+
 
 <!-- @trace
-source: review-rules-config
-updated: 2026-10-14T16:37:17+08:00
+source: desktop-colors-network-and-offline-bundles
+updated: 2026-10-19T23:00:19+08:00
 -->
 
 ---

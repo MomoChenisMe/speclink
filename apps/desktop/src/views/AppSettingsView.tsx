@@ -8,6 +8,7 @@ import { CliPage, type CliInstallProps } from "./settings/CliPage";
 import { GeneralPage, type InterfacePrefsProps } from "./settings/GeneralPage";
 import { ServersPage, type ServersPageProps } from "./settings/ServersPage";
 import { UpdatesPage } from "./settings/UpdatesPage";
+import {NetworkDiagnosticsPage} from "./settings/NetworkDiagnosticsPage";
 import { SecurityDataPage } from "./settings/SecurityDataPage";
 
 /** 軟體更新面：狀態機現值＋手動檢查入口＋更新日誌瀏覽入口＋常駐現版號（null＝尚未取得）
@@ -71,6 +72,7 @@ export function AppSettingsView({
       )}
       {section === "updates" && <UpdatesPage updater={updater} />}
       {section === "cli" && <CliPage cliInstall={cliInstall} />}
+      {section === "network" && <NetworkDiagnosticsPage />}
       {section === "security-data" && <SecurityDataPage />}
       {section === "servers" && servers && <ServersPage {...servers} />}
       {section === "about" && about && <AboutPage {...about} updaterState={updater?.state} />}

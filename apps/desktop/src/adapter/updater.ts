@@ -1,7 +1,7 @@
 // updater 接線面（design D6）：Tauri 殼對 tauri-plugin-updater／plugin-process 的
 // 單行委派，加上主視窗焦點事件的委派（前景重檢的訊號；update-recheck-on-focus
 // design D1）。store 只依賴此介面，測試以假 adapter 注入。
-import { check } from "@tauri-apps/plugin-updater";
+import { invoke } from "@tauri-apps/api/core";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -33,12 +33,12 @@ export interface UpdaterAdapter {
 export function tauriUpdaterAdapter(): UpdaterAdapter {
   return {
     async check() {
-      const update = await check();
+      const update = await invoke<{id: string; version: string} | null>("updater_check");
       if (!update) return null;
       return {
         version: update.version,
-        download: () => update.download(),
-        install: () => update.install(),
+        download: () => invoke<void>("updater_download", { id: update.id }),
+        install: () => invoke<void>("updater_install", { id: update.id }),
       };
     },
     relaunch,

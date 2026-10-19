@@ -18,6 +18,10 @@ sys-locale = "0.3.2"
 ureq = { version = "2.12.1", default-features = false, features = ["tls"] }
 ulid.workspace = true
 webpki-roots = "0.26.11"
+url = "2"
+http = "1"
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "stream"] }
+hyper-util = { version = "0.1.20", features = ["client-proxy", "client-proxy-system"] }
 
 [dev-dependencies]
 speclink-fs = { path = "../../engine/speclink-fs" }

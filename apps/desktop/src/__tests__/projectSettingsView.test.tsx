@@ -1966,12 +1966,12 @@ it("專案設定可選圖示底色；Remote reader 仍可改裝置偏好，失�
  expect((await screen.findByRole("alert")).textContent).toContain("storage_denied");
 });
 
-it("設定色票預覽選取深色、其他淡化50%",async()=>{
+it("設定色票預覽全部深底白字",async()=>{
  render(<ProjectSettingsView settings={fakeSettings(projectSnap())} section="context" projectColor="blue" onProjectColorChange={vi.fn()}/>);
  for (const [name,color] of [["青綠色","teal"],["藍色","blue"],["紫色","purple"],["粉紅色","pink"],["橘色","orange"],["綠色","green"]]) {
   const input=await screen.findByRole("radio",{name});
   const preview=input.closest("label")?.querySelector('[aria-hidden="true"]');
-  expect(preview?.className).toContain(color === "blue" ? "bg-project-blue" : `bg-project-${color}-muted`);
-  expect(preview?.className).toContain(color === "blue" ? "text-project-foreground" : `text-project-${color}-muted-foreground`);
+  expect(preview?.className).toContain(`bg-project-${color}`);
+  expect(preview?.className).toContain("text-project-foreground");
  }
 });

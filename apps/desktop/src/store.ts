@@ -738,6 +738,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     // 最後一次 CLI 佈署探測（installCli 取 home 與 sidecar 路徑）——閉包層。
     let lastCliProbe: Awaited<ReturnType<CliInstallAdapter["probe"]>> | null = null;
     // remote handshake 世代只屬目前 app 執行期；同 locator 僅最新結果可落地。
+    let activationGeneration = 0;
     const remoteOpenGeneration = new Map<string, number>();
     // 看板最後成功內容只活在本次 app 執行期，依 locator 隔離且不進 localStorage。
     const workspaceSnapshots = new Map<string, WorkspaceSnapshot>();
@@ -841,7 +842,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const snapshot = visibleWorkspaceSnapshot(key);
       return {
         ...snapshot,
-        ...(get().activeKey === key ? {} : resetWorkspaceTransientState()),
+        ...(get().activeKey === key && !(get().boardView === "settings" || get().boardView === "project-settings") ? {} : resetWorkspaceTransientState()),
+        ...((get().boardView === "settings" || get().boardView === "project-settings") ? { boardView: "board" as const } : {}),
         loadingActive: loadingActiveFor(key),
       };
     }
@@ -1180,7 +1182,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     /** 對已存在的 remote tab 重走 handshake。activate=true 只在使用者選取分頁時
      * 同步更新 activeKey；Tray／retry 使用 false，不得搶走目前作用中分頁。 */
-    async function reconnectRemoteTab(key: string, activate: boolean) {
+    async function reconnectRemoteTab(key: string, activate: boolean, intent?: number) {
+      const fromSettings = get().boardView === "settings" || get().boardView === "project-settings";
       if (!openRemote) return;
       const tab = get().tabs.find((candidate) => locatorKey(candidate.locator) === key);
       if (!tab || tab.locator.kind !== "remote") return;
@@ -1190,7 +1193,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         const tabErrors = { ...state.tabErrors };
         delete tabErrors[key];
         return {
-          ...(activate
+          ...(activate && !fromSettings
             ? {
                 activeKey: key,
                 boardView: "board" as const,
@@ -1204,7 +1207,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           },
         };
       });
-      if (activate) persistTabs(get().tabs, key);
+      if (activate && !fromSettings) persistTabs(get().tabs, key);
 
       const { connectionId, projectId, repoId, checkoutRoot } = tab.locator;
       try {
@@ -1235,6 +1238,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           remoteRecovery,
           // activeKey 先於 session 成立時，必須顯式觸發事件訂閱重新掛載。
           sessionEpoch: state.sessionEpoch + 1,
+          ...(activate && fromSettings && (intent === undefined || intent === activationGeneration) ? { activeKey: key, ...workspaceActivationState(key) } : {}),
         }));
         // 重連是一次成功開啟（design D2）——remote 分頁的順序不得停在舊值。
         const recents = recordRecent({
@@ -2383,6 +2387,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       if (!workspace) return;
       const tab = get().tabs.find((t) => locatorKey(t.locator) === key);
       if (!tab) return;
+      const intent = ++activationGeneration;
+      set({ pendingTabKey: null });
       if (tab.locator.kind === "remote") {
         const existing = get().sessions[key];
         if (existing) {
@@ -2403,7 +2409,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           persistRecents(recents);
           await get().refresh();
         } else {
-          await reconnectRemoteTab(key, true);
+          await reconnectRemoteTab(key, true, intent);
         }
         return;
       }
@@ -2415,12 +2421,12 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       try {
         probe = await workspace.openProject(tab.locator.root);
       } catch (e) {
-        set({ tabErrors: { ...get().tabErrors, [key]: String(e) } });
+        if (intent === activationGeneration) set({ tabErrors: { ...get().tabErrors, [key]: String(e) } });
       } finally {
         // 後發切換覆寫先發時，先發的收尾不得清掉後發的標記。
-        if (get().pendingTabKey === key) set({ pendingTabKey: null });
+        if (intent === activationGeneration && get().pendingTabKey === key) set({ pendingTabKey: null });
       }
-      if (!probe) return;
+      if (!probe || intent !== activationGeneration) return;
       try {
         if (probe.status === "project") {
           await enterProject(probe.root, probe.name);

@@ -506,3 +506,182 @@ fn security_top10_2025_only_installed_then_offline_without_ai_or_archive_gate() 
         String::from_utf8_lossy(&archive.stderr)
     );
 }
+
+fn cwe_package(fixture: &Fixture) -> PathBuf {
+    use speclink_core::security::{
+        data::{ExportSource, IntegrityKind, ValidatedStandard},
+        standards::{standard_source, StandardId},
+    };
+    let files=std::collections::BTreeMap::from([
+        ("raw/cwec_v4.20.xml".into(),br#"<Weakness_Catalog xmlns="http://cwe.mitre.org/cwe-7" Version="4.20"><Weaknesses><Weakness ID="79" Name="Synthetic"><Description>Fixture</Description></Weakness></Weaknesses></Weakness_Catalog>"#.to_vec()),
+        ("LICENSE".into(),b"MITRE CWE Terms of Use fixture".to_vec())]);
+    let data = ValidatedStandard::new(
+        standard_source(StandardId::Cwe, "4.20").unwrap(),
+        files,
+        IntegrityKind::Imported,
+        &|| false,
+    )
+    .unwrap();
+    let bytes = speclink_fs::security_packages::encode_single(
+        ExportSource {
+            metadata: data.metadata("test".into(), "now".into()).unwrap(),
+            files: data.files().clone(),
+        },
+        &|| false,
+    )
+    .unwrap();
+    let path = fixture.0.join("input.zip");
+    std::fs::write(&path, bytes).unwrap();
+    path
+}
+#[test]
+fn security_data_export_round_trip_json_human_clap_and_existing_file() {
+    let fixture = Fixture::new();
+    let input = cwe_package(&fixture);
+    let import = fixture.run(&[
+        "security",
+        "data",
+        "import",
+        input.to_str().unwrap(),
+        "--json",
+    ]);
+    assert!(
+        import.status.success(),
+        "{}",
+        String::from_utf8_lossy(&import.stderr)
+    );
+    let single = fixture.0.join("single.zip");
+    let exported = fixture.run(&[
+        "security",
+        "data",
+        "export",
+        "cwe",
+        "--version",
+        "4.20",
+        "--output",
+        single.to_str().unwrap(),
+        "--json",
+        "--no-color",
+    ]);
+    assert!(
+        exported.status.success(),
+        "{}",
+        String::from_utf8_lossy(&exported.stderr)
+    );
+    let value: serde_json::Value = serde_json::from_slice(&exported.stdout).unwrap();
+    assert_eq!(value.as_object().unwrap().len(), 5);
+    assert_eq!(value["formatVersion"], 1);
+    assert!(value["bytes"].is_u64());
+    assert_eq!(value["path"], single.to_str().unwrap());
+    assert_eq!(value["packages"][0]["standardId"], "cwe");
+    assert_eq!(value["packages"][0]["version"], "4.20");
+    assert_eq!(value["packages"][0]["sha256"].as_str().unwrap().len(), 64);
+    assert_eq!(value["skipped"], serde_json::json!([]));
+    let repeat = fixture.run(&[
+        "security",
+        "data",
+        "import",
+        single.to_str().unwrap(),
+        "--json",
+    ]);
+    assert!(repeat.status.success());
+    let before: serde_json::Value = serde_json::from_slice(&import.stdout).unwrap();
+    let after: serde_json::Value = serde_json::from_slice(&repeat.stdout).unwrap();
+    assert_eq!(
+        before.as_object().unwrap().keys().collect::<Vec<_>>(),
+        after.as_object().unwrap().keys().collect::<Vec<_>>()
+    );
+    assert_eq!(before["sha256"], after["sha256"]);
+    assert_eq!(after["integrityKind"], "imported");
+    let saved = std::fs::read(&single).unwrap();
+    let exists = fixture.run(&[
+        "security",
+        "data",
+        "export",
+        "--all",
+        "--output",
+        single.to_str().unwrap(),
+        "--json",
+    ]);
+    assert_eq!(exists.status.code(), Some(1));
+    assert!(exists.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&exists.stderr).contains("file_exists"));
+    assert_eq!(std::fs::read(&single).unwrap(), saved);
+    let all = fixture.0.join("all.zip");
+    let human = fixture.run(&[
+        "security",
+        "data",
+        "export",
+        "--all",
+        "--output",
+        all.to_str().unwrap(),
+        "--no-color",
+    ]);
+    assert!(
+        human.status.success(),
+        "{}",
+        String::from_utf8_lossy(&human.stderr)
+    );
+    let text = String::from_utf8(human.stdout).unwrap();
+    assert!(text.contains("cwe 4.20"));
+    assert!(text.contains(all.to_str().unwrap()));
+    assert!(!text.contains('\x1b'));
+    let batch = fixture.run(&[
+        "security",
+        "data",
+        "import",
+        all.to_str().unwrap(),
+        "--json",
+    ]);
+    assert!(
+        batch.status.success(),
+        "{}",
+        String::from_utf8_lossy(&batch.stderr)
+    );
+    let receipt: serde_json::Value = serde_json::from_slice(&batch.stdout).unwrap();
+    assert_eq!(receipt["formatVersion"], 2);
+    assert_eq!(receipt["status"], "installed");
+    assert_eq!(receipt["results"][0]["status"], "installed");
+    assert!(receipt["results"][0]["errorCode"].is_null());
+    let human_batch = fixture.run(&[
+        "security",
+        "data",
+        "import",
+        all.to_str().unwrap(),
+        "--no-color",
+    ]);
+    assert!(human_batch.status.success());
+    let text = String::from_utf8(human_batch.stdout).unwrap();
+    assert!(text.contains("cwe 4.20: installed"));
+    assert!(text.contains(receipt["results"][0]["sha256"].as_str().unwrap()));
+    assert!(!text.contains('\x1b'));
+    for args in [
+        vec![
+            "security",
+            "data",
+            "export",
+            "cwe",
+            "--all",
+            "--version",
+            "4.20",
+            "--output",
+            "x",
+        ],
+        vec![
+            "security",
+            "data",
+            "export",
+            "--all",
+            "--version",
+            "4.20",
+            "--output",
+            "x",
+        ],
+        vec!["security", "data", "export", "cwe", "--output", "x"],
+        vec!["security", "data", "export", "--output", "x"],
+    ] {
+        let out = fixture.run(&args);
+        assert_eq!(out.status.code(), Some(2), "args: {args:?}");
+        assert!(out.stdout.is_empty());
+    }
+}

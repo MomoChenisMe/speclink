@@ -1,3 +1,4 @@
+import {DiagnosticsBoundary} from "./diagnostics";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
@@ -246,6 +247,7 @@ export function App({
   };
   return (
     <I18nProvider locale={uiLocale} messages={APP_MESSAGES}>
+      <DiagnosticsBoundary>
       <AppInner
         createSession={createSession}
         openRemote={openRemote}
@@ -261,6 +263,7 @@ export function App({
         themePref={themePref}
         onThemePrefChange={setThemePref}
       />
+      </DiagnosticsBoundary>
       <Toaster theme={themePref ?? "system"} />
     </I18nProvider>
   );
@@ -570,15 +573,28 @@ function AppInner({
     projectSettingsDirty.current = dirty;
   }, []);
   const [discardPrompt, setDiscardPrompt] = useState(false);
+  const pendingSettingsAction = useRef<(() => void) | null>(null);
+  const leaveSettingsBefore = (action: () => void) => {
+    if (dialogOpen()) return;
+    if (useStore.getState().boardView === "project-settings" && projectSettingsDirty.current) {
+      pendingSettingsAction.current = action;
+      setDiscardPrompt(true);
+    } else action();
+  };
+  const activateProject = (key: string) => leaveSettingsBefore(() => void useStore.getState().activateTab(key));
+  const cycleProject = () => {
+    const st = useStore.getState();
+    const index = st.tabs.findIndex((tab) => locatorKey(tab.locator) === st.activeKey);
+    const tab = st.tabs[(index + 1) % st.tabs.length];
+    if (tab) activateProject(locatorKey(tab.locator));
+  };
   // 全系統唯一的返回：返回鈕、Esc、⌘[（非 macOS 為 Alt+←）、滑鼠側鍵、觸控板滑動都經此決定
   // 去處——詳情頁開著時關頁回宿主頁（確認框待確認或確認在途時不作用）；設定與專案設定模式
   // 回到進入前的頁面（專案設定有未存修改時先問）；其餘頁面沒有返回（null）。
   const backTarget = (st: AppState): (() => void) | null => {
     if (detailPageOpen(st)) return detailActionsBlocked() ? null : st.closeDetailPage;
     if (!inSettingsMode(st)) return null;
-    return st.boardView === "project-settings" && projectSettingsDirty.current
-      ? () => setDiscardPrompt(true)
-      : st.leaveSettings;
+    return () => leaveSettingsBefore(st.leaveSettings);
   };
   // 觸發當下才看有沒有對話框開著（渲染時讀到的 DOM 還是上一刻，不能拿來決定滑動開關）。
   const resolveBack = (st: AppState) => (dialogOpen() ? null : backTarget(st));
@@ -633,10 +649,11 @@ function AppInner({
       if (!e.ctrlKey) return;
       if (e.key === "Tab") {
         e.preventDefault();
-        void useStore.getState().cycleTab();
+        cycleProject();
       } else if (e.key >= "1" && e.key <= "9") {
         e.preventDefault();
-        void useStore.getState().gotoTab(Number(e.key));
+        const tab = useStore.getState().tabs[Number(e.key) - 1];
+        if (tab) activateProject(locatorKey(tab.locator));
       } else if (key === "w" && platform !== "macos") {
         e.preventDefault();
         closeActiveProject(useStore);
@@ -715,7 +732,7 @@ function AppInner({
         case "refresh":
           return void st.refresh();
         case "nextProject":
-          return void st.cycleTab();
+          return cycleProject();
         case "bringAllToFront":
           return void getCurrentWindow().setFocus();
         case "releaseNotes":
@@ -1099,7 +1116,7 @@ function AppInner({
             assetPrompts={s.assetPrompts}
             platform={platform}
             actions={projectActions}
-            onActivate={(key) => void s.activateTab(key)}
+            onActivate={activateProject}
             onOpen={() => s.openWorkspaceChooser()}
             onOpenSettings={() => s.setBoardView("settings")}
             settingsActive={s.boardView === "settings"}
@@ -1473,14 +1490,17 @@ function AppInner({
       {/* 初始化確認（寫入型確認框：Radix 預設焦點落在取消） */}
       <ConfirmDialog
         open={discardPrompt}
-        onOpenChange={setDiscardPrompt}
+        onOpenChange={(open) => { setDiscardPrompt(open); if (!open) pendingSettingsAction.current = null; }}
         title={t("settings.discardTitle")}
         description={t("settings.discardHint")}
         confirmLabel={t("settings.discard")}
         destructive
         onConfirm={() => {
+          const action = pendingSettingsAction.current;
+          pendingSettingsAction.current = null;
+          projectSettingsDirty.current = false;
           setDiscardPrompt(false);
-          useStore.getState().leaveSettings();
+          action?.();
         }}
       />
       <ConfirmDialog

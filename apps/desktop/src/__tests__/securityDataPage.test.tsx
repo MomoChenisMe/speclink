@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 vi.mock("@tauri-apps/plugin-opener", () => ({openUrl:vi.fn()}));
 vi.mock("sonner", () => ({toast:{error:vi.fn()}}));
 
-vi.mock("../adapter/security", () => ({listSecurityData:vi.fn(),startSecurityData:vi.fn(),waitSecurityData:vi.fn(),cancelSecurityJob:vi.fn(),watchSecurityProgress:vi.fn(),chooseSecurityPackage:vi.fn()}));
+vi.mock("../adapter/security", () => ({listSecurityData:vi.fn(),startSecurityData:vi.fn(),waitSecurityData:vi.fn(),cancelSecurityJob:vi.fn(),watchSecurityProgress:vi.fn(),chooseSecurityPackage:vi.fn(),chooseSecurityExport:vi.fn()}));
 const inventory = {standards:[{standardId:"owasp_top10",versions:[{version:"2025",status:"missing",sourceUrl:"https://github.com/OWASP/Top10",licenseName:"CC-BY-SA-4.0",licenseUrl:"https://creativecommons.org/licenses/by-sa/4.0/",attribution:"OWASP Foundation",sourceFormat:"markdown",error:null}]}]};
 const mount = () => render(<I18nProvider locale="zh-TW" messages={APP_MESSAGES}><SecurityDataPage /></I18nProvider>);
 beforeEach(() => {
@@ -95,4 +95,26 @@ it("桌面外開權限包含標準清單中的官方來源與授權",()=>{
   expect(allowed.some((pattern)=>pattern.url.endsWith("*")?url.startsWith(pattern.url.slice(0,-1)):url===pattern.url)).toBe(true);
  }
  expect(allowed.some((pattern)=>pattern.url==="https://*"||pattern.url==="*")).toBe(false);
+});
+
+it("單一及全部匯出先選路徑，取消不啟動工作，成功顯示位置",async()=>{
+ vi.mocked(api.listSecurityData).mockResolvedValue({standards:[{...inventory.standards[0],versions:[{...inventory.standards[0].versions[0],status:"installed"}]}]});
+ vi.mocked(api.chooseSecurityExport).mockResolvedValue(null);
+ mount();fireEvent.click(await screen.findByRole("button",{name:"全部匯出"}));
+ await waitFor(()=>expect(api.chooseSecurityExport).toHaveBeenCalled());expect(api.startSecurityData).not.toHaveBeenCalled();
+ vi.mocked(api.chooseSecurityExport).mockResolvedValue("/exports/one.zip");
+ vi.mocked(api.waitSecurityData).mockResolvedValue({path:"/exports/one.zip",formatVersion:1,bytes:42,packages:[],skipped:[]});
+ fireEvent.click(screen.getByRole("button",{name:"匯出此版本"}));
+ await waitFor(()=>expect(api.startSecurityData).toHaveBeenCalledWith({action:"export",standardId:"owasp_top10",version:"2025",path:"/exports/one.zip"}));
+ expect(await screen.findByText(/已匯出至.*one.zip/)).toBeTruthy();
+ vi.mocked(api.chooseSecurityExport).mockResolvedValue("/exports/all.zip");
+ fireEvent.click(screen.getByRole("button",{name:"全部匯出"}));
+ await waitFor(()=>expect(api.startSecurityData).toHaveBeenCalledWith({action:"export",all:true,path:"/exports/all.zip"}));
+});
+it("集合匯入顯示部分成功與每項失敗，刷新清單",async()=>{
+ vi.mocked(api.chooseSecurityPackage).mockResolvedValue("/offline/batch.zip");
+ vi.mocked(api.waitSecurityData).mockResolvedValue({formatVersion:2,status:"partial",results:[{standardId:"cwe",version:"4.20",status:"installed",sha256:"abc",errorCode:null},{standardId:"owasp_top10",version:"2025",status:"failed",sha256:null,errorCode:"busy"},{standardId:"owasp_asvs",version:"5.0.0",status:"notAttempted",sha256:null,errorCode:null}]});
+ mount();fireEvent.click(await screen.findByRole("button",{name:"匯入離線資料包"}));
+ expect(await screen.findByText("部分完成")).toBeTruthy();expect(screen.getByText(/2025.*失敗.*busy/)).toBeTruthy();expect(screen.getByText(/5.0.0.*尚未處理/)).toBeTruthy();
+ expect(api.listSecurityData).toHaveBeenCalledTimes(2);
 });

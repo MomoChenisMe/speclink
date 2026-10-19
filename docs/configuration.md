@@ -23,9 +23,53 @@ The user config directory is here:
 
 The desktop app keeps its UI language and its server list in its own app folder. It keeps credentials in the system keychain. None of these go into the project.
 
-In the desktop app, Settings opens in settings mode. The left column lists the categories: General, Updates, CLI, and Servers under Application, and About Speclink under About. The General and CLI pages keep their values on this computer. The Servers page manages the list of server connections.
+In the desktop app, Settings opens in settings mode. The left column lists the categories: General, Updates, CLI, Servers, Network and diagnostics, and Security standard data under Application, and About Speclink under About. The General and CLI pages keep their values on this computer. The Servers page manages the list of server connections.
 
 ![Settings mode in the desktop app, with the category column on the left and the General page](assets/screenshots/en/desktop-settings.png)
+
+## <a id="desktop-project-icons"></a>Project icons and settings navigation
+
+Project color previews always use dark backgrounds and white text, with only the border indicating the chosen palette. The project rail uses dark/white when selected and light/black otherwise. Purple uses #9400D3/#DA70D6 and the default uses #374151/#E5E7EB, shared by the main window and tray. Clicking a project from either settings mode opens its board after a successful switch, retaining the discard confirmation for unsaved project settings.
+
+## <a id="desktop-network-diagnostics"></a>Desktop network and diagnostics
+
+Open application Settings → Network and diagnostics. These preferences belong to this device and remain available with no project, an offline Remote connection, or an expired login. `runtime-preferences.json` sits beside the desktop `connections.json`; portable builds use `desktop/` in the portable data directory. They do not change project policy, standalone CLI networking, Remote login, or live connections.
+
+A missing preference file uses these defaults without immediately creating a file:
+
+```json
+{"formatVersion":1,"debugEnabled":false,"proxy":{"mode":"system","url":null}}
+```
+
+Press Save after editing. A failed write preserves the previous settings. A corrupt or unsupported file offers Reset network and diagnostics settings and blocks new managed network operations until reset. Changes during a download affect the next operation; a pending update retains its check-time settings.
+
+| Proxy mode | Behavior |
+| --- | --- |
+| System | Checks the process `HTTPS_PROXY`/`HTTP_PROXY`/`ALL_PROXY` and `NO_PROXY` first, then a single fixed Windows proxy or fixed macOS HTTP/HTTPS proxies. Linux uses only the process environment. Without a fixed route it connects directly and records `system-no-static-route`. |
+| Manual | Accepts `http://host:port`, with ports 1–65535 and private company addresses allowed. HTTPS destinations use HTTP CONNECT. Credentials, non-root paths, queries, and fragments are rejected. |
+| Direct | Explicitly bypasses environment and system proxies. |
+
+These modes cover update checks, update downloads, security standard refreshes, and downloads. A selected proxy failure never silently falls back to direct. This version does not support PAC/WPAD, Windows per-protocol settings, enterprise authentication (including NTLM/Kerberos), SOCKS, HTTPS proxy endpoints, or custom company CAs. TLS and update signature checks remain enabled.
+
+To collect evidence, enable Debug mode, save, and reproduce the problem. The page keeps the recording status visible. A failed screen offers retry and an independent diagnostics page. Export diagnostics opens a native ZIP save dialog; existing records can still be exported after Debug is disabled. Logs rotate across four files of at most 2 MiB each, with bounded queue and event sizes. Export filters records again and excludes raw error messages, credentials, query parameters, full local paths, and project content. Existing output files are preserved.
+
+Test update connection appears only after Debug is enabled and saved. It sends a separate request to built-in update endpoints only when clicked, with a 20-second budget, 2 MiB actual response limit, and at most three HTTPS redirects. It does not download or install an update. Its status belongs to this test; information hidden by the updater stays unknown rather than being guessed from messages.
+
+## <a id="offline-standard-bundles"></a>Offline security standard packages
+
+Settings → Security standard data can export one installed version or all valid installed versions. Invalid versions are listed as skipped, and no empty package is created when valid data is missing. Export works offline and does not change installed data.
+
+The CLI uses the same exchange flow:
+
+```sh
+speclink security data export cwe --version 4.20 --output cwe-4.20.zip --json
+speclink security data export --all --output standards.zip --json
+speclink security data import standards.zip --json
+```
+
+A single package retains formatVersion 1, raw files, source metadata, license, and SHA-256, without parsed caches or project documents. Export all produces a formatVersion 2 collection ZIP containing individually importable v1 packages. Limits are 32 packages, 512 MiB for the outer file and total inner package bytes, and 1 GiB for all expanded raw data. Existing single-package limits still apply. An existing destination returns `file_exists`; cancellation or failure leaves no apparently complete output.
+
+The same import entry accepts v1 and v2. A collection validates every package before committing any version. Prevalidation failure commits nothing. Commit failure or cancellation stops the batch: completed versions remain, the failed version retains old data, and later versions are not attempted. Desktop shows each result. CLI v2 JSON contains `installed`/`partial`/`failed`/`cancelled` and a `results` list. Exit codes are 0 for success, 1 for operation failure, 130 for cancellation, and 2 for argument errors. Progress and errors go to stderr, results to stdout; `--no-color` is supported. Imported content always carries imported integrity; matching fingerprints are not an official endorsement.
 
 Use these three rules to place a new setting:
 

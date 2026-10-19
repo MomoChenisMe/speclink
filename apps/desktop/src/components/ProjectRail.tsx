@@ -162,10 +162,10 @@ export function ProjectRail({
                   projectTileClass(projectColors[key], active),
                 )}
                 onClick={() => {
-                  if (!active && !localError) onActivate?.(key);
+                  if (!localError) onActivate?.(key);
                 }}
                 onKeyDown={(event) => {
-                  if ((event.key === "Enter" || event.key === " ") && !active && !localError) {
+                  if ((event.key === "Enter" || event.key === " ") && !localError) {
                     event.preventDefault();
                     onActivate?.(key);
                   }

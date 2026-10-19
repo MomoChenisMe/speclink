@@ -70,10 +70,10 @@ describe("ProjectRail", () => {
     const squares = within(list).getAllByRole("tab");
     expect(squares.map((s) => s.textContent)).toEqual(["A", "B"]);
     expect(squares[0].getAttribute("aria-selected")).toBe("true");
-    expect(squares[0].className).toContain("bg-primary");
+    expect(squares[0].className).toContain("bg-project-default");
     expect(squares[1].getAttribute("aria-selected")).toBe("false");
     expect(squares[1].className).not.toContain("bg-primary");
-    expect(squares[1].className).toContain("bg-muted");
+    expect(squares[1].className).toContain("bg-project-default-muted");
   });
 
   it("方塊無任何計數徽章（spec「分頁不顯示計數徽章」）", () => {
@@ -87,12 +87,12 @@ describe("ProjectRail", () => {
     expect(screen.getByRole("tab").textContent).toBe("規");
   });
 
-  it("點背景方塊以其 locator key 呼叫 onActivate；點作用中方塊不動作", () => {
+  it("點背景及作用中方塊都以 locator key 呼叫 onActivate，供設定頁返回看板", () => {
     const onActivate = vi.fn();
     renderRail({ onActivate });
     fireEvent.click(square(KEY_BETA));
     fireEvent.click(square(KEY_ALPHA));
-    expect(onActivate.mock.calls).toEqual([[KEY_BETA]]);
+    expect(onActivate.mock.calls).toEqual([[KEY_BETA],[KEY_ALPHA]]);
   });
 
   it("右鍵方塊彈出專案動作選單；「關閉專案」以該 key 呼叫 close、不切換", () => {

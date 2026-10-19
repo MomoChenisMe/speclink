@@ -23,9 +23,53 @@ Speclink 的設定分三層：工作流政策寫在 `openspec/config.yaml`，跟
 
 桌面 app 自己的介面語言與伺服器連線清單存在 app 的資料夾，憑證存在系統鑰匙圈，都不寫進專案。
 
-桌面 app 的「設定」以設定模式開啟：左欄列出分類，「應用程式」下有一般、更新、CLI、伺服器，「關於」下有「關於 Speclink」。一般與 CLI 頁的內容只存在這台機器，「伺服器」頁管理伺服器連線清單。
+桌面 app 的「設定」以設定模式開啟：左欄列出分類，「應用程式」下有一般、更新、CLI、伺服器、網路與診斷、安全標準資料，「關於」下有「關於 Speclink」。一般與 CLI 頁的內容只存在這台機器，「伺服器」頁管理伺服器連線清單。
 
 ![桌面 app 的設定模式，左欄是設定分類，右邊是「一般」頁](assets/screenshots/zh-TW/desktop-settings.png)
+
+## <a id="desktop-project-icons"></a>專案圖示與設定導覽
+
+專案圖示色票預覽固定深底白字，只以外框標示目前選擇。專案列選取時深底白字、未選取時淺底黑字；紫色為 #9400D3／#DA70D6，預設為 #374151／#E5E7EB。主視窗與系統匣使用相同色票。從兩種設定頁點左側專案，成功後會回到該專案看板；有未儲存的專案設定時沿用捨棄確認。
+
+## <a id="desktop-network-diagnostics"></a>桌面網路與診斷
+
+開啟應用程式「設定 → 網路與診斷」。這裡的設定只屬於這台裝置，沒有專案、Remote 離線或登入過期時也能使用。`runtime-preferences.json` 與桌面的 `connections.json` 同層；portable 版放在可攜資料目錄的 `desktop/`。不會寫入專案政策，也不會改變獨立 CLI、Remote 登入或即時連線的路由。
+
+缺少偏好檔時使用預設值，不會立即建立檔案：
+
+```json
+{"formatVersion":1,"debugEnabled":false,"proxy":{"mode":"system","url":null}}
+```
+
+修改後按「儲存」。寫入失敗保留舊設定；偏好檔損壞或版本不支援時，頁面提供「重設網路與診斷設定」，在重設前停止新的受管網路工作。下載中修改設定，只影響下一個工作；已檢查的候選更新沿用檢查時的設定。
+
+| Proxy 模式 | 行為 |
+| --- | --- |
+| 沿用系統 | 先讀程序的 `HTTPS_PROXY`／`HTTP_PROXY`／`ALL_PROXY` 與 `NO_PROXY`，再讀 Windows 單一固定 Proxy 或 macOS 固定 HTTP／HTTPS Proxy。Linux 只讀程序環境。未取得固定路由時直接連線，診斷會記錄 `system-no-static-route`。 |
+| 手動設定 | 輸入 `http://host:port`，連接埠為 1–65535；可用公司內網位址。HTTPS 目的地透過 HTTP CONNECT 連線。網址不能帶帳密、非根路徑、query 或 fragment。 |
+| 直接連線 | 明確略過環境與系統 Proxy。 |
+
+這三種模式涵蓋更新檢查、更新下載、安全標準清單更新與下載。選定 Proxy 後失敗，不會偷偷改走直連。第一版不支援 PAC／WPAD、Windows 分協定設定、企業帳密驗證（含 NTLM／Kerberos）、SOCKS、HTTPS Proxy 端點或自訂公司 CA；TLS 與更新簽章檢查仍會執行。
+
+要收集失敗證據，開啟 Debug mode 並儲存，再重現問題。頁面會持續顯示記錄狀態；畫面出錯時可重試，或直接開啟獨立的網路與診斷頁。「匯出診斷紀錄」會讓你選擇 ZIP 的儲存位置；關閉 Debug 後仍可匯出既有紀錄。每個記錄檔最多 2 MiB、保留四檔，佇列與單筆大小也有限制；匯出前再次過濾，不包含原始錯誤文字、帳密、查詢參數、完整本機路徑或專案內容。既有目的檔不會被覆寫。
+
+Debug 開啟並儲存後才出現「測試更新連線」。它只在按下時對內建更新端點送出獨立請求，限制 20 秒、實際回應 2 MiB、最多三次 HTTPS 重新導向，不下載或安裝更新。顯示的狀態碼屬於這次測試；更新元件沒有公開的資訊會保留為未知，不從錯誤文字猜測原因。
+
+## <a id="offline-standard-bundles"></a>安全標準離線資料包
+
+「設定 → 安全標準資料」可匯出一個已安裝版本，或按「全部匯出」保存所有有效安裝版本；無效版本會列為跳過。沒有有效資料時不建立空包。匯出不需要網路，也不更動已安裝資料。專案圖示色票預覽固定深底白字；專案列選取時深底白字、未選取時淺底黑字。從兩種設定頁點左側專案，成功後會回到該專案看板；有未儲存的專案設定時沿用捨棄確認。
+
+CLI 使用相同資料交換流程：
+
+```sh
+speclink security data export cwe --version 4.20 --output cwe-4.20.zip --json
+speclink security data export --all --output standards.zip --json
+speclink security data import standards.zip --json
+```
+
+單包維持 formatVersion 1，保留原始檔、來源資訊、授權與 SHA-256；不包含解析快取或專案文件。全部匯出為 formatVersion 2 集合 ZIP，內含可單獨匯入的 v1 包。最多 32 包，外包與內包總大小上限 512 MiB，全部原始資料展開後最多 1 GiB；單包原有限制不變。目的檔已存在會回報 `file_exists`，取消或失敗不會留下看似完成的包。
+
+同一個匯入入口接受 v1 與 v2。集合包會先驗證所有內容，再依清單逐版本提交；預檢失敗時完全不提交。提交途中失敗或取消就停止，已完成版本仍保留，失敗版本保留舊資料，其餘列為尚未處理。桌面顯示逐項結果；CLI 的 v2 JSON 使用 `installed`／`partial`／`failed`／`cancelled` 狀態與 `results` 清單。成功 exit 0、操作失敗 1、取消 130、參數錯誤 2；進度與錯誤寫 stderr，結果寫 stdout，支援 `--no-color`。匯入內容一律標示 imported，指紋相同不代表官方背書。
 
 新設定該放哪裡，照這三條判斷：
 

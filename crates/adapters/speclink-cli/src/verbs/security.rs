@@ -98,6 +98,23 @@ enum DataCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Export installed source data for offline use (no network access)
+    Export {
+        #[arg(
+            required_unless_present = "all",
+            conflicts_with = "all",
+            requires = "version"
+        )]
+        standard: Option<StandardId>,
+        #[arg(long, requires = "standard", conflicts_with = "all")]
+        version: Option<String>,
+        #[arg(long, conflicts_with = "standard")]
+        all: bool,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
     /// Remove a version unused by locally known policies and active readers
     Remove {
         standard: StandardId,
@@ -271,22 +288,128 @@ fn security_command(args: SecurityArgs, cancelled: Arc<AtomicBool>) -> Result<()
                     Ok(())
                 }
             }
-            DataCommand::Import { path, json } => {
-                let receipt =
-                    security_data::import_data(&repository, &path, &|| job.check().is_err())?;
+            DataCommand::Export {
+                standard,
+                version,
+                all,
+                output,
+                json,
+            } => {
+                let selection = if all {
+                    security_data::ExportSelection::All
+                } else {
+                    security_data::ExportSelection::One(
+                        standard.expect("clap requires standard"),
+                        version.expect("clap requires version"),
+                    )
+                };
+                let receipt = security_data::export_data(
+                    &repository,
+                    selection,
+                    &job,
+                    &progress,
+                    &|selected, all, skipped, load| {
+                        speclink_fs::security_packages::write_export(
+                            &output,
+                            selected,
+                            all,
+                            skipped,
+                            load,
+                            &|| job.check().is_err(),
+                        )
+                    },
+                )?;
                 if json {
                     crate::common::print_json(&receipt)
                 } else {
                     println!(
-                        "{} {}: {}\nsha256: {}\nsource revision: {}\nintegrity: {:?}",
-                        receipt.standard_id.as_str(),
-                        receipt.version,
-                        receipt.installed_status,
-                        receipt.sha256,
-                        receipt.source_revision,
-                        receipt.integrity_kind
+                        "Exported {} packages to {} ({} bytes)",
+                        receipt.packages.len(),
+                        receipt.path,
+                        receipt.bytes
                     );
+                    for package in receipt.packages {
+                        println!(
+                            "{} {}: {}",
+                            package.standard_id.as_str(),
+                            package.version,
+                            package.sha256
+                        );
+                    }
+                    for skipped in receipt.skipped {
+                        println!(
+                            "Skipped {} {}: {}",
+                            skipped.standard_id.as_str(),
+                            skipped.version,
+                            skipped.reason
+                        );
+                    }
                     Ok(())
+                }
+            }
+            DataCommand::Import { path, json } => {
+                use speclink_core::security::data::ImportReceipt;
+                let receipt = security_data::import_data_bundle(
+                    &repository,
+                    &path,
+                    &job,
+                    &progress,
+                    &speclink_fs::security_packages::prepare_collection,
+                )?;
+                match receipt {
+                    ImportReceipt::Single(receipt) => {
+                        if json {
+                            crate::common::print_json(&receipt)
+                        } else {
+                            println!(
+                                "{} {}: {}\nsha256: {}\nsource revision: {}\nintegrity: {:?}",
+                                receipt.standard_id.as_str(),
+                                receipt.version,
+                                receipt.installed_status,
+                                receipt.sha256,
+                                receipt.source_revision,
+                                receipt.integrity_kind
+                            );
+                            Ok(())
+                        }
+                    }
+                    ImportReceipt::Batch(receipt) => {
+                        if json {
+                            crate::common::print_json(&receipt)?;
+                        } else {
+                            println!("Collection import: {}", receipt.status);
+                            for result in &receipt.results {
+                                println!(
+                                    "{} {}: {}{}",
+                                    result.standard_id.as_str(),
+                                    result.version,
+                                    result.status,
+                                    result
+                                        .error_code
+                                        .as_ref()
+                                        .map(|code| format!(" ({code})"))
+                                        .unwrap_or_default()
+                                );
+                                if let Some(sha256) = &result.sha256 {
+                                    println!("sha256: {sha256}");
+                                }
+                            }
+                        }
+                        let status = batch_exit_code(&receipt.status);
+                        if status == 0 {
+                            Ok(())
+                        } else {
+                            eprintln!(
+                                "{}: collection import stopped",
+                                if status == 130 {
+                                    "cancelled"
+                                } else {
+                                    "import_failed"
+                                }
+                            );
+                            Err(SecurityExit(status).into())
+                        }
+                    }
                 }
             }
             DataCommand::Remove {
@@ -524,4 +647,27 @@ fn remote_preparation(
     let target = location.remote_target(remote, repo, change);
     let input = security::preparation_from_context(&target, snapshot)?;
     Ok((target, input))
+}
+
+fn batch_exit_code(status: &str) -> u8 {
+    match status {
+        "installed" => 0,
+        "cancelled" => 130,
+        _ => 1,
+    }
+}
+#[cfg(test)]
+mod bundle_tests {
+    use super::*;
+    #[test]
+    fn partial_failed_and_cancelled_imports_keep_their_cli_exit_contract() {
+        for (status, code) in [
+            ("installed", 0),
+            ("partial", 1),
+            ("failed", 1),
+            ("cancelled", 130),
+        ] {
+            assert_eq!(batch_exit_code(status), code);
+        }
+    }
 }

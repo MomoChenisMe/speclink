@@ -2104,6 +2104,25 @@ describe("切換中分頁（pendingTabKey）", () => {
     expect(store.getState().pendingTabKey).toBeNull();
   });
 
+  it("本機探測途中切到已有 session 的遠端，立即清除舊標記且忽略晚到探測", async () => {
+    const probe = deferred<unknown>();
+    const { store, keyB } = storeWithTwoLocalTabs(probe.promise);
+    const remote = remoteSession(fakeDataSource(), "remote-c");
+    store.setState({
+      tabs: [...store.getState().tabs, { locator: remote.locator, name: remote.descriptor.name }],
+      sessions: { ...store.getState().sessions, [remote.id]: remote },
+    });
+    const toB = store.getState().activateTab(keyB);
+    expect(store.getState().pendingTabKey).toBe(keyB);
+    await store.getState().activateTab(remote.id);
+    expect(store.getState().pendingTabKey).toBeNull();
+    expect(store.getState().activeKey).toBe(remote.id);
+    probe.resolve({ status: "project", root: "B", name: "b" });
+    await toB;
+    expect(store.getState().activeKey).toBe(remote.id);
+    expect(store.getState().pendingTabKey).toBeNull();
+  });
+
   it("探測進行中 → 指向目標分頁，活躍分頁不變", async () => {
     const d = deferred<unknown>();
     const { store, keyB } = storeWithTwoLocalTabs(d.promise);
@@ -2127,6 +2146,18 @@ describe("切換中分頁（pendingTabKey）", () => {
 
   // spec「探測成功後切頁」：spinner 只涵蓋探測本身。翻頁後的整批載入由 skeleton
   // 承擔——兩者並存會讓已切換完成的分頁持續掛「正在切換」。
+  it("設定頁快速切換：晚回來的舊探測不能蓋過新選擇",async()=>{
+    const old=deferred<unknown>();const latest=deferred<unknown>();const ds=fakeDataSource();
+    const ws=fakeInstructionWorkspace({openProject:vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise)} as Partial<WorkspaceAdapter>);
+    const store=trackedAppStore({createSession:(root,name)=>fakeSession(ds,root,name),workspace:ws});
+    const a=fakeSession(ds,"A","a");const b=fakeSession(ds,"B","b");
+    store.setState({tabs:[{locator:a.locator,name:"a"},{locator:b.locator,name:"b"}],sessions:{[a.id]:a},activeKey:a.id,boardView:"settings"});
+    const toB=store.getState().activateTab(b.id);const toA=store.getState().activateTab(a.id);
+    latest.resolve({status:"project",root:"A",name:"a"});await toA;
+    old.resolve({status:"project",root:"B",name:"b"});await toB;
+    expect(store.getState().activeKey).toBe(a.id);expect(store.getState().boardView).toBe("board");
+  });
+
   it("探測完成即清除 → 後續整批載入期間不再掛切換中", async () => {
     const probe = deferred<unknown>();
     const load = deferred<ChangeListPayload>();
@@ -3139,4 +3170,16 @@ it("專案圖示顏色立即保存、不同 locator 隔離，面板快照沿用�
  reopened.getState().setProjectColor("local:/a",null);expect(reopened.getState().projectColors).toEqual({"remote:c/p/r":"purple"});
  const write=vi.spyOn(Object.getPrototypeOf(localStorage),"setItem").mockImplementation(()=>{throw new Error("denied");});
  try {expect(()=>reopened.getState().setProjectColor("remote:c/p/r","green")).toThrow("denied");expect(reopened.getState().projectColors["remote:c/p/r"]).toBe("purple");} finally {write.mockRestore();}
+});
+
+
+it.each(["settings", "project-settings"] as const)("從%s啟用同一或另一Remote專案後進看板", async (boardView) => {
+ const a=remoteSession(fakeDataSource(),"a"), b=remoteSession(fakeDataSource(),"b");
+ const store=storeWithRemoteSessions(a,b);
+ for(const key of [a.id,b.id]) {
+  store.setState({boardView});
+  await store.getState().activateTab(key);
+  expect(store.getState().boardView).toBe("board");
+  expect(store.getState().activeKey).toBe(key);
+ }
 });

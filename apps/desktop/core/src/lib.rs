@@ -171,3 +171,9 @@ mod tests {
         assert!(worktree_root_for(&ctx, &facts, "other").is_none(), "無映射本就回主 checkout");
     }
 }
+
+pub mod runtime_preferences;
+
+pub mod diagnostics;
+
+pub mod network;
