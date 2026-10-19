@@ -1,7 +1,7 @@
 //! Separate immutable policy/spec files: disabled runs never read spec content.
 use super::{
     atomic_replace, check_directory, cleanup_stale, open_lock, open_regular, owned_directory,
-    read_limited, references_lock, sync_directory, valid_generation, write_new,
+    read_limited, references_lock, sync_directory, valid_generation, write_new, FileLock,
 };
 use anyhow::{ensure, Result};
 use serde::{Deserialize, Serialize};
@@ -66,6 +66,7 @@ impl FsPreparedReviews {
         let pin = open_regular(&generation.join(".pin"), false)?;
         pin.try_lock_shared()
             .map_err(|_| anyhow::anyhow!("busy: prepared snapshot cleanup"))?;
+        let _pin = FileLock(pin);
         let (name, limit, expected) = if policy_only {
             ("policy.json", 128 * 1024, current.policy_sha256)
         } else {
@@ -138,6 +139,7 @@ impl PreparedRepository for FsPreparedReviews {
         let lock = open_lock(&directory.join(".lock"))?;
         lock.try_lock()
             .map_err(|_| anyhow::anyhow!("busy: preparation in progress"))?;
+        let _lock = FileLock(lock);
         let bytes = serde_json::to_vec(snapshot)?;
         ensure!(
             bytes.len() <= 200 * 1024 * 1024,
