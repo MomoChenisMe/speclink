@@ -1,7 +1,7 @@
 //! Atomic local JSON/Markdown report pairs. Reports never mutate SDD tickets.
 use super::{
     atomic_replace, check_directory, open_lock, open_regular, owned_directory, read_limited,
-    sync_directory, write_new,
+    sync_directory, write_new, FileLock,
 };
 use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -119,6 +119,7 @@ impl ReportRepository for FsSecurityReports {
         let lock = open_lock(&self.root.join(".lock"))?;
         lock.try_lock()
             .map_err(|_| anyhow::anyhow!("busy: report storage is being modified"))?;
+        let _lock = FileLock(lock);
         let directories = self.directories()?;
         #[cfg(test)]
         let max_reports = self.max_reports;

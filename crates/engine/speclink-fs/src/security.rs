@@ -108,6 +108,7 @@ impl FsSecurityData {
                         return Err(error).context("storage_error: generation pin")
                     }
                 }
+                let _pin = FileLock(pin);
                 let metadata_bytes = read_limited(&generation.join("metadata.json"), 128 * 1024)?;
                 ensure!(
                     sha256(&metadata_bytes) == current.metadata_sha256,
@@ -211,8 +212,9 @@ impl StandardRepository for FsSecurityData {
         let lock = open_lock(&base.join(".lock"))?;
         lock.try_lock_shared()
             .map_err(|_| anyhow::anyhow!("busy: standard version is being modified"))?;
+        let lock = FileLock(lock);
         ensure!(base.join("current.json").try_exists()?, "missing_data");
-        Ok(Box::new(VersionPin(lock)))
+        Ok(Box::new(lock))
     }
 
     fn remove(&self, id: StandardId, version: &str) -> Result<()> {
@@ -251,6 +253,7 @@ impl StandardRepository for FsSecurityData {
         let lock = open_lock(&base.join(".lock"))?;
         lock.try_lock()
             .map_err(|_| anyhow::anyhow!("busy: standard version is in use"))?;
+        let _lock = FileLock(lock);
         let generations = base.join("generations");
         let mut pins = Vec::new();
         let mut paths = Vec::new();
@@ -266,7 +269,7 @@ impl StandardRepository for FsSecurityData {
                 let pin = open_regular(&entry.path().join(".pin"), true)?;
                 pin.try_lock()
                     .map_err(|_| anyhow::anyhow!("in_use: generation is being read"))?;
-                pins.push(pin);
+                pins.push(FileLock(pin));
                 paths.push(entry.path());
                 ensure!(paths.len() <= 10_000, "size_limit: generation count");
             }
@@ -365,6 +368,7 @@ impl StandardRepository for FsSecurityData {
                 return Err(error).context("storage_error: version lock")
             }
         }
+        let lock = FileLock(lock);
         cleanup_stale(&base, "")?;
         Ok(Box::new(InstallTransaction {
             base,
@@ -377,21 +381,29 @@ impl StandardRepository for FsSecurityData {
     }
 }
 
-struct VersionPin(#[allow(dead_code)] File);
-impl StandardPin for VersionPin {}
+struct FileLock(File);
 
-fn references_lock(references: &Path) -> Result<File> {
+impl Drop for FileLock {
+    fn drop(&mut self) {
+        // Closing alone can leave a Unix lock held by a forked child's inherited handle.
+        let _ = self.0.unlock();
+    }
+}
+
+impl StandardPin for FileLock {}
+
+fn references_lock(references: &Path) -> Result<FileLock> {
     let lock = open_lock(&references.join(".lock"))?;
     lock.try_lock()
         .map_err(|_| anyhow::anyhow!("busy: known policy references are being updated"))?;
-    Ok(lock)
+    Ok(FileLock(lock))
 }
 
 struct InstallTransaction {
     base: PathBuf,
     id: StandardId,
     version: String,
-    _lock: File,
+    _lock: FileLock,
     #[cfg(test)]
     fault: Option<CommitFault>,
 }
@@ -952,7 +964,7 @@ fn cleanup_stale(base: &Path, current: &str) -> Result<()> {
                 if pin.try_lock().is_err() {
                     continue;
                 }
-                Some(pin)
+                Some(FileLock(pin))
             } else {
                 None
             };
@@ -969,6 +981,67 @@ mod tests {
     use speclink_core::security::data::{IntegrityKind, StandardRepository, ValidatedStandard};
     use speclink_core::security::standards::{standard_source, StandardId};
     use std::collections::BTreeMap;
+
+    #[test]
+    #[cfg(unix)]
+    fn security_references_lock_release_survives_inherited_handle() {
+        let dir = TestDirectory::new();
+        let references = dir.0.join("security/references");
+        fs::create_dir_all(&references).unwrap();
+        let lock = references_lock(&references).unwrap();
+        let inherited = lock.0.try_clone().unwrap();
+        assert!(references_lock(&references).is_err());
+        drop(lock);
+        let next = references_lock(&references).unwrap();
+        drop(next);
+        drop(inherited);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn security_install_lock_release_survives_inherited_handle() {
+        let dir = TestDirectory::new();
+        let repository = FsSecurityData::new(&dir.0).unwrap();
+        let base = repository
+            .version_path(StandardId::OwaspAsvs, "5.0.0")
+            .unwrap();
+        fs::create_dir_all(&base).unwrap();
+        let lock = open_lock(&base.join(".lock")).unwrap();
+        lock.try_lock().unwrap();
+        let inherited = lock.try_clone().unwrap();
+        let transaction = InstallTransaction {
+            base,
+            id: StandardId::OwaspAsvs,
+            version: "5.0.0".into(),
+            _lock: FileLock(lock),
+            fault: None,
+        };
+        assert!(repository
+            .begin_install(StandardId::OwaspAsvs, "5.0.0")
+            .is_err());
+        drop(transaction);
+        let next = repository
+            .begin_install(StandardId::OwaspAsvs, "5.0.0")
+            .unwrap();
+        drop(next);
+        drop(inherited);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn security_generation_pin_release_survives_inherited_handle() {
+        let dir = TestDirectory::new();
+        let file = open_lock(&dir.0.join(".pin")).unwrap();
+        file.try_lock_shared().unwrap();
+        let inherited = file.try_clone().unwrap();
+        let pin = FileLock(file);
+        let writer = open_lock(&dir.0.join(".pin")).unwrap();
+        assert!(writer.try_lock().is_err());
+        drop(pin);
+        writer.try_lock().unwrap();
+        writer.unlock().unwrap();
+        drop(inherited);
+    }
 
     #[test]
     #[ignore = "requires explicit official fixture download; no network in this test"]
