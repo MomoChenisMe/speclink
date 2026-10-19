@@ -4508,7 +4508,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-cli"
-version = "0.10.0-build.2"
+version = "0.10.0-build.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4528,7 +4528,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-core"
-version = "0.10.0-build.2"
+version = "0.10.0-build.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4543,7 +4543,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-desktop"
-version = "0.10.0-build.2"
+version = "0.10.0-build.3"
 dependencies = [
  "axum",
  "block2",
@@ -4579,7 +4579,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-desktop-core"
-version = "0.10.0-build.2"
+version = "0.10.0-build.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4601,7 +4601,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-fs"
-version = "0.10.0-build.2"
+version = "0.10.0-build.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4618,7 +4618,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-host"
-version = "0.10.0-build.2"
+version = "0.10.0-build.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4642,7 +4642,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-node"
-version = "0.10.0-build.2"
+version = "0.10.0-build.3"
 dependencies = [
  "anyhow",
  "napi",
@@ -4657,7 +4657,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-protocol"
-version = "0.10.0-build.2"
+version = "0.10.0-build.3"
 dependencies = [
  "schemars 1.2.1",
  "serde",
@@ -4666,7 +4666,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-remote"
-version = "0.10.0-build.2"
+version = "0.10.0-build.3"
 dependencies = [
  "anyhow",
  "axum",
@@ -4689,7 +4689,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-server"
-version = "0.10.0-build.2"
+version = "0.10.0-build.3"
 dependencies = [
  "anyhow",
  "argon2",
@@ -4722,7 +4722,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-store"
-version = "0.10.0-build.2"
+version = "0.10.0-build.3"
 dependencies = [
  "chrono",
  "serde_json",
@@ -4731,7 +4731,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-store-fs"
-version = "0.10.0-build.2"
+version = "0.10.0-build.3"
 dependencies = [
  "chrono",
  "fs4",
@@ -4744,7 +4744,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-store-postgres"
-version = "0.10.0-build.2"
+version = "0.10.0-build.3"
 dependencies = [
  "chrono",
  "postgres",
@@ -4756,7 +4756,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-store-sqlite"
-version = "0.10.0-build.2"
+version = "0.10.0-build.3"
 dependencies = [
  "chrono",
  "rusqlite",
