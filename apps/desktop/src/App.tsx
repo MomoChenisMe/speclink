@@ -907,6 +907,7 @@ function AppInner({
       change={s.detailChange}
       refreshGen={s.refreshGen}
       securityReview={dataSource?.securityReview}
+      checkRecords={dataSource?.checkRecords}
       onOpenSecurityData={() => { s.setBoardView("settings"); s.setSettingsSection("security-data"); }}
       loadDocument={(change, artifact) => dataSource?.getDocument(change, artifact) ?? Promise.resolve(null)}
       loadStationTicket={(change, station) =>
@@ -1030,6 +1031,7 @@ function AppInner({
   // 已封存詳情頁（design D3）：props 自原已封存抽屜的接線搬移。
   const archivedDetailPage = (
     <ArchivedDetailPage
+      checkRecords={dataSource?.checkRecords}
       target={s.detailArchived}
       refreshGen={s.refreshGen}
       loadDocument={(datedName, artifact) => dataSource?.getArchivedDocument(datedName, artifact) ?? Promise.resolve(null)}
@@ -1117,6 +1119,7 @@ function AppInner({
             platform={platform}
             actions={projectActions}
             onActivate={activateProject}
+          onReorder={s.reorderProject}
             onOpen={() => s.openWorkspaceChooser()}
             onOpenSettings={() => s.setBoardView("settings")}
             settingsActive={s.boardView === "settings"}
@@ -1247,8 +1250,11 @@ function AppInner({
                 trayPanelError={s.trayPanelError}
                 servers={servers}
                 updater={
-                  updater && {
+                  {
+                    ready: !!updater,
                     state: s.updater,
+                    lastCheck: s.updaterLastCheck,
+                    onDiagnostics: () => s.setSettingsSection("network"),
                     currentVersion,
                     onCheck: () => void s.checkForUpdates(true),
                     onShowReleaseNotes: (focusVersion) => setReleaseNotes({ mode: "browse", focusVersion }),

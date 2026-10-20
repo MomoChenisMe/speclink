@@ -87,7 +87,20 @@ fn run_engine(
     // identity; a host-store backend has no local workspace, hence no
     // identity at all (anonymous, as before).
     let workspace = backend.workspace();
+    let security_acceptance=if let (Some(ws),core::command::Command::VerifyStamp {change,..})=(&workspace,&cmd) {
+        if store.change_exists(change) {
+            let policy=core::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref()).map_err(|_|DispatchError::new("invalid_config","workflow policy could not be parsed"))?.security();
+            if policy.enabled&&policy.required_for_acceptance {
+                let reader=speclink_fs::security::scan::AuthorizedProject::open(&ws.root)?;
+                let target=speclink_host::security::ReviewTarget::local(reader.root(),&ws.spec_dir_name,Some(change.clone()))?;
+                let data=speclink_fs::security::FsSecurityData::new(&speclink_host::context::security_data_dir()?)?;
+                let budget=speclink_host::security::ReviewBudget::new(std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)));
+                speclink_host::security::acceptance_proof_for_target(&target,&reader,&data,store.as_ref(),&budget)?
+            }else{None}
+        }else{None}
+    }else{None};
     let ctx = core::command::ExecutionContext {
+        security_acceptance,
         actor: actor.map(str::to_string).or_else(|| {
             workspace
                 .as_ref()
@@ -321,6 +334,7 @@ fn run_dispatch(
         "new" => verb_new(backend, actor, rest, stdin),
         "claim" => verb_claim(backend, actor, rest),
         "review" => verb_station(backend, actor, stamp_lock, StationKind::Review, rest, stdin),
+        "security" => verb_security(backend,actor,rest,stdin),
         "verify" => verb_station(backend, actor, stamp_lock, StationKind::Verify, rest, stdin),
         _ => Err(DispatchError::new(
             "invalid_argv",
@@ -576,12 +590,21 @@ fn verb_station(
     let noun = station.noun();
     match args.first().map(|s| s.as_str()) {
         Some("add-round") => verb_station_add_round(backend, actor, station, &args[1..], stdin),
+        Some("history") => verb_station_history(backend,station,&args[1..]),
         Some("stamp") => verb_station_stamp(backend, actor, stamp_lock, station, &args[1..], stdin),
         _ => Err(DispatchError::new(
             "invalid_argv",
             format!("{noun} requires a subcommand: 'add-round' or 'stamp'"),
         )),
     }
+}
+
+fn verb_station_history(backend:&Backend,station:StationKind,args:&[String])->DispatchResult {
+    let a=parse_argv(args,&["id"])?;
+    let change=a.positionals.first().ok_or_else(||DispatchError::new("invalid_argv","history requires a change name"))?;
+    let kind=match station {StationKind::Review=>core::history::CheckKind::Review,StationKind::Verify=>core::history::CheckKind::Verify};
+    let result=speclink_host::history::query(backend.store().as_ref(),change,kind,a.options.get("id").copied()).map_err(|e|DispatchError::new("error",e.to_string()))?;
+    serde_json::to_value(result).map_err(|e|DispatchError::new("error",e.to_string()))
 }
 
 fn verb_station_add_round(
@@ -691,4 +714,55 @@ fn verb_station_stamp(
         unreachable!("stamp yields a subject outcome");
     };
     Ok(serde_json::json!({ "change": o.change }))
+}
+
+fn verb_security(backend:&Backend,actor:Option<&str>,args:&[String],stdin:Option<&str>)->DispatchResult {
+    security_dispatch(backend,actor,args,stdin).map_err(|error|{
+        let message=error.to_string();let code=message.split(':').next().unwrap_or("error");
+        let code=match code {"missing_security_review"|"security_acceptance_blocked"|"security_report_stale"|"missing_knowledge"|"history_recovery_required"|"source_freshness_unverified"|"identity_required"|"unsupported_version"=>code,_=>"error"};
+        DispatchError::new(code,message.clone())
+    })
+}
+fn security_dispatch(backend:&Backend,actor:Option<&str>,args:&[String],stdin:Option<&str>)->anyhow::Result<serde_json::Value> {
+    use speclink_host::security as host;
+    use core::security::report::*;
+    let store=backend.store();
+    let budget=host::ReviewBudget::new(Arc::new(std::sync::atomic::AtomicBool::new(false)));
+    if args.first().map(String::as_str)==Some("report") {
+        let a=parse_argv(&args[1..],&["change"]).map_err(|e|anyhow::anyhow!(e.message))?;
+        let id=a.positionals.first().ok_or_else(||anyhow::anyhow!("invalid_argument: report ID"))?;
+        let change=a.options.get("change").ok_or_else(||anyhow::anyhow!("invalid_argument: --change required"))?;
+        let report=read_change_report(store.as_ref(),change,id)?.ok_or_else(||anyhow::anyhow!("unknown_report"))?;
+        return Ok(serde_json::from_str(&report.json()?)?);
+    }
+    anyhow::ensure!(args.first().map(String::as_str)==Some("review"),"invalid_argument: security requires review or report");
+    let verb=args.get(1).map(String::as_str).unwrap_or_default();
+    let a=parse_argv(&args[2..],&[]).map_err(|e|anyhow::anyhow!(e.message))?;
+    let change=*a.positionals.first().ok_or_else(||anyhow::anyhow!("invalid_argument: change name"))?;
+    let policy=core::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())?.security();
+    if verb=="show" {
+        let mut fresh=None;let mut submission=None;let mut reason=None;let mut key=String::new();
+        if let Some(ws)=backend.workspace(){
+            let reader=speclink_fs::security::scan::AuthorizedProject::open(&ws.root)?;
+            let target=host::ReviewTarget::local(reader.root(),&ws.spec_dir_name,Some(change.into()))?;key=target.report_project_key();
+            let data=speclink_fs::security::FsSecurityData::new(&speclink_host::context::security_data_dir()?)?;
+            match host::submission_context(&target,&reader,&data,store.as_ref(),None,&budget){
+                Ok((context,id))=>{fresh=Some(host::fresh_evidence(&context));let mut s=host::Submission::from(&context);s.builtin_report_id=id;submission=Some(serde_json::from_value(serde_json::to_value(s)?)?);},
+                Err(e)=>reason=Some(e.to_string().split(':').next().unwrap_or("source_freshness_unverified").to_owned()),
+            }
+        }
+        let mut view=host::review_view(store.as_ref(),change,&key,&policy,fresh.as_ref())?;view.submission=submission;
+        if let Some(reason)=reason {if !view.acceptance.reasons.contains(&reason){view.acceptance.reasons.push(reason);}}
+        return Ok(serde_json::to_value(view)?);
+    }
+    let ws=backend.workspace().ok_or_else(||anyhow::anyhow!("source_freshness_unverified: security writes require an authorized checkout"))?;
+    let reader=speclink_fs::security::scan::AuthorizedProject::open(&ws.root)?;
+    let target=host::ReviewTarget::local(reader.root(),&ws.spec_dir_name,Some(change.into()))?;
+    let data=speclink_fs::security::FsSecurityData::new(&speclink_host::context::security_data_dir()?)?;
+    let text=stdin.ok_or_else(||anyhow::anyhow!("invalid_argument: stdin required"))?;
+    match verb {
+        "add-round"=>{anyhow::ensure!(text.len()<=4*1024*1024,"size_limit: security report input");let input:DeepReportInput=serde_json::from_str(text).map_err(|_|anyhow::anyhow!("invalid_report: deep submission schema"))?;let (context,id)=host::submission_context(&target,&reader,&data,store.as_ref(),actor.map(str::to_owned),&budget)?;Ok(serde_json::to_value(host::add_deep_round(store.as_ref(),change,input,context,id)?)?)},
+        "accept"=>{anyhow::ensure!(text.len()<=16*1024,"size_limit: acceptance input");let input:AcceptRiskInput=serde_json::from_str(text).map_err(|_|anyhow::anyhow!("invalid_security_decision"))?;Ok(serde_json::to_value(host::accept_current_risk(&target,&reader,&data,store.as_ref(),input,actor.map(str::to_owned),&budget)?)?)},
+        _=>anyhow::bail!("invalid_argument: unknown security review command"),
+    }
 }

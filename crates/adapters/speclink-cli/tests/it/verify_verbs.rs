@@ -18,6 +18,41 @@ const CLEAN_ROUND: &str = "**Scope**: src/lib.rs\n";
 const TASKS_DONE: &str = "- [x] 1.1 first\n- [x] 1.2 second\n";
 const TASKS_PARTIAL: &str = "- [x] 1.1 first\n- [ ] 1.2 second\n";
 
+#[test]
+fn security_required_verify_cannot_be_bypassed_by_ordinary_accept() {
+    let p=TempProject::with_change("required-security",TASKS_DONE);
+    p.write("openspec/config.yaml","security_verification:\n  enabled: true\n  required_for_acceptance: true\n  standards:\n    owasp_top10: {enabled: true, version: '2025'}\n");
+    assert!(p.run_stdin(&["verify","add-round","demo","--stdin"],ROUND_WITH_FINDINGS).status.success());
+    let meta=p.meta();let ticket=std::fs::read(p.ticket_path()).unwrap();
+    let result=p.run(&["verify","stamp","demo","--accept"]);
+    assert_eq!(result.status.code(),Some(1),"{}",String::from_utf8_lossy(&result.stdout));
+    assert!(String::from_utf8_lossy(&result.stderr).contains("security"));
+    assert_eq!(p.meta(),meta);assert_eq!(std::fs::read(p.ticket_path()).unwrap(),ticket);
+    assert!(!p.dir.join("openspec/changes/demo/checks/index.json").exists());
+}
+
+#[test]
+fn verify_history_keeps_accepted_ticket_and_reads_archive() {
+    let p = TempProject::with_change("history", TASKS_DONE);
+    assert!(p.run_stdin(&["verify", "add-round", "demo", "--stdin"], ROUND_WITH_FINDINGS).status.success());
+    assert!(p.run(&["verify", "stamp", "demo", "--accept", "--agent", "codex"]).status.success());
+    let list = p.run(&["verify", "history", "demo", "--json", "--no-color"]);
+    assert!(list.status.success(), "{}", String::from_utf8_lossy(&list.stderr));
+    let list: serde_json::Value = serde_json::from_slice(&list.stdout).unwrap();
+    let entry = &list["records"][0]; assert_eq!(entry["kind"], "verify"); assert_eq!(entry["outcome"], "accepted");
+    let id = entry["recordId"].as_str().unwrap();
+    let content = p.run(&["verify", "history", "demo", "--id", id, "--json"]);
+    let content: serde_json::Value = serde_json::from_slice(&content.stdout).unwrap();
+    assert_eq!(content["metadata"]["outcome"], "accepted"); assert!(content["content"].as_str().unwrap().contains("requirement R2"));
+    let human = p.run(&["verify", "history", "demo", "--id", id, "--no-color"]);
+    assert!(human.status.success()); assert!(!human.stdout.contains(&27));
+    assert_eq!(p.run(&["verify", "history", "demo", "--id", "../outside"]).status.code(), Some(1));
+    assert_eq!(p.run(&["verify", "history", "missing", "--json"]).status.code(), Some(1));
+    std::fs::create_dir_all(p.dir.join("openspec/changes/archive")).unwrap();
+    std::fs::rename(p.dir.join("openspec/changes/demo"), p.dir.join("openspec/changes/archive/2026-10-20-demo")).unwrap();
+    assert!(p.run(&["verify", "history", "2026-10-20-demo", "--id", id, "--json"]).status.success());
+}
+
 struct TempProject {
     dir: PathBuf,
 }

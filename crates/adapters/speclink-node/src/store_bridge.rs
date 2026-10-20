@@ -109,7 +109,7 @@ struct SettleError {
 /// missing any of these must be refused before the first destructive step —
 /// the dispatcher captures this list at construction.
 pub fn missing_stamp_methods(store: &JsObject) -> Vec<&'static str> {
-    ["deleteArtifact", "readChangeMeta", "writeChangeMeta"]
+    ["deleteArtifact", "readChangeMeta", "writeChangeMeta", "commitChecks"]
         .into_iter()
         .filter(|name| {
             !store
@@ -433,6 +433,12 @@ impl Store for JsStoreBridge {
         }
     }
 
+    fn commit_checks(&self,change:&str,commit:&speclink_core::history::ChecksCommit)->anyhow::Result<()> {
+        commit.validate()?;
+        self.call_result("commitChecks",serde_json::json!([change,commit]))?;
+        Ok(())
+    }
+
     // --- completion evidence ---
 
     // Like the change-meta raw pair, the evidence pair is OPTIONAL (not in
@@ -532,6 +538,10 @@ impl Store for JsStoreBridge {
 
     fn read_archived_meta(&self, dated_name: &str) -> Option<String> {
         opt_string(self.call_ok("readArchivedMeta", serde_json::json!([dated_name])))
+    }
+
+    fn read_archived_artifact(&self,name:&str,path:&str)->Option<String>{
+        match self.call("readArchivedArtifact",serde_json::json!([name,path])) {Ok(v)=>opt_string(v),Err(f) if f.code.as_deref()==Some("__missing__")=>None,Err(f)=>std::panic::panic_any(f)}
     }
 
     fn write_archived_meta(&self, dated_name: &str, content: &str) -> anyhow::Result<()> {

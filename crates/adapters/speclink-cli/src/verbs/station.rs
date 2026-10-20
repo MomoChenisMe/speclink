@@ -21,6 +21,8 @@ pub(crate) struct ReviewArgs {
 }
 #[derive(Subcommand)]
 enum ReviewCommands {
+    /// Query immutable completed checks, including archived changes
+    History { change: String, #[arg(long)] id: Option<String>, #[arg(long)] json: bool },
     /// Capture the Apply baseline sidecar before the change is marked in-progress
     Prepare {
         change: String,
@@ -81,6 +83,8 @@ pub(crate) struct VerifyArgs {
 /// （design D8），第二個 prepare 只會覆蓋同一份 sidecar。
 #[derive(Subcommand)]
 enum VerifyCommands {
+    /// Query immutable completed checks, including archived changes
+    History { change: String, #[arg(long)] id: Option<String>, #[arg(long)] json: bool },
     /// Resolve and freeze the verify scope (--json for the structured payload)
     Scope {
         change: String,
@@ -126,6 +130,7 @@ enum VerifyCommands {
 /// 各自保留自己的說明文字與旗標可用性（verify 無 `prepare`），在此正規化為
 /// 同一組動詞，往下只有一份實作。
 enum StationVerb {
+    History { change: String, id: Option<String>, json: bool },
     Scope {
         change: String,
         json: bool,
@@ -164,8 +169,21 @@ const VERIFY_CLI: StationCli = StationCli {
     station: &core::station::VERIFY,
     ns: speclink_host::change_diff::StationNs::Verify,
 };
+fn print_history(response: speclink_protocol::query::CheckHistoryResponse, json: bool) -> Result<()> {
+    use speclink_protocol::query::CheckHistoryResponse;
+    if json { return print_json(&response); }
+    match response {
+        CheckHistoryResponse::List(list) => {
+            if list.records.is_empty() { println!("No completed records."); }
+            for record in list.records { println!("{} · {} · {} · {} · {}", record.record_id, record.kind, record.created_at, record.outcome, record.relative_path); }
+        }
+        CheckHistoryResponse::Record(record) => println!("{}", record.content),
+    }
+    Ok(())
+}
 pub(crate) fn cmd_review(a: ReviewArgs) -> Result<()> {
     let verb = match a.command {
+        ReviewCommands::History { change, id, json } => StationVerb::History { change, id, json },
         // prepare：Apply baseline 的兩站共用入口（verify 無此子指令），自成雙臂。
         ReviewCommands::Prepare { change, base, from } => {
             let req = PrepareReq { change, base, from };
@@ -185,6 +203,7 @@ pub(crate) fn cmd_review(a: ReviewArgs) -> Result<()> {
 }
 pub(crate) fn cmd_verify(a: VerifyArgs) -> Result<()> {
     let verb = match a.command {
+        VerifyCommands::History { change, id, json } => StationVerb::History { change, id, json },
         VerifyCommands::Scope { change, json, base, candidate_hash, include_hunk } => {
             StationVerb::Scope { change, json, base, candidate_hash, include_hunk }
         }
@@ -226,6 +245,10 @@ fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
     let (ws, store) = open_project()?;
     let st = cli.station;
     match verb {
+        StationVerb::History { change, id, json } => {
+            let kind = match st.id { core::station::StationId::Review => core::history::CheckKind::Review, core::station::StationId::Verify => core::history::CheckKind::Verify };
+            print_history(speclink_host::history::query(&store, &change, kind, id.as_deref())?, json)?;
+        }
         StationVerb::Scope { change, json, base, candidate_hash, include_hunk } => {
             if !store.change_exists(&change) {
                 bail!("change not found: {change}");
@@ -287,7 +310,8 @@ fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
             let actor = speclink_host::context::git_identity(&ws.root);
             let read_file = |p: &str| core::util::read_bytes_opt(&ws.root.join(p));
             let file_exists = |p: &str| ws.root.join(p).is_file();
-            core::station::stamp(
+            let security=if st.noun=="verify" {crate::common::security_proof(&store,&ws,&change)?}else{None};
+            core::station::stamp_with_acceptance(
                 st,
                 &store,
                 &change,
@@ -296,6 +320,7 @@ fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
                 agent.as_deref(),
                 &read_file,
                 &file_exists,
+                security.as_ref(),
             )?;
             render_station_action(st, StationAction::Stamp, &change);
             clear_snapshots_warning(&ws, st, cli.ns, &change);
@@ -713,6 +738,11 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
     let st = cli.station;
     let noun = st.noun;
     match verb {
+        StationVerb::History { change, id, json } => {
+            anyhow::ensure!(core::security::prepared::valid_relative(&change) && !change.contains('/'), "invalid_change");
+            if let Some(id) = &id { core::history::validate_id(id)?; }
+            print_history(ctx.client.station_history(noun, &change, id.as_deref())?, json)
+        }
         StationVerb::Scope { change, json, base, candidate_hash, include_hunk } => {
             // 同一 Host resolver：remote 提供 active changes、ticket 與 evidence
             // 事實，Git、baseline、snapshot 全在本地 checkout。
@@ -795,7 +825,10 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
                 .into_iter()
                 .map(|(path, hash)| speclink_protocol::command::ReviewScopeEntryDto { path, hash })
                 .collect();
-            ctx.client.station_stamp(noun, &change, accept, agent.as_deref(), &scope, &missing)?;
+            let required=if noun=="verify"{let policy=core::config::WorkflowConfig::from_text(ctx.client.config()?.content.as_deref())?.security();policy.enabled&&policy.required_for_acceptance}else{false};
+            if required {
+                ctx.client.verify_stamp_with_security(&change,accept,agent.as_deref(),&scope,&missing,&super::security::remote_security_gate(&change)?)?;
+            }else{ctx.client.station_stamp(noun,&change,accept,agent.as_deref(),&scope,&missing)?;}
             render_station_action(st, StationAction::Stamp, &change);
             Ok(())
         }

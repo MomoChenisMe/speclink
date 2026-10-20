@@ -76,8 +76,16 @@ fn archive_with(
     crate::query::refuse_if_worktree_is_open(&ctx, change)?;
     let store: &dyn Store = &ctx.store;
     let change = find(store, change)?;
-    let opts =
+    let mut opts =
         speclink_core::archive::ArchiveOptions { carry_review, carry_verify, ..Default::default() };
+    let policy=speclink_core::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref()).map_err(|_|"invalid_config: workflow policy could not be parsed".to_owned())?.security();
+    if policy.enabled&&policy.required_for_acceptance {
+        let reader=speclink_fs::security::scan::AuthorizedProject::open(&ctx.workspace.root).map_err(|e|e.to_string())?;
+        let target=speclink_host::security::ReviewTarget::local(reader.root(),&ctx.workspace.spec_dir_name,Some(change.name.clone())).map_err(|e|e.to_string())?;
+        let data=speclink_fs::security::FsSecurityData::new(&speclink_host::context::security_data_dir().map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+        let budget=speclink_host::security::ReviewBudget::new(std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)));
+        opts.security_acceptance=speclink_host::security::acceptance_proof_for_target(&target,&reader,&data,store,&budget).map_err(|e|e.to_string())?;
+    }
     let actor = crate::manage::cached_git_identity(&ctx.workspace.root);
     let outcome = speclink_core::archive::archive(&ctx.workspace, store, &change, &opts, actor.as_deref())
         .map_err(|e| e.to_string())?;
@@ -87,6 +95,7 @@ fn archive_with(
         "datedName": outcome.dated_name,
         "snapshotCreated": outcome.snapshot_created,
         "skippedSpecs": outcome.skipped_specs,
+        "checkRecords":outcome.check_records,
     }))
 }
 

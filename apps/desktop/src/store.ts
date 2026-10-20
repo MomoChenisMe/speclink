@@ -43,6 +43,7 @@ import {
   persistTabs,
   readPersistedTabs,
   removeTab,
+  reorderTabs,
   upsertTab,
   type ProjectTab,
 } from "./tabs";
@@ -67,6 +68,8 @@ import {
   focusRecheckDue,
   initialUpdaterState,
   reduceUpdater,
+  updateCheckFailure,
+  type UpdateCheckResult,
   type UpdaterState,
 } from "./core/updater";
 import type { PendingUpdate, UpdaterAdapter } from "./adapter/updater";
@@ -438,6 +441,7 @@ export interface AppState {
   /** 由 Tray 顯式開啟問題詳情：選取既有 recovery destination，但不隱含重試。 */
   showRemoteWorkspaceRecovery: (key: string) => void;
   closeTab: (key: string) => void;
+  reorderProject: (keys: string[]) => void;
   /** 專案層檔案系統動作（design D5）：作用於本機根或 remote checkout；無本機目錄時不動作。
    * 成功靜默、失敗 toast（i18n 鍵查表，否則原文）。 */
   revealProject: (key: string) => Promise<void>;
@@ -487,6 +491,7 @@ export interface AppState {
   // --- 自動更新（desktop-app「桌面自動更新」；design D6） ---
   /** 更新狀態機現值（core/updater reducer 驅動；執行期狀態、不持久化）。 */
   updater: UpdaterState;
+  updaterLastCheck: UpdateCheckResult | null;
   /** 檢查更新（manual＝手動入口）：自動失敗靜默、手動失敗浮出無法檢查。 */
   checkForUpdates: (manual: boolean) => Promise<void>;
   /** 關於頁的版本資訊（desktop-about-page design D1）；null＝尚未取得或取得失敗。 */
@@ -897,7 +902,12 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       failKey: FailureMessageKey = "store.archiveFailed",
     ) {
       try {
-        await run();
+        const result=await run();
+        const counts=(result as {checkRecords?:{review:{retained:number;omitted:number};verify:{retained:number;omitted:number};security:{retained:number;omitted:number};acceptanceReceipt:boolean}}|null)?.checkRecords;
+        if(counts&&([counts.review,counts.verify,counts.security].some(c=>c.retained+c.omitted>0)||counts.acceptanceReceipt)){
+          const lines=(["review","verify","security"] as const).map(kind=>appT("store.archiveRecordCount").replace("{kind}",appT(`store.recordKind.${kind}`)).replace("{retained}",String(counts[kind].retained)).replace("{omitted}",String(counts[kind].omitted)));
+          if(counts.acceptanceReceipt)lines.push(appT("store.acceptanceReceiptKept"));toast(`${change} · ${appT("store.archivedWithRecords")}`,{id:"desktop-archive-records",description:lines.join("\n")});
+        }
         set({ detailChange: null });
       } catch (e) {
         showFailureToast(change, failKey, e);
@@ -1942,6 +1952,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     // --- 自動更新（desktop-app「桌面自動更新」；design D6） ---
     updater: initialUpdaterState,
+    updaterLastCheck: null,
     appInfo: null,
     loadAppInfo() {
       if (!fetchAppInfo || get().appInfo) return Promise.resolve();
@@ -1966,6 +1977,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         const update = await updaterAdapter.check();
         pendingUpdate = update;
         set({
+          updaterLastCheck: { checkedAt: Date.now(), status: update ? "available" : "up-to-date", errorCode: null, operationId: null },
           updater: reduceUpdater(
             get().updater,
             update ? { type: "updateFound", version: update.version } : { type: "noUpdate" },
@@ -1980,9 +1992,9 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
             action: { label: appT("updater.toast.view"), onClick: () => get().openSettingsUpdate() },
           });
         }
-      } catch {
+      } catch (error) {
         // 離線／端點不可達：reducer 決定靜默（自動）或浮出（手動）。
-        set({ updater: reduceUpdater(get().updater, { type: "checkFailed" }) });
+        set({ updater: reduceUpdater(get().updater, { type: "checkFailed" }), updaterLastCheck: updateCheckFailure(error) });
       }
     },
     async recheckOnFocus(now) {
@@ -2486,6 +2498,17 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       if (!fsActionsAdapter || dir === null) return;
       // 相對路徑為正斜線；Windows 的 reveal 接受混合分隔符（Rust std::path 吸收）。
       await runOnDocument(relative, async () => fsActionsAdapter.reveal(`${dir}/${relative}`));
+    },
+
+    reorderProject(keys) {
+      try {
+        const { tabs, activeKey } = get();
+        const ordered = reorderTabs(tabs, keys);
+        persistTabs(ordered, activeKey);
+        set({ tabs: ordered });
+      } catch (error) {
+        showFailureToast(appT("app.projectRail"), "store.reorderFailed", error);
+      }
     },
 
     closeTab(key) {

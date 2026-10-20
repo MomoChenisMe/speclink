@@ -213,6 +213,25 @@ impl NetworkDiagnostic {
 }
 pub type DiagnosticSink = Arc<dyn Fn(NetworkDiagnostic) + Send + Sync>;
 
+pub fn request_error(error: &reqwest::Error) -> (String, Option<u16>, Vec<ErrorDetail>) {
+    let status = error.status().map(|status| status.as_u16());
+    let initial = if status == Some(407) {
+        "proxy-auth"
+    } else if error.is_timeout() {
+        "timeout"
+    } else if error.is_decode() {
+        "parse"
+    } else if status.is_some() {
+        "http"
+    } else if error.is_connect() {
+        "connect"
+    } else {
+        "unknown"
+    };
+    let (code, chain) = error_details(error, initial);
+    (code, status, chain)
+}
+
 /// Retain typed cause information, never third-party messages or URL-bearing Debug output.
 pub fn error_details(
     error: &(dyn std::error::Error + 'static),
@@ -285,6 +304,40 @@ pub fn error_details(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn malformed_update_response_keeps_parse_code_without_response_body() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let _ = stream.read(&mut [0; 4096]);
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 14\r\nConnection: close\r\n\r\nsecret-invalid").unwrap();
+        });
+        let policy = ProxyPolicy::snapshot(ProxyPreferences {
+            mode: ProxyMode::Direct,
+            url: None,
+        })
+        .unwrap();
+        let client = policy
+            .configure_client(reqwest::Client::builder())
+            .unwrap()
+            .build()
+            .unwrap();
+        let error = client
+            .get(format!("http://{address}"))
+            .send()
+            .await
+            .unwrap()
+            .json::<serde_json::Value>()
+            .await
+            .unwrap_err();
+        let (code, status, chain) = request_error(&error);
+        assert_eq!(code, "parse");
+        assert_eq!(status, None);
+        assert!(!serde_json::to_string(&chain).unwrap().contains("secret"));
+        server.join().unwrap();
+    }
     #[test]
     fn unsupported_redirect_route_is_blocked_instead_of_panicking_or_going_direct() {
         let mut policy = ProxyPolicy::snapshot(ProxyPreferences::default()).unwrap();

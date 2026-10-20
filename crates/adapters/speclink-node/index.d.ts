@@ -52,6 +52,13 @@ export interface DiscussionDoc {
  * `claim` is the one optional extension — ownership is a team-system concept
  * the host adjudicates.
  */
+export interface ChecksCommit {
+  writes: Record<string, string>
+  deletes: string[]
+  /** SHA-256 of current content, or null if the document must be absent. */
+  expected: Record<string, string | null>
+}
+
 export interface Store {
   // --- changes ---
   /** Active changes with metadata, sorted by name. Missing storage → empty list. */
@@ -90,6 +97,10 @@ export interface Store {
    * without it works everywhere else and fails loud there.
    */
   deleteArtifact?(change: string, artifact: string): MaybePromise<void>
+  /** Atomically check every expected digest, then apply ALL writes/deletes, or none.
+   * Required for review/verify stamping and security publication. Never emulate
+   * this by separate calls to writeArtifact and deleteArtifact. */
+  commitChecks?(change: string, commit: ChecksCommit): MaybePromise<void>
 
   // --- completion evidence ---
   /**
@@ -123,6 +134,7 @@ export interface Store {
   archivedChangeExists(datedName: string): MaybePromise<boolean>
   /** Move an active change into the archive under its dated name. */
   archiveChange(name: string, datedName: string): MaybePromise<void>
+  readArchivedArtifact?(datedName: string, artifact: string): MaybePromise<string | null>
   readArchivedMeta(datedName: string): MaybePromise<string | null>
   writeArchivedMeta(datedName: string, content: string): MaybePromise<void>
 

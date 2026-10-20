@@ -71,12 +71,19 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/changes/{name}/review/rounds", post(routes::review_add_round))
         .route("/changes/{name}/review/stamp", post(routes::review_stamp))
+        .route("/changes/{name}/review/history", get(routes::review_history))
         .route(
             "/changes/{name}/verify",
             get(routes::verify_show).delete(routes::verify_discard),
         )
         .route("/changes/{name}/verify/rounds", post(routes::verify_add_round))
         .route("/changes/{name}/verify/stamp", post(routes::verify_stamp))
+        .route("/changes/{name}/verify/history", get(routes::verify_history))
+        .route("/changes/{name}/security/history",get(routes::security_history))
+        .route("/changes/{name}/security", get(crate::api::security::show))
+        .route("/changes/{name}/security/reports/{id}", get(crate::api::security::report))
+        .route("/changes/{name}/security/rounds", post(crate::api::security::submit).layer(DefaultBodyLimit::max(8 * 1024 * 1024)))
+        .route("/changes/{name}/security/accept", post(crate::api::security::accept).layer(DefaultBodyLimit::max(8 * 1024 * 1024)))
         .route("/changes/{name}/claim", post(routes::claim))
         .route("/changes/{name}/depends", post(routes::change_depends))
         .route(
@@ -147,7 +154,8 @@ pub fn router(state: AppState) -> Router {
         .route_layer(middleware::from_fn_with_state(state.clone(), require_editor));
     // 寫入檢查的唯一例外：唯讀但以 POST 傳輸的查詢，reader 照常可用。新增這類
     // 端點要放這裡，並在設計中說明。
-    let read_only_posts = Router::new().route("/context", post(context::snapshot));
+    let read_only_posts = Router::new().route("/context", post(context::snapshot))
+        .route("/changes/{name}/security/check", post(crate::api::security::check).layer(DefaultBodyLimit::max(4 * 1024 * 1024)));
     let project = project
         .merge(read_only_posts)
         .layer(middleware::from_fn(read_body_before_routing));
@@ -247,6 +255,6 @@ async fn readyz(State(state): State<AppState>) -> StatusCode {
 
 /// `GET /binding` — the handshake. The `Binding` extractor already ran the
 /// authentication and binding precondition; a failure never reaches here.
-async fn binding(binding: Binding) -> Json<BindingResponse> {
-    Json(binding.to_response())
+async fn binding(State(state):State<AppState>,binding: Binding) -> Result<Json<BindingResponse>,ApiError> {
+    Ok(Json(binding.to_response(&state.config.public_url)?))
 }

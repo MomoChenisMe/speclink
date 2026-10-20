@@ -54,6 +54,19 @@ pub async fn run(
     result
 }
 
+/// Security proof is built over the same snapshot the command will mutate.
+pub async fn run_with_security(state:&AppState,binding:&Binding,cmd:Command,gate:speclink_protocol::security::SecurityGateRequest)->Result<VerbResult,ApiError> {
+    if gate.security_source_attestation.is_none(){return run(state,binding,cmd).await;}
+    let store=state.store.clone();let ctx=binding.execution_context();let scope=scope_of(binding);
+    let key=speclink_host::security::remote_project_key(&state.config.public_url,&binding.project.key,&binding.repo).map_err(ApiError::security)?;
+    let result=tokio::task::spawn_blocking(move || ->Result<VerbResult,ApiError>{
+        let data=speclink_fs::security::FsSecurityData::new(&speclink_host::context::security_data_dir().map_err(ApiError::security)?).map_err(ApiError::security)?;
+        let execution=bridge::execute_with_security(store.as_ref(),&ctx,cmd,&key,&gate,&data).map_err(ApiError::from)?;
+        Ok(VerbResult{execution,etag:scope_token(store.as_ref(),&scope)?})
+    }).await.map_err(|_|ApiError::internal("security worker failed"))?;
+    if result.is_ok(){state.events.notify(&scope_of(binding));}result
+}
+
 /// The scope's ETag, read on the blocking pool. For query routes that do not
 /// run a verb but still declare the scope state token.
 pub async fn scope_etag(state: &AppState, binding: &Binding) -> Result<String, ApiError> {

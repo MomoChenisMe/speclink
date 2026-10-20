@@ -267,10 +267,43 @@ impl AuthorizedProject {
                 continue;
             }
             let language = Language::from_path(&label);
+            let extension = path
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let name = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let deep_language = matches!(
+                extension.as_str(),
+                "cs" | "java"
+                    | "py"
+                    | "rs"
+                    | "js"
+                    | "jsx"
+                    | "ts"
+                    | "tsx"
+                    | "json"
+                    | "yaml"
+                    | "yml"
+                    | "ini"
+                    | "toml"
+                    | "properties"
+                    | "config"
+                    | "xml"
+            ) || name == ".env"
+                || name.starts_with(".env.");
             if kind.is_some_and(|kind| match kind {
                 InputKind::Code => language == Language::Markdown,
                 InputKind::Api => !matches!(language, Language::Json | Language::Yaml),
                 InputKind::Spec => language != Language::Markdown,
+                InputKind::Deep => {
+                    language == Language::Markdown
+                        || (language == Language::Unsupported && !deep_language)
+                }
             }) {
                 skip(&mut result, label, "review_not_selected");
                 continue;
@@ -320,7 +353,9 @@ impl AuthorizedProject {
                         skip(&mut result, label, "generated");
                         continue;
                     }
-                    if Language::from_path(&label) == Language::Unsupported {
+                    if Language::from_path(&label) == Language::Unsupported
+                        && !(matches!(kind, Some(InputKind::Deep)) && deep_language)
+                    {
                         skip(&mut result, label, "unsupported_language");
                         continue;
                     }
@@ -604,6 +639,37 @@ fn directory_names(_file: &File, _path: &Path, _stop: Stop<'_>) -> Result<Vec<st
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn deep_inputs_include_five_languages_without_changing_basic_support() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        for path in [
+            "a.cs",
+            "b.java",
+            "c.py",
+            "d.rs",
+            "e.ts",
+            "f.js",
+            ".env",
+            ".env.production",
+            "APP.CS",
+            "app.properties",
+            "app.config",
+        ] {
+            std::fs::write(dir.path().join(path), "source\n").unwrap();
+        }
+        std::fs::write(dir.path().join("logo.png"), [0, 1, 2]).unwrap();
+        let reader = AuthorizedProject::open(dir.path()).unwrap();
+        let basic = reader
+            .scan_selected(&[], InputKind::Code, &[], &ScanLimits::default(), &|| None)
+            .unwrap();
+        assert_eq!(basic.documents.len(), 3);
+        let deep = reader
+            .scan_selected(&[], InputKind::Deep, &[], &ScanLimits::default(), &|| None)
+            .unwrap();
+        assert_eq!(deep.documents.len(), 11);
+        assert!(deep.complete);
+    }
     use super::*;
     use speclink_core::security::input::ScanLimits;
     use std::{

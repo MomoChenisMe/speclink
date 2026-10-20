@@ -30,6 +30,16 @@ function replay(events: Parameters<typeof reduceUpdater>[1][]): UpdaterState {
 }
 
 describe("更新狀態機（core/updater）", () => {
+  it("背景失敗仍記錄安全錯誤代碼及 operationId，成功時清除舊錯誤", async () => {
+    const check = vi.fn().mockRejectedValueOnce({ code: "proxy-auth", operationId: "op-one", message: "secret" }).mockResolvedValueOnce(null);
+    const store = createAppStore({ createSession: () => { throw new Error("not used"); }, updater: { check, relaunch: vi.fn() } });
+    await store.getState().checkForUpdates(false);
+    expect(store.getState().updater).toEqual({ phase: "idle" });
+    expect(store.getState().updaterLastCheck).toEqual({ checkedAt: expect.any(Number), status: "failed", errorCode: "proxy-auth", operationId: "op-one" });
+    expect(JSON.stringify(store.getState().updaterLastCheck)).not.toContain("secret");
+    await store.getState().checkForUpdates(true);
+    expect(store.getState().updaterLastCheck).toEqual({ checkedAt: expect.any(Number), status: "up-to-date", errorCode: null, operationId: null });
+  });
   it("閒置→檢查中→發現新版（含目標版本）→同意→下載→待重啟", () => {
     let state: UpdaterState = initialUpdaterState;
     expect(state).toEqual({ phase: "idle" });

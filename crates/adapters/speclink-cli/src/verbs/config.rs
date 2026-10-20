@@ -90,6 +90,13 @@ enum WorkflowConfigCommands {
         #[arg(long = "dry-run")]
         dry_run: bool,
     },
+    /// Choose which completed check records to retain when archiving
+    CheckRecords {
+        #[arg(long)]
+        stdin: bool,
+        #[arg(long = "dry-run")]
+        dry_run: bool,
+    },
     #[command(about = SET_ABOUT.as_str())]
     Set {
         /// Policy key
@@ -316,6 +323,7 @@ struct WorkflowConfigJson {
     rules: std::collections::BTreeMap<String, Vec<String>>,
     review: core::config::ReviewConfig,
     security_verification: core::security::policy::SecurityPolicy,
+    check_records: core::config::CheckRecordsConfig,
 }
 /// A write subcommand once argv and stdin are resolved — the shape both the fs
 /// and the remote branch hand to the shared rewrite.
@@ -326,6 +334,7 @@ enum WorkflowConfigWrite {
     ReviewList { list: ReviewList, body: String },
     ReviewBaseline(core::config::ReviewBaseline),
     Security(String),
+    CheckRecords(String),
 }
 /// The rewrite a write subcommand produces: the complete new document plus the
 /// line printed on a successful write.
@@ -451,9 +460,11 @@ fn workflow_config_write(
 ) -> Result<Option<(WorkflowConfigWrite, bool)>> {
     Ok(match cmd {
         WorkflowConfigCommands::Show { .. } | WorkflowConfigCommands::Languages { .. } => None,
-        WorkflowConfigCommands::Security { stdin, dry_run } => {
+        WorkflowConfigCommands::Security { stdin, dry_run }
+        | WorkflowConfigCommands::CheckRecords { stdin, dry_run } => {
             use std::io::Read;
-            require_stdin_flag(*stdin, "security --stdin")?;
+            let records = matches!(cmd, WorkflowConfigCommands::CheckRecords { .. });
+            require_stdin_flag(*stdin, if records { "check-records --stdin" } else { "security --stdin" })?;
             let limit = core::security::policy::MAX_POLICY_PATCH_BYTES;
             let mut body = String::new();
             std::io::stdin()
@@ -461,7 +472,7 @@ fn workflow_config_write(
                 .take((limit + 1) as u64)
                 .read_to_string(&mut body)?;
             anyhow::ensure!(body.len() <= limit, "security policy patch exceeds 64 KiB");
-            Some((WorkflowConfigWrite::Security(body), *dry_run))
+            Some((if records { WorkflowConfigWrite::CheckRecords(body) } else { WorkflowConfigWrite::Security(body) }, *dry_run))
         }
         WorkflowConfigCommands::Set { key, value, dry_run } => Some((
             WorkflowConfigWrite::Policy { key: key.clone(), value: value.clone() },
@@ -521,6 +532,7 @@ fn print_workflow_config(original: &str, label: &str, json: bool) -> Result<()> 
             rules: cfg.rules.clone(),
             review: cfg.review(),
             security_verification: cfg.security(),
+            check_records: cfg.check_records(),
         });
     }
     println!("{} {label}", color::bold("Workflow config:"));
@@ -625,6 +637,12 @@ fn plan_workflow_config_edit(
             return Ok(WorkflowConfigEdit {
                 new_text: core::security::policy::patch_workflow_security(original, body)?,
                 summary: "security_verification updated".into(),
+            });
+        }
+        WorkflowConfigWrite::CheckRecords(body) => {
+            return Ok(WorkflowConfigEdit {
+                new_text: core::security::policy::patch_workflow_check_records(original, body)?,
+                summary: "check_records updated".into(),
             });
         }
         WorkflowConfigWrite::Policy { key, value } => {
@@ -865,6 +883,8 @@ fn remote_workflow_config(
     let Some((write, dry_run)) = write else {
         return print_workflow_config(&original, REMOTE_CONFIG_LABEL, json);
     };
+    let needs_v2=match &write {WorkflowConfigWrite::CheckRecords(_)=>true,WorkflowConfigWrite::Security(body)=>core::security::policy::acceptance_patch_requested(body)?,_=>false};
+    if needs_v2 {let binding=ctx.client.handshake()?;anyhow::ensure!(binding.capabilities.security_review_v2&&binding.capabilities.check_history,"unsupported_version: server does not support acceptance and history policies");}
     let edit = plan_workflow_config_edit(&write, &original, REMOTE_CONFIG_LABEL, None)?;
     if dry_run {
         print!("{}", unified_diff(REMOTE_CONFIG_LABEL, &original, &edit.new_text));

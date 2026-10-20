@@ -16,6 +16,7 @@ pub mod commit;
 pub mod context;
 pub mod drift;
 pub mod gate;
+pub mod history;
 pub mod policy;
 pub mod portable;
 pub mod projection;

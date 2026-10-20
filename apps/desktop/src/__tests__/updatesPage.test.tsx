@@ -45,6 +45,30 @@ const row = (label: string) => screen.getByRole("group", { name: label });
 const installCard = () => screen.queryByRole("region", { name: "下載與安裝" });
 
 describe("UpdatesPage", () => {
+  it.each(["zh-TW", "en"] as const)("%s：沒有 updater 仍有目前版本與內附日誌，只有網路動作停用", (locale) => {
+    rtlRender(inLocale(locale, <UpdatesPage currentVersion="1.50.1" />));
+    const m = APP_MESSAGES[locale];
+    expect(screen.getByText("1.50.1")).toBeTruthy();
+    expect(screen.getByRole("region", { name: m["releaseNotes.open"] }).textContent).toContain(RELEASE_NOTES[0].sections[0].items[0][locale]);
+    expect((screen.getByRole("button", { name: m["updater.check"] }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(m["updater.page.unavailable"])).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: m["updater.page.allNotes"] }));
+    expect(screen.getByTestId("release-notes-dialog")).toBeTruthy();
+  });
+
+  it("背景失敗保留最後結果、重試與診斷入口，不冒稱已最新", () => {
+    const onDiagnostics = vi.fn();
+    const props = updaterProps({ phase: "idle" }, {
+      lastCheck: { checkedAt: 1, status: "failed", errorCode: "proxy-auth", operationId: "op-one" }, onDiagnostics,
+    });
+    render(<UpdatesPage updater={props} />);
+    expect(screen.getByRole("status", { name: "最後檢查" }).textContent).toContain("proxy-auth");
+    expect(screen.queryByText("已是最新")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "重試" }));
+    fireEvent.click(screen.getByRole("button", { name: "網路與診斷" }));
+    expect(props.onCheck).toHaveBeenCalledOnce();
+    expect(onDiagnostics).toHaveBeenCalledOnce();
+  });
   it("頁標題「更新」右側「檢查更新」回呼 onCheck、檢查中停用；版本卡有目前版本列（等寬）", () => {
     const onCheck = vi.fn();
     const { rerender } = render(<UpdatesPage updater={updaterProps({ phase: "idle" }, { onCheck })} />);

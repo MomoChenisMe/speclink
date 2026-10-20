@@ -176,3 +176,42 @@ describe('蓋章守門與 argv 契約', () => {
     await expect(engine.dispatch(['review', 'stamp', CHANGE])).rejects.toThrow()
   })
 })
+
+describe('完成紀錄的原子保存', () => {
+  it('蓋章後可讀完整歷史，新一輪不覆寫上一輪', async () => {
+    const { store, engine } = engineWithActor(ACTOR)
+    await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
+    await engine.dispatch(['review', 'stamp', CHANGE, '--stdin'], { stdin: STAMP_PAYLOAD })
+    const history = await engine.dispatch(['review', 'history', CHANGE, '--json']) as {records: {recordId: string}[]}
+    expect(history.records).toHaveLength(1)
+    const original = await engine.dispatch(['review', 'history', CHANGE, '--id', history.records[0].recordId, '--json']) as {content: string}
+    expect(original.content).toContain('rename helper')
+    await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
+    expect(await engine.dispatch(['review', 'history', CHANGE, '--id', history.records[0].recordId, '--json'])).toEqual(original)
+    expect(await store.readArtifact(CHANGE, 'review.md')).toContain('## Round 1')
+    await store.archiveChange(CHANGE, '2026-10-21-beta')
+    expect(await engine.dispatch(['review', 'history', '2026-10-21-beta', '--id', history.records[0].recordId, '--json'])).toEqual(original)
+  })
+
+  it('缺少原子提交方法時，拒絕蓋章並保留工單與 metadata', async () => {
+    const store = memoryStore(fixtureProject())
+    delete (store as Record<string, unknown>).commitChecks
+    const engine = createEngine({store, actor: ACTOR})
+    await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], {stdin: CLEAN_ROUND})
+    const before = await metaOf(store)
+    await expect(engine.dispatch(['review', 'stamp', CHANGE, '--stdin'], {stdin: STAMP_PAYLOAD})).rejects.toThrow(/commitChecks/)
+    expect(await metaOf(store)).toBe(before)
+    expect(await store.readArtifact(CHANGE, 'review.md')).toContain('## Round 1')
+    expect(await store.readArtifact(CHANGE, 'checks/index.json')).toBeNull()
+  })
+})
+
+it('沒有授權 checkout 的 JS 宿主只回報未完成安全驗收，不借用其他工作目錄', async () => {
+  const store = memoryStore(fixtureProject())
+  store.readWorkflowConfig = async () => 'security_verification:\n  enabled: true\n  required_for_acceptance: true\n'
+  const engine = createEngine({store, actor: ACTOR})
+  const result = await engine.dispatch(['security', 'review', 'show', CHANGE, '--json']) as {acceptance: {status: string, sourceFreshness: string}}
+  expect(result.acceptance.status).toBe('blocked')
+  expect(result.acceptance.sourceFreshness).toBe('unverified')
+  await expect(engine.dispatch(['security', 'review', 'accept', CHANGE, '--stdin'], {stdin: '{}'})).rejects.toThrow(/source_freshness_unverified/)
+})

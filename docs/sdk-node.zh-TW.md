@@ -119,7 +119,7 @@ Store 是一個物件，引擎透過它讀寫 change、artifact、規格與討�
 
 | 方法 | 什麼時候需要 |
 | --- | --- |
-| `readChangeMeta`、`writeChangeMeta`、`deleteArtifact` | `review stamp`、`verify stamp`。缺任何一個，蓋章會在動手前拒絕 |
+| `readChangeMeta`、`writeChangeMeta`、`deleteArtifact`、`commitChecks` | `review stamp`、`verify stamp`。缺任何一個，蓋章會在動手前拒絕 |
 | `claim` | `claim` 動詞。見下方 |
 | `deleteChange`、`readEvidence`、`writeEvidence` | 目前接上的動詞用不到，可以先不實作 |
 
@@ -195,7 +195,7 @@ await engine.dispatch(['review', 'stamp', 'add-auth', '--agent', 'claude', '--st
 - `missing` 列出工單範圍裡已經不存在的檔案。`scope` 與 `missing` 合起來必須剛好等於工單涵蓋的檔案、而且不重複，否則拒絕。兩個欄位都可以省略（視為空清單），多出其他欄位會以 `invalid_argv` 拒絕。
 - 任務還沒做完（標 `[M]` 的手動任務不算），或最後一輪還有 CRITICAL／WARNING 時，蓋章會被拒絕。`--accept` 可以略過必修發現；SUGGESTION 本來就不擋。
 - `reviewed_by`／`verified_by` 是建立引擎時的 `actor`；`--agent` 記在 `reviewed_with`／`verified_with`。
-- 蓋章需要 `readChangeMeta`、`writeChangeMeta`、`deleteArtifact` 三個方法，缺一個就在動手前拒絕，工單與 meta 都不會被改。
+- 蓋章需要 `readChangeMeta`、`writeChangeMeta`、`deleteArtifact`、`commitChecks` 四個方法，缺一個就在動手前拒絕，工單與 meta 都不會被改。
 - 同一個引擎實例裡的蓋章會自動排隊，不會互相覆蓋。跨實例、跨程序對同一個 change 蓋章時，由你的 Store 負責協調。
 
 ## <a id="render"></a>產生技能檔
@@ -270,8 +270,14 @@ async function startSession() {
 
 ## <a id="limits"></a>目前的限制
 
-- 只接上九個動詞（見[執行動詞](#dispatch)）；`archive`、`task`、`discuss` 等其他動詞還不能透過 SDK 執行。
+- 只接上已列出的動詞（見[執行動詞](#dispatch)）；`archive`、`task`、`discuss` 等其他動詞還不能透過 SDK 執行。
 - 自己的 Store 只能用內建 schema。
 - 沒有 musl Linux 的預編譯套件。
 - Store 方法拋錯時，stderr 可能會多印一行 Rust 的 panic 訊息；Promise 仍會照上面的規則拒絕。
 - `dispatch` 的回傳值沒有個別的 TypeScript 型別，形狀以[動詞與旗標契約](verb-contract.zh-TW.md)為準。
+
+### 完成紀錄與安全審查
+
+`review history CHANGE [--id ID]`、`verify history CHANGE [--id ID]` 回傳提案內的索引或完整紀錄；封存查詢使用 dated 名稱並需要 `readArchivedArtifact`。蓋章前先以 `commitChecks(change, {writes, deletes, expected})` 原子保存完整工單、索引、metadata，然後移除活動工單。宿主須先比對每個 expected SHA-256（null 表示不存在），再一次提交全部效果，失敗時不改任何文件；不可拆成個別寫入／刪除。
+
+`security review show CHANGE`、`security report ID --change CHANGE` 使用相同 Host 查詢。`security review add-round CHANGE --stdin` 上限 4 MiB，`security review accept CHANGE --stdin` 上限 16 KiB；只支援帶授權 checkout 的檔案宿主，JS Store 沒有來源核對時回 `source_freshness_unverified`。required 驗收採同一純判定，不接受宿主傳入 PASS 旗標。此介面需要支援 `commitChecks` 的新版 SDK；Remote 的對應能力為 `securityReviewV2`、`checkHistory`，舊 server 明確拒絕新操作。

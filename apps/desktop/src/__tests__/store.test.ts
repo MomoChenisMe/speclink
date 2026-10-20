@@ -3183,3 +3183,9 @@ it.each(["settings", "project-settings"] as const)("從%s啟用同一或另一Re
   expect(store.getState().activeKey).toBe(key);
  }
 });
+
+it('封存有檢查紀錄時顯示三類保留與略過數，並區分驗收摘要',async()=>{
+ const ds=fakeDataSource({runVerb:vi.fn().mockResolvedValue({datedName:'2026-10-21-demo',checkRecords:{review:{retained:1,omitted:0},verify:{retained:0,omitted:2},security:{retained:0,omitted:2},acceptanceReceipt:true}})});
+ const store=storeWith(ds);await store.getState().runVerb('archive','desktop-shell-and-browser');
+ expect(toastFn).toHaveBeenCalledWith(expect.stringContaining('已封存'),expect.objectContaining({description:expect.stringContaining('驗證：保留 0，略過 2')}));expect(toastFn.mock.calls[0][1].description).toContain('安全驗收摘要已保留');
+})

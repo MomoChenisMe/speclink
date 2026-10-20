@@ -88,6 +88,50 @@ fn assert_matches_golden(name: &str, actual: &str) {
 // --- built-in targets: bit-level regression locks ---
 
 #[test]
+fn proposal_template_defaults_to_bullets_for_every_project() {
+    let template=include_str!("../../assets/schema/spec-driven/proposal.template.md");
+    assert!(template.contains("one point per bullet"));
+    let body=skills::skill_body("propose").unwrap();
+    assert!(body.contains("one point per bullet") && body.contains("all projects"));
+    let skill=skills::registry().into_iter().find(|s|s.name=="propose").unwrap();
+    for tool in Tool::ALL {
+        let rendered=skills::render_skill_file_for(skills::RenderTarget::Builtin(tool),&skill,"custom-spec");
+        assert!(rendered.contains("one point per bullet") && rendered.contains("all projects"));
+    }
+}
+
+#[test]
+fn security_review_skill_preserves_basic_scan_and_selected_offline_scope() {
+    let registry = skills::registry();
+    let skill = registry.iter().find(|s|s.name=="security-review").expect("deep review skill is registered");
+    assert!(!skill.claude_only && !skill.worktree_gated);
+    for tool in Tool::ALL {
+        let rendered = skills::render_skill_file_for(skills::RenderTarget::Builtin(tool),skill,"openspec");
+        for required in ["security_verification", "required_for_acceptance", ".security_kb/", "Do not fetch", "selected versions", "security run --change", "security review show", "security review add-round", "resolvesCheckIds", "Checkmarx", "Minimal API", "Spring", "FastAPI", "Flask", "Actix", "Axum", "Express", "NestJS", "unsafe", "unwrap()", "SHALL", "繁體中文", "confidenceReason", "codeSnippet", "dataFlow", "impact", "remediation", "acceptance", "explicitly accepts"] {
+            assert!(rendered.contains(required), "{}: {required}",tool.name());
+        }
+        assert_matches_golden(&format!("security-review-{}.snapshot.md",tool.name()),&rendered);
+    }
+}
+
+#[test]
+fn stations_and_archive_preserve_history_and_defer_security_acceptance_to_host() {
+    for station in ["review","verify"] {
+        let body=skills::skill_body(station).unwrap();
+        assert!(body.contains(&format!("speclink {station} history")),"{station}");
+        assert!(body.contains(&format!("checks/{station}")),"{station}");
+        assert!(body.contains("recordId") && body.contains("history_recovery_required"));
+    }
+    for name in ["verify","archive"] {
+        let body=skills::skill_body(name).unwrap();
+        assert!(body.contains("security review show") && body.contains("required_for_acceptance"),"{name}");
+        assert!(body.contains("security-review"));
+    }
+    let config=skills::skill_body("config").unwrap();
+    assert!(config.contains("workflow-config check-records") && config.contains("required_for_acceptance"));
+}
+
+#[test]
 fn copilot_native_selections_match_across_worktree_and_language_policies() {
     for worktree in [false, true] {
         for locale in [None, Some("tw"), Some("ja"), Some("en")] {

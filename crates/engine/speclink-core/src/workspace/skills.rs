@@ -104,6 +104,7 @@ const B_APPLY_WITH_WORKTREE: &str = concat!(
 const B_WORKTREE_MERGE: &str = include_str!("../../assets/skills/worktree-merge.md");
 const B_ARCHIVE: &str = include_str!("../../assets/skills/archive.md");
 const B_AUDIT: &str = include_str!("../../assets/skills/audit.md");
+const B_SECURITY_REVIEW: &str = include_str!("../../assets/skills/security-review.md");
 const B_COMMIT: &str = include_str!("../../assets/skills/commit.md");
 const B_CONFIG: &str = include_str!("../../assets/skills/config.md");
 const B_DISCUSS: &str = include_str!("../../assets/skills/discuss.md");
@@ -153,6 +154,7 @@ pub const REVIEW_BASELINE_SMELLS: [&str; 12] = [
 /// The skills that generate SKILL.md files.
 pub fn registry() -> Vec<Skill> {
     vec![
+        Skill { name: "security-review", description: "Use when explicitly requested to perform an offline OWASP/CWE deep review of a change using its selected local knowledge and authorized sources; records findings and the shared acceptance verdict.", fork: false, disallow_edit: true, claude_only: false, worktree_gated: false, body: B_SECURITY_REVIEW },
         Skill { name: "analyze", description: "Use when a change's artifacts should be cross-checked before implementing — coverage, consistency, ambiguity and gaps across proposal, design, specs and tasks; reports findings without editing anything.", fork: true, disallow_edit: true, claude_only: true, worktree_gated: false, body: B_ANALYZE },
         Skill { name: "apply", description: "Use when a change's tasks are ready to implement, or when resuming one left half-done — works through the task list, marking each checkbox as it lands.", fork: false, disallow_edit: false, claude_only: false, worktree_gated: false, body: B_APPLY },
         // Same permissions as `apply` — it IS apply, wrapped in worktree setup

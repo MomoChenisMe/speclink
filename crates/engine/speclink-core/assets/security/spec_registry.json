@@ -1,0 +1,118 @@
+{
+  "formatVersion": 1,
+  "standardCatalog": "sources.json",
+  "resources": [
+    {
+      "id": "cheatsheets",
+      "role": "guidance",
+      "appliesTo": [
+        "owasp_top10",
+        "owasp_api_top10",
+        "owasp_asvs",
+        "cwe"
+      ],
+      "sourceUrl": "https://github.com/OWASP/CheatSheetSeries/tree/c366393214da5ae186a7a06a27dade7617987304",
+      "sourceRevision": "c366393214da5ae186a7a06a27dade7617987304",
+      "files": [
+        {
+          "name": "raw/Authentication_Cheat_Sheet.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/cheatsheets/Authentication_Cheat_Sheet.md",
+          "sha256": "92f7483b28548679917a329c7b9be1824f33e934d9eed670aaf3e9a1e7b37e83"
+        },
+        {
+          "name": "raw/Authorization_Cheat_Sheet.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/cheatsheets/Authorization_Cheat_Sheet.md",
+          "sha256": "fb8b6e5c60ed783025beefb5049142fd9da02d01f5c95de18a19d26479737975"
+        },
+        {
+          "name": "raw/Cross_Site_Scripting_Prevention_Cheat_Sheet.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.md",
+          "sha256": "199c484557a3d2e6732daec1d2b8d683645163ce1d7dd58f7e5590d93f5a2719"
+        },
+        {
+          "name": "raw/Cryptographic_Storage_Cheat_Sheet.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/cheatsheets/Cryptographic_Storage_Cheat_Sheet.md",
+          "sha256": "866f8cc6303cae926e62308e72480d4ced991f512ce277d7dee265656738ee47"
+        },
+        {
+          "name": "raw/Denial_of_Service_Cheat_Sheet.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/cheatsheets/Denial_of_Service_Cheat_Sheet.md",
+          "sha256": "429d4f36078a9b26e6d897c911571111bda3d0a7e9bda79dd7bc442935dc3382"
+        },
+        {
+          "name": "raw/Deserialization_Cheat_Sheet.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/cheatsheets/Deserialization_Cheat_Sheet.md",
+          "sha256": "f25441070ffcd5664758dff186c7804b8cb42e81258b4133760af2eee57e5a09"
+        },
+        {
+          "name": "raw/DotNet_Security_Cheat_Sheet.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/cheatsheets/DotNet_Security_Cheat_Sheet.md",
+          "sha256": "7af692ab5e0bf1d5f3f330fc8791a2593a3640f3d071d44581df6008633bf340"
+        },
+        {
+          "name": "raw/Java_Security_Cheat_Sheet.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/cheatsheets/Java_Security_Cheat_Sheet.md",
+          "sha256": "877aa0dbf99fba79b2e9cb20d53e88e7f0ad60ecf6afbe75d05998d9a258f858"
+        },
+        {
+          "name": "raw/Logging_Cheat_Sheet.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/cheatsheets/Logging_Cheat_Sheet.md",
+          "sha256": "ab43825f2095a964542a3ea3392e50c79fe4d51794ae1bdfc3bc246b243c5f39"
+        },
+        {
+          "name": "raw/Nodejs_Security_Cheat_Sheet.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/cheatsheets/Nodejs_Security_Cheat_Sheet.md",
+          "sha256": "276c30e1a83cba331822c0f8f252e2e5b4d1012ffccc63395d31263a3ff9db3a"
+        },
+        {
+          "name": "raw/OS_Command_Injection_Defense_Cheat_Sheet.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/cheatsheets/OS_Command_Injection_Defense_Cheat_Sheet.md",
+          "sha256": "736a63e8d21259ad7d9c892f616a791145c5274ee4b07f5974f1644cc962f03f"
+        },
+        {
+          "name": "raw/Prototype_Pollution_Prevention_Cheat_Sheet.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.md",
+          "sha256": "468f9279555b7bf3205e7dfa79edf6e2186da27f7f2f24879fe6065fe6e42beb"
+        },
+        {
+          "name": "raw/REST_Security_Cheat_Sheet.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/cheatsheets/REST_Security_Cheat_Sheet.md",
+          "sha256": "3e2959541004f37a28d47ea1f742f30f46d06a331317eb4d9371617f2ad7a704"
+        },
+        {
+          "name": "raw/SQL_Injection_Prevention_Cheat_Sheet.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.md",
+          "sha256": "0c00c87970eceb404ec4061a30b0fbe3390d870244f3d0802465e20c39178bbb"
+        },
+        {
+          "name": "raw/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.md",
+          "sha256": "3ae2f474449eceadd74cc2c28edfdc405d935166550b2bd67965729b7d707652"
+        },
+        {
+          "name": "raw/Transport_Layer_Security_Cheat_Sheet.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/cheatsheets/Transport_Layer_Security_Cheat_Sheet.md",
+          "sha256": "b259fe4350463fcee9dc46e107ab9c5e6fbacdcfe4e13fcee84c01c310f08f23"
+        },
+        {
+          "name": "raw/Webhook_Security_Cheat_Sheet.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/cheatsheets/Webhook_Security_Cheat_Sheet.md",
+          "sha256": "100fff81950d3e4f0ac82d6d6f11a3a18bbc14d560d3ab9848615bff811be123"
+        },
+        {
+          "name": "raw/XML_External_Entity_Prevention_Cheat_Sheet.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.md",
+          "sha256": "9363b0048b473dba0b9c3a87bc18b12b3fc910475cf24f6fa63171d1ea9b1afb"
+        },
+        {
+          "name": "raw/CheatSheetSeries_LICENSE.md",
+          "url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/LICENSE.md",
+          "sha256": "2b47ecdd5078e948395bc5980226933854228ff688f10d1dd059208be4956084"
+        }
+      ],
+      "licenseName": "CC-BY-SA-4.0",
+      "licenseUrl": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/c366393214da5ae186a7a06a27dade7617987304/LICENSE.md",
+      "attribution": "OWASP Foundation and CheatSheetSeries contributors. Original English guidance; no translation. Guidance does not add review standards."
+    }
+  ]
+}

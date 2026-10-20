@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+url = "2"
 speclink-core = { path = "../../engine/speclink-core" }
 speclink-host = { path = "../../host/speclink-host" }
 speclink-protocol = { path = "../speclink-protocol" }

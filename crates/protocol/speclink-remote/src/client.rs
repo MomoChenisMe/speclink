@@ -188,6 +188,34 @@ impl Client {
         Ok(binding)
     }
 
+    fn require_security_v2(&self) -> Result<(),RemoteError> {
+        let binding=self.handshake()?;
+        if !binding.capabilities.security_review_v2 || binding.security_project_key.is_none() {
+            return Err(RemoteError {message:"unsupported_version: server does not support proposal security reviews".into(),reason:Some("unsupported_version".into()),status:None,evidence:None});
+        }
+        Ok(())
+    }
+    pub fn security_review_show(&self,change:&str) -> Result<speclink_protocol::security::SecurityReviewView,RemoteError> {
+        self.require_security_v2()?;
+        self.get(&format!("/changes/{}/security",security_segment(change)?))
+    }
+    pub fn security_review_check(&self,change:&str,request:&speclink_protocol::security::SecurityCheckRequest)->Result<speclink_protocol::security::SecurityReviewView,RemoteError>{
+        self.require_security_v2()?;
+        self.post(&format!("/changes/{}/security/check",security_segment(change)?),request)
+    }
+    pub fn security_review_submit(&self,change:&str,request:&speclink_protocol::security::SecurityRoundRequest) -> Result<speclink_protocol::security::SecurityRoundResponse,RemoteError> {
+        self.require_security_v2()?;
+        self.post(&format!("/changes/{}/security/rounds",security_segment(change)?),request)
+    }
+    pub fn security_review_accept(&self,change:&str,request:&speclink_protocol::security::SecurityAcceptRequest) -> Result<speclink_protocol::security::SecurityAcceptResponse,RemoteError> {
+        self.require_security_v2()?;
+        self.post(&format!("/changes/{}/security/accept",security_segment(change)?),request)
+    }
+    pub fn security_change_report(&self,change:&str,id:&str) -> Result<speclink_protocol::security::SecurityReportDocument,RemoteError> {
+        self.require_security_v2()?;
+        self.get(&format!("/changes/{}/security/reports/{}",security_segment(change)?,security_segment(id)?))
+    }
+
     // --- read path ---
 
     /// `GET /scopes` — identity-only membership discovery. The client is
@@ -224,6 +252,15 @@ impl Client {
     /// `GET /changes/{name}/artifacts/{artifact}`
     pub fn get_artifact(&self, name: &str, artifact: &str) -> Result<ArtifactContent, RemoteError> {
         self.get(&format!("/changes/{name}/artifacts/{artifact}"))
+    }
+    pub fn station_history(&self, station: &str, change: &str, id: Option<&str>) -> Result<speclink_protocol::query::CheckHistoryResponse, RemoteError> {
+        if !self.handshake()?.capabilities.check_history { return Err(RemoteError{message:"unsupported_version: server does not support completed check history".into(),reason:Some("unsupported_version".into()),status:None,evidence:None}); }
+        if !matches!(station,"review"|"verify"|"security"){return Err(RemoteError{message:"invalid_argument: station".into(),reason:Some("invalid_argument".into()),status:None,evidence:None});}
+        if station=="security" {self.require_security_v2()?;if id.is_some(){return Err(RemoteError{message:"invalid_argument: use the security report endpoint".into(),reason:Some("invalid_argument".into()),status:None,evidence:None});}}
+        let change=security_segment(change)?;
+        if let Some(id)=id {security_segment(id)?;}
+        let query = id.map(|id| format!("?{}", url::form_urlencoded::Serializer::new(String::new()).append_pair("id", id).finish())).unwrap_or_default();
+        self.get(&format!("/changes/{change}/{station}/history{query}"))
     }
 
     /// `GET /changes/{name}/drift` — the change's spec-side drift and the basis
@@ -542,6 +579,11 @@ impl Client {
         )
     }
 
+    pub fn archive_with_security(&self,name:&str,carry_review:bool,carry_verify:bool,gate:&speclink_protocol::security::SecurityGateRequest)->Result<ArchiveResponse,RemoteError>{
+        self.require_security_v2()?;
+        self.post(&format!("/changes/{}/archive?carryReview={carry_review}&carryVerify={carry_verify}",security_segment(name)?),gate)
+    }
+
     /// `GET /changes/{name}/validate` — 唯讀衍生查詢；端點固定單 change，
     /// CLI 的聚合語意由呼叫端逐 change 組合（server-verb-api 決策 2）。
     pub fn validate_change(&self, name: &str) -> Result<ValidateChangeResponse, RemoteError> {
@@ -706,12 +748,18 @@ impl Client {
         self.post(
             &format!("/changes/{name}/{station}/stamp"),
             &StampReviewRequest {
+                security: Default::default(),
                 accept,
                 agent: agent.map(str::to_string),
                 scope: scope.to_vec(),
                 missing: missing.to_vec(),
             },
         )
+    }
+
+    pub fn verify_stamp_with_security(&self,name:&str,accept:bool,agent:Option<&str>,scope:&[ReviewScopeEntryDto],missing:&[String],gate:&speclink_protocol::security::SecurityGateRequest)->Result<StampReviewResponse,RemoteError>{
+        self.require_security_v2()?;
+        self.post(&format!("/changes/{}/verify/stamp",security_segment(name)?),&StampReviewRequest{security:gate.clone(),accept,agent:agent.map(str::to_owned),scope:scope.to_vec(),missing:missing.to_vec()})
     }
 
     /// `DELETE /changes/{name}/{station}`
@@ -839,4 +887,11 @@ impl Client {
             },
         )
     }
+}
+
+fn security_segment(value:&str)->Result<&str,RemoteError> {
+    if value.is_empty()||value.len()>200||!value.bytes().all(|b|b.is_ascii_alphanumeric()||matches!(b,b'-'|b'_')) {
+        return Err(RemoteError {message:"invalid security change or report identifier".into(),reason:Some("invalid_argument".into()),status:None,evidence:None});
+    }
+    Ok(value)
 }

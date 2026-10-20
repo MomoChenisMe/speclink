@@ -136,6 +136,8 @@ pub struct ClaimResponse {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveResponse {
+    #[serde(default,skip_serializing_if="Option::is_none")]
+    pub check_records:Option<ArchiveRecordCounts>,
     #[serde(default)]
     pub specs: Vec<ArchivedSpec>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -147,6 +149,13 @@ pub struct ArchiveResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence_recorded: Option<bool>,
 }
+
+#[derive(Debug,Clone,Default,PartialEq,Serialize,Deserialize,JsonSchema)]
+#[serde(rename_all="camelCase")]
+pub struct ArchiveRecordCount {pub retained:usize,pub omitted:usize}
+#[derive(Debug,Clone,Default,PartialEq,Serialize,Deserialize,JsonSchema)]
+#[serde(rename_all="camelCase")]
+pub struct ArchiveRecordCounts {pub review:ArchiveRecordCount,pub verify:ArchiveRecordCount,pub security:ArchiveRecordCount,pub acceptance_receipt:bool}
 
 /// One canonical capability the archive updated, with the delta counts the
 /// engine applied to it.
@@ -452,6 +461,8 @@ pub struct AddReviewRoundResponse {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StampReviewRequest {
+    #[serde(flatten)]
+    pub security: crate::security::SecurityGateRequest,
     #[serde(default)]
     pub accept: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -704,6 +715,7 @@ mod tests {
     #[test]
     fn archive_response_full_outcome_round_trips_in_camel_case() {
         let resp = ArchiveResponse {
+            check_records:None,
             specs: vec![ArchivedSpec {
                 capability: "user-auth".into(),
                 added: 2,
@@ -896,6 +908,7 @@ mod tests {
         assert_eq!(back, resp);
 
         let req = StampReviewRequest {
+            security: Default::default(),
             accept: true,
             agent: Some("claude".into()),
             scope: vec![ReviewScopeEntryDto { path: "src/lib.rs".into(), hash: "abc".into() }],

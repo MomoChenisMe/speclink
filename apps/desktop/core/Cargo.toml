@@ -9,6 +9,7 @@ anyhow = { workspace = true }
 speclink-core = { path = "../../../crates/engine/speclink-core" }
 speclink-fs = { path = "../../../crates/engine/speclink-fs" }
 speclink-host = { path = "../../../crates/host/speclink-host" }
+speclink-protocol = { path = "../../../crates/protocol/speclink-protocol" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }

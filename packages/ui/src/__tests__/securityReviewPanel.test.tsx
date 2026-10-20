@@ -11,9 +11,9 @@ it("顯示標準、未驗證與遮罩證據，輸出及資料管理操作不開�
  const api=adapter();const settings=vi.fn();render(<I18nProvider locale="zh-TW"><SecurityReviewPanel adapter={api} change="demo" inspection={inspection} onOpenDataSettings={settings}/></I18nProvider>);
  expect(screen.getByText(/不代表不存在其他漏洞/)).toBeTruthy();expect(screen.getAllByText(/2025/)[0]).toBeTruthy();expect(screen.getByText("[REDACTED] <script>alert(1)</script>")).toBeTruthy();expect(document.querySelector("script")).toBeNull();
  fireEvent.click(screen.getByRole("button",{name:"前往安全標準資料"}));expect(settings).toHaveBeenCalled();
- fireEvent.click(screen.getByRole("button",{name:"匯出 JSON"}));await waitFor(()=>expect(api.exportReport).toHaveBeenCalledWith("report-one","json"));
- fireEvent.click(screen.getByRole("button",{name:"匯出 Markdown"}));await waitFor(()=>expect(api.exportReport).toHaveBeenCalledWith("report-one","markdown"));
- fireEvent.click(screen.getByRole("button",{name:"複製遮罩摘要"}));await waitFor(()=>expect(api.copySummary).toHaveBeenCalledWith("report-one"));
+ fireEvent.click(screen.getByRole("button",{name:"匯出 JSON"}));await waitFor(()=>expect(api.exportReport).toHaveBeenCalledWith("report-one","json","demo"));
+ fireEvent.click(screen.getByRole("button",{name:"匯出 Markdown"}));await waitFor(()=>expect(api.exportReport).toHaveBeenCalledWith("report-one","markdown","demo"));
+ fireEvent.click(screen.getByRole("button",{name:"複製遮罩摘要"}));await waitFor(()=>expect(api.copySummary).toHaveBeenCalledWith("report-one","demo"));
 });
 it("取消與進度依 jobId/projectKey 隔離",async()=>{
  const api=adapter();let resolve!:(r:{reportId:string;projectKey:string})=>void;vi.mocked(api.wait).mockImplementation(()=>new Promise(r=>{resolve=r;}));
@@ -29,3 +29,11 @@ it("沒有 Verify 工單也有獨立安全資訊；無 adapter 維持原行為",
  const tab=await screen.findByRole("tab",{name:/驗證/});fireEvent.mouseDown(tab,{button:0,ctrlKey:false});fireEvent.click(tab);expect(await screen.findByText("OWASP / CWE 初步安全審查")).toBeTruthy();expect(screen.queryByText("沒有驗證工單")).toBeNull();unmount();
  await act(async()=>{render(<I18nProvider locale="zh-TW"><ChangeDetailPage {...props}/></I18nProvider>);});expect(screen.queryByRole("tab",{name:/驗證/})).toBeNull();
 });
+
+it('準備本機知識庫使用獨立工作，不啟動基本掃描或遠端準備',async()=>{
+ const api=adapter();api.prepareKnowledge=vi.fn().mockResolvedValue({jobId:'kb-job',projectKey:'project-a'});api.wait=vi.fn().mockResolvedValue({projectKey:'project-a'});
+ render(<I18nProvider locale="zh-TW"><SecurityReviewPanel adapter={api} change="demo" inspection={inspection}/></I18nProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'準備本機知識庫'}));
+ await waitFor(()=>expect(api.prepareKnowledge).toHaveBeenCalledWith('demo'));
+ expect(api.start).not.toHaveBeenCalled();
+})

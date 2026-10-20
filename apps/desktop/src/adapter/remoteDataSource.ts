@@ -1,3 +1,4 @@
+import {createCheckRecordsAdapter} from "./checkRecords";
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { emptyManualIndex, toRevertError } from "@speclink/ui";
 import type {
@@ -64,7 +65,7 @@ export function createRemoteDataSource(
   project: string,
   repo: string,
   invoke: InvokeFn = tauriInvoke as InvokeFn,
-  security?: {supported:boolean;checkoutRoot?:string},
+  security?: {supported:boolean;checkoutRoot?:string;history?:boolean;securityV2?:boolean},
 ): SpeclinkDataSource {
   const locator = { connectionId, project, repo };
   // changeCapabilities 與 changeMeta 映射同一份 status payload（spec：不另開
@@ -80,6 +81,7 @@ export function createRemoteDataSource(
     return p;
   }
   return {
+    ...(security?.history?{checkRecords:createCheckRecordsAdapter(locator,invoke,security.securityV2===true)}:{}),
     ...(security?.supported?{securityReview:createSecurityReviewAdapter({kind:"remote",connectionId,project,repo,checkoutRoot:security.checkoutRoot},invoke)}:{}),
     async listChanges(): Promise<ChangeListPayload> {
       // remote_list_changes payload 原樣（add-change-plan-remote D5）：清單項已依 plan
@@ -172,7 +174,7 @@ export function createRemoteDataSource(
       // 動詞 command 對 remote_* 同名映射（validate/analyze/archive 皆直達）。
       if (verb === "validate") return await invoke("remote_validate", { ...locator, change });
       if (verb === "analyze") return await invoke("remote_analyze", { ...locator, change });
-      return await invoke("remote_archive", { ...locator, change });
+      return await invoke("remote_archive", { ...locator, change,...(security?.checkoutRoot?{checkoutRoot:security.checkoutRoot}:{}) });
     },
     async getStationTicket(change: string, station: TicketStation): Promise<StationTicket | null> {
       // 活工單走 GET /changes/{name}/{station} 的結構化 rounds（不走 artifact 白名單）。

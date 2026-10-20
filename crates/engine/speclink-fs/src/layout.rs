@@ -70,7 +70,10 @@ impl Layout {
     /// record, removed once the record lands in its new home, never a write
     /// target.
     pub fn legacy_change_evidence(&self, change: &str) -> PathBuf {
-        self.root.join(".speclink").join("touched").join(format!("{change}.json"))
+        self.root
+            .join(".speclink")
+            .join("touched")
+            .join(format!("{change}.json"))
     }
     /// An artifact's location inside a change. `artifact` is the schema output
     /// path (e.g. `specs/<cap>/spec.md`); joined component-by-component so the

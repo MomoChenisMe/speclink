@@ -12,6 +12,53 @@ use serde::{Deserialize, Serialize};
 
 use crate::binding::ScopeRef;
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckHistoryEntry {
+    pub record_id: String,
+    pub kind: String,
+    pub created_at: String,
+    pub outcome: String,
+    pub relative_path: String,
+    pub content_digest: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckHistoryMetadata {
+    pub created_at: String,
+    pub actor: Option<String>,
+    pub tool: Option<String>,
+    pub outcome: String,
+    pub scope_digest: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckHistoryList {
+    pub records: Vec<CheckHistoryEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acceptance_receipt: Option<AcceptanceReceiptRecord>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AcceptanceReceiptRecord {
+    pub created_at: String,
+    pub content: String,
+    pub content_digest: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckHistoryRecord {
+    pub record_id: String,
+    pub content: String,
+    pub metadata: CheckHistoryMetadata,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum CheckHistoryResponse {
+    List(CheckHistoryList),
+    Record(CheckHistoryRecord),
+}
+
 /// A policy summary, never external standard prose or an instruction from data files.
 #[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -852,7 +899,10 @@ mod tests {
             serde_json::from_str(r#"{"name":"demo","startedAt":"2026-07-30"}"#).unwrap();
         assert_eq!(started.started_at.as_deref(), Some("2026-07-30"));
         let json = serde_json::to_value(&started).unwrap();
-        assert_eq!(json["startedAt"], "2026-07-30", "field serializes camelCase: {json}");
+        assert_eq!(
+            json["startedAt"], "2026-07-30",
+            "field serializes camelCase: {json}"
+        );
         let back: ChangeSummary = serde_json::from_value(json).unwrap();
         assert_eq!(back, started);
 
@@ -906,10 +956,16 @@ mod tests {
                 .unwrap();
         assert_eq!(full.delta_capabilities, ["client-protocol"]);
         let json = serde_json::to_value(&full).unwrap();
-        assert_eq!(json["deltaCapabilities"], serde_json::json!(["client-protocol"]));
+        assert_eq!(
+            json["deltaCapabilities"],
+            serde_json::json!(["client-protocol"])
+        );
 
         let legacy: ChangeSummary = serde_json::from_str(r#"{"name":"demo"}"#).unwrap();
-        assert!(legacy.delta_capabilities.is_empty(), "舊 payload 無鍵仍可解析且得空清單");
+        assert!(
+            legacy.delta_capabilities.is_empty(),
+            "舊 payload 無鍵仍可解析且得空清單"
+        );
         let legacy_json = serde_json::to_value(&legacy).unwrap();
         assert!(
             legacy_json.get("deltaCapabilities").is_none(),
@@ -986,7 +1042,10 @@ mod tests {
         );
         assert_eq!(apply.change_name, "demo");
         assert_eq!(apply.progress.total, 3);
-        assert_eq!(apply.progress.code_total, 2, "manual tasks stay out of the code counts");
+        assert_eq!(
+            apply.progress.code_total, 2,
+            "manual tasks stay out of the code counts"
+        );
         assert_eq!(apply.tasks[0].description, "1.1 First");
         assert!(!apply.tasks[0].manual);
         assert!(apply.tasks[1].manual, "[M] task rides the wire as manual");
@@ -996,7 +1055,10 @@ mod tests {
 
         let json = serde_json::to_value(&apply).unwrap();
         assert_eq!(json["contextFiles"]["design"], "design.md");
-        assert_eq!(json["progress"]["codeRemaining"], 0, "camelCase on the new counters");
+        assert_eq!(
+            json["progress"]["codeRemaining"], 0,
+            "camelCase on the new counters"
+        );
         assert_eq!(json["tasks"][1]["manual"], true);
         assert_eq!(json["tdd"], true, "camelCase policy toggles on the wire");
         assert_eq!(json["audit"], false);
@@ -1072,13 +1134,16 @@ mod tests {
         let current: ConfigResponse = serde_json::from_value(serde_json::json!({
             "schema":"spec-driven", "content":null, "revision":7,
             "languages":{"locale":"Japanese (日本語)", "specLocale":"ja"}
-        })).unwrap();
-        assert_eq!(serde_json::to_value(current).unwrap()["languages"]["specLocale"], "ja");
-
-        let put: PutConfigRequest = serde_json::from_str(
-            r#"{"content":"schema: spec-driven\n","expectedRevision":7}"#,
-        )
+        }))
         .unwrap();
+        assert_eq!(
+            serde_json::to_value(current).unwrap()["languages"]["specLocale"],
+            "ja"
+        );
+
+        let put: PutConfigRequest =
+            serde_json::from_str(r#"{"content":"schema: spec-driven\n","expectedRevision":7}"#)
+                .unwrap();
         assert_eq!(put.expected_revision, 7);
         let put_json = serde_json::to_value(&put).unwrap();
         assert_eq!(put_json["expectedRevision"], 7, "request is camelCase");
@@ -1218,7 +1283,11 @@ mod tests {
         .unwrap();
         assert_eq!(with_false.concluded, Some(false));
         let json = serde_json::to_value(&with_false).unwrap();
-        assert_eq!(json["concluded"], serde_json::json!(false), "false 也上鍵，缺席才是未知");
+        assert_eq!(
+            json["concluded"],
+            serde_json::json!(false),
+            "false 也上鍵，缺席才是未知"
+        );
 
         let legacy: DiscussionInfo = serde_json::from_str(
             r#"{"slug":"c","topic":"C","status":"open","rounds":0,"created":"2026-07-01","path":"discussions/c.md","archived":false}"#,
@@ -1238,7 +1307,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(held.hold, Some(true));
-        assert_eq!(serde_json::to_value(&held).unwrap()["hold"], serde_json::json!(true));
+        assert_eq!(
+            serde_json::to_value(&held).unwrap()["hold"],
+            serde_json::json!(true)
+        );
 
         let free: DiscussionInfo = serde_json::from_str(
             r#"{"slug":"b","topic":"B","status":"promoted","rounds":1,"created":"2026-07-01","concluded":true,"hold":false,"path":"discussions/b.md","archived":false}"#,
@@ -1282,7 +1354,10 @@ mod tests {
         )
         .unwrap();
         let info = &plain.discussions[0];
-        assert!(info.promoted_to.is_empty(), "舊 payload 無鍵仍可解析且得空清單");
+        assert!(
+            info.promoted_to.is_empty(),
+            "舊 payload 無鍵仍可解析且得空清單"
+        );
         let json = serde_json::to_value(info).unwrap();
         assert!(
             json.get("promotedTo").is_none(),
@@ -1301,8 +1376,10 @@ mod tests {
             touched_files: vec!["src/app.rs".into()],
             recorded_at: "2026-08-23T00:00:00Z".into(),
         };
-        let json = serde_json::to_value(ChangeEvidenceResponse { entries: vec![entry.clone()] })
-            .unwrap();
+        let json = serde_json::to_value(ChangeEvidenceResponse {
+            entries: vec![entry.clone()],
+        })
+        .unwrap();
         let wire = &json["entries"][0];
         assert_eq!(wire["taskId"], "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV");
         assert_eq!(wire["taskDesc"], "1.1 First");
@@ -1322,7 +1399,10 @@ mod tests {
     #[test]
     fn an_empty_evidence_set_is_a_representable_response() {
         // 缺席是正常狀態：空集合必須是能表達的成功回應，讀取端不必看錯誤碼。
-        let json = serde_json::to_value(ChangeEvidenceResponse { entries: Vec::new() }).unwrap();
+        let json = serde_json::to_value(ChangeEvidenceResponse {
+            entries: Vec::new(),
+        })
+        .unwrap();
         assert_eq!(json["entries"], serde_json::json!([]));
         let back: ChangeEvidenceResponse = serde_json::from_value(json).unwrap();
         assert!(back.entries.is_empty());
@@ -1398,13 +1478,19 @@ mod tests {
     fn plan_response_serializes_the_cli_plan_json_keys() {
         // 回應與 CLI `plan --json` 同形：camelCase、next 為 null 時照樣出現。
         let plan = PlanResponse {
-            waves: vec![PlanWave { index: 1, changes: vec!["a".into(), "b".into()] }],
+            waves: vec![PlanWave {
+                index: 1,
+                changes: vec!["a".into(), "b".into()],
+            }],
             changes: vec![PlanChangeEntry {
                 name: "b".into(),
                 wave: 1,
                 stage: "in-progress".into(),
                 depends_on: vec!["gone".into()],
-                overlaps: vec![PlanOverlap { change: "a".into(), capabilities: vec!["auth".into()] }],
+                overlaps: vec![PlanOverlap {
+                    change: "a".into(),
+                    capabilities: vec!["auth".into()],
+                }],
                 blocked_by: Vec::new(),
                 ready: true,
                 requirement_overlap: vec![PlanRequirementOverlap {
@@ -1418,7 +1504,10 @@ mod tests {
                 archive_after: Vec::new(),
             }],
             next: None,
-            skipped: vec![PlanSkipped { change: "c".into(), reason: "bad meta".into() }],
+            skipped: vec![PlanSkipped {
+                change: "c".into(),
+                reason: "bad meta".into(),
+            }],
         };
         let json = serde_json::to_value(&plan).unwrap();
         // 比鍵集合、不比鍵序：serde_json 的 preserve_order 可能被別的 crate 統一開啟。
@@ -1444,10 +1533,20 @@ mod tests {
         );
         assert_eq!(
             keys(&json["changes"][0]["requirementOverlap"][0]),
-            ["capability", "change", "conflict", "otherOperation", "ownOperation", "requirement"]
+            [
+                "capability",
+                "change",
+                "conflict",
+                "otherOperation",
+                "ownOperation",
+                "requirement"
+            ]
         );
         assert_eq!(json["next"], serde_json::Value::Null);
-        assert_eq!(json["changes"][0]["overlaps"][0]["capabilities"], serde_json::json!(["auth"]));
+        assert_eq!(
+            json["changes"][0]["overlaps"][0]["capabilities"],
+            serde_json::json!(["auth"])
+        );
         assert_eq!(json["skipped"][0]["reason"], "bad meta");
     }
 
@@ -1471,7 +1570,10 @@ mod tests {
             Some(r#"{"changes":"oops"}"#),
         ] {
             let doc = BoardOrderDoc::from_content(content);
-            assert!(doc.changes.is_empty() && doc.discussions.is_empty(), "{content:?}");
+            assert!(
+                doc.changes.is_empty() && doc.discussions.is_empty(),
+                "{content:?}"
+            );
         }
         // 缺一段只影響那一段。
         let doc = BoardOrderDoc::from_content(Some(r#"{"discussions":{"topic":"f"}}"#));

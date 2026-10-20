@@ -10,7 +10,7 @@ import type {
   WorkflowFields,
 } from "../../adapter/workspace";
 import type { WorkspaceSettingsProvider } from "../../session";
-import { DEFAULT_SECURITY_POLICY, applySecurityPolicyPatch, securityPolicyPatch, type SecurityPolicy } from "../../adapter/security";
+import { DEFAULT_SECURITY_POLICY, applySecurityPolicyPatch, securityPolicyPatch, type SecurityPolicy, DEFAULT_CHECK_RECORDS, checkRecordsPatch, applyCheckRecordsPatch, type CheckRecordsConfig } from "../../adapter/security";
 
 /** locale／spec_locale 的「未設定」在 config 裡是空字串，Radix Select 的 item 不接受空字串。 */
 export const LOCALE_UNSET = "__unset__";
@@ -104,6 +104,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
   const [audit, setAudit] = useState(false);
   const [worktree, setWorktree] = useState(false);
   const [security, setSecurity] = useState<SecurityPolicy>(DEFAULT_SECURITY_POLICY);
+  const [checkRecords,setCheckRecords]=useState<CheckRecordsConfig>(DEFAULT_CHECK_RECORDS);
   const [contextText, setContextText] = useState("");
   /** 產出規則現值：schemaArtifacts 固定鍵 → 條目清單（清單順序即檔案順序）。 */
   const [rules, setRules] = useState<Record<string, string[]>>({});
@@ -160,6 +161,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     setAudit(next.workflow.audit);
     setWorktree(next.workflow.worktree);
     setSecurity(next.workflow.securityVerification ?? DEFAULT_SECURITY_POLICY);
+    setCheckRecords(next.workflow.checkRecords??DEFAULT_CHECK_RECORDS);
     if (next.workflow.securityVerification && !next.workflow.parseError) {
       void settings.rememberSecurityPolicy?.(next.workflow.securityVerification).catch((e)=>setWfMsg(`${t("securityData.referenceError")}: ${errorMessage(e)}`));
     }
@@ -221,7 +223,8 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     tdd !== snap.workflow.tdd ||
     audit !== snap.workflow.audit ||
     worktree !== snap.workflow.worktree ||
-    securityPolicyPatch(snap.workflow.securityVerification ?? DEFAULT_SECURITY_POLICY, security) !== undefined;
+    securityPolicyPatch(snap.workflow.securityVerification ?? DEFAULT_SECURITY_POLICY, security) !== undefined ||
+    checkRecordsPatch(snap.workflow.checkRecords??DEFAULT_CHECK_RECORDS,checkRecords)!==undefined;
 
   /** 採納最新快照裡「不是這次寫入、也不在編輯中」各區的現值（review R8）：remote 的
    * readSettings 會靜默換上最新 revision，留著舊現值再起草儲存，就會不經 409 蓋掉別人的修改。
@@ -235,6 +238,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       setAudit(w.audit);
       setWorktree(w.worktree);
       setSecurity(w.securityVerification ?? DEFAULT_SECURITY_POLICY);
+      setCheckRecords(w.checkRecords??DEFAULT_CHECK_RECORDS);
     }
     if (written !== "context" && !ctxEditing) setContextText(w.context ?? "");
     if (written !== "rules" && !rulesEditing) {
@@ -259,7 +263,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     setSnap((current) => {
       if (!current) return current;
       const next = applySecurityPolicyPatch(current.workflow.securityVerification ?? DEFAULT_SECURITY_POLICY, fields.securityPatch);
-      return { ...current, workflow: { ...current.workflow, ...fields, securityVerification: next } };
+      return { ...current, workflow: { ...current.workflow, ...fields, securityVerification: next,checkRecords:applyCheckRecordsPatch(current.workflow.checkRecords??DEFAULT_CHECK_RECORDS,fields.checkRecordsPatch) } };
     });
   };
 
@@ -355,6 +359,8 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       }
     };
     securityRows(latest.workflow.securityVerification ?? DEFAULT_SECURITY_POLICY, mineSecurity, "security_verification");
+    const mineRecords=pending.kind==="policy"?applyCheckRecordsPatch(snap.workflow.checkRecords??DEFAULT_CHECK_RECORDS,pending.fields.checkRecordsPatch):checkRecords;
+    securityRows(latest.workflow.checkRecords??DEFAULT_CHECK_RECORDS,mineRecords,"check_records");
     for (const id of artifactIds) {
       // 編輯中：凍結鍵顯示草稿；非凍結鍵（編輯期間換入的新固定鍵）顯示將被
       // 兜底原樣保留的現值，而非誤導的空白（review S-a）。
@@ -410,6 +416,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     if (wfDisabled) return;
     const normalizedSecurity = { ...security, excludeDirs: textToEntries(security.excludeDirs.join("\n")), disabledRules: textToEntries(security.disabledRules.join("\n")) };
     const securityPatch = securityPolicyPatch(snap.workflow.securityVerification ?? DEFAULT_SECURITY_POLICY, normalizedSecurity);
+    const recordsPatch=checkRecordsPatch(snap.workflow.checkRecords??DEFAULT_CHECK_RECORDS,checkRecords);
     const fields: WorkflowFields = {
       locale: locale || null,
       specLocale: specLocale || null,
@@ -417,6 +424,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       audit,
       worktree,
       ...(securityPatch === undefined ? {} : { securityPatch }),
+      ...(recordsPatch===undefined?{}:{checkRecordsPatch:recordsPatch}),
     };
     try {
       const next = await settings.writeWorkflowConfig(fields);
@@ -676,6 +684,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       if (pending.kind === "policy") {
         const nextSecurity = applySecurityPolicyPatch(latest.workflow.securityVerification ?? DEFAULT_SECURITY_POLICY, pending.fields.securityPatch);
         setSecurity(nextSecurity);
+        setCheckRecords(applyCheckRecordsPatch(latest.workflow.checkRecords??DEFAULT_CHECK_RECORDS,pending.fields.checkRecordsPatch));
         adoptPolicy(pending.fields);
         setWfMsg(t("settings.saved"));
         try { await settings.rememberSecurityPolicy?.(nextSecurity); }
@@ -735,7 +744,8 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     settings, snap, isRemote, appDisabled, wfDisabled, dirty, remoteNote,
     tools, toggleTool, saveApp, appMsg,
     locale, setLocale, specLocale, setSpecLocale, tdd, setTdd, audit, setAudit, worktree, setWorktree,
-    saveWorkflow, wfMsg, security, setSecurity,
+    saveWorkflow, wfMsg, security, setSecurity,checkRecords,setCheckRecords,policyDirty,
+    cancelWorkflow:()=>{setLocale(snap.workflow.locale??"");setSpecLocale(snap.workflow.specLocale??"");setTdd(snap.workflow.tdd);setAudit(snap.workflow.audit);setWorktree(snap.workflow.worktree);setSecurity(snap.workflow.securityVerification??DEFAULT_SECURITY_POLICY);setCheckRecords(snap.workflow.checkRecords??DEFAULT_CHECK_RECORDS);setWfMsg(null);},
     contextText, ctxEditing, setCtxEditing, draftContext, setDraftContext, ctxMsg, beginCtxEdit, saveContext, ctxSaving,
     rules, rulesEditing, setRulesEditing, draftRules, setDraftRules, editingRuleKeys, rulesMsg,
     beginRulesEdit, saveRules, rulesSaving, populatedRuleKeys,

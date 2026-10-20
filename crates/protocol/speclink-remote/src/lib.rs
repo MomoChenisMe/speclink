@@ -120,7 +120,15 @@ pub fn translate_protocol_error(status: u16, body: &str) -> RemoteError {
         ErrorReason::NotFound
         | ErrorReason::InvalidArgument
         | ErrorReason::InvalidConfig
-        | ErrorReason::Refused => err.message,
+        | ErrorReason::Refused
+        | ErrorReason::MissingSecurityReview
+        | ErrorReason::SecurityAcceptanceBlocked
+        | ErrorReason::SecurityReportStale
+        | ErrorReason::MissingKnowledge
+        | ErrorReason::HistoryRecoveryRequired
+        | ErrorReason::SourceFreshnessUnverified
+        | ErrorReason::IdentityRequired
+        | ErrorReason::UnsupportedVersion => err.message,
         ErrorReason::Unknown(_) => format!(
             "unexpected server response — update speclink or report a bug (HTTP {status})"
         ),

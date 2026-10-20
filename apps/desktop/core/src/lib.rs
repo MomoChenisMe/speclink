@@ -177,3 +177,23 @@ pub mod runtime_preferences;
 pub mod diagnostics;
 
 pub mod network;
+pub mod updater;
+
+#[cfg(test)]
+mod updater_contract_tests {
+    #[test]
+    fn failed_update_keeps_operation_id_without_inventing_http_status() {
+        let event = speclink_host::network::NetworkDiagnostic::new(
+            speclink_host::network::DiagnosticArea::Updater,
+            speclink_host::network::DiagnosticAction::Started,
+            "operation-one".into(),
+        );
+        let failure = crate::updater::UpdateFailure::code("proxy-auth");
+        let (event, error) = crate::updater::finish(event, Some(&failure), std::time::Duration::ZERO);
+        assert_eq!(event.http_status, None);
+        assert_eq!(event.error_code.as_deref(), Some("proxy-auth"));
+        let error = error.unwrap();
+        assert_eq!(error.operation_id.as_deref(), Some("operation-one"));
+        assert_eq!(error.code, "proxy-auth");
+    }
+}

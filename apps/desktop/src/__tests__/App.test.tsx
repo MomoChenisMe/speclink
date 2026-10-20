@@ -1070,7 +1070,8 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     const titleBar = screen.getByTestId("main-titlebar");
     expect(titleBar.parentElement?.firstElementChild).toBe(titleBar);
     expect(titleBar.nextElementSibling?.tagName).toBe("MAIN");
-    expect(screen.queryByRole("status")).toBeNull();
+    // Project reordering uses a hidden accessibility announcement region.
+    expect(screen.queryAllByRole("status").filter(node => !node.id.startsWith("DndLiveRegion-"))).toHaveLength(0);
   });
 
   it("有新版本時圖示列齒輪上方出現更新鈕（提示帶版號）；點擊進設定頁、齒輪作用中（spec「桌面自動更新」）", async () => {

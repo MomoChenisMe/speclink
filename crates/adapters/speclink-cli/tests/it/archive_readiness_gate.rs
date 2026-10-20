@@ -18,6 +18,24 @@ const META: &str = "schema: spec-driven\ncreated: 2026-07-01\n";
 /// （spec archive-merge「新 capability 的 Purpose 自 delta 帶入」）。
 const DELTA_SPEC: &str = "## Purpose\n\n本 capability 是測試用的示範能力，涵蓋一個可觀察行為與其成功路徑，供封存流程的守門測試取用。\n\n## ADDED Requirements\n\n### Requirement: Demo works\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
 
+#[test]
+fn security_required_archive_needs_review_even_without_stamps_and_with_carry() {
+    for carry in [false,true] {
+        let p=TempProject::new(&format!("required-security-{carry}"),"- [x] Done\n");
+        std::fs::write(p.dir.join("openspec/config.yaml"),"security_verification:\n  enabled: true\n  required_for_acceptance: true\n  standards:\n    owasp_top10: {enabled: true, version: '2025'}\n").unwrap();
+        let change=p.dir.join("openspec/changes/demo");
+        let before=std::fs::read(change.join(".openspec.yaml")).unwrap();
+        let mut args=vec!["archive","demo","--skip-specs","--no-validate","--mark-tasks-complete"];
+        if carry {
+            for name in ["review.md","verify.md"] {std::fs::write(change.join(name),"# Ticket\n\n## Round 1\n\n- [CRITICAL] open item\n").unwrap();}
+            args.extend(["--carry-review","--carry-verify"]);
+        }
+        let result=p.run(&args);assert_eq!(result.status.code(),Some(1),"{}",String::from_utf8_lossy(&result.stdout));
+        assert!(String::from_utf8_lossy(&result.stderr).contains("security"));assert_eq!(std::fs::read(change.join(".openspec.yaml")).unwrap(),before);
+        assert!(!p.archive_dir().exists());
+    }
+}
+
 struct TempProject {
     dir: PathBuf,
 }
@@ -415,8 +433,9 @@ fn security_findings_do_not_create_quality_tickets_or_an_archive_gate() {
         String::from_utf8_lossy(&archived.stderr)
     );
     let id = report["reportId"].as_str().unwrap();
+    let archived_name = std::fs::read_dir(p.dir.join("openspec/changes/archive")).unwrap().flatten().find(|e|e.file_name().to_string_lossy().ends_with("-demo")).unwrap().file_name().to_string_lossy().into_owned();
     assert!(
-        run(&["security", "report", id]).status.success(),
+        run(&["security", "report", id, "--change", &archived_name]).status.success(),
         "report survives archive"
     );
     let _ = std::fs::remove_dir_all(home);

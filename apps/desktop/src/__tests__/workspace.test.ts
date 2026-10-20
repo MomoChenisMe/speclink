@@ -101,6 +101,35 @@ beforeEach(() => {
   toastError.mockClear();
 });
 
+describe("專案排序保存", () => {
+  it("保存後重開維持順序，且作用中專案與 session 不變", () => {
+    const store = makeStore(fakeDataSource(), fakeWorkspace());
+    const tabs = [tab("A"), tab("B"), tab("C")];
+    store.setState({ tabs, activeKey: "local:A" });
+    const sessions = store.getState().sessions;
+    store.getState().reorderProject(["local:C", "local:A", "local:B"]);
+    expect(keys(store.getState().tabs)).toEqual(["local:C", "local:A", "local:B"]);
+    expect(readPersistedTabs()).toEqual({ tabs: [tabs[2], tabs[0], tabs[1]], activeKey: "local:A" });
+    expect(store.getState().sessions).toBe(sessions);
+    expect(store.getState().activeKey).toBe("local:A");
+  });
+
+  it("裝置保存失敗或無效排列不變更狀態", () => {
+    const store = makeStore(fakeDataSource(), fakeWorkspace());
+    const tabs = [tab("A"), tab("B")];
+    store.setState({ tabs, activeKey: "local:A" });
+    const failure = vi.spyOn(Object.getPrototypeOf(localStorage), "setItem").mockImplementationOnce(() => { throw new Error("quota"); });
+    try {
+      store.getState().reorderProject(["local:B", "local:A"]);
+      expect(store.getState().tabs).toBe(tabs);
+      expect(store.getState().activeKey).toBe("local:A");
+      expect(toastError).toHaveBeenCalledTimes(1);
+    } finally { failure.mockRestore(); }
+    store.getState().reorderProject(["local:B", "local:B"]);
+    expect(store.getState().tabs).toBe(tabs);
+  });
+});
+
 describe("開啟專案 action 三態（design D3）", () => {
   it("命中專案：純探測成功後記入分頁、設 activeKey、重掛監看、整批 refresh", async () => {
     const ds = fakeDataSource();

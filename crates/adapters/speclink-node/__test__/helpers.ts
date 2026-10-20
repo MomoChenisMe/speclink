@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 // Shared test helpers: the fs fixture project, CLI invocation, and an
 // in-memory JS Store implementing the full Store interface (async methods)
 // with the same content as the fs fixture, so bridge output can be compared
@@ -174,6 +175,17 @@ export function memoryStore(project: MemoryProject) {
     async deleteArtifact(change: string, artifact: string) {
       delete changes[change]?.artifacts[artifact]
     },
+    async commitChecks(change: string, commit: {writes: Record<string,string>, deletes: string[], expected: Record<string,string|null>}) {
+      if (!changes[change]) throw new Error('unknown change')
+      const current = changes[change].artifacts
+      for (const [path, expected] of Object.entries(commit.expected)) {
+        const actual = current[path] === undefined ? null : createHash('sha256').update(current[path]).digest('hex')
+        if (actual !== expected) throw new Error('revision_conflict')
+      }
+      const next = {...current, ...commit.writes}
+      for (const path of commit.deletes) delete next[path]
+      changes[change].artifacts = next
+    },
     // --- delta specs ---
     async deltaCapabilities(change: string) {
       const caps = Object.keys(changes[change]?.artifacts ?? {})
@@ -213,6 +225,10 @@ export function memoryStore(project: MemoryProject) {
       const raw = archived.get(datedName)
       if (!raw) return null
       return (JSON.parse(raw).artifacts ?? {})['.openspec.yaml'] ?? null
+    },
+    async readArchivedArtifact(datedName: string, artifact: string) {
+      const raw = archived.get(datedName)
+      return raw ? (JSON.parse(raw).artifacts ?? {})[artifact] ?? null : null
     },
     async writeArchivedMeta(datedName: string, content: string) {
       const raw = archived.get(datedName)

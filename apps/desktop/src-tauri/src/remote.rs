@@ -1134,6 +1134,8 @@ pub struct RemoteCapabilities {
     /// 此 membership 是否可寫 workflow policy；server 仍是最終權限防線。
     pub policy_write: bool,
     pub security_review: bool,
+    pub security_review_v2:bool,
+    pub check_history:bool,
     /// handshake 宣告了事件能力（SSE transport 或 polling）——缺席時 UI 退化
     /// 為手動重整。
     pub live_updates: bool,
@@ -1180,6 +1182,8 @@ impl RemoteCapabilities {
             claim: writable,
             policy_write: binding.capabilities.policy_write,
             security_review: binding.capabilities.security_review,
+            security_review_v2:binding.capabilities.security_review_v2,
+            check_history:binding.capabilities.check_history,
             live_updates,
         }
     }
@@ -1347,7 +1351,7 @@ impl RemoteWorkspace {
     ) -> Result<speclink_host::security::PreparationInput, speclink_desktop_core::security::JobError>
     {
         use speclink_desktop_core::security::JobError;
-        let snapshot = self
+        let (canonical_key,snapshot) = self
             .run(credentials, |client| {
                 let binding = client.handshake()?;
                 if !binding.capabilities.context_snapshots || !binding.capabilities.security_review
@@ -1359,13 +1363,14 @@ impl RemoteWorkspace {
                         evidence: None,
                     });
                 }
-                client.security_context_snapshot(
+                let snapshot=client.security_context_snapshot(
                     &speclink_protocol::context::ContextSnapshotRequest {
                         change: target.change_name.clone(),
                         flow: Some("verify".into()),
                     },
                     &|| budget.stop_reason().is_some(),
-                )
+                )?;
+                Ok((binding.security_project_key,snapshot))
             })
             .map_err(|e| {
                 JobError::review(if e.reason.as_deref() == Some("unsupported_version") {
@@ -1374,7 +1379,8 @@ impl RemoteWorkspace {
                     "remote_prepare_failed"
                 })
             })?;
-        speclink_host::security::preparation_from_context(target, snapshot)
+        let mut target=target.clone();target.proposal_project_key=canonical_key;
+        speclink_host::security::preparation_from_context(&target, snapshot)
             .map_err(|e| JobError::review(&e.to_string()))
     }
     /// 以已知的 locator 識別直接建構把手——open 之後的資料面呼叫走這裡
@@ -1487,6 +1493,13 @@ impl RemoteWorkspace {
         security_patch: Option<&str>,
         expected_revision: u64,
     ) -> Result<u64, RemoteSettingsError> {
+        self.write_workflow_fields_with_checks(credentials,fields,security_patch,None,expected_revision)
+    }
+    pub fn write_workflow_fields_with_checks(&self,credentials:&dyn CredentialStore,fields:&WorkflowPolicyFields,security_patch:Option<&str>,records_patch:Option<&str>,expected_revision:u64)->Result<u64,RemoteSettingsError>{
+        if records_patch.is_some()||security_patch.map(speclink_core::security::policy::acceptance_patch_requested).transpose().map_err(|e|RemoteSettingsError::local(e.to_string()))?.unwrap_or(false) {
+            let supported=self.run(credentials,|client|client.handshake()).map_err(RemoteSettingsError::from)?;
+            if !supported.capabilities.security_review_v2||!supported.capabilities.check_history{return Err(RemoteSettingsError{message:"unsupported_version".into(),reason:Some("unsupported_version".into()),status:None});}
+        }
         self.manager
             .ensure_write_allowed()
             .map_err(RemoteSettingsError::from)?;
@@ -1494,10 +1507,11 @@ impl RemoteWorkspace {
             .run(credentials, |client| client.config())
             .map_err(RemoteSettingsError::from)?;
         let rewritten =
-            speclink_desktop_core::settings::rewrite_workflow_fields_with_security_text(
+            speclink_desktop_core::settings::rewrite_workflow_fields_with_checks_text(
                 config.content.as_deref().unwrap_or_default(),
                 fields,
                 security_patch,
+                records_patch,
             )
             .map_err(RemoteSettingsError::local)?;
         self.run_write(credentials, |client| {
@@ -1611,6 +1625,14 @@ impl RemoteWorkspace {
     ) -> Result<Option<ReviewTicketResponse>, RemoteError> {
         self.run(credentials, |client| client.station_ticket_if_any(station, change))
     }
+
+    pub fn check_history(&self,credentials:&dyn CredentialStore,change:&str,kind:&str,id:Option<&str>)->Result<speclink_protocol::query::CheckHistoryResponse,RemoteError>{self.run(credentials,|client|client.station_history(kind,change,id))}
+    pub fn security_record(&self,credentials:&dyn CredentialStore,change:&str,id:&str)->Result<String,RemoteError>{
+        let document=self.run(credentials,|client|client.security_change_report(change,id))?;
+        let bytes=serde_json::to_vec(&document).map_err(|_|RemoteError{message:"invalid_report".into(),reason:Some("refused".into()),status:None,evidence:None})?;
+        speclink_core::security::report::VersionedReport::from_json(&bytes).map(|r|r.markdown()).map_err(|_|RemoteError{message:"invalid_report".into(),reason:Some("refused".into()),status:None,evidence:None})
+    }
+    pub fn security_view(&self,credentials:&dyn CredentialStore,change:&str)->Result<speclink_protocol::security::SecurityReviewView,RemoteError>{self.run(credentials,|client|client.security_review_show(change))}
 
     pub fn change_status(
         &self,
@@ -1734,6 +1756,16 @@ impl RemoteWorkspace {
         // UI 不會判到 inReview／inVerify、封存三選項對話框在 remote 不出現
         //（design「Out of scope」）。
         self.run_write(credentials, |client| client.archive(change, false, false))
+    }
+
+    pub fn archive_with_checkout(&self,credentials:&dyn CredentialStore,change:&str,checkout:Option<&std::path::Path>)->Result<ArchiveResponse,RemoteError>{
+        let config=self.run(credentials,|client|client.config())?;
+        let policy=speclink_core::config::WorkflowConfig::from_text(config.content.as_deref()).map_err(|_|RemoteError{message:"invalid_config".into(),reason:Some("invalid_config".into()),status:None,evidence:None})?.security();
+        if !(policy.enabled&&policy.required_for_acceptance){return self.archive(credentials,change);}
+        let input=speclink_desktop_core::security::ReviewTargetInput::Remote{origin:speclink_remote::auth::origin_of(&self.project_base),project:self.project_base.rsplit('/').next().unwrap_or_default().into(),repo:self.repo.clone(),checkout_root:checkout.map(std::path::Path::to_path_buf)};
+        let frame=(||->Result<_,speclink_desktop_core::security::JobError>{let data=speclink_host::context::security_data_dir().map_err(|_|speclink_desktop_core::security::JobError::directory_unavailable())?;speclink_desktop_core::security::remote_attestation_at(&data,&input,change)})().map_err(|e|RemoteError{message:e.message,reason:Some(e.code),status:None,evidence:None})?;
+        let view=self.run(credentials,|client|client.security_review_show(change))?;
+        self.run_write(credentials,|client|client.archive_with_security(change,false,false,&speclink_protocol::security::SecurityGateRequest{expected_revision:view.expected_revision,security_source_attestation:Some(frame.clone())}))
     }
 
     /// active 討論同樣疊 board resource 排序 overlay（決策 4）；archived 清單
@@ -1909,6 +1941,7 @@ mod capability_tests {
             name: key.to_string(),
         };
         BindingResponse {
+            security_project_key:None,
             actor: Actor { id: "u_1".to_string(), name: "Tester".to_string() },
             project: scope("demo"),
             repo: scope("backend"),

@@ -3,14 +3,19 @@
 // 或技能檔需要處理（上次探測為過期／缺失／較新）＝琥珀；探測中與復原中以 spinner 取代首字母。右鍵＝專案動作選單；本機路徑失效
 // 時點擊開錯誤選單而不切換（remote 復原錯誤仍可選，主區是復原頁）。
 import type { ReactNode } from "react";
+import { DndContext, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { LoaderCircle, Plus, Settings } from "lucide-react";
 import {
   BrandMark,
   ContextMenu,
   ContextMenuContent,
+  ContextMenuItem,
   ContextMenuTrigger,
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
   SEMANTIC_TONE,
   Tooltip,
@@ -51,12 +56,35 @@ export interface ProjectRailProps {
   /** 右鍵與錯誤選單的動作（與標題列「⋯」同一份）。 */
   actions: ProjectActions;
   onActivate?: (key: string) => void;
+  onReorder?: (keys: string[]) => void;
   /** 「＋」入口：開新增專案對話框。 */
   onOpen?: () => void;
   onOpenSettings?: () => void;
   settingsActive?: boolean;
   /** 齒輪上方的「有新版本」狀態鈕（desktop-notice-relocation design D2；無事時為 null）。 */
   updateButton?: ReactNode;
+}
+
+function SortableProject({ id, enabled, children }: { id: string; enabled: boolean; children: ReactNode }) {
+  const { setNodeRef, transform, transition, listeners } = useSortable({ id, disabled: !enabled });
+  return (
+    <div ref={setNodeRef} data-project-sort={id} style={{ transform: CSS.Transform.toString(transform), transition, touchAction: "none" }} {...listeners}>
+      {children}
+    </div>
+  );
+}
+
+function ProjectOrderItems({ menu, keys, id, onReorder }: {
+  menu: "context" | "dropdown"; keys: string[]; id: string; onReorder?: (keys: string[]) => void;
+}) {
+  const { t } = useI18n();
+  if (!onReorder) return null;
+  const index = keys.indexOf(id);
+  const Item = menu === "context" ? ContextMenuItem : DropdownMenuItem;
+  return <>
+    <Item disabled={index === 0} onSelect={() => onReorder(arrayMove(keys, index, index - 1))}>{t("app.moveProjectUp")}</Item>
+    <Item disabled={index === keys.length - 1} onSelect={() => onReorder(arrayMove(keys, index, index + 1))}>{t("app.moveProjectDown")}</Item>
+  </>;
 }
 
 /** 方塊與左側標題列的 hover 路徑：本機根；remote 有 checkout 明示連接路徑，否則連線名稱加 Project/Repo。 */
@@ -85,12 +113,15 @@ export function ProjectRail({
   platform,
   actions,
   onActivate,
+  onReorder,
   onOpen,
   onOpenSettings,
   settingsActive = false,
   updateButton,
 }: ProjectRailProps) {
   const { t } = useI18n();
+  const keys = tabs.map((tab) => locatorKey(tab.locator));
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   return (
     <TooltipProvider>
       <div
@@ -98,6 +129,14 @@ export function ProjectRail({
         className="flex w-14 shrink-0 flex-col items-center border-r border-border pb-3 pt-2"
       >
         <BrandMark size={26} className="mb-3.5" />
+        <DndContext sensors={sensors} onDragEnd={({ active, over }) => {
+          if (over && active.id !== over.id) {
+            const from = keys.indexOf(String(active.id));
+            const to = keys.indexOf(String(over.id));
+            if (from >= 0 && to >= 0) onReorder?.(arrayMove(keys, from, to));
+          }
+        }}>
+        <SortableContext items={keys} strategy={verticalListSortingStrategy}>
         <div
           role="tablist"
           aria-label={t("app.projectRail")}
@@ -201,7 +240,8 @@ export function ProjectRail({
             // Slot 傳下的 onContextMenu 會被丟掉。
             const trigger = <ContextMenuTrigger asChild>{button}</ContextMenuTrigger>;
             return (
-              <Tooltip key={key}>
+              <SortableProject key={key} id={key} enabled={!!onReorder}>
+              <Tooltip>
                 <ContextMenu>
                   {localError ? (
                     <DropdownMenu>
@@ -209,6 +249,7 @@ export function ProjectRail({
                         <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
                       </TooltipTrigger>
                       <DropdownMenuContent side="right" align="start">
+                        <ProjectOrderItems menu="dropdown" keys={keys} id={key} onReorder={onReorder} />
                         <ProjectActionItems
                           menu="dropdown"
                           tab={tab}
@@ -222,6 +263,7 @@ export function ProjectRail({
                     <TooltipTrigger asChild>{trigger}</TooltipTrigger>
                   )}
                   <ContextMenuContent>
+                    <ProjectOrderItems menu="context" keys={keys} id={key} onReorder={onReorder} />
                     <ProjectActionItems
                       menu="context"
                       tab={tab}
@@ -238,9 +280,12 @@ export function ProjectRail({
                   {assetHint && <div className="text-muted-foreground">{assetHint}</div>}
                 </TooltipContent>
               </Tooltip>
+              </SortableProject>
             );
           })}
         </div>
+        </SortableContext>
+        </DndContext>
         <button
           type="button"
           aria-label={t("app.newProject")}

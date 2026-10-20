@@ -38,6 +38,42 @@ const ROUND_WITH_FINDING: &str =
     "**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs — possible Feature Envy\n";
 const CLEAN_ROUND: &str = "**Scope**: src/lib.rs\n";
 
+#[test]
+fn reader_cannot_publish_security_reports_and_leaves_no_index() {
+    let f=fixture();
+    let result=ureq::post(&format!("{}/api/speclink/v1/projects/demo/changes/demo-change/security/rounds",f.base))
+        .set("Authorization",&format!("Bearer {}",f.reader_pat)).set("X-Speclink-Api-Version","1").set("X-Speclink-Repo","backend")
+        .send_json(serde_json::json!({"expectedRevision":0,"report":{}}));
+    assert!(matches!(result,Err(ureq::Error::Status(403,_))),"{result:?}");
+    assert!(f.store.snapshot(&scope()).unwrap().read(&DocumentId::ChangeArtifact{change:"demo-change".into(),artifact:"checks/index.json".into()}).unwrap().is_none());
+}
+
+fn security_input(project_key:&str,expected:u64)->serde_json::Value {
+    serde_json::json!({"projectKey":project_key,"expectedRevision":expected,"report":{"formatVersion":2,"changeName":"demo-change","policyDigest":"b".repeat(64),"knowledgeDigest":"c".repeat(64),"scopeDigest":"d".repeat(64),"builtinReportId":null,"complete":false,"targets":[],"checks":[],"findings":[]}})
+}
+#[test]
+fn unauthenticated_security_write_has_no_document_effect() {
+    let f=fixture();let before=f.store.snapshot(&scope()).unwrap().revision();
+    let result=ureq::post(&format!("{}/api/speclink/v1/projects/demo/changes/demo-change/security/rounds",f.base)).send_json(security_input(&"a".repeat(64),0));
+    assert!(matches!(result,Err(ureq::Error::Status(401,_))),"{result:?}");assert_eq!(f.store.snapshot(&scope()).unwrap().revision(),before);
+}
+#[test]
+fn security_report_scope_is_not_borrowed_from_another_project() {
+    let f=fixture();let before=f.store.snapshot(&scope()).unwrap().revision();
+    let result=ureq::post(&format!("{}/api/speclink/v1/projects/demo/changes/demo-change/security/rounds",f.base))
+        .set("Authorization",&format!("Bearer {}",f.pat)).set("X-Speclink-Api-Version","1").set("X-Speclink-Repo","backend").send_json(security_input(&"a".repeat(64),0));
+    assert!(matches!(result,Err(ureq::Error::Status(409,_))),"{result:?}");assert_eq!(f.store.snapshot(&scope()).unwrap().revision(),before);
+}
+#[test]
+fn security_submission_checks_the_index_revision_before_reading_resources() {
+    let f=fixture();let mut uow=f.store.begin_unit_of_work(&scope(),CommandContext {command:"seed-security-index".into(),actor:"seed".into()}).unwrap();
+    uow.create(DocumentId::ChangeArtifact {change:"demo-change".into(),artifact:"checks/index.json".into()},"{\"formatVersion\":1,\"entries\":[]}");f.store.commit(uow,vec![]).unwrap();let before=f.store.snapshot(&scope()).unwrap().revision();
+    let key=speclink_core::security::prepared::ReviewBinding {origin:Some("http://127.0.0.1".into()),project:Some("demo".into()),repo:Some("backend".into()),checkout:None}.project_key();
+    let result=ureq::post(&format!("{}/api/speclink/v1/projects/demo/changes/demo-change/security/rounds",f.base)).set("Authorization",&format!("Bearer {}",f.pat)).set("X-Speclink-Api-Version","1").set("X-Speclink-Repo","backend").send_json(security_input(&key,0));
+    let error=match result {Err(ureq::Error::Status(409,response))=>response.into_json::<ErrorResponse>().unwrap(),other=>panic!("{other:?}")};
+    assert_eq!(error.reason,ErrorReason::RevisionConflict);assert_eq!(f.store.snapshot(&scope()).unwrap().revision(),before);
+}
+
 fn fixture() -> Fixture {
     let store = Arc::new(MemoryStore::new());
     let state = common::state_with(store.clone());
@@ -165,6 +201,23 @@ fn reader_cannot_settle_a_review_ticket() {
     }
     assert_eq!(ticket_doc(&f).as_deref(), Some(before.as_str()), "reader refusals write nothing");
     assert!(!meta_doc(&f).contains("reviewed_at:"), "no stamp lands");
+    let snapshot = f.store.snapshot(&scope()).unwrap();
+    assert!(snapshot.read(&DocumentId::ChangeArtifact { change: "demo-change".into(), artifact: "checks/index.json".into() }).unwrap().is_none(), "reader does not publish history");
+}
+
+#[test]
+fn reader_can_read_completed_review_history() {
+    let f = fixture(); let c = client(&f.base, &f.pat);
+    c.station_add_round("review", "demo-change", CLEAN_ROUND).unwrap();
+    c.station_stamp("review", "demo-change", false, Some("codex"), &[ReviewScopeEntryDto { path: "src/lib.rs".into(), hash: fingerprint(FILE_A) }], &[]).unwrap();
+    let response = raw_as("GET", &f, &f.reader_pat, "changes/demo-change/review/history").call().unwrap();
+    let list: serde_json::Value = response.into_json().unwrap();
+    assert_eq!(list["records"][0]["kind"], "review");
+    let id = list["records"][0]["recordId"].as_str().unwrap();
+    let response = raw_as("GET", &f, &f.reader_pat, &format!("changes/demo-change/review/history?id={id}")).call().unwrap();
+    let record: serde_json::Value = response.into_json().unwrap();
+    assert_eq!(record["metadata"]["tool"], "codex");
+    assert!(record["content"].as_str().unwrap().contains("## Round 1"));
 }
 
 #[test]
@@ -425,4 +478,12 @@ fn legacy_round_emits_explicit_nulls_on_the_wire() {
         round.get("rules").is_some_and(serde_json::Value::is_null),
         "rules key present and null: {round:?}"
     );
+}
+
+#[test]
+fn reader_queries_completed_security_history_without_checkout_or_mutation(){
+    let f=fixture();let before=f.store.snapshot(&scope()).unwrap().revision();
+    let response=client(&f.base,&f.reader_pat).station_history("security","demo-change",None).unwrap();
+    let value=serde_json::to_value(response).unwrap();assert_eq!(value["records"],serde_json::json!([]));
+    assert_eq!(f.store.snapshot(&scope()).unwrap().revision(),before);
 }

@@ -472,6 +472,58 @@ mod tests {
         collections::BTreeMap,
         io::{Cursor, Write},
     };
+    #[test]
+    fn old_bundle_keeps_basic_data_but_missing_guidance_cannot_be_deep_ready() {
+        let source = source();
+        let raw = source.files.clone();
+        let bytes = encode_single(source, &|| false).unwrap();
+        let decoded = crate::security::read_offline_package(&bytes, &|| false).unwrap();
+        assert_eq!(decoded.files(), &raw);
+        assert_eq!(decoded.knowledge_status().unwrap(), "missing");
+    }
+    #[test]
+    fn complete_guidance_round_trip_preserves_all_pinned_files_and_rejects_tampering() {
+        let mut source = source();
+        let mut archive = ZipArchive::new(Cursor::new(include_bytes!(
+            "../tests/fixtures/security-guidance.zip"
+        )))
+        .unwrap();
+        for index in 0..archive.len() {
+            let mut file = archive.by_index(index).unwrap();
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes).unwrap();
+            source
+                .metadata
+                .files
+                .insert(file.name().into(), sha256(&bytes));
+            source.files.insert(file.name().into(), bytes);
+        }
+        let expected = source.files.clone();
+        let bytes = encode_single(source, &|| false).unwrap();
+        let data = crate::security::read_offline_package(&bytes, &|| false).unwrap();
+        assert_eq!(data.files(), &expected);
+        assert_eq!(data.knowledge_status().unwrap(), "ready");
+        let mut bad = expected.clone();
+        bad.get_mut("raw/Authentication_Cheat_Sheet.md")
+            .unwrap()
+            .push(b'!');
+        assert!(ValidatedStandard::new(
+            data.source().clone(),
+            bad,
+            IntegrityKind::Imported,
+            &|| false
+        )
+        .is_err());
+        let mut unknown = expected.clone();
+        unknown.insert("raw/Unknown.md".into(), b"unapproved".to_vec());
+        assert!(ValidatedStandard::new(
+            data.source().clone(),
+            unknown,
+            IntegrityKind::Imported,
+            &|| false
+        )
+        .is_err());
+    }
     pub fn source() -> ExportSource {
         let files=BTreeMap::from([
           ("raw/cwec_v4.20.xml".into(),br#"<Weakness_Catalog xmlns="http://cwe.mitre.org/cwe-7" Version="4.20"><Weaknesses><Weakness ID="79" Name="Synthetic"><Description>Synthetic fixture</Description></Weakness></Weaknesses></Weakness_Catalog>"#.to_vec()),

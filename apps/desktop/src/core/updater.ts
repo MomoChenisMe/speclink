@@ -23,6 +23,24 @@ export type UpdaterEvent =
 
 export const initialUpdaterState: UpdaterState = { phase: "idle" };
 
+/** 設定頁的最後結果與安裝狀態分開；不保留外部錯誤訊息或 URL。 */
+export interface UpdateCheckResult {
+  checkedAt: number;
+  status: "available" | "up-to-date" | "failed";
+  errorCode: string | null;
+  operationId: string | null;
+}
+
+export function updateCheckFailure(error: unknown): UpdateCheckResult {
+  const value = error && typeof error === "object" ? error as Record<string, unknown> : {};
+  const codes = ["connect", "timeout", "tls", "proxy-auth", "http", "parse", "updater-unavailable"];
+  return {
+    checkedAt: Date.now(), status: "failed",
+    errorCode: codes.includes(String(value.code)) ? String(value.code) : "update_failed",
+    operationId: typeof value.operationId === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(value.operationId) ? value.operationId : null,
+  };
+}
+
 /** 前景重檢的節流間隔：主視窗回到前景時，距上次檢查滿此值才再查。 */
 export const FOCUS_RECHECK_INTERVAL_MS = 60 * 60 * 1000;
 

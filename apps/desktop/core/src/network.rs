@@ -216,6 +216,33 @@ fn probe_error(error: reqwest::Error) -> (String, Vec<speclink_host::network::Er
 #[cfg(test)]
 mod probe_tests {
     use super::*;
+    #[tokio::test]
+    async fn connect_tunnel_success_does_not_disable_tls_or_hide_disconnects() {
+        use std::io::{Read, Write};
+        for reply in [
+            &b"HTTP/1.1 200 Connection established\r\n\r\nnot-a-tls-record"[..],
+            &b"HTTP/1.1 200 Connection established\r\n\r\n"[..],
+            &b"broken-proxy-response\r\n\r\n"[..],
+        ] {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+                let mut request = [0; 4096];
+                let count = stream.read(&mut request).unwrap();
+                let _ = stream.write_all(reply);
+                String::from_utf8_lossy(&request[..count]).into_owned()
+            });
+            let policy = ProxyPolicy::snapshot(crate::runtime_preferences::ProxyPreferences {
+                mode: crate::runtime_preferences::ProxyMode::Manual, url: Some(format!("http://{address}")),
+            }).unwrap();
+            let (result, _) = probe_endpoint(&policy, "https://github.com/").await;
+            assert!(server.join().unwrap().starts_with("CONNECT github.com:443"));
+            assert!(result.error_code.is_some(), "a tunnel is not a successful TLS response");
+            assert_eq!(result.http_status, None);
+        }
+    }
     #[test]
     fn probe_redirect_limit_preserves_https_and_three_hops() {
         assert!(probe_redirect_allowed("https", 3));

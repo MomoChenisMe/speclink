@@ -17,6 +17,8 @@ pub struct BindingResponse {
     pub repo: ScopeRef,
     pub api_version: String,
     pub engine_version: String,
+    #[serde(default,skip_serializing_if="Option::is_none")]
+    pub security_project_key:Option<String>,
     #[serde(default)]
     pub capabilities: Capabilities,
 }
@@ -44,6 +46,10 @@ pub struct ScopeRef {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Capabilities {
+    #[serde(default)]
+    pub security_review_v2:bool,
+    #[serde(default)]
+    pub check_history:bool,
     #[serde(default)]
     pub context_snapshots: bool,
     #[serde(default)]

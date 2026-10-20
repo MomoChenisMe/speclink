@@ -1194,6 +1194,28 @@ fn review_round_dto(r: &speclink_core::station::Round) -> ReviewRoundDto {
 }
 
 /// `GET /changes/{name}/review`
+#[derive(Deserialize)]
+pub struct CheckHistoryQuery { id: Option<String> }
+async fn completed_history(state: AppState, binding: Binding, name: String, id: Option<String>, kind: speclink_core::history::CheckKind) -> Result<Response, ApiError> {
+    let store = state.store.clone(); let scope = verb::scope_of(&binding);
+    let (payload, etag) = tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+        let response = speclink_host::history::query_remote(store.as_ref(), &scope, &name, kind, id.as_deref())?;
+        Ok((response, verb::scope_token(store.as_ref(), &scope)?))
+    }).await.map_err(|_| ApiError::internal("history worker failed"))??;
+    Ok(ok(payload, &etag))
+}
+pub async fn review_history(State(state): State<AppState>, binding: Binding, Path((_key, name)): Path<(String, String)>, Query(query): Query<CheckHistoryQuery>) -> Result<Response, ApiError> {
+    completed_history(state, binding, name, query.id, speclink_core::history::CheckKind::Review).await
+}
+pub async fn verify_history(State(state): State<AppState>, binding: Binding, Path((_key, name)): Path<(String, String)>, Query(query): Query<CheckHistoryQuery>) -> Result<Response, ApiError> {
+    completed_history(state, binding, name, query.id, speclink_core::history::CheckKind::Verify).await
+}
+
+pub async fn security_history(State(state): State<AppState>, binding: Binding, Path((_key, name)): Path<(String, String)>, Query(query): Query<CheckHistoryQuery>) -> Result<Response, ApiError> {
+    if query.id.is_some(){return Err(ApiError::invalid_argument("use the security report endpoint"));}
+    completed_history(state,binding,name,None,speclink_core::history::CheckKind::Security).await
+}
+
 pub async fn review_show(
     State(state): State<AppState>,
     binding: Binding,
@@ -1324,10 +1346,11 @@ pub async fn verify_stamp(
         .into_iter()
         .map(|e| speclink_core::model::ReviewedScopeEntry { path: e.path, hash: e.hash })
         .collect();
-    let result = verb::run(
+    let result = verb::run_with_security(
         &state,
         &binding,
         Command::VerifyStamp { change: name, accept: req.accept, tool: req.agent, scope, missing: req.missing },
+        req.security,
     )
     .await?;
     let change = match result.execution.outcome {
@@ -1452,8 +1475,9 @@ pub async fn archive(
     binding: Binding,
     Path((_key, name)): Path<(String, String)>,
     Query(query): Query<ArchiveQuery>,
+    request:Option<Json<speclink_protocol::security::SecurityGateRequest>>,
 ) -> Result<Response, ApiError> {
-    let result = verb::run(
+    let result = verb::run_with_security(
         &state,
         &binding,
         Command::Archive {
@@ -1464,6 +1488,7 @@ pub async fn archive(
             carry_review: query.carry_review,
             carry_verify: query.carry_verify,
         },
+        request.map(|r|r.0).unwrap_or_default(),
     )
     .await?;
     let outcome = match result.execution.outcome {
@@ -1471,6 +1496,7 @@ pub async fn archive(
         _ => return Err(wrong_outcome("archive")),
     };
     let dto = ArchiveResponse {
+        check_records:if outcome.check_records.has_records(){Some(serde_json::from_value(serde_json::to_value(&outcome.check_records).map_err(|_|ApiError::internal("archive counts"))?).map_err(|_|ApiError::internal("archive counts"))?)}else{None},
         specs: outcome
             .caps
             .into_iter()

@@ -40,12 +40,14 @@ import { TicketTabBody, useStationTickets } from "./TicketView";
 import { useDocNav } from "./useDocNav";
 import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_PILL_TONE } from "./verifyStyle";
 
+import {useCheckRecords,CheckRecordTree,CheckRecordBody} from "./CheckRecords";
 /** 頁目標（discriminated target 兩型同檔）：封存變更或封存討論。 */
 export type ArchivedTarget =
   | { kind: "change"; datedName: string }
   | { kind: "discussion"; slug: string };
 
 export interface ArchivedDetailPageProps {
+  checkRecords?:import("../checkRecords").CheckRecordsAdapter;
   target: ArchivedTarget | null;
   /** 刷新世代——遞增即就地重載（不清空、latest-wins；未傳＝0）。 */
   refreshGen?: number;
@@ -144,6 +146,7 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
   const nav = useDocNav(setTab);
   const bodyRef = useRef<HTMLDivElement>(null);
   const gen = props.refreshGen ?? 0;
+  const checks=useCheckRecords(props.checkRecords,datedName,tab,gen);
 
   useGenerationLoad(gen, (isLatest) => {
     const fresh = (apply: (v: string | null) => void) => (v: string | null) => {
@@ -193,6 +196,7 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
   const specCaps = Object.keys(specDocs ?? {});
   const shownCap = nav.specCap && specCaps.includes(nav.specCap) ? nav.specCap : specCaps[0];
   const docTarget: DocumentTarget | null =
+    checks.entry?{doc:{archived:datedName,artifact:checks.entry.relativePath},content:checks.content}:
     tab === "specs"
       ? shownCap
         ? { doc: { archived: datedName, artifact: `specs/${shownCap}/spec.md` }, content: specDocs![shownCap] }
@@ -282,6 +286,7 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
         )}
       </TabsList>
 
+      <CheckRecordTree state={checks}/>
       <DetailTreeLabel>{t("detail.status")}</DetailTreeLabel>
       <DetailStatus>
         <StatusRow mark="tasks" label={t("detail.statusTasks")}>
@@ -307,7 +312,7 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
         <DetailShell data-archived-detail="change" tree={tree} activeDoc={tab} tocKey={tocKey} bodyRef={bodyRef}>
           <Card className="flex flex-col gap-5 p-6">
             <DocHeader
-              title={t(DOC_TITLE_KEYS[tab])}
+              title={t(tab.startsWith("check:")?"checks.title":DOC_TITLE_KEYS[tab])}
               badges={summary.badges}
               actions={props.renderDocumentActions?.(docTarget)}
               provenance={[docPath && <span className="font-mono">{docPath}</span>]}
@@ -315,6 +320,7 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
             <DocTiles tiles={summary.tiles} />
             {tab !== "proposal" && calloutSlot}
             <DocBody ref={bodyRef}>
+              <CheckRecordBody state={checks} tab={tab}/>
               {/* 各文件三態：載入中畫骨架，空態文案只在載入完成後出。 */}
               <TabsContent value="proposal">
                 {proposal === undefined ? (

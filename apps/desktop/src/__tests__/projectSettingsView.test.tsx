@@ -1713,6 +1713,7 @@ describe("審查規則頁（spec 需求「設定頁編輯審查規則」）", ()
     // 與產出流程頁的「檢視內容／收合」同一種展開鈕：展開後改為收合。
     expect(toggle.textContent).toBe("收合");
     const names = within(within(page).getByTestId("review-smells")).getAllByRole("listitem");
+    expect(within(names[0]).getByRole("button", { name: /說明$/ })).toBeTruthy();
     expect(names.map((n) => n.textContent)).toEqual(SMELLS);
   });
 
@@ -1975,3 +1976,40 @@ it("設定色票預覽全部深底白字",async()=>{
   expect(preview?.className).toContain("text-project-foreground");
  }
 });
+
+describe('安全驗收與紀錄保留政策',()=>{
+ it('驗收預設不勾、封存三類預設保留；取消不寫入',async()=>{
+  const ws=fakeSettings(snapshot());render(<Harness settings={ws} initial="workflow"/>);
+  const required=await screen.findByRole('checkbox',{name:'納入驗收條件'});
+  expect(required.getAttribute('aria-checked')).toBe('false');expect(required.hasAttribute('disabled')).toBe(true);
+  for(const name of ['封存時保留審查紀錄','封存時保留驗證紀錄','封存時保留安全審查紀錄']) expect(screen.getByRole('checkbox',{name}).getAttribute('aria-checked')).toBe('true');
+  fireEvent.click(screen.getByRole('checkbox',{name:'封存時保留審查紀錄'}));
+  fireEvent.click(screen.getByTestId('cancel-workflow'));
+  expect(screen.getByRole('checkbox',{name:'封存時保留審查紀錄'}).getAttribute('aria-checked')).toBe('true');expect(ws.writeWorkflowConfig).not.toHaveBeenCalled();
+ });
+ it('主開關關閉保留驗收選擇，儲存只送明確修改的欄位',async()=>{
+  const ws=fakeSettings(projectSnap({securityVerification:{...DEFAULT_SECURITY_POLICY,enabled:true}}));render(<Harness settings={ws} initial="workflow"/>);
+  fireEvent.click(await screen.findByRole('checkbox',{name:'納入驗收條件'}));
+  expect(screen.getByText(/未選標準或缺必要資料將阻擋驗收/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('switch',{name:'啟用 OWASP / CWE 安全審查'}));
+  expect(screen.getByRole('checkbox',{name:'納入驗收條件'}).getAttribute('aria-checked')).toBe('true');
+  fireEvent.click(screen.getByRole('checkbox',{name:'封存時保留安全審查紀錄'}));fireEvent.click(screen.getByTestId('save-workflow'));
+  await waitFor(()=>expect(ws.writeWorkflowConfig).toHaveBeenCalled());
+  const fields=vi.mocked(ws.writeWorkflowConfig).mock.calls[0][0];expect(JSON.parse(fields.securityPatch!)).toEqual({enabled:false,required_for_acceptance:true});expect(JSON.parse(fields.checkRecordsPatch!)).toEqual({archive:{security:false}});
+ });
+ it('reader 不可修改驗收與保留設定',async()=>{
+  const ws={...fakeSettings(projectSnap({securityVerification:{...DEFAULT_SECURITY_POLICY,enabled:true}})),kind:'remote' as const,policyWrite:false,securityReviewV2:true,checkHistory:true};render(<Harness settings={ws} initial="workflow"/>);
+  expect((await screen.findByRole('checkbox',{name:'納入驗收條件'})).hasAttribute('disabled')).toBe(true);
+  expect(screen.getByRole('checkbox',{name:'封存時保留驗證紀錄'}).hasAttribute('disabled')).toBe(true);
+ });
+ it('CAS 衝突保留驗收與保留草稿，確認後只套到最新快照',async()=>{
+  const initial=projectSnap({revision:1,securityVerification:{...DEFAULT_SECURITY_POLICY,enabled:true}});
+  const latest=projectSnap({revision:2,securityVerification:{...DEFAULT_SECURITY_POLICY,enabled:true,scope:'api'}});
+  const ws={...fakeSettings(initial),kind:'remote' as const,securityReviewV2:true,checkHistory:true};vi.mocked(ws.readSettings).mockResolvedValueOnce(initial).mockResolvedValue(latest);vi.mocked(ws.writeWorkflowConfig).mockRejectedValueOnce({reason:'revision_conflict',message:'conflict'});
+  render(<Harness settings={ws} initial="workflow"/>);fireEvent.click(await screen.findByRole('checkbox',{name:'納入驗收條件'}));fireEvent.click(screen.getByRole('checkbox',{name:'封存時保留驗證紀錄'}));fireEvent.click(screen.getByTestId('save-workflow'));
+  const panel=await screen.findByTestId('policy-conflict-panel');expect(within(panel).getByTestId('conflict-row-security_verification.requiredForAcceptance')).toBeTruthy();expect(within(panel).getByTestId('conflict-row-check_records.archive.verify')).toBeTruthy();
+  expect(screen.getByRole('checkbox',{name:'封存時保留驗證紀錄'}).getAttribute('aria-checked')).toBe('false');
+  fireEvent.click(within(panel).getByRole('button',{name:'檢視後以最新 revision 重新提交'}));await waitFor(()=>expect(ws.writeWorkflowConfig).toHaveBeenCalledTimes(2));
+  const resent=vi.mocked(ws.writeWorkflowConfig).mock.calls[1][0];expect(JSON.parse(resent.securityPatch!)).toEqual({required_for_acceptance:true});expect(JSON.parse(resent.checkRecordsPatch!)).toEqual({archive:{verify:false}});expect(screen.getByLabelText('驗證範圍').textContent).toContain('僅 API / 後端服務');
+ });
+})

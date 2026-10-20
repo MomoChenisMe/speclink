@@ -81,9 +81,14 @@ pub fn is_excluded(path: &std::path::Path, extra: &[String]) -> bool {
     path.components().any(|c| {
         matches!(
             c.as_os_str().to_str(),
-            Some(".git" | "node_modules" | "target" | "dist" | "build")
+            Some(".git" | ".gitignore" | "node_modules" | "target" | "dist" | "build" | ".security_kb" | ".security_kb.lock" | ".checks.lock" | ".checks-transaction.json")
         )
-    }) || path.starts_with(".speclink/context")
+    }) || path.components().any(|component| component.as_os_str().to_str().is_some_and(|name| name.starts_with(".security_kb-stage-") || name.starts_with(".security_kb-backup-") || name.starts_with(".checks-stage-") || name.starts_with(".checks-backup-")))
+        || {
+            let parts: Vec<_> = path.components().filter_map(|c|c.as_os_str().to_str()).collect();
+            parts.windows(3).any(|w|w[0]=="changes" && w[2]=="checks") || parts.windows(3).any(|w|w[0]=="archive" && w[2]=="checks")
+        }
+        || path.starts_with(".speclink/context")
         || extra.iter().any(|e| path.starts_with(e))
 }
 #[derive(Clone)]
@@ -99,6 +104,8 @@ pub enum InputKind {
     Code,
     Api,
     Spec,
+    /// Source evidence for the skill; built-in rule language support is unchanged.
+    Deep,
 }
 pub trait ProjectInput: Send + Sync {
     fn root(&self) -> &std::path::Path;

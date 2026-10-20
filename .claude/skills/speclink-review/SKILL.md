@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.1"
+  version: "v1.50.2"
   generatedBy: "Speclink"
 ---
 
@@ -265,3 +265,7 @@ Suggestions only. This skill NEVER invokes any of them — report where things s
 - The review stamp landed in the main checkout → `/speclink-archive <change-name>`
 - The review stamp landed inside a worktree → commit the stamp's meta changes first, then `/speclink-worktree-merge <change-name>` (archive runs only from the main checkout)
 - Findings were left unfixed on purpose → they stay in the ticket; say which ones before suggesting anything downstream
+
+**Completed review history**
+
+After a successful stamp, the active review.md ticket is removed and its full rounds, rules, identity, scope and acceptance outcome are retained under proposal checks/review. Run `speclink review history "<name>" --json`, report the returned recordId and offer `speclink review history "<name>" --id <ID>` or Desktop's check history to read it. Never reconstruct missing old tickets from Git, treat completed history as an open ticket, overwrite records, or delete recovery files. A stamp failure, including history_recovery_required, means completion was not recorded: report the failure rather than claiming success. Existing discovery/validation, severity and ordinary --accept behavior remain in force.

@@ -187,6 +187,19 @@ impl Store for TestStore {
             .remove(&(change.to_string(), artifact.to_string()));
         Ok(())
     }
+    fn commit_checks(&self, change: &str, commit: &crate::quality::history::ChecksCommit) -> Result<()> {
+        commit.validate()?;
+        if commit.writes.contains_key(".openspec.yaml") && self.fail_meta_write.borrow().as_deref() == Some(change) { anyhow::bail!("simulated meta write failure"); }
+        for (path, expected) in &commit.expected {
+            let old = if path == ".openspec.yaml" { self.read_change_meta(change) } else { self.read_artifact(change, path) };
+            anyhow::ensure!(old.map(|text| crate::security::data::sha256(text.as_bytes())) == *expected, "revision_conflict");
+        }
+        for (path, text) in &commit.writes {
+            if path == ".openspec.yaml" { self.write_change_meta(change, text)?; } else { self.write_artifact(change, path, text)?; }
+        }
+        for path in &commit.deletes { self.delete_artifact(change, path)?; }
+        Ok(())
+    }
     fn read_evidence(&self, change: &str) -> Option<String> {
         self.evidence.borrow().get(change).cloned()
     }
@@ -259,6 +272,14 @@ impl Store for TestStore {
             archived.insert((dated_name.to_string(), key.1), content);
         }
         Ok(())
+    }
+    fn archive_change_with_checks(&self,name:&str,dated:&str,plan:&crate::history::ArchiveChecksPlan)->Result<()> {
+        plan.validate_base(self,name)?;
+        self.archive_change(name,dated)?;
+        self.archived_artifacts.borrow_mut().retain(|(change,path),_|change!=dated||plan.retains(path));
+        if let Some(index)=&plan.index{self.archived_artifacts.borrow_mut().insert((dated.into(),crate::history::INDEX.into()),index.clone());}
+        if let Some(receipt)=&plan.receipt{self.archived_artifacts.borrow_mut().insert((dated.into(),"checks/acceptance.json".into()),receipt.clone());}
+        if let Some(meta)=&plan.archived_meta{self.write_archived_meta(dated,meta)?;}Ok(())
     }
     fn read_archived_artifact(&self, dated_name: &str, artifact: &str) -> Option<String> {
         self.archived_artifacts

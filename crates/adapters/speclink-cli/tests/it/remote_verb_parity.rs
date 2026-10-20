@@ -28,6 +28,10 @@ fn mock_server(mut routes: Vec<(&'static str, &'static str, u16, String)>) -> Mo
     if !routes.iter().any(|(_, suffix, _, _)| *suffix == "/binding") {
         routes.push(("GET", "/binding", 200, BINDING_BODY.to_string()));
     }
+    // Archive/verify must read the authoritative security policy even in reference mode.
+    if !routes.iter().any(|(method,path,_,_)|*method=="GET"&&*path=="/config") {
+        routes.push(("GET","/config",200,serde_json::json!({"schema":"spec-driven","content":null}).to_string()));
+    }
     let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").expect("bind mock server"));
     let port = server.server_addr().to_ip().expect("ip").port();
     let base = format!("http://127.0.0.1:{port}/api/speclink/v1/projects/demo");

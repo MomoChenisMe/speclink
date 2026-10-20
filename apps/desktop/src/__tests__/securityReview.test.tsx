@@ -17,3 +17,13 @@ it("Remote 未宣告能力時不提供掃描；支援時保留 checkout 身分",
  await api.start("demo");expect(ipc).toHaveBeenCalledWith("security_start",{target:{kind:"remote",connectionId:"conn",project:"project",repo:"repo",checkoutRoot:"/checkout"},change:"demo"});
  await api.prepare!("demo");expect(ipc).toHaveBeenCalledWith("security_prepare",{target:{kind:"remote",connectionId:"conn",project:"project",repo:"repo",checkoutRoot:"/checkout"},change:"demo"});
 });
+
+it('報告讀取保留提案及專案範圍，不借用切換後的頁面',async()=>{
+ const ipc=vi.fn().mockResolvedValue(null)
+ const a=createSecurityReviewAdapter({kind:'local',root:'/project-a'},ipc)
+ const b=createSecurityReviewAdapter({kind:'local',root:'/project-b'},ipc)
+ await a.report('report-a','change-a')
+ await b.report('report-b','change-b')
+ expect(ipc).toHaveBeenCalledWith('security_report',{target:{kind:'local',root:'/project-a'},change:'change-a',id:'report-a'})
+ expect(ipc).toHaveBeenCalledWith('security_report',{target:{kind:'local',root:'/project-b'},change:'change-b',id:'report-b'})
+})

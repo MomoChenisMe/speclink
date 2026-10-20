@@ -14,6 +14,9 @@ import { SecurityDataPage } from "./settings/SecurityDataPage";
 /** 軟體更新面：狀態機現值＋手動檢查入口＋更新日誌瀏覽入口＋常駐現版號（null＝尚未取得）
  * ＋「下載與安裝」的動作＋聚焦捲動＋背景檢查開關。 */
 export interface AppSettingsUpdaterProps {
+  ready?: boolean;
+  lastCheck?: import("../core/updater").UpdateCheckResult | null;
+  onDiagnostics?: () => void;
   state: UpdaterState;
   onCheck: () => void;
   /** 開啟更新日誌對話框的瀏覽模式（desktop-app「更新日誌彈窗」）；帶版號時開啟後捲到該版。 */

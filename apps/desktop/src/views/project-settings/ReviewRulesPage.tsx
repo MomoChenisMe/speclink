@@ -90,7 +90,7 @@ export function ReviewRulesPage({ ps }: { ps: ProjectSettingsState }) {
                 ? t("settings.reviewSmellsHide")
                 : tn("settings.reviewSmellsShow", smells.length)}
             </Button>
-            {showSmells && <BaselineSmellList data-testid="review-smells" names={smells} />}
+            {showSmells && <BaselineSmellList data-testid="review-smells" names={smells} baseline={baseline} />}
           </div>
         </SettingsRow>
       </SettingsCard>

@@ -32,6 +32,8 @@ const WRITE_ROUTES: &[(&str, &str)] = &[
     ("POST", "changes/demo/verify/rounds"),
     ("POST", "changes/demo/verify/stamp"),
     ("DELETE", "changes/demo/verify"),
+    ("POST", "changes/demo/security/rounds"),
+    ("POST", "changes/demo/security/accept"),
     ("POST", "changes/demo/claim"),
     ("POST", "changes/demo/depends"),
     ("POST", "changes/demo/in-progress"),

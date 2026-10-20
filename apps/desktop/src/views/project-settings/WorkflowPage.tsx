@@ -5,6 +5,7 @@ import { AlertTriangle } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   Button,
+  Checkbox,
   ConfirmDialog,
   Input,
   Select,
@@ -160,7 +161,10 @@ export function WorkflowPage({ ps }: { ps: ProjectSettingsState }) {
           <SettingsRow label={t("security.enable")} htmlFor="cfg-security-enabled" description={t("security.help")} control={
             <Switch id="cfg-security-enabled" checked={ps.security.enabled} disabled={wfDisabled || ps.settings.securityReview===false} onCheckedChange={(enabled) => ps.setSecurity((current) => ({ ...current, enabled }))} />
           } />
-          {ps.settings.securityReview===false && <p role="status" className="px-4 text-xs text-muted-foreground">unsupported_version</p>}
+          <SettingsRow label={t("security.required")} htmlFor="cfg-security-required" description={t("security.requiredHelp")} control={
+            <Checkbox id="cfg-security-required" checked={ps.security.requiredForAcceptance??false} disabled={wfDisabled||!ps.security.enabled||(isRemote&&ps.settings.securityReviewV2!==true)} onCheckedChange={v=>ps.setSecurity(current=>({...current,requiredForAcceptance:v===true}))}/>
+          }>{!ps.security.enabled&&<FieldHelp>{t("security.requiredInactive")}</FieldHelp>}{ps.security.enabled&&ps.security.requiredForAcceptance&&(!Object.values(ps.security.standards).some(s=>s.enabled)||!Object.values(ps.security.reviews).some(Boolean))&&<p role="status" className="px-4 text-sm text-destructive">{t("security.requiredUnconfigured")}</p>}</SettingsRow>
+          {(ps.settings.securityReview===false||(isRemote&&(ps.settings.securityReviewV2!==true||ps.settings.checkHistory!==true))) && <p role="status" className="px-4 text-xs text-muted-foreground">unsupported_version</p>}
           {ps.security.enabled && ps.settings.securityReview!==false && <div data-testid="security-policy-fields">
             <SettingsRow label={t("security.scope")} htmlFor="cfg-security-scope" description={t(`security.scopeHelp.${ps.security.scope}`)} control={
               <SettingsChoice id="cfg-security-scope" disabled={wfDisabled} value={ps.security.scope}
@@ -185,10 +189,13 @@ export function WorkflowPage({ ps }: { ps: ProjectSettingsState }) {
             <p className="px-4 text-xs text-muted-foreground">{t("security.dataLocation")}</p>
             {dataError && <p role="alert" className={`px-4 text-xs ${SEMANTIC_TONE.warning}`}>{t("security.dataError")}: {dataError}</p>}
           </div>}
+          {(["review","verify","security"] as const).map(kind=><SettingsRow key={kind} label={t(`checkRecords.${kind}`)} htmlFor={`cfg-records-${kind}`} control={<Checkbox id={`cfg-records-${kind}`} checked={ps.checkRecords.archive[kind]} disabled={wfDisabled||(isRemote&&ps.settings.checkHistory!==true)} onCheckedChange={v=>ps.setCheckRecords(current=>({archive:{...current.archive,[kind]:v===true}}))}/>}/>)}
+          <FieldHelp>{t("checkRecords.help")}</FieldHelp>
           {/* worktree 屬本機 checkout 概念：remote 不顯示（spec「產出政策的 worktree 開關」）。 */}
           {!isRemote && toggle("worktree", ps.worktree, ps.setWorktree)}
           <div className="flex items-center justify-end gap-2 px-4 py-3">
             {ps.wfMsg && <span className="mr-auto text-xs text-muted-foreground">{ps.wfMsg}</span>}
+            <Button type="button" variant="outline" size="sm" data-testid="cancel-workflow" disabled={wfDisabled||!ps.policyDirty} onClick={ps.cancelWorkflow}>{t("settings.cancel")}</Button>
             <Button type="button" size="sm" data-testid="save-workflow" disabled={wfDisabled} onClick={() => void ps.saveWorkflow()}>
               {t("settings.save")}
             </Button>

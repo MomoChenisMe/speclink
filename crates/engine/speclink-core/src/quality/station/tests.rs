@@ -6,6 +6,47 @@ use crate::teststore::TestStore;
 const META: &str = "schema: spec-driven\ncreated: 2026-07-01\n";
 const REPO: &[(&str, &str)] = &[("crates/a/src/lib.rs", "fn a() {}\n")];
 
+#[test]
+fn history_queries_mask_credential_assignments() {
+    let store = store_with_round("**Scope**: crates/a/src/lib.rs\n\nAPI_KEY='unique-history-secret-sentinel'\n");
+    stamp_demo(&store, false).unwrap();
+    let index = crate::history::index(&store, "demo").unwrap();
+    let record = crate::history::record(&store, "demo", &index.entries[0].record_id, crate::history::CheckKind::Verify).unwrap();
+    assert!(!record.content.contains("unique-history-secret-sentinel"));
+    assert!(record.content.contains("[REDACTED]"));
+}
+
+#[test]
+fn stamped_review_and_verify_keep_immutable_complete_records_after_discard_and_new_rounds() {
+    for st in [&REVIEW, &VERIFY] {
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", "- [x] Done\n");
+        add_round(st, &store, "demo", "**Scope**: crates/a/src/lib.rs\n\n- [WARNING] crates/a/src/lib.rs — explicitly accepted finding\n").unwrap();
+        let original = store.read_artifact("demo", st.doc).unwrap();
+        let read = |_: &str| Some(b"fn a() {}\n".to_vec());
+        stamp(st, &store, "demo", true, Some("Reviewer"), Some("codex"), &read, &|_| true).unwrap();
+        assert!(!store.artifact_exists("demo", st.doc));
+        let index_text = store.read_artifact("demo", "checks/index.json").expect("completed record index");
+        let index: serde_json::Value = serde_json::from_str(&index_text).unwrap();
+        let record = &index["entries"][0];
+        assert_eq!(record["kind"], st.noun);
+        assert_eq!(record["outcome"], "accepted");
+        let path = record["relativePath"].as_str().unwrap();
+        assert!(path.starts_with(&format!("checks/{}/", st.noun)));
+        let content = store.read_artifact("demo", path).unwrap();
+        assert!(content.contains(&original));
+        assert!(content.contains("Reviewer") && content.contains("codex"));
+        add_round(st, &store, "demo", "**Scope**: crates/a/src/lib.rs\n").unwrap();
+        discard(st, &store, "demo").unwrap();
+        assert_eq!(store.read_artifact("demo", "checks/index.json").unwrap(), index_text);
+        add_round(st, &store, "demo", "**Scope**: crates/a/src/lib.rs\n").unwrap();
+        stamp(st, &store, "demo", false, None, None, &read, &|_| true).unwrap();
+        let index: serde_json::Value = serde_json::from_str(&store.read_artifact("demo", "checks/index.json").unwrap()).unwrap();
+        assert_eq!(index["entries"].as_array().unwrap().len(), 2);
+        assert_eq!(store.read_artifact("demo", path).unwrap(), content);
+    }
+}
+
 fn store_with_round(round: &str) -> TestStore {
     let store = TestStore::with_meta("demo", META);
     store.put_artifact("demo", "tasks.md", "- [x] 1 a\n");

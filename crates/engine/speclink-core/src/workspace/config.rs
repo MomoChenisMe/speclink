@@ -359,6 +359,28 @@ pub struct WorkflowConfig {
     pub review: Option<ReviewConfig>,
     #[serde(default)]
     pub security_verification: Option<crate::security::policy::SecurityPolicy>,
+    #[serde(default)]
+    pub check_records: Option<CheckRecordsConfig>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct CheckRecordsConfig {
+    pub archive: ArchiveRecords,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct ArchiveRecords {
+    pub review: bool,
+    pub verify: bool,
+    pub security: bool,
+}
+
+impl Default for ArchiveRecords {
+    fn default() -> Self {
+        Self { review: true, verify: true, security: true }
+    }
 }
 
 /// `review:` block of `openspec/config.yaml`. Strict on purpose: an unknown
@@ -626,6 +648,10 @@ impl WorkflowConfig {
 
     pub fn security(&self) -> crate::security::policy::SecurityPolicy {
         self.security_verification.clone().unwrap_or_default()
+    }
+
+    pub fn check_records(&self) -> CheckRecordsConfig {
+        self.check_records.clone().unwrap_or_default()
     }
 }
 

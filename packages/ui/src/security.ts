@@ -13,16 +13,17 @@ export interface SecurityReport {
  coverage:{inspectedFiles:number;skippedFiles:number;failedItems:number;bytesRead:number;remainingTargets:string[];reasons:Array<{path:string;status:SecurityStatus;reason:string|null;bytes:number}>};disclaimer:string;
  sourceLicenses:Array<{standardId:string;version:string;sourceUrl:string;licenseName:string;licenseUrl:string;attribution:string;modificationNotice:string}>;sources:Array<{path:string;contentDigest:string}>;
 }
-export interface SecurityInspection {projectKey:string;enabled:boolean|null;requiresPreparation:boolean;latest:SecurityReport|null;selectedStandards:Array<{standardId:string;version:string;level?:string|null}>}
+export interface SecurityInspection {deviceLocal?:boolean;projectKey:string;enabled:boolean|null;requiresPreparation:boolean;latest:SecurityReport|null;selectedStandards:Array<{standardId:string;version:string;level?:string|null}>}
 export interface SecurityReviewAdapter {
  inspect(change:string):Promise<SecurityInspection>;
  start(change:string):Promise<SecurityJobTicket>;
  prepare?(change:string):Promise<SecurityJobTicket>;
- wait(ticket:SecurityJobTicket):Promise<{reportId?:string;projectKey:string}>;
+ prepareKnowledge?(change:string):Promise<SecurityJobTicket>;
+ wait(ticket:SecurityJobTicket):Promise<{reportId?:string;projectKey:string;pendingPublication?:boolean}>;
  cancel(ticket:SecurityJobTicket):Promise<unknown>;
- report(id:string):Promise<SecurityReport>;
- exportReport(id:string,format:"json"|"markdown"):Promise<void>;
- copySummary(id:string):Promise<void>;
+ report(id:string,change?:string):Promise<SecurityReport>;
+ exportReport(id:string,format:"json"|"markdown",change?:string):Promise<void>;
+ copySummary(id:string,change?:string):Promise<void>;
  subscribe(listener:(progress:SecurityProgress)=>void):Promise<()=>void>;
- reveal?(id:string,path:string,line:number):Promise<void>;
+ reveal?(id:string,path:string,line:number,change?:string):Promise<void>;
 }

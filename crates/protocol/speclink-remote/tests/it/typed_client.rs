@@ -15,6 +15,14 @@ use std::sync::{Arc, Mutex};
 
 // --- capturing mock server (serves every request with one status/body) ---
 
+#[test]
+fn deep_security_commands_refuse_an_older_server_before_posting() {
+    let server=serve(200,r#"{"actor":{"id":"u","name":"U"},"project":{"id":"p","key":"demo"},"repo":{"id":"r","key":"backend"},"apiVersion":"1","engineVersion":"old","capabilities":{"securityReview":true}}"#);
+    let client=Client::new(&format!("{}/projects/demo",server.base),"token",Some("backend"));
+    let error=client.security_review_show("demo").unwrap_err();assert_eq!(error.reason.as_deref(),Some("unsupported_version"));
+    let requests=server.captured.lock().unwrap();assert_eq!(requests.len(),1);assert!(requests[0].path.ends_with("/binding"));
+}
+
 #[derive(Clone, Debug)]
 struct Captured {
     method: String,

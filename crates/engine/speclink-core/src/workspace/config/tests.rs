@@ -13,6 +13,50 @@ fn set_schema_refuses_an_unparseable_document() {
 use super::*;
 
 #[test]
+fn security_acceptance_defaults_and_retains_disabled_selection() {
+    let json = serde_json::to_value(WorkflowConfig::default().security()).unwrap();
+    assert_eq!(json["requiredForAcceptance"], false);
+    let doc = "security_verification:\n  enabled: false\n  required_for_acceptance: true\n";
+    let json = serde_json::to_value(WorkflowConfig::from_text(Some(doc)).unwrap().security()).unwrap();
+    assert_eq!(json["enabled"], false);
+    assert_eq!(json["requiredForAcceptance"], true);
+    assert!(WorkflowConfig::from_text(Some(
+        "security_verification:\n  required_for_acceptance: 'true'\n"
+    )).is_err());
+}
+
+#[test]
+fn check_records_rejects_wrong_leaf_types() {
+    for value in ["'false'", "1", "[]", "null"] {
+        let doc = format!("check_records:\n  archive:\n    security: {value}\n");
+        assert!(WorkflowConfig::from_text(Some(&doc)).is_err(), "accepted {value}");
+    }
+}
+
+#[test]
+fn check_records_defaults_patch_preserves_other_bytes_and_rejects_bad_input() {
+    use crate::security::policy::{patch_workflow_check_records, patch_workflow_security};
+    let defaults = serde_json::to_value(WorkflowConfig::default().check_records()).unwrap();
+    assert_eq!(defaults, serde_json::json!({"archive":{"review":true,"verify":true,"security":true}}));
+    let original = "# keep\r\nschema: spec-driven\r\ntdd: true\r\nsecurity_verification:\r\n  enabled: true\r\n  future: keep # untouched\r\ncheck_records:\r\n  archive:\r\n    security: true # history\r\n  future: keep\r\nother: untouched\r\n";
+    let output = patch_workflow_check_records(original, "archive:\n  security: false\n").unwrap();
+    assert_eq!(output, original.replace("security: true # history", "security: false # history"));
+    let records = serde_json::to_value(WorkflowConfig::from_text(Some(&output)).unwrap().check_records()).unwrap();
+    assert_eq!(records["archive"], serde_json::json!({"review":true,"verify":true,"security":false}));
+    for patch in ["", "{}", "archive: {}", "archive: {typo: false}", "archive: {security: 'false'}"] {
+        assert!(patch_workflow_check_records(original, patch).is_err(), "accepted {patch}");
+    }
+    let exact = format!("archive: {{security: false}}\n#{}", "x".repeat(65_536 - "archive: {security: false}\n#".len()));
+    assert!(patch_workflow_check_records(original, &exact).is_ok());
+    assert!(patch_workflow_check_records(original, &(exact + "x")).is_err());
+    let output = patch_workflow_security(original, "required_for_acceptance: true\n").unwrap();
+    assert!(output.contains("  future: keep # untouched\r\n"));
+    assert!(output.ends_with("other: untouched\r\n"));
+    assert_eq!(serde_json::to_value(WorkflowConfig::from_text(Some(&output)).unwrap().security()).unwrap()["requiredForAcceptance"], true);
+    assert!(patch_workflow_security(original, "required_for_acceptance: 'true'\n").is_err());
+}
+
+#[test]
 fn security_policy_absent_and_null_are_disabled() {
     for text in [
         None,
