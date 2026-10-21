@@ -99,7 +99,7 @@ This step does three things:
 
 It does not change your `CLAUDE.md`, `AGENTS.md`, or `.github/copilot-instructions.md`. The agent reads the description in each skill file to choose the right skill.
 
-`openspec/` uses the OpenSpec folder layout:
+`openspec/` has this folder layout:
 
 ```text
 openspec/
@@ -112,7 +112,7 @@ openspec/
 
 All files are plain Markdown and YAML. You can read and edit them without Speclink, and each change shows in the Git diff. Speclink adds only two items: `discussions/`, and a `.openspec.yaml` file in each change folder. That file keeps lifecycle data, such as the start time and the source discussion.
 
-This compatibility applies to Local mode only. After you connect a remote server, the specs live in the Store. Your machine keeps only a read-only projection (`.speclink/context/`).
+This applies to Local mode only. After you connect a remote server, the specs live in the Store. Your machine keeps only a read-only projection (`.speclink/context/`).
 
 Make sure that you start from an empty state:
 

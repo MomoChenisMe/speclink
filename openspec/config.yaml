@@ -9,7 +9,8 @@ audit: true
 context: |
   ## 專案
 
-  Speclink — 以 Rust 實作的 Spec-Driven Development（SDD）引擎與平台，同時支援 Local Repo
+  Speclink — 可驗收的 SDD 引擎（Spec-Driven Development，以 Rust 實作）：每個變更先寫一小份
+  規格、交給 AI agent 實作，封存前由審查與驗證兩道品質關卡檢查並留下證據。同時支援 Local Repo
   （`openspec/` ＋ Git、可完全離線）與 Remote Store（Speclink Host ＋ TeamStore）兩條路徑。
 
   技術棧：Rust（serde／chrono／anyhow／clap／ulid，HTTP client 用 ureq、async 用 tokio ＋
@@ -44,7 +45,7 @@ context: |
   - **跨平台**：Windows ／ macOS ／ Linux——路徑分隔、換行、git 行為不得假設單一平台。
 rules:
   proposal:
-  - 必須說明目標使用者（透過 AI 代理跑 SDD 的開發者 / PO / PM）與使用情境（對應哪個 workflow 階段或技能）
+  - 必須說明目標使用者（主要是透過 AI agent 開發的開發者；團隊情境下包含 PO 與 PM）與使用情境（對應哪個 workflow 階段或技能）
   - 必須明確指出影響的 crate 或 app（如 speclink-core / speclink-cli / speclink-host / apps/desktop）
   - 若新增或變更 CLI 指令，必須說明子指令、旗標、stdin 與 exit code
   - 若改動既有指令的輸出或行為，必須列「相容性影響」：人眼與 `--json` 哪些會變、是否破壞回歸對照、既有使用者如何遷移
