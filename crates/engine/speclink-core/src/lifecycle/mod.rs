@@ -1,5 +1,6 @@
 pub mod archive;
 pub mod capname;
+pub mod cost;
 pub mod discard;
 pub mod discuss;
 pub mod inprogress;

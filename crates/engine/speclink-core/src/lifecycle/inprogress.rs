@@ -127,7 +127,7 @@ pub fn add(store: &dyn Store, name: &str, identity: Option<&str>, agent: Option<
             return Ok(false);
         }
         let clean = util::yaml_scalar;
-        m.set("started_at", &util::today())?;
+        m.set("started_at", &util::now_rfc3339())?;
         if let Some(id) = identity {
             m.set("started_by", &clean(id))?;
         }
@@ -156,14 +156,17 @@ mod tests {
             meta.starts_with(EXISTING_META),
             "existing fields must be preserved byte-for-byte, got: {meta}"
         );
-        let today = crate::util::today();
-        assert_eq!(
-            meta[EXISTING_META.len()..],
-            format!("started_at: {today}\nstarted_by: Tester <t@example.com>\nstarted_with: claude\n")
-        );
-        // The stamped document parses and exposes the started fields.
+        let added: Vec<&str> = meta[EXISTING_META.len()..].lines().collect();
+        let [started_at, started_by, started_with] = added[..] else {
+            panic!("expected exactly the three started fields, got: {added:?}");
+        };
+        let stamp = started_at.strip_prefix("started_at: ").expect("started_at first");
+        assert!(crate::util::is_offset_stamp(stamp), "started_at is not an offset stamp: {stamp}");
+        assert_eq!(started_by, "started_by: Tester <t@example.com>");
+        assert_eq!(started_with, "started_with: claude");
+        // The stamped document parses and exposes the started fields (the date part).
         let parsed = crate::model::ChangeMeta::from_text(Some(&meta)).expect("stamped meta parses");
-        assert_eq!(parsed.started_at.as_deref(), Some(today.as_str()));
+        assert_eq!(parsed.started_at.as_deref(), Some(&stamp[..10]));
         assert_eq!(parsed.started_by.as_deref(), Some("Tester <t@example.com>"));
         assert_eq!(parsed.started_with.as_deref(), Some("claude"));
     }
@@ -196,6 +199,18 @@ mod tests {
         assert!(meta.contains("started_at: "));
         assert!(!meta.contains("started_by"));
         assert!(!meta.contains("started_with"));
+    }
+
+    #[test]
+    fn add_writes_started_at_as_an_offset_stamp() {
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01\n");
+        super::add(&store, "demo", None, None).unwrap();
+        let meta = store.meta("demo");
+        let started = meta
+            .lines()
+            .find_map(|l| l.strip_prefix("started_at: "))
+            .expect("started_at line");
+        assert!(crate::util::is_offset_stamp(started), "started_at is not an offset stamp: {meta}");
     }
 
     #[test]

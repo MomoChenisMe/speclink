@@ -89,7 +89,7 @@ pub fn generate(store: &dyn Store, actor: Option<&str>) -> Result<DemoOutcome> {
     let mon = POKEMON[util::pseudo_random(POKEMON.len())];
     let name = format!("slx-{word}-{mon}");
 
-    let created = util::today();
+    let created = util::now_rfc3339();
     let mut meta = format!("schema: spec-driven\ncreated: {created}\n");
     if let Some(id) = actor {
         meta.push_str(&format!("created_by: {id}\n"));
@@ -106,4 +106,21 @@ pub fn generate(store: &dyn Store, actor: Option<&str>) -> Result<DemoOutcome> {
         theme: theme.to_string(),
         path: dir,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::teststore::TestStore;
+
+    #[test]
+    fn generate_writes_created_as_an_offset_stamp() {
+        let store = TestStore::default();
+        let outcome = super::generate(&store, None).expect("demo generates");
+        let meta = store.meta(&outcome.name);
+        let created = meta
+            .lines()
+            .find_map(|l| l.strip_prefix("created: "))
+            .expect("created line");
+        assert!(crate::util::is_offset_stamp(created), "created is not an offset stamp: {meta}");
+    }
 }

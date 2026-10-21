@@ -1,6 +1,6 @@
 ## Context
 
-change metadata（`.openspec.yaml`）的時間欄位都由 `util::today()` 寫成純日期：`created`（lifecycle/newcmd.rs、demo.rs）、`started_at`（lifecycle/inprogress.rs）、`claimed_at`（command/mod.rs 的認領）、`reviewed_at`／`verified_at`（quality/station.rs 的 `write_stamp`）。封存沒有在 metadata 留下時間，只有封存目錄名的日期前綴；`util::now_stamps()` 已能從同一個 `Local::now()` 同時產出日期與 RFC 3339（archive 用它命名目錄並寫 `@trace updated`）。
+change metadata（`.openspec.yaml`）的時間欄位都由 `util::today()` 寫成純日期：`created`（lifecycle/newcmd.rs、demo.rs）、`started_at`（lifecycle/inprogress.rs）、`claimed_at`（command/mod.rs 的認領）、`reviewed_at`／`verified_at`（quality/station.rs 的 `write_stamp`）。封存在 change 移入封存目錄之後，才對封存目錄的 metadata 追加純日期的 `archived_at`（與 `archived_by`；現有封存記錄都帶這一行），所以時間只精確到日；`util::now_stamps()` 已能從同一個 `Local::now()` 同時產出日期與 RFC 3339（archive 用它命名目錄並寫 `@trace updated`）。
 
 工單在蓋章的同一次寫入中刪除（`write_stamp` 先移除站別五鍵、再寫新章、同步刪工單），回合數因此消失；`stamp_gate` 已把工單解析成 `Ticket { rounds }`，蓋章當下拿得到回合數。
 
@@ -36,7 +36,7 @@ change metadata（`.openspec.yaml`）的時間欄位都由 `util::today()` 寫�
 
 ### D3：`archived_at` 在移動前寫入
 
-archive 守門全數通過、正式規格寫入後，以同一個 `now_stamps()` 的 `rfc3339` 對 change metadata 做 `KeyLines` 取代寫入 `archived_at`，再呼叫 `store.archive_change`。移動失敗時 change 留在進行中並帶著 `archived_at`；它只供流程成本讀取，不影響任何判定，重試時被取代。替代方案「移動後寫入封存目錄的 metadata」被否決：移動成功而寫入失敗時封存已完成卻少了時戳，且需要新的錯誤回報路徑。
+archive 守門全數通過、正式規格寫入後，以同一個 `now_stamps()` 的 `rfc3339` 對 change metadata 做 `KeyLines` 取代寫入 `archived_at`，再呼叫 `store.archive_change`。移動失敗時 change 留在進行中並帶著 `archived_at`；它只供流程成本讀取，不影響任何判定，重試時被取代。現行「移動後追加純日期 `archived_at`」的寫法一併移除，`archived_by` 維持移動後追加。替代方案「移動後寫入封存目錄的 metadata」被否決：移動成功而寫入失敗時封存已完成卻少了時戳，且需要新的錯誤回報路徑。
 
 ### D4：單項成本在 speclink-core 計算，彙總在 packages/ui
 

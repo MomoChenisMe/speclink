@@ -15,6 +15,7 @@ import { isImproveKind } from "./improveStyle";
 import { ListCard } from "./ListCard";
 import { ListPager, usePaging } from "./ListPager";
 import { ListRow } from "./ListRow";
+import { ProcessCostSummary } from "./ProcessCostSummary";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE } from "./reviewStyle";
 import { SearchField } from "./SearchField";
 import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE } from "./verifyStyle";
@@ -287,6 +288,8 @@ export function ArchivedList({
     <TooltipProvider>
       <div className="flex h-full min-h-0 w-full flex-col gap-4">
         {title ? <PageHeader title={title} description={description} actions={search} /> : search}
+        {/* 流程成本摘要：頁標題區與列表卡之間，以全部封存變更計算（不受搜尋影響）。 */}
+        <ProcessCostSummary items={archived} />
         {showDiscussions ? (
           <Tabs
             value={section}

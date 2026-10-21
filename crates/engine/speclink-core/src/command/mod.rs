@@ -1740,7 +1740,7 @@ fn run_claim(
             }
             (None, None) => {}
         }
-        m.set("claimed_at", &crate::util::today())?;
+        m.set("claimed_at", &crate::util::now_rfc3339())?;
         m.set("claimed_by", &crate::util::yaml_scalar(actor))?;
         Ok(true)
     })
