@@ -1,0 +1,70 @@
+{
+  "version": 2,
+  "change": "readme-positioning",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先讓測試紅：apps/desktop/src/__tests__/aboutPage.test.tsx 與 apps/desktop/src/__tests__/App.test.tsx 裡，關於頁品牌卡產品描述的斷言改為新標語「讓 AI 寫的每個變更，都對得上規格、查得到證據」。驗證：`npm test -w apps/desktop -- aboutPage App` 這兩個斷言失敗，失敗訊息顯示畫面仍是舊標語",
+      "files": [
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/aboutPage.test.tsx"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 讓測試綠：apps/desktop/src/i18n/messages.ts 的 `about.tagline` 繁中改為「讓 AI 寫的每個變更，都對得上規格、查得到證據」、英文改為「Every AI-built change, checked against its spec」，關於頁品牌卡的產品描述隨 UI 語言顯示新標語。驗證：同一指令兩支測試通過；`grep -rn -e \"一套 SDD Engine\" -e \"One SDD Engine\" apps packages README.md README.zh-TW.md docs` 沒有命中",
+      "files": [
+        "README.md",
+        "README.zh-TW.md",
+        "apps/desktop/src/i18n/messages.ts"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 docs/getting-started.zh-TW.md 與 docs/getting-started.md 的本地產物說明拿掉「沿用 OpenSpec 的目錄結構」（英文版的 OpenSpec folder layout），保留目錄樹、純文字、Git diff 與兩項擴充的說明（需求「使用者文件載明本地產物的純文字可攜性」）。驗證：`grep -n \"OpenSpec\" docs/getting-started.md docs/getting-started.zh-TW.md` 沒有命中，且兩版該段落一一對應",
+      "files": [
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M5EPDVFR8RZZH651WTE20CEF",
+      "taskDesc": "1.1 先讓測試紅：apps/desktop/src/__tests__/aboutPage.test.tsx 與 apps/desktop/src/__tests__/App.test.tsx 裡，關於頁品牌卡產品描述的斷言改為新標語「讓 AI 寫的每個變更，都對得上規格、查得到證據」。驗證：`npm test -w apps/desktop -- aboutPage App` 這兩個斷言失敗，失敗訊息顯示畫面仍是舊標語",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "af904b809329a5ef4b691aa84973d15973349a4d",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/aboutPage.test.tsx"
+      ],
+      "recordedAt": "2026-10-21T14:26:47Z"
+    },
+    {
+      "taskId": "tsk_01M5EPDVFRYMSV2SSZGJ7B5PMB",
+      "taskDesc": "1.2 讓測試綠：apps/desktop/src/i18n/messages.ts 的 `about.tagline` 繁中改為「讓 AI 寫的每個變更，都對得上規格、查得到證據」、英文改為「Every AI-built change, checked against its spec」，關於頁品牌卡的產品描述隨 UI 語言顯示新標語。驗證：同一指令兩支測試通過；`grep -rn -e \"一套 SDD Engine\" -e \"One SDD Engine\" apps packages README.md README.zh-TW.md docs` 沒有命中",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "af904b809329a5ef4b691aa84973d15973349a4d",
+      "touchedFiles": [
+        "README.md",
+        "README.zh-TW.md",
+        "apps/desktop/src/i18n/messages.ts"
+      ],
+      "recordedAt": "2026-10-21T14:29:24Z"
+    },
+    {
+      "taskId": "tsk_01M5EPDVFRXFVT8YQYYAVWDNNC",
+      "taskDesc": "3.1 docs/getting-started.zh-TW.md 與 docs/getting-started.md 的本地產物說明拿掉「沿用 OpenSpec 的目錄結構」（英文版的 OpenSpec folder layout），保留目錄樹、純文字、Git diff 與兩項擴充的說明（需求「使用者文件載明本地產物的純文字可攜性」）。驗證：`grep -n \"OpenSpec\" docs/getting-started.md docs/getting-started.zh-TW.md` 沒有命中，且兩版該段落一一對應",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "af904b809329a5ef4b691aa84973d15973349a4d",
+      "touchedFiles": [
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md"
+      ],
+      "recordedAt": "2026-10-21T14:30:08Z"
+    }
+  ]
+}

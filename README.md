@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <b>One SDD Engine for Local Repo and Remote Store</b>
+  <b>Every AI-built change, checked against its spec</b>
 </p>
 
 <p align="center">
@@ -20,12 +20,12 @@
   <a href="README.zh-TW.md">繁體中文</a> · <b>English</b>
 </p>
 
-Speclink is a Spec-Driven Development (SDD) engine and tool platform written in Rust. You write down what a change must do before you build it. Then you and your AI agent work from that spec until the change is done. PMs, POs, engineers, and AI agents use one shared set of terms: change, artifact, task, verify, and archive.
+Speclink is a Spec-Driven Development (SDD) engine written in Rust. It makes AI-built changes checkable. Each change starts with a small spec that says what the change must do. Then an AI agent builds it. Before archive, two quality stations, review and verify, check the work and record the evidence. The specs are plain text in your repo.
 
-Speclink has two deployment paths:
+Speclink has two deployment paths. One person needs only Local Repo. A team that wants shared specs connects a Remote Store.
 
 - **Local Repo**: Specs live in the `openspec/` folder of your repo. Git handles collaboration. No server is necessary.
-- **Remote Store**: Specs live in a shared Store. A Host handles authentication, revisions, transactions, events, and workflow decisions. The Host and Protocol are public contracts, so you can use the official server or write your own.
+- **Remote Store**: Specs live in a shared Store. A Host handles authentication, revisions, transactions, events, and workflow decisions. The Host and Protocol are public contracts, so you can use the official server or write your own. At this team layer, PMs and POs take part in discussions and proposals, and they share one set of terms with engineers and AI agents: change, artifact, task, verify, and archive.
 
 ![The Speclink desktop app: a board with the columns Discussions, Proposed, In progress, and Ready](docs/assets/screenshots/en/desktop-board.png)
 
@@ -77,7 +77,7 @@ For the full first round (propose, apply, check, archive), see [Getting started]
 
 ## <a id="features"></a>Features
 
-- **Plain text, OpenSpec-compatible**: Local mode uses the OpenSpec folder layout: `specs/<capability>/spec.md`, `changes/<name>/`, `changes/archive/`, and `config.yaml`. All content is Markdown and YAML. You can read and edit it without Speclink, and each change shows in the Git diff. Speclink adds only two items: `discussions/` (discussion records) and a `.openspec.yaml` file in each change (lifecycle metadata). This applies to Local mode only. In remote mode, the specs live in the Store, and your machine has only a read-only projection.
+- **Plain text**: In Local mode, the files live under `openspec/` in your repo: `specs/<capability>/spec.md`, `changes/<name>/`, `changes/archive/`, and `config.yaml`. All content is Markdown and YAML. You can read and edit it without Speclink, and each change shows in the Git diff. Speclink adds only two items: `discussions/` (discussion records) and a `.openspec.yaml` file in each change (lifecycle metadata). This applies to Local mode only. In remote mode, the specs live in the Store, and your machine has only a read-only projection.
 - **Skills for AI agents**: `speclink init` writes skill files for Claude Code, Codex, and GitHub Copilot. Each stage, from discussion to archive, has a `/speclink-*` command (`$speclink-*` in Codex).
 - **Desktop board**: Each change is a card. You can see its stage, its task progress, and the spec changes it makes.
 - **Quality stations**: `review` checks code craft. `verify` checks that the delivery matches the specs. Both stations are optional.

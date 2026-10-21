@@ -62,7 +62,7 @@ describe("AboutPage", () => {
     expect(within(card).getAllByRole("img", { name: "Speclink" })[0].className).toContain("h-10");
     expect(within(card).getByText("0.8.0 · 引擎 v1.44.0 · macOS arm64")).toBeTruthy();
     expect(within(card).getByText("已是最新")).toBeTruthy();
-    expect(within(card).getByText("一套 SDD Engine，支援 Local Repo 與 Remote Store")).toBeTruthy();
+    expect(within(card).getByText("讓 AI 寫的每個變更，都對得上規格、查得到證據")).toBeTruthy();
     expect(card.querySelector("[role=img] svg")).toBeNull();
   });
 

@@ -2828,7 +2828,7 @@ describe("macOS 原生選單接線（desktop-app「macOS 原生選單」）", ()
     expect(screen.getByRole("heading", { level: 2, name: "關於 Speclink" })).toBeTruthy();
     const brand = screen.getByTestId("about-brand");
     expect(await within(brand).findByText("0.8.0 · 引擎 v1.44.0 · macOS arm64")).toBeTruthy();
-    expect(within(brand).getByText("一套 SDD Engine，支援 Local Repo 與 Remote Store")).toBeTruthy();
+    expect(within(brand).getByText("讓 AI 寫的每個變更，都對得上規格、查得到證據")).toBeTruthy();
     expect(loadAppInfo).toHaveBeenCalledTimes(1);
   });
 

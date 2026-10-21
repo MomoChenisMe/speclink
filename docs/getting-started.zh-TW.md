@@ -99,7 +99,7 @@ Generated files for: claude, codex
 
 它不會改你的 `CLAUDE.md`、`AGENTS.md` 或 `.github/copilot-instructions.md`。Agent 靠技能檔自己的說明判斷什麼時候用哪個技能。
 
-`openspec/` 沿用 OpenSpec 的目錄結構：
+`openspec/` 的目錄結構：
 
 ```text
 openspec/
@@ -112,7 +112,7 @@ openspec/
 
 全部是純 Markdown 與 YAML。不裝 Speclink 也讀得懂、改得動，每次變動都看得到 Git diff。Speclink 只多兩樣東西：`discussions/`，以及每個變更目錄裡的 `.openspec.yaml`（記錄開工時間、來源討論等生命週期資料）。
 
-這個相容性只適用 Local 模式。接上遠端 server 之後，正式規格在 Store 裡，本機只有唯讀的投影（`.speclink/context/`）。
+這一點只適用 Local 模式。接上遠端 server 之後，正式規格在 Store 裡，本機只有唯讀的投影（`.speclink/context/`）。
 
 確認起點是空的：
 
