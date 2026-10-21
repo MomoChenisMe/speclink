@@ -103,6 +103,13 @@
         "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
         "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
       ]
+    },
+    {
+      "task_id": "18",
+      "task_desc": "6.3 受影響面測試與文件守門全部通過。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-desktop-core`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 皆通過，且 `speclink validate no-spec-change-schema` 通過",
+      "files": [
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx"
+      ]
     }
   ],
   "entries": [
@@ -259,6 +266,17 @@
         "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
       ],
       "recordedAt": "2026-10-21T13:21:35Z"
+    },
+    {
+      "taskId": "tsk_01M5EQ6ZZGJCYEP78H6AF4NV8A",
+      "taskDesc": "6.3 受影響面測試與文件守門全部通過。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-desktop-core`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 皆通過，且 `speclink validate no-spec-change-schema` 通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "5f26e8062ca0d5789801be396eac75937cc34f9f",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx"
+      ],
+      "recordedAt": "2026-10-21T14:23:43Z"
     }
   ]
 }

@@ -1228,8 +1228,9 @@ mod tests {
 
     #[test]
     fn remote_snapshot_resolves_no_spec_change_by_the_embedded_definition() {
-        // spec Example「remote 解析結果表」no-spec-change 列：本機 user 層有同名時
-        // 也以內嵌定義解析，artifact 圖為 proposal、design、tasks。
+        // spec Example「remote 解析結果表」no-spec-change 列：以內嵌定義解析，artifact 圖為
+        // proposal、design、tasks。「本機 user 層同名不參與」同 spec-driven 列由結構保證
+        //（remote 入口不收、也不推導任何 user 層目錄）；此處以引擎層對照證明「若參與，結果會不同」。
         let fx = FixtureRoot::new("remote-schema-nsc");
         fx.write(
             "userdir/schemas/no-spec-change/schema.yaml",
@@ -1250,7 +1251,7 @@ mod tests {
 
     #[test]
     fn remote_snapshot_reports_non_builtin_as_unknown() {
-        // spec Example「remote 解析結果表」row 3：非內建不解析——schemaKnown
+        // spec Example「remote 解析結果表」my-flow 列：非內建不解析——schemaKnown
         // false、產出規則分節不呈現猜測的固定鍵。
         let s = read_workflow_settings_from_text(Some("schema: my-flow\n"));
         assert_eq!(s.schema_artifacts, Vec::<String>::new());

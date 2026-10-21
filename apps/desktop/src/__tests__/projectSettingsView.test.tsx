@@ -1087,6 +1087,18 @@ describe("產出流程頁（spec「產出流程頁」）", () => {
     path: null,
     error: null,
   };
+  const NO_SPEC_CHANGE_ENTRY: SchemaEntry = {
+    name: "no-spec-change",
+    source: "package",
+    artifactIds: ["proposal", "design", "tasks"],
+    artifacts: [
+      { id: "proposal", description: "提案文件", instruction: "寫提案", template: "# Proposal template" },
+      { id: "design", description: "設計文件", instruction: "寫設計", template: "# Design template" },
+      { id: "tasks", description: "任務清單", instruction: "寫任務", template: "# Tasks template" },
+    ],
+    path: null,
+    error: null,
+  };
   const CUSTOM_ENTRY: SchemaEntry = {
     name: "my-flow",
     source: "project",
@@ -1531,7 +1543,7 @@ describe("產出流程頁（spec「產出流程頁」）", () => {
       schemaArtifacts: [],
       rules: {},
     } as Partial<SettingsSnapshot["workflow"]>);
-    const ws = schemaSettings(snap, [BUILTIN_ENTRY], { kind: "remote" });
+    const ws = schemaSettings(snap, [BUILTIN_ENTRY, NO_SPEC_CHANGE_ENTRY], { kind: "remote" });
     render(<Harness settings={ws} />);
     await screen.findByTestId("context-page");
     // 不猜固定鍵：產出規則頁無任何分節內容。
@@ -1555,6 +1567,7 @@ describe("產出流程頁（spec「產出流程頁」）", () => {
     ).toEqual([
       ["their-flow", true],
       ["spec-driven", false],
+      ["no-spec-change", false],
     ]);
   });
 });

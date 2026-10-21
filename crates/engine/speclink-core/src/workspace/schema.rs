@@ -61,7 +61,7 @@ const A_DESIGN_TMPL: &str = include_str!("../../assets/schema/spec-driven/design
 const A_TASKS_TMPL: &str = include_str!("../../assets/schema/spec-driven/tasks.template.md");
 /// The single canonical definition of the built-in `spec-driven` schema: the engine
 /// parses it at load, and `schema fork spec-driven` ships it byte for byte.
-pub const FORK_SCHEMA_YAML: &str =
+pub const SPEC_DRIVEN_SCHEMA_YAML: &str =
     include_str!("../../assets/schema/spec-driven/fork.schema.yaml");
 const NSC_PROPOSAL_TMPL: &str =
     include_str!("../../assets/schema/no-spec-change/proposal.template.md");
@@ -92,41 +92,56 @@ fn no_spec_change_template(file_name: &str) -> Option<&'static str> {
     }
 }
 
-/// One built-in schema: its name, canonical YAML and embedded template lookup.
+/// One built-in schema: its name, canonical YAML, embedded template lookup and the
+/// schema parsed from them.
 struct Builtin {
     name: &'static str,
     yaml: &'static str,
     template: fn(&str) -> Option<&'static str>,
+    parsed: OnceLock<Schema>,
+}
+
+impl Builtin {
+    /// Parsed once per process through the same path a custom schema takes; the
+    /// canonical documents are compiled in, so a parse or validation failure is a
+    /// build-time defect, not user input.
+    fn schema(&self) -> &Schema {
+        self.parsed.get_or_init(|| {
+            parse_schema(self.yaml, self.name, "package", &|f| (self.template)(f).map(str::to_string))
+                .unwrap_or_else(|e| panic!("built-in {} schema parses and validates: {e}", self.name))
+        })
+    }
 }
 
 /// The built-in schemas in listing order. Every built-in lookup goes through this table,
 /// so no resolution path can know a built-in the others miss.
-const BUILTINS: [Builtin; 2] = [
-    Builtin { name: "spec-driven", yaml: FORK_SCHEMA_YAML, template: spec_driven_template },
+static BUILTINS: [Builtin; 2] = [
+    Builtin {
+        name: "spec-driven",
+        yaml: SPEC_DRIVEN_SCHEMA_YAML,
+        template: spec_driven_template,
+        parsed: OnceLock::new(),
+    },
     Builtin {
         name: "no-spec-change",
         yaml: NO_SPEC_CHANGE_SCHEMA_YAML,
         template: no_spec_change_template,
+        parsed: OnceLock::new(),
     },
 ];
+
+fn builtin_entry(name: &str) -> Option<&'static Builtin> {
+    BUILTINS.iter().find(|b| b.name == name)
+}
 
 /// Built-in schema names in listing order.
 pub fn builtin_names() -> impl Iterator<Item = &'static str> {
     BUILTINS.iter().map(|b| b.name)
 }
 
-/// A built-in schema, parsed from its canonical YAML through the same path a custom
-/// schema takes. Parsed once per process; the canonical documents are compiled in, so a
-/// parse or validation failure is a build-time defect, not user input.
+/// A built-in schema by name.
 pub fn builtin(name: &str) -> Option<Schema> {
-    static PARSED: [OnceLock<Schema>; BUILTINS.len()] = [const { OnceLock::new() }; BUILTINS.len()];
-    let i = BUILTINS.iter().position(|b| b.name == name)?;
-    let b = &BUILTINS[i];
-    let schema = PARSED[i].get_or_init(|| {
-        parse_schema(b.yaml, b.name, "package", &|f| (b.template)(f).map(str::to_string))
-            .unwrap_or_else(|e| panic!("built-in {} schema parses and validates: {e}", b.name))
-    });
-    Some(schema.clone())
+    builtin_entry(name).map(|b| b.schema().clone())
 }
 
 /// The built-in `spec-driven` schema.
@@ -474,12 +489,9 @@ pub fn fork(
     match &first.path {
         None => {
             // Built-in: ship the canonical YAML verbatim + the template each artifact declares.
-            let yaml = BUILTINS.iter().find(|b| b.name == source).map(|b| b.yaml);
-            let (Some(yaml), Some(schema)) = (yaml, builtin(source)) else {
-                return Err(not_found_msg(source));
-            };
-            write("schema.yaml", yaml)?;
-            for art in &schema.artifacts {
+            let b = builtin_entry(source).expect("sources lists a built-in only for a registered name");
+            write("schema.yaml", b.yaml)?;
+            for art in &b.schema().artifacts {
                 let body = art.template.as_deref().unwrap_or_default();
                 write(&format!("templates/{}", art.template_name), body)?;
             }
@@ -588,7 +600,7 @@ mod tests {
     use super::{
         builtin, builtin_names, builtin_template, is_valid_schema_name, list_all, parse_schema,
         resolve_with, sources, spec_driven, Schema, SchemaYaml, A_DESIGN_TMPL, A_PROPOSAL_TMPL,
-        A_SPECS_TMPL, A_TASKS_TMPL, BUILTINS, FORK_SCHEMA_YAML,
+        A_SPECS_TMPL, A_TASKS_TMPL, BUILTINS, NSC_PROPOSAL_TMPL, SPEC_DRIVEN_SCHEMA_YAML,
     };
     use crate::workspace::Workspace;
 
@@ -772,13 +784,13 @@ artifacts:
         // `[P]` 語意已移除——翻譯保留規則點名的是唯一承載語意的 `[M]`。起草指引只有
         // 正典 YAML 一份，fork 出去的專案因此不會落差。
         assert!(
-            FORK_SCHEMA_YAML.contains("`[M]` markers"),
+            SPEC_DRIVEN_SCHEMA_YAML.contains("`[M]` markers"),
             "fork.schema.yaml 須點名 `[M]` markers"
         );
         // 斷言面只釘翻譯保留規則那一句的舊 token——全文否定「[P]」會把
         // 日後任何合法提及(如遷移說明)一併打死。
         assert!(
-            !FORK_SCHEMA_YAML.contains("`[P]` markers"),
+            !SPEC_DRIVEN_SCHEMA_YAML.contains("`[P]` markers"),
             "fork.schema.yaml 不得再點名 `[P]` markers"
         );
     }
@@ -821,6 +833,7 @@ artifacts:
         assert_eq!(template("design").as_deref(), Some(A_DESIGN_TMPL));
         assert_eq!(template("tasks").as_deref(), Some(A_TASKS_TMPL));
         let proposal = template("proposal").expect("proposal 帶 template");
+        assert_eq!(proposal, NSC_PROPOSAL_TMPL, "proposal template 與內嵌資產逐字相同");
         assert!(!proposal.contains("## Capabilities"), "proposal template 不得含 Capabilities");
         for section in ["## Why", "## What Changes", "## Non-Goals", "## Impact"] {
             assert!(proposal.contains(section), "proposal template 須含 {section}");
@@ -890,13 +903,13 @@ artifacts:
         // analyzer 只要編號（D1／Decision 1／決策一）出現就算引用；指引不講，
         // 起草的人會照抄整串標題，design 改一個字 tasks 就跟著紅。
         assert!(
-            FORK_SCHEMA_YAML
+            SPEC_DRIVEN_SCHEMA_YAML
                 .contains("either its text or just its ordinal (`D1`, `Decision 1`, `決策一`)"),
             "fork.schema.yaml 的 design 交叉引用指引須說明只寫編號也算引用"
         );
         // 同段第一句（需求名以子字串出現）不動。
         assert!(
-            FORK_SCHEMA_YAML.contains(
+            SPEC_DRIVEN_SCHEMA_YAML.contains(
                 "Every `### Requirement:` name from specs MUST appear as a case-insensitive substring in at least one task description"
             ),
             "需求名那一句逐字不變"

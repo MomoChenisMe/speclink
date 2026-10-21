@@ -1088,6 +1088,8 @@ fn verify_skill_checks_behavior_for_no_spec_change() {
             "the canonical specs the proposal's Why lists",
             "Behavior change in a no-spec-change change: <capability> / <requirement>",
             "list the canonical specs you compared",
+            // 檢查段由子代理執行：簡報要帶 schemaName，它才知道要不要做行為檢查。
+            "It also carries step 2's `schemaName`",
             // spec-driven 變更維持現行流程。
             "**Requirement Implementation Mapping**",
             "**Scenario Coverage**",

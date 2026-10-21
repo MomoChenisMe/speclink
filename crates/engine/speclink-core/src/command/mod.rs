@@ -775,7 +775,7 @@ pub fn execute(
             run_instructions(store, ws, ctx.user_config_dir.as_deref(), &ctx.env, artifact.as_deref(), change.as_deref(), schema.as_deref())
         }
         Command::Validate { item, all, changes, specs, strict } => {
-            run_validate(store, ws, ctx.user_config_dir.as_deref(), item.as_deref(), all, changes, specs, strict)
+            run_validate(store, ctx, item.as_deref(), all, changes, specs, strict)
         }
         Command::Analyze { change } => run_analyze(store, change.as_deref()),
         Command::Trace { capability } => run_trace(store, &capability),
@@ -1305,11 +1305,9 @@ fn run_instructions(
     Ok(CommandOutcome::Instructions(InstructionsOutcome::Artifact(payload)))
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_validate(
     store: &dyn Store,
-    ws: Option<&Workspace>,
-    user_dir: Option<&std::path::Path>,
+    ctx: &ExecutionContext,
     item: Option<&str>,
     all: bool,
     changes_flag: bool,
@@ -1353,7 +1351,11 @@ fn run_validate(
     let mut results: Vec<crate::validate::ValidationResult> = changes
         .iter()
         .map(|c| {
-            let schema = crate::validate::change_schema(ws, user_dir, c);
+            let schema = crate::validate::change_schema(
+                ctx.workspace.as_ref(),
+                ctx.user_config_dir.as_deref(),
+                c,
+            );
             crate::validate::validate_change(store, c, &schema, strict)
         })
         .collect();
