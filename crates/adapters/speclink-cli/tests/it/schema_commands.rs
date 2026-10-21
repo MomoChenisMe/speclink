@@ -56,12 +56,12 @@ fn stderr_of(out: &Output) -> String {
 
 /// The canonical built-in document, as a parsed mapping.
 fn canonical() -> serde_yaml::Value {
-    serde_yaml::from_str(speclink_core::schema::FORK_SCHEMA_YAML).expect("canonical yaml parses")
+    serde_yaml::from_str(speclink_core::schema::SPEC_DRIVEN_SCHEMA_YAML).expect("canonical yaml parses")
 }
 
 /// Each built-in and its canonical document.
 const BUILTINS: [(&str, &str); 2] = [
-    ("spec-driven", speclink_core::schema::FORK_SCHEMA_YAML),
+    ("spec-driven", speclink_core::schema::SPEC_DRIVEN_SCHEMA_YAML),
     ("no-spec-change", speclink_core::schema::NO_SPEC_CHANGE_SCHEMA_YAML),
 ];
 
