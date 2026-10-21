@@ -31,5 +31,5 @@
 ## 6. 用詞與收尾
 
 - [x] 6.1 openspec/LANGUAGE.md 新增「不改規格」詞條：definition 為內建 schema `no-spec-change`，給不改任何正式規格承諾行為的變更、判準是「會不會改到正式規格」；avoid 列 quick-fix 與「小修正 schema」（`skip-specs` 不列入：它是 `speclink archive --skip-specs` 的真實旗標，docs 有合法存量）；why 寫明 2026-10-21 討論 positioning-and-process-cost 定案與修 bug 不等於不改規格的理由。驗證：`speclink language show` 列出該詞條，`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 的詞彙守門通過（新 avoid 詞在 README 與 docs 沒有存量命中） <!-- speclink-task:tsk_01M5EQ6ZZGQN2J0QKYXA5ZQN56 -->
-- [ ] [M] 6.2 在桌面 app（本機模式）打開本 repo 的專案設定 › 產出流程頁，確認清單列出 spec-driven 與 no-spec-change 兩個內建、no-spec-change 的 artifact 圖為 proposal、design、tasks，切換下拉可選兩者 <!-- speclink-task:tsk_01M5EQ6ZZG8VECCYNB0VGSRSG9 -->
+- [x] [M] 6.2 在桌面 app（本機模式）打開本 repo 的專案設定 › 產出流程頁，確認清單列出 spec-driven 與 no-spec-change 兩個內建、no-spec-change 的 artifact 圖為 proposal、design、tasks，切換下拉可選兩者 <!-- speclink-task:tsk_01M5EQ6ZZG8VECCYNB0VGSRSG9 -->
 - [x] 6.3 受影響面測試與文件守門全部通過。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-desktop-core`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 皆通過，且 `speclink validate no-spec-change-schema` 通過 <!-- speclink-task:tsk_01M5EQ6ZZGJCYEP78H6AF4NV8A -->
