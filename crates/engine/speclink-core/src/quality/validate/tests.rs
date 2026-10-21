@@ -570,3 +570,33 @@ fn the_gate_reports_regardless_of_strict() {
         assert_eq!(r.errors.len(), 1, "strict={strict} 一樣報: {:?}", r.errors);
     }
 }
+
+// --- 缺 delta 警告依變更的 schema 決定（spec workflow-schemas「no-spec-change 內建
+//     schema 的組成」；design D3）---
+
+const MISSING_DELTA: &str = "No delta specs found";
+
+fn result_without_deltas(schema: &str) -> ValidationResult {
+    let store = TestStore::with_meta("demo", &format!("schema: {schema}\ncreated: 2026-10-21\n"));
+    let change = crate::model::find_change(&store, "demo").expect("change resolves");
+    validate_change(&store, &change, &change_schema(None, None, &change), false)
+}
+
+#[test]
+fn a_no_spec_change_change_without_deltas_has_no_missing_delta_warning() {
+    let r = result_without_deltas("no-spec-change");
+    assert!(r.valid, "結構檢查有效: {:?}", r.errors);
+    assert!(!r.warnings.iter().any(|w| w == MISSING_DELTA), "不得警告缺 delta: {:?}", r.warnings);
+}
+
+#[test]
+fn a_spec_driven_change_without_deltas_keeps_the_warning() {
+    let r = result_without_deltas("spec-driven");
+    assert_eq!(r.warnings, [MISSING_DELTA]);
+}
+
+#[test]
+fn an_unresolvable_schema_keeps_the_missing_delta_warning() {
+    let r = result_without_deltas("ghost-flow");
+    assert_eq!(r.warnings, [MISSING_DELTA]);
+}

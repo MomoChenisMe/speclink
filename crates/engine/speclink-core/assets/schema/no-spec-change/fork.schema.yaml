@@ -1,0 +1,131 @@
+name: no-spec-change
+version: 1
+description: No-spec-change workflow - proposal → tasks (design optional), for changes that alter no promised behavior
+artifacts:
+- id: proposal
+  generates: proposal.md
+  description: Initial proposal document outlining the change and why it alters no promised behavior
+  template: proposal.md
+  instruction: |
+    Create the proposal document that establishes WHY this change is needed and why it
+    alters no behavior the canonical specs promise.
+
+    This workflow is for changes that alter no promised behavior: refactors, wording fixes,
+    build or platform adjustments. It has no specs artifact, so the change carries no delta
+    spec. If the change adds, modifies or removes behavior a canonical spec promises, it
+    belongs in spec-driven instead. Most bug fixes belong there too: a delta pins the
+    corrected behavior.
+
+    Sections:
+    - **Why**: 1-2 sentences on the problem or opportunity. Then say why this change
+      alters no behavior the canonical specs promise, and list the canonical specs you checked
+      (`openspec/specs/<capability>/spec.md`). The verify station starts its behavior check
+      from this list.
+    - **What Changes**: Bullet list of changes. Be specific about what moves, what is renamed, and what is removed.
+    - **Non-Goals** (optional): Scope exclusions and rejected approaches. If design.md will be created, Non-Goals belong there (in Goals/Non-Goals section) — leave this section empty or omit it. If design.md will be skipped, write Non-Goals here so rejected approaches and scope exclusions are recorded in a persistent artifact.
+    - **Impact**: Affected code, APIs, dependencies, or systems.
+
+    There is no Capabilities section: no requirement changes, so no spec file is created.
+
+    Keep it concise (1-2 pages). Focus on the "why" not the "how" -
+    implementation details belong in design.md.
+
+    This is the foundation - design and tasks build on this.
+  requires: []
+- id: design
+  generates: design.md
+  description: Technical design document with implementation details
+  template: design.md
+  instruction: |
+    Create the design document that explains HOW to implement the change.
+
+    When to include design.md (create only if any apply):
+    - Cross-cutting change (multiple services/modules) or new architectural pattern
+    - New external dependency or significant data model changes
+    - Security, performance, or migration complexity
+    - Ambiguity that benefits from technical decisions before coding
+
+    Sections:
+    - **Context**: Background, current state, constraints, stakeholders
+    - **Goals / Non-Goals**: What this design achieves and explicitly excludes
+    - **Decisions**: Key technical choices with rationale (why X over Y?). Include alternatives considered for each decision.
+    - **Implementation Contract**: For any change that creates or modifies behavior beyond a trivial artifact-only edit, this section is REQUIRED. The contract describes the durable handoff to apply: name the observable behavior, interface or data shape, command output, error or failure mode, acceptance criteria, and explicit scope boundaries (what is in scope, what is out). The contract MUST NOT rely on source line numbers, and MUST NOT use file-path-only references as the sole way to identify required work — file paths are supporting context for behavior, never a substitute for it. Skip this section only when the change is purely artifact / documentation cleanup with no runtime, build, or tooling effect.
+    - **Risks / Trade-offs**: Known limitations, things that could go wrong. Format: [Risk] → Mitigation
+    - **Migration Plan**: Steps to deploy, rollback strategy (if applicable)
+    - **Open Questions**: Outstanding decisions or unknowns to resolve
+
+    Focus on architecture and approach, not line-by-line implementation.
+    Reference the proposal for motivation and specs for requirements.
+
+    Good design docs explain the "why" behind technical decisions.
+
+    Note: The analyzer cross-checks `###` decision headings against tasks.md.
+    Use descriptive heading text that will naturally appear in task descriptions.
+  requires:
+  - proposal
+- id: tasks
+  generates: tasks.md
+  description: Implementation checklist with trackable tasks
+  template: tasks.md
+  instruction: |
+    Create the task list that breaks down the implementation work.
+
+    **IMPORTANT: Follow the template below exactly.** The apply phase parses
+    checkbox format to track progress. Tasks not using `- [ ]` won't be tracked.
+
+    Guidelines:
+    - Group related tasks under ## numbered headings
+    - Each task MUST be a checkbox: `- [ ] X.Y Task description`
+    - Use the instructions JSON `locale` for human-readable task group headings
+      and task descriptions.
+    - Preserve machine-readable syntax and technical tokens exactly: markdown
+      headings, checkbox markers, task numbers, `[M]` markers, file paths,
+      symbol names, commands, API names, and code identifiers MUST NOT be
+      translated or localized.
+    - Tasks should be small enough to complete in one session
+    - Order tasks by dependency (what must be done first?)
+    - **Behavior + verification (REQUIRED for every non-trivial task):**
+      - Each task MUST state the behavior or contract being delivered — what is
+        observably true when the task is complete (user-visible behavior, generated
+        artifact contract, CLI/IPC output, or tool behavior). "Edit file X" is
+        NOT a behavior; it is supporting context for locating the work.
+      - Each task MUST also state how completion is verified — a test name, a
+        CLI invocation, an analyzer check, a manual assertion, or a content
+        review on a generated artifact. A task without a verification target
+        is not a valid task.
+      - File paths MAY appear in a task description, but only as locator
+        context. The task SHALL still state the behavior or contract on top
+        of any file path it mentions.
+      - File-edit-only tasks (e.g. "Update file X to handle Y") are invalid
+        unless they also describe the resulting behavior and how it is
+        verified.
+    - **Unchanged behavior (REQUIRED):** The last task MUST confirm with the existing tests
+      that the behavior of the canonical specs listed in the proposal's Why has not
+      changed, and name the test commands it runs. The change has no delta spec, so tasks
+      do not cite requirement names.
+    - Cross-referencing (analyzer checks this):
+      - If design.md exists, every `###` heading from design.md should be referenced in at least one task description — either its text or just its ordinal (`D1`, `Decision 1`, `決策一`) counts
+
+    Example:
+    ```
+    ## 1. Refactor
+
+    - [ ] 1.1 Move the export helpers into their own module
+    - [ ] 1.2 Rename the internal buffer type
+
+    ## 2. Check
+
+    - [ ] 2.1 Run the existing export tests to confirm the export behavior is unchanged
+    ```
+
+    Reference the proposal for what changes. If design.md exists, reference it for how to build it.
+    Each task should be verifiable - you know when it's done.
+  requires:
+  - proposal
+apply:
+  requires:
+  - tasks
+  tracks: tasks.md
+  instruction: |
+    Read context files, work through pending tasks, mark complete as you go.
+    Pause if you hit blockers or need clarification.

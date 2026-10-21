@@ -774,7 +774,7 @@ fn show_prints_the_review_line_after_rules() {
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     assert_eq!(
         stdout_of(&out),
-        "Workflow config: openspec/config.yaml\n\n  locale       tw\n  spec_locale  unset (specs in English)\n  tdd          on\n  audit        unset (off)\n  worktree     unset (off)\n  context      2 lines\n  rules        design 2, tasks 1\n  review       none\n"
+        "Workflow config: openspec/config.yaml\n\n  schema       spec-driven\n  locale       tw\n  spec_locale  unset (specs in English)\n  tdd          on\n  audit        unset (off)\n  worktree     unset (off)\n  context      2 lines\n  rules        design 2, tasks 1\n  review       none\n"
     );
     // Spec Example review 行的值.
     for (tag, review, value) in [
@@ -792,6 +792,33 @@ fn show_prints_the_review_line_after_rules() {
         let lines: Vec<&str> = text.lines().collect();
         assert_eq!(lines.last(), Some(&format!("  review       {value}").as_str()), "{text}");
         assert!(lines[lines.len() - 2].starts_with("  rules "), "review follows rules: {text}");
+    }
+}
+
+#[test]
+fn show_prints_the_project_default_schema() {
+    // Spec scenario 顯示專案預設 schema ＋ Example schema 的值：人眼輸出在 locale 行之前
+    // 恰一行 schema、標籤欄寬與 locale 行相同；--json 的 schema 未設定為 null。
+    for (tag, schema_line, human, json) in [
+        ("unset", "", "unset (spec-driven)", serde_json::Value::Null),
+        ("builtin", "schema: spec-driven\n", "spec-driven", serde_json::json!("spec-driven")),
+        ("custom", "schema: my-flow\n", "my-flow", serde_json::json!("my-flow")),
+    ] {
+        let p = TempProject::new(&format!("show-schema-{tag}"), &format!("{schema_line}locale: tw\n"));
+        let out = p.run(&["workflow-config", "show", "--no-color"]);
+        assert!(out.status.success(), "{tag}: stderr: {}", stderr_of(&out));
+        let text = stdout_of(&out);
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines[2], format!("  schema       {human}"), "{tag}: {text}");
+        assert_eq!(lines[3], "  locale       tw", "{tag}: schema precedes locale: {text}");
+        assert_eq!(
+            lines.iter().filter(|l| l.trim_start().starts_with("schema ")).count(),
+            1,
+            "{tag}: exactly one schema line: {text}"
+        );
+
+        let payload = json_of(&p.run(&["workflow-config", "show", "--json"]));
+        assert_eq!(payload["schema"], json, "{tag}: {payload}");
     }
 }
 

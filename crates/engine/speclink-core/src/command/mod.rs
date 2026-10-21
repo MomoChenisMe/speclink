@@ -775,7 +775,7 @@ pub fn execute(
             run_instructions(store, ws, ctx.user_config_dir.as_deref(), &ctx.env, artifact.as_deref(), change.as_deref(), schema.as_deref())
         }
         Command::Validate { item, all, changes, specs, strict } => {
-            run_validate(store, item.as_deref(), all, changes, specs, strict)
+            run_validate(store, ws, ctx.user_config_dir.as_deref(), item.as_deref(), all, changes, specs, strict)
         }
         Command::Analyze { change } => run_analyze(store, change.as_deref()),
         Command::Trace { capability } => run_trace(store, &capability),
@@ -1305,8 +1305,11 @@ fn run_instructions(
     Ok(CommandOutcome::Instructions(InstructionsOutcome::Artifact(payload)))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_validate(
     store: &dyn Store,
+    ws: Option<&Workspace>,
+    user_dir: Option<&std::path::Path>,
     item: Option<&str>,
     all: bool,
     changes_flag: bool,
@@ -1345,12 +1348,14 @@ fn run_validate(
     };
     // Multi-change runs are ordered newest-modified first (frozen ordering).
     crate::listing::sort_changes(store, &mut changes, "modified");
-    // validate never resolves the change's schema (an unresolvable
-    // one still validates).
-    let schema = crate::schema::spec_driven();
+    // Each change validates against its own schema; an unresolvable one
+    // still validates (as spec-driven).
     let mut results: Vec<crate::validate::ValidationResult> = changes
         .iter()
-        .map(|c| crate::validate::validate_change(store, c, &schema, strict))
+        .map(|c| {
+            let schema = crate::validate::change_schema(ws, user_dir, c);
+            crate::validate::validate_change(store, c, &schema, strict)
+        })
         .collect();
     if targets.specs {
         results.extend(crate::validate::validate_specs(store, strict));

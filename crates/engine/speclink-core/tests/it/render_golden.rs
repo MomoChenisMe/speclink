@@ -1032,6 +1032,71 @@ fn verify_skill_keeps_fixes_on_the_main_thread() {
     }
 }
 
+// --- schema choice: propose picks it, verify checks a no-spec-change change ---
+
+/// Byte offset of `needle` in a generated skill, or a panic naming the skill.
+fn position(rel: &str, content: &str, needle: &str) -> usize {
+    content
+        .find(needle)
+        .unwrap_or_else(|| panic!("{rel}: missing {needle:?}"))
+}
+
+/// Spec propose-skill「依是否改到正式規格選擇 schema」: the choice comes after the
+/// spec scan and before the change exists, its four rules run in order, an
+/// undecidable case asks with two options, and the chosen schema reaches
+/// `new change`, the proposal and the summary.
+#[test]
+fn propose_skill_chooses_schema() {
+    for (rel, content) in skill_for_both_tools("propose-schema", "propose") {
+        let scan = position(&rel, &content, "**Scan existing specs for relevance**");
+        let choose = position(&rel, &content, "**Choose the schema**");
+        let create = position(&rel, &content, "**Create the change directory**");
+        assert!(scan < choose && choose < create, "{rel}: choose the schema between the scan and the create step");
+
+        let rules = [
+            "**The user named a schema**",
+            "**The project default is a custom schema**",
+            "**The requirement comes from a discussion**",
+            "**Otherwise**",
+        ];
+        let at: Vec<usize> = rules.iter().map(|r| position(&rel, &content, r)).collect();
+        assert!(at.windows(2).all(|w| w[0] < w[1]), "{rel}: the four rules run in order");
+        for needle in [
+            "`speclink workflow-config show --json`",
+            "A bug fix defaults to `spec-driven`",
+            "with two options",
+            "the recommended one first",
+            "speclink new change \"<name>\" --schema <chosen>",
+            "no Capabilities section",
+            "list the canonical specs you checked",
+            "「不改規格（no-spec-change）」",
+        ] {
+            assert!(content.contains(needle), "{rel}: missing {needle:?}");
+        }
+    }
+}
+
+/// Spec verify-skill「不改規格變更的行為檢查」: a no-spec-change change gets the
+/// behavior check in place of the delta-spec checks, starting from the specs the
+/// proposal lists; a promised behavior that moved is a WARNING, and a clean
+/// check lists the compared specs.
+#[test]
+fn verify_skill_checks_behavior_for_no_spec_change() {
+    for (rel, content) in skill_for_both_tools("verify-no-spec-change", "verify") {
+        for needle in [
+            "`schemaName` is `no-spec-change`",
+            "the canonical specs the proposal's Why lists",
+            "Behavior change in a no-spec-change change: <capability> / <requirement>",
+            "list the canonical specs you compared",
+            // spec-driven 變更維持現行流程。
+            "**Requirement Implementation Mapping**",
+            "**Scenario Coverage**",
+        ] {
+            assert!(content.contains(needle), "{rel}: missing {needle:?}");
+        }
+    }
+}
+
 // --- remote init: no instruction file is generated at all ---
 
 /// Spec Scenario「指令檔零受管區塊」in remote mode: the managed set is skills only,

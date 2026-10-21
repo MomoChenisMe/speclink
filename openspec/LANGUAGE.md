@@ -277,3 +277,9 @@
 - **definition**: repo 慣例的整套測試——本 repo 為 root `npm run test:all`，CI 守門跑同一組；對照詞「只跑受影響面的測試」（config-skill 與 openspec/config.yaml 的既有寫法）。英文維持 full test suite。
 - **avoid**: 全量
 - **why**: 「全量」不是台灣慣用詞。專案內它另有四種意思，依「修飾動作用『全部』、指一整套東西用『完整』」改寫：全部重新載入／查詢／收斂、全部任務計數、全部重新產生、完整投影。2026-10-15 討論「test-speed-and-wording」定案。
+
+### 不改規格
+
+- **definition**: 內建 schema `no-spec-change`，給不改任何正式規格承諾行為的變更（重構、用詞修正、平台小調整）：只有 proposal、design（選用）與 tasks，沒有 delta spec。判準只有一個——「這個變更會不會改到正式規格承諾的行為？」不會才選它；會就用 spec-driven。
+- **avoid**: quick-fix、小修正 schema
+- **why**: 名字講判準，不講大小或速度：修 bug 多半要寫 delta 把正確行為釘住（52 個修 bug 的變更有 51 個寫了 delta），所以修 bug 不等於不改規格，「小修正」「quick-fix」會讓人把修 bug 歸到這裡。`skip-specs` 不列入 avoid：它是 `speclink archive --skip-specs` 的真實旗標，docs 有合法存量。2026-10-21 討論「positioning-and-process-cost」定案。

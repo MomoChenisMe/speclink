@@ -162,6 +162,19 @@ if it really is new, ignore this warning.",
     msg
 }
 
+/// validate 用的變更 schema（project → user → 內建）。解析不到或壞檔時以
+/// spec-driven 代之：validate 不因 schema 問題拒絕，缺 delta 警告照舊。
+pub fn change_schema(
+    ws: Option<&crate::workspace::Workspace>,
+    user_dir: Option<&std::path::Path>,
+    change: &Change,
+) -> Schema {
+    match crate::schema::resolve_with(ws, user_dir, &change.meta.schema_name()) {
+        Some(Ok(schema)) => schema,
+        _ => crate::schema::spec_driven(),
+    }
+}
+
 /// 只含結構檢查的 change 驗證（design D1）：archive 家族的驗證前置專用。
 /// 那裡的前置後面緊接自己的合併守門與 `merge_refusal` 聚合文案；前置若也含守門，
 /// 違規會先以「Validation failed:」的形狀跳出來，等於改了凍結輸出。輸出與本
@@ -171,7 +184,7 @@ pub(crate) fn validate_change_structural(
     change: &Change,
     strict: bool,
 ) -> ValidationResult {
-    structural_pass(store, change, strict).result
+    structural_pass(store, change, true, strict).result
 }
 
 /// change 驗證的入口（design D1）：結構檢查的結果，加上與 archive 相同的合併
@@ -181,13 +194,18 @@ pub(crate) fn validate_change_structural(
 ///
 /// 每筆違規化為一條 error（design D2，組字見 `MergeViolation::validation_error`），
 /// 一律排在既有結構 error 之後，`valid` 仍為 `errors.is_empty()`，且不依附 `strict`。
+///
+/// `schema` 是變更自己的 schema（見 [`change_schema`]）：它沒有 specs artifact 時，
+/// 缺 delta 是預期狀態，不發「No delta specs found」。
 pub fn validate_change(
     store: &dyn Store,
     change: &Change,
-    _schema: &Schema,
+    schema: &Schema,
     strict: bool,
 ) -> ValidationResult {
-    let StructuralPass { mut result, deltas } = structural_pass(store, change, strict);
+    let expects_deltas = schema.artifact("specs").is_some();
+    let StructuralPass { mut result, deltas } =
+        structural_pass(store, change, expects_deltas, strict);
     for d in &deltas {
         let canonical = store.read_canonical_spec(&d.capability);
         for v in crate::archive::capability_violations(&d.capability, &d.text, canonical.as_deref())
@@ -233,7 +251,12 @@ struct StructuralPass {
 }
 
 /// 結構檢查本體。
-fn structural_pass(store: &dyn Store, change: &Change, strict: bool) -> StructuralPass {
+fn structural_pass(
+    store: &dyn Store,
+    change: &Change,
+    expects_deltas: bool,
+    strict: bool,
+) -> StructuralPass {
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
     let mut deltas: Vec<DeltaFacts> = Vec::new();
@@ -241,8 +264,8 @@ fn structural_pass(store: &dyn Store, change: &Change, strict: bool) -> Structur
     // validate is lenient: a missing proposal is NOT an error, and a scenario-less
     // requirement is NOT an error. The one hard error is an EXISTING delta spec file that parses
     // to zero applied operations (empty, RENAMED-only, or an operation-less requirement). The
-    // informational "No delta specs found" warning fires only when there is not even a capability
-    // directory under specs/.
+    // informational "No delta specs found" warning fires only when the change's schema expects
+    // deltas and there is not even a capability directory under specs/.
     let caps = store.delta_capabilities(&change.name);
     // 正典收錄與否以清單逐字比對（同建立點主閘）——canonical_spec_exists 走
     // 檔案系統，大小寫不敏感的 fs 會把 `Auth` 當 `auth` 而讓兩張網同時靜默。
@@ -371,7 +394,7 @@ fn structural_pass(store: &dyn Store, change: &Change, strict: bool) -> Structur
     }
 
     let has_cap_dirs = store.has_capability_dirs(&change.name);
-    if caps.is_empty() && !has_cap_dirs {
+    if expects_deltas && caps.is_empty() && !has_cap_dirs {
         warnings.push("No delta specs found".to_string());
     }
     let _ = strict;

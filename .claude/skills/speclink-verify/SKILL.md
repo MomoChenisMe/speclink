@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.0"
+  version: "v1.50.0"
   generatedBy: "Speclink"
 ---
 
@@ -63,7 +63,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
    ```
 
    Parse the JSON to understand:
-   - `schemaName`: The workflow being used (e.g., "spec-driven")
+   - `schemaName`: The workflow being used (e.g., "spec-driven"). Remember it: when `schemaName` is `no-spec-change`, step 8 runs the behavior check in place of the delta-spec checks
    - Which artifacts exist for this change
 
 3. **Load the artifacts and read the task progress**
@@ -124,7 +124,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
      - Add CRITICAL issue for each incomplete task
      - Recommendation: "Complete task: <description>" or "Mark as done if already implemented"
 
-   **Spec Coverage**:
+   **Spec Coverage** (skip it when `schemaName` is `no-spec-change` — step 8's behavior check takes its place):
    - If delta specs exist in `openspec/changes/<name>/specs/`:
      - Extract all requirements (marked with "### Requirement:")
      - For each requirement:
@@ -136,6 +136,15 @@ Report which test commands ran and which scope was skipped, and say that CI guar
        - Recommendation: "Implement requirement X: <description>"
 
 8. **Verify Correctness**
+
+   **Behavior check** (only when `schemaName` is `no-spec-change` — the change has no delta specs, so it replaces Requirement Implementation Mapping, Scenario Coverage and Example Traceability below):
+   - Start from the canonical specs the proposal's Why lists as checked.
+   - Take the concrete names in the frozen patch — commands, flags, `--json` fields, file names, screen text — and search the canonical specs for the requirements that cover those code areas.
+   - For each such requirement, compare: does the patch change the observable behavior the requirement promises?
+   - A promised behavior changed:
+     - Add WARNING: "Behavior change in a no-spec-change change: <capability> / <requirement>" — it is must-fix (step 11) and blocks a clean stamp
+     - Recommendation: "Switch the change to spec-driven and add a delta spec for this requirement"
+   - No behavior change found → list the canonical specs you compared in the report.
 
    **Requirement Implementation Mapping**:
    - For each requirement from delta specs:
@@ -281,6 +290,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
 **Graceful Degradation**
 
 - If only tasks.md exists: verify task completion only, skip spec/design checks
+- If the schema is `no-spec-change`: the missing delta specs are by design — run the behavior check (step 8) instead of skipping the spec checks
 - If tasks + specs exist: verify completeness and correctness, skip design
 - If full artifacts: verify all three dimensions
 - Always note which checks were skipped and why

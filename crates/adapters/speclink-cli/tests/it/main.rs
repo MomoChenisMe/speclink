@@ -22,6 +22,7 @@ mod mode_dispatch;
 mod new_artifact;
 mod plan_verbs;
 mod no_raw_wire_json;
+mod no_spec_change_lifecycle;
 mod reconclude_restale;
 mod remote_connect;
 mod remote_drift;

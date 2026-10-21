@@ -1,7 +1,7 @@
 //! `speclink schemas` / `speclink schema …` — the workflow-schema management surface.
 //!
-//! The built-in schema is parsed from one canonical document compiled into the binary, so
-//! `schema fork spec-driven` must ship that document byte for byte and `schemas` must show
+//! Each built-in schema is parsed from one canonical document compiled into the binary, so
+//! `schema fork <built-in>` must ship that document byte for byte and `schemas` must show
 //! the document's own description. The user-level schema location is redirected into the
 //! temp project (HOME / USERPROFILE) so a developer's real home directory cannot change a
 //! result.
@@ -59,20 +59,44 @@ fn canonical() -> serde_yaml::Value {
     serde_yaml::from_str(speclink_core::schema::FORK_SCHEMA_YAML).expect("canonical yaml parses")
 }
 
+/// Each built-in and its canonical document.
+const BUILTINS: [(&str, &str); 2] = [
+    ("spec-driven", speclink_core::schema::FORK_SCHEMA_YAML),
+    ("no-spec-change", speclink_core::schema::NO_SPEC_CHANGE_SCHEMA_YAML),
+];
+
 #[test]
 fn fork_of_the_builtin_ships_the_canonical_document_verbatim() {
     let p = TempProject::new("fork-verbatim");
 
-    let out = p.run(&["schema", "fork", "spec-driven"]);
-    assert!(out.status.success(), "fork failed: {}", stderr_of(&out));
+    for (name, yaml) in BUILTINS {
+        let out = p.run(&["schema", "fork", name]);
+        assert!(out.status.success(), "fork {name} failed: {}", stderr_of(&out));
 
-    let forked = std::fs::read(p.schema_dir("spec-driven-custom").join("schema.yaml"))
-        .expect("forked schema.yaml exists");
-    assert_eq!(
-        forked,
-        speclink_core::schema::FORK_SCHEMA_YAML.as_bytes(),
-        "fork 產出必須與正典 YAML 逐位元組相同"
-    );
+        let dir = p.schema_dir(&format!("{name}-custom"));
+        let forked = std::fs::read(dir.join("schema.yaml")).expect("forked schema.yaml exists");
+        assert_eq!(forked, yaml.as_bytes(), "{name}: fork 產出必須與正典 YAML 逐位元組相同");
+
+        // templates/ 每份檔對應一個 artifact 宣告的 template，內容與內嵌資產逐字相同。
+        let builtin = speclink_core::schema::builtin(name).expect("built-in resolves");
+        let mut want: Vec<&str> =
+            builtin.artifacts.iter().map(|a| a.template_name.as_str()).collect();
+        want.sort();
+        let mut got: Vec<String> = std::fs::read_dir(dir.join("templates"))
+            .expect("templates/ exists")
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        got.sort();
+        assert_eq!(got, want, "{name}: templates/ 的檔案");
+        for art in &builtin.artifacts {
+            let body = std::fs::read_to_string(dir.join("templates").join(&art.template_name))
+                .expect("template file exists");
+            assert_eq!(Some(body.as_str()), art.template.as_deref(), "{name}: {}", art.template_name);
+        }
+    }
+    let nsc = p.schema_dir("no-spec-change-custom").join("templates");
+    assert_eq!(std::fs::read_dir(nsc).unwrap().count(), 3, "no-spec-change 帶三份 template");
 }
 
 #[test]
@@ -83,12 +107,13 @@ fn the_builtin_description_comes_from_the_canonical_document() {
     assert!(out.status.success(), "schemas failed: {}", stderr_of(&out));
 
     let listed: serde_json::Value = serde_json::from_slice(&out.stdout).expect("schemas --json");
-    let entry = listed
-        .as_array()
-        .expect("listing is an array")
+    let listed = listed.as_array().expect("listing is an array");
+    let builtins: Vec<(&str, &str)> = listed
         .iter()
-        .find(|e| e["name"] == "spec-driven")
-        .expect("spec-driven is listed");
+        .take(2)
+        .map(|e| (e["name"].as_str().unwrap_or(""), e["source"].as_str().unwrap_or("")))
+        .collect();
+    assert_eq!(builtins, [("spec-driven", "package"), ("no-spec-change", "package")]);
 
     let canon = canonical();
     let want = canon["description"].as_str().expect("canonical description");
@@ -96,7 +121,19 @@ fn the_builtin_description_comes_from_the_canonical_document() {
         want.contains("design optional"),
         "正典 description 應點名 design 為選配：{want}"
     );
-    assert_eq!(entry["description"].as_str(), Some(want));
+    assert_eq!(listed[0]["description"].as_str(), Some(want));
+    assert_eq!(
+        listed[1]["description"].as_str(),
+        Some("No-spec-change workflow - proposal → tasks (design optional), for changes that alter no promised behavior")
+    );
+    assert_eq!(listed[1]["artifacts"], serde_json::json!(["proposal", "design", "tasks"]));
+
+    let human = p.run(&["schemas"]);
+    let text = String::from_utf8_lossy(&human.stdout);
+    assert!(
+        text.contains("  no-spec-change (package) — No-spec-change workflow"),
+        "人眼輸出列出 no-spec-change：{text}"
+    );
 }
 
 #[test]
@@ -162,11 +199,12 @@ fn which_all_lists_every_schema_with_its_resolution() {
     let listed: serde_json::Value = serde_json::from_slice(&out.stdout).expect("which --all --json");
     let rows = listed.as_array().expect("listing is an array");
     let names: Vec<&str> = rows.iter().filter_map(|r| r["name"].as_str()).collect();
-    assert!(names.contains(&"spec-driven"), "內建應列出：{names:?}");
-    assert!(names.contains(&"my-flow"), "專案自訂應列出：{names:?}");
+    assert_eq!(names, ["spec-driven", "no-spec-change", "my-flow"], "內建在前、專案自訂在後");
 
-    let builtin = rows.iter().find(|r| r["name"] == "spec-driven").unwrap();
-    assert_eq!(builtin["resolved"].as_str(), Some("built-in"));
+    for name in ["spec-driven", "no-spec-change"] {
+        let builtin = rows.iter().find(|r| r["name"] == name).unwrap();
+        assert_eq!(builtin["resolved"].as_str(), Some("built-in"), "{name}");
+    }
     let custom = rows.iter().find(|r| r["name"] == "my-flow").unwrap();
     assert_eq!(custom["resolved"].as_str(), Some("project"));
     let source = custom["sources"][0]["path"].as_str().expect("source path");
@@ -334,4 +372,36 @@ fn which_all_deduplicates_a_shadowed_name() {
     let sources = matches[0]["sources"].as_array().expect("sources");
     assert_eq!(sources.len(), 2, "被遮蔽的 built-in 一併列出：{sources:?}");
     assert_eq!(sources[1]["source"].as_str(), Some("built-in"));
+}
+
+#[test]
+fn a_project_schema_shadows_the_no_spec_change_builtin() {
+    let p = TempProject::new("which-shadow-nsc");
+    write_custom_schema(&p, "no-spec-change", Some("# plan\n"));
+
+    let out = p.run(&["schema", "which", "no-spec-change", "--json"]);
+    assert!(out.status.success(), "which failed: {}", stderr_of(&out));
+    let row: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(row["resolved"].as_str(), Some("project"));
+    let path = row["sources"][0]["path"].as_str().expect("project path");
+    assert!(
+        path.ends_with("schema.yaml") && path.contains("no-spec-change"),
+        "解析結果指向專案層的 schema.yaml：{path}"
+    );
+
+    let out = p.run(&["schema", "which", "--all", "--json"]);
+    let rows: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let row = rows
+        .as_array()
+        .expect("listing is an array")
+        .iter()
+        .find(|r| r["name"] == "no-spec-change")
+        .expect("no-spec-change is listed");
+    let sources: Vec<&str> = row["sources"]
+        .as_array()
+        .expect("sources")
+        .iter()
+        .filter_map(|s| s["source"].as_str())
+        .collect();
+    assert_eq!(sources, ["project", "built-in"], "被遮蔽的內建一併列出");
 }
