@@ -3,6 +3,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 
 import {
+  compareVersions,
   readLastSeenVersion,
   whatsNewDecision,
   writeLastSeenVersion,
@@ -17,6 +18,20 @@ const entry = (version: string): ReleaseNotesEntry => ({
 const ENTRIES = [entry("0.3.1"), entry("0.3.0"), entry("0.2.0")];
 const versions = (decision: ReturnType<typeof whatsNewDecision>) =>
   decision.kind === "show" ? decision.entries.map((e) => e.version) : decision.kind;
+
+it.each([
+  ["0.10.0.2", "0.10.0-build.3", -1],
+  ["0.10.0.3", "0.10.0-build.3", 0],
+  ["0.10.0.4", "0.10.0-build.3", 1],
+  ["0.10.0-build.10", "0.10.0.4", 1],
+  ["0.10.1", "0.10.0-build.3", 1],
+  ["0.10.0", "0.10.0-build.3", 1],
+  ["0.10.0-beta.2", "0.10.0-beta.10", -1],
+  ["0.10.0+fork.1", "0.10.0", 0],
+])("比較 %s 與 %s 的方向為 %s", (a, b, direction) => {
+  expect(Math.sign(compareVersions(a, b))).toBe(direction);
+  expect(Math.sign(compareVersions(b, a))).toBe(direction === 0 ? 0 : -direction);
+});
 
 describe("whatsNewDecision", () => {
   it("dev 建置永不自動彈、也不寫記錄", () => {

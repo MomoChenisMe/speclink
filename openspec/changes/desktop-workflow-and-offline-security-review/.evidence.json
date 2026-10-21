@@ -469,6 +469,49 @@
         "docs/development.md",
         "docs/development.zh-TW.md"
       ]
+    },
+    {
+      "task_id": "57",
+      "task_desc": "17.1 Antigravity 內建工具與獨立技能目錄（涵蓋「tools 自訂描述子的接受與驗證」「init 內建 Agent 工具選擇」「Antigravity 技能生成與獨立清理」）：先在 crates/engine/speclink-core/src/workspace/init/tests.rs 與 crates/engine/speclink-core/src/workspace/skills.rs 補 codex,antigravity 共存、正確前綴、取消清理保留自有檔、撞名／撞 .agent/skills 失敗測試，再擴充 Tool::ALL 與既有生成、CLI 提示及 Node 工具清單；保留舊工具渲染、JSON shape 與退出碼，更新既有 asset golden。執行 cargo test -p speclink-core --lib、cargo test -p speclink-core --test it render_golden::、cargo test -p speclink-cli --test it init；Node 先 npm --prefix crates/adapters/speclink-node run build 再 npm --prefix crates/adapters/speclink-node test。",
+      "files": [
+        "apps/desktop/src/__tests__/workspaceChooser.test.tsx",
+        "apps/desktop/src/builtinTools.ts",
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "apps/desktop/src/core/whatsNew.ts",
+        "apps/desktop/src/views/project-settings/SpeclinkPage.tsx",
+        "crates/adapters/speclink-cli/src/verbs/init.rs",
+        "crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts",
+        "crates/adapters/speclink-node/__test__/render.spec.ts",
+        "crates/adapters/speclink-node/src/render.rs",
+        "crates/engine/speclink-core/src/util.rs",
+        "crates/engine/speclink-core/src/workspace/init/tests.rs",
+        "crates/protocol/speclink-remote/tests/it/client_errors.rs",
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md",
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md",
+        "apps/desktop/core/src/testdata/README.md",
+        "apps/desktop/core/src/testdata/proxy-ca.der",
+        "apps/desktop/core/src/testdata/proxy-server-key.der",
+        "apps/desktop/core/src/testdata/proxy-server.der",
+        "crates/engine/speclink-core/tests/golden/security-review-antigravity.snapshot.md"
+      ]
+    },
+    {
+      "task_id": "59",
+      "task_desc": "17.3 風險與驗收（含 Node SDK「渲染 API」矩陣與 CLI 同源核對）：在 crates/engine/speclink-core、crates/adapters/speclink-cli、crates/adapters/speclink-node、apps/desktop 與 docs 以 rg 排查三工具清單、Tool::ALL、技能目錄及選項標籤，逐類記錄共修或保留理由；補中英工具說明與本地／Remote 初始化回歸、核對取消 Antigravity 不影響 Codex；執行 cargo test -p speclink-core --lib、cargo test -p speclink-cli --test it init、cargo test -p speclink-desktop-core，最後執行 node --test scripts/*.test.mjs scripts/*/*.test.mjs 與 git diff --check。保留原始九項需求、12.3 人工驗收與已完成任務，不蓋章、不封存。",
+      "files": [
+        "apps/desktop/core/src/project.rs",
+        "apps/desktop/src-tauri/src/connections.rs",
+        "apps/desktop/src/adapter/connections.ts"
+      ]
+    },
+    {
+      "task_id": "60",
+      "task_desc": "18.1 RED→GREEN：在 crates/engine/speclink-core/assets/skills/archive.md、verify.md 精簡非必要全大寫措辭，保留停止、工單與安全驗收行為；在 crates/engine/speclink-core/tests/it/skill_authoring.rs 為 security-review.md 登記實際上限 2，不提高既有上限。以 rg 排查全部技能原稿與登記表並記錄共修／保留理由，執行 cargo test -p speclink-core --test it skill_authoring:: 重現後轉綠；同步 crates/engine/speclink-core/src/workspace/init.rs 的資產版本、golden 與生成技能，以 cargo build -p speclink-cli、cargo test -p speclink-core、cargo test -p speclink-cli --test it init 及 cargo test -p speclink-cli --test it remote_verb_parity 驗證，Node 先 npm --prefix crates/adapters/speclink-node run build 再 npm --prefix crates/adapters/speclink-node test；最後執行 node --test scripts/*.test.mjs scripts/*/*.test.mjs 與 git diff --check。保留全部已完成任務與 12.3 人工驗收，完成後另啟完整品質檢查，不蓋章。",
+      "files": [
+        "crates/engine/speclink-core/tests/it/skill_authoring.rs"
+      ]
     }
   ],
   "entries": [
@@ -1109,6 +1152,61 @@
         "docs/development.zh-TW.md"
       ],
       "recordedAt": "2026-10-21T04:21:53Z"
+    },
+    {
+      "taskId": "tsk_01M5FDJXY3QV2H66PVG8J2328W",
+      "taskDesc": "17.1 Antigravity 內建工具與獨立技能目錄（涵蓋「tools 自訂描述子的接受與驗證」「init 內建 Agent 工具選擇」「Antigravity 技能生成與獨立清理」）：先在 crates/engine/speclink-core/src/workspace/init/tests.rs 與 crates/engine/speclink-core/src/workspace/skills.rs 補 codex,antigravity 共存、正確前綴、取消清理保留自有檔、撞名／撞 .agent/skills 失敗測試，再擴充 Tool::ALL 與既有生成、CLI 提示及 Node 工具清單；保留舊工具渲染、JSON shape 與退出碼，更新既有 asset golden。執行 cargo test -p speclink-core --lib、cargo test -p speclink-core --test it render_golden::、cargo test -p speclink-cli --test it init；Node 先 npm --prefix crates/adapters/speclink-node run build 再 npm --prefix crates/adapters/speclink-node test。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "f5f5179c805590e94fdf08083905874a6bb0507b",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/workspaceChooser.test.tsx",
+        "apps/desktop/src/builtinTools.ts",
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "apps/desktop/src/core/whatsNew.ts",
+        "apps/desktop/src/views/project-settings/SpeclinkPage.tsx",
+        "crates/adapters/speclink-cli/src/verbs/init.rs",
+        "crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts",
+        "crates/adapters/speclink-node/__test__/render.spec.ts",
+        "crates/adapters/speclink-node/src/render.rs",
+        "crates/engine/speclink-core/src/util.rs",
+        "crates/engine/speclink-core/src/workspace/init/tests.rs",
+        "crates/protocol/speclink-remote/tests/it/client_errors.rs",
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md",
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md",
+        "apps/desktop/core/src/testdata/README.md",
+        "apps/desktop/core/src/testdata/proxy-ca.der",
+        "apps/desktop/core/src/testdata/proxy-server-key.der",
+        "apps/desktop/core/src/testdata/proxy-server.der",
+        "crates/engine/speclink-core/tests/golden/security-review-antigravity.snapshot.md"
+      ],
+      "recordedAt": "2026-10-21T14:38:03Z"
+    },
+    {
+      "taskId": "tsk_01M5FDJXY32WFJRA32QVWCGQFN",
+      "taskDesc": "17.3 風險與驗收（含 Node SDK「渲染 API」矩陣與 CLI 同源核對）：在 crates/engine/speclink-core、crates/adapters/speclink-cli、crates/adapters/speclink-node、apps/desktop 與 docs 以 rg 排查三工具清單、Tool::ALL、技能目錄及選項標籤，逐類記錄共修或保留理由；補中英工具說明與本地／Remote 初始化回歸、核對取消 Antigravity 不影響 Codex；執行 cargo test -p speclink-core --lib、cargo test -p speclink-cli --test it init、cargo test -p speclink-desktop-core，最後執行 node --test scripts/*.test.mjs scripts/*/*.test.mjs 與 git diff --check。保留原始九項需求、12.3 人工驗收與已完成任務，不蓋章、不封存。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "f5f5179c805590e94fdf08083905874a6bb0507b",
+      "touchedFiles": [
+        "apps/desktop/core/src/project.rs",
+        "apps/desktop/src-tauri/src/connections.rs",
+        "apps/desktop/src/adapter/connections.ts"
+      ],
+      "recordedAt": "2026-10-21T14:47:06Z"
+    },
+    {
+      "taskId": "tsk_01M5FFARG4AF27DTQ0BZHP14ZK",
+      "taskDesc": "18.1 RED→GREEN：在 crates/engine/speclink-core/assets/skills/archive.md、verify.md 精簡非必要全大寫措辭，保留停止、工單與安全驗收行為；在 crates/engine/speclink-core/tests/it/skill_authoring.rs 為 security-review.md 登記實際上限 2，不提高既有上限。以 rg 排查全部技能原稿與登記表並記錄共修／保留理由，執行 cargo test -p speclink-core --test it skill_authoring:: 重現後轉綠；同步 crates/engine/speclink-core/src/workspace/init.rs 的資產版本、golden 與生成技能，以 cargo build -p speclink-cli、cargo test -p speclink-core、cargo test -p speclink-cli --test it init 及 cargo test -p speclink-cli --test it remote_verb_parity 驗證，Node 先 npm --prefix crates/adapters/speclink-node run build 再 npm --prefix crates/adapters/speclink-node test；最後執行 node --test scripts/*.test.mjs scripts/*/*.test.mjs 與 git diff --check。保留全部已完成任務與 12.3 人工驗收，完成後另啟完整品質檢查，不蓋章。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "f5f5179c805590e94fdf08083905874a6bb0507b",
+      "touchedFiles": [
+        "crates/engine/speclink-core/tests/it/skill_authoring.rs"
+      ],
+      "recordedAt": "2026-10-21T14:59:33Z"
     }
   ]
 }

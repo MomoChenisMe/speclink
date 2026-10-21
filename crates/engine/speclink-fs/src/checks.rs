@@ -342,6 +342,44 @@ thread_local! { static FAULTS: std::cell::RefCell<Vec<String>> = const { std::ce
 mod tests {
     use super::*;
     #[test]
+    fn stamps_legacy_changes_without_metadata_and_rejects_concurrent_creation() {
+        use speclink_core::station::{self, REVIEW, VERIFY};
+        for st in [&REVIEW, &VERIFY] {
+            for initial_meta in [None, Some("")] {
+                for concurrent_creation in [false, true] {
+                    let dir = tempfile::tempdir().unwrap();
+                    let store = crate::FsStore::new(dir.path(), "openspec");
+                    fs::create_dir_all(store.layout().change_dir("demo")).unwrap();
+                    if let Some(text) = initial_meta {
+                        store.write_change_meta("demo", text).unwrap();
+                    }
+                    store.write_artifact("demo", "tasks.md", "- [x] Done\n").unwrap();
+                    station::add_round(st, &store, "demo", "**Scope**: app.ts\n").unwrap();
+                    let original = store.read_artifact("demo", st.doc).unwrap();
+                    let result = station::stamp(st, &store, "demo", false, Some("Reviewer"), Some("codex"), &|_| {
+                        if concurrent_creation {
+                            store.write_change_meta("demo", "schema: spec-driven\nboard_rank: 3\n").unwrap();
+                        }
+                        Some(b"const value = 1;\n".to_vec())
+                    }, &|_| true);
+                    if concurrent_creation {
+                        assert!(result.unwrap_err().to_string().contains("revision_conflict"));
+                        assert_eq!(store.read_artifact("demo", st.doc).as_deref(), Some(original.as_str()));
+                        assert!(store.read_change_meta("demo").unwrap().contains("board_rank: 3"));
+                        assert!(!store.artifact_exists("demo", "checks/index.json"));
+                    } else {
+                        result.unwrap();
+                        assert!(!store.artifact_exists("demo", st.doc));
+                        assert!(store.read_change_meta("demo").unwrap().contains(&format!("{}_at:", st.meta_prefix)));
+                        let index = speclink_core::history::index(&store, "demo").unwrap();
+                        assert_eq!(index.entries.len(), 1);
+                        assert!(store.read_artifact("demo", &index.entries[0].relative_path).unwrap().contains(&original));
+                    }
+                }
+            }
+        }
+    }
+    #[test]
     fn late_writers_cannot_recreate_an_archived_change() {
         let (_root, store, commit) = setup();
         fs::create_dir_all(store.layout().archive_dir()).unwrap();

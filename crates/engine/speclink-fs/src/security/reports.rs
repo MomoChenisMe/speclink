@@ -314,7 +314,7 @@ mod tests {
         value["targets"] = serde_json::json!(["app.ts"]);
         value["checks"] = serde_json::json!([]);
         value["configurationState"] = "configured".into();
-        value["findings"] = serde_json::json!([{"findingId":"H1","domain":"機密與通訊","title":"金鑰寫死","severity":"high","confidence":"high","confidenceReason":"程式已證明；無可信對照","references":[],"evidence":[{"path":"app.ts","line":1,"endLine":null,"function":null}],"codeSnippet":"api_key='unique-fs-deep-secret'","dataFlow":"input → secret → service","impact":"unique-fs-deep-secret 必須省略","remediation":"SHALL 使用本機機密管理指南修正。","acceptance":"測試不得輸出機密。"}]);
+        value["findings"] = serde_json::json!([{"findingId":"H1","domain":"機密與通訊","title":"金鑰寫死","severity":"high","confidence":"high","confidenceReason":"程式已證明；無可信對照","references":[],"evidence":[{"path":"app.ts","line":1,"endLine":1,"function":"loadSecret"}],"codeSnippet":"api_key='unique-fs-deep-secret'","dataFlow":"input → secret → service","impact":"unique-fs-deep-secret 必須省略","remediation":"SHALL 使用本機機密管理指南修正。","acceptance":"測試不得輸出機密。"}]);
         let deep = VersionedReport::from_json(&serde_json::to_vec(&value).unwrap()).unwrap();
         save_change_report(&store, "demo", &deep).unwrap();
         let index: serde_json::Value =

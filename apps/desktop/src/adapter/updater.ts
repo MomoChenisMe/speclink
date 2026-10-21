@@ -2,6 +2,7 @@
 // 單行委派，加上主視窗焦點事件的委派（前景重檢的訊號；update-recheck-on-focus
 // design D1）。store 只依賴此介面，測試以假 adapter 注入。
 import { invoke } from "@tauri-apps/api/core";
+import { compareVersions } from "../core/whatsNew";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -44,6 +45,8 @@ export function tauriUpdaterAdapter(): UpdaterAdapter {
         if (failure?.httpStatus !== 404 && failure?.code !== "updater-unavailable" && failure?.code !== "parse") throw error;
         const release = await desktopRelease("fork");
         if (!release) throw error;
+        const installed = await appVersion();
+        if (compareVersions(release.version, installed) <= 0) return null;
         return {version:release.version, manualUrl:release.releaseUrl};
       }
       if (!update) return null;

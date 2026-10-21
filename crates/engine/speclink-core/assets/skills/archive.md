@@ -25,7 +25,7 @@ Completed review/verify/security history always remains in the active proposal a
    Show only active changes (not already archived).
    Include the schema used for each change if available.
 
-   Do NOT guess or auto-select a change — always let the user choose, and wait for the answer; a candidate marked 「可封存」 is not picked for them either.
+   Do not guess or auto-select a change — always let the user choose, and wait for the answer; a candidate marked 「可封存」 is not picked for them either.
 
 2. **Check artifact completion status**
 

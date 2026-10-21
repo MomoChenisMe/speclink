@@ -595,7 +595,7 @@ pub fn fingerprint_scope(
 /// 兩個蓋章入口共用的守門結果：解析通過的 meta 原文、工單 Scope 聯集
 /// （`\`→`/` 正規化、去重、排序）與任務錨總數。
 struct StampGate {
-    raw_meta: String,
+    raw_meta: Option<String>,
     paths: Vec<String>,
     tasks_total: usize,
     ticket_text: String,
@@ -609,8 +609,8 @@ fn stamp_gate(st: &Station, store: &dyn Store, change: &str, accept: bool) -> Re
     }
     store.recover_checks(change)?;
     // Fail-closed gate（沿 set_board_rank）：文字手術前先解析，壞檔不得被疊寫。
-    let raw_meta = store.read_change_meta(change).unwrap_or_default();
-    crate::model::check_meta_text(change, Some(&raw_meta))?;
+    let raw_meta = store.read_change_meta(change);
+    crate::model::check_meta_text(change, raw_meta.as_deref())?;
     let Some(ticket_text) = store.read_artifact(change, st.doc) else {
         bail!(NotFound(format!("no {} ticket for change '{change}'", st.noun)));
     };
@@ -665,7 +665,7 @@ fn write_stamp(
     let stamp_keys =
         ["at", "by", "with", "tasks_total", "scope"].map(|suffix| format!("{prefix}_{suffix}"));
     let [at_key, by_key, with_key, tasks_total_key, scope_key] = &stamp_keys;
-    let mut m = KeyLines::whole(&gate.raw_meta);
+    let mut m = KeyLines::whole(gate.raw_meta.as_deref().unwrap_or_default());
     for key in &stamp_keys {
         m.remove(key);
     }
@@ -707,7 +707,7 @@ fn write_stamp(
     ]);
     let expected = std::collections::BTreeMap::from([
         (path, None), (history::INDEX.into(), old_index.map(|text| sha256(text.as_bytes()))),
-        (".openspec.yaml".into(), Some(sha256(gate.raw_meta.as_bytes()))), (st.doc.into(), Some(sha256(gate.ticket_text.as_bytes()))),
+        (".openspec.yaml".into(), gate.raw_meta.as_ref().map(|text| sha256(text.as_bytes()))), (st.doc.into(), Some(sha256(gate.ticket_text.as_bytes()))),
     ]);
     store.commit_checks(change, &ChecksCommit { writes, deletes: vec![st.doc.into()], expected })
 }

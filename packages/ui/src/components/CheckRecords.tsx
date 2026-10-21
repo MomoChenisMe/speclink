@@ -24,11 +24,11 @@ export function useCheckRecords(adapter:CheckRecordsAdapter|undefined,change:str
  const current=list?.adapter===adapter&&list?.change===change?list:undefined;
  const entry=current?.entries.find(entry=>checkTab(entry)===tab);
  useEffect(()=>{
-  if(!adapter||!change||!entry)return;let active=true;
+  if(!adapter||!change||!entry||entry.outcome==='omitted')return;let active=true;
   void adapter.read(change,entry).then(content=>{if(active)setBody({adapter,change,gen,tab,content})},error=>{if(active)setBody(previous=>({adapter,change,gen,tab,content:previous?.adapter===adapter&&previous.change===change&&previous.tab===tab?previous.content:null,error:errorText(error)}))});
   return()=>{active=false};
  },[adapter,change,entry,gen,tab]);
- const document=body?.adapter===adapter&&body?.change===change&&body?.tab===tab?body:undefined;
+ const document=entry?.outcome==='omitted'?undefined:body?.adapter===adapter&&body?.change===change&&body?.tab===tab?body:undefined;
  return {enabled:!!adapter,entries:current?.entries??[],listError:current?.error,loading:!!adapter&&(!current||current.gen!==gen),entry,content:entry?document?.content:undefined,error:entry?document?.error:undefined};
 }
 export function CheckRecordTree({state}:{state:ReturnType<typeof useCheckRecords>}){
@@ -40,5 +40,5 @@ export function CheckRecordTree({state}:{state:ReturnType<typeof useCheckRecords
 }
 export function CheckRecordBody({state,tab}:{state:ReturnType<typeof useCheckRecords>;tab:string}){
  const {t}=useI18n();if(!tab.startsWith('check:'))return null;
- return <TabsContent value={tab}>{state.error&&<p role="alert" className="text-sm text-destructive">{errorLabel(state.error,t)}</p>}{!state.entry?<p className="text-sm text-muted-foreground">{t('checks.empty')}</p>:state.content===undefined?<DocSkeleton/>:<Markdown content={state.content} empty={t('checks.empty')}/>}</TabsContent>;
+ return <TabsContent value={tab}>{state.error&&<p role="alert" className="text-sm text-destructive">{errorLabel(state.error,t)}</p>}{!state.entry?<p className="text-sm text-muted-foreground">{t('checks.empty')}</p>:state.entry.outcome==='omitted'?<p className="text-sm text-muted-foreground">{t('checks.omitted')}</p>:state.content===undefined?<DocSkeleton/>:<Markdown content={state.content} empty={t('checks.empty')}/>}</TabsContent>;
 }

@@ -88,7 +88,7 @@ where
     Ok(Some(v.unwrap_or_default()))
 }
 
-/// One entry of the `tools:` list — a built-in tool name string (claude, codex, copilot) or a
+/// One entry of the `tools:` list — a built-in tool name string (claude, codex, copilot, antigravity) or a
 /// custom harness descriptor object.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
@@ -155,7 +155,7 @@ impl ToolDescriptor {
             return Err(format!(
                 "tool descriptor: name '{name}' conflicts with a built-in tool name ({}){}",
                 crate::skills::Tool::supported_names(),
-                if name == "copilot" { "; rename it to copilot-custom to retain skills_dir/invocation, or use the built-in string copilot" } else { "" }
+                if matches!(name, "copilot" | "antigravity") { format!("; rename it to {name}-custom to retain skills_dir/invocation, or use the built-in string {name}") } else { String::new() }
             ));
         }
         // skills_dir 在這個邊界一次正規化：削去結尾分隔符，讓生成、足跡記錄與過期

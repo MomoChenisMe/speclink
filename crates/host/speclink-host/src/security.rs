@@ -1044,6 +1044,11 @@ mod tests {
             fn root(&self) -> &std::path::Path {
                 self.inner.root()
             }
+            fn read_optional_bytes(
+                &self, _: &str, _: usize, _: &dyn Fn() -> Option<&'static str>,
+            ) -> anyhow::Result<Option<Vec<u8>>> {
+                panic!("disabled policy must not read knowledge");
+            }
             fn read_optional_text(
                 &self,
                 path: &str,

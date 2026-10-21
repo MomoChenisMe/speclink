@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.2"
+  version: "v1.50.5"
   generatedBy: "Speclink"
 ---
 
@@ -98,7 +98,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.2"
+  version: "v1.50.5"
   generatedBy: "Speclink"
 ---
 
@@ -447,7 +447,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.2"
+  version: "v1.50.5"
   generatedBy: "Speclink"
 ---
 
@@ -486,7 +486,7 @@ Completed review/verify/security history always remains in the active proposal a
    Show only active changes (not already archived).
    Include the schema used for each change if available.
 
-   Do NOT guess or auto-select a change — always let the user choose, and wait for the answer; a candidate marked 「可封存」 is not picked for them either.
+   Do not guess or auto-select a change — always let the user choose, and wait for the answer; a candidate marked 「可封存」 is not picked for them either.
 
 2. **Check artifact completion status**
 
@@ -802,7 +802,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.2"
+  version: "v1.50.5"
   generatedBy: "Speclink"
 ---
 
@@ -1065,7 +1065,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.2"
+  version: "v1.50.5"
   generatedBy: "Speclink"
 ---
 
@@ -1200,7 +1200,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.2"
+  version: "v1.50.5"
   generatedBy: "Speclink"
 ---
 
@@ -1517,7 +1517,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.2"
+  version: "v1.50.5"
   generatedBy: "Speclink"
 ---
 
@@ -1780,7 +1780,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.2"
+  version: "v1.50.5"
   generatedBy: "Speclink"
 ---
 
@@ -2272,7 +2272,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.2"
+  version: "v1.50.5"
   generatedBy: "Speclink"
 ---
 
@@ -2412,7 +2412,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.2"
+  version: "v1.50.5"
   generatedBy: "Speclink"
 ---
 
@@ -2615,7 +2615,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.2"
+  version: "v1.50.5"
   generatedBy: "Speclink"
 ---
 
@@ -2934,7 +2934,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.2"
+  version: "v1.50.5"
   generatedBy: "Speclink"
 ---
 
@@ -3155,7 +3155,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.2"
+  version: "v1.50.5"
   generatedBy: "Speclink"
 ---
 
@@ -3632,7 +3632,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.2"
+  version: "v1.50.5"
   generatedBy: "Speclink"
 ---
 
@@ -3762,7 +3762,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.2"
+  version: "v1.50.5"
   generatedBy: "Speclink"
 ---
 
@@ -4041,7 +4041,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.2"
+  version: "v1.50.5"
   generatedBy: "Speclink"
 ---
 
@@ -4135,7 +4135,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.2"
+  version: "v1.50.5"
   generatedBy: "Speclink"
 ---
 
@@ -4190,7 +4190,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
    Include the schema used for each change if available.
    Mark changes with incomplete tasks as "(In Progress)".
 
-   Do NOT guess or auto-select a change — always let the user choose, and wait for the answer.
+   Do not guess or auto-select a change — always let the user choose, and wait for the answer.
 
 2. **Check status to understand the schema**
 
@@ -4236,7 +4236,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
 
 6. **Branch on `phase`**
 
-   Run the checking pass (steps 7–10) in ONE read-only sub-agent call (e.g. the Agent tool with a read-only agent) so its exploration stays out of the main thread's context. The sub-agent MUST NOT modify any file. If your harness cannot spawn sub-agents, run the checking pass yourself and keep its report separate from the triage that follows. The brief carries the resolved `locale` (step 3): finding descriptions are written in that language; severity labels, dimension prefixes, file paths, and command lines stay in English. When accepted findings exist in the ticket's last round (the `(accepted)` token), the brief also carries that list with a hard instruction: do NOT re-report these items or near-variants of them — they are already adjudicated.
+   Run the checking pass (steps 7–10) in ONE read-only sub-agent call (e.g. the Agent tool with a read-only agent) so its exploration stays out of the main thread's context. The sub-agent MUST NOT modify any file. If your harness cannot spawn sub-agents, run the checking pass yourself and keep its report separate from the triage that follows. The brief carries the resolved `locale` (step 3): finding descriptions are written in that language; severity labels, dimension prefixes, file paths, and command lines stay in English. When accepted findings exist in the ticket's last round (the `(accepted)` token), the brief also carries that list with a hard instruction: do not re-report these items or near-variants of them — they are already adjudicated.
 
    Inside the `speclink quality` timeline, compose the brief exactly as this step says; `speclink quality` sends it in one message together with the review station's two briefs, so three sub-agents run at once. Continue with step 10 once it reports.
 

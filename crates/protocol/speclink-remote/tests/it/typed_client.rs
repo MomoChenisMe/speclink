@@ -779,12 +779,11 @@ fn every_registry_reason_maps_to_the_frozen_cli_message() {
             "change is held by chiang — coordinate, or re-claim if it was released".into(),
             Some("refused"),
         ),
-        // Unknown reasons stay a generic error with the status for bug
-        // reports only — never a panic.
+        // Unknown reasons retain the server message and status, never a panic.
         (
             418,
             r#"{"status":418,"reason":"im_a_teapot","message":"short and stout"}"#,
-            "unexpected server response — update speclink or report a bug (HTTP 418)".into(),
+            "short and stout (HTTP 418)".into(),
             Some("im_a_teapot"),
         ),
     ];

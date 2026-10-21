@@ -90,7 +90,7 @@ import {
   type LocalePreference,
 } from "./i18n/locale";
 import { setAppT } from "./i18n/runtime";
-import { BUILTIN_TOOLS } from "./builtinTools";
+import { BUILTIN_TOOLS, builtinToolLabel } from "./builtinTools";
 
 function ArchiveRecordPreview({preview}:{preview:AppState["archivePreview"]}) {
   const {t} = useI18n();
@@ -1529,7 +1529,7 @@ function AppInner({
         confirmLabel={t("app.initConfirm")}
         onConfirm={() => s.confirmInit(initTools)}
       >
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-x-4 gap-y-2">
           {BUILTIN_TOOLS.map((tool) => (
             <label key={tool} className="flex items-center gap-1.5 text-sm">
               <Checkbox
@@ -1540,7 +1540,7 @@ function AppInner({
                   )
                 }
               />
-              {tool}
+              {builtinToolLabel(tool)}
             </label>
           ))}
         </div>
@@ -1555,7 +1555,7 @@ function AppInner({
         confirmLabel={t("app.adoptConfirm")}
         onConfirm={() => s.confirmAdopt(adoptTools)}
       >
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-x-4 gap-y-2">
           {BUILTIN_TOOLS.map((tool) => (
             <label key={tool} className="flex items-center gap-1.5 text-sm">
               <Checkbox
@@ -1566,7 +1566,7 @@ function AppInner({
                   )
                 }
               />
-              {tool}
+              {builtinToolLabel(tool)}
             </label>
           ))}
         </div>

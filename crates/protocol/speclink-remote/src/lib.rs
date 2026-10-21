@@ -70,8 +70,8 @@ pub fn translate_transport() -> RemoteError {
 /// (design decision three). The client owns connection-layer wording only;
 /// engine-class refusals (`not_found`, `invalid_argument`, `invalid_config`,
 /// `refused`) relay the server's message verbatim, mirroring how fs mode
-/// prints engine messages. An unknown reason or an unparseable envelope is a
-/// generic error — never a panic, never a bare status as the primary line.
+/// prints engine messages. Unknown reasons retain the server message; an
+/// unparseable envelope remains a generic error, never a panic.
 pub fn translate_protocol_error(status: u16, body: &str) -> RemoteError {
     use speclink_protocol::error::{ErrorReason, ErrorResponse};
 
@@ -130,7 +130,7 @@ pub fn translate_protocol_error(status: u16, body: &str) -> RemoteError {
         | ErrorReason::IdentityRequired
         | ErrorReason::UnsupportedVersion => err.message,
         ErrorReason::Unknown(_) => format!(
-            "unexpected server response — update speclink or report a bug (HTTP {status})"
+            "{} (HTTP {status})", err.message
         ),
     };
 

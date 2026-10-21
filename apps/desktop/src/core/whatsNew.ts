@@ -26,12 +26,28 @@ export function whatsNewDecision(input: {
   return compareVersions(lastSeen, appVersion) > 0 ? { kind: "none" } : { kind: "show", entries: [entries[0]] };
 }
 
-/** X.Y.Z 逐段數值比較：正＝a 新、負＝b 新、0＝同版。 */
-function compareVersions(a: string, b: string): number {
-  const pa = a.split(".").map(Number);
-  const pb = b.split(".").map(Number);
+/** 四段版本先沿打包規則轉成 -build.N，再按 SemVer 比較；正＝a 新。 */
+export function compareVersions(a: string, b: string): number {
+  const parse = (version: string) => {
+    const normalized = version.replace(/^(\d+\.\d+\.\d+)\.(\d+)$/, "$1-build.$2");
+    const match = /^(\d+)\.(\d+)\.(\d+)(?:-([\dA-Za-z.-]+))?(?:\+[\dA-Za-z.-]+)?$/.exec(normalized);
+    if (!match) throw new Error(`Invalid version: ${version}`);
+    return { core: match.slice(1, 4).map(Number), pre: match[4]?.split(".") };
+  };
+  const pa = parse(a), pb = parse(b);
   for (let i = 0; i < 3; i += 1) {
-    if (pa[i] !== pb[i]) return pa[i] - pb[i];
+    if (pa.core[i] !== pb.core[i]) return pa.core[i] - pb.core[i];
+  }
+  if (!pa.pre || !pb.pre) return pa.pre ? -1 : pb.pre ? 1 : 0;
+  for (let i = 0; i < Math.max(pa.pre.length, pb.pre.length); i += 1) {
+    const left = pa.pre[i], right = pb.pre[i];
+    if (left === right) continue;
+    if (left === undefined) return -1;
+    if (right === undefined) return 1;
+    const ln = /^\d+$/.test(left), rn = /^\d+$/.test(right);
+    if (ln && rn) return Number(left) - Number(right);
+    if (ln !== rn) return ln ? -1 : 1;
+    return left < right ? -1 : 1;
   }
   return 0;
 }

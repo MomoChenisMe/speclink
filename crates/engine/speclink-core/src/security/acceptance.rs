@@ -449,6 +449,18 @@ mod tests {
         }
     }
     #[test]
+    fn required_incomplete_zero_findings_and_missing_data_still_blocks() {
+        let (p, b, d, mut f) = evidence(None, false, ReviewStatus::NotVerified);
+        f.required_checks.insert("missing-standard-data".into());
+        let result = evaluate(&p, &"a".repeat(64), "demo", Some(&b), Some(&d), &[], Some(&f));
+        assert!(result.required);
+        assert_eq!(result.status, "blocked");
+        assert_eq!(result.blocking_findings, 0);
+        assert!(result.not_verified > 0);
+        assert!(result.reasons.iter().any(|r| r == "incomplete_security_review"));
+        assert!(result.reasons.iter().any(|r| r == "necessary_checks_not_verified"), "{:?}", result.reasons);
+    }
+    #[test]
     fn acceptance_digests_missing_evidence_and_explicit_resolutions() {
         let (p, b, d, mut f) = evidence(None, true, ReviewStatus::NotVerified);
         assert_eq!(

@@ -8,6 +8,8 @@
 - 換機後需清楚區分維護分支與原作者版本，團隊也需共用一份安全標準資料，避免每台電腦重複下載；公司 Proxy 只能在打包後驗收。
 - 交付時先將功能分支合併回本專案 `main`，再從 `main` 打包產生安裝檔，之後才於公司執行 Proxy 驗收；合併不代表該人工項已通過。
 
+- 專案設定需能選用 Antigravity，並在每個內建 AI 工具名稱後看見技能放置目錄。
+
 ## What Changes
 
 - 左側專案列支援拖曳及上移／下移，順序存於本裝置並於重開還原，不影響專案身分或目前選取。
@@ -25,6 +27,8 @@
 
 - 所有專案的提案 Why 預設條列起草，共用提案畫面將 Why、What Changes、Proposed Solution 的散文區塊也逐項顯示；活動與已封存頁一致，保留原文及巢狀內容。
 
+- AI 工具清單新增 antigravity；工具名稱顯示 claude [.claude]、codex [.agents]、copilot [.github]、antigravity [.agent]。Antigravity 沿既有技能生成、更新、探測及取消清理流程；初始化、啟用、checkout 綁定與設定頁共用相同清單及標籤。
+
 ## Capabilities
 
 ### New Capabilities
@@ -32,6 +36,10 @@
 無。掃描初查了 security-standard-data、security-review-report、desktop-config 等既有能力，本次擴充既有資料、審查及文件生命週期，不另建同義能力。
 
 ### Modified Capabilities
+
+- `node-sdk`: 渲染 API 接受 Antigravity target，與 CLI 的獨立目錄技能內容一致；未知 target 的合法值提示同步。
+
+- `workspace-tools`: 新增 Antigravity 內建工具與獨立技能目錄，沿用生成／更新／清理及工具選擇契約。
 
 - `propose-skill`: 所有專案的提案 Why 預設以一事一項條列起草，沿共用模板與技能生成。
 - `desktop-app`: 提案共用預設條列顯示、專案排序、更新頁失敗時仍可讀內附資訊、歷史文件樹、本分支更新與原作者版本、專案貢獻與原作署名。
@@ -63,3 +71,7 @@
 - 追加顯示範圍：`packages/ui/src/components/ProposalDoc.tsx`、`packages/ui/src/__tests__/proposalDoc.test.tsx`、`crates/engine/speclink-core/assets/schema/spec-driven/proposal.template.md`、`crates/engine/speclink-core/assets/skills/propose.md`；共用入口涵蓋各專案與活動／封存提案。
 - 2026-10-21 ingest 追加：`apps/desktop/src/views/settings/AboutPage.tsx`、`apps/desktop/src/views/settings/SecurityDataPage.tsx`、`apps/desktop/src/adapter`、`apps/desktop/core/src/runtime_preferences.rs`、`apps/desktop/src-tauri/src/runtime_commands.rs`、`apps/desktop/src-tauri/src/security_commands.rs`、`apps/desktop/src-tauri/tauri.conf.json`、`apps/desktop/src-tauri/capabilities/default.json`、`crates/host/speclink-host/src/context.rs`、`scripts/release/release-latest-json.mjs`、`.github/workflows/desktop-build.yml`、`README.md`、`README.zh-TW.md`、`CONTRIBUTING.md`、`docs/development.zh-TW.md`、`docs/development.md` 與本變更 evidence。既有 UpdatesPage／updater／FsSecurityData 與 CLI 資料、掃描、KB 入口同批核對。
 - 新增裝置設定位於既有 Host 全域設定目錄的 `security-data-preferences.json`：`formatVersion:1, standardsPath:string|null`，缺檔或 null 沿原本機預設；不加入 openspec/config.yaml 或 .speclink.yaml，不增加 CLI 旗標。Desktop IPC 只增加路徑設定與獨立版本查詢，既有 CLI JSON shape、stdout／stderr、exit code 維持。選擇共用路徑後 I/O 改到該標準根目錄，但私人資料仍在原本機位置；不自動搬移或刪除舊資料。
+
+- 2026-10-21 工具追加影響：`apps/desktop/src/builtinTools.ts`、`apps/desktop/src/views/project-settings/SpeclinkPage.tsx`、`apps/desktop/src/components/WorkspaceChooser.tsx`、`crates/engine/speclink-core/src/workspace/skills.rs`、`crates/engine/speclink-core/src/workspace/init.rs`、`crates/engine/speclink-core/src/workspace/config.rs`、`crates/adapters/speclink-cli/src/verbs/init.rs`、`crates/adapters/speclink-node/src/lib.rs`，同步既有測試、產生檔與中英文件。既有原始九項需求與 Proxy 打包後驗收安排保持有效。
+
+- checkout 原生接點同類修正：`apps/desktop/src-tauri/src/connections.rs` 的空選集訊息沿 Tool::ALL，測試涵蓋 codex／antigravity 共存。

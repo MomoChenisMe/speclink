@@ -674,14 +674,14 @@ fn build_submission_context(
     for (path, digest) in &manifest.files {
         ensure!(valid_relative(path), "invalid_knowledge_path");
         check_budget(budget)?;
-        let text = reader
-            .read_optional_text(&format!(".security_kb/{path}"), 128 * 1024 * 1024, &|| {
+        let bytes = reader
+            .read_optional_bytes(&format!(".security_kb/{path}"), 128 * 1024 * 1024, &|| {
                 budget.stop_reason()
             })?
             .ok_or_else(|| anyhow::anyhow!("missing_knowledge"))?;
-        total += text.len();
+        total += bytes.len();
         ensure!(
-            total <= 256 * 1024 * 1024 && sha256(text.as_bytes()) == *digest,
+            total <= 256 * 1024 * 1024 && sha256(&bytes) == *digest,
             "integrity_error: knowledge file"
         );
     }
@@ -1174,7 +1174,7 @@ pub fn review_view(
     for entry in history::index(store, change)?
         .entries
         .into_iter()
-        .filter(|e| e.kind == history::CheckKind::Security)
+        .filter(|e| e.kind == history::CheckKind::Security && e.outcome != "omitted")
     {
         let report = read_change_report(store, change, &entry.record_id)?
             .ok_or_else(|| anyhow::anyhow!("missing_check_record"))?;

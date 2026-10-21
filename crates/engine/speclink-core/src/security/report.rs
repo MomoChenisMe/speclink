@@ -797,6 +797,50 @@ mod tests {
         policy.reviews.code = !policy.reviews.code;
         assert_ne!(before, policy.review_digest().unwrap());
     }
+    #[test]
+    fn publication_rejects_an_index_changed_after_its_snapshot() {
+        use crate::{history, store::Store, teststore::TestStore};
+        let store = TestStore::with_meta("demo", "schema: spec-driven\n");
+        let report = VersionedReport::Deep(DeepReport::new(deep_input(), deep_context()).unwrap());
+        *store.artifact_read_hook.borrow_mut() = Some(Box::new(|store, change, path| {
+            assert_eq!(path, history::INDEX);
+            let id = "01ARZ3NDEKTSV4RRFFQ69G5FAX";
+            let content = "completed review";
+            let entry = history::CheckEntry {
+                record_id: id.into(), kind: history::CheckKind::Review,
+                created_at: "2026-10-21T00:00:00Z".into(), outcome: "passed".into(),
+                relative_path: history::CheckKind::Review.path(id).unwrap(),
+                content_digest: crate::security::data::sha256(content.as_bytes()),
+            };
+            store.put_artifact(change, &entry.relative_path, content);
+            store.put_artifact(change, history::INDEX, &serde_json::to_string(&history::CheckIndex {format_version:1,entries:vec![entry]}).unwrap());
+            store.write_change_meta(change, "schema: spec-driven\nreviewed_at: 2026-10-21\n").unwrap();
+            store.delete_artifact(change, "review.md").unwrap();
+        }));
+        let err = save_change_report(&store, "demo", &report).unwrap_err();
+        assert!(err.to_string().contains("revision_conflict"), "{err}");
+        let index = history::index(&store, "demo").unwrap();
+        assert_eq!(index.entries.len(), 1);
+        assert_eq!(index.entries[0].kind, history::CheckKind::Review);
+        assert!(!store.artifact_exists("demo", &format!("checks/security/{}/report.md", report.report_id())));
+        assert!(store.meta("demo").contains("reviewed_at"));
+    }
+    #[test]
+    fn deep_submission_rejects_missing_null_and_empty_evidence_fields() {
+        for field in ["endLine", "function"] {
+            for absent in [true, false] {
+                let mut value = serde_json::to_value(deep_input()).unwrap();
+                let evidence = value["findings"][0]["evidence"][0].as_object_mut().unwrap();
+                if absent { evidence.remove(field); } else { evidence.insert(field.into(), serde_json::Value::Null); }
+                let parsed = serde_json::from_value::<DeepReportInput>(value);
+                assert!(parsed.and_then(|input| DeepReport::new(input, deep_context()).map_err(serde::de::Error::custom)).is_err(), "{field} absent={absent}");
+            }
+        }
+        let mut value = serde_json::to_value(deep_input()).unwrap();
+        value["findings"][0]["evidence"][0]["function"] = "  ".into();
+        let input: DeepReportInput = serde_json::from_value(value).unwrap();
+        assert!(DeepReport::new(input, deep_context()).is_err());
+    }
     fn deep_input() -> DeepReportInput {
         serde_json::from_value(serde_json::json!({
             "formatVersion":2,"changeName":"demo","policyDigest":"b".repeat(64),"knowledgeDigest":"d".repeat(64),"scopeDigest":"c".repeat(64),"builtinReportId":null,"complete":true,"targets":["app.ts"],

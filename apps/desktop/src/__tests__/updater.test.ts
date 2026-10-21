@@ -491,6 +491,7 @@ describe("前景重檢 store 接線（recheckOnFocus）", () => {
 });
 
 vi.mock("@tauri-apps/api/core",()=>({invoke:vi.fn()}));
+vi.mock("@tauri-apps/api/app",()=>({getVersion:vi.fn().mockResolvedValue("0.10.0.3")}));
 it("描述檔404才轉本分支手動更新，TLS失敗不被掩蓋", async () => {
   const {invoke}=await import("@tauri-apps/api/core");
   const {tauriUpdaterAdapter}=await import("../adapter/updater");
@@ -512,4 +513,25 @@ it("更新adapter透過Rust保留候選更新id，下載及安裝沿用同一候
  if(pending && !("manualUrl" in pending)) { await pending.download();await pending.install(); }
  expect(invoke).toHaveBeenCalledWith("updater_download",{id:"candidate-one"});
  expect(invoke).toHaveBeenCalledWith("updater_install",{id:"candidate-one"});
+});
+
+it.each(["0.10.0.4", "0.10.0.10", "0.11.0"])('installed %s does not suggest the same or older fork release', async (installed) => {
+ const {getVersion}=await import("@tauri-apps/api/app");
+ const {invoke}=await import("@tauri-apps/api/core");
+ const {tauriUpdaterAdapter}=await import("../adapter/updater");
+ vi.mocked(getVersion).mockResolvedValueOnce(installed);
+ vi.mocked(invoke).mockReset().mockRejectedValueOnce({code:"parse"}).mockResolvedValueOnce({version:"0.10.0.4",releaseUrl:"https://github.com/mosutw/speclink/releases/tag/desktop-v0.10.0.4"});
+ expect(await tauriUpdaterAdapter().check()).toBeNull();
+});
+
+it.each([
+  ["0.10.0.2", false], ["0.10.0.3", false], ["0.10.0.4", true], ["0.10.1", true],
+])("實際安裝 build.3 時只接受較新的本分支 %s", async (version, newer) => {
+ const {getVersion}=await import("@tauri-apps/api/app");
+ const {invoke}=await import("@tauri-apps/api/core");
+ const {tauriUpdaterAdapter}=await import("../adapter/updater");
+ vi.mocked(getVersion).mockResolvedValueOnce("0.10.0-build.3");
+ const url=`https://github.com/mosutw/speclink/releases/tag/desktop-v${version}`;
+ vi.mocked(invoke).mockReset().mockRejectedValueOnce({code:"parse"}).mockResolvedValueOnce({version,releaseUrl:url});
+ expect(await tauriUpdaterAdapter().check()).toEqual(newer ? {version,manualUrl:url} : null);
 });

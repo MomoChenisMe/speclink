@@ -215,10 +215,10 @@ fn err_connection_refused_fails_loud_with_connection_hint() {
     assert!(err.reason.is_none(), "transport failure has no server reason");
 }
 
-// --- unknown reasons and bare envelopes fall back generically ---
+// --- unknown reasons preserve the message; bare envelopes use status fallbacks ---
 
 #[test]
-fn err_unknown_reason_uses_generic_fallback() {
+fn err_unknown_reason_preserves_server_message_and_status() {
     let (base, _rx) = serve_once(
         418,
         r#"{"status":418,"reason":"im_a_teapot","message":"short and stout"}"#,
@@ -226,11 +226,12 @@ fn err_unknown_reason_uses_generic_fallback() {
     let client = Client::new(&base, "tok", Some("backend"));
     let err = client.list_changes().unwrap_err();
     assert!(
-        err.message.contains("unexpected server response"),
+        err.message.contains("short and stout"),
         "message was: {}",
         err.message
     );
     assert_eq!(err.reason.as_deref(), Some("im_a_teapot"));
+    assert_eq!(err.status, Some(418));
 }
 
 #[test]

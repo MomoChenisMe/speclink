@@ -125,7 +125,7 @@ fn user_text(tool: Tool) -> &'static str {
     match tool {
         Tool::Claude => CLAUDE_USER_TEXT,
         Tool::Codex => CODEX_USER_TEXT,
-        Tool::Copilot => unreachable!("copilot 沒有指令檔"),
+        Tool::Copilot | Tool::Antigravity => unreachable!("此工具沒有指令檔"),
     }
 }
 
@@ -1489,7 +1489,7 @@ fn tool_selection_notes_an_unknown_builtin_name() {
     assert_eq!(
         sel.notes,
         vec![
-            "unknown tool 'cursor' in .speclink.yaml tools list (supported: claude, codex, copilot)"
+            "unknown tool 'cursor' in .speclink.yaml tools list (supported: claude, codex, copilot, antigravity)"
                 .to_string()
         ]
     );
@@ -1592,7 +1592,7 @@ fn sync_plan_builds_one_target_per_selected_tool() {
     assert_eq!(plan.targets.len(), 1, "只選 codex 就只有一個 target");
     assert_eq!(plan.targets[0].label, "codex");
     assert_eq!(plan.targets[0].skills_root, root.at(".agents/skills"));
-    assert_eq!(plan.deselected_builtins, vec![Tool::Claude, Tool::Copilot]);
+    assert_eq!(plan.deselected_builtins, vec![Tool::Claude, Tool::Copilot, Tool::Antigravity]);
 }
 
 /// legacy 回退（沒有 tools 清單）不下架任何內建工具。
@@ -1620,7 +1620,7 @@ fn sync_plan_adds_a_target_for_each_descriptor() {
     assert_eq!(plan.targets[0].label, "claude");
     assert_eq!(plan.targets[1].label, "wad-harness");
     assert_eq!(plan.targets[1].skills_root, root.at(".wad/skills"));
-    assert_eq!(plan.deselected_builtins, vec![Tool::Codex, Tool::Copilot]);
+    assert_eq!(plan.deselected_builtins, vec![Tool::Codex, Tool::Copilot, Tool::Antigravity]);
 }
 
 /// 守門的檢查面就是 targets 的 skills_root 集合：只有描述子目錄領先版本時
@@ -1980,4 +1980,67 @@ fn skill_probe_reports_stale_copilot_skills() {
     assert!(probe
         .differing_files
         .contains(&propose_skill(Tool::Copilot)));
+}
+
+
+#[test]
+fn antigravity_coexists_with_codex_and_deselects_only_owned_skills() {
+    let root=TempRoot::new("antigravity-coexists");
+    let tools=parse_tools("codex,antigravity").expect("Antigravity is a built-in tool");
+    init(&root.dir,&tools,false,"openspec").unwrap();
+    let codex=root.read(".agents/skills/speclink-propose/SKILL.md");
+    let antigravity=root.read(".agent/skills/speclink-propose/SKILL.md");
+    assert!(codex.contains("$speclink-"));
+    assert!(antigravity.contains("/speclink-"));
+    assert!(!antigravity.contains("$speclink-"), "tool-specific references must be rendered");
+    assert!(antigravity.contains("--agent antigravity"));
+    assert!(!antigravity.contains("context: fork"));
+    assert_eq!(skill_dirs(&root,".agent/skills"),expected_dirs(Tool::Codex));
+    assert_eq!(builtin_names(&root),["antigravity","codex"]);
+    for absent in ["AGENTS.md","GEMINI.md","CLAUDE.md"] {assert!(!root.exists(absent));}
+    root.write(".agent/skills/my-skill/SKILL.md","user skill\n");
+    root.write(".agent/rules/team.md","team rules\n");
+    reconcile_builtin_tools(&root.dir,&[Tool::Codex]).unwrap();
+    assert!(skill_dirs(&root,".agent/skills").is_empty());
+    assert_eq!(root.read(".agent/skills/my-skill/SKILL.md"),"user skill\n");
+    assert_eq!(root.read(".agent/rules/team.md"),"team rules\n");
+    assert_eq!(root.read(".agents/skills/speclink-propose/SKILL.md"),codex);
+}
+
+#[test]
+fn antigravity_descriptor_conflicts_fail_without_overwriting_existing_skills() {
+    for descriptor in ["  - name: antigravity\n    skills_dir: .custom/skills\n","  - name: my-antigravity\n    skills_dir: .agent/skills\n"] {
+        let root=TempRoot::new("antigravity-descriptor");
+        init(&root.dir,&[Tool::Codex],false,"openspec").unwrap();
+        let before=root.read(".agents/skills/speclink-propose/SKILL.md");
+        root.write(".speclink.yaml",&format!("tools:\n  - codex\n{descriptor}"));
+        let error=update(&root.dir,false).unwrap_err().to_string();
+        assert!(error.contains("built-in"),"{error}");
+        assert_eq!(root.read(".agents/skills/speclink-propose/SKILL.md"),before);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn update_never_prunes_through_a_symlinked_antigravity_skills_dir() {
+    let root=TempRoot::new("antigravity-symlink");
+    init(&root.dir,&[Tool::Codex],false,"openspec").unwrap();
+    let before=root.read(".agents/skills/speclink-propose/SKILL.md");
+    std::fs::create_dir_all(root.at(".agent")).unwrap();
+    std::os::unix::fs::symlink("../.agents/skills",root.at(".agent/skills")).unwrap();
+    let outcome=update(&root.dir,false).unwrap();
+    assert_eq!(root.read(".agents/skills/speclink-propose/SKILL.md"),before);
+    assert!(std::fs::symlink_metadata(root.at(".agent/skills")).unwrap().file_type().is_symlink());
+    assert!(!outcome.pruned.iter().any(|name|name=="antigravity"));
+}
+
+#[test]
+fn antigravity_remote_init_generates_skills_without_a_local_spec_tree() {
+    let root=TempRoot::new("antigravity-remote");
+    init_remote(&root.dir,&[Tool::Antigravity],false,REMOTE_URL,Some("desktop")).unwrap();
+    assert!(root.exists(".agent/skills/speclink-propose/SKILL.md"));
+    assert!(!root.exists("openspec"));
+    assert!(!root.exists("GEMINI.md"));
+    assert_eq!(builtin_names(&root),["antigravity"]);
+    assert!(root.read(".speclink.yaml").contains(REMOTE_URL));
 }

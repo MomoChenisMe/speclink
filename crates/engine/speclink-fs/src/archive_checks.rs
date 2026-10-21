@@ -68,6 +68,7 @@ fn validate_tree(root: &Path) -> Result<()> {
             serde_json::from_slice(&io::read_limited(&root.join(INDEX), 64 * 1024 * 1024)?)?;
         index.validate()?;
         for e in index.entries {
+            if e.outcome == "omitted" { continue; }
             io::owned_directory(root.join(&e.relative_path).parent().unwrap(), root, false)?;
             let bytes = io::read_limited(&root.join(&e.relative_path), 64 * 1024 * 1024)?;
             ensure!(
@@ -348,6 +349,16 @@ mod tests {
         (root, store, plan)
     }
     #[test]
+    fn archive_rejects_metadata_changed_after_planning() {
+        let (_root, store, plan) = fixture();
+        let latest = format!("{}board_rank: newest\n", store.read_change_meta("demo").unwrap());
+        store.write_change_meta("demo", &latest).unwrap();
+        let error = archive(&store, "demo", "2026-10-21-demo", &plan).unwrap_err();
+        assert!(error.to_string().contains("revision_conflict"), "{error}");
+        assert_eq!(store.read_change_meta("demo").as_deref(), Some(latest.as_str()));
+        assert!(!store.archived_change_exists("2026-10-21-demo"));
+    }
+    #[test]
     fn concurrent_archive_cannot_recover_another_inflight_publication() {
         let (_root, store, plan) = fixture();
         let lock = io::open_lock(&store.layout().spec_dir().join(".archive-lock-demo")).unwrap();
@@ -390,10 +401,10 @@ mod tests {
             .contains(&"2026-10-21-demo".into()));
         archive(&store, "demo", "2026-10-21-demo", &plan).unwrap();
         assert!(!store.change_exists("demo"));
-        assert!(speclink_core::history::index(&store, "2026-10-21-demo")
-            .unwrap()
-            .entries
-            .is_empty());
+        let entries = speclink_core::history::index(&store, "2026-10-21-demo").unwrap().entries;
+        assert_eq!(entries.len(), 1);
+        assert!(entries.iter().all(|entry| entry.outcome == "omitted"));
+        assert!(speclink_core::history::record(&store, "2026-10-21-demo", &entries[0].record_id, entries[0].kind).unwrap_err().to_string().contains("check_record_omitted"));
         assert_eq!(
             store
                 .read_archived_artifact("2026-10-21-demo", "review.md")

@@ -557,7 +557,8 @@ mod review {
         // 寫碼 4/4 全勾、一個 [M] 未勾 → 蓋章成功，錨為全任務總數 5（含 [M]）。
         let store = store_with_change();
         store.put_artifact("demo", "tasks.md", TASKS_CODE_DONE_MANUAL_OPEN);
-        add_round(&REVIEW, &store, "demo", CLEAN_ROUND).expect("round 1");
+        add_round(&REVIEW, &store, "demo", ROUND_1).expect("round 1 with findings");
+        add_round(&REVIEW, &store, "demo", CLEAN_ROUND).expect("round 2 clean");
         stamp_demo(&store, false).expect("manual-only remainder must stamp");
         let meta = crate::model::ChangeMeta::from_text(Some(&store.meta("demo"))).expect("meta");
         assert_eq!(meta.reviewed_tasks_total, Some(5), "anchor counts the [M] task too");

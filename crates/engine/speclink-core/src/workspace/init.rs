@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// 產物層的唯一版號：技能檔 frontmatter 的 version 同源於此，也是過期探測與
 /// 降級守門的比對基準。僅在內嵌資產（assets/skills）的 render 內容變動時遞增——
 /// 與 app／CLI 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
-pub const ASSET_VERSION: &str = "v1.50.2";
+pub const ASSET_VERSION: &str = "v1.50.5";
 
 const APP_CONFIG_TEMPLATE: &str = concat!(
     "# Speclink application config
@@ -304,7 +304,7 @@ pub(crate) struct SyncTarget {
 /// - `guard` has exactly one bypass, `update`'s explicit `--allow-downgrade`; every other
 ///   regeneration path calls it.
 pub(crate) struct SyncPlan {
-    /// Ordered claude, codex, copilot, then descriptors in list order.
+    /// Ordered claude, codex, copilot, antigravity, then descriptors in list order.
     pub(crate) targets: Vec<SyncTarget>,
     /// Built-ins that are NOT selected and lose their footprint. Empty on the legacy
     /// fallback: without a tools list, nothing was ever "deselected".
@@ -411,7 +411,7 @@ impl SyncPlan {
     ///    BEFORE generation on purpose: a descriptor that only changed its NAME keeps
     ///    the same `skills_dir`, and deleting after writing would take the fresh files
     ///    with it. Reporting stays late so `pruned` keeps its built-ins-first order.
-    /// 3. Per target (claude, codex, copilot, then descriptors): write every managed file and
+    /// 3. Per target (claude, codex, copilot, antigravity, then descriptors): write every managed file and
     ///    remove the `speclink-` directories that are not in the set.
     /// 4. Prune the deselected built-ins.
     /// 5. Record the current descriptors as the footprint for the next sync.
@@ -1079,12 +1079,12 @@ fn instructions_path(tool: Tool) -> Option<&'static str> {
     match tool {
         Tool::Claude => Some("CLAUDE.md"),
         Tool::Codex => Some("AGENTS.md"),
-        Tool::Copilot => None,
+        Tool::Copilot | Tool::Antigravity => None,
     }
 }
 
 /// Validate a comma-separated `--tools` value into a tool list. Speclink deliberately scopes
-/// the supported tools to claude, codex and copilot.
+/// the supported tools to claude, codex, copilot and antigravity.
 pub fn parse_tools(spec: &str) -> Result<Vec<Tool>> {
     parse_tool_names(&spec.split(',').collect::<Vec<&str>>())
 }

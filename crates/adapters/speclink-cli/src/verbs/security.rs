@@ -248,6 +248,10 @@ fn security_command(args: SecurityArgs, cancelled: Arc<AtomicBool>) -> Result<()
             let receipt = speclink_fs::security::knowledge::prepare(location.reader.root(), &key, &policy_text, &repository, &|| cancelled.load(Ordering::Relaxed))?;
             if json { crate::common::print_json(&receipt) } else {
                 println!("Prepared knowledge at {} · {} files, {} bytes · {}", receipt.path, receipt.files, receipt.bytes, receipt.knowledge_digest);
+                println!("projectKey: {}\npolicyDigest: {}", receipt.project_key, receipt.policy_digest);
+                for standard in &receipt.standards {
+                    println!("standardId: {} · version: {} · dataSha256: {}", standard.standard_id.as_str(), standard.version, standard.data_sha256);
+                }
                 Ok(())
             }
         }
@@ -543,7 +547,7 @@ fn review_command(command: ReviewCommand, application_data: &std::path::Path, da
     if location.remote.is_some(){return remote_review_command(command,&location,application_data,data,cancelled);}
     speclink_core::security::prepared::validate_change(Some(&change))?;
     let store = speclink_fs::FsStore::new(location.reader.root(), &location.spec_dir);
-    let index = speclink_core::history::index(&store,&change)?;
+    speclink_core::history::index(&store,&change)?;
     let prepared = speclink_fs::security::prepared::FsPreparedReviews::new(application_data)?;
     let target = location.review_target(&prepared,Some(change.clone()))?;
     match command {
@@ -580,38 +584,39 @@ fn review_command(command: ReviewCommand, application_data: &std::path::Path, da
             if json {crate::common::print_json(&receipt)} else {println!("Saved security review {} · {} · complete: {}",receipt.report_id,receipt.relative_path,receipt.complete);Ok(())}
         },
         ReviewCommand::Show {..} => {
-            let mut reports=Vec::new();
-            let mut decisions=Vec::new();
-            for entry in index.entries.iter().filter(|e|e.kind==speclink_core::history::CheckKind::Security) {
-                let report=read_change_report(&store,&change,&entry.record_id)?.ok_or_else(||anyhow::anyhow!("report_not_found"))?;
-                anyhow::ensure!(report.project_key()==target.binding.project_key(),"binding_mismatch");
-                decisions.extend(security::read_decisions(&store,&change,&entry.record_id)?);
-                reports.push(serde_json::json!({"reportId":report.report_id(),"executionMode":report.execution_mode(),"relativePath":entry.relative_path,"complete":report.is_complete(),"legacy":entry.outcome=="legacy"}));
-            }
             let policy_text=location.reader.read_optional_text(&format!("{}/config.yaml",location.spec_dir),64*1024,&||None)?;
             let policy = speclink_core::config::WorkflowConfig::from_text(policy_text.as_deref()).map_err(|_|anyhow::anyhow!("invalid_config: workflow policy could not be parsed"))?.security();
-            let required=policy.enabled&&policy.required_for_acceptance;
-            let mut reasons=Vec::new();
+            let mut reason=None;
             let mut fresh=None;
             let submission=if store.change_exists(&change) {
                 match security::submission_context(&target,&location.reader,data,&store,None,&ReviewBudget::new(cancelled)) {
                     Ok((context,builtin))=>{fresh=Some(security::fresh_evidence(&context));let mut s=security::Submission::from(&context);s.builtin_report_id=builtin;Some(s)},
-                    Err(error)=>{ reasons.push(error.to_string().split(':').next().unwrap_or("source_freshness_unverified").to_owned());None }
+                    Err(error)=>{reason=Some(error.to_string().split(':').next().unwrap_or("source_freshness_unverified").to_owned());None}
                 }
             } else {None};
-            let mut acceptance=security::acceptance_from_fresh(&store,&change,&policy,&target.binding.project_key(),fresh.as_ref())?;
-            for reason in &reasons { if !acceptance.reasons.contains(reason) {acceptance.reasons.push(reason.clone());} }
-            let result=serde_json::json!({"changeName":change,"reports":reports,"acceptance":acceptance,"submission":submission,"decisions":decisions});
-            if json {crate::common::print_json(&result)} else {
-                println!("Security reviews for {change}");
-                for report in &reports {println!("{} · {} · {} · complete: {}",report["reportId"].as_str().unwrap_or(""),report["executionMode"].as_str().unwrap_or(""),report["relativePath"].as_str().unwrap_or(""),report["complete"]);}
-                println!("Acceptance: {} · required: {required} · blocking findings: {} · not verified: {}. PASS is limited to the recorded scope; it is not security certification.",result["acceptance"]["status"].as_str().unwrap_or("blocked"),result["acceptance"]["blockingFindings"],result["acceptance"]["notVerified"]);
-                for reason in &acceptance.reasons { println!("Reason: {reason}"); }
-                for decision in &decisions {println!("Accepted {} · report {} · finding {} · {} · {} · {}",decision.decision_id,decision.report_id,decision.finding_id,decision.actor,decision.accepted_at,decision.reason);}
-                Ok(())
-            }
+            let mut result=security::review_view(&store,&change,&target.binding.project_key(),&policy,fresh.as_ref())?;
+            result.submission=submission.map(|s|serde_json::from_value(serde_json::to_value(s)?)).transpose()?;
+            if let Some(reason)=reason {if !result.acceptance.reasons.contains(&reason){result.acceptance.reasons.push(reason);}}
+            print_security_review(&result,json)
         }
     }
+}
+
+fn print_security_review(view: &speclink_protocol::security::SecurityReviewView, json: bool) -> Result<()> {
+    if json { return crate::common::print_json(view); }
+    println!("Security reviews for {}", view.change_name);
+    for report in &view.reports {
+        println!("{} · {} · {} · complete: {} · legacy: {}", report.report_id, report.execution_mode, report.relative_path, report.complete, report.legacy);
+    }
+    let acceptance=serde_json::to_value(&view.acceptance)?;
+    println!("Acceptance: {} · required: {} · blocking findings: {} · not verified: {} · source freshness: {:?}. PASS is limited to the recorded scope; it is not security certification.", acceptance["status"].as_str().unwrap_or_default(), view.acceptance.required, view.acceptance.blocking_findings, view.acceptance.not_verified, view.acceptance.source_freshness);
+    for reason in &view.acceptance.reasons { println!("Reason: {reason}"); }
+    for d in &view.decisions {
+        println!("Decision {} · action: {} · reportId: {} · findingId: {}\n  actor: {} · acceptedAt: {}\n  reason: {}\n  policyDigest: {} · scopeDigest: {}", d.decision_id, d.action, d.report_id, d.finding_id, d.actor, d.accepted_at, d.reason, d.policy_digest, d.scope_digest);
+    }
+    if let Some(submission)=&view.submission {println!("Submission: {}",serde_json::to_string(submission)?);}
+    if let Some(revision)=view.expected_revision {println!("expectedRevision: {revision}");}
+    Ok(())
 }
 
 fn remember_current_policy(repository: &dyn StandardRepository) -> Result<()> {
@@ -862,7 +867,7 @@ fn remote_review_command(command:ReviewCommand,location:&TargetLocation,applicat
                 checked.submission=Some(serde_json::from_value(serde_json::to_value(submission)?)?);Ok(checked)
             })();
             let result=match computed {Ok(v)=>v,Err(e)=>{let mut v=view;v.acceptance.reasons.push(e.to_string().split(':').next().unwrap_or("source_freshness_unverified").into());v}};
-            if json {crate::common::print_json(&result)} else {println!("Security reviews for {change}");for r in result.reports {println!("{} · {} · {} · complete: {}",r.report_id,r.execution_mode,r.relative_path,r.complete);}println!("Acceptance: {:?} · source freshness: {:?}. PASS applies only to the recorded scope.",result.acceptance.status,result.acceptance.source_freshness);for reason in result.acceptance.reasons{println!("Reason: {reason}");}for d in result.decisions{println!("Accepted {} · {} · {} · {}",d.decision_id,d.finding_id,d.actor,d.reason);}Ok(())}
+            print_security_review(&result,json)
         }
         ReviewCommand::AddRound{change,..}=> {
             let mut bytes=Vec::new();std::io::stdin().take(4*1024*1024+1).read_to_end(&mut bytes)?;anyhow::ensure!(bytes.len()<=4*1024*1024,"size_limit: security report input");

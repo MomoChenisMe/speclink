@@ -1,0 +1,17 @@
+{
+  "reason": "使用者要求先備份再完整重跑，新增 Antigravity 與技能格式修正；舊 Round 2 不涵蓋新範圍",
+  "trustedBase": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+  "tickets": [
+    {
+      "path": "review.md",
+      "bytes": 15758,
+      "sha256": "00cf6bce1f1c71d26f3c0a24228160de02cc40c027954c226dfc600c145edb1b"
+    },
+    {
+      "path": "verify.md",
+      "bytes": 16629,
+      "sha256": "366bb0fcd97573b070346d6f9920776c4a30a2d81000ed77439d311ff6da0a8b"
+    }
+  ],
+  "localScopeBackup": "/tmp/speclink-steps12-scope-backup"
+}

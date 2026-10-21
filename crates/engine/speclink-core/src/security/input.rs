@@ -109,6 +109,13 @@ pub enum InputKind {
 }
 pub trait ProjectInput: Send + Sync {
     fn root(&self) -> &std::path::Path;
+    /// Bounded, link-safe raw data for knowledge fingerprints, including retained archives.
+    fn read_optional_bytes(
+        &self,
+        path: &str,
+        limit: usize,
+        stop: &dyn Fn() -> Option<&'static str>,
+    ) -> anyhow::Result<Option<Vec<u8>>>;
     fn read_optional_text(
         &self,
         path: &str,

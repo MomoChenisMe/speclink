@@ -193,6 +193,7 @@ pub fn index(store: &dyn Store, change: &str) -> Result<CheckIndex> {
     };
     index.validate()?;
     for entry in &index.entries {
+        if entry.outcome == "omitted" { continue; }
         let content = read(store, change, &entry.relative_path)
             .ok_or_else(|| anyhow::anyhow!("missing_check_record"))?;
         ensure!(
@@ -210,6 +211,7 @@ pub fn record(store: &dyn Store, change: &str, id: &str, kind: CheckKind) -> Res
         .iter()
         .find(|e| e.record_id == id && e.kind == kind)
         .ok_or_else(|| crate::station::NotFound("check record not found".into()))?;
+    ensure!(entry.outcome != "omitted", "check_record_omitted: record excluded by archive policy");
     let content = read(store, change, &entry.relative_path)
         .ok_or_else(|| anyhow::anyhow!("missing_check_record"))?;
     let header = content

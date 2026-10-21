@@ -62,6 +62,30 @@ mod release_metadata_tests {
         );
     }
     #[test]
+    fn desktop_release_accepts_each_repositorys_actual_desktop_tags() {
+        for (repo, tag, expected) in [
+            (ReleaseRepository::Upstream, "v0.10.0", "0.10.0"),
+            (ReleaseRepository::Upstream, "v0.9.0", "0.9.0"),
+            (ReleaseRepository::Fork, "desktop-0.8.0-build.1", "0.8.0.1"),
+            (ReleaseRepository::Fork, "desktop-v0.10.1", "0.10.1"),
+            (ReleaseRepository::Fork, "desktop-v0.10.0.4", "0.10.0.4"),
+        ] {
+            let item = release(repo.repo(), tag, "2026-10-21T00:00:00Z");
+            let selected = select_desktop_release(repo, &json!([item.clone()]))
+                .ok().flatten().expect(tag);
+            assert_eq!(selected.version, expected);
+            assert_eq!(selected.release_url, item["html_url"]);
+            for field in ["draft", "prerelease"] {
+                let mut excluded = item.clone();
+                excluded[field] = json!(true);
+                assert!(select_desktop_release(repo, &json!([excluded])).ok().flatten().is_none());
+            }
+            let mut cli_only = item;
+            cli_only["assets"] = json!([{"name":"speclink-cli.tar.gz"}]);
+            assert!(select_desktop_release(repo, &json!([cli_only])).ok().flatten().is_none());
+        }
+    }
+    #[test]
     fn release_http_errors_keep_auth_rate_limits_and_missing_descriptor_distinct() {
         for (status, code) in [
             (407, "proxy-auth"),
@@ -271,8 +295,23 @@ fn select_desktop_release(
         let Some(tag) = item["tag_name"].as_str() else {
             return Err(UpdateFailure::code("parse"));
         };
-        let Some(version) = tag.strip_prefix("desktop-v") else {
-            continue;
+        let version = match repo {
+            ReleaseRepository::Fork => {
+                if let Some(version) = tag.strip_prefix("desktop-v") {
+                    version.to_owned()
+                } else if let Some((version, build)) = tag
+                    .strip_prefix("desktop-")
+                    .and_then(|value| value.split_once("-build."))
+                {
+                    format!("{version}.{build}")
+                } else {
+                    continue;
+                }
+            }
+            ReleaseRepository::Upstream => {
+                let Some(version) = tag.strip_prefix('v') else { continue; };
+                version.to_owned()
+            }
         };
         let parts: Vec<_> = version.split('.').collect();
         if !(3..=4).contains(&parts.len())
@@ -310,7 +349,7 @@ fn select_desktop_release(
         releases.push((
             timestamp,
             DesktopRelease {
-                version: version.into(),
+                version,
                 repo_url: repo_url.clone(),
                 release_url: release_url.into(),
                 published_at: date.into(),

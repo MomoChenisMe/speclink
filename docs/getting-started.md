@@ -89,12 +89,12 @@ speclink init --tools claude,codex
 Generated files for: claude, codex
 ```
 
-`--tools` selects the agent tools that get skills: `claude`, `codex`, and `copilot`, in any comma-separated combination. If you use only GitHub Copilot, write `--tools copilot`.
+`--tools` selects the agent tools that get skills: `claude`, `codex`, `copilot`, and `antigravity`, in any comma-separated combination. If you use only GitHub Copilot, write `--tools copilot`.
 
 This step does three things:
 
 - It creates `openspec/` and `.speclink.yaml`.
-- It writes skill files for the tools that you select: `.claude/skills/` for Claude, `.agents/skills/` for Codex, and `.github/skills/` for GitHub Copilot.
+- It writes skill files for the tools that you select: `.claude/skills/` for Claude, `.agents/skills/` for Codex, `.github/skills/` for GitHub Copilot, and `.agent/skills/` for Antigravity.
 - It adds `.speclink/` (local work data) to `.gitignore`.
 
 It does not change your `CLAUDE.md`, `AGENTS.md`, or `.github/copilot-instructions.md`. The agent reads the description in each skill file to choose the right skill.
@@ -127,7 +127,7 @@ If your repo has a lot of code but no specs, run `/speclink-baseline` first (`$s
 
 ## <a id="propose"></a>3. Propose
 
-Ask the agent to create the change. In Claude Code or GitHub Copilot:
+Ask the agent to create the change. In Claude Code, GitHub Copilot, or Antigravity:
 
 ```text
 /speclink-propose add-csv-export
@@ -198,7 +198,7 @@ speclink new artifact tasks --change add-csv-export --stdin < tasks.md
 
 ## <a id="apply"></a>4. Apply
 
-When the documents are complete, ask the agent to start the work. In Claude Code or GitHub Copilot:
+When the documents are complete, ask the agent to start the work. In Claude Code, GitHub Copilot, or Antigravity:
 
 ```text
 /speclink-apply add-csv-export
@@ -265,7 +265,7 @@ Two optional quality stations check the code. `/speclink-review` checks code cra
 
 ## <a id="archive"></a>6. Archive
 
-When all tasks are done, the checks pass, and the quality stations that you chose are complete, ask the agent to archive. In Claude Code or GitHub Copilot:
+When all tasks are done, the checks pass, and the quality stations that you chose are complete, ask the agent to archive. In Claude Code, GitHub Copilot, or Antigravity:
 
 ```text
 /speclink-archive add-csv-export

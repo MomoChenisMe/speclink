@@ -20,7 +20,7 @@ use speclink_store::{
 };
 use std::{
     collections::BTreeMap,
-    io::Read,
+    io::{Read, Write},
     sync::{atomic::AtomicBool, Arc},
 };
 
@@ -29,7 +29,7 @@ fn paired_remote_publication_is_atomic_scoped_fresh_and_cas_guarded() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("checkout");
     std::fs::create_dir_all(root.join("openspec/changes/demo")).unwrap();
-    let policy="security_verification:\n  enabled: true\n  required_for_acceptance: true\n  standards:\n    owasp_top10: {enabled: true, version: '2025'}\n  reviews: {spec: false, code: true, api_boundary: false}\n";
+    let policy="security_verification:\n  enabled: true\n  required_for_acceptance: true\n  standards:\n    owasp_top10: {enabled: true, version: '2025'}\n    cwe: {enabled: true, version: '4.20'}\n  reviews: {spec: false, code: true, api_boundary: false}\n";
     std::fs::write(root.join("openspec/config.yaml"), policy).unwrap();
     std::fs::write(root.join("app.ts"), "export const value = 1;\n").unwrap();
     let data = speclink_fs::security::FsSecurityData::new(&temp.path().join("data")).unwrap();
@@ -54,8 +54,22 @@ fn paired_remote_publication_is_atomic_scoped_fresh_and_cas_guarded() {
     }
     data.begin_install(StandardId::OwaspTop10, "2025")
         .unwrap()
-        .commit(ValidatedStandard::new(source, files, IntegrityKind::Imported, &|| false).unwrap())
+        .commit(ValidatedStandard::new(source, files.clone(), IntegrityKind::Imported, &|| false).unwrap())
         .unwrap();
+    // Model the official download: retain the original ZIP as well as expanded XML.
+    let cwe = standard_source(StandardId::Cwe, "4.20").unwrap();
+    let mut cwe_files = BTreeMap::from([("LICENSE".into(), b"CWE fixture terms".to_vec())]);
+    let mut archive = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    archive.start_file("cwec_v4.20.xml", zip::write::SimpleFileOptions::default()).unwrap();
+    archive.write_all(br#"<Weakness_Catalog xmlns="http://cwe.mitre.org/cwe-7" Version="4.20"><Weaknesses><Weakness ID="79" Name="Synthetic"><Description>Synthetic fixture</Description></Weakness></Weaknesses></Weakness_Catalog>"#).unwrap();
+    let cwe_zip = archive.finish().unwrap().into_inner();
+    cwe_files.insert("raw/cwec_v4.20.xml.zip".into(), cwe_zip.clone());
+    for guidance in speclink_core::security::knowledge::registry().unwrap().files() {
+        cwe_files.insert(guidance.name.clone(), files[&guidance.name].clone());
+    }
+    speclink_fs::security::expand_cwe(&cwe, &mut cwe_files, &|| false).unwrap();
+    data.begin_install(StandardId::Cwe, "4.20").unwrap()
+        .commit(ValidatedStandard::new(cwe, cwe_files, IntegrityKind::SourceTls, &|| false).unwrap()).unwrap();
     let key = security::remote_project_key("https://server.example", "demo", "backend").unwrap();
     let reader = speclink_fs::security::scan::AuthorizedProject::open(&root).unwrap();
     let mut target =
@@ -99,6 +113,12 @@ fn paired_remote_publication_is_atomic_scoped_fresh_and_cas_guarded() {
     .unwrap();
     let (context, builtin_id) =
         security::submission_context(&target, &reader, &data, &local, None, &budget).unwrap();
+    let zip_path = reader.root().join(".security_kb/standards/cwe/4.20/raw/cwec_v4.20.xml.zip");
+    assert_eq!(std::fs::read(&zip_path).unwrap(), cwe_zip);
+    std::fs::write(&zip_path, b"tampered ZIP").unwrap();
+    assert!(security::submission_context(&target, &reader, &data, &local, None, &budget)
+        .err().unwrap().to_string().contains("integrity_error"));
+    std::fs::write(&zip_path, &cwe_zip).unwrap();
     assert_eq!(builtin_id.as_deref(), Some(basic.report_id()));
     let frame = security::source_attestation(&context, &data).unwrap();
     let submission = security::Submission::from(&context);
@@ -405,12 +425,10 @@ fn paired_remote_publication_is_atomic_scoped_fresh_and_cas_guarded() {
         })
         .unwrap()
         .unwrap();
-    assert!(
-        serde_json::from_str::<speclink_core::history::CheckIndex>(&index.content)
-            .unwrap()
-            .entries
-            .is_empty()
-    );
+    let omitted = serde_json::from_str::<speclink_core::history::CheckIndex>(&index.content).unwrap().entries;
+    assert_eq!(omitted.len(), 3);
+    assert_eq!(omitted.iter().filter(|entry| entry.kind == speclink_core::history::CheckKind::Security).count(), 2);
+    assert!(omitted.iter().all(|entry| entry.outcome == "omitted"));
     assert!(snapshot
         .read(&DocumentId::ArchivedChange {
             change: result.dated_name.clone(),

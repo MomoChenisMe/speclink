@@ -32,6 +32,7 @@ const EMPHASIS_CAPS: &[(&str, usize)] = &[
     ("quality.md", 3),
     ("review-intro.md", 1),
     ("review.md", 19),
+    ("security-review.md", 2),
     ("station-shared.md", 0),
     ("sync.md", 5),
     ("tdd.md", 4),

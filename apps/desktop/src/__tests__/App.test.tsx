@@ -705,12 +705,13 @@ describe("App (kanban primary + rich detail)", () => {
     fireEvent.click(within(chooser).getByRole("button", { name: /本機資料夾/ }));
     fireEvent.click(within(chooser).getByRole("button", { name: "選擇資料夾…" }));
     // chooser 關閉有離場動畫；等待初始化框的專屬控制項，避免抓到尚未卸載的 chooser。
-    const claude = await screen.findByRole("checkbox", { name: "claude" });
+    const claude = await screen.findByRole("checkbox", { name: "claude [.claude]" });
     const dialog = claude.closest('[role="alertdialog"]') as HTMLElement;
     expect(dialog).toBeTruthy();
-    const codex = within(dialog).getByRole("checkbox", { name: "codex" });
+    const codex = within(dialog).getByRole("checkbox", { name: "codex [.agents]" });
     // spec「未初始化目錄經確認後自動初始化」：多選含 copilot，預設只勾 claude。
-    const copilot = within(dialog).getByRole("checkbox", { name: "copilot" });
+    const copilot = within(dialog).getByRole("checkbox", { name: "copilot [.github]" });
+    expect(within(dialog).getByRole("checkbox", {name:"antigravity [.agent]"}).getAttribute("aria-checked")).toBe("false");
     // 主題化原語（button 元素）而非原生 input。
     expect(claude.tagName).not.toBe("INPUT");
     // 預設勾選狀態與替換前相同：claude 勾、codex 未勾。
@@ -742,17 +743,18 @@ describe("App (kanban primary + rich detail)", () => {
     fireEvent.click(within(chooser).getByRole("button", { name: /本機資料夾/ }));
     fireEvent.click(within(chooser).getByRole("button", { name: "選擇資料夾…" }));
     // chooser 關閉有離場動畫；等待啟用框的專屬控制項。
-    const claude = await screen.findByRole("checkbox", { name: "claude" });
+    const claude = await screen.findByRole("checkbox", { name: "claude [.claude]" });
     const dialog = claude.closest('[role="alertdialog"]') as HTMLElement;
     expect(dialog).toBeTruthy();
     // 啟用語意文案（非初始化文案）。
     expect(within(dialog).getByText("啟用 speclink？")).toBeTruthy();
     // 工具多選預設勾 claude、codex 未勾。
     expect(claude.getAttribute("aria-checked")).toBe("true");
-    const codex = within(dialog).getByRole("checkbox", { name: "codex" });
+    const codex = within(dialog).getByRole("checkbox", { name: "codex [.agents]" });
     expect(codex.getAttribute("aria-checked")).toBe("false");
     // 多選含 copilot、預設未勾。
-    const copilot = within(dialog).getByRole("checkbox", { name: "copilot" });
+    const copilot = within(dialog).getByRole("checkbox", { name: "copilot [.github]" });
+    expect(within(dialog).getByRole("checkbox", {name:"antigravity [.agent]"}).getAttribute("aria-checked")).toBe("false");
     expect(copilot.getAttribute("aria-checked")).toBe("false");
     // 確認 → 以所選工具呼叫 adopt（而非 init）。
     fireEvent.click(within(dialog).getByRole("button", { name: "啟用" }));
@@ -771,10 +773,10 @@ describe("App (kanban primary + rich detail)", () => {
     const chooser = await screen.findByRole("alertdialog");
     fireEvent.click(within(chooser).getByRole("button", { name: /本機資料夾/ }));
     fireEvent.click(within(chooser).getByRole("button", { name: "選擇資料夾…" }));
-    const claude = await screen.findByRole("checkbox", { name: "claude" });
+    const claude = await screen.findByRole("checkbox", { name: "claude [.claude]" });
     const dialog = claude.closest('[role="alertdialog"]') as HTMLElement;
     fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
-    await waitFor(() => expect(screen.queryByRole("checkbox", { name: "claude" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("checkbox", { name: "claude [.claude]" })).toBeNull());
     expect(ws.adoptProject).not.toHaveBeenCalled();
     expect(ws.initProject).not.toHaveBeenCalled();
   });

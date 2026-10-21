@@ -32,7 +32,7 @@ Speclink has two deployment paths:
 ## <a id="why"></a>Why Speclink
 
 - **The specs live next to your code.** They are plain Markdown and YAML files in your repo. You can read them without Speclink, and every edit shows in the Git diff.
-- **Your AI agent knows each step.** Speclink writes skills for Claude Code, Codex, and GitHub Copilot. Each skill tells the agent what to read, what to write, and when to stop and ask you.
+- **Your AI agent knows each step.** Speclink writes skills for Claude Code, Codex, GitHub Copilot, and Antigravity. Each skill tells the agent what to read, what to write, and when to stop and ask you.
 - **You check the work before it lands.** Two optional quality stations run before archive: `review` checks the code craft, and `verify` checks the delivery against the specs.
 - **One workflow from one person to a team.** Start in one repo with Git. When the team grows, connect a shared server. The workflow and the terms stay the same.
 
@@ -52,9 +52,9 @@ Speclink has two deployment paths:
    speclink init --tools claude,codex
    ```
 
-   `--tools` lists the agent tools that you use: `claude`, `codex`, and `copilot`, in any comma-separated combination.
+   `--tools` lists the agent tools that you use: `claude`, `codex`, `copilot`, and `antigravity`, in any comma-separated combination.
 
-3. Ask your agent to start a change. In Claude Code or GitHub Copilot, enter `/speclink-propose <change-name>`. In Codex, enter `$speclink-propose <change-name>`. The agent writes the proposal, the specs, and the task list.
+3. Ask your agent to start a change. In Claude Code, GitHub Copilot, or Antigravity, enter `/speclink-propose <change-name>`. In Codex, enter `$speclink-propose <change-name>`. The agent writes the proposal, the specs, and the task list.
 
 For the full first round (propose, apply, check, archive), see [Getting started](docs/getting-started.md). To connect to a shared server, see [Remote getting started](docs/remote-getting-started.md).
 
@@ -78,7 +78,7 @@ For the full first round (propose, apply, check, archive), see [Getting started]
 ## <a id="features"></a>Features
 
 - **Plain text, OpenSpec-compatible**: Local mode uses the OpenSpec folder layout: `specs/<capability>/spec.md`, `changes/<name>/`, `changes/archive/`, and `config.yaml`. All content is Markdown and YAML. You can read and edit it without Speclink, and each change shows in the Git diff. Speclink adds only two items: `discussions/` (discussion records) and a `.openspec.yaml` file in each change (lifecycle metadata). This applies to Local mode only. In remote mode, the specs live in the Store, and your machine has only a read-only projection.
-- **Skills for AI agents**: `speclink init` writes skill files for Claude Code, Codex, and GitHub Copilot. Each stage, from discussion to archive, has a `/speclink-*` command (`$speclink-*` in Codex).
+- **Skills for AI agents**: `speclink init` writes skill files for Claude Code, Codex, GitHub Copilot, and Antigravity. Each stage, from discussion to archive, has a `/speclink-*` command (`$speclink-*` in Codex).
 - **Desktop board**: Each change is a card. You can see its stage, its task progress, and the spec changes it makes.
 - **Quality stations**: `review` checks code craft. `verify` checks that the delivery matches the specs. Both stations are optional.
 - **Execution order**: `speclink plan` puts changes into waves from their declared dependencies and shows the next change that is ready to start.
@@ -223,7 +223,7 @@ Remote mode does not depend on this server. Two public contracts define remote m
 
 ## <a id="status"></a>Project status
 
-- **Available**: Local Repo CLI, Local desktop app, agent skills (Claude, Codex, and GitHub Copilot), quality stations, execution order, manual and trace, Node SDK (`@speclink/engine`), three TeamStores (SQLite, Server FS, PostgreSQL), single-node server and admin console, Remote CLI, install channels, server operations (deployment, backup, and restore).
+- **Available**: Local Repo CLI, Local desktop app, agent skills (Claude, Codex, GitHub Copilot, and Antigravity), quality stations, execution order, manual and trace, Node SDK (`@speclink/engine`), three TeamStores (SQLite, Server FS, PostgreSQL), single-node server and admin console, Remote CLI, install channels, server operations (deployment, backup, and restore).
 - **Partial**: Remote workspaces in the desktop app, the Claude Code plugin.
 - **Planned**: Agent tool packages and MCP, SSO, runtime plugins, multi-node deployment.
 

@@ -741,7 +741,7 @@ fn security_dispatch(backend:&Backend,actor:Option<&str>,args:&[String],stdin:Op
         return Ok(serde_json::from_str(&report.json()?)?);
     }
     anyhow::ensure!(args.first().map(String::as_str)==Some("review"),"invalid_argument: security requires review or report");
-    let verb=args.get(1).map(String::as_str).unwrap_or_default();
+    let verb=args.get(1).map(String::as_str).ok_or_else(||anyhow::anyhow!("invalid_argument: security review requires show, add-round or accept"))?;
     let a=parse_argv(&args[2..],&[]).map_err(|e|anyhow::anyhow!(e.message))?;
     let change=*a.positionals.first().ok_or_else(||anyhow::anyhow!("invalid_argument: change name"))?;
     let policy=core::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())?.security();

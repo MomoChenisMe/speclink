@@ -52,8 +52,9 @@ impl FsSecurityData {
             application_data.is_absolute(),
             "data_directory_unavailable: absolute application data directory required"
         );
+        let application_data = speclink_core::util::resolve_system_path(application_data);
         Ok(Self {
-            application_data: application_data.to_path_buf(),
+            application_data: application_data.clone(),
             root: application_data.join("security/standards"),
             custom_root: false,
             path_lease: None,
@@ -63,6 +64,8 @@ impl FsSecurityData {
     }
     pub fn with_standard_root(application_data: &Path, standards_root: &Path) -> Result<Self> {
         let mut data=Self::new(application_data)?;
+        let resolved = speclink_core::util::resolve_system_path(standards_root);
+        let standards_root = resolved.as_path();
         ensure!(standards_root.is_absolute(),"invalid_path: absolute standard root required");
         if standards_root != data.root {
             let anchor=standards_root.ancestors().last().expect("absolute path has root");

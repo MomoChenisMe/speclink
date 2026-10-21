@@ -50,3 +50,23 @@ Local與Remote SHALL 共用政策；Remote reader唯讀，editor保存帶expecte
 
 - **WHEN** 使用者只取消security的封存保留並儲存，或Remote保存遇revision衝突
 - **THEN** 前者只有security欄位變false且既有報告仍可查，後者草稿保留而政策不被覆蓋
+
+
+### Requirement: AI 工具名稱顯示技能目錄
+
+Desktop 專案設定的 AI 工具卡 SHALL 列出 claude [.claude]、codex [.agents]、copilot [.github]、antigravity [.agent]；初始化／啟用確認與 checkout 綁定 SHALL 沿同一清單及標籤來源。這些目錄為各工具生成 skills 子目錄的根目錄，顯示標籤 SHALL NOT 改變儲存的工具名或預設選集。
+
+#### Scenario: 所有內建工具顯示目錄
+
+- **WHEN** 使用者開啟專案設定的 AI 工具卡
+- **THEN** 四列以指定標籤顯示且各有可操作開關，標籤與對應控制項無障礙名稱一致
+
+#### Scenario: 儲存新增與取消 Antigravity
+
+- **WHEN** 使用者在已有 codex 的專案勾選 antigravity 並儲存，之後取消 antigravity 並再次儲存
+- **THEN** 第一次 .speclink.yaml tools 包含純字串 codex 與 antigravity、產生 .agent/skills；第二次只移除 Antigravity 受管技能，Codex 技能及使用者自有檔案不變
+
+#### Scenario: 初始化與 checkout 選項一致
+
+- **WHEN** 使用者於初始化／啟用確認或 checkout 綁定選擇工具
+- **THEN** 四種工具均可選且顯示相同根目錄標籤；預設仍只選 claude，提交值僅含工具名

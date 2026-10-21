@@ -572,7 +572,11 @@ fn security_top10_2025_only_installed_then_offline_without_ai_or_archive_gate() 
     for absent in ["2021", "cwe", "owasp_asvs", "owasp_api_top10"] { assert!(!fixture.0.join(".security_kb/standards").join(absent).exists()); }
     assert!(!fixture.0.join(".security_kb/mappings/owasp_2021_cwe.json").exists());
     let human = fixture.run(&["security", "kb", "prepare", "--no-color"]);
-    assert!(human.status.success()); assert!(String::from_utf8_lossy(&human.stdout).contains("Prepared knowledge at"));
+    assert!(human.status.success());
+    let human_text=String::from_utf8_lossy(&human.stdout);
+    assert!(human_text.contains("Prepared knowledge at"));
+    for key in ["projectKey", "policyDigest"] {assert!(human_text.contains(snapshot[key].as_str().unwrap()), "{key}: {human_text}");}
+    for key in ["standardId", "version", "dataSha256"] {assert!(human_text.contains(snapshot["standards"][0][key].as_str().unwrap()), "{key}: {human_text}");}
     std::fs::write(
         fixture.0.join("app.ts"),
         "const api_key = 'offline-only-private-sentinel';\n",
@@ -684,6 +688,14 @@ fn security_top10_2025_only_installed_then_offline_without_ai_or_archive_gate() 
     assert_eq!(std::fs::read(&path).unwrap(),original);
     let current=fixture.run(&["security","review","show","demo","--json"]);let current:serde_json::Value=serde_json::from_slice(&current.stdout).unwrap();assert_eq!(current["acceptance"]["status"],"passed");
     for field in ["decisionId","action","reportId","findingId","reason","actor","acceptedAt","policyDigest","scopeDigest"] {assert!(current["decisions"][0][field].is_string(),"{field}");}
+    let human=fixture.run(&["security","review","show","demo","--no-color"]);
+    assert!(human.status.success(),"{}",String::from_utf8_lossy(&human.stderr));
+    let text=String::from_utf8_lossy(&human.stdout);
+    for field in ["decisionId","action","reportId","findingId","reason","actor","acceptedAt","policyDigest","scopeDigest"] {
+        assert!(text.contains(current["decisions"][0][field].as_str().unwrap()),"missing {field}: {text}");
+    }
+    for summary in ["required: true", "blocking findings: 0", "not verified: 0"] {assert!(text.contains(summary),"missing {summary}: {text}");}
+
     let mut old=risk.clone();old["reportId"]=legacy_id.into();assert_eq!(fixture.input(&args,&old.to_string()).status.code(),Some(1));
     let reference=fixture.input(&["workflow-config","security","--stdin"],"required_for_acceptance: false");assert!(reference.status.success());
     let required=fixture.input(&["workflow-config","security","--stdin"],"required_for_acceptance: true");assert!(required.status.success());

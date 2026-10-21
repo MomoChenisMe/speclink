@@ -1660,8 +1660,8 @@ fn archive_records_obey_all_eight_retention_combinations_and_keep_carried_ticket
             (4, history::CheckKind::Security),
         ] {
             assert_eq!(
-                archived.entries.iter().any(|e| e.kind == kind),
-                bits & mask != 0,
+                archived.entries.iter().find(|e| e.kind == kind).map(|e| e.outcome.as_str() == "omitted"),
+                Some(bits & mask == 0),
                 "bits {bits}, {kind:?}"
             );
             let original = source.entries.iter().find(|e| e.kind == kind).unwrap();

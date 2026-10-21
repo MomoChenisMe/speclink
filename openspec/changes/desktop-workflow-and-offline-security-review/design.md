@@ -197,3 +197,29 @@ UI 沿用 SettingsCard、SettingsRow、Checkbox、Popover、Tooltip、Button、C
 無未定的產品行為。公司端實際故障原因屬執行期取證項，列人工驗收任務；資料來源固定commit／指紋屬發行資產核對交付，未核對不得發佈為可用資料包。
 
 安全決策查詢補充契約：security review show 的JSON另含 decisions陣列，每筆為decisionId/action/reportId/findingId/reason/actor/acceptedAt/policyDigest/scopeDigest；reason與actor回應前遮罩，人眼逐筆列相同資訊。reports另含legacy:boolean，明確辨認舊匯入。decisions.jsonl每份最多16MiB，與完整報告合計納入原200MiB專案上限，超限拒寫，不改原報告。
+
+## 2026-10-21 追加：Antigravity 與技能目錄標籤
+
+### Antigravity 內建工具與獨立技能目錄
+
+- 行為與資料：Tool::ALL 擴為 claude、codex、copilot、antigravity；既有 .speclink.yaml tools 字串清單可記錄 antigravity，Codex 的 agents 別名不變。Antigravity 生成於 .agent/skills，採與 Copilot 相同的非 Claude frontmatter 與 /speclink- 呼叫樣式，不生成 AGENTS.md、GEMINI.md 或其他指令檔。預設選集仍只有 claude。
+- 來源依據：官方 https://antigravity.google/docs/skills 現行預設 .agents/skills 並保留 .agent/skills 相容。本專案採仍支援的 .agent/skills，使 Codex 的 $speclink- 與 Antigravity 的 /speclink- 生成內容各自保存。這是明確的產品目錄決定，不宣稱 .agent 是官方現行預設。
+- 邊界：生成、更新、過期探測與取消工具後清理沿 Tool::ALL 與既有生成計畫，不建立另一套流程。取消只清理 .agent/skills 下受管 speclink-*；使用者自有技能、.agent 其他檔案與 Codex .agents 全數保留。不得跟隨 symlink 清理。
+- 驗證：同時勾選 codex／antigravity 時兩目錄存在且呼叫前綴各自正確；取消 antigravity 後只移除其受管檔；未知工具與自訂描述子撞名／撞目錄仍在任何寫入前拒絕。CLI 人眼提示及非互動錯誤列四種支援名，JSON shape 與退出碼不變。
+
+### 共用工具名稱與技能目錄標籤
+
+- Desktop 的 builtinTools 作清單及標籤唯一來源，設定頁、初始化／啟用確認、checkout 綁定共用。顯示格式為工具名加空格及根目錄方括號：claude [.claude]、codex [.agents]、copilot [.github]、antigravity [.agent]；完整技能目錄分別為各根目錄下的 skills。
+- 儲存與傳輸值仍為純工具名；不得把顯示標籤寫入 tools。無障礙名稱含工具與目錄。自訂描述子仍為原有唯讀列，不改變資料契約。
+- 範圍包含四種內建工具的共用接線、中英說明與相關回歸；不加入 Antigravity 帳號登入、模型選擇、全域設定、外部安裝器或舊自訂描述子的靜默遷移。
+- 既有工作區仍可讀；原本 name: antigravity 或指向 .agent/skills 的自訂描述子因與新內建工具衝突而拒絕，錯誤提示改名 antigravity-custom／改用內建字串，無寫入副作用。
+
+### 風險與驗收
+
+- 內建矩陣由三變四可能影響各 adapter 的提示、測試 fixture 與資產 golden；沿既有更新 golden 流程，測 CLI 與 Node 同名同目錄、逐段檢查差異，不改舊工具渲染內容。
+- Windows／macOS／Linux 均使用專案相對目錄與既有檔案 API；以共用 Rust 與 Desktop 測試驗證，沒有真實 Antigravity 執行環境時不宣稱已在該工具實機驗收。
+- 原 13 項品質問題已在 Round 2 複核解決；本追加擴充範圍，原品質流程以 scope changed 結束，未蓋章。新任務完成後需對擴充範圍重新品質檢查。
+
+## 技能原稿格式守門修復
+
+本項只修正既有技能的寫法與資產同步，不變更流程或檢核標準。archive 與 verify 降低非必要的大寫強調字；security-review 原稿在 EMPHASIS_CAPS 登記現有 SHALL 修復規範與 CRITICAL 驗收標籤，共兩個，不提高既有原稿上限。沿既有 ASSET_VERSION、golden、assets.lock 與 update 同步各工具，保持四種工具的生成契約。全部原稿共用格式檢查；不調整品質章、安全驗收或人工 Proxy 驗收規則。

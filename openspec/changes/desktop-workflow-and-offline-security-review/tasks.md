@@ -103,3 +103,14 @@
 ## 16. Windows 封存前置修復（使用者同意優先處理）
 
 - [x] 16.1 RED→GREEN：在 crates/engine/speclink-fs/src/checks.rs 與 apps/desktop/core/src/security.rs 保留並重現「檢查紀錄鎖與封存搬移」，將互斥鎖移至同spec store的.checks-locks並先鎖再建立活動目錄；補搬移期間競爭者busy且不重建活動目錄、舊鎖持有拒寫及鎖目錄拒連結測試。核對 archive_checks 的備份／發佈亦沿相同鎖、鎖不入Git且舊版寫入者必須先停止；執行 cargo test -p speclink-fs 及 cargo test -p speclink-desktop-core，最後執行 node --test scripts/*.test.mjs scripts/*/*.test.mjs 與 git diff --check，失敗不略過、不代勾人工驗收。 <!-- speclink-task:tsk_01M5E9VVQ5S88C8NHQFP33DVFD -->
+
+
+## 17. Antigravity 與技能目錄標籤
+
+- [x] 17.1 Antigravity 內建工具與獨立技能目錄（涵蓋「tools 自訂描述子的接受與驗證」「init 內建 Agent 工具選擇」「Antigravity 技能生成與獨立清理」）：先在 crates/engine/speclink-core/src/workspace/init/tests.rs 與 crates/engine/speclink-core/src/workspace/skills.rs 補 codex,antigravity 共存、正確前綴、取消清理保留自有檔、撞名／撞 .agent/skills 失敗測試，再擴充 Tool::ALL 與既有生成、CLI 提示及 Node 工具清單；保留舊工具渲染、JSON shape 與退出碼，更新既有 asset golden。執行 cargo test -p speclink-core --lib、cargo test -p speclink-core --test it render_golden::、cargo test -p speclink-cli --test it init；Node 先 npm --prefix crates/adapters/speclink-node run build 再 npm --prefix crates/adapters/speclink-node test。 <!-- speclink-task:tsk_01M5FDJXY3QV2H66PVG8J2328W -->
+- [x] 17.2 共用工具名稱與技能目錄標籤（涵蓋「AI 工具名稱顯示技能目錄」）：先在 apps/desktop/src/__tests__ 補 AI 工具卡顯示四列及儲存純工具名、初始化／啟用與 checkout 顯示相同標籤測試，再由 apps/desktop/src/builtinTools.ts 提供唯一清單及標籤，接 SpeclinkPage、WorkspaceChooser 與其他共用工具選項；顯示 claude [.claude]、codex [.agents]、copilot [.github]、antigravity [.agent]，預設選集不變。執行 npm test -w @speclink/desktop 及 npm run build -w @speclink/desktop。 <!-- speclink-task:tsk_01M5FDJXY3245TWZC6S504YC3J -->
+- [x] 17.3 風險與驗收（含 Node SDK「渲染 API」矩陣與 CLI 同源核對）：在 crates/engine/speclink-core、crates/adapters/speclink-cli、crates/adapters/speclink-node、apps/desktop 與 docs 以 rg 排查三工具清單、Tool::ALL、技能目錄及選項標籤，逐類記錄共修或保留理由；補中英工具說明與本地／Remote 初始化回歸、核對取消 Antigravity 不影響 Codex；執行 cargo test -p speclink-core --lib、cargo test -p speclink-cli --test it init、cargo test -p speclink-desktop-core，最後執行 node --test scripts/*.test.mjs scripts/*/*.test.mjs 與 git diff --check。保留原始九項需求、12.3 人工驗收與已完成任務，不蓋章、不封存。 <!-- speclink-task:tsk_01M5FDJXY32WFJRA32QVWCGQFN -->
+
+## 18. 技能原稿格式守門修復
+
+- [x] 18.1 RED→GREEN：在 crates/engine/speclink-core/assets/skills/archive.md、verify.md 精簡非必要全大寫措辭，保留停止、工單與安全驗收行為；在 crates/engine/speclink-core/tests/it/skill_authoring.rs 為 security-review.md 登記實際上限 2，不提高既有上限。以 rg 排查全部技能原稿與登記表並記錄共修／保留理由，執行 cargo test -p speclink-core --test it skill_authoring:: 重現後轉綠；同步 crates/engine/speclink-core/src/workspace/init.rs 的資產版本、golden 與生成技能，以 cargo build -p speclink-cli、cargo test -p speclink-core、cargo test -p speclink-cli --test it init 及 cargo test -p speclink-cli --test it remote_verb_parity 驗證，Node 先 npm --prefix crates/adapters/speclink-node run build 再 npm --prefix crates/adapters/speclink-node test；最後執行 node --test scripts/*.test.mjs scripts/*/*.test.mjs 與 git diff --check。保留全部已完成任務與 12.3 人工驗收，完成後另啟完整品質檢查，不蓋章。 <!-- speclink-task:tsk_01M5FFARG4AF27DTQ0BZHP14ZK -->

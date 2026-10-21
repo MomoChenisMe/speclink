@@ -56,6 +56,8 @@ pub(crate) struct TestStore {
     /// backend). Default `false` keeps every existing test on the fs-parity
     /// path; `claim` tests flip it via [`TestStore::team_with_meta`].
     pub ownership: bool,
+    /// One-shot interleaving after an artifact snapshot is read.
+    pub artifact_read_hook: RefCell<Option<Box<dyn Fn(&TestStore, &str, &str)>>>,
 }
 
 impl TestStore {
@@ -164,10 +166,10 @@ impl Store for TestStore {
         Ok(())
     }
     fn read_artifact(&self, change: &str, artifact: &str) -> Option<String> {
-        self.artifacts
-            .borrow()
-            .get(&(change.to_string(), artifact.to_string()))
-            .cloned()
+        let content = self.artifacts.borrow().get(&(change.to_string(), artifact.to_string())).cloned();
+        let hook = self.artifact_read_hook.borrow_mut().take();
+        if let Some(hook) = hook { hook(self, change, artifact); }
+        content
     }
     fn write_artifact(&self, change: &str, artifact: &str, content: &str) -> Result<PathBuf> {
         self.put_artifact(change, artifact, content);

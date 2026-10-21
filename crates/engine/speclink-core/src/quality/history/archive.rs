@@ -38,6 +38,7 @@ impl ArchiveRecordCounts {
 pub struct ArchiveChecksPlan {
     pub retention: ArchiveRecords,
     pub expected_index: Option<String>,
+    pub expected_meta: Option<String>,
     pub index: Option<String>,
     pub receipt: Option<String>,
     pub archived_meta: Option<String>,
@@ -68,6 +69,10 @@ impl ArchiveChecksPlan {
                 .map(|s| sha256(s.as_bytes()))
                 == self.expected_index,
             "revision_conflict: check index changed"
+        );
+        ensure!(
+            store.read_change_meta(change).map(|s| sha256(s.as_bytes())) == self.expected_meta,
+            "revision_conflict: change metadata changed"
         );
         Ok(())
     }
@@ -206,12 +211,16 @@ pub fn prepare_archive_checks(
             count.omitted += 1;
         }
     }
-    index.entries.retain(|e| match e.kind {
-        CheckKind::Review => retention.review,
-        CheckKind::Verify => retention.verify,
-        CheckKind::Security => retention.security,
-    });
-    let mut archived_meta = store.read_change_meta(change);
+    for entry in &mut index.entries {
+        let keep = match entry.kind {
+            CheckKind::Review => retention.review,
+            CheckKind::Verify => retention.verify,
+            CheckKind::Security => retention.security,
+        };
+        if !keep { entry.outcome = "omitted".into(); }
+    }
+    let original_meta = store.read_change_meta(change);
+    let mut archived_meta = original_meta.clone();
     if let Some(meta) = &mut archived_meta {
         if !meta.ends_with('\n') {
             meta.push('\n');
@@ -282,6 +291,7 @@ pub fn prepare_archive_checks(
     Ok(ArchiveChecksPlan {
         retention: retention.clone(),
         expected_index: original.as_deref().map(|s| sha256(s.as_bytes())),
+        expected_meta: original_meta.as_deref().map(|s| sha256(s.as_bytes())),
         index: if retention == ArchiveRecords::default() {
             None
         } else {

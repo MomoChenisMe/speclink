@@ -71,8 +71,8 @@ pub struct DeepReference {
 pub struct DeepEvidence {
     pub path: String,
     pub line: usize,
-    pub end_line: Option<usize>,
-    pub function: Option<String>,
+    pub end_line: usize,
+    pub function: String,
 }
 fn default_domain() -> String {
     "安全與業務邏輯".into()
@@ -200,8 +200,8 @@ impl DeepReport {
                 ensure!(
                     evidence.line > 0
                         && evidence.line <= *lines
-                        && evidence.end_line.unwrap_or(evidence.line) >= evidence.line
-                        && evidence.end_line.unwrap_or(evidence.line) <= *lines,
+                        && evidence.end_line >= evidence.line
+                        && evidence.end_line <= *lines,
                     "invalid_report: evidence line range"
                 );
             }
@@ -432,10 +432,11 @@ impl DeepReport {
                 ensure!(
                     targets.contains(&evidence.path)
                         && evidence.line > 0
-                        && evidence.end_line.is_none_or(|end| end >= evidence.line),
+                        && evidence.end_line >= evidence.line
+                        && !evidence.function.trim().is_empty(),
                     "invalid_report: evidence range"
                 );
-                evidence.function = evidence.function.as_deref().map(&mask);
+                evidence.function = mask(&evidence.function);
             }
             if finding.references.is_empty() {
                 ensure!(
@@ -607,7 +608,7 @@ impl DeepReport {
                 for evidence in &f.evidence {
                     out.push_str(&format!(
                         "- 證據：[{}]({}#L{})\n",
-                        markdown_text(evidence.function.as_deref().unwrap_or("關聯入口與實作")),
+                        markdown_text(&evidence.function),
                         link_path(&evidence.path),
                         evidence.line
                     ));
@@ -822,6 +823,7 @@ fn save_change_report_kind(
         "invalid_report: change binding"
     );
     store.recover_checks(change)?;
+    let old_index = store.read_artifact(change, crate::history::INDEX);
     let mut index = crate::history::index(store, change)?;
     ensure!(
         index
@@ -868,7 +870,6 @@ fn save_change_report_kind(
             .len();
     }
     ensure!(bytes <= 200 * 1024 * 1024, "storage_limit");
-    let old_index = store.read_artifact(change, crate::history::INDEX);
     index.append(crate::history::CheckEntry {
         record_id: report.report_id().into(),
         kind: crate::history::CheckKind::Security,
@@ -921,7 +922,7 @@ pub fn read_change_report(
     let Some(entry) = index
         .entries
         .iter()
-        .find(|entry| entry.kind == crate::history::CheckKind::Security && entry.record_id == id)
+        .find(|entry| entry.kind == crate::history::CheckKind::Security && entry.record_id == id && entry.outcome != "omitted")
     else {
         return Ok(None);
     };

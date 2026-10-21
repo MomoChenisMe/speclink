@@ -48,6 +48,8 @@ pub fn validate_path(raw: &str) -> Result<()> {
     Ok(())
 }
 fn check_directory(path: &Path, create: bool) -> Result<()> {
+    let resolved = speclink_core::util::resolve_system_path(path);
+    let path = resolved.as_path();
     validate_path(&path.to_string_lossy())?;
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
@@ -123,11 +125,11 @@ fn load(config: &Path) -> Result<Preferences> {
 }
 fn effective(value: &Preferences, application_data: &Path) -> Result<PathBuf> {
     ensure!(application_data.is_absolute(), "data_directory_unavailable");
-    Ok(value
+    Ok(speclink_core::util::resolve_system_path(&value
         .standards_path
         .as_ref()
         .map(PathBuf::from)
-        .unwrap_or_else(|| application_data.join("security/standards")))
+        .unwrap_or_else(|| application_data.join("security/standards"))))
 }
 fn snapshot(value: Preferences, application_data: &Path) -> Result<PathSnapshot> {
     let root = effective(&value, application_data)?;
@@ -222,4 +224,23 @@ pub fn write_at(
         .persist(config.join(PREFERENCES))
         .map_err(|e| anyhow::anyhow!("settings_write_failed: {}", e.error))?;
     Ok(result)
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+    #[test]
+    fn system_alias_is_usable_but_user_links_remain_rejected() {
+        let root=tempfile::tempdir_in("/tmp").unwrap();
+        let config=root.path().join("config");
+        let data=root.path().join("device");
+        let shared=root.path().join("shared");
+        fs::create_dir(&shared).unwrap();
+        let result=write_at(&config,&data,Some(shared.to_string_lossy().into())).unwrap();
+        assert_eq!(PathBuf::from(result.effective_path),shared.canonicalize().unwrap());
+        let linked=root.path().join("user-link");
+        std::os::unix::fs::symlink(&shared,&linked).unwrap();
+        assert!(write_at(&config,&data,Some(linked.to_string_lossy().into())).is_err());
+        assert_eq!(lease_at(&config,&data).unwrap().standards_root,shared.canonicalize().unwrap());
+    }
 }

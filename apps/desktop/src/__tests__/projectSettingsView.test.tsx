@@ -225,9 +225,9 @@ describe("ProjectSettingsView 載入", () => {
     expect(screen.getByRole("switch", { name: "tdd" }).getAttribute("aria-checked")).toBe("true");
     expect(screen.getByRole("switch", { name: "audit" }).getAttribute("aria-checked")).toBe("false");
     goto("speclink");
-    expect(screen.getByLabelText("claude").getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByLabelText("codex").getAttribute("aria-checked")).toBe("false");
-    expect(screen.getByLabelText("copilot").getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByLabelText("claude [.claude]").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByLabelText("codex [.agents]").getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByLabelText("copilot [.github]").getAttribute("aria-checked")).toBe("false");
   });
 
   it("自訂工具描述子呈現為不可編輯項", async () => {
@@ -271,7 +271,7 @@ describe("政策下拉未知值顯性呈現", () => {
 describe("ProjectSettingsView 寫入", () => {
   it("tools 加選 codex 後儲存 → writeAppTools 收到完整選集", async () => {
     const ws = renderView(snapshot(), "speclink");
-    fireEvent.click(await screen.findByLabelText("codex"));
+    fireEvent.click(await screen.findByLabelText("codex [.agents]"));
     fireEvent.click(screen.getByTestId("save-app"));
     await waitFor(() => expect(ws.writeAppTools).toHaveBeenCalledWith(["claude", "codex"]));
   });
@@ -279,7 +279,7 @@ describe("ProjectSettingsView 寫入", () => {
   it("tools 加選 copilot 後儲存 → writeAppTools 收到完整選集", async () => {
     // spec「設定頁圖形化讀寫兩層設定」：AI 工具卡多選含 copilot。
     const ws = renderView(snapshot(), "speclink");
-    fireEvent.click(await screen.findByLabelText("copilot"));
+    fireEvent.click(await screen.findByLabelText("copilot [.github]"));
     fireEvent.click(screen.getByTestId("save-app"));
     await waitFor(() => expect(ws.writeAppTools).toHaveBeenCalledWith(["claude", "copilot"]));
   });
@@ -429,7 +429,7 @@ describe("專案設定分類頁（spec Scenario「兩種設定模式與預設分
     expect(note.className).toContain("font-mono");
     // 其他頁的內容不在畫面上。
     expect(screen.queryByTestId("policy-card")).toBeNull();
-    expect(screen.queryByLabelText("claude")).toBeNull();
+    expect(screen.queryByLabelText("claude [.claude]")).toBeNull();
 
     goto("rules");
     expect(screen.getByTestId("file-note-config").textContent).toBe("openspec/config.yaml · rules");
@@ -443,7 +443,7 @@ describe("專案設定分類頁（spec Scenario「兩種設定模式與預設分
 
     goto("speclink");
     expect(screen.getByRole("region", { name: "AI 工具" })).toBeTruthy();
-    expect(screen.getByLabelText("claude").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByLabelText("claude [.claude]").getAttribute("aria-checked")).toBe("true");
     expect(screen.getByTestId("file-note-speclink").className).toContain("font-mono");
   });
 
@@ -508,7 +508,7 @@ describe("專案設定分類頁（spec Scenario「兩種設定模式與預設分
     goto("speclink");
     expect(await screen.findByText(/bad tools yaml/)).toBeTruthy();
     expect((screen.getByTestId("save-app") as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByLabelText("claude") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("claude [.claude]") as HTMLButtonElement).disabled).toBe(true);
   });
 });
 
@@ -536,7 +536,7 @@ describe("未存修改回報", () => {
 
   it("勾選 AI 工具即 true，儲存成功後回 false", async () => {
     const onDirtyChange = dirtyHarness("speclink");
-    fireEvent.click(await screen.findByLabelText("codex"));
+    fireEvent.click(await screen.findByLabelText("codex [.agents]"));
     await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
     fireEvent.click(screen.getByTestId("save-app"));
     await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
@@ -2013,3 +2013,13 @@ describe('安全驗收與紀錄保留政策',()=>{
   const resent=vi.mocked(ws.writeWorkflowConfig).mock.calls[1][0];expect(JSON.parse(resent.securityPatch!)).toEqual({required_for_acceptance:true});expect(JSON.parse(resent.checkRecordsPatch!)).toEqual({archive:{verify:false}});expect(screen.getByLabelText('驗證範圍').textContent).toContain('僅 API / 後端服務');
  });
 })
+
+it("AI 工具名稱顯示技能目錄，Antigravity 儲存純工具名", async () => {
+ const ws=renderView(snapshot(),"speclink");
+ for(const label of ["claude [.claude]","codex [.agents]","copilot [.github]","antigravity [.agent]"]) {
+  expect(await screen.findByLabelText(label)).toBeTruthy();
+ }
+ fireEvent.click(screen.getByLabelText("antigravity [.agent]"));
+ fireEvent.click(screen.getByTestId("save-app"));
+ await waitFor(()=>expect(ws.writeAppTools).toHaveBeenCalledWith(["claude","antigravity"]));
+});
