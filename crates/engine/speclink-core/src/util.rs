@@ -208,6 +208,21 @@ pub fn now_stamps() -> NowStamps {
     }
 }
 
+/// The time every change metadata field is written with (`created`, `started_at`,
+/// `claimed_at`, the station stamps): the RFC 3339 half of [`now_stamps`].
+pub fn now_rfc3339() -> String {
+    now_stamps().rfc3339
+}
+
+/// Test helper: the shape [`now_rfc3339`] writes — RFC 3339 with an explicit
+/// offset, second precision.
+#[cfg(test)]
+pub(crate) fn is_offset_stamp(value: &str) -> bool {
+    regex::Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$")
+        .unwrap()
+        .is_match(value)
+}
+
 /// 剝除 `YYYY-MM-DD-` 日期前綴（封存 change 目錄名、封存後的討論儲存名）；
 /// 不合格式原樣回傳（寬容）。共用於 discuss 的 promote 還原與 trace 的
 /// 鏈組裝。

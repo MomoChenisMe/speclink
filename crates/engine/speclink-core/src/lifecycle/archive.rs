@@ -802,6 +802,11 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
     }
     let caps: Vec<CapCounts> = plans.into_iter().map(|p| p.counts).collect();
 
+    // archived_at lands before the move (process-cost-metrics design D3), from the same
+    // instant as the dated name. A failed move leaves it on the in-progress change; the
+    // retry's `set` replaces it in place, so the document keeps one line.
+    crate::model::edit_meta(store, &change.name, |m| m.set("archived_at", &stamp))?;
+
     // Move change into the archive under its dated name. The in-progress marker
     // stays untouched on archive (frozen behavior).
     store.archive_change(&change.name, &dated_name)?;
@@ -817,15 +822,12 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
     // change reusing this name.
     let _ = util::remove_file(&ws.legacy_touched_file(&change.name));
 
-    // Stamp archived_by / archived_at into the archived change metadata.
-    if let Some(mut meta) = store.read_archived_meta(&dated_name) {
+    // Stamp archived_by into the archived change metadata.
+    if let (Some(id), Some(mut meta)) = (actor, store.read_archived_meta(&dated_name)) {
         if !meta.ends_with('\n') {
             meta.push('\n');
         }
-        if let Some(id) = actor {
-            meta.push_str(&format!("archived_by: {id}\n"));
-        }
-        meta.push_str(&format!("archived_at: {date}\n"));
+        meta.push_str(&format!("archived_by: {id}\n"));
         store.write_archived_meta(&dated_name, &meta)?;
     }
 

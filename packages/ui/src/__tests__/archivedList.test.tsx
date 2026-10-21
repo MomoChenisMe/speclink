@@ -620,3 +620,48 @@ describe("ArchivedList（受控每頁筆數）", () => {
     expect(onChanges).toHaveBeenCalledTimes(1);
   });
 });
+
+// spec「已封存頁的流程成本摘要」：摘要在頁標題區與列表卡之間，以全部封存變更計算。
+describe("ArchivedList（流程成本摘要）", () => {
+  const COSTED: ArchivedItem[] = [
+    { ...WARN, docLines: 100, leadDays: 0 },
+    { ...FULL, docLines: 200, leadDays: 0 },
+    { ...BARE, docLines: 400, leadDays: 3 },
+  ];
+
+  function renderCosted(query: string) {
+    render(
+      <ArchivedList
+        archived={COSTED}
+        query={query}
+        onQuery={() => {}}
+        archivedDiscussions={[DISCUSSION]}
+        onOpen={vi.fn()}
+        title="已封存"
+      />,
+    );
+  }
+
+  it("sits between the page header and the list card", () => {
+    renderCosted("");
+    const header = document.querySelector("[data-page-header]")!;
+    const summary = document.querySelector("[data-process-cost]")!;
+    const card = document.querySelector("[data-list-card]")!;
+    expect(header.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(summary.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(header.contains(summary) || summary.contains(card)).toBe(false);
+  });
+
+  it("is absent when no archived change carries a process cost field", () => {
+    renderList();
+    expect(document.querySelector("[data-process-cost]")).toBeNull();
+    expect(document.querySelector("[data-list-card]")).not.toBeNull();
+  });
+
+  it("keeps the numbers of every archived change when a search narrows the list", () => {
+    // Scenario「搜尋不改變摘要數字」。
+    renderCosted("no-tasks");
+    expect(document.querySelectorAll("[data-archived]")).toHaveLength(1);
+    expect(document.querySelector('[data-cost="docLines"]')!.textContent).toBe("中位數 200 · P90 400 · 3 筆");
+  });
+});

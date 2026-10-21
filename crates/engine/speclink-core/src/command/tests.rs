@@ -1199,6 +1199,18 @@ fn first_claim_on_a_team_store_stamps_the_owner_and_reports_change_claimed() {
 }
 
 #[test]
+fn claim_writes_claimed_at_as_an_offset_stamp() {
+    let store = TestStore::team_with_meta("demo", CLAIM_META);
+    claim(&store, "Alice <a@example.com>").expect("first claim succeeds");
+    let meta = store.meta("demo");
+    let claimed = meta
+        .lines()
+        .find_map(|l| l.strip_prefix("claimed_at: "))
+        .expect("claimed_at line");
+    assert!(crate::util::is_offset_stamp(claimed), "claimed_at is not an offset stamp: {meta}");
+}
+
+#[test]
 fn repeat_claim_by_the_same_actor_is_idempotent_with_no_write_and_no_event() {
     let store = TestStore::team_with_meta("demo", CLAIM_META);
     claim(&store, "Alice <a@example.com>").expect("first claim succeeds");

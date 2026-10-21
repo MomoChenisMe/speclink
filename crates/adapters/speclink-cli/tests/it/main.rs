@@ -18,6 +18,7 @@ mod list_delta_capabilities;
 mod manual_pages_dir_ignored;
 mod manual_task_gates;
 mod meta_fail_closed;
+mod meta_time_stamps;
 mod mode_dispatch;
 mod new_artifact;
 mod plan_verbs;

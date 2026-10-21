@@ -419,8 +419,8 @@ pub fn stamp_with_scope(
 
 /// 蓋章（spec「蓋章守門與蓋章效果」）：守門＝任務全完成＋末輪零待處理必修
 /// （CRITICAL／WARNING）findings，SUGGESTION 不擋章（`accept` 僅豁免必修條件）；
-/// 通過時以工單各輪 Scope 聯集計算指紋，於同一原子寫入內落五個站別欄位並刪除
-/// 工單。`read_file` 供指紋計算讀取 repo-root 相對
+/// 通過時以工單各輪 Scope 聯集計算指紋，於同一原子寫入內落五個站別欄位與累加的
+/// 回合數並刪除工單。`read_file` 供指紋計算讀取 repo-root 相對
 /// 路徑的檔案內容（remote 模式亦讀本地工作樹）；`file_exists` 判定聯集檔案是否
 /// 仍在工作樹——修正可能刪除／改名早輪檢查過的檔，死檔跳過不入錨（無從指紋也
 /// 無從再變動），存在但讀不到者仍 fail-closed。
@@ -578,11 +578,12 @@ pub fn fingerprint_scope(
 }
 
 /// 兩個蓋章入口共用的守門結果：解析通過的 meta 原文、工單 Scope 聯集
-/// （`\`→`/` 正規化、去重、排序）與任務錨總數。
+/// （`\`→`/` 正規化、去重、排序）、任務錨總數與累加後的回合數。
 struct StampGate {
     raw_meta: String,
     paths: Vec<String>,
     tasks_total: usize,
+    rounds: u64,
 }
 
 fn stamp_gate(st: &Station, store: &dyn Store, change: &str, accept: bool) -> Result<StampGate> {
@@ -592,7 +593,8 @@ fn stamp_gate(st: &Station, store: &dyn Store, change: &str, accept: bool) -> Re
     }
     // Fail-closed gate（沿 set_board_rank）：文字手術前先解析，壞檔不得被疊寫。
     let raw_meta = store.read_change_meta(change).unwrap_or_default();
-    crate::model::check_meta_text(change, Some(&raw_meta))?;
+    let meta = ChangeMeta::from_text(Some(&raw_meta))
+        .map_err(|reason| crate::model::MetaError { change: change.to_string(), reason })?;
     let Some(ticket_text) = store.read_artifact(change, st.doc) else {
         bail!(NotFound(format!("no {} ticket for change '{change}'", st.noun)));
     };
@@ -627,8 +629,11 @@ fn stamp_gate(st: &Station, store: &dyn Store, change: &str, accept: bool) -> Re
 
     let paths =
         scope_union(ticket.rounds.iter().flat_map(|r| r.scope.iter().map(String::as_str)));
+    // 回合數累加（process-cost-metrics D1）：章失效後重跑也是成本，原值缺席讀作 0。
+    let rounds =
+        meta.stamp_rounds(st).unwrap_or(0).saturating_add(ticket.rounds.len() as u64);
     // 錨記全任務總數（含 `[M]`）——欄位形狀不變，舊章資料相容。
-    Ok(StampGate { raw_meta, paths, tasks_total: counts.total })
+    Ok(StampGate { raw_meta, paths, tasks_total: counts.total, rounds })
 }
 
 fn write_stamp(
@@ -642,11 +647,11 @@ fn write_stamp(
 ) -> Result<()> {
     // 文字手術（直接用 `KeyLines`，不走 `edit_meta`：meta 原文已由 `stamp_gate`
     // 讀過並驗過，且「先刪工單再寫章」要求寫入前插一步刪除）：先移除既有站別
-    // 五鍵（重蓋不留重複鍵、章永遠落在檔尾），再寫新章；其餘欄位逐位元組保留。
+    // 五鍵與回合數（重蓋不留重複鍵、章永遠落在檔尾），再寫新章；其餘欄位逐位元組保留。
     let prefix = st.meta_prefix;
-    let stamp_keys =
-        ["at", "by", "with", "tasks_total", "scope"].map(|suffix| format!("{prefix}_{suffix}"));
-    let [at_key, by_key, with_key, tasks_total_key, scope_key] = &stamp_keys;
+    let stamp_keys = ["at", "by", "with", "tasks_total", "rounds", "scope"]
+        .map(|suffix| format!("{prefix}_{suffix}"));
+    let [at_key, by_key, with_key, tasks_total_key, rounds_key, scope_key] = &stamp_keys;
     let mut m = KeyLines::whole(&gate.raw_meta);
     for key in &stamp_keys {
         m.remove(key);
@@ -654,7 +659,7 @@ fn write_stamp(
     // 身分／工具／指紋一律過 YAML 純量守門（沿 started_* 的同一道）：帶 `:`、
     // `#` 或換行的字串會注入欄位或炸掉整份 meta——而工單已在同一步刪除，
     // 無從回復。
-    m.set(at_key, &crate::util::today())?;
+    m.set(at_key, &crate::util::now_rfc3339())?;
     if let Some(actor) = actor {
         m.set(by_key, &crate::util::yaml_scalar(actor))?;
     }
@@ -662,6 +667,7 @@ fn write_stamp(
         m.set(with_key, &crate::util::yaml_scalar(tool))?;
     }
     m.set(tasks_total_key, &gate.tasks_total.to_string())?;
+    m.set(rounds_key, &gate.rounds.to_string())?;
     let body: Vec<String> = entries
         .iter()
         .flat_map(|(path, hash)| {

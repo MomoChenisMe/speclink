@@ -22,7 +22,9 @@ use crate::init_core_context;
 /// v5：加 verify_status（封存時的驗證結局，spec client-protocol「已封存清單的驗證結局欄位」）。
 /// v6：加 why_excerpt／created（封存卡描述列與抽屜出身列，spec client-protocol
 ///     「已封存清單的呈現輔助欄位」）。
-const CACHE_VERSION: i64 = 6;
+/// v7：加 doc_lines／lead_days／lead_hours／review_rounds／verify_rounds（已封存頁的
+///     流程成本摘要，spec client-protocol「已封存清單的流程成本欄位」）。
+const CACHE_VERSION: i64 = 7;
 
 /// 回傳歸檔 change 清單：`{ "archived": [ { datedName, date, name } ] }`，按 datedName 排序。
 /// 非專案回傳 `{ "archived": [] }`。
@@ -113,8 +115,12 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
                 .read_archived_artifact(name, "proposal.md")
                 .as_deref()
                 .and_then(crate::query::why_excerpt);
+            // 流程成本（process-cost-metrics D4）：單項由 core 算，缺席存 NULL；
+            // 存不進 SQLite 整數的超大輪數一樣存 NULL（讀出時不插 key）。
+            let cost = speclink_core::cost::archived_cost(store, name);
+            let int = |n: Option<u64>| n.and_then(|n| i64::try_from(n).ok());
             conn.execute(
-                "INSERT OR REPLACE INTO archived_changes (dated_name, meta, tasks_total, tasks_done, spec_count, created_by, from_discussions, review_status, verify_status, why_excerpt, created) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                "INSERT OR REPLACE INTO archived_changes (dated_name, meta, tasks_total, tasks_done, spec_count, created_by, from_discussions, review_status, verify_status, why_excerpt, created, doc_lines, lead_days, lead_hours, review_rounds, verify_rounds) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
                 rusqlite::params![
                     name,
                     meta,
@@ -127,6 +133,11 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
                     verify_status,
                     why_excerpt,
                     parsed.created,
+                    int(cost.doc_lines),
+                    cost.lead_days,
+                    cost.lead_hours,
+                    int(cost.review_rounds),
+                    int(cost.verify_rounds),
                 ],
             )?;
         }
@@ -147,10 +158,11 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
     }
 
     let mut stmt = conn.prepare(
-        "SELECT dated_name, tasks_total, tasks_done, spec_count, created_by, from_discussions, review_status, verify_status, why_excerpt, created FROM archived_changes ORDER BY dated_name",
+        "SELECT dated_name, tasks_total, tasks_done, spec_count, created_by, from_discussions, review_status, verify_status, why_excerpt, created, doc_lines, lead_days, lead_hours, review_rounds, verify_rounds FROM archived_changes ORDER BY dated_name",
     )?;
     let items: Vec<Value> = stmt
         .query_map([], |r| {
+            let int = |i| r.get::<_, Option<i64>>(i);
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, Option<i64>>(1)?,
@@ -162,6 +174,8 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
                 r.get::<_, Option<String>>(7)?,
                 r.get::<_, Option<String>>(8)?,
                 r.get::<_, Option<String>>(9)?,
+                [int(10)?, int(11)?, int(13)?, int(14)?],
+                r.get::<_, Option<f64>>(12)?,
             ))
         })?
         .flatten()
@@ -177,6 +191,8 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
                 verify_status,
                 why_excerpt,
                 created,
+                [doc_lines, lead_days, review_rounds, verify_rounds],
+                lead_hours,
             ) = row;
             let mut item = item_for(&n);
             // 無 tasks.md 的封存項徽章欄位缺席（前端據此不顯示徽章）。
@@ -201,6 +217,20 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
             if let Some(created) = created {
                 item["created"] = json!(created);
             }
+            // 流程成本欄位同規則：缺席不插 key。
+            for (key, value) in [
+                ("docLines", doc_lines),
+                ("leadDays", lead_days),
+                ("reviewRounds", review_rounds),
+                ("verifyRounds", verify_rounds),
+            ] {
+                if let Some(value) = value {
+                    item[key] = json!(value);
+                }
+            }
+            if let Some(hours) = lead_hours {
+                item["leadHours"] = json!(hours);
+            }
             item
         })
         .collect();
@@ -221,7 +251,7 @@ fn ensure_schema(conn: &Connection) -> rusqlite::Result<()> {
             "DROP TABLE IF EXISTS archived_changes;
              DROP TABLE IF EXISTS schema_version;
              CREATE TABLE schema_version (version INTEGER);
-             CREATE TABLE archived_changes (dated_name TEXT PRIMARY KEY, meta TEXT, tasks_total INTEGER, tasks_done INTEGER, spec_count INTEGER, created_by TEXT, from_discussions TEXT, review_status TEXT, verify_status TEXT, why_excerpt TEXT, created TEXT);",
+             CREATE TABLE archived_changes (dated_name TEXT PRIMARY KEY, meta TEXT, tasks_total INTEGER, tasks_done INTEGER, spec_count INTEGER, created_by TEXT, from_discussions TEXT, review_status TEXT, verify_status TEXT, why_excerpt TEXT, created TEXT, doc_lines INTEGER, lead_days INTEGER, lead_hours REAL, review_rounds INTEGER, verify_rounds INTEGER);",
         )?;
         conn.execute(
             "INSERT INTO schema_version (version) VALUES (?1)",
@@ -620,6 +650,101 @@ mod tests {
             nu2["whyExcerpt"], "看板搜尋列缺席，跨卡找東西只能逐欄翻。",
             "cached excerpt served without re-parsing"
         );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    const COST_KEYS: [&str; 5] = ["docLines", "leadDays", "leadHours", "reviewRounds", "verifyRounds"];
+
+    fn numbered_lines(n: usize) -> String {
+        (1..=n).map(|i| format!("line {i}\n")).collect()
+    }
+
+    #[test]
+    fn archived_items_carry_process_cost_fields() {
+        // spec client-protocol「已封存清單的流程成本欄位」三個情境：新格式帶齊、
+        // 舊格式只帶得出的欄位、沒有 metadata 與文件時全部缺席（不插 key）。
+        let root = fixture_project("cost", &["2026-10-22-demo", "2026-08-14-old", "2026-08-15-empty"]);
+        let archive = root.join("openspec").join("changes").join("archive");
+        let demo = archive.join("2026-10-22-demo");
+        fs::write(
+            demo.join(".openspec.yaml"),
+            "schema: spec-driven\ncreated: 2026-10-21T10:00:00+08:00\nreviewed_rounds: 2\nverified_rounds: 3\narchived_at: 2026-10-22T16:30:00+08:00\n",
+        )
+        .unwrap();
+        fs::write(demo.join("proposal.md"), numbered_lines(120)).unwrap();
+        fs::write(demo.join("tasks.md"), numbered_lines(80)).unwrap();
+        fs::create_dir_all(demo.join("specs").join("auth")).unwrap();
+        fs::write(demo.join("specs").join("auth").join("spec.md"), numbered_lines(50)).unwrap();
+        let old = archive.join("2026-08-14-old");
+        fs::write(old.join(".openspec.yaml"), "schema: spec-driven\ncreated: 2026-08-12\n").unwrap();
+        fs::write(old.join("tasks.md"), "- [x] 1.1 a\n").unwrap();
+        fs::remove_file(archive.join("2026-08-15-empty").join("proposal.md")).unwrap();
+
+        let v = archived_changes_at(&root);
+        let arr = v["archived"].as_array().unwrap();
+        let by_name = |n: &str| arr.iter().find(|i| i["datedName"] == n).unwrap().clone();
+
+        let demo = by_name("2026-10-22-demo");
+        assert_eq!(demo["docLines"], 250, "{demo}");
+        assert_eq!(demo["leadDays"], 1);
+        assert_eq!(demo["leadHours"], 30.5);
+        assert_eq!(demo["reviewRounds"], 2);
+        assert_eq!(demo["verifyRounds"], 3);
+        assert_eq!(demo["created"], "2026-10-21", "created keeps the date part");
+
+        let old = by_name("2026-08-14-old");
+        assert_eq!(old["docLines"], 3, "fixture proposal (2) + tasks (1): {old}");
+        assert_eq!(old["leadDays"], 2);
+        for key in ["leadHours", "reviewRounds", "verifyRounds"] {
+            assert!(old.get(key).is_none(), "{key} absent: {old}");
+        }
+        assert_eq!(old["tasksTotal"], 1, "existing fields stay");
+
+        let empty = by_name("2026-08-15-empty");
+        for key in COST_KEYS {
+            assert!(empty.get(key).is_none(), "{key} absent: {empty}");
+        }
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rounds_too_large_for_sqlite_are_left_out_instead_of_wrapping() {
+        // u64 上限放不進 SQLite 的 i64：存 NULL、讀出不插 key，不會變成負數。
+        let root = fixture_project("huge-rounds", &["2026-07-06-rho"]);
+        let dir = root.join("openspec").join("changes").join("archive").join("2026-07-06-rho");
+        fs::write(dir.join(".openspec.yaml"), format!("reviewed_rounds: {}\nverified_rounds: 4\n", u64::MAX))
+            .unwrap();
+        let v = archived_changes_at(&root);
+        let item = &v["archived"].as_array().unwrap()[0];
+        assert!(item.get("reviewRounds").is_none(), "oversized count is absent: {item}");
+        assert_eq!(item["verifyRounds"], 4, "the other count stays");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn v6_cache_is_dropped_and_rebuilt_with_process_cost() {
+        // design D5：五欄入庫使 CACHE_VERSION 6→7，舊 v6 快取整表重建。
+        let root = fixture_project("v6", &["2026-07-05-pi"]);
+        let db_dir = root.join(".speclink");
+        fs::create_dir_all(&db_dir).unwrap();
+        let conn = Connection::open(db_dir.join("desktop-cache.db")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schema_version (version INTEGER);
+             INSERT INTO schema_version (version) VALUES (6);
+             CREATE TABLE archived_changes (dated_name TEXT PRIMARY KEY, meta TEXT, tasks_total INTEGER, tasks_done INTEGER, spec_count INTEGER, created_by TEXT, from_discussions TEXT, review_status TEXT, verify_status TEXT, why_excerpt TEXT, created TEXT);
+             INSERT INTO archived_changes (dated_name, meta, spec_count) VALUES ('2026-07-05-pi', '', 0);",
+        )
+        .unwrap();
+        drop(conn);
+
+        let v = archived_changes_at(&root);
+        let item = &v["archived"].as_array().unwrap()[0];
+        assert_eq!(item["docLines"], 2, "v6 cache must be rebuilt so the cost converges: {item}");
+        let conn = Connection::open(db_dir.join("desktop-cache.db")).unwrap();
+        let version: i64 = conn
+            .query_row("SELECT version FROM schema_version LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 7, "schema version stamped to 7 after rebuild");
         let _ = fs::remove_dir_all(&root);
     }
 

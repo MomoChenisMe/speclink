@@ -46,12 +46,50 @@ fn archive_preserves_started_fields_and_stamps_the_archived_station() {
         archived.starts_with(meta),
         "created_* and started_* must survive archive byte-for-byte, got: {archived}"
     );
-    assert!(archived.contains(&format!("archived_at: {today}\n")));
+    let stamps = archived_at_values(&archived);
+    assert!(
+        stamps.len() == 1 && stamps[0].starts_with(&format!("{today}T")),
+        "one archived_at stamp from today: {archived}"
+    );
     // All three stations coexist on the archived document.
     for field in ["created:", "started_at:", "started_by:", "started_with:", "archived_at:"] {
         assert!(archived.contains(field), "missing station field {field}");
     }
     assert!(!store.change_exists("demo"), "active change moved into the archive");
+}
+
+/// 每一行 `archived_at: ` 的值。
+fn archived_at_values(meta: &str) -> Vec<&str> {
+    meta.lines().filter_map(|l| l.strip_prefix("archived_at: ")).collect()
+}
+
+// --- spec change-lifecycle「封存寫入 archived_at」（process-cost-metrics design D3）---
+
+#[test]
+fn archive_writes_one_archived_at_stamp_from_the_dated_name_instant() {
+    // Scenario「成功封存帶封存時戳」：時戳與目錄名日期前綴取自同一個「現在」。
+    let store = gate_store("- [x] 1.1 a\n");
+    let change = crate::model::find_change(&store, "demo").unwrap();
+    let outcome = archive(&ghost_ws(), &store, &change, &skip_opts(), None).unwrap();
+    let archived = store.read_archived_meta(&outcome.dated_name).unwrap();
+    let stamps = archived_at_values(&archived);
+    assert_eq!(stamps.len(), 1, "exactly one archived_at line: {archived}");
+    assert!(util::is_offset_stamp(stamps[0]), "archived_at is an offset stamp: {archived}");
+    assert_eq!(&stamps[0][..10], &outcome.dated_name[..10], "same instant as the dated name");
+}
+
+#[test]
+fn retried_archive_replaces_a_leftover_archived_at() {
+    // Scenario「重試封存只留一行封存時戳」：前一次移動失敗留下的 archived_at 被取代。
+    let leftover = "archived_at: 2026-10-20T09:00:00+08:00\n";
+    let store = TestStore::with_meta("demo", &format!("schema: spec-driven\n{leftover}"));
+    store.put_artifact("demo", "tasks.md", "- [x] 1.1 a\n");
+    let change = crate::model::find_change(&store, "demo").unwrap();
+    let outcome = archive(&ghost_ws(), &store, &change, &skip_opts(), None).unwrap();
+    let archived = store.read_archived_meta(&outcome.dated_name).unwrap();
+    let stamps = archived_at_values(&archived);
+    assert_eq!(stamps.len(), 1, "exactly one archived_at line: {archived}");
+    assert_eq!(&stamps[0][..10], &outcome.dated_name[..10], "the new stamp wins: {archived}");
 }
 
 // --- spec change-lifecycle「封存的章失效守門」（design D5）---
@@ -99,6 +137,18 @@ mod stale_stamp_gate {
     ) -> anyhow::Result<()> {
         let change = crate::model::find_change(store, "demo").expect("change");
         archive(ws, store, &change, &opts, None).map(|_| ())
+    }
+
+    #[test]
+    fn a_refused_archive_writes_no_archived_at() {
+        // spec「封存守門拒絕不寫封存時戳」：審查章已失效 → 拒絕，meta 沒有 archived_at。
+        let ws = ws_with_scope_file("no-archived-at", &format!("{FILE_A}fn extra() {{}}\n"));
+        let meta = meta_with_stamps(&["reviewed"]);
+        let store = TestStore::with_meta("demo", &meta);
+        store.put_artifact("demo", "tasks.md", TASKS_ALL_DONE);
+        try_archive(&ws, &store, skip_opts()).expect_err("stale stamp must refuse");
+        assert!(store.change_exists("demo"), "the change stays in progress");
+        assert_eq!(store.meta("demo"), meta, "no archived_at lands on a refusal");
     }
 
     #[test]

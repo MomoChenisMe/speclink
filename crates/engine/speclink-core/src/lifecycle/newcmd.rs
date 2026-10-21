@@ -26,7 +26,7 @@ pub fn new_change(
     if store.change_exists(name) {
         bail!("Change '{name}' already exists.");
     }
-    let created = util::today();
+    let created = util::now_rfc3339();
     let mut meta = format!("schema: {schema}\ncreated: {created}\n");
     if let Some(id) = actor {
         meta.push_str(&format!("created_by: {id}\n"));
@@ -213,6 +213,22 @@ mod tests {
             "created_by is the injected actor, meta: {}",
             store.meta("with-actor")
         );
+    }
+
+    #[test]
+    fn new_change_writes_created_as_an_offset_stamp() {
+        // spec「新變更寫入時戳」：created 為帶偏移量、秒精度的 RFC 3339。
+        let store = TestStore::default();
+        new_change(&store, "stamped", None, "spec-driven", None, None, None)
+            .expect("new change succeeds");
+        let meta = store.meta("stamped");
+        let created = meta
+            .lines()
+            .find_map(|l| l.strip_prefix("created: "))
+            .expect("created line");
+        assert!(util::is_offset_stamp(created), "created is not an offset stamp: {meta}");
+        let parsed = model::ChangeMeta::from_text(Some(&meta)).expect("meta parses");
+        assert_eq!(parsed.created.as_deref(), Some(&created[..10]), "outputs keep the date part");
     }
 
     #[test]

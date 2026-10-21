@@ -26,7 +26,7 @@ pub(crate) mod teststore;
 pub mod util;
 
 pub use lifecycle::{
-    archive, capname, discard, discuss, inprogress, listing, model, newcmd, plan, preflight,
+    archive, capname, cost, discard, discuss, inprogress, listing, model, newcmd, plan, preflight,
     rank, status, tasks, trace,
 };
 pub use quality::{analyzer, drift, station, validate};

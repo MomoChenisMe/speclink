@@ -11,7 +11,13 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ChangeMeta {
     pub schema: Option<String>,
+    /// 建立日期。寫入的是 RFC 3339 時戳，[`ChangeMeta::from_text`] 把它收斂成日期
+    /// 部分——對外輸出點直接拿來用（process-cost-metrics design D2）。
     pub created: Option<String>,
+    /// `created` 的完整原值（時戳或舊記錄的純日期），只供流程成本計算時數；
+    /// 由 [`ChangeMeta::from_text`] 填入，不對應任何 YAML 鍵。
+    #[serde(skip)]
+    pub created_stamp: Option<String>,
     pub created_by: Option<String>,
     #[serde(default)]
     pub created_with: Option<String>,
@@ -62,6 +68,10 @@ pub struct ChangeMeta {
     /// 內容指紋錨：範圍檔 path＋hash 清單（缺席讀作空）。
     #[serde(default)]
     pub reviewed_scope: Vec<ReviewedScopeEntry>,
+    /// 歷次蓋章累加的審查回合數（process-cost-metrics D1）。不是非負整數時整份
+    /// meta 解析失敗——蓋章走 fail-closed 拒絕。
+    #[serde(default)]
+    pub reviewed_rounds: Option<u64>,
     /// The "verified" quality station（`verify stamp` 蓋章；design D2）。與
     /// `reviewed_*` 同形、同錨、同失效規則，兩站互不遮蔽；全部
     /// `#[serde(default)]`——缺席讀作未驗證，pre-migration metadata 照常解析。
@@ -77,6 +87,13 @@ pub struct ChangeMeta {
     /// 內容指紋錨：範圍檔 path＋hash 清單（缺席讀作空）。
     #[serde(default)]
     pub verified_scope: Vec<ReviewedScopeEntry>,
+    /// 歷次蓋章累加的驗證回合數；與 `reviewed_rounds` 同規則。
+    #[serde(default)]
+    pub verified_rounds: Option<u64>,
+    /// 封存時戳（`archive` 移動前寫入；process-cost-metrics D3）。保留原值不收斂——
+    /// 舊記錄是純日期，只供流程成本讀取。
+    #[serde(default)]
+    pub archived_at: Option<String>,
 }
 
 /// `reviewed_scope` 清單項：path 為 repo-root 相對、`/` 分隔（Windows 路徑
@@ -92,11 +109,29 @@ impl ChangeMeta {
     /// the defaults; a document that exists but cannot parse → `Err` with the
     /// parser's reason (fail-closed, never defaults). Store implementations
     /// carry that reason as [`Change::meta_error`] so listing never breaks.
+    ///
+    /// Time fields written as RFC 3339 stamps collapse to their date part here, so
+    /// every output point keeps emitting `YYYY-MM-DD` (process-cost-metrics design
+    /// D2); plain dates and unrecognised values stay verbatim.
     pub fn from_text(text: Option<&str>) -> Result<ChangeMeta, String> {
-        match text {
-            Some(s) => crate::config::parse_lenient_or_reason(s),
-            None => Ok(ChangeMeta::default()),
+        let Some(s) = text else {
+            return Ok(ChangeMeta::default());
+        };
+        let mut meta: ChangeMeta = crate::config::parse_lenient_or_reason(s)?;
+        meta.created_stamp = meta.created.clone();
+        let time_fields = [
+            &mut meta.created,
+            &mut meta.started_at,
+            &mut meta.claimed_at,
+            &mut meta.reviewed_at,
+            &mut meta.verified_at,
+        ];
+        for value in time_fields.into_iter().flatten() {
+            if chrono::DateTime::parse_from_rfc3339(value).is_ok() {
+                value.truncate(10);
+            }
         }
+        Ok(meta)
     }
     pub fn schema_name(&self) -> String {
         self.schema
@@ -119,6 +154,15 @@ impl ChangeMeta {
                 tasks_total: self.verified_tasks_total,
                 scope: &self.verified_scope,
             },
+        }
+    }
+
+    /// 一個品質站歷次蓋章累加的回合數（process-cost-metrics D1）。與 [`Self::anchors`]
+    /// 同樣對 `StationId` 窮舉 match——第三站來時漏補臂是編譯錯誤。
+    pub fn stamp_rounds(&self, st: &Station) -> Option<u64> {
+        match st.id {
+            StationId::Review => self.reviewed_rounds,
+            StationId::Verify => self.verified_rounds,
         }
     }
 
@@ -801,6 +845,73 @@ mod tests {
         assert!(meta.started_at.is_none());
         assert!(meta.started_by.is_none());
         assert!(meta.started_with.is_none());
+    }
+
+    // --- 時間欄位：寫入時戳、對外輸出日期（process-cost-metrics design D2）---
+
+    #[test]
+    fn meta_collapses_rfc3339_time_fields_to_their_date_part() {
+        // spec「change metadata 時間欄位寫入時戳、對外輸出日期」：解析層把時戳收斂成
+        // 前 10 個字元，完整的 created 原值留在 created_stamp 供流程成本計算。
+        let text = "schema: spec-driven\ncreated: 2026-10-21T14:05:00+08:00\nstarted_at: 2026-10-22T09:00:00+08:00\nclaimed_at: 2026-10-23T10:00:00+00:00\nreviewed_at: 2026-10-24T23:59:59-05:00\nverified_at: 2026-10-25T00:00:01+08:00\narchived_at: 2026-10-26T16:30:00+08:00\n";
+        let meta = ChangeMeta::from_text(Some(text)).expect("meta parses");
+        assert_eq!(meta.created.as_deref(), Some("2026-10-21"));
+        assert_eq!(meta.created_stamp.as_deref(), Some("2026-10-21T14:05:00+08:00"));
+        assert_eq!(meta.started_at.as_deref(), Some("2026-10-22"));
+        assert_eq!(meta.claimed_at.as_deref(), Some("2026-10-23"));
+        assert_eq!(meta.reviewed_at.as_deref(), Some("2026-10-24"));
+        assert_eq!(meta.verified_at.as_deref(), Some("2026-10-25"));
+        assert_eq!(meta.archived_at.as_deref(), Some("2026-10-26T16:30:00+08:00"));
+    }
+
+    #[test]
+    fn meta_keeps_plain_dates_and_unrecognised_time_values_verbatim() {
+        // 純日期與既不是日期也不是時戳的值原樣保留（現行行為）。
+        let meta = ChangeMeta::from_text(Some("created: 2026-07-29\nstarted_at: someday\n"))
+            .expect("meta parses");
+        assert_eq!(meta.created.as_deref(), Some("2026-07-29"));
+        assert_eq!(meta.created_stamp.as_deref(), Some("2026-07-29"));
+        assert_eq!(meta.started_at.as_deref(), Some("someday"));
+        let meta = ChangeMeta::from_text(Some("created: someday\n")).expect("meta parses");
+        assert_eq!(meta.created.as_deref(), Some("someday"));
+        assert!(meta.archived_at.is_none());
+        // 偏移量超出範圍、少了秒的寫法都不是 RFC 3339——原樣保留，不截成日期。
+        for odd in ["2026-10-21T14:05:00+25:00", "2026-10-21T14:05+08:00"] {
+            let meta = ChangeMeta::from_text(Some(&format!("created: {odd}\n"))).expect("meta parses");
+            assert_eq!(meta.created.as_deref(), Some(odd));
+        }
+    }
+
+    #[test]
+    fn created_stamp_cannot_be_set_from_the_document() {
+        // created_stamp 不對應任何 YAML 鍵：檔內寫了也不會蓋掉 created 的原值。
+        let meta = ChangeMeta::from_text(Some("created: 2026-07-01\ncreated_stamp: 1999-01-01T00:00:00+00:00\n"))
+            .expect("meta parses");
+        assert_eq!(meta.created_stamp.as_deref(), Some("2026-07-01"));
+    }
+
+    #[test]
+    fn meta_parses_station_rounds_as_non_negative_integers() {
+        let meta = ChangeMeta::from_text(Some("reviewed_rounds: 3\nverified_rounds: 0\n"))
+            .expect("meta parses");
+        assert_eq!(meta.reviewed_rounds, Some(3));
+        assert_eq!(meta.verified_rounds, Some(0));
+        let meta = ChangeMeta::from_text(Some("schema: spec-driven\n")).expect("meta parses");
+        assert!(meta.reviewed_rounds.is_none() && meta.verified_rounds.is_none());
+    }
+
+    #[test]
+    fn meta_with_non_integer_station_rounds_fails_closed() {
+        // spec「原有輪數不是整數時拒絕」：輪數欄位不是非負整數 → metadata 無法解析。
+        for bad in [
+            "reviewed_rounds: many\n",
+            "verified_rounds: -1\n",
+            "reviewed_rounds: 2.5\n",
+            "reviewed_rounds: \"3\"\n",
+            "verified_rounds: 18446744073709551616\n",
+        ] {
+            ChangeMeta::from_text(Some(bad)).expect_err(&format!("{bad:?} must fail closed"));
+        }
     }
 
     #[test]

@@ -146,6 +146,17 @@ export interface ArchivedItem {
   /** 建立日期 YYYY-MM-DD（封存目錄 metadata 的 created）；缺席＝抽屜出身列的
    * 建立日期欄位不顯示。 */
   created?: string;
+  /** 流程成本欄位（spec client-protocol「已封存清單的流程成本欄位」），只由桌面 core
+   * 產出、來源缺席時缺席：proposal／design／tasks／delta spec 行數總和。 */
+  docLines?: number;
+  /** 封存目錄日期減建立日期（天）。 */
+  leadDays?: number;
+  /** 封存時戳減建立時戳（小時、一位小數）；兩端都是時戳時才有。 */
+  leadHours?: number;
+  /** 歷次蓋章累加的審查回合數。 */
+  reviewRounds?: number;
+  /** 歷次蓋章累加的驗證回合數。 */
+  verifyRounds?: number;
 }
 
 /** 品質站站別——工單分頁的資料定址（`review.md`／`verify.md`）。 */
