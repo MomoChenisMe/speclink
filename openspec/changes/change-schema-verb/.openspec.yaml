@@ -1,0 +1,6 @@
+schema: spec-driven
+created: 2026-10-21
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: positioning-and-process-cost
+depends_on: no-spec-change-schema, process-cost-metrics
