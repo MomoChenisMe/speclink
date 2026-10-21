@@ -34,9 +34,9 @@ updated: 2026-09-02
 #### Scenario: apply 完成時的交棒句
 
 - **WHEN** apply 技能把全部非手動任務勾完並輸出完成摘要
-- **THEN** 摘要建議品質站（review、verify 或 quality）可跑、或直接封存——直接封存的路徑明示走 archive 技能、或以 commit 技能的「先封存再一起提交」一步到位；若剩手動任務則載明品質站可先跑而封存等手動完成；全程不自動呼叫任何技能
+- **THEN** 摘要建議品質關卡（review、verify 或 quality）可跑、或直接封存——直接封存的路徑明示走 archive 技能、或以 commit 技能的「先封存再一起提交」一步到位；若剩手動任務則載明品質關卡可先跑而封存等手動完成；全程不自動呼叫任何技能
 
-#### Scenario: 品質站落章後的交棒句
+#### Scenario: 品質關卡落章後的交棒句
 
 - **WHEN** review 或 verify 技能單站蓋章完成
 - **THEN** 主 checkout 建議 archive；worktree 內建議先提交蓋章寫入的 meta 異動、再走 worktree-merge；不建議另一站
@@ -62,10 +62,10 @@ updated: 2026-09-02
 | --- | --- | --- |
 | baseline | 初始規格生成完 | 需求清楚→propose；還模糊→discuss |
 | propose | artifacts 齊備 | apply；提案中變更 ≥2 時先盤點執行順序（worktree 政策開啟→分可平行／須依序，平行者各開 session 走 apply-with-worktree） |
-| apply | 全部勾完 | 品質站或 archive（commit 的先封存再一起提交可一步到位） |
+| apply | 全部勾完 | 品質關卡或 archive（commit 的先封存再一起提交可一步到位） |
 | apply | 需求中途變更 | ingest |
-| apply-with-worktree | worktree 內 commit 完（已 rebase 並重設起點） | 無未勾手動任務→品質站（worktree 內）→補提交→worktree-merge；有未勾手動任務或要在蓋章前看到 CI→worktree-merge→主 checkout 品質站 |
-| worktree-merge | 合併清理完（基準與快照已承接到主 checkout） | 品質站已跑完→回主 checkout archive；未跑→主 checkout 品質站→archive；有未勾手動任務→主 checkout 品質站與手動任務完成後 archive |
+| apply-with-worktree | worktree 內 commit 完（已 rebase 並重設起點） | 無未勾手動任務→品質關卡（worktree 內）→補提交→worktree-merge；有未勾手動任務或要在蓋章前看到 CI→worktree-merge→主 checkout 品質關卡 |
+| worktree-merge | 合併清理完（基準與快照已承接到主 checkout） | 品質關卡已跑完→回主 checkout archive；未跑→主 checkout 品質關卡→archive；有未勾手動任務→主 checkout 品質關卡與手動任務完成後 archive |
 | drift | 假設過期／無漂移 | ingest／apply |
 | ingest | artifacts 更新完 | 回 apply |
 | review、verify | 落章 | archive（worktree 內→補提交後 worktree-merge） |
@@ -76,8 +76,8 @@ updated: 2026-09-02
 
 
 <!-- @trace
-source: quality-gate-speedup
-updated: 2026-10-14T21:31:03+08:00
+source: quality-gate-wording-in-specs
+updated: 2026-10-21T22:05:05+08:00
 -->
 
 ---
