@@ -2461,39 +2461,13 @@ updated: 2026-10-10T15:55:28+08:00
 -->
 
 ---
-### Requirement: 品質站蓋章配色與主色分離
-
-品質站狀態標示的配色 SHALL 與主題主色分離:「已審查」蓋章 SHALL 以紫色系呈現,SHALL NOT 引用主題主色 token;「審查中」「已審查·其後有變動」「曾審查未通過」三態維持藍/琥珀/紅系不變。紫色系 SHALL 為品質站蓋章專屬——品質站標示以外的介面元素 SHALL NOT 使用紫色系。此約束 SHALL 套用於呈現審查標示的全部表面——「已審查」蓋章出現於看板卡片、變更詳情頁、已封存清單、已封存詳情頁四處;封存對話框共用同一份配色對照,但僅取用「曾審查未通過」,不呈現已審查蓋章。各表面 SHALL 引用同一份配色對照,SHALL NOT 各自定義。
-
-#### Scenario: 已審查蓋章與主色可區辨
-
-- **WHEN** 使用者開啟 reviewStatus 為 reviewed 的變更卡片與其詳情頁
-- **THEN** 「已審查」蓋章以紫色系呈現,與同視野的主色元素(進度條、分頁、連結籤)可區辨;深淺主題下皆然
-
-#### Scenario: 其餘三態配色不變
-
-- **WHEN** 使用者分別檢視 inReview、reviewedStale、reviewedNotPassed 的審查標示
-- **THEN** 三態仍以藍、琥珀、紅系呈現,詞條與圖示與本變更前一致
-
-#### Scenario: 紫色系為蓋章專屬
-
-- **WHEN** 使用者檢視看板、詳情頁與已封存各表面
-- **THEN** 紫色系僅出現於品質站蓋章,不出現在其他介面元素
-
-
-<!-- @trace
-source: desktop-detail-page
-updated: 2026-10-10T15:55:28+08:00
--->
-
----
 ### Requirement: 介面狀態語意色分層
 
 桌面 app 的狀態呈現 SHALL 依語意上色:進行中(分頁還原、遷移進行、更新下載、看板卡片 worktree 標示)為藍系;成功結果(遷移完成)為綠系;警示(登入過期 stale、needs-reauth、政策衝突、待重新反映)為琥珀系;錯誤(分頁 error、更新檢查失敗、設定檔解析錯誤、遠端工作區 access-denied/not-found/unknown)與危險動作為紅系;待手動(看板「待手動」章、任務文件的手動任務列淡底與徽章、手動任務提示框)為暖黃系——暖黃與警示琥珀是兩個色相,待手動 SHALL NOT 以琥珀或藍呈現。主題主色 SHALL NOT 用於表達狀態;錯誤 SHALL NOT 以琥珀呈現;靜態小標與裝飾面 SHALL 為中性。
 
 生命週期與討論 SHALL 各有一個色相,由單一來源供給並為看板與系統匣面板共用:提案中為主色(teal)、進行中為藍系(與進行中語意同色)、已就緒為綠系(與成功語意同色)、討論為桃紫系(fuchsia);看板欄頂條、欄標頭圖示、欄計數徽章、卡片波次章與系統匣面板的生命週期分區、討論分區的圖示與計數徽章 SHALL 取所在階段或分區的色相;「已轉出」分區、收合列及其計數 SHALL 為中性。琥珀、紅與紫色系 SHALL NOT 用於任何生命週期或討論的欄位與分區。豁免項 SHALL 維持主色:複製成功勾號(互動即時回饋)、可點連結籤與導航元素。
 
-色值 SHALL 只存在於共用 theme 樣式表(基底 token、狀態語意 token、品質站蓋章 token、改進標示 token、生命週期 token),淺色與深色各一套;集中常數檔 SHALL 只保存「狀態→token class」的對照;元件原始碼 SHALL 只以 token class 取色。原生色階字面(含語意色階與中性色階)SHALL NOT 出現在共用元件庫、桌面 app 與 server web 的任何元件或常數檔原始碼;主題守門測試 SHALL 於違規時失敗並指名檔案與 class,SHALL NOT 設白名單。
+色值 SHALL 只存在於共用 theme 樣式表(基底 token、狀態語意 token、品質關卡蓋章 token、改進標示 token、生命週期 token),淺色與深色各一套;集中常數檔 SHALL 只保存「狀態→token class」的對照;元件原始碼 SHALL 只以 token class 取色。原生色階字面(含語意色階與中性色階)SHALL NOT 出現在共用元件庫、桌面 app 與 server web 的任何元件或常數檔原始碼;主題守門測試 SHALL 於違規時失敗並指名檔案與 class,SHALL NOT 設白名單。
 
 #### Scenario: 錯誤態以紅呈現
 
@@ -2557,8 +2531,8 @@ updated: 2026-10-10T15:55:28+08:00
 
 
 <!-- @trace
-source: desktop-change-doc-views
-updated: 2026-10-12T16:18:33+08:00
+source: quality-gate-wording-in-specs
+updated: 2026-10-21T22:05:05+08:00
 -->
 
 ---
@@ -2574,16 +2548,17 @@ change 卡片 SHALL 依驗證狀態渲染第二顆行內小章，與審查章並
 #### Scenario: 兩站同狀態同色、異形可辨
 
 - **WHEN** 某 change 同時為 `reviewStatus: "reviewed"` 與 `verifyStatus: "verified"`
-- **THEN** 兩章配色同值（皆為品質站蓋章色），審查章為徽章形、驗證章為盾牌形，站別可一眼區辨
+- **THEN** 兩章配色同值（皆為品質關卡蓋章色），審查章為徽章形、驗證章為盾牌形，站別可一眼區辨
 
 #### Scenario: 僅驗證章
 
 - **WHEN** 協定資料為 `reviewStatus: "none"` 且 `verifyStatus: "verifiedStale"`
 - **THEN** 卡片僅顯示降級樣式的驗證章，tooltip 為「已驗證·其後有變動」（tw）
 
+
 <!-- @trace
-source: verify-station-parity
-updated: 2026-08-06
+source: quality-gate-wording-in-specs
+updated: 2026-10-21T22:05:05+08:00
 -->
 
 ---
@@ -4307,4 +4282,29 @@ desktop 的更新日誌對話框（自動彈出的「X.Y.Z 更新內容」與瀏
 <!-- @trace
 source: bilingual-release-notes
 updated: 2026-10-15T17:28:24+08:00
+-->
+
+---
+### Requirement: 品質關卡蓋章配色與主色分離
+
+品質關卡狀態標示的配色 SHALL 與主題主色分離:「已審查」蓋章 SHALL 以紫色系呈現,SHALL NOT 引用主題主色 token;「審查中」「已審查·其後有變動」「曾審查未通過」三態維持藍/琥珀/紅系不變。紫色系 SHALL 為品質關卡蓋章專屬——品質關卡標示以外的介面元素 SHALL NOT 使用紫色系。此約束 SHALL 套用於呈現審查標示的全部表面——「已審查」蓋章出現於看板卡片、變更詳情頁、已封存清單、已封存詳情頁四處;封存對話框共用同一份配色對照,但僅取用「曾審查未通過」,不呈現已審查蓋章。各表面 SHALL 引用同一份配色對照,SHALL NOT 各自定義。
+
+#### Scenario: 已審查蓋章與主色可區辨
+
+- **WHEN** 使用者開啟 reviewStatus 為 reviewed 的變更卡片與其詳情頁
+- **THEN** 「已審查」蓋章以紫色系呈現,與同視野的主色元素(進度條、分頁、連結籤)可區辨;深淺主題下皆然
+
+#### Scenario: 其餘三態配色不變
+
+- **WHEN** 使用者分別檢視 inReview、reviewedStale、reviewedNotPassed 的審查標示
+- **THEN** 三態仍以藍、琥珀、紅系呈現,詞條與圖示與本變更前一致
+
+#### Scenario: 紫色系為蓋章專屬
+
+- **WHEN** 使用者檢視看板、詳情頁與已封存各表面
+- **THEN** 紫色系僅出現於品質關卡蓋章,不出現在其他介面元素
+
+<!-- @trace
+source: quality-gate-wording-in-specs
+updated: 2026-10-21T22:05:05+08:00
 -->

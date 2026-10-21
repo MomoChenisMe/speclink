@@ -77,7 +77,7 @@ updated: 2026-08-07
 
 #### Scenario: 單站請求不經編排
 
-- **WHEN** 使用者只要求跑單一品質站
+- **WHEN** 使用者只要求跑單一品質關卡
 - **THEN** 直接呼叫該站技能,quality 不啟動,該站維持修完即蓋章的預設行為與既有的子代理派法(審查站兩軸同派、驗證站一個子代理)
 
 #### Scenario: 前提未完成時依站內前提行為呈現
@@ -112,8 +112,8 @@ updated: 2026-08-07
 
 
 <!-- @trace
-source: quality-gate-speedup
-updated: 2026-10-14T21:31:03+08:00
+source: quality-gate-wording-in-specs
+updated: 2026-10-21T22:05:05+08:00
 -->
 
 ---
