@@ -71,6 +71,13 @@ impl UpdaterBackend for PluginUpdater {
 }
 
 #[tauri::command]
+pub async fn desktop_release(
+    runtime: State<'_, DeviceRuntime>,
+    repo: updater::ReleaseRepository,
+) -> Result<Option<updater::DesktopRelease>, UpdateError> {
+    updater::desktop_release(&runtime, repo).await
+}
+#[tauri::command]
 pub async fn updater_check(
     app: tauri::AppHandle,
     runtime: State<'_, DeviceRuntime>,

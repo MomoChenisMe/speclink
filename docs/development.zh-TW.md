@@ -156,6 +156,20 @@ npm --prefix crates/adapters/speclink-node test         #           再跑測試
 
 ## <a id="desktop-tags"></a>以 Tag 發布桌面版
 
+本分支的交付順序：完成實作與合併前必要檢查，功能分支合併回 `main`，再從該筆 `main` commit 打包安裝檔。之後才在公司安裝並驗收 Proxy，記錄來源 commit 與安裝檔名稱；公司外網的開發視窗不能代替，合併也不代表人工任務或封存已完成。
+
+更新頁以 `mosutw/speclink` 為主，原作者 `MomoChenisMe/speclink` 的版本與連結另列，只作資訊，不當本分支安裝候選。沒有簽章更新包時引導手動下載 Release；TLS 或簽章錯誤仍保留。版本清單排除草稿、預先發行版及只有 CLI 的發行，每次最多 100 筆。目前四段式建置 Tag 會標為預先發行版，不列為正式更新。斷網仍可讀內附版本與更新日誌。
+
+### 共用安全標準資料
+
+「設定 → 安全標準資料」可沿本機預設，或設定絕對路徑，Windows 接受 UNC，如 `\\fileserver\team\speclink-standards`；macOS／Linux 使用已掛載路徑。程式不掛載 SMB，也不保存共用帳密。同機 Desktop 與 CLI 共用裝置設定；遠端 Server 使用服務帳號自己的設定，不採用用戶端路徑。
+
+維護者先下載／匯入一份完整資料，開放成員讀取檔案與鎖檔的權限。唯讀共用目錄可審查及匯出到可寫位置，不能下載／匯入。自訂根停用刪除，因單一裝置無法得知其他成員的引用，版本由維護者在程式外維護。斷線不會改到本機重下載；切換或還原預設不搬檔、不刪檔；資料、掃描與知識庫工作進行中不能切換。
+
+只共用標準，私人報告、憑證、裝置引用與各 checkout 的 `.security_kb/` 留本機，所以快照仍占本機空間。審查不下載標準，但共用目錄仍需要檔案系統連線；測試為本機共用根模擬，尚未完成實際公司 NAS／SMB 驗收。
+
+歷史寫入改鎖 spec store 內獨立的 `.checks-locks/`，Windows 搬移提案時仍持鎖。升級前先停止所有舊版寫入者，不支援新舊鎖定協定混用。鎖檔自帶 Git 忽略規則，不列入提案文件樹。
+
 `Desktop Build` 保留手動建置，並支援推送 `desktop-vX.Y.Z` 後自動建置與發布。先將工作流程變更合併到 `main`；Tag 指向的提交必須包含這份工作流程。Tag 版本須同時等於 `apps/desktop/src-tauri/tauri.conf.json` 的 `version` 與 `Cargo.toml` 的 `[workspace.package].version`，否則在建置前停止。改版時也須提交對應的 `Cargo.lock` 更新。
 
 亦支援預先發行版，例如 `desktop-v0.9.0-build.m1`；App 與 CLI 也須使用完整的 `0.9.0-build.m1` 版號。含預先發行版尾碼的 Tag 會將 GitHub Release 標示為預先發行版。

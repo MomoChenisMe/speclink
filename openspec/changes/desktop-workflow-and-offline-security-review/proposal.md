@@ -5,11 +5,16 @@
 - 需要保留內建基本掃描，並加入使用完整本機標準資料的深度審查 skill，追查架構、業務邏輯與跨模組資料流。
 - 團隊需依專案選擇是否把安全結果納入驗收，並明確記錄風險接受與封存保留政策。
 - 提案動機應與變更內容同樣容易逐項閱讀；所有專案預設條列起草與顯示，不依賴單一專案設定。
+- 換機後需清楚區分維護分支與原作者版本，團隊也需共用一份安全標準資料，避免每台電腦重複下載；公司 Proxy 只能在打包後驗收。
+- 交付時先將功能分支合併回本專案 `main`，再從 `main` 打包產生安裝檔，之後才於公司執行 Proxy 驗收；合併不代表該人工項已通過。
 
 ## What Changes
 
 - 左側專案列支援拖曳及上移／下移，順序存於本裝置並於重開還原，不影響專案身分或目前選取。
-- 更新頁將內附版本／更新日誌與網路檢查狀態分開；Proxy、TLS、407、解析及畫面失敗須有明確狀態與診斷，保留既有來源與簽章驗證。公司端根因尚未確認，以可重現測試及人工環境驗收完成修復。
+- 更新頁將內附版本／更新日誌與網路檢查狀態分開；Proxy、TLS、407、解析及畫面失敗須有明確狀態與診斷，保留來源限制與簽章驗證。公司端根因尚未確認；依 2026-10-21 追加要求，開發期間跳過 12.3，待打包後在公司環境人工驗收，不將跳過視為通過。
+- 更新檢查與更新入口以 `mosutw/speclink` 為主，原作者 `MomoChenisMe/speclink` 的版本另列並可點回原專案；兩者狀態互不覆蓋，沒有有效簽章更新包時提供本分支 Release 手動下載入口。
+- 中英 README 說明 mosutw 的維護及 Codex 的 AI 協作角色，保留原作者與授權署名；貢獻者操作說明區分文件署名與 GitHub 自動統計，不承諾修改 README 即改變側欄 Contributors。
+- 安全標準資料頁增加可儲存、可還原預設的存放路徑，預設沿用本機位置，Windows 支援 UNC 網路芳鄰。Desktop／同機 CLI 共用解析，僅標準資料共用，私人報告與認證不搬到共享目錄；支援多人讀取、受控寫入、斷線及唯讀錯誤。
 - 「查看 12 條」每條增加問號說明，說明用途、例子與預設只列建議的效果，共用引擎的名稱清單。
 - 標準下載／匯入即備齊原文、對照表及修復指南；新增本機知識庫準備入口，審查期間不得取得任何網路資源。附件資料清單僅作結構參考，不採浮動來源、虛構版本或未核對的檔名。
 - 保留內建基本掃描，新增 speclink-security-review skill；沿用 security_verification 的主開關、範圍與標準版本，審查五種語言的架構、業務授權及跨模組資料流，依指定九項結構產生遮罩報告。
@@ -29,11 +34,11 @@
 ### Modified Capabilities
 
 - `propose-skill`: 所有專案的提案 Why 預設以一事一項條列起草，沿共用模板與技能生成。
-- `desktop-app`: 提案共用預設條列顯示、專案排序、更新頁失敗時仍可讀內附資訊、歷史文件樹。
-- `desktop-config`: 十二條說明、封存紀錄設定與安全驗收 checkbox。
+- `desktop-app`: 提案共用預設條列顯示、專案排序、更新頁失敗時仍可讀內附資訊、歷史文件樹、本分支更新與原作者版本、專案貢獻與原作署名。
+- `desktop-config`: 十二條說明、封存紀錄設定與安全驗收 checkbox、安全標準資料存放路徑設定。
 - `desktop-network-diagnostics`: 公司 Proxy 更新問題的可重現診斷及錯誤呈現。
 - `workflow-config`: 紀錄封存及安全驗收政策、預設值與部分更新契約。
-- `security-standard-data`: 版本固定的完整離線知識資料及安全的本機準備。
+- `security-standard-data`: 版本固定的完整離線知識資料、安全的本機準備、可設定的本機／UNC 標準資料根目錄及共用存取。
 - `security-review`: 深度 skill、保留基本掃描、結果提交及驗收判定。
 - `security-review-report`: 提案內報告、九項說明、風險接受與舊報告相容。
 - `review-station`: 蓋章保存歷次工單與查詢，不影響既有章／未結工單語意。
@@ -56,3 +61,5 @@
 - 技能產物：新增 security-review，調整 review／verify／archive／config 的交棒；Claude、Codex、Copilot 及自訂工具共用同一原稿，透過既有 init／update 生成，更新資產版本與 golden，不手改單一工具副本。
 
 - 追加顯示範圍：`packages/ui/src/components/ProposalDoc.tsx`、`packages/ui/src/__tests__/proposalDoc.test.tsx`、`crates/engine/speclink-core/assets/schema/spec-driven/proposal.template.md`、`crates/engine/speclink-core/assets/skills/propose.md`；共用入口涵蓋各專案與活動／封存提案。
+- 2026-10-21 ingest 追加：`apps/desktop/src/views/settings/AboutPage.tsx`、`apps/desktop/src/views/settings/SecurityDataPage.tsx`、`apps/desktop/src/adapter`、`apps/desktop/core/src/runtime_preferences.rs`、`apps/desktop/src-tauri/src/runtime_commands.rs`、`apps/desktop/src-tauri/src/security_commands.rs`、`apps/desktop/src-tauri/tauri.conf.json`、`apps/desktop/src-tauri/capabilities/default.json`、`crates/host/speclink-host/src/context.rs`、`scripts/release/release-latest-json.mjs`、`.github/workflows/desktop-build.yml`、`README.md`、`README.zh-TW.md`、`CONTRIBUTING.md`、`docs/development.zh-TW.md`、`docs/development.md` 與本變更 evidence。既有 UpdatesPage／updater／FsSecurityData 與 CLI 資料、掃描、KB 入口同批核對。
+- 新增裝置設定位於既有 Host 全域設定目錄的 `security-data-preferences.json`：`formatVersion:1, standardsPath:string|null`，缺檔或 null 沿原本機預設；不加入 openspec/config.yaml 或 .speclink.yaml，不增加 CLI 旗標。Desktop IPC 只增加路徑設定與獨立版本查詢，既有 CLI JSON shape、stdout／stderr、exit code 維持。選擇共用路徑後 I/O 改到該標準根目錄，但私人資料仍在原本機位置；不自動搬移或刪除舊資料。

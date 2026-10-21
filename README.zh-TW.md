@@ -246,6 +246,9 @@ speclink --version
 
 ## <a id="acknowledgments"></a>致謝
 
+- [mosutw](https://github.com/mosutw)：本分支維護者。Codex 以 AI 程式開發工具協助開發；這份署名不代表已驗證的 GitHub 機器人身分。
+- [MomoChenisMe / Speclink](https://github.com/MomoChenisMe/speclink)：原作者與原作專案。保留原有貢獻署名及 MIT 授權。
+
 - [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app)：Local CLI 設計之初以它附的 CLI 為行為參考。golden 與 CLI 整合測試守住人眼輸出、`--json` 格式與核心工作流。Speclink 在這個基礎上加入討論、桌面 app、Store 抽象層、Node SDK 與遠端平台。
 - [OpenSpec](https://github.com/Fission-AI/OpenSpec)：Local 模式的規格與變更沿用 OpenSpec 的目錄結構。
 

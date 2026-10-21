@@ -42,6 +42,14 @@ fn data_dir() -> Result<PathBuf, JobError> {
     speclink_host::context::security_data_dir().map_err(|_| JobError::directory_unavailable())
 }
 #[tauri::command]
+pub async fn security_data_paths_read() -> Result<speclink_host::security_paths::PathSnapshot,JobError> {
+    tauri::async_runtime::spawn_blocking(move||security::data_paths_at(&data_dir()?)).await.map_err(|_|JobError::worker_failed())?
+}
+#[tauri::command]
+pub async fn security_data_paths_write(jobs:tauri::State<'_,SecurityJobs>,standards_path:Option<String>) -> Result<speclink_host::security_paths::PathSnapshot,JobError> {
+    let jobs=jobs.inner().clone();tauri::async_runtime::spawn_blocking(move||jobs.write_data_paths(&data_dir()?,standards_path)).await.map_err(|_|JobError::worker_failed())?
+}
+#[tauri::command]
 pub async fn security_inspect(
     app: tauri::AppHandle,
     target: Target,

@@ -44,6 +44,24 @@ fn expected(view: &BridgeStore, change: &str, revision: u64) -> Result<()> {
     Ok(())
 }
 
+/// Historical reports require only the scoped store, never installed standard data.
+pub fn report(
+    store: &dyn TeamStore,
+    ctx: &SpeclinkExecutionContext,
+    change: &str,
+    id: &str,
+) -> Result<wire::SecurityReportDocument> {
+    validate_change(Some(change))?;
+    let scope = Scope::new(ctx.project.clone(), ctx.repo.clone());
+    let view = BridgeStore::materialize(store, &scope)?;
+    ensure!(view.change_exists(change) || view.archived_change_exists(change), "unknown_change");
+    report_document(&view, change, id)
+}
+fn report_document(store: &dyn Store, change: &str, id: &str) -> Result<wire::SecurityReportDocument> {
+    let report = read_change_report(store, change, id)?.ok_or_else(|| anyhow::anyhow!("unknown_report"))?;
+    Ok(serde_json::from_str(&report.json()?)?)
+}
+
 /// One materialized scope, one CAS commit. Errors drop every staged document.
 pub fn execute(
     store: &dyn TeamStore,
@@ -97,9 +115,7 @@ pub fn execute(
             Outcome::View(result)
         }
         Operation::Report(id) => {
-            let report = read_change_report(&view, change, &id)?
-                .ok_or_else(|| anyhow::anyhow!("unknown_report"))?;
-            Outcome::Report(serde_json::from_str(&report.json()?)?)
+            Outcome::Report(report_document(&view, change, &id)?)
         }
         Operation::Submit(request) => {
             ensure!(view.change_exists(change), "unknown_change");

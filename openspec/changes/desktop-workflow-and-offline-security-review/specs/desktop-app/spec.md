@@ -1,5 +1,37 @@
 ## ADDED Requirements
 
+### Requirement: 本分支更新與原作者版本
+
+更新頁主要版本檢查、更新候選與下載入口 SHALL 以 https://github.com/mosutw/speclink 為來源，原作者版本 SHALL 在獨立列顯示並可點往 https://github.com/MomoChenisMe/speclink。原作者版本 SHALL NOT 成為本分支安裝候選，也 SHALL NOT 與目前分支版號混用判定更新。About／原生選單的本專案原始碼與回報問題 SHALL 指向 mosutw，原作者 SHALL 另保留清楚署名與專案連結，zh-TW／en 行為一致。
+
+本分支或原作者的已發布桌面版本 SHALL 從固定專案的 GitHub Releases metadata 查詢，排除 draft、prerelease、CLI-only 發行；單次最多讀 100 筆，沒有合格桌面版本 SHALL 顯示未取得而非已是最新。兩者各自顯示版本、狀態與查詢時間；失敗時舊版本只能標為上次取得，未曾成功則顯示未取得。403／429、404、TLS、Proxy 或解析錯誤 SHALL 不清除內附版本與日誌，不將失敗當成最新，不以另一個專案的資料補位。兩者 SHALL 共用已選 Proxy 政策且不偷偷直連。
+
+只有本分支提供與信任公鑰相符的合法簽章更新包時 SHALL 使用既有同意、下載及安裝流程；缺少 latest.json／對應平台或沒有可驗簽套件時 SHALL 呈現手動更新狀態及本分支 Release 連結，不靜默降級成未簽章安裝。簽章不符 SHALL 保持拒裝錯誤。版本查詢 SHALL NOT 要求使用者提供 GitHub token 或由前端直接連 GitHub。
+
+#### Scenario: 本分支有新版而原作者版號更高
+
+- **WHEN** 本機版本為 0.10.0-build.3，本分支有較新版桌面 Release，原作者另有更高版本
+- **THEN** 更新候選只對照本分支，原作者版本顯示在獨立列，點原作者連結導向原作專案，不以原作者包覆蓋本分支
+
+#### Scenario: 只有未簽章安裝檔
+
+- **WHEN** 本分支已發布桌面安裝檔，但未發布 latest.json 或有效簽章更新包
+- **THEN** 顯示取得的本分支版本與手動下載入口，沒有可直接安裝的自動更新動作，不把描述檔缺失說成已是最新
+
+#### Scenario: 原作者查詢失敗且本分支正常
+
+- **WHEN** 本分支查詢成功，原作者查詢遇到 403 或 TLS 失敗
+- **THEN** 本分支結果不變，原作者列顯示其獨立錯誤及上次成功時間或未取得，內附版本與日誌仍可讀
+
+### Requirement: 專案貢獻與原作署名
+
+中英 README SHALL 清楚列出 mosutw 為本分支維護者、Codex 為 AI 開發協作工具，並保留 MomoChenisMe 原作者及原作專案連結與既有授權。貢獻說明 SHALL 區分 README 的人工署名與 GitHub 側欄 Contributors 的自動統計，說明作者 email 與 GitHub 帳號關聯、預設分支及真實共同作者的 Co-authored-by 用法；SHALL NOT 承諾 README 文字可控制側欄或偽造 Codex 帳號／email。此交付 SHALL 不修改 Git 身分、歷史或推送遠端。
+
+#### Scenario: 查看本分支貢獻說明
+
+- **WHEN** 使用者檢視任一語言 README 與 CONTRIBUTING.md
+- **THEN** 可辨認維護者、AI 協作與原作者，並理解側欄需由符合 GitHub 規則的實際提交統計，不將 AI 工具標示為已驗證 GitHub 帳號
+
 ### Requirement: 左側專案排序與裝置持久化
 
 Desktop SHALL 提供垂直拖曳及右鍵上移／下移來調整左側專案順序，沿用 locator 身分與裝置 tabs 順序。成功保存後重開、Tray 及專案切換快捷鍵 SHALL 使用相同順序；新增專案附尾、關閉只刪指定項。排序 SHALL NOT 切換作用中專案、丟失草稿或更動專案文件；失效／離線專案仍可排序。取消、未知或重複項目、超出範圍 SHALL 不更動原順序，保存失敗 SHALL 顯示錯誤並維持舊值。第一／末項對應的移動項 SHALL 停用。

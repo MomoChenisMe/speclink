@@ -89,7 +89,47 @@ CRITICAL／HIGH／MEDIUM 每項須已修復且在當前報告複核，或有綁�
 
 新鮮度以政策的實質審查欄位、所選標準／指南 generation SHA、目標文件與來源檔清單及每檔 digest 綁定；保留設定不屬審查政策 digest。required checkbox 變更要重新計算驗收，但不改舊報告；只從參考切 required 且其他 digest 相同、原報告完整時可重新判定。Local 在驗收前重讀授權清單（含新增／刪除）比對；Remote 驗 server 可持有的政策與 SDD revision，原始碼仍由對應 checkout 端重算提交，server 揭露 sourceFreshness=client-attested，不宣稱能獨立讀驗本機原始碼。缺這次核對回 source_freshness_unverified；不存在 checkout 不借用別的目錄。任何來源／政策改變讓舊接受不適用，須以新報告明確再接受。
 
+### 公司 Proxy 打包後驗收
+
+2026-10-21 使用者指定公司環境只接受打包版本，取代前述將公司實機操作視為開發期間可完成的安排。保留 12.3 的手動任務、ID 與未勾選狀態，標示「開發期間跳過，打包後執行」。這項延期不阻擋繼續實作或產生測試安裝檔，不改任何引擎守門，也不代表驗收成功或允許直接封存。先前模擬結果繼續有效但不能代簽；正式審查、驗證時分開列程式完成與延期人工項。
+
+交付順序依使用者追加說明固定為：完成實作與合併前必要檢查 → 將功能分支合併回本專案 main → 從 main 的明確 commit 打包產生安裝檔 → 在公司安裝並執行 12.3。公司驗收在合併與打包之後，不以尚未完成的 12.3 阻擋本次合併安排，也不把合併視為驗收或封存。打包與驗收紀錄須能對應 main commit、安裝檔版本與名稱，不能拿功能分支的開發視窗代替。這是後續交付順序，本輪 ingest 不執行合併或打包。
+
+打包後由實際操作者在公司安裝，記錄 main commit、安裝檔名稱、Desktop 版本、OS、Proxy 模式、版本／日誌、檢查／下載、遮罩 operationId 及錯誤分類至 company-proxy.md。有未簽章更新包時驗手動 Release 入口與明確狀態，不為驗收關閉簽章。尚無安裝檔時只記延期，不建立虛構的版本或通過結果。
+
+### 本分支更新與原作者版本
+
+更新頁明列「本專案 mosutw/speclink」及「原作者 MomoChenisMe/speclink」，各有固定專案連結、版本、查詢狀態與檢查時間。主要按鈕查本分支，原作者版本另提供查詢入口；原作者資料不進入安裝候選或版本比較，不因原作者版號較高而提示覆蓋安裝。AboutPage 的原始碼／問題回報與原生選單連結指向本分支，另外保留可點擊原作者專案署名；中英介面一致。
+
+已核對 tauri.conf.json 的 updater 端點已是 mosutw，但 AboutPage 還指向原作者；.github/workflows/desktop-build.yml 明寫不提供簽章更新包或 latest.json。因此不能只換網址就宣稱自動更新可用。延續既有 updater 驗簽與版本正規化；有合法本分支描述檔與可驗簽套件才使用安裝流程，沒有描述檔／對應平台／可信簽章時，以本分支已發布桌面 Release metadata 呈現版本並提供固定 Release 頁「手動下載」，不將 JSON 404 說成已是最新，也不退回原作者安裝包。簽章不符仍報失敗，不以自動下載未簽包作替代。
+
+版本 metadata 在 desktop-core 組裝、Host 共用網路政策執行，Tauri 殼只委派；前端不直接 fetch GitHub。採 GitHub 官方 List releases API，僅兩個固定 owner/repo，過濾 draft／prerelease、只認本專案既有桌面 tag 規則及平台安裝資產；依發佈時間選最新正式桌面版，不拿 CLI-only Release 當桌面版。每次最多取 100 筆；範圍內無合格版本時顯示未取得桌面版本，不聲稱專案沒有發行。API 回應欄位只取 tag_name、published_at、html_url 與 assets 所需資料，使用既有逾時／大小／取消限制與 Proxy 快照；404、403／429、斷線、TLS、解析分別呈現可得原因，無狀態碼仍留 null。來源連結僅開啟對應固定專案下的 Release，白名單補兩個 repo 與所需 API；不擴成任意 URL。
+
+兩份查詢狀態分離，舊成功版本可暫留並標「上次取得」與時間，失敗不冒充最新；尚無成功資料顯示未取得。內附目前版本／日誌永遠可讀。本次不要求建置時連網，也不自動取得或更換發行私鑰、公鑰；若後續要發布自動更新包，需由維護者提供匹配簽章的正式發行設定，現有手動打包照常可用。
+
+### 專案貢獻與原作署名
+
+README.md／README.zh-TW.md 增加平行署名：mosutw（本分支維護者，連 GitHub 個人頁）、Codex（AI 開發協作工具）、MomoChenisMe（原作者，連原作專案）；不移除 LICENSE、原作者既有貢獻或既有歷史。不新增 Desktop Contributors 清單，這次需求指截圖中的 GitHub 側欄及專案說明。
+
+CONTRIBUTING.md 說明 GitHub 側欄由平台依提交身分統計，非 README 可設定；使用者的 author email 須連結本人 GitHub 帳號，工作合入預設分支後再檢查 Contributors。Co-authored-by 用於真實共同作者的帳號關聯 email；Codex 的 AI 協作先以 README 誠實標示，不假造機器人帳號或 email，也不承諾它必然出現在側欄。後續若使用者指定可驗證的 bot 身分才另按 GitHub 規則處理。本次只交付說明，不改 git config、不重寫歷史、不產生 commit 或推送。參考 GitHub 官方 contributors 與 multiple-authors 文件，查核連結記於 ingest 證據。
+
+### 安全標準資料存放路徑設定
+
+頁面沿 SettingsCard／SettingsRow、既有路徑選擇器與輸入原語，提供目前生效絕對路徑、可手動輸入／選擇目錄、儲存、取消、還原預設。設定是整台電腦的標準資料位置，不是專案工作流政策，也不跟 Remote 專案同步。未設定沿用 security_data_dir()/security/standards（portable 仍沿原行為）；自訂值直接代表標準根目錄，不額外追加 security/standards。Windows 接受磁碟絕對路徑、完整 UNC 如 `\\fileserver\team\speclink-standards`；macOS／Linux 使用已掛載共用磁碟的絕對路徑，不新增 SMB client、帳密或掛載流程。拒相對路徑、不完整 UNC、URL、NUL，不做環境變數或 ~ 展開。
+
+Host 唯一解析與保存 `global_config_dir()/security-data-preferences.json`（新增，非 RuntimePreferences 的副本），格式 `{formatVersion:1,standardsPath:string|null}`。缺檔／null 為預設，舊設定不用遷移；錯型別／不支援版本／不可讀明確失敗，不能悄悄用本機另下一份。Host 對這個設定要求全域目錄為絕對路徑，不能沿 global_config_dir 的工作目錄 fallback 寫檔。以同目錄暫存、sync、原子替換保存設定，失敗保舊。Desktop 讀寫用新增委派 IPC，CLI／Node／Desktop／Server 既有資料、掃描、KB 入口由各自 Host 共用同一解析；Server 的位置只對其服務帳號及主機生效，不能將用戶端 UNC 傳給 server 當路徑。
+
+FsSecurityData 保留 application_data 的本機用途，另接受 Host 已解析的 standards 根；只替換 standards/generations/current.json 等標準資料讀寫根，不將 security/reports、references、prepared、工作鎖／診斷、憑證或專案 .security_kb 整包搬到網路共享。CLI 舊命令、旗標與 JSON shape 不變；Desktop 新路徑快照為 `{standardsPath:string|null,effectivePath:string,isDefault:boolean,access:string}`，access=readWrite|readOnly|unavailable。寫入 IPC 輸入 `{standardsPath:string|null}`；設定檔及回應均 camelCase。清單／標準下載／匯入／匯出／刪除／KB／掃描統一取相同根，既有 StandardRepository 契約不複製一套網路實作。
+
+儲存時候選目錄須存在且可讀；唯讀共用目錄仍可選用，UI 清楚停用下載／匯入／刪除等變更動作；匯出讀標準資料、寫使用者選定的本機輸出，不因來源唯讀而停用。目錄不存在、拒絕存取、主機離線、設定落盤失敗保留舊值與草稿。之後共用位置斷線顯示不可用，不顯示空清單或 fallback 本機；I/O 在既有背景工作執行，取消後不提交結果、不阻塞 UI，OS 未返回的 SMB I/O 不承諾可立即中斷。路徑切換期間有該裝置資料安裝／匯入／刪除／掃描／KB 工作就回 busy，避免開始一半改根；每個工作固定一份路徑快照。還原預設同樣先驗證預設目錄（沿既有本機初始化流程）再保存 null，不搬移、刪除或合併舊／新目錄。
+
+共用安裝沿現有不可變 generation、版本級跨程序檔案鎖、reader pin 及 current.json 發佈，staging 必須在同一 share／磁碟。兩個 writer 爭用同版本時一方 busy，不能只靠單機記憶體鎖；share 不支援必要鎖或原子發佈時拒絕寫入，保持可讀舊 generation，不假設所有 NAS 都能安全寫入。唯讀使用者只讀可開啟的 pin、不建立鎖／參考檔；版本使用引用仍存各裝置，故共用刪除不得依單機 references 推斷全團隊無人使用：自訂根的刪除預設停用，管理者在共用位置外明確維護；本機預設刪除行為保持。每次讀取仍驗 SHA／必要文件／路徑邊界，選 UNC 不豁免資料完整性。共用節省的是完整下載資料，.security_kb 仍是各 checkout 的既有本機快照，本次不改成共用可寫快照。
+
 ## Implementation Contract
+
+2026-10-21 使用者同意修復 Windows 封存鎖：所有新版本的 checks 寫入／復原／封存，先取得 `<spec_dir>/.checks-locks/<sha256(change-name)>.lock`，再建立或讀取活動提案，整段搬移／備份／發佈仍持鎖；鎖檔不跟提案搬移且不可置於單機快取。同一spec store的各程序共用同一路徑；目錄與鎖檔拒連結，鎖目錄內建立只含 `*` 的 .gitignore，鎖不列文件樹。既有提案內 .checks.lock 只作舊版相容性偵測：若仍被鎖定就回busy，不移除舊鎖。升級時須先停止所有舊版寫入者，混用新舊鎖定協定不受支援；不能以先解除新鎖再搬移或放棄跨程序保護規避Windows限制。沿原復原journal及generation格式，不修改原已完成任務，追加16.1作為接續實作前置修復。
+
+2026-10-21 追加範圍：打包後公司驗收、本分支更新與原作者資訊、中英專案署名、標準根目錄設定與 UNC 共用。不在範圍：現在打包／發行／推送、建立 GitHub bot、重寫作者歷史、取得簽章金鑰、SMB 帳密管理、共用私人報告、刪除其他主機仍會使用的資料、自動搬移舊資料。原已完成任務逐字保留；新增工作使用第 13–15 組任務，完成前不得沿用 42／42 已完成的舊結論。
 
 所有新增 CLI 命令支援全域 --no-color；JSON stdout 是單一物件、camelCase，不混 ANSI／進度；人眼 stdout 說明同一結果；錯誤 stderr，成功0、資料／授權／I/O／判定失敗1、參數錯誤2，kb prepare 取消130。除明列 --stdin 外不讀 stdin。新增英文 CLI 文案，UI zh-TW／en，skill 固定繁中，既有基本掃描語言與中文弱語言偵測不動。
 

@@ -190,6 +190,8 @@ fn paired_remote_publication_is_atomic_scoped_fresh_and_cas_guarded() {
         panic!()
     };
     assert!(receipt.complete);
+    let saved = security::remote::report(&server, &ctx, "demo", basic.report_id()).unwrap();
+    assert_eq!(serde_json::to_value(saved).unwrap()["reportId"], basic.report_id());
     assert!(
         device.get(basic.report_id()).unwrap().is_some(),
         "device draft survives publication"

@@ -114,15 +114,17 @@ describe("AboutPage", () => {
     render(<AboutPage {...aboutProps()} />);
     const links = screen.getByRole("region", { name: "連結" });
     const source = within(links).getByRole("button", { name: /原始碼/ });
-    expect(within(source).getByText("github.com/MomoChenisMe/speclink").className).toContain("font-mono");
+    expect(within(source).getByText("github.com/mosutw/speclink").className).toContain("font-mono");
     fireEvent.click(source);
     fireEvent.click(within(links).getByRole("button", { name: /說明文件/ }));
     fireEvent.click(within(links).getByRole("button", { name: /回報問題/ }));
     expect(vi.mocked(openUrl).mock.calls).toEqual([
-      ["https://github.com/MomoChenisMe/speclink"],
-      ["https://github.com/MomoChenisMe/speclink/tree/main/docs"],
-      [`https://github.com/MomoChenisMe/speclink/issues/new?body=${encodeURIComponent(THREE_LINES)}`],
+      ["https://github.com/mosutw/speclink"],
+      ["https://github.com/mosutw/speclink/tree/main/docs"],
+      [`https://github.com/mosutw/speclink/issues/new?body=${encodeURIComponent(THREE_LINES)}`],
     ]);
+    fireEvent.click(within(links).getByRole("button", { name: /原作者專案/ }));
+    expect(openUrl).toHaveBeenLastCalledWith("https://github.com/MomoChenisMe/speclink");
   });
 
   it("Scenario「連結外開」：開啟失敗以失敗 toast 呈現錯誤", async () => {

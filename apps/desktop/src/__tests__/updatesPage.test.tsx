@@ -1,6 +1,6 @@
 // 更新頁（desktop-settings-mode design D6；spec「桌面自動更新」「更新日誌彈窗」「更新日誌依介面語言呈現」）。
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render as rtlRender, screen, within } from "@testing-library/react";
+import { fireEvent, render as rtlRender, screen, within, waitFor } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 import { I18nProvider, type UiLocale } from "@speclink/ui";
 
@@ -45,6 +45,57 @@ const row = (label: string) => screen.getByRole("group", { name: label });
 const installCard = () => screen.queryByRole("region", { name: "下載與安裝" });
 
 describe("UpdatesPage", () => {
+  it.each(["zh-TW", "en"] as const)("%s：原作者403／TLS失敗不覆蓋本分支，保留原成功時間", async locale => {
+    const m = APP_MESSAGES[locale];
+    let failure: {code:string;httpStatus?:number}|null = {code:"http",httpStatus:403};
+    const lookup = vi.fn(async (repo:string) => {
+      if (repo === "upstream" && failure) throw failure;
+      return {version:repo === "fork" ? "1.2.3" : "9.0.0",repoUrl:"https://github.com/mosutw/speclink",releaseUrl:"https://github.com/mosutw/speclink/releases",publishedAt:"2026-10-21T00:00:00Z"};
+    });
+    rtlRender(inLocale(locale, <UpdatesPage currentVersion="1.0.0" updater={updaterProps({phase:"idle"})} releaseLookup={lookup}/>));
+    fireEvent.click(screen.getByRole("button", {name:m["updater.check"]}));
+    expect(await screen.findByText("1.2.3")).toBeTruthy();
+    const original = screen.getByRole("group", {name:m["updater.sources.upstream"]});
+    const check = () => fireEvent.click(within(original).getByRole("button", {name:m["updater.sources.checkOriginal"]}));
+    check();
+    expect(await within(original).findByText(/http \(403\)/)).toBeTruthy();
+    expect(within(original).getByText(m["updater.sources.missing"])).toBeTruthy();
+    failure = null;
+    const now = vi.spyOn(Date, "now").mockReturnValue(1000);
+    try {
+      check();
+      expect(await within(original).findByText("9.0.0")).toBeTruthy();
+      const obtained = new Date(1000).toLocaleString(locale);
+      expect(original.textContent).toContain(obtained);
+      now.mockReturnValue(2000);
+      failure = {code:"tls"};
+      check();
+      expect(await within(original).findByText(/tls/)).toBeTruthy();
+      expect(within(original).getByText("9.0.0")).toBeTruthy();
+      expect(original.textContent).toContain(obtained);
+      expect(original.textContent).not.toContain(new Date(2000).toLocaleString(locale));
+      expect(screen.getByText("1.2.3")).toBeTruthy();
+      expect(screen.getByText("1.0.0")).toBeTruthy();
+      expect(screen.getByRole("region", {name:m["releaseNotes.open"]})).toBeTruthy();
+    } finally { now.mockRestore(); }
+  });
+  it("本分支與原作者版本獨立，沒有簽章描述檔仍可手動下載本分支", async () => {
+    const lookup = vi.fn(async (repo: string) => ({
+      version: repo === "fork" ? "0.10.0.4" : "99.0.0",
+      repoUrl: `https://github.com/${repo === "fork" ? "mosutw" : "MomoChenisMe"}/speclink`,
+      releaseUrl: `https://github.com/${repo === "fork" ? "mosutw" : "MomoChenisMe"}/speclink/releases`,
+      publishedAt: "2026-10-21T00:00:00Z",
+    }));
+    render(<UpdatesPage updater={updaterProps({ phase: "checkFailed" })} releaseLookup={lookup} />);
+    fireEvent.click(screen.getByRole("button", { name: "檢查更新" }));
+    expect(await screen.findByText("0.10.0.4")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "手動下載" }).getAttribute("href")).toBe("https://github.com/mosutw/speclink/releases");
+    fireEvent.click(screen.getByRole("button", { name: "檢查原作者版本" }));
+    expect(await screen.findByText("99.0.0")).toBeTruthy();
+    expect(screen.getByText("0.10.0.4")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "原作者專案" }).getAttribute("href")).toBe("https://github.com/MomoChenisMe/speclink");
+    expect(installCard()).toBeNull();
+  });
   it.each(["zh-TW", "en"] as const)("%s：沒有 updater 仍有目前版本與內附日誌，只有網路動作停用", (locale) => {
     rtlRender(inLocale(locale, <UpdatesPage currentVersion="1.50.1" />));
     const m = APP_MESSAGES[locale];
@@ -69,12 +120,13 @@ describe("UpdatesPage", () => {
     expect(props.onCheck).toHaveBeenCalledOnce();
     expect(onDiagnostics).toHaveBeenCalledOnce();
   });
-  it("頁標題「更新」右側「檢查更新」回呼 onCheck、檢查中停用；版本卡有目前版本列（等寬）", () => {
+  it("頁標題「更新」右側「檢查更新」回呼 onCheck、檢查中停用；版本卡有目前版本列（等寬）", async () => {
     const onCheck = vi.fn();
     const { rerender } = render(<UpdatesPage updater={updaterProps({ phase: "idle" }, { onCheck })} />);
     expect(screen.getByRole("heading", { level: 2, name: "更新" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "檢查更新" }));
     expect(onCheck).toHaveBeenCalledTimes(1);
+    await waitFor(()=>expect(within(row("本專案版本")).getByText("未取得版本")).toBeTruthy());
     expect(within(row("目前版本")).getByText("0.1.0").className).toContain("font-mono");
     rerender(<UpdatesPage updater={updaterProps({ phase: "checking", manual: true })} />);
     expect((screen.getByRole("button", { name: "檢查更新" }) as HTMLButtonElement).disabled).toBe(true);

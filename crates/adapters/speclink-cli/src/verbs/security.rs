@@ -197,7 +197,33 @@ fn security_command(args: SecurityArgs, cancelled: Arc<AtomicBool>) -> Result<()
         return Ok(());
     }
     let application_data = speclink_host::context::security_data_dir()?;
-    let repository = speclink_fs::security::FsSecurityData::new(&application_data)?;
+    if let SecurityCommand::Report { id, change, format } = &args.command {
+        if let Some(change) = change {
+            let location = target_location(&TargetArgs {root:None,change:Some(change.clone()),json:false})?;
+            if location.remote.is_some() {
+                let report=remote_call(&location,|client|client.security_change_report(change,id))?;
+                let report=speclink_core::security::report::VersionedReport::from_json(&serde_json::to_vec(&report)?)?;
+                println!("{}",match format {Format::Json=>report.json()?,Format::Markdown=>report.markdown()});return Ok(());
+            }
+            let store = speclink_fs::FsStore::new(location.reader.root(), &location.spec_dir);
+            let report = speclink_core::security::report::read_change_report(&store,change,id)?.ok_or_else(||anyhow::anyhow!("report_not_found"))?;
+            println!("{}", match format { Format::Json=>report.json()?,Format::Markdown=>report.markdown() });
+            return Ok(());
+        }
+        let reports =
+            speclink_fs::security::reports::FsSecurityReports::new(&application_data)?;
+        let text = security::export_report(
+            &reports,
+            id,
+            match format {
+                Format::Json => security::ReportFormat::Json,
+                Format::Markdown => security::ReportFormat::Markdown,
+            },
+        )?;
+        println!("{text}");
+        return Ok(());
+    }
+    let repository = crate::common::security_repository(&application_data)?;
     let job = DataJob::new(cancelled.clone());
     let progress = |p: speclink_core::security::JobProgress| {
         eprintln!(
@@ -226,32 +252,7 @@ fn security_command(args: SecurityArgs, cancelled: Arc<AtomicBool>) -> Result<()
             }
         }
         SecurityCommand::Rules { .. } => unreachable!(),
-        SecurityCommand::Report { id, change, format } => {
-            if let Some(change) = change {
-                let location = target_location(&TargetArgs {root:None,change:Some(change.clone()),json:false})?;
-                if location.remote.is_some() {
-                    let report=remote_call(&location,|client|client.security_change_report(&change,&id))?;
-                    let report=speclink_core::security::report::VersionedReport::from_json(&serde_json::to_vec(&report)?)?;
-                    println!("{}",match format {Format::Json=>report.json()?,Format::Markdown=>report.markdown()});return Ok(());
-                }
-                let store = speclink_fs::FsStore::new(location.reader.root(), &location.spec_dir);
-                let report = speclink_core::security::report::read_change_report(&store,&change,&id)?.ok_or_else(||anyhow::anyhow!("report_not_found"))?;
-                println!("{}", match format { Format::Json=>report.json()?,Format::Markdown=>report.markdown() });
-                return Ok(());
-            }
-            let reports =
-                speclink_fs::security::reports::FsSecurityReports::new(&application_data)?;
-            let text = security::export_report(
-                &reports,
-                &id,
-                match format {
-                    Format::Json => security::ReportFormat::Json,
-                    Format::Markdown => security::ReportFormat::Markdown,
-                },
-            )?;
-            println!("{text}");
-            Ok(())
-        }
+        SecurityCommand::Report { .. } => unreachable!(),
         SecurityCommand::Run(args) => {
             let prepared =
                 speclink_fs::security::prepared::FsPreparedReviews::new(&application_data)?;
@@ -907,7 +908,7 @@ fn remote_review_command(command:ReviewCommand,location:&TargetLocation,applicat
 pub(crate) fn remote_security_gate(change:&str)->Result<speclink_protocol::security::SecurityGateRequest> {
     let location=target_location(&TargetArgs{root:None,change:Some(change.into()),json:false})?;
     let application_data=speclink_host::context::security_data_dir()?;
-    let data=speclink_fs::security::FsSecurityData::new(&application_data)?;
+    let data=crate::common::security_repository(&application_data)?;
     let (context,_)=remote_context(&location,&application_data,&data,change,None,Arc::new(AtomicBool::new(false)))?;
     let frame=security::source_attestation(&context,&data)?;
     let view=remote_call(&location,|client|client.security_review_show(change))?;

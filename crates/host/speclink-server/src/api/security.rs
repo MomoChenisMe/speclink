@@ -8,6 +8,11 @@ use axum::{
 use speclink_host::security::remote::{Operation, Outcome};
 use speclink_protocol::security::*;
 
+pub(crate) fn standard_repository(application_data:&std::path::Path)->anyhow::Result<speclink_fs::security::FsSecurityData> {
+    let paths=speclink_host::security_paths::lease(application_data)?;
+    Ok(speclink_fs::security::FsSecurityData::with_standard_root(application_data,&paths.standards_root)?.hold_path_lease(paths.lock))
+}
+
 async fn run(
     state: AppState,
     binding: Binding,
@@ -23,7 +28,7 @@ async fn run(
     )
     .map_err(ApiError::security)?;
     let result = tokio::task::spawn_blocking(move || {
-        let data = speclink_fs::security::FsSecurityData::new(
+        let data = standard_repository(
             &speclink_host::context::security_data_dir()?,
         )?;
         speclink_host::security::remote::execute(
@@ -76,10 +81,11 @@ pub async fn report(
     binding: Binding,
     Path((_key, change, id)): Path<(String, String, String)>,
 ) -> Result<Response, ApiError> {
-    match run(state, binding, change, Operation::Report(id)).await? {
-        Outcome::Report(v) => Ok(Json(v).into_response()),
-        _ => Err(ApiError::internal("security outcome")),
-    }
+    let ctx = binding.execution_context();
+    let report = tokio::task::spawn_blocking(move ||
+        speclink_host::security::remote::report(state.store.as_ref(), &ctx, &change, &id)
+    ).await.map_err(|_| ApiError::internal("security worker failed"))?.map_err(ApiError::security)?;
+    Ok(Json(report).into_response())
 }
 pub async fn submit(
     State(state): State<AppState>,

@@ -98,6 +98,10 @@
 
 ## <a id="offline-security-workflow"></a>桌面流程與離線安全審查（本次實作）
 
+本分支更新來源為 `mosutw/speclink`，保留原作者的獨立版本與連結，缺簽章更新包時提供 Release 手動下載。README 分別標示 mosutw 維護、Codex 的 AI 協作與原作者；GitHub 側欄 Contributors 仍依提交署名統計。
+
+安全標準資料可在裝置層設定位置，預設本機，Windows 支援 UNC；同機 Desktop／CLI 使用相同路徑，只共用標準。唯讀共用可審查／匯出，自訂根停用刪除，工作中不能切換，斷線不改到本機重下載。私人報告與 `.security_kb/` 快照留本機。本機模擬與 Windows 鎖定／搬移測試通過；實際 NAS／SMB 與公司 Proxy 尚待驗收。完成檢查後合併 `main`，從該筆 commit 打包，再做公司驗收。操作與舊寫入者升級限制見[開發說明](development.zh-TW.md#desktop-tags)。
+
 以下入口已於目前原始碼實作；安裝版須更新至包含本變更的版本。Remote 必須回報 `securityReviewV2` 與 `checkHistory` 能力，舊 server 明確停用新政策與寫入，不把不支援當作通過。
 
 1. 左側專案列可拖曳，或使用上移／下移；順序只存這台裝置，重開還原。

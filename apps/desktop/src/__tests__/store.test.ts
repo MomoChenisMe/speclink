@@ -3189,3 +3189,37 @@ it('封存有檢查紀錄時顯示三類保留與略過數，並區分驗收摘�
  const store=storeWith(ds);await store.getState().runVerb('archive','desktop-shell-and-browser');
  expect(toastFn).toHaveBeenCalledWith(expect.stringContaining('已封存'),expect.objectContaining({description:expect.stringContaining('驗證：保留 0，略過 2')}));expect(toastFn.mock.calls[0][1].description).toContain('安全驗收摘要已保留');
 })
+
+it('封存確認前取得三類紀錄數，取消不封存且晚到結果不回填',async()=>{
+ const entries=(["review","verify","security"] as const).map(kind=>({kind,recordId:kind,createdAt:"2026-10-21",outcome:"passed",relativePath:`checks/${kind}/record.md`,contentDigest:"a".repeat(64)}));
+ const ds=fakeDataSource({checkRecords:{list:vi.fn().mockResolvedValue(entries),read:vi.fn()}});
+ const store=storeWith(ds);
+ const session=store.getState().sessions[store.getState().activeKey!];
+ vi.mocked(session.settings.readSettings).mockResolvedValue({workflow:{checkRecords:{archive:{review:true,verify:false,security:false}},securityVerification:{enabled:true,requiredForAcceptance:true}}} as never);
+ store.getState().requestArchive('demo');
+ await vi.waitFor(()=>expect(store.getState()).toHaveProperty('archivePreview.counts.verify.omitted',1));
+ expect(store.getState()).toHaveProperty('archivePreview.counts.review.retained',1);
+ expect(store.getState()).toHaveProperty('archivePreview.counts.acceptanceReceipt',true);
+ expect(ds.runVerb).not.toHaveBeenCalled();
+ store.getState().cancelArchive();
+ expect(store.getState()).toHaveProperty('archivePreview',null);
+ let resolve!:(value:typeof entries)=>void;
+ vi.mocked(ds.checkRecords!.list).mockImplementation(()=>new Promise(r=>{resolve=r;}));
+ store.getState().requestArchive('late');store.getState().cancelArchive();resolve(entries);
+ await Promise.resolve();await Promise.resolve();
+ expect(store.getState()).toHaveProperty('archivePreview',null);
+ expect(ds.runVerb).not.toHaveBeenCalled();
+});
+
+it('無法讀取封存預覽時不執行一般確認、放棄或帶走工單',async()=>{
+ const ds=fakeDataSource({discardReview:vi.fn(),checkRecords:{list:vi.fn().mockRejectedValue(new Error('offline')),read:vi.fn()}});
+ const store=storeWith(ds);
+ store.getState().requestArchive('demo');
+ await vi.waitFor(()=>expect(store.getState().archivePreview?.error).toContain('offline'));
+ await store.getState().confirmArchive();
+ await store.getState().confirmArchiveDiscardTicket('review');
+ await store.getState().confirmArchiveCarryTicket('review');
+ expect(ds.runVerb).not.toHaveBeenCalled();
+ expect(ds.discardReview).not.toHaveBeenCalled();
+ expect(store.getState().pendingArchive).toBe('demo');
+});

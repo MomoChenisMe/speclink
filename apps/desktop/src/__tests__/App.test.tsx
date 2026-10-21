@@ -2856,8 +2856,8 @@ describe("macOS 原生選單接線（desktop-app「macOS 原生選單」）", ()
     act(() => menuDeps().dispatch("github"));
     act(() => menuDeps().dispatch("reportIssue"));
     expect(vi.mocked(openUrl).mock.calls).toEqual([
-      ["https://github.com/MomoChenisMe/speclink"],
-      ["https://github.com/MomoChenisMe/speclink/issues/new"],
+      ["https://github.com/mosutw/speclink"],
+      ["https://github.com/mosutw/speclink/issues/new"],
     ]);
   });
 
@@ -3103,6 +3103,26 @@ describe("詳情頁層與導覽（desktop-detail-page）", () => {
     });
     await waitFor(() => expect(currentChange()).toBe("change-b"));
     expect(screen.getByTestId("detail-page").scrollTop).toBe(0);
+  });
+
+  it.each(["zh-TW", "en"] as const)("%s：封存確認前顯示三類數量，取消不寫入", async locale => {
+    localStorage.setItem("speclink.uiLocale", locale);
+    const m = APP_MESSAGES[locale];
+    const ds = fakeDataSource({listChanges:vi.fn().mockResolvedValue(changeList([{name:"change-a",status:"in-progress",totalTasks:1,completedTasks:1}])),checkRecords:{
+      list:vi.fn().mockResolvedValue((["review","verify","security"] as const).map(kind=>({kind,recordId:kind,createdAt:"2026-10-21",outcome:"passed",relativePath:`checks/${kind}/record.md`,contentDigest:"a".repeat(64)}))),read:vi.fn(),
+    }});
+    renderApp(ds);
+    fireEvent.click(await screen.findByText("change-a"));
+    await screen.findByTestId("detail-page");
+    fireEvent.click(within(titlebar()).getByRole("button", {name:m["app.archiveConfirm"]}));
+    const dialog = await screen.findByRole("alertdialog");
+    for (const kind of ["review","verify","security"] as const) {
+      const text = m["store.archiveRecordCount"].replace("{kind}",m[`store.recordKind.${kind}`]).replace("{retained}","1").replace("{omitted}","0");
+      expect(await within(dialog).findByText(text)).toBeTruthy();
+    }
+    expect(ds.runVerb).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", {name:locale === "en" ? "Cancel" : "取消"}));
+    expect(ds.runVerb).not.toHaveBeenCalled();
   });
 
   it("封存確認在途時 ⌥↓ 不切換（成功後的關頁不得關掉切過去的新頁）", async () => {

@@ -10,6 +10,11 @@
 pub mod render;
 mod store_bridge;
 
+fn security_repository(application_data:&std::path::Path)->anyhow::Result<speclink_fs::security::FsSecurityData> {
+    let paths=speclink_host::security_paths::lease(application_data)?;
+    Ok(speclink_fs::security::FsSecurityData::with_standard_root(application_data,&paths.standards_root)?.hold_path_lease(paths.lock))
+}
+
 use napi::bindgen_prelude::*;
 use napi::{JsFunction, JsObject};
 use napi_derive::napi;
@@ -93,7 +98,7 @@ fn run_engine(
             if policy.enabled&&policy.required_for_acceptance {
                 let reader=speclink_fs::security::scan::AuthorizedProject::open(&ws.root)?;
                 let target=speclink_host::security::ReviewTarget::local(reader.root(),&ws.spec_dir_name,Some(change.clone()))?;
-                let data=speclink_fs::security::FsSecurityData::new(&speclink_host::context::security_data_dir()?)?;
+                let data=security_repository(&speclink_host::context::security_data_dir()?)?;
                 let budget=speclink_host::security::ReviewBudget::new(std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)));
                 speclink_host::security::acceptance_proof_for_target(&target,&reader,&data,store.as_ref(),&budget)?
             }else{None}
@@ -745,7 +750,7 @@ fn security_dispatch(backend:&Backend,actor:Option<&str>,args:&[String],stdin:Op
         if let Some(ws)=backend.workspace(){
             let reader=speclink_fs::security::scan::AuthorizedProject::open(&ws.root)?;
             let target=host::ReviewTarget::local(reader.root(),&ws.spec_dir_name,Some(change.into()))?;key=target.report_project_key();
-            let data=speclink_fs::security::FsSecurityData::new(&speclink_host::context::security_data_dir()?)?;
+            let data=security_repository(&speclink_host::context::security_data_dir()?)?;
             match host::submission_context(&target,&reader,&data,store.as_ref(),None,&budget){
                 Ok((context,id))=>{fresh=Some(host::fresh_evidence(&context));let mut s=host::Submission::from(&context);s.builtin_report_id=id;submission=Some(serde_json::from_value(serde_json::to_value(s)?)?);},
                 Err(e)=>reason=Some(e.to_string().split(':').next().unwrap_or("source_freshness_unverified").to_owned()),
@@ -758,7 +763,7 @@ fn security_dispatch(backend:&Backend,actor:Option<&str>,args:&[String],stdin:Op
     let ws=backend.workspace().ok_or_else(||anyhow::anyhow!("source_freshness_unverified: security writes require an authorized checkout"))?;
     let reader=speclink_fs::security::scan::AuthorizedProject::open(&ws.root)?;
     let target=host::ReviewTarget::local(reader.root(),&ws.spec_dir_name,Some(change.into()))?;
-    let data=speclink_fs::security::FsSecurityData::new(&speclink_host::context::security_data_dir()?)?;
+    let data=security_repository(&speclink_host::context::security_data_dir()?)?;
     let text=stdin.ok_or_else(||anyhow::anyhow!("invalid_argument: stdin required"))?;
     match verb {
         "add-round"=>{anyhow::ensure!(text.len()<=4*1024*1024,"size_limit: security report input");let input:DeepReportInput=serde_json::from_str(text).map_err(|_|anyhow::anyhow!("invalid_report: deep submission schema"))?;let (context,id)=host::submission_context(&target,&reader,&data,store.as_ref(),actor.map(str::to_owned),&budget)?;Ok(serde_json::to_value(host::add_deep_round(store.as_ref(),change,input,context,id)?)?)},

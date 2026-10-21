@@ -246,6 +246,9 @@ speclink --version
 
 ## <a id="acknowledgments"></a>Acknowledgments
 
+- [mosutw](https://github.com/mosutw): maintainer of this fork. Codex assists with development as an AI coding tool; this credit does not imply a verified GitHub bot identity.
+- [MomoChenisMe / Speclink](https://github.com/MomoChenisMe/speclink): original project and author. Original credits and the MIT license remain in place.
+
 - [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app): the Local CLI started with its CLI as the behavior reference. Golden tests and CLI integration tests protect the human output, the `--json` shape, and the core workflow. On top of that base, Speclink adds discussions, a desktop app, a Store abstraction, a Node SDK, and a remote platform.
 - [OpenSpec](https://github.com/Fission-AI/OpenSpec): Local mode uses the OpenSpec folder layout for specs and changes.
 

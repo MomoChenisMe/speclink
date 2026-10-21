@@ -25,6 +25,8 @@ use std::{
 pub struct FsSecurityData {
     application_data: PathBuf,
     root: PathBuf,
+    custom_root: bool,
+    path_lease: Option<std::sync::Arc<FileLock>>,
     #[cfg(test)]
     fault: Option<CommitFault>,
 }
@@ -53,11 +55,29 @@ impl FsSecurityData {
         Ok(Self {
             application_data: application_data.to_path_buf(),
             root: application_data.join("security/standards"),
+            custom_root: false,
+            path_lease: None,
             #[cfg(test)]
             fault: None,
         })
     }
+    pub fn with_standard_root(application_data: &Path, standards_root: &Path) -> Result<Self> {
+        let mut data=Self::new(application_data)?;
+        ensure!(standards_root.is_absolute(),"invalid_path: absolute standard root required");
+        if standards_root != data.root {
+            let anchor=standards_root.ancestors().last().expect("absolute path has root");
+            ensure!(owned_directory(standards_root,anchor,false)?,"data_directory_unavailable: standard root missing");
+            fs::read_dir(standards_root).context("data_directory_unavailable")?;
+            data.root=standards_root.into();data.custom_root=true;
+        }
+        Ok(data)
+    }
+    pub fn hold_path_lease(mut self, file: File) -> Self {
+        self.path_lease=Some(std::sync::Arc::new(FileLock(file)));self
+    }
+    fn standard_boundary(&self) -> &Path { if self.custom_root { &self.root } else { &self.application_data } }
     fn version_path(&self, id: StandardId, version: &str) -> Result<PathBuf> {
+        if self.custom_root { check_directory(&self.root).context("data_directory_unavailable")?; }
         ensure!(id.supports_version(version), "unsupported_version");
         Ok(self.root.join(id.as_str()).join(version))
     }
@@ -73,7 +93,7 @@ impl FsSecurityData {
         )>,
     > {
         let base = self.version_path(id, version)?;
-        if !owned_directory(&base, &self.application_data, false)? {
+        if !owned_directory(&base, self.standard_boundary(), false)? {
             return Ok(None);
         }
         let pointer = base.join("current.json");
@@ -210,10 +230,10 @@ impl StandardRepository for FsSecurityData {
     fn pin(&self, id: StandardId, version: &str) -> Result<Box<dyn StandardPin>> {
         let base = self.version_path(id, version)?;
         ensure!(
-            owned_directory(&base, &self.application_data, false)?,
+            owned_directory(&base, self.standard_boundary(), false)?,
             "missing_data"
         );
-        let lock = open_lock(&base.join(".lock"))?;
+        let lock = open_regular(&base.join(".lock"), false)?;
         lock.try_lock_shared()
             .map_err(|_| anyhow::anyhow!("busy: standard version is being modified"))?;
         let lock = FileLock(lock);
@@ -222,6 +242,7 @@ impl StandardRepository for FsSecurityData {
     }
 
     fn remove(&self, id: StandardId, version: &str) -> Result<()> {
+        ensure!(!self.custom_root,"shared_data: remove is disabled for custom standard roots");
         let base = self.version_path(id, version)?;
         let references = self.application_data.join("security/references");
         owned_directory(&references, &self.application_data, true)?;
@@ -303,7 +324,8 @@ impl StandardRepository for FsSecurityData {
         transaction.commit_cancellable(standard, cancelled)
     }
     fn versions(&self) -> Result<Vec<(StandardId, String)>> {
-        if !owned_directory(&self.root, &self.application_data, false)? {
+        if self.custom_root { check_directory(&self.root).context("data_directory_unavailable")?; }
+        if !owned_directory(&self.root, self.standard_boundary(), false)? {
             return Ok(Vec::new());
         }
         let mut versions = Vec::new();
@@ -361,7 +383,7 @@ impl StandardRepository for FsSecurityData {
 
     fn begin_install(&self, id: StandardId, version: &str) -> Result<Box<dyn StandardInstall>> {
         let base = self.version_path(id, version)?;
-        owned_directory(&base, &self.application_data, true)?;
+        owned_directory(&base, self.standard_boundary(), true)?;
         let lock = open_lock(&base.join(".lock"))?;
         match lock.try_lock() {
             Ok(()) => {}
@@ -990,6 +1012,31 @@ fn cleanup_stale(base: &Path, current: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shared_standard_root_keeps_private_data_local_and_refuses_shared_deletion() {
+        let a=tempfile::tempdir().unwrap();let b=tempfile::tempdir().unwrap();let shared=tempfile::tempdir().unwrap();
+        let first=FsSecurityData::with_standard_root(a.path(),shared.path()).unwrap();
+        let second=FsSecurityData::with_standard_root(b.path(),shared.path()).unwrap();
+        let value=standard("shared");let id=StandardId::OwaspAsvs;let version="5.0.0";
+        first.begin_install(id,&version).unwrap().commit(value).unwrap();
+        let installed=second.read(id,&version).unwrap().unwrap();
+        assert_eq!(first.read(id,&version).unwrap().unwrap().metadata.files,installed.metadata.files);
+        assert!(second.read_export_source(id,&version).unwrap().is_some());
+        let pin=second.pin(id,&version).unwrap();
+        assert!(first.begin_install(id,&version).is_err());drop(pin);
+        first.remember_policy("project",&Default::default()).unwrap();
+        assert!(a.path().join("security/references").exists());
+        assert!(!shared.path().join("security").exists());
+        assert!(first.remove(id,&version).unwrap_err().to_string().contains("shared_data"));
+        assert!(second.read(id,&version).unwrap().is_some());
+    }
+    #[test]
+    fn an_unavailable_custom_root_is_not_an_empty_local_inventory() {
+        let private=tempfile::tempdir().unwrap();let shared=tempfile::tempdir().unwrap();
+        let path=shared.path().join("missing");
+        assert!(FsSecurityData::with_standard_root(private.path(),&path).is_err());
+        assert!(!private.path().join("security/standards").exists());
+    }
     use speclink_core::security::data::{IntegrityKind, StandardRepository, ValidatedStandard};
     use speclink_core::security::standards::{standard_source, StandardId};
     use std::collections::BTreeMap;

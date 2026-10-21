@@ -10,7 +10,7 @@ import { AppSettingsView, type AppSettingsUpdaterProps } from "../views/AppSetti
 import type { UpdaterState } from "../core/updater";
 import { APP_MESSAGES } from "../i18n/messages";
 import type { CliInstallView } from "../store";
-vi.mock("../adapter/security",()=>({listSecurityData:vi.fn().mockResolvedValue({standards:[]}),watchSecurityProgress:vi.fn().mockResolvedValue(()=>{})}));
+vi.mock("../adapter/security",()=>({readSecurityDataPaths:vi.fn().mockResolvedValue({standardsPath:null,effectivePath:"/device/security/standards",isDefault:true,access:"readWrite"}),listSecurityData:vi.fn().mockResolvedValue({standards:[]}),watchSecurityProgress:vi.fn().mockResolvedValue(()=>{})}));
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider locale="zh-TW" messages={APP_MESSAGES}>

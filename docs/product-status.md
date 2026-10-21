@@ -98,6 +98,10 @@ When you update this document, check again with the current checkout. Do not kee
 
 ## <a id="offline-security-workflow"></a>Desktop workflow and offline security review (current implementation)
 
+This fork now uses `mosutw/speclink` for updates, retains a separate original-author version/link, and offers manual Release downloads when signed update packages are unavailable. README credits distinguish mosutw's maintenance, Codex's AI assistance and the upstream author; GitHub's Contributors sidebar still follows commit attribution.
+
+Security standard data has a device-level location setting with a local default and Windows UNC support. Desktop and same-machine CLI resolve the same location; only standards are shared. Read-only shares support review/export, custom-root deletion is disabled, active work blocks location changes, and disconnects do not cause local download fallback. Private reports and `.security_kb/` snapshots remain local. Local fixtures and Windows lock/rename tests pass; actual NAS/SMB and corporate Proxy acceptance remain pending. Finish checks, merge to `main`, build installers from that commit, then perform corporate acceptance. See [Development](development.md#desktop-tags) for operation and old-writer upgrade limits.
+
 These entries are implemented in the current source; installed builds need a release containing this change. Remote requires `securityReviewV2` and `checkHistory` capabilities. Older servers explicitly disable new policy writes; unsupported never means passed.
 
 1. Drag projects in the left rail or move them up/down. Order persists on this device across restarts.

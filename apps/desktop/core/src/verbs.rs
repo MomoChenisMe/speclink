@@ -82,7 +82,7 @@ fn archive_with(
     if policy.enabled&&policy.required_for_acceptance {
         let reader=speclink_fs::security::scan::AuthorizedProject::open(&ctx.workspace.root).map_err(|e|e.to_string())?;
         let target=speclink_host::security::ReviewTarget::local(reader.root(),&ctx.workspace.spec_dir_name,Some(change.name.clone())).map_err(|e|e.to_string())?;
-        let data=speclink_fs::security::FsSecurityData::new(&speclink_host::context::security_data_dir().map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+        let data=crate::security::repository_at(&speclink_host::context::security_data_dir().map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
         let budget=speclink_host::security::ReviewBudget::new(std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)));
         opts.security_acceptance=speclink_host::security::acceptance_proof_for_target(&target,&reader,&data,store,&budget).map_err(|e|e.to_string())?;
     }

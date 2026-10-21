@@ -102,10 +102,47 @@ pub(crate) fn readable(store: &FsStore, change: &str) -> Result<()> {
     }
     Ok(())
 }
-fn lock(root: &Path) -> Result<io::FileLock> {
-    let lock = io::open_lock(&root.join(".checks.lock"))?;
+fn lock(store: &FsStore, change: &str) -> Result<io::FileLock> {
+    ensure!(
+        valid_relative(change)
+            && !change.contains('/')
+            && valid_relative(&store.layout().spec_dir_name),
+        "invalid_change"
+    );
+    let base = store.layout().root.canonicalize()?;
+    let locks = base
+        .join(&store.layout().spec_dir_name)
+        .join(".checks-locks");
+    io::owned_directory(&locks, &base, true)?;
+    let ignore = locks.join(".gitignore");
+    if !ignore.try_exists()? {
+        // Concurrent creators can both reach here; only one publishes the identical file.
+        if let Err(error) = io::write_new(&ignore, b"*\n", &|| false) {
+            if !ignore.try_exists()? {
+                return Err(error);
+            }
+        }
+    }
+    ensure!(
+        io::read_limited(&ignore, 16)? == b"*\n",
+        "invalid_lock_directory"
+    );
+    let lock = io::open_lock(&locks.join(format!("{}.lock", sha256(change.as_bytes()))))?;
     lock.try_lock()
         .map_err(|_| anyhow::anyhow!("busy: checks transaction"))?;
+    let legacy = base
+        .join(&store.layout().spec_dir_name)
+        .join("changes")
+        .join(change)
+        .join(".checks.lock");
+    if legacy.try_exists()? {
+        let old = io::open_lock(&legacy)?;
+        old.try_lock().map_err(|_| {
+            anyhow::anyhow!("busy: legacy checks writer; stop older clients before upgrading")
+        })?;
+        // Windows cannot rename the proposal while a child file is locked. Old clients
+        // must be stopped during upgrade; the external lock protects all new writers.
+    }
     Ok(io::FileLock(lock))
 }
 fn fault(_point: &str) -> Result<()> {
@@ -182,7 +219,7 @@ fn recover_locked(root: &Path) -> Result<()> {
 }
 pub(crate) fn recover(store: &FsStore, change: &str) -> Result<()> {
     if let Some(root) = directory(store, change, false)? {
-        let _lock = lock(&root)?;
+        let _lock = lock(store, change)?;
         recover_locked(&root).context("history_recovery_required")?;
     }
     Ok(())
@@ -192,8 +229,8 @@ pub(crate) fn with_write<T>(
     change: &str,
     action: impl FnOnce() -> Result<T>,
 ) -> Result<T> {
-    let root = directory(store, change, true)?.expect("created directory");
-    let _lock = lock(&root)?;
+    let _lock = lock(store, change)?;
+    let root = directory(store, change, false)?.ok_or_else(|| anyhow::anyhow!("change not found"))?;
     recover_locked(&root).context("history_recovery_required")?;
     action()
 }
@@ -304,6 +341,66 @@ thread_local! { static FAULTS: std::cell::RefCell<Vec<String>> = const { std::ce
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn late_writers_cannot_recreate_an_archived_change() {
+        let (_root, store, commit) = setup();
+        fs::create_dir_all(store.layout().archive_dir()).unwrap();
+        fs::rename(store.layout().change_dir("demo"), store.layout().archived_change_dir("2026-10-21-demo")).unwrap();
+        assert!(super::commit(&store, "demo", &commit).is_err());
+        assert!(!store.change_exists("demo"));
+        assert!(store.write_change_meta("demo", "schema: spec-driven\n").is_err());
+        assert!(store.write_artifact("demo", "review.md", "late ticket").is_err());
+        assert!(!store.change_exists("demo"));
+        assert!(store.list_changes().is_empty());
+        assert_eq!(fs::read_to_string(store.layout().archived_change_dir("2026-10-21-demo").join("review.md")).unwrap(), "original ticket");
+    }
+    #[test]
+    fn archive_move_keeps_exclusion_without_recreating_the_active_directory() {
+        let (_root, store, _) = setup();
+        with_write(&store, "demo", || {
+            fs::create_dir_all(store.layout().archive_dir())?;
+            fs::rename(
+                store.layout().change_dir("demo"),
+                store.layout().archived_change_dir("2026-10-21-demo"),
+            )?;
+            assert!(with_write(&store, "demo", || Ok(()))
+                .unwrap_err()
+                .to_string()
+                .contains("busy"));
+            assert!(!store.layout().change_dir("demo").exists());
+            Ok(())
+        })
+        .unwrap();
+    }
+    #[test]
+    fn a_running_legacy_writer_blocks_the_new_writer() {
+        let (_root, store, _) = setup();
+        let legacy =
+            io::open_lock(&store.layout().change_dir("demo").join(".checks.lock")).unwrap();
+        legacy.try_lock().unwrap();
+        assert!(with_write(&store, "demo", || Ok(()))
+            .unwrap_err()
+            .to_string()
+            .contains("busy"));
+    }
+    #[cfg(unix)]
+    #[test]
+    fn linked_external_lock_directory_is_rejected() {
+        let (_root, store, _) = setup();
+        let outside = tempfile::tempdir().unwrap();
+        let locks = store.layout().spec_dir().join(".checks-locks");
+        // setup already created locks through write_artifact; use a fresh spec directory.
+        let fresh = crate::FsStore::new(store.layout().root.as_path(), "other-spec");
+        fs::create_dir_all(fresh.layout().spec_dir()).unwrap();
+        std::os::unix::fs::symlink(
+            outside.path(),
+            fresh.layout().spec_dir().join(".checks-locks"),
+        )
+        .unwrap();
+        assert!(with_write(&fresh, "demo", || Ok(())).is_err());
+        assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
+        assert_eq!(fs::read(locks.join(".gitignore")).unwrap(), b"*\n");
+    }
     use speclink_core::{
         history::{ChecksCommit, JOURNAL},
         security::data::sha256,

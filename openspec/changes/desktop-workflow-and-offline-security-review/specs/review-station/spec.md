@@ -49,6 +49,15 @@
 
 ## ADDED Requirements
 
+### Requirement: 檢查紀錄鎖與封存搬移
+
+本機檢查紀錄的寫入、復原與封存 SHALL 使用同一spec store內、不隨提案搬移的跨程序鎖；SHALL 先取得鎖再建立活動目錄，整段封存搬移仍持鎖，不能先解鎖或改用單機記憶體鎖。鎖 SHALL 不進Git或文件樹，目錄及檔案 SHALL 拒連結。舊提案內鎖仍被持有時 SHALL 回busy而不搬移；升級文件 SHALL 明示停止舊版寫入者，不支援混用鎖定協定。
+
+#### Scenario: Windows 封存與競爭寫入
+
+- **WHEN** Windows上封存者持鎖搬移提案，另一個新版本寫入者同時嘗試寫入同一提案
+- **THEN** 封存成功、歷史仍可查，競爭者回busy且不重建已搬移的活動目錄；失敗仍依原journal復原
+
 ### Requirement: 審查完成紀錄查詢
 
 CLI SHALL 提供review history CHANGE [--id ID] [--json]，不讀stdin，支援全域--no-color。無ID時JSON為{records:[{recordId:string,kind:string,createdAt:string,outcome:string,relativePath:string,contentDigest:string}]}；有ID時為{recordId:string,content:string,metadata:{createdAt:string,actor:string|null,tool:string|null,outcome:string,scopeDigest:string}}。人眼同列紀錄摘要或完整遮罩工單；成功0，找不到／非法ULID／壞索引／讀取失敗stderr及1，參數錯誤2。CHANGE SHALL 接受active名稱或已封存dated名稱，只能讀該變更index列明的checks/review路徑，不讀任意檔案。Remote reader可讀，401／離線明示失敗；新輪次、discard及重蓋章 SHALL 不覆蓋舊紀錄。既有review show只讀活動工單的契約 SHALL 不變。

@@ -18,6 +18,8 @@ import { ReleaseNotesDialog } from "../../components/ReleaseNotesDialog";
 import { updateNeedsAttention, type UpdaterState } from "../../core/updater";
 import { entryText, RELEASE_NOTES } from "../../release-notes/release-notes";
 import type { AppSettingsUpdaterProps } from "../AppSettingsView";
+import { desktopRelease, type DesktopRelease, type ReleaseRepository } from "../../adapter/updater";
+import { openExternal } from "./AboutPage";
 
 /** 「最新版本」列：等寬版號（無則「—」或不顯示）＋狀態籤；關於頁版本列的狀態籤共用。 */
 export function latestOf(state: UpdaterState, currentVersion: string | null | undefined): {
@@ -25,6 +27,8 @@ export function latestOf(state: UpdaterState, currentVersion: string | null | un
   pill: StatusPillLabel;
 } {
   switch (state.phase) {
+    case "manual":
+      return {version:state.version,pill:{key:"updater.sources.manual",tone:"neutral"}};
     case "available":
     case "downloading":
     case "restartPending":
@@ -47,9 +51,21 @@ const VersionText = ({ children }: { children: string }) => (
   <span className="font-mono text-[13px]">{children}</span>
 );
 
-export function UpdatesPage({ updater, currentVersion }: { updater?: AppSettingsUpdaterProps; currentVersion?: string | null }) {
+export function UpdatesPage({ updater, currentVersion, releaseLookup = desktopRelease }: { updater?: AppSettingsUpdaterProps; currentVersion?: string | null; releaseLookup?: typeof desktopRelease }) {
   const { t, locale } = useI18n();
   const [notes, setNotes] = useState<{ version?: string } | null>(null);
+  const [sources, setSources] = useState<Partial<Record<ReleaseRepository, {release?:DesktopRelease|null;checkedAt?:number;busy?:boolean;error?:string}>>>({});
+  const lookup = async (repo:ReleaseRepository) => {
+    setSources(previous=>({...previous,[repo]:{...previous[repo],busy:true,error:undefined}}));
+    try {
+      const release = await releaseLookup(repo);
+      setSources(previous=>({...previous,[repo]:{release,checkedAt:Date.now(),busy:false}}));
+    } catch (error) {
+      const failure = error as {code?:string;httpStatus?:number};
+      const code = ["http","tls","timeout","connect","proxy-auth","parse","budget_exceeded","untrusted_source","proxy_unsupported"].includes(failure?.code ?? "") ? failure.code : "update_failed";
+      setSources(previous=>({...previous,[repo]:{...previous[repo],busy:false,error:`${code}${failure?.httpStatus ? ` (${failure.httpStatus})` : ""}`}}));
+    }
+  };
   const ready = !!updater && updater.ready !== false;
   const state = updater?.state ?? { phase: "idle" };
   const version = currentVersion ?? updater?.currentVersion;
@@ -83,8 +99,8 @@ export function UpdatesPage({ updater, currentVersion }: { updater?: AppSettings
             type="button"
             variant="outline"
             size="sm"
-            disabled={!ready || state.phase === "checking"}
-            onClick={updater?.onCheck}
+            disabled={!ready || state.phase === "checking" || sources.fork?.busy}
+            onClick={()=>{void lookup("fork");updater?.onCheck();}}
           >
             {t("updater.check")}
           </Button>
@@ -105,6 +121,23 @@ export function UpdatesPage({ updater, currentVersion }: { updater?: AppSettings
           />
         </SettingsCard>
       </div>
+      <SettingsCard title={t("updater.sources.title")}>
+        {(["fork","upstream"] as const).map(repo=>{
+          const result=sources[repo];
+          const url=`https://github.com/${repo==="fork"?"mosutw":"MomoChenisMe"}/speclink`;
+          return <SettingsRow key={repo} label={t(`updater.sources.${repo}`)} description={<>
+            <a href={url} className="underline" onClick={event=>{event.preventDefault();openExternal(url);}}>{t(repo==="fork"?"updater.sources.project":"updater.sources.original")}</a>
+            {result?.checkedAt && <span> · {t("updater.sources.obtained")} {new Date(result.checkedAt).toLocaleString(locale)}</span>}
+            {result?.error && <span role="status"> · {result.error}</span>}
+          </>} control={<>
+            <VersionText>{result?.release?.version ?? "—"}</VersionText>
+            <span>{t(result?.busy?"updater.page.pill.checking":result?.release?"updater.sources.obtained":"updater.sources.missing")}</span>
+            {repo==="fork" && result?.release && <a className="underline" href={result.release.releaseUrl} onClick={event=>{event.preventDefault();openExternal(result.release!.releaseUrl);}}>{t("updater.sources.download")}</a>}
+            {repo==="upstream" && <Button size="sm" variant="outline" disabled={!ready||result?.busy} onClick={()=>void lookup(repo)}>{t("updater.sources.checkOriginal")}</Button>}
+          </>}/>;
+        })}
+      </SettingsCard>
+      {state.phase==="manual" && <p className="text-sm">{t("updater.sources.manual")} · <a className="underline" href={state.url} onClick={event=>{event.preventDefault();openExternal(state.url);}}>{t("updater.sources.download")}</a></p>}
       {updater?.lastCheck && <div role="status" aria-label={t("updater.page.lastCheck")} className="flex flex-wrap items-center gap-2 text-sm">
         <span>{new Date(updater.lastCheck.checkedAt).toLocaleString(locale)} · {t(`updater.page.result.${updater.lastCheck.status}`)}</span>
         {updater.lastCheck.errorCode && <span>{updater.lastCheck.errorCode}</span>}

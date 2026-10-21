@@ -64,13 +64,19 @@ where
 }
 
 /// Shared by local archive and verification; every operation recomputes current source evidence.
+pub(crate) fn security_repository(application_data:&std::path::Path)->Result<speclink_fs::security::FsSecurityData> {
+    let paths=speclink_host::security_paths::lease(application_data)?;
+    Ok(speclink_fs::security::FsSecurityData::with_standard_root(application_data,&paths.standards_root)?.hold_path_lease(paths.lock))
+}
+
+/// Shared by local archive and verification; every operation recomputes current source evidence.
 pub(crate) fn security_proof(store:&dyn Store,ws:&Workspace,change:&str) -> Result<Option<core::security::acceptance::AcceptanceProof>> {
     if !store.change_exists(change) {return Ok(None);}
     let policy=core::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())?.security();
     if !(policy.enabled&&policy.required_for_acceptance) {return Ok(None);}
     let reader=speclink_fs::security::scan::AuthorizedProject::open(&ws.root)?;
     let target=speclink_host::security::ReviewTarget::local(reader.root(),&ws.spec_dir_name,Some(change.into()))?;
-    let data=speclink_fs::security::FsSecurityData::new(&speclink_host::context::security_data_dir()?)?;
+    let data=security_repository(&speclink_host::context::security_data_dir()?)?;
     let budget=speclink_host::security::ReviewBudget::new(std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)));
     speclink_host::security::acceptance_proof_for_target(&target,&reader,&data,store,&budget)
 }

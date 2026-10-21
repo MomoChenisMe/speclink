@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useI18n } from "../i18n";
 import {
   AlertDialog,
@@ -18,6 +19,8 @@ export interface ReviewArchiveDialogProps {
   /** 哪一個品質站的工單未結；預設審查站。兩站工單並存時由宿主依序各彈一次
    * （spec「封存入口三選項擴及驗證工單」：分別處置後才封存）。 */
   station?: "review" | "verify";
+  children?: ReactNode;
+  actionsDisabled?: boolean;
   onOpenChange: (open: boolean) => void;
   /** 前往完成蓋章：不封存，導引使用者收尾審查（宿主通常開啟詳情抽屜）。 */
   onGoStamp: () => void;
@@ -34,6 +37,8 @@ export function ReviewArchiveDialog({
   open,
   change,
   station = "review",
+  children,
+  actionsDisabled = false,
   onOpenChange,
   onGoStamp,
   onDiscardReview,
@@ -50,14 +55,15 @@ export function ReviewArchiveDialog({
           <AlertDialogDescription>
             {t(k("archiveGateDesc")).replace("{name}", change ?? "")}
           </AlertDialogDescription>
+          {children}
         </AlertDialogHeader>
         <AlertDialogFooter className="flex-col gap-2 sm:flex-col sm:items-stretch sm:space-x-0">
           <Button onClick={onGoStamp}>{t(k("goStamp"))}</Button>
-          <Button variant="outline" onClick={onDiscardReview}>
+          <Button variant="outline" disabled={actionsDisabled} onClick={onDiscardReview}>
             {t(k("discardReview"))}
           </Button>
           {/* 危險動作走 destructive；rose 專屬「曾審查未通過」的永久標示（三紅分工）。 */}
-          <Button variant="outline" className={SEMANTIC_TONE.danger} onClick={onCarryReview}>
+          <Button variant="outline" className={SEMANTIC_TONE.danger} disabled={actionsDisabled} onClick={onCarryReview}>
             {t(k("carryReview"))}
           </Button>
           <AlertDialogCancel>{t(k("cancel"))}</AlertDialogCancel>

@@ -8,6 +8,7 @@ export type UpdaterState =
   | { phase: "downloading"; version: string }
   | { phase: "restartPending"; version: string }
   | { phase: "upToDate" }
+  | { phase: "manual"; version: string; url: string }
   | { phase: "checkFailed" }
   | { phase: "error"; message: string };
 
@@ -15,6 +16,7 @@ export type UpdaterEvent =
   | { type: "checkStarted"; manual: boolean }
   | { type: "updateFound"; version: string }
   | { type: "noUpdate" }
+  | { type: "manualUpdate"; version: string; url: string }
   | { type: "checkFailed" }
   | { type: "accepted" }
   | { type: "dismissed" }
@@ -26,7 +28,7 @@ export const initialUpdaterState: UpdaterState = { phase: "idle" };
 /** 設定頁的最後結果與安裝狀態分開；不保留外部錯誤訊息或 URL。 */
 export interface UpdateCheckResult {
   checkedAt: number;
-  status: "available" | "up-to-date" | "failed";
+  status: "available" | "up-to-date" | "failed" | "manual";
   errorCode: string | null;
   operationId: string | null;
 }
@@ -58,7 +60,7 @@ export function focusRecheckDue(lastCheckedAt: number | null, now: number): bool
  * （error）要留到使用者處置，不能被自動重檢清掉；檢查中、下載中、待重啟不重入。
  */
 export function focusRecheckAllowed(state: UpdaterState): boolean {
-  return state.phase === "idle" || state.phase === "upToDate" || state.phase === "checkFailed";
+  return state.phase === "idle" || state.phase === "upToDate" || state.phase === "checkFailed" || state.phase === "manual";
 }
 
 /**
@@ -78,6 +80,8 @@ export function updateNeedsAttention(
 
 export function reduceUpdater(state: UpdaterState, event: UpdaterEvent): UpdaterState {
   switch (event.type) {
+    case "manualUpdate":
+      return state.phase === "checking" ? {phase:"manual",version:event.version,url:event.url} : state;
     case "checkStarted":
       // 下載中與待重啟不可被重檢打斷；其餘狀態（含錯誤、已最新）都可再檢查。
       if (state.phase === "downloading" || state.phase === "restartPending") return state;

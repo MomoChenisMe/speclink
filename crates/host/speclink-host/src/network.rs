@@ -1,5 +1,57 @@
 //! Shared device routing and structured diagnostics. No project or desktop I/O.
 use serde::{Deserialize, Serialize};
+
+/// Fixed public release sources; redirects and response size are bounded at this boundary.
+pub async fn github_release_metadata(
+    policy: &ProxyPolicy,
+    repo: &str,
+) -> Result<serde_json::Value, (String, Option<u16>, Vec<ErrorDetail>)> {
+    let code = |value: &str| (value.to_owned(), None, Vec::new());
+    if !matches!(repo, "mosutw/speclink" | "MomoChenisMe/speclink") {
+        return Err(code("untrusted_source"));
+    }
+    let client = policy
+        .configure_client(
+            reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(20))
+                .redirect(reqwest::redirect::Policy::none())
+                .user_agent("Speclink-desktop"),
+        )
+        .map_err(|_| code("proxy_unsupported"))?
+        .build()
+        .map_err(|error| request_error(&error))?;
+    let mut response = client
+        .get(format!(
+            "https://api.github.com/repos/{repo}/releases?per_page=100"
+        ))
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|error| request_error(&error))?;
+    if let Some(error) = policy.client_error() {
+        return Err(code(error));
+    }
+    if !response.status().is_success() {
+        let status = response.status().as_u16();
+        return Err((
+            if status == 407 { "proxy-auth" } else { "http" }.into(),
+            Some(status),
+            vec![],
+        ));
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| request_error(&error))?
+    {
+        if bytes.len() + chunk.len() > 2 * 1024 * 1024 {
+            return Err(code("budget_exceeded"));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    serde_json::from_slice(&bytes).map_err(|_| code("parse"))
+}
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,

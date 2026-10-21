@@ -22,6 +22,8 @@ impl Fixture {
         command.args(args)
             .current_dir(&self.0)
             .env("HOME", self.0.with_extension("home"))
+            .env("USERPROFILE", self.0.with_extension("home"))
+            .env("XDG_CONFIG_HOME", self.0.with_extension("home").join("config"))
             .env("XDG_DATA_HOME", self.0.with_extension("home").join("data"))
             .env("LOCALAPPDATA", self.0.with_extension("home").join("data"))
             .env("SPECLINK_TOKEN", "fixture-token");
@@ -37,6 +39,48 @@ impl Fixture {
         child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
         child.wait_with_output().unwrap()
     }
+}
+
+#[test]
+fn security_data_custom_root_preserves_outputs_and_disconnection_never_falls_back() {
+    let fixture=Fixture::new();
+    let baseline=fixture.run(&["security","data","list","--json","--no-color"]);
+    assert!(baseline.status.success());
+    let home=fixture.0.with_extension("home");
+    let config=if cfg!(windows) {home.join("AppData/Roaming/speclink")} else if cfg!(target_os="macos") {home.join("Library/Application Support/speclink")} else {home.join("config/speclink")};
+    std::fs::create_dir_all(&config).unwrap();let shared=fixture.0.join("shared");std::fs::create_dir(&shared).unwrap();
+    std::fs::write(config.join("security-data-preferences.json"),serde_json::to_vec(&serde_json::json!({"formatVersion":1,"standardsPath":shared})).unwrap()).unwrap();
+    let out=fixture.run(&["security","data","list","--json","--no-color"]);
+    assert!(out.status.success(),"{}",String::from_utf8_lossy(&out.stderr));
+    assert_eq!(serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap(),serde_json::from_slice::<serde_json::Value>(&baseline.stdout).unwrap());
+    let human=fixture.run(&["security","data","list","--no-color"]);assert!(human.status.success());assert!(!human.stdout.contains(&27));
+    std::fs::rename(&shared,fixture.0.join("disconnected")).unwrap();
+    let failed=fixture.run(&["security","data","list","--json"]);
+    assert_eq!(failed.status.code(),Some(1));assert!(failed.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&failed.stderr).contains("data_directory_unavailable"));
+}
+
+#[test]
+fn disconnected_standards_do_not_block_existing_private_reports() {
+    let fixture = Fixture::new();
+    std::fs::create_dir_all(fixture.0.join("openspec")).unwrap();
+    std::fs::write(fixture.0.join(".speclink.yaml"), "tools: [codex]\n").unwrap();
+    let output = fixture.run(&["security", "run", "--json"]);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let id = report["reportId"].as_str().unwrap();
+    let home = fixture.0.with_extension("home");
+    let config = if cfg!(windows) { home.join("AppData/Roaming/speclink") } else if cfg!(target_os="macos") { home.join("Library/Application Support/speclink") } else { home.join("config/speclink") };
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(config.join("security-data-preferences.json"), serde_json::to_vec(&serde_json::json!({"formatVersion":1,"standardsPath":fixture.0.join("disconnected")})).unwrap()).unwrap();
+    for format in ["json", "markdown"] {
+        let output = fixture.run(&["security", "report", id, "--format", format, "--no-color"]);
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        assert!(!output.stdout.is_empty());
+    }
+    let output = fixture.run(&["security", "data", "list", "--json"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
 }
 
 #[test]

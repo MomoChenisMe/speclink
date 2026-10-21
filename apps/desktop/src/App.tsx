@@ -92,6 +92,18 @@ import {
 import { setAppT } from "./i18n/runtime";
 import { BUILTIN_TOOLS } from "./builtinTools";
 
+function ArchiveRecordPreview({preview}:{preview:AppState["archivePreview"]}) {
+  const {t} = useI18n();
+  if (!preview) return null;
+  if (preview.loading) return <span role="status">{t("store.archivePreviewLoading")}</span>;
+  if (preview.error) return <span role="alert">{t("store.archivePreviewFailed")}</span>;
+  const counts = preview.counts!;
+  return <span className="mt-2 block text-sm">
+    {(["review","verify","security"] as const).map(kind=><span className="block" key={kind}>{t("store.archiveRecordCount").replace("{kind}",t(`store.recordKind.${kind}`)).replace("{retained}",String(counts[kind].retained)).replace("{omitted}",String(counts[kind].omitted))}</span>)}
+    {counts.acceptanceReceipt && <span className="block">{t("store.acceptanceReceiptPlanned")}</span>}
+  </span>;
+}
+
 export interface AppProps {
   /** local session 工廠（root 綁定 dataSource／settings／events；workspace-session 決策 3/6）。 */
   createSession: (root: string, name: string) => WorkspaceSession;
@@ -1580,6 +1592,7 @@ function AppInner({
         open={pendingArchiveStation !== null}
         change={s.pendingArchive}
         station={pendingArchiveStation ?? "review"}
+        actionsDisabled={!!(s.archivePreview?.loading || s.archivePreview?.error)}
         onOpenChange={(o) => !o && s.cancelArchive()}
         onGoStamp={() => {
           const name = s.pendingArchive;
@@ -1590,7 +1603,7 @@ function AppInner({
           void s.confirmArchiveDiscardTicket(pendingArchiveStation ?? "review")
         }
         onCarryReview={() => void s.confirmArchiveCarryTicket(pendingArchiveStation ?? "review")}
-      />
+      ><ArchiveRecordPreview preview={s.archivePreview}/></ReviewArchiveDialog>
 
       {/* 封存確認 */}
       <ConfirmDialog
@@ -1600,6 +1613,7 @@ function AppInner({
         description={
           <>
             <BoldName text={t("app.archiveDesc")} name={s.pendingArchive ?? ""} />
+            <ArchiveRecordPreview preview={s.archivePreview}/>
             {remoteArchiveScope && (
               <span className="mt-2 block rounded-md border border-border bg-muted/45 px-2.5 py-2 font-mono text-xs text-foreground">
                 {t("app.archiveRemoteScope").replace("{scope}", remoteArchiveScope)}
@@ -1608,7 +1622,7 @@ function AppInner({
           </>
         }
         confirmLabel={t("app.archiveConfirm")}
-        confirmDisabled={caps !== undefined && !caps.archive}
+        confirmDisabled={(caps !== undefined && !caps.archive) || !!(s.archivePreview?.loading || s.archivePreview?.error)}
         onConfirm={() => confirmDetailAction(s.confirmArchive)}
       />
 

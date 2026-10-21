@@ -418,6 +418,57 @@
         "integrations/claude-code/skill-evals/evals/security-review-missing-local-knowledge/prompt.md",
         "integrations/claude-code/skill-evals/evals/security-review-missing-local-knowledge/scaffold.sh"
       ]
+    },
+    {
+      "task_id": "44",
+      "task_desc": "13.1 RED：針對「本分支更新與原作者版本」，在 apps/desktop/core/src/updater.rs 與 apps/desktop/src/__tests__/updatesPage.test.tsx 加失敗案例：兩個固定repo獨立結果、draft／prerelease／CLI-only過濾、最多100筆未取得、Proxy407／403／429、latest.json缺失但有桌面Release、原作者版號更高不成安裝候選。執行 cargo test -p speclink-desktop-core 及 npm test -w @speclink/desktop -- updatesPage，記錄因缺行為失敗。",
+      "files": [
+        "$null"
+      ]
+    },
+    {
+      "task_id": "56",
+      "task_desc": "16.1 RED→GREEN：在 crates/engine/speclink-fs/src/checks.rs 與 apps/desktop/core/src/security.rs 保留並重現「檢查紀錄鎖與封存搬移」，將互斥鎖移至同spec store的.checks-locks並先鎖再建立活動目錄；補搬移期間競爭者busy且不重建活動目錄、舊鎖持有拒寫及鎖目錄拒連結測試。核對 archive_checks 的備份／發佈亦沿相同鎖、鎖不入Git且舊版寫入者必須先停止；執行 cargo test -p speclink-fs 及 cargo test -p speclink-desktop-core，最後執行 node --test scripts/*.test.mjs scripts/*/*.test.mjs 與 git diff --check，失敗不略過、不代勾人工驗收。",
+      "files": [
+        "apps/desktop/src-tauri/capabilities/default.json",
+        "apps/desktop/src/__tests__/aboutPage.test.tsx",
+        "apps/desktop/src/adapter/updater.ts",
+        "apps/desktop/src/views/settings/AboutPage.tsx"
+      ]
+    },
+    {
+      "task_id": "45",
+      "task_desc": "13.2 GREEN：在 apps/desktop/core/src/updater.rs、apps/desktop/src-tauri/src/updater_commands.rs 與 crates/host/speclink-host/src/network.rs 沿固定repo、既有HTTP限制與Proxy快照查桌面Release；有可信簽包才進原更新流程，無包回手動Release狀態，原作者只供資訊；以 cargo test -p speclink-desktop-core 及 cargo test -p speclink-host 驗13.1、錯誤分類與無默默直連，不更換簽章信任或新增任意URL。",
+      "files": [
+        "CONTRIBUTING.md",
+        "README.md",
+        "README.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "48",
+      "task_desc": "14.1 RED：在 crates/host/speclink-host/src/context.rs 補「應用程式資料目錄與離線版本清單」及「安全標準資料存放路徑設定」測試：缺檔／null舊預設、portable、自訂磁碟／Windows UNC、相對／不完整UNC／URL／NUL拒絕、設定壞版／錯型別／寫失敗保舊、共用根與私人根分離；執行 cargo test -p speclink-host 確認新增行為未實作。",
+      "files": [
+        "crates/host/speclink-host/src/context.rs"
+      ]
+    },
+    {
+      "task_id": "50",
+      "task_desc": "14.3 RED：在 crates/engine/speclink-fs/src/security.rs 及其測試補分離標準根的讀／裝／匯入／匯出案例：兩個裝置共用一根、私人reports／references／prepared不入share、唯讀來源可讀／匯出、斷線拒fallback、跨程序writer互斥、發佈失敗保舊、自訂根拒刪；執行 cargo test -p speclink-fs 確認新案例失敗。",
+      "files": [
+        "crates/host/speclink-host/src/security_paths.rs"
+      ]
+    },
+    {
+      "task_id": "49",
+      "task_desc": "14.2 GREEN：在 crates/host/speclink-host/src/context.rs 及同crate負責裝置設定的模組建立單一security-data-preferences.json讀寫與根解析，原子保存formatVersion／standardsPath，缺值向後相容、錯值不fallback；接 apps/desktop/core/src/security.rs 與 apps/desktop/src-tauri/src/security_commands.rs 的讀寫IPC，回standardsPath／effectivePath／isDefault／access的camelCase型別，殼只委派。以 cargo test -p speclink-host 及 cargo test -p speclink-desktop-core 驗14.1、busy與路徑快照、唯讀候選可儲存及失敗保草稿。",
+      "files": [
+        "apps/desktop/src/__tests__/appSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/securityDataPage.test.tsx",
+        "apps/desktop/src/views/settings/SecurityDataPage.tsx",
+        "docs/development.md",
+        "docs/development.zh-TW.md"
+      ]
     }
   ],
   "entries": [
@@ -989,6 +1040,75 @@
         "integrations/claude-code/skill-evals/evals/security-review-missing-local-knowledge/scaffold.sh"
       ],
       "recordedAt": "2026-10-20T22:33:01Z"
+    },
+    {
+      "taskId": "tsk_01M5E8TT291QTBCZ8KMCQS4636",
+      "taskDesc": "13.1 RED：針對「本分支更新與原作者版本」，在 apps/desktop/core/src/updater.rs 與 apps/desktop/src/__tests__/updatesPage.test.tsx 加失敗案例：兩個固定repo獨立結果、draft／prerelease／CLI-only過濾、最多100筆未取得、Proxy407／403／429、latest.json缺失但有桌面Release、原作者版號更高不成安裝候選。執行 cargo test -p speclink-desktop-core 及 npm test -w @speclink/desktop -- updatesPage，記錄因缺行為失敗。",
+      "repo": "main",
+      "headCommit": "945175c570c904acd9245a5757429b39977289b1",
+      "touchedFiles": [
+        "$null"
+      ],
+      "recordedAt": "2026-10-21T03:42:13Z"
+    },
+    {
+      "taskId": "tsk_01M5E9VVQ5S88C8NHQFP33DVFD",
+      "taskDesc": "16.1 RED→GREEN：在 crates/engine/speclink-fs/src/checks.rs 與 apps/desktop/core/src/security.rs 保留並重現「檢查紀錄鎖與封存搬移」，將互斥鎖移至同spec store的.checks-locks並先鎖再建立活動目錄；補搬移期間競爭者busy且不重建活動目錄、舊鎖持有拒寫及鎖目錄拒連結測試。核對 archive_checks 的備份／發佈亦沿相同鎖、鎖不入Git且舊版寫入者必須先停止；執行 cargo test -p speclink-fs 及 cargo test -p speclink-desktop-core，最後執行 node --test scripts/*.test.mjs scripts/*/*.test.mjs 與 git diff --check，失敗不略過、不代勾人工驗收。",
+      "repo": "main",
+      "headCommit": "945175c570c904acd9245a5757429b39977289b1",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/capabilities/default.json",
+        "apps/desktop/src/__tests__/aboutPage.test.tsx",
+        "apps/desktop/src/adapter/updater.ts",
+        "apps/desktop/src/views/settings/AboutPage.tsx"
+      ],
+      "recordedAt": "2026-10-21T04:00:16Z"
+    },
+    {
+      "taskId": "tsk_01M5E9YEBPMTHRTG55VBMCS7JE",
+      "taskDesc": "13.2 GREEN：在 apps/desktop/core/src/updater.rs、apps/desktop/src-tauri/src/updater_commands.rs 與 crates/host/speclink-host/src/network.rs 沿固定repo、既有HTTP限制與Proxy快照查桌面Release；有可信簽包才進原更新流程，無包回手動Release狀態，原作者只供資訊；以 cargo test -p speclink-desktop-core 及 cargo test -p speclink-host 驗13.1、錯誤分類與無默默直連，不更換簽章信任或新增任意URL。",
+      "repo": "main",
+      "headCommit": "945175c570c904acd9245a5757429b39977289b1",
+      "touchedFiles": [
+        "CONTRIBUTING.md",
+        "README.md",
+        "README.zh-TW.md"
+      ],
+      "recordedAt": "2026-10-21T04:01:41Z"
+    },
+    {
+      "taskId": "tsk_01M5EA3FTR0513EXFHP0KFKG5E",
+      "taskDesc": "14.1 RED：在 crates/host/speclink-host/src/context.rs 補「應用程式資料目錄與離線版本清單」及「安全標準資料存放路徑設定」測試：缺檔／null舊預設、portable、自訂磁碟／Windows UNC、相對／不完整UNC／URL／NUL拒絕、設定壞版／錯型別／寫失敗保舊、共用根與私人根分離；執行 cargo test -p speclink-host 確認新增行為未實作。",
+      "repo": "main",
+      "headCommit": "945175c570c904acd9245a5757429b39977289b1",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/context.rs"
+      ],
+      "recordedAt": "2026-10-21T04:04:27Z"
+    },
+    {
+      "taskId": "tsk_01M5EA6H74322Y69F1P2QNHD04",
+      "taskDesc": "14.3 RED：在 crates/engine/speclink-fs/src/security.rs 及其測試補分離標準根的讀／裝／匯入／匯出案例：兩個裝置共用一根、私人reports／references／prepared不入share、唯讀來源可讀／匯出、斷線拒fallback、跨程序writer互斥、發佈失敗保舊、自訂根拒刪；執行 cargo test -p speclink-fs 確認新案例失敗。",
+      "repo": "main",
+      "headCommit": "945175c570c904acd9245a5757429b39977289b1",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/security_paths.rs"
+      ],
+      "recordedAt": "2026-10-21T04:06:06Z"
+    },
+    {
+      "taskId": "tsk_01M5EB3DSK8XJFXJM1Z25M4WKD",
+      "taskDesc": "14.2 GREEN：在 crates/host/speclink-host/src/context.rs 及同crate負責裝置設定的模組建立單一security-data-preferences.json讀寫與根解析，原子保存formatVersion／standardsPath，缺值向後相容、錯值不fallback；接 apps/desktop/core/src/security.rs 與 apps/desktop/src-tauri/src/security_commands.rs 的讀寫IPC，回standardsPath／effectivePath／isDefault／access的camelCase型別，殼只委派。以 cargo test -p speclink-host 及 cargo test -p speclink-desktop-core 驗14.1、busy與路徑快照、唯讀候選可儲存及失敗保草稿。",
+      "repo": "main",
+      "headCommit": "945175c570c904acd9245a5757429b39977289b1",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/appSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/securityDataPage.test.tsx",
+        "apps/desktop/src/views/settings/SecurityDataPage.tsx",
+        "docs/development.md",
+        "docs/development.zh-TW.md"
+      ],
+      "recordedAt": "2026-10-21T04:21:53Z"
     }
   ]
 }

@@ -88,6 +88,9 @@ impl JobError {
             | "preferences_invalid"
             | "invalid_request"
             | "file_exists"
+            | "shared_data"
+            | "settings_write_failed"
+            | "invalid_path"
             | "storage_error" => code,
             _ => "data_error",
         })
@@ -149,6 +152,11 @@ pub struct SecurityJobs {
     jobs: Arc<Mutex<BTreeMap<String, Arc<JobState>>>>,
 }
 impl SecurityJobs {
+    pub fn write_data_paths(&self, application_data:&Path, path:Option<String>) -> std::result::Result<speclink_host::security_paths::PathSnapshot,JobError> {
+        let jobs=self.jobs.lock().map_err(|_|JobError::new("data_error"))?;
+        if jobs.values().any(|job|job.outcome.lock().map_or(true,|outcome|outcome.is_none())) { return Err(JobError::new("busy")); }
+        speclink_host::security_paths::write_at(&speclink_host::context::global_config_dir(),application_data,path).map_err(|e|JobError::from_message(&e.to_string()))
+    }
     fn launch(
         &self,
         job: DataJob,
@@ -297,16 +305,23 @@ impl SecurityJobs {
 pub fn list_data_at(
     application_data: &Path,
 ) -> std::result::Result<security_data::StandardDataList, JobError> {
-    let result = speclink_fs::security::FsSecurityData::new(application_data)
+    let result = repository_at(application_data)
         .and_then(|repository| security_data::list_data(&repository));
     result.map_err(|e| JobError::from_message(&e.to_string()))
+}
+pub fn repository_at(application_data:&Path)->anyhow::Result<speclink_fs::security::FsSecurityData> {
+    let paths=speclink_host::security_paths::lease(application_data)?;
+    Ok(speclink_fs::security::FsSecurityData::with_standard_root(application_data,&paths.standards_root)?.hold_path_lease(paths.lock))
+}
+pub fn data_paths_at(application_data:&Path)->std::result::Result<speclink_host::security_paths::PathSnapshot,JobError> {
+    speclink_host::security_paths::read_at(&speclink_host::context::global_config_dir(),application_data).map_err(|e|JobError::from_message(&e.to_string()))
 }
 pub fn remember_policy_at(
     application_data: &Path,
     key: &str,
     policy: &speclink_core::security::policy::SecurityPolicy,
 ) -> std::result::Result<(), JobError> {
-    speclink_fs::security::FsSecurityData::new(application_data)
+    repository_at(application_data)
         .and_then(|r| r.remember_policy(key, policy))
         .map_err(|e| JobError::from_message(&e.to_string()))
 }
@@ -325,7 +340,7 @@ fn execute_data_with_network(
         None => OfficialTransport::new(job),
     };
     let run = || -> Result<Value, Box<dyn std::error::Error>> {
-        let repository = speclink_fs::security::FsSecurityData::new(application_data)?;
+        let repository = repository_at(application_data)?;
         job.check()?;
         let value = match request {
             DataRequest::Refresh => serde_json::to_value(security_data::refresh_data(
@@ -595,7 +610,7 @@ impl SecurityJobs {
         let worker_key = key.clone();
         self.launch(DataJob::new(Arc::new(AtomicBool::new(false))),&key,move|job|{
             let run=||->BoundaryResult<Value>{
-                let data=speclink_fs::security::FsSecurityData::new(&application_data)?;
+                let data=repository_at(&application_data)?;
                 let prepared=speclink_fs::security::prepared::FsPreparedReviews::new(&application_data)?;
                 let reports=speclink_fs::security::reports::FsSecurityReports::new(&application_data)?;
                 let budget=speclink_host::security::ReviewBudget::with_job_id(job.id.clone(),job.cancellation_token());
@@ -687,6 +702,14 @@ pub fn reveal_report_path_at(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn changing_paths_refuses_a_pending_job_before_touching_preferences() {
+        let jobs=SecurityJobs::default();let root=tempfile::tempdir().unwrap();
+        let (finish,wait)=std::sync::mpsc::channel();
+        let ticket=jobs.launch(DataJob::new(Arc::new(AtomicBool::new(false))),"application-data",move |_|{wait.recv().unwrap();Ok(serde_json::json!({}))}).unwrap();
+        assert_eq!(jobs.write_data_paths(root.path(),Some("relative".into())).unwrap_err().code,"busy");
+        finish.send(()).unwrap();jobs.wait(&ticket.job_id,&ticket.project_key).unwrap();
+    }
     #[test]
     fn network_job_errors_preserve_safe_codes_without_external_details() {
         for code in ["proxy_unsupported","proxy_invalid","preferences_invalid"] {
@@ -871,7 +894,7 @@ impl SecurityJobs {
         self.launch(DataJob::new(Arc::new(AtomicBool::new(false))),&key,move|job|{
             let run=||->BoundaryResult<Value>{
                 let reader=reader.as_ref().ok_or("source_unavailable")?;
-                let data=speclink_fs::security::FsSecurityData::new(&application_data)?;
+                let data=repository_at(&application_data)?;
                 let text=if target.binding.is_remote(){
                     if target.proposal_project_key.is_none(){return Err("unsupported_version".into());}
                     speclink_fs::security::prepared::FsPreparedReviews::new(&application_data)?.load_policy(&target.binding.project_key(),target.change_name.as_deref())?.ok_or("missing_preparation")?.policy_text
@@ -891,7 +914,7 @@ pub fn remote_attestation_at(application_data:&Path,input:&ReviewTargetInput,cha
         let reader=reader.as_ref().ok_or("source_unavailable")?;
         let prepared=speclink_fs::security::prepared::FsPreparedReviews::new(application_data)?;
         let snapshot=prepared.load(&target.binding.project_key(),Some(change))?.ok_or("missing_preparation")?;
-        let data=speclink_fs::security::FsSecurityData::new(application_data)?;
+        let data=repository_at(application_data)?;
         let budget=speclink_host::security::ReviewBudget::new(Arc::new(AtomicBool::new(false)));
         let (context,_)=speclink_host::security::prepared_submission_context(&target,reader,&data,&snapshot,None,None,&budget)?;
         Ok(speclink_host::security::source_attestation(&context,&data)?)
@@ -903,7 +926,7 @@ pub fn review_view_at(application_data:&Path,root:&Path,change:&str)->Result<spe
     let reader=speclink_fs::security::scan::AuthorizedProject::open(&ctx.workspace.root).map_err(|e|e.to_string())?;
     let target=speclink_host::security::ReviewTarget::local(reader.root(),&ctx.workspace.spec_dir_name,Some(change.into())).map_err(|e|e.to_string())?;
     let policy=speclink_core::config::WorkflowConfig::from_text(ctx.store.read_workflow_config().as_deref()).map_err(|e|e.to_string())?.security();
-    let data=speclink_fs::security::FsSecurityData::new(application_data).map_err(|e|e.to_string())?;
+    let data=repository_at(application_data).map_err(|e|e.to_string())?;
     let budget=speclink_host::security::ReviewBudget::new(Arc::new(AtomicBool::new(false)));
     let context=if ctx.store.change_exists(change){speclink_host::security::submission_context(&target,&reader,&data,&ctx.store,None,&budget).ok()}else{None};
     let fresh=context.as_ref().map(|(c,_)|speclink_host::security::fresh_evidence(c));

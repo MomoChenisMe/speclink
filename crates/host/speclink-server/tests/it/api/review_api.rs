@@ -487,3 +487,30 @@ fn reader_queries_completed_security_history_without_checkout_or_mutation(){
     let value=serde_json::to_value(response).unwrap();assert_eq!(value["records"],serde_json::json!([]));
     assert_eq!(f.store.snapshot(&scope()).unwrap().revision(),before);
 }
+
+#[test]
+fn disconnected_standard_root_does_not_block_report_queries() {
+    const CHILD: &str = "SPECLINK_TEST_DISCONNECTED_REPORT";
+    if std::env::var_os(CHILD).is_none() {
+        // Device settings are process-wide. Isolate this fixture from parallel HTTP tests.
+        let home = tempfile::tempdir().unwrap();
+        let config = if cfg!(windows) {home.path().join("AppData/Roaming/speclink")} else if cfg!(target_os="macos") {home.path().join("Library/Application Support/speclink")} else {home.path().join("config/speclink")};
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::write(config.join("security-data-preferences.json"),serde_json::to_vec(&serde_json::json!({"formatVersion":1,"standardsPath":home.path().join("disconnected")})).unwrap()).unwrap();
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact","api::review_api::disconnected_standard_root_does_not_block_report_queries","--nocapture"])
+            .env(CHILD,"1").env("HOME",home.path()).env("USERPROFILE",home.path())
+            .env("XDG_CONFIG_HOME",home.path().join("config")).env("LOCALAPPDATA",home.path().join("data"))
+            .env_remove("SPECLINK_PORTABLE").output().unwrap();
+        assert!(output.status.success(),"{}\n{}",String::from_utf8_lossy(&output.stdout),String::from_utf8_lossy(&output.stderr));
+        assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+        return;
+    }
+    let data = speclink_host::context::security_data_dir().unwrap();
+    assert!(speclink_host::security_paths::lease(&data).is_err(),"fixture must have an unavailable standard root");
+    let f = fixture();
+    let before = f.store.snapshot(&scope()).unwrap().revision();
+    let error = client(&f.base,&f.reader_pat).security_change_report("demo-change","01M5CP8YW64XQ0Y57ACZRH3PPE").unwrap_err();
+    assert!(error.message.contains("unknown_report"),"report lookup must reach the store: {error:?}");
+    assert_eq!(f.store.snapshot(&scope()).unwrap().revision(),before);
+}

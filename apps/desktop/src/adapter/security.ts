@@ -2,6 +2,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 
+export interface SecurityDataPaths { standardsPath:string|null; effectivePath:string; isDefault:boolean; access:"readWrite"|"readOnly"|"unavailable" }
+export const readSecurityDataPaths=():Promise<SecurityDataPaths>=>invoke("security_data_paths_read");
+export const writeSecurityDataPaths=(standardsPath:string|null):Promise<SecurityDataPaths>=>invoke("security_data_paths_write",{standardsPath});
+export async function chooseSecurityDataDirectory():Promise<string|null> {const path=await open({directory:true,multiple:false});return typeof path==="string"?path:null;}
+
 export interface StandardSelection { enabled: boolean; version: string | null }
 export interface SecurityPolicy {
   enabled: boolean;
