@@ -233,7 +233,10 @@ pub fn builtin_schemas() -> Vec<SchemaEntry> {
 /// `list_all` 同序）。逐目錄走引擎 `load_dir` 解析——同名跨層各自成項、內容
 /// 各自正確（`resolve_with` 只回第一命中，對被 shadow 的層會答錯內容）。
 fn schemas_snapshot(ws: Option<&Workspace>, user_dir: Option<&Path>) -> Vec<SchemaEntry> {
-    let mut out = vec![schema_entry(&speclink_core::schema::spec_driven())];
+    let mut out: Vec<SchemaEntry> = speclink_core::schema::builtin_names()
+        .filter_map(speclink_core::schema::builtin)
+        .map(|schema| schema_entry(&schema))
+        .collect();
     for (dir, src) in speclink_core::schema::schema_dirs(ws, user_dir) {
         let mut names: Vec<String> = std::fs::read_dir(&dir)
             .map(|it| {
@@ -1044,6 +1047,7 @@ mod tests {
     // --- context／rules／schemaArtifacts 讀取擴充（design D3） ---
 
     const SPEC_DRIVEN_IDS: [&str; 4] = ["proposal", "design", "specs", "tasks"];
+    const NO_SPEC_CHANGE_IDS: [&str; 3] = ["proposal", "design", "tasks"];
 
     // --- 產出流程快照組裝（desktop-schema-panel design D1） ---
 
@@ -1056,20 +1060,32 @@ mod tests {
 
     #[test]
     fn schemas_snapshot_lists_builtin_with_full_artifact_details() {
-        // spec Scenario「詳情唯讀呈現內容」的資料面：內建 spec-driven 的每個
-        // artifact 帶 description／instruction／template 全文。
+        // spec Scenario「詳情唯讀呈現內容」的資料面：內建 spec-driven 與 no-spec-change
+        // 依序在前，每個 artifact 帶 description／instruction／template 全文。
         let fx = FixtureRoot::new("schemas-builtin");
         let ws = discovered(&fx);
         let snap = schemas_snapshot(Some(&ws), None);
-        assert_eq!(snap[0].name, "spec-driven");
-        assert_eq!(snap[0].source, "package");
-        assert_eq!(snap[0].artifact_ids, SPEC_DRIVEN_IDS, "artifact 圖為引擎顯示序");
-        assert_eq!(snap[0].error, None);
-        for id in SPEC_DRIVEN_IDS {
-            let a = snap[0].artifacts.iter().find(|a| a.id == id).expect("artifact present");
-            assert!(!a.description.is_empty(), "{id} description 全文");
-            assert!(a.instruction.as_deref().is_some_and(|s| !s.is_empty()), "{id} instruction 全文");
-            assert!(a.template.as_deref().is_some_and(|s| !s.is_empty()), "{id} template 全文");
+        let builtins: [(&str, &[&str]); 2] =
+            [("spec-driven", &SPEC_DRIVEN_IDS), ("no-spec-change", &NO_SPEC_CHANGE_IDS)];
+        let names: Vec<&str> = snap.iter().take(2).map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["spec-driven", "no-spec-change"], "內建依序在前");
+        for (entry, (name, ids)) in snap.iter().zip(builtins) {
+            assert_eq!(entry.name, name);
+            assert_eq!(entry.source, "package");
+            assert_eq!(entry.artifact_ids, ids, "{name}: artifact 圖為引擎顯示序");
+            assert_eq!(entry.error, None);
+            for id in ids {
+                let a = entry.artifacts.iter().find(|a| a.id == *id).expect("artifact present");
+                assert!(!a.description.is_empty(), "{name}/{id} description 全文");
+                assert!(
+                    a.instruction.as_deref().is_some_and(|s| !s.is_empty()),
+                    "{name}/{id} instruction 全文"
+                );
+                assert!(
+                    a.template.as_deref().is_some_and(|s| !s.is_empty()),
+                    "{name}/{id} template 全文"
+                );
+            }
         }
     }
 
@@ -1091,10 +1107,15 @@ mod tests {
             snap.iter().map(|s| (s.name.as_str(), s.source.as_str())).collect();
         assert_eq!(
             names,
-            [("spec-driven", "package"), ("my-flow", "project"), ("their-flow", "user")],
+            [
+                ("spec-driven", "package"),
+                ("no-spec-change", "package"),
+                ("my-flow", "project"),
+                ("their-flow", "user"),
+            ],
             "內建先、專案層次之、user 層最後"
         );
-        let custom = &snap[1];
+        let custom = &snap[2];
         assert_eq!(custom.artifact_ids, ["plan"]);
         let plan = &custom.artifacts[0];
         assert_eq!(plan.description, "計畫文件");
@@ -1130,13 +1151,21 @@ mod tests {
     }
 
     #[test]
-    fn builtin_schemas_lists_only_the_embedded_builtin() {
+    fn builtin_schemas_lists_only_the_embedded_builtins() {
         // remote 面資料來源（design D3 前置）：只有內嵌內建，不讀任何磁碟層。
         let snap = builtin_schemas();
-        assert_eq!(snap.len(), 1);
-        assert_eq!(snap[0].name, "spec-driven");
-        assert_eq!(snap[0].source, "package");
-        assert_eq!(snap[0].artifact_ids, SPEC_DRIVEN_IDS);
+        let rows: Vec<(&str, &str, Vec<String>)> = snap
+            .iter()
+            .map(|s| (s.name.as_str(), s.source.as_str(), s.artifact_ids.clone()))
+            .collect();
+        let ids = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            rows,
+            [
+                ("spec-driven", "package", ids(&SPEC_DRIVEN_IDS)),
+                ("no-spec-change", "package", ids(&NO_SPEC_CHANGE_IDS)),
+            ]
+        );
     }
 
     #[test]
@@ -1194,6 +1223,28 @@ mod tests {
 
         let s = read_workflow_settings_from_text(Some("schema: spec-driven\n"));
         assert_eq!(s.schema_artifacts, SPEC_DRIVEN_IDS, "內嵌定義解析，本機定義不參與");
+        assert!(s.schema_known);
+    }
+
+    #[test]
+    fn remote_snapshot_resolves_no_spec_change_by_the_embedded_definition() {
+        // spec Example「remote 解析結果表」no-spec-change 列：本機 user 層有同名時
+        // 也以內嵌定義解析，artifact 圖為 proposal、design、tasks。
+        let fx = FixtureRoot::new("remote-schema-nsc");
+        fx.write(
+            "userdir/schemas/no-spec-change/schema.yaml",
+            &CUSTOM_SCHEMA_YAML.replace("my-flow", "no-spec-change"),
+        );
+        fx.write("userdir/schemas/no-spec-change/templates/plan.md", "# shadow\n");
+        let user_dir = fx.root().join("userdir");
+        let shadowed =
+            speclink_core::schema::resolve_with(None, Some(&user_dir), "no-spec-change")
+                .expect("found")
+                .expect("parses");
+        assert_eq!(shadowed.artifact_ids(), ["plan"], "user 層定義若參與，artifact 圖不同");
+
+        let s = read_workflow_settings_from_text(Some("schema: no-spec-change\n"));
+        assert_eq!(s.schema_artifacts, NO_SPEC_CHANGE_IDS, "內嵌定義解析，本機定義不參與");
         assert!(s.schema_known);
     }
 

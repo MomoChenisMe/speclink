@@ -295,6 +295,7 @@ static REVIEW_COMMANDS: std::sync::LazyLock<String> = std::sync::LazyLock::new(|
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WorkflowConfigJson {
+    schema: Option<String>,
     locale: Option<String>,
     spec_locale: Option<String>,
     tdd: bool,
@@ -480,6 +481,7 @@ fn print_workflow_config(original: &str, label: &str, json: bool) -> Result<()> 
         .map_err(|e| anyhow::anyhow!("invalid {label}: {}", e.reason))?;
     if json {
         return print_json(&WorkflowConfigJson {
+            schema: cfg.schema.clone(),
             locale: cfg.locale.clone(),
             spec_locale: cfg.spec_locale.clone(),
             tdd: cfg.tdd.unwrap_or(false),
@@ -492,6 +494,11 @@ fn print_workflow_config(original: &str, label: &str, json: bool) -> Result<()> 
     }
     println!("{} {label}", color::bold("Workflow config:"));
     println!();
+    let schema = match cfg.schema.as_deref() {
+        Some(v) => v.to_string(),
+        None => "unset (spec-driven)".to_string(),
+    };
+    println!("  {:<13}{schema}", "schema");
     let locale = match cfg.locale.as_deref() {
         Some(v) => v.to_string(),
         None => "unset (English)".to_string(),

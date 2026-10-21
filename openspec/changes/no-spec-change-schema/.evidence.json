@@ -1,0 +1,264 @@
+{
+  "version": 2,
+  "change": "no-spec-change-schema",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 （Red）crates/engine/speclink-core/src/workspace/schema.rs 的測試釘住需求「單一正典載入」與「no-spec-change 內建 schema 的組成」：`resolve_with(None, None, \"no-spec-change\")` 解析成功，artifact 依序為 proposal、design、tasks，design 與 tasks 前置為 proposal，applyRequires 為 tasks，沒有 specs；三個 artifact 的 template 非空，design 與 tasks 的 template 與 spec-driven 逐字相同，proposal template 不含 `## Capabilities`；description 為「No-spec-change workflow - proposal → tasks (design optional), for changes that alter no promised behavior」；`list_all` 依序列出 spec-driven 與 no-spec-change 兩個 package 項；專案層同名 schema 遮蔽內建。驗證：`cargo test -p speclink-core schema` 這些測試失敗",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/schema.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 （Green）新增 crates/engine/speclink-core/assets/schema/no-spec-change/fork.schema.yaml（proposal instruction 要求 Why 寫明不改正式規格承諾行為的理由並列出查過的規格；tasks instruction 要求最後一個任務以既有測試確認行為未變、不要求引用 requirement 名稱；design instruction 與 spec-driven 逐字相同）與 crates/engine/speclink-core/assets/schema/no-spec-change/proposal.template.md；在 schema.rs 建立內建登記表，`sources`、`resolve_with`、`builtin_template`、`list_all` 改查登記表，`spec_driven()` 保留為薄包裝。驗證：`cargo test -p speclink-core schema` 通過",
+      "files": [
+        "crates/engine/speclink-core/assets/schema/no-spec-change/fork.schema.yaml",
+        "crates/engine/speclink-core/assets/schema/no-spec-change/proposal.template.md"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 （Red→Green）crates/adapters/speclink-cli/tests/it 新增整合測試：`speclink schema fork no-spec-change` 產出的 schema.yaml 與內嵌正典 YAML 逐位元組相同、templates/ 下有三份檔；`speclink schemas` 同時列出兩個內建且 description 為正典字面；`speclink schema which --all` 在專案層有同名時列出 project 與被遮蔽的內建；既有 `schemas` 與 `which --all` 測試的期望值同批更新為兩個內建。驗證：`cargo test -p speclink-cli --test it` 通過，spec-driven 相關 golden 未修改",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/schema_commands.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 （Red）crates/engine/speclink-core/src/quality/validate.rs 的測試：schema 為 no-spec-change 且沒有 delta 的變更，結構檢查結果有效且沒有「No delta specs found」；schema 為 spec-driven 且沒有 delta 的變更照舊帶該警告；schema 名稱解析不到時照舊帶該警告。驗證：`cargo test -p speclink-core validate` 新測試失敗",
+      "files": [
+        "crates/engine/speclink-core/src/quality/validate.rs",
+        "crates/engine/speclink-core/src/quality/validate/tests.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.2 （Green）validate.rs 在發出「No delta specs found」前解析變更的 schema，解析成功且沒有 id 為 `specs` 的 artifact 時不警告。驗證：`cargo test -p speclink-core validate` 通過",
+      "files": [
+        "apps/desktop/core/src/verbs.rs",
+        "crates/engine/speclink-core/src/command/mod.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "2.3 crates/adapters/speclink-cli/tests/it 新增整合測試走完需求「no-spec-change 內建 schema 的組成」的情境：`speclink new change tidy --schema no-spec-change` 後 `speclink status --change tidy --json` 的 `schemaName`、`artifacts`、`applyRequires` 符合規格；`speclink instructions proposal --change tidy --json` 的 `template` 沒有 `## Capabilities`；`speclink validate tidy` 沒有缺 delta 警告；任務勾完後 `speclink archive tidy`（不帶 `--skip-specs`）成功且 `openspec/specs/` 不變。驗證：`cargo test -p speclink-cli --test it` 通過",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/main.rs",
+        "crates/adapters/speclink-cli/tests/it/no_spec_change_lifecycle.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.1 （Red）apps/desktop/core/src/settings.rs 的測試釘住需求「remote 模式的內建限縮與誤解析修正」：`builtin_schemas()` 依序回傳 spec-driven 與 no-spec-change；本機快照內建在前、兩個內建都帶完整 artifact 細節；遠端快照以內嵌定義解析 `no-spec-change`（本機 user 層有同名時也不參與），artifact 圖為 proposal、design、tasks；既有只斷言一個內建的測試期望值同批更新。驗證：`cargo test -p speclink-desktop-core settings` 新測試失敗",
+      "files": [
+        "apps/desktop/core/src/settings.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.1 （Red）crates/adapters/speclink-cli/tests/it/workflow_config.rs 的測試釘住需求「workflow-config show 動詞」的 schema 輸出：config 寫 `schema: my-flow` 時 `speclink workflow-config show --json` 的 `schema` 為 \"my-flow\"、沒寫時為 null；`--no-color` 人眼輸出在 locale 行之前恰有一行 `schema`（未設定為 `unset (spec-driven)`）、標籤欄寬與 locale 行相同；既有整段人眼輸出期望值同批加上 schema 行。驗證：`cargo test -p speclink-cli --test it workflow_config` 新測試失敗",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/workflow_config.rs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.2 （Green）crates/adapters/speclink-cli/src/verbs/config.rs 的 workflow-config show 輸出加上 schema（人眼一行、`--json` 一欄），fs 與 remote 共用同一個輸出函式。驗證：`cargo test -p speclink-cli --test it workflow_config` 通過，其餘各行與欄位的既有斷言不變",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/config.rs"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.1 （Red）crates/engine/speclink-core/tests/it/render_golden.rs 新增測試 `propose_skill_chooses_schema`：claude 與 codex 生成的 speclink-propose 含需求「依是否改到正式規格選擇 schema」的四條依序規則、判斷不了時以兩個選項詢問、`speclink new change \"<name>\" --schema`、選了 no-spec-change 時 proposal 不含 Capabilities 且 Why 列出查過的規格、收尾摘要的「不改規格（no-spec-change）」；新增測試 `verify_skill_checks_behavior_for_no_spec_change`：生成的 speclink-verify 含需求「不改規格變更的行為檢查」的分支條件 `schemaName` 為 `no-spec-change`、從 proposal Why 列出的規格出發、WARNING 字面 `Behavior change in a no-spec-change change:`、沒發現時列出比對過的規格。驗證：`cargo test -p speclink-core --test it propose_skill_chooses_schema verify_skill_checks_behavior_for_no_spec_change` 失敗",
+      "files": [
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "5.2 （Green）crates/engine/speclink-core/assets/skills/propose.md：在掃描既有規格的步驟之後新增選擇 schema 的步驟（D4），建立變更的兩個指令範例加上 `--schema <chosen>`，proposal 撰寫步驟加入 no-spec-change 分支，收尾摘要寫出選定的 schema；不新增大寫強調字。驗證：`cargo test -p speclink-core --test it propose_skill_chooses_schema` 通過，`cargo test -p speclink-core --test it skill_authoring` 通過（propose.md 強調字仍為 6、行數不超過 500）",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/propose.md"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "5.3 （Green）crates/engine/speclink-core/assets/skills/verify.md：讀取 status 的步驟記下 `schemaName`，Verify Completeness 與 Verify Correctness 加入 no-spec-change 的行為檢查分支（D5）；不新增大寫強調字。驗證：`cargo test -p speclink-core --test it verify_skill_checks_behavior_for_no_spec_change` 通過，`cargo test -p speclink-core --test it skill_authoring` 通過（verify.md 強調字仍為 20）",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/verify.md"
+      ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "5.4 依 D6 把 crates/engine/speclink-core/src/workspace/init.rs 的 ASSET_VERSION 由 v1.49.0 升為 v1.50.0，以 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden` 再生 crates/engine/speclink-core/tests/golden/ 下的 snapshot，以 `UPDATE_ASSETS_LOCK=1 cargo test -p speclink-core --test it render_golden` 再生 crates/engine/speclink-core/tests/golden/assets.lock。驗證：`git diff crates/engine/speclink-core/tests/golden` 只出現 propose、verify 兩份技能內文與版號行的差異，`cargo test -p speclink-core --test it render_golden` 通過",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M5EQ6ZZGN895KYMK62898TJX",
+      "taskDesc": "1.1 （Red）crates/engine/speclink-core/src/workspace/schema.rs 的測試釘住需求「單一正典載入」與「no-spec-change 內建 schema 的組成」：`resolve_with(None, None, \"no-spec-change\")` 解析成功，artifact 依序為 proposal、design、tasks，design 與 tasks 前置為 proposal，applyRequires 為 tasks，沒有 specs；三個 artifact 的 template 非空，design 與 tasks 的 template 與 spec-driven 逐字相同，proposal template 不含 `## Capabilities`；description 為「No-spec-change workflow - proposal → tasks (design optional), for changes that alter no promised behavior」；`list_all` 依序列出 spec-driven 與 no-spec-change 兩個 package 項；專案層同名 schema 遮蔽內建。驗證：`cargo test -p speclink-core schema` 這些測試失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ba462a076fd62fa5cc632c6ba09ba6ef4be98a25",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/schema.rs"
+      ],
+      "recordedAt": "2026-10-21T12:11:47Z"
+    },
+    {
+      "taskId": "tsk_01M5EQ6ZZGENVD92MT1MRCX297",
+      "taskDesc": "1.2 （Green）新增 crates/engine/speclink-core/assets/schema/no-spec-change/fork.schema.yaml（proposal instruction 要求 Why 寫明不改正式規格承諾行為的理由並列出查過的規格；tasks instruction 要求最後一個任務以既有測試確認行為未變、不要求引用 requirement 名稱；design instruction 與 spec-driven 逐字相同）與 crates/engine/speclink-core/assets/schema/no-spec-change/proposal.template.md；在 schema.rs 建立內建登記表，`sources`、`resolve_with`、`builtin_template`、`list_all` 改查登記表，`spec_driven()` 保留為薄包裝。驗證：`cargo test -p speclink-core schema` 通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ba462a076fd62fa5cc632c6ba09ba6ef4be98a25",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/schema/no-spec-change/fork.schema.yaml",
+        "crates/engine/speclink-core/assets/schema/no-spec-change/proposal.template.md"
+      ],
+      "recordedAt": "2026-10-21T12:13:41Z"
+    },
+    {
+      "taskId": "tsk_01M5EQ6ZZGCDZC8QE57AW14NDV",
+      "taskDesc": "1.3 （Red→Green）crates/adapters/speclink-cli/tests/it 新增整合測試：`speclink schema fork no-spec-change` 產出的 schema.yaml 與內嵌正典 YAML 逐位元組相同、templates/ 下有三份檔；`speclink schemas` 同時列出兩個內建且 description 為正典字面；`speclink schema which --all` 在專案層有同名時列出 project 與被遮蔽的內建；既有 `schemas` 與 `which --all` 測試的期望值同批更新為兩個內建。驗證：`cargo test -p speclink-cli --test it` 通過，spec-driven 相關 golden 未修改",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ba462a076fd62fa5cc632c6ba09ba6ef4be98a25",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/schema_commands.rs"
+      ],
+      "recordedAt": "2026-10-21T12:15:18Z"
+    },
+    {
+      "taskId": "tsk_01M5EQ6ZZG3JC5K8J4QQTMH8F1",
+      "taskDesc": "2.1 （Red）crates/engine/speclink-core/src/quality/validate.rs 的測試：schema 為 no-spec-change 且沒有 delta 的變更，結構檢查結果有效且沒有「No delta specs found」；schema 為 spec-driven 且沒有 delta 的變更照舊帶該警告；schema 名稱解析不到時照舊帶該警告。驗證：`cargo test -p speclink-core validate` 新測試失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ba462a076fd62fa5cc632c6ba09ba6ef4be98a25",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/quality/validate.rs",
+        "crates/engine/speclink-core/src/quality/validate/tests.rs"
+      ],
+      "recordedAt": "2026-10-21T12:17:09Z"
+    },
+    {
+      "taskId": "tsk_01M5EQ6ZZGKJ4NP7G3QXY3Q6ER",
+      "taskDesc": "2.2 （Green）validate.rs 在發出「No delta specs found」前解析變更的 schema，解析成功且沒有 id 為 `specs` 的 artifact 時不警告。驗證：`cargo test -p speclink-core validate` 通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ba462a076fd62fa5cc632c6ba09ba6ef4be98a25",
+      "touchedFiles": [
+        "apps/desktop/core/src/verbs.rs",
+        "crates/engine/speclink-core/src/command/mod.rs"
+      ],
+      "recordedAt": "2026-10-21T12:18:00Z"
+    },
+    {
+      "taskId": "tsk_01M5EQ6ZZGTMKCEGHBR9Q0P72F",
+      "taskDesc": "2.3 crates/adapters/speclink-cli/tests/it 新增整合測試走完需求「no-spec-change 內建 schema 的組成」的情境：`speclink new change tidy --schema no-spec-change` 後 `speclink status --change tidy --json` 的 `schemaName`、`artifacts`、`applyRequires` 符合規格；`speclink instructions proposal --change tidy --json` 的 `template` 沒有 `## Capabilities`；`speclink validate tidy` 沒有缺 delta 警告；任務勾完後 `speclink archive tidy`（不帶 `--skip-specs`）成功且 `openspec/specs/` 不變。驗證：`cargo test -p speclink-cli --test it` 通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ba462a076fd62fa5cc632c6ba09ba6ef4be98a25",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/main.rs",
+        "crates/adapters/speclink-cli/tests/it/no_spec_change_lifecycle.rs"
+      ],
+      "recordedAt": "2026-10-21T12:19:02Z"
+    },
+    {
+      "taskId": "tsk_01M5EQ6ZZG6M46SX0EQGZ4TDW9",
+      "taskDesc": "3.1 （Red）apps/desktop/core/src/settings.rs 的測試釘住需求「remote 模式的內建限縮與誤解析修正」：`builtin_schemas()` 依序回傳 spec-driven 與 no-spec-change；本機快照內建在前、兩個內建都帶完整 artifact 細節；遠端快照以內嵌定義解析 `no-spec-change`（本機 user 層有同名時也不參與），artifact 圖為 proposal、design、tasks；既有只斷言一個內建的測試期望值同批更新。驗證：`cargo test -p speclink-desktop-core settings` 新測試失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ba462a076fd62fa5cc632c6ba09ba6ef4be98a25",
+      "touchedFiles": [
+        "apps/desktop/core/src/settings.rs"
+      ],
+      "recordedAt": "2026-10-21T12:20:06Z"
+    },
+    {
+      "taskId": "tsk_01M5F9SP02X9A81R9J4NV8ESYB",
+      "taskDesc": "4.1 （Red）crates/adapters/speclink-cli/tests/it/workflow_config.rs 的測試釘住需求「workflow-config show 動詞」的 schema 輸出：config 寫 `schema: my-flow` 時 `speclink workflow-config show --json` 的 `schema` 為 \"my-flow\"、沒寫時為 null；`--no-color` 人眼輸出在 locale 行之前恰有一行 `schema`（未設定為 `unset (spec-driven)`）、標籤欄寬與 locale 行相同；既有整段人眼輸出期望值同批加上 schema 行。驗證：`cargo test -p speclink-cli --test it workflow_config` 新測試失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ba462a076fd62fa5cc632c6ba09ba6ef4be98a25",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/workflow_config.rs"
+      ],
+      "recordedAt": "2026-10-21T13:18:50Z"
+    },
+    {
+      "taskId": "tsk_01M5F9SP02CPWHN50C8HTGA35E",
+      "taskDesc": "4.2 （Green）crates/adapters/speclink-cli/src/verbs/config.rs 的 workflow-config show 輸出加上 schema（人眼一行、`--json` 一欄），fs 與 remote 共用同一個輸出函式。驗證：`cargo test -p speclink-cli --test it workflow_config` 通過，其餘各行與欄位的既有斷言不變",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ba462a076fd62fa5cc632c6ba09ba6ef4be98a25",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/config.rs"
+      ],
+      "recordedAt": "2026-10-21T13:19:13Z"
+    },
+    {
+      "taskId": "tsk_01M5EQ6ZZGNVWJMFS9P7J5A8G0",
+      "taskDesc": "5.1 （Red）crates/engine/speclink-core/tests/it/render_golden.rs 新增測試 `propose_skill_chooses_schema`：claude 與 codex 生成的 speclink-propose 含需求「依是否改到正式規格選擇 schema」的四條依序規則、判斷不了時以兩個選項詢問、`speclink new change \"<name>\" --schema`、選了 no-spec-change 時 proposal 不含 Capabilities 且 Why 列出查過的規格、收尾摘要的「不改規格（no-spec-change）」；新增測試 `verify_skill_checks_behavior_for_no_spec_change`：生成的 speclink-verify 含需求「不改規格變更的行為檢查」的分支條件 `schemaName` 為 `no-spec-change`、從 proposal Why 列出的規格出發、WARNING 字面 `Behavior change in a no-spec-change change:`、沒發現時列出比對過的規格。驗證：`cargo test -p speclink-core --test it propose_skill_chooses_schema verify_skill_checks_behavior_for_no_spec_change` 失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ba462a076fd62fa5cc632c6ba09ba6ef4be98a25",
+      "touchedFiles": [
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ],
+      "recordedAt": "2026-10-21T13:20:12Z"
+    },
+    {
+      "taskId": "tsk_01M5EQ6ZZGGAQFKKQHFFAH7F2W",
+      "taskDesc": "5.2 （Green）crates/engine/speclink-core/assets/skills/propose.md：在掃描既有規格的步驟之後新增選擇 schema 的步驟（D4），建立變更的兩個指令範例加上 `--schema <chosen>`，proposal 撰寫步驟加入 no-spec-change 分支，收尾摘要寫出選定的 schema；不新增大寫強調字。驗證：`cargo test -p speclink-core --test it propose_skill_chooses_schema` 通過，`cargo test -p speclink-core --test it skill_authoring` 通過（propose.md 強調字仍為 6、行數不超過 500）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ba462a076fd62fa5cc632c6ba09ba6ef4be98a25",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/propose.md"
+      ],
+      "recordedAt": "2026-10-21T13:21:00Z"
+    },
+    {
+      "taskId": "tsk_01M5EQ6ZZG647BQYPWZRGE2BA7",
+      "taskDesc": "5.3 （Green）crates/engine/speclink-core/assets/skills/verify.md：讀取 status 的步驟記下 `schemaName`，Verify Completeness 與 Verify Correctness 加入 no-spec-change 的行為檢查分支（D5）；不新增大寫強調字。驗證：`cargo test -p speclink-core --test it verify_skill_checks_behavior_for_no_spec_change` 通過，`cargo test -p speclink-core --test it skill_authoring` 通過（verify.md 強調字仍為 20）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ba462a076fd62fa5cc632c6ba09ba6ef4be98a25",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/verify.md"
+      ],
+      "recordedAt": "2026-10-21T13:21:11Z"
+    },
+    {
+      "taskId": "tsk_01M5EQ6ZZG6QANZHP9KMW6WV8G",
+      "taskDesc": "5.4 依 D6 把 crates/engine/speclink-core/src/workspace/init.rs 的 ASSET_VERSION 由 v1.49.0 升為 v1.50.0，以 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden` 再生 crates/engine/speclink-core/tests/golden/ 下的 snapshot，以 `UPDATE_ASSETS_LOCK=1 cargo test -p speclink-core --test it render_golden` 再生 crates/engine/speclink-core/tests/golden/assets.lock。驗證：`git diff crates/engine/speclink-core/tests/golden` 只出現 propose、verify 兩份技能內文與版號行的差異，`cargo test -p speclink-core --test it render_golden` 通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ba462a076fd62fa5cc632c6ba09ba6ef4be98a25",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md"
+      ],
+      "recordedAt": "2026-10-21T13:21:35Z"
+    }
+  ]
+}

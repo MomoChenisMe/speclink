@@ -16,8 +16,10 @@ pub fn validate_at(root: &Path, change: &str) -> Result<Value, String> {
     let ctx = crate::require_context_for_change(root, change)?;
     let store: &dyn Store = &ctx.store;
     let change = find(store, change)?;
-    // 與 CLI 一致：validate 不解析 change 的 schema，一律用 spec_driven。
-    let schema = speclink_core::schema::spec_driven();
+    // 與 CLI 一致：以 change 自己的 schema 驗證，解析不到時以 spec-driven 代之。
+    let user_dir = speclink_host::context::global_config_dir();
+    let schema =
+        speclink_core::validate::change_schema(Some(&ctx.workspace), Some(&user_dir), &change);
     let result = speclink_core::validate::validate_change(store, &change, &schema, false);
     serde_json::to_value(&result).map_err(|e| e.to_string())
 }

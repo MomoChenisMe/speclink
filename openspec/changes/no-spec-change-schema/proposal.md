@@ -10,6 +10,7 @@ speclink 只有一個內建 schema（spec-driven），每個變更都要寫 delt
 - 判準只有一個：「這個變更會不會改到正式規格承諾的行為？」不會才選 `no-spec-change`。修 bug 多半要寫 delta 把正確行為釘住（52 個修 bug 的變更有 51 個寫了 delta），所以不等於 `no-spec-change`。
 - `no-spec-change` 的 proposal 在 Why 寫出「為什麼這個變更不改行為」，並列出查過的正式規格；tasks 最後要有一項以既有測試確認行為未變。
 - `speclink validate` 對 schema 沒有 specs 產出的變更，不再警告「No delta specs found」。
+- `speclink workflow-config show` 多顯示專案預設 schema（人眼輸出多一行 `schema`、`--json` 多 `schema` 欄位，config 沒寫時為 null），propose 技能據此判斷專案預設是不是自訂 schema。
 - propose 技能新增 schema 選擇：使用者指定時照指定；專案預設是自訂 schema 時用預設；來自討論時依討論結論判定；不經討論時依需求與正式規格掃描判定；判斷不了就問使用者；建立變更時帶 `--schema`。
 - verify 技能對 `no-spec-change` 變更改查「凍結 patch 有沒有改到正式規格承諾的行為」，改到時回報 WARNING（必修，擋章），建議改用 spec-driven 並補 delta。
 - LANGUAGE.md 新增「不改規格」詞條。
@@ -27,15 +28,16 @@ speclink 只有一個內建 schema（spec-driven），每個變更都要寫 delt
 - `propose-skill`: 新增依「是否改到正式規格」選擇 schema 的規則。
 - `verify-skill`: 新增「不改規格」變更的行為檢查。
 - `desktop-config`: 遠端模式切換下拉的可選目標由「只有 spec-driven」改為兩個內建 schema。
+- `workflow-config`: 「workflow-config show 動詞」的輸出新增專案預設 schema（人眼一行、`--json` 一欄）。
 
 ## Impact
 
-- Affected specs: `workflow-schemas`, `propose-skill`, `verify-skill`, `desktop-config`
+- Affected specs: `workflow-schemas`, `propose-skill`, `verify-skill`, `desktop-config`, `workflow-config`
 - Affected code:
   - New: crates/engine/speclink-core/assets/schema/no-spec-change/fork.schema.yaml, crates/engine/speclink-core/assets/schema/no-spec-change/proposal.template.md
-  - Modified: crates/engine/speclink-core/src/workspace/schema.rs, crates/engine/speclink-core/src/quality/validate.rs, crates/engine/speclink-core/assets/skills/propose.md, crates/engine/speclink-core/assets/skills/verify.md, crates/engine/speclink-core/src/workspace/init.rs, crates/engine/speclink-core/tests/golden/assets.lock, apps/desktop/core/src/settings.rs, openspec/LANGUAGE.md
-- 影響的 crate／app：speclink-core（內建 schema 登記、validate、技能原稿）、apps/desktop/core（schema 快照測試）；speclink-cli 與 speclink-server 透過既有的 schema 解析自動支援，不需改程式。
-- CLI：沒有新指令或旗標。`speclink schemas`、`speclink schema which --all` 多列出 `no-spec-change`；`speclink schema fork no-spec-change` 可用；`speclink new change --schema no-spec-change` 可用。
+  - Modified: crates/engine/speclink-core/src/workspace/schema.rs, crates/engine/speclink-core/src/quality/validate.rs, crates/engine/speclink-core/src/command/mod.rs, crates/adapters/speclink-cli/src/verbs/config.rs, crates/engine/speclink-core/assets/skills/propose.md, crates/engine/speclink-core/assets/skills/verify.md, crates/engine/speclink-core/src/workspace/init.rs, crates/engine/speclink-core/tests/golden/assets.lock, apps/desktop/core/src/settings.rs, apps/desktop/core/src/verbs.rs, openspec/LANGUAGE.md
+- 影響的 crate／app：speclink-core（內建 schema 登記、validate 依變更自己的 schema 驗證、技能原稿）、speclink-cli（`workflow-config show` 輸出 schema）、apps/desktop/core（schema 快照、validate 入口）；speclink-server 透過既有的 schema 解析與命令層自動支援，不需改程式。
+- CLI：沒有新指令或旗標。`speclink workflow-config show` 多一行 `schema`、`--json` 多 `schema` 欄位；`speclink schemas`、`speclink schema which --all` 多列出 `no-spec-change`；`speclink schema fork no-spec-change` 可用；`speclink new change --schema no-spec-change` 可用。
 - 設定欄位：`openspec/config.yaml` 的 `schema:` 可設為 `no-spec-change`（不建議當專案預設）；沒有新增欄位。
 - 生成的技能：speclink-propose 與 speclink-verify 的技能檔（claude、codex、copilot）內容改變；ASSET_VERSION 由 v1.49.0 升為 v1.50.0，golden snapshot 與 assets.lock 再生。
-- 相容性影響：`speclink schemas` 與 `schema which --all` 的人眼與 `--json` 輸出多一個內建項（刻意變更）；spec-driven 的載入、instructions 輸出與 fork 結果位元級不變；既有變更的 validate 輸出不變（它們的 schema 都有 specs 產出）。
+- 相容性影響：`speclink schemas` 與 `schema which --all` 的人眼與 `--json` 輸出多一個內建項（刻意變更）；`workflow-config show` 的人眼輸出在 locale 行之前多一行 `schema`、`--json` 多 `schema` 欄位，其餘各行與欄位不變（刻意變更）；spec-driven 的載入、instructions 輸出與 fork 結果位元級不變；既有變更的 validate 輸出不變（它們的 schema 都有 specs 產出）。

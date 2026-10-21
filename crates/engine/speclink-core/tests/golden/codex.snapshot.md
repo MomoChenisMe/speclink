@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.0"
+  version: "v1.50.0"
   generatedBy: "Speclink"
 ---
 
@@ -342,7 +342,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.0"
+  version: "v1.50.0"
   generatedBy: "Speclink"
 ---
 
@@ -685,7 +685,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.0"
+  version: "v1.50.0"
   generatedBy: "Speclink"
 ---
 
@@ -934,7 +934,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.0"
+  version: "v1.50.0"
   generatedBy: "Speclink"
 ---
 
@@ -1060,7 +1060,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.0"
+  version: "v1.50.0"
   generatedBy: "Speclink"
 ---
 
@@ -1371,7 +1371,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.0"
+  version: "v1.50.0"
   generatedBy: "Speclink"
 ---
 
@@ -1617,7 +1617,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.0"
+  version: "v1.50.0"
   generatedBy: "Speclink"
 ---
 
@@ -2103,7 +2103,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.0"
+  version: "v1.50.0"
   generatedBy: "Speclink"
 ---
 
@@ -2237,7 +2237,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.0"
+  version: "v1.50.0"
   generatedBy: "Speclink"
 ---
 
@@ -2434,7 +2434,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.0"
+  version: "v1.50.0"
   generatedBy: "Speclink"
 ---
 
@@ -2748,7 +2748,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.0"
+  version: "v1.50.0"
   generatedBy: "Speclink"
 ---
 
@@ -2963,7 +2963,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.0"
+  version: "v1.50.0"
   generatedBy: "Speclink"
 ---
 
@@ -2983,7 +2983,7 @@ If no argument is provided, the workflow extracts requirements from conversation
 
 **Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response.
 
-**This workflow writes artifacts, not code.** Never write application code or implement features during this workflow, never skip the artifact workflow to write code directly, and never reinterpret requirements by ignoring the proposal file. The workflow ends after step 11 and its landscape check — it NEVER invokes `$speclink-apply`; the user decides when implementation starts.
+**This workflow writes artifacts, not code.** Never write application code or implement features during this workflow, never skip the artifact workflow to write code directly, and never reinterpret requirements by ignoring the proposal file. The workflow ends after step 12 and its landscape check — it NEVER invokes `$speclink-apply`; the user decides when implementation starts.
 
 **Steps**
 
@@ -3045,7 +3045,7 @@ If no argument is provided, the workflow extracts requirements from conversation
    From the resolved description, derive a kebab-case change name (e.g., "add dark mode" → `add-dark-mode`).
    Do not keep archive-style date prefixes in active change names. If the source name starts with `YYYY-MM-DD-`, strip that date prefix before running `speclink new change`; archived change names and directories are historical references, not active names to reuse.
 
-   Do not continue past this step until you know what the user wants to build. This is the one point where a missing requirement stops the workflow; from step 2 on, prefer reasonable decisions over questions (step 7c).
+   Do not continue past this step until you know what the user wants to build. This is the one point where a missing requirement stops the workflow; from step 2 on, prefer reasonable decisions over questions (step 8c).
 
 2. **Classify the change type**
 
@@ -3057,7 +3057,7 @@ If no argument is provided, the workflow extracts requirements from conversation
    | Bug Fix  | Fixing existing behavior, resolving errors                          |
    | Refactor | Architecture improvements, performance optimization, UI adjustments |
 
-   This determines the proposal template format in step 5.
+   This determines the proposal template format in step 6.
 
 3. **Scan existing specs for relevance**
 
@@ -3067,20 +3067,31 @@ If no argument is provided, the workflow extracts requirements from conversation
    3. For each candidate (max 3), run `speclink show <spec-id>` and read the Purpose section at the top of the output
    4. Related specs found → display them as an informational summary, then continue to the next step — do not stop or ask for confirmation
    5. No related specs found → proceed without pausing
-   6. Either way, leave a trace of the scan result in the proposal: name the related specs you found (or state that none matched) — the "why no existing spec covers this" sentence required for each New Capability in step 5 builds on this trace
+   6. Either way, leave a trace of the scan result in the proposal: name the related specs you found (or state that none matched) — the "why no existing spec covers this" sentence required for each New Capability in step 6 builds on this trace
 
-4. **Create the change directory**
+4. **Choose the schema**
+
+   Every change is created with a schema. `spec-driven` carries delta specs; `no-spec-change` has no specs artifact and is for changes that alter no behavior the canonical specs promise. Take the first rule that holds:
+
+   1. **The user named a schema** in the request or the arguments → use that schema.
+   2. **The project default is a custom schema** — `speclink workflow-config show --json` returns a `schema` other than `null`, `spec-driven` and `no-spec-change` → use the project default and skip the judgement below.
+   3. **The requirement comes from a discussion** (`--from-discussion`) → judge by its conclusion. It says the change alters no behavior the canonical specs promise, or it names `no-spec-change` → `no-spec-change`. It adds, modifies or removes behavior → `spec-driven`.
+   4. **Otherwise** → judge from the requirement and the step 3 scan: will this change alter behavior the canonical specs promise? No → `no-spec-change`; yes → `spec-driven`. A bug fix defaults to `spec-driven`, because a delta usually pins the corrected behavior. Choose `no-spec-change` for a bug fix only when you can say that no canonical spec promise changes.
+
+   When rule 3 or 4 cannot decide, do not guess: use the **AskUserQuestion tool** with two options, `spec-driven` and `no-spec-change`, the recommended one first with its reason. Create the change only after the user answers.
+
+5. **Create the change directory**
 
    ```bash
-   speclink new change "<name>" --agent codex
+   speclink new change "<name>" --schema <chosen> --agent codex
    ```
 
-   If a change with that name already exists, suggest continuing the existing change instead of creating a new one.
+   `<chosen>` is the schema step 4 chose. If a change with that name already exists, suggest continuing the existing change instead of creating a new one.
 
    When the proposal is sourced from a discussion document (path (c) in step 1), pass the link so the change records its origin and the discussion is marked `promoted` (it will be archived together with the change later):
 
    ```bash
-   speclink new change "<name>" --agent codex --from-discussion <slug>
+   speclink new change "<name>" --schema <chosen> --agent codex --from-discussion <slug>
    ```
 
    **Is this the last cut the conclusion planned? Then add `--last`.** A discussion whose conclusion stages several cuts (cut A now, cut B once A lands, …) was concluded with `--hold`, and the engine has no way to tell the final cut from a middle one — you do. Before running the command, read the record's `## Conclusion` **Decision** for the list of planned cuts (刀一／刀二／…, cut A／cut B, or any similar enumeration) and the frontmatter's `promoted_to` for the cuts already spun out, then decide:
@@ -3088,7 +3099,7 @@ If no argument is provided, the workflow extracts requirements from conversation
    - The change you are creating is the **final cut the conclusion planned** → pass `--last`:
 
      ```bash
-     speclink new change "<name>" --agent codex --from-discussion <slug> --last
+     speclink new change "<name>" --schema <chosen> --agent codex --from-discussion <slug> --last
      ```
 
    - You are **splitting one planned cut into several changes** at propose time → only the last piece of the split gets `--last`; every earlier piece is spun out without it.
@@ -3096,7 +3107,7 @@ If no argument is provided, the workflow extracts requirements from conversation
 
    What `--last` does: the engine drops the record's `hold: true` line in the same write that accumulates `promoted_to`, so when the last spun-out change is archived, the discussion is co-archived automatically — nobody has to remember to close the series. Passing it on a cut that was **not** the last is the one mistake to avoid: the record would be co-archived when the last in-flight change is archived, and spinning out the next cut then needs the record moved back from `openspec/discussions/archive/` to `openspec/discussions/` (drop the `<date>-` prefix) — the engine's error message points at that path. Forgetting it is cheap: the record stays live, the board shows it as "promoted · on hold", and one `speclink discuss archive <slug>` closes the series by hand.
 
-5. **Write the proposal**
+6. **Write the proposal**
 
    **File path rules for the `## Impact` section:**
    - All file paths are written relative to the project root (e.g., `src/lib/foo.ts`, `src-tauri/crates/core/src/bar.rs`, `docs/specs/specs/auth/spec.md`).
@@ -3119,6 +3130,8 @@ If no argument is provided, the workflow extracts requirements from conversation
    ```
 
    If the command fails with a validation error, fix the content and retry.
+
+   **Schema `no-spec-change`** → skip the change-type formats below. Write the proposal from the `template` and `instruction` that `speclink instructions proposal` returns: Why, What Changes, Non-Goals (optional) and Impact, with no Capabilities section. In Why, say why the change alters no behavior the canonical specs promise, and list the canonical specs you checked in step 3.
 
    Use the following format based on change type:
 
@@ -3219,7 +3232,7 @@ If no argument is provided, the workflow extracts requirements from conversation
      - Removed: <paths to be deleted>
    ```
 
-6. **Get the artifact build order**
+7. **Get the artifact build order**
 
    ```bash
    speclink status --change "<name>" --json
@@ -3229,7 +3242,7 @@ If no argument is provided, the workflow extracts requirements from conversation
    - `applyRequires`: array of artifact IDs needed before implementation
    - `artifacts`: list of all artifacts with their status and dependencies
 
-7. **Create remaining artifacts in sequence**
+8. **Create remaining artifacts in sequence**
 
    Loop through artifacts in dependency order (skip proposal since it's already done):
 
@@ -3292,7 +3305,7 @@ If no argument is provided, the workflow extracts requirements from conversation
 
    c. **An artifact needs input you do not have** → prefer a reasonable decision that keeps the momentum; only when the context is critically unclear, use the **AskUserQuestion tool** to clarify, then continue with creation.
 
-8. **Inline Self-Review** (before CLI analysis)
+9. **Inline Self-Review** (before CLI analysis)
 
    After creating all artifacts, scan them manually. Fix issues inline, then proceed to the CLI analyzer.
 
@@ -3332,7 +3345,7 @@ If no argument is provided, the workflow extracts requirements from conversation
 
    Fix every failure inline using the existing context before running the CLI analyzer. If a failure cannot be fixed without new input from the user, surface it explicitly rather than papering over it.
 
-9. **Analyze-Fix Loop** (max 2 iterations)
+10. **Analyze-Fix Loop** (max 2 iterations)
    1. Run `speclink analyze <change-name> --json`
    2. Filter findings to **Critical and Warning only** (ignore Suggestion)
    3. No Critical/Warning findings → show "Artifacts look consistent ✓" and proceed
@@ -3343,7 +3356,7 @@ If no argument is provided, the workflow extracts requirements from conversation
       d. Repeat up to 2 total iterations
    5. Findings remain after 2 attempts → show them as a summary and proceed normally (do not block)
 
-10. **Validation**
+11. **Validation**
 
     ```bash
     speclink validate "<name>"
@@ -3351,10 +3364,11 @@ If no argument is provided, the workflow extracts requirements from conversation
 
     If validation fails, fix errors and re-validate.
 
-11. **End the workflow**
+12. **End the workflow**
 
     Show summary:
     - Change name and location
+    - The chosen schema — show `no-spec-change` as 「不改規格（no-spec-change）」
     - List of artifacts created
     - Validation result
 
@@ -3405,10 +3419,11 @@ Run this check after the summary, right before presenting the Next steps below.
 
 Check these before you present the Next steps:
 
-- [ ] Every artifact in the `applyRequires` chain exists and `speclink status` shows it done; optional artifacts were skipped only when their criteria did not apply (step 7).
-- [ ] No application code was written, and `$speclink-apply` was not invoked (step 11).
-- [ ] Every manual task carries `[M]` right after the checkbox, before the task number (step 7).
-- [ ] `speclink validate` passed (step 10).
+- [ ] Every artifact in the `applyRequires` chain exists and `speclink status` shows it done; optional artifacts were skipped only when their criteria did not apply (step 8).
+- [ ] No application code was written, and `$speclink-apply` was not invoked (step 12).
+- [ ] Every manual task carries `[M]` right after the checkbox, before the task number (step 8).
+- [ ] The change was created with the schema step 4 chose, and a case the rules could not decide was asked, not guessed (step 4).
+- [ ] `speclink validate` passed (step 11).
 - [ ] The landscape check ran when two or more changes are active, and each prerequisite it found was recorded with `speclink change depends`.
 
 ## Next steps
@@ -3427,7 +3442,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.0"
+  version: "v1.50.0"
   generatedBy: "Speclink"
 ---
 
@@ -3551,7 +3566,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.0"
+  version: "v1.50.0"
   generatedBy: "Speclink"
 ---
 
@@ -3820,7 +3835,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.0"
+  version: "v1.50.0"
   generatedBy: "Speclink"
 ---
 
@@ -3908,7 +3923,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.49.0"
+  version: "v1.50.0"
   generatedBy: "Speclink"
 ---
 
@@ -3966,7 +3981,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
    ```
 
    Parse the JSON to understand:
-   - `schemaName`: The workflow being used (e.g., "spec-driven")
+   - `schemaName`: The workflow being used (e.g., "spec-driven"). Remember it: when `schemaName` is `no-spec-change`, step 8 runs the behavior check in place of the delta-spec checks
    - Which artifacts exist for this change
 
 3. **Load the artifacts and read the task progress**
@@ -4027,7 +4042,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
      - Add CRITICAL issue for each incomplete task
      - Recommendation: "Complete task: <description>" or "Mark as done if already implemented"
 
-   **Spec Coverage**:
+   **Spec Coverage** (skip it when `schemaName` is `no-spec-change` — step 8's behavior check takes its place):
    - If delta specs exist in `openspec/changes/<name>/specs/`:
      - Extract all requirements (marked with "### Requirement:")
      - For each requirement:
@@ -4039,6 +4054,15 @@ Report which test commands ran and which scope was skipped, and say that CI guar
        - Recommendation: "Implement requirement X: <description>"
 
 8. **Verify Correctness**
+
+   **Behavior check** (only when `schemaName` is `no-spec-change` — the change has no delta specs, so it replaces Requirement Implementation Mapping, Scenario Coverage and Example Traceability below):
+   - Start from the canonical specs the proposal's Why lists as checked.
+   - Take the concrete names in the frozen patch — commands, flags, `--json` fields, file names, screen text — and search the canonical specs for the requirements that cover those code areas.
+   - For each such requirement, compare: does the patch change the observable behavior the requirement promises?
+   - A promised behavior changed:
+     - Add WARNING: "Behavior change in a no-spec-change change: <capability> / <requirement>" — it is must-fix (step 11) and blocks a clean stamp
+     - Recommendation: "Switch the change to spec-driven and add a delta spec for this requirement"
+   - No behavior change found → list the canonical specs you compared in the report.
 
    **Requirement Implementation Mapping**:
    - For each requirement from delta specs:
@@ -4184,6 +4208,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
 **Graceful Degradation**
 
 - If only tasks.md exists: verify task completion only, skip spec/design checks
+- If the schema is `no-spec-change`: the missing delta specs are by design — run the behavior check (step 8) instead of skipping the spec checks
 - If tasks + specs exist: verify completeness and correctness, skip design
 - If full artifacts: verify all three dimensions
 - Always note which checks were skipped and why
