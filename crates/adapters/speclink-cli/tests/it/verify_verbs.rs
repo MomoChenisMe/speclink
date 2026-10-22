@@ -403,6 +403,11 @@ fn stamp_allows_a_suggestion_only_round() {
     for key in ["verified_at:", "verified_tasks_total:", "verified_scope:", "verified_with:"] {
         assert!(meta.contains(key), "missing {key}: {meta}");
     }
+    // spec「蓋章記錄驗證輪數」：一輪的工單蓋章寫入 verified_rounds: 1，蓋章時間是 RFC 3339。
+    assert_eq!(meta.matches("verified_rounds: ").count(), 1, "{meta}");
+    assert!(meta.contains("verified_rounds: 1\n"), "{meta}");
+    let at = meta.lines().find_map(|l| l.strip_prefix("verified_at: ")).expect("verified_at");
+    assert!(chrono::DateTime::parse_from_rfc3339(at).is_ok(), "verified_at is RFC 3339: {meta}");
 }
 
 #[test]

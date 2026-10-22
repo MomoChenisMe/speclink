@@ -116,6 +116,16 @@
         "packages/ui/src/i18n.tsx",
         "packages/ui/src/components/ProcessCostSummary.tsx"
       ]
+    },
+    {
+      "task_id": "20",
+      "task_desc": "6.3 受影響面測試與文件守門全部通過。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-desktop-core`、`npm test -w packages/ui`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 皆通過，且 `speclink validate process-cost-metrics` 通過",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/archive_readiness_gate.rs",
+        "crates/adapters/speclink-cli/tests/it/review_verbs.rs",
+        "crates/adapters/speclink-cli/tests/it/verify_verbs.rs",
+        "crates/adapters/speclink-node/src/store_bridge.rs"
+      ]
     }
   ],
   "entries": [
@@ -293,6 +303,20 @@
         "packages/ui/src/components/ProcessCostSummary.tsx"
       ],
       "recordedAt": "2026-10-21T13:21:37Z"
+    },
+    {
+      "taskId": "tsk_01M5EPVQ952SFX806RAQ4BHM7Z",
+      "taskDesc": "6.3 受影響面測試與文件守門全部通過。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-desktop-core`、`npm test -w packages/ui`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 皆通過，且 `speclink validate process-cost-metrics` 通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1666c1061f7f44bbcec5a8bd827fbdd7dc2ca946",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/archive_readiness_gate.rs",
+        "crates/adapters/speclink-cli/tests/it/review_verbs.rs",
+        "crates/adapters/speclink-cli/tests/it/verify_verbs.rs",
+        "crates/adapters/speclink-node/src/store_bridge.rs"
+      ],
+      "recordedAt": "2026-10-21T14:27:29Z"
     }
   ]
 }

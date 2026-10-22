@@ -109,29 +109,34 @@ impl ChangeMeta {
     /// the defaults; a document that exists but cannot parse → `Err` with the
     /// parser's reason (fail-closed, never defaults). Store implementations
     /// carry that reason as [`Change::meta_error`] so listing never breaks.
-    ///
-    /// Time fields written as RFC 3339 stamps collapse to their date part here, so
-    /// every output point keeps emitting `YYYY-MM-DD` (process-cost-metrics design
-    /// D2); plain dates and unrecognised values stay verbatim.
     pub fn from_text(text: Option<&str>) -> Result<ChangeMeta, String> {
         let Some(s) = text else {
             return Ok(ChangeMeta::default());
         };
         let mut meta: ChangeMeta = crate::config::parse_lenient_or_reason(s)?;
-        meta.created_stamp = meta.created.clone();
+        meta.collapse_time_fields();
+        Ok(meta)
+    }
+
+    /// Time fields written as RFC 3339 stamps collapse to their date part, so every
+    /// output point keeps emitting `YYYY-MM-DD` (process-cost-metrics design D2);
+    /// plain dates and unrecognised values stay verbatim, and the full `created`
+    /// lands in `created_stamp`. [`ChangeMeta::from_text`] runs it; a `ChangeMeta`
+    /// built from already-structured fields (the SDK store bridge) must run it too.
+    pub fn collapse_time_fields(&mut self) {
+        self.created_stamp = self.created.clone();
         let time_fields = [
-            &mut meta.created,
-            &mut meta.started_at,
-            &mut meta.claimed_at,
-            &mut meta.reviewed_at,
-            &mut meta.verified_at,
+            &mut self.created,
+            &mut self.started_at,
+            &mut self.claimed_at,
+            &mut self.reviewed_at,
+            &mut self.verified_at,
         ];
         for value in time_fields.into_iter().flatten() {
             if chrono::DateTime::parse_from_rfc3339(value).is_ok() {
                 value.truncate(10);
             }
         }
-        Ok(meta)
     }
     pub fn schema_name(&self) -> String {
         self.schema
@@ -246,15 +251,13 @@ pub fn require_valid_meta(change: &Change) -> Result<(), MetaError> {
 
 /// Text-level twin of [`require_valid_meta`] for flows that operate on the raw
 /// metadata document (text surgery paths): existing-but-unparsable text refuses
-/// with [`MetaError`]; missing text keeps its default semantics and passes.
-pub fn check_meta_text(change: &str, text: Option<&str>) -> Result<(), MetaError> {
-    match ChangeMeta::from_text(text) {
-        Ok(_) => Ok(()),
-        Err(reason) => Err(MetaError {
-            change: change.to_string(),
-            reason,
-        }),
-    }
+/// with [`MetaError`]; missing text keeps its default semantics and passes. The
+/// parsed metadata comes back for callers that also read it.
+pub fn check_meta_text(change: &str, text: Option<&str>) -> Result<ChangeMeta, MetaError> {
+    ChangeMeta::from_text(text).map_err(|reason| MetaError {
+        change: change.to_string(),
+        reason,
+    })
 }
 
 /// A discovered change.
@@ -880,6 +883,21 @@ mod tests {
             let meta = ChangeMeta::from_text(Some(&format!("created: {odd}\n"))).expect("meta parses");
             assert_eq!(meta.created.as_deref(), Some(odd));
         }
+    }
+
+    #[test]
+    fn collapse_time_fields_applies_to_a_meta_built_from_fields() {
+        // SDK store bridge 由宿主給的結構化欄位組 ChangeMeta、不經 from_text——
+        // 呼叫同一道收斂後，輸出點拿到的一樣是日期部分。
+        let mut meta = ChangeMeta {
+            created: Some("2026-10-21T14:05:00+08:00".into()),
+            started_at: Some("2026-10-22T09:00:00+08:00".into()),
+            ..Default::default()
+        };
+        meta.collapse_time_fields();
+        assert_eq!(meta.created.as_deref(), Some("2026-10-21"));
+        assert_eq!(meta.started_at.as_deref(), Some("2026-10-22"));
+        assert_eq!(meta.created_stamp.as_deref(), Some("2026-10-21T14:05:00+08:00"));
     }
 
     #[test]

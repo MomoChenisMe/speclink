@@ -134,6 +134,8 @@ mod stamp_rounds {
     const CLEAN: &str = "**Scope**: crates/a/src/lib.rs\n";
     const MUST_FIX: &str =
         "**Scope**: crates/a/src/lib.rs\n\n- [WARNING] crates/a/src/lib.rs — possible Feature Envy\n";
+    const CRITICAL: &str =
+        "**Scope**: crates/a/src/lib.rs\n\n- [CRITICAL] crates/a/src/lib.rs — requirement R2 has no implementation\n";
 
     /// 任務全勾的 change，`st` 站工單有 `rounds` 輪：前面幾輪帶必修，末輪為 `last`。
     fn ticketed(st: &Station, meta: &str, rounds: usize, last: &str) -> TestStore {
@@ -211,10 +213,10 @@ mod stamp_rounds {
 
     #[test]
     fn refused_stamp_and_discard_leave_the_rounds_untouched() {
-        // Scenario「守門失敗不改輪數」＋放棄工單不改輪數。
-        for st in [&REVIEW, &VERIFY] {
+        // Scenario「守門失敗不改輪數」（審查末輪 WARNING、驗證末輪 CRITICAL）＋放棄工單不改輪數。
+        for (st, last) in [(&REVIEW, MUST_FIX), (&VERIFY, CRITICAL)] {
             let meta = format!("{META}{}_rounds: 4\n", st.meta_prefix);
-            let store = ticketed(st, &meta, 2, MUST_FIX);
+            let store = ticketed(st, &meta, 2, last);
             stamp_at(st, &store, false).expect_err("must-fix last round refuses");
             assert_eq!(store.meta("demo"), meta, "{}: refusal writes nothing", st.noun);
             assert!(store.artifact_exists("demo", st.doc), "{}: ticket survives", st.noun);

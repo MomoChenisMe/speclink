@@ -5,3 +5,129 @@ created_with: claude
 from_discussion: positioning-and-process-cost
 started_at: 2026-10-21
 started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-21
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 20
+reviewed_scope:
+  - path: apps/desktop/core/src/cache.rs
+    hash: 54ca5908a88fdf0c98a92113efeb59008fed18f183bc9746ef2ba9b9bcc7cae0
+  - path: crates/adapters/speclink-cli/tests/it/archive_readiness_gate.rs
+    hash: 71d207b42c43857a33b23468159d8660664401920be7be1f31eda729ac4bbf79
+  - path: crates/adapters/speclink-cli/tests/it/main.rs
+    hash: 73c782c03ce1547878307499e7cced47de8a19f7aed0b51a2978baa71eeb79b5
+  - path: crates/adapters/speclink-cli/tests/it/meta_time_stamps.rs
+    hash: 80a438395550c666994ed0e20d9842a529d9a3312e33d4539bb7c351dd37358d
+  - path: crates/adapters/speclink-cli/tests/it/review_verbs.rs
+    hash: 1a68aa818c68ef03e6e0707f842f96b05fb83f0b19dfa5aabd75409f794e0c70
+  - path: crates/adapters/speclink-cli/tests/it/verify_verbs.rs
+    hash: 912dddbb39ac51d60602d6184f1f51148d8b0c098bb5e31fdf2c680da3a507dd
+  - path: crates/adapters/speclink-node/src/store_bridge.rs
+    hash: 9221f136d193e87cd734f5e5c5d5423e011bc8f87bddee47bdb3697d8e712e06
+  - path: crates/engine/speclink-core/src/command/mod.rs
+    hash: 815b1c9badd356ad218e71ed063ea3f488b3c0979d1b33fa69aacdf8f87dfc63
+  - path: crates/engine/speclink-core/src/command/tests.rs
+    hash: ad3699db4fce93d5f4f9705a8c6e5406923fafb8466bb5c28d148b84f6cf21f7
+  - path: crates/engine/speclink-core/src/demo.rs
+    hash: b3dd16b50ffedebbfafcd55e3b4fa8e2f99f98674f45455a5e823e8a12ded301
+  - path: crates/engine/speclink-core/src/lib.rs
+    hash: fb5668911101268766c5f12ea660c4b0da1cc8c91f51c6418e346b6e00407390
+  - path: crates/engine/speclink-core/src/lifecycle/archive.rs
+    hash: 0b23e5e90e93edbe5b72bab04bfdb8f73603adbfca5f871a8001f18a850cdc40
+  - path: crates/engine/speclink-core/src/lifecycle/archive/tests.rs
+    hash: bc609ae445cd6886e0727cb6ab1e81dd757dd131c918dfd350a283596ae25488
+  - path: crates/engine/speclink-core/src/lifecycle/cost.rs
+    hash: eca17ea2baaad22aed2fe717f64d189d9041cbd3f1dd3b5e55549327ecf2bde8
+  - path: crates/engine/speclink-core/src/lifecycle/inprogress.rs
+    hash: e86e32cb8d685705f177e24729e4734c8cb3b41f5d4131b54aecd8bc9449e6b2
+  - path: crates/engine/speclink-core/src/lifecycle/mod.rs
+    hash: 397fcb144c02c30ac991a8a61d140833c0be0b51c3e31c2d7aab9f0d976912ea
+  - path: crates/engine/speclink-core/src/lifecycle/model.rs
+    hash: 33b3c98b0c0a68b0dea91bade51312e078f4ee8f42814d04c7219f54b0fb69c3
+  - path: crates/engine/speclink-core/src/lifecycle/newcmd.rs
+    hash: ae7172b8f980462aabaf1734c4adcfeecd6b0ca6cce94e2fc7d17ad391bbce32
+  - path: crates/engine/speclink-core/src/quality/station.rs
+    hash: 10d37b25f96e5c450cf908b3495310b05d43b49fac68190dae42a86bdb1480de
+  - path: crates/engine/speclink-core/src/quality/station/tests.rs
+    hash: d3c587e47048f3b192b0d9d4568e8b5c38f511a9c96810a314c1f2e13dbb8c7d
+  - path: crates/engine/speclink-core/src/util.rs
+    hash: a7840f7e08995de1350e1c11ec35b69b6db6abeef742de26070552ccf76d0af4
+  - path: packages/ui/src/__tests__/archivedList.test.tsx
+    hash: 04072b98bcd8d70e1d72bac46b3fc8116a1568c22317e1acc354686d0768326d
+  - path: packages/ui/src/__tests__/processCost.test.ts
+    hash: ccdc101a8b656276eeed30fee58db55de04b713c88758b31ec35f67c6766e642
+  - path: packages/ui/src/__tests__/processCostSummary.test.tsx
+    hash: 2755cd1650419a842b1bc6e16dbf4e7ed9f9364c5ca46f93cac4bb19057f0ca6
+  - path: packages/ui/src/adapter.ts
+    hash: ea736d4bed5e5bf284ecafbec7084642b2dabc574869bd4cd1ff033150ede4df
+  - path: packages/ui/src/components/ArchivedList.tsx
+    hash: c568291b6dbdf8c135ad8a531e9a52a76f8491bcc477e034a5fa0a53e31db501
+  - path: packages/ui/src/components/ProcessCostSummary.tsx
+    hash: 5a33febc5e6b1d75d1165319e6e7f4403a1e58ffb03b9a258c3630d66c658a06
+  - path: packages/ui/src/i18n.tsx
+    hash: dad764448e4e87144f75d3d86c7d015e0738abc784c86c7bd7df361f6b9627c4
+  - path: packages/ui/src/processCost.ts
+    hash: 24e111d5e4c5840d3b3fed68581679ec17ee733f393e1fd1e0c632120001accb
+verified_at: 2026-10-21
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 20
+verified_scope:
+  - path: apps/desktop/core/src/cache.rs
+    hash: 54ca5908a88fdf0c98a92113efeb59008fed18f183bc9746ef2ba9b9bcc7cae0
+  - path: crates/adapters/speclink-cli/tests/it/archive_readiness_gate.rs
+    hash: 71d207b42c43857a33b23468159d8660664401920be7be1f31eda729ac4bbf79
+  - path: crates/adapters/speclink-cli/tests/it/main.rs
+    hash: 73c782c03ce1547878307499e7cced47de8a19f7aed0b51a2978baa71eeb79b5
+  - path: crates/adapters/speclink-cli/tests/it/meta_time_stamps.rs
+    hash: 80a438395550c666994ed0e20d9842a529d9a3312e33d4539bb7c351dd37358d
+  - path: crates/adapters/speclink-cli/tests/it/review_verbs.rs
+    hash: 1a68aa818c68ef03e6e0707f842f96b05fb83f0b19dfa5aabd75409f794e0c70
+  - path: crates/adapters/speclink-cli/tests/it/verify_verbs.rs
+    hash: 912dddbb39ac51d60602d6184f1f51148d8b0c098bb5e31fdf2c680da3a507dd
+  - path: crates/adapters/speclink-node/src/store_bridge.rs
+    hash: 9221f136d193e87cd734f5e5c5d5423e011bc8f87bddee47bdb3697d8e712e06
+  - path: crates/engine/speclink-core/src/command/mod.rs
+    hash: 815b1c9badd356ad218e71ed063ea3f488b3c0979d1b33fa69aacdf8f87dfc63
+  - path: crates/engine/speclink-core/src/command/tests.rs
+    hash: ad3699db4fce93d5f4f9705a8c6e5406923fafb8466bb5c28d148b84f6cf21f7
+  - path: crates/engine/speclink-core/src/demo.rs
+    hash: b3dd16b50ffedebbfafcd55e3b4fa8e2f99f98674f45455a5e823e8a12ded301
+  - path: crates/engine/speclink-core/src/lib.rs
+    hash: fb5668911101268766c5f12ea660c4b0da1cc8c91f51c6418e346b6e00407390
+  - path: crates/engine/speclink-core/src/lifecycle/archive.rs
+    hash: 0b23e5e90e93edbe5b72bab04bfdb8f73603adbfca5f871a8001f18a850cdc40
+  - path: crates/engine/speclink-core/src/lifecycle/archive/tests.rs
+    hash: bc609ae445cd6886e0727cb6ab1e81dd757dd131c918dfd350a283596ae25488
+  - path: crates/engine/speclink-core/src/lifecycle/cost.rs
+    hash: eca17ea2baaad22aed2fe717f64d189d9041cbd3f1dd3b5e55549327ecf2bde8
+  - path: crates/engine/speclink-core/src/lifecycle/inprogress.rs
+    hash: e86e32cb8d685705f177e24729e4734c8cb3b41f5d4131b54aecd8bc9449e6b2
+  - path: crates/engine/speclink-core/src/lifecycle/mod.rs
+    hash: 397fcb144c02c30ac991a8a61d140833c0be0b51c3e31c2d7aab9f0d976912ea
+  - path: crates/engine/speclink-core/src/lifecycle/model.rs
+    hash: 33b3c98b0c0a68b0dea91bade51312e078f4ee8f42814d04c7219f54b0fb69c3
+  - path: crates/engine/speclink-core/src/lifecycle/newcmd.rs
+    hash: ae7172b8f980462aabaf1734c4adcfeecd6b0ca6cce94e2fc7d17ad391bbce32
+  - path: crates/engine/speclink-core/src/quality/station.rs
+    hash: 10d37b25f96e5c450cf908b3495310b05d43b49fac68190dae42a86bdb1480de
+  - path: crates/engine/speclink-core/src/quality/station/tests.rs
+    hash: d3c587e47048f3b192b0d9d4568e8b5c38f511a9c96810a314c1f2e13dbb8c7d
+  - path: crates/engine/speclink-core/src/util.rs
+    hash: a7840f7e08995de1350e1c11ec35b69b6db6abeef742de26070552ccf76d0af4
+  - path: packages/ui/src/__tests__/archivedList.test.tsx
+    hash: 04072b98bcd8d70e1d72bac46b3fc8116a1568c22317e1acc354686d0768326d
+  - path: packages/ui/src/__tests__/processCost.test.ts
+    hash: ccdc101a8b656276eeed30fee58db55de04b713c88758b31ec35f67c6766e642
+  - path: packages/ui/src/__tests__/processCostSummary.test.tsx
+    hash: 2755cd1650419a842b1bc6e16dbf4e7ed9f9364c5ca46f93cac4bb19057f0ca6
+  - path: packages/ui/src/adapter.ts
+    hash: ea736d4bed5e5bf284ecafbec7084642b2dabc574869bd4cd1ff033150ede4df
+  - path: packages/ui/src/components/ArchivedList.tsx
+    hash: c568291b6dbdf8c135ad8a531e9a52a76f8491bcc477e034a5fa0a53e31db501
+  - path: packages/ui/src/components/ProcessCostSummary.tsx
+    hash: 5a33febc5e6b1d75d1165319e6e7f4403a1e58ffb03b9a258c3630d66c658a06
+  - path: packages/ui/src/i18n.tsx
+    hash: dad764448e4e87144f75d3d86c7d015e0738abc784c86c7bd7df361f6b9627c4
+  - path: packages/ui/src/processCost.ts
+    hash: 24e111d5e4c5840d3b3fed68581679ec17ee733f393e1fd1e0c632120001accb

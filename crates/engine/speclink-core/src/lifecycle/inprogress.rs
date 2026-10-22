@@ -205,12 +205,7 @@ mod tests {
     fn add_writes_started_at_as_an_offset_stamp() {
         let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01\n");
         super::add(&store, "demo", None, None).unwrap();
-        let meta = store.meta("demo");
-        let started = meta
-            .lines()
-            .find_map(|l| l.strip_prefix("started_at: "))
-            .expect("started_at line");
-        assert!(crate::util::is_offset_stamp(started), "started_at is not an offset stamp: {meta}");
+        crate::util::offset_stamp_line(&store.meta("demo"), "started_at");
     }
 
     #[test]

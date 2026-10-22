@@ -338,6 +338,11 @@ fn stamp_clean_round_writes_the_anchors_and_deletes_the_ticket() {
     assert!(meta.contains("reviewed_tasks_total: 2"), "{meta}");
     assert!(meta.contains("reviewed_scope:"), "{meta}");
     assert!(meta.contains("  - path: src/lib.rs"), "{meta}");
+    // spec「蓋章記錄審查輪數」：一輪的工單蓋章寫入 reviewed_rounds: 1，蓋章時間是 RFC 3339。
+    assert_eq!(meta.matches("reviewed_rounds: ").count(), 1, "{meta}");
+    assert!(meta.contains("reviewed_rounds: 1\n"), "{meta}");
+    let at = meta.lines().find_map(|l| l.strip_prefix("reviewed_at: ")).expect("reviewed_at");
+    assert!(chrono::DateTime::parse_from_rfc3339(at).is_ok(), "reviewed_at is RFC 3339: {meta}");
     assert!(meta.contains("    hash: "), "{meta}");
 }
 

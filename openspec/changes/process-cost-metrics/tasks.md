@@ -34,5 +34,5 @@
 
 - [x] 6.1 對新增的 metadata 欄位與解析套用 sharp-edges 稽核清單（`speclink instructions --skill audit`）：檢查輪數的負數、非整數、超大值與時戳的非法偏移量都走 fail-closed 或原樣保留的既定路徑，並把結論記在本任務完成註記。驗證：稽核清單逐項有結論，發現的問題已補測試 <!-- speclink-task:tsk_01M5EPVQ95DG4J8CZS0J20C28B -->
   稽核註記（2026-10-21）：壞蛋鏡——輪數與時戳都由系統產生（`now_rfc3339()`、整數字串），經 `KeyLines` 單行守門寫入，沒有使用者輸入可注入；`created_stamp` 是 `serde(skip)`，檔內寫同名鍵不生效；desktop 快取以參數綁定寫 SQLite。懶惰鏡——輪數缺席讀作 0；`many`、`-1`、`2.5`、`"3"`、超過 u64 的值讓整份 meta 解析失敗，蓋章依既有 fail-closed 拒絕且零寫入；u64 上限再累加以 saturating 停在上限，快取放不進 i64 時存 NULL、讀出不插 key。搞混鏡——偏移量超出範圍（`+25:00`）或少了秒的時戳不是 RFC 3339，原樣保留、不計過期天數、流程成本不算時數；對外輸出只給日期部分，舊版讀者遇到時戳回到「無建立日期」。以上邊界都已補測試，無未處理項。
-- [ ] [M] 6.2 在桌面 app 打開本 repo 的已封存頁，確認流程成本摘要出現在頁標題區與列表卡之間：舊記錄為主時顯示文件行數、任務數與建立到封存天數，品質關卡輪數因沒有樣本而不顯示；切到英文介面時文案為英文 <!-- speclink-task:tsk_01M5EPVQ951ZG5R49CNW4PB8AY -->
+- [x] [M] 6.2 在桌面 app 打開本 repo 的已封存頁，確認流程成本摘要出現在頁標題區與列表卡之間：舊記錄為主時顯示文件行數、任務數與建立到封存天數，品質關卡輪數因沒有樣本而不顯示；切到英文介面時文案為英文 <!-- speclink-task:tsk_01M5EPVQ951ZG5R49CNW4PB8AY -->
 - [x] 6.3 受影響面測試與文件守門全部通過。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-desktop-core`、`npm test -w packages/ui`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 皆通過，且 `speclink validate process-cost-metrics` 通過 <!-- speclink-task:tsk_01M5EPVQ952SFX806RAQ4BHM7Z -->

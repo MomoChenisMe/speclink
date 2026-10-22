@@ -32,7 +32,7 @@ change metadata（`.openspec.yaml`）的時間欄位都由 `util::today()` 寫�
 
 ### D2：寫入時戳、解析層把對外欄位收斂成日期
 
-所有 change metadata 時間欄位改由新的 `util::now_rfc3339()`（`now_stamps().rfc3339` 的單一出口）寫入。為了不改動每個對外輸出點，`ChangeMeta` 解析時把 `created`、`started_at`、`claimed_at`、`reviewed_at`、`verified_at` 這些既有欄位存成日期部分（值符合 RFC 3339 時取前 10 個字元；純日期與無法辨識的值原樣保留），完整原值另存在新欄位（`created_stamp`、`archived_at` 等，僅供流程成本計算使用）。CLI、server、desktop core、drift 與 preflight 因此不需修改就輸出日期。替代方案「逐一修改每個輸出點」被否決：輸出點散在三個 crate 與 desktop core，漏一處就破壞協定承諾的 `YYYY-MM-DD`。`ChangeMeta` 沒有寫回路徑（寫入一律走 `KeyLines` 文字手術），所以解析層收斂不會把時戳寫丟。
+所有 change metadata 時間欄位改由新的 `util::now_rfc3339()`（`now_stamps().rfc3339` 的單一出口）寫入。為了不改動每個對外輸出點，`ChangeMeta` 解析時把 `created`、`started_at`、`claimed_at`、`reviewed_at`、`verified_at` 這些既有欄位存成日期部分（值符合 RFC 3339 時取前 10 個字元；純日期與無法辨識的值原樣保留），完整原值另存在新欄位（`created_stamp`、`archived_at` 等，僅供流程成本計算使用）。CLI、server、desktop core、drift 與 preflight 因此不需修改就輸出日期。SDK 的 store bridge（speclink-node 的 `change_from_value`）由宿主給的結構化欄位直接組 `ChangeMeta`、不經解析層，所以同樣呼叫這道收斂（`ChangeMeta::collapse_time_fields`）。替代方案「逐一修改每個輸出點」被否決：輸出點散在三個 crate 與 desktop core，漏一處就破壞協定承諾的 `YYYY-MM-DD`。`ChangeMeta` 沒有寫回路徑（寫入一律走 `KeyLines` 文字手術），所以解析層收斂不會把時戳寫丟。
 
 ### D3：`archived_at` 在移動前寫入
 

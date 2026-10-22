@@ -1,24 +1,17 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo } from "react";
 
 import type { ArchivedItem } from "../adapter";
 import { useI18n } from "../i18n";
 import { formatCost, roundCost, summarizeProcessCost, type CostStat } from "../processCost";
+import { DocTiles, type DocTile } from "./DetailShell";
 import { Card } from "./ui/card";
 
-/** 一項（文件行數／任務數／建立到封存／品質關卡輪數）：標籤＋一到兩個數字。 */
-function CostItem({ id, label, children }: { id: string; label: string; children: ReactNode }) {
-  return (
-    <div data-cost-item={id} className="min-w-0">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      {children}
-    </div>
-  );
-}
-
 /**
- * 已封存頁的流程成本摘要（spec desktop-app「已封存頁的流程成本摘要」）：唯讀，最多四項，
- * 每個數字標出樣本數；沒有任何封存變更帶流程成本欄位時不渲染（遠端清單只帶任務數）。
- * `items` 是全部封存變更——頁內搜尋不影響摘要。
+ * 已封存頁的流程成本摘要（spec desktop-app「已封存頁的流程成本摘要」）：唯讀，沿用數字磚
+ * DocTiles，最多四格——大字是中位數（標題註明），小字是項目名與每個數字的樣本數（文件行數
+ * 另附 P90）。DocTiles 的小字會截斷，所以小字保持精簡，樣本數才不會被截掉。
+ * 沒有任何封存變更帶流程成本欄位時不渲染（遠端清單只帶任務數）。`items` 是全部封存
+ * 變更——頁內搜尋不影響摘要。
  */
 export function ProcessCostSummary({ items }: { items: ArchivedItem[] }) {
   const { t, tn } = useI18n();
@@ -26,44 +19,48 @@ export function ProcessCostSummary({ items }: { items: ArchivedItem[] }) {
   if (Object.keys(summary).length === 0) return null;
   const { docLines, tasks, leadDays, leadHours, reviewRounds, verifyRounds } = summary;
 
-  const median = (stat: CostStat, unitKey?: string) =>
-    `${t("archived.cost.median")} ${unitKey ? tn(unitKey, roundCost(stat.median)) : formatCost(stat.median)}`;
-  /** 一個數字一行：`[前綴 ]部分 · 部分 · N 筆`。 */
-  const value = (id: string, stat: CostStat, parts: string[], prefix?: string) => (
-    <dd data-cost={id} className="text-sm tabular-nums">
-      {(prefix ? `${prefix} ` : "") + [...parts, tn("archived.cost.samples", stat.samples)].join(" · ")}
-    </dd>
-  );
+  /** 小字：`<項目>（N 筆）`；一格兩個數字時為 `<項目>（N／M 筆）`，依大字裡數字的順序。 */
+  const label = (itemKey: string, ...stats: (CostStat | undefined)[]) => {
+    const counts = stats.filter((s): s is CostStat => s != null).map((s) => s.samples);
+    const samples =
+      counts.length === 1
+        ? tn("archived.cost.samples", counts[0])
+        : t("archived.cost.samplesList").replace("{list}", counts.join(t("archived.cost.sampleSep")));
+    return t("archived.cost.itemSamples").replace("{label}", t(itemKey)).replace("{samples}", samples);
+  };
+  const join = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).join(" · ");
+  const withUnit = (stat: CostStat, unitKey: string) => tn(unitKey, roundCost(stat.median));
+  const station = (key: string, stat: CostStat | undefined) =>
+    stat && `${t(key)} ${formatCost(stat.median)}`;
+
+  const tiles: DocTile[] = [];
+  if (docLines) {
+    tiles.push({
+      value: formatCost(docLines.median),
+      label: join(label("archived.cost.docLines", docLines), `${t("archived.cost.p90")} ${formatCost(docLines.p90)}`),
+    });
+  }
+  if (tasks) tiles.push({ value: formatCost(tasks.median), label: label("archived.cost.tasks", tasks) });
+  if (leadDays || leadHours) {
+    tiles.push({
+      value: join(
+        leadDays && withUnit(leadDays, "archived.cost.days"),
+        leadHours && withUnit(leadHours, "archived.cost.hours"),
+      ),
+      label: label("archived.cost.lead", leadDays, leadHours),
+    });
+  }
+  if (reviewRounds || verifyRounds) {
+    tiles.push({
+      value: join(station("archived.cost.review", reviewRounds), station("archived.cost.verify", verifyRounds)),
+      label: label("archived.cost.rounds", reviewRounds, verifyRounds),
+    });
+  }
 
   return (
     <Card data-process-cost role="region" aria-label={t("archived.cost.title")} className="shrink-0 px-4 py-3">
-      <h3 className="text-[13px] font-medium">{t("archived.cost.title")}</h3>
-      <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
-        {docLines && (
-          <CostItem id="docLines" label={t("archived.cost.docLines")}>
-            {value("docLines", docLines, [median(docLines), `${t("archived.cost.p90")} ${formatCost(docLines.p90)}`])}
-          </CostItem>
-        )}
-        {tasks && (
-          <CostItem id="tasks" label={t("archived.cost.tasks")}>
-            {value("tasks", tasks, [median(tasks)])}
-          </CostItem>
-        )}
-        {(leadDays || leadHours) && (
-          <CostItem id="lead" label={t("archived.cost.lead")}>
-            {leadDays && value("leadDays", leadDays, [median(leadDays, "archived.cost.days")])}
-            {leadHours && value("leadHours", leadHours, [median(leadHours, "archived.cost.hours")])}
-          </CostItem>
-        )}
-        {(reviewRounds || verifyRounds) && (
-          <CostItem id="rounds" label={t("archived.cost.rounds")}>
-            {reviewRounds &&
-              value("reviewRounds", reviewRounds, [median(reviewRounds)], t("archived.cost.review"))}
-            {verifyRounds &&
-              value("verifyRounds", verifyRounds, [median(verifyRounds)], t("archived.cost.verify"))}
-          </CostItem>
-        )}
-      </dl>
+      <h3 className="mb-2 text-[13px] font-medium">{t("archived.cost.title")}</h3>
+      <DocTiles tiles={tiles} />
     </Card>
   );
 }

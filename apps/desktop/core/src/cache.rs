@@ -162,7 +162,14 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
     )?;
     let items: Vec<Value> = stmt
         .query_map([], |r| {
-            let int = |i| r.get::<_, Option<i64>>(i);
+            // 流程成本欄位：JSON 鍵與 SELECT 欄位編號寫在同一處，缺席（NULL）時為 None。
+            let cost = [
+                ("docLines", r.get::<_, Option<i64>>(10)?.map(Value::from)),
+                ("leadDays", r.get::<_, Option<i64>>(11)?.map(Value::from)),
+                ("leadHours", r.get::<_, Option<f64>>(12)?.map(Value::from)),
+                ("reviewRounds", r.get::<_, Option<i64>>(13)?.map(Value::from)),
+                ("verifyRounds", r.get::<_, Option<i64>>(14)?.map(Value::from)),
+            ];
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, Option<i64>>(1)?,
@@ -174,8 +181,7 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
                 r.get::<_, Option<String>>(7)?,
                 r.get::<_, Option<String>>(8)?,
                 r.get::<_, Option<String>>(9)?,
-                [int(10)?, int(11)?, int(13)?, int(14)?],
-                r.get::<_, Option<f64>>(12)?,
+                cost,
             ))
         })?
         .flatten()
@@ -191,8 +197,7 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
                 verify_status,
                 why_excerpt,
                 created,
-                [doc_lines, lead_days, review_rounds, verify_rounds],
-                lead_hours,
+                cost,
             ) = row;
             let mut item = item_for(&n);
             // 無 tasks.md 的封存項徽章欄位缺席（前端據此不顯示徽章）。
@@ -218,18 +223,10 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
                 item["created"] = json!(created);
             }
             // 流程成本欄位同規則：缺席不插 key。
-            for (key, value) in [
-                ("docLines", doc_lines),
-                ("leadDays", lead_days),
-                ("reviewRounds", review_rounds),
-                ("verifyRounds", verify_rounds),
-            ] {
+            for (key, value) in cost {
                 if let Some(value) = value {
-                    item[key] = json!(value);
+                    item[key] = value;
                 }
-            }
-            if let Some(hours) = lead_hours {
-                item["leadHours"] = json!(hours);
             }
             item
         })

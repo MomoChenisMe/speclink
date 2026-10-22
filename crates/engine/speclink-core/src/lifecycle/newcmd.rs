@@ -222,11 +222,7 @@ mod tests {
         new_change(&store, "stamped", None, "spec-driven", None, None, None)
             .expect("new change succeeds");
         let meta = store.meta("stamped");
-        let created = meta
-            .lines()
-            .find_map(|l| l.strip_prefix("created: "))
-            .expect("created line");
-        assert!(util::is_offset_stamp(created), "created is not an offset stamp: {meta}");
+        let created = util::offset_stamp_line(&meta, "created");
         let parsed = model::ChangeMeta::from_text(Some(&meta)).expect("meta parses");
         assert_eq!(parsed.created.as_deref(), Some(&created[..10]), "outputs keep the date part");
     }
