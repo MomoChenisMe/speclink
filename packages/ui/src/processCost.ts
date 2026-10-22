@@ -44,25 +44,25 @@ export function formatCost(n: number): string {
   return String(roundCost(n));
 }
 
+/** 流程成本欄位的單一清單：決定摘要出不出現，也決定摘要有哪些數字。 */
 const COST_FIELDS = ["docLines", "leadDays", "leadHours", "reviewRounds", "verifyRounds"] as const;
 
-const stat = (values: number[]): CostStat | undefined =>
-  values.length > 0 ? { median: median(values), samples: values.length } : undefined;
+const stat = (values: number[]): CostStat => ({ median: median(values), samples: values.length });
 
-/** 以全部已封存變更算出摘要的每個數字（呼叫端不得先套搜尋過濾）。 */
+/** 以全部已封存變更算出摘要的每個數字（呼叫端不得先套搜尋過濾）。缺席的數字不留 key。 */
 export function summarizeProcessCost(items: ArchivedItem[]): ProcessCostSummaryData {
-  if (!items.some((item) => COST_FIELDS.some((field) => item[field] != null))) return {};
-  const values = (pick: (item: ArchivedItem) => number | undefined) =>
-    items.map(pick).filter((v): v is number => v != null);
-  const docLines = values((item) => item.docLines);
-  const summary: ProcessCostSummaryData = {
-    docLines: docLines.length > 0 ? { ...stat(docLines)!, p90: p90(docLines) } : undefined,
-    tasks: stat(values((item) => item.tasksTotal)),
-    leadDays: stat(values((item) => item.leadDays)),
-    leadHours: stat(values((item) => item.leadHours)),
-    reviewRounds: stat(values((item) => item.reviewRounds)),
-    verifyRounds: stat(values((item) => item.verifyRounds)),
-  };
-  // 缺席的數字不留 key，空摘要就是 `{}`。
-  return Object.fromEntries(Object.entries(summary).filter(([, v]) => v)) as ProcessCostSummaryData;
+  const values = (field: (typeof COST_FIELDS)[number] | "tasksTotal") =>
+    items.map((item) => item[field]).filter((v): v is number => v != null);
+  const summary: ProcessCostSummaryData = {};
+  for (const field of COST_FIELDS) {
+    const v = values(field);
+    if (v.length === 0) continue;
+    if (field === "docLines") summary.docLines = { ...stat(v), p90: p90(v) };
+    else summary[field] = stat(v);
+  }
+  // 沒有任何流程成本欄位時整個摘要不出現，任務數有樣本也一樣（遠端清單只帶任務數）。
+  if (Object.keys(summary).length === 0) return {};
+  const tasks = values("tasksTotal");
+  if (tasks.length > 0) summary.tasks = stat(tasks);
+  return summary;
 }

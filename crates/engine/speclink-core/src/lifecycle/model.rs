@@ -7,17 +7,18 @@ use crate::store::Store;
 use serde::Deserialize;
 use std::path::PathBuf;
 
-/// `.openspec.yaml` — per-change metadata.
+/// `.openspec.yaml` — per-change metadata. 建構要經過時間欄位收斂：文字走
+/// [`ChangeMeta::from_text`]、已結構化的欄位走 [`ChangeMeta::from_fields`]。
+/// `#[non_exhaustive]` 讓 core 以外的字面值建構編譯不過；`Default` 只當讀檔失敗時
+/// 的空白後備，不在它上面逐欄填值。
 #[derive(Debug, Clone, Default, Deserialize)]
+#[non_exhaustive]
 pub struct ChangeMeta {
     pub schema: Option<String>,
-    /// 建立日期。寫入的是 RFC 3339 時戳，[`ChangeMeta::from_text`] 把它收斂成日期
-    /// 部分——對外輸出點直接拿來用（process-cost-metrics design D2）。
+    /// 建立日期。寫入的是 RFC 3339 時戳，解析時收斂成日期部分——對外輸出點直接
+    /// 拿來用（process-cost-metrics design D2）；完整時戳只有流程成本
+    /// （lifecycle/cost.rs）逐鍵讀原文取得。
     pub created: Option<String>,
-    /// `created` 的完整原值（時戳或舊記錄的純日期），只供流程成本計算時數；
-    /// 由 [`ChangeMeta::from_text`] 填入，不對應任何 YAML 鍵。
-    #[serde(skip)]
-    pub created_stamp: Option<String>,
     pub created_by: Option<String>,
     #[serde(default)]
     pub created_with: Option<String>,
@@ -90,10 +91,8 @@ pub struct ChangeMeta {
     /// 歷次蓋章累加的驗證回合數；與 `reviewed_rounds` 同規則。
     #[serde(default)]
     pub verified_rounds: Option<u64>,
-    /// 封存時戳（`archive` 移動前寫入；process-cost-metrics D3）。保留原值不收斂——
-    /// 舊記錄是純日期，只供流程成本讀取。
-    #[serde(default)]
-    pub archived_at: Option<String>,
+    // `archived_at`（封存時戳）刻意不是欄位：只有流程成本讀它、逐鍵讀原文，舊版在
+    // 殘留值之後再追加一行時也不會讓整份 meta 因重複鍵解析失敗。
 }
 
 /// `reviewed_scope` 清單項：path 為 repo-root 相對、`/` 分隔（Windows 路徑
@@ -118,13 +117,21 @@ impl ChangeMeta {
         Ok(meta)
     }
 
+    /// 由已結構化的欄位（SDK store bridge、remote drift）組一份 meta：`fill` 填欄位，
+    /// 收尾時跑與 [`Self::from_text`] 同一道時間欄位收斂。`ChangeMeta` 帶
+    /// `#[non_exhaustive]`，core 以外不能用字面值建構；從 `default()` 逐欄填值會
+    /// 跳過收斂，填欄位一律走這裡。
+    pub fn from_fields(fill: impl FnOnce(&mut ChangeMeta)) -> ChangeMeta {
+        let mut meta = ChangeMeta::default();
+        fill(&mut meta);
+        meta.collapse_time_fields();
+        meta
+    }
+
     /// Time fields written as RFC 3339 stamps collapse to their date part, so every
     /// output point keeps emitting `YYYY-MM-DD` (process-cost-metrics design D2);
-    /// plain dates and unrecognised values stay verbatim, and the full `created`
-    /// lands in `created_stamp`. [`ChangeMeta::from_text`] runs it; a `ChangeMeta`
-    /// built from already-structured fields (the SDK store bridge) must run it too.
-    pub fn collapse_time_fields(&mut self) {
-        self.created_stamp = self.created.clone();
+    /// plain dates and unrecognised values stay verbatim. Idempotent.
+    fn collapse_time_fields(&mut self) {
         let time_fields = [
             &mut self.created,
             &mut self.started_at,
@@ -855,16 +862,33 @@ mod tests {
     #[test]
     fn meta_collapses_rfc3339_time_fields_to_their_date_part() {
         // spec「change metadata 時間欄位寫入時戳、對外輸出日期」：解析層把時戳收斂成
-        // 前 10 個字元，完整的 created 原值留在 created_stamp 供流程成本計算。
+        // 前 10 個字元；完整時戳只有流程成本（lifecycle/cost.rs）逐鍵讀原文取得。
         let text = "schema: spec-driven\ncreated: 2026-10-21T14:05:00+08:00\nstarted_at: 2026-10-22T09:00:00+08:00\nclaimed_at: 2026-10-23T10:00:00+00:00\nreviewed_at: 2026-10-24T23:59:59-05:00\nverified_at: 2026-10-25T00:00:01+08:00\narchived_at: 2026-10-26T16:30:00+08:00\n";
         let meta = ChangeMeta::from_text(Some(text)).expect("meta parses");
         assert_eq!(meta.created.as_deref(), Some("2026-10-21"));
-        assert_eq!(meta.created_stamp.as_deref(), Some("2026-10-21T14:05:00+08:00"));
         assert_eq!(meta.started_at.as_deref(), Some("2026-10-22"));
         assert_eq!(meta.claimed_at.as_deref(), Some("2026-10-23"));
         assert_eq!(meta.reviewed_at.as_deref(), Some("2026-10-24"));
         assert_eq!(meta.verified_at.as_deref(), Some("2026-10-25"));
-        assert_eq!(meta.archived_at.as_deref(), Some("2026-10-26T16:30:00+08:00"));
+    }
+
+    #[test]
+    fn collapsing_an_already_collapsed_meta_changes_nothing() {
+        // 收斂是冪等的：日期部分再收斂一次仍是同一個日期。
+        let text = "created: 2026-10-21T14:05:00+08:00\nstarted_at: someday\nreviewed_at: 2026-10-24\n";
+        let mut meta = ChangeMeta::from_text(Some(text)).expect("meta parses");
+        let once = format!("{meta:?}");
+        meta.collapse_time_fields();
+        assert_eq!(format!("{meta:?}"), once);
+    }
+
+    #[test]
+    fn duplicate_archived_at_lines_do_not_break_the_meta() {
+        // `archived_at` 不是 ChangeMeta 的欄位：舊版在殘留的 archived_at 之後再追加
+        // 一行時，整份 meta 照常解析，不會因重複鍵讀成預設值。
+        let text = "schema: spec-driven\ncreated: 2026-10-21T14:05:00+08:00\narchived_at: 2026-10-21T16:00:00+08:00\narchived_at: 2026-10-22\n";
+        let meta = ChangeMeta::from_text(Some(text)).expect("duplicate archived_at must not fail the parse");
+        assert_eq!(meta.created.as_deref(), Some("2026-10-21"));
     }
 
     #[test]
@@ -873,11 +897,9 @@ mod tests {
         let meta = ChangeMeta::from_text(Some("created: 2026-07-29\nstarted_at: someday\n"))
             .expect("meta parses");
         assert_eq!(meta.created.as_deref(), Some("2026-07-29"));
-        assert_eq!(meta.created_stamp.as_deref(), Some("2026-07-29"));
         assert_eq!(meta.started_at.as_deref(), Some("someday"));
         let meta = ChangeMeta::from_text(Some("created: someday\n")).expect("meta parses");
         assert_eq!(meta.created.as_deref(), Some("someday"));
-        assert!(meta.archived_at.is_none());
         // 偏移量超出範圍、少了秒的寫法都不是 RFC 3339——原樣保留，不截成日期。
         for odd in ["2026-10-21T14:05:00+25:00", "2026-10-21T14:05+08:00"] {
             let meta = ChangeMeta::from_text(Some(&format!("created: {odd}\n"))).expect("meta parses");
@@ -886,26 +908,17 @@ mod tests {
     }
 
     #[test]
-    fn collapse_time_fields_applies_to_a_meta_built_from_fields() {
-        // SDK store bridge 由宿主給的結構化欄位組 ChangeMeta、不經 from_text——
-        // 呼叫同一道收斂後，輸出點拿到的一樣是日期部分。
-        let mut meta = ChangeMeta {
-            created: Some("2026-10-21T14:05:00+08:00".into()),
-            started_at: Some("2026-10-22T09:00:00+08:00".into()),
-            ..Default::default()
-        };
-        meta.collapse_time_fields();
+    fn from_fields_collapses_time_fields_like_from_text() {
+        // SDK store bridge 與 remote drift 由已結構化的欄位組 ChangeMeta、不經
+        // from_text——from_fields 收尾時跑同一道收斂，輸出點拿到的一樣是日期部分。
+        let meta = ChangeMeta::from_fields(|m| {
+            m.created = Some("2026-10-21T14:05:00+08:00".into());
+            m.started_at = Some("2026-10-22T09:00:00+08:00".into());
+            m.claimed_at = Some("someday".into());
+        });
         assert_eq!(meta.created.as_deref(), Some("2026-10-21"));
         assert_eq!(meta.started_at.as_deref(), Some("2026-10-22"));
-        assert_eq!(meta.created_stamp.as_deref(), Some("2026-10-21T14:05:00+08:00"));
-    }
-
-    #[test]
-    fn created_stamp_cannot_be_set_from_the_document() {
-        // created_stamp 不對應任何 YAML 鍵：檔內寫了也不會蓋掉 created 的原值。
-        let meta = ChangeMeta::from_text(Some("created: 2026-07-01\ncreated_stamp: 1999-01-01T00:00:00+00:00\n"))
-            .expect("meta parses");
-        assert_eq!(meta.created_stamp.as_deref(), Some("2026-07-01"));
+        assert_eq!(meta.claimed_at.as_deref(), Some("someday"));
     }
 
     #[test]

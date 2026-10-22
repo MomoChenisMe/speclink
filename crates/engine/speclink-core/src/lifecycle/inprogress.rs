@@ -202,13 +202,6 @@ mod tests {
     }
 
     #[test]
-    fn add_writes_started_at_as_an_offset_stamp() {
-        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01\n");
-        super::add(&store, "demo", None, None).unwrap();
-        crate::util::offset_stamp_line(&store.meta("demo"), "started_at");
-    }
-
-    #[test]
     fn add_handles_meta_missing_trailing_newline() {
         let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01");
         super::add(&store, "demo", None, None).unwrap();

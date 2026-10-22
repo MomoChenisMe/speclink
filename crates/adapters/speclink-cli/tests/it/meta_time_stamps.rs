@@ -134,10 +134,14 @@ fn staleness_of_a_stamped_created_counts_from_its_date_part() {
         "demo",
         "schema: spec-driven\ncreated: 2026-09-01T23:30:00-05:00\n",
     );
-    let json = p.json(&["instructions", "apply", "--change", "demo", "--json"]);
+    // 指令前後各取一次「今天」：跑在午夜兩側時兩個天數都算對。
     let created = chrono::NaiveDate::from_ymd_opt(2026, 9, 1).unwrap();
-    let expected = (chrono::Local::now().date_naive() - created).num_days();
-    assert_eq!(json["preflight"]["staleness"]["daysOld"], expected, "preflight: {json}");
+    let days_old = || (chrono::Local::now().date_naive() - created).num_days();
+    let before = days_old();
+    let json = p.json(&["instructions", "apply", "--change", "demo", "--json"]);
+    let after = days_old();
+    let actual = json["preflight"]["staleness"]["daysOld"].as_i64();
+    assert!(actual == Some(before) || actual == Some(after), "preflight: {json}");
 }
 
 #[test]
