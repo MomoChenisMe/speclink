@@ -39,6 +39,21 @@ pub fn fresh_evidence(context: &DeepReportContext) -> FreshEvidence {
     }
 }
 
+pub(crate) fn report_decisions(
+    store: &dyn Store,
+    change: &str,
+    builtin: Option<&Report>,
+    deep: Option<&DeepReport>,
+) -> Result<Vec<RiskDecision>> {
+    let mut decisions = Vec::new();
+    for id in deep.into_iter().map(DeepReport::report_id)
+        .chain(builtin.into_iter().map(Report::report_id))
+    {
+        decisions.extend(read_decisions(store, change, id)?);
+    }
+    Ok(decisions)
+}
+
 pub fn acceptance_proof_for_target(
     target: &ReviewTarget,
     reader: &dyn ProjectInput,
@@ -74,14 +89,7 @@ pub fn acceptance_proof_for_target(
         .read_artifact(change, history::INDEX)
         .map(|s| sha256(s.as_bytes()));
     let (builtin, deep) = current_reports(store, change)?;
-    let mut decisions = vec![];
-    for id in deep
-        .iter()
-        .map(DeepReport::report_id)
-        .chain(builtin.iter().map(Report::report_id))
-    {
-        decisions.extend(read_decisions(store, change, id)?);
-    }
+    let decisions = report_decisions(store, change, builtin.as_ref(), deep.as_ref())?;
     let mut reasons = vec![];
     let fresh = if deep.is_some() {
         match submission_context(target, reader, data, store, None, budget) {
@@ -290,14 +298,7 @@ pub fn acceptance_from_fresh(
         ));
     }
     let (builtin, deep) = current_reports(store, change)?;
-    let mut decisions = Vec::new();
-    for id in deep
-        .iter()
-        .map(DeepReport::report_id)
-        .chain(builtin.iter().map(Report::report_id))
-    {
-        decisions.extend(read_decisions(store, change, id)?);
-    }
+    let decisions = report_decisions(store, change, builtin.as_ref(), deep.as_ref())?;
     let bound_change = if store.change_exists(change) {
         change
     } else {

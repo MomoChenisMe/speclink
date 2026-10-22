@@ -421,6 +421,42 @@ mod tests {
         }
     }
     #[test]
+    fn verify_rejects_index_movement_after_acceptance_for_both_stamp_inputs() {
+        use crate::{station, store::Store, teststore::TestStore};
+        for supplied_scope in [false, true] {
+            let (policy, basic, deep, fresh) = evidence(None, true, ReviewStatus::Pass);
+            let store = TestStore::with_meta("demo", "schema: spec-driven\n");
+            *store.workflow_config.borrow_mut() = Some(serde_json::json!({"security_verification": policy}).to_string());
+            store.put_artifact("demo", "tasks.md", "- [x] done\n");
+            station::add_round(&station::VERIFY, &store, "demo", "**Scope**: app.ts\n").unwrap();
+            let index = serde_json::to_string(&crate::history::CheckIndex::default()).unwrap();
+            store.put_artifact("demo", crate::history::INDEX, &index);
+            let proof = AcceptanceProof {
+                change_name: "demo".into(), project_key: "a".repeat(64),
+                index_digest: Some(crate::security::data::sha256(index.as_bytes())),
+                builtin: Some(basic), deep: Some(deep), decisions: vec![], fresh: Some(fresh), reasons: vec![],
+            };
+            let meta = store.meta("demo");
+            let ticket = store.read_artifact("demo", "verify.md").unwrap();
+            // A second writer commits after the gate reads I0, before the stamp builds its commit.
+            *store.artifact_read_hook.borrow_mut() = Some(Box::new(move |store, change, path| {
+                assert_eq!(path, crate::history::INDEX);
+                store.put_artifact(change, path, &format!("{index}\n"));
+            }));
+            let result = if supplied_scope {
+                station::stamp_with_scope_and_acceptance(&station::VERIFY, &store, "demo", false, None, None,
+                    vec![crate::model::ReviewedScopeEntry {path: "app.ts".into(), hash: station::content_fingerprint("route(id)")}], vec![], Some(&proof))
+            } else {
+                station::stamp_with_acceptance(&station::VERIFY, &store, "demo", false, None, None,
+                    &|_| Some(b"route(id)".to_vec()), &|_| true, Some(&proof))
+            };
+            assert!(result.is_err(), "a newer index must invalidate the accepted proof");
+            assert_eq!(store.meta("demo"), meta);
+            assert_eq!(store.read_artifact("demo", "verify.md").as_deref(), Some(ticket.as_str()));
+        }
+    }
+
+    #[test]
     fn acceptance_matrix_from_spec() {
         for (required, complete, severity, accepted, want) in [
             (false, false, "high", false, "reference"),

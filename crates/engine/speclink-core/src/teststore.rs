@@ -58,6 +58,7 @@ pub(crate) struct TestStore {
     pub ownership: bool,
     /// One-shot interleaving after an artifact snapshot is read.
     pub artifact_read_hook: RefCell<Option<Box<dyn Fn(&TestStore, &str, &str)>>>,
+    pub archive_commit_hook: RefCell<Option<Box<dyn Fn(&TestStore)>>>,
 }
 
 impl TestStore {
@@ -276,7 +277,9 @@ impl Store for TestStore {
         Ok(())
     }
     fn archive_change_with_checks(&self,name:&str,dated:&str,plan:&crate::history::ArchiveChecksPlan)->Result<()> {
+        if let Some(hook) = self.archive_commit_hook.borrow_mut().take() { hook(self); }
         plan.validate_base(self,name)?;
+        plan.write_canonical_specs(self)?;
         self.archive_change(name,dated)?;
         self.archived_artifacts.borrow_mut().retain(|(change,path),_|change!=dated||plan.retains(path));
         if let Some(index)=&plan.index{self.archived_artifacts.borrow_mut().insert((dated.into(),crate::history::INDEX.into()),index.clone());}

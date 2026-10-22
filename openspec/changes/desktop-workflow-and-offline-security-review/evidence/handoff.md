@@ -1,5 +1,59 @@
 # 換機接續開發
 
+## 2026-10-22 最新交付（以本段為準）
+
+分支仍為 `feat/desktop-workflow-offline-security-review`，origin 為 `https://github.com/mosutw/speclink.git`。本次依使用者要求提交並推送以換機接續；本文件不硬填自身提交 SHA，請以對話提供的 SHA、`git log -1` 與 `origin` 分支一致性核對。
+
+### 已完成與尚未完成
+
+- 程式任務 **59／59**，全部 **59／60**；唯一人工任務 `[M]` 12.3 仍未完成，先 main 合併及打包後，再在公司安裝驗收。
+- 前次 `46803b2b` 修正 PR #12 的 CI 回歸，該 commit 的三平台 CI 與 Node SDK 已成功；**本次新增提交的 CI 須重新確認**，不能沿用該次 success。
+- 本次提交的 11 個程式檔修正：verify 最終提交固定使用已驗收 index 指紋，避免中途換報告仍蓋章；封存先在 backend 鎖內核對基底再寫正式規格，避免 CAS 衝突留下半套效果；共用三處安全決策載入。兩個原 CRITICAL 均有先失敗再通過的回歸測試。
+- 受影響 Rust 測試：2744 passed、3 ignored；另外三項 PostgreSQL 測試未設 DB 而跳過。scripts：353 passed、33 skipped。最後微調後 core 再跑 1075 passed、1 ignored。補查另跑 UI 184、Desktop 720，共 904 passed；`git diff --check` 通過。詳見 [修復及 Round 2](quality-ci-followup-2026-10-22.md)。
+- Review／Verify 活動工單各保留本次 Round 1、Round 2，Round 2 沒有未解原 finding。**後續完整補查另有新問題，整體不能稱已通過**；不將新問題偷塞進只驗原修復的 Round 3，不刪完成歷史。
+- 補查已完成；正確總數為 **46 條需求、133 個情境、7 個範例**。先前 143 是加總錯誤。完整映射及實際 partial／manual 見 [逐項追溯](quality-spec-coverage-2026-10-22.md)。沒有自動蓋章、合併、打包、封存或更新 manual。
+
+### 回到另一台電腦先做什麼
+
+在專案目錄先執行 `git status --short`。若有未提交修改，先保存再整合，不可 reset、clean 或強制覆蓋。
+
+```powershell
+git fetch origin
+git switch feat/desktop-workflow-offline-security-review
+git pull --ff-only origin feat/desktop-workflow-offline-security-review
+git log -1 --oneline
+npm ci
+cargo build -p speclink-cli --locked
+```
+
+若本機尚無分支，將 switch 那行改為：
+
+```powershell
+git switch --track origin/feat/desktop-workflow-offline-security-review
+```
+
+Windows 使用 **checkout 新建置的** `.\target\debug\speclink.exe`；PATH 上既有的 `D:\tools\Speclink\speclink.exe` 可能仍是 build.2，不能用舊 CLI 判斷新工單或功能。
+
+### 下一步：先處理補查事項，不先收尾蓋章
+
+詳見 [補查結果與規格修訂草案](quality-discovery-completion-2026-10-22.md)。優先順序：
+
+1. **先決定 Node SDK 規格方向**。delta 還要求已不存在的 `instructions.render` 與 `store` 選項。建議依現行 SDK 更新 delta，只保留 skills API 與實際參數；這個方向尚未獲使用者選定，不能為了通過檢查直接刪規格。若使用者仍要舊 API，需先補設計與任務。方向確認後透過 `$speclink-ingest desktop-workflow-and-offline-security-review` 調整文件。
+2. **修正 SDK 型別漏項**。`crates/adapters/speclink-node/index.d.ts` 是手寫公開型別，package 的 types 指向它；`RenderOptions.target` 缺 `antigravity`。最小 `skills.render('apply', {target:'antigravity'})` 用 tsc 已重現 TS2322；`copilot` 對照通過。新增公開型別的編譯測試，再修正值域，不能只依賴 Vitest 轉譯測試。
+3. 補兩處精確測試追溯：單值 `--tools vscode`（目前只有 `claude,vscode`）、真 Git commit 後 dirty 內容的 HEAD 參考與實際 bytes digest。同時修 `docs/configuration.md` 及 zh-TW 的自訂工具表格斷開，以及規則表漏列 `.agent/skills`。
+4. 本次補查以 **scope changed / failed** 結束，保留票據。修正及文件範圍確定後，再以正式處置開新 discovery；原可信基準仍為 **`faefda7dabde01b8d90974aea63f4f7a8bdd5c24`**，不可改用目前 HEAD。這次為換機而提交修正，不能假設換機後原 validation 快照仍能還原全部修復。
+5. 新 discovery 通過後才由使用者明確選擇品質收尾。後續順序仍是 **CI → 正式版本號 → main 合併與打包 → 公司 Proxy 12.3 → 封存 → manual**；本次沒有授權自動合併或發版。
+
+`.speclink/review-scopes/` 是本機忽略資料，**沒有推入 Git**，新電腦可能回 frozen snapshot missing。Git 中的 review.md／verify.md、兩份品質證據與逐項映射都有保存，程式修正不會因此遺失。不可偽造快照、自行改票或直接以目前 HEAD 建基準；需要丟棄活動票以重開 discovery 時，先將兩份票據原文另存 evidence，經使用者明確同意後用正式 review／verify discard，不刪 checks 完成歷史。下方較早的「直接 closing stamp」敘述不適用本次尚有新問題的狀態。
+
+可貼給另一台 Codex：
+
+> 請先讀 openspec/changes/desktop-workflow-and-offline-security-review/evidence/handoff.md 的 2026-10-22 段，以及 quality-discovery-completion-2026-10-22.md、quality-spec-coverage-2026-10-22.md。先核對分支最新提交與 CI。原兩項並行問題已修復，完整補查另發現 SDK 公開型別漏 antigravity，以及 delta 沿用已退役的 instructions.render/store；先讓我決定規格方向，再修復與補測試。保留兩站工單及 checks 歷史，不拿舊 Round 2 clean 當整體通過，不自動蓋章、合併、打包、封存或更新 manual。新 discovery 的 trusted base 是 faefda7dabde01b8d90974aea63f4f7a8bdd5c24，缺本機快照時先回報，不自動丟棄票據。
+
+Git 不含依賴、Rust target、裝置設定、憑證、安全標準資料或本機 scope 快照；本次排除使用者既有 `$null` 輸出檔。私人裝置資料不隨專案推送。
+
+## 較早交付紀錄（歷史，以下數字與收尾建議不代表最新狀態）
+
 - 分支：`feat/desktop-workflow-offline-security-review`。
 - 變更：`desktop-workflow-and-offline-security-review`，保留原始九項需求、安全驗收 checkbox 與所有專案提案預設條列顯示。
 - 原提交 `945175c5` 的程式任務42／42、全部42／43。2026-10-21追加需求及Windows鎖定修復完成後，程式任務55／55、全部55／56；唯一未完成為公司Proxy手動驗收12.3。本文件隨附的換機交付提交包含追加功能、品質修正與兩站工單，不能只拉945175c5就取得本輪實作；交付SHA以本次對話及 `git log -1` 核對。

@@ -36,6 +36,8 @@ impl ArchiveRecordCounts {
 }
 #[derive(Debug, Clone)]
 pub struct ArchiveChecksPlan {
+    /// Canonical writes travel with the archive so the backend validates and locks first.
+    pub canonical_specs: BTreeMap<String, String>,
     pub retention: ArchiveRecords,
     pub expected_index: Option<String>,
     pub expected_meta: Option<String>,
@@ -45,6 +47,13 @@ pub struct ArchiveChecksPlan {
     pub counts: ArchiveRecordCounts,
 }
 impl ArchiveChecksPlan {
+    pub fn write_canonical_specs<S: Store + ?Sized>(&self, store: &S) -> Result<()> {
+        for (capability, content) in &self.canonical_specs {
+            store.write_canonical_spec(capability, content)
+                .map_err(|error| anyhow::anyhow!("Failed to write canonical spec for '{capability}': {error}"))?;
+        }
+        Ok(())
+    }
     pub fn retains(&self, path: &str) -> bool {
         for (kind, keep) in [
             ("review", self.retention.review),
@@ -62,7 +71,7 @@ impl ArchiveChecksPlan {
             || self.receipt.is_some()
             || self.index.is_some()
     }
-    pub fn validate_base(&self, store: &dyn Store, change: &str) -> Result<()> {
+    pub fn validate_base<S: Store + ?Sized>(&self, store: &S, change: &str) -> Result<()> {
         ensure!(
             store
                 .read_artifact(change, INDEX)
@@ -289,6 +298,7 @@ pub fn prepare_archive_checks(
         None
     };
     Ok(ArchiveChecksPlan {
+        canonical_specs: BTreeMap::new(),
         retention: retention.clone(),
         expected_index: original.as_deref().map(|s| sha256(s.as_bytes())),
         expected_meta: original_meta.as_deref().map(|s| sha256(s.as_bytes())),

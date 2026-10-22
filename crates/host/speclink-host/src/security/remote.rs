@@ -526,14 +526,7 @@ pub(crate) fn proof(
 ) -> Result<AcceptanceProof> {
     let (context, _) = context(store, key, change, policy_text, data, a, None, None)?;
     let (builtin, deep) = current_reports(store, change)?;
-    let mut decisions = Vec::new();
-    for id in builtin
-        .iter()
-        .map(Report::report_id)
-        .chain(deep.iter().map(DeepReport::report_id))
-    {
-        decisions.extend(read_decisions(store, change, id)?);
-    }
+    let decisions = report_decisions(store, change, builtin.as_ref(), deep.as_ref())?;
     let mut fresh = fresh_evidence(&context);
     fresh.source_freshness = SourceFreshness::ClientAttested;
     Ok(AcceptanceProof {

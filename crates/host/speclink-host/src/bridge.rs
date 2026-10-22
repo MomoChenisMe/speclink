@@ -537,6 +537,7 @@ impl Store for BridgeStore {
 
     fn archive_change_with_checks(&self,name:&str,dated:&str,plan:&speclink_core::history::ArchiveChecksPlan)->anyhow::Result<()> {
         plan.validate_base(self,name)?;
+        plan.write_canonical_specs(self)?;
         self.archive_change(name,dated)?;
         let omitted=self.view.borrow().keys().filter(|id|matches!(id,DocumentId::ArchivedChange{change,doc} if change==dated&&!plan.retains(doc))).cloned().collect::<Vec<_>>();
         for doc in omitted{self.del(doc);}

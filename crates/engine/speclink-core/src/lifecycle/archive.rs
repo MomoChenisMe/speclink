@@ -814,7 +814,7 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
         return Err(merge_refusal(&change.name, &violations));
     }
 
-    let checks = crate::history::prepare_archive_checks(
+    let mut checks = crate::history::prepare_archive_checks(
         store,
         &change.name,
         actor,
@@ -863,25 +863,17 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
         .map_err(|e| anyhow::anyhow!("Failed to write created_specs.json: {e}"))?;
         snapshot_created = true;
     }
-    for plan in &plans {
-        // A mid-commit failure names the snapshot location (design risk table):
-        // the pre-archive backups written above are the recovery path.
-        store
-            .write_canonical_spec(&plan.capability, &plan.content)
-            .map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to write canonical spec for '{}': {e} — pre-archive backups are \
-                 under {}",
-                    plan.capability,
-                    snapshot_dir.display()
-                )
-            })?;
-    }
+    checks.canonical_specs = plans.iter()
+        .map(|plan| (plan.capability.clone(), plan.content.clone())).collect();
     let caps: Vec<CapCounts> = plans.into_iter().map(|p| p.counts).collect();
 
     // Move change into the archive under its dated name. The in-progress marker
     // stays untouched on archive (frozen behavior).
-    store.archive_change_with_checks(&change.name, &dated_name, &checks)?;
+    store.archive_change_with_checks(&change.name, &dated_name, &checks)
+        .map_err(|error| {
+            let message = format!("{error} — pre-archive backups are under {}", snapshot_dir.display());
+            error.context(message)
+        })?;
 
     // Clear the app-side "started" marker for this change, if present.
     let _ = util::remove_file(

@@ -262,6 +262,8 @@ pub(crate) fn archive(
             }
             validate_tree(&stage)?;
             fault("staged")?;
+            // Still under the same checks lock: a changed plan fails before canonical writes.
+            plan.write_canonical_specs(store)?;
             io::write_new(&journal, &serde_json::to_vec(&j)?, &|| false)?;
             io::sync_directory(&store.layout().spec_dir())?;
             fs::rename(&stage, &final_path)?;
@@ -348,6 +350,31 @@ mod tests {
         .unwrap();
         (root, store, plan)
     }
+    #[test]
+    fn canonical_specs_are_written_only_after_archive_base_validation() {
+        for conflict in [false, true] {
+            let (_root, store, mut plan) = fixture();
+            store.write_canonical_spec("auth", "original").unwrap();
+            plan.canonical_specs.insert("auth".into(), "updated".into());
+            plan.canonical_specs.insert("new-cap".into(), "new".into());
+            if conflict {
+                store.write_change_meta("demo", "schema: spec-driven\nboard_rank: changed\n").unwrap();
+            }
+            let result = archive(&store, "demo", "2026-10-21-demo", &plan);
+            if conflict {
+                assert!(result.unwrap_err().to_string().contains("revision_conflict"));
+                assert_eq!(store.read_canonical_spec("auth").as_deref(), Some("original"));
+                assert_eq!(store.read_canonical_spec("new-cap"), None);
+                assert!(store.change_exists("demo"));
+            } else {
+                result.unwrap();
+                assert_eq!(store.read_canonical_spec("auth").as_deref(), Some("updated"));
+                assert_eq!(store.read_canonical_spec("new-cap").as_deref(), Some("new"));
+                assert!(store.archived_change_exists("2026-10-21-demo"));
+            }
+        }
+    }
+
     #[test]
     fn archive_rejects_metadata_changed_after_planning() {
         let (_root, store, plan) = fixture();

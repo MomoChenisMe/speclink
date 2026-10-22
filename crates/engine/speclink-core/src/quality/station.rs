@@ -423,7 +423,7 @@ pub fn stamp_with_scope_and_acceptance(
             extra.join(", ")
         )));
     }
-    write_stamp(st, store, change, &gate, actor, tool, &entries)
+    write_stamp(st, store, change, &gate, actor, tool, &entries, security)
 }
 
 /// 蓋章（spec「蓋章守門與蓋章效果」）：守門＝任務全完成＋末輪零待處理必修
@@ -454,7 +454,7 @@ pub fn stamp_with_acceptance(
         gate.paths.iter().cloned().partition(|p| file_exists(p));
     ensure_scope_remainder(&present, &gone)?;
     let entries = fingerprint_scope(&present, read_file)?;
-    write_stamp(st, store, change, &gate, actor, tool, &entries)
+    write_stamp(st, store, change, &gate, actor, tool, &entries, security)
 }
 
 /// 跳過死檔跳到一個不剩就不是「檢查過」——工作樹與工單嚴重脫節，fail-closed
@@ -657,6 +657,7 @@ fn write_stamp(
     actor: Option<&str>,
     tool: Option<&str>,
     entries: &[(String, String)],
+    security: Option<&crate::security::acceptance::AcceptanceProof>,
 ) -> Result<()> {
     // 文字手術（直接用 `KeyLines`，不走 `edit_meta`：meta 原文已由 `stamp_gate`
     // 讀過並驗過，且「先刪工單再寫章」要求寫入前插一步刪除）：先移除既有站別
@@ -700,13 +701,17 @@ fn write_stamp(
     let metadata = CheckMetadata { created_at: created_at.clone(), actor: actor.map(str::to_owned), tool: tool.map(str::to_owned), outcome: gate.outcome.into(), scope_digest: sha256(&serde_json::to_vec(entries)?) };
     let content = format!("<!-- speclink-check: {} -->\n\n{}", serde_json::to_string(&metadata)?, gate.ticket_text);
     let old_index = store.read_artifact(change, history::INDEX);
+    // A verify proof is bound to the index the Host actually checked, not a later read.
+    let expected_index = if st.noun == "verify" {
+        security.map(|proof| proof.index_digest.clone())
+    } else { None }.unwrap_or_else(|| old_index.map(|text| sha256(text.as_bytes())));
     let mut index = history::index(store, change)?;
     index.append(CheckEntry { record_id, kind, created_at, outcome: gate.outcome.into(), relative_path: path.clone(), content_digest: sha256(content.as_bytes()) })?;
     let writes = std::collections::BTreeMap::from([
         (path.clone(), content), (history::INDEX.into(), serde_json::to_string_pretty(&index)?), (".openspec.yaml".into(), m.text()),
     ]);
     let expected = std::collections::BTreeMap::from([
-        (path, None), (history::INDEX.into(), old_index.map(|text| sha256(text.as_bytes()))),
+        (path, None), (history::INDEX.into(), expected_index),
         (".openspec.yaml".into(), gate.raw_meta.as_ref().map(|text| sha256(text.as_bytes()))), (st.doc.into(), Some(sha256(gate.ticket_text.as_bytes()))),
     ]);
     store.commit_checks(change, &ChecksCommit { writes, deletes: vec![st.doc.into()], expected })

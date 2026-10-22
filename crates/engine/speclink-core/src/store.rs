@@ -145,6 +145,8 @@ pub trait Store {
     /// Official backends publish selection, receipt and metadata in the archive commit.
     fn archive_change_with_checks(&self,name:&str,dated_name:&str,plan:&crate::history::ArchiveChecksPlan)->Result<()> {
         anyhow::ensure!(!plan.modifies_checks(),"unsupported_version: archive check selection is not supported by this store");
+        plan.validate_base(self, name)?;
+        plan.write_canonical_specs(self)?;
         self.archive_change(name,dated_name)?;
         if let Some(meta)=&plan.archived_meta{self.write_archived_meta(dated_name,meta)?;}Ok(())
     }
