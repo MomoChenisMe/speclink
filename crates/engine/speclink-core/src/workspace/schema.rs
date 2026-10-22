@@ -403,7 +403,7 @@ pub fn missing_templates(schema: &Schema) -> Vec<String> {
 }
 
 /// The rejection message for a schema name that is not lowercase kebab-case.
-fn invalid_name_msg(name: &str) -> String {
+pub(crate) fn invalid_name_msg(name: &str) -> String {
     format!("Invalid schema name '{name}': must be lowercase kebab-case (e.g. my-flow)")
 }
 

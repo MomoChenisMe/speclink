@@ -19,8 +19,9 @@ use speclink_protocol::command::{
     DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, InProgressRemoveResponse,
     MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse,
     PutArtifactRequest, PutArtifactResponse, ReviewScopeEntryDto, ReviewTicketResponse,
-    SetDependsRequest, SetDependsResponse, SetDiscussionContextRequest, StampReviewRequest,
-    StampReviewResponse, TaskDoneRequest, TaskDoneResponse, TaskUndoneResponse,
+    SetDependsRequest, SetDependsResponse, SetDiscussionContextRequest, SetSchemaRequest,
+    SetSchemaResponse, StampReviewRequest, StampReviewResponse, TaskDoneRequest, TaskDoneResponse,
+    TaskUndoneResponse,
 };
 use speclink_protocol::context::{ContextSnapshot, ContextSnapshotRequest};
 use speclink_protocol::drift::SpecDriftResponse;
@@ -462,6 +463,15 @@ impl Client {
         self.post(
             &format!("/changes/{name}/depends"),
             &SetDependsRequest { on: on.to_vec(), remove },
+        )
+    }
+
+    /// `POST /changes/{name}/schema` — switch the change's schema. Guard
+    /// refusals come back as `refused` 409s carrying the engine's line verbatim.
+    pub fn set_schema(&self, name: &str, schema: &str) -> Result<SetSchemaResponse, RemoteError> {
+        self.post(
+            &format!("/changes/{name}/schema"),
+            &SetSchemaRequest { schema: schema.to_string() },
         )
     }
 

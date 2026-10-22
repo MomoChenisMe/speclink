@@ -44,6 +44,7 @@ fn classify(name: &str, payload: &Value) -> (InvalidationScope, String) {
         | "change-marked-in-progress"
         | "change-in-progress-removed"
         | "change-depends-changed"
+        | "change-schema-changed"
         | "change-discarded" => (InvalidationScope::Change, str_field(payload, "change")),
         "change-archived" => (InvalidationScope::Spec, str_field(payload, "change")),
         "discussion-created"
@@ -354,6 +355,12 @@ mod tests {
             (
                 "change-depends-changed",
                 json!({ "change": "add-auth", "dependsOn": ["add-base"] }),
+                InvalidationScope::Change,
+                "add-auth",
+            ),
+            (
+                "change-schema-changed",
+                json!({ "change": "add-auth", "schema": "no-spec-change" }),
                 InvalidationScope::Change,
                 "add-auth",
             ),

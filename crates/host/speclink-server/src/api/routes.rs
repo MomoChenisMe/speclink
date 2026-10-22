@@ -31,8 +31,8 @@ use speclink_protocol::command::{
     MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse,
     PutArtifactRequest, PutArtifactResponse, ReviewFindingDto, ReviewRoundDto, ReviewRulesDto,
     ReviewTicketResponse, SetDependsRequest, SetDependsResponse, SetDiscussionContextRequest,
-    StampReviewRequest, StampReviewResponse, TaskDoneRequest, TaskDoneResponse,
-    TaskUndoneResponse, UnlinkedDiscussion,
+    SetSchemaRequest, SetSchemaResponse, StampReviewRequest, StampReviewResponse, TaskDoneRequest,
+    TaskDoneResponse, TaskUndoneResponse, UnlinkedDiscussion,
 };
 use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::events::InvalidationEvent;
@@ -403,6 +403,35 @@ pub async fn change_depends(
             &result.etag,
         )),
         _ => Err(wrong_outcome("change depends")),
+    }
+}
+
+/// `POST /changes/{name}/schema` — Command::ChangeSchema 直通（server-verb-api
+/// 「變更 schema 寫入端點」）：editor 限定；不存在 404；schema 解析不到、要切到
+/// 沒有 specs 的 schema 而變更帶 delta、未結的驗證工單為引擎 Refused → 409 refused
+/// 附引擎原文、零寫入。server 的執行情境沒有 workspace 與 user 層，解析只看內建。
+/// 實際改動時 bridge commit 帶 change-schema-changed 事件、revision 前進；同值時
+/// 零寫入零事件。
+pub async fn change_schema(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+    Json(req): Json<SetSchemaRequest>,
+) -> Result<Response, ApiError> {
+    let result =
+        verb::run(&state, &binding, Command::ChangeSchema { name, schema: req.schema }).await?;
+    match result.execution.outcome {
+        CommandOutcome::ChangeSchema(o) => Ok(ok(
+            SetSchemaResponse {
+                change: o.change,
+                schema: o.schema,
+                previous: o.previous,
+                changed: o.changed,
+                verify_stamp_cleared: o.verify_stamp_cleared,
+            },
+            &result.etag,
+        )),
+        _ => Err(wrong_outcome("change schema")),
     }
 }
 

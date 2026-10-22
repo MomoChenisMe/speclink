@@ -2098,3 +2098,61 @@ fn remote_review_revision_conflict_asks_for_a_rerun_without_overwriting() {
         .count();
     assert_eq!(puts, 1, "exactly one guarded write attempt — no retry, no forced overwrite");
 }
+
+// --- change schema：兩模式同一支渲染、守門訊息逐字相同（change-schema-verb D4／D5）---
+
+const SCHEMA_META: &str = "schema: spec-driven\ncreated: 2026-07-01\n\
+verified_at: 2026-07-02T10:00:00+08:00\nverified_tasks_total: 1\nverified_rounds: 1\n";
+
+fn schema_fs_project(tag: &str) -> TempProject {
+    let p = TempProject::fs(tag);
+    p.write("openspec/changes/add-auth/.openspec.yaml", SCHEMA_META);
+    p
+}
+
+#[test]
+fn remote_change_schema_matches_fs_output_byte_for_byte() {
+    // 清章行也在遠端印出：回應的 verifyStampCleared 帶回這個事實。
+    let args = ["change", "schema", "add-auth", "no-spec-change"];
+    let fs_human = schema_fs_project("schema-fs-human").run(&args);
+    assert!(fs_human.status.success(), "fs stderr: {}", stderr_of(&fs_human));
+    assert!(stdout_of(&fs_human).contains("verify stamp cleared"), "{}", stdout_of(&fs_human));
+    let json_args = ["change", "schema", "add-auth", "no-spec-change", "--json"];
+    let fs_json = schema_fs_project("schema-fs-json").run(&json_args);
+    assert!(fs_json.status.success(), "fs stderr: {}", stderr_of(&fs_json));
+
+    let mock = mock_server(vec![(
+        "POST",
+        "/changes/add-auth/schema",
+        200,
+        r#"{"change":"add-auth","schema":"no-spec-change","previous":"spec-driven","changed":true,"verifyStampCleared":true}"#
+            .to_string(),
+    )]);
+    let p = TempProject::remote("schema-remote", &mock.base, "backend");
+    let remote_human = p.run(&args);
+    assert!(remote_human.status.success(), "remote stderr: {}", stderr_of(&remote_human));
+    assert_eq!(stdout_of(&remote_human), stdout_of(&fs_human), "human output matches fs mode");
+    let remote_json = p.run(&json_args);
+    assert_eq!(stdout_of(&remote_json), stdout_of(&fs_json), "--json matches fs mode");
+    assert_eq!(mock.find("POST", "/changes/add-auth/schema").body, r#"{"schema":"no-spec-change"}"#);
+}
+
+#[test]
+fn remote_change_schema_refusal_prints_the_fs_stderr_verbatim() {
+    let args = ["change", "schema", "add-auth", "no-such-flow"];
+    let fs = schema_fs_project("schema-fs-refused").run(&args);
+    assert!(!fs.status.success());
+    let message = "Schema not found: Schema 'no-such-flow' not found in project, user, or built-in locations";
+    assert_eq!(stderr_of(&fs), format!("Error: {message}\n"));
+
+    let mock = mock_server(vec![(
+        "POST",
+        "/changes/add-auth/schema",
+        409,
+        format!(r#"{{"status":409,"reason":"refused","message":"{message}"}}"#),
+    )]);
+    let p = TempProject::remote("schema-remote-refused", &mock.base, "backend");
+    let out = p.run(&args);
+    assert!(!out.status.success());
+    assert_eq!(stderr_of(&out), stderr_of(&fs), "stderr matches fs mode");
+}

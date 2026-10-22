@@ -27,7 +27,7 @@
 | --- | --- | --- |
 | 只限本機 | `demo`、`trace`、`change rank`、`plan --strict-overlap` | 遠端模式直接拒絕、非零結束，連一個請求都不送（離線也一樣拒絕） |
 | 只限遠端 | `claim` | 本機模式直接拒絕、非零結束，stderr 說明需要遠端儲存後端 |
-| 兩種模式都可用 | `list`、`show`、`validate`、`analyze`、`drift`、`archive`、`discard`、`artifact`、`language`、`status`、`instructions`、`new`、`workflow-config`、`task`、`in-progress`、`discuss`、`review`、`verify`、`plan`、`change`（`change rank` 除外） | 不適用。遠端模式只讀寫 server，不會偷偷改用本機檔案 |
+| 兩種模式都可用 | `list`、`show`、`validate`、`analyze`、`drift`、`archive`、`discard`、`artifact`、`language`、`status`、`instructions`、`new`、`workflow-config`、`task`、`in-progress`、`discuss`、`review`、`verify`、`plan`、`change`（`change depends` 與 `change schema`；`change rank` 除外） | 不適用。遠端模式只讀寫 server，不會偷偷改用本機檔案 |
 | 不分模式 | `init`、`update`、`link`、`unlink`、`auth`、`schemas`、`templates`、`feedback`、`schema`、`config`、`completion` | 不適用。這些動詞不碰儲存後端 |
 
 為什麼只限本機：
@@ -203,6 +203,7 @@ ETag 是 HTTP 回應標頭，用來判斷資料有沒有變。
 | DELETE | `/changes/{name}/in-progress` | editor | 移除開工標記（`speclink in-progress remove`） |
 | POST | `/changes/{name}/claim` | editor | 認領（`speclink claim`） |
 | POST | `/changes/{name}/depends` | editor | 宣告或移除前置變更（`speclink change depends`） |
+| POST | `/changes/{name}/schema` | editor | 切換變更的 schema（`speclink change schema`） |
 | POST | `/changes/{name}/archive?carryReview=<bool>&carryVerify=<bool>` | editor | 封存（`speclink archive`） |
 
 ### 任務
@@ -293,6 +294,7 @@ ETag 是 HTTP 回應標頭，用來判斷資料有沒有變。
 | `DELETE /changes/{name}?force=true` | 無 | `{"change":"add-search-bar","unlinkedDiscussions":[{"slug":"board-search-bar","status":"concluded"}]}` |
 | `POST /changes/{name}/claim` | 無 | `{"claimedBy":"Demo <demo@example.com>"}` |
 | `POST /changes/{name}/depends` | `{"on":["add-login"],"remove":false}` | `{"change":"add-logout","dependsOn":["add-login"]}` |
+| `POST /changes/{name}/schema` | `{"schema":"no-spec-change"}` | `{"change":"tidy","schema":"no-spec-change","previous":"spec-driven","changed":true,"verifyStampCleared":false}` |
 | `POST /changes/{name}/in-progress` | 無 | `{}` |
 | `DELETE /changes/{name}/in-progress` | 無 | `{"removed":true}`；本來就沒開工時是 `{"removed":false}` |
 | `POST /changes/{name}/archive` | 無 | `{"specs":[],"datedName":"2026-10-07-fix-typo","snapshotCreated":false,"archivedDiscussions":[],"evidenceRecorded":false}` |
@@ -306,6 +308,7 @@ ETag 是 HTTP 回應標頭，用來判斷資料有沒有變。
 - `DELETE /changes/{name}` 的 `force` 預設 `false`。變更已開工（有開工標記或任一任務已勾）時，不帶 `force=true` 會回 409 `refused`，什麼都不刪。metadata 壞掉時，即使 `force=true` 也回 422 `invalid_config`。回應的 `unlinkedDiscussions` 列出被解除連結的來源討論，以及解除後的狀態。
 - `POST /changes/{name}/claim`：同一個人重複認領，照樣成功、不重寫；別人已認領時回 409 `refused`，`message` 寫出目前的持有人。
 - `POST /changes/{name}/depends`：`on` 必填，`remove` 預設 `false`。自己依賴自己、目標不存在或已封存、依賴成環，都回 409 `refused`。
+- `POST /changes/{name}/schema`：server 只解析內建的 schema。schema 找不到、要切到沒有 specs 的 schema 而變更帶著 delta spec、有未結的驗證工單，都回 409 `refused`。切到同一個 schema 時回 200、`changed` 為 `false`，server 不寫入。這次切換移除了驗證章時，`verifyStampCleared` 為 `true`。
 - `POST /changes/{name}/in-progress`：重複呼叫，或變更名稱不存在，照樣回 200 `{}`，什麼都不寫。
 - `DELETE /changes/{name}/in-progress`：還有勾選的任務或記錄過的檔案時回 409 `refused`，封套多帶 `"checkedTasks":1,"touchedFiles":["src/login.rs"]`。
 - `POST /changes/{name}/archive`：`specs` 的每一項有 `capability`，以及 `added`、`modified`、`removed`、`renamed` 四個 requirement 數量。`carryReview=true`、`carryVerify=true` 表示即使該站還有未結的工單也封存，工單跟著變更一起搬進封存區。

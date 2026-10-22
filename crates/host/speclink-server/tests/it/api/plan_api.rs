@@ -1,8 +1,9 @@
 //! Execution-order endpoints (server-verb-api「plan 唯讀衍生查詢端點」「變更依賴
-//! 寫入端點」): GET /plan runs the engine plan over the scope with the board
-//! resource as its rank source, POST /changes/{name}/depends runs the engine's
-//! dependency write — both through the Command gateway, the write editor-only,
-//! every refusal a `refused` 409 carrying the engine's line.
+//! 寫入端點」「變更 schema 寫入端點」): GET /plan runs the engine plan over the
+//! scope with the board resource as its rank source, POST /changes/{name}/depends
+//! and POST /changes/{name}/schema run the engine's meta writes — all through the
+//! Command gateway, the writes editor-only, every refusal a `refused` 409
+//! carrying the engine's line.
 
 use crate::common;
 
@@ -408,6 +409,124 @@ fn re_adding_a_declared_prerequisite_is_an_idempotent_200() {
     assert_eq!(response.status(), 200);
     let body = response.into_json::<Value>().expect("JSON body");
     assert_eq!(body["dependsOn"], json!(["add-a"]));
+    assert_eq!(revision(&f), before, "an idempotent pass commits nothing");
+    assert_eq!(outbox_names(&f), events, "an idempotent pass publishes no event");
+}
+
+// --- 規格「變更 schema 寫入端點」---
+
+fn post_schema(f: &Fixture, pat: &str, change: &str, schema: &str) -> Result<ureq::Response, ureq::Error> {
+    request("POST", f, pat, &format!("changes/{change}/schema")).send_json(json!({ "schema": schema }))
+}
+
+#[test]
+fn an_editor_switches_the_schema_and_the_commit_publishes_an_event() {
+    // Scenario「editor 切換 schema」。
+    let f = fixture(&[("tidy", meta("2026-09-01", None))]);
+    let before = revision(&f);
+    let response = post_schema(&f, &f.editor_pat, "tidy", "no-spec-change").expect("editor POST succeeds");
+    assert_eq!(response.status(), 200);
+    let etag = response.header("ETag").expect("ETag present").to_string();
+    let body = response.into_json::<Value>().expect("JSON body");
+    assert_eq!(
+        body,
+        json!({
+            "change": "tidy",
+            "schema": "no-spec-change",
+            "previous": "spec-driven",
+            "changed": true,
+            "verifyStampCleared": false,
+        })
+    );
+    let (text, _) = stored(&f, &change_meta("tidy")).expect("meta present");
+    assert_eq!(text, "schema: no-spec-change\ncreated: 2026-09-01\n", "only the schema line changes");
+    let after = revision(&f);
+    assert!(after > before, "the write advances the scope revision");
+    assert_eq!(etag, format!("\"{after}\""), "the response carries the post-commit ETag");
+    assert_eq!(outbox_names(&f).last().map(String::as_str), Some("change-schema-changed"));
+}
+
+#[test]
+fn a_switch_that_removes_the_verify_stamp_says_so() {
+    let stamped = format!(
+        "{}verified_at: 2026-09-03T10:00:00+08:00\nverified_tasks_total: 1\nverified_rounds: 2\n",
+        meta("2026-09-01", None)
+    );
+    let f = fixture(&[("tidy", stamped)]);
+    let response = post_schema(&f, &f.editor_pat, "tidy", "no-spec-change").expect("editor POST succeeds");
+    let body = response.into_json::<Value>().expect("JSON body");
+    assert_eq!(body["verifyStampCleared"], json!(true));
+    let (text, _) = stored(&f, &change_meta("tidy")).expect("meta present");
+    assert_eq!(text, "schema: no-spec-change\ncreated: 2026-09-01\nverified_rounds: 2\n");
+}
+
+#[test]
+fn a_reader_cannot_switch_the_schema() {
+    // Scenario「reader 被拒」。
+    let f = fixture(&[("tidy", meta("2026-09-01", None))]);
+    let meta_before = stored(&f, &change_meta("tidy"));
+    let (status, error) = protocol_error(post_schema(&f, &f.reader_pat, "tidy", "no-spec-change"));
+    assert_eq!(status, 403);
+    assert_eq!(error.reason, ErrorReason::PermissionDenied);
+    assert_eq!(stored(&f, &change_meta("tidy")), meta_before);
+}
+
+#[test]
+fn switching_an_unknown_change_is_a_404() {
+    // Scenario「不存在的 change」。
+    let f = fixture(&[("tidy", meta("2026-09-01", None))]);
+    let before = revision(&f);
+    let (status, error) = protocol_error(post_schema(&f, &f.editor_pat, "ghost", "spec-driven"));
+    assert_eq!(status, 404);
+    assert_eq!(error.reason, ErrorReason::NotFound);
+    assert_eq!(revision(&f), before);
+}
+
+#[test]
+fn schema_guard_refusals_are_refused_409s_with_the_engine_line() {
+    // Scenario「守門失敗 409」：message 是引擎原文，與 fs 模式 stderr 同一句。
+    let f = fixture(&[("c", meta("2026-09-01", None))]);
+    seed(
+        &f.store,
+        &[(
+            DocumentId::ChangeArtifact { change: "c".into(), artifact: "specs/auth/spec.md".into() },
+            "## ADDED Requirements\n".to_string(),
+        )],
+    );
+    let meta_before = stored(&f, &change_meta("c"));
+    let before = revision(&f);
+    let events = outbox_names(&f);
+    for (schema, message) in [
+        (
+            "no-spec-change",
+            "cannot switch 'c' to 'no-spec-change': 'no-spec-change' has no specs, but the change \
+             has delta specs (auth) — remove them first",
+        ),
+        (
+            "no-such-flow",
+            "Schema not found: Schema 'no-such-flow' not found in project, user, or built-in locations",
+        ),
+    ] {
+        let (status, error) = protocol_error(post_schema(&f, &f.editor_pat, "c", schema));
+        assert_eq!(status, 409, "{schema}");
+        assert_eq!(error.reason, ErrorReason::Refused, "{schema}");
+        assert_eq!(error.message, message, "{schema}: the engine's line verbatim");
+    }
+    assert_eq!(stored(&f, &change_meta("c")), meta_before, "a refusal writes nothing");
+    assert_eq!(revision(&f), before);
+    assert_eq!(outbox_names(&f), events, "a refusal publishes no event");
+}
+
+#[test]
+fn switching_to_the_current_schema_is_an_idempotent_200() {
+    // Scenario「冪等切換」。
+    let f = fixture(&[("c", meta("2026-09-01", None))]);
+    let before = revision(&f);
+    let events = outbox_names(&f);
+    let response = post_schema(&f, &f.editor_pat, "c", "spec-driven").expect("idempotent POST succeeds");
+    assert_eq!(response.status(), 200);
+    let body = response.into_json::<Value>().expect("JSON body");
+    assert_eq!(body["changed"], json!(false));
     assert_eq!(revision(&f), before, "an idempotent pass commits nothing");
     assert_eq!(outbox_names(&f), events, "an idempotent pass publishes no event");
 }

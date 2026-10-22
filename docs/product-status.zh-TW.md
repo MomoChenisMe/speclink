@@ -34,7 +34,7 @@
 | 變更生命週期（`propose` → `apply` → `archive`） | 可用 | 可用 | 遠端一次只能封存一個變更。 |
 | 討論（`discuss`） | 可用 | 可用 | 轉為變更、併入既有變更與封存，兩邊相同。 |
 | 品質關卡（`review`、`verify`） | 可用 | 可用 | 工單、輪與蓋章的規則兩邊相同。 |
-| 執行順序（`plan`、`change depends`） | 可用 | 可用 | 0.6.0 起遠端也能讀 plan、寫前置。`change rank` 只限本地。 |
+| 執行順序（`plan`、`change depends`、`change schema`） | 可用 | 可用 | 0.6.0 起遠端也能讀 plan、寫前置。`change rank` 只限本地。遠端的 `change schema` 只解析內建 schema。 |
 | 溯源（`trace`） | 可用 | 不適用 | 只限本地。 |
 | 認領變更（`claim`） | 不適用 | 可用 | 認領人存進變更資料，重啟後還在。認領別人持有的變更會回 409，訊息寫出持有人。 |
 | 示範資料（`demo`） | 可用 | 不適用 | 只限本地；遠端模式直接拒絕，不送出請求。 |
@@ -52,7 +52,7 @@
 | Local Repo CLI | 可用 | `speclink init`、`list`、`show`、`status`、`validate`、`analyze`、`drift`、`archive`、`discuss` 等 | [CLI 入口](../crates/adapters/speclink-cli/src/main.rs)<br>[CLI 整合測試](../crates/adapters/speclink-cli/tests/it/doc_verbs.rs) | 不需要 server。旗標以各子指令的 `--help` 為準。 | 2026-10-07 |
 | Agent 技能 | 可用 | Claude 與 GitHub Copilot `/speclink-*`、Codex `$speclink-*` | [生成的 apply 技能](../.agents/skills/speclink-apply/SKILL.md)<br>[生成的 manual 技能](../.claude/skills/speclink-manual/SKILL.md)<br>[自訂工具描述子測試](../crates/adapters/speclink-cli/tests/it/tools_descriptor.rs)<br>[Copilot 技能快照](../crates/engine/speclink-core/tests/golden/copilot.snapshot.md) | `analyze` 技能只有 Claude 有，Codex 與 GitHub Copilot 直接用 CLI。技能數量：`worktree` 政策關閉時 Claude 17 個、Codex 與 GitHub Copilot 各 16 個；開啟時各多 2 個。其他 AI 工具可用自訂工具描述子產生技能。 | 2026-10-08 |
 | 品質關卡 | 可用 | `/speclink-review`、`/speclink-verify`、`/speclink-quality`；CLI `speclink review`、`speclink verify` | [關卡的蓋章與工單規則](../crates/engine/speclink-core/src/quality/station.rs)<br>[review 動詞測試](../crates/adapters/speclink-cli/tests/it/review_verbs.rs) | SUGGESTION 不擋章。蓋章後範圍內的檔案再被改，章會降級為「其後有變動」。 | 2026-10-07 |
-| 執行順序 | 可用 | `speclink plan`、`speclink change depends`、`speclink change rank`；桌面變更詳情頁的「排程」文件 | [plan 動詞測試](../crates/adapters/speclink-cli/tests/it/plan_verbs.rs)<br>[server 的 plan API 測試](../crates/host/speclink-server/tests/it/api/plan_api.rs) | `change rank` 與 `plan --strict-overlap` 只限本地。 | 2026-10-15 |
+| 執行順序 | 可用 | `speclink plan`、`speclink change depends`、`speclink change rank`、`speclink change schema`；桌面變更詳情頁的「排程」文件 | [plan 動詞測試](../crates/adapters/speclink-cli/tests/it/plan_verbs.rs)<br>[change schema 測試](../crates/adapters/speclink-cli/tests/it/change_schema.rs)<br>[server 的 plan API 測試](../crates/host/speclink-server/tests/it/api/plan_api.rs) | `change rank` 與 `plan --strict-overlap` 只限本地。 | 2026-10-22 |
 | 手冊與溯源 | 可用 | `/speclink-manual`、桌面「手冊」頁；`speclink trace`、`/speclink-trace` | [手冊頁測試](../packages/ui/src/__tests__/manualPage.test.tsx)<br>[trace 測試](../crates/adapters/speclink-cli/tests/it/trace.rs) | 遠端專案還不能生成手冊（導覽可以）。`trace` 只限本地。 | 2026-10-07 |
 | Local 桌面 app | 可用 | 看板、詳情頁、規格、已封存、手冊、設定模式（應用程式設定、專案設定與「關於 Speclink」頁）與系統匣 | [Desktop scripts](../apps/desktop/package.json)<br>[Desktop UI 測試](../apps/desktop/src/__tests__/App.test.tsx)<br>[設定模式測試](../apps/desktop/src/__tests__/settingsColumn.test.tsx)<br>[關於頁測試](../apps/desktop/src/__tests__/aboutPage.test.tsx)<br>[自動更新測試](../apps/desktop/src/__tests__/updater.test.ts) | 遠端專案的狀態另列在下面。 | 2026-10-15 |
 | 安裝通路 | 可用 | 桌面安裝檔（macOS universal dmg、Windows 安裝器、Linux AppImage）；CLI 的 npm、安裝腳本、Homebrew；server 的 npx 與 Docker | [npm 啟動器測試](../scripts/npm/npm-cli-launcher.test.mjs)<br>[安裝腳本測試](../scripts/install.test.mjs)<br>[Homebrew formula 產生器](../scripts/release/homebrew-formula.mjs) | Windows 安裝檔沒有程式碼簽章，第一次執行要放行 SmartScreen。 | 2026-10-07 |

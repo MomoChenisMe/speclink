@@ -9,7 +9,7 @@
 
 #### Scenario: 切回 spec-driven 並輸出 JSON
 - **WHEN** tidy 的 schema 為 no-spec-change，執行 `speclink change schema tidy spec-driven --json`
-- **THEN** exit code 為 0，stdout 為 `{"change":"tidy","schema":"spec-driven","previous":"no-spec-change","changed":true}`
+- **THEN** exit code 為 0，stdout 是 JSON（排版同其他 `--json` 輸出），內容為 `{"change":"tidy","schema":"spec-driven","previous":"no-spec-change","changed":true}`
 
 #### Scenario: 有 delta 時拒絕切到不改規格
 - **WHEN** 變更 c 含 `specs/auth/spec.md` 的 delta，執行 `speclink change schema c no-spec-change`

@@ -27,7 +27,7 @@
 
 ### D2：守門順序與 schema 解析
 
-順序固定為：作用中變更（名稱逐字比對）→ metadata 可解析 → schema 可解析 → 切到沒有 specs artifact 的 schema 時沒有 delta（以 `store.delta_capabilities` 判定並列出）→ 沒有未結驗證工單（`verify.md` 存在即視為未結）。schema 解析由呼叫端注入解析函式：fs 模式用 `resolve_with(ws, user_dir, name)`，server 用 `resolve_with(None, None, name)`（只有內建）。替代方案「核心自己讀 user 層」被否決：會讓 server 讀到伺服器本機的目錄，違反遠端只看內建的規則。
+順序固定為：作用中變更（名稱逐字比對）→ metadata 可解析 → schema 可解析 → 切到沒有 specs artifact 的 schema 時沒有 delta（以 `store.delta_capabilities` 判定並列出）→ 沒有未結驗證工單（`verify.md` 存在即視為未結）。schema 解析由呼叫端注入解析函式：`run_change_schema` 以執行情境的 workspace 與 user 層目錄組成 `resolve_with(ws, user_dir, name)`；fs 模式兩者都有，server 的執行情境（speclink-host bridge 的 `engine_context`）兩者都沒有，等於 `resolve_with(None, None, name)`（只有內建）。替代方案「核心自己讀 user 層」被否決：會讓 server 讀到伺服器本機的目錄，違反遠端只看內建的規則。
 
 ### D3：一次寫入完成切換與清除驗證章
 
@@ -35,7 +35,7 @@
 
 ### D4：遠端端點
 
-speclink-protocol 新增 `SetSchemaRequest { schema }` 與 `SetSchemaResponse { change, schema, previous, changed }`；speclink-remote 新增對應 client 方法；server app.rs 掛 `POST /changes/{name}/schema`，routes.rs 經 Command gateway 直通並以 D2 的內建解析注入；bridge.rs 命名 outcome 為 `change-schema`，commit.rs 處理新事件。錯誤沿用既有分類：not-found 為 404，守門失敗為 409 refused、message 為引擎原文。
+speclink-protocol 新增 `SetSchemaRequest { schema }` 與 `SetSchemaResponse { change, schema, previous, changed, verify_stamp_cleared }`（`verify_stamp_cleared` 讓 CLI 遠端模式印出與 fs 模式相同的清章行，CLI `--json` 仍是四個欄位）；speclink-remote 新增對應 client 方法；server app.rs 掛 `POST /changes/{name}/schema`，routes.rs 經 Command gateway 直通（解析只看內建，見 D2）；events.rs 把 `change-schema-changed` 歸入 change 範圍的失效通知；bridge.rs 命名 outcome 為 `change-schema`，commit.rs 處理新事件。錯誤沿用既有分類：not-found 為 404，守門失敗為 409 refused、message 為引擎原文。
 
 ### D5：CLI 子指令與模式
 
@@ -43,7 +43,7 @@ verbs/plan.rs 的 `ChangeCommands` 新增 `Schema { name, schema, json }`，在�
 
 ### D6：拒絕在沒有 specs 的 schema 寫 delta
 
-`new_artifact` 在命名主閘之前，若 `kind` 為 spec 且變更的 schema 沒有 id 為 `specs` 的 artifact，回傳 Refusal：`change '<name>' uses schema '<schema>', which has no specs — switch it first: speclink change schema <name> spec-driven`。遠端 `new artifact` 走 server 的同一個核心函式，訊息一致。
+`new_artifact` 在命名主閘之前，若 `kind` 為 spec 且變更的 schema 沒有 id 為 `specs` 的 artifact，回傳 Refusal（schema 解析不到時 `run_new_artifact` 傳入 `None`，維持現行的盡力寫入）：`change '<name>' uses schema '<schema>', which has no specs — switch it first: speclink change schema <name> spec-driven`。遠端 `new artifact` 走 server 的同一個核心函式，訊息一致。
 
 ### D7：技能與版號
 

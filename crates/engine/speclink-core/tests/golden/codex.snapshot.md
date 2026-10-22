@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.0"
+  version: "v1.51.0"
   generatedBy: "Speclink"
 ---
 
@@ -342,7 +342,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.0"
+  version: "v1.51.0"
   generatedBy: "Speclink"
 ---
 
@@ -685,7 +685,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.0"
+  version: "v1.51.0"
   generatedBy: "Speclink"
 ---
 
@@ -934,7 +934,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.0"
+  version: "v1.51.0"
   generatedBy: "Speclink"
 ---
 
@@ -1060,7 +1060,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.0"
+  version: "v1.51.0"
   generatedBy: "Speclink"
 ---
 
@@ -1371,7 +1371,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.0"
+  version: "v1.51.0"
   generatedBy: "Speclink"
 ---
 
@@ -1617,7 +1617,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.0"
+  version: "v1.51.0"
   generatedBy: "Speclink"
 ---
 
@@ -2103,7 +2103,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.0"
+  version: "v1.51.0"
   generatedBy: "Speclink"
 ---
 
@@ -2237,7 +2237,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.0"
+  version: "v1.51.0"
   generatedBy: "Speclink"
 ---
 
@@ -2434,7 +2434,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.0"
+  version: "v1.51.0"
   generatedBy: "Speclink"
 ---
 
@@ -2543,6 +2543,17 @@ Update an existing Speclink change — from a plan file or conversation context.
    Read existing artifacts for context before updating.
 
 5. **Update artifacts**
+
+   **Check the schema first.** Read `schemaName` from `speclink status --change "<name>" --json`. When it is `no-spec-change` and the new requirement adds, modifies or removes behavior a canonical spec promises, switch the change back before you touch any artifact:
+
+   ```bash
+   speclink change schema "<name>" spec-driven
+   ```
+
+   - The switch succeeds → add a Capabilities section to the proposal, write the delta spec with `speclink new artifact spec <capability> --change "<name>"`, then update design and tasks for the new requirement. The summary says that the schema was switched, and why.
+   - The switch is refused (for example, the change has an open verify ticket) → report the stderr reason, with the `speclink verify discard <name>` hint it carries, and stop. Do not write a delta around the refusal.
+
+   A new requirement that changes no promised behavior keeps the schema as it is. Never switch a `spec-driven` change to `no-spec-change` on your own: do that only when the user asks for it and the change has no delta spec.
 
    For each artifact, get instructions first:
 
@@ -2748,7 +2759,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.0"
+  version: "v1.51.0"
   generatedBy: "Speclink"
 ---
 
@@ -2963,7 +2974,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.0"
+  version: "v1.51.0"
   generatedBy: "Speclink"
 ---
 
@@ -3442,7 +3453,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.0"
+  version: "v1.51.0"
   generatedBy: "Speclink"
 ---
 
@@ -3566,7 +3577,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.0"
+  version: "v1.51.0"
   generatedBy: "Speclink"
 ---
 
@@ -3835,7 +3846,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.0"
+  version: "v1.51.0"
   generatedBy: "Speclink"
 ---
 
@@ -3923,7 +3934,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.50.0"
+  version: "v1.51.0"
   generatedBy: "Speclink"
 ---
 
@@ -4061,7 +4072,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
    - For each such requirement, compare: does the patch change the observable behavior the requirement promises?
    - A promised behavior changed:
      - Add WARNING: "Behavior change in a no-spec-change change: <capability> / <requirement>" — it is must-fix (step 11) and blocks a clean stamp
-     - Recommendation: "Switch the change to spec-driven and add a delta spec for this requirement"
+     - Recommendation, in this order: abandon this verify ticket with `speclink verify discard <name>`; switch the change back with `speclink change schema <name> spec-driven`; add the delta spec for this requirement with `$speclink-ingest <name>`; then run verify again. Do not suggest `--accept` to pass this WARNING — the change would archive with no delta for a behavior it changed
    - No behavior change found → list the canonical specs you compared in the report.
 
    **Requirement Implementation Mapping**:
@@ -4249,3 +4260,4 @@ Suggestions only. This skill NEVER invokes any of them — report where things s
 - The verify stamp landed in the main checkout → `$speclink-archive <change-name>`
 - The verify stamp landed inside a worktree → commit the stamp's meta changes first, then `$speclink-worktree-merge <change-name>` (archive runs only from the main checkout)
 - Findings were left unfixed on purpose → they stay in the ticket; say which ones before suggesting anything downstream
+- A no-spec-change change got a behavior-change WARNING → the repair steps in its recommendation: `speclink verify discard <change-name>`, `speclink change schema <change-name> spec-driven`, `$speclink-ingest <change-name>`, then verify again — not `--accept`
