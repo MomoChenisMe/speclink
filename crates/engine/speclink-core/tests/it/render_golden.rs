@@ -2407,6 +2407,80 @@ fn quality_skill_pauses_after_every_round_for_the_user() {
     }
 }
 
+/// Spec quality-skill「蓋章前的預防提醒」: before the first round freezes a scope, a
+/// branch other than the main branch is compared with it, and files both sides
+/// changed pause the run with a rebase recommendation; the closing-stamps option
+/// carries a CI note when the repository has CI configuration. The skill itself
+/// never rebases, merges, pushes or checks CI.
+#[test]
+fn quality_skill_warns_before_stale_stamps() {
+    for (rel, content) in skill_for_both_tools("quality-stale-stamps", "quality") {
+        // The comparison opens step 1, ahead of the stations' own preparation —
+        // which is where the first round's scopes freeze.
+        let prepare = position(&rel, &content, "**Prepare both stations**");
+        let compare = position(&rel, &content, "**Compare with the main branch first — first round only.**");
+        let walk = position(&rel, &content, "steps 1–4 (choose the change");
+        assert!(prepare < compare && compare < walk, "{rel}: the comparison runs before the scopes freeze");
+        let check = &content[compare..walk];
+        for needle in [
+            // where the comparison is skipped: a ticket on either station binds the
+            // starting point, and later rounds already froze theirs
+            "either station already has a ticket",
+            "The current branch (`git branch --show-current`) is the main branch, or no main branch can be found → continue without a pause.",
+            // a worktree lands on the branch the main checkout is on
+            "`git -C <main-checkout> branch --show-current`",
+            // the two file lists and their intersection
+            "`git merge-base HEAD <main>`",
+            "`git diff --name-only --no-renames <fork-point> <main>`",
+            "`git diff --name-only --no-renames <fork-point>`",
+            "`git ls-files --others --exclude-standard`",
+            "The two lists share no file → continue without a pause.",
+            // shared files: list them, say why, recommend, wait
+            "list the shared files",
+            "say that a rebase after the stamps would turn them stale",
+            "a new stamp re-runs both stations from a first round",
+            "recommend rebasing onto the main branch (or merging it in) first",
+            "Wait for the user's answer",
+            // after the user's rebase: the change's files are committed before the
+            // starting point moves, by the user or on the user's say-so
+            "with the change's files committed beforehand (new files included)",
+            "before you run `speclink review prepare`, make sure the change's files, new files included, are committed",
+            "ask the user to commit them, or commit them on the user's say-so",
+            "`speclink review prepare \"<change-name>\" --base \"<new-fork-point>\"`",
+            "If it fails, report its error",
+            // the skill reminds; the user acts
+            "it never rebases, merges or pushes on its own",
+        ] {
+            assert!(check.contains(needle), "{rel}: missing {needle:?}");
+        }
+
+        // The skill's own description of what it owns and of its pauses names the
+        // step-1 pause as the exception, so the rules do not contradict each other.
+        for needle in [
+            "and the main-branch comparison before the first round (step 1) — nothing else",
+            "apart from step 1's main-branch comparison, which runs before any station starts, this skill's only pause is step 4",
+        ] {
+            assert!(content.contains(needle), "{rel}: missing {needle:?}");
+        }
+
+        // The CI note rides the closing-stamps option of the round's pause.
+        let closing = position(&rel, &content, "- **Go to the closing stamps**");
+        let rest = position(&rel, &content, "Options with nothing to act on");
+        assert!(closing < rest, "{rel}: the closing-stamps option comes before the menu's closing line");
+        let option = &content[closing..rest];
+        for needle in [
+            "When the repository has CI configuration",
+            "`.github/workflows/`",
+            "commit and push first, then confirm that CI passed on every platform for that commit",
+            "a fix for CI after the stamps turns them stale",
+            "This adds no question and no option",
+            "the skill neither pushes nor checks CI status itself",
+        ] {
+            assert!(option.contains(needle), "{rel}: missing {needle:?}");
+        }
+    }
+}
+
 /// Spec「worktree-merge 技能的生成」＋「收尾流程指示」: a standalone template whose
 /// preflight, conflict and cleanup stop points are all stated.
 #[test]

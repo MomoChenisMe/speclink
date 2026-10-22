@@ -231,7 +231,9 @@ Compare the delivery with each spec of the change, one by one.
 - **With both stations, fix everything first, then stamp both**: A stamp records the content of the files in scope. A fix for the second station makes the first stamp "changed since".
 - **A stamp uses up the ticket**: One write adds the stamp and deletes the ticket (`review.md` or `verify.md`). Thus an archived change with stamps has no ticket files, and `show` reports no ticket after a stamp. That is normal. In local mode, the ticket text stays only in the Git history. In remote mode, you cannot read the ticket text after the stamp.
 - **Only open tickets go with the archive**: You must ask for this with `--carry-review` or `--carry-verify`.
-- **Files change after the stamp**: The card shows "Reviewed · changed since" or "Verified · changed since", and archive stops. Run that station again and stamp again.
+- **Files change after the stamp**: The card shows "Reviewed · changed since" or "Verified · changed since", and archive stops. The stamp deleted the ticket. Thus, to stamp again, run that station again from the first round. If both stations stamped, run both stations again from the first round.
+- **Bring in the latest main branch before you run the stations**: If the main branch moves and changes a file in the scope of the change, and you bring it in after the stamp, the stamp becomes "changed since", even when the merge has no conflicts. Then you must run the stations again from the first round. To prevent this, commit the files of the change (new files too), then rebase onto the main branch or merge it. Then move the starting point of the stations to the new fork point with `speclink review prepare <name> --base <new-fork-point>`. If you do not, the first round counts the changes of the main branch as changes of this change. Commit first, because `prepare` treats uncommitted files as changes from before the work started.
+- **If the project has CI, wait until CI passes on all platforms before you stamp**: A stamp records the content of the files in scope. If you change one line for CI after the stamp, the stamp becomes "changed since".
 - **Archive stops at an open ticket**: Go back and stamp, give up that station with `discard`, or take the ticket with `--carry-*`.
 
 On cards and in the tray panel, the review stamp and the verify stamp show side by side, review first. The tray panel opens from the Speclink icon in the macOS menu bar. It shows the changes and the quality stations of each project without the main window.
@@ -386,7 +388,7 @@ Put all open changes in an execution order.
 | You started a change by mistake | `speclink in-progress remove <name>`. This works only if you changed nothing. |
 | The remote read-only projection is stale or changed | Do not edit the projection. Get the instructions again to refresh it. |
 | `analyze` reports a CRITICAL | Fix the coverage, consistency, and gap problems in the documents before the work. |
-| Files changed after a stamp | Run that station again and stamp again. |
+| Files changed after a stamp | Run that station again from the first round, then stamp again. If both stations stamped, run both again. |
 | An open ticket stops the archive | Go back and stamp, give up that station, or take the ticket with `--carry-*`. |
 | Archive fails in a worktree | Run `worktree-merge` first, then archive in the main checkout. |
 | Archive reports a stale or incomplete delta | Go back to `drift` or `ingest`, correct the delta, and run `validate`. |

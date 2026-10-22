@@ -4,3 +4,65 @@ created_by: MomoChen <momochenisme@gmail.com>
 created_with: claude
 from_discussion: positioning-and-process-cost
 depends_on: change-schema-verb
+started_at: 2026-10-22T16:44:12+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-22T21:13:46+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 5
+reviewed_rounds: 3
+reviewed_scope:
+  - path: crates/engine/speclink-core/assets/skills/quality.md
+    hash: 8f39b84a71ca1b63ec9d9f5a395410b1cb7f89514399075e7760c7ddff8f6c31
+  - path: crates/engine/speclink-core/src/workspace/init.rs
+    hash: cd669aa84f6e816c1fcfea7cebaf859f473db8daba4377ea0da6bf040b4e3fa1
+  - path: crates/engine/speclink-core/tests/golden/assets.lock
+    hash: 027ccc731af2ef56ed748895152101757d95516349144816f06405c25f749960
+  - path: crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: cb47679de0b092a0055c6c0120f50d01cd4d45bbc0a2024d9c67f2c248e4a53c
+  - path: crates/engine/speclink-core/tests/golden/claude.snapshot.md
+    hash: bbdd938888a6d53e457213755c5ff8fe621fd65c52fc8e5c702b54293e1d80b8
+  - path: crates/engine/speclink-core/tests/golden/codex.snapshot.md
+    hash: 22883b3e6f3efd6578adaccf485f5004af9a9ef08e6275bafe8bdc8f73a827e0
+  - path: crates/engine/speclink-core/tests/golden/copilot.snapshot.md
+    hash: eb09e56c4377646ee6d987afe7a75269bd1e1924933e835bc10554ca4f1702d4
+  - path: crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: 35dbb127735836333dbf9f97df76ed87d92d78f360b21b261192444ba36f49c4
+  - path: crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: 7b02befa5494ca7553c81aa684bb34f9f9a54071d8831ce7cf35cb07a965dc44
+  - path: crates/engine/speclink-core/tests/it/render_golden.rs
+    hash: 0f57c5bc9a2b9ae59cf2104d903ee7c352314f75a9e1b43e5fded7d9fd2a4cb8
+  - path: docs/workflow.md
+    hash: 43ee53a32a5aed9a4fe67ee628511eabfba42cf13abf2f0bb06c78e810d97b3d
+  - path: docs/workflow.zh-TW.md
+    hash: ef8797e3fafb90b5c56813f51dab13c4cd4b22305960ff3f12a34b23cafc7af0
+verified_at: 2026-10-22T21:13:57+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 5
+verified_rounds: 3
+verified_scope:
+  - path: crates/engine/speclink-core/assets/skills/quality.md
+    hash: 8f39b84a71ca1b63ec9d9f5a395410b1cb7f89514399075e7760c7ddff8f6c31
+  - path: crates/engine/speclink-core/src/workspace/init.rs
+    hash: cd669aa84f6e816c1fcfea7cebaf859f473db8daba4377ea0da6bf040b4e3fa1
+  - path: crates/engine/speclink-core/tests/golden/assets.lock
+    hash: 027ccc731af2ef56ed748895152101757d95516349144816f06405c25f749960
+  - path: crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: cb47679de0b092a0055c6c0120f50d01cd4d45bbc0a2024d9c67f2c248e4a53c
+  - path: crates/engine/speclink-core/tests/golden/claude.snapshot.md
+    hash: bbdd938888a6d53e457213755c5ff8fe621fd65c52fc8e5c702b54293e1d80b8
+  - path: crates/engine/speclink-core/tests/golden/codex.snapshot.md
+    hash: 22883b3e6f3efd6578adaccf485f5004af9a9ef08e6275bafe8bdc8f73a827e0
+  - path: crates/engine/speclink-core/tests/golden/copilot.snapshot.md
+    hash: eb09e56c4377646ee6d987afe7a75269bd1e1924933e835bc10554ca4f1702d4
+  - path: crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: 35dbb127735836333dbf9f97df76ed87d92d78f360b21b261192444ba36f49c4
+  - path: crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: 7b02befa5494ca7553c81aa684bb34f9f9a54071d8831ce7cf35cb07a965dc44
+  - path: crates/engine/speclink-core/tests/it/render_golden.rs
+    hash: 0f57c5bc9a2b9ae59cf2104d903ee7c352314f75a9e1b43e5fded7d9fd2a4cb8
+  - path: docs/workflow.md
+    hash: 43ee53a32a5aed9a4fe67ee628511eabfba42cf13abf2f0bb06c78e810d97b3d
+  - path: docs/workflow.zh-TW.md
+    hash: ef8797e3fafb90b5c56813f51dab13c4cd4b22305960ff3f12a34b23cafc7af0
