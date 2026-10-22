@@ -115,6 +115,15 @@
       "files": [
         "crates/engine/speclink-core/src/workspace/schema.rs"
       ]
+    },
+    {
+      "task_id": "16",
+      "task_desc": "6.2 受影響面測試與文件守門全部通過。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-server`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 皆通過，且 `speclink validate change-schema-verb` 通過",
+      "files": [
+        "crates/engine/speclink-core/src/quality/station.rs",
+        "crates/engine/speclink-core/src/quality/validate.rs",
+        "crates/engine/speclink-core/src/teststore.rs"
+      ]
     }
   ],
   "entries": [
@@ -283,6 +292,19 @@
         "crates/engine/speclink-core/src/workspace/schema.rs"
       ],
       "recordedAt": "2026-10-22T06:57:01Z"
+    },
+    {
+      "taskId": "tsk_01M5EQEBFB5VTMJW9A86H8ETJ7",
+      "taskDesc": "6.2 受影響面測試與文件守門全部通過。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-server`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 皆通過，且 `speclink validate change-schema-verb` 通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "790077f397a35c4af8573f59c205c7a99b106f2b",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/quality/station.rs",
+        "crates/engine/speclink-core/src/quality/validate.rs",
+        "crates/engine/speclink-core/src/teststore.rs"
+      ],
+      "recordedAt": "2026-10-22T08:25:49Z"
     }
   ]
 }

@@ -437,6 +437,15 @@ fn change_schema_writes_the_worktree_copy_of_a_mapped_change() {
     };
     assert_eq!(meta_of(&wt), "schema: no-spec-change\ncreated: 2026-07-01\n");
     assert_eq!(meta_of(&f.repo), META, "the main copy stays untouched");
+
+    // 專案層 schema 也從寫入的那份副本解析：只在 worktree 裡 fork 出來的 schema
+    // 切得過去，不會被主 checkout 的 openspec/schemas 誤拒。
+    let fork = f.run_in(&wt, &["schema", "fork", "spec-driven", "tidy-flow"]);
+    assert!(fork.status.success(), "stderr: {}", String::from_utf8_lossy(&fork.stderr));
+    let out = f.run(&["change", "schema", "add-dark-mode", "tidy-flow"]);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(meta_of(&wt), "schema: tidy-flow\ncreated: 2026-07-01\n");
+    assert_eq!(meta_of(&f.repo), META, "the main copy stays untouched");
 }
 
 #[test]

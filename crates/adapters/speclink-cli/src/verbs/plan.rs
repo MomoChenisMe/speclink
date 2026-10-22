@@ -116,11 +116,13 @@ pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
         }
         ChangeCommands::Schema { name, schema, json } => {
             // Routed like `change depends`: a mapped change switches in its
-            // worktree copy, the one `list` and `plan` read.
+            // worktree copy, the one `list` and `plan` read — and a
+            // project-layer schema resolves from that same copy.
             let (ws, fs_store) = open_project()?;
-            let home = home_store_for(&ws, &worktree_facts(&ws, &fs_store), &name);
+            let home = home_workspace_for(&ws, &worktree_facts(&ws, &fs_store), &name);
+            let store = speclink_fs::FsStore::new(&home.root, &home.spec_dir_name);
             let o: core::command::SchemaOutcome =
-                run(&home, Some(&ws), core::command::Command::ChangeSchema { name, schema })?;
+                run(&store, Some(&home), core::command::Command::ChangeSchema { name, schema })?;
             render_schema(&o, json)
         }
         ChangeCommands::Rank {
@@ -231,11 +233,22 @@ fn home_store_for(
     facts: &speclink_host::worktree::WorktreeFacts,
     change: &str,
 ) -> speclink_fs::FsStore {
+    let home = home_workspace_for(ws, facts, change);
+    speclink_fs::FsStore::new(&home.root, &home.spec_dir_name)
+}
+
+/// The checkout [`home_store_for`] writes in, as a workspace: the mapped
+/// worktree while that copy still holds the change, else the main checkout.
+fn home_workspace_for(
+    ws: &Workspace,
+    facts: &speclink_host::worktree::WorktreeFacts,
+    change: &str,
+) -> Workspace {
     facts
         .get(change)
-        .map(|e| speclink_fs::FsStore::new(&e.path, &ws.spec_dir_name))
-        .filter(|copy| copy.change_exists(change))
-        .unwrap_or_else(|| speclink_fs::FsStore::new(&ws.root, &ws.spec_dir_name))
+        .map(|e| Workspace { root: e.path.clone(), spec_dir_name: ws.spec_dir_name.clone() })
+        .filter(|copy| speclink_fs::FsStore::new(&copy.root, &copy.spec_dir_name).change_exists(change))
+        .unwrap_or_else(|| ws.clone())
 }
 
 /// One success line (design D4): the full declaration after an add, the

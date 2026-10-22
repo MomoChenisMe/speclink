@@ -1,13 +1,9 @@
 //! `change schema`：切換作用中變更的 schema（change-schema-verb design D1–D3）。
-//! 守門依序全過之後，以一次 `KeyLines` 手術改 `schema:` 行並清掉驗證章。
+//! 守門依序全過之後，以一次 `edit_meta` 手術改 `schema:` 行並清掉驗證章。
 
-use crate::keylines::KeyLines;
 use crate::schema::Schema;
+use crate::station::{NotFound, VERIFY};
 use crate::store::Store;
-
-/// 驗證章的五個欄位。`verified_rounds` 刻意不在內：流程成本的輪數跨章累加（design D3）。
-const VERIFY_STAMP_KEYS: [&str; 5] =
-    ["verified_at", "verified_by", "verified_with", "verified_tasks_total", "verified_scope"];
 
 /// 一次切換的結果：`changed` 為 false 時沒有寫檔（同值，不發事件）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,9 +17,9 @@ pub struct SchemaWrite {
 /// 把作用中變更 `name` 的 schema 切到 `schema`。`resolve` 由呼叫端注入（design D2）：
 /// fs 模式看專案層、user 層與內建，server 只看內建。守門依序：作用中變更（名稱逐字
 /// 比對名冊）、metadata 可解析、schema 名稱是 kebab-case 且解析得到、目標 schema 沒有
-/// specs 時變更不得帶 delta、沒有未結的驗證工單；任一失敗零寫入。守門全過且與現值
-/// 相同時不寫檔。切換以一次寫入完成：取代或新增 `schema:` 行，並移除驗證章（依舊
-/// schema 的標準蓋的）。
+/// specs 時變更不得帶 delta、沒有未結的驗證工單；查無是 [`NotFound`]，其餘失敗是
+/// Refusal（壞 meta 是 MetaError），一律零寫入。守門全過且與現值相同時不寫檔。切換以
+/// 一次寫入完成：取代或新增 `schema:` 行，並移除驗證章（依舊 schema 的標準蓋的）。
 pub fn set_schema(
     store: &dyn Store,
     name: &str,
@@ -31,11 +27,11 @@ pub fn set_schema(
     resolve: &dyn Fn(&str) -> Option<Result<Schema, String>>,
 ) -> anyhow::Result<SchemaWrite> {
     if !crate::model::list_changes(store).iter().any(|c| c.name == name) {
-        anyhow::bail!("Change '{name}' not found.");
+        return Err(NotFound(format!("Change '{name}' not found.")).into());
     }
     let refuse = |msg: String| anyhow::Error::from(crate::command::Refusal(msg));
-    let raw = store.read_change_meta(name);
-    let previous = crate::model::check_meta_text(name, raw.as_deref())?.schema_name();
+    let previous =
+        crate::model::check_meta_text(name, store.read_change_meta(name).as_deref())?.schema_name();
     // 名稱守門在解析之前：專案層解析把名字接成路徑，寫入把它原樣接進 meta。
     if !crate::schema::is_valid_schema_name(schema) {
         return Err(refuse(crate::schema::invalid_name_msg(schema)));
@@ -45,7 +41,7 @@ pub fn set_schema(
         Some(Err(e)) => return Err(refuse(e)),
         None => return Err(refuse(crate::schema::not_found_msg(schema))),
     };
-    if target.artifact("specs").is_none() {
+    if !target.has_specs() {
         let deltas = store.delta_capabilities(name);
         if !deltas.is_empty() {
             return Err(refuse(format!(
@@ -70,20 +66,29 @@ pub fn set_schema(
     if previous == schema {
         return Ok(write(false, false));
     }
+    let meta_file = format!("openspec/changes/{name}/.openspec.yaml");
+    let cleared = crate::model::edit_meta(store, name, |m| {
+        m.set("schema", schema)?;
+        // 清章的欄位清單由 station 管；`verified_rounds` 不在內，流程成本跨章累加（D3）。
+        let stamp = VERIFY.stamp_keys();
+        let cleared = stamp.iter().any(|key| m.get(key).is_some());
+        for key in &stamp {
+            m.remove(key);
+        }
+        // KeyLines 只認第 0 欄的 `schema:`：`schema : x` 會讓手術補出重複鍵、縮排續行
+        // 會被併進新值。寫入前以解析結果把關，讀不出新值就零寫入。
+        let reparsed = crate::model::check_meta_text(name, Some(&m.text()));
+        if !reparsed.is_ok_and(|meta| meta.schema_name() == schema) {
+            return Err(refuse(format!(
+                "cannot switch '{name}': {meta_file} has a `schema:` line this command cannot \
+                 rewrite — make it a plain `schema: <name>` line first"
+            )));
+        }
+        Ok(cleared)
+    })?
     // 名冊列得出目錄卻讀不到文件：這個 change 根本沒有 `.openspec.yaml`。
-    let raw = raw.ok_or_else(|| {
-        anyhow::anyhow!(
-            "cannot write schema for '{name}': openspec/changes/{name}/.openspec.yaml is missing"
-        )
-    })?;
-    let mut m = KeyLines::whole(&raw);
-    m.set("schema", schema)?;
-    let verify_stamp_cleared = VERIFY_STAMP_KEYS.iter().any(|key| m.get(key).is_some());
-    for key in VERIFY_STAMP_KEYS {
-        m.remove(key);
-    }
-    store.write_change_meta(name, &m.text())?;
-    Ok(write(true, verify_stamp_cleared))
+    .ok_or_else(|| refuse(format!("cannot write schema for '{name}': {meta_file} is missing")))?;
+    Ok(write(true, cleared))
 }
 
 #[cfg(test)]
@@ -230,13 +235,42 @@ verified_rounds: 2\n"
 
     #[test]
     fn an_unknown_change_is_not_found_and_not_a_refusal() {
-        // Scenario「變更不存在」：名稱逐字比對作用中名冊。
+        // Scenario「變更不存在」：名稱逐字比對作用中名冊——大小寫不同（不分大小寫的
+        // 檔案系統上目錄看得到）也是查無，錯誤型別同其他動詞的查無。
         let store = TestStore::with_meta("c", SPEC_META);
         for name in ["ghost", "C"] {
             let err = switch(&store, name, "spec-driven").unwrap_err();
             assert_eq!(err.to_string(), format!("Change '{name}' not found."));
-            assert!(err.downcast_ref::<crate::command::Refusal>().is_none(), "not a refusal");
+            assert!(err.downcast_ref::<crate::station::NotFound>().is_some(), "typed not-found: {err}");
         }
         assert_eq!(*store.meta_writes.borrow(), 0);
+    }
+
+    #[test]
+    fn a_schema_line_the_edit_cannot_reach_refuses_without_writing() {
+        // KeyLines 只認第 0 欄的 `schema:`：`schema : x`（多一個空白）會讓手術補出
+        // 重複鍵，縮排續行會被併進新值——兩者都在寫入前被擋下。
+        for meta in [
+            "schema : spec-driven\ncreated: 2026-10-01\n",
+            "schema:\n  spec-driven\ncreated: 2026-10-01\n",
+        ] {
+            let store = TestStore::with_meta("c", meta);
+            let err = switch(&store, "c", "no-spec-change").expect_err(meta);
+            assert!(err.to_string().contains(".openspec.yaml"), "{err}");
+            assert_refused(&store, &err, meta);
+        }
+    }
+
+    #[test]
+    fn a_change_without_a_meta_file_refuses() {
+        // 名冊列得出目錄卻讀不到 `.openspec.yaml`：拒絕，不憑空建出 meta。
+        let store = TestStore::with_meta("c", SPEC_META);
+        *store.missing_meta.borrow_mut() = Some("c".into());
+        let err = switch(&store, "c", "no-spec-change").unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "cannot write schema for 'c': openspec/changes/c/.openspec.yaml is missing"
+        );
+        assert_refused(&store, &err, SPEC_META);
     }
 }

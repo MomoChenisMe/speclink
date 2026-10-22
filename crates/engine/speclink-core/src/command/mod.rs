@@ -1834,15 +1834,10 @@ fn run_change_schema(
     name: &str,
     schema: &str,
 ) -> Result<CommandOutcome, CommandError> {
-    // Same shape as `run_change_depends`: loud not-found under the stable code,
-    // every guard a typed Refusal inside the flow. A host without a workspace
-    // (the server) resolves built-ins only (design D2).
-    if crate::model::find_change(store, name).is_none() {
-        return Err(CommandError::new(
-            ErrorCode::NotFound,
-            format!("Change '{name}' not found."),
-        ));
-    }
+    // The flow types every outcome itself: not-found by an exact roster match
+    // (a directory probe passes `C` for `c` on a case-insensitive fs), each
+    // guard a Refusal. A host without a workspace (the server) resolves
+    // built-ins only (design D2).
     let resolve = |n: &str| crate::schema::resolve_with(ws, user_dir, n);
     let write = crate::lifecycle::change_schema::set_schema(store, name, schema, &resolve)
         .map_err(classify)?;

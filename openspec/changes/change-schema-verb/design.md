@@ -23,15 +23,15 @@
 
 ### D1：命令與核心函式
 
-新增 `Command::ChangeSchema { name, schema }`、`CommandOutcome::ChangeSchema(SchemaOutcome { change, schema, previous, changed, verify_stamp_cleared })` 與 `DomainEvent::ChangeSchemaChanged`（kebab 名 `change-schema-changed`）。守門與寫入放在新檔 lifecycle/change_schema.rs 的 `set_schema`，`run_change_schema` 只做 not-found 與錯誤分類，與 `run_change_depends` 同形。替代方案「放進 lifecycle/plan.rs」被否決：plan.rs 的職責是執行順序，schema 與它無關。
+新增 `Command::ChangeSchema { name, schema }`、`CommandOutcome::ChangeSchema(SchemaOutcome { change, schema, previous, changed, verify_stamp_cleared })` 與 `DomainEvent::ChangeSchemaChanged`（kebab 名 `change-schema-changed`）。守門與寫入放在新檔 lifecycle/change_schema.rs 的 `set_schema`，`run_change_schema` 只組解析函式與做錯誤分類。not-found 也由 `set_schema` 判定：以作用中名冊逐字比對，查無時丟 `station::NotFound`（分類為 not_found）；不沿用 `run_change_depends` 先以 `find_change` 探查的做法，因為 fs 的目錄探查在不分大小寫的檔案系統上會讓 `C` 冒充 `c`。替代方案「放進 lifecycle/plan.rs」被否決：plan.rs 的職責是執行順序，schema 與它無關。
 
 ### D2：守門順序與 schema 解析
 
-順序固定為：作用中變更（名稱逐字比對）→ metadata 可解析 → schema 可解析 → 切到沒有 specs artifact 的 schema 時沒有 delta（以 `store.delta_capabilities` 判定並列出）→ 沒有未結驗證工單（`verify.md` 存在即視為未結）。schema 解析由呼叫端注入解析函式：`run_change_schema` 以執行情境的 workspace 與 user 層目錄組成 `resolve_with(ws, user_dir, name)`；fs 模式兩者都有，server 的執行情境（speclink-host bridge 的 `engine_context`）兩者都沒有，等於 `resolve_with(None, None, name)`（只有內建）。替代方案「核心自己讀 user 層」被否決：會讓 server 讀到伺服器本機的目錄，違反遠端只看內建的規則。
+順序固定為：作用中變更（名稱逐字比對）→ metadata 可解析 → schema 名稱為小寫 kebab-case（在解析之前判定：專案層解析會把名稱接成路徑，寫入會把它原樣寫進 meta；沿用 `schema init`／`schema fork` 的規則與訊息）→ schema 可解析 → 切到沒有 specs artifact 的 schema 時沒有 delta（以 `store.delta_capabilities` 判定並列出）→ 沒有未結驗證工單（`verify.md` 存在即視為未結）。schema 解析由呼叫端注入解析函式：`run_change_schema` 以執行情境的 workspace 與 user 層目錄組成 `resolve_with(ws, user_dir, name)`；fs 模式兩者都有，server 的執行情境（speclink-host bridge 的 `engine_context`）兩者都沒有，等於 `resolve_with(None, None, name)`（只有內建）。替代方案「核心自己讀 user 層」被否決：會讓 server 讀到伺服器本機的目錄，違反遠端只看內建的規則。
 
 ### D3：一次寫入完成切換與清除驗證章
 
-`set_schema` 以 `KeyLines` 對原文做一次手術：取代或新增 `schema:` 行；若帶驗證章，同一份文字移除 `verified_at`、`verified_by`、`verified_with`、`verified_tasks_total`、`verified_scope`（含其清單行），保留 `verified_rounds`；最後一次寫回。寫入失敗時檔案維持原樣（單一寫入），沒有半套狀態。與現值相同時不寫檔、不發事件。理由：驗證章是依舊 schema 的檢查標準蓋的，切換後已不代表新標準下的結果；審查章看工藝品質，與 schema 無關。
+`set_schema` 經 `model::edit_meta` 以 `KeyLines` 對原文做一次手術：取代或新增 `schema:` 行；若帶驗證章，同一份文字移除 `verified_at`、`verified_by`、`verified_with`、`verified_tasks_total`、`verified_scope`（含其清單行；欄位清單取自 `station::VERIFY.stamp_keys()`，與 `write_stamp` 同一份），保留 `verified_rounds`；寫回前重新解析手術後的文字，讀不出新的 schema 值（`schema : x` 或縮排續行這類 `KeyLines` 改不到的寫法）就拒絕；最後一次寫回。寫入失敗時檔案維持原樣（單一寫入），沒有半套狀態。與現值相同時不寫檔、不發事件。理由：驗證章是依舊 schema 的檢查標準蓋的，切換後已不代表新標準下的結果；審查章看工藝品質，與 schema 無關。
 
 ### D4：遠端端點
 
@@ -39,7 +39,7 @@ speclink-protocol 新增 `SetSchemaRequest { schema }` 與 `SetSchemaResponse { 
 
 ### D5：CLI 子指令與模式
 
-verbs/plan.rs 的 `ChangeCommands` 新增 `Schema { name, schema, json }`，在模式分岔的單點宣告為兩種模式皆可用；fs 模式呼叫 core 命令，遠端模式呼叫 client 方法；兩者共用同一個輸出函式，產生 `✓ <name> schema: <old> → <new>`、`(unchanged)` 與驗證章清除的第二行，`--json` 為 `{ change, schema, previous, changed }`。
+verbs/plan.rs 的 `ChangeCommands` 新增 `Schema { name, schema, json }`，在模式分岔的單點宣告為兩種模式皆可用；fs 模式呼叫 core 命令（變更映射到 worktree 時，store 與傳給命令的 workspace 都是那份副本，專案層 schema 從同一份副本解析），遠端模式呼叫 client 方法；兩者共用同一個輸出函式，產生 `✓ <name> schema: <old> → <new>`、`(unchanged)` 與驗證章清除的第二行，`--json` 為 `{ change, schema, previous, changed }`。
 
 ### D6：拒絕在沒有 specs 的 schema 寫 delta
 

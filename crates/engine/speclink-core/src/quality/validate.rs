@@ -203,7 +203,7 @@ pub fn validate_change(
     schema: &Schema,
     strict: bool,
 ) -> ValidationResult {
-    let expects_deltas = schema.artifact("specs").is_some();
+    let expects_deltas = schema.has_specs();
     let StructuralPass { mut result, deltas } =
         structural_pass(store, change, expects_deltas, strict);
     for d in &deltas {
