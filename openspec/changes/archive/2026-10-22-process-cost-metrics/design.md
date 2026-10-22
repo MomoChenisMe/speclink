@@ -32,7 +32,7 @@ change metadata（`.openspec.yaml`）的時間欄位都由 `util::today()` 寫�
 
 ### D2：寫入時戳、解析層把對外欄位收斂成日期
 
-所有 change metadata 時間欄位改由新的 `util::now_rfc3339()`（`now_stamps().rfc3339` 的單一出口）寫入。為了不改動每個對外輸出點，`ChangeMeta` 解析時把 `created`、`started_at`、`claimed_at`、`reviewed_at`、`verified_at` 這些既有欄位存成日期部分（值符合 RFC 3339 時取前 10 個字元；純日期與無法辨識的值原樣保留），完整原值另存在新欄位（`created_stamp`、`archived_at` 等，僅供流程成本計算使用）。CLI、server、desktop core、drift 與 preflight 因此不需修改就輸出日期。SDK 的 store bridge（speclink-node 的 `change_from_value`）由宿主給的結構化欄位直接組 `ChangeMeta`、不經解析層，所以同樣呼叫這道收斂（`ChangeMeta::collapse_time_fields`）。替代方案「逐一修改每個輸出點」被否決：輸出點散在三個 crate 與 desktop core，漏一處就破壞協定承諾的 `YYYY-MM-DD`。`ChangeMeta` 沒有寫回路徑（寫入一律走 `KeyLines` 文字手術），所以解析層收斂不會把時戳寫丟。
+所有 change metadata 時間欄位改由新的 `util::now_rfc3339()`（`now_stamps().rfc3339` 的單一出口）寫入。為了不改動每個對外輸出點，`ChangeMeta` 解析時把 `created`、`started_at`、`claimed_at`、`reviewed_at`、`verified_at` 這些既有欄位存成日期部分（值符合 RFC 3339 時取前 10 個字元；純日期與無法辨識的值原樣保留），完整時戳不存進 `ChangeMeta`：只有流程成本需要它，由 `lifecycle/cost.rs` 逐鍵讀 metadata 原文取得（`archived_at` 因此也不是 `ChangeMeta` 的欄位，見 D4）。CLI、server、desktop core、drift 與 preflight 因此不需修改就輸出日期。SDK 的 store bridge（speclink-node 的 `change_from_value`）與 remote drift（speclink-host 的 `RemoteDriftStore`）由已結構化的欄位組 `ChangeMeta`、不經解析層，所以改走 `ChangeMeta::from_fields`，收尾跑同一道收斂；`ChangeMeta` 帶 `#[non_exhaustive]`，core 以外以字面值建構會編譯失敗；`Default` 只當讀檔失敗時的空白後備，不在上面逐欄填值。替代方案「逐一修改每個輸出點」被否決：輸出點散在三個 crate 與 desktop core，漏一處就破壞協定承諾的 `YYYY-MM-DD`。`ChangeMeta` 沒有寫回路徑（寫入一律走 `KeyLines` 文字手術），所以解析層收斂不會把時戳寫丟。
 
 ### D3：`archived_at` 在移動前寫入
 
@@ -40,7 +40,7 @@ archive 守門全數通過、正式規格寫入後，以同一個 `now_stamps()`
 
 ### D4：單項成本在 speclink-core 計算，彙總在 packages/ui
 
-新增 `lifecycle/cost.rs`，提供一個只依賴 `Store` 的函式，對一個封存變更算出 `docLines`、`leadDays`、`leadHours`、`reviewRounds`、`verifyRounds`（皆為 `Option`）；行數只數 proposal.md、design.md、tasks.md 與 `archived_delta_capabilities` 列出的每份 delta spec。desktop core 的 `cache.rs` 呼叫它並把結果存成快取欄位；server 之後要支援時呼叫同一個函式。中位數與 P90 是呈現層的彙總，放在 packages/ui 的純函式 `processCost.ts`，由 `ProcessCostSummary` 元件顯示在 `ArchivedList` 的頁標題區與列表卡之間。替代方案「在 UI 逐項讀文件算行數」被否決：違反 client-protocol「由清單載入一次帶出」。
+新增 `lifecycle/cost.rs`，提供一個只依賴 `Store` 的函式，對一個封存變更算出 `docLines`、`leadDays`、`leadHours`、`reviewRounds`、`verifyRounds`（皆為 `Option`）；metadata 逐鍵讀原文、不經 `ChangeMeta`，一個鍵缺席、重複或壞掉只讓用到它的欄位缺席；行數只數 proposal.md、design.md、tasks.md 與 `archived_delta_capabilities` 列出的每份 delta spec。desktop core 的 `cache.rs` 呼叫它並把結果存成快取欄位；server 之後要支援時呼叫同一個函式。中位數與 P90 是呈現層的彙總，放在 packages/ui 的純函式 `processCost.ts`，由 `ProcessCostSummary` 元件顯示在 `ArchivedList` 的頁標題區與列表卡之間。替代方案「在 UI 逐項讀文件算行數」被否決：違反 client-protocol「由清單載入一次帶出」。
 
 ### D5：desktop 快取升版
 
